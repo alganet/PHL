@@ -1880,44 +1880,44 @@ Coverage: 1234/1377 lines (89.62%)
 |     - | 1870 | ` * Return` |
 |     - | 1871 | ` *  TRUE if every character in the string text is a decimal digit, FALSE otherwise.` |
 |     - | 1872 | ` */` |
-|  1862 | 1873 | `PH7_PRIVATE int PH7_builtin_ctype_digit(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  1830 | 1873 | `PH7_PRIVATE int PH7_builtin_ctype_digit(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     5 | 1874 | `{` |
 |     - | 1875 | `	const unsigned char *zIn,*zEnd;` |
 |     - | 1876 | `	int nLen;` |
-|  1867 | 1877 | `	if( nArg < 1 ){` |
+|  1835 | 1877 | `	if( nArg < 1 ){` |
 |     - | 1878 | `		/* Missing arguments,return FALSE */` |
 |   ! 0 | 1879 | `		ph7_result_bool(pCtx,0);` |
 |   ! 0 | 1880 | `		return PH7_OK;` |
 |     - | 1881 | `	}` |
 |     - | 1882 | `	/* Extract the target string */` |
-|  1867 | 1883 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
-|  1867 | 1884 | `	zEnd = &zIn[nLen];` |
-|  1867 | 1885 | `	if( nLen < 1 ){` |
+|  1835 | 1883 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
+|  1835 | 1884 | `	zEnd = &zIn[nLen];` |
+|  1835 | 1885 | `	if( nLen < 1 ){` |
 |     - | 1886 | `		/* Empty string,return FALSE */` |
 |     9 | 1887 | `		ph7_result_bool(pCtx,0);` |
 |     9 | 1888 | `		return PH7_OK;` |
 |     - | 1889 | `	}` |
 |     - | 1890 | `	/* Perform the requested operation */` |
-|  1733 | 1891 | `	for(;;){` |
-|  3471 | 1892 | `		if( zIn >= zEnd ){` |
+|  1701 | 1891 | `	for(;;){` |
+|  3407 | 1892 | `		if( zIn >= zEnd ){` |
 |     - | 1893 | `			/* If we reach the end of the string,then the test succeeded. */` |
-|  1549 | 1894 | `			ph7_result_bool(pCtx,1);` |
-|  1549 | 1895 | `			return PH7_OK;` |
+|  1517 | 1894 | `			ph7_result_bool(pCtx,1);` |
+|  1517 | 1895 | `			return PH7_OK;` |
 |     - | 1896 | `		}` |
-|  1927 | 1897 | `		if( zIn[0] >= 0xc0 ){` |
+|  1895 | 1897 | `		if( zIn[0] >= 0xc0 ){` |
 |     - | 1898 | `			/* UTF-8 stream  */` |
 |   ! 0 | 1899 | `			break;` |
 |     - | 1900 | `		}` |
-|  1927 | 1901 | `		if( !SyisDigit(zIn[0]) ){` |
+|  1895 | 1901 | `		if( !SyisDigit(zIn[0]) ){` |
 |   315 | 1902 | `			break;` |
 |     - | 1903 | `		}` |
 |     - | 1904 | `		/* Point to the next character */` |
-|  1617 | 1905 | `		zIn++;` |
+|  1585 | 1905 | `		zIn++;` |
 |     5 | 1906 | `	}` |
 |     - | 1907 | `	/* The test failed,return FALSE */` |
 |   315 | 1908 | `	ph7_result_bool(pCtx,0);` |
 |   315 | 1909 | `	return PH7_OK;` |
-|   936 | 1910 | `}` |
+|   920 | 1910 | `}` |
 |     - | 1911 | `/*` |
 |     - | 1912 | ` * bool ctype_xdigit(string $text)` |
 |     - | 1913 | ` *  Check for character(s) representing a hexadecimal digit.` |

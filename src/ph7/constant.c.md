@@ -1104,76 +1104,76 @@ Coverage: 970/1042 lines (93.09%)
 |     11 | 1094 | `}` |
 |      - | 1095 | `/*` |
 |      - | 1096 | ` * PHP_URL_SCHEME.` |
-|      - | 1097 | ` * Expand 1` |
+|      - | 1097 | ` * Expand 0` |
 |      - | 1098 | ` */` |
-|      2 | 1099 | `static void PH7_PHP_URL_SCHEME_Const(ph7_value *pVal,void *pUserData)` |
+|      4 | 1099 | `static void PH7_PHP_URL_SCHEME_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1100 | `{` |
-|      1 | 1101 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1102 | `	ph7_value_int(pVal,1);` |
-|      3 | 1103 | `}` |
+|      2 | 1101 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      5 | 1102 | `	ph7_value_int(pVal,0);` |
+|      5 | 1103 | `}` |
 |      - | 1104 | `/*` |
 |      - | 1105 | ` * PHP_URL_HOST.` |
-|      - | 1106 | ` * Expand 2` |
+|      - | 1106 | ` * Expand 1` |
 |      - | 1107 | ` */` |
-|      2 | 1108 | `static void PH7_PHP_URL_HOST_Const(ph7_value *pVal,void *pUserData)` |
+|      6 | 1108 | `static void PH7_PHP_URL_HOST_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1109 | `{` |
-|      1 | 1110 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1111 | `	ph7_value_int(pVal,2);` |
-|      3 | 1112 | `}` |
+|      3 | 1110 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      7 | 1111 | `	ph7_value_int(pVal,1);` |
+|      7 | 1112 | `}` |
 |      - | 1113 | `/*` |
 |      - | 1114 | ` * PHP_URL_PORT.` |
-|      - | 1115 | ` * Expand 3` |
+|      - | 1115 | ` * Expand 2` |
 |      - | 1116 | ` */` |
-|      2 | 1117 | `static void PH7_PHP_URL_PORT_Const(ph7_value *pVal,void *pUserData)` |
+|      6 | 1117 | `static void PH7_PHP_URL_PORT_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1118 | `{` |
-|      1 | 1119 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1120 | `	ph7_value_int(pVal,3);` |
-|      3 | 1121 | `}` |
+|      3 | 1119 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      7 | 1120 | `	ph7_value_int(pVal,2);` |
+|      7 | 1121 | `}` |
 |      - | 1122 | `/*` |
 |      - | 1123 | ` * PHP_URL_USER.` |
-|      - | 1124 | ` * Expand 4` |
+|      - | 1124 | ` * Expand 3` |
 |      - | 1125 | ` */` |
-|      2 | 1126 | `static void PH7_PHP_URL_USER_Const(ph7_value *pVal,void *pUserData)` |
+|      4 | 1126 | `static void PH7_PHP_URL_USER_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1127 | `{` |
-|      1 | 1128 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1129 | `	ph7_value_int(pVal,4);` |
-|      3 | 1130 | `}` |
+|      2 | 1128 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      5 | 1129 | `	ph7_value_int(pVal,3);` |
+|      5 | 1130 | `}` |
 |      - | 1131 | `/*` |
 |      - | 1132 | ` * PHP_URL_PASS.` |
-|      - | 1133 | ` * Expand 5` |
+|      - | 1133 | ` * Expand 4` |
 |      - | 1134 | ` */` |
-|      2 | 1135 | `static void PH7_PHP_URL_PASS_Const(ph7_value *pVal,void *pUserData)` |
+|      4 | 1135 | `static void PH7_PHP_URL_PASS_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1136 | `{` |
-|      1 | 1137 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1138 | `	ph7_value_int(pVal,5);` |
-|      3 | 1139 | `}` |
+|      2 | 1137 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      5 | 1138 | `	ph7_value_int(pVal,4);` |
+|      5 | 1139 | `}` |
 |      - | 1140 | `/*` |
 |      - | 1141 | ` * PHP_URL_PATH.` |
-|      - | 1142 | ` * Expand 6` |
+|      - | 1142 | ` * Expand 5` |
 |      - | 1143 | ` */` |
-|      2 | 1144 | `static void PH7_PHP_URL_PATH_Const(ph7_value *pVal,void *pUserData)` |
+|      4 | 1144 | `static void PH7_PHP_URL_PATH_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1145 | `{` |
-|      1 | 1146 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1147 | `	ph7_value_int(pVal,6);` |
-|      3 | 1148 | `}` |
+|      2 | 1146 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      5 | 1147 | `	ph7_value_int(pVal,5);` |
+|      5 | 1148 | `}` |
 |      - | 1149 | `/*` |
 |      - | 1150 | ` * PHP_URL_QUERY.` |
-|      - | 1151 | ` * Expand 7` |
+|      - | 1151 | ` * Expand 6` |
 |      - | 1152 | ` */` |
-|      2 | 1153 | `static void PH7_PHP_URL_QUERY_Const(ph7_value *pVal,void *pUserData)` |
+|      6 | 1153 | `static void PH7_PHP_URL_QUERY_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1154 | `{` |
-|      1 | 1155 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1156 | `	ph7_value_int(pVal,7);` |
-|      3 | 1157 | `}` |
+|      3 | 1155 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      7 | 1156 | `	ph7_value_int(pVal,6);` |
+|      7 | 1157 | `}` |
 |      - | 1158 | `/*` |
 |      - | 1159 | ` * PHP_URL_FRAGMENT.` |
-|      - | 1160 | ` * Expand 8` |
+|      - | 1160 | ` * Expand 7` |
 |      - | 1161 | ` */` |
-|      2 | 1162 | `static void PH7_PHP_URL_FRAGMENT_Const(ph7_value *pVal,void *pUserData)` |
+|      6 | 1162 | `static void PH7_PHP_URL_FRAGMENT_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1163 | `{` |
-|      1 | 1164 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1165 | `	ph7_value_int(pVal,8);` |
-|      3 | 1166 | `}` |
+|      3 | 1164 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      7 | 1165 | `	ph7_value_int(pVal,7);` |
+|      7 | 1166 | `}` |
 |      - | 1167 | `/*` |
 |      - | 1168 | ` * PHP_QUERY_RFC1738` |
 |      - | 1169 | ` * Expand 1` |

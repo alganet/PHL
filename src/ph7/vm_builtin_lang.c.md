@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 551/808 lines (68.19%)
+Coverage: 779/993 lines (78.45%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -426,11 +426,11 @@ Coverage: 551/808 lines (68.19%)
 |        - |  416 | ` * PH7 uses its own private PRNG (the SQLite3-derived RC4 generator` |
 |        - |  417 | ` * implemented in src/sx/sxrand.c).` |
 |        - |  418 | ` */` |
-|     5110 |  419 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
+|     5108 |  419 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
 |        5 |  420 | `{` |
 |        - |  421 | `	sxu32 iNum;` |
-|     5115 |  422 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
-|     5115 |  423 | `	return iNum;` |
+|     5113 |  422 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
+|     5113 |  423 | `	return iNum;` |
 |        5 |  424 | `}` |
 |        - |  425 | `/*` |
 |        - |  426 | ` * Generate a random string (English Alphabet) of length nLen.` |
@@ -646,23 +646,23 @@ Coverage: 551/808 lines (68.19%)
 |      225 |  636 | `	uMask \|= uMask >> 16;` |
 |      225 |  637 | `	uMask \|= uMask >> 32;` |
 |      225 |  638 | `	uResult = 0;` |
-|      353 |  639 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
+|      360 |  639 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
 |        - |  640 | `		/* Always draw a full 8 bytes so endianness of the cast doesn't matter` |
 |        - |  641 | `		 * (a 4-byte fill into a sxu64 would land in the high half on big-endian` |
 |        - |  642 | `		 * and the low-half mask would always read 0). */` |
 |        - |  643 | `		sxu64 uDraw;` |
-|      353 |  644 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
+|      360 |  644 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
 |      ! 0 |  645 | `			return PH7_VmThrowException(pCtx,` |
 |        - |  646 | `				"Random\\RandomException",` |
 |        - |  647 | `				"Cannot gather sufficient random data"` |
 |        - |  648 | `				);` |
 |        - |  649 | `		}` |
-|      353 |  650 | `		uDraw &= uMask;` |
-|      353 |  651 | `		if( uDraw <= uRange ){` |
+|      360 |  650 | `		uDraw &= uMask;` |
+|      360 |  651 | `		if( uDraw <= uRange ){` |
 |      225 |  652 | `			uResult = uDraw;` |
 |      225 |  653 | `			break;` |
 |        - |  654 | `		}` |
-|       68 |  655 | `	}` |
+|       72 |  655 | `	}` |
 |      225 |  656 | `	if( nAttempt >= 50 ){` |
 |      ! 0 |  657 | `		return PH7_VmThrowException(pCtx,` |
 |        - |  658 | `			"Random\\RandomException",` |
@@ -1189,564 +1189,847 @@ Coverage: 551/808 lines (68.19%)
 |        - | 1179 | ` *  This function work with relative URL unlike the one shipped` |
 |        - | 1180 | ` *  with the standard PHP engine.` |
 |        - | 1181 | ` */` |
-|       28 | 1182 | `PH7_PRIVATE int vm_builtin_parse_url(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|        1 | 1183 | `{` |
-|        - | 1184 | `	const char *zStr; /* Input string */` |
-|        - | 1185 | `	SyString *pComp;  /* Pointer to the URI component */` |
-|        - | 1186 | `	SyhttpUri sURI;   /* Parse of the given URI */` |
-|        - | 1187 | `	int nLen;` |
-|        - | 1188 | `	sxi32 rc;` |
-|       29 | 1189 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
-|        - | 1190 | `		/* Missing/Invalid arguments,return FALSE */` |
-|      ! 0 | 1191 | `		ph7_result_bool(pCtx,0);` |
-|      ! 0 | 1192 | `		return PH7_OK;` |
-|        - | 1193 | `	}` |
-|        - | 1194 | `	/* Extract the given URI */` |
-|       29 | 1195 | `	zStr = ph7_value_to_string(apArg[0],&nLen);` |
-|       29 | 1196 | `	if( nLen < 1 ){` |
-|        - | 1197 | `		/* Nothing to process,return FALSE */` |
-|        3 | 1198 | `		ph7_result_bool(pCtx,0);` |
-|        3 | 1199 | `		return PH7_OK;` |
-|        - | 1200 | `	}` |
-|        - | 1201 | `	/* Get a parse */` |
-|       27 | 1202 | `	rc = PH7_VmHttpSplitURI(&sURI,zStr,(sxu32)nLen);` |
-|       27 | 1203 | `	if( rc != SXRET_OK ){` |
-|        - | 1204 | `		/* Malformed input,return FALSE */` |
-|      ! 0 | 1205 | `		ph7_result_bool(pCtx,0);` |
-|      ! 0 | 1206 | `		return PH7_OK;` |
-|        - | 1207 | `	}` |
-|       27 | 1208 | `	if( nArg > 1 ){` |
-|      ! 0 | 1209 | `		int nComponent = ph7_value_to_int(apArg[1]);` |
-|        - | 1210 | `		/* Refer to constant.c for constants values */` |
-|      ! 0 | 1211 | `		switch(nComponent){` |
-|      ! 0 | 1212 | `		case 1: /* PHP_URL_SCHEME */` |
-|      ! 0 | 1213 | `			pComp = &sURI.sScheme;` |
-|      ! 0 | 1214 | `			if( pComp->nByte < 1 ){` |
-|        - | 1215 | `				/* No available value,return NULL */` |
-|      ! 0 | 1216 | `				ph7_result_null(pCtx);` |
-|      ! 0 | 1217 | `			}else{` |
-|      ! 0 | 1218 | `				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);` |
-|        - | 1219 | `			}` |
-|      ! 0 | 1220 | `			break;` |
-|      ! 0 | 1221 | `		case 2: /* PHP_URL_HOST */` |
-|      ! 0 | 1222 | `			pComp = &sURI.sHost;` |
-|      ! 0 | 1223 | `			if( pComp->nByte < 1 ){` |
-|        - | 1224 | `				/* No available value,return NULL */` |
-|      ! 0 | 1225 | `				ph7_result_null(pCtx);` |
-|      ! 0 | 1226 | `			}else{` |
-|      ! 0 | 1227 | `				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);` |
-|        - | 1228 | `			}` |
-|      ! 0 | 1229 | `			break;` |
-|      ! 0 | 1230 | `		case 3: /* PHP_URL_PORT */` |
-|      ! 0 | 1231 | `			pComp = &sURI.sPort;` |
-|      ! 0 | 1232 | `			if( pComp->nByte < 1 ){` |
-|        - | 1233 | `				/* No available value,return NULL */` |
-|      ! 0 | 1234 | `				ph7_result_null(pCtx);` |
-|      ! 0 | 1235 | `			}else{` |
-|      ! 0 | 1236 | `				int iPort = 0;` |
-|        - | 1237 | `				/* Cast the value to integer */` |
-|      ! 0 | 1238 | `				SyStrToInt32(pComp->zString,pComp->nByte,(void *)&iPort,0);` |
-|      ! 0 | 1239 | `				ph7_result_int(pCtx,iPort);` |
-|        - | 1240 | `			}` |
-|      ! 0 | 1241 | `			break;` |
-|      ! 0 | 1242 | `		case 4: /* PHP_URL_USER */` |
-|      ! 0 | 1243 | `			pComp = &sURI.sUser;` |
-|      ! 0 | 1244 | `			if( pComp->nByte < 1 ){` |
-|        - | 1245 | `				/* No available value,return NULL */` |
-|      ! 0 | 1246 | `				ph7_result_null(pCtx);` |
-|      ! 0 | 1247 | `			}else{` |
-|      ! 0 | 1248 | `				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);` |
-|        - | 1249 | `			}` |
-|      ! 0 | 1250 | `			break;` |
-|      ! 0 | 1251 | `		case 5: /* PHP_URL_PASS */` |
-|      ! 0 | 1252 | `			pComp = &sURI.sPass;` |
-|      ! 0 | 1253 | `			if( pComp->nByte < 1 ){` |
-|        - | 1254 | `				/* No available value,return NULL */` |
-|      ! 0 | 1255 | `				ph7_result_null(pCtx);` |
-|      ! 0 | 1256 | `			}else{` |
-|      ! 0 | 1257 | `				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);` |
-|        - | 1258 | `			}` |
-|      ! 0 | 1259 | `			break;` |
-|      ! 0 | 1260 | `		case 7: /* PHP_URL_QUERY */` |
-|      ! 0 | 1261 | `			pComp = &sURI.sQuery;` |
-|      ! 0 | 1262 | `			if( pComp->nByte < 1 ){` |
-|        - | 1263 | `				/* No available value,return NULL */` |
-|      ! 0 | 1264 | `				ph7_result_null(pCtx);` |
-|      ! 0 | 1265 | `			}else{` |
-|      ! 0 | 1266 | `				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);` |
-|        - | 1267 | `			}` |
-|      ! 0 | 1268 | `			break;` |
-|      ! 0 | 1269 | `		case 8: /* PHP_URL_FRAGMENT */` |
-|      ! 0 | 1270 | `			pComp = &sURI.sFragment;` |
-|      ! 0 | 1271 | `			if( pComp->nByte < 1 ){` |
-|        - | 1272 | `				/* No available value,return NULL */` |
-|      ! 0 | 1273 | `				ph7_result_null(pCtx);` |
-|      ! 0 | 1274 | `			}else{` |
-|      ! 0 | 1275 | `				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);` |
-|        - | 1276 | `			}` |
-|      ! 0 | 1277 | `			break;` |
-|      ! 0 | 1278 | `		case 6: /*  PHP_URL_PATH */` |
-|      ! 0 | 1279 | `			pComp = &sURI.sPath;` |
-|      ! 0 | 1280 | `			if( pComp->nByte < 1 ){` |
-|        - | 1281 | `				/* No available value,return NULL */` |
-|      ! 0 | 1282 | `				ph7_result_null(pCtx);` |
-|      ! 0 | 1283 | `			}else{` |
-|      ! 0 | 1284 | `				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);` |
-|        - | 1285 | `			}` |
-|      ! 0 | 1286 | `			break;` |
-|      ! 0 | 1287 | `		default:` |
-|        - | 1288 | `			/* No such entry,return NULL */` |
-|      ! 0 | 1289 | `			ph7_result_null(pCtx);` |
-|      ! 0 | 1290 | `			break;` |
-|        - | 1291 | `		}` |
-|      ! 0 | 1292 | `	}else{` |
-|        - | 1293 | `		ph7_value *pArray,*pValue;` |
-|        - | 1294 | `		/* Return an associative array */` |
-|       27 | 1295 | `		pArray = ph7_context_new_array(pCtx);  /* Empty array */` |
-|       27 | 1296 | `		pValue = ph7_context_new_scalar(pCtx); /* Array value */` |
-|       27 | 1297 | `		if( pArray == 0 \|\| pValue == 0 ){` |
-|        - | 1298 | `			/* Out of memory */` |
-|      ! 0 | 1299 | `			ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 engine is running out of memory");` |
-|        - | 1300 | `			/* Return false */` |
-|      ! 0 | 1301 | `			ph7_result_bool(pCtx,0);` |
-|      ! 0 | 1302 | `			return PH7_OK;` |
-|        - | 1303 | `		}` |
-|        - | 1304 | `		/* Fill the array */` |
-|       27 | 1305 | `		pComp = &sURI.sScheme;` |
-|       27 | 1306 | `		if( pComp->nByte > 0 ){` |
-|       19 | 1307 | `			ph7_value_string(pValue,pComp->zString,(int)pComp->nByte);` |
-|       19 | 1308 | `			ph7_array_add_strkey_elem(pArray,"scheme",pValue); /* Will make it's own copy */` |
-|        9 | 1309 | `		}` |
-|        - | 1310 | `		/* Reset the string cursor */` |
-|       27 | 1311 | `		ph7_value_reset_string_cursor(pValue);` |
-|       27 | 1312 | `		pComp = &sURI.sHost;` |
-|       27 | 1313 | `		if( pComp->nByte > 0 ){` |
-|       25 | 1314 | `			ph7_value_string(pValue,pComp->zString,(int)pComp->nByte);` |
-|       25 | 1315 | `			ph7_array_add_strkey_elem(pArray,"host",pValue); /* Will make it's own copy */` |
-|       12 | 1316 | `		}` |
-|        - | 1317 | `		/* Reset the string cursor */` |
-|       27 | 1318 | `		ph7_value_reset_string_cursor(pValue);` |
-|       27 | 1319 | `		pComp = &sURI.sPort;` |
-|       27 | 1320 | `		if( pComp->nByte > 0 ){` |
-|       11 | 1321 | `			int iPort = 0;/* cc warning */` |
-|        - | 1322 | `			/* Convert to integer */` |
-|       11 | 1323 | `			SyStrToInt32(pComp->zString,pComp->nByte,(void *)&iPort,0);` |
-|       11 | 1324 | `			ph7_value_int(pValue,iPort);` |
-|       11 | 1325 | `			ph7_array_add_strkey_elem(pArray,"port",pValue); /* Will make it's own copy */` |
-|        5 | 1326 | `		}` |
-|        - | 1327 | `		/* Reset the string cursor */` |
-|       27 | 1328 | `		ph7_value_reset_string_cursor(pValue);` |
-|       27 | 1329 | `		pComp = &sURI.sUser;` |
-|       27 | 1330 | `		if( pComp->nByte > 0 ){` |
-|        7 | 1331 | `			ph7_value_string(pValue,pComp->zString,(int)pComp->nByte);` |
-|        7 | 1332 | `			ph7_array_add_strkey_elem(pArray,"user",pValue); /* Will make it's own copy */` |
-|        3 | 1333 | `		}` |
-|        - | 1334 | `		/* Reset the string cursor */` |
-|       27 | 1335 | `		ph7_value_reset_string_cursor(pValue);` |
-|       27 | 1336 | `		pComp = &sURI.sPass;` |
-|       27 | 1337 | `		if( pComp->nByte > 0 ){` |
-|        7 | 1338 | `			ph7_value_string(pValue,pComp->zString,(int)pComp->nByte);` |
-|        7 | 1339 | `			ph7_array_add_strkey_elem(pArray,"pass",pValue); /* Will make it's own copy */` |
-|        3 | 1340 | `		}` |
-|        - | 1341 | `		/* Reset the string cursor */` |
-|       27 | 1342 | `		ph7_value_reset_string_cursor(pValue);` |
-|       27 | 1343 | `		pComp = &sURI.sPath;` |
-|       27 | 1344 | `		if( pComp->nByte > 0 ){` |
-|       17 | 1345 | `			ph7_value_string(pValue,pComp->zString,(int)pComp->nByte);` |
-|       17 | 1346 | `			ph7_array_add_strkey_elem(pArray,"path",pValue); /* Will make it's own copy */` |
-|        8 | 1347 | `		}` |
-|        - | 1348 | `		/* Reset the string cursor */` |
-|       27 | 1349 | `		ph7_value_reset_string_cursor(pValue);` |
-|       27 | 1350 | `		pComp = &sURI.sQuery;` |
-|       27 | 1351 | `		if( pComp->nByte > 0 ){` |
-|        5 | 1352 | `			ph7_value_string(pValue,pComp->zString,(int)pComp->nByte);` |
-|        5 | 1353 | `			ph7_array_add_strkey_elem(pArray,"query",pValue); /* Will make it's own copy */` |
-|        2 | 1354 | `		}` |
-|        - | 1355 | `		/* Reset the string cursor */` |
-|       27 | 1356 | `		ph7_value_reset_string_cursor(pValue);` |
-|       27 | 1357 | `		pComp = &sURI.sFragment;` |
-|       27 | 1358 | `		if( pComp->nByte > 0 ){` |
-|        5 | 1359 | `			ph7_value_string(pValue,pComp->zString,(int)pComp->nByte);` |
-|        5 | 1360 | `			ph7_array_add_strkey_elem(pArray,"fragment",pValue); /* Will make it's own copy */` |
-|        2 | 1361 | `		}` |
-|        - | 1362 | `		/* Return the created array */` |
-|       27 | 1363 | `		ph7_result_value(pCtx,pArray);` |
-|        - | 1364 | `		/* NOTE:` |
-|        - | 1365 | `		 * Don't worry about freeing 'pValue',everything will be released` |
-|        - | 1366 | `		 * automatically as soon we return from this function.` |
-|        - | 1367 | `		 */` |
-|        - | 1368 | `	}` |
-|        - | 1369 | `	/* All done */` |
-|       27 | 1370 | `	return PH7_OK;` |
-|       15 | 1371 | `}` |
-|        - | 1372 | `/*` |
-|        - | 1373 | ` * Section:` |
-|        - | 1374 | ` *   Array related routines.` |
-|        - | 1375 | ` * Status:` |
-|        - | 1376 | ` *    Stable.` |
-|        - | 1377 | ` * Note 2012-5-21 01:04:15:` |
-|        - | 1378 | ` *  Array related functions that need access to the underlying` |
-|        - | 1379 | ` *  virtual machine are implemented here rather than 'hashmap.c'` |
-|        - | 1380 | ` */` |
-|        - | 1381 | `/*` |
-|        - | 1382 | ` * The [compact()] function store it's state information in an instance` |
-|        - | 1383 | ` * of the following structure.` |
-|        - | 1384 | ` */` |
-|        - | 1385 | `struct compact_data` |
-|        - | 1386 | `{` |
-|        - | 1387 | `	ph7_value *pArray;  /* Target array */` |
-|        - | 1388 | `	int nRecCount;      /* Recursion count */` |
-|        - | 1389 | `};` |
-|        - | 1390 | `/*` |
-|        - | 1391 | ` * Walker callback for the [compact()] function defined below.` |
+|        - | 1182 | `/*` |
+|        - | 1183 | ` * parse_url() component set.` |
+|        - | 1184 | ` *` |
+|        - | 1185 | ` * A bare SyString cannot express "present but empty", which php needs:` |
+|        - | 1186 | ` * parse_url("") is ['path'=>''] and parse_url("?") is ['query'=>''], both` |
+|        - | 1187 | ` * distinct from the component being absent. So presence is tracked separately.` |
+|        - | 1188 | ` */` |
+|        - | 1189 | `typedef struct VmUrlParts VmUrlParts;` |
+|        - | 1190 | `struct VmUrlParts` |
+|        - | 1191 | `{` |
+|        - | 1192 | `	SyString sScheme,sUser,sPass,sHost,sPath,sQuery,sFragment;` |
+|        - | 1193 | `	int iPort;     /* Resolved port, meaningful only when bPort is set */` |
+|        - | 1194 | `	sxu8 bScheme,bUser,bPass,bHost,bPort,bPath,bQuery,bFragment;` |
+|        - | 1195 | `};` |
+|      256 | 1196 | `static int VmUrlIsAlnum(int c)` |
+|        1 | 1197 | `{` |
+|      257 | 1198 | `	return (c >= '0' && c <= '9') \|\| (c >= 'a' && c <= 'z') \|\| (c >= 'A' && c <= 'Z');` |
+|        1 | 1199 | `}` |
+|        4 | 1200 | `static int VmUrlIsAlpha(int c)` |
+|        1 | 1201 | `{` |
+|        5 | 1202 | `	return (c >= 'a' && c <= 'z') \|\| (c >= 'A' && c <= 'Z');` |
+|        1 | 1203 | `}` |
+|        - | 1204 | `/* scheme = ALNUM *( ALNUM / "+" / "-" / "." ) -- php accepts a digit first. */` |
+|      256 | 1205 | `static int VmUrlIsSchemeByte(int c)` |
+|        1 | 1206 | `{` |
+|      257 | 1207 | `	return VmUrlIsAlnum(c) \|\| c == '+' \|\| c == '-' \|\| c == '.';` |
+|        1 | 1208 | `}` |
+|        - | 1209 | `/*` |
+|        - | 1210 | ` * Resolve the port span that followed the ':' in an authority.` |
+|        - | 1211 | ` *` |
+|        - | 1212 | ` * Returns 1 (usable port in *piPort), 0 (the span is empty, so there is simply` |
+|        - | 1213 | ` * no port) or -1 (php rejects the whole URL). php is lenient about what follows` |
+|        - | 1214 | ` * the digits -- ":8a" and ":8 0" both yield 8 -- but demands at least one digit` |
+|        - | 1215 | ` * and a value that fits a port, so ":abc", ":-80" and ":65536" are all failures.` |
+|        - | 1216 | ` */` |
+|       42 | 1217 | `static int VmUrlParsePort(const char *z,int n,int *piPort)` |
+|        1 | 1218 | `{` |
+|       43 | 1219 | `	int i = 0,iVal = 0,nDigit = 0;` |
+|       43 | 1220 | `	if( n < 1 ){` |
+|      ! 0 | 1221 | `		return 0;` |
+|        - | 1222 | `	}` |
+|       64 | 1223 | `	while( i < n && (z[i] == ' ' \|\| z[i] == '\t') ){` |
+|      ! 0 | 1224 | `		i++;` |
+|      ! 0 | 1225 | `	}` |
+|       43 | 1226 | `	if( i < n && (z[i] == '+' \|\| z[i] == '-') ){` |
+|      ! 0 | 1227 | `		if( z[i] == '-' ){` |
+|      ! 0 | 1228 | `			return -1;` |
+|        - | 1229 | `		}` |
+|      ! 0 | 1230 | `		i++;` |
+|      ! 0 | 1231 | `	}` |
+|      161 | 1232 | `	while( i < n && z[i] >= '0' && z[i] <= '9' ){` |
+|      119 | 1233 | `		iVal = iVal * 10 + (z[i] - '0');` |
+|      119 | 1234 | `		if( iVal > 65535 ){` |
+|      ! 0 | 1235 | `			return -1; /* Out of range, and this also caps the accumulator */` |
+|        - | 1236 | `		}` |
+|      119 | 1237 | `		nDigit++;` |
+|      119 | 1238 | `		i++;` |
+|        1 | 1239 | `	}` |
+|       43 | 1240 | `	if( nDigit < 1 ){` |
+|        3 | 1241 | `		return -1;` |
+|        - | 1242 | `	}` |
+|       41 | 1243 | `	*piPort = iVal;` |
+|       41 | 1244 | `	return 1;` |
+|       22 | 1245 | `}` |
+|        - | 1246 | `/*` |
+|        - | 1247 | ` * Split an authority -- "[user[:pass]@]host[:port]" -- into pOut.` |
+|        - | 1248 | ` * Returns 0 for the malformed input php reports as FALSE.` |
+|        - | 1249 | ` */` |
+|       66 | 1250 | `static int VmUrlParseAuthority(const char *z,int n,VmUrlParts *pOut,int bPortKnown)` |
+|        1 | 1251 | `{` |
+|        - | 1252 | `	const char *zHost;` |
+|       67 | 1253 | `	int i,iAt = -1,iColon = -1,iSep = -1,nHost,iPort = 0,rc;` |
+|        - | 1254 | `	/* php splits the credentials at the LAST '@' ("//a@b@c" is user "a@b") */` |
+|      699 | 1255 | `	for( i = 0 ; i < n ; ++i ){` |
+|      633 | 1256 | `		if( z[i] == '@' ){` |
+|       25 | 1257 | `			iAt = i;` |
+|       12 | 1258 | `		}` |
+|      317 | 1259 | `	}` |
+|       67 | 1260 | `	if( iAt >= 0 ){` |
+|        - | 1261 | `		/* and the user from the password at the FIRST ':' before it */` |
+|      109 | 1262 | `		for( i = 0 ; i < iAt ; ++i ){` |
+|      107 | 1263 | `			if( z[i] == ':' ){` |
+|       23 | 1264 | `				iColon = i;` |
+|       23 | 1265 | `				break;` |
+|        - | 1266 | `			}` |
+|       43 | 1267 | `		}` |
+|       25 | 1268 | `		if( iColon >= 0 ){` |
+|       23 | 1269 | `			SyStringInitFromBuf(&pOut->sUser,z,(sxu32)iColon);` |
+|       23 | 1270 | `			SyStringInitFromBuf(&pOut->sPass,&z[iColon+1],(sxu32)(iAt - iColon - 1));` |
+|       23 | 1271 | `			pOut->bUser = pOut->bPass = 1;` |
+|       12 | 1272 | `		}else{` |
+|        3 | 1273 | `			SyStringInitFromBuf(&pOut->sUser,z,(sxu32)iAt);` |
+|        3 | 1274 | `			pOut->bUser = 1;` |
+|        - | 1275 | `		}` |
+|       25 | 1276 | `		z += iAt + 1;` |
+|       25 | 1277 | `		n -= iAt + 1;` |
+|       12 | 1278 | `	}` |
+|       67 | 1279 | `	zHost = z;` |
+|       67 | 1280 | `	nHost = n;` |
+|       67 | 1281 | `	if( !(n > 1 && z[0] == '[' && z[n-1] == ']') ){` |
+|        - | 1282 | `		/* Unless a bracketed IPv6 literal fills the WHOLE authority -- in which` |
+|        - | 1283 | `		 * case php keeps the brackets in "host" and scans no port, so every ':'` |
+|        - | 1284 | `		 * inside belongs to the address -- the port hangs off the LAST ':'.` |
+|        - | 1285 | `		 * php decides that on the first and last byte alone, which is why` |
+|        - | 1286 | `		 * "//[:]\|]" is a single host while "//[::1]:8080" splits a port off. */` |
+|      507 | 1287 | `		for( i = 0 ; i < n ; ++i ){` |
+|      443 | 1288 | `			if( z[i] == ':' ){` |
+|       43 | 1289 | `				iSep = i;` |
+|       21 | 1290 | `			}` |
+|      222 | 1291 | `		}` |
+|       65 | 1292 | `		if( iSep >= 0 ){` |
+|        - | 1293 | `			/* The host is trimmed at the ':' whether or not the port was already` |
+|        - | 1294 | `			 * resolved by the caller. */` |
+|       43 | 1295 | `			nHost = iSep;` |
+|       43 | 1296 | `			if( !bPortKnown ){` |
+|       37 | 1297 | `				rc = VmUrlParsePort(&z[iSep+1],n - iSep - 1,&iPort);` |
+|       37 | 1298 | `				if( rc < 0 ){` |
+|        3 | 1299 | `					return 0;` |
+|        - | 1300 | `				}` |
+|       35 | 1301 | `				if( rc > 0 ){` |
+|       35 | 1302 | `					pOut->iPort = iPort;` |
+|       35 | 1303 | `					pOut->bPort = 1;` |
+|       17 | 1304 | `				}` |
+|       17 | 1305 | `			}` |
+|       20 | 1306 | `		}` |
+|       31 | 1307 | `	}` |
+|       65 | 1308 | `	if( nHost < 1 ){` |
+|        - | 1309 | `		/* php requires a non-empty host once an authority is in play, which is` |
+|        - | 1310 | `		 * what makes "//", "http://" and ":80" all FALSE. */` |
+|        9 | 1311 | `		return 0;` |
+|        - | 1312 | `	}` |
+|       57 | 1313 | `	SyStringInitFromBuf(&pOut->sHost,zHost,(sxu32)nHost);` |
+|       57 | 1314 | `	pOut->bHost = 1;` |
+|       57 | 1315 | `	return 1;` |
+|       34 | 1316 | `}` |
+|        - | 1317 | `/*` |
+|        - | 1318 | ` * Split "path[?query][#fragment]". The fragment is taken FIRST and the query` |
+|        - | 1319 | ` * only from what precedes it, so "#a?b" is a fragment of "a?b" with no query.` |
+|        - | 1320 | ` */` |
+|       80 | 1321 | `static void VmUrlParsePath(const char *z,int n,VmUrlParts *pOut)` |
+|        1 | 1322 | `{` |
+|       81 | 1323 | `	int i,iEnd = n;` |
+|      547 | 1324 | `	for( i = 0 ; i < n ; ++i ){` |
+|      501 | 1325 | `		if( z[i] == '#' ){` |
+|       35 | 1326 | `			SyStringInitFromBuf(&pOut->sFragment,&z[i+1],(sxu32)(n - i - 1));` |
+|       35 | 1327 | `			pOut->bFragment = 1;` |
+|       35 | 1328 | `			iEnd = i;` |
+|       35 | 1329 | `			break;` |
+|        - | 1330 | `		}` |
+|      234 | 1331 | `	}` |
+|      393 | 1332 | `	for( i = 0 ; i < iEnd ; ++i ){` |
+|      347 | 1333 | `		if( z[i] == '?' ){` |
+|       35 | 1334 | `			SyStringInitFromBuf(&pOut->sQuery,&z[i+1],(sxu32)(iEnd - i - 1));` |
+|       35 | 1335 | `			pOut->bQuery = 1;` |
+|       35 | 1336 | `			iEnd = i;` |
+|       35 | 1337 | `			break;` |
+|        - | 1338 | `		}` |
+|      157 | 1339 | `	}` |
+|       81 | 1340 | `	if( iEnd > 0 ){` |
+|       71 | 1341 | `		SyStringInitFromBuf(&pOut->sPath,z,(sxu32)iEnd);` |
+|       71 | 1342 | `		pOut->bPath = 1;` |
+|       35 | 1343 | `	}` |
+|       81 | 1344 | `}` |
+|        - | 1345 | `/* Parse "host[:port]" followed by an optional path/query/fragment. */` |
+|       66 | 1346 | `static int VmUrlAuthorityThenPath(const char *z,int n,VmUrlParts *pOut,int bPortKnown)` |
+|        1 | 1347 | `{` |
+|       67 | 1348 | `	int i,iEnd = n;` |
+|      699 | 1349 | `	for( i = 0 ; i < n ; ++i ){` |
+|      683 | 1350 | `		if( z[i] == '/' \|\| z[i] == '?' \|\| z[i] == '#' ){` |
+|       51 | 1351 | `			iEnd = i;` |
+|       51 | 1352 | `			break;` |
+|        - | 1353 | `		}` |
+|      317 | 1354 | `	}` |
+|       67 | 1355 | `	if( !VmUrlParseAuthority(z,iEnd,pOut,bPortKnown) ){` |
+|       11 | 1356 | `		return 0;` |
+|        - | 1357 | `	}` |
+|       57 | 1358 | `	if( iEnd < n ){` |
+|       47 | 1359 | `		VmUrlParsePath(&z[iEnd],n - iEnd,pOut);` |
+|       23 | 1360 | `	}` |
+|       57 | 1361 | `	return 1;` |
+|       34 | 1362 | `}` |
+|        - | 1363 | `/*` |
+|        - | 1364 | ` * Resolve the port php took from the FIRST ':' of a host:port URL.` |
+|        - | 1365 | ` *` |
+|        - | 1366 | ` * php reads the port straight off that colon before it works out where the host` |
+|        - | 1367 | ` * ends, so the digits can even belong to what becomes the path: parse_url()` |
+|        - | 1368 | ` * reports port 1 for "a/:1", whose path is "/:1". Mirroring the order keeps` |
+|        - | 1369 | ` * that quirk. Returns 0 for a port php rejects.` |
+|        - | 1370 | ` */` |
+|        6 | 1371 | `static int VmUrlPreparePort(const char *z,int k,int nEnd,VmUrlParts *pOut)` |
+|        1 | 1372 | `{` |
+|        7 | 1373 | `	int iPort = 0;` |
+|        7 | 1374 | `	int rc = VmUrlParsePort(&z[k+1],nEnd - k - 1,&iPort);` |
+|        7 | 1375 | `	if( rc < 0 ){` |
+|      ! 0 | 1376 | `		return 0;` |
+|        - | 1377 | `	}` |
+|        7 | 1378 | `	if( rc > 0 ){` |
+|        7 | 1379 | `		pOut->iPort = iPort;` |
+|        7 | 1380 | `		pOut->bPort = 1;` |
+|        3 | 1381 | `	}` |
+|        7 | 1382 | `	return 1;` |
+|        4 | 1383 | `}` |
+|        - | 1384 | `/*` |
+|        - | 1385 | ` * php's URL parser, as parse_url() needs it. Returns 0 where php returns FALSE.` |
+|        - | 1386 | ` *` |
+|        - | 1387 | ` * PH7_VmHttpSplitURI cannot serve here: it is an HTTP REQUEST-target splitter` |
+|        - | 1388 | ` * (the HTTP server and filter_var share it) and assumes the input is` |
+|        - | 1389 | ` * authority-first, so it read "a" as a host and "mailto:me@x.com" as` |
+|        - | 1390 | ` * user:pass@host. php instead decides authority-vs-path up front: only a "//",` |
+|        - | 1391 | ` * with or without a scheme before it, introduces an authority.` |
 |        - | 1392 | ` */` |
-|      ! 0 | 1393 | `static int VmCompactCallback(ph7_value *pKey,ph7_value *pValue,void *pUserData)` |
-|      ! 0 | 1394 | `{` |
-|      ! 0 | 1395 | `	struct compact_data *pData = (struct compact_data *)pUserData;` |
-|      ! 0 | 1396 | `	ph7_value *pArray = (ph7_value *)pData->pArray;` |
-|      ! 0 | 1397 | `	ph7_vm *pVm = pArray->pVm;` |
-|        - | 1398 | `	/* Act according to the hashmap value */` |
-|      ! 0 | 1399 | `	if( ph7_value_is_string(pValue) ){` |
-|        - | 1400 | `		SyString sVar;` |
-|      ! 0 | 1401 | `		SyStringInitFromBuf(&sVar,SyBlobData(&pValue->sBlob),SyBlobLength(&pValue->sBlob));` |
-|      ! 0 | 1402 | `		if( sVar.nByte > 0 ){` |
-|        - | 1403 | `			/* Query the current frame */` |
-|      ! 0 | 1404 | `			pKey = VmExtractMemObj(pVm,&sVar,FALSE,FALSE);` |
-|        - | 1405 | `			/* ^` |
-|        - | 1406 | `			 * \| Avoid wasting variable and use 'pKey' instead` |
-|        - | 1407 | `			 */` |
-|      ! 0 | 1408 | `			if( pKey ){` |
-|        - | 1409 | `				/* Perform the insertion */` |
-|      ! 0 | 1410 | `				ph7_array_add_elem(pArray,pValue/* Variable name*/,pKey/* Variable value */);` |
-|      ! 0 | 1411 | `			}` |
-|      ! 0 | 1412 | `		}` |
-|      ! 0 | 1413 | `	}else if( ph7_value_is_array(pValue) && pData->nRecCount < 32) {` |
-|        - | 1414 | `		int rc;` |
-|        - | 1415 | `		/* Recursively traverse this array */` |
-|      ! 0 | 1416 | `		pData->nRecCount++;` |
-|      ! 0 | 1417 | `		rc = PH7_HashmapWalk((ph7_hashmap *)pValue->x.pOther,VmCompactCallback,pUserData);` |
-|      ! 0 | 1418 | `		pData->nRecCount--;` |
-|      ! 0 | 1419 | `		return rc;` |
-|        - | 1420 | `	}` |
-|      ! 0 | 1421 | `	return SXRET_OK;` |
-|      ! 0 | 1422 | `}` |
-|        - | 1423 | `/*` |
-|        - | 1424 | ` * array compact(mixed $varname [, mixed $... ])` |
-|        - | 1425 | ` *  Create array containing variables and their values.` |
-|        - | 1426 | ` *  For each of these, compact() looks for a variable with that name` |
-|        - | 1427 | ` *  in the current symbol table and adds it to the output array such` |
-|        - | 1428 | ` *  that the variable name becomes the key and the contents of the variable` |
-|        - | 1429 | ` *  become the value for that key. In short, it does the opposite of extract().` |
-|        - | 1430 | ` *  Any strings that are not set will simply be skipped.` |
-|        - | 1431 | ` * Parameters` |
-|        - | 1432 | ` *  $varname` |
-|        - | 1433 | ` *   compact() takes a variable number of parameters. Each parameter can be either` |
-|        - | 1434 | ` *   a string containing the name of the variable, or an array of variable names.` |
-|        - | 1435 | ` *   The array can contain other arrays of variable names inside it; compact() handles` |
-|        - | 1436 | ` *   it recursively.` |
-|        - | 1437 | ` * Return` |
-|        - | 1438 | ` *  The output array with all the variables added to it or NULL on failure` |
-|        - | 1439 | ` */` |
-|        2 | 1440 | `PH7_PRIVATE int vm_builtin_compact(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|        1 | 1441 | `{` |
-|        - | 1442 | `	ph7_value *pArray,*pObj;` |
-|        3 | 1443 | `	ph7_vm *pVm = pCtx->pVm;` |
-|        - | 1444 | `	const char *zName;` |
-|        - | 1445 | `	SyString sVar;` |
-|        - | 1446 | `	int i,nLen;` |
-|        3 | 1447 | `	if( nArg < 1 ){` |
-|        - | 1448 | `		/* Missing arguments,return NULL */` |
-|      ! 0 | 1449 | `		ph7_result_null(pCtx);` |
-|      ! 0 | 1450 | `		return PH7_OK;` |
-|        - | 1451 | `	}` |
-|        - | 1452 | `	/* Create the array */` |
-|        3 | 1453 | `	pArray = ph7_context_new_array(pCtx);` |
-|        3 | 1454 | `	if( pArray == 0 ){` |
-|        - | 1455 | `		/* Out of memory */` |
-|      ! 0 | 1456 | `		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 engine is running out of memory");` |
-|        - | 1457 | `		/* Return NULL */` |
-|      ! 0 | 1458 | `		ph7_result_null(pCtx);` |
-|      ! 0 | 1459 | `		return PH7_OK;` |
-|        - | 1460 | `	}` |
-|        - | 1461 | `	/* Perform the requested operation */` |
-|        7 | 1462 | `	for( i = 0 ; i < nArg ; i++ ){` |
-|        5 | 1463 | `		if( !ph7_value_is_string(apArg[i]) ){` |
-|      ! 0 | 1464 | `			if( ph7_value_is_array(apArg[i]) ){` |
-|        - | 1465 | `				struct compact_data sData;` |
-|      ! 0 | 1466 | `				ph7_hashmap *pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
-|        - | 1467 | `				/* Recursively walk the array */` |
-|      ! 0 | 1468 | `				sData.nRecCount = 0;` |
-|      ! 0 | 1469 | `				sData.pArray = pArray;` |
-|      ! 0 | 1470 | `				PH7_HashmapWalk(pMap,VmCompactCallback,&sData);` |
-|      ! 0 | 1471 | `			}` |
-|      ! 0 | 1472 | `		}else{` |
-|        - | 1473 | `			/* Extract variable name */` |
-|        5 | 1474 | `			zName = ph7_value_to_string(apArg[i],&nLen);` |
-|        5 | 1475 | `			if( nLen > 0 ){` |
-|        5 | 1476 | `				SyStringInitFromBuf(&sVar,zName,nLen);` |
-|        - | 1477 | `				/* Check if the variable is available in the current frame */` |
-|        5 | 1478 | `				pObj = VmExtractMemObj(pVm,&sVar,FALSE,FALSE);` |
-|        5 | 1479 | `				if( pObj ){` |
-|        5 | 1480 | `					ph7_array_add_elem(pArray,apArg[i]/*Variable name*/,pObj/* Variable value */);` |
-|        2 | 1481 | `				}` |
-|        2 | 1482 | `			}` |
-|        - | 1483 | `		}` |
-|        3 | 1484 | `	}` |
-|        - | 1485 | `	/* Return the array */` |
-|        3 | 1486 | `	ph7_result_value(pCtx,pArray);` |
-|        3 | 1487 | `	return PH7_OK;` |
-|        2 | 1488 | `}` |
-|        - | 1489 | `/*` |
-|        - | 1490 | ` * The [extract()] function store it's state information in an instance` |
-|        - | 1491 | ` * of the following structure.` |
-|        - | 1492 | ` */` |
-|        - | 1493 | `typedef struct extract_aux_data extract_aux_data;` |
-|        - | 1494 | `struct extract_aux_data` |
-|        - | 1495 | `{` |
-|        - | 1496 | `	ph7_vm *pVm;          /* VM that own this instance */` |
-|        - | 1497 | `	int iCount;           /* Number of variables successfully imported  */` |
-|        - | 1498 | `	const char *zPrefix;  /* Prefix name */` |
-|        - | 1499 | `	int Prefixlen;        /* Prefix  length */` |
-|        - | 1500 | `	int iFlags;           /* Control flags */` |
-|        - | 1501 | `	char zWorker[1024];   /* Working buffer */` |
-|        - | 1502 | `};` |
-|        - | 1503 | `/* Forward declaration */` |
-|        - | 1504 | `static int VmExtractCallback(ph7_value *pKey,ph7_value *pValue,void *pUserData);` |
-|        - | 1505 | `/*` |
-|        - | 1506 | ` * int extract(array &$var_array[,int $extract_type = EXTR_OVERWRITE[,string $prefix = NULL ]])` |
-|        - | 1507 | ` *   Import variables into the current symbol table from an array.` |
-|        - | 1508 | ` * Parameters` |
-|        - | 1509 | ` * $var_array` |
-|        - | 1510 | ` *  An associative array. This function treats keys as variable names and values` |
-|        - | 1511 | ` *  as variable values. For each key/value pair it will create a variable in the current symbol` |
-|        - | 1512 | ` *  table, subject to extract_type and prefix parameters.` |
-|        - | 1513 | ` *  You must use an associative array; a numerically indexed array will not produce results` |
-|        - | 1514 | ` *  unless you use EXTR_PREFIX_ALL or EXTR_PREFIX_INVALID.` |
-|        - | 1515 | ` * $extract_type` |
-|        - | 1516 | ` *  The way invalid/numeric keys and collisions are treated is determined by the extract_type.` |
-|        - | 1517 | ` *  It can be one of the following values:` |
-|        - | 1518 | ` *   EXTR_OVERWRITE` |
-|        - | 1519 | ` *       If there is a collision, overwrite the existing variable.` |
-|        - | 1520 | ` *   EXTR_SKIP` |
-|        - | 1521 | ` *       If there is a collision, don't overwrite the existing variable.` |
-|        - | 1522 | ` *   EXTR_PREFIX_SAME` |
-|        - | 1523 | ` *       If there is a collision, prefix the variable name with prefix.` |
-|        - | 1524 | ` *   EXTR_PREFIX_ALL` |
-|        - | 1525 | ` *       Prefix all variable names with prefix.` |
-|        - | 1526 | ` *   EXTR_PREFIX_INVALID` |
-|        - | 1527 | ` *       Only prefix invalid/numeric variable names with prefix.` |
-|        - | 1528 | ` *   EXTR_IF_EXISTS` |
-|        - | 1529 | ` *       Only overwrite the variable if it already exists in the current symbol table` |
-|        - | 1530 | ` *       otherwise do nothing.` |
-|        - | 1531 | ` *       This is useful for defining a list of valid variables and then extracting only those` |
-|        - | 1532 | ` *       variables you have defined out of $_REQUEST, for example.` |
-|        - | 1533 | ` *   EXTR_PREFIX_IF_EXISTS` |
-|        - | 1534 | ` *       Only create prefixed variable names if the non-prefixed version of the same variable exists in` |
-|        - | 1535 | ` *      the current symbol table.` |
-|        - | 1536 | ` * $prefix` |
-|        - | 1537 | ` *  Note that prefix is only required if extract_type is EXTR_PREFIX_SAME, EXTR_PREFIX_ALL` |
-|        - | 1538 | ` *  EXTR_PREFIX_INVALID or EXTR_PREFIX_IF_EXISTS. If the prefixed result is not a valid variable name` |
-|        - | 1539 | ` *  it is not imported into the symbol table. Prefixes are automatically separated from the array key by an` |
-|        - | 1540 | ` *  underscore character.` |
-|        - | 1541 | ` * Return` |
-|        - | 1542 | ` *   Returns the number of variables successfully imported into the symbol table.` |
-|        - | 1543 | ` */` |
-|        4 | 1544 | `PH7_PRIVATE int vm_builtin_extract(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|        1 | 1545 | `{` |
-|        - | 1546 | `	extract_aux_data sAux;` |
-|        - | 1547 | `	ph7_hashmap *pMap;` |
-|        5 | 1548 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
-|        - | 1549 | `		/* Missing/Invalid arguments,return 0 */` |
-|      ! 0 | 1550 | `		ph7_result_int(pCtx,0);` |
-|      ! 0 | 1551 | `		return PH7_OK;` |
-|        - | 1552 | `	}` |
-|        - | 1553 | `	/* Point to the target hashmap */` |
-|        5 | 1554 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|        5 | 1555 | `	if( pMap->nEntry < 1 ){` |
-|        - | 1556 | `		/* Empty map,return  0 */` |
-|      ! 0 | 1557 | `		ph7_result_int(pCtx,0);` |
-|      ! 0 | 1558 | `		return PH7_OK;` |
-|        - | 1559 | `	}` |
-|        - | 1560 | `	/* Prepare the aux data */` |
-|        5 | 1561 | `	SyZero(&sAux,sizeof(extract_aux_data)-sizeof(sAux.zWorker));` |
-|        5 | 1562 | `	if( nArg > 1 ){` |
-|        3 | 1563 | `		sAux.iFlags = ph7_value_to_int(apArg[1]);` |
-|        3 | 1564 | `		if( nArg > 2 ){` |
-|      ! 0 | 1565 | `			sAux.zPrefix = ph7_value_to_string(apArg[2],&sAux.Prefixlen);` |
-|      ! 0 | 1566 | `		}` |
-|        1 | 1567 | `	}` |
-|        5 | 1568 | `	sAux.pVm = pCtx->pVm;` |
-|        - | 1569 | `	/* Invoke the worker callback */` |
-|        5 | 1570 | `	PH7_HashmapWalk(pMap,VmExtractCallback,&sAux);` |
-|        - | 1571 | `	/* Number of variables successfully imported */` |
-|        5 | 1572 | `	ph7_result_int(pCtx,sAux.iCount);` |
-|        5 | 1573 | `	return PH7_OK;` |
-|        3 | 1574 | `}` |
-|        - | 1575 | `/*` |
-|        - | 1576 | ` * Worker callback for the [extract()] function defined` |
-|        - | 1577 | ` * below.` |
-|        - | 1578 | ` */` |
-|        8 | 1579 | `static int VmExtractCallback(ph7_value *pKey,ph7_value *pValue,void *pUserData)` |
-|        1 | 1580 | `{` |
-|        9 | 1581 | `	extract_aux_data *pAux = (extract_aux_data *)pUserData;` |
-|        9 | 1582 | `	int iFlags = pAux->iFlags;` |
-|        9 | 1583 | `	ph7_vm *pVm = pAux->pVm;` |
-|        - | 1584 | `	ph7_value *pObj;` |
-|        - | 1585 | `	SyString sVar;` |
-|        9 | 1586 | `	if( (iFlags & 0x10/* EXTR_PREFIX_INVALID */) && (pKey->iFlags & (MEMOBJ_INT\|MEMOBJ_BOOL\|MEMOBJ_REAL))){` |
-|      ! 0 | 1587 | `		iFlags \|= 0x08; /*EXTR_PREFIX_ALL*/` |
-|      ! 0 | 1588 | `	}` |
-|        - | 1589 | `	/* Perform a string cast */` |
-|        9 | 1590 | `	PH7_MemObjToString(pKey);` |
-|        9 | 1591 | `	if( SyBlobLength(&pKey->sBlob) < 1 ){` |
-|        - | 1592 | `		/* Unavailable variable name */` |
-|      ! 0 | 1593 | `		return SXRET_OK;` |
-|        - | 1594 | `	}` |
-|        9 | 1595 | `	sVar.nByte = 0; /* cc warning */` |
-|        9 | 1596 | `	if( (iFlags & 0x08/*EXTR_PREFIX_ALL*/ ) && pAux->Prefixlen > 0 ){` |
-|      ! 0 | 1597 | `		sVar.nByte = (sxu32)SyBufferFormat(pAux->zWorker,sizeof(pAux->zWorker),"%.*s_%.*s",` |
-|      ! 0 | 1598 | `			pAux->Prefixlen,pAux->zPrefix,` |
-|      ! 0 | 1599 | `			SyBlobLength(&pKey->sBlob),SyBlobData(&pKey->sBlob)` |
-|        - | 1600 | `			);` |
-|      ! 0 | 1601 | `	}else{` |
-|       13 | 1602 | `		sVar.nByte = (sxu32) SyMemcpy(SyBlobData(&pKey->sBlob),pAux->zWorker,` |
-|        8 | 1603 | `			SXMIN(SyBlobLength(&pKey->sBlob),sizeof(pAux->zWorker)));` |
-|        - | 1604 | `	}` |
-|        9 | 1605 | `	sVar.zString = pAux->zWorker;` |
-|        - | 1606 | `	/* Try to extract the variable */` |
-|        9 | 1607 | `	pObj = VmExtractMemObj(pVm,&sVar,TRUE,FALSE);` |
-|        9 | 1608 | `	if( pObj ){` |
-|        - | 1609 | `		/* Collision */` |
-|        3 | 1610 | `		if( iFlags & 0x02 /* EXTR_SKIP */ ){` |
-|      ! 0 | 1611 | `			return SXRET_OK;` |
-|        - | 1612 | `		}` |
-|        3 | 1613 | `		if( iFlags & 0x04 /* EXTR_PREFIX_SAME */ ){` |
-|      ! 0 | 1614 | `			if( (iFlags & 0x08/*EXTR_PREFIX_ALL*/) \|\| pAux->Prefixlen < 1){` |
-|        - | 1615 | `				/* Already prefixed */` |
-|      ! 0 | 1616 | `				return SXRET_OK;` |
-|        - | 1617 | `			}` |
-|      ! 0 | 1618 | `			sVar.nByte = (sxu32)SyBufferFormat(pAux->zWorker,sizeof(pAux->zWorker),"%.*s_%.*s",` |
-|      ! 0 | 1619 | `				pAux->Prefixlen,pAux->zPrefix,` |
-|      ! 0 | 1620 | `				SyBlobLength(&pKey->sBlob),SyBlobData(&pKey->sBlob)` |
-|        - | 1621 | `				);` |
-|      ! 0 | 1622 | `			pObj = VmExtractMemObj(pVm,&sVar,TRUE,TRUE);` |
-|      ! 0 | 1623 | `		}` |
-|        2 | 1624 | `	}else{` |
-|        - | 1625 | `		/* Create the variable */` |
-|        7 | 1626 | `		pObj = VmExtractMemObj(pVm,&sVar,TRUE,TRUE);` |
-|        - | 1627 | `	}` |
-|        9 | 1628 | `	if( pObj ){` |
-|        - | 1629 | `		/* Overwrite the old value */` |
-|        9 | 1630 | `		PH7_MemObjStore(pValue,pObj);` |
-|        - | 1631 | `		/* Increment counter */` |
-|        9 | 1632 | `		pAux->iCount++;` |
-|        4 | 1633 | `	}` |
-|        9 | 1634 | `	return SXRET_OK;` |
-|        5 | 1635 | `}` |
-|        - | 1636 | `/*` |
-|        - | 1637 | ` * Worker callback for the [import_request_variables()] function` |
-|        - | 1638 | ` * defined below.` |
-|        - | 1639 | ` */` |
-|        2 | 1640 | `static int VmImportRequestCallback(ph7_value *pKey,ph7_value *pValue,void *pUserData)` |
-|        1 | 1641 | `{` |
-|        3 | 1642 | `	extract_aux_data *pAux = (extract_aux_data *)pUserData;` |
-|        3 | 1643 | `	ph7_vm *pVm = pAux->pVm;` |
-|        - | 1644 | `	ph7_value *pObj;` |
-|        - | 1645 | `	SyString sVar;` |
-|        - | 1646 | `	/* Perform a string cast */` |
-|        3 | 1647 | `	PH7_MemObjToString(pKey);` |
-|        3 | 1648 | `	if( SyBlobLength(&pKey->sBlob) < 1 ){` |
-|        - | 1649 | `		/* Unavailable variable name */` |
-|      ! 0 | 1650 | `		return SXRET_OK;` |
-|        - | 1651 | `	}` |
-|        3 | 1652 | `	sVar.nByte = 0; /* cc warning */` |
-|        3 | 1653 | `	if( pAux->Prefixlen > 0 ){` |
-|        4 | 1654 | `		sVar.nByte = (sxu32)SyBufferFormat(pAux->zWorker,sizeof(pAux->zWorker),"%.*s%.*s",` |
-|        1 | 1655 | `			pAux->Prefixlen,pAux->zPrefix,` |
-|        1 | 1656 | `			SyBlobLength(&pKey->sBlob),SyBlobData(&pKey->sBlob)` |
-|        - | 1657 | `			);` |
-|        2 | 1658 | `	}else{` |
-|      ! 0 | 1659 | `		sVar.nByte = (sxu32) SyMemcpy(SyBlobData(&pKey->sBlob),pAux->zWorker,` |
-|      ! 0 | 1660 | `			SXMIN(SyBlobLength(&pKey->sBlob),sizeof(pAux->zWorker)));` |
-|        - | 1661 | `	}` |
-|        3 | 1662 | `	sVar.zString = pAux->zWorker;` |
-|        - | 1663 | `	/* Extract the variable */` |
-|        3 | 1664 | `	pObj = VmExtractMemObj(pVm,&sVar,TRUE,TRUE);` |
-|        3 | 1665 | `	if( pObj ){` |
-|        3 | 1666 | `		PH7_MemObjStore(pValue,pObj);` |
-|        1 | 1667 | `	}` |
-|        3 | 1668 | `	return SXRET_OK;` |
-|        2 | 1669 | `}` |
-|        - | 1670 | `/*` |
-|        - | 1671 | ` * bool import_request_variables(string $types[,string $prefix])` |
-|        - | 1672 | ` *  Import GET/POST/Cookie variables into the global scope.` |
-|        - | 1673 | ` * Parameters` |
-|        - | 1674 | ` * $types` |
-|        - | 1675 | ` *  Using the types parameter, you can specify which request variables to import.` |
-|        - | 1676 | ` *  You can use 'G', 'P' and 'C' characters respectively for GET, POST and Cookie.` |
-|        - | 1677 | ` *  These characters are not case sensitive, so you can also use any combination of 'g', 'p' and 'c'.` |
-|        - | 1678 | ` *  POST includes the POST uploaded file information.` |
-|        - | 1679 | ` *  Note:` |
-|        - | 1680 | ` *  Note that the order of the letters matters, as when using "GP", the POST variables will overwrite` |
-|        - | 1681 | ` *  GET variables with the same name. Any other letters than GPC are discarded.` |
-|        - | 1682 | ` * $prefix` |
-|        - | 1683 | ` *  Variable name prefix, prepended before all variable's name imported into the global scope.` |
-|        - | 1684 | ` *  So if you have a GET value named "userid", and provide a prefix "pref_", then you'll get a global` |
-|        - | 1685 | ` *  variable named $pref_userid.` |
-|        - | 1686 | ` * Return` |
-|        - | 1687 | ` *  TRUE on success or FALSE on failure.` |
-|        - | 1688 | ` */` |
-|        2 | 1689 | `PH7_PRIVATE int vm_builtin_import_request_variables(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|        1 | 1690 | `{` |
-|        - | 1691 | `	const char *zPrefix,*zEnd,*zImport;` |
-|        - | 1692 | `	extract_aux_data sAux;` |
-|        - | 1693 | `	int nLen,nPrefixLen;` |
-|        - | 1694 | `	ph7_value *pSuper;` |
-|        - | 1695 | `	ph7_vm *pVm;` |
-|        - | 1696 | `	/* By default import only $_GET variables  */` |
-|        3 | 1697 | `	zImport = "G";` |
-|        3 | 1698 | `	nLen = (int)sizeof(char);` |
-|        3 | 1699 | `	zPrefix = 0;` |
-|        3 | 1700 | `	nPrefixLen = 0;` |
-|        3 | 1701 | `	if( nArg > 0 ){` |
-|        3 | 1702 | `		if( ph7_value_is_string(apArg[0]) ){` |
-|        3 | 1703 | `			zImport = ph7_value_to_string(apArg[0],&nLen);` |
-|        1 | 1704 | `		}` |
-|        3 | 1705 | `		if( nArg > 1 && ph7_value_is_string(apArg[1]) ){` |
-|        3 | 1706 | `			zPrefix = ph7_value_to_string(apArg[1],&nPrefixLen);` |
-|        1 | 1707 | `		}` |
-|        1 | 1708 | `	}` |
-|        - | 1709 | `	/* Point to the underlying VM */` |
-|        3 | 1710 | `	pVm = pCtx->pVm;` |
-|        - | 1711 | `	/* Initialize the aux data */` |
-|        3 | 1712 | `	SyZero(&sAux,sizeof(sAux)-sizeof(sAux.zWorker));` |
-|        3 | 1713 | `	sAux.zPrefix = zPrefix;` |
-|        3 | 1714 | `	sAux.Prefixlen = nPrefixLen;` |
-|        3 | 1715 | `	sAux.pVm = pVm;` |
-|        - | 1716 | `	/* Extract */` |
-|        3 | 1717 | `	zEnd = &zImport[nLen];` |
-|        5 | 1718 | `	while( zImport < zEnd ){` |
-|        3 | 1719 | `		int c = zImport[0];` |
-|        3 | 1720 | `		pSuper = 0;` |
-|        3 | 1721 | `		if( c == 'G' \|\| c == 'g' ){` |
-|        - | 1722 | `			/* Import $_GET variables */` |
-|        3 | 1723 | `			pSuper = PH7_VmExtractSuper(pVm,"_GET",sizeof("_GET")-1);` |
-|        1 | 1724 | `		}else if( c == 'P' \|\| c == 'p' ){` |
-|        - | 1725 | `			/* Import $_POST variables */` |
-|      ! 0 | 1726 | `			pSuper = PH7_VmExtractSuper(pVm,"_POST",sizeof("_POST")-1);` |
-|      ! 0 | 1727 | `		}else if( c == 'c' \|\| c == 'C' ){` |
-|        - | 1728 | `			/* Import $_COOKIE variables */` |
-|      ! 0 | 1729 | `			pSuper = PH7_VmExtractSuper(pVm,"_COOKIE",sizeof("_COOKIE")-1);` |
-|      ! 0 | 1730 | `		}` |
-|        3 | 1731 | `		if( pSuper ){` |
-|        - | 1732 | `			/* Iterate throw array entries */` |
-|        3 | 1733 | `			ph7_array_walk(pSuper,VmImportRequestCallback,&sAux);` |
-|        1 | 1734 | `		}` |
-|        - | 1735 | `		/* Advance the cursor */` |
-|        3 | 1736 | `		zImport++;` |
-|        1 | 1737 | `	}` |
-|        - | 1738 | `	/* All done,return TRUE*/` |
-|        3 | 1739 | `	ph7_result_bool(pCtx,0);` |
-|        3 | 1740 | `	return PH7_OK;` |
-|        1 | 1741 | `}` |
-|        - | 1742 |  |
+|      104 | 1393 | `static int VmUrlSplit(const char *z,int n,VmUrlParts *pOut)` |
+|        1 | 1394 | `{` |
+|      105 | 1395 | `	int i,k = -1,bScheme,bPortForm = 0,nPortEnd = 0;` |
+|      105 | 1396 | `	SyZero(pOut,sizeof(VmUrlParts));` |
+|        - | 1397 | `	/* A leading "//" settles it before any colon is considered: the authority` |
+|        - | 1398 | `	 * starts after the slashes. Reading the colon first turned "//h:80" into a` |
+|        - | 1399 | `	 * host called "//h" and "//[::1]" into a path. */` |
+|      105 | 1400 | `	if( n >= 2 && z[0] == '/' && z[1] == '/' ){` |
+|       13 | 1401 | `		return VmUrlAuthorityThenPath(&z[2],n - 2,pOut,0);` |
+|        - | 1402 | `	}` |
+|      441 | 1403 | `	for( i = 0 ; i < n ; ++i ){` |
+|      419 | 1404 | `		if( z[i] == ':' ){` |
+|       71 | 1405 | `			k = i;` |
+|       71 | 1406 | `			break;` |
+|        - | 1407 | `		}` |
+|      175 | 1408 | `	}` |
+|       93 | 1409 | `	if( k == 0 && n == 1 ){` |
+|        - | 1410 | `		/* A lone ":" is an EMPTY scheme, which php rejects outright -- unlike` |
+|        - | 1411 | `		 * ":a" or "::", which are simply paths. */` |
+|        3 | 1412 | `		return 0;` |
+|        - | 1413 | `	}` |
+|       91 | 1414 | `	bScheme = k > 0;` |
+|      347 | 1415 | `	for( i = 0 ; bScheme && i < k ; ++i ){` |
+|      257 | 1416 | `		if( !VmUrlIsSchemeByte((unsigned char)z[i]) ){` |
+|      ! 0 | 1417 | `			bScheme = 0;` |
+|      ! 0 | 1418 | `		}` |
+|      129 | 1419 | `	}` |
+|       91 | 1420 | `	if( bScheme && k + 1 == n ){` |
+|        - | 1421 | `		/* "x:" -- the scheme is the whole URL */` |
+|        3 | 1422 | `		SyStringInitFromBuf(&pOut->sScheme,z,(sxu32)k);` |
+|        3 | 1423 | `		pOut->bScheme = 1;` |
+|        3 | 1424 | `		return 1;` |
+|        - | 1425 | `	}` |
+|        - | 1426 | `	/* Decide whether that ':' introduces a PORT rather than a scheme: at least` |
+|        - | 1427 | `	 * one digit, running to the end of the string or to a '/'. That is what` |
+|        - | 1428 | `	 * makes "a:80" a host:port while "a:80?q" is a scheme with path "80", and` |
+|        - | 1429 | `	 * it holds however the ':' is reached -- ":1" and "/:1" are both authorities` |
+|        - | 1430 | `	 * with an empty host, which php rejects. php caps the run, so a long number` |
+|        - | 1431 | `	 * stays a path: "a:123456" is a path, "a:99999" an out-of-range port. */` |
+|       89 | 1432 | `	if( k >= 0 ){` |
+|       67 | 1433 | `		int p = k + 1;` |
+|       67 | 1434 | `		int bBeforeQuery = 1;` |
+|       67 | 1435 | `		nPortEnd = k + 1;` |
+|        - | 1436 | `		/* A ':' that sits inside a query or fragment is just data: "?:1" is a` |
+|        - | 1437 | `		 * query of ":1", not an authority with an empty host. */` |
+|      321 | 1438 | `		for( i = 0 ; i < k ; ++i ){` |
+|      255 | 1439 | `			if( z[i] == '?' \|\| z[i] == '#' ){` |
+|      ! 0 | 1440 | `				bBeforeQuery = 0;` |
+|      ! 0 | 1441 | `				break;` |
+|        - | 1442 | `			}` |
+|      128 | 1443 | `		}` |
+|       77 | 1444 | `		while( p < n && z[p] >= '0' && z[p] <= '9' ){` |
+|       11 | 1445 | `			p++;` |
+|        1 | 1446 | `		}` |
+|       67 | 1447 | `		if( bBeforeQuery && p > k + 1 && (p >= n \|\| z[p] == '/') && (p - k) < 7 ){` |
+|        7 | 1448 | `			bPortForm = 1;` |
+|        7 | 1449 | `			nPortEnd = p;` |
+|        3 | 1450 | `		}` |
+|       33 | 1451 | `	}` |
+|       89 | 1452 | `	if( !bScheme ){` |
+|       25 | 1453 | `		if( bPortForm ){` |
+|        3 | 1454 | `			if( !VmUrlPreparePort(z,k,nPortEnd,pOut) ){` |
+|      ! 0 | 1455 | `				return 0;` |
+|        - | 1456 | `			}` |
+|        3 | 1457 | `			return VmUrlAuthorityThenPath(z,n,pOut,1);` |
+|        - | 1458 | `		}` |
+|       23 | 1459 | `		VmUrlParsePath(z,n,pOut);` |
+|       23 | 1460 | `		if( !pOut->bPath && !pOut->bQuery && !pOut->bFragment ){` |
+|        - | 1461 | `			/* php reports the empty URL as an empty PATH, not as no components */` |
+|        3 | 1462 | `			SyStringInitFromBuf(&pOut->sPath,z,0);` |
+|        3 | 1463 | `			pOut->bPath = 1;` |
+|        1 | 1464 | `		}` |
+|       23 | 1465 | `		return 1;` |
+|        - | 1466 | `	}` |
+|       65 | 1467 | `	if( bPortForm ){` |
+|        5 | 1468 | `		if( !VmUrlPreparePort(z,k,nPortEnd,pOut) ){` |
+|      ! 0 | 1469 | `			return 0;` |
+|        - | 1470 | `		}` |
+|        5 | 1471 | `		return VmUrlAuthorityThenPath(z,n,pOut,1);` |
+|        - | 1472 | `	}` |
+|       61 | 1473 | `	SyStringInitFromBuf(&pOut->sScheme,z,(sxu32)k);` |
+|       61 | 1474 | `	pOut->bScheme = 1;` |
+|       61 | 1475 | `	if( z[k+1] == '/' && k + 2 < n && z[k+2] == '/' ){` |
+|       52 | 1476 | `		if( k + 3 < n && z[k+3] == '/' && pOut->sScheme.nByte == 4` |
+|        4 | 1477 | `		 && (z[0]=='f'\|\|z[0]=='F') && (z[1]=='i'\|\|z[1]=='I')` |
+|        5 | 1478 | `		 && (z[2]=='l'\|\|z[2]=='L') && (z[3]=='e'\|\|z[3]=='E') ){` |
+|        - | 1479 | `			/* file:/// has no authority: the path starts at the third slash,` |
+|        - | 1480 | `			 * except that a "c:" drive letter swallows it (file:///c:/x is the` |
+|        - | 1481 | `			 * path "c:/x"). A '\|' in place of the ':' does NOT count. */` |
+|        5 | 1482 | `			int iBase = k + 3;` |
+|        5 | 1483 | `			if( iBase + 2 < n && VmUrlIsAlpha((unsigned char)z[iBase+1]) && z[iBase+2] == ':' ){` |
+|      ! 0 | 1484 | `				iBase++;` |
+|      ! 0 | 1485 | `			}` |
+|        5 | 1486 | `			VmUrlParsePath(&z[iBase],n - iBase,pOut);` |
+|        5 | 1487 | `			return 1;` |
+|        - | 1488 | `		}` |
+|       49 | 1489 | `		return VmUrlAuthorityThenPath(&z[k+3],n - k - 3,pOut,0);` |
+|        - | 1490 | `	}` |
+|        - | 1491 | `	/* "mailto:me@x.com", "x:y", "http:/x": everything after the ':' is a path */` |
+|        9 | 1492 | `	VmUrlParsePath(&z[k+1],n - k - 1,pOut);` |
+|        9 | 1493 | `	return 1;` |
+|       53 | 1494 | `}` |
+|        - | 1495 | `/*` |
+|        - | 1496 | ` * Emit one parsed component into pValue, replacing control bytes with '_'.` |
+|        - | 1497 | ` *` |
+|        - | 1498 | ` * php runs php_replace_controlchars_ex over every string component it returns,` |
+|        - | 1499 | ` * so a URL carrying a raw NUL, newline or DEL cannot smuggle it through into` |
+|        - | 1500 | ` * whatever the caller splices the component into (a header, a log line, a` |
+|        - | 1501 | ` * redirect). Bytes >= 0x80 are deliberately left alone -- php only folds the` |
+|        - | 1502 | ` * ASCII control range.` |
+|        - | 1503 | ` */` |
+|      164 | 1504 | `static void VmUrlSetComponent(ph7_value *pValue,const SyString *pComp)` |
+|        1 | 1505 | `{` |
+|      165 | 1506 | `	const char *z = pComp->zString;` |
+|      165 | 1507 | `	sxu32 n = pComp->nByte,i,iRun = 0;` |
+|      165 | 1508 | `	if( n < 1 \|\| z == 0 ){` |
+|        3 | 1509 | `		ph7_value_string(pValue,"",0);` |
+|        3 | 1510 | `		return;` |
+|        - | 1511 | `	}` |
+|      955 | 1512 | `	for( i = 0 ; i < n ; ++i ){` |
+|      793 | 1513 | `		unsigned char c = (unsigned char)z[i];` |
+|      793 | 1514 | `		if( c < 0x20 \|\| c == 0x7f ){` |
+|        3 | 1515 | `			if( i > iRun ){` |
+|        3 | 1516 | `				ph7_value_string(pValue,&z[iRun],(int)(i - iRun));` |
+|        1 | 1517 | `			}` |
+|        3 | 1518 | `			ph7_value_string(pValue,"_",1);` |
+|        3 | 1519 | `			iRun = i + 1;` |
+|        1 | 1520 | `		}` |
+|      397 | 1521 | `	}` |
+|      163 | 1522 | `	if( n > iRun ){` |
+|      163 | 1523 | `		ph7_value_string(pValue,&z[iRun],(int)(n - iRun));` |
+|       81 | 1524 | `	}` |
+|       83 | 1525 | `}` |
+|      104 | 1526 | `PH7_PRIVATE int vm_builtin_parse_url(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|        1 | 1527 | `{` |
+|        - | 1528 | `	const char *zStr; /* Input string */` |
+|        - | 1529 | `	VmUrlParts sUrl;  /* Parse of the given URI */` |
+|        - | 1530 | `	SyString *pComp;` |
+|        - | 1531 | `	int bHave;` |
+|        - | 1532 | `	int nLen;` |
+|      105 | 1533 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|        - | 1534 | `		/* Missing/Invalid arguments,return FALSE */` |
+|      ! 0 | 1535 | `		ph7_result_bool(pCtx,0);` |
+|      ! 0 | 1536 | `		return PH7_OK;` |
+|        - | 1537 | `	}` |
+|        - | 1538 | `	/* Extract the given URI. An empty string is NOT a failure: php parses it as` |
+|        - | 1539 | `	 * an empty path. */` |
+|      105 | 1540 | `	zStr = ph7_value_to_string(apArg[0],&nLen);` |
+|      105 | 1541 | `	if( nLen < 0 ){` |
+|      ! 0 | 1542 | `		nLen = 0;` |
+|      ! 0 | 1543 | `	}` |
+|      105 | 1544 | `	if( !VmUrlSplit(zStr,nLen,&sUrl) ){` |
+|        - | 1545 | `		/* Malformed input,return FALSE */` |
+|       13 | 1546 | `		ph7_result_bool(pCtx,0);` |
+|       13 | 1547 | `		return PH7_OK;` |
+|        - | 1548 | `	}` |
+|      103 | 1549 | `	if( nArg > 1 && ph7_value_to_int(apArg[1]) >= 0 ){` |
+|        - | 1550 | `		/* Refer to constant.c for constants values (php's PHP_URL_* are 0-based;` |
+|        - | 1551 | `		 * PHL used to number them from 1, so every literal component id selected` |
+|        - | 1552 | `		 * the WRONG field -- and the constants' own tests only asserted "%d",` |
+|        - | 1553 | `		 * which any numbering satisfies). A negative id means "the whole array",` |
+|        - | 1554 | `		 * which is what the default $component = -1 relies on. */` |
+|       27 | 1555 | `		int nComponent = ph7_value_to_int(apArg[1]);` |
+|       27 | 1556 | `		pComp = 0;` |
+|       27 | 1557 | `		bHave = 0;` |
+|       27 | 1558 | `		switch(nComponent){` |
+|        3 | 1559 | `		case 0: /* PHP_URL_SCHEME */   pComp = &sUrl.sScheme;   bHave = sUrl.bScheme;   break;` |
+|        5 | 1560 | `		case 1: /* PHP_URL_HOST */     pComp = &sUrl.sHost;     bHave = sUrl.bHost;     break;` |
+|        2 | 1561 | `		case 2: /* PHP_URL_PORT */` |
+|        5 | 1562 | `			if( sUrl.bPort ){` |
+|        5 | 1563 | `				ph7_result_int(pCtx,sUrl.iPort);` |
+|        3 | 1564 | `			}else{` |
+|      ! 0 | 1565 | `				ph7_result_null(pCtx);` |
+|        - | 1566 | `			}` |
+|        5 | 1567 | `			return PH7_OK;` |
+|        3 | 1568 | `		case 3: /* PHP_URL_USER */     pComp = &sUrl.sUser;     bHave = sUrl.bUser;     break;` |
+|        3 | 1569 | `		case 4: /* PHP_URL_PASS */     pComp = &sUrl.sPass;     bHave = sUrl.bPass;     break;` |
+|        3 | 1570 | `		case 5: /* PHP_URL_PATH */     pComp = &sUrl.sPath;     bHave = sUrl.bPath;     break;` |
+|        5 | 1571 | `		case 6: /* PHP_URL_QUERY */    pComp = &sUrl.sQuery;    bHave = sUrl.bQuery;    break;` |
+|        5 | 1572 | `		case 7: /* PHP_URL_FRAGMENT */ pComp = &sUrl.sFragment; bHave = sUrl.bFragment; break;` |
+|        1 | 1573 | `		default:` |
+|        4 | 1574 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
+|        - | 1575 | `				"parse_url(): Argument #2 ($component) must be a valid URL component identifier, %d given",` |
+|        1 | 1576 | `				nComponent);` |
+|        - | 1577 | `		}` |
+|       21 | 1578 | `		if( bHave ){` |
+|       19 | 1579 | `			ph7_value *pOut = ph7_context_new_scalar(pCtx);` |
+|       19 | 1580 | `			if( pOut == 0 ){` |
+|      ! 0 | 1581 | `				ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 engine is running out of memory");` |
+|      ! 0 | 1582 | `				ph7_result_bool(pCtx,0);` |
+|      ! 0 | 1583 | `				return PH7_OK;` |
+|        - | 1584 | `			}` |
+|       19 | 1585 | `			VmUrlSetComponent(pOut,pComp);` |
+|       19 | 1586 | `			ph7_result_value(pCtx,pOut);` |
+|       10 | 1587 | `		}else{` |
+|        - | 1588 | `			/* No available value,return NULL */` |
+|        3 | 1589 | `			ph7_result_null(pCtx);` |
+|        - | 1590 | `		}` |
+|       11 | 1591 | `	}else{` |
+|        - | 1592 | `		ph7_value *pArray,*pValue;` |
+|        - | 1593 | `		/* Return an associative array */` |
+|       67 | 1594 | `		pArray = ph7_context_new_array(pCtx);  /* Empty array */` |
+|       67 | 1595 | `		pValue = ph7_context_new_scalar(pCtx); /* Array value */` |
+|       67 | 1596 | `		if( pArray == 0 \|\| pValue == 0 ){` |
+|        - | 1597 | `			/* Out of memory */` |
+|      ! 0 | 1598 | `			ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 engine is running out of memory");` |
+|        - | 1599 | `			/* Return false */` |
+|      ! 0 | 1600 | `			ph7_result_bool(pCtx,0);` |
+|      ! 0 | 1601 | `			return PH7_OK;` |
+|        - | 1602 | `		}` |
+|        - | 1603 | `		/* Fill the array, in php's key order. A component is emitted whenever it` |
+|        - | 1604 | `		 * is PRESENT, even when empty -- parse_url("?") is ['query'=>'']. */` |
+|       67 | 1605 | `		if( sUrl.bScheme ){` |
+|       33 | 1606 | `			VmUrlSetComponent(pValue,&sUrl.sScheme);` |
+|       33 | 1607 | `			ph7_array_add_strkey_elem(pArray,"scheme",pValue); /* Will make it's own copy */` |
+|       33 | 1608 | `			ph7_value_reset_string_cursor(pValue);` |
+|       16 | 1609 | `		}` |
+|       67 | 1610 | `		if( sUrl.bHost ){` |
+|       31 | 1611 | `			VmUrlSetComponent(pValue,&sUrl.sHost);` |
+|       31 | 1612 | `			ph7_array_add_strkey_elem(pArray,"host",pValue);` |
+|       31 | 1613 | `			ph7_value_reset_string_cursor(pValue);` |
+|       15 | 1614 | `		}` |
+|       67 | 1615 | `		if( sUrl.bPort ){` |
+|       17 | 1616 | `			ph7_value_int(pValue,sUrl.iPort);` |
+|       17 | 1617 | `			ph7_array_add_strkey_elem(pArray,"port",pValue);` |
+|       17 | 1618 | `			ph7_value_reset_string_cursor(pValue);` |
+|        8 | 1619 | `		}` |
+|       67 | 1620 | `		if( sUrl.bUser ){` |
+|        9 | 1621 | `			VmUrlSetComponent(pValue,&sUrl.sUser);` |
+|        9 | 1622 | `			ph7_array_add_strkey_elem(pArray,"user",pValue);` |
+|        9 | 1623 | `			ph7_value_reset_string_cursor(pValue);` |
+|        4 | 1624 | `		}` |
+|       67 | 1625 | `		if( sUrl.bPass ){` |
+|        7 | 1626 | `			VmUrlSetComponent(pValue,&sUrl.sPass);` |
+|        7 | 1627 | `			ph7_array_add_strkey_elem(pArray,"pass",pValue);` |
+|        7 | 1628 | `			ph7_value_reset_string_cursor(pValue);` |
+|        3 | 1629 | `		}` |
+|       67 | 1630 | `		if( sUrl.bPath ){` |
+|       47 | 1631 | `			VmUrlSetComponent(pValue,&sUrl.sPath);` |
+|       47 | 1632 | `			ph7_array_add_strkey_elem(pArray,"path",pValue);` |
+|       47 | 1633 | `			ph7_value_reset_string_cursor(pValue);` |
+|       23 | 1634 | `		}` |
+|       67 | 1635 | `		if( sUrl.bQuery ){` |
+|       13 | 1636 | `			VmUrlSetComponent(pValue,&sUrl.sQuery);` |
+|       13 | 1637 | `			ph7_array_add_strkey_elem(pArray,"query",pValue);` |
+|       13 | 1638 | `			ph7_value_reset_string_cursor(pValue);` |
+|        6 | 1639 | `		}` |
+|       67 | 1640 | `		if( sUrl.bFragment ){` |
+|       13 | 1641 | `			VmUrlSetComponent(pValue,&sUrl.sFragment);` |
+|       13 | 1642 | `			ph7_array_add_strkey_elem(pArray,"fragment",pValue);` |
+|        6 | 1643 | `		}` |
+|        - | 1644 | `		/* Return the created array */` |
+|       67 | 1645 | `		ph7_result_value(pCtx,pArray);` |
+|        - | 1646 | `		/* NOTE:` |
+|        - | 1647 | `		 * Don't worry about freeing 'pValue',everything will be released` |
+|        - | 1648 | `		 * automatically as soon we return from this function.` |
+|        - | 1649 | `		 */` |
+|        - | 1650 | `	}` |
+|        - | 1651 | `	/* All done */` |
+|       87 | 1652 | `	return PH7_OK;` |
+|       53 | 1653 | `}` |
+|        - | 1654 |  |
+|        - | 1655 | `/*` |
+|        - | 1656 | ` * Section:` |
+|        - | 1657 | ` *   Array related routines.` |
+|        - | 1658 | ` * Status:` |
+|        - | 1659 | ` *    Stable.` |
+|        - | 1660 | ` * Note 2012-5-21 01:04:15:` |
+|        - | 1661 | ` *  Array related functions that need access to the underlying` |
+|        - | 1662 | ` *  virtual machine are implemented here rather than 'hashmap.c'` |
+|        - | 1663 | ` */` |
+|        - | 1664 | `/*` |
+|        - | 1665 | ` * The [compact()] function store it's state information in an instance` |
+|        - | 1666 | ` * of the following structure.` |
+|        - | 1667 | ` */` |
+|        - | 1668 | `struct compact_data` |
+|        - | 1669 | `{` |
+|        - | 1670 | `	ph7_value *pArray;  /* Target array */` |
+|        - | 1671 | `	int nRecCount;      /* Recursion count */` |
+|        - | 1672 | `};` |
+|        - | 1673 | `/*` |
+|        - | 1674 | ` * Walker callback for the [compact()] function defined below.` |
+|        - | 1675 | ` */` |
+|      ! 0 | 1676 | `static int VmCompactCallback(ph7_value *pKey,ph7_value *pValue,void *pUserData)` |
+|      ! 0 | 1677 | `{` |
+|      ! 0 | 1678 | `	struct compact_data *pData = (struct compact_data *)pUserData;` |
+|      ! 0 | 1679 | `	ph7_value *pArray = (ph7_value *)pData->pArray;` |
+|      ! 0 | 1680 | `	ph7_vm *pVm = pArray->pVm;` |
+|        - | 1681 | `	/* Act according to the hashmap value */` |
+|      ! 0 | 1682 | `	if( ph7_value_is_string(pValue) ){` |
+|        - | 1683 | `		SyString sVar;` |
+|      ! 0 | 1684 | `		SyStringInitFromBuf(&sVar,SyBlobData(&pValue->sBlob),SyBlobLength(&pValue->sBlob));` |
+|      ! 0 | 1685 | `		if( sVar.nByte > 0 ){` |
+|        - | 1686 | `			/* Query the current frame */` |
+|      ! 0 | 1687 | `			pKey = VmExtractMemObj(pVm,&sVar,FALSE,FALSE);` |
+|        - | 1688 | `			/* ^` |
+|        - | 1689 | `			 * \| Avoid wasting variable and use 'pKey' instead` |
+|        - | 1690 | `			 */` |
+|      ! 0 | 1691 | `			if( pKey ){` |
+|        - | 1692 | `				/* Perform the insertion */` |
+|      ! 0 | 1693 | `				ph7_array_add_elem(pArray,pValue/* Variable name*/,pKey/* Variable value */);` |
+|      ! 0 | 1694 | `			}` |
+|      ! 0 | 1695 | `		}` |
+|      ! 0 | 1696 | `	}else if( ph7_value_is_array(pValue) && pData->nRecCount < 32) {` |
+|        - | 1697 | `		int rc;` |
+|        - | 1698 | `		/* Recursively traverse this array */` |
+|      ! 0 | 1699 | `		pData->nRecCount++;` |
+|      ! 0 | 1700 | `		rc = PH7_HashmapWalk((ph7_hashmap *)pValue->x.pOther,VmCompactCallback,pUserData);` |
+|      ! 0 | 1701 | `		pData->nRecCount--;` |
+|      ! 0 | 1702 | `		return rc;` |
+|        - | 1703 | `	}` |
+|      ! 0 | 1704 | `	return SXRET_OK;` |
+|      ! 0 | 1705 | `}` |
+|        - | 1706 | `/*` |
+|        - | 1707 | ` * array compact(mixed $varname [, mixed $... ])` |
+|        - | 1708 | ` *  Create array containing variables and their values.` |
+|        - | 1709 | ` *  For each of these, compact() looks for a variable with that name` |
+|        - | 1710 | ` *  in the current symbol table and adds it to the output array such` |
+|        - | 1711 | ` *  that the variable name becomes the key and the contents of the variable` |
+|        - | 1712 | ` *  become the value for that key. In short, it does the opposite of extract().` |
+|        - | 1713 | ` *  Any strings that are not set will simply be skipped.` |
+|        - | 1714 | ` * Parameters` |
+|        - | 1715 | ` *  $varname` |
+|        - | 1716 | ` *   compact() takes a variable number of parameters. Each parameter can be either` |
+|        - | 1717 | ` *   a string containing the name of the variable, or an array of variable names.` |
+|        - | 1718 | ` *   The array can contain other arrays of variable names inside it; compact() handles` |
+|        - | 1719 | ` *   it recursively.` |
+|        - | 1720 | ` * Return` |
+|        - | 1721 | ` *  The output array with all the variables added to it or NULL on failure` |
+|        - | 1722 | ` */` |
+|        2 | 1723 | `PH7_PRIVATE int vm_builtin_compact(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|        1 | 1724 | `{` |
+|        - | 1725 | `	ph7_value *pArray,*pObj;` |
+|        3 | 1726 | `	ph7_vm *pVm = pCtx->pVm;` |
+|        - | 1727 | `	const char *zName;` |
+|        - | 1728 | `	SyString sVar;` |
+|        - | 1729 | `	int i,nLen;` |
+|        3 | 1730 | `	if( nArg < 1 ){` |
+|        - | 1731 | `		/* Missing arguments,return NULL */` |
+|      ! 0 | 1732 | `		ph7_result_null(pCtx);` |
+|      ! 0 | 1733 | `		return PH7_OK;` |
+|        - | 1734 | `	}` |
+|        - | 1735 | `	/* Create the array */` |
+|        3 | 1736 | `	pArray = ph7_context_new_array(pCtx);` |
+|        3 | 1737 | `	if( pArray == 0 ){` |
+|        - | 1738 | `		/* Out of memory */` |
+|      ! 0 | 1739 | `		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 engine is running out of memory");` |
+|        - | 1740 | `		/* Return NULL */` |
+|      ! 0 | 1741 | `		ph7_result_null(pCtx);` |
+|      ! 0 | 1742 | `		return PH7_OK;` |
+|        - | 1743 | `	}` |
+|        - | 1744 | `	/* Perform the requested operation */` |
+|        7 | 1745 | `	for( i = 0 ; i < nArg ; i++ ){` |
+|        5 | 1746 | `		if( !ph7_value_is_string(apArg[i]) ){` |
+|      ! 0 | 1747 | `			if( ph7_value_is_array(apArg[i]) ){` |
+|        - | 1748 | `				struct compact_data sData;` |
+|      ! 0 | 1749 | `				ph7_hashmap *pMap = (ph7_hashmap *)apArg[i]->x.pOther;` |
+|        - | 1750 | `				/* Recursively walk the array */` |
+|      ! 0 | 1751 | `				sData.nRecCount = 0;` |
+|      ! 0 | 1752 | `				sData.pArray = pArray;` |
+|      ! 0 | 1753 | `				PH7_HashmapWalk(pMap,VmCompactCallback,&sData);` |
+|      ! 0 | 1754 | `			}` |
+|      ! 0 | 1755 | `		}else{` |
+|        - | 1756 | `			/* Extract variable name */` |
+|        5 | 1757 | `			zName = ph7_value_to_string(apArg[i],&nLen);` |
+|        5 | 1758 | `			if( nLen > 0 ){` |
+|        5 | 1759 | `				SyStringInitFromBuf(&sVar,zName,nLen);` |
+|        - | 1760 | `				/* Check if the variable is available in the current frame */` |
+|        5 | 1761 | `				pObj = VmExtractMemObj(pVm,&sVar,FALSE,FALSE);` |
+|        5 | 1762 | `				if( pObj ){` |
+|        5 | 1763 | `					ph7_array_add_elem(pArray,apArg[i]/*Variable name*/,pObj/* Variable value */);` |
+|        2 | 1764 | `				}` |
+|        2 | 1765 | `			}` |
+|        - | 1766 | `		}` |
+|        3 | 1767 | `	}` |
+|        - | 1768 | `	/* Return the array */` |
+|        3 | 1769 | `	ph7_result_value(pCtx,pArray);` |
+|        3 | 1770 | `	return PH7_OK;` |
+|        2 | 1771 | `}` |
+|        - | 1772 | `/*` |
+|        - | 1773 | ` * The [extract()] function store it's state information in an instance` |
+|        - | 1774 | ` * of the following structure.` |
+|        - | 1775 | ` */` |
+|        - | 1776 | `typedef struct extract_aux_data extract_aux_data;` |
+|        - | 1777 | `struct extract_aux_data` |
+|        - | 1778 | `{` |
+|        - | 1779 | `	ph7_vm *pVm;          /* VM that own this instance */` |
+|        - | 1780 | `	int iCount;           /* Number of variables successfully imported  */` |
+|        - | 1781 | `	const char *zPrefix;  /* Prefix name */` |
+|        - | 1782 | `	int Prefixlen;        /* Prefix  length */` |
+|        - | 1783 | `	int iFlags;           /* Control flags */` |
+|        - | 1784 | `	char zWorker[1024];   /* Working buffer */` |
+|        - | 1785 | `};` |
+|        - | 1786 | `/* Forward declaration */` |
+|        - | 1787 | `static int VmExtractCallback(ph7_value *pKey,ph7_value *pValue,void *pUserData);` |
+|        - | 1788 | `/*` |
+|        - | 1789 | ` * int extract(array &$var_array[,int $extract_type = EXTR_OVERWRITE[,string $prefix = NULL ]])` |
+|        - | 1790 | ` *   Import variables into the current symbol table from an array.` |
+|        - | 1791 | ` * Parameters` |
+|        - | 1792 | ` * $var_array` |
+|        - | 1793 | ` *  An associative array. This function treats keys as variable names and values` |
+|        - | 1794 | ` *  as variable values. For each key/value pair it will create a variable in the current symbol` |
+|        - | 1795 | ` *  table, subject to extract_type and prefix parameters.` |
+|        - | 1796 | ` *  You must use an associative array; a numerically indexed array will not produce results` |
+|        - | 1797 | ` *  unless you use EXTR_PREFIX_ALL or EXTR_PREFIX_INVALID.` |
+|        - | 1798 | ` * $extract_type` |
+|        - | 1799 | ` *  The way invalid/numeric keys and collisions are treated is determined by the extract_type.` |
+|        - | 1800 | ` *  It can be one of the following values:` |
+|        - | 1801 | ` *   EXTR_OVERWRITE` |
+|        - | 1802 | ` *       If there is a collision, overwrite the existing variable.` |
+|        - | 1803 | ` *   EXTR_SKIP` |
+|        - | 1804 | ` *       If there is a collision, don't overwrite the existing variable.` |
+|        - | 1805 | ` *   EXTR_PREFIX_SAME` |
+|        - | 1806 | ` *       If there is a collision, prefix the variable name with prefix.` |
+|        - | 1807 | ` *   EXTR_PREFIX_ALL` |
+|        - | 1808 | ` *       Prefix all variable names with prefix.` |
+|        - | 1809 | ` *   EXTR_PREFIX_INVALID` |
+|        - | 1810 | ` *       Only prefix invalid/numeric variable names with prefix.` |
+|        - | 1811 | ` *   EXTR_IF_EXISTS` |
+|        - | 1812 | ` *       Only overwrite the variable if it already exists in the current symbol table` |
+|        - | 1813 | ` *       otherwise do nothing.` |
+|        - | 1814 | ` *       This is useful for defining a list of valid variables and then extracting only those` |
+|        - | 1815 | ` *       variables you have defined out of $_REQUEST, for example.` |
+|        - | 1816 | ` *   EXTR_PREFIX_IF_EXISTS` |
+|        - | 1817 | ` *       Only create prefixed variable names if the non-prefixed version of the same variable exists in` |
+|        - | 1818 | ` *      the current symbol table.` |
+|        - | 1819 | ` * $prefix` |
+|        - | 1820 | ` *  Note that prefix is only required if extract_type is EXTR_PREFIX_SAME, EXTR_PREFIX_ALL` |
+|        - | 1821 | ` *  EXTR_PREFIX_INVALID or EXTR_PREFIX_IF_EXISTS. If the prefixed result is not a valid variable name` |
+|        - | 1822 | ` *  it is not imported into the symbol table. Prefixes are automatically separated from the array key by an` |
+|        - | 1823 | ` *  underscore character.` |
+|        - | 1824 | ` * Return` |
+|        - | 1825 | ` *   Returns the number of variables successfully imported into the symbol table.` |
+|        - | 1826 | ` */` |
+|        4 | 1827 | `PH7_PRIVATE int vm_builtin_extract(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|        1 | 1828 | `{` |
+|        - | 1829 | `	extract_aux_data sAux;` |
+|        - | 1830 | `	ph7_hashmap *pMap;` |
+|        5 | 1831 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
+|        - | 1832 | `		/* Missing/Invalid arguments,return 0 */` |
+|      ! 0 | 1833 | `		ph7_result_int(pCtx,0);` |
+|      ! 0 | 1834 | `		return PH7_OK;` |
+|        - | 1835 | `	}` |
+|        - | 1836 | `	/* Point to the target hashmap */` |
+|        5 | 1837 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|        5 | 1838 | `	if( pMap->nEntry < 1 ){` |
+|        - | 1839 | `		/* Empty map,return  0 */` |
+|      ! 0 | 1840 | `		ph7_result_int(pCtx,0);` |
+|      ! 0 | 1841 | `		return PH7_OK;` |
+|        - | 1842 | `	}` |
+|        - | 1843 | `	/* Prepare the aux data */` |
+|        5 | 1844 | `	SyZero(&sAux,sizeof(extract_aux_data)-sizeof(sAux.zWorker));` |
+|        5 | 1845 | `	if( nArg > 1 ){` |
+|        3 | 1846 | `		sAux.iFlags = ph7_value_to_int(apArg[1]);` |
+|        3 | 1847 | `		if( nArg > 2 ){` |
+|      ! 0 | 1848 | `			sAux.zPrefix = ph7_value_to_string(apArg[2],&sAux.Prefixlen);` |
+|      ! 0 | 1849 | `		}` |
+|        1 | 1850 | `	}` |
+|        5 | 1851 | `	sAux.pVm = pCtx->pVm;` |
+|        - | 1852 | `	/* Invoke the worker callback */` |
+|        5 | 1853 | `	PH7_HashmapWalk(pMap,VmExtractCallback,&sAux);` |
+|        - | 1854 | `	/* Number of variables successfully imported */` |
+|        5 | 1855 | `	ph7_result_int(pCtx,sAux.iCount);` |
+|        5 | 1856 | `	return PH7_OK;` |
+|        3 | 1857 | `}` |
+|        - | 1858 | `/*` |
+|        - | 1859 | ` * Worker callback for the [extract()] function defined` |
+|        - | 1860 | ` * below.` |
+|        - | 1861 | ` */` |
+|        8 | 1862 | `static int VmExtractCallback(ph7_value *pKey,ph7_value *pValue,void *pUserData)` |
+|        1 | 1863 | `{` |
+|        9 | 1864 | `	extract_aux_data *pAux = (extract_aux_data *)pUserData;` |
+|        9 | 1865 | `	int iFlags = pAux->iFlags;` |
+|        9 | 1866 | `	ph7_vm *pVm = pAux->pVm;` |
+|        - | 1867 | `	ph7_value *pObj;` |
+|        - | 1868 | `	SyString sVar;` |
+|        9 | 1869 | `	if( (iFlags & 0x10/* EXTR_PREFIX_INVALID */) && (pKey->iFlags & (MEMOBJ_INT\|MEMOBJ_BOOL\|MEMOBJ_REAL))){` |
+|      ! 0 | 1870 | `		iFlags \|= 0x08; /*EXTR_PREFIX_ALL*/` |
+|      ! 0 | 1871 | `	}` |
+|        - | 1872 | `	/* Perform a string cast */` |
+|        9 | 1873 | `	PH7_MemObjToString(pKey);` |
+|        9 | 1874 | `	if( SyBlobLength(&pKey->sBlob) < 1 ){` |
+|        - | 1875 | `		/* Unavailable variable name */` |
+|      ! 0 | 1876 | `		return SXRET_OK;` |
+|        - | 1877 | `	}` |
+|        9 | 1878 | `	sVar.nByte = 0; /* cc warning */` |
+|        9 | 1879 | `	if( (iFlags & 0x08/*EXTR_PREFIX_ALL*/ ) && pAux->Prefixlen > 0 ){` |
+|      ! 0 | 1880 | `		sVar.nByte = (sxu32)SyBufferFormat(pAux->zWorker,sizeof(pAux->zWorker),"%.*s_%.*s",` |
+|      ! 0 | 1881 | `			pAux->Prefixlen,pAux->zPrefix,` |
+|      ! 0 | 1882 | `			SyBlobLength(&pKey->sBlob),SyBlobData(&pKey->sBlob)` |
+|        - | 1883 | `			);` |
+|      ! 0 | 1884 | `	}else{` |
+|       13 | 1885 | `		sVar.nByte = (sxu32) SyMemcpy(SyBlobData(&pKey->sBlob),pAux->zWorker,` |
+|        8 | 1886 | `			SXMIN(SyBlobLength(&pKey->sBlob),sizeof(pAux->zWorker)));` |
+|        - | 1887 | `	}` |
+|        9 | 1888 | `	sVar.zString = pAux->zWorker;` |
+|        - | 1889 | `	/* Try to extract the variable */` |
+|        9 | 1890 | `	pObj = VmExtractMemObj(pVm,&sVar,TRUE,FALSE);` |
+|        9 | 1891 | `	if( pObj ){` |
+|        - | 1892 | `		/* Collision */` |
+|        3 | 1893 | `		if( iFlags & 0x02 /* EXTR_SKIP */ ){` |
+|      ! 0 | 1894 | `			return SXRET_OK;` |
+|        - | 1895 | `		}` |
+|        3 | 1896 | `		if( iFlags & 0x04 /* EXTR_PREFIX_SAME */ ){` |
+|      ! 0 | 1897 | `			if( (iFlags & 0x08/*EXTR_PREFIX_ALL*/) \|\| pAux->Prefixlen < 1){` |
+|        - | 1898 | `				/* Already prefixed */` |
+|      ! 0 | 1899 | `				return SXRET_OK;` |
+|        - | 1900 | `			}` |
+|      ! 0 | 1901 | `			sVar.nByte = (sxu32)SyBufferFormat(pAux->zWorker,sizeof(pAux->zWorker),"%.*s_%.*s",` |
+|      ! 0 | 1902 | `				pAux->Prefixlen,pAux->zPrefix,` |
+|      ! 0 | 1903 | `				SyBlobLength(&pKey->sBlob),SyBlobData(&pKey->sBlob)` |
+|        - | 1904 | `				);` |
+|      ! 0 | 1905 | `			pObj = VmExtractMemObj(pVm,&sVar,TRUE,TRUE);` |
+|      ! 0 | 1906 | `		}` |
+|        2 | 1907 | `	}else{` |
+|        - | 1908 | `		/* Create the variable */` |
+|        7 | 1909 | `		pObj = VmExtractMemObj(pVm,&sVar,TRUE,TRUE);` |
+|        - | 1910 | `	}` |
+|        9 | 1911 | `	if( pObj ){` |
+|        - | 1912 | `		/* Overwrite the old value */` |
+|        9 | 1913 | `		PH7_MemObjStore(pValue,pObj);` |
+|        - | 1914 | `		/* Increment counter */` |
+|        9 | 1915 | `		pAux->iCount++;` |
+|        4 | 1916 | `	}` |
+|        9 | 1917 | `	return SXRET_OK;` |
+|        5 | 1918 | `}` |
+|        - | 1919 | `/*` |
+|        - | 1920 | ` * Worker callback for the [import_request_variables()] function` |
+|        - | 1921 | ` * defined below.` |
+|        - | 1922 | ` */` |
+|        2 | 1923 | `static int VmImportRequestCallback(ph7_value *pKey,ph7_value *pValue,void *pUserData)` |
+|        1 | 1924 | `{` |
+|        3 | 1925 | `	extract_aux_data *pAux = (extract_aux_data *)pUserData;` |
+|        3 | 1926 | `	ph7_vm *pVm = pAux->pVm;` |
+|        - | 1927 | `	ph7_value *pObj;` |
+|        - | 1928 | `	SyString sVar;` |
+|        - | 1929 | `	/* Perform a string cast */` |
+|        3 | 1930 | `	PH7_MemObjToString(pKey);` |
+|        3 | 1931 | `	if( SyBlobLength(&pKey->sBlob) < 1 ){` |
+|        - | 1932 | `		/* Unavailable variable name */` |
+|      ! 0 | 1933 | `		return SXRET_OK;` |
+|        - | 1934 | `	}` |
+|        3 | 1935 | `	sVar.nByte = 0; /* cc warning */` |
+|        3 | 1936 | `	if( pAux->Prefixlen > 0 ){` |
+|        4 | 1937 | `		sVar.nByte = (sxu32)SyBufferFormat(pAux->zWorker,sizeof(pAux->zWorker),"%.*s%.*s",` |
+|        1 | 1938 | `			pAux->Prefixlen,pAux->zPrefix,` |
+|        1 | 1939 | `			SyBlobLength(&pKey->sBlob),SyBlobData(&pKey->sBlob)` |
+|        - | 1940 | `			);` |
+|        2 | 1941 | `	}else{` |
+|      ! 0 | 1942 | `		sVar.nByte = (sxu32) SyMemcpy(SyBlobData(&pKey->sBlob),pAux->zWorker,` |
+|      ! 0 | 1943 | `			SXMIN(SyBlobLength(&pKey->sBlob),sizeof(pAux->zWorker)));` |
+|        - | 1944 | `	}` |
+|        3 | 1945 | `	sVar.zString = pAux->zWorker;` |
+|        - | 1946 | `	/* Extract the variable */` |
+|        3 | 1947 | `	pObj = VmExtractMemObj(pVm,&sVar,TRUE,TRUE);` |
+|        3 | 1948 | `	if( pObj ){` |
+|        3 | 1949 | `		PH7_MemObjStore(pValue,pObj);` |
+|        1 | 1950 | `	}` |
+|        3 | 1951 | `	return SXRET_OK;` |
+|        2 | 1952 | `}` |
+|        - | 1953 | `/*` |
+|        - | 1954 | ` * bool import_request_variables(string $types[,string $prefix])` |
+|        - | 1955 | ` *  Import GET/POST/Cookie variables into the global scope.` |
+|        - | 1956 | ` * Parameters` |
+|        - | 1957 | ` * $types` |
+|        - | 1958 | ` *  Using the types parameter, you can specify which request variables to import.` |
+|        - | 1959 | ` *  You can use 'G', 'P' and 'C' characters respectively for GET, POST and Cookie.` |
+|        - | 1960 | ` *  These characters are not case sensitive, so you can also use any combination of 'g', 'p' and 'c'.` |
+|        - | 1961 | ` *  POST includes the POST uploaded file information.` |
+|        - | 1962 | ` *  Note:` |
+|        - | 1963 | ` *  Note that the order of the letters matters, as when using "GP", the POST variables will overwrite` |
+|        - | 1964 | ` *  GET variables with the same name. Any other letters than GPC are discarded.` |
+|        - | 1965 | ` * $prefix` |
+|        - | 1966 | ` *  Variable name prefix, prepended before all variable's name imported into the global scope.` |
+|        - | 1967 | ` *  So if you have a GET value named "userid", and provide a prefix "pref_", then you'll get a global` |
+|        - | 1968 | ` *  variable named $pref_userid.` |
+|        - | 1969 | ` * Return` |
+|        - | 1970 | ` *  TRUE on success or FALSE on failure.` |
+|        - | 1971 | ` */` |
+|        2 | 1972 | `PH7_PRIVATE int vm_builtin_import_request_variables(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|        1 | 1973 | `{` |
+|        - | 1974 | `	const char *zPrefix,*zEnd,*zImport;` |
+|        - | 1975 | `	extract_aux_data sAux;` |
+|        - | 1976 | `	int nLen,nPrefixLen;` |
+|        - | 1977 | `	ph7_value *pSuper;` |
+|        - | 1978 | `	ph7_vm *pVm;` |
+|        - | 1979 | `	/* By default import only $_GET variables  */` |
+|        3 | 1980 | `	zImport = "G";` |
+|        3 | 1981 | `	nLen = (int)sizeof(char);` |
+|        3 | 1982 | `	zPrefix = 0;` |
+|        3 | 1983 | `	nPrefixLen = 0;` |
+|        3 | 1984 | `	if( nArg > 0 ){` |
+|        3 | 1985 | `		if( ph7_value_is_string(apArg[0]) ){` |
+|        3 | 1986 | `			zImport = ph7_value_to_string(apArg[0],&nLen);` |
+|        1 | 1987 | `		}` |
+|        3 | 1988 | `		if( nArg > 1 && ph7_value_is_string(apArg[1]) ){` |
+|        3 | 1989 | `			zPrefix = ph7_value_to_string(apArg[1],&nPrefixLen);` |
+|        1 | 1990 | `		}` |
+|        1 | 1991 | `	}` |
+|        - | 1992 | `	/* Point to the underlying VM */` |
+|        3 | 1993 | `	pVm = pCtx->pVm;` |
+|        - | 1994 | `	/* Initialize the aux data */` |
+|        3 | 1995 | `	SyZero(&sAux,sizeof(sAux)-sizeof(sAux.zWorker));` |
+|        3 | 1996 | `	sAux.zPrefix = zPrefix;` |
+|        3 | 1997 | `	sAux.Prefixlen = nPrefixLen;` |
+|        3 | 1998 | `	sAux.pVm = pVm;` |
+|        - | 1999 | `	/* Extract */` |
+|        3 | 2000 | `	zEnd = &zImport[nLen];` |
+|        5 | 2001 | `	while( zImport < zEnd ){` |
+|        3 | 2002 | `		int c = zImport[0];` |
+|        3 | 2003 | `		pSuper = 0;` |
+|        3 | 2004 | `		if( c == 'G' \|\| c == 'g' ){` |
+|        - | 2005 | `			/* Import $_GET variables */` |
+|        3 | 2006 | `			pSuper = PH7_VmExtractSuper(pVm,"_GET",sizeof("_GET")-1);` |
+|        1 | 2007 | `		}else if( c == 'P' \|\| c == 'p' ){` |
+|        - | 2008 | `			/* Import $_POST variables */` |
+|      ! 0 | 2009 | `			pSuper = PH7_VmExtractSuper(pVm,"_POST",sizeof("_POST")-1);` |
+|      ! 0 | 2010 | `		}else if( c == 'c' \|\| c == 'C' ){` |
+|        - | 2011 | `			/* Import $_COOKIE variables */` |
+|      ! 0 | 2012 | `			pSuper = PH7_VmExtractSuper(pVm,"_COOKIE",sizeof("_COOKIE")-1);` |
+|      ! 0 | 2013 | `		}` |
+|        3 | 2014 | `		if( pSuper ){` |
+|        - | 2015 | `			/* Iterate throw array entries */` |
+|        3 | 2016 | `			ph7_array_walk(pSuper,VmImportRequestCallback,&sAux);` |
+|        1 | 2017 | `		}` |
+|        - | 2018 | `		/* Advance the cursor */` |
+|        3 | 2019 | `		zImport++;` |
+|        1 | 2020 | `	}` |
+|        - | 2021 | `	/* All done,return TRUE*/` |
+|        3 | 2022 | `	ph7_result_bool(pCtx,0);` |
+|        3 | 2023 | `	return PH7_OK;` |
+|        1 | 2024 | `}` |
+|        - | 2025 |  |

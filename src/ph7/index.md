@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 45537/56044 lines (81.25%)
+Coverage: 45756/56229 lines (81.37%)
 
 [Up](../index.md)
 
@@ -24,7 +24,7 @@ Coverage: 45537/56044 lines (81.25%)
 |[compile_stmt.c](compile_stmt.c.md)|73.92%|1448/1959|
 |[constant.c](constant.c.md)|93.09%|970/1042|
 |[hashmap.c](hashmap.c.md)|90.77%|1042/1148|
-|[hashmap_builtin.c](hashmap_builtin.c.md)|86.09%|2450/2846|
+|[hashmap_builtin.c](hashmap_builtin.c.md)|86.05%|2449/2846|
 |[hashmap_sort.c](hashmap_sort.c.md)|91.14%|463/508|
 |[lex.c](lex.c.md)|93.46%|814/871|
 |[memobj.c](memobj.c.md)|81.88%|836/1021|
@@ -43,7 +43,7 @@ Coverage: 45537/56044 lines (81.25%)
 |[vm_builtin_error.c](vm_builtin_error.c.md)|80.00%|236/295|
 |[vm_builtin_getopt.c](vm_builtin_getopt.c.md)|24.71%|42/170|
 |[vm_builtin_ini.c](vm_builtin_ini.c.md)|95.45%|21/22|
-|[vm_builtin_lang.c](vm_builtin_lang.c.md)|68.19%|551/808|
+|[vm_builtin_lang.c](vm_builtin_lang.c.md)|78.45%|779/993|
 |[vm_builtin_lib.c](vm_builtin_lib.c.md)|100.00%|8/8|
 |[vm_builtin_ob.c](vm_builtin_ob.c.md)|75.12%|157/209|
 |[vm_builtin_reflection.c](vm_builtin_reflection.c.md)|86.13%|1043/1211|
@@ -56,7 +56,7 @@ Coverage: 45537/56044 lines (81.25%)
 |[vm_error.c](vm_error.c.md)|86.69%|1759/2029|
 |[vm_exec.c](vm_exec.c.md)|83.66%|2637/3152|
 |[vm_exec_ctx.c](vm_exec_ctx.c.md)|79.98%|1023/1279|
-|[vm_http.c](vm_http.c.md)|69.82%|310/444|
+|[vm_http.c](vm_http.c.md)|68.02%|302/444|
 |[vm_http_response.c](vm_http_response.c.md)|49.41%|126/255|
 |[vm_include.c](vm_include.c.md)|83.87%|442/527|
 |[vm_json.c](vm_json.c.md)|83.36%|561/673|
