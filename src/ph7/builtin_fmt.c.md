@@ -309,16 +309,16 @@ Coverage: 474/557 lines (85.10%)
 |     - |  299 | `	}` |
 |    23 |  300 | `	return PH7_OK;` |
 |    13 |  301 | `}` |
-|   514 |  302 | `PH7_PRIVATE sxi32 PH7_FormatCheckFormatArg(ph7_context *pCtx,ph7_value *pArg,int iArg)` |
+|   512 |  302 | `PH7_PRIVATE sxi32 PH7_FormatCheckFormatArg(ph7_context *pCtx,ph7_value *pArg,int iArg)` |
 |     3 |  303 | `{` |
-|   517 |  304 | `	if( ph7_value_is_array(pArg) \|\| ph7_value_is_object(pArg) \|\| ph7_value_is_resource(pArg) ){` |
+|   515 |  304 | `	if( ph7_value_is_array(pArg) \|\| ph7_value_is_object(pArg) \|\| ph7_value_is_resource(pArg) ){` |
 |     - |  305 | `		char zBuf[64];` |
 |   ! 0 |  306 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
 |     - |  307 | `			"%s(): Argument #%d ($format) must be of type string, %s given",` |
 |   ! 0 |  308 | `			ph7_function_name(pCtx),iArg,VmValueGivenName(pArg,zBuf,sizeof(zBuf)));` |
 |     - |  309 | `	}` |
-|   517 |  310 | `	return PH7_OK;` |
-|   260 |  311 | `}` |
+|   515 |  310 | `	return PH7_OK;` |
+|   259 |  311 | `}` |
 |     - |  312 | `/*` |
 |     - |  313 | ` * Format a given string.` |
 |     - |  314 | ` * The root program.  All variations call this core.` |
@@ -985,30 +985,30 @@ Coverage: 474/557 lines (85.10%)
 |     - |  975 | ` * Return` |
 |     - |  976 | ` *  A string produced according to the formatting string format.` |
 |     - |  977 | ` */` |
-|    24 |  978 | `PH7_PRIVATE int PH7_builtin_vsprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    22 |  978 | `PH7_PRIVATE int PH7_builtin_vsprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 |  979 | `{` |
 |     - |  980 | `	const char *zFormat;` |
 |     - |  981 | `	ph7_hashmap *pMap;` |
 |     - |  982 | `	SySet sArg;` |
-|    25 |  983 | `	sxi32 rc = SXRET_OK;` |
+|    23 |  983 | `	sxi32 rc = SXRET_OK;` |
 |     - |  984 | `	sxi32 rcFmt;` |
 |     - |  985 | `	int nLen,n;` |
-|    25 |  986 | `	if( nArg < 2 ){` |
+|    23 |  986 | `	if( nArg < 2 ){` |
 |     - |  987 | `		/* Missing arguments,return the empty string */` |
 |   ! 0 |  988 | `		ph7_result_string(pCtx,"",0);` |
 |   ! 0 |  989 | `		return PH7_OK;` |
 |     - |  990 | `	}` |
 |     - |  991 | `	/* PHP 8 checks arguments left-to-right: $format (#1) then $values (#2). */` |
-|    25 |  992 | `	rc = PH7_FormatCheckFormatArg(pCtx,apArg[0],1);` |
-|    25 |  993 | `	if( rc != PH7_OK ){` |
+|    23 |  992 | `	rc = PH7_FormatCheckFormatArg(pCtx,apArg[0],1);` |
+|    23 |  993 | `	if( rc != PH7_OK ){` |
 |   ! 0 |  994 | `		return rc;` |
 |     - |  995 | `	}` |
-|    25 |  996 | `	if( !ph7_value_is_array(apArg[1]) ){` |
+|    23 |  996 | `	if( !ph7_value_is_array(apArg[1]) ){` |
 |     - |  997 | `		/* PHP 8: a non-array $values is a catchable TypeError. */` |
 |     - |  998 | `		char zBuf[64];` |
-|    16 |  999 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
+|    13 |  999 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
 |     - | 1000 | `			"vsprintf(): Argument #2 ($values) must be of type array, %s given",` |
-|    10 | 1001 | `			VmValueGivenName(apArg[1],zBuf,sizeof(zBuf)));` |
+|     8 | 1001 | `			VmValueGivenName(apArg[1],zBuf,sizeof(zBuf)));` |
 |     - | 1002 | `	}` |
 |     - | 1003 | `	/* Extract the string format (scalars/null coerce). */` |
 |    15 | 1004 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
@@ -1041,6 +1041,6 @@ Coverage: 474/557 lines (85.10%)
 |   ! 0 | 1031 | `		return PH7_ContextMemoryError(pCtx);` |
 |     - | 1032 | `	}` |
 |    11 | 1033 | `	return PH7_OK;` |
-|    13 | 1034 | `}` |
+|    12 | 1034 | `}` |
 |     - | 1035 | `#endif /* PH7_NEED_FMT_AND_INI */` |
 |     - | 1036 |  |

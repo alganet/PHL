@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 539/653 lines (82.54%)
+Coverage: 537/653 lines (82.24%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -550,11 +550,11 @@ Coverage: 539/653 lines (82.54%)
 |    - |  540 | ` * Return` |
 |    - |  541 | ` *  The absolute value of number.` |
 |    - |  542 | ` */` |
-|  130 |  543 | `PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  128 |  543 | `PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    3 |  544 | `{` |
 |    - |  545 | `	int is_float;` |
 |    - |  546 | `	/* PHP requires exactly one argument. */` |
-|  133 |  547 | `	if( nArg != 1 ){` |
+|  131 |  547 | `	if( nArg != 1 ){` |
 |  ! 0 |  548 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  549 | `			"ArgumentCountError",` |
 |    - |  550 | `			"abs() expects exactly 1 argument, %d given",` |
@@ -562,9 +562,9 @@ Coverage: 539/653 lines (82.54%)
 |    - |  552 | `			);` |
 |    - |  553 | `	}` |
 |    - |  554 |  |
-|  133 |  555 | `	if( ph7_value_is_null(apArg[0]) ){` |
+|  131 |  555 | `	if( ph7_value_is_null(apArg[0]) ){` |
 |    - |  556 | `		/* php only DEPRECATES null here; PHL rejects it. */` |
-|    3 |  557 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
+|  ! 0 |  557 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
 |    - |  558 | `			"abs(): Argument #1 ($num) must be of type int\|float, null given");` |
 |    - |  559 | `	}` |
 |    - |  560 | `	/* Numeric strings with decimal/exponent are treated as real values. */` |
@@ -603,7 +603,7 @@ Coverage: 539/653 lines (82.54%)
 |    - |  593 | `		}` |
 |    - |  594 | `	}` |
 |  129 |  595 | `	return PH7_OK;` |
-|   68 |  596 | `}` |
+|   67 |  596 | `}` |
 |    - |  597 | `/*` |
 |    - |  598 | ` * float log(float $arg,[int/float $base])` |
 |    - |  599 | ` *  Natural logarithm.` |
@@ -1375,41 +1375,41 @@ Coverage: 539/653 lines (82.54%)
 |    - | 1365 | ` * Return` |
 |    - | 1366 | ` *  Number converted to base tobase` |
 |    - | 1367 | ` */` |
-|   60 | 1368 | `PH7_PRIVATE int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   58 | 1368 | `PH7_PRIVATE int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    2 | 1369 | `{` |
 |    - | 1370 | `	static const char zDigits[] = "0123456789abcdefghijklmnopqrstuvwxyz";` |
 |    - | 1371 | `	int nLen,iFbase,iTobase,i;` |
 |    - | 1372 | `	int bIgnored;` |
 |    - | 1373 | `	ph7_int64 iFbase64,iTobase64;` |
 |    - | 1374 | `	const char *zNum;` |
-|   62 | 1375 | `	sxu64 uNum = 0;` |
-|   62 | 1376 | `	if( nArg < 3 ){` |
+|   60 | 1375 | `	sxu64 uNum = 0;` |
+|   60 | 1376 | `	if( nArg < 3 ){` |
 |    - | 1377 | `		/* Return the empty string*/` |
 |  ! 0 | 1378 | `		ph7_result_string(pCtx,"",0);` |
 |  ! 0 | 1379 | `		return PH7_OK;` |
 |    - | 1380 | `	}` |
 |    - | 1381 | `	/* Base numbers. Read them as 64-bit so an out-of-range base can't wrap through` |
 |    - | 1382 | `	 * a 32-bit truncation back into the 2..36 window and bypass the check below. */` |
-|   62 | 1383 | `	iFbase64 = ph7_value_to_int64(apArg[1]);` |
-|   62 | 1384 | `	iTobase64 = ph7_value_to_int64(apArg[2]);` |
+|   60 | 1383 | `	iFbase64 = ph7_value_to_int64(apArg[1]);` |
+|   60 | 1384 | `	iTobase64 = ph7_value_to_int64(apArg[2]);` |
 |    - | 1385 | `	/* PHP 8 throws a catchable ValueError for a base outside 2..36; from_base` |
 |    - | 1386 | `	 * is validated before to_base, both before the string is even parsed. */` |
-|   62 | 1387 | `	if( iFbase64 < 2 \|\| iFbase64 > 36 ){` |
+|   60 | 1387 | `	if( iFbase64 < 2 \|\| iFbase64 > 36 ){` |
 |    7 | 1388 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
 |    - | 1389 | `			"base_convert(): Argument #2 ($from_base) must be between 2 and 36 (inclusive)");` |
 |    - | 1390 | `	}` |
-|   56 | 1391 | `	if( iTobase64 < 2 \|\| iTobase64 > 36 ){` |
+|   54 | 1391 | `	if( iTobase64 < 2 \|\| iTobase64 > 36 ){` |
 |    5 | 1392 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
 |    - | 1393 | `			"base_convert(): Argument #3 ($to_base) must be between 2 and 36 (inclusive)");` |
 |    - | 1394 | `	}` |
 |    - | 1395 | `	/* Both bases are now known to fit in [2,36], so the int form is exact. */` |
-|   52 | 1396 | `	iFbase  = (int)iFbase64;` |
-|   52 | 1397 | `	iTobase = (int)iTobase64;` |
+|   50 | 1396 | `	iFbase  = (int)iFbase64;` |
+|   50 | 1397 | `	iTobase = (int)iTobase64;` |
 |    - | 1398 | `	/* Parse the input number in from_base. Every base is handled the same way:` |
 |    - | 1399 | `	 * digits 0-9 then a-z/A-Z map to 0-35; a character that is not a valid digit for` |
 |    - | 1400 | `	 * from_base is ignored, and php raises an E_DEPRECATED saying so. */` |
-|   52 | 1401 | `	if( ph7_value_is_null(apArg[0]) ){` |
-|    3 | 1402 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
+|   50 | 1401 | `	if( ph7_value_is_null(apArg[0]) ){` |
+|  ! 0 | 1402 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
 |    - | 1403 | `			"base_convert(): Argument #1 ($num) must be of type string, null given");` |
 |    - | 1404 | `	}` |
 |   50 | 1405 | `	zNum = ph7_value_to_string(apArg[0],&nLen);` |
@@ -1456,7 +1456,7 @@ Coverage: 539/653 lines (82.54%)
 |   46 | 1446 | `		ph7_result_string(pCtx,zOut,n);` |
 |    - | 1447 | `	}` |
 |   50 | 1448 | `	return PH7_OK;` |
-|   32 | 1449 | `}` |
+|   31 | 1449 | `}` |
 |    - | 1450 | `#endif /* PH7_DISABLE_DISK_IO */` |
 |    - | 1451 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
 |    - | 1452 |  |
