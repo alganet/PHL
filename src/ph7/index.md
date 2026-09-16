@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 45541/56045 lines (81.26%)
+Coverage: 45537/56044 lines (81.25%)
 
 [Up](../index.md)
 
@@ -24,14 +24,14 @@ Coverage: 45541/56045 lines (81.26%)
 |[compile_stmt.c](compile_stmt.c.md)|73.92%|1448/1959|
 |[constant.c](constant.c.md)|93.09%|970/1042|
 |[hashmap.c](hashmap.c.md)|90.77%|1042/1148|
-|[hashmap_builtin.c](hashmap_builtin.c.md)|86.05%|2449/2846|
+|[hashmap_builtin.c](hashmap_builtin.c.md)|86.09%|2450/2846|
 |[hashmap_sort.c](hashmap_sort.c.md)|91.14%|463/508|
 |[lex.c](lex.c.md)|93.46%|814/871|
 |[memobj.c](memobj.c.md)|81.88%|836/1021|
 |[net.c](net.c.md)|57.45%|81/141|
 |[oo.c](oo.c.md)|87.62%|736/840|
 |[parse.c](parse.c.md)|86.85%|1182/1361|
-|[vfs.c](vfs.c.md)|68.32%|811/1187|
+|[vfs.c](vfs.c.md)|67.96%|806/1186|
 |[vfs_io_driver.c](vfs_io_driver.c.md)|64.47%|539/836|
 |[vfs_stream.c](vfs_stream.c.md)|66.90%|1267/1894|
 |[vfs_unix.c](vfs_unix.c.md)|89.38%|421/471|
