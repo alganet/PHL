@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 json_encode keeps lists and empty arrays as JSON arrays
---SKIPIF--
-<?php if (!function_exists('json_encode')) { die('skip'); } ?>
 --FILE--
 <?php
 echo json_encode([0 => "a", 1 => "b"]), "\n"; // consecutive 0-based keys -> array

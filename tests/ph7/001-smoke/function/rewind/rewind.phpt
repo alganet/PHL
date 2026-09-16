@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 rewind resets file pointer to beginning (ftell shows 0 afterwards)
---SKIPIF--
-<?php if (!function_exists('rewind')) { echo 'skip'; } ?>
 --FILE--
 <?php
 $fn = tempnam(sys_get_temp_dir(), 'ph7_rewind');

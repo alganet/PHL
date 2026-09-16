@@ -4,7 +4,7 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 popen with write mode (unix)
 --SKIPIF--
-<?php if(PHP_OS == 'WINNT') { echo 'skip'; } ?>
+<?php if(PHP_OS == 'WINNT') { echo 'skip POSIX-only behavior; not applicable on Windows'; } ?>
 --FILE--
 <?php
 // Test popen with write mode to cover PipeStream_Write

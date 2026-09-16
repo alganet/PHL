@@ -4,7 +4,7 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 proc_open(): pipe stdin/stdout/stderr to a child interpreter, redirect stderr, capture the exit code
 --SKIPIF--
-<?php if (PHP_OS == 'WINNT') { echo "skip"; } if (!function_exists('proc_open')) { echo "skip proc_open unavailable"; } ?>
+<?php if (PHP_OS == 'WINNT') { echo "skip POSIX-only behavior; not applicable on Windows"; } ?>
 --FILE--
 <?php
 function pox_run($code, $redirect = false) {

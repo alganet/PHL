@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 json_encode complex arrays and objects
---SKIPIF--
-<?php if (!function_exists('json_encode') || !function_exists('json_decode')) { die('skip'); } ?>
 --FILE--
 <?php
 $arr = array(1, 2, 3);

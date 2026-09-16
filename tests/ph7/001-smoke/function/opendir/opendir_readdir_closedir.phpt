@@ -3,19 +3,12 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 opendir/readdir/closedir basic iteration
---SKIPIF--
-<?php
-if (!function_exists('opendir') || !function_exists('readdir') || !function_exists('closedir')) {
-    die('skip');
-}
-?>
 --FILE--
 <?php
 $dir = sys_get_temp_dir() . '/ph7_test_opendir_' . getmypid();
 @mkdir($dir);
 file_put_contents($dir . '/a.txt', 'a');
 file_put_contents($dir . '/b.txt', 'b');
-
 $dh = opendir($dir);
 $found = array();
 while (($entry = readdir($dh)) !== false) {
@@ -25,7 +18,6 @@ while (($entry = readdir($dh)) !== false) {
 closedir($dh);
 sort($found);
 echo implode(",", $found) . "\n";
-
 ?>
 --EXPECT--
 a.txt,b.txt

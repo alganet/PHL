@@ -4,7 +4,7 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 phl reads a script from stdin when given no file (php parity); `--` passes the rest as script args
 --SKIPIF--
-<?php if (PHP_OS == 'WINNT') { echo "skip"; } ?>
+<?php if (PHP_OS == 'WINNT') { echo "skip POSIX-only behavior; not applicable on Windows"; } ?>
 --FILE--
 <?php
 $phl = getenv('PHPT_TARGET_EXECUTABLE');

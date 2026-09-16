@@ -5,7 +5,7 @@ SPDX-License-Identifier: BSD-3-Clause
 PH7 / PHP: PHP_SHLIB_SUFFIX is 'so' on Unix-like
 --SKIPIF--
 <?php
-if (PHP_OS == 'WINNT') echo 'skip';
+if (PHP_OS == 'WINNT') echo 'skip POSIX-only behavior; not applicable on Windows';
 ?>
 --FILE--
 <?php

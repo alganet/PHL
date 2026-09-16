@@ -5,7 +5,7 @@ SPDX-License-Identifier: BSD-3-Clause
 The built-in server defines PHP_BINARY in served VMs
 --SKIPIF--
 <?php
-if (PHP_OS == 'WINNT') { echo "skip"; }
+if (PHP_OS == 'WINNT') { echo "skip POSIX-only behavior; not applicable on Windows"; }
 $fp = popen("curl --version 2>/dev/null", "r");
 $out = fgets($fp);
 fclose($fp);

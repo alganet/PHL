@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 json_encode emits a JSON object for non-list arrays
---SKIPIF--
-<?php if (!function_exists('json_encode')) { die('skip'); } ?>
 --FILE--
 <?php
 echo json_encode(["x" => 1]), "\n";          // string keys -> object
