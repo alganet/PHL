@@ -1179,115 +1179,414 @@ PH7_PRIVATE int vm_builtin_ph7_credits(ph7_context *pCtx,int nArg,ph7_value **ap
  *  This function work with relative URL unlike the one shipped
  *  with the standard PHP engine.
  */
+/*
+ * parse_url() component set.
+ *
+ * A bare SyString cannot express "present but empty", which php needs:
+ * parse_url("") is ['path'=>''] and parse_url("?") is ['query'=>''], both
+ * distinct from the component being absent. So presence is tracked separately.
+ */
+typedef struct VmUrlParts VmUrlParts;
+struct VmUrlParts
+{
+	SyString sScheme,sUser,sPass,sHost,sPath,sQuery,sFragment;
+	int iPort;     /* Resolved port, meaningful only when bPort is set */
+	sxu8 bScheme,bUser,bPass,bHost,bPort,bPath,bQuery,bFragment;
+};
+static int VmUrlIsAlnum(int c)
+{
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+static int VmUrlIsAlpha(int c)
+{
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+/* scheme = ALNUM *( ALNUM / "+" / "-" / "." ) -- php accepts a digit first. */
+static int VmUrlIsSchemeByte(int c)
+{
+	return VmUrlIsAlnum(c) || c == '+' || c == '-' || c == '.';
+}
+/*
+ * Resolve the port span that followed the ':' in an authority.
+ *
+ * Returns 1 (usable port in *piPort), 0 (the span is empty, so there is simply
+ * no port) or -1 (php rejects the whole URL). php is lenient about what follows
+ * the digits -- ":8a" and ":8 0" both yield 8 -- but demands at least one digit
+ * and a value that fits a port, so ":abc", ":-80" and ":65536" are all failures.
+ */
+static int VmUrlParsePort(const char *z,int n,int *piPort)
+{
+	int i = 0,iVal = 0,nDigit = 0;
+	if( n < 1 ){
+		return 0;
+	}
+	while( i < n && (z[i] == ' ' || z[i] == '\t') ){
+		i++;
+	}
+	if( i < n && (z[i] == '+' || z[i] == '-') ){
+		if( z[i] == '-' ){
+			return -1;
+		}
+		i++;
+	}
+	while( i < n && z[i] >= '0' && z[i] <= '9' ){
+		iVal = iVal * 10 + (z[i] - '0');
+		if( iVal > 65535 ){
+			return -1; /* Out of range, and this also caps the accumulator */
+		}
+		nDigit++;
+		i++;
+	}
+	if( nDigit < 1 ){
+		return -1;
+	}
+	*piPort = iVal;
+	return 1;
+}
+/*
+ * Split an authority -- "[user[:pass]@]host[:port]" -- into pOut.
+ * Returns 0 for the malformed input php reports as FALSE.
+ */
+static int VmUrlParseAuthority(const char *z,int n,VmUrlParts *pOut,int bPortKnown)
+{
+	const char *zHost;
+	int i,iAt = -1,iColon = -1,iSep = -1,nHost,iPort = 0,rc;
+	/* php splits the credentials at the LAST '@' ("//a@b@c" is user "a@b") */
+	for( i = 0 ; i < n ; ++i ){
+		if( z[i] == '@' ){
+			iAt = i;
+		}
+	}
+	if( iAt >= 0 ){
+		/* and the user from the password at the FIRST ':' before it */
+		for( i = 0 ; i < iAt ; ++i ){
+			if( z[i] == ':' ){
+				iColon = i;
+				break;
+			}
+		}
+		if( iColon >= 0 ){
+			SyStringInitFromBuf(&pOut->sUser,z,(sxu32)iColon);
+			SyStringInitFromBuf(&pOut->sPass,&z[iColon+1],(sxu32)(iAt - iColon - 1));
+			pOut->bUser = pOut->bPass = 1;
+		}else{
+			SyStringInitFromBuf(&pOut->sUser,z,(sxu32)iAt);
+			pOut->bUser = 1;
+		}
+		z += iAt + 1;
+		n -= iAt + 1;
+	}
+	zHost = z;
+	nHost = n;
+	if( !(n > 1 && z[0] == '[' && z[n-1] == ']') ){
+		/* Unless a bracketed IPv6 literal fills the WHOLE authority -- in which
+		 * case php keeps the brackets in "host" and scans no port, so every ':'
+		 * inside belongs to the address -- the port hangs off the LAST ':'.
+		 * php decides that on the first and last byte alone, which is why
+		 * "//[:]|]" is a single host while "//[::1]:8080" splits a port off. */
+		for( i = 0 ; i < n ; ++i ){
+			if( z[i] == ':' ){
+				iSep = i;
+			}
+		}
+		if( iSep >= 0 ){
+			/* The host is trimmed at the ':' whether or not the port was already
+			 * resolved by the caller. */
+			nHost = iSep;
+			if( !bPortKnown ){
+				rc = VmUrlParsePort(&z[iSep+1],n - iSep - 1,&iPort);
+				if( rc < 0 ){
+					return 0;
+				}
+				if( rc > 0 ){
+					pOut->iPort = iPort;
+					pOut->bPort = 1;
+				}
+			}
+		}
+	}
+	if( nHost < 1 ){
+		/* php requires a non-empty host once an authority is in play, which is
+		 * what makes "//", "http://" and ":80" all FALSE. */
+		return 0;
+	}
+	SyStringInitFromBuf(&pOut->sHost,zHost,(sxu32)nHost);
+	pOut->bHost = 1;
+	return 1;
+}
+/*
+ * Split "path[?query][#fragment]". The fragment is taken FIRST and the query
+ * only from what precedes it, so "#a?b" is a fragment of "a?b" with no query.
+ */
+static void VmUrlParsePath(const char *z,int n,VmUrlParts *pOut)
+{
+	int i,iEnd = n;
+	for( i = 0 ; i < n ; ++i ){
+		if( z[i] == '#' ){
+			SyStringInitFromBuf(&pOut->sFragment,&z[i+1],(sxu32)(n - i - 1));
+			pOut->bFragment = 1;
+			iEnd = i;
+			break;
+		}
+	}
+	for( i = 0 ; i < iEnd ; ++i ){
+		if( z[i] == '?' ){
+			SyStringInitFromBuf(&pOut->sQuery,&z[i+1],(sxu32)(iEnd - i - 1));
+			pOut->bQuery = 1;
+			iEnd = i;
+			break;
+		}
+	}
+	if( iEnd > 0 ){
+		SyStringInitFromBuf(&pOut->sPath,z,(sxu32)iEnd);
+		pOut->bPath = 1;
+	}
+}
+/* Parse "host[:port]" followed by an optional path/query/fragment. */
+static int VmUrlAuthorityThenPath(const char *z,int n,VmUrlParts *pOut,int bPortKnown)
+{
+	int i,iEnd = n;
+	for( i = 0 ; i < n ; ++i ){
+		if( z[i] == '/' || z[i] == '?' || z[i] == '#' ){
+			iEnd = i;
+			break;
+		}
+	}
+	if( !VmUrlParseAuthority(z,iEnd,pOut,bPortKnown) ){
+		return 0;
+	}
+	if( iEnd < n ){
+		VmUrlParsePath(&z[iEnd],n - iEnd,pOut);
+	}
+	return 1;
+}
+/*
+ * Resolve the port php took from the FIRST ':' of a host:port URL.
+ *
+ * php reads the port straight off that colon before it works out where the host
+ * ends, so the digits can even belong to what becomes the path: parse_url()
+ * reports port 1 for "a/:1", whose path is "/:1". Mirroring the order keeps
+ * that quirk. Returns 0 for a port php rejects.
+ */
+static int VmUrlPreparePort(const char *z,int k,int nEnd,VmUrlParts *pOut)
+{
+	int iPort = 0;
+	int rc = VmUrlParsePort(&z[k+1],nEnd - k - 1,&iPort);
+	if( rc < 0 ){
+		return 0;
+	}
+	if( rc > 0 ){
+		pOut->iPort = iPort;
+		pOut->bPort = 1;
+	}
+	return 1;
+}
+/*
+ * php's URL parser, as parse_url() needs it. Returns 0 where php returns FALSE.
+ *
+ * PH7_VmHttpSplitURI cannot serve here: it is an HTTP REQUEST-target splitter
+ * (the HTTP server and filter_var share it) and assumes the input is
+ * authority-first, so it read "a" as a host and "mailto:me@x.com" as
+ * user:pass@host. php instead decides authority-vs-path up front: only a "//",
+ * with or without a scheme before it, introduces an authority.
+ */
+static int VmUrlSplit(const char *z,int n,VmUrlParts *pOut)
+{
+	int i,k = -1,bScheme,bPortForm = 0,nPortEnd = 0;
+	SyZero(pOut,sizeof(VmUrlParts));
+	/* A leading "//" settles it before any colon is considered: the authority
+	 * starts after the slashes. Reading the colon first turned "//h:80" into a
+	 * host called "//h" and "//[::1]" into a path. */
+	if( n >= 2 && z[0] == '/' && z[1] == '/' ){
+		return VmUrlAuthorityThenPath(&z[2],n - 2,pOut,0);
+	}
+	for( i = 0 ; i < n ; ++i ){
+		if( z[i] == ':' ){
+			k = i;
+			break;
+		}
+	}
+	if( k == 0 && n == 1 ){
+		/* A lone ":" is an EMPTY scheme, which php rejects outright -- unlike
+		 * ":a" or "::", which are simply paths. */
+		return 0;
+	}
+	bScheme = k > 0;
+	for( i = 0 ; bScheme && i < k ; ++i ){
+		if( !VmUrlIsSchemeByte((unsigned char)z[i]) ){
+			bScheme = 0;
+		}
+	}
+	if( bScheme && k + 1 == n ){
+		/* "x:" -- the scheme is the whole URL */
+		SyStringInitFromBuf(&pOut->sScheme,z,(sxu32)k);
+		pOut->bScheme = 1;
+		return 1;
+	}
+	/* Decide whether that ':' introduces a PORT rather than a scheme: at least
+	 * one digit, running to the end of the string or to a '/'. That is what
+	 * makes "a:80" a host:port while "a:80?q" is a scheme with path "80", and
+	 * it holds however the ':' is reached -- ":1" and "/:1" are both authorities
+	 * with an empty host, which php rejects. php caps the run, so a long number
+	 * stays a path: "a:123456" is a path, "a:99999" an out-of-range port. */
+	if( k >= 0 ){
+		int p = k + 1;
+		int bBeforeQuery = 1;
+		nPortEnd = k + 1;
+		/* A ':' that sits inside a query or fragment is just data: "?:1" is a
+		 * query of ":1", not an authority with an empty host. */
+		for( i = 0 ; i < k ; ++i ){
+			if( z[i] == '?' || z[i] == '#' ){
+				bBeforeQuery = 0;
+				break;
+			}
+		}
+		while( p < n && z[p] >= '0' && z[p] <= '9' ){
+			p++;
+		}
+		if( bBeforeQuery && p > k + 1 && (p >= n || z[p] == '/') && (p - k) < 7 ){
+			bPortForm = 1;
+			nPortEnd = p;
+		}
+	}
+	if( !bScheme ){
+		if( bPortForm ){
+			if( !VmUrlPreparePort(z,k,nPortEnd,pOut) ){
+				return 0;
+			}
+			return VmUrlAuthorityThenPath(z,n,pOut,1);
+		}
+		VmUrlParsePath(z,n,pOut);
+		if( !pOut->bPath && !pOut->bQuery && !pOut->bFragment ){
+			/* php reports the empty URL as an empty PATH, not as no components */
+			SyStringInitFromBuf(&pOut->sPath,z,0);
+			pOut->bPath = 1;
+		}
+		return 1;
+	}
+	if( bPortForm ){
+		if( !VmUrlPreparePort(z,k,nPortEnd,pOut) ){
+			return 0;
+		}
+		return VmUrlAuthorityThenPath(z,n,pOut,1);
+	}
+	SyStringInitFromBuf(&pOut->sScheme,z,(sxu32)k);
+	pOut->bScheme = 1;
+	if( z[k+1] == '/' && k + 2 < n && z[k+2] == '/' ){
+		if( k + 3 < n && z[k+3] == '/' && pOut->sScheme.nByte == 4
+		 && (z[0]=='f'||z[0]=='F') && (z[1]=='i'||z[1]=='I')
+		 && (z[2]=='l'||z[2]=='L') && (z[3]=='e'||z[3]=='E') ){
+			/* file:/// has no authority: the path starts at the third slash,
+			 * except that a "c:" drive letter swallows it (file:///c:/x is the
+			 * path "c:/x"). A '|' in place of the ':' does NOT count. */
+			int iBase = k + 3;
+			if( iBase + 2 < n && VmUrlIsAlpha((unsigned char)z[iBase+1]) && z[iBase+2] == ':' ){
+				iBase++;
+			}
+			VmUrlParsePath(&z[iBase],n - iBase,pOut);
+			return 1;
+		}
+		return VmUrlAuthorityThenPath(&z[k+3],n - k - 3,pOut,0);
+	}
+	/* "mailto:me@x.com", "x:y", "http:/x": everything after the ':' is a path */
+	VmUrlParsePath(&z[k+1],n - k - 1,pOut);
+	return 1;
+}
+/*
+ * Emit one parsed component into pValue, replacing control bytes with '_'.
+ *
+ * php runs php_replace_controlchars_ex over every string component it returns,
+ * so a URL carrying a raw NUL, newline or DEL cannot smuggle it through into
+ * whatever the caller splices the component into (a header, a log line, a
+ * redirect). Bytes >= 0x80 are deliberately left alone -- php only folds the
+ * ASCII control range.
+ */
+static void VmUrlSetComponent(ph7_value *pValue,const SyString *pComp)
+{
+	const char *z = pComp->zString;
+	sxu32 n = pComp->nByte,i,iRun = 0;
+	if( n < 1 || z == 0 ){
+		ph7_value_string(pValue,"",0);
+		return;
+	}
+	for( i = 0 ; i < n ; ++i ){
+		unsigned char c = (unsigned char)z[i];
+		if( c < 0x20 || c == 0x7f ){
+			if( i > iRun ){
+				ph7_value_string(pValue,&z[iRun],(int)(i - iRun));
+			}
+			ph7_value_string(pValue,"_",1);
+			iRun = i + 1;
+		}
+	}
+	if( n > iRun ){
+		ph7_value_string(pValue,&z[iRun],(int)(n - iRun));
+	}
+}
 PH7_PRIVATE int vm_builtin_parse_url(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zStr; /* Input string */
-	SyString *pComp;  /* Pointer to the URI component */
-	SyhttpUri sURI;   /* Parse of the given URI */
+	VmUrlParts sUrl;  /* Parse of the given URI */
+	SyString *pComp;
+	int bHave;
 	int nLen;
-	sxi32 rc;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract the given URI */
+	/* Extract the given URI. An empty string is NOT a failure: php parses it as
+	 * an empty path. */
 	zStr = ph7_value_to_string(apArg[0],&nLen);
-	if( nLen < 1 ){
-		/* Nothing to process,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	if( nLen < 0 ){
+		nLen = 0;
 	}
-	/* Get a parse */
-	rc = PH7_VmHttpSplitURI(&sURI,zStr,(sxu32)nLen);
-	if( rc != SXRET_OK ){
+	if( !VmUrlSplit(zStr,nLen,&sUrl) ){
 		/* Malformed input,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	if( nArg > 1 ){
+	if( nArg > 1 && ph7_value_to_int(apArg[1]) >= 0 ){
+		/* Refer to constant.c for constants values (php's PHP_URL_* are 0-based;
+		 * PHL used to number them from 1, so every literal component id selected
+		 * the WRONG field -- and the constants' own tests only asserted "%d",
+		 * which any numbering satisfies). A negative id means "the whole array",
+		 * which is what the default $component = -1 relies on. */
 		int nComponent = ph7_value_to_int(apArg[1]);
-		/* Refer to constant.c for constants values */
+		pComp = 0;
+		bHave = 0;
 		switch(nComponent){
-		case 1: /* PHP_URL_SCHEME */
-			pComp = &sURI.sScheme;
-			if( pComp->nByte < 1 ){
-				/* No available value,return NULL */
-				ph7_result_null(pCtx);
+		case 0: /* PHP_URL_SCHEME */   pComp = &sUrl.sScheme;   bHave = sUrl.bScheme;   break;
+		case 1: /* PHP_URL_HOST */     pComp = &sUrl.sHost;     bHave = sUrl.bHost;     break;
+		case 2: /* PHP_URL_PORT */
+			if( sUrl.bPort ){
+				ph7_result_int(pCtx,sUrl.iPort);
 			}else{
-				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);
-			}
-			break;
-		case 2: /* PHP_URL_HOST */
-			pComp = &sURI.sHost;
-			if( pComp->nByte < 1 ){
-				/* No available value,return NULL */
 				ph7_result_null(pCtx);
-			}else{
-				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);
 			}
-			break;
-		case 3: /* PHP_URL_PORT */
-			pComp = &sURI.sPort;
-			if( pComp->nByte < 1 ){
-				/* No available value,return NULL */
-				ph7_result_null(pCtx);
-			}else{
-				int iPort = 0;
-				/* Cast the value to integer */
-				SyStrToInt32(pComp->zString,pComp->nByte,(void *)&iPort,0);
-				ph7_result_int(pCtx,iPort);
-			}
-			break;
-		case 4: /* PHP_URL_USER */
-			pComp = &sURI.sUser;
-			if( pComp->nByte < 1 ){
-				/* No available value,return NULL */
-				ph7_result_null(pCtx);
-			}else{
-				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);
-			}
-			break;
-		case 5: /* PHP_URL_PASS */
-			pComp = &sURI.sPass;
-			if( pComp->nByte < 1 ){
-				/* No available value,return NULL */
-				ph7_result_null(pCtx);
-			}else{
-				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);
-			}
-			break;
-		case 7: /* PHP_URL_QUERY */
-			pComp = &sURI.sQuery;
-			if( pComp->nByte < 1 ){
-				/* No available value,return NULL */
-				ph7_result_null(pCtx);
-			}else{
-				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);
-			}
-			break;
-		case 8: /* PHP_URL_FRAGMENT */
-			pComp = &sURI.sFragment;
-			if( pComp->nByte < 1 ){
-				/* No available value,return NULL */
-				ph7_result_null(pCtx);
-			}else{
-				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);
-			}
-			break;
-		case 6: /*  PHP_URL_PATH */
-			pComp = &sURI.sPath;
-			if( pComp->nByte < 1 ){
-				/* No available value,return NULL */
-				ph7_result_null(pCtx);
-			}else{
-				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);
-			}
-			break;
+			return PH7_OK;
+		case 3: /* PHP_URL_USER */     pComp = &sUrl.sUser;     bHave = sUrl.bUser;     break;
+		case 4: /* PHP_URL_PASS */     pComp = &sUrl.sPass;     bHave = sUrl.bPass;     break;
+		case 5: /* PHP_URL_PATH */     pComp = &sUrl.sPath;     bHave = sUrl.bPath;     break;
+		case 6: /* PHP_URL_QUERY */    pComp = &sUrl.sQuery;    bHave = sUrl.bQuery;    break;
+		case 7: /* PHP_URL_FRAGMENT */ pComp = &sUrl.sFragment; bHave = sUrl.bFragment; break;
 		default:
-			/* No such entry,return NULL */
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"parse_url(): Argument #2 ($component) must be a valid URL component identifier, %d given",
+				nComponent);
+		}
+		if( bHave ){
+			ph7_value *pOut = ph7_context_new_scalar(pCtx);
+			if( pOut == 0 ){
+				ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 engine is running out of memory");
+				ph7_result_bool(pCtx,0);
+				return PH7_OK;
+			}
+			VmUrlSetComponent(pOut,pComp);
+			ph7_result_value(pCtx,pOut);
+		}else{
+			/* No available value,return NULL */
 			ph7_result_null(pCtx);
-			break;
 		}
 	}else{
 		ph7_value *pArray,*pValue;
@@ -1301,63 +1600,46 @@ PH7_PRIVATE int vm_builtin_parse_url(ph7_context *pCtx,int nArg,ph7_value **apAr
 			ph7_result_bool(pCtx,0);
 			return PH7_OK;
 		}
-		/* Fill the array */
-		pComp = &sURI.sScheme;
-		if( pComp->nByte > 0 ){
-			ph7_value_string(pValue,pComp->zString,(int)pComp->nByte);
+		/* Fill the array, in php's key order. A component is emitted whenever it
+		 * is PRESENT, even when empty -- parse_url("?") is ['query'=>'']. */
+		if( sUrl.bScheme ){
+			VmUrlSetComponent(pValue,&sUrl.sScheme);
 			ph7_array_add_strkey_elem(pArray,"scheme",pValue); /* Will make it's own copy */
+			ph7_value_reset_string_cursor(pValue);
 		}
-		/* Reset the string cursor */
-		ph7_value_reset_string_cursor(pValue);
-		pComp = &sURI.sHost;
-		if( pComp->nByte > 0 ){
-			ph7_value_string(pValue,pComp->zString,(int)pComp->nByte);
-			ph7_array_add_strkey_elem(pArray,"host",pValue); /* Will make it's own copy */
+		if( sUrl.bHost ){
+			VmUrlSetComponent(pValue,&sUrl.sHost);
+			ph7_array_add_strkey_elem(pArray,"host",pValue);
+			ph7_value_reset_string_cursor(pValue);
 		}
-		/* Reset the string cursor */
-		ph7_value_reset_string_cursor(pValue);
-		pComp = &sURI.sPort;
-		if( pComp->nByte > 0 ){
-			int iPort = 0;/* cc warning */
-			/* Convert to integer */
-			SyStrToInt32(pComp->zString,pComp->nByte,(void *)&iPort,0);
-			ph7_value_int(pValue,iPort);
-			ph7_array_add_strkey_elem(pArray,"port",pValue); /* Will make it's own copy */
+		if( sUrl.bPort ){
+			ph7_value_int(pValue,sUrl.iPort);
+			ph7_array_add_strkey_elem(pArray,"port",pValue);
+			ph7_value_reset_string_cursor(pValue);
 		}
-		/* Reset the string cursor */
-		ph7_value_reset_string_cursor(pValue);
-		pComp = &sURI.sUser;
-		if( pComp->nByte > 0 ){
-			ph7_value_string(pValue,pComp->zString,(int)pComp->nByte);
-			ph7_array_add_strkey_elem(pArray,"user",pValue); /* Will make it's own copy */
+		if( sUrl.bUser ){
+			VmUrlSetComponent(pValue,&sUrl.sUser);
+			ph7_array_add_strkey_elem(pArray,"user",pValue);
+			ph7_value_reset_string_cursor(pValue);
 		}
-		/* Reset the string cursor */
-		ph7_value_reset_string_cursor(pValue);
-		pComp = &sURI.sPass;
-		if( pComp->nByte > 0 ){
-			ph7_value_string(pValue,pComp->zString,(int)pComp->nByte);
-			ph7_array_add_strkey_elem(pArray,"pass",pValue); /* Will make it's own copy */
+		if( sUrl.bPass ){
+			VmUrlSetComponent(pValue,&sUrl.sPass);
+			ph7_array_add_strkey_elem(pArray,"pass",pValue);
+			ph7_value_reset_string_cursor(pValue);
 		}
-		/* Reset the string cursor */
-		ph7_value_reset_string_cursor(pValue);
-		pComp = &sURI.sPath;
-		if( pComp->nByte > 0 ){
-			ph7_value_string(pValue,pComp->zString,(int)pComp->nByte);
-			ph7_array_add_strkey_elem(pArray,"path",pValue); /* Will make it's own copy */
+		if( sUrl.bPath ){
+			VmUrlSetComponent(pValue,&sUrl.sPath);
+			ph7_array_add_strkey_elem(pArray,"path",pValue);
+			ph7_value_reset_string_cursor(pValue);
 		}
-		/* Reset the string cursor */
-		ph7_value_reset_string_cursor(pValue);
-		pComp = &sURI.sQuery;
-		if( pComp->nByte > 0 ){
-			ph7_value_string(pValue,pComp->zString,(int)pComp->nByte);
-			ph7_array_add_strkey_elem(pArray,"query",pValue); /* Will make it's own copy */
+		if( sUrl.bQuery ){
+			VmUrlSetComponent(pValue,&sUrl.sQuery);
+			ph7_array_add_strkey_elem(pArray,"query",pValue);
+			ph7_value_reset_string_cursor(pValue);
 		}
-		/* Reset the string cursor */
-		ph7_value_reset_string_cursor(pValue);
-		pComp = &sURI.sFragment;
-		if( pComp->nByte > 0 ){
-			ph7_value_string(pValue,pComp->zString,(int)pComp->nByte);
-			ph7_array_add_strkey_elem(pArray,"fragment",pValue); /* Will make it's own copy */
+		if( sUrl.bFragment ){
+			VmUrlSetComponent(pValue,&sUrl.sFragment);
+			ph7_array_add_strkey_elem(pArray,"fragment",pValue);
 		}
 		/* Return the created array */
 		ph7_result_value(pCtx,pArray);
@@ -1369,6 +1651,7 @@ PH7_PRIVATE int vm_builtin_parse_url(ph7_context *pCtx,int nArg,ph7_value **apAr
 	/* All done */
 	return PH7_OK;
 }
+
 /*
  * Section:
  *   Array related routines.
