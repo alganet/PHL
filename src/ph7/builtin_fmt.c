@@ -91,7 +91,7 @@ static const ph7_fmt_info aFmt[] = {
  * char, so a NUL specifier byte — "%\0" — is still reported, not mistaken for
  * "all valid".)
  */
-static int FormatUnknownSpec(const char *zIn,int nByte,int *pBad)
+static int FormatUnknownSpec(const char *zIn,int nByte,int *pBad,int *pbDangling)
 {
 	const char *zEnd = &zIn[nByte];
 	int c,idx;
@@ -158,9 +158,10 @@ static int FormatUnknownSpec(const char *zIn,int nByte,int *pBad)
 			zIn++;
 		}
 		if( zIn >= zEnd ){
-			/* A dangling '%' with no specifier: PHL's legacy path silently
-			 * truncates here (recorded residual); nothing to validate. */
-			break;
+			/* A dangling '%' the format string ends on: php raises
+			 * `ValueError: Missing format specifier at end of string`. */
+			*pbDangling = TRUE;
+			return FALSE;
 		}
 		c = zIn[0];
 		zIn++; /* jump the conversion specifier */
@@ -186,10 +187,14 @@ static int FormatUnknownSpec(const char *zIn,int nByte,int *pBad)
  */
 PH7_PRIVATE sxi32 PH7_FormatValidate(ph7_context *pCtx,const char *zFormat,int nByte)
 {
-	int badSpec = 0;
-	if( FormatUnknownSpec(zFormat,nByte,&badSpec) ){
+	int badSpec = 0,bDangling = FALSE;
+	if( FormatUnknownSpec(zFormat,nByte,&badSpec,&bDangling) ){
 		return PH7_VmThrowException(pCtx,"ValueError",
 			"Unknown format specifier \"%c\"",badSpec);
+	}
+	if( bDangling ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"Missing format specifier at end of string");
 	}
 	return PH7_OK;
 }
@@ -240,7 +245,17 @@ static int FormatRequiredArgs(const char *zIn,int nByte)
 		}
 		/* a single 'l' length modifier (ignored, php compat) */
 		if( zIn < zEnd && zIn[0]=='l' ){ zIn++; }
-		if( zIn >= zEnd ){ break; }
+		if( zIn >= zEnd ){
+			/* A dangling '%' still COUNTS as needing a value: php reports
+			 * sprintf("%") as "2 arguments are required, 1 given" and only
+			 * raises the missing-specifier ValueError once the count is met. */
+			if( pos > 0 ){
+				if( pos > maxpos ){ maxpos = pos; }
+			}else{
+				seq++;
+			}
+			break;
+		}
 		c = zIn[0];
 		zIn++; /* jump the conversion specifier */
 		if( c == '%' ){ continue; } /* %% consumes no argument */
@@ -819,12 +834,12 @@ PH7_PRIVATE int PH7_builtin_sprintf(ph7_context *pCtx,int nArg,ph7_value **apArg
 	}
 	/* PHP 8: an unknown format specifier throws a catchable ValueError before any
 	 * output; propagate the throw status verbatim. */
-	rc = PH7_FormatValidate(pCtx,zFormat,nLen);
+	rc = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,nArg-1,1,FALSE);
 	if( rc != PH7_OK ){
 		return rc;
 	}
 	/* PHP 8: too few value arguments is a catchable ArgumentCountError before output. */
-	rc = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,nArg-1,1,FALSE);
+	rc = PH7_FormatValidate(pCtx,zFormat,nLen);
 	if( rc != PH7_OK ){
 		return rc;
 	}
@@ -882,15 +897,16 @@ PH7_PRIVATE int PH7_builtin_printf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
 	}
-	/* PHP 8: an unknown format specifier throws a catchable ValueError before any
-	 * output; propagate the throw status verbatim. */
 	{
-		sxi32 rcv = PH7_FormatValidate(pCtx,zFormat,nLen);
+		/* PHP 8: too few value arguments is a catchable ArgumentCountError before
+		 * output, and php runs this check BEFORE validating the specifiers. */
+		sxi32 rcv = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,nArg-1,1,FALSE);
 		if( rcv != PH7_OK ){
 			return rcv;
 		}
-		/* PHP 8: too few value arguments is a catchable ArgumentCountError before output. */
-		rcv = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,nArg-1,1,FALSE);
+		/* PHP 8: an unknown or missing format specifier throws a catchable ValueError
+		 * before any output; propagate the throw status verbatim. */
+		rcv = PH7_FormatValidate(pCtx,zFormat,nLen);
 		if( rcv != PH7_OK ){
 			return rcv;
 		}
@@ -942,17 +958,19 @@ PH7_PRIVATE int PH7_builtin_vprintf(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
 	}
-	/* PHP 8: an unknown format specifier throws a catchable ValueError before any
-	 * output; propagate the throw status verbatim. */
-	rcFmt = PH7_FormatValidate(pCtx,zFormat,nLen);
-	if( rcFmt != PH7_OK ){
-		return rcFmt;
-	}
 	/* Point to the hashmap */
 	pMap = (ph7_hashmap *)apArg[1]->x.pOther;
 	/* PHP 8: too few items in the $values array is a catchable ValueError before output.
-	 * Checked on the entry count before materialising the value set. */
+	 * Checked on the entry count before materialising the value set. php runs this check
+	 * BEFORE validating the specifiers, so vsprintf("%",[]) reports the missing item
+	 * rather than the missing specifier. */
 	rcFmt = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,(int)pMap->nEntry,1,TRUE);
+	if( rcFmt != PH7_OK ){
+		return rcFmt;
+	}
+	/* PHP 8: an unknown or missing format specifier throws a catchable ValueError before
+	 * any output; propagate the throw status verbatim. */
+	rcFmt = PH7_FormatValidate(pCtx,zFormat,nLen);
 	if( rcFmt != PH7_OK ){
 		return rcFmt;
 	}
@@ -1007,16 +1025,17 @@ PH7_PRIVATE int PH7_builtin_vsprintf(ph7_context *pCtx,int nArg,ph7_value **apAr
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
-	/* PHP 8: an unknown format specifier throws a catchable ValueError before any
-	 * output; propagate the throw status verbatim. */
-	rcFmt = PH7_FormatValidate(pCtx,zFormat,nLen);
+	/* Point to hashmap */
+	pMap = (ph7_hashmap *)apArg[1]->x.pOther;
+	/* PHP 8: too few items in the $values array is a catchable ValueError before output.
+	 * php runs this BEFORE validating the specifiers. */
+	rcFmt = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,(int)pMap->nEntry,1,TRUE);
 	if( rcFmt != PH7_OK ){
 		return rcFmt;
 	}
-	/* Point to hashmap */
-	pMap = (ph7_hashmap *)apArg[1]->x.pOther;
-	/* PHP 8: too few items in the $values array is a catchable ValueError before output. */
-	rcFmt = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,(int)pMap->nEntry,1,TRUE);
+	/* PHP 8: an unknown or missing format specifier throws a catchable ValueError before
+	 * any output; propagate the throw status verbatim. */
+	rcFmt = PH7_FormatValidate(pCtx,zFormat,nLen);
 	if( rcFmt != PH7_OK ){
 		return rcFmt;
 	}
