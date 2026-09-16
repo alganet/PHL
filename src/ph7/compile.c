@@ -2742,6 +2742,33 @@ PH7_PRIVATE sxi32 PH7_GenSyntaxError(
 		zNoun = "identifier";
 	}else if( pTok->nType & PH7_TK_DOLLAR ){
 		zNoun = "variable";
+		/* The '$' is its own token and carries only "$" as text; the NAME is the
+		 * token after it. php names the whole variable, so `$x` was being reported
+		 * as the nameless `variable "$"`. Stitch the two back together. */
+		if( pGen->pTokenSet ){
+			SyToken *pBase = (SyToken *)SySetBasePtr(pGen->pTokenSet);
+			SyToken *pStreamEnd = &pBase[SySetUsed(pGen->pTokenSet)];
+			SyToken *pName = &pTok[1];
+			if( pTok >= pBase && pName < pStreamEnd
+				&& (pName->nType & (PH7_TK_ID|PH7_TK_KEYWORD))
+				&& pName->sData.nByte > 0 ){
+				SyBlobReset(&pGen->sWorker);
+				SyBlobAppend(&pGen->sWorker,"$",sizeof(char));
+				SyBlobAppend(&pGen->sWorker,pName->sData.zString,pName->sData.nByte);
+				{
+					SyString sVar;
+					SyStringInitFromBuf(&sVar,SyBlobData(&pGen->sWorker),
+						SyBlobLength(&pGen->sWorker));
+					if( zExpecting ){
+						return PH7_GenCompileError(pGen,E_PARSE,nLine,
+							"syntax error, unexpected %s \"%z\", expecting %s",
+							zNoun,&sVar,zExpecting);
+					}
+					return PH7_GenCompileError(pGen,E_PARSE,nLine,
+						"syntax error, unexpected %s \"%z\"",zNoun,&sVar);
+				}
+			}
+		}
 	}else if( pTok->nType & PH7_TK_INTEGER ){
 		zNoun = "integer";
 	}else if( pTok->nType & PH7_TK_REAL ){
