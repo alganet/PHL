@@ -2,17 +2,23 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-chr(-1) wraps to chr(255) with deprecation
-
+POLICY DIVERGENCE (non-deprecated compatibility): php merely DEPRECATES an out-of-range chr() codepoint and constrains it with % 256, so PHL rejects it with a ValueError instead. php's deprecating half lives in the _zend twin.
 --SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip php only deprecates an out-of-range chr(), and the stock php.ini masks it'; ?>
+<?php
+if (function_exists('zend_version')) {
+    echo "skip";
+}
+?>
 --FILE--
 <?php
-echo ord(chr(-1)) . "\n";
+try {
+    echo ord(chr(-1)) . "\n";
+} catch (ValueError $e) {
+    echo get_class($e), ": ", $e->getMessage(), "\n";
+}
 ?>
---EXPECTF--
-Error [%d]: chr(): Providing a value not in-between 0 and 255 is deprecated, this is because a byte value must be in the [0, 255] interval. The value used will be constrained using %% 256 in %s on line %d
-255
+--EXPECT--
+ValueError: chr(): Argument #1 ($codepoint) must be between 0 and 255
 --CLEAN--
 <?php
-
+unset($e);

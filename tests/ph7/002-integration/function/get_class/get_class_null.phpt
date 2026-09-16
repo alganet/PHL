@@ -2,19 +2,17 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-get_class returns class name of object
---SKIPIF--
-<?php
-if (!function_exists('get_class')) { echo 'skip: get_class not available'; }
-if (function_exists('zend_version')) { echo 'skip: PHP get_class(null) throws fatal error, PHL returns false'; }
-?>
+get_class(null) throws php's TypeError (now cross-engine: PHL used to return false behind a zend_version guard; the central non-nullable-parameter screen makes it php-exact)
 --FILE--
 <?php
-$result = get_class(null);
-if ($result === false) { echo "null_false_ok\n"; } else { echo "null_false_failed\n"; }
+try {
+    get_class(null);
+} catch (TypeError $e) {
+    echo $e->getMessage(), "\n";
+}
 ?>
 --EXPECT--
-null_false_ok
+get_class(): Argument #1 ($object) must be of type object, null given
 --CLEAN--
 <?php
-unset($result);
+unset($e);

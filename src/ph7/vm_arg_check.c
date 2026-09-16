@@ -1046,6 +1046,18 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 						zGiven = VmArgTypeName(pArg);
 					}
 				}
+			}else if( (pArg->iFlags & MEMOBJ_NULL) != 0 ){
+				/* php only DEPRECATES null for a non-nullable parameter; PHL rejects
+				 * it (scope policy). A leading '?' or an explicit "null" arm in a
+				 * union declares the parameter nullable. A "callable" parameter is
+				 * left to the builtin's own callback check, which words the failure
+				 * php's way ("must be a valid callback, no array or string given") —
+				 * the same reason get_class_vars() sits on azSelfChecked[]. */
+				if( zType[0] != '?'
+				 && !VmSigTypeHas(zType,nType,"null")
+				 && !VmSigTypeHas(zType,nType,"callable") ){
+					zGiven = "null";
+				}
 			}else if( (pArg->iFlags & MEMOBJ_RES) != 0 ){
 				/* A class-typed parameter also accepts a resource: several handles php 8
 				 * models as objects are still resources here (xml_*'s XMLParser is the
