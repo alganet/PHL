@@ -881,7 +881,12 @@ static sxu32 KeywordCode(const char *z, int n){
   };
   int h, i;
   if( n<2 ) return PH7_TK_ID;
-  h = (((int)z[0]*4) ^ ((int)z[n-1]*3) ^ n) % 151;
+  /* Hash through UNSIGNED bytes: `char` is signed on most targets, so an
+   * identifier carrying a high byte (php allows 0x80-0xFF in identifiers, and
+   * every UTF-8 name has them) made the xor negative, and C's `%` keeps that
+   * sign — aHash[-46] read off the front of the table. ASCII is unaffected, so
+   * the generated keyword buckets still resolve exactly as before. */
+  h = (int)(((sxu32)(sxu8)z[0]*4) ^ ((sxu32)(sxu8)z[n-1]*3) ^ (sxu32)n) % 151;
   for(i=((int)aHash[h])-1; i>=0; i=((int)aNext[i])-1){
     if( (int)aLen[i]==n && SyMemcmp(&zText[aOffset[i]],z,n)==0 ){
        /* PH7_TKWRD_EXTENDS */
