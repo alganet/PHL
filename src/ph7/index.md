@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 45786/56242 lines (81.41%)
+Coverage: 45824/56300 lines (81.39%)
 
 [Up](../index.md)
 
@@ -19,15 +19,15 @@ Coverage: 45786/56242 lines (81.41%)
 |[compile.c](compile.c.md)|92.06%|1495/1624|
 |[compile_class.c](compile_class.c.md)|74.85%|2018/2696|
 |[compile_func.c](compile_func.c.md)|85.88%|870/1013|
-|[compile_literal.c](compile_literal.c.md)|89.15%|945/1060|
+|[compile_literal.c](compile_literal.c.md)|89.21%|951/1066|
 |[compile_node.c](compile_node.c.md)|83.33%|675/810|
 |[compile_stmt.c](compile_stmt.c.md)|73.92%|1448/1959|
 |[constant.c](constant.c.md)|93.09%|970/1042|
 |[hashmap.c](hashmap.c.md)|90.77%|1042/1148|
-|[hashmap_builtin.c](hashmap_builtin.c.md)|85.84%|2443/2846|
+|[hashmap_builtin.c](hashmap_builtin.c.md)|85.87%|2444/2846|
 |[hashmap_sort.c](hashmap_sort.c.md)|91.14%|463/508|
 |[lex.c](lex.c.md)|93.46%|814/871|
-|[memobj.c](memobj.c.md)|81.88%|836/1021|
+|[memobj.c](memobj.c.md)|81.55%|840/1030|
 |[net.c](net.c.md)|57.45%|81/141|
 |[oo.c](oo.c.md)|87.62%|736/840|
 |[parse.c](parse.c.md)|86.85%|1182/1361|
@@ -36,7 +36,7 @@ Coverage: 45786/56242 lines (81.41%)
 |[vfs_stream.c](vfs_stream.c.md)|66.90%|1267/1894|
 |[vfs_unix.c](vfs_unix.c.md)|89.38%|421/471|
 |[vfs_win.c](vfs_win.c.md)|82.82%|588/710|
-|[vm.c](vm.c.md)|83.48%|2334/2796|
+|[vm.c](vm.c.md)|83.19%|2355/2831|
 |[vm_arg_check.c](vm_arg_check.c.md)|97.66%|375/384|
 |[vm_builtin_call.c](vm_builtin_call.c.md)|87.28%|542/621|
 |[vm_builtin_class.c](vm_builtin_class.c.md)|87.60%|629/718|
@@ -51,7 +51,7 @@ Coverage: 45786/56242 lines (81.41%)
 |[vm_builtin_session.c](vm_builtin_session.c.md)|100.00%|4/4|
 |[vm_builtin_spl.c](vm_builtin_spl.c.md)|80.00%|56/70|
 |[vm_builtin_tokenizer.c](vm_builtin_tokenizer.c.md)|1.62%|12/743|
-|[vm_builtin_var.c](vm_builtin_var.c.md)|90.95%|382/420|
+|[vm_builtin_var.c](vm_builtin_var.c.md)|90.65%|388/428|
 |[vm_dom.c](vm_dom.c.md)|86.09%|656/762|
 |[vm_error.c](vm_error.c.md)|86.69%|1759/2029|
 |[vm_exec.c](vm_exec.c.md)|83.66%|2637/3152|

@@ -1377,10 +1377,10 @@ Coverage: 539/836 lines (64.47%)
 |    - | 1367 | ` * Return TRUE if we are dealing with the php:// stream.` |
 |    - | 1368 | ` * FALSE otherwise.` |
 |    - | 1369 | ` */` |
-|  214 | 1370 | `PH7_PRIVATE int is_php_stream(const ph7_io_stream *pStream)` |
+|  216 | 1370 | `PH7_PRIVATE int is_php_stream(const ph7_io_stream *pStream)` |
 |    4 | 1371 | `{` |
 |    - | 1372 | `#ifndef PH7_DISABLE_DISK_IO` |
-|  218 | 1373 | `	return pStream == &sPHP_Stream;` |
+|  220 | 1373 | `	return pStream == &sPHP_Stream;` |
 |    - | 1374 | `#else` |
 |    - | 1375 | `	SXUNUSED(pStream); /* cc warning */` |
 |    - | 1376 | `	return 0;` |
@@ -1389,10 +1389,10 @@ Coverage: 539/836 lines (64.47%)
 |    - | 1379 | `/*` |
 |    - | 1380 | ` * Return TRUE if we are dealing with the data:// stream.` |
 |    - | 1381 | ` */` |
-|  194 | 1382 | `PH7_PRIVATE int is_data_stream(const ph7_io_stream *pStream)` |
+|  196 | 1382 | `PH7_PRIVATE int is_data_stream(const ph7_io_stream *pStream)` |
 |    4 | 1383 | `{` |
 |    - | 1384 | `#ifndef PH7_DISABLE_DISK_IO` |
-|  198 | 1385 | `	return pStream == &sDATA_Stream;` |
+|  200 | 1385 | `	return pStream == &sDATA_Stream;` |
 |    - | 1386 | `#else` |
 |    - | 1387 | `	SXUNUSED(pStream); /* cc warning */` |
 |    - | 1388 | `	return 0;` |
