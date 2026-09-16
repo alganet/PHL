@@ -50,9 +50,9 @@ Coverage: 2443/2846 lines (85.84%)
 |       - |   40 | `		/* Do the merge sort */` |
 |       3 |   41 | `		HashmapMergeSort(pMap,HashmapCmpCallback7,0);` |
 |       - |   42 | `		/* Fix the last link broken by the merge */` |
-|       5 |   43 | `		while(pMap->pLast->pPrev){` |
-|       2 |   44 | `			pMap->pLast = pMap->pLast->pPrev;` |
-|     ! 0 |   45 | `		}` |
+|      11 |   43 | `		while(pMap->pLast->pPrev){` |
+|       9 |   44 | `			pMap->pLast = pMap->pLast->pPrev;` |
+|       1 |   45 | `		}` |
 |       1 |   46 | `	}` |
 |       - |   47 | `	/* All done,return TRUE */` |
 |       3 |   48 | `	ph7_result_bool(pCtx,1);` |
@@ -1374,15 +1374,15 @@ Coverage: 2443/2846 lines (85.84%)
 |       - | 1364 | `	/* Perform the requested operation */` |
 |     197 | 1365 | `	pNode = pMap->pFirst;` |
 |     197 | 1366 | `	PH7_MemObjInit(pMap->pVm,&sVal);` |
-|    1631 | 1367 | `	for( n = 0 ; n < pMap->nEntry ; ++n ){` |
-|    1439 | 1368 | `		if( pNode->iType == HASHMAP_INT_NODE ){` |
+|    1651 | 1367 | `	for( n = 0 ; n < pMap->nEntry ; ++n ){` |
+|    1459 | 1368 | `		if( pNode->iType == HASHMAP_INT_NODE ){` |
 |     191 | 1369 | `			PH7_MemObjInitFromInt(pMap->pVm,&sObj,pNode->xKey.iKey);` |
 |      97 | 1370 | `		}else{` |
-|    1250 | 1371 | `			SyStringInitFromBuf(&sKey,SyBlobData(&pNode->xKey.sKey),SyBlobLength(&pNode->xKey.sKey));` |
-|    1250 | 1372 | `			PH7_MemObjInitFromString(pMap->pVm,&sObj,&sKey);` |
+|    1270 | 1371 | `			SyStringInitFromBuf(&sKey,SyBlobData(&pNode->xKey.sKey),SyBlobLength(&pNode->xKey.sKey));` |
+|    1270 | 1372 | `			PH7_MemObjInitFromString(pMap->pVm,&sObj,&sKey);` |
 |       - | 1373 | `		}` |
-|    1439 | 1374 | `		rc = 0;` |
-|    1439 | 1375 | `		if( nArg > 1 ){` |
+|    1459 | 1374 | `		rc = 0;` |
+|    1459 | 1375 | `		if( nArg > 1 ){` |
 |      65 | 1376 | `			ph7_value *pValue = HashmapExtractNodeValue(pNode);` |
 |      65 | 1377 | `			if( pValue ){` |
 |       - | 1378 | `				ph7_value sNeedle;` |
@@ -1398,14 +1398,14 @@ Coverage: 2443/2846 lines (85.84%)
 |      65 | 1388 | `				PH7_MemObjRelease(&sVal);` |
 |      32 | 1389 | `			}` |
 |      32 | 1390 | `		}` |
-|    1439 | 1391 | `		if( rc == 0 ){` |
+|    1459 | 1391 | `		if( rc == 0 ){` |
 |       - | 1392 | `			/* Perform the insertion */` |
-|    1407 | 1393 | `			ph7_array_add_elem(pArray,0,&sObj);` |
-|     701 | 1394 | `		}` |
-|    1439 | 1395 | `		PH7_MemObjRelease(&sObj);` |
+|    1427 | 1393 | `			ph7_array_add_elem(pArray,0,&sObj);` |
+|     711 | 1394 | `		}` |
+|    1459 | 1395 | `		PH7_MemObjRelease(&sObj);` |
 |       - | 1396 | `		/* Point to the next entry */` |
-|    1439 | 1397 | `		pNode = pNode->pPrev; /* Reverse link */` |
-|     722 | 1398 | `	}` |
+|    1459 | 1397 | `		pNode = pNode->pPrev; /* Reverse link */` |
+|     732 | 1398 | `	}` |
 |       - | 1399 | `	/* return the new array */` |
 |     197 | 1400 | `	ph7_result_value(pCtx,pArray);` |
 |     197 | 1401 | `	return PH7_OK;` |
@@ -4122,16 +4122,16 @@ Coverage: 2443/2846 lines (85.84%)
 |     ! 0 | 4112 | `					nEntry--;` |
 |     ! 0 | 4113 | `				}` |
 |     ! 0 | 4114 | `			}` |
-|       2 | 4115 | `		}else{` |
-|       4 | 4116 | `			pNode = pMap->pFirst;` |
-|       2 | 4117 | `			for(;;){` |
-|       5 | 4118 | `				if( nEntry == 0 ){` |
-|       4 | 4119 | `					break;` |
+|       4 | 4115 | `		}else{` |
+|       5 | 4116 | `			pNode = pMap->pFirst;` |
+|       1 | 4117 | `			for(;;){` |
+|       6 | 4118 | `				if( nEntry == 0 ){` |
+|       5 | 4119 | `					break;` |
 |       - | 4120 | `				}` |
 |       - | 4121 | `				/* Point to the next entry */` |
-|       2 | 4122 | `				pNode = pNode->pPrev; /* Reverse link */` |
-|       2 | 4123 | `				nEntry--;` |
-|       1 | 4124 | `			}` |
+|       1 | 4122 | `				pNode = pNode->pPrev; /* Reverse link */` |
+|       1 | 4123 | `				nEntry--;` |
+|     ! 0 | 4124 | `			}` |
 |       - | 4125 | `		}` |
 |       9 | 4126 | `		if( pNode->iType == HASHMAP_INT_NODE ){` |
 |       - | 4127 | `			/* Int key */` |

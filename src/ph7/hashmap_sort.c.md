@@ -50,26 +50,26 @@ Coverage: 463/508 lines (91.14%)
 |      - |   40 | `    /* Prevent compiler warning */` |
 |  52205 |   41 | `	result.pNext = result.pPrev = 0;` |
 |  52205 |   42 | `	pTail = &result;` |
-| 130065 |   43 | `	while( pA && pB ){` |
-|  77865 |   44 | `		if( xCmp(pA,pB,pCmpData) <= 0 ){` |
+| 130061 |   43 | `	while( pA && pB ){` |
+|  77861 |   44 | `		if( xCmp(pA,pB,pCmpData) <= 0 ){` |
 |  61077 |   45 | `			pTail->pPrev = pA;` |
 |  61077 |   46 | `			pA->pNext = pTail;` |
 |  61077 |   47 | `			pTail = pA;` |
 |  61077 |   48 | `			pA = pA->pPrev;` |
-|  30690 |   49 | `		}else{` |
-|  16793 |   50 | `			pTail->pPrev = pB;` |
-|  16793 |   51 | `			pB->pNext = pTail;` |
-|  16793 |   52 | `			pTail = pB;` |
-|  16793 |   53 | `			pB = pB->pPrev;` |
+|  30686 |   49 | `		}else{` |
+|  16789 |   50 | `			pTail->pPrev = pB;` |
+|  16789 |   51 | `			pB->pNext = pTail;` |
+|  16789 |   52 | `			pTail = pB;` |
+|  16789 |   53 | `			pB = pB->pPrev;` |
 |      - |   54 | `		}` |
 |      5 |   55 | `	}` |
 |  52205 |   56 | `	if( pA ){` |
-|   4341 |   57 | `		pTail->pPrev = pA;` |
-|   4341 |   58 | `		pA->pNext = pTail;` |
-|  49902 |   59 | `	}else if( pB ){` |
-|  47545 |   60 | `		pTail->pPrev = pB;` |
-|  47545 |   61 | `		pB->pNext = pTail;` |
-|  23910 |   62 | `	}else{` |
+|   4337 |   57 | `		pTail->pPrev = pA;` |
+|   4337 |   58 | `		pA->pNext = pTail;` |
+|  49905 |   59 | `	}else if( pB ){` |
+|  47549 |   60 | `		pTail->pPrev = pB;` |
+|  47549 |   61 | `		pB->pNext = pTail;` |
+|  23911 |   62 | `	}else{` |
 |    329 |   63 | `		pTail->pPrev = pTail->pNext = 0;` |
 |      - |   64 | `	}` |
 |  52205 |   65 | `	return result.pPrev;` |
@@ -233,7 +233,7 @@ Coverage: 463/508 lines (91.14%)
 |  77399 |  223 | `		return HashmapNodeCmp(pA,pB,FALSE);` |
 |      - |  224 | `	}` |
 |     89 |  225 | `	return HashmapFlagValueCmp(pA,pB,SX_PTR_TO_INT(pCmpData));` |
-|  38638 |  226 | `}` |
+|  38637 |  226 | `}` |
 |      - |  227 | `/*` |
 |      - |  228 | ` * Shared key comparison for ksort()/krsort(): php 8 semantics. Two string` |
 |      - |  229 | ` * keys compare bytewise. Mixed int/string keys: a NUMERIC string compares` |
@@ -479,17 +479,17 @@ Coverage: 463/508 lines (91.14%)
 |      - |  469 | ` * Node comparison callback: Random node comparison.` |
 |      - |  470 | ` * used-by: [shuffle()]` |
 |      - |  471 | ` */` |
-|     22 |  472 | `PH7_PRIVATE sxi32 HashmapCmpCallback7(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
+|     18 |  472 | `PH7_PRIVATE sxi32 HashmapCmpCallback7(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
 |      1 |  473 | `{` |
 |      - |  474 | `	sxu32 n;` |
-|     12 |  475 | `	SXUNUSED(pB); /* cc warning */` |
-|     12 |  476 | `	SXUNUSED(pCmpData);` |
+|      8 |  475 | `	SXUNUSED(pB); /* cc warning */` |
+|      8 |  476 | `	SXUNUSED(pCmpData);` |
 |      - |  477 | `	/* Grab a random number */` |
-|     23 |  478 | `	n = PH7_VmRandomNum(pA->pMap->pVm);` |
+|     19 |  478 | `	n = PH7_VmRandomNum(pA->pMap->pVm);` |
 |      - |  479 | `	/* if the random number is odd then the first node 'pA' is greater then` |
 |      - |  480 | `	 * the second node 'pB'. Otherwise the reverse is assumed.` |
 |      - |  481 | `	 */` |
-|     23 |  482 | `	return n&1 ? 1 : -1;` |
+|     19 |  482 | `	return n&1 ? 1 : -1;` |
 |      1 |  483 | `}` |
 |      - |  484 | `/*` |
 |      - |  485 | ` * Rehash all nodes keys after a merge-sort have been applied.` |
