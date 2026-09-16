@@ -553,15 +553,15 @@ Coverage: 1448/1959 lines (73.92%)
 |        - |  543 | `	sxi32 rc;` |
 |        - |  544 | `	sxu32 nLine;` |
 |  6907283 |  545 | `	if( pGen->pIn->nType & PH7_TK_OCB /* '{' */ ){` |
-|  6782355 |  546 | `		nLine = pGen->pIn->nLine;` |
-|  6782355 |  547 | `		rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_STD,PH7_VmInstrLength(pGen->pVm),0,0);` |
-|  6782355 |  548 | `		if( rc != SXRET_OK ){` |
+|  6782365 |  546 | `		nLine = pGen->pIn->nLine;` |
+|  6782365 |  547 | `		rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_STD,PH7_VmInstrLength(pGen->pVm),0,0);` |
+|  6782365 |  548 | `		if( rc != SXRET_OK ){` |
 |      ! 0 |  549 | `			return SXERR_ABORT;` |
 |        - |  550 | `		}` |
-|  6782355 |  551 | `		pGen->pIn++;` |
+|  6782365 |  551 | `		pGen->pIn++;` |
 |        - |  552 | `		/* Compile until we hit the closing braces '}' */` |
-|  9923896 |  553 | `		for(;;){` |
-| 19847797 |  554 | `			if( pGen->pIn >= pGen->pEnd ){` |
+|  9923906 |  553 | `		for(;;){` |
+| 19847817 |  554 | `			if( pGen->pIn >= pGen->pEnd ){` |
 |       22 |  555 | `				rc = GenStateNextChunk(&(*pGen));` |
 |       22 |  556 | `				if (rc == SXERR_ABORT ){` |
 |      ! 0 |  557 | `			 	   return SXERR_ABORT;` |
@@ -573,19 +573,19 @@ Coverage: 1448/1959 lines (73.92%)
 |       22 |  563 | `					break;` |
 |        - |  564 | `				}` |
 |      ! 0 |  565 | `			}` |
-| 19847777 |  566 | `			if( pGen->pIn->nType & PH7_TK_CCB/*'}'*/ ){` |
+| 19847797 |  566 | `			if( pGen->pIn->nType & PH7_TK_CCB/*'}'*/ ){` |
 |        - |  567 | `				/* Closing braces found,break immediately*/` |
-|  6782335 |  568 | `				pGen->pIn++;` |
-|  6782335 |  569 | `				break;` |
+|  6782345 |  568 | `				pGen->pIn++;` |
+|  6782345 |  569 | `				break;` |
 |        - |  570 | `			}` |
 |        - |  571 | `			/* Compile a single statement */` |
-| 13065447 |  572 | `			rc = GenStateCompileChunk(&(*pGen),PH7_COMPILE_SINGLE_STMT);` |
-| 13065447 |  573 | `			if( rc == SXERR_ABORT ){` |
+| 13065457 |  572 | `			rc = GenStateCompileChunk(&(*pGen),PH7_COMPILE_SINGLE_STMT);` |
+| 13065457 |  573 | `			if( rc == SXERR_ABORT ){` |
 |      ! 0 |  574 | `				return SXERR_ABORT;` |
 |        - |  575 | `			}` |
 |        5 |  576 | `		}` |
-|  6782355 |  577 | `		GenStateLeaveBlock(&(*pGen),0);` |
-|  3516108 |  578 | `	}else if( (pGen->pIn->nType & PH7_TK_COLON /* ':' */) && nKeywordEnd > 0 ){` |
+|  6782365 |  577 | `		GenStateLeaveBlock(&(*pGen),0);` |
+|  3516103 |  578 | `	}else if( (pGen->pIn->nType & PH7_TK_COLON /* ':' */) && nKeywordEnd > 0 ){` |
 |      ! 0 |  579 | `		pGen->pIn++;` |
 |      ! 0 |  580 | `		rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_STD,PH7_VmInstrLength(pGen->pVm),0,0);` |
 |      ! 0 |  581 | `		if( rc != SXRET_OK ){` |
@@ -629,8 +629,8 @@ Coverage: 1448/1959 lines (73.92%)
 |      ! 0 |  619 | `		GenStateLeaveBlock(&(*pGen),0);` |
 |      ! 0 |  620 | `	}else{` |
 |        - |  621 | `		/* Compile a single statement */` |
-|   124933 |  622 | `		rc = GenStateCompileChunk(&(*pGen),PH7_COMPILE_SINGLE_STMT);` |
-|   124933 |  623 | `		if( rc == SXERR_ABORT ){` |
+|   124923 |  622 | `		rc = GenStateCompileChunk(&(*pGen),PH7_COMPILE_SINGLE_STMT);` |
+|   124923 |  623 | `		if( rc == SXERR_ABORT ){` |
 |      ! 0 |  624 | `			return SXERR_ABORT;` |
 |        - |  625 | `		}` |
 |        - |  626 | `	}` |

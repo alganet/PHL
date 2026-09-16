@@ -77,7 +77,7 @@ Coverage: 1495/1624 lines (92.06%)
 |         - |   67 | `/*` |
 |         - |   68 | ` * Initialize a freshly allocated block instance.` |
 |         - |   69 | ` */` |
-|  13070214 |   70 | `static void GenStateInitBlock(` |
+|  13070224 |   70 | `static void GenStateInitBlock(` |
 |         - |   71 | `	ph7_gen_state *pGen, /* Code generator state */` |
 |         - |   72 | `	GenBlock *pBlock,    /* Target block */` |
 |         - |   73 | `	sxi32 iType,         /* Block type [i.e: loop, conditional, function body, etc.]*/` |
@@ -86,21 +86,21 @@ Coverage: 1495/1624 lines (92.06%)
 |         - |   76 | `	)` |
 |         5 |   77 | `{` |
 |         - |   78 | `	/* Initialize block fields */` |
-|  13070219 |   79 | `	pBlock->nFirstInstr = nFirstInstr;` |
-|  13070219 |   80 | `	pBlock->pUserData   = pUserData;` |
-|  13070219 |   81 | `	pBlock->pGen        = pGen;` |
-|  13070219 |   82 | `	pBlock->iFlags      = iType;` |
-|  13070219 |   83 | `	pBlock->pParent     = 0;` |
-|  13070219 |   84 | `	SySetInit(&pBlock->aJumpFix,&pGen->pVm->sAllocator,sizeof(JumpFixup));` |
-|  13070219 |   85 | `	SySetInit(&pBlock->aPostContFix,&pGen->pVm->sAllocator,sizeof(JumpFixup));` |
-|  13070219 |   86 | `}` |
+|  13070229 |   79 | `	pBlock->nFirstInstr = nFirstInstr;` |
+|  13070229 |   80 | `	pBlock->pUserData   = pUserData;` |
+|  13070229 |   81 | `	pBlock->pGen        = pGen;` |
+|  13070229 |   82 | `	pBlock->iFlags      = iType;` |
+|  13070229 |   83 | `	pBlock->pParent     = 0;` |
+|  13070229 |   84 | `	SySetInit(&pBlock->aJumpFix,&pGen->pVm->sAllocator,sizeof(JumpFixup));` |
+|  13070229 |   85 | `	SySetInit(&pBlock->aPostContFix,&pGen->pVm->sAllocator,sizeof(JumpFixup));` |
+|  13070229 |   86 | `}` |
 |         - |   87 | `/*` |
 |         - |   88 | ` * Allocate a new block instance.` |
 |         - |   89 | ` * Return SXRET_OK and write a pointer to the new instantiated block` |
 |         - |   90 | ` * on success.Otherwise generate a compile-time error and abort` |
 |         - |   91 | ` * processing on failure.` |
 |         - |   92 | ` */` |
-|  13066338 |   93 | `PH7_PRIVATE sxi32 GenStateEnterBlock(` |
+|  13066348 |   93 | `PH7_PRIVATE sxi32 GenStateEnterBlock(` |
 |         - |   94 | `	ph7_gen_state *pGen,  /* Code generator state */` |
 |         - |   95 | `	sxi32 iType,          /* Block type [i.e: loop, conditional, function body, etc.]*/` |
 |         - |   96 | `	sxu32 nFirstInstr,    /* First instruction to compile */` |
@@ -110,8 +110,8 @@ Coverage: 1495/1624 lines (92.06%)
 |         5 |  100 | `{` |
 |         - |  101 | `	GenBlock *pBlock;` |
 |         - |  102 | `	/* Allocate a new block instance */` |
-|  13066343 |  103 | `	pBlock = (GenBlock *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(GenBlock));` |
-|  13066343 |  104 | `	if( pBlock == 0 ){` |
+|  13066353 |  103 | `	pBlock = (GenBlock *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(GenBlock));` |
+|  13066353 |  104 | `	if( pBlock == 0 ){` |
 |         - |  105 | `		/* If the supplied memory subsystem is so sick that we are unable to allocate` |
 |         - |  106 | `		 * a tiny chunk of memory, there is no much we can do here.` |
 |         - |  107 | `		 */` |
@@ -120,13 +120,13 @@ Coverage: 1495/1624 lines (92.06%)
 |       ! 0 |  110 | `		return SXERR_ABORT;` |
 |         - |  111 | `	}` |
 |         - |  112 | `	/* Zero the structure */` |
-|  13066343 |  113 | `	SyZero(pBlock,sizeof(GenBlock));` |
-|  13066343 |  114 | `	GenStateInitBlock(&(*pGen),pBlock,iType,nFirstInstr,pUserData);` |
+|  13066353 |  113 | `	SyZero(pBlock,sizeof(GenBlock));` |
+|  13066353 |  114 | `	GenStateInitBlock(&(*pGen),pBlock,iType,nFirstInstr,pUserData);` |
 |         - |  115 | `	/* Link to the parent block */` |
-|  13066343 |  116 | `	pBlock->pParent = pGen->pCurrent;` |
+|  13066353 |  116 | `	pBlock->pParent = pGen->pCurrent;` |
 |         - |  117 | `	/* A loop or switch gets an id, and remembers the loop it nests inside, so a goto's` |
 |         - |  118 | `	 * and a label's positions can be compared after compilation (see aLoopParent). */` |
-|  13066343 |  119 | `	if( iType & (GEN_BLOCK_LOOP\|GEN_BLOCK_SWITCH) ){` |
+|  13066353 |  119 | `	if( iType & (GEN_BLOCK_LOOP\|GEN_BLOCK_SWITCH) ){` |
 |    539383 |  120 | `		sxu32 nParent = pGen->nCurLoopId;` |
 |    539383 |  121 | `		pGen->nLoopId++;` |
 |    539383 |  122 | `		SySetPut(&pGen->aLoopParent,(const void *)&nParent);` |
@@ -135,55 +135,55 @@ Coverage: 1495/1624 lines (92.06%)
 |    539383 |  125 | `		pGen->nCurLoopId = pGen->nLoopId;` |
 |    269689 |  126 | `	}` |
 |         - |  127 | `	/* Mark as the current block */` |
-|  13066343 |  128 | `	pGen->pCurrent = pBlock;` |
-|  13066343 |  129 | `	if( ppBlock ){` |
+|  13066353 |  128 | `	pGen->pCurrent = pBlock;` |
+|  13066353 |  129 | `	if( ppBlock ){` |
 |         - |  130 | `		/* Write a pointer to the new instance */` |
 |   6283993 |  131 | `		*ppBlock = pBlock;` |
 |   3141994 |  132 | `	}` |
-|  13066343 |  133 | `	return SXRET_OK;` |
-|   6533174 |  134 | `}` |
+|  13066353 |  133 | `	return SXRET_OK;` |
+|   6533179 |  134 | `}` |
 |         - |  135 | `/*` |
 |         - |  136 | ` * Release block fields without freeing the whole instance.` |
 |         - |  137 | ` */` |
-|  13066330 |  138 | `static void GenStateReleaseBlock(GenBlock *pBlock)` |
+|  13066340 |  138 | `static void GenStateReleaseBlock(GenBlock *pBlock)` |
 |         5 |  139 | `{` |
-|  13066335 |  140 | `	SySetRelease(&pBlock->aPostContFix);` |
-|  13066335 |  141 | `	SySetRelease(&pBlock->aJumpFix);` |
-|  13066335 |  142 | `}` |
+|  13066345 |  140 | `	SySetRelease(&pBlock->aPostContFix);` |
+|  13066345 |  141 | `	SySetRelease(&pBlock->aJumpFix);` |
+|  13066345 |  142 | `}` |
 |         - |  143 | `/*` |
 |         - |  144 | ` * Release a block.` |
 |         - |  145 | ` */` |
-|  13066326 |  146 | `static void GenStateFreeBlock(GenBlock *pBlock)` |
+|  13066336 |  146 | `static void GenStateFreeBlock(GenBlock *pBlock)` |
 |         5 |  147 | `{` |
-|  13066331 |  148 | `	ph7_gen_state *pGen = pBlock->pGen;` |
-|  13066331 |  149 | `	GenStateReleaseBlock(&(*pBlock));` |
+|  13066341 |  148 | `	ph7_gen_state *pGen = pBlock->pGen;` |
+|  13066341 |  149 | `	GenStateReleaseBlock(&(*pBlock));` |
 |         - |  150 | `	/* Free the instance */` |
-|  13066331 |  151 | `	SyMemBackendPoolFree(&pGen->pVm->sAllocator,pBlock);` |
-|  13066331 |  152 | `}` |
+|  13066341 |  151 | `	SyMemBackendPoolFree(&pGen->pVm->sAllocator,pBlock);` |
+|  13066341 |  152 | `}` |
 |         - |  153 | `/*` |
 |         - |  154 | ` * POP and release a block from the stack of compiled blocks.` |
 |         - |  155 | ` */` |
-|  13066326 |  156 | `PH7_PRIVATE sxi32 GenStateLeaveBlock(ph7_gen_state *pGen,GenBlock **ppBlock)` |
+|  13066336 |  156 | `PH7_PRIVATE sxi32 GenStateLeaveBlock(ph7_gen_state *pGen,GenBlock **ppBlock)` |
 |         5 |  157 | `{` |
-|  13066331 |  158 | `	GenBlock *pBlock = pGen->pCurrent;` |
-|  13066331 |  159 | `	if( pBlock == 0 ){` |
+|  13066341 |  158 | `	GenBlock *pBlock = pGen->pCurrent;` |
+|  13066341 |  159 | `	if( pBlock == 0 ){` |
 |         - |  160 | `		/* No more block to pop */` |
 |       ! 0 |  161 | `		return SXERR_EMPTY;` |
 |         - |  162 | `	}` |
-|  13066331 |  163 | `	if( pBlock->iFlags & (GEN_BLOCK_LOOP\|GEN_BLOCK_SWITCH) ){` |
+|  13066341 |  163 | `	if( pBlock->iFlags & (GEN_BLOCK_LOOP\|GEN_BLOCK_SWITCH) ){` |
 |    539375 |  164 | `		pGen->nCurLoopId = pBlock->nOuterLoopId;` |
 |    269685 |  165 | `	}` |
 |         - |  166 | `	/* Point to the upper block */` |
-|  13066331 |  167 | `	pGen->pCurrent = pBlock->pParent;` |
-|  13066331 |  168 | `	if( ppBlock ){` |
+|  13066341 |  167 | `	pGen->pCurrent = pBlock->pParent;` |
+|  13066341 |  168 | `	if( ppBlock ){` |
 |         - |  169 | `		/* Write a pointer to the popped block */` |
 |       ! 0 |  170 | `		*ppBlock = pBlock;` |
 |       ! 0 |  171 | `	}else{` |
 |         - |  172 | `		/* Safely release the block */` |
-|  13066331 |  173 | `		GenStateFreeBlock(&(*pBlock));` |
+|  13066341 |  173 | `		GenStateFreeBlock(&(*pBlock));` |
 |         - |  174 | `	}` |
-|  13066331 |  175 | `	return SXRET_OK;` |
-|   6533168 |  176 | `}` |
+|  13066341 |  175 | `	return SXRET_OK;` |
+|   6533173 |  176 | `}` |
 |         - |  177 | `/*` |
 |         - |  178 | ` * PHP-parity redeclaration guard.` |
 |         - |  179 | ` *` |
@@ -395,10 +395,10 @@ Coverage: 1495/1624 lines (92.06%)
 |         - |  385 | `	SyHashEntry *pEntry;` |
 |  16846899 |  386 | `	pEntry = SyHashGet(&pGen->hLiteral,(const void *)pValue->zString,pValue->nByte);` |
 |  16846899 |  387 | `	if( pEntry == 0 ){` |
-|   4491271 |  388 | `		return SXERR_NOTFOUND;` |
+|   4491275 |  388 | `		return SXERR_NOTFOUND;` |
 |         - |  389 | `	}` |
-|  12355633 |  390 | `	*pIdx = (sxu32)SX_PTR_TO_INT(pEntry->pUserData);` |
-|  12355633 |  391 | `	return SXRET_OK;` |
+|  12355629 |  390 | `	*pIdx = (sxu32)SX_PTR_TO_INT(pEntry->pUserData);` |
+|  12355629 |  391 | `	return SXRET_OK;` |
 |   8423452 |  392 | `}` |
 |         - |  393 | `/*` |
 |         - |  394 | ` * Install a given constant index in the literal table.` |
@@ -410,12 +410,12 @@ Coverage: 1495/1624 lines (92.06%)
 |         - |  400 | ` * literal is encountered.  This keeps the literal hash from growing when` |
 |         - |  401 | ` * many "" literals appear in user code.` |
 |         - |  402 | ` */` |
-|   4491266 |  403 | `PH7_PRIVATE sxi32 GenStateInstallLiteral(ph7_gen_state *pGen,ph7_value *pObj,sxu32 nIdx)` |
+|   4491270 |  403 | `PH7_PRIVATE sxi32 GenStateInstallLiteral(ph7_gen_state *pGen,ph7_value *pObj,sxu32 nIdx)` |
 |         5 |  404 | `{` |
-|   4491271 |  405 | `	if( SyBlobLength(&pObj->sBlob) > 0 ){` |
-|   4491271 |  406 | `		SyHashInsert(&pGen->hLiteral,SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),SX_INT_TO_PTR(nIdx));` |
-|   2245633 |  407 | `	}` |
-|   4491271 |  408 | `	return SXRET_OK;` |
+|   4491275 |  405 | `	if( SyBlobLength(&pObj->sBlob) > 0 ){` |
+|   4491275 |  406 | `		SyHashInsert(&pGen->hLiteral,SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),SX_INT_TO_PTR(nIdx));` |
+|   2245635 |  407 | `	}` |
+|   4491275 |  408 | `	return SXRET_OK;` |
 |         5 |  409 | `}` |
 |         - |  410 | `/*` |
 |         - |  411 | ` * Reserve a room for a numeric constant [i.e: 64-bit integer or real number]` |

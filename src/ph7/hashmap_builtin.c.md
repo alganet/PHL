@@ -50,8 +50,8 @@ Coverage: 2444/2846 lines (85.87%)
 |       - |   40 | `		/* Do the merge sort */` |
 |       3 |   41 | `		HashmapMergeSort(pMap,HashmapCmpCallback7,0);` |
 |       - |   42 | `		/* Fix the last link broken by the merge */` |
-|       9 |   43 | `		while(pMap->pLast->pPrev){` |
-|       7 |   44 | `			pMap->pLast = pMap->pLast->pPrev;` |
+|      11 |   43 | `		while(pMap->pLast->pPrev){` |
+|       9 |   44 | `			pMap->pLast = pMap->pLast->pPrev;` |
 |       1 |   45 | `		}` |
 |       1 |   46 | `	}` |
 |       - |   47 | `	/* All done,return TRUE */` |
@@ -4110,9 +4110,9 @@ Coverage: 2444/2846 lines (85.87%)
 |       - | 4100 | `		 * Note that we perform a linear lookup here (later version must change this)` |
 |       - | 4101 | `		 */` |
 |       9 | 4102 | `		if( nEntry > pMap->nEntry / 2 ){` |
-|       3 | 4103 | `			pNode = pMap->pLast;` |
-|       3 | 4104 | `			nEntry = pMap->nEntry - nEntry;` |
-|       3 | 4105 | `			if( nEntry > 1 ){` |
+|       4 | 4103 | `			pNode = pMap->pLast;` |
+|       4 | 4104 | `			nEntry = pMap->nEntry - nEntry;` |
+|       4 | 4105 | `			if( nEntry > 1 ){` |
 |     ! 0 | 4106 | `				for(;;){` |
 |     ! 0 | 4107 | `					if( nEntry == 0 ){` |
 |     ! 0 | 4108 | `						break;` |
@@ -4122,15 +4122,15 @@ Coverage: 2444/2846 lines (85.87%)
 |     ! 0 | 4112 | `					nEntry--;` |
 |     ! 0 | 4113 | `				}` |
 |     ! 0 | 4114 | `			}` |
-|       3 | 4115 | `		}else{` |
-|       7 | 4116 | `			pNode = pMap->pFirst;` |
-|       3 | 4117 | `			for(;;){` |
-|       9 | 4118 | `				if( nEntry == 0 ){` |
-|       7 | 4119 | `					break;` |
+|       4 | 4115 | `		}else{` |
+|       6 | 4116 | `			pNode = pMap->pFirst;` |
+|       2 | 4117 | `			for(;;){` |
+|      11 | 4118 | `				if( nEntry == 0 ){` |
+|       6 | 4119 | `					break;` |
 |       - | 4120 | `				}` |
 |       - | 4121 | `				/* Point to the next entry */` |
-|       3 | 4122 | `				pNode = pNode->pPrev; /* Reverse link */` |
-|       3 | 4123 | `				nEntry--;` |
+|       6 | 4122 | `				pNode = pNode->pPrev; /* Reverse link */` |
+|       6 | 4123 | `				nEntry--;` |
 |       1 | 4124 | `			}` |
 |       - | 4125 | `		}` |
 |       9 | 4126 | `		if( pNode->iType == HASHMAP_INT_NODE ){` |

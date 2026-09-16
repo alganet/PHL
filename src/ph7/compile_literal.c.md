@@ -384,41 +384,41 @@ Coverage: 951/1066 lines (89.21%)
 |  5143383 |  374 | `	bHasEsc = 0;` |
 |        - |  375 | `	{` |
 |        - |  376 | `		const char *zScan;` |
-| 61460159 |  377 | `		for( zScan = zIn ; zScan < zEnd ; zScan++ ){` |
-| 56398281 |  378 | `			if( zScan[0] == '\\' ){ bHasEsc = 1; break; }` |
-| 28158393 |  379 | `		}` |
+| 61460779 |  377 | `		for( zScan = zIn ; zScan < zEnd ; zScan++ ){` |
+| 56398901 |  378 | `			if( zScan[0] == '\\' ){ bHasEsc = 1; break; }` |
+| 28158703 |  379 | `		}` |
 |        - |  380 | `	}` |
 |  5143383 |  381 | `	if( !bHasEsc && SXRET_OK == GenStateFindLiteral(&(*pGen),pStr,&nIdx) ){` |
 |        - |  382 | `		/* Already processed,emit the load constant instruction` |
 |        - |  383 | `		 * and return.` |
 |        - |  384 | `		 */` |
-|  3001401 |  385 | `		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);` |
-|  3001401 |  386 | `		return SXRET_OK;` |
+|  3001397 |  385 | `		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);` |
+|  3001397 |  386 | `		return SXRET_OK;` |
 |        - |  387 | `	}` |
 |        - |  388 | `	/* Reserve a new constant */` |
-|  2141987 |  389 | `	pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);` |
-|  2141987 |  390 | `	if( pObj == 0 ){` |
+|  2141991 |  389 | `	pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);` |
+|  2141991 |  390 | `	if( pObj == 0 ){` |
 |      ! 0 |  391 | `		PH7_GenCompileError(&(*pGen),E_ERROR,1,"PH7 engine is running out of memory");` |
 |      ! 0 |  392 | `		SXUNUSED(iCompileFlag); /* cc warning */` |
 |      ! 0 |  393 | `		return SXERR_ABORT;` |
 |        - |  394 | `	}` |
-|  2141987 |  395 | `	PH7_MemObjInitFromString(pGen->pVm,pObj,0);` |
+|  2141991 |  395 | `	PH7_MemObjInitFromString(pGen->pVm,pObj,0);` |
 |        - |  396 | `	/* Compile the node */` |
-|  2194366 |  397 | `	for(;;){` |
-|  4388737 |  398 | `		if( zIn >= zEnd ){` |
+|  2194370 |  397 | `	for(;;){` |
+|  4388745 |  398 | `		if( zIn >= zEnd ){` |
 |        - |  399 | `			/* End of input */` |
-|  2141987 |  400 | `			break;` |
+|  2141991 |  400 | `			break;` |
 |        - |  401 | `		}` |
-|  2246755 |  402 | `		zCur = zIn;` |
-| 43413477 |  403 | `		while( zIn < zEnd && zIn[0] != '\\' ){` |
-| 41166727 |  404 | `			zIn++;` |
+|  2246759 |  402 | `		zCur = zIn;` |
+| 43414117 |  403 | `		while( zIn < zEnd && zIn[0] != '\\' ){` |
+| 41167363 |  404 | `			zIn++;` |
 |        5 |  405 | `		}` |
-|  2246755 |  406 | `		if( zIn > zCur ){` |
+|  2246759 |  406 | `		if( zIn > zCur ){` |
 |        - |  407 | `			/* Append raw contents*/` |
-|  2204083 |  408 | `			PH7_MemObjStringAppend(pObj,zCur,(sxu32)(zIn-zCur));` |
-|  1102039 |  409 | `		}` |
-|  2246755 |  410 | `		zIn++;` |
-|  2246755 |  411 | `		if( zIn < zEnd ){` |
+|  2204087 |  408 | `			PH7_MemObjStringAppend(pObj,zCur,(sxu32)(zIn-zCur));` |
+|  1102041 |  409 | `		}` |
+|  2246759 |  410 | `		zIn++;` |
+|  2246759 |  411 | `		if( zIn < zEnd ){` |
 |   143539 |  412 | `			if( zIn[0] == '\\' ){` |
 |        - |  413 | `				/* A literal backslash */` |
 |    34927 |  414 | `				PH7_MemObjStringAppend(pObj,"\\",sizeof(char));` |
@@ -433,16 +433,16 @@ Coverage: 951/1066 lines (89.21%)
 |        - |  423 | `			}` |
 |    71767 |  424 | `		}` |
 |        - |  425 | `		/* Advance the stream cursor */` |
-|  2246755 |  426 | `		zIn++;` |
+|  2246759 |  426 | `		zIn++;` |
 |        5 |  427 | `	}` |
 |        - |  428 | `	/* Emit the load constant instruction */` |
-|  2141987 |  429 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);` |
-|  2141987 |  430 | `	if( !bHasEsc && pStr->nByte < 1024 ){` |
+|  2141991 |  429 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);` |
+|  2141991 |  430 | `	if( !bHasEsc && pStr->nByte < 1024 ){` |
 |        - |  431 | `		/* Install in the literal table (only when value == source; see above) */` |
-|  2060487 |  432 | `		GenStateInstallLiteral(pGen,pObj,nIdx);` |
-|  1030241 |  433 | `	}` |
+|  2060491 |  432 | `		GenStateInstallLiteral(pGen,pObj,nIdx);` |
+|  1030243 |  433 | `	}` |
 |        - |  434 | `	/* Node successfully compiled */` |
-|  2141987 |  435 | `	return SXRET_OK;` |
+|  2141991 |  435 | `	return SXRET_OK;` |
 |  2775101 |  436 | `}` |
 |        - |  437 | `/*` |
 |        - |  438 | ` * PHP 7.3 flexible heredoc/nowdoc closing-marker indent stripping.` |
