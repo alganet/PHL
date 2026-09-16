@@ -11,7 +11,7 @@ Symmetric array destructuring from non-array source emits warning
 echo isset($a) ? "set" : "not set";
 ?>
 --EXPECTF--
-%AWarning: Cannot use string as array in %s on line %d%A
+%AWarning:%ACannot use string as array in %s on line %d%A
 --CLEAN--
 <?php
 unset($a);
