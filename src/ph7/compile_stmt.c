@@ -512,7 +512,10 @@ Consume:
 			pGen->pIn->nType = PH7_TK_KEYWORD;
 			pGen->pIn->pUserData = SX_INT_TO_PTR(nKeyID);
 			SyStringInitFromBuf(&pGen->pIn->sData,"echo",sizeof("echo")-1);
+			/* Synthesized short-tag echo: legitimately an expression here. */
+			pGen->nExprEchoOk++;
 			rc = PH7_CompileExpr(pGen,0,0);
+			pGen->nExprEchoOk--;
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}else if( rc != SXERR_EMPTY ){
@@ -1963,30 +1966,13 @@ Synchronize:
  */
 PH7_PRIVATE sxi32 PH7_CompileVar(ph7_gen_state *pGen)
 {
-	sxu32 nLine;
-	sxi32 rc;
-	nLine = pGen->pIn->nLine;
-	/* Jump the 'var' keyword */
-	pGen->pIn++;
-	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_DOLLAR/*'$'*/) == 0 ){
-		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"var: Expecting variable name");
-		/* Synchronize with the first semi-colon */
-		while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI/*';'*/) == 0 ){
-			pGen->pIn++;
-		}
-		if( rc == SXERR_ABORT ){
-			return SXERR_ABORT;
-		}
-	}else{
-		/* Compile the expression */
-		rc = PH7_CompileExpr(&(*pGen),0,0);
-		if( rc == SXERR_ABORT ){
-			return SXERR_ABORT;
-		}else if( rc != SXERR_EMPTY ){
-			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
-		}
-	}
-	return SXRET_OK;
+	/* `var` is a PROPERTY modifier and nothing else. A class body's `var $x;`
+	 * is compiled by compile_class.c, never here, so reaching this statement
+	 * handler means `var` appeared outside a class — which php rejects as a
+	 * parse error. PHL used to compile it as an ordinary expression statement,
+	 * so top-level `var $x = 1;` silently ran (a Symisc extension). */
+	PH7_GenSyntaxError(&(*pGen),pGen->pIn,0);
+	return SXERR_ABORT;
 }
 /*
  * Namespace-qualify a literal in-place for CALL/NEW instructions.

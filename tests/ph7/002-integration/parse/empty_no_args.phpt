@@ -2,19 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PH7: empty missing argument returns true
---SKIPIF--
-<?php if(function_exists('zend_version')) { echo 'skip'; } ?>
+empty() with no operand is a parse error on the ')' (was a bare skip asserting PH7's empty() === true)
 --FILE--
 <?php
 if (empty() === true) {
     echo "true";
-} else {
-    echo "false";
 }
 ?>
---EXPECT--
-true
+--EXPECTF--
+%AParse error:%Asyntax error, unexpected token ")"%A
 --CLEAN--
 <?php
-

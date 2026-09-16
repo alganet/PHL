@@ -856,11 +856,30 @@ static sxi32 GenStateEmitExprCode(
 			 * empty also needs offsetGet to evaluate emptiness on hits). */
 			if( pNode->pLeft && pNode->pLeft->pStart ){
 				SyString *pCallName = &pNode->pLeft->pStart->sData;
-				if( pCallName->nByte == 5
-				 && SyStrnicmp(pCallName->zString,"isset",5) == 0 ){
+				int bIsset = pCallName->nByte == 5
+					&& SyStrnicmp(pCallName->zString,"isset",5) == 0;
+				int bEmpty = pCallName->nByte == 5
+					&& SyStrnicmp(pCallName->zString,"empty",5) == 0;
+				/* isset()/empty() are language CONSTRUCTS, not functions: php parses
+				 * their argument list in the grammar and a missing operand is a parse
+				 * error on the ')'. They compile through this ordinary call loop, which
+				 * never checked arity, so `empty()` quietly evaluated to true and
+				 * `isset()` to false. (empty() also takes exactly one operand in php,
+				 * unlike isset(), which is variadic.) */
+				if( (bIsset || bEmpty) && nArgs < 1 ){
+					/* php names the ')' itself as the unexpected token, so point at the
+					 * node's last token rather than pGen->pIn (which has already moved
+					 * past the call to the statement's ';'). */
+					SyToken *pTok = pNode->pEnd;
+					if( pTok && pTok > pNode->pStart && (pTok->nType & PH7_TK_RPAREN) == 0 ){
+						pTok--;
+					}
+					PH7_GenSyntaxError(&(*pGen),pTok,0);
+					return SXERR_ABORT;
+				}
+				if( bIsset ){
 					iFlags |= EXPR_FLAG_LOAD_IDX_ISSET;
-				}else if( pCallName->nByte == 5
-				 && SyStrnicmp(pCallName->zString,"empty",5) == 0 ){
+				}else if( bEmpty ){
 					iFlags |= EXPR_FLAG_LOAD_IDX_EMPTY;
 				}
 				/* Auto-vivify by-reference out-params of known builtins so an
@@ -2323,7 +2342,14 @@ static sxi32 PH7_CompilePHP(
 		pGen->pIn->nType = PH7_TK_KEYWORD;
 		pGen->pIn->pUserData = SX_INT_TO_PTR(nKeyID);
 		SyStringInitFromBuf(&pGen->pIn->sData,"echo",sizeof("echo")-1);
+		/* This synthesized echo is compiled as an EXPRESSION, which is otherwise a
+		 * parse error; allow it for the duration of this one compile. */
+		pGen->nExprEchoOk++;
 		rc = PH7_CompileExpr(pGen,0,0);
+		pGen->nExprEchoOk--;
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
 		if( rc != SXERR_EMPTY ){
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
 		}

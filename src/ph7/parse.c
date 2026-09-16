@@ -1647,6 +1647,12 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				 if(  iLeft < 0 || apNode[iLeft] == 0 || (apNode[iLeft]->pOp == 0 && (apNode[iLeft]->xCode != PH7_CompileVariable &&
 					 apNode[iLeft]->xCode != PH7_CompileSimpleString && apNode[iLeft]->xCode != PH7_CompileString &&
 					 apNode[iLeft]->xCode != PH7_CompileHereDoc && apNode[iLeft]->xCode != PH7_CompileNowDoc &&
+					 /* A CONSTANT is a valid subscript base too: `const X=[1,2]; X[0]`.
+					  * It was the one base php accepts that this whitelist omitted, so
+					  * subscripting a global constant raised "Invalid array name" while
+					  * the class-constant form (C::X[0]) and the via-variable detour both
+					  * worked. */
+					 apNode[iLeft]->xCode != PH7_CompileLiteral &&
 					 apNode[iLeft]->xCode != PH7_CompileArray && apNode[iLeft]->xCode != PH7_CompileShortArray ) ) ||
 					 ( apNode[iLeft]->pOp && apNode[iLeft]->pOp->iPrec != 2 /* postfix */
 						 /* PHP 8.4: a folded `new C()` (precedence-1 op) is a valid
