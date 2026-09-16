@@ -2,19 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-PHL: array() with ampersand and missing variable produces compile error
---SKIPIF--
-<?php
-if (function_exists('zend_version')) {
-    echo "skip";
-}
-?>
+array(&) is a plain syntax error on the ')' (was a bare skip freezing PHL's invented "array(): Missing referenced variable" fatal)
+
 --FILE--
 <?php
 $x = array(&);
 ?>
 --EXPECTF--
-%s Fatal error:  array(): Missing referenced variable %s
+%AParse error:%Asyntax error, unexpected token ")"%A
 --CLEAN--
 <?php
 unset($x);

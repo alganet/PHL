@@ -1400,7 +1400,9 @@ static sxi32 GenStateCompileArrayBody(ph7_gen_state *pGen)
 			pCur++; /* Jump the '&' token */
 			if( pCur >= pGen->pIn ){
 				/* Missing value */
-				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pCur->nLine,"array(): Missing referenced variable");
+				/* php reports the token that actually stopped it (`array(&)` -> the
+				 * ')'), not a hand-written "missing referenced variable" fatal. */
+				rc = PH7_GenSyntaxError(&(*pGen),pCur < pGen->pIn ? pCur : 0,0);
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
