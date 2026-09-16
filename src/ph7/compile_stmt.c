@@ -195,8 +195,10 @@ PH7_PRIVATE sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 {
 	GenBlock *pLoop; /* Target loop */
 	sxi32 iLevel;    /* How many nesting loop to skip */
+	sxi32 iRawLevel; /* The level as WRITTEN, kept for php's diagnostics */
 	sxu32 nLineLocal;
 	sxi32 rc;
+	iRawLevel = 1;
 	nLineLocal = pGen->pIn->nLine;
 	iLevel = 0;
 	/* Jump the 'continue' keyword */
@@ -219,6 +221,7 @@ PH7_PRIVATE sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 				return SXERR_ABORT;
 			}
 			iLevel = (sxi32)PH7_TokenValueToInt64(&sNum);
+			iRawLevel = iLevel;
 			if( zAlloc ){ SyMemBackendFree(&pGen->pVm->sAllocator, zAlloc); }
 		}
 		if( iLevel < 2 ){
@@ -226,11 +229,26 @@ PH7_PRIVATE sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 		}
 		pGen->pIn++; /* Jump the optional numeric argument */
 	}
+	/* php rejects a non-positive level outright, before asking where it lands. */
+	if( iRawLevel < 1 ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,
+			"'continue' operator accepts only positive integers");
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		return SXRET_OK;
+	}
 	/* Point to the target loop */
 	pLoop = GenStateFetchBlock(pGen->pCurrent,GEN_BLOCK_LOOP,iLevel);
 	if( pLoop == 0 ){
-		/* Illegal continue */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"'continue' not in the 'loop' or 'switch' context");
+		/* Same split php makes for `break`: no loop at all keeps the not-in-context
+		 * wording, too FEW loops is `Cannot 'continue' N levels`. */
+		if( GenStateFetchBlock(pGen->pCurrent,GEN_BLOCK_LOOP,0) != 0 ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,
+				"Cannot 'continue' %d level%s",iRawLevel,iRawLevel == 1 ? "" : "s");
+		}else{
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,"'continue' not in the 'loop' or 'switch' context");
+		}
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -287,8 +305,10 @@ PH7_PRIVATE sxi32 PH7_CompileBreak(ph7_gen_state *pGen)
 {
 	GenBlock *pLoop; /* Target loop */
 	sxi32 iLevel;    /* How many nesting loop to skip */
+	sxi32 iRawLevel; /* The level as WRITTEN, kept for php's diagnostics */
 	sxi32 rc;
 	iLevel = 0;
+	iRawLevel = 1;
 	/* Jump the 'break' keyword */
 	pGen->pIn++;
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NUM) ){
@@ -309,6 +329,7 @@ PH7_PRIVATE sxi32 PH7_CompileBreak(ph7_gen_state *pGen)
 				return SXERR_ABORT;
 			}
 			iLevel = (sxi32)PH7_TokenValueToInt64(&sNum);
+			iRawLevel = iLevel;
 			if( zAlloc ){ SyMemBackendFree(&pGen->pVm->sAllocator, zAlloc); }
 		}
 		if( iLevel < 2 ){
@@ -316,11 +337,27 @@ PH7_PRIVATE sxi32 PH7_CompileBreak(ph7_gen_state *pGen)
 		}
 		pGen->pIn++; /* Jump the optional numeric argument */
 	}
+	/* php rejects a non-positive level outright, before asking where it lands. */
+	if( iRawLevel < 1 ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+			"'break' operator accepts only positive integers");
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		goto BreakLevelDone;
+	}
 	/* Extract the target loop */
 	pLoop = GenStateFetchBlock(pGen->pCurrent,GEN_BLOCK_LOOP,iLevel);
 	if( pLoop == 0 ){
-		/* Illegal break */
-		rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,"'break' not in the 'loop' or 'switch' context");
+		/* php distinguishes "there is no loop at all here" from "there is one, but
+		 * not N of them": the first keeps the not-in-context wording, the second is
+		 * `Cannot 'break' N levels`. */
+		if( GenStateFetchBlock(pGen->pCurrent,GEN_BLOCK_LOOP,0) != 0 ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+				"Cannot 'break' %d level%s",iRawLevel,iRawLevel == 1 ? "" : "s");
+		}else{
+			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,"'break' not in the 'loop' or 'switch' context");
+		}
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -336,6 +373,7 @@ PH7_PRIVATE sxi32 PH7_CompileBreak(ph7_gen_state *pGen)
 			GenStateNewJumpFixup(pLoop,PH7_OP_JMP,nInstrIdx);
 		}
 	}
+BreakLevelDone:
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) == 0 ){
 		/* Not so fatal,emit a warning only */
 		PH7_GenCompileError(&(*pGen),E_WARNING,pGen->pIn->nLine,"Expected semi-colon ';' after 'break' statement");
@@ -789,7 +827,24 @@ PH7_PRIVATE sxi32 PH7_CompileDoWhile(ph7_gen_state *pGen)
 	if( pGen->pIn >= pGen->pEnd || pGen->pIn->nType != PH7_TK_KEYWORD ||
 		SX_PTR_TO_INT(pGen->pIn->pUserData) != PH7_TKWRD_WHILE ){
 			/* Missing 'while' statement */
-			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Missing 'while' statement after 'do' block");
+			/* php: `do {} ;` names the ';', while `do {}` at EOF is "unexpected end of
+			 * file". The do-block's own slice stops before its terminator, so look at
+			 * the whole CHUNK stream: a token still there is the one php names; nothing
+			 * left means end of file (NULL). */
+			{
+				SyToken *pBad = pGen->pIn < pGen->pEnd ? pGen->pIn : 0;
+				if( pBad == 0 && pGen->pTokenSet ){
+					/* The do-block consumed its terminator, so the token php names is
+					 * the one just behind the cursor -- but only when it is a real
+					 * terminator (`do {} ;` -> the ';'). If the block simply ended on
+					 * its '}' with nothing after it, php reports end of file. */
+					SyToken *pBase = (SyToken *)SySetBasePtr(pGen->pTokenSet);
+					if( pGen->pIn > pBase && (pGen->pIn[-1].nType & PH7_TK_SEMI) ){
+						pBad = &pGen->pIn[-1];
+					}
+				}
+				rc = PH7_GenSyntaxError(pGen,pBad,"\"while\"");
+			}
 			if( rc == SXERR_ABORT ){
 				/* Error count limit reached,abort immediately */
 				return SXERR_ABORT;
@@ -1259,8 +1314,8 @@ PH7_PRIVATE sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 		/* Advance past list(...) — validate parentheses */
 		pGen->pIn++; /* Jump 'list' keyword */
 		if( pGen->pIn >= pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
-			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn < pEnd ? pGen->pIn->nLine : nLine,
-				"foreach: Expected '(' after 'list'");
+			/* php: syntax error, unexpected variable "$x", expecting "(" */
+			rc = PH7_GenSyntaxError(pGen,pGen->pIn < pEnd ? pGen->pIn : 0,"\"(\"");
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}

@@ -2,9 +2,8 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Break with level exceeding available loops
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+break 3 inside two loops is php's "Cannot 'break' 3 levels" (was a bare skip freezing PHL's not-in-context wording, which ignored the level entirely)
+
 --FILE--
 <?php
 $result = '';
@@ -21,7 +20,7 @@ $result .= "end";
 echo $result;
 ?>
 --EXPECTF--
-%AFatal error:%A'break' not in the 'loop' or 'switch' context%A
+%AFatal error:%ACannot 'break' 3 levels%A
 --CLEAN--
 <?php
 unset($result);
