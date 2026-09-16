@@ -1094,75 +1094,75 @@ static void PH7_HTML_SPECIALCHARS_Const(ph7_value *pVal,void *pUserData)
 }
 /*
  * PHP_URL_SCHEME.
- * Expand 1
+ * Expand 0
  */
 static void PH7_PHP_URL_SCHEME_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,0);
+}
+/*
+ * PHP_URL_HOST.
+ * Expand 1
+ */
+static void PH7_PHP_URL_HOST_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
 	ph7_value_int(pVal,1);
 }
 /*
- * PHP_URL_HOST.
+ * PHP_URL_PORT.
  * Expand 2
  */
-static void PH7_PHP_URL_HOST_Const(ph7_value *pVal,void *pUserData)
+static void PH7_PHP_URL_PORT_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
 	ph7_value_int(pVal,2);
 }
 /*
- * PHP_URL_PORT.
+ * PHP_URL_USER.
  * Expand 3
  */
-static void PH7_PHP_URL_PORT_Const(ph7_value *pVal,void *pUserData)
+static void PH7_PHP_URL_USER_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
 	ph7_value_int(pVal,3);
 }
 /*
- * PHP_URL_USER.
+ * PHP_URL_PASS.
  * Expand 4
  */
-static void PH7_PHP_URL_USER_Const(ph7_value *pVal,void *pUserData)
+static void PH7_PHP_URL_PASS_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
 	ph7_value_int(pVal,4);
 }
 /*
- * PHP_URL_PASS.
+ * PHP_URL_PATH.
  * Expand 5
  */
-static void PH7_PHP_URL_PASS_Const(ph7_value *pVal,void *pUserData)
+static void PH7_PHP_URL_PATH_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
 	ph7_value_int(pVal,5);
 }
 /*
- * PHP_URL_PATH.
+ * PHP_URL_QUERY.
  * Expand 6
  */
-static void PH7_PHP_URL_PATH_Const(ph7_value *pVal,void *pUserData)
+static void PH7_PHP_URL_QUERY_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
 	ph7_value_int(pVal,6);
 }
 /*
- * PHP_URL_QUERY.
- * Expand 7
- */
-static void PH7_PHP_URL_QUERY_Const(ph7_value *pVal,void *pUserData)
-{
-	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,7);
-}
-/*
  * PHP_URL_FRAGMENT.
- * Expand 8
+ * Expand 7
  */
 static void PH7_PHP_URL_FRAGMENT_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,8);
+	ph7_value_int(pVal,7);
 }
 /*
  * PHP_QUERY_RFC1738
