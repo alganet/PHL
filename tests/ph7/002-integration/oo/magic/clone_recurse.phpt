@@ -4,7 +4,11 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Object clone nesting limit triggers error
 --SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+<?php
+// PHL caps recursive __clone() invocation ("Object clone limit reached");
+// php has no clone-depth limit at all. Engine-design difference, not a fidelity gap.
+if (function_exists('zend_version')) { echo 'skip PHL caps recursive __clone(); php has no clone limit'; }
+?>
 --FILE--
 <?php
 class A {

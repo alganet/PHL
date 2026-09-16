@@ -4,7 +4,11 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Object comparison recursion limit
 --SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+<?php
+// Same engine-design difference as object_compare_nesting_limit: PHL's
+// comparison nesting guard fires where php recurses until memory exhaustion.
+if (function_exists('zend_version')) { echo 'skip PHL bounds comparison nesting; php recurses until memory exhaustion'; }
+?>
 --FILE--
 <?php
 class TestObj {

@@ -4,7 +4,12 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Object comparison nesting limit
 --SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+<?php
+// Comparing two deeply nested object graphs trips PHL's nesting guard
+// ("Nesting limit reached: Infinite recursion?"). php has no comparison depth limit and
+// recurses until it exhausts memory, so there is no shared expectation to write.
+if (function_exists('zend_version')) { echo 'skip PHL bounds comparison nesting; php recurses until memory exhaustion'; }
+?>
 --FILE--
 <?php
 class Test {
