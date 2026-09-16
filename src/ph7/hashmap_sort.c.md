@@ -50,26 +50,26 @@ Coverage: 463/508 lines (91.14%)
 |      - |   40 | `    /* Prevent compiler warning */` |
 |  52153 |   41 | `	result.pNext = result.pPrev = 0;` |
 |  52153 |   42 | `	pTail = &result;` |
-| 130087 |   43 | `	while( pA && pB ){` |
-|  77939 |   44 | `		if( xCmp(pA,pB,pCmpData) <= 0 ){` |
-|  61140 |   45 | `			pTail->pPrev = pA;` |
-|  61140 |   46 | `			pA->pNext = pTail;` |
-|  61140 |   47 | `			pTail = pA;` |
-|  61140 |   48 | `			pA = pA->pPrev;` |
-|  30736 |   49 | `		}else{` |
-|  16804 |   50 | `			pTail->pPrev = pB;` |
-|  16804 |   51 | `			pB->pNext = pTail;` |
-|  16804 |   52 | `			pTail = pB;` |
-|  16804 |   53 | `			pB = pB->pPrev;` |
+| 130092 |   43 | `	while( pA && pB ){` |
+|  77944 |   44 | `		if( xCmp(pA,pB,pCmpData) <= 0 ){` |
+|  61152 |   45 | `			pTail->pPrev = pA;` |
+|  61152 |   46 | `			pA->pNext = pTail;` |
+|  61152 |   47 | `			pTail = pA;` |
+|  61152 |   48 | `			pA = pA->pPrev;` |
+|  30742 |   49 | `		}else{` |
+|  16797 |   50 | `			pTail->pPrev = pB;` |
+|  16797 |   51 | `			pB->pNext = pTail;` |
+|  16797 |   52 | `			pTail = pB;` |
+|  16797 |   53 | `			pB = pB->pPrev;` |
 |      - |   54 | `		}` |
 |      5 |   55 | `	}` |
 |  52153 |   56 | `	if( pA ){` |
-|   4347 |   57 | `		pTail->pPrev = pA;` |
-|   4347 |   58 | `		pA->pNext = pTail;` |
-|  49839 |   59 | `	}else if( pB ){` |
-|  47493 |   60 | `		pTail->pPrev = pB;` |
-|  47493 |   61 | `		pB->pNext = pTail;` |
-|  23892 |   62 | `	}else{` |
+|   4342 |   57 | `		pTail->pPrev = pA;` |
+|   4342 |   58 | `		pA->pNext = pTail;` |
+|  49841 |   59 | `	}else if( pB ){` |
+|  47498 |   60 | `		pTail->pPrev = pB;` |
+|  47498 |   61 | `		pB->pNext = pTail;` |
+|  23895 |   62 | `	}else{` |
 |    323 |   63 | `		pTail->pPrev = pTail->pNext = 0;` |
 |      - |   64 | `	}` |
 |  52153 |   65 | `	return result.pPrev;` |
@@ -226,14 +226,14 @@ Coverage: 463/508 lines (91.14%)
 |    127 |  216 | `	PH7_MemObjRelease(&sB);` |
 |    127 |  217 | `	return rc;` |
 |     64 |  218 | `}` |
-|  77557 |  219 | `static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
+|  77561 |  219 | `static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
 |      5 |  220 | `{` |
-|  77562 |  221 | `	if( pCmpData == 0 ){` |
+|  77566 |  221 | `	if( pCmpData == 0 ){` |
 |      - |  222 | `		/* SORT_REGULAR fast path */` |
-|  77474 |  223 | `		return HashmapNodeCmp(pA,pB,FALSE);` |
+|  77478 |  223 | `		return HashmapNodeCmp(pA,pB,FALSE);` |
 |      - |  224 | `	}` |
 |     89 |  225 | `	return HashmapFlagValueCmp(pA,pB,SX_PTR_TO_INT(pCmpData));` |
-|  38673 |  226 | `}` |
+|  38675 |  226 | `}` |
 |      - |  227 | `/*` |
 |      - |  228 | ` * Shared key comparison for ksort()/krsort(): php 8 semantics. Two string` |
 |      - |  229 | ` * keys compare bytewise. Mixed int/string keys: a NUMERIC string compares` |
@@ -479,17 +479,17 @@ Coverage: 463/508 lines (91.14%)
 |      - |  469 | ` * Node comparison callback: Random node comparison.` |
 |      - |  470 | ` * used-by: [shuffle()]` |
 |      - |  471 | ` */` |
-|     21 |  472 | `PH7_PRIVATE sxi32 HashmapCmpCallback7(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
+|     22 |  472 | `PH7_PRIVATE sxi32 HashmapCmpCallback7(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
 |      1 |  473 | `{` |
 |      - |  474 | `	sxu32 n;` |
-|     10 |  475 | `	SXUNUSED(pB); /* cc warning */` |
-|     10 |  476 | `	SXUNUSED(pCmpData);` |
+|     11 |  475 | `	SXUNUSED(pB); /* cc warning */` |
+|     11 |  476 | `	SXUNUSED(pCmpData);` |
 |      - |  477 | `	/* Grab a random number */` |
-|     22 |  478 | `	n = PH7_VmRandomNum(pA->pMap->pVm);` |
+|     23 |  478 | `	n = PH7_VmRandomNum(pA->pMap->pVm);` |
 |      - |  479 | `	/* if the random number is odd then the first node 'pA' is greater then` |
 |      - |  480 | `	 * the second node 'pB'. Otherwise the reverse is assumed.` |
 |      - |  481 | `	 */` |
-|     22 |  482 | `	return n&1 ? 1 : -1;` |
+|     23 |  482 | `	return n&1 ? 1 : -1;` |
 |      1 |  483 | `}` |
 |      - |  484 | `/*` |
 |      - |  485 | ` * Rehash all nodes keys after a merge-sort have been applied.` |
