@@ -2651,12 +2651,12 @@ PH7_PRIVATE int PH7_builtin_ord(ph7_context *pCtx,int nArg,ph7_value **apArg)
 /*
  * string chr(int $codepoint)
  *  Returns a one-character string containing the character specified
- *  by the given codepoint.  Any integer is accepted; values outside
- *  the [0, 255] range emit an E_DEPRECATED and are masked with & 0xFF.
+ *  by the given codepoint, which must be in the [0, 255] range.
  * Parameters
  *  $codepoint
- *   An integer codepoint.  Values outside 0-255 are deprecated and
- *   will be constrained to a single byte.
+ *   An integer codepoint in [0, 255]. php merely deprecates values
+ *   outside that range (constraining them with % 256); PHL rejects
+ *   them with a ValueError (scope policy).
  * Returns
  *  A single-character string.
  */
@@ -2686,17 +2686,13 @@ PH7_PRIVATE int PH7_builtin_chr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Extract the codepoint. */
 	c = ph7_value_to_int(apArg[0]);
-	/* Out-of-range codepoint (E_DEPRECATED), then mask to a single byte.
-	 * PHP includes "chr(): " in the $errstr passed to set_error_handler,
-	 * so we embed the prefix in the message and pass NULL as the function
-	 * name to avoid the API double-prefixing it. */
+	/* php only DEPRECATES an out-of-range codepoint (constraining it with % 256);
+	 * PHL targets php's non-deprecated surface and rejects it loudly, matching the
+	 * lossy-float branch above. This was the last engine site still emitting
+	 * E_DEPRECATED — the scope policy says none remain. */
 	if( c < 0 || c > 255 ){
-		PH7_VmThrowError(pCtx->pVm,0,
-			E_DEPRECATED,
-			"chr(): Providing a value not in-between 0 and 255 is deprecated, "
-			"this is because a byte value must be in the [0, 255] interval. "
-			"The value used will be constrained using % 256"
-			);
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"chr(): Argument #1 ($codepoint) must be between 0 and 255");
 	}
 	/* Store in an unsigned char to avoid endian-dependent behaviour
 	 * when taking the address of a wider int. */
