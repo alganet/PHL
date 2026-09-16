@@ -32,26 +32,26 @@ Coverage: 779/993 lines (78.45%)
 |        - |   22 | ` *  TRUE if the given constant exists.FALSE otherwise.` |
 |        - |   23 | ` */` |
 |       30 |   24 | `PH7_PRIVATE int vm_builtin_defined(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|        4 |   25 | `{` |
+|        3 |   25 | `{` |
 |        - |   26 | `	const char *zName;` |
-|       34 |   27 | `	int nLen = 0;` |
-|       34 |   28 | `	int res = 0;` |
-|       34 |   29 | `	if( nArg < 1 ){` |
+|       33 |   27 | `	int nLen = 0;` |
+|       33 |   28 | `	int res = 0;` |
+|       33 |   29 | `	if( nArg < 1 ){` |
 |        - |   30 | `		/* Missing constant name,return FALSE */` |
 |      ! 0 |   31 | `		ph7_context_throw_error(pCtx,PH7_CTX_NOTICE,"Missing constant name");` |
 |      ! 0 |   32 | `		ph7_result_bool(pCtx,0);` |
 |      ! 0 |   33 | `		return SXRET_OK;` |
 |        - |   34 | `	}` |
 |        - |   35 | `	/* Extract constant name */` |
-|       34 |   36 | `	zName = ph7_value_to_string(apArg[0],&nLen);` |
+|       33 |   36 | `	zName = ph7_value_to_string(apArg[0],&nLen);` |
 |        - |   37 | `	/* Perform the lookup */` |
-|       34 |   38 | `	if( nLen > 0 && SyHashGet(&pCtx->pVm->hConstant,(const void *)zName,(sxu32)nLen) != 0 ){` |
+|       33 |   38 | `	if( nLen > 0 && SyHashGet(&pCtx->pVm->hConstant,(const void *)zName,(sxu32)nLen) != 0 ){` |
 |        - |   39 | `		/* Already defined */` |
-|       32 |   40 | `		res = 1;` |
+|       31 |   40 | `		res = 1;` |
 |       14 |   41 | `	}` |
-|       34 |   42 | `	ph7_result_bool(pCtx,res);` |
-|       34 |   43 | `	return SXRET_OK;` |
-|       19 |   44 | `}` |
+|       33 |   42 | `	ph7_result_bool(pCtx,res);` |
+|       33 |   43 | `	return SXRET_OK;` |
+|       18 |   44 | `}` |
 |        - |   45 | `/*` |
 |        - |   46 | ` * Constant expansion callback used by the [define()] function defined` |
 |        - |   47 | ` * below.` |
@@ -374,18 +374,18 @@ Coverage: 779/993 lines (78.45%)
 |        - |  364 | ` * Hash walker callback used by the [get_defined_constants()] function` |
 |        - |  365 | ` * defined below.` |
 |        - |  366 | ` */` |
-|      928 |  367 | `static int VmHashConstStep(SyHashEntry *pEntry,void *pUserData)` |
+|      932 |  367 | `static int VmHashConstStep(SyHashEntry *pEntry,void *pUserData)` |
 |        1 |  368 | `{` |
-|      929 |  369 | `	ph7_value *pArray = (ph7_value *)pUserData;` |
+|      933 |  369 | `	ph7_value *pArray = (ph7_value *)pUserData;` |
 |        - |  370 | `	ph7_value sName;` |
 |        - |  371 | `	sxi32 rc;` |
 |        - |  372 | `	/* Prepare the constant name for insertion */` |
-|      929 |  373 | `	PH7_MemObjInitFromString(pArray->pVm,&sName,0);` |
-|      929 |  374 | `	PH7_MemObjStringAppend(&sName,(const char *)pEntry->pKey,pEntry->nKeyLen);` |
+|      933 |  373 | `	PH7_MemObjInitFromString(pArray->pVm,&sName,0);` |
+|      933 |  374 | `	PH7_MemObjStringAppend(&sName,(const char *)pEntry->pKey,pEntry->nKeyLen);` |
 |        - |  375 | `	/* Perform the insertion */` |
-|      929 |  376 | `	rc = ph7_array_add_elem(pArray,0,&sName); /* Will make it's own copy */` |
-|      929 |  377 | `	PH7_MemObjRelease(&sName);` |
-|      929 |  378 | `	return rc;` |
+|      933 |  376 | `	rc = ph7_array_add_elem(pArray,0,&sName); /* Will make it's own copy */` |
+|      933 |  377 | `	PH7_MemObjRelease(&sName);` |
+|      933 |  378 | `	return rc;` |
 |        1 |  379 | `}` |
 |        - |  380 | `/*` |
 |        - |  381 | ` * array get_defined_constants(void)` |
@@ -426,11 +426,11 @@ Coverage: 779/993 lines (78.45%)
 |        - |  416 | ` * PH7 uses its own private PRNG (the SQLite3-derived RC4 generator` |
 |        - |  417 | ` * implemented in src/sx/sxrand.c).` |
 |        - |  418 | ` */` |
-|     5116 |  419 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
+|     5121 |  419 | `PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)` |
 |        5 |  420 | `{` |
 |        - |  421 | `	sxu32 iNum;` |
-|     5121 |  422 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
-|     5121 |  423 | `	return iNum;` |
+|     5126 |  422 | `	SyRandomness(&pVm->sPrng,(void *)&iNum,sizeof(sxu32));` |
+|     5126 |  423 | `	return iNum;` |
 |        5 |  424 | `}` |
 |        - |  425 | `/*` |
 |        - |  426 | ` * Generate a random string (English Alphabet) of length nLen.` |
@@ -438,17 +438,17 @@ Coverage: 779/993 lines (78.45%)
 |        - |  428 | ` * PH7 uses its own private PRNG (the SQLite3-derived RC4 generator` |
 |        - |  429 | ` * implemented in src/sx/sxrand.c).` |
 |        - |  430 | ` */` |
-|  2902624 |  431 | `PH7_PRIVATE void PH7_VmRandomString(ph7_vm *pVm,char *zBuf,int nLen)` |
+|  2908592 |  431 | `PH7_PRIVATE void PH7_VmRandomString(ph7_vm *pVm,char *zBuf,int nLen)` |
 |        5 |  432 | `{` |
 |        - |  433 | `	static const char zBase[] = {"abcdefghijklmnopqrstuvwxyz"}; /* English Alphabet */` |
 |        - |  434 | `	int i;` |
 |        - |  435 | `	/* Generate a binary string first */` |
-|  2902629 |  436 | `	SyRandomness(&pVm->sPrng,zBuf,(sxu32)nLen);` |
+|  2908597 |  436 | `	SyRandomness(&pVm->sPrng,zBuf,(sxu32)nLen);` |
 |        - |  437 | `	/* Turn the binary string into english based alphabet */` |
-| 31929057 |  438 | `	for( i = 0 ; i < nLen ; ++i ){` |
-| 29026433 |  439 | `		 zBuf[i] = zBase[zBuf[i] % (sizeof(zBase)-1)];` |
-| 14513219 |  440 | `	 }` |
-|  2902629 |  441 | `}` |
+| 31994705 |  438 | `	for( i = 0 ; i < nLen ; ++i ){` |
+| 29086113 |  439 | `		 zBuf[i] = zBase[zBuf[i] % (sizeof(zBase)-1)];` |
+| 14543059 |  440 | `	 }` |
+|  2908597 |  441 | `}` |
 |        - |  442 | `/*` |
 |        - |  443 | ` * int rand()` |
 |        - |  444 | ` * int mt_rand()` |
@@ -646,23 +646,23 @@ Coverage: 779/993 lines (78.45%)
 |      225 |  636 | `	uMask \|= uMask >> 16;` |
 |      225 |  637 | `	uMask \|= uMask >> 32;` |
 |      225 |  638 | `	uResult = 0;` |
-|      339 |  639 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
+|      361 |  639 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
 |        - |  640 | `		/* Always draw a full 8 bytes so endianness of the cast doesn't matter` |
 |        - |  641 | `		 * (a 4-byte fill into a sxu64 would land in the high half on big-endian` |
 |        - |  642 | `		 * and the low-half mask would always read 0). */` |
 |        - |  643 | `		sxu64 uDraw;` |
-|      339 |  644 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
+|      361 |  644 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
 |      ! 0 |  645 | `			return PH7_VmThrowException(pCtx,` |
 |        - |  646 | `				"Random\\RandomException",` |
 |        - |  647 | `				"Cannot gather sufficient random data"` |
 |        - |  648 | `				);` |
 |        - |  649 | `		}` |
-|      339 |  650 | `		uDraw &= uMask;` |
-|      339 |  651 | `		if( uDraw <= uRange ){` |
+|      361 |  650 | `		uDraw &= uMask;` |
+|      361 |  651 | `		if( uDraw <= uRange ){` |
 |      225 |  652 | `			uResult = uDraw;` |
 |      225 |  653 | `			break;` |
 |        - |  654 | `		}` |
-|       57 |  655 | `	}` |
+|       79 |  655 | `	}` |
 |      225 |  656 | `	if( nAttempt >= 50 ){` |
 |      ! 0 |  657 | `		return PH7_VmThrowException(pCtx,` |
 |        - |  658 | `			"Random\\RandomException",` |
@@ -875,29 +875,29 @@ Coverage: 779/993 lines (78.45%)
 |        - |  865 | ` *  1 always.` |
 |        - |  866 | ` */` |
 |       34 |  867 | `PH7_PRIVATE int vm_builtin_print(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|        2 |  868 | `{` |
+|        1 |  868 | `{` |
 |        - |  869 | `	const char *zData;` |
-|       36 |  870 | `	int nDataLen = 0;` |
+|       35 |  870 | `	int nDataLen = 0;` |
 |        - |  871 | `	ph7_vm *pVm;` |
 |        - |  872 | `	int i,rc;` |
 |        - |  873 | `	/* Point to the target VM */` |
-|       36 |  874 | `	pVm = pCtx->pVm;` |
+|       35 |  874 | `	pVm = pCtx->pVm;` |
 |        - |  875 | `	/* Output */` |
-|       70 |  876 | `	for( i = 0 ; i < nArg ; ++i ){` |
-|       36 |  877 | `		zData = ph7_value_to_string(apArg[i],&nDataLen);` |
-|       36 |  878 | `		if( nDataLen > 0 ){` |
-|       36 |  879 | `			rc = pVm->sVmConsumer.xConsumer((const void *)zData,(unsigned int)nDataLen,pVm->sVmConsumer.pUserData);` |
-|       36 |  880 | `			VmTrackOutput(pVm, (sxu32)nDataLen);` |
-|       36 |  881 | `			if( rc == SXERR_ABORT ){` |
+|       69 |  876 | `	for( i = 0 ; i < nArg ; ++i ){` |
+|       35 |  877 | `		zData = ph7_value_to_string(apArg[i],&nDataLen);` |
+|       35 |  878 | `		if( nDataLen > 0 ){` |
+|       35 |  879 | `			rc = pVm->sVmConsumer.xConsumer((const void *)zData,(unsigned int)nDataLen,pVm->sVmConsumer.pUserData);` |
+|       35 |  880 | `			VmTrackOutput(pVm, (sxu32)nDataLen);` |
+|       35 |  881 | `			if( rc == SXERR_ABORT ){` |
 |        - |  882 | `				/* Output consumer callback request an operation abort */` |
 |      ! 0 |  883 | `				return PH7_ABORT;` |
 |        - |  884 | `			}` |
 |       17 |  885 | `		}` |
-|       19 |  886 | `	}` |
+|       18 |  886 | `	}` |
 |        - |  887 | `	/* Return 1 */` |
-|       36 |  888 | `	ph7_result_int(pCtx,1);` |
-|       36 |  889 | `	return SXRET_OK;` |
-|       19 |  890 | `}` |
+|       35 |  888 | `	ph7_result_int(pCtx,1);` |
+|       35 |  889 | `	return SXRET_OK;` |
+|       18 |  890 | `}` |
 |        - |  891 | `/*` |
 |        - |  892 | ` * void exit(string $msg)` |
 |        - |  893 | ` * void exit(int $status)` |
