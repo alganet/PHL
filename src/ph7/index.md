@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 45779/56234 lines (81.41%)
+Coverage: 45786/56242 lines (81.41%)
 
 [Up](../index.md)
 
@@ -10,7 +10,7 @@ Coverage: 45779/56234 lines (81.41%)
 |[builtin.c](builtin.c.md)|67.55%|229/339|
 |[builtin_date.c](builtin_date.c.md)|89.61%|647/722|
 |[builtin_date_parse.c](builtin_date_parse.c.md)|87.86%|948/1079|
-|[builtin_fmt.c](builtin_fmt.c.md)|85.10%|474/557|
+|[builtin_fmt.c](builtin_fmt.c.md)|85.31%|482/565|
 |[builtin_hash.c](builtin_hash.c.md)|87.67%|256/292|
 |[builtin_math.c](builtin_math.c.md)|82.24%|537/653|
 |[builtin_mb.c](builtin_mb.c.md)|91.94%|479/521|
@@ -24,7 +24,7 @@ Coverage: 45779/56234 lines (81.41%)
 |[compile_stmt.c](compile_stmt.c.md)|73.92%|1448/1959|
 |[constant.c](constant.c.md)|93.09%|970/1042|
 |[hashmap.c](hashmap.c.md)|90.77%|1042/1148|
-|[hashmap_builtin.c](hashmap_builtin.c.md)|85.87%|2444/2846|
+|[hashmap_builtin.c](hashmap_builtin.c.md)|85.84%|2443/2846|
 |[hashmap_sort.c](hashmap_sort.c.md)|91.14%|463/508|
 |[lex.c](lex.c.md)|93.46%|814/871|
 |[memobj.c](memobj.c.md)|81.88%|836/1021|
