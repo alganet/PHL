@@ -6,7 +6,6 @@ get_class_methods builtin basic checks
 --SKIPIF--
 <?php
 if (function_exists('zend_version')) { echo "skip: PHL only\n"; }
-if (!function_exists('get_class_methods')) { echo "skip: function not available\n"; }
 ?>
 --FILE--
 <?php

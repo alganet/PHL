@@ -6,7 +6,6 @@ get_parent_class builtin basic checks
 --SKIPIF--
 <?php
 if (function_exists('zend_version')) { echo "skip: not PH7\n"; }
-if (!function_exists('get_parent_class')) { echo "skip: function not available\n"; }
 ?>
 --FILE--
 <?php

@@ -3,10 +3,7 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 get_class returns class name of object
---SKIPIF--
-<?php
-if (!function_exists('get_class')) { echo 'skip: get_class not available'; }
-?>
+
 --FILE--
 <?php
 class TestClass {}

@@ -3,8 +3,7 @@ SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 array_all: true only if every element matches; true for empty
---SKIPIF--
-<?php if (!function_exists('array_all')) echo 'skip array_all unavailable'; ?>
+
 --FILE--
 <?php
 // No top-level helper functions: the in-process smoke runner includes every

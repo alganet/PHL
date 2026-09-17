@@ -3,10 +3,7 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 set_exception_handler sets handler for uncaught exceptions
---SKIPIF--
-<?php
-if (!function_exists('set_exception_handler')) { echo 'skip: set_exception_handler not available'; }
-?>
+
 --FILE--
 <?php
 $old = set_exception_handler(function($e) {

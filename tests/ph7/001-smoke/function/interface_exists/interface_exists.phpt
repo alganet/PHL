@@ -3,10 +3,7 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 interface_exists builtin function basic checks
---SKIPIF--
-<?php
-if (!function_exists('interface_exists')) { echo "skip: function not available\n"; }
-?>
+
 --FILE--
 <?php
 interface Foo {}

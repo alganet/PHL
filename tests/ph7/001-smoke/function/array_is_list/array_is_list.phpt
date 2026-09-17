@@ -3,8 +3,7 @@ SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 array_is_list: lists vs non-lists
---SKIPIF--
-<?php if (!function_exists('array_is_list')) echo 'skip array_is_list unavailable'; ?>
+
 --FILE--
 <?php
 echo json_encode([

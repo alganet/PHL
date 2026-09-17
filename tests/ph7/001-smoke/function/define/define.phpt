@@ -3,10 +3,7 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 define creates constants
---SKIPIF--
-<?php
-if (!function_exists('define')) { echo 'skip: define not available'; }
-?>
+
 --FILE--
 <?php
 $result = define('MY_CONST', 'hello');

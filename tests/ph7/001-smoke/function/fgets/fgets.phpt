@@ -3,12 +3,7 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Test fgets() function
---SKIPIF--
-<?php
-if (!function_exists('fopen') || !function_exists('fgets') || !function_exists('fclose')) {
-    echo 'skip: stream functions not available';
-}
-?>
+
 --FILE--
 <?php
 echo "Testing fgets() basic functionality\n";
