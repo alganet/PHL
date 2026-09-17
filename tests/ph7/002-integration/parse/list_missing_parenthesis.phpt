@@ -2,15 +2,14 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-List syntax error: missing closing parenthesis ')'
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+an unclosed list( is a syntax error expecting ")" (was a bare skip freezing PHL's invented "list: Missing closing parenthesis")
+
 --FILE--
 <?php
 $a = list(1,2 ;
 ?>
 --EXPECTF--
-%s Fatal error:  list: Missing closing parenthesis ')' %s
+%AParse error:%Asyntax error, unexpected token ";", expecting ")"%A
 --CLEAN--
 <?php
 unset($a);

@@ -968,8 +968,7 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 		if( pCur < pGen->pEnd ){
 			pCur++; /* skip the closing ')' */
 		}else{
-			rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
-				"clone: Missing closing parenthesis ')'");
+			rc = PH7_GenSyntaxError(pGen,pCur < pGen->pEnd ? pCur : 0,"\")\"");
 			if( rc != SXERR_ABORT ){
 				rc = SXERR_SYNTAX;
 			}
@@ -1035,8 +1034,8 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 					 pCur++;
 				 }else{
 					 /* Syntax error */
-					 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
-						 "%s: Missing closing parenthesis ')'",nKeyword == PH7_TKWRD_LIST ? "list" : "array");
+					 /* php names the token it stopped on and says it expected ")". */
+					 rc = PH7_GenSyntaxError(pGen,pCur < pGen->pEnd ? pCur : 0,"\")\"");
 					 if( rc != SXERR_ABORT ){
 						 rc = SXERR_SYNTAX;
 					 }
