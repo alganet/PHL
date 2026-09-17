@@ -3,10 +3,7 @@ SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 random_int handles a wide range that straddles zero (exercises 64-bit + signed-add path)
---SKIPIF--
-<?php
-if (!function_exists('random_int')) { echo 'skip: random_int not available'; }
-?>
+
 --FILE--
 <?php
 $min = -9999999999;

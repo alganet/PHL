@@ -3,10 +3,7 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 error_reporting get and set error reporting level
---SKIPIF--
-<?php
-if (!function_exists('error_reporting')) { echo 'skip: error_reporting not available'; }
-?>
+
 --FILE--
 <?php
 $old = error_reporting();

@@ -8,9 +8,6 @@ Test feof() function with empty files
 if (function_exists('zend_version')) {
     echo "Zend php handles feof on empty files differently";
 }
-if (!function_exists('fopen') || !function_exists('feof') || !function_exists('fread') || !function_exists('fclose')) {
-    echo 'skip: stream functions not available';
-}
 ?>
 --FILE--
 <?php

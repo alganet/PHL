@@ -3,8 +3,7 @@ SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 array_find_key: first matching key (int and string keys), null when none
---SKIPIF--
-<?php if (!function_exists('array_find_key')) echo 'skip array_find_key unavailable'; ?>
+
 --FILE--
 <?php
 // No top-level helper functions: the in-process smoke runner includes every

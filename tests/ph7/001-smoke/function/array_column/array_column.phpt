@@ -3,8 +3,7 @@ SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 array_column: column extraction, index keys, null column, objects
---SKIPIF--
-<?php if (!function_exists('array_column')) echo 'skip array_column unavailable'; ?>
+
 --FILE--
 <?php
 // Engine-neutral recursive formatter: avoids json_encode/var_export output

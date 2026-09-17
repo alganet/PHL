@@ -5,7 +5,6 @@ SPDX-License-Identifier: BSD-3-Clause
 debug_print_backtrace prints called function
 --SKIPIF--
 <?php
-if (!function_exists('debug_print_backtrace')) { echo 'skip: debug_print_backtrace not available'; }
 if (function_exists('zend_version')) { echo 'skip: PHP debug_print_backtrace output differs'; }
 ?>
 --FILE--

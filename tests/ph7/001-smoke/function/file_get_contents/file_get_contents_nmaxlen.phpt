@@ -3,10 +3,7 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 file_get_contents respects max length parameter
---SKIPIF--
-<?php
-if (!function_exists('file_get_contents')) { echo 'skip: file_get_contents not available'; }
-?>
+
 --FILE--
 <?php
 $fn = tempnam(sys_get_temp_dir(), 'ph7_fgc');

@@ -3,10 +3,7 @@ SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 random_int accepts numeric strings as int arguments
---SKIPIF--
-<?php
-if (!function_exists('random_int')) { echo 'skip: random_int not available'; }
-?>
+
 --FILE--
 <?php
 $v = random_int("0", "10");

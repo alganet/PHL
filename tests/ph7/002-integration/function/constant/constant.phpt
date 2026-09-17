@@ -7,10 +7,7 @@ constant() retrieves defined constants; undefined names throw Error (php 8)
 Rewritten cross-engine with the band A #4 fix: an undefined constant is a
 catchable Error ("Undefined constant \"X\""), not the old PHL notice + NULL
 this test used to enshrine.
---SKIPIF--
-<?php
-if (!function_exists('constant')) { echo 'skip: constant not available'; }
-?>
+
 --FILE--
 <?php
 define('TEST_CONST', 42);

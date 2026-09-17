@@ -3,8 +3,7 @@ SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 array_find: first matching value, callback receives ($value, $key)
---SKIPIF--
-<?php if (!function_exists('array_find')) echo 'skip array_find unavailable'; ?>
+
 --FILE--
 <?php
 // No top-level helper functions: the in-process smoke runner includes every

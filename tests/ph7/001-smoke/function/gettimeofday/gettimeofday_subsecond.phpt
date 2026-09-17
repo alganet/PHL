@@ -3,10 +3,7 @@ SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 gettimeofday(true) carries sub-second resolution; usec is in range
---SKIPIF--
-<?php
-if (!function_exists('gettimeofday')) { echo 'skip: gettimeofday not available'; }
-?>
+
 --FILE--
 <?php
 // gettimeofday(true) must carry sub-second resolution: across a handful of

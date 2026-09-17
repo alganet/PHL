@@ -3,10 +3,7 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 vfprintf invalid resource returns 0 and valid stream writes formatted text
---SKIPIF--
-<?php
-if (!function_exists('vfprintf')) { echo 'skip: vfprintf not available'; }
-?>
+
 --FILE--
 <?php
 error_reporting(0);
