@@ -121,8 +121,9 @@ PH7_PRIVATE ph7_class * PH7_VmExtractClassFromValue(ph7_vm *pVm,ph7_value *pArg)
 		int nLen;
 		/* Extract class name */
 		zClass = ph7_value_to_string(pArg,&nLen);
-		/* php: a leading '\' anchors the name to the global namespace. */
-		if( nLen > 0 && zClass[0] == '\\' ){ zClass++; nLen--; }
+		/* A leading '\' (the global-namespace anchor) is stripped by
+		 * PH7_VmExtractClass itself now (PH7_VmClassNameAnchor), so do not
+		 * strip here too — a second strip would wrongly resolve "\\Foo". */
 		if( nLen > 0 ){
 			/* Resolve through PH7_VmExtractClass so a class named by STRING is
 			 * autoloaded on a miss — php autoloads the class of a [class,method]
@@ -233,20 +234,27 @@ PH7_PRIVATE int vm_builtin_class_exists(ph7_context *pCtx,int nArg,ph7_value **a
 		const char *zName;
 		int nLen;
 		int iAutoload = 1; /* Default: autoload enabled */
+		sxu32 nName;
 		/* Extract given name */
 		zName = ph7_value_to_string(apArg[0],&nLen);
 		if( nArg >= 2 ){
 			iAutoload = ph7_value_to_bool(apArg[1]);
 		}
-		if( nLen > 0 ){
+		/* Strip a leading '\' (global-namespace anchor) — this builtin hashes
+		 * hClass directly, bypassing PH7_VmExtractClass, so anchor here. */
+		nName = (sxu32)nLen;
+		PH7_VmClassNameAnchor(&zName,&nName);
+		if( nName > 0 ){
 			/* Perform a hash lookup first */
-			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);
+			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,nName);
 		}
+		/* Gate autoload on the ORIGINAL length (nLen), not the stripped nName:
+		 * php autoloads a lone "\" (with the empty stripped name) but not "". */
 		if( pEntry == 0 && nLen > 0 && iAutoload ){
 			/* Try autoload, then re-check */
-			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,(sxu32)nLen,FALSE);
+			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,nName,FALSE);
 			if( pClass ){
-				pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);
+				pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,nName);
 			}
 		}
 		if( pEntry ){
@@ -285,20 +293,27 @@ PH7_PRIVATE int vm_builtin_interface_exists(ph7_context *pCtx,int nArg,ph7_value
 		const char *zName;
 		int nLen;
 		int iAutoload = 1; /* Default: autoload enabled */
+		sxu32 nName;
 		/* Extract given name */
 		zName = ph7_value_to_string(apArg[0],&nLen);
 		if( nArg >= 2 ){
 			iAutoload = ph7_value_to_bool(apArg[1]);
 		}
+		/* Strip a leading '\' (global-namespace anchor); this builtin bypasses
+		 * PH7_VmExtractClass and hashes hClass directly. */
+		nName = (sxu32)nLen;
+		PH7_VmClassNameAnchor(&zName,&nName);
 		/* Perform a hash lookup */
-		if( nLen > 0 ){
-			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);
+		if( nName > 0 ){
+			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,nName);
 		}
+		/* Gate autoload on the ORIGINAL length (nLen): php autoloads a lone
+		 * "\" with the empty stripped name, but not a truly empty "". */
 		if( pEntry == 0 && nLen > 0 && iAutoload ){
 			/* Try autoload — pass iLoadable=FALSE so we get interfaces too */
-			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,(sxu32)nLen,FALSE);
+			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,nName,FALSE);
 			if( pClass ){
-				pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);
+				pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,nName);
 			}
 		}
 		if( pEntry ){
@@ -336,20 +351,27 @@ PH7_PRIVATE int vm_builtin_trait_exists(ph7_context *pCtx,int nArg,ph7_value **a
 		const char *zName;
 		int nLen;
 		int iAutoload = 1; /* Default: autoload enabled */
+		sxu32 nName;
 		/* Extract given name */
 		zName = ph7_value_to_string(apArg[0],&nLen);
 		if( nArg >= 2 ){
 			iAutoload = ph7_value_to_bool(apArg[1]);
 		}
+		/* Strip a leading '\' (global-namespace anchor); this builtin bypasses
+		 * PH7_VmExtractClass and hashes hClass directly. */
+		nName = (sxu32)nLen;
+		PH7_VmClassNameAnchor(&zName,&nName);
 		/* Perform a hash lookup */
-		if( nLen > 0 ){
-			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);
+		if( nName > 0 ){
+			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,nName);
 		}
+		/* Gate autoload on the ORIGINAL length (nLen): php autoloads a lone
+		 * "\" with the empty stripped name, but not a truly empty "". */
 		if( pEntry == 0 && nLen > 0 && iAutoload ){
 			/* Try autoload — pass iLoadable=FALSE so we get traits too */
-			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,(sxu32)nLen,FALSE);
+			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,nName,FALSE);
 			if( pClass ){
-				pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);
+				pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,nName);
 			}
 		}
 		if( pEntry ){
@@ -383,6 +405,7 @@ PH7_PRIVATE int vm_builtin_class_alias(ph7_context *pCtx,int nArg,ph7_value **ap
 {
 	const char *zOld,*zNew;
 	int nOldLen,nNewLen;
+	sxu32 nOld,nNew;
 	SyHashEntry *pEntry;
 	ph7_class *pClass;
 	char *zDup;
@@ -396,13 +419,20 @@ PH7_PRIVATE int vm_builtin_class_alias(ph7_context *pCtx,int nArg,ph7_value **ap
 	zOld = ph7_value_to_string(apArg[0],&nOldLen);
 	/* Extract alias name */
 	zNew = ph7_value_to_string(apArg[1],&nNewLen);
-	if( nNewLen < 1 ){
+	/* Strip a leading '\' (global-namespace anchor) from BOTH names: php
+	 * resolves the target and stores the alias without it, so class_exists()
+	 * on the plain name then matches. */
+	nOld = (sxu32)nOldLen;
+	nNew = (sxu32)nNewLen;
+	PH7_VmClassNameAnchor(&zOld,&nOld);
+	PH7_VmClassNameAnchor(&zNew,&nNew);
+	if( nNew < 1 ){
 		/* Invalid alias name,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	/* Perform a hash lookup */
-	pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zOld,(sxu32)nOldLen);
+	pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zOld,nOld);
 	if( pEntry ==  0 ){
 		/* No such class,return FALSE */
 		ph7_result_bool(pCtx,0);
@@ -411,14 +441,14 @@ PH7_PRIVATE int vm_builtin_class_alias(ph7_context *pCtx,int nArg,ph7_value **ap
 	/* Point to the class */
 	pClass = (ph7_class *)pEntry->pUserData;
 	/* Duplicate alias name */
-	zDup = SyMemBackendStrDup(&pCtx->pVm->sAllocator,zNew,(sxu32)nNewLen);
+	zDup = SyMemBackendStrDup(&pCtx->pVm->sAllocator,zNew,nNew);
 	if( zDup == 0 ){
 		/* Out of memory,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	/* Create the alias */
-	rc = SyHashInsert(&pCtx->pVm->hClass,(const void *)zDup,(sxu32)nNewLen,pClass);
+	rc = SyHashInsert(&pCtx->pVm->hClass,(const void *)zDup,nNew,pClass);
 	if( rc != SXRET_OK ){
 		SyMemBackendFree(&pCtx->pVm->sAllocator,zDup);
 	}

@@ -383,14 +383,22 @@ PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)
 	}else if( pValue->iFlags & MEMOBJ_STRING ){
 		const char *zName;
 		int nLen;
+		const char *zFn;
+		sxu32 nFn;
 		/* Extract the name */
 		zName = ph7_value_to_string(pValue,&nLen);
 		/* php: a leading '\' just anchors the callable to the global namespace
-		 * ("\trim", "\Foo::bar"); strip it before the lookup. */
-		if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }
+		 * ("\trim", "\Foo::bar"). Anchor a COPY for the plain function-name
+		 * lookup (hFunction is not routed through PH7_VmClassNameAnchor); the
+		 * "Class::method" branch keeps the ORIGINAL zName so PH7_VmExtractClass
+		 * does the single class-name strip itself (anchoring zName here too
+		 * would strip the class half twice — "\\Foo::bar" would wrongly resolve). */
+		zFn = zName;
+		nFn = (sxu32)nLen;
+		PH7_VmClassNameAnchor(&zFn,&nFn);
 		/* Perform the lookup */
-		if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 ||
-			SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nLen) != 0 ){
+		if( SyHashGet(&pVm->hFunction,(const void *)zFn,nFn) != 0 ||
+			SyHashGet(&pVm->hHostFunction,(const void *)zFn,nFn) != 0 ){
 				/* Function is callable */
 				res = 1;
 		}else if( nLen > 3 ){

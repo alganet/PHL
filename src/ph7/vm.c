@@ -5140,6 +5140,26 @@ PH7_PRIVATE ph7_class * PH7_VmTriggerAutoload(ph7_vm *pVm,const char *zName,sxu3
 	return VmTriggerAutoload(pVm,zName,nByte,iLoadable);
 }
 /*
+ * php: a leading '\' anchors a class/interface/trait/enum name to the global
+ * namespace root. A stored name never carries one (the compiler qualifies to
+ * "Foo\Bar", and a top-level class stores as "Foo"), so strip EXACTLY ONE
+ * leading backslash before a hClass lookup — only one, since a literal
+ * "\\Foo" names a non-global "\Foo" php also fails to find. Stripping a
+ * lookup key is universally safe: no stored key begins with '\', so it can
+ * only turn a failing lookup into a match, never break an existing one.
+ * Shared by PH7_VmExtractClass (the central resolver — string `new`,
+ * is_a/is_subclass_of/method_exists via PH7_VmExtractClassFromValue,
+ * enum_exists via VmExtractEnumClass, instanceof over a string) and the
+ * *_exists()/class_alias() builtins that hash hClass directly.
+ */
+PH7_PRIVATE void PH7_VmClassNameAnchor(const char **pzName,sxu32 *pnByte)
+{
+	if( *pnByte > 0 && (*pzName)[0] == '\\' ){
+		(*pzName)++;
+		(*pnByte)--;
+	}
+}
+/*
  * Check if the given name refer to an installed class.
  * Return a pointer to that class on success. NULL on failure.
  */
@@ -5155,14 +5175,22 @@ PH7_PRIVATE ph7_class * PH7_VmExtractClass(
 {
 	SyHashEntry *pEntry;
 	ph7_class *pClass;
+	sxu32 nOrig = nByte;
 	SXUNUSED(iNest);
 	/* Exact class lookup.
 	 * Static names are already namespace-qualified by the compiler.
-	 * Dynamic names (from variables) use exact match only, matching PHP behavior. */
-	pEntry = SyHashGet(&pVm->hClass,(const void *)zName,nByte);
+	 * Dynamic names (from variables) use exact match only, matching PHP behavior.
+	 * A dynamic name may carry a leading '\' (the global-namespace anchor) — strip
+	 * one so "\Foo" resolves to the stored "Foo" (php-exact; see the helper above). */
+	PH7_VmClassNameAnchor(&zName,&nByte);
+	/* An empty stripped name never matches a stored key (none is empty); skip the
+	 * hash probe. But php still fires the autoloader when the ORIGINAL name was
+	 * non-empty — a lone "\" autoloads with the empty stripped name, whereas a
+	 * truly empty "" does not. Gate autoload on nOrig, pass the stripped name. */
+	pEntry = nByte > 0 ? SyHashGet(&pVm->hClass,(const void *)zName,nByte) : 0;
 	if( pEntry == 0 ){
 		/* Class not found in hash table — try autoload before giving up */
-		return VmTriggerAutoload(pVm,zName,nByte,iLoadable);
+		return nOrig > 0 ? VmTriggerAutoload(pVm,zName,nByte,iLoadable) : 0;
 	}
 	pClass = (ph7_class *)pEntry->pUserData;
 	return VmFilterLoadableClass(pClass,iLoadable);
