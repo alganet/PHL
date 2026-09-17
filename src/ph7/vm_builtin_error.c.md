@@ -185,12 +185,12 @@ Coverage: 236/295 lines (80.00%)
 |    - |  175 | ` *   parameter is given.` |
 |    - |  176 | ` */` |
 |  102 |  177 | `PH7_PRIVATE int vm_builtin_error_reporting(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    3 |  178 | `{` |
-|  105 |  179 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    4 |  178 | `{` |
+|  106 |  179 | `	ph7_vm *pVm = pCtx->pVm;` |
 |    - |  180 | `	int nOld;` |
 |    - |  181 | `	/* Extract the old reporting level */` |
-|  105 |  182 | `	nOld = pVm->bErrReport ? (int)pVm->iErrMask : 0;` |
-|  105 |  183 | `	if( pVm->nErrSuppress > 0 ){` |
+|  106 |  182 | `	nOld = pVm->bErrReport ? (int)pVm->iErrMask : 0;` |
+|  106 |  183 | `	if( pVm->nErrSuppress > 0 ){` |
 |    - |  184 | `		/* Inside the '@' silence operator php reports the level masked down to` |
 |    - |  185 | `		 * the errors '@' cannot suppress: E_ERROR\|E_PARSE\|E_CORE_ERROR\|` |
 |    - |  186 | `		 * E_COMPILE_ERROR\|E_USER_ERROR\|E_RECOVERABLE_ERROR (== 4437). A custom` |
@@ -198,17 +198,17 @@ Coverage: 236/295 lines (80.00%)
 |    - |  188 | `		 * '@', so a suppressed warning must fall outside the returned mask. */` |
 |   18 |  189 | `		nOld &= 4437;` |
 |    8 |  190 | `	}` |
-|  105 |  191 | `	if( nArg > 0 ){` |
+|  106 |  191 | `	if( nArg > 0 ){` |
 |    - |  192 | `		int nNew;` |
 |    - |  193 | `		/* Keep the LEVEL, not just an on/off bit: php masks per-severity. */` |
-|   37 |  194 | `		nNew = ph7_value_to_int(apArg[0]);` |
-|   37 |  195 | `		pVm->iErrMask = (sxi32)nNew;` |
-|   37 |  196 | `		pVm->bErrReport = nNew != 0;` |
+|   38 |  194 | `		nNew = ph7_value_to_int(apArg[0]);` |
+|   38 |  195 | `		pVm->iErrMask = (sxi32)nNew;` |
+|   38 |  196 | `		pVm->bErrReport = nNew != 0;` |
 |   17 |  197 | `	}` |
 |    - |  198 | `	/* Return the old level */` |
-|  105 |  199 | `	ph7_result_int(pCtx,nOld);` |
-|  105 |  200 | `	return PH7_OK;` |
-|    3 |  201 | `}` |
+|  106 |  199 | `	ph7_result_int(pCtx,nOld);` |
+|  106 |  200 | `	return PH7_OK;` |
+|    4 |  201 | `}` |
 |    - |  202 | `/*` |
 |    - |  203 | ` * bool error_log(string $message[,int $message_type = 0 [,string $destination[,string $extra_headers]]])` |
 |    - |  204 | ` *  Send an error message somewhere.` |
@@ -353,25 +353,25 @@ Coverage: 236/295 lines (80.00%)
 |    - |  343 | ` *  Always TRUE.` |
 |    - |  344 | ` */` |
 |   56 |  345 | `PH7_PRIVATE int vm_builtin_restore_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    4 |  346 | `{` |
-|   60 |  347 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    5 |  346 | `{` |
+|   61 |  347 | `	ph7_vm *pVm = pCtx->pVm;` |
 |    - |  348 | `	ph7_value *pOld,*pNew;` |
 |    - |  349 | `	/* Point to the old and the new handler */` |
-|   60 |  350 | `	pOld = &pVm->aErrCB[0];` |
-|   60 |  351 | `	pNew = &pVm->aErrCB[1];` |
+|   61 |  350 | `	pOld = &pVm->aErrCB[0];` |
+|   61 |  351 | `	pNew = &pVm->aErrCB[1];` |
 |   28 |  352 | `	SXUNUSED(nArg); /* cc warning */` |
 |   28 |  353 | `	SXUNUSED(apArg);` |
-|   60 |  354 | `	if( pOld->iFlags & MEMOBJ_NULL ){` |
+|   61 |  354 | `	if( pOld->iFlags & MEMOBJ_NULL ){` |
 |    - |  355 | `		/* Nothing SAVED underneath — but php pops the handler stack regardless, so the` |
 |    - |  356 | `		 * ACTIVE handler must still go (reporting reverts to the engine's own). Returning` |
 |    - |  357 | `		 * early here left it installed, making restore_error_handler() a no-op after a` |
 |    - |  358 | `		 * single set_error_handler().` |
 |    - |  359 | `		 * php answers TRUE either way: the return value says "the call is valid", not` |
 |    - |  360 | `		 * "a handler was in place". */` |
-|   17 |  361 | `		PH7_MemObjRelease(pNew);` |
-|   17 |  362 | `		MemObjSetType(pNew,MEMOBJ_NULL);` |
-|   17 |  363 | `		ph7_result_bool(pCtx,1);` |
-|   17 |  364 | `		return PH7_OK;` |
+|   18 |  361 | `		PH7_MemObjRelease(pNew);` |
+|   18 |  362 | `		MemObjSetType(pNew,MEMOBJ_NULL);` |
+|   18 |  363 | `		ph7_result_bool(pCtx,1);` |
+|   18 |  364 | `		return PH7_OK;` |
 |    - |  365 | `	}` |
 |    - |  366 | `	/* Copy the old callback */` |
 |   43 |  367 | `	PH7_MemObjStore(pOld,pNew);` |
@@ -379,7 +379,7 @@ Coverage: 236/295 lines (80.00%)
 |    - |  369 | `	/* Return TRUE */` |
 |   43 |  370 | `	ph7_result_bool(pCtx,1);` |
 |   43 |  371 | `	return PH7_OK;` |
-|   32 |  372 | `}` |
+|   33 |  372 | `}` |
 |    - |  373 | `/*` |
 |    - |  374 | ` * value set_error_handler(callable $error_handler)` |
 |    - |  375 | ` *  +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++` |

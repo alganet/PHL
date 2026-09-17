@@ -2122,44 +2122,44 @@ Coverage: 1234/1377 lines (89.62%)
 |     - | 2112 | ` *  Besides the blank character this also includes tab, vertical tab, line feed, carriage return` |
 |     - | 2113 | ` *  and form feed characters.` |
 |     - | 2114 | ` */` |
-| 16536 | 2115 | `PH7_PRIVATE int PH7_builtin_ctype_space(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+| 16528 | 2115 | `PH7_PRIVATE int PH7_builtin_ctype_space(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     5 | 2116 | `{` |
 |     - | 2117 | `	const unsigned char *zIn,*zEnd;` |
 |     - | 2118 | `	int nLen;` |
-| 16541 | 2119 | `	if( nArg < 1 ){` |
+| 16533 | 2119 | `	if( nArg < 1 ){` |
 |     - | 2120 | `		/* Missing arguments,return FALSE */` |
 |   ! 0 | 2121 | `		ph7_result_bool(pCtx,0);` |
 |   ! 0 | 2122 | `		return PH7_OK;` |
 |     - | 2123 | `	}` |
 |     - | 2124 | `	/* Extract the target string */` |
-| 16541 | 2125 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
-| 16541 | 2126 | `	zEnd = &zIn[nLen];` |
-| 16541 | 2127 | `	if( nLen < 1 ){` |
+| 16533 | 2125 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
+| 16533 | 2126 | `	zEnd = &zIn[nLen];` |
+| 16533 | 2127 | `	if( nLen < 1 ){` |
 |     - | 2128 | `		/* Empty string,return FALSE */` |
 |     3 | 2129 | `		ph7_result_bool(pCtx,0);` |
 |     3 | 2130 | `		return PH7_OK;` |
 |     - | 2131 | `	}` |
 |     - | 2132 | `	/* Perform the requested operation */` |
-|  8341 | 2133 | `	for(;;){` |
-| 16573 | 2134 | `		if( zIn >= zEnd ){` |
+|  8337 | 2133 | `	for(;;){` |
+| 16565 | 2134 | `		if( zIn >= zEnd ){` |
 |     - | 2135 | `			/* If we reach the end of the string,then the test succeeded. */` |
 |    11 | 2136 | `			ph7_result_bool(pCtx,1);` |
 |    11 | 2137 | `			return PH7_OK;` |
 |     - | 2138 | `		}` |
-| 16563 | 2139 | `		if( zIn[0] >= 0xc0 ){` |
+| 16555 | 2139 | `		if( zIn[0] >= 0xc0 ){` |
 |     - | 2140 | `			/* UTF-8 stream  */` |
 |   ! 0 | 2141 | `			break;` |
 |     - | 2142 | `		}` |
-| 16563 | 2143 | `		if( !SyisSpace(zIn[0]) ){` |
-| 16529 | 2144 | `			break;` |
+| 16555 | 2143 | `		if( !SyisSpace(zIn[0]) ){` |
+| 16521 | 2144 | `			break;` |
 |     - | 2145 | `		}` |
 |     - | 2146 | `		/* Point to the next character */` |
 |    35 | 2147 | `		zIn++;` |
 |     1 | 2148 | `	}` |
 |     - | 2149 | `	/* The test failed,return FALSE */` |
-| 16529 | 2150 | `	ph7_result_bool(pCtx,0);` |
-| 16529 | 2151 | `	return PH7_OK;` |
-|  8330 | 2152 | `}` |
+| 16521 | 2150 | `	ph7_result_bool(pCtx,0);` |
+| 16521 | 2151 | `	return PH7_OK;` |
+|  8326 | 2152 | `}` |
 |     - | 2153 | `/*` |
 |     - | 2154 | ` * bool ctype_lower(string $text)` |
 |     - | 2155 | ` *  Checks if all of the characters in the provided string, text, are lowercase letters.` |
