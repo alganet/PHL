@@ -227,20 +227,16 @@ static sxi64 MemObjIntValue(ph7_value *pObj)
 		/* Return total number of entries in the hashmap */
 		return n;
 	}else if( iFlags & MEMOBJ_OBJ ){
-		ph7_value sResult;
-		sxi64 iVal = 1;
-		sxi32 rc;
-		/* Invoke the [__toInt()] magic method if available [note that this is a symisc extension]  */
-		PH7_MemObjInit(pObj->pVm,&sResult);
-		rc = MemObjCallClassCastMethod(pObj->pVm,(ph7_class_instance *)pObj->x.pOther,
-			"__toInt",sizeof("__toInt")-1,&sResult);
-		if( rc == SXRET_OK && (sResult.iFlags & MEMOBJ_INT) ){
-			/* Extract method return value */
-			iVal = sResult.x.iVal;
+		/* php has NO __toInt(): casting an object to int warns and yields 1. PH7's
+		 * __toInt() was an extension that changed the meaning of valid php source
+		 * (§10), so `(int)$obj` silently returned user data where php diagnoses. */
+		ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;
+		if( pInst && pInst->pClass ){
+			VmErrorFormat(pObj->pVm,PH7_CTX_WARNING,
+				"Object of class %z could not be converted to int",&pInst->pClass->sName);
 		}
-		PH7_ClassInstanceUnref((ph7_class_instance *)pObj->x.pOther);
-		PH7_MemObjRelease(&sResult);
-		return iVal;
+		PH7_ClassInstanceUnref(pInst);
+		return 1;
 	}else if(iFlags & MEMOBJ_RES ){
 		/* php casts a resource to its ID, not to 1: two distinct resources must not
 		 * compare equal, which they did while every one of them cast to 1. */
@@ -297,20 +293,14 @@ static ph7_real MemObjRealValue(ph7_value *pObj)
 		PH7_HashmapUnref(pMap);
 		return n;
 	}else if( iFlags & MEMOBJ_OBJ ){
-		ph7_value sResult;
-		ph7_real rVal = 1;
-		sxi32 rc;
-		/* Invoke the [__toFloat()] magic method if available [note that this is a symisc extension]  */
-		PH7_MemObjInit(pObj->pVm,&sResult);
-		rc = MemObjCallClassCastMethod(pObj->pVm,(ph7_class_instance *)pObj->x.pOther,
-			"__toFloat",sizeof("__toFloat")-1,&sResult);
-		if( rc == SXRET_OK && (sResult.iFlags & MEMOBJ_REAL) ){
-			/* Extract method return value */
-			rVal = sResult.rVal;
+		/* php has NO __toFloat(): casting an object to float warns and yields 1.0. */
+		ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;
+		if( pInst && pInst->pClass ){
+			VmErrorFormat(pObj->pVm,PH7_CTX_WARNING,
+				"Object of class %z could not be converted to float",&pInst->pClass->sName);
 		}
-		PH7_ClassInstanceUnref((ph7_class_instance *)pObj->x.pOther);
-		PH7_MemObjRelease(&sResult);
-		return rVal;
+		PH7_ClassInstanceUnref(pInst);
+		return (ph7_real)1.0;
 	}else if(iFlags & MEMOBJ_RES ){
 		return (ph7_real)PH7_VmResourceId(pObj->pVm,pObj->x.pOther);
 	}
@@ -501,20 +491,11 @@ static sxi32 MemObjBooleanValue(ph7_value *pObj)
 		PH7_HashmapUnref(pMap);
 		return n > 0 ? TRUE : FALSE;
 	}else if( iFlags & MEMOBJ_OBJ ){
-		ph7_value sResult;
-		sxi32 iVal = 1;
-		sxi32 rc;
-		/* Invoke the __toBool() method if available [note that this is a symisc extension]  */
-		PH7_MemObjInit(pObj->pVm,&sResult);
-		rc = MemObjCallClassCastMethod(pObj->pVm,(ph7_class_instance *)pObj->x.pOther,
-			"__toBool",sizeof("__toBool")-1,&sResult);
-		if( rc == SXRET_OK && (sResult.iFlags & (MEMOBJ_INT|MEMOBJ_BOOL)) ){
-			/* Extract method return value */
-			iVal = (sxi32)(sResult.x.iVal != 0); /* Stupid cc warning -W -Wall -O6 */
-		}
+		/* php has NO __toBool(): an object is ALWAYS truthy, with no diagnostic.
+		 * PH7's __toBool() could make `if ($obj)` take the other branch, so this
+		 * extension changed control flow in valid php source. */
 		PH7_ClassInstanceUnref((ph7_class_instance *)pObj->x.pOther);
-		PH7_MemObjRelease(&sResult);
-		return iVal;
+		return 1;
 	}else if(iFlags & MEMOBJ_RES ){
 		return pObj->x.pOther != 0;
 	}
