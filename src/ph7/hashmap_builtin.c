@@ -2202,29 +2202,11 @@ PH7_PRIVATE int ph7_hashmap_udiff(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			);
 	}
 
-	if( nArg == 2 ){
-		/* Only the original array and the callback were provided. */
-		/* Nevertheless, we still validate the callback after verifying any
-		 * intermediate array arguments to match PHP's left-to-right parameter
-		 * validation order.
-		 */
-	} else {
-		/* Ensure intermediary arguments are arrays (matches PHP strict typing). */
-		for( i = 1 ; i < nArg - 1; i++ ){
-			if( !ph7_value_is_array(apArg[i]) ){
-				return PH7_VmThrowException(pCtx,
-					"TypeError",
-					"array_udiff(): Argument #%d must be of type array, %s given",
-					i + 1,
-					ph7_type_name(apArg[i])
-					);
-			}
-		}
-	}
-
-	/* Identify the callback (always expected as the last argument). */
+	/* php validates the CALLBACK (the last argument) before the intermediary
+	 * arrays: `array_udiff([1],"x",123)` reports Argument #3 (the bad callback),
+	 * not Argument #2 (the non-array). PHL had the middle-array loop first, so it
+	 * named the wrong argument whenever both were invalid. */
 	pCallback = apArg[nArg - 1];
-	/* Validate the callback to match PHP's error messages. */
 	if( !ph7_value_is_callable(pCallback) ){
 		if( ph7_value_is_array(pCallback) ){
 			return PH7_VmThrowException(pCtx,
@@ -2248,6 +2230,18 @@ PH7_PRIVATE int ph7_hashmap_udiff(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			"array_udiff(): Argument #%d must be a valid callback, no array or string given",
 			nArg
 			);
+	}
+
+	/* Now the intermediary arguments (arrays), left to right. */
+	for( i = 1 ; i < nArg - 1; i++ ){
+		if( !ph7_value_is_array(apArg[i]) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_udiff(): Argument #%d must be of type array, %s given",
+				i + 1,
+				ph7_type_name(apArg[i])
+				);
+		}
 	}
 
 	if( nArg == 2 ){
@@ -2476,17 +2470,7 @@ PH7_PRIVATE int ph7_hashmap_diff_uassoc(ph7_context *pCtx,int nArg,ph7_value **a
 	}
 	/* Intermediate arguments (except last) must be arrays. Last argument is
 	 * expected to be a callback. */
-	for(i = 1 ; i < nArg - 1; i++){
-		if( !ph7_value_is_array(apArg[i]) ){
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"array_diff_uassoc(): Argument #%d must be of type array, %s given",
-				i + 1,
-				ph7_type_name(apArg[i])
-				);
-		}
-	}
-	/* Point to the callback value */
+	/* php checks the CALLBACK before the intermediary arrays (see array_udiff). */
 	pCallback = apArg[nArg - 1];
 	if( !ph7_value_is_callable(pCallback) ){
 		/* Compose an error message that closely matches PHP output. When the
@@ -2501,21 +2485,34 @@ PH7_PRIVATE int ph7_hashmap_diff_uassoc(ph7_context *pCtx,int nArg,ph7_value **a
 				nArg
 				);
 		}
-		if( !ph7_value_is_string(pCallback) ){
-			/* neither array nor string */
+		if( ph7_value_is_string(pCallback) ){
+			/* A non-callable string names the function, like array_udiff. */
+			int len;
+			const char *zName = ph7_value_to_string(pCallback,&len);
 			return PH7_VmThrowException(pCtx,
 				"TypeError",
-				"array_diff_uassoc(): Argument #%d must be a valid callback, no array or string given",
-				nArg
+				"array_diff_uassoc(): Argument #%d must be a valid callback, function \"%s\" not found or invalid function name",
+				nArg,
+				zName
 				);
 		}
-		/* Fallback for string (non-callable) or other leftover cases */
+		/* neither array nor string */
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
-			"array_diff_uassoc(): Argument #%d must be a valid callback, %s given",
-			nArg,
-			ph7_type_name(pCallback)
+			"array_diff_uassoc(): Argument #%d must be a valid callback, no array or string given",
+			nArg
 			);
+	}
+	/* Now the intermediary arrays, left to right. */
+	for(i = 1 ; i < nArg - 1; i++){
+		if( !ph7_value_is_array(apArg[i]) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_diff_uassoc(): Argument #%d must be of type array, %s given",
+				i + 1,
+				ph7_type_name(apArg[i])
+				);
+		}
 	}
 	if( nArg == 2 ){
 		/* If we only have the first array and the callback, just return the
@@ -3078,27 +3075,8 @@ PH7_PRIVATE int ph7_hashmap_uintersect(ph7_context *pCtx,int nArg,ph7_value **ap
 			);
 	}
 
-	if( nArg == 2 ){
-		/* Only the original array and the callback were provided. */
-		/* Validate the callback below in order to match PHP's parameter
-		 * validation ordering. */
-	} else {
-		/* Ensure intermediary arguments are arrays (matches PHP strict typing). */
-		for( i = 1 ; i < nArg - 1; i++ ){
-			if( !ph7_value_is_array(apArg[i]) ){
-				return PH7_VmThrowException(pCtx,
-					"TypeError",
-					"array_uintersect(): Argument #%d must be of type array, %s given",
-					i + 1,
-					ph7_type_name(apArg[i])
-					);
-			}
-		}
-	}
-
-	/* Identify the callback (always expected as the last argument). */
+	/* php checks the CALLBACK before the intermediary arrays (see array_udiff). */
 	pCallback = apArg[nArg - 1];
-	/* Validate the callback to match PHP's error messages. */
 	if( !ph7_value_is_callable(pCallback) ){
 		if( ph7_value_is_array(pCallback) ){
 			/* PHP emits a special message when the array length is wrong.
@@ -3166,6 +3144,18 @@ PH7_PRIVATE int ph7_hashmap_uintersect(ph7_context *pCtx,int nArg,ph7_value **ap
 			"array_uintersect(): Argument #%d must be a valid callback, no array or string given",
 			nArg
 			);
+	}
+
+	/* Now the intermediary arrays, left to right. */
+	for( i = 1 ; i < nArg - 1; i++ ){
+		if( !ph7_value_is_array(apArg[i]) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_uintersect(): Argument #%d must be of type array, %s given",
+				i + 1,
+				ph7_type_name(apArg[i])
+				);
+		}
 	}
 
 	if( nArg == 2 ){
