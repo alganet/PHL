@@ -2,9 +2,8 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Array to integer conversion
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+(int)/(float) of an array is 0 when empty and 1 otherwise, not the element count (was a bare skip freezing PHL's count)
+
 --FILE--
 <?php
 // Test empty array
@@ -24,8 +23,8 @@ echo "Associative array: " . $result3 . "\n";
 ?>
 --EXPECT--
 Empty array: 0
-Array with 3 elements: 3
-Associative array: 2
+Array with 3 elements: 1
+Associative array: 1
 --CLEAN--
 <?php
 unset($empty, $result, $array, $result2, $assoc, $result3);
