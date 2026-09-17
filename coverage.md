@@ -11,7 +11,7 @@
 | src/ph7/builtin_parse.c        | 89.62%   | 1234/1377   |
 | src/ph7/builtin_string.c       | 85.18%   | 2293/2692   |
 | src/ph7/compile.c              | 92.14%   | 1524/1654   |
-| src/ph7/compile_class.c        | 76.19%   | 2138/2806   |
+| src/ph7/compile_class.c        | 76.10%   | 2149/2824   |
 | src/ph7/compile_func.c         | 85.88%   | 870/1013    |
 | src/ph7/compile_literal.c      | 89.21%   | 951/1066    |
 | src/ph7/compile_node.c         | 83.39%   | 678/813     |
@@ -79,5 +79,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.31%   | 48934/60183 |
+| Lines                          | 81.30%   | 48945/60201 |
 | Functions                      | 93.24%   | 2221/2382   |

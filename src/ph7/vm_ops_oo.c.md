@@ -144,12 +144,12 @@ Coverage: 868/1015 lines (85.52%)
 |     - |  134 | ` * OP_NEW: body moved verbatim from the OP_NEW arm of` |
 |     - |  135 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
 |     - |  136 | ` */` |
-|  4784 |  137 | `PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+|  4786 |  137 | `PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
 |     5 |  138 | `{` |
-|  4789 |  139 | `	ph7_value *pTos = pState->pTos;` |
-|  4789 |  140 | `	ph7_value *pStack = pState->pStack;` |
-|  4789 |  141 | `	VmInstr *aInstr = pState->aInstr;` |
-|  4789 |  142 | `	sxi32 pc = pState->pc;` |
+|  4791 |  139 | `	ph7_value *pTos = pState->pTos;` |
+|  4791 |  140 | `	ph7_value *pStack = pState->pStack;` |
+|  4791 |  141 | `	VmInstr *aInstr = pState->aInstr;` |
+|  4791 |  142 | `	sxi32 pc = pState->pc;` |
 |     - |  143 | `	sxi32 rc;` |
 |     - |  144 | `	/* Constructor arg count: compile-time args plus THIS new's own unpack` |
 |     - |  145 | `	 * expansion (iP2 = hasSpread, transferred from the popped OP_CALL —` |
@@ -157,24 +157,24 @@ Coverage: 868/1015 lines (85.52%)
 |     - |  147 | `	 * elements ABOVE the class-name slot and fataling "Class ' ' is not` |
 |     - |  148 | `	 * defined"). VmSpreadOwnExtra counts only this new's own runs, so a nested` |
 |     - |  149 | `	 * spread call in the ctor arg list stays scoped to itself. */` |
-|  4789 |  150 | `	sxi32 nCtorArgs = pInstr->iP1 + (pInstr->iP2 ? VmSpreadOwnExtra(pVm,pInstr->iP1,pTos) : 0);` |
+|  4791 |  150 | `	sxi32 nCtorArgs = pInstr->iP1 + (pInstr->iP2 ? VmSpreadOwnExtra(pVm,pInstr->iP1,pTos) : 0);` |
 |     - |  151 | `	ph7_value *pArg;` |
-|  4789 |  152 | `	ph7_class *pClass = 0;` |
+|  4791 |  152 | `	ph7_class *pClass = 0;` |
 |     - |  153 | `	ph7_class_instance *pNew;` |
-|  4789 |  154 | `	pArg = &pTos[-nCtorArgs]; /* Constructor arguments (if available) */` |
+|  4791 |  154 | `	pArg = &pTos[-nCtorArgs]; /* Constructor arguments (if available) */` |
 |     - |  155 | `	/* Same PHP 8.1 spread-key realignment as OP_CALL: build a per-actual-slot name` |
 |     - |  156 | `	 * map when the ctor arg list unpacked string-keyed elements. NEW keeps the` |
 |     - |  157 | `	 * class-name slot at pTos (above the args), so pArg is already the correct base;` |
 |     - |  158 | `	 * the build also truncates this call's captured runs. */` |
 |     - |  159 | `	VmCallArgMap sEffNewMap;` |
-|  7181 |  160 | `	VmCallArgMap *pEffNewMap = VmEffCallArgMap(pVm,pInstr,pArg,` |
-|  4784 |  161 | `		nCtorArgs > 0 ? (sxu32)nCtorArgs : 0,&sEffNewMap);` |
-|  7181 |  162 | `	if( (pTos->iFlags & MEMOBJ_STRING) && SyBlobLength(&pTos->sBlob) > 0 ){` |
-|  4789 |  163 | `		const char *zCls = (const char *)SyBlobData(&pTos->sBlob);` |
-|  4789 |  164 | `		sxu32 nCls = SyBlobLength(&pTos->sBlob);` |
-|  4784 |  165 | `		if( (nCls == sizeof("self")-1 && SyMemcmp(zCls,"self",sizeof("self")-1) == 0)` |
-|  4777 |  166 | `		 \|\| (nCls == sizeof("static")-1 && SyMemcmp(zCls,"static",sizeof("static")-1) == 0)` |
-|  4747 |  167 | `		 \|\| (nCls == sizeof("parent")-1 && SyMemcmp(zCls,"parent",sizeof("parent")-1) == 0) ){` |
+|  7184 |  160 | `	VmCallArgMap *pEffNewMap = VmEffCallArgMap(pVm,pInstr,pArg,` |
+|  4786 |  161 | `		nCtorArgs > 0 ? (sxu32)nCtorArgs : 0,&sEffNewMap);` |
+|  7184 |  162 | `	if( (pTos->iFlags & MEMOBJ_STRING) && SyBlobLength(&pTos->sBlob) > 0 ){` |
+|  4791 |  163 | `		const char *zCls = (const char *)SyBlobData(&pTos->sBlob);` |
+|  4791 |  164 | `		sxu32 nCls = SyBlobLength(&pTos->sBlob);` |
+|  4786 |  165 | `		if( (nCls == sizeof("self")-1 && SyMemcmp(zCls,"self",sizeof("self")-1) == 0)` |
+|  4779 |  166 | `		 \|\| (nCls == sizeof("static")-1 && SyMemcmp(zCls,"static",sizeof("static")-1) == 0)` |
+|  4749 |  167 | `		 \|\| (nCls == sizeof("parent")-1 && SyMemcmp(zCls,"parent",sizeof("parent")-1) == 0) ){` |
 |     - |  168 | `			/* new self() / new static() / new parent(): resolve against the live` |
 |     - |  169 | `			 * class context (LSB for static), sharing the FCC resolver. */` |
 |    45 |  170 | `			pClass = VmFccResolveScope(&(*pVm),pTos);` |
@@ -192,14 +192,14 @@ Coverage: 868/1015 lines (85.52%)
 |     - |  182 | `			}` |
 |    23 |  183 | `		}else{` |
 |     - |  184 | `			/* Try to extract the desired class */` |
-|  4745 |  185 | `			pClass = PH7_VmExtractClass(&(*pVm),zCls,nCls,` |
+|  4747 |  185 | `			pClass = PH7_VmExtractClass(&(*pVm),zCls,nCls,` |
 |     - |  186 | `				TRUE /* Only loadable class but not 'interface' or 'abstract' class*/,0);` |
 |     5 |  187 | `		}` |
-|  2392 |  188 | `	}else if( pTos->iFlags & MEMOBJ_OBJ ){` |
+|  2393 |  188 | `	}else if( pTos->iFlags & MEMOBJ_OBJ ){` |
 |     - |  189 | `		/* Take the base class from the loaded instance */` |
 |   ! 0 |  190 | `		pClass = ((ph7_class_instance *)pTos->x.pOther)->pClass;` |
 |   ! 0 |  191 | `	}` |
-|  4789 |  192 | `	if( pClass == 0 ){` |
+|  4791 |  192 | `	if( pClass == 0 ){` |
 |     - |  193 | ``		/* php: `new NoSuch()` is a CATCHABLE Error ('Class "NoSuch" not found'), not a`` |
 |     - |  194 | `		 * hard stop. Aborting here killed the script outright -- and with exit status 0,` |
 |     - |  195 | `		 * so a caller could not even tell it had failed. */` |
@@ -236,7 +236,7 @@ Coverage: 868/1015 lines (85.52%)
 |     7 |  226 | `		if( rcErr == SXERR_ABORT ){ VM_EXIT_ABORT; }` |
 |     7 |  227 | `		rc = rcErr;` |
 |     7 |  228 | `		PH7_THROW_ROUTE_MIDEXPR(rc)` |
-|  4783 |  229 | `	}else if( pClass->iFlags & PH7_CLASS_ENUM ){` |
+|  4785 |  229 | `	}else if( pClass->iFlags & PH7_CLASS_ENUM ){` |
 |     - |  230 | `		/* php 8.1: enums cannot be instantiated — a catchable Error, raised` |
 |     - |  231 | `		 * BEFORE any construction (no instance, no __destruct). */` |
 |     - |  232 | `		SyBlob sErrMsg;` |
@@ -254,18 +254,18 @@ Coverage: 868/1015 lines (85.52%)
 |     - |  244 | `		/* Check if a constructor is available — BEFORE instantiation: a` |
 |     - |  245 | ``		 * visibility-denied `new` must not construct (nor later destruct)`` |
 |     - |  246 | `		 * the object (band A #4). */` |
-|  4781 |  247 | `		pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);` |
-|  4781 |  248 | `		if( pCons == 0 ){` |
-|  1849 |  249 | `			SyString *pName = &pClass->sName;` |
+|  4783 |  247 | `		pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);` |
+|  4783 |  248 | `		if( pCons == 0 ){` |
+|  1851 |  249 | `			SyString *pName = &pClass->sName;` |
 |     - |  250 | `			/* Check for a constructor with the same base class name */` |
-|  1849 |  251 | `			pCons = PH7_ClassExtractMethod(pClass,pName->zString,pName->nByte);` |
-|   922 |  252 | `		}` |
+|  1851 |  251 | `			pCons = PH7_ClassExtractMethod(pClass,pName->zString,pName->nByte);` |
+|   923 |  252 | `		}` |
 |     - |  253 | `		/* Constructor visibility (band A #4): __construct now KEEPS its` |
 |     - |  254 | `		 * declared protection (PH7_NewClassMethod no longer forces it` |
 |     - |  255 | ``		 * public), so `new C()` on a private/protected constructor from`` |
 |     - |  256 | `		 * the wrong scope is php's catchable Error. Reflection's` |
 |     - |  257 | `		 * newInstance path sets bReflectBypass like method invoke. */` |
-|  4781 |  258 | `		if( pCons && pCons->iProtection != PH7_CLASS_PROT_PUBLIC ){` |
+|  4783 |  258 | `		if( pCons && pCons->iProtection != PH7_CLASS_PROT_PUBLIC ){` |
 |     - |  259 | `			/* php binds non-public access by the member's DECLARING class, not the` |
 |     - |  260 | `			 * instantiated class: a private constructor declared in a base is` |
 |     - |  261 | `			 * reachable from that base's own methods even when instantiating a` |
@@ -295,8 +295,8 @@ Coverage: 868/1015 lines (85.52%)
 |     - |  285 | `			}` |
 |     8 |  286 | `		}` |
 |     - |  287 | `		/* Create a new class instance */` |
-|  4775 |  288 | `		pNew = PH7_NewClassInstance(&(*pVm),pClass);` |
-|  4775 |  289 | `		if( pNew == 0 ){` |
+|  4777 |  288 | `		pNew = PH7_NewClassInstance(&(*pVm),pClass);` |
+|  4777 |  289 | `		if( pNew == 0 ){` |
 |   ! 0 |  290 | `			VmErrorFormat(&(*pVm),PH7_CTX_ERR,` |
 |     - |  291 | `				"Cannot create new class '%z' instance due to a memory failure,PH7 is loading NULL",` |
 |   ! 0 |  292 | `				&pClass->sName` |
@@ -308,7 +308,7 @@ Coverage: 868/1015 lines (85.52%)
 |   ! 0 |  298 | `			}` |
 |   ! 0 |  299 | `			VM_EXIT_BREAK;` |
 |     - |  300 | `		}` |
-|  4775 |  301 | `		if( pCons ){` |
+|  4777 |  301 | `		if( pCons ){` |
 |     - |  302 | `			/* Call the class constructor.  Collect args in stack order and` |
 |     - |  303 | `			 * forward any VmCallArgMap from the NEW instruction so the` |
 |     - |  304 | `			 * receiving OP_CALL path runs its named-argument matching` |
@@ -353,55 +353,55 @@ Coverage: 868/1015 lines (85.52%)
 |     3 |  343 | `				VM_EXIT_EXCEPTION;` |
 |     - |  344 | `			}` |
 |  1411 |  345 | `		}` |
-|  4671 |  346 | `		if( nCtorArgs > 0 ){` |
+|  4673 |  346 | `		if( nCtorArgs > 0 ){` |
 |     - |  347 | `			/* Pop given arguments */` |
 |  2617 |  348 | `			VmPopOperand(&pTos,nCtorArgs);` |
 |  1306 |  349 | `		}` |
-|  4671 |  350 | `		PH7_MemObjRelease(pTos);` |
-|  4671 |  351 | `		pTos->x.pOther = pNew;` |
-|  4671 |  352 | `		MemObjSetType(pTos,MEMOBJ_OBJ);` |
+|  4673 |  350 | `		PH7_MemObjRelease(pTos);` |
+|  4673 |  351 | `		pTos->x.pOther = pNew;` |
+|  4673 |  352 | `		MemObjSetType(pTos,MEMOBJ_OBJ);` |
 |     - |  353 | `	}` |
-|  4671 |  354 | `	VM_EXIT_BREAK;` |
+|  4673 |  354 | `	VM_EXIT_BREAK;` |
 |   ! 0 |  355 | `	VM_EXIT_BREAK;` |
-|  2397 |  356 | `}` |
+|  2398 |  356 | `}` |
 |     - |  357 |  |
 |     - |  358 | `/*` |
 |     - |  359 | ` * OP_MEMBER: body moved verbatim from the OP_MEMBER arm of` |
 |     - |  360 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
 |     - |  361 | ` */` |
-| 45068 |  362 | `PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+| 45074 |  362 | `PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
 |     5 |  363 | `{` |
-| 45073 |  364 | `	ph7_value *pTos = pState->pTos;` |
-| 45073 |  365 | `	ph7_value *pStack = pState->pStack;` |
-| 45073 |  366 | `	VmInstr *aInstr = pState->aInstr;` |
-| 45073 |  367 | `	sxi32 pc = pState->pc;` |
+| 45079 |  364 | `	ph7_value *pTos = pState->pTos;` |
+| 45079 |  365 | `	ph7_value *pStack = pState->pStack;` |
+| 45079 |  366 | `	VmInstr *aInstr = pState->aInstr;` |
+| 45079 |  367 | `	sxi32 pc = pState->pc;` |
 |     - |  368 | `	sxi32 rc;` |
 |     - |  369 | `	ph7_class_instance *pThis;` |
 |     - |  370 | `	ph7_value *pNos;` |
 |     - |  371 | `	SyString sName;` |
-| 45073 |  372 | `	if( !pInstr->iP1 ){` |
-| 42557 |  373 | `		pNos = &pTos[-1];` |
+| 45079 |  372 | `	if( !pInstr->iP1 ){` |
+| 42561 |  373 | `		pNos = &pTos[-1];` |
 |     - |  374 | `#ifdef UNTRUST` |
 |     - |  375 | `		if( pNos < pStack ){` |
 |     - |  376 | `			VM_EXIT_ABORT;` |
 |     - |  377 | `		}` |
 |     - |  378 | `#endif` |
-| 42557 |  379 | `		if( pNos->iFlags & MEMOBJ_OBJ ){` |
+| 42561 |  379 | `		if( pNos->iFlags & MEMOBJ_OBJ ){` |
 |     - |  380 | `			ph7_class *pClass;` |
 |     - |  381 | `			/* Class already instantiated */` |
-| 42547 |  382 | `			pThis = (ph7_class_instance *)pNos->x.pOther;` |
+| 42551 |  382 | `			pThis = (ph7_class_instance *)pNos->x.pOther;` |
 |     - |  383 | `			/* Point to the instantiated class */` |
-| 42547 |  384 | `			pClass = pThis->pClass;` |
+| 42551 |  384 | `			pClass = pThis->pClass;` |
 |     - |  385 | `			/* Extract attribute name first */` |
-| 42547 |  386 | `			SyStringInitFromBuf(&sName,(const char *)SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));` |
-| 42547 |  387 | `			if( pInstr->iP2 == PH7_MEMBER_METHOD ){` |
+| 42551 |  386 | `			SyStringInitFromBuf(&sName,(const char *)SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));` |
+| 42551 |  387 | `			if( pInstr->iP2 == PH7_MEMBER_METHOD ){` |
 |     - |  388 | `				/* Method call */` |
-| 11219 |  389 | `				ph7_class_method *pMeth = 0;` |
-| 11219 |  390 | `				if( sName.nByte > 0 ){` |
+| 11223 |  389 | `				ph7_class_method *pMeth = 0;` |
+| 11223 |  390 | `				if( sName.nByte > 0 ){` |
 |     - |  391 | `					/* Extract the target method */` |
-| 11219 |  392 | `					pMeth = PH7_ClassExtractMethod(pClass,sName.zString,sName.nByte);` |
-|  5607 |  393 | `				}` |
-| 11219 |  394 | `				if( pMeth == 0 ){` |
+| 11223 |  392 | `					pMeth = PH7_ClassExtractMethod(pClass,sName.zString,sName.nByte);` |
+|  5609 |  393 | `				}` |
+| 11223 |  394 | `				if( pMeth == 0 ){` |
 |     9 |  395 | `					ph7_class_method *pCallMagic = PH7_ClassExtractMethod(pClass,"__call",sizeof("__call")-1);` |
 |     9 |  396 | `					if( pCallMagic ){` |
 |     - |  397 | `						/* php: a missing method dispatches __call($name, $args) — the` |
@@ -440,9 +440,9 @@ Coverage: 868/1015 lines (85.52%)
 |     - |  430 | `						}` |
 |     - |  431 | `					}` |
 |     4 |  432 | `				}else{` |
-| 11211 |  433 | `					ph7_class_method *pDeniedCall = 0;` |
-| 11206 |  434 | `					if( pMeth->iProtection != PH7_CLASS_PROT_PUBLIC` |
-|  8118 |  435 | `					 && !PH7_VmClassMemberAccess(&(*pVm),` |
+| 11215 |  433 | `					ph7_class_method *pDeniedCall = 0;` |
+| 11210 |  434 | `					if( pMeth->iProtection != PH7_CLASS_PROT_PUBLIC` |
+|  8120 |  435 | `					 && !PH7_VmClassMemberAccess(&(*pVm),` |
 |  2510 |  436 | `						pMeth->sFunc.pUserData ? (ph7_class *)pMeth->sFunc.pUserData : pClass,` |
 |  1255 |  437 | `						&sName,pMeth->iProtection,FALSE) ){` |
 |    14 |  438 | `						int bRebound = 0;` |
@@ -471,7 +471,7 @@ Coverage: 868/1015 lines (85.52%)
 |    12 |  461 | `							pDeniedCall = PH7_ClassExtractMethod(pClass,"__call",sizeof("__call")-1);` |
 |     5 |  462 | `						}` |
 |     6 |  463 | `					}` |
-| 11211 |  464 | `					if( pDeniedCall ){` |
+| 11215 |  464 | `					if( pDeniedCall ){` |
 |     3 |  465 | `						SyBlobReset(&pVm->sMagicCallName);` |
 |     3 |  466 | `						SyBlobAppend(&pVm->sMagicCallName,(const void *)sName.zString,sName.nByte);` |
 |     3 |  467 | `						pThis->iRef++;` |
@@ -483,13 +483,13 @@ Coverage: 868/1015 lines (85.52%)
 |     3 |  473 | `						MemObjSetType(pTos,MEMOBJ_STRING);` |
 |     2 |  474 | `					}else{` |
 |     - |  475 | `						/* Push method name on the stack */` |
-| 11209 |  476 | `						PH7_MemObjRelease(pTos);` |
-| 11209 |  477 | `						SyBlobAppend(&pTos->sBlob,SyStringData(&pMeth->sVmName),SyStringLength(&pMeth->sVmName));` |
-| 11209 |  478 | `						MemObjSetType(pTos,MEMOBJ_STRING);` |
+| 11213 |  476 | `						PH7_MemObjRelease(pTos);` |
+| 11213 |  477 | `						SyBlobAppend(&pTos->sBlob,SyStringData(&pMeth->sVmName),SyStringLength(&pMeth->sVmName));` |
+| 11213 |  478 | `						MemObjSetType(pTos,MEMOBJ_STRING);` |
 |     - |  479 | `					}` |
 |     - |  480 | `				}` |
-| 11217 |  481 | `				pTos->nIdx = SXU32_HIGH;` |
-|  5611 |  482 | `			}else{` |
+| 11221 |  481 | `				pTos->nIdx = SXU32_HIGH;` |
+|  5613 |  482 | `			}else{` |
 |     - |  483 | `				/* Attribute access. iP2: 0 = read, 2 = unset, 3 = isset, 4 = empty. */` |
 | 31333 |  484 | `				VmClassAttr *pObjAttr = 0;` |
 | 31333 |  485 | `				SyHashEntry *pEntry = 0;` |
@@ -1185,7 +1185,7 @@ Coverage: 868/1015 lines (85.52%)
 |     - | 1175 | `				/* Safely unreference the object */` |
 | 30855 | 1176 | `				PH7_ClassInstanceUnref(pThis);` |
 |     - | 1177 | `			}` |
-| 21036 | 1178 | `		}else{` |
+| 21038 | 1178 | `		}else{` |
 |     - | 1179 | ``			/* `->` on a non-object (e.g. a null intermediate). Silent in isset()/empty()/unset()`` |
 |     - | 1180 | ``			 * context (iP2 2/3/4) so `isset($o->missing->x)` / `unset($o->missing->x)` match PHP. */`` |
 |    12 | 1181 | `			if( pInstr->iP2 != PH7_MEMBER_UNSET && !VmMemberCtxIsLookup(pInstr->iP2) ){` |
@@ -1219,44 +1219,44 @@ Coverage: 868/1015 lines (85.52%)
 |     8 | 1209 | `			PH7_MemObjRelease(pTos);` |
 |     8 | 1210 | `			pTos->nIdx = SXU32_HIGH; /* Assume we are loading a constant */` |
 |     - | 1211 | `		}` |
-| 21039 | 1212 | `	}else{` |
+| 21041 | 1212 | `	}else{` |
 |     - | 1213 | `		/* Static member access using class name */` |
-|  2521 | 1214 | `		pNos = pTos;` |
-|  2521 | 1215 | `		pThis = 0;` |
-|  2521 | 1216 | `		if( !pInstr->p3 ){` |
-|  1963 | 1217 | `			SyStringInitFromBuf(&sName,(const char *)SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));` |
-|  1963 | 1218 | `			pNos--;` |
+|  2523 | 1214 | `		pNos = pTos;` |
+|  2523 | 1215 | `		pThis = 0;` |
+|  2523 | 1216 | `		if( !pInstr->p3 ){` |
+|  1965 | 1217 | `			SyStringInitFromBuf(&sName,(const char *)SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));` |
+|  1965 | 1218 | `			pNos--;` |
 |     - | 1219 | `#ifdef UNTRUST` |
 |     - | 1220 | `			if( pNos < pStack ){` |
 |     - | 1221 | `				VM_EXIT_ABORT;` |
 |     - | 1222 | `			}` |
 |     - | 1223 | `#endif` |
-|   984 | 1224 | `		}else{` |
+|   985 | 1224 | `		}else{` |
 |     - | 1225 | `			/* Attribute name already computed */` |
 |   563 | 1226 | `			SyStringInitFromBuf(&sName,pInstr->p3,SyStrlen((const char *)pInstr->p3));` |
 |     - | 1227 | `		}` |
-|  2521 | 1228 | `		if( pNos->iFlags & (MEMOBJ_STRING\|MEMOBJ_OBJ) ){` |
-|  2521 | 1229 | `			ph7_class *pClass = 0;` |
+|  2523 | 1228 | `		if( pNos->iFlags & (MEMOBJ_STRING\|MEMOBJ_OBJ) ){` |
+|  2523 | 1229 | `			ph7_class *pClass = 0;` |
 |     - | 1230 | `			/* A FORWARDING static call — self::/parent::/static:: — preserves the` |
 |     - | 1231 | `			 * caller's late-static-binding class (php); a non-forwarding C::m() resets` |
 |     - | 1232 | `			 * it to C. The receiver slot below keeps the literal keyword, which OP_CALL` |
 |     - | 1233 | `			 * can't resolve, so it would fall back to the callee's DECLARING class and` |
 |     - | 1234 | `			 * lose LSB. Remember the live LSB class here and stamp it onto the receiver` |
 |     - | 1235 | `			 * after the method name is pushed. */` |
-|  2521 | 1236 | `			int bForwardingCall = 0;` |
-|  2521 | 1237 | `			ph7_class *pForwardLsb = 0;` |
-|  2521 | 1238 | `			if( pNos->iFlags & MEMOBJ_OBJ ){` |
+|  2523 | 1236 | `			int bForwardingCall = 0;` |
+|  2523 | 1237 | `			ph7_class *pForwardLsb = 0;` |
+|  2523 | 1238 | `			if( pNos->iFlags & MEMOBJ_OBJ ){` |
 |     - | 1239 | `				/* Class already instantiated */` |
 |    11 | 1240 | `				pThis = (ph7_class_instance *)pNos->x.pOther;` |
 |    11 | 1241 | `				pClass = pThis->pClass;` |
 |    11 | 1242 | `				pThis->iRef++; /* Deffer garbage collection */` |
 |     6 | 1243 | `			}else{` |
 |     - | 1244 | `				/* Try to extract the target class */` |
-|  2511 | 1245 | `				if( SyBlobLength(&pNos->sBlob) > 0 ){` |
-|  2511 | 1246 | `					const char *zCls = (const char *)SyBlobData(&pNos->sBlob);` |
-|  2511 | 1247 | `					sxu32 nCls = (sxu32)SyBlobLength(&pNos->sBlob);` |
+|  2513 | 1245 | `				if( SyBlobLength(&pNos->sBlob) > 0 ){` |
+|  2513 | 1246 | `					const char *zCls = (const char *)SyBlobData(&pNos->sBlob);` |
+|  2513 | 1247 | `					sxu32 nCls = (sxu32)SyBlobLength(&pNos->sBlob);` |
 |     - | 1248 | `					/* Handle self/static/parent keywords */` |
-|  2511 | 1249 | `					if( nCls == 4 && SyMemcmp(zCls,"self",4) == 0 ){` |
+|  2513 | 1249 | `					if( nCls == 4 && SyMemcmp(zCls,"self",4) == 0 ){` |
 |   715 | 1250 | `						pClass = PH7_VmPeekDeclaringClass(&(*pVm));` |
 |   715 | 1251 | `						if( pClass && (pClass->iFlags & PH7_CLASS_TRAIT) ){` |
 |     - | 1252 | `							/* In a trait method, self:: resolves to the using class */` |
@@ -1264,20 +1264,20 @@ Coverage: 868/1015 lines (85.52%)
 |     6 | 1254 | `						}` |
 |   715 | 1255 | `						bForwardingCall = 1;` |
 |   715 | 1256 | `						pForwardLsb = PH7_VmPeekTopClass(&(*pVm));` |
-|  2156 | 1257 | `					}else if( nCls == 6 && SyMemcmp(zCls,"static",6) == 0 ){` |
+|  2158 | 1257 | `					}else if( nCls == 6 && SyMemcmp(zCls,"static",6) == 0 ){` |
 |    59 | 1258 | `						pClass = PH7_VmPeekTopClass(&(*pVm));` |
 |    59 | 1259 | `						bForwardingCall = 1;` |
 |    59 | 1260 | `						pForwardLsb = pClass;` |
-|  1773 | 1261 | `					}else if( nCls == 6 && SyMemcmp(zCls,"parent",6) == 0 ){` |
-|   182 | 1262 | `						pClass = PH7_VmResolveParentClass(&(*pVm));` |
-|   182 | 1263 | `						bForwardingCall = 1;` |
-|   182 | 1264 | `						pForwardLsb = PH7_VmPeekTopClass(&(*pVm));` |
-|    93 | 1265 | `					}else{` |
-|  1567 | 1266 | `						pClass = PH7_VmExtractClass(&(*pVm),zCls,nCls,FALSE,0);` |
+|  1775 | 1261 | `					}else if( nCls == 6 && SyMemcmp(zCls,"parent",6) == 0 ){` |
+|   181 | 1262 | `						pClass = PH7_VmResolveParentClass(&(*pVm));` |
+|   181 | 1263 | `						bForwardingCall = 1;` |
+|   181 | 1264 | `						pForwardLsb = PH7_VmPeekTopClass(&(*pVm));` |
+|    92 | 1265 | `					}else{` |
+|  1569 | 1266 | `						pClass = PH7_VmExtractClass(&(*pVm),zCls,nCls,FALSE,0);` |
 |     - | 1267 | `					}` |
-|  1253 | 1268 | `				}` |
+|  1254 | 1268 | `				}` |
 |     - | 1269 | `			}` |
-|  2521 | 1270 | `			if( pClass == 0 ){` |
+|  2523 | 1270 | `			if( pClass == 0 ){` |
 |     - | 1271 | `				/* Undefined class: php throws a catchable Error */` |
 |     - | 1272 | `				SyBlob sErrM;` |
 |     - | 1273 | `				sxi32 rcErr;` |
@@ -1296,14 +1296,14 @@ Coverage: 868/1015 lines (85.52%)
 |   ! 0 | 1286 | `				rc = rcErr;` |
 |   ! 0 | 1287 | `				PH7_THROW_ROUTE_MIDEXPR(rc)` |
 |   ! 0 | 1288 | `			}else{` |
-|  2521 | 1289 | `				if( pInstr->iP2 == PH7_MEMBER_METHOD ){` |
+|  2523 | 1289 | `				if( pInstr->iP2 == PH7_MEMBER_METHOD ){` |
 |     - | 1290 | `					/* Method call */` |
-|   991 | 1291 | `					ph7_class_method *pMeth = 0;` |
-|   991 | 1292 | `					if( sName.nByte > 0 && (pClass->iFlags & PH7_CLASS_INTERFACE) == 0){` |
+|   993 | 1291 | `					ph7_class_method *pMeth = 0;` |
+|   993 | 1292 | `					if( sName.nByte > 0 && (pClass->iFlags & PH7_CLASS_INTERFACE) == 0){` |
 |     - | 1293 | `						/* Extract the target method */` |
-|   991 | 1294 | `						pMeth = PH7_ClassExtractMethod(pClass,sName.zString,sName.nByte);` |
-|   493 | 1295 | `					}` |
-|   991 | 1296 | `					if( pMeth == 0 \|\| (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) ){` |
+|   993 | 1294 | `						pMeth = PH7_ClassExtractMethod(pClass,sName.zString,sName.nByte);` |
+|   494 | 1295 | `					}` |
+|   993 | 1296 | `					if( pMeth == 0 \|\| (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) ){` |
 |     7 | 1297 | `						if( pMeth ){` |
 |     - | 1298 | `							SyBlob sErrM;` |
 |     - | 1299 | `							sxi32 rcErr;` |
@@ -1367,22 +1367,22 @@ Coverage: 868/1015 lines (85.52%)
 |   ! 0 | 1357 | `						PH7_MemObjRelease(pTos);` |
 |   ! 0 | 1358 | `					}else{` |
 |     - | 1359 | `						/* Push method name on the stack */` |
-|   985 | 1360 | `						PH7_MemObjRelease(pTos);` |
-|   985 | 1361 | `						SyBlobAppend(&pTos->sBlob,SyStringData(&pMeth->sVmName),SyStringLength(&pMeth->sVmName));` |
-|   985 | 1362 | `						MemObjSetType(pTos,MEMOBJ_STRING);` |
+|   987 | 1360 | `						PH7_MemObjRelease(pTos);` |
+|   987 | 1361 | `						SyBlobAppend(&pTos->sBlob,SyStringData(&pMeth->sVmName),SyStringLength(&pMeth->sVmName));` |
+|   987 | 1362 | `						MemObjSetType(pTos,MEMOBJ_STRING);` |
 |     - | 1363 | `					}` |
-|   985 | 1364 | `					pTos->nIdx = SXU32_HIGH;` |
+|   987 | 1364 | `					pTos->nIdx = SXU32_HIGH;` |
 |     - | 1365 | `					/* Forwarding call (self::/parent::/static::): overwrite the receiver` |
 |     - | 1366 | `					 * slot (pNos, one below the method name) with the live LSB class name` |
 |     - | 1367 | ``					 * so OP_CALL pushes THAT onto aSelf — preserving `static::` inside the`` |
 |     - | 1368 | `					 * callee. Without this the literal keyword falls through to the` |
 |     - | 1369 | `					 * callee's declaring class. Only when an LSB class is actually in` |
 |     - | 1370 | `					 * scope (a static call from global scope has none). */` |
-|   985 | 1371 | `					if( bForwardingCall && pForwardLsb && (pNos->iFlags & MEMOBJ_STRING) ){` |
+|   987 | 1371 | `					if( bForwardingCall && pForwardLsb && (pNos->iFlags & MEMOBJ_STRING) ){` |
 |   298 | 1372 | `						SyBlobReset(&pNos->sBlob);` |
 |   298 | 1373 | `						SyBlobAppend(&pNos->sBlob,pForwardLsb->sName.zString,pForwardLsb->sName.nByte);` |
 |   148 | 1374 | `					}` |
-|   495 | 1375 | `				}else{` |
+|   496 | 1375 | `				}else{` |
 |     - | 1376 | `					/* Attribute access */` |
 |  1535 | 1377 | `					ph7_class_attr *pAttr = 0;` |
 |  1535 | 1378 | `					if( pInstr->iP2 == PH7_MEMBER_UNSET ){` |
@@ -1562,12 +1562,12 @@ Coverage: 868/1015 lines (85.52%)
 |   718 | 1552 | `						}` |
 |     - | 1553 | `					}` |
 |     - | 1554 | `				}` |
-|  2507 | 1555 | `				if( pThis ){` |
+|  2509 | 1555 | `				if( pThis ){` |
 |     - | 1556 | `					/* Safely unreference the object */` |
 |    11 | 1557 | `					PH7_ClassInstanceUnref(pThis);` |
 |     5 | 1558 | `				}` |
 |     - | 1559 | `			}` |
-|  1256 | 1560 | `		}else{` |
+|  1257 | 1560 | `		}else{` |
 |     - | 1561 | `			/* Pop operands */` |
 |   ! 0 | 1562 | `			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Invalid class name,PH7 is loading NULL");` |
 |   ! 0 | 1563 | `			if( !pInstr->p3 ){` |
@@ -1577,20 +1577,20 @@ Coverage: 868/1015 lines (85.52%)
 |   ! 0 | 1567 | `			pTos->nIdx = SXU32_HIGH;` |
 |     - | 1568 | `		}` |
 |     - | 1569 | `	}` |
-| 44575 | 1570 | `	VM_EXIT_BREAK;` |
+| 44581 | 1570 | `	VM_EXIT_BREAK;` |
 |   ! 0 | 1571 | `	VM_EXIT_BREAK;` |
-| 22539 | 1572 | `}` |
+| 22542 | 1572 | `}` |
 |     - | 1573 |  |
 |     - | 1574 | `/*` |
 |     - | 1575 | ` * OP_CLONE: body moved verbatim from the OP_CLONE arm of` |
 |     - | 1576 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
 |     - | 1577 | ` */` |
 |   214 | 1578 | `PH7_PRIVATE VmOpRc VmExecOpClone(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
-|     4 | 1579 | `{` |
-|   218 | 1580 | `	ph7_value *pTos = pState->pTos;` |
-|   218 | 1581 | `	ph7_value *pStack = pState->pStack;` |
-|   218 | 1582 | `	VmInstr *aInstr = pState->aInstr;` |
-|   218 | 1583 | `	sxi32 pc = pState->pc;` |
+|     5 | 1579 | `{` |
+|   219 | 1580 | `	ph7_value *pTos = pState->pTos;` |
+|   219 | 1581 | `	ph7_value *pStack = pState->pStack;` |
+|   219 | 1582 | `	VmInstr *aInstr = pState->aInstr;` |
+|   219 | 1583 | `	sxi32 pc = pState->pc;` |
 |     - | 1584 | `	sxi32 rc;` |
 |   107 | 1585 | `	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
 |     - | 1586 | `	ph7_class_instance *pSrc,*pClone;` |
@@ -1601,7 +1601,7 @@ Coverage: 868/1015 lines (85.52%)
 |     - | 1591 | `#endif` |
 |     - | 1592 | `	/* Make sure we are dealing with a class instance. PHP 8 throws a catchable` |
 |     - | 1593 | ``	 * TypeError for a non-object operand — for both `clone $x` and clone($x). */`` |
-|   218 | 1594 | `	if( (pTos->iFlags & MEMOBJ_OBJ) == 0 ){` |
+|   219 | 1594 | `	if( (pTos->iFlags & MEMOBJ_OBJ) == 0 ){` |
 |     - | 1595 | `		SyBlob sMsg;` |
 |     7 | 1596 | `		SyBlobInit(&sMsg,&pVm->sAllocator);` |
 |     7 | 1597 | `		SyBlobFormat(&sMsg,"clone(): Argument #1 ($object) must be of type object, %s given",` |
@@ -1666,5 +1666,5 @@ Coverage: 868/1015 lines (85.52%)
 |     - | 1656 | `	}` |
 |   210 | 1657 | `	VM_EXIT_BREAK;` |
 |   ! 0 | 1658 | `	VM_EXIT_BREAK;` |
-|   111 | 1659 | `}` |
+|   112 | 1659 | `}` |
 |     - | 1660 |  |

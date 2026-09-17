@@ -42,20 +42,20 @@ Coverage: 829/1019 lines (81.35%)
 |        5 |   32 | `	return ((a ^ b) & (a ^ *pR)) < 0;` |
 |        5 |   33 | `}` |
 |        - |   34 | `PH7_PRIVATE int PH7_MulOverflow64(sxi64 a,sxi64 b,sxi64 *pR)` |
-|        5 |   35 | `{` |
-|        5 |   36 | `	*pR = (sxi64)((sxu64)a * (sxu64)b);` |
-|        5 |   37 | `	if( a == 0 \|\| b == 0 \|\| a == 1 \|\| b == 1 ){` |
-|        4 |   38 | `		return 0;` |
+|        4 |   35 | `{` |
+|        4 |   36 | `	*pR = (sxi64)((sxu64)a * (sxu64)b);` |
+|        4 |   37 | `	if( a == 0 \|\| b == 0 \|\| a == 1 \|\| b == 1 ){` |
+|        3 |   38 | `		return 0;` |
 |        - |   39 | `	}` |
-|        4 |   40 | `	if( a == -1 ){` |
+|        3 |   40 | `	if( a == -1 ){` |
 |        1 |   41 | `		return b == SMALLEST_INT64;` |
 |        - |   42 | `	}` |
-|        4 |   43 | `	if( b == -1 ){` |
+|        3 |   43 | `	if( b == -1 ){` |
 |      ! 0 |   44 | `		return a == SMALLEST_INT64;` |
 |        - |   45 | `	}` |
-|        4 |   46 | `	if( a > 0 ){` |
-|        4 |   47 | `		if( b > 0 ){` |
-|        4 |   48 | `			return a > LARGEST_INT64 / b;` |
+|        3 |   46 | `	if( a > 0 ){` |
+|        3 |   47 | `		if( b > 0 ){` |
+|        3 |   48 | `			return a > LARGEST_INT64 / b;` |
 |      ! 0 |   49 | `		}else{` |
 |        1 |   50 | `			return b < SMALLEST_INT64 / a;` |
 |        - |   51 | `		}` |
@@ -66,7 +66,7 @@ Coverage: 829/1019 lines (81.35%)
 |        1 |   56 | `			return b < LARGEST_INT64 / a;` |
 |        - |   57 | `		}` |
 |        - |   58 | `	}` |
-|        5 |   59 | `}` |
+|        4 |   59 | `}` |
 |        - |   60 | `#endif` |
 |        - |   61 |  |
 |        - |   62 | `/* Provide PHP-style type names for values.  This utility may be reused` |
@@ -79,7 +79,7 @@ Coverage: 829/1019 lines (81.35%)
 |      327 |   69 | `	if( ph7_value_is_int(pVal) ) return "int";` |
 |      241 |   70 | `	if( ph7_value_is_float(pVal) ) return "float";` |
 |      231 |   71 | `	if( ph7_value_is_string(pVal) ) return "string";` |
-|       25 |   72 | `	if( ph7_value_is_array(pVal) ) return "array";` |
+|       24 |   72 | `	if( ph7_value_is_array(pVal) ) return "array";` |
 |        3 |   73 | `	if( ph7_value_is_object(pVal) ) return "object";` |
 |      ! 0 |   74 | `	if( ph7_value_is_resource(pVal) ) return "resource";` |
 |      ! 0 |   75 | `	return "unknown";` |
@@ -101,7 +101,7 @@ Coverage: 829/1019 lines (81.35%)
 |        - |   91 | ` * But there are reports that windows throws an expection if the floating` |
 |        - |   92 | ` * point value is out of range.` |
 |        - |   93 | ` */` |
-|    10778 |   94 | `static sxi64 MemObjRealToInt(ph7_value *pObj)` |
+|    10802 |   94 | `static sxi64 MemObjRealToInt(ph7_value *pObj)` |
 |        5 |   95 | `{` |
 |        - |   96 | `#ifdef PH7_OMIT_FLOATING_POINT` |
 |        - |   97 | `	/* Real and 64bit integer are the same when floating point arithmetic` |
@@ -118,43 +118,43 @@ Coverage: 829/1019 lines (81.35%)
 |        - |  108 | `  */` |
 |        - |  109 | `  static const sxi64 maxInt = LARGEST_INT64;` |
 |        - |  110 | `  static const sxi64 minInt = SMALLEST_INT64;` |
-|    10783 |  111 | `  ph7_real r = pObj->rVal;` |
-|    10783 |  112 | `  if( r<(ph7_real)minInt ){` |
+|    10807 |  111 | `  ph7_real r = pObj->rVal;` |
+|    10807 |  112 | `  if( r<(ph7_real)minInt ){` |
 |        3 |  113 | `    return minInt;` |
-|    10781 |  114 | `  }else if( r>(ph7_real)maxInt ){` |
+|    10805 |  114 | `  }else if( r>(ph7_real)maxInt ){` |
 |        - |  115 | `    /* minInt is correct here - not maxInt.  It turns out that assigning` |
 |        - |  116 | `    ** a very large positive number to an integer results in a very large` |
 |        - |  117 | `    ** negative integer.  This makes no sense, but it is what x86 hardware` |
 |        - |  118 | `    ** does so for compatibility we will do the same in software. */` |
 |      180 |  119 | `    return minInt;` |
 |      ! 0 |  120 | `  }else{` |
-|    10603 |  121 | `    return (sxi64)r;` |
+|    10627 |  121 | `    return (sxi64)r;` |
 |        - |  122 | `  }` |
 |        - |  123 | `#endif` |
-|     5394 |  124 | `}` |
+|     5406 |  124 | `}` |
 |        - |  125 | `/*` |
 |        - |  126 | ` * Convert a raw token value typically a stream of digit [i.e: hex,octal,binary or decimal]` |
 |        - |  127 | ` * to a 64-bit integer.` |
 |        - |  128 | ` */` |
-|  3822548 |  129 | `PH7_PRIVATE sxi64 PH7_TokenValueToInt64(SyString *pVal)` |
+|  3834284 |  129 | `PH7_PRIVATE sxi64 PH7_TokenValueToInt64(SyString *pVal)` |
 |        5 |  130 | `{` |
-|  3822553 |  131 | `	sxi64 iVal = 0;` |
-|  3822553 |  132 | `	if( pVal->nByte <= 0 ){` |
+|  3834289 |  131 | `	sxi64 iVal = 0;` |
+|  3834289 |  132 | `	if( pVal->nByte <= 0 ){` |
 |      ! 0 |  133 | `		return 0;` |
 |        - |  134 | `	}` |
-|  3822553 |  135 | `	if( pVal->zString[0] == '0' ){` |
+|  3834289 |  135 | `	if( pVal->zString[0] == '0' ){` |
 |        - |  136 | `		sxi32 c;` |
-|  1502839 |  137 | `		if( pVal->nByte == sizeof(char) ){` |
-|  1393583 |  138 | `			return 0;` |
+|  1507471 |  137 | `		if( pVal->nByte == sizeof(char) ){` |
+|  1397879 |  138 | `			return 0;` |
 |        - |  139 | `		}` |
-|   109261 |  140 | `		c = pVal->zString[1];` |
-|   109261 |  141 | `		if( c  == 'x' \|\| c == 'X' ){` |
+|   109597 |  140 | `		c = pVal->zString[1];` |
+|   109597 |  141 | `		if( c  == 'x' \|\| c == 'X' ){` |
 |        - |  142 | `			/* Hex digit stream */` |
-|   105011 |  143 | `			SyHexStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);` |
-|    56758 |  144 | `		}else if( c == 'b' \|\| c == 'B' ){` |
+|   105335 |  143 | `			SyHexStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);` |
+|    56932 |  144 | `		}else if( c == 'b' \|\| c == 'B' ){` |
 |        - |  145 | `			/* Binary digit stream */` |
 |      281 |  146 | `			SyBinaryStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);` |
-|     4115 |  147 | `		}else if( c == 'o' \|\| c == 'O' ){` |
+|     4127 |  147 | `		}else if( c == 'o' \|\| c == 'O' ){` |
 |        - |  148 | `			/* PHP 8.1 explicit octal 0o/0O: skip the two-char prefix and parse the` |
 |        - |  149 | `			 * remaining octal digits (SyOctalStrToInt64 expects no letter prefix). */` |
 |       17 |  150 | `			if( pVal->nByte > 2 ){` |
@@ -162,14 +162,14 @@ Coverage: 829/1019 lines (81.35%)
 |        8 |  152 | `			}` |
 |        9 |  153 | `		}else{` |
 |        - |  154 | `			/* Legacy octal digit stream (leading 0) */` |
-|     3959 |  155 | `			SyOctalStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);` |
+|     3971 |  155 | `			SyOctalStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);` |
 |        - |  156 | `		}` |
-|    54633 |  157 | `	}else{` |
+|    54801 |  157 | `	}else{` |
 |        - |  158 | `		/* Decimal digit stream */` |
-|  2319719 |  159 | `		SyStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);` |
+|  2326823 |  159 | `		SyStrToInt64(pVal->zString,pVal->nByte,(void *)&iVal,0);` |
 |        - |  160 | `	}` |
-|  2428975 |  161 | `	return iVal;` |
-|  1911279 |  162 | `}` |
+|  2436415 |  161 | `	return iVal;` |
+|  1917147 |  162 | `}` |
 |        - |  163 | `/*` |
 |        - |  164 | ` * Return some kind of 64-bit integer value which is the best we can` |
 |        - |  165 | ` * do at representing the value that pObj describes as a string` |
@@ -265,31 +265,31 @@ Coverage: 829/1019 lines (81.35%)
 |        - |  255 | ` * into a real and return that.` |
 |        - |  256 | ` * If pObj represents a NULL value, return 0.0` |
 |        - |  257 | ` */` |
-|     9604 |  258 | `static ph7_real MemObjRealValue(ph7_value *pObj)` |
+|     9628 |  258 | `static ph7_real MemObjRealValue(ph7_value *pObj)` |
 |        5 |  259 | `{` |
 |        - |  260 | `	sxi32 iFlags;` |
-|     9609 |  261 | `	iFlags = pObj->iFlags;` |
-|     9609 |  262 | `	if( iFlags & MEMOBJ_REAL ){` |
+|     9633 |  261 | `	iFlags = pObj->iFlags;` |
+|     9633 |  262 | `	if( iFlags & MEMOBJ_REAL ){` |
 |      ! 0 |  263 | `		return pObj->rVal;` |
-|     9609 |  264 | `	}else if (iFlags & (MEMOBJ_INT\|MEMOBJ_BOOL) ){` |
+|     9633 |  264 | `	}else if (iFlags & (MEMOBJ_INT\|MEMOBJ_BOOL) ){` |
 |      767 |  265 | `		return (ph7_real)pObj->x.iVal;` |
-|     8845 |  266 | `	}else if (iFlags & MEMOBJ_STRING){` |
+|     8869 |  266 | `	}else if (iFlags & MEMOBJ_STRING){` |
 |        - |  267 | `		SyString sString;` |
 |        - |  268 | `#ifdef PH7_OMIT_FLOATING_POINT` |
 |        - |  269 | `		ph7_real rVal = 0;` |
 |        - |  270 | `#else` |
-|     8837 |  271 | `		ph7_real rVal = 0.0;` |
+|     8861 |  271 | `		ph7_real rVal = 0.0;` |
 |        - |  272 | `#endif` |
-|     8837 |  273 | `		SyStringInitFromBuf(&sString,SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob));` |
-|     8837 |  274 | `		if( SyBlobLength(&pObj->sBlob) > 0 ){` |
+|     8861 |  273 | `		SyStringInitFromBuf(&sString,SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob));` |
+|     8861 |  274 | `		if( SyBlobLength(&pObj->sBlob) > 0 ){` |
 |        - |  275 | `			/* Convert as much as we can */` |
 |        - |  276 | `#ifdef PH7_OMIT_FLOATING_POINT` |
 |        - |  277 | `			rVal = MemObjStringToInt(&(*pObj));` |
 |        - |  278 | `#else` |
-|     8837 |  279 | `			SyStrToReal(sString.zString,sString.nByte,(void *)&rVal,0);` |
+|     8861 |  279 | `			SyStrToReal(sString.zString,sString.nByte,(void *)&rVal,0);` |
 |        - |  280 | `#endif` |
-|     4416 |  281 | `		}` |
-|     8837 |  282 | `		return rVal;` |
+|     4428 |  281 | `		}` |
+|     8861 |  282 | `		return rVal;` |
 |        9 |  283 | `	}else if( iFlags & MEMOBJ_NULL ){` |
 |        - |  284 | `#ifdef PH7_OMIT_FLOATING_POINT` |
 |        - |  285 | `		return 0;` |
@@ -316,7 +316,7 @@ Coverage: 829/1019 lines (81.35%)
 |        - |  306 | `	}` |
 |        - |  307 | `	/* NOT REACHED  */` |
 |      ! 0 |  308 | `	return 0;` |
-|     4807 |  309 | `}` |
+|     4819 |  309 | `}` |
 |        - |  310 | `#ifndef PH7_OMIT_FLOATING_POINT` |
 |        - |  311 | `/*` |
 |        - |  312 | ` * Post-process a libc-formatted float into php's exact shape (php_gcvt /` |
@@ -441,8 +441,8 @@ Coverage: 829/1019 lines (81.35%)
 |        - |  431 | `			"__toString",sizeof("__toString")-1,&sResult);` |
 |      179 |  432 | `		if( rc == SXRET_OK && (sResult.iFlags & MEMOBJ_STRING) && SyBlobLength(&sResult.sBlob) > 0){` |
 |        - |  433 | `			/* Expand method return value */` |
-|      101 |  434 | `			SyBlobDup(&sResult.sBlob,pOut);` |
-|       53 |  435 | `		}else{` |
+|      100 |  434 | `			SyBlobDup(&sResult.sBlob,pOut);` |
+|       52 |  435 | `		}else{` |
 |        - |  436 | `			/* Expand "Object" as requested by the PHP language reference manual */` |
 |       81 |  437 | `			SyBlobAppend(&(*pOut),"Object",sizeof("Object")-1);` |
 |        - |  438 | `		}` |
@@ -470,19 +470,19 @@ Coverage: 829/1019 lines (81.35%)
 |        - |  460 | ` * and were removed under the §10 PH7-ism policy).` |
 |        - |  461 | ` * an array with zero elements.` |
 |        - |  462 | ` */` |
-|    46870 |  463 | `static sxi32 MemObjBooleanValue(ph7_value *pObj)` |
+|    46934 |  463 | `static sxi32 MemObjBooleanValue(ph7_value *pObj)` |
 |        5 |  464 | `{` |
 |        - |  465 | `	sxi32 iFlags;` |
-|    46875 |  466 | `	iFlags = pObj->iFlags;` |
-|    46875 |  467 | `	if (iFlags & MEMOBJ_REAL ){` |
+|    46939 |  466 | `	iFlags = pObj->iFlags;` |
+|    46939 |  467 | `	if (iFlags & MEMOBJ_REAL ){` |
 |        - |  468 | `#ifdef PH7_OMIT_FLOATING_POINT` |
 |        - |  469 | `		return pObj->rVal ? 1 : 0;` |
 |        - |  470 | `#else` |
 |       14 |  471 | `		return pObj->rVal != 0.0 ? 1 : 0;` |
 |        - |  472 | `#endif` |
-|    46863 |  473 | `	}else if( iFlags & MEMOBJ_INT ){` |
+|    46927 |  473 | `	}else if( iFlags & MEMOBJ_INT ){` |
 |      929 |  474 | `		return pObj->x.iVal ? 1 : 0;` |
-|    45939 |  475 | `	}else if (iFlags & MEMOBJ_STRING) {` |
+|    46003 |  475 | `	}else if (iFlags & MEMOBJ_STRING) {` |
 |        - |  476 | `		SyString sString;` |
 |       89 |  477 | `		SyStringInitFromBuf(&sString,SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob));` |
 |        - |  478 | `		/* php: a string is FALSE iff it is empty or exactly "0" */` |
@@ -493,8 +493,8 @@ Coverage: 829/1019 lines (81.35%)
 |        7 |  483 | `			return 0;` |
 |        - |  484 | `		}` |
 |       66 |  485 | `		return 1;` |
-|    45853 |  486 | `	}else if( iFlags & MEMOBJ_NULL ){` |
-|    44547 |  487 | `		return 0;` |
+|    45917 |  486 | `	}else if( iFlags & MEMOBJ_NULL ){` |
+|    44611 |  487 | `		return 0;` |
 |     1311 |  488 | `	}else if( iFlags & MEMOBJ_HASHMAP ){` |
 |       20 |  489 | `		ph7_hashmap *pMap = (ph7_hashmap *)pObj->x.pOther;` |
 |       20 |  490 | `		sxu32 n = pMap->nEntry;` |
@@ -511,13 +511,13 @@ Coverage: 829/1019 lines (81.35%)
 |        - |  501 | `	}` |
 |        - |  502 | `	/* NOT REACHED */` |
 |      ! 0 |  503 | `	return 0;` |
-|    23440 |  504 | `}` |
+|    23472 |  504 | `}` |
 |        - |  505 | `/*` |
 |        - |  506 | ` * If the ph7_value is of type real,try to make it an integer also.` |
 |        - |  507 | ` */` |
-|    10758 |  508 | `static sxi32 MemObjTryIntger(ph7_value *pObj)` |
+|    10782 |  508 | `static sxi32 MemObjTryIntger(ph7_value *pObj)` |
 |        5 |  509 | `{` |
-|    10763 |  510 | `	pObj->x.iVal = MemObjRealToInt(&(*pObj));` |
+|    10787 |  510 | `	pObj->x.iVal = MemObjRealToInt(&(*pObj));` |
 |        - |  511 | `  /* Only mark the value as an integer if` |
 |        - |  512 | `  **` |
 |        - |  513 | `  **    (1) the round-trip conversion real->int->real is a no-op, and` |
@@ -530,70 +530,70 @@ Coverage: 829/1019 lines (81.35%)
 |        - |  520 | `  ** true and could be omitted.  But we leave it in because other` |
 |        - |  521 | `  ** architectures might behave differently.` |
 |        - |  522 | `  */` |
-|    10758 |  523 | `	if( pObj->rVal ==(ph7_real)pObj->x.iVal && pObj->x.iVal>SMALLEST_INT64` |
-|     9335 |  524 | `      && pObj->x.iVal<LARGEST_INT64 ){` |
-|     9319 |  525 | `		  pObj->iFlags \|= MEMOBJ_INT;` |
-|     4659 |  526 | `	}` |
-|    10763 |  527 | `	return SXRET_OK;` |
+|    10782 |  523 | `	if( pObj->rVal ==(ph7_real)pObj->x.iVal && pObj->x.iVal>SMALLEST_INT64` |
+|     9359 |  524 | `      && pObj->x.iVal<LARGEST_INT64 ){` |
+|     9343 |  525 | `		  pObj->iFlags \|= MEMOBJ_INT;` |
+|     4671 |  526 | `	}` |
+|    10787 |  527 | `	return SXRET_OK;` |
 |        5 |  528 | `}` |
 |        - |  529 | `/*` |
 |        - |  530 | ` * Convert a ph7_value to type integer.Invalidate any prior representations.` |
 |        - |  531 | ` */` |
-|   530643 |  532 | `PH7_PRIVATE sxi32 PH7_MemObjToInteger(ph7_value *pObj)` |
+|   530986 |  532 | `PH7_PRIVATE sxi32 PH7_MemObjToInteger(ph7_value *pObj)` |
 |        5 |  533 | `{` |
-|   530648 |  534 | `	if( (pObj->iFlags & MEMOBJ_INT) == 0 ){` |
+|   530991 |  534 | `	if( (pObj->iFlags & MEMOBJ_INT) == 0 ){` |
 |        - |  535 | `		/* Preform the conversion */` |
 |     1569 |  536 | `		pObj->x.iVal = MemObjIntValue(&(*pObj));` |
 |        - |  537 | `		/* Invalidate any prior representations */` |
 |     1569 |  538 | `		SyBlobRelease(&pObj->sBlob);` |
 |     1569 |  539 | `		MemObjSetType(pObj,MEMOBJ_INT);` |
 |      782 |  540 | `	}` |
-|   530648 |  541 | `	return SXRET_OK;` |
+|   530991 |  541 | `	return SXRET_OK;` |
 |        5 |  542 | `}` |
 |        - |  543 | `/*` |
 |        - |  544 | ` * Convert a ph7_value to type real (Try to get an integer representation also).` |
 |        - |  545 | ` * Invalidate any prior representations` |
 |        - |  546 | ` */` |
-|    10596 |  547 | `PH7_PRIVATE sxi32 PH7_MemObjToReal(ph7_value *pObj)` |
+|    10620 |  547 | `PH7_PRIVATE sxi32 PH7_MemObjToReal(ph7_value *pObj)` |
 |        5 |  548 | `{` |
-|    10601 |  549 | `	if((pObj->iFlags & MEMOBJ_REAL) == 0 ){` |
+|    10625 |  549 | `	if((pObj->iFlags & MEMOBJ_REAL) == 0 ){` |
 |        - |  550 | `		/* Preform the conversion */` |
-|     9609 |  551 | `		pObj->rVal = MemObjRealValue(&(*pObj));` |
+|     9633 |  551 | `		pObj->rVal = MemObjRealValue(&(*pObj));` |
 |        - |  552 | `		/* Invalidate any prior representations */` |
-|     9609 |  553 | `		SyBlobRelease(&pObj->sBlob);` |
-|     9609 |  554 | `		MemObjSetType(pObj,MEMOBJ_REAL);` |
+|     9633 |  553 | `		SyBlobRelease(&pObj->sBlob);` |
+|     9633 |  554 | `		MemObjSetType(pObj,MEMOBJ_REAL);` |
 |        - |  555 | `		/* Try to get an integer representation */` |
-|     9609 |  556 | `		MemObjTryIntger(&(*pObj));` |
-|     4802 |  557 | `	}` |
-|    10601 |  558 | `	return SXRET_OK;` |
+|     9633 |  556 | `		MemObjTryIntger(&(*pObj));` |
+|     4814 |  557 | `	}` |
+|    10625 |  558 | `	return SXRET_OK;` |
 |        5 |  559 | `}` |
 |        - |  560 | `/*` |
 |        - |  561 | ` * Convert a ph7_value to type boolean.Invalidate any prior representations.` |
 |        - |  562 | ` */` |
-|    51066 |  563 | `PH7_PRIVATE sxi32 PH7_MemObjToBool(ph7_value *pObj)` |
+|    51130 |  563 | `PH7_PRIVATE sxi32 PH7_MemObjToBool(ph7_value *pObj)` |
 |        5 |  564 | `{` |
-|    51071 |  565 | `	if( (pObj->iFlags & MEMOBJ_BOOL) == 0 ){` |
+|    51135 |  565 | `	if( (pObj->iFlags & MEMOBJ_BOOL) == 0 ){` |
 |        - |  566 | `		/* Preform the conversion */` |
-|    46875 |  567 | `		pObj->x.iVal = MemObjBooleanValue(&(*pObj));` |
+|    46939 |  567 | `		pObj->x.iVal = MemObjBooleanValue(&(*pObj));` |
 |        - |  568 | `		/* Invalidate any prior representations */` |
-|    46875 |  569 | `		SyBlobRelease(&pObj->sBlob);` |
-|    46875 |  570 | `		MemObjSetType(pObj,MEMOBJ_BOOL);` |
-|    23435 |  571 | `	}` |
-|    51071 |  572 | `	return SXRET_OK;` |
+|    46939 |  569 | `		SyBlobRelease(&pObj->sBlob);` |
+|    46939 |  570 | `		MemObjSetType(pObj,MEMOBJ_BOOL);` |
+|    23467 |  571 | `	}` |
+|    51135 |  572 | `	return SXRET_OK;` |
 |        5 |  573 | `}` |
 |        - |  574 | `/*` |
 |        - |  575 | ` * Convert a ph7_value to type string.Prior representations are NOT invalidated.` |
 |        - |  576 | ` */` |
-|   959928 |  577 | `PH7_PRIVATE sxi32 PH7_MemObjToString(ph7_value *pObj)` |
+|   960538 |  577 | `PH7_PRIVATE sxi32 PH7_MemObjToString(ph7_value *pObj)` |
 |        5 |  578 | `{` |
-|   959933 |  579 | `	sxi32 rc = SXRET_OK;` |
-|   959933 |  580 | `	if( (pObj->iFlags & MEMOBJ_STRING) == 0 ){` |
+|   960543 |  579 | `	sxi32 rc = SXRET_OK;` |
+|   960543 |  580 | `	if( (pObj->iFlags & MEMOBJ_STRING) == 0 ){` |
 |        - |  581 | `		/* Perform the conversion */` |
 |    61827 |  582 | `		SyBlobReset(&pObj->sBlob); /* Reset the internal buffer */` |
 |    61827 |  583 | `		rc = MemObjStringValue(&pObj->sBlob,&(*pObj),TRUE);` |
 |    61827 |  584 | `		MemObjSetType(pObj,MEMOBJ_STRING);` |
 |    30911 |  585 | `	}` |
-|   959933 |  586 | `	return rc;` |
+|   960543 |  586 | `	return rc;` |
 |        5 |  587 | `}` |
 |        - |  588 | `/*` |
 |        - |  589 | ` * Nullify a ph7_value.In other words invalidate any prior` |
@@ -626,14 +626,14 @@ Coverage: 829/1019 lines (81.35%)
 |        - |  616 | `			 *   to an array results in an array with a single element with index zero` |
 |        - |  617 | `			 *   and the value of the scalar which was converted.` |
 |        - |  618 | `			 */` |
-|       35 |  619 | `			if( pObj->iFlags & MEMOBJ_OBJ ){` |
+|       34 |  619 | `			if( pObj->iFlags & MEMOBJ_OBJ ){` |
 |        - |  620 | `				/* Object cast */` |
-|       23 |  621 | `				PH7_ClassInstanceToHashmap((ph7_class_instance *)pObj->x.pOther,pMap);` |
-|       13 |  622 | `			}else{` |
+|       22 |  621 | `				PH7_ClassInstanceToHashmap((ph7_class_instance *)pObj->x.pOther,pMap);` |
+|       12 |  622 | `			}else{` |
 |        - |  623 | `				/* Insert a single element */` |
 |       13 |  624 | `				PH7_HashmapInsert(pMap,0/* Automatic index assign */,&(*pObj));` |
 |        - |  625 | `			}` |
-|       35 |  626 | `			SyBlobRelease(&pObj->sBlob);` |
+|       34 |  626 | `			SyBlobRelease(&pObj->sBlob);` |
 |       16 |  627 | `		}` |
 |        - |  628 | `		/* Invalidate any prior representation */` |
 |      377 |  629 | `		PH7_MemObjRelease(pObj);` |
@@ -733,7 +733,7 @@ Coverage: 829/1019 lines (81.35%)
 |       16 |  723 | `		return PH7_MemObjToString;` |
 |       73 |  724 | `	}else if( iFlags & MEMOBJ_INT ){` |
 |       57 |  725 | `		return PH7_MemObjToInteger;` |
-|       19 |  726 | `	}else if( iFlags & MEMOBJ_REAL ){` |
+|       20 |  726 | `	}else if( iFlags & MEMOBJ_REAL ){` |
 |       17 |  727 | `		return PH7_MemObjToReal;` |
 |        3 |  728 | `	}else if( iFlags & MEMOBJ_BOOL ){` |
 |      ! 0 |  729 | `		return PH7_MemObjToBool;` |
@@ -774,42 +774,42 @@ Coverage: 829/1019 lines (81.35%)
 |        - |  764 | ` * merely leading-numeric one ("5abc", "1e", "0x1A") -- php warns on the latter` |
 |        - |  765 | ` * and rejects a string with no prefix outright.` |
 |        - |  766 | ` */` |
-|   249606 |  767 | `PH7_PRIVATE int PH7_MemObjStringNumericPrefix(ph7_value *pValue,const char **pzTail)` |
+|   249745 |  767 | `PH7_PRIVATE int PH7_MemObjStringNumericPrefix(ph7_value *pValue,const char **pzTail)` |
 |        5 |  768 | `{` |
 |        - |  769 | `	const char *z, *zEnd;` |
 |        - |  770 | `	sxu32 n;` |
-|   249611 |  771 | `	int bDigit = 0;` |
-|   249611 |  772 | `	if( (pValue->iFlags & MEMOBJ_STRING) == 0 ){` |
+|   249750 |  771 | `	int bDigit = 0;` |
+|   249750 |  772 | `	if( (pValue->iFlags & MEMOBJ_STRING) == 0 ){` |
 |      ! 0 |  773 | `		return 0;` |
 |        - |  774 | `	}` |
-|   249611 |  775 | `	z = (const char *)SyBlobData(&pValue->sBlob);` |
-|   249611 |  776 | `	n = SyBlobLength(&pValue->sBlob);` |
-|   249611 |  777 | `	if( n == 0 ){` |
+|   249750 |  775 | `	z = (const char *)SyBlobData(&pValue->sBlob);` |
+|   249750 |  776 | `	n = SyBlobLength(&pValue->sBlob);` |
+|   249750 |  777 | `	if( n == 0 ){` |
 |      603 |  778 | `		return 0;` |
 |        - |  779 | `	}` |
-|   249011 |  780 | `	zEnd = z + n;` |
-|   249035 |  781 | `	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisSpace(z[0]) ){` |
+|   249150 |  780 | `	zEnd = z + n;` |
+|   249174 |  781 | `	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisSpace(z[0]) ){` |
 |       26 |  782 | `		z++;` |
 |        2 |  783 | `	}` |
-|   249011 |  784 | `	if( z < zEnd && (z[0] == '+' \|\| z[0] == '-') ){` |
+|   249150 |  784 | `	if( z < zEnd && (z[0] == '+' \|\| z[0] == '-') ){` |
 |      215 |  785 | `		z++;` |
 |      105 |  786 | `	}` |
-|   253866 |  787 | `	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){` |
-|     4860 |  788 | `		z++; bDigit = 1;` |
-|        5 |  789 | `	}` |
-|   249011 |  790 | `	if( z < zEnd && z[0] == '.' ){` |
+|   254005 |  787 | `	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){` |
+|     4859 |  788 | `		z++; bDigit = 1;` |
+|        4 |  789 | `	}` |
+|   249150 |  790 | `	if( z < zEnd && z[0] == '.' ){` |
 |     6030 |  791 | `		z++;` |
 |     6104 |  792 | `		while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){` |
-|       78 |  793 | `			z++; bDigit = 1;` |
-|        4 |  794 | `		}` |
+|       77 |  793 | `			z++; bDigit = 1;` |
+|        3 |  794 | `		}` |
 |     3217 |  795 | `	}` |
 |        - |  796 | `	/* At least one mantissa digit required (rejects "", ".", "+", "e5"). */` |
-|   249011 |  797 | `	if( !bDigit ){` |
-|   244264 |  798 | `		return 0;` |
+|   249150 |  797 | `	if( !bDigit ){` |
+|   244403 |  798 | `		return 0;` |
 |        - |  799 | `	}` |
 |        - |  800 | `	/* Optional exponent — only joins the prefix if it carries a digit. "1e" has` |
 |        - |  801 | `	 * the numeric prefix "1" with the 'e' left in the tail, exactly as php reads it. */` |
-|     4752 |  802 | `	if( z < zEnd && (z[0] == 'e' \|\| z[0] == 'E') ){` |
+|     4751 |  802 | `	if( z < zEnd && (z[0] == 'e' \|\| z[0] == 'E') ){` |
 |       30 |  803 | `		const char *zExp = z;` |
 |       30 |  804 | `		z++;` |
 |       30 |  805 | `		if( z < zEnd && (z[0] == '+' \|\| z[0] == '-') ){` |
@@ -823,45 +823,45 @@ Coverage: 829/1019 lines (81.35%)
 |        2 |  813 | `			}` |
 |        - |  814 | `		}` |
 |       14 |  815 | `	}` |
-|     4752 |  816 | `	if( pzTail ){` |
-|     4752 |  817 | `		*pzTail = z;` |
+|     4751 |  816 | `	if( pzTail ){` |
+|     4751 |  817 | `		*pzTail = z;` |
 |     2373 |  818 | `	}` |
-|     4752 |  819 | `	return 1;` |
-|   124697 |  820 | `}` |
+|     4751 |  819 | `	return 1;` |
+|   124762 |  820 | `}` |
 |        - |  821 | `/*` |
 |        - |  822 | ` * TRUE only if the WHOLE string is a well-formed php numeric string` |
 |        - |  823 | ` * (trailing whitespace allowed, nothing else).` |
 |        - |  824 | ` */` |
-|   247197 |  825 | `PH7_PRIVATE int PH7_MemObjStringIsNumeric(ph7_value *pValue)` |
+|   247336 |  825 | `PH7_PRIVATE int PH7_MemObjStringIsNumeric(ph7_value *pValue)` |
 |        5 |  826 | `{` |
-|   247202 |  827 | `	const char *zTail = 0, *zEnd;` |
-|   247202 |  828 | `	if( !PH7_MemObjStringNumericPrefix(pValue,&zTail) ){` |
-|   244854 |  829 | `		return 0;` |
+|   247341 |  827 | `	const char *zTail = 0, *zEnd;` |
+|   247341 |  828 | `	if( !PH7_MemObjStringNumericPrefix(pValue,&zTail) ){` |
+|   244993 |  829 | `		return 0;` |
 |        - |  830 | `	}` |
-|     2353 |  831 | `	zEnd = (const char *)SyBlobData(&pValue->sBlob) + SyBlobLength(&pValue->sBlob);` |
-|     2359 |  832 | `	while( zTail < zEnd && (unsigned char)zTail[0] < 0xc0 && SyisSpace(zTail[0]) ){` |
+|     2352 |  831 | `	zEnd = (const char *)SyBlobData(&pValue->sBlob) + SyBlobLength(&pValue->sBlob);` |
+|     2358 |  832 | `	while( zTail < zEnd && (unsigned char)zTail[0] < 0xc0 && SyisSpace(zTail[0]) ){` |
 |        8 |  833 | `		zTail++;` |
 |        2 |  834 | `	}` |
-|     2353 |  835 | `	return zTail == zEnd ? 1 : 0;` |
-|   123493 |  836 | `}` |
+|     2352 |  835 | `	return zTail == zEnd ? 1 : 0;` |
+|   123558 |  836 | `}` |
 |        - |  837 | `/*` |
 |        - |  838 | ` * Check whether the ph7_value is numeric [i.e: int/float/bool] or looks` |
 |        - |  839 | ` * like a numeric number [i.e: if the ph7_value is of type string.].` |
 |        - |  840 | ` * Return TRUE if numeric.FALSE otherwise.` |
 |        - |  841 | ` */` |
-|   248185 |  842 | `PH7_PRIVATE sxi32 PH7_MemObjIsNumeric(ph7_value *pObj)` |
+|   248324 |  842 | `PH7_PRIVATE sxi32 PH7_MemObjIsNumeric(ph7_value *pObj)` |
 |        5 |  843 | `{` |
-|   248190 |  844 | `	if( pObj->iFlags & ( MEMOBJ_BOOL\|MEMOBJ_INT\|MEMOBJ_REAL) ){` |
+|   248329 |  844 | `	if( pObj->iFlags & ( MEMOBJ_BOOL\|MEMOBJ_INT\|MEMOBJ_REAL) ){` |
 |      679 |  845 | `		return TRUE;` |
-|   247516 |  846 | `	}else if( pObj->iFlags & (MEMOBJ_NULL\|MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES) ){` |
+|   247655 |  846 | `	}else if( pObj->iFlags & (MEMOBJ_NULL\|MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES) ){` |
 |      436 |  847 | `		return FALSE;` |
-|   247084 |  848 | `	}else if( pObj->iFlags & MEMOBJ_STRING ){` |
+|   247223 |  848 | `	}else if( pObj->iFlags & MEMOBJ_STRING ){` |
 |        - |  849 | `		/* TRUE only if the whole string is a well-formed PHP numeric string. */` |
-|   247084 |  850 | `		return PH7_MemObjStringIsNumeric(pObj) ? TRUE : FALSE;` |
+|   247223 |  850 | `		return PH7_MemObjStringIsNumeric(pObj) ? TRUE : FALSE;` |
 |        - |  851 | `	}` |
 |        - |  852 | `	/* NOT REACHED */` |
 |      ! 0 |  853 | `	return FALSE;` |
-|   123987 |  854 | `}` |
+|   124052 |  854 | `}` |
 |        - |  855 | `/*` |
 |        - |  856 | ` * Check whether the ph7_value is empty.Return TRUE if empty.` |
 |        - |  857 | ` * FALSE otherwise.` |
@@ -874,40 +874,40 @@ Coverage: 829/1019 lines (81.35%)
 |        - |  864 | ` * NOTE` |
 |        - |  865 | ` *  OBJECT VALUE MUST NOT BE MODIFIED.` |
 |        - |  866 | ` */` |
-|    39578 |  867 | `PH7_PRIVATE sxi32 PH7_MemObjIsEmpty(ph7_value *pObj)` |
+|    39594 |  867 | `PH7_PRIVATE sxi32 PH7_MemObjIsEmpty(ph7_value *pObj)` |
 |        5 |  868 | `{` |
-|    39583 |  869 | `	if( pObj->iFlags & MEMOBJ_NULL ){` |
+|    39599 |  869 | `	if( pObj->iFlags & MEMOBJ_NULL ){` |
 |       21 |  870 | `		return TRUE;` |
-|    39565 |  871 | `	}else if( pObj->iFlags & MEMOBJ_INT ){` |
+|    39581 |  871 | `	}else if( pObj->iFlags & MEMOBJ_INT ){` |
 |       22 |  872 | `		return pObj->x.iVal == 0 ? TRUE : FALSE;` |
-|    39545 |  873 | `	}else if( pObj->iFlags & MEMOBJ_REAL ){` |
+|    39561 |  873 | `	}else if( pObj->iFlags & MEMOBJ_REAL ){` |
 |      ! 0 |  874 | `		return pObj->rVal == (ph7_real)0 ? TRUE : FALSE;` |
-|    39545 |  875 | `	}else if( pObj->iFlags & MEMOBJ_BOOL ){` |
+|    39561 |  875 | `	}else if( pObj->iFlags & MEMOBJ_BOOL ){` |
 |        5 |  876 | `		return !pObj->x.iVal;` |
-|    39541 |  877 | `	}else if( pObj->iFlags & MEMOBJ_STRING ){` |
-|    26431 |  878 | `		if( SyBlobLength(&pObj->sBlob) <= 0 ){` |
-|    21065 |  879 | `			return TRUE;` |
+|    39557 |  877 | `	}else if( pObj->iFlags & MEMOBJ_STRING ){` |
+|    26439 |  878 | `		if( SyBlobLength(&pObj->sBlob) <= 0 ){` |
+|    21057 |  879 | `			return TRUE;` |
 |      ! 0 |  880 | `		}else{` |
 |        - |  881 | `			const char *zIn,*zEnd;` |
-|     5371 |  882 | `			zIn = (const char *)SyBlobData(&pObj->sBlob);` |
-|     5371 |  883 | `			zEnd = &zIn[SyBlobLength(&pObj->sBlob)];` |
-|     5377 |  884 | `			while( zIn < zEnd ){` |
-|     5377 |  885 | `				if( zIn[0] != '0' ){` |
-|     5371 |  886 | `					break;` |
+|     5387 |  882 | `			zIn = (const char *)SyBlobData(&pObj->sBlob);` |
+|     5387 |  883 | `			zEnd = &zIn[SyBlobLength(&pObj->sBlob)];` |
+|     5393 |  884 | `			while( zIn < zEnd ){` |
+|     5393 |  885 | `				if( zIn[0] != '0' ){` |
+|     5387 |  886 | `					break;` |
 |        - |  887 | `				}` |
 |        7 |  888 | `				zIn++;` |
 |        1 |  889 | `			}` |
-|     5371 |  890 | `			return zIn >= zEnd ? TRUE : FALSE;` |
+|     5387 |  890 | `			return zIn >= zEnd ? TRUE : FALSE;` |
 |      ! 0 |  891 | `		}` |
-|    13115 |  892 | `	}else if( pObj->iFlags & MEMOBJ_HASHMAP ){` |
-|    13115 |  893 | `		ph7_hashmap *pMap = (ph7_hashmap *)pObj->x.pOther;` |
-|    13115 |  894 | `		return pMap->nEntry == 0 ? TRUE : FALSE;` |
+|    13123 |  892 | `	}else if( pObj->iFlags & MEMOBJ_HASHMAP ){` |
+|    13123 |  893 | `		ph7_hashmap *pMap = (ph7_hashmap *)pObj->x.pOther;` |
+|    13123 |  894 | `		return pMap->nEntry == 0 ? TRUE : FALSE;` |
 |      ! 0 |  895 | `	}else if ( pObj->iFlags & (MEMOBJ_OBJ\|MEMOBJ_RES) ){` |
 |      ! 0 |  896 | `		return FALSE;` |
 |        - |  897 | `	}` |
 |        - |  898 | `	/* Assume empty by default */` |
 |      ! 0 |  899 | `	return TRUE;` |
-|    19794 |  900 | `}` |
+|    19802 |  900 | `}` |
 |        - |  901 | `/*` |
 |        - |  902 | ` * Convert a ph7_value so that it has types MEMOBJ_REAL or MEMOBJ_INT` |
 |        - |  903 | ` * or both.` |
@@ -916,17 +916,17 @@ Coverage: 829/1019 lines (81.35%)
 |        - |  906 | ` * completely like a number.Convert as much of the string as we can` |
 |        - |  907 | ` * and ignore the rest.` |
 |        - |  908 | ` */` |
-|   518283 |  909 | `PH7_PRIVATE sxi32 PH7_MemObjToNumeric(ph7_value *pObj)` |
+|   519212 |  909 | `PH7_PRIVATE sxi32 PH7_MemObjToNumeric(ph7_value *pObj)` |
 |        5 |  910 | `{` |
-|   518288 |  911 | `	if( pObj->iFlags & (MEMOBJ_INT\|MEMOBJ_REAL\|MEMOBJ_BOOL\|MEMOBJ_NULL) ){` |
-|   515927 |  912 | `		if( pObj->iFlags & (MEMOBJ_BOOL\|MEMOBJ_NULL) ){` |
+|   519217 |  911 | `	if( pObj->iFlags & (MEMOBJ_INT\|MEMOBJ_REAL\|MEMOBJ_BOOL\|MEMOBJ_NULL) ){` |
+|   516856 |  912 | `		if( pObj->iFlags & (MEMOBJ_BOOL\|MEMOBJ_NULL) ){` |
 |        8 |  913 | `			if( pObj->iFlags & MEMOBJ_NULL ){` |
 |        5 |  914 | `				pObj->x.iVal = 0;` |
 |        2 |  915 | `			}` |
 |        8 |  916 | `			MemObjSetType(pObj,MEMOBJ_INT);` |
 |        3 |  917 | `		}` |
 |        - |  918 | `		/* Already numeric */` |
-|   515927 |  919 | `		return  SXRET_OK;` |
+|   516856 |  919 | `		return  SXRET_OK;` |
 |        - |  920 | `	}` |
 |     2365 |  921 | `	if( pObj->iFlags & MEMOBJ_STRING ){` |
 |     2365 |  922 | `		const char *zTail = 0;` |
@@ -966,7 +966,7 @@ Coverage: 829/1019 lines (81.35%)
 |      ! 0 |  956 | `		PH7_MemObjToReal(&(*pObj));` |
 |        - |  957 | `	}` |
 |     2365 |  958 | `	return SXRET_OK;` |
-|   259362 |  959 | `}` |
+|   259824 |  959 | `}` |
 |        - |  960 | `/*` |
 |        - |  961 | ` * Apply Perl-style increment to a string ph7_value in place.` |
 |        - |  962 | ` * Walks the bytes right-to-left: digits 0-8 / letters a-y, A-Y bump in` |
@@ -1073,46 +1073,46 @@ Coverage: 829/1019 lines (81.35%)
 |        - | 1063 | `/*` |
 |        - | 1064 | ` * Initialize a ph7_value to the null type.` |
 |        - | 1065 | ` */` |
-| 29276863 | 1066 | `PH7_PRIVATE sxi32 PH7_MemObjInit(ph7_vm *pVm,ph7_value *pObj)` |
+| 29310279 | 1066 | `PH7_PRIVATE sxi32 PH7_MemObjInit(ph7_vm *pVm,ph7_value *pObj)` |
 |        5 | 1067 | `{` |
 |        - | 1068 | `	/* Zero the structure */` |
-| 29276868 | 1069 | `	SyZero(pObj,sizeof(ph7_value));` |
+| 29310284 | 1069 | `	SyZero(pObj,sizeof(ph7_value));` |
 |        - | 1070 | `	/* Initialize fields */` |
-| 29276868 | 1071 | `	pObj->pVm = pVm;` |
-| 29276868 | 1072 | `	SyBlobInit(&pObj->sBlob,&pVm->sAllocator);` |
+| 29310284 | 1071 | `	pObj->pVm = pVm;` |
+| 29310284 | 1072 | `	SyBlobInit(&pObj->sBlob,&pVm->sAllocator);` |
 |        - | 1073 | `	/* Set the NULL type */` |
-| 29276868 | 1074 | `	pObj->iFlags = MEMOBJ_NULL;` |
-| 29276868 | 1075 | `	return SXRET_OK;` |
+| 29310284 | 1074 | `	pObj->iFlags = MEMOBJ_NULL;` |
+| 29310284 | 1075 | `	return SXRET_OK;` |
 |        5 | 1076 | `}` |
 |        - | 1077 | `/*` |
 |        - | 1078 | ` * Initialize a ph7_value to the integer type.` |
 |        - | 1079 | ` */` |
-|  5971718 | 1080 | `PH7_PRIVATE sxi32 PH7_MemObjInitFromInt(ph7_vm *pVm,ph7_value *pObj,sxi64 iVal)` |
+|  5983472 | 1080 | `PH7_PRIVATE sxi32 PH7_MemObjInitFromInt(ph7_vm *pVm,ph7_value *pObj,sxi64 iVal)` |
 |        5 | 1081 | `{` |
 |        - | 1082 | `	/* Zero the structure */` |
-|  5971723 | 1083 | `	SyZero(pObj,sizeof(ph7_value));` |
+|  5983477 | 1083 | `	SyZero(pObj,sizeof(ph7_value));` |
 |        - | 1084 | `	/* Initialize fields */` |
-|  5971723 | 1085 | `	pObj->pVm = pVm;` |
-|  5971723 | 1086 | `	SyBlobInit(&pObj->sBlob,&pVm->sAllocator);` |
+|  5983477 | 1085 | `	pObj->pVm = pVm;` |
+|  5983477 | 1086 | `	SyBlobInit(&pObj->sBlob,&pVm->sAllocator);` |
 |        - | 1087 | `	/* Set the desired type */` |
-|  5971723 | 1088 | `	pObj->x.iVal = iVal;` |
-|  5971723 | 1089 | `	pObj->iFlags = MEMOBJ_INT;` |
-|  5971723 | 1090 | `	return SXRET_OK;` |
+|  5983477 | 1088 | `	pObj->x.iVal = iVal;` |
+|  5983477 | 1089 | `	pObj->iFlags = MEMOBJ_INT;` |
+|  5983477 | 1090 | `	return SXRET_OK;` |
 |        5 | 1091 | `}` |
 |        - | 1092 | `/*` |
 |        - | 1093 | ` * Initialize a ph7_value to the boolean type.` |
 |        - | 1094 | ` */` |
-|    16832 | 1095 | `PH7_PRIVATE sxi32 PH7_MemObjInitFromBool(ph7_vm *pVm,ph7_value *pObj,sxi32 iVal)` |
+|    16848 | 1095 | `PH7_PRIVATE sxi32 PH7_MemObjInitFromBool(ph7_vm *pVm,ph7_value *pObj,sxi32 iVal)` |
 |        5 | 1096 | `{` |
 |        - | 1097 | `	/* Zero the structure */` |
-|    16837 | 1098 | `	SyZero(pObj,sizeof(ph7_value));` |
+|    16853 | 1098 | `	SyZero(pObj,sizeof(ph7_value));` |
 |        - | 1099 | `	/* Initialize fields */` |
-|    16837 | 1100 | `	pObj->pVm = pVm;` |
-|    16837 | 1101 | `	SyBlobInit(&pObj->sBlob,&pVm->sAllocator);` |
+|    16853 | 1100 | `	pObj->pVm = pVm;` |
+|    16853 | 1101 | `	SyBlobInit(&pObj->sBlob,&pVm->sAllocator);` |
 |        - | 1102 | `	/* Set the desired type */` |
-|    16837 | 1103 | `	pObj->x.iVal = iVal ? 1 : 0;` |
-|    16837 | 1104 | `	pObj->iFlags = MEMOBJ_BOOL;` |
-|    16837 | 1105 | `	return SXRET_OK;` |
+|    16853 | 1103 | `	pObj->x.iVal = iVal ? 1 : 0;` |
+|    16853 | 1104 | `	pObj->iFlags = MEMOBJ_BOOL;` |
+|    16853 | 1105 | `	return SXRET_OK;` |
 |        5 | 1106 | `}` |
 |        - | 1107 | `/*` |
 |        - | 1108 | ` * Initialize a ph7_value to the real type.` |
@@ -1132,35 +1132,35 @@ Coverage: 829/1019 lines (81.35%)
 |        - | 1122 | `/*` |
 |        - | 1123 | ` * Initialize a ph7_value to the array type.` |
 |        - | 1124 | ` */` |
-|    63804 | 1125 | `PH7_PRIVATE sxi32 PH7_MemObjInitFromArray(ph7_vm *pVm,ph7_value *pObj,ph7_hashmap *pArray)` |
+|    63880 | 1125 | `PH7_PRIVATE sxi32 PH7_MemObjInitFromArray(ph7_vm *pVm,ph7_value *pObj,ph7_hashmap *pArray)` |
 |        5 | 1126 | `{` |
 |        - | 1127 | `	/* Zero the structure */` |
-|    63809 | 1128 | `	SyZero(pObj,sizeof(ph7_value));` |
+|    63885 | 1128 | `	SyZero(pObj,sizeof(ph7_value));` |
 |        - | 1129 | `	/* Initialize fields */` |
-|    63809 | 1130 | `	pObj->pVm = pVm;` |
-|    63809 | 1131 | `	SyBlobInit(&pObj->sBlob,&pVm->sAllocator);` |
+|    63885 | 1130 | `	pObj->pVm = pVm;` |
+|    63885 | 1131 | `	SyBlobInit(&pObj->sBlob,&pVm->sAllocator);` |
 |        - | 1132 | `	/* Set the desired type */` |
-|    63809 | 1133 | `	pObj->iFlags = MEMOBJ_HASHMAP;` |
-|    63809 | 1134 | `	pObj->x.pOther = pArray;` |
-|    63809 | 1135 | `	return SXRET_OK;` |
+|    63885 | 1133 | `	pObj->iFlags = MEMOBJ_HASHMAP;` |
+|    63885 | 1134 | `	pObj->x.pOther = pArray;` |
+|    63885 | 1135 | `	return SXRET_OK;` |
 |        5 | 1136 | `}` |
 |        - | 1137 | `/*` |
 |        - | 1138 | ` * Initialize a ph7_value to the string type.` |
 |        - | 1139 | ` */` |
-|  4912456 | 1140 | `PH7_PRIVATE sxi32 PH7_MemObjInitFromString(ph7_vm *pVm,ph7_value *pObj,const SyString *pVal)` |
+|  4927132 | 1140 | `PH7_PRIVATE sxi32 PH7_MemObjInitFromString(ph7_vm *pVm,ph7_value *pObj,const SyString *pVal)` |
 |        5 | 1141 | `{` |
 |        - | 1142 | `	/* Zero the structure */` |
-|  4912461 | 1143 | `	SyZero(pObj,sizeof(ph7_value));` |
+|  4927137 | 1143 | `	SyZero(pObj,sizeof(ph7_value));` |
 |        - | 1144 | `	/* Initialize fields */` |
-|  4912461 | 1145 | `	pObj->pVm = pVm;` |
-|  4912461 | 1146 | `	SyBlobInit(&pObj->sBlob,&pVm->sAllocator);` |
-|  4912461 | 1147 | `	if( pVal ){` |
+|  4927137 | 1145 | `	pObj->pVm = pVm;` |
+|  4927137 | 1146 | `	SyBlobInit(&pObj->sBlob,&pVm->sAllocator);` |
+|  4927137 | 1147 | `	if( pVal ){` |
 |        - | 1148 | `		/* Append contents */` |
-|  2480673 | 1149 | `		SyBlobAppend(&pObj->sBlob,(const void *)pVal->zString,pVal->nByte);` |
-|  1240334 | 1150 | `	}` |
+|  2488233 | 1149 | `		SyBlobAppend(&pObj->sBlob,(const void *)pVal->zString,pVal->nByte);` |
+|  1244114 | 1150 | `	}` |
 |        - | 1151 | `	/* Set the desired type */` |
-|  4912461 | 1152 | `	pObj->iFlags = MEMOBJ_STRING;` |
-|  4912461 | 1153 | `	return SXRET_OK;` |
+|  4927137 | 1152 | `	pObj->iFlags = MEMOBJ_STRING;` |
+|  4927137 | 1153 | `	return SXRET_OK;` |
 |        5 | 1154 | `}` |
 |        - | 1155 | `/*` |
 |        - | 1156 | ` * Append some contents to the internal buffer of a given ph7_value.` |
@@ -1168,17 +1168,17 @@ Coverage: 829/1019 lines (81.35%)
 |        - | 1158 | ` * invalidate any prior representation and set the string type.` |
 |        - | 1159 | ` * Then a simple append operation is performed.` |
 |        - | 1160 | ` */` |
-|  2852440 | 1161 | `PH7_PRIVATE sxi32 PH7_MemObjStringAppend(ph7_value *pObj,const char *zData,sxu32 nLen)` |
+|  2860401 | 1161 | `PH7_PRIVATE sxi32 PH7_MemObjStringAppend(ph7_value *pObj,const char *zData,sxu32 nLen)` |
 |        5 | 1162 | `{` |
 |        - | 1163 | `	sxi32 rc;` |
-|  2852445 | 1164 | `	if( (pObj->iFlags & MEMOBJ_STRING) == 0 ){` |
+|  2860406 | 1164 | `	if( (pObj->iFlags & MEMOBJ_STRING) == 0 ){` |
 |        - | 1165 | `		/* Invalidate any prior representation */` |
 |     3755 | 1166 | `		PH7_MemObjRelease(pObj);` |
 |     3755 | 1167 | `		MemObjSetType(pObj,MEMOBJ_STRING);` |
 |     1875 | 1168 | `	}` |
 |        - | 1169 | `	/* Append contents */` |
-|  2852445 | 1170 | `	rc = SyBlobAppend(&pObj->sBlob,zData,nLen);` |
-|  2852445 | 1171 | `	return rc;` |
+|  2860406 | 1170 | `	rc = SyBlobAppend(&pObj->sBlob,zData,nLen);` |
+|  2860406 | 1171 | `	return rc;` |
 |        5 | 1172 | `}` |
 |        - | 1173 | `#if 0` |
 |        - | 1174 | `/*` |
@@ -1203,46 +1203,46 @@ Coverage: 829/1019 lines (81.35%)
 |        - | 1193 | `/*` |
 |        - | 1194 | ` * Duplicate the contents of a ph7_value.` |
 |        - | 1195 | ` */` |
-|  6013100 | 1196 | `PH7_PRIVATE sxi32 PH7_MemObjStore(ph7_value *pSrc,ph7_value *pDest)` |
+|  6015100 | 1196 | `PH7_PRIVATE sxi32 PH7_MemObjStore(ph7_value *pSrc,ph7_value *pDest)` |
 |        5 | 1197 | `{` |
-|  6013105 | 1198 | `	ph7_class_instance *pObj = 0;` |
-|  6013105 | 1199 | `	ph7_hashmap *pMap = 0;` |
+|  6015105 | 1198 | `	ph7_class_instance *pObj = 0;` |
+|  6015105 | 1199 | `	ph7_hashmap *pMap = 0;` |
 |        - | 1200 | `	sxi32 rc;` |
-|  6013105 | 1201 | `	if( pSrc->iFlags & MEMOBJ_HASHMAP ){` |
+|  6015105 | 1201 | `	if( pSrc->iFlags & MEMOBJ_HASHMAP ){` |
 |        - | 1202 | `		/* Increment reference count */` |
-|   218175 | 1203 | `		((ph7_hashmap *)pSrc->x.pOther)->iRef++;` |
-|  5904020 | 1204 | `	}else if( pSrc->iFlags & MEMOBJ_OBJ ){` |
+|   218347 | 1203 | `		((ph7_hashmap *)pSrc->x.pOther)->iRef++;` |
+|  5905934 | 1204 | `	}else if( pSrc->iFlags & MEMOBJ_OBJ ){` |
 |        - | 1205 | `		/* Increment reference count */` |
-|    12305 | 1206 | `		((ph7_class_instance *)pSrc->x.pOther)->iRef++;` |
-|     6150 | 1207 | `	}` |
-|  6013105 | 1208 | `	if( pDest->iFlags & MEMOBJ_HASHMAP ){` |
-|    80821 | 1209 | `		pMap = (ph7_hashmap *)pDest->x.pOther;` |
-|  5972697 | 1210 | `	}else if( pDest->iFlags & MEMOBJ_OBJ ){` |
+|    12309 | 1206 | `		((ph7_class_instance *)pSrc->x.pOther)->iRef++;` |
+|     6152 | 1207 | `	}` |
+|  6015105 | 1208 | `	if( pDest->iFlags & MEMOBJ_HASHMAP ){` |
+|    80861 | 1209 | `		pMap = (ph7_hashmap *)pDest->x.pOther;` |
+|  5974677 | 1210 | `	}else if( pDest->iFlags & MEMOBJ_OBJ ){` |
 |     8775 | 1211 | `		pObj = (ph7_class_instance *)pDest->x.pOther;` |
 |     4385 | 1212 | `	}` |
-|  6013105 | 1213 | `	SyMemcpy((const void *)&(*pSrc),&(*pDest),sizeof(ph7_value)-(sizeof(ph7_vm *)+sizeof(SyBlob)+sizeof(sxu32)));` |
-|  6013105 | 1214 | `	pDest->iFlags &= ~MEMOBJ_AUX;` |
-|  6013105 | 1215 | `	rc = SXRET_OK;` |
-|  6013105 | 1216 | `	if( SyBlobLength(&pSrc->sBlob) > 0 ){` |
-|  4251530 | 1217 | `		SyBlobReset(&pDest->sBlob);` |
-|  4251530 | 1218 | `		rc = SyBlobDup(&pSrc->sBlob,&pDest->sBlob);` |
-|  2126078 | 1219 | `	}else{` |
-|  1761580 | 1220 | `		if( SyBlobLength(&pDest->sBlob) > 0 ){` |
-|   319784 | 1221 | `			SyBlobRelease(&pDest->sBlob);` |
-|   160153 | 1222 | `		}` |
+|  6015105 | 1213 | `	SyMemcpy((const void *)&(*pSrc),&(*pDest),sizeof(ph7_value)-(sizeof(ph7_vm *)+sizeof(SyBlob)+sizeof(sxu32)));` |
+|  6015105 | 1214 | `	pDest->iFlags &= ~MEMOBJ_AUX;` |
+|  6015105 | 1215 | `	rc = SXRET_OK;` |
+|  6015105 | 1216 | `	if( SyBlobLength(&pSrc->sBlob) > 0 ){` |
+|  4252563 | 1217 | `		SyBlobReset(&pDest->sBlob);` |
+|  4252563 | 1218 | `		rc = SyBlobDup(&pSrc->sBlob,&pDest->sBlob);` |
+|  2126592 | 1219 | `	}else{` |
+|  1762547 | 1220 | `		if( SyBlobLength(&pDest->sBlob) > 0 ){` |
+|   319964 | 1221 | `			SyBlobRelease(&pDest->sBlob);` |
+|   160240 | 1222 | `		}` |
 |        - | 1223 | `	}` |
-|  6013105 | 1224 | `	if( pMap ){` |
-|    80821 | 1225 | `		PH7_HashmapUnref(pMap);` |
-|  5972697 | 1226 | `	}else if( pObj ){` |
+|  6015105 | 1224 | `	if( pMap ){` |
+|    80861 | 1225 | `		PH7_HashmapUnref(pMap);` |
+|  5974677 | 1226 | `	}else if( pObj ){` |
 |     8775 | 1227 | `		PH7_ClassInstanceUnref(pObj);` |
 |     4385 | 1228 | `	}` |
-|  6013100 | 1229 | `	if( rc == SXRET_OK && (pDest->iFlags & MEMOBJ_HASHMAP)` |
-|  3116726 | 1230 | `	 && pDest->pVm` |
-|   218170 | 1231 | `	 && (ph7_hashmap *)pDest->x.pOther == pDest->pVm->pGlobal` |
+|  6015100 | 1229 | `	if( rc == SXRET_OK && (pDest->iFlags & MEMOBJ_HASHMAP)` |
+|  3117802 | 1230 | `	 && pDest->pVm` |
+|   218342 | 1231 | `	 && (ph7_hashmap *)pDest->x.pOther == pDest->pVm->pGlobal` |
 |        - | 1232 | `	 /* Identity, not nIdx: transient values carry nIdx==0 (SyZero), which` |
 |        - | 1233 | `	  * collides with a typical nGlobalIdx of 0 and would skip the snapshot` |
 |        - | 1234 | `	  * for closure envs and other non-slot destinations. */` |
-|   109094 | 1235 | `	 && pDest != (ph7_value *)SySetAt(&pDest->pVm->aMemObj,pDest->pVm->nGlobalIdx) ){` |
+|   109180 | 1235 | `	 && pDest != (ph7_value *)SySetAt(&pDest->pVm->aMemObj,pDest->pVm->nGlobalIdx) ){` |
 |        - | 1236 | `		/* php 8.1: a COPY of $GLOBALS ($snap = $GLOBALS, $a[] = $GLOBALS,` |
 |        - | 1237 | `		 * by-value argument passing, return $GLOBALS, ...) is a by-value` |
 |        - | 1238 | `		 * SNAPSHOT of the symbol table with its reference entries` |
@@ -1257,48 +1257,48 @@ Coverage: 829/1019 lines (81.35%)
 |      ! 0 | 1247 | `			PH7_HashmapUnref(pSnap);` |
 |      ! 0 | 1248 | `		}` |
 |        4 | 1249 | `	}` |
-|  6013105 | 1250 | `	return rc;` |
+|  6015105 | 1250 | `	return rc;` |
 |        5 | 1251 | `}` |
 |        - | 1252 | `/*` |
 |        - | 1253 | ` * Duplicate the contents of a ph7_value but do not copy internal` |
 |        - | 1254 | ` * buffer contents,simply point to it.` |
 |        - | 1255 | ` */` |
-|  8253938 | 1256 | `PH7_PRIVATE sxi32 PH7_MemObjLoad(ph7_value *pSrc,ph7_value *pDest)` |
+|  8263798 | 1256 | `PH7_PRIVATE sxi32 PH7_MemObjLoad(ph7_value *pSrc,ph7_value *pDest)` |
 |        5 | 1257 | `{` |
-|  8253943 | 1258 | `	SyMemcpy((const void *)&(*pSrc),&(*pDest),` |
+|  8263803 | 1258 | `	SyMemcpy((const void *)&(*pSrc),&(*pDest),` |
 |        - | 1259 | `		sizeof(ph7_value)-(sizeof(ph7_vm *)+sizeof(SyBlob)+sizeof(sxu32)));` |
-|  8253943 | 1260 | `	if( pSrc->iFlags & MEMOBJ_HASHMAP ){` |
+|  8263803 | 1260 | `	if( pSrc->iFlags & MEMOBJ_HASHMAP ){` |
 |        - | 1261 | `		/* Increment reference count */` |
-|   539081 | 1262 | `		((ph7_hashmap *)pSrc->x.pOther)->iRef++;` |
-|  7984405 | 1263 | `	}else if( pSrc->iFlags & MEMOBJ_OBJ ){` |
+|   539397 | 1262 | `		((ph7_hashmap *)pSrc->x.pOther)->iRef++;` |
+|  7994107 | 1263 | `	}else if( pSrc->iFlags & MEMOBJ_OBJ ){` |
 |        - | 1264 | `		/* Increment reference count */` |
-|    56199 | 1265 | `		((ph7_class_instance *)pSrc->x.pOther)->iRef++;` |
-|    28097 | 1266 | `	}` |
-|  8253943 | 1267 | `	if( SyBlobLength(&pDest->sBlob) > 0 ){` |
+|    56205 | 1265 | `		((ph7_class_instance *)pSrc->x.pOther)->iRef++;` |
+|    28100 | 1266 | `	}` |
+|  8263803 | 1267 | `	if( SyBlobLength(&pDest->sBlob) > 0 ){` |
 |       46 | 1268 | `		SyBlobRelease(&pDest->sBlob);` |
 |       21 | 1269 | `	}` |
-|  8253943 | 1270 | `	if( SyBlobLength(&pSrc->sBlob) > 0 ){` |
-|  4354333 | 1271 | `		SyBlobReadOnly(&pDest->sBlob,SyBlobData(&pSrc->sBlob),SyBlobLength(&pSrc->sBlob));` |
-|  2178298 | 1272 | `	}` |
-|  8253943 | 1273 | `	return SXRET_OK;` |
+|  8263803 | 1270 | `	if( SyBlobLength(&pSrc->sBlob) > 0 ){` |
+|  4358624 | 1271 | `		SyBlobReadOnly(&pDest->sBlob,SyBlobData(&pSrc->sBlob),SyBlobLength(&pSrc->sBlob));` |
+|  2180422 | 1272 | `	}` |
+|  8263803 | 1273 | `	return SXRET_OK;` |
 |        5 | 1274 | `}` |
 |        - | 1275 | `/*` |
 |        - | 1276 | ` * Invalidate any prior representation of a given ph7_value.` |
 |        - | 1277 | ` */` |
-| 20930082 | 1278 | `PH7_PRIVATE sxi32 PH7_MemObjRelease(ph7_value *pObj)` |
+| 20945861 | 1278 | `PH7_PRIVATE sxi32 PH7_MemObjRelease(ph7_value *pObj)` |
 |        5 | 1279 | `{` |
-| 20930087 | 1280 | `	if( (pObj->iFlags & MEMOBJ_NULL) == 0 ){` |
-| 17581355 | 1281 | `		if( pObj->iFlags & MEMOBJ_HASHMAP ){` |
-|   704483 | 1282 | `			PH7_HashmapUnref((ph7_hashmap *)pObj->x.pOther);` |
-| 17229116 | 1283 | `		}else if( pObj->iFlags & MEMOBJ_OBJ ){` |
-|   105051 | 1284 | `			PH7_ClassInstanceUnref((ph7_class_instance *)pObj->x.pOther);` |
-|    52523 | 1285 | `		}` |
+| 20945866 | 1280 | `	if( (pObj->iFlags & MEMOBJ_NULL) == 0 ){` |
+| 17595162 | 1281 | `		if( pObj->iFlags & MEMOBJ_HASHMAP ){` |
+|   704967 | 1282 | `			PH7_HashmapUnref((ph7_hashmap *)pObj->x.pOther);` |
+| 17242681 | 1283 | `		}else if( pObj->iFlags & MEMOBJ_OBJ ){` |
+|   105067 | 1284 | `			PH7_ClassInstanceUnref((ph7_class_instance *)pObj->x.pOther);` |
+|    52531 | 1285 | `		}` |
 |        - | 1286 | `		/* Release the internal buffer */` |
-| 17581355 | 1287 | `		SyBlobRelease(&pObj->sBlob);` |
+| 17595162 | 1287 | `		SyBlobRelease(&pObj->sBlob);` |
 |        - | 1288 | `		/* Invalidate any prior representation */` |
-| 17581355 | 1289 | `		pObj->iFlags = MEMOBJ_NULL;` |
-|  8794979 | 1290 | `	}` |
-| 20930087 | 1291 | `	return SXRET_OK;` |
+| 17595162 | 1289 | `		pObj->iFlags = MEMOBJ_NULL;` |
+|  8801833 | 1290 | `	}` |
+| 20945866 | 1291 | `	return SXRET_OK;` |
 |        5 | 1292 | `}` |
 |        - | 1293 | `/*` |
 |        - | 1294 | ` * Compare two ph7_values.` |
@@ -1353,25 +1353,25 @@ Coverage: 829/1019 lines (81.35%)
 |        - | 1343 | ` * "php" 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	TRUE 	FALSE` |
 |        - | 1344 | ` * "" 	    FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	FALSE 	TRUE` |
 |        - | 1345 | ` */` |
-|  1553227 | 1346 | `PH7_PRIVATE sxi32 PH7_MemObjCmp(ph7_value *pObj1,ph7_value *pObj2,int bStrict,int iNest)` |
+|  1555614 | 1346 | `PH7_PRIVATE sxi32 PH7_MemObjCmp(ph7_value *pObj1,ph7_value *pObj2,int bStrict,int iNest)` |
 |        5 | 1347 | `{` |
 |        - | 1348 | `	sxi32 iComb;` |
 |        - | 1349 | `	sxi32 rc;` |
-|  1553232 | 1350 | `	if( bStrict ){` |
+|  1555619 | 1350 | `	if( bStrict ){` |
 |        - | 1351 | `		sxi32 iF1,iF2;` |
 |        - | 1352 | `		/* Strict comparisons with === */` |
-|   841151 | 1353 | `		iF1 = pObj1->iFlags&~MEMOBJ_AUX;` |
-|   841151 | 1354 | `		iF2 = pObj2->iFlags&~MEMOBJ_AUX;` |
-|   841151 | 1355 | `		if( iF1 != iF2 ){` |
+|   842420 | 1353 | `		iF1 = pObj1->iFlags&~MEMOBJ_AUX;` |
+|   842420 | 1354 | `		iF2 = pObj2->iFlags&~MEMOBJ_AUX;` |
+|   842420 | 1355 | `		if( iF1 != iF2 ){` |
 |        - | 1356 | `			/* Not of the same type */` |
-|   195587 | 1357 | `			return 1;` |
+|   195725 | 1357 | `			return 1;` |
 |        - | 1358 | `		}` |
-|   322988 | 1359 | `	}` |
+|   323552 | 1359 | `	}` |
 |        - | 1360 | `	/* Combine flag together */` |
-|  1357650 | 1361 | `	iComb = pObj1->iFlags\|pObj2->iFlags;` |
-|  1357645 | 1362 | `	if( !bStrict` |
-|  1035069 | 1363 | `	 && (iComb & MEMOBJ_NULL) != 0` |
-|   356280 | 1364 | `	 && (iComb & MEMOBJ_STRING) != 0` |
+|  1359899 | 1361 | `	iComb = pObj1->iFlags\|pObj2->iFlags;` |
+|  1359894 | 1362 | `	if( !bStrict` |
+|  1036751 | 1363 | `	 && (iComb & MEMOBJ_NULL) != 0` |
+|   356832 | 1364 | `	 && (iComb & MEMOBJ_STRING) != 0` |
 |       66 | 1365 | `	 && (iComb & (MEMOBJ_BOOL\|MEMOBJ_RES\|MEMOBJ_HASHMAP\|MEMOBJ_OBJ)) == 0 ){` |
 |        - | 1366 | `		/*` |
 |        - | 1367 | `		 * PHP 8 comparison table: null loosely compared with a STRING is` |
@@ -1388,23 +1388,23 @@ Coverage: 829/1019 lines (81.35%)
 |        - | 1378 | `		}` |
 |       45 | 1379 | `		iComb = pObj1->iFlags\|pObj2->iFlags;` |
 |       22 | 1380 | `	}` |
-|  1357650 | 1381 | `	if( (pObj1->iFlags & MEMOBJ_RES) && (pObj2->iFlags & MEMOBJ_RES) ){` |
+|  1359899 | 1381 | `	if( (pObj1->iFlags & MEMOBJ_RES) && (pObj2->iFlags & MEMOBJ_RES) ){` |
 |        - | 1382 | `		/* php compares two resources by their ID. The boolean path below would` |
 |        - | 1383 | `		 * call every live resource equal to every other, since all are truthy. */` |
 |        5 | 1384 | `		sxu32 nId1 = PH7_VmResourceId(pObj1->pVm,pObj1->x.pOther);` |
 |        5 | 1385 | `		sxu32 nId2 = PH7_VmResourceId(pObj2->pVm,pObj2->x.pOther);` |
 |        5 | 1386 | `		return nId1 == nId2 ? 0 : (nId1 < nId2 ? -1 : 1);` |
 |        - | 1387 | `	}` |
-|  1357646 | 1388 | `	if( iComb & (MEMOBJ_NULL\|MEMOBJ_RES\|MEMOBJ_BOOL) ){` |
+|  1359895 | 1388 | `	if( iComb & (MEMOBJ_NULL\|MEMOBJ_RES\|MEMOBJ_BOOL) ){` |
 |        - | 1389 | `		/* Convert to boolean: Keep in mind FALSE < TRUE */` |
-|    38275 | 1390 | `		if( (pObj1->iFlags & MEMOBJ_BOOL) == 0 ){` |
-|    23341 | 1391 | `			PH7_MemObjToBool(pObj1);` |
-|    11668 | 1392 | `		}` |
-|    38275 | 1393 | `		if( (pObj2->iFlags & MEMOBJ_BOOL) == 0 ){` |
-|    22285 | 1394 | `			PH7_MemObjToBool(pObj2);` |
-|    11140 | 1395 | `		}` |
-|    38275 | 1396 | `		return (sxi32)((pObj1->x.iVal != 0) - (pObj2->x.iVal != 0));` |
-|  1319376 | 1397 | `	}else if ( iComb & MEMOBJ_HASHMAP ){` |
+|    38315 | 1390 | `		if( (pObj1->iFlags & MEMOBJ_BOOL) == 0 ){` |
+|    23373 | 1391 | `			PH7_MemObjToBool(pObj1);` |
+|    11684 | 1392 | `		}` |
+|    38315 | 1393 | `		if( (pObj2->iFlags & MEMOBJ_BOOL) == 0 ){` |
+|    22317 | 1394 | `			PH7_MemObjToBool(pObj2);` |
+|    11156 | 1395 | `		}` |
+|    38315 | 1396 | `		return (sxi32)((pObj1->x.iVal != 0) - (pObj2->x.iVal != 0));` |
+|  1321585 | 1397 | `	}else if ( iComb & MEMOBJ_HASHMAP ){` |
 |        - | 1398 | `		/* Hashmap aka 'array' comparison */` |
 |       56 | 1399 | `		if( (pObj1->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
 |        - | 1400 | `			/* Array is always greater */` |
@@ -1417,7 +1417,7 @@ Coverage: 829/1019 lines (81.35%)
 |        - | 1407 | `		/* Perform the comparison */` |
 |       56 | 1408 | `		rc = PH7_HashmapCmp((ph7_hashmap *)pObj1->x.pOther,(ph7_hashmap *)pObj2->x.pOther,bStrict);` |
 |       56 | 1409 | `		return rc;` |
-|  1319322 | 1410 | `	}else if(iComb & MEMOBJ_OBJ ){` |
+|  1321531 | 1410 | `	}else if(iComb & MEMOBJ_OBJ ){` |
 |        - | 1411 | `		/* Object comparison */` |
 |      295 | 1412 | `		if( (pObj1->iFlags & MEMOBJ_OBJ) == 0 ){` |
 |        - | 1413 | `			/* Object is always greater */` |
@@ -1430,9 +1430,9 @@ Coverage: 829/1019 lines (81.35%)
 |        - | 1420 | `		/* Perform the comparison */` |
 |      295 | 1421 | `		rc = PH7_ClassInstanceCmp((ph7_class_instance *)pObj1->x.pOther,(ph7_class_instance *)pObj2->x.pOther,bStrict,iNest);` |
 |      295 | 1422 | `		return rc;` |
-|  1319032 | 1423 | `	}else if ( iComb & MEMOBJ_STRING ){` |
+|  1321241 | 1423 | `	}else if ( iComb & MEMOBJ_STRING ){` |
 |        - | 1424 | `		SyString s1,s2;` |
-|   849938 | 1425 | `		if( !bStrict ){` |
+|   851167 | 1425 | `		if( !bStrict ){` |
 |        - | 1426 | `			/*` |
 |        - | 1427 | `			 * PHP 8 "saner string to number comparisons" (RFC): a numeric` |
 |        - | 1428 | `			 * comparison is performed only when BOTH operands are numbers or` |
@@ -1445,41 +1445,41 @@ Coverage: 829/1019 lines (81.35%)
 |        - | 1435 | `			 * non-numeric string, still fall through to the string comparison` |
 |        - | 1436 | `			 * below, unchanged.` |
 |        - | 1437 | `			 */` |
-|   245556 | 1438 | `			if( PH7_MemObjIsNumeric(pObj1) && PH7_MemObjIsNumeric(pObj2) ){` |
+|   245695 | 1438 | `			if( PH7_MemObjIsNumeric(pObj1) && PH7_MemObjIsNumeric(pObj2) ){` |
 |        - | 1439 | `				/* Perform a numeric comparison */` |
 |     1099 | 1440 | `				goto Numeric;` |
 |        - | 1441 | `			}` |
-|   122116 | 1442 | `		}` |
+|   122181 | 1442 | `		}` |
 |        - | 1443 | `		/* Perform a strict string comparison.*/` |
-|   848840 | 1444 | `		if( (pObj1->iFlags&MEMOBJ_STRING) == 0 ){` |
+|   850069 | 1444 | `		if( (pObj1->iFlags&MEMOBJ_STRING) == 0 ){` |
 |       23 | 1445 | `			PH7_MemObjToString(pObj1);` |
 |       11 | 1446 | `		}` |
-|   848840 | 1447 | `		if( (pObj2->iFlags&MEMOBJ_STRING) == 0 ){` |
+|   850069 | 1447 | `		if( (pObj2->iFlags&MEMOBJ_STRING) == 0 ){` |
 |        7 | 1448 | `			PH7_MemObjToString(pObj2);` |
 |        3 | 1449 | `		}` |
-|   848840 | 1450 | `		SyStringInitFromBuf(&s1,SyBlobData(&pObj1->sBlob),SyBlobLength(&pObj1->sBlob));` |
-|   848840 | 1451 | `		SyStringInitFromBuf(&s2,SyBlobData(&pObj2->sBlob),SyBlobLength(&pObj2->sBlob));` |
+|   850069 | 1450 | `		SyStringInitFromBuf(&s1,SyBlobData(&pObj1->sBlob),SyBlobLength(&pObj1->sBlob));` |
+|   850069 | 1451 | `		SyStringInitFromBuf(&s2,SyBlobData(&pObj2->sBlob),SyBlobLength(&pObj2->sBlob));` |
 |        - | 1452 | `		/*` |
 |        - | 1453 | `		 * Strings are compared using memcmp(). If one value is an exact prefix of the` |
 |        - | 1454 | `		 * other, then the shorter value is less than the longer value.` |
 |        - | 1455 | `		 */` |
-|   848840 | 1456 | `		rc = SyMemcmp((const void *)s1.zString,(const void *)s2.zString,SXMIN(s1.nByte,s2.nByte));` |
-|   848840 | 1457 | `		if( rc == 0 ){` |
-|   278311 | 1458 | `			if( s1.nByte != s2.nByte ){` |
-|    18705 | 1459 | `				rc = s1.nByte < s2.nByte ? -1 : 1;` |
-|     9352 | 1460 | `			}` |
-|   139155 | 1461 | `		}` |
-|   848840 | 1462 | `		return rc;` |
-|   469099 | 1463 | `	}else if( iComb & (MEMOBJ_INT\|MEMOBJ_REAL) ){` |
-|   234237 | 1464 | `Numeric:` |
+|   850069 | 1456 | `		rc = SyMemcmp((const void *)s1.zString,(const void *)s2.zString,SXMIN(s1.nByte,s2.nByte));` |
+|   850069 | 1457 | `		if( rc == 0 ){` |
+|   278839 | 1458 | `			if( s1.nByte != s2.nByte ){` |
+|    18711 | 1459 | `				rc = s1.nByte < s2.nByte ? -1 : 1;` |
+|     9355 | 1460 | `			}` |
+|   139419 | 1461 | `		}` |
+|   850069 | 1462 | `		return rc;` |
+|   470079 | 1463 | `	}else if( iComb & (MEMOBJ_INT\|MEMOBJ_REAL) ){` |
+|   234729 | 1464 | `Numeric:` |
 |        - | 1465 | `		/* Perform a numeric comparison if one of the operand is numeric(integer or real) */` |
-|   470197 | 1466 | `		if( (pObj1->iFlags & (MEMOBJ_INT\|MEMOBJ_REAL)) == 0 ){` |
+|   471177 | 1466 | `		if( (pObj1->iFlags & (MEMOBJ_INT\|MEMOBJ_REAL)) == 0 ){` |
 |     1081 | 1467 | `			PH7_MemObjToNumeric(pObj1);` |
 |      540 | 1468 | `		}` |
-|   470197 | 1469 | `		if( (pObj2->iFlags & (MEMOBJ_INT\|MEMOBJ_REAL)) == 0 ){` |
+|   471177 | 1469 | `		if( (pObj2->iFlags & (MEMOBJ_INT\|MEMOBJ_REAL)) == 0 ){` |
 |     1087 | 1470 | `			PH7_MemObjToNumeric(pObj2);` |
 |      543 | 1471 | `		}` |
-|   470197 | 1472 | `		if( (pObj1->iFlags & pObj2->iFlags & MEMOBJ_INT) == 0) {` |
+|   471177 | 1472 | `		if( (pObj1->iFlags & pObj2->iFlags & MEMOBJ_INT) == 0) {` |
 |        - | 1473 | `			/*` |
 |        - | 1474 | `			 * Symisc eXtension to the PHP language:` |
 |        - | 1475 | `			 *  Floating point comparison is introduced and works as expected.` |
@@ -1513,17 +1513,17 @@ Coverage: 829/1019 lines (81.35%)
 |       78 | 1503 | `			return 0;` |
 |      ! 0 | 1504 | `		}else{` |
 |        - | 1505 | `			/* Integer comparison */` |
-|   469889 | 1506 | `			if( pObj1->x.iVal > pObj2->x.iVal ){` |
-|     7687 | 1507 | `				return 1;` |
-|   462207 | 1508 | `			}else if( pObj1->x.iVal < pObj2->x.iVal ){` |
-|   451237 | 1509 | `				return -1;` |
+|   470869 | 1506 | `			if( pObj1->x.iVal > pObj2->x.iVal ){` |
+|     7689 | 1507 | `				return 1;` |
+|   463185 | 1508 | `			}else if( pObj1->x.iVal < pObj2->x.iVal ){` |
+|   452195 | 1509 | `				return -1;` |
 |        - | 1510 | `			}` |
-|    10975 | 1511 | `			return 0;` |
+|    10995 | 1511 | `			return 0;` |
 |        - | 1512 | `		}` |
 |        - | 1513 | `	}` |
 |        - | 1514 | `	/* NOT REACHED */` |
 |      ! 0 | 1515 | `	return 0;` |
-|   777025 | 1516 | `}` |
+|   778210 | 1516 | `}` |
 |        - | 1517 | `/*` |
 |        - | 1518 | ` * Perform an addition operation of two ph7_values.` |
 |        - | 1519 | ` * The reason this function is implemented here rather than 'vm.c'` |
@@ -1536,9 +1536,9 @@ Coverage: 829/1019 lines (81.35%)
 |        - | 1526 | ` * be ignored.` |
 |        - | 1527 | ` * This function take care of handling all the scenarios.` |
 |        - | 1528 | ` */` |
-|    14666 | 1529 | `PH7_PRIVATE sxi32 PH7_MemObjAdd(ph7_value *pObj1,ph7_value *pObj2,int bAddStore)` |
+|    14678 | 1529 | `PH7_PRIVATE sxi32 PH7_MemObjAdd(ph7_value *pObj1,ph7_value *pObj2,int bAddStore)` |
 |        5 | 1530 | `{` |
-|    14671 | 1531 | `	if( ((pObj1->iFlags\|pObj2->iFlags) & MEMOBJ_HASHMAP) == 0 ){` |
+|    14683 | 1531 | `	if( ((pObj1->iFlags\|pObj2->iFlags) & MEMOBJ_HASHMAP) == 0 ){` |
 |        - | 1532 | `			/* Arithemtic operation */` |
 |    10847 | 1533 | `			PH7_MemObjToNumeric(pObj1);` |
 |    10847 | 1534 | `			PH7_MemObjToNumeric(pObj2);` |
@@ -1578,10 +1578,10 @@ Coverage: 829/1019 lines (81.35%)
 |        - | 1568 | `				}` |
 |        - | 1569 | `			}` |
 |     5426 | 1570 | `	}else{` |
-|     3829 | 1571 | `		if( (pObj1->iFlags\|pObj2->iFlags) & MEMOBJ_HASHMAP ){` |
+|     3841 | 1571 | `		if( (pObj1->iFlags\|pObj2->iFlags) & MEMOBJ_HASHMAP ){` |
 |        - | 1572 | `			ph7_hashmap *pMap;` |
 |        - | 1573 | `			sxi32 rc;` |
-|     3829 | 1574 | `			if( bAddStore ){` |
+|     3841 | 1574 | `			if( bAddStore ){` |
 |        - | 1575 | `				/* Do not duplicate the hashmap,use the left one since its an add&store operation.` |
 |        - | 1576 | `				 */` |
 |        3 | 1577 | `				if( (pObj1->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
@@ -1596,42 +1596,42 @@ Coverage: 829/1019 lines (81.35%)
 |        3 | 1586 | `				pMap = PH7_HashmapCowSeparate(pObj1->pVm,pObj1);` |
 |        2 | 1587 | `			}else{` |
 |        - | 1588 | `				/* Create a new hashmap */` |
-|     3827 | 1589 | `				pMap = PH7_NewHashmap(pObj1->pVm,0,0);` |
-|     3827 | 1590 | `				if( pMap == 0){` |
+|     3839 | 1589 | `				pMap = PH7_NewHashmap(pObj1->pVm,0,0);` |
+|     3839 | 1590 | `				if( pMap == 0){` |
 |      ! 0 | 1591 | `					PH7_VmThrowError(pObj1->pVm,0,PH7_CTX_ERR,"PH7 is running out of memory while creating array");` |
 |      ! 0 | 1592 | `					return SXERR_MEM;` |
 |        - | 1593 | `				}` |
 |        - | 1594 | `			}` |
-|     3829 | 1595 | `			if( !bAddStore ){` |
-|     3827 | 1596 | `				if(pObj1->iFlags & MEMOBJ_HASHMAP ){` |
+|     3841 | 1595 | `			if( !bAddStore ){` |
+|     3839 | 1596 | `				if(pObj1->iFlags & MEMOBJ_HASHMAP ){` |
 |        - | 1597 | `					/* Perform a hashmap duplication */` |
-|     3827 | 1598 | `					PH7_HashmapDup((ph7_hashmap *)pObj1->x.pOther,pMap);` |
-|     1916 | 1599 | `				}else{` |
+|     3839 | 1598 | `					PH7_HashmapDup((ph7_hashmap *)pObj1->x.pOther,pMap);` |
+|     1922 | 1599 | `				}else{` |
 |      ! 0 | 1600 | `					if((pObj1->iFlags & MEMOBJ_NULL) == 0 ){` |
 |        - | 1601 | `						/* Simple insertion */` |
 |      ! 0 | 1602 | `						PH7_HashmapInsert(pMap,0,pObj1);` |
 |      ! 0 | 1603 | `					}` |
 |        - | 1604 | `				}` |
-|     1911 | 1605 | `			}` |
+|     1917 | 1605 | `			}` |
 |        - | 1606 | `			/* Perform the union */` |
-|     3829 | 1607 | `			if(pObj2->iFlags & MEMOBJ_HASHMAP ){` |
-|     3829 | 1608 | `				PH7_HashmapUnion(pMap,(ph7_hashmap *)pObj2->x.pOther);` |
-|     1917 | 1609 | `			}else{` |
+|     3841 | 1607 | `			if(pObj2->iFlags & MEMOBJ_HASHMAP ){` |
+|     3841 | 1608 | `				PH7_HashmapUnion(pMap,(ph7_hashmap *)pObj2->x.pOther);` |
+|     1923 | 1609 | `			}else{` |
 |      ! 0 | 1610 | `				if((pObj2->iFlags & MEMOBJ_NULL) == 0 ){` |
 |        - | 1611 | `					/* Simple insertion */` |
 |      ! 0 | 1612 | `					PH7_HashmapInsert(pMap,0,pObj2);` |
 |      ! 0 | 1613 | `				}` |
 |        - | 1614 | `			}` |
 |        - | 1615 | `			/* Reflect the change */` |
-|     3829 | 1616 | `			if( pObj1->iFlags & MEMOBJ_STRING ){` |
+|     3841 | 1616 | `			if( pObj1->iFlags & MEMOBJ_STRING ){` |
 |      ! 0 | 1617 | `				SyBlobRelease(&pObj1->sBlob);` |
 |      ! 0 | 1618 | `			}` |
-|     3829 | 1619 | `			pObj1->x.pOther = pMap;` |
-|     3829 | 1620 | `			MemObjSetType(pObj1,MEMOBJ_HASHMAP);` |
-|     1912 | 1621 | `		}` |
+|     3841 | 1619 | `			pObj1->x.pOther = pMap;` |
+|     3841 | 1620 | `			MemObjSetType(pObj1,MEMOBJ_HASHMAP);` |
+|     1918 | 1621 | `		}` |
 |        - | 1622 | `	}` |
-|    14671 | 1623 | `	return SXRET_OK;` |
-|     7338 | 1624 | `}` |
+|    14683 | 1623 | `	return SXRET_OK;` |
+|     7344 | 1624 | `}` |
 |        - | 1625 | `/*` |
 |        - | 1626 | ` * Return a printable representation of the type of a given` |
 |        - | 1627 | ` * ph7_value.` |
@@ -1728,7 +1728,7 @@ Coverage: 829/1019 lines (81.35%)
 |        - | 1718 | `	}` |
 |      100 | 1719 | `	MemObjStringValue(&(*pOut),&(*pObj),FALSE);` |
 |      107 | 1720 | `}` |
-|     1022 | 1721 | `PH7_PRIVATE sxi32 PH7_MemObjDump(` |
+|     1028 | 1721 | `PH7_PRIVATE sxi32 PH7_MemObjDump(` |
 |        - | 1722 | `	SyBlob *pOut,      /* Store the dump here */` |
 |        - | 1723 | `	ph7_value *pObj,   /* Dump this */` |
 |        - | 1724 | `	int ShowType,      /* TRUE for var_dump; FALSE for print_r */` |
@@ -1737,10 +1737,10 @@ Coverage: 829/1019 lines (81.35%)
 |        - | 1727 | `	int nDepth,        /* Nesting level */` |
 |        - | 1728 | `	int isRef          /* TRUE if referenced entry (var_dump prints '&') */` |
 |        - | 1729 | `	)` |
-|        4 | 1730 | `{` |
-|     1026 | 1731 | `	sxi32 rc = SXRET_OK;` |
+|        5 | 1730 | `{` |
+|     1033 | 1731 | `	sxi32 rc = SXRET_OK;` |
 |        - | 1732 | `	int i;` |
-|     1026 | 1733 | `	if( !ShowType ){` |
+|     1033 | 1733 | `	if( !ShowType ){` |
 |        - | 1734 | `		/* ---- print_r ---- php prints scalars inline with NO newline; only` |
 |        - | 1735 | `		 * containers render the Array/Object block (which the container` |
 |        - | 1736 | `		 * dumpers terminate with ")\n"). References carry no marker. */` |
@@ -1756,13 +1756,13 @@ Coverage: 829/1019 lines (81.35%)
 |        - | 1746 | `	/* ---- var_dump ---- every value renders on its own line at nTab spaces,` |
 |        - | 1747 | `	 * php's exact shapes: bool(true), NULL, int(n), float(shortest),` |
 |        - | 1748 | `	 * string(N) "s", array(N) { … }, object(C)#id (n) { … }, &-references. */` |
-|     5018 | 1749 | `	for( i = 0 ; i < nTab ; i++ ){` |
+|     5025 | 1749 | `	for( i = 0 ; i < nTab ; i++ ){` |
 |     4103 | 1750 | `		SyBlobAppend(&(*pOut)," ",sizeof(char));` |
 |     2053 | 1751 | `	}` |
-|      918 | 1752 | `	if( isRef ){` |
+|      925 | 1752 | `	if( isRef ){` |
 |        7 | 1753 | `		SyBlobAppend(&(*pOut),"&",sizeof(char));` |
 |        3 | 1754 | `	}` |
-|      918 | 1755 | `	if( (pObj->iFlags & (MEMOBJ_OBJ\|MEMOBJ_NULL)) == MEMOBJ_OBJ ){` |
+|      925 | 1755 | `	if( (pObj->iFlags & (MEMOBJ_OBJ\|MEMOBJ_NULL)) == MEMOBJ_OBJ ){` |
 |      139 | 1756 | `		ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;` |
 |      139 | 1757 | `		if( pInst->pClass->iFlags & PH7_CLASS_ENUM ){` |
 |        - | 1758 | ``			/* php 8.1: var_dump of an enum case prints `enum(S::A)` — no body */`` |
@@ -1778,22 +1778,22 @@ Coverage: 829/1019 lines (81.35%)
 |      139 | 1768 | `		SyBlobAppend(&(*pOut),"\n",sizeof(char));` |
 |      139 | 1769 | `		return rc;` |
 |        - | 1770 | `	}` |
-|      782 | 1771 | `	if( pObj->iFlags & MEMOBJ_NULL ){` |
+|      789 | 1771 | `	if( pObj->iFlags & MEMOBJ_NULL ){` |
 |       23 | 1772 | `		SyBlobAppend(&(*pOut),"NULL\n",sizeof("NULL\n")-1);` |
 |       23 | 1773 | `		return SXRET_OK;` |
 |        - | 1774 | `	}` |
-|      760 | 1775 | `	if( pObj->iFlags & MEMOBJ_HASHMAP ){` |
+|      767 | 1775 | `	if( pObj->iFlags & MEMOBJ_HASHMAP ){` |
 |       25 | 1776 | `		rc = PH7_HashmapDump(&(*pOut),(ph7_hashmap *)pObj->x.pOther,TRUE,nTab,nDepth+1);` |
 |       25 | 1777 | `		SyBlobAppend(&(*pOut),"\n",sizeof(char));` |
 |       25 | 1778 | `		return rc;` |
 |        - | 1779 | `	}` |
-|      736 | 1780 | `	if( pObj->iFlags & MEMOBJ_BOOL ){` |
-|      289 | 1781 | `		if( pObj->x.iVal != 0 ){` |
-|      191 | 1782 | `			SyBlobAppend(&(*pOut),"bool(true)\n",sizeof("bool(true)\n")-1);` |
-|       97 | 1783 | `		}else{` |
-|      100 | 1784 | `			SyBlobAppend(&(*pOut),"bool(false)\n",sizeof("bool(false)\n")-1);` |
+|      743 | 1780 | `	if( pObj->iFlags & MEMOBJ_BOOL ){` |
+|      296 | 1781 | `		if( pObj->x.iVal != 0 ){` |
+|      198 | 1782 | `			SyBlobAppend(&(*pOut),"bool(true)\n",sizeof("bool(true)\n")-1);` |
+|      101 | 1783 | `		}else{` |
+|      101 | 1784 | `			SyBlobAppend(&(*pOut),"bool(false)\n",sizeof("bool(false)\n")-1);` |
 |        - | 1785 | `		}` |
-|      289 | 1786 | `		return SXRET_OK;` |
+|      296 | 1786 | `		return SXRET_OK;` |
 |        - | 1787 | `	}` |
 |      450 | 1788 | `	if( pObj->iFlags & MEMOBJ_REAL ){` |
 |        - | 1789 | `		/* Checked BEFORE the int flag: an integer-valued real carries a cached` |
@@ -1808,13 +1808,13 @@ Coverage: 829/1019 lines (81.35%)
 |      272 | 1798 | `		SyBlobAppend(&(*pOut),"\n",sizeof(char));` |
 |      272 | 1799 | `		return SXRET_OK;` |
 |        - | 1800 | `	}` |
-|      173 | 1801 | `	if( pObj->iFlags & MEMOBJ_STRING ){` |
-|      173 | 1802 | `		SyBlobFormat(&(*pOut),"string(%u) \"",SyBlobLength(&pObj->sBlob));` |
-|      173 | 1803 | `		if( SyBlobLength(&pObj->sBlob) > 0 ){` |
-|      153 | 1804 | `			SyBlobAppend(&(*pOut),SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob));` |
+|      174 | 1801 | `	if( pObj->iFlags & MEMOBJ_STRING ){` |
+|      174 | 1802 | `		SyBlobFormat(&(*pOut),"string(%u) \"",SyBlobLength(&pObj->sBlob));` |
+|      174 | 1803 | `		if( SyBlobLength(&pObj->sBlob) > 0 ){` |
+|      154 | 1804 | `			SyBlobAppend(&(*pOut),SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob));` |
 |       75 | 1805 | `		}` |
-|      173 | 1806 | `		SyBlobAppend(&(*pOut),"\"\n",sizeof("\"\n")-1);` |
-|      173 | 1807 | `		return SXRET_OK;` |
+|      174 | 1806 | `		SyBlobAppend(&(*pOut),"\"\n",sizeof("\"\n")-1);` |
+|      174 | 1807 | `		return SXRET_OK;` |
 |        - | 1808 | `	}` |
 |      ! 0 | 1809 | `	if( pObj->iFlags & MEMOBJ_RES ){` |
 |        - | 1810 | ``		/* php: `resource(N) of type (stream)`, and `(Unknown)` once closed —`` |
@@ -1834,5 +1834,5 @@ Coverage: 829/1019 lines (81.35%)
 |      ! 0 | 1824 | `		SyBlobAppend(&(*pOut),")\n",sizeof(")\n")-1);` |
 |        - | 1825 | `	}` |
 |      ! 0 | 1826 | `	return rc;` |
-|      515 | 1827 | `}` |
+|      519 | 1827 | `}` |
 |        - | 1828 |  |
