@@ -74,11 +74,15 @@ PH7_PRIVATE sxi32 SyStrncmp(const char *zLeft,const char *zRight,sxu32 nLen)
 	const unsigned char *zP = (const unsigned char *)zLeft;
 	const unsigned char *zQ = (const unsigned char *)zRight;
 
-	if( SX_EMPTY_STR(zP) || SX_EMPTY_STR(zQ)  ){
-			return SX_EMPTY_STR(zP) ? (SX_EMPTY_STR(zQ) ? 0 : -1) :1;
-	}
+	/* Comparing ZERO bytes is always equal, whatever the operands -- this test has
+	 * to come before the empty-string shortcut below, which used to run first and
+	 * so answered -1/1 for a zero-length compare against an empty string. That is
+	 * what php's strncmp("", "a", 0) exposed: it must be 0. */
 	if( nLen <= 0 ){
 		return 0;
+	}
+	if( SX_EMPTY_STR(zP) || SX_EMPTY_STR(zQ)  ){
+			return SX_EMPTY_STR(zP) ? (SX_EMPTY_STR(zQ) ? 0 : -1) :1;
 	}
 	for(;;){
 		if( nLen <= 0 ){ return 0; } if( zP[0] == 0 || zQ[0] == 0 || zP[0] != zQ[0] ){ break; } zP++; zQ++; nLen--;
@@ -93,6 +97,10 @@ PH7_PRIVATE sxi32 SyStrnicmp(const char *zLeft, const char *zRight,sxu32 SLen)
   	register unsigned char *p = (unsigned char *)zLeft;
 	register unsigned char *q = (unsigned char *)zRight;
 
+	/* Zero bytes compared is always equal -- see the note in SyStrncmp. */
+	if( !SLen ){
+		return 0;
+	}
 	if( SX_EMPTY_STR(p) || SX_EMPTY_STR(q) ){
 		return SX_EMPTY_STR(p)? SX_EMPTY_STR(q) ? 0 : -1 :1;
 	}

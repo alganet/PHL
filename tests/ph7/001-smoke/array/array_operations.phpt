@@ -3,8 +3,6 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 Array operations edge cases
---SKIPIF--
-<?php echo 'skip'; ?>
 --FILE--
 <?php
 // Test array operations that exercise edge cases in hashmap.c
@@ -63,22 +61,19 @@ echo "Sample large key value: " . $large_key_array[50000] . "\n";
 
 echo "Array operations test completed\n";
 ?>
---EXPECT--
+--EXPECTF--
 Testing array_flip:
-Array(2) {
- [1] =>
-  c
- [2] =>
-  b
- }
-Array(3) {
- [string] =>
-  1
- [2] =>
-  2
- [1] =>
-  3
- }
+Array
+(
+    [1] => c
+    [2] => b
+)
+%Aarray_flip(): Can only flip string and integer values, entry skipped%A
+%Aarray_flip(): Can only flip string and integer values, entry skipped%A
+Array
+(
+    [string] => 1
+)
 
 Testing array_search:
 array_search(1, $search, false): 0
@@ -104,7 +99,6 @@ count($nested, COUNT_RECURSIVE): 12
 Testing large keys:
 Large key array count: 100
 Sample large key value: value_50
-
 Array operations test completed
 --CLEAN--
 <?php
