@@ -558,6 +558,17 @@ loop:
 		}
 		goto Synchronize;
 	}
+	/* php: a class constant may not be redefined in the same class body. The
+	 * property path already guarded this; the constant path did not, so
+	 * `class C{const X=1; const X=2;}` silently kept one of them. */
+	if( PH7_ClassExtractAttribute(pClass,pName->zString,pName->nByte) != 0 ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			"Cannot redefine class constant %z::%z",&pClass->sName,pName);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		goto Synchronize;
+	}
 	/* Allocate a new class attribute */
 	pCons = PH7_NewClassAttr(pGen->pVm,pName,nLine,iProtection,iFlags|iTypeFlags);
 	if( pCons ){
@@ -1452,6 +1463,33 @@ static sxi32 GenStateCompileClassMethod(
 				}
 				return SXERR_CORRUPT;
 			}
+	}
+	/* php: an abstract method in a class that was not DECLARED abstract is a fatal,
+	 * and it names the method -- distinct from the "contains N abstract methods"
+	 * wording php uses for an unimplemented INHERITED one, which
+	 * GenStateCheckAbstractMethods already handles. Interfaces and traits may carry
+	 * abstract methods freely. */
+	if( (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT)
+	 && (pClass->iFlags & (PH7_CLASS_ABSTRACT|PH7_CLASS_INTERFACE|PH7_CLASS_TRAIT)) == 0 ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			"Class %z declares abstract method %z() and must therefore be declared abstract",
+			&pClass->sName,pName);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		return SXRET_OK;
+	}
+	/* php: two methods of the same name in one class body is a fatal, and the
+	 * comparison is case-INSENSITIVE (hMethod now matches that way), so `f` and
+	 * `F` collide. php names the offending declaration with the spelling used at
+	 * the SECOND site. */
+	if( PH7_ClassExtractMethod(pClass,pName->zString,pName->nByte) != 0 ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			"Cannot redeclare %z::%z()",&pClass->sName,pName);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		return SXRET_OK;
 	}
 	/* All done,install the method */
 	rc = PH7_ClassInstallMethod(pClass,pMeth);
@@ -3417,10 +3455,15 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 					/* Extract the keyword */
 					nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
 				}else if( nKwrd == PH7_TKWRD_ABSTRACT ){
-					/* Abstract method,record that */
+					/* Abstract method,record that.
+					 * PHL used to also mark the whole CLASS abstract here, silently
+					 * promoting `class C{abstract function m();}` -- which php rejects
+					 * outright -- into a valid abstract class. That promotion is why
+					 * GenStateCheckAbstractMethods never fired for it: by the time the
+					 * check ran, the class looked declared-abstract. The declaration is
+					 * now diagnosed where the method name is known (see the install
+					 * site), so the class flag stays what the SOURCE said. */
 					iAttrflags |= PH7_CLASS_ATTR_ABSTRACT;
-					/* Mark the whole class as abstract */
-					pClass->iFlags |= PH7_CLASS_ABSTRACT;
 					/* Advance the stream cursor */
 					pGen->pIn++;
 					if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
