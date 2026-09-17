@@ -994,6 +994,7 @@ PH7_PRIVATE sxi32 PH7_CompileFor(ph7_gen_state *pGen)
 	 * (see GenStateTreeHasComma). A closure body nested inside a clause is
 	 * compiled through this same window — recorded as a known leniency. */
 	pGen->nCommaExprOk++;
+	pGen->zClauseCloser = "\";\""; /* init/condition clauses close on ';' */
 	/* Compile initialization expressions if available */
 	rc = PH7_CompileExpr(&(*pGen),0,0);
 	/* Pop operand lvalues */
@@ -1078,13 +1079,14 @@ PH7_PRIVATE sxi32 PH7_CompileFor(ph7_gen_state *pGen)
 		SyToken *pTmpIn,*pTmpEnd;
 		SWAP_DELIMITER(pGen,pPostStart,pEnd);
 		pGen->nCommaExprOk++; /* post-expressions are a clause list again */
+		pGen->zClauseCloser = "\")\""; /* the post clause closes on ')' */
 		rc = PH7_CompileExpr(&(*pGen),0,0);
 		pGen->nCommaExprOk--;
+		pGen->zClauseCloser = 0;
 		if( pGen->pIn < pGen->pEnd ){
-			/* Syntax error */
-			rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,"for: Expected ')' after post-expressions");
+			/* php names the token and expects ')'; the post-clause runs to the ')'. */
+			rc = PH7_GenSyntaxError(pGen,pGen->pIn,"\")\"");
 			if( rc == SXERR_ABORT ){
-				/* Error count limit reached,abort immediately */
 				return SXERR_ABORT;
 			}
 			return SXRET_OK;

@@ -1505,6 +1505,33 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 	return SXRET_OK;
 }
  /*
+  * The FIRST source token of a (sub)tree. A linked subtree keeps its OPERATOR
+  * node at the array slot (`$i < 3` lives at the `<` slot, `@@$b` at the first
+  * `@`), so apNode[i]->pStart names an interior token for an infix op. php names
+  * the start of the stray expression — the leftmost SOURCE token. Tokens live in
+  * one contiguous set, so that is simply the minimum pStart pointer across the
+  * whole subtree; a prefix operator (`@`) is its own leftmost token, an infix one
+  * (`<`) is not, and this covers both without assuming which child a node uses.
+  */
+ static SyToken * ExprSubtreeFirstToken(ph7_expr_node *pNode)
+ {
+	 SyToken *pMin;
+	 SyToken *pChild;
+	 if( pNode == 0 ){
+		 return 0;
+	 }
+	 pMin = pNode->pStart;
+	 pChild = ExprSubtreeFirstToken(pNode->pLeft);
+	 if( pChild && (pMin == 0 || pChild < pMin) ){
+		 pMin = pChild;
+	 }
+	 pChild = ExprSubtreeFirstToken(pNode->pRight);
+	 if( pChild && (pMin == 0 || pChild < pMin) ){
+		 pMin = pChild;
+	 }
+	 return pMin;
+ }
+ /*
   * Create an expression tree from an array of tokens.
   * If successful, the root of the tree is stored in apNode[0].
   * When errors,PH7 take care of generating the appropriate error message.
@@ -2353,7 +2380,13 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 	 for( iCur = 1 ; iCur < nToken ; ++iCur ){
 		 if( apNode[iCur] ){
 			 if( (apNode[iCur]->pOp || apNode[iCur]->xCode ) && apNode[0] != 0){
-				 rc = PH7_GenSyntaxError(pGen,apNode[iCur]->pStart,pGen->nCommaExprOk > 0 ? "\";\"" : 0);
+				 /* Name the START of the stray subtree (`$i<3` -> `$i`), not the
+				  * operator sitting at its slot. A for()-clause also names the closer
+				  * it wants (`;` for init/condition, `)` for the post clause);
+				  * zClauseCloser carries it. */
+				 SyToken *pBadTok = ExprSubtreeFirstToken(apNode[iCur]);
+				 rc = PH7_GenSyntaxError(pGen,pBadTok ? pBadTok : apNode[iCur]->pStart,
+					 pGen->nCommaExprOk > 0 ? (pGen->zClauseCloser ? pGen->zClauseCloser : "\";\"") : 0);
 				  if( rc != SXERR_ABORT ){
 					  rc = SXERR_SYNTAX;
 				  }

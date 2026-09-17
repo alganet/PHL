@@ -2645,6 +2645,7 @@ PH7_PRIVATE void PH7_CompilerSaveState(ph7_vm *pVm,ph7_gen_state *pSaved,ProcCon
 	pGen->nErr = 0;
 	pGen->nLoopId = pGen->nCurLoopId = 0;
 	pGen->nCommaExprOk = 0;
+	pGen->zClauseCloser = 0;
 	pGen->bInGenerator = 0;
 	pGen->bStrictTypes = 0;
 	pGen->bStrictTypesLocked = 0;
