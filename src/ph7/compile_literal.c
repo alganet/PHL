@@ -1471,7 +1471,15 @@ PH7_PRIVATE sxi32 PH7_CompileArray(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	pGen->pIn += 2;
 	pGen->pEnd--;
 	SXUNUSED(iCompileFlag);
-	return GenStateCompileArrayBody(pGen);
+	/* php: a stray token in an `array( ... )` element is `... expecting ")"`. */
+	{
+		const char *zSave = pGen->zClauseCloser;
+		sxi32 rc;
+		pGen->zClauseCloser = "\")\"";
+		rc = GenStateCompileArrayBody(pGen);
+		pGen->zClauseCloser = zSave;
+		return rc;
+	}
 }
 /*
  * Compile the PHP 8.5 clone(...) call form:
@@ -1576,7 +1584,15 @@ PH7_PRIVATE sxi32 PH7_CompileShortArray(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	pGen->pIn++;
 	pGen->pEnd--;
 	SXUNUSED(iCompileFlag);
-	return GenStateCompileArrayBody(pGen);
+	/* php: a stray token in a `[ ... ]` element is `... expecting "]"`. */
+	{
+		const char *zSave = pGen->zClauseCloser;
+		sxi32 rc;
+		pGen->zClauseCloser = "\"]\"";
+		rc = GenStateCompileArrayBody(pGen);
+		pGen->zClauseCloser = zSave;
+		return rc;
+	}
 }
 /*
  * Expression tree validator callback for the 'list' language construct.
