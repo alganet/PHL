@@ -316,7 +316,17 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 						}
 					}
 					pToken->nType = PH7_TK_REAL;
-				}else if( c == 'x' || c == 'X' ){
+				/* php only reads a base prefix when the literal so far is exactly "0"
+				 * AND at least one valid digit follows it. Otherwise the '0' stands
+				 * alone as an integer and the letter begins an IDENTIFIER, which is
+				 * why php reports `0xG` as `unexpected identifier "xG"` while PHL,
+				 * consuming the prefix unconditionally, reported just "G". The same
+				 * gap silently ACCEPTED `0x`/`0b`/`0o` as int(0), and read `1x5` as
+				 * a hex literal, both of which php rejects outright. */
+				}else if( (c == 'x' || c == 'X')
+					&& pStream->zText == &((const unsigned char *)pStr->zString)[1] && pStr->zString[0] == 0x30
+					&& &pStream->zText[1] < pStream->zEnd
+					&& pStream->zText[1] < 0xc0 && SyisHex(pStream->zText[1]) ){
 					/* Hex digit stream (PHP 7.4: underscore separator allowed between two digits) */
 					pStream->zText++;
 					while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisHex(pStream->zText[0]) ){
@@ -329,7 +339,10 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 							pStream->zText++;
 						}
 					}
-				}else if(c  == 'b' || c == 'B' ){
+				}else if( (c == 'b' || c == 'B')
+					&& pStream->zText == &((const unsigned char *)pStr->zString)[1] && pStr->zString[0] == 0x30
+					&& &pStream->zText[1] < pStream->zEnd
+					&& (pStream->zText[1] == '0' || pStream->zText[1] == '1') ){
 					/* Binary digit stream (PHP 7.4: underscore separator allowed between two digits) */
 					pStream->zText++;
 					while( pStream->zText < pStream->zEnd && (pStream->zText[0] == '0' || pStream->zText[0] == '1') ){
@@ -341,7 +354,10 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 							pStream->zText++;
 						}
 					}
-				}else if( c == 'o' || c == 'O' ){
+				}else if( (c == 'o' || c == 'O')
+					&& pStream->zText == &((const unsigned char *)pStr->zString)[1] && pStr->zString[0] == 0x30
+					&& &pStream->zText[1] < pStream->zEnd
+					&& pStream->zText[1] >= '0' && pStream->zText[1] <= '7' ){
 					/* PHP 8.1 explicit octal 0o/0O (underscore separator allowed between two digits) */
 					pStream->zText++;
 					while( pStream->zText < pStream->zEnd && pStream->zText[0] >= '0' && pStream->zText[0] <= '7' ){
