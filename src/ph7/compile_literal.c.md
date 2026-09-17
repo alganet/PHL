@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 949/1066 lines (89.02%)
+Coverage: 957/1074 lines (89.11%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -1481,420 +1481,436 @@ Coverage: 949/1066 lines (89.02%)
 |   426663 | 1471 | `	pGen->pIn += 2;` |
 |   426663 | 1472 | `	pGen->pEnd--;` |
 |   213329 | 1473 | `	SXUNUSED(iCompileFlag);` |
-|   426663 | 1474 | `	return GenStateCompileArrayBody(pGen);` |
-|        5 | 1475 | `}` |
-|        - | 1476 | `/*` |
-|        - | 1477 | ` * Compile the PHP 8.5 clone(...) call form:` |
-|        - | 1478 | `` *   clone($object)                          -> identical to the `clone $object` operator`` |
-|        - | 1479 | ` *   clone($object, ['prop' => value, ...])  -> clone, run __clone(), then apply the` |
-|        - | 1480 | ` *                                              property updates as scope-aware writes` |
-|        - | 1481 | ` *   clone(object: $o, withProperties: [..]) -> the named-argument spelling` |
-|        - | 1482 | ` * Codegen: compile the object argument and emit OP_CLONE (which clones and runs` |
-|        - | 1483 | ` * __clone()); if a withProperties argument is present, compile it and emit` |
-|        - | 1484 | ` * OP_CLONE_APPLY, which applies each update to the fresh clone AFTER __clone(),` |
-|        - | 1485 | ` * honouring visibility / readonly-set-scope / typed-property enforcement in the` |
-|        - | 1486 | ` * calling scope. The parser (ExprExtractNode) delimited this node's tokens as` |
-|        - | 1487 | `` * `clone ( ... )`; pGen->pIn/pEnd point at the first/one-past-last of that range.`` |
-|        - | 1488 | ` */` |
-|       22 | 1489 | `PH7_PRIVATE sxi32 PH7_CompileCloneCall(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
-|        2 | 1490 | `{` |
-|        - | 1491 | `	SyToken *pIn,*pEnd,*pNext;` |
-|       24 | 1492 | `	SyToken *pObjStart = 0,*pObjEnd = 0;` |
-|       24 | 1493 | `	SyToken *pUpdStart = 0,*pUpdEnd = 0;` |
-|       24 | 1494 | `	int nArg = 0;` |
-|        - | 1495 | `	sxi32 rc;` |
-|       11 | 1496 | `	SXUNUSED(iCompileFlag);` |
-|        - | 1497 | `	/* pGen->pIn -> 'clone', pGen->pIn[1] -> '(', pGen->pEnd -> one past ')'. */` |
-|       24 | 1498 | `	pIn  = pGen->pIn + 2;   /* skip 'clone' and the opening '(' */` |
-|       24 | 1499 | `	pEnd = pGen->pEnd - 1;  /* exclude the closing ')' */` |
-|        - | 1500 | `	/* clone(...) first-class-callable form: a lone ellipsis is the whole list. */` |
-|       24 | 1501 | `	if( pIn < pEnd && (pIn->nType & PH7_TK_ELLIPSIS) ){` |
-|      ! 0 | 1502 | `		return PH7_GenCompileError(pGen,E_ERROR,pIn->nLine,` |
-|        - | 1503 | `			"clone(...) first-class callable form is not yet supported");` |
-|        - | 1504 | `	}` |
-|        - | 1505 | `	/* Split the (at most two) comma-separated arguments, tolerating named labels. */` |
-|       62 | 1506 | `	while( pIn < pEnd ){` |
-|       40 | 1507 | `		SyToken *pArgStart,*pArgEnd,*pName = 0;` |
-|       40 | 1508 | `		if( PH7_GetNextExpr(pIn,pEnd,&pNext) != SXRET_OK ){` |
-|      ! 0 | 1509 | `			break;` |
-|        - | 1510 | `		}` |
-|       40 | 1511 | `		pArgStart = pIn;` |
-|       40 | 1512 | `		pArgEnd   = pNext;` |
-|        - | 1513 | `		/* Named-argument label: <ID\|keyword> ':' expr. A single ':' is PH7_TK_COLON;` |
-|        - | 1514 | ``		 * '::' is a distinct operator token, so this never mis-fires on `A::B`. */`` |
-|       38 | 1515 | `		if( (pArgEnd - pArgStart) >= 2` |
-|       37 | 1516 | `			&& (pArgStart[0].nType & (PH7_TK_ID\|PH7_TK_KEYWORD))` |
-|       23 | 1517 | `			&& (pArgStart[1].nType & PH7_TK_COLON) ){` |
-|        5 | 1518 | `			pName = pArgStart;` |
-|        5 | 1519 | `			pArgStart += 2;` |
-|        2 | 1520 | `		}` |
-|       40 | 1521 | `		if( pName ){` |
-|        - | 1522 | `` 			/* PHP named parameters are case-SENSITIVE, so `Object:`/`WITHPROPERTIES:` `` |
-|        - | 1523 | `			 * must be rejected as unknown (SyMemcmp, not SyStrnicmp). */` |
-|        4 | 1524 | `			if( pName->sData.nByte == sizeof("object")-1` |
-|        4 | 1525 | `				&& SyMemcmp(pName->sData.zString,"object",sizeof("object")-1) == 0 ){` |
-|        3 | 1526 | `				pObjStart = pArgStart; pObjEnd = pArgEnd;` |
-|        4 | 1527 | `			}else if( pName->sData.nByte == sizeof("withProperties")-1` |
-|        3 | 1528 | `				&& SyMemcmp(pName->sData.zString,"withProperties",sizeof("withProperties")-1) == 0 ){` |
-|        3 | 1529 | `				pUpdStart = pArgStart; pUpdEnd = pArgEnd;` |
-|        2 | 1530 | `			}else{` |
-|      ! 0 | 1531 | `				return PH7_GenCompileError(pGen,E_ERROR,pName->nLine,` |
-|      ! 0 | 1532 | `					"Unknown named parameter $%z",&pName->sData);` |
-|        1 | 1533 | `			}` |
-|       38 | 1534 | `		}else if( nArg == 0 ){` |
-|       22 | 1535 | `			pObjStart = pArgStart; pObjEnd = pArgEnd;` |
-|       25 | 1536 | `		}else if( nArg == 1 ){` |
-|       15 | 1537 | `			pUpdStart = pArgStart; pUpdEnd = pArgEnd;` |
-|        8 | 1538 | `		}else{` |
-|      ! 0 | 1539 | `			return PH7_GenCompileError(pGen,E_ERROR,pArgStart->nLine,` |
-|        - | 1540 | `				"clone() expects at most 2 arguments");` |
-|        - | 1541 | `		}` |
-|       40 | 1542 | `		nArg++;` |
-|       40 | 1543 | `		pIn = pNext;` |
-|       40 | 1544 | `		if( pIn < pEnd && (pIn->nType & PH7_TK_COMMA) ){` |
-|       17 | 1545 | `			pIn++; /* step over the argument separator */` |
-|        8 | 1546 | `		}` |
-|        2 | 1547 | `	}` |
-|       24 | 1548 | `	if( pObjStart == 0 \|\| pObjStart >= pObjEnd ){` |
-|      ! 0 | 1549 | `		return PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,` |
-|        - | 1550 | `			"clone() expects at least 1 argument, 0 given");` |
-|        - | 1551 | `	}` |
-|        - | 1552 | `	/* Object argument -> clone (+ __clone()). */` |
-|       24 | 1553 | `	rc = GenStateCompileArrayEntry(pGen,pObjStart,pObjEnd,EXPR_FLAG_RDONLY_LOAD,0);` |
-|       24 | 1554 | `	if( rc == SXERR_ABORT ){` |
-|      ! 0 | 1555 | `		return SXERR_ABORT;` |
-|        - | 1556 | `	}` |
-|       24 | 1557 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_CLONE,0,0,0,0);` |
-|        - | 1558 | `	/* Property updates (evaluated after __clone runs). */` |
-|       24 | 1559 | `	if( pUpdStart && pUpdStart < pUpdEnd ){` |
-|       17 | 1560 | `		rc = GenStateCompileArrayEntry(pGen,pUpdStart,pUpdEnd,EXPR_FLAG_RDONLY_LOAD,0);` |
-|       17 | 1561 | `		if( rc == SXERR_ABORT ){` |
-|      ! 0 | 1562 | `			return SXERR_ABORT;` |
-|        - | 1563 | `		}` |
-|       17 | 1564 | `		PH7_VmEmitInstr(pGen->pVm,PH7_OP_CLONE_APPLY,0,0,0,0);` |
-|        8 | 1565 | `	}` |
-|       24 | 1566 | `	return SXRET_OK;` |
-|       13 | 1567 | `}` |
-|        - | 1568 | `/*` |
-|        - | 1569 | ` * Compile a short array literal using the PHP 5.4 bracket syntax.` |
-|        - | 1570 | ` * [1, 2, 3] is equivalent to array(1, 2, 3).` |
-|        - | 1571 | ` * ['key' => 'value'] is equivalent to array('key' => 'value').` |
-|        - | 1572 | ` */` |
-|   242018 | 1573 | `PH7_PRIVATE sxi32 PH7_CompileShortArray(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
-|        5 | 1574 | `{` |
-|        - | 1575 | `	/* Jump the leading '[', exclude trailing ']'. */` |
-|   242023 | 1576 | `	pGen->pIn++;` |
-|   242023 | 1577 | `	pGen->pEnd--;` |
-|   121009 | 1578 | `	SXUNUSED(iCompileFlag);` |
-|   242023 | 1579 | `	return GenStateCompileArrayBody(pGen);` |
-|        5 | 1580 | `}` |
-|        - | 1581 | `/*` |
-|        - | 1582 | ` * Expression tree validator callback for the 'list' language construct.` |
-|        - | 1583 | ` * Return SXRET_OK if the tree is valid. Any other return value indicates` |
-|        - | 1584 | ` * an invalid expression tree and this function will generate the appropriate` |
-|        - | 1585 | ` * error message.` |
-|        - | 1586 | ` * See the routine responible of compiling the list language construct` |
-|        - | 1587 | ` * for more inforation.` |
-|        - | 1588 | ` */` |
-|      226 | 1589 | `static sxi32 GenStateListNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRoot)` |
-|        5 | 1590 | `{` |
-|      231 | 1591 | `	sxi32 rc = SXRET_OK;` |
-|      231 | 1592 | `	if( pRoot->pOp ){` |
-|        4 | 1593 | `		if( pRoot->pOp->iOp != EXPR_OP_SUBSCRIPT /* $a[] */ && pRoot->pOp->iOp != EXPR_OP_ARROW /* -> */` |
-|        2 | 1594 | `			&& pRoot->pOp->iOp != EXPR_OP_DC /* :: */ ){` |
-|        - | 1595 | `				/* Unexpected expression */` |
-|      ! 0 | 1596 | `				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pRoot->pStart? pRoot->pStart->nLine : 0,` |
-|        - | 1597 | `					"Assignments can only happen to writable values");` |
-|      ! 0 | 1598 | `				if( rc != SXERR_ABORT ){` |
-|      ! 0 | 1599 | `					rc = SXERR_INVALID;` |
-|      ! 0 | 1600 | `				}` |
-|        1 | 1601 | `		}` |
-|      229 | 1602 | `	}else if( pRoot->xCode != PH7_CompileVariable ){` |
-|        - | 1603 | `		/* Unexpected expression */` |
-|        6 | 1604 | `		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pRoot->pStart? pRoot->pStart->nLine : 0,` |
-|        - | 1605 | `			"Assignments can only happen to writable values");` |
-|        6 | 1606 | `		if( rc != SXERR_ABORT ){` |
-|        6 | 1607 | `			rc = SXERR_INVALID;` |
-|        2 | 1608 | `		}` |
-|        2 | 1609 | `	}` |
-|      231 | 1610 | `	return rc;` |
-|        5 | 1611 | `}` |
-|        - | 1612 | `/*` |
-|        - | 1613 | ` * Compile the 'list' language construct.` |
-|        - | 1614 | ` *  According to the PHP language reference` |
-|        - | 1615 | ` *  list(): Assign variables as if they were an array.` |
-|        - | 1616 | ` *  list() is used to assign a list of variables in one operation.` |
-|        - | 1617 | ` *  Description` |
-|        - | 1618 | ` *   array list (mixed $varname [, mixed $... ] )` |
-|        - | 1619 | ` *   Like array(), this is not really a function, but a language construct.` |
-|        - | 1620 | ` *   list() is used to assign a list of variables in one operation.` |
-|        - | 1621 | ` *  Parameters` |
-|        - | 1622 | ` *   $varname: A variable.` |
-|        - | 1623 | ` *  Return Values` |
-|        - | 1624 | ` *   The assigned array.` |
-|        - | 1625 | ` */` |
-|        - | 1626 | `/* Nested list entry recorded during first pass of list body compilation */` |
-|        - | 1627 | `struct NestedListEntry {` |
-|        - | 1628 | `	sxi32 nIndex;        /* Position in the outer list (0-based) */` |
-|        - | 1629 | `	SyToken *pStart;     /* Token range: start of nested construct */` |
-|        - | 1630 | `	SyToken *pEnd;       /* Token range: past closing delimiter */` |
-|        - | 1631 | `	sxi32 isShort;       /* 1 if [...] form, 0 if list(...) form */` |
-|        - | 1632 | `};` |
-|        - | 1633 | `/*` |
-|        - | 1634 | ` * Compile the body of a *keyed* list/short-list destructuring (PHP 7.1), where` |
-|        - | 1635 | `` * every entry has the form `keyExpr => target`. The source array is on the stack`` |
-|        - | 1636 | ` * top on entry and remains there on exit, mirroring the positional LOAD_LIST` |
-|        - | 1637 | ` * path so the caller's teardown is unchanged. For each entry: DUP the source,` |
-|        - | 1638 | ` * push the key, LOAD_IDX to fetch source[key] (NULL on a missing key, silently,` |
-|        - | 1639 | ` * like a normal subscript read), then assign the fetched value to the target — a` |
-|        - | 1640 | ` * nested [...]/list() recurses, a simple lvalue uses the same STORE fold as a` |
-|        - | 1641 | ` * normal assignment (the value sits below the lvalue-load, exactly as in` |
-|        - | 1642 | ` * GenStateEmitExprCode where the assignment RHS precedes the LHS load).` |
-|        - | 1643 | ` */` |
-|       28 | 1644 | `static sxi32 GenStateCompileKeyedListBody(ph7_gen_state *pGen)` |
-|        2 | 1645 | `{` |
-|        - | 1646 | `	SyToken *pNext;` |
-|        - | 1647 | `	sxi32 rc;` |
-|       66 | 1648 | `	while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pGen->pEnd,&pNext) ){` |
-|        - | 1649 | `		SyToken *pArrow,*pTarget;` |
-|        - | 1650 | ``		/* Split `keyExpr => target` at the top-level '=>' */`` |
-|       38 | 1651 | `		pArrow = GenStateFindTopLevelArrow(pGen->pIn,pNext);` |
-|       38 | 1652 | `		pTarget = &pArrow[1];` |
-|       38 | 1653 | `		if( pArrow <= pGen->pIn \|\| pTarget >= pNext ){` |
-|        - | 1654 | ``			/* Empty key (`[ => $v]`) or empty value (`["k" =>]`): PHP rejects`` |
-|        - | 1655 | `			 * both. Reject rather than silently emitting unbalanced bytecode. */` |
-|      ! 0 | 1656 | `			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,` |
-|        - | 1657 | `				"Cannot use empty array entries in keyed array assignment");` |
-|      ! 0 | 1658 | `			return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;` |
-|        - | 1659 | `		}` |
-|        - | 1660 | `		/* DUP the source array (it is on the stack top) */` |
-|       38 | 1661 | `		PH7_VmEmitInstr(pGen->pVm,PH7_OP_DUP,0,0,0,0);` |
-|        - | 1662 | `		/* Compile the key expression; it is pushed above the DUP'd source */` |
-|       38 | 1663 | `		rc = GenStateCompileArrayEntry(&(*pGen),pGen->pIn,pArrow,EXPR_FLAG_RDONLY_LOAD,0);` |
-|       38 | 1664 | `		if( rc == SXERR_ABORT ){` |
-|      ! 0 | 1665 | `			return SXERR_ABORT;` |
-|        - | 1666 | `		}` |
-|        - | 1667 | `		/* LOAD_IDX: pop the key, replace the DUP'd source with source[key].` |
-|        - | 1668 | `		 * iP2=7 is the keyed-destructuring read context: an array source reads like` |
-|        - | 1669 | ``		 * iP2=0 (missing key loads NULL silently, matching a normal `$arr[$k]` read;`` |
-|        - | 1670 | `		 * PHP also emits an "Undefined array key" warning here, PHL omits it — §3.7),` |
-|        - | 1671 | `		 * but a NON-array source yields NULL + a per-key "Cannot use <type> as array"` |
-|        - | 1672 | `		 * warning instead of char-indexing a string (matching PHP's OP_LOAD_LIST path). */` |
-|       38 | 1673 | `		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_IDX,1,7,0,0);` |
-|       38 | 1674 | `		if( pTarget < pNext && ( (pTarget->nType & PH7_TK_OSB)` |
-|       34 | 1675 | `			\|\| ( (pTarget->nType & PH7_TK_KEYWORD)` |
-|       18 | 1676 | `				&& SX_PTR_TO_INT(pTarget->pUserData) == PH7_TKWRD_LIST ) ) ){` |
-|        - | 1677 | `			/* Nested destructuring:  ["k" => [ ... ]]  or  ["k" => list( ... )].` |
-|        - | 1678 | `			 * Treat source[key] as the inner body's source, then drop the` |
-|        - | 1679 | `			 * leftover it leaves behind (mirrors the positional nested path). */` |
-|        5 | 1680 | `			sxi32 isShort = (pTarget->nType & PH7_TK_OSB) != 0;` |
-|        5 | 1681 | `			SyToken *pSavedIn = pGen->pIn;` |
-|        5 | 1682 | `			SyToken *pSavedEnd = pGen->pEnd;` |
-|        5 | 1683 | `			pGen->pIn = pTarget;` |
-|        5 | 1684 | `			pGen->pEnd = pNext;` |
-|        5 | 1685 | `			rc = isShort ? PH7_CompileShortList(&(*pGen),0)` |
-|        2 | 1686 | `			             : PH7_CompileList(&(*pGen),0);` |
-|        5 | 1687 | `			pGen->pIn = pSavedIn;` |
-|        5 | 1688 | `			pGen->pEnd = pSavedEnd;` |
-|        5 | 1689 | `			if( rc == SXERR_ABORT ){` |
-|      ! 0 | 1690 | `				return SXERR_ABORT;` |
-|        - | 1691 | `			}` |
-|        5 | 1692 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);` |
-|        3 | 1693 | `		}else{` |
-|        - | 1694 | `			/* Simple lvalue target ($v / $o->p / $a[i] / Cls::$s). source[key]` |
-|        - | 1695 | `			 * is already on the stack as the value; compiling the target appends` |
-|        - | 1696 | `			 * its lvalue-load, which we fold into a STORE just as a normal` |
-|        - | 1697 | `			 * assignment does. */` |
-|        - | 1698 | `			VmInstr *pInstr;` |
-|       34 | 1699 | `			sxi32 iVmOp = PH7_OP_STORE;` |
-|       34 | 1700 | `			sxi32 iP1 = 0, iP2 = 0;` |
-|       34 | 1701 | `			void *p3 = 0;` |
-|       34 | 1702 | `			rc = GenStateCompileArrayEntry(&(*pGen),pTarget,pNext,` |
-|        - | 1703 | `				EXPR_FLAG_LOAD_IDX_STORE,GenStateListNodeValidator);` |
-|       34 | 1704 | `			if( rc != SXRET_OK ){` |
-|      ! 0 | 1705 | `				return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;` |
-|        - | 1706 | `			}` |
-|       34 | 1707 | `			if( (pInstr = PH7_VmPeekInstr(pGen->pVm)) != 0 ){` |
-|       34 | 1708 | `				if( pInstr->iOp == PH7_OP_MEMBER ){` |
-|        3 | 1709 | `					iP2 = 1; /* member store: keep MEMBER, store value below it */` |
-|       33 | 1710 | `				}else if( pInstr->iOp == PH7_OP_LOAD_IDX ){` |
-|        3 | 1711 | `					iVmOp = PH7_OP_STORE_IDX;` |
-|        3 | 1712 | `					iP1 = pInstr->iP1;` |
-|        3 | 1713 | `					(void)PH7_VmPopInstr(pGen->pVm);` |
-|        2 | 1714 | `				}else{` |
-|       30 | 1715 | `					p3 = pInstr->p3; /* named store: $v = value */` |
-|       30 | 1716 | `					(void)PH7_VmPopInstr(pGen->pVm);` |
-|        - | 1717 | `				}` |
-|       16 | 1718 | `			}` |
-|       34 | 1719 | `			PH7_VmEmitInstr(pGen->pVm,iVmOp,iP1,iP2,p3,0);` |
-|        - | 1720 | `			/* STORE leaves the assigned value on the stack top; drop it so the` |
-|        - | 1721 | `			 * source array is back on top for the next entry. */` |
-|       34 | 1722 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);` |
-|        - | 1723 | `		}` |
-|       38 | 1724 | `		pGen->pIn = &pNext[1];` |
-|        2 | 1725 | `	}` |
-|       30 | 1726 | `	return SXRET_OK;` |
-|       16 | 1727 | `}` |
-|        - | 1728 | `/*` |
-|        - | 1729 | ` * Shared body for list() and short list [...] compilation.` |
-|        - | 1730 | ` * Assumes pGen->pIn and pGen->pEnd are already positioned past` |
-|        - | 1731 | ` * the opening delimiter and before the closing delimiter.` |
-|        - | 1732 | ` */` |
-|      134 | 1733 | `static sxi32 GenStateCompileListBody(ph7_gen_state *pGen)` |
-|        5 | 1734 | `{` |
-|        - | 1735 | `	SySet sNested; /* Dynamically-sized container of NestedListEntry */` |
-|        - | 1736 | `	SyToken *pNext;` |
-|        - | 1737 | `	SyToken *pClassifyIn;` |
-|      139 | 1738 | `	sxi32 nKeyed = 0, nPositional = 0, nEmpty = 0;` |
-|        - | 1739 | `	sxi32 nExpr;` |
-|        - | 1740 | `	sxi32 rc;` |
-|        - | 1741 | ``	/* First pass: classify entries as keyed (`k => v`), positional, or empty`` |
-|        - | 1742 | `	 * skip slots ([,]). A list level must be entirely keyed or entirely` |
-|        - | 1743 | `	 * positional — PHP fatals on a mix, and on an empty slot inside a keyed` |
-|        - | 1744 | `	 * list. */` |
-|      139 | 1745 | `	pClassifyIn = pGen->pIn;` |
-|      395 | 1746 | `	while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pGen->pEnd,&pNext) ){` |
-|      261 | 1747 | `		if( pGen->pIn >= pNext ){` |
-|       13 | 1748 | `			nEmpty++;` |
-|      255 | 1749 | `		}else if( GenStateFindTopLevelArrow(pGen->pIn,pNext) < pNext ){` |
-|       38 | 1750 | `			nKeyed++;` |
-|       20 | 1751 | `		}else{` |
-|      213 | 1752 | `			nPositional++;` |
-|        - | 1753 | `		}` |
-|      261 | 1754 | `		pGen->pIn = &pNext[1];` |
-|        5 | 1755 | `	}` |
-|      139 | 1756 | `	pGen->pIn = pClassifyIn;` |
-|      139 | 1757 | `	if( nKeyed > 0 && nEmpty > 0 ){` |
-|      ! 0 | 1758 | `		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,` |
-|        - | 1759 | `			"Cannot use empty array entries in keyed array assignment");` |
-|      ! 0 | 1760 | `		return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;` |
-|        - | 1761 | `	}` |
-|      139 | 1762 | `	if( nKeyed > 0 && nPositional > 0 ){` |
-|      ! 0 | 1763 | `		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,` |
-|        - | 1764 | `			"Cannot mix keyed and unkeyed array entries in assignments");` |
-|      ! 0 | 1765 | `		return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;` |
-|        - | 1766 | `	}` |
-|      139 | 1767 | `	if( nKeyed > 0 ){` |
-|       30 | 1768 | `		return GenStateCompileKeyedListBody(pGen);` |
-|        - | 1769 | `	}` |
-|      111 | 1770 | `	nExpr = 0;` |
-|      111 | 1771 | `	SySetInit(&sNested,&pGen->pVm->sAllocator,sizeof(struct NestedListEntry));` |
-|      331 | 1772 | `	while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pGen->pEnd,&pNext) ){` |
-|      225 | 1773 | `		if( pGen->pIn < pNext ){` |
-|        - | 1774 | `			/* Check for nested list() */` |
-|      213 | 1775 | `			if( (pGen->pIn->nType & PH7_TK_KEYWORD) &&` |
-|        3 | 1776 | `				SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_LIST ){` |
-|        - | 1777 | `				/* Record this nested list for post-processing */` |
-|        3 | 1778 | `				SyToken *pListEnd = 0;` |
-|        3 | 1779 | `				if( &pGen->pIn[1] < pNext && (pGen->pIn[1].nType & PH7_TK_LPAREN) ){` |
-|        3 | 1780 | `					PH7_DelimitNestedTokens(pGen->pIn+2,pNext,PH7_TK_LPAREN,PH7_TK_RPAREN,&pListEnd);` |
-|        1 | 1781 | `				}` |
-|        3 | 1782 | `				if( pListEnd ){` |
-|        - | 1783 | `					struct NestedListEntry sEntry;` |
-|        3 | 1784 | `					sEntry.nIndex = nExpr;` |
-|        3 | 1785 | `					sEntry.pStart = pGen->pIn;` |
-|        3 | 1786 | `					sEntry.pEnd = pListEnd + 1;` |
-|        3 | 1787 | `					sEntry.isShort = 0;` |
-|        3 | 1788 | `					SySetPut(&sNested,(const void *)&sEntry);` |
-|        1 | 1789 | `				}` |
-|        - | 1790 | `				/* Emit NULL placeholder — outer LOAD_LIST will skip this index */` |
-|        3 | 1791 | `				PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,0,0,0);` |
-|      212 | 1792 | `			}else if( pGen->pIn->nType & PH7_TK_OSB ){` |
-|        - | 1793 | `				/* Nested short destructuring [...] */` |
-|       13 | 1794 | `				SyToken *pBracketEnd = 0;` |
-|       13 | 1795 | `				PH7_DelimitNestedTokens(pGen->pIn+1,pNext,PH7_TK_OSB,PH7_TK_CSB,&pBracketEnd);` |
-|       13 | 1796 | `				if( pBracketEnd ){` |
-|        - | 1797 | `					struct NestedListEntry sEntry;` |
-|       13 | 1798 | `					sEntry.nIndex = nExpr;` |
-|       13 | 1799 | `					sEntry.pStart = pGen->pIn;` |
-|       13 | 1800 | `					sEntry.pEnd = pBracketEnd + 1;` |
-|       13 | 1801 | `					sEntry.isShort = 1;` |
-|       13 | 1802 | `					SySetPut(&sNested,(const void *)&sEntry);` |
-|        6 | 1803 | `				}` |
-|        - | 1804 | `				/* Emit NULL placeholder — outer LOAD_LIST will skip this index */` |
-|       13 | 1805 | `				PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,0,0,0);` |
-|        7 | 1806 | `			}else{` |
-|        - | 1807 | `				/* Compile the expression holding the variable */` |
-|      199 | 1808 | `				rc = GenStateCompileArrayEntry(&(*pGen),pGen->pIn,pNext,EXPR_FLAG_LOAD_IDX_STORE,GenStateListNodeValidator);` |
-|      199 | 1809 | `				if( rc != SXRET_OK ){` |
-|      ! 0 | 1810 | `					SySetRelease(&sNested);` |
-|      ! 0 | 1811 | `					return SXRET_OK;` |
-|        - | 1812 | `				}` |
-|        - | 1813 | `			}` |
-|      109 | 1814 | `		}else{` |
-|        - | 1815 | `			/* Empty entry,load NULL */` |
-|       13 | 1816 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,0/* NULL index */,0,0);` |
-|        - | 1817 | `		}` |
-|      225 | 1818 | `		nExpr++;` |
-|        - | 1819 | `		/* Advance the stream cursor */` |
-|      225 | 1820 | `		pGen->pIn = &pNext[1];` |
-|        5 | 1821 | `	}` |
-|        - | 1822 | `	/* Emit the LOAD_LIST instruction */` |
-|      111 | 1823 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_LIST,nExpr,0,0,0);` |
-|        - | 1824 | `	/* After LOAD_LIST, the source array is still on the stack top.` |
-|        - | 1825 | `	 * For each nested entry, emit code to extract the sub-array` |
-|        - | 1826 | `	 * at the corresponding index and recursively destructure it.` |
-|        - | 1827 | `	 */` |
-|      111 | 1828 | `	if( SySetUsed(&sNested) > 0 ){` |
-|       13 | 1829 | `		struct NestedListEntry *apNested = (struct NestedListEntry *)SySetBasePtr(&sNested);` |
-|        - | 1830 | `		sxu32 i;` |
-|       27 | 1831 | `		for(i = 0; i < SySetUsed(&sNested); i++){` |
-|       15 | 1832 | `			SyToken *pSavedIn = pGen->pIn;` |
-|       15 | 1833 | `			SyToken *pSavedEnd = pGen->pEnd;` |
-|        - | 1834 | `			ph7_value *pIdx;` |
-|        - | 1835 | `			sxu32 nConstIdx;` |
-|        - | 1836 | `			/* DUP the source array (it's on stack top) */` |
-|       15 | 1837 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_DUP,0,0,0,0);` |
-|        - | 1838 | `			/* Push the integer index for this nested entry */` |
-|       15 | 1839 | `			pIdx = PH7_ReserveConstObj(pGen->pVm,&nConstIdx);` |
-|       15 | 1840 | `			if( pIdx == 0 ){` |
-|      ! 0 | 1841 | `				PH7_GenCompileError(&(*pGen),E_ERROR,0,"Fatal, PH7 engine is running out of memory");` |
-|      ! 0 | 1842 | `				SySetRelease(&sNested);` |
-|      ! 0 | 1843 | `				return SXERR_ABORT;` |
-|        - | 1844 | `			}` |
-|       15 | 1845 | `			PH7_MemObjInitFromInt(pGen->pVm,pIdx,(sxi64)apNested[i].nIndex);` |
-|       15 | 1846 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nConstIdx,0,0);` |
-|        - | 1847 | `			/* LOAD_IDX: pop index, replace DUP'd source with source[index].` |
-|        - | 1848 | `			 * iP2=2 signals the VM to emit an "Undefined array key" warning` |
-|        - | 1849 | `			 * when the key is missing (PHP-compatible list destructuring).` |
-|        - | 1850 | `			 */` |
-|       15 | 1851 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_IDX,1,2,0,0);` |
-|        - | 1852 | `			/* Recursively compile the inner list */` |
-|       15 | 1853 | `			pGen->pIn = apNested[i].pStart;` |
-|       15 | 1854 | `			pGen->pEnd = apNested[i].pEnd;` |
-|       15 | 1855 | `			if( apNested[i].isShort ){` |
-|       13 | 1856 | `				rc = PH7_CompileShortList(&(*pGen),0);` |
-|        7 | 1857 | `			}else{` |
-|        3 | 1858 | `				rc = PH7_CompileList(&(*pGen),0);` |
-|        - | 1859 | `			}` |
-|       15 | 1860 | `			pGen->pIn = pSavedIn;` |
-|       15 | 1861 | `			pGen->pEnd = pSavedEnd;` |
-|       15 | 1862 | `			if( rc == SXERR_ABORT ){` |
-|      ! 0 | 1863 | `				SySetRelease(&sNested);` |
-|      ! 0 | 1864 | `				return SXERR_ABORT;` |
-|        - | 1865 | `			}` |
-|        - | 1866 | `			/* Pop the leftover source[index] from the inner LOAD_LIST */` |
-|       15 | 1867 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);` |
-|        8 | 1868 | `		}` |
-|        6 | 1869 | `	}` |
-|      111 | 1870 | `	SySetRelease(&sNested);` |
-|        - | 1871 | `	/* Node successfully compiled */` |
-|      111 | 1872 | `	return SXRET_OK;` |
-|       72 | 1873 | `}` |
-|       40 | 1874 | `PH7_PRIVATE sxi32 PH7_CompileList(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
-|        5 | 1875 | `{` |
-|        - | 1876 | `	/* Jump the 'list' keyword, the leading '(' and exclude trailing ')' */` |
-|       45 | 1877 | `	pGen->pIn += 2;` |
-|       45 | 1878 | `	pGen->pEnd--;` |
-|       20 | 1879 | `	SXUNUSED(iCompileFlag);` |
-|       45 | 1880 | `	return GenStateCompileListBody(pGen);` |
-|        5 | 1881 | `}` |
-|       94 | 1882 | `PH7_PRIVATE sxi32 PH7_CompileShortList(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
-|        5 | 1883 | `{` |
-|        - | 1884 | `	/* Jump the leading '[', exclude trailing ']'. */` |
-|       99 | 1885 | `	pGen->pIn++;` |
-|       99 | 1886 | `	pGen->pEnd--;` |
-|       47 | 1887 | `	SXUNUSED(iCompileFlag);` |
-|       99 | 1888 | `	return GenStateCompileListBody(pGen);` |
-|        5 | 1889 | `}` |
-|        - | 1890 |  |
+|        - | 1474 | ``	/* php: a stray token in an `array( ... )` element is `... expecting ")"`. */`` |
+|        - | 1475 | `	{` |
+|   426663 | 1476 | `		const char *zSave = pGen->zClauseCloser;` |
+|        - | 1477 | `		sxi32 rc;` |
+|   426663 | 1478 | `		pGen->zClauseCloser = "\")\"";` |
+|   426663 | 1479 | `		rc = GenStateCompileArrayBody(pGen);` |
+|   426663 | 1480 | `		pGen->zClauseCloser = zSave;` |
+|   426663 | 1481 | `		return rc;` |
+|        - | 1482 | `	}` |
+|        5 | 1483 | `}` |
+|        - | 1484 | `/*` |
+|        - | 1485 | ` * Compile the PHP 8.5 clone(...) call form:` |
+|        - | 1486 | `` *   clone($object)                          -> identical to the `clone $object` operator`` |
+|        - | 1487 | ` *   clone($object, ['prop' => value, ...])  -> clone, run __clone(), then apply the` |
+|        - | 1488 | ` *                                              property updates as scope-aware writes` |
+|        - | 1489 | ` *   clone(object: $o, withProperties: [..]) -> the named-argument spelling` |
+|        - | 1490 | ` * Codegen: compile the object argument and emit OP_CLONE (which clones and runs` |
+|        - | 1491 | ` * __clone()); if a withProperties argument is present, compile it and emit` |
+|        - | 1492 | ` * OP_CLONE_APPLY, which applies each update to the fresh clone AFTER __clone(),` |
+|        - | 1493 | ` * honouring visibility / readonly-set-scope / typed-property enforcement in the` |
+|        - | 1494 | ` * calling scope. The parser (ExprExtractNode) delimited this node's tokens as` |
+|        - | 1495 | `` * `clone ( ... )`; pGen->pIn/pEnd point at the first/one-past-last of that range.`` |
+|        - | 1496 | ` */` |
+|       22 | 1497 | `PH7_PRIVATE sxi32 PH7_CompileCloneCall(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
+|        2 | 1498 | `{` |
+|        - | 1499 | `	SyToken *pIn,*pEnd,*pNext;` |
+|       24 | 1500 | `	SyToken *pObjStart = 0,*pObjEnd = 0;` |
+|       24 | 1501 | `	SyToken *pUpdStart = 0,*pUpdEnd = 0;` |
+|       24 | 1502 | `	int nArg = 0;` |
+|        - | 1503 | `	sxi32 rc;` |
+|       11 | 1504 | `	SXUNUSED(iCompileFlag);` |
+|        - | 1505 | `	/* pGen->pIn -> 'clone', pGen->pIn[1] -> '(', pGen->pEnd -> one past ')'. */` |
+|       24 | 1506 | `	pIn  = pGen->pIn + 2;   /* skip 'clone' and the opening '(' */` |
+|       24 | 1507 | `	pEnd = pGen->pEnd - 1;  /* exclude the closing ')' */` |
+|        - | 1508 | `	/* clone(...) first-class-callable form: a lone ellipsis is the whole list. */` |
+|       24 | 1509 | `	if( pIn < pEnd && (pIn->nType & PH7_TK_ELLIPSIS) ){` |
+|      ! 0 | 1510 | `		return PH7_GenCompileError(pGen,E_ERROR,pIn->nLine,` |
+|        - | 1511 | `			"clone(...) first-class callable form is not yet supported");` |
+|        - | 1512 | `	}` |
+|        - | 1513 | `	/* Split the (at most two) comma-separated arguments, tolerating named labels. */` |
+|       62 | 1514 | `	while( pIn < pEnd ){` |
+|       40 | 1515 | `		SyToken *pArgStart,*pArgEnd,*pName = 0;` |
+|       40 | 1516 | `		if( PH7_GetNextExpr(pIn,pEnd,&pNext) != SXRET_OK ){` |
+|      ! 0 | 1517 | `			break;` |
+|        - | 1518 | `		}` |
+|       40 | 1519 | `		pArgStart = pIn;` |
+|       40 | 1520 | `		pArgEnd   = pNext;` |
+|        - | 1521 | `		/* Named-argument label: <ID\|keyword> ':' expr. A single ':' is PH7_TK_COLON;` |
+|        - | 1522 | ``		 * '::' is a distinct operator token, so this never mis-fires on `A::B`. */`` |
+|       38 | 1523 | `		if( (pArgEnd - pArgStart) >= 2` |
+|       37 | 1524 | `			&& (pArgStart[0].nType & (PH7_TK_ID\|PH7_TK_KEYWORD))` |
+|       23 | 1525 | `			&& (pArgStart[1].nType & PH7_TK_COLON) ){` |
+|        5 | 1526 | `			pName = pArgStart;` |
+|        5 | 1527 | `			pArgStart += 2;` |
+|        2 | 1528 | `		}` |
+|       40 | 1529 | `		if( pName ){` |
+|        - | 1530 | `` 			/* PHP named parameters are case-SENSITIVE, so `Object:`/`WITHPROPERTIES:` `` |
+|        - | 1531 | `			 * must be rejected as unknown (SyMemcmp, not SyStrnicmp). */` |
+|        4 | 1532 | `			if( pName->sData.nByte == sizeof("object")-1` |
+|        4 | 1533 | `				&& SyMemcmp(pName->sData.zString,"object",sizeof("object")-1) == 0 ){` |
+|        3 | 1534 | `				pObjStart = pArgStart; pObjEnd = pArgEnd;` |
+|        4 | 1535 | `			}else if( pName->sData.nByte == sizeof("withProperties")-1` |
+|        3 | 1536 | `				&& SyMemcmp(pName->sData.zString,"withProperties",sizeof("withProperties")-1) == 0 ){` |
+|        3 | 1537 | `				pUpdStart = pArgStart; pUpdEnd = pArgEnd;` |
+|        2 | 1538 | `			}else{` |
+|      ! 0 | 1539 | `				return PH7_GenCompileError(pGen,E_ERROR,pName->nLine,` |
+|      ! 0 | 1540 | `					"Unknown named parameter $%z",&pName->sData);` |
+|        1 | 1541 | `			}` |
+|       38 | 1542 | `		}else if( nArg == 0 ){` |
+|       22 | 1543 | `			pObjStart = pArgStart; pObjEnd = pArgEnd;` |
+|       25 | 1544 | `		}else if( nArg == 1 ){` |
+|       15 | 1545 | `			pUpdStart = pArgStart; pUpdEnd = pArgEnd;` |
+|        8 | 1546 | `		}else{` |
+|      ! 0 | 1547 | `			return PH7_GenCompileError(pGen,E_ERROR,pArgStart->nLine,` |
+|        - | 1548 | `				"clone() expects at most 2 arguments");` |
+|        - | 1549 | `		}` |
+|       40 | 1550 | `		nArg++;` |
+|       40 | 1551 | `		pIn = pNext;` |
+|       40 | 1552 | `		if( pIn < pEnd && (pIn->nType & PH7_TK_COMMA) ){` |
+|       17 | 1553 | `			pIn++; /* step over the argument separator */` |
+|        8 | 1554 | `		}` |
+|        2 | 1555 | `	}` |
+|       24 | 1556 | `	if( pObjStart == 0 \|\| pObjStart >= pObjEnd ){` |
+|      ! 0 | 1557 | `		return PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,` |
+|        - | 1558 | `			"clone() expects at least 1 argument, 0 given");` |
+|        - | 1559 | `	}` |
+|        - | 1560 | `	/* Object argument -> clone (+ __clone()). */` |
+|       24 | 1561 | `	rc = GenStateCompileArrayEntry(pGen,pObjStart,pObjEnd,EXPR_FLAG_RDONLY_LOAD,0);` |
+|       24 | 1562 | `	if( rc == SXERR_ABORT ){` |
+|      ! 0 | 1563 | `		return SXERR_ABORT;` |
+|        - | 1564 | `	}` |
+|       24 | 1565 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_CLONE,0,0,0,0);` |
+|        - | 1566 | `	/* Property updates (evaluated after __clone runs). */` |
+|       24 | 1567 | `	if( pUpdStart && pUpdStart < pUpdEnd ){` |
+|       17 | 1568 | `		rc = GenStateCompileArrayEntry(pGen,pUpdStart,pUpdEnd,EXPR_FLAG_RDONLY_LOAD,0);` |
+|       17 | 1569 | `		if( rc == SXERR_ABORT ){` |
+|      ! 0 | 1570 | `			return SXERR_ABORT;` |
+|        - | 1571 | `		}` |
+|       17 | 1572 | `		PH7_VmEmitInstr(pGen->pVm,PH7_OP_CLONE_APPLY,0,0,0,0);` |
+|        8 | 1573 | `	}` |
+|       24 | 1574 | `	return SXRET_OK;` |
+|       13 | 1575 | `}` |
+|        - | 1576 | `/*` |
+|        - | 1577 | ` * Compile a short array literal using the PHP 5.4 bracket syntax.` |
+|        - | 1578 | ` * [1, 2, 3] is equivalent to array(1, 2, 3).` |
+|        - | 1579 | ` * ['key' => 'value'] is equivalent to array('key' => 'value').` |
+|        - | 1580 | ` */` |
+|   242018 | 1581 | `PH7_PRIVATE sxi32 PH7_CompileShortArray(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
+|        5 | 1582 | `{` |
+|        - | 1583 | `	/* Jump the leading '[', exclude trailing ']'. */` |
+|   242023 | 1584 | `	pGen->pIn++;` |
+|   242023 | 1585 | `	pGen->pEnd--;` |
+|   121009 | 1586 | `	SXUNUSED(iCompileFlag);` |
+|        - | 1587 | ``	/* php: a stray token in a `[ ... ]` element is `... expecting "]"`. */`` |
+|        - | 1588 | `	{` |
+|   242023 | 1589 | `		const char *zSave = pGen->zClauseCloser;` |
+|        - | 1590 | `		sxi32 rc;` |
+|   242023 | 1591 | `		pGen->zClauseCloser = "\"]\"";` |
+|   242023 | 1592 | `		rc = GenStateCompileArrayBody(pGen);` |
+|   242023 | 1593 | `		pGen->zClauseCloser = zSave;` |
+|   242023 | 1594 | `		return rc;` |
+|        - | 1595 | `	}` |
+|        5 | 1596 | `}` |
+|        - | 1597 | `/*` |
+|        - | 1598 | ` * Expression tree validator callback for the 'list' language construct.` |
+|        - | 1599 | ` * Return SXRET_OK if the tree is valid. Any other return value indicates` |
+|        - | 1600 | ` * an invalid expression tree and this function will generate the appropriate` |
+|        - | 1601 | ` * error message.` |
+|        - | 1602 | ` * See the routine responible of compiling the list language construct` |
+|        - | 1603 | ` * for more inforation.` |
+|        - | 1604 | ` */` |
+|      226 | 1605 | `static sxi32 GenStateListNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRoot)` |
+|        5 | 1606 | `{` |
+|      231 | 1607 | `	sxi32 rc = SXRET_OK;` |
+|      231 | 1608 | `	if( pRoot->pOp ){` |
+|        4 | 1609 | `		if( pRoot->pOp->iOp != EXPR_OP_SUBSCRIPT /* $a[] */ && pRoot->pOp->iOp != EXPR_OP_ARROW /* -> */` |
+|        2 | 1610 | `			&& pRoot->pOp->iOp != EXPR_OP_DC /* :: */ ){` |
+|        - | 1611 | `				/* Unexpected expression */` |
+|      ! 0 | 1612 | `				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pRoot->pStart? pRoot->pStart->nLine : 0,` |
+|        - | 1613 | `					"Assignments can only happen to writable values");` |
+|      ! 0 | 1614 | `				if( rc != SXERR_ABORT ){` |
+|      ! 0 | 1615 | `					rc = SXERR_INVALID;` |
+|      ! 0 | 1616 | `				}` |
+|        1 | 1617 | `		}` |
+|      229 | 1618 | `	}else if( pRoot->xCode != PH7_CompileVariable ){` |
+|        - | 1619 | `		/* Unexpected expression */` |
+|        6 | 1620 | `		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pRoot->pStart? pRoot->pStart->nLine : 0,` |
+|        - | 1621 | `			"Assignments can only happen to writable values");` |
+|        6 | 1622 | `		if( rc != SXERR_ABORT ){` |
+|        6 | 1623 | `			rc = SXERR_INVALID;` |
+|        2 | 1624 | `		}` |
+|        2 | 1625 | `	}` |
+|      231 | 1626 | `	return rc;` |
+|        5 | 1627 | `}` |
+|        - | 1628 | `/*` |
+|        - | 1629 | ` * Compile the 'list' language construct.` |
+|        - | 1630 | ` *  According to the PHP language reference` |
+|        - | 1631 | ` *  list(): Assign variables as if they were an array.` |
+|        - | 1632 | ` *  list() is used to assign a list of variables in one operation.` |
+|        - | 1633 | ` *  Description` |
+|        - | 1634 | ` *   array list (mixed $varname [, mixed $... ] )` |
+|        - | 1635 | ` *   Like array(), this is not really a function, but a language construct.` |
+|        - | 1636 | ` *   list() is used to assign a list of variables in one operation.` |
+|        - | 1637 | ` *  Parameters` |
+|        - | 1638 | ` *   $varname: A variable.` |
+|        - | 1639 | ` *  Return Values` |
+|        - | 1640 | ` *   The assigned array.` |
+|        - | 1641 | ` */` |
+|        - | 1642 | `/* Nested list entry recorded during first pass of list body compilation */` |
+|        - | 1643 | `struct NestedListEntry {` |
+|        - | 1644 | `	sxi32 nIndex;        /* Position in the outer list (0-based) */` |
+|        - | 1645 | `	SyToken *pStart;     /* Token range: start of nested construct */` |
+|        - | 1646 | `	SyToken *pEnd;       /* Token range: past closing delimiter */` |
+|        - | 1647 | `	sxi32 isShort;       /* 1 if [...] form, 0 if list(...) form */` |
+|        - | 1648 | `};` |
+|        - | 1649 | `/*` |
+|        - | 1650 | ` * Compile the body of a *keyed* list/short-list destructuring (PHP 7.1), where` |
+|        - | 1651 | `` * every entry has the form `keyExpr => target`. The source array is on the stack`` |
+|        - | 1652 | ` * top on entry and remains there on exit, mirroring the positional LOAD_LIST` |
+|        - | 1653 | ` * path so the caller's teardown is unchanged. For each entry: DUP the source,` |
+|        - | 1654 | ` * push the key, LOAD_IDX to fetch source[key] (NULL on a missing key, silently,` |
+|        - | 1655 | ` * like a normal subscript read), then assign the fetched value to the target — a` |
+|        - | 1656 | ` * nested [...]/list() recurses, a simple lvalue uses the same STORE fold as a` |
+|        - | 1657 | ` * normal assignment (the value sits below the lvalue-load, exactly as in` |
+|        - | 1658 | ` * GenStateEmitExprCode where the assignment RHS precedes the LHS load).` |
+|        - | 1659 | ` */` |
+|       28 | 1660 | `static sxi32 GenStateCompileKeyedListBody(ph7_gen_state *pGen)` |
+|        2 | 1661 | `{` |
+|        - | 1662 | `	SyToken *pNext;` |
+|        - | 1663 | `	sxi32 rc;` |
+|       66 | 1664 | `	while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pGen->pEnd,&pNext) ){` |
+|        - | 1665 | `		SyToken *pArrow,*pTarget;` |
+|        - | 1666 | ``		/* Split `keyExpr => target` at the top-level '=>' */`` |
+|       38 | 1667 | `		pArrow = GenStateFindTopLevelArrow(pGen->pIn,pNext);` |
+|       38 | 1668 | `		pTarget = &pArrow[1];` |
+|       38 | 1669 | `		if( pArrow <= pGen->pIn \|\| pTarget >= pNext ){` |
+|        - | 1670 | ``			/* Empty key (`[ => $v]`) or empty value (`["k" =>]`): PHP rejects`` |
+|        - | 1671 | `			 * both. Reject rather than silently emitting unbalanced bytecode. */` |
+|      ! 0 | 1672 | `			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,` |
+|        - | 1673 | `				"Cannot use empty array entries in keyed array assignment");` |
+|      ! 0 | 1674 | `			return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;` |
+|        - | 1675 | `		}` |
+|        - | 1676 | `		/* DUP the source array (it is on the stack top) */` |
+|       38 | 1677 | `		PH7_VmEmitInstr(pGen->pVm,PH7_OP_DUP,0,0,0,0);` |
+|        - | 1678 | `		/* Compile the key expression; it is pushed above the DUP'd source */` |
+|       38 | 1679 | `		rc = GenStateCompileArrayEntry(&(*pGen),pGen->pIn,pArrow,EXPR_FLAG_RDONLY_LOAD,0);` |
+|       38 | 1680 | `		if( rc == SXERR_ABORT ){` |
+|      ! 0 | 1681 | `			return SXERR_ABORT;` |
+|        - | 1682 | `		}` |
+|        - | 1683 | `		/* LOAD_IDX: pop the key, replace the DUP'd source with source[key].` |
+|        - | 1684 | `		 * iP2=7 is the keyed-destructuring read context: an array source reads like` |
+|        - | 1685 | ``		 * iP2=0 (missing key loads NULL silently, matching a normal `$arr[$k]` read;`` |
+|        - | 1686 | `		 * PHP also emits an "Undefined array key" warning here, PHL omits it — §3.7),` |
+|        - | 1687 | `		 * but a NON-array source yields NULL + a per-key "Cannot use <type> as array"` |
+|        - | 1688 | `		 * warning instead of char-indexing a string (matching PHP's OP_LOAD_LIST path). */` |
+|       38 | 1689 | `		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_IDX,1,7,0,0);` |
+|       38 | 1690 | `		if( pTarget < pNext && ( (pTarget->nType & PH7_TK_OSB)` |
+|       34 | 1691 | `			\|\| ( (pTarget->nType & PH7_TK_KEYWORD)` |
+|       18 | 1692 | `				&& SX_PTR_TO_INT(pTarget->pUserData) == PH7_TKWRD_LIST ) ) ){` |
+|        - | 1693 | `			/* Nested destructuring:  ["k" => [ ... ]]  or  ["k" => list( ... )].` |
+|        - | 1694 | `			 * Treat source[key] as the inner body's source, then drop the` |
+|        - | 1695 | `			 * leftover it leaves behind (mirrors the positional nested path). */` |
+|        5 | 1696 | `			sxi32 isShort = (pTarget->nType & PH7_TK_OSB) != 0;` |
+|        5 | 1697 | `			SyToken *pSavedIn = pGen->pIn;` |
+|        5 | 1698 | `			SyToken *pSavedEnd = pGen->pEnd;` |
+|        5 | 1699 | `			pGen->pIn = pTarget;` |
+|        5 | 1700 | `			pGen->pEnd = pNext;` |
+|        5 | 1701 | `			rc = isShort ? PH7_CompileShortList(&(*pGen),0)` |
+|        2 | 1702 | `			             : PH7_CompileList(&(*pGen),0);` |
+|        5 | 1703 | `			pGen->pIn = pSavedIn;` |
+|        5 | 1704 | `			pGen->pEnd = pSavedEnd;` |
+|        5 | 1705 | `			if( rc == SXERR_ABORT ){` |
+|      ! 0 | 1706 | `				return SXERR_ABORT;` |
+|        - | 1707 | `			}` |
+|        5 | 1708 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);` |
+|        3 | 1709 | `		}else{` |
+|        - | 1710 | `			/* Simple lvalue target ($v / $o->p / $a[i] / Cls::$s). source[key]` |
+|        - | 1711 | `			 * is already on the stack as the value; compiling the target appends` |
+|        - | 1712 | `			 * its lvalue-load, which we fold into a STORE just as a normal` |
+|        - | 1713 | `			 * assignment does. */` |
+|        - | 1714 | `			VmInstr *pInstr;` |
+|       34 | 1715 | `			sxi32 iVmOp = PH7_OP_STORE;` |
+|       34 | 1716 | `			sxi32 iP1 = 0, iP2 = 0;` |
+|       34 | 1717 | `			void *p3 = 0;` |
+|       34 | 1718 | `			rc = GenStateCompileArrayEntry(&(*pGen),pTarget,pNext,` |
+|        - | 1719 | `				EXPR_FLAG_LOAD_IDX_STORE,GenStateListNodeValidator);` |
+|       34 | 1720 | `			if( rc != SXRET_OK ){` |
+|      ! 0 | 1721 | `				return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;` |
+|        - | 1722 | `			}` |
+|       34 | 1723 | `			if( (pInstr = PH7_VmPeekInstr(pGen->pVm)) != 0 ){` |
+|       34 | 1724 | `				if( pInstr->iOp == PH7_OP_MEMBER ){` |
+|        3 | 1725 | `					iP2 = 1; /* member store: keep MEMBER, store value below it */` |
+|       33 | 1726 | `				}else if( pInstr->iOp == PH7_OP_LOAD_IDX ){` |
+|        3 | 1727 | `					iVmOp = PH7_OP_STORE_IDX;` |
+|        3 | 1728 | `					iP1 = pInstr->iP1;` |
+|        3 | 1729 | `					(void)PH7_VmPopInstr(pGen->pVm);` |
+|        2 | 1730 | `				}else{` |
+|       30 | 1731 | `					p3 = pInstr->p3; /* named store: $v = value */` |
+|       30 | 1732 | `					(void)PH7_VmPopInstr(pGen->pVm);` |
+|        - | 1733 | `				}` |
+|       16 | 1734 | `			}` |
+|       34 | 1735 | `			PH7_VmEmitInstr(pGen->pVm,iVmOp,iP1,iP2,p3,0);` |
+|        - | 1736 | `			/* STORE leaves the assigned value on the stack top; drop it so the` |
+|        - | 1737 | `			 * source array is back on top for the next entry. */` |
+|       34 | 1738 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);` |
+|        - | 1739 | `		}` |
+|       38 | 1740 | `		pGen->pIn = &pNext[1];` |
+|        2 | 1741 | `	}` |
+|       30 | 1742 | `	return SXRET_OK;` |
+|       16 | 1743 | `}` |
+|        - | 1744 | `/*` |
+|        - | 1745 | ` * Shared body for list() and short list [...] compilation.` |
+|        - | 1746 | ` * Assumes pGen->pIn and pGen->pEnd are already positioned past` |
+|        - | 1747 | ` * the opening delimiter and before the closing delimiter.` |
+|        - | 1748 | ` */` |
+|      134 | 1749 | `static sxi32 GenStateCompileListBody(ph7_gen_state *pGen)` |
+|        5 | 1750 | `{` |
+|        - | 1751 | `	SySet sNested; /* Dynamically-sized container of NestedListEntry */` |
+|        - | 1752 | `	SyToken *pNext;` |
+|        - | 1753 | `	SyToken *pClassifyIn;` |
+|      139 | 1754 | `	sxi32 nKeyed = 0, nPositional = 0, nEmpty = 0;` |
+|        - | 1755 | `	sxi32 nExpr;` |
+|        - | 1756 | `	sxi32 rc;` |
+|        - | 1757 | ``	/* First pass: classify entries as keyed (`k => v`), positional, or empty`` |
+|        - | 1758 | `	 * skip slots ([,]). A list level must be entirely keyed or entirely` |
+|        - | 1759 | `	 * positional — PHP fatals on a mix, and on an empty slot inside a keyed` |
+|        - | 1760 | `	 * list. */` |
+|      139 | 1761 | `	pClassifyIn = pGen->pIn;` |
+|      395 | 1762 | `	while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pGen->pEnd,&pNext) ){` |
+|      261 | 1763 | `		if( pGen->pIn >= pNext ){` |
+|       13 | 1764 | `			nEmpty++;` |
+|      255 | 1765 | `		}else if( GenStateFindTopLevelArrow(pGen->pIn,pNext) < pNext ){` |
+|       38 | 1766 | `			nKeyed++;` |
+|       20 | 1767 | `		}else{` |
+|      213 | 1768 | `			nPositional++;` |
+|        - | 1769 | `		}` |
+|      261 | 1770 | `		pGen->pIn = &pNext[1];` |
+|        5 | 1771 | `	}` |
+|      139 | 1772 | `	pGen->pIn = pClassifyIn;` |
+|      139 | 1773 | `	if( nKeyed > 0 && nEmpty > 0 ){` |
+|      ! 0 | 1774 | `		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,` |
+|        - | 1775 | `			"Cannot use empty array entries in keyed array assignment");` |
+|      ! 0 | 1776 | `		return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;` |
+|        - | 1777 | `	}` |
+|      139 | 1778 | `	if( nKeyed > 0 && nPositional > 0 ){` |
+|      ! 0 | 1779 | `		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,` |
+|        - | 1780 | `			"Cannot mix keyed and unkeyed array entries in assignments");` |
+|      ! 0 | 1781 | `		return rc == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;` |
+|        - | 1782 | `	}` |
+|      139 | 1783 | `	if( nKeyed > 0 ){` |
+|       30 | 1784 | `		return GenStateCompileKeyedListBody(pGen);` |
+|        - | 1785 | `	}` |
+|      111 | 1786 | `	nExpr = 0;` |
+|      111 | 1787 | `	SySetInit(&sNested,&pGen->pVm->sAllocator,sizeof(struct NestedListEntry));` |
+|      331 | 1788 | `	while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pGen->pEnd,&pNext) ){` |
+|      225 | 1789 | `		if( pGen->pIn < pNext ){` |
+|        - | 1790 | `			/* Check for nested list() */` |
+|      213 | 1791 | `			if( (pGen->pIn->nType & PH7_TK_KEYWORD) &&` |
+|        3 | 1792 | `				SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_LIST ){` |
+|        - | 1793 | `				/* Record this nested list for post-processing */` |
+|        3 | 1794 | `				SyToken *pListEnd = 0;` |
+|        3 | 1795 | `				if( &pGen->pIn[1] < pNext && (pGen->pIn[1].nType & PH7_TK_LPAREN) ){` |
+|        3 | 1796 | `					PH7_DelimitNestedTokens(pGen->pIn+2,pNext,PH7_TK_LPAREN,PH7_TK_RPAREN,&pListEnd);` |
+|        1 | 1797 | `				}` |
+|        3 | 1798 | `				if( pListEnd ){` |
+|        - | 1799 | `					struct NestedListEntry sEntry;` |
+|        3 | 1800 | `					sEntry.nIndex = nExpr;` |
+|        3 | 1801 | `					sEntry.pStart = pGen->pIn;` |
+|        3 | 1802 | `					sEntry.pEnd = pListEnd + 1;` |
+|        3 | 1803 | `					sEntry.isShort = 0;` |
+|        3 | 1804 | `					SySetPut(&sNested,(const void *)&sEntry);` |
+|        1 | 1805 | `				}` |
+|        - | 1806 | `				/* Emit NULL placeholder — outer LOAD_LIST will skip this index */` |
+|        3 | 1807 | `				PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,0,0,0);` |
+|      212 | 1808 | `			}else if( pGen->pIn->nType & PH7_TK_OSB ){` |
+|        - | 1809 | `				/* Nested short destructuring [...] */` |
+|       13 | 1810 | `				SyToken *pBracketEnd = 0;` |
+|       13 | 1811 | `				PH7_DelimitNestedTokens(pGen->pIn+1,pNext,PH7_TK_OSB,PH7_TK_CSB,&pBracketEnd);` |
+|       13 | 1812 | `				if( pBracketEnd ){` |
+|        - | 1813 | `					struct NestedListEntry sEntry;` |
+|       13 | 1814 | `					sEntry.nIndex = nExpr;` |
+|       13 | 1815 | `					sEntry.pStart = pGen->pIn;` |
+|       13 | 1816 | `					sEntry.pEnd = pBracketEnd + 1;` |
+|       13 | 1817 | `					sEntry.isShort = 1;` |
+|       13 | 1818 | `					SySetPut(&sNested,(const void *)&sEntry);` |
+|        6 | 1819 | `				}` |
+|        - | 1820 | `				/* Emit NULL placeholder — outer LOAD_LIST will skip this index */` |
+|       13 | 1821 | `				PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,0,0,0);` |
+|        7 | 1822 | `			}else{` |
+|        - | 1823 | `				/* Compile the expression holding the variable */` |
+|      199 | 1824 | `				rc = GenStateCompileArrayEntry(&(*pGen),pGen->pIn,pNext,EXPR_FLAG_LOAD_IDX_STORE,GenStateListNodeValidator);` |
+|      199 | 1825 | `				if( rc != SXRET_OK ){` |
+|      ! 0 | 1826 | `					SySetRelease(&sNested);` |
+|      ! 0 | 1827 | `					return SXRET_OK;` |
+|        - | 1828 | `				}` |
+|        - | 1829 | `			}` |
+|      109 | 1830 | `		}else{` |
+|        - | 1831 | `			/* Empty entry,load NULL */` |
+|       13 | 1832 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,0/* NULL index */,0,0);` |
+|        - | 1833 | `		}` |
+|      225 | 1834 | `		nExpr++;` |
+|        - | 1835 | `		/* Advance the stream cursor */` |
+|      225 | 1836 | `		pGen->pIn = &pNext[1];` |
+|        5 | 1837 | `	}` |
+|        - | 1838 | `	/* Emit the LOAD_LIST instruction */` |
+|      111 | 1839 | `	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_LIST,nExpr,0,0,0);` |
+|        - | 1840 | `	/* After LOAD_LIST, the source array is still on the stack top.` |
+|        - | 1841 | `	 * For each nested entry, emit code to extract the sub-array` |
+|        - | 1842 | `	 * at the corresponding index and recursively destructure it.` |
+|        - | 1843 | `	 */` |
+|      111 | 1844 | `	if( SySetUsed(&sNested) > 0 ){` |
+|       13 | 1845 | `		struct NestedListEntry *apNested = (struct NestedListEntry *)SySetBasePtr(&sNested);` |
+|        - | 1846 | `		sxu32 i;` |
+|       27 | 1847 | `		for(i = 0; i < SySetUsed(&sNested); i++){` |
+|       15 | 1848 | `			SyToken *pSavedIn = pGen->pIn;` |
+|       15 | 1849 | `			SyToken *pSavedEnd = pGen->pEnd;` |
+|        - | 1850 | `			ph7_value *pIdx;` |
+|        - | 1851 | `			sxu32 nConstIdx;` |
+|        - | 1852 | `			/* DUP the source array (it's on stack top) */` |
+|       15 | 1853 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_DUP,0,0,0,0);` |
+|        - | 1854 | `			/* Push the integer index for this nested entry */` |
+|       15 | 1855 | `			pIdx = PH7_ReserveConstObj(pGen->pVm,&nConstIdx);` |
+|       15 | 1856 | `			if( pIdx == 0 ){` |
+|      ! 0 | 1857 | `				PH7_GenCompileError(&(*pGen),E_ERROR,0,"Fatal, PH7 engine is running out of memory");` |
+|      ! 0 | 1858 | `				SySetRelease(&sNested);` |
+|      ! 0 | 1859 | `				return SXERR_ABORT;` |
+|        - | 1860 | `			}` |
+|       15 | 1861 | `			PH7_MemObjInitFromInt(pGen->pVm,pIdx,(sxi64)apNested[i].nIndex);` |
+|       15 | 1862 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nConstIdx,0,0);` |
+|        - | 1863 | `			/* LOAD_IDX: pop index, replace DUP'd source with source[index].` |
+|        - | 1864 | `			 * iP2=2 signals the VM to emit an "Undefined array key" warning` |
+|        - | 1865 | `			 * when the key is missing (PHP-compatible list destructuring).` |
+|        - | 1866 | `			 */` |
+|       15 | 1867 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_IDX,1,2,0,0);` |
+|        - | 1868 | `			/* Recursively compile the inner list */` |
+|       15 | 1869 | `			pGen->pIn = apNested[i].pStart;` |
+|       15 | 1870 | `			pGen->pEnd = apNested[i].pEnd;` |
+|       15 | 1871 | `			if( apNested[i].isShort ){` |
+|       13 | 1872 | `				rc = PH7_CompileShortList(&(*pGen),0);` |
+|        7 | 1873 | `			}else{` |
+|        3 | 1874 | `				rc = PH7_CompileList(&(*pGen),0);` |
+|        - | 1875 | `			}` |
+|       15 | 1876 | `			pGen->pIn = pSavedIn;` |
+|       15 | 1877 | `			pGen->pEnd = pSavedEnd;` |
+|       15 | 1878 | `			if( rc == SXERR_ABORT ){` |
+|      ! 0 | 1879 | `				SySetRelease(&sNested);` |
+|      ! 0 | 1880 | `				return SXERR_ABORT;` |
+|        - | 1881 | `			}` |
+|        - | 1882 | `			/* Pop the leftover source[index] from the inner LOAD_LIST */` |
+|       15 | 1883 | `			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);` |
+|        8 | 1884 | `		}` |
+|        6 | 1885 | `	}` |
+|      111 | 1886 | `	SySetRelease(&sNested);` |
+|        - | 1887 | `	/* Node successfully compiled */` |
+|      111 | 1888 | `	return SXRET_OK;` |
+|       72 | 1889 | `}` |
+|       40 | 1890 | `PH7_PRIVATE sxi32 PH7_CompileList(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
+|        5 | 1891 | `{` |
+|        - | 1892 | `	/* Jump the 'list' keyword, the leading '(' and exclude trailing ')' */` |
+|       45 | 1893 | `	pGen->pIn += 2;` |
+|       45 | 1894 | `	pGen->pEnd--;` |
+|       20 | 1895 | `	SXUNUSED(iCompileFlag);` |
+|       45 | 1896 | `	return GenStateCompileListBody(pGen);` |
+|        5 | 1897 | `}` |
+|       94 | 1898 | `PH7_PRIVATE sxi32 PH7_CompileShortList(ph7_gen_state *pGen,sxi32 iCompileFlag)` |
+|        5 | 1899 | `{` |
+|        - | 1900 | `	/* Jump the leading '[', exclude trailing ']'. */` |
+|       99 | 1901 | `	pGen->pIn++;` |
+|       99 | 1902 | `	pGen->pEnd--;` |
+|       47 | 1903 | `	SXUNUSED(iCompileFlag);` |
+|       99 | 1904 | `	return GenStateCompileListBody(pGen);` |
+|        5 | 1905 | `}` |
+|        - | 1906 |  |

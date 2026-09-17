@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 46138/56623 lines (81.48%)
+Coverage: 46163/56652 lines (81.49%)
 
 [Up](../index.md)
 
@@ -19,18 +19,18 @@ Coverage: 46138/56623 lines (81.48%)
 |[compile.c](compile.c.md)|92.08%|1524/1655|
 |[compile_class.c](compile_class.c.md)|75.95%|2163/2848|
 |[compile_func.c](compile_func.c.md)|85.88%|870/1013|
-|[compile_literal.c](compile_literal.c.md)|89.02%|949/1066|
+|[compile_literal.c](compile_literal.c.md)|89.11%|957/1074|
 |[compile_node.c](compile_node.c.md)|83.54%|685/820|
-|[compile_stmt.c](compile_stmt.c.md)|73.44%|1457/1984|
+|[compile_stmt.c](compile_stmt.c.md)|73.56%|1466/1993|
 |[constant.c](constant.c.md)|93.09%|970/1042|
 |[hashmap.c](hashmap.c.md)|90.77%|1042/1148|
-|[hashmap_builtin.c](hashmap_builtin.c.md)|85.97%|2444/2843|
+|[hashmap_builtin.c](hashmap_builtin.c.md)|85.93%|2443/2843|
 |[hashmap_sort.c](hashmap_sort.c.md)|91.14%|463/508|
 |[lex.c](lex.c.md)|93.52%|823/880|
 |[memobj.c](memobj.c.md)|81.35%|829/1019|
 |[net.c](net.c.md)|57.45%|81/141|
 |[oo.c](oo.c.md)|87.62%|736/840|
-|[parse.c](parse.c.md)|86.80%|1223/1409|
+|[parse.c](parse.c.md)|86.70%|1232/1421|
 |[vfs.c](vfs.c.md)|67.96%|806/1186|
 |[vfs_io_driver.c](vfs_io_driver.c.md)|64.47%|539/836|
 |[vfs_stream.c](vfs_stream.c.md)|66.90%|1267/1894|

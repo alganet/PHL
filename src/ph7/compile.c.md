@@ -2786,11 +2786,11 @@ Coverage: 1524/1655 lines (92.08%)
 |       ! 0 | 2776 | `		zNoun = "float";` |
 |       ! 0 | 2777 | `	}` |
 |       203 | 2778 | `	if( zExpecting ){` |
-|       140 | 2779 | `		return PH7_GenCompileError(pGen,E_PARSE,nLine,` |
-|        45 | 2780 | `			"syntax error, unexpected %s \"%z\", expecting %s",zNoun,&pTok->sData,zExpecting);` |
+|       143 | 2779 | `		return PH7_GenCompileError(pGen,E_PARSE,nLine,` |
+|        46 | 2780 | `			"syntax error, unexpected %s \"%z\", expecting %s",zNoun,&pTok->sData,zExpecting);` |
 |         - | 2781 | `	}` |
-|       167 | 2782 | `	return PH7_GenCompileError(pGen,E_PARSE,nLine,` |
-|        54 | 2783 | `		"syntax error, unexpected %s \"%z\"",zNoun,&pTok->sData);` |
+|       164 | 2782 | `	return PH7_GenCompileError(pGen,E_PARSE,nLine,` |
+|        53 | 2783 | `		"syntax error, unexpected %s \"%z\"",zNoun,&pTok->sData);` |
 |       109 | 2784 | `}` |
 |         - | 2785 | `/*` |
 |         - | 2786 | ` * Generate a compile-time error message.` |

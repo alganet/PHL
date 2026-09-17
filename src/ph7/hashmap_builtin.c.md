@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 2444/2843 lines (85.97%)
+Coverage: 2443/2843 lines (85.93%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -50,8 +50,8 @@ Coverage: 2444/2843 lines (85.97%)
 |       - |   40 | `		/* Do the merge sort */` |
 |       3 |   41 | `		HashmapMergeSort(pMap,HashmapCmpCallback7,0);` |
 |       - |   42 | `		/* Fix the last link broken by the merge */` |
-|       7 |   43 | `		while(pMap->pLast->pPrev){` |
-|       5 |   44 | `			pMap->pLast = pMap->pLast->pPrev;` |
+|      10 |   43 | `		while(pMap->pLast->pPrev){` |
+|       8 |   44 | `			pMap->pLast = pMap->pLast->pPrev;` |
 |       1 |   45 | `		}` |
 |       1 |   46 | `	}` |
 |       - |   47 | `	/* All done,return TRUE */` |
@@ -4115,13 +4115,13 @@ Coverage: 2444/2843 lines (85.97%)
 |       3 | 4105 | `		}else{` |
 |       7 | 4106 | `			pNode = pMap->pFirst;` |
 |       3 | 4107 | `			for(;;){` |
-|      10 | 4108 | `				if( nEntry == 0 ){` |
+|      12 | 4108 | `				if( nEntry == 0 ){` |
 |       7 | 4109 | `					break;` |
 |       - | 4110 | `				}` |
 |       - | 4111 | `				/* Point to the next entry */` |
-|       4 | 4112 | `				pNode = pNode->pPrev; /* Reverse link */` |
-|       4 | 4113 | `				nEntry--;` |
-|       1 | 4114 | `			}` |
+|       5 | 4112 | `				pNode = pNode->pPrev; /* Reverse link */` |
+|       5 | 4113 | `				nEntry--;` |
+|     ! 0 | 4114 | `			}` |
 |       - | 4115 | `		}` |
 |       9 | 4116 | `		if( pNode->iType == HASHMAP_INT_NODE ){` |
 |       - | 4117 | `			/* Int key */` |
