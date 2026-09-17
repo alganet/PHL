@@ -2,9 +2,8 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-While with empty condition
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+while () is a syntax error on the ")" (was a bare skip freezing PHL's invented "Expected expression after 'while' keyword")
+
 --FILE--
 <?php
 while () {
@@ -12,7 +11,7 @@ while () {
 }
 ?>
 --EXPECTF--
-%s Fatal error:  Expected expression after 'while' keyword %s
+%AParse error:%Asyntax error, unexpected token ")"%A
 --CLEAN--
 <?php
 

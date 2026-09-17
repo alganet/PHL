@@ -2,9 +2,8 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Invalid attribute syntax
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip'; ?>
+a stray token after a property name is a syntax error expecting "," or ";" (was a bare skip freezing PHL's invented "Expected '=' or ';' after attribute name")
+
 --FILE--
 <?php
 class TestClass {
@@ -12,7 +11,7 @@ class TestClass {
 }
 ?>
 --EXPECTF--
-%s Fatal error:  Expected '=' or ';' after attribute name 'var' %s
+%AParse error:%Asyntax error, unexpected integer "123", expecting "," or ";"%A
 --CLEAN--
 <?php
 

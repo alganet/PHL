@@ -730,8 +730,9 @@ PH7_PRIVATE sxi32 PH7_CompileWhile(ph7_gen_state *pGen)
 	/* Delimit the condition */
 	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN /* '(' */,PH7_TK_RPAREN /* ')' */,&pEnd);
 	if( pGen->pIn == pEnd || pEnd >= pGen->pEnd ){
-		/* Empty expression */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected expression after 'while' keyword");
+		/* Empty condition. php reports the token that actually stopped it -- for
+		 * `while ()` that is the ')' -- not a hand-written "expected expression". */
+		rc = PH7_GenSyntaxError(pGen,pGen->pIn < pGen->pEnd ? pGen->pIn : 0,0);
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -867,8 +868,9 @@ PH7_PRIVATE sxi32 PH7_CompileDoWhile(ph7_gen_state *pGen)
 	/* Delimit the condition */
 	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN /* '(' */,PH7_TK_RPAREN /* ')' */,&pEnd);
 	if( pGen->pIn == pEnd || pEnd >= pGen->pEnd ){
-		/* Empty expression */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Expected expression after 'while' keyword");
+		/* Empty condition. php reports the token that actually stopped it -- for
+		 * `while ()` that is the ')' -- not a hand-written "expected expression". */
+		rc = PH7_GenSyntaxError(pGen,pGen->pIn < pGen->pEnd ? pGen->pIn : 0,0);
 		if( rc == SXERR_ABORT ){
 			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
@@ -1949,7 +1951,9 @@ PH7_PRIVATE sxi32 PH7_CompileStatic(ph7_gen_state *pGen)
 	if( pBlock == 0 ){
 		/* Static statement,called outside of a function body,treat it as a simple variable. */
 		if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 ){
-			rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Expected variable after 'static' keyword");
+			/* php: `static FOO;` is a syntax error naming FOO and expecting "::"
+			 * (the parser is still open to `static::` at that point). */
+			rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\"::\"");
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -1969,7 +1973,9 @@ PH7_PRIVATE sxi32 PH7_CompileStatic(ph7_gen_state *pGen)
 	/* Make sure we are dealing with a valid statement */
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_DOLLAR) == 0 || &pGen->pIn[1] >= pGen->pEnd ||
 		(pGen->pIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
-			rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Expected variable after 'static' keyword");
+			/* php: `static FOO;` is a syntax error naming FOO and expecting "::"
+			 * (the parser is still open to `static::` at that point). */
+			rc = PH7_GenSyntaxError(&(*pGen),pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\"::\"");
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
@@ -2479,7 +2485,7 @@ PH7_PRIVATE sxi32 PH7_CompileDeclare(ph7_gen_state *pGen)
 	/* Delimit the directive body (between the outer '(' and its matching ')'). */
 	PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_LPAREN/*'('*/,PH7_TK_RPAREN/*')'*/,&pBodyEnd);
 	if( pBodyEnd >= pGen->pEnd ){
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"declare: Missing closing parenthesis ')'");
+		rc = PH7_GenSyntaxError(pGen,pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"\")\"");
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
