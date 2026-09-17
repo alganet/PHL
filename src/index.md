@@ -1,6 +1,6 @@
 # src/
 
-Coverage: 48959/60225 lines (81.29%)
+Coverage: 48959/60227 lines (81.29%)
 
 [Up](../index.md)
 
@@ -8,4 +8,4 @@ Coverage: 48959/60225 lines (81.29%)
 |:---|---:|---:|
 |[ph7/](ph7/index.md)|81.45%|46067/56559|
 |[phl/](phl/index.md)|68.92%|612/888|
-|[sx/](sx/index.md)|82.07%|2280/2778|
+|[sx/](sx/index.md)|82.01%|2280/2780|

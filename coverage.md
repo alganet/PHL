@@ -73,11 +73,11 @@
 | src/sx/sxmem.c                 | 84.35%   | 442/524     |
 | src/sx/sxmutex.c               | 83.70%   | 77/92       |
 | src/sx/sxrand.c                | 71.15%   | 74/104      |
-| src/sx/sxstr.c                 | 94.90%   | 93/98       |
+| src/sx/sxstr.c                 | 93.00%   | 93/100      |
 | src/sx/sxtypes.h               | 100.00%  | 16/16       |
 | src/sx/sxutils.c               | 78.09%   | 303/388     |
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.29%   | 48959/60225 |
+| Lines                          | 81.29%   | 48959/60227 |
 | Functions                      | 93.25%   | 2223/2384   |

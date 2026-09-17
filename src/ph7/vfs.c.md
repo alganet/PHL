@@ -97,13 +97,13 @@ Coverage: 806/1186 lines (67.96%)
 |      - |   87 | ` * once with the deprecation suppressed. The pragma is _MSC_VER-guarded so the` |
 |      - |   88 | ` * GCC/-Werror Linux build never sees an unknown-pragma warning.` |
 |      - |   89 | ` */` |
-|  19848 |   90 | `PH7_PRIVATE const char * VfsStrerror(int iErr)` |
+|  19856 |   90 | `PH7_PRIVATE const char * VfsStrerror(int iErr)` |
 |      5 |   91 | `{` |
 |      - |   92 | `#if defined(_MSC_VER)` |
 |      - |   93 | `#pragma warning(push)` |
 |      - |   94 | `#pragma warning(disable:4996)` |
 |      - |   95 | `#endif` |
-|  19853 |   96 | `	return strerror(iErr);` |
+|  19861 |   96 | `	return strerror(iErr);` |
 |      - |   97 | `#if defined(_MSC_VER)` |
 |      - |   98 | `#pragma warning(pop)` |
 |      - |   99 | `#endif` |
@@ -114,11 +114,11 @@ Coverage: 806/1186 lines (67.96%)
 |      - |  104 | ` * filesize, so a script could not tell a failed operation from a successful one without` |
 |      - |  105 | ` * checking the return value it never got told to check.` |
 |      - |  106 | ` */` |
-|  19824 |  107 | `static void VfsThrowSysWarning(ph7_context *pCtx,const char *zPath)` |
+|  19832 |  107 | `static void VfsThrowSysWarning(ph7_context *pCtx,const char *zPath)` |
 |      5 |  108 | `{` |
-|  29741 |  109 | `	PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s): %s",` |
-|  19824 |  110 | `		ph7_function_name(pCtx),zPath ? zPath : "",VfsStrerror(errno));` |
-|  19829 |  111 | `}` |
+|  29753 |  109 | `	PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s): %s",` |
+|  19832 |  110 | `		ph7_function_name(pCtx),zPath ? zPath : "",VfsStrerror(errno));` |
+|  19837 |  111 | `}` |
 |     12 |  112 | `PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile)` |
 |      3 |  113 | `{` |
 |     21 |  114 | `	PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s): Failed to open stream: %s",` |
@@ -133,7 +133,7 @@ Coverage: 806/1186 lines (67.96%)
 |      - |  123 | ` * Return` |
 |      - |  124 | ` *  TRUE on success or FALSE on failure.` |
 |      - |  125 | ` */` |
-|  12850 |  126 | `static int PH7_vfs_chdir(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  12846 |  126 | `static int PH7_vfs_chdir(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 |  127 | `{` |
 |      - |  128 | `	const char *zPath;` |
 |      - |  129 | `	ph7_vfs *pVfs;` |
@@ -141,14 +141,14 @@ Coverage: 806/1186 lines (67.96%)
 |      - |  131 | `	/* Only the ARITY is checked here: php coerces a scalar $directory to string,` |
 |      - |  132 | `	 * so chdir(123) attempts "123" and warns that it does not exist. Requiring a` |
 |      - |  133 | `	 * string outright made that call return FALSE silently, with no diagnostic. */` |
-|  12855 |  134 | `	if( nArg < 1 ){` |
+|  12851 |  134 | `	if( nArg < 1 ){` |
 |      - |  135 | `		/* Missing argument,return FALSE */` |
 |    ! 0 |  136 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 |  137 | `		return PH7_OK;` |
 |      - |  138 | `	}` |
 |      - |  139 | `	/* Point to the underlying vfs */` |
-|  12855 |  140 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
-|  12855 |  141 | `	if( pVfs == 0 \|\| pVfs->xChdir == 0 ){` |
+|  12851 |  140 | `	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);` |
+|  12851 |  141 | `	if( pVfs == 0 \|\| pVfs->xChdir == 0 ){` |
 |      - |  142 | `		/* IO routine not implemented,return NULL */` |
 |    ! 0 |  143 | `		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
 |      - |  144 | `			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",` |
@@ -158,19 +158,19 @@ Coverage: 806/1186 lines (67.96%)
 |    ! 0 |  148 | `		return PH7_OK;` |
 |      - |  149 | `	}` |
 |      - |  150 | `	/* Point to the desired directory */` |
-|  12855 |  151 | `	zPath = ph7_value_to_string(apArg[0],0);` |
+|  12851 |  151 | `	zPath = ph7_value_to_string(apArg[0],0);` |
 |      - |  152 | `	/* Perform the requested operation */` |
-|  12855 |  153 | `	errno = 0;` |
-|  12855 |  154 | `	rc = pVfs->xChdir(zPath);` |
-|  12855 |  155 | `	if( rc != PH7_OK ){` |
+|  12851 |  153 | `	errno = 0;` |
+|  12851 |  154 | `	rc = pVfs->xChdir(zPath);` |
+|  12851 |  155 | `	if( rc != PH7_OK ){` |
 |      - |  156 | `		/* chdir has its own php shape: no path, and the errno spelled out. */` |
 |      8 |  157 | `		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s (errno %d)",` |
 |      4 |  158 | `			ph7_function_name(pCtx),VfsStrerror(errno),errno);` |
 |      2 |  159 | `	}` |
 |      - |  160 | `	/* IO return value */` |
-|  12855 |  161 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
-|  12855 |  162 | `	return PH7_OK;` |
-|   6430 |  163 | `}` |
+|  12851 |  161 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
+|  12851 |  162 | `	return PH7_OK;` |
+|   6428 |  163 | `}` |
 |      - |  164 | `/*` |
 |      - |  165 | ` * bool chroot(string $directory)` |
 |      - |  166 | ` *  Change the root directory.` |
@@ -597,8 +597,8 @@ Coverage: 806/1186 lines (67.96%)
 |  32933 |  587 | `	errno = 0;` |
 |  32933 |  588 | `	rc = pVfs->xUnlink(zPath);` |
 |  32933 |  589 | `	if( rc != PH7_OK ){` |
-|  19823 |  590 | `		VfsThrowSysWarning(pCtx,zPath);` |
-|   9909 |  591 | `	}` |
+|  19831 |  590 | `		VfsThrowSysWarning(pCtx,zPath);` |
+|   9913 |  591 | `	}` |
 |      - |  592 | `	/* IO return value */` |
 |  32933 |  593 | `	ph7_result_bool(pCtx,rc == PH7_OK);` |
 |  32933 |  594 | `	return PH7_OK;` |
@@ -1649,8 +1649,8 @@ Coverage: 806/1186 lines (67.96%)
 |      5 | 1639 | `		return PH7_OK;` |
 |      - | 1640 | `	}` |
 |     41 | 1641 | `	iLen = (int)(&zEnd[1]-zPath);` |
-|    976 | 1642 | `	while( zEnd > zPath && ( (int)zEnd[0] != c && (int)zEnd[0] != d ) ){` |
-|    916 | 1643 | `		zEnd--;` |
+|    975 | 1642 | `	while( zEnd > zPath && ( (int)zEnd[0] != c && (int)zEnd[0] != d ) ){` |
+|    915 | 1643 | `		zEnd--;` |
 |      1 | 1644 | `	}` |
 |     41 | 1645 | `	zBase = (zEnd > zPath) ? &zEnd[1] : zPath;` |
 |     41 | 1646 | `	zEnd = &zPath[iLen];` |

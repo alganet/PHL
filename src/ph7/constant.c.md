@@ -542,20 +542,20 @@ Coverage: 970/1042 lines (93.09%)
 |      - |  532 | ` * COUNT_NORMAL` |
 |      - |  533 | ` *  Expands 0` |
 |      - |  534 | ` */` |
-|      6 |  535 | `static void PH7_COUNT_NORMAL_Const(ph7_value *pVal,void *pUserData)` |
+|      8 |  535 | `static void PH7_COUNT_NORMAL_Const(ph7_value *pVal,void *pUserData)` |
 |      2 |  536 | `{` |
-|      8 |  537 | `	ph7_value_int(pVal,0);` |
-|      3 |  538 | `	SXUNUSED(pUserData);` |
-|      8 |  539 | `}` |
+|     10 |  537 | `	ph7_value_int(pVal,0);` |
+|      4 |  538 | `	SXUNUSED(pUserData);` |
+|     10 |  539 | `}` |
 |      - |  540 | `/*` |
 |      - |  541 | ` * COUNT_RECURSIVE` |
 |      - |  542 | ` *  Expands 1.` |
 |      - |  543 | ` */` |
-|     18 |  544 | `static void PH7_COUNT_RECURSIVE_Const(ph7_value *pVal,void *pUserData)` |
+|     20 |  544 | `static void PH7_COUNT_RECURSIVE_Const(ph7_value *pVal,void *pUserData)` |
 |      2 |  545 | `{` |
-|     20 |  546 | `	ph7_value_int(pVal,1);` |
-|      9 |  547 | `	SXUNUSED(pUserData);` |
-|     20 |  548 | `}` |
+|     22 |  546 | `	ph7_value_int(pVal,1);` |
+|     10 |  547 | `	SXUNUSED(pUserData);` |
+|     22 |  548 | `}` |
 |      - |  549 | `/*` |
 |      - |  550 | ` * php's sort-flag constants. The VALUES must match php exactly: they are a` |
 |      - |  551 | ` * public ABI (code passes literal ints, dumps them, and OR-combines the base` |
