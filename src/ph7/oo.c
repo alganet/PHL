@@ -30,7 +30,11 @@ PH7_PRIVATE ph7_class * PH7_NewRawClass(ph7_vm *pVm,const SyString *pName,sxu32 
 	}
 	/* Initialize fields */
 	SyStringInitFromBuf(&pClass->sName,zName,pName->nByte);
-	SyHashInit(&pClass->hMethod,&pVm->sAllocator,0,0);
+	/* php method names are CASE-INSENSITIVE ($o->FOO() finds foo(), and declaring
+	 * both is a redeclaration), so the method table matches on them the same way
+	 * hClass does for class names. Properties and class constants ARE case
+	 * sensitive in php, so hAttr keeps the default exact comparator. */
+	SyHashInit(&pClass->hMethod,&pVm->sAllocator,SyStrHash,SyStrnmicmp);
 	SyHashInit(&pClass->hAttr,&pVm->sAllocator,0,0);
 	SyHashInit(&pClass->hDerived,&pVm->sAllocator,0,0);
 	SySetInit(&pClass->aInterface,&pVm->sAllocator,sizeof(ph7_class *));
