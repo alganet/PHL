@@ -317,43 +317,43 @@ Coverage: 542/621 lines (87.28%)
 |     - |  307 | ` * Return` |
 |     - |  308 | ` *  Return TRUE if the given function has been defined.False otherwise` |
 |     - |  309 | ` */` |
-|   492 |  310 | `PH7_PRIVATE int vm_builtin_func_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   486 |  310 | `PH7_PRIVATE int vm_builtin_func_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     5 |  311 | `{` |
 |     - |  312 | `	const char *zName;` |
 |     - |  313 | `	ph7_vm *pVm;` |
 |     - |  314 | `	int nLen;` |
 |     - |  315 | `	int res;` |
-|   497 |  316 | `	if( nArg < 1 ){` |
+|   491 |  316 | `	if( nArg < 1 ){` |
 |     - |  317 | `		/* Missing argument,return FALSE */` |
 |   ! 0 |  318 | `		ph7_result_bool(pCtx,0);` |
 |   ! 0 |  319 | `		return SXRET_OK;` |
 |     - |  320 | `	}` |
 |     - |  321 | `	/* Point to the target VM */` |
-|   497 |  322 | `	pVm = pCtx->pVm;` |
+|   491 |  322 | `	pVm = pCtx->pVm;` |
 |     - |  323 | `	/* Extract the function name */` |
-|   497 |  324 | `	zName = ph7_value_to_string(apArg[0],&nLen);` |
+|   491 |  324 | `	zName = ph7_value_to_string(apArg[0],&nLen);` |
 |     - |  325 | `	/* php: a leading '\' anchors the name to the global namespace; strip it. */` |
-|   497 |  326 | `	if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }` |
+|   491 |  326 | `	if( nLen > 0 && zName[0] == '\\' ){ zName++; nLen--; }` |
 |     - |  327 | `	/* Assume the function is not defined */` |
-|   497 |  328 | `	res = 0;` |
+|   491 |  328 | `	res = 0;` |
 |     - |  329 | `	/* Perform the lookup */` |
-|   725 |  330 | `	if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 \|\|` |
-|   456 |  331 | `		SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nLen) != 0 ){` |
+|   716 |  330 | `	if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 \|\|` |
+|   450 |  331 | `		SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nLen) != 0 ){` |
 |     - |  332 | `			/* Function is defined */` |
 |   177 |  333 | `			res = 1;` |
 |    86 |  334 | `	}` |
-|   497 |  335 | `	ph7_result_bool(pCtx,res);` |
-|   497 |  336 | `	return SXRET_OK;` |
-|   251 |  337 | `}` |
+|   491 |  335 | `	ph7_result_bool(pCtx,res);` |
+|   491 |  336 | `	return SXRET_OK;` |
+|   248 |  337 | `}` |
 |     - |  338 | `/*` |
 |     - |  339 | ` * Verify that the contents of a variable can be called as a function.` |
 |     - |  340 | ` * [i.e: Whether it is callable or not].` |
 |     - |  341 | ` * Return TRUE if callable.FALSE otherwise.` |
 |     - |  342 | ` */` |
-| 60650 |  343 | `PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)` |
+| 60656 |  343 | `PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)` |
 |     5 |  344 | `{` |
-| 60655 |  345 | `	int res = 0;` |
-| 60655 |  346 | `	if( pValue->iFlags & MEMOBJ_OBJ ){` |
+| 60661 |  345 | `	int res = 0;` |
+| 60661 |  346 | `	if( pValue->iFlags & MEMOBJ_OBJ ){` |
 |     - |  347 | `		/* PHP semantics: an object is callable iff its class declares __invoke` |
 |     - |  348 | `		 * (inherited methods count). The CallInvoke flag is unused — it` |
 |     - |  349 | `		 * formerly invoked __invoke as a runtime predicate, which is not` |
@@ -366,7 +366,7 @@ Coverage: 542/621 lines (87.28%)
 |    41 |  356 | `			res = 1;` |
 |    24 |  357 | `		}` |
 |   276 |  358 | `		(void)CallInvoke;` |
-| 60379 |  359 | `	}else if( pValue->iFlags & MEMOBJ_HASHMAP ){` |
+| 60385 |  359 | `	}else if( pValue->iFlags & MEMOBJ_HASHMAP ){` |
 |    76 |  360 | `		ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;` |
 |    76 |  361 | `		if( pMap->nEntry == 2 ){` |
 |     - |  362 | `			ph7_class *pClass;` |
@@ -390,7 +390,7 @@ Coverage: 542/621 lines (87.28%)
 |    25 |  380 | `				}` |
 |    27 |  381 | `			}` |
 |    31 |  382 | `		}` |
-| 60067 |  383 | `	}else if( pValue->iFlags & MEMOBJ_STRING ){` |
+| 60073 |  383 | `	}else if( pValue->iFlags & MEMOBJ_STRING ){` |
 |     - |  384 | `		const char *zName;` |
 |     - |  385 | `		int nLen;` |
 |     - |  386 | `		/* Extract the name */` |
@@ -417,7 +417,7 @@ Coverage: 542/621 lines (87.28%)
 |   209 |  407 | `			}` |
 |    24 |  408 | `		}` |
 |  2565 |  409 | `	}` |
-| 60655 |  410 | `	return res;` |
+| 60661 |  410 | `	return res;` |
 |     5 |  411 | `}` |
 |     - |  412 | `/*` |
 |     - |  413 | ` * bool is_callable(callable $name[,bool $syntax_only = false])` |
