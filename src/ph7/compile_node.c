@@ -1007,7 +1007,18 @@ PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag)
 			{
 			/* php names the offending token and, for an empty "${}", stops there:
 			 * the "expecting" tail only appears when something could still follow. */
+			/* `${}`: pEnd was stepped back past the trailing '}', so the token php
+			 * names sits AT pEnd. Reach for it before deciding the tail -- php stops
+			 * at "unexpected token \"}\"" with no "expecting" clause, which the
+			 * NULL-token path could not express because it never saw the '}'. */
 			SyToken *pBad = pGen->pIn < pGen->pEnd ? pGen->pIn : 0;
+			if( pBad == 0 && pGen->pTokenSet ){
+				SyToken *pBase = (SyToken *)SySetBasePtr(pGen->pTokenSet);
+				SyToken *pStreamEnd = &pBase[SySetUsed(pGen->pTokenSet)];
+				if( pGen->pEnd >= pBase && pGen->pEnd < pStreamEnd ){
+					pBad = pGen->pEnd;
+				}
+			}
 			PH7_GenSyntaxError(&(*pGen),pBad,
 				(pBad && (pBad->nType & PH7_TK_CCB)) ? 0 : "variable or \"{\" or \"$\"");
 			}
