@@ -1,17 +1,15 @@
 --CREDITS--
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
---SKIPIF--
-<?php if (function_exists('zend_version')) echo 'skip';
-?>
+
 --TEST--
-When an intermediate argument is not an array and the callback is invalid, the intermediate argument error should be thrown first
+array_udiff validates the callback (last arg) before the middle arrays, so a bad callback is named even when a middle array is also invalid (was a bare skip; PHL checked arrays first and named the wrong argument)
 --FILE--
 <?php
 array_udiff(array(1), "not an array", 123);
 ?>
 --EXPECTF--
-%s Fatal error:  Uncaught TypeError: array_udiff(): Argument #2 must be of type array, string given in %s
+%AFatal error:%AUncaught TypeError: array_udiff(): Argument #3 must be a valid callback, no array or string given%A
 --CLEAN--
 <?php
 
