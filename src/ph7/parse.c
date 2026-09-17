@@ -997,13 +997,40 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 				if( pCur < pGen->pEnd ){
 					pCur++;
 				}else{
-					rc = PH7_GenSyntaxError(pGen,pNode->pStart,0);
+					/* Unterminated `${`. php names the token it ran out on (the ';'
+					 * in `${unclosed;`), not the '$' the node started at -- pointing
+					 * back at pNode->pStart reported a nameless variable "$". The
+					 * delimiter search stops at the slice end, so the token php names
+					 * usually sits just past it, still inside the chunk stream. */
+					{
+						SyToken *pBad = 0;
+						if( pGen->pTokenSet ){
+							SyToken *pBase = (SyToken *)SySetBasePtr(pGen->pTokenSet);
+							SyToken *pStreamEnd = &pBase[SySetUsed(pGen->pTokenSet)];
+							if( pCur >= pBase && pCur < pStreamEnd ){
+								pBad = pCur;
+							}
+						}
+						rc = PH7_GenSyntaxError(pGen,pBad,0);
+					}
 					if( rc != SXERR_ABORT ){
 						rc = SXERR_SYNTAX;
 					}
 					SyMemBackendPoolFree(&pGen->pVm->sAllocator,pNode);
 					return rc;
 				}
+			}else{
+				/* A '$' followed by anything else is a php syntax error naming that
+				 * token: `$(`, `$1`. This branch was MISSING, so the node silently
+				 * covered only the '$' and the offending token drifted into a later
+				 * node -- surfacing as an error at the wrong place entirely ("$("
+				 * reported the ';', "$1" reported a modifiable-l-value complaint). */
+				rc = PH7_GenSyntaxError(pGen,pCur,"variable or \"{\" or \"$\"");
+				if( rc != SXERR_ABORT ){
+					rc = SXERR_SYNTAX;
+				}
+				SyMemBackendPoolFree(&pGen->pVm->sAllocator,pNode);
+				return rc;
 			}
 		}
 		pNode->xCode = PH7_CompileVariable;
