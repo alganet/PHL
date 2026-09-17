@@ -19,7 +19,7 @@ for($i=0; $i<10 $i++) {
 }
 ?>
 --EXPECTF--
-%AParse error:%Asyntax error, unexpected token "++", expecting ";"%AParse error:%Asyntax error, unexpected token ")", expecting ";"%A
+%AParse error:%Asyntax error, unexpected variable "$i", expecting ";"%AParse error:%Asyntax error, unexpected token ")", expecting ";"%A
 --CLEAN--
 <?php
 
