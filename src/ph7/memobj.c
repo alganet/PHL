@@ -221,11 +221,13 @@ static sxi64 MemObjIntValue(ph7_value *pObj)
 	}else if( iFlags & MEMOBJ_NULL ){
 		return 0;
 	}else if( iFlags & MEMOBJ_HASHMAP ){
+		/* php: (int) of an array is 0 when empty, 1 otherwise -- NOT the element
+		 * count. PHL returned the count, so `(int)[1,2,3]` was 3. (bool) already
+		 * followed php; int/float did not.) */
 		ph7_hashmap *pMap = (ph7_hashmap *)pObj->x.pOther;
 		sxu32 n = pMap->nEntry;
 		PH7_HashmapUnref(pMap);
-		/* Return total number of entries in the hashmap */
-		return n;
+		return n > 0 ? 1 : 0;
 	}else if( iFlags & MEMOBJ_OBJ ){
 		/* php has NO __toInt(): casting an object to int warns and yields 1. PH7's
 		 * __toInt() was an extension that changed the meaning of valid php source
@@ -287,11 +289,12 @@ static ph7_real MemObjRealValue(ph7_value *pObj)
 		return 0.0;
 #endif
 	}else if( iFlags & MEMOBJ_HASHMAP ){
-		/* Return the total number of entries in the hashmap */
+		/* php: (float) of an array is 0.0 when empty, 1.0 otherwise -- see the int
+		 * branch above. */
 		ph7_hashmap *pMap = (ph7_hashmap *)pObj->x.pOther;
-		ph7_real n = (ph7_real)pMap->nEntry;
+		sxu32 n = pMap->nEntry;
 		PH7_HashmapUnref(pMap);
-		return n;
+		return n > 0 ? (ph7_real)1.0 : (ph7_real)0.0;
 	}else if( iFlags & MEMOBJ_OBJ ){
 		/* php has NO __toFloat(): casting an object to float warns and yields 1.0. */
 		ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;

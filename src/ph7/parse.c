@@ -626,11 +626,16 @@ static sxi32 ExprAssembleAnnon(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd
 	pIn++; /* Jump the leading parenthesis '(' */
 	PH7_DelimitNestedTokens(pIn,pEnd,PH7_TK_LPAREN/*'('*/,PH7_TK_RPAREN/*')'*/,&pIn);
 	if( pIn >= pEnd || &pIn[1] >= pEnd ){
-		/* Nothing follows the parameter list inside our slice: the body is missing.
-		 * php names the token that actually comes next (it lives just past the
-		 * expression slice, still in the raw stream) and says it wanted the '{'. */
+		/* Two different failures used to share this arm and both claimed the body was
+		 * missing. They are distinguishable: the delimiter search leaves pIn ON the
+		 * ')' when it found one, and AT pEnd when it did not.
+		 *   pIn >= pEnd      the parameter list never closed (`function($x {`)
+		 *                    -> php expects ')'
+		 *   &pIn[1] >= pEnd  ')' closed it but nothing follows -> php expects '{'
+		 * php names the token that actually comes next, which lives just past the
+		 * expression slice, still in the raw stream. */
 		SyToken *pBad = pEnd < pGen->pEnd ? pEnd : 0;
-		rc = PH7_GenSyntaxError(&(*pGen),pBad,"\"{\"");
+		rc = PH7_GenSyntaxError(&(*pGen),pBad,pIn >= pEnd ? "\")\"" : "\"{\"");
 		if( rc != SXERR_ABORT ){
 			rc = SXERR_SYNTAX;
 		}
@@ -653,10 +658,39 @@ static sxi32 ExprAssembleAnnon(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd
 				goto Synchronize;
 			}
 			pIn++; /* Jump the leading parenthesis '(' */
-			PH7_DelimitNestedTokens(pIn,pEnd,PH7_TK_LPAREN/*'('*/,PH7_TK_RPAREN/*')'*/,&pIn);
-			if( pIn >= pEnd || &pIn[1] >= pEnd ){
-				/* Syntax error */
-				rc = PH7_GenSyntaxError(&(*pGen),0 /* ran off the end */,0);
+			/* A use-list is only `[&] $var` items separated by commas. php's parser
+			 * has no nested structure to balance here, so the first token that is not
+			 * part of that grammar is the one it names -- `use ($x {` reports the '{',
+			 * not a run to the ')'. PH7_DelimitNestedTokens would instead treat '{' as
+			 * an open bracket and scan past it, so scan the list explicitly and stop at
+			 * the first foreign token. */
+			{
+				SyToken *pUse = pIn;
+				int bClosed = 0;
+				while( pUse < pEnd ){
+					if( pUse->nType & PH7_TK_RPAREN ){ bClosed = 1; break; }
+					if( pUse->nType & (PH7_TK_DOLLAR|PH7_TK_COMMA|PH7_TK_AMPER|PH7_TK_ID|PH7_TK_KEYWORD) ){
+						pUse++;
+						continue;
+					}
+					break; /* foreign token: php names this one */
+				}
+				if( !bClosed ){
+					/* php names the offending token and expects ')'; if the list simply
+					 * ran off the end of the slice, that token sits just past it. */
+					SyToken *pBad = pUse < pEnd ? pUse : (pEnd < pGen->pEnd ? pEnd : 0);
+					rc = PH7_GenSyntaxError(&(*pGen),pBad,"\")\"");
+					if( rc != SXERR_ABORT ){
+						rc = SXERR_SYNTAX;
+					}
+					goto Synchronize;
+				}
+				pIn = pUse; /* on the ')' */
+			}
+			if( &pIn[1] >= pEnd ){
+				/* `use (...)` closed but nothing follows: the body '{' is missing. */
+				SyToken *pBad = pEnd < pGen->pEnd ? pEnd : 0;
+				rc = PH7_GenSyntaxError(&(*pGen),pBad,"\"{\"");
 				if( rc != SXERR_ABORT ){
 					rc = SXERR_SYNTAX;
 				}
@@ -1073,8 +1107,9 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 				 if( pNode->xCode == PH7_CompileList ){
 					 ph7_expr_op *pOp = (pCur < pGen->pEnd) ? (ph7_expr_op *)pCur->pUserData : 0;
 					 if( pCur >= pGen->pEnd || (pCur->nType & PH7_TK_OP) == 0  || pOp == 0 || pOp->iVmOp != PH7_OP_STORE /*'='*/){
-						 /* Syntax error */
-						 rc = PH7_GenSyntaxError(pGen,pNode->pStart,"\"=\"");
+						 /* php names the token that stopped it (the ';' after `list($a,$b)`),
+						  * not the `list` the construct started at. */
+						 rc = PH7_GenSyntaxError(pGen,pCur < pGen->pEnd ? pCur : 0,"\"=\"");
 						 if( rc != SXERR_ABORT ){
 							 rc = SXERR_SYNTAX;
 						 }
