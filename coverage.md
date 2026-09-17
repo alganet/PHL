@@ -30,10 +30,10 @@
 | src/ph7/vfs_stream.c           | 66.90%   | 1267/1894   |
 | src/ph7/vfs_unix.c             | 89.38%   | 421/471     |
 | src/ph7/vfs_win.c              | 82.82%   | 588/710     |
-| src/ph7/vm.c                   | 83.62%   | 2368/2832   |
+| src/ph7/vm.c                   | 83.67%   | 2377/2841   |
 | src/ph7/vm_arg_check.c         | 97.66%   | 375/384     |
-| src/ph7/vm_builtin_call.c      | 87.28%   | 542/621     |
-| src/ph7/vm_builtin_class.c     | 87.60%   | 629/718     |
+| src/ph7/vm_builtin_call.c      | 87.32%   | 544/623     |
+| src/ph7/vm_builtin_class.c     | 87.76%   | 638/727     |
 | src/ph7/vm_builtin_error.c     | 80.00%   | 236/295     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ini.c       | 95.45%   | 21/22       |
@@ -79,5 +79,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.38%   | 49178/60430 |
-| Functions                      | 93.28%   | 2236/2397   |
+| Lines                          | 81.39%   | 49198/60450 |
+| Functions                      | 93.29%   | 2237/2398   |

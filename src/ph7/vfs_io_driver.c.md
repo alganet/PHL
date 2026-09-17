@@ -641,15 +641,15 @@ Coverage: 539/836 lines (64.47%)
 |    - |  631 | ` * Open a pipe to a process.` |
 |    - |  632 | ` * This is called internally by popen(), not through the stream device interface.` |
 |    - |  633 | ` */` |
-| 3952 |  634 | `static pipe_private * PipeOpen(ph7_vm *pVm, const char *zCommand, const char *zMode)` |
+| 3954 |  634 | `static pipe_private * PipeOpen(ph7_vm *pVm, const char *zCommand, const char *zMode)` |
 |    5 |  635 | `{` |
 |    - |  636 | `	pipe_private *pPipe;` |
 |    - |  637 | `	FILE *pFile;` |
-| 3957 |  638 | `	if( pVm == 0 \|\| zCommand == 0 \|\| zMode == 0 ){` |
+| 3959 |  638 | `	if( pVm == 0 \|\| zCommand == 0 \|\| zMode == 0 ){` |
 |  ! 0 |  639 | `		return 0;` |
 |    - |  640 | `	}` |
 |    - |  641 | `	/* Validate mode - only 'r' or 'w' allowed */` |
-| 3957 |  642 | `	if( zMode[0] != 'r' && zMode[0] != 'w' ){` |
+| 3959 |  642 | `	if( zMode[0] != 'r' && zMode[0] != 'w' ){` |
 |  ! 0 |  643 | `		return 0;` |
 |    - |  644 | `	}` |
 |    - |  645 | `	/* Open the pipe using system popen */` |
@@ -713,64 +713,64 @@ Coverage: 539/836 lines (64.47%)
 |    5 |  703 | `		pPipe->iMode = zMode[0];` |
 |    - |  704 | `	}` |
 |    - |  705 | `#elif defined(__UNIXES__) /* Unix */` |
-| 3952 |  706 | `	pFile = popen(zCommand, zMode);` |
-| 3952 |  707 | `	if( pFile == 0 ){` |
+| 3954 |  706 | `	pFile = popen(zCommand, zMode);` |
+| 3954 |  707 | `	if( pFile == 0 ){` |
 |  ! 0 |  708 | `		return 0;` |
 |    - |  709 | `	}` |
 |    - |  710 | `	/* Allocate pipe private structure */` |
-| 3952 |  711 | `	pPipe = (pipe_private *)SyMemBackendAlloc(&pVm->sAllocator, sizeof(pipe_private));` |
-| 3952 |  712 | `	if( pPipe == 0 ){` |
+| 3954 |  711 | `	pPipe = (pipe_private *)SyMemBackendAlloc(&pVm->sAllocator, sizeof(pipe_private));` |
+| 3954 |  712 | `	if( pPipe == 0 ){` |
 |    - |  713 | `		/* Out of memory, close the pipe */` |
 |  ! 0 |  714 | `		pclose(pFile);` |
 |  ! 0 |  715 | `		return 0;` |
 |    - |  716 | `	}` |
 |    - |  717 | `	/* Initialize the structure */` |
-| 3952 |  718 | `	pPipe->pFile = pFile;` |
-| 3952 |  719 | `	pPipe->pVm = pVm;` |
-| 3952 |  720 | `	pPipe->iMode = zMode[0];` |
+| 3954 |  718 | `	pPipe->pFile = pFile;` |
+| 3954 |  719 | `	pPipe->pVm = pVm;` |
+| 3954 |  720 | `	pPipe->iMode = zMode[0];` |
 |    - |  721 | `#else /* OS_OTHER: no process pipes on this platform */` |
 |    - |  722 | `	(void)pFile;` |
 |    - |  723 | `	return 0;` |
 |    - |  724 | `#endif` |
-| 3957 |  725 | `	return pPipe;` |
-| 1981 |  726 | `}` |
+| 3959 |  725 | `	return pPipe;` |
+| 1982 |  726 | `}` |
 |    - |  727 | `/*` |
 |    - |  728 | ` * Close a pipe and return the exit status of the process.` |
 |    - |  729 | ` * Returns the exit status, or -1 on error.` |
 |    - |  730 | ` */` |
-| 3926 |  731 | `static int PipeClose(pipe_private *pPipe)` |
+| 3928 |  731 | `static int PipeClose(pipe_private *pPipe)` |
 |    5 |  732 | `{` |
 |    - |  733 | `	int status;` |
 |    - |  734 | `	ph7_vm *pVm;` |
-| 3931 |  735 | `	if( pPipe == 0 \|\| pPipe->pFile == 0 ){` |
+| 3933 |  735 | `	if( pPipe == 0 \|\| pPipe->pFile == 0 ){` |
 |  ! 0 |  736 | `		return -1;` |
 |    - |  737 | `	}` |
-| 3931 |  738 | `	pVm = pPipe->pVm;` |
+| 3933 |  738 | `	pVm = pPipe->pVm;` |
 |    - |  739 | `	/* Close the pipe and get exit status */` |
 |    - |  740 | `#ifdef __WINNT__` |
 |    - |  741 | `	/* Use our custom WinPclose that properly waits for process completion */` |
 |    5 |  742 | `	status = WinPclose(pPipe->pFile, pPipe->hProcess);` |
 |    - |  743 | `#elif defined(__UNIXES__)` |
-| 3926 |  744 | `	status = pclose(pPipe->pFile);` |
+| 3928 |  744 | `	status = pclose(pPipe->pFile);` |
 |    - |  745 | `	/* On Unix, pclose returns the status from waitpid, need to extract exit code */` |
-| 3926 |  746 | `	if( status != -1 ){` |
-| 3926 |  747 | `		if( WIFEXITED(status) ){` |
-| 3926 |  748 | `			status = WEXITSTATUS(status);` |
-| 1963 |  749 | `		}else if( WIFSIGNALED(status) ){` |
+| 3928 |  746 | `	if( status != -1 ){` |
+| 3928 |  747 | `		if( WIFEXITED(status) ){` |
+| 3928 |  748 | `			status = WEXITSTATUS(status);` |
+| 1964 |  749 | `		}else if( WIFSIGNALED(status) ){` |
 |    - |  750 | `			/* Process was killed by a signal - use shell convention: 128 + signal number */` |
 |  ! 0 |  751 | `			status = 128 + WTERMSIG(status);` |
 |  ! 0 |  752 | `		}else{` |
 |    - |  753 | `			/* Unknown termination reason */` |
 |  ! 0 |  754 | `			status = -1;` |
 |    - |  755 | `		}` |
-| 1963 |  756 | `	}` |
+| 1964 |  756 | `	}` |
 |    - |  757 | `#else /* OS_OTHER: no process pipes on this platform */` |
 |    - |  758 | `	status = -1;` |
 |    - |  759 | `#endif` |
 |    - |  760 | `	/* Free the structure */` |
-| 3931 |  761 | `	SyMemBackendFree(&pVm->sAllocator, pPipe);` |
-| 3931 |  762 | `	return status;` |
-| 1968 |  763 | `}` |
+| 3933 |  761 | `	SyMemBackendFree(&pVm->sAllocator, pPipe);` |
+| 3933 |  762 | `	return status;` |
+| 1969 |  763 | `}` |
 |    - |  764 | `/*` |
 |    - |  765 | ` * Pipe stream xClose implementation.` |
 |    - |  766 | ` * Note: This is called by fclose(), not pclose().` |
@@ -786,26 +786,26 @@ Coverage: 539/836 lines (64.47%)
 |    - |  776 | `/*` |
 |    - |  777 | ` * Pipe stream xRead implementation.` |
 |    - |  778 | ` */` |
-| 5936 |  779 | `static ph7_int64 PipeStream_Read(void *pHandle, void *pBuffer, ph7_int64 nDatatoRead)` |
+| 5940 |  779 | `static ph7_int64 PipeStream_Read(void *pHandle, void *pBuffer, ph7_int64 nDatatoRead)` |
 |    4 |  780 | `{` |
-| 5940 |  781 | `	pipe_private *pPipe = (pipe_private *)pHandle;` |
+| 5944 |  781 | `	pipe_private *pPipe = (pipe_private *)pHandle;` |
 |    - |  782 | `	size_t nRead;` |
-| 5940 |  783 | `	if( pPipe == 0 \|\| pPipe->pFile == 0 ){` |
+| 5944 |  783 | `	if( pPipe == 0 \|\| pPipe->pFile == 0 ){` |
 |  ! 0 |  784 | `		return -1;` |
 |    - |  785 | `	}` |
-| 5940 |  786 | `	if( pPipe->iMode != 'r' ){` |
+| 5944 |  786 | `	if( pPipe->iMode != 'r' ){` |
 |    - |  787 | `		/* Cannot read from a write-only pipe */` |
 |  ! 0 |  788 | `		return -1;` |
 |    - |  789 | `	}` |
-| 5940 |  790 | `	nRead = fread(pBuffer, 1, (size_t)nDatatoRead, pPipe->pFile);` |
-| 5940 |  791 | `	if( nRead == 0 ){` |
-| 3962 |  792 | `		if( feof(pPipe->pFile) ){` |
-| 3962 |  793 | `			return 0; /* EOF */` |
+| 5944 |  790 | `	nRead = fread(pBuffer, 1, (size_t)nDatatoRead, pPipe->pFile);` |
+| 5944 |  791 | `	if( nRead == 0 ){` |
+| 3964 |  792 | `		if( feof(pPipe->pFile) ){` |
+| 3964 |  793 | `			return 0; /* EOF */` |
 |    - |  794 | `		}` |
 |  ! 0 |  795 | `		return -1; /* Error */` |
 |    - |  796 | `	}` |
-| 1982 |  797 | `	return (ph7_int64)nRead;` |
-| 2972 |  798 | `}` |
+| 1984 |  797 | `	return (ph7_int64)nRead;` |
+| 2974 |  798 | `}` |
 |    - |  799 | `/*` |
 |    - |  800 | ` * Pipe stream xWrite implementation.` |
 |    - |  801 | ` */` |
@@ -849,9 +849,9 @@ Coverage: 539/836 lines (64.47%)
 |    - |  839 | ` * Return TRUE if we are dealing with the pipe:// stream.` |
 |    - |  840 | ` * FALSE otherwise.` |
 |    - |  841 | ` */` |
-| 3824 |  842 | `static int is_pipe_stream(const ph7_io_stream *pStream)` |
+| 3826 |  842 | `static int is_pipe_stream(const ph7_io_stream *pStream)` |
 |    5 |  843 | `{` |
-| 3829 |  844 | `	return pStream == &sPipe_Stream;` |
+| 3831 |  844 | `	return pStream == &sPipe_Stream;` |
 |    5 |  845 | `}` |
 |    - |  846 | `/*` |
 |    - |  847 | ` * resource popen(string $command, string $mode)` |
@@ -912,53 +912,53 @@ Coverage: 539/836 lines (64.47%)
 |  ! 0 |  902 | `	SyBlobRelease(&sOut);` |
 |  ! 0 |  903 | `	return PH7_OK;` |
 |  ! 0 |  904 | `}` |
-| 3952 |  905 | `PH7_PRIVATE int PH7_builtin_popen(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+| 3954 |  905 | `PH7_PRIVATE int PH7_builtin_popen(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    5 |  906 | `{` |
 |    - |  907 | `	const char *zCommand, *zMode;` |
 |    - |  908 | `	pipe_private *pPipe;` |
 |    - |  909 | `	io_private *pDev;` |
 |    - |  910 | `	int nCmdLen, nModeLen;` |
-| 3957 |  911 | `	if( nArg < 2 \|\| !ph7_value_is_string(apArg[0]) \|\| !ph7_value_is_string(apArg[1]) ){` |
+| 3959 |  911 | `	if( nArg < 2 \|\| !ph7_value_is_string(apArg[0]) \|\| !ph7_value_is_string(apArg[1]) ){` |
 |    - |  912 | `		/* Missing/Invalid arguments, return FALSE */` |
 |  ! 0 |  913 | `		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Expecting a command string and mode");` |
 |  ! 0 |  914 | `		ph7_result_bool(pCtx, 0);` |
 |  ! 0 |  915 | `		return PH7_OK;` |
 |    - |  916 | `	}` |
 |    - |  917 | `	/* Extract the command and mode */` |
-| 3957 |  918 | `	zCommand = ph7_value_to_string(apArg[0], &nCmdLen);` |
-| 3957 |  919 | `	zMode = ph7_value_to_string(apArg[1], &nModeLen);` |
-| 3957 |  920 | `	if( nCmdLen < 1 ){` |
+| 3959 |  918 | `	zCommand = ph7_value_to_string(apArg[0], &nCmdLen);` |
+| 3959 |  919 | `	zMode = ph7_value_to_string(apArg[1], &nModeLen);` |
+| 3959 |  920 | `	if( nCmdLen < 1 ){` |
 |  ! 0 |  921 | `		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Empty command");` |
 |  ! 0 |  922 | `		ph7_result_bool(pCtx, 0);` |
 |  ! 0 |  923 | `		return PH7_OK;` |
 |    - |  924 | `	}` |
-| 3957 |  925 | `	if( nModeLen < 1 \|\| (zMode[0] != 'r' && zMode[0] != 'w') ){` |
+| 3959 |  925 | `	if( nModeLen < 1 \|\| (zMode[0] != 'r' && zMode[0] != 'w') ){` |
 |  ! 0 |  926 | `		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Invalid mode, expected 'r' or 'w'");` |
 |  ! 0 |  927 | `		ph7_result_bool(pCtx, 0);` |
 |  ! 0 |  928 | `		return PH7_OK;` |
 |    - |  929 | `	}` |
 |    - |  930 | `	/* Open the pipe */` |
-| 3957 |  931 | `	pPipe = PipeOpen(pCtx->pVm, zCommand, zMode);` |
-| 3957 |  932 | `	if( pPipe == 0 ){` |
+| 3959 |  931 | `	pPipe = PipeOpen(pCtx->pVm, zCommand, zMode);` |
+| 3959 |  932 | `	if( pPipe == 0 ){` |
 |    - |  933 | `		/* Failed to open pipe */` |
 |  ! 0 |  934 | `		ph7_result_bool(pCtx, 0);` |
 |  ! 0 |  935 | `		return PH7_OK;` |
 |    - |  936 | `	}` |
 |    - |  937 | `	/* Allocate an io_private instance to wrap the pipe */` |
-| 3957 |  938 | `	pDev = (io_private *)ph7_context_alloc_chunk(pCtx, sizeof(io_private), TRUE, FALSE);` |
-| 3957 |  939 | `	if( pDev == 0 ){` |
+| 3959 |  938 | `	pDev = (io_private *)ph7_context_alloc_chunk(pCtx, sizeof(io_private), TRUE, FALSE);` |
+| 3959 |  939 | `	if( pDev == 0 ){` |
 |  ! 0 |  940 | `		ph7_context_throw_error(pCtx, PH7_CTX_ERR, "PH7 is running out of memory");` |
 |  ! 0 |  941 | `		PipeClose(pPipe);` |
 |  ! 0 |  942 | `		ph7_result_bool(pCtx, 0);` |
 |  ! 0 |  943 | `		return PH7_OK;` |
 |    - |  944 | `	}` |
 |    - |  945 | `	/* Initialize the io_private structure */` |
-| 3957 |  946 | `	InitIOPrivate(pCtx->pVm, &sPipe_Stream, pDev);` |
-| 3957 |  947 | `	pDev->pHandle = pPipe;` |
+| 3959 |  946 | `	InitIOPrivate(pCtx->pVm, &sPipe_Stream, pDev);` |
+| 3959 |  947 | `	pDev->pHandle = pPipe;` |
 |    - |  948 | `	/* Return the io_private instance as a resource */` |
-| 3957 |  949 | `	ph7_result_resource(pCtx, pDev);` |
-| 3957 |  950 | `	return PH7_OK;` |
-| 1981 |  951 | `}` |
+| 3959 |  949 | `	ph7_result_resource(pCtx, pDev);` |
+| 3959 |  950 | `	return PH7_OK;` |
+| 1982 |  951 | `}` |
 |    - |  952 | `/*` |
 |    - |  953 | ` * int pclose(resource $handle)` |
 |    - |  954 | ` *  Closes a process file pointer opened by popen() and returns the exit code.` |
@@ -968,43 +968,43 @@ Coverage: 539/836 lines (64.47%)
 |    - |  958 | ` * Return` |
 |    - |  959 | ` *  Returns the termination status of the process that was run, or -1 on error.` |
 |    - |  960 | ` */` |
-| 3824 |  961 | `PH7_PRIVATE int PH7_builtin_pclose(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+| 3826 |  961 | `PH7_PRIVATE int PH7_builtin_pclose(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    5 |  962 | `{` |
 |    - |  963 | `	const ph7_io_stream *pStream;` |
 |    - |  964 | `	pipe_private *pPipe;` |
 |    - |  965 | `	io_private *pDev;` |
 |    - |  966 | `	int status;` |
-| 3829 |  967 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
+| 3831 |  967 | `	if( nArg < 1 \|\| !ph7_value_is_resource(apArg[0]) ){` |
 |    - |  968 | `		/* Missing/Invalid arguments, return -1 */` |
 |  ! 0 |  969 | `		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Expecting an IO handle");` |
 |  ! 0 |  970 | `		ph7_result_int(pCtx, -1);` |
 |  ! 0 |  971 | `		return PH7_OK;` |
 |    - |  972 | `	}` |
 |    - |  973 | `	/* Extract our private data */` |
-| 3829 |  974 | `	pDev = (io_private *)ph7_value_to_resource(apArg[0]);` |
+| 3831 |  974 | `	pDev = (io_private *)ph7_value_to_resource(apArg[0]);` |
 |    - |  975 | `	/* Make sure we are dealing with a valid io_private instance */` |
-| 3829 |  976 | `	if( IO_PRIVATE_INVALID(pDev) ){` |
+| 3831 |  976 | `	if( IO_PRIVATE_INVALID(pDev) ){` |
 |  ! 0 |  977 | `		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Expecting an IO handle");` |
 |  ! 0 |  978 | `		ph7_result_int(pCtx, -1);` |
 |  ! 0 |  979 | `		return PH7_OK;` |
 |    - |  980 | `	}` |
 |    - |  981 | `	/* Point to the target IO stream device */` |
-| 3829 |  982 | `	pStream = pDev->pStream;` |
-| 3829 |  983 | `	if( pStream == 0 \|\| !is_pipe_stream(pStream) ){` |
+| 3831 |  982 | `	pStream = pDev->pStream;` |
+| 3831 |  983 | `	if( pStream == 0 \|\| !is_pipe_stream(pStream) ){` |
 |  ! 0 |  984 | `		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Expecting a pipe handle from popen()");` |
 |  ! 0 |  985 | `		ph7_result_int(pCtx, -1);` |
 |  ! 0 |  986 | `		return PH7_OK;` |
 |    - |  987 | `	}` |
 |    - |  988 | `	/* Get the pipe handle */` |
-| 3829 |  989 | `	pPipe = (pipe_private *)pDev->pHandle;` |
+| 3831 |  989 | `	pPipe = (pipe_private *)pDev->pHandle;` |
 |    - |  990 | `	/* Close the pipe and get exit status */` |
-| 3829 |  991 | `	status = PipeClose(pPipe);` |
+| 3831 |  991 | `	status = PipeClose(pPipe);` |
 |    - |  992 | `	/* Keep the handle alive but flag it closed so shared copies see it */` |
-| 3829 |  993 | `	MarkIOPrivateClosed(pDev);` |
+| 3831 |  993 | `	MarkIOPrivateClosed(pDev);` |
 |    - |  994 | `	/* Return the exit status */` |
-| 3829 |  995 | `	ph7_result_int(pCtx, status);` |
-| 3829 |  996 | `	return PH7_OK;` |
-| 1917 |  997 | `}` |
+| 3831 |  995 | `	ph7_result_int(pCtx, status);` |
+| 3831 |  996 | `	return PH7_OK;` |
+| 1918 |  997 | `}` |
 |    - |  998 | `/*` |
 |    - |  999 | ` * proc_open() / proc_close() / proc_get_status() / proc_terminate()` |
 |    - | 1000 | ` *   Run a command via fork()/exec() with fine-grained control over its` |
@@ -1390,14 +1390,14 @@ Coverage: 539/836 lines (64.47%)
 |    - | 1380 | ` * Return TRUE if we are dealing with the data:// stream.` |
 |    - | 1381 | ` */` |
 |  196 | 1382 | `PH7_PRIVATE int is_data_stream(const ph7_io_stream *pStream)` |
-|    4 | 1383 | `{` |
+|    3 | 1383 | `{` |
 |    - | 1384 | `#ifndef PH7_DISABLE_DISK_IO` |
-|  200 | 1385 | `	return pStream == &sDATA_Stream;` |
+|  199 | 1385 | `	return pStream == &sDATA_Stream;` |
 |    - | 1386 | `#else` |
 |    - | 1387 | `	SXUNUSED(pStream); /* cc warning */` |
 |    - | 1388 | `	return 0;` |
 |    - | 1389 | `#endif /* PH7_DISABLE_DISK_IO */` |
-|    4 | 1390 | `}` |
+|    3 | 1390 | `}` |
 |    - | 1391 | `/*` |
 |    - | 1392 | ` * bool stream_isatty(resource $stream)` |
 |    - | 1393 | ` *  TRUE when the stream is an interactive terminal. PHL answers this for the` |
