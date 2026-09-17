@@ -4,7 +4,10 @@ SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 phl interpreter CLI help
 --SKIPIF--
-<?php if (function_exists('zend_version')) { echo "skip"; } ?>
+<?php
+// Engine identity: this can never be cross-engine.
+if (function_exists('zend_version')) { echo 'skip PHL-only by construction: asserts the --help text (engine identity)'; }
+?>
 --FILE--
 <?php
 $phl = getenv('PHPT_TARGET_EXECUTABLE');
