@@ -371,11 +371,11 @@ Coverage: 970/1042 lines (93.09%)
 |      - |  361 | ` * E_WARNING` |
 |      - |  362 | ` *  Expands 2` |
 |      - |  363 | ` */` |
-|      2 |  364 | `static void PH7_E_WARNING_Const(ph7_value *pVal,void *pUserData)` |
-|      1 |  365 | `{` |
-|      3 |  366 | `	ph7_value_int(pVal,2);` |
-|      1 |  367 | `	SXUNUSED(pUserData);` |
-|      3 |  368 | `}` |
+|      6 |  364 | `static void PH7_E_WARNING_Const(ph7_value *pVal,void *pUserData)` |
+|      2 |  365 | `{` |
+|      8 |  366 | `	ph7_value_int(pVal,2);` |
+|      3 |  367 | `	SXUNUSED(pUserData);` |
+|      8 |  368 | `}` |
 |      - |  369 | `/*` |
 |      - |  370 | ` * E_PARSE` |
 |      - |  371 | ` *  Expands 4` |
@@ -488,11 +488,11 @@ Coverage: 970/1042 lines (93.09%)
 |      - |  478 | ` * E_ALL` |
 |      - |  479 | ` *  Expands 30719 (php 8: E_STRICT is no longer part of E_ALL)` |
 |      - |  480 | ` */` |
-|     14 |  481 | `static void PH7_E_ALL_Const(ph7_value *pVal,void *pUserData)` |
+|     20 |  481 | `static void PH7_E_ALL_Const(ph7_value *pVal,void *pUserData)` |
 |      3 |  482 | `{` |
-|     17 |  483 | `	ph7_value_int(pVal,30719);` |
-|      7 |  484 | `	SXUNUSED(pUserData);` |
-|     17 |  485 | `}` |
+|     23 |  483 | `	ph7_value_int(pVal,30719);` |
+|     10 |  484 | `	SXUNUSED(pUserData);` |
+|     23 |  485 | `}` |
 |      - |  486 | `/*` |
 |      - |  487 | ` * CASE_LOWER` |
 |      - |  488 | ` *  Expands 0.` |

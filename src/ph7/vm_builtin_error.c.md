@@ -184,13 +184,13 @@ Coverage: 236/295 lines (80.00%)
 |    - |  174 | ` *   Returns the old error_reporting level or the current level if no level` |
 |    - |  175 | ` *   parameter is given.` |
 |    - |  176 | ` */` |
-|   82 |  177 | `PH7_PRIVATE int vm_builtin_error_reporting(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   90 |  177 | `PH7_PRIVATE int vm_builtin_error_reporting(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    3 |  178 | `{` |
-|   85 |  179 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   93 |  179 | `	ph7_vm *pVm = pCtx->pVm;` |
 |    - |  180 | `	int nOld;` |
 |    - |  181 | `	/* Extract the old reporting level */` |
-|   85 |  182 | `	nOld = pVm->bErrReport ? (int)pVm->iErrMask : 0;` |
-|   85 |  183 | `	if( pVm->nErrSuppress > 0 ){` |
+|   93 |  182 | `	nOld = pVm->bErrReport ? (int)pVm->iErrMask : 0;` |
+|   93 |  183 | `	if( pVm->nErrSuppress > 0 ){` |
 |    - |  184 | `		/* Inside the '@' silence operator php reports the level masked down to` |
 |    - |  185 | `		 * the errors '@' cannot suppress: E_ERROR\|E_PARSE\|E_CORE_ERROR\|` |
 |    - |  186 | `		 * E_COMPILE_ERROR\|E_USER_ERROR\|E_RECOVERABLE_ERROR (== 4437). A custom` |
@@ -198,16 +198,16 @@ Coverage: 236/295 lines (80.00%)
 |    - |  188 | `		 * '@', so a suppressed warning must fall outside the returned mask. */` |
 |   10 |  189 | `		nOld &= 4437;` |
 |    4 |  190 | `	}` |
-|   85 |  191 | `	if( nArg > 0 ){` |
+|   93 |  191 | `	if( nArg > 0 ){` |
 |    - |  192 | `		int nNew;` |
 |    - |  193 | `		/* Keep the LEVEL, not just an on/off bit: php masks per-severity. */` |
-|   31 |  194 | `		nNew = ph7_value_to_int(apArg[0]);` |
-|   31 |  195 | `		pVm->iErrMask = (sxi32)nNew;` |
-|   31 |  196 | `		pVm->bErrReport = nNew != 0;` |
-|   14 |  197 | `	}` |
+|   37 |  194 | `		nNew = ph7_value_to_int(apArg[0]);` |
+|   37 |  195 | `		pVm->iErrMask = (sxi32)nNew;` |
+|   37 |  196 | `		pVm->bErrReport = nNew != 0;` |
+|   17 |  197 | `	}` |
 |    - |  198 | `	/* Return the old level */` |
-|   85 |  199 | `	ph7_result_int(pCtx,nOld);` |
-|   85 |  200 | `	return PH7_OK;` |
+|   93 |  199 | `	ph7_result_int(pCtx,nOld);` |
+|   93 |  200 | `	return PH7_OK;` |
 |    3 |  201 | `}` |
 |    - |  202 | `/*` |
 |    - |  203 | ` * bool error_log(string $message[,int $message_type = 0 [,string $destination[,string $extra_headers]]])` |
