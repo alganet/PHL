@@ -5019,9 +5019,6 @@ static const ph7_builtin_func aVmFunc[] = {
 	  /* URL related function */
 	{"parse_url",        vm_builtin_parse_url     },
 	 /* Refer to 'builtin.c' for others string processing functions. */
-	   /* UTF-8 encoding/decoding */
-	{"utf8_encode",    vm_builtin_utf8_encode},
-	{"utf8_decode",    vm_builtin_utf8_decode},
 	   /* Command line processing */
 	{"getopt",         vm_builtin_getopt     },
 	   /* JSON encoding/decoding */
