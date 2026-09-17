@@ -5,10 +5,8 @@ SPDX-License-Identifier: BSD-3-Clause
 phl interpreter CLI bytecode dump
 --SKIPIF--
 <?php
-// Only run under PHL; PHP has its own "phl" binary unrelated to this test.
-if (!defined('PH7_VERSION')) {
-    echo "skip";
-}
+// Engine identity: this can never be cross-engine.
+if (!defined('PH7_VERSION')) { echo 'skip PHL-only by construction: asserts the -b bytecode dump, which php has no equivalent for'; }
 ?>
 --FILE--
 <?php

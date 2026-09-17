@@ -5,9 +5,8 @@ SPDX-License-Identifier: BSD-3-Clause
 ph7version returns the PH7_VERSION value
 --SKIPIF--
 <?php
-if (function_exists('zend_version')) {
-    echo "skip";
-}
+// Engine identity: this can never be cross-engine.
+if (function_exists('zend_version')) { echo 'skip PHL-only by construction: PH7_VERSION does not exist in php'; }
 ?>
 --FILE--
 <?php
