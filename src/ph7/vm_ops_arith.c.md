@@ -459,15 +459,15 @@ Coverage: 588/709 lines (82.93%)
 |      - |  449 | ` * OP_SUB: body moved verbatim from the OP_SUB arm of` |
 |      - |  450 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
 |      - |  451 | ` */` |
-|  24235 |  452 | `PH7_PRIVATE VmOpRc VmExecOpSub(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+|  24203 |  452 | `PH7_PRIVATE VmOpRc VmExecOpSub(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
 |      5 |  453 | `{` |
-|  24240 |  454 | `	ph7_value *pTos = pState->pTos;` |
-|  24240 |  455 | `	ph7_value *pStack = pState->pStack;` |
-|  24240 |  456 | `	VmInstr *aInstr = pState->aInstr;` |
-|  24240 |  457 | `	sxi32 pc = pState->pc;` |
+|  24208 |  454 | `	ph7_value *pTos = pState->pTos;` |
+|  24208 |  455 | `	ph7_value *pStack = pState->pStack;` |
+|  24208 |  456 | `	VmInstr *aInstr = pState->aInstr;` |
+|  24208 |  457 | `	sxi32 pc = pState->pc;` |
 |      - |  458 | `	sxi32 rc;` |
-|  12173 |  459 | `	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
-|  24240 |  460 | `	ph7_value *pNos = &pTos[-1];` |
+|  12157 |  459 | `	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
+|  24208 |  460 | `	ph7_value *pNos = &pTos[-1];` |
 |      - |  461 | `#ifdef UNTRUST` |
 |      - |  462 | `	if( pNos < pStack ){` |
 |      - |  463 | `		VM_EXIT_ABORT;` |
@@ -478,8 +478,8 @@ Coverage: 588/709 lines (82.93%)
 |      - |  468 | `		 * object or resource operand is a TypeError, not a silent 0. Settle the stack` |
 |      - |  469 | `		 * BEFORE throwing, so the catch does not run over the abandoned operands. */` |
 |      - |  470 | `		SyBlob sArMsg;` |
-|  24240 |  471 | `		SyBlobInit(&sArMsg,&pVm->sAllocator);` |
-|  24240 |  472 | `		if( VmArithOperandCheck(&(*pVm),pNos,pTos,"-",&sArMsg) != SXRET_OK ){` |
+|  24208 |  471 | `		SyBlobInit(&sArMsg,&pVm->sAllocator);` |
+|  24208 |  472 | `		if( VmArithOperandCheck(&(*pVm),pNos,pTos,"-",&sArMsg) != SXRET_OK ){` |
 |      - |  473 | `			sxi32 rcAr;` |
 |    ! 0 |  474 | `			VmPopOperand(&pTos,1);` |
 |    ! 0 |  475 | `			PH7_MemObjRelease(pTos);` |
@@ -492,14 +492,14 @@ Coverage: 588/709 lines (82.93%)
 |    ! 0 |  482 | `			rc = rcAr;` |
 |    ! 0 |  483 | `			PH7_THROW_ROUTE_MIDEXPR(rc)` |
 |      - |  484 | `		}` |
-|  24240 |  485 | `		SyBlobRelease(&sArMsg);` |
+|  24208 |  485 | `		SyBlobRelease(&sArMsg);` |
 |      - |  486 | `	}` |
 |      - |  487 | `	/* Force the operands to be numeric. Without this a string operand fell through` |
 |      - |  488 | `	 * to the integer branch below, which read the raw x.iVal union member: "10" - "4"` |
 |      - |  489 | `	 * quietly evaluated to 0. */` |
-|  24240 |  490 | `	PH7_MemObjToNumeric(pTos);` |
-|  24240 |  491 | `	PH7_MemObjToNumeric(pNos);` |
-|  24240 |  492 | `	if( MEMOBJ_REAL & (pTos->iFlags\|pNos->iFlags) ){` |
+|  24208 |  490 | `	PH7_MemObjToNumeric(pTos);` |
+|  24208 |  491 | `	PH7_MemObjToNumeric(pNos);` |
+|  24208 |  492 | `	if( MEMOBJ_REAL & (pTos->iFlags\|pNos->iFlags) ){` |
 |      - |  493 | `		/* Floating point arithemic */` |
 |      - |  494 | `		ph7_real a,b,r;` |
 |    105 |  495 | `		if( (pTos->iFlags & MEMOBJ_REAL) == 0 ){` |
@@ -520,9 +520,9 @@ Coverage: 588/709 lines (82.93%)
 |      - |  510 | `		/* Integer arithmetic; PHP promotes an overflowing difference to float.` |
 |      - |  511 | `		 * The integer-only build wraps like OP_POW's OMIT path. */` |
 |      - |  512 | `		sxi64 a,b,r;` |
-|  24136 |  513 | `		a = pNos->x.iVal;` |
-|  24136 |  514 | `		b = pTos->x.iVal;` |
-|  24136 |  515 | `		if( PH7_SUB_OVERFLOW64(a,b,&r) ){` |
+|  24104 |  513 | `		a = pNos->x.iVal;` |
+|  24104 |  514 | `		b = pTos->x.iVal;` |
+|  24104 |  515 | `		if( PH7_SUB_OVERFLOW64(a,b,&r) ){` |
 |      - |  516 | `#ifndef PH7_OMIT_FLOATING_POINT` |
 |      7 |  517 | `			pNos->rVal = (ph7_real)a - (ph7_real)b;` |
 |      7 |  518 | `			MemObjSetType(pNos,MEMOBJ_REAL);` |
@@ -531,14 +531,14 @@ Coverage: 588/709 lines (82.93%)
 |      - |  521 | `			MemObjSetType(pNos,MEMOBJ_INT);` |
 |      - |  522 | `#endif` |
 |      4 |  523 | `		}else{` |
-|  24130 |  524 | `			pNos->x.iVal = r;` |
-|  24130 |  525 | `			MemObjSetType(pNos,MEMOBJ_INT);` |
+|  24098 |  524 | `			pNos->x.iVal = r;` |
+|  24098 |  525 | `			MemObjSetType(pNos,MEMOBJ_INT);` |
 |      - |  526 | `		}` |
 |      - |  527 | `	}` |
-|  24240 |  528 | `	VmPopOperand(&pTos,1);` |
-|  24240 |  529 | `	VM_EXIT_BREAK;` |
+|  24208 |  528 | `	VmPopOperand(&pTos,1);` |
+|  24208 |  529 | `	VM_EXIT_BREAK;` |
 |    ! 0 |  530 | `	VM_EXIT_BREAK;` |
-|  12178 |  531 | `}` |
+|  12162 |  531 | `}` |
 |      - |  532 |  |
 |      - |  533 | `/*` |
 |      - |  534 | ` * OP_POW_STORE: body moved verbatim from the OP_POW_STORE arm of` |
@@ -726,44 +726,44 @@ Coverage: 588/709 lines (82.93%)
 |      - |  716 | ` * OP_GE: body moved verbatim from the OP_GE arm of` |
 |      - |  717 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
 |      - |  718 | ` */` |
-| 175533 |  719 | `PH7_PRIVATE VmOpRc VmExecOpGe(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+| 175631 |  719 | `PH7_PRIVATE VmOpRc VmExecOpGe(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
 |      5 |  720 | `{` |
-| 175538 |  721 | `	ph7_value *pTos = pState->pTos;` |
-| 175538 |  722 | `	ph7_value *pStack = pState->pStack;` |
-| 175538 |  723 | `	VmInstr *aInstr = pState->aInstr;` |
-| 175538 |  724 | `	sxi32 pc = pState->pc;` |
+| 175636 |  721 | `	ph7_value *pTos = pState->pTos;` |
+| 175636 |  722 | `	ph7_value *pStack = pState->pStack;` |
+| 175636 |  723 | `	VmInstr *aInstr = pState->aInstr;` |
+| 175636 |  724 | `	sxi32 pc = pState->pc;` |
 |      - |  725 | `	sxi32 rc;` |
-|  87871 |  726 | `	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
-| 175538 |  727 | `	ph7_value *pNos = &pTos[-1];` |
+|  87919 |  726 | `	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
+| 175636 |  727 | `	ph7_value *pNos = &pTos[-1];` |
 |      - |  728 | `	/* Perform the comparison and act accordingly */` |
 |      - |  729 | `#ifdef UNTRUST` |
 |      - |  730 | `	if( pNos < pStack ){` |
 |      - |  731 | `		VM_EXIT_ABORT;` |
 |      - |  732 | `	}` |
 |      - |  733 | `#endif` |
-| 175538 |  734 | `	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);` |
-| 175538 |  735 | `	if( VmIsUnorderedCmp(pNos,pTos) ){` |
+| 175636 |  734 | `	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);` |
+| 175636 |  735 | `	if( VmIsUnorderedCmp(pNos,pTos) ){` |
 |      9 |  736 | `		rc = 0;` |
-| 175534 |  737 | `	}else if( pInstr->iOp == PH7_OP_GE ){` |
-| 173312 |  738 | `		rc = rc >= 0;` |
-|  86763 |  739 | `	}else{` |
+| 175632 |  737 | `	}else if( pInstr->iOp == PH7_OP_GE ){` |
+| 173410 |  738 | `		rc = rc >= 0;` |
+|  86811 |  739 | `	}else{` |
 |   2223 |  740 | `		rc = rc > 0;` |
 |      - |  741 | `	}` |
-| 175538 |  742 | `	VmPopOperand(&pTos,1);` |
-| 175538 |  743 | `	if( !pInstr->iP2 ){` |
+| 175636 |  742 | `	VmPopOperand(&pTos,1);` |
+| 175636 |  743 | `	if( !pInstr->iP2 ){` |
 |      - |  744 | `		/* Push comparison result without taking the jump */` |
-| 175538 |  745 | `		PH7_MemObjRelease(pTos);` |
-| 175538 |  746 | `		pTos->x.iVal = rc;` |
+| 175636 |  745 | `		PH7_MemObjRelease(pTos);` |
+| 175636 |  746 | `		pTos->x.iVal = rc;` |
 |      - |  747 | `		/* Invalidate any prior representation */` |
-| 175538 |  748 | `		MemObjSetType(pTos,MEMOBJ_BOOL);` |
-|  87876 |  749 | `	}else{` |
+| 175636 |  748 | `		MemObjSetType(pTos,MEMOBJ_BOOL);` |
+|  87924 |  749 | `	}else{` |
 |    ! 0 |  750 | `		if( rc ){` |
 |      - |  751 | `			/* Jump to the desired location */` |
 |    ! 0 |  752 | `			pc = pInstr->iP2 - 1;` |
 |    ! 0 |  753 | `			VmPopOperand(&pTos,1);` |
 |    ! 0 |  754 | `		}` |
 |      - |  755 | `	}` |
-| 175538 |  756 | `	VM_EXIT_BREAK;` |
+| 175636 |  756 | `	VM_EXIT_BREAK;` |
 |    ! 0 |  757 | `	VM_EXIT_BREAK;` |
 |      5 |  758 | `}` |
 |      - |  759 |  |
@@ -771,44 +771,44 @@ Coverage: 588/709 lines (82.93%)
 |      - |  761 | ` * OP_LE: body moved verbatim from the OP_LE arm of` |
 |      - |  762 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
 |      - |  763 | ` */` |
-| 296322 |  764 | `PH7_PRIVATE VmOpRc VmExecOpLe(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+| 296462 |  764 | `PH7_PRIVATE VmOpRc VmExecOpLe(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
 |      5 |  765 | `{` |
-| 296327 |  766 | `	ph7_value *pTos = pState->pTos;` |
-| 296327 |  767 | `	ph7_value *pStack = pState->pStack;` |
-| 296327 |  768 | `	VmInstr *aInstr = pState->aInstr;` |
-| 296327 |  769 | `	sxi32 pc = pState->pc;` |
+| 296467 |  766 | `	ph7_value *pTos = pState->pTos;` |
+| 296467 |  767 | `	ph7_value *pStack = pState->pStack;` |
+| 296467 |  768 | `	VmInstr *aInstr = pState->aInstr;` |
+| 296467 |  769 | `	sxi32 pc = pState->pc;` |
 |      - |  770 | `	sxi32 rc;` |
-| 148370 |  771 | `	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
-| 296327 |  772 | `	ph7_value *pNos = &pTos[-1];` |
+| 148438 |  771 | `	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
+| 296467 |  772 | `	ph7_value *pNos = &pTos[-1];` |
 |      - |  773 | `	/* Perform the comparison and act accordingly */` |
 |      - |  774 | `#ifdef UNTRUST` |
 |      - |  775 | `	if( pNos < pStack ){` |
 |      - |  776 | `		VM_EXIT_ABORT;` |
 |      - |  777 | `	}` |
 |      - |  778 | `#endif` |
-| 296327 |  779 | `	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);` |
-| 296327 |  780 | `	if( VmIsUnorderedCmp(pNos,pTos) ){` |
+| 296467 |  779 | `	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);` |
+| 296467 |  780 | `	if( VmIsUnorderedCmp(pNos,pTos) ){` |
 |      9 |  781 | `		rc = 0;` |
-| 296323 |  782 | `	}else if( pInstr->iOp == PH7_OP_LE ){` |
-|  48276 |  783 | `		rc = rc < 1;` |
-|  24245 |  784 | `	}else{` |
-| 248048 |  785 | `		rc = rc < 0;` |
+| 296463 |  782 | `	}else if( pInstr->iOp == PH7_OP_LE ){` |
+|  48318 |  783 | `		rc = rc < 1;` |
+|  24265 |  784 | `	}else{` |
+| 248146 |  785 | `		rc = rc < 0;` |
 |      - |  786 | `	}` |
-| 296327 |  787 | `	VmPopOperand(&pTos,1);` |
-| 296327 |  788 | `	if( !pInstr->iP2 ){` |
+| 296467 |  787 | `	VmPopOperand(&pTos,1);` |
+| 296467 |  788 | `	if( !pInstr->iP2 ){` |
 |      - |  789 | `		/* Push comparison result without taking the jump */` |
-| 296327 |  790 | `		PH7_MemObjRelease(pTos);` |
-| 296327 |  791 | `		pTos->x.iVal = rc;` |
+| 296467 |  790 | `		PH7_MemObjRelease(pTos);` |
+| 296467 |  791 | `		pTos->x.iVal = rc;` |
 |      - |  792 | `		/* Invalidate any prior representation */` |
-| 296327 |  793 | `		MemObjSetType(pTos,MEMOBJ_BOOL);` |
-| 148375 |  794 | `	}else{` |
+| 296467 |  793 | `		MemObjSetType(pTos,MEMOBJ_BOOL);` |
+| 148443 |  794 | `	}else{` |
 |    ! 0 |  795 | `		if( rc ){` |
 |      - |  796 | `			/* Jump to the desired location */` |
 |    ! 0 |  797 | `			pc = pInstr->iP2 - 1;` |
 |    ! 0 |  798 | `			VmPopOperand(&pTos,1);` |
 |    ! 0 |  799 | `		}` |
 |      - |  800 | `	}` |
-| 296327 |  801 | `	VM_EXIT_BREAK;` |
+| 296467 |  801 | `	VM_EXIT_BREAK;` |
 |    ! 0 |  802 | `	VM_EXIT_BREAK;` |
 |      5 |  803 | `}` |
 |      - |  804 |  |
@@ -816,42 +816,42 @@ Coverage: 588/709 lines (82.93%)
 |      - |  806 | ` * OP_TNE: body moved verbatim from the OP_TNE arm of` |
 |      - |  807 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
 |      - |  808 | ` */` |
-| 384939 |  809 | `PH7_PRIVATE VmOpRc VmExecOpTne(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+| 384997 |  809 | `PH7_PRIVATE VmOpRc VmExecOpTne(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
 |      5 |  810 | `{` |
-| 384944 |  811 | `	ph7_value *pTos = pState->pTos;` |
-| 384944 |  812 | `	ph7_value *pStack = pState->pStack;` |
-| 384944 |  813 | `	VmInstr *aInstr = pState->aInstr;` |
-| 384944 |  814 | `	sxi32 pc = pState->pc;` |
+| 385002 |  811 | `	ph7_value *pTos = pState->pTos;` |
+| 385002 |  812 | `	ph7_value *pStack = pState->pStack;` |
+| 385002 |  813 | `	VmInstr *aInstr = pState->aInstr;` |
+| 385002 |  814 | `	sxi32 pc = pState->pc;` |
 |      - |  815 | `	sxi32 rc;` |
-| 192574 |  816 | `	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
-| 384944 |  817 | `	ph7_value *pNos = &pTos[-1];` |
+| 192602 |  816 | `	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
+| 385002 |  817 | `	ph7_value *pNos = &pTos[-1];` |
 |      - |  818 | `	/* Perform the comparison and act accordingly */` |
 |      - |  819 | `#ifdef UNTRUST` |
 |      - |  820 | `	if( pNos < pStack ){` |
 |      - |  821 | `		VM_EXIT_ABORT;` |
 |      - |  822 | `	}` |
 |      - |  823 | `#endif` |
-| 384944 |  824 | `	rc = PH7_MemObjCmp(pNos,pTos,TRUE,0);` |
-| 384944 |  825 | `	if( VmIsUnorderedCmp(pNos,pTos) ){` |
+| 385002 |  824 | `	rc = PH7_MemObjCmp(pNos,pTos,TRUE,0);` |
+| 385002 |  825 | `	if( VmIsUnorderedCmp(pNos,pTos) ){` |
 |      3 |  826 | `		rc = 1;` |
 |      2 |  827 | `	}else{` |
-| 384942 |  828 | `		rc = rc != 0;` |
+| 385000 |  828 | `		rc = rc != 0;` |
 |      - |  829 | `	}` |
-| 384944 |  830 | `	VmPopOperand(&pTos,1);` |
-| 384944 |  831 | `	if( !pInstr->iP2 ){` |
+| 385002 |  830 | `	VmPopOperand(&pTos,1);` |
+| 385002 |  831 | `	if( !pInstr->iP2 ){` |
 |      - |  832 | `		/* Push comparison result without taking the jump */` |
-| 384944 |  833 | `		PH7_MemObjRelease(pTos);` |
-| 384944 |  834 | `		pTos->x.iVal = rc;` |
+| 385002 |  833 | `		PH7_MemObjRelease(pTos);` |
+| 385002 |  834 | `		pTos->x.iVal = rc;` |
 |      - |  835 | `		/* Invalidate any prior representation */` |
-| 384944 |  836 | `		MemObjSetType(pTos,MEMOBJ_BOOL);` |
-| 192579 |  837 | `	}else{` |
+| 385002 |  836 | `		MemObjSetType(pTos,MEMOBJ_BOOL);` |
+| 192607 |  837 | `	}else{` |
 |    ! 0 |  838 | `		if( rc ){` |
 |      - |  839 | `			/* Jump to the desired location */` |
 |    ! 0 |  840 | `			pc = pInstr->iP2 - 1;` |
 |    ! 0 |  841 | `			VmPopOperand(&pTos,1);` |
 |    ! 0 |  842 | `		}` |
 |      - |  843 | `	}` |
-| 384944 |  844 | `	VM_EXIT_BREAK;` |
+| 385002 |  844 | `	VM_EXIT_BREAK;` |
 |    ! 0 |  845 | `	VM_EXIT_BREAK;` |
 |      5 |  846 | `}` |
 |      - |  847 |  |
@@ -859,42 +859,42 @@ Coverage: 588/709 lines (82.93%)
 |      - |  849 | ` * OP_TEQ: body moved verbatim from the OP_TEQ arm of` |
 |      - |  850 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
 |      - |  851 | ` */` |
-| 461479 |  852 | `PH7_PRIVATE VmOpRc VmExecOpTeq(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+| 461513 |  852 | `PH7_PRIVATE VmOpRc VmExecOpTeq(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
 |      5 |  853 | `{` |
-| 461484 |  854 | `	ph7_value *pTos = pState->pTos;` |
-| 461484 |  855 | `	ph7_value *pStack = pState->pStack;` |
-| 461484 |  856 | `	VmInstr *aInstr = pState->aInstr;` |
-| 461484 |  857 | `	sxi32 pc = pState->pc;` |
+| 461518 |  854 | `	ph7_value *pTos = pState->pTos;` |
+| 461518 |  855 | `	ph7_value *pStack = pState->pStack;` |
+| 461518 |  856 | `	VmInstr *aInstr = pState->aInstr;` |
+| 461518 |  857 | `	sxi32 pc = pState->pc;` |
 |      - |  858 | `	sxi32 rc;` |
-| 230844 |  859 | `	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
-| 461484 |  860 | `	ph7_value *pNos = &pTos[-1];` |
+| 230860 |  859 | `	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
+| 461518 |  860 | `	ph7_value *pNos = &pTos[-1];` |
 |      - |  861 | `	/* Perform the comparison and act accordingly */` |
 |      - |  862 | `#ifdef UNTRUST` |
 |      - |  863 | `	if( pNos < pStack ){` |
 |      - |  864 | `		VM_EXIT_ABORT;` |
 |      - |  865 | `	}` |
 |      - |  866 | `#endif` |
-| 461484 |  867 | `	rc = PH7_MemObjCmp(pNos,pTos,TRUE,0);` |
-| 461484 |  868 | `	if( VmIsUnorderedCmp(pNos,pTos) ){` |
+| 461518 |  867 | `	rc = PH7_MemObjCmp(pNos,pTos,TRUE,0);` |
+| 461518 |  868 | `	if( VmIsUnorderedCmp(pNos,pTos) ){` |
 |      3 |  869 | `		rc = 0;` |
 |      2 |  870 | `	}else{` |
-| 461482 |  871 | `		rc = rc == 0;` |
+| 461516 |  871 | `		rc = rc == 0;` |
 |      - |  872 | `	}` |
-| 461484 |  873 | `	VmPopOperand(&pTos,1);` |
-| 461484 |  874 | `	if( !pInstr->iP2 ){` |
+| 461518 |  873 | `	VmPopOperand(&pTos,1);` |
+| 461518 |  874 | `	if( !pInstr->iP2 ){` |
 |      - |  875 | `		/* Push comparison result without taking the jump */` |
-| 461484 |  876 | `		PH7_MemObjRelease(pTos);` |
-| 461484 |  877 | `		pTos->x.iVal = rc;` |
+| 461518 |  876 | `		PH7_MemObjRelease(pTos);` |
+| 461518 |  877 | `		pTos->x.iVal = rc;` |
 |      - |  878 | `		/* Invalidate any prior representation */` |
-| 461484 |  879 | `		MemObjSetType(pTos,MEMOBJ_BOOL);` |
-| 230849 |  880 | `	}else{` |
+| 461518 |  879 | `		MemObjSetType(pTos,MEMOBJ_BOOL);` |
+| 230865 |  880 | `	}else{` |
 |    ! 0 |  881 | `		if( rc ){` |
 |      - |  882 | `			/* Jump to the desired location */` |
 |    ! 0 |  883 | `			pc = pInstr->iP2 - 1;` |
 |    ! 0 |  884 | `			VmPopOperand(&pTos,1);` |
 |    ! 0 |  885 | `		}` |
 |      - |  886 | `	}` |
-| 461484 |  887 | `	VM_EXIT_BREAK;` |
+| 461518 |  887 | `	VM_EXIT_BREAK;` |
 |    ! 0 |  888 | `	VM_EXIT_BREAK;` |
 |      5 |  889 | `}` |
 |      - |  890 |  |
@@ -947,15 +947,15 @@ Coverage: 588/709 lines (82.93%)
 |      - |  937 | ` * OP_LOR: body moved verbatim from the OP_LOR arm of` |
 |      - |  938 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
 |      - |  939 | ` */` |
-| 231815 |  940 | `PH7_PRIVATE VmOpRc VmExecOpLor(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+| 231897 |  940 | `PH7_PRIVATE VmOpRc VmExecOpLor(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
 |      5 |  941 | `{` |
-| 231820 |  942 | `	ph7_value *pTos = pState->pTos;` |
-| 231820 |  943 | `	ph7_value *pStack = pState->pStack;` |
-| 231820 |  944 | `	VmInstr *aInstr = pState->aInstr;` |
-| 231820 |  945 | `	sxi32 pc = pState->pc;` |
+| 231902 |  942 | `	ph7_value *pTos = pState->pTos;` |
+| 231902 |  943 | `	ph7_value *pStack = pState->pStack;` |
+| 231902 |  944 | `	VmInstr *aInstr = pState->aInstr;` |
+| 231902 |  945 | `	sxi32 pc = pState->pc;` |
 |      - |  946 | `	sxi32 rc;` |
-| 116012 |  947 | `	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
-| 231820 |  948 | `	ph7_value *pNos = &pTos[-1];` |
+| 116052 |  947 | `	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
+| 231902 |  948 | `	ph7_value *pNos = &pTos[-1];` |
 |      - |  949 | `	sxi32 v1, v2;    /* 0==TRUE, 1==FALSE, 2==UNKNOWN or NULL */` |
 |      - |  950 | `#ifdef UNTRUST` |
 |      - |  951 | `	if( pNos < pStack ){` |
@@ -963,28 +963,28 @@ Coverage: 588/709 lines (82.93%)
 |      - |  953 | `	}` |
 |      - |  954 | `#endif` |
 |      - |  955 | `	/* Force a boolean cast */` |
-| 231820 |  956 | `	if((pTos->iFlags & MEMOBJ_BOOL) == 0 ){` |
+| 231902 |  956 | `	if((pTos->iFlags & MEMOBJ_BOOL) == 0 ){` |
 |     25 |  957 | `		PH7_MemObjToBool(pTos);` |
 |     12 |  958 | `	}` |
-| 231820 |  959 | `	if((pNos->iFlags & MEMOBJ_BOOL) == 0 ){` |
+| 231902 |  959 | `	if((pNos->iFlags & MEMOBJ_BOOL) == 0 ){` |
 |    ! 0 |  960 | `		PH7_MemObjToBool(pNos);` |
 |    ! 0 |  961 | `	}` |
-| 231820 |  962 | `	v1 = pNos->x.iVal == 0 ? 1 : 0;` |
-| 231820 |  963 | `	v2 = pTos->x.iVal == 0 ? 1 : 0;` |
-| 231820 |  964 | `	if( pInstr->iOp == PH7_OP_LAND ){` |
+| 231902 |  962 | `	v1 = pNos->x.iVal == 0 ? 1 : 0;` |
+| 231902 |  963 | `	v2 = pTos->x.iVal == 0 ? 1 : 0;` |
+| 231902 |  964 | `	if( pInstr->iOp == PH7_OP_LAND ){` |
 |      - |  965 | `		static const unsigned char and_logic[] = { 0, 1, 2, 1, 1, 1, 2, 1, 2 };` |
-|  53713 |  966 | `		v1 = and_logic[v1*3+v2];` |
-|  26859 |  967 | `	}else{` |
+|  53705 |  966 | `		v1 = and_logic[v1*3+v2];` |
+|  26855 |  967 | `	}else{` |
 |      - |  968 | `		static const unsigned char or_logic[] = { 0, 0, 0, 0, 1, 2, 0, 2, 2 };` |
-| 178112 |  969 | `		v1 = or_logic[v1*3+v2];` |
+| 178202 |  969 | `		v1 = or_logic[v1*3+v2];` |
 |      - |  970 | `	}` |
-| 231820 |  971 | `	if( v1 == 2 ){` |
+| 231902 |  971 | `	if( v1 == 2 ){` |
 |    ! 0 |  972 | `		v1 = 1;` |
 |    ! 0 |  973 | `	}` |
-| 231820 |  974 | `	VmPopOperand(&pTos,1);` |
-| 231820 |  975 | `	pTos->x.iVal = v1 == 0 ? 1 : 0;` |
-| 231820 |  976 | `	MemObjSetType(pTos,MEMOBJ_BOOL);` |
-| 231820 |  977 | `	VM_EXIT_BREAK;` |
+| 231902 |  974 | `	VmPopOperand(&pTos,1);` |
+| 231902 |  975 | `	pTos->x.iVal = v1 == 0 ? 1 : 0;` |
+| 231902 |  976 | `	MemObjSetType(pTos,MEMOBJ_BOOL);` |
+| 231902 |  977 | `	VM_EXIT_BREAK;` |
 |    ! 0 |  978 | `	VM_EXIT_BREAK;` |
 |      5 |  979 | `}` |
 |      - |  980 |  |

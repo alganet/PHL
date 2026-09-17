@@ -41,27 +41,27 @@ Coverage: 388/428 lines (90.65%)
 |     ! 0 |   31 | `		return SXRET_OK;` |
 |       - |   32 | `	}` |
 |       - |   33 | `	/* Iterate over available arguments */` |
-|  148557 |   34 | `	for( i = 0 ; i < nArg ; ++i ){` |
+|  148541 |   34 | `	for( i = 0 ; i < nArg ; ++i ){` |
 |  115803 |   35 | `		pObj = apArg[i];` |
 |  115803 |   36 | `		if( pObj->nIdx == SXU32_HIGH ){` |
 |       - |   37 | `			/* Skip the "expecting a variable" warning for MEMOBJ_BOOL —` |
 |       - |   38 | `			 * synthesized by LOAD_IDX iP2=4 (ArrayAccess::offsetExists) and` |
 |       - |   39 | `			 * by anyone passing a bool literal (rare, harmless). */` |
-|   80159 |   40 | `			if( (pObj->iFlags & (MEMOBJ_NULL\|MEMOBJ_BOOL)) == 0 ){` |
+|   80175 |   40 | `			if( (pObj->iFlags & (MEMOBJ_NULL\|MEMOBJ_BOOL)) == 0 ){` |
 |       - |   41 | `				/* Not so fatal,Throw a warning */` |
 |     ! 0 |   42 | `				ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting a variable not a constant");` |
 |     ! 0 |   43 | `			}` |
-|   40077 |   44 | `		}` |
+|   40085 |   44 | `		}` |
 |  115803 |   45 | `		res = (pObj->iFlags & MEMOBJ_NULL) ? 0 : 1;` |
 |  115803 |   46 | `		if( !res ){` |
 |       - |   47 | `			/* Variable not set,return FALSE */` |
-|   83037 |   48 | `			ph7_result_bool(pCtx,0);` |
-|   83037 |   49 | `			return SXRET_OK;` |
+|   83053 |   48 | `			ph7_result_bool(pCtx,0);` |
+|   83053 |   49 | `			return SXRET_OK;` |
 |       - |   50 | `		}` |
-|   16388 |   51 | `	}` |
+|   16380 |   51 | `	}` |
 |       - |   52 | `	/* All given variable are set,return TRUE */` |
-|   32759 |   53 | `	ph7_result_bool(pCtx,1);` |
-|   32759 |   54 | `	return SXRET_OK;` |
+|   32743 |   53 | `	ph7_result_bool(pCtx,1);` |
+|   32743 |   54 | `	return SXRET_OK;` |
 |   57898 |   55 | `}` |
 |       - |   56 | `/*` |
 |       - |   57 | ` * Unset a memory object [i.e: a ph7_value],remove it from the current` |
@@ -199,50 +199,50 @@ Coverage: 388/428 lines (90.65%)
 |       - |  189 | `` * common case, a reference taken TO an element (`$r = &$a[1]`), where the array still owns`` |
 |       - |  190 | ` * the value but is no longer its only holder.` |
 |       - |  191 | ` */` |
-|  709816 |  192 | `PH7_PRIVATE int PH7_VmSlotIsReferenced(ph7_vm *pVm,sxu32 nIdx)` |
+|  709800 |  192 | `PH7_PRIVATE int PH7_VmSlotIsReferenced(ph7_vm *pVm,sxu32 nIdx)` |
 |       5 |  193 | `{` |
 |       - |  194 | `	VmRefObj *pRef;` |
-|  709821 |  195 | `	sxu32 n, nLive = 0;` |
+|  709805 |  195 | `	sxu32 n, nLive = 0;` |
 |       - |  196 | `	SyHashEntry **apEntry;` |
-|  709821 |  197 | `	if( nIdx == SXU32_HIGH ){` |
+|  709805 |  197 | `	if( nIdx == SXU32_HIGH ){` |
 |     ! 0 |  198 | `		return 0;` |
 |       - |  199 | `	}` |
-|  709821 |  200 | `	pRef = VmRefObjExtract(&(*pVm),nIdx);` |
-|  709821 |  201 | `	if( pRef == 0 ){` |
+|  709805 |  200 | `	pRef = VmRefObjExtract(&(*pVm),nIdx);` |
+|  709805 |  201 | `	if( pRef == 0 ){` |
 |     ! 0 |  202 | `		return 0;` |
 |       - |  203 | `	}` |
-|  709821 |  204 | `	apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);` |
-|  709825 |  205 | `	for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){` |
+|  709805 |  204 | `	apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);` |
+|  709809 |  205 | `	for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){` |
 |       5 |  206 | `		if( apEntry[n] ){` |
 |       5 |  207 | `			nLive++;` |
 |       2 |  208 | `		}` |
 |       3 |  209 | `	}` |
-|  709821 |  210 | `	return nLive > 0;` |
-|  354913 |  211 | `}` |
-| 4251457 |  212 | `PH7_PRIVATE sxi32 PH7_VmUnsetMemObj(ph7_vm *pVm,sxu32 nObjIdx,int bForce)` |
+|  709805 |  210 | `	return nLive > 0;` |
+|  354905 |  211 | `}` |
+| 4251573 |  212 | `PH7_PRIVATE sxi32 PH7_VmUnsetMemObj(ph7_vm *pVm,sxu32 nObjIdx,int bForce)` |
 |       5 |  213 | `{` |
 |       - |  214 | `	ph7_value *pObj;` |
 |       - |  215 | `	VmRefObj *pRef;` |
-| 4251462 |  216 | `	pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nObjIdx);` |
-| 4251462 |  217 | `	if( pObj ){` |
+| 4251578 |  216 | `	pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nObjIdx);` |
+| 4251578 |  217 | `	if( pObj ){` |
 |       - |  218 | `		/* Release the object */` |
-| 4251462 |  219 | `		PH7_MemObjRelease(pObj);` |
-| 2126355 |  220 | `	}` |
+| 4251578 |  219 | `		PH7_MemObjRelease(pObj);` |
+| 2126407 |  220 | `	}` |
 |       - |  221 | `	/* Remove old reference links */` |
-| 4251462 |  222 | `	pRef = VmRefObjExtract(&(*pVm),nObjIdx);` |
-| 4251462 |  223 | `	if( pRef ){` |
-| 4251462 |  224 | `		sxi32 iFlags = pRef->iFlags;` |
+| 4251578 |  222 | `	pRef = VmRefObjExtract(&(*pVm),nObjIdx);` |
+| 4251578 |  223 | `	if( pRef ){` |
+| 4251578 |  224 | `		sxi32 iFlags = pRef->iFlags;` |
 |       - |  225 | `		/* Unlink from the reference table */` |
-| 4251462 |  226 | `		VmRefObjUnlink(&(*pVm),pRef);` |
-| 4251462 |  227 | `		if( (bForce == TRUE) \|\| (iFlags & VM_REF_IDX_KEEP) == 0 ){` |
+| 4251578 |  226 | `		VmRefObjUnlink(&(*pVm),pRef);` |
+| 4251578 |  227 | `		if( (bForce == TRUE) \|\| (iFlags & VM_REF_IDX_KEEP) == 0 ){` |
 |       - |  228 | `			VmSlot sFree;` |
 |       - |  229 | `			/* Restore to the free list */` |
-| 4251444 |  230 | `			sFree.nIdx = nObjIdx;` |
-| 4251444 |  231 | `			sFree.pUserData = 0;` |
-| 4251444 |  232 | `			SySetPut(&pVm->aFreeObj,(const void *)&sFree);` |
-| 2126346 |  233 | `		}` |
-| 2126355 |  234 | `	}` |
-| 4251462 |  235 | `	return SXRET_OK;` |
+| 4251560 |  230 | `			sFree.nIdx = nObjIdx;` |
+| 4251560 |  231 | `			sFree.pUserData = 0;` |
+| 4251560 |  232 | `			SySetPut(&pVm->aFreeObj,(const void *)&sFree);` |
+| 2126398 |  233 | `		}` |
+| 2126407 |  234 | `	}` |
+| 4251578 |  235 | `	return SXRET_OK;` |
 |       5 |  236 | `}` |
 |       - |  237 | `/*` |
 |       - |  238 | ` * void unset($var,...)` |

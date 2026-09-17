@@ -614,7 +614,7 @@ Coverage: 1023/1279 lines (79.98%)
 |    4701 |  604 | `	pThis = (ph7_class_instance *)pVal->x.pOther;` |
 |       - |  605 | `	/* Closure is final, so an exact class match is correct (no subclasses possible). */` |
 |    4701 |  606 | `	return pThis->pClass == pVm->pClosureClass;` |
-|  525483 |  607 | `}` |
+|  525479 |  607 | `}` |
 |       - |  608 | `/*` |
 |       - |  609 | ` * Unwrap a Closure value into the simple callable the existing dispatch machinery` |
 |       - |  610 | ` * already understands, written into pOut (which the caller must have initialised):` |

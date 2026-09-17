@@ -1689,41 +1689,41 @@ Coverage: 20/28 lines (71.43%)
 |    - | 1679 | ` * PH7_VmInstallReflection so the chunk strings and their sizeof stay in` |
 |    - | 1680 | ` * one translation unit.` |
 |    - | 1681 | ` */` |
-| 3898 | 1682 | `PH7_PRIVATE sxi32 PH7_VmInstallReflectionLib(ph7_vm *pVm)` |
+| 3890 | 1682 | `PH7_PRIVATE sxi32 PH7_VmInstallReflectionLib(ph7_vm *pVm)` |
 |    5 | 1683 | `{` |
 |    - | 1684 | `	sxi32 rc;` |
-| 3903 | 1685 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib1, sizeof(zReflectLib1)-1);` |
-| 3903 | 1686 | `	if( rc != SXRET_OK ){` |
+| 3895 | 1685 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib1, sizeof(zReflectLib1)-1);` |
+| 3895 | 1686 | `	if( rc != SXRET_OK ){` |
 |  ! 0 | 1687 | `		return rc;` |
 |    - | 1688 | `	}` |
-| 3903 | 1689 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib2, sizeof(zReflectLib2)-1);` |
-| 3903 | 1690 | `	if( rc != SXRET_OK ){` |
+| 3895 | 1689 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib2, sizeof(zReflectLib2)-1);` |
+| 3895 | 1690 | `	if( rc != SXRET_OK ){` |
 |  ! 0 | 1691 | `		return rc;` |
 |    - | 1692 | `	}` |
-| 3903 | 1693 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib3, sizeof(zReflectLib3)-1);` |
-| 3903 | 1694 | `	if( rc != SXRET_OK ){` |
+| 3895 | 1693 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib3, sizeof(zReflectLib3)-1);` |
+| 3895 | 1694 | `	if( rc != SXRET_OK ){` |
 |  ! 0 | 1695 | `		return rc;` |
 |    - | 1696 | `	}` |
-| 3903 | 1697 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib4, sizeof(zReflectLib4)-1);` |
-| 3903 | 1698 | `	if( rc != SXRET_OK ){` |
+| 3895 | 1697 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib4, sizeof(zReflectLib4)-1);` |
+| 3895 | 1698 | `	if( rc != SXRET_OK ){` |
 |  ! 0 | 1699 | `		return rc;` |
 |    - | 1700 | `	}` |
-| 3903 | 1701 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib5, sizeof(zReflectLib5)-1);` |
-| 3903 | 1702 | `	if( rc != SXRET_OK ){` |
+| 3895 | 1701 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib5, sizeof(zReflectLib5)-1);` |
+| 3895 | 1702 | `	if( rc != SXRET_OK ){` |
 |  ! 0 | 1703 | `		return rc;` |
 |    - | 1704 | `	}` |
-| 3903 | 1705 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib6, sizeof(zReflectLib6)-1);` |
-| 3903 | 1706 | `	if( rc != SXRET_OK ){` |
+| 3895 | 1705 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib6, sizeof(zReflectLib6)-1);` |
+| 3895 | 1706 | `	if( rc != SXRET_OK ){` |
 |  ! 0 | 1707 | `		return rc;` |
 |    - | 1708 | `	}` |
-| 3903 | 1709 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib7, sizeof(zReflectLib7)-1);` |
-| 3903 | 1710 | `	if( rc != SXRET_OK ){` |
+| 3895 | 1709 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib7, sizeof(zReflectLib7)-1);` |
+| 3895 | 1710 | `	if( rc != SXRET_OK ){` |
 |  ! 0 | 1711 | `		return rc;` |
 |    - | 1712 | `	}` |
-| 3903 | 1713 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib8, sizeof(zReflectLib8)-1);` |
-| 3903 | 1714 | `	if( rc != SXRET_OK ){` |
+| 3895 | 1713 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib8, sizeof(zReflectLib8)-1);` |
+| 3895 | 1714 | `	if( rc != SXRET_OK ){` |
 |  ! 0 | 1715 | `		return rc;` |
 |    - | 1716 | `	}` |
-| 3903 | 1717 | `	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib9, sizeof(zReflectLib9)-1);` |
-| 1954 | 1718 | `}` |
+| 3895 | 1717 | `	return PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib9, sizeof(zReflectLib9)-1);` |
+| 1950 | 1718 | `}` |
 |    - | 1719 |  |
