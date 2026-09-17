@@ -369,39 +369,39 @@ Coverage: 868/1015 lines (85.52%)
 |     - |  359 | ` * OP_MEMBER: body moved verbatim from the OP_MEMBER arm of` |
 |     - |  360 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
 |     - |  361 | ` */` |
-| 45098 |  362 | `PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+| 45106 |  362 | `PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
 |     5 |  363 | `{` |
-| 45103 |  364 | `	ph7_value *pTos = pState->pTos;` |
-| 45103 |  365 | `	ph7_value *pStack = pState->pStack;` |
-| 45103 |  366 | `	VmInstr *aInstr = pState->aInstr;` |
-| 45103 |  367 | `	sxi32 pc = pState->pc;` |
+| 45111 |  364 | `	ph7_value *pTos = pState->pTos;` |
+| 45111 |  365 | `	ph7_value *pStack = pState->pStack;` |
+| 45111 |  366 | `	VmInstr *aInstr = pState->aInstr;` |
+| 45111 |  367 | `	sxi32 pc = pState->pc;` |
 |     - |  368 | `	sxi32 rc;` |
 |     - |  369 | `	ph7_class_instance *pThis;` |
 |     - |  370 | `	ph7_value *pNos;` |
 |     - |  371 | `	SyString sName;` |
-| 45103 |  372 | `	if( !pInstr->iP1 ){` |
-| 42585 |  373 | `		pNos = &pTos[-1];` |
+| 45111 |  372 | `	if( !pInstr->iP1 ){` |
+| 42593 |  373 | `		pNos = &pTos[-1];` |
 |     - |  374 | `#ifdef UNTRUST` |
 |     - |  375 | `		if( pNos < pStack ){` |
 |     - |  376 | `			VM_EXIT_ABORT;` |
 |     - |  377 | `		}` |
 |     - |  378 | `#endif` |
-| 42585 |  379 | `		if( pNos->iFlags & MEMOBJ_OBJ ){` |
+| 42593 |  379 | `		if( pNos->iFlags & MEMOBJ_OBJ ){` |
 |     - |  380 | `			ph7_class *pClass;` |
 |     - |  381 | `			/* Class already instantiated */` |
-| 42575 |  382 | `			pThis = (ph7_class_instance *)pNos->x.pOther;` |
+| 42583 |  382 | `			pThis = (ph7_class_instance *)pNos->x.pOther;` |
 |     - |  383 | `			/* Point to the instantiated class */` |
-| 42575 |  384 | `			pClass = pThis->pClass;` |
+| 42583 |  384 | `			pClass = pThis->pClass;` |
 |     - |  385 | `			/* Extract attribute name first */` |
-| 42575 |  386 | `			SyStringInitFromBuf(&sName,(const char *)SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));` |
-| 42575 |  387 | `			if( pInstr->iP2 == PH7_MEMBER_METHOD ){` |
+| 42583 |  386 | `			SyStringInitFromBuf(&sName,(const char *)SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));` |
+| 42583 |  387 | `			if( pInstr->iP2 == PH7_MEMBER_METHOD ){` |
 |     - |  388 | `				/* Method call */` |
-| 11229 |  389 | `				ph7_class_method *pMeth = 0;` |
-| 11229 |  390 | `				if( sName.nByte > 0 ){` |
+| 11231 |  389 | `				ph7_class_method *pMeth = 0;` |
+| 11231 |  390 | `				if( sName.nByte > 0 ){` |
 |     - |  391 | `					/* Extract the target method */` |
-| 11229 |  392 | `					pMeth = PH7_ClassExtractMethod(pClass,sName.zString,sName.nByte);` |
-|  5612 |  393 | `				}` |
-| 11229 |  394 | `				if( pMeth == 0 ){` |
+| 11231 |  392 | `					pMeth = PH7_ClassExtractMethod(pClass,sName.zString,sName.nByte);` |
+|  5613 |  393 | `				}` |
+| 11231 |  394 | `				if( pMeth == 0 ){` |
 |     9 |  395 | `					ph7_class_method *pCallMagic = PH7_ClassExtractMethod(pClass,"__call",sizeof("__call")-1);` |
 |     9 |  396 | `					if( pCallMagic ){` |
 |     - |  397 | `						/* php: a missing method dispatches __call($name, $args) — the` |
@@ -440,9 +440,9 @@ Coverage: 868/1015 lines (85.52%)
 |     - |  430 | `						}` |
 |     - |  431 | `					}` |
 |     4 |  432 | `				}else{` |
-| 11221 |  433 | `					ph7_class_method *pDeniedCall = 0;` |
-| 11216 |  434 | `					if( pMeth->iProtection != PH7_CLASS_PROT_PUBLIC` |
-|  8123 |  435 | `					 && !PH7_VmClassMemberAccess(&(*pVm),` |
+| 11223 |  433 | `					ph7_class_method *pDeniedCall = 0;` |
+| 11218 |  434 | `					if( pMeth->iProtection != PH7_CLASS_PROT_PUBLIC` |
+|  8124 |  435 | `					 && !PH7_VmClassMemberAccess(&(*pVm),` |
 |  2510 |  436 | `						pMeth->sFunc.pUserData ? (ph7_class *)pMeth->sFunc.pUserData : pClass,` |
 |  1255 |  437 | `						&sName,pMeth->iProtection,FALSE) ){` |
 |    14 |  438 | `						int bRebound = 0;` |
@@ -471,7 +471,7 @@ Coverage: 868/1015 lines (85.52%)
 |    12 |  461 | `							pDeniedCall = PH7_ClassExtractMethod(pClass,"__call",sizeof("__call")-1);` |
 |     5 |  462 | `						}` |
 |     6 |  463 | `					}` |
-| 11221 |  464 | `					if( pDeniedCall ){` |
+| 11223 |  464 | `					if( pDeniedCall ){` |
 |     3 |  465 | `						SyBlobReset(&pVm->sMagicCallName);` |
 |     3 |  466 | `						SyBlobAppend(&pVm->sMagicCallName,(const void *)sName.zString,sName.nByte);` |
 |     3 |  467 | `						pThis->iRef++;` |
@@ -483,25 +483,25 @@ Coverage: 868/1015 lines (85.52%)
 |     3 |  473 | `						MemObjSetType(pTos,MEMOBJ_STRING);` |
 |     2 |  474 | `					}else{` |
 |     - |  475 | `						/* Push method name on the stack */` |
-| 11219 |  476 | `						PH7_MemObjRelease(pTos);` |
-| 11219 |  477 | `						SyBlobAppend(&pTos->sBlob,SyStringData(&pMeth->sVmName),SyStringLength(&pMeth->sVmName));` |
-| 11219 |  478 | `						MemObjSetType(pTos,MEMOBJ_STRING);` |
+| 11221 |  476 | `						PH7_MemObjRelease(pTos);` |
+| 11221 |  477 | `						SyBlobAppend(&pTos->sBlob,SyStringData(&pMeth->sVmName),SyStringLength(&pMeth->sVmName));` |
+| 11221 |  478 | `						MemObjSetType(pTos,MEMOBJ_STRING);` |
 |     - |  479 | `					}` |
 |     - |  480 | `				}` |
-| 11227 |  481 | `				pTos->nIdx = SXU32_HIGH;` |
-|  5616 |  482 | `			}else{` |
+| 11229 |  481 | `				pTos->nIdx = SXU32_HIGH;` |
+|  5617 |  482 | `			}else{` |
 |     - |  483 | `				/* Attribute access. iP2: 0 = read, 2 = unset, 3 = isset, 4 = empty. */` |
-| 31351 |  484 | `				VmClassAttr *pObjAttr = 0;` |
-| 31351 |  485 | `				SyHashEntry *pEntry = 0;` |
+| 31357 |  484 | `				VmClassAttr *pObjAttr = 0;` |
+| 31357 |  485 | `				SyHashEntry *pEntry = 0;` |
 |     - |  486 | `				/* Extract the target attribute */` |
-| 31351 |  487 | `				if( sName.nByte > 0 ){` |
-| 31351 |  488 | `					pEntry = SyHashGet(&pThis->hAttr,(const void *)sName.zString,sName.nByte);` |
-| 31351 |  489 | `					if( pEntry ){` |
+| 31357 |  487 | `				if( sName.nByte > 0 ){` |
+| 31357 |  488 | `					pEntry = SyHashGet(&pThis->hAttr,(const void *)sName.zString,sName.nByte);` |
+| 31357 |  489 | `					if( pEntry ){` |
 |     - |  490 | `						/* Point to the attribute value */` |
-| 30965 |  491 | `						pObjAttr = (VmClassAttr *)pEntry->pUserData;` |
-| 15480 |  492 | `					}` |
-| 15673 |  493 | `				}` |
-| 31351 |  494 | `				if( pInstr->iP2 == PH7_MEMBER_UNSET ){` |
+| 30971 |  491 | `						pObjAttr = (VmClassAttr *)pEntry->pUserData;` |
+| 15483 |  492 | `					}` |
+| 15676 |  493 | `				}` |
+| 31357 |  494 | `				if( pInstr->iP2 == PH7_MEMBER_UNSET ){` |
 |     - |  495 | `					/* unset($o->prop): remove the property entirely so it disappears from` |
 |     - |  496 | `					 * foreach / json_encode / get_object_vars / (array) — matching PHP (a value-only` |
 |     - |  497 | `					 * release would leave a zombie null entry). Leave a NULL constant on the stack so` |
@@ -546,7 +546,7 @@ Coverage: 868/1015 lines (85.52%)
 |    39 |  536 | `					pTos->nIdx = SXU32_HIGH;  /* NULL constant */` |
 |   259 |  537 | `					VM_EXIT_BREAK;` |
 |     - |  538 | `				}` |
-| 31313 |  539 | `				if( pObjAttr == 0 && sName.nByte > 0 ){` |
+| 31319 |  539 | `				if( pObjAttr == 0 && sName.nByte > 0 ){` |
 |     - |  540 | `					/* Member not present on the instance and the next instruction writes/modifies it` |
 |     - |  541 | ``					 * (store, array-append/keyed-write, `??=`, ++/--, or a compound-assign — see`` |
 |     - |  542 | `					 * VmMemberNextIsWrite; the compiler always emits a terminating PH7_OP_DONE so` |
@@ -698,7 +698,7 @@ Coverage: 868/1015 lines (85.52%)
 |     - |  688 | `						}` |
 |    38 |  689 | `					}` |
 |   188 |  690 | `				}` |
-| 31307 |  691 | `				if( pObjAttr == 0 ){` |
+| 31313 |  691 | `				if( pObjAttr == 0 ){` |
 |     - |  692 | `					/* Missing property. On a plain READ, php dispatches __get($name) and the` |
 |     - |  693 | `					 * expression takes its RETURN VALUE (band A #3a — pre-fix the result was` |
 |     - |  694 | `					 * discarded and a PHL-native warn fired even when __get existed). isset/` |
@@ -791,15 +791,15 @@ Coverage: 868/1015 lines (85.52%)
 |     1 |  781 | `							&pClass->sName,&sName);` |
 |     1 |  782 | `					}` |
 |    21 |  783 | `				}` |
-| 31039 |  784 | `				VmPopOperand(&pTos,1);` |
+| 31045 |  784 | `				VmPopOperand(&pTos,1);` |
 |     - |  785 | `				/* TICKET 1433-49: Deffer garbage collection until attribute loading.` |
 |     - |  786 | `				 * This is due to the following case:` |
 |     - |  787 | `				 *     (new TestClass())->foo;` |
 |     - |  788 | `				 */` |
-| 31039 |  789 | `				pThis->iRef++;` |
-| 31039 |  790 | `				PH7_MemObjRelease(pTos);` |
-| 31039 |  791 | `				pTos->nIdx = SXU32_HIGH; /* Assume we are loading a constant */` |
-| 31039 |  792 | `				if( pInstr->iP2 == PH7_MEMBER_REF_TARGET ){` |
+| 31045 |  789 | `				pThis->iRef++;` |
+| 31045 |  790 | `				PH7_MemObjRelease(pTos);` |
+| 31045 |  791 | `				pTos->nIdx = SXU32_HIGH; /* Assume we are loading a constant */` |
+| 31045 |  792 | `				if( pInstr->iP2 == PH7_MEMBER_REF_TARGET ){` |
 |     - |  793 | ``					/* `$o->p =& $x`: stash the resolved instance property slot for the`` |
 |     - |  794 | `					 * following member-marked OP_STORE_REF, which rebinds it to alias the` |
 |     - |  795 | `					 * source variable. Do NOT run the read/hook/magic/uninit machinery` |
@@ -821,12 +821,12 @@ Coverage: 868/1015 lines (85.52%)
 |     - |  811 | `					}` |
 |     9 |  812 | `					VM_EXIT_BREAK;` |
 |     - |  813 | `				}` |
-| 31031 |  814 | `				if( pObjAttr ){` |
-| 30989 |  815 | `					ph7_value *pValue = 0; /* cc warning */` |
+| 31037 |  814 | `				if( pObjAttr ){` |
+| 30995 |  815 | `					ph7_value *pValue = 0; /* cc warning */` |
 |     - |  816 | `					/* Check attribute access */` |
-| 30989 |  817 | `					if( PH7_VmClassMemberAccess(&(*pVm),pClass,&pObjAttr->pAttr->sName,pObjAttr->pAttr->iProtection,FALSE) ){` |
-| 30966 |  818 | `						if( (pObjAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET\|PH7_CLASS_ATTR_HOOK_SET))` |
-| 15630 |  819 | `						 && !VmHookGuardHeld(pVm,(void *)pThis,&sName) ){` |
+| 30995 |  817 | `					if( PH7_VmClassMemberAccess(&(*pVm),pClass,&pObjAttr->pAttr->sName,pObjAttr->pAttr->iProtection,FALSE) ){` |
+| 30972 |  818 | `						if( (pObjAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET\|PH7_CLASS_ATTR_HOOK_SET))` |
+| 15633 |  819 | `						 && !VmHookGuardHeld(pVm,(void *)pThis,&sName) ){` |
 |     - |  820 | `							/* PHP 8.4 property hooks: route reads, writes, and the` |
 |     - |  821 | `							 * read-modify-write forms through the synthesized hook` |
 |     - |  822 | `							 * methods. A held guard (either kind) means we are INSIDE` |
@@ -1009,8 +1009,8 @@ Coverage: 868/1015 lines (85.52%)
 |     - |  999 | `						 * LHS of an assignment — peek at the next instruction to decide.` |
 |     - | 1000 | `						 * Safe: the compiler always emits a terminating PH7_OP_DONE, so` |
 |     - | 1001 | `						 * pInstr+1 is in-bounds while we are inside a non-DONE opcode. */` |
-| 30830 | 1002 | `						if( (pObjAttr->iState & VM_CLASS_ATTR_UNINIT)` |
-| 15534 | 1003 | `						 && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_TYPED) ){` |
+| 30836 | 1002 | `						if( (pObjAttr->iState & VM_CLASS_ATTR_UNINIT)` |
+| 15537 | 1003 | `						 && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_TYPED) ){` |
 |   233 | 1004 | `							VmInstr *pNext = pInstr + 1;` |
 |   233 | 1005 | `							int bIsLhs = 0;` |
 |   233 | 1006 | `							if( pNext->iOp == PH7_OP_STORE && pNext->iP2 ){` |
@@ -1041,25 +1041,25 @@ Coverage: 868/1015 lines (85.52%)
 |     - | 1031 | `							}` |
 |   112 | 1032 | `						}` |
 |     - | 1033 | `						/* Load attribute */` |
-| 30831 | 1034 | `						pValue = (ph7_value *)SySetAt(&pVm->aMemObj,pObjAttr->nIdx);` |
-| 30831 | 1035 | `						if( pValue ){` |
-| 30829 | 1036 | `							if( pThis->iRef < 2 ){` |
+| 30837 | 1034 | `						pValue = (ph7_value *)SySetAt(&pVm->aMemObj,pObjAttr->nIdx);` |
+| 30837 | 1035 | `						if( pValue ){` |
+| 30835 | 1036 | `							if( pThis->iRef < 2 ){` |
 |     - | 1037 | `								/* Perform a store operation,rather than a load operation since` |
 |     - | 1038 | `								 * the class instance '$this' will be deleted shortly.` |
 |     - | 1039 | `								 */` |
 |   103 | 1040 | `								PH7_MemObjStore(pValue,pTos);` |
 |    52 | 1041 | `							}else{` |
 |     - | 1042 | `								/* Simple load */` |
-| 30727 | 1043 | `								PH7_MemObjLoad(pValue,pTos);` |
+| 30733 | 1043 | `								PH7_MemObjLoad(pValue,pTos);` |
 |     - | 1044 | `							}` |
-| 30829 | 1045 | `							if( (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){` |
-| 30829 | 1046 | `								if( pThis->iRef > 1 ){` |
+| 30835 | 1045 | `							if( (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){` |
+| 30835 | 1046 | `								if( pThis->iRef > 1 ){` |
 |     - | 1047 | `									/* Load attribute index */` |
-| 30727 | 1048 | `									pTos->nIdx = pObjAttr->nIdx;` |
-| 15361 | 1049 | `								}` |
-| 15412 | 1050 | `							}` |
-| 15412 | 1051 | `						}` |
-| 15418 | 1052 | `					}else{` |
+| 30733 | 1048 | `									pTos->nIdx = pObjAttr->nIdx;` |
+| 15364 | 1049 | `								}` |
+| 15415 | 1050 | `							}` |
+| 15415 | 1051 | `						}` |
+| 15421 | 1052 | `					}else{` |
 |     - | 1053 | `						/* Inaccessible (private/protected) from this scope. php consults` |
 |     - | 1054 | `						 * __get here exactly like a missing property (band A #3a) before` |
 |     - | 1055 | `						 * erroring; the guard keeps a self-recursive read from looping. */` |
@@ -1181,11 +1181,11 @@ Coverage: 868/1015 lines (85.52%)
 |     5 | 1171 | `						VM_EXIT_BREAK;` |
 |     - | 1172 | `						}` |
 |     - | 1173 | `					}` |
-| 15413 | 1174 | `				}` |
+| 15416 | 1174 | `				}` |
 |     - | 1175 | `				/* Safely unreference the object */` |
-| 30873 | 1176 | `				PH7_ClassInstanceUnref(pThis);` |
+| 30879 | 1176 | `				PH7_ClassInstanceUnref(pThis);` |
 |     - | 1177 | `			}` |
-| 21050 | 1178 | `		}else{` |
+| 21054 | 1178 | `		}else{` |
 |     - | 1179 | ``			/* `->` on a non-object (e.g. a null intermediate). Silent in isset()/empty()/unset()`` |
 |     - | 1180 | ``			 * context (iP2 2/3/4) so `isset($o->missing->x)` / `unset($o->missing->x)` match PHP. */`` |
 |    12 | 1181 | `			if( pInstr->iP2 != PH7_MEMBER_UNSET && !VmMemberCtxIsLookup(pInstr->iP2) ){` |
@@ -1219,7 +1219,7 @@ Coverage: 868/1015 lines (85.52%)
 |     8 | 1209 | `			PH7_MemObjRelease(pTos);` |
 |     8 | 1210 | `			pTos->nIdx = SXU32_HIGH; /* Assume we are loading a constant */` |
 |     - | 1211 | `		}` |
-| 21053 | 1212 | `	}else{` |
+| 21057 | 1212 | `	}else{` |
 |     - | 1213 | `		/* Static member access using class name */` |
 |  2523 | 1214 | `		pNos = pTos;` |
 |  2523 | 1215 | `		pThis = 0;` |
@@ -1577,9 +1577,9 @@ Coverage: 868/1015 lines (85.52%)
 |   ! 0 | 1567 | `			pTos->nIdx = SXU32_HIGH;` |
 |     - | 1568 | `		}` |
 |     - | 1569 | `	}` |
-| 44605 | 1570 | `	VM_EXIT_BREAK;` |
+| 44613 | 1570 | `	VM_EXIT_BREAK;` |
 |   ! 0 | 1571 | `	VM_EXIT_BREAK;` |
-| 22554 | 1572 | `}` |
+| 22558 | 1572 | `}` |
 |     - | 1573 |  |
 |     - | 1574 | `/*` |
 |     - | 1575 | ` * OP_CLONE: body moved verbatim from the OP_CLONE arm of` |

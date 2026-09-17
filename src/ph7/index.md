@@ -1,18 +1,18 @@
 # src/ph7/
 
-Coverage: 46163/56652 lines (81.49%)
+Coverage: 46194/56690 lines (81.49%)
 
 [Up](../index.md)
 
 | Name | Rate | Hit/Total |
 |:---|---:|---:|
-|[api.c](api.c.md)|70.51%|777/1102|
+|[api.c](api.c.md)|70.05%|772/1102|
 |[builtin.c](builtin.c.md)|67.55%|229/339|
 |[builtin_date.c](builtin_date.c.md)|89.61%|647/722|
 |[builtin_date_parse.c](builtin_date_parse.c.md)|87.86%|948/1079|
 |[builtin_fmt.c](builtin_fmt.c.md)|85.31%|482/565|
 |[builtin_hash.c](builtin_hash.c.md)|87.67%|256/292|
-|[builtin_math.c](builtin_math.c.md)|82.24%|537/653|
+|[builtin_math.c](builtin_math.c.md)|82.07%|540/658|
 |[builtin_mb.c](builtin_mb.c.md)|91.94%|479/521|
 |[builtin_parse.c](builtin_parse.c.md)|89.62%|1234/1377|
 |[builtin_string.c](builtin_string.c.md)|85.18%|2293/2692|
@@ -24,10 +24,10 @@ Coverage: 46163/56652 lines (81.49%)
 |[compile_stmt.c](compile_stmt.c.md)|73.56%|1466/1993|
 |[constant.c](constant.c.md)|93.09%|970/1042|
 |[hashmap.c](hashmap.c.md)|90.77%|1042/1148|
-|[hashmap_builtin.c](hashmap_builtin.c.md)|85.93%|2443/2843|
+|[hashmap_builtin.c](hashmap_builtin.c.md)|85.97%|2444/2843|
 |[hashmap_sort.c](hashmap_sort.c.md)|91.14%|463/508|
 |[lex.c](lex.c.md)|93.52%|823/880|
-|[memobj.c](memobj.c.md)|81.35%|829/1019|
+|[memobj.c](memobj.c.md)|81.66%|819/1003|
 |[net.c](net.c.md)|57.45%|81/141|
 |[oo.c](oo.c.md)|87.62%|736/840|
 |[parse.c](parse.c.md)|86.70%|1232/1421|
@@ -36,14 +36,14 @@ Coverage: 46163/56652 lines (81.49%)
 |[vfs_stream.c](vfs_stream.c.md)|66.90%|1267/1894|
 |[vfs_unix.c](vfs_unix.c.md)|89.38%|421/471|
 |[vfs_win.c](vfs_win.c.md)|82.82%|588/710|
-|[vm.c](vm.c.md)|83.61%|2367/2831|
+|[vm.c](vm.c.md)|83.62%|2368/2832|
 |[vm_arg_check.c](vm_arg_check.c.md)|97.66%|375/384|
 |[vm_builtin_call.c](vm_builtin_call.c.md)|87.28%|542/621|
 |[vm_builtin_class.c](vm_builtin_class.c.md)|87.60%|629/718|
 |[vm_builtin_error.c](vm_builtin_error.c.md)|80.00%|236/295|
 |[vm_builtin_getopt.c](vm_builtin_getopt.c.md)|24.71%|42/170|
 |[vm_builtin_ini.c](vm_builtin_ini.c.md)|95.45%|21/22|
-|[vm_builtin_lang.c](vm_builtin_lang.c.md)|78.45%|779/993|
+|[vm_builtin_lang.c](vm_builtin_lang.c.md)|78.77%|820/1041|
 |[vm_builtin_lib.c](vm_builtin_lib.c.md)|100.00%|8/8|
 |[vm_builtin_ob.c](vm_builtin_ob.c.md)|75.12%|157/209|
 |[vm_builtin_reflection.c](vm_builtin_reflection.c.md)|86.13%|1043/1211|

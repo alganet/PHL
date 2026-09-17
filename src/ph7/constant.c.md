@@ -154,11 +154,11 @@ Coverage: 970/1042 lines (93.09%)
 |      - |  144 | ` * Expand the largest integer supported.` |
 |      - |  145 | ` * Note that PH7 deals with 64-bit integer for all platforms.` |
 |      - |  146 | ` */` |
-|    106 |  147 | `static void PH7_INTMAX_Const(ph7_value *pVal,void *pUnused)` |
+|    108 |  147 | `static void PH7_INTMAX_Const(ph7_value *pVal,void *pUnused)` |
 |      2 |  148 | `{` |
-|     53 |  149 | `	SXUNUSED(pUnused);` |
-|    108 |  150 | `	ph7_value_int64(pVal,SXI64_HIGH);` |
-|    108 |  151 | `}` |
+|     54 |  149 | `	SXUNUSED(pUnused);` |
+|    110 |  150 | `	ph7_value_int64(pVal,SXI64_HIGH);` |
+|    110 |  151 | `}` |
 |      - |  152 | `/* ext/calendar: the only calendar cal_days_in_month() is asked for in practice. */` |
 |      4 |  153 | `static void PH7_CAL_GREGORIAN_Const(ph7_value *pVal,void *pUnused)` |
 |      1 |  154 | `{` |
@@ -1253,20 +1253,20 @@ Coverage: 970/1042 lines (93.09%)
 |      - | 1243 | ` * PATHINFO_EXTENSION` |
 |      - | 1244 | ` *  Expand 3.` |
 |      - | 1245 | ` */` |
-|   6558 | 1246 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
+|   6564 | 1246 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1247 | `{` |
-|   3279 | 1248 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6563 | 1249 | `	ph7_value_int(pVal,3);` |
-|   6563 | 1250 | `}` |
+|   3282 | 1248 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6569 | 1249 | `	ph7_value_int(pVal,3);` |
+|   6569 | 1250 | `}` |
 |      - | 1251 | `/*` |
 |      - | 1252 | ` * PATHINFO_FILENAME` |
 |      - | 1253 | ` *  Expand 4.` |
 |      - | 1254 | ` */` |
-|   6550 | 1255 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
+|   6556 | 1255 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1256 | `{` |
-|   3275 | 1257 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6555 | 1258 | `	ph7_value_int(pVal,4);` |
-|   6555 | 1259 | `}` |
+|   3278 | 1257 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6561 | 1258 | `	ph7_value_int(pVal,4);` |
+|   6561 | 1259 | `}` |
 |      - | 1260 | `/*` |
 |      - | 1261 | ` * SEEK_SET.` |
 |      - | 1262 | ` *  Expand 0` |

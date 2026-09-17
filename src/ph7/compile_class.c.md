@@ -926,11 +926,11 @@ Coverage: 2163/2848 lines (75.95%)
 |        - |  916 | ` * matched as a plain identifier in the class-member modifier position rather` |
 |        - |  917 | ` * than promoted to a lexer keyword.` |
 |        - |  918 | ` */` |
-| 23413666 |  919 | `PH7_PRIVATE int GenStateIsReadonly(SyToken *pTok)` |
+| 23413776 |  919 | `PH7_PRIVATE int GenStateIsReadonly(SyToken *pTok)` |
 |        5 |  920 | `{` |
-| 23638550 |  921 | `	return (pTok->nType & PH7_TK_ID)` |
-| 11931712 |  922 | `		&& pTok->sData.nByte == sizeof("readonly")-1` |
-| 23638545 |  923 | `		&& SyStrnicmp(pTok->sData.zString,"readonly",sizeof("readonly")-1) == 0;` |
+| 23638685 |  921 | `	return (pTok->nType & PH7_TK_ID)` |
+| 11931792 |  922 | `		&& pTok->sData.nByte == sizeof("readonly")-1` |
+| 23638680 |  923 | `		&& SyStrnicmp(pTok->sData.zString,"readonly",sizeof("readonly")-1) == 0;` |
 |        5 |  924 | `}` |
 |        - |  925 | `/*` |
 |        - |  926 | ``  * Detect an asymmetric set-visibility modifier `public(set)` / `protected(set)` `` |
@@ -2648,39 +2648,39 @@ Coverage: 2163/2848 lines (75.95%)
 |        - | 2638 | ` * the stream has no valid name at the current position (pGen->pIn is left` |
 |        - | 2639 | ` * untouched in that case so the caller can produce its own diagnostic).` |
 |        - | 2640 | ` */` |
-|   512144 | 2641 | `PH7_PRIVATE sxi32 GenStateParseClassReference(ph7_gen_state *pGen,SyBlob *pFqn)` |
+|   512146 | 2641 | `PH7_PRIVATE sxi32 GenStateParseClassReference(ph7_gen_state *pGen,SyBlob *pFqn)` |
 |        5 | 2642 | `{` |
-|   512149 | 2643 | `	int isAbsolute = 0;` |
-|   512149 | 2644 | `	SyToken *pStart = pGen->pIn;` |
+|   512151 | 2643 | `	int isAbsolute = 0;` |
+|   512151 | 2644 | `	SyToken *pStart = pGen->pIn;` |
 |        - | 2645 | `	SyBlob sName;` |
-|   512149 | 2646 | `	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NSSEP) ){` |
-|     4517 | 2647 | `		isAbsolute = 1;` |
-|     4517 | 2648 | `		pGen->pIn++;` |
-|     2256 | 2649 | `	}` |
-|   512149 | 2650 | `	if( pGen->pIn >= pGen->pEnd \|\| (pGen->pIn->nType & (PH7_TK_ID\|PH7_TK_KEYWORD)) == 0 ){` |
+|   512151 | 2646 | `	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NSSEP) ){` |
+|     4519 | 2647 | `		isAbsolute = 1;` |
+|     4519 | 2648 | `		pGen->pIn++;` |
+|     2257 | 2649 | `	}` |
+|   512151 | 2650 | `	if( pGen->pIn >= pGen->pEnd \|\| (pGen->pIn->nType & (PH7_TK_ID\|PH7_TK_KEYWORD)) == 0 ){` |
 |        9 | 2651 | `		pGen->pIn = pStart;` |
 |        9 | 2652 | `		return SXERR_INVALID;` |
 |        - | 2653 | `	}` |
-|   512143 | 2654 | `	SyBlobInit(&sName,&pGen->pVm->sAllocator);` |
-|   512143 | 2655 | `	SyBlobAppend(&sName,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);` |
-|   512143 | 2656 | `	pGen->pIn++;` |
-|   768246 | 2657 | `	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NSSEP) &&` |
-|   256113 | 2658 | `		&pGen->pIn[1] < pGen->pEnd && (pGen->pIn[1].nType & (PH7_TK_ID\|PH7_TK_KEYWORD)) ){` |
+|   512145 | 2654 | `	SyBlobInit(&sName,&pGen->pVm->sAllocator);` |
+|   512145 | 2655 | `	SyBlobAppend(&sName,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);` |
+|   512145 | 2656 | `	pGen->pIn++;` |
+|   768249 | 2657 | `	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NSSEP) &&` |
+|   256114 | 2658 | `		&pGen->pIn[1] < pGen->pEnd && (pGen->pIn[1].nType & (PH7_TK_ID\|PH7_TK_KEYWORD)) ){` |
 |       28 | 2659 | `		SyBlobAppend(&sName,"\\",1);` |
 |       28 | 2660 | `		pGen->pIn++;` |
 |       28 | 2661 | `		SyBlobAppend(&sName,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);` |
 |       28 | 2662 | `		pGen->pIn++;` |
 |        2 | 2663 | `	}` |
-|   512143 | 2664 | `	if( isAbsolute ){` |
-|     4515 | 2665 | `		SyBlobAppend(pFqn,(const char *)SyBlobData(&sName),SyBlobLength(&sName));` |
-|     2260 | 2666 | `	}else{` |
+|   512145 | 2664 | `	if( isAbsolute ){` |
+|     4517 | 2665 | `		SyBlobAppend(pFqn,(const char *)SyBlobData(&sName),SyBlobLength(&sName));` |
+|     2261 | 2666 | `	}else{` |
 |        - | 2667 | `		SyString sRaw;` |
 |   507633 | 2668 | `		SyStringInitFromBuf(&sRaw,(const char *)SyBlobData(&sName),SyBlobLength(&sName));` |
 |   507633 | 2669 | `		GenStateResolveName(pGen,&sRaw,pFqn);` |
 |        - | 2670 | `	}` |
-|   512143 | 2671 | `	SyBlobRelease(&sName);` |
-|   512143 | 2672 | `	return SXRET_OK;` |
-|   256077 | 2673 | `}` |
+|   512145 | 2671 | `	SyBlobRelease(&sName);` |
+|   512145 | 2672 | `	return SXRET_OK;` |
+|   256078 | 2673 | `}` |
 |        - | 2674 | `/*` |
 |        - | 2675 | ` * Return TRUE if pInterface is Throwable or transitively extends Throwable.` |
 |        - | 2676 | `` * Walks both the interface `extends` chain (pBase) and any parent-interface`` |
@@ -4077,36 +4077,36 @@ Coverage: 2163/2848 lines (75.95%)
 |        - | 4067 | `` * or the context-sensitive `readonly` identifier (PHP 8.2). On a match, *piFlag`` |
 |        - | 4068 | ` * receives the corresponding PH7_CLASS_* bit.` |
 |        - | 4069 | ` */` |
-| 14379748 | 4070 | `static int GenStateTokenIsClassModifier(SyToken *pTok,sxi32 *piFlag)` |
+| 14379858 | 4070 | `static int GenStateTokenIsClassModifier(SyToken *pTok,sxi32 *piFlag)` |
 |        5 | 4071 | `{` |
-| 14379753 | 4072 | `	if( pTok->nType & PH7_TK_KEYWORD ){` |
-|  8606457 | 4073 | `		sxu32 nKw = (sxu32)SX_PTR_TO_INT(pTok->pUserData);` |
-|  8606457 | 4074 | `		if( nKw == PH7_TKWRD_FINAL ){ *piFlag = PH7_CLASS_FINAL; return TRUE; }` |
-|  8552343 | 4075 | `		if( nKw == PH7_TKWRD_ABSTRACT ){ *piFlag = PH7_CLASS_ABSTRACT; return TRUE; }` |
-|  4256806 | 4076 | `	}` |
-| 14286913 | 4077 | `	if( GenStateIsReadonly(pTok) ){ *piFlag = PH7_CLASS_READONLY; return TRUE; }` |
-| 14286853 | 4078 | `	return FALSE;` |
-|  7189879 | 4079 | `}` |
+| 14379863 | 4072 | `	if( pTok->nType & PH7_TK_KEYWORD ){` |
+|  8606509 | 4073 | `		sxu32 nKw = (sxu32)SX_PTR_TO_INT(pTok->pUserData);` |
+|  8606509 | 4074 | `		if( nKw == PH7_TKWRD_FINAL ){ *piFlag = PH7_CLASS_FINAL; return TRUE; }` |
+|  8552395 | 4075 | `		if( nKw == PH7_TKWRD_ABSTRACT ){ *piFlag = PH7_CLASS_ABSTRACT; return TRUE; }` |
+|  4256832 | 4076 | `	}` |
+| 14287023 | 4077 | `	if( GenStateIsReadonly(pTok) ){ *piFlag = PH7_CLASS_READONLY; return TRUE; }` |
+| 14286963 | 4078 | `	return FALSE;` |
+|  7189934 | 4079 | `}` |
 |        - | 4080 | `/*` |
 |        - | 4081 | ` * Advance *ppIn over a leading run of class modifiers, returning the combined` |
 |        - | 4082 | ` * PH7_CLASS_* flags (0 if none). If a modifier is repeated, the first repeated` |
 |        - | 4083 | ` * token is reported via *ppDup (NULL when none); pass 0 for ppDup to ignore it.` |
 |        - | 4084 | ` * This stays side-effect-free so it can be used for speculative look-ahead.` |
 |        - | 4085 | ` */` |
-| 14286848 | 4086 | `static sxi32 GenStateScanClassModifiers(SyToken **ppIn,SyToken *pEnd,SyToken **ppDup)` |
+| 14286958 | 4086 | `static sxi32 GenStateScanClassModifiers(SyToken **ppIn,SyToken *pEnd,SyToken **ppDup)` |
 |        5 | 4087 | `{` |
-| 14286853 | 4088 | `	SyToken *pIn = *ppIn,*pDup = 0;` |
-| 14286853 | 4089 | `	sxi32 iFlags = 0,iFlag;` |
-| 14379753 | 4090 | `	while( pIn < pEnd && GenStateTokenIsClassModifier(pIn,&iFlag) ){` |
+| 14286963 | 4088 | `	SyToken *pIn = *ppIn,*pDup = 0;` |
+| 14286963 | 4089 | `	sxi32 iFlags = 0,iFlag;` |
+| 14379863 | 4090 | `	while( pIn < pEnd && GenStateTokenIsClassModifier(pIn,&iFlag) ){` |
 |    92905 | 4091 | `		if( (iFlags & iFlag) && pDup == 0 ){` |
 |        5 | 4092 | `			pDup = pIn;` |
 |        2 | 4093 | `		}` |
 |    92905 | 4094 | `		iFlags \|= iFlag;` |
 |    92905 | 4095 | `		pIn++;` |
 |        5 | 4096 | `	}` |
-| 14286853 | 4097 | `	*ppIn = pIn;` |
-| 14286853 | 4098 | `	if( ppDup ){ *ppDup = pDup; }` |
-| 14286853 | 4099 | `	return iFlags;` |
+| 14286963 | 4097 | `	*ppIn = pIn;` |
+| 14286963 | 4098 | `	if( ppDup ){ *ppDup = pDup; }` |
+| 14286963 | 4099 | `	return iFlags;` |
 |        5 | 4100 | `}` |
 |        - | 4101 | `/*` |
 |        - | 4102 | ` * Test whether the token stream starts a *modified* class declaration: a run of` |
@@ -4115,11 +4115,11 @@ Coverage: 2163/2848 lines (75.95%)
 |        - | 4105 | `` * `class`/`interface`/`trait` (and any expression that merely starts with`` |
 |        - | 4106 | `` * `readonly`) to their existing handlers.`` |
 |        - | 4107 | ` */` |
-| 14244270 | 4108 | `PH7_PRIVATE int GenStateStartsModifiedClass(SyToken *pIn,SyToken *pEnd)` |
+| 14244380 | 4108 | `PH7_PRIVATE int GenStateStartsModifiedClass(SyToken *pIn,SyToken *pEnd)` |
 |        5 | 4109 | `{` |
-| 14244275 | 4110 | `	sxi32 iFlags = GenStateScanClassModifiers(&pIn,pEnd,0);` |
-|  7172444 | 4111 | `	return iFlags != 0 && pIn < pEnd && (pIn->nType & PH7_TK_KEYWORD)` |
-| 14269423 | 4112 | `		&& (sxu32)SX_PTR_TO_INT(pIn->pUserData) == PH7_TKWRD_CLASS;` |
+| 14244385 | 4110 | `	sxi32 iFlags = GenStateScanClassModifiers(&pIn,pEnd,0);` |
+|  7172499 | 4111 | `	return iFlags != 0 && pIn < pEnd && (pIn->nType & PH7_TK_KEYWORD)` |
+| 14269533 | 4112 | `		&& (sxu32)SX_PTR_TO_INT(pIn->pUserData) == PH7_TKWRD_CLASS;` |
 |        5 | 4113 | `}` |
 |        - | 4114 | `/*` |
 |        - | 4115 | ` * Compile a class declaration carrying one or more leading modifiers` |
@@ -4482,12 +4482,12 @@ Coverage: 2163/2848 lines (75.95%)
 |        - | 4472 | `` * an identifier. `enum(...)`/`enum;`/`$enum` all keep their expression`` |
 |        - | 4473 | `` * meaning; `enum Name` can never start a valid expression.`` |
 |        - | 4474 | ` */` |
-| 14193968 | 4475 | `PH7_PRIVATE int GenStateStartsEnumDecl(SyToken *pIn,SyToken *pEnd)` |
+| 14194078 | 4475 | `PH7_PRIVATE int GenStateStartsEnumDecl(SyToken *pIn,SyToken *pEnd)` |
 |        5 | 4476 | `{` |
-| 14409076 | 4477 | `	return (pIn->nType & PH7_TK_ID)` |
-|  7312087 | 4478 | `		&& pIn->sData.nByte == sizeof("enum")-1` |
-|   224905 | 4479 | `		&& SyStrnicmp(pIn->sData.zString,"enum",sizeof("enum")-1) == 0` |
-| 14409071 | 4480 | `		&& &pIn[1] < pEnd && (pIn[1].nType & PH7_TK_ID);` |
+| 14409211 | 4477 | `	return (pIn->nType & PH7_TK_ID)` |
+|  7312167 | 4478 | `		&& pIn->sData.nByte == sizeof("enum")-1` |
+|   224930 | 4479 | `		&& SyStrnicmp(pIn->sData.zString,"enum",sizeof("enum")-1) == 0` |
+| 14409206 | 4480 | `		&& &pIn[1] < pEnd && (pIn[1].nType & PH7_TK_ID);` |
 |        5 | 4481 | `}` |
 |        - | 4482 | `/*` |
 |        - | 4483 | ` * Compile an enum declaration (PHP 8.1). An enum is a final class carrying` |
