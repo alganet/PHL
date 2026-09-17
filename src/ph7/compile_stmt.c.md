@@ -605,15 +605,15 @@ Coverage: 1463/1981 lines (73.85%)
 |        - |  595 | `	sxi32 rc;` |
 |        - |  596 | `	sxu32 nLine;` |
 |  6953577 |  597 | `	if( pGen->pIn->nType & PH7_TK_OCB /* '{' */ ){` |
-|  6827847 |  598 | `		nLine = pGen->pIn->nLine;` |
-|  6827847 |  599 | `		rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_STD,PH7_VmInstrLength(pGen->pVm),0,0);` |
-|  6827847 |  600 | `		if( rc != SXRET_OK ){` |
+|  6827893 |  598 | `		nLine = pGen->pIn->nLine;` |
+|  6827893 |  599 | `		rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_STD,PH7_VmInstrLength(pGen->pVm),0,0);` |
+|  6827893 |  600 | `		if( rc != SXRET_OK ){` |
 |      ! 0 |  601 | `			return SXERR_ABORT;` |
 |        - |  602 | `		}` |
-|  6827847 |  603 | `		pGen->pIn++;` |
+|  6827893 |  603 | `		pGen->pIn++;` |
 |        - |  604 | `		/* Compile until we hit the closing braces '}' */` |
-|  9990476 |  605 | `		for(;;){` |
-| 19980957 |  606 | `			if( pGen->pIn >= pGen->pEnd ){` |
+|  9990522 |  605 | `		for(;;){` |
+| 19981049 |  606 | `			if( pGen->pIn >= pGen->pEnd ){` |
 |       22 |  607 | `				rc = GenStateNextChunk(&(*pGen));` |
 |       22 |  608 | `				if (rc == SXERR_ABORT ){` |
 |      ! 0 |  609 | `			 	   return SXERR_ABORT;` |
@@ -625,19 +625,19 @@ Coverage: 1463/1981 lines (73.85%)
 |       22 |  615 | `					break;` |
 |        - |  616 | `				}` |
 |      ! 0 |  617 | `			}` |
-| 19980937 |  618 | `			if( pGen->pIn->nType & PH7_TK_CCB/*'}'*/ ){` |
+| 19981029 |  618 | `			if( pGen->pIn->nType & PH7_TK_CCB/*'}'*/ ){` |
 |        - |  619 | `				/* Closing braces found,break immediately*/` |
-|  6827827 |  620 | `				pGen->pIn++;` |
-|  6827827 |  621 | `				break;` |
+|  6827873 |  620 | `				pGen->pIn++;` |
+|  6827873 |  621 | `				break;` |
 |        - |  622 | `			}` |
 |        - |  623 | `			/* Compile a single statement */` |
-| 13153115 |  624 | `			rc = GenStateCompileChunk(&(*pGen),PH7_COMPILE_SINGLE_STMT);` |
-| 13153115 |  625 | `			if( rc == SXERR_ABORT ){` |
+| 13153161 |  624 | `			rc = GenStateCompileChunk(&(*pGen),PH7_COMPILE_SINGLE_STMT);` |
+| 13153161 |  625 | `			if( rc == SXERR_ABORT ){` |
 |      ! 0 |  626 | `				return SXERR_ABORT;` |
 |        - |  627 | `			}` |
 |        5 |  628 | `		}` |
-|  6827847 |  629 | `		GenStateLeaveBlock(&(*pGen),0);` |
-|  3539656 |  630 | `	}else if( (pGen->pIn->nType & PH7_TK_COLON /* ':' */) && nKeywordEnd > 0 ){` |
+|  6827893 |  629 | `		GenStateLeaveBlock(&(*pGen),0);` |
+|  3539633 |  630 | `	}else if( (pGen->pIn->nType & PH7_TK_COLON /* ':' */) && nKeywordEnd > 0 ){` |
 |      ! 0 |  631 | `		pGen->pIn++;` |
 |      ! 0 |  632 | `		rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_STD,PH7_VmInstrLength(pGen->pVm),0,0);` |
 |      ! 0 |  633 | `		if( rc != SXRET_OK ){` |
@@ -681,8 +681,8 @@ Coverage: 1463/1981 lines (73.85%)
 |      ! 0 |  671 | `		GenStateLeaveBlock(&(*pGen),0);` |
 |      ! 0 |  672 | `	}else{` |
 |        - |  673 | `		/* Compile a single statement */` |
-|   125735 |  674 | `		rc = GenStateCompileChunk(&(*pGen),PH7_COMPILE_SINGLE_STMT);` |
-|   125735 |  675 | `		if( rc == SXERR_ABORT ){` |
+|   125689 |  674 | `		rc = GenStateCompileChunk(&(*pGen),PH7_COMPILE_SINGLE_STMT);` |
+|   125689 |  675 | `		if( rc == SXERR_ABORT ){` |
 |      ! 0 |  676 | `			return SXERR_ABORT;` |
 |        - |  677 | `		}` |
 |        - |  678 | `	}` |
@@ -1483,19 +1483,19 @@ Coverage: 1463/1981 lines (73.85%)
 |        - | 1473 | ` *    }` |
 |        - | 1474 | ` *    ?>` |
 |        - | 1475 | ` */` |
-|  2437914 | 1476 | `PH7_PRIVATE sxi32 PH7_CompileIf(ph7_gen_state *pGen)` |
+|  2437912 | 1476 | `PH7_PRIVATE sxi32 PH7_CompileIf(ph7_gen_state *pGen)` |
 |        5 | 1477 | `{` |
-|  2437919 | 1478 | `	SyToken *pToken,*pTmp,*pEnd = 0;` |
-|  2437919 | 1479 | `	GenBlock *pCondBlock = 0;` |
+|  2437917 | 1478 | `	SyToken *pToken,*pTmp,*pEnd = 0;` |
+|  2437917 | 1479 | `	GenBlock *pCondBlock = 0;` |
 |        - | 1480 | `	sxu32 nJumpIdx;` |
 |        - | 1481 | `	sxu32 nKeyID;` |
 |        - | 1482 | `	sxi32 rc;` |
 |        - | 1483 | `	/* Jump the 'if' keyword */` |
-|  2437919 | 1484 | `	pGen->pIn++;` |
-|  2437919 | 1485 | `	pToken = pGen->pIn;` |
+|  2437917 | 1484 | `	pGen->pIn++;` |
+|  2437917 | 1485 | `	pToken = pGen->pIn;` |
 |        - | 1486 | `	/* Create the conditional block */` |
-|  2437919 | 1487 | `	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_COND,PH7_VmInstrLength(pGen->pVm),0,&pCondBlock);` |
-|  2437919 | 1488 | `	if( rc != SXRET_OK ){` |
+|  2437917 | 1487 | `	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_COND,PH7_VmInstrLength(pGen->pVm),0,&pCondBlock);` |
+|  2437917 | 1488 | `	if( rc != SXRET_OK ){` |
 |      ! 0 | 1489 | `		return SXERR_ABORT;` |
 |        - | 1490 | `	}` |
 |        - | 1491 | `	/* Process as many [if/else if/elseif/else] blocks as we can */` |
@@ -1553,18 +1553,18 @@ Coverage: 1463/1981 lines (73.85%)
 |      ! 0 | 1543 | `			return SXERR_ABORT;` |
 |        - | 1544 | `		}` |
 |  2726507 | 1545 | `		if( pGen->pIn >= pGen->pEnd \|\| (pGen->pIn->nType & PH7_TK_KEYWORD) == 0 ){` |
-|   522808 | 1546 | `			break;` |
+|   522807 | 1546 | `			break;` |
 |        - | 1547 | `		}` |
 |        - | 1548 | `		/* Ensure that the keyword ID is 'else if' or 'else' */` |
-|  1680901 | 1549 | `		nKeyID = (sxu32)SX_PTR_TO_INT(pGen->pIn->pUserData);` |
-|  1680901 | 1550 | `		if( (nKeyID & (PH7_TKWRD_ELSE\|PH7_TKWRD_ELIF)) == 0 ){` |
+|  1680903 | 1549 | `		nKeyID = (sxu32)SX_PTR_TO_INT(pGen->pIn->pUserData);` |
+|  1680903 | 1550 | `		if( (nKeyID & (PH7_TKWRD_ELSE\|PH7_TKWRD_ELIF)) == 0 ){` |
 |  1169703 | 1551 | `			break;` |
 |        - | 1552 | `		}` |
 |        - | 1553 | `		/* Emit the unconditional jump */` |
-|   511203 | 1554 | `		PH7_VmEmitInstr(pGen->pVm,PH7_OP_JMP,0,0,0,&nJumpIdx);` |
+|   511205 | 1554 | `		PH7_VmEmitInstr(pGen->pVm,PH7_OP_JMP,0,0,0,&nJumpIdx);` |
 |        - | 1555 | `		/* Save the instruction index so we can fix it later when the jump destination is resolved */` |
-|   511203 | 1556 | `		GenStateNewJumpFixup(pCondBlock,PH7_OP_JMP,nJumpIdx);` |
-|   511203 | 1557 | `		if( nKeyID & PH7_TKWRD_ELSE ){` |
+|   511205 | 1556 | `		GenStateNewJumpFixup(pCondBlock,PH7_OP_JMP,nJumpIdx);` |
+|   511205 | 1557 | `		if( nKeyID & PH7_TKWRD_ELSE ){` |
 |   308365 | 1558 | `			pToken = &pGen->pIn[1];` |
 |   308365 | 1559 | `			if( pToken >= pGen->pEnd \|\| (pToken->nType & PH7_TK_KEYWORD) == 0 \|\|` |
 |    85794 | 1560 | `				SX_PTR_TO_INT(pToken->pUserData) != PH7_TKWRD_IF ){` |
@@ -1572,15 +1572,15 @@ Coverage: 1463/1981 lines (73.85%)
 |        - | 1562 | `			}` |
 |    85761 | 1563 | `			pGen->pIn++; /* Jump the 'else' keyword */` |
 |    42878 | 1564 | `		}` |
-|   288599 | 1565 | `		pGen->pIn++; /* Jump the 'elseif/if' keyword */` |
+|   288601 | 1565 | `		pGen->pIn++; /* Jump the 'elseif/if' keyword */` |
 |        - | 1566 | `		/* Synchronize cursors */` |
-|   288599 | 1567 | `		pToken = pGen->pIn;` |
+|   288601 | 1567 | `		pToken = pGen->pIn;` |
 |        - | 1568 | `		/* Fix the false jump */` |
-|   288599 | 1569 | `		GenStateFixJumps(pCondBlock,PH7_OP_JZ,PH7_VmInstrLength(pGen->pVm));` |
+|   288601 | 1569 | `		GenStateFixJumps(pCondBlock,PH7_OP_JZ,PH7_VmInstrLength(pGen->pVm));` |
 |        5 | 1570 | `	} /* For(;;) */` |
 |        - | 1571 | `	/* Fix the false jump */` |
-|  2437913 | 1572 | `	GenStateFixJumps(pCondBlock,PH7_OP_JZ,PH7_VmInstrLength(pGen->pVm));` |
-|  2437913 | 1573 | `	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) &&` |
+|  2437911 | 1572 | `	GenStateFixJumps(pCondBlock,PH7_OP_JZ,PH7_VmInstrLength(pGen->pVm));` |
+|  2437911 | 1573 | `	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) &&` |
 |  1392302 | 1574 | `		(SX_PTR_TO_INT(pGen->pIn->pUserData) & PH7_TKWRD_ELSE) ){` |
 |        - | 1575 | `			/* Compile the else block */` |
 |   222609 | 1576 | `			pGen->pIn++;` |
@@ -1590,13 +1590,13 @@ Coverage: 1463/1981 lines (73.85%)
 |      ! 0 | 1580 | `				return SXERR_ABORT;` |
 |        - | 1581 | `			}` |
 |   111302 | 1582 | `	}` |
-|  2437913 | 1583 | `	nJumpIdx = PH7_VmInstrLength(pGen->pVm);` |
+|  2437911 | 1583 | `	nJumpIdx = PH7_VmInstrLength(pGen->pVm);` |
 |        - | 1584 | `	/* Fix all unconditional jumps now the destination is resolved */` |
-|  2437913 | 1585 | `	GenStateFixJumps(pCondBlock,PH7_OP_JMP,nJumpIdx);` |
+|  2437911 | 1585 | `	GenStateFixJumps(pCondBlock,PH7_OP_JMP,nJumpIdx);` |
 |        - | 1586 | `	/* Release the conditional block */` |
-|  2437913 | 1587 | `	GenStateLeaveBlock(pGen,0);` |
+|  2437911 | 1587 | `	GenStateLeaveBlock(pGen,0);` |
 |        - | 1588 | `	/* Statement successfully compiled */` |
-|  2437913 | 1589 | `	return SXRET_OK;` |
+|  2437911 | 1589 | `	return SXRET_OK;` |
 |        2 | 1590 | `Synchronize:` |
 |        - | 1591 | `	/* Synchronize with the first semi-colon ';' so we can avoid compiling this erroneous block.` |
 |        - | 1592 | `	 */` |
@@ -1604,7 +1604,7 @@ Coverage: 1463/1981 lines (73.85%)
 |       30 | 1594 | `		pGen->pIn++;` |
 |        2 | 1595 | `	}` |
 |        6 | 1596 | `	return SXRET_OK;` |
-|  1218962 | 1597 | `}` |
+|  1218961 | 1597 | `}` |
 |        - | 1598 | `/*` |
 |        - | 1599 | ` * Compile the global construct.` |
 |        - | 1600 | ` * According to the PHP language reference` |

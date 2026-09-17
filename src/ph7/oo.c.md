@@ -182,18 +182,18 @@ Coverage: 736/840 lines (87.62%)
 |       - |  172 | ` * Check if the given name is a class attribute.` |
 |       - |  173 | ` * Return the desired attribute [i.e: ph7_class_attr instance] on success.NULL otherwise.` |
 |       - |  174 | ` */` |
-|  938454 |  175 | `PH7_PRIVATE ph7_class_attr * PH7_ClassExtractAttribute(ph7_class *pClass,const char *zName,sxu32 nByte)` |
+| 2812104 |  175 | `PH7_PRIVATE ph7_class_attr * PH7_ClassExtractAttribute(ph7_class *pClass,const char *zName,sxu32 nByte)` |
 |       5 |  176 | `{` |
 |       - |  177 | `	SyHashEntry *pEntry;` |
 |       - |  178 | `	/* Perform a hash lookup */` |
-|  938459 |  179 | `	pEntry = SyHashGet(&pClass->hAttr,(const void *)zName,nByte);` |
-|  938459 |  180 | `	if( pEntry == 0 ){` |
+| 2812109 |  179 | `	pEntry = SyHashGet(&pClass->hAttr,(const void *)zName,nByte);` |
+| 2812109 |  180 | `	if( pEntry == 0 ){` |
 |       - |  181 | `		/* No such entry */` |
-|  936987 |  182 | `		return 0;` |
+| 2810635 |  182 | `		return 0;` |
 |       - |  183 | `	}` |
 |       - |  184 | `	/* Point to the desierd method */` |
-|    1477 |  185 | `	return (ph7_class_attr *)pEntry->pUserData;` |
-|  469232 |  186 | `}` |
+|    1479 |  185 | `	return (ph7_class_attr *)pEntry->pUserData;` |
+| 1406057 |  186 | `}` |
 |       - |  187 | `/*` |
 |       - |  188 | ` * Install a class attribute in the corresponding container.` |
 |       - |  189 | ` * Return SXRET_OK on success. Any other return value indicates failure.` |

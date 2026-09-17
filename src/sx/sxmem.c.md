@@ -25,78 +25,78 @@ Coverage: 442/524 lines (84.35%)
 |          - |   15 | `#include <stdlib.h>` |
 |          - |   16 | `#endif` |
 |          - |   17 |  |
-|   70201663 |   18 | `static void * SyOSHeapAlloc(sxu32 nByte)` |
+|   70204342 |   18 | `static void * SyOSHeapAlloc(sxu32 nByte)` |
 |          5 |   19 | `{` |
 |          - |   20 | `	void *pNew;` |
 |          - |   21 | `#if defined(__WINNT__)` |
 |          5 |   22 | `	pNew = HeapAlloc(GetProcessHeap(),0,nByte);` |
 |          - |   23 | `#else` |
-|   70201663 |   24 | `	pNew = malloc((size_t)nByte);` |
+|   70204342 |   24 | `	pNew = malloc((size_t)nByte);` |
 |          - |   25 | `#endif` |
-|   70201668 |   26 | `	return pNew;` |
+|   70204347 |   26 | `	return pNew;` |
 |          5 |   27 | `}` |
-|    4692741 |   28 | `static void * SyOSHeapRealloc(void *pOld,sxu32 nByte)` |
+|    4693718 |   28 | `static void * SyOSHeapRealloc(void *pOld,sxu32 nByte)` |
 |          5 |   29 | `{` |
 |          - |   30 | `	void *pNew;` |
 |          - |   31 | `#if defined(__WINNT__)` |
 |          5 |   32 | `	pNew = HeapReAlloc(GetProcessHeap(),0,pOld,nByte);` |
 |          - |   33 | `#else` |
-|    4692741 |   34 | `	pNew = realloc(pOld,(size_t)nByte);` |
+|    4693718 |   34 | `	pNew = realloc(pOld,(size_t)nByte);` |
 |          - |   35 | `#endif` |
-|    4692746 |   36 | `	return pNew;` |
+|    4693723 |   36 | `	return pNew;` |
 |          5 |   37 | `}` |
-|   70198247 |   38 | `static void SyOSHeapFree(void *pPtr)` |
+|   70200926 |   38 | `static void SyOSHeapFree(void *pPtr)` |
 |          5 |   39 | `{` |
 |          - |   40 | `#if defined(__WINNT__)` |
 |          5 |   41 | `	HeapFree(GetProcessHeap(),0,pPtr);` |
 |          - |   42 | `#else` |
-|   70198247 |   43 | `	free(pPtr);` |
+|   70200926 |   43 | `	free(pPtr);` |
 |          - |   44 | `#endif` |
-|   70198252 |   45 | `}` |
+|   70200931 |   45 | `}` |
 |          - |   46 |  |
 |          - |   47 |  |
-|  190734010 |   48 | `PH7_PRIVATE void SyZero(void *pSrc,sxu32 nSize)` |
+|  190737129 |   48 | `PH7_PRIVATE void SyZero(void *pSrc,sxu32 nSize)` |
 |          5 |   49 | `{` |
-|  190734015 |   50 | `	register unsigned char *zSrc = (unsigned char *)pSrc;` |
+|  190737134 |   50 | `	register unsigned char *zSrc = (unsigned char *)pSrc;` |
 |          - |   51 | `	unsigned char *zEnd;` |
 |          - |   52 | `#if defined(UNTRUST)` |
 |          - |   53 | `	if( zSrc == 0 \|\| nSize <= 0 ){` |
 |          - |   54 | `		return ;` |
 |          - |   55 | `	}` |
 |          - |   56 | `#endif` |
-|  190734015 |   57 | `	zEnd = &zSrc[nSize];` |
-| 2896877569 |   58 | `	for(;;){` |
-| 5792137583 |   59 | `		if( zSrc >= zEnd ){break;} zSrc[0] = 0; zSrc++;` |
-| 5601404023 |   60 | `		if( zSrc >= zEnd ){break;} zSrc[0] = 0; zSrc++;` |
-| 5601403847 |   61 | `		if( zSrc >= zEnd ){break;} zSrc[0] = 0; zSrc++;` |
-| 5601403637 |   62 | `		if( zSrc >= zEnd ){break;} zSrc[0] = 0; zSrc++;` |
+|  190737134 |   57 | `	zEnd = &zSrc[nSize];` |
+| 2896918353 |   58 | `	for(;;){` |
+| 5792211382 |   59 | `		if( zSrc >= zEnd ){break;} zSrc[0] = 0; zSrc++;` |
+| 5601474703 |   60 | `		if( zSrc >= zEnd ){break;} zSrc[0] = 0; zSrc++;` |
+| 5601474527 |   61 | `		if( zSrc >= zEnd ){break;} zSrc[0] = 0; zSrc++;` |
+| 5601474317 |   62 | `		if( zSrc >= zEnd ){break;} zSrc[0] = 0; zSrc++;` |
 |          5 |   63 | `	}` |
-|  190734015 |   64 | `}` |
-|  387026291 |   65 | `PH7_PRIVATE sxi32 SyMemcmp(const void *pB1,const void *pB2,sxu32 nSize)` |
+|  190737134 |   64 | `}` |
+|  387053433 |   65 | `PH7_PRIVATE sxi32 SyMemcmp(const void *pB1,const void *pB2,sxu32 nSize)` |
 |          5 |   66 | `{` |
 |          - |   67 | `	sxi32 rc;` |
-|  387026296 |   68 | `	if( nSize <= 0 ){` |
+|  387053438 |   68 | `	if( nSize <= 0 ){` |
 |      32121 |   69 | `		return 0;` |
 |          - |   70 | `	}` |
-|  386994180 |   71 | `	if( pB1 == 0 \|\| pB2 == 0 ){` |
+|  387021322 |   71 | `	if( pB1 == 0 \|\| pB2 == 0 ){` |
 |        ! 0 |   72 | `		return pB1 != 0 ? 1 : (pB2 == 0 ? 0 : -1);` |
 |          - |   73 | `	}` |
-|  491020776 |   74 | `	SX_MACRO_FAST_CMP(pB1,pB2,nSize,rc);` |
-|  386994180 |   75 | `	return rc;` |
-|  193516791 |   76 | `}` |
-|   15207782 |   77 | `PH7_PRIVATE sxu32 SyMemcpy(const void *pSrc,void *pDest,sxu32 nLen)` |
+|  491054049 |   74 | `	SX_MACRO_FAST_CMP(pB1,pB2,nSize,rc);` |
+|  387021322 |   75 | `	return rc;` |
+|  193530439 |   76 | `}` |
+|   15213892 |   77 | `PH7_PRIVATE sxu32 SyMemcpy(const void *pSrc,void *pDest,sxu32 nLen)` |
 |          5 |   78 | `{` |
 |          - |   79 | `#if defined(UNTRUST)` |
 |          - |   80 | `	if( pSrc == 0 \|\| pDest == 0 ){` |
 |          - |   81 | `		return 0;` |
 |          - |   82 | `	}` |
 |          - |   83 | `#endif` |
-|   15207787 |   84 | `	if( pSrc == (const void *)pDest ){` |
+|   15213897 |   84 | `	if( pSrc == (const void *)pDest ){` |
 |        ! 0 |   85 | `		return nLen;` |
 |          - |   86 | `	}` |
-|  138684706 |   87 | `	SX_MACRO_FAST_MEMCPY(pSrc,pDest,nLen);` |
-|   15207787 |   88 | `	return nLen;` |
-|    7607946 |   89 | `}` |
+|  138769165 |   87 | `	SX_MACRO_FAST_MEMCPY(pSrc,pDest,nLen);` |
+|   15213897 |   88 | `	return nLen;` |
+|    7611017 |   89 | `}` |
 |          - |   90 | `/* Size prefix stored ahead of every OS allocation. Padded to pointer size so` |
 |          - |   91 | ` * the returned payload (and the SyMemBlock/SyMemHeader the backend lays on` |
 |          - |   92 | ` * top of it) keeps the allocator's natural alignment — a bare sxu32 prefix` |
@@ -106,37 +106,37 @@ Coverage: 442/524 lines (84.35%)
 |          - |   96 | `	sxu32 nBytes;` |
 |          - |   97 | `	void *pAlign;` |
 |          - |   98 | `};` |
-|   70201663 |   99 | `static void * MemOSAlloc(sxu32 nBytes)` |
+|   70204342 |   99 | `static void * MemOSAlloc(sxu32 nBytes)` |
 |          5 |  100 | `{` |
 |          - |  101 | `	MemOSHeader *pChunk;` |
-|   70201668 |  102 | `	pChunk = (MemOSHeader *)SyOSHeapAlloc(nBytes + sizeof(MemOSHeader));` |
-|   70201668 |  103 | `	if( pChunk == 0 ){` |
+|   70204347 |  102 | `	pChunk = (MemOSHeader *)SyOSHeapAlloc(nBytes + sizeof(MemOSHeader));` |
+|   70204347 |  103 | `	if( pChunk == 0 ){` |
 |        ! 0 |  104 | `		return 0;` |
 |          - |  105 | `	}` |
-|   70201668 |  106 | `	pChunk->nBytes = nBytes;` |
-|   70201668 |  107 | `	return (void *)&pChunk[1];` |
-|   35102941 |  108 | `}` |
-|    4692741 |  109 | `static void * MemOSRealloc(void *pOld,sxu32 nBytes)` |
+|   70204347 |  106 | `	pChunk->nBytes = nBytes;` |
+|   70204347 |  107 | `	return (void *)&pChunk[1];` |
+|   35104290 |  108 | `}` |
+|    4693718 |  109 | `static void * MemOSRealloc(void *pOld,sxu32 nBytes)` |
 |          5 |  110 | `{` |
 |          - |  111 | `	MemOSHeader *pOldChunk;` |
 |          - |  112 | `	MemOSHeader *pChunk;` |
-|    4692746 |  113 | `	pOldChunk = (MemOSHeader *)(((char *)pOld)-sizeof(MemOSHeader));` |
-|    4692746 |  114 | `	if( pOldChunk->nBytes >= nBytes ){` |
+|    4693723 |  113 | `	pOldChunk = (MemOSHeader *)(((char *)pOld)-sizeof(MemOSHeader));` |
+|    4693723 |  114 | `	if( pOldChunk->nBytes >= nBytes ){` |
 |        ! 0 |  115 | `		return pOld;` |
 |          - |  116 | `	}` |
-|    4692746 |  117 | `	pChunk = (MemOSHeader *)SyOSHeapRealloc(pOldChunk,nBytes + sizeof(MemOSHeader));` |
-|    4692746 |  118 | `	if( pChunk == 0 ){` |
+|    4693723 |  117 | `	pChunk = (MemOSHeader *)SyOSHeapRealloc(pOldChunk,nBytes + sizeof(MemOSHeader));` |
+|    4693723 |  118 | `	if( pChunk == 0 ){` |
 |        ! 0 |  119 | `		return 0;` |
 |          - |  120 | `	}` |
-|    4692746 |  121 | `	pChunk->nBytes = nBytes;` |
-|    4692746 |  122 | `	return (void *)&pChunk[1];` |
-|    2347587 |  123 | `}` |
-|   70198247 |  124 | `static void MemOSFree(void *pBlock)` |
+|    4693723 |  121 | `	pChunk->nBytes = nBytes;` |
+|    4693723 |  122 | `	return (void *)&pChunk[1];` |
+|    2348075 |  123 | `}` |
+|   70200926 |  124 | `static void MemOSFree(void *pBlock)` |
 |          5 |  125 | `{` |
 |          - |  126 | `	void *pChunk;` |
-|   70198252 |  127 | `	pChunk = (void *)(((char *)pBlock)-sizeof(MemOSHeader));` |
-|   70198252 |  128 | `	SyOSHeapFree(pChunk);` |
-|   70198252 |  129 | `}` |
+|   70200931 |  127 | `	pChunk = (void *)(((char *)pBlock)-sizeof(MemOSHeader));` |
+|   70200931 |  128 | `	SyOSHeapFree(pChunk);` |
+|   70200931 |  129 | `}` |
 |        ! 0 |  130 | `static sxu32 MemOSChunkSize(void *pBlock)` |
 |        ! 0 |  131 | `{` |
 |          - |  132 | `	MemOSHeader *pChunk;` |
@@ -153,47 +153,47 @@ Coverage: 442/524 lines (84.35%)
 |          - |  143 | `	0,` |
 |          - |  144 | `	0` |
 |          - |  145 | `};` |
-|   70201663 |  146 | `static void * MemBackendAlloc(SyMemBackend *pBackend,sxu32 nByte)` |
+|   70204342 |  146 | `static void * MemBackendAlloc(SyMemBackend *pBackend,sxu32 nByte)` |
 |          5 |  147 | `{` |
 |          - |  148 | `	SyMemBlock *pBlock;` |
-|   70201668 |  149 | `	sxi32 nRetry = 0;` |
+|   70204347 |  149 | `	sxi32 nRetry = 0;` |
 |          - |  150 |  |
 |          - |  151 | `	/* Append an extra block so we can tracks allocated chunks and avoid memory` |
 |          - |  152 | `	 * leaks.` |
 |          - |  153 | `	 */` |
-|   70201668 |  154 | `	nByte += sizeof(SyMemBlock);` |
+|   70204347 |  154 | `	nByte += sizeof(SyMemBlock);` |
 |          - |  155 | `	/* Enforce the optional per-allocation cap (0 = unlimited). A capped failure` |
 |          - |  156 | `	 * returns NULL just like a genuine OS failure, driving the normal SXERR_MEM` |
 |          - |  157 | `	 * propagation; the retry callback is intentionally skipped (hard limit). */` |
-|   70201668 |  158 | `	if( pBackend->nMaxRequest && nByte > pBackend->nMaxRequest ){` |
+|   70204347 |  158 | `	if( pBackend->nMaxRequest && nByte > pBackend->nMaxRequest ){` |
 |        ! 0 |  159 | `		return 0;` |
 |          - |  160 | `	}` |
-|   35102936 |  161 | `	for(;;){` |
-|   35102941 |  162 | `		pBlock = (SyMemBlock *)pBackend->pMethods->xAlloc(nByte);` |
-|   70201663 |  163 | `		if( pBlock != 0 \|\| pBackend->xMemError == 0 \|\| nRetry > SXMEM_BACKEND_RETRY` |
+|   35104285 |  161 | `	for(;;){` |
+|   35104290 |  162 | `		pBlock = (SyMemBlock *)pBackend->pMethods->xAlloc(nByte);` |
+|   70204342 |  163 | `		if( pBlock != 0 \|\| pBackend->xMemError == 0 \|\| nRetry > SXMEM_BACKEND_RETRY` |
 |          5 |  164 | `			\|\| SXERR_RETRY != pBackend->xMemError(pBackend->pUserData) ){` |
-|   35102941 |  165 | `				break;` |
+|   35104290 |  165 | `				break;` |
 |          - |  166 | `		}` |
 |        ! 0 |  167 | `		nRetry++;` |
 |        ! 0 |  168 | `	}` |
-|   70201668 |  169 | `	if( pBlock  == 0 ){` |
+|   70204347 |  169 | `	if( pBlock  == 0 ){` |
 |        ! 0 |  170 | `		return 0;` |
 |          - |  171 | `	}` |
-|   70201668 |  172 | `	pBlock->pNext = pBlock->pPrev = 0;` |
+|   70204347 |  172 | `	pBlock->pNext = pBlock->pPrev = 0;` |
 |          - |  173 | `	/* Link to the list of already tracked blocks */` |
-|   70201668 |  174 | `	MACRO_LD_PUSH(pBackend->pBlocks,pBlock);` |
+|   70204347 |  174 | `	MACRO_LD_PUSH(pBackend->pBlocks,pBlock);` |
 |          - |  175 | `#if defined(UNTRUST)` |
 |          - |  176 | `	pBlock->nGuard = SXMEM_BACKEND_MAGIC;` |
 |          - |  177 | `#endif` |
-|   70201668 |  178 | `	pBlock->nSize = nByte;` |
-|   70201668 |  179 | `	pBackend->nMemUsed += nByte;` |
-|   70201668 |  180 | `	if( pBackend->nMemUsed > pBackend->nMemPeak ){` |
-|   32576486 |  181 | `		pBackend->nMemPeak = pBackend->nMemUsed;` |
+|   70204347 |  178 | `	pBlock->nSize = nByte;` |
+|   70204347 |  179 | `	pBackend->nMemUsed += nByte;` |
+|   70204347 |  180 | `	if( pBackend->nMemUsed > pBackend->nMemPeak ){` |
+|   32576489 |  181 | `		pBackend->nMemPeak = pBackend->nMemUsed;` |
 |   16288204 |  182 | `	}` |
-|   70201668 |  183 | `	pBackend->nBlock++;` |
-|   70201668 |  184 | `	return (void *)&pBlock[1];` |
-|   35102941 |  185 | `}` |
-|   37604106 |  186 | `PH7_PRIVATE void * SyMemBackendAlloc(SyMemBackend *pBackend,sxu32 nByte)` |
+|   70204347 |  183 | `	pBackend->nBlock++;` |
+|   70204347 |  184 | `	return (void *)&pBlock[1];` |
+|   35104290 |  185 | `}` |
+|   37604872 |  186 | `PH7_PRIVATE void * SyMemBackendAlloc(SyMemBackend *pBackend,sxu32 nByte)` |
 |          5 |  187 | `{` |
 |          - |  188 | `	void *pChunk;` |
 |          - |  189 | `#if defined(UNTRUST)` |
@@ -201,75 +201,75 @@ Coverage: 442/524 lines (84.35%)
 |          - |  191 | `		return 0;` |
 |          - |  192 | `	}` |
 |          - |  193 | `#endif` |
-|   37604111 |  194 | `	if( pBackend->pMutexMethods ){` |
+|   37604877 |  194 | `	if( pBackend->pMutexMethods ){` |
 |        ! 0 |  195 | `		SyMutexEnter(pBackend->pMutexMethods,pBackend->pMutex);` |
 |        ! 0 |  196 | `	}` |
-|   37604111 |  197 | `	pChunk = MemBackendAlloc(&(*pBackend),nByte);` |
-|   37604111 |  198 | `	if( pBackend->pMutexMethods ){` |
+|   37604877 |  197 | `	pChunk = MemBackendAlloc(&(*pBackend),nByte);` |
+|   37604877 |  198 | `	if( pBackend->pMutexMethods ){` |
 |        ! 0 |  199 | `		SyMutexLeave(pBackend->pMutexMethods,pBackend->pMutex);` |
 |        ! 0 |  200 | `	}` |
-|   37604111 |  201 | `	return pChunk;` |
+|   37604877 |  201 | `	return pChunk;` |
 |          5 |  202 | `}` |
-|   37035786 |  203 | `static void * MemBackendRealloc(SyMemBackend *pBackend,void * pOld,sxu32 nByte)` |
+|   37038676 |  203 | `static void * MemBackendRealloc(SyMemBackend *pBackend,void * pOld,sxu32 nByte)` |
 |          5 |  204 | `{` |
 |          - |  205 | `	SyMemBlock *pBlock,*pNew,*pPrev,*pNext;` |
-|   37035791 |  206 | `	sxu32 nRetry = 0;` |
+|   37038681 |  206 | `	sxu32 nRetry = 0;` |
 |          - |  207 |  |
-|   37035791 |  208 | `	if( pOld == 0 ){` |
-|   32343050 |  209 | `		return MemBackendAlloc(&(*pBackend),nByte);` |
+|   37038681 |  208 | `	if( pOld == 0 ){` |
+|   32344963 |  209 | `		return MemBackendAlloc(&(*pBackend),nByte);` |
 |          - |  210 | `	}` |
-|    4692746 |  211 | `	pBlock = (SyMemBlock *)(((char *)pOld) - sizeof(SyMemBlock));` |
+|    4693723 |  211 | `	pBlock = (SyMemBlock *)(((char *)pOld) - sizeof(SyMemBlock));` |
 |          - |  212 | `#if defined(UNTRUST)` |
 |          - |  213 | `	if( pBlock->nGuard != SXMEM_BACKEND_MAGIC ){` |
 |          - |  214 | `		return 0;` |
 |          - |  215 | `	}` |
 |          - |  216 | `#endif` |
-|    4692746 |  217 | `	nByte += sizeof(SyMemBlock);` |
+|    4693723 |  217 | `	nByte += sizeof(SyMemBlock);` |
 |          - |  218 | `	/* Enforce the optional per-allocation cap (0 = unlimited); see MemBackendAlloc. */` |
-|    4692746 |  219 | `	if( pBackend->nMaxRequest && nByte > pBackend->nMaxRequest ){` |
+|    4693723 |  219 | `	if( pBackend->nMaxRequest && nByte > pBackend->nMaxRequest ){` |
 |        ! 0 |  220 | `		return 0;` |
 |          - |  221 | `	}` |
-|    4692746 |  222 | `	pPrev = pBlock->pPrev;` |
-|    4692746 |  223 | `	pNext = pBlock->pNext;` |
+|    4693723 |  222 | `	pPrev = pBlock->pPrev;` |
+|    4693723 |  223 | `	pNext = pBlock->pNext;` |
 |          - |  224 | `	{` |
 |          - |  225 | `		/* Old size, captured before realloc may move/free the block; the` |
 |          - |  226 | `		 * live-byte counter is adjusted by the delta only on success below. */` |
-|    4692746 |  227 | `		sxu32 nOld = pBlock->nSize;` |
-|    2347582 |  228 | `	for(;;){` |
-|    2347587 |  229 | `		pNew = (SyMemBlock *)pBackend->pMethods->xRealloc(pBlock,nByte);` |
-|    4692746 |  230 | `		if( pNew != 0 \|\| pBackend->xMemError == 0 \|\| nRetry > SXMEM_BACKEND_RETRY \|\|` |
+|    4693723 |  227 | `		sxu32 nOld = pBlock->nSize;` |
+|    2348070 |  228 | `	for(;;){` |
+|    2348075 |  229 | `		pNew = (SyMemBlock *)pBackend->pMethods->xRealloc(pBlock,nByte);` |
+|    4693723 |  230 | `		if( pNew != 0 \|\| pBackend->xMemError == 0 \|\| nRetry > SXMEM_BACKEND_RETRY \|\|` |
 |        ! 0 |  231 | `			SXERR_RETRY != pBackend->xMemError(pBackend->pUserData) ){` |
-|    2347587 |  232 | `				break;` |
+|    2348075 |  232 | `				break;` |
 |          - |  233 | `		}` |
 |        ! 0 |  234 | `		nRetry++;` |
 |        ! 0 |  235 | `	}` |
-|    4692746 |  236 | `	if( pNew == 0 ){` |
+|    4693723 |  236 | `	if( pNew == 0 ){` |
 |        ! 0 |  237 | `		return 0;` |
 |          - |  238 | `	}` |
-|    4692746 |  239 | `	if( pNew != pBlock ){` |
-|    4084350 |  240 | `		if( pPrev == 0 ){` |
-|    1555675 |  241 | `			pBackend->pBlocks = pNew;` |
-|     834822 |  242 | `		}else{` |
-|    2528680 |  243 | `			pPrev->pNext = pNew;` |
+|    4693723 |  239 | `	if( pNew != pBlock ){` |
+|    4085315 |  240 | `		if( pPrev == 0 ){` |
+|    1556409 |  241 | `			pBackend->pBlocks = pNew;` |
+|     835203 |  242 | `		}else{` |
+|    2528911 |  243 | `			pPrev->pNext = pNew;` |
 |          - |  244 | `		}` |
-|    4084350 |  245 | `		if( pNext ){` |
-|    4084338 |  246 | `			pNext->pPrev = pNew;` |
-|    2326124 |  247 | `		}` |
+|    4085315 |  245 | `		if( pNext ){` |
+|    4085303 |  246 | `			pNext->pPrev = pNew;` |
+|    2326612 |  247 | `		}` |
 |          - |  248 | `#if defined(UNTRUST)` |
 |          - |  249 | `		pNew->nGuard = SXMEM_BACKEND_MAGIC;` |
 |          - |  250 | `#endif` |
-|    2326131 |  251 | `	}` |
+|    2326619 |  251 | `	}` |
 |          - |  252 | `	/* Apply the size delta to the live-byte counter (underflow-guarded). */` |
-|    4692746 |  253 | `	pBackend->nMemUsed = (pBackend->nMemUsed >= nOld) ? (pBackend->nMemUsed - nOld) : 0;` |
-|    4692746 |  254 | `	pBackend->nMemUsed += nByte;` |
-|    4692746 |  255 | `	if( pBackend->nMemUsed > pBackend->nMemPeak ){` |
+|    4693723 |  253 | `	pBackend->nMemUsed = (pBackend->nMemUsed >= nOld) ? (pBackend->nMemUsed - nOld) : 0;` |
+|    4693723 |  254 | `	pBackend->nMemUsed += nByte;` |
+|    4693723 |  255 | `	if( pBackend->nMemUsed > pBackend->nMemPeak ){` |
 |    2496999 |  256 | `		pBackend->nMemPeak = pBackend->nMemUsed;` |
 |    1248508 |  257 | `	}` |
-|    4692746 |  258 | `	pNew->nSize = nByte;` |
-|    4692746 |  259 | `	return (void *)&pNew[1];` |
+|    4693723 |  258 | `	pNew->nSize = nByte;` |
+|    4693723 |  259 | `	return (void *)&pNew[1];` |
 |          - |  260 | `	}` |
-|   18520702 |  261 | `}` |
-|   37035786 |  262 | `PH7_PRIVATE void * SyMemBackendRealloc(SyMemBackend *pBackend,void * pOld,sxu32 nByte)` |
+|   18522154 |  261 | `}` |
+|   37038676 |  262 | `PH7_PRIVATE void * SyMemBackendRealloc(SyMemBackend *pBackend,void * pOld,sxu32 nByte)` |
 |          5 |  263 | `{` |
 |          - |  264 | `	void *pChunk;` |
 |          - |  265 | `#if defined(UNTRUST)` |
@@ -277,40 +277,40 @@ Coverage: 442/524 lines (84.35%)
 |          - |  267 | `		return 0;` |
 |          - |  268 | `	}` |
 |          - |  269 | `#endif` |
-|   37035791 |  270 | `	if( pBackend->pMutexMethods ){` |
+|   37038681 |  270 | `	if( pBackend->pMutexMethods ){` |
 |        ! 0 |  271 | `		SyMutexEnter(pBackend->pMutexMethods,pBackend->pMutex);` |
 |        ! 0 |  272 | `	}` |
-|   37035791 |  273 | `	pChunk = MemBackendRealloc(&(*pBackend),pOld,nByte);` |
-|   37035791 |  274 | `	if( pBackend->pMutexMethods ){` |
+|   37038681 |  273 | `	pChunk = MemBackendRealloc(&(*pBackend),pOld,nByte);` |
+|   37038681 |  274 | `	if( pBackend->pMutexMethods ){` |
 |        ! 0 |  275 | `		SyMutexLeave(pBackend->pMutexMethods,pBackend->pMutex);` |
 |        ! 0 |  276 | `	}` |
-|   37035791 |  277 | `	return pChunk;` |
+|   37038681 |  277 | `	return pChunk;` |
 |          5 |  278 | `}` |
-|   42876891 |  279 | `static sxi32 MemBackendFree(SyMemBackend *pBackend,void * pChunk)` |
+|   42879570 |  279 | `static sxi32 MemBackendFree(SyMemBackend *pBackend,void * pChunk)` |
 |          5 |  280 | `{` |
 |          - |  281 | `	SyMemBlock *pBlock;` |
-|   42876896 |  282 | `	pBlock = (SyMemBlock *)(((char *)pChunk) - sizeof(SyMemBlock));` |
+|   42879575 |  282 | `	pBlock = (SyMemBlock *)(((char *)pChunk) - sizeof(SyMemBlock));` |
 |          - |  283 | `#if defined(UNTRUST)` |
 |          - |  284 | `	if( pBlock->nGuard != SXMEM_BACKEND_MAGIC ){` |
 |          - |  285 | `		return SXERR_CORRUPT;` |
 |          - |  286 | `	}` |
 |          - |  287 | `#endif` |
 |          - |  288 | `	/* Unlink from the list of active blocks */` |
-|   42876896 |  289 | `	if( pBackend->nBlock > 0 ){` |
+|   42879575 |  289 | `	if( pBackend->nBlock > 0 ){` |
 |          - |  290 | `		/* Release the block */` |
 |          - |  291 | `#if defined(UNTRUST)` |
 |          - |  292 | `		/* Mark as stale block */` |
 |          - |  293 | `		pBlock->nGuard = 0x635B;` |
 |          - |  294 | `#endif` |
-|   42876896 |  295 | `		MACRO_LD_REMOVE(pBackend->pBlocks,pBlock);` |
-|   42876896 |  296 | `		pBackend->nBlock--;` |
-|   64313237 |  297 | `		pBackend->nMemUsed = (pBackend->nMemUsed >= pBlock->nSize)` |
-|   42876891 |  298 | `			? (pBackend->nMemUsed - pBlock->nSize) : 0;` |
-|   42876896 |  299 | `		pBackend->pMethods->xFree(pBlock);` |
-|   21440550 |  300 | `	}` |
-|   42876896 |  301 | `	return SXRET_OK;` |
+|   42879575 |  295 | `		MACRO_LD_REMOVE(pBackend->pBlocks,pBlock);` |
+|   42879575 |  296 | `		pBackend->nBlock--;` |
+|   64317246 |  297 | `		pBackend->nMemUsed = (pBackend->nMemUsed >= pBlock->nSize)` |
+|   42879570 |  298 | `			? (pBackend->nMemUsed - pBlock->nSize) : 0;` |
+|   42879575 |  299 | `		pBackend->pMethods->xFree(pBlock);` |
+|   21441899 |  300 | `	}` |
+|   42879575 |  301 | `	return SXRET_OK;` |
 |          5 |  302 | `}` |
-|   42876891 |  303 | `PH7_PRIVATE sxi32 SyMemBackendFree(SyMemBackend *pBackend,void * pChunk)` |
+|   42879570 |  303 | `PH7_PRIVATE sxi32 SyMemBackendFree(SyMemBackend *pBackend,void * pChunk)` |
 |          5 |  304 | `{` |
 |          - |  305 | `	sxi32 rc;` |
 |          - |  306 | `#if defined(UNTRUST)` |
@@ -318,18 +318,18 @@ Coverage: 442/524 lines (84.35%)
 |          - |  308 | `		return SXERR_CORRUPT;` |
 |          - |  309 | `	}` |
 |          - |  310 | `#endif` |
-|   42876896 |  311 | `	if( pChunk == 0 ){` |
+|   42879575 |  311 | `	if( pChunk == 0 ){` |
 |        ! 0 |  312 | `		return SXRET_OK;` |
 |          - |  313 | `	}` |
-|   42876896 |  314 | `	if( pBackend->pMutexMethods ){` |
+|   42879575 |  314 | `	if( pBackend->pMutexMethods ){` |
 |        ! 0 |  315 | `		SyMutexEnter(pBackend->pMutexMethods,pBackend->pMutex);` |
 |        ! 0 |  316 | `	}` |
-|   42876896 |  317 | `	rc = MemBackendFree(&(*pBackend),pChunk);` |
-|   42876896 |  318 | `	if( pBackend->pMutexMethods ){` |
+|   42879575 |  317 | `	rc = MemBackendFree(&(*pBackend),pChunk);` |
+|   42879575 |  318 | `	if( pBackend->pMutexMethods ){` |
 |        ! 0 |  319 | `		SyMutexLeave(pBackend->pMutexMethods,pBackend->pMutex);` |
 |        ! 0 |  320 | `	}` |
-|   42876896 |  321 | `	return rc;` |
-|   21440555 |  322 | `}` |
+|   42879575 |  321 | `	return rc;` |
+|   21441904 |  322 | `}` |
 |          - |  323 | `#if defined(PH7_ENABLE_THREADS)` |
 |       3900 |  324 | `PH7_PRIVATE sxi32 SyMemBackendMakeThreadSafe(SyMemBackend *pBackend,const SyMutexMethods *pMethods)` |
 |          5 |  325 | `{` |
@@ -410,7 +410,7 @@ Coverage: 442/524 lines (84.35%)
 |          - |  400 |  |
 |     254517 |  401 | `	return SXRET_OK;` |
 |     127261 |  402 | `}` |
-|  143667200 |  403 | `static void * MemBackendPoolAlloc(SyMemBackend *pBackend,sxu32 nByte)` |
+|  143668789 |  403 | `static void * MemBackendPoolAlloc(SyMemBackend *pBackend,sxu32 nByte)` |
 |          5 |  404 | `{` |
 |          - |  405 | `	SyMemHeader *pBucket,*pNext;` |
 |          - |  406 | `	sxu32 nBucketSize;` |
@@ -420,7 +420,7 @@ Coverage: 442/524 lines (84.35%)
 |          - |  410 | `	 * request so there is no bucket recycling and ASan tracks each object's` |
 |          - |  411 | `	 * real lifetime. Chunks are freed through MemBackendPoolFree's big-block` |
 |          - |  412 | `	 * branch either way — one copy of the alloc+tag logic. */` |
-|  143667205 |  413 | `	if( SXMEM_POOL_BYPASS_ACTIVE \|\| nByte + sizeof(SyMemHeader) >= SXMEM_POOL_MAXALLOC ){` |
+|  143668794 |  413 | `	if( SXMEM_POOL_BYPASS_ACTIVE \|\| nByte + sizeof(SyMemHeader) >= SXMEM_POOL_MAXALLOC ){` |
 |          - |  414 | `		/* Allocate a big chunk directly */` |
 |        ! 0 |  415 | `		pBucket = (SyMemHeader *)MemBackendAlloc(&(*pBackend),nByte+sizeof(SyMemHeader));` |
 |        ! 0 |  416 | `		if( pBucket == 0 ){` |
@@ -431,14 +431,14 @@ Coverage: 442/524 lines (84.35%)
 |        ! 0 |  421 | `		return (void *)(pBucket+1);` |
 |          - |  422 | `	}` |
 |          - |  423 | `	/* Locate the appropriate bucket */` |
-|  143667205 |  424 | `	nBucket = 0;` |
-|  143667205 |  425 | `	nBucketSize = SXMEM_POOL_MINALLOC;` |
-|  740527013 |  426 | `	while( nByte + sizeof(SyMemHeader) > nBucketSize  ){` |
-|  596859813 |  427 | `		nBucketSize <<= 1;` |
-|  596859813 |  428 | `		nBucket++;` |
+|  143668794 |  424 | `	nBucket = 0;` |
+|  143668794 |  425 | `	nBucketSize = SXMEM_POOL_MINALLOC;` |
+|  740535004 |  426 | `	while( nByte + sizeof(SyMemHeader) > nBucketSize  ){` |
+|  596866215 |  427 | `		nBucketSize <<= 1;` |
+|  596866215 |  428 | `		nBucket++;` |
 |          5 |  429 | `	}` |
-|  143667205 |  430 | `	pBucket = pBackend->apPool[nBucket];` |
-|  143667205 |  431 | `	if( pBucket == 0 ){` |
+|  143668794 |  430 | `	pBucket = pBackend->apPool[nBucket];` |
+|  143668794 |  431 | `	if( pBucket == 0 ){` |
 |          - |  432 | `		sxi32 rc;` |
 |     254517 |  433 | `		rc = MemPoolBucketAlloc(&(*pBackend),nBucket);` |
 |     254517 |  434 | `		if( rc != SXRET_OK ){` |
@@ -447,13 +447,13 @@ Coverage: 442/524 lines (84.35%)
 |     254517 |  437 | `		pBucket = pBackend->apPool[nBucket];` |
 |     127256 |  438 | `	}` |
 |          - |  439 | `	/* Remove from the free list */` |
-|  143667205 |  440 | `	pNext = pBucket->pNext;` |
-|  143667205 |  441 | `	pBackend->apPool[nBucket] = pNext;` |
+|  143668794 |  440 | `	pNext = pBucket->pNext;` |
+|  143668794 |  441 | `	pBackend->apPool[nBucket] = pNext;` |
 |          - |  442 | `	/* Record bucket&magic number */` |
-|  143667205 |  443 | `	pBucket->nBucket = (((sxu32)SXMEM_POOL_MAGIC << 16) \| nBucket);` |
-|  143667205 |  444 | `	return (void *)&pBucket[1];` |
-|   71834936 |  445 | `}` |
-|  143667200 |  446 | `PH7_PRIVATE void * SyMemBackendPoolAlloc(SyMemBackend *pBackend,sxu32 nByte)` |
+|  143668794 |  443 | `	pBucket->nBucket = (((sxu32)SXMEM_POOL_MAGIC << 16) \| nBucket);` |
+|  143668794 |  444 | `	return (void *)&pBucket[1];` |
+|   71835737 |  445 | `}` |
+|  143668789 |  446 | `PH7_PRIVATE void * SyMemBackendPoolAlloc(SyMemBackend *pBackend,sxu32 nByte)` |
 |          5 |  447 | `{` |
 |          - |  448 | `	void *pChunk;` |
 |          - |  449 | `#if defined(UNTRUST)` |
@@ -461,40 +461,40 @@ Coverage: 442/524 lines (84.35%)
 |          - |  451 | `		return 0;` |
 |          - |  452 | `	}` |
 |          - |  453 | `#endif` |
-|  143667205 |  454 | `	if( pBackend->pMutexMethods ){` |
+|  143668794 |  454 | `	if( pBackend->pMutexMethods ){` |
 |       3905 |  455 | `		SyMutexEnter(pBackend->pMutexMethods,pBackend->pMutex);` |
 |       1950 |  456 | `	}` |
-|  143667205 |  457 | `	pChunk = MemBackendPoolAlloc(&(*pBackend),nByte);` |
-|  143667205 |  458 | `	if( pBackend->pMutexMethods ){` |
+|  143668794 |  457 | `	pChunk = MemBackendPoolAlloc(&(*pBackend),nByte);` |
+|  143668794 |  458 | `	if( pBackend->pMutexMethods ){` |
 |       3905 |  459 | `		SyMutexLeave(pBackend->pMutexMethods,pBackend->pMutex);` |
 |       1950 |  460 | `	}` |
-|  143667205 |  461 | `	return pChunk;` |
+|  143668794 |  461 | `	return pChunk;` |
 |          5 |  462 | `}` |
-|   99415336 |  463 | `static sxi32 MemBackendPoolFree(SyMemBackend *pBackend,void * pChunk)` |
+|   99416913 |  463 | `static sxi32 MemBackendPoolFree(SyMemBackend *pBackend,void * pChunk)` |
 |          5 |  464 | `{` |
 |          - |  465 | `	SyMemHeader *pHeader;` |
 |          - |  466 | `	sxu32 nBucket;` |
 |          - |  467 | `	/* Get the corresponding bucket */` |
-|   99415341 |  468 | `	pHeader = (SyMemHeader *)(((char *)pChunk) - sizeof(SyMemHeader));` |
+|   99416918 |  468 | `	pHeader = (SyMemHeader *)(((char *)pChunk) - sizeof(SyMemHeader));` |
 |          - |  469 | `	/* Sanity check to avoid misuse */` |
-|   99415341 |  470 | `	if( (pHeader->nBucket >> 16) != SXMEM_POOL_MAGIC ){` |
+|   99416918 |  470 | `	if( (pHeader->nBucket >> 16) != SXMEM_POOL_MAGIC ){` |
 |          3 |  471 | `		return SXERR_CORRUPT;` |
 |          - |  472 | `	}` |
-|   99415339 |  473 | `	nBucket = pHeader->nBucket & 0xFFFF;` |
-|   99415339 |  474 | `	if( nBucket == SXU16_HIGH ){` |
+|   99416916 |  473 | `	nBucket = pHeader->nBucket & 0xFFFF;` |
+|   99416916 |  474 | `	if( nBucket == SXU16_HIGH ){` |
 |          - |  475 | `		/* Free the big block */` |
 |        ! 0 |  476 | `		MemBackendFree(&(*pBackend),pHeader);` |
-|   99415339 |  477 | `	}else if( nBucket >= SXMEM_POOL_NBUCKETS + SXMEM_POOL_INCR ){` |
+|   99416916 |  477 | `	}else if( nBucket >= SXMEM_POOL_NBUCKETS + SXMEM_POOL_INCR ){` |
 |          - |  478 | `		/* Corrupted or misused bucket index */` |
 |        ! 0 |  479 | `		return SXERR_CORRUPT;` |
 |        ! 0 |  480 | `	}else{` |
 |          - |  481 | `		/* Return to the free list */` |
-|   99415339 |  482 | `		pHeader->pNext = pBackend->apPool[nBucket];` |
-|   99415339 |  483 | `		pBackend->apPool[nBucket] = pHeader;` |
+|   99416916 |  482 | `		pHeader->pNext = pBackend->apPool[nBucket];` |
+|   99416916 |  483 | `		pBackend->apPool[nBucket] = pHeader;` |
 |          - |  484 | `	}` |
-|   99415339 |  485 | `	return SXRET_OK;` |
-|   49709004 |  486 | `}` |
-|   99415336 |  487 | `PH7_PRIVATE sxi32 SyMemBackendPoolFree(SyMemBackend *pBackend,void * pChunk)` |
+|   99416916 |  485 | `	return SXRET_OK;` |
+|   49709799 |  486 | `}` |
+|   99416913 |  487 | `PH7_PRIVATE sxi32 SyMemBackendPoolFree(SyMemBackend *pBackend,void * pChunk)` |
 |          5 |  488 | `{` |
 |          - |  489 | `	sxi32 rc;` |
 |          - |  490 | `#if defined(UNTRUST)` |
@@ -502,14 +502,14 @@ Coverage: 442/524 lines (84.35%)
 |          - |  492 | `		return SXERR_CORRUPT;` |
 |          - |  493 | `	}` |
 |          - |  494 | `#endif` |
-|   99415341 |  495 | `	if( pBackend->pMutexMethods ){` |
+|   99416918 |  495 | `	if( pBackend->pMutexMethods ){` |
 |       3427 |  496 | `		SyMutexEnter(pBackend->pMutexMethods,pBackend->pMutex);` |
 |       1711 |  497 | `	}` |
-|   99415341 |  498 | `	rc = MemBackendPoolFree(&(*pBackend),pChunk);` |
-|   99415341 |  499 | `	if( pBackend->pMutexMethods ){` |
+|   99416918 |  498 | `	rc = MemBackendPoolFree(&(*pBackend),pChunk);` |
+|   99416918 |  499 | `	if( pBackend->pMutexMethods ){` |
 |       3427 |  500 | `		SyMutexLeave(pBackend->pMutexMethods,pBackend->pMutex);` |
 |       1711 |  501 | `	}` |
-|   99415341 |  502 | `	return rc;` |
+|   99416918 |  502 | `	return rc;` |
 |          5 |  503 | `}` |
 |          - |  504 | `#if 0` |
 |          - |  505 | `static void * MemBackendPoolRealloc(SyMemBackend *pBackend,void * pOld,sxu32 nByte)` |
@@ -714,7 +714,7 @@ Coverage: 442/524 lines (84.35%)
 |        242 |  704 | `	}` |
 |       8293 |  705 | `	return SXRET_OK;` |
 |          5 |  706 | `}` |
-|     915931 |  707 | `PH7_PRIVATE void * SyMemBackendDup(SyMemBackend *pBackend,const void *pSrc,sxu32 nSize)` |
+|     916694 |  707 | `PH7_PRIVATE void * SyMemBackendDup(SyMemBackend *pBackend,const void *pSrc,sxu32 nSize)` |
 |          5 |  708 | `{` |
 |          - |  709 | `	void *pNew;` |
 |          - |  710 | `#if defined(UNTRUST)` |
@@ -722,11 +722,11 @@ Coverage: 442/524 lines (84.35%)
 |          - |  712 | `		return 0;` |
 |          - |  713 | `	}` |
 |          - |  714 | `#endif` |
-|     915936 |  715 | `	pNew = SyMemBackendAlloc(&(*pBackend),nSize);` |
-|     915936 |  716 | `	if( pNew ){` |
-|     915936 |  717 | `		SyMemcpy(pSrc,pNew,nSize);` |
-|     458273 |  718 | `	}` |
-|     915936 |  719 | `	return pNew;` |
+|     916699 |  715 | `	pNew = SyMemBackendAlloc(&(*pBackend),nSize);` |
+|     916699 |  716 | `	if( pNew ){` |
+|     916699 |  717 | `		SyMemcpy(pSrc,pNew,nSize);` |
+|     458656 |  718 | `	}` |
+|     916699 |  719 | `	return pNew;` |
 |          5 |  720 | `}` |
 |    9886314 |  721 | `PH7_PRIVATE char * SyMemBackendStrDup(SyMemBackend *pBackend,const char *zSrc,sxu32 nSize)` |
 |          5 |  722 | `{` |
@@ -751,41 +751,41 @@ Coverage: 442/524 lines (84.35%)
 |    2917559 |  741 | `	pBlob->nFlags = SXBLOB_LOCKED\|SXBLOB_STATIC;` |
 |    2917559 |  742 | `	return SXRET_OK;` |
 |          5 |  743 | `}` |
-|   44252563 |  744 | `PH7_PRIVATE sxi32 SyBlobInit(SyBlob *pBlob,SyMemBackend *pAllocator)` |
+|   44254091 |  744 | `PH7_PRIVATE sxi32 SyBlobInit(SyBlob *pBlob,SyMemBackend *pAllocator)` |
 |          5 |  745 | `{` |
 |          - |  746 | `#if defined(UNTRUST)` |
 |          - |  747 | `	if( pBlob == 0  ){` |
 |          - |  748 | `		return SXERR_EMPTY;` |
 |          - |  749 | `	}` |
 |          - |  750 | `#endif` |
-|   44252568 |  751 | `	pBlob->pBlob = 0;` |
-|   44252568 |  752 | `	pBlob->mByte = pBlob->nByte	= 0;` |
-|   44252568 |  753 | `	pBlob->pAllocator = &(*pAllocator);` |
-|   44252568 |  754 | `	pBlob->nFlags = 0;` |
-|   44252568 |  755 | `	return SXRET_OK;` |
+|   44254096 |  751 | `	pBlob->pBlob = 0;` |
+|   44254096 |  752 | `	pBlob->mByte = pBlob->nByte	= 0;` |
+|   44254096 |  753 | `	pBlob->pAllocator = &(*pAllocator);` |
+|   44254096 |  754 | `	pBlob->nFlags = 0;` |
+|   44254096 |  755 | `	return SXRET_OK;` |
 |          5 |  756 | `}` |
-|    4358619 |  757 | `PH7_PRIVATE sxi32 SyBlobReadOnly(SyBlob *pBlob,const void *pData,sxu32 nByte)` |
+|    4360912 |  757 | `PH7_PRIVATE sxi32 SyBlobReadOnly(SyBlob *pBlob,const void *pData,sxu32 nByte)` |
 |          5 |  758 | `{` |
 |          - |  759 | `#if defined(UNTRUST)` |
 |          - |  760 | `	if( pBlob == 0  ){` |
 |          - |  761 | `		return SXERR_EMPTY;` |
 |          - |  762 | `	}` |
 |          - |  763 | `#endif` |
-|    4358624 |  764 | `	pBlob->pBlob = (void *)pData;` |
-|    4358624 |  765 | `	pBlob->nByte = nByte;` |
-|    4358624 |  766 | `	pBlob->mByte = 0;` |
-|    4358624 |  767 | `	pBlob->nFlags \|= SXBLOB_RDONLY;` |
-|    4358624 |  768 | `	return SXRET_OK;` |
+|    4360917 |  764 | `	pBlob->pBlob = (void *)pData;` |
+|    4360917 |  765 | `	pBlob->nByte = nByte;` |
+|    4360917 |  766 | `	pBlob->mByte = 0;` |
+|    4360917 |  767 | `	pBlob->nFlags \|= SXBLOB_RDONLY;` |
+|    4360917 |  768 | `	return SXRET_OK;` |
 |          5 |  769 | `}` |
 |          - |  770 | `#ifndef SXBLOB_MIN_GROWTH` |
 |          - |  771 | `#define SXBLOB_MIN_GROWTH 16` |
 |          - |  772 | `#endif` |
-|   38408899 |  773 | `static sxi32 BlobPrepareGrow(SyBlob *pBlob,sxu32 *pByte)` |
+|   38412706 |  773 | `static sxi32 BlobPrepareGrow(SyBlob *pBlob,sxu32 *pByte)` |
 |          5 |  774 | `{` |
 |          - |  775 | `	sxu32 nByte;` |
 |          - |  776 | `	void *pNew;` |
-|   38408904 |  777 | `	nByte = *pByte;` |
-|   38408904 |  778 | `	if( pBlob->nFlags & (SXBLOB_LOCKED\|SXBLOB_STATIC) ){` |
+|   38412711 |  777 | `	nByte = *pByte;` |
+|   38412711 |  778 | `	if( pBlob->nFlags & (SXBLOB_LOCKED\|SXBLOB_STATIC) ){` |
 |   23341817 |  779 | `		if ( SyBlobFreeSpace(pBlob) < nByte ){` |
 |        ! 0 |  780 | `			*pByte = SyBlobFreeSpace(pBlob);` |
 |        ! 0 |  781 | `			if( (*pByte) == 0 ){` |
@@ -794,80 +794,80 @@ Coverage: 442/524 lines (84.35%)
 |        ! 0 |  784 | `		}` |
 |   23341817 |  785 | `		return SXRET_OK;` |
 |          - |  786 | `	}` |
-|   15067092 |  787 | `	if( pBlob->nFlags & SXBLOB_RDONLY ){` |
+|   15070899 |  787 | `	if( pBlob->nFlags & SXBLOB_RDONLY ){` |
 |          - |  788 | `		/* Make a copy of the read-only item */` |
-|     915918 |  789 | `		if( pBlob->nByte > 0 ){` |
-|     915918 |  790 | `			pNew = SyMemBackendDup(pBlob->pAllocator,pBlob->pBlob,pBlob->nByte);` |
-|     915918 |  791 | `			if( pNew == 0 ){` |
+|     916681 |  789 | `		if( pBlob->nByte > 0 ){` |
+|     916681 |  790 | `			pNew = SyMemBackendDup(pBlob->pAllocator,pBlob->pBlob,pBlob->nByte);` |
+|     916681 |  791 | `			if( pNew == 0 ){` |
 |        ! 0 |  792 | `				return SXERR_MEM;` |
 |          - |  793 | `			}` |
-|     915918 |  794 | `			pBlob->pBlob = pNew;` |
-|     915918 |  795 | `			pBlob->mByte = pBlob->nByte;` |
-|     458269 |  796 | `		}else{` |
+|     916681 |  794 | `			pBlob->pBlob = pNew;` |
+|     916681 |  795 | `			pBlob->mByte = pBlob->nByte;` |
+|     458652 |  796 | `		}else{` |
 |        ! 0 |  797 | `			pBlob->pBlob = 0;` |
 |        ! 0 |  798 | `			pBlob->mByte = 0;` |
 |          - |  799 | `		}` |
 |          - |  800 | `		/* Remove the read-only flag */` |
-|     915918 |  801 | `		pBlob->nFlags &= ~SXBLOB_RDONLY;` |
-|     458264 |  802 | `	}` |
-|   15067092 |  803 | `	if( SyBlobFreeSpace(pBlob) >= nByte ){` |
-|    2270106 |  804 | `		return SXRET_OK;` |
+|     916681 |  801 | `		pBlob->nFlags &= ~SXBLOB_RDONLY;` |
+|     458647 |  802 | `	}` |
+|   15070899 |  803 | `	if( SyBlobFreeSpace(pBlob) >= nByte ){` |
+|    2271790 |  804 | `		return SXRET_OK;` |
 |          - |  805 | `	}` |
-|   12796991 |  806 | `	if( pBlob->mByte > 0 ){` |
-|    1110370 |  807 | `		nByte = nByte + pBlob->mByte * 2 + SXBLOB_MIN_GROWTH;` |
-|   12243020 |  808 | `	}else if ( nByte < SXBLOB_MIN_GROWTH ){` |
-|    8607906 |  809 | `		nByte = SXBLOB_MIN_GROWTH;` |
-|    4304199 |  810 | `	}` |
-|   12796991 |  811 | `	pNew = SyMemBackendRealloc(pBlob->pAllocator,pBlob->pBlob,nByte);` |
-|   12796991 |  812 | `	if( pNew == 0 ){` |
+|   12799114 |  806 | `	if( pBlob->mByte > 0 ){` |
+|    1111347 |  807 | `		nByte = nByte + pBlob->mByte * 2 + SXBLOB_MIN_GROWTH;` |
+|   12244654 |  808 | `	}else if ( nByte < SXBLOB_MIN_GROWTH ){` |
+|    8608475 |  809 | `		nByte = SXBLOB_MIN_GROWTH;` |
+|    4304486 |  810 | `	}` |
+|   12799114 |  811 | `	pNew = SyMemBackendRealloc(pBlob->pAllocator,pBlob->pBlob,nByte);` |
+|   12799114 |  812 | `	if( pNew == 0 ){` |
 |        ! 0 |  813 | `		return SXERR_MEM;` |
 |          - |  814 | `	}` |
-|   12796991 |  815 | `	pBlob->pBlob = pNew;` |
-|   12796991 |  816 | `	pBlob->mByte = nByte;` |
-|   12796991 |  817 | `	return SXRET_OK;` |
-|   19205593 |  818 | `}` |
-|   38485885 |  819 | `PH7_PRIVATE sxi32 SyBlobAppend(SyBlob *pBlob,const void *pData,sxu32 nSize)` |
+|   12799114 |  815 | `	pBlob->pBlob = pNew;` |
+|   12799114 |  816 | `	pBlob->mByte = nByte;` |
+|   12799114 |  817 | `	return SXRET_OK;` |
+|   19207500 |  818 | `}` |
+|   38489690 |  819 | `PH7_PRIVATE sxi32 SyBlobAppend(SyBlob *pBlob,const void *pData,sxu32 nSize)` |
 |          5 |  820 | `{` |
 |          - |  821 | `	sxu8 *zBlob;` |
 |          - |  822 | `	sxi32 rc;` |
-|   38485890 |  823 | `	if( nSize < 1 ){` |
-|      76991 |  824 | `		return SXRET_OK;` |
+|   38489695 |  823 | `	if( nSize < 1 ){` |
+|      76989 |  824 | `		return SXRET_OK;` |
 |          - |  825 | `	}` |
-|   38408904 |  826 | `	rc = BlobPrepareGrow(&(*pBlob),&nSize);` |
-|   38408904 |  827 | `	if( SXRET_OK != rc ){` |
+|   38412711 |  826 | `	rc = BlobPrepareGrow(&(*pBlob),&nSize);` |
+|   38412711 |  827 | `	if( SXRET_OK != rc ){` |
 |        ! 0 |  828 | `		return rc;` |
 |          - |  829 | `	}` |
-|   38408904 |  830 | `	if( pData ){` |
-|   38408822 |  831 | `		zBlob = (sxu8 *)pBlob->pBlob ;` |
-|   38408822 |  832 | `		zBlob = &zBlob[pBlob->nByte];` |
-|   38408822 |  833 | `		pBlob->nByte += nSize;` |
-|  137643096 |  834 | `		SX_MACRO_FAST_MEMCPY(pData,zBlob,nSize);` |
-|   19205547 |  835 | `	}` |
-|   38408904 |  836 | `	return SXRET_OK;` |
-|   19244086 |  837 | `}` |
-|     875886 |  838 | `PH7_PRIVATE sxi32 SyBlobNullAppend(SyBlob *pBlob)` |
+|   38412711 |  830 | `	if( pData ){` |
+|   38412629 |  831 | `		zBlob = (sxu8 *)pBlob->pBlob ;` |
+|   38412629 |  832 | `		zBlob = &zBlob[pBlob->nByte];` |
+|   38412629 |  833 | `		pBlob->nByte += nSize;` |
+|  137770841 |  834 | `		SX_MACRO_FAST_MEMCPY(pData,zBlob,nSize);` |
+|   19207454 |  835 | `	}` |
+|   38412711 |  836 | `	return SXRET_OK;` |
+|   19245992 |  837 | `}` |
+|     876651 |  838 | `PH7_PRIVATE sxi32 SyBlobNullAppend(SyBlob *pBlob)` |
 |          5 |  839 | `{` |
 |          - |  840 | `	sxi32 rc;` |
 |          - |  841 | `	sxu32 n;` |
-|     875891 |  842 | `	n = pBlob->nByte;` |
-|     875891 |  843 | `	rc = SyBlobAppend(&(*pBlob),(const void *)"\0",sizeof(char));` |
-|     875891 |  844 | `	if (rc == SXRET_OK ){` |
-|     875891 |  845 | `		pBlob->nByte = n;` |
-|     438306 |  846 | `	}` |
-|     875891 |  847 | `	return rc;` |
+|     876656 |  842 | `	n = pBlob->nByte;` |
+|     876656 |  843 | `	rc = SyBlobAppend(&(*pBlob),(const void *)"\0",sizeof(char));` |
+|     876656 |  844 | `	if (rc == SXRET_OK ){` |
+|     876656 |  845 | `		pBlob->nByte = n;` |
+|     438691 |  846 | `	}` |
+|     876656 |  847 | `	return rc;` |
 |          5 |  848 | `}` |
-|    4434678 |  849 | `PH7_PRIVATE sxi32 SyBlobDup(SyBlob *pSrc,SyBlob *pDest)` |
+|    4436200 |  849 | `PH7_PRIVATE sxi32 SyBlobDup(SyBlob *pSrc,SyBlob *pDest)` |
 |          5 |  850 | `{` |
-|    4434683 |  851 | `	sxi32 rc = SXRET_OK;` |
+|    4436205 |  851 | `	sxi32 rc = SXRET_OK;` |
 |          - |  852 | `#ifdef UNTRUST` |
 |          - |  853 | `	if( pSrc == 0 \|\| pDest == 0 ){` |
 |          - |  854 | `		return SXERR_EMPTY;` |
 |          - |  855 | `	}` |
 |          - |  856 | `#endif` |
-|    4434683 |  857 | `	if( pSrc->nByte > 0 ){` |
-|    4252659 |  858 | `		rc = SyBlobAppend(&(*pDest),pSrc->pBlob,pSrc->nByte);` |
-|    2126635 |  859 | `	}` |
-|    4434683 |  860 | `	return rc;` |
+|    4436205 |  857 | `	if( pSrc->nByte > 0 ){` |
+|    4254181 |  858 | `		rc = SyBlobAppend(&(*pDest),pSrc->pBlob,pSrc->nByte);` |
+|    2127397 |  859 | `	}` |
+|    4436205 |  860 | `	return rc;` |
 |          5 |  861 | `}` |
 |        ! 0 |  862 | `PH7_PRIVATE sxi32 SyBlobCmp(SyBlob *pLeft,SyBlob *pRight)` |
 |        ! 0 |  863 | `{` |
@@ -888,43 +888,43 @@ Coverage: 442/524 lines (84.35%)
 |        ! 0 |  878 | `	rc = SyMemcmp(pLeft->pBlob,pRight->pBlob,pLeft->nByte);` |
 |        ! 0 |  879 | `	return rc;` |
 |        ! 0 |  880 | `}` |
-|   11276578 |  881 | `PH7_PRIVATE sxi32 SyBlobReset(SyBlob *pBlob)` |
+|   11278479 |  881 | `PH7_PRIVATE sxi32 SyBlobReset(SyBlob *pBlob)` |
 |          5 |  882 | `{` |
-|   11276583 |  883 | `	pBlob->nByte = 0;` |
-|   11276583 |  884 | `	if( pBlob->nFlags & SXBLOB_RDONLY ){` |
+|   11278484 |  883 | `	pBlob->nByte = 0;` |
+|   11278484 |  884 | `	if( pBlob->nFlags & SXBLOB_RDONLY ){` |
 |       5683 |  885 | `		pBlob->pBlob = 0;` |
 |       5683 |  886 | `		pBlob->mByte = 0;` |
 |       5683 |  887 | `		pBlob->nFlags &= ~SXBLOB_RDONLY;` |
 |       2839 |  888 | `	}` |
-|   11276583 |  889 | `	return SXRET_OK;` |
+|   11278484 |  889 | `	return SXRET_OK;` |
 |          5 |  890 | `}` |
-|   22970301 |  891 | `PH7_PRIVATE sxi32 SyBlobRelease(SyBlob *pBlob)` |
+|   22976042 |  891 | `PH7_PRIVATE sxi32 SyBlobRelease(SyBlob *pBlob)` |
 |          5 |  892 | `{` |
-|   22970306 |  893 | `	if( (pBlob->nFlags & (SXBLOB_STATIC\|SXBLOB_RDONLY)) == 0 && pBlob->mByte > 0 ){` |
-|    7635417 |  894 | `		SyMemBackendFree(pBlob->pAllocator,pBlob->pBlob);` |
-|    3818684 |  895 | `	}` |
-|   22970306 |  896 | `	pBlob->pBlob = 0;` |
-|   22970306 |  897 | `	pBlob->nByte = pBlob->mByte = 0;` |
-|   22970306 |  898 | `	pBlob->nFlags = 0;` |
-|   22970306 |  899 | `	return SXRET_OK;` |
+|   22976047 |  893 | `	if( (pBlob->nFlags & (SXBLOB_STATIC\|SXBLOB_RDONLY)) == 0 && pBlob->mByte > 0 ){` |
+|    7637326 |  894 | `		SyMemBackendFree(pBlob->pAllocator,pBlob->pBlob);` |
+|    3819643 |  895 | `	}` |
+|   22976047 |  896 | `	pBlob->pBlob = 0;` |
+|   22976047 |  897 | `	pBlob->nByte = pBlob->mByte = 0;` |
+|   22976047 |  898 | `	pBlob->nFlags = 0;` |
+|   22976047 |  899 | `	return SXRET_OK;` |
 |          5 |  900 | `}` |
 |          - |  901 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
-|     197438 |  902 | `PH7_PRIVATE sxi32 SyBlobSearch(const void *pBlob,sxu32 nLen,const void *pPattern,sxu32 pLen,sxu32 *pOfft)` |
+|     197818 |  902 | `PH7_PRIVATE sxi32 SyBlobSearch(const void *pBlob,sxu32 nLen,const void *pPattern,sxu32 pLen,sxu32 *pOfft)` |
 |          5 |  903 | `{` |
-|     197443 |  904 | `	const char *zIn = (const char *)pBlob;` |
+|     197823 |  904 | `	const char *zIn = (const char *)pBlob;` |
 |          - |  905 | `	const char *zEnd;` |
 |          - |  906 | `	sxi32 rc;` |
-|     197443 |  907 | `	if( pLen > nLen ){` |
+|     197823 |  907 | `	if( pLen > nLen ){` |
 |       6635 |  908 | `		return SXERR_NOTFOUND;` |
 |          - |  909 | `	}` |
-|     190813 |  910 | `	zEnd = &zIn[nLen-pLen];` |
-|    1772750 |  911 | `	for(;;){` |
-|    3543223 |  912 | `		if( zIn > zEnd ){break;} SX_MACRO_FAST_CMP(zIn,pPattern,pLen,rc); if( rc == 0 ){ if( pOfft ){ *pOfft = (sxu32)(zIn - (const char *)pBlob);} return SXRET_OK; } zIn++;` |
-|    3497037 |  913 | `		if( zIn > zEnd ){break;} SX_MACRO_FAST_CMP(zIn,pPattern,pLen,rc); if( rc == 0 ){ if( pOfft ){ *pOfft = (sxu32)(zIn - (const char *)pBlob);} return SXRET_OK; } zIn++;` |
-|    3429122 |  914 | `		if( zIn > zEnd ){break;} SX_MACRO_FAST_CMP(zIn,pPattern,pLen,rc); if( rc == 0 ){ if( pOfft ){ *pOfft = (sxu32)(zIn - (const char *)pBlob);} return SXRET_OK; } zIn++;` |
-|    3389012 |  915 | `		if( zIn > zEnd ){break;} SX_MACRO_FAST_CMP(zIn,pPattern,pLen,rc); if( rc == 0 ){ if( pOfft ){ *pOfft = (sxu32)(zIn - (const char *)pBlob);} return SXRET_OK; } zIn++;` |
+|     191193 |  910 | `	zEnd = &zIn[nLen-pLen];` |
+|    1783148 |  911 | `	for(;;){` |
+|    3564015 |  912 | `		if( zIn > zEnd ){break;} SX_MACRO_FAST_CMP(zIn,pPattern,pLen,rc); if( rc == 0 ){ if( pOfft ){ *pOfft = (sxu32)(zIn - (const char *)pBlob);} return SXRET_OK; } zIn++;` |
+|    3517748 |  913 | `		if( zIn > zEnd ){break;} SX_MACRO_FAST_CMP(zIn,pPattern,pLen,rc); if( rc == 0 ){ if( pOfft ){ *pOfft = (sxu32)(zIn - (const char *)pBlob);} return SXRET_OK; } zIn++;` |
+|    3449771 |  914 | `		if( zIn > zEnd ){break;} SX_MACRO_FAST_CMP(zIn,pPattern,pLen,rc); if( rc == 0 ){ if( pOfft ){ *pOfft = (sxu32)(zIn - (const char *)pBlob);} return SXRET_OK; } zIn++;` |
+|    3409614 |  915 | `		if( zIn > zEnd ){break;} SX_MACRO_FAST_CMP(zIn,pPattern,pLen,rc); if( rc == 0 ){ if( pOfft ){ *pOfft = (sxu32)(zIn - (const char *)pBlob);} return SXRET_OK; } zIn++;` |
 |          5 |  916 | `	}` |
 |      31363 |  917 | `	return SXERR_NOTFOUND;` |
-|      98724 |  918 | `}` |
+|      98914 |  918 | `}` |
 |          - |  919 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
 |          - |  920 |  |

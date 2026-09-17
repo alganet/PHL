@@ -303,13 +303,13 @@ Coverage: 212/407 lines (52.09%)
 |        - |  293 | `            /* Negate in unsigned space so INT64_MIN (where -longvalue would` |
 |        - |  294 | `            ** overflow, UB that recent compilers exploit) yields the correct` |
 |        - |  295 | `            ** magnitude 2^63 rather than garbage. */` |
-|      236 |  296 | `            ulongvalue = (sxu64)0 - (sxu64)longvalue;` |
-|      236 |  297 | `            prefix = '-';` |
+|      235 |  296 | `            ulongvalue = (sxu64)0 - (sxu64)longvalue;` |
+|      235 |  297 | `            prefix = '-';` |
 |      119 |  298 | `          }else{` |
-|    67873 |  299 | `            ulongvalue = (sxu64)longvalue;` |
-|    67873 |  300 | `            if( flag_plussign )        prefix = '+';` |
-|    67873 |  301 | `            else if( flag_blanksign )  prefix = ' ';` |
-|    67873 |  302 | `            else                       prefix = 0;` |
+|    67874 |  299 | `            ulongvalue = (sxu64)longvalue;` |
+|    67874 |  300 | `            if( flag_plussign )        prefix = '+';` |
+|    67874 |  301 | `            else if( flag_blanksign )  prefix = ' ';` |
+|    67874 |  302 | `            else                       prefix = 0;` |
 |        - |  303 | `          }` |
 |    34055 |  304 | `        }else{` |
 |     3963 |  305 | `			ulongvalue = (sxu64)longvalue; /* print the full unsigned value as-is */` |
@@ -325,9 +325,9 @@ Coverage: 212/407 lines (52.09%)
 |    72063 |  315 | `          cset = infop->charset;` |
 |    72063 |  316 | `          base = infop->base;` |
 |    36029 |  317 | `          do{                                           /* Convert to ascii */` |
-|   203568 |  318 | `            *(--bufpt) = cset[ulongvalue%base];` |
-|   203568 |  319 | `            ulongvalue = ulongvalue/base;` |
-|   203568 |  320 | `          }while( ulongvalue>0 );` |
+|   203583 |  318 | `            *(--bufpt) = cset[ulongvalue%base];` |
+|   203583 |  319 | `            ulongvalue = ulongvalue/base;` |
+|   203583 |  320 | `          }while( ulongvalue>0 );` |
 |        - |  321 | `        }` |
 |    72063 |  322 | `        length = (int)(&buf[SXFMT_BUFSIZ-1]-bufpt);` |
 |    73163 |  323 | `        for(idx=precision-length; idx>0; idx--){` |

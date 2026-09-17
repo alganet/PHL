@@ -1649,8 +1649,8 @@ Coverage: 806/1186 lines (67.96%)
 |      5 | 1639 | `		return PH7_OK;` |
 |      - | 1640 | `	}` |
 |     41 | 1641 | `	iLen = (int)(&zEnd[1]-zPath);` |
-|    975 | 1642 | `	while( zEnd > zPath && ( (int)zEnd[0] != c && (int)zEnd[0] != d ) ){` |
-|    915 | 1643 | `		zEnd--;` |
+|    976 | 1642 | `	while( zEnd > zPath && ( (int)zEnd[0] != c && (int)zEnd[0] != d ) ){` |
+|    916 | 1643 | `		zEnd--;` |
 |      1 | 1644 | `	}` |
 |     41 | 1645 | `	zBase = (zEnd > zPath) ? &zEnd[1] : zPath;` |
 |     41 | 1646 | `	zEnd = &zPath[iLen];` |
