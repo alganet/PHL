@@ -13,14 +13,14 @@
 | src/ph7/compile.c              | 92.14%   | 1524/1654   |
 | src/ph7/compile_class.c        | 75.95%   | 2163/2848   |
 | src/ph7/compile_func.c         | 85.88%   | 870/1013    |
-| src/ph7/compile_literal.c      | 89.21%   | 951/1066    |
+| src/ph7/compile_literal.c      | 89.02%   | 949/1066    |
 | src/ph7/compile_node.c         | 83.39%   | 678/813     |
 | src/ph7/compile_stmt.c         | 73.85%   | 1463/1981   |
 | src/ph7/constant.c             | 93.09%   | 970/1042    |
 | src/ph7/hashmap.c              | 90.77%   | 1042/1148   |
 | src/ph7/hashmap_builtin.c      | 85.87%   | 2444/2846   |
 | src/ph7/hashmap_sort.c         | 91.14%   | 463/508     |
-| src/ph7/lex.c                  | 93.46%   | 814/871     |
+| src/ph7/lex.c                  | 93.52%   | 823/880     |
 | src/ph7/memobj.c               | 81.35%   | 829/1019    |
 | src/ph7/net.c                  | 57.45%   | 81/141      |
 | src/ph7/oo.c                   | 87.62%   | 736/840     |
@@ -79,5 +79,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.29%   | 48958/60226 |
+| Lines                          | 81.29%   | 48965/60235 |
 | Functions                      | 93.25%   | 2223/2384   |

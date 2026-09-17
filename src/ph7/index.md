@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 46066/56558 lines (81.45%)
+Coverage: 46073/56567 lines (81.45%)
 
 [Up](../index.md)
 
@@ -19,14 +19,14 @@ Coverage: 46066/56558 lines (81.45%)
 |[compile.c](compile.c.md)|92.14%|1524/1654|
 |[compile_class.c](compile_class.c.md)|75.95%|2163/2848|
 |[compile_func.c](compile_func.c.md)|85.88%|870/1013|
-|[compile_literal.c](compile_literal.c.md)|89.21%|951/1066|
+|[compile_literal.c](compile_literal.c.md)|89.02%|949/1066|
 |[compile_node.c](compile_node.c.md)|83.39%|678/813|
 |[compile_stmt.c](compile_stmt.c.md)|73.85%|1463/1981|
 |[constant.c](constant.c.md)|93.09%|970/1042|
 |[hashmap.c](hashmap.c.md)|90.77%|1042/1148|
 |[hashmap_builtin.c](hashmap_builtin.c.md)|85.87%|2444/2846|
 |[hashmap_sort.c](hashmap_sort.c.md)|91.14%|463/508|
-|[lex.c](lex.c.md)|93.46%|814/871|
+|[lex.c](lex.c.md)|93.52%|823/880|
 |[memobj.c](memobj.c.md)|81.35%|829/1019|
 |[net.c](net.c.md)|57.45%|81/141|
 |[oo.c](oo.c.md)|87.62%|736/840|
