@@ -30,39 +30,39 @@ Coverage: 388/428 lines (90.65%)
 |       - |   20 | ` * Return` |
 |       - |   21 | ` *  1 if var exists and has value other than NULL, 0 otherwise.` |
 |       - |   22 | ` */` |
-|  115994 |   23 | `PH7_PRIVATE int vm_builtin_isset(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  115970 |   23 | `PH7_PRIVATE int vm_builtin_isset(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |       5 |   24 | `{` |
 |       - |   25 | `	ph7_value *pObj;` |
-|  115999 |   26 | `	int res = 0;` |
+|  115975 |   26 | `	int res = 0;` |
 |       - |   27 | `	int i;` |
-|  115999 |   28 | `	if( nArg < 1 ){` |
+|  115975 |   28 | `	if( nArg < 1 ){` |
 |       - |   29 | `		/* Missing arguments,return false */` |
 |     ! 0 |   30 | `		ph7_result_bool(pCtx,res);` |
 |     ! 0 |   31 | `		return SXRET_OK;` |
 |       - |   32 | `	}` |
 |       - |   33 | `	/* Iterate over available arguments */` |
-|  148561 |   34 | `	for( i = 0 ; i < nArg ; ++i ){` |
-|  116011 |   35 | `		pObj = apArg[i];` |
-|  116011 |   36 | `		if( pObj->nIdx == SXU32_HIGH ){` |
+|  148521 |   34 | `	for( i = 0 ; i < nArg ; ++i ){` |
+|  115987 |   35 | `		pObj = apArg[i];` |
+|  115987 |   36 | `		if( pObj->nIdx == SXU32_HIGH ){` |
 |       - |   37 | `			/* Skip the "expecting a variable" warning for MEMOBJ_BOOL —` |
 |       - |   38 | `			 * synthesized by LOAD_IDX iP2=4 (ArrayAccess::offsetExists) and` |
 |       - |   39 | `			 * by anyone passing a bool literal (rare, harmless). */` |
-|   80555 |   40 | `			if( (pObj->iFlags & (MEMOBJ_NULL\|MEMOBJ_BOOL)) == 0 ){` |
+|   80543 |   40 | `			if( (pObj->iFlags & (MEMOBJ_NULL\|MEMOBJ_BOOL)) == 0 ){` |
 |       - |   41 | `				/* Not so fatal,Throw a warning */` |
 |     ! 0 |   42 | `				ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting a variable not a constant");` |
 |     ! 0 |   43 | `			}` |
-|   40275 |   44 | `		}` |
-|  116011 |   45 | `		res = (pObj->iFlags & MEMOBJ_NULL) ? 0 : 1;` |
-|  116011 |   46 | `		if( !res ){` |
+|   40269 |   44 | `		}` |
+|  115987 |   45 | `		res = (pObj->iFlags & MEMOBJ_NULL) ? 0 : 1;` |
+|  115987 |   46 | `		if( !res ){` |
 |       - |   47 | `			/* Variable not set,return FALSE */` |
-|   83449 |   48 | `			ph7_result_bool(pCtx,0);` |
-|   83449 |   49 | `			return SXRET_OK;` |
+|   83441 |   48 | `			ph7_result_bool(pCtx,0);` |
+|   83441 |   49 | `			return SXRET_OK;` |
 |       - |   50 | `		}` |
-|   16286 |   51 | `	}` |
+|   16278 |   51 | `	}` |
 |       - |   52 | `	/* All given variable are set,return TRUE */` |
-|   32555 |   53 | `	ph7_result_bool(pCtx,1);` |
-|   32555 |   54 | `	return SXRET_OK;` |
-|   58002 |   55 | `}` |
+|   32539 |   53 | `	ph7_result_bool(pCtx,1);` |
+|   32539 |   54 | `	return SXRET_OK;` |
+|   57990 |   55 | `}` |
 |       - |   56 | `/*` |
 |       - |   57 | ` * Unset a memory object [i.e: a ph7_value],remove it from the current` |
 |       - |   58 | ` * frame,the reference table and discard it's contents.` |
@@ -82,34 +82,34 @@ Coverage: 388/428 lines (90.65%)
 |       - |   72 | ` * So: unlink this one name, forget it in the slot's reference record, and release the` |
 |       - |   73 | ` * slot only once no name and no array entry still holds it.` |
 |       - |   74 | ` */` |
-|    6766 |   75 | `PH7_PRIVATE sxi32 VmUnsetVarByName(ph7_vm *pVm,VmFrame *pFrame,const char *zName,sxu32 nByte)` |
+|    6754 |   75 | `PH7_PRIVATE sxi32 VmUnsetVarByName(ph7_vm *pVm,VmFrame *pFrame,const char *zName,sxu32 nByte)` |
 |       5 |   76 | `{` |
 |       - |   77 | `	SyHashEntry *pEntry;` |
 |       - |   78 | `	VmRefObj *pRef;` |
 |       - |   79 | `	sxu32 nIdx;` |
 |       - |   80 | `	/* php 8.1 forbids unset($GLOBALS) outright. Checked by NAME: the superglobal is not an` |
 |       - |   81 | `	 * ordinary hVar binding, so the slot-index test below never sees it. */` |
-|    6771 |   82 | `	if( nByte == sizeof("GLOBALS")-1 && SyMemcmp(zName,"GLOBALS",nByte) == 0 ){` |
+|    6759 |   82 | `	if( nByte == sizeof("GLOBALS")-1 && SyMemcmp(zName,"GLOBALS",nByte) == 0 ){` |
 |       3 |   83 | `		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,` |
 |       - |   84 | `			"$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax");` |
 |       3 |   85 | `		pVm->iExitStatus = 255;` |
 |       3 |   86 | `		pVm->bHaltRequested = 1;` |
 |       3 |   87 | `		return PH7_ABORT;` |
 |       - |   88 | `	}` |
-|    6769 |   89 | `	pEntry = SyHashGet(&pFrame->hVar,(const void *)zName,nByte);` |
-|    6769 |   90 | `	if( pEntry == 0 ){` |
+|    6757 |   89 | `	pEntry = SyHashGet(&pFrame->hVar,(const void *)zName,nByte);` |
+|    6757 |   90 | `	if( pEntry == 0 ){` |
 |       - |   91 | `		/* No such variable: unset() is a no-op on an undefined name, as in php */` |
 |     943 |   92 | `		return SXRET_OK;` |
 |       - |   93 | `	}` |
-|    5829 |   94 | `	nIdx = SX_PTR_TO_INT(pEntry->pUserData);` |
-|    5829 |   95 | `	if( nIdx == pVm->nGlobalIdx ){` |
+|    5817 |   94 | `	nIdx = SX_PTR_TO_INT(pEntry->pUserData);` |
+|    5817 |   95 | `	if( nIdx == pVm->nGlobalIdx ){` |
 |     ! 0 |   96 | `		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,` |
 |       - |   97 | `			"$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax");` |
 |     ! 0 |   98 | `		pVm->iExitStatus = 255;` |
 |     ! 0 |   99 | `		pVm->bHaltRequested = 1;` |
 |     ! 0 |  100 | `		return PH7_ABORT;` |
 |       - |  101 | `	}` |
-|    5829 |  102 | `	pRef = VmRefObjExtract(&(*pVm),nIdx);` |
+|    5817 |  102 | `	pRef = VmRefObjExtract(&(*pVm),nIdx);` |
 |       - |  103 | `	/*` |
 |       - |  104 | `	 * A GLOBAL variable is ALSO an entry of the $GLOBALS array, and that node points at the` |
 |       - |  105 | `	 * same slot. php's unset($x) in global scope drops $GLOBALS['x'] too, so unlink the node` |
@@ -118,33 +118,33 @@ Coverage: 388/428 lines (90.65%)
 |       - |  108 | `	 * node BEFORE unlinking it: unlinking frees the node, and the holder count below would` |
 |       - |  109 | `	 * otherwise dereference freed memory.` |
 |       - |  110 | `	 */` |
-|    5829 |  111 | `	if( pFrame->pParent == 0 ){` |
-|    5827 |  112 | `		ph7_value *pGlobals = (ph7_value *)SySetAt(&pVm->aMemObj,pVm->nGlobalIdx);` |
-|    5827 |  113 | `		if( pGlobals && (pGlobals->iFlags & MEMOBJ_HASHMAP) ){` |
-|    5827 |  114 | `			ph7_hashmap_node *pNode = 0;` |
+|    5817 |  111 | `	if( pFrame->pParent == 0 ){` |
+|    5815 |  112 | `		ph7_value *pGlobals = (ph7_value *)SySetAt(&pVm->aMemObj,pVm->nGlobalIdx);` |
+|    5815 |  113 | `		if( pGlobals && (pGlobals->iFlags & MEMOBJ_HASHMAP) ){` |
+|    5815 |  114 | `			ph7_hashmap_node *pNode = 0;` |
 |       - |  115 | `			ph7_value sKey;` |
 |       - |  116 | `			SyString sName;` |
-|    5827 |  117 | `			PH7_MemObjInit(&(*pVm),&sKey);` |
-|    5827 |  118 | `			SyStringInitFromBuf(&sName,zName,nByte);` |
-|    5827 |  119 | `			PH7_MemObjInitFromString(&(*pVm),&sKey,&sName);` |
-|    5824 |  120 | `			if( SXRET_OK == PH7_HashmapLookup((ph7_hashmap *)pGlobals->x.pOther,&sKey,&pNode)` |
-|    5827 |  121 | `			 && pNode && pNode->nValIdx == nIdx ){` |
-|    5825 |  122 | `				if( pRef ){` |
-|    5825 |  123 | `					ph7_hashmap_node **apN = (ph7_hashmap_node **)SySetBasePtr(&pRef->aArrEntries);` |
+|    5815 |  117 | `			PH7_MemObjInit(&(*pVm),&sKey);` |
+|    5815 |  118 | `			SyStringInitFromBuf(&sName,zName,nByte);` |
+|    5815 |  119 | `			PH7_MemObjInitFromString(&(*pVm),&sKey,&sName);` |
+|    5812 |  120 | `			if( SXRET_OK == PH7_HashmapLookup((ph7_hashmap *)pGlobals->x.pOther,&sKey,&pNode)` |
+|    5815 |  121 | `			 && pNode && pNode->nValIdx == nIdx ){` |
+|    5813 |  122 | `				if( pRef ){` |
+|    5813 |  123 | `					ph7_hashmap_node **apN = (ph7_hashmap_node **)SySetBasePtr(&pRef->aArrEntries);` |
 |       - |  124 | `					sxu32 k;` |
-|   11745 |  125 | `					for( k = 0 ; k < SySetUsed(&pRef->aArrEntries) ; ++k ){` |
-|    5923 |  126 | `						if( apN[k] == pNode ){` |
-|    5825 |  127 | `							apN[k] = 0;` |
-|    2911 |  128 | `						}` |
-|    2963 |  129 | `					}` |
-|    2911 |  130 | `				}` |
-|    5825 |  131 | `				PH7_HashmapUnlinkNode(pNode,FALSE);` |
-|    2911 |  132 | `			}` |
-|    5827 |  133 | `			PH7_MemObjRelease(&sKey);` |
-|    2912 |  134 | `		}` |
-|    2912 |  135 | `	}` |
+|   11721 |  125 | `					for( k = 0 ; k < SySetUsed(&pRef->aArrEntries) ; ++k ){` |
+|    5911 |  126 | `						if( apN[k] == pNode ){` |
+|    5813 |  127 | `							apN[k] = 0;` |
+|    2905 |  128 | `						}` |
+|    2957 |  129 | `					}` |
+|    2905 |  130 | `				}` |
+|    5813 |  131 | `				PH7_HashmapUnlinkNode(pNode,FALSE);` |
+|    2905 |  132 | `			}` |
+|    5815 |  133 | `			PH7_MemObjRelease(&sKey);` |
+|    2906 |  134 | `		}` |
+|    2906 |  135 | `	}` |
 |       - |  136 |  |
-|    5829 |  137 | `	if( pRef == 0 ){` |
+|    5817 |  137 | `	if( pRef == 0 ){` |
 |       - |  138 | `		/* Unaliased variable: nobody else holds the slot, so the old path is right */` |
 |     ! 0 |  139 | `		SyHashDeleteEntry2(pEntry);` |
 |     ! 0 |  140 | `		PH7_VmUnsetMemObj(&(*pVm),nIdx,FALSE);` |
@@ -155,43 +155,43 @@ Coverage: 388/428 lines (90.65%)
 |     ! 0 |  145 | `		return SXRET_OK;` |
 |       - |  146 | `	}` |
 |       - |  147 | `	{` |
-|    5829 |  148 | `		SyHashEntry **apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);` |
-|    5829 |  149 | `		ph7_hashmap_node **apNode = (ph7_hashmap_node **)SySetBasePtr(&pRef->aArrEntries);` |
-|    5829 |  150 | `		sxu32 n, nLive = 0;` |
+|    5817 |  148 | `		SyHashEntry **apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);` |
+|    5817 |  149 | `		ph7_hashmap_node **apNode = (ph7_hashmap_node **)SySetBasePtr(&pRef->aArrEntries);` |
+|    5817 |  150 | `		sxu32 n, nLive = 0;` |
 |       - |  151 | `		/* Forget THIS name in the slot's reference record (leave the others alone) */` |
-|   11751 |  152 | `		for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){` |
-|    5925 |  153 | `			if( apEntry[n] == pEntry ){` |
-|    5823 |  154 | `				apEntry[n] = 0;` |
-|    2910 |  155 | `			}` |
-|    2964 |  156 | `		}` |
-|    5829 |  157 | `		SyHashDeleteEntry2(pEntry);` |
+|   11727 |  152 | `		for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){` |
+|    5913 |  153 | `			if( apEntry[n] == pEntry ){` |
+|    5811 |  154 | `				apEntry[n] = 0;` |
+|    2904 |  155 | `			}` |
+|    2958 |  156 | `		}` |
+|    5817 |  157 | `		SyHashDeleteEntry2(pEntry);` |
 |       - |  158 | `		/* Anything else still holding the slot? */` |
-|   11751 |  159 | `		for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){` |
-|    5925 |  160 | `			if( apEntry[n] ){` |
+|   11727 |  159 | `		for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){` |
+|    5913 |  160 | `			if( apEntry[n] ){` |
 |      29 |  161 | `				nLive++;` |
 |      14 |  162 | `			}` |
-|    2964 |  163 | `		}` |
-|   11751 |  164 | `		for( n = 0 ; n < SySetUsed(&pRef->aArrEntries) ; ++n ){` |
+|    2958 |  163 | `		}` |
+|   11727 |  164 | `		for( n = 0 ; n < SySetUsed(&pRef->aArrEntries) ; ++n ){` |
 |       - |  165 | `			/* Only a node that STILL points at this slot is a holder. The reference table` |
 |       - |  166 | `			 * keeps stale rows (a slot index is recycled through the free list, and the row` |
 |       - |  167 | `			 * outlives the node that put it there), so an un-filtered count reports holders` |
 |       - |  168 | `			 * that no longer exist and the value would never be released — the destructor` |
 |       - |  169 | ``			 * of `$o = new D; unset($o);` stopped running. */`` |
-|    5925 |  170 | `			if( apNode[n] && apNode[n]->nValIdx == nIdx ){` |
+|    5913 |  170 | `			if( apNode[n] && apNode[n]->nValIdx == nIdx ){` |
 |      63 |  171 | `				nLive++;` |
 |      31 |  172 | `			}` |
-|    2964 |  173 | `		}` |
-|    5829 |  174 | `		if( nLive < 1 ){` |
+|    2958 |  173 | `		}` |
+|    5817 |  174 | `		if( nLive < 1 ){` |
 |       - |  175 | `			/* Last holder gone: now the value may go too */` |
-|    5773 |  176 | `			PH7_VmUnsetMemObj(&(*pVm),nIdx,FALSE);` |
+|    5761 |  176 | `			PH7_VmUnsetMemObj(&(*pVm),nIdx,FALSE);` |
 |       - |  177 | `			/* Slot returned to the free pool: drop its stale local-teardown entry so a` |
 |       - |  178 | `			 * later reuse of the index is not double-freed on frame exit (see` |
 |       - |  179 | `			 * VmDropFrameLocalSlot). */` |
-|    5773 |  180 | `			VmDropFrameLocalSlot(&(*pVm),nIdx);` |
-|    2885 |  181 | `		}` |
+|    5761 |  180 | `			VmDropFrameLocalSlot(&(*pVm),nIdx);` |
+|    2879 |  181 | `		}` |
 |       - |  182 | `	}` |
-|    5829 |  183 | `	return SXRET_OK;` |
-|    3388 |  184 | `}` |
+|    5817 |  183 | `	return SXRET_OK;` |
+|    3382 |  184 | `}` |
 |       - |  185 | `/*` |
 |       - |  186 | ` * Is this memory slot aliased — i.e. does anything other than its owner refer to it?` |
 |       - |  187 | ` * var_dump marks such an array element with '&' ("&int(2)"). PH7 only flagged nodes that` |
@@ -199,50 +199,50 @@ Coverage: 388/428 lines (90.65%)
 |       - |  189 | `` * common case, a reference taken TO an element (`$r = &$a[1]`), where the array still owns`` |
 |       - |  190 | ` * the value but is no longer its only holder.` |
 |       - |  191 | ` */` |
-|  710442 |  192 | `PH7_PRIVATE int PH7_VmSlotIsReferenced(ph7_vm *pVm,sxu32 nIdx)` |
+|  707112 |  192 | `PH7_PRIVATE int PH7_VmSlotIsReferenced(ph7_vm *pVm,sxu32 nIdx)` |
 |       5 |  193 | `{` |
 |       - |  194 | `	VmRefObj *pRef;` |
-|  710447 |  195 | `	sxu32 n, nLive = 0;` |
+|  707117 |  195 | `	sxu32 n, nLive = 0;` |
 |       - |  196 | `	SyHashEntry **apEntry;` |
-|  710447 |  197 | `	if( nIdx == SXU32_HIGH ){` |
+|  707117 |  197 | `	if( nIdx == SXU32_HIGH ){` |
 |     ! 0 |  198 | `		return 0;` |
 |       - |  199 | `	}` |
-|  710447 |  200 | `	pRef = VmRefObjExtract(&(*pVm),nIdx);` |
-|  710447 |  201 | `	if( pRef == 0 ){` |
+|  707117 |  200 | `	pRef = VmRefObjExtract(&(*pVm),nIdx);` |
+|  707117 |  201 | `	if( pRef == 0 ){` |
 |     ! 0 |  202 | `		return 0;` |
 |       - |  203 | `	}` |
-|  710447 |  204 | `	apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);` |
-|  710451 |  205 | `	for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){` |
+|  707117 |  204 | `	apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);` |
+|  707121 |  205 | `	for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){` |
 |       5 |  206 | `		if( apEntry[n] ){` |
 |       5 |  207 | `			nLive++;` |
 |       2 |  208 | `		}` |
 |       3 |  209 | `	}` |
-|  710447 |  210 | `	return nLive > 0;` |
-|  355226 |  211 | `}` |
-| 4256195 |  212 | `PH7_PRIVATE sxi32 PH7_VmUnsetMemObj(ph7_vm *pVm,sxu32 nObjIdx,int bForce)` |
+|  707117 |  210 | `	return nLive > 0;` |
+|  353561 |  211 | `}` |
+| 4252823 |  212 | `PH7_PRIVATE sxi32 PH7_VmUnsetMemObj(ph7_vm *pVm,sxu32 nObjIdx,int bForce)` |
 |       5 |  213 | `{` |
 |       - |  214 | `	ph7_value *pObj;` |
 |       - |  215 | `	VmRefObj *pRef;` |
-| 4256200 |  216 | `	pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nObjIdx);` |
-| 4256200 |  217 | `	if( pObj ){` |
+| 4252828 |  216 | `	pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nObjIdx);` |
+| 4252828 |  217 | `	if( pObj ){` |
 |       - |  218 | `		/* Release the object */` |
-| 4256200 |  219 | `		PH7_MemObjRelease(pObj);` |
-| 2128727 |  220 | `	}` |
+| 4252828 |  219 | `		PH7_MemObjRelease(pObj);` |
+| 2127041 |  220 | `	}` |
 |       - |  221 | `	/* Remove old reference links */` |
-| 4256200 |  222 | `	pRef = VmRefObjExtract(&(*pVm),nObjIdx);` |
-| 4256200 |  223 | `	if( pRef ){` |
-| 4256200 |  224 | `		sxi32 iFlags = pRef->iFlags;` |
+| 4252828 |  222 | `	pRef = VmRefObjExtract(&(*pVm),nObjIdx);` |
+| 4252828 |  223 | `	if( pRef ){` |
+| 4252828 |  224 | `		sxi32 iFlags = pRef->iFlags;` |
 |       - |  225 | `		/* Unlink from the reference table */` |
-| 4256200 |  226 | `		VmRefObjUnlink(&(*pVm),pRef);` |
-| 4256200 |  227 | `		if( (bForce == TRUE) \|\| (iFlags & VM_REF_IDX_KEEP) == 0 ){` |
+| 4252828 |  226 | `		VmRefObjUnlink(&(*pVm),pRef);` |
+| 4252828 |  227 | `		if( (bForce == TRUE) \|\| (iFlags & VM_REF_IDX_KEEP) == 0 ){` |
 |       - |  228 | `			VmSlot sFree;` |
 |       - |  229 | `			/* Restore to the free list */` |
-| 4256182 |  230 | `			sFree.nIdx = nObjIdx;` |
-| 4256182 |  231 | `			sFree.pUserData = 0;` |
-| 4256182 |  232 | `			SySetPut(&pVm->aFreeObj,(const void *)&sFree);` |
-| 2128718 |  233 | `		}` |
-| 2128727 |  234 | `	}` |
-| 4256200 |  235 | `	return SXRET_OK;` |
+| 4252810 |  230 | `			sFree.nIdx = nObjIdx;` |
+| 4252810 |  231 | `			sFree.pUserData = 0;` |
+| 4252810 |  232 | `			SySetPut(&pVm->aFreeObj,(const void *)&sFree);` |
+| 2127032 |  233 | `		}` |
+| 2127041 |  234 | `	}` |
+| 4252828 |  235 | `	return SXRET_OK;` |
 |       5 |  236 | `}` |
 |       - |  237 | `/*` |
 |       - |  238 | ` * void unset($var,...)` |
@@ -529,80 +529,80 @@ Coverage: 388/428 lines (90.65%)
 |       - |  519 | `};` |
 |       - |  520 | `static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth);` |
 |       - |  521 | `/* Append nIndent spaces. */` |
-|     586 |  522 | `static void VmExportIndent(SyBlob *pOut, int nIndent)` |
+|     598 |  522 | `static void VmExportIndent(SyBlob *pOut, int nIndent)` |
 |       4 |  523 | `{` |
 |       - |  524 | `	int i;` |
-|    1712 |  525 | `	for( i = 0; i < nIndent; i++ ){ SyBlobAppend(pOut," ",1); }` |
-|     590 |  526 | `}` |
+|    1748 |  525 | `	for( i = 0; i < nIndent; i++ ){ SyBlobAppend(pOut," ",1); }` |
+|     602 |  526 | `}` |
 |       - |  527 | `/* Append a single-quoted PHP string literal (escapes ' and \, batching safe runs` |
 |       - |  528 | ` * in one append). A NUL byte can't live in a single-quoted literal, so PHP splits` |
 |       - |  529 | ` * it out as ' . "\0" . ' — match that. */` |
-|     486 |  530 | `static void VmExportQuoted(SyBlob *pOut, const char *z, int n)` |
+|     494 |  530 | `static void VmExportQuoted(SyBlob *pOut, const char *z, int n)` |
 |       5 |  531 | `{` |
-|     491 |  532 | `	int i, run = 0;` |
-|     491 |  533 | `	SyBlobAppend(pOut,"'",1);` |
-|    2525 |  534 | `	for( i = 0; i < n; i++ ){` |
-|    2039 |  535 | `		char c = z[i];` |
-|    2039 |  536 | `		if( c != '\0' && c != '\'' && c != '\\' ){ continue; } /* extend the safe run */` |
+|     499 |  532 | `	int i, run = 0;` |
+|     499 |  533 | `	SyBlobAppend(pOut,"'",1);` |
+|    2545 |  534 | `	for( i = 0; i < n; i++ ){` |
+|    2051 |  535 | `		char c = z[i];` |
+|    2051 |  536 | `		if( c != '\0' && c != '\'' && c != '\\' ){ continue; } /* extend the safe run */` |
 |       7 |  537 | `		if( i > run ){ SyBlobAppend(pOut,&z[run],(sxu32)(i-run)); }` |
 |       7 |  538 | `		if( c == '\0' ){ SyBlobAppend(pOut,"' . \"\\0\" . '",12); }` |
 |       5 |  539 | `		else { SyBlobAppend(pOut,"\\",1); SyBlobAppend(pOut,&z[i],1); }` |
 |       7 |  540 | `		run = i+1;` |
 |       4 |  541 | `	}` |
-|     491 |  542 | `	if( n > run ){ SyBlobAppend(pOut,&z[run],(sxu32)(n-run)); }` |
-|     491 |  543 | `	SyBlobAppend(pOut,"'",1);` |
-|     491 |  544 | `}` |
+|     499 |  542 | `	if( n > run ){ SyBlobAppend(pOut,&z[run],(sxu32)(n-run)); }` |
+|     499 |  543 | `	SyBlobAppend(pOut,"'",1);` |
+|     499 |  544 | `}` |
 |       - |  545 | `/* True if the array/object is already on the var_export recursion stack. */` |
-|     382 |  546 | `static int VmExportIsCycle(ph7_value *pVal)` |
+|     388 |  546 | `static int VmExportIsCycle(ph7_value *pVal)` |
 |       4 |  547 | `{` |
-|     386 |  548 | `	if( ph7_value_is_array(pVal) ){` |
-|      37 |  549 | `		return (((ph7_hashmap *)pVal->x.pOther)->iFlags & HASHMAP_DUMPING) != 0;` |
+|     392 |  548 | `	if( ph7_value_is_array(pVal) ){` |
+|      39 |  549 | `		return (((ph7_hashmap *)pVal->x.pOther)->iFlags & HASHMAP_DUMPING) != 0;` |
 |       - |  550 | `	}` |
-|     352 |  551 | `	if( ph7_value_is_object(pVal) ){` |
+|     356 |  551 | `	if( ph7_value_is_object(pVal) ){` |
 |       5 |  552 | `		return (((ph7_class_instance *)pVal->x.pOther)->iFlags & VM_INSTANCE_DUMPING) != 0;` |
 |       - |  553 | `	}` |
-|     348 |  554 | `	return 0;` |
-|     195 |  555 | `}` |
+|     352 |  554 | `	return 0;` |
+|     198 |  555 | `}` |
 |       - |  556 | `/* Emit " => " then the value: a scalar inline, a composite on its own line at` |
 |       - |  557 | ` * containerIndent+2. A circular reference renders inline as NULL (like PHP). */` |
-|     382 |  558 | `static void VmExportEntryValue(SyBlob *pOut, ph7_value *pVal, int nContainerIndent, int depth)` |
+|     388 |  558 | `static void VmExportEntryValue(SyBlob *pOut, ph7_value *pVal, int nContainerIndent, int depth)` |
 |       4 |  559 | `{` |
-|     386 |  560 | `	SyBlobAppend(pOut," => ",4);` |
-|     386 |  561 | `	if( VmExportIsCycle(pVal) ){` |
+|     392 |  560 | `	SyBlobAppend(pOut," => ",4);` |
+|     392 |  561 | `	if( VmExportIsCycle(pVal) ){` |
 |       5 |  562 | `		SyBlobAppend(pOut,"NULL",4);` |
-|     384 |  563 | `	}else if( ph7_value_is_array(pVal) \|\| ph7_value_is_object(pVal) ){` |
-|      37 |  564 | `		SyBlobAppend(pOut,"\n",1);` |
-|      37 |  565 | `		VmExportIndent(pOut,nContainerIndent+2);` |
-|      37 |  566 | `		VmExportValue(pOut,pVal,nContainerIndent+2,depth+1);` |
-|      20 |  567 | `	}else{` |
-|     348 |  568 | `		VmExportValue(pOut,pVal,nContainerIndent+2,depth+1);` |
+|     390 |  563 | `	}else if( ph7_value_is_array(pVal) \|\| ph7_value_is_object(pVal) ){` |
+|      39 |  564 | `		SyBlobAppend(pOut,"\n",1);` |
+|      39 |  565 | `		VmExportIndent(pOut,nContainerIndent+2);` |
+|      39 |  566 | `		VmExportValue(pOut,pVal,nContainerIndent+2,depth+1);` |
+|      21 |  567 | `	}else{` |
+|     352 |  568 | `		VmExportValue(pOut,pVal,nContainerIndent+2,depth+1);` |
 |       - |  569 | `	}` |
-|     386 |  570 | `	SyBlobAppend(pOut,",\n",2);` |
-|     386 |  571 | `}` |
+|     392 |  570 | `	SyBlobAppend(pOut,",\n",2);` |
+|     392 |  571 | `}` |
 |       - |  572 | `/* Array walker: "<indent+2>key => value,\n" for each entry. */` |
-|     340 |  573 | `static int VmExportArrayWalk(ph7_value *pKey, ph7_value *pValue, void *pUserData)` |
+|     346 |  573 | `static int VmExportArrayWalk(ph7_value *pKey, ph7_value *pValue, void *pUserData)` |
 |       4 |  574 | `{` |
-|     344 |  575 | `	VmExportCtx *pC = (VmExportCtx *)pUserData;` |
-|     344 |  576 | `	VmExportIndent(pC->pOut,pC->nIndent+2);` |
-|     344 |  577 | `	if( ph7_value_is_string(pKey) ){` |
+|     350 |  575 | `	VmExportCtx *pC = (VmExportCtx *)pUserData;` |
+|     350 |  576 | `	VmExportIndent(pC->pOut,pC->nIndent+2);` |
+|     350 |  577 | `	if( ph7_value_is_string(pKey) ){` |
 |       - |  578 | `		int n;` |
-|      76 |  579 | `		const char *z = ph7_value_to_string(pKey,&n);` |
-|      76 |  580 | `		VmExportQuoted(pC->pOut,z,n);` |
-|      40 |  581 | `	}else{` |
-|     272 |  582 | `		SyBlobFormat(pC->pOut,"%qd",ph7_value_to_int64(pKey));` |
+|      80 |  579 | `		const char *z = ph7_value_to_string(pKey,&n);` |
+|      80 |  580 | `		VmExportQuoted(pC->pOut,z,n);` |
+|      42 |  581 | `	}else{` |
+|     274 |  582 | `		SyBlobFormat(pC->pOut,"%qd",ph7_value_to_int64(pKey));` |
 |       - |  583 | `	}` |
-|     344 |  584 | `	VmExportEntryValue(pC->pOut,pValue,pC->nIndent,pC->depth);` |
-|     344 |  585 | `	return PH7_OK;` |
+|     350 |  584 | `	VmExportEntryValue(pC->pOut,pValue,pC->nIndent,pC->depth);` |
+|     350 |  585 | `	return PH7_OK;` |
 |       4 |  586 | `}` |
-|    2090 |  587 | `static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)` |
+|    2098 |  587 | `static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)` |
 |       5 |  588 | `{` |
-|    2095 |  589 | `	if( depth > 4096 ){ return; } /* backstop for pathological finite nesting */` |
-|    2095 |  590 | `	if( ph7_value_is_null(pVal) ){` |
+|    2103 |  589 | `	if( depth > 4096 ){ return; } /* backstop for pathological finite nesting */` |
+|    2103 |  590 | `	if( ph7_value_is_null(pVal) ){` |
 |      93 |  591 | `		SyBlobAppend(pOut,"NULL",4);` |
-|    2051 |  592 | `	}else if( ph7_value_is_bool(pVal) ){` |
+|    2059 |  592 | `	}else if( ph7_value_is_bool(pVal) ){` |
 |     619 |  593 | `		if( ph7_value_to_bool(pVal) ){ SyBlobAppend(pOut,"true",4); }` |
 |     283 |  594 | `		else { SyBlobAppend(pOut,"false",5); }` |
-|    1700 |  595 | `	}else if( ph7_value_is_float(pVal) ){` |
+|    1708 |  595 | `	}else if( ph7_value_is_float(pVal) ){` |
 |       - |  596 | `		/* float before int: ph7_value_is_int is lenient (true for integer reals). */` |
 |     328 |  597 | `		sxu32 before = SyBlobLength(pOut), i, after;` |
 |       - |  598 | `		const char *z;` |
@@ -614,7 +614,7 @@ Coverage: 388/428 lines (90.65%)
 |     666 |  604 | `			if( !((z[i]>='0'&&z[i]<='9')\|\|z[i]=='-') ){ plain = 0; break; }` |
 |     245 |  605 | `		}` |
 |     328 |  606 | `		if( plain ){ SyBlobAppend(pOut,".0",2); } /* integer-form floats render 1.0/100.0 */` |
-|    1231 |  607 | `	}else if( ph7_value_is_int(pVal) ){` |
+|    1239 |  607 | `	}else if( ph7_value_is_int(pVal) ){` |
 |     525 |  608 | `		sxi64 iVal = ph7_value_to_int64(pVal);` |
 |     525 |  609 | `		if( iVal == SMALLEST_INT64 ){` |
 |       - |  610 | `			/* php renders LONG_MIN as an expression: the positive literal` |
@@ -623,25 +623,25 @@ Coverage: 388/428 lines (90.65%)
 |       3 |  613 | `		}else{` |
 |     521 |  614 | `			SyBlobFormat(pOut,"%qd",iVal);` |
 |       5 |  615 | `		}` |
-|     809 |  616 | `	}else if( ph7_value_is_string(pVal) ){` |
+|     817 |  616 | `	}else if( ph7_value_is_string(pVal) ){` |
 |       - |  617 | `		int n;` |
-|     377 |  618 | `		const char *z = ph7_value_to_string(pVal,&n);` |
-|     377 |  619 | `		VmExportQuoted(pOut,z,n);` |
-|     362 |  620 | `	}else if( ph7_value_is_array(pVal) ){` |
-|     152 |  621 | `		ph7_hashmap *pMap = (ph7_hashmap *)pVal->x.pOther;` |
-|     152 |  622 | `		if( pMap->iFlags & HASHMAP_DUMPING ){` |
+|     381 |  618 | `		const char *z = ph7_value_to_string(pVal,&n);` |
+|     381 |  619 | `		VmExportQuoted(pOut,z,n);` |
+|     368 |  620 | `	}else if( ph7_value_is_array(pVal) ){` |
+|     156 |  621 | `		ph7_hashmap *pMap = (ph7_hashmap *)pVal->x.pOther;` |
+|     156 |  622 | `		if( pMap->iFlags & HASHMAP_DUMPING ){` |
 |     ! 0 |  623 | `			SyBlobAppend(pOut,"NULL",4); /* circular reference -> NULL, like PHP */` |
 |     ! 0 |  624 | `		}else{` |
 |       - |  625 | `			VmExportCtx ctx;` |
-|     152 |  626 | `			pMap->iFlags \|= HASHMAP_DUMPING;` |
-|     152 |  627 | `			SyBlobAppend(pOut,"array (\n",8);` |
-|     152 |  628 | `			ctx.pOut = pOut; ctx.nIndent = nIndent; ctx.depth = depth;` |
-|     152 |  629 | `			ph7_array_walk(pVal,VmExportArrayWalk,&ctx);` |
-|     152 |  630 | `			VmExportIndent(pOut,nIndent);` |
-|     152 |  631 | `			SyBlobAppend(pOut,")",1);` |
-|     152 |  632 | `			pMap->iFlags &= ~HASHMAP_DUMPING;` |
+|     156 |  626 | `			pMap->iFlags \|= HASHMAP_DUMPING;` |
+|     156 |  627 | `			SyBlobAppend(pOut,"array (\n",8);` |
+|     156 |  628 | `			ctx.pOut = pOut; ctx.nIndent = nIndent; ctx.depth = depth;` |
+|     156 |  629 | `			ph7_array_walk(pVal,VmExportArrayWalk,&ctx);` |
+|     156 |  630 | `			VmExportIndent(pOut,nIndent);` |
+|     156 |  631 | `			SyBlobAppend(pOut,")",1);` |
+|     156 |  632 | `			pMap->iFlags &= ~HASHMAP_DUMPING;` |
 |       4 |  633 | `		}` |
-|     100 |  634 | `	}else if( ph7_value_is_object(pVal) ){` |
+|     102 |  634 | `	}else if( ph7_value_is_object(pVal) ){` |
 |      26 |  635 | `		ph7_class_instance *pThis = (ph7_class_instance *)pVal->x.pOther;` |
 |      26 |  636 | `		if( pThis->pClass->iFlags & PH7_CLASS_ENUM ){` |
 |       - |  637 | ``			/* php 8.1: an enum case exports as `\S::A` */`` |
@@ -726,38 +726,38 @@ Coverage: 388/428 lines (90.65%)
 |       - |  716 | `		/* resource / other -> PHP emits NULL (with a warning we omit) */` |
 |     ! 0 |  717 | `		SyBlobAppend(pOut,"NULL",4);` |
 |       - |  718 | `	}` |
-|    1050 |  719 | `}` |
+|    1054 |  719 | `}` |
 |       - |  720 | `/*` |
 |       - |  721 | ` * string/null var_export(expression,[bool $return = FALSE])` |
 |       - |  722 | ` *  PHP-exact evaluable representation (see VmExportValue).` |
 |       - |  723 | ` */` |
-|    1712 |  724 | `PH7_PRIVATE int vm_builtin_var_export(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1714 |  724 | `PH7_PRIVATE int vm_builtin_var_export(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |       5 |  725 | `{` |
-|    1717 |  726 | `	int ret_string = 0;` |
+|    1719 |  726 | `	int ret_string = 0;` |
 |       - |  727 | `	SyBlob sDump;      /* Dump is stored in this BLOB */` |
-|    1717 |  728 | `	if( nArg < 1 ){` |
+|    1719 |  728 | `	if( nArg < 1 ){` |
 |       - |  729 | `		/* Nothing to output,return FALSE */` |
 |     ! 0 |  730 | `		ph7_result_bool(pCtx,0);` |
 |     ! 0 |  731 | `		return SXRET_OK;` |
 |       - |  732 | `	}` |
-|    1717 |  733 | `	SyBlobInit(&sDump,&pCtx->pVm->sAllocator);` |
-|    1717 |  734 | `	if ( nArg > 1 ){` |
+|    1719 |  733 | `	SyBlobInit(&sDump,&pCtx->pVm->sAllocator);` |
+|    1719 |  734 | `	if ( nArg > 1 ){` |
 |       - |  735 | `		/* Where to redirect output */` |
 |    1361 |  736 | `		ret_string = ph7_value_to_bool(apArg[1]);` |
 |     678 |  737 | `	}` |
 |       - |  738 | `	/* Generate the PHP-exact evaluable representation */` |
-|    1717 |  739 | `	VmExportValue(&sDump,apArg[0],0,0);` |
-|    1717 |  740 | `	if( !ret_string ){` |
+|    1719 |  739 | `	VmExportValue(&sDump,apArg[0],0,0);` |
+|    1719 |  740 | `	if( !ret_string ){` |
 |       - |  741 | `		/* Output dump */` |
-|     361 |  742 | `		ph7_context_output(pCtx,(const char *)SyBlobData(&sDump),(int)SyBlobLength(&sDump));` |
+|     363 |  742 | `		ph7_context_output(pCtx,(const char *)SyBlobData(&sDump),(int)SyBlobLength(&sDump));` |
 |       - |  743 | `		/* Return NULL */` |
-|     361 |  744 | `		ph7_result_null(pCtx);` |
-|     183 |  745 | `	}else{` |
+|     363 |  744 | `		ph7_result_null(pCtx);` |
+|     184 |  745 | `	}else{` |
 |       - |  746 | `		/* Generated dump as return value */` |
 |    1361 |  747 | `		ph7_result_string(pCtx,(const char *)SyBlobData(&sDump),(int)SyBlobLength(&sDump));` |
 |       - |  748 | `	}` |
 |       - |  749 | `	/* Release the working buffer */` |
-|    1717 |  750 | `	SyBlobRelease(&sDump);` |
-|    1717 |  751 | `	return SXRET_OK;` |
-|     861 |  752 | `}` |
+|    1719 |  750 | `	SyBlobRelease(&sDump);` |
+|    1719 |  751 | `	return SXRET_OK;` |
+|     862 |  752 | `}` |
 |       - |  753 |  |

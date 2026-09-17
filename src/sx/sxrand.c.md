@@ -256,9 +256,9 @@ Coverage: 112/142 lines (78.87%)
 |      ! 0 |  246 | `	return SXRET_OK;` |
 |        - |  247 | `}` |
 |        - |  248 | `#endif` |
-|      405 |  249 | `PH7_PRIVATE sxi32 SyOSCSPRNG(void *pBuf,sxu32 nLen)` |
+|      390 |  249 | `PH7_PRIVATE sxi32 SyOSCSPRNG(void *pBuf,sxu32 nLen)` |
 |        2 |  250 | `{` |
-|      407 |  251 | `	unsigned char *zBuf = (unsigned char *)pBuf;` |
+|      392 |  251 | `	unsigned char *zBuf = (unsigned char *)pBuf;` |
 |        - |  252 | `#if defined(UNTRUST)` |
 |        - |  253 | `	if( pBuf == 0 \|\| nLen == 0 ){` |
 |        - |  254 | `		return SXERR_EMPTY;` |
@@ -270,16 +270,16 @@ Coverage: 112/142 lines (78.87%)
 |        - |  260 | `	}` |
 |      ! 0 |  261 | `	return SXERR_IO;` |
 |        - |  262 | `#elif defined(SX_HAVE_ARC4RANDOM)` |
-|      202 |  263 | `	arc4random_buf(zBuf,(size_t)nLen);` |
-|      202 |  264 | `	return SXRET_OK;` |
+|      190 |  263 | `	arc4random_buf(zBuf,(size_t)nLen);` |
+|      190 |  264 | `	return SXRET_OK;` |
 |        - |  265 | `#elif defined(SX_HAVE_GETRANDOM)` |
 |        - |  266 | `	{` |
-|      203 |  267 | `		sxu32 nDone = 0;` |
-|      406 |  268 | `		while( nDone < nLen ){` |
-|      203 |  269 | `			ssize_t n = getrandom(&zBuf[nDone],nLen - nDone,0);` |
-|      203 |  270 | `			if( n > 0 ){` |
-|      203 |  271 | `				nDone += (sxu32)n;` |
-|      203 |  272 | `				continue;` |
+|      200 |  267 | `		sxu32 nDone = 0;` |
+|      400 |  268 | `		while( nDone < nLen ){` |
+|      200 |  269 | `			ssize_t n = getrandom(&zBuf[nDone],nLen - nDone,0);` |
+|      200 |  270 | `			if( n > 0 ){` |
+|      200 |  271 | `				nDone += (sxu32)n;` |
+|      200 |  272 | `				continue;` |
 |        - |  273 | `			}` |
 |      ! 0 |  274 | `			if( n < 0 && errno == EINTR ){` |
 |      ! 0 |  275 | `				continue;` |
@@ -287,7 +287,7 @@ Coverage: 112/142 lines (78.87%)
 |        - |  277 | `			/* getrandom unavailable (ENOSYS) or other error: fall back */` |
 |      ! 0 |  278 | `			return SyReadDevUrandom(zBuf,nLen);` |
 |        - |  279 | `		}` |
-|      203 |  280 | `		return SXRET_OK;` |
+|      200 |  280 | `		return SXRET_OK;` |
 |        - |  281 | `	}` |
 |        - |  282 | `#elif defined(__UNIXES__)` |
 |        - |  283 | `	return SyReadDevUrandom(zBuf,nLen);` |

@@ -88,725 +88,725 @@ Coverage: 375/384 lines (97.66%)
 |        - |   78 | `	{ "mb_check_encoding",         1, 0 },` |
 |        - |   79 | `	{ "mb_chr",                    1, 1 },` |
 |        - |   80 | `	{ "mb_convert_case",           2, 1 },` |
-|        - |   81 | `	{ "mb_detect_encoding",        1, 1 },` |
-|        - |   82 | `	{ "mb_ord",                    1, 1 },` |
-|        - |   83 | `	{ "mb_str_split",              1, 1 },` |
-|        - |   84 | `	{ "mb_stripos",                2, 1 },` |
-|        - |   85 | `	{ "mb_strlen",                 1, 1 },` |
-|        - |   86 | `	{ "mb_strpos",                 2, 1 },` |
-|        - |   87 | `	{ "mb_strrpos",                2, 1 },` |
-|        - |   88 | `	{ "mb_strtolower",             1, 1 },` |
-|        - |   89 | `	{ "mb_strtoupper",             1, 1 },` |
-|        - |   90 | `	{ "mb_strwidth",               1, 1 },` |
-|        - |   91 | `	{ "mb_substr",                 2, 1 },` |
-|        - |   92 | `	{ "nl2br",                     1, 1 },` |
-|        - |   93 | `	{ "printf",                    1, 1 },` |
-|        - |   94 | `	{ "quotemeta",                 1, 0 },` |
-|        - |   95 | `	{ "rtrim",                     1, 1 },` |
-|        - |   96 | `	{ "soundex",                   1, 0 },` |
-|        - |   97 | `	{ "sprintf",                   1, 1 },` |
-|        - |   98 | `	{ "str_getcsv",                1, 1 },` |
-|        - |   99 | `	{ "str_shuffle",               1, 0 },` |
-|        - |  100 | `	{ "strcasecmp",                2, 0 },` |
-|        - |  101 | `	{ "strchr",                    2, 1 },` |
-|        - |  102 | `	{ "strcmp",                    2, 0 },` |
-|        - |  103 | `	{ "strnatcasecmp",             2, 0 },` |
-|        - |  104 | `	{ "strnatcmp",                 2, 0 },` |
-|        - |  105 | `	{ "strcoll",                   2, 0 },` |
-|        - |  106 | `	{ "strip_tags",                1, 1 },` |
-|        - |  107 | `	{ "stripslashes",              1, 0 },` |
-|        - |  108 | `	{ "strlen",                    1, 0 },` |
-|        - |  109 | `	{ "strrev",                    1, 0 },` |
-|        - |  110 | `	{ "strtok",                    1, 1 },` |
-|        - |  111 | `	{ "strtolower",                1, 0 },` |
-|        - |  112 | `	{ "strtoupper",                1, 0 },` |
-|        - |  113 | `	{ "strtr",                     2, 0 },` |
-|        - |  114 | `	{ "trim",                      1, 1 },` |
-|        - |  115 | `	{ "ucfirst",                   1, 0 },` |
-|        - |  116 | `	{ "ucwords",                   1, 1 },` |
-|        - |  117 | `	{ "vfprintf",                  3, 0 },` |
-|        - |  118 | `	{ "vprintf",                   2, 0 },` |
-|        - |  119 | `	{ "vsprintf",                  2, 0 },` |
-|        - |  120 | `	{ "wordwrap",                  1, 1 },` |
-|        - |  121 | `	/* Ctype family */` |
-|        - |  122 | `	{ "ctype_alnum",               1, 0 },` |
-|        - |  123 | `	{ "ctype_alpha",               1, 0 },` |
-|        - |  124 | `	{ "ctype_cntrl",               1, 0 },` |
-|        - |  125 | `	{ "ctype_digit",               1, 0 },` |
-|        - |  126 | `	{ "ctype_graph",               1, 0 },` |
-|        - |  127 | `	{ "ctype_lower",               1, 0 },` |
-|        - |  128 | `	{ "ctype_print",               1, 0 },` |
-|        - |  129 | `	{ "ctype_punct",               1, 0 },` |
-|        - |  130 | `	{ "ctype_space",               1, 0 },` |
-|        - |  131 | `	{ "ctype_upper",               1, 0 },` |
-|        - |  132 | `	{ "ctype_xdigit",              1, 0 },` |
-|        - |  133 | `	/* Math family */` |
-|        - |  134 | `	{ "base_convert",              3, 0 },` |
-|        - |  135 | `	{ "cos",                       1, 0 },` |
-|        - |  136 | `	{ "cosh",                      1, 0 },` |
-|        - |  137 | `	{ "crc32",                     1, 0 },` |
-|        - |  138 | `	{ "decbin",                    1, 0 },` |
-|        - |  139 | `	{ "dechex",                    1, 0 },` |
-|        - |  140 | `	{ "decoct",                    1, 0 },` |
-|        - |  141 | `	{ "exp",                       1, 0 },` |
-|        - |  142 | `	{ "log10",                     1, 0 },` |
-|        - |  143 | `	{ "md5",                       1, 1 },` |
-|        - |  144 | `	{ "round",                     1, 1 },` |
-|        - |  145 | `	{ "sha1",                      1, 1 },` |
-|        - |  146 | `	{ "sin",                       1, 0 },` |
-|        - |  147 | `	{ "sinh",                      1, 0 },` |
-|        - |  148 | `	{ "sqrt",                      1, 0 },` |
-|        - |  149 | `	{ "tan",                       1, 0 },` |
-|        - |  150 | `	{ "tanh",                      1, 0 },` |
-|        - |  151 | `	/* Type/var family */` |
-|        - |  152 | `	{ "floatval",                  1, 0 },` |
-|        - |  153 | `	{ "get_resource_id",           1, 0 },` |
-|        - |  154 | `	{ "get_resource_type",         1, 0 },` |
-|        - |  155 | `	{ "gettype",                   1, 0 },` |
-|        - |  156 | `	{ "intval",                    1, 1 },` |
-|        - |  157 | `	{ "is_array",                  1, 0 },` |
-|        - |  158 | `	{ "is_bool",                   1, 0 },` |
-|        - |  159 | `	{ "is_callable",               1, 1 },` |
-|        - |  160 | `	{ "is_double",                 1, 0 },` |
-|        - |  161 | `	{ "is_float",                  1, 0 },` |
-|        - |  162 | `	{ "is_int",                    1, 0 },` |
-|        - |  163 | `	{ "is_integer",                1, 0 },` |
-|        - |  164 | `	{ "is_long",                   1, 0 },` |
-|        - |  165 | `	{ "is_null",                   1, 0 },` |
-|        - |  166 | `	{ "is_numeric",                1, 0 },` |
-|        - |  167 | `	{ "is_object",                 1, 0 },` |
-|        - |  168 | `	{ "is_resource",               1, 0 },` |
-|        - |  169 | `	{ "is_scalar",                 1, 0 },` |
-|        - |  170 | `	{ "is_string",                 1, 0 },` |
-|        - |  171 | `	{ "print_r",                   1, 1 },` |
-|        - |  172 | `	{ "strval",                    1, 0 },` |
-|        - |  173 | `	{ "var_dump",                  1, 1 },` |
-|        - |  174 | `	{ "var_export",                1, 1 },` |
-|        - |  175 | `	/* Array/iterator family */` |
-|        - |  176 | `	{ "array_filter",              1, 1 },` |
-|        - |  177 | `	{ "array_product",             1, 0 },` |
-|        - |  178 | `	{ "array_rand",                1, 1 },` |
-|        - |  179 | `	{ "compact",                   1, 1 },` |
-|        - |  180 | `	{ "current",                   1, 0 },` |
-|        - |  181 | `	{ "end",                       1, 0 },` |
-|        - |  182 | `	{ "extract",                   1, 1 },` |
-|        - |  183 | `	{ "iterator_apply",            2, 1 },` |
-|        - |  184 | `	{ "iterator_count",            1, 0 },` |
-|        - |  185 | `	{ "iterator_to_array",         1, 1 },` |
-|        - |  186 | `	{ "key",                       1, 0 },` |
-|        - |  187 | `	{ "krsort",                    1, 1 },` |
-|        - |  188 | `	{ "ksort",                     1, 1 },` |
-|        - |  189 | `	{ "next",                      1, 0 },` |
-|        - |  190 | `	{ "pos",                       1, 0 },` |
-|        - |  191 | `	{ "prev",                      1, 0 },` |
-|        - |  192 | `	{ "reset",                     1, 0 },` |
-|        - |  193 | `	{ "rsort",                     1, 1 },` |
-|        - |  194 | `	{ "shuffle",                   1, 0 },` |
-|        - |  195 | `	{ "sort",                      1, 1 },` |
-|        - |  196 | `	{ "uasort",                    2, 0 },` |
-|        - |  197 | `	{ "uksort",                    2, 0 },` |
-|        - |  198 | `	{ "usort",                     2, 0 },` |
-|        - |  199 | `	/* Class/reflection family */` |
-|        - |  200 | `	{ "class_alias",               2, 1 },` |
-|        - |  201 | `	{ "class_exists",              1, 1 },` |
-|        - |  202 | `	{ "enum_exists",               1, 1 },` |
-|        - |  203 | `	{ "get_class_methods",         1, 0 },` |
-|        - |  204 | `	{ "get_class_vars",            1, 0 },` |
-|        - |  205 | `	{ "get_object_vars",           1, 0 },` |
-|        - |  206 | `	{ "interface_exists",          1, 1 },` |
-|        - |  207 | `	{ "trait_exists",              1, 1 },` |
-|        - |  208 | `	{ "is_a",                      2, 1 },` |
-|        - |  209 | `	{ "is_subclass_of",            2, 1 },` |
-|        - |  210 | `	{ "method_exists",             2, 0 },` |
-|        - |  211 | `	{ "property_exists",           2, 0 },` |
-|        - |  212 | `	{ "spl_autoload",              1, 1 },` |
-|        - |  213 | `	{ "spl_autoload_unregister",   1, 0 },` |
-|        - |  214 | `	{ "spl_object_hash",           1, 0 },` |
-|        - |  215 | `	{ "spl_object_id",             1, 0 },` |
-|        - |  216 | `	/* Filesystem/IO family */` |
-|        - |  217 | `	{ "basename",                  1, 1 },` |
-|        - |  218 | `	{ "chdir",                     1, 0 },` |
-|        - |  219 | `	{ "chgrp",                     2, 0 },` |
-|        - |  220 | `	{ "dirname",                   1, 1 },` |
-|        - |  221 | `	{ "disk_free_space",           1, 0 },` |
-|        - |  222 | `	{ "disk_total_space",          1, 0 },` |
-|        - |  223 | `	{ "diskfreespace",             1, 0 },` |
-|        - |  224 | `	{ "fclose",                    1, 0 },` |
-|        - |  225 | `	{ "feof",                      1, 0 },` |
-|        - |  226 | `	{ "fflush",                    1, 0 },` |
-|        - |  227 | `	{ "fgetc",                     1, 0 },` |
-|        - |  228 | `	{ "fgetcsv",                   1, 1 },` |
-|        - |  229 | `	{ "file",                      1, 1 },` |
-|        - |  230 | `	{ "file_exists",               1, 0 },` |
-|        - |  231 | `	{ "fileatime",                 1, 0 },` |
-|        - |  232 | `	{ "filectime",                 1, 0 },` |
-|        - |  233 | `	{ "filemtime",                 1, 0 },` |
-|        - |  234 | `	{ "filesize",                  1, 0 },` |
-|        - |  235 | `	{ "filetype",                  1, 0 },` |
-|        - |  236 | `	{ "flock",                     2, 1 },` |
-|        - |  237 | `	{ "fpassthru",                 1, 0 },` |
-|        - |  238 | `	{ "fputcsv",                   2, 1 },` |
-|        - |  239 | `	{ "fputs",                     2, 1 },` |
-|        - |  240 | `	{ "fseek",                     2, 1 },` |
-|        - |  241 | `	{ "fstat",                     1, 0 },` |
-|        - |  242 | `	{ "ftell",                     1, 0 },` |
-|        - |  243 | `	{ "ftruncate",                 2, 0 },` |
-|        - |  244 | `	{ "getopt",                    1, 1 },` |
-|        - |  245 | `	{ "is_dir",                    1, 0 },` |
-|        - |  246 | `	{ "is_executable",             1, 0 },` |
-|        - |  247 | `	{ "is_file",                   1, 0 },` |
-|        - |  248 | `	{ "is_link",                   1, 0 },` |
-|        - |  249 | `	{ "is_readable",               1, 0 },` |
-|        - |  250 | `	{ "is_writable",               1, 0 },` |
-|        - |  251 | `	{ "lstat",                     1, 0 },` |
-|        - |  252 | `	{ "md5_file",                  1, 1 },` |
-|        - |  253 | `	{ "opendir",                   1, 1 },` |
-|        - |  254 | `	{ "pathinfo",                  1, 1 },` |
-|        - |  255 | `	{ "pclose",                    1, 0 },` |
-|        - |  256 | `	{ "realpath",                  1, 0 },` |
-|        - |  257 | `	{ "rewind",                    1, 0 },` |
-|        - |  258 | `	{ "sha1_file",                 1, 1 },` |
-|        - |  259 | `	{ "stat",                      1, 0 },` |
-|        - |  260 | `	/* Date family */` |
-|        - |  261 | `	{ "date",                      1, 1 },` |
-|        - |  262 | `	{ "date_default_timezone_set", 1, 1 },` |
-|        - |  263 | `	{ "gmdate",                    1, 1 },` |
-|        - |  264 | `	{ "gmmktime",                  1, 1 },` |
-|        - |  265 | `	{ "idate",                     1, 1 },` |
-|        - |  266 | `	{ "mktime",                    1, 1 },` |
-|        - |  267 | `	/* Encoding/URL family */` |
-|        - |  268 | `	{ "base64_decode",             1, 1 },` |
-|        - |  269 | `	{ "base64_encode",             1, 0 },` |
-|        - |  270 | `	{ "convert_uudecode",          1, 0 },` |
-|        - |  271 | `	{ "convert_uuencode",          1, 0 },` |
-|        - |  272 | `	{ "parse_ini_file",            1, 1 },` |
-|        - |  273 | `	{ "parse_ini_string",          1, 1 },` |
-|        - |  274 | `	{ "parse_url",                 1, 1 },` |
-|        - |  275 | `	{ "rawurldecode",              1, 0 },` |
-|        - |  276 | `	{ "rawurlencode",              1, 0 },` |
-|        - |  277 | `	{ "urldecode",                 1, 0 },` |
-|        - |  278 | `	{ "urlencode",                 1, 0 },` |
-|        - |  279 | `	/* JSON/serialize family */` |
-|        - |  280 | `	{ "filter_var",                1, 1 },` |
-|        - |  281 | `	{ "json_decode",               1, 1 },` |
-|        - |  282 | `	{ "json_encode",               1, 1 },` |
-|        - |  283 | `	{ "json_validate",             1, 1 },` |
-|        - |  284 | `	{ "serialize",                 1, 0 },` |
-|        - |  285 | `	{ "unserialize",               1, 1 },` |
-|        - |  286 | `	/* PCRE family */` |
-|        - |  287 | `	{ "preg_match",                2, 1 },` |
-|        - |  288 | `	{ "preg_match_all",            2, 1 },` |
-|        - |  289 | `	{ "preg_quote",                1, 1 },` |
-|        - |  290 | `	{ "preg_replace",              3, 1 },` |
-|        - |  291 | `	{ "preg_replace_callback",     3, 1 },` |
-|        - |  292 | `	{ "preg_split",                2, 1 },` |
-|        - |  293 | `	/* XML family */` |
-|        - |  294 | `	/* Constants/misc family */` |
-|        - |  295 | `	{ "call_user_func",            1, 1 },` |
-|        - |  296 | `	{ "call_user_func_array",      2, 0 },` |
-|        - |  297 | `	{ "constant",                  1, 0 },` |
-|        - |  298 | `	{ "define",                    2, 1 },` |
-|        - |  299 | `	{ "defined",                   1, 0 },` |
-|        - |  300 | `	{ "error_log",                 1, 1 },` |
-|        - |  301 | `	{ "fnmatch",                   2, 1 },` |
-|        - |  302 | `	{ "forward_static_call",       1, 1 },` |
-|        - |  303 | `	{ "forward_static_call_array", 2, 0 },` |
-|        - |  304 | `	{ "func_get_arg",              1, 0 },` |
-|        - |  305 | `	{ "function_exists",           1, 0 },` |
-|        - |  306 | `	{ "header",                    1, 1 },` |
-|        - |  307 | `	{ "password_get_info",         1, 0 },` |
-|        - |  308 | `	{ "putenv",                    1, 0 },` |
-|        - |  309 | `	{ "register_shutdown_function", 1, 1 },` |
-|        - |  310 | `	{ "set_error_handler",         1, 1 },` |
-|        - |  311 | `	{ "set_exception_handler",     1, 0 },` |
-|        - |  312 | `	{ "setcookie",                 1, 1 },` |
-|        - |  313 | `	{ "setrawcookie",              1, 1 },` |
-|        - |  314 | `	{ "trigger_error",             1, 1 },` |
-|        - |  315 | `	{ "user_error",                1, 1 },` |
-|        - |  316 | `	/*` |
-|        - |  317 | `	 * Overrides for signatures that under-report their own minimum: the callback` |
-|        - |  318 | `	 * of these three hides inside the variadic tail ("array $array, ...$rest"),` |
-|        - |  319 | `	 * so the derivation reads 1 where php requires 2.` |
-|        - |  320 | `	 */` |
-|        - |  321 | `	{ "array_udiff",               2, 1 },` |
-|        - |  322 | `	{ "array_uintersect",          2, 1 },` |
-|        - |  323 | `	{ "array_diff_uassoc",         2, 1 },` |
-|        - |  324 | `};` |
-|        - |  325 | `/*` |
-|        - |  326 | ` * Stamp the minimum-arity metadata from aBuiltinArity[] onto the already` |
-|        - |  327 | ` * registered host functions. Called once at VM init after every builtin family` |
-|        - |  328 | ` * has been installed into hHostFunction. A name absent from the hash (e.g. a` |
-|        - |  329 | ` * build without a given extension) is simply skipped.` |
-|        - |  330 | ` */` |
-|     3382 |  331 | `PH7_PRIVATE void VmSetBuiltinArity(ph7_vm *pVm)` |
-|        5 |  332 | `{` |
-|        - |  333 | `	sxu32 n;` |
-|   913145 |  334 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltinArity) ; ++n ){` |
-|   909763 |  335 | `		const struct VmBuiltinArity *p = &aBuiltinArity[n];` |
-|  1819521 |  336 | `		SyHashEntry *pEntry = SyHashGet(&pVm->hHostFunction,` |
-|   909758 |  337 | `			(const void *)p->zName,SyStrlen(p->zName));` |
-|   909763 |  338 | `		if( pEntry ){` |
-|   909763 |  339 | `			ph7_user_func *pFunc = (ph7_user_func *)pEntry->pUserData;` |
-|   909763 |  340 | `			pFunc->nMinArg  = p->nMin;` |
-|   909763 |  341 | `			pFunc->bAtLeast = p->bAtLeast;` |
-|   454879 |  342 | `		}` |
-|   454884 |  343 | `	}` |
-|     3387 |  344 | `}` |
-|        - |  345 | `/*` |
-|        - |  346 | ` * PHP 8.5 parameter signatures for the C builtins, generated offline from` |
-|        - |  347 | ` * a real PHP 8.5 ReflectionFunction dump over PHL's registered function` |
-|        - |  348 | ` * list (see the plan's Reflection section). "= ?" marks an optional` |
-|        - |  349 | ` * parameter whose default is not representable as a short literal.` |
-|        - |  350 | ` * Reflection parses these strings on demand; unlisted builtins degrade to` |
-|        - |  351 | ` * the min-arity data.` |
-|        - |  352 | ` */` |
-|        - |  353 | `static const struct VmBuiltinSig {` |
-|        - |  354 | `	const char *zName;` |
-|        - |  355 | `	const char *zSig;` |
-|        - |  356 | `	const char *zRet;` |
-|        - |  357 | `} aBuiltinSig[] = {` |
-|        - |  358 | `	{ "abs", "int\|float $num", "int\|float" },` |
-|        - |  359 | `	{ "acos", "float $num", "float" },` |
-|        - |  360 | `	{ "addcslashes", "string $string, string $characters", "string" },` |
-|        - |  361 | `	{ "addslashes", "string $string", "string" },` |
-|        - |  362 | `	{ "array_all", "array $array, callable $callback", "bool" },` |
-|        - |  363 | `	{ "array_any", "array $array, callable $callback", "bool" },` |
-|        - |  364 | `	{ "array_chunk", "array $array, int $length, bool $preserve_keys = false", "array" },` |
-|        - |  365 | `	{ "array_column", "array $array, string\|int\|null $column_key, string\|int\|null $index_key = NULL", "array" },` |
-|        - |  366 | `	{ "array_combine", "array $keys, array $values", "array" },` |
-|        - |  367 | `	{ "array_diff", "array $array, array ...$arrays = ?", "array" },` |
-|        - |  368 | `	{ "array_diff_assoc", "array $array, array ...$arrays = ?", "array" },` |
-|        - |  369 | `	{ "array_diff_key", "array $array, array ...$arrays = ?", "array" },` |
-|        - |  370 | `	{ "array_diff_uassoc", "array $array, ...$rest = ?", "array" },` |
-|        - |  371 | `	{ "array_fill", "int $start_index, int $count, mixed $value", "array" },` |
-|        - |  372 | `	{ "array_fill_keys", "array $keys, mixed $value", "array" },` |
-|        - |  373 | `	{ "array_filter", "array $array, ?callable $callback = NULL, int $mode = 0", "array" },` |
-|        - |  374 | `	{ "array_find", "array $array, callable $callback", "mixed" },` |
-|        - |  375 | `	{ "array_find_key", "array $array, callable $callback", "mixed" },` |
-|        - |  376 | `	{ "array_first", "array $array", "mixed" },` |
-|        - |  377 | `	{ "array_flip", "array $array", "array" },` |
-|        - |  378 | `	{ "array_intersect", "array $array, array ...$arrays = ?", "array" },` |
-|        - |  379 | `	{ "array_intersect_assoc", "array $array, array ...$arrays = ?", "array" },` |
-|        - |  380 | `	{ "array_intersect_key", "array $array, array ...$arrays = ?", "array" },` |
-|        - |  381 | `	{ "array_is_list", "array $array", "bool" },` |
-|        - |  382 | `	{ "array_key_exists", "$key, array $array", "bool" },` |
-|        - |  383 | `	{ "array_key_first", "array $array", "string\|int\|null" },` |
-|        - |  384 | `	{ "array_key_last", "array $array", "string\|int\|null" },` |
-|        - |  385 | `	{ "array_keys", "array $array, mixed $filter_value = ?, bool $strict = false", "array" },` |
-|        - |  386 | `	{ "array_last", "array $array", "mixed" },` |
-|        - |  387 | `	{ "array_map", "?callable $callback, array $array, array ...$arrays = ?", "array" },` |
-|        - |  388 | `	{ "array_merge", "array ...$arrays = ?", "array" },` |
-|        - |  389 | `	{ "array_pad", "array $array, int $length, mixed $value", "array" },` |
-|        - |  390 | `	{ "array_pop", "array &$array", "mixed" },` |
-|        - |  391 | `	{ "array_product", "array $array", "int\|float" },` |
-|        - |  392 | `	{ "array_push", "array &$array, mixed ...$values = ?", "int" },` |
-|        - |  393 | `	{ "array_rand", "array $array, int $num = 1", "array\|string\|int" },` |
-|        - |  394 | `	{ "array_reduce", "array $array, callable $callback, mixed $initial = NULL", "mixed" },` |
-|        - |  395 | `	{ "array_replace", "array $array, array ...$replacements = ?", "array" },` |
-|        - |  396 | `	{ "array_reverse", "array $array, bool $preserve_keys = false", "array" },` |
-|        - |  397 | `	{ "array_search", "mixed $needle, array $haystack, bool $strict = false", "string\|int\|false" },` |
-|        - |  398 | `	{ "array_shift", "array &$array", "mixed" },` |
-|        - |  399 | `	{ "array_slice", "array $array, int $offset, ?int $length = NULL, bool $preserve_keys = false", "array" },` |
-|        - |  400 | `	{ "array_splice", "array &$array, int $offset, ?int $length = NULL, mixed $replacement = ?", "array" },` |
-|        - |  401 | `	{ "array_sum", "array $array", "int\|float" },` |
-|        - |  402 | `	{ "array_udiff", "array $array, ...$rest = ?", "array" },` |
-|        - |  403 | `	{ "array_uintersect", "array $array, ...$rest = ?", "array" },` |
-|        - |  404 | `	{ "array_unique", "array $array, int $flags = 2", "array" },` |
-|        - |  405 | `	{ "array_values", "array $array", "array" },` |
-|        - |  406 | `	{ "array_walk", "object\|array &$array, callable $callback, mixed $arg = ?", "true" },` |
-|        - |  407 | `	{ "array_walk_recursive", "object\|array &$array, callable $callback, mixed $arg = ?", "true" },` |
-|        - |  408 | `	{ "arsort", "array &$array, int $flags = 0", "true" },` |
-|        - |  409 | `	{ "asin", "float $num", "float" },` |
-|        - |  410 | `	{ "asort", "array &$array, int $flags = 0", "true" },` |
-|        - |  411 | `	{ "assert", "mixed $assertion, Throwable\|string\|null $description = NULL", "bool" },` |
-|        - |  412 | `	{ "atan", "float $num", "float" },` |
-|        - |  413 | `	{ "atan2", "float $y, float $x", "float" },` |
-|        - |  414 | `	{ "base64_decode", "string $string, bool $strict = false", "string\|false" },` |
-|        - |  415 | `	{ "base64_encode", "string $string", "string" },` |
-|        - |  416 | `	{ "base_convert", "string $num, int $from_base, int $to_base", "string" },` |
-|        - |  417 | `	{ "basename", "string $path, string $suffix = ''", "string" },` |
-|        - |  418 | `	{ "bin2hex", "string $string", "string" },` |
-|        - |  419 | `	{ "bindec", "string $binary_string", "int\|float" },` |
-|        - |  420 | `	{ "boolval", "mixed $value", "bool" },` |
-|        - |  421 | `	{ "call_user_func", "callable $callback, mixed ...$args = ?", "mixed" },` |
-|        - |  422 | `	{ "call_user_func_array", "callable $callback, array $args", "mixed" },` |
-|        - |  423 | `	{ "ceil", "int\|float $num", "float" },` |
-|        - |  424 | `	{ "chdir", "string $directory", "bool" },` |
-|        - |  425 | `	{ "chgrp", "string $filename, string\|int $group", "bool" },` |
-|        - |  426 | `	{ "chmod", "string $filename, int $permissions", "bool" },` |
-|        - |  427 | `	{ "chop", "string $string, string $characters = ?", "string" },` |
-|        - |  428 | `	{ "chown", "string $filename, string\|int $user", "bool" },` |
-|        - |  429 | `	{ "chr", "int $codepoint", "string" },` |
-|        - |  430 | `	{ "chunk_split", "string $string, int $length = 76, string $separator = ?", "string" },` |
-|        - |  431 | `	{ "class_alias", "string $class, string $alias, bool $autoload = true", "bool" },` |
-|        - |  432 | `	{ "class_exists", "string $class, bool $autoload = true", "bool" },` |
-|        - |  433 | `	{ "enum_exists", "string $enum, bool $autoload = true", "bool" },` |
-|        - |  434 | `	{ "closedir", "$dir_handle = NULL", "void" },` |
-|        - |  435 | `	{ "compact", "$var_name, ...$var_names = ?", "array" },` |
-|        - |  436 | `	{ "constant", "string $name", "mixed" },` |
-|        - |  437 | `	{ "convert_uudecode", "string $string", "string\|false" },` |
-|        - |  438 | `	{ "convert_uuencode", "string $string", "string" },` |
-|        - |  439 | `	{ "copy", "string $from, string $to, $context = NULL", "bool" },` |
-|        - |  440 | `	{ "cos", "float $num", "float" },` |
-|        - |  441 | `	{ "cosh", "float $num", "float" },` |
-|        - |  442 | `	{ "count", "Countable\|array $value, int $mode = 0", "int" },` |
-|        - |  443 | `	{ "crc32", "string $string", "int" },` |
-|        - |  444 | `	{ "ctype_alnum", "mixed $text", "bool" },` |
-|        - |  445 | `	{ "ctype_alpha", "mixed $text", "bool" },` |
-|        - |  446 | `	{ "ctype_cntrl", "mixed $text", "bool" },` |
-|        - |  447 | `	{ "ctype_digit", "mixed $text", "bool" },` |
-|        - |  448 | `	{ "ctype_graph", "mixed $text", "bool" },` |
-|        - |  449 | `	{ "ctype_lower", "mixed $text", "bool" },` |
-|        - |  450 | `	{ "ctype_print", "mixed $text", "bool" },` |
-|        - |  451 | `	{ "ctype_punct", "mixed $text", "bool" },` |
-|        - |  452 | `	{ "ctype_space", "mixed $text", "bool" },` |
-|        - |  453 | `	{ "ctype_upper", "mixed $text", "bool" },` |
-|        - |  454 | `	{ "ctype_xdigit", "mixed $text", "bool" },` |
-|        - |  455 | `	{ "current", "object\|array $array", "mixed" },` |
-|        - |  456 | `	{ "date", "string $format, ?int $timestamp = NULL", "string" },` |
-|        - |  457 | `	{ "date_default_timezone_get", "", "string" },` |
-|        - |  458 | `	{ "date_default_timezone_set", "string $timezoneId", "bool" },` |
-|        - |  459 | `	{ "debug_backtrace", "int $options = 1, int $limit = 0", "array" },` |
-|        - |  460 | `	{ "debug_print_backtrace", "int $options = 0, int $limit = 0", "void" },` |
-|        - |  461 | `	{ "decbin", "int $num", "string" },` |
-|        - |  462 | `	{ "dechex", "int $num", "string" },` |
-|        - |  463 | `	{ "decoct", "int $num", "string" },` |
-|        - |  464 | `	{ "define", "string $constant_name, mixed $value, bool $case_insensitive = false", "bool" },` |
-|        - |  465 | `	{ "defined", "string $constant_name", "bool" },` |
-|        - |  466 | `	{ "die", "string\|int $status = 0", "never" },` |
-|        - |  467 | `	{ "dirname", "string $path, int $levels = 1", "string" },` |
-|        - |  468 | `	{ "disk_free_space", "string $directory", "float\|false" },` |
-|        - |  469 | `	{ "disk_total_space", "string $directory", "float\|false" },` |
-|        - |  470 | `	{ "diskfreespace", "string $directory", "float\|false" },` |
-|        - |  471 | `	{ "end", "object\|array &$array", "mixed" },` |
-|        - |  472 | `	{ "error_get_last", "", "?array" },` |
-|        - |  473 | `	{ "error_clear_last", "", "void" },` |
-|        - |  474 | `	{ "error_log", "string $message, int $message_type = 0, ?string $destination = NULL, ?string $additional_headers = NULL", "bool" },` |
-|        - |  475 | `	{ "error_reporting", "?int $error_level = NULL", "int" },` |
-|        - |  476 | `	{ "exit", "string\|int $status = 0", "never" },` |
-|        - |  477 | `	{ "exp", "float $num", "float" },` |
-|        - |  478 | `	{ "explode", "string $separator, string $string, int $limit = 9223372036854775807", "array" },` |
-|        - |  479 | `	{ "extract", "array &$array, int $flags = 0, string $prefix = ''", "int" },` |
-|        - |  480 | `	{ "fclose", "$stream", "bool" },` |
-|        - |  481 | `	{ "feof", "$stream", "bool" },` |
-|        - |  482 | `	{ "fflush", "$stream", "bool" },` |
-|        - |  483 | `	{ "fgetc", "$stream", "string\|false" },` |
-|        - |  484 | `	{ "fgetcsv", "$stream, ?int $length = NULL, string $separator = ',', string $enclosure = '\"', string $escape = '\\\\'", "array\|false" },` |
-|        - |  485 | `	{ "fgets", "$stream, ?int $length = NULL", "string\|false" },` |
-|        - |  486 | `	{ "file", "string $filename, int $flags = 0, $context = NULL", "array\|false" },` |
-|        - |  487 | `	{ "file_exists", "string $filename", "bool" },` |
-|        - |  488 | `	{ "file_get_contents", "string $filename, bool $use_include_path = false, $context = NULL, int $offset = 0, ?int $length = NULL", "string\|false" },` |
-|        - |  489 | `	{ "file_put_contents", "string $filename, mixed $data, int $flags = 0, $context = NULL", "int\|false" },` |
-|        - |  490 | `	{ "fileatime", "string $filename", "int\|false" },` |
-|        - |  491 | `	{ "filectime", "string $filename", "int\|false" },` |
-|        - |  492 | `	{ "filemtime", "string $filename", "int\|false" },` |
-|        - |  493 | `	{ "filesize", "string $filename", "int\|false" },` |
-|        - |  494 | `	{ "filetype", "string $filename", "string\|false" },` |
-|        - |  495 | `	{ "filter_input", "int $type, string $var_name, int $filter = 516, array\|int $options = 0", "mixed" },` |
-|        - |  496 | `	{ "filter_var", "mixed $value, int $filter = 516, array\|int $options = 0", "mixed" },` |
-|        - |  497 | `	{ "floatval", "mixed $value", "float" },` |
-|        - |  498 | `	{ "flock", "$stream, int $operation, &$would_block = NULL", "bool" },` |
-|        - |  499 | `	{ "floor", "int\|float $num", "float" },` |
-|        - |  500 | `	{ "flush", "", "void" },` |
-|        - |  501 | `	{ "fmod", "float $num1, float $num2", "float" },` |
-|        - |  502 | `	{ "fnmatch", "string $pattern, string $filename, int $flags = 0", "bool" },` |
-|        - |  503 | `	{ "fopen", "string $filename, string $mode, bool $use_include_path = false, $context = NULL", "" },` |
-|        - |  504 | `	{ "forward_static_call", "callable $callback, mixed ...$args = ?", "mixed" },` |
-|        - |  505 | `	{ "forward_static_call_array", "callable $callback, array $args", "mixed" },` |
-|        - |  506 | `	{ "fpassthru", "$stream", "int" },` |
-|        - |  507 | `	{ "fprintf", "$stream, string $format, mixed ...$values = ?", "int" },` |
-|        - |  508 | `	{ "fputcsv", "$stream, array $fields, string $separator = ',', string $enclosure = '\"', string $escape = '\\\\', string $eol = ?", "int\|false" },` |
-|        - |  509 | `	{ "fputs", "$stream, string $data, ?int $length = NULL", "int\|false" },` |
-|        - |  510 | `	{ "fread", "$stream, int $length", "string\|false" },` |
-|        - |  511 | `	{ "fseek", "$stream, int $offset, int $whence = 0", "int" },` |
-|        - |  512 | `	{ "fstat", "$stream", "array\|false" },` |
-|        - |  513 | `	{ "ftell", "$stream", "int\|false" },` |
-|        - |  514 | `	{ "ftruncate", "$stream, int $size", "bool" },` |
-|        - |  515 | `	{ "func_get_arg", "int $position", "mixed" },` |
-|        - |  516 | `	{ "func_get_args", "", "array" },` |
-|        - |  517 | `	{ "func_num_args", "", "int" },` |
-|        - |  518 | `	{ "function_exists", "string $function", "bool" },` |
-|        - |  519 | `	{ "fwrite", "$stream, string $data, ?int $length = NULL", "int\|false" },` |
-|        - |  520 | `	{ "gc_collect_cycles", "", "int" },` |
-|        - |  521 | `	{ "gc_disable", "", "void" },` |
-|        - |  522 | `	{ "gc_enable", "", "void" },` |
-|        - |  523 | `	{ "gc_enabled", "", "bool" },` |
-|        - |  524 | `	{ "gc_mem_caches", "", "int" },` |
-|        - |  525 | `	{ "gc_status", "", "array" },` |
-|        - |  526 | `	{ "get_called_class", "", "string" },` |
-|        - |  527 | `	{ "get_class", "object $object = ?", "string" },` |
-|        - |  528 | `	{ "get_class_methods", "object\|string $object_or_class", "array" },` |
-|        - |  529 | `	{ "get_class_vars", "string $class", "array" },` |
-|        - |  530 | `	{ "get_current_user", "", "string" },` |
-|        - |  531 | `	{ "get_declared_classes", "", "array" },` |
-|        - |  532 | `	{ "get_declared_interfaces", "", "array" },` |
-|        - |  533 | `	{ "get_defined_constants", "bool $categorize = false", "array" },` |
-|        - |  534 | `	{ "get_defined_functions", "bool $exclude_disabled = true", "array" },` |
-|        - |  535 | `	{ "get_defined_vars", "", "array" },` |
-|        - |  536 | `	{ "get_html_translation_table", "int $table = 0, int $flags = 11, string $encoding = 'UTF-8'", "array" },` |
-|        - |  537 | `	{ "get_include_path", "", "string\|false" },` |
-|        - |  538 | `	{ "get_included_files", "", "array" },` |
-|        - |  539 | `	{ "get_object_vars", "object $object", "array" },` |
-|        - |  540 | `	{ "get_parent_class", "object\|string $object_or_class = ?", "string\|false" },` |
-|        - |  541 | `	{ "get_resource_id", "$resource", "int" },` |
-|        - |  542 | `	{ "get_resource_type", "$resource", "string" },` |
-|        - |  543 | `	{ "getcwd", "", "string\|false" },` |
-|        - |  544 | `	{ "getdate", "?int $timestamp = NULL", "array" },` |
-|        - |  545 | `	{ "getenv", "?string $name = NULL, bool $local_only = false", "array\|string\|false" },` |
-|        - |  546 | `	{ "getmygid", "", "int\|false" },` |
-|        - |  547 | `	{ "getmypid", "", "int\|false" },` |
-|        - |  548 | `	{ "getmyuid", "", "int\|false" },` |
-|        - |  549 | `	{ "getopt", "string $short_options, array $long_options = ?, &$rest_index = NULL", "array\|false" },` |
-|        - |  550 | `	{ "getrandmax", "", "int" },` |
-|        - |  551 | `	{ "gettimeofday", "bool $as_float = false", "array\|float" },` |
-|        - |  552 | `	{ "gettype", "mixed $value", "string" },` |
-|        - |  553 | `	{ "gmdate", "string $format, ?int $timestamp = NULL", "string" },` |
-|        - |  554 | `	{ "gmmktime", "int $hour, ?int $minute = NULL, ?int $second = NULL, ?int $month = NULL, ?int $day = NULL, ?int $year = NULL", "int\|false" },` |
-|        - |  555 | `	{ "hash", "string $algo, string $data, bool $binary = false, array $options = ?", "string" },` |
-|        - |  556 | `	{ "hash_algos", "", "array" },` |
-|        - |  557 | `	{ "hash_equals", "string $known_string, string $user_string", "bool" },` |
-|        - |  558 | `	{ "hash_hmac", "string $algo, string $data, string $key, bool $binary = false", "string" },` |
-|        - |  559 | `	{ "header", "string $header, bool $replace = true, int $response_code = 0", "void" },` |
-|        - |  560 | `	{ "header_remove", "?string $name = NULL", "void" },` |
-|        - |  561 | `	{ "headers_list", "", "array" },` |
-|        - |  562 | `	{ "headers_sent", "&$filename = NULL, &$line = NULL", "bool" },` |
-|        - |  563 | `	{ "hexdec", "string $hex_string", "int\|float" },` |
-|        - |  564 | `	{ "html_entity_decode", "string $string, int $flags = 11, ?string $encoding = NULL", "string" },` |
-|        - |  565 | `	{ "htmlentities", "string $string, int $flags = 11, ?string $encoding = NULL, bool $double_encode = true", "string" },` |
-|        - |  566 | `	{ "htmlspecialchars", "string $string, int $flags = 11, ?string $encoding = NULL, bool $double_encode = true", "string" },` |
-|        - |  567 | `	{ "htmlspecialchars_decode", "string $string, int $flags = 11", "string" },` |
-|        - |  568 | `	{ "http_response_code", "int $response_code = 0", "int\|bool" },` |
-|        - |  569 | `	{ "hypot", "float $x, float $y", "float" },` |
-|        - |  570 | `	{ "idate", "string $format, ?int $timestamp = NULL", "int\|false" },` |
-|        - |  571 | `	{ "implode", "array\|string $separator, ?array $array = NULL", "string" },` |
-|        - |  572 | `	{ "in_array", "mixed $needle, array $haystack, bool $strict = false", "bool" },` |
-|        - |  573 | `	{ "intdiv", "int $num1, int $num2", "int" },` |
-|        - |  574 | `	{ "interface_exists", "string $interface, bool $autoload = true", "bool" },` |
-|        - |  575 | `	{ "trait_exists", "string $trait, bool $autoload = true", "bool" },` |
-|        - |  576 | `	{ "intval", "mixed $value, int $base = 10", "int" },` |
-|        - |  577 | `	{ "is_a", "mixed $object_or_class, string $class, bool $allow_string = false", "bool" },` |
-|        - |  578 | `	{ "is_array", "mixed $value", "bool" },` |
-|        - |  579 | `	{ "is_bool", "mixed $value", "bool" },` |
-|        - |  580 | `	{ "is_callable", "mixed $value, bool $syntax_only = false, &$callable_name = NULL", "bool" },` |
-|        - |  581 | `	{ "is_dir", "string $filename", "bool" },` |
-|        - |  582 | `	{ "is_double", "mixed $value", "bool" },` |
-|        - |  583 | `	{ "is_executable", "string $filename", "bool" },` |
-|        - |  584 | `	{ "is_file", "string $filename", "bool" },` |
-|        - |  585 | `	{ "is_float", "mixed $value", "bool" },` |
-|        - |  586 | `	{ "is_int", "mixed $value", "bool" },` |
-|        - |  587 | `	{ "is_integer", "mixed $value", "bool" },` |
-|        - |  588 | `	{ "is_link", "string $filename", "bool" },` |
-|        - |  589 | `	{ "is_long", "mixed $value", "bool" },` |
-|        - |  590 | `	{ "is_null", "mixed $value", "bool" },` |
-|        - |  591 | `	{ "is_numeric", "mixed $value", "bool" },` |
-|        - |  592 | `	{ "is_object", "mixed $value", "bool" },` |
-|        - |  593 | `	{ "is_readable", "string $filename", "bool" },` |
-|        - |  594 | `	{ "is_resource", "mixed $value", "bool" },` |
-|        - |  595 | `	{ "is_scalar", "mixed $value", "bool" },` |
-|        - |  596 | `	{ "is_string", "mixed $value", "bool" },` |
-|        - |  597 | `	{ "is_subclass_of", "mixed $object_or_class, string $class, bool $allow_string = true", "bool" },` |
-|        - |  598 | `	{ "is_writable", "string $filename", "bool" },` |
-|        - |  599 | `	{ "iterator_apply", "Traversable $iterator, callable $callback, ?array $args = NULL", "int" },` |
-|        - |  600 | `	{ "iterator_count", "Traversable\|array $iterator", "int" },` |
-|        - |  601 | `	{ "iterator_to_array", "Traversable\|array $iterator, bool $preserve_keys = true", "array" },` |
-|        - |  602 | `	{ "join", "array\|string $separator, ?array $array = NULL", "string" },` |
-|        - |  603 | `	{ "json_decode", "string $json, ?bool $associative = NULL, int $depth = 512, int $flags = 0", "mixed" },` |
-|        - |  604 | `	{ "json_encode", "mixed $value, int $flags = 0, int $depth = 512", "string\|false" },` |
-|        - |  605 | `	{ "json_last_error", "", "int" },` |
-|        - |  606 | `	{ "json_last_error_msg", "", "string" },` |
-|        - |  607 | `	{ "json_validate", "string $json, int $depth = 512, int $flags = 0", "bool" },` |
-|        - |  608 | `	{ "key", "object\|array $array", "string\|int\|null" },` |
-|        - |  609 | `	{ "krsort", "array &$array, int $flags = 0", "true" },` |
-|        - |  610 | `	{ "ksort", "array &$array, int $flags = 0", "true" },` |
-|        - |  611 | `	{ "lcfirst", "string $string", "string" },` |
-|        - |  612 | `	{ "levenshtein", "string $string1, string $string2, int $insertion_cost = 1, int $replacement_cost = 1, int $deletion_cost = 1", "int" },` |
-|        - |  613 | `	{ "link", "string $target, string $link", "bool" },` |
-|        - |  614 | `	{ "localtime", "?int $timestamp = NULL, bool $associative = false", "array" },` |
-|        - |  615 | `	{ "log", "float $num, float $base = 2.718281828459045", "float" },` |
-|        - |  616 | `	{ "log10", "float $num", "float" },` |
-|        - |  617 | `	{ "lstat", "string $filename", "array\|false" },` |
-|        - |  618 | `	{ "ltrim", "string $string, string $characters = ?", "string" },` |
-|        - |  619 | `	{ "max", "mixed $value, mixed ...$values = ?", "mixed" },` |
-|        - |  620 | `	{ "mb_chr", "int $codepoint, ?string $encoding = NULL", "string\|false" },` |
-|        - |  621 | `	{ "mb_ord", "string $string, ?string $encoding = NULL", "int\|false" },` |
-|        - |  622 | `	{ "mb_strtolower", "string $string, ?string $encoding = NULL", "string" },` |
-|        - |  623 | `	{ "mb_strtoupper", "string $string, ?string $encoding = NULL", "string" },` |
-|        - |  624 | `	{ "md5", "string $string, bool $binary = false", "string" },` |
-|        - |  625 | `	{ "md5_file", "string $filename, bool $binary = false", "string\|false" },` |
-|        - |  626 | `	{ "method_exists", "$object_or_class, string $method", "bool" },` |
-|        - |  627 | `	{ "memory_get_peak_usage", "bool $real_usage = false", "int" },` |
-|        - |  628 | `	{ "memory_get_usage", "bool $real_usage = false", "int" },` |
-|        - |  629 | `	{ "microtime", "bool $as_float = false", "string\|float" },` |
-|        - |  630 | `	{ "min", "mixed $value, mixed ...$values = ?", "mixed" },` |
-|        - |  631 | `	{ "mkdir", "string $directory, int $permissions = 511, bool $recursive = false, $context = NULL", "bool" },` |
-|        - |  632 | `	{ "mktime", "int $hour, ?int $minute = NULL, ?int $second = NULL, ?int $month = NULL, ?int $day = NULL, ?int $year = NULL", "int\|false" },` |
-|        - |  633 | `	{ "mt_getrandmax", "", "int" },` |
-|        - |  634 | `	{ "mt_rand", "int $min = ?, int $max = ?", "int" },` |
-|        - |  635 | `	{ "mt_srand", "?int $seed = NULL, int $mode = 0", "void" },` |
-|        - |  636 | `	{ "next", "object\|array &$array", "mixed" },` |
-|        - |  637 | `	{ "nl2br", "string $string, bool $use_xhtml = true", "string" },` |
-|        - |  638 | `	{ "ob_clean", "", "bool" },` |
-|        - |  639 | `	{ "ob_end_clean", "", "bool" },` |
-|        - |  640 | `	{ "ob_end_flush", "", "bool" },` |
-|        - |  641 | `	{ "ob_flush", "", "bool" },` |
-|        - |  642 | `	{ "ob_get_clean", "", "string\|false" },` |
-|        - |  643 | `	{ "ob_get_contents", "", "string\|false" },` |
-|        - |  644 | `	{ "ob_get_flush", "", "string\|false" },` |
-|        - |  645 | `	{ "ob_get_length", "", "int\|false" },` |
-|        - |  646 | `	{ "ob_get_level", "", "int" },` |
-|        - |  647 | `	{ "ob_implicit_flush", "bool $enable = true", "void" },` |
-|        - |  648 | `	{ "ob_list_handlers", "", "array" },` |
-|        - |  649 | `	{ "ob_start", "$callback = NULL, int $chunk_size = 0, int $flags = 112", "bool" },` |
-|        - |  650 | `	{ "octdec", "string $octal_string", "int\|float" },` |
-|        - |  651 | `	{ "opendir", "string $directory, $context = NULL", "" },` |
-|        - |  652 | `	{ "ord", "string $character", "int" },` |
-|        - |  653 | `	{ "parse_ini_file", "string $filename, bool $process_sections = false, int $scanner_mode = 0", "array\|false" },` |
-|        - |  654 | `	{ "parse_ini_string", "string $ini_string, bool $process_sections = false, int $scanner_mode = 0", "array\|false" },` |
-|        - |  655 | `	{ "parse_url", "string $url, int $component = -1", "array\|string\|int\|false\|null" },` |
-|        - |  656 | `	{ "password_get_info", "string $hash", "array" },` |
-|        - |  657 | `	{ "password_hash", "string $password, string\|int\|null $algo, array $options = ?", "string" },` |
-|        - |  658 | `	{ "password_needs_rehash", "string $hash, string\|int\|null $algo, array $options = ?", "bool" },` |
-|        - |  659 | `	{ "password_verify", "string $password, string $hash", "bool" },` |
-|        - |  660 | `	{ "pathinfo", "string $path, int $flags = 15", "array\|string" },` |
-|        - |  661 | `	{ "pclose", "$handle", "int" },` |
-|        - |  662 | `	{ "php_sapi_name", "", "string\|false" },` |
-|        - |  663 | `	{ "php_uname", "string $mode = 'a'", "string" },` |
-|        - |  664 | `	{ "phpinfo", "int $flags = 4294967295", "true" },` |
-|        - |  665 | `	{ "phpversion", "?string $extension = NULL", "string\|false" },` |
-|        - |  666 | `	{ "pi", "", "float" },` |
-|        - |  667 | `	{ "popen", "string $command, string $mode", "" },` |
-|        - |  668 | `	{ "pos", "object\|array $array", "mixed" },` |
-|        - |  669 | `	{ "pow", "mixed $num, mixed $exponent", "object\|int\|float" },` |
-|        - |  670 | `	{ "preg_last_error", "", "int" },` |
-|        - |  671 | `	{ "preg_last_error_msg", "", "string" },` |
-|        - |  672 | `	{ "fsockopen", "string $hostname, int $port = -1, &$error_code = NULL, &$error_message = NULL, ?float $timeout = NULL", "resource\|false" },` |
-|        - |  673 | `	{ "pfsockopen", "string $hostname, int $port = -1, &$error_code = NULL, &$error_message = NULL, ?float $timeout = NULL", "resource\|false" },` |
-|        - |  674 | `	{ "stream_socket_client", "string $address, &$error_code = NULL, &$error_message = NULL, ?float $timeout = NULL, int $flags = 4, $context = NULL", "resource\|false" },` |
-|        - |  675 | `	{ "preg_match", "string $pattern, string $subject, &$matches = NULL, int $flags = 0, int $offset = 0", "int\|false" },` |
-|        - |  676 | `	{ "preg_match_all", "string $pattern, string $subject, &$matches = NULL, int $flags = 0, int $offset = 0", "int\|false" },` |
-|        - |  677 | `	{ "preg_quote", "string $str, ?string $delimiter = NULL", "string" },` |
-|        - |  678 | `	{ "preg_replace", "array\|string $pattern, array\|string $replacement, array\|string $subject, int $limit = -1, &$count = NULL", "array\|string\|null" },` |
-|        - |  679 | `	{ "preg_replace_callback", "array\|string $pattern, callable $callback, array\|string $subject, int $limit = -1, &$count = NULL, int $flags = 0", "array\|string\|null" },` |
-|        - |  680 | `	{ "preg_split", "string $pattern, string $subject, int $limit = -1, int $flags = 0", "array\|false" },` |
-|        - |  681 | `	{ "prev", "object\|array &$array", "mixed" },` |
-|        - |  682 | `	{ "print_r", "mixed $value, bool $return = false", "string\|true" },` |
-|        - |  683 | `	{ "printf", "string $format, mixed ...$values = ?", "int" },` |
-|        - |  684 | `	{ "property_exists", "$object_or_class, string $property", "bool" },` |
-|        - |  685 | `	{ "putenv", "string $assignment", "bool" },` |
-|        - |  686 | `	{ "quotemeta", "string $string", "string" },` |
-|        - |  687 | `	{ "rand", "int $min = ?, int $max = ?", "int" },` |
-|        - |  688 | `	{ "random_bytes", "int $length", "string" },` |
-|        - |  689 | `	{ "random_int", "int $min, int $max", "int" },` |
-|        - |  690 | `	{ "range", "string\|int\|float $start, string\|int\|float $end, int\|float $step = 1", "array" },` |
-|        - |  691 | `	{ "rawurldecode", "string $string", "string" },` |
-|        - |  692 | `	{ "rawurlencode", "string $string", "string" },` |
-|        - |  693 | `	{ "readdir", "$dir_handle = NULL", "string\|false" },` |
-|        - |  694 | `	{ "readfile", "string $filename, bool $use_include_path = false, $context = NULL", "int\|false" },` |
-|        - |  695 | `	{ "realpath", "string $path", "string\|false" },` |
-|        - |  696 | `	{ "register_shutdown_function", "callable $callback, mixed ...$args = ?", "void" },` |
-|        - |  697 | `	{ "rename", "string $from, string $to, $context = NULL", "bool" },` |
-|        - |  698 | `	{ "reset", "object\|array &$array", "mixed" },` |
-|        - |  699 | `	{ "restore_error_handler", "", "true" },` |
-|        - |  700 | `	{ "restore_exception_handler", "", "true" },` |
-|        - |  701 | `	{ "rewind", "$stream", "bool" },` |
-|        - |  702 | `	{ "rewinddir", "$dir_handle = NULL", "void" },` |
-|        - |  703 | `	{ "rmdir", "string $directory, $context = NULL", "bool" },` |
-|        - |  704 | `	{ "round", "int\|float $num, int $precision = 0, RoundingMode\|int $mode = ?", "float" },` |
-|        - |  705 | `	{ "rsort", "array &$array, int $flags = 0", "true" },` |
-|        - |  706 | `	{ "rtrim", "string $string, string $characters = ?", "string" },` |
-|        - |  707 | `	{ "serialize", "mixed $value", "string" },` |
-|        - |  708 | `	{ "set_error_handler", "?callable $callback, int $error_levels = 30719", "" },` |
-|        - |  709 | `	{ "set_exception_handler", "?callable $callback", "" },` |
-|        - |  710 | `	{ "get_error_handler", "", "?callable" },` |
-|        - |  711 | `	{ "get_exception_handler", "", "?callable" },` |
-|        - |  712 | `	{ "hrtime", "bool $as_number = false", "array\|int" },` |
-|        - |  713 | `	{ "setcookie", "string $name, string $value = '', array\|int $expires_or_options = 0, string $path = '', string $domain = '', bool $secure = false, bool $httponly = false", "bool" },` |
-|        - |  714 | `	{ "setrawcookie", "string $name, string $value = '', array\|int $expires_or_options = 0, string $path = '', string $domain = '', bool $secure = false, bool $httponly = false", "bool" },` |
-|        - |  715 | `	{ "sha1", "string $string, bool $binary = false", "string" },` |
-|        - |  716 | `	{ "sha1_file", "string $filename, bool $binary = false", "string\|false" },` |
-|        - |  717 | `	{ "shuffle", "array &$array", "true" },` |
-|        - |  718 | `	{ "similar_text", "string $string1, string $string2, &$percent = NULL", "int" },` |
-|        - |  719 | `	{ "sin", "float $num", "float" },` |
-|        - |  720 | `	{ "sinh", "float $num", "float" },` |
-|        - |  721 | `	{ "sizeof", "Countable\|array $value, int $mode = 0", "int" },` |
-|        - |  722 | `	{ "sleep", "int $seconds", "int" },` |
-|        - |  723 | `	{ "sort", "array &$array, int $flags = 0", "true" },` |
-|        - |  724 | `	{ "soundex", "string $string", "string" },` |
-|        - |  725 | `	{ "spl_autoload", "string $class, ?string $file_extensions = NULL", "void" },` |
-|        - |  726 | `	{ "spl_autoload_functions", "", "array" },` |
-|        - |  727 | `	{ "spl_autoload_register", "?callable $callback = NULL, bool $throw = true, bool $prepend = false", "bool" },` |
-|        - |  728 | `	{ "spl_autoload_unregister", "callable $callback", "bool" },` |
-|        - |  729 | `	{ "spl_object_hash", "object $object", "string" },` |
-|        - |  730 | `	{ "spl_object_id", "object $object", "int" },` |
-|        - |  731 | `	{ "sprintf", "string $format, mixed ...$values = ?", "string" },` |
-|        - |  732 | `	{ "sqrt", "float $num", "float" },` |
-|        - |  733 | `	{ "srand", "?int $seed = NULL, int $mode = 0", "void" },` |
-|        - |  734 | `	{ "stat", "string $filename", "array\|false" },` |
-|        - |  735 | `	{ "str_contains", "string $haystack, string $needle", "bool" },` |
-|        - |  736 | `	{ "str_ends_with", "string $haystack, string $needle", "bool" },` |
-|        - |  737 | `	{ "str_getcsv", "string $string, string $separator = ',', string $enclosure = '\"', string $escape = '\\\\'", "array" },` |
-|        - |  738 | `	{ "str_ireplace", "array\|string $search, array\|string $replace, array\|string $subject, &$count = NULL", "array\|string" },` |
-|        - |  739 | `	{ "str_pad", "string $string, int $length, string $pad_string = ' ', int $pad_type = 1", "string" },` |
-|        - |  740 | `	{ "str_repeat", "string $string, int $times", "string" },` |
-|        - |  741 | `	{ "str_replace", "array\|string $search, array\|string $replace, array\|string $subject, &$count = NULL", "array\|string" },` |
-|        - |  742 | `	{ "str_shuffle", "string $string", "string" },` |
-|        - |  743 | `	{ "str_split", "string $string, int $length = 1", "array" },` |
-|        - |  744 | `	{ "str_starts_with", "string $haystack, string $needle", "bool" },` |
-|        - |  745 | `	{ "str_word_count", "string $string, int $format = 0, ?string $characters = NULL", "array\|int" },` |
-|        - |  746 | `	{ "strcasecmp", "string $string1, string $string2", "int" },` |
-|        - |  747 | `	{ "strchr", "string $haystack, string $needle, bool $before_needle = false", "string\|false" },` |
-|        - |  748 | `	{ "strcmp", "string $string1, string $string2", "int" },` |
-|        - |  749 | `	{ "strnatcasecmp", "string $string1, string $string2", "int" },` |
-|        - |  750 | `	{ "strnatcmp", "string $string1, string $string2", "int" },` |
-|        - |  751 | `	{ "strcoll", "string $string1, string $string2", "int" },` |
-|        - |  752 | `	{ "strcspn", "string $string, string $characters, int $offset = 0, ?int $length = NULL", "int" },` |
-|        - |  753 | `	{ "strip_tags", "string $string, array\|string\|null $allowed_tags = NULL", "string" },` |
-|        - |  754 | `	{ "stripos", "string $haystack, string $needle, int $offset = 0", "int\|false" },` |
-|        - |  755 | `	{ "stripslashes", "string $string", "string" },` |
-|        - |  756 | `	{ "stristr", "string $haystack, string $needle, bool $before_needle = false", "string\|false" },` |
-|        - |  757 | `	{ "strlen", "string $string", "int" },` |
-|        - |  758 | `	{ "strncasecmp", "string $string1, string $string2, int $length", "int" },` |
-|        - |  759 | `	{ "strncmp", "string $string1, string $string2, int $length", "int" },` |
-|        - |  760 | `	{ "strpbrk", "string $string, string $characters", "string\|false" },` |
-|        - |  761 | `	{ "strpos", "string $haystack, string $needle, int $offset = 0", "int\|false" },` |
-|        - |  762 | `	{ "strrchr", "string $haystack, string $needle, bool $before_needle = false", "string\|false" },` |
-|        - |  763 | `	{ "strrev", "string $string", "string" },` |
-|        - |  764 | `	{ "strripos", "string $haystack, string $needle, int $offset = 0", "int\|false" },` |
-|        - |  765 | `	{ "strrpos", "string $haystack, string $needle, int $offset = 0", "int\|false" },` |
-|        - |  766 | `	{ "strspn", "string $string, string $characters, int $offset = 0, ?int $length = NULL", "int" },` |
-|        - |  767 | `	{ "strstr", "string $haystack, string $needle, bool $before_needle = false", "string\|false" },` |
-|        - |  768 | `	{ "strtok", "string $string, ?string $token = NULL", "string\|false" },` |
-|        - |  769 | `	{ "strtolower", "string $string", "string" },` |
-|        - |  770 | `	{ "strtoupper", "string $string", "string" },` |
-|        - |  771 | `	{ "strtr", "string $string, array\|string $from, ?string $to = NULL", "string" },` |
-|        - |  772 | `	{ "strval", "mixed $value", "string" },` |
-|        - |  773 | `	{ "substr", "string $string, int $offset, ?int $length = NULL", "string" },` |
-|        - |  774 | `	{ "substr_compare", "string $haystack, string $needle, int $offset, ?int $length = NULL, bool $case_insensitive = false", "int" },` |
-|        - |  775 | `	{ "substr_count", "string $haystack, string $needle, int $offset = 0, ?int $length = NULL", "int" },` |
-|        - |  776 | `	{ "substr_replace", "array\|string $string, array\|string $replace, array\|int $offset, array\|int\|null $length = NULL", "array\|string" },` |
-|        - |  777 | `	{ "symlink", "string $target, string $link", "bool" },` |
-|        - |  778 | `	{ "sys_get_temp_dir", "", "string" },` |
-|        - |  779 | `	{ "tan", "float $num", "float" },` |
-|        - |  780 | `	{ "tanh", "float $num", "float" },` |
-|        - |  781 | `	{ "time", "", "int" },` |
-|        - |  782 | `	{ "touch", "string $filename, ?int $mtime = NULL, ?int $atime = NULL", "bool" },` |
-|        - |  783 | `	{ "trigger_error", "string $message, int $error_level = 1024", "true" },` |
-|        - |  784 | `	{ "trim", "string $string, string $characters = ?", "string" },` |
-|        - |  785 | `	{ "uasort", "array &$array, callable $callback", "true" },` |
-|        - |  786 | `	{ "ucfirst", "string $string", "string" },` |
-|        - |  787 | `	{ "ucwords", "string $string, string $separators = ?", "string" },` |
-|        - |  788 | `	{ "uksort", "array &$array, callable $callback", "true" },` |
-|        - |  789 | `	{ "umask", "?int $mask = NULL", "int" },` |
-|        - |  790 | `	{ "uniqid", "string $prefix = '', bool $more_entropy = false", "string" },` |
-|        - |  791 | `	{ "unlink", "string $filename, $context = NULL", "bool" },` |
-|        - |  792 | `	{ "unserialize", "string $data, array $options = ?", "mixed" },` |
-|        - |  793 | `	{ "urldecode", "string $string", "string" },` |
-|        - |  794 | `	{ "urlencode", "string $string", "string" },` |
-|        - |  795 | `	{ "user_error", "string $message, int $error_level = 1024", "true" },` |
-|        - |  796 | `	{ "usleep", "int $microseconds", "void" },` |
-|        - |  797 | `	{ "usort", "array &$array, callable $callback", "true" },` |
-|        - |  798 | `	{ "utf8_decode", "string $string", "string" },` |
-|        - |  799 | `	{ "utf8_encode", "string $string", "string" },` |
+|        - |   81 | `	{ "mb_convert_encoding",       2, 1 },` |
+|        - |   82 | `	{ "mb_detect_encoding",        1, 1 },` |
+|        - |   83 | `	{ "mb_ord",                    1, 1 },` |
+|        - |   84 | `	{ "mb_str_split",              1, 1 },` |
+|        - |   85 | `	{ "mb_stripos",                2, 1 },` |
+|        - |   86 | `	{ "mb_strlen",                 1, 1 },` |
+|        - |   87 | `	{ "mb_strpos",                 2, 1 },` |
+|        - |   88 | `	{ "mb_strrpos",                2, 1 },` |
+|        - |   89 | `	{ "mb_strtolower",             1, 1 },` |
+|        - |   90 | `	{ "mb_strtoupper",             1, 1 },` |
+|        - |   91 | `	{ "mb_strwidth",               1, 1 },` |
+|        - |   92 | `	{ "mb_substr",                 2, 1 },` |
+|        - |   93 | `	{ "nl2br",                     1, 1 },` |
+|        - |   94 | `	{ "printf",                    1, 1 },` |
+|        - |   95 | `	{ "quotemeta",                 1, 0 },` |
+|        - |   96 | `	{ "rtrim",                     1, 1 },` |
+|        - |   97 | `	{ "soundex",                   1, 0 },` |
+|        - |   98 | `	{ "sprintf",                   1, 1 },` |
+|        - |   99 | `	{ "str_getcsv",                1, 1 },` |
+|        - |  100 | `	{ "str_shuffle",               1, 0 },` |
+|        - |  101 | `	{ "strcasecmp",                2, 0 },` |
+|        - |  102 | `	{ "strchr",                    2, 1 },` |
+|        - |  103 | `	{ "strcmp",                    2, 0 },` |
+|        - |  104 | `	{ "strnatcasecmp",             2, 0 },` |
+|        - |  105 | `	{ "strnatcmp",                 2, 0 },` |
+|        - |  106 | `	{ "strcoll",                   2, 0 },` |
+|        - |  107 | `	{ "strip_tags",                1, 1 },` |
+|        - |  108 | `	{ "stripslashes",              1, 0 },` |
+|        - |  109 | `	{ "strlen",                    1, 0 },` |
+|        - |  110 | `	{ "strrev",                    1, 0 },` |
+|        - |  111 | `	{ "strtok",                    1, 1 },` |
+|        - |  112 | `	{ "strtolower",                1, 0 },` |
+|        - |  113 | `	{ "strtoupper",                1, 0 },` |
+|        - |  114 | `	{ "strtr",                     2, 0 },` |
+|        - |  115 | `	{ "trim",                      1, 1 },` |
+|        - |  116 | `	{ "ucfirst",                   1, 0 },` |
+|        - |  117 | `	{ "ucwords",                   1, 1 },` |
+|        - |  118 | `	{ "vfprintf",                  3, 0 },` |
+|        - |  119 | `	{ "vprintf",                   2, 0 },` |
+|        - |  120 | `	{ "vsprintf",                  2, 0 },` |
+|        - |  121 | `	{ "wordwrap",                  1, 1 },` |
+|        - |  122 | `	/* Ctype family */` |
+|        - |  123 | `	{ "ctype_alnum",               1, 0 },` |
+|        - |  124 | `	{ "ctype_alpha",               1, 0 },` |
+|        - |  125 | `	{ "ctype_cntrl",               1, 0 },` |
+|        - |  126 | `	{ "ctype_digit",               1, 0 },` |
+|        - |  127 | `	{ "ctype_graph",               1, 0 },` |
+|        - |  128 | `	{ "ctype_lower",               1, 0 },` |
+|        - |  129 | `	{ "ctype_print",               1, 0 },` |
+|        - |  130 | `	{ "ctype_punct",               1, 0 },` |
+|        - |  131 | `	{ "ctype_space",               1, 0 },` |
+|        - |  132 | `	{ "ctype_upper",               1, 0 },` |
+|        - |  133 | `	{ "ctype_xdigit",              1, 0 },` |
+|        - |  134 | `	/* Math family */` |
+|        - |  135 | `	{ "base_convert",              3, 0 },` |
+|        - |  136 | `	{ "cos",                       1, 0 },` |
+|        - |  137 | `	{ "cosh",                      1, 0 },` |
+|        - |  138 | `	{ "crc32",                     1, 0 },` |
+|        - |  139 | `	{ "decbin",                    1, 0 },` |
+|        - |  140 | `	{ "dechex",                    1, 0 },` |
+|        - |  141 | `	{ "decoct",                    1, 0 },` |
+|        - |  142 | `	{ "exp",                       1, 0 },` |
+|        - |  143 | `	{ "log10",                     1, 0 },` |
+|        - |  144 | `	{ "md5",                       1, 1 },` |
+|        - |  145 | `	{ "round",                     1, 1 },` |
+|        - |  146 | `	{ "sha1",                      1, 1 },` |
+|        - |  147 | `	{ "sin",                       1, 0 },` |
+|        - |  148 | `	{ "sinh",                      1, 0 },` |
+|        - |  149 | `	{ "sqrt",                      1, 0 },` |
+|        - |  150 | `	{ "tan",                       1, 0 },` |
+|        - |  151 | `	{ "tanh",                      1, 0 },` |
+|        - |  152 | `	/* Type/var family */` |
+|        - |  153 | `	{ "floatval",                  1, 0 },` |
+|        - |  154 | `	{ "get_resource_id",           1, 0 },` |
+|        - |  155 | `	{ "get_resource_type",         1, 0 },` |
+|        - |  156 | `	{ "gettype",                   1, 0 },` |
+|        - |  157 | `	{ "intval",                    1, 1 },` |
+|        - |  158 | `	{ "is_array",                  1, 0 },` |
+|        - |  159 | `	{ "is_bool",                   1, 0 },` |
+|        - |  160 | `	{ "is_callable",               1, 1 },` |
+|        - |  161 | `	{ "is_double",                 1, 0 },` |
+|        - |  162 | `	{ "is_float",                  1, 0 },` |
+|        - |  163 | `	{ "is_int",                    1, 0 },` |
+|        - |  164 | `	{ "is_integer",                1, 0 },` |
+|        - |  165 | `	{ "is_long",                   1, 0 },` |
+|        - |  166 | `	{ "is_null",                   1, 0 },` |
+|        - |  167 | `	{ "is_numeric",                1, 0 },` |
+|        - |  168 | `	{ "is_object",                 1, 0 },` |
+|        - |  169 | `	{ "is_resource",               1, 0 },` |
+|        - |  170 | `	{ "is_scalar",                 1, 0 },` |
+|        - |  171 | `	{ "is_string",                 1, 0 },` |
+|        - |  172 | `	{ "print_r",                   1, 1 },` |
+|        - |  173 | `	{ "strval",                    1, 0 },` |
+|        - |  174 | `	{ "var_dump",                  1, 1 },` |
+|        - |  175 | `	{ "var_export",                1, 1 },` |
+|        - |  176 | `	/* Array/iterator family */` |
+|        - |  177 | `	{ "array_filter",              1, 1 },` |
+|        - |  178 | `	{ "array_product",             1, 0 },` |
+|        - |  179 | `	{ "array_rand",                1, 1 },` |
+|        - |  180 | `	{ "compact",                   1, 1 },` |
+|        - |  181 | `	{ "current",                   1, 0 },` |
+|        - |  182 | `	{ "end",                       1, 0 },` |
+|        - |  183 | `	{ "extract",                   1, 1 },` |
+|        - |  184 | `	{ "iterator_apply",            2, 1 },` |
+|        - |  185 | `	{ "iterator_count",            1, 0 },` |
+|        - |  186 | `	{ "iterator_to_array",         1, 1 },` |
+|        - |  187 | `	{ "key",                       1, 0 },` |
+|        - |  188 | `	{ "krsort",                    1, 1 },` |
+|        - |  189 | `	{ "ksort",                     1, 1 },` |
+|        - |  190 | `	{ "next",                      1, 0 },` |
+|        - |  191 | `	{ "pos",                       1, 0 },` |
+|        - |  192 | `	{ "prev",                      1, 0 },` |
+|        - |  193 | `	{ "reset",                     1, 0 },` |
+|        - |  194 | `	{ "rsort",                     1, 1 },` |
+|        - |  195 | `	{ "shuffle",                   1, 0 },` |
+|        - |  196 | `	{ "sort",                      1, 1 },` |
+|        - |  197 | `	{ "uasort",                    2, 0 },` |
+|        - |  198 | `	{ "uksort",                    2, 0 },` |
+|        - |  199 | `	{ "usort",                     2, 0 },` |
+|        - |  200 | `	/* Class/reflection family */` |
+|        - |  201 | `	{ "class_alias",               2, 1 },` |
+|        - |  202 | `	{ "class_exists",              1, 1 },` |
+|        - |  203 | `	{ "enum_exists",               1, 1 },` |
+|        - |  204 | `	{ "get_class_methods",         1, 0 },` |
+|        - |  205 | `	{ "get_class_vars",            1, 0 },` |
+|        - |  206 | `	{ "get_object_vars",           1, 0 },` |
+|        - |  207 | `	{ "interface_exists",          1, 1 },` |
+|        - |  208 | `	{ "trait_exists",              1, 1 },` |
+|        - |  209 | `	{ "is_a",                      2, 1 },` |
+|        - |  210 | `	{ "is_subclass_of",            2, 1 },` |
+|        - |  211 | `	{ "method_exists",             2, 0 },` |
+|        - |  212 | `	{ "property_exists",           2, 0 },` |
+|        - |  213 | `	{ "spl_autoload",              1, 1 },` |
+|        - |  214 | `	{ "spl_autoload_unregister",   1, 0 },` |
+|        - |  215 | `	{ "spl_object_hash",           1, 0 },` |
+|        - |  216 | `	{ "spl_object_id",             1, 0 },` |
+|        - |  217 | `	/* Filesystem/IO family */` |
+|        - |  218 | `	{ "basename",                  1, 1 },` |
+|        - |  219 | `	{ "chdir",                     1, 0 },` |
+|        - |  220 | `	{ "chgrp",                     2, 0 },` |
+|        - |  221 | `	{ "dirname",                   1, 1 },` |
+|        - |  222 | `	{ "disk_free_space",           1, 0 },` |
+|        - |  223 | `	{ "disk_total_space",          1, 0 },` |
+|        - |  224 | `	{ "diskfreespace",             1, 0 },` |
+|        - |  225 | `	{ "fclose",                    1, 0 },` |
+|        - |  226 | `	{ "feof",                      1, 0 },` |
+|        - |  227 | `	{ "fflush",                    1, 0 },` |
+|        - |  228 | `	{ "fgetc",                     1, 0 },` |
+|        - |  229 | `	{ "fgetcsv",                   1, 1 },` |
+|        - |  230 | `	{ "file",                      1, 1 },` |
+|        - |  231 | `	{ "file_exists",               1, 0 },` |
+|        - |  232 | `	{ "fileatime",                 1, 0 },` |
+|        - |  233 | `	{ "filectime",                 1, 0 },` |
+|        - |  234 | `	{ "filemtime",                 1, 0 },` |
+|        - |  235 | `	{ "filesize",                  1, 0 },` |
+|        - |  236 | `	{ "filetype",                  1, 0 },` |
+|        - |  237 | `	{ "flock",                     2, 1 },` |
+|        - |  238 | `	{ "fpassthru",                 1, 0 },` |
+|        - |  239 | `	{ "fputcsv",                   2, 1 },` |
+|        - |  240 | `	{ "fputs",                     2, 1 },` |
+|        - |  241 | `	{ "fseek",                     2, 1 },` |
+|        - |  242 | `	{ "fstat",                     1, 0 },` |
+|        - |  243 | `	{ "ftell",                     1, 0 },` |
+|        - |  244 | `	{ "ftruncate",                 2, 0 },` |
+|        - |  245 | `	{ "getopt",                    1, 1 },` |
+|        - |  246 | `	{ "is_dir",                    1, 0 },` |
+|        - |  247 | `	{ "is_executable",             1, 0 },` |
+|        - |  248 | `	{ "is_file",                   1, 0 },` |
+|        - |  249 | `	{ "is_link",                   1, 0 },` |
+|        - |  250 | `	{ "is_readable",               1, 0 },` |
+|        - |  251 | `	{ "is_writable",               1, 0 },` |
+|        - |  252 | `	{ "lstat",                     1, 0 },` |
+|        - |  253 | `	{ "md5_file",                  1, 1 },` |
+|        - |  254 | `	{ "opendir",                   1, 1 },` |
+|        - |  255 | `	{ "pathinfo",                  1, 1 },` |
+|        - |  256 | `	{ "pclose",                    1, 0 },` |
+|        - |  257 | `	{ "realpath",                  1, 0 },` |
+|        - |  258 | `	{ "rewind",                    1, 0 },` |
+|        - |  259 | `	{ "sha1_file",                 1, 1 },` |
+|        - |  260 | `	{ "stat",                      1, 0 },` |
+|        - |  261 | `	/* Date family */` |
+|        - |  262 | `	{ "date",                      1, 1 },` |
+|        - |  263 | `	{ "date_default_timezone_set", 1, 1 },` |
+|        - |  264 | `	{ "gmdate",                    1, 1 },` |
+|        - |  265 | `	{ "gmmktime",                  1, 1 },` |
+|        - |  266 | `	{ "idate",                     1, 1 },` |
+|        - |  267 | `	{ "mktime",                    1, 1 },` |
+|        - |  268 | `	/* Encoding/URL family */` |
+|        - |  269 | `	{ "base64_decode",             1, 1 },` |
+|        - |  270 | `	{ "base64_encode",             1, 0 },` |
+|        - |  271 | `	{ "convert_uudecode",          1, 0 },` |
+|        - |  272 | `	{ "convert_uuencode",          1, 0 },` |
+|        - |  273 | `	{ "parse_ini_file",            1, 1 },` |
+|        - |  274 | `	{ "parse_ini_string",          1, 1 },` |
+|        - |  275 | `	{ "parse_url",                 1, 1 },` |
+|        - |  276 | `	{ "rawurldecode",              1, 0 },` |
+|        - |  277 | `	{ "rawurlencode",              1, 0 },` |
+|        - |  278 | `	{ "urldecode",                 1, 0 },` |
+|        - |  279 | `	{ "urlencode",                 1, 0 },` |
+|        - |  280 | `	/* JSON/serialize family */` |
+|        - |  281 | `	{ "filter_var",                1, 1 },` |
+|        - |  282 | `	{ "json_decode",               1, 1 },` |
+|        - |  283 | `	{ "json_encode",               1, 1 },` |
+|        - |  284 | `	{ "json_validate",             1, 1 },` |
+|        - |  285 | `	{ "serialize",                 1, 0 },` |
+|        - |  286 | `	{ "unserialize",               1, 1 },` |
+|        - |  287 | `	/* PCRE family */` |
+|        - |  288 | `	{ "preg_match",                2, 1 },` |
+|        - |  289 | `	{ "preg_match_all",            2, 1 },` |
+|        - |  290 | `	{ "preg_quote",                1, 1 },` |
+|        - |  291 | `	{ "preg_replace",              3, 1 },` |
+|        - |  292 | `	{ "preg_replace_callback",     3, 1 },` |
+|        - |  293 | `	{ "preg_split",                2, 1 },` |
+|        - |  294 | `	/* XML family */` |
+|        - |  295 | `	/* Constants/misc family */` |
+|        - |  296 | `	{ "call_user_func",            1, 1 },` |
+|        - |  297 | `	{ "call_user_func_array",      2, 0 },` |
+|        - |  298 | `	{ "constant",                  1, 0 },` |
+|        - |  299 | `	{ "define",                    2, 1 },` |
+|        - |  300 | `	{ "defined",                   1, 0 },` |
+|        - |  301 | `	{ "error_log",                 1, 1 },` |
+|        - |  302 | `	{ "fnmatch",                   2, 1 },` |
+|        - |  303 | `	{ "forward_static_call",       1, 1 },` |
+|        - |  304 | `	{ "forward_static_call_array", 2, 0 },` |
+|        - |  305 | `	{ "func_get_arg",              1, 0 },` |
+|        - |  306 | `	{ "function_exists",           1, 0 },` |
+|        - |  307 | `	{ "header",                    1, 1 },` |
+|        - |  308 | `	{ "password_get_info",         1, 0 },` |
+|        - |  309 | `	{ "putenv",                    1, 0 },` |
+|        - |  310 | `	{ "register_shutdown_function", 1, 1 },` |
+|        - |  311 | `	{ "set_error_handler",         1, 1 },` |
+|        - |  312 | `	{ "set_exception_handler",     1, 0 },` |
+|        - |  313 | `	{ "setcookie",                 1, 1 },` |
+|        - |  314 | `	{ "setrawcookie",              1, 1 },` |
+|        - |  315 | `	{ "trigger_error",             1, 1 },` |
+|        - |  316 | `	{ "user_error",                1, 1 },` |
+|        - |  317 | `	/*` |
+|        - |  318 | `	 * Overrides for signatures that under-report their own minimum: the callback` |
+|        - |  319 | `	 * of these three hides inside the variadic tail ("array $array, ...$rest"),` |
+|        - |  320 | `	 * so the derivation reads 1 where php requires 2.` |
+|        - |  321 | `	 */` |
+|        - |  322 | `	{ "array_udiff",               2, 1 },` |
+|        - |  323 | `	{ "array_uintersect",          2, 1 },` |
+|        - |  324 | `	{ "array_diff_uassoc",         2, 1 },` |
+|        - |  325 | `};` |
+|        - |  326 | `/*` |
+|        - |  327 | ` * Stamp the minimum-arity metadata from aBuiltinArity[] onto the already` |
+|        - |  328 | ` * registered host functions. Called once at VM init after every builtin family` |
+|        - |  329 | ` * has been installed into hHostFunction. A name absent from the hash (e.g. a` |
+|        - |  330 | ` * build without a given extension) is simply skipped.` |
+|        - |  331 | ` */` |
+|     3382 |  332 | `PH7_PRIVATE void VmSetBuiltinArity(ph7_vm *pVm)` |
+|        5 |  333 | `{` |
+|        - |  334 | `	sxu32 n;` |
+|   916527 |  335 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltinArity) ; ++n ){` |
+|   913145 |  336 | `		const struct VmBuiltinArity *p = &aBuiltinArity[n];` |
+|  1826285 |  337 | `		SyHashEntry *pEntry = SyHashGet(&pVm->hHostFunction,` |
+|   913140 |  338 | `			(const void *)p->zName,SyStrlen(p->zName));` |
+|   913145 |  339 | `		if( pEntry ){` |
+|   913145 |  340 | `			ph7_user_func *pFunc = (ph7_user_func *)pEntry->pUserData;` |
+|   913145 |  341 | `			pFunc->nMinArg  = p->nMin;` |
+|   913145 |  342 | `			pFunc->bAtLeast = p->bAtLeast;` |
+|   456570 |  343 | `		}` |
+|   456575 |  344 | `	}` |
+|     3387 |  345 | `}` |
+|        - |  346 | `/*` |
+|        - |  347 | ` * PHP 8.5 parameter signatures for the C builtins, generated offline from` |
+|        - |  348 | ` * a real PHP 8.5 ReflectionFunction dump over PHL's registered function` |
+|        - |  349 | ` * list (see the plan's Reflection section). "= ?" marks an optional` |
+|        - |  350 | ` * parameter whose default is not representable as a short literal.` |
+|        - |  351 | ` * Reflection parses these strings on demand; unlisted builtins degrade to` |
+|        - |  352 | ` * the min-arity data.` |
+|        - |  353 | ` */` |
+|        - |  354 | `static const struct VmBuiltinSig {` |
+|        - |  355 | `	const char *zName;` |
+|        - |  356 | `	const char *zSig;` |
+|        - |  357 | `	const char *zRet;` |
+|        - |  358 | `} aBuiltinSig[] = {` |
+|        - |  359 | `	{ "abs", "int\|float $num", "int\|float" },` |
+|        - |  360 | `	{ "acos", "float $num", "float" },` |
+|        - |  361 | `	{ "addcslashes", "string $string, string $characters", "string" },` |
+|        - |  362 | `	{ "addslashes", "string $string", "string" },` |
+|        - |  363 | `	{ "array_all", "array $array, callable $callback", "bool" },` |
+|        - |  364 | `	{ "array_any", "array $array, callable $callback", "bool" },` |
+|        - |  365 | `	{ "array_chunk", "array $array, int $length, bool $preserve_keys = false", "array" },` |
+|        - |  366 | `	{ "array_column", "array $array, string\|int\|null $column_key, string\|int\|null $index_key = NULL", "array" },` |
+|        - |  367 | `	{ "array_combine", "array $keys, array $values", "array" },` |
+|        - |  368 | `	{ "array_diff", "array $array, array ...$arrays = ?", "array" },` |
+|        - |  369 | `	{ "array_diff_assoc", "array $array, array ...$arrays = ?", "array" },` |
+|        - |  370 | `	{ "array_diff_key", "array $array, array ...$arrays = ?", "array" },` |
+|        - |  371 | `	{ "array_diff_uassoc", "array $array, ...$rest = ?", "array" },` |
+|        - |  372 | `	{ "array_fill", "int $start_index, int $count, mixed $value", "array" },` |
+|        - |  373 | `	{ "array_fill_keys", "array $keys, mixed $value", "array" },` |
+|        - |  374 | `	{ "array_filter", "array $array, ?callable $callback = NULL, int $mode = 0", "array" },` |
+|        - |  375 | `	{ "array_find", "array $array, callable $callback", "mixed" },` |
+|        - |  376 | `	{ "array_find_key", "array $array, callable $callback", "mixed" },` |
+|        - |  377 | `	{ "array_first", "array $array", "mixed" },` |
+|        - |  378 | `	{ "array_flip", "array $array", "array" },` |
+|        - |  379 | `	{ "array_intersect", "array $array, array ...$arrays = ?", "array" },` |
+|        - |  380 | `	{ "array_intersect_assoc", "array $array, array ...$arrays = ?", "array" },` |
+|        - |  381 | `	{ "array_intersect_key", "array $array, array ...$arrays = ?", "array" },` |
+|        - |  382 | `	{ "array_is_list", "array $array", "bool" },` |
+|        - |  383 | `	{ "array_key_exists", "$key, array $array", "bool" },` |
+|        - |  384 | `	{ "array_key_first", "array $array", "string\|int\|null" },` |
+|        - |  385 | `	{ "array_key_last", "array $array", "string\|int\|null" },` |
+|        - |  386 | `	{ "array_keys", "array $array, mixed $filter_value = ?, bool $strict = false", "array" },` |
+|        - |  387 | `	{ "array_last", "array $array", "mixed" },` |
+|        - |  388 | `	{ "array_map", "?callable $callback, array $array, array ...$arrays = ?", "array" },` |
+|        - |  389 | `	{ "array_merge", "array ...$arrays = ?", "array" },` |
+|        - |  390 | `	{ "array_pad", "array $array, int $length, mixed $value", "array" },` |
+|        - |  391 | `	{ "array_pop", "array &$array", "mixed" },` |
+|        - |  392 | `	{ "array_product", "array $array", "int\|float" },` |
+|        - |  393 | `	{ "array_push", "array &$array, mixed ...$values = ?", "int" },` |
+|        - |  394 | `	{ "array_rand", "array $array, int $num = 1", "array\|string\|int" },` |
+|        - |  395 | `	{ "array_reduce", "array $array, callable $callback, mixed $initial = NULL", "mixed" },` |
+|        - |  396 | `	{ "array_replace", "array $array, array ...$replacements = ?", "array" },` |
+|        - |  397 | `	{ "array_reverse", "array $array, bool $preserve_keys = false", "array" },` |
+|        - |  398 | `	{ "array_search", "mixed $needle, array $haystack, bool $strict = false", "string\|int\|false" },` |
+|        - |  399 | `	{ "array_shift", "array &$array", "mixed" },` |
+|        - |  400 | `	{ "array_slice", "array $array, int $offset, ?int $length = NULL, bool $preserve_keys = false", "array" },` |
+|        - |  401 | `	{ "array_splice", "array &$array, int $offset, ?int $length = NULL, mixed $replacement = ?", "array" },` |
+|        - |  402 | `	{ "array_sum", "array $array", "int\|float" },` |
+|        - |  403 | `	{ "array_udiff", "array $array, ...$rest = ?", "array" },` |
+|        - |  404 | `	{ "array_uintersect", "array $array, ...$rest = ?", "array" },` |
+|        - |  405 | `	{ "array_unique", "array $array, int $flags = 2", "array" },` |
+|        - |  406 | `	{ "array_values", "array $array", "array" },` |
+|        - |  407 | `	{ "array_walk", "object\|array &$array, callable $callback, mixed $arg = ?", "true" },` |
+|        - |  408 | `	{ "array_walk_recursive", "object\|array &$array, callable $callback, mixed $arg = ?", "true" },` |
+|        - |  409 | `	{ "arsort", "array &$array, int $flags = 0", "true" },` |
+|        - |  410 | `	{ "asin", "float $num", "float" },` |
+|        - |  411 | `	{ "asort", "array &$array, int $flags = 0", "true" },` |
+|        - |  412 | `	{ "assert", "mixed $assertion, Throwable\|string\|null $description = NULL", "bool" },` |
+|        - |  413 | `	{ "atan", "float $num", "float" },` |
+|        - |  414 | `	{ "atan2", "float $y, float $x", "float" },` |
+|        - |  415 | `	{ "base64_decode", "string $string, bool $strict = false", "string\|false" },` |
+|        - |  416 | `	{ "base64_encode", "string $string", "string" },` |
+|        - |  417 | `	{ "base_convert", "string $num, int $from_base, int $to_base", "string" },` |
+|        - |  418 | `	{ "basename", "string $path, string $suffix = ''", "string" },` |
+|        - |  419 | `	{ "bin2hex", "string $string", "string" },` |
+|        - |  420 | `	{ "bindec", "string $binary_string", "int\|float" },` |
+|        - |  421 | `	{ "boolval", "mixed $value", "bool" },` |
+|        - |  422 | `	{ "call_user_func", "callable $callback, mixed ...$args = ?", "mixed" },` |
+|        - |  423 | `	{ "call_user_func_array", "callable $callback, array $args", "mixed" },` |
+|        - |  424 | `	{ "ceil", "int\|float $num", "float" },` |
+|        - |  425 | `	{ "chdir", "string $directory", "bool" },` |
+|        - |  426 | `	{ "chgrp", "string $filename, string\|int $group", "bool" },` |
+|        - |  427 | `	{ "chmod", "string $filename, int $permissions", "bool" },` |
+|        - |  428 | `	{ "chop", "string $string, string $characters = ?", "string" },` |
+|        - |  429 | `	{ "chown", "string $filename, string\|int $user", "bool" },` |
+|        - |  430 | `	{ "chr", "int $codepoint", "string" },` |
+|        - |  431 | `	{ "chunk_split", "string $string, int $length = 76, string $separator = ?", "string" },` |
+|        - |  432 | `	{ "class_alias", "string $class, string $alias, bool $autoload = true", "bool" },` |
+|        - |  433 | `	{ "class_exists", "string $class, bool $autoload = true", "bool" },` |
+|        - |  434 | `	{ "enum_exists", "string $enum, bool $autoload = true", "bool" },` |
+|        - |  435 | `	{ "closedir", "$dir_handle = NULL", "void" },` |
+|        - |  436 | `	{ "compact", "$var_name, ...$var_names = ?", "array" },` |
+|        - |  437 | `	{ "constant", "string $name", "mixed" },` |
+|        - |  438 | `	{ "convert_uudecode", "string $string", "string\|false" },` |
+|        - |  439 | `	{ "convert_uuencode", "string $string", "string" },` |
+|        - |  440 | `	{ "copy", "string $from, string $to, $context = NULL", "bool" },` |
+|        - |  441 | `	{ "cos", "float $num", "float" },` |
+|        - |  442 | `	{ "cosh", "float $num", "float" },` |
+|        - |  443 | `	{ "count", "Countable\|array $value, int $mode = 0", "int" },` |
+|        - |  444 | `	{ "crc32", "string $string", "int" },` |
+|        - |  445 | `	{ "ctype_alnum", "mixed $text", "bool" },` |
+|        - |  446 | `	{ "ctype_alpha", "mixed $text", "bool" },` |
+|        - |  447 | `	{ "ctype_cntrl", "mixed $text", "bool" },` |
+|        - |  448 | `	{ "ctype_digit", "mixed $text", "bool" },` |
+|        - |  449 | `	{ "ctype_graph", "mixed $text", "bool" },` |
+|        - |  450 | `	{ "ctype_lower", "mixed $text", "bool" },` |
+|        - |  451 | `	{ "ctype_print", "mixed $text", "bool" },` |
+|        - |  452 | `	{ "ctype_punct", "mixed $text", "bool" },` |
+|        - |  453 | `	{ "ctype_space", "mixed $text", "bool" },` |
+|        - |  454 | `	{ "ctype_upper", "mixed $text", "bool" },` |
+|        - |  455 | `	{ "ctype_xdigit", "mixed $text", "bool" },` |
+|        - |  456 | `	{ "current", "object\|array $array", "mixed" },` |
+|        - |  457 | `	{ "date", "string $format, ?int $timestamp = NULL", "string" },` |
+|        - |  458 | `	{ "date_default_timezone_get", "", "string" },` |
+|        - |  459 | `	{ "date_default_timezone_set", "string $timezoneId", "bool" },` |
+|        - |  460 | `	{ "debug_backtrace", "int $options = 1, int $limit = 0", "array" },` |
+|        - |  461 | `	{ "debug_print_backtrace", "int $options = 0, int $limit = 0", "void" },` |
+|        - |  462 | `	{ "decbin", "int $num", "string" },` |
+|        - |  463 | `	{ "dechex", "int $num", "string" },` |
+|        - |  464 | `	{ "decoct", "int $num", "string" },` |
+|        - |  465 | `	{ "define", "string $constant_name, mixed $value, bool $case_insensitive = false", "bool" },` |
+|        - |  466 | `	{ "defined", "string $constant_name", "bool" },` |
+|        - |  467 | `	{ "die", "string\|int $status = 0", "never" },` |
+|        - |  468 | `	{ "dirname", "string $path, int $levels = 1", "string" },` |
+|        - |  469 | `	{ "disk_free_space", "string $directory", "float\|false" },` |
+|        - |  470 | `	{ "disk_total_space", "string $directory", "float\|false" },` |
+|        - |  471 | `	{ "diskfreespace", "string $directory", "float\|false" },` |
+|        - |  472 | `	{ "end", "object\|array &$array", "mixed" },` |
+|        - |  473 | `	{ "error_get_last", "", "?array" },` |
+|        - |  474 | `	{ "error_clear_last", "", "void" },` |
+|        - |  475 | `	{ "error_log", "string $message, int $message_type = 0, ?string $destination = NULL, ?string $additional_headers = NULL", "bool" },` |
+|        - |  476 | `	{ "error_reporting", "?int $error_level = NULL", "int" },` |
+|        - |  477 | `	{ "exit", "string\|int $status = 0", "never" },` |
+|        - |  478 | `	{ "exp", "float $num", "float" },` |
+|        - |  479 | `	{ "explode", "string $separator, string $string, int $limit = 9223372036854775807", "array" },` |
+|        - |  480 | `	{ "extract", "array &$array, int $flags = 0, string $prefix = ''", "int" },` |
+|        - |  481 | `	{ "fclose", "$stream", "bool" },` |
+|        - |  482 | `	{ "feof", "$stream", "bool" },` |
+|        - |  483 | `	{ "fflush", "$stream", "bool" },` |
+|        - |  484 | `	{ "fgetc", "$stream", "string\|false" },` |
+|        - |  485 | `	{ "fgetcsv", "$stream, ?int $length = NULL, string $separator = ',', string $enclosure = '\"', string $escape = '\\\\'", "array\|false" },` |
+|        - |  486 | `	{ "fgets", "$stream, ?int $length = NULL", "string\|false" },` |
+|        - |  487 | `	{ "file", "string $filename, int $flags = 0, $context = NULL", "array\|false" },` |
+|        - |  488 | `	{ "file_exists", "string $filename", "bool" },` |
+|        - |  489 | `	{ "file_get_contents", "string $filename, bool $use_include_path = false, $context = NULL, int $offset = 0, ?int $length = NULL", "string\|false" },` |
+|        - |  490 | `	{ "file_put_contents", "string $filename, mixed $data, int $flags = 0, $context = NULL", "int\|false" },` |
+|        - |  491 | `	{ "fileatime", "string $filename", "int\|false" },` |
+|        - |  492 | `	{ "filectime", "string $filename", "int\|false" },` |
+|        - |  493 | `	{ "filemtime", "string $filename", "int\|false" },` |
+|        - |  494 | `	{ "filesize", "string $filename", "int\|false" },` |
+|        - |  495 | `	{ "filetype", "string $filename", "string\|false" },` |
+|        - |  496 | `	{ "filter_input", "int $type, string $var_name, int $filter = 516, array\|int $options = 0", "mixed" },` |
+|        - |  497 | `	{ "filter_var", "mixed $value, int $filter = 516, array\|int $options = 0", "mixed" },` |
+|        - |  498 | `	{ "floatval", "mixed $value", "float" },` |
+|        - |  499 | `	{ "flock", "$stream, int $operation, &$would_block = NULL", "bool" },` |
+|        - |  500 | `	{ "floor", "int\|float $num", "float" },` |
+|        - |  501 | `	{ "flush", "", "void" },` |
+|        - |  502 | `	{ "fmod", "float $num1, float $num2", "float" },` |
+|        - |  503 | `	{ "fnmatch", "string $pattern, string $filename, int $flags = 0", "bool" },` |
+|        - |  504 | `	{ "fopen", "string $filename, string $mode, bool $use_include_path = false, $context = NULL", "" },` |
+|        - |  505 | `	{ "forward_static_call", "callable $callback, mixed ...$args = ?", "mixed" },` |
+|        - |  506 | `	{ "forward_static_call_array", "callable $callback, array $args", "mixed" },` |
+|        - |  507 | `	{ "fpassthru", "$stream", "int" },` |
+|        - |  508 | `	{ "fprintf", "$stream, string $format, mixed ...$values = ?", "int" },` |
+|        - |  509 | `	{ "fputcsv", "$stream, array $fields, string $separator = ',', string $enclosure = '\"', string $escape = '\\\\', string $eol = ?", "int\|false" },` |
+|        - |  510 | `	{ "fputs", "$stream, string $data, ?int $length = NULL", "int\|false" },` |
+|        - |  511 | `	{ "fread", "$stream, int $length", "string\|false" },` |
+|        - |  512 | `	{ "fseek", "$stream, int $offset, int $whence = 0", "int" },` |
+|        - |  513 | `	{ "fstat", "$stream", "array\|false" },` |
+|        - |  514 | `	{ "ftell", "$stream", "int\|false" },` |
+|        - |  515 | `	{ "ftruncate", "$stream, int $size", "bool" },` |
+|        - |  516 | `	{ "func_get_arg", "int $position", "mixed" },` |
+|        - |  517 | `	{ "func_get_args", "", "array" },` |
+|        - |  518 | `	{ "func_num_args", "", "int" },` |
+|        - |  519 | `	{ "function_exists", "string $function", "bool" },` |
+|        - |  520 | `	{ "fwrite", "$stream, string $data, ?int $length = NULL", "int\|false" },` |
+|        - |  521 | `	{ "gc_collect_cycles", "", "int" },` |
+|        - |  522 | `	{ "gc_disable", "", "void" },` |
+|        - |  523 | `	{ "gc_enable", "", "void" },` |
+|        - |  524 | `	{ "gc_enabled", "", "bool" },` |
+|        - |  525 | `	{ "gc_mem_caches", "", "int" },` |
+|        - |  526 | `	{ "gc_status", "", "array" },` |
+|        - |  527 | `	{ "get_called_class", "", "string" },` |
+|        - |  528 | `	{ "get_class", "object $object = ?", "string" },` |
+|        - |  529 | `	{ "get_class_methods", "object\|string $object_or_class", "array" },` |
+|        - |  530 | `	{ "get_class_vars", "string $class", "array" },` |
+|        - |  531 | `	{ "get_current_user", "", "string" },` |
+|        - |  532 | `	{ "get_declared_classes", "", "array" },` |
+|        - |  533 | `	{ "get_declared_interfaces", "", "array" },` |
+|        - |  534 | `	{ "get_defined_constants", "bool $categorize = false", "array" },` |
+|        - |  535 | `	{ "get_defined_functions", "bool $exclude_disabled = true", "array" },` |
+|        - |  536 | `	{ "get_defined_vars", "", "array" },` |
+|        - |  537 | `	{ "get_html_translation_table", "int $table = 0, int $flags = 11, string $encoding = 'UTF-8'", "array" },` |
+|        - |  538 | `	{ "get_include_path", "", "string\|false" },` |
+|        - |  539 | `	{ "get_included_files", "", "array" },` |
+|        - |  540 | `	{ "get_object_vars", "object $object", "array" },` |
+|        - |  541 | `	{ "get_parent_class", "object\|string $object_or_class = ?", "string\|false" },` |
+|        - |  542 | `	{ "get_resource_id", "$resource", "int" },` |
+|        - |  543 | `	{ "get_resource_type", "$resource", "string" },` |
+|        - |  544 | `	{ "getcwd", "", "string\|false" },` |
+|        - |  545 | `	{ "getdate", "?int $timestamp = NULL", "array" },` |
+|        - |  546 | `	{ "getenv", "?string $name = NULL, bool $local_only = false", "array\|string\|false" },` |
+|        - |  547 | `	{ "getmygid", "", "int\|false" },` |
+|        - |  548 | `	{ "getmypid", "", "int\|false" },` |
+|        - |  549 | `	{ "getmyuid", "", "int\|false" },` |
+|        - |  550 | `	{ "getopt", "string $short_options, array $long_options = ?, &$rest_index = NULL", "array\|false" },` |
+|        - |  551 | `	{ "getrandmax", "", "int" },` |
+|        - |  552 | `	{ "gettimeofday", "bool $as_float = false", "array\|float" },` |
+|        - |  553 | `	{ "gettype", "mixed $value", "string" },` |
+|        - |  554 | `	{ "gmdate", "string $format, ?int $timestamp = NULL", "string" },` |
+|        - |  555 | `	{ "gmmktime", "int $hour, ?int $minute = NULL, ?int $second = NULL, ?int $month = NULL, ?int $day = NULL, ?int $year = NULL", "int\|false" },` |
+|        - |  556 | `	{ "hash", "string $algo, string $data, bool $binary = false, array $options = ?", "string" },` |
+|        - |  557 | `	{ "hash_algos", "", "array" },` |
+|        - |  558 | `	{ "hash_equals", "string $known_string, string $user_string", "bool" },` |
+|        - |  559 | `	{ "hash_hmac", "string $algo, string $data, string $key, bool $binary = false", "string" },` |
+|        - |  560 | `	{ "header", "string $header, bool $replace = true, int $response_code = 0", "void" },` |
+|        - |  561 | `	{ "header_remove", "?string $name = NULL", "void" },` |
+|        - |  562 | `	{ "headers_list", "", "array" },` |
+|        - |  563 | `	{ "headers_sent", "&$filename = NULL, &$line = NULL", "bool" },` |
+|        - |  564 | `	{ "hexdec", "string $hex_string", "int\|float" },` |
+|        - |  565 | `	{ "html_entity_decode", "string $string, int $flags = 11, ?string $encoding = NULL", "string" },` |
+|        - |  566 | `	{ "htmlentities", "string $string, int $flags = 11, ?string $encoding = NULL, bool $double_encode = true", "string" },` |
+|        - |  567 | `	{ "htmlspecialchars", "string $string, int $flags = 11, ?string $encoding = NULL, bool $double_encode = true", "string" },` |
+|        - |  568 | `	{ "htmlspecialchars_decode", "string $string, int $flags = 11", "string" },` |
+|        - |  569 | `	{ "http_response_code", "int $response_code = 0", "int\|bool" },` |
+|        - |  570 | `	{ "hypot", "float $x, float $y", "float" },` |
+|        - |  571 | `	{ "idate", "string $format, ?int $timestamp = NULL", "int\|false" },` |
+|        - |  572 | `	{ "implode", "array\|string $separator, ?array $array = NULL", "string" },` |
+|        - |  573 | `	{ "in_array", "mixed $needle, array $haystack, bool $strict = false", "bool" },` |
+|        - |  574 | `	{ "intdiv", "int $num1, int $num2", "int" },` |
+|        - |  575 | `	{ "interface_exists", "string $interface, bool $autoload = true", "bool" },` |
+|        - |  576 | `	{ "trait_exists", "string $trait, bool $autoload = true", "bool" },` |
+|        - |  577 | `	{ "intval", "mixed $value, int $base = 10", "int" },` |
+|        - |  578 | `	{ "is_a", "mixed $object_or_class, string $class, bool $allow_string = false", "bool" },` |
+|        - |  579 | `	{ "is_array", "mixed $value", "bool" },` |
+|        - |  580 | `	{ "is_bool", "mixed $value", "bool" },` |
+|        - |  581 | `	{ "is_callable", "mixed $value, bool $syntax_only = false, &$callable_name = NULL", "bool" },` |
+|        - |  582 | `	{ "is_dir", "string $filename", "bool" },` |
+|        - |  583 | `	{ "is_double", "mixed $value", "bool" },` |
+|        - |  584 | `	{ "is_executable", "string $filename", "bool" },` |
+|        - |  585 | `	{ "is_file", "string $filename", "bool" },` |
+|        - |  586 | `	{ "is_float", "mixed $value", "bool" },` |
+|        - |  587 | `	{ "is_int", "mixed $value", "bool" },` |
+|        - |  588 | `	{ "is_integer", "mixed $value", "bool" },` |
+|        - |  589 | `	{ "is_link", "string $filename", "bool" },` |
+|        - |  590 | `	{ "is_long", "mixed $value", "bool" },` |
+|        - |  591 | `	{ "is_null", "mixed $value", "bool" },` |
+|        - |  592 | `	{ "is_numeric", "mixed $value", "bool" },` |
+|        - |  593 | `	{ "is_object", "mixed $value", "bool" },` |
+|        - |  594 | `	{ "is_readable", "string $filename", "bool" },` |
+|        - |  595 | `	{ "is_resource", "mixed $value", "bool" },` |
+|        - |  596 | `	{ "is_scalar", "mixed $value", "bool" },` |
+|        - |  597 | `	{ "is_string", "mixed $value", "bool" },` |
+|        - |  598 | `	{ "is_subclass_of", "mixed $object_or_class, string $class, bool $allow_string = true", "bool" },` |
+|        - |  599 | `	{ "is_writable", "string $filename", "bool" },` |
+|        - |  600 | `	{ "iterator_apply", "Traversable $iterator, callable $callback, ?array $args = NULL", "int" },` |
+|        - |  601 | `	{ "iterator_count", "Traversable\|array $iterator", "int" },` |
+|        - |  602 | `	{ "iterator_to_array", "Traversable\|array $iterator, bool $preserve_keys = true", "array" },` |
+|        - |  603 | `	{ "join", "array\|string $separator, ?array $array = NULL", "string" },` |
+|        - |  604 | `	{ "json_decode", "string $json, ?bool $associative = NULL, int $depth = 512, int $flags = 0", "mixed" },` |
+|        - |  605 | `	{ "json_encode", "mixed $value, int $flags = 0, int $depth = 512", "string\|false" },` |
+|        - |  606 | `	{ "json_last_error", "", "int" },` |
+|        - |  607 | `	{ "json_last_error_msg", "", "string" },` |
+|        - |  608 | `	{ "json_validate", "string $json, int $depth = 512, int $flags = 0", "bool" },` |
+|        - |  609 | `	{ "key", "object\|array $array", "string\|int\|null" },` |
+|        - |  610 | `	{ "krsort", "array &$array, int $flags = 0", "true" },` |
+|        - |  611 | `	{ "ksort", "array &$array, int $flags = 0", "true" },` |
+|        - |  612 | `	{ "lcfirst", "string $string", "string" },` |
+|        - |  613 | `	{ "levenshtein", "string $string1, string $string2, int $insertion_cost = 1, int $replacement_cost = 1, int $deletion_cost = 1", "int" },` |
+|        - |  614 | `	{ "link", "string $target, string $link", "bool" },` |
+|        - |  615 | `	{ "localtime", "?int $timestamp = NULL, bool $associative = false", "array" },` |
+|        - |  616 | `	{ "log", "float $num, float $base = 2.718281828459045", "float" },` |
+|        - |  617 | `	{ "log10", "float $num", "float" },` |
+|        - |  618 | `	{ "lstat", "string $filename", "array\|false" },` |
+|        - |  619 | `	{ "ltrim", "string $string, string $characters = ?", "string" },` |
+|        - |  620 | `	{ "max", "mixed $value, mixed ...$values = ?", "mixed" },` |
+|        - |  621 | `	{ "mb_chr", "int $codepoint, ?string $encoding = NULL", "string\|false" },` |
+|        - |  622 | `	{ "mb_convert_encoding", "array\|string $string, string $to_encoding, array\|string\|null $from_encoding = NULL", "array\|string" },` |
+|        - |  623 | `	{ "mb_ord", "string $string, ?string $encoding = NULL", "int\|false" },` |
+|        - |  624 | `	{ "mb_strtolower", "string $string, ?string $encoding = NULL", "string" },` |
+|        - |  625 | `	{ "mb_strtoupper", "string $string, ?string $encoding = NULL", "string" },` |
+|        - |  626 | `	{ "md5", "string $string, bool $binary = false", "string" },` |
+|        - |  627 | `	{ "md5_file", "string $filename, bool $binary = false", "string\|false" },` |
+|        - |  628 | `	{ "method_exists", "$object_or_class, string $method", "bool" },` |
+|        - |  629 | `	{ "memory_get_peak_usage", "bool $real_usage = false", "int" },` |
+|        - |  630 | `	{ "memory_get_usage", "bool $real_usage = false", "int" },` |
+|        - |  631 | `	{ "microtime", "bool $as_float = false", "string\|float" },` |
+|        - |  632 | `	{ "min", "mixed $value, mixed ...$values = ?", "mixed" },` |
+|        - |  633 | `	{ "mkdir", "string $directory, int $permissions = 511, bool $recursive = false, $context = NULL", "bool" },` |
+|        - |  634 | `	{ "mktime", "int $hour, ?int $minute = NULL, ?int $second = NULL, ?int $month = NULL, ?int $day = NULL, ?int $year = NULL", "int\|false" },` |
+|        - |  635 | `	{ "mt_getrandmax", "", "int" },` |
+|        - |  636 | `	{ "mt_rand", "int $min = ?, int $max = ?", "int" },` |
+|        - |  637 | `	{ "mt_srand", "?int $seed = NULL, int $mode = 0", "void" },` |
+|        - |  638 | `	{ "next", "object\|array &$array", "mixed" },` |
+|        - |  639 | `	{ "nl2br", "string $string, bool $use_xhtml = true", "string" },` |
+|        - |  640 | `	{ "ob_clean", "", "bool" },` |
+|        - |  641 | `	{ "ob_end_clean", "", "bool" },` |
+|        - |  642 | `	{ "ob_end_flush", "", "bool" },` |
+|        - |  643 | `	{ "ob_flush", "", "bool" },` |
+|        - |  644 | `	{ "ob_get_clean", "", "string\|false" },` |
+|        - |  645 | `	{ "ob_get_contents", "", "string\|false" },` |
+|        - |  646 | `	{ "ob_get_flush", "", "string\|false" },` |
+|        - |  647 | `	{ "ob_get_length", "", "int\|false" },` |
+|        - |  648 | `	{ "ob_get_level", "", "int" },` |
+|        - |  649 | `	{ "ob_implicit_flush", "bool $enable = true", "void" },` |
+|        - |  650 | `	{ "ob_list_handlers", "", "array" },` |
+|        - |  651 | `	{ "ob_start", "$callback = NULL, int $chunk_size = 0, int $flags = 112", "bool" },` |
+|        - |  652 | `	{ "octdec", "string $octal_string", "int\|float" },` |
+|        - |  653 | `	{ "opendir", "string $directory, $context = NULL", "" },` |
+|        - |  654 | `	{ "ord", "string $character", "int" },` |
+|        - |  655 | `	{ "parse_ini_file", "string $filename, bool $process_sections = false, int $scanner_mode = 0", "array\|false" },` |
+|        - |  656 | `	{ "parse_ini_string", "string $ini_string, bool $process_sections = false, int $scanner_mode = 0", "array\|false" },` |
+|        - |  657 | `	{ "parse_url", "string $url, int $component = -1", "array\|string\|int\|false\|null" },` |
+|        - |  658 | `	{ "password_get_info", "string $hash", "array" },` |
+|        - |  659 | `	{ "password_hash", "string $password, string\|int\|null $algo, array $options = ?", "string" },` |
+|        - |  660 | `	{ "password_needs_rehash", "string $hash, string\|int\|null $algo, array $options = ?", "bool" },` |
+|        - |  661 | `	{ "password_verify", "string $password, string $hash", "bool" },` |
+|        - |  662 | `	{ "pathinfo", "string $path, int $flags = 15", "array\|string" },` |
+|        - |  663 | `	{ "pclose", "$handle", "int" },` |
+|        - |  664 | `	{ "php_sapi_name", "", "string\|false" },` |
+|        - |  665 | `	{ "php_uname", "string $mode = 'a'", "string" },` |
+|        - |  666 | `	{ "phpinfo", "int $flags = 4294967295", "true" },` |
+|        - |  667 | `	{ "phpversion", "?string $extension = NULL", "string\|false" },` |
+|        - |  668 | `	{ "pi", "", "float" },` |
+|        - |  669 | `	{ "popen", "string $command, string $mode", "" },` |
+|        - |  670 | `	{ "pos", "object\|array $array", "mixed" },` |
+|        - |  671 | `	{ "pow", "mixed $num, mixed $exponent", "object\|int\|float" },` |
+|        - |  672 | `	{ "preg_last_error", "", "int" },` |
+|        - |  673 | `	{ "preg_last_error_msg", "", "string" },` |
+|        - |  674 | `	{ "fsockopen", "string $hostname, int $port = -1, &$error_code = NULL, &$error_message = NULL, ?float $timeout = NULL", "resource\|false" },` |
+|        - |  675 | `	{ "pfsockopen", "string $hostname, int $port = -1, &$error_code = NULL, &$error_message = NULL, ?float $timeout = NULL", "resource\|false" },` |
+|        - |  676 | `	{ "stream_socket_client", "string $address, &$error_code = NULL, &$error_message = NULL, ?float $timeout = NULL, int $flags = 4, $context = NULL", "resource\|false" },` |
+|        - |  677 | `	{ "preg_match", "string $pattern, string $subject, &$matches = NULL, int $flags = 0, int $offset = 0", "int\|false" },` |
+|        - |  678 | `	{ "preg_match_all", "string $pattern, string $subject, &$matches = NULL, int $flags = 0, int $offset = 0", "int\|false" },` |
+|        - |  679 | `	{ "preg_quote", "string $str, ?string $delimiter = NULL", "string" },` |
+|        - |  680 | `	{ "preg_replace", "array\|string $pattern, array\|string $replacement, array\|string $subject, int $limit = -1, &$count = NULL", "array\|string\|null" },` |
+|        - |  681 | `	{ "preg_replace_callback", "array\|string $pattern, callable $callback, array\|string $subject, int $limit = -1, &$count = NULL, int $flags = 0", "array\|string\|null" },` |
+|        - |  682 | `	{ "preg_split", "string $pattern, string $subject, int $limit = -1, int $flags = 0", "array\|false" },` |
+|        - |  683 | `	{ "prev", "object\|array &$array", "mixed" },` |
+|        - |  684 | `	{ "print_r", "mixed $value, bool $return = false", "string\|true" },` |
+|        - |  685 | `	{ "printf", "string $format, mixed ...$values = ?", "int" },` |
+|        - |  686 | `	{ "property_exists", "$object_or_class, string $property", "bool" },` |
+|        - |  687 | `	{ "putenv", "string $assignment", "bool" },` |
+|        - |  688 | `	{ "quotemeta", "string $string", "string" },` |
+|        - |  689 | `	{ "rand", "int $min = ?, int $max = ?", "int" },` |
+|        - |  690 | `	{ "random_bytes", "int $length", "string" },` |
+|        - |  691 | `	{ "random_int", "int $min, int $max", "int" },` |
+|        - |  692 | `	{ "range", "string\|int\|float $start, string\|int\|float $end, int\|float $step = 1", "array" },` |
+|        - |  693 | `	{ "rawurldecode", "string $string", "string" },` |
+|        - |  694 | `	{ "rawurlencode", "string $string", "string" },` |
+|        - |  695 | `	{ "readdir", "$dir_handle = NULL", "string\|false" },` |
+|        - |  696 | `	{ "readfile", "string $filename, bool $use_include_path = false, $context = NULL", "int\|false" },` |
+|        - |  697 | `	{ "realpath", "string $path", "string\|false" },` |
+|        - |  698 | `	{ "register_shutdown_function", "callable $callback, mixed ...$args = ?", "void" },` |
+|        - |  699 | `	{ "rename", "string $from, string $to, $context = NULL", "bool" },` |
+|        - |  700 | `	{ "reset", "object\|array &$array", "mixed" },` |
+|        - |  701 | `	{ "restore_error_handler", "", "true" },` |
+|        - |  702 | `	{ "restore_exception_handler", "", "true" },` |
+|        - |  703 | `	{ "rewind", "$stream", "bool" },` |
+|        - |  704 | `	{ "rewinddir", "$dir_handle = NULL", "void" },` |
+|        - |  705 | `	{ "rmdir", "string $directory, $context = NULL", "bool" },` |
+|        - |  706 | `	{ "round", "int\|float $num, int $precision = 0, RoundingMode\|int $mode = ?", "float" },` |
+|        - |  707 | `	{ "rsort", "array &$array, int $flags = 0", "true" },` |
+|        - |  708 | `	{ "rtrim", "string $string, string $characters = ?", "string" },` |
+|        - |  709 | `	{ "serialize", "mixed $value", "string" },` |
+|        - |  710 | `	{ "set_error_handler", "?callable $callback, int $error_levels = 30719", "" },` |
+|        - |  711 | `	{ "set_exception_handler", "?callable $callback", "" },` |
+|        - |  712 | `	{ "get_error_handler", "", "?callable" },` |
+|        - |  713 | `	{ "get_exception_handler", "", "?callable" },` |
+|        - |  714 | `	{ "hrtime", "bool $as_number = false", "array\|int" },` |
+|        - |  715 | `	{ "setcookie", "string $name, string $value = '', array\|int $expires_or_options = 0, string $path = '', string $domain = '', bool $secure = false, bool $httponly = false", "bool" },` |
+|        - |  716 | `	{ "setrawcookie", "string $name, string $value = '', array\|int $expires_or_options = 0, string $path = '', string $domain = '', bool $secure = false, bool $httponly = false", "bool" },` |
+|        - |  717 | `	{ "sha1", "string $string, bool $binary = false", "string" },` |
+|        - |  718 | `	{ "sha1_file", "string $filename, bool $binary = false", "string\|false" },` |
+|        - |  719 | `	{ "shuffle", "array &$array", "true" },` |
+|        - |  720 | `	{ "similar_text", "string $string1, string $string2, &$percent = NULL", "int" },` |
+|        - |  721 | `	{ "sin", "float $num", "float" },` |
+|        - |  722 | `	{ "sinh", "float $num", "float" },` |
+|        - |  723 | `	{ "sizeof", "Countable\|array $value, int $mode = 0", "int" },` |
+|        - |  724 | `	{ "sleep", "int $seconds", "int" },` |
+|        - |  725 | `	{ "sort", "array &$array, int $flags = 0", "true" },` |
+|        - |  726 | `	{ "soundex", "string $string", "string" },` |
+|        - |  727 | `	{ "spl_autoload", "string $class, ?string $file_extensions = NULL", "void" },` |
+|        - |  728 | `	{ "spl_autoload_functions", "", "array" },` |
+|        - |  729 | `	{ "spl_autoload_register", "?callable $callback = NULL, bool $throw = true, bool $prepend = false", "bool" },` |
+|        - |  730 | `	{ "spl_autoload_unregister", "callable $callback", "bool" },` |
+|        - |  731 | `	{ "spl_object_hash", "object $object", "string" },` |
+|        - |  732 | `	{ "spl_object_id", "object $object", "int" },` |
+|        - |  733 | `	{ "sprintf", "string $format, mixed ...$values = ?", "string" },` |
+|        - |  734 | `	{ "sqrt", "float $num", "float" },` |
+|        - |  735 | `	{ "srand", "?int $seed = NULL, int $mode = 0", "void" },` |
+|        - |  736 | `	{ "stat", "string $filename", "array\|false" },` |
+|        - |  737 | `	{ "str_contains", "string $haystack, string $needle", "bool" },` |
+|        - |  738 | `	{ "str_ends_with", "string $haystack, string $needle", "bool" },` |
+|        - |  739 | `	{ "str_getcsv", "string $string, string $separator = ',', string $enclosure = '\"', string $escape = '\\\\'", "array" },` |
+|        - |  740 | `	{ "str_ireplace", "array\|string $search, array\|string $replace, array\|string $subject, &$count = NULL", "array\|string" },` |
+|        - |  741 | `	{ "str_pad", "string $string, int $length, string $pad_string = ' ', int $pad_type = 1", "string" },` |
+|        - |  742 | `	{ "str_repeat", "string $string, int $times", "string" },` |
+|        - |  743 | `	{ "str_replace", "array\|string $search, array\|string $replace, array\|string $subject, &$count = NULL", "array\|string" },` |
+|        - |  744 | `	{ "str_shuffle", "string $string", "string" },` |
+|        - |  745 | `	{ "str_split", "string $string, int $length = 1", "array" },` |
+|        - |  746 | `	{ "str_starts_with", "string $haystack, string $needle", "bool" },` |
+|        - |  747 | `	{ "str_word_count", "string $string, int $format = 0, ?string $characters = NULL", "array\|int" },` |
+|        - |  748 | `	{ "strcasecmp", "string $string1, string $string2", "int" },` |
+|        - |  749 | `	{ "strchr", "string $haystack, string $needle, bool $before_needle = false", "string\|false" },` |
+|        - |  750 | `	{ "strcmp", "string $string1, string $string2", "int" },` |
+|        - |  751 | `	{ "strnatcasecmp", "string $string1, string $string2", "int" },` |
+|        - |  752 | `	{ "strnatcmp", "string $string1, string $string2", "int" },` |
+|        - |  753 | `	{ "strcoll", "string $string1, string $string2", "int" },` |
+|        - |  754 | `	{ "strcspn", "string $string, string $characters, int $offset = 0, ?int $length = NULL", "int" },` |
+|        - |  755 | `	{ "strip_tags", "string $string, array\|string\|null $allowed_tags = NULL", "string" },` |
+|        - |  756 | `	{ "stripos", "string $haystack, string $needle, int $offset = 0", "int\|false" },` |
+|        - |  757 | `	{ "stripslashes", "string $string", "string" },` |
+|        - |  758 | `	{ "stristr", "string $haystack, string $needle, bool $before_needle = false", "string\|false" },` |
+|        - |  759 | `	{ "strlen", "string $string", "int" },` |
+|        - |  760 | `	{ "strncasecmp", "string $string1, string $string2, int $length", "int" },` |
+|        - |  761 | `	{ "strncmp", "string $string1, string $string2, int $length", "int" },` |
+|        - |  762 | `	{ "strpbrk", "string $string, string $characters", "string\|false" },` |
+|        - |  763 | `	{ "strpos", "string $haystack, string $needle, int $offset = 0", "int\|false" },` |
+|        - |  764 | `	{ "strrchr", "string $haystack, string $needle, bool $before_needle = false", "string\|false" },` |
+|        - |  765 | `	{ "strrev", "string $string", "string" },` |
+|        - |  766 | `	{ "strripos", "string $haystack, string $needle, int $offset = 0", "int\|false" },` |
+|        - |  767 | `	{ "strrpos", "string $haystack, string $needle, int $offset = 0", "int\|false" },` |
+|        - |  768 | `	{ "strspn", "string $string, string $characters, int $offset = 0, ?int $length = NULL", "int" },` |
+|        - |  769 | `	{ "strstr", "string $haystack, string $needle, bool $before_needle = false", "string\|false" },` |
+|        - |  770 | `	{ "strtok", "string $string, ?string $token = NULL", "string\|false" },` |
+|        - |  771 | `	{ "strtolower", "string $string", "string" },` |
+|        - |  772 | `	{ "strtoupper", "string $string", "string" },` |
+|        - |  773 | `	{ "strtr", "string $string, array\|string $from, ?string $to = NULL", "string" },` |
+|        - |  774 | `	{ "strval", "mixed $value", "string" },` |
+|        - |  775 | `	{ "substr", "string $string, int $offset, ?int $length = NULL", "string" },` |
+|        - |  776 | `	{ "substr_compare", "string $haystack, string $needle, int $offset, ?int $length = NULL, bool $case_insensitive = false", "int" },` |
+|        - |  777 | `	{ "substr_count", "string $haystack, string $needle, int $offset = 0, ?int $length = NULL", "int" },` |
+|        - |  778 | `	{ "substr_replace", "array\|string $string, array\|string $replace, array\|int $offset, array\|int\|null $length = NULL", "array\|string" },` |
+|        - |  779 | `	{ "symlink", "string $target, string $link", "bool" },` |
+|        - |  780 | `	{ "sys_get_temp_dir", "", "string" },` |
+|        - |  781 | `	{ "tan", "float $num", "float" },` |
+|        - |  782 | `	{ "tanh", "float $num", "float" },` |
+|        - |  783 | `	{ "time", "", "int" },` |
+|        - |  784 | `	{ "touch", "string $filename, ?int $mtime = NULL, ?int $atime = NULL", "bool" },` |
+|        - |  785 | `	{ "trigger_error", "string $message, int $error_level = 1024", "true" },` |
+|        - |  786 | `	{ "trim", "string $string, string $characters = ?", "string" },` |
+|        - |  787 | `	{ "uasort", "array &$array, callable $callback", "true" },` |
+|        - |  788 | `	{ "ucfirst", "string $string", "string" },` |
+|        - |  789 | `	{ "ucwords", "string $string, string $separators = ?", "string" },` |
+|        - |  790 | `	{ "uksort", "array &$array, callable $callback", "true" },` |
+|        - |  791 | `	{ "umask", "?int $mask = NULL", "int" },` |
+|        - |  792 | `	{ "uniqid", "string $prefix = '', bool $more_entropy = false", "string" },` |
+|        - |  793 | `	{ "unlink", "string $filename, $context = NULL", "bool" },` |
+|        - |  794 | `	{ "unserialize", "string $data, array $options = ?", "mixed" },` |
+|        - |  795 | `	{ "urldecode", "string $string", "string" },` |
+|        - |  796 | `	{ "urlencode", "string $string", "string" },` |
+|        - |  797 | `	{ "user_error", "string $message, int $error_level = 1024", "true" },` |
+|        - |  798 | `	{ "usleep", "int $microseconds", "void" },` |
+|        - |  799 | `	{ "usort", "array &$array, callable $callback", "true" },` |
 |        - |  800 | `	{ "var_dump", "mixed $value, mixed ...$values = ?", "void" },` |
 |        - |  801 | `	{ "var_export", "mixed $value, bool $return = false", "?string" },` |
 |        - |  802 | `	{ "vfprintf", "$stream, string $format, array $values", "int" },` |
@@ -841,72 +841,72 @@ Coverage: 375/384 lines (97.66%)
 |        - |  831 | ` * variadic tail hides a second required argument). Verified against php 8.5.7` |
 |        - |  832 | ` * for all 462 signed builtins: 458 derive exactly, 4 are overridden.` |
 |        - |  833 | ` */` |
-|  1508372 |  834 | `static void VmDeriveArityFromSig(const char *zSig,sxi16 *pnMin,sxu8 *pbAtLeast,sxi16 *pnMax,sxu8 *pbHasMax)` |
+|  1504990 |  834 | `static void VmDeriveArityFromSig(const char *zSig,sxi16 *pnMin,sxu8 *pbAtLeast,sxi16 *pnMax,sxu8 *pbHasMax)` |
 |        5 |  835 | `{` |
-|  1508377 |  836 | `	const char *zCur = zSig;` |
-|  1508377 |  837 | `	int nMin = 0, bAtLeast = 0, bSeen = 0, bOptional = 0;` |
-|  1508377 |  838 | `	int nTotal = 0, bVariadic = 0;` |
-| 23180228 |  839 | `	for(;;){` |
-| 47706497 |  840 | `		if( zCur[0] == '\0' \|\| zCur[0] == ',' ){` |
-|  2854413 |  841 | `			if( bSeen ){` |
-|  2685313 |  842 | `				nTotal++;` |
-|  2685313 |  843 | `				if( bOptional ){` |
-|  1055189 |  844 | `					bAtLeast = 1;` |
-|   527597 |  845 | `				}else{` |
+|  1504995 |  836 | `	const char *zCur = zSig;` |
+|  1504995 |  837 | `	int nMin = 0, bAtLeast = 0, bSeen = 0, bOptional = 0;` |
+|  1504995 |  838 | `	int nTotal = 0, bVariadic = 0;` |
+| 23266469 |  839 | `	for(;;){` |
+| 47885743 |  840 | `		if( zCur[0] == '\0' \|\| zCur[0] == ',' ){` |
+|  2857795 |  841 | `			if( bSeen ){` |
+|  2688695 |  842 | `				nTotal++;` |
+|  2688695 |  843 | `				if( bOptional ){` |
+|  1058571 |  844 | `					bAtLeast = 1;` |
+|   529288 |  845 | `				}else{` |
 |  1630129 |  846 | `					nMin++;` |
 |        - |  847 | `				}` |
-|  1342654 |  848 | `			}` |
-|  2854413 |  849 | `			if( zCur[0] == '\0' ){` |
-|  1508377 |  850 | `				break;` |
+|  1344345 |  848 | `			}` |
+|  2857795 |  849 | `			if( zCur[0] == '\0' ){` |
+|  1504995 |  850 | `				break;` |
 |        - |  851 | `			}` |
-|  1346041 |  852 | `			bSeen = bOptional = 0;` |
-|  1346041 |  853 | `			zCur++;` |
-|  1346041 |  854 | `			continue;` |
+|  1352805 |  852 | `			bSeen = bOptional = 0;` |
+|  1352805 |  853 | `			zCur++;` |
+|  1352805 |  854 | `			continue;` |
 |        - |  855 | `		}` |
-| 44852089 |  856 | `		if( zCur[0] != ' ' ){` |
-| 38943735 |  857 | `			bSeen = 1;` |
-| 19471865 |  858 | `		}` |
-| 44852089 |  859 | `		if( zCur[0] == '=' \|\| (zCur[0] == '.' && zCur[1] == '.' && zCur[2] == '.') ){` |
-|  1126211 |  860 | `			bOptional = 1;` |
-|   563103 |  861 | `		}` |
-| 44852089 |  862 | `		if( zCur[0] == '.' && zCur[1] == '.' && zCur[2] == '.' ){` |
+| 45027953 |  856 | `		if( zCur[0] != ' ' ){` |
+| 39102689 |  857 | `			bSeen = 1;` |
+| 19551342 |  858 | `		}` |
+| 45027953 |  859 | `		if( zCur[0] == '=' \|\| (zCur[0] == '.' && zCur[1] == '.' && zCur[2] == '.') ){` |
+|  1129593 |  860 | `			bOptional = 1;` |
+|   564794 |  861 | `		}` |
+| 45027953 |  862 | `		if( zCur[0] == '.' && zCur[1] == '.' && zCur[2] == '.' ){` |
 |    71027 |  863 | `			bVariadic = 1;` |
 |    35511 |  864 | `		}` |
-| 44852089 |  865 | `		zCur++;` |
+| 45027953 |  865 | `		zCur++;` |
 |        5 |  866 | `	}` |
-|  1508377 |  867 | `	*pnMin = (sxi16)nMin;` |
-|  1508377 |  868 | `	*pbAtLeast = (sxu8)bAtLeast;` |
+|  1504995 |  867 | `	*pnMin = (sxi16)nMin;` |
+|  1504995 |  868 | `	*pbAtLeast = (sxu8)bAtLeast;` |
 |        - |  869 | `	/* php enforces a MAXIMUM too ("expects at most 1 argument, 2 given"); a` |
 |        - |  870 | `	 * variadic tail means there is none. The parameter COUNT is the maximum,` |
 |        - |  871 | `	 * whether or not the parameters carry defaults. */` |
-|  1508377 |  872 | `	*pnMax = (sxi16)nTotal;` |
-|  1508377 |  873 | `	*pbHasMax = (sxu8)(bVariadic ? 0 : 1);` |
-|  1508377 |  874 | `}` |
+|  1504995 |  872 | `	*pnMax = (sxi16)nTotal;` |
+|  1504995 |  873 | `	*pbHasMax = (sxu8)(bVariadic ? 0 : 1);` |
+|  1504995 |  874 | `}` |
 |        - |  875 | `/*` |
 |        - |  876 | ` * Does the declared type list (e.g. "array\|string", "?int", "callable") contain` |
 |        - |  877 | ` * the given token? Compares against each '\|'-separated alternative, ignoring a` |
 |        - |  878 | ` * leading nullable '?'.` |
 |        - |  879 | ` */` |
-|  1461171 |  880 | `static int VmSigTypeHas(const char *zType,int nType,const char *zTok)` |
+|  1460924 |  880 | `static int VmSigTypeHas(const char *zType,int nType,const char *zTok)` |
 |        5 |  881 | `{` |
-|  1461176 |  882 | `	int nTok = (int)SyStrlen(zTok);` |
-|  1461176 |  883 | `	int i = 0;` |
-|  1461176 |  884 | `	if( zType[0] == '?' ){` |
-|   275821 |  885 | `		zType++;` |
-|   275821 |  886 | `		nType--;` |
-|   137908 |  887 | `	}` |
-|  2907809 |  888 | `	while( i < nType ){` |
-|  1595838 |  889 | `		int j = i;` |
-|  9274657 |  890 | `		while( j < nType && zType[j] != '\|' ){` |
-|  7678824 |  891 | `			j++;` |
+|  1460929 |  882 | `	int nTok = (int)SyStrlen(zTok);` |
+|  1460929 |  883 | `	int i = 0;` |
+|  1460929 |  884 | `	if( zType[0] == '?' ){` |
+|   275747 |  885 | `		zType++;` |
+|   275747 |  886 | `		nType--;` |
+|   137871 |  887 | `	}` |
+|  2907405 |  888 | `	while( i < nType ){` |
+|  1595625 |  889 | `		int j = i;` |
+|  9273405 |  890 | `		while( j < nType && zType[j] != '\|' ){` |
+|  7677785 |  891 | `			j++;` |
 |        5 |  892 | `		}` |
-|  1595838 |  893 | `		if( j - i == nTok && SyMemcmp(&zType[i],zTok,(sxu32)nTok) == 0 ){` |
-|   149205 |  894 | `			return 1;` |
+|  1595625 |  893 | `		if( j - i == nTok && SyMemcmp(&zType[i],zTok,(sxu32)nTok) == 0 ){` |
+|   149149 |  894 | `			return 1;` |
 |        - |  895 | `		}` |
-|  1446638 |  896 | `		i = j + 1;` |
+|  1446481 |  896 | `		i = j + 1;` |
 |        5 |  897 | `	}` |
-|  1311976 |  898 | `	return 0;` |
-|   731067 |  899 | `}` |
+|  1311785 |  898 | `	return 0;` |
+|   730944 |  899 | `}` |
 |        - |  900 | `/*` |
 |        - |  901 | ` * Does the declared type list name a CLASS (anything that is not one of php's` |
 |        - |  902 | ` * builtin type keywords)? A class-typed parameter accepts an object, so it must` |
@@ -969,7 +969,7 @@ Coverage: 375/384 lines (97.66%)
 |        - |  959 | ` * abort the call, so a central copy would double-fire — the trap that sank the` |
 |        - |  960 | ` * first central-ZPP attempt. A TypeError aborts, so there is nothing to double.` |
 |        - |  961 | ` */` |
-|   939882 |  962 | `PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(` |
+|   939654 |  962 | `PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(` |
 |        - |  963 | `	ph7_context *pCtx,    /* Call context (for the throw) */` |
 |        - |  964 | `	ph7_user_func *pFunc, /* Callee */` |
 |        - |  965 | `	int nGiven,           /* Argument count */` |
@@ -984,66 +984,66 @@ Coverage: 375/384 lines (97.66%)
 |        - |  974 | `	 * and reports "must be a valid class name, Array given".` |
 |        - |  975 | `	 */` |
 |        - |  976 | `	static const char *azSelfChecked[] = { "get_class_vars" };` |
-|   939887 |  977 | `	const char *zSig = pFunc->zSig;` |
+|   939659 |  977 | `	const char *zSig = pFunc->zSig;` |
 |        - |  978 | `	const char *zCur, *zEnd;` |
-|   939887 |  979 | `	int iArg = 0;` |
-|   939887 |  980 | `	if( zSig == 0 ){` |
-|   175321 |  981 | `		return SXRET_OK;` |
+|   939659 |  979 | `	int iArg = 0;` |
+|   939659 |  980 | `	if( zSig == 0 ){` |
+|   175265 |  981 | `		return SXRET_OK;` |
 |        - |  982 | `	}` |
-|  1529133 |  983 | `	for( iArg = 0 ; iArg < (int)SX_ARRAYSIZE(azSelfChecked) ; ++iArg ){` |
-|  1147220 |  984 | `		if( SyStrncmp(pFunc->sName.zString,azSelfChecked[iArg],` |
-|  1147220 |  985 | `			(sxu32)SyStrlen(azSelfChecked[iArg])) == 0` |
-|   382661 |  986 | `		 && pFunc->sName.nByte == SyStrlen(azSelfChecked[iArg]) ){` |
+|  1528789 |  983 | `	for( iArg = 0 ; iArg < (int)SX_ARRAYSIZE(azSelfChecked) ; ++iArg ){` |
+|  1146963 |  984 | `		if( SyStrncmp(pFunc->sName.zString,azSelfChecked[iArg],` |
+|  1146963 |  985 | `			(sxu32)SyStrlen(azSelfChecked[iArg])) == 0` |
+|   382576 |  986 | `		 && pFunc->sName.nByte == SyStrlen(azSelfChecked[iArg]) ){` |
 |        5 |  987 | `			return SXRET_OK;` |
 |        - |  988 | `		}` |
-|   382657 |  989 | `	}` |
-|   764567 |  990 | `	iArg = 0;` |
-|   764567 |  991 | `	zCur = zSig;` |
-|   764567 |  992 | `	zEnd = &zSig[SyStrlen(zSig)];` |
-|  2181862 |  993 | `	while( zCur < zEnd && iArg < nGiven ){` |
+|   382572 |  989 | `	}` |
+|   764395 |  990 | `	iArg = 0;` |
+|   764395 |  991 | `	zCur = zSig;` |
+|   764395 |  992 | `	zEnd = &zSig[SyStrlen(zSig)];` |
+|  2181461 |  993 | `	while( zCur < zEnd && iArg < nGiven ){` |
 |        - |  994 | `		const char *zType, *zName, *zStop;` |
 |        - |  995 | `		int nType, nName;` |
 |        - |  996 | `		ph7_value *pArg;` |
 |        - |  997 | `		/* Parameter = "<type> $<name>[ = <default>]"; the type is whatever` |
 |        - |  998 | `		 * precedes the '$', and an empty type means "untyped" (no screen). */` |
-|  2094639 |  999 | `		while( zCur < zEnd && zCur[0] == ' ' ){` |
-|   675172 | 1000 | `			zCur++;` |
+|  2094325 |  999 | `		while( zCur < zEnd && zCur[0] == ' ' ){` |
+|   675089 | 1000 | `			zCur++;` |
 |        5 | 1001 | `		}` |
-|  1419472 | 1002 | `		zStop = zCur;` |
-| 22541739 | 1003 | `		while( zStop < zEnd && zStop[0] != ',' ){` |
-| 21122272 | 1004 | `			zStop++;` |
+|  1419241 | 1002 | `		zStop = zCur;` |
+| 22538535 | 1003 | `		while( zStop < zEnd && zStop[0] != ',' ){` |
+| 21119299 | 1004 | `			zStop++;` |
 |        5 | 1005 | `		}` |
-|  1419472 | 1006 | `		zName = zCur;` |
-| 10446344 | 1007 | `		while( zName < zStop && zName[0] != '$' ){` |
-|  9026877 | 1008 | `			zName++;` |
+|  1419241 | 1006 | `		zName = zCur;` |
+| 10444975 | 1007 | `		while( zName < zStop && zName[0] != '$' ){` |
+|  9025739 | 1008 | `			zName++;` |
 |        5 | 1009 | `		}` |
-|  1419472 | 1010 | `		if( zName >= zStop ){` |
+|  1419241 | 1010 | `		if( zName >= zStop ){` |
 |        7 | 1011 | `			break; /* malformed / no parameter name — stop screening */` |
 |        - | 1012 | `		}` |
-|  1419466 | 1013 | `		if( zName >= zCur + 3 && SyMemcmp(zName - 3,"...",3) == 0 ){` |
-|     1957 | 1014 | `			break; /* variadic tail: stop (its type applies to the rest) */` |
+|  1419235 | 1013 | `		if( zName >= zCur + 3 && SyMemcmp(zName - 3,"...",3) == 0 ){` |
+|     1955 | 1014 | `			break; /* variadic tail: stop (its type applies to the rest) */` |
 |        - | 1015 | `		}` |
-|  1417514 | 1016 | `		zType = zCur;` |
-|  1417514 | 1017 | `		nType = (int)(zName - zCur);` |
+|  1417285 | 1016 | `		zType = zCur;` |
+|  1417285 | 1017 | `		nType = (int)(zName - zCur);` |
 |        - | 1018 | `		/* Trim the trailing spaces and the by-ref marker of "array &$array" */` |
-|  3513305 | 1019 | `		while( nType > 0 && (zType[nType-1] == ' ' \|\| zType[nType-1] == '&') ){` |
-|  1386566 | 1020 | `			nType--;` |
+|  3512746 | 1019 | `		while( nType > 0 && (zType[nType-1] == ' ' \|\| zType[nType-1] == '&') ){` |
+|  1386349 | 1020 | `			nType--;` |
 |        5 | 1021 | `		}` |
-|  1417514 | 1022 | `		zName++; /* skip '$' */` |
-|  1417514 | 1023 | `		nName = 0;` |
-| 10259042 | 1024 | `		while( &zName[nName] < zStop && zName[nName] != ' ' && zName[nName] != '=' ){` |
-|  8841533 | 1025 | `			nName++;` |
+|  1417285 | 1022 | `		zName++; /* skip '$' */` |
+|  1417285 | 1023 | `		nName = 0;` |
+| 10257487 | 1024 | `		while( &zName[nName] < zStop && zName[nName] != ' ' && zName[nName] != '=' ){` |
+|  8840207 | 1025 | `			nName++;` |
 |        5 | 1026 | `		}` |
-|  1417514 | 1027 | `		pArg = apArg[iArg];` |
-|  1417514 | 1028 | `		if( nType > 0 && !VmSigTypeHas(zType,nType,"mixed") ){` |
-|  1310090 | 1029 | `			const char *zGiven = 0;` |
-|  1310090 | 1030 | `			if( (pArg->iFlags & MEMOBJ_HASHMAP) != 0 ){` |
-|    74000 | 1031 | `				if( !VmSigTypeHas(zType,nType,"array")` |
-|    37075 | 1032 | `				 && !VmSigTypeHas(zType,nType,"iterable")` |
+|  1417285 | 1027 | `		pArg = apArg[iArg];` |
+|  1417285 | 1028 | `		if( nType > 0 && !VmSigTypeHas(zType,nType,"mixed") ){` |
+|  1309899 | 1029 | `			const char *zGiven = 0;` |
+|  1309899 | 1030 | `			if( (pArg->iFlags & MEMOBJ_HASHMAP) != 0 ){` |
+|    73968 | 1031 | `				if( !VmSigTypeHas(zType,nType,"array")` |
+|    37059 | 1032 | `				 && !VmSigTypeHas(zType,nType,"iterable")` |
 |      155 | 1033 | `				 && !VmSigTypeHas(zType,nType,"callable") ){` |
 |      119 | 1034 | `					zGiven = "array";` |
 |       62 | 1035 | `				}` |
-|  1273090 | 1036 | `			}else if( (pArg->iFlags & MEMOBJ_OBJ) != 0 ){` |
+|  1272915 | 1036 | `			}else if( (pArg->iFlags & MEMOBJ_OBJ) != 0 ){` |
 |     1586 | 1037 | `				if( !VmSigTypeHas(zType,nType,"object")` |
 |     1079 | 1038 | `				 && !VmSigTypeHas(zType,nType,"iterable")` |
 |      572 | 1039 | `				 && !VmSigTypeHas(zType,nType,"callable")` |
@@ -1058,19 +1058,19 @@ Coverage: 375/384 lines (97.66%)
 |       60 | 1048 | `						zGiven = VmArgTypeName(pArg);` |
 |       28 | 1049 | `					}` |
 |       57 | 1050 | `				}` |
-|  1235297 | 1051 | `			}else if( (pArg->iFlags & MEMOBJ_NULL) != 0 ){` |
+|  1235138 | 1051 | `			}else if( (pArg->iFlags & MEMOBJ_NULL) != 0 ){` |
 |        - | 1052 | `				/* php only DEPRECATES null for a non-nullable parameter; PHL rejects` |
 |        - | 1053 | `				 * it (scope policy). A leading '?' or an explicit "null" arm in a` |
 |        - | 1054 | `				 * union declares the parameter nullable. A "callable" parameter is` |
 |        - | 1055 | `				 * left to the builtin's own callback check, which words the failure` |
 |        - | 1056 | `				 * php's way ("must be a valid callback, no array or string given") —` |
 |        - | 1057 | `				 * the same reason get_class_vars() sits on azSelfChecked[]. */` |
-|     4904 | 1058 | `				if( zType[0] != '?'` |
-|     2478 | 1059 | `				 && !VmSigTypeHas(zType,nType,"null")` |
+|     4898 | 1058 | `				if( zType[0] != '?'` |
+|     2475 | 1059 | `				 && !VmSigTypeHas(zType,nType,"null")` |
 |       55 | 1060 | `				 && !VmSigTypeHas(zType,nType,"callable") ){` |
 |       46 | 1061 | `					zGiven = "null";` |
 |       26 | 1062 | `				}` |
-|  1232052 | 1063 | `			}else if( (pArg->iFlags & MEMOBJ_RES) != 0 ){` |
+|  1231896 | 1063 | `			}else if( (pArg->iFlags & MEMOBJ_RES) != 0 ){` |
 |        - | 1064 | `				/* A class-typed parameter also accepts a resource: several handles php 8` |
 |        - | 1065 | `				 * models as objects are still resources here (xml_*'s XMLParser is the` |
 |        - | 1066 | `				 * one the signatures already declare php-8-style, for reflection). The` |
@@ -1082,17 +1082,17 @@ Coverage: 375/384 lines (97.66%)
 |        3 | 1072 | `					zGiven = "resource";` |
 |        1 | 1073 | `				}` |
 |        1 | 1074 | `			}` |
-|  1310090 | 1075 | `			if( zGiven ){` |
+|  1309899 | 1075 | `			if( zGiven ){` |
 |      326 | 1076 | `				return PH7_VmThrowException(pCtx,"TypeError",` |
 |        - | 1077 | `					"%z(): Argument #%d ($%.*s) must be of type %.*s, %s given",` |
 |      107 | 1078 | `					&pFunc->sName,iArg + 1,nName,zName,nType,zType,zGiven);` |
 |        - | 1079 | `			}` |
-|   655355 | 1080 | `		}` |
-|  1417300 | 1081 | `		zCur = (zStop < zEnd) ? zStop + 1 : zEnd;` |
-|  1417300 | 1082 | `		iArg++;` |
+|   655260 | 1080 | `		}` |
+|  1417071 | 1081 | `		zCur = (zStop < zEnd) ? zStop + 1 : zEnd;` |
+|  1417071 | 1082 | `		iArg++;` |
 |        5 | 1083 | `	}` |
-|   764353 | 1084 | `	return SXRET_OK;` |
-|   470317 | 1085 | `}` |
+|   764181 | 1084 | `	return SXRET_OK;` |
+|   470204 | 1085 | `}` |
 |        - | 1086 | `/*` |
 |        - | 1087 | ` * Builtins whose accepted arity is NOT a contiguous range, so the signature` |
 |        - | 1088 | ` * cannot express it and the central too-many-arguments check must stay out of` |
@@ -1101,43 +1101,43 @@ Coverage: 375/384 lines (97.66%)
 |        - | 1091 | ` * than the ZPP "at most". They validate themselves; leaving bHasMaxArg at 0` |
 |        - | 1092 | ` * keeps their message php-faithful.` |
 |        - | 1093 | ` */` |
-|  1508372 | 1094 | `static int VmBuiltinSelfValidatesArity(const char *zName)` |
+|  1504990 | 1094 | `static int VmBuiltinSelfValidatesArity(const char *zName)` |
 |        5 | 1095 | `{` |
 |        - | 1096 | `	static const char *const azSelf[] = { "rand", "mt_rand" };` |
 |        - | 1097 | `	sxu32 i;` |
-|  4514975 | 1098 | `	for( i = 0 ; i < SX_ARRAYSIZE(azSelf) ; i++ ){` |
-|  3013367 | 1099 | `		sxu32 nSelf = SyStrlen(azSelf[i]);` |
-|  3013367 | 1100 | `		if( SyStrlen(zName) == nSelf && SyStrncmp(zName,azSelf[i],nSelf) == 0 ){` |
+|  4504829 | 1098 | `	for( i = 0 ; i < SX_ARRAYSIZE(azSelf) ; i++ ){` |
+|  3006603 | 1099 | `		sxu32 nSelf = SyStrlen(azSelf[i]);` |
+|  3006603 | 1100 | `		if( SyStrlen(zName) == nSelf && SyStrncmp(zName,azSelf[i],nSelf) == 0 ){` |
 |     6769 | 1101 | `			return 1;` |
 |        - | 1102 | `		}` |
-|  1503304 | 1103 | `	}` |
-|  1501613 | 1104 | `	return 0;` |
-|   754191 | 1105 | `}` |
+|  1499922 | 1103 | `	}` |
+|  1498231 | 1104 | `	return 0;` |
+|   752500 | 1105 | `}` |
 |     3382 | 1106 | `PH7_PRIVATE void VmSetBuiltinSignatures(ph7_vm *pVm)` |
 |        5 | 1107 | `{` |
 |        - | 1108 | `	sxu32 n;` |
-|  1552343 | 1109 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltinSig) ; n++ ){` |
-|  2323439 | 1110 | `		SyHashEntry *pEntry = SyHashGet(&pVm->hHostFunction,` |
-|  1548956 | 1111 | `			(const void *)aBuiltinSig[n].zName,(sxu32)SyStrlen(aBuiltinSig[n].zName));` |
-|  1548961 | 1112 | `		if( pEntry ){` |
-|  1508377 | 1113 | `			ph7_user_func *pFunc = (ph7_user_func *)pEntry->pUserData;` |
-|  1508377 | 1114 | `			sxi16 nMin = 0, nMax = 0;` |
-|  1508377 | 1115 | `			sxu8 bAtLeast = 0, bHasMax = 0;` |
-|  1508377 | 1116 | `			pFunc->zSig = aBuiltinSig[n].zSig;` |
-|  1508377 | 1117 | `			pFunc->zRet = aBuiltinSig[n].zRet[0] ? aBuiltinSig[n].zRet : 0;` |
-|  1508377 | 1118 | `			VmDeriveArityFromSig(pFunc->zSig,&nMin,&bAtLeast,&nMax,&bHasMax);` |
+|  1548961 | 1109 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltinSig) ; n++ ){` |
+|  2318366 | 1110 | `		SyHashEntry *pEntry = SyHashGet(&pVm->hHostFunction,` |
+|  1545574 | 1111 | `			(const void *)aBuiltinSig[n].zName,(sxu32)SyStrlen(aBuiltinSig[n].zName));` |
+|  1545579 | 1112 | `		if( pEntry ){` |
+|  1504995 | 1113 | `			ph7_user_func *pFunc = (ph7_user_func *)pEntry->pUserData;` |
+|  1504995 | 1114 | `			sxi16 nMin = 0, nMax = 0;` |
+|  1504995 | 1115 | `			sxu8 bAtLeast = 0, bHasMax = 0;` |
+|  1504995 | 1116 | `			pFunc->zSig = aBuiltinSig[n].zSig;` |
+|  1504995 | 1117 | `			pFunc->zRet = aBuiltinSig[n].zRet[0] ? aBuiltinSig[n].zRet : 0;` |
+|  1504995 | 1118 | `			VmDeriveArityFromSig(pFunc->zSig,&nMin,&bAtLeast,&nMax,&bHasMax);` |
 |        - | 1119 | `			/* The MAXIMUM always comes from the signature: the curated override` |
 |        - | 1120 | `			 * table speaks only to the minimum (and its wording). */` |
-|  1508377 | 1121 | `			pFunc->nMaxArg = nMax;` |
-|  1508377 | 1122 | `			pFunc->bHasMaxArg = (sxu8)(VmBuiltinSelfValidatesArity(aBuiltinSig[n].zName) ? 0 : bHasMax);` |
-|  1508377 | 1123 | `			if( pFunc->nMinArg < 1 ){` |
+|  1504995 | 1121 | `			pFunc->nMaxArg = nMax;` |
+|  1504995 | 1122 | `			pFunc->bHasMaxArg = (sxu8)(VmBuiltinSelfValidatesArity(aBuiltinSig[n].zName) ? 0 : bHasMax);` |
+|  1504995 | 1123 | `			if( pFunc->nMinArg < 1 ){` |
 |        - | 1124 | `				/* VmSetBuiltinArity() ran first: a non-zero minimum here means the` |
 |        - | 1125 | `				 * curated override already spoke for this builtin, so leave it. */` |
-|   632439 | 1126 | `				pFunc->nMinArg = nMin;` |
-|   632439 | 1127 | `				pFunc->bAtLeast = bAtLeast;` |
-|   316217 | 1128 | `			}` |
-|   754186 | 1129 | `		}` |
-|   774483 | 1130 | `	}` |
+|   625675 | 1126 | `				pFunc->nMinArg = nMin;` |
+|   625675 | 1127 | `				pFunc->bAtLeast = bAtLeast;` |
+|   312835 | 1128 | `			}` |
+|   752495 | 1129 | `		}` |
+|   772792 | 1130 | `	}` |
 |     3387 | 1131 | `}` |
 |        - | 1132 | `/*` |
 |        - | 1133 | ` * Signature lookup by function name, for the reflection layer: embedded-PHP` |
@@ -1300,13 +1300,13 @@ Coverage: 375/384 lines (97.66%)
 |        - | 1290 | ` * not mimicked: PHL removes them outright (see the scope policy), so there is no` |
 |        - | 1291 | ` * engine-side E_DEPRECATED list here.` |
 |        - | 1292 | ` */` |
-|    23284 | 1293 | `PH7_PRIVATE void VmExpandConstantWithNotice(ph7_vm *pVm,ph7_constant *pCons,ph7_value *pOut)` |
+|    23272 | 1293 | `PH7_PRIVATE void VmExpandConstantWithNotice(ph7_vm *pVm,ph7_constant *pCons,ph7_value *pOut)` |
 |        5 | 1294 | `{` |
-|    23289 | 1295 | `	if( SySetUsed(&pCons->aAttrs) > 0 ){` |
+|    23277 | 1295 | `	if( SySetUsed(&pCons->aAttrs) > 0 ){` |
 |        7 | 1296 | `		VmDeprecatedAttrNoticeSubject(pVm,&pCons->aAttrs,"Constant",0,&pCons->sName);` |
 |        3 | 1297 | `	}` |
-|    23289 | 1298 | `	pCons->xExpand(pOut,pCons->pUserData);` |
-|    23289 | 1299 | `}` |
+|    23277 | 1298 | `	pCons->xExpand(pOut,pCons->pUserData);` |
+|    23277 | 1299 | `}` |
 |        - | 1300 | `/*` |
 |        - | 1301 | ` * Scan a declared-attribute set for #[\Deprecated]; when found, evaluate its` |
 |        - | 1302 | ` * message:/since: arguments (positional #0 = message, #1 = since) into the` |

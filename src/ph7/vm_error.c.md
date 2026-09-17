@@ -281,11 +281,11 @@ Coverage: 1759/2029 lines (86.69%)
 |      - |  271 | ` * php's non-deprecated surface and rejects it with a TypeError. An INTEGRAL float` |
 |      - |  272 | `` * (`4.0 % 3`) loses nothing and is accepted. Returns SXRET_OK to continue, or the`` |
 |      - |  273 | ` * throw status for the caller to route via PH7_DISPATCH_ENFORCE_RC. */` |
-|   4282 |  274 | `PH7_PRIVATE sxi32 VmRejectFloatOperand(ph7_vm *pVm,ph7_value *pVal)` |
+|   4276 |  274 | `PH7_PRIVATE sxi32 VmRejectFloatOperand(ph7_vm *pVm,ph7_value *pVal)` |
 |      5 |  275 | `{` |
 |      - |  276 | `	double r;` |
-|   4287 |  277 | `	if( pVal == 0 \|\| (pVal->iFlags & MEMOBJ_REAL) == 0 ){` |
-|   4287 |  278 | `		return SXRET_OK;` |
+|   4281 |  277 | `	if( pVal == 0 \|\| (pVal->iFlags & MEMOBJ_REAL) == 0 ){` |
+|   4281 |  278 | `		return SXRET_OK;` |
 |      - |  279 | `	}` |
 |    ! 0 |  280 | `	r = (double)pVal->rVal;` |
 |    ! 0 |  281 | `	if( r == (double)(sxi64)r ){` |
@@ -293,7 +293,7 @@ Coverage: 1759/2029 lines (86.69%)
 |      - |  283 | `	}` |
 |    ! 0 |  284 | `	return VmThrowFixedError(pVm,"TypeError",` |
 |      - |  285 | `		"Implicit conversion from float to int loses precision");` |
-|   2146 |  286 | `}` |
+|   2143 |  286 | `}` |
 |      - |  287 | `/*` |
 |      - |  288 | ` * Single source of truth for the PHP call-depth cap policy (BYTECODE.md stage` |
 |      - |  289 | ` * 5). Only OP_CALL tests this — a PHP->PHP call is the sole thing that grows` |
@@ -301,11 +301,11 @@ Coverage: 1759/2029 lines (86.69%)
 |      - |  291 | ` * C->PHP callbacks) are bounded separately by nMaxNativeDepth in the` |
 |      - |  292 | ` * VmByteCodeExec wrapper, since PHP recursion no longer grows the C stack.` |
 |      - |  293 | ` */` |
-| 106668 |  294 | `PH7_PRIVATE int VmRecursionExceeded(ph7_vm *pVm)` |
+| 106670 |  294 | `PH7_PRIVATE int VmRecursionExceeded(ph7_vm *pVm)` |
 |      5 |  295 | `{` |
 |      - |  296 | `	/* nMaxDepth == 0 means unbounded (the host default): PHP call depth is` |
 |      - |  297 | `	 * heap-bound, so only an embedder-configured cap can trip. */` |
-| 106673 |  298 | `	return pVm->nMaxDepth > 0 && pVm->nRecursionDepth > pVm->nMaxDepth;` |
+| 106675 |  298 | `	return pVm->nMaxDepth > 0 && pVm->nRecursionDepth > pVm->nMaxDepth;` |
 |      5 |  299 | `}` |
 |      - |  300 | `/*` |
 |      - |  301 | ` * Single source of truth for the NATIVE VmByteCodeExec nesting cap (the C-stack` |
@@ -315,9 +315,9 @@ Coverage: 1759/2029 lines (86.69%)
 |      - |  305 | ` * bounded (unlike the PHP cap there is no unbounded mode — the whole point is to` |
 |      - |  306 | ` * keep native re-entries off a finite C stack).` |
 |      - |  307 | ` */` |
-| 163096 |  308 | `PH7_PRIVATE int VmNativeNestingExceeded(ph7_vm *pVm)` |
+| 163108 |  308 | `PH7_PRIVATE int VmNativeNestingExceeded(ph7_vm *pVm)` |
 |      5 |  309 | `{` |
-| 163101 |  310 | `	return pVm->nVmExecDepth >= pVm->nMaxNativeDepth;` |
+| 163113 |  310 | `	return pVm->nVmExecDepth >= pVm->nMaxNativeDepth;` |
 |      5 |  311 | `}` |
 |      - |  312 | `/*` |
 |      - |  313 | ` * Raise the recursion-limit fatal and request a clean VM halt. Mirrors` |
@@ -957,16 +957,16 @@ Coverage: 1759/2029 lines (86.69%)
 |      - |  947 | ` * the "Cannot modify readonly property" case. Returns SXRET_OK to proceed, or the` |
 |      - |  948 | ` * PH7_EXCEPTION/PH7_ABORT produced by the throw.` |
 |      - |  949 | ` */` |
-| 375482 |  950 | `PH7_PRIVATE sxi32 VmCheckReadonlyMutate(ph7_vm *pVm,sxu32 nIdx)` |
+| 375478 |  950 | `PH7_PRIVATE sxi32 VmCheckReadonlyMutate(ph7_vm *pVm,sxu32 nIdx)` |
 |      5 |  951 | `{` |
 |      - |  952 | `	SyHashEntry *pSlot;` |
 |      - |  953 | `	VmClassAttr *pVmAttr;` |
-| 375487 |  954 | `	if( nIdx == SXU32_HIGH \|\| SyHashTotalEntry(&pVm->hTypedSlot) == 0 ){` |
+| 375483 |  954 | `	if( nIdx == SXU32_HIGH \|\| SyHashTotalEntry(&pVm->hTypedSlot) == 0 ){` |
 | 290901 |  955 | `		return SXRET_OK; /* Non-lvalue operand, or no typed/readonly properties — skip */` |
 |      - |  956 | `	}` |
-|  84590 |  957 | `	pSlot = SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32));` |
-|  84590 |  958 | `	if( pSlot == 0 ){` |
-|  84505 |  959 | `		return SXRET_OK; /* Not a typed slot */` |
+|  84586 |  957 | `	pSlot = SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32));` |
+|  84586 |  958 | `	if( pSlot == 0 ){` |
+|  84501 |  959 | `		return SXRET_OK; /* Not a typed slot */` |
 |      - |  960 | `	}` |
 |     88 |  961 | `	pVmAttr = (VmClassAttr *)pSlot->pUserData;` |
 |     88 |  962 | `	if( pVmAttr->pAttr && (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_READONLY) ){` |
@@ -978,7 +978,7 @@ Coverage: 1759/2029 lines (86.69%)
 |      7 |  968 | `		return VmCheckSetVisibility(pVm,pVmAttr->pOwner,pVmAttr->pAttr);` |
 |      - |  969 | `	}` |
 |     70 |  970 | `	return SXRET_OK;` |
-| 187851 |  971 | `}` |
+| 187849 |  971 | `}` |
 |      - |  972 | `/*` |
 |      - |  973 | ` * Enforce a typed-property assignment. On entry pValue holds the incoming` |
 |      - |  974 | ` * value. For scalar types it may be coerced in place (PHP 7.4 weak mode).` |
@@ -1377,14 +1377,14 @@ Coverage: 1759/2029 lines (86.69%)
 |     39 | 1367 | `	return zBuf;` |
 |      5 | 1368 | `}` |
 |      - | 1369 |  |
-|  14024 | 1370 | `PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue,int bCloneInit)` |
+|  14032 | 1370 | `PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue,int bCloneInit)` |
 |      5 | 1371 | `{` |
 |      - | 1372 | `	SyHashEntry *pSlot;` |
 |      - | 1373 | `	VmClassAttr *pVmAttr;` |
 |      - | 1374 | `	ph7_class_attr *pAttr;` |
-|  14029 | 1375 | `	pSlot = SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32));` |
-|  14029 | 1376 | `	if( pSlot == 0 ){` |
-|  13541 | 1377 | `		return SXRET_OK; /* Not a typed slot */` |
+|  14037 | 1375 | `	pSlot = SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32));` |
+|  14037 | 1376 | `	if( pSlot == 0 ){` |
+|  13549 | 1377 | `		return SXRET_OK; /* Not a typed slot */` |
 |      - | 1378 | `	}` |
 |    493 | 1379 | `	pVmAttr = (VmClassAttr *)pSlot->pUserData;` |
 |    493 | 1380 | `	pAttr = pVmAttr->pAttr;` |
@@ -1544,7 +1544,7 @@ Coverage: 1759/2029 lines (86.69%)
 |      6 | 1534 | `	}` |
 |    317 | 1535 | `	pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;` |
 |    317 | 1536 | `	return SXRET_OK;` |
-|   7017 | 1537 | `}` |
+|   7021 | 1537 | `}` |
 |      - | 1538 | `/*` |
 |      - | 1539 | ` * Apply ONE property update from a PHP 8.5 clone($obj, [ 'name' => value, ... ])` |
 |      - | 1540 | ` * to the freshly-produced clone. The write happens in the caller's scope, so:` |
@@ -1830,22 +1830,22 @@ Coverage: 1759/2029 lines (86.69%)
 |      - | 1820 | ` * pick php's wording — "exactly N expected" when required == total,` |
 |      - | 1821 | ` * "at least N" when trailing optionals exist.` |
 |      - | 1822 | ` */` |
-|   6766 | 1823 | `PH7_PRIVATE sxu32 VmFuncRequiredArgCount(ph7_vm_func *pFunc,sxu32 *pnNonVariadic)` |
+|   6770 | 1823 | `PH7_PRIVATE sxu32 VmFuncRequiredArgCount(ph7_vm_func *pFunc,sxu32 *pnNonVariadic)` |
 |      5 | 1824 | `{` |
-|   6771 | 1825 | `	ph7_vm_func_arg *aFormal = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);` |
-|   6771 | 1826 | `	sxu32 nFormal = SySetUsed(&pFunc->aArgs);` |
-|   6771 | 1827 | `	sxu32 nRequired = 0;` |
+|   6775 | 1825 | `	ph7_vm_func_arg *aFormal = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);` |
+|   6775 | 1826 | `	sxu32 nFormal = SySetUsed(&pFunc->aArgs);` |
+|   6775 | 1827 | `	sxu32 nRequired = 0;` |
 |      - | 1828 | `	sxu32 n;` |
-|   6771 | 1829 | `	if( nFormal > 0 && (aFormal[nFormal - 1].iFlags & VM_FUNC_ARG_VARIADIC) ){` |
+|   6775 | 1829 | `	if( nFormal > 0 && (aFormal[nFormal - 1].iFlags & VM_FUNC_ARG_VARIADIC) ){` |
 |    297 | 1830 | `		nFormal--;` |
 |    146 | 1831 | `	}` |
-|  29539 | 1832 | `	for( n = 0 ; n < nFormal ; ++n ){` |
-|  22773 | 1833 | `		if( SySetUsed(&aFormal[n].aByteCode) < 1 ){` |
+|  29555 | 1832 | `	for( n = 0 ; n < nFormal ; ++n ){` |
+|  22785 | 1833 | `		if( SySetUsed(&aFormal[n].aByteCode) < 1 ){` |
 |   4735 | 1834 | `			nRequired = n + 1;` |
 |   2365 | 1835 | `		}` |
-|  11389 | 1836 | `	}` |
-|   6771 | 1837 | `	*pnNonVariadic = nFormal;` |
-|   6771 | 1838 | `	return nRequired;` |
+|  11395 | 1836 | `	}` |
+|   6775 | 1837 | `	*pnNonVariadic = nFormal;` |
+|   6775 | 1838 | `	return nRequired;` |
 |      5 | 1839 | `}` |
 |      - | 1840 | `/*` |
 |      - | 1841 | ` * Throw php's catchable ArgumentCountError for a user function/method called` |
@@ -2104,9 +2104,9 @@ Coverage: 1759/2029 lines (86.69%)
 |      - | 2094 | ` * left 0). The return-enforcement gates must consult both, not just the single` |
 |      - | 2095 | ` * type field.` |
 |      - | 2096 | ` */` |
-| 124992 | 2097 | `PH7_PRIVATE int VmFuncHasReturnType(ph7_vm_func *pFunc)` |
+| 124994 | 2097 | `PH7_PRIVATE int VmFuncHasReturnType(ph7_vm_func *pFunc)` |
 |      5 | 2098 | `{` |
-| 124997 | 2099 | `	return pFunc->nReturnType > 0 \|\| SySetUsed(&pFunc->aReturnUnion) > 0;` |
+| 124999 | 2099 | `	return pFunc->nReturnType > 0 \|\| SySetUsed(&pFunc->aReturnUnion) > 0;` |
 |      5 | 2100 | `}` |
 |   9206 | 2101 | `PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value *pValue)` |
 |      5 | 2102 | `{` |
@@ -2660,9 +2660,9 @@ Coverage: 1759/2029 lines (86.69%)
 |      - | 2650 | ` * here, both to release the leaked instance ref/key and to stop a later` |
 |      - | 2651 | ` * unrelated NULLC_STORE from dispatching offsetSet() on the stale slot.` |
 |      - | 2652 | ` */` |
-|   2996 | 2653 | `PH7_PRIVATE void VmCoalesceDisarm(ph7_vm *pVm)` |
+|   3000 | 2653 | `PH7_PRIVATE void VmCoalesceDisarm(ph7_vm *pVm)` |
 |      5 | 2654 | `{` |
-|   3001 | 2655 | `	if( pVm->bCoalesceArmed ){` |
+|   3005 | 2655 | `	if( pVm->bCoalesceArmed ){` |
 |      8 | 2656 | `		if( pVm->pCoalesceObj ){` |
 |      8 | 2657 | `			PH7_ClassInstanceUnref(pVm->pCoalesceObj);` |
 |      3 | 2658 | `		}` |
@@ -2670,7 +2670,7 @@ Coverage: 1759/2029 lines (86.69%)
 |      8 | 2660 | `		pVm->pCoalesceObj = 0;` |
 |      8 | 2661 | `		pVm->bCoalesceArmed = 0;` |
 |      3 | 2662 | `	}` |
-|   3001 | 2663 | `}` |
+|   3005 | 2663 | `}` |
 |      - | 2664 | `/*` |
 |      - | 2665 | ` * Throw a PHP-compatible exception of the named class from inside the VM` |
 |      - | 2666 | ` * bytecode dispatch loop (where no ph7_context is available). The message` |
@@ -2750,23 +2750,23 @@ Coverage: 1759/2029 lines (86.69%)
 |      - | 2740 | ` * frame shape is file/line/function[/class/type], matching the default` |
 |      - | 2741 | ` * zend.exception_ignore_args=On.` |
 |      - | 2742 | ` */` |
-|   2846 | 2743 | `PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,ph7_value *pList)` |
+|   2850 | 2743 | `PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,ph7_value *pList)` |
 |      5 | 2744 | `{` |
 |      - | 2745 | `	SyString *pFile;` |
 |      - | 2746 | `	VmFrame *pFrame;` |
 |      - | 2747 | `	ph7_value *pValue;` |
-|   2851 | 2748 | `	pValue = ph7_new_scalar(&(*pVm));` |
-|   2851 | 2749 | `	if( pValue == 0 ){` |
+|   2855 | 2748 | `	pValue = ph7_new_scalar(&(*pVm));` |
+|   2855 | 2749 | `	if( pValue == 0 ){` |
 |    ! 0 | 2750 | `		return;` |
 |      - | 2751 | `	}` |
-|   2851 | 2752 | `	pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
-|   2851 | 2753 | `	pFrame = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;` |
-|   4597 | 2754 | `	while( pFrame ){` |
-|   4597 | 2755 | `		ph7_vm_func *pFunc = (ph7_vm_func *)pFrame->pUserData;` |
+|   2855 | 2752 | `	pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
+|   2855 | 2753 | `	pFrame = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;` |
+|   4601 | 2754 | `	while( pFrame ){` |
+|   4601 | 2755 | `		ph7_vm_func *pFunc = (ph7_vm_func *)pFrame->pUserData;` |
 |      - | 2756 | `		ph7_value *pEntry;` |
-|   4597 | 2757 | `		if( pFrame->pParent == 0 \|\| pFunc == 0 ){` |
+|   4601 | 2757 | `		if( pFrame->pParent == 0 \|\| pFunc == 0 ){` |
 |      - | 2758 | `			/* The global frame is not a call: php stops before it (no "{main}"). */` |
-|   1428 | 2759 | `			break;` |
+|   1430 | 2759 | `			break;` |
 |      - | 2760 | `		}` |
 |   1751 | 2761 | `		pEntry = ph7_new_array(&(*pVm));` |
 |   1751 | 2762 | `		if( pEntry == 0 ){` |
@@ -2854,8 +2854,8 @@ Coverage: 1759/2029 lines (86.69%)
 |   1751 | 2844 | `		ph7_release_value(&(*pVm),pEntry);` |
 |   1751 | 2845 | `		pFrame = pFrame->pParent ? VmSkipExceptionFrames(pFrame->pParent) : 0;` |
 |      5 | 2846 | `	}` |
-|   2851 | 2847 | `	ph7_release_value(&(*pVm),pValue);` |
-|   1428 | 2848 | `}` |
+|   2855 | 2847 | `	ph7_release_value(&(*pVm),pValue);` |
+|   1430 | 2848 | `}` |
 |      - | 2849 | `/*` |
 |      - | 2850 | ` * Stamp a freshly created Throwable with the site it was created at.` |
 |      - | 2851 | ` *` |
@@ -2867,79 +2867,79 @@ Coverage: 1759/2029 lines (86.69%)
 |      - | 2857 | ` * field, and this runs for every instantiation path (OP_NEW and the engine's own` |
 |      - | 2858 | ` * VmThrowBuiltinError / VmThrowFixedError).` |
 |      - | 2859 | ` */` |
-|   8586 | 2860 | `PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|   8590 | 2860 | `PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis)` |
 |      5 | 2861 | `{` |
 |      - | 2862 | `	static const char *azField[] = { "file", "line", "trace" };` |
 |      - | 2863 | `	ph7_class *pThrowable;` |
 |      - | 2864 | `	SyString *pFile;` |
 |      - | 2865 | `	SyString *pSiteFile;` |
 |      - | 2866 | `	sxu32 n;` |
-|   8591 | 2867 | `	if( pThis == 0 \|\| pThis->pClass == 0 ){` |
+|   8595 | 2867 | `	if( pThis == 0 \|\| pThis->pClass == 0 ){` |
 |    ! 0 | 2868 | `		return;` |
 |      - | 2869 | `	}` |
-|   8591 | 2870 | `	pThrowable = PH7_VmExtractClass(&(*pVm),"Throwable",sizeof("Throwable")-1,FALSE,0);` |
-|   8591 | 2871 | `	if( pThrowable == 0 \|\| !PH7_VmInstanceOf(pThis->pClass,pThrowable) ){` |
+|   8595 | 2870 | `	pThrowable = PH7_VmExtractClass(&(*pVm),"Throwable",sizeof("Throwable")-1,FALSE,0);` |
+|   8595 | 2871 | `	if( pThrowable == 0 \|\| !PH7_VmInstanceOf(pThis->pClass,pThrowable) ){` |
 |   5755 | 2872 | `		return;` |
 |      - | 2873 | `	}` |
-|   2841 | 2874 | `	pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
-|   2841 | 2875 | `	pSiteFile = pFile;` |
+|   2845 | 2874 | `	pFile = (SyString *)SySetPeek(&pVm->aFiles);` |
+|   2845 | 2875 | `	pSiteFile = pFile;` |
 |      - | 2876 | ``	/* getFile() is the file where `new` executed = the DEFINING file of the`` |
 |      - | 2877 | `	 * innermost active function (aFiles tracks include nesting, not the running` |
 |      - | 2878 | `	 * function's source, so it is wrong once a call chain spans files). Fall back` |
 |      - | 2879 | `	 * to the include-stack top at global scope / for engine-created throwables. */` |
 |      - | 2880 | `	{` |
-|   2841 | 2881 | `		VmFrame *pInner = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;` |
-|   2841 | 2882 | `		if( pInner && pInner->pUserData ){` |
+|   2845 | 2881 | `		VmFrame *pInner = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;` |
+|   2845 | 2882 | `		if( pInner && pInner->pUserData ){` |
 |   1087 | 2883 | `			ph7_vm_func *pInnerFunc = (ph7_vm_func *)pInner->pUserData;` |
 |   1087 | 2884 | `			if( pInnerFunc->sFile.nByte > 0 ){` |
 |    823 | 2885 | `				pSiteFile = &pInnerFunc->sFile;` |
 |    409 | 2886 | `			}` |
 |    541 | 2887 | `		}` |
 |      - | 2888 | `	}` |
-|  11349 | 2889 | `	for( n = 0 ; n < SX_ARRAYSIZE(azField) ; ++n ){` |
+|  11365 | 2889 | `	for( n = 0 ; n < SX_ARRAYSIZE(azField) ; ++n ){` |
 |      - | 2890 | `		SyHashEntry *pEntry;` |
 |      - | 2891 | `		VmClassAttr *pVmAttr;` |
 |      - | 2892 | `		ph7_value *pAttrValue;` |
-|   8513 | 2893 | `		pEntry = SyHashGet(&pThis->hAttr,(const void *)azField[n],SyStrlen(azField[n]));` |
-|   8513 | 2894 | `		if( pEntry == 0 ){` |
+|   8525 | 2893 | `		pEntry = SyHashGet(&pThis->hAttr,(const void *)azField[n],SyStrlen(azField[n]));` |
+|   8525 | 2894 | `		if( pEntry == 0 ){` |
 |    ! 0 | 2895 | `			continue;` |
 |      - | 2896 | `		}` |
-|   8513 | 2897 | `		pVmAttr = (VmClassAttr *)pEntry->pUserData;` |
-|   8513 | 2898 | `		pAttrValue = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);` |
-|   8513 | 2899 | `		if( pAttrValue == 0 ){` |
+|   8525 | 2897 | `		pVmAttr = (VmClassAttr *)pEntry->pUserData;` |
+|   8525 | 2898 | `		pAttrValue = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);` |
+|   8525 | 2899 | `		if( pAttrValue == 0 ){` |
 |    ! 0 | 2900 | `			continue;` |
 |      - | 2901 | `		}` |
-|   8513 | 2902 | `		if( n == 0 ){` |
-|   2841 | 2903 | `			if( pSiteFile ){` |
-|   2841 | 2904 | `				PH7_MemObjRelease(pAttrValue);` |
-|   2841 | 2905 | `				PH7_MemObjInitFromString(&(*pVm),pAttrValue,pSiteFile);` |
-|   1423 | 2906 | `			}` |
-|   7095 | 2907 | `		}else if( n == 1 ){` |
-|   2841 | 2908 | `			PH7_MemObjRelease(pAttrValue);` |
-|   2841 | 2909 | `			PH7_MemObjInitFromInt(&(*pVm),pAttrValue,(sxi64)(pVm->nCurLine ? pVm->nCurLine : 1));` |
-|   1423 | 2910 | `		}else{` |
+|   8525 | 2902 | `		if( n == 0 ){` |
+|   2845 | 2903 | `			if( pSiteFile ){` |
+|   2845 | 2904 | `				PH7_MemObjRelease(pAttrValue);` |
+|   2845 | 2905 | `				PH7_MemObjInitFromString(&(*pVm),pAttrValue,pSiteFile);` |
+|   1425 | 2906 | `			}` |
+|   7105 | 2907 | `		}else if( n == 1 ){` |
+|   2845 | 2908 | `			PH7_MemObjRelease(pAttrValue);` |
+|   2845 | 2909 | `			PH7_MemObjInitFromInt(&(*pVm),pAttrValue,(sxi64)(pVm->nCurLine ? pVm->nCurLine : 1));` |
+|   1425 | 2910 | `		}else{` |
 |      - | 2911 | `			/* trace: php captures the FULL backtrace at the CREATION site (innermost` |
 |      - | 2912 | ``			 * = the function that ran `new`, reported at its call site). Reuse the`` |
 |      - | 2913 | `			 * shared walk with IGNORE_ARGS + no PROVIDE_OBJECT to match php's default` |
 |      - | 2914 | `			 * exception-trace shape (file/line/function[/class/type]). */` |
-|   2841 | 2915 | `			ph7_value *pList = ph7_new_array(&(*pVm));` |
-|   2841 | 2916 | `			if( pList == 0 ){` |
+|   2845 | 2915 | `			ph7_value *pList = ph7_new_array(&(*pVm));` |
+|   2845 | 2916 | `			if( pList == 0 ){` |
 |    ! 0 | 2917 | `				continue;` |
 |      - | 2918 | `			}` |
-|   2841 | 2919 | `			VmBuildBacktrace(&(*pVm),2 /*DEBUG_BACKTRACE_IGNORE_ARGS*/,pList);` |
+|   2845 | 2919 | `			VmBuildBacktrace(&(*pVm),2 /*DEBUG_BACKTRACE_IGNORE_ARGS*/,pList);` |
 |      - | 2920 | `			/* Building the trace reserves new memobjs, which may realloc` |
 |      - | 2921 | `			 * pVm->aMemObj and INVALIDATE pAttrValue (a pointer INTO that set,` |
 |      - | 2922 | `			 * from PH7_ClassInstanceExtractAttrValue above). Re-fetch the slot` |
 |      - | 2923 | `			 * AFTER the walk before releasing/storing into it. */` |
-|   2841 | 2924 | `			pAttrValue = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);` |
-|   2841 | 2925 | `			if( pAttrValue ){` |
-|   2841 | 2926 | `				PH7_MemObjRelease(pAttrValue);` |
-|   2841 | 2927 | `				PH7_MemObjStore(pList,pAttrValue);` |
-|   1418 | 2928 | `			}` |
-|   2841 | 2929 | `			ph7_release_value(&(*pVm),pList);` |
+|   2845 | 2924 | `			pAttrValue = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);` |
+|   2845 | 2925 | `			if( pAttrValue ){` |
+|   2845 | 2926 | `				PH7_MemObjRelease(pAttrValue);` |
+|   2845 | 2927 | `				PH7_MemObjStore(pList,pAttrValue);` |
+|   1420 | 2928 | `			}` |
+|   2845 | 2929 | `			ph7_release_value(&(*pVm),pList);` |
 |      - | 2930 | `		}` |
-|   4259 | 2931 | `	}` |
-|   4298 | 2932 | `}` |
+|   4265 | 2931 | `	}` |
+|   4300 | 2932 | `}` |
 |     46 | 2933 | `PH7_PRIVATE const char * VmArithTypeName(ph7_value *pVal)` |
 |      3 | 2934 | `{` |
 |     49 | 2935 | `	if( (pVal->iFlags & MEMOBJ_OBJ) != 0 ){` |
@@ -3002,7 +3002,7 @@ Coverage: 1759/2029 lines (86.69%)
 |      - | 2992 | `/*` |
 |      - | 2993 | ` * Throw an internal exception instance that can be intercepted by try/catch.` |
 |      - | 2994 | ` */` |
-|   1458 | 2995 | `PH7_PRIVATE sxi32 PH7_VmThrowException(ph7_context *pCtx,const char *zClass,const char *zFormat,...)` |
+|   1462 | 2995 | `PH7_PRIVATE sxi32 PH7_VmThrowException(ph7_context *pCtx,const char *zClass,const char *zFormat,...)` |
 |      5 | 2996 | `{` |
 |      - | 2997 | `	ph7_vm *pVm;` |
 |      - | 2998 | `	ph7_class *pClass;` |
@@ -3016,54 +3016,54 @@ Coverage: 1759/2029 lines (86.69%)
 |      - | 3006 | `	va_list ap;` |
 |      - | 3007 | `	sxi32 rc;` |
 |      - | 3008 |  |
-|   1463 | 3009 | `	if( pCtx == 0 \|\| pCtx->pVm == 0 ){` |
+|   1467 | 3009 | `	if( pCtx == 0 \|\| pCtx->pVm == 0 ){` |
 |    ! 0 | 3010 | `		return PH7_ABORT;` |
 |      - | 3011 | `	}` |
-|   1463 | 3012 | `	pVm = pCtx->pVm;` |
-|   1463 | 3013 | `	if( zClass == 0 \|\| zClass[0] == 0 ){` |
+|   1467 | 3012 | `	pVm = pCtx->pVm;` |
+|   1467 | 3013 | `	if( zClass == 0 \|\| zClass[0] == 0 ){` |
 |    ! 0 | 3014 | `		zClass = "Error";` |
 |    ! 0 | 3015 | `	}` |
-|   1463 | 3016 | `	pClass = PH7_VmExtractClass(&(*pVm),zClass,SyStrlen(zClass),TRUE,0);` |
-|   1463 | 3017 | `	if( pClass == 0 ){` |
+|   1467 | 3016 | `	pClass = PH7_VmExtractClass(&(*pVm),zClass,SyStrlen(zClass),TRUE,0);` |
+|   1467 | 3017 | `	if( pClass == 0 ){` |
 |    ! 0 | 3018 | `		return PH7_VmThrowExceptionTrace(pCtx,zClass,` |
 |      - | 3019 | `			"Cannot throw internal exception, class '%s' is not available",` |
 |    ! 0 | 3020 | `			zClass` |
 |      - | 3021 | `			);` |
 |      - | 3022 | `	}` |
-|   1463 | 3023 | `	pThis = PH7_NewClassInstance(&(*pVm),pClass);` |
-|   1463 | 3024 | `	if( pThis == 0 ){` |
+|   1467 | 3023 | `	pThis = PH7_NewClassInstance(&(*pVm),pClass);` |
+|   1467 | 3024 | `	if( pThis == 0 ){` |
 |    ! 0 | 3025 | `		return PH7_VmThrowExceptionTrace(pCtx,zClass,` |
 |      - | 3026 | `			"Cannot throw internal exception, PH7 is running out of memory"` |
 |      - | 3027 | `			);` |
 |      - | 3028 | `	}` |
 |      - | 3029 |  |
-|   1463 | 3030 | `	SyBlobInit(&sMsg,&pVm->sAllocator);` |
-|   1463 | 3031 | `	va_start(ap,zFormat);` |
-|   1463 | 3032 | `	SyBlobFormatAp(&sMsg,zFormat,ap);` |
-|   1463 | 3033 | `	va_end(ap);` |
+|   1467 | 3030 | `	SyBlobInit(&sMsg,&pVm->sAllocator);` |
+|   1467 | 3031 | `	va_start(ap,zFormat);` |
+|   1467 | 3032 | `	SyBlobFormatAp(&sMsg,zFormat,ap);` |
+|   1467 | 3033 | `	va_end(ap);` |
 |      - | 3034 |  |
-|   1463 | 3035 | `	pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);` |
-|   1463 | 3036 | `	if( pCons ){` |
-|   1463 | 3037 | `		SyStringInitFromBuf(&sMsgStr,(const char *)SyBlobData(&sMsg),SyBlobLength(&sMsg));` |
-|   1463 | 3038 | `		PH7_MemObjInitFromString(&(*pVm),&sArg,&sMsgStr);` |
-|   1463 | 3039 | `		apArg[0] = &sArg;` |
-|   1463 | 3040 | `		PH7_VmCallClassMethod(&(*pVm),pThis,pCons,0,1,apArg);` |
-|   1463 | 3041 | `		PH7_MemObjRelease(&sArg);` |
-|    729 | 3042 | `	}` |
-|   1463 | 3043 | `	SyBlobRelease(&sMsg);` |
+|   1467 | 3035 | `	pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);` |
+|   1467 | 3036 | `	if( pCons ){` |
+|   1467 | 3037 | `		SyStringInitFromBuf(&sMsgStr,(const char *)SyBlobData(&sMsg),SyBlobLength(&sMsg));` |
+|   1467 | 3038 | `		PH7_MemObjInitFromString(&(*pVm),&sArg,&sMsgStr);` |
+|   1467 | 3039 | `		apArg[0] = &sArg;` |
+|   1467 | 3040 | `		PH7_VmCallClassMethod(&(*pVm),pThis,pCons,0,1,apArg);` |
+|   1467 | 3041 | `		PH7_MemObjRelease(&sArg);` |
+|    731 | 3042 | `	}` |
+|   1467 | 3043 | `	SyBlobRelease(&sMsg);` |
 |      - | 3044 |  |
-|   1463 | 3045 | `	pFrame = pVm->pFrame;` |
-|   1463 | 3046 | `	if( pFrame ){` |
-|   1463 | 3047 | `		pFrame = VmSkipExceptionFrames(pFrame);` |
-|   1463 | 3048 | `		pFrame->iFlags \|= VM_FRAME_THROW;` |
-|    729 | 3049 | `	}` |
-|   1463 | 3050 | `	rc = VmThrowException(&(*pVm),pThis);` |
-|   1463 | 3051 | `	PH7_ClassInstanceUnref(pThis);` |
-|   1463 | 3052 | `	if( rc == SXERR_ABORT ){` |
+|   1467 | 3045 | `	pFrame = pVm->pFrame;` |
+|   1467 | 3046 | `	if( pFrame ){` |
+|   1467 | 3047 | `		pFrame = VmSkipExceptionFrames(pFrame);` |
+|   1467 | 3048 | `		pFrame->iFlags \|= VM_FRAME_THROW;` |
+|    731 | 3049 | `	}` |
+|   1467 | 3050 | `	rc = VmThrowException(&(*pVm),pThis);` |
+|   1467 | 3051 | `	PH7_ClassInstanceUnref(pThis);` |
+|   1467 | 3052 | `	if( rc == SXERR_ABORT ){` |
 |    504 | 3053 | `		return PH7_ABORT;` |
 |      - | 3054 | `	}` |
-|    963 | 3055 | `	return PH7_EXCEPTION;` |
-|    734 | 3056 | `}` |
+|    967 | 3055 | `	return PH7_EXCEPTION;` |
+|    736 | 3056 | `}` |
 |      - | 3057 | `/*` |
 |      - | 3058 | ` * Throw an internal error as a PHP-like uncaught exception message with stack trace.` |
 |      - | 3059 | ` * This is intentionally separate from PH7_VmThrowError*() to allow gradual migration.` |
@@ -3310,14 +3310,14 @@ Coverage: 1759/2029 lines (86.69%)
 |      6 | 3300 | `	VmExcRelease(&(*pVm),pException); /* not re-pushed: activation ends here */` |
 |      6 | 3301 | `	return VM_THROW_KEEP_UNWINDING;` |
 |     43 | 3302 | `}` |
-|   2804 | 3303 | `PH7_PRIVATE sxi32 VmThrowException(` |
+|   2808 | 3303 | `PH7_PRIVATE sxi32 VmThrowException(` |
 |      - | 3304 | `	ph7_vm *pVm,              /* Target VM */` |
 |      - | 3305 | `	ph7_class_instance *pThis /* Exception class instance [i.e: Exception $e] */` |
 |      - | 3306 | `	)` |
 |      5 | 3307 | `{` |
 |      - | 3308 | `	ph7_exception_block *pCatch; /* Catch block to execute */` |
 |      - | 3309 | `	ph7_exception **apException;` |
-|   1402 | 3310 | `	ph7_exception *pException;` |
+|   1404 | 3310 | `	ph7_exception *pException;` |
 |     90 | 3311 | `Rethrow:` |
 |      - | 3312 | `	/* Unwinding to the next outer handler loops back here instead of the old` |
 |      - | 3313 | `	 * self tail-call: a throw from N frames deep runs N finallys at constant` |
@@ -3327,7 +3327,7 @@ Coverage: 1759/2029 lines (86.69%)
 |      - | 3317 | `	/* An in-flight throw abandons any pending null-coalesce-assign store:` |
 |      - | 3318 | `	 * disarm so the RHS-evaluation throw can't leave the slot live for a` |
 |      - | 3319 | `	 * later unrelated NULLC_STORE (stale offsetSet) or leak the instance ref. */` |
-|   2989 | 3320 | `	VmCoalesceDisarm(pVm);` |
+|   2993 | 3320 | `	VmCoalesceDisarm(pVm);` |
 |      - | 3321 | `	/* Finally-supersede chaining (PHP): when a finally runs for an in-flight` |
 |      - | 3322 | `	 * exception (pInflightException) and a NEW exception thrown by that finally` |
 |      - | 3323 | `	 * is leaving it — i.e. the exception stack has unwound to/below the depth it` |
@@ -3336,7 +3336,7 @@ Coverage: 1759/2029 lines (86.69%)
 |      - | 3326 | `	 * exception caught locally (a try/catch inside the finally) sits ABOVE the` |
 |      - | 3327 | `	 * base, so it is not chained, matching PHP. VmExceptionLinkPrevious is a no-op` |
 |      - | 3328 | `	 * if pThis already carries a previous, so re-entry across propagation is safe. */` |
-|   2984 | 3329 | `	if( pVm->pInflightException && pThis && pThis != pVm->pInflightException` |
+|   2988 | 3329 | `	if( pVm->pInflightException && pThis && pThis != pVm->pInflightException` |
 |     23 | 3330 | `	 && SySetUsed(&pVm->aException) <= pVm->nInflightExcBase ){` |
 |     18 | 3331 | `		VmExceptionLinkPrevious(pThis,pVm->pInflightException);` |
 |      8 | 3332 | `	}` |
@@ -3350,12 +3350,12 @@ Coverage: 1759/2029 lines (86.69%)
 |      - | 3340 | `	 * the previous catch's landing is no longer where control should resume. Cleared` |
 |      - | 3341 | `	 * here so nested in-place catches resolve correctly — the OUTERMOST catch to finish` |
 |      - | 3342 | `	 * records last (on its SXRET_OK return below) and therefore owns the resume. */` |
-|   2989 | 3343 | `	pVm->pResumeFrame = 0;` |
+|   2993 | 3343 | `	pVm->pResumeFrame = 0;` |
 |      - | 3344 | `	/* Point to the stack of loaded exceptions */` |
-|   2989 | 3345 | `	apException = (ph7_exception **)SySetBasePtr(&pVm->aException);` |
-|   2989 | 3346 | `	pException = 0;` |
-|   2989 | 3347 | `	pCatch = 0;` |
-|   2989 | 3348 | `	if( SySetUsed(&pVm->aException) > 0 ){` |
+|   2993 | 3345 | `	apException = (ph7_exception **)SySetBasePtr(&pVm->aException);` |
+|   2993 | 3346 | `	pException = 0;` |
+|   2993 | 3347 | `	pCatch = 0;` |
+|   2993 | 3348 | `	if( SySetUsed(&pVm->aException) > 0 ){` |
 |      - | 3349 | `		ph7_exception_block *aCatch;` |
 |      - | 3350 | `		ph7_class *pClass;` |
 |      - | 3351 | `		SyString *aNames;` |
@@ -3363,38 +3363,38 @@ Coverage: 1759/2029 lines (86.69%)
 |      - | 3353 | `		int matched;` |
 |      - | 3354 | `		sxu32 j,k;` |
 |      - | 3355 | `		/* Locate the appropriate block to execute */` |
-|   2355 | 3356 | `		pException = apException[SySetUsed(&pVm->aException) - 1];` |
-|   2355 | 3357 | `		(void)SySetPop(&pVm->aException);` |
-|   2355 | 3358 | `		aCatch = (ph7_exception_block *)SySetBasePtr(&pException->sEntry);` |
+|   2359 | 3356 | `		pException = apException[SySetUsed(&pVm->aException) - 1];` |
+|   2359 | 3357 | `		(void)SySetPop(&pVm->aException);` |
+|   2359 | 3358 | `		aCatch = (ph7_exception_block *)SySetBasePtr(&pException->sEntry);` |
 |      - | 3359 | `		/* ROOT C: a handler re-pushed for the duration of a catch body (iInCatch) does` |
 |      - | 3360 | `		 * NOT re-match its own catches — a throw inside the catch runs the finally then` |
 |      - | 3361 | `		 * propagates. Skip the class scan so pCatch stays 0. */` |
-|   2369 | 3362 | `		for( j = 0 ; !pException->iInCatch && j < SySetUsed(&pException->sEntry) ; ++j ){` |
+|   2373 | 3362 | `		for( j = 0 ; !pException->iInCatch && j < SySetUsed(&pException->sEntry) ; ++j ){` |
 |      - | 3363 | `			/* Iterate over all class names in this catch block (multi-catch support) */` |
-|   2227 | 3364 | `			aNames = (SyString *)SySetBasePtr(&aCatch[j].aClasses);` |
-|   2227 | 3365 | `			nNames = SySetUsed(&aCatch[j].aClasses);` |
-|   2227 | 3366 | `			matched = 0;` |
-|   2263 | 3367 | `			for( k = 0 ; k < nNames ; ++k ){` |
+|   2231 | 3364 | `			aNames = (SyString *)SySetBasePtr(&aCatch[j].aClasses);` |
+|   2231 | 3365 | `			nNames = SySetUsed(&aCatch[j].aClasses);` |
+|   2231 | 3366 | `			matched = 0;` |
+|   2267 | 3367 | `			for( k = 0 ; k < nNames ; ++k ){` |
 |      - | 3368 | `				/* Extract the target class or interface (iLoadable=FALSE so` |
 |      - | 3369 | `				 * interfaces like Throwable are resolvable as catch targets).` |
 |      - | 3370 | `				 * Traits are never instance-compatible, so skip them explicitly. */` |
-|   2249 | 3371 | `				pClass = PH7_VmExtractClass(&(*pVm),aNames[k].zString,aNames[k].nByte,FALSE,0);` |
-|   2249 | 3372 | `				if( pClass == 0 \|\| (pClass->iFlags & PH7_CLASS_TRAIT) ){` |
+|   2253 | 3371 | `				pClass = PH7_VmExtractClass(&(*pVm),aNames[k].zString,aNames[k].nByte,FALSE,0);` |
+|   2253 | 3372 | `				if( pClass == 0 \|\| (pClass->iFlags & PH7_CLASS_TRAIT) ){` |
 |      - | 3373 | `					/* No such class, or trait — cannot match */` |
 |    ! 0 | 3374 | `					continue;` |
 |      - | 3375 | `				}` |
-|   2249 | 3376 | `				if( PH7_VmInstanceOf(pThis->pClass,pClass) ){` |
-|   2213 | 3377 | `					matched = 1;` |
-|   2213 | 3378 | `					break;` |
+|   2253 | 3376 | `				if( PH7_VmInstanceOf(pThis->pClass,pClass) ){` |
+|   2217 | 3377 | `					matched = 1;` |
+|   2217 | 3378 | `					break;` |
 |      - | 3379 | `				}` |
 |     21 | 3380 | `			}` |
-|   2227 | 3381 | `			if( matched ){` |
+|   2231 | 3381 | `			if( matched ){` |
 |      - | 3382 | `				/* Catch block found,break immediately */` |
-|   2213 | 3383 | `				pCatch = &aCatch[j];` |
-|   2213 | 3384 | `				break;` |
+|   2217 | 3383 | `				pCatch = &aCatch[j];` |
+|   2217 | 3384 | `				break;` |
 |      - | 3385 | `			}` |
 |     10 | 3386 | `		}` |
-|   1175 | 3387 | `	}` |
+|   1177 | 3387 | `	}` |
 |      - | 3388 | `	/* Restore the '@' error-control depth recorded when this try was entered. The throw` |
 |      - | 3389 | `	 * unwinds past the ERR_CTRL that would have closed any window opened inside the try,` |
 |      - | 3390 | `	 * so without this the suppression leaks and silences every later diagnostic. Done` |
@@ -3402,13 +3402,13 @@ Coverage: 1759/2029 lines (86.69%)
 |      - | 3392 | `	 * different routes below (the inline/generator pc-redirect and the legacy path) —` |
 |      - | 3393 | `	 * and on a Rethrow the outermost try that actually catches gets the last word. A` |
 |      - | 3394 | ``	 * try/catch nested INSIDE an `@` correctly restores a non-zero depth. */`` |
-|   2989 | 3395 | `	if( pException ){` |
-|   2355 | 3396 | `		pVm->nErrSuppress = pException->iErrSuppress;` |
-|   1175 | 3397 | `	}` |
+|   2993 | 3395 | `	if( pException ){` |
+|   2359 | 3396 | `		pVm->nErrSuppress = pException->iErrSuppress;` |
+|   1177 | 3397 | `	}` |
 |      - | 3398 | `	/* ROOT C: an inline try (generator body) is not executed here — VmThrowException` |
 |      - | 3399 | `	 * only classifies the throw and sets a pc-redirect (pInlineInstr/iInlinePc) that the` |
 |      - | 3400 | `	 * throw site jumps to, so catch/finally run in the generator's own dispatch loop. */` |
-|   2989 | 3401 | `	if( pException && pException->iInlined ){` |
+|   2993 | 3401 | `	if( pException && pException->iInlined ){` |
 |     81 | 3402 | `		sxi32 rcInline = VmThrowInline(&(*pVm),pThis,pException,pCatch);` |
 |     81 | 3403 | `		if( rcInline == VM_THROW_KEEP_UNWINDING ){` |
 |      - | 3404 | `			/* No catch/finally in that inline try: keep unwinding outward. */` |
@@ -3417,7 +3417,7 @@ Coverage: 1759/2029 lines (86.69%)
 |     77 | 3407 | `		return rcInline;` |
 |      - | 3408 | `	}` |
 |      - | 3409 | `	/* Execute the cached block if available */` |
-|   2913 | 3410 | `	if( pCatch == 0 ){` |
+|   2917 | 3410 | `	if( pCatch == 0 ){` |
 |      - | 3411 | `		sxi32 rc;` |
 |      - | 3412 | `		/* No catch matched. Execute finally, then propagate to outer try/catch. */` |
 |    771 | 3413 | `		if( pException && pException->iHasFinally ){` |
@@ -3520,8 +3520,8 @@ Coverage: 1759/2029 lines (86.69%)
 |    568 | 3510 | `		VmExcRelease(&(*pVm),pException);` |
 |    568 | 3511 | `		return rc;` |
 |    ! 0 | 3512 | `	}else{` |
-|   2147 | 3513 | `		VmFrame *pFrame = pVm->pFrame;` |
-|   2147 | 3514 | `		ph7_exception **apSaved = 0;` |
+|   2151 | 3513 | `		VmFrame *pFrame = pVm->pFrame;` |
+|   2151 | 3514 | `		ph7_exception **apSaved = 0;` |
 |      - | 3515 | `		sxu32 nSavedCount;` |
 |      - | 3516 | `		sxi32 rc;` |
 |      - | 3517 | `		/* Snapshot the resume target BEFORE running the catch/finally mini-programs` |
@@ -3529,19 +3529,19 @@ Coverage: 1759/2029 lines (86.69%)
 |      - | 3519 | `		 * matching try, and its post-try landing pad. Recorded onto the VM only on` |
 |      - | 3520 | `		 * the caught (SXRET_OK) fall-through below, so the throwing site resumes at` |
 |      - | 3521 | `		 * THIS catching body rather than the lexically-nearest try (ROOT B). */` |
-|   2147 | 3522 | `		VmFrame *pCatchBody = pException->pFrame;` |
-|   2147 | 3523 | `		sxu32 iCatchPc = pException->iLandingPc;` |
-|   2147 | 3524 | `		void *pCatchInstr = pException->pOwnerInstr;` |
-|   2147 | 3525 | `		pFrame = VmSkipExceptionFrames(pFrame);` |
-|   2147 | 3526 | `		if( pException->pFrame == pFrame ){` |
-|   1243 | 3527 | `			pFrame->iFlags &= ~VM_FRAME_THROW;` |
-|    619 | 3528 | `		}` |
+|   2151 | 3522 | `		VmFrame *pCatchBody = pException->pFrame;` |
+|   2151 | 3523 | `		sxu32 iCatchPc = pException->iLandingPc;` |
+|   2151 | 3524 | `		void *pCatchInstr = pException->pOwnerInstr;` |
+|   2151 | 3525 | `		pFrame = VmSkipExceptionFrames(pFrame);` |
+|   2151 | 3526 | `		if( pException->pFrame == pFrame ){` |
+|   1247 | 3527 | `			pFrame->iFlags &= ~VM_FRAME_THROW;` |
+|    621 | 3528 | `		}` |
 |      - | 3529 | `		/* Temporarily hide outer exception handlers so that if the catch` |
 |      - | 3530 | `		 * body re-throws, the exception does not immediately propagate past` |
 |      - | 3531 | `		 * our finally block. We save the stack contents and restore after.` |
 |      - | 3532 | `		 */` |
-|   2147 | 3533 | `		nSavedCount = SySetUsed(&pVm->aException);` |
-|   2147 | 3534 | `		if( nSavedCount > 0 ){` |
+|   2151 | 3533 | `		nSavedCount = SySetUsed(&pVm->aException);` |
+|   2151 | 3534 | `		if( nSavedCount > 0 ){` |
 |    142 | 3535 | `			apSaved = (ph7_exception **)SyMemBackendAlloc(&pVm->sAllocator,` |
 |     46 | 3536 | `				nSavedCount * sizeof(ph7_exception *));` |
 |     96 | 3537 | `			if( apSaved ){` |
@@ -3551,8 +3551,8 @@ Coverage: 1759/2029 lines (86.69%)
 |     46 | 3541 | `			}` |
 |     46 | 3542 | `		}` |
 |      - | 3543 | `		/* Create the catch frame (made transparent below) */` |
-|   2147 | 3544 | `		rc = VmEnterFrame(&(*pVm),0,0,&pFrame);` |
-|   2147 | 3545 | `		if( rc == SXRET_OK ){` |
+|   2151 | 3544 | `		rc = VmEnterFrame(&(*pVm),0,0,&pFrame);` |
+|   2151 | 3545 | `		if( rc == SXRET_OK ){` |
 |      - | 3546 | `			ph7_value *pObj;` |
 |      - | 3547 | `			/* VmEnterFrame parented this frame to the CURRENT frame — which, for a` |
 |      - | 3548 | `			 * throw raised in a nested call, is the deeper throw-site frame, not the` |
@@ -3563,13 +3563,13 @@ Coverage: 1759/2029 lines (86.69%)
 |      - | 3553 | ``			 * `return` parks on that body — matching the recorded resume target. Before`` |
 |      - | 3554 | `			 * this, an in-place catch for a deep throw parked its return on the callee's` |
 |      - | 3555 | `			 * frame, which the unwind then discarded (ROOT B, face c). */` |
-|   2147 | 3556 | `			VmFrame *pThrowSite = pFrame->pParent;` |
+|   2151 | 3556 | `			VmFrame *pThrowSite = pFrame->pParent;` |
 |      - | 3557 | `			/* A NULL pCatchBody (owner invalidated at park — its frame died with` |
 |      - | 3558 | `			 * a lossy deep suspend) keeps the natural parent: the catch then runs` |
 |      - | 3559 | `			 * against the live current scope rather than a freed frame. */` |
-|   2147 | 3560 | `			if( pCatchBody ){` |
-|   2147 | 3561 | `				pFrame->pParent = pCatchBody;` |
-|   1071 | 3562 | `			}` |
+|   2151 | 3560 | `			if( pCatchBody ){` |
+|   2151 | 3561 | `				pFrame->pParent = pCatchBody;` |
+|   1073 | 3562 | `			}` |
 |      - | 3563 | `			/* Transparent wrapper: the catch body shares the enclosing variable` |
 |      - | 3564 | `			 * scope (PHP semantics). VM_FRAME_EXCEPTION makes VmSkipExceptionFrames` |
 |      - | 3565 | `			 * resolve variables — and bind $e — against the real enclosing frame, so` |
@@ -3578,36 +3578,36 @@ Coverage: 1759/2029 lines (86.69%)
 |      - | 3568 | `			 * VM_FRAME_CATCH is kept for the deferred-exception walk. iExceptionJump` |
 |      - | 3569 | `			 * stays 0, so the try-frame-only paths (all guarded by iExceptionJump>0)` |
 |      - | 3570 | `			 * are unaffected. Must be set BEFORE binding $e below. */` |
-|   2147 | 3571 | `			pFrame->iFlags \|= VM_FRAME_CATCH \| VM_FRAME_EXCEPTION;` |
+|   2151 | 3571 | `			pFrame->iFlags \|= VM_FRAME_CATCH \| VM_FRAME_EXCEPTION;` |
 |      - | 3572 | `			/* sThis empty => PHP 8.0 non-capturing catch: caught, not bound. */` |
-|   3218 | 3573 | `			pObj = (pCatch->sThis.nByte > 0)` |
-|   2140 | 3574 | `				? VmExtractMemObj(&(*pVm),&pCatch->sThis,FALSE,TRUE) : 0;` |
-|   2147 | 3575 | `			if( pObj ){` |
+|   3224 | 3573 | `			pObj = (pCatch->sThis.nByte > 0)` |
+|   2144 | 3574 | `				? VmExtractMemObj(&(*pVm),&pCatch->sThis,FALSE,TRUE) : 0;` |
+|   2151 | 3575 | `			if( pObj ){` |
 |      - | 3576 | `				/* The catch variable now resolves in the (shared) enclosing frame,` |
 |      - | 3577 | `				 * so it may already hold a value from a prior catch or assignment.` |
 |      - | 3578 | `				 * Pin the new instance, then release the slot's prior contents` |
 |      - | 3579 | `				 * (runs its __destruct / frees the old value) before rebinding —` |
 |      - | 3580 | `				 * iRef++ first keeps a re-thrown same exception alive across the` |
 |      - | 3581 | `				 * release. Mirrors PH7_MemObjStore's overwrite-then-release. */` |
-|   2143 | 3582 | `				pThis->iRef++;` |
-|   2143 | 3583 | `				PH7_MemObjRelease(pObj);` |
-|   2143 | 3584 | `				pObj->x.pOther = pThis;` |
-|   2143 | 3585 | `				MemObjSetType(pObj,MEMOBJ_OBJ);` |
-|   1069 | 3586 | `			}` |
+|   2147 | 3582 | `				pThis->iRef++;` |
+|   2147 | 3583 | `				PH7_MemObjRelease(pObj);` |
+|   2147 | 3584 | `				pObj->x.pOther = pThis;` |
+|   2147 | 3585 | `				MemObjSetType(pObj,MEMOBJ_OBJ);` |
+|   1071 | 3586 | `			}` |
 |      - | 3587 | `			/* Execute the catch block */` |
-|   2147 | 3588 | `			rc = VmLocalExec(&(*pVm),&pCatch->sByteCode,0,TRUE);` |
+|   2151 | 3588 | `			rc = VmLocalExec(&(*pVm),&pCatch->sByteCode,0,TRUE);` |
 |      - | 3589 | `			/* Leave the frame (sets pVm->pFrame = pCatchBody via the re-parent), then` |
 |      - | 3590 | `			 * restore the real throw-site frame so the unwind continues normally.` |
 |      - | 3591 | `			 * Guarded like VmExecFinallyInOwner's wrapper teardown: a catch body` |
 |      - | 3592 | `			 * that suspends/aborts mid-mini-program can leave the frame chain` |
 |      - | 3593 | `			 * unbalanced — never pop somebody else's frame. */` |
-|   2147 | 3594 | `			if( pVm->pFrame == pFrame ){` |
-|   2147 | 3595 | `				VmLeaveFrame(&(*pVm));` |
-|   1071 | 3596 | `			}` |
-|   2147 | 3597 | `			pVm->pFrame = pThrowSite;` |
-|   1071 | 3598 | `		}` |
+|   2151 | 3594 | `			if( pVm->pFrame == pFrame ){` |
+|   2151 | 3595 | `				VmLeaveFrame(&(*pVm));` |
+|   1073 | 3596 | `			}` |
+|   2151 | 3597 | `			pVm->pFrame = pThrowSite;` |
+|   1073 | 3598 | `		}` |
 |      - | 3599 | `		/* Restore the outer exception handlers */` |
-|   2147 | 3600 | `		if( apSaved ){` |
+|   2151 | 3600 | `		if( apSaved ){` |
 |      - | 3601 | `			sxu32 k;` |
 |      - | 3602 | `			/* Entries pushed during catch execution (nested try blocks inside` |
 |      - | 3603 | `			 * the catch body) are normally already consumed; on an abnormal` |
@@ -3621,7 +3621,7 @@ Coverage: 1759/2029 lines (86.69%)
 |     96 | 3611 | `			SyMemBackendFree(&pVm->sAllocator,apSaved);` |
 |     46 | 3612 | `		}` |
 |      - | 3613 | `		/* Execute the finally block after catch */` |
-|   2147 | 3614 | `		if( pException->iHasFinally ){` |
+|   2151 | 3614 | `		if( pException->iHasFinally ){` |
 |      - | 3615 | `			sxi32 rcf;` |
 |      - | 3616 | `			/* Snapshot, before the finally runs: the body frame this try returns` |
 |      - | 3617 | `			 * from, its pending-return write generation (set if the catch above` |
@@ -3676,7 +3676,7 @@ Coverage: 1759/2029 lines (86.69%)
 |     19 | 3666 | `				return PH7_EXCEPTION;` |
 |      - | 3667 | `			}` |
 |     24 | 3668 | `		}` |
-|   2131 | 3669 | `		if( rc == SXERR_ABORT ){` |
+|   2135 | 3669 | `		if( rc == SXERR_ABORT ){` |
 |      5 | 3670 | `			VmExcRelease(&(*pVm),pException);` |
 |      5 | 3671 | `			return SXERR_ABORT;` |
 |      - | 3672 | `		}` |
@@ -3687,7 +3687,7 @@ Coverage: 1759/2029 lines (86.69%)
 |      - | 3677 | `		 * the catch frame having been left above), which swallows the in-flight` |
 |      - | 3678 | `		 * exception (PHP semantics).` |
 |      - | 3679 | `		 */` |
-|   2127 | 3680 | `		if( pVm->pPendingException ){` |
+|   2131 | 3680 | `		if( pVm->pPendingException ){` |
 |      - | 3681 | `			/* Stage 2b: the swallow decision reads the OWNER's parked return. */` |
 |     73 | 3682 | `			if( !(pCatchBody ? pCatchBody : VmSkipExceptionFrames(pVm->pFrame))->bHasRet ){` |
 |     69 | 3683 | `				ph7_class_instance *pReThrow = pVm->pPendingException;` |
@@ -3705,15 +3705,15 @@ Coverage: 1759/2029 lines (86.69%)
 |      - | 3695 | `		 * try (no PH7_EXCEPTION/ABORT return above). Record the resume target so the` |
 |      - | 3696 | `		 * throwing site — which may be several frames below — resumes at this catching` |
 |      - | 3697 | `		 * body's landing pad. Consumed one-shot by VmRecordedResume at the resume site. */` |
-|   2061 | 3698 | `		pVm->pResumeFrame = pCatchBody;` |
-|   2061 | 3699 | `		pVm->iResumePc = iCatchPc;` |
-|   2061 | 3700 | `		pVm->pResumeInstr = pCatchInstr;` |
-|   2061 | 3701 | `		pVm->iResumeStackDepth = pException->iStackDepth;` |
+|   2065 | 3698 | `		pVm->pResumeFrame = pCatchBody;` |
+|   2065 | 3699 | `		pVm->iResumePc = iCatchPc;` |
+|   2065 | 3700 | `		pVm->pResumeInstr = pCatchInstr;` |
+|   2065 | 3701 | `		pVm->iResumeStackDepth = pException->iStackDepth;` |
 |      - | 3702 | `		/* (TICKET 1433-60 is retired by stage 2b: this frees the per-entry` |
 |      - | 3703 | ``		 * ACTIVATION; a `goto` re-entering the try mints a fresh one at`` |
 |      - | 3704 | `		 * OP_LOAD_EXCEPTION. The compiled object is untouched.) */` |
-|   2061 | 3705 | `		VmExcRelease(&(*pVm),pException);` |
+|   2065 | 3705 | `		VmExcRelease(&(*pVm),pException);` |
 |      - | 3706 | `	}` |
-|   2061 | 3707 | `	return SXRET_OK;` |
-|   1407 | 3708 | `}` |
+|   2065 | 3707 | `	return SXRET_OK;` |
+|   1409 | 3708 | `}` |
 |      - | 3709 |  |

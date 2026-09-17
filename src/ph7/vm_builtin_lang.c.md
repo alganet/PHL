@@ -730,23 +730,23 @@ Coverage: 820/1041 lines (78.77%)
 |      225 |  720 | `	uMask \|= uMask >> 16;` |
 |      225 |  721 | `	uMask \|= uMask >> 32;` |
 |      225 |  722 | `	uResult = 0;` |
-|      374 |  723 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
+|      359 |  723 | `	for( nAttempt = 0 ; nAttempt < 50 ; ++nAttempt ){` |
 |        - |  724 | `		/* Always draw a full 8 bytes so endianness of the cast doesn't matter` |
 |        - |  725 | `		 * (a 4-byte fill into a sxu64 would land in the high half on big-endian` |
 |        - |  726 | `		 * and the low-half mask would always read 0). */` |
 |        - |  727 | `		sxu64 uDraw;` |
-|      374 |  728 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
+|      359 |  728 | `		if( SyOSCSPRNG(&uDraw,sizeof(uDraw)) != SXRET_OK ){` |
 |      ! 0 |  729 | `			return PH7_VmThrowException(pCtx,` |
 |        - |  730 | `				"Random\\RandomException",` |
 |        - |  731 | `				"Cannot gather sufficient random data"` |
 |        - |  732 | `				);` |
 |        - |  733 | `		}` |
-|      374 |  734 | `		uDraw &= uMask;` |
-|      374 |  735 | `		if( uDraw <= uRange ){` |
+|      359 |  734 | `		uDraw &= uMask;` |
+|      359 |  735 | `		if( uDraw <= uRange ){` |
 |      225 |  736 | `			uResult = uDraw;` |
 |      225 |  737 | `			break;` |
 |        - |  738 | `		}` |
-|       75 |  739 | `	}` |
+|       63 |  739 | `	}` |
 |      225 |  740 | `	if( nAttempt >= 50 ){` |
 |      ! 0 |  741 | `		return PH7_VmThrowException(pCtx,` |
 |        - |  742 | `			"Random\\RandomException",` |

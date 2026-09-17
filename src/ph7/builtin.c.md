@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 229/339 lines (67.55%)
+Coverage: 195/279 lines (69.89%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -25,7 +25,7 @@ Coverage: 229/339 lines (67.55%)
 |      - |   15 | ``/* Shared ZPP helper for `int` parameters — defined OUTSIDE the`` |
 |      - |   16 | ` * PH7_DISABLE_BUILTIN_FUNC guard because hashmap.c (array_slice) and` |
 |      - |   17 | ` * builtin_math.c (intdiv) call it and both compile in the tiny build. */` |
-| 499202 |   18 | `PH7_PRIVATE sxi32 PH7_IntArgResolve(` |
+| 499134 |   18 | `PH7_PRIVATE sxi32 PH7_IntArgResolve(` |
 |      - |   19 | `	ph7_context *pCtx,` |
 |      - |   20 | `	ph7_value *pArg,` |
 |      - |   21 | `	const char *zFunc,` |
@@ -34,7 +34,7 @@ Coverage: 229/339 lines (67.55%)
 |      - |   24 | `	const char *zTypeStr,` |
 |      - |   25 | `	sxi64 *pOut` |
 |      5 |   26 | `){` |
-| 499207 |   27 | `	if( ph7_value_is_null(pArg) ){` |
+| 499139 |   27 | `	if( ph7_value_is_null(pArg) ){` |
 |      - |   28 | `		/* php only DEPRECATES passing null to a non-nullable internal param; PHL` |
 |      - |   29 | `		 * targets php's non-deprecated surface and rejects it with the TypeError` |
 |      - |   30 | `		 * php will eventually raise. */` |
@@ -44,7 +44,7 @@ Coverage: 229/339 lines (67.55%)
 |    ! 0 |   34 | `			zFunc,iArgNum,zParamName,zTypeStr` |
 |      - |   35 | `			);` |
 |      - |   36 | `	}` |
-| 499207 |   37 | `	if( ph7_value_is_float(pArg) ){` |
+| 499139 |   37 | `	if( ph7_value_is_float(pArg) ){` |
 |     16 |   38 | `		double dVal = ph7_value_to_double(pArg);` |
 |      - |   39 | `		sxi64 iVal;` |
 |      - |   40 | `		/* php: NAN/INF/out-of-int64-range floats fail ZPP outright */` |
@@ -68,7 +68,7 @@ Coverage: 229/339 lines (67.55%)
 |      8 |   58 | `		*pOut = iVal;` |
 |      8 |   59 | `		return PH7_OK;` |
 |      - |   60 | `	}` |
-| 499193 |   61 | `	if( ph7_value_is_string(pArg) ){` |
+| 499125 |   61 | `	if( ph7_value_is_string(pArg) ){` |
 |      - |   62 | `		const char *zNum;` |
 |      - |   63 | `		int nSlen;` |
 |     18 |   64 | `		int i,bFloat = 0;` |
@@ -112,7 +112,7 @@ Coverage: 229/339 lines (67.55%)
 |      5 |  102 | `		*pOut = ph7_value_to_int64(pArg);` |
 |      5 |  103 | `		return PH7_OK;` |
 |      - |  104 | `	}` |
-| 499177 |  105 | `	if( !ph7_value_is_int(pArg) && !ph7_value_is_bool(pArg) ){` |
+| 499109 |  105 | `	if( !ph7_value_is_int(pArg) && !ph7_value_is_bool(pArg) ){` |
 |      - |  106 | `		/* Arrays, resources and objects: php names the class for objects */` |
 |    ! 0 |  107 | `		const char *zType = ph7_type_name(pArg);` |
 |    ! 0 |  108 | `		if( ph7_value_is_object(pArg) ){` |
@@ -127,9 +127,9 @@ Coverage: 229/339 lines (67.55%)
 |    ! 0 |  117 | `			zFunc,iArgNum,zParamName,zTypeStr,zType` |
 |      - |  118 | `			);` |
 |      - |  119 | `	}` |
-| 499177 |  120 | `	*pOut = ph7_value_to_int64(pArg);` |
-| 499177 |  121 | `	return PH7_OK;` |
-| 249711 |  122 | `}` |
+| 499109 |  120 | `	*pOut = ph7_value_to_int64(pArg);` |
+| 499109 |  121 | `	return PH7_OK;` |
+| 249677 |  122 | `}` |
 |      - |  123 |  |
 |      - |  124 | `/* This file implement built-in 'foreign' functions for the PH7 engine */` |
 |      - |  125 | `/*` |
@@ -428,14 +428,14 @@ Coverage: 229/339 lines (67.55%)
 |      - |  418 | ` * Return` |
 |      - |  419 | ` *  0 if var has a non-empty and non-zero value.1 otherwise.` |
 |      - |  420 | ` */` |
-|  39376 |  421 | `static int PH7_builtin_empty(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  39354 |  421 | `static int PH7_builtin_empty(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 |  422 | `{` |
-|  39381 |  423 | `	int res = 1; /* Assume empty by default */` |
-|  39381 |  424 | `	if( nArg > 0 ){` |
-|  39381 |  425 | `		res = ph7_value_is_empty(apArg[0]);` |
-|  19688 |  426 | `	}` |
-|  39381 |  427 | `	ph7_result_bool(pCtx,res);` |
-|  39381 |  428 | `	return PH7_OK;` |
+|  39359 |  423 | `	int res = 1; /* Assume empty by default */` |
+|  39359 |  424 | `	if( nArg > 0 ){` |
+|  39359 |  425 | `		res = ph7_value_is_empty(apArg[0]);` |
+|  19677 |  426 | `	}` |
+|  39359 |  427 | `	ph7_result_bool(pCtx,res);` |
+|  39359 |  428 | `	return PH7_OK;` |
 |      - |  429 |  |
 |      5 |  430 | `}` |
 |      - |  431 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
@@ -688,315 +688,207 @@ Coverage: 229/339 lines (67.55%)
 |      - |  678 | `	{ "mb_chr",       PH7_builtin_mb_chr_f   },` |
 |      - |  679 | `	{ "mb_ord",       PH7_builtin_mb_ord_f   },` |
 |      - |  680 | `	{ "mb_detect_encoding", PH7_builtin_mb_detect_encoding_f },` |
-|      - |  681 | `	{ "ucfirst",      PH7_builtin_ucfirst    },` |
-|      - |  682 | `	{ "lcfirst",      PH7_builtin_lcfirst    },` |
-|      - |  683 | `	{ "ord",          PH7_builtin_ord        },` |
-|      - |  684 | `	{ "chr",          PH7_builtin_chr        },` |
-|      - |  685 | `	{ "bin2hex",      PH7_builtin_bin2hex    },` |
-|      - |  686 | `	{ "strstr",       PH7_builtin_strstr     },` |
-|      - |  687 | `	{ "stristr",      PH7_builtin_stristr    },` |
-|      - |  688 | `	{ "strchr",       PH7_builtin_strstr     },` |
-|      - |  689 | `	{ "strpos",       PH7_builtin_strpos     },` |
-|      - |  690 | `	{ "stripos",      PH7_builtin_stripos    },` |
-|      - |  691 | `	{ "strrpos",      PH7_builtin_strrpos    },` |
-|      - |  692 | `	{ "strripos",     PH7_builtin_strripos   },` |
-|      - |  693 | `	{ "strrchr",      PH7_builtin_strrchr    },` |
-|      - |  694 | `	{ "strrev",       PH7_builtin_strrev     },` |
-|      - |  695 | `	{ "ucwords",      PH7_builtin_ucwords    },` |
-|      - |  696 | `	{ "str_repeat",   PH7_builtin_str_repeat },` |
-|      - |  697 | `	{ "str_contains", PH7_builtin_str_contains },` |
-|      - |  698 | `	{ "str_starts_with", PH7_builtin_str_starts_with },` |
-|      - |  699 | `	{ "str_ends_with", PH7_builtin_str_ends_with },` |
-|      - |  700 | `	{ "nl2br",        PH7_builtin_nl2br      },` |
-|      - |  701 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|      - |  702 | `#ifdef PH7_NEED_FMT_AND_INI` |
-|      - |  703 | `	{ "sprintf",      PH7_builtin_sprintf    },` |
-|      - |  704 | `	{ "printf",       PH7_builtin_printf     },` |
-|      - |  705 | `	{ "vprintf",      PH7_builtin_vprintf    },` |
-|      - |  706 | `	{ "vsprintf",     PH7_builtin_vsprintf   },` |
-|      - |  707 | `#endif /* PH7_NEED_FMT_AND_INI */` |
-|      - |  708 | `#ifdef PH7_NEED_BUILTIN_REG` |
-|      - |  709 | `	{ "size_format",  PH7_builtin_size_format},` |
-|      - |  710 |  |
+|      - |  681 | `	{ "mb_convert_encoding", PH7_builtin_mb_convert_encoding_f },` |
+|      - |  682 | `	{ "ucfirst",      PH7_builtin_ucfirst    },` |
+|      - |  683 | `	{ "lcfirst",      PH7_builtin_lcfirst    },` |
+|      - |  684 | `	{ "ord",          PH7_builtin_ord        },` |
+|      - |  685 | `	{ "chr",          PH7_builtin_chr        },` |
+|      - |  686 | `	{ "bin2hex",      PH7_builtin_bin2hex    },` |
+|      - |  687 | `	{ "strstr",       PH7_builtin_strstr     },` |
+|      - |  688 | `	{ "stristr",      PH7_builtin_stristr    },` |
+|      - |  689 | `	{ "strchr",       PH7_builtin_strstr     },` |
+|      - |  690 | `	{ "strpos",       PH7_builtin_strpos     },` |
+|      - |  691 | `	{ "stripos",      PH7_builtin_stripos    },` |
+|      - |  692 | `	{ "strrpos",      PH7_builtin_strrpos    },` |
+|      - |  693 | `	{ "strripos",     PH7_builtin_strripos   },` |
+|      - |  694 | `	{ "strrchr",      PH7_builtin_strrchr    },` |
+|      - |  695 | `	{ "strrev",       PH7_builtin_strrev     },` |
+|      - |  696 | `	{ "ucwords",      PH7_builtin_ucwords    },` |
+|      - |  697 | `	{ "str_repeat",   PH7_builtin_str_repeat },` |
+|      - |  698 | `	{ "str_contains", PH7_builtin_str_contains },` |
+|      - |  699 | `	{ "str_starts_with", PH7_builtin_str_starts_with },` |
+|      - |  700 | `	{ "str_ends_with", PH7_builtin_str_ends_with },` |
+|      - |  701 | `	{ "nl2br",        PH7_builtin_nl2br      },` |
+|      - |  702 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|      - |  703 | `#ifdef PH7_NEED_FMT_AND_INI` |
+|      - |  704 | `	{ "sprintf",      PH7_builtin_sprintf    },` |
+|      - |  705 | `	{ "printf",       PH7_builtin_printf     },` |
+|      - |  706 | `	{ "vprintf",      PH7_builtin_vprintf    },` |
+|      - |  707 | `	{ "vsprintf",     PH7_builtin_vsprintf   },` |
+|      - |  708 | `#endif /* PH7_NEED_FMT_AND_INI */` |
+|      - |  709 | `#ifdef PH7_NEED_BUILTIN_REG` |
+|      - |  710 | `	{ "size_format",  PH7_builtin_size_format},` |
 |      - |  711 |  |
-|      - |  712 | `#ifndef PH7_DISABLE_HASH_FUNC` |
-|      - |  713 | `	{ "md5",          PH7_builtin_md5       },` |
-|      - |  714 | `	{ "sha1",         PH7_builtin_sha1      },` |
-|      - |  715 | `	{ "crc32",        PH7_builtin_crc32     },` |
-|      - |  716 | `	{ "hash",         PH7_builtin_hash      },` |
-|      - |  717 | `	{ "hash_hmac",    PH7_builtin_hash_hmac },` |
-|      - |  718 | `	{ "hash_equals",  PH7_builtin_hash_equals },` |
-|      - |  719 | `	{ "hash_algos",   PH7_builtin_hash_algos },` |
-|      - |  720 | `#endif /* PH7_DISABLE_HASH_FUNC */` |
-|      - |  721 | `	{ "password_hash",         PH7_builtin_password_hash },` |
-|      - |  722 | `	{ "password_verify",       PH7_builtin_password_verify },` |
-|      - |  723 | `	{ "password_get_info",     PH7_builtin_password_get_info },` |
-|      - |  724 | `	{ "password_needs_rehash", PH7_builtin_password_needs_rehash },` |
-|      - |  725 | `	{ "filter_var",            PH7_builtin_filter_var },` |
-|      - |  726 | `	{ "filter_input",          PH7_builtin_filter_input },` |
-|      - |  727 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|      - |  728 | `#ifdef PH7_NEED_FMT_AND_INI` |
-|      - |  729 | `	{ "str_getcsv",   PH7_builtin_str_getcsv },` |
-|      - |  730 | `	{ "strip_tags",   PH7_builtin_strip_tags },` |
-|      - |  731 | `#endif /* PH7_NEED_FMT_AND_INI */` |
-|      - |  732 | `#ifdef PH7_NEED_BUILTIN_REG` |
-|      - |  733 |  |
-|      - |  734 | `	{ "str_shuffle",  PH7_builtin_str_shuffle},` |
-|      - |  735 | `	{ "str_split",    PH7_builtin_str_split  },` |
-|      - |  736 | `	{ "strspn",       PH7_builtin_strspn     },` |
-|      - |  737 | `	{ "strcspn",      PH7_builtin_strcspn    },` |
-|      - |  738 | `	{ "strpbrk",      PH7_builtin_strpbrk    },` |
-|      - |  739 | `	{ "soundex",      PH7_builtin_soundex    },` |
-|      - |  740 | `	{ "wordwrap",     PH7_builtin_wordwrap   },` |
-|      - |  741 | `	{ "strtok",       PH7_builtin_strtok     },` |
-|      - |  742 | `	{ "str_pad",      PH7_builtin_str_pad    },` |
-|      - |  743 | `	{ "str_replace",  PH7_builtin_str_replace},` |
-|      - |  744 | `	{ "str_ireplace", PH7_builtin_str_replace},` |
-|      - |  745 | `	{ "strtr",        PH7_builtin_strtr      },` |
-|      - |  746 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|      - |  747 | `#ifdef PH7_NEED_FMT_AND_INI` |
-|      - |  748 | `	{ "parse_ini_string", PH7_builtin_parse_ini_string},` |
-|      - |  749 | `#endif /* PH7_NEED_FMT_AND_INI */` |
-|      - |  750 | `#ifdef PH7_NEED_BUILTIN_REG` |
-|      - |  751 |  |
-|      - |  752 | `	         /* Ctype functions */` |
-|      - |  753 | `	{ "ctype_alnum", PH7_builtin_ctype_alnum },` |
-|      - |  754 | `	{ "ctype_alpha", PH7_builtin_ctype_alpha },` |
-|      - |  755 | `	{ "ctype_cntrl", PH7_builtin_ctype_cntrl },` |
-|      - |  756 | `	{ "ctype_digit", PH7_builtin_ctype_digit },` |
-|      - |  757 | `	{ "ctype_xdigit",PH7_builtin_ctype_xdigit},` |
-|      - |  758 | `	{ "ctype_graph", PH7_builtin_ctype_graph },` |
-|      - |  759 | `	{ "ctype_print", PH7_builtin_ctype_print },` |
-|      - |  760 | `	{ "ctype_punct", PH7_builtin_ctype_punct },` |
-|      - |  761 | `	{ "ctype_space", PH7_builtin_ctype_space },` |
-|      - |  762 | `	{ "ctype_lower", PH7_builtin_ctype_lower },` |
-|      - |  763 | `	{ "ctype_upper", PH7_builtin_ctype_upper },` |
-|      - |  764 | `	         /* Time functions */` |
-|      - |  765 | `	{ "time"    ,    PH7_builtin_time         },` |
-|      - |  766 | `	{ "microtime",   PH7_builtin_microtime    },` |
-|      - |  767 | `	{ "hrtime",      PH7_builtin_hrtime       },` |
-|      - |  768 | `	{ "getdate" ,    PH7_builtin_getdate      },` |
-|      - |  769 | `	{ "gettimeofday",PH7_builtin_gettimeofday },` |
-|      - |  770 | `	{ "date",        PH7_builtin_date         },` |
-|      - |  771 | `	{ "idate",       PH7_builtin_idate        },` |
-|      - |  772 | `	{ "gmdate",      PH7_builtin_gmdate       },` |
-|      - |  773 | `	{ "localtime",   PH7_builtin_localtime    },` |
-|      - |  774 | `	{ "mktime",      PH7_builtin_mktime       },` |
-|      - |  775 | `	{ "gmmktime",    PH7_builtin_mktime       },` |
-|      - |  776 | `	{ "date_default_timezone_get", PH7_builtin_date_default_timezone_get },` |
-|      - |  777 | `	{ "date_default_timezone_set", PH7_builtin_date_default_timezone_set },` |
-|      - |  778 | `	        /* URL functions */` |
-|      - |  779 | `	{ "base64_encode",PH7_builtin_base64_encode },` |
-|      - |  780 | `	{ "base64_decode",PH7_builtin_base64_decode },` |
-|      - |  781 | `	{ "convert_uuencode",PH7_builtin_base64_encode },` |
-|      - |  782 | `	{ "convert_uudecode",PH7_builtin_base64_decode },` |
-|      - |  783 | `	{ "urlencode",    PH7_builtin_urlencode },` |
-|      - |  784 | `	{ "urldecode",    PH7_builtin_urldecode },` |
-|      - |  785 | `	{ "rawurlencode", PH7_builtin_rawurlencode },` |
-|      - |  786 | `	{ "rawurldecode", PH7_builtin_urldecode },` |
-|      - |  787 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|      - |  788 | `};` |
-|      - |  789 | `/*` |
-|      - |  790 | ` * Register the built-in functions defined above,the array functions` |
-|      - |  791 | ` * defined in hashmap.c and the IO functions defined in vfs.c.` |
-|      - |  792 | ` */` |
-|   3382 |  793 | `PH7_PRIVATE void PH7_RegisterBuiltInFunction(ph7_vm *pVm)` |
-|      5 |  794 | `{` |
-|      - |  795 | `	sxu32 n;` |
-| 696697 |  796 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltInFunc) ; ++n ){` |
-| 693315 |  797 | `		ph7_create_function(&(*pVm),aBuiltInFunc[n].zName,aBuiltInFunc[n].xFunc,0);` |
-| 346660 |  798 | `	}` |
-|      - |  799 | `	/* Register hashmap functions [i.e: array_merge(),sort(),count(),array_diff(),...] */` |
-|   3387 |  800 | `	PH7_RegisterHashmapFunctions(&(*pVm));` |
-|      - |  801 | `	/* Register IO functions [i.e: fread(),fwrite(),chdir(),mkdir(),file(),...] */` |
-|   3387 |  802 | `	PH7_RegisterIORoutine(&(*pVm));` |
-|   3387 |  803 | `}` |
-|      - |  804 |  |
-|      - |  805 | `/*` |
-|      - |  806 | ` * UTF-8 encode/decode builtins (registered from vm.c).  Relocated here` |
-|      - |  807 | ` * from the removed vm_xml.c when the legacy xml_* API was dropped.` |
-|      - |  808 | ` */` |
-|      - |  809 | `/*` |
-|      - |  810 | ` * int utf8_encode(string $input)` |
-|      - |  811 | ` *  UTF-8 encoding.` |
-|      - |  812 | ` *  This function encodes the string data to UTF-8, and returns the encoded version.` |
-|      - |  813 | ` *  UTF-8 is a standard mechanism used by Unicode for encoding wide character values` |
-|      - |  814 | ` * into a byte stream. UTF-8 is transparent to plain ASCII characters, is self-synchronized` |
-|      - |  815 | ` * (meaning it is possible for a program to figure out where in the bytestream characters start)` |
-|      - |  816 | ` * and can be used with normal string comparison functions for sorting and such.` |
-|      - |  817 | ` *  Notes on UTF-8 (According to SQLite3 authors):` |
-|      - |  818 | ` *  Byte-0    Byte-1    Byte-2    Byte-3    Value` |
-|      - |  819 | ` *  0xxxxxxx                                 00000000 00000000 0xxxxxxx` |
-|      - |  820 | ` *  110yyyyy  10xxxxxx                       00000000 00000yyy yyxxxxxx` |
-|      - |  821 | ` *  1110zzzz  10yyyyyy  10xxxxxx             00000000 zzzzyyyy yyxxxxxx` |
-|      - |  822 | ` *  11110uuu  10uuzzzz  10yyyyyy  10xxxxxx   000uuuuu zzzzyyyy yyxxxxxx` |
-|      - |  823 | ` * Parameters` |
-|      - |  824 | ` * $input` |
-|      - |  825 | ` *   String to encode or NULL on failure.` |
-|      - |  826 | ` * Return` |
-|      - |  827 | ` *  An UTF-8 encoded string.` |
-|      - |  828 | ` */` |
-|      2 |  829 | `PH7_PRIVATE int vm_builtin_utf8_encode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 |  830 | `{` |
-|      - |  831 | `	const unsigned char *zIn,*zEnd;` |
-|      - |  832 | `	int nByte,c,e;` |
-|      3 |  833 | `	if( nArg < 1 ){` |
-|      - |  834 | `		/* Missing arguments,return null */` |
-|    ! 0 |  835 | `		ph7_result_null(pCtx);` |
-|    ! 0 |  836 | `		return PH7_OK;` |
-|      - |  837 | `	}` |
-|      - |  838 | `	/* Extract the target string */` |
-|      3 |  839 | `	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nByte);` |
-|      3 |  840 | `	if( nByte < 1 ){` |
-|      - |  841 | `		/* Empty string,return null */` |
-|    ! 0 |  842 | `		ph7_result_null(pCtx);` |
-|    ! 0 |  843 | `		return PH7_OK;` |
-|      - |  844 | `	}` |
-|      3 |  845 | `	zEnd = &zIn[nByte];` |
-|      - |  846 | `	/* Start the encoding process */` |
-|      2 |  847 | `	for(;;){` |
-|      5 |  848 | `		if( zIn >= zEnd ){` |
-|      - |  849 | `			/* End of input */` |
-|      3 |  850 | `			break;` |
-|      - |  851 | `		}` |
-|      3 |  852 | `		c = zIn[0];` |
-|      - |  853 | `		/* Advance the stream cursor */` |
-|      3 |  854 | `		zIn++;` |
-|      - |  855 | `		/* Encode */` |
-|      3 |  856 | `		if( c<0x00080 ){` |
-|    ! 0 |  857 | `			e = (c&0xFF);` |
-|    ! 0 |  858 | `			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));` |
-|      3 |  859 | `		}else if( c<0x00800 ){` |
-|      3 |  860 | `			e = 0xC0 + ((c>>6)&0x1F);` |
-|      3 |  861 | `			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));` |
-|      3 |  862 | `			e = 0x80 + (c & 0x3F);` |
-|      3 |  863 | `			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));` |
-|      1 |  864 | `		}else if( c<0x10000 ){` |
-|    ! 0 |  865 | `			e = 0xE0 + ((c>>12)&0x0F);` |
-|    ! 0 |  866 | `			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));` |
-|    ! 0 |  867 | `			e = 0x80 + ((c>>6) & 0x3F);` |
-|    ! 0 |  868 | `			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));` |
-|    ! 0 |  869 | `			e = 0x80 + (c & 0x3F);` |
-|    ! 0 |  870 | `			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));` |
-|    ! 0 |  871 | `		}else{` |
-|    ! 0 |  872 | `			e = 0xF0 + ((c>>18) & 0x07);` |
-|    ! 0 |  873 | `			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));` |
-|    ! 0 |  874 | `			e = 0x80 + ((c>>12) & 0x3F);` |
-|    ! 0 |  875 | `			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));` |
-|    ! 0 |  876 | `			e = 0x80 + ((c>>6) & 0x3F);` |
-|    ! 0 |  877 | `			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));` |
-|    ! 0 |  878 | `			e = 0x80 + (c & 0x3F);` |
-|    ! 0 |  879 | `			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));` |
-|      - |  880 | `		}` |
-|      1 |  881 | `	}` |
-|      - |  882 | `	/* All done */` |
-|      3 |  883 | `	return PH7_OK;` |
-|      2 |  884 | `}` |
-|      - |  885 | `/* SPDX-SnippetBegin */` |
-|      - |  886 | `/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */` |
-|      - |  887 | `/* SPDX-License-Identifier: blessing */` |
-|      - |  888 | `/*` |
-|      - |  889 | ` * UTF-8 decoding routine extracted from the sqlite3 source tree.` |
-|      - |  890 | ` * Original author: D. Richard Hipp (http://www.sqlite.org)` |
-|      - |  891 | ` * Status: Public Domain` |
-|      - |  892 | ` */` |
-|      - |  893 | `/*` |
-|      - |  894 | `** This lookup table is used to help decode the first byte of` |
-|      - |  895 | `** a multi-byte UTF8 character.` |
-|      - |  896 | `*/` |
-|      - |  897 | `static const unsigned char UtfTrans1[] = {` |
-|      - |  898 | `  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
-|      - |  899 | `  0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,` |
-|      - |  900 | `  0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,` |
-|      - |  901 | `  0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,` |
-|      - |  902 | `  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
-|      - |  903 | `  0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,` |
-|      - |  904 | `  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
-|      - |  905 | `  0x00, 0x01, 0x02, 0x03, 0x00, 0x01, 0x00, 0x00,` |
-|      - |  906 | `};` |
-|      - |  907 | `/*` |
-|      - |  908 | `** Translate a single UTF-8 character.  Return the unicode value.` |
-|      - |  909 | `**` |
-|      - |  910 | `** During translation, assume that the byte that zTerm points` |
-|      - |  911 | `** is a 0x00.` |
-|      - |  912 | `**` |
-|      - |  913 | `** Write a pointer to the next unread byte back into *pzNext.` |
-|      - |  914 | `**` |
-|      - |  915 | `** Notes On Invalid UTF-8:` |
-|      - |  916 | `**` |
-|      - |  917 | `**  *  This routine never allows a 7-bit character (0x00 through 0x7f) to` |
-|      - |  918 | `**     be encoded as a multi-byte character.  Any multi-byte character that` |
-|      - |  919 | `**     attempts to encode a value between 0x00 and 0x7f is rendered as 0xfffd.` |
-|      - |  920 | `**` |
-|      - |  921 | `**  *  This routine never allows a UTF16 surrogate value to be encoded.` |
-|      - |  922 | `**     If a multi-byte character attempts to encode a value between` |
-|      - |  923 | `**     0xd800 and 0xe000 then it is rendered as 0xfffd.` |
-|      - |  924 | `**` |
-|      - |  925 | `**  *  Bytes in the range of 0x80 through 0xbf which occur as the first` |
-|      - |  926 | `**     byte of a character are interpreted as single-byte characters` |
-|      - |  927 | `**     and rendered as themselves even though they are technically` |
-|      - |  928 | `**     invalid characters.` |
-|      - |  929 | `**` |
-|      - |  930 | `**  *  This routine accepts an infinite number of different UTF8 encodings` |
-|      - |  931 | `**     for unicode values 0x80 and greater.  It do not change over-length` |
-|      - |  932 | `**     encodings to 0xfffd as some systems recommend.` |
-|      - |  933 | `*/` |
-|      - |  934 | `#define READ_UTF8(zIn, zTerm, c)                           \` |
-|      - |  935 | `  c = *(zIn++);                                            \` |
-|      - |  936 | `  if( c>=0xc0 ){                                           \` |
-|      - |  937 | `    c = UtfTrans1[c-0xc0];                                 \` |
-|      - |  938 | `    while( zIn!=zTerm && (*zIn & 0xc0)==0x80 ){            \` |
-|      - |  939 | `      c = (c<<6) + (0x3f & *(zIn++));                      \` |
-|      - |  940 | `    }                                                      \` |
-|      - |  941 | `    if( c<0x80                                             \` |
-|      - |  942 | `        \|\| (c&0xFFFFF800)==0xD800                          \` |
-|      - |  943 | `        \|\| (c&0xFFFFFFFE)==0xFFFE ){  c = 0xFFFD; }        \` |
-|      - |  944 | `  }` |
-|    210 |  945 | `PH7_PRIVATE int PH7_Utf8Read(` |
-|      - |  946 | `  const unsigned char *z,         /* First byte of UTF-8 character */` |
-|      - |  947 | `  const unsigned char *zTerm,     /* Pretend this byte is 0x00 */` |
-|      - |  948 | `  const unsigned char **pzNext    /* Write first byte past UTF-8 char here */` |
-|      1 |  949 | `){` |
-|      - |  950 | `  int c;` |
-|    213 |  951 | `  READ_UTF8(z, zTerm, c);` |
-|    211 |  952 | `  *pzNext = z;` |
-|    211 |  953 | `  return c;` |
-|      1 |  954 | `}` |
-|      - |  955 | `/* SPDX-SnippetEnd */` |
-|      - |  956 | `/*` |
-|      - |  957 | ` * string utf8_decode(string $data)` |
-|      - |  958 | ` *  This function decodes data, assumed to be UTF-8 encoded, to unicode.` |
-|      - |  959 | ` * Parameters` |
-|      - |  960 | ` * data` |
-|      - |  961 | ` *  An UTF-8 encoded string.` |
-|      - |  962 | ` * Return` |
-|      - |  963 | ` *  Unicode decoded string or NULL on failure.` |
-|      - |  964 | ` */` |
-|      2 |  965 | `PH7_PRIVATE int vm_builtin_utf8_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 |  966 | `{` |
-|      - |  967 | `	const unsigned char *zIn,*zEnd;` |
-|      - |  968 | `	int nByte,c;` |
-|      3 |  969 | `	if( nArg < 1 ){` |
-|      - |  970 | `		/* Missing arguments,return null */` |
-|    ! 0 |  971 | `		ph7_result_null(pCtx);` |
-|    ! 0 |  972 | `		return PH7_OK;` |
-|      - |  973 | `	}` |
-|      - |  974 | `	/* Extract the target string */` |
-|      3 |  975 | `	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nByte);` |
-|      3 |  976 | `	if( nByte < 1 ){` |
-|      - |  977 | `		/* Empty string,return null */` |
-|    ! 0 |  978 | `		ph7_result_null(pCtx);` |
-|    ! 0 |  979 | `		return PH7_OK;` |
-|      - |  980 | `	}` |
-|      3 |  981 | `	zEnd = &zIn[nByte];` |
-|      - |  982 | `	/* Start the decoding process */` |
-|      5 |  983 | `	while( zIn < zEnd ){` |
-|      3 |  984 | `		c = PH7_Utf8Read(zIn,zEnd,&zIn);` |
-|      3 |  985 | `		if( c == 0x0 ){` |
-|    ! 0 |  986 | `			break;` |
-|      - |  987 | `		}` |
-|      3 |  988 | `		ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));` |
-|      1 |  989 | `	}` |
-|      3 |  990 | `	return PH7_OK;` |
-|      2 |  991 | `}` |
-|      - |  992 |  |
+|      - |  712 |  |
+|      - |  713 | `#ifndef PH7_DISABLE_HASH_FUNC` |
+|      - |  714 | `	{ "md5",          PH7_builtin_md5       },` |
+|      - |  715 | `	{ "sha1",         PH7_builtin_sha1      },` |
+|      - |  716 | `	{ "crc32",        PH7_builtin_crc32     },` |
+|      - |  717 | `	{ "hash",         PH7_builtin_hash      },` |
+|      - |  718 | `	{ "hash_hmac",    PH7_builtin_hash_hmac },` |
+|      - |  719 | `	{ "hash_equals",  PH7_builtin_hash_equals },` |
+|      - |  720 | `	{ "hash_algos",   PH7_builtin_hash_algos },` |
+|      - |  721 | `#endif /* PH7_DISABLE_HASH_FUNC */` |
+|      - |  722 | `	{ "password_hash",         PH7_builtin_password_hash },` |
+|      - |  723 | `	{ "password_verify",       PH7_builtin_password_verify },` |
+|      - |  724 | `	{ "password_get_info",     PH7_builtin_password_get_info },` |
+|      - |  725 | `	{ "password_needs_rehash", PH7_builtin_password_needs_rehash },` |
+|      - |  726 | `	{ "filter_var",            PH7_builtin_filter_var },` |
+|      - |  727 | `	{ "filter_input",          PH7_builtin_filter_input },` |
+|      - |  728 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|      - |  729 | `#ifdef PH7_NEED_FMT_AND_INI` |
+|      - |  730 | `	{ "str_getcsv",   PH7_builtin_str_getcsv },` |
+|      - |  731 | `	{ "strip_tags",   PH7_builtin_strip_tags },` |
+|      - |  732 | `#endif /* PH7_NEED_FMT_AND_INI */` |
+|      - |  733 | `#ifdef PH7_NEED_BUILTIN_REG` |
+|      - |  734 |  |
+|      - |  735 | `	{ "str_shuffle",  PH7_builtin_str_shuffle},` |
+|      - |  736 | `	{ "str_split",    PH7_builtin_str_split  },` |
+|      - |  737 | `	{ "strspn",       PH7_builtin_strspn     },` |
+|      - |  738 | `	{ "strcspn",      PH7_builtin_strcspn    },` |
+|      - |  739 | `	{ "strpbrk",      PH7_builtin_strpbrk    },` |
+|      - |  740 | `	{ "soundex",      PH7_builtin_soundex    },` |
+|      - |  741 | `	{ "wordwrap",     PH7_builtin_wordwrap   },` |
+|      - |  742 | `	{ "strtok",       PH7_builtin_strtok     },` |
+|      - |  743 | `	{ "str_pad",      PH7_builtin_str_pad    },` |
+|      - |  744 | `	{ "str_replace",  PH7_builtin_str_replace},` |
+|      - |  745 | `	{ "str_ireplace", PH7_builtin_str_replace},` |
+|      - |  746 | `	{ "strtr",        PH7_builtin_strtr      },` |
+|      - |  747 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|      - |  748 | `#ifdef PH7_NEED_FMT_AND_INI` |
+|      - |  749 | `	{ "parse_ini_string", PH7_builtin_parse_ini_string},` |
+|      - |  750 | `#endif /* PH7_NEED_FMT_AND_INI */` |
+|      - |  751 | `#ifdef PH7_NEED_BUILTIN_REG` |
+|      - |  752 |  |
+|      - |  753 | `	         /* Ctype functions */` |
+|      - |  754 | `	{ "ctype_alnum", PH7_builtin_ctype_alnum },` |
+|      - |  755 | `	{ "ctype_alpha", PH7_builtin_ctype_alpha },` |
+|      - |  756 | `	{ "ctype_cntrl", PH7_builtin_ctype_cntrl },` |
+|      - |  757 | `	{ "ctype_digit", PH7_builtin_ctype_digit },` |
+|      - |  758 | `	{ "ctype_xdigit",PH7_builtin_ctype_xdigit},` |
+|      - |  759 | `	{ "ctype_graph", PH7_builtin_ctype_graph },` |
+|      - |  760 | `	{ "ctype_print", PH7_builtin_ctype_print },` |
+|      - |  761 | `	{ "ctype_punct", PH7_builtin_ctype_punct },` |
+|      - |  762 | `	{ "ctype_space", PH7_builtin_ctype_space },` |
+|      - |  763 | `	{ "ctype_lower", PH7_builtin_ctype_lower },` |
+|      - |  764 | `	{ "ctype_upper", PH7_builtin_ctype_upper },` |
+|      - |  765 | `	         /* Time functions */` |
+|      - |  766 | `	{ "time"    ,    PH7_builtin_time         },` |
+|      - |  767 | `	{ "microtime",   PH7_builtin_microtime    },` |
+|      - |  768 | `	{ "hrtime",      PH7_builtin_hrtime       },` |
+|      - |  769 | `	{ "getdate" ,    PH7_builtin_getdate      },` |
+|      - |  770 | `	{ "gettimeofday",PH7_builtin_gettimeofday },` |
+|      - |  771 | `	{ "date",        PH7_builtin_date         },` |
+|      - |  772 | `	{ "idate",       PH7_builtin_idate        },` |
+|      - |  773 | `	{ "gmdate",      PH7_builtin_gmdate       },` |
+|      - |  774 | `	{ "localtime",   PH7_builtin_localtime    },` |
+|      - |  775 | `	{ "mktime",      PH7_builtin_mktime       },` |
+|      - |  776 | `	{ "gmmktime",    PH7_builtin_mktime       },` |
+|      - |  777 | `	{ "date_default_timezone_get", PH7_builtin_date_default_timezone_get },` |
+|      - |  778 | `	{ "date_default_timezone_set", PH7_builtin_date_default_timezone_set },` |
+|      - |  779 | `	        /* URL functions */` |
+|      - |  780 | `	{ "base64_encode",PH7_builtin_base64_encode },` |
+|      - |  781 | `	{ "base64_decode",PH7_builtin_base64_decode },` |
+|      - |  782 | `	{ "convert_uuencode",PH7_builtin_base64_encode },` |
+|      - |  783 | `	{ "convert_uudecode",PH7_builtin_base64_decode },` |
+|      - |  784 | `	{ "urlencode",    PH7_builtin_urlencode },` |
+|      - |  785 | `	{ "urldecode",    PH7_builtin_urldecode },` |
+|      - |  786 | `	{ "rawurlencode", PH7_builtin_rawurlencode },` |
+|      - |  787 | `	{ "rawurldecode", PH7_builtin_urldecode },` |
+|      - |  788 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|      - |  789 | `};` |
+|      - |  790 | `/*` |
+|      - |  791 | ` * Register the built-in functions defined above,the array functions` |
+|      - |  792 | ` * defined in hashmap.c and the IO functions defined in vfs.c.` |
+|      - |  793 | ` */` |
+|   3382 |  794 | `PH7_PRIVATE void PH7_RegisterBuiltInFunction(ph7_vm *pVm)` |
+|      5 |  795 | `{` |
+|      - |  796 | `	sxu32 n;` |
+| 700079 |  797 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltInFunc) ; ++n ){` |
+| 696697 |  798 | `		ph7_create_function(&(*pVm),aBuiltInFunc[n].zName,aBuiltInFunc[n].xFunc,0);` |
+| 348351 |  799 | `	}` |
+|      - |  800 | `	/* Register hashmap functions [i.e: array_merge(),sort(),count(),array_diff(),...] */` |
+|   3387 |  801 | `	PH7_RegisterHashmapFunctions(&(*pVm));` |
+|      - |  802 | `	/* Register IO functions [i.e: fread(),fwrite(),chdir(),mkdir(),file(),...] */` |
+|   3387 |  803 | `	PH7_RegisterIORoutine(&(*pVm));` |
+|   3387 |  804 | `}` |
+|      - |  805 |  |
+|      - |  806 | `/*` |
+|      - |  807 | ` * UTF-8 codepoint reader shared by the glob/fnmatch matcher in vfs.c.` |
+|      - |  808 | ` * Relocated here from the removed vm_xml.c when the legacy xml_* API was` |
+|      - |  809 | ` * dropped; the utf8_encode()/utf8_decode() builtins it once served were` |
+|      - |  810 | ` * removed in turn (superseded by mb_convert_encoding()),` |
+|      - |  811 | ` * leaving only this public-domain SQLite reader.` |
+|      - |  812 | ` */` |
+|      - |  813 | `/* SPDX-SnippetBegin */` |
+|      - |  814 | `/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */` |
+|      - |  815 | `/* SPDX-License-Identifier: blessing */` |
+|      - |  816 | `/*` |
+|      - |  817 | ` * UTF-8 decoding routine extracted from the sqlite3 source tree.` |
+|      - |  818 | ` * Original author: D. Richard Hipp (http://www.sqlite.org)` |
+|      - |  819 | ` * Status: Public Domain` |
+|      - |  820 | ` */` |
+|      - |  821 | `/*` |
+|      - |  822 | `** This lookup table is used to help decode the first byte of` |
+|      - |  823 | `** a multi-byte UTF8 character.` |
+|      - |  824 | `*/` |
+|      - |  825 | `static const unsigned char UtfTrans1[] = {` |
+|      - |  826 | `  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
+|      - |  827 | `  0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,` |
+|      - |  828 | `  0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,` |
+|      - |  829 | `  0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,` |
+|      - |  830 | `  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
+|      - |  831 | `  0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,` |
+|      - |  832 | `  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,` |
+|      - |  833 | `  0x00, 0x01, 0x02, 0x03, 0x00, 0x01, 0x00, 0x00,` |
+|      - |  834 | `};` |
+|      - |  835 | `/*` |
+|      - |  836 | `** Translate a single UTF-8 character.  Return the unicode value.` |
+|      - |  837 | `**` |
+|      - |  838 | `** During translation, assume that the byte that zTerm points` |
+|      - |  839 | `** is a 0x00.` |
+|      - |  840 | `**` |
+|      - |  841 | `** Write a pointer to the next unread byte back into *pzNext.` |
+|      - |  842 | `**` |
+|      - |  843 | `** Notes On Invalid UTF-8:` |
+|      - |  844 | `**` |
+|      - |  845 | `**  *  This routine never allows a 7-bit character (0x00 through 0x7f) to` |
+|      - |  846 | `**     be encoded as a multi-byte character.  Any multi-byte character that` |
+|      - |  847 | `**     attempts to encode a value between 0x00 and 0x7f is rendered as 0xfffd.` |
+|      - |  848 | `**` |
+|      - |  849 | `**  *  This routine never allows a UTF16 surrogate value to be encoded.` |
+|      - |  850 | `**     If a multi-byte character attempts to encode a value between` |
+|      - |  851 | `**     0xd800 and 0xe000 then it is rendered as 0xfffd.` |
+|      - |  852 | `**` |
+|      - |  853 | `**  *  Bytes in the range of 0x80 through 0xbf which occur as the first` |
+|      - |  854 | `**     byte of a character are interpreted as single-byte characters` |
+|      - |  855 | `**     and rendered as themselves even though they are technically` |
+|      - |  856 | `**     invalid characters.` |
+|      - |  857 | `**` |
+|      - |  858 | `**  *  This routine accepts an infinite number of different UTF8 encodings` |
+|      - |  859 | `**     for unicode values 0x80 and greater.  It do not change over-length` |
+|      - |  860 | `**     encodings to 0xfffd as some systems recommend.` |
+|      - |  861 | `*/` |
+|      - |  862 | `#define READ_UTF8(zIn, zTerm, c)                           \` |
+|      - |  863 | `  c = *(zIn++);                                            \` |
+|      - |  864 | `  if( c>=0xc0 ){                                           \` |
+|      - |  865 | `    c = UtfTrans1[c-0xc0];                                 \` |
+|      - |  866 | `    while( zIn!=zTerm && (*zIn & 0xc0)==0x80 ){            \` |
+|      - |  867 | `      c = (c<<6) + (0x3f & *(zIn++));                      \` |
+|      - |  868 | `    }                                                      \` |
+|      - |  869 | `    if( c<0x80                                             \` |
+|      - |  870 | `        \|\| (c&0xFFFFF800)==0xD800                          \` |
+|      - |  871 | `        \|\| (c&0xFFFFFFFE)==0xFFFE ){  c = 0xFFFD; }        \` |
+|      - |  872 | `  }` |
+|    208 |  873 | `PH7_PRIVATE int PH7_Utf8Read(` |
+|      - |  874 | `  const unsigned char *z,         /* First byte of UTF-8 character */` |
+|      - |  875 | `  const unsigned char *zTerm,     /* Pretend this byte is 0x00 */` |
+|      - |  876 | `  const unsigned char **pzNext    /* Write first byte past UTF-8 char here */` |
+|      1 |  877 | `){` |
+|      - |  878 | `  int c;` |
+|    209 |  879 | `  READ_UTF8(z, zTerm, c);` |
+|    209 |  880 | `  *pzNext = z;` |
+|    209 |  881 | `  return c;` |
+|      1 |  882 | `}` |
+|      - |  883 | `/* SPDX-SnippetEnd */` |
+|      - |  884 |  |
