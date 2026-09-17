@@ -678,6 +678,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "mb_chr",       PH7_builtin_mb_chr_f   },
 	{ "mb_ord",       PH7_builtin_mb_ord_f   },
 	{ "mb_detect_encoding", PH7_builtin_mb_detect_encoding_f },
+	{ "mb_convert_encoding", PH7_builtin_mb_convert_encoding_f },
 	{ "ucfirst",      PH7_builtin_ucfirst    },
 	{ "lcfirst",      PH7_builtin_lcfirst    },
 	{ "ord",          PH7_builtin_ord        },
@@ -803,85 +804,12 @@ PH7_PRIVATE void PH7_RegisterBuiltInFunction(ph7_vm *pVm)
 }
 
 /*
- * UTF-8 encode/decode builtins (registered from vm.c).  Relocated here
- * from the removed vm_xml.c when the legacy xml_* API was dropped.
+ * UTF-8 codepoint reader shared by the glob/fnmatch matcher in vfs.c.
+ * Relocated here from the removed vm_xml.c when the legacy xml_* API was
+ * dropped; the utf8_encode()/utf8_decode() builtins it once served were
+ * removed in turn (superseded by mb_convert_encoding()),
+ * leaving only this public-domain SQLite reader.
  */
-/*
- * int utf8_encode(string $input)
- *  UTF-8 encoding.
- *  This function encodes the string data to UTF-8, and returns the encoded version.
- *  UTF-8 is a standard mechanism used by Unicode for encoding wide character values
- * into a byte stream. UTF-8 is transparent to plain ASCII characters, is self-synchronized
- * (meaning it is possible for a program to figure out where in the bytestream characters start)
- * and can be used with normal string comparison functions for sorting and such.
- *  Notes on UTF-8 (According to SQLite3 authors):
- *  Byte-0    Byte-1    Byte-2    Byte-3    Value
- *  0xxxxxxx                                 00000000 00000000 0xxxxxxx
- *  110yyyyy  10xxxxxx                       00000000 00000yyy yyxxxxxx
- *  1110zzzz  10yyyyyy  10xxxxxx             00000000 zzzzyyyy yyxxxxxx
- *  11110uuu  10uuzzzz  10yyyyyy  10xxxxxx   000uuuuu zzzzyyyy yyxxxxxx
- * Parameters
- * $input
- *   String to encode or NULL on failure.
- * Return
- *  An UTF-8 encoded string.
- */
-PH7_PRIVATE int vm_builtin_utf8_encode(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	const unsigned char *zIn,*zEnd;
-	int nByte,c,e;
-	if( nArg < 1 ){
-		/* Missing arguments,return null */
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	/* Extract the target string */
-	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nByte);
-	if( nByte < 1 ){
-		/* Empty string,return null */
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	zEnd = &zIn[nByte];
-	/* Start the encoding process */
-	for(;;){
-		if( zIn >= zEnd ){
-			/* End of input */
-			break;
-		}
-		c = zIn[0];
-		/* Advance the stream cursor */
-		zIn++;
-		/* Encode */
-		if( c<0x00080 ){
-			e = (c&0xFF);
-			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));
-		}else if( c<0x00800 ){
-			e = 0xC0 + ((c>>6)&0x1F);
-			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));
-			e = 0x80 + (c & 0x3F);
-			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));
-		}else if( c<0x10000 ){
-			e = 0xE0 + ((c>>12)&0x0F);
-			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));
-			e = 0x80 + ((c>>6) & 0x3F);
-			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));
-			e = 0x80 + (c & 0x3F);
-			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));
-		}else{
-			e = 0xF0 + ((c>>18) & 0x07);
-			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));
-			e = 0x80 + ((c>>12) & 0x3F);
-			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));
-			e = 0x80 + ((c>>6) & 0x3F);
-			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));
-			e = 0x80 + (c & 0x3F);
-			ph7_result_string(pCtx,(const char *)&e,(int)sizeof(char));
-		}
-	}
-	/* All done */
-	return PH7_OK;
-}
 /* SPDX-SnippetBegin */
 /* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */
 /* SPDX-License-Identifier: blessing */
@@ -953,39 +881,3 @@ PH7_PRIVATE int PH7_Utf8Read(
   return c;
 }
 /* SPDX-SnippetEnd */
-/*
- * string utf8_decode(string $data)
- *  This function decodes data, assumed to be UTF-8 encoded, to unicode.
- * Parameters
- * data
- *  An UTF-8 encoded string.
- * Return
- *  Unicode decoded string or NULL on failure.
- */
-PH7_PRIVATE int vm_builtin_utf8_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	const unsigned char *zIn,*zEnd;
-	int nByte,c;
-	if( nArg < 1 ){
-		/* Missing arguments,return null */
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	/* Extract the target string */
-	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nByte);
-	if( nByte < 1 ){
-		/* Empty string,return null */
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	zEnd = &zIn[nByte];
-	/* Start the decoding process */
-	while( zIn < zEnd ){
-		c = PH7_Utf8Read(zIn,zEnd,&zIn);
-		if( c == 0x0 ){
-			break;
-		}
-		ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));
-	}
-	return PH7_OK;
-}

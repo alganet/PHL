@@ -723,6 +723,152 @@ static int PH7_builtin_mb_detect_encoding(ph7_context *pCtx,int nArg,ph7_value *
 	return PH7_OK;
 }
 /*
+ * mb_convert_encoding(array|string $string, string $to_encoding,
+ *                     array|string|null $from_encoding = null): array|string
+ *
+ * PHL's encoding scope is UTF-8, the byte encodings (8bit/binary/ASCII) and
+ * ISO-8859-1 (the §10 scope cut — php's full encoding zoo is out; a php-valid
+ * name PHL does not model, e.g. SJIS, raises the same ValueError php uses for a
+ * truly invalid name). ISO-8859-1 is carried because it is the documented
+ * replacement path for the removed utf8_encode()/utf8_decode() builtins:
+ * mb_convert_encoding($s,'UTF-8','ISO-8859-1') and its inverse. Conversion is
+ * codepoint-exact for the modelled encodings; a source byte or codepoint that
+ * cannot be represented in the target maps to '?' (0x3F), php's default
+ * substitute character.
+ */
+#define MB_ENC_UTF8    0
+#define MB_ENC_LATIN1  1   /* ISO-8859-1 / 8bit / binary: byte == codepoint 0..255 */
+#define MB_ENC_ASCII   2   /* 7-bit: a byte / codepoint > 0x7F substitutes */
+/* Resolve an encoding name to an MB_ENC_* id, or -1 when it is outside PHL's
+ * modelled set. Surrounding ASCII whitespace is trimmed (php accepts " UTF-8"). */
+static int MbConvEncId(const char *z,int n)
+{
+	while( n > 0 && (z[0]==' '||z[0]=='\t'||z[0]=='\n'||z[0]=='\r') ){ z++; n--; }
+	while( n > 0 && (z[n-1]==' '||z[n-1]=='\t'||z[n-1]=='\n'||z[n-1]=='\r') ){ n--; }
+	if( (n==5 && SyStrnicmp(z,"UTF-8",5)==0) || (n==4 && SyStrnicmp(z,"UTF8",4)==0) ){
+		return MB_ENC_UTF8;
+	}
+	if( (n==10 && SyStrnicmp(z,"ISO-8859-1",10)==0) || (n==9 && SyStrnicmp(z,"ISO8859-1",9)==0)
+	 || (n==6 && SyStrnicmp(z,"latin1",6)==0) || (n==4 && SyStrnicmp(z,"8bit",4)==0)
+	 || (n==6 && SyStrnicmp(z,"binary",6)==0) ){
+		return MB_ENC_LATIN1;
+	}
+	if( (n==5 && SyStrnicmp(z,"ASCII",5)==0) || (n==8 && SyStrnicmp(z,"US-ASCII",8)==0) ){
+		return MB_ENC_ASCII;
+	}
+	return -1;
+}
+/* Transcode one byte buffer from idFrom to idTo, appending to pOut. Input that
+ * cannot be represented in the target substitutes '?' (0x3F), php's default. */
+static void MbConvertBuffer(SyBlob *pOut,const char *zIn,sxu32 nByte,int idFrom,int idTo)
+{
+	const unsigned char *z = (const unsigned char *)zIn;
+	sxu32 i = 0,nLen,cp;
+	unsigned char zEnc[4];
+	while( i < nByte ){
+		if( idFrom == MB_ENC_UTF8 ){
+			cp = MbUtf8Decode(&z[i],nByte - i,&nLen);
+			if( nLen == 1 && z[i] >= 0x80 ){ cp = '?'; } /* invalid sequence */
+			i += nLen;
+		}else{
+			cp = z[i];
+			i++;
+			if( idFrom == MB_ENC_ASCII && cp > 0x7F ){ cp = '?'; }
+		}
+		if( idTo == MB_ENC_UTF8 ){
+			SyBlobAppend(pOut,zEnc,MbUtf8Encode(cp,zEnc));
+		}else{
+			sxu32 iMax = (idTo == MB_ENC_ASCII) ? 0x7F : 0xFF;
+			zEnc[0] = (unsigned char)((cp <= iMax) ? cp : '?');
+			SyBlobAppend(pOut,zEnc,1);
+		}
+	}
+}
+/* Build a converted copy of pIn as a fresh context value: a string is
+ * transcoded; an array is rebuilt element by element (keys preserved, nested
+ * arrays recursed) to match php's array form. Returns 0 on allocation failure. */
+static ph7_value * MbConvertNew(ph7_context *pCtx,ph7_value *pIn,int idFrom,int idTo)
+{
+	if( ph7_value_is_array(pIn) ){
+		ph7_hashmap *pMap = (ph7_hashmap *)pIn->x.pOther;
+		ph7_hashmap_node *pEntry = pMap->pFirst;
+		ph7_value *pArr = ph7_context_new_array(pCtx);
+		ph7_value sKey;
+		sxu32 n;
+		if( pArr == 0 ){
+			return 0;
+		}
+		PH7_MemObjInit(pCtx->pVm,&sKey);
+		for( n = 0 ; n < pMap->nEntry ; n++ ){
+			ph7_value *pData = HashmapExtractNodeValue(pEntry);
+			if( pData ){
+				ph7_value *pConv = MbConvertNew(pCtx,pData,idFrom,idTo);
+				if( pConv ){
+					PH7_HashmapExtractNodeKey(pEntry,&sKey);
+					ph7_array_add_elem(pArr,&sKey,pConv);
+					PH7_MemObjRelease(&sKey);
+					ph7_context_release_value(pCtx,pConv);
+				}
+			}
+			pEntry = pEntry->pPrev; /* forward walk (reverse link) */
+		}
+		return pArr;
+	}else{
+		SyBlob sOut;
+		const char *zIn;
+		int nByte;
+		ph7_value *pVal = ph7_context_new_scalar(pCtx);
+		if( pVal == 0 ){
+			return 0;
+		}
+		zIn = ph7_value_to_string(pIn,&nByte);
+		SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+		MbConvertBuffer(&sOut,zIn,(sxu32)nByte,idFrom,idTo);
+		ph7_value_string(pVal,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+		SyBlobRelease(&sOut);
+		return pVal;
+	}
+}
+static int PH7_builtin_mb_convert_encoding(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zTo,*zFrom;
+	int nTo,nFrom,idTo,idFrom;
+	ph7_value *pResult;
+	if( nArg < 2 ){
+		/* the arity guard fires first; stay defensive */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zTo = ph7_value_to_string(apArg[1],&nTo);
+	idTo = MbConvEncId(zTo,nTo);
+	if( idTo < 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"mb_convert_encoding(): Argument #2 ($to_encoding) must be a valid encoding, \"%.*s\" given",
+			nTo,zTo);
+	}
+	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){
+		/* php also accepts an array / comma list here for source detection;
+		 * PHL's modelled set makes detection trivial, so a single name is taken
+		 * (a list falls out of scope and hits the same loud ValueError). */
+		zFrom = ph7_value_to_string(apArg[2],&nFrom);
+		idFrom = MbConvEncId(zFrom,nFrom);
+		if( idFrom < 0 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"mb_convert_encoding(): Argument #3 ($from_encoding) contains invalid encoding \"%.*s\"",
+				nFrom,zFrom);
+		}
+	}else{
+		/* php falls back to the internal encoding, which PHL fixes at UTF-8 */
+		idFrom = MB_ENC_UTF8;
+	}
+	pResult = MbConvertNew(pCtx,apArg[0],idFrom,idTo);
+	if( pResult == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	ph7_result_value(pCtx,pResult);
+	return PH7_OK;
+}
+/*
  * Install the mb_* functions (called from PH7_RegisterBuiltInFunction's
  * table in builtin.c via these PH7_PRIVATE symbols).
  */
@@ -738,5 +884,6 @@ PH7_PRIVATE int PH7_builtin_mb_strwidth_f(ph7_context *pCtx,int nArg,ph7_value *
 PH7_PRIVATE int PH7_builtin_mb_chr_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_chr(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_ord_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_ord(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_detect_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_detect_encoding(pCtx,nArg,apArg); }
+PH7_PRIVATE int PH7_builtin_mb_convert_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_convert_encoding(pCtx,nArg,apArg); }
 
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
