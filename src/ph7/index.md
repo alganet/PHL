@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 46088/56588 lines (81.44%)
+Coverage: 46118/56605 lines (81.47%)
 
 [Up](../index.md)
 
@@ -21,7 +21,7 @@ Coverage: 46088/56588 lines (81.44%)
 |[compile_func.c](compile_func.c.md)|85.88%|870/1013|
 |[compile_literal.c](compile_literal.c.md)|89.02%|949/1066|
 |[compile_node.c](compile_node.c.md)|83.54%|685/820|
-|[compile_stmt.c](compile_stmt.c.md)|73.85%|1463/1981|
+|[compile_stmt.c](compile_stmt.c.md)|73.40%|1454/1981|
 |[constant.c](constant.c.md)|93.09%|970/1042|
 |[hashmap.c](hashmap.c.md)|90.77%|1042/1148|
 |[hashmap_builtin.c](hashmap_builtin.c.md)|85.84%|2443/2846|
@@ -30,13 +30,13 @@ Coverage: 46088/56588 lines (81.44%)
 |[memobj.c](memobj.c.md)|81.35%|829/1019|
 |[net.c](net.c.md)|57.45%|81/141|
 |[oo.c](oo.c.md)|87.62%|736/840|
-|[parse.c](parse.c.md)|86.69%|1192/1375|
+|[parse.c](parse.c.md)|86.78%|1208/1392|
 |[vfs.c](vfs.c.md)|67.96%|806/1186|
 |[vfs_io_driver.c](vfs_io_driver.c.md)|64.47%|539/836|
 |[vfs_stream.c](vfs_stream.c.md)|66.90%|1267/1894|
 |[vfs_unix.c](vfs_unix.c.md)|89.38%|421/471|
 |[vfs_win.c](vfs_win.c.md)|82.82%|588/710|
-|[vm.c](vm.c.md)|83.19%|2355/2831|
+|[vm.c](vm.c.md)|83.61%|2367/2831|
 |[vm_arg_check.c](vm_arg_check.c.md)|97.66%|375/384|
 |[vm_builtin_call.c](vm_builtin_call.c.md)|87.28%|542/621|
 |[vm_builtin_class.c](vm_builtin_class.c.md)|87.60%|629/718|
@@ -63,7 +63,7 @@ Coverage: 46088/56588 lines (81.44%)
 |[vm_libxml.c](vm_libxml.c.md)|73.46%|238/324|
 |[vm_ops_arith.c](vm_ops_arith.c.md)|82.93%|588/709|
 |[vm_ops_iter.c](vm_ops_iter.c.md)|80.00%|272/340|
-|[vm_ops_load.c](vm_ops_load.c.md)|86.22%|732/849|
+|[vm_ops_load.c](vm_ops_load.c.md)|87.51%|743/849|
 |[vm_ops_misc.c](vm_ops_misc.c.md)|86.77%|223/257|
 |[vm_ops_oo.c](vm_ops_oo.c.md)|85.52%|868/1015|
 |[vm_pcre.c](vm_pcre.c.md)|69.07%|632/915|

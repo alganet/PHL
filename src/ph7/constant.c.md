@@ -2083,14 +2083,14 @@ Coverage: 970/1042 lines (93.09%)
 |      - | 2073 | `/*` |
 |      - | 2074 | ` * Register the built-in constants defined above.` |
 |      - | 2075 | ` */` |
-|   3398 | 2076 | `PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm)` |
+|   3402 | 2076 | `PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm)` |
 |      5 | 2077 | `{` |
 |      - | 2078 | `	sxu32 n;` |
 |      - | 2079 | `	/*` |
 |      - | 2080 | `	 * Note that all built-in constants have access to the ph7 virtual machine` |
 |      - | 2081 | `	 * that trigger the constant invocation as their private data.` |
 |      - | 2082 | `	 */` |
-| 808729 | 2083 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltIn) ; ++n ){` |
-| 805331 | 2084 | `		ph7_create_constant(&(*pVm),aBuiltIn[n].zName,aBuiltIn[n].xExpand,&(*pVm));` |
-| 402668 | 2085 | `	}` |
-|   3403 | 2086 | `}` |
+| 809681 | 2083 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltIn) ; ++n ){` |
+| 806279 | 2084 | `		ph7_create_constant(&(*pVm),aBuiltIn[n].zName,aBuiltIn[n].xExpand,&(*pVm));` |
+| 403142 | 2085 | `	}` |
+|   3407 | 2086 | `}` |

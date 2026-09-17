@@ -35,42 +35,42 @@ Coverage: 223/257 lines (86.77%)
 |      - |   25 | ` * OP_CONSUME: body moved verbatim from the OP_CONSUME arm of` |
 |      - |   26 | ` * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.` |
 |      - |   27 | ` */` |
-|  52192 |   28 | `PH7_PRIVATE VmOpRc VmExecOpConsume(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
+|  52208 |   28 | `PH7_PRIVATE VmOpRc VmExecOpConsume(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)` |
 |      5 |   29 | `{` |
-|  52197 |   30 | `	ph7_value *pTos = pState->pTos;` |
-|  52197 |   31 | `	ph7_value *pStack = pState->pStack;` |
-|  52197 |   32 | `	VmInstr *aInstr = pState->aInstr;` |
-|  52197 |   33 | `	sxi32 pc = pState->pc;` |
+|  52213 |   30 | `	ph7_value *pTos = pState->pTos;` |
+|  52213 |   31 | `	ph7_value *pStack = pState->pStack;` |
+|  52213 |   32 | `	VmInstr *aInstr = pState->aInstr;` |
+|  52213 |   33 | `	sxi32 pc = pState->pc;` |
 |      - |   34 | `	sxi32 rc;` |
-|  26096 |   35 | `	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
-|  52197 |   36 | `	ph7_output_consumer *pCons = &pVm->sVmConsumer;` |
-|  52197 |   37 | `	ph7_value *pCur,*pOut = pTos;` |
+|  26104 |   35 | `	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);` |
+|  52213 |   36 | `	ph7_output_consumer *pCons = &pVm->sVmConsumer;` |
+|  52213 |   37 | `	ph7_value *pCur,*pOut = pTos;` |
 |      - |   38 |  |
-|  52197 |   39 | `	pOut = &pTos[-pInstr->iP1 + 1];` |
-|  52197 |   40 | `	pCur = pOut;` |
+|  52213 |   39 | `	pOut = &pTos[-pInstr->iP1 + 1];` |
+|  52213 |   40 | `	pCur = pOut;` |
 |      - |   41 | `	/* Start the consume process  */` |
-| 104389 |   42 | `	while( pOut <= pTos ){` |
+| 104421 |   42 | `	while( pOut <= pTos ){` |
 |      - |   43 | `		/* Force a string cast */` |
-|  52197 |   44 | `		if( (pOut->iFlags & MEMOBJ_STRING) == 0 ){` |
+|  52213 |   44 | `		if( (pOut->iFlags & MEMOBJ_STRING) == 0 ){` |
 |   3229 |   45 | `			PH7_MemObjToString(pOut);` |
 |   1612 |   46 | `		}` |
-|  52197 |   47 | `		if( SyBlobLength(&pOut->sBlob) > 0 ){` |
+|  52213 |   47 | `		if( SyBlobLength(&pOut->sBlob) > 0 ){` |
 |      - |   48 | `			/*SyBlobNullAppend(&pOut->sBlob);*/` |
 |      - |   49 | `			/* Invoke the output consumer callback */` |
-|  39733 |   50 | `			rc = pCons->xConsumer(SyBlobData(&pOut->sBlob),SyBlobLength(&pOut->sBlob),pCons->pUserData);` |
-|  39733 |   51 | `			VmTrackOutput(pVm, SyBlobLength(&pOut->sBlob));` |
-|  39733 |   52 | `			SyBlobRelease(&pOut->sBlob);` |
-|  39733 |   53 | `			if( rc == SXERR_ABORT ){` |
+|  39747 |   50 | `			rc = pCons->xConsumer(SyBlobData(&pOut->sBlob),SyBlobLength(&pOut->sBlob),pCons->pUserData);` |
+|  39747 |   51 | `			VmTrackOutput(pVm, SyBlobLength(&pOut->sBlob));` |
+|  39747 |   52 | `			SyBlobRelease(&pOut->sBlob);` |
+|  39747 |   53 | `			if( rc == SXERR_ABORT ){` |
 |      - |   54 | `				/* Output consumer callback request an operation abort. */` |
 |    ! 0 |   55 | `				VM_EXIT_ABORT;` |
 |      - |   56 | `			}` |
-|  19864 |   57 | `		}` |
-|  52197 |   58 | `		pOut++;` |
+|  19871 |   57 | `		}` |
+|  52213 |   58 | `		pOut++;` |
 |      5 |   59 | `	}` |
-|  52197 |   60 | `	pTos = &pCur[-1];` |
-|  52197 |   61 | `	VM_EXIT_BREAK;` |
+|  52213 |   60 | `	pTos = &pCur[-1];` |
+|  52213 |   61 | `	VM_EXIT_BREAK;` |
 |    ! 0 |   62 | `	VM_EXIT_BREAK;` |
-|  26101 |   63 | `}` |
+|  26109 |   63 | `}` |
 |      - |   64 |  |
 |      - |   65 | `/*` |
 |      - |   66 | ` * OP_MATCH: body moved verbatim from the OP_MATCH arm of` |

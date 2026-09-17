@@ -56,17 +56,17 @@ Coverage: 163/220 lines (74.09%)
 |     - |   46 | ` * PH7_LibxmlVmRelease before the allocator that holds the shells is torn` |
 |     - |   47 | ` * down.` |
 |     - |   48 | ` */` |
-|  3404 |   49 | `PH7_PRIVATE void PH7_XmlWriterVmSweep(ph7_vm *pVm)` |
+|  3408 |   49 | `PH7_PRIVATE void PH7_XmlWriterVmSweep(ph7_vm *pVm)` |
 |     5 |   50 | `{` |
-|  3409 |   51 | `	phl_xmlwriter *pXw = (phl_xmlwriter *)pVm->pXmlWriters;` |
-|  3415 |   52 | `	while( pXw ){` |
+|  3413 |   51 | `	phl_xmlwriter *pXw = (phl_xmlwriter *)pVm->pXmlWriters;` |
+|  3419 |   52 | `	while( pXw ){` |
 |     7 |   53 | `		phl_xmlwriter *pNext = pXw->pNext;` |
 |     7 |   54 | `		XmlWriterFree(pXw);` |
 |     7 |   55 | `		SyMemBackendFree(&pVm->sAllocator,pXw);` |
 |     7 |   56 | `		pXw = pNext;` |
 |     1 |   57 | `	}` |
-|  3409 |   58 | `	pVm->pXmlWriters = 0;` |
-|  3409 |   59 | `}` |
+|  3413 |   58 | `	pVm->pXmlWriters = 0;` |
+|  3413 |   59 | `}` |
 |     - |   60 |  |
 |    56 |   61 | `static phl_xmlwriter * XmlWriterArg(ph7_value *pVal)` |
 |     1 |   62 | `{` |

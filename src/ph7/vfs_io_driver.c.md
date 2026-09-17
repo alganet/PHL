@@ -786,26 +786,26 @@ Coverage: 539/836 lines (64.47%)
 |    - |  776 | `/*` |
 |    - |  777 | ` * Pipe stream xRead implementation.` |
 |    - |  778 | ` */` |
-| 5952 |  779 | `static ph7_int64 PipeStream_Read(void *pHandle, void *pBuffer, ph7_int64 nDatatoRead)` |
+| 5954 |  779 | `static ph7_int64 PipeStream_Read(void *pHandle, void *pBuffer, ph7_int64 nDatatoRead)` |
 |    4 |  780 | `{` |
-| 5956 |  781 | `	pipe_private *pPipe = (pipe_private *)pHandle;` |
+| 5958 |  781 | `	pipe_private *pPipe = (pipe_private *)pHandle;` |
 |    - |  782 | `	size_t nRead;` |
-| 5956 |  783 | `	if( pPipe == 0 \|\| pPipe->pFile == 0 ){` |
+| 5958 |  783 | `	if( pPipe == 0 \|\| pPipe->pFile == 0 ){` |
 |  ! 0 |  784 | `		return -1;` |
 |    - |  785 | `	}` |
-| 5956 |  786 | `	if( pPipe->iMode != 'r' ){` |
+| 5958 |  786 | `	if( pPipe->iMode != 'r' ){` |
 |    - |  787 | `		/* Cannot read from a write-only pipe */` |
 |  ! 0 |  788 | `		return -1;` |
 |    - |  789 | `	}` |
-| 5956 |  790 | `	nRead = fread(pBuffer, 1, (size_t)nDatatoRead, pPipe->pFile);` |
-| 5956 |  791 | `	if( nRead == 0 ){` |
-| 3980 |  792 | `		if( feof(pPipe->pFile) ){` |
-| 3980 |  793 | `			return 0; /* EOF */` |
+| 5958 |  790 | `	nRead = fread(pBuffer, 1, (size_t)nDatatoRead, pPipe->pFile);` |
+| 5958 |  791 | `	if( nRead == 0 ){` |
+| 3982 |  792 | `		if( feof(pPipe->pFile) ){` |
+| 3982 |  793 | `			return 0; /* EOF */` |
 |    - |  794 | `		}` |
 |  ! 0 |  795 | `		return -1; /* Error */` |
 |    - |  796 | `	}` |
 | 1980 |  797 | `	return (ph7_int64)nRead;` |
-| 2980 |  798 | `}` |
+| 2981 |  798 | `}` |
 |    - |  799 | `/*` |
 |    - |  800 | ` * Pipe stream xWrite implementation.` |
 |    - |  801 | ` */` |

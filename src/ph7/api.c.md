@@ -412,53 +412,53 @@ Coverage: 777/1102 lines (70.51%)
 |       - |  402 | ` * Note: This call is not thread safe.` |
 |       - |  403 | ` * Refer to [ph7_lib_shutdown()].` |
 |       - |  404 | ` */` |
-|     484 |  405 | `static void PH7CoreShutdown(void)` |
+|     480 |  405 | `static void PH7CoreShutdown(void)` |
 |       4 |  406 | `{` |
 |       - |  407 | `	ph7 *pEngine,*pNext;` |
 |       - |  408 | `	/* Release all active engines first */` |
-|     488 |  409 | `	pEngine = sMPGlobal.pEngines;` |
-|     484 |  410 | `	for(;;){` |
-|     972 |  411 | `		if( sMPGlobal.nEngine < 1 ){` |
-|     488 |  412 | `			break;` |
+|     484 |  409 | `	pEngine = sMPGlobal.pEngines;` |
+|     480 |  410 | `	for(;;){` |
+|     964 |  411 | `		if( sMPGlobal.nEngine < 1 ){` |
+|     484 |  412 | `			break;` |
 |       - |  413 | `		}` |
-|     488 |  414 | `		pNext = pEngine->pNext;` |
-|     488 |  415 | `		EngineRelease(pEngine);` |
-|     488 |  416 | `		pEngine = pNext;` |
-|     488 |  417 | `		sMPGlobal.nEngine--;` |
+|     484 |  414 | `		pNext = pEngine->pNext;` |
+|     484 |  415 | `		EngineRelease(pEngine);` |
+|     484 |  416 | `		pEngine = pNext;` |
+|     484 |  417 | `		sMPGlobal.nEngine--;` |
 |       4 |  418 | `	}` |
 |       - |  419 | `#if defined(PH7_ENABLE_THREADS)` |
 |       - |  420 | `	/* Release the mutex subsystem */` |
-|     488 |  421 | `	if( sMPGlobal.pMutexMethods ){` |
-|     488 |  422 | `		if( sMPGlobal.pMutex ){` |
-|     488 |  423 | `			SyMutexRelease(sMPGlobal.pMutexMethods,sMPGlobal.pMutex);` |
-|     488 |  424 | `			sMPGlobal.pMutex = 0;` |
-|     242 |  425 | `		}` |
-|     488 |  426 | `		if( sMPGlobal.pMutexMethods->xGlobalRelease ){` |
+|     484 |  421 | `	if( sMPGlobal.pMutexMethods ){` |
+|     484 |  422 | `		if( sMPGlobal.pMutex ){` |
+|     484 |  423 | `			SyMutexRelease(sMPGlobal.pMutexMethods,sMPGlobal.pMutex);` |
+|     484 |  424 | `			sMPGlobal.pMutex = 0;` |
+|     240 |  425 | `		}` |
+|     484 |  426 | `		if( sMPGlobal.pMutexMethods->xGlobalRelease ){` |
 |       4 |  427 | `			sMPGlobal.pMutexMethods->xGlobalRelease();` |
 |     ! 0 |  428 | `		}` |
-|     488 |  429 | `		sMPGlobal.pMutexMethods = 0;` |
-|     242 |  430 | `	}` |
-|     488 |  431 | `	sMPGlobal.nThreadingLevel = 0;` |
+|     484 |  429 | `		sMPGlobal.pMutexMethods = 0;` |
+|     240 |  430 | `	}` |
+|     484 |  431 | `	sMPGlobal.nThreadingLevel = 0;` |
 |       - |  432 | `#endif` |
-|     488 |  433 | `	if( sMPGlobal.sAllocator.pMethods ){` |
+|     484 |  433 | `	if( sMPGlobal.sAllocator.pMethods ){` |
 |       - |  434 | `		/* Release the memory backend */` |
-|     488 |  435 | `		SyMemBackendRelease(&sMPGlobal.sAllocator);` |
-|     242 |  436 | `	}` |
-|     488 |  437 | `	sMPGlobal.nMagic = 0x1928;` |
-|     488 |  438 | `}` |
+|     484 |  435 | `		SyMemBackendRelease(&sMPGlobal.sAllocator);` |
+|     240 |  436 | `	}` |
+|     484 |  437 | `	sMPGlobal.nMagic = 0x1928;` |
+|     484 |  438 | `}` |
 |       - |  439 | `/*` |
 |       - |  440 | ` * [CAPIREF: ph7_lib_shutdown()]` |
 |       - |  441 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - |  442 | ` */` |
-|     484 |  443 | `int ph7_lib_shutdown(void)` |
+|     480 |  443 | `int ph7_lib_shutdown(void)` |
 |       4 |  444 | `{` |
-|     488 |  445 | `	if( sMPGlobal.nMagic != PH7_LIB_MAGIC ){` |
+|     484 |  445 | `	if( sMPGlobal.nMagic != PH7_LIB_MAGIC ){` |
 |       - |  446 | `		/* Already shut */` |
 |     ! 0 |  447 | `		return PH7_OK;` |
 |       - |  448 | `	}` |
-|     488 |  449 | `	PH7CoreShutdown();` |
-|     488 |  450 | `	return PH7_OK;` |
-|     246 |  451 | `}` |
+|     484 |  449 | `	PH7CoreShutdown();` |
+|     484 |  450 | `	return PH7_OK;` |
+|     244 |  451 | `}` |
 |       - |  452 | `/*` |
 |       - |  453 | ` * [CAPIREF: ph7_lib_is_threadsafe()]` |
 |       - |  454 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
@@ -614,43 +614,43 @@ Coverage: 777/1102 lines (70.51%)
 |       - |  604 | ` * [CAPIREF: ph7_release()]` |
 |       - |  605 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - |  606 | ` */` |
-|    3406 |  607 | `int ph7_release(ph7 *pEngine)` |
+|    3410 |  607 | `int ph7_release(ph7 *pEngine)` |
 |       5 |  608 | `{` |
 |       - |  609 | `	int rc;` |
-|    3411 |  610 | `	if( PH7_ENGINE_MISUSE(pEngine) ){` |
+|    3415 |  610 | `	if( PH7_ENGINE_MISUSE(pEngine) ){` |
 |     ! 0 |  611 | `		return PH7_CORRUPT;` |
 |       - |  612 | `	}` |
 |       - |  613 | `#if defined(PH7_ENABLE_THREADS)` |
 |       - |  614 | `	 /* Acquire engine mutex */` |
-|    3411 |  615 | `	 SyMutexEnter(sMPGlobal.pMutexMethods,pEngine->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
-|    3411 |  616 | `	 if( sMPGlobal.nThreadingLevel > PH7_THREAD_LEVEL_SINGLE &&` |
-|    3406 |  617 | `		 PH7_THRD_ENGINE_RELEASE(pEngine) ){` |
+|    3415 |  615 | `	 SyMutexEnter(sMPGlobal.pMutexMethods,pEngine->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
+|    3415 |  616 | `	 if( sMPGlobal.nThreadingLevel > PH7_THREAD_LEVEL_SINGLE &&` |
+|    3410 |  617 | `		 PH7_THRD_ENGINE_RELEASE(pEngine) ){` |
 |     ! 0 |  618 | `			 return PH7_ABORT; /* Another thread have released this instance */` |
 |       - |  619 | `	 }` |
 |       - |  620 | `#endif` |
 |       - |  621 | `	/* Release the engine */` |
-|    3411 |  622 | `	rc = EngineRelease(&(*pEngine));` |
+|    3415 |  622 | `	rc = EngineRelease(&(*pEngine));` |
 |       - |  623 | `#if defined(PH7_ENABLE_THREADS)` |
 |       - |  624 | `	 /* Leave engine mutex */` |
-|    3411 |  625 | `	 SyMutexLeave(sMPGlobal.pMutexMethods,pEngine->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
+|    3415 |  625 | `	 SyMutexLeave(sMPGlobal.pMutexMethods,pEngine->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
 |       - |  626 | `	 /* Release engine mutex */` |
-|    3411 |  627 | `	 SyMutexRelease(sMPGlobal.pMutexMethods,pEngine->pMutex) /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
+|    3415 |  627 | `	 SyMutexRelease(sMPGlobal.pMutexMethods,pEngine->pMutex) /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
 |       - |  628 | `#endif` |
 |       - |  629 | `#if defined(PH7_ENABLE_THREADS)` |
 |       - |  630 | `	/* Enter the global mutex */` |
-|    3411 |  631 | `	 SyMutexEnter(sMPGlobal.pMutexMethods,sMPGlobal.pMutex); /* NO-OP if sMPGlobal.nThreadingLevel == PH7_THREAD_LEVEL_SINGLE */` |
+|    3415 |  631 | `	 SyMutexEnter(sMPGlobal.pMutexMethods,sMPGlobal.pMutex); /* NO-OP if sMPGlobal.nThreadingLevel == PH7_THREAD_LEVEL_SINGLE */` |
 |       - |  632 | `#endif` |
 |       - |  633 | `	/* Unlink from the list of active engines */` |
-|    3411 |  634 | `	MACRO_LD_REMOVE(sMPGlobal.pEngines,pEngine);` |
-|    3411 |  635 | `	sMPGlobal.nEngine--;` |
+|    3415 |  634 | `	MACRO_LD_REMOVE(sMPGlobal.pEngines,pEngine);` |
+|    3415 |  635 | `	sMPGlobal.nEngine--;` |
 |       - |  636 | `#if defined(PH7_ENABLE_THREADS)` |
 |       - |  637 | `	/* Leave the global mutex */` |
-|    3411 |  638 | `	 SyMutexLeave(sMPGlobal.pMutexMethods,sMPGlobal.pMutex); /* NO-OP if sMPGlobal.nThreadingLevel == PH7_THREAD_LEVEL_SINGLE */` |
+|    3415 |  638 | `	 SyMutexLeave(sMPGlobal.pMutexMethods,sMPGlobal.pMutex); /* NO-OP if sMPGlobal.nThreadingLevel == PH7_THREAD_LEVEL_SINGLE */` |
 |       - |  639 | `#endif` |
 |       - |  640 | `	/* Release the memory chunk allocated to this engine */` |
-|    3411 |  641 | `	SyMemBackendPoolFree(&sMPGlobal.sAllocator,pEngine);` |
-|    3411 |  642 | `	return rc;` |
-|    1708 |  643 | `}` |
+|    3415 |  641 | `	SyMemBackendPoolFree(&sMPGlobal.sAllocator,pEngine);` |
+|    3415 |  642 | `	return rc;` |
+|    1710 |  643 | `}` |
 |       - |  644 | `/*` |
 |       - |  645 | ` * Compile a raw PHP script.` |
 |       - |  646 | ` * To execute a PHP code, it must first be compiled into a byte-code program using this routine.` |
@@ -718,38 +718,38 @@ Coverage: 777/1102 lines (70.51%)
 |    3887 |  708 | `		PH7_CompileScript(pVm,&(*pScript),iFlags);` |
 |    1941 |  709 | `	}` |
 |    3887 |  710 | `	if( pVm->sCodeGen.nErr > 0 \|\| pVm == 0){` |
-|     488 |  711 | `		sxu32 nErr = pVm->sCodeGen.nErr;` |
+|     484 |  711 | `		sxu32 nErr = pVm->sCodeGen.nErr;` |
 |       - |  712 | `		/* Compilation error or null ppVm pointer,release this VM */` |
-|     488 |  713 | `		SyMemBackendRelease(&pVm->sAllocator);` |
-|     488 |  714 | `		SyMemBackendPoolFree(&pEngine->sAllocator,pVm);` |
-|     488 |  715 | `		if( ppVm ){` |
-|     488 |  716 | `			*ppVm = 0;` |
-|     242 |  717 | `		}` |
-|     488 |  718 | `		return nErr > 0 ? PH7_COMPILE_ERR : PH7_OK;` |
+|     484 |  713 | `		SyMemBackendRelease(&pVm->sAllocator);` |
+|     484 |  714 | `		SyMemBackendPoolFree(&pEngine->sAllocator,pVm);` |
+|     484 |  715 | `		if( ppVm ){` |
+|     484 |  716 | `			*ppVm = 0;` |
+|     240 |  717 | `		}` |
+|     484 |  718 | `		return nErr > 0 ? PH7_COMPILE_ERR : PH7_OK;` |
 |       - |  719 | `	}` |
 |       - |  720 | `	/* Prepare the virtual machine for bytecode execution */` |
-|    3403 |  721 | `	rc = PH7_VmMakeReady(pVm);` |
-|    3403 |  722 | `	if( rc != PH7_OK ){` |
+|    3407 |  721 | `	rc = PH7_VmMakeReady(pVm);` |
+|    3407 |  722 | `	if( rc != PH7_OK ){` |
 |       3 |  723 | `		goto Release;` |
 |       - |  724 | `	}` |
 |       - |  725 | `	/* Install local import path which is the current directory */` |
-|    3401 |  726 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IMPORT_PATH,"./");` |
+|    3405 |  726 | `	ph7_vm_config(pVm,PH7_VM_CONFIG_IMPORT_PATH,"./");` |
 |       - |  727 | `#if defined(PH7_ENABLE_THREADS)` |
-|    3401 |  728 | `	if( sMPGlobal.nThreadingLevel > PH7_THREAD_LEVEL_SINGLE ){` |
+|    3405 |  728 | `	if( sMPGlobal.nThreadingLevel > PH7_THREAD_LEVEL_SINGLE ){` |
 |       - |  729 | `		 /* Associate a recursive mutex with this instance */` |
-|    3401 |  730 | `		 pVm->pMutex = SyMutexNew(sMPGlobal.pMutexMethods,SXMUTEX_TYPE_RECURSIVE);` |
-|    3401 |  731 | `		 if( pVm->pMutex == 0 ){` |
+|    3405 |  730 | `		 pVm->pMutex = SyMutexNew(sMPGlobal.pMutexMethods,SXMUTEX_TYPE_RECURSIVE);` |
+|    3405 |  731 | `		 if( pVm->pMutex == 0 ){` |
 |     ! 0 |  732 | `			 goto Release;` |
 |       - |  733 | `		 }` |
-|    1698 |  734 | `	 }` |
+|    1700 |  734 | `	 }` |
 |       - |  735 | `#endif` |
 |       - |  736 | `	/* Script successfully compiled,link to the list of active virtual machines */` |
-|    3401 |  737 | `	MACRO_LD_PUSH(pEngine->pVms,pVm);` |
-|    3401 |  738 | `	pEngine->iVm++;` |
+|    3405 |  737 | `	MACRO_LD_PUSH(pEngine->pVms,pVm);` |
+|    3405 |  738 | `	pEngine->iVm++;` |
 |       - |  739 | `	/* Point to the freshly created VM */` |
-|    3401 |  740 | `	*ppVm = pVm;` |
+|    3405 |  740 | `	*ppVm = pVm;` |
 |       - |  741 | `	/* Ready to execute PH7 bytecode */` |
-|    3401 |  742 | `	return PH7_OK;` |
+|    3405 |  742 | `	return PH7_OK;` |
 |       1 |  743 | `Release:` |
 |       - |  744 | `	{` |
 |       - |  745 | `		/* A code-generation error raised while mounting class definitions (e.g. a` |
@@ -910,64 +910,64 @@ Coverage: 777/1102 lines (70.51%)
 |       - |  900 | ` * [CAPIREF: ph7_vm_config()]` |
 |       - |  901 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - |  902 | ` */` |
-|   88926 |  903 | `int ph7_vm_config(ph7_vm *pVm,int iConfigOp,...)` |
+|   89030 |  903 | `int ph7_vm_config(ph7_vm *pVm,int iConfigOp,...)` |
 |       5 |  904 | `{` |
 |       - |  905 | `	va_list ap;` |
 |       - |  906 | `	int rc;` |
 |       - |  907 | `	/* Ticket 1433-002: NULL VM is harmless operation */` |
-|   88931 |  908 | `	if ( PH7_VM_MISUSE(pVm) ){` |
+|   89035 |  908 | `	if ( PH7_VM_MISUSE(pVm) ){` |
 |     ! 0 |  909 | `		return PH7_CORRUPT;` |
 |       - |  910 | `	}` |
 |       - |  911 | `#if defined(PH7_ENABLE_THREADS)` |
 |       - |  912 | `	 /* Acquire VM mutex */` |
-|   88931 |  913 | `	 SyMutexEnter(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
-|   88931 |  914 | `	 if( sMPGlobal.nThreadingLevel > PH7_THREAD_LEVEL_SINGLE &&` |
-|   88926 |  915 | `		 PH7_THRD_VM_RELEASE(pVm) ){` |
+|   89035 |  913 | `	 SyMutexEnter(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
+|   89035 |  914 | `	 if( sMPGlobal.nThreadingLevel > PH7_THREAD_LEVEL_SINGLE &&` |
+|   89030 |  915 | `		 PH7_THRD_VM_RELEASE(pVm) ){` |
 |     ! 0 |  916 | `			 return PH7_ABORT; /* Another thread have released this instance */` |
 |       - |  917 | `	 }` |
 |       - |  918 | `#endif` |
 |       - |  919 | `	/* Confiugure the virtual machine */` |
-|   88931 |  920 | `	va_start(ap,iConfigOp);` |
-|   88931 |  921 | `	rc = PH7_VmConfigure(&(*pVm),iConfigOp,ap);` |
-|   88931 |  922 | `	va_end(ap);` |
+|   89035 |  920 | `	va_start(ap,iConfigOp);` |
+|   89035 |  921 | `	rc = PH7_VmConfigure(&(*pVm),iConfigOp,ap);` |
+|   89035 |  922 | `	va_end(ap);` |
 |       - |  923 | `#if defined(PH7_ENABLE_THREADS)` |
 |       - |  924 | `	 /* Leave VM mutex */` |
-|   88931 |  925 | `	 SyMutexLeave(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
+|   89035 |  925 | `	 SyMutexLeave(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
 |       - |  926 | `#endif` |
-|   88931 |  927 | `	return rc;` |
-|   44468 |  928 | `}` |
+|   89035 |  927 | `	return rc;` |
+|   44520 |  928 | `}` |
 |       - |  929 | `/*` |
 |       - |  930 | ` * [CAPIREF: ph7_vm_exec()]` |
 |       - |  931 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - |  932 | ` */` |
-|    3402 |  933 | `int ph7_vm_exec(ph7_vm *pVm,int *pExitStatus)` |
+|    3406 |  933 | `int ph7_vm_exec(ph7_vm *pVm,int *pExitStatus)` |
 |       5 |  934 | `{` |
 |       - |  935 | `	int rc;` |
 |       - |  936 | `	/* Ticket 1433-002: NULL VM is harmless operation */` |
-|    3407 |  937 | `	if ( PH7_VM_MISUSE(pVm) ){` |
+|    3411 |  937 | `	if ( PH7_VM_MISUSE(pVm) ){` |
 |     ! 0 |  938 | `		return PH7_CORRUPT;` |
 |       - |  939 | `	}` |
 |       - |  940 | `#if defined(PH7_ENABLE_THREADS)` |
 |       - |  941 | `	 /* Acquire VM mutex */` |
-|    3407 |  942 | `	 SyMutexEnter(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
-|    3407 |  943 | `	 if( sMPGlobal.nThreadingLevel > PH7_THREAD_LEVEL_SINGLE &&` |
-|    3402 |  944 | `		 PH7_THRD_VM_RELEASE(pVm) ){` |
+|    3411 |  942 | `	 SyMutexEnter(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
+|    3411 |  943 | `	 if( sMPGlobal.nThreadingLevel > PH7_THREAD_LEVEL_SINGLE &&` |
+|    3406 |  944 | `		 PH7_THRD_VM_RELEASE(pVm) ){` |
 |     ! 0 |  945 | `			 return PH7_ABORT; /* Another thread have released this instance */` |
 |       - |  946 | `	 }` |
 |       - |  947 | `#endif` |
 |       - |  948 | `	/* Execute PH7 byte-code */` |
-|    3407 |  949 | `	rc = PH7_VmByteCodeExec(&(*pVm));` |
-|    3407 |  950 | `	if( pExitStatus ){` |
+|    3411 |  949 | `	rc = PH7_VmByteCodeExec(&(*pVm));` |
+|    3411 |  950 | `	if( pExitStatus ){` |
 |       - |  951 | `		/* Exit status */` |
-|    3375 |  952 | `		*pExitStatus = pVm->iExitStatus;` |
-|    1685 |  953 | `	}` |
+|    3379 |  952 | `		*pExitStatus = pVm->iExitStatus;` |
+|    1687 |  953 | `	}` |
 |       - |  954 | `#if defined(PH7_ENABLE_THREADS)` |
 |       - |  955 | `	 /* Leave VM mutex */` |
-|    3407 |  956 | `	 SyMutexLeave(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
+|    3411 |  956 | `	 SyMutexLeave(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
 |       - |  957 | `#endif` |
 |       - |  958 | `	/* Execution result */` |
-|    3407 |  959 | `	return rc;` |
-|    1706 |  960 | `}` |
+|    3411 |  959 | `	return rc;` |
+|    1708 |  960 | `}` |
 |       - |  961 | `/*` |
 |       - |  962 | ` * [CAPIREF: ph7_vm_reset()]` |
 |       - |  963 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
@@ -998,90 +998,90 @@ Coverage: 777/1102 lines (70.51%)
 |       - |  988 | ` * [CAPIREF: ph7_vm_release()]` |
 |       - |  989 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - |  990 | ` */` |
-|    3396 |  991 | `int ph7_vm_release(ph7_vm *pVm)` |
+|    3400 |  991 | `int ph7_vm_release(ph7_vm *pVm)` |
 |       5 |  992 | `{` |
 |       - |  993 | `	ph7 *pEngine;` |
 |       - |  994 | `	int rc;` |
 |       - |  995 | `	/* Ticket 1433-002: NULL VM is harmless operation */` |
-|    3401 |  996 | `	if ( PH7_VM_MISUSE(pVm) ){` |
+|    3405 |  996 | `	if ( PH7_VM_MISUSE(pVm) ){` |
 |     ! 0 |  997 | `		return PH7_CORRUPT;` |
 |       - |  998 | `	}` |
 |       - |  999 | `#if defined(PH7_ENABLE_THREADS)` |
 |       - | 1000 | `	 /* Acquire VM mutex */` |
-|    3401 | 1001 | `	 SyMutexEnter(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
-|    3401 | 1002 | `	 if( sMPGlobal.nThreadingLevel > PH7_THREAD_LEVEL_SINGLE &&` |
-|    3396 | 1003 | `		 PH7_THRD_VM_RELEASE(pVm) ){` |
+|    3405 | 1001 | `	 SyMutexEnter(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
+|    3405 | 1002 | `	 if( sMPGlobal.nThreadingLevel > PH7_THREAD_LEVEL_SINGLE &&` |
+|    3400 | 1003 | `		 PH7_THRD_VM_RELEASE(pVm) ){` |
 |     ! 0 | 1004 | `			 return PH7_ABORT; /* Another thread have released this instance */` |
 |       - | 1005 | `	 }` |
 |       - | 1006 | `#endif` |
-|    3401 | 1007 | `	pEngine = pVm->pEngine;` |
-|    3401 | 1008 | `	rc = PH7_VmRelease(&(*pVm));` |
+|    3405 | 1007 | `	pEngine = pVm->pEngine;` |
+|    3405 | 1008 | `	rc = PH7_VmRelease(&(*pVm));` |
 |       - | 1009 | `#if defined(PH7_ENABLE_THREADS)` |
 |       - | 1010 | `	 /* Leave VM mutex */` |
-|    3401 | 1011 | `	 SyMutexLeave(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
-|    3401 | 1012 | `	 if( rc == PH7_OK && pVm->pMutex ){` |
+|    3405 | 1011 | `	 SyMutexLeave(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
+|    3405 | 1012 | `	 if( rc == PH7_OK && pVm->pMutex ){` |
 |       - | 1013 | `		 /* The per-VM mutex was allocated in ProcessScript and never freed — one` |
 |       - | 1014 | `		  * leak per VM, which LeakSanitizer reports on every single run. */` |
-|    3401 | 1015 | `		 SyMutexRelease(sMPGlobal.pMutexMethods,pVm->pMutex);` |
-|    3401 | 1016 | `		 pVm->pMutex = 0;` |
-|    1698 | 1017 | `	 }` |
+|    3405 | 1015 | `		 SyMutexRelease(sMPGlobal.pMutexMethods,pVm->pMutex);` |
+|    3405 | 1016 | `		 pVm->pMutex = 0;` |
+|    1700 | 1017 | `	 }` |
 |       - | 1018 | `#endif` |
-|    3401 | 1019 | `	if( rc == PH7_OK ){` |
+|    3405 | 1019 | `	if( rc == PH7_OK ){` |
 |       - | 1020 | `		/* Unlink from the list of active VM */` |
 |       - | 1021 | `#if defined(PH7_ENABLE_THREADS)` |
 |       - | 1022 | `			/* Acquire engine mutex */` |
-|    3401 | 1023 | `			SyMutexEnter(sMPGlobal.pMutexMethods,pEngine->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
-|    3401 | 1024 | `			if( sMPGlobal.nThreadingLevel > PH7_THREAD_LEVEL_SINGLE &&` |
-|    3396 | 1025 | `				PH7_THRD_ENGINE_RELEASE(pEngine) ){` |
+|    3405 | 1023 | `			SyMutexEnter(sMPGlobal.pMutexMethods,pEngine->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
+|    3405 | 1024 | `			if( sMPGlobal.nThreadingLevel > PH7_THREAD_LEVEL_SINGLE &&` |
+|    3400 | 1025 | `				PH7_THRD_ENGINE_RELEASE(pEngine) ){` |
 |     ! 0 | 1026 | `					return PH7_ABORT; /* Another thread have released this instance */` |
 |       - | 1027 | `			}` |
 |       - | 1028 | `#endif` |
-|    3401 | 1029 | `		MACRO_LD_REMOVE(pEngine->pVms,pVm);` |
-|    3401 | 1030 | `		pEngine->iVm--;` |
+|    3405 | 1029 | `		MACRO_LD_REMOVE(pEngine->pVms,pVm);` |
+|    3405 | 1030 | `		pEngine->iVm--;` |
 |       - | 1031 | `		/* Release the memory chunk allocated to this VM */` |
-|    3401 | 1032 | `		SyMemBackendPoolFree(&pEngine->sAllocator,pVm);` |
+|    3405 | 1032 | `		SyMemBackendPoolFree(&pEngine->sAllocator,pVm);` |
 |       - | 1033 | `#if defined(PH7_ENABLE_THREADS)` |
 |       - | 1034 | `			/* Leave engine mutex */` |
-|    3401 | 1035 | `			SyMutexLeave(sMPGlobal.pMutexMethods,pEngine->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
+|    3405 | 1035 | `			SyMutexLeave(sMPGlobal.pMutexMethods,pEngine->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
 |       - | 1036 | `#endif` |
-|    1698 | 1037 | `	}` |
-|    3401 | 1038 | `	return rc;` |
-|    1703 | 1039 | `}` |
+|    1700 | 1037 | `	}` |
+|    3405 | 1038 | `	return rc;` |
+|    1705 | 1039 | `}` |
 |       - | 1040 | `/*` |
 |       - | 1041 | ` * [CAPIREF: ph7_create_function()]` |
 |       - | 1042 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1043 | ` */` |
-| 2227466 | 1044 | `int ph7_create_function(ph7_vm *pVm,const char *zName,int (*xFunc)(ph7_context *,int,ph7_value **),void *pUserData)` |
+| 2229558 | 1044 | `int ph7_create_function(ph7_vm *pVm,const char *zName,int (*xFunc)(ph7_context *,int,ph7_value **),void *pUserData)` |
 |       5 | 1045 | `{` |
 |       - | 1046 | `	SyString sName;` |
 |       - | 1047 | `	int rc;` |
 |       - | 1048 | `	/* Ticket 1433-002: NULL VM is harmless operation */` |
-| 2227471 | 1049 | `	if ( PH7_VM_MISUSE(pVm) ){` |
+| 2229563 | 1049 | `	if ( PH7_VM_MISUSE(pVm) ){` |
 |     ! 0 | 1050 | `		return PH7_CORRUPT;` |
 |       - | 1051 | `	}` |
-| 2227471 | 1052 | `	SyStringInitFromBuf(&sName,zName,SyStrlen(zName));` |
+| 2229563 | 1052 | `	SyStringInitFromBuf(&sName,zName,SyStrlen(zName));` |
 |       - | 1053 | `	/* Remove leading and trailing white spaces */` |
-| 2227471 | 1054 | `	SyStringFullTrim(&sName);` |
+| 2229563 | 1054 | `	SyStringFullTrim(&sName);` |
 |       - | 1055 | `	/* Ticket 1433-003: NULL values are not allowed */` |
-| 2227471 | 1056 | `	if( sName.nByte < 1 \|\| xFunc == 0 ){` |
+| 2229563 | 1056 | `	if( sName.nByte < 1 \|\| xFunc == 0 ){` |
 |     ! 0 | 1057 | `		return PH7_CORRUPT;` |
 |       - | 1058 | `	}` |
 |       - | 1059 | `#if defined(PH7_ENABLE_THREADS)` |
 |       - | 1060 | `	 /* Acquire VM mutex */` |
-| 2227471 | 1061 | `	 SyMutexEnter(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
-| 2227471 | 1062 | `	 if( sMPGlobal.nThreadingLevel > PH7_THREAD_LEVEL_SINGLE &&` |
-| 2227466 | 1063 | `		 PH7_THRD_VM_RELEASE(pVm) ){` |
+| 2229563 | 1061 | `	 SyMutexEnter(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
+| 2229563 | 1062 | `	 if( sMPGlobal.nThreadingLevel > PH7_THREAD_LEVEL_SINGLE &&` |
+| 2229558 | 1063 | `		 PH7_THRD_VM_RELEASE(pVm) ){` |
 |     ! 0 | 1064 | `			 return PH7_ABORT; /* Another thread have released this instance */` |
 |       - | 1065 | `	 }` |
 |       - | 1066 | `#endif` |
 |       - | 1067 | `	/* Install the foreign function */` |
-| 2227471 | 1068 | `	rc = PH7_VmInstallForeignFunction(&(*pVm),&sName,xFunc,pUserData);` |
+| 2229563 | 1068 | `	rc = PH7_VmInstallForeignFunction(&(*pVm),&sName,xFunc,pUserData);` |
 |       - | 1069 | `#if defined(PH7_ENABLE_THREADS)` |
 |       - | 1070 | `	 /* Leave VM mutex */` |
-| 2227471 | 1071 | `	 SyMutexLeave(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
+| 2229563 | 1071 | `	 SyMutexLeave(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
 |       - | 1072 | `#endif` |
-| 2227471 | 1073 | `	return rc;` |
-| 1113738 | 1074 | `}` |
+| 2229563 | 1073 | `	return rc;` |
+| 1114784 | 1074 | `}` |
 |       - | 1075 | `/*` |
 |       - | 1076 | ` * [CAPIREF: ph7_delete_function()]` |
 |       - | 1077 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
@@ -1120,41 +1120,41 @@ Coverage: 777/1102 lines (70.51%)
 |       - | 1110 | ` * [CAPIREF: ph7_create_constant()]` |
 |       - | 1111 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1112 | ` */` |
-| 1515504 | 1113 | `int ph7_create_constant(ph7_vm *pVm,const char *zName,void (*xExpand)(ph7_value *,void *),void *pUserData)` |
+| 1517288 | 1113 | `int ph7_create_constant(ph7_vm *pVm,const char *zName,void (*xExpand)(ph7_value *,void *),void *pUserData)` |
 |       5 | 1114 | `{` |
 |       - | 1115 | `	SyString sName;` |
 |       - | 1116 | `	int rc;` |
 |       - | 1117 | `	/* Ticket 1433-002: NULL VM is harmless operation */` |
-| 1515509 | 1118 | `	if ( PH7_VM_MISUSE(pVm) ){` |
+| 1517293 | 1118 | `	if ( PH7_VM_MISUSE(pVm) ){` |
 |     ! 0 | 1119 | `		return PH7_CORRUPT;` |
 |       - | 1120 | `	}` |
-| 1515509 | 1121 | `	SyStringInitFromBuf(&sName,zName,SyStrlen(zName));` |
+| 1517293 | 1121 | `	SyStringInitFromBuf(&sName,zName,SyStrlen(zName));` |
 |       - | 1122 | `	/* Remove leading and trailing white spaces */` |
-| 1518907 | 1123 | `	SyStringFullTrim(&sName);` |
-| 1515509 | 1124 | `	if( sName.nByte < 1 ){` |
+| 1520695 | 1123 | `	SyStringFullTrim(&sName);` |
+| 1517293 | 1124 | `	if( sName.nByte < 1 ){` |
 |       - | 1125 | `		/* Empty constant name */` |
 |     ! 0 | 1126 | `		return PH7_CORRUPT;` |
 |       - | 1127 | `	}` |
 |       - | 1128 | `	/* TICKET 1433-003: NULL pointer harmless operation */` |
-| 1515509 | 1129 | `	if( xExpand == 0 ){` |
+| 1517293 | 1129 | `	if( xExpand == 0 ){` |
 |     ! 0 | 1130 | `		return PH7_CORRUPT;` |
 |       - | 1131 | `	}` |
 |       - | 1132 | `#if defined(PH7_ENABLE_THREADS)` |
 |       - | 1133 | `	 /* Acquire VM mutex */` |
-| 1515509 | 1134 | `	 SyMutexEnter(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
-| 1515509 | 1135 | `	 if( sMPGlobal.nThreadingLevel > PH7_THREAD_LEVEL_SINGLE &&` |
-| 1515504 | 1136 | `		 PH7_THRD_VM_RELEASE(pVm) ){` |
+| 1517293 | 1134 | `	 SyMutexEnter(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
+| 1517293 | 1135 | `	 if( sMPGlobal.nThreadingLevel > PH7_THREAD_LEVEL_SINGLE &&` |
+| 1517288 | 1136 | `		 PH7_THRD_VM_RELEASE(pVm) ){` |
 |     ! 0 | 1137 | `			 return PH7_ABORT; /* Another thread have released this instance */` |
 |       - | 1138 | `	 }` |
 |       - | 1139 | `#endif` |
 |       - | 1140 | `	/* Perform the registration */` |
-| 1515509 | 1141 | `	rc = PH7_VmRegisterConstant(&(*pVm),&sName,xExpand,pUserData);` |
+| 1517293 | 1141 | `	rc = PH7_VmRegisterConstant(&(*pVm),&sName,xExpand,pUserData);` |
 |       - | 1142 | `#if defined(PH7_ENABLE_THREADS)` |
 |       - | 1143 | `	 /* Leave VM mutex */` |
-| 1515509 | 1144 | `	 SyMutexLeave(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
+| 1517293 | 1144 | `	 SyMutexLeave(sMPGlobal.pMutexMethods,pVm->pMutex); /* NO-OP if sMPGlobal.nThreadingLevel != PH7_THREAD_LEVEL_MULTI */` |
 |       - | 1145 | `#endif` |
-| 1515509 | 1146 | `	 return rc;` |
-|  757757 | 1147 | `}` |
+| 1517293 | 1146 | `	 return rc;` |
+|  758649 | 1147 | `}` |
 |       - | 1148 | `/*` |
 |       - | 1149 | ` * [CAPIREF: ph7_delete_constant()]` |
 |       - | 1150 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
@@ -1192,78 +1192,78 @@ Coverage: 777/1102 lines (70.51%)
 |       - | 1182 | ` * [CAPIREF: ph7_new_scalar()]` |
 |       - | 1183 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1184 | ` */` |
-|   44733 | 1185 | `ph7_value * ph7_new_scalar(ph7_vm *pVm)` |
+|   44737 | 1185 | `ph7_value * ph7_new_scalar(ph7_vm *pVm)` |
 |       5 | 1186 | `{` |
 |       - | 1187 | `	ph7_value *pObj;` |
 |       - | 1188 | `	/* Ticket 1433-002: NULL VM is harmless operation */` |
-|   44738 | 1189 | `	if ( PH7_VM_MISUSE(pVm) ){` |
+|   44742 | 1189 | `	if ( PH7_VM_MISUSE(pVm) ){` |
 |     ! 0 | 1190 | `		return 0;` |
 |       - | 1191 | `	}` |
 |       - | 1192 | `	/* Allocate a new scalar variable */` |
-|   44738 | 1193 | `	pObj = (ph7_value *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_value));` |
-|   44738 | 1194 | `	if( pObj == 0 ){` |
+|   44742 | 1193 | `	pObj = (ph7_value *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_value));` |
+|   44742 | 1194 | `	if( pObj == 0 ){` |
 |     ! 0 | 1195 | `		return 0;` |
 |       - | 1196 | `	}` |
 |       - | 1197 | `	/* Nullify the new scalar */` |
-|   44738 | 1198 | `	PH7_MemObjInit(pVm,pObj);` |
-|   44738 | 1199 | `	return pObj;` |
-|   22371 | 1200 | `}` |
+|   44742 | 1198 | `	PH7_MemObjInit(pVm,pObj);` |
+|   44742 | 1199 | `	return pObj;` |
+|   22373 | 1200 | `}` |
 |       - | 1201 | `/*` |
 |       - | 1202 | ` * [CAPIREF: ph7_new_array()]` |
 |       - | 1203 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1204 | ` */` |
-|   56908 | 1205 | `ph7_value * ph7_new_array(ph7_vm *pVm)` |
+|   56948 | 1205 | `ph7_value * ph7_new_array(ph7_vm *pVm)` |
 |       5 | 1206 | `{` |
 |       - | 1207 | `	ph7_hashmap *pMap;` |
 |       - | 1208 | `	ph7_value *pObj;` |
 |       - | 1209 | `	/* Ticket 1433-002: NULL VM is harmless operation */` |
-|   56913 | 1210 | `	if ( PH7_VM_MISUSE(pVm) ){` |
+|   56953 | 1210 | `	if ( PH7_VM_MISUSE(pVm) ){` |
 |     ! 0 | 1211 | `		return 0;` |
 |       - | 1212 | `	}` |
 |       - | 1213 | `	/* Create a new hashmap first */` |
-|   56913 | 1214 | `	pMap = PH7_NewHashmap(&(*pVm),0,0);` |
-|   56913 | 1215 | `	if( pMap == 0 ){` |
+|   56953 | 1214 | `	pMap = PH7_NewHashmap(&(*pVm),0,0);` |
+|   56953 | 1215 | `	if( pMap == 0 ){` |
 |     ! 0 | 1216 | `		return 0;` |
 |       - | 1217 | `	}` |
 |       - | 1218 | `	/* Associate a new ph7_value with this hashmap */` |
-|   56913 | 1219 | `	pObj = (ph7_value *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_value));` |
-|   56913 | 1220 | `	if( pObj == 0 ){` |
+|   56953 | 1219 | `	pObj = (ph7_value *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_value));` |
+|   56953 | 1220 | `	if( pObj == 0 ){` |
 |     ! 0 | 1221 | `		PH7_HashmapRelease(pMap,TRUE);` |
 |     ! 0 | 1222 | `		return 0;` |
 |       - | 1223 | `	}` |
-|   56913 | 1224 | `	PH7_MemObjInitFromArray(pVm,pObj,pMap);` |
-|   56913 | 1225 | `	return pObj;` |
-|   28459 | 1226 | `}` |
+|   56953 | 1224 | `	PH7_MemObjInitFromArray(pVm,pObj,pMap);` |
+|   56953 | 1225 | `	return pObj;` |
+|   28479 | 1226 | `}` |
 |       - | 1227 | `/*` |
 |       - | 1228 | ` * [CAPIREF: ph7_release_value()]` |
 |       - | 1229 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1230 | ` */` |
-|   44858 | 1231 | `int ph7_release_value(ph7_vm *pVm,ph7_value *pValue)` |
+|   44902 | 1231 | `int ph7_release_value(ph7_vm *pVm,ph7_value *pValue)` |
 |       5 | 1232 | `{` |
 |       - | 1233 | `	/* Ticket 1433-002: NULL VM is harmless operation */` |
-|   44863 | 1234 | `	if ( PH7_VM_MISUSE(pVm) ){` |
+|   44907 | 1234 | `	if ( PH7_VM_MISUSE(pVm) ){` |
 |     ! 0 | 1235 | `		return PH7_CORRUPT;` |
 |       - | 1236 | `	}` |
-|   44863 | 1237 | `	if( pValue ){` |
+|   44907 | 1237 | `	if( pValue ){` |
 |       - | 1238 | `		/* Release the value */` |
-|   44863 | 1239 | `		PH7_MemObjRelease(pValue);` |
-|   44863 | 1240 | `		SyMemBackendPoolFree(&pVm->sAllocator,pValue);` |
-|   22429 | 1241 | `	}` |
-|   44863 | 1242 | `	return PH7_OK;` |
-|   22434 | 1243 | `}` |
+|   44907 | 1239 | `		PH7_MemObjRelease(pValue);` |
+|   44907 | 1240 | `		SyMemBackendPoolFree(&pVm->sAllocator,pValue);` |
+|   22451 | 1241 | `	}` |
+|   44907 | 1242 | `	return PH7_OK;` |
+|   22456 | 1243 | `}` |
 |       - | 1244 | `/*` |
 |       - | 1245 | ` * [CAPIREF: ph7_value_to_int()]` |
 |       - | 1246 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1247 | ` */` |
-|   23201 | 1248 | `int ph7_value_to_int(ph7_value *pValue)` |
+|   23197 | 1248 | `int ph7_value_to_int(ph7_value *pValue)` |
 |       5 | 1249 | `{` |
 |       - | 1250 | `	int rc;` |
-|   23206 | 1251 | `	rc = PH7_MemObjToInteger(pValue);` |
-|   23206 | 1252 | `	if( rc != PH7_OK ){` |
+|   23202 | 1251 | `	rc = PH7_MemObjToInteger(pValue);` |
+|   23202 | 1252 | `	if( rc != PH7_OK ){` |
 |     ! 0 | 1253 | `		return 0;` |
 |       - | 1254 | `	}` |
-|   23206 | 1255 | `	return (int)pValue->x.iVal;` |
-|   11605 | 1256 | `}` |
+|   23202 | 1255 | `	return (int)pValue->x.iVal;` |
+|   11603 | 1256 | `}` |
 |       - | 1257 | `/*` |
 |       - | 1258 | ` * [CAPIREF: ph7_value_to_bool()]` |
 |       - | 1259 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
@@ -1281,15 +1281,15 @@ Coverage: 777/1102 lines (70.51%)
 |       - | 1271 | ` * [CAPIREF: ph7_value_to_int64()]` |
 |       - | 1272 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1273 | ` */` |
-|  507764 | 1274 | `ph7_int64 ph7_value_to_int64(ph7_value *pValue)` |
+|  508305 | 1274 | `ph7_int64 ph7_value_to_int64(ph7_value *pValue)` |
 |       5 | 1275 | `{` |
 |       - | 1276 | `	int rc;` |
-|  507769 | 1277 | `	rc = PH7_MemObjToInteger(pValue);` |
-|  507769 | 1278 | `	if( rc != PH7_OK ){` |
+|  508310 | 1277 | `	rc = PH7_MemObjToInteger(pValue);` |
+|  508310 | 1278 | `	if( rc != PH7_OK ){` |
 |     ! 0 | 1279 | `		return 0;` |
 |       - | 1280 | `	}` |
-|  507769 | 1281 | `	return pValue->x.iVal;` |
-|  253991 | 1282 | `}` |
+|  508310 | 1281 | `	return pValue->x.iVal;` |
+|  254263 | 1282 | `}` |
 |       - | 1283 | `/*` |
 |       - | 1284 | ` * [CAPIREF: ph7_value_to_double()]` |
 |       - | 1285 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
@@ -1307,35 +1307,35 @@ Coverage: 777/1102 lines (70.51%)
 |       - | 1297 | ` * [CAPIREF: ph7_value_to_string()]` |
 |       - | 1298 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1299 | ` */` |
-|  902301 | 1300 | `const char * ph7_value_to_string(ph7_value *pValue,int *pLen)` |
+|  904475 | 1300 | `const char * ph7_value_to_string(ph7_value *pValue,int *pLen)` |
 |       5 | 1301 | `{` |
-|  902306 | 1302 | `	PH7_MemObjToString(pValue);` |
-|  902306 | 1303 | `	if( SyBlobLength(&pValue->sBlob) > 0 ){` |
-|  869070 | 1304 | `		SyBlobNullAppend(&pValue->sBlob);` |
-|  869070 | 1305 | `		if( pLen ){` |
-|  806298 | 1306 | `			*pLen = (int)SyBlobLength(&pValue->sBlob);` |
-|  403514 | 1307 | `		}` |
-|  869070 | 1308 | `		return (const char *)SyBlobData(&pValue->sBlob);` |
+|  904480 | 1302 | `	PH7_MemObjToString(pValue);` |
+|  904480 | 1303 | `	if( SyBlobLength(&pValue->sBlob) > 0 ){` |
+|  871224 | 1304 | `		SyBlobNullAppend(&pValue->sBlob);` |
+|  871224 | 1305 | `		if( pLen ){` |
+|  808462 | 1306 | `			*pLen = (int)SyBlobLength(&pValue->sBlob);` |
+|  404602 | 1307 | `		}` |
+|  871224 | 1308 | `		return (const char *)SyBlobData(&pValue->sBlob);` |
 |     ! 0 | 1309 | `	}else{` |
 |       - | 1310 | `		/* Return the empty string */` |
-|   33241 | 1311 | `		if( pLen ){` |
-|   33175 | 1312 | `			*pLen = 0;` |
-|   16585 | 1313 | `		}` |
-|   33241 | 1314 | `		return "";` |
+|   33261 | 1311 | `		if( pLen ){` |
+|   33195 | 1312 | `			*pLen = 0;` |
+|   16595 | 1313 | `		}` |
+|   33261 | 1314 | `		return "";` |
 |       - | 1315 | `	}` |
-|  451523 | 1316 | `}` |
+|  452616 | 1316 | `}` |
 |       - | 1317 | `/*` |
 |       - | 1318 | ` * [CAPIREF: ph7_value_to_resource()]` |
 |       - | 1319 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1320 | ` */` |
-|   34054 | 1321 | `void * ph7_value_to_resource(ph7_value *pValue)` |
+|   34074 | 1321 | `void * ph7_value_to_resource(ph7_value *pValue)` |
 |       5 | 1322 | `{` |
-|   34059 | 1323 | `	if( (pValue->iFlags & MEMOBJ_RES) == 0 ){` |
+|   34079 | 1323 | `	if( (pValue->iFlags & MEMOBJ_RES) == 0 ){` |
 |       - | 1324 | `		/* Not a resource,return NULL */` |
 |     ! 0 | 1325 | `		return 0;` |
 |       - | 1326 | `	}` |
-|   34059 | 1327 | `	return pValue->x.pOther;` |
-|   17031 | 1328 | `}` |
+|   34079 | 1327 | `	return pValue->x.pOther;` |
+|   17041 | 1328 | `}` |
 |       - | 1329 | `/*` |
 |       - | 1330 | ` * [CAPIREF: ph7_value_compare()]` |
 |       - | 1331 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
@@ -1356,25 +1356,25 @@ Coverage: 777/1102 lines (70.51%)
 |       - | 1346 | ` * [CAPIREF: ph7_result_int()]` |
 |       - | 1347 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1348 | ` */` |
-|  100646 | 1349 | `int ph7_result_int(ph7_context *pCtx,int iValue)` |
+|  101780 | 1349 | `int ph7_result_int(ph7_context *pCtx,int iValue)` |
 |       5 | 1350 | `{` |
-|  100651 | 1351 | `	return ph7_value_int(pCtx->pRet,iValue);` |
+|  101785 | 1351 | `	return ph7_value_int(pCtx->pRet,iValue);` |
 |       5 | 1352 | `}` |
 |       - | 1353 | `/*` |
 |       - | 1354 | ` * [CAPIREF: ph7_result_int64()]` |
 |       - | 1355 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1356 | ` */` |
-|   20740 | 1357 | `int ph7_result_int64(ph7_context *pCtx,ph7_int64 iValue)` |
+|   20726 | 1357 | `int ph7_result_int64(ph7_context *pCtx,ph7_int64 iValue)` |
 |       5 | 1358 | `{` |
-|   20745 | 1359 | `	return ph7_value_int64(pCtx->pRet,iValue);` |
+|   20731 | 1359 | `	return ph7_value_int64(pCtx->pRet,iValue);` |
 |       5 | 1360 | `}` |
 |       - | 1361 | `/*` |
 |       - | 1362 | ` * [CAPIREF: ph7_result_bool()]` |
 |       - | 1363 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1364 | ` */` |
-|  319682 | 1365 | `int ph7_result_bool(ph7_context *pCtx,int iBool)` |
+|  320239 | 1365 | `int ph7_result_bool(ph7_context *pCtx,int iBool)` |
 |       5 | 1366 | `{` |
-|  319687 | 1367 | `	return ph7_value_bool(pCtx->pRet,iBool);` |
+|  320244 | 1367 | `	return ph7_value_bool(pCtx->pRet,iBool);` |
 |       5 | 1368 | `}` |
 |       - | 1369 | `/*` |
 |       - | 1370 | ` * [CAPIREF: ph7_result_double()]` |
@@ -1398,9 +1398,9 @@ Coverage: 777/1102 lines (70.51%)
 |       - | 1388 | ` * [CAPIREF: ph7_result_string()]` |
 |       - | 1389 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1390 | ` */` |
-| 1294376 | 1391 | `int ph7_result_string(ph7_context *pCtx,const char *zString,int nLen)` |
+| 1294873 | 1391 | `int ph7_result_string(ph7_context *pCtx,const char *zString,int nLen)` |
 |       5 | 1392 | `{` |
-| 1294381 | 1393 | `	return ph7_value_string(pCtx->pRet,zString,nLen);` |
+| 1294878 | 1393 | `	return ph7_value_string(pCtx->pRet,zString,nLen);` |
 |       5 | 1394 | `}` |
 |       - | 1395 | `/*` |
 |       - | 1396 | ` * [CAPIREF: ph7_result_string_format()]` |
@@ -1427,15 +1427,15 @@ Coverage: 777/1102 lines (70.51%)
 |       - | 1417 | ` * [CAPIREF: ph7_result_value()]` |
 |       - | 1418 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1419 | ` */` |
-|   34102 | 1420 | `int ph7_result_value(ph7_context *pCtx,ph7_value *pValue)` |
+|   34096 | 1420 | `int ph7_result_value(ph7_context *pCtx,ph7_value *pValue)` |
 |       5 | 1421 | `{` |
-|   34107 | 1422 | `	int rc = PH7_OK;` |
-|   34107 | 1423 | `	if( pValue == 0 ){` |
+|   34101 | 1422 | `	int rc = PH7_OK;` |
+|   34101 | 1423 | `	if( pValue == 0 ){` |
 |     ! 0 | 1424 | `		PH7_MemObjRelease(pCtx->pRet);` |
 |     ! 0 | 1425 | `	}else{` |
-|   34107 | 1426 | `		rc = PH7_MemObjStore(pValue,pCtx->pRet);` |
+|   34101 | 1426 | `		rc = PH7_MemObjStore(pValue,pCtx->pRet);` |
 |       - | 1427 | `	}` |
-|   34107 | 1428 | `	return rc;` |
+|   34101 | 1428 | `	return rc;` |
 |       5 | 1429 | `}` |
 |       - | 1430 | `/*` |
 |       - | 1431 | ` * [CAPIREF: ph7_result_resource()]` |
@@ -1489,25 +1489,25 @@ Coverage: 777/1102 lines (70.51%)
 |       - | 1479 | ` * [CAPIREF: ph7_context_alloc_chunk()]` |
 |       - | 1480 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1481 | ` */` |
-|    5557 | 1482 | `void * ph7_context_alloc_chunk(ph7_context *pCtx,unsigned int nByte,int ZeroChunk,int AutoRelease)` |
+|    5549 | 1482 | `void * ph7_context_alloc_chunk(ph7_context *pCtx,unsigned int nByte,int ZeroChunk,int AutoRelease)` |
 |       5 | 1483 | `{` |
 |       - | 1484 | `	void *pChunk;` |
-|    5562 | 1485 | `	pChunk = SyMemBackendAlloc(&pCtx->pVm->sAllocator,nByte);` |
-|    5562 | 1486 | `	if( pChunk ){` |
-|    5562 | 1487 | `		if( ZeroChunk ){` |
+|    5554 | 1485 | `	pChunk = SyMemBackendAlloc(&pCtx->pVm->sAllocator,nByte);` |
+|    5554 | 1486 | `	if( pChunk ){` |
+|    5554 | 1487 | `		if( ZeroChunk ){` |
 |       - | 1488 | `			/* Zero the memory chunk */` |
 |    5299 | 1489 | `			SyZero(pChunk,nByte);` |
 |    2647 | 1490 | `		}` |
-|    5562 | 1491 | `		if( AutoRelease ){` |
+|    5554 | 1491 | `		if( AutoRelease ){` |
 |       - | 1492 | `			ph7_aux_data sAux;` |
 |       - | 1493 | `			/* Track the chunk so that it can be released automatically` |
 |       - | 1494 | `			 * upon this context is destroyed.` |
 |       - | 1495 | `			 */` |
-|     239 | 1496 | `			sAux.pAuxData = pChunk;` |
-|     239 | 1497 | `			SySetPut(&pCtx->sChunk,(const void *)&sAux);` |
-|     117 | 1498 | `		}` |
-|    2778 | 1499 | `	}` |
-|    5562 | 1500 | `	return pChunk;` |
+|     231 | 1496 | `			sAux.pAuxData = pChunk;` |
+|     231 | 1497 | `			SySetPut(&pCtx->sChunk,(const void *)&sAux);` |
+|     113 | 1498 | `		}` |
+|    2774 | 1499 | `	}` |
+|    5554 | 1500 | `	return pChunk;` |
 |       5 | 1501 | `}` |
 |       - | 1502 | `/*` |
 |       - | 1503 | ` * Check if the given chunk address is registered in the call context` |
@@ -1605,35 +1605,35 @@ Coverage: 777/1102 lines (70.51%)
 |       - | 1595 | ` * [CAPIREF: ph7_array_walk()]` |
 |       - | 1596 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1597 | ` */` |
-|   34064 | 1598 | `int ph7_array_walk(ph7_value *pArray,int (*xWalk)(ph7_value *pValue,ph7_value *,void *),void *pUserData)` |
+|   34050 | 1598 | `int ph7_array_walk(ph7_value *pArray,int (*xWalk)(ph7_value *pValue,ph7_value *,void *),void *pUserData)` |
 |       5 | 1599 | `{` |
 |       - | 1600 | `	int rc;` |
-|   34069 | 1601 | `	if( xWalk == 0 ){` |
+|   34055 | 1601 | `	if( xWalk == 0 ){` |
 |     ! 0 | 1602 | `		return PH7_CORRUPT;` |
 |       - | 1603 | `	}` |
 |       - | 1604 | `	/* Make sure we are dealing with a valid hashmap */` |
-|   34069 | 1605 | `	if( (pArray->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
+|   34055 | 1605 | `	if( (pArray->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
 |     ! 0 | 1606 | `		return PH7_CORRUPT;` |
 |       - | 1607 | `	}` |
 |       - | 1608 | `	/* Start the walk process */` |
-|   34069 | 1609 | `	rc = PH7_HashmapWalk((ph7_hashmap *)pArray->x.pOther,xWalk,pUserData);` |
-|   34069 | 1610 | `	return rc != PH7_OK ? PH7_ABORT /* User callback request an operation abort*/ : PH7_OK;` |
-|   17037 | 1611 | `}` |
+|   34055 | 1609 | `	rc = PH7_HashmapWalk((ph7_hashmap *)pArray->x.pOther,xWalk,pUserData);` |
+|   34055 | 1610 | `	return rc != PH7_OK ? PH7_ABORT /* User callback request an operation abort*/ : PH7_OK;` |
+|   17030 | 1611 | `}` |
 |       - | 1612 | `/*` |
 |       - | 1613 | ` * [CAPIREF: ph7_array_add_elem()]` |
 |       - | 1614 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1615 | ` */` |
-|  604109 | 1616 | `int ph7_array_add_elem(ph7_value *pArray,ph7_value *pKey,ph7_value *pValue)` |
+|  604091 | 1616 | `int ph7_array_add_elem(ph7_value *pArray,ph7_value *pKey,ph7_value *pValue)` |
 |       5 | 1617 | `{` |
 |       - | 1618 | `	int rc;` |
 |       - | 1619 | `	/* Make sure we are dealing with a valid hashmap */` |
-|  604114 | 1620 | `	if( (pArray->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
+|  604096 | 1620 | `	if( (pArray->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
 |     ! 0 | 1621 | `		return PH7_CORRUPT;` |
 |       - | 1622 | `	}` |
 |       - | 1623 | `	/* Perform the insertion */` |
-|  604114 | 1624 | `	rc = PH7_HashmapInsert((ph7_hashmap *)pArray->x.pOther,&(*pKey),&(*pValue));` |
-|  604114 | 1625 | `	return rc;` |
-|  302059 | 1626 | `}` |
+|  604096 | 1624 | `	rc = PH7_HashmapInsert((ph7_hashmap *)pArray->x.pOther,&(*pKey),&(*pValue));` |
+|  604096 | 1625 | `	return rc;` |
+|  302050 | 1626 | `}` |
 |       - | 1627 | `/*` |
 |       - | 1628 | ` * [CAPIREF: ph7_array_add_strkey_elem()]` |
 |       - | 1629 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
@@ -1680,17 +1680,17 @@ Coverage: 777/1102 lines (70.51%)
 |       - | 1670 | ` * [CAPIREF: ph7_array_count()]` |
 |       - | 1671 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1672 | ` */` |
-|  159000 | 1673 | `unsigned int ph7_array_count(ph7_value *pArray)` |
+|  158990 | 1673 | `unsigned int ph7_array_count(ph7_value *pArray)` |
 |       5 | 1674 | `{` |
 |       - | 1675 | `	ph7_hashmap *pMap;` |
 |       - | 1676 | `	/* Make sure we are dealing with a valid hashmap */` |
-|  159005 | 1677 | `	if( (pArray->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
+|  158995 | 1677 | `	if( (pArray->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
 |     ! 0 | 1678 | `		return 0;` |
 |       - | 1679 | `	}` |
 |       - | 1680 | `	/* Point to the internal representation of the hashmap */` |
-|  159005 | 1681 | `	pMap = (ph7_hashmap *)pArray->x.pOther;` |
-|  159005 | 1682 | `	return pMap->nEntry;` |
-|   79505 | 1683 | `}` |
+|  158995 | 1681 | `	pMap = (ph7_hashmap *)pArray->x.pOther;` |
+|  158995 | 1682 | `	return pMap->nEntry;` |
+|   79500 | 1683 | `}` |
 |       - | 1684 | `/*` |
 |       - | 1685 | ` * [CAPIREF: ph7_object_walk()]` |
 |       - | 1686 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
@@ -1839,9 +1839,9 @@ Coverage: 777/1102 lines (70.51%)
 |       - | 1829 | ` * [CAPIREF: ph7_context_user_data()]` |
 |       - | 1830 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1831 | ` */` |
-|   62002 | 1832 | `void * ph7_context_user_data(ph7_context *pCtx)` |
+|   62000 | 1832 | `void * ph7_context_user_data(ph7_context *pCtx)` |
 |       5 | 1833 | `{` |
-|   62007 | 1834 | `	return pCtx->pFunc->pUserData;` |
+|   62005 | 1834 | `	return pCtx->pFunc->pUserData;` |
 |       5 | 1835 | `}` |
 |       - | 1836 | `/*` |
 |       - | 1837 | ` * [CAPIREF: ph7_context_push_aux_data()]` |
@@ -1887,47 +1887,47 @@ Coverage: 777/1102 lines (70.51%)
 |       - | 1877 | ` * [CAPIREF: ph7_function_name()]` |
 |       - | 1878 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1879 | ` */` |
-|   50100 | 1880 | `const char * ph7_function_name(ph7_context *pCtx)` |
+|   50114 | 1880 | `const char * ph7_function_name(ph7_context *pCtx)` |
 |       5 | 1881 | `{` |
 |       - | 1882 | `	SyString *pName;` |
-|   50105 | 1883 | `	pName = &pCtx->pFunc->sName;` |
-|   50105 | 1884 | `	return pName->zString;` |
+|   50119 | 1883 | `	pName = &pCtx->pFunc->sName;` |
+|   50119 | 1884 | `	return pName->zString;` |
 |       5 | 1885 | `}` |
 |       - | 1886 | `/*` |
 |       - | 1887 | ` * [CAPIREF: ph7_value_int()]` |
 |       - | 1888 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1889 | ` */` |
-|  123574 | 1890 | `int ph7_value_int(ph7_value *pVal,int iValue)` |
+|  124712 | 1890 | `int ph7_value_int(ph7_value *pVal,int iValue)` |
 |       5 | 1891 | `{` |
 |       - | 1892 | `	/* Invalidate any prior representation */` |
-|  123579 | 1893 | `	PH7_MemObjRelease(pVal);` |
-|  123579 | 1894 | `	pVal->x.iVal = (ph7_int64)iValue;` |
-|  123579 | 1895 | `	MemObjSetType(pVal,MEMOBJ_INT);` |
-|  123579 | 1896 | `	return PH7_OK;` |
+|  124717 | 1893 | `	PH7_MemObjRelease(pVal);` |
+|  124717 | 1894 | `	pVal->x.iVal = (ph7_int64)iValue;` |
+|  124717 | 1895 | `	MemObjSetType(pVal,MEMOBJ_INT);` |
+|  124717 | 1896 | `	return PH7_OK;` |
 |       5 | 1897 | `}` |
 |       - | 1898 | `/*` |
 |       - | 1899 | ` * [CAPIREF: ph7_value_int64()]` |
 |       - | 1900 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1901 | ` */` |
-|  429888 | 1902 | `int ph7_value_int64(ph7_value *pVal,ph7_int64 iValue)` |
+|  429874 | 1902 | `int ph7_value_int64(ph7_value *pVal,ph7_int64 iValue)` |
 |       5 | 1903 | `{` |
 |       - | 1904 | `	/* Invalidate any prior representation */` |
-|  429893 | 1905 | `	PH7_MemObjRelease(pVal);` |
-|  429893 | 1906 | `	pVal->x.iVal = iValue;` |
-|  429893 | 1907 | `	MemObjSetType(pVal,MEMOBJ_INT);` |
-|  429893 | 1908 | `	return PH7_OK;` |
+|  429879 | 1905 | `	PH7_MemObjRelease(pVal);` |
+|  429879 | 1906 | `	pVal->x.iVal = iValue;` |
+|  429879 | 1907 | `	MemObjSetType(pVal,MEMOBJ_INT);` |
+|  429879 | 1908 | `	return PH7_OK;` |
 |       5 | 1909 | `}` |
 |       - | 1910 | `/*` |
 |       - | 1911 | ` * [CAPIREF: ph7_value_bool()]` |
 |       - | 1912 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1913 | ` */` |
-|  337232 | 1914 | `int ph7_value_bool(ph7_value *pVal,int iBool)` |
+|  337789 | 1914 | `int ph7_value_bool(ph7_value *pVal,int iBool)` |
 |       5 | 1915 | `{` |
 |       - | 1916 | `	/* Invalidate any prior representation */` |
-|  337237 | 1917 | `	PH7_MemObjRelease(pVal);` |
-|  337237 | 1918 | `	pVal->x.iVal = iBool ? 1 : 0;` |
-|  337237 | 1919 | `	MemObjSetType(pVal,MEMOBJ_BOOL);` |
-|  337237 | 1920 | `	return PH7_OK;` |
+|  337794 | 1917 | `	PH7_MemObjRelease(pVal);` |
+|  337794 | 1918 | `	pVal->x.iVal = iBool ? 1 : 0;` |
+|  337794 | 1919 | `	MemObjSetType(pVal,MEMOBJ_BOOL);` |
+|  337794 | 1920 | `	return PH7_OK;` |
 |       5 | 1921 | `}` |
 |       - | 1922 | `/*` |
 |       - | 1923 | ` * [CAPIREF: ph7_value_null()]` |
@@ -1957,24 +1957,24 @@ Coverage: 777/1102 lines (70.51%)
 |       - | 1947 | ` * [CAPIREF: ph7_value_string()]` |
 |       - | 1948 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1949 | ` */` |
-| 1478369 | 1950 | `int ph7_value_string(ph7_value *pVal,const char *zString,int nLen)` |
+| 1478856 | 1950 | `int ph7_value_string(ph7_value *pVal,const char *zString,int nLen)` |
 |       5 | 1951 | `{` |
-| 1478374 | 1952 | `	if((pVal->iFlags & MEMOBJ_STRING) == 0 ){` |
+| 1478861 | 1952 | `	if((pVal->iFlags & MEMOBJ_STRING) == 0 ){` |
 |       - | 1953 | `		/* Invalidate any prior representation */` |
-|  486609 | 1954 | `		PH7_MemObjRelease(pVal);` |
-|  486609 | 1955 | `		MemObjSetType(pVal,MEMOBJ_STRING);` |
-|  243405 | 1956 | `	}` |
-| 1478374 | 1957 | `	if( zString ){` |
-| 1478164 | 1958 | `		if( nLen < 0 ){` |
+|  487156 | 1954 | `		PH7_MemObjRelease(pVal);` |
+|  487156 | 1955 | `		MemObjSetType(pVal,MEMOBJ_STRING);` |
+|  243680 | 1956 | `	}` |
+| 1478861 | 1957 | `	if( zString ){` |
+| 1478653 | 1958 | `		if( nLen < 0 ){` |
 |       - | 1959 | `			/* Compute length automatically */` |
 |    5165 | 1960 | `			nLen = (int)SyStrlen(zString);` |
 |    2580 | 1961 | `		}` |
 |       - | 1962 | `		/* Propagate allocation failure (SXERR_MEM) instead of silently` |
 |       - | 1963 | `		 * fabricating a truncated success — callers can surface an OOM fatal. */` |
-| 1478164 | 1964 | `		return SyBlobAppend(&pVal->sBlob,(const void *)zString,(sxu32)nLen);` |
+| 1478653 | 1964 | `		return SyBlobAppend(&pVal->sBlob,(const void *)zString,(sxu32)nLen);` |
 |       - | 1965 | `	}` |
-|     211 | 1966 | `	return PH7_OK;` |
-|  739291 | 1967 | `}` |
+|     209 | 1966 | `	return PH7_OK;` |
+|  739536 | 1967 | `}` |
 |       - | 1968 | `/*` |
 |       - | 1969 | ` * [CAPIREF: ph7_value_string_format()]` |
 |       - | 1970 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
@@ -1998,11 +1998,11 @@ Coverage: 777/1102 lines (70.51%)
 |       - | 1988 | ` * [CAPIREF: ph7_value_reset_string_cursor()]` |
 |       - | 1989 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 1990 | ` */` |
-|  165967 | 1991 | `int ph7_value_reset_string_cursor(ph7_value *pVal)` |
+|  165957 | 1991 | `int ph7_value_reset_string_cursor(ph7_value *pVal)` |
 |       5 | 1992 | `{` |
 |       - | 1993 | `	/* Reset the string cursor */` |
-|  165972 | 1994 | `	SyBlobReset(&pVal->sBlob);` |
-|  165972 | 1995 | `	return PH7_OK;` |
+|  165962 | 1994 | `	SyBlobReset(&pVal->sBlob);` |
+|  165962 | 1995 | `	return PH7_OK;` |
 |       5 | 1996 | `}` |
 |       - | 1997 | `/*` |
 |       - | 1998 | ` * [CAPIREF: ph7_value_resource()]` |
@@ -2030,22 +2030,22 @@ Coverage: 777/1102 lines (70.51%)
 |       - | 2020 | ` * [CAPIREF: ph7_value_is_int()]` |
 |       - | 2021 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 2022 | ` */` |
-|  515108 | 2023 | `int ph7_value_is_int(ph7_value *pVal)` |
+|  515649 | 2023 | `int ph7_value_is_int(ph7_value *pVal)` |
 |       5 | 2024 | `{` |
 |       - | 2025 | `	/* TRUE whenever an integer representation is available, including an` |
 |       - | 2026 | `	 * integer-valued real (which caches its int in MEMOBJ_INT; see` |
 |       - | 2027 | `	 * PH7_MemObjTryInteger). Internal arg-extraction relies on this lenient form to` |
 |       - | 2028 | `	 * accept a float where PHP would coerce. PHP's strict is_int() — which must` |
 |       - | 2029 | `	 * reject floats — lives in the is_int() builtin (PH7_builtin_is_int). */` |
-|  515113 | 2030 | `	return (pVal->iFlags & MEMOBJ_INT) ? TRUE : FALSE;` |
+|  515654 | 2030 | `	return (pVal->iFlags & MEMOBJ_INT) ? TRUE : FALSE;` |
 |       5 | 2031 | `}` |
 |       - | 2032 | `/*` |
 |       - | 2033 | ` * [CAPIREF: ph7_value_is_float()]` |
 |       - | 2034 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 2035 | ` */` |
-|  509704 | 2036 | `int ph7_value_is_float(ph7_value *pVal)` |
+|  510245 | 2036 | `int ph7_value_is_float(ph7_value *pVal)` |
 |       5 | 2037 | `{` |
-|  509709 | 2038 | `	return (pVal->iFlags & MEMOBJ_REAL) ? TRUE : FALSE;` |
+|  510250 | 2038 | `	return (pVal->iFlags & MEMOBJ_REAL) ? TRUE : FALSE;` |
 |       5 | 2039 | `}` |
 |       - | 2040 | `/*` |
 |       - | 2041 | ` * [CAPIREF: ph7_value_is_bool()]` |
@@ -2059,17 +2059,17 @@ Coverage: 777/1102 lines (70.51%)
 |       - | 2049 | ` * [CAPIREF: ph7_value_is_string()]` |
 |       - | 2050 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 2051 | ` */` |
-|  596500 | 2052 | `int ph7_value_is_string(ph7_value *pVal)` |
+|  597031 | 2052 | `int ph7_value_is_string(ph7_value *pVal)` |
 |       5 | 2053 | `{` |
-|  596505 | 2054 | `	return (pVal->iFlags & MEMOBJ_STRING) ? TRUE : FALSE;` |
+|  597036 | 2054 | `	return (pVal->iFlags & MEMOBJ_STRING) ? TRUE : FALSE;` |
 |       5 | 2055 | `}` |
 |       - | 2056 | `/*` |
 |       - | 2057 | ` * [CAPIREF: ph7_value_is_null()]` |
 |       - | 2058 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 2059 | ` */` |
-| 1127422 | 2060 | `int ph7_value_is_null(ph7_value *pVal)` |
+| 1129610 | 2060 | `int ph7_value_is_null(ph7_value *pVal)` |
 |       5 | 2061 | `{` |
-| 1127427 | 2062 | `	return (pVal->iFlags & MEMOBJ_NULL) ? TRUE : FALSE;` |
+| 1129615 | 2062 | `	return (pVal->iFlags & MEMOBJ_NULL) ? TRUE : FALSE;` |
 |       5 | 2063 | `}` |
 |       - | 2064 | `/*` |
 |       - | 2065 | ` * [CAPIREF: ph7_value_is_numeric()]` |
@@ -2085,11 +2085,11 @@ Coverage: 777/1102 lines (70.51%)
 |       - | 2075 | ` * [CAPIREF: ph7_value_is_callable()]` |
 |       - | 2076 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 2077 | ` */` |
-|   60518 | 2078 | `int ph7_value_is_callable(ph7_value *pVal)` |
+|   60530 | 2078 | `int ph7_value_is_callable(ph7_value *pVal)` |
 |       5 | 2079 | `{` |
 |       - | 2080 | `	int rc;` |
-|   60523 | 2081 | `	rc = PH7_VmIsCallable(pVal->pVm,pVal,FALSE);` |
-|   60523 | 2082 | `	return rc;` |
+|   60535 | 2081 | `	rc = PH7_VmIsCallable(pVal->pVm,pVal,FALSE);` |
+|   60535 | 2082 | `	return rc;` |
 |       5 | 2083 | `}` |
 |       - | 2084 | `/*` |
 |       - | 2085 | ` * [CAPIREF: ph7_value_is_scalar()]` |
@@ -2103,9 +2103,9 @@ Coverage: 777/1102 lines (70.51%)
 |       - | 2093 | ` * [CAPIREF: ph7_value_is_array()]` |
 |       - | 2094 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 2095 | ` */` |
-|  210596 | 2096 | `int ph7_value_is_array(ph7_value *pVal)` |
+|  210564 | 2096 | `int ph7_value_is_array(ph7_value *pVal)` |
 |       5 | 2097 | `{` |
-|  210601 | 2098 | `	return (pVal->iFlags & MEMOBJ_HASHMAP) ? TRUE : FALSE;` |
+|  210569 | 2098 | `	return (pVal->iFlags & MEMOBJ_HASHMAP) ? TRUE : FALSE;` |
 |       5 | 2099 | `}` |
 |       - | 2100 | `/*` |
 |       - | 2101 | ` * [CAPIREF: ph7_value_is_object()]` |
@@ -2119,19 +2119,19 @@ Coverage: 777/1102 lines (70.51%)
 |       - | 2109 | ` * [CAPIREF: ph7_value_is_resource()]` |
 |       - | 2110 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 2111 | ` */` |
-|   38430 | 2112 | `int ph7_value_is_resource(ph7_value *pVal)` |
+|   38450 | 2112 | `int ph7_value_is_resource(ph7_value *pVal)` |
 |       5 | 2113 | `{` |
-|   38435 | 2114 | `	return (pVal->iFlags & MEMOBJ_RES) ? TRUE : FALSE;` |
+|   38455 | 2114 | `	return (pVal->iFlags & MEMOBJ_RES) ? TRUE : FALSE;` |
 |       5 | 2115 | `}` |
 |       - | 2116 | `/*` |
 |       - | 2117 | ` * [CAPIREF: ph7_value_is_empty()]` |
 |       - | 2118 | ` * Please refer to the official documentation for function purpose and expected parameters.` |
 |       - | 2119 | ` */` |
-|   39536 | 2120 | `int ph7_value_is_empty(ph7_value *pVal)` |
+|   39528 | 2120 | `int ph7_value_is_empty(ph7_value *pVal)` |
 |       5 | 2121 | `{` |
 |       - | 2122 | `	int rc;` |
-|   39541 | 2123 | `	rc = PH7_MemObjIsEmpty(pVal);` |
-|   39541 | 2124 | `	return rc;` |
+|   39533 | 2123 | `	rc = PH7_MemObjIsEmpty(pVal);` |
+|   39533 | 2124 | `	return rc;` |
 |       5 | 2125 | `}` |
 |       - | 2126 | `/*` |
 |       - | 2127 | ` * [CAPIREF: ph7_value_is_fiber()]` |

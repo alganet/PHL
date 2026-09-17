@@ -261,14 +261,14 @@ Coverage: 12/743 lines (1.62%)
 |    ! 0 |  251 | `	ph7_value_int(pVal,SX_PTR_TO_INT(pUserData));` |
 |    ! 0 |  252 | `}` |
 |      - |  253 |  |
-|   3398 |  254 | `PH7_PRIVATE void PH7_RegisterTokenizerConstants(ph7_vm *pVm)` |
+|   3402 |  254 | `PH7_PRIVATE void PH7_RegisterTokenizerConstants(ph7_vm *pVm)` |
 |      5 |  255 | `{` |
 |      - |  256 | `	sxu32 n;` |
-| 526695 |  257 | `	for( n = 0 ; n < SX_ARRAYSIZE(aTokConst) ; ++n ){` |
-| 784943 |  258 | `		ph7_create_constant(&(*pVm),aTokConst[n].zName,TokConstExpand,` |
-| 523292 |  259 | `			SX_INT_TO_PTR(aTokConst[n].iId));` |
-| 261651 |  260 | `	}` |
-|   3403 |  261 | `}` |
+| 527315 |  257 | `	for( n = 0 ; n < SX_ARRAYSIZE(aTokConst) ; ++n ){` |
+| 785867 |  258 | `		ph7_create_constant(&(*pVm),aTokConst[n].zName,TokConstExpand,` |
+| 523908 |  259 | `			SX_INT_TO_PTR(aTokConst[n].iId));` |
+| 261959 |  260 | `	}` |
+|   3407 |  261 | `}` |
 |      - |  262 |  |
 |      - |  263 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
 |      - |  264 |  |
