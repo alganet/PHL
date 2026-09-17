@@ -603,18 +603,18 @@ Coverage: 1023/1279 lines (79.98%)
 |       - |  593 | ` *` |
 |       - |  594 | ` * Returns non-zero iff pVal is a Closure instance.` |
 |       - |  595 | ` */` |
-| 1051388 |  596 | `PH7_PRIVATE int VmValueIsClosure(ph7_vm *pVm, ph7_value *pVal)` |
+| 1051398 |  596 | `PH7_PRIVATE int VmValueIsClosure(ph7_vm *pVm, ph7_value *pVal)` |
 |       5 |  597 | `{` |
 |       - |  598 | `	ph7_class_instance *pThis;` |
 |       - |  599 | `	/* Flag test first: a non-object call target (the hot common case) bails before any` |
 |       - |  600 | `	 * pVm dereference; pClosureClass==0 is a one-time pre-init concern, so it goes last. */` |
-| 1051393 |  601 | `	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 \|\| pVal->x.pOther == 0 \|\| pVm->pClosureClass == 0 ){` |
-| 1046689 |  602 | `		return 0;` |
+| 1051403 |  601 | `	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 \|\| pVal->x.pOther == 0 \|\| pVm->pClosureClass == 0 ){` |
+| 1046699 |  602 | `		return 0;` |
 |       - |  603 | `	}` |
 |    4709 |  604 | `	pThis = (ph7_class_instance *)pVal->x.pOther;` |
 |       - |  605 | `	/* Closure is final, so an exact class match is correct (no subclasses possible). */` |
 |    4709 |  606 | `	return pThis->pClass == pVm->pClosureClass;` |
-|  526179 |  607 | `}` |
+|  526183 |  607 | `}` |
 |       - |  608 | `/*` |
 |       - |  609 | ` * Unwrap a Closure value into the simple callable the existing dispatch machinery` |
 |       - |  610 | ` * already understands, written into pOut (which the caller must have initialised):` |

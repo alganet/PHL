@@ -50,8 +50,8 @@ Coverage: 2444/2843 lines (85.97%)
 |       - |   40 | `		/* Do the merge sort */` |
 |       3 |   41 | `		HashmapMergeSort(pMap,HashmapCmpCallback7,0);` |
 |       - |   42 | `		/* Fix the last link broken by the merge */` |
-|       8 |   43 | `		while(pMap->pLast->pPrev){` |
-|       6 |   44 | `			pMap->pLast = pMap->pLast->pPrev;` |
+|      11 |   43 | `		while(pMap->pLast->pPrev){` |
+|       9 |   44 | `			pMap->pLast = pMap->pLast->pPrev;` |
 |       1 |   45 | `		}` |
 |       1 |   46 | `	}` |
 |       - |   47 | `	/* All done,return TRUE */` |
@@ -4100,9 +4100,9 @@ Coverage: 2444/2843 lines (85.97%)
 |       - | 4090 | `		 * Note that we perform a linear lookup here (later version must change this)` |
 |       - | 4091 | `		 */` |
 |       9 | 4092 | `		if( nEntry > pMap->nEntry / 2 ){` |
-|       2 | 4093 | `			pNode = pMap->pLast;` |
-|       2 | 4094 | `			nEntry = pMap->nEntry - nEntry;` |
-|       2 | 4095 | `			if( nEntry > 1 ){` |
+|       1 | 4093 | `			pNode = pMap->pLast;` |
+|       1 | 4094 | `			nEntry = pMap->nEntry - nEntry;` |
+|       1 | 4095 | `			if( nEntry > 1 ){` |
 |     ! 0 | 4096 | `				for(;;){` |
 |     ! 0 | 4097 | `					if( nEntry == 0 ){` |
 |     ! 0 | 4098 | `						break;` |
@@ -4113,14 +4113,14 @@ Coverage: 2444/2843 lines (85.97%)
 |     ! 0 | 4103 | `				}` |
 |     ! 0 | 4104 | `			}` |
 |       1 | 4105 | `		}else{` |
-|       8 | 4106 | `			pNode = pMap->pFirst;` |
-|       5 | 4107 | `			for(;;){` |
-|      10 | 4108 | `				if( nEntry == 0 ){` |
-|       8 | 4109 | `					break;` |
+|       9 | 4106 | `			pNode = pMap->pFirst;` |
+|       7 | 4107 | `			for(;;){` |
+|      13 | 4108 | `				if( nEntry == 0 ){` |
+|       9 | 4109 | `					break;` |
 |       - | 4110 | `				}` |
 |       - | 4111 | `				/* Point to the next entry */` |
-|       3 | 4112 | `				pNode = pNode->pPrev; /* Reverse link */` |
-|       3 | 4113 | `				nEntry--;` |
+|       5 | 4112 | `				pNode = pNode->pPrev; /* Reverse link */` |
+|       5 | 4113 | `				nEntry--;` |
 |       1 | 4114 | `			}` |
 |       - | 4115 | `		}` |
 |       9 | 4116 | `		if( pNode->iType == HASHMAP_INT_NODE ){` |

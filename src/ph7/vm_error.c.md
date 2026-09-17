@@ -301,11 +301,11 @@ Coverage: 1759/2029 lines (86.69%)
 |      - |  291 | ` * C->PHP callbacks) are bounded separately by nMaxNativeDepth in the` |
 |      - |  292 | ` * VmByteCodeExec wrapper, since PHP recursion no longer grows the C stack.` |
 |      - |  293 | ` */` |
-| 106615 |  294 | `PH7_PRIVATE int VmRecursionExceeded(ph7_vm *pVm)` |
+| 106613 |  294 | `PH7_PRIVATE int VmRecursionExceeded(ph7_vm *pVm)` |
 |      5 |  295 | `{` |
 |      - |  296 | `	/* nMaxDepth == 0 means unbounded (the host default): PHP call depth is` |
 |      - |  297 | `	 * heap-bound, so only an embedder-configured cap can trip. */` |
-| 106620 |  298 | `	return pVm->nMaxDepth > 0 && pVm->nRecursionDepth > pVm->nMaxDepth;` |
+| 106618 |  298 | `	return pVm->nMaxDepth > 0 && pVm->nRecursionDepth > pVm->nMaxDepth;` |
 |      5 |  299 | `}` |
 |      - |  300 | `/*` |
 |      - |  301 | ` * Single source of truth for the NATIVE VmByteCodeExec nesting cap (the C-stack` |
@@ -957,12 +957,12 @@ Coverage: 1759/2029 lines (86.69%)
 |      - |  947 | ` * the "Cannot modify readonly property" case. Returns SXRET_OK to proceed, or the` |
 |      - |  948 | ` * PH7_EXCEPTION/PH7_ABORT produced by the throw.` |
 |      - |  949 | ` */` |
-| 375324 |  950 | `PH7_PRIVATE sxi32 VmCheckReadonlyMutate(ph7_vm *pVm,sxu32 nIdx)` |
+| 375321 |  950 | `PH7_PRIVATE sxi32 VmCheckReadonlyMutate(ph7_vm *pVm,sxu32 nIdx)` |
 |      5 |  951 | `{` |
 |      - |  952 | `	SyHashEntry *pSlot;` |
 |      - |  953 | `	VmClassAttr *pVmAttr;` |
-| 375329 |  954 | `	if( nIdx == SXU32_HIGH \|\| SyHashTotalEntry(&pVm->hTypedSlot) == 0 ){` |
-| 290831 |  955 | `		return SXRET_OK; /* Non-lvalue operand, or no typed/readonly properties — skip */` |
+| 375326 |  954 | `	if( nIdx == SXU32_HIGH \|\| SyHashTotalEntry(&pVm->hTypedSlot) == 0 ){` |
+| 290828 |  955 | `		return SXRET_OK; /* Non-lvalue operand, or no typed/readonly properties — skip */` |
 |      - |  956 | `	}` |
 |  84502 |  957 | `	pSlot = SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32));` |
 |  84502 |  958 | `	if( pSlot == 0 ){` |
@@ -978,7 +978,7 @@ Coverage: 1759/2029 lines (86.69%)
 |      7 |  968 | `		return VmCheckSetVisibility(pVm,pVmAttr->pOwner,pVmAttr->pAttr);` |
 |      - |  969 | `	}` |
 |     70 |  970 | `	return SXRET_OK;` |
-| 187773 |  971 | `}` |
+| 187771 |  971 | `}` |
 |      - |  972 | `/*` |
 |      - |  973 | ` * Enforce a typed-property assignment. On entry pValue holds the incoming` |
 |      - |  974 | ` * value. For scalar types it may be coerced in place (PHP 7.4 weak mode).` |
@@ -2104,9 +2104,9 @@ Coverage: 1759/2029 lines (86.69%)
 |      - | 2094 | ` * left 0). The return-enforcement gates must consult both, not just the single` |
 |      - | 2095 | ` * type field.` |
 |      - | 2096 | ` */` |
-| 124939 | 2097 | `PH7_PRIVATE int VmFuncHasReturnType(ph7_vm_func *pFunc)` |
+| 124937 | 2097 | `PH7_PRIVATE int VmFuncHasReturnType(ph7_vm_func *pFunc)` |
 |      5 | 2098 | `{` |
-| 124944 | 2099 | `	return pFunc->nReturnType > 0 \|\| SySetUsed(&pFunc->aReturnUnion) > 0;` |
+| 124942 | 2099 | `	return pFunc->nReturnType > 0 \|\| SySetUsed(&pFunc->aReturnUnion) > 0;` |
 |      5 | 2100 | `}` |
 |   9206 | 2101 | `PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value *pValue)` |
 |      5 | 2102 | `{` |
@@ -2950,24 +2950,24 @@ Coverage: 1759/2029 lines (86.69%)
 |    ! 0 | 2940 | `	}` |
 |     47 | 2941 | `	return ph7_type_name(pVal);` |
 |     26 | 2942 | `}` |
-|  43733 | 2943 | `PH7_PRIVATE sxi32 VmArithOperandCheck(ph7_vm *pVm,ph7_value *pLeft,ph7_value *pRight,const char *zOp,SyBlob *pMsgOut)` |
+|  43732 | 2943 | `PH7_PRIVATE sxi32 VmArithOperandCheck(ph7_vm *pVm,ph7_value *pLeft,ph7_value *pRight,const char *zOp,SyBlob *pMsgOut)` |
 |      5 | 2944 | `{` |
-|  43738 | 2945 | `	int bBadL = 0, bBadR = 0;` |
+|  43737 | 2945 | `	int bBadL = 0, bBadR = 0;` |
 |      - | 2946 | `	int i;` |
 |      - | 2947 | `	ph7_value *apOperand[2];` |
-|  43738 | 2948 | `	apOperand[0] = pLeft;` |
-|  43738 | 2949 | `	apOperand[1] = pRight;` |
+|  43737 | 2948 | `	apOperand[0] = pLeft;` |
+|  43737 | 2949 | `	apOperand[1] = pRight;` |
 |      - | 2950 | `	/* array + array is php's union operator, not arithmetic */` |
-|  43733 | 2951 | `	if( zOp[0] == '+' && zOp[1] == '\0'` |
+|  43732 | 2951 | `	if( zOp[0] == '+' && zOp[1] == '\0'` |
 |  14639 | 2952 | `	 && (pLeft->iFlags & MEMOBJ_HASHMAP) && (pRight->iFlags & MEMOBJ_HASHMAP) ){` |
 |   3807 | 2953 | `		return SXRET_OK;` |
 |      - | 2954 | `	}` |
-| 119798 | 2955 | `	for( i = 0 ; i < 2 ; ++i ){` |
-|  79867 | 2956 | `		ph7_value *pVal = apOperand[i];` |
-|  79867 | 2957 | `		int bBad = 0;` |
-|  79867 | 2958 | `		if( pVal->iFlags & (MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES) ){` |
+| 119795 | 2955 | `	for( i = 0 ; i < 2 ; ++i ){` |
+|  79865 | 2956 | `		ph7_value *pVal = apOperand[i];` |
+|  79865 | 2957 | `		int bBad = 0;` |
+|  79865 | 2958 | `		if( pVal->iFlags & (MEMOBJ_HASHMAP\|MEMOBJ_OBJ\|MEMOBJ_RES) ){` |
 |      5 | 2959 | `			bBad = 1;` |
-|  79865 | 2960 | `		}else if( pVal->iFlags & MEMOBJ_STRING ){` |
+|  79863 | 2960 | `		}else if( pVal->iFlags & MEMOBJ_STRING ){` |
 |     50 | 2961 | `			const char *zTail = 0;` |
 |     50 | 2962 | `			const char *zEnd = (const char *)SyBlobData(&pVal->sBlob) + SyBlobLength(&pVal->sBlob);` |
 |     50 | 2963 | `			if( !PH7_MemObjStringNumericPrefix(pVal,&zTail) ){` |
@@ -2985,11 +2985,11 @@ Coverage: 1759/2029 lines (86.69%)
 |      9 | 2975 | `				}` |
 |      - | 2976 | `			}` |
 |     24 | 2977 | `		}` |
-|  79867 | 2978 | `		if( bBad ){` |
+|  79865 | 2978 | `		if( bBad ){` |
 |     15 | 2979 | `			if( i == 0 ){ bBadL = 1; } else { bBadR = 1; }` |
 |      7 | 2980 | `		}` |
-|  40051 | 2981 | `	}` |
-|  39936 | 2982 | `	if( bBadL \|\| bBadR ){` |
+|  40049 | 2981 | `	}` |
+|  39935 | 2982 | `	if( bBadL \|\| bBadR ){` |
 |      - | 2983 | `		/* Only CLASSIFY here — the caller must settle the operand stack BEFORE the throw,` |
 |      - | 2984 | `		 * or the catch runs with the abandoned operands still on it and execution resumes` |
 |      - | 2985 | ``		 * inside the try (the catch fired, then `5 + "abc"` carried on and produced 5). */`` |
@@ -2997,8 +2997,8 @@ Coverage: 1759/2029 lines (86.69%)
 |      7 | 2987 | `			VmArithTypeName(pLeft),zOp,VmArithTypeName(pRight));` |
 |     15 | 2988 | `		return SXERR_INVALID;` |
 |      - | 2989 | `	}` |
-|  39922 | 2990 | `	return SXRET_OK;` |
-|  21929 | 2991 | `}` |
+|  39921 | 2990 | `	return SXRET_OK;` |
+|  21928 | 2991 | `}` |
 |      - | 2992 | `/*` |
 |      - | 2993 | ` * Throw an internal exception instance that can be intercepted by try/catch.` |
 |      - | 2994 | ` */` |

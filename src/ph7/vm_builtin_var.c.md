@@ -219,30 +219,30 @@ Coverage: 388/428 lines (90.65%)
 |       3 |  209 | `	}` |
 |  709921 |  210 | `	return nLive > 0;` |
 |  354963 |  211 | `}` |
-| 4254621 |  212 | `PH7_PRIVATE sxi32 PH7_VmUnsetMemObj(ph7_vm *pVm,sxu32 nObjIdx,int bForce)` |
+| 4254649 |  212 | `PH7_PRIVATE sxi32 PH7_VmUnsetMemObj(ph7_vm *pVm,sxu32 nObjIdx,int bForce)` |
 |       5 |  213 | `{` |
 |       - |  214 | `	ph7_value *pObj;` |
 |       - |  215 | `	VmRefObj *pRef;` |
-| 4254626 |  216 | `	pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nObjIdx);` |
-| 4254626 |  217 | `	if( pObj ){` |
+| 4254654 |  216 | `	pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nObjIdx);` |
+| 4254654 |  217 | `	if( pObj ){` |
 |       - |  218 | `		/* Release the object */` |
-| 4254626 |  219 | `		PH7_MemObjRelease(pObj);` |
-| 2127943 |  220 | `	}` |
+| 4254654 |  219 | `		PH7_MemObjRelease(pObj);` |
+| 2127957 |  220 | `	}` |
 |       - |  221 | `	/* Remove old reference links */` |
-| 4254626 |  222 | `	pRef = VmRefObjExtract(&(*pVm),nObjIdx);` |
-| 4254626 |  223 | `	if( pRef ){` |
-| 4254626 |  224 | `		sxi32 iFlags = pRef->iFlags;` |
+| 4254654 |  222 | `	pRef = VmRefObjExtract(&(*pVm),nObjIdx);` |
+| 4254654 |  223 | `	if( pRef ){` |
+| 4254654 |  224 | `		sxi32 iFlags = pRef->iFlags;` |
 |       - |  225 | `		/* Unlink from the reference table */` |
-| 4254626 |  226 | `		VmRefObjUnlink(&(*pVm),pRef);` |
-| 4254626 |  227 | `		if( (bForce == TRUE) \|\| (iFlags & VM_REF_IDX_KEEP) == 0 ){` |
+| 4254654 |  226 | `		VmRefObjUnlink(&(*pVm),pRef);` |
+| 4254654 |  227 | `		if( (bForce == TRUE) \|\| (iFlags & VM_REF_IDX_KEEP) == 0 ){` |
 |       - |  228 | `			VmSlot sFree;` |
 |       - |  229 | `			/* Restore to the free list */` |
-| 4254608 |  230 | `			sFree.nIdx = nObjIdx;` |
-| 4254608 |  231 | `			sFree.pUserData = 0;` |
-| 4254608 |  232 | `			SySetPut(&pVm->aFreeObj,(const void *)&sFree);` |
-| 2127934 |  233 | `		}` |
-| 2127943 |  234 | `	}` |
-| 4254626 |  235 | `	return SXRET_OK;` |
+| 4254636 |  230 | `			sFree.nIdx = nObjIdx;` |
+| 4254636 |  231 | `			sFree.pUserData = 0;` |
+| 4254636 |  232 | `			SySetPut(&pVm->aFreeObj,(const void *)&sFree);` |
+| 2127948 |  233 | `		}` |
+| 2127957 |  234 | `	}` |
+| 4254654 |  235 | `	return SXRET_OK;` |
 |       5 |  236 | `}` |
 |       - |  237 | `/*` |
 |       - |  238 | ` * void unset($var,...)` |
