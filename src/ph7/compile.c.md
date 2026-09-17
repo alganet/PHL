@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 1523/1654 lines (92.08%)
+Coverage: 1524/1655 lines (92.08%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -2655,220 +2655,221 @@ Coverage: 1523/1654 lines (92.08%)
 |         5 | 2645 | `	pGen->nErr = 0;` |
 |         5 | 2646 | `	pGen->nLoopId = pGen->nCurLoopId = 0;` |
 |         5 | 2647 | `	pGen->nCommaExprOk = 0;` |
-|         5 | 2648 | `	pGen->bInGenerator = 0;` |
-|         5 | 2649 | `	pGen->bStrictTypes = 0;` |
-|         5 | 2650 | `	pGen->bStrictTypesLocked = 0;` |
-|         5 | 2651 | `	SyStringInitFromBuf(&pGen->sPendingDoc,0,0);` |
-|         5 | 2652 | `	pGen->xErr = xErr;` |
-|         5 | 2653 | `	pGen->pErrData = pErrData;` |
-|         5 | 2654 | `}` |
-|         - | 2655 | `/*` |
-|         - | 2656 | ` * Restore the outer compile-position state saved by PH7_CompilerSaveState,` |
-|         - | 2657 | ` * releasing the nested unit's position containers first. The shared` |
-|         - | 2658 | ` * hLiteral/hNumLiteral/hVar tables (grown by the nested compile) are carried` |
-|         - | 2659 | ` * forward, NOT rolled back to the snapshot's stale headers.` |
-|         - | 2660 | ` */` |
-|         4 | 2661 | `PH7_PRIVATE void PH7_CompilerRestoreState(ph7_vm *pVm,ph7_gen_state *pSaved)` |
-|         1 | 2662 | `{` |
-|         5 | 2663 | `	ph7_gen_state *pGen = &pVm->sCodeGen;` |
-|         - | 2664 | `	GenBlock *pBlock,*pParent;` |
-|         - | 2665 | `	SyHash hVar,hLiteral,hNumLiteral;` |
-|         - | 2666 | `	/* Free any nested blocks left open (e.g. an aborted nested compile), then the` |
-|         - | 2667 | `	 * nested global block's own fixup sets. */` |
-|         5 | 2668 | `	pBlock = pGen->pCurrent;` |
-|         5 | 2669 | `	while( pBlock && pBlock->pParent != 0 ){` |
-|       ! 0 | 2670 | `		pParent = pBlock->pParent;` |
-|       ! 0 | 2671 | `		GenStateFreeBlock(pBlock);` |
-|       ! 0 | 2672 | `		pBlock = pParent;` |
-|       ! 0 | 2673 | `	}` |
-|         5 | 2674 | `	GenStateReleaseBlock(&pGen->sGlobal);` |
-|         - | 2675 | `	/* Release the nested unit's position containers. */` |
-|         5 | 2676 | `	SySetRelease(&pGen->aLabel);` |
-|         5 | 2677 | `	SySetRelease(&pGen->aGoto);` |
-|         5 | 2678 | `	SySetRelease(&pGen->aNullsafeJmp);` |
-|         5 | 2679 | `	SySetRelease(&pGen->aLoopParent);` |
-|         5 | 2680 | `	SySetRelease(&pGen->aTrivia);` |
-|         5 | 2681 | `	SySetRelease(&pGen->aPendingAttrs);` |
-|         5 | 2682 | `	SyBlobRelease(&pGen->sWorker);` |
-|         5 | 2683 | `	SyBlobRelease(&pGen->sErrBuf);` |
-|         5 | 2684 | `	SyBlobRelease(&pGen->sNamespace);` |
-|         5 | 2685 | `	SyHashRelease(&pGen->hUseImports);` |
-|         5 | 2686 | `	SyHashRelease(&pGen->hUseFuncImports);` |
-|         5 | 2687 | `	SyHashRelease(&pGen->hUseConstImports);` |
-|         - | 2688 | `	/* Preserve the (possibly grown) shared intern tables across the restore. */` |
-|         5 | 2689 | `	hVar = pGen->hVar;` |
-|         5 | 2690 | `	hLiteral = pGen->hLiteral;` |
-|         5 | 2691 | `	hNumLiteral = pGen->hNumLiteral;` |
-|         5 | 2692 | `	*pGen = *pSaved;` |
-|         5 | 2693 | `	pGen->hVar = hVar;` |
-|         5 | 2694 | `	pGen->hLiteral = hLiteral;` |
-|         5 | 2695 | `	pGen->hNumLiteral = hNumLiteral;` |
-|         5 | 2696 | `}` |
-|         - | 2697 | `/*` |
-|         - | 2698 | ` * Raise php's parse error for an unexpected token: E_PARSE with the exact text` |
-|         - | 2699 | ` * php's parser prints, e.g.` |
-|         - | 2700 | ` *` |
-|         - | 2701 | ` *   syntax error, unexpected token ";", expecting "{"` |
-|         - | 2702 | ` *   syntax error, unexpected identifier "invalid", expecting "("` |
-|         - | 2703 | ` *   syntax error, unexpected end of file` |
-|         - | 2704 | ` *` |
-|         - | 2705 | ` * php names the token by CLASS, not just by text: an identifier, a variable and` |
-|         - | 2706 | ` * a number each get their own noun, while everything else (keywords, operators,` |
-|         - | 2707 | ` * punctuation) is a "token". zExpecting is the optional ", expecting ..." tail` |
-|         - | 2708 | ` * — pass NULL when the site cannot say what it wanted (php often can't either).` |
-|         - | 2709 | ` * pTok == NULL means the input ran out: "unexpected end of file".` |
-|         - | 2710 | ` *` |
-|         - | 2711 | ` * PHL's hand-written recursive-descent parser has no bison expectation sets, so` |
-|         - | 2712 | ` * a site can only claim an "expecting" clause it genuinely knows; every clause` |
-|         - | 2713 | ` * emitted here was verified against php 8.5.7 for the construct in question.` |
-|         - | 2714 | ` */` |
-|       208 | 2715 | `PH7_PRIVATE sxi32 PH7_GenSyntaxError(` |
-|         - | 2716 | `	ph7_gen_state *pGen,   /* Code generator state */` |
-|         - | 2717 | `	SyToken *pTok,         /* Offending token, or NULL for end of file */` |
-|         - | 2718 | `	const char *zExpecting /* ", expecting <this>" tail, or NULL */` |
-|         - | 2719 | `	)` |
-|         5 | 2720 | `{` |
-|       213 | 2721 | `	const char *zNoun = "token";` |
-|         - | 2722 | `	sxu32 nLine;` |
-|       213 | 2723 | `	if( pTok == 0 && pGen->pTokenSet ){` |
-|         - | 2724 | `		/* The caller ran out of tokens inside its own slice — but a statement's slice stops` |
-|         - | 2725 | `		 * BEFORE its terminator, so the token php actually names (typically the ';') is the` |
-|         - | 2726 | `		 * one sitting just past the slice, still inside the chunk's token stream. Reach for` |
-|         - | 2727 | `		 * it before concluding "end of file". */` |
-|        96 | 2728 | `		SyToken *pBase = (SyToken *)SySetBasePtr(pGen->pTokenSet);` |
-|        96 | 2729 | `		SyToken *pStreamEnd = &pBase[SySetUsed(pGen->pTokenSet)];` |
-|        96 | 2730 | `		if( pGen->pEnd >= pBase && pGen->pEnd < pStreamEnd ){` |
-|        92 | 2731 | `			pTok = pGen->pEnd;` |
-|        44 | 2732 | `		}` |
-|        46 | 2733 | `	}` |
-|       213 | 2734 | `	nLine = pTok ? pTok->nLine : (pGen->pIn > (SyToken *)SySetBasePtr(pGen->pTokenSet) ? pGen->pIn[-1].nLine : 1);` |
-|       213 | 2735 | `	if( pTok == 0 ){` |
-|         8 | 2736 | `		return PH7_GenCompileError(pGen,E_PARSE,nLine,` |
-|         2 | 2737 | `			zExpecting ? "syntax error, unexpected end of file, expecting %s"` |
-|         - | 2738 | `			           : "syntax error, unexpected end of file",` |
-|         2 | 2739 | `			zExpecting);` |
-|         - | 2740 | `	}` |
-|       209 | 2741 | `	if( pTok->nType & PH7_TK_ID ){` |
-|        23 | 2742 | `		zNoun = "identifier";` |
-|       200 | 2743 | `	}else if( pTok->nType & PH7_TK_DOLLAR ){` |
-|         3 | 2744 | `		zNoun = "variable";` |
-|         - | 2745 | `		/* The '$' is its own token and carries only "$" as text; the NAME is the` |
-|         - | 2746 | ``		 * token after it. php names the whole variable, so `$x` was being reported`` |
-|         - | 2747 | ``		 * as the nameless `variable "$"`. Stitch the two back together. */`` |
-|         3 | 2748 | `		if( pGen->pTokenSet ){` |
-|         3 | 2749 | `			SyToken *pBase = (SyToken *)SySetBasePtr(pGen->pTokenSet);` |
-|         3 | 2750 | `			SyToken *pStreamEnd = &pBase[SySetUsed(pGen->pTokenSet)];` |
-|         3 | 2751 | `			SyToken *pName = &pTok[1];` |
-|         2 | 2752 | `			if( pTok >= pBase && pName < pStreamEnd` |
-|         2 | 2753 | `				&& (pName->nType & (PH7_TK_ID\|PH7_TK_KEYWORD))` |
-|         3 | 2754 | `				&& pName->sData.nByte > 0 ){` |
-|         3 | 2755 | `				SyBlobReset(&pGen->sWorker);` |
-|         3 | 2756 | `				SyBlobAppend(&pGen->sWorker,"$",sizeof(char));` |
-|         3 | 2757 | `				SyBlobAppend(&pGen->sWorker,pName->sData.zString,pName->sData.nByte);` |
-|         - | 2758 | `				{` |
-|         - | 2759 | `					SyString sVar;` |
-|         3 | 2760 | `					SyStringInitFromBuf(&sVar,SyBlobData(&pGen->sWorker),` |
-|         - | 2761 | `						SyBlobLength(&pGen->sWorker));` |
-|         3 | 2762 | `					if( zExpecting ){` |
-|         4 | 2763 | `						return PH7_GenCompileError(pGen,E_PARSE,nLine,` |
-|         - | 2764 | `							"syntax error, unexpected %s \"%z\", expecting %s",` |
-|         1 | 2765 | `							zNoun,&sVar,zExpecting);` |
-|         - | 2766 | `					}` |
-|       ! 0 | 2767 | `					return PH7_GenCompileError(pGen,E_PARSE,nLine,` |
-|       ! 0 | 2768 | `						"syntax error, unexpected %s \"%z\"",zNoun,&sVar);` |
-|         - | 2769 | `				}` |
-|         - | 2770 | `			}` |
-|       ! 0 | 2771 | `		}` |
-|       189 | 2772 | `	}else if( pTok->nType & PH7_TK_INTEGER ){` |
-|        27 | 2773 | `		zNoun = "integer";` |
-|       177 | 2774 | `	}else if( pTok->nType & PH7_TK_REAL ){` |
-|       ! 0 | 2775 | `		zNoun = "float";` |
-|       ! 0 | 2776 | `	}` |
-|       207 | 2777 | `	if( zExpecting ){` |
-|       146 | 2778 | `		return PH7_GenCompileError(pGen,E_PARSE,nLine,` |
-|        47 | 2779 | `			"syntax error, unexpected %s \"%z\", expecting %s",zNoun,&pTok->sData,zExpecting);` |
-|         - | 2780 | `	}` |
-|       167 | 2781 | `	return PH7_GenCompileError(pGen,E_PARSE,nLine,` |
-|        54 | 2782 | `		"syntax error, unexpected %s \"%z\"",zNoun,&pTok->sData);` |
-|       109 | 2783 | `}` |
-|         - | 2784 | `/*` |
-|         - | 2785 | ` * Generate a compile-time error message.` |
-|         - | 2786 | ` * If the error count limit is reached (usually 15 error message)` |
-|         - | 2787 | ` * this function return SXERR_ABORT.In that case upper-layers must` |
-|         - | 2788 | ` * abort compilation immediately.` |
-|         - | 2789 | ` */` |
-|       686 | 2790 | `PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 nLine,const char *zFormat,...)` |
-|         5 | 2791 | `{` |
-|       691 | 2792 | `	SyBlob *pWorker = &pGen->sErrBuf;` |
-|       691 | 2793 | `	const char *zErr = "Error";` |
-|         - | 2794 | `	SyString *pFile;` |
-|         - | 2795 | `	va_list ap;` |
-|         - | 2796 | `	sxi32 rc;` |
-|         - | 2797 | `	/* Reset the working buffer */` |
-|       691 | 2798 | `	SyBlobReset(pWorker);` |
-|         - | 2799 | `	/* Peek the processed file path if available */` |
-|       691 | 2800 | `	pFile = (SyString *)SySetPeek(&pGen->pVm->aFiles);` |
-|       691 | 2801 | `	if( nErrType == E_ERROR \|\| nErrType == E_PARSE ){` |
-|         - | 2802 | `		/* Increment the error counter. A PARSE error is every bit as fatal as an` |
-|         - | 2803 | `		 * E_ERROR one: php compiles nothing, runs nothing and exits 255. Counting` |
-|         - | 2804 | `		 * only E_ERROR let a parse error print its diagnostic and then fall through` |
-|         - | 2805 | `		 * into execution with a 0 exit status. */` |
-|       683 | 2806 | `		pGen->nErr++;` |
-|       683 | 2807 | `		if( pGen->nErr > 15 ){` |
-|         - | 2808 | `			/* Error count limit reached */` |
-|         6 | 2809 | `			if( pGen->xErr ){` |
-|         6 | 2810 | `				SyBlobAppend(pWorker,"PHP ",4);` |
-|         6 | 2811 | `				SyBlobFormat(pWorker,"Fatal error:  Error count limit reached,PH7 is aborting compilation");` |
-|         6 | 2812 | `				if( pFile ){` |
-|         6 | 2813 | `					SyBlobFormat(pWorker," in %.*s on line %u",pFile->nByte,pFile->zString,nLine);` |
-|         2 | 2814 | `				}` |
-|         6 | 2815 | `				SyBlobAppend(pWorker,(const void *)"\n",sizeof(char));` |
-|         6 | 2816 | `				if( SyBlobLength(pWorker) > 0 ){` |
-|         6 | 2817 | `					pGen->xErr(SyBlobData(pWorker),SyBlobLength(pWorker),pGen->pErrData);` |
-|         2 | 2818 | `				}` |
-|         2 | 2819 | `			}` |
-|         - | 2820 | `			/* Abort immediately */` |
-|         6 | 2821 | `			return SXERR_ABORT;` |
-|         - | 2822 | `		}` |
-|       337 | 2823 | `	}` |
-|       687 | 2824 | `	if( pGen->xErr == 0 ){` |
-|         - | 2825 | `		/* No consumer — but keep the BARE message in the error buffer so a caller` |
-|         - | 2826 | `		 * that needs the text can read it back. eval() compiles with logging off` |
-|         - | 2827 | `		 * (a parse error there is php's catchable ParseError, not a printed` |
-|         - | 2828 | `		 * diagnostic) and needs exactly this string for the exception message. */` |
-|         5 | 2829 | `		va_start(ap,zFormat);` |
-|         5 | 2830 | `		SyBlobFormatAp(pWorker,zFormat,ap);` |
-|         5 | 2831 | `		va_end(ap);` |
-|         5 | 2832 | `		return SXRET_OK;` |
-|         - | 2833 | `	}` |
-|       683 | 2834 | `	switch(nErrType){` |
-|       310 | 2835 | `	case E_ERROR:   zErr = "Fatal error"; break;` |
-|        11 | 2836 | `	case E_WARNING: zErr = "Warning";     break;` |
-|       368 | 2837 | `	case E_PARSE:   zErr = "Parse error"; break;` |
-|       ! 0 | 2838 | `	case E_NOTICE:  zErr = "Notice";      break;` |
-|       ! 0 | 2839 | `	case E_USER_ERROR:   zErr = "User error";   break;` |
-|       ! 0 | 2840 | `	case E_USER_WARNING: zErr = "User warning"; break;` |
-|       ! 0 | 2841 | `	case E_USER_NOTICE:  zErr = "User notice";  break;` |
-|       ! 0 | 2842 | `	case 8192 /* E_DEPRECATED */: zErr = "Deprecated"; break;` |
-|       ! 0 | 2843 | `	default:` |
-|       ! 0 | 2844 | `		break;` |
-|         - | 2845 | `	}` |
-|       683 | 2846 | `	rc = SXRET_OK;` |
-|         - | 2847 | `	/* Format: PHP <severity>:  <message> in <file> on line <line> */` |
-|       683 | 2848 | `	SyBlobAppend(pWorker,"PHP ",4);` |
-|       683 | 2849 | `	SyBlobFormat(pWorker,"%s:  ",zErr);` |
-|       683 | 2850 | `	va_start(ap,zFormat);` |
-|       683 | 2851 | `	SyBlobFormatAp(pWorker,zFormat,ap);` |
-|       683 | 2852 | `	va_end(ap);` |
-|       683 | 2853 | `	if( pFile ){` |
-|       683 | 2854 | `		SyBlobFormat(pWorker," in %.*s on line %u",pFile->nByte,pFile->zString,nLine);` |
-|       339 | 2855 | `	}` |
-|         - | 2856 | `	/* Append a new line */` |
-|       683 | 2857 | `	SyBlobAppend(pWorker,(const void *)"\n",sizeof(char));` |
-|       683 | 2858 | `	if( SyBlobLength(pWorker) > 0 ){` |
-|         - | 2859 | `		/* Consume the generated error message */` |
-|       683 | 2860 | `		pGen->xErr(SyBlobData(pWorker),SyBlobLength(pWorker),pGen->pErrData);` |
-|       339 | 2861 | `	}` |
-|       683 | 2862 | `	return rc;` |
-|       348 | 2863 | `}` |
-|         - | 2864 |  |
+|         5 | 2648 | `	pGen->zClauseCloser = 0;` |
+|         5 | 2649 | `	pGen->bInGenerator = 0;` |
+|         5 | 2650 | `	pGen->bStrictTypes = 0;` |
+|         5 | 2651 | `	pGen->bStrictTypesLocked = 0;` |
+|         5 | 2652 | `	SyStringInitFromBuf(&pGen->sPendingDoc,0,0);` |
+|         5 | 2653 | `	pGen->xErr = xErr;` |
+|         5 | 2654 | `	pGen->pErrData = pErrData;` |
+|         5 | 2655 | `}` |
+|         - | 2656 | `/*` |
+|         - | 2657 | ` * Restore the outer compile-position state saved by PH7_CompilerSaveState,` |
+|         - | 2658 | ` * releasing the nested unit's position containers first. The shared` |
+|         - | 2659 | ` * hLiteral/hNumLiteral/hVar tables (grown by the nested compile) are carried` |
+|         - | 2660 | ` * forward, NOT rolled back to the snapshot's stale headers.` |
+|         - | 2661 | ` */` |
+|         4 | 2662 | `PH7_PRIVATE void PH7_CompilerRestoreState(ph7_vm *pVm,ph7_gen_state *pSaved)` |
+|         1 | 2663 | `{` |
+|         5 | 2664 | `	ph7_gen_state *pGen = &pVm->sCodeGen;` |
+|         - | 2665 | `	GenBlock *pBlock,*pParent;` |
+|         - | 2666 | `	SyHash hVar,hLiteral,hNumLiteral;` |
+|         - | 2667 | `	/* Free any nested blocks left open (e.g. an aborted nested compile), then the` |
+|         - | 2668 | `	 * nested global block's own fixup sets. */` |
+|         5 | 2669 | `	pBlock = pGen->pCurrent;` |
+|         5 | 2670 | `	while( pBlock && pBlock->pParent != 0 ){` |
+|       ! 0 | 2671 | `		pParent = pBlock->pParent;` |
+|       ! 0 | 2672 | `		GenStateFreeBlock(pBlock);` |
+|       ! 0 | 2673 | `		pBlock = pParent;` |
+|       ! 0 | 2674 | `	}` |
+|         5 | 2675 | `	GenStateReleaseBlock(&pGen->sGlobal);` |
+|         - | 2676 | `	/* Release the nested unit's position containers. */` |
+|         5 | 2677 | `	SySetRelease(&pGen->aLabel);` |
+|         5 | 2678 | `	SySetRelease(&pGen->aGoto);` |
+|         5 | 2679 | `	SySetRelease(&pGen->aNullsafeJmp);` |
+|         5 | 2680 | `	SySetRelease(&pGen->aLoopParent);` |
+|         5 | 2681 | `	SySetRelease(&pGen->aTrivia);` |
+|         5 | 2682 | `	SySetRelease(&pGen->aPendingAttrs);` |
+|         5 | 2683 | `	SyBlobRelease(&pGen->sWorker);` |
+|         5 | 2684 | `	SyBlobRelease(&pGen->sErrBuf);` |
+|         5 | 2685 | `	SyBlobRelease(&pGen->sNamespace);` |
+|         5 | 2686 | `	SyHashRelease(&pGen->hUseImports);` |
+|         5 | 2687 | `	SyHashRelease(&pGen->hUseFuncImports);` |
+|         5 | 2688 | `	SyHashRelease(&pGen->hUseConstImports);` |
+|         - | 2689 | `	/* Preserve the (possibly grown) shared intern tables across the restore. */` |
+|         5 | 2690 | `	hVar = pGen->hVar;` |
+|         5 | 2691 | `	hLiteral = pGen->hLiteral;` |
+|         5 | 2692 | `	hNumLiteral = pGen->hNumLiteral;` |
+|         5 | 2693 | `	*pGen = *pSaved;` |
+|         5 | 2694 | `	pGen->hVar = hVar;` |
+|         5 | 2695 | `	pGen->hLiteral = hLiteral;` |
+|         5 | 2696 | `	pGen->hNumLiteral = hNumLiteral;` |
+|         5 | 2697 | `}` |
+|         - | 2698 | `/*` |
+|         - | 2699 | ` * Raise php's parse error for an unexpected token: E_PARSE with the exact text` |
+|         - | 2700 | ` * php's parser prints, e.g.` |
+|         - | 2701 | ` *` |
+|         - | 2702 | ` *   syntax error, unexpected token ";", expecting "{"` |
+|         - | 2703 | ` *   syntax error, unexpected identifier "invalid", expecting "("` |
+|         - | 2704 | ` *   syntax error, unexpected end of file` |
+|         - | 2705 | ` *` |
+|         - | 2706 | ` * php names the token by CLASS, not just by text: an identifier, a variable and` |
+|         - | 2707 | ` * a number each get their own noun, while everything else (keywords, operators,` |
+|         - | 2708 | ` * punctuation) is a "token". zExpecting is the optional ", expecting ..." tail` |
+|         - | 2709 | ` * — pass NULL when the site cannot say what it wanted (php often can't either).` |
+|         - | 2710 | ` * pTok == NULL means the input ran out: "unexpected end of file".` |
+|         - | 2711 | ` *` |
+|         - | 2712 | ` * PHL's hand-written recursive-descent parser has no bison expectation sets, so` |
+|         - | 2713 | ` * a site can only claim an "expecting" clause it genuinely knows; every clause` |
+|         - | 2714 | ` * emitted here was verified against php 8.5.7 for the construct in question.` |
+|         - | 2715 | ` */` |
+|       208 | 2716 | `PH7_PRIVATE sxi32 PH7_GenSyntaxError(` |
+|         - | 2717 | `	ph7_gen_state *pGen,   /* Code generator state */` |
+|         - | 2718 | `	SyToken *pTok,         /* Offending token, or NULL for end of file */` |
+|         - | 2719 | `	const char *zExpecting /* ", expecting <this>" tail, or NULL */` |
+|         - | 2720 | `	)` |
+|         5 | 2721 | `{` |
+|       213 | 2722 | `	const char *zNoun = "token";` |
+|         - | 2723 | `	sxu32 nLine;` |
+|       213 | 2724 | `	if( pTok == 0 && pGen->pTokenSet ){` |
+|         - | 2725 | `		/* The caller ran out of tokens inside its own slice — but a statement's slice stops` |
+|         - | 2726 | `		 * BEFORE its terminator, so the token php actually names (typically the ';') is the` |
+|         - | 2727 | `		 * one sitting just past the slice, still inside the chunk's token stream. Reach for` |
+|         - | 2728 | `		 * it before concluding "end of file". */` |
+|        96 | 2729 | `		SyToken *pBase = (SyToken *)SySetBasePtr(pGen->pTokenSet);` |
+|        96 | 2730 | `		SyToken *pStreamEnd = &pBase[SySetUsed(pGen->pTokenSet)];` |
+|        96 | 2731 | `		if( pGen->pEnd >= pBase && pGen->pEnd < pStreamEnd ){` |
+|        92 | 2732 | `			pTok = pGen->pEnd;` |
+|        44 | 2733 | `		}` |
+|        46 | 2734 | `	}` |
+|       213 | 2735 | `	nLine = pTok ? pTok->nLine : (pGen->pIn > (SyToken *)SySetBasePtr(pGen->pTokenSet) ? pGen->pIn[-1].nLine : 1);` |
+|       213 | 2736 | `	if( pTok == 0 ){` |
+|         8 | 2737 | `		return PH7_GenCompileError(pGen,E_PARSE,nLine,` |
+|         2 | 2738 | `			zExpecting ? "syntax error, unexpected end of file, expecting %s"` |
+|         - | 2739 | `			           : "syntax error, unexpected end of file",` |
+|         2 | 2740 | `			zExpecting);` |
+|         - | 2741 | `	}` |
+|       209 | 2742 | `	if( pTok->nType & PH7_TK_ID ){` |
+|        23 | 2743 | `		zNoun = "identifier";` |
+|       200 | 2744 | `	}else if( pTok->nType & PH7_TK_DOLLAR ){` |
+|         8 | 2745 | `		zNoun = "variable";` |
+|         - | 2746 | `		/* The '$' is its own token and carries only "$" as text; the NAME is the` |
+|         - | 2747 | ``		 * token after it. php names the whole variable, so `$x` was being reported`` |
+|         - | 2748 | ``		 * as the nameless `variable "$"`. Stitch the two back together. */`` |
+|         8 | 2749 | `		if( pGen->pTokenSet ){` |
+|         8 | 2750 | `			SyToken *pBase = (SyToken *)SySetBasePtr(pGen->pTokenSet);` |
+|         8 | 2751 | `			SyToken *pStreamEnd = &pBase[SySetUsed(pGen->pTokenSet)];` |
+|         8 | 2752 | `			SyToken *pName = &pTok[1];` |
+|         6 | 2753 | `			if( pTok >= pBase && pName < pStreamEnd` |
+|         6 | 2754 | `				&& (pName->nType & (PH7_TK_ID\|PH7_TK_KEYWORD))` |
+|         8 | 2755 | `				&& pName->sData.nByte > 0 ){` |
+|         8 | 2756 | `				SyBlobReset(&pGen->sWorker);` |
+|         8 | 2757 | `				SyBlobAppend(&pGen->sWorker,"$",sizeof(char));` |
+|         8 | 2758 | `				SyBlobAppend(&pGen->sWorker,pName->sData.zString,pName->sData.nByte);` |
+|         - | 2759 | `				{` |
+|         - | 2760 | `					SyString sVar;` |
+|         8 | 2761 | `					SyStringInitFromBuf(&sVar,SyBlobData(&pGen->sWorker),` |
+|         - | 2762 | `						SyBlobLength(&pGen->sWorker));` |
+|         8 | 2763 | `					if( zExpecting ){` |
+|        11 | 2764 | `						return PH7_GenCompileError(pGen,E_PARSE,nLine,` |
+|         - | 2765 | `							"syntax error, unexpected %s \"%z\", expecting %s",` |
+|         3 | 2766 | `							zNoun,&sVar,zExpecting);` |
+|         - | 2767 | `					}` |
+|       ! 0 | 2768 | `					return PH7_GenCompileError(pGen,E_PARSE,nLine,` |
+|       ! 0 | 2769 | `						"syntax error, unexpected %s \"%z\"",zNoun,&sVar);` |
+|         - | 2770 | `				}` |
+|         - | 2771 | `			}` |
+|       ! 0 | 2772 | `		}` |
+|       185 | 2773 | `	}else if( pTok->nType & PH7_TK_INTEGER ){` |
+|        27 | 2774 | `		zNoun = "integer";` |
+|       173 | 2775 | `	}else if( pTok->nType & PH7_TK_REAL ){` |
+|       ! 0 | 2776 | `		zNoun = "float";` |
+|       ! 0 | 2777 | `	}` |
+|       203 | 2778 | `	if( zExpecting ){` |
+|       140 | 2779 | `		return PH7_GenCompileError(pGen,E_PARSE,nLine,` |
+|        45 | 2780 | `			"syntax error, unexpected %s \"%z\", expecting %s",zNoun,&pTok->sData,zExpecting);` |
+|         - | 2781 | `	}` |
+|       167 | 2782 | `	return PH7_GenCompileError(pGen,E_PARSE,nLine,` |
+|        54 | 2783 | `		"syntax error, unexpected %s \"%z\"",zNoun,&pTok->sData);` |
+|       109 | 2784 | `}` |
+|         - | 2785 | `/*` |
+|         - | 2786 | ` * Generate a compile-time error message.` |
+|         - | 2787 | ` * If the error count limit is reached (usually 15 error message)` |
+|         - | 2788 | ` * this function return SXERR_ABORT.In that case upper-layers must` |
+|         - | 2789 | ` * abort compilation immediately.` |
+|         - | 2790 | ` */` |
+|       686 | 2791 | `PH7_PRIVATE sxi32 PH7_GenCompileError(ph7_gen_state *pGen,sxi32 nErrType,sxu32 nLine,const char *zFormat,...)` |
+|         5 | 2792 | `{` |
+|       691 | 2793 | `	SyBlob *pWorker = &pGen->sErrBuf;` |
+|       691 | 2794 | `	const char *zErr = "Error";` |
+|         - | 2795 | `	SyString *pFile;` |
+|         - | 2796 | `	va_list ap;` |
+|         - | 2797 | `	sxi32 rc;` |
+|         - | 2798 | `	/* Reset the working buffer */` |
+|       691 | 2799 | `	SyBlobReset(pWorker);` |
+|         - | 2800 | `	/* Peek the processed file path if available */` |
+|       691 | 2801 | `	pFile = (SyString *)SySetPeek(&pGen->pVm->aFiles);` |
+|       691 | 2802 | `	if( nErrType == E_ERROR \|\| nErrType == E_PARSE ){` |
+|         - | 2803 | `		/* Increment the error counter. A PARSE error is every bit as fatal as an` |
+|         - | 2804 | `		 * E_ERROR one: php compiles nothing, runs nothing and exits 255. Counting` |
+|         - | 2805 | `		 * only E_ERROR let a parse error print its diagnostic and then fall through` |
+|         - | 2806 | `		 * into execution with a 0 exit status. */` |
+|       683 | 2807 | `		pGen->nErr++;` |
+|       683 | 2808 | `		if( pGen->nErr > 15 ){` |
+|         - | 2809 | `			/* Error count limit reached */` |
+|         6 | 2810 | `			if( pGen->xErr ){` |
+|         6 | 2811 | `				SyBlobAppend(pWorker,"PHP ",4);` |
+|         6 | 2812 | `				SyBlobFormat(pWorker,"Fatal error:  Error count limit reached,PH7 is aborting compilation");` |
+|         6 | 2813 | `				if( pFile ){` |
+|         6 | 2814 | `					SyBlobFormat(pWorker," in %.*s on line %u",pFile->nByte,pFile->zString,nLine);` |
+|         2 | 2815 | `				}` |
+|         6 | 2816 | `				SyBlobAppend(pWorker,(const void *)"\n",sizeof(char));` |
+|         6 | 2817 | `				if( SyBlobLength(pWorker) > 0 ){` |
+|         6 | 2818 | `					pGen->xErr(SyBlobData(pWorker),SyBlobLength(pWorker),pGen->pErrData);` |
+|         2 | 2819 | `				}` |
+|         2 | 2820 | `			}` |
+|         - | 2821 | `			/* Abort immediately */` |
+|         6 | 2822 | `			return SXERR_ABORT;` |
+|         - | 2823 | `		}` |
+|       337 | 2824 | `	}` |
+|       687 | 2825 | `	if( pGen->xErr == 0 ){` |
+|         - | 2826 | `		/* No consumer — but keep the BARE message in the error buffer so a caller` |
+|         - | 2827 | `		 * that needs the text can read it back. eval() compiles with logging off` |
+|         - | 2828 | `		 * (a parse error there is php's catchable ParseError, not a printed` |
+|         - | 2829 | `		 * diagnostic) and needs exactly this string for the exception message. */` |
+|         5 | 2830 | `		va_start(ap,zFormat);` |
+|         5 | 2831 | `		SyBlobFormatAp(pWorker,zFormat,ap);` |
+|         5 | 2832 | `		va_end(ap);` |
+|         5 | 2833 | `		return SXRET_OK;` |
+|         - | 2834 | `	}` |
+|       683 | 2835 | `	switch(nErrType){` |
+|       310 | 2836 | `	case E_ERROR:   zErr = "Fatal error"; break;` |
+|        11 | 2837 | `	case E_WARNING: zErr = "Warning";     break;` |
+|       368 | 2838 | `	case E_PARSE:   zErr = "Parse error"; break;` |
+|       ! 0 | 2839 | `	case E_NOTICE:  zErr = "Notice";      break;` |
+|       ! 0 | 2840 | `	case E_USER_ERROR:   zErr = "User error";   break;` |
+|       ! 0 | 2841 | `	case E_USER_WARNING: zErr = "User warning"; break;` |
+|       ! 0 | 2842 | `	case E_USER_NOTICE:  zErr = "User notice";  break;` |
+|       ! 0 | 2843 | `	case 8192 /* E_DEPRECATED */: zErr = "Deprecated"; break;` |
+|       ! 0 | 2844 | `	default:` |
+|       ! 0 | 2845 | `		break;` |
+|         - | 2846 | `	}` |
+|       683 | 2847 | `	rc = SXRET_OK;` |
+|         - | 2848 | `	/* Format: PHP <severity>:  <message> in <file> on line <line> */` |
+|       683 | 2849 | `	SyBlobAppend(pWorker,"PHP ",4);` |
+|       683 | 2850 | `	SyBlobFormat(pWorker,"%s:  ",zErr);` |
+|       683 | 2851 | `	va_start(ap,zFormat);` |
+|       683 | 2852 | `	SyBlobFormatAp(pWorker,zFormat,ap);` |
+|       683 | 2853 | `	va_end(ap);` |
+|       683 | 2854 | `	if( pFile ){` |
+|       683 | 2855 | `		SyBlobFormat(pWorker," in %.*s on line %u",pFile->nByte,pFile->zString,nLine);` |
+|       339 | 2856 | `	}` |
+|         - | 2857 | `	/* Append a new line */` |
+|       683 | 2858 | `	SyBlobAppend(pWorker,(const void *)"\n",sizeof(char));` |
+|       683 | 2859 | `	if( SyBlobLength(pWorker) > 0 ){` |
+|         - | 2860 | `		/* Consume the generated error message */` |
+|       683 | 2861 | `		pGen->xErr(SyBlobData(pWorker),SyBlobLength(pWorker),pGen->pErrData);` |
+|       339 | 2862 | `	}` |
+|       683 | 2863 | `	return rc;` |
+|       348 | 2864 | `}` |
+|         - | 2865 |  |

@@ -303,13 +303,13 @@ Coverage: 212/407 lines (52.09%)
 |        - |  293 | `            /* Negate in unsigned space so INT64_MIN (where -longvalue would` |
 |        - |  294 | `            ** overflow, UB that recent compilers exploit) yields the correct` |
 |        - |  295 | `            ** magnitude 2^63 rather than garbage. */` |
-|      233 |  296 | `            ulongvalue = (sxu64)0 - (sxu64)longvalue;` |
-|      233 |  297 | `            prefix = '-';` |
+|      234 |  296 | `            ulongvalue = (sxu64)0 - (sxu64)longvalue;` |
+|      234 |  297 | `            prefix = '-';` |
 |      118 |  298 | `          }else{` |
-|    68164 |  299 | `            ulongvalue = (sxu64)longvalue;` |
-|    68164 |  300 | `            if( flag_plussign )        prefix = '+';` |
-|    68164 |  301 | `            else if( flag_blanksign )  prefix = ' ';` |
-|    68164 |  302 | `            else                       prefix = 0;` |
+|    68163 |  299 | `            ulongvalue = (sxu64)longvalue;` |
+|    68163 |  300 | `            if( flag_plussign )        prefix = '+';` |
+|    68163 |  301 | `            else if( flag_blanksign )  prefix = ' ';` |
+|    68163 |  302 | `            else                       prefix = 0;` |
 |        - |  303 | `          }` |
 |    34199 |  304 | `        }else{` |
 |     3971 |  305 | `			ulongvalue = (sxu64)longvalue; /* print the full unsigned value as-is */` |
@@ -325,14 +325,14 @@ Coverage: 212/407 lines (52.09%)
 |    72359 |  315 | `          cset = infop->charset;` |
 |    72359 |  316 | `          base = infop->base;` |
 |    36177 |  317 | `          do{                                           /* Convert to ascii */` |
-|   204074 |  318 | `            *(--bufpt) = cset[ulongvalue%base];` |
-|   204074 |  319 | `            ulongvalue = ulongvalue/base;` |
-|   204074 |  320 | `          }while( ulongvalue>0 );` |
+|   204078 |  318 | `            *(--bufpt) = cset[ulongvalue%base];` |
+|   204078 |  319 | `            ulongvalue = ulongvalue/base;` |
+|   204078 |  320 | `          }while( ulongvalue>0 );` |
 |        - |  321 | `        }` |
 |    72359 |  322 | `        length = (int)(&buf[SXFMT_BUFSIZ-1]-bufpt);` |
-|    73465 |  323 | `        for(idx=precision-length; idx>0; idx--){` |
-|     1108 |  324 | `          *(--bufpt) = '0';                             /* Zero pad */` |
-|      552 |  325 | `        }` |
+|    73464 |  323 | `        for(idx=precision-length; idx>0; idx--){` |
+|     1107 |  324 | `          *(--bufpt) = '0';                             /* Zero pad */` |
+|      553 |  325 | `        }` |
 |    72359 |  326 | `        if( prefix ) *(--bufpt) = prefix;               /* Add sign */` |
 |    72359 |  327 | `        if( flag_alternateform && infop->prefix ){      /* Add "0" or "0x" */` |
 |        - |  328 | `          char *pre, x;` |

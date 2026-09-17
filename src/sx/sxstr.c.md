@@ -17,21 +17,21 @@ Coverage: 93/100 lines (93.00%)
 |        - |    7 | `#include "sxmacros.h"` |
 |        - |    8 | `#include "sxstr.h"` |
 |        - |    9 |  |
-| 22735604 |   10 | `PH7_PRIVATE sxu32 SyStrlen(const char *zSrc)` |
+| 22735836 |   10 | `PH7_PRIVATE sxu32 SyStrlen(const char *zSrc)` |
 |        5 |   11 | `{` |
-| 22735609 |   12 | `	register const char *zIn = zSrc;` |
+| 22735841 |   12 | `	register const char *zIn = zSrc;` |
 |        - |   13 | `#if defined(UNTRUST)` |
 |        - |   14 | `	if( zIn == 0 ){` |
 |        - |   15 | `		return 0;` |
 |        - |   16 | `	}` |
 |        - |   17 | `#endif` |
-| 36457237 |   18 | `	for(;;){` |
-| 72884646 |   19 | `		if( !zIn[0] ){ break; } zIn++;` |
-| 66905014 |   20 | `		if( !zIn[0] ){ break; } zIn++;` |
-| 60627974 |   21 | `		if( !zIn[0] ){ break; } zIn++;` |
-| 55201258 |   22 | `		if( !zIn[0] ){ break; } zIn++;` |
+| 36457477 |   18 | `	for(;;){` |
+| 72885344 |   19 | `		if( !zIn[0] ){ break; } zIn++;` |
+| 66905654 |   20 | `		if( !zIn[0] ){ break; } zIn++;` |
+| 60628608 |   21 | `		if( !zIn[0] ){ break; } zIn++;` |
+| 55201764 |   22 | `		if( !zIn[0] ){ break; } zIn++;` |
 |        5 |   23 | `	}` |
-| 22735609 |   24 | `	return (sxu32)(zIn - zSrc);` |
+| 22735841 |   24 | `	return (sxu32)(zIn - zSrc);` |
 |        5 |   25 | `}` |
 |      316 |   26 | `PH7_PRIVATE sxi32 SyByteFind(const char *zStr,sxu32 nLen,sxi32 c,sxu32 *pPos)` |
 |        1 |   27 | `{` |
@@ -79,28 +79,28 @@ Coverage: 93/100 lines (93.00%)
 |       32 |   69 | `	return SXERR_NOTFOUND;` |
 |       60 |   70 | `}` |
 |        - |   71 | `/* used by hashmap.c's key sorting — must stay in the tiny build */` |
-|  1027619 |   72 | `PH7_PRIVATE sxi32 SyStrncmp(const char *zLeft,const char *zRight,sxu32 nLen)` |
+|  1027625 |   72 | `PH7_PRIVATE sxi32 SyStrncmp(const char *zLeft,const char *zRight,sxu32 nLen)` |
 |        5 |   73 | `{` |
-|  1027624 |   74 | `	const unsigned char *zP = (const unsigned char *)zLeft;` |
-|  1027624 |   75 | `	const unsigned char *zQ = (const unsigned char *)zRight;` |
+|  1027630 |   74 | `	const unsigned char *zP = (const unsigned char *)zLeft;` |
+|  1027630 |   75 | `	const unsigned char *zQ = (const unsigned char *)zRight;` |
 |        - |   76 |  |
 |        - |   77 | `	/* Comparing ZERO bytes is always equal, whatever the operands -- this test has` |
 |        - |   78 | `	 * to come before the empty-string shortcut below, which used to run first and` |
 |        - |   79 | `	 * so answered -1/1 for a zero-length compare against an empty string. That is` |
 |        - |   80 | `	 * what php's strncmp("", "a", 0) exposed: it must be 0. */` |
-|  1027624 |   81 | `	if( nLen <= 0 ){` |
+|  1027630 |   81 | `	if( nLen <= 0 ){` |
 |       17 |   82 | `		return 0;` |
 |        - |   83 | `	}` |
-|  1027608 |   84 | `	if( SX_EMPTY_STR(zP) \|\| SX_EMPTY_STR(zQ)  ){` |
+|  1027614 |   84 | `	if( SX_EMPTY_STR(zP) \|\| SX_EMPTY_STR(zQ)  ){` |
 |      ! 0 |   85 | `			return SX_EMPTY_STR(zP) ? (SX_EMPTY_STR(zQ) ? 0 : -1) :1;` |
 |        - |   86 | `	}` |
 |   533616 |   87 | `	for(;;){` |
-|  1066490 |   88 | `		if( nLen <= 0 ){ return 0; } if( zP[0] == 0 \|\| zQ[0] == 0 \|\| zP[0] != zQ[0] ){ break; } zP++; zQ++; nLen--;` |
+|  1066496 |   88 | `		if( nLen <= 0 ){ return 0; } if( zP[0] == 0 \|\| zQ[0] == 0 \|\| zP[0] != zQ[0] ){ break; } zP++; zQ++; nLen--;` |
 |    43651 |   89 | `		if( nLen <= 0 ){ return 0; } if( zP[0] == 0 \|\| zQ[0] == 0 \|\| zP[0] != zQ[0] ){ break; } zP++; zQ++; nLen--;` |
 |    42591 |   90 | `		if( nLen <= 0 ){ return 0; } if( zP[0] == 0 \|\| zQ[0] == 0 \|\| zP[0] != zQ[0] ){ break; } zP++; zQ++; nLen--;` |
 |    42543 |   91 | `		if( nLen <= 0 ){ return 0; } if( zP[0] == 0 \|\| zQ[0] == 0 \|\| zP[0] != zQ[0] ){ break; } zP++; zQ++; nLen--;` |
 |        5 |   92 | `	}` |
-|  1020690 |   93 | `	return (sxi32)(zP[0] - zQ[0]);` |
+|  1020696 |   93 | `	return (sxi32)(zP[0] - zQ[0]);` |
 |   514188 |   94 | `}` |
 | 14958496 |   95 | `PH7_PRIVATE sxi32 SyStrnicmp(const char *zLeft, const char *zRight,sxu32 SLen)` |
 |        5 |   96 | `{` |

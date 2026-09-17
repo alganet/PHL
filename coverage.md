@@ -10,12 +10,12 @@
 | src/ph7/builtin_mb.c           | 91.94%   | 479/521     |
 | src/ph7/builtin_parse.c        | 89.62%   | 1234/1377   |
 | src/ph7/builtin_string.c       | 85.18%   | 2293/2692   |
-| src/ph7/compile.c              | 92.08%   | 1523/1654   |
+| src/ph7/compile.c              | 92.08%   | 1524/1655   |
 | src/ph7/compile_class.c        | 75.95%   | 2163/2848   |
 | src/ph7/compile_func.c         | 85.88%   | 870/1013    |
 | src/ph7/compile_literal.c      | 89.02%   | 949/1066    |
 | src/ph7/compile_node.c         | 83.54%   | 685/820     |
-| src/ph7/compile_stmt.c         | 73.40%   | 1454/1981   |
+| src/ph7/compile_stmt.c         | 73.44%   | 1457/1984   |
 | src/ph7/constant.c             | 93.09%   | 970/1042    |
 | src/ph7/hashmap.c              | 90.77%   | 1042/1148   |
 | src/ph7/hashmap_builtin.c      | 85.97%   | 2444/2843   |
@@ -24,7 +24,7 @@
 | src/ph7/memobj.c               | 81.35%   | 829/1019    |
 | src/ph7/net.c                  | 57.45%   | 81/141      |
 | src/ph7/oo.c                   | 87.62%   | 736/840     |
-| src/ph7/parse.c                | 86.78%   | 1208/1392   |
+| src/ph7/parse.c                | 86.80%   | 1223/1409   |
 | src/ph7/vfs.c                  | 67.96%   | 806/1186    |
 | src/ph7/vfs_io_driver.c        | 64.47%   | 539/836     |
 | src/ph7/vfs_stream.c           | 66.90%   | 1267/1894   |
@@ -79,5 +79,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.32%   | 49011/60270 |
-| Functions                      | 93.29%   | 2224/2384   |
+| Lines                          | 81.32%   | 49030/60291 |
+| Functions                      | 93.29%   | 2225/2385   |
