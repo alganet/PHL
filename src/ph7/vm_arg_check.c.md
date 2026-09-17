@@ -338,20 +338,20 @@ Coverage: 375/384 lines (97.66%)
 |        - |  328 | ` * has been installed into hHostFunction. A name absent from the hash (e.g. a` |
 |        - |  329 | ` * build without a given extension) is simply skipped.` |
 |        - |  330 | ` */` |
-|     3404 |  331 | `PH7_PRIVATE void VmSetBuiltinArity(ph7_vm *pVm)` |
+|     3382 |  331 | `PH7_PRIVATE void VmSetBuiltinArity(ph7_vm *pVm)` |
 |        5 |  332 | `{` |
 |        - |  333 | `	sxu32 n;` |
-|   919085 |  334 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltinArity) ; ++n ){` |
-|   915681 |  335 | `		const struct VmBuiltinArity *p = &aBuiltinArity[n];` |
-|  1831357 |  336 | `		SyHashEntry *pEntry = SyHashGet(&pVm->hHostFunction,` |
-|   915676 |  337 | `			(const void *)p->zName,SyStrlen(p->zName));` |
-|   915681 |  338 | `		if( pEntry ){` |
-|   915681 |  339 | `			ph7_user_func *pFunc = (ph7_user_func *)pEntry->pUserData;` |
-|   915681 |  340 | `			pFunc->nMinArg  = p->nMin;` |
-|   915681 |  341 | `			pFunc->bAtLeast = p->bAtLeast;` |
-|   457838 |  342 | `		}` |
-|   457843 |  343 | `	}` |
-|     3409 |  344 | `}` |
+|   913145 |  334 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltinArity) ; ++n ){` |
+|   909763 |  335 | `		const struct VmBuiltinArity *p = &aBuiltinArity[n];` |
+|  1819521 |  336 | `		SyHashEntry *pEntry = SyHashGet(&pVm->hHostFunction,` |
+|   909758 |  337 | `			(const void *)p->zName,SyStrlen(p->zName));` |
+|   909763 |  338 | `		if( pEntry ){` |
+|   909763 |  339 | `			ph7_user_func *pFunc = (ph7_user_func *)pEntry->pUserData;` |
+|   909763 |  340 | `			pFunc->nMinArg  = p->nMin;` |
+|   909763 |  341 | `			pFunc->bAtLeast = p->bAtLeast;` |
+|   454879 |  342 | `		}` |
+|   454884 |  343 | `	}` |
+|     3387 |  344 | `}` |
 |        - |  345 | `/*` |
 |        - |  346 | ` * PHP 8.5 parameter signatures for the C builtins, generated offline from` |
 |        - |  347 | ` * a real PHP 8.5 ReflectionFunction dump over PHL's registered function` |
@@ -841,72 +841,72 @@ Coverage: 375/384 lines (97.66%)
 |        - |  831 | ` * variadic tail hides a second required argument). Verified against php 8.5.7` |
 |        - |  832 | ` * for all 462 signed builtins: 458 derive exactly, 4 are overridden.` |
 |        - |  833 | ` */` |
-|  1518184 |  834 | `static void VmDeriveArityFromSig(const char *zSig,sxi16 *pnMin,sxu8 *pbAtLeast,sxi16 *pnMax,sxu8 *pbHasMax)` |
+|  1508372 |  834 | `static void VmDeriveArityFromSig(const char *zSig,sxi16 *pnMin,sxu8 *pbAtLeast,sxi16 *pnMax,sxu8 *pbHasMax)` |
 |        5 |  835 | `{` |
-|  1518189 |  836 | `	const char *zCur = zSig;` |
-|  1518189 |  837 | `	int nMin = 0, bAtLeast = 0, bSeen = 0, bOptional = 0;` |
-|  1518189 |  838 | `	int nTotal = 0, bVariadic = 0;` |
-| 23331016 |  839 | `	for(;;){` |
-| 48016829 |  840 | `		if( zCur[0] == '\0' \|\| zCur[0] == ',' ){` |
-|  2872981 |  841 | `			if( bSeen ){` |
-|  2702781 |  842 | `				nTotal++;` |
-|  2702781 |  843 | `				if( bOptional ){` |
-|  1062053 |  844 | `					bAtLeast = 1;` |
-|   531029 |  845 | `				}else{` |
-|  1640733 |  846 | `					nMin++;` |
+|  1508377 |  836 | `	const char *zCur = zSig;` |
+|  1508377 |  837 | `	int nMin = 0, bAtLeast = 0, bSeen = 0, bOptional = 0;` |
+|  1508377 |  838 | `	int nTotal = 0, bVariadic = 0;` |
+| 23180228 |  839 | `	for(;;){` |
+| 47706497 |  840 | `		if( zCur[0] == '\0' \|\| zCur[0] == ',' ){` |
+|  2854413 |  841 | `			if( bSeen ){` |
+|  2685313 |  842 | `				nTotal++;` |
+|  2685313 |  843 | `				if( bOptional ){` |
+|  1055189 |  844 | `					bAtLeast = 1;` |
+|   527597 |  845 | `				}else{` |
+|  1630129 |  846 | `					nMin++;` |
 |        - |  847 | `				}` |
-|  1351388 |  848 | `			}` |
-|  2872981 |  849 | `			if( zCur[0] == '\0' ){` |
-|  1518189 |  850 | `				break;` |
+|  1342654 |  848 | `			}` |
+|  2854413 |  849 | `			if( zCur[0] == '\0' ){` |
+|  1508377 |  850 | `				break;` |
 |        - |  851 | `			}` |
-|  1354797 |  852 | `			bSeen = bOptional = 0;` |
-|  1354797 |  853 | `			zCur++;` |
-|  1354797 |  854 | `			continue;` |
+|  1346041 |  852 | `			bSeen = bOptional = 0;` |
+|  1346041 |  853 | `			zCur++;` |
+|  1346041 |  854 | `			continue;` |
 |        - |  855 | `		}` |
-| 45143853 |  856 | `		if( zCur[0] != ' ' ){` |
-| 39197065 |  857 | `			bSeen = 1;` |
-| 19598530 |  858 | `		}` |
-| 45143853 |  859 | `		if( zCur[0] == '=' \|\| (zCur[0] == '.' && zCur[1] == '.' && zCur[2] == '.') ){` |
-|  1133537 |  860 | `			bOptional = 1;` |
-|   566766 |  861 | `		}` |
-| 45143853 |  862 | `		if( zCur[0] == '.' && zCur[1] == '.' && zCur[2] == '.' ){` |
-|    71489 |  863 | `			bVariadic = 1;` |
-|    35742 |  864 | `		}` |
-| 45143853 |  865 | `		zCur++;` |
+| 44852089 |  856 | `		if( zCur[0] != ' ' ){` |
+| 38943735 |  857 | `			bSeen = 1;` |
+| 19471865 |  858 | `		}` |
+| 44852089 |  859 | `		if( zCur[0] == '=' \|\| (zCur[0] == '.' && zCur[1] == '.' && zCur[2] == '.') ){` |
+|  1126211 |  860 | `			bOptional = 1;` |
+|   563103 |  861 | `		}` |
+| 44852089 |  862 | `		if( zCur[0] == '.' && zCur[1] == '.' && zCur[2] == '.' ){` |
+|    71027 |  863 | `			bVariadic = 1;` |
+|    35511 |  864 | `		}` |
+| 44852089 |  865 | `		zCur++;` |
 |        5 |  866 | `	}` |
-|  1518189 |  867 | `	*pnMin = (sxi16)nMin;` |
-|  1518189 |  868 | `	*pbAtLeast = (sxu8)bAtLeast;` |
+|  1508377 |  867 | `	*pnMin = (sxi16)nMin;` |
+|  1508377 |  868 | `	*pbAtLeast = (sxu8)bAtLeast;` |
 |        - |  869 | `	/* php enforces a MAXIMUM too ("expects at most 1 argument, 2 given"); a` |
 |        - |  870 | `	 * variadic tail means there is none. The parameter COUNT is the maximum,` |
 |        - |  871 | `	 * whether or not the parameters carry defaults. */` |
-|  1518189 |  872 | `	*pnMax = (sxi16)nTotal;` |
-|  1518189 |  873 | `	*pbHasMax = (sxu8)(bVariadic ? 0 : 1);` |
-|  1518189 |  874 | `}` |
+|  1508377 |  872 | `	*pnMax = (sxi16)nTotal;` |
+|  1508377 |  873 | `	*pbHasMax = (sxu8)(bVariadic ? 0 : 1);` |
+|  1508377 |  874 | `}` |
 |        - |  875 | `/*` |
 |        - |  876 | ` * Does the declared type list (e.g. "array\|string", "?int", "callable") contain` |
 |        - |  877 | ` * the given token? Compares against each '\|'-separated alternative, ignoring a` |
 |        - |  878 | ` * leading nullable '?'.` |
 |        - |  879 | ` */` |
-|  1462116 |  880 | `static int VmSigTypeHas(const char *zType,int nType,const char *zTok)` |
+|  1459314 |  880 | `static int VmSigTypeHas(const char *zType,int nType,const char *zTok)` |
 |        5 |  881 | `{` |
-|  1462121 |  882 | `	int nTok = (int)SyStrlen(zTok);` |
-|  1462121 |  883 | `	int i = 0;` |
-|  1462121 |  884 | `	if( zType[0] == '?' ){` |
-|   276101 |  885 | `		zType++;` |
-|   276101 |  886 | `		nType--;` |
-|   138048 |  887 | `	}` |
-|  2909497 |  888 | `	while( i < nType ){` |
-|  1596845 |  889 | `		int j = i;` |
-|  9281664 |  890 | `		while( j < nType && zType[j] != '\|' ){` |
-|  7684824 |  891 | `			j++;` |
+|  1459319 |  882 | `	int nTok = (int)SyStrlen(zTok);` |
+|  1459319 |  883 | `	int i = 0;` |
+|  1459319 |  884 | `	if( zType[0] == '?' ){` |
+|   275371 |  885 | `		zType++;` |
+|   275371 |  886 | `		nType--;` |
+|   137683 |  887 | `	}` |
+|  2904113 |  888 | `	while( i < nType ){` |
+|  1593881 |  889 | `		int j = i;` |
+|  9263984 |  890 | `		while( j < nType && zType[j] != '\|' ){` |
+|  7670108 |  891 | `			j++;` |
 |        5 |  892 | `		}` |
-|  1596845 |  893 | `		if( j - i == nTok && SyMemcmp(&zType[i],zTok,(sxu32)nTok) == 0 ){` |
-|   149469 |  894 | `			return 1;` |
+|  1593881 |  893 | `		if( j - i == nTok && SyMemcmp(&zType[i],zTok,(sxu32)nTok) == 0 ){` |
+|   149087 |  894 | `			return 1;` |
 |        - |  895 | `		}` |
-|  1447381 |  896 | `		i = j + 1;` |
+|  1444799 |  896 | `		i = j + 1;` |
 |        5 |  897 | `	}` |
-|  1312657 |  898 | `	return 0;` |
-|   731538 |  899 | `}` |
+|  1310237 |  898 | `	return 0;` |
+|   730142 |  899 | `}` |
 |        - |  900 | `/*` |
 |        - |  901 | ` * Does the declared type list name a CLASS (anything that is not one of php's` |
 |        - |  902 | ` * builtin type keywords)? A class-typed parameter accepts an object, so it must` |
@@ -969,7 +969,7 @@ Coverage: 375/384 lines (97.66%)
 |        - |  959 | ` * abort the call, so a central copy would double-fire — the trap that sank the` |
 |        - |  960 | ` * first central-ZPP attempt. A TypeError aborts, so there is nothing to double.` |
 |        - |  961 | ` */` |
-|   940689 |  962 | `PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(` |
+|   938851 |  962 | `PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(` |
 |        - |  963 | `	ph7_context *pCtx,    /* Call context (for the throw) */` |
 |        - |  964 | `	ph7_user_func *pFunc, /* Callee */` |
 |        - |  965 | `	int nGiven,           /* Argument count */` |
@@ -984,66 +984,66 @@ Coverage: 375/384 lines (97.66%)
 |        - |  974 | `	 * and reports "must be a valid class name, Array given".` |
 |        - |  975 | `	 */` |
 |        - |  976 | `	static const char *azSelfChecked[] = { "get_class_vars" };` |
-|   940694 |  977 | `	const char *zSig = pFunc->zSig;` |
+|   938856 |  977 | `	const char *zSig = pFunc->zSig;` |
 |        - |  978 | `	const char *zCur, *zEnd;` |
-|   940694 |  979 | `	int iArg = 0;` |
-|   940694 |  980 | `	if( zSig == 0 ){` |
-|   175447 |  981 | `		return SXRET_OK;` |
+|   938856 |  979 | `	int iArg = 0;` |
+|   938856 |  980 | `	if( zSig == 0 ){` |
+|   175181 |  981 | `		return SXRET_OK;` |
 |        - |  982 | `	}` |
-|  1530495 |  983 | `	for( iArg = 0 ; iArg < (int)SX_ARRAYSIZE(azSelfChecked) ; ++iArg ){` |
-|  1148241 |  984 | `		if( SyStrncmp(pFunc->sName.zString,azSelfChecked[iArg],` |
-|  1148241 |  985 | `			(sxu32)SyStrlen(azSelfChecked[iArg])) == 0` |
-|   383001 |  986 | `		 && pFunc->sName.nByte == SyStrlen(azSelfChecked[iArg]) ){` |
+|  1527351 |  983 | `	for( iArg = 0 ; iArg < (int)SX_ARRAYSIZE(azSelfChecked) ; ++iArg ){` |
+|  1145887 |  984 | `		if( SyStrncmp(pFunc->sName.zString,azSelfChecked[iArg],` |
+|  1145887 |  985 | `			(sxu32)SyStrlen(azSelfChecked[iArg])) == 0` |
+|   382219 |  986 | `		 && pFunc->sName.nByte == SyStrlen(azSelfChecked[iArg]) ){` |
 |        5 |  987 | `			return SXRET_OK;` |
 |        - |  988 | `		}` |
-|   382997 |  989 | `	}` |
-|   765248 |  990 | `	iArg = 0;` |
-|   765248 |  991 | `	zCur = zSig;` |
-|   765248 |  992 | `	zEnd = &zSig[SyStrlen(zSig)];` |
-|  2183386 |  993 | `	while( zCur < zEnd && iArg < nGiven ){` |
+|   382215 |  989 | `	}` |
+|   763676 |  990 | `	iArg = 0;` |
+|   763676 |  991 | `	zCur = zSig;` |
+|   763676 |  992 | `	zEnd = &zSig[SyStrlen(zSig)];` |
+|  2179160 |  993 | `	while( zCur < zEnd && iArg < nGiven ){` |
 |        - |  994 | `		const char *zType, *zName, *zStop;` |
 |        - |  995 | `		int nType, nName;` |
 |        - |  996 | `		ph7_value *pArg;` |
 |        - |  997 | `		/* Parameter = "<type> $<name>[ = <default>]"; the type is whatever` |
 |        - |  998 | `		 * precedes the '$', and an empty type means "untyped" (no screen). */` |
-|  2095734 |  999 | `		while( zCur < zEnd && zCur[0] == ' ' ){` |
-|   675424 | 1000 | `			zCur++;` |
+|  2091850 |  999 | `		while( zCur < zEnd && zCur[0] == ' ' ){` |
+|   674194 | 1000 | `			zCur++;` |
 |        5 | 1001 | `		}` |
-|  1420315 | 1002 | `		zStop = zCur;` |
-| 22556194 | 1003 | `		while( zStop < zEnd && zStop[0] != ',' ){` |
-| 21135884 | 1004 | `			zStop++;` |
+|  1417661 | 1002 | `		zStop = zCur;` |
+| 22513166 | 1003 | `		while( zStop < zEnd && zStop[0] != ',' ){` |
+| 21095510 | 1004 | `			zStop++;` |
 |        5 | 1005 | `		}` |
-|  1420315 | 1006 | `		zName = zCur;` |
-| 10453578 | 1007 | `		while( zName < zStop && zName[0] != '$' ){` |
-|  9033268 | 1008 | `			zName++;` |
+|  1417661 | 1006 | `		zName = zCur;` |
+| 10433762 | 1007 | `		while( zName < zStop && zName[0] != '$' ){` |
+|  9016106 | 1008 | `			zName++;` |
 |        5 | 1009 | `		}` |
-|  1420315 | 1010 | `		if( zName >= zStop ){` |
+|  1417661 | 1010 | `		if( zName >= zStop ){` |
 |        7 | 1011 | `			break; /* malformed / no parameter name — stop screening */` |
 |        - | 1012 | `		}` |
-|  1420309 | 1013 | `		if( zName >= zCur + 3 && SyMemcmp(zName - 3,"...",3) == 0 ){` |
+|  1417655 | 1013 | `		if( zName >= zCur + 3 && SyMemcmp(zName - 3,"...",3) == 0 ){` |
 |     1957 | 1014 | `			break; /* variadic tail: stop (its type applies to the rest) */` |
 |        - | 1015 | `		}` |
-|  1418357 | 1016 | `		zType = zCur;` |
-|  1418357 | 1017 | `		nType = (int)(zName - zCur);` |
+|  1415703 | 1016 | `		zType = zCur;` |
+|  1415703 | 1017 | `		nType = (int)(zName - zCur);` |
 |        - | 1018 | `		/* Trim the trailing spaces and the by-ref marker of "array &$array" */` |
-|  3515376 | 1019 | `		while( nType > 0 && (zType[nType-1] == ' ' \|\| zType[nType-1] == '&') ){` |
-|  1387373 | 1020 | `			nType--;` |
+|  3508790 | 1019 | `		while( nType > 0 && (zType[nType-1] == ' ' \|\| zType[nType-1] == '&') ){` |
+|  1384763 | 1020 | `			nType--;` |
 |        5 | 1021 | `		}` |
-|  1418357 | 1022 | `		zName++; /* skip '$' */` |
-|  1418357 | 1023 | `		nName = 0;` |
-| 10266217 | 1024 | `		while( &zName[nName] < zStop && zName[nName] != ' ' && zName[nName] != '=' ){` |
-|  8847865 | 1025 | `			nName++;` |
+|  1415703 | 1022 | `		zName++; /* skip '$' */` |
+|  1415703 | 1023 | `		nName = 0;` |
+| 10246407 | 1024 | `		while( &zName[nName] < zStop && zName[nName] != ' ' && zName[nName] != '=' ){` |
+|  8830709 | 1025 | `			nName++;` |
 |        5 | 1026 | `		}` |
-|  1418357 | 1027 | `		pArg = apArg[iArg];` |
-|  1418357 | 1028 | `		if( nType > 0 && !VmSigTypeHas(zType,nType,"mixed") ){` |
-|  1310771 | 1029 | `			const char *zGiven = 0;` |
-|  1310771 | 1030 | `			if( (pArg->iFlags & MEMOBJ_HASHMAP) != 0 ){` |
-|    74138 | 1031 | `				if( !VmSigTypeHas(zType,nType,"array")` |
-|    37144 | 1032 | `				 && !VmSigTypeHas(zType,nType,"iterable")` |
+|  1415703 | 1027 | `		pArg = apArg[iArg];` |
+|  1415703 | 1028 | `		if( nType > 0 && !VmSigTypeHas(zType,nType,"mixed") ){` |
+|  1308351 | 1029 | `			const char *zGiven = 0;` |
+|  1308351 | 1030 | `			if( (pArg->iFlags & MEMOBJ_HASHMAP) != 0 ){` |
+|    73946 | 1031 | `				if( !VmSigTypeHas(zType,nType,"array")` |
+|    37048 | 1032 | `				 && !VmSigTypeHas(zType,nType,"iterable")` |
 |      155 | 1033 | `				 && !VmSigTypeHas(zType,nType,"callable") ){` |
 |      119 | 1034 | `					zGiven = "array";` |
 |       62 | 1035 | `				}` |
-|  1273702 | 1036 | `			}else if( (pArg->iFlags & MEMOBJ_OBJ) != 0 ){` |
+|  1271378 | 1036 | `			}else if( (pArg->iFlags & MEMOBJ_OBJ) != 0 ){` |
 |     1586 | 1037 | `				if( !VmSigTypeHas(zType,nType,"object")` |
 |     1079 | 1038 | `				 && !VmSigTypeHas(zType,nType,"iterable")` |
 |      572 | 1039 | `				 && !VmSigTypeHas(zType,nType,"callable")` |
@@ -1058,19 +1058,19 @@ Coverage: 375/384 lines (97.66%)
 |       60 | 1048 | `						zGiven = VmArgTypeName(pArg);` |
 |       28 | 1049 | `					}` |
 |       57 | 1050 | `				}` |
-|  1235840 | 1051 | `			}else if( (pArg->iFlags & MEMOBJ_NULL) != 0 ){` |
+|  1233612 | 1051 | `			}else if( (pArg->iFlags & MEMOBJ_NULL) != 0 ){` |
 |        - | 1052 | `				/* php only DEPRECATES null for a non-nullable parameter; PHL rejects` |
 |        - | 1053 | `				 * it (scope policy). A leading '?' or an explicit "null" arm in a` |
 |        - | 1054 | `				 * union declares the parameter nullable. A "callable" parameter is` |
 |        - | 1055 | `				 * left to the builtin's own callback check, which words the failure` |
 |        - | 1056 | `				 * php's way ("must be a valid callback, no array or string given") —` |
 |        - | 1057 | `				 * the same reason get_class_vars() sits on azSelfChecked[]. */` |
-|     4972 | 1058 | `				if( zType[0] != '?'` |
-|     2512 | 1059 | `				 && !VmSigTypeHas(zType,nType,"null")` |
+|     4898 | 1058 | `				if( zType[0] != '?'` |
+|     2475 | 1059 | `				 && !VmSigTypeHas(zType,nType,"null")` |
 |       55 | 1060 | `				 && !VmSigTypeHas(zType,nType,"callable") ){` |
 |       46 | 1061 | `					zGiven = "null";` |
 |       26 | 1062 | `				}` |
-|  1232561 | 1063 | `			}else if( (pArg->iFlags & MEMOBJ_RES) != 0 ){` |
+|  1230370 | 1063 | `			}else if( (pArg->iFlags & MEMOBJ_RES) != 0 ){` |
 |        - | 1064 | `				/* A class-typed parameter also accepts a resource: several handles php 8` |
 |        - | 1065 | `				 * models as objects are still resources here (xml_*'s XMLParser is the` |
 |        - | 1066 | `				 * one the signatures already declare php-8-style, for reflection). The` |
@@ -1082,17 +1082,17 @@ Coverage: 375/384 lines (97.66%)
 |        3 | 1072 | `					zGiven = "resource";` |
 |        1 | 1073 | `				}` |
 |        1 | 1074 | `			}` |
-|  1310771 | 1075 | `			if( zGiven ){` |
+|  1308351 | 1075 | `			if( zGiven ){` |
 |      326 | 1076 | `				return PH7_VmThrowException(pCtx,"TypeError",` |
 |        - | 1077 | `					"%z(): Argument #%d ($%.*s) must be of type %.*s, %s given",` |
 |      107 | 1078 | `					&pFunc->sName,iArg + 1,nName,zName,nType,zType,zGiven);` |
 |        - | 1079 | `			}` |
-|   655694 | 1080 | `		}` |
-|  1418143 | 1081 | `		zCur = (zStop < zEnd) ? zStop + 1 : zEnd;` |
-|  1418143 | 1082 | `		iArg++;` |
+|   654488 | 1080 | `		}` |
+|  1415489 | 1081 | `		zCur = (zStop < zEnd) ? zStop + 1 : zEnd;` |
+|  1415489 | 1082 | `		iArg++;` |
 |        5 | 1083 | `	}` |
-|   765034 | 1084 | `	return SXRET_OK;` |
-|   470720 | 1085 | `}` |
+|   763462 | 1084 | `	return SXRET_OK;` |
+|   469805 | 1085 | `}` |
 |        - | 1086 | `/*` |
 |        - | 1087 | ` * Builtins whose accepted arity is NOT a contiguous range, so the signature` |
 |        - | 1088 | ` * cannot express it and the central too-many-arguments check must stay out of` |
@@ -1101,44 +1101,44 @@ Coverage: 375/384 lines (97.66%)
 |        - | 1091 | ` * than the ZPP "at most". They validate themselves; leaving bHasMaxArg at 0` |
 |        - | 1092 | ` * keeps their message php-faithful.` |
 |        - | 1093 | ` */` |
-|  1518184 | 1094 | `static int VmBuiltinSelfValidatesArity(const char *zName)` |
+|  1508372 | 1094 | `static int VmBuiltinSelfValidatesArity(const char *zName)` |
 |        5 | 1095 | `{` |
 |        - | 1096 | `	static const char *const azSelf[] = { "rand", "mt_rand" };` |
 |        - | 1097 | `	sxu32 i;` |
-|  4544345 | 1098 | `	for( i = 0 ; i < SX_ARRAYSIZE(azSelf) ; i++ ){` |
-|  3032969 | 1099 | `		sxu32 nSelf = SyStrlen(azSelf[i]);` |
-|  3032969 | 1100 | `		if( SyStrlen(zName) == nSelf && SyStrncmp(zName,azSelf[i],nSelf) == 0 ){` |
-|     6813 | 1101 | `			return 1;` |
+|  4514975 | 1098 | `	for( i = 0 ; i < SX_ARRAYSIZE(azSelf) ; i++ ){` |
+|  3013367 | 1099 | `		sxu32 nSelf = SyStrlen(azSelf[i]);` |
+|  3013367 | 1100 | `		if( SyStrlen(zName) == nSelf && SyStrncmp(zName,azSelf[i],nSelf) == 0 ){` |
+|     6769 | 1101 | `			return 1;` |
 |        - | 1102 | `		}` |
-|  1513083 | 1103 | `	}` |
-|  1511381 | 1104 | `	return 0;` |
-|   759097 | 1105 | `}` |
-|     3404 | 1106 | `PH7_PRIVATE void VmSetBuiltinSignatures(ph7_vm *pVm)` |
+|  1503304 | 1103 | `	}` |
+|  1501613 | 1104 | `	return 0;` |
+|   754191 | 1105 | `}` |
+|     3382 | 1106 | `PH7_PRIVATE void VmSetBuiltinSignatures(ph7_vm *pVm)` |
 |        5 | 1107 | `{` |
 |        - | 1108 | `	sxu32 n;` |
-|  1562441 | 1109 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltinSig) ; n++ ){` |
-|  2338553 | 1110 | `		SyHashEntry *pEntry = SyHashGet(&pVm->hHostFunction,` |
-|  1559032 | 1111 | `			(const void *)aBuiltinSig[n].zName,(sxu32)SyStrlen(aBuiltinSig[n].zName));` |
-|  1559037 | 1112 | `		if( pEntry ){` |
-|  1518189 | 1113 | `			ph7_user_func *pFunc = (ph7_user_func *)pEntry->pUserData;` |
-|  1518189 | 1114 | `			sxi16 nMin = 0, nMax = 0;` |
-|  1518189 | 1115 | `			sxu8 bAtLeast = 0, bHasMax = 0;` |
-|  1518189 | 1116 | `			pFunc->zSig = aBuiltinSig[n].zSig;` |
-|  1518189 | 1117 | `			pFunc->zRet = aBuiltinSig[n].zRet[0] ? aBuiltinSig[n].zRet : 0;` |
-|  1518189 | 1118 | `			VmDeriveArityFromSig(pFunc->zSig,&nMin,&bAtLeast,&nMax,&bHasMax);` |
+|  1552343 | 1109 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltinSig) ; n++ ){` |
+|  2323439 | 1110 | `		SyHashEntry *pEntry = SyHashGet(&pVm->hHostFunction,` |
+|  1548956 | 1111 | `			(const void *)aBuiltinSig[n].zName,(sxu32)SyStrlen(aBuiltinSig[n].zName));` |
+|  1548961 | 1112 | `		if( pEntry ){` |
+|  1508377 | 1113 | `			ph7_user_func *pFunc = (ph7_user_func *)pEntry->pUserData;` |
+|  1508377 | 1114 | `			sxi16 nMin = 0, nMax = 0;` |
+|  1508377 | 1115 | `			sxu8 bAtLeast = 0, bHasMax = 0;` |
+|  1508377 | 1116 | `			pFunc->zSig = aBuiltinSig[n].zSig;` |
+|  1508377 | 1117 | `			pFunc->zRet = aBuiltinSig[n].zRet[0] ? aBuiltinSig[n].zRet : 0;` |
+|  1508377 | 1118 | `			VmDeriveArityFromSig(pFunc->zSig,&nMin,&bAtLeast,&nMax,&bHasMax);` |
 |        - | 1119 | `			/* The MAXIMUM always comes from the signature: the curated override` |
 |        - | 1120 | `			 * table speaks only to the minimum (and its wording). */` |
-|  1518189 | 1121 | `			pFunc->nMaxArg = nMax;` |
-|  1518189 | 1122 | `			pFunc->bHasMaxArg = (sxu8)(VmBuiltinSelfValidatesArity(aBuiltinSig[n].zName) ? 0 : bHasMax);` |
-|  1518189 | 1123 | `			if( pFunc->nMinArg < 1 ){` |
+|  1508377 | 1121 | `			pFunc->nMaxArg = nMax;` |
+|  1508377 | 1122 | `			pFunc->bHasMaxArg = (sxu8)(VmBuiltinSelfValidatesArity(aBuiltinSig[n].zName) ? 0 : bHasMax);` |
+|  1508377 | 1123 | `			if( pFunc->nMinArg < 1 ){` |
 |        - | 1124 | `				/* VmSetBuiltinArity() ran first: a non-zero minimum here means the` |
 |        - | 1125 | `				 * curated override already spoke for this builtin, so leave it. */` |
-|   636553 | 1126 | `				pFunc->nMinArg = nMin;` |
-|   636553 | 1127 | `				pFunc->bAtLeast = bAtLeast;` |
-|   318274 | 1128 | `			}` |
-|   759092 | 1129 | `		}` |
-|   779521 | 1130 | `	}` |
-|     3409 | 1131 | `}` |
+|   632439 | 1126 | `				pFunc->nMinArg = nMin;` |
+|   632439 | 1127 | `				pFunc->bAtLeast = bAtLeast;` |
+|   316217 | 1128 | `			}` |
+|   754186 | 1129 | `		}` |
+|   774483 | 1130 | `	}` |
+|     3387 | 1131 | `}` |
 |        - | 1132 | `/*` |
 |        - | 1133 | ` * Signature lookup by function name, for the reflection layer: embedded-PHP` |
 |        - | 1134 | ` * builtins (max/min/Exception methods...) are ph7_vm_func instances, not` |
@@ -1256,13 +1256,13 @@ Coverage: 375/384 lines (97.66%)
 |        - | 1246 | `		"%s(): Argument #%d ($%s) must be a valid callback%s, no array or string given",` |
 |        1 | 1247 | `		ph7_function_name(pCtx),iArg,zParam,zOrNull);` |
 |       84 | 1248 | `}` |
-|    19900 | 1249 | `PH7_PRIVATE void PH7_VmThrowWarningFmt(ph7_vm *pVm,const char *zFmt,...)` |
+|    19996 | 1249 | `PH7_PRIVATE void PH7_VmThrowWarningFmt(ph7_vm *pVm,const char *zFmt,...)` |
 |        5 | 1250 | `{` |
 |        - | 1251 | `	va_list ap;` |
-|    19905 | 1252 | `	va_start(ap,zFmt);` |
-|    19905 | 1253 | `	PH7_VmThrowErrorAp(pVm,0,PH7_CTX_WARNING,zFmt,ap);` |
-|    19905 | 1254 | `	va_end(ap);` |
-|    19905 | 1255 | `}` |
+|    20001 | 1252 | `	va_start(ap,zFmt);` |
+|    20001 | 1253 | `	PH7_VmThrowErrorAp(pVm,0,PH7_CTX_WARNING,zFmt,ap);` |
+|    20001 | 1254 | `	va_end(ap);` |
+|    20001 | 1255 | `}` |
 |        - | 1256 | `/*` |
 |        - | 1257 | ` * Emit a formatted E_USER_DEPRECATED diagnostic with no function-name prefix:` |
 |        - | 1258 | ` * php reports #[\Deprecated] as USER-deprecated (16384, it is userland-authored),` |
@@ -1300,13 +1300,13 @@ Coverage: 375/384 lines (97.66%)
 |        - | 1290 | ` * not mimicked: PHL removes them outright (see the scope policy), so there is no` |
 |        - | 1291 | ` * engine-side E_DEPRECATED list here.` |
 |        - | 1292 | ` */` |
-|    23292 | 1293 | `PH7_PRIVATE void VmExpandConstantWithNotice(ph7_vm *pVm,ph7_constant *pCons,ph7_value *pOut)` |
+|    23270 | 1293 | `PH7_PRIVATE void VmExpandConstantWithNotice(ph7_vm *pVm,ph7_constant *pCons,ph7_value *pOut)` |
 |        5 | 1294 | `{` |
-|    23297 | 1295 | `	if( SySetUsed(&pCons->aAttrs) > 0 ){` |
+|    23275 | 1295 | `	if( SySetUsed(&pCons->aAttrs) > 0 ){` |
 |        7 | 1296 | `		VmDeprecatedAttrNoticeSubject(pVm,&pCons->aAttrs,"Constant",0,&pCons->sName);` |
 |        3 | 1297 | `	}` |
-|    23297 | 1298 | `	pCons->xExpand(pOut,pCons->pUserData);` |
-|    23297 | 1299 | `}` |
+|    23275 | 1298 | `	pCons->xExpand(pOut,pCons->pUserData);` |
+|    23275 | 1299 | `}` |
 |        - | 1300 | `/*` |
 |        - | 1301 | ` * Scan a declared-attribute set for #[\Deprecated]; when found, evaluate its` |
 |        - | 1302 | ` * message:/since: arguments (positional #0 = message, #1 = since) into the` |

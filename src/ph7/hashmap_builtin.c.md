@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 2442/2843 lines (85.90%)
+Coverage: 2444/2843 lines (85.97%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -50,9 +50,9 @@ Coverage: 2442/2843 lines (85.90%)
 |       - |   40 | `		/* Do the merge sort */` |
 |       3 |   41 | `		HashmapMergeSort(pMap,HashmapCmpCallback7,0);` |
 |       - |   42 | `		/* Fix the last link broken by the merge */` |
-|       9 |   43 | `		while(pMap->pLast->pPrev){` |
+|       8 |   43 | `		while(pMap->pLast->pPrev){` |
 |       6 |   44 | `			pMap->pLast = pMap->pLast->pPrev;` |
-|     ! 0 |   45 | `		}` |
+|       1 |   45 | `		}` |
 |       1 |   46 | `	}` |
 |       - |   47 | `	/* All done,return TRUE */` |
 |       3 |   48 | `	ph7_result_bool(pCtx,1);` |
@@ -1946,22 +1946,22 @@ Coverage: 2442/2843 lines (85.90%)
 |       - | 1936 | ` *  If the third parameter strict is set to TRUE then the in_array() function` |
 |       - | 1937 | ` *  will also check the types of the needle in the haystack.` |
 |       - | 1938 | ` */` |
-|   32696 | 1939 | `PH7_PRIVATE int ph7_hashmap_in_array(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   32600 | 1939 | `PH7_PRIVATE int ph7_hashmap_in_array(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |       5 | 1940 | `{` |
 |       - | 1941 | `	ph7_value *pNeedle;` |
 |       - | 1942 | `	int bStrict;` |
 |       - | 1943 | `	int rc;` |
-|   32701 | 1944 | `	if( nArg < 2 ){` |
+|   32605 | 1944 | `	if( nArg < 2 ){` |
 |       - | 1945 | `		/* Missing argument,return FALSE */` |
 |     ! 0 | 1946 | `		ph7_result_bool(pCtx,0);` |
 |     ! 0 | 1947 | `		return PH7_OK;` |
 |       - | 1948 | `	}` |
-|   32701 | 1949 | `	pNeedle = apArg[0];` |
-|   32701 | 1950 | `	bStrict = 0;` |
-|   32701 | 1951 | `	if( nArg > 2 ){` |
+|   32605 | 1949 | `	pNeedle = apArg[0];` |
+|   32605 | 1950 | `	bStrict = 0;` |
+|   32605 | 1951 | `	if( nArg > 2 ){` |
 |      70 | 1952 | `		bStrict = ph7_value_to_bool(apArg[2]);` |
 |      34 | 1953 | `	}` |
-|   32701 | 1954 | `	if( !ph7_value_is_array(apArg[1]) ){` |
+|   32605 | 1954 | `	if( !ph7_value_is_array(apArg[1]) ){` |
 |       - | 1955 | `		/* haystack must be an array,perform a standard comparison */` |
 |     ! 0 | 1956 | `		rc = ph7_value_compare(pNeedle,apArg[1],bStrict);` |
 |       - | 1957 | `		/* Set the comparison result */` |
@@ -1969,11 +1969,11 @@ Coverage: 2442/2843 lines (85.90%)
 |     ! 0 | 1959 | `		return PH7_OK;` |
 |       - | 1960 | `	}` |
 |       - | 1961 | `	/* Perform the lookup */` |
-|   32701 | 1962 | `	rc = HashmapFindValue((ph7_hashmap *)apArg[1]->x.pOther,pNeedle,0,bStrict);` |
+|   32605 | 1962 | `	rc = HashmapFindValue((ph7_hashmap *)apArg[1]->x.pOther,pNeedle,0,bStrict);` |
 |       - | 1963 | `	/* Lookup result */` |
-|   32701 | 1964 | `	ph7_result_bool(pCtx,rc == SXRET_OK);` |
-|   32701 | 1965 | `	return PH7_OK;` |
-|   16353 | 1966 | `}` |
+|   32605 | 1964 | `	ph7_result_bool(pCtx,rc == SXRET_OK);` |
+|   32605 | 1965 | `	return PH7_OK;` |
+|   16305 | 1966 | `}` |
 |       - | 1967 | `/*` |
 |       - | 1968 | ` * value array_search(value $needle,array $haystack[,bool $strict = false ])` |
 |       - | 1969 | ` *  Searches the array for a given value and returns the corresponding key if successful.` |
@@ -4100,9 +4100,9 @@ Coverage: 2442/2843 lines (85.90%)
 |       - | 4090 | `		 * Note that we perform a linear lookup here (later version must change this)` |
 |       - | 4091 | `		 */` |
 |       9 | 4092 | `		if( nEntry > pMap->nEntry / 2 ){` |
-|       3 | 4093 | `			pNode = pMap->pLast;` |
-|       3 | 4094 | `			nEntry = pMap->nEntry - nEntry;` |
-|       3 | 4095 | `			if( nEntry > 1 ){` |
+|       2 | 4093 | `			pNode = pMap->pLast;` |
+|       2 | 4094 | `			nEntry = pMap->nEntry - nEntry;` |
+|       2 | 4095 | `			if( nEntry > 1 ){` |
 |     ! 0 | 4096 | `				for(;;){` |
 |     ! 0 | 4097 | `					if( nEntry == 0 ){` |
 |     ! 0 | 4098 | `						break;` |
@@ -4113,15 +4113,15 @@ Coverage: 2442/2843 lines (85.90%)
 |     ! 0 | 4103 | `				}` |
 |     ! 0 | 4104 | `			}` |
 |       1 | 4105 | `		}else{` |
-|       7 | 4106 | `			pNode = pMap->pFirst;` |
-|       7 | 4107 | `			for(;;){` |
-|      12 | 4108 | `				if( nEntry == 0 ){` |
-|       7 | 4109 | `					break;` |
+|       8 | 4106 | `			pNode = pMap->pFirst;` |
+|       5 | 4107 | `			for(;;){` |
+|      10 | 4108 | `				if( nEntry == 0 ){` |
+|       8 | 4109 | `					break;` |
 |       - | 4110 | `				}` |
 |       - | 4111 | `				/* Point to the next entry */` |
-|       5 | 4112 | `				pNode = pNode->pPrev; /* Reverse link */` |
-|       5 | 4113 | `				nEntry--;` |
-|     ! 0 | 4114 | `			}` |
+|       3 | 4112 | `				pNode = pNode->pPrev; /* Reverse link */` |
+|       3 | 4113 | `				nEntry--;` |
+|       1 | 4114 | `			}` |
 |       - | 4115 | `		}` |
 |       9 | 4116 | `		if( pNode->iType == HASHMAP_INT_NODE ){` |
 |       - | 4117 | `			/* Int key */` |

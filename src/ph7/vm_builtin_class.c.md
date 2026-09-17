@@ -235,45 +235,45 @@ Coverage: 629/718 lines (87.60%)
 |     - |  225 | ` * Return` |
 |     - |  226 | ` *   TRUE if class_name is a defined class, FALSE otherwise.` |
 |     - |  227 | ` */` |
-|    88 |  228 | `PH7_PRIVATE int vm_builtin_class_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    82 |  228 | `PH7_PRIVATE int vm_builtin_class_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     5 |  229 | `{` |
-|    93 |  230 | `	int res = 0; /* Assume class does not exist */` |
-|    93 |  231 | `	if( nArg > 0 ){` |
-|    93 |  232 | `		SyHashEntry *pEntry = 0;` |
+|    87 |  230 | `	int res = 0; /* Assume class does not exist */` |
+|    87 |  231 | `	if( nArg > 0 ){` |
+|    87 |  232 | `		SyHashEntry *pEntry = 0;` |
 |     - |  233 | `		const char *zName;` |
 |     - |  234 | `		int nLen;` |
-|    93 |  235 | `		int iAutoload = 1; /* Default: autoload enabled */` |
+|    87 |  235 | `		int iAutoload = 1; /* Default: autoload enabled */` |
 |     - |  236 | `		/* Extract given name */` |
-|    93 |  237 | `		zName = ph7_value_to_string(apArg[0],&nLen);` |
-|    93 |  238 | `		if( nArg >= 2 ){` |
+|    87 |  237 | `		zName = ph7_value_to_string(apArg[0],&nLen);` |
+|    87 |  238 | `		if( nArg >= 2 ){` |
 |     6 |  239 | `			iAutoload = ph7_value_to_bool(apArg[1]);` |
 |     2 |  240 | `		}` |
-|    93 |  241 | `		if( nLen > 0 ){` |
+|    87 |  241 | `		if( nLen > 0 ){` |
 |     - |  242 | `			/* Perform a hash lookup first */` |
-|    93 |  243 | `			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);` |
-|    44 |  244 | `		}` |
-|    93 |  245 | `		if( pEntry == 0 && nLen > 0 && iAutoload ){` |
+|    87 |  243 | `			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);` |
+|    41 |  244 | `		}` |
+|    87 |  245 | `		if( pEntry == 0 && nLen > 0 && iAutoload ){` |
 |     - |  246 | `			/* Try autoload, then re-check */` |
 |    25 |  247 | `			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,(sxu32)nLen,FALSE);` |
 |    25 |  248 | `			if( pClass ){` |
 |     9 |  249 | `				pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,(sxu32)nLen);` |
 |     3 |  250 | `			}` |
 |    10 |  251 | `		}` |
-|    93 |  252 | `		if( pEntry ){` |
+|    87 |  252 | `		if( pEntry ){` |
 |     - |  253 | `			/* Walk the collision chain: return TRUE only for concrete or abstract classes,` |
 |     - |  254 | `			 * not for interfaces or traits (matching PHP behavior). */` |
-|    77 |  255 | `			ph7_class *pClass = (ph7_class *)pEntry->pUserData;` |
-|    79 |  256 | `			while( pClass ){` |
-|    77 |  257 | `				if( (pClass->iFlags & (PH7_CLASS_INTERFACE\|PH7_CLASS_TRAIT)) == 0 ){` |
-|    75 |  258 | `					res = 1;` |
-|    75 |  259 | `					break;` |
+|    71 |  255 | `			ph7_class *pClass = (ph7_class *)pEntry->pUserData;` |
+|    73 |  256 | `			while( pClass ){` |
+|    71 |  257 | `				if( (pClass->iFlags & (PH7_CLASS_INTERFACE\|PH7_CLASS_TRAIT)) == 0 ){` |
+|    69 |  258 | `					res = 1;` |
+|    69 |  259 | `					break;` |
 |     - |  260 | `				}` |
 |     3 |  261 | `				pClass = pClass->pNextName;` |
 |     1 |  262 | `			}` |
-|    36 |  263 | `		}` |
-|    44 |  264 | `	}` |
-|    93 |  265 | `	ph7_result_bool(pCtx,res);` |
-|    93 |  266 | `	return PH7_OK;` |
+|    33 |  263 | `		}` |
+|    41 |  264 | `	}` |
+|    87 |  265 | `	ph7_result_bool(pCtx,res);` |
+|    87 |  266 | `	return PH7_OK;` |
 |     5 |  267 | `}` |
 |     - |  268 | `/*` |
 |     - |  269 | ` * bool interface_exists(string $class_name [, bool $autoload = true ] )` |
