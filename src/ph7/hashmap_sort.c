@@ -474,8 +474,11 @@ PH7_PRIVATE sxi32 HashmapCmpCallback7(ph7_hashmap_node *pA,ph7_hashmap_node *pB,
 	sxu32 n;
 	SXUNUSED(pB); /* cc warning */
 	SXUNUSED(pCmpData);
-	/* Grab a random number */
-	n = PH7_VmRandomNum(pA->pMap->pVm);
+	/* Grab a random number from the MT19937 generator so shuffle()/array_rand()
+	 * respond to srand()/mt_srand() (reproducible under a seed), like php. This
+	 * is a random-comparator merge sort, not php's Fisher-Yates, so the ordering
+	 * is deterministic-under-seed but not value-parity with php. */
+	n = PH7_VmMtRand(pA->pMap->pVm);
 	/* if the random number is odd then the first node 'pA' is greater then
 	 * the second node 'pB'. Otherwise the reverse is assumed.
 	 */

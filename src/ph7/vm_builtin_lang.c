@@ -423,6 +423,102 @@ PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)
 	return iNum;
 }
 /*
+ * The MT19937 generator that backs PHP's rand()/mt_rand() family. It is kept
+ * separate from the RC4 SyRandomness above so that srand()/mt_srand() give
+ * userland PHP's reproducible sequence without perturbing the engine's internal
+ * entropy (object ids, uniqid, quicksort pivots stay on the RC4 generator, as
+ * they are in PHP too — srand does not touch those).
+ */
+/*
+ * Reset the MT19937 state to a 32-bit seed (PHP truncates its int seed likewise).
+ */
+PH7_PRIVATE void PH7_VmMtSrand(ph7_vm *pVm,sxu32 nSeed)
+{
+	SyMT19937Seed(&pVm->sMt,nSeed);
+	pVm->mtSeeded = TRUE;
+}
+/*
+ * Draw the next full 32-bit MT19937 word, seeding lazily from the OS CSPRNG on
+ * first use exactly as PHP auto-seeds when rand()/mt_rand() runs before srand().
+ */
+PH7_PRIVATE sxu32 PH7_VmMtRand(ph7_vm *pVm)
+{
+	if( !pVm->mtSeeded ){
+		sxu32 nSeed;
+		if( SyOSCSPRNG((void *)&nSeed,sizeof(nSeed)) != SXRET_OK ){
+			/* No OS entropy source: fall back to the RC4 generator's output. */
+			nSeed = PH7_VmRandomNum(pVm);
+		}
+		SyMT19937Seed(&pVm->sMt,nSeed);
+		pVm->mtSeeded = TRUE;
+	}
+	return SyMT19937Next(&pVm->sMt);
+}
+/*
+ * Map a full 32-bit draw uniformly into [0,uMax] (uMax is the range width, i.e.
+ * max-min). Rejection sampling against the largest unbiased ceiling, matching
+ * PHP's php_random_range32().
+ */
+static sxu32 VmMtRange32(ph7_vm *pVm,sxu32 uMax)
+{
+	sxu32 result,limit;
+	result = PH7_VmMtRand(pVm);
+	/* Whole 32-bit domain: no scaling needed. */
+	if( uMax == 0xFFFFFFFFU ){
+		return result;
+	}
+	/* Make the range inclusive of max. */
+	uMax++;
+	/* Powers of two are unbiased under a plain mask. */
+	if( (uMax & (uMax - 1)) == 0 ){
+		return result & (uMax - 1);
+	}
+	/* Ceiling under which 0xFFFFFFFF % uMax == 0; discard draws above it. */
+	limit = 0xFFFFFFFFU - (0xFFFFFFFFU % uMax) - 1;
+	while( result > limit ){
+		result = PH7_VmMtRand(pVm);
+	}
+	return result % uMax;
+}
+/*
+ * 64-bit-wide range: assemble two draws (high word first, as PHP does) and
+ * reject-sample. Matches PHP's php_random_range64().
+ */
+static sxu64 VmMtRange64(ph7_vm *pVm,sxu64 uMax)
+{
+	sxu64 result,limit;
+	/* First draw fills the low word, second draw the high word — order is
+	 * significant and matches php's php_random_range64() assembly. */
+	result = (sxu64)PH7_VmMtRand(pVm);
+	result |= (sxu64)PH7_VmMtRand(pVm) << 32;
+	if( uMax == 0xFFFFFFFFFFFFFFFFULL ){
+		return result;
+	}
+	uMax++;
+	if( (uMax & (uMax - 1)) == 0 ){
+		return result & (uMax - 1);
+	}
+	limit = 0xFFFFFFFFFFFFFFFFULL - (0xFFFFFFFFFFFFFFFFULL % uMax) - 1;
+	while( result > limit ){
+		result = (sxu64)PH7_VmMtRand(pVm);
+		result |= (sxu64)PH7_VmMtRand(pVm) << 32;
+	}
+	return result % uMax;
+}
+/*
+ * Return a value uniformly in the inclusive range [iMin,iMax]. The caller
+ * guarantees iMin <= iMax. Mirrors PHP's php_mt_rand_range(): a range that fits
+ * in 32 bits takes the 32-bit path, a wider one the 64-bit path.
+ */
+PH7_PRIVATE sxi64 PH7_VmMtRandRange(ph7_vm *pVm,sxi64 iMin,sxi64 iMax)
+{
+	sxu64 uMax = (sxu64)iMax - (sxu64)iMin;
+	if( uMax > 0xFFFFFFFFULL ){
+		return (sxi64)(VmMtRange64(pVm,uMax) + (sxu64)iMin);
+	}
+	return (sxi64)((sxu64)VmMtRange32(pVm,(sxu32)uMax) + (sxu64)iMin);
+}
+/*
  * Generate a random string (English Alphabet) of length nLen.
  * Note that the generated string is NOT null terminated.
  * PH7 uses its own private PRNG (the SQLite3-derived RC4 generator
@@ -461,7 +557,6 @@ PH7_PRIVATE int vm_builtin_rand(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	SyString *pName = &pCtx->pFunc->sName;
 	int bMt = (pName->nByte == sizeof("mt_rand")-1
 		&& SyMemcmp(pName->zString,"mt_rand",sizeof("mt_rand")-1) == 0);
-	sxu32 iNum;
 	/* php accepts exactly 0 or exactly 2 arguments (min,max); 1 or 3+ is an
 	 * ArgumentCountError. The central arity table can't express "0 or 2", so
 	 * it is enforced here (was a silent wrong result for the raw draw). */
@@ -472,11 +567,8 @@ PH7_PRIVATE int vm_builtin_rand(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			pName, nArg
 			);
 	}
-	/* Generate the random number */
-	iNum = PH7_VmRandomNum(pCtx->pVm);
 	if( nArg == 2 ){
 		sxi64 iMin,iMax;
-		sxu64 iSpan;
 		/* Signed 64-bit endpoints: the old unsigned math wrapped negative
 		 * ranges to huge positives (rand(-10,-1) -> ~4e9) and mis-handled
 		 * min==max. */
@@ -494,21 +586,14 @@ PH7_PRIVATE int vm_builtin_rand(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			 * this quirk; only mt_rand() rejects a reversed range). */
 			{ sxi64 iTmp = iMin; iMin = iMax; iMax = iTmp; }
 		}
-		/* Map the draw into [iMin,iMax] inclusive using a 64-bit span so a
-		 * full-width range never overflows. Subtract in unsigned space: the
-		 * signed (iMax-iMin) would overflow for a range wider than 2^63
-		 * (up to the full PHP_INT domain), which is C undefined behavior. */
-		iSpan = ((sxu64)iMax - (sxu64)iMin) + 1;
-		if( iSpan == 0 ){
-			/* Range spans the entire 64-bit domain (PHP_INT_MIN..PHP_INT_MAX). */
-			ph7_result_int64(pCtx,(sxi64)((sxu64)iMin + (sxu64)iNum));
-			return SXRET_OK;
-		}
-		ph7_result_int64(pCtx,(sxi64)((sxu64)iMin + (iNum % iSpan)));
+		/* MT19937-backed uniform draw over [iMin,iMax], bit-for-bit as php. */
+		ph7_result_int64(pCtx,PH7_VmMtRandRange(pCtx->pVm,iMin,iMax));
 		return SXRET_OK;
 	}
-	/* No-argument form: return the raw draw */
-	ph7_result_int64(pCtx,(ph7_int64)iNum);
+	/* No-argument form: a 31-bit value in [0, mt_getrandmax()]. php returns
+	 * php_mt_rand() >> 1 for the bare draw (the full 32-bit word feeds the
+	 * range form above, but the bare form drops the low bit). */
+	ph7_result_int64(pCtx,(sxi64)(PH7_VmMtRand(pCtx->pVm) >> 1));
 	return SXRET_OK;
 }
 /*
@@ -517,17 +602,16 @@ PH7_PRIVATE int vm_builtin_rand(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * int rc4_getrandmax(void)
  *   Show largest possible random value
  * Return
- *  The largest possible random value returned by rand() which is in
- *  this implementation 0xFFFFFFFF.
- * Note:
- *  PH7 use it's own private PRNG which is based on the one used
- *  by te SQLite3 library.
+ *  The largest possible random value returned by rand()/mt_rand(): php's
+ *  MT19937 backing makes this 2^31-1 (2147483647) for both.
  */
 PH7_PRIVATE int vm_builtin_getrandmax(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	SXUNUSED(nArg); /* cc warning */
 	SXUNUSED(apArg);
-	ph7_result_int64(pCtx,SXU32_HIGH);
+	/* php: PHP_MT_RAND_MAX == (1<<31)-1; bare rand()/mt_rand() draw >> 1 lands
+	 * exactly in [0, this]. */
+	ph7_result_int64(pCtx,2147483647);
 	return SXRET_OK;
 }
 /*

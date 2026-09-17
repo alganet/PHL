@@ -1666,33 +1666,24 @@ PH7_PRIVATE const char * PH7_MemObjTypeDump(ph7_value *pVal)
  */
 static void MemObjDumpRealValue(SyBlob *pOut,ph7_real rVal)
 {
+#ifndef PH7_OMIT_FLOATING_POINT
+	/* var_dump renders floats at serialize_precision = -1 — the SHORTEST decimal
+	 * that round-trips, formatted by php's gcvt(ndigit=17) fixed-vs-exponential
+	 * rule (exponential only when the leading-digit exponent e >= 17 or e <= -5,
+	 * so 1500.0 -> "1500", 1e20 -> "1.0E+20"). That is exactly the shape serialize/
+	 * var_export/json already emit, so share their helper. The old code searched
+	 * "%.*G" from precision 1 upward, but %G's own exponential threshold moves with
+	 * the precision, so a low-precision round-trip (1500.0 at %.2G) came back as
+	 * "1.5E+3" — a rendering-only wrong answer this delegation removes. */
+	PH7_AppendShortestReal(pOut,rVal);
+#else
 	if( PH7_IS_NAN(rVal) ){
 		SyBlobAppend(&(*pOut),"NAN",3);
-		return;
-	}
-	if( PH7_IS_INF(rVal) ){
+	}else if( PH7_IS_INF(rVal) ){
 		SyBlobAppend(&(*pOut),rVal < 0.0 ? "-INF" : "INF",rVal < 0.0 ? 4 : 3);
-		return;
+	}else{
+		SyBlobFormat(&(*pOut),"%.15g",rVal);
 	}
-#ifndef PH7_OMIT_FLOATING_POINT
-	{
-		char zNum[48];
-		sxi32 n = 0;
-		int p;
-		for( p = 1 ; p <= 17 ; p++ ){
-			n = (sxi32)snprintf(zNum,sizeof(zNum),"%.*G",p,rVal);
-			if( n < 0 || n >= (sxi32)sizeof(zNum) ){
-				n = (sxi32)SyStrlen(zNum);
-			}
-			if( strtod(zNum,0) == rVal ){
-				break; /* shortest round-trip found */
-			}
-		}
-		n = PH7_PhpFloatShape(zNum,n,TRUE);
-		SyBlobAppend(&(*pOut),zNum,(sxu32)n);
-	}
-#else
-	SyBlobFormat(&(*pOut),"%.15g",rVal);
 #endif
 }
 /*

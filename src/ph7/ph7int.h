@@ -1330,7 +1330,9 @@ struct ph7_vm
 	SySet aByteCode;            /* Default bytecode container */
 	SySet *pByteContainer;      /* Current bytecode container */
 	VmFrame *pFrame;            /* Stack of active frames */
-	SyPRNGCtx sPrng;            /* PRNG context */
+	SyPRNGCtx sPrng;            /* PRNG context (engine-internal, OS-seeded entropy) */
+	SyMT19937Ctx sMt;           /* MT19937 backing rand()/mt_rand(); reset by srand()/mt_srand() */
+	sxi32 mtSeeded;             /* TRUE once sMt holds a seed (lazy: first draw seeds from the OS CSPRNG, like PHP) */
 	SySet aMemObj;              /* Object allocation table */
 	SySet aLitObj;              /* Literals allocation table */
 	ph7_value *aOps;            /* Operand stack */
@@ -2188,6 +2190,9 @@ PH7_PRIVATE SySet * PH7_VmGetByteCodeContainer(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmSetByteCodeContainer(ph7_vm *pVm,SySet *pContainer);
 PH7_PRIVATE sxi32 PH7_VmEmitInstr(ph7_vm *pVm,sxi32 iOp,sxi32 iP1,sxu32 iP2,void *p3,sxu32 *pIndex);
 PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm);
+PH7_PRIVATE void PH7_VmMtSrand(ph7_vm *pVm,sxu32 nSeed);
+PH7_PRIVATE sxu32 PH7_VmMtRand(ph7_vm *pVm);
+PH7_PRIVATE sxi64 PH7_VmMtRandRange(ph7_vm *pVm,sxi64 iMin,sxi64 iMax);
 PH7_PRIVATE void PH7_VmReleaseInstanceAttr(ph7_vm *pVm,VmClassAttr *pVmAttr);
 PH7_PRIVATE sxi32 PH7_VmCallClassMethod(ph7_vm *pVm,ph7_class_instance *pThis,ph7_class_method *pMethod,
 	ph7_value *pResult,int nArg,ph7_value **apArg);
