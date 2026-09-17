@@ -3878,10 +3878,12 @@ PH7_PRIVATE int PH7_builtin_str_shuffle(ph7_context *pCtx,int nArg,ph7_value **a
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
-	/* Shuffle the string */
+	/* Shuffle the string. Draw through the MT19937 generator so str_shuffle()
+	 * responds to srand()/mt_srand() (reproducible under a seed), like php; the
+	 * sampling differs from php's Fisher-Yates so it is not value-parity. */
 	for( i = 0 ; i < nLen ; ++i ){
 		/* Generate a random number first */
-		iR = ph7_context_random_num(pCtx);
+		iR = PH7_VmMtRand(pCtx->pVm);
 		/* Extract a random offset */
 		c = zString[iR % nLen];
 		/* Append it */

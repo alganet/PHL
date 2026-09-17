@@ -4084,8 +4084,11 @@ PH7_PRIVATE int ph7_hashmap_rand(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	if( nItem < 2 ){
 		sxu32 nEntry;
-		/* Select a random number */
-		nEntry = PH7_VmRandomNum(pMap->pVm) % pMap->nEntry;
+		/* Pick a random slot through the MT19937 generator so array_rand()
+		 * responds to srand()/mt_srand() (reproducible), like php. The exact
+		 * index php lands on differs (php samples its internal hashtable
+		 * buckets), so this is deterministic-under-seed but not value-parity. */
+		nEntry = (sxu32)PH7_VmMtRandRange(pMap->pVm,0,(sxi64)pMap->nEntry - 1);
 		/* Extract the desired entry.
 		 * Note that we perform a linear lookup here (later version must change this)
 		 */

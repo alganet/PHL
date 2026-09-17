@@ -1751,6 +1751,9 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->json_rc = JSON_ERROR_NONE;
 	/* PRNG context */
 	SyRandomnessInit(&pVm->sPrng,0,0);
+	/* MT19937 is seeded lazily on the first rand()/mt_rand() draw (or eagerly by
+	 * srand()/mt_srand()), matching PHP's auto-seed-on-first-use behavior. */
+	pVm->mtSeeded = FALSE;
 	/* Install the null constant */
 	pObj = PH7_ReserveConstObj(&(*pVm),0);
 	if( pObj == 0 ){

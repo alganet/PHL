@@ -36,6 +36,28 @@ PH7_PRIVATE sxi32 SyRandomnessInit(SyPRNGCtx *pCtx,ProcRandomSeed xSeed,void *pU
 PH7_PRIVATE sxi32 SyRandomness(SyPRNGCtx *pCtx,void *pBuf,sxu32 nLen);
 
 /*
+ * Mersenne Twister MT19937 — the seedable generator that backs PHP's
+ * rand()/mt_rand() family (PHP 7.1+ uses MT19937 for both). This is a distinct
+ * generator from the OS-seeded RC4 SyPRNGCtx above: the RC4 one supplies the
+ * engine's internal, non-reproducible entropy (object salts, unique ids,
+ * uniqid, quicksort pivots), while this one is reset by srand()/mt_srand() so
+ * userland gets PHP's reproducible sequence. Seeding + generation + tempering
+ * are bit-compatible with PHP's implementation so a seeded draw reproduces
+ * PHP's exact value.
+ */
+#define SX_MT19937_N 624
+typedef struct SyMT19937Ctx SyMT19937Ctx;
+struct SyMT19937Ctx
+{
+    sxu32 aState[SX_MT19937_N]; /* Generator state vector */
+    sxu32 nIndex;               /* Index of the next word (0..N; N triggers a reload) */
+};
+/* Seed the generator from a 32-bit value (PHP truncates its int seed to 32 bits). */
+PH7_PRIVATE void SyMT19937Seed(SyMT19937Ctx *pCtx,sxu32 nSeed);
+/* Draw the next full 32-bit tempered word. */
+PH7_PRIVATE sxu32 SyMT19937Next(SyMT19937Ctx *pCtx);
+
+/*
  * Fill pBuf with nLen bytes drawn directly from the OS cryptographically
  * secure RNG (arc4random_buf on macOS/BSD, getrandom/urandom on Linux,
  * BCryptGenRandom on Windows). Returns SXRET_OK on full fill, SXERR_IO

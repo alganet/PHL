@@ -161,6 +161,66 @@ PH7_PRIVATE sxi32 SyRandomness(SyPRNGCtx *pCtx,void *pBuf,sxu32 nLen)
 	return SXRET_OK;
 }
 /* SPDX-SnippetEnd */
+/*
+ * Mersenne Twister MT19937.
+ *
+ * Reference algorithm by Makoto Matsumoto and Takuji Nishimura (1997). The
+ * seeding recurrence, the tempering steps and the twist constant below are the
+ * standard MT19937 constants; PHP's rand()/mt_rand() are backed by the same
+ * generator, so a value seeded here reproduces PHP's exact draw. This is a
+ * clean-room implementation over the published constants — no encryption, PRNG
+ * use only, just like the RC4 generator above.
+ */
+#define MT_M          397
+#define MT_HI(u)      ((u) & 0x80000000U)          /* most significant bit */
+#define MT_LO(u)      ((u) & 0x00000001U)          /* least significant bit */
+#define MT_LOBITS(u)  ((u) & 0x7FFFFFFFU)          /* low 31 bits */
+#define MT_MIX(u,v)   (MT_HI(u) | MT_LOBITS(v))
+static sxu32 mtTwist(sxu32 m,sxu32 u,sxu32 v)
+{
+	return m ^ (MT_MIX(u,v) >> 1) ^ ((sxu32)(-(sxi32)(MT_LO(v))) & 0x9908b0dfU);
+}
+/* Regenerate the whole state vector in place, then rewind the read index. */
+static void mtReload(SyMT19937Ctx *pCtx)
+{
+	sxu32 *s = pCtx->aState;
+	sxu32 *p = s;
+	int i;
+	for( i = SX_MT19937_N - MT_M ; i-- ; ++p ){
+		*p = mtTwist(p[MT_M],p[0],p[1]);
+	}
+	for( i = MT_M ; --i ; ++p ){
+		*p = mtTwist(p[MT_M - SX_MT19937_N],p[0],p[1]);
+	}
+	*p = mtTwist(p[MT_M - SX_MT19937_N],p[0],s[0]);
+	pCtx->nIndex = 0;
+}
+PH7_PRIVATE void SyMT19937Seed(SyMT19937Ctx *pCtx,sxu32 nSeed)
+{
+	sxu32 *s = pCtx->aState;
+	sxu32 i;
+	/* Knuth TAOCP Vol.2 initializer, as used by PHP's php_mt_initialize(). */
+	s[0] = nSeed;
+	for( i = 1 ; i < SX_MT19937_N ; ++i ){
+		s[i] = (sxu32)(1812433253U * (s[i-1] ^ (s[i-1] >> 30)) + i);
+	}
+	/* PHP reloads immediately after seeding, so the first draw is a twisted word. */
+	mtReload(pCtx);
+}
+PH7_PRIVATE sxu32 SyMT19937Next(SyMT19937Ctx *pCtx)
+{
+	sxu32 s1;
+	if( pCtx->nIndex >= SX_MT19937_N ){
+		mtReload(pCtx);
+	}
+	s1 = pCtx->aState[pCtx->nIndex++];
+	/* Tempering */
+	s1 ^= (s1 >> 11);
+	s1 ^= (s1 << 7)  & 0x9d2c5680U;
+	s1 ^= (s1 << 15) & 0xefc60000U;
+	s1 ^= (s1 >> 18);
+	return s1;
+}
 #if defined(__UNIXES__) && !defined(SX_HAVE_ARC4RANDOM)
 static sxi32 SyReadDevUrandom(unsigned char *zBuf,sxu32 nLen)
 {

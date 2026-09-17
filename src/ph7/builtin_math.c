@@ -1337,17 +1337,29 @@ PH7_PRIVATE int PH7_builtin_octdec(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *  Seed the random number generator.
  * Parameters
  * $seed
- *  Optional seed value
+ *  Optional seed value. php truncates it to 32 bits; a missing seed reseeds
+ *  from OS entropy (a "random" seed), matching php's GENERATE_SEED().
  * Return
  *  null.
  * Note:
- *  THIS FUNCTION IS A NO-OP.
- *  THE PH7 PRNG IS AUTOMATICALLY SEEDED WHEN THE VM IS CREATED.
+ *  srand()/mt_srand() are aliases (php 7.1+ backs both rand() and mt_rand()
+ *  with the same MT19937). They reset only the userland generator, never the
+ *  engine's internal RC4 entropy, so a seed makes rand()/mt_rand()/shuffle/
+ *  str_shuffle/array_rand reproducible without disturbing object ids or uniqid.
  */
 PH7_PRIVATE int PH7_builtin_srand(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
+	sxu32 nSeed;
+	if( nArg > 0 ){
+		/* php truncates the (weakly int-coerced) seed to 32 bits. */
+		nSeed = (sxu32)ph7_value_to_int64(apArg[0]);
+	}else{
+		/* No seed: reseed from OS entropy, like php's GENERATE_SEED(). */
+		if( SyOSCSPRNG((void *)&nSeed,sizeof(nSeed)) != SXRET_OK ){
+			nSeed = PH7_VmRandomNum(pCtx->pVm);
+		}
+	}
+	PH7_VmMtSrand(pCtx->pVm,nSeed);
 	ph7_result_null(pCtx);
 	return PH7_OK;
 }
