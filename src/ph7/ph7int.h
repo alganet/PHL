@@ -526,11 +526,13 @@ struct ph7_gen_state
 	int nCommaExprOk;    /* > 0 while compiling a for() clause, the ONLY place php's grammar
 	                      * allows a comma-separated expression list (PH7's comma OPERATOR
 	                      * is otherwise a PH7-ism php rejects — §10) */
-	const char *zClauseCloser; /* When a for()-clause expression has a trailing token the
-	                      * grammar can't absorb, the tree builder names it and says what it
-	                      * expected. That is `;` for the init and condition clauses but `)`
-	                      * for the POST clause — the for compiler points this at the right
-	                      * one for each clause's duration. NULL outside a for() clause. */
+	const char *zClauseCloser; /* When an expression has a trailing token the grammar can't
+	                      * absorb, the tree builder names it and, if this is set, says what
+	                      * the enclosing construct expected: `;` after `return`, `,`/`;`
+	                      * after `echo`, `)` for a for() post clause, `]` inside an array
+	                      * literal, and so on. Each construct saves/sets/restores it around
+	                      * its expression compile. NULL means "no expecting clause" — php
+	                      * prints none for a plain expression statement. */
 	int nExprEchoOk;     /* > 0 only while compiling the synthesized `echo` of a `<?= ... ?>`
 	                      * short tag, which is the one place an echo legitimately compiles
 	                      * as an EXPRESSION. Everywhere else `echo` in expression position

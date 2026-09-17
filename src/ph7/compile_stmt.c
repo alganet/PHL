@@ -97,8 +97,14 @@ PH7_PRIVATE sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 	/* Swap bytecode container */
 	pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
 	PH7_VmSetByteCodeContainer(pGen->pVm,pConsCode);
-	/* Compile constant value */
-	rc = PH7_CompileExpr(&(*pGen),0,0);
+	/* Compile constant value. php: a stray token after `const X = EXPR` is
+	 * `... expecting "," or ";"` (const supports a comma-separated list). */
+	{
+		const char *zSaveConst = pGen->zClauseCloser;
+		pGen->zClauseCloser = "\",\" or \";\"";
+		rc = PH7_CompileExpr(&(*pGen),0,0);
+		pGen->zClauseCloser = zSaveConst;
+	}
 	/* Emit the done instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,(rc != SXERR_EMPTY ? 1 : 0),0,0,0);
 	PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
@@ -1717,8 +1723,11 @@ PH7_PRIVATE sxi32 PH7_CompileReturn(ph7_gen_state *pGen)
 	/* Jump the 'return' keyword */
 	pGen->pIn++;
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) == 0 ){
-		/* Compile the expression */
+		/* php: a stray token after `return EXPR` is `... expecting ";"`. */
+		const char *zSave = pGen->zClauseCloser;
+		pGen->zClauseCloser = "\";\"";
 		rc = PH7_CompileExpr(&(*pGen),0,0);
+		pGen->zClauseCloser = zSave;
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}else if(rc != SXERR_EMPTY ){
@@ -1862,12 +1871,17 @@ PH7_PRIVATE sxi32 PH7_CompileEcho(ph7_gen_state *pGen)
 	sxi32 rc;
 	/* Jump the 'echo' keyword */
 	pGen->pIn++;
-	/* Compile arguments one after one */
+	/* Compile arguments one after one. php: a stray token in an echo list is
+	 * `... expecting "," or ";"` — set the closer for each argument's compile. */
 	pTmp = pGen->pEnd;
+	{
+	const char *zSaveEcho = pGen->zClauseCloser;
 	while( SXRET_OK == PH7_GetNextExpr(pGen->pIn,pTmp,&pNext) ){
 		if( pGen->pIn < pNext ){
 			pGen->pEnd = pNext;
+			pGen->zClauseCloser = "\",\" or \";\"";
 			rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_RDONLY_LOAD/* Do not create variable if inexistant */,0);
+			pGen->zClauseCloser = zSaveEcho;
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}else if( rc != SXERR_EMPTY ){
@@ -1890,6 +1904,7 @@ PH7_PRIVATE sxi32 PH7_CompileEcho(ph7_gen_state *pGen)
 			pNext++;
 		}
 		pGen->pIn = pNext;
+	}
 	}
 	/* Restore token stream */
 	pGen->pEnd = pTmp;

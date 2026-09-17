@@ -1372,6 +1372,12 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 {
 	sxi32 iNest,iCur,iNode;
 	sxi32 rc;
+	/* php: a stray token in a call argument is `... expecting ")"`. Each arg's
+	 * tree is built by the shared ExprMakeTree below, whose leftover-node error
+	 * reads this. Saved/restored so a nested call or array element inside an arg
+	 * gets its own closer. */
+	const char *zSaveArg = pGen->zClauseCloser;
+	pGen->zClauseCloser = "\")\"";
 	/* Process function arguments from left to right */
 	iCur = 0;
 	for(;;){
@@ -1435,6 +1441,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 					if( rc != SXERR_ABORT ){
 						rc = SXERR_SYNTAX;
 					}
+					pGen->zClauseCloser = zSaveArg;
 					return rc;
 				}
 			}
@@ -1483,6 +1490,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 				if( rc != SXERR_ABORT ){
 					rc = SXERR_SYNTAX;
 				}
+				pGen->zClauseCloser = zSaveArg;
 				return rc;
 			}
 		}else{
@@ -1491,6 +1499,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 			if( rc != SXERR_ABORT ){
 				rc = SXERR_SYNTAX;
 			}
+			pGen->zClauseCloser = zSaveArg;
 			return rc;
 		}
 		/* Jump trailing comma */
@@ -1502,6 +1511,7 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 			}
 		}
 	}
+	pGen->zClauseCloser = zSaveArg;
 	return SXRET_OK;
 }
  /*
@@ -1770,8 +1780,12 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 					 ++iArrTok;
 				 }
 				 if( iArrTok > iCur + 1 ){
+					 /* php: a stray token in a subscript index is `... expecting "]"`. */
+					 const char *zSaveIdx = pGen->zClauseCloser;
+					 pGen->zClauseCloser = "\"]\"";
 					 /* Recurse and process this expression */
 					 rc = ExprMakeTree(&(*pGen),&apNode[iCur+1],iArrTok - iCur - 1);
+					 pGen->zClauseCloser = zSaveIdx;
 					 if( rc != SXRET_OK ){
 						 return rc;
 					 }
@@ -2381,12 +2395,17 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 		 if( apNode[iCur] ){
 			 if( (apNode[iCur]->pOp || apNode[iCur]->xCode ) && apNode[0] != 0){
 				 /* Name the START of the stray subtree (`$i<3` -> `$i`), not the
-				  * operator sitting at its slot. A for()-clause also names the closer
-				  * it wants (`;` for init/condition, `)` for the post clause);
-				  * zClauseCloser carries it. */
+				  * operator sitting at its slot. The "expecting" clause is the closer
+				  * the enclosing construct set (`;` after `return`, `,`/`;` after
+				  * `echo`, `)` for a for() post clause …); a for() clause defaults to
+				  * `;` when nothing more specific was set. php prints no clause for a
+				  * plain expression statement, so a NULL closer stays clauseless. */
 				 SyToken *pBadTok = ExprSubtreeFirstToken(apNode[iCur]);
-				 rc = PH7_GenSyntaxError(pGen,pBadTok ? pBadTok : apNode[iCur]->pStart,
-					 pGen->nCommaExprOk > 0 ? (pGen->zClauseCloser ? pGen->zClauseCloser : "\";\"") : 0);
+				 const char *zExpect = pGen->zClauseCloser;
+				 if( zExpect == 0 && pGen->nCommaExprOk > 0 ){
+					 zExpect = "\";\"";
+				 }
+				 rc = PH7_GenSyntaxError(pGen,pBadTok ? pBadTok : apNode[iCur]->pStart,zExpect);
 				  if( rc != SXERR_ABORT ){
 					  rc = SXERR_SYNTAX;
 				  }
