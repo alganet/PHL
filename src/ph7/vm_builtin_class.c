@@ -1141,28 +1141,45 @@ static int VmSubclassOf(ph7_class *pClass,ph7_class *pBase)
 	return FALSE;
 }
 /*
- * bool is_a(object $object,string $class_name)
- *   Checks if the object is of this class or has this class as one of its parents.
+ * bool is_a(object|string $object_or_class,string $class,bool $allow_string = false)
+ *   Checks if the object/class is of this class or has this class (or interface)
+ *   as one of its parents.
  * Parameters
- *  object
- *   The tested object
- * class_name
- *  The class name
+ *  object_or_class
+ *   The tested object, or a class name string (only honored when allow_string is TRUE).
+ * class
+ *  The class or interface name to test against.
+ * allow_string
+ *  When TRUE, a string first argument is resolved as a class name; php's default
+ *  is FALSE, so is_a() returns FALSE for a string first argument without it. The
+ *  flag is IGNORED for an object first argument (php).
  * Return
- *   Returns TRUE if the object is of this class or has this class as one of its
- *   parents, FALSE otherwise.
+ *   Returns TRUE if object_or_class is of class class or has class as one of its
+ *   parents (or implements it as an interface), FALSE otherwise.
  */
 PH7_PRIVATE int vm_builtin_is_a(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	int res = 0; /* Assume FALSE by default */
-	if( nArg > 1 && ph7_value_is_object(apArg[0])  ){
-		ph7_class_instance *pThis = (ph7_class_instance *)apArg[0]->x.pOther;
-		ph7_class *pClass;
-		/* Extract the given class */
-		pClass = PH7_VmExtractClassFromValue(pCtx->pVm,apArg[1]);
-		if( pClass ){
-			/* Perform the query */
-			res = PH7_VmInstanceOf(pThis->pClass,pClass);
+	if( nArg > 1 ){
+		ph7_class *pThisClass = 0;
+		if( ph7_value_is_object(apArg[0]) ){
+			/* An object first argument: allow_string is ignored (php). */
+			pThisClass = ((ph7_class_instance *)apArg[0]->x.pOther)->pClass;
+		}else if( ph7_value_is_string(apArg[0]) && nArg > 2 && ph7_value_to_bool(apArg[2]) ){
+			/* A string first argument is resolved to a class ONLY when allow_string
+			 * (the 3rd argument) is TRUE — valid php since 5.3.9, and a sibling of
+			 * is_subclass_of()'s string form. Autoloads on a miss via
+			 * PH7_VmExtractClassFromValue; a leading '\' is anchored there. */
+			pThisClass = PH7_VmExtractClassFromValue(pCtx->pVm,apArg[0]);
+		}
+		if( pThisClass ){
+			/* Extract the given class */
+			ph7_class *pClass = PH7_VmExtractClassFromValue(pCtx->pVm,apArg[1]);
+			if( pClass ){
+				/* Perform the query — instanceof, so the class ITSELF matches
+				 * (unlike is_subclass_of, which excludes self). */
+				res = PH7_VmInstanceOf(pThisClass,pClass);
+			}
 		}
 	}
 	/* Query result */
