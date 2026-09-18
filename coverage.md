@@ -57,7 +57,7 @@
 | src/ph7/vm_libxml.c            | 73.46%   | 238/324     |
 | src/ph7/vm_ops_arith.c         | 82.93%   | 588/709     |
 | src/ph7/vm_ops_iter.c          | 80.00%   | 272/340     |
-| src/ph7/vm_ops_load.c          | 87.67%   | 754/860     |
+| src/ph7/vm_ops_load.c          | 87.69%   | 755/861     |
 | src/ph7/vm_ops_misc.c          | 86.77%   | 223/257     |
 | src/ph7/vm_ops_oo.c            | 85.52%   | 868/1015    |
 | src/ph7/vm_pcre.c              | 69.07%   | 632/915     |
@@ -79,5 +79,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.40%   | 49223/60474 |
+| Lines                          | 81.40%   | 49224/60475 |
 | Functions                      | 93.29%   | 2237/2398   |

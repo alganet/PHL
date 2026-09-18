@@ -1028,13 +1028,13 @@ Coverage: 8/8 lines (100.00%)
 |    - | 1018 | `	" return $a['ino'];"\` |
 |    - | 1019 | `    "}"` |
 |    - | 1020 |  |
-| 3870 | 1021 | `PH7_PRIVATE sxi32 PH7_VmInstallBuiltinLib(ph7_vm *pVm)` |
+| 3872 | 1021 | `PH7_PRIVATE sxi32 PH7_VmInstallBuiltinLib(ph7_vm *pVm)` |
 |    5 | 1022 | `{` |
 |    - | 1023 | `	SyString sBuiltin;` |
 |    - | 1024 | `	SyString sRandom;` |
-| 3875 | 1025 | `	SyStringInitFromBuf(&sBuiltin,PH7_BUILTIN_LIB,sizeof(PH7_BUILTIN_LIB)-1);` |
+| 3877 | 1025 | `	SyStringInitFromBuf(&sBuiltin,PH7_BUILTIN_LIB,sizeof(PH7_BUILTIN_LIB)-1);` |
 |    - | 1026 | `	/* Compile the built-in library */` |
-| 3875 | 1027 | `	VmEvalChunk(&(*pVm),0,&sBuiltin,PH7_PHP_ONLY,FALSE);` |
+| 3877 | 1027 | `	VmEvalChunk(&(*pVm),0,&sBuiltin,PH7_PHP_ONLY,FALSE);` |
 |    - | 1028 | `	/* Register the Random\RandomException namespaced class (PHP 8.2+).` |
 |    - | 1029 | `	 * Kept in its own VmEvalChunk (not appended to PH7_BUILTIN_LIB): a namespace` |
 |    - | 1030 | `	 * declaration is NOT reset at the block's closing brace in this engine, so` |
@@ -1046,9 +1046,9 @@ Coverage: 8/8 lines (100.00%)
 |    - | 1036 | `	{` |
 |    - | 1037 | `		static const char zRandomLib[] =` |
 |    - | 1038 | `			"namespace Random { class RandomException extends \\Exception { } }";` |
-| 3875 | 1039 | `		SyStringInitFromBuf(&sRandom,zRandomLib,sizeof(zRandomLib)-1);` |
-| 3875 | 1040 | `		VmEvalChunk(&(*pVm),0,&sRandom,PH7_PHP_ONLY,FALSE);` |
+| 3877 | 1039 | `		SyStringInitFromBuf(&sRandom,zRandomLib,sizeof(zRandomLib)-1);` |
+| 3877 | 1040 | `		VmEvalChunk(&(*pVm),0,&sRandom,PH7_PHP_ONLY,FALSE);` |
 |    - | 1041 | `	}` |
-| 3875 | 1042 | `	return SXRET_OK;` |
+| 3877 | 1042 | `	return SXRET_OK;` |
 |    5 | 1043 | `}` |
 |    - | 1044 |  |
