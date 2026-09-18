@@ -353,25 +353,25 @@ Coverage: 236/295 lines (80.00%)
 |    - |  343 | ` *  Always TRUE.` |
 |    - |  344 | ` */` |
 |   56 |  345 | `PH7_PRIVATE int vm_builtin_restore_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    4 |  346 | `{` |
-|   60 |  347 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    5 |  346 | `{` |
+|   61 |  347 | `	ph7_vm *pVm = pCtx->pVm;` |
 |    - |  348 | `	ph7_value *pOld,*pNew;` |
 |    - |  349 | `	/* Point to the old and the new handler */` |
-|   60 |  350 | `	pOld = &pVm->aErrCB[0];` |
-|   60 |  351 | `	pNew = &pVm->aErrCB[1];` |
+|   61 |  350 | `	pOld = &pVm->aErrCB[0];` |
+|   61 |  351 | `	pNew = &pVm->aErrCB[1];` |
 |   28 |  352 | `	SXUNUSED(nArg); /* cc warning */` |
 |   28 |  353 | `	SXUNUSED(apArg);` |
-|   60 |  354 | `	if( pOld->iFlags & MEMOBJ_NULL ){` |
+|   61 |  354 | `	if( pOld->iFlags & MEMOBJ_NULL ){` |
 |    - |  355 | `		/* Nothing SAVED underneath — but php pops the handler stack regardless, so the` |
 |    - |  356 | `		 * ACTIVE handler must still go (reporting reverts to the engine's own). Returning` |
 |    - |  357 | `		 * early here left it installed, making restore_error_handler() a no-op after a` |
 |    - |  358 | `		 * single set_error_handler().` |
 |    - |  359 | `		 * php answers TRUE either way: the return value says "the call is valid", not` |
 |    - |  360 | `		 * "a handler was in place". */` |
-|   17 |  361 | `		PH7_MemObjRelease(pNew);` |
-|   17 |  362 | `		MemObjSetType(pNew,MEMOBJ_NULL);` |
-|   17 |  363 | `		ph7_result_bool(pCtx,1);` |
-|   17 |  364 | `		return PH7_OK;` |
+|   18 |  361 | `		PH7_MemObjRelease(pNew);` |
+|   18 |  362 | `		MemObjSetType(pNew,MEMOBJ_NULL);` |
+|   18 |  363 | `		ph7_result_bool(pCtx,1);` |
+|   18 |  364 | `		return PH7_OK;` |
 |    - |  365 | `	}` |
 |    - |  366 | `	/* Copy the old callback */` |
 |   43 |  367 | `	PH7_MemObjStore(pOld,pNew);` |
@@ -379,7 +379,7 @@ Coverage: 236/295 lines (80.00%)
 |    - |  369 | `	/* Return TRUE */` |
 |   43 |  370 | `	ph7_result_bool(pCtx,1);` |
 |   43 |  371 | `	return PH7_OK;` |
-|   32 |  372 | `}` |
+|   33 |  372 | `}` |
 |    - |  373 | `/*` |
 |    - |  374 | ` * value set_error_handler(callable $error_handler)` |
 |    - |  375 | ` *  +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++` |
@@ -413,27 +413,27 @@ Coverage: 236/295 lines (80.00%)
 |    - |  403 | ` *  If no previous handler was defined, NULL is also returned. If NULL is passed` |
 |    - |  404 | ` *  resetting the handler to its default state, TRUE is returned.` |
 |    - |  405 | ` */` |
-| 9720 |  406 | `PH7_PRIVATE int vm_builtin_set_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+| 9726 |  406 | `PH7_PRIVATE int vm_builtin_set_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    5 |  407 | `{` |
-| 9725 |  408 | `	ph7_vm *pVm = pCtx->pVm;` |
+| 9731 |  408 | `	ph7_vm *pVm = pCtx->pVm;` |
 |    - |  409 | `	ph7_value *pOld,*pNew;` |
 |    - |  410 | `	/* Point to the old and the new handler */` |
-| 9725 |  411 | `	pOld = &pVm->aErrCB[0];` |
-| 9725 |  412 | `	pNew = &pVm->aErrCB[1];` |
+| 9731 |  411 | `	pOld = &pVm->aErrCB[0];` |
+| 9731 |  412 | `	pNew = &pVm->aErrCB[1];` |
 |    - |  413 | `	/* Return the old handler */` |
-| 9725 |  414 | `	ph7_result_value(pCtx,pOld); /* Will make it's own copy */` |
-| 9725 |  415 | `	if( nArg > 0 ){` |
-| 9725 |  416 | `		if( !ph7_value_is_callable(apArg[0])) {` |
+| 9731 |  414 | `	ph7_result_value(pCtx,pOld); /* Will make it's own copy */` |
+| 9731 |  415 | `	if( nArg > 0 ){` |
+| 9731 |  416 | `		if( !ph7_value_is_callable(apArg[0])) {` |
 |    - |  417 | `			/* Not callable,return TRUE (As requested by the PHP specification) */` |
-| 4829 |  418 | `			PH7_MemObjRelease(pNew);` |
-| 4829 |  419 | `			ph7_result_bool(pCtx,1);` |
-| 2415 |  420 | `		}else{` |
-| 4897 |  421 | `			PH7_MemObjStore(pNew,pOld);` |
+| 4831 |  418 | `			PH7_MemObjRelease(pNew);` |
+| 4831 |  419 | `			ph7_result_bool(pCtx,1);` |
+| 2416 |  420 | `		}else{` |
+| 4901 |  421 | `			PH7_MemObjStore(pNew,pOld);` |
 |    - |  422 | `			/* Install the new handler */` |
-| 4897 |  423 | `			PH7_MemObjStore(apArg[0],pNew);` |
+| 4901 |  423 | `			PH7_MemObjStore(apArg[0],pNew);` |
 |    - |  424 | `		}` |
-| 4860 |  425 | `	}` |
-| 9725 |  426 | `	return PH7_OK;` |
+| 4863 |  425 | `	}` |
+| 9731 |  426 | `	return PH7_OK;` |
 |    5 |  427 | `}` |
 |    - |  428 | `/*` |
 |    - |  429 | ` * ?callable get_error_handler(void)     -- php 8.5` |

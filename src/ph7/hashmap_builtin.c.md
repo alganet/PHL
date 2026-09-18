@@ -1325,7 +1325,7 @@ Coverage: 2444/2843 lines (85.97%)
 |       - | 1315 | ` *  An array of all the keys in input or NULL on failure.` |
 |       - | 1316 | ` */` |
 |     196 | 1317 | `PH7_PRIVATE int ph7_hashmap_keys(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       5 | 1318 | `{` |
+|       4 | 1318 | `{` |
 |       - | 1319 | `	ph7_hashmap_node *pNode;` |
 |       - | 1320 | `	ph7_hashmap *pMap;` |
 |       - | 1321 | `	ph7_value *pArray;` |
@@ -1335,7 +1335,7 @@ Coverage: 2444/2843 lines (85.97%)
 |       - | 1325 | `	int bStrict;` |
 |       - | 1326 | `	sxi32 rc;` |
 |       - | 1327 | `	sxu32 n;` |
-|     201 | 1328 | `	if( nArg < 1 ){` |
+|     200 | 1328 | `	if( nArg < 1 ){` |
 |       - | 1329 | `		/* Missing argument,throw ArgumentCountError */` |
 |     ! 0 | 1330 | `		return PH7_VmThrowException(pCtx,` |
 |       - | 1331 | `			"ArgumentCountError",` |
@@ -1343,7 +1343,7 @@ Coverage: 2444/2843 lines (85.97%)
 |       - | 1333 | `			);` |
 |       - | 1334 | `	}` |
 |       - | 1335 | `	/* Make sure we are dealing with a valid hashmap */` |
-|     201 | 1336 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|     200 | 1336 | `	if( !ph7_value_is_array(apArg[0]) ){` |
 |       - | 1337 | `		/* haystack must be an array,throw TypeError */` |
 |       4 | 1338 | `		return PH7_VmThrowException(pCtx,` |
 |       - | 1339 | `			"TypeError",` |
@@ -1352,15 +1352,15 @@ Coverage: 2444/2843 lines (85.97%)
 |       - | 1342 | `			);` |
 |       - | 1343 | `	}` |
 |       - | 1344 | `	/* Point to the internal representation of the input hashmap */` |
-|     199 | 1345 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|     198 | 1345 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
 |       - | 1346 | `	/* Create a new array */` |
-|     199 | 1347 | `	pArray = ph7_context_new_array(pCtx);` |
-|     199 | 1348 | `	if( pArray == 0 ){` |
+|     198 | 1347 | `	pArray = ph7_context_new_array(pCtx);` |
+|     198 | 1348 | `	if( pArray == 0 ){` |
 |     ! 0 | 1349 | `		ph7_result_null(pCtx);` |
 |     ! 0 | 1350 | `		return PH7_OK;` |
 |       - | 1351 | `	}` |
-|     199 | 1352 | `	bStrict = FALSE;` |
-|     199 | 1353 | `	if( nArg > 2 ){` |
+|     198 | 1352 | `	bStrict = FALSE;` |
+|     198 | 1353 | `	if( nArg > 2 ){` |
 |       - | 1354 | `		/* In PHP, non-scalar values for a bool-hinted parameter raise TypeError */` |
 |       9 | 1355 | `		if( ph7_value_is_array(apArg[2]) \|\| ph7_value_is_object(apArg[2]) \|\| ph7_value_is_resource(apArg[2]) ){` |
 |     ! 0 | 1356 | `			return PH7_VmThrowException(pCtx,` |
@@ -1372,17 +1372,17 @@ Coverage: 2444/2843 lines (85.97%)
 |       9 | 1362 | `		bStrict = ph7_value_to_bool(apArg[2]);` |
 |       4 | 1363 | `	}` |
 |       - | 1364 | `	/* Perform the requested operation */` |
-|     199 | 1365 | `	pNode = pMap->pFirst;` |
-|     199 | 1366 | `	PH7_MemObjInit(pMap->pVm,&sVal);` |
-|    1647 | 1367 | `	for( n = 0 ; n < pMap->nEntry ; ++n ){` |
-|    1453 | 1368 | `		if( pNode->iType == HASHMAP_INT_NODE ){` |
+|     198 | 1365 | `	pNode = pMap->pFirst;` |
+|     198 | 1366 | `	PH7_MemObjInit(pMap->pVm,&sVal);` |
+|    1646 | 1367 | `	for( n = 0 ; n < pMap->nEntry ; ++n ){` |
+|    1452 | 1368 | `		if( pNode->iType == HASHMAP_INT_NODE ){` |
 |     194 | 1369 | `			PH7_MemObjInitFromInt(pMap->pVm,&sObj,pNode->xKey.iKey);` |
 |      99 | 1370 | `		}else{` |
 |    1261 | 1371 | `			SyStringInitFromBuf(&sKey,SyBlobData(&pNode->xKey.sKey),SyBlobLength(&pNode->xKey.sKey));` |
 |    1261 | 1372 | `			PH7_MemObjInitFromString(pMap->pVm,&sObj,&sKey);` |
 |       - | 1373 | `		}` |
-|    1453 | 1374 | `		rc = 0;` |
-|    1453 | 1375 | `		if( nArg > 1 ){` |
+|    1452 | 1374 | `		rc = 0;` |
+|    1452 | 1375 | `		if( nArg > 1 ){` |
 |      65 | 1376 | `			ph7_value *pValue = HashmapExtractNodeValue(pNode);` |
 |      65 | 1377 | `			if( pValue ){` |
 |       - | 1378 | `				ph7_value sNeedle;` |
@@ -1398,18 +1398,18 @@ Coverage: 2444/2843 lines (85.97%)
 |      65 | 1388 | `				PH7_MemObjRelease(&sVal);` |
 |      32 | 1389 | `			}` |
 |      32 | 1390 | `		}` |
-|    1453 | 1391 | `		if( rc == 0 ){` |
+|    1452 | 1391 | `		if( rc == 0 ){` |
 |       - | 1392 | `			/* Perform the insertion */` |
-|    1421 | 1393 | `			ph7_array_add_elem(pArray,0,&sObj);` |
+|    1420 | 1393 | `			ph7_array_add_elem(pArray,0,&sObj);` |
 |     708 | 1394 | `		}` |
-|    1453 | 1395 | `		PH7_MemObjRelease(&sObj);` |
+|    1452 | 1395 | `		PH7_MemObjRelease(&sObj);` |
 |       - | 1396 | `		/* Point to the next entry */` |
-|    1453 | 1397 | `		pNode = pNode->pPrev; /* Reverse link */` |
-|     729 | 1398 | `	}` |
+|    1452 | 1397 | `		pNode = pNode->pPrev; /* Reverse link */` |
+|     728 | 1398 | `	}` |
 |       - | 1399 | `	/* return the new array */` |
-|     199 | 1400 | `	ph7_result_value(pCtx,pArray);` |
-|     199 | 1401 | `	return PH7_OK;` |
-|     103 | 1402 | `}` |
+|     198 | 1400 | `	ph7_result_value(pCtx,pArray);` |
+|     198 | 1401 | `	return PH7_OK;` |
+|     102 | 1402 | `}` |
 |       - | 1403 | `/*` |
 |       - | 1404 | ` * bool array_same(array $arr1,array $arr2)` |
 |       - | 1405 | ` *  Return TRUE if the given arrays are the same instance.` |
@@ -1946,22 +1946,22 @@ Coverage: 2444/2843 lines (85.97%)
 |       - | 1936 | ` *  If the third parameter strict is set to TRUE then the in_array() function` |
 |       - | 1937 | ` *  will also check the types of the needle in the haystack.` |
 |       - | 1938 | ` */` |
-|   32654 | 1939 | `PH7_PRIVATE int ph7_hashmap_in_array(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   32678 | 1939 | `PH7_PRIVATE int ph7_hashmap_in_array(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |       5 | 1940 | `{` |
 |       - | 1941 | `	ph7_value *pNeedle;` |
 |       - | 1942 | `	int bStrict;` |
 |       - | 1943 | `	int rc;` |
-|   32659 | 1944 | `	if( nArg < 2 ){` |
+|   32683 | 1944 | `	if( nArg < 2 ){` |
 |       - | 1945 | `		/* Missing argument,return FALSE */` |
 |     ! 0 | 1946 | `		ph7_result_bool(pCtx,0);` |
 |     ! 0 | 1947 | `		return PH7_OK;` |
 |       - | 1948 | `	}` |
-|   32659 | 1949 | `	pNeedle = apArg[0];` |
-|   32659 | 1950 | `	bStrict = 0;` |
-|   32659 | 1951 | `	if( nArg > 2 ){` |
+|   32683 | 1949 | `	pNeedle = apArg[0];` |
+|   32683 | 1950 | `	bStrict = 0;` |
+|   32683 | 1951 | `	if( nArg > 2 ){` |
 |      70 | 1952 | `		bStrict = ph7_value_to_bool(apArg[2]);` |
 |      34 | 1953 | `	}` |
-|   32659 | 1954 | `	if( !ph7_value_is_array(apArg[1]) ){` |
+|   32683 | 1954 | `	if( !ph7_value_is_array(apArg[1]) ){` |
 |       - | 1955 | `		/* haystack must be an array,perform a standard comparison */` |
 |     ! 0 | 1956 | `		rc = ph7_value_compare(pNeedle,apArg[1],bStrict);` |
 |       - | 1957 | `		/* Set the comparison result */` |
@@ -1969,11 +1969,11 @@ Coverage: 2444/2843 lines (85.97%)
 |     ! 0 | 1959 | `		return PH7_OK;` |
 |       - | 1960 | `	}` |
 |       - | 1961 | `	/* Perform the lookup */` |
-|   32659 | 1962 | `	rc = HashmapFindValue((ph7_hashmap *)apArg[1]->x.pOther,pNeedle,0,bStrict);` |
+|   32683 | 1962 | `	rc = HashmapFindValue((ph7_hashmap *)apArg[1]->x.pOther,pNeedle,0,bStrict);` |
 |       - | 1963 | `	/* Lookup result */` |
-|   32659 | 1964 | `	ph7_result_bool(pCtx,rc == SXRET_OK);` |
-|   32659 | 1965 | `	return PH7_OK;` |
-|   16332 | 1966 | `}` |
+|   32683 | 1964 | `	ph7_result_bool(pCtx,rc == SXRET_OK);` |
+|   32683 | 1965 | `	return PH7_OK;` |
+|   16344 | 1966 | `}` |
 |       - | 1967 | `/*` |
 |       - | 1968 | ` * value array_search(value $needle,array $haystack[,bool $strict = false ])` |
 |       - | 1969 | ` *  Searches the array for a given value and returns the corresponding key if successful.` |
@@ -4103,9 +4103,9 @@ Coverage: 2444/2843 lines (85.97%)
 |       - | 4093 | `		 * Note that we perform a linear lookup here (later version must change this)` |
 |       - | 4094 | `		 */` |
 |       9 | 4095 | `		if( nEntry > pMap->nEntry / 2 ){` |
-|       5 | 4096 | `			pNode = pMap->pLast;` |
-|       5 | 4097 | `			nEntry = pMap->nEntry - nEntry;` |
-|       5 | 4098 | `			if( nEntry > 1 ){` |
+|       3 | 4096 | `			pNode = pMap->pLast;` |
+|       3 | 4097 | `			nEntry = pMap->nEntry - nEntry;` |
+|       3 | 4098 | `			if( nEntry > 1 ){` |
 |     ! 0 | 4099 | `				for(;;){` |
 |     ! 0 | 4100 | `					if( nEntry == 0 ){` |
 |     ! 0 | 4101 | `						break;` |
@@ -4116,10 +4116,10 @@ Coverage: 2444/2843 lines (85.97%)
 |     ! 0 | 4106 | `				}` |
 |     ! 0 | 4107 | `			}` |
 |       2 | 4108 | `		}else{` |
-|       5 | 4109 | `			pNode = pMap->pFirst;` |
-|       5 | 4110 | `			for(;;){` |
-|       7 | 4111 | `				if( nEntry == 0 ){` |
-|       5 | 4112 | `					break;` |
+|       7 | 4109 | `			pNode = pMap->pFirst;` |
+|       4 | 4110 | `			for(;;){` |
+|       9 | 4111 | `				if( nEntry == 0 ){` |
+|       7 | 4112 | `					break;` |
 |       - | 4113 | `				}` |
 |       - | 4114 | `				/* Point to the next entry */` |
 |       3 | 4115 | `				pNode = pNode->pPrev; /* Reverse link */` |
