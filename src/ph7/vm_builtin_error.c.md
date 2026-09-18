@@ -185,12 +185,12 @@ Coverage: 236/295 lines (80.00%)
 |    - |  175 | ` *   parameter is given.` |
 |    - |  176 | ` */` |
 |   96 |  177 | `PH7_PRIVATE int vm_builtin_error_reporting(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    3 |  178 | `{` |
-|   99 |  179 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    4 |  178 | `{` |
+|  100 |  179 | `	ph7_vm *pVm = pCtx->pVm;` |
 |    - |  180 | `	int nOld;` |
 |    - |  181 | `	/* Extract the old reporting level */` |
-|   99 |  182 | `	nOld = pVm->bErrReport ? (int)pVm->iErrMask : 0;` |
-|   99 |  183 | `	if( pVm->nErrSuppress > 0 ){` |
+|  100 |  182 | `	nOld = pVm->bErrReport ? (int)pVm->iErrMask : 0;` |
+|  100 |  183 | `	if( pVm->nErrSuppress > 0 ){` |
 |    - |  184 | `		/* Inside the '@' silence operator php reports the level masked down to` |
 |    - |  185 | `		 * the errors '@' cannot suppress: E_ERROR\|E_PARSE\|E_CORE_ERROR\|` |
 |    - |  186 | `		 * E_COMPILE_ERROR\|E_USER_ERROR\|E_RECOVERABLE_ERROR (== 4437). A custom` |
@@ -198,17 +198,17 @@ Coverage: 236/295 lines (80.00%)
 |    - |  188 | `		 * '@', so a suppressed warning must fall outside the returned mask. */` |
 |   18 |  189 | `		nOld &= 4437;` |
 |    8 |  190 | `	}` |
-|   99 |  191 | `	if( nArg > 0 ){` |
+|  100 |  191 | `	if( nArg > 0 ){` |
 |    - |  192 | `		int nNew;` |
 |    - |  193 | `		/* Keep the LEVEL, not just an on/off bit: php masks per-severity. */` |
-|   33 |  194 | `		nNew = ph7_value_to_int(apArg[0]);` |
-|   33 |  195 | `		pVm->iErrMask = (sxi32)nNew;` |
-|   33 |  196 | `		pVm->bErrReport = nNew != 0;` |
+|   34 |  194 | `		nNew = ph7_value_to_int(apArg[0]);` |
+|   34 |  195 | `		pVm->iErrMask = (sxi32)nNew;` |
+|   34 |  196 | `		pVm->bErrReport = nNew != 0;` |
 |   15 |  197 | `	}` |
 |    - |  198 | `	/* Return the old level */` |
-|   99 |  199 | `	ph7_result_int(pCtx,nOld);` |
-|   99 |  200 | `	return PH7_OK;` |
-|    3 |  201 | `}` |
+|  100 |  199 | `	ph7_result_int(pCtx,nOld);` |
+|  100 |  200 | `	return PH7_OK;` |
+|    4 |  201 | `}` |
 |    - |  202 | `/*` |
 |    - |  203 | ` * bool error_log(string $message[,int $message_type = 0 [,string $destination[,string $extra_headers]]])` |
 |    - |  204 | ` *  Send an error message somewhere.` |
@@ -323,27 +323,27 @@ Coverage: 236/295 lines (80.00%)
 |    - |  313 | ` *  resetting the handler to its default state, TRUE is returned.` |
 |    - |  314 | ` */` |
 |    6 |  315 | `PH7_PRIVATE int vm_builtin_set_exception_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    2 |  316 | `{` |
-|    8 |  317 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    3 |  316 | `{` |
+|    9 |  317 | `	ph7_vm *pVm = pCtx->pVm;` |
 |    - |  318 | `	ph7_value *pOld,*pNew;` |
 |    - |  319 | `	/* Point to the old and the new handler */` |
-|    8 |  320 | `	pOld = &pVm->aExceptionCB[0];` |
-|    8 |  321 | `	pNew = &pVm->aExceptionCB[1];` |
+|    9 |  320 | `	pOld = &pVm->aExceptionCB[0];` |
+|    9 |  321 | `	pNew = &pVm->aExceptionCB[1];` |
 |    - |  322 | `	/* Return the old handler */` |
-|    8 |  323 | `	ph7_result_value(pCtx,pOld); /* Will make it's own copy */` |
-|    8 |  324 | `	if( nArg > 0 ){` |
-|    8 |  325 | `		if( !ph7_value_is_callable(apArg[0])) {` |
+|    9 |  323 | `	ph7_result_value(pCtx,pOld); /* Will make it's own copy */` |
+|    9 |  324 | `	if( nArg > 0 ){` |
+|    9 |  325 | `		if( !ph7_value_is_callable(apArg[0])) {` |
 |    - |  326 | `			/* Not callable,return TRUE (As requested by the PHP specification) */` |
 |  ! 0 |  327 | `			PH7_MemObjRelease(pNew);` |
 |  ! 0 |  328 | `			ph7_result_bool(pCtx,1);` |
 |  ! 0 |  329 | `		}else{` |
-|    8 |  330 | `			PH7_MemObjStore(pNew,pOld);` |
+|    9 |  330 | `			PH7_MemObjStore(pNew,pOld);` |
 |    - |  331 | `			/* Install the new handler */` |
-|    8 |  332 | `			PH7_MemObjStore(apArg[0],pNew);` |
+|    9 |  332 | `			PH7_MemObjStore(apArg[0],pNew);` |
 |    - |  333 | `		}` |
 |    3 |  334 | `	}` |
-|    8 |  335 | `	return PH7_OK;` |
-|    2 |  336 | `}` |
+|    9 |  335 | `	return PH7_OK;` |
+|    3 |  336 | `}` |
 |    - |  337 | `/*` |
 |    - |  338 | ` * bool restore_error_handler(void)` |
 |    - |  339 | ` *  THIS FUNCTION IS A NO-OP IN THE CURRENT RELEASE OF THE PH7 ENGINE.` |
@@ -353,25 +353,25 @@ Coverage: 236/295 lines (80.00%)
 |    - |  343 | ` *  Always TRUE.` |
 |    - |  344 | ` */` |
 |   56 |  345 | `PH7_PRIVATE int vm_builtin_restore_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    4 |  346 | `{` |
-|   60 |  347 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    5 |  346 | `{` |
+|   61 |  347 | `	ph7_vm *pVm = pCtx->pVm;` |
 |    - |  348 | `	ph7_value *pOld,*pNew;` |
 |    - |  349 | `	/* Point to the old and the new handler */` |
-|   60 |  350 | `	pOld = &pVm->aErrCB[0];` |
-|   60 |  351 | `	pNew = &pVm->aErrCB[1];` |
+|   61 |  350 | `	pOld = &pVm->aErrCB[0];` |
+|   61 |  351 | `	pNew = &pVm->aErrCB[1];` |
 |   28 |  352 | `	SXUNUSED(nArg); /* cc warning */` |
 |   28 |  353 | `	SXUNUSED(apArg);` |
-|   60 |  354 | `	if( pOld->iFlags & MEMOBJ_NULL ){` |
+|   61 |  354 | `	if( pOld->iFlags & MEMOBJ_NULL ){` |
 |    - |  355 | `		/* Nothing SAVED underneath — but php pops the handler stack regardless, so the` |
 |    - |  356 | `		 * ACTIVE handler must still go (reporting reverts to the engine's own). Returning` |
 |    - |  357 | `		 * early here left it installed, making restore_error_handler() a no-op after a` |
 |    - |  358 | `		 * single set_error_handler().` |
 |    - |  359 | `		 * php answers TRUE either way: the return value says "the call is valid", not` |
 |    - |  360 | `		 * "a handler was in place". */` |
-|   17 |  361 | `		PH7_MemObjRelease(pNew);` |
-|   17 |  362 | `		MemObjSetType(pNew,MEMOBJ_NULL);` |
-|   17 |  363 | `		ph7_result_bool(pCtx,1);` |
-|   17 |  364 | `		return PH7_OK;` |
+|   18 |  361 | `		PH7_MemObjRelease(pNew);` |
+|   18 |  362 | `		MemObjSetType(pNew,MEMOBJ_NULL);` |
+|   18 |  363 | `		ph7_result_bool(pCtx,1);` |
+|   18 |  364 | `		return PH7_OK;` |
 |    - |  365 | `	}` |
 |    - |  366 | `	/* Copy the old callback */` |
 |   43 |  367 | `	PH7_MemObjStore(pOld,pNew);` |
@@ -379,7 +379,7 @@ Coverage: 236/295 lines (80.00%)
 |    - |  369 | `	/* Return TRUE */` |
 |   43 |  370 | `	ph7_result_bool(pCtx,1);` |
 |   43 |  371 | `	return PH7_OK;` |
-|   32 |  372 | `}` |
+|   33 |  372 | `}` |
 |    - |  373 | `/*` |
 |    - |  374 | ` * value set_error_handler(callable $error_handler)` |
 |    - |  375 | ` *  +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++` |
@@ -414,27 +414,27 @@ Coverage: 236/295 lines (80.00%)
 |    - |  404 | ` *  resetting the handler to its default state, TRUE is returned.` |
 |    - |  405 | ` */` |
 | 9716 |  406 | `PH7_PRIVATE int vm_builtin_set_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    4 |  407 | `{` |
-| 9720 |  408 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    5 |  407 | `{` |
+| 9721 |  408 | `	ph7_vm *pVm = pCtx->pVm;` |
 |    - |  409 | `	ph7_value *pOld,*pNew;` |
 |    - |  410 | `	/* Point to the old and the new handler */` |
-| 9720 |  411 | `	pOld = &pVm->aErrCB[0];` |
-| 9720 |  412 | `	pNew = &pVm->aErrCB[1];` |
+| 9721 |  411 | `	pOld = &pVm->aErrCB[0];` |
+| 9721 |  412 | `	pNew = &pVm->aErrCB[1];` |
 |    - |  413 | `	/* Return the old handler */` |
-| 9720 |  414 | `	ph7_result_value(pCtx,pOld); /* Will make it's own copy */` |
-| 9720 |  415 | `	if( nArg > 0 ){` |
-| 9720 |  416 | `		if( !ph7_value_is_callable(apArg[0])) {` |
+| 9721 |  414 | `	ph7_result_value(pCtx,pOld); /* Will make it's own copy */` |
+| 9721 |  415 | `	if( nArg > 0 ){` |
+| 9721 |  416 | `		if( !ph7_value_is_callable(apArg[0])) {` |
 |    - |  417 | `			/* Not callable,return TRUE (As requested by the PHP specification) */` |
 | 4829 |  418 | `			PH7_MemObjRelease(pNew);` |
 | 4829 |  419 | `			ph7_result_bool(pCtx,1);` |
 | 2415 |  420 | `		}else{` |
-| 4892 |  421 | `			PH7_MemObjStore(pNew,pOld);` |
+| 4893 |  421 | `			PH7_MemObjStore(pNew,pOld);` |
 |    - |  422 | `			/* Install the new handler */` |
-| 4892 |  423 | `			PH7_MemObjStore(apArg[0],pNew);` |
+| 4893 |  423 | `			PH7_MemObjStore(apArg[0],pNew);` |
 |    - |  424 | `		}` |
 | 4858 |  425 | `	}` |
-| 9720 |  426 | `	return PH7_OK;` |
-|    4 |  427 | `}` |
+| 9721 |  426 | `	return PH7_OK;` |
+|    5 |  427 | `}` |
 |    - |  428 | `/*` |
 |    - |  429 | ` * ?callable get_error_handler(void)     -- php 8.5` |
 |    - |  430 | ` * ?callable get_exception_handler(void) -- php 8.5` |

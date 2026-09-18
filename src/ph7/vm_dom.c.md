@@ -1278,7 +1278,7 @@ Coverage: 656/762 lines (86.09%)
 |      - | 1268 | ` * Called from PH7_VmInit inside the bCompilingBuiltin window, after` |
 |      - | 1269 | ` * PH7_VmInstallLibxml (the capture plumbing must exist).` |
 |      - | 1270 | ` */` |
-|   3864 | 1271 | `PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)` |
+|   3866 | 1271 | `PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)` |
 |      5 | 1272 | `{` |
 |      - | 1273 | `	static const struct {` |
 |      - | 1274 | `		const char *zName;` |
@@ -1325,17 +1325,17 @@ Coverage: 656/762 lines (86.09%)
 |      - | 1315 | `	};` |
 |      - | 1316 | `	sxu32 n;` |
 |      - | 1317 | `	sxi32 rc;` |
-| 150701 | 1318 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
-| 146837 | 1319 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-|  73421 | 1320 | `	}` |
-|   3869 | 1321 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm),zDomLib1,sizeof(zDomLib1)-1);` |
-|   3869 | 1322 | `	if( rc == SXRET_OK ){` |
-|   3869 | 1323 | `		rc = PH7_VmEvalBuiltinChunk(&(*pVm),zDomLib2,sizeof(zDomLib2)-1);` |
-|   1932 | 1324 | `	}` |
-|   3869 | 1325 | `	if( rc == SXRET_OK ){` |
-|   3869 | 1326 | `		rc = PH7_VmEvalBuiltinChunk(&(*pVm),zDomLib3,sizeof(zDomLib3)-1);` |
-|   1932 | 1327 | `	}` |
-|   3869 | 1328 | `	return rc;` |
+| 150779 | 1318 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
+| 146913 | 1319 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+|  73459 | 1320 | `	}` |
+|   3871 | 1321 | `	rc = PH7_VmEvalBuiltinChunk(&(*pVm),zDomLib1,sizeof(zDomLib1)-1);` |
+|   3871 | 1322 | `	if( rc == SXRET_OK ){` |
+|   3871 | 1323 | `		rc = PH7_VmEvalBuiltinChunk(&(*pVm),zDomLib2,sizeof(zDomLib2)-1);` |
+|   1933 | 1324 | `	}` |
+|   3871 | 1325 | `	if( rc == SXRET_OK ){` |
+|   3871 | 1326 | `		rc = PH7_VmEvalBuiltinChunk(&(*pVm),zDomLib3,sizeof(zDomLib3)-1);` |
+|   1933 | 1327 | `	}` |
+|   3871 | 1328 | `	return rc;` |
 |      5 | 1329 | `}` |
 |      - | 1330 |  |
 |      - | 1331 | `#else` |

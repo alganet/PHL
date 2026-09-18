@@ -369,7 +369,7 @@ Coverage: 588/710 lines (82.82%)
 |    5 |  359 | `	dwAttr = GetFileAttributesW((LPCWSTR)pConverted);` |
 |    5 |  360 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
 |    5 |  361 | `	if( dwAttr == INVALID_FILE_ATTRIBUTES ){` |
-|    4 |  362 | `		return -1;` |
+|    5 |  362 | `		return -1;` |
 |    - |  363 | `	}` |
 |    5 |  364 | `	return PH7_OK;` |
 |    5 |  365 | `}` |
@@ -816,13 +816,13 @@ Coverage: 588/710 lines (82.82%)
 |    5 |  806 | `}` |
 |    - |  807 | `/* unsigned int (*xProcessId)(void) */` |
 |    - |  808 | `static unsigned int WinVfs_ProcessId(void)` |
-|    3 |  809 | `{` |
-|    3 |  810 | `	DWORD nID = 0;` |
+|    2 |  809 | `{` |
+|    2 |  810 | `	DWORD nID = 0;` |
 |    - |  811 | `#ifndef __MINGW32__` |
-|    3 |  812 | `	nID = GetProcessId(GetCurrentProcess());` |
+|    2 |  812 | `	nID = GetProcessId(GetCurrentProcess());` |
 |    - |  813 | `#endif /* __MINGW32__ */` |
-|    3 |  814 | `	return (unsigned int)nID;` |
-|    3 |  815 | `}` |
+|    2 |  814 | `	return (unsigned int)nID;` |
+|    2 |  815 | `}` |
 |    - |  816 | `/* void (*xUsername)(ph7_context *) */` |
 |    - |  817 | `static void WinVfs_Username(ph7_context *pCtx)` |
 |    1 |  818 | `{` |

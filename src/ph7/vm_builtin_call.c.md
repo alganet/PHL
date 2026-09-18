@@ -40,24 +40,24 @@ Coverage: 544/623 lines (87.32%)
 |     - |   30 | ` * string key, so they are exactly its HASHMAP_BLOB_NODE elements. Returns 0 when` |
 |     - |   31 | ` * the function has no variadic formal or no named args reached it.` |
 |     - |   32 | ` */` |
-|  1120 |   33 | `static sxu32 VmCountNamedVariadicArgs(ph7_vm *pVm, VmFrame *pFrame)` |
+|  1122 |   33 | `static sxu32 VmCountNamedVariadicArgs(ph7_vm *pVm, VmFrame *pFrame)` |
 |     5 |   34 | `{` |
-|  1125 |   35 | `	ph7_vm_func *pVmFunc = (ph7_vm_func *)pFrame->pUserData;` |
+|  1127 |   35 | `	ph7_vm_func *pVmFunc = (ph7_vm_func *)pFrame->pUserData;` |
 |     - |   36 | `	ph7_vm_func_arg *aFormal;` |
 |     - |   37 | `	sxu32 nFormal;` |
 |     - |   38 | `	VmSlot *aSlot;` |
 |     - |   39 | `	ph7_value *pObj;` |
-|  1125 |   40 | `	sxu32 nNamed = 0;` |
-|  1125 |   41 | `	if( pVmFunc == 0 ){` |
+|  1127 |   40 | `	sxu32 nNamed = 0;` |
+|  1127 |   41 | `	if( pVmFunc == 0 ){` |
 |   ! 0 |   42 | `		return 0;` |
 |     - |   43 | `	}` |
-|  1125 |   44 | `	nFormal = SySetUsed(&pVmFunc->aArgs);` |
-|  1125 |   45 | `	if( nFormal == 0 ){` |
+|  1127 |   44 | `	nFormal = SySetUsed(&pVmFunc->aArgs);` |
+|  1127 |   45 | `	if( nFormal == 0 ){` |
 |    20 |   46 | `		return 0;` |
 |     - |   47 | `	}` |
-|  1107 |   48 | `	aFormal = (ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs);` |
-|  1107 |   49 | `	if( (aFormal[nFormal-1].iFlags & VM_FUNC_ARG_VARIADIC) == 0 ){` |
-|  1101 |   50 | `		return 0;` |
+|  1109 |   48 | `	aFormal = (ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs);` |
+|  1109 |   49 | `	if( (aFormal[nFormal-1].iFlags & VM_FUNC_ARG_VARIADIC) == 0 ){` |
+|  1103 |   50 | `		return 0;` |
 |     - |   51 | `	}` |
 |     7 |   52 | `	if( nFormal - 1 >= SySetUsed(&pFrame->sArg) ){` |
 |   ! 0 |   53 | `		return 0;` |
@@ -76,17 +76,17 @@ Coverage: 544/623 lines (87.32%)
 |     8 |   66 | `		}` |
 |     3 |   67 | `	}` |
 |     7 |   68 | `	return nNamed;` |
-|   565 |   69 | `}` |
-|  1122 |   70 | `PH7_PRIVATE int vm_builtin_func_num_args(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   566 |   69 | `}` |
+|  1124 |   70 | `PH7_PRIVATE int vm_builtin_func_num_args(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     5 |   71 | `{` |
 |     - |   72 | `	VmFrame *pFrame;` |
 |     - |   73 | `	ph7_vm *pVm;` |
 |     - |   74 | `	/* Point to the target VM */` |
-|  1127 |   75 | `	pVm = pCtx->pVm;` |
+|  1129 |   75 | `	pVm = pCtx->pVm;` |
 |     - |   76 | `	/* Current frame */` |
-|  1127 |   77 | `	pFrame = pVm->pFrame;` |
-|  1127 |   78 | `	pFrame = VmSkipExceptionFrames(pFrame);` |
-|  1127 |   79 | `	if( pFrame->pParent == 0 ){` |
+|  1129 |   77 | `	pFrame = pVm->pFrame;` |
+|  1129 |   78 | `	pFrame = VmSkipExceptionFrames(pFrame);` |
+|  1129 |   79 | `	if( pFrame->pParent == 0 ){` |
 |     1 |   80 | `		SXUNUSED(nArg);` |
 |     1 |   81 | `		SXUNUSED(apArg);` |
 |     - |   82 | `		/* php raises a catchable Error here. Returning -1 was a silent wrong` |
@@ -101,14 +101,14 @@ Coverage: 544/623 lines (87.32%)
 |     - |   91 | ``	 * `function f($a,$b=2){}; f(1)` — 2 where php says 1). NAMED arguments`` |
 |     - |   92 | `	 * absorbed into a variadic are NOT counted by php (they are not positional),` |
 |     - |   93 | `	 * so discount them. */` |
-|  1125 |   94 | `	if( pFrame->nActualArgs >= 0 ){` |
-|  1125 |   95 | `		ph7_result_int(pCtx,pFrame->nActualArgs - (int)VmCountNamedVariadicArgs(pVm,pFrame));` |
-|  1125 |   96 | `		return SXRET_OK;` |
+|  1127 |   94 | `	if( pFrame->nActualArgs >= 0 ){` |
+|  1127 |   95 | `		ph7_result_int(pCtx,pFrame->nActualArgs - (int)VmCountNamedVariadicArgs(pVm,pFrame));` |
+|  1127 |   96 | `		return SXRET_OK;` |
 |     - |   97 | `	}` |
 |   ! 0 |   98 | `	nArg = (int)SySetUsed(&pFrame->sArg);` |
 |   ! 0 |   99 | `	ph7_result_int(pCtx,nArg);` |
 |   ! 0 |  100 | `	return SXRET_OK;` |
-|   566 |  101 | `}` |
+|   567 |  101 | `}` |
 |     - |  102 | `/*` |
 |     - |  103 | ` * value func_get_arg(int $arg_num)` |
 |     - |  104 | ` *   Return an item from the argument list.` |
@@ -340,7 +340,7 @@ Coverage: 544/623 lines (87.32%)
 |   517 |  330 | `	if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 \|\|` |
 |   320 |  331 | `		SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nLen) != 0 ){` |
 |     - |  332 | `			/* Function is defined */` |
-|    55 |  333 | `			res = 1;` |
+|    54 |  333 | `			res = 1;` |
 |    25 |  334 | `	}` |
 |   357 |  335 | `	ph7_result_bool(pCtx,res);` |
 |   357 |  336 | `	return SXRET_OK;` |
@@ -350,10 +350,10 @@ Coverage: 544/623 lines (87.32%)
 |     - |  340 | ` * [i.e: Whether it is callable or not].` |
 |     - |  341 | ` * Return TRUE if callable.FALSE otherwise.` |
 |     - |  342 | ` */` |
-| 60918 |  343 | `PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)` |
+| 60926 |  343 | `PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)` |
 |     5 |  344 | `{` |
-| 60923 |  345 | `	int res = 0;` |
-| 60923 |  346 | `	if( pValue->iFlags & MEMOBJ_OBJ ){` |
+| 60931 |  345 | `	int res = 0;` |
+| 60931 |  346 | `	if( pValue->iFlags & MEMOBJ_OBJ ){` |
 |     - |  347 | `		/* PHP semantics: an object is callable iff its class declares __invoke` |
 |     - |  348 | `		 * (inherited methods count). The CallInvoke flag is unused — it` |
 |     - |  349 | `		 * formerly invoked __invoke as a runtime predicate, which is not` |
@@ -366,7 +366,7 @@ Coverage: 544/623 lines (87.32%)
 |    41 |  356 | `			res = 1;` |
 |    24 |  357 | `		}` |
 |   281 |  358 | `		(void)CallInvoke;` |
-| 60642 |  359 | `	}else if( pValue->iFlags & MEMOBJ_HASHMAP ){` |
+| 60650 |  359 | `	}else if( pValue->iFlags & MEMOBJ_HASHMAP ){` |
 |    77 |  360 | `		ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;` |
 |    77 |  361 | `		if( pMap->nEntry == 2 ){` |
 |     - |  362 | `			ph7_class *pClass;` |
@@ -390,7 +390,7 @@ Coverage: 544/623 lines (87.32%)
 |    25 |  380 | `				}` |
 |    27 |  381 | `			}` |
 |    32 |  382 | `		}` |
-| 60325 |  383 | `	}else if( pValue->iFlags & MEMOBJ_STRING ){` |
+| 60333 |  383 | `	}else if( pValue->iFlags & MEMOBJ_STRING ){` |
 |     - |  384 | `		const char *zName;` |
 |     - |  385 | `		int nLen;` |
 |     - |  386 | `		const char *zFn;` |
@@ -425,7 +425,7 @@ Coverage: 544/623 lines (87.32%)
 |   242 |  415 | `			}` |
 |    27 |  416 | `		}` |
 |  2531 |  417 | `	}` |
-| 60923 |  418 | `	return res;` |
+| 60931 |  418 | `	return res;` |
 |     5 |  419 | `}` |
 |     - |  420 | `/*` |
 |     - |  421 | ` * bool is_callable(callable $name[,bool $syntax_only = false])` |
@@ -738,7 +738,7 @@ Coverage: 544/623 lines (87.32%)
 | 14540 |  728 | `PH7_PRIVATE void VmBoundaryPark(ph7_vm *pVm,sxi32 rc)` |
 |     5 |  729 | `{` |
 | 14545 |  730 | `	if( (rc == PH7_EXCEPTION \|\| rc == PH7_ABORT) && pVm->nBoundaryRc != PH7_ABORT ){` |
-|   376 |  731 | `		pVm->nBoundaryRc = rc;` |
+|   377 |  731 | `		pVm->nBoundaryRc = rc;` |
 |   186 |  732 | `	}` |
 | 14545 |  733 | `}` |
 |     - |  734 | `/*` |
