@@ -581,8 +581,10 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		SyStringInitFromBuf(&sEnv.sName,zThisDup,sizeof("this")-1);
 		SySetPut(&pFunc->aClosureEnv,(const void *)&sEnv);
 	}
-	/* Arrow functions are always closures */
-	pFunc->iFlags |= VM_FUNC_CLOSURE;
+	/* Arrow functions are always closures; the ARROW mark tells OP_LOAD_CLOSURE
+	 * these captures are implicit (auto-scanned) so an undefined one stays silent
+	 * at creation — php only warns when the body reads it. */
+	pFunc->iFlags |= VM_FUNC_CLOSURE | VM_FUNC_ARROW;
 	/* Compile the body expression as an implicit return */
 	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_PROTECTED|GEN_BLOCK_FUNC,
 		PH7_VmInstrLength(pGen->pVm),pFunc,&pBlock);

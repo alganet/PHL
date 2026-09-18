@@ -622,6 +622,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadClosure(ph7_vm *pVm,VmExecState *pState,VmInstr *
 			pEnv = &aEnv[n];
 			sEnv.sName  = pEnv->sName;
 			sEnv.iFlags = pEnv->iFlags;
+			sEnv.nLine = pEnv->nLine;
 			sEnv.nIdx = SXU32_HIGH;
 			PH7_MemObjInit(pVm,&sEnv.sValue);
 			if( (sEnv.iFlags & (VM_FUNC_ARG_BY_REF|VM_FUNC_ARG_IGNORE)) == VM_FUNC_ARG_BY_REF
@@ -644,6 +645,26 @@ PH7_PRIVATE VmOpRc VmExecOpLoadClosure(ph7_vm *pVm,VmExecState *pState,VmInstr *
 				if( pValue ){
 					/* Copy imported value */
 					PH7_MemObjStore(pValue,&sEnv.sValue);
+				}else if( (pFunc->iFlags & VM_FUNC_ARROW) == 0
+					&& (sEnv.iFlags & (VM_FUNC_ARG_BY_REF|VM_FUNC_ARG_IGNORE)) == 0
+					&& !(SyStringLength(&sEnv.sName) == sizeof("this")-1
+						&& SyMemcmp(SyStringData(&sEnv.sName),"this",sizeof("this")-1) == 0) ){
+					/* php reads a by-value `use ($q)` capture AT CLOSURE CREATION and
+					 * warns when the variable is undefined there (the by-ref form
+					 * `use (&$q)` above stays silent — it creates the binding). The
+					 * auto-injected $this (VM_FUNC_ARG_IGNORE) never warns, and an
+					 * arrow function's implicit captures (VM_FUNC_ARROW) warn only
+					 * when the body reads them, not here. The capture still proceeds
+					 * as NULL, as php does. php attributes the warning to the
+					 * capture's own line (which can differ from the OP_LOAD_CLOSURE
+					 * instruction line when the use-clause wraps), so borrow the
+					 * recorded line for the emission and restore it. */
+					sxu32 nSavedLine = pVm->nCurLine;
+					if( sEnv.nLine ){
+						pVm->nCurLine = sEnv.nLine;
+					}
+					VmErrorFormat(pVm,PH7_CTX_WARNING,"Undefined variable $%z",&sEnv.sName);
+					pVm->nCurLine = nSavedLine;
 				}
 			}
 			/* Insert the imported variable */

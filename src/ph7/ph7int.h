@@ -784,6 +784,10 @@ struct ph7_vm_func_closure_env
 {
 	SyString sName;   /* Imported variable name */
 	int iFlags;       /* Control flags */
+	sxu32 nLine;      /* Source line of this `use ($x)` capture (0 = unknown/implicit):
+					   * php reports an undefined by-value capture's E_WARNING at the
+					   * variable's own line, which can differ from the closure keyword's
+					   * line when the `use` clause wraps. Set only for explicit captures. */
 	ph7_value sValue; /* Imported variable value */
 	sxu32 nIdx;       /* Reference to the bounded variable if passed by reference
 					   *[Example:
@@ -819,7 +823,12 @@ struct ph7_vm_func_closure_env
 #define VM_FUNC_BOUND        0x40000 /* Bound by an UNCONDITIONAL top-level declaration; a second such
                                       * binding of the same name fatals ("Cannot redeclare function ..."),
                                       * matching PHP. Conditional declarations are not marked. */
-/* next free bit: 0x80000 */
+#define VM_FUNC_ARROW        0x80000 /* Arrow function (`fn()=>expr`): its aClosureEnv captures are ALL
+                                      * implicit (auto-scanned from the body), never an explicit `use`
+                                      * clause. php does not warn about an undefined auto-capture at
+                                      * closure creation — the read fires the warning inside the body —
+                                      * so the OP_LOAD_CLOSURE undefined-capture warning is suppressed. */
+/* next free bit: 0x100000 */
 /*
  * Each user defined function is parsed out and stored in an instance
  * of the following structure.

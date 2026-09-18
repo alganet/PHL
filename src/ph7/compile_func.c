@@ -1618,6 +1618,7 @@ PH7_PRIVATE sxi32 GenStateCompileFunc(
 							/* Zero the structure */
 							SyZero(&sEnv,sizeof(ph7_vm_func_closure_env));
 							sEnv.iFlags = iFlagsLocal;
+							sEnv.nLine = nLineLocal; /* the capture's own source line (php warns here) */
 							sEnv.nIdx = SXU32_HIGH;
 							PH7_MemObjInit(pGen->pVm,&sEnv.sValue);
 							SyStringInitFromBuf(&sEnv.sName,zDup,pNameLocal->nByte);
