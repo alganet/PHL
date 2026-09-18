@@ -1120,22 +1120,23 @@ PH7_PRIVATE int PH7_VmInstanceOf(ph7_class *pThis,ph7_class *pClass)
  */
 static int VmSubclassOf(ph7_class *pClass,ph7_class *pBase)
 {
-	SySet *pInterface = &pClass->aInterface;
 	SyHashEntry *pEntry;
 	SyString *pName;
-	sxi32 rc;
 	while( pClass ){
 		pName = &pClass->sName;
-		/* Query the derived hashtable */
+		/* Query the derived hashtable for a class-hierarchy match */
 		pEntry = SyHashGet(&pBase->hDerived,(const void *)pName->zString,pName->nByte);
 		if( pEntry ){
 			return TRUE;
 		}
+		/* Query the interfaces implemented by THIS class in the chain — so an
+		 * interface implemented by a PARENT (B extends A implements I) is found,
+		 * mirroring PH7_VmInstanceOf. The original code queried only the first
+		 * class's aInterface, missing inherited interfaces. */
+		if( VmQueryInterfaceSet(pBase,&pClass->aInterface) ){
+			return TRUE;
+		}
 		pClass = pClass->pBase;
-	}
-	rc = VmQueryInterfaceSet(pBase,pInterface);
-	if( rc ){
-		return TRUE;
 	}
 	/* Not a subclass */
 	return FALSE;
@@ -1224,28 +1225,44 @@ PH7_PRIVATE int vm_builtin_spl_object_hash(ph7_context *pCtx,int nArg,ph7_value 
 	return PH7_OK;
 }
 /*
- * bool is_subclass_of(object/string $object,object/string $class_name)
- *   Checks if the object has this class as one of its parents.
+ * bool is_subclass_of(object|string $object_or_class,string $class,bool $allow_string = true)
+ *   Checks if the object/class has this class (or interface) as one of its
+ *   parents — the subclass relation, which EXCLUDES the class itself.
  * Parameters
- *  object
- *   The tested object
- * class_name
- *  The class name
+ *  object_or_class
+ *   The tested object, or a class name string (honored unless allow_string is FALSE).
+ * class
+ *  The class or interface name to test against.
+ * allow_string
+ *  When FALSE, a string first argument is NOT resolved and the call returns FALSE.
+ *  php's default here is TRUE (unlike is_a's FALSE). The flag is IGNORED for an
+ *  object first argument (php).
  * Return
- *  This function returns TRUE if the object , belongs to a class
- *  which is a subclass of class_name, FALSE otherwise.
+ *  Returns TRUE if object_or_class is a proper subclass of class (or implements it
+ *  as an interface, directly or via a parent), FALSE otherwise.
  */
 PH7_PRIVATE int vm_builtin_is_subclass_of(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	int res = 0; /* Assume FALSE by default */
 	if( nArg > 1 ){
-		ph7_class *pClass,*pMain;
-		/* Extract the given classes */
-		pClass = PH7_VmExtractClassFromValue(pCtx->pVm,apArg[0]);
-		pMain = PH7_VmExtractClassFromValue(pCtx->pVm,apArg[1]);
-		if( pClass && pMain ){
-			/* Perform the query */
-			res = VmSubclassOf(pClass,pMain);
+		ph7_class *pClass = 0;
+		if( ph7_value_is_object(apArg[0]) ){
+			/* An object first argument: allow_string is ignored (php). */
+			pClass = ((ph7_class_instance *)apArg[0]->x.pOther)->pClass;
+		}else if( ph7_value_is_string(apArg[0]) && (nArg < 3 || ph7_value_to_bool(apArg[2])) ){
+			/* A string first argument is resolved as a class name UNLESS allow_string
+			 * (the 3rd argument) is explicitly FALSE — php's default here is TRUE.
+			 * Autoloads on a miss via PH7_VmExtractClassFromValue; a leading '\' is
+			 * anchored there. Sibling of is_a()'s string form (which defaults OFF). */
+			pClass = PH7_VmExtractClassFromValue(pCtx->pVm,apArg[0]);
+		}
+		if( pClass ){
+			/* Extract the target class */
+			ph7_class *pMain = PH7_VmExtractClassFromValue(pCtx->pVm,apArg[1]);
+			if( pMain ){
+				/* Perform the query — subclass-only (excludes self, unlike is_a). */
+				res = VmSubclassOf(pClass,pMain);
+			}
 		}
 	}
 	/* Query result */
