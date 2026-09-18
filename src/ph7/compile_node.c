@@ -598,7 +598,13 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	pSavedEnd = pGen->pEnd;
 	pGen->pIn = pBodyStart;
 	pGen->pEnd = pBodyEnd;
-	rc = PH7_CompileExpr(&(*pGen),0,0);
+	/* The body is an implicit `return <expr>`, which READS its operands. Compile
+	 * it read-only (like echo / string interpolation) so a lone undefined variable
+	 * — e.g. `fn()=>$z` for an auto-capture that was undefined at creation and so
+	 * never captured (see VmExecOpLoadClosure) — raises php's "Undefined variable"
+	 * warning at the read instead of being loaded quietly as a plain expression
+	 * statement (`$z;`, silent in both engines) would be. */
+	rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_RDONLY_LOAD,0);
 	if( rc == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
