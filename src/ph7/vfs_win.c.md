@@ -165,34 +165,34 @@ Coverage: 588/710 lines (82.82%)
 |    5 |  155 | `}` |
 |    - |  156 | `/* int (*xMkdir)(const char *,int,int) */` |
 |    - |  157 | `static int WinVfs_mkdir(const char *zPath,int mode,int recursive)` |
-|    4 |  158 | `{` |
+|    3 |  158 | `{` |
 |    - |  159 | `	void * pConverted;` |
 |    - |  160 | `	BOOL rc;` |
-|    4 |  161 | `	pConverted = convertUtf8Filename(zPath);` |
-|    4 |  162 | `	if( pConverted == 0 ){` |
+|    3 |  161 | `	pConverted = convertUtf8Filename(zPath);` |
+|    3 |  162 | `	if( pConverted == 0 ){` |
 |  ! 0 |  163 | `		return -1;` |
 |    - |  164 | `	}` |
-|    4 |  165 | `	mode= 0; /* MSVC warning */` |
-|    4 |  166 | `	recursive = 0;` |
-|    4 |  167 | `	rc = CreateDirectoryW((LPCWSTR)pConverted,0);` |
-|    4 |  168 | `	if( !rc ){ WinVfsMapErrno(); }` |
-|    4 |  169 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    4 |  170 | `	return rc ? PH7_OK : -1;` |
-|    4 |  171 | `}` |
+|    3 |  165 | `	mode= 0; /* MSVC warning */` |
+|    3 |  166 | `	recursive = 0;` |
+|    3 |  167 | `	rc = CreateDirectoryW((LPCWSTR)pConverted,0);` |
+|    3 |  168 | `	if( !rc ){ WinVfsMapErrno(); }` |
+|    3 |  169 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    3 |  170 | `	return rc ? PH7_OK : -1;` |
+|    3 |  171 | `}` |
 |    - |  172 | `/* int (*xRmdir)(const char *) */` |
 |    - |  173 | `static int WinVfs_rmdir(const char *zPath)` |
-|    3 |  174 | `{` |
+|    2 |  174 | `{` |
 |    - |  175 | `	void * pConverted;` |
 |    - |  176 | `	BOOL rc;` |
-|    3 |  177 | `	pConverted = convertUtf8Filename(zPath);` |
-|    3 |  178 | `	if( pConverted == 0 ){` |
+|    2 |  177 | `	pConverted = convertUtf8Filename(zPath);` |
+|    2 |  178 | `	if( pConverted == 0 ){` |
 |  ! 0 |  179 | `		return -1;` |
 |    - |  180 | `	}` |
-|    3 |  181 | `	rc = RemoveDirectoryW((LPCWSTR)pConverted);` |
-|    3 |  182 | `	if( !rc ){ WinVfsMapErrno(); }` |
-|    3 |  183 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    3 |  184 | `	return rc ? PH7_OK : -1;` |
-|    3 |  185 | `}` |
+|    2 |  181 | `	rc = RemoveDirectoryW((LPCWSTR)pConverted);` |
+|    2 |  182 | `	if( !rc ){ WinVfsMapErrno(); }` |
+|    2 |  183 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    2 |  184 | `	return rc ? PH7_OK : -1;` |
+|    2 |  185 | `}` |
 |    - |  186 | `/* int (*xIsdir)(const char *) */` |
 |    - |  187 | `static int WinVfs_isdir(const char *zPath)` |
 |    5 |  188 | `{` |
@@ -369,7 +369,7 @@ Coverage: 588/710 lines (82.82%)
 |    5 |  359 | `	dwAttr = GetFileAttributesW((LPCWSTR)pConverted);` |
 |    5 |  360 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
 |    5 |  361 | `	if( dwAttr == INVALID_FILE_ATTRIBUTES ){` |
-|    4 |  362 | `		return -1;` |
+|    5 |  362 | `		return -1;` |
 |    - |  363 | `	}` |
 |    5 |  364 | `	return PH7_OK;` |
 |    5 |  365 | `}` |
@@ -803,17 +803,17 @@ Coverage: 588/710 lines (82.82%)
 |    5 |  793 | `}` |
 |    - |  794 | `/* void (*xTempDir)(ph7_context *) */` |
 |    - |  795 | `static void WinVfs_TempDir(ph7_context *pCtx)` |
-|    5 |  796 | `{` |
+|    4 |  796 | `{` |
 |    - |  797 | `	CHAR zTemp[1024];` |
 |    - |  798 | `	DWORD n;` |
-|    5 |  799 | `	n = GetTempPathA(sizeof(zTemp),zTemp);` |
-|    5 |  800 | `	if( n < 1 ){` |
+|    4 |  799 | `	n = GetTempPathA(sizeof(zTemp),zTemp);` |
+|    4 |  800 | `	if( n < 1 ){` |
 |    - |  801 | `		/* Assume the default windows temp directory */` |
 |  ! 0 |  802 | `		ph7_result_string(pCtx,"C:\\Windows\\Temp",-1/*Compute length automatically*/);` |
 |  ! 0 |  803 | `	}else{` |
-|    5 |  804 | `		ph7_result_string(pCtx,zTemp,(int)n);` |
+|    4 |  804 | `		ph7_result_string(pCtx,zTemp,(int)n);` |
 |    - |  805 | `	}` |
-|    5 |  806 | `}` |
+|    4 |  806 | `}` |
 |    - |  807 | `/* unsigned int (*xProcessId)(void) */` |
 |    - |  808 | `static unsigned int WinVfs_ProcessId(void)` |
 |    3 |  809 | `{` |

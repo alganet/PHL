@@ -603,18 +603,18 @@ Coverage: 1023/1279 lines (79.98%)
 |       - |  593 | ` *` |
 |       - |  594 | ` * Returns non-zero iff pVal is a Closure instance.` |
 |       - |  595 | ` */` |
-| 1053576 |  596 | `PH7_PRIVATE int VmValueIsClosure(ph7_vm *pVm, ph7_value *pVal)` |
+| 1054046 |  596 | `PH7_PRIVATE int VmValueIsClosure(ph7_vm *pVm, ph7_value *pVal)` |
 |       5 |  597 | `{` |
 |       - |  598 | `	ph7_class_instance *pThis;` |
 |       - |  599 | `	/* Flag test first: a non-object call target (the hot common case) bails before any` |
 |       - |  600 | `	 * pVm dereference; pClosureClass==0 is a one-time pre-init concern, so it goes last. */` |
-| 1053581 |  601 | `	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 \|\| pVal->x.pOther == 0 \|\| pVm->pClosureClass == 0 ){` |
-| 1048867 |  602 | `		return 0;` |
+| 1054051 |  601 | `	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 \|\| pVal->x.pOther == 0 \|\| pVm->pClosureClass == 0 ){` |
+| 1049297 |  602 | `		return 0;` |
 |       - |  603 | `	}` |
-|    4719 |  604 | `	pThis = (ph7_class_instance *)pVal->x.pOther;` |
+|    4759 |  604 | `	pThis = (ph7_class_instance *)pVal->x.pOther;` |
 |       - |  605 | `	/* Closure is final, so an exact class match is correct (no subclasses possible). */` |
-|    4719 |  606 | `	return pThis->pClass == pVm->pClosureClass;` |
-|  527271 |  607 | `}` |
+|    4759 |  606 | `	return pThis->pClass == pVm->pClosureClass;` |
+|  527503 |  607 | `}` |
 |       - |  608 | `/*` |
 |       - |  609 | ` * Unwrap a Closure value into the simple callable the existing dispatch machinery` |
 |       - |  610 | ` * already understands, written into pOut (which the caller must have initialised):` |
@@ -625,24 +625,24 @@ Coverage: 1023/1279 lines (79.98%)
 |       - |  615 | ` * for an object first element and resolves the class for a class-name-string first element.` |
 |       - |  616 | ` * Returns SXRET_OK if pVal was a Closure (pOut filled), SXERR_NOTFOUND otherwise.` |
 |       - |  617 | ` */` |
-|    1956 |  618 | `PH7_PRIVATE sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut)` |
+|    1970 |  618 | `PH7_PRIVATE sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut)` |
 |       5 |  619 | `{` |
 |       - |  620 | `	ph7_class_instance *pThis;` |
 |       - |  621 | `	ph7_value *pFn;` |
 |       - |  622 | `	SyString sAttr;` |
-|    1961 |  623 | `	if( !VmValueIsClosure(pVm, pVal) ){` |
+|    1975 |  623 | `	if( !VmValueIsClosure(pVm, pVal) ){` |
 |     ! 0 |  624 | `		return SXERR_NOTFOUND;` |
 |       - |  625 | `	}` |
-|    1961 |  626 | `	pThis = (ph7_class_instance *)pVal->x.pOther;` |
-|    1961 |  627 | `	SyStringInitFromBuf(&sAttr, "__fn", 4);` |
-|    1961 |  628 | `	pFn = PH7_ClassInstanceFetchAttr(pThis, &sAttr);` |
-|    1961 |  629 | `	if( pFn == 0 \|\| (pFn->iFlags & MEMOBJ_STRING) == 0 \|\| SyBlobLength(&pFn->sBlob) == 0 ){` |
+|    1975 |  626 | `	pThis = (ph7_class_instance *)pVal->x.pOther;` |
+|    1975 |  627 | `	SyStringInitFromBuf(&sAttr, "__fn", 4);` |
+|    1975 |  628 | `	pFn = PH7_ClassInstanceFetchAttr(pThis, &sAttr);` |
+|    1975 |  629 | `	if( pFn == 0 \|\| (pFn->iFlags & MEMOBJ_STRING) == 0 \|\| SyBlobLength(&pFn->sBlob) == 0 ){` |
 |     ! 0 |  630 | `		return SXERR_NOTFOUND; /* malformed/uninitialised closure */` |
 |       - |  631 | `	}` |
 |       - |  632 | `	/* Only a bound/static first-class callable (rare) carries $__this/$__scope; the` |
 |       - |  633 | `	 * VM_INSTANCE_FCC_BOUND flag (set by VmCreateClosure) keeps the hot plain-closure path` |
 |       - |  634 | `	 * to the single $__fn lookup above instead of two extra attribute lookups per dispatch. */` |
-|    1961 |  635 | `	if( pThis->iFlags & VM_INSTANCE_FCC_BOUND ){` |
+|    1975 |  635 | `	if( pThis->iFlags & VM_INSTANCE_FCC_BOUND ){` |
 |       - |  636 | `		ph7_value *pBound, *pScope;` |
 |       - |  637 | `		int bBoundObj, bScope;` |
 |     107 |  638 | `		SyStringInitFromBuf(&sAttr, "__this", 6);` |
@@ -733,9 +733,9 @@ Coverage: 1023/1279 lines (79.98%)
 |      69 |  723 | `			return SXRET_OK;` |
 |       - |  724 | `		}` |
 |     ! 0 |  725 | `	}` |
-|    1855 |  726 | `	PH7_MemObjStringAppend(pOut, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));` |
-|    1855 |  727 | `	return SXRET_OK;` |
-|     983 |  728 | `}` |
+|    1869 |  726 | `	PH7_MemObjStringAppend(pOut, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));` |
+|    1869 |  727 | `	return SXRET_OK;` |
+|     990 |  728 | `}` |
 |       - |  729 | `/*` |
 |       - |  730 | `` * Resolve the scope class for a STATIC first-class callable `T::m(...)`, where T is a`` |
 |       - |  731 | ` * class-name STRING value: handles the self/static/parent keywords against the live class` |
@@ -768,25 +768,25 @@ Coverage: 1023/1279 lines (79.98%)
 |       - |  758 | ` * Mirrors the Generator/Fiber "object carries its state in private attributes" pattern.` |
 |       - |  759 | ` * Returns the fresh instance (iRef == 0; caller takes the reference), or 0 on OOM.` |
 |       - |  760 | ` */` |
-|    1280 |  761 | `PH7_PRIVATE ph7_class_instance * VmCreateClosure(ph7_vm *pVm, const SyString *pName,` |
+|    1298 |  761 | `PH7_PRIVATE ph7_class_instance * VmCreateClosure(ph7_vm *pVm, const SyString *pName,` |
 |       - |  762 | `	ph7_class_instance *pBoundThis, const SyString *pScope)` |
 |       5 |  763 | `{` |
 |       - |  764 | `	ph7_class_instance *pObj;` |
 |       - |  765 | `	ph7_value *pAttr;` |
 |       - |  766 | `	SyString sAttr;` |
-|    1285 |  767 | `	if( pVm->pClosureClass == 0 ){` |
+|    1303 |  767 | `	if( pVm->pClosureClass == 0 ){` |
 |     ! 0 |  768 | `		return 0;` |
 |       - |  769 | `	}` |
-|    1285 |  770 | `	pObj = PH7_NewClassInstance(&(*pVm), pVm->pClosureClass);` |
-|    1285 |  771 | `	if( pObj == 0 ){` |
+|    1303 |  770 | `	pObj = PH7_NewClassInstance(&(*pVm), pVm->pClosureClass);` |
+|    1303 |  771 | `	if( pObj == 0 ){` |
 |     ! 0 |  772 | `		return 0;` |
 |       - |  773 | `	}` |
-|    1285 |  774 | `	SyStringInitFromBuf(&sAttr, "__fn", 4);` |
-|    1285 |  775 | `	pAttr = PH7_ClassInstanceFetchAttr(pObj, &sAttr);` |
-|    1285 |  776 | `	if( pAttr ){` |
-|    1285 |  777 | `		PH7_MemObjStringAppend(pAttr, pName->zString, pName->nByte);` |
-|     640 |  778 | `	}` |
-|    1285 |  779 | `	if( pBoundThis ){` |
+|    1303 |  774 | `	SyStringInitFromBuf(&sAttr, "__fn", 4);` |
+|    1303 |  775 | `	pAttr = PH7_ClassInstanceFetchAttr(pObj, &sAttr);` |
+|    1303 |  776 | `	if( pAttr ){` |
+|    1303 |  777 | `		PH7_MemObjStringAppend(pAttr, pName->zString, pName->nByte);` |
+|     649 |  778 | `	}` |
+|    1303 |  779 | `	if( pBoundThis ){` |
 |      39 |  780 | `		SyStringInitFromBuf(&sAttr, "__this", 6);` |
 |      39 |  781 | `		pAttr = PH7_ClassInstanceFetchAttr(pObj, &sAttr);` |
 |      39 |  782 | `		if( pAttr ){` |
@@ -795,20 +795,20 @@ Coverage: 1023/1279 lines (79.98%)
 |      39 |  785 | `			pBoundThis->iRef++; /* keep the bound object alive for the closure's lifetime */` |
 |      19 |  786 | `		}` |
 |      19 |  787 | `	}` |
-|    1285 |  788 | `	if( pScope && pScope->nByte ){` |
+|    1303 |  788 | `	if( pScope && pScope->nByte ){` |
 |      65 |  789 | `		SyStringInitFromBuf(&sAttr, "__scope", 7);` |
 |      65 |  790 | `		pAttr = PH7_ClassInstanceFetchAttr(pObj, &sAttr);` |
 |      65 |  791 | `		if( pAttr ){` |
 |      65 |  792 | `			PH7_MemObjStringAppend(pAttr, pScope->zString, pScope->nByte);` |
 |      32 |  793 | `		}` |
 |      32 |  794 | `	}` |
-|    1285 |  795 | `	if( pBoundThis \|\| (pScope && pScope->nByte) ){` |
+|    1303 |  795 | `	if( pBoundThis \|\| (pScope && pScope->nByte) ){` |
 |       - |  796 | `		/* Mark bound/static FCC closures so VmClosureUnwrap can skip the $__this/$__scope` |
 |       - |  797 | `		 * lookups on the hot plain-closure dispatch path. */` |
 |      65 |  798 | `		pObj->iFlags \|= VM_INSTANCE_FCC_BOUND;` |
 |      32 |  799 | `	}` |
-|    1285 |  800 | `	return pObj;` |
-|     645 |  801 | `}` |
+|    1303 |  800 | `	return pObj;` |
+|     654 |  801 | `}` |
 |       - |  802 | `/*` |
 |       - |  803 | ` * Exported wrapper around VmCreateClosure for builtin libraries outside this` |
 |       - |  804 | ` * file (ReflectionFunction::getClosure / ReflectionMethod::getClosure).` |

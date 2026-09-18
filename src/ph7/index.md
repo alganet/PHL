@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 46280/56756 lines (81.54%)
+Coverage: 46293/56768 lines (81.55%)
 
 [Up](../index.md)
 
@@ -18,13 +18,13 @@ Coverage: 46280/56756 lines (81.54%)
 |[builtin_string.c](builtin_string.c.md)|85.18%|2293/2692|
 |[compile.c](compile.c.md)|92.08%|1524/1655|
 |[compile_class.c](compile_class.c.md)|75.95%|2163/2848|
-|[compile_func.c](compile_func.c.md)|85.88%|870/1013|
+|[compile_func.c](compile_func.c.md)|85.90%|871/1014|
 |[compile_literal.c](compile_literal.c.md)|89.11%|957/1074|
 |[compile_node.c](compile_node.c.md)|83.54%|685/820|
 |[compile_stmt.c](compile_stmt.c.md)|73.56%|1466/1993|
 |[constant.c](constant.c.md)|93.09%|970/1042|
 |[hashmap.c](hashmap.c.md)|90.77%|1042/1148|
-|[hashmap_builtin.c](hashmap_builtin.c.md)|85.93%|2443/2843|
+|[hashmap_builtin.c](hashmap_builtin.c.md)|85.97%|2444/2843|
 |[hashmap_sort.c](hashmap_sort.c.md)|91.14%|463/508|
 |[lex.c](lex.c.md)|93.52%|823/880|
 |[memobj.c](memobj.c.md)|81.66%|819/1003|
@@ -63,7 +63,7 @@ Coverage: 46280/56756 lines (81.54%)
 |[vm_libxml.c](vm_libxml.c.md)|73.46%|238/324|
 |[vm_ops_arith.c](vm_ops_arith.c.md)|82.93%|588/709|
 |[vm_ops_iter.c](vm_ops_iter.c.md)|80.00%|272/340|
-|[vm_ops_load.c](vm_ops_load.c.md)|87.51%|743/849|
+|[vm_ops_load.c](vm_ops_load.c.md)|87.67%|754/860|
 |[vm_ops_misc.c](vm_ops_misc.c.md)|86.77%|223/257|
 |[vm_ops_oo.c](vm_ops_oo.c.md)|85.52%|868/1015|
 |[vm_pcre.c](vm_pcre.c.md)|69.07%|632/915|
