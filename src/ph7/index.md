@@ -1,6 +1,6 @@
 # src/ph7/
 
-Coverage: 46274/56751 lines (81.54%)
+Coverage: 46280/56756 lines (81.54%)
 
 [Up](../index.md)
 
@@ -39,7 +39,7 @@ Coverage: 46274/56751 lines (81.54%)
 |[vm.c](vm.c.md)|83.67%|2377/2841|
 |[vm_arg_check.c](vm_arg_check.c.md)|97.66%|375/384|
 |[vm_builtin_call.c](vm_builtin_call.c.md)|87.32%|544/623|
-|[vm_builtin_class.c](vm_builtin_class.c.md)|87.87%|645/734|
+|[vm_builtin_class.c](vm_builtin_class.c.md)|88.09%|651/739|
 |[vm_builtin_error.c](vm_builtin_error.c.md)|80.00%|236/295|
 |[vm_builtin_getopt.c](vm_builtin_getopt.c.md)|24.71%|42/170|
 |[vm_builtin_ini.c](vm_builtin_ini.c.md)|95.45%|21/22|

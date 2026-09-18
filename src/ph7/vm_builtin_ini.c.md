@@ -25,26 +25,26 @@ Coverage: 21/22 lines (95.45%)
 |    - |   15 |  |
 |    - |   16 | `/* array __ini_cli(void) — the queued -d/-c directives, in order */` |
 |   16 |   17 | `static int vm_builtin_ini_cli(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    3 |   18 | `{` |
+|    2 |   18 | `{` |
 |    - |   19 | `	ph7_value *pArr,*pV;` |
 |    - |   20 | `	VmIniEntry *aEntry;` |
 |    - |   21 | `	sxu32 n;` |
 |    8 |   22 | `	SXUNUSED(nArg);` |
 |    8 |   23 | `	SXUNUSED(apArg);` |
-|   19 |   24 | `	pArr = ph7_context_new_array(pCtx);` |
-|   19 |   25 | `	pV = ph7_context_new_scalar(pCtx);` |
-|   19 |   26 | `	if( pArr == 0 \|\| pV == 0 ){` |
+|   18 |   24 | `	pArr = ph7_context_new_array(pCtx);` |
+|   18 |   25 | `	pV = ph7_context_new_scalar(pCtx);` |
+|   18 |   26 | `	if( pArr == 0 \|\| pV == 0 ){` |
 |  ! 0 |   27 | `		return PH7_ContextMemoryError(pCtx);` |
 |    - |   28 | `	}` |
-|   19 |   29 | `	aEntry = (VmIniEntry *)SySetBasePtr(&pCtx->pVm->aIniCli);` |
-|   35 |   30 | `	for( n = 0 ; n < SySetUsed(&pCtx->pVm->aIniCli) ; n++ ){` |
+|   18 |   29 | `	aEntry = (VmIniEntry *)SySetBasePtr(&pCtx->pVm->aIniCli);` |
+|   34 |   30 | `	for( n = 0 ; n < SySetUsed(&pCtx->pVm->aIniCli) ; n++ ){` |
 |   17 |   31 | `		ph7_value_string(pV,aEntry[n].sValue.zString,(int)aEntry[n].sValue.nByte);` |
 |   17 |   32 | `		ph7_array_add_strkey_elem(pArr,aEntry[n].sName.zString,pV);` |
 |   17 |   33 | `		ph7_value_reset_string_cursor(pV);` |
 |    9 |   34 | `	}` |
-|   19 |   35 | `	ph7_result_value(pCtx,pArr);` |
-|   19 |   36 | `	return PH7_OK;` |
-|   11 |   37 | `}` |
+|   18 |   35 | `	ph7_result_value(pCtx,pArr);` |
+|   18 |   36 | `	return PH7_OK;` |
+|   10 |   37 | `}` |
 |    - |   38 |  |
 |    - |   39 | `static const char zIniLib[] =` |
 |    - |   40 | `"class __IniS {"` |
@@ -193,10 +193,10 @@ Coverage: 21/22 lines (95.45%)
 |    - |  183 | `"}"` |
 |    - |  184 | `;` |
 |    - |  185 |  |
-| 3866 |  186 | `PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm)` |
+| 3868 |  186 | `PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm)` |
 |    5 |  187 | `{` |
-| 3871 |  188 | `	ph7_create_function(&(*pVm),"__ini_cli",vm_builtin_ini_cli,0);` |
-| 3871 |  189 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zIniLib,sizeof(zIniLib)-1);` |
+| 3873 |  188 | `	ph7_create_function(&(*pVm),"__ini_cli",vm_builtin_ini_cli,0);` |
+| 3873 |  189 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zIniLib,sizeof(zIniLib)-1);` |
 |    5 |  190 | `}` |
 |    - |  191 |  |
 |    - |  192 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |

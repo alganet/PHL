@@ -45,14 +45,14 @@ Coverage: 238/324 lines (73.46%)
 |      - |   35 | ` * equivalent note in vm_pcre.c); xmlCleanupParser() is deliberately never` |
 |      - |   36 | ` * called -- it is unsafe with threads and process exit reclaims everything.` |
 |      - |   37 | ` */` |
-|   3866 |   38 | `static void LibxmlGlobalInit(void)` |
+|   3868 |   38 | `static void LibxmlGlobalInit(void)` |
 |      5 |   39 | `{` |
 |      - |   40 | `	static int bInit = 0;` |
-|   3871 |   41 | `	if( !bInit ){` |
-|   3871 |   42 | `		xmlInitParser();` |
-|   3871 |   43 | `		bInit = 1;` |
-|   1933 |   44 | `	}` |
-|   3871 |   45 | `}` |
+|   3873 |   41 | `	if( !bInit ){` |
+|   3873 |   42 | `		xmlInitParser();` |
+|   3873 |   43 | `		bInit = 1;` |
+|   1934 |   44 | `	}` |
+|   3873 |   45 | `}` |
 |      - |   46 | `/*` |
 |      - |   47 | ` * Free one registered document: its orphaned subtrees first, then the tree` |
 |      - |   48 | ` * itself.  Registry links and the phl_xmldoc shell live in SyMemBackend and` |
@@ -78,31 +78,31 @@ Coverage: 238/324 lines (73.46%)
 |      - |   68 | ` * from PH7_VmMakeReady() (which runs once per exec, including on VM reuse` |
 |      - |   69 | ` * by the -S server) alongside the other per-exec field resets.` |
 |      - |   70 | ` */` |
-|   3392 |   71 | `PH7_PRIVATE void PH7_LibxmlVmReset(ph7_vm *pVm)` |
+|   3394 |   71 | `PH7_PRIVATE void PH7_LibxmlVmReset(ph7_vm *pVm)` |
 |      5 |   72 | `{` |
 |      - |   73 | `	phl_xmldoc *pDoc,*pNext;` |
-|   3397 |   74 | `	PH7_LibxmlClearErrors(pVm);` |
-|   3397 |   75 | `	pVm->bLibxmlInternalErr = 0;` |
-|   3397 |   76 | `	pDoc = (phl_xmldoc *)pVm->pXmlDocs;` |
-|   3489 |   77 | `	while( pDoc ){` |
+|   3399 |   74 | `	PH7_LibxmlClearErrors(pVm);` |
+|   3399 |   75 | `	pVm->bLibxmlInternalErr = 0;` |
+|   3399 |   76 | `	pDoc = (phl_xmldoc *)pVm->pXmlDocs;` |
+|   3491 |   77 | `	while( pDoc ){` |
 |     93 |   78 | `		pNext = pDoc->pNext;` |
 |     93 |   79 | `		LibxmlFreeDoc(pDoc);` |
 |     93 |   80 | `		SyMemBackendFree(&pVm->sAllocator,pDoc);` |
 |     93 |   81 | `		pDoc = pNext;` |
 |      1 |   82 | `	}` |
-|   3397 |   83 | `	pVm->pXmlDocs = 0;` |
+|   3399 |   83 | `	pVm->pXmlDocs = 0;` |
 |      - |   84 | `	/* XMLWriter buffers live outside SyMemBackend too (see vm_xmlwriter.c) */` |
-|   3397 |   85 | `	PH7_XmlWriterVmSweep(pVm);` |
-|   3397 |   86 | `}` |
+|   3399 |   85 | `	PH7_XmlWriterVmSweep(pVm);` |
+|   3399 |   86 | `}` |
 |      - |   87 | `/*` |
 |      - |   88 | ` * Final teardown on VM release.  Must run before SyMemBackendRelease()` |
 |      - |   89 | ` * wipes the allocator that holds the registry shells.` |
 |      - |   90 | ` */` |
-|   3384 |   91 | `PH7_PRIVATE void PH7_LibxmlVmRelease(ph7_vm *pVm)` |
+|   3386 |   91 | `PH7_PRIVATE void PH7_LibxmlVmRelease(ph7_vm *pVm)` |
 |      5 |   92 | `{` |
-|   3389 |   93 | `	PH7_LibxmlVmReset(pVm);` |
-|   3389 |   94 | `	SySetRelease(&pVm->aLibxmlErr);` |
-|   3389 |   95 | `}` |
+|   3391 |   93 | `	PH7_LibxmlVmReset(pVm);` |
+|   3391 |   94 | `	SySetRelease(&pVm->aLibxmlErr);` |
+|   3391 |   95 | `}` |
 |      - |   96 | `/*` |
 |      - |   97 | ` * Release the copied message/file strings of one queue entry.` |
 |      - |   98 | ` */` |
@@ -122,27 +122,27 @@ Coverage: 238/324 lines (73.46%)
 |      - |  112 | ` * last-error slot is kept (php parity: use_internal_errors(false) drops` |
 |      - |  113 | ` * the buffer but libxml_get_last_error still reports).` |
 |      - |  114 | ` */` |
-|   3442 |  115 | `static void LibxmlClearQueue(ph7_vm *pVm)` |
+|   3444 |  115 | `static void LibxmlClearQueue(ph7_vm *pVm)` |
 |      5 |  116 | `{` |
-|   3447 |  117 | `	phl_libxml_err *aErr = (phl_libxml_err *)SySetBasePtr(&pVm->aLibxmlErr);` |
+|   3449 |  117 | `	phl_libxml_err *aErr = (phl_libxml_err *)SySetBasePtr(&pVm->aLibxmlErr);` |
 |      - |  118 | `	sxu32 n;` |
-|   3461 |  119 | `	for( n = 0 ; n < SySetUsed(&pVm->aLibxmlErr) ; ++n ){` |
+|   3463 |  119 | `	for( n = 0 ; n < SySetUsed(&pVm->aLibxmlErr) ; ++n ){` |
 |     15 |  120 | `		LibxmlFreeErr(pVm,&aErr[n]);` |
 |      8 |  121 | `	}` |
-|   3447 |  122 | `	SySetReset(&pVm->aLibxmlErr);` |
-|   3447 |  123 | `}` |
+|   3449 |  122 | `	SySetReset(&pVm->aLibxmlErr);` |
+|   3449 |  123 | `}` |
 |      - |  124 | `/*` |
 |      - |  125 | ` * libxml_clear_errors(): drop the queue AND the last-error slot.` |
 |      - |  126 | ` */` |
-|   3416 |  127 | `PH7_PRIVATE void PH7_LibxmlClearErrors(ph7_vm *pVm)` |
+|   3418 |  127 | `PH7_PRIVATE void PH7_LibxmlClearErrors(ph7_vm *pVm)` |
 |      5 |  128 | `{` |
-|   3421 |  129 | `	LibxmlClearQueue(pVm);` |
-|   3421 |  130 | `	if( pVm->pLibxmlLastErr ){` |
+|   3423 |  129 | `	LibxmlClearQueue(pVm);` |
+|   3423 |  130 | `	if( pVm->pLibxmlLastErr ){` |
 |     11 |  131 | `		LibxmlFreeErr(pVm,(phl_libxml_err *)pVm->pLibxmlLastErr);` |
 |     11 |  132 | `		SyMemBackendFree(&pVm->sAllocator,pVm->pLibxmlLastErr);` |
 |     11 |  133 | `		pVm->pLibxmlLastErr = 0;` |
 |      5 |  134 | `	}` |
-|   3421 |  135 | `}` |
+|   3423 |  135 | `}` |
 |      - |  136 | `/*` |
 |      - |  137 | ` * Push one error onto the per-VM queue and last-error slot, copying the` |
 |      - |  138 | ` * message/file strings.  The typed structured-error callback below and the` |
@@ -358,7 +358,7 @@ Coverage: 238/324 lines (73.46%)
 |    ! 0 |  348 | `	ph7_value_string(pVal,(const char *)xmlParserVersion,-1);` |
 |    ! 0 |  349 | `}` |
 |      - |  350 |  |
-|   3386 |  351 | `PH7_PRIVATE void PH7_RegisterLibxmlConstants(ph7_vm *pVm)` |
+|   3388 |  351 | `PH7_PRIVATE void PH7_RegisterLibxmlConstants(ph7_vm *pVm)` |
 |      5 |  352 | `{` |
 |      - |  353 | `	static const struct {` |
 |      - |  354 | `		const char *zName;` |
@@ -405,10 +405,10 @@ Coverage: 238/324 lines (73.46%)
 |      - |  395 | `		{ "XML_DTD_NODE",           LibxmlConst_DTD_NODE           },` |
 |      - |  396 | `	};` |
 |      - |  397 | `	sxu32 n;` |
-| 135445 |  398 | `	for( n = 0 ; n < sizeof(aConst)/sizeof(aConst[0]) ; n++ ){` |
-| 132059 |  399 | `		ph7_create_constant(&(*pVm),aConst[n].zName,aConst[n].xExpand,0);` |
-|  66032 |  400 | `	}` |
-|   3391 |  401 | `}` |
+| 135525 |  398 | `	for( n = 0 ; n < sizeof(aConst)/sizeof(aConst[0]) ; n++ ){` |
+| 132137 |  399 | `		ph7_create_constant(&(*pVm),aConst[n].zName,aConst[n].xExpand,0);` |
+|  66071 |  400 | `	}` |
+|   3393 |  401 | `}` |
 |      - |  402 | `/* ===== libxml_* native thunks ===== */` |
 |      - |  403 |  |
 |      - |  404 | `/*` |
@@ -573,7 +573,7 @@ Coverage: 238/324 lines (73.46%)
 |      - |  563 | ` * PHP-visible libxml_* functions + LibXMLError class.  Called from` |
 |      - |  564 | ` * PH7_VmInit inside the bCompilingBuiltin window.` |
 |      - |  565 | ` */` |
-|   3866 |  566 | `PH7_PRIVATE sxi32 PH7_VmInstallLibxml(ph7_vm *pVm)` |
+|   3868 |  566 | `PH7_PRIVATE sxi32 PH7_VmInstallLibxml(ph7_vm *pVm)` |
 |      5 |  567 | `{` |
 |      - |  568 | `	static const struct {` |
 |      - |  569 | `		const char *zName;` |
@@ -585,16 +585,16 @@ Coverage: 238/324 lines (73.46%)
 |      - |  575 | `		{ "__libxml_get_last_error_raw",  vm_builtin_libxml_get_last_error_raw  },` |
 |      - |  576 | `	};` |
 |      - |  577 | `	sxu32 n;` |
-|   3871 |  578 | `	LibxmlGlobalInit();` |
-|   3871 |  579 | `	SySetInit(&pVm->aLibxmlErr,&pVm->sAllocator,sizeof(phl_libxml_err));` |
-|   3871 |  580 | `	pVm->bLibxmlInternalErr = 0;` |
-|   3871 |  581 | `	pVm->pLibxmlLastErr = 0;` |
-|   3871 |  582 | `	pVm->pXmlDocs = 0;` |
-|   3871 |  583 | `	pVm->pXmlWriters = 0;` |
-|  19335 |  584 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
-|  15469 |  585 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-|   7737 |  586 | `	}` |
-|   3871 |  587 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zLibxmlLib,sizeof(zLibxmlLib)-1);` |
+|   3873 |  578 | `	LibxmlGlobalInit();` |
+|   3873 |  579 | `	SySetInit(&pVm->aLibxmlErr,&pVm->sAllocator,sizeof(phl_libxml_err));` |
+|   3873 |  580 | `	pVm->bLibxmlInternalErr = 0;` |
+|   3873 |  581 | `	pVm->pLibxmlLastErr = 0;` |
+|   3873 |  582 | `	pVm->pXmlDocs = 0;` |
+|   3873 |  583 | `	pVm->pXmlWriters = 0;` |
+|  19345 |  584 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
+|  15477 |  585 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+|   7741 |  586 | `	}` |
+|   3873 |  587 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zLibxmlLib,sizeof(zLibxmlLib)-1);` |
 |      5 |  588 | `}` |
 |      - |  589 |  |
 |      - |  590 | `#else` |

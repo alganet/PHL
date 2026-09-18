@@ -33,7 +33,7 @@
 | src/ph7/vm.c                   | 83.67%   | 2377/2841   |
 | src/ph7/vm_arg_check.c         | 97.66%   | 375/384     |
 | src/ph7/vm_builtin_call.c      | 87.32%   | 544/623     |
-| src/ph7/vm_builtin_class.c     | 87.87%   | 645/734     |
+| src/ph7/vm_builtin_class.c     | 88.09%   | 651/739     |
 | src/ph7/vm_builtin_error.c     | 80.00%   | 236/295     |
 | src/ph7/vm_builtin_getopt.c    | 24.71%   | 42/170      |
 | src/ph7/vm_builtin_ini.c       | 95.45%   | 21/22       |
@@ -79,5 +79,5 @@
 
 | Total                          | Rate     | Hit/Total   |
 |--------------------------------|----------|-------------|
-| Lines                          | 81.39%   | 49204/60457 |
+| Lines                          | 81.39%   | 49210/60462 |
 | Functions                      | 93.29%   | 2237/2398   |

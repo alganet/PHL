@@ -551,10 +551,10 @@ Coverage: 540/658 lines (82.07%)
 |    - |  541 | ` *  The absolute value of number.` |
 |    - |  542 | ` */` |
 |  128 |  543 | `PH7_PRIVATE int PH7_builtin_abs(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    4 |  544 | `{` |
+|    3 |  544 | `{` |
 |    - |  545 | `	int is_float;` |
 |    - |  546 | `	/* PHP requires exactly one argument. */` |
-|  132 |  547 | `	if( nArg != 1 ){` |
+|  131 |  547 | `	if( nArg != 1 ){` |
 |  ! 0 |  548 | `		return PH7_VmThrowException(pCtx,` |
 |    - |  549 | `			"ArgumentCountError",` |
 |    - |  550 | `			"abs() expects exactly 1 argument, %d given",` |
@@ -562,14 +562,14 @@ Coverage: 540/658 lines (82.07%)
 |    - |  552 | `			);` |
 |    - |  553 | `	}` |
 |    - |  554 |  |
-|  132 |  555 | `	if( ph7_value_is_null(apArg[0]) ){` |
+|  131 |  555 | `	if( ph7_value_is_null(apArg[0]) ){` |
 |    - |  556 | `		/* php only DEPRECATES null here; PHL rejects it. */` |
 |  ! 0 |  557 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
 |    - |  558 | `			"abs(): Argument #1 ($num) must be of type int\|float, null given");` |
 |    - |  559 | `	}` |
 |    - |  560 | `	/* Numeric strings with decimal/exponent are treated as real values. */` |
-|  132 |  561 | `	is_float = ph7_value_is_float(apArg[0]);` |
-|  132 |  562 | `	if( !is_float && ph7_value_is_string(apArg[0]) ){` |
+|  131 |  561 | `	is_float = ph7_value_is_float(apArg[0]);` |
+|  131 |  562 | `	if( !is_float && ph7_value_is_string(apArg[0]) ){` |
 |    - |  563 | `		int len;` |
 |   10 |  564 | `		sxu8 bReal = FALSE;` |
 |   10 |  565 | `		const char *zStr = ph7_value_to_string(apArg[0], &len);` |
@@ -603,7 +603,7 @@ Coverage: 540/658 lines (82.07%)
 |    - |  593 | `		}` |
 |    - |  594 | `	}` |
 |  129 |  595 | `	return PH7_OK;` |
-|   68 |  596 | `}` |
+|   67 |  596 | `}` |
 |    - |  597 | `/*` |
 |    - |  598 | ` * float log(float $arg,[int/float $base])` |
 |    - |  599 | ` *  Natural logarithm.` |
@@ -1034,10 +1034,10 @@ Coverage: 540/658 lines (82.07%)
 |    - | 1024 | ` *  The integer quotient of the division of $a by $b.` |
 |    - | 1025 | ` */` |
 |  186 | 1026 | `PH7_PRIVATE int PH7_builtin_intdiv(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    4 | 1027 | `{` |
+|    3 | 1027 | `{` |
 |    - | 1028 | `	sxi64 a,b;` |
 |    - | 1029 | `	/* PHP requires exactly two arguments. */` |
-|  190 | 1030 | `	if( nArg != 2 ){` |
+|  189 | 1030 | `	if( nArg != 2 ){` |
 |  ! 0 | 1031 | `		return PH7_VmThrowException(pCtx,` |
 |    - | 1032 | `			"ArgumentCountError",` |
 |    - | 1033 | `			"intdiv() expects exactly 2 arguments, %d given",` |
@@ -1046,14 +1046,14 @@ Coverage: 540/658 lines (82.07%)
 |    - | 1036 | `	}` |
 |    - | 1037 | `	/* Type-check argument 1 */` |
 |  186 | 1038 | `	if( ph7_value_is_array(apArg[0]) \|\| ph7_value_is_object(apArg[0])` |
-|  190 | 1039 | `		\|\| ph7_value_is_resource(apArg[0]) ){` |
+|  189 | 1039 | `		\|\| ph7_value_is_resource(apArg[0]) ){` |
 |  ! 0 | 1040 | `		return PH7_VmThrowException(pCtx,` |
 |    - | 1041 | `			"TypeError",` |
 |    - | 1042 | `			"intdiv(): Argument #1 ($num1) must be of type int, %s given",` |
 |  ! 0 | 1043 | `			ph7_type_name(apArg[0])` |
 |    - | 1044 | `			);` |
 |    - | 1045 | `	}` |
-|  190 | 1046 | `	if( ph7_value_is_string(apArg[0]) ){` |
+|  189 | 1046 | `	if( ph7_value_is_string(apArg[0]) ){` |
 |    - | 1047 | `		int len;` |
 |  ! 0 | 1048 | `		const char *zStr = ph7_value_to_string(apArg[0], &len);` |
 |  ! 0 | 1049 | `		if( SyStrIsNumeric(zStr, (sxu32)len, 0, 0) != SXRET_OK ){` |
@@ -1065,14 +1065,14 @@ Coverage: 540/658 lines (82.07%)
 |  ! 0 | 1055 | `	}` |
 |    - | 1056 | `	/* Type-check argument 2 */` |
 |  186 | 1057 | `	if( ph7_value_is_array(apArg[1]) \|\| ph7_value_is_object(apArg[1])` |
-|  190 | 1058 | `		\|\| ph7_value_is_resource(apArg[1]) ){` |
+|  189 | 1058 | `		\|\| ph7_value_is_resource(apArg[1]) ){` |
 |  ! 0 | 1059 | `		return PH7_VmThrowException(pCtx,` |
 |    - | 1060 | `			"TypeError",` |
 |    - | 1061 | `			"intdiv(): Argument #2 ($num2) must be of type int, %s given",` |
 |  ! 0 | 1062 | `			ph7_type_name(apArg[1])` |
 |    - | 1063 | `			);` |
 |    - | 1064 | `	}` |
-|  190 | 1065 | `	if( ph7_value_is_string(apArg[1]) ){` |
+|  189 | 1065 | `	if( ph7_value_is_string(apArg[1]) ){` |
 |    - | 1066 | `		int len;` |
 |  ! 0 | 1067 | `		const char *zStr = ph7_value_to_string(apArg[1], &len);` |
 |  ! 0 | 1068 | `		if( SyStrIsNumeric(zStr, (sxu32)len, 0, 0) != SXRET_OK ){` |
@@ -1087,17 +1087,17 @@ Coverage: 540/658 lines (82.07%)
 |    - | 1077 | `		/* php's ZPP contract for the two int params (lossy float / float-string` |
 |    - | 1078 | `		 * deprecations); the manual type checks above already covered arrays,` |
 |    - | 1079 | `		 * objects and non-numeric strings with the same messages. */` |
-|  190 | 1080 | `		sxi32 rcArg = PH7_IntArgResolve(pCtx,apArg[0],"intdiv",1,"$num1","int",&a);` |
-|  190 | 1081 | `		if( rcArg != PH7_OK ){` |
+|  189 | 1080 | `		sxi32 rcArg = PH7_IntArgResolve(pCtx,apArg[0],"intdiv",1,"$num1","int",&a);` |
+|  189 | 1081 | `		if( rcArg != PH7_OK ){` |
 |    3 | 1082 | `			return rcArg;` |
 |    - | 1083 | `		}` |
-|  188 | 1084 | `		rcArg = PH7_IntArgResolve(pCtx,apArg[1],"intdiv",2,"$num2","int",&b);` |
-|  188 | 1085 | `		if( rcArg != PH7_OK ){` |
+|  187 | 1084 | `		rcArg = PH7_IntArgResolve(pCtx,apArg[1],"intdiv",2,"$num2","int",&b);` |
+|  187 | 1085 | `		if( rcArg != PH7_OK ){` |
 |  ! 0 | 1086 | `			return rcArg;` |
 |    - | 1087 | `		}` |
 |    - | 1088 | `	}` |
 |    - | 1089 | `	/* Check for division by zero */` |
-|  188 | 1090 | `	if( b == 0 ){` |
+|  187 | 1090 | `	if( b == 0 ){` |
 |    3 | 1091 | `		return PH7_VmThrowException(pCtx,` |
 |    - | 1092 | `			"DivisionByZeroError",` |
 |    - | 1093 | `			"Division by zero"` |
@@ -1113,7 +1113,7 @@ Coverage: 540/658 lines (82.07%)
 |    - | 1103 | `	/* Perform integer division */` |
 |  182 | 1104 | `	ph7_result_int64(pCtx, a / b);` |
 |  182 | 1105 | `	return PH7_OK;` |
-|   97 | 1106 | `}` |
+|   96 | 1106 | `}` |
 |    - | 1107 | `/*` |
 |    - | 1108 | ` * string dechex(int $number)` |
 |    - | 1109 | ` *  Decimal to hexadecimal.` |

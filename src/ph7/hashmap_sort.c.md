@@ -44,35 +44,35 @@ Coverage: 463/508 lines (91.14%)
 |      - |   34 | `**   The "next","prev" pointers for elements in the lists a and b are` |
 |      - |   35 | `**   changed.` |
 |      - |   36 | `*/` |
-|  52188 |   37 | `static ph7_hashmap_node * HashmapNodeMerge(ph7_hashmap_node *pA,ph7_hashmap_node *pB,ProcNodeCmp xCmp,void *pCmpData)` |
+|  52258 |   37 | `static ph7_hashmap_node * HashmapNodeMerge(ph7_hashmap_node *pA,ph7_hashmap_node *pB,ProcNodeCmp xCmp,void *pCmpData)` |
 |      5 |   38 | `{` |
 |      - |   39 | `	ph7_hashmap_node result,*pTail;` |
 |      - |   40 | `    /* Prevent compiler warning */` |
-|  52193 |   41 | `	result.pNext = result.pPrev = 0;` |
-|  52193 |   42 | `	pTail = &result;` |
-| 130257 |   43 | `	while( pA && pB ){` |
-|  78069 |   44 | `		if( xCmp(pA,pB,pCmpData) <= 0 ){` |
-|  61203 |   45 | `			pTail->pPrev = pA;` |
-|  61203 |   46 | `			pA->pNext = pTail;` |
-|  61203 |   47 | `			pTail = pA;` |
-|  61203 |   48 | `			pA = pA->pPrev;` |
-|  30728 |   49 | `		}else{` |
-|  16871 |   50 | `			pTail->pPrev = pB;` |
-|  16871 |   51 | `			pB->pNext = pTail;` |
-|  16871 |   52 | `			pTail = pB;` |
-|  16871 |   53 | `			pB = pB->pPrev;` |
+|  52263 |   41 | `	result.pNext = result.pPrev = 0;` |
+|  52263 |   42 | `	pTail = &result;` |
+| 130352 |   43 | `	while( pA && pB ){` |
+|  78094 |   44 | `		if( xCmp(pA,pB,pCmpData) <= 0 ){` |
+|  61213 |   45 | `			pTail->pPrev = pA;` |
+|  61213 |   46 | `			pA->pNext = pTail;` |
+|  61213 |   47 | `			pTail = pA;` |
+|  61213 |   48 | `			pA = pA->pPrev;` |
+|  30734 |   49 | `		}else{` |
+|  16886 |   50 | `			pTail->pPrev = pB;` |
+|  16886 |   51 | `			pB->pNext = pTail;` |
+|  16886 |   52 | `			pTail = pB;` |
+|  16886 |   53 | `			pB = pB->pPrev;` |
 |      - |   54 | `		}` |
 |      5 |   55 | `	}` |
-|  52193 |   56 | `	if( pA ){` |
-|   4332 |   57 | `		pTail->pPrev = pA;` |
-|   4332 |   58 | `		pA->pNext = pTail;` |
-|  49908 |   59 | `	}else if( pB ){` |
-|  47526 |   60 | `		pTail->pPrev = pB;` |
-|  47526 |   61 | `		pB->pNext = pTail;` |
-|  23887 |   62 | `	}else{` |
-|    345 |   63 | `		pTail->pPrev = pTail->pNext = 0;` |
+|  52263 |   56 | `	if( pA ){` |
+|   4331 |   57 | `		pTail->pPrev = pA;` |
+|   4331 |   58 | `		pA->pNext = pTail;` |
+|  49979 |   59 | `	}else if( pB ){` |
+|  47595 |   60 | `		pTail->pPrev = pB;` |
+|  47595 |   61 | `		pB->pNext = pTail;` |
+|  23921 |   62 | `	}else{` |
+|    347 |   63 | `		pTail->pPrev = pTail->pNext = 0;` |
 |      - |   64 | `	}` |
-|  52193 |   65 | `	return result.pPrev;` |
+|  52263 |   65 | `	return result.pPrev;` |
 |      5 |   66 | `}` |
 |      - |   67 | `/*` |
 |      - |   68 | `** Inputs:` |
@@ -86,49 +86,49 @@ Coverage: 463/508 lines (91.14%)
 |      - |   76 | `**   The "next" pointers for elements in list are changed.` |
 |      - |   77 | `*/` |
 |      - |   78 | `#define N_SORT_BUCKET  32` |
-|   1216 |   79 | `PH7_PRIVATE sxi32 HashmapMergeSort(ph7_hashmap *pMap,ProcNodeCmp xCmp,void *pCmpData)` |
+|   1218 |   79 | `PH7_PRIVATE sxi32 HashmapMergeSort(ph7_hashmap *pMap,ProcNodeCmp xCmp,void *pCmpData)` |
 |      5 |   80 | `{` |
 |      - |   81 | `	ph7_hashmap_node *a[N_SORT_BUCKET], *p,*pIn;` |
 |      - |   82 | `	sxu32 i;` |
-|   1221 |   83 | `	SyZero(a,sizeof(a));` |
+|   1223 |   83 | `	SyZero(a,sizeof(a));` |
 |      - |   84 | `	/* Point to the first inserted entry */` |
-|   1221 |   85 | `	pIn = pMap->pFirst;` |
-|  18053 |   86 | `	while( pIn ){` |
-|  16837 |   87 | `		p = pIn;` |
-|  16837 |   88 | `		pIn = p->pPrev;` |
-|  16837 |   89 | `		p->pPrev = 0;` |
-|  31329 |   90 | `		for(i=0; i<N_SORT_BUCKET-1; i++){` |
-|  31329 |   91 | `			if( a[i]==0 ){` |
-|  16837 |   92 | `				a[i] = p;` |
-|  16837 |   93 | `				break;` |
+|   1223 |   85 | `	pIn = pMap->pFirst;` |
+|  18065 |   86 | `	while( pIn ){` |
+|  16847 |   87 | `		p = pIn;` |
+|  16847 |   88 | `		pIn = p->pPrev;` |
+|  16847 |   89 | `		p->pPrev = 0;` |
+|  31347 |   90 | `		for(i=0; i<N_SORT_BUCKET-1; i++){` |
+|  31347 |   91 | `			if( a[i]==0 ){` |
+|  16847 |   92 | `				a[i] = p;` |
+|  16847 |   93 | `				break;` |
 |    ! 0 |   94 | `			}else{` |
-|  14497 |   95 | `				p = HashmapNodeMerge(a[i],p,xCmp,pCmpData);` |
-|  14497 |   96 | `				a[i] = 0;` |
+|  14505 |   95 | `				p = HashmapNodeMerge(a[i],p,xCmp,pCmpData);` |
+|  14505 |   96 | `				a[i] = 0;` |
 |      - |   97 | `			}` |
-|   7251 |   98 | `		}` |
-|  16837 |   99 | `		if( i==N_SORT_BUCKET-1 ){` |
+|   7255 |   98 | `		}` |
+|  16847 |   99 | `		if( i==N_SORT_BUCKET-1 ){` |
 |      - |  100 | `			/* To get here, there need to be 2^(N_SORT_BUCKET) elements in he input list.` |
 |      - |  101 | `			 * But that is impossible.` |
 |      - |  102 | `			 */` |
 |    ! 0 |  103 | `			a[i] = HashmapNodeMerge(a[i], p,xCmp,pCmpData);` |
 |    ! 0 |  104 | `		}` |
 |      5 |  105 | `	}` |
-|   1221 |  106 | `	p = a[0];` |
-|  38917 |  107 | `	for(i=1; i<N_SORT_BUCKET; i++){` |
+|   1223 |  106 | `	p = a[0];` |
+|  38981 |  107 | `	for(i=1; i<N_SORT_BUCKET; i++){` |
 |      - |  108 | `		/* Higher-index buckets hold EARLIER-inserted (and larger) runs, so the` |
 |      - |  109 | `		 * bucket must be the LEFT operand: HashmapNodeMerge favors its left arg on` |
 |      - |  110 | `		 * a tie (cmp <= 0), and php's sorts are stable (PHP 8.0+) — equal elements` |
 |      - |  111 | `		 * keep their original order. Passing p (the later elements) on the left` |
 |      - |  112 | `		 * reversed equal runs (e.g. usort of five tie-keyed items moved the last to` |
 |      - |  113 | `		 * the front). */` |
-|  37701 |  114 | `		p = HashmapNodeMerge(a[i],p,xCmp,pCmpData);` |
-|  18853 |  115 | `	}` |
-|   1221 |  116 | `	p->pNext = 0;` |
+|  37763 |  114 | `		p = HashmapNodeMerge(a[i],p,xCmp,pCmpData);` |
+|  18884 |  115 | `	}` |
+|   1223 |  116 | `	p->pNext = 0;` |
 |      - |  117 | `	/* Reflect the change */` |
-|   1221 |  118 | `	pMap->pFirst = p;` |
+|   1223 |  118 | `	pMap->pFirst = p;` |
 |      - |  119 | `	/* Reset the loop cursor */` |
-|   1221 |  120 | `	pMap->pCur = pMap->pFirst;` |
-|   1221 |  121 | `	return SXRET_OK;` |
+|   1223 |  120 | `	pMap->pCur = pMap->pFirst;` |
+|   1223 |  121 | `	return SXRET_OK;` |
 |      5 |  122 | `}` |
 |      - |  123 | `/* SPDX-SnippetEnd */` |
 |      - |  124 | `/*` |
@@ -226,14 +226,14 @@ Coverage: 463/508 lines (91.14%)
 |    127 |  216 | `	PH7_MemObjRelease(&sB);` |
 |    127 |  217 | `	return rc;` |
 |     64 |  218 | `}` |
-|  77689 |  219 | `static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
+|  77715 |  219 | `static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
 |      5 |  220 | `{` |
-|  77694 |  221 | `	if( pCmpData == 0 ){` |
+|  77720 |  221 | `	if( pCmpData == 0 ){` |
 |      - |  222 | `		/* SORT_REGULAR fast path */` |
-|  77606 |  223 | `		return HashmapNodeCmp(pA,pB,FALSE);` |
+|  77632 |  223 | `		return HashmapNodeCmp(pA,pB,FALSE);` |
 |      - |  224 | `	}` |
 |     89 |  225 | `	return HashmapFlagValueCmp(pA,pB,SX_PTR_TO_INT(pCmpData));` |
-|  38718 |  226 | `}` |
+|  38728 |  226 | `}` |
 |      - |  227 | `/*` |
 |      - |  228 | ` * Shared key comparison for ksort()/krsort(): php 8 semantics. Two string` |
 |      - |  229 | ` * keys compare bytewise. Mixed int/string keys: a NUMERIC string compares` |
@@ -479,7 +479,7 @@ Coverage: 463/508 lines (91.14%)
 |      - |  469 | ` * Node comparison callback: Random node comparison.` |
 |      - |  470 | ` * used-by: [shuffle()]` |
 |      - |  471 | ` */` |
-|     19 |  472 | `PH7_PRIVATE sxi32 HashmapCmpCallback7(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
+|     18 |  472 | `PH7_PRIVATE sxi32 HashmapCmpCallback7(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
 |      1 |  473 | `{` |
 |      - |  474 | `	sxu32 n;` |
 |      9 |  475 | `	SXUNUSED(pB); /* cc warning */` |
@@ -488,43 +488,43 @@ Coverage: 463/508 lines (91.14%)
 |      - |  478 | `	 * respond to srand()/mt_srand() (reproducible under a seed), like php. This` |
 |      - |  479 | `	 * is a random-comparator merge sort, not php's Fisher-Yates, so the ordering` |
 |      - |  480 | `	 * is deterministic-under-seed but not value-parity with php. */` |
-|     20 |  481 | `	n = PH7_VmMtRand(pA->pMap->pVm);` |
+|     19 |  481 | `	n = PH7_VmMtRand(pA->pMap->pVm);` |
 |      - |  482 | `	/* if the random number is odd then the first node 'pA' is greater then` |
 |      - |  483 | `	 * the second node 'pB'. Otherwise the reverse is assumed.` |
 |      - |  484 | `	 */` |
-|     20 |  485 | `	return n&1 ? 1 : -1;` |
+|     19 |  485 | `	return n&1 ? 1 : -1;` |
 |      1 |  486 | `}` |
 |      - |  487 | `/*` |
 |      - |  488 | ` * Rehash all nodes keys after a merge-sort have been applied.` |
 |      - |  489 | ` * Used by [sort(),usort() and rsort()].` |
 |      - |  490 | ` */` |
-|   1140 |  491 | `PH7_PRIVATE void HashmapSortRehash(ph7_hashmap *pMap)` |
+|   1142 |  491 | `PH7_PRIVATE void HashmapSortRehash(ph7_hashmap *pMap)` |
 |      5 |  492 | `{` |
 |      - |  493 | `	ph7_hashmap_node *p,*pLast;` |
 |      - |  494 | `	sxu32 i;` |
 |      - |  495 | `	/* Rehash all entries */` |
-|   1145 |  496 | `	pLast = p = pMap->pFirst;` |
-|   1145 |  497 | `	pMap->iNextIdx = 0;` |
-|   1145 |  498 | `	pMap->bIntKeySeen = 0; /* Reset the automatic index */` |
-|   1145 |  499 | `	i = 0;` |
-|   8848 |  500 | `	for( ;; ){` |
-|  17701 |  501 | `		if( i >= pMap->nEntry ){` |
-|   1145 |  502 | `			pMap->pLast = pLast; /* Fix the last link broken by the merge-sort */` |
-|   1145 |  503 | `			break;` |
+|   1147 |  496 | `	pLast = p = pMap->pFirst;` |
+|   1147 |  497 | `	pMap->iNextIdx = 0;` |
+|   1147 |  498 | `	pMap->bIntKeySeen = 0; /* Reset the automatic index */` |
+|   1147 |  499 | `	i = 0;` |
+|   8854 |  500 | `	for( ;; ){` |
+|  17713 |  501 | `		if( i >= pMap->nEntry ){` |
+|   1147 |  502 | `			pMap->pLast = pLast; /* Fix the last link broken by the merge-sort */` |
+|   1147 |  503 | `			break;` |
 |      - |  504 | `		}` |
-|  16561 |  505 | `		if( p->iType == HASHMAP_BLOB_NODE ){` |
+|  16571 |  505 | `		if( p->iType == HASHMAP_BLOB_NODE ){` |
 |      - |  506 | `			/* Do not maintain index association as requested by the PHP specification */` |
 |     11 |  507 | `			SyBlobRelease(&p->xKey.sKey);` |
 |      - |  508 | `			/* Change key type */` |
 |     11 |  509 | `			p->iType = HASHMAP_INT_NODE;` |
 |      5 |  510 | `		}` |
-|  16561 |  511 | `		HashmapRehashIntNode(p);` |
+|  16571 |  511 | `		HashmapRehashIntNode(p);` |
 |      - |  512 | `		/* Point to the next entry */` |
-|  16561 |  513 | `		i++;` |
-|  16561 |  514 | `		pLast = p;` |
-|  16561 |  515 | `		p = p->pPrev; /* Reverse link */` |
+|  16571 |  513 | `		i++;` |
+|  16571 |  514 | `		pLast = p;` |
+|  16571 |  515 | `		p = p->pPrev; /* Reverse link */` |
 |      5 |  516 | `	}` |
-|   1145 |  517 | `}` |
+|   1147 |  517 | `}` |
 |      - |  518 | `/*` |
 |      - |  519 | ` * Array functions implementation.` |
 |      - |  520 | ` * Status:` |
@@ -546,36 +546,36 @@ Coverage: 463/508 lines (91.14%)
 |      - |  536 | ` *  TRUE on success or FALSE on failure.` |
 |      - |  537 | ` *` |
 |      - |  538 | ` */` |
-|   1104 |  539 | `PH7_PRIVATE int ph7_hashmap_sort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   1106 |  539 | `PH7_PRIVATE int ph7_hashmap_sort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 |  540 | `{` |
 |      - |  541 | `	ph7_hashmap *pMap;` |
 |      - |  542 | `	/* Make sure we are dealing with a valid hashmap */` |
-|   1109 |  543 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
+|   1111 |  543 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
 |      - |  544 | `		/* Missing/Invalid arguments,return FALSE */` |
 |    ! 0 |  545 | `		ph7_result_bool(pCtx,0);` |
 |    ! 0 |  546 | `		return PH7_OK;` |
 |      - |  547 | `	}` |
 |      - |  548 | `	/* Point to the internal representation of the input hashmap */` |
-|   1109 |  549 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|   1109 |  550 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|   1109 |  551 | `	if( pMap->nEntry > 1 ){` |
-|   1103 |  552 | `		sxi32 iCmpFlags = 0;` |
-|   1103 |  553 | `		if( nArg > 1 ){` |
+|   1111 |  549 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|   1111 |  550 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|   1111 |  551 | `	if( pMap->nEntry > 1 ){` |
+|   1105 |  552 | `		sxi32 iCmpFlags = 0;` |
+|   1105 |  553 | `		if( nArg > 1 ){` |
 |      - |  554 | `			/* Extract comparison flags */` |
 |     15 |  555 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
 |      7 |  556 | `		}` |
 |      - |  557 | `		/* Do the merge sort */` |
-|   1103 |  558 | `		HashmapMergeSort(pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));` |
+|   1105 |  558 | `		HashmapMergeSort(pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));` |
 |      - |  559 | `		/* Rehash [Do not maintain index association as requested by the PHP specification] */` |
-|   1103 |  560 | `		HashmapSortRehash(pMap);` |
-|    556 |  561 | `	}else if( pMap->nEntry == 1 ){` |
+|   1105 |  560 | `		HashmapSortRehash(pMap);` |
+|    557 |  561 | `	}else if( pMap->nEntry == 1 ){` |
 |      - |  562 | `		/* php reindexes even a single-element array: a string key becomes 0 */` |
 |      5 |  563 | `		HashmapSortRehash(pMap);` |
 |      2 |  564 | `	}` |
 |      - |  565 | `	/* All done,return TRUE */` |
-|   1109 |  566 | `	ph7_result_bool(pCtx,1);` |
-|   1109 |  567 | `	return PH7_OK;` |
-|    557 |  568 | `}` |
+|   1111 |  566 | `	ph7_result_bool(pCtx,1);` |
+|   1111 |  567 | `	return PH7_OK;` |
+|    558 |  568 | `}` |
 |      - |  569 | `/*` |
 |      - |  570 | ` * bool asort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
 |      - |  571 | ` *  Sort an array and maintain index association.` |
