@@ -235,6 +235,26 @@ static void VmOffsetResourceWarn(ph7_vm *pVm,ph7_value *pKey)
 	MemObjSetType(pKey,MEMOBJ_INT);
 }
 /*
+ * php DEPRECATES (it does not reject) a NULL array offset, then normalizes it to
+ * the empty-string key "": `$a[null]`, `$a[$undef]` and `[null => v]` all warn
+ * `Using null as an array offset is deprecated, use an empty string instead` and
+ * then read/write the "" slot. Emit that E_DEPRECATED notice and return TRUE so
+ * the caller falls through to the ordinary lookup/insert, which already casts
+ * NULL->"" (HashmapLookup / HashmapInsert). A LOSSY-FLOAT offset stays a rejected
+ * TypeError: PHL deliberately targets php's NON-deprecated surface for the
+ * float->int truncation (VmRejectFloatOperand policy, §2), so only the null case
+ * is coerced here. Returns FALSE (no notice) for a non-null key.
+ */
+static int VmNullOffsetDeprecate(ph7_vm *pVm,ph7_value *pKey)
+{
+	if( pKey == 0 || (pKey->iFlags & MEMOBJ_NULL) == 0 ){
+		return FALSE;
+	}
+	PH7_VmThrowError(&(*pVm),0,E_DEPRECATED,
+		"Using null as an array offset is deprecated, use an empty string instead");
+	return TRUE;
+}
+/*
  * OP_STORE_IDX_REF: body moved verbatim from the OP_STORE_IDX_REF arm of
  * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
  */
@@ -256,12 +276,23 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 	}else{
 		pKey = 0;
 	}
-		/* php only DEPRECATES a lossy-float / null write subscript (then truncates /
-		 * normalizes to ""); PHL rejects it. */
+		/* php DEPRECATES a null / lossy-float write subscript (then normalizes "" /
+		 * truncates). A by-VALUE write (`$a[$k]=v`, PH7_OP_STORE_IDX) matches php on
+		 * the null case: deprecate + coerce, since PH7_HashmapInsert casts NULL->"".
+		 * That deprecation is emitted DOWN AT THE INSERT (below), not here, so a null
+		 * container that auto-vivifies (`$x=null; $x[null]=v`) gets it too — the base
+		 * is not yet a hashmap at this point. A by-REF write (`$a[$k]=&$x`,
+		 * PH7_OP_STORE_IDX_REF) keeps the loud null TypeError: HashmapInsertByRef still
+		 * treats the "" key as auto-index (a separate, pre-existing byref bug —
+		 * `$a[""] =& $x` drops the value), so deprecate-and-coerce there would turn a
+		 * loud error into a SILENT WRONG answer (§7 residual — the two ship together).
+		 * A lossy-FLOAT subscript stays a loud TypeError in BOTH forms (the recorded
+		 * non-deprecated-surface policy, §2). */
 		if( pKey && (pTos->iFlags & MEMOBJ_HASHMAP) ){
 			int bNull = (pKey->iFlags & MEMOBJ_NULL) != 0;
 			int bLossyFloat = (pKey->iFlags & MEMOBJ_REAL) != 0
 				&& pKey->rVal != (ph7_real)(sxi64)pKey->rVal;
+			int bByRef = (pInstr->iOp == PH7_OP_STORE_IDX_REF);
 			SyBlob sTypeMsg;
 			/* An object/array key is php's TypeError; a resource key warns and
 			 * becomes its integer id. Both used to be stringified silently. */
@@ -275,7 +306,7 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 				PH7_THROW_ROUTE_MIDEXPR(rc)
 			}
 			VmOffsetResourceWarn(&(*pVm),pKey);
-			if( bNull || bLossyFloat ){
+			if( (bNull && bByRef) || bLossyFloat ){
 				sxi32 rcSc;
 				const char *zErr = bNull ? "Cannot access offset of type null on array"
 				                         : "Cannot access offset of type float on array";
@@ -521,6 +552,14 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 			rc = PH7_HashmapInsertByRef(pMap,pKey,pTos->nIdx);
 		}
 	}else{
+		/* By-value store: a null key deprecates + normalizes to "" here — AFTER a
+		 * null/false container has auto-vivified to an array, so `$x[null]=v` on an
+		 * undefined $x gets the notice too (the top-of-handler check runs before
+		 * vivification, when the base is not yet a hashmap). Gated off the by-ref
+		 * op so the degenerate `=&`-with-no-source-slot path stays loud (§7). */
+		if( pInstr->iOp != PH7_OP_STORE_IDX_REF ){
+			VmNullOffsetDeprecate(&(*pVm),pKey);
+		}
 		rc = PH7_HashmapInsert(pMap,pKey,pTos);
 	}
 	if( pKey ){
@@ -1017,9 +1056,11 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		}
 	}
 	rc = SXERR_NOTFOUND; /* Assume the index is invalid */
-	/* php only DEPRECATES a lossy-float subscript / null offset (then truncates /
-	 * normalizes to ""); PHL rejects them on a READ or WRITE (iP2 0/1) and stays
-	 * lenient in isset()/empty()/`??`/unset(), where a throw would be wrong. */
+	/* php DEPRECATES both a null offset and a lossy-float subscript (then normalizes
+	 * "" / truncates). PHL now matches php on the NULL offset (deprecate + coerce to
+	 * the "" key, §2) but still rejects the lossy-FLOAT subscript with a TypeError on
+	 * a READ or WRITE (iP2 0/1) — the recorded non-deprecated-surface policy. Both
+	 * stay lenient in isset()/empty()/`??`/unset(), where a throw would be wrong. */
 	/* An object/array key is rejected in EVERY context, including isset()/empty()/
 	 * unset() where php still throws (only the wording changes) — unlike the
 	 * null/float deprecations below, which stay lenient there. A resource key is
@@ -1035,19 +1076,26 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		}
 		VmOffsetResourceWarn(&(*pVm),pIdx);
 	}
-	if( (pTos->iFlags & MEMOBJ_HASHMAP) && pIdx
-	 && (pInstr->iP2 == 0 || pInstr->iP2 == 1) ){
-		int bNull = (pIdx->iFlags & MEMOBJ_NULL) != 0;
-		int bLossyFloat = (pIdx->iFlags & MEMOBJ_REAL) != 0
-			&& pIdx->rVal != (ph7_real)(sxi64)pIdx->rVal;
-		if( bNull || bLossyFloat ){
+	if( (pTos->iFlags & MEMOBJ_HASHMAP) && pIdx ){
+		/* php DEPRECATES a null offset in EVERY subscript context except unset()
+		 * (iP2==5), then normalizes it to the "" key — read, write, isset (4),
+		 * empty (6), `??`/`??=` (3), the coalesce-chain probe (8), destructure
+		 * (2/7). Emit it here so all of them get it, not just read/write; the
+		 * lookup/insert below casts NULL->"", and a plain read miss then warns
+		 * `Undefined array key ""` on the now-string pIdx (php's exact pair). */
+		if( (pIdx->iFlags & MEMOBJ_NULL) && pInstr->iP2 != 5 ){
+			VmNullOffsetDeprecate(&(*pVm),pIdx);
+		}
+		/* A lossy-FLOAT subscript stays a rejected TypeError on a READ or WRITE
+		 * (iP2 0/1) — the recorded non-deprecated-surface policy (§2); the lenient
+		 * contexts (isset/empty/??/unset) truncate quietly as php's value does. */
+		if( (pInstr->iP2 == 0 || pInstr->iP2 == 1)
+		 && (pIdx->iFlags & MEMOBJ_REAL)
+		 && pIdx->rVal != (ph7_real)(sxi64)pIdx->rVal ){
 			SyBlob sErrMsg;
 			SyBlobInit(&sErrMsg,&pVm->sAllocator);
-			SyBlobAppend(&sErrMsg,
-				bNull ? "Cannot access offset of type null on array"
-				      : "Cannot access offset of type float on array",
-				(sxu32)SyStrlen(bNull ? "Cannot access offset of type null on array"
-				                      : "Cannot access offset of type float on array"));
+			SyBlobAppend(&sErrMsg,"Cannot access offset of type float on array",
+				sizeof("Cannot access offset of type float on array")-1);
 			VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sErrMsg));
 			PH7_MemObjRelease(pIdx);
 			PH7_MemObjRelease(pTos);
@@ -1252,13 +1300,18 @@ PH7_PRIVATE VmOpRc VmExecOpLoadMap(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 						}else{
 							VmOffsetResourceWarn(&(*pVm),pEntry);
 						}
-						/* php only DEPRECATES a lossy-float / null literal key; PHL rejects it. */
+						/* php DEPRECATES a null literal key (then normalizes to "") and
+						 * rejects nothing there; PHL matches that (deprecate + fall
+						 * through, PH7_HashmapInsert casts NULL->""). A lossy-FLOAT
+						 * literal key still rejects with a TypeError — the recorded
+						 * non-deprecated-surface policy, same as the subscript site. */
 						int bNull = (pEntry->iFlags & MEMOBJ_NULL) != 0;
 						int bLossyFloat = (pEntry->iFlags & MEMOBJ_REAL) != 0
 							&& pEntry->rVal != (ph7_real)(sxi64)pEntry->rVal;
-						if( bNull || bLossyFloat ){
-							const char *zErr = bNull ? "Cannot access offset of type null on array"
-							                         : "Cannot access offset of type float on array";
+						if( bNull ){
+							VmNullOffsetDeprecate(&(*pVm),pEntry);
+						}else if( bLossyFloat ){
+							const char *zErr = "Cannot access offset of type float on array";
 							SyBlob sErrMsg;
 							SyBlobInit(&sErrMsg,&pVm->sAllocator);
 							SyBlobAppend(&sErrMsg,zErr,(sxu32)SyStrlen(zErr));

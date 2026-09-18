@@ -511,6 +511,13 @@ static const SyFmtInfo aFmt[] = {
       case SXFMT_STRING:
         bufpt = va_arg(ap,char*);
         if( bufpt==0 ){
+		  /* An explicit precision of 0 (`%.*s` with a 0 length arg) is an EMPTY
+		   * string, not a missing one: emit nothing. SyBlobData() returns NULL for
+		   * a zero-length blob, so the legacy "print a single space for a NULL
+		   * pointer" fallback rendered an empty array key / blob as " " (visible in
+		   * var_dump/print_r `["" ]` and the `Undefined array key ""` warning). A
+		   * genuine NULL string (`%s`/`%z`, precision < 0) still prints the space. */
+		  if( precision == 0 ){ length = 0; break; }
           bufpt = " ";
 		  length = (int)sizeof(" ")-1;
 		  break;
@@ -525,9 +532,16 @@ static const SyFmtInfo aFmt[] = {
 	case SXFMT_RAWSTR:{
 		/* Symisc extension */
 		SyString *pStr = va_arg(ap,SyString *);
-		if( pStr == 0 || pStr->zString == 0 ){
+		if( pStr == 0 ){
 			 bufpt = " ";
 		     length = (int)sizeof(char);
+		     break;
+		}
+		if( pStr->zString == 0 ){
+			 /* A SyString with a NULL buffer is the EMPTY string (SyBlobData()
+			  * returns NULL for a zero-length blob): emit nothing, not the legacy
+			  * single-space fallback that rendered an empty key as " ". */
+			 length = 0;
 		     break;
 		}
 		bufpt = (char *)pStr->zString;
