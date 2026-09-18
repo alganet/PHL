@@ -645,20 +645,30 @@ PH7_PRIVATE VmOpRc VmExecOpLoadClosure(ph7_vm *pVm,VmExecState *pState,VmInstr *
 				if( pValue ){
 					/* Copy imported value */
 					PH7_MemObjStore(pValue,&sEnv.sValue);
-				}else if( (pFunc->iFlags & VM_FUNC_ARROW) == 0
-					&& (sEnv.iFlags & (VM_FUNC_ARG_BY_REF|VM_FUNC_ARG_IGNORE)) == 0
+				}else if( (sEnv.iFlags & (VM_FUNC_ARG_BY_REF|VM_FUNC_ARG_IGNORE)) == 0
 					&& !(SyStringLength(&sEnv.sName) == sizeof("this")-1
 						&& SyMemcmp(SyStringData(&sEnv.sName),"this",sizeof("this")-1) == 0) ){
+					if( pFunc->iFlags & VM_FUNC_ARROW ){
+						/* An arrow function auto-captures free variables by value, but
+						 * php does NOT capture one that is UNDEFINED at creation: the
+						 * isolated body scope then simply has no such variable, so a
+						 * read of it there raises the normal "Undefined variable"
+						 * warning (and reflection's getClosureUsedVariables omits it).
+						 * Skip installing the capture so the body READ — not the
+						 * creation — warns, matching php. (A later assignment to the
+						 * outer variable does not retro-capture: arrow scope is
+						 * isolated.) An explicit by-value use() instead warns here and
+						 * binds NULL, handled just below. */
+						continue;
+					}
 					/* php reads a by-value `use ($q)` capture AT CLOSURE CREATION and
 					 * warns when the variable is undefined there (the by-ref form
 					 * `use (&$q)` above stays silent — it creates the binding). The
-					 * auto-injected $this (VM_FUNC_ARG_IGNORE) never warns, and an
-					 * arrow function's implicit captures (VM_FUNC_ARROW) warn only
-					 * when the body reads them, not here. The capture still proceeds
-					 * as NULL, as php does. php attributes the warning to the
-					 * capture's own line (which can differ from the OP_LOAD_CLOSURE
-					 * instruction line when the use-clause wraps), so borrow the
-					 * recorded line for the emission and restore it. */
+					 * auto-injected $this (VM_FUNC_ARG_IGNORE) never warns. The
+					 * capture still proceeds as NULL, as php does. php attributes the
+					 * warning to the capture's own line (which can differ from the
+					 * OP_LOAD_CLOSURE instruction line when the use-clause wraps), so
+					 * borrow the recorded line for the emission and restore it. */
 					sxu32 nSavedLine = pVm->nCurLine;
 					if( sEnv.nLine ){
 						pVm->nCurLine = sEnv.nLine;
