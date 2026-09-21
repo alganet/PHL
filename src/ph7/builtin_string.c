@@ -4857,6 +4857,9 @@ static int StrReplaceWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
  * fresh on every call — cursors are reset here — so each array element is
  * transformed independently, exactly like php. Returns SXRET_OK, or SXERR_MEM
  * on an allocation failure inside StringReplace.
+ *
+ * *pnCount is INCREMENTED (never reset) by the number of replacements performed,
+ * so an array subject accumulates across its elements exactly like php's &$count.
  */
 static sxi32 StrReplaceOneSubject(
 	SyBlob *pOut,             /* Output buffer (reset then filled here) */
@@ -4865,7 +4868,8 @@ static sxi32 StrReplaceOneSubject(
 	SySet *pSearch,           /* Collected search terms */
 	SySet *pReplace,          /* Collected replacement terms */
 	int rep_str,              /* TRUE: a single replacement reused for every search */
-	ProcStringMatch xMatch    /* SyBlobSearch (str_replace) / iPatternMatch (str_ireplace) */
+	ProcStringMatch xMatch,   /* SyBlobSearch (str_replace) / iPatternMatch (str_ireplace) */
+	sxi64 *pnCount            /* Running replacement count (incremented here) */
 	)
 {
 	SyString *pSearch_,*pReplace_,sEmpty;
@@ -4919,6 +4923,7 @@ static sxi32 StrReplaceOneSubject(
 				 * instead of returning a partially-replaced result. */
 				return rc;
 			}
+			*pnCount += 1;
 			/* Increment offset counter */
 			nCount += nOfft + pReplace_->nByte;
 		}
@@ -4936,6 +4941,7 @@ struct str_replace_subject
 	SySet *pReplace;       /* Collected replacement terms */
 	ProcStringMatch xMatch;/* Match routine (case-sensitive or not) */
 	int rep_str;           /* TRUE: scalar $replace */
+	sxi64 nReplaced;       /* Replacements performed so far (&$count) */
 	sxi32 rc;              /* SXRET_OK or SXERR_MEM */
 };
 /*
@@ -4955,7 +4961,7 @@ static int StrReplaceSubjectWalker(ph7_value *pKey,ph7_value *pData,void *pUserD
 	/* php coerces every element to string (same cast used everywhere). */
 	zSub = ph7_value_to_string(pData,&nSub);
 	if( StrReplaceOneSubject(pS->pWorker,zSub,(sxu32)(nSub > 0 ? nSub : 0),
-			pS->pSearch,pS->pReplace,pS->rep_str,pS->xMatch) != SXRET_OK ){
+			pS->pSearch,pS->pReplace,pS->rep_str,pS->xMatch,&pS->nReplaced) != SXRET_OK ){
 		pS->rc = SXERR_MEM;
 		return SXERR_ABORT;
 	}
@@ -4972,6 +4978,22 @@ static int StrReplaceSubjectWalker(ph7_value *pKey,ph7_value *pData,void *pUserD
 		return SXERR_ABORT;
 	}
 	return PH7_OK;
+}
+/*
+ * Write str_replace()/str_ireplace()'s optional by-reference &$count out-param.
+ * The call compiler auto-vivifies argument #4 for these two names
+ * (GenStateByRefBuiltinMask in compile.c), so an undefined variable, an array
+ * element and a property all arrive with a real slot to write through.
+ */
+static void StrReplaceStoreCount(ph7_context *pCtx,int nArg,ph7_value **apArg,sxi64 nReplaced)
+{
+	ph7_value sCount;
+	if( nArg < 4 ){
+		return;
+	}
+	PH7_MemObjInitFromInt(pCtx->pVm,&sCount,nReplaced);
+	PH7_VmStoreArgByRef(pCtx->pVm,apArg[3],&sCount);
+	PH7_MemObjRelease(&sCount);
 }
 /*
  * mixed str_replace(mixed $search,mixed $replace,mixed $subject[,int &$count ])
@@ -4994,8 +5016,9 @@ static int StrReplaceSubjectWalker(ph7_value *pKey,ph7_value *pData,void *pUserD
  *  The string or array being searched and replaced on, otherwise known as the haystack.
  *  If subject is an array, then the search and replace is performed with every entry
  *  of subject, and the return value is an array as well.
- * $count (Not used)
- *  If passed, this will be set to the number of replacements performed.
+ * &$count
+ *  If passed, this is set to the number of replacements performed — accumulated
+ *  over every search term AND, for an array subject, over every element.
  * Return
  * This function returns a string or an array with the replaced values.
  */
@@ -5008,6 +5031,7 @@ PH7_PRIVATE int PH7_builtin_str_replace(ph7_context *pCtx,int nArg,ph7_value **a
 	SyBlob sWorker;
 	SySet sReplace;
 	SySet sSearch;
+	sxi64 nReplaced;
 	int rep_str;
 	int nByte;
 	sxi32 rc;
@@ -5024,6 +5048,7 @@ PH7_PRIVATE int PH7_builtin_str_replace(ph7_context *pCtx,int nArg,ph7_value **a
 	sRep.pCtx = pCtx;
 	sRep.pCollector = &sSearch;
 	rep_str = 0;
+	nReplaced = 0;
 	/* Collect the search term(s) — independent of the subject. */
 	if( ph7_value_is_array(apArg[0]) ){
 		ph7_array_walk(apArg[0],StrReplaceWalker,&sRep);
@@ -5086,6 +5111,7 @@ PH7_PRIVATE int PH7_builtin_str_replace(ph7_context *pCtx,int nArg,ph7_value **a
 			return PH7_ContextMemoryError(pCtx);
 		}
 		ph7_result_value(pCtx,pResult);
+		StrReplaceStoreCount(pCtx,nArg,apArg,sSub.nReplaced);
 		return PH7_OK;
 	}
 	/* Scalar subject: run once and return a string. An empty subject yields the
@@ -5093,7 +5119,7 @@ PH7_PRIVATE int PH7_builtin_str_replace(ph7_context *pCtx,int nArg,ph7_value **a
 	 * both fall out of StrReplaceOneSubject's empty-term skip. */
 	zIn = ph7_value_to_string(apArg[2],&nByte);
 	rc = StrReplaceOneSubject(&sWorker,zIn,(sxu32)(nByte > 0 ? nByte : 0),
-		&sSearch,&sReplace,rep_str,xMatch);
+		&sSearch,&sReplace,rep_str,xMatch,&nReplaced);
 	if( rc != SXRET_OK ){
 		SySetRelease(&sSearch);
 		SySetRelease(&sReplace);
@@ -5107,6 +5133,7 @@ PH7_PRIVATE int PH7_builtin_str_replace(ph7_context *pCtx,int nArg,ph7_value **a
 	if( rc != PH7_OK ){
 		return PH7_ContextMemoryError(pCtx);
 	}
+	StrReplaceStoreCount(pCtx,nArg,apArg,nReplaced);
 	return PH7_OK;
 }
 /*
