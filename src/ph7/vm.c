@@ -4957,6 +4957,7 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_IS_A:       zOp = "IS_A       "; break;
 	case PH7_OP_SWITCH:     zOp = "SWITCH     "; break;
 	case PH7_OP_MATCH:      zOp = "MATCH      "; break;
+	case PH7_OP_CLASS_DEFER:zOp = "CLASS_DEFER"; break;
 	case PH7_OP_LOAD_EXCEPTION:
 		                    zOp = "LOAD_EXCEP "; break;
 	case PH7_OP_POP_EXCEPTION:

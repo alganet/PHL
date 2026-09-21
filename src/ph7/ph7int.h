@@ -1151,6 +1151,38 @@ struct VmCallArgMap
 						  * {0,0} for every other call site; bytes live in the VM
 						  * allocator. See PH7_GenRenderAssertSpan (compile_literal.c). */
 };
+/*
+ * A class declaration whose parent/interface/trait could not be resolved at
+ * compile time (the enclosing file's statements — spl_autoload_register — had
+ * not executed yet). The compiler captures the declaration's SOURCE plus a
+ * reconstructed namespace/use-import prefix and defers the whole compile to
+ * OP_CLASS_DEFER at the declaration's execution point (VmExecDeferredClass,
+ * vm_include.c), where the autoloader is live. aRequired lists the names that
+ * were missing; each still-missing one throws php's catchable
+ * `Class/Interface/Trait "X" not found` Error before the re-compile runs.
+ */
+typedef struct VmDeferredReq VmDeferredReq;
+struct VmDeferredReq
+{
+	SyString sName;  /* Fully-qualified name (allocator-owned) */
+	sxu8 cKind;      /* PH7_DEFER_KIND_* — picks the not-found noun */
+};
+#define PH7_DEFER_KIND_CLASS     0
+#define PH7_DEFER_KIND_INTERFACE 1
+#define PH7_DEFER_KIND_TRAIT     2
+typedef struct VmDeferredClass VmDeferredClass;
+struct VmDeferredClass
+{
+	SyString sText;     /* Re-compilable chunk: namespace + use-imports prefix +
+						 * the declaration source (anon: wrapped in `if (false) { new ... }`) */
+	SyString sSelfName; /* FQN the compile must install (anon: the synthesized name) —
+						 * the post-eval existence check */
+	SyString sAnonName; /* Synthesized anonymous-class name to inject via
+						 * pVm->sDeferAnonName ({0,0} for a named declaration) */
+	SySet aRequired;    /* VmDeferredReq — names unresolved at compile time */
+	sxu32 nLine;        /* Declaration line (diagnostics) */
+	sxu8 bDone;         /* 1 once the declaration executed successfully (idempotent site) */
+};
 /* Each active class instance attribute is represented by an instance
  * of the following structure.
  */
@@ -1681,6 +1713,16 @@ struct ph7_vm
 								* so this preserves prior semantics while staying crash-safe.
 								* Engine-level instance memory is still reclaimed. */
 	ph7_gen_state sCodeGen;    /* Code generator module */
+	sxu32 nLastEvalErr;        /* Compile-error count of the most recent VmEvalChunk unit. Unlike
+								* sCodeGen.nErr it survives the nested-compile state save/restore,
+								* so VmExecDeferredClass can tell whether ITS chunk failed even
+								* when the deferred declaration executes inside an outer compile
+								* (an autoload-during-compile require). */
+	SyString sDeferAnonName;   /* One-shot synthesized-name override for the next anonymous-class
+								* compile: set by VmExecDeferredClass before re-compiling a
+								* deferred `new class ... {}` chunk so the runtime-installed
+								* class carries the SAME name the site's OP_NEW loads; consumed
+								* (cleared) by PH7_CompileAnnonClass. {0,0} otherwise. */
 	ph7_exec_ctx *pActiveCtx;  /* Currently executing fiber/generator context (NULL in normal code) */
 	ph7_class *pFiberClass;    /* Cached Fiber class pointer for fast dispatch */
 	ph7_class *pGeneratorClass; /* Cached Generator class pointer */
@@ -1877,7 +1919,13 @@ enum ph7_vm_op {
   PH7_OP_END_FINALLY,   /* Terminate an inline finally: dispatch the pending action (ROOT C) */
   PH7_OP_SET_FINALLY_RET,/* Seed a pending RETURN and enter the innermost enclosing finally (ROOT C) */
   PH7_OP_SET_FINALLY_JMP,/* Seed a pending BREAK/CONTINUE (jump target) and enter a finally (ROOT C) */
-  PH7_OP_UNSET_VAR      /* unset($name): drop ONE name binding (p3 = name), never the shared slot */
+  PH7_OP_UNSET_VAR,     /* unset($name): drop ONE name binding (p3 = name), never the shared slot */
+  PH7_OP_CLASS_DEFER    /* Deferred class declaration: p3 = VmDeferredClass. Compile-time
+                         * resolution of a parent/interface/trait failed (autoloader not yet
+                         * REGISTERED — the declaring file's own statements had not run), so the
+                         * whole declaration re-compiles here, at its execution point, where
+                         * spl_autoload_register has taken effect. php's own model: classes with
+                         * unresolved parents are declared in execution order, not hoisted. */
 };
 /* LOADC.iP1 bit flags */
 #define PH7_LOADC_EXPAND   0x01 /* Candidate for constant/function/class expansion */
@@ -3067,6 +3115,7 @@ PH7_PRIVATE sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResum
 /* vm_include.c function prototypes (rows stay in vm.c's aVmFunc[]) */
 PH7_PRIVATE sxi32 VmMountUserClass(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE sxi32 VmEvalChunk(ph7_vm *pVm,ph7_context *pCtx,SyString *pChunk,int iFlags,int bTrueReturn);
+PH7_PRIVATE sxi32 VmExecDeferredClass(ph7_vm *pVm,VmDeferredClass *pDefer,VmDeferredReq **ppMissing);
 PH7_PRIVATE int vm_builtin_eval(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_get_included_files(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_get_include_path(ph7_context *pCtx,int nArg,ph7_value **apArg);

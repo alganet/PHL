@@ -5,6 +5,10 @@
  */
 #include "ph7int.h"
 #include "compile_int.h"
+/* Forward declaration — deferred class declarations (defined with the deferral
+ * helpers ahead of GenStateCompileClassEx; used by the interface/trait
+ * compilers that precede them in this file). */
+static int GenStateMaybeDeferClass(ph7_gen_state *pGen,sxi32 iFlags,int iSelfKind,sxi32 *pRc);
 /*
  * Section:
  *    Class/OO compilation: classes, interfaces, traits, enums, anonymous
@@ -2104,6 +2108,14 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 	SyString *pName;
 	sxi32 nKwrd;
 	sxi32 rc;
+	{
+		/* Deferral gate: parent interfaces may need an autoloader
+		 * that has not run yet. */
+		sxi32 rcDefer;
+		if( GenStateMaybeDeferClass(pGen,0,PH7_DEFER_KIND_INTERFACE,&rcDefer) ){
+			return rcDefer == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
+		}
+	}
 	/* Jump the 'interface' keyword */
 	pGen->pIn++;
 	/* Extract interface name */
@@ -3050,6 +3062,424 @@ static sxi32 GenStateEnumFinalize(ph7_gen_state *pGen,ph7_class *pClass,sxu32 nL
 	return GenStateCompileEnumMethods(&(*pGen),pClass);
 }
 /*
+ * Deferred class declarations (class/anonymous-class extending an
+ * autoloaded parent).
+ *
+ * A class declaration compiles INLINE while its enclosing file compiles, so a
+ * parent/interface/trait that an autoloader would provide is unreachable when
+ * the autoloader's own spl_autoload_register() statement has not EXECUTED yet
+ * (same-file registration, or `new class extends \App\Child {}` anywhere).
+ * php's model has no such problem: a declaration with unresolved dependencies
+ * is declared at its EXECUTION point, in statement order, not hoisted.
+ *
+ * These helpers reproduce that: before compiling a declaration, scan its
+ * header (extends/implements) and body (depth-1 trait `use`) for referenced
+ * names and try to resolve each (firing autoload exactly where the normal
+ * compile would). If any name is still missing, the WHOLE declaration is
+ * captured as re-compilable source — a reconstructed `namespace`/`use`-import/
+ * doc/attribute/modifier prefix plus the declaration's raw text — recorded in
+ * a VmDeferredClass, and OP_CLASS_DEFER is emitted at the declaration site.
+ * At runtime (VmExecDeferredClass, vm_include.c) the autoloader is live: each
+ * recorded name resolves or throws php's catchable `... not found` Error, and
+ * the chunk re-compiles through VmEvalChunk. An anonymous class re-compiles
+ * inside `if (false) { new ... }` (installing the class without instantiating
+ * it) under its original synthesized name via pVm->sDeferAnonName; the site's
+ * own OP_NEW then instantiates it with the site-compiled arguments.
+ *
+ * Behavior shifts only for declarations that previously died with the
+ * compile-time "Nonexistent base class" fatal: they now follow php — succeed
+ * when the autoloader is registered first, or throw php's catchable
+ * `Class/Interface/Trait "X" not found` Error at the declaration point.
+ * A deferred declaration's OTHER compile errors (a body syntax error) shift
+ * from file-compile time to the declaration's execution — still loud, timing
+ * differs from php (recorded).
+ */
+static void GenStateDeferEmitUses(SyBlob *pOut,SyHash *pTable,const char *zKind)
+{
+	SyHashEntry *pEntry;
+	SyHashResetLoopCursor(pTable);
+	while( (pEntry = SyHashGetNextEntry(pTable)) != 0 ){
+		const char *zFqn = (const char *)pEntry->pUserData;
+		if( zFqn ){
+			SyBlobFormat(pOut,"use %s%s as %.*s;\n",zKind,zFqn,
+				(int)pEntry->nKeyLen,(const char *)pEntry->pKey);
+		}
+	}
+}
+/*
+ * Parse one class reference at *ppCur (bounded by pEnd) with the SAME
+ * namespace/import resolution the real compile uses, and append it to pNames.
+ * Advances *ppCur past the reference. Returns SXERR_INVALID on a malformed
+ * reference (caller bails out of deferral and lets the normal path report).
+ */
+static sxi32 GenStateDeferRecordRef(ph7_gen_state *pGen,SyToken **ppCur,SyToken *pEnd,
+	sxu8 cKind,SySet *pNames)
+{
+	SyToken *pSavedIn = pGen->pIn;
+	SyToken *pSavedEnd = pGen->pEnd;
+	SyBlob sFqn;
+	VmDeferredReq sReq;
+	char *zDup;
+	sxi32 rc;
+	SyBlobInit(&sFqn,&pGen->pVm->sAllocator);
+	pGen->pIn = *ppCur;
+	pGen->pEnd = pEnd;
+	rc = GenStateParseClassReference(pGen,&sFqn);
+	*ppCur = pGen->pIn;
+	pGen->pIn = pSavedIn;
+	pGen->pEnd = pSavedEnd;
+	if( rc != SXRET_OK || SyBlobLength(&sFqn) < 1 ){
+		SyBlobRelease(&sFqn);
+		return SXERR_INVALID;
+	}
+	zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+		(const char *)SyBlobData(&sFqn),SyBlobLength(&sFqn));
+	if( zDup == 0 ){
+		SyBlobRelease(&sFqn);
+		return SXERR_INVALID;
+	}
+	SyStringInitFromBuf(&sReq.sName,zDup,SyBlobLength(&sFqn));
+	sReq.cKind = cKind;
+	SySetPut(pNames,(const void *)&sReq);
+	SyBlobRelease(&sFqn);
+	return SXRET_OK;
+}
+/*
+ * Scan the declaration whose keyword pGen->pIn sits on (class/enum/interface/
+ * trait, or an anonymous `class(args)`) WITHOUT consuming tokens. Collects
+ * every referenced dependency name, locates the body braces, and filters the
+ * collected names down to the UNRESOLVABLE ones (each lookup fires autoload,
+ * exactly like the compile it replaces). SXRET_OK with an empty pMissing set
+ * means "compile normally"; a non-empty set means "defer". Any structural
+ * surprise returns SXERR_INVALID so the normal compile reports it.
+ */
+static sxi32 GenStateScanDeferDeps(ph7_gen_state *pGen,int bAnon,int iSelfKind,
+	SySet *pMissing,SyToken **ppBody,SyToken **ppBodyEnd,SyBlob *pSelfFqn)
+{
+	SyToken *pCur = pGen->pIn; /* on the declaration keyword */
+	SyToken *pEnd = pGen->pEnd;
+	SySet aNames;
+	sxi32 rc = SXRET_OK;
+	*ppBody = *ppBodyEnd = 0;
+	SySetInit(&aNames,&pGen->pVm->sAllocator,sizeof(VmDeferredReq));
+	pCur++; /* Jump the keyword */
+	if( bAnon ){
+		if( pCur < pEnd && (pCur->nType & PH7_TK_LPAREN) ){
+			SyToken *pClose = 0;
+			pCur++;
+			PH7_DelimitNestedTokens(pCur,pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pClose);
+			if( pClose == 0 || pClose >= pEnd ){
+				SySetRelease(&aNames);
+				return SXERR_INVALID;
+			}
+			pCur = &pClose[1];
+		}
+	}else{
+		if( pCur >= pEnd || (pCur->nType & PH7_TK_ID) == 0 ){
+			SySetRelease(&aNames);
+			return SXERR_INVALID;
+		}
+		GenStateBuildFQN(pGen,&pCur->sData,pSelfFqn);
+		pCur++;
+	}
+	/* Header: extends/implements lists up to the '{' (an enum's `: int` backing
+	 * and any stray tokens pass through; malformed headers bail to the normal
+	 * path's diagnostics). */
+	while( pCur < pEnd && (pCur->nType & PH7_TK_OCB) == 0 ){
+		int iKind = -1;
+		if( pCur->nType & PH7_TK_KEYWORD ){
+			sxi32 nKw = SX_PTR_TO_INT(pCur->pUserData);
+			if( nKw == PH7_TKWRD_EXTENDS ){
+				iKind = (iSelfKind == PH7_DEFER_KIND_INTERFACE)
+					? PH7_DEFER_KIND_INTERFACE : PH7_DEFER_KIND_CLASS;
+			}else if( nKw == PH7_TKWRD_IMPLEMENTS ){
+				iKind = PH7_DEFER_KIND_INTERFACE;
+			}
+		}
+		if( iKind < 0 ){
+			pCur++;
+			continue;
+		}
+		pCur++; /* Jump extends/implements */
+		for(;;){
+			if( GenStateDeferRecordRef(pGen,&pCur,pEnd,(sxu8)iKind,&aNames) != SXRET_OK ){
+				SySetRelease(&aNames);
+				return SXERR_INVALID;
+			}
+			if( pCur < pEnd && (pCur->nType & PH7_TK_COMMA) ){
+				pCur++;
+				continue;
+			}
+			break;
+		}
+	}
+	if( pCur >= pEnd || (pCur->nType & PH7_TK_OCB) == 0 ){
+		SySetRelease(&aNames);
+		return SXERR_INVALID;
+	}
+	*ppBody = pCur;
+	{
+		SyToken *pClose = 0;
+		PH7_DelimitNestedTokens(&pCur[1],pEnd,PH7_TK_OCB,PH7_TK_CCB,&pClose);
+		if( pClose == 0 || pClose >= pEnd ){
+			SySetRelease(&aNames);
+			return SXERR_INVALID;
+		}
+		*ppBodyEnd = pClose;
+	}
+	/* Body: depth-1 trait `use Name[, Name]` statements. Statement position only
+	 * (previous token one of '{' '}' ';'), so a closure's `use ($x)` — which
+	 * follows a ')' — never matches. */
+	{
+		SyToken *p = &(*ppBody)[1];
+		int bStmtPos = 1;
+		sxi32 iDepth = 1;
+		while( p < *ppBodyEnd ){
+			if( p->nType & PH7_TK_OCB ){
+				iDepth++;
+				bStmtPos = 1;
+				p++;
+				continue;
+			}
+			if( p->nType & PH7_TK_CCB ){
+				iDepth--;
+				bStmtPos = 1;
+				p++;
+				continue;
+			}
+			if( p->nType & PH7_TK_SEMI ){
+				bStmtPos = 1;
+				p++;
+				continue;
+			}
+			if( iDepth == 1 && bStmtPos && (p->nType & PH7_TK_KEYWORD)
+			 && SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_USE ){
+				p++;
+				for(;;){
+					if( GenStateDeferRecordRef(pGen,&p,*ppBodyEnd,PH7_DEFER_KIND_TRAIT,&aNames) != SXRET_OK ){
+						SySetRelease(&aNames);
+						return SXERR_INVALID;
+					}
+					if( p < *ppBodyEnd && (p->nType & PH7_TK_COMMA) ){
+						p++;
+						continue;
+					}
+					break;
+				}
+				continue;
+			}
+			bStmtPos = 0;
+			p++;
+		}
+	}
+	/* Filter: keep only the names that do NOT resolve. The lookup fires the
+	 * autoloader exactly where the replaced compile would. */
+	{
+		VmDeferredReq *aReq = (VmDeferredReq *)SySetBasePtr(&aNames);
+		sxu32 n;
+		for( n = 0 ; n < SySetUsed(&aNames) ; ++n ){
+			if( PH7_VmExtractClass(pGen->pVm,aReq[n].sName.zString,aReq[n].sName.nByte,FALSE,0) == 0 ){
+				SySetPut(pMissing,(const void *)&aReq[n]);
+			}
+		}
+	}
+	SySetRelease(&aNames);
+	return rc;
+}
+/*
+ * Capture the declaration as a re-compilable chunk, record it, and emit
+ * OP_CLASS_DEFER at the current emission point. On return the statement
+ * cursor sits past the declaration's closing '}'. pMissing's entries are
+ * COPIED into the record (their name bytes are already allocator-owned).
+ */
+static sxi32 GenStateEmitDeferredClass(ph7_gen_state *pGen,sxi32 iFlags,int bAnon,
+	SySet *pMissing,SyToken *pBodyEnd,SyBlob *pSelfFqn,const SyString *pAnonName)
+{
+	SyToken *pKw = pGen->pIn; /* the declaration keyword */
+	VmDeferredClass *pDefer;
+	SyBlob sChunk;
+	const char *zFrom;
+	const char *zTo;
+	char *zDup;
+	SyBlobInit(&sChunk,&pGen->pVm->sAllocator);
+	/* The declaration site's compile context is replayed as literal statements:
+	 * strict_types first (it must open the chunk), then namespace and the
+	 * use-import tables — the runtime re-compile starts in a fresh scope. */
+	if( pGen->bStrictTypes ){
+		SyBlobAppend(&sChunk,"declare(strict_types=1);\n",sizeof("declare(strict_types=1);\n")-1);
+	}
+	if( SyBlobLength(&pGen->sNamespace) > 0 ){
+		SyBlobFormat(&sChunk,"namespace %.*s;\n",
+			(int)SyBlobLength(&pGen->sNamespace),(const char *)SyBlobData(&pGen->sNamespace));
+	}
+	GenStateDeferEmitUses(&sChunk,&pGen->hUseImports,"");
+	GenStateDeferEmitUses(&sChunk,&pGen->hUseFuncImports,"function ");
+	GenStateDeferEmitUses(&sChunk,&pGen->hUseConstImports,"const ");
+	/* Doc-comment and attribute groups precede the keyword in the raw source,
+	 * outside the captured span — re-emit them from the trivia sidecar. */
+	if( !bAnon && pGen->sPendingDoc.nByte > 0 ){
+		SyBlobAppend(&sChunk,pGen->sPendingDoc.zString,pGen->sPendingDoc.nByte);
+		SyBlobAppend(&sChunk,"\n",1);
+	}
+	{
+		ph7_trivia *aT;
+		sxu32 nT,n;
+		if( bAnon ){
+			/* `new #[A] class` trivia is keyed to the 'class' token */
+			SyToken *pBase = (SyToken *)SySetBasePtr(pGen->pTokenSet);
+			aT = (ph7_trivia *)SySetBasePtr(&pGen->aTrivia);
+			nT = SySetUsed(&pGen->aTrivia);
+			if( pGen->pTokenSet && pKw >= pBase && pKw < &pBase[SySetUsed(pGen->pTokenSet)] ){
+				sxu32 nIdx = (sxu32)(pKw - pBase);
+				for( n = 0 ; n < nT ; ++n ){
+					if( aT[n].nTokIdx == nIdx && aT[n].iKind == PH7_TRIVIA_ATTR ){
+						SyBlobFormat(&sChunk,"#[%.*s]\n",(int)aT[n].sText.nByte,aT[n].sText.zString);
+					}
+				}
+			}
+		}else{
+			aT = (ph7_trivia *)SySetBasePtr(&pGen->aPendingAttrs);
+			nT = SySetUsed(&pGen->aPendingAttrs);
+			for( n = 0 ; n < nT ; ++n ){
+				if( aT[n].iKind == PH7_TRIVIA_ATTR ){
+					SyBlobFormat(&sChunk,"#[%.*s]\n",(int)aT[n].sText.nByte,aT[n].sText.zString);
+				}
+			}
+		}
+	}
+	/* Pad the prefix with newlines so the declaration keyword sits on its
+	 * ORIGINAL line inside the chunk — runtime diagnostics from the deferred
+	 * compile then report the source's real line. Best-effort: a prefix
+	 * already longer than the declaration line skips the padding. */
+	{
+		const char *zScan = (const char *)SyBlobData(&sChunk);
+		sxu32 nHave = 0;
+		sxu32 nScan;
+		for( nScan = 0 ; nScan < SyBlobLength(&sChunk) ; ++nScan ){
+			if( zScan[nScan] == '\n' ){
+				nHave++;
+			}
+		}
+		while( nHave + 1 < pKw->nLine ){
+			SyBlobAppend(&sChunk,"\n",1);
+			nHave++;
+		}
+	}
+	if( bAnon ){
+		/* `if (false) { new class <header-minus-args> { body } ; }` — installs
+		 * the class at the chunk's compile, never instantiates it. */
+		SyToken *pAfterArgs = &pKw[1];
+		SyBlobAppend(&sChunk,"if (false) { new ",sizeof("if (false) { new ")-1);
+		SyBlobAppend(&sChunk,pKw->sData.zString,pKw->sData.nByte);
+		if( pAfterArgs < pGen->pEnd && (pAfterArgs->nType & PH7_TK_LPAREN) ){
+			SyToken *pClose = 0;
+			PH7_DelimitNestedTokens(&pAfterArgs[1],pGen->pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pClose);
+			if( pClose == 0 || pClose >= pGen->pEnd ){
+				SyBlobRelease(&sChunk);
+				return SXERR_INVALID;
+			}
+			pAfterArgs = &pClose[1];
+		}
+		if( pAfterArgs < pBodyEnd ){
+			SyBlobAppend(&sChunk," ",1);
+			zFrom = pAfterArgs->sData.zString;
+			zTo = pBodyEnd->sData.zString + pBodyEnd->sData.nByte;
+			SyBlobAppend(&sChunk,zFrom,(sxu32)(zTo - zFrom));
+		}
+		SyBlobAppend(&sChunk,"; }",sizeof("; }")-1);
+	}else{
+		/* Modifiers were consumed before this compiler ran; reconstruct them
+		 * (an enum's implicit `final` must NOT be spelled out). */
+		if( (iFlags & PH7_CLASS_ENUM) == 0
+		 && (pKw->nType & PH7_TK_KEYWORD)
+		 && SX_PTR_TO_INT(pKw->pUserData) == PH7_TKWRD_CLASS ){
+			if( iFlags & PH7_CLASS_FINAL ){
+				SyBlobAppend(&sChunk,"final ",sizeof("final ")-1);
+			}
+			if( iFlags & PH7_CLASS_ABSTRACT ){
+				SyBlobAppend(&sChunk,"abstract ",sizeof("abstract ")-1);
+			}
+			if( iFlags & PH7_CLASS_READONLY ){
+				SyBlobAppend(&sChunk,"readonly ",sizeof("readonly ")-1);
+			}
+		}
+		zFrom = pKw->sData.zString;
+		zTo = pBodyEnd->sData.zString + pBodyEnd->sData.nByte;
+		SyBlobAppend(&sChunk,zFrom,(sxu32)(zTo - zFrom));
+	}
+	pDefer = (VmDeferredClass *)SyMemBackendAlloc(&pGen->pVm->sAllocator,sizeof(VmDeferredClass));
+	if( pDefer == 0 ){
+		SyBlobRelease(&sChunk);
+		PH7_GenCompileError(pGen,E_ERROR,pKw->nLine,"Fatal, PH7 is running out of memory");
+		return SXERR_ABORT;
+	}
+	SyZero(pDefer,sizeof(VmDeferredClass));
+	zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+		(const char *)SyBlobData(&sChunk),SyBlobLength(&sChunk));
+	SyBlobRelease(&sChunk);
+	if( zDup == 0 ){
+		PH7_GenCompileError(pGen,E_ERROR,pKw->nLine,"Fatal, PH7 is running out of memory");
+		return SXERR_ABORT;
+	}
+	SyStringInitFromBuf(&pDefer->sText,zDup,SyStrlen(zDup));
+	if( bAnon ){
+		zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,pAnonName->zString,pAnonName->nByte);
+		if( zDup == 0 ){
+			PH7_GenCompileError(pGen,E_ERROR,pKw->nLine,"Fatal, PH7 is running out of memory");
+			return SXERR_ABORT;
+		}
+		SyStringInitFromBuf(&pDefer->sAnonName,zDup,pAnonName->nByte);
+		pDefer->sSelfName = pDefer->sAnonName;
+	}else{
+		zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+			(const char *)SyBlobData(pSelfFqn),SyBlobLength(pSelfFqn));
+		if( zDup == 0 ){
+			PH7_GenCompileError(pGen,E_ERROR,pKw->nLine,"Fatal, PH7 is running out of memory");
+			return SXERR_ABORT;
+		}
+		SyStringInitFromBuf(&pDefer->sSelfName,zDup,SyBlobLength(pSelfFqn));
+	}
+	SySetInit(&pDefer->aRequired,&pGen->pVm->sAllocator,sizeof(VmDeferredReq));
+	{
+		VmDeferredReq *aReq = (VmDeferredReq *)SySetBasePtr(pMissing);
+		sxu32 n;
+		for( n = 0 ; n < SySetUsed(pMissing) ; ++n ){
+			SySetPut(&pDefer->aRequired,(const void *)&aReq[n]);
+		}
+	}
+	pDefer->nLine = pKw->nLine;
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_CLASS_DEFER,0,0,(void *)pDefer,0);
+	/* Skip the declaration: the statement cursor lands past its '}' */
+	pGen->pIn = &pBodyEnd[1];
+	return SXRET_OK;
+}
+/*
+ * Deferral gate shared by the named-declaration compilers: scan the
+ * declaration at pGen->pIn; when a dependency is missing, capture + emit the
+ * deferred record and return TRUE (the caller returns immediately — the
+ * declaration compiles at execution time). FALSE means compile normally.
+ * *pRc carries SXERR_ABORT out of the capture path.
+ */
+static int GenStateMaybeDeferClass(ph7_gen_state *pGen,sxi32 iFlags,int iSelfKind,sxi32 *pRc)
+{
+	SySet aMissing;
+	SyToken *pBody = 0;
+	SyToken *pBodyEnd = 0;
+	SyBlob sSelfFqn;
+	int bDefer = 0;
+	*pRc = SXRET_OK;
+	SySetInit(&aMissing,&pGen->pVm->sAllocator,sizeof(VmDeferredReq));
+	SyBlobInit(&sSelfFqn,&pGen->pVm->sAllocator);
+	if( GenStateScanDeferDeps(pGen,0,iSelfKind,&aMissing,&pBody,&pBodyEnd,&sSelfFqn) == SXRET_OK
+	 && SySetUsed(&aMissing) > 0 ){
+		*pRc = GenStateEmitDeferredClass(pGen,iFlags,0,&aMissing,pBodyEnd,&sSelfFqn,0);
+		bDefer = 1;
+	}
+	SySetRelease(&aMissing);
+	SyBlobRelease(&sSelfFqn);
+	return bDefer;
+}
+/*
  * Compile a class declaration, named or anonymous.
  *
  * For a named class pAnonName is 0 and the class name is read from the token
@@ -3073,6 +3503,15 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 	SyString *pName;
 	sxi32 nKwrd;
 	sxi32 rc;
+	if( pAnonName == 0 ){
+		/* Deferral gate: an unresolvable parent/interface/trait —
+		 * its autoloader has not RUN yet — re-compiles this declaration at its
+		 * execution point instead of dying on "Nonexistent base class". */
+		sxi32 rcDefer;
+		if( GenStateMaybeDeferClass(pGen,iFlags,PH7_DEFER_KIND_CLASS,&rcDefer) ){
+			return rcDefer == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
+		}
+	}
 	/* Jump the 'class' keyword */
 	pGen->pIn++;
 	if( pAnonName ){
@@ -4114,26 +4553,69 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonClass(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	sxu32 nIdx,nLen;
 	sxi32 nArg,rc;
 	SXUNUSED(iCompileFlag);
-	/* Generate a unique anonymous-class name (collision-checked) */
-	nLen = SyBufferFormat(zName,sizeof(zName),"class@anonymous_%d",iCnt++);
-	while( PH7_VmExtractClass(pGen->pVm,zName,nLen,FALSE,0) != 0 && nLen < sizeof(zName) - 2 ){
+	if( pGen->pVm->sDeferAnonName.nByte > 0 ){
+		/* Deferred re-compile (VmExecDeferredClass): install under the SAME
+		 * synthesized name the original site's OP_NEW loads. One-shot. */
+		sName = pGen->pVm->sDeferAnonName;
+		nLen = sName.nByte;
+		pGen->pVm->sDeferAnonName.zString = 0;
+		pGen->pVm->sDeferAnonName.nByte = 0;
+	}else{
+		/* Generate a unique anonymous-class name (collision-checked) */
 		nLen = SyBufferFormat(zName,sizeof(zName),"class@anonymous_%d",iCnt++);
+		while( PH7_VmExtractClass(pGen->pVm,zName,nLen,FALSE,0) != 0 && nLen < sizeof(zName) - 2 ){
+			nLen = SyBufferFormat(zName,sizeof(zName),"class@anonymous_%d",iCnt++);
+		}
+		SyStringInitFromBuf(&sName,zName,nLen);
 	}
-	SyStringInitFromBuf(&sName,zName,nLen);
 	/* Compile + install the class body; capture the constructor '(args)' range.
 	 * On entry pGen->pIn sits on the 'class' keyword and pGen->pEnd bounds the
-	 * delimited construct; GenStateCompileClassEx restores both on success. */
+	 * delimited construct; GenStateCompileClassEx restores both on success.
+	 * Deferral gate: `new class extends \App\Child {}` where the
+	 * parent's autoloader has not RUN yet — capture the class for a runtime
+	 * re-compile and keep only the site's argument/OP_NEW emission here. */
 	pArgStart = pArgEnd = 0;
-	rc = GenStateCompileClassEx(pGen,0,&sName,&pArgStart,&pArgEnd);
-	if( rc != SXRET_OK ){
-		return rc;
-	}
 	{
-		/* Expression-position attributes (`new #[A] class {…}`) */
-		ph7_class *pAnonClass = PH7_VmExtractClass(pGen->pVm,zName,nLen,FALSE,0);
-		if( pAnonClass
-		 && GenStateCollectParamAttrs(&(*pGen),pTokKw,&pAnonClass->aAttrs) == SXERR_ABORT ){
-			return SXERR_ABORT;
+		SySet aMissing;
+		SyToken *pBody = 0;
+		SyToken *pBodyEnd = 0;
+		SyBlob sSelfFqn;
+		int bDeferred = 0;
+		SySetInit(&aMissing,&pGen->pVm->sAllocator,sizeof(VmDeferredReq));
+		SyBlobInit(&sSelfFqn,&pGen->pVm->sAllocator);
+		if( GenStateScanDeferDeps(pGen,1,PH7_DEFER_KIND_CLASS,&aMissing,&pBody,&pBodyEnd,&sSelfFqn) == SXRET_OK
+		 && SySetUsed(&aMissing) > 0 ){
+			if( &pTokKw[1] < pGen->pEnd && (pTokKw[1].nType & PH7_TK_LPAREN) ){
+				SyToken *pClose = 0;
+				PH7_DelimitNestedTokens(&pTokKw[2],pGen->pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pClose);
+				if( pClose && pClose < pGen->pEnd ){
+					pArgStart = &pTokKw[2];
+					pArgEnd = pClose;
+				}
+			}
+			rc = GenStateEmitDeferredClass(pGen,0,1,&aMissing,pBodyEnd,0,&sName);
+			if( rc == SXERR_ABORT ){
+				SySetRelease(&aMissing);
+				SyBlobRelease(&sSelfFqn);
+				return SXERR_ABORT;
+			}
+			bDeferred = ( rc == SXRET_OK );
+		}
+		SySetRelease(&aMissing);
+		SyBlobRelease(&sSelfFqn);
+		if( !bDeferred ){
+			rc = GenStateCompileClassEx(pGen,0,&sName,&pArgStart,&pArgEnd);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+			{
+				/* Expression-position attributes (`new #[A] class {…}`) */
+				ph7_class *pAnonClass = PH7_VmExtractClass(pGen->pVm,sName.zString,nLen,FALSE,0);
+				if( pAnonClass
+				 && GenStateCollectParamAttrs(&(*pGen),pTokKw,&pAnonClass->aAttrs) == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+			}
 		}
 	}
 	/* Emit the instantiation. OP_NEW expects the class name on the stack top
@@ -4283,6 +4765,14 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 	SyString *pName;
 	sxi32 nKwrd;
 	sxi32 rc;
+	{
+		/* Deferral gate: a used trait may need an autoloader that
+		 * has not run yet. */
+		sxi32 rcDefer;
+		if( GenStateMaybeDeferClass(pGen,0,PH7_DEFER_KIND_TRAIT,&rcDefer) ){
+			return rcDefer == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
+		}
+	}
 	/* Jump the 'trait' keyword */
 	pGen->pIn++;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_ID) == 0 ){
@@ -4369,41 +4859,45 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 		if( pGen->pIn->nType & PH7_TK_KEYWORD ){
 			nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
 			if( nKwrd == PH7_TKWRD_USE ){
-				/* Trait uses another trait: use OtherTrait; */
+				/* Trait uses another trait: use OtherTrait; A trait name is a full
+				 * class reference — qualified or fully-qualified (`use Foo\T;`,
+				 * `use \Foo\T;`) — so parse it with the shared class-reference
+				 * reader like the CLASS body's trait-use does, instead of the old
+				 * single-identifier read, which choked on the leading '\'. */
 				pGen->pIn++; /* Jump 'use' */
 				for(;;){
 					ph7_class *pUsedTrait;
-					SyString *pUsedName;
-					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_ID) == 0 ){
-						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
+					SyBlob sResolved;
+					SyString sUsedName;
+					sxu32 nUseLine = (pGen->pIn < pGen->pEnd) ? pGen->pIn->nLine : nLine;
+					SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
+					if( GenStateParseClassReference(pGen,&sResolved) != SXRET_OK ){
+						SyBlobRelease(&sResolved);
+						rc = PH7_GenCompileError(pGen,E_ERROR,nUseLine,
 							"Expected trait name after 'use' inside trait '%z'",pName);
 						if( rc == SXERR_ABORT ){
 							return SXERR_ABORT;
 						}
 						break;
 					}
-					pUsedName = &pGen->pIn->sData;
-					{
-						SyBlob sResolved;
-						SyBlobInit(&sResolved,&pGen->pVm->sAllocator);
-						GenStateResolveName(pGen,pUsedName,&sResolved);
-						pUsedTrait = PH7_VmExtractClass(pGen->pVm,
-							(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
-						SyBlobRelease(&sResolved);
-					}
+					pUsedTrait = PH7_VmExtractClass(pGen->pVm,
+						(const char *)SyBlobData(&sResolved),(sxu32)SyBlobLength(&sResolved),FALSE,0);
+					SyStringInitFromBuf(&sUsedName,
+						(const char *)SyBlobData(&sResolved),SyBlobLength(&sResolved));
 					while( pUsedTrait && (pUsedTrait->iFlags & PH7_CLASS_TRAIT) == 0 ){
 						pUsedTrait = pUsedTrait->pNextName;
 					}
 					if( pUsedTrait == 0 ){
-						rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
-							"'%z' is not a trait",pUsedName);
+						rc = PH7_GenCompileError(pGen,E_ERROR,nUseLine,
+							"'%z' is not a trait",&sUsedName);
 						if( rc == SXERR_ABORT ){
+							SyBlobRelease(&sResolved);
 							return SXERR_ABORT;
 						}
 					}else{
 						PH7_ClassUseTrait(&(*pGen),pClass,pUsedTrait);
 					}
-					pGen->pIn++;
+					SyBlobRelease(&sResolved);
 					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_COMMA) == 0 ){
 						break;
 					}
