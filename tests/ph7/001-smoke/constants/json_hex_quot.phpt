@@ -7,8 +7,8 @@ PH7 / PHP: JSON_HEX_QUOT constant value
 <?php
 echo "JSON_HEX_QUOT=" . JSON_HEX_QUOT . "\n";
 ?>
---EXPECTF--
-JSON_HEX_QUOT=%d
+--EXPECT--
+JSON_HEX_QUOT=8
 --CLEAN--
 <?php
 

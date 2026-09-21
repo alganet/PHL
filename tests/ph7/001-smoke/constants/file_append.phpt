@@ -7,8 +7,8 @@ PH7 / PHP: FILE_APPEND constant
 <?php
 echo "FILE_APPEND=" . FILE_APPEND . "\n";
 ?>
---EXPECTF--
-FILE_APPEND=%d
+--EXPECT--
+FILE_APPEND=8
 --CLEAN--
 <?php
 

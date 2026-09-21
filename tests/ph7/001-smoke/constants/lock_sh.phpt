@@ -7,8 +7,8 @@ PH7 / PHP: LOCK_SH constant
 <?php
 echo "LOCK_SH=" . LOCK_SH . "\n";
 ?>
---EXPECTF--
-LOCK_SH=%d
+--EXPECT--
+LOCK_SH=1
 --CLEAN--
 <?php
 

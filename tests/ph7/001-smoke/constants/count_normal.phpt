@@ -7,8 +7,8 @@ PH7 / PHP: COUNT_NORMAL constant
 <?php
 echo "COUNT_NORMAL=" . COUNT_NORMAL . "\n";
 ?>
---EXPECTF--
-COUNT_NORMAL=%d
+--EXPECT--
+COUNT_NORMAL=0
 --CLEAN--
 <?php
 

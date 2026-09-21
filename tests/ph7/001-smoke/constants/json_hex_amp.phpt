@@ -7,8 +7,8 @@ PH7 / PHP: JSON_HEX_AMP constant value
 <?php
 echo "JSON_HEX_AMP=" . JSON_HEX_AMP . "\n";
 ?>
---EXPECTF--
-JSON_HEX_AMP=%d
+--EXPECT--
+JSON_HEX_AMP=2
 --CLEAN--
 <?php
 

@@ -1228,7 +1228,7 @@ static void PH7_FNM_CASEFOLD_Const(ph7_value *pVal,void *pUserData)
 static void PH7_PATHINFO_DIRNAME_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,1);
+	ph7_value_int(pVal,PH7_PATHINFO_DIRNAME);
 }
 /*
  * PATHINFO_BASENAME
@@ -1237,25 +1237,34 @@ static void PH7_PATHINFO_DIRNAME_Const(ph7_value *pVal,void *pUserData)
 static void PH7_PATHINFO_BASENAME_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,2);
+	ph7_value_int(pVal,PH7_PATHINFO_BASENAME);
 }
 /*
  * PATHINFO_EXTENSION
- *  Expand 3.
+ *  Expand php's 4 (a POWER OF TWO: the components are a bitmask).
  */
 static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,3);
+	ph7_value_int(pVal,PH7_PATHINFO_EXTENSION);
 }
 /*
  * PATHINFO_FILENAME
- *  Expand 4.
+ *  Expand php's 8 (a POWER OF TWO: the components are a bitmask).
  */
 static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,4);
+	ph7_value_int(pVal,PH7_PATHINFO_FILENAME);
+}
+/*
+ * PATHINFO_ALL
+ *  Expand php's 15 — the default, and the one value that answers with the ARRAY.
+ */
+static void PH7_PATHINFO_ALL_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,PH7_PATHINFO_ALL);
 }
 /*
  * SEEK_SET.
@@ -1386,66 +1395,66 @@ static void PH7_SCANDIR_SORT_NONE_Const(ph7_value *pVal,void *pUserData)
 }
 /*
  * GLOB_MARK
- *  Expand 0x01 (must be a power of two)
+ *  Expand php's 0x08 (php's own portable glob flag set)
  */
 static void PH7_GLOB_MARK_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x01);
+	ph7_value_int(pVal,PH7_GLOB_MARK);
 }
 /*
  * GLOB_NOSORT
- *  Expand 0x02 (must be a power of two)
+ *  Expand php's 0x20
  */
 static void PH7_GLOB_NOSORT_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x02);
+	ph7_value_int(pVal,PH7_GLOB_NOSORT);
 }
 /*
  * GLOB_NOCHECK
- *  Expand 0x04 (must be a power of two)
+ *  Expand php's 0x10
  */
 static void PH7_GLOB_NOCHECK_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x04);
+	ph7_value_int(pVal,PH7_GLOB_NOCHECK);
 }
 /*
  * GLOB_NOESCAPE
- *  Expand 0x08 (must be a power of two)
+ *  Expand php's 0x1000
  */
 static void PH7_GLOB_NOESCAPE_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x08);
+	ph7_value_int(pVal,PH7_GLOB_NOESCAPE);
 }
 /*
  * GLOB_BRACE
- *  Expand 0x10 (must be a power of two)
+ *  Expand php's 0x80
  */
 static void PH7_GLOB_BRACE_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x10);
+	ph7_value_int(pVal,PH7_GLOB_BRACE);
 }
 /*
  * GLOB_ONLYDIR
- *  Expand 0x20 (must be a power of two)
+ *  Expand php's 0x40000000
  */
 static void PH7_GLOB_ONLYDIR_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x20);
+	ph7_value_int(pVal,PH7_GLOB_ONLYDIR);
 }
 /*
  * GLOB_ERR
- *  Expand 0x40 (must be a power of two)
+ *  Expand php's 0x04
  */
 static void PH7_GLOB_ERR_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x40);
+	ph7_value_int(pVal,PH7_GLOB_ERR);
 }
 /*
  * STDIN
@@ -1482,21 +1491,21 @@ static void PH7_STDERR_Const(ph7_value *pVal,void *pUserData)
 }
 /*
  * INI_SCANNER_NORMAL
- *   Expand 1
+ *   Expand php's 0
  */
 static void PH7_INI_SCANNER_NORMAL_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,1);
+	ph7_value_int(pVal,PH7_INI_SCANNER_NORMAL);
 }
 /*
  * INI_SCANNER_RAW
- *   Expand 2
+ *   Expand php's 1
  */
 static void PH7_INI_SCANNER_RAW_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,2);
+	ph7_value_int(pVal,PH7_INI_SCANNER_RAW);
 }
 /*
  * EXTR_OVERWRITE
@@ -2007,6 +2016,7 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"PATHINFO_BASENAME",    PH7_PATHINFO_BASENAME_Const },
 	{"PATHINFO_EXTENSION",   PH7_PATHINFO_EXTENSION_Const},
 	{"PATHINFO_FILENAME",    PH7_PATHINFO_FILENAME_Const },
+	{"PATHINFO_ALL",         PH7_PATHINFO_ALL_Const },
 	/* ASSERT_QUIET_EVAL was REMOVED in php 8.0: referencing it is an Error there */
 	{"SEEK_SET",             PH7_SEEK_SET_Const      },
 	{"SEEK_CUR",             PH7_SEEK_CUR_Const      },

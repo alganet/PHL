@@ -7,8 +7,8 @@ PH7 / PHP: PHP_ROUND_HALF_DOWN constant
 <?php
 echo "PHP_ROUND_HALF_DOWN=" . PHP_ROUND_HALF_DOWN . "\n";
 ?>
---EXPECTF--
-PHP_ROUND_HALF_DOWN=%d
+--EXPECT--
+PHP_ROUND_HALF_DOWN=2
 --CLEAN--
 <?php
 

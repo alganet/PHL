@@ -7,8 +7,8 @@ PH7 / PHP: INI_SCANNER_RAW constant
 <?php
 echo "INI_SCANNER_RAW=" . INI_SCANNER_RAW . "\n";
 ?>
---EXPECTF--
-INI_SCANNER_RAW=%d
+--EXPECT--
+INI_SCANNER_RAW=1
 --CLEAN--
 <?php
 

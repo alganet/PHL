@@ -7,8 +7,8 @@ PH7 / PHP: EXTR_SKIP constant
 <?php
 echo "EXTR_SKIP=" . EXTR_SKIP . "\n";
 ?>
---EXPECTF--
-EXTR_SKIP=%d
+--EXPECT--
+EXTR_SKIP=1
 --CLEAN--
 <?php
 

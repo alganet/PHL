@@ -7,8 +7,8 @@ PH7 / PHP: GLOB_ONLYDIR constant
 <?php
 echo "GLOB_ONLYDIR=" . GLOB_ONLYDIR . "\n";
 ?>
---EXPECTF--
-GLOB_ONLYDIR=%d
+--EXPECT--
+GLOB_ONLYDIR=1073741824
 --CLEAN--
 <?php
 

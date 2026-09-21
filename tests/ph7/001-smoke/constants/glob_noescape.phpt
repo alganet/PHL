@@ -7,8 +7,8 @@ PH7 / PHP: GLOB_NOESCAPE constant
 <?php
 echo "GLOB_NOESCAPE=" . GLOB_NOESCAPE . "\n";
 ?>
---EXPECTF--
-GLOB_NOESCAPE=%d
+--EXPECT--
+GLOB_NOESCAPE=4096
 --CLEAN--
 <?php
 

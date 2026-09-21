@@ -7,8 +7,8 @@ PH7 / PHP: SCANDIR_SORT_NONE constant
 <?php
 echo "SCANDIR_SORT_NONE=" . SCANDIR_SORT_NONE . "\n";
 ?>
---EXPECTF--
-SCANDIR_SORT_NONE=%d
+--EXPECT--
+SCANDIR_SORT_NONE=2
 --CLEAN--
 <?php
 

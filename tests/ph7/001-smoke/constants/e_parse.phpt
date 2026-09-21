@@ -7,8 +7,8 @@ PH7 / PHP: E_PARSE constant
 <?php
 echo "E_PARSE=" . E_PARSE . "\n";
 ?>
---EXPECTF--
-E_PARSE=%d
+--EXPECT--
+E_PARSE=4
 --CLEAN--
 <?php
 

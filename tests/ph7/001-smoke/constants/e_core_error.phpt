@@ -7,8 +7,8 @@ PH7 / PHP: E_CORE_ERROR constant
 <?php
 echo "E_CORE_ERROR=" . E_CORE_ERROR . "\n";
 ?>
---EXPECTF--
-E_CORE_ERROR=%d
+--EXPECT--
+E_CORE_ERROR=16
 --CLEAN--
 <?php
 

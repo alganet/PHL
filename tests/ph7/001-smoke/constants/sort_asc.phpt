@@ -7,8 +7,8 @@ PH7 / PHP: SORT_ASC constant
 <?php
 echo "SORT_ASC=" . SORT_ASC . "\n";
 ?>
---EXPECTF--
-SORT_ASC=%d
+--EXPECT--
+SORT_ASC=4
 --CLEAN--
 <?php
 

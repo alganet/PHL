@@ -7,8 +7,8 @@ PH7 / PHP: GLOB_NOCHECK constant
 <?php
 echo "GLOB_NOCHECK=" . GLOB_NOCHECK . "\n";
 ?>
---EXPECTF--
-GLOB_NOCHECK=%d
+--EXPECT--
+GLOB_NOCHECK=16
 --CLEAN--
 <?php
 

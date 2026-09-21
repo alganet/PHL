@@ -7,8 +7,8 @@ PH7 / PHP: EXTR_OVERWRITE constant
 <?php
 echo "EXTR_OVERWRITE=" . EXTR_OVERWRITE . "\n";
 ?>
---EXPECTF--
-EXTR_OVERWRITE=%d
+--EXPECT--
+EXTR_OVERWRITE=0
 --CLEAN--
 <?php
 

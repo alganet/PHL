@@ -77,6 +77,37 @@ PH7_PRIVATE const char * PH7_ExtractDirName(const char *zPath,int nByte,int *pLe
 #undef DIR_IS_SEP
 }
 /*
+ * php_basename: drop any trailing separators, then answer what follows the last
+ * remaining one. Shared by basename() and pathinfo() — they used to hand-roll the
+ * same walk separately, and pathinfo()'s copy kept the trailing separator run
+ * (`pathinfo("/var/www/")` answered basename "" where php answers "www").
+ */
+PH7_PRIVATE const char * PH7_ExtractBaseName(const char *zPath,int nByte,int *pLen)
+{
+	int c,d,iEnd,i;
+	c = d = '/';
+#ifdef __WINNT__
+	d = '\\';
+#endif
+#define DIR_IS_SEP(x) ( (int)(x) == c || (int)(x) == d )
+	iEnd = nByte;
+	while( iEnd > 0 && DIR_IS_SEP(zPath[iEnd - 1]) ){
+		iEnd--;
+	}
+	if( iEnd < 1 ){
+		/* Empty, or nothing but separators: php answers the empty string */
+		*pLen = 0;
+		return "";
+	}
+	i = iEnd;
+	while( i > 0 && !DIR_IS_SEP(zPath[i - 1]) ){
+		i--;
+	}
+	*pLen = iEnd - i;
+	return &zPath[i];
+#undef DIR_IS_SEP
+}
+/*
  * Compile the VFS implementations when builtins are enabled OR when disk I/O
  * is explicitly enabled (i.e. PH7_DISABLE_DISK_IO is NOT defined).
  */
@@ -1608,53 +1639,31 @@ static int PH7_builtin_dirname(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 static int PH7_builtin_basename(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const char *zPath,*zBase,*zEnd;
-	int c,d,iLen;
+	const char *zPath,*zBase;
+	int iLen,nBase;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid argument,return the empty string */
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
-	c = d = '/';
-#ifdef __WINNT__
-	d = '\\';
-#endif
 	/* Point to the target path */
 	zPath = ph7_value_to_string(apArg[0],&iLen);
-	if( iLen < 1 ){
-		/* Empty string */
-		ph7_result_string(pCtx,"",0);
-		return PH7_OK;
-	}
-	/* Perform the requested operation */
-	zEnd = &zPath[iLen - 1];
-	/* Ignore trailing '/' */
-	while( zEnd > zPath && ( (int)zEnd[0] == c || (int)zEnd[0] == d ) ){
-		zEnd--;
-	}
-	if( (int)zEnd[0] == c || (int)zEnd[0] == d ){
-		/* Nothing but separators ("/", "///"): php answers the EMPTY string, where the
-		 * strip loop above stops one short and left PH7 returning "/". */
-		ph7_result_string(pCtx,"",0);
-		return PH7_OK;
-	}
-	iLen = (int)(&zEnd[1]-zPath);
-	while( zEnd > zPath && ( (int)zEnd[0] != c && (int)zEnd[0] != d ) ){
-		zEnd--;
-	}
-	zBase = (zEnd > zPath) ? &zEnd[1] : zPath;
-	zEnd = &zPath[iLen];
+	/* php_basename, shared with pathinfo(): the hand-rolled walk this used to carry
+	 * kept a leading separator on a single-component path (basename("/a") answered
+	 * "/a", basename("/.") answered "/.") because it stopped one byte short. */
+	zBase = PH7_ExtractBaseName(zPath,iLen,&nBase);
 	if( nArg > 1 && ph7_value_is_string(apArg[1]) ){
 		const char *zSuffix;
 		int nSuffix;
-		/* Strip suffix */
+		/* Strip suffix — php leaves the basename alone when it IS the suffix */
 		zSuffix = ph7_value_to_string(apArg[1],&nSuffix);
-		if( nSuffix > 0 && nSuffix < iLen && SyMemcmp(&zEnd[-nSuffix],zSuffix,nSuffix) == 0 ){
-			zEnd -= nSuffix;
+		if( nSuffix > 0 && nSuffix < nBase
+		 && SyMemcmp(&zBase[nBase - nSuffix],zSuffix,nSuffix) == 0 ){
+			nBase -= nSuffix;
 		}
 	}
 	/* Store the basename */
-	ph7_result_string(pCtx,zBase,(int)(zEnd-zBase));
+	ph7_result_string(pCtx,zBase,nBase);
 	return PH7_OK;
 }
 /*
@@ -1678,74 +1687,56 @@ struct path_info
 	SyString sBasename; /* Basename [i.e httpd.conf] */
 	SyString sExtension; /* File extension [i.e xml,pdf..] */
 	SyString sFilename;  /* Filename */
+	int iPresent;        /* Which components php would EMIT (PH7_PATHINFO_* bits) */
 };
 /*
- * Extract path fields.
+ * Extract path fields exactly as php's pathinfo() assembles them.
+ *
+ * Two things this has to get right beyond the values themselves:
+ *
+ *  - php looks for the LAST dot ANYWHERE in the basename, a leading one included,
+ *    so `.bashrc` has extension "bashrc" and filename "" (PH7 stopped the scan
+ *    before the first byte, so it reported no extension and filename ".bashrc").
+ *  - EMPTY is not the same as ABSENT. php always emits basename and filename when
+ *    they are asked for, emits extension whenever a dot exists (even for `x.`,
+ *    whose extension is ""), and emits dirname only when it is non-empty. The
+ *    scalar form answers with the first EMITTED component, so conflating the two
+ *    makes `pathinfo("x.", PATHINFO_EXTENSION|PATHINFO_FILENAME)` fall through to
+ *    the filename ("x") where php answers "" — iPresent keeps them apart.
+ *
+ * dirname and basename come from the shared php_dirname/php_basename helpers
+ * rather than a third hand-rolled walk, so the trailing-separator and
+ * relative-path rules ("file.txt" -> ".", "/var/www/" -> "/var" + "www") cannot
+ * drift between the two builtins and this one.
  */
 static sxi32 ExtractPathInfo(const char *zPath,int nByte,path_info *pOut)
 {
-	const char *zPtr,*zEnd = &zPath[nByte - 1];
-	SyString *pCur;
-	int c,d;
-	c = d = '/';
-#ifdef __WINNT__
-	d = '\\';
-#endif
+	const char *zBase,*zDir,*zDot;
+	int nBase,nDir,i;
 	/* Zero the structure */
 	SyZero(pOut,sizeof(path_info));
-	/* Handle special case */
-	if( nByte == sizeof(char) && ( (int)zPath[0] == c || (int)zPath[0] == d ) ){
-#ifdef __WINNT__
-		SyStringInitFromBuf(&pOut->sDir,"\\",sizeof(char));
-#else
-		SyStringInitFromBuf(&pOut->sDir,"/",sizeof(char));
-#endif
-		return SXRET_OK;
+	zDir = PH7_ExtractDirName(zPath,nByte,&nDir);
+	if( nDir > 0 ){
+		SyStringInitFromBuf(&pOut->sDir,zDir,nDir);
+		pOut->iPresent |= PH7_PATHINFO_DIRNAME;
 	}
-	/* Extract the basename */
-	while( zEnd > zPath && ( (int)zEnd[0] != c && (int)zEnd[0] != d ) ){
-		zEnd--;
-	}
-	zPtr = (zEnd > zPath) ? &zEnd[1] : zPath;
-	zEnd = &zPath[nByte];
-	/* dirname */
-	pCur = &pOut->sDir;
-	SyStringInitFromBuf(pCur,zPath,zPtr-zPath);
-	if( pCur->nByte > 1 ){
-		SyStringTrimTrailingChar(pCur,'/');
-#ifdef __WINNT__
-		SyStringTrimTrailingChar(pCur,'\\');
-#endif
-	}else if( (int)zPath[0] == c || (int)zPath[0] == d ){
-#ifdef __WINNT__
-		SyStringInitFromBuf(&pOut->sDir,"\\",sizeof(char));
-#else
-		SyStringInitFromBuf(&pOut->sDir,"/",sizeof(char));
-#endif
-	}
-	/* basename/filename */
-	pCur = &pOut->sBasename;
-	SyStringInitFromBuf(pCur,zPtr,zEnd-zPtr);
-	SyStringTrimLeadingChar(pCur,'/');
-#ifdef __WINNT__
-	SyStringTrimLeadingChar(pCur,'\\');
-#endif
-	SyStringDupPtr(&pOut->sFilename,pCur);
-	if( pCur->nByte > 0 ){
-		/* extension */
-		zEnd--;
-		while( zEnd > pCur->zString /*basename*/ && zEnd[0] != '.' ){
-			zEnd--;
+	zBase = PH7_ExtractBaseName(zPath,nByte,&nBase);
+	SyStringInitFromBuf(&pOut->sBasename,zBase,nBase);
+	pOut->iPresent |= PH7_PATHINFO_BASENAME|PH7_PATHINFO_FILENAME;
+	/* Last dot anywhere in the basename splits filename from extension */
+	zDot = 0;
+	for( i = nBase ; i > 0 ; --i ){
+		if( zBase[i - 1] == '.' ){
+			zDot = &zBase[i - 1];
+			break;
 		}
-		if( zEnd > pCur->zString ){
-			zEnd++; /* Jump leading dot */
-			SyStringInitFromBuf(&pOut->sExtension,zEnd,&zPath[nByte]-zEnd);
-			/* Fix filename */
-			pCur = &pOut->sFilename;
-			if( pCur->nByte > SyStringLength(&pOut->sExtension) ){
-				pCur->nByte -= 1 + SyStringLength(&pOut->sExtension);
-			}
-		}
+	}
+	if( zDot ){
+		SyStringInitFromBuf(&pOut->sExtension,zDot + 1,(int)(&zBase[nBase] - (zDot + 1)));
+		pOut->iPresent |= PH7_PATHINFO_EXTENSION;
+		SyStringInitFromBuf(&pOut->sFilename,zBase,(int)(zDot - zBase));
+	}else{
+		SyStringInitFromBuf(&pOut->sFilename,zBase,nBase);
 	}
 	return SXRET_OK;
 }
@@ -1757,66 +1748,50 @@ static int PH7_builtin_pathinfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zPath;
 	path_info sInfo;
-	SyString *pComp;
 	int iLen;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid argument,return the empty string */
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
-	/* Point to the target path */
+	/* Point to the target path. The EMPTY path is not a special case: php still
+	 * answers with the array `["basename" => "", "filename" => ""]` (and "" for a
+	 * scalar request), where PH7 short-circuited to "" and returned the wrong TYPE. */
 	zPath = ph7_value_to_string(apArg[0],&iLen);
-	if( iLen < 1 ){
-		/* Empty string */
-		ph7_result_string(pCtx,"",0);
-		return PH7_OK;
-	}
 	/* Extract path info */
 	ExtractPathInfo(zPath,iLen,&sInfo);
-	if( nArg > 1 && ph7_value_is_int(apArg[1]) ){
-		/* Return path component */
-		int nComp = ph7_value_to_int(apArg[1]);
-		switch(nComp){
-		case 1: /* PATHINFO_DIRNAME */
-			pComp = &sInfo.sDir;
-			if( pComp->nByte > 0 ){
-				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);
-			}else{
-				/* Expand the empty string */
-				ph7_result_string(pCtx,"",0);
+	/* Read the mask at 64-bit width: ph7_value_to_int() truncates to `int`, so a
+	 * flags value congruent to PATHINFO_ALL mod 2^32 (4294967311, -4294967281 …)
+	 * would take the ARRAY branch and answer with the wrong TYPE. */
+	if( nArg > 1 && ph7_value_is_int(apArg[1])
+	 && ph7_value_to_int64(apArg[1]) != (ph7_int64)PH7_PATHINFO_ALL ){
+		/* $flags is a BITMASK, not an enum: php assembles the requested components in
+		 * the fixed order below and, for anything other than PATHINFO_ALL, hands back
+		 * the FIRST one it EMITTED (zend_hash_get_current_data on the fresh array).
+		 * So `PATHINFO_DIRNAME|PATHINFO_BASENAME` answers the dirname, and an unknown
+		 * bit that happens to carry a known one along (99 = 1|2|32|64) answers as if
+		 * only the known ones were passed. PH7 numbered the components 1/2/3/4 and
+		 * switched on the whole value, so it read a two-flag mask as a different single
+		 * component and answered "" for everything else. Emission is iPresent, NOT
+		 * "non-empty": an emitted-but-empty component ends the search with "". */
+		ph7_int64 nComp = ph7_value_to_int64(apArg[1]);
+		static const int aBit[4] = {
+			PH7_PATHINFO_DIRNAME,PH7_PATHINFO_BASENAME,
+			PH7_PATHINFO_EXTENSION,PH7_PATHINFO_FILENAME
+		};
+		SyString *apComp[4];
+		int i;
+		apComp[0] = &sInfo.sDir;
+		apComp[1] = &sInfo.sBasename;
+		apComp[2] = &sInfo.sExtension;
+		apComp[3] = &sInfo.sFilename;
+		/* Expand the empty string unless a requested component is emitted */
+		ph7_result_string(pCtx,"",0);
+		for( i = 0 ; i < 4 ; ++i ){
+			if( (nComp & aBit[i]) == aBit[i] && (sInfo.iPresent & aBit[i]) ){
+				ph7_result_string(pCtx,apComp[i]->zString,(int)apComp[i]->nByte);
+				break;
 			}
-			break;
-		case 2: /*PATHINFO_BASENAME*/
-			pComp = &sInfo.sBasename;
-			if( pComp->nByte > 0 ){
-				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);
-			}else{
-				/* Expand the empty string */
-				ph7_result_string(pCtx,"",0);
-			}
-			break;
-		case 3: /*PATHINFO_EXTENSION*/
-			pComp = &sInfo.sExtension;
-			if( pComp->nByte > 0 ){
-				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);
-			}else{
-				/* Expand the empty string */
-				ph7_result_string(pCtx,"",0);
-			}
-			break;
-		case 4: /*PATHINFO_FILENAME*/
-			pComp = &sInfo.sFilename;
-			if( pComp->nByte > 0 ){
-				ph7_result_string(pCtx,pComp->zString,(int)pComp->nByte);
-			}else{
-				/* Expand the empty string */
-				ph7_result_string(pCtx,"",0);
-			}
-			break;
-		default:
-			/* Expand the empty string */
-			ph7_result_string(pCtx,"",0);
-			break;
 		}
 	}else{
 		/* Return an associative array */
@@ -1828,39 +1803,28 @@ static int PH7_builtin_pathinfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			ph7_result_bool(pCtx,0);
 			return PH7_OK;
 		}
-		/* dirname */
-		pComp = &sInfo.sDir;
-		if( pComp->nByte > 0 ){
-			ph7_value_string(pValue,pComp->zString,(int)pComp->nByte);
-			/* Perform the insertion */
-			ph7_array_add_strkey_elem(pArray,"dirname",pValue); /* Will make it's own copy */
+		/* Emitted-but-EMPTY components are in the array too (php keys `basename` and
+		 * `filename` for "/" with ""), so this walks iPresent, not the lengths. */
+		{
+		static const char *azKey[4] = {"dirname","basename","extension","filename"};
+		static const int aBit[4] = {
+			PH7_PATHINFO_DIRNAME,PH7_PATHINFO_BASENAME,
+			PH7_PATHINFO_EXTENSION,PH7_PATHINFO_FILENAME
+		};
+		SyString *apComp[4];
+		int i;
+		apComp[0] = &sInfo.sDir;
+		apComp[1] = &sInfo.sBasename;
+		apComp[2] = &sInfo.sExtension;
+		apComp[3] = &sInfo.sFilename;
+		for( i = 0 ; i < 4 ; ++i ){
+			if( (sInfo.iPresent & aBit[i]) == 0 ){
+				continue;
+			}
+			ph7_value_reset_string_cursor(pValue);
+			ph7_value_string(pValue,apComp[i]->zString,(int)apComp[i]->nByte);
+			ph7_array_add_strkey_elem(pArray,azKey[i],pValue); /* Will make it's own copy */
 		}
-		/* Reset the string cursor */
-		ph7_value_reset_string_cursor(pValue);
-		/* basername */
-		pComp = &sInfo.sBasename;
-		if( pComp->nByte > 0 ){
-			ph7_value_string(pValue,pComp->zString,(int)pComp->nByte);
-			/* Perform the insertion */
-			ph7_array_add_strkey_elem(pArray,"basename",pValue); /* Will make it's own copy */
-		}
-		/* Reset the string cursor */
-		ph7_value_reset_string_cursor(pValue);
-		/* extension */
-		pComp = &sInfo.sExtension;
-		if( pComp->nByte > 0 ){
-			ph7_value_string(pValue,pComp->zString,(int)pComp->nByte);
-			/* Perform the insertion */
-			ph7_array_add_strkey_elem(pArray,"extension",pValue); /* Will make it's own copy */
-		}
-		/* Reset the string cursor */
-		ph7_value_reset_string_cursor(pValue);
-		/* filename */
-		pComp = &sInfo.sFilename;
-		if( pComp->nByte > 0 ){
-			ph7_value_string(pValue,pComp->zString,(int)pComp->nByte);
-			/* Perform the insertion */
-			ph7_array_add_strkey_elem(pArray,"filename",pValue); /* Will make it's own copy */
 		}
 		/* Return the created array */
 		ph7_result_value(pCtx,pArray);

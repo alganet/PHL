@@ -2187,11 +2187,14 @@ enum json_err_code{
 #define JSON_HEX_QUOT          0x08  /* All " are converted to \u0022. */
 #define JSON_FORCE_OBJECT      0x10  /* Outputs an object rather than an array */
 #define JSON_NUMERIC_CHECK     0x20  /* Encodes numeric strings as numbers. */
-#define JSON_BIGINT_AS_STRING  0x40  /* Not used */
 #define JSON_PRETTY_PRINT      0x80  /* Use whitespace in returned data to format it.*/
-#define JSON_UNESCAPED_SLASHES 0x100 /* Don't escape '/' */
-#define JSON_UNESCAPED_UNICODE 0x200 /* Not used */
+#define JSON_UNESCAPED_SLASHES 0x40  /* Don't escape '/' */
+#define JSON_UNESCAPED_UNICODE 0x100 /* Not used */
 #define JSON_THROW_ON_ERROR    0x400000 /* Throw JsonException on encode/decode error */
+/* DECODE flag: php numbers the decode options in their own space, so this shares a
+ * bit with an encode flag exactly as php's JSON_BIGINT_AS_STRING shares 2 with
+ * JSON_HEX_AMP. Not consumed by the decoder yet (§5 JSON audit). */
+#define JSON_BIGINT_AS_STRING  0x02
 /*
  * extract() $flags — php's ENUM (ext/standard/php_array.h), not a bitmask.
  * PH7 exposed a legacy power-of-two bitmask here (1/2/4/8/16/32/64), which
@@ -2208,6 +2211,41 @@ enum json_err_code{
 #define PH7_EXTR_PREFIX_IF_EXISTS 5
 #define PH7_EXTR_IF_EXISTS        6
 #define PH7_EXTR_REFS             0x100 /* php's by-reference extraction: unsupported, loud */
+/*
+ * pathinfo() $flags, glob() $flags and parse_ini_*() $scanner_mode — php's VALUES.
+ *
+ * Each of these was a PH7 invention (pathinfo counted 1/2/3/4 where php's are POWERS
+ * OF TWO, glob used its own 1..64 ladder, and the ini scanner started at 1), which
+ * changes the meaning of valid php source: `PATHINFO_DIRNAME|PATHINFO_BASENAME` is 3
+ * in both engines but PHL read 3 as PATHINFO_EXTENSION, a script passing php's literal
+ * 64 to json_encode() got JSON_BIGINT_AS_STRING instead of JSON_UNESCAPED_SLASHES, and
+ * INI_SCANNER_RAW (php 1) selected nothing.
+ *
+ * The GLOB_* values are php 8.5's OWN portable set (main/php_glob.h, new in 8.5), which
+ * a default build uses on every platform including MSVC — the bundled branch is taken
+ * unless the POSIX build is configured with --enable-system-glob (off by default), and
+ * the win32 build has no such option. Do NOT read them off the host <glob.h>: glibc's
+ * ladder is different (MARK 2, NOSORT 4, BRACE 1024, ONLYDIR 8192), and so was php's
+ * own pre-8.5 win32/glob.h (NOESCAPE 0x2000). PATHINFO_*, INI_SCANNER_* and JSON_* are
+ * plain #defines in ext/standard and ext/json, never platform-conditional.
+ */
+#define PH7_PATHINFO_DIRNAME    1
+#define PH7_PATHINFO_BASENAME   2
+#define PH7_PATHINFO_EXTENSION  4
+#define PH7_PATHINFO_FILENAME   8
+#define PH7_PATHINFO_ALL        (PH7_PATHINFO_DIRNAME|PH7_PATHINFO_BASENAME|\
+                                 PH7_PATHINFO_EXTENSION|PH7_PATHINFO_FILENAME)
+#define PH7_GLOB_ERR            0x0004
+#define PH7_GLOB_MARK           0x0008
+#define PH7_GLOB_NOCHECK        0x0010
+#define PH7_GLOB_NOSORT         0x0020
+#define PH7_GLOB_BRACE          0x0080
+#define PH7_GLOB_NOESCAPE       0x1000
+#define PH7_GLOB_ONLYDIR        0x40000000
+#define PH7_INI_SCANNER_NORMAL  0
+#define PH7_INI_SCANNER_RAW     1
+/* php's INI_SCANNER_TYPED is 2 — not defined here because PHL does not register the
+ * constant (nor honour any scanner mode yet); §5 tracks it with the missing JSON_*. */
 /*
  * Each parsed URI is recorded and stored in an instance of the following structure.
  */
@@ -3499,6 +3537,7 @@ PH7_PRIVATE sxi32 PH7_StreamReadWholeFile(void *pHandle,const ph7_io_stream *pSt
 PH7_PRIVATE void PH7_StreamCloseHandle(const ph7_io_stream *pStream,void *pHandle);
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 PH7_PRIVATE const char * PH7_ExtractDirName(const char *zPath,int nByte,int *pLen);
+PH7_PRIVATE const char * PH7_ExtractBaseName(const char *zPath,int nByte,int *pLen);
 PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm);
 /* vfs_stream.c / vfs_io_driver.c function prototypes (referenced from the
  * registration tables in vfs.c's PH7_RegisterIORoutine) */

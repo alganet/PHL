@@ -7,8 +7,8 @@ PH7 / PHP: EXTR_PREFIX_ALL constant
 <?php
 echo "EXTR_PREFIX_ALL=" . EXTR_PREFIX_ALL . "\n";
 ?>
---EXPECTF--
-EXTR_PREFIX_ALL=%d
+--EXPECT--
+EXTR_PREFIX_ALL=3
 --CLEAN--
 <?php
 

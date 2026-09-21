@@ -7,8 +7,8 @@ PH7 / PHP: JSON_ERROR_SYNTAX constant
 <?php
 echo "JSON_ERROR_SYNTAX=" . JSON_ERROR_SYNTAX . "\n";
 ?>
---EXPECTF--
-JSON_ERROR_SYNTAX=%d
+--EXPECT--
+JSON_ERROR_SYNTAX=4
 --CLEAN--
 <?php
 

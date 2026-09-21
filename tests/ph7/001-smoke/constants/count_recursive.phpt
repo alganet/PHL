@@ -7,8 +7,8 @@ PH7 / PHP: COUNT_RECURSIVE constant
 <?php
 echo "COUNT_RECURSIVE=" . COUNT_RECURSIVE . "\n";
 ?>
---EXPECTF--
-COUNT_RECURSIVE=%d
+--EXPECT--
+COUNT_RECURSIVE=1
 --CLEAN--
 <?php
 
