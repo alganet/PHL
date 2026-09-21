@@ -1612,11 +1612,18 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 		return SXRET_OK;
 	}
 	/* Scalar type. PHP 7.4 weak mode: attempt coercion using the same cast
-	 * helpers used by function-argument hints. Reject object→scalar. */
+	 * helpers used by function-argument hints. Reject object→scalar, EXCEPT an
+	 * object with __toString() stored into a `string` property — php coerces it
+	 * via __toString (typed property stores are always weak mode), so fall
+	 * through to the string cast below. */
 	if( pValue->iFlags & MEMOBJ_OBJ ){
-		char zBuf[128];
-		return VmThrowPropertyTypeError(pVm,pVmAttr,
-			VmFormatValueClassName(pValue,zBuf,sizeof(zBuf)));
+		ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
+		if( !(pAttr->nType == MEMOBJ_STRING && pInst && pInst->pClass
+		      && PH7_ClassExtractMethod(pInst->pClass,"__toString",sizeof("__toString")-1)) ){
+			char zBuf[128];
+			return VmThrowPropertyTypeError(pVm,pVmAttr,
+				VmFormatValueClassName(pValue,zBuf,sizeof(zBuf)));
+		}
 	}
 	if( (pValue->iFlags & pAttr->nType) == 0 ){
 		ProcMemObjCast xCast = PH7_MemObjCastMethod(pAttr->nType);
@@ -2329,12 +2336,19 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 	if( pValue->iFlags & pFunc->nReturnType ){
 		return SXRET_OK;
 	}
-	/* Object->scalar is never compatible. */
+	/* Object->scalar is never compatible, EXCEPT an object with __toString()
+	 * returned as a `string`: php coerces it in weak mode. Fall through to
+	 * VmEnforceScalarType below, which invokes __toString in weak mode and
+	 * still rejects the object under strict_types. */
 	if( pValue->iFlags & MEMOBJ_OBJ ){
-		zGiven = VmFormatValueClassName(pValue,zBuf,sizeof(zBuf));
-		return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,
-			VmScalarTypeName(pFunc->nReturnType,&pFunc->sReturnTypeName,zTypeBuf,sizeof(zTypeBuf)),
-			zGiven);
+		ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
+		if( !(pFunc->nReturnType == MEMOBJ_STRING && pInst && pInst->pClass
+		      && PH7_ClassExtractMethod(pInst->pClass,"__toString",sizeof("__toString")-1)) ){
+			zGiven = VmFormatValueClassName(pValue,zBuf,sizeof(zBuf));
+			return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,
+				VmScalarTypeName(pFunc->nReturnType,&pFunc->sReturnTypeName,zTypeBuf,sizeof(zTypeBuf)),
+				zGiven);
+		}
 	}
 	/* Array <-> scalar is never compatible. */
 	if( ((sxu32)(pValue->iFlags) & MEMOBJ_HASHMAP) != (pFunc->nReturnType & MEMOBJ_HASHMAP) ){
