@@ -967,7 +967,10 @@ struct ph7_class
 	SyHash hDerived;      /* Derived [child] classes */
 	SyString sName;       /* Class full qualified name */
 	sxi32 iFlags;         /* Class configuration flags [i.e: final, interface, abstract, etc.]  */
-	SyHash hAttr;         /* Class attributes [i.e: variables and constants] */
+	SyHash hAttr;         /* Class PROPERTIES [static + instance]. Constants live in hConst */
+	SyHash hConst;        /* Class CONSTANTS [incl. enum cases] — php keeps constants and
+	                       * properties in SEPARATE namespaces, so `const C` and `public $C`
+	                       * coexist. Keyed by name, disjoint from hAttr. */
 	SyHash hMethod;       /* Class methods */
 	sxu32 nLine;          /* Line number on which this class was declared */
 	SySet aInterface;     /* Implemented interface container */
@@ -3331,6 +3334,7 @@ PH7_PRIVATE ph7_class_method * PH7_NewClassMethod(ph7_vm *pVm,ph7_class *pClass,
 	sxi32 iProtection,sxi32 iFlags,sxi32 iFuncFlags);
 PH7_PRIVATE ph7_class_method * PH7_ClassExtractMethod(ph7_class *pClass,const char *zName,sxu32 nByte);
 PH7_PRIVATE ph7_class_attr   * PH7_ClassExtractAttribute(ph7_class *pClass,const char *zName,sxu32 nByte);
+PH7_PRIVATE ph7_class_attr   * PH7_ClassExtractConstant(ph7_class *pClass,const char *zName,sxu32 nByte);
 PH7_PRIVATE sxi32 PH7_ClassInstallAttr(ph7_class *pClass,ph7_class_attr *pAttr);
 PH7_PRIVATE sxi32 PH7_ClassInstallMethod(ph7_class *pClass,ph7_class_method *pMeth);
 PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class *pBase);

@@ -36,6 +36,7 @@ PH7_PRIVATE ph7_class * PH7_NewRawClass(ph7_vm *pVm,const SyString *pName,sxu32 
 	 * sensitive in php, so hAttr keeps the default exact comparator. */
 	SyHashInit(&pClass->hMethod,&pVm->sAllocator,SyStrHash,SyStrnmicmp);
 	SyHashInit(&pClass->hAttr,&pVm->sAllocator,0,0);
+	SyHashInit(&pClass->hConst,&pVm->sAllocator,0,0);
 	SyHashInit(&pClass->hDerived,&pVm->sAllocator,0,0);
 	SySetInit(&pClass->aInterface,&pVm->sAllocator,sizeof(ph7_class *));
 	SySetInit(&pClass->aTrait,&pVm->sAllocator,sizeof(ph7_class *));
@@ -186,7 +187,25 @@ PH7_PRIVATE ph7_class_attr * PH7_ClassExtractAttribute(ph7_class *pClass,const c
 	return (ph7_class_attr *)pEntry->pUserData;
 }
 /*
+ * Check if the given name is a class CONSTANT (or enum case).
+ * php keeps constants and properties in separate namespaces, so constants live
+ * in a dedicated table (hConst) and never collide with a same-named property.
+ * Return the desired constant [ph7_class_attr with PH7_CLASS_ATTR_CONSTANT] on
+ * success, NULL otherwise.
+ */
+PH7_PRIVATE ph7_class_attr * PH7_ClassExtractConstant(ph7_class *pClass,const char *zName,sxu32 nByte)
+{
+	SyHashEntry *pEntry;
+	pEntry = SyHashGet(&pClass->hConst,(const void *)zName,nByte);
+	if( pEntry == 0 ){
+		return 0;
+	}
+	return (ph7_class_attr *)pEntry->pUserData;
+}
+/*
  * Install a class attribute in the corresponding container.
+ * A constant (or enum case) goes to hConst, a property to hAttr — php's two
+ * separate member namespaces, so `const C` and `public $C` coexist.
  * Return SXRET_OK on success. Any other return value indicates failure.
  */
 PH7_PRIVATE sxi32 PH7_ClassInstallAttr(ph7_class *pClass,ph7_class_attr *pAttr)
@@ -199,7 +218,11 @@ PH7_PRIVATE sxi32 PH7_ClassInstallAttr(ph7_class *pClass,ph7_class_attr *pAttr)
 	if( pAttr->pDeclClass == 0 ){
 		pAttr->pDeclClass = pClass;
 	}
-	rc = SyHashInsertTail(&pClass->hAttr,(const void *)pName->zString,pName->nByte,pAttr);
+	if( pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT ){
+		rc = SyHashInsertTail(&pClass->hConst,(const void *)pName->zString,pName->nByte,pAttr);
+	}else{
+		rc = SyHashInsertTail(&pClass->hAttr,(const void *)pName->zString,pName->nByte,pAttr);
+	}
 	return rc;
 }
 /*
@@ -564,6 +587,36 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 			}
 		}
 	}
+	/* Inherit the base's CONSTANTS (separate namespace: hConst). Constants are not
+	 * part of instance iteration, so no base-first ordering dance is needed — a plain
+	 * copy of every constant the subclass did not itself redeclare. A subclass that
+	 * redeclares a base FINAL constant is a fatal (PHP 8.1). */
+	SyHashResetLoopCursor(&pBase->hConst);
+	while((pEntry = SyHashGetNextEntry(&pBase->hConst)) != 0 ){
+		SyHashEntry *pOwn;
+		pAttr = (ph7_class_attr *)pEntry->pUserData;
+		pName = &pAttr->sName;
+		if( (pOwn = SyHashGet(&pSub->hConst,(const void *)pName->zString,pName->nByte)) != 0 ){
+			if( (pAttr->iFlags & PH7_CLASS_ATTR_FINAL) ){
+				/* Cannot override a final class constant. Report the class that
+				 * originally declared it (pDeclClass) for a multi-level chain. */
+				ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pBase;
+				rc = PH7_GenCompileError(&(*pGen),E_ERROR,((ph7_class_attr *)pOwn->pUserData)->nLine,
+					"%z::%z cannot override final constant %z::%z",
+					&pSub->sName,pName,&pOwner->sName,pName);
+				if( rc == SXERR_ABORT ){
+					SySetRelease(&aInherited);
+					return SXERR_ABORT;
+				}
+			}
+			continue;
+		}
+		rc = SyHashInsertTail(&pSub->hConst,(const void *)pName->zString,pName->nByte,pAttr);
+		if( rc != SXRET_OK ){
+			SySetRelease(&aInherited);
+			return rc;
+		}
+	}
 	SySetRelease(&aInherited);
 	SyHashResetLoopCursor(&pBase->hMethod);
 	while((pEntry = SyHashGetNextEntry(&pBase->hMethod)) != 0 ){
@@ -677,6 +730,20 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 			goto cleanup;
 		}
 	}
+	/* Copy constants from the trait (PHP 8.2 trait constants; separate hConst
+	 * namespace). A constant already present in the class wins silently. */
+	SyHashResetLoopCursor(&pTrait->hConst);
+	while((pEntry = SyHashGetNextEntry(&pTrait->hConst)) != 0 ){
+		pAttr = (ph7_class_attr *)pEntry->pUserData;
+		pName = &pAttr->sName;
+		if( SyHashGet(&pClass->hConst,(const void *)pName->zString,pName->nByte) != 0 ){
+			continue;
+		}
+		rc = SyHashInsertTail(&pClass->hConst,(const void *)pName->zString,pName->nByte,pAttr);
+		if( rc != SXRET_OK ){
+			goto cleanup;
+		}
+	}
 	/* Copy methods from the trait */
 	SyHashResetLoopCursor(&pTrait->hMethod);
 	while((pEntry = SyHashGetNextEntry(&pTrait->hMethod)) != 0 ){
@@ -763,15 +830,15 @@ PH7_PRIVATE sxi32 PH7_ClassInterfaceInherit(ph7_class *pSub,ph7_class *pBase)
 	sxi32 rc;
 	/* Install in the derived hashtable */
 	SyHashInsert(&pBase->hDerived,(const void *)SyStringData(&pSub->sName),SyStringLength(&pSub->sName),pSub);
-	SyHashResetLoopCursor(&pBase->hAttr);
-	/* Copy constants */
-	while((pEntry = SyHashGetNextEntry(&pBase->hAttr)) != 0 ){
+	SyHashResetLoopCursor(&pBase->hConst);
+	/* Copy constants (interfaces carry only constants + method signatures) */
+	while((pEntry = SyHashGetNextEntry(&pBase->hConst)) != 0 ){
 		/* Make sure the constants are not redeclared in the subclass */
 		pAttr = (ph7_class_attr *)pEntry->pUserData;
 		pName = &pAttr->sName;
-		if( SyHashGet(&pSub->hAttr,(const void *)pName->zString,pName->nByte) == 0 ){
+		if( SyHashGet(&pSub->hConst,(const void *)pName->zString,pName->nByte) == 0 ){
 			/* Install the constant in the subclass */
-			rc = SyHashInsertTail(&pSub->hAttr,(const void *)pName->zString,pName->nByte,pAttr);
+			rc = SyHashInsertTail(&pSub->hConst,(const void *)pName->zString,pName->nByte,pAttr);
 			if( rc != SXRET_OK ){
 				return rc;
 			}
@@ -815,16 +882,16 @@ PH7_PRIVATE sxi32 PH7_ClassImplement(ph7_class *pMain,ph7_class *pInterface)
 	SyHashEntry *pEntry;
 	SyString *pName;
 	sxi32 rc;
-	/* First off,copy all constants declared inside the interface */
-	SyHashResetLoopCursor(&pInterface->hAttr);
-	while((pEntry = SyHashGetNextEntry(&pInterface->hAttr)) != 0 ){
+	/* First off,copy all constants declared inside the interface (hConst namespace) */
+	SyHashResetLoopCursor(&pInterface->hConst);
+	while((pEntry = SyHashGetNextEntry(&pInterface->hConst)) != 0 ){
 		/* Point to the constant declaration */
 		pAttr = (ph7_class_attr *)pEntry->pUserData;
 		pName = &pAttr->sName;
-		/* Make sure the attribute is not redeclared in the main class */
-		if( SyHashGet(&pMain->hAttr,pName->zString,pName->nByte) == 0 ){
-			/* Install the attribute */
-			rc = SyHashInsertTail(&pMain->hAttr,pName->zString,pName->nByte,pAttr);
+		/* Make sure the constant is not redeclared in the main class */
+		if( SyHashGet(&pMain->hConst,pName->zString,pName->nByte) == 0 ){
+			/* Install the constant */
+			rc = SyHashInsertTail(&pMain->hConst,pName->zString,pName->nByte,pAttr);
 			if( rc != SXRET_OK ){
 				return rc;
 			}

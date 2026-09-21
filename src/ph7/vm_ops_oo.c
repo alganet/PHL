@@ -1447,9 +1447,19 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						ph7_value_string(pTos,pClass->sName.zString,(int)pClass->sName.nByte);
 						pTos->nIdx = SXU32_HIGH;
 					}else{
-						/* Extract the target attribute */
+						/* Extract the target attribute. php keeps constants and
+						 * (static) properties in separate namespaces; the source
+						 * form disambiguates (set by the `::` codegen, compile.c):
+						 * a `$`-form is a STATIC PROPERTY (hAttr) — either a literal
+						 * name folded into pInstr->p3 (`C::$s`) or a dynamic name on
+						 * the stack marked iP1==2 (`C::$$x`, `C::${$e}`); a bareword
+						 * (p3==0, iP1==1) is a CONSTANT or enum case (hConst). This
+						 * is what lets `const C` and `public $C` coexist and resolve
+						 * to the right member. */
 						if( sName.nByte > 0 ){
-							pAttr = PH7_ClassExtractAttribute(pClass,sName.zString,sName.nByte);
+							pAttr = (pInstr->p3 || pInstr->iP1 == 2)
+								? PH7_ClassExtractAttribute(pClass,sName.zString,sName.nByte)
+								: PH7_ClassExtractConstant(pClass,sName.zString,sName.nByte);
 						}
 						if( pAttr == 0 ){
 							/* No such STATIC attribute. php raises a catchable Error

@@ -217,6 +217,28 @@ static ph7_class_attr * ReflectFetchAttr(ph7_class *pClass, ph7_value *pName)
 	}
 	return (ph7_class_attr *)pEntry->pUserData;
 }
+/* Fetch a class CONSTANT (or enum case) by name from the hConst namespace. */
+static ph7_class_attr * ReflectFetchConst(ph7_class *pClass, ph7_value *pName)
+{
+	const char *zName;
+	int nLen;
+	zName = ph7_value_to_string(pName, &nLen);
+	if( nLen < 1 ){
+		return 0;
+	}
+	return PH7_ClassExtractConstant(pClass, zName, (sxu32)nLen);
+}
+/* Fetch a member by name from EITHER namespace (property then constant) — used
+ * where the caller reflects over a member that may be either (e.g. attributes
+ * attached to a property or a constant). */
+static ph7_class_attr * ReflectFetchMember(ph7_class *pClass, ph7_value *pName)
+{
+	ph7_class_attr *pAttr = ReflectFetchAttr(pClass, pName);
+	if( pAttr == 0 ){
+		pAttr = ReflectFetchConst(pClass, pName);
+	}
+	return pAttr;
+}
 /*
  * array|null __phl_rcinfo(object|string $target)
  *
@@ -360,10 +382,17 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 		SySetInit(&aTmp, &pVm->sAllocator, sizeof(SyHashEntry *));
 		for( iLevel = 0 ; iLevel < nChain ; iLevel++ ){
 			ph7_class *pLevel = aChain[iLevel];
-			/* --- Constants and properties (shared attribute table) --- */
+			/* --- Properties (hAttr) then constants/enum cases (hConst) — php's two
+			 * separate member namespaces. Each table is collected and emitted
+			 * independently; the CONSTANT flag still routes each to pConsts/pProps. --- */
+			{
+			int iTab;
+			for( iTab = 0 ; iTab < 2 ; iTab++ ){
+			SyHash *pSrcHash = iTab ? &pLevel->hConst : &pLevel->hAttr;
+			SyHash *pRefHash = iTab ? &pClass->hConst : &pClass->hAttr;
 			SySetReset(&aTmp);
-			SyHashResetLoopCursor(&pLevel->hAttr);
-			while( (pEntry = SyHashGetNextEntry(&pLevel->hAttr)) != 0 ){
+			SyHashResetLoopCursor(pSrcHash);
+			while( (pEntry = SyHashGetNextEntry(pSrcHash)) != 0 ){
 				ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
 				ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pLevel;
 				if( iLevel == 0 ){
@@ -377,7 +406,7 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 					SyHashEntry *pSub;
 					if( pDecl != pLevel ){ continue; }
 					/* Must still be the visible member in the reflected class */
-					pSub = SyHashGet(&pClass->hAttr, pEntry->pKey, pEntry->nKeyLen);
+					pSub = SyHashGet(pRefHash, pEntry->pKey, pEntry->nKeyLen);
 					if( pSub == 0 || pSub->pUserData != (void *)pAttr ){ continue; }
 				}
 				SySetPut(&aTmp, (const void *)&pEntry);
@@ -421,6 +450,8 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 					ReflectMapAddBool(pCtx, pMeta, "hasdef", SySetUsed(&pAttr->aByteCode) > 0);
 					ReflectMapAddDyn(pCtx, pProps, &pAttr->sName, pMeta);
 				}
+			}
+			} /* for iTab */
 			}
 			/* --- Methods. The reported name is the hash-entry key: trait
 			 * aliasing installs a shallow copy under the alias name while
@@ -512,7 +543,7 @@ static int vm_builtin_reflect_const_value(ph7_context *pCtx, int nArg, ph7_value
 	ph7_class_attr *pAttr;
 	ph7_value *pValue;
 	if( nArg < 2 || (pClass = ReflectResolveClass(pCtx->pVm, apArg[0])) == 0
-	 || (pAttr = ReflectFetchAttr(pClass, apArg[1])) == 0
+	 || (pAttr = ReflectFetchConst(pClass, apArg[1])) == 0
 	 || (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
@@ -1694,7 +1725,7 @@ static int vm_builtin_reflect_attr_args(ph7_context *pCtx, int nArg, ph7_value *
 		if( pClass ){ pAttrs = &pClass->aAttrs; pDeclCls = pClass; }
 	}else if( nKind == 4 && SyMemcmp(zKind, "attr", 4) == 0 ){
 		ph7_class *pClass = ReflectResolveClass(pVm, apArg[1]);
-		ph7_class_attr *pMember = pClass ? ReflectFetchAttr(pClass, apArg[2]) : 0;
+		ph7_class_attr *pMember = pClass ? ReflectFetchMember(pClass, apArg[2]) : 0;
 		if( pMember ){ pAttrs = &pMember->aAttrs; pDeclCls = pClass; }
 	}else if( nKind == 6 && SyMemcmp(zKind, "method", 6) == 0 ){
 		ph7_vm_func *pFunc = ReflectResolveCallable(pCtx, apArg[1], apArg[2], 0, 0, 0, 0);

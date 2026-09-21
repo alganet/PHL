@@ -580,7 +580,7 @@ static ph7_value * VmUnserializeEnumCase(unserialize_data *ud)
 		pClass = pClass->pNextName;
 	}
 	if( pClass == 0 ){ return 0; }
-	pAttr = PH7_ClassExtractAttribute(pClass,&zBody[nCls+1],nLen - nCls - 1);
+	pAttr = PH7_ClassExtractConstant(pClass,&zBody[nCls+1],nLen - nCls - 1);
 	if( pAttr == 0 || (pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE) == 0 ){ return 0; }
 	if( PH7_VmMaterializeClassConst(ud->pVm,pClass,pAttr) != SXRET_OK ){
 		ud->exc = 1;
