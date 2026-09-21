@@ -413,13 +413,34 @@ struct ph7_io_stream
 	int (*xReadDir)(void *,ph7_context *);                 /* Read entry from directory handle */
 	ph7_int64 (*xWrite)(void *,const void *,ph7_int64);    /* Write to the open stream */
 	int (*xSeek)(void *,ph7_int64,int);                    /* Seek on the open stream */
-	int (*xLock)(void *,int);                              /* Lock/Unlock the open stream */
+	int (*xLock)(void *,int);                              /* Lock/Unlock the open stream (see below) */
 	void (*xRewindDir)(void *);                            /* Rewind directory handle */
 	ph7_int64 (*xTell)(void *);                            /* Current position of the stream  read/write pointer */
 	int (*xTrunc)(void *,ph7_int64);                       /* Truncates the open stream to a given length */
 	int (*xSync)(void *);                                  /* Flush open stream data */
 	int (*xStat)(void *,ph7_value *,ph7_value *);          /* Stat an open stream handle */
 };
+/*
+ * xLock() lock_type value space (what flock() passes down):
+ *   < 0                     release the lock
+ *   PH7_IO_LOCK_SH   (0)    acquire a shared lock, waiting if necessary
+ *   PH7_IO_LOCK_EX   (1)    acquire an exclusive lock, waiting if necessary
+ *   PH7_IO_LOCK_SH_NB(2)    shared lock, fail immediately instead of waiting
+ *   PH7_IO_LOCK_EX_NB(3)    exclusive lock, fail immediately instead of waiting
+ *
+ * The first three values are the original contract (a driver written against it
+ * read "1 = exclusive, anything else = shared"), so 2 still degrades to the right
+ * lock KIND on a driver that predates the non-blocking pair; only 3 degrades to a
+ * shared lock there, and only when the script asked for LOCK_EX|LOCK_NB.
+ *
+ * Returns PH7_OK, SXERR_BUSY when a non-blocking request could not be granted
+ * because another holder has the file (php's $would_block), or any other negative
+ * value for a genuine lock error.
+ */
+#define PH7_IO_LOCK_SH     0
+#define PH7_IO_LOCK_EX     1
+#define PH7_IO_LOCK_SH_NB  2
+#define PH7_IO_LOCK_EX_NB  3
 /*
  * C-API-REF: Please refer to the official documentation for interfaces
  * purpose and expected parameters.
