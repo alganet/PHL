@@ -1312,6 +1312,9 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 	ph7_class_attr *pAttr;
 	SyHashEntry *pEntry;
 	sxi32 rc;
+	int bDefThrew = 0; /* one throw per instantiation: php aborts construction
+	                    * at the FIRST bad default; a second registered throw
+	                    * would escape the catch as an uncaught fatal. */
 	/* Install class attribute in the private frame associated with this instance */
 	SyHashResetLoopCursor(&pClass->hAttr);
 	while( (pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){
@@ -1339,9 +1342,30 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 				 * pConstEvalClass: self::CONST in a property default resolves
 				 * against the declaring class (no method frame here). */
 				ph7_class *pSaveCtx = pVm->pConstEvalClass;
+				sxi32 rcExec;
 				pVm->pConstEvalClass = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
-				VmLocalExecIntoObj(&(*pVm),&pAttr->aByteCode,&pMemObj,FALSE);
+				rcExec = VmLocalExecIntoObj(&(*pVm),&pAttr->aByteCode,&pMemObj,FALSE);
 				pVm->pConstEvalClass = pSaveCtx;
+				if( rcExec == PH7_EXCEPTION || rcExec == PH7_ABORT ){
+					/* The initializer itself threw (undefined constant, throwing
+					 * enum case): its exception is already registered — do NOT
+					 * also type-check the leftover value (a spurious second
+					 * TypeError would escape the user's catch), and throw
+					 * nothing further for the remaining attributes. */
+					bDefThrew = 1;
+				}else if( !bDefThrew && (pAttr->iFlags & PH7_CLASS_ATTR_TYPED) ){
+					/* Typed property DEFAULT: php validates the computed value
+					 * with the typed-CONSTANT rule (exact match or int->float
+					 * widening — no weak coercion, `public int $p = "5"` throws)
+					 * as a CATCHABLE TypeError when the default materializes,
+					 * i.e. here at `new`. Park the throw for OP_NEW (which
+					 * aborts construction) / the fetch-point router. */
+					sxi32 rcDef = VmEnforceTypedDefault(&(*pVm),pClass,pAttr,pMemObj);
+					if( rcDef != SXRET_OK ){
+						VmBoundaryPark(&(*pVm),rcDef);
+						bDefThrew = 1;
+					}
+				}
 			}else if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
 				/* Typed property without a default: mark uninitialized. Reading
 				 * it before the first write is an Error in PHP 7.4+. */

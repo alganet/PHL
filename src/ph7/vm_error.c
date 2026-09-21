@@ -1886,6 +1886,104 @@ PH7_PRIVATE sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 	}
 	return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
 }
+/*
+ * php's CATCHABLE TypeError for a typed property DEFAULT whose computed value
+ * does not match the declared type: "Cannot assign <kind> to property
+ * C::$p of type T". Same value-kind naming as the constant fatal above.
+ * Returns PH7_ABORT or PH7_EXCEPTION (VmThrowBuiltinError's protocol).
+ */
+static sxi32 VmDefaultPropertyTypeError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue)
+{
+	ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+	const char *zGiven;
+	char zBuf[128];
+	SyBlob sMsg;
+	if( pValue->iFlags & MEMOBJ_OBJ ){
+		zGiven = VmFormatValueClassName(pValue,zBuf,sizeof(zBuf));
+	}else{
+		zGiven = ph7_type_name(pValue);
+	}
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	SyBlobFormat(&sMsg,"Cannot assign %s to property %z::$%z of type %z",
+		zGiven,&pOwner->sName,&pAttr->sName,&pAttr->sTypeName);
+	return VmThrowBuiltinError(pVm,"TypeError",sizeof("TypeError")-1,&sMsg);
+}
+/*
+ * Enforce a typed INSTANCE property's computed DEFAULT value against its
+ * declared type at instantiation time. php applies the typed-CONSTANT rule
+ * here, not the weak store rule: the only implicit coercion is int -> float
+ * widening — `public int $p = "5"` is a TypeError even in weak mode — but
+ * unlike a typed constant the failure is a CATCHABLE TypeError raised when
+ * the default is materialized (at `new`), php-exact since PHL evaluates
+ * instance defaults per-instantiation. Matching structure of
+ * VmEnforceConstantType above; only the throw differs (catchable, property
+ * wording). The whole-real dual-flag leniency applies here too (php rejects
+ * `public int $p = FLC` with FLC = 2.0; PHL cannot tell FLC's shape from a
+ * php-int-producing builtin, so it accepts-and-materializes — recorded).
+ * Returns SXRET_OK, or PH7_ABORT/PH7_EXCEPTION after throwing.
+ */
+PH7_PRIVATE sxi32 VmEnforceTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue)
+{
+	int bNullable = (pAttr->iFlags & PH7_CLASS_ATTR_NULLABLE) ? 1 : 0;
+	if( pValue->iFlags & MEMOBJ_NULL ){
+		if( bNullable || pAttr->nType == MEMOBJ_NULL ){
+			return SXRET_OK;
+		}
+		if( pAttr->nType == SXU32_HIGH && pAttr->sClass.nByte == 5
+			&& SyStrnicmp(pAttr->sClass.zString,"mixed",5) == 0 ){
+			return SXRET_OK;
+		}
+		return VmDefaultPropertyTypeError(&(*pVm),pClass,pAttr,pValue);
+	}
+	if( pAttr->iFlags & PH7_CLASS_ATTR_UNION ){
+		if( VmCoerceToUnion(&(*pVm),pValue,&pAttr->aUnionAlts,bNullable,1 /* strict */) == SXRET_OK ){
+			return SXRET_OK;
+		}
+		return VmDefaultPropertyTypeError(&(*pVm),pClass,pAttr,pValue);
+	}
+	if( pAttr->nType == MEMOBJ_NULL ){
+		return VmDefaultPropertyTypeError(&(*pVm),pClass,pAttr,pValue);
+	}
+	if( pAttr->nType == MEMOBJ_OBJ ){
+		if( pValue->iFlags & MEMOBJ_OBJ ){
+			return SXRET_OK;
+		}
+		return VmDefaultPropertyTypeError(&(*pVm),pClass,pAttr,pValue);
+	}
+	if( pAttr->nType == SXU32_HIGH ){
+		int rcPseudo = VmCheckPseudoType(&(*pVm),pValue,&pAttr->sClass);
+		if( rcPseudo == 1 ){
+			return SXRET_OK;
+		}
+		if( rcPseudo == 0 ){
+			return VmDefaultPropertyTypeError(&(*pVm),pClass,pAttr,pValue);
+		}
+		if( (pValue->iFlags & MEMOBJ_OBJ) == 0 ){
+			return VmDefaultPropertyTypeError(&(*pVm),pClass,pAttr,pValue);
+		}
+		{
+			/* self/parent in the hint resolve against the declaring class. */
+			ph7_class *pExpected = VmResolveTypeClass(pVm,&pAttr->sClass,
+				pAttr->pDeclClass ? pAttr->pDeclClass : pClass);
+			if( pExpected ){
+				ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
+				if( !PH7_VmInstanceOf(pInst->pClass,pExpected) ){
+					return VmDefaultPropertyTypeError(&(*pVm),pClass,pAttr,pValue);
+				}
+			}
+		}
+		return SXRET_OK;
+	}
+	if( pValue->iFlags & pAttr->nType ){
+		VmMaterializeIntTyped(pValue,pAttr->nType);
+		return SXRET_OK;
+	}
+	if( pAttr->nType == MEMOBJ_REAL && (pValue->iFlags & MEMOBJ_INT) ){
+		PH7_MemObjToReal(pValue);
+		return SXRET_OK;
+	}
+	return VmDefaultPropertyTypeError(&(*pVm),pClass,pAttr,pValue);
+}
 
 /*
  * Format and throw a run-time error and invoke the supplied VM output consumer callback.
