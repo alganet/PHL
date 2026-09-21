@@ -1678,7 +1678,7 @@ struct ph7_vm
 	sxu32 nLastErrLine;        /* ... its line */
 	SyBlob sLastErrMsg;        /* ... its message */
 	SyBlob sLastErrFile;       /* ... its file */
-	char zDisplayName[256];    /* Scratch for VmFuncDisplayName: a closure's INTERNAL name is a
+	char zDisplayName[256];    /* Scratch for PH7_VmFuncDisplayName: a closure's INTERNAL name is a
 	                            * synthesized unique key ("[closure_3]"), but php shows
 	                            * "{closure:file:line}". Valid until the next call. */
 	sxu32 nSuperBaseline;      /* SySetUsed(aMemObj) snapshot taken in PH7_VmMakeReady
@@ -2865,6 +2865,7 @@ struct VmShutdownCB
 #define VM_STACK_GUARD 16
 /* vm.c closure/exception internals shared with vm_builtin_call.c */
 PH7_PRIVATE int VmValueIsClosure(ph7_vm *pVm,ph7_value *pVal);
+PH7_PRIVATE int PH7_VmFuncDisplayName(ph7_vm *pVm,ph7_vm_func *pFunc,const char **pzOut);
 PH7_PRIVATE sxi32 VmClosureUnwrap(ph7_vm *pVm,ph7_value *pVal,ph7_value *pOut);
 PH7_PRIVATE sxi32 VmThrowException(ph7_vm *pVm,ph7_class_instance *pThis);
 PH7_PRIVATE sxi32 VmReportUncaughtException(ph7_vm *pVm,const char *zClass,sxu32 nClass,const char *zMsg,sxu32 nMsg,const char *zFuncName,int nFuncLen);

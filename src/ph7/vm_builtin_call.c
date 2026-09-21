@@ -463,6 +463,119 @@ static int VmIsCallableSyntaxOnly(ph7_vm *pVm,ph7_value *pValue)
 	}
 	return 0;
 }
+/*
+ * Fetch a Closure instance's private attribute as a string, or return 0 when it
+ * is absent/empty. Reads the attributes DIRECTLY rather than going through
+ * VmClosureUnwrap, which has dispatch side effects (it parks pVm->pClosureThis
+ * with an owned reference for the OP_CALL frame setup to consume) that a mere
+ * predicate must not trigger.
+ */
+static ph7_value * VmClosureAttrString(ph7_class_instance *pThis,const char *zAttr,int nAttr)
+{
+	SyString sAttr;
+	ph7_value *pVal;
+	SyStringInitFromBuf(&sAttr,zAttr,nAttr);
+	pVal = PH7_ClassInstanceFetchAttr(pThis,&sAttr);
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_STRING) == 0 || SyBlobLength(&pVal->sBlob) == 0 ){
+		return 0;
+	}
+	return pVal;
+}
+/*
+ * Build is_callable()'s third by-reference out-param, php's $callable_name.
+ *
+ * php names the value whether or not it is actually callable — the name is a
+ * DESCRIPTION of the input, not a resolution result (`['NoSuchClass','m']`
+ * answers false but names `NoSuchClass::m`). The rules, probed value-for-value
+ * against php 8.5.8:
+ *   - a [target, method] pair of the same SHAPE is_callable($v,true) accepts
+ *     names `target::method`, with the target written exactly as given (a class
+ *     name string verbatim, an object by its class name) and the method
+ *     verbatim (no case folding, no namespace normalisation);
+ *   - a Closure names its UNDERLYING function: `Class::method` for a method or
+ *     static first-class callable, the plain function name for a function one,
+ *     and php's `{closure:file:line}` for a real anonymous closure (bound or
+ *     not);
+ *   - any other object names `Class::__invoke`, existing or not;
+ *   - anything else (including an array of the wrong shape, which casts to
+ *     "Array") names its plain string cast.
+ */
+static void VmCallableName(ph7_vm *pVm,ph7_value *pValue,SyBlob *pOut)
+{
+	if( pValue->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pThis = (ph7_class_instance *)pValue->x.pOther;
+		if( VmValueIsClosure(pVm,pValue) ){
+			ph7_value *pFn = VmClosureAttrString(pThis,"__fn",4);
+			SyHashEntry *pEntry;
+			if( pFn == 0 ){
+				return; /* malformed closure: leave the name empty */
+			}
+			/* An anonymous closure's $__fn is the synthesized lookup key
+			 * ("[closure_3]"); php shows it as {closure:file:line}. */
+			pEntry = SyHashGet(&pVm->hFunction,SyBlobData(&pFn->sBlob),SyBlobLength(&pFn->sBlob));
+			if( pEntry ){
+				const char *zShow;
+				int nShow = PH7_VmFuncDisplayName(pVm,(ph7_vm_func *)pEntry->pUserData,&zShow);
+				if( nShow > 0 && zShow[0] == '{' ){
+					SyBlobAppend(pOut,zShow,(sxu32)nShow);
+					return;
+				}
+			}
+			/* A method/static first-class callable carries the class it came from
+			 * ($__this's class, or the $__scope name for a static one). */
+			{
+				ph7_value *pScope = VmClosureAttrString(pThis,"__scope",7);
+				ph7_value *pBound;
+				SyString sThis;
+				SyStringInitFromBuf(&sThis,"__this",6);
+				pBound = PH7_ClassInstanceFetchAttr(pThis,&sThis);
+				if( pBound && (pBound->iFlags & MEMOBJ_OBJ) && pBound->x.pOther ){
+					ph7_class *pCls = ((ph7_class_instance *)pBound->x.pOther)->pClass;
+					SyBlobAppend(pOut,pCls->sName.zString,pCls->sName.nByte);
+					SyBlobAppend(pOut,"::",2);
+				}else if( pScope ){
+					SyBlobAppend(pOut,SyBlobData(&pScope->sBlob),SyBlobLength(&pScope->sBlob));
+					SyBlobAppend(pOut,"::",2);
+				}
+			}
+			SyBlobAppend(pOut,SyBlobData(&pFn->sBlob),SyBlobLength(&pFn->sBlob));
+			return;
+		}
+		/* Any other object is described through its (possibly missing) __invoke. */
+		SyBlobAppend(pOut,pThis->pClass->sName.zString,pThis->pClass->sName.nByte);
+		SyBlobAppend(pOut,"::__invoke",sizeof("::__invoke")-1);
+		return;
+	}
+	if( (pValue->iFlags & MEMOBJ_HASHMAP) && VmIsCallableSyntaxOnly(pVm,pValue) ){
+		ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;
+		ph7_value *pTarget = (ph7_value *)SySetAt(&pVm->aMemObj,pMap->pFirst->nValIdx);
+		ph7_value *pMethod = (ph7_value *)SySetAt(&pVm->aMemObj,pMap->pFirst->pPrev->nValIdx);
+		if( pTarget->iFlags & MEMOBJ_OBJ ){
+			ph7_class_instance *pObj = (ph7_class_instance *)pTarget->x.pOther;
+			SyBlobAppend(pOut,pObj->pClass->sName.zString,pObj->pClass->sName.nByte);
+		}else{
+			SyBlobAppend(pOut,SyBlobData(&pTarget->sBlob),SyBlobLength(&pTarget->sBlob));
+		}
+		SyBlobAppend(pOut,"::",2);
+		SyBlobAppend(pOut,SyBlobData(&pMethod->sBlob),SyBlobLength(&pMethod->sBlob));
+		return;
+	}
+	/* Everything else: the plain string cast (an array becomes "Array"). The cast
+	 * runs on a COPY — ph7_value_to_string() converts in place, and the argument
+	 * must survive this predicate unchanged. */
+	{
+		ph7_value sCast;
+		const char *zVal;
+		int nVal;
+		PH7_MemObjInit(pVm,&sCast);
+		PH7_MemObjStore(pValue,&sCast);
+		zVal = ph7_value_to_string(&sCast,&nVal);
+		if( nVal > 0 ){
+			SyBlobAppend(pOut,zVal,(sxu32)nVal);
+		}
+		PH7_MemObjRelease(&sCast);
+	}
+}
 PH7_PRIVATE int vm_builtin_is_callable(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm;
@@ -479,6 +592,20 @@ PH7_PRIVATE int vm_builtin_is_callable(ph7_context *pCtx,int nArg,ph7_value **ap
 		res = VmIsCallableSyntaxOnly(pVm,apArg[0]);
 	}else{
 		res = PH7_VmIsCallable(pVm,apArg[0],TRUE);
+	}
+	/* php always writes &$callable_name when it is passed — on a false answer too. */
+	if( nArg > 2 ){
+		ph7_value sName;
+		SyBlob sBuf;
+		SyBlobInit(&sBuf,&pVm->sAllocator);
+		VmCallableName(pVm,apArg[0],&sBuf);
+		PH7_MemObjInitFromString(pVm,&sName,0);
+		if( SyBlobLength(&sBuf) > 0 ){
+			PH7_MemObjStringAppend(&sName,(const char *)SyBlobData(&sBuf),SyBlobLength(&sBuf));
+		}
+		PH7_VmStoreArgByRef(pVm,apArg[2],&sName);
+		PH7_MemObjRelease(&sName);
+		SyBlobRelease(&sBuf);
 	}
 	ph7_result_bool(pCtx,res);
 	return SXRET_OK;

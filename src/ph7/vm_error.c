@@ -2081,7 +2081,6 @@ PH7_PRIVATE sxi32 VmErrorFormat(ph7_vm *pVm,sxi32 iErr,const char *zFormat,...)
 	va_end(ap);
 	return rc;
 }
-static int VmFuncDisplayName(ph7_vm *pVm,ph7_vm_func *pFunc,const char **pzOut);
 /*
  * Throw a TypeError exception from within the VM execution loop.
  * Used for user-defined function type hint violations (e.g. object type hint).
@@ -2123,7 +2122,7 @@ PH7_PRIVATE sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,ph7_
 	}else{
 		/* A closure's internal lookup key ("[closure_3]") is not what php shows. */
 		const char *zShow = 0;
-		int nShow = VmFuncDisplayName(pVm,pCallee,&zShow);
+		int nShow = PH7_VmFuncDisplayName(pVm,pCallee,&zShow);
 		if( pArgName ){
 			SyBlobFormat(&sMsg,"%.*s(): Argument #%u ($%z) must be of type %s, %s given",
 				nShow,zShow,nArg,pArgName,zExpected,zGiven);
@@ -2753,7 +2752,7 @@ PH7_PRIVATE sxi32 PH7_VmThrowErrorAp(ph7_vm *pVm,SyString *pFuncName,sxi32 iErr,
  * "{closure:/path/file.php:22}". Result points into pVm->zDisplayName for those, or
  * straight at the function's own name otherwise.
  */
-static int VmFuncDisplayName(ph7_vm *pVm,ph7_vm_func *pFunc,const char **pzOut)
+PH7_PRIVATE int PH7_VmFuncDisplayName(ph7_vm *pVm,ph7_vm_func *pFunc,const char **pzOut)
 {
 	const char *zName = pFunc->sName.zString;
 	int nName = (int)pFunc->sName.nByte;
@@ -2791,7 +2790,7 @@ PH7_PRIVATE void VmGetFrameContext(ph7_vm *pVm,const char **pzFuncName,int *pnFu
 	if( pFunc == 0 ){
 		return;
 	}
-	*pnFuncLen = VmFuncDisplayName(&(*pVm),pFunc,pzFuncName);
+	*pnFuncLen = PH7_VmFuncDisplayName(&(*pVm),pFunc,pzFuncName);
 }
 /*
  * Append the exception's own rendered stack trace (php's "#N file(line):
@@ -3245,7 +3244,7 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,ph7_value *pList)
 		ph7_array_add_strkey_elem(pEntry,"line",pValue);
 		{
 			const char *zDisp = 0;
-			int nDisp = VmFuncDisplayName(&(*pVm),pFunc,&zDisp);
+			int nDisp = PH7_VmFuncDisplayName(&(*pVm),pFunc,&zDisp);
 			ph7_value_string(pValue,zDisp,nDisp);
 		}
 		ph7_array_add_strkey_elem(pEntry,"function",pValue);
