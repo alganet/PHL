@@ -792,6 +792,68 @@ static sxi32 ExprAssembleAnnonClass(ph7_gen_state *pGen,SyToken **ppCur,SyToken 
 	return SXRET_OK;
 }
 /*
+ * TRUE when a KEYWORD token actually OPENS an arrow function.
+ *
+ * `fn` is reserved, but it only ever introduces `[static] fn[&](…) => expr`.
+ * Everywhere php expects a NAME the same word is an ordinary identifier: `$fn`
+ * (the lexer emits '$' plus the keyword, so the keyword IS the variable name),
+ * `$fn(…)` calling that variable, `C::fn`, `$o->fn`, `\A\fn`, and the `fn:`
+ * named-argument label. Every raw-token lookahead that steps over an arrow
+ * function has to make that distinction or it swallows a plain name and loses
+ * the '=>' that follows it (`[$fn => 1]` became `syntax error, unexpected token
+ * "=>"`).
+ *
+ * The test is POSITIONAL, never "is it well formed": a malformed `fn` (`fn $x
+ * => $x`, or a bare `fn` used as a key) must still reach the arrow parser,
+ * which is what reports php's `expecting "("`. Two name positions:
+ *   - member/variable/namespace: '$', '->', '?->', '::' or '\' immediately
+ *     before the word;
+ *   - a named-argument LABEL: a bare `fn` directly before ':' (`static fn:`
+ *     and `fn&:` cannot be labels, so they stay the arrow parser's business).
+ *     The argument list is re-parsed from the argument's own first token, so
+ *     there is no '(' to look back at — the label test cannot be scoped to
+ *     call context, and the degenerate `true ? fn : 0` (only reachable through
+ *     define('fn',…), which php itself cannot parse) is accepted as a
+ *     constant instead of rejected. A recorded divergence; rejecting it
+ *     would cost the real `f(fn: 1)` spelling.
+ * pStart bounds the look-back; pTok may point at `static`, which must then be
+ * followed by `fn`.
+ */
+PH7_PRIVATE int PH7_TokenOpensArrowFunc(SyToken *pStart,SyToken *pTok,SyToken *pEnd)
+{
+	int bStatic = FALSE;
+	if( pTok >= pEnd || (pTok->nType & PH7_TK_KEYWORD) == 0 ){
+		return FALSE;
+	}
+	if( pTok > pStart ){
+		SyToken *pPrev = &pTok[-1];
+		if( pPrev->nType & (PH7_TK_DOLLAR|PH7_TK_NSSEP) ){
+			return FALSE; /* $fn / \A\fn — the keyword IS the name */
+		}
+		if( (pPrev->nType & PH7_TK_OP) && pPrev->pUserData ){
+			const ph7_expr_op *pOp = (const ph7_expr_op *)pPrev->pUserData;
+			if( pOp->iOp == EXPR_OP_ARROW || pOp->iOp == EXPR_OP_NULLSAFE_ARROW
+			 || pOp->iOp == EXPR_OP_DC ){
+				return FALSE; /* $o->fn, $o?->fn, C::fn — a member name */
+			}
+		}
+	}
+	if( SX_PTR_TO_INT(pTok->pUserData) == PH7_TKWRD_STATIC ){
+		bStatic = TRUE;
+		pTok++;
+		if( pTok >= pEnd || (pTok->nType & PH7_TK_KEYWORD) == 0 ){
+			return FALSE;
+		}
+	}
+	if( SX_PTR_TO_INT(pTok->pUserData) != PH7_TKWRD_FN ){
+		return FALSE;
+	}
+	if( !bStatic && &pTok[1] < pEnd && (pTok[1].nType & PH7_TK_COLON) ){
+		return FALSE; /* f(fn: 1) — a named-argument label */
+	}
+	return TRUE;
+}
+/*
  * Assemble a PHP 7.4 arrow function token range:
  *    [static] fn [&] ( params ) [: [?] type] => expression
  * On entry *ppCur points at 'static' or 'fn'. On exit *ppCur points just
@@ -1168,10 +1230,8 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 				 return rc;
 			 }
 			 pNode->xCode = PH7_CompileAnnonClass;
-		 }else if( nKeyword == PH7_TKWRD_FN
-			|| ( nKeyword == PH7_TKWRD_STATIC && &pCur[1] < pGen->pEnd
-				 && (pCur[1].nType & PH7_TK_KEYWORD)
-				 && SX_PTR_TO_INT(pCur[1].pUserData) == PH7_TKWRD_FN ) ){
+		 }else if( (nKeyword == PH7_TKWRD_FN || nKeyword == PH7_TKWRD_STATIC)
+			&& PH7_TokenOpensArrowFunc(pGen->pIn,pCur,pGen->pEnd) ){
 			 /* PHP 7.4 arrow function: fn(...) => expr or static fn(...) => expr */
 			 rc = ExprAssembleArrowFunc(&(*pGen),&pCur,pGen->pEnd);
 			 if( rc != SXRET_OK ){

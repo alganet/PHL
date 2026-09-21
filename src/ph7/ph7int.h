@@ -2687,6 +2687,12 @@ PH7_PRIVATE int PH7_ExprContainsNullsafe(ph7_expr_node *pNode);
 PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToken **ppMax);
 PH7_PRIVATE sxi32 PH7_GetNextExpr(SyToken *pStart,SyToken *pEnd,SyToken **ppNext);
 PH7_PRIVATE void PH7_DelimitNestedTokens(SyToken *pIn,SyToken *pEnd,sxu32 nTokStart,sxu32 nTokEnd,SyToken **ppEnd);
+/* TRUE when a KEYWORD token opens `[static] fn[&](…) =>` rather than naming a
+ * variable/member/label ($fn, $o->fn, C::fn, \A\fn, f(fn: 1)). Every raw-token
+ * lookahead that has to step over an arrow function must ask this first; the
+ * test is positional, so a MALFORMED `fn` still reaches the arrow parser and
+ * keeps php's `expecting "("`. */
+PH7_PRIVATE int PH7_TokenOpensArrowFunc(SyToken *pStart,SyToken *pTok,SyToken *pEnd);
 PH7_PRIVATE const ph7_expr_op * PH7_ExprExtractOperator(SyString *pStr,SyToken *pLast);
 PH7_PRIVATE sxi32 PH7_ExprFreeTree(ph7_gen_state *pGen,SySet *pNodeSet);
 /* compile.c function prototypes */

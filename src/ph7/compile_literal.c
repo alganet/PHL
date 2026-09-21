@@ -1237,13 +1237,12 @@ PH7_PRIVATE SyToken * GenStateFindTopLevelArrow(SyToken *pStart,SyToken *pEnd)
 		if( iNest == 0 && (pCur->nType & PH7_TK_KEYWORD) ){
 			sxu32 nKw = (sxu32)SX_PTR_TO_INT(pCur->pUserData);
 			SyToken *pFn = pCur;
-			if( nKw == PH7_TKWRD_STATIC && &pCur[1] < pEnd
-				&& (pCur[1].nType & PH7_TK_KEYWORD)
-				&& SX_PTR_TO_INT(pCur[1].pUserData) == PH7_TKWRD_FN ){
-				pFn = &pCur[1];
-				nKw = PH7_TKWRD_FN;
-			}
-			if( nKw == PH7_TKWRD_FN ){
+			/* Only a real `[static] fn[&](` opens an arrow function; `$fn`,
+			 * `C::fn` and friends are plain names whose '=>' IS the separator. */
+			if( PH7_TokenOpensArrowFunc(pStart,pCur,pEnd) ){
+				if( nKw == PH7_TKWRD_STATIC ){
+					pFn = &pCur[1];
+				}
 				pCur = pFn + 1; /* past 'fn' */
 				if( pCur < pEnd && (pCur->nType & PH7_TK_AMPER) ){
 					pCur++;
