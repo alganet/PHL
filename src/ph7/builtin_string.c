@@ -4236,6 +4236,13 @@ PH7_PRIVATE int PH7_builtin_strpbrk(ph7_context *pCtx,int nArg,ph7_value **apArg
 	/* Extract the haystack and the char list */
 	zString = ph7_value_to_string(apArg[0],&iLen);
 	zList = ph7_value_to_string(apArg[1],&iListLen);
+	if( iListLen < 1 ){
+		/* An empty set can never match, so php rejects it rather than answering
+		 * a FALSE indistinguishable from "not found" (checked BEFORE the haystack,
+		 * so strpbrk("","") throws too). */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"strpbrk(): Argument #2 ($characters) must be a non-empty string");
+	}
 	if( iLen < 1 ){
 		/* Nothing to process,return FALSE */
 		ph7_result_bool(pCtx,0);
@@ -5182,11 +5189,50 @@ static int StrtrCollectWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
 PH7_PRIVATE int PH7_builtin_strtr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zIn;
+	char zGiven[64];
 	int nLen;
 	if( nArg < 1 ){
 		/* Nothing to replace,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
+	}
+	/*
+	 * php dispatches strtr() on ARITY between two overloads — strtr(string, array)
+	 * and strtr(string, string, string) — so $from's expected type is `array` with
+	 * two arguments and `string` with three, and the stub's `array|string` union is
+	 * a wording php itself never emits. One signature cannot express that, so the
+	 * shared ZPP screen skips this builtin (azSelfChecked[] in vm_arg_check.c) and
+	 * the dispatch happens here, in php's left-to-right argument order.
+	 *
+	 * Both directions used to pass silently: a 2-argument string $from
+	 * (strtr("abc","ab")) returned the subject UNCHANGED, and a 3-argument array
+	 * $from was likewise ignored — the caller got its input back as if it had been
+	 * translated.
+	 */
+	if( !PH7_ArgSatisfiesString(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"strtr(): Argument #1 ($string) must be of type string, %s given",
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
+	}
+	if( nArg == 2 ){
+		if( !ph7_value_is_array(apArg[1]) ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"strtr(): Argument #2 ($from) must be of type array, %s given",
+				VmValueGivenName(apArg[1],zGiven,sizeof(zGiven)));
+		}
+	}else if( nArg > 2 ){
+		if( !PH7_ArgSatisfiesString(apArg[1]) ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"strtr(): Argument #2 ($from) must be of type string, %s given",
+				VmValueGivenName(apArg[1],zGiven,sizeof(zGiven)));
+		}
+		/* $to is php's `string`, but a null one stays accepted (php coerces it to
+		 * "" with a deprecation, and both engines answer the subject unchanged). */
+		if( !ph7_value_is_null(apArg[2]) && !PH7_ArgSatisfiesString(apArg[2]) ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"strtr(): Argument #3 ($to) must be of type string, %s given",
+				VmValueGivenName(apArg[2],zGiven,sizeof(zGiven)));
+		}
 	}
 	zIn = ph7_value_to_string(apArg[0],&nLen);
 	if( nLen < 1 || nArg < 2 ){
