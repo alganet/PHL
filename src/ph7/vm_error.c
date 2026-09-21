@@ -1346,6 +1346,19 @@ PH7_PRIVATE sxi32 VmEnforceScalarType(ph7_value *pVal, sxu32 nType, int bStrict)
 	if( nType == MEMOBJ_NULL ){
 		return SXERR_INVALID;
 	}
+	/* Array and scalar never coerce into each other. php throws a TypeError
+	 * rather than wrapping a scalar into a 1-element array or stringifying an
+	 * array (`function f(array $a){} f(true)` — php: "must be of type array,
+	 * true given"; PHL used to run the body with $a=[true], and `f(int $a){}
+	 * f([1,2])` truncated the array to int(1)). The typed-property store and
+	 * return-type paths already guard this inline; enforcing it here closes the
+	 * same hole for typed PARAMETERS (positional/variadic/union) and generator
+	 * params, which all funnel their scalar coercion through this helper. An
+	 * object value against an array type is caught here too (never valid);
+	 * object->scalar stays a separate case handled by the callers. */
+	if( ((pVal->iFlags & MEMOBJ_HASHMAP) != 0) != (nType == MEMOBJ_HASHMAP) ){
+		return SXERR_INVALID;
+	}
 	if( bStrict ){
 		/* Only int -> float widening is allowed implicitly. */
 		if( nType == MEMOBJ_REAL && (pVal->iFlags & MEMOBJ_INT) ){
