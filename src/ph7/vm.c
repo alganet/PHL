@@ -1699,8 +1699,16 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyBlobInit(&pVm->sLastErrFile,&pVm->sAllocator);
 	SySetInit(&pVm->aLitObj,&pVm->sAllocator,sizeof(ph7_value));
 	SySetAlloc(&pVm->aLitObj,0xFF);
-	SyHashInit(&pVm->hHostFunction,&pVm->sAllocator,0,0);
-	SyHashInit(&pVm->hFunction,&pVm->sAllocator,0,0);
+	/* php FUNCTION names are case-insensitive — `STRLEN("x")`, `MyFn()` and
+	 * `is_callable('STRLEN')` all resolve, and `function myFn(){} function MYFN(){}` is a
+	 * redeclaration — so both function tables hash and compare case-INSENSITIVELY, exactly
+	 * like hClass/hMethod below. Every lookup site (OP_CALL, function_exists, is_callable,
+	 * string/array callables, Reflection, the redeclare guards) goes through SyHashGet, so
+	 * this one pair of comparators covers them all. The stored KEY keeps the declared
+	 * spelling, which is what `__FUNCTION__` and ReflectionFunction::getName() report.
+	 * (Only the constant tables stay byte-exact: php constants ARE case-sensitive.) */
+	SyHashInit(&pVm->hHostFunction,&pVm->sAllocator,SyStrHash,SyStrnmicmp);
+	SyHashInit(&pVm->hFunction,&pVm->sAllocator,SyStrHash,SyStrnmicmp);
 	SyBlobInit(&pVm->sNamespace,&pVm->sAllocator);
 	SyHashInit(&pVm->hUseImports,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hUseConstImports,&pVm->sAllocator,0,0);

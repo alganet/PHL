@@ -330,10 +330,10 @@
 	"}"\
 	"class stdClass{"\
 	"}"\
+	/* This one definition serves every spelling — function names are case-insensitive
+	   (hFunction, vm.c). The second, byte-identical `Dir()` copy that used to sit here
+	   was PH7's manual hack for that, the same one the keyword table had. */\
 	"function dir(string $path){"\
-	"   return new Directory($path);"\
-	"}"\
-	"function Dir(string $path){"\
 	"   return new Directory($path);"\
 	"}"\
 	"function scandir(string $directory,int $sort_order = SCANDIR_SORT_ASCENDING)"\
