@@ -424,6 +424,13 @@ static int PH7_builtin_preg_match(ph7_context *pCtx, int nArg, ph7_value **apArg
 		ph7_result_bool(pCtx, 0);
 		return PH7_OK;
 	}
+	/* php validates $flags AFTER the pattern compiles (a bad pattern warns first).
+	 * php 8.5 only rejects flag bits BELOW PREG_OFFSET_CAPTURE (the low byte); any
+	 * higher bit is ignored. preg_match permits none of those low bits. */
+	if( (iFlags & (PHP_PREG_OFFSET_CAPTURE - 1)) != 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"preg_match(): Argument #4 ($flags) must be a PREG_* constant");
+	}
 	pMatchData = pcre2_match_data_create_from_pattern(pCode, NULL);
 	if( pMatchData == 0 ){
 		ph7_result_bool(pCtx, 0);
@@ -493,6 +500,16 @@ static int PH7_builtin_preg_match_all(ph7_context *pCtx, int nArg, ph7_value **a
 	if( pCode == 0 ){
 		ph7_result_int(pCtx, 0);
 		return PH7_OK;
+	}
+	/* php validates $flags AFTER the pattern compiles (a bad pattern warns first).
+	 * php 8.5 rejects low-byte bits below PREG_OFFSET_CAPTURE EXCEPT the order flags,
+	 * and rejects PATTERN_ORDER+SET_ORDER together (mutually exclusive); higher bits
+	 * are ignored. Every case raises the same ValueError. */
+	if( (iFlags & (PHP_PREG_OFFSET_CAPTURE - 1)
+			& ~(PHP_PREG_PATTERN_ORDER|PHP_PREG_SET_ORDER)) != 0
+		|| ((iFlags & PHP_PREG_PATTERN_ORDER) && (iFlags & PHP_PREG_SET_ORDER)) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"preg_match_all(): Argument #4 ($flags) must be a PREG_* constant");
 	}
 	pMatchData = pcre2_match_data_create_from_pattern(pCode, NULL);
 	if( pMatchData == 0 ){
