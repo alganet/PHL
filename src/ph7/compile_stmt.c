@@ -40,10 +40,19 @@
 PH7_PRIVATE sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 {
 	SySet *pConsCode,*pInstrContainer;
-	sxu32 nLineLocal = pGen->pIn->nLine;
+	sxu32 nLineLocal;
 	SyString *pName;
 	sxi32 rc;
+	/* php forbids attributes on a comma-separated const list. Snapshot whether the
+	 * statement carries any now, before the first constant consumes them. */
+	int bHadAttrs = SySetUsed(&pGen->aPendingAttrs) > 0;
 	pGen->pIn++; /* Jump the 'const' keyword */
+	/* php allows a single `const` statement to declare several constants at once
+	 * (`const A = 1, B = 2;`). Loop over the comma-separated name = value pairs;
+	 * PH7_CompileExpr(EXPR_FLAG_COMMA_STATEMENT) stops each value at the first
+	 * top-level comma so the next pair starts cleanly. */
+Loop:
+	nLineLocal = pGen->pIn->nLine;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_SSTR|PH7_TK_DSTR|PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
 		/* Invalid constant name */
 		rc = PH7_GenSyntaxError(pGen,pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"identifier");
@@ -98,11 +107,13 @@ PH7_PRIVATE sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 	pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
 	PH7_VmSetByteCodeContainer(pGen->pVm,pConsCode);
 	/* Compile constant value. php: a stray token after `const X = EXPR` is
-	 * `... expecting "," or ";"` (const supports a comma-separated list). */
+	 * `... expecting "," or ";"` (const supports a comma-separated list).
+	 * EXPR_FLAG_COMMA_STATEMENT stops this value at the first top-level comma so a
+	 * following declaration is left for the loop below. */
 	{
 		const char *zSaveConst = pGen->zClauseCloser;
 		pGen->zClauseCloser = "\",\" or \";\"";
-		rc = PH7_CompileExpr(&(*pGen),0,0);
+		rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_COMMA_STATEMENT,0);
 		pGen->zClauseCloser = zSaveConst;
 	}
 	/* Emit the done instruction */
@@ -140,6 +151,20 @@ PH7_PRIVATE sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 	if( rc != SXRET_OK ){
 		SySetRelease(pConsCode);
 		SyMemBackendPoolFree(&pGen->pVm->sAllocator,pConsCode);
+	}
+	/* Another declaration in the same statement: `const A = 1, B = 2;`. */
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COMMA /* ',' */) ){
+		if( bHadAttrs ){
+			/* php compile-fatals `#[Attr] const A = 1, B = 2;` outright. */
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,
+				"Cannot apply attributes to multiple constants at once");
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			goto Synchronize;
+		}
+		pGen->pIn++; /* Jump the comma */
+		goto Loop;
 	}
 	return SXRET_OK;
 Synchronize:
