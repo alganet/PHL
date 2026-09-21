@@ -714,6 +714,7 @@ static const struct VmBuiltinSig {
 	{ "hrtime", "bool $as_number = false", "array|int" },
 	{ "setcookie", "string $name, string $value = '', array|int $expires_or_options = 0, string $path = '', string $domain = '', bool $secure = false, bool $httponly = false", "bool" },
 	{ "setrawcookie", "string $name, string $value = '', array|int $expires_or_options = 0, string $path = '', string $domain = '', bool $secure = false, bool $httponly = false", "bool" },
+	{ "settype", "mixed &$var, string $type", "bool" },
 	{ "sha1", "string $string, bool $binary = false", "string" },
 	{ "sha1_file", "string $filename, bool $binary = false", "string|false" },
 	{ "shuffle", "array &$array", "true" },

@@ -388,6 +388,87 @@ PH7_PRIVATE int vm_builtin_gettype(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return SXRET_OK;
 }
 /*
+ * bool settype(mixed &$var, string $type)
+ *  Convert $var IN PLACE to the type named by $type, mirroring the (type) cast
+ *  operators exactly (same PH7_MemObjTo* helpers CVT_INT/REAL/STR/BOOL/ARRAY/OBJ
+ *  use), and write the result back through the by-ref out-param.
+ * Parameters
+ *   &$var : the variable to convert (compile.c's GenStateByRefBuiltinMask marks
+ *           position 0 by-reference so an undefined variable is auto-vivified).
+ *   $type : "int"/"integer", "float"/"double", "string", "bool"/"boolean",
+ *           "array", "object", "null" (case-insensitive).
+ * Return
+ *   Always true on success; a non-referenceable $var is an Error, an unknown
+ *   $type (or the un-castable "resource") is a ValueError — php-exact.
+ */
+PH7_PRIVATE int vm_builtin_settype(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zType;
+	int nLen;
+	ph7_value *pNew;
+	SXUNUSED(nArg); /* arity (exactly 2) enforced by the central arity table */
+	/* php binds $var by reference at the call boundary: a literal/constant (no
+	 * caller slot, nIdx == SXU32_HIGH) is a catchable Error, raised BEFORE the
+	 * $type validation — the same signal + wording array_pop() & co use. */
+	if( apArg[0]->nIdx == SXU32_HIGH ){
+		return PH7_VmThrowException(pCtx,"Error",
+			"settype(): Argument #1 ($var) could not be passed by reference");
+	}
+	zType = ph7_value_to_string(apArg[1],&nLen);
+	/* Validate the target type up-front (php checks $type before touching $var):
+	 * "resource" is a distinct ValueError, any other unknown name is the generic
+	 * invalid-type ValueError. */
+	if( nLen == 8 && SyStrnicmp(zType,"resource",8) == 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"Cannot convert to resource type");
+	}
+	if( !(  (nLen == 3 && SyStrnicmp(zType,"int",3) == 0)
+	     || (nLen == 7 && SyStrnicmp(zType,"integer",7) == 0)
+	     || (nLen == 5 && SyStrnicmp(zType,"float",5) == 0)
+	     || (nLen == 6 && SyStrnicmp(zType,"double",6) == 0)
+	     || (nLen == 6 && SyStrnicmp(zType,"string",6) == 0)
+	     || (nLen == 4 && SyStrnicmp(zType,"bool",4) == 0)
+	     || (nLen == 7 && SyStrnicmp(zType,"boolean",7) == 0)
+	     || (nLen == 5 && SyStrnicmp(zType,"array",5) == 0)
+	     || (nLen == 6 && SyStrnicmp(zType,"object",6) == 0)
+	     || (nLen == 4 && SyStrnicmp(zType,"null",4) == 0) ) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"settype(): Argument #2 ($type) must be a valid type");
+	}
+	/* Convert a COPY of the current value (the To* helpers mutate in place), then
+	 * store it through the by-ref out-param — settype changes $var's TYPE, so the
+	 * new value must land in the caller slot (nIdx), not just in shared contents. */
+	pNew = ph7_context_new_scalar(pCtx);
+	if( pNew == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_MemObjStore(apArg[0],pNew);
+	if( (nLen == 3 && SyStrnicmp(zType,"int",3) == 0)
+	 || (nLen == 7 && SyStrnicmp(zType,"integer",7) == 0) ){
+		PH7_MemObjToInteger(pNew);
+		MemObjSetType(pNew,MEMOBJ_INT);
+	}else if( (nLen == 5 && SyStrnicmp(zType,"float",5) == 0)
+	       || (nLen == 6 && SyStrnicmp(zType,"double",6) == 0) ){
+		PH7_MemObjToReal(pNew);
+		MemObjSetType(pNew,MEMOBJ_REAL);
+	}else if( nLen == 6 && SyStrnicmp(zType,"string",6) == 0 ){
+		PH7_MemObjToString(pNew);
+	}else if( (nLen == 4 && SyStrnicmp(zType,"bool",4) == 0)
+	       || (nLen == 7 && SyStrnicmp(zType,"boolean",7) == 0) ){
+		PH7_MemObjToBool(pNew);
+	}else if( nLen == 5 && SyStrnicmp(zType,"array",5) == 0 ){
+		PH7_MemObjToHashmap(pNew);
+	}else if( nLen == 6 && SyStrnicmp(zType,"object",6) == 0 ){
+		PH7_MemObjToObject(pNew);
+	}else{
+		/* "null" — the only validated name left */
+		PH7_MemObjToNull(pNew);
+	}
+	PH7_VmStoreArgByRef(pCtx->pVm,apArg[0],pNew);
+	ph7_result_bool(pCtx,1);
+	return SXRET_OK;
+}
+/*
  * string get_resource_type(resource $handle)
  *  This function gets the type of the given resource.
  * Parameters

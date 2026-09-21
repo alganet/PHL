@@ -4963,6 +4963,7 @@ static const ph7_builtin_func aVmFunc[] = {
 	  /* Variable handling functions */
 	{ "get_defined_vars",vm_builtin_get_defined_vars},
 	{ "gettype",   vm_builtin_gettype              },
+	{ "settype",   vm_builtin_settype              },
 	{ "get_resource_type", vm_builtin_get_resource_type},
 	{ "get_resource_id", vm_builtin_get_resource_id},
 	{ "isset",     vm_builtin_isset                },
