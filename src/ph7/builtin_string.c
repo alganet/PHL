@@ -4008,33 +4008,6 @@ PH7_PRIVATE int PH7_builtin_str_split(ph7_context *pCtx,int nArg,ph7_value **apA
 	return PH7_OK;
 }
 /*
- * Tokenize a raw string and extract the first non-space token.
- * Refer to [strspn()].
- */
-static sxi32 ExtractNonSpaceToken(const char **pzIn,const char *zEnd,SyString *pOut)
-{
-	const char *zIn = *pzIn;
-	const char *zPtr;
-	/* Ignore leading white spaces */
-	while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && SyisSpace(zIn[0]) ){
-		zIn++;
-	}
-	if( zIn >= zEnd ){
-		/* End of input */
-		return SXERR_EOF;
-	}
-	zPtr = zIn;
-	/* Extract the token */
-	while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && !SyisSpace(zIn[0]) ){
-		zIn++;
-	}
-	SyStringInitFromBuf(pOut,zPtr,zIn-zPtr);
-	/* Synchronize pointers */
-	*pzIn = zIn;
-	/* Return to the caller */
-	return SXRET_OK;
-}
-/*
  * Check if the given string contains only characters from the given mask.
  * return the longest match.
  * Refer to [strspn()].
@@ -4099,6 +4072,88 @@ static int LongestStringMask2(const char *zString,int nLen,const char *zMask,int
 	return (int)(zString-zIn);
 }
 /*
+ * Shared body of strspn()/strcspn(): resolve php's ($offset,$length) window over
+ * $string, then measure the span from the window's first byte.
+ *
+ * php's window rules (ext/standard/string.c, php_spn_common_handler) — a negative
+ * $offset counts back from the end and CLAMPS to 0 (it is never "invalid"); an
+ * $offset past the end clamps to the end, so the window is empty and the answer is
+ * 0; a negative $length leaves that many bytes off the end of the remaining span
+ * and clamps to 0; a zero-length window answers 0. PH7 answered 0 for a negative
+ * offset that reached past the start, IGNORED a zero or negative $length entirely
+ * (measuring the whole rest of the string instead), and truncated the offset to
+ * `int`, so a 64-bit offset wrapped into a valid one.
+ *
+ * PH7 also ran the scan over the first WHITESPACE-DELIMITED TOKEN rather than over
+ * the raw window (leading spaces skipped, scan stopped at the next space), so
+ * strspn("a b c","abc ") answered 1 where php answers 5 and strspn("  abc","abc")
+ * answered 3 where php answers 0 — silent wrong answers on ordinary input. php
+ * scans raw bytes; so does this.
+ *
+ * An empty $mask needs no special case: the mask lookup fails for every byte, so
+ * strspn stops at once (0) and strcspn runs to the end of the window (its length),
+ * which is exactly what php answers.
+ */
+static int StrSpnCommonHandler(
+	ph7_context *pCtx,    /* Call context */
+	int nArg,             /* Argument count */
+	ph7_value **apArg,    /* Arguments */
+	int bComplement       /* TRUE for strcspn() */
+	)
+{
+	const char *zFunc = bComplement ? "strcspn" : "strspn";
+	const char *zString,*zMask;
+	int iMasklen,iLen;
+	sxi64 iStart,iSpan;
+	if( nArg < 2 ){
+		/* Arity is enforced at the call boundary; nothing sensible to return here. */
+		ph7_result_int(pCtx,0);
+		return PH7_OK;
+	}
+	/* Extract the target string and the mask */
+	zString = ph7_value_to_string(apArg[0],&iLen);
+	zMask = ph7_value_to_string(apArg[1],&iMasklen);
+	if( iLen < 0 ){
+		iLen = 0;
+	}
+	if( iMasklen < 0 ){
+		iMasklen = 0;
+	}
+	iStart = 0;
+	if( nArg > 2 ){
+		sxi32 rcArg = PH7_IntArgResolve(pCtx,apArg[2],zFunc,3,"$offset","int",&iStart);
+		if( rcArg != PH7_OK ){
+			return rcArg;
+		}
+		if( iStart < 0 ){
+			/* Count back from the end, clamped to the start (guarded so an
+			 * INT64_MIN offset cannot overflow the addition). */
+			iStart = ( iStart < -(sxi64)iLen ) ? 0 : iStart + iLen;
+		}else if( iStart > (sxi64)iLen ){
+			iStart = iLen;
+		}
+	}
+	iSpan = (sxi64)iLen - iStart;
+	if( nArg > 3 && !ph7_value_is_null(apArg[3]) ){
+		sxi64 iUserlen = 0;
+		sxi32 rcArg = PH7_IntArgResolve(pCtx,apArg[3],zFunc,4,"$length","?int",&iUserlen);
+		if( rcArg != PH7_OK ){
+			return rcArg;
+		}
+		if( iUserlen < 0 ){
+			/* Leave |$length| bytes off the end of the remaining span (guarded
+			 * against an INT64_MIN underflow the same way). */
+			iSpan = ( iUserlen < -iSpan ) ? 0 : iSpan + iUserlen;
+		}else if( iUserlen < iSpan ){
+			iSpan = iUserlen;
+		}
+	}
+	ph7_result_int(pCtx,bComplement
+		? LongestStringMask2(&zString[iStart],(int)iSpan,zMask,iMasklen)
+		: LongestStringMask(&zString[iStart],(int)iSpan,zMask,iMasklen));
+	return PH7_OK;
+}
+/*
  * int strspn(string $str,string $mask[,int $start[,int $length]])
  *  Finds the length of the initial segment of a string consisting entirely
  *  of characters contained within a given mask.
@@ -4126,70 +4181,7 @@ static int LongestStringMask2(const char *zString,int nLen,const char *zMask,int
  */
 PH7_PRIVATE int PH7_builtin_strspn(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const char *zString,*zMask,*zEnd;
-	int iMasklen,iLen;
-	SyString sToken;
-	int iCount = 0;
-	int rc;
-	if( nArg < 2 ){
-		/* Missing agruments,return zero */
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
-	}
-	/* Extract the target string */
-	zString = ph7_value_to_string(apArg[0],&iLen);
-	/* Extract the mask */
-	zMask = ph7_value_to_string(apArg[1],&iMasklen);
-	if( iLen < 1 || iMasklen < 1 ){
-		/* Nothing to process,return zero */
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
-	}
-	if( nArg > 2 ){
-		int nOfft;
-		/* Extract the offset */
-		nOfft = ph7_value_to_int(apArg[2]);
-		if( nOfft < 0 ){
-			const char *zBase = &zString[iLen + nOfft];
-			if( zBase > zString ){
-				iLen = (int)(&zString[iLen]-zBase);
-				zString = zBase;
-			}else{
-				/* Invalid offset */
-				ph7_result_int(pCtx,0);
-				return PH7_OK;
-			}
-		}else{
-			if( nOfft >= iLen ){
-				/* Invalid offset */
-				ph7_result_int(pCtx,0);
-				return PH7_OK;
-			}else{
-				/* Update offset */
-				zString += nOfft;
-				iLen -= nOfft;
-			}
-		}
-		if( nArg > 3 ){
-			int iUserlen;
-			/* Extract the desired length */
-			iUserlen = ph7_value_to_int(apArg[3]);
-			if( iUserlen > 0 && iUserlen < iLen ){
-				iLen = iUserlen;
-			}
-		}
-	}
-	/* Point to the end of the string */
-	zEnd = &zString[iLen];
-	/* Extract the first non-space token */
-	rc = ExtractNonSpaceToken(&zString,zEnd,&sToken);
-	if( rc == SXRET_OK && sToken.nByte > 0 ){
-		/* Compare against the current mask */
-		iCount = LongestStringMask(sToken.zString,(int)sToken.nByte,zMask,iMasklen);
-	}
-	/* Longest match */
-	ph7_result_int(pCtx,iCount);
-	return PH7_OK;
+	return StrSpnCommonHandler(pCtx,nArg,apArg,0);
 }
 /*
  * int strcspn(string $str,string $mask[,int $start[,int $length]])
@@ -4217,75 +4209,7 @@ PH7_PRIVATE int PH7_builtin_strspn(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int PH7_builtin_strcspn(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const char *zString,*zMask,*zEnd;
-	int iMasklen,iLen;
-	SyString sToken;
-	int iCount = 0;
-	int rc;
-	if( nArg < 2 ){
-		/* Missing agruments,return zero */
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
-	}
-	/* Extract the target string */
-	zString = ph7_value_to_string(apArg[0],&iLen);
-	/* Extract the mask */
-	zMask = ph7_value_to_string(apArg[1],&iMasklen);
-	if( iLen < 1 ){
-		/* Nothing to process,return zero */
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
-	}
-	if( iMasklen < 1 ){
-		/* No given mask,return the string length */
-		ph7_result_int(pCtx,iLen);
-		return PH7_OK;
-	}
-	if( nArg > 2 ){
-		int nOfft;
-		/* Extract the offset */
-		nOfft = ph7_value_to_int(apArg[2]);
-		if( nOfft < 0 ){
-			const char *zBase = &zString[iLen + nOfft];
-			if( zBase > zString ){
-				iLen = (int)(&zString[iLen]-zBase);
-				zString = zBase;
-			}else{
-				/* Invalid offset */
-				ph7_result_int(pCtx,0);
-				return PH7_OK;
-			}
-		}else{
-			if( nOfft >= iLen ){
-				/* Invalid offset */
-				ph7_result_int(pCtx,0);
-				return PH7_OK;
-			}else{
-				/* Update offset */
-				zString += nOfft;
-				iLen -= nOfft;
-			}
-		}
-		if( nArg > 3 ){
-			int iUserlen;
-			/* Extract the desired length */
-			iUserlen = ph7_value_to_int(apArg[3]);
-			if( iUserlen > 0 && iUserlen < iLen ){
-				iLen = iUserlen;
-			}
-		}
-	}
-	/* Point to the end of the string */
-	zEnd = &zString[iLen];
-	/* Extract the first non-space token */
-	rc = ExtractNonSpaceToken(&zString,zEnd,&sToken);
-	if( rc == SXRET_OK && sToken.nByte > 0 ){
-		/* Compare against the current mask */
-		iCount = LongestStringMask2(sToken.zString,(int)sToken.nByte,zMask,iMasklen);
-	}
-	/* Longest match */
-	ph7_result_int(pCtx,iCount);
-	return PH7_OK;
+	return StrSpnCommonHandler(pCtx,nArg,apArg,1);
 }
 /*
  * string strpbrk(string $haystack,string $char_list)
