@@ -244,12 +244,10 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 		/* Check if a constructor is available — BEFORE instantiation: a
 		 * visibility-denied `new` must not construct (nor later destruct)
 		 * the object (band A #4). */
+		/* Only an explicit __construct is the constructor. PHP-4-style class-name
+		 * constructors were removed in PHP 8.0 — a method named like the class is a
+		 * plain method, so no same-name fallback here. */
 		pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
-		if( pCons == 0 ){
-			SyString *pName = &pClass->sName;
-			/* Check for a constructor with the same base class name */
-			pCons = PH7_ClassExtractMethod(pClass,pName->zString,pName->nByte);
-		}
 		/* Constructor visibility (band A #4): __construct now KEEPS its
 		 * declared protection (PH7_NewClassMethod no longer forces it
 		 * public), so `new C()` on a private/protected constructor from

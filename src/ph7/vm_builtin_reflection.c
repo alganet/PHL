@@ -470,8 +470,11 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 						iCtorVis = pMeth->iProtection;
 					}
 					if( bIsAlias ){
-						/* Mount-time alias for a legacy class-name constructor:
-						 * the method is already listed under its declared name. */
+						/* A __construct hash key that does not match the method's own
+						 * name is an ALIAS (e.g. a trait `use T { m as __construct; }`):
+						 * the method is already listed under its declared name, so skip
+						 * the duplicate. The legacy PHP-4 class-name-constructor mount
+						 * alias that also produced such a key is gone (removed in 8.0). */
 						continue;
 					}
 				}else if( sKey.nByte == sizeof("__clone")-1
@@ -479,12 +482,10 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 					if( iCloneVis == 0 ){
 						iCloneVis = pMeth->iProtection;
 					}
-				}else if( iCtorVis == 0
-				 && sKey.nByte == SyStringLength(&pClass->sName)
-				 && SyMemcmp(sKey.zString, SyStringData(&pClass->sName), sKey.nByte) == 0 ){
-					/* Legacy class-name constructor before the mount alias exists */
-					iCtorVis = pMeth->iProtection;
 				}
+				/* No PHP-4 class-name constructor: a method named like the class is a
+				 * plain method (removed in 8.0), so getConstructor() stays null unless
+				 * an explicit __construct exists. */
 				pMeta = ph7_context_new_array(pCtx);
 				if( pMeta == 0 ){ break; }
 				ReflectMapAddInt(pCtx, pMeta, "vis", (sxi64)pMeth->iProtection);

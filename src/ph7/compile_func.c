@@ -74,8 +74,12 @@ static sxi32 GenStateProcessArgValue(ph7_gen_state *pGen,ph7_vm_func_arg *pArg,S
 	SWAP_DELIMITER(pGen,pIn,pEnd);
 	pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
 	PH7_VmSetByteCodeContainer(pGen->pVm,&pArg->aByteCode);
-	/* Compile the expression holding the argument value */
+	/* Compile the expression holding the argument value. A parameter default is a
+	 * const-expression belonging to the current class (see iInMemberDefault) — so
+	 * __TRAIT__ in it reads pCurClass rather than walking into the enclosing method. */
+	pGen->iInMemberDefault++;
 	rc = PH7_CompileExpr(&(*pGen),0,0);
+	pGen->iInMemberDefault--;
 	/* Emit the done instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_DONE,(rc != SXERR_EMPTY ? 1 : 0),0,0,0);
 	PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);

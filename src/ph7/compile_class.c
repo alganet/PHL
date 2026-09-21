@@ -1284,9 +1284,11 @@ loop:
 		/* Swap bytecode container */
 		pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
 		PH7_VmSetByteCodeContainer(pGen->pVm,&pAttr->aByteCode);
-		/* Compile attribute value.
-		 */
+		/* Compile attribute value. The default is a const-expression belonging to
+		 * pClass (see iInMemberDefault) — __TRAIT__ in it reads pCurClass. */
+		pGen->iInMemberDefault++;
 		rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_COMMA_STATEMENT,0);
+		pGen->iInMemberDefault--;
 		if( rc == SXERR_EMPTY ){
 			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Attribute '%z': Missing default value",pName);
 			if( rc == SXERR_ABORT ){
@@ -1465,9 +1467,11 @@ static sxi32 GenStateCompileClassMethod(
 	{
 		int bIsCtor = 0;
 		int bAbstractCtor = 0;
-		if( (pName->nByte == sizeof("__construct") - 1
-				&& SyMemcmp(pName->zString,"__construct",sizeof("__construct") - 1) == 0)
-		 || SyStringCmp(pName,&pClass->sName,SyMemcmp) == 0 ){
+		/* Only __construct is the constructor (PHP-4 class-name constructors removed
+		 * in 8.0): a method named like the class is a plain method, so promoted
+		 * properties in it are rejected exactly as php does elsewhere. */
+		if( pName->nByte == sizeof("__construct") - 1
+				&& SyMemcmp(pName->zString,"__construct",sizeof("__construct") - 1) == 0 ){
 			if( iFlags & PH7_CLASS_ATTR_ABSTRACT ){
 				bAbstractCtor = 1;
 			}else{
@@ -2120,6 +2124,7 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 {
 	sxu32 nLine = pGen->pIn->nLine;
 	ph7_class *pClass,*pBase;
+	ph7_class *pSavedCurClass = pGen->pCurClass; /* restored at 'done' */
 	SyToken *pEnd,*pTmp;
 	SyString *pName;
 	sxi32 nKwrd;
@@ -2239,6 +2244,9 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 	/* Swap token stream */
 	pTmp = pGen->pEnd;
 	pGen->pEnd = pEnd;
+	/* This interface is now the lexical class for its body (see pCurClass) — a
+	 * const default here is not a trait, so __TRAIT__ stays "". */
+	pGen->pCurClass = pClass;
 	/* Start the parse process
 	 * Note (According to the PHP reference manual):
 	 *  Only constants and function signatures(without body) are allowed.
@@ -2429,6 +2437,7 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 		return SXERR_ABORT;
 	}
 done:
+	pGen->pCurClass = pSavedCurClass;
 	/* Point beyond the interface body */
 	pGen->pIn  = &pEnd[1];
 	pGen->pEnd = pTmp;
@@ -3080,6 +3089,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 {
 	sxu32 nLine = pGen->pIn->nLine;
 	ph7_class *pClass,*pBase;
+	ph7_class *pSavedCurClass = pGen->pCurClass; /* restored at 'done' (enclosing class for a nested anon) */
 	SyToken *pEnd,*pTmp;
 	sxi32 iProtection;
 	SySet aInterfaces;
@@ -3340,6 +3350,8 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 	pGen->pEnd = pEnd;
 	/* Merge the inherited flags (PH7_NewRawClass may have set INTERNAL) */
 	pClass->iFlags |= iFlags;
+	/* This class/enum is now the lexical class for its body — see pCurClass. */
+	pGen->pCurClass = pClass;
 	/* Start the parse process */
 	for(;;){
 		/* Jump leading/trailing semi-colons */
@@ -4074,6 +4086,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 		return SXERR_ABORT;
 	}
 done:
+	pGen->pCurClass = pSavedCurClass;
 	/* Point beyond the class body */
 	pGen->pIn = &pEnd[1];
 	pGen->pEnd = pTmp;
@@ -4267,6 +4280,7 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 {
 	sxu32 nLine = pGen->pIn->nLine;
 	ph7_class *pClass;
+	ph7_class *pSavedCurClass = pGen->pCurClass; /* restored at 'done' */
 	SyToken *pEnd,*pTmp;
 	sxi32 iProtection;
 	sxi32 iAttrflags;
@@ -4332,6 +4346,9 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 	pGen->pEnd = pEnd;
 	/* Mark as trait (PH7_NewRawClass may have set INTERNAL) */
 	pClass->iFlags |= PH7_CLASS_TRAIT;
+	/* This trait is now the lexical class for its body, so a property/parameter
+	 * default here resolves __TRAIT__ to it (see pCurClass). */
+	pGen->pCurClass = pClass;
 	/* Parse the body: same as a normal class (methods, attributes, visibility modifiers) */
 	for(;;){
 		while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) ){
@@ -4562,6 +4579,7 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 		return SXERR_ABORT;
 	}
 done:
+	pGen->pCurClass = pSavedCurClass;
 	/* Point beyond the trait body */
 	pGen->pIn = &pEnd[1];
 	pGen->pEnd = pTmp;

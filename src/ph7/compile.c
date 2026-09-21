@@ -2633,6 +2633,10 @@ PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(
 	pGen->pRawIn = pGen->pRawEnd = 0;
 	pGen->pIn = pGen->pEnd = 0;
 	pGen->nErr = 0;
+	/* Clear the class-body context (a prior compile aborted mid-class-body would
+	 * otherwise leave these live for the next eval/include on this VM). */
+	pGen->pCurClass = 0;
+	pGen->iInMemberDefault = 0;
 	return SXRET_OK;
 }
 /*
@@ -2689,6 +2693,12 @@ PH7_PRIVATE void PH7_CompilerSaveState(ph7_vm *pVm,ph7_gen_state *pSaved,ProcCon
 	pGen->bInGenerator = 0;
 	pGen->bStrictTypes = 0;
 	pGen->bStrictTypesLocked = 0;
+	/* The nested unit is a fresh top-level compile: it is not lexically inside the
+	 * outer's class body nor its member default, so a __TRAIT__ in the nested file
+	 * must not inherit the outer's trait. (Restore below carries the outer's values
+	 * back, so only the nested unit sees these zeros.) */
+	pGen->pCurClass = 0;
+	pGen->iInMemberDefault = 0;
 	SyStringInitFromBuf(&pGen->sPendingDoc,0,0);
 	pGen->xErr = xErr;
 	pGen->pErrData = pErrData;
