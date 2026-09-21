@@ -764,18 +764,20 @@ static sxi32 HashmapInsertByRef(
 {
 	ph7_hashmap_node *pNode = 0;
 	sxi32 rc = SXRET_OK;
-	if( pKey && pKey->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES) ){
+	if( pKey && pKey->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL) ){
 		if( (pKey->iFlags & MEMOBJ_STRING) == 0 ){
-			/* Force a string cast */
+			/* Force a string cast. NULL casts to "": `$a[null] =& $x` binds under the
+			 * EMPTY STRING key, symmetric with HashmapInsert (the by-value path). */
 			PH7_MemObjToString(&(*pKey));
 		}
-		if( SyBlobLength(&pKey->sBlob) < 1 || HashmapIsIntKey(&pKey->sBlob) ){
-			if(SyBlobLength(&pKey->sBlob) < 1){
-				/* Automatic index assign */
-				pKey = 0;
-			}
+		if( HashmapIsIntKey(&pKey->sBlob) ){
 			goto IntKey;
 		}
+		/* An empty key is a REAL key: `$a[""] =& $x` binds (and OVERWRITES an existing
+		 * "" element) under "", it does NOT auto-index. The legacy path turned "" into
+		 * the next integer slot — `$a[""] =& $x` filed under 0 and a second write added
+		 * a duplicate rather than rebinding. A genuine auto-index caller passes
+		 * pKey == 0 (a literal null pointer), handled at IntKey below, never a "" blob. */
 		if( SXRET_OK == HashmapLookupBlobKey(&(*pMap),SyBlobData(&pKey->sBlob),
 			SyBlobLength(&pKey->sBlob),&pNode) ){
 				/* Overwrite */

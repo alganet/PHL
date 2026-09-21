@@ -277,22 +277,14 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 		pKey = 0;
 	}
 		/* php DEPRECATES a null / lossy-float write subscript (then normalizes "" /
-		 * truncates). A by-VALUE write (`$a[$k]=v`, PH7_OP_STORE_IDX) matches php on
-		 * the null case: deprecate + coerce, since PH7_HashmapInsert casts NULL->"".
-		 * That deprecation is emitted DOWN AT THE INSERT (below), not here, so a null
-		 * container that auto-vivifies (`$x=null; $x[null]=v`) gets it too — the base
-		 * is not yet a hashmap at this point. A by-REF write (`$a[$k]=&$x`,
-		 * PH7_OP_STORE_IDX_REF) keeps the loud null TypeError: HashmapInsertByRef still
-		 * treats the "" key as auto-index (a separate, pre-existing byref bug —
-		 * `$a[""] =& $x` drops the value), so deprecate-and-coerce there would turn a
-		 * loud error into a SILENT WRONG answer (§7 residual — the two ship together).
-		 * A lossy-FLOAT subscript stays a loud TypeError in BOTH forms (the recorded
-		 * non-deprecated-surface policy, §2). */
+		 * truncates); it does not reject either. A null key — by-VALUE (`$a[$k]=v`)
+		 * OR by-REF (`$a[$k]=&$x`) — deprecates + coerces to the "" key: the notice is
+		 * emitted DOWN AT THE INSERT (below), not here, so a null/false container that
+		 * auto-vivifies (`$x=null; $x[null]=v`) gets it too (the base is not yet a
+		 * hashmap at this point), and PH7_HashmapInsert / HashmapInsertByRef both cast
+		 * NULL->"". A lossy-FLOAT subscript stays a loud TypeError in BOTH forms (the
+		 * recorded non-deprecated-surface policy, §2). */
 		if( pKey && (pTos->iFlags & MEMOBJ_HASHMAP) ){
-			int bNull = (pKey->iFlags & MEMOBJ_NULL) != 0;
-			int bLossyFloat = (pKey->iFlags & MEMOBJ_REAL) != 0
-				&& pKey->rVal != (ph7_real)(sxi64)pKey->rVal;
-			int bByRef = (pInstr->iOp == PH7_OP_STORE_IDX_REF);
 			SyBlob sTypeMsg;
 			/* An object/array key is php's TypeError; a resource key warns and
 			 * becomes its integer id. Both used to be stringified silently. */
@@ -306,10 +298,10 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 				PH7_THROW_ROUTE_MIDEXPR(rc)
 			}
 			VmOffsetResourceWarn(&(*pVm),pKey);
-			if( (bNull && bByRef) || bLossyFloat ){
+			if( (pKey->iFlags & MEMOBJ_REAL)
+			 && pKey->rVal != (ph7_real)(sxi64)pKey->rVal ){
 				sxi32 rcSc;
-				const char *zErr = bNull ? "Cannot access offset of type null on array"
-				                         : "Cannot access offset of type float on array";
+				const char *zErr = "Cannot access offset of type float on array";
 				PH7_MemObjRelease(pKey);
 				VmPopOperand(&pTos,1);
 				rcSc = VmThrowFromVm(&(*pVm),"TypeError",zErr,(sxu32)SyStrlen(zErr));
@@ -525,7 +517,14 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 		pMap = PH7_HashmapCowSeparate(&(*pVm),pObj);
 	}
 	VmPopOperand(&pTos,1);
-	/* Phase#2: Perform the insertion */
+	/* Phase#2: Perform the insertion. A null key deprecates + normalizes to "" for
+	 * BOTH the by-value and the by-ref store — emitted HERE, after a null/false
+	 * container has auto-vivified to an array, so `$x[null]=v` and `$x[null]=&$y` on
+	 * an undefined $x get the notice too (the top-of-handler check runs before
+	 * vivification, when the base is not yet a hashmap). HashmapInsert /
+	 * HashmapInsertByRef both then cast NULL->"". A null pKey==0 (an append, no key)
+	 * is not a null OFFSET and is left alone. */
+	VmNullOffsetDeprecate(&(*pVm),pKey);
 	if( pInstr->iOp == PH7_OP_STORE_IDX_REF && pTos->nIdx != SXU32_HIGH ){
 		if( pMap == pVm->pGlobal ){
 			/* php 8.1: $GLOBALS['y'] =& $x binds the global $y to $x's
@@ -552,14 +551,6 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 			rc = PH7_HashmapInsertByRef(pMap,pKey,pTos->nIdx);
 		}
 	}else{
-		/* By-value store: a null key deprecates + normalizes to "" here — AFTER a
-		 * null/false container has auto-vivified to an array, so `$x[null]=v` on an
-		 * undefined $x gets the notice too (the top-of-handler check runs before
-		 * vivification, when the base is not yet a hashmap). Gated off the by-ref
-		 * op so the degenerate `=&`-with-no-source-slot path stays loud (§7). */
-		if( pInstr->iOp != PH7_OP_STORE_IDX_REF ){
-			VmNullOffsetDeprecate(&(*pVm),pKey);
-		}
 		rc = PH7_HashmapInsert(pMap,pKey,pTos);
 	}
 	if( pKey ){
