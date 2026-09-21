@@ -160,9 +160,12 @@ static int VmSpreadEnsureCapacity(ph7_vm *pVm, sxu32 nEntry,
  * return (an escaping exception supersedes it, per PHP) and release every
  * live operand slot down to the activation's stack base.
  */
+static void VmDiscardFinallyActions(ph7_vm *pVm, sxu32 nBase);
 static sxi32 VmExecFinalize(ph7_vm *pVm,VmExecState *pState,SySet *pArg,ph7_value *pTos,sxi32 rcTerm)
 {
-	SXUNUSED(pVm);
+	if( rcTerm != PH7_SUSPEND ){
+		VmDiscardFinallyActions(&(*pVm),pState->nFinallyActBase);
+	}
 	if( rcTerm != PH7_SUSPEND && !pState->bReturnPropagates ){
 		VmClearFrameReturn(pState->pEntryFrame);
 	}
@@ -174,6 +177,32 @@ static sxi32 VmExecFinalize(ph7_vm *pVm,VmExecState *pState,SySet *pArg,ph7_valu
 		}
 	}
 	return rcTerm;
+}
+/*
+ * Discard the pending finally ACTIONS an activation queued but never consumed,
+ * releasing what they own (an FA_RETHROW's held exception ref; an FA_RETURN's
+ * value). A `return` inside a finally that was ENTERED VIA THE THROW REDIRECT
+ * (VmThrowInline queued an FA_RETHROW and jumped into the finally body)
+ * short-circuits that finally's OP_END_FINALLY — OP_SET_FINALLY_RET finds no
+ * remaining handler and completes the body directly — so the queued action was
+ * ORPHANED on pVm->aFinallyAction. Left there, an ENCLOSING function's next
+ * OP_END_FINALLY pops the orphan instead of its own action (re-raising a
+ * swallowed exception / hijacking control), and on a coroutine body it leaks
+ * into the resumer's scope. Called at every activation end (record pop and
+ * exec finalize), never on SUSPEND (a suspended body's pending actions are
+ * parked base-relative by VmParkCtxState and must survive).
+ */
+static void VmDiscardFinallyActions(ph7_vm *pVm, sxu32 nBase)
+{
+	while( SySetUsed(&pVm->aFinallyAction) > nBase ){
+		VmFinallyAction *pAct = (VmFinallyAction *)SySetPeek(&pVm->aFinallyAction);
+		if( pAct->eKind == PH7_FA_RETHROW && pAct->pExc ){
+			PH7_ClassInstanceUnref(pAct->pExc);
+		}else if( pAct->eKind == PH7_FA_RETURN ){
+			PH7_MemObjRelease(&pAct->sRet);
+		}
+		(void)SySetPop(&pVm->aFinallyAction);
+	}
 }
 /*
  * Finish one user-function call at the "pop" boundary of the callee's
@@ -874,8 +903,10 @@ static sxi32 VmByteCodeExecBody(
 	if( pVm->pActiveCtx && pVm->pActiveCtx->pFrame == pVm->pFrame
 	 && pStack == pVm->pActiveCtx->pStack ){
 		sState.nExceptionBase = pVm->pActiveCtx->nExceptionBase;
+		sState.nFinallyActBase = pVm->pActiveCtx->nFinallyBase;
 	}else{
 		sState.nExceptionBase = SySetUsed(&pVm->aException);
+		sState.nFinallyActBase = SySetUsed(&pVm->aFinallyAction);
 	}
 	sState.pEntryFrame = pVm->pFrame;
 	pc = nPc;
@@ -5785,6 +5816,7 @@ SkipFuncBody:
 			sState.pTos = pTos;
 			sState.pc = 0;
 			sState.nExceptionBase = SySetUsed(&pVm->aException);
+			sState.nFinallyActBase = SySetUsed(&pVm->aFinallyAction);
 			sState.pEntryFrame = pVm->pFrame;
 			sState.pResult = pRec->sCaller.pTos;
 			sState.pLastRef = &pRec->sCall.nLastRef;
@@ -6131,6 +6163,7 @@ Suspend:
 		pSeg->pCallTop = pCallTop;
 		pSeg->pTopFrame = pVm->pFrame;
 		pSeg->nOldExcBase = pVm->pActiveCtx ? pVm->pActiveCtx->nExceptionBase : 0;
+		pSeg->nOldFinBase = pVm->pActiveCtx ? pVm->pActiveCtx->nFinallyBase : 0;
 		{
 			VmCallFrame *pRec;
 			pSeg->nRecords = 0;
@@ -6181,6 +6214,11 @@ Unwind:
 				PH7_MemObjRelease(pTos);
 				pTos--;
 			}
+		}
+		if( rc != PH7_SUSPEND ){
+			/* The finishing callee's own leaked finally actions must not survive
+			 * into the caller (whose next OP_END_FINALLY would mis-pop them). */
+			VmDiscardFinallyActions(&(*pVm),sState.nFinallyActBase);
 		}
 		{
 			VmCallFrame *pRec = pCallTop;

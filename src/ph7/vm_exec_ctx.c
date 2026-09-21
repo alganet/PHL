@@ -209,6 +209,15 @@ static sxi32 VmFinishCtxRun(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_exec_ctx *pOldC
 		VmSuspendCtxDetach(pVm, pCtx, pResult);
 		return SXRET_OK;
 	}
+	/* A finally entered via the throw redirect whose `return` short-circuited
+	 * OP_END_FINALLY leaves the try's transparent wrapper ABOVE the body frame —
+	 * the detach below would then be skipped and the wrapper (plus the body
+	 * frame) leak into the RESUMER's frame chain, so the next try at that scope
+	 * records the wrong owner frame and its caught throw silently unwinds the
+	 * script. Free trailing exception wrappers exactly like the suspend path. */
+	if( pCtx->pParkedSegment == 0 ){
+		VmFreeSuspendedExceptionFrames(pVm, pCtx);
+	}
 	/* Detach the coroutine frame from the live chain, unless a deeper unwind
 	 * already moved pVm->pFrame off it. */
 	if( pVm->pFrame == pCtx->pFrame ){
@@ -318,13 +327,24 @@ PH7_PRIVATE sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResum
 			 * so every activation's nExceptionBase shifts by the same delta the
 			 * republished handlers moved (newBase - the park-time base). */
 			sxi32 iDelta = (sxi32)pCtx->nExceptionBase - (sxi32)pSeg->nOldExcBase;
-			if( iDelta != 0 ){
+			/* nFinallyActBase floors rebase by their OWN delta — the exception and
+			 * finally-action stacks move independently between suspend and resume
+			 * (a fiber resumed from inside a generator's inline finally sees a
+			 * DEEPER aFinallyAction with an unchanged aException, and a stale
+			 * absolute floor would make the activation-end discard eat the
+			 * resumer's pending action). */
+			sxi32 iFinDelta = (sxi32)pCtx->nFinallyBase - (sxi32)pSeg->nOldFinBase;
+			if( iDelta != 0 || iFinDelta != 0 ){
 				VmCallFrame *pRec;
 				pSeg->sState.nExceptionBase =
 					(sxu32)((sxi32)pSeg->sState.nExceptionBase + iDelta);
+				pSeg->sState.nFinallyActBase =
+					(sxu32)((sxi32)pSeg->sState.nFinallyActBase + iFinDelta);
 				for( pRec = pSeg->pCallTop; pRec; pRec = pRec->pPrev ){
 					pRec->sCaller.nExceptionBase =
 						(sxu32)((sxi32)pRec->sCaller.nExceptionBase + iDelta);
+					pRec->sCaller.nFinallyActBase =
+						(sxu32)((sxi32)pRec->sCaller.nFinallyActBase + iFinDelta);
 				}
 			}
 		}
