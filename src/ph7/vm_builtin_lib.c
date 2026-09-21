@@ -713,7 +713,7 @@
    "}"\
    "function http_build_query($data, $numeric_prefix = '', $arg_separator = null, $encoding_type = PHP_QUERY_RFC1738){"\
    "  if( !is_array($data) && !is_object($data) ){"\
-   "    throw new TypeError('http_build_query(): Argument #1 ($data) must be of type array|object, ' . gettype($data) . ' given');"\
+   "    throw new TypeError('http_build_query(): Argument #1 ($data) must be of type array, ' . __php_zpp_type($data) . ' given');"\
    "  }"\
    "  if( $arg_separator === null ){ $arg_separator = '&'; }"\
    "  $pairs = array();"\
@@ -878,7 +878,7 @@
    "}"\
    "function array_unshift(&$pArray ){"\
    " if( func_num_args() < 1 ){ throw new ArgumentCountError('array_unshift() expects at least 1 argument, 0 given'); }"\
-   " if( !is_array($pArray) ){ throw new TypeError('array_unshift(): Argument #1 ($array) must be of type array, ' . gettype($pArray) . ' given'); }"\
+   " if( !is_array($pArray) ){ throw new TypeError('array_unshift(): Argument #1 ($array) must be of type array, ' . __php_zpp_type($pArray) . ' given'); }"\
    "/* Copy arguments */"\
    "$nArgs = func_num_args();"\
    "$pNew = array();"\
@@ -900,7 +900,7 @@
     "$ret = array();"\
     "for( $i = 0; $i < $narrays; $i++ ){"\
 	 " if( !is_array($arrays[$i]) ){"\
-	 "  throw new TypeError('array_merge_recursive(): Argument #'.($i + 1).' must be of type array, '.gettype($arrays[$i]).' given');"\
+	 "  throw new TypeError('array_merge_recursive(): Argument #'.($i + 1).' must be of type array, '.__php_zpp_type($arrays[$i]).' given');"\
 	 " }"\
      " foreach ($arrays[$i] as $key => $value) {"\
      "  $keyIsInt = is_int($key) || (is_string($key) && (string)intval($key) === $key);"\
