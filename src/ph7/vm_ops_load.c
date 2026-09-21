@@ -1557,10 +1557,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadList(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 			sxi32 _iRpL;
 			PH7_INLINE_RESUME_BREAK()
 			if( VmRecordedResume(pVm,&_iRpL,pState->pEntryFrame,aInstr) ){
-				while( (sxi32)(pTos - pStack) > pVm->iResumeStackDepth ){
-					PH7_MemObjRelease(pTos);
-					pTos--;
-				}
+				PH7_RESUME_DRAIN()
 				pc = _iRpL;
 				VM_EXIT_BREAK;
 			}

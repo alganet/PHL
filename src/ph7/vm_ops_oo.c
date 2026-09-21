@@ -325,11 +325,14 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 			}
 			if( VmRecordedResume(pVm,&iDefResumePc,pState->pEntryFrame,aInstr) ){
 				/* This frame's own try caught it in-place: tidy the stack
-				 * (pop ctor args + release the class-name slot) and resume. */
+				 * (pop ctor args + release the class-name slot, then drain any
+				 * abandoned outer-expression operands to the try's base — the
+				 * class-name slot itself sits above it) and resume. */
 				if( nCtorArgs > 0 ){
 					VmPopOperand(&pTos,nCtorArgs);
 				}
 				PH7_MemObjRelease(pTos);
+				PH7_RESUME_DRAIN()
 				pc = iDefResumePc;
 				VM_EXIT_BREAK;
 			}
@@ -369,11 +372,14 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 				}
 				if( VmRecordedResume(pVm,&iResumePc,pState->pEntryFrame,aInstr) ){
 					/* This frame's own try caught it in-place: tidy the stack
-					 * (pop ctor args + release the class-name slot) and resume. */
+					 * (pop ctor args + release the class-name slot, then drain any
+					 * abandoned outer-expression operands to the try's base — the
+					 * class-name slot itself sits above it) and resume. */
 					if( nCtorArgs > 0 ){
 						VmPopOperand(&pTos,nCtorArgs);
 					}
 					PH7_MemObjRelease(pTos);
+					PH7_RESUME_DRAIN()
 					pc = iResumePc;
 					VM_EXIT_BREAK;
 				}
@@ -1129,6 +1135,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								{
 									sxi32 iRp;
 									if( VmRecordedResume(pVm,&iRp,pState->pEntryFrame,aInstr) ){
+										PH7_RESUME_DRAIN()
 										pc = iRp;
 										VM_EXIT_BREAK;
 									}
@@ -1594,14 +1601,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 										{
 											sxi32 iRpD;
 											if( VmRecordedResume(pVm,&iRpD,pState->pEntryFrame,aInstr) ){
-												/* Drain the abandoned mid-expression operands
-												 * (the op's own result slot included) to the
-												 * catching try's base — without this every
-												 * caught throw leaks one operand slot. */
-												while( (sxi32)(pTos - pStack) > pVm->iResumeStackDepth ){
-													PH7_MemObjRelease(pTos);
-													pTos--;
-												}
+												PH7_RESUME_DRAIN()
 												pc = iRpD;
 												VM_EXIT_BREAK;
 											}
@@ -1641,6 +1641,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 													{
 														sxi32 iRp;
 														if( VmRecordedResume(pVm,&iRp,pState->pEntryFrame,aInstr) ){
+															PH7_RESUME_DRAIN()
 															pc = iRp;
 															VM_EXIT_BREAK;
 														}
