@@ -3497,7 +3497,11 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 		ph7_hashmap *pMap;
 		ph7_value *pValue;
 		sxu32 n;
-		if( SX_EMPTY_STR(zValue) ){
+		/* An EMPTY argument is a real argv element — `phl s.php "" x` gives php
+		 * $argv[1] === "" and $argc 3. This used to reject it (SX_EMPTY_STR is
+		 * true for "" as well as NULL), silently renumbering every later element
+		 * and shortening $argc. Only a NULL is refused now. */
+		if( zValue == 0 ){
 			rc = SXERR_EMPTY;
 			break;
 		}
