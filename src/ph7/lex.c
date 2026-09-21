@@ -10,6 +10,7 @@
  */
 /* Forward declaration */
 static sxu32 KeywordCode(const char *z, int n);
+static sxu32 KeywordCodeCI(const char *zRaw, int n);
 static sxi32 LexExtractHeredoc(SyStream *pStream,SyToken *pToken);
 /*
  * Tokenize a raw PHP input.
@@ -74,15 +75,7 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 		}
 		/* Record token length */
 		pStr->nByte = (sxu32)((const char *)pStream->zText-pStr->zString);
-		nKeyword = KeywordCode(pStr->zString,(int)pStr->nByte);
-		/* PHP 7.4: 'fn' is a keyword reserved for arrow functions.
-		 * The auto-generated perfect hash above doesn't know about it,
-		 * so intercept the 'fn' identifier here.
-		 */
-		if( nKeyword == PH7_TK_ID && pStr->nByte == 2
-			&& pStr->zString[0] == 'f' && pStr->zString[1] == 'n' ){
-			nKeyword = PH7_TKWRD_FN;
-		}
+		nKeyword = KeywordCodeCI(pStr->zString,(int)pStr->nByte);
 		if( nKeyword != PH7_TK_ID ){
 			if( nKeyword &
 				(PH7_TKWRD_NEW|PH7_TKWRD_CLONE|PH7_TKWRD_AND|PH7_TKWRD_XOR|PH7_TKWRD_OR|PH7_TKWRD_INSTANCEOF) ){
@@ -998,10 +991,43 @@ static sxu32 KeywordCode(const char *z, int n){
   if( n==7 && SyMemcmp(z,"finally",7)==0 ) return PH7_TKWRD_FINALLY;
   if( n==5 && SyMemcmp(z,"yield",5)==0 ) return PH7_TKWRD_YIELD;
   if( n==5 && SyMemcmp(z,"match",5)==0 ) return PH7_TKWRD_MATCH;
+  if( n==2 && SyMemcmp(z,"fn",2)==0 ) return PH7_TKWRD_FN;   /* PHP 7.4 arrow functions */
   return PH7_TK_ID;
 }
 /* --- End of Automatically generated code --- */
 /* SPDX-SnippetEnd */
+/*
+ * Keyword lookup as php does it: CASE-INSENSITIVELY. 'IF', 'Function' and 'NEW'
+ * are the very same tokens as 'if', 'function' and 'new', so the generated table
+ * above — whose hash buckets and SyMemcmp() rows are byte-exact lower case — is
+ * probed through an ASCII-folded COPY of the identifier. KeywordCode() itself
+ * stays byte-exact so the generated code needs no regeneration.
+ *
+ * The fold is ASCII-only on purpose: libc tolower() follows LC_CTYPE (a tr_TR
+ * embedder would stop recognising 'IF') where php's lexer is locale-independent,
+ * and identifier bytes >= 0x80 — php allows them, and every UTF-8 name has
+ * them — must pass through untouched.
+ *
+ * A handful of UPPER-case rows in the table ('ARRAY', 'AS', 'EXIT', 'UNSET',
+ * 'XOR', 'AND', 'OR', 'ECHO', 'Echo', 'Array', 'USE') are PH7's old partial hack
+ * for this same problem. Each has a lower-case twin, so folding makes them
+ * unreachable-but-harmless rather than wrong.
+ */
+static sxu32 KeywordCodeCI(const char *zRaw, int n)
+{
+	/* Longest row in the table above: 'require_once'/'include_once' (12 bytes) */
+	char zFold[12];
+	int i;
+	if( n < 2 || n > (int)sizeof(zFold) ){
+		/* Too short or too long to be any keyword: skip the fold and the probe */
+		return PH7_TK_ID;
+	}
+	for( i = 0 ; i < n ; ++i ){
+		unsigned char c = (unsigned char)zRaw[i];
+		zFold[i] = (char)((c >= 'A' && c <= 'Z') ? c + ('a' - 'A') : c);
+	}
+	return KeywordCode(zFold,n);
+}
 /*
  * Extract a heredoc/nowdoc text from a raw PHP input.
  * According to the PHP language reference manual:

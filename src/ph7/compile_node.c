@@ -932,11 +932,27 @@ PH7_PRIVATE sxi32 PH7_CompileLangConstruct(ph7_gen_state *pGen,sxi32 iCompileFla
 	}else{
 		sxi32 nArg = 0;
 		sxu32 nIdx = 0;
+		char zCanon[sizeof("include_once")-1];
+		SyString sCanon;
 		rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_RDONLY_LOAD,0);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}else if(rc != SXERR_EMPTY ){
 			nArg = 1;
+		}
+		/* The construct is dispatched as a CALL to the host function of the same name,
+		 * so the name emitted here must be the construct's canonical spelling, not the
+		 * source's: php accepts `PRINT`/`Isset`/`EVAL` (keywords are case-insensitive)
+		 * where the raw text produced `Call to undefined function PRINT()`. Every
+		 * construct name is lower-case ASCII, so folding IS canonicalising. */
+		if( pName->nByte <= sizeof(zCanon) ){
+			sxu32 i;
+			for( i = 0 ; i < pName->nByte ; ++i ){
+				unsigned char c = (unsigned char)pName->zString[i];
+				zCanon[i] = (char)((c >= 'A' && c <= 'Z') ? c + ('a' - 'A') : c);
+			}
+			SyStringInitFromBuf(&sCanon,zCanon,pName->nByte);
+			pName = &sCanon;
 		}
 		if( SXRET_OK != GenStateFindLiteral(&(*pGen),pName,&nIdx) ){
 			ph7_value *pObj;
@@ -1137,6 +1153,7 @@ static sxi32 GenStateLoadLiteral(ph7_gen_state *pGen)
 	SyToken *pToken = pGen->pIn;
 	ph7_value *pObj;
 	SyString *pStr;
+	SyString sCanon;
 	sxu32 nIdx;
 	/* Extract token value */
 	pStr = &pToken->sData;
@@ -1348,8 +1365,43 @@ static sxi32 GenStateLoadLiteral(ph7_gen_state *pGen)
 			}
 			return SXRET_OK;
 	}
+	/* php keywords are CASE-INSENSITIVE (`SELF::C`, `Parent::m()`, `new STATIC`,
+	 * `ISSET($x)`), but a few of them reach the engine as THIS literal and are matched
+	 * there BYTE-EXACTLY: the scope keywords against "self"/"parent"/"static" (OP_MEMBER,
+	 * OP_NEW, the FCC scope resolver, the error formatter), and isset/empty/eval as the
+	 * name of the host function their call dispatches to. Emit the canonical lower-case
+	 * spelling for exactly those so the source's case never reaches the match — PH7
+	 * emitted the raw text, so `SELF::C` looked for a class literally named "SELF" and
+	 * `ISSET($x)` for a function named "ISSET".
+	 *
+	 * Every OTHER keyword literal keeps its source case on purpose: it is a CONSTANT
+	 * read (`define('OBJECT',1); echo OBJECT;` — PHL's keyword table covers type names
+	 * php's lexer does not reserve), and php constants are case-SENSITIVE. So is a
+	 * keyword used as a member NAME, which the parser flags: `class C { const STATIC = 5; }
+	 * echo C::STATIC;` names the constant "STATIC", and folding it looked for "static". */
+	if( (pToken->nType & PH7_TK_KEYWORD) && (pToken->nType & PH7_TK_MEMBER_NAME) == 0 ){
+		sxu32 nKeyID = (sxu32)SX_PTR_TO_INT(pToken->pUserData);
+		const char *zCanon = 0;
+		if( nKeyID == PH7_TKWRD_SELF ){
+			zCanon = "self";
+		}else if( nKeyID == PH7_TKWRD_PARENT ){
+			zCanon = "parent";
+		}else if( nKeyID == PH7_TKWRD_STATIC ){
+			zCanon = "static";
+		}else if( nKeyID == PH7_TKWRD_ISSET ){
+			zCanon = "isset";
+		}else if( nKeyID == PH7_TKWRD_EMPTY ){
+			zCanon = "empty";
+		}else if( nKeyID == PH7_TKWRD_EVAL ){
+			zCanon = "eval";
+		}
+		if( zCanon ){
+			SyStringInitFromBuf(&sCanon,zCanon,SyStrlen(zCanon));
+			pStr = &sCanon;
+		}
+	}
 	/* Query literal table */
-	if( SXRET_OK != GenStateFindLiteral(&(*pGen),&pToken->sData,&nIdx) ){
+	if( SXRET_OK != GenStateFindLiteral(&(*pGen),pStr,&nIdx) ){
 		ph7_value *pLitObj;
 		/* Unknown literal,install it in the literal table */
 		pLitObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);
@@ -1357,7 +1409,7 @@ static sxi32 GenStateLoadLiteral(ph7_gen_state *pGen)
 			PH7_GenCompileError(&(*pGen),E_ERROR,1,"PH7 engine is running out of memory");
 			return SXERR_ABORT;
 		}
-		PH7_MemObjInitFromString(pGen->pVm,pLitObj,&pToken->sData);
+		PH7_MemObjInitFromString(pGen->pVm,pLitObj,pStr);
 		GenStateInstallLiteral(&(*pGen),pLitObj,nIdx);
 	}
 	/* Emit the load constant instruction */
