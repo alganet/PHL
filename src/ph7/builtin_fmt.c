@@ -544,6 +544,10 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 			if( pArg == 0 ){
 				length = 0;
 			}else{
+				/* php's user-visible array->string warning for %s (§2) */
+				if( pArg->iFlags & MEMOBJ_HASHMAP ){
+					PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,"Array to string conversion");
+				}
 				zBuf = (char *)ph7_value_to_string(pArg,&length);
 			}
 			if( length < 1 ){

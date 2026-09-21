@@ -1414,9 +1414,9 @@ case PH7_OP_CVT_STR:
 		goto Abort;
 	}
 #endif
-	if( (pTos->iFlags & MEMOBJ_STRING) == 0 ){
-		PH7_MemObjToString(pTos);
-	}
+	/* (string) cast + string interpolation "$arr": php's user-visible
+	 * array->string warning site (§2). */
+	PH7_MemObjToStringUV(pTos);
 	break;
 /*
  * CVT_BOOL: * * *
@@ -1711,10 +1711,8 @@ case PH7_OP_LOAD:{
 			goto Abort;
 		}
 #endif
-		/* Force a string cast */
-		if( (pTos->iFlags & MEMOBJ_STRING) == 0 ){
-			PH7_MemObjToString(pTos);
-		}
+		/* Force a string cast — variable-variable name $$arr (user-visible, §2) */
+		PH7_MemObjToStringUV(pTos);
 		SyStringInitFromBuf(&sName,SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
 	}else{
 		SyStringInitFromBuf(&sName,pInstr->p3,SyStrlen((const char *)pInstr->p3));
@@ -2011,11 +2009,9 @@ case PH7_OP_STORE: {
 		}
 		break;
 	}else if( pInstr->p3 == 0 ){
-		/* Take the variable name from the next on the stack */
-		if( (pTos->iFlags & MEMOBJ_STRING) == 0 ){
-			/* Force a string cast */
-			PH7_MemObjToString(pTos);
-		}
+		/* Take the variable name from the next on the stack (user-visible: a
+		 * variable-variable NAME $$arr warns on an array, §2) */
+		PH7_MemObjToStringUV(pTos);
 		SyStringInitFromBuf(&sName,SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
 		pTos--;
 #ifdef UNTRUST
@@ -2966,15 +2962,11 @@ case PH7_OP_CAT:{
 		goto Abort;
 	}
 #endif
-	/* Force a string cast */
-	if( (pNos->iFlags & MEMOBJ_STRING) == 0 ){
-		PH7_MemObjToString(pNos);
-	}
+	/* Force a string cast (user-visible: warns on an array operand, §2) */
+	PH7_MemObjToStringUV(pNos);
 	pCur = &pNos[1];
 	while( pCur <= pTos ){
-		if( (pCur->iFlags & MEMOBJ_STRING) == 0 ){
-			PH7_MemObjToString(pCur);
-		}
+		PH7_MemObjToStringUV(pCur);
 		/* Perform the concatenation */
 		if( SyBlobLength(&pCur->sBlob) > 0 ){
 			if( PH7_MemObjStringAppend(pNos,(const char *)SyBlobData(&pCur->sBlob),SyBlobLength(&pCur->sBlob)) != SXRET_OK ){
@@ -3003,10 +2995,8 @@ case PH7_OP_CAT_STORE:{
 		goto Abort;
 	}
 #endif
-	/* The right operand must be a string to append it */
-	if((pNos->iFlags & MEMOBJ_STRING) == 0 ){
-		PH7_MemObjToString(pNos);
-	}
+	/* The right operand must be a string to append it (user-visible, §2) */
+	PH7_MemObjToStringUV(pNos);
 	nIdx = pTos->nIdx;
 	/* Fast path: append straight into the lvalue's own (geometrically grown) buffer
 	 * instead of copy-on-write-dup'ing the read-only-aliased stack value and then
@@ -3024,10 +3014,8 @@ case PH7_OP_CAT_STORE:{
 	 && (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx)) != 0
 	 && (SyHashTotalEntry(&pVm->hTypedSlot) == 0
 	     || SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32)) == 0) ){
-		if( (pObj->iFlags & MEMOBJ_STRING) == 0 ){
-			/* e.g. $x = 5; $x .= "a";  ->  "5a" */
-			PH7_MemObjToString(pObj);
-		}
+		/* e.g. $x = 5; $x .= "a";  ->  "5a" (user-visible: warns if $x is an array) */
+		PH7_MemObjToStringUV(pObj);
 		if( SyBlobLength(&pNos->sBlob) > 0 ){
 			if( PH7_MemObjStringAppend(pObj,(const char *)SyBlobData(&pNos->sBlob),SyBlobLength(&pNos->sBlob)) != SXRET_OK ){
 				/* Allocation failure: the grow happens before the copy, so pObj
@@ -3059,10 +3047,8 @@ case PH7_OP_CAT_STORE:{
 		break;
 	}
 	/* Slow path: read-only/typed/constant-attribute/self-aliasing lvalues. */
-	if((pTos->iFlags & MEMOBJ_STRING) == 0 ){
-		/* Force a string cast */
-		PH7_MemObjToString(pTos);
-	}
+	/* Force a string cast (user-visible: warns if the lvalue is an array, §2) */
+	PH7_MemObjToStringUV(pTos);
 	/* Perform the concatenation (Reverse order) */
 	if( SyBlobLength(&pNos->sBlob) > 0 ){
 		if( PH7_MemObjStringAppend(pTos,(const char *)SyBlobData(&pNos->sBlob),SyBlobLength(&pNos->sBlob)) != SXRET_OK ){
@@ -3521,10 +3507,8 @@ case PH7_OP_UPLINK: {
 		SyString sName;
 		/* Perform the link */
 		while( pLink <= pTos ){
-			if((pLink->iFlags & MEMOBJ_STRING) == 0 ){
-				/* Force a string cast */
-				PH7_MemObjToString(pLink);
-			}
+			/* Force a string cast — global $$arr link name (user-visible, §2) */
+			PH7_MemObjToStringUV(pLink);
 			SyStringInitFromBuf(&sName,SyBlobData(&pLink->sBlob),SyBlobLength(&pLink->sBlob));
 			if( sName.nByte > 0 ){
 				VmFrameLink(&(*pVm),&sName);

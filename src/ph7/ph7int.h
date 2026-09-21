@@ -2160,6 +2160,7 @@ PH7_PRIVATE sxi32 PH7_MemObjIsEmpty(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjToHashmap(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjToObject(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjToString(ph7_value *pObj);
+PH7_PRIVATE sxi32 PH7_MemObjToStringUV(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjToNull(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjToReal(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjToInteger(ph7_value *pObj);

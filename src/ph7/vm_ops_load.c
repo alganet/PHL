@@ -426,10 +426,9 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 		/* Phase#1: Load the array */
 		if( (pObj->iFlags & MEMOBJ_STRING) && (pInstr->iOp != PH7_OP_STORE_IDX_REF) ){
 			VmPopOperand(&pTos,1);
-			if( (pTos->iFlags&MEMOBJ_STRING) == 0 ){
-				/* Force a string cast */
-				PH7_MemObjToString(pTos);
-			}
+			/* Force a string cast on the RHS (user-visible: an array warns
+			 * "Array to string conversion" before the offset write, §2) */
+			PH7_MemObjToStringUV(pTos);
 			if( pKey == 0 ){
 				/* `$s[] = 'x'` on a STRING: php raises the catchable Error
 				 * "[] operator not supported for strings" and leaves the string
