@@ -1581,7 +1581,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 			(pAttr->iFlags & PH7_CLASS_ATTR_NULLABLE) ? 1 : 0,
 			0 /* bStrict: properties never apply strict_types */);
 		if( rc == SXRET_OK ){
-			pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
+			pVmAttr->iState &= ~(VM_CLASS_ATTR_UNINIT|VM_CLASS_ATTR_TYPE_DEFER);
 			return SXRET_OK;
 		}
 		if( pValue->iFlags & MEMOBJ_OBJ ){
@@ -1597,7 +1597,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 		if( (pAttr->iFlags & PH7_CLASS_ATTR_NULLABLE)
 		 || (pAttr->nType == SXU32_HIGH && pAttr->sClass.nByte == 5
 		     && SyStrnicmp(pAttr->sClass.zString,"mixed",5) == 0) ){
-			pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
+			pVmAttr->iState &= ~(VM_CLASS_ATTR_UNINIT|VM_CLASS_ATTR_TYPE_DEFER);
 			return SXRET_OK;
 		}
 		return VmThrowPropertyTypeError(pVm,pVmAttr,"null");
@@ -1613,7 +1613,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 	 * otherwise treated as "scalar, not array" and would be rejected. */
 	if( pAttr->nType == MEMOBJ_OBJ ){
 		if( pValue->iFlags & MEMOBJ_OBJ ){
-			pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
+			pVmAttr->iState &= ~(VM_CLASS_ATTR_UNINIT|VM_CLASS_ATTR_TYPE_DEFER);
 			return SXRET_OK;
 		}
 		return VmThrowPropertyTypeError(pVm,pVmAttr,VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
@@ -1626,7 +1626,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 	if( pAttr->nType == SXU32_HIGH ){
 		int rcPseudo = VmCheckPseudoType(pVm, pValue, &pAttr->sClass);
 		if( rcPseudo == 1 ){
-			pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
+			pVmAttr->iState &= ~(VM_CLASS_ATTR_UNINIT|VM_CLASS_ATTR_TYPE_DEFER);
 			return SXRET_OK;
 		}
 		if( rcPseudo == 0 ){
@@ -1649,7 +1649,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 					VmFormatValueClassName(pValue,zBuf,sizeof(zBuf)));
 			}
 		}
-		pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
+		pVmAttr->iState &= ~(VM_CLASS_ATTR_UNINIT|VM_CLASS_ATTR_TYPE_DEFER);
 		return SXRET_OK;
 	}
 	/* Scalar type. PHP 7.4 weak mode: attempt coercion using the same cast
@@ -1922,7 +1922,16 @@ static sxi32 VmDefaultPropertyTypeError(ph7_vm *pVm,ph7_class *pClass,ph7_class_
  * php-int-producing builtin, so it accepts-and-materializes — recorded).
  * Returns SXRET_OK, or PH7_ABORT/PH7_EXCEPTION after throwing.
  */
-PH7_PRIVATE sxi32 VmEnforceTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue)
+/*
+ * The CHECK core of typed-default enforcement: validate (and possibly coerce
+ * in place — int -> float widening, whole-real materialization) a computed
+ * DEFAULT value against the property's declared type using the typed-CONSTANT
+ * rule. Returns SXRET_OK on accept or SXERR_INVALID on mismatch WITHOUT
+ * throwing, so the static-property mount path can defer the failure (php
+ * evaluates static defaults lazily — see VM_CLASS_ATTR_TYPE_DEFER) while the
+ * instance path throws immediately via the wrapper below.
+ */
+PH7_PRIVATE sxi32 VmCheckTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue)
 {
 	int bNullable = (pAttr->iFlags & PH7_CLASS_ATTR_NULLABLE) ? 1 : 0;
 	if( pValue->iFlags & MEMOBJ_NULL ){
@@ -1933,22 +1942,22 @@ PH7_PRIVATE sxi32 VmEnforceTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 			&& SyStrnicmp(pAttr->sClass.zString,"mixed",5) == 0 ){
 			return SXRET_OK;
 		}
-		return VmDefaultPropertyTypeError(&(*pVm),pClass,pAttr,pValue);
+		return SXERR_INVALID;
 	}
 	if( pAttr->iFlags & PH7_CLASS_ATTR_UNION ){
 		if( VmCoerceToUnion(&(*pVm),pValue,&pAttr->aUnionAlts,bNullable,1 /* strict */) == SXRET_OK ){
 			return SXRET_OK;
 		}
-		return VmDefaultPropertyTypeError(&(*pVm),pClass,pAttr,pValue);
+		return SXERR_INVALID;
 	}
 	if( pAttr->nType == MEMOBJ_NULL ){
-		return VmDefaultPropertyTypeError(&(*pVm),pClass,pAttr,pValue);
+		return SXERR_INVALID;
 	}
 	if( pAttr->nType == MEMOBJ_OBJ ){
 		if( pValue->iFlags & MEMOBJ_OBJ ){
 			return SXRET_OK;
 		}
-		return VmDefaultPropertyTypeError(&(*pVm),pClass,pAttr,pValue);
+		return SXERR_INVALID;
 	}
 	if( pAttr->nType == SXU32_HIGH ){
 		int rcPseudo = VmCheckPseudoType(&(*pVm),pValue,&pAttr->sClass);
@@ -1956,10 +1965,10 @@ PH7_PRIVATE sxi32 VmEnforceTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 			return SXRET_OK;
 		}
 		if( rcPseudo == 0 ){
-			return VmDefaultPropertyTypeError(&(*pVm),pClass,pAttr,pValue);
+			return SXERR_INVALID;
 		}
 		if( (pValue->iFlags & MEMOBJ_OBJ) == 0 ){
-			return VmDefaultPropertyTypeError(&(*pVm),pClass,pAttr,pValue);
+			return SXERR_INVALID;
 		}
 		{
 			/* self/parent in the hint resolve against the declaring class. */
@@ -1968,7 +1977,7 @@ PH7_PRIVATE sxi32 VmEnforceTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 			if( pExpected ){
 				ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
 				if( !PH7_VmInstanceOf(pInst->pClass,pExpected) ){
-					return VmDefaultPropertyTypeError(&(*pVm),pClass,pAttr,pValue);
+					return SXERR_INVALID;
 				}
 			}
 		}
@@ -1982,7 +1991,56 @@ PH7_PRIVATE sxi32 VmEnforceTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 		PH7_MemObjToReal(pValue);
 		return SXRET_OK;
 	}
+	return SXERR_INVALID;
+}
+PH7_PRIVATE sxi32 VmEnforceTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue)
+{
+	if( VmCheckTypedDefault(&(*pVm),pClass,pAttr,pValue) == SXRET_OK ){
+		return SXRET_OK;
+	}
 	return VmDefaultPropertyTypeError(&(*pVm),pClass,pAttr,pValue);
+}
+/*
+ * Deferred typed-STATIC-default failure (VM_CLASS_ATTR_TYPE_DEFER): scan the
+ * class chain for a static typed slot whose mount-time default failed its
+ * type check, and throw php's catchable "Cannot assign <kind> to property
+ * C::$s of type T" TypeError for the first one found. php evaluates static
+ * defaults lazily, so the failure surfaces at the FIRST static-property
+ * access (read/write/isset — any property of the class) or instantiation; a
+ * never-touched class stays silent, and the throw repeats on every access
+ * (the flag is not cleared — php's table materialization keeps failing too).
+ * Returns SXRET_OK when nothing is pending (the class flag is only a hint),
+ * else the PH7_EXCEPTION/PH7_ABORT of the throw.
+ */
+PH7_PRIVATE sxi32 VmThrowDeferredStaticType(ph7_vm *pVm,ph7_class *pClass)
+{
+	ph7_class *pScan;
+	for( pScan = pClass ; pScan ; pScan = pScan->pBase ){
+		SyHashEntry *pEntry;
+		SyHashResetLoopCursor(&pScan->hAttr);
+		while( (pEntry = SyHashGetNextEntry(&pScan->hAttr)) != 0 ){
+			ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
+			if( (pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_TYPED)) ==
+				(PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_TYPED)
+			 && (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0
+			 && pAttr->nIdx != SXU32_HIGH ){
+				SyHashEntry *pSlot = SyHashGet(&pVm->hTypedSlot,(const void *)&pAttr->nIdx,sizeof(sxu32));
+				if( pSlot ){
+					VmClassAttr *pVmAttr = (VmClassAttr *)pSlot->pUserData;
+					if( pVmAttr->iState & VM_CLASS_ATTR_TYPE_DEFER ){
+						ph7_value *pValue = (ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx);
+						ph7_value sNull;
+						if( pValue == 0 ){
+							PH7_MemObjInit(&(*pVm),&sNull);
+							pValue = &sNull;
+						}
+						return VmDefaultPropertyTypeError(&(*pVm),pVmAttr->pOwner,pAttr,pValue);
+					}
+				}
+			}
+		}
+	}
+	return SXRET_OK;
 }
 
 /*

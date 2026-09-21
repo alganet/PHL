@@ -1178,7 +1178,17 @@ static sxi32 VmMountUserClassAttrs(
 			if( pAttr->nIdx != SXU32_HIGH ){
 				/* Already materialized (an attr shared with an earlier-mounted
 				 * class). PH7_VmReset invalidates every nIdx before its
-				 * re-mount pass, so VM reuse still re-evaluates. */
+				 * re-mount pass, so VM reuse still re-evaluates. Propagate a
+				 * deferred static-default type failure to THIS class too, so a
+				 * subclass's static access / instantiation throws like php's. */
+				if( (pAttr->iFlags & PH7_CLASS_ATTR_TYPED)
+				 && (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
+					SyHashEntry *pSlotD = SyHashGet(&pVm->hTypedSlot,
+						(const void *)&pAttr->nIdx,sizeof(sxu32));
+					if( pSlotD && (((VmClassAttr *)pSlotD->pUserData)->iState & VM_CLASS_ATTR_TYPE_DEFER) ){
+						pClass->iFlags |= PH7_CLASS_STATIC_TYPE_DEFER;
+					}
+				}
 				continue;
 			}
 			/* Reserve a memory object for this constant/static attribute */
@@ -1249,6 +1259,19 @@ static sxi32 VmMountUserClassAttrs(
 				 * (constants are already excluded by the enclosing condition). */
 				if( SySetUsed(&pAttr->aByteCode) == 0 ){
 					pVmAttrS->iState |= VM_CLASS_ATTR_UNINIT;
+				}else{
+					/* The default was evaluated EAGERLY above, but php validates a
+					 * typed static default LAZILY at the first static-property
+					 * access / instantiation (a never-touched bad default is
+					 * silent). Check now WITHOUT throwing — a pass coerces in
+					 * place (int -> float widening, whole-real materialization,
+					 * matching php's access-time value) and a failure is DEFERRED:
+					 * the slot and the class are flagged, and the access sites
+					 * throw via VmThrowDeferredStaticType. */
+					if( VmCheckTypedDefault(&(*pVm),pClass,pAttr,pMemObj) != SXRET_OK ){
+						pVmAttrS->iState |= VM_CLASS_ATTR_TYPE_DEFER;
+						pClass->iFlags |= PH7_CLASS_STATIC_TYPE_DEFER;
+					}
 				}
 				if( SyHashInsert(&pVm->hTypedSlot,(const void *)&pVmAttrS->nIdx,sizeof(sxu32),pVmAttrS) != SXRET_OK ){
 					SyMemBackendPoolFree(&pVm->sAllocator,pVmAttrS);
