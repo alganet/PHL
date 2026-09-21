@@ -1826,6 +1826,17 @@ static sxi32 GenStateCompileListBody(ph7_gen_state *pGen)
 					SySetRelease(&sNested);
 					return SXRET_OK;
 				}
+				{
+					/* A property target ($o->p / Cls::$s) is a PURE WRITE here — the
+					 * value lands via the following OP_LOAD_LIST's direct slot store.
+					 * Tag the member so OP_MEMBER skips the uninitialized-typed read
+					 * Error / __get consult and vivifies a missing property (php
+					 * assigns without reading). */
+					VmInstr *pLast = PH7_VmPeekInstr(pGen->pVm);
+					if( pLast && pLast->iOp == PH7_OP_MEMBER && pLast->iP2 == PH7_MEMBER_READ ){
+						pLast->iP2 = PH7_MEMBER_LIST_TARGET;
+					}
+				}
 			}
 		}else{
 			/* Empty entry,load NULL */

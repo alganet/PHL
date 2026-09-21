@@ -602,7 +602,8 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					 * instruction there), and for ++/--/compound-assign/store the next opcode is the
 					 * modify-op directly (VmMemberNextIsWrite). */
 					VmInstr *pNext = pInstr + 1;
-					if( pInstr->iP2 == PH7_MEMBER_WRITE || VmMemberNextIsWrite(pNext) ){
+					if( pInstr->iP2 == PH7_MEMBER_WRITE || pInstr->iP2 == PH7_MEMBER_LIST_TARGET
+					 || VmMemberNextIsWrite(pNext) ){
 						ph7_class_attr *pDecl = PH7_ClassExtractAttribute(pThis->pClass,sName.zString,sName.nByte);
 						if( pDecl && (pDecl->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
 							VmRecreateDeclaredAttr(&(*pVm),pThis,pDecl,&pObjAttr);
@@ -621,10 +622,17 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							ph7_class_method *pSetMagic = 0;
 							ph7_class_method *pCoalIsset = 0, *pCoalGet = 0, *pCoalSet = 0;
 							int bPlainStore = (pNext->iOp == PH7_OP_STORE && pNext->iP2 != 0);
-							if( bPlainStore ){
+							if( bPlainStore || pInstr->iP2 == PH7_MEMBER_LIST_TARGET ){
 								pSetMagic = PH7_ClassExtractMethod(pClass,"__set",sizeof("__set")-1);
 							}
-							if( pSetMagic && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'s') ){
+							if( pSetMagic && pInstr->iP2 == PH7_MEMBER_LIST_TARGET ){
+								/* php dispatches __set($name, element) for a missing
+								 * destructuring target, but the element value only exists
+								 * at the following OP_LOAD_LIST — the dispatch is
+								 * unsupported (recorded residual). Leave the miss: the
+								 * property stays uncreated, matching php's observable
+								 * state (its __set did not store either). */
+							}else if( pSetMagic && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'s') ){
 								pThis->iRef++;
 								pVm->pMagicSetThis = pThis;
 								SyBlobReset(&pVm->sMagicSetName);
@@ -817,10 +825,12 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							VM_EXIT_BREAK;
 						}
 					}
-					if( !VmMemberCtxIsLookup(pInstr->iP2) && !VmMemberNextIsWrite(pInstr + 1) ){
+					if( !VmMemberCtxIsLookup(pInstr->iP2) && pInstr->iP2 != PH7_MEMBER_LIST_TARGET
+					 && !VmMemberNextIsWrite(pInstr + 1) ){
 						/* Plain reads AND the ??=/subscript write-base (PH7_MEMBER_WRITE,
 						 * which php reads through __get); read-modify-write forms are
-						 * excluded (they vivified above — approximate, recorded). */
+						 * excluded (they vivified above — approximate, recorded), and so is
+						 * a destructuring target (a pure write — php never reads it). */
 						pGetMagic = PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1);
 					}
 					if( pGetMagic && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'g') ){
@@ -849,8 +859,11 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					 * nothing is "undefined" about that write) or a throw is parked on the
 					 * boundary rail (e.g. the readonly-class dynamic-property Error — the
 					 * fetch-point router lands it right after this op). */
-					if( !VmMemberCtxIsLookup(pInstr->iP2) && pVm->pMagicSetThis == 0
+					if( !VmMemberCtxIsLookup(pInstr->iP2) && pInstr->iP2 != PH7_MEMBER_LIST_TARGET
+					 && pVm->pMagicSetThis == 0
 					 && pVm->nBoundaryRc == 0 ){
+						/* A destructuring target is also silent: php either created the
+						 * property above or dispatched __set — neither warns. */
 						VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Undefined property: %z::$%z",
 							&pClass->sName,&sName);
 					}
@@ -1078,6 +1091,11 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							VmInstr *pNext = pInstr + 1;
 							int bIsLhs = 0;
 							if( pNext->iOp == PH7_OP_STORE && pNext->iP2 ){
+								bIsLhs = 1;
+							}
+							if( pInstr->iP2 == PH7_MEMBER_LIST_TARGET ){
+								/* Destructuring target: the OP_LOAD_LIST store (typed-
+								 * enforced) initializes it — never a read (php). */
 								bIsLhs = 1;
 							}
 							/* isset()/empty()/`??` read an uninitialized typed property
@@ -1557,6 +1575,11 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 												VmInstr *pNext = pInstr + 1;
 												int bIsLhs = 0;
 												if( pNext->iOp == PH7_OP_STORE && pNext->iP2 ){
+													bIsLhs = 1;
+												}
+												if( pInstr->iP2 == PH7_MEMBER_LIST_TARGET ){
+													/* Destructuring target ([S::$s] = [...]):
+													 * initialized by the OP_LOAD_LIST store. */
 													bIsLhs = 1;
 												}
 												if( !bIsLhs ){

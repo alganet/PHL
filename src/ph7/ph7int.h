@@ -1881,6 +1881,11 @@ enum ph7_vm_op {
 #define PH7_MEMBER_DEFPATH 7    /* D1 commit 2: deferred by-ref/by-value property call arg ($o->p). Reads a
                                  * present property (like READ); on a miss/magic, records the lvalue path
                                  * (MEMOBJ_AUX_DEFPATH) that OP_CALL re-walks in vivify or read+warn mode */
+#define PH7_MEMBER_LIST_TARGET 8 /* positional list-destructuring store target ([$o->p] = [...]): a pure
+                                  * write whose value arrives only at the following OP_LOAD_LIST, which
+                                  * writes the slot directly (with typed-slot enforcement). Skip the
+                                  * uninitialized-typed read Error and the __get consult, and vivify a
+                                  * missing property like a write base */
 /* -- END-OF INSTRUCTIONS -- */
 /*
  * Expression Operators ID.

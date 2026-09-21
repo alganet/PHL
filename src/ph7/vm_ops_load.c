@@ -1440,6 +1440,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadList(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 	sxi32 rc;
 	SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
 	ph7_value *pEntry;
+	sxi32 rcEnforce = SXRET_OK;
 	if( pInstr->iP1 <= 0 ){
 		/* Empty list,break immediately */
 		VM_EXIT_BREAK;
@@ -1460,15 +1461,42 @@ PH7_PRIVATE VmOpRc VmExecOpLoadList(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 			if( pEntry->nIdx != SXU32_HIGH /* Variable not constant */  ){
 				rc = PH7_HashmapLookup(pMap,&sKey,&pNode);
 				if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nIdx)) != 0 ){
-					if( rc == SXRET_OK ){
-						/* Store node value */
-						PH7_HashmapExtractNodeValue(pNode,pObj,TRUE);
-					}else{
+					int bTyped = SyHashTotalEntry(&pVm->hTypedSlot) > 0
+						&& SyHashGet(&pVm->hTypedSlot,(const void *)&pEntry->nIdx,sizeof(sxu32)) != 0;
+					if( rc != SXRET_OK ){
 						/* Undefined array key */
 						char zMsg[128];
 						SyBufferFormat(zMsg,sizeof(zMsg),"Undefined array key %d",(int)sKey.x.iVal);
 						PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,zMsg);
-						PH7_MemObjRelease(pObj);
+					}
+					if( !bTyped ){
+						if( rc == SXRET_OK ){
+							/* Store node value */
+							PH7_HashmapExtractNodeValue(pNode,pObj,TRUE);
+						}else{
+							PH7_MemObjRelease(pObj);
+						}
+					}else{
+						/* Typed/readonly property target (`[$o->p] = [...]`): a
+						 * direct slot write would bypass the typed-slot table, so
+						 * enforce on a temp first — a TypeError leaves the property
+						 * untouched, and a missing key assigns null, which a
+						 * non-nullable type rejects exactly like php (warning, then
+						 * "Cannot assign null to property ... of type ..."). */
+						ph7_value sVal;
+						PH7_MemObjInit(&(*pVm),&sVal);
+						if( rc == SXRET_OK ){
+							PH7_HashmapExtractNodeValue(pNode,&sVal,TRUE);
+						}
+						rcEnforce = VmEnforcePropertyTypeOnStore(&(*pVm),pEntry->nIdx,&sVal,0);
+						if( rcEnforce != SXRET_OK ){
+							/* Thrown: stop assigning (php aborts the list at the
+							 * first failing element), settle the stack, route. */
+							PH7_MemObjRelease(&sVal);
+							break;
+						}
+						PH7_MemObjStore(&sVal,pObj);
+						PH7_MemObjRelease(&sVal);
 					}
 				}
 			}
@@ -1476,20 +1504,68 @@ PH7_PRIVATE VmOpRc VmExecOpLoadList(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 			pEntry++;
 		}
 	}else{
-		/* Source is not an array */
+		/* Source is not an array: php warns first (silencing ONLY null — a bool
+		 * source warns too, php 8), then assigns null to every target. A typed
+		 * property target receives that null THROUGH enforcement, so a
+		 * non-nullable type throws "Cannot assign null to property ..." exactly
+		 * like php instead of silently nulling the slot. PHL DIVERGENCE: bool
+		 * FALSE stays silent (php warns) — it is the end-of-array sentinel of
+		 * the documented each() extension's `while (list(..) = each($a))`
+		 * idiom, which would otherwise warn on every normal loop exit. */
 		ph7_value *pObj;
+		int bFalseSrc = (pTos[-pInstr->iP1].iFlags & MEMOBJ_BOOL) != 0
+			&& pTos[-pInstr->iP1].x.iVal == 0;
+		if( (pTos[-pInstr->iP1].iFlags & MEMOBJ_NULL) == 0 && !bFalseSrc ){
+			VmWarnCannotUseAsArray(&(*pVm),pTos[-pInstr->iP1].iFlags);
+		}
 		while( pEntry <= pTos ){
 			if( pEntry->nIdx != SXU32_HIGH ){
 				if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nIdx)) != 0 ){
-					PH7_MemObjRelease(pObj);
+					int bTyped = SyHashTotalEntry(&pVm->hTypedSlot) > 0
+						&& SyHashGet(&pVm->hTypedSlot,(const void *)&pEntry->nIdx,sizeof(sxu32)) != 0;
+					if( !bTyped ){
+						PH7_MemObjRelease(pObj);
+					}else{
+						ph7_value sVal;
+						PH7_MemObjInit(&(*pVm),&sVal);
+						rcEnforce = VmEnforcePropertyTypeOnStore(&(*pVm),pEntry->nIdx,&sVal,0);
+						if( rcEnforce != SXRET_OK ){
+							PH7_MemObjRelease(&sVal);
+							break;
+						}
+						PH7_MemObjStore(&sVal,pObj);
+						PH7_MemObjRelease(&sVal);
+					}
 				}
 			}
 			pEntry++;
 		}
-		if( (pTos[-pInstr->iP1].iFlags & (MEMOBJ_NULL|MEMOBJ_BOOL)) == 0 ){
-			/* Positional list destructuring silences null+bool; warn for the rest. */
-			VmWarnCannotUseAsArray(&(*pVm),pTos[-pInstr->iP1].iFlags);
+	}
+	if( rcEnforce != SXRET_OK ){
+		/* Settle this op's own operands: the P1 entries AND the source value —
+		 * its statement-level OP_POP is skipped when a catch resumes at the
+		 * landing pad, so leaving it would leak one operand slot per caught
+		 * throw. A NESTED destructure can still have the outer list's operands
+		 * abandoned above the try's base, so on an in-place catch drain to the
+		 * catching try's recorded depth (like the fetch-point router and the
+		 * generator inject path), not just our own pops. */
+		VmPopOperand(&pTos,pInstr->iP1 + 1);
+		if( rcEnforce == PH7_ABORT ){
+			VM_EXIT_ABORT;
 		}
+		{
+			sxi32 _iRpL;
+			PH7_INLINE_RESUME_BREAK()
+			if( VmRecordedResume(pVm,&_iRpL,pState->pEntryFrame,aInstr) ){
+				while( (sxi32)(pTos - pStack) > pVm->iResumeStackDepth ){
+					PH7_MemObjRelease(pTos);
+					pTos--;
+				}
+				pc = _iRpL;
+				VM_EXIT_BREAK;
+			}
+		}
+		VM_EXIT_EXCEPTION;
 	}
 	VmPopOperand(&pTos,pInstr->iP1);
 	VM_EXIT_BREAK;
