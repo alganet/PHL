@@ -416,13 +416,16 @@
    "function number_format($num, $decimals = 0, $dec_point = '.', $thousands_sep = ','){"\
    "  $num = (float)$num;"\
    "  $decimals = (int)$decimals;"\
-   "  if( $decimals < 0 ){ $decimals = 0; }"\
    "  if( $dec_point === null ){ $dec_point = '.'; }"\
    "  if( $thousands_sep === null ){ $thousands_sep = ','; }"\
    "  /* round() first: sprintf uses banker's rounding, php's number_format rounds"\
-   "   * half AWAY FROM ZERO (number_format(0.5) is '1', not '0'). */"\
+   "   * half AWAY FROM ZERO (number_format(0.5) is '1', not '0'). A NEGATIVE precision"\
+   "   * rounds to tens/hundreds (php 8: number_format(1.5,-1) is '0'); the displayed"\
+   "   * value never carries negative decimal places, so round with the real precision"\
+   "   * but format/append with max(0, $decimals). */"\
    "  $num = round($num, $decimals);"\
-   "  $s = sprintf('%.' . $decimals . 'f', $num);"\
+   "  $fdec = $decimals < 0 ? 0 : $decimals;"\
+   "  $s = sprintf('%.' . $fdec . 'f', $num);"\
    "  $neg = false;"\
    "  if( substr($s, 0, 1) === '-' ){ $neg = true; $s = substr($s, 1); }"\
    "  $parts = explode('.', $s);"\
@@ -436,7 +439,7 @@
    "    $c++;"\
    "    if( $c % 3 === 0 && $i > 0 ){ $out = $thousands_sep . $out; }"\
    "  }"\
-   "  if( $decimals > 0 ){ $out = $out . $dec_point . $frac; }"\
+   "  if( $fdec > 0 ){ $out = $out . $dec_point . $frac; }"\
    "  if( $neg ){ $out = '-' . $out; }"\
    "  return $out;"\
    "}"\
