@@ -1275,7 +1275,7 @@ static sxi32 VmEnforceGenArgType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_vm_func_ar
 			}else if( pVal->iFlags & MEMOBJ_NULL ){
 				zGiven = "null";
 			}else{
-				zGiven = ph7_type_name(pVal);
+				zGiven = VmValueGivenName(pVal,zBuf,sizeof(zBuf));
 			}
 			if( SyStringLength(&pFormal->sTypeName) > 0 ){
 				zExpected = VmSyStringToCStr(&pFormal->sTypeName,zTypeBuf,sizeof(zTypeBuf));
@@ -1316,16 +1316,17 @@ static sxi32 VmEnforceGenArgType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_vm_func_ar
 		return SXRET_OK;
 	}
 	if( (pVal->iFlags & pFormal->nType) == 0 ){
+		char zGivenBuf[128];
 		if( pFormal->nType == MEMOBJ_OBJ ){
 			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pFunc,(int)nArgPos,
-				&pFormal->sName,"object",ph7_type_name(pVal)));
+				&pFormal->sName,"object",VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf))));
 		}
 		if( VmEnforceScalarType(pVal,pFormal->nType,bStrict) != SXRET_OK ){
 			char zTypeBuf[128];
 			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pFunc,(int)nArgPos,
 				&pFormal->sName,
 				VmScalarTypeName(pFormal->nType,&pFormal->sTypeName,zTypeBuf,sizeof(zTypeBuf)),
-				ph7_type_name(pVal)));
+				VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf))));
 		}
 	}
 	return SXRET_OK;
@@ -2076,9 +2077,7 @@ PH7_PRIVATE int vm_builtin_Generator_throw(ph7_context *pCtx, int nArg, ph7_valu
 	if( (apArg[1]->iFlags & MEMOBJ_OBJ) == 0
 	 || (pThrowable && !PH7_VmInstanceOf(((ph7_class_instance *)apArg[1]->x.pOther)->pClass, pThrowable)) ){
 		char zCls[128];
-		const char *zGiven = (apArg[1]->iFlags & MEMOBJ_OBJ)
-			? VmFormatValueClassName(apArg[1], zCls, sizeof(zCls))
-			: ((apArg[1]->iFlags & MEMOBJ_NULL) ? "null" : ph7_type_name(apArg[1]));
+		const char *zGiven = VmValueGivenName(apArg[1], zCls, sizeof(zCls));
 		return PH7_VmThrowException(pCtx, "TypeError",
 			"Generator::throw(): Argument #1 ($exception) must be of type Throwable, %s given", zGiven);
 	}
