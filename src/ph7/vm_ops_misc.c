@@ -40,10 +40,8 @@ PH7_PRIVATE VmOpRc VmExecOpConsume(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 	pCur = pOut;
 	/* Start the consume process  */
 	while( pOut <= pTos ){
-		/* Force a string cast */
-		if( (pOut->iFlags & MEMOBJ_STRING) == 0 ){
-			PH7_MemObjToString(pOut);
-		}
+		/* Force a string cast (echo/print: user-visible array->string warning, §2) */
+		PH7_MemObjToStringUV(pOut);
 		if( SyBlobLength(&pOut->sBlob) > 0 ){
 			/*SyBlobNullAppend(&pOut->sBlob);*/
 			/* Invoke the output consumer callback */

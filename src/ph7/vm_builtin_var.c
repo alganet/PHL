@@ -452,7 +452,8 @@ PH7_PRIVATE int vm_builtin_settype(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		PH7_MemObjToReal(pNew);
 		MemObjSetType(pNew,MEMOBJ_REAL);
 	}else if( nLen == 6 && SyStrnicmp(zType,"string",6) == 0 ){
-		PH7_MemObjToString(pNew);
+		/* php emits "Array to string conversion" for settype($arr,'string') */
+		PH7_MemObjToStringUV(pNew);
 	}else if( (nLen == 4 && SyStrnicmp(zType,"bool",4) == 0)
 	       || (nLen == 7 && SyStrnicmp(zType,"boolean",7) == 0) ){
 		PH7_MemObjToBool(pNew);

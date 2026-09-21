@@ -589,6 +589,32 @@ PH7_PRIVATE sxi32 PH7_MemObjToString(ph7_value *pObj)
 	return rc;
 }
 /*
+ * User-visible array->string coercion. php emits an E_WARNING
+ * "Array to string conversion" wherever an ARRAY is coerced to a string FOR
+ * THE USER -- echo/print, concatenation and `.=`, the (string) cast, string
+ * interpolation "$arr", a variable-variable NAME `$$arr`, printf/sprintf %s,
+ * implode(), and settype($x,'string') -- but it stays SILENT for the internal
+ * coercions that merely format a value for inspection or use it as a lookup
+ * key (print_r/var_export/serialize, array-key canonicalisation, sort
+ * comparisons, and the `ph7_value_to_string` embedder API). Those sites keep
+ * the bare PH7_MemObjToString; the user-visible ones call this instead.
+ *
+ * Behaviour is otherwise identical to PH7_MemObjToString: a no-op when pObj is
+ * already a string, and OBJECTS are left to their own __toString /
+ * not-stringable path (only a MEMOBJ_HASHMAP warns here). The warning routes
+ * through pObj->pVm, which every VM-owned ph7_value carries.
+ */
+PH7_PRIVATE sxi32 PH7_MemObjToStringUV(ph7_value *pObj)
+{
+	if( pObj->iFlags & MEMOBJ_STRING ){
+		return SXRET_OK;
+	}
+	if( (pObj->iFlags & MEMOBJ_HASHMAP) && pObj->pVm ){
+		PH7_VmThrowError(pObj->pVm,0,PH7_CTX_WARNING,"Array to string conversion");
+	}
+	return PH7_MemObjToString(pObj);
+}
+/*
  * Nullify a ph7_value.In other words invalidate any prior
  * representation.
  */

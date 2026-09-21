@@ -1884,6 +1884,11 @@ static int implode_callback(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 		}
 		return PH7_OK;
 	}
+	/* php's user-visible array->string warning: implode of an array element
+	 * that is itself an array renders it as "Array" and warns (§2). */
+	if( pValue->iFlags & MEMOBJ_HASHMAP ){
+		PH7_VmThrowError(pData->pCtx->pVm,0,PH7_CTX_WARNING,"Array to string conversion");
+	}
 	/* Extract the string representation of the entry value */
 	zData = ph7_value_to_string(pValue,&nLen);
 	/* Manage separator insertion: always mark first seen; append separator for subsequent items */
