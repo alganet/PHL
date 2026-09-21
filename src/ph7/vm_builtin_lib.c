@@ -612,23 +612,34 @@
    "  if( !class_exists($c) ){ return false; }"\
    "  return array();  /* PHL has no traits yet -- always the empty set */"\
    "}"\
+   /* count_chars: php's five modes are a 2x2 split plus mode 0 -- 1/2 answer an \
+    * ARRAY, 3/4 a STRING, and the ODD modes report the bytes that WERE used \
+    * where the EVEN ones report the bytes that were NOT. PH7 implemented 0/1/3 \
+    * and let 2 and 4 fall through to mode 0's full table: the exact complement \
+    * of the answer asked for, silently. Any other mode is php's ValueError. */\
    "function count_chars($str, $mode = 0){"\
+   "  if( is_array($mode) || is_object($mode) || is_resource($mode)"\
+   "   || (is_string($mode) && !is_numeric($mode)) ){"\
+   "    throw new TypeError('count_chars(): Argument #2 ($mode) must be of type int, ' . __php_zpp_type($mode) . ' given');"\
+   "  }"\
+   "  $mode = (int)$mode;"\
+   "  if( $mode < 0 || $mode > 4 ){"\
+   "    throw new ValueError('count_chars(): Argument #2 ($mode) must be between 0 and 4 (inclusive)');"\
+   "  }"\
    "  $str = (string)$str;"\
    "  $counts = array();"\
    "  for( $i = 0 ; $i < 256 ; $i++ ){ $counts[$i] = 0; }"\
    "  $len = strlen($str);"\
    "  for( $i = 0 ; $i < $len ; $i++ ){ $b = ord($str[$i]); $counts[$b] = $counts[$b] + 1; }"\
-   "  if( $mode == 1 ){"\
-   "    $out = array();"\
-   "    foreach( $counts as $b => $n ){ if( $n > 0 ){ $out[$b] = $n; } }"\
-   "    return $out;"\
+   "  if( $mode == 0 ){ return $counts; }"\
+   "  $used = ($mode == 1 || $mode == 3);"\
+   "  $string = ($mode == 3 || $mode == 4);"\
+   "  $out = $string ? '' : array();"\
+   "  foreach( $counts as $b => $n ){"\
+   "    if( ($n > 0) !== $used ){ continue; }"\
+   "    if( $string ){ $out = $out . chr($b); } else { $out[$b] = $n; }"\
    "  }"\
-   "  if( $mode == 3 ){"\
-   "    $out = '';"\
-   "    foreach( $counts as $b => $n ){ if( $n > 0 ){ $out = $out . chr($b); } }"\
-   "    return $out;"\
-   "  }"\
-   "  return $counts;"\
+   "  return $out;"\
    "}"\
    "function ip2long($ip){"\
    "  $p = explode('.', (string)$ip);"\

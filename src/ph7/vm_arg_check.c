@@ -948,6 +948,27 @@ static const char * VmArgTypeName(ph7_value *pVal)
 	return ph7_type_name(pVal);
 }
 /*
+ * Does pArg satisfy a `string` parameter? The rule VmEnforceBuiltinArgTypes()
+ * below applies, factored out so a builtin that words its own overload dispatch
+ * (strtr(), whose expected type depends on the ARITY and so cannot be spelled in
+ * one signature) decides identically instead of forking the logic. An array never
+ * satisfies one; an object does only through __toString(); a resource does not;
+ * null does under php, with a deprecation, but not under PHL's §10 null-strictness
+ * policy — the screen and this helper both report it as a mismatch.
+ */
+PH7_PRIVATE int PH7_ArgSatisfiesString(ph7_value *pArg)
+{
+	if( (pArg->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_NULL|MEMOBJ_RES)) != 0 ){
+		return 0;
+	}
+	if( (pArg->iFlags & MEMOBJ_OBJ) != 0 ){
+		ph7_class_instance *pInst = (ph7_class_instance *)pArg->x.pOther;
+		return pInst && PH7_ClassExtractMethod(pInst->pClass,"__toString",
+			sizeof("__toString")-1) != 0;
+	}
+	return 1;
+}
+/*
  * PHP-8 ZPP type enforcement for host functions, driven by the aBuiltinSig[]
  * declaration (band A #7). Screens only the arguments that php can NEVER coerce
  * into a declared scalar parameter — arrays, resources, and objects without a
@@ -973,8 +994,15 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 	 * the aBuiltinArity[] table follows: a builtin that already says what php says
 	 * stays off the shared screen. get_class_vars() takes any stringifiable value
 	 * and reports "must be a valid class name, Array given".
+	 *
+	 * strtr() is here for a structural reason: php declares it as two OVERLOADS
+	 * dispatched on arity — strtr(string, array) and strtr(string, string, string)
+	 * — so the expected type of $from is `array` with two arguments and `string`
+	 * with three. One signature cannot say that (the stub's `array|string` is the
+	 * union of the two, which is the wording php never uses), so the builtin does
+	 * its own dispatch through PH7_ArgSatisfiesString(), the same rule as here.
 	 */
-	static const char *azSelfChecked[] = { "get_class_vars" };
+	static const char *azSelfChecked[] = { "get_class_vars", "strtr" };
 	const char *zSig = pFunc->zSig;
 	const char *zCur, *zEnd;
 	int iArg = 0;
@@ -1041,10 +1069,8 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 				 && !VmSigTypeHasClass(zType,nType) ){
 					/* An object with __toString() still satisfies a string
 					 * parameter in weak mode — php coerces it. */
-					ph7_class_instance *pInst = (ph7_class_instance *)pArg->x.pOther;
 					int bStringable = VmSigTypeHas(zType,nType,"string")
-						&& pInst && PH7_ClassExtractMethod(pInst->pClass,"__toString",
-							sizeof("__toString")-1) != 0;
+						&& PH7_ArgSatisfiesString(pArg);
 					if( !bStringable ){
 						zGiven = VmArgTypeName(pArg);
 					}
