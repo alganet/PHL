@@ -378,6 +378,86 @@ PH7_PRIVATE sxi32 VmByteCodeExec(
 	}
 	return rc;
 }
+/*
+ * D1: resolve deferred call arguments in [pArg, pTos) before the callee consumes them.
+ *
+ * A plain `$var` call argument whose callee signature is unknown at compile time is
+ * emitted as a DEFERRED load (OP_LOAD iP1=1,iP2=3): when the variable does not exist it
+ * yields a NULL slot tagged MEMOBJ_AUX_DEFERRED that carries the variable name in x.pOther
+ * (a VM-lifetime bytecode string). This helper runs at each OP_CALL dispatch branch, while
+ * pVm->pFrame is still the CALLER frame, once the callee's by-ref shape is known:
+ *
+ *   by-ref position  -> create the variable in the caller frame now and give the slot its
+ *                       real nIdx so the ordinary by-ref binder aliases it (silent, as php).
+ *   by-value position-> raise php's "Undefined variable $x" and pass a clean NULL WITHOUT
+ *                       creating the variable in the caller.
+ *
+ * The by-ref decision for positional argument n comes from, in priority order:
+ *   bAllByValue  -> everything by-value (an unresolvable/erroring callee);
+ *   bAllByRef    -> everything by-ref (the indirect array-callable/__invoke dispatch paths,
+ *                   which historically over-vivified every plain-var arg — preserved here
+ *                   rather than regressed; their by-value refinement is a later slice);
+ *   pFormal      -> a user function's formal-argument array (honoring a trailing variadic);
+ *   nByRefMask   -> a builtin by-ref position bitmask (used when pFormal == 0).
+ *
+ * A DEFINED variable never carries the marker (it loads with its real nIdx), so this is a
+ * no-op for it; a call with no deferred args pays only one flag test per slot.
+ */
+static void VmResolveDeferredArgs(
+	ph7_vm *pVm,
+	ph7_value *pArg,
+	ph7_value *pTos,
+	ph7_vm_func_arg *pFormal,
+	sxu32 nFormal,
+	sxu32 nByRefMask,
+	int bAllByRef,
+	int bAllByValue)
+{
+	ph7_value *p;
+	sxu32 n = 0;
+	for( p = pArg ; p < pTos ; ++p, ++n ){
+		int bByRef = 0;
+		SyString sName;
+		if( (p->iFlags & MEMOBJ_AUX_DEFERRED) == 0 ){
+			continue;
+		}
+		if( bAllByValue ){
+			bByRef = 0;
+		}else if( bAllByRef ){
+			bByRef = 1;
+		}else if( pFormal ){
+			sxu32 idx = n;
+			if( idx >= nFormal ){
+				/* Beyond the declared formals: a trailing variadic absorbs the tail
+				 * (and dictates its by-ref-ness); otherwise the extra arg is by-value. */
+				idx = (nFormal > 0 && (pFormal[nFormal-1].iFlags & VM_FUNC_ARG_VARIADIC))
+					? nFormal - 1 : SXU32_HIGH;
+			}
+			if( idx != SXU32_HIGH ){
+				bByRef = (pFormal[idx].iFlags & VM_FUNC_ARG_BY_REF) != 0;
+			}
+		}else{
+			bByRef = (n < 31 && (nByRefMask & (1u << n))) ? 1 : 0;
+		}
+		/* Recover the deferred variable name and drop the marker + carrier. */
+		SyStringInitFromBuf(&sName,(const char *)p->x.pOther,
+			p->x.pOther ? SyStrlen((const char *)p->x.pOther) : 0);
+		p->iFlags &= ~MEMOBJ_AUX_DEFERRED;
+		p->x.pOther = 0;
+		if( bByRef ){
+			/* Materialize in the caller frame; the value stays NULL, only the slot
+			 * back-reference (nIdx) matters for the by-ref binder / write-back. */
+			ph7_value *pObj = VmExtractMemObj(&(*pVm),&sName,FALSE,TRUE);
+			if( pObj ){
+				p->nIdx = pObj->nIdx;
+			}
+		}else{
+			/* php warns and passes NULL without creating the variable; the slot is
+			 * already a clean NULL with nIdx == SXU32_HIGH from the deferred load. */
+			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Undefined variable $%z",&sName);
+		}
+	}
+}
 static sxi32 VmByteCodeExecBody(
 	ph7_vm *pVm,         /* Target VM */
 	VmInstr *aInstr,     /* PH7 bytecode program */
@@ -1330,6 +1410,15 @@ case PH7_OP_LOAD:{
 				MemObjSetType(pTos,MEMOBJ_NULL);
 			}
 			pTos->nIdx = SXU32_HIGH; /* Mark as constant */
+			if( pInstr->iP2 == 3 ){
+				/* D1 deferred call argument: the variable does not exist, but we do not
+				 * know yet whether the callee wants it by-ref (materialize + bind) or
+				 * by-value (warn + pass NULL). Tag the slot and stash the variable name
+				 * (a VM-lifetime bytecode string, nothing to free) so OP_CALL's
+				 * VmResolveDeferredArgs can decide once the callee is resolved. */
+				pTos->iFlags |= MEMOBJ_AUX_DEFERRED;
+				pTos->x.pOther = pInstr->p3;
+			}
 			break;
 		}else{
 			/* Fatal error */
@@ -3915,6 +4004,12 @@ case PH7_OP_CALL: {
 			 * against this path's arg base (the array-callable slot isn't popped). */
 			pEffCallMap = VmEffCallArgMap(pVm,pInstr,pArg,
 				nCallArgs > 0 ? (sxu32)nCallArgs : 0,&sEffMap);
+			/* D1: an array callable dispatches through the shared helper below, which does not
+			 * expose the target's per-parameter by-ref flags here. This path over-vivified every
+			 * plain-var argument before D1 (so `[$o,'m'](&$x)` out-params worked); preserve that
+			 * by materializing every deferred arg as by-ref. Refining these to precise by-value
+			 * semantics is a later slice. */
+			VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,/*bAllByRef*/1,0);
 			SySetReset(&aArg);
 			while( pArg < pTos ){
 				SySetPut(&aArg,(const void *)&pArg);
@@ -3957,6 +4052,11 @@ case PH7_OP_CALL: {
 			 * already this call's arg base — build the map + consume the runs. */
 			pEffCallMap = VmEffCallArgMap(pVm,pInstr,pArg,
 				nCallArgs > 0 ? (sxu32)nCallArgs : 0,&sEffMap);
+			/* D1: like the array-callable path above, __invoke dispatches through a shared
+			 * helper that hides the target's by-ref flags here. Preserve the pre-D1
+			 * over-vivification (so `$o(&$x)` out-params keep working) by materializing
+			 * every deferred arg as by-ref. */
+			VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,/*bAllByRef*/1,0);
 			SySetReset(&aArg);
 			while( pArg < pTos ){
 				SySetPut(&aArg,(const void *)&pArg);
@@ -4285,6 +4385,13 @@ case PH7_OP_CALL: {
 			VmDeprecatedAttrNotice(&(*pVm),pVmFunc,
 				(pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ? pSelfHint : 0);
 		}
+		/* D1: resolve deferred plain-var arguments against this callee's formal parameters
+		 * now — BEFORE the generator split and VmEnterFrame, while pVm->pFrame is still the
+		 * caller. pVmFunc is final here (post-overload). Covers plain functions, methods,
+		 * closures, dynamic-name calls and generators uniformly. */
+		VmResolveDeferredArgs(&(*pVm),pArg,pTos,
+			(ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs),SySetUsed(&pVmFunc->aArgs),
+			0,0,0);
 		if( pVmFunc->iFlags & VM_FUNC_GENERATOR ){
 			/* Generator function: return a Generator object instead of executing */
 			ph7_exec_ctx *pExecCtx;
@@ -5634,6 +5741,13 @@ SkipFuncBody:
 			}
 		}
 		pFunc = (ph7_user_func *)pEntry->pUserData;
+		/* D1: resolve deferred plain-var arguments against the builtin's by-ref position
+		 * mask (derived from its signature). A by-ref out-param (preg_match's $matches, …)
+		 * is materialized so PH7_VmStoreArgByRef can write back — this is what keeps a
+		 * DYNAMIC-name by-ref builtin (`$f='preg_match'; $f($p,$s,$m)`) working now that the
+		 * compile-time mask no longer sees it. Every other (by-value) arg warns + passes
+		 * NULL, which is also what call_user_func & friends want. pVm->pFrame is the caller. */
+		VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,pFunc->nByRefMask,0,0);
 		/* Host function (builtin): build the effective spread-key map so the
 		 * name-forwarding builtins (call_user_func & friends) relay string keys as
 		 * named args, and — critically — so this call's captured runs are consumed.

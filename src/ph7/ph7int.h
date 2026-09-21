@@ -107,6 +107,13 @@ struct ph7_value
                                   * by-ref argument to by-value (php warns and copies). The by-ref
                                   * binder must NOT then raise its "could not be passed by
                                   * reference" Error for it. */
+#define MEMOBJ_AUX_DEFERRED 0x8000 /* Stack-only marker (D1): a deferred call argument whose target did
+                                    * not exist at load time. The value is NULL; x.pOther carries the
+                                    * lazy-lvalue descriptor (a plain-variable name pointer, or an
+                                    * element/property descriptor). OP_CALL's VmResolveDeferredArgs
+                                    * materializes it for a by-ref parameter or warns+passes NULL for a
+                                    * by-value one, clearing this flag. Never survives into a stored
+                                    * value: it is part of MEMOBJ_AUX, so MemObjStore strips it. */
 /* Mask of all known types */
 #define MEMOBJ_ALL (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)
 /* Scalar variables
@@ -115,7 +122,7 @@ struct ph7_value
  *  Types array, object and resource are not scalar.
  */
 #define MEMOBJ_SCALAR (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL)
-#define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_CUFVAL)
+#define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_CUFVAL|MEMOBJ_AUX_DEFERRED)
 /*
  * The following macro clear the current ph7_value type and replace
  * it with the given one.
@@ -242,6 +249,11 @@ struct ph7_user_func
 	                           * static signature table, or NULL: ReflectionFunction input for
 	                           * internal functions. Points at static storage — never freed. */
 	const char *zRet;         /* Return-type text from the same table, or NULL */
+	sxu32 nByRefMask;         /* D1: bit N set => positional parameter N is by-reference (`&$p` in zSig),
+	                           * derived once in VmSetBuiltinSignatures. Lets OP_CALL materialize a
+	                           * deferred by-ref out-param regardless of how the builtin was reached
+	                           * (bare name, dynamic `$f=...`, or callable) — the compile-time
+	                           * GenStateByRefBuiltinMask only sees the bare-name case. 0 when unstamped. */
 };
 /*
  * The 'context' argument for an installable function. A pointer to an
