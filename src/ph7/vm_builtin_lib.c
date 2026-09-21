@@ -346,14 +346,25 @@
 	"      $aDir[] = $pEntry;"\
 	"   }"\
 	"  closedir($pHandle);"\
-	"  if( $sort_order == SCANDIR_SORT_DESCENDING ){"\
-	"      rsort($aDir);"\
-	"  }else if( $sort_order == SCANDIR_SORT_ASCENDING ){"\
-	"      sort($aDir);"\
+	"  /* php's rule is a two-way split, not a three-value enum: SORT_NONE leaves the"\
+	"     order alone and EVERY other value sorts -- ascending only for the exact"\
+	"     SORT_ASCENDING, descending otherwise. PHL left an unknown value UNSORTED,"\
+	"     which reads as SORT_NONE. */"\
+	"  if( $sort_order != SCANDIR_SORT_NONE ){"\
+	"      if( $sort_order == SCANDIR_SORT_ASCENDING ){ sort($aDir); }"\
+	"      else { rsort($aDir); }"\
 	"  }"\
 	"  return $aDir;"\
 	"}"\
 	"function glob(string $pattern,int $iFlags = 0){"\
+	"/* php rejects a mask holding any bit outside GLOB_AVAILABLE_FLAGS with a warning"\
+	"   and FALSE. PHL accepted anything and just tested the bits it knew, so a stale"\
+	"   script passing the OLD PHL glob values (1/2/4/...) silently got a plain glob."\
+	"   The literal is GLOB_AVAILABLE_FLAGS; PHL does not define that constant yet. */"\
+	"if( $iFlags & ~(GLOB_ERR|GLOB_MARK|GLOB_NOCHECK|GLOB_NOSORT|GLOB_BRACE|GLOB_NOESCAPE|GLOB_ONLYDIR) ){"\
+	"  trigger_error('glob(): At least one of the passed flags is invalid or not supported on this platform', E_USER_WARNING);"\
+	"  return FALSE;"\
+	"}"\
 	"/* php keeps the literal directory portion of the pattern in every result;"\
 	"   split off everything up to and including the last '/' as the prefix. */"\
 	"$slash = strrpos($pattern,'/');"\

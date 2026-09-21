@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <time.h> /* touch() resolves php's "now" default here, not in the driver */
 
 #ifdef __UNIXES__
 #include <unistd.h>
@@ -1567,16 +1568,28 @@ static int PH7_vfs_touch(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Perform the requested operation */
-	nTime = nAccess = -1;
+	/* Resolve php's defaults HERE, so the driver only ever sees real timestamps: a
+	 * NEGATIVE stamp is perfectly legal to php (`touch($f, -100)` is 1969), so it
+	 * cannot double as the "not given" sentinel the drivers used to read it as. An
+	 * omitted/null $mtime is NOW; an omitted/null $atime follows $mtime. $atime also
+	 * used to be read from apArg[1] — the mtime — so touch($f, $m, $a) silently
+	 * stamped the modification time onto both. */
 	zFile = ph7_value_to_string(apArg[0],0);
-	if( nArg > 1 ){
+	if( nArg > 2 && !ph7_value_is_null(apArg[2]) && nArg > 1 && ph7_value_is_null(apArg[1]) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"touch(): Argument #2 ($mtime) cannot be null when argument #3 ($atime) "
+			"is an integer");
+	}
+	if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){
 		nTime = ph7_value_to_int64(apArg[1]);
-		if( nArg > 2 ){
-			nAccess = ph7_value_to_int64(apArg[1]);
-		}else{
-			nAccess = nTime;
-		}
+	}else{
+		time_t tNow;
+		time(&tNow);
+		nTime = (ph7_int64)tNow;
+	}
+	nAccess = nTime;
+	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){
+		nAccess = ph7_value_to_int64(apArg[2]);
 	}
 	rc = pVfs->xTouch(zFile,nTime,nAccess);
 	/* IO result */
@@ -1618,8 +1631,31 @@ static int PH7_builtin_dirname(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
-	/* Perform the requested operation */
-	zDir = PH7_ExtractDirName(zPath,iLen,&iDirlen);
+	/* $levels (php 7.0) was ACCEPTED AND IGNORED, so dirname($p, 3) silently answered
+	 * the one-level parent — the caller's own answer, one or more levels too deep. Each
+	 * level re-runs php_dirname on the previous result and stops as soon as the answer
+	 * stops moving (the filesystem root, or "." for a relative path), which is what php
+	 * does; php also rejects a level below 1 outright. */
+	zDir = zPath;
+	iDirlen = iLen;
+	if( nArg > 1 ){
+		ph7_int64 nLevels = ph7_value_to_int64(apArg[1]);
+		ph7_int64 i;
+		if( nLevels < 1 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"dirname(): Argument #2 ($levels) must be greater than or equal to 1");
+		}
+		for( i = 0 ; i < nLevels ; ++i ){
+			int iPrevLen = iDirlen;
+			const char *zPrev = zDir;
+			zDir = PH7_ExtractDirName(zPrev,iPrevLen,&iDirlen);
+			if( iDirlen == iPrevLen && SyMemcmp(zDir,zPrev,(sxu32)iDirlen) == 0 ){
+				break; /* fixed point: "/" and "." are their own parents */
+			}
+		}
+	}else{
+		zDir = PH7_ExtractDirName(zPath,iLen,&iDirlen);
+	}
 	/* Return directory name */
 	ph7_result_string(pCtx,zDir,iDirlen);
 	return PH7_OK;

@@ -192,11 +192,25 @@ static int UnixVfs_Touch(const char *zPath,ph7_int64 touch_time,ph7_int64 access
 	zPath = UnixVfsLocalPath(zPath);
 	struct utimbuf ut;
 	int rc;
+	/* Both stamps are always real values here — the builtin resolves php's "now"
+	 * default, because a NEGATIVE timestamp is legal and so cannot be a sentinel. */
 	ut.actime  = (time_t)access_time;
 	ut.modtime = (time_t)touch_time;
 	rc = utime(zPath,&ut);
 	if( rc != 0 ){
-	 return -1;
+		/* php's touch() CREATES the file when it is missing — that is the idiom's
+		 * main use, and utime() alone fails ENOENT there, so `touch($new)` answered
+		 * false and created nothing. Try the create only after utime failed, like
+		 * php: no extra stat on the common path, and no access(2) real-uid check. */
+		int fd = open(zPath,O_WRONLY|O_CREAT,0666);
+		if( fd < 0 ){
+			return -1;
+		}
+		close(fd);
+		rc = utime(zPath,&ut);
+		if( rc != 0 ){
+			return -1;
+		}
 	}
 	return PH7_OK;
 }
