@@ -1095,6 +1095,19 @@ PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		/* Warn-then-create: the read half of `$x++` / `$x .= ...` still needs a
 		 * writable slot, so it cannot use the read-only load above. */
 		iP2 = 2;
+	}else if( iCompileFlag & EXPR_FLAG_DEFER_ARG ){
+		/* D1 deferred call argument. For a plain `$var` (iVv == 0, p3 holds the name)
+		 * emit the deferred load (iP1 stays 1 = no create, iP2 = 3): an undefined
+		 * variable is left uncreated and silent, carrying a lazy-lvalue marker that
+		 * OP_CALL resolves against the callee's by-ref flags. A variable-variable
+		 * ($$x) computes its name on the stack (p3 == 0), so it cannot carry the
+		 * marker — fall back to the historical eager create (iP1 = 0), which keeps
+		 * its by-ref binding working exactly as before. */
+		if( iVv == 0 ){
+			iP2 = 3;
+		}else{
+			iP1 = 0;
+		}
 	}
 	/* Emit the load instruction(s). For a variable-variable ($$x, $$$x, ...) every
 	 * load EXCEPT the final dereference resolves a NAME: a pure read that warns on an

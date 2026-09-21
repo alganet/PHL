@@ -1103,6 +1103,45 @@ static int VmBuiltinSelfValidatesArity(const char *zName)
 	}
 	return 0;
 }
+/*
+ * D1: derive a by-reference position bitmask from a php-style signature string.
+ * Bit N is set when positional parameter N is declared by-reference (a `&` appears
+ * anywhere in that comma-separated parameter, e.g. `&$matches`, `&...$vars`). Only
+ * the first 31 positions are representable; a by-ref parameter past that is rare
+ * for a builtin and simply not tracked here. The scan mirrors VmDeriveArityFromSig.
+ */
+static sxu32 VmDeriveByRefMaskFromSig(const char *zSig)
+{
+	sxu32 mask = 0;
+	int n = 0;       /* current parameter index */
+	int bSeen = 0;   /* current parameter has non-space content */
+	int bRef = 0;    /* current parameter carries a by-ref `&` */
+	const char *zCur = zSig;
+	for(;;){
+		if( zCur[0] == '\0' || zCur[0] == ',' ){
+			if( bSeen ){
+				if( bRef && n < 31 ){
+					mask |= (1u << n);
+				}
+				n++;
+			}
+			if( zCur[0] == '\0' ){
+				break;
+			}
+			bSeen = bRef = 0;
+			zCur++;
+			continue;
+		}
+		if( zCur[0] != ' ' ){
+			bSeen = 1;
+		}
+		if( zCur[0] == '&' ){
+			bRef = 1;
+		}
+		zCur++;
+	}
+	return mask;
+}
 PH7_PRIVATE void VmSetBuiltinSignatures(ph7_vm *pVm)
 {
 	sxu32 n;
@@ -1115,6 +1154,7 @@ PH7_PRIVATE void VmSetBuiltinSignatures(ph7_vm *pVm)
 			sxu8 bAtLeast = 0, bHasMax = 0;
 			pFunc->zSig = aBuiltinSig[n].zSig;
 			pFunc->zRet = aBuiltinSig[n].zRet[0] ? aBuiltinSig[n].zRet : 0;
+			pFunc->nByRefMask = VmDeriveByRefMaskFromSig(pFunc->zSig);
 			VmDeriveArityFromSig(pFunc->zSig,&nMin,&bAtLeast,&nMax,&bHasMax);
 			/* The MAXIMUM always comes from the signature: the curated override
 			 * table speaks only to the minimum (and its wording). */
