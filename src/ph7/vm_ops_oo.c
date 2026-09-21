@@ -296,6 +296,31 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 			}
 			VM_EXIT_BREAK;
 		}
+		if( pVm->nBoundaryRc != 0 ){
+			/* A typed property DEFAULT failed its type check during instance-
+			 * frame creation (parked catchable TypeError): php aborts the
+			 * construction — no constructor call, no object. Consume the
+			 * parked status here and route exactly like a constructor throw
+			 * (the exception object is already registered). */
+			sxi32 rcDef = pVm->nBoundaryRc;
+			sxi32 iDefResumePc;
+			pVm->nBoundaryRc = 0;
+			PH7_ClassInstanceUnref(pNew);
+			if( rcDef == PH7_ABORT ){
+				VM_EXIT_ABORT;
+			}
+			if( VmRecordedResume(pVm,&iDefResumePc,pState->pEntryFrame,aInstr) ){
+				/* This frame's own try caught it in-place: tidy the stack
+				 * (pop ctor args + release the class-name slot) and resume. */
+				if( nCtorArgs > 0 ){
+					VmPopOperand(&pTos,nCtorArgs);
+				}
+				PH7_MemObjRelease(pTos);
+				pc = iDefResumePc;
+				VM_EXIT_BREAK;
+			}
+			VM_EXIT_EXCEPTION;
+		}
 		if( pCons ){
 			/* Call the class constructor.  Collect args in stack order and
 			 * forward any VmCallArgMap from the NEW instruction so the
