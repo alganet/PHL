@@ -81,12 +81,10 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 		}else{
 			/* Advance the private cursor */
 			pStep->pCursor = pNode->pPrev; /* Reverse link */
-			if( (pStep->iFlags & PH7_4EACH_STEP_KEY) && SyStringLength(&pInfo->sKey) > 0 ){
-				ph7_value *pKey = VmExtractMemObj(&(*pVm),&pInfo->sKey,FALSE,TRUE);
-				if( pKey ){
-					PH7_HashmapExtractNodeKey(pNode,pKey);
-				}
-			}
+			/* Bind the VALUE before the KEY: on the first iteration this is where
+			 * both locals are created in the frame table, and php's symbol table
+			 * lists the value ahead of the key (get_defined_vars() order). Only the
+			 * creation ORDER matters here; the stored values are independent. */
 			if( pStep->iFlags & PH7_4EACH_STEP_REF ){
 				SyHashEntry *pEntry;
 				/* Pass by reference */
@@ -102,6 +100,12 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 				pValue = VmExtractMemObj(&(*pVm),&pInfo->sValue,FALSE,TRUE);
 				if( pValue ){
 					PH7_HashmapExtractNodeValue(pNode,pValue,TRUE);
+				}
+			}
+			if( (pStep->iFlags & PH7_4EACH_STEP_KEY) && SyStringLength(&pInfo->sKey) > 0 ){
+				ph7_value *pKey = VmExtractMemObj(&(*pVm),&pInfo->sKey,FALSE,TRUE);
+				if( pKey ){
+					PH7_HashmapExtractNodeKey(pNode,pKey);
 				}
 			}
 		}
