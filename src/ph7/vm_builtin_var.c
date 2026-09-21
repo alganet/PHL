@@ -323,6 +323,7 @@ PH7_PRIVATE int vm_builtin_get_defined_vars(ph7_context *pCtx,int nArg,ph7_value
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_value *pArray;
+	VmFrame *pFrame;
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);
  	if( pArray == 0 ){
@@ -332,12 +333,19 @@ PH7_PRIVATE int vm_builtin_get_defined_vars(ph7_context *pCtx,int nArg,ph7_value
 		ph7_result_null(pCtx);
 		return SXRET_OK;
 	}
+	/* A try/catch block pushes an EXCEPTION frame that holds no variables of its
+	 * own, so the enclosing function (or global) frame is the one php reports.
+	 * Reading pVm->pFrame raw answered [] for every call inside a try/catch —
+	 * including the superglobal test below, which saw a non-NULL pParent and
+	 * dropped $argv/$_SERVER at global scope. Every other frame-lookup site
+	 * (VmExtractMemObj, compact(), func_get_args()) already skips them. */
+	pFrame = VmSkipExceptionFrames(pVm->pFrame);
 	/* Superglobals appear in get_defined_vars() ONLY at the global scope (php).
 	 * Inside a function the result is the local symbol table alone — a leak of
 	 * $argv/$_SERVER/... into every function's scope breaks callers that treat the
 	 * keys as real locals (e.g. PHPUnit's doubled-method template reflects each
 	 * get_defined_vars() name as a ReflectionParameter). */
-	if( pVm->pFrame->pParent == 0 ){
+	if( pFrame->pParent == 0 ){
 		SyHashForEach(&pVm->hSuper,VmHashVarWalker,pArray);
 	}
 	/* Then variables defined in the current frame, in DECLARATION order.
@@ -345,7 +353,7 @@ PH7_PRIVATE int vm_builtin_get_defined_vars(ph7_context *pCtx,int nArg,ph7_value
 	 * reverse-insertion; walk it backward to match php, which returns locals in
 	 * the order they first appeared (a,b,c — a reassignment reuses the slot and
 	 * keeps its original position). */
-	SyHashForEachReverse(&pVm->pFrame->hVar,VmHashVarWalker,pArray);
+	SyHashForEachReverse(&pFrame->hVar,VmHashVarWalker,pArray);
 	/* Finally,return the created array */
 	ph7_result_value(pCtx,pArray);
 	return SXRET_OK;
