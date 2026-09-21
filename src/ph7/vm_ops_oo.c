@@ -239,6 +239,20 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 		PH7_MemObjRelease(pTos);
 		pTos->nIdx = SXU32_HIGH;
 		VM_EXIT_BREAK;
+	}else if( (pClass->iFlags & PH7_CLASS_STATIC_TYPE_DEFER)
+	       && (rc = VmThrowDeferredStaticType(&(*pVm),pClass)) != SXRET_OK ){
+		/* Deferred typed-static-default failure: php also materializes the
+		 * static table at instantiation, so `new C` throws the catchable
+		 * TypeError BEFORE any construction (no instance, no __destruct) —
+		 * same shape as the enum reject above: park the status, settle the
+		 * stack, and let the fetch-point router land it. */
+		VmBoundaryPark(&(*pVm),rc);
+		if( nCtorArgs > 0 ){
+			VmPopOperand(&pTos,nCtorArgs);
+		}
+		PH7_MemObjRelease(pTos);
+		pTos->nIdx = SXU32_HIGH;
+		VM_EXIT_BREAK;
 	}else{
 		ph7_class_method *pCons;
 		/* Check if a constructor is available — BEFORE instantiation: a
@@ -1561,6 +1575,40 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 									);
 							}else{
 								ph7_value *pValue;
+								/* Deferred typed-static-default failure: php materializes the
+								 * class's static table at the FIRST static-property access
+								 * (any property, any context — read, write, even isset), so a
+								 * bad default throws its catchable TypeError here. Constants
+								 * and method calls do not trigger it (php-exact). */
+								if( (pAttr->iFlags & PH7_CLASS_ATTR_STATIC)
+								 && (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0
+								 && (pClass->iFlags & PH7_CLASS_STATIC_TYPE_DEFER) ){
+									sxi32 rcD = VmThrowDeferredStaticType(&(*pVm),pClass);
+									if( rcD != SXRET_OK ){
+										if( pThis ){
+											PH7_ClassInstanceUnref(pThis);
+										}
+										if( rcD == PH7_ABORT ){
+											VM_EXIT_ABORT;
+										}
+										{
+											sxi32 iRpD;
+											if( VmRecordedResume(pVm,&iRpD,pState->pEntryFrame,aInstr) ){
+												/* Drain the abandoned mid-expression operands
+												 * (the op's own result slot included) to the
+												 * catching try's base — without this every
+												 * caught throw leaks one operand slot. */
+												while( (sxi32)(pTos - pStack) > pVm->iResumeStackDepth ){
+													PH7_MemObjRelease(pTos);
+													pTos--;
+												}
+												pc = iRpD;
+												VM_EXIT_BREAK;
+											}
+										}
+										VM_EXIT_EXCEPTION;
+									}
+								}
 								/* Check if the access to the attribute is allowed */
 								if( PH7_VmClassMemberAccess(&(*pVm),pClass,&pAttr->sName,pAttr->iProtection,FALSE) ){
 									/* PHP 7.4+: uninitialized typed static read.

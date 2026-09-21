@@ -999,6 +999,12 @@ struct ph7_class
                                      * library). Reflection reports it as internal: isInternal() true,
                                      * getFileName() false. */
 #define PH7_CLASS_ENUM        0x080 /* Class is an enum (PHP 8.1). Also carries PH7_CLASS_FINAL. */
+#define PH7_CLASS_STATIC_TYPE_DEFER 0x200 /* At least one typed STATIC property's default failed its
+                                           * type check at mount (VM_CLASS_ATTR_TYPE_DEFER on the slot).
+                                           * A hint only: access/instantiation sites call
+                                           * VmThrowDeferredStaticType, which re-scans the slots. Set on
+                                           * the declaring class AND propagated to every subclass at its
+                                           * mount (shared static slots). */
 #define PH7_CLASS_BOUND       0x100 /* Bound by an UNCONDITIONAL top-level declaration. PHP fatals on a
                                      * second such binding of the same name ("Cannot redeclare ..."); a
                                      * conditional (if/loop/func-nested) declaration is NOT marked, so the
@@ -1153,6 +1159,13 @@ struct VmClassAttr
 #define VM_CLASS_ATTR_UNINIT  0x01 /* Typed property never written (PHP 7.4+); also the
                                     * write-once latch for readonly properties (cleared on
                                     * the first successful write — see VmEnforcePropertyTypeOnStore) */
+#define VM_CLASS_ATTR_TYPE_DEFER 0x04 /* Typed STATIC property whose eagerly-evaluated DEFAULT failed
+                                       * its type check at class mount. php evaluates static defaults
+                                       * lazily, so the failure is deferred: any static-property access
+                                       * on the class (read/write/isset, any property) and any
+                                       * instantiation throws the catchable "Cannot assign <kind> to
+                                       * property C::$s of type T" TypeError; a never-touched class
+                                       * stays silent. See VmThrowDeferredStaticType. */
 #define VM_CLASS_ATTR_REFBOUND 0x02 /* Property is bound to a reference (`$o->p =& $x`): its nIdx
                                     * slot is SHARED with (and pinned by) the source variable, so
                                     * PH7_VmReleaseInstanceAttr must NOT release/recycle it — the
@@ -2979,6 +2992,8 @@ PH7_PRIVATE sxi32 VmConstCycleThrow(ph7_vm *pVm);
 PH7_PRIVATE ph7_class * VmCurrentSelf(ph7_vm *pVm);
 PH7_PRIVATE sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue);
 PH7_PRIVATE sxi32 VmEnforceTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue);
+PH7_PRIVATE sxi32 VmCheckTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue);
+PH7_PRIVATE sxi32 VmThrowDeferredStaticType(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value *pValue);
 PH7_PRIVATE sxi32 VmEnumMaterializeCase(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pCase);
 PH7_PRIVATE int VmFinallyAdvance(ph7_vm *pVm, VmInstr *aInstr, int *pnCross, sxu32 *pPc);
