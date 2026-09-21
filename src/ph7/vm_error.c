@@ -1377,6 +1377,22 @@ PH7_PRIVATE sxi32 VmEnforceScalarType(ph7_value *pVal, sxu32 nType, int bStrict)
 	if( pVal->iFlags & MEMOBJ_NULL ){
 		return SXERR_INVALID;
 	}
+	/* An object satisfies a scalar type in exactly ONE php weak-mode case: an
+	 * object with __toString() coerces to a `string` parameter (its __toString
+	 * is invoked by the string cast below). Every other scalar target —
+	 * int/float/bool, or a `string` target on an object WITHOUT __toString —
+	 * is a TypeError. Without this, PH7_MemObjCastMethod() silently produced
+	 * int(1)/float(1)/bool(true) for any object and "Object" for a
+	 * non-stringable object passed to a string parameter. (Strict mode already
+	 * rejected all of these in the bStrict block above; the array<->object case
+	 * is caught by the array guard.) */
+	if( pVal->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pInst = (ph7_class_instance *)pVal->x.pOther;
+		if( !(nType == MEMOBJ_STRING && pInst && pInst->pClass
+		      && PH7_ClassExtractMethod(pInst->pClass,"__toString",sizeof("__toString")-1)) ){
+			return SXERR_INVALID;
+		}
+	}
 	if( (nType == MEMOBJ_INT || nType == MEMOBJ_REAL)
 		&& (pVal->iFlags & MEMOBJ_STRING)
 		&& !PH7_MemObjStringIsNumeric(pVal) ){
