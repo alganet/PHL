@@ -85,9 +85,23 @@ PH7_PRIVATE int vm_builtin_assert(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				zDesc
 				);
 		}else{
+			/* php renders the assertion's compile-time SOURCE (`assert(1 == 2)`);
+			 * the compiler captured it in the call-site map. An
+			 * INDIRECT call (call_user_func, a callable string/variable) has no
+			 * source in php either — its AssertionError carries an EMPTY message
+			 * (probed php 8.5). */
+			VmCallArgMap *pMap = pCtx->pArgMap;
+			if( pMap && pMap->sAssertSrc.nByte > 0 ){
+				return PH7_VmThrowException(pCtx,
+					"AssertionError",
+					"assert(%z)",
+					&pMap->sAssertSrc
+					);
+			}
 			return PH7_VmThrowException(pCtx,
 				"AssertionError",
-				"assert(false)"
+				"%s",
+				""
 				);
 		}
 	}

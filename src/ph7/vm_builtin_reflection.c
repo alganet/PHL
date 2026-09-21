@@ -730,6 +730,7 @@ static int vm_builtin_reflect_new_instance(ph7_context *pCtx, int nArg, ph7_valu
 		}
 		if( aNames ){
 			VmCallArgMap sMap;
+			SyZero(&sMap,sizeof(sMap)); /* new map fields must read unset, not stack garbage */
 			sMap.bHasNamed = 1;
 			sMap.bIsNamespaced = 0;
 			sMap.bStrict = 0;

@@ -1144,6 +1144,12 @@ struct VmCallArgMap
 						  * with the hasSpread flag: `new N\C(...$args)`.) */
 	sxu32 nTotal;        /* Total number of compile-time arguments */
 	SyString *aNames;    /* Array of nTotal names. nByte==0 means positional. */
+	SyString sAssertSrc; /* Direct assert() calls only: the first argument's rendered
+						  * source text (php's zend_ast_export shape, e.g. `1 == 2`),
+						  * captured at compile time so a failing assertion reports
+						  * `assert(1 == 2)` like php instead of the evaluated value.
+						  * {0,0} for every other call site; bytes live in the VM
+						  * allocator. See PH7_GenRenderAssertSpan (compile_literal.c). */
 };
 /* Each active class instance attribute is represented by an instance
  * of the following structure.
@@ -2614,6 +2620,7 @@ PH7_PRIVATE int PH7_Utf8Read(
 PH7_PRIVATE int PH7_IsLangConstruct(sxu32 nKeyID,sxu8 bCheckFunc);
 PH7_PRIVATE sxi32 PH7_ExprMakeTree(ph7_gen_state *pGen,SySet *pExprNode,ph7_expr_node **ppRoot);
 PH7_PRIVATE int PH7_ExprContainsNullsafe(ph7_expr_node *pNode);
+PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToken **ppMax);
 PH7_PRIVATE sxi32 PH7_GetNextExpr(SyToken *pStart,SyToken *pEnd,SyToken **ppNext);
 PH7_PRIVATE void PH7_DelimitNestedTokens(SyToken *pIn,SyToken *pEnd,sxu32 nTokStart,sxu32 nTokEnd,SyToken **ppEnd);
 PH7_PRIVATE const ph7_expr_op * PH7_ExprExtractOperator(SyString *pStr,SyToken *pLast);

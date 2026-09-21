@@ -984,6 +984,57 @@ static sxi32 GenStateEmitExprCode(
 				}
 				}
 			}
+			/* assert(): php's compiler keeps a copy of the assertion's AST and a
+			 * failing assert reports its rendered SOURCE (`assert(1 == 2)`), not the
+			 * evaluated value. Render the first argument's token span
+			 * into the call map so vm_builtin_assert can echo it. Only a DIRECT
+			 * unqualified/absolute call qualifies — matching php, an indirect call
+			 * (call_user_func, a callable variable) has no source text and its
+			 * AssertionError carries an empty message. A spread first argument is
+			 * skipped (its span is the unpacked array, not the assertion). */
+			if( nArgs >= 1 && !bFcc
+			 && (apNode[0]->iFlags & EXPR_NODE_SPREAD) == 0 ){
+				SyString sCallee;
+				GenStateCallBuiltinName(pNode->pLeft,&sCallee);
+				if( sCallee.nByte == sizeof("assert")-1
+				 && SyStrnicmp(sCallee.zString,"assert",sizeof("assert")-1) == 0 ){
+					/* An operator root's pStart/pEnd name only the operator token
+					 * (`1 == 2` roots at `==`); the subtree walk recovers the whole
+					 * raw extent, re-adding parens the grouping pass consumed. */
+					SyToken *pSpanIn = 0;
+					SyToken *pSpanEnd = 0;
+					SyBlob sSrc;
+					PH7_ExprSubtreeSpan(apNode[0],&pSpanIn,&pSpanEnd);
+					SyBlobInit(&sSrc,&pGen->pVm->sAllocator);
+					if( pSpanIn && pSpanEnd && pSpanIn < pSpanEnd ){
+						if( apNode[0]->iFlags & EXPR_NODE_NAMED_ARG ){
+							/* php renders the name too: `assert(assertion: 1 == 2)`. */
+							SyBlobAppend(&sSrc,apNode[0]->sArgName.zString,apNode[0]->sArgName.nByte);
+							SyBlobAppend(&sSrc,": ",2);
+						}
+						PH7_GenRenderAssertSpan(pGen,pSpanIn,pSpanEnd,&sSrc);
+					}
+					if( SyBlobLength(&sSrc) > 0 ){
+						char *zDup = (char *)SyMemBackendDup(&pGen->pVm->sAllocator,
+							SyBlobData(&sSrc),SyBlobLength(&sSrc));
+						if( zDup ){
+							if( p3 == 0 ){
+								VmCallArgMap *pMap = (VmCallArgMap *)SyMemBackendAlloc(
+									&pGen->pVm->sAllocator,sizeof(VmCallArgMap));
+								if( pMap ){
+									SyZero(pMap,sizeof(VmCallArgMap));
+									p3 = (void *)pMap;
+								}
+							}
+							if( p3 ){
+								SyStringInitFromBuf(&((VmCallArgMap *)p3)->sAssertSrc,
+									zDup,SyBlobLength(&sSrc));
+							}
+						}
+					}
+					SyBlobRelease(&sSrc);
+				}
+			}
 			/* Remove stale flags now */
 			iFlags &= ~EXPR_FLAG_RDONLY_LOAD;
 		}

@@ -1551,6 +1551,63 @@ static sxi32 ExprProcessFuncArguments(ph7_gen_state *pGen,ph7_expr_node *pOp,ph7
 	 }
 	 return pMin;
  }
+/*
+ * The full RAW token extent of a linked subtree: minimum pStart / maximum pEnd
+ * over every node (pLeft/pRight/pCond and postfix aNodeArgs children), widened
+ * by one token on each side for a node whose group parens were consumed by
+ * ExprMakeTree's paren pass (EXPR_NODE_PARENS — its '('/')' slots were nulled,
+ * but token contiguity guarantees they sit exactly one token outside the inner
+ * extent). Tokens live in one contiguous set, so pointer min/max IS source
+ * order. Consumed by the assert() source-text capture, which
+ * needs the argument's whole source span where a root's own pStart/pEnd name
+ * only the operator token. Note: nested redundant groups `((x))` share the
+ * single PARENS bit, so only one paren layer is recovered — the renderer
+ * strips redundant outermost parens anyway, matching php's export.
+ */
+PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToken **ppMax)
+{
+	SyToken *pMin;
+	SyToken *pMax;
+	SyToken *pCMin = 0;
+	SyToken *pCMax = 0;
+	ph7_expr_node **apArg;
+	sxu32 n;
+	if( pNode == 0 ){
+		return;
+	}
+	pMin = pNode->pStart;
+	pMax = pNode->pEnd;
+	PH7_ExprSubtreeSpan(pNode->pLeft,&pCMin,&pCMax);
+	PH7_ExprSubtreeSpan(pNode->pRight,&pCMin,&pCMax);
+	PH7_ExprSubtreeSpan(pNode->pCond,&pCMin,&pCMax);
+	apArg = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
+	for( n = 0 ; n < SySetUsed(&pNode->aNodeArgs) ; ++n ){
+		PH7_ExprSubtreeSpan(apArg[n],&pCMin,&pCMax);
+	}
+	if( pCMin && (pMin == 0 || pCMin < pMin) ){
+		pMin = pCMin;
+	}
+	if( pCMax && (pMax == 0 || pCMax > pMax) ){
+		pMax = pCMax;
+	}
+	if( (pNode->iFlags & EXPR_NODE_PARENS) && pMin && pMax ){
+		pMin--;
+		pMax++;
+	}
+	if( pNode->pOp && pMax
+	 && (pNode->pOp->iOp == EXPR_OP_FUNC_CALL || pNode->pOp->iOp == EXPR_OP_SUBSCRIPT) ){
+		/* A postfix call/subscript's extent stops AT its closing ')' / ']' (the
+		 * closer's node was consumed building the postfix op); token contiguity
+		 * puts the closer exactly at the extent, so widen one token past it. */
+		pMax++;
+	}
+	if( pMin && (*ppMin == 0 || pMin < *ppMin) ){
+		*ppMin = pMin;
+	}
+	if( pMax && (*ppMax == 0 || pMax > *ppMax) ){
+		*ppMax = pMax;
+	}
+}
  /*
   * Create an expression tree from an array of tokens.
   * If successful, the root of the tree is stored in apNode[0].

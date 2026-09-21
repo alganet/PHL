@@ -1914,3 +1914,402 @@ PH7_PRIVATE sxi32 PH7_CompileShortList(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	SXUNUSED(iCompileFlag);
 	return GenStateCompileListBody(pGen);
 }
+/*
+ * assert() source-text rendering.
+ *
+ * php compiles a DIRECT assert() call with a copy of the argument's AST, and a
+ * failing assertion reports zend_ast_export() of that AST — `assert(1 == 2)`,
+ * `assert($x)`, `assert('')` — which is exactly the information the message
+ * exists to carry. PHL has no AST copy at runtime, so the compiler renders the
+ * argument's TOKEN SPAN here, at compile time, normalizing to php's export
+ * shape (each rule probed against php 8.5):
+ *   - literal values fold the way php's AST holds them: numbers render from
+ *     their parsed VALUE (0x10 -> 16, 1e3 -> 1000.0, 1_000 -> 1000, an
+ *     int64-overflowing literal -> float), strings render single-quoted with
+ *     their PROCESSED contents (\ and ' re-escaped), array(...) -> [...].
+ *   - one space around binary operators, ", " between arguments/elements, no
+ *     space inside ()/[] or around ->/?->/::/casts, `and`/`or` -> `&&`/`||`,
+ *     a trailing comma is dropped, redundant OUTERMOST parens are dropped.
+ * Accepted divergences from zend_ast_export on exotic input (message text
+ * only, never behavior): redundant INNER parens are kept (php re-derives
+ * grouping from precedence), interpolated "$x" strings and heredocs render as
+ * written (php exports its interpolation AST), `new C` does not grow php's
+ * trailing `()`, and constant folding beyond single literals is not applied
+ * (php renders `'' . ''` as `''`).
+ */
+/* Spacing classes: a space is inserted between two tokens when either side
+ * FORCEs one (binary operators, the slot after a comma) or both sides are
+ * operand-like (WANT). Grouping punctuation and glue operators contribute
+ * NONE on their tight side. */
+#define ASRT_SP_NONE  0
+#define ASRT_SP_WANT  1
+#define ASRT_SP_FORCE 2
+enum AssertTokClass {
+	ASRT_START = 0, /* virtual class before the first token */
+	ASRT_OPERAND,   /* literals, identifiers, keywords */
+	ASRT_BINOP,     /* == + . && ? : => instanceof ... */
+	ASRT_UNARY,     /* ! ~ @ - + & casts, '$', '...' — glue after */
+	ASRT_OPEN,      /* ( [ */
+	ASRT_CLOSE,     /* ) ] */
+	ASRT_GLUE,      /* -> ?-> :: ++ -- \ — glue both sides */
+	ASRT_COMMA      /* , — glue before, force after */
+};
+static const sxu8 aAsrtBefore[] = { ASRT_SP_NONE, ASRT_SP_WANT, ASRT_SP_FORCE, ASRT_SP_WANT,
+	ASRT_SP_NONE, ASRT_SP_NONE, ASRT_SP_NONE, ASRT_SP_NONE };
+static const sxu8 aAsrtAfter[]  = { ASRT_SP_NONE, ASRT_SP_WANT, ASRT_SP_FORCE, ASRT_SP_NONE,
+	ASRT_SP_NONE, ASRT_SP_WANT, ASRT_SP_NONE, ASRT_SP_FORCE };
+/*
+ * Append one PROCESSED string-value byte, re-escaped for a single-quoted
+ * rendering: php's export escapes only backslash and the quote itself; every
+ * other byte (including control characters) is emitted raw.
+ */
+static void AssertRenderQuotedByte(SyBlob *pOut,int c)
+{
+	char ch = (char)c;
+	if( c == '\\' || c == '\'' ){
+		SyBlobAppend(pOut,"\\",1);
+	}
+	SyBlobAppend(pOut,&ch,1);
+}
+/* Append the UTF-8 encoding of a \u{...} code point (value bytes, re-escaped). */
+static void AssertRenderUtf8(SyBlob *pOut,sxu32 c)
+{
+	if( c < 0x80 ){
+		AssertRenderQuotedByte(pOut,(int)c);
+	}else if( c < 0x800 ){
+		AssertRenderQuotedByte(pOut,(int)(0xc0 | (c >> 6)));
+		AssertRenderQuotedByte(pOut,(int)(0x80 | (c & 0x3f)));
+	}else if( c < 0x10000 ){
+		AssertRenderQuotedByte(pOut,(int)(0xe0 | (c >> 12)));
+		AssertRenderQuotedByte(pOut,(int)(0x80 | ((c >> 6) & 0x3f)));
+		AssertRenderQuotedByte(pOut,(int)(0x80 | (c & 0x3f)));
+	}else{
+		AssertRenderQuotedByte(pOut,(int)(0xf0 | (c >> 18)));
+		AssertRenderQuotedByte(pOut,(int)(0x80 | ((c >> 12) & 0x3f)));
+		AssertRenderQuotedByte(pOut,(int)(0x80 | ((c >> 6) & 0x3f)));
+		AssertRenderQuotedByte(pOut,(int)(0x80 | (c & 0x3f)));
+	}
+}
+/*
+ * Render a single-quoted-source string (or nowdoc body): only \\ and \' are
+ * escape sequences there; any other backslash is a literal byte.
+ */
+static void AssertRenderSglString(SyBlob *pOut,const char *z,sxu32 n)
+{
+	sxu32 i = 0;
+	SyBlobAppend(pOut,"'",1);
+	while( i < n ){
+		if( z[i] == '\\' && i + 1 < n && (z[i+1] == '\\' || z[i+1] == '\'') ){
+			AssertRenderQuotedByte(pOut,z[i+1]);
+			i += 2;
+		}else{
+			AssertRenderQuotedByte(pOut,z[i]);
+			i++;
+		}
+	}
+	SyBlobAppend(pOut,"'",1);
+}
+/*
+ * Render a double-quoted-source string (or heredoc body) with php's escape
+ * processing — the value bytes are what php's AST holds, and the export prints
+ * them single-quoted. An UNKNOWN escape keeps the backslash and the character,
+ * matching php's string semantics.
+ */
+static void AssertRenderDblString(SyBlob *pOut,const char *z,sxu32 n)
+{
+	sxu32 i = 0;
+	SyBlobAppend(pOut,"'",1);
+	while( i < n ){
+		int c = z[i];
+		int d;
+		if( c != '\\' || i + 1 >= n ){
+			AssertRenderQuotedByte(pOut,c);
+			i++;
+			continue;
+		}
+		d = z[i+1];
+		i += 2;
+		switch(d){
+		case 'n': AssertRenderQuotedByte(pOut,'\n'); break;
+		case 't': AssertRenderQuotedByte(pOut,'\t'); break;
+		case 'r': AssertRenderQuotedByte(pOut,'\r'); break;
+		case 'v': AssertRenderQuotedByte(pOut,'\v'); break;
+		case 'f': AssertRenderQuotedByte(pOut,'\f'); break;
+		case 'e': AssertRenderQuotedByte(pOut,0x1b); break;
+		case '\\': AssertRenderQuotedByte(pOut,'\\'); break;
+		case '"': AssertRenderQuotedByte(pOut,'"'); break;
+		case '$': AssertRenderQuotedByte(pOut,'$'); break;
+		case 'x': case 'X': {
+			/* Up to two hex digits; a bare \x is literal. */
+			int nHex = 0, v = 0;
+			while( nHex < 2 && i < n && (unsigned char)z[i] < 0x80 && SyisHex((unsigned char)z[i]) ){
+				v = (v << 4) | SyHexToint((unsigned char)z[i]);
+				i++; nHex++;
+			}
+			if( nHex > 0 ){
+				AssertRenderQuotedByte(pOut,v);
+			}else{
+				AssertRenderQuotedByte(pOut,'\\');
+				AssertRenderQuotedByte(pOut,d);
+			}
+			break;
+		}
+		case 'u': {
+			/* \u{HEX+} — anything else keeps the backslash (php). */
+			if( i < n && z[i] == '{' ){
+				sxu32 v = 0; sxu32 j = i + 1; int nHex = 0;
+				while( j < n && (unsigned char)z[j] < 0x80 && SyisHex((unsigned char)z[j]) && nHex < 8 ){
+					v = (v << 4) | (sxu32)SyHexToint((unsigned char)z[j]);
+					j++; nHex++;
+				}
+				if( nHex > 0 && j < n && z[j] == '}' ){
+					AssertRenderUtf8(pOut,v);
+					i = j + 1;
+					break;
+				}
+			}
+			AssertRenderQuotedByte(pOut,'\\');
+			AssertRenderQuotedByte(pOut,d);
+			break;
+		}
+		default:
+			if( d >= '0' && d <= '7' ){
+				/* Up to three octal digits (the first was d). */
+				int nOct = 1, v = d - '0';
+				while( nOct < 3 && i < n && z[i] >= '0' && z[i] <= '7' ){
+					v = (v << 3) | (z[i] - '0');
+					i++; nOct++;
+				}
+				AssertRenderQuotedByte(pOut,v & 0xff);
+			}else{
+				AssertRenderQuotedByte(pOut,'\\');
+				AssertRenderQuotedByte(pOut,d);
+			}
+			break;
+		}
+	}
+	SyBlobAppend(pOut,"'",1);
+}
+/*
+ * Append a double in php's AST-export shape: the shortest round-tripping
+ * decimal, with a forced ".0" fraction when the digits alone look integral
+ * (1e3 -> "1000.0", 1e20 -> "1.0E+20") — the var_export float shape.
+ */
+static void AssertRenderReal(SyBlob *pOut,ph7_real rVal)
+{
+#ifdef PH7_OMIT_FLOATING_POINT
+	/* No floating point: ph7_real IS sxi64, there is no shortest-round-trip
+	 * decimal to search for and no ".0" to force, so the value renders as the
+	 * integer it is -- the same shape the INTEGER arm below emits. Taking
+	 * ph7_real rather than double is what keeps the two call sites from
+	 * narrowing (MSVC /W4 makes that C4244, and /WX makes it an error). */
+	SyBlobFormat(pOut,"%qd",(sxi64)rVal);
+#else
+	sxu32 nBefore = SyBlobLength(pOut);
+	const char *zOut;
+	sxu32 i, nAfter;
+	int bPlain = 1;
+	PH7_AppendShortestReal(pOut,rVal);
+	zOut = (const char *)SyBlobData(pOut);
+	nAfter = SyBlobLength(pOut);
+	for( i = nBefore; i < nAfter; i++ ){
+		if( !((zOut[i] >= '0' && zOut[i] <= '9') || zOut[i] == '-') ){
+			bPlain = 0;
+			break;
+		}
+	}
+	if( bPlain ){
+		SyBlobAppend(pOut,".0",2);
+	}
+#endif /* PH7_OMIT_FLOATING_POINT */
+}
+/*
+ * Render the token span [pIn, pEnd) — a direct assert() call's first argument —
+ * into pOut in php's zend_ast_export shape (see the block comment above).
+ * Total: every span renders to SOMETHING (unknown constructs fall back to
+ * their raw token text), so the capture never aborts a compile.
+ */
+PH7_PRIVATE void PH7_GenRenderAssertSpan(ph7_gen_state *pGen,SyToken *pIn,SyToken *pEnd,SyBlob *pOut)
+{
+	sxu8 aParen[64]; /* 1 = this '(' depth is an array(...) literal rendered as [...] */
+	sxu32 nParen = 0;
+	int iPrev = ASRT_START;
+	int bArrayOpen = 0; /* the next '(' belongs to a suppressed `array` keyword */
+	/* php drops every redundant paren when re-deriving source from the AST;
+	 * dropping the OUTERMOST pair(s) is the token-level equivalent for the
+	 * common `assert((...))` spelling. */
+	while( pIn < pEnd - 1 && (pIn->nType & PH7_TK_LPAREN) && (pEnd[-1].nType & PH7_TK_RPAREN) ){
+		SyToken *p;
+		sxi32 iDepth = 0;
+		SyToken *pMatch = 0;
+		for( p = pIn; p < pEnd; p++ ){
+			if( p->nType & PH7_TK_LPAREN ){
+				iDepth++;
+			}else if( p->nType & PH7_TK_RPAREN ){
+				iDepth--;
+				if( iDepth == 0 ){ pMatch = p; break; }
+			}
+		}
+		if( pMatch != &pEnd[-1] ){
+			break;
+		}
+		pIn++;
+		pEnd--;
+	}
+	for( ; pIn < pEnd ; pIn++ ){
+		SyToken *pTok = pIn;
+		const char *zTxt = pTok->sData.zString;
+		sxu32 nTxt = pTok->sData.nByte;
+		int iCls;
+		sxu32 nMark;
+		/* --- classify + pre-token handling ------------------------------ */
+		if( pTok->nType & PH7_TK_LPAREN ){
+			iCls = ASRT_OPEN;
+		}else if( pTok->nType & PH7_TK_RPAREN ){
+			iCls = ASRT_CLOSE;
+		}else if( pTok->nType & (PH7_TK_OSB|PH7_TK_CSB) ){
+			iCls = (pTok->nType & PH7_TK_OSB) ? ASRT_OPEN : ASRT_CLOSE;
+		}else if( pTok->nType & PH7_TK_COMMA ){
+			/* php's export never prints a trailing comma. */
+			if( &pIn[1] < pEnd && (pIn[1].nType & (PH7_TK_RPAREN|PH7_TK_CSB)) ){
+				continue;
+			}
+			iCls = ASRT_COMMA;
+		}else if( pTok->nType & PH7_TK_DOLLAR ){
+			iCls = ASRT_UNARY; /* operand-like before, glued to its name after */
+		}else if( pTok->nType & PH7_TK_NSSEP ){
+			iCls = ASRT_GLUE;
+		}else if( pTok->nType & PH7_TK_ELLIPSIS ){
+			iCls = ASRT_UNARY;
+		}else if( pTok->nType & PH7_TK_OP ){
+			iCls = ASRT_BINOP;
+			if( nTxt > 0 ){
+				int c0 = zTxt[0];
+				if( c0 == '(' ){
+					iCls = ASRT_UNARY; /* lexer-merged cast token `(int)` */
+				}else if( nTxt == 2 && (SyMemcmp(zTxt,"->",2) == 0 || SyMemcmp(zTxt,"::",2) == 0
+						|| SyMemcmp(zTxt,"++",2) == 0 || SyMemcmp(zTxt,"--",2) == 0) ){
+					iCls = ASRT_GLUE;
+				}else if( nTxt == 3 && SyMemcmp(zTxt,"?->",3) == 0 ){
+					iCls = ASRT_GLUE;
+				}else if( nTxt == 1 && (c0 == '!' || c0 == '~' || c0 == '@') ){
+					iCls = ASRT_UNARY;
+				}else if( nTxt == 1 && (c0 == '-' || c0 == '+' || c0 == '&') ){
+					/* Unary when nothing operand-like precedes. */
+					if( iPrev == ASRT_START || iPrev == ASRT_BINOP || iPrev == ASRT_UNARY
+					 || iPrev == ASRT_OPEN || iPrev == ASRT_COMMA ){
+						iCls = ASRT_UNARY;
+					}
+				}else if( pTok->nType & PH7_TK_ID ){
+					/* Alpha operators: and/or normalize to php's export spelling;
+					 * new/clone read as prefix keywords (operand spacing). */
+					if( nTxt == 3 && SyStrnicmp(zTxt,"and",3) == 0 ){
+						zTxt = "&&"; nTxt = 2;
+					}else if( nTxt == 2 && SyStrnicmp(zTxt,"or",2) == 0 ){
+						zTxt = "||"; nTxt = 2;
+					}else if( (nTxt == 3 && SyStrnicmp(zTxt,"new",3) == 0)
+						|| (nTxt == 5 && SyStrnicmp(zTxt,"clone",5) == 0) ){
+						iCls = ASRT_OPERAND;
+					}
+				}
+			}
+		}else if( pTok->nType & (PH7_TK_EQUAL|PH7_TK_ARRAY_OP|PH7_TK_COLON|PH7_TK_AMPER) ){
+			iCls = ASRT_BINOP;
+		}else if( pTok->nType & (PH7_TK_ID|PH7_TK_KEYWORD) ){
+			iCls = ASRT_OPERAND;
+			/* `array` `(` — php's AST holds one list node for both spellings and
+			 * always exports `[...]`. Suppress the keyword (it lexes as a KEYWORD
+			 * token, not an ID); the '(' renders '['. */
+			if( nTxt == 5 && SyStrnicmp(zTxt,"array",5) == 0
+			 && &pIn[1] < pEnd && (pIn[1].nType & PH7_TK_LPAREN) ){
+				bArrayOpen = 1;
+				continue;
+			}
+		}else{
+			/* keywords (true/false/null/fn/match/...), numbers, strings,
+			 * member names, '{'/'}' and anything unforeseen */
+			iCls = ASRT_OPERAND;
+		}
+		/* Elvis `? :` — php exports the two-token form as `?:`. */
+		if( iCls == ASRT_BINOP && nTxt == 1 && zTxt[0] == '?'
+		 && &pIn[1] < pEnd && (pIn[1].nType & PH7_TK_COLON) ){
+			nMark = SyBlobLength(pOut);
+			if( iPrev != ASRT_START && nMark > 0 ){
+				SyBlobAppend(pOut," ",1);
+			}
+			SyBlobAppend(pOut,"?:",2);
+			pIn++; /* consume the ':' */
+			iPrev = ASRT_BINOP;
+			continue;
+		}
+		/* --- spacing ---------------------------------------------------- */
+		if( iPrev != ASRT_START ){
+			int iAfter = aAsrtAfter[iPrev];
+			int iBefore = aAsrtBefore[iCls];
+			if( iAfter == ASRT_SP_FORCE || iBefore == ASRT_SP_FORCE
+			 || (iAfter == ASRT_SP_WANT && iBefore == ASRT_SP_WANT) ){
+				SyBlobAppend(pOut," ",1);
+			}
+		}
+		/* --- emit ------------------------------------------------------- */
+		if( pTok->nType & PH7_TK_LPAREN ){
+			if( nParen < sizeof(aParen) ){
+				aParen[nParen] = (sxu8)bArrayOpen;
+			}
+			nParen++;
+			SyBlobAppend(pOut,bArrayOpen ? "[" : "(",1);
+			bArrayOpen = 0;
+		}else if( pTok->nType & PH7_TK_RPAREN ){
+			int bArr = 0;
+			if( nParen > 0 ){
+				nParen--;
+				if( nParen < sizeof(aParen) ){
+					bArr = aParen[nParen];
+				}
+			}
+			SyBlobAppend(pOut,bArr ? "]" : ")",1);
+		}else if( pTok->nType & (PH7_TK_INTEGER|PH7_TK_REAL) ){
+			char zScratch[GEN_NUM_SCRATCH];
+			char *zAlloc = 0;
+			SyString sNum;
+			if( GenStateStripNumericSeparators(&pGen->pVm->sAllocator,&pTok->sData,
+					zScratch,sizeof(zScratch),&sNum,&zAlloc) != SXRET_OK ){
+				SyBlobAppend(pOut,zTxt,nTxt); /* alloc failure: raw text */
+			}else if( pTok->nType & PH7_TK_INTEGER ){
+				ph7_real rOverflow = 0;
+				int bDecimalOverflow = 0;
+				if( GenStateIntLiteralOverflows(&sNum,&rOverflow,&bDecimalOverflow) ){
+					if( bDecimalOverflow ){
+						SyStrToReal(sNum.zString,sNum.nByte,(void *)&rOverflow,0);
+					}
+					AssertRenderReal(pOut,rOverflow);
+				}else{
+					SyBlobFormat(pOut,"%qd",PH7_TokenValueToInt64(&sNum));
+				}
+			}else{
+				ph7_real rVal = 0;
+				SyStrToReal(sNum.zString,sNum.nByte,(void *)&rVal,0);
+				AssertRenderReal(pOut,rVal);
+			}
+			if( zAlloc ){
+				SyMemBackendFree(&pGen->pVm->sAllocator,zAlloc);
+			}
+		}else if( pTok->nType & (PH7_TK_SSTR|PH7_TK_NOWDOC) ){
+			AssertRenderSglString(pOut,zTxt,nTxt);
+		}else if( pTok->nType & (PH7_TK_DSTR|PH7_TK_HEREDOC) ){
+			if( SyByteFind(zTxt,nTxt,'$',0) == SXRET_OK ){
+				/* Interpolated: php exports its interpolation AST in a
+				 * double-quoted form; the raw source is the token-level
+				 * equivalent. */
+				SyBlobAppend(pOut,"\"",1);
+				SyBlobAppend(pOut,zTxt,nTxt);
+				SyBlobAppend(pOut,"\"",1);
+			}else{
+				AssertRenderDblString(pOut,zTxt,nTxt);
+			}
+		}else{
+			SyBlobAppend(pOut,zTxt,nTxt);
+		}
+		iPrev = iCls;
+	}
+}
