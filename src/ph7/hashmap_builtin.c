@@ -3271,8 +3271,10 @@ PH7_PRIVATE int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				);
 		}
 		if( bReal ){
-			/* float-string -> deprecation warning */
-			PH7_VmThrowException(pCtx,"TypeError",
+			/* php only DEPRECATES the lossy float-string -> int narrowing; §10 rejects
+			 * it loudly, and the throw ABORTS the call (php would fill the array).
+			 * Twin-pinned by array_lossy_int_arg_abort{,_zend}.phpt. */
+			return PH7_VmThrowException(pCtx,"TypeError",
 				"Implicit conversion from float-string to int loses precision");
 		}
 	}
@@ -3298,14 +3300,14 @@ PH7_PRIVATE int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				);
 		}
 	}
-	/* Note: booleans and floats (including fractional) are now accepted; they
-	 * will be converted by ph7_value_to_int below. */
+	/* Note: booleans and WHOLE floats are accepted and converted by ph7_value_to_int
+	 * below; a FRACTIONAL float is the §10 lossy narrowing and aborts the call. */
 	if( ph7_value_is_float(apArg[1]) ){
 		double d = ph7_value_to_double(apArg[1]);
 		/* avoid hiding outer 'i' (loop index) */
 		sxi64 i64 = (sxi64)d;
 		if( d != (double)i64 ){
-			PH7_VmThrowException(pCtx,"TypeError",
+			return PH7_VmThrowException(pCtx,"TypeError",
 				"Implicit conversion from float to int loses precision");
 		}
 	}
@@ -4246,19 +4248,20 @@ PH7_PRIVATE int ph7_hashmap_chunk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				);
 		}
 		if( bReal ){
-			/* float-string -> warn but allow */
-			PH7_VmThrowException(pCtx,"TypeError",
+			/* php only DEPRECATES the lossy float-string -> int narrowing; §10 rejects
+			 * it loudly, and the throw ABORTS the call (php would chunk the array).
+			 * Twin-pinned by array_lossy_int_arg_abort{,_zend}.phpt. */
+			return PH7_VmThrowException(pCtx,"TypeError",
 				"Implicit conversion from float-string to int loses precision");
 		}
 	}
-	/* If the value is a float with a fractional component, emit a
-	 * deprecation warning but continue.  The following conversion occurs
-	 * later via ph7_value_to_int. */
+	/* A FRACTIONAL float is the same §10 lossy narrowing and aborts the call; a whole
+	 * float falls through to the ph7_value_to_int conversion below. */
 	if( ph7_value_is_float(apArg[1]) ){
 		double d = ph7_value_to_double(apArg[1]);
 		sxi64 i = (sxi64)d;
 		if( d != (double)i ){
-			PH7_VmThrowException(pCtx,"TypeError",
+			return PH7_VmThrowException(pCtx,"TypeError",
 				"Implicit conversion from float to int loses precision");
 		}
 	}

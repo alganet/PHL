@@ -6060,6 +6060,14 @@ SkipFuncBody:
 		}else{
 			/* Call the foreign function */
 			rc = pFunc->xFunc(&sCtx,nGiven,(ph7_value **)SySetBasePtr(&aArg));
+			/* A host function that RAISED a catchable throw (PH7_VmThrowException)
+			 * and still returned PH7_OK reports it here — the throw's catch has
+			 * already run in place, so treating the call as a normal return would
+			 * resume execution INSIDE the try body the throw abandoned (and, when
+			 * uncaught, run on past the reported fatal). The status is recorded on
+			 * the call context, so this covers the shared validation helpers whose
+			 * callers have no channel to thread a status back. */
+			rc = VmHostFuncThrowRc(&sCtx,rc);
 		}
 		}
 		/* Release the call context */

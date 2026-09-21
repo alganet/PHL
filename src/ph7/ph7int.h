@@ -305,6 +305,12 @@ struct ph7_context
 							 */
 	ph7_vm *pVm;            /* Virtual machine that own this context */
 	sxi32 iFlags;           /* Call flags */
+	sxi32 nThrowRc;         /* Status of a throw this host function raised through
+	                         * PH7_VmThrowException (0 when it never threw). The
+	                         * OP_CALL boundary re-reads it: a builtin that threw and
+	                         * still returned PH7_OK would otherwise let the VM carry
+	                         * on inside the try the throw abandoned. See
+	                         * VmHostFuncThrowRc(). */
 	VmCallArgMap *pArgMap;  /* Call-site named-argument map (or 0). Lets a builtin
 	                         * such as call_user_func forward its callers' name:
 	                         * arguments to the inner callback. */
@@ -2310,6 +2316,7 @@ PH7_PRIVATE sxi32 PH7_VmMemoryError(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_ContextMemoryError(ph7_context *pCtx);
 PH7_PRIVATE sxu32 PH7_VmResourceId(ph7_vm *pVm,void *pRes);
 PH7_PRIVATE sxi32 PH7_VmThrowException(ph7_context *pCtx,const char *zClass,const char *zFormat,...);
+PH7_PRIVATE sxi32 VmHostFuncThrowRc(ph7_context *pCtx,sxi32 rc);
 PH7_PRIVATE sxi32 PH7_VmThrowArrayNextIndexError(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmThrowGlobalsAppendError(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmInstallGlobalVar(ph7_vm *pVm,const char *zName,sxu32 nByte,ph7_value *pValue,sxu32 nRefIdx);

@@ -1225,10 +1225,14 @@ static void MathBaseToNumber(ph7_context *pCtx,const char *zStr,int nLen,int bas
 		fnum = fnum * base + c;
 	}
 	if( bIgnored ){
-		/* php 8: characters that are not valid digits for this base are skipped,
-		 * and the skipping itself is deprecated (the VALUE is unaffected). */
+		/* php 8 skips characters that are not valid digits for this base and only
+		 * DEPRECATES the skipping; §10 rejects the deprecated surface loudly, so this
+		 * ValueError ABORTS the call (the result stored below never reaches the caller
+		 * — the OP_CALL boundary reports the throw for us, VmHostFuncThrowRc).
+		 * Twin-pinned by base_invalid_chars_abort{,_zend}.phpt. */
 		PH7_VmThrowException(pCtx,"ValueError",
 			"Invalid characters passed for attempted conversion");
+		return;
 	}
 	if( mode == 1 ){
 		ph7_result_double(pCtx,fnum);
@@ -1429,14 +1433,16 @@ PH7_PRIVATE int PH7_builtin_base_convert(ph7_context *pCtx,int nArg,ph7_value **
 			d = 99;
 		}
 		if( d >= iFbase ){
-			/* Not a valid digit for this base: skip it (php), but say so afterwards. */
+			/* Not a valid digit for this base: php skips it and deprecates the skip. */
 			bIgnored = 1;
 			continue;
 		}
 		uNum = uNum * (sxu64)iFbase + (sxu64)d;
 	}
 	if( bIgnored ){
-		PH7_VmThrowException(pCtx,"ValueError",
+		/* §10 rejects php's deprecated surface loudly, and a throw ABORTS the call —
+		 * the conversion below is not reached. See MathBaseToNumber's twin. */
+		return PH7_VmThrowException(pCtx,"ValueError",
 			"Invalid characters passed for attempted conversion");
 	}
 	/* Format the result in to_base using lowercase digits. */

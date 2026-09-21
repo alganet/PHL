@@ -2845,6 +2845,7 @@ PH7_PRIVATE sxi32 VmInitCallContext(
 	MemObjSetType(pRet,MEMOBJ_NULL);
 	pOut->pRet = pRet;
 	pOut->iFlags = iFlags;
+	pOut->nThrowRc = 0; /* Set by PH7_VmThrowException, read back by VmHostFuncThrowRc */
 	pOut->pArgMap = 0; /* Set by the OP_CALL dispatcher for named-arg-aware builtins */
 	return SXRET_OK;
 }
