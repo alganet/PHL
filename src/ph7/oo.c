@@ -744,12 +744,18 @@ PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_cl
 			goto cleanup;
 		}
 	}
-	/* Copy methods from the trait */
+	/* Copy methods from the trait. The identity copied is the trait's HASH KEY,
+	 * not sFunc.sName: an adaptation alias (`hi as bHi`) is a hash entry whose
+	 * key is the alias while the method struct keeps its original name — keying
+	 * the copy off sFunc.sName silently re-filed `bHi` under `hi`, so an alias
+	 * made inside a TRAIT vanished when that trait was composed into a class. */
 	SyHashResetLoopCursor(&pTrait->hMethod);
 	while((pEntry = SyHashGetNextEntry(&pTrait->hMethod)) != 0 ){
 		SyHashEntry *pClassMethEntry;
+		SyString sKey;
 		pMeth = (ph7_class_method *)pEntry->pUserData;
-		pName = &pMeth->sFunc.sName;
+		SyStringInitFromBuf(&sKey,(const char *)pEntry->pKey,pEntry->nKeyLen);
+		pName = &sKey;
 		pClassMethEntry = SyHashGet(&pClass->hMethod,(const void *)pName->zString,pName->nByte);
 		if( pClassMethEntry != 0 ){
 			/* Method already exists in the class. An ABSTRACT trait method is a

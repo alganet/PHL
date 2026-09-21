@@ -3480,6 +3480,250 @@ static int GenStateMaybeDeferClass(ph7_gen_state *pGen,sxi32 iFlags,int iSelfKin
 	return bDefer;
 }
 /*
+ * Apply a declaration body's collected `use Trait[, Trait] [{ resolution }]`
+ * entries to pClass — plain application when no resolution block is present,
+ * otherwise the two-pass insteadof/as machinery. Shared by the CLASS body and
+ * (since the adaptation-block port) the TRAIT body compiler. Returns the last
+ * application status (non-OK = out of memory at a copy site).
+ */
+static sxi32 GenStateApplyTraitUses(ph7_gen_state *pGen,ph7_class *pClass,SySet *pUseEntries)
+{
+	sxi32 rc = SXRET_OK;
+	{
+		TraitUseEntry *apUse;
+		sxu32 nU;
+		apUse = (TraitUseEntry *)SySetBasePtr(pUseEntries);
+		for( nU = 0 ; nU < SySetUsed(pUseEntries) ; nU++ ){
+			TraitUseEntry *pUse = &apUse[nU];
+			ph7_class **apTrait = (ph7_class **)SySetBasePtr(&pUse->aTraits);
+			sxu32 nTraits = SySetUsed(&pUse->aTraits);
+			int hasResolution = (pUse->pResolvStart && pUse->pResolvStart < pUse->pResolvEnd) ? 1 : 0;
+			sxu32 nT;
+			if( !hasResolution ){
+				/* No conflict resolution block: use standard trait application */
+				for( nT = 0 ; nT < nTraits ; nT++ ){
+					rc = PH7_ClassUseTrait(&(*pGen),pClass,apTrait[nT]);
+					if( rc != SXRET_OK ){
+						break;
+					}
+				}
+			}else{
+				/* With resolution block: copy attributes, record traits,
+				 * then use the block to resolve method conflicts.
+				 */
+				SyToken *pR;
+				for( nT = 0 ; nT < nTraits ; nT++ ){
+					ph7_class *pTR = apTrait[nT];
+					ph7_class_attr *pAR;
+					SyHashEntry *pER;
+					SyString *pNR;
+					SyHashResetLoopCursor(&pTR->hAttr);
+					while((pER = SyHashGetNextEntry(&pTR->hAttr)) != 0 ){
+						pAR = (ph7_class_attr *)pER->pUserData;
+						pNR = &pAR->sName;
+						if( SyHashGet(&pClass->hAttr,(const void *)pNR->zString,pNR->nByte) == 0 ){
+							SyHashInsertTail(&pClass->hAttr,(const void *)pNR->zString,pNR->nByte,pAR);
+						}
+					}
+					/* Trait constants (PHP 8.2) live in the separate hConst namespace */
+					SyHashResetLoopCursor(&pTR->hConst);
+					while((pER = SyHashGetNextEntry(&pTR->hConst)) != 0 ){
+						pAR = (ph7_class_attr *)pER->pUserData;
+						pNR = &pAR->sName;
+						if( SyHashGet(&pClass->hConst,(const void *)pNR->zString,pNR->nByte) == 0 ){
+							SyHashInsertTail(&pClass->hConst,(const void *)pNR->zString,pNR->nByte,pAR);
+						}
+					}
+					SySetPut(&pClass->aTrait,(const void *)&pTR);
+				}
+				/* Pass 1: process insteadof rules to install winning methods */
+				pR = pUse->pResolvStart;
+				while( pR < pUse->pResolvEnd ){
+					SyString sTrait,sMethod;
+					ph7_class *pSrcTrait;
+					ph7_class_method *pMeth;
+					sxi32 nRKwrd;
+					while( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_SEMI) ){ pR++; }
+					if( pR >= pUse->pResolvEnd ) break;
+					SyStringInitFromBuf(&sTrait,"",0);
+					SyStringInitFromBuf(&sMethod,"",0);
+					if( (pR->nType & PH7_TK_ID) == 0 ){ pR++; continue; }
+					sMethod = pR->sData;
+					pR++;
+					if( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_OP) ){
+						const ph7_expr_op *pOp = (const ph7_expr_op *)pR->pUserData;
+						if( pOp && pOp->iOp == EXPR_OP_DC ){
+							sTrait = sMethod;
+							pR++;
+							if( pR >= pUse->pResolvEnd || (pR->nType & PH7_TK_ID) == 0 ) break;
+							sMethod = pR->sData;
+							pR++;
+						}
+					}
+					if( pR >= pUse->pResolvEnd || (pR->nType & PH7_TK_KEYWORD) == 0 ){
+						while( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_SEMI) == 0 ){ pR++; }
+						continue;
+					}
+					nRKwrd = SX_PTR_TO_INT(pR->pUserData);
+					pR++;
+					if( nRKwrd == PH7_TKWRD_INSTEADOF && sTrait.nByte > 0 ){
+						pSrcTrait = 0;
+						for( nT = 0 ; nT < nTraits ; nT++ ){
+							SyString *pTN = &apTrait[nT]->sName;
+							if( pTN->nByte >= sTrait.nByte &&
+								SyMemcmp(&pTN->zString[pTN->nByte - sTrait.nByte],sTrait.zString,sTrait.nByte) == 0 ){
+								pSrcTrait = apTrait[nT];
+								break;
+							}
+						}
+						if( pSrcTrait ){
+							pMeth = PH7_ClassExtractMethod(pSrcTrait,sMethod.zString,sMethod.nByte);
+							if( pMeth ){
+								SyString *pMN = &pMeth->sFunc.sName;
+								if( SyHashGet(&pClass->hMethod,(const void *)pMN->zString,pMN->nByte) == 0 ){
+									SyHashInsert(&pClass->hMethod,(const void *)pMN->zString,pMN->nByte,pMeth);
+								}
+							}
+						}
+					}
+					while( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_SEMI) == 0 ){ pR++; }
+				}
+				/* Install remaining non-conflicting methods from this use's traits */
+				for( nT = 0 ; nT < nTraits ; nT++ ){
+					ph7_class_method *pMR;
+					SyHashEntry *pER;
+					SyString *pNR;
+					SyHashResetLoopCursor(&apTrait[nT]->hMethod);
+					while((pER = SyHashGetNextEntry(&apTrait[nT]->hMethod)) != 0 ){
+						pMR = (ph7_class_method *)pER->pUserData;
+						pNR = &pMR->sFunc.sName;
+						if( SyHashGet(&pClass->hMethod,(const void *)pNR->zString,pNR->nByte) == 0 ){
+							SyHashInsert(&pClass->hMethod,(const void *)pNR->zString,pNR->nByte,pMR);
+						}
+					}
+				}
+				/* Pass 2: process as rules (aliases and visibility changes) */
+				pR = pUse->pResolvStart;
+				while( pR < pUse->pResolvEnd ){
+					SyString sTrait,sMethod,sAlias;
+					ph7_class *pSrcTrait;
+					ph7_class_method *pMeth;
+					int hasQual = 0;
+					sxi32 nRKwrd;
+					while( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_SEMI) ){ pR++; }
+					if( pR >= pUse->pResolvEnd ) break;
+					SyStringInitFromBuf(&sTrait,"",0);
+					SyStringInitFromBuf(&sMethod,"",0);
+					SyStringInitFromBuf(&sAlias,"",0);
+					if( (pR->nType & PH7_TK_ID) == 0 ){ pR++; continue; }
+					sMethod = pR->sData;
+					pR++;
+					if( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_OP) ){
+						const ph7_expr_op *pOp = (const ph7_expr_op *)pR->pUserData;
+						if( pOp && pOp->iOp == EXPR_OP_DC ){
+							sTrait = sMethod;
+							hasQual = 1;
+							pR++;
+							if( pR >= pUse->pResolvEnd || (pR->nType & PH7_TK_ID) == 0 ) break;
+							sMethod = pR->sData;
+							pR++;
+						}
+					}
+					if( pR >= pUse->pResolvEnd || (pR->nType & PH7_TK_KEYWORD) == 0 ){
+						while( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_SEMI) == 0 ){ pR++; }
+						continue;
+					}
+					nRKwrd = SX_PTR_TO_INT(pR->pUserData);
+					pR++;
+					if( nRKwrd == PH7_TKWRD_AS ){
+						sxi32 iNewVis = -1;
+						if( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_KEYWORD) ){
+							sxi32 nAK = SX_PTR_TO_INT(pR->pUserData);
+							if( nAK == PH7_TKWRD_PUBLIC || nAK == PH7_TKWRD_PROTECTED || nAK == PH7_TKWRD_PRIVATE ){
+								iNewVis = nAK;
+								pR++;
+							}
+						}
+						if( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_ID) ){
+							sAlias = pR->sData;
+							pR++;
+						}
+						pMeth = 0;
+						if( hasQual ){
+							pSrcTrait = 0;
+							for( nT = 0 ; nT < nTraits ; nT++ ){
+								SyString *pTN = &apTrait[nT]->sName;
+								if( pTN->nByte >= sTrait.nByte &&
+									SyMemcmp(&pTN->zString[pTN->nByte - sTrait.nByte],sTrait.zString,sTrait.nByte) == 0 ){
+									pSrcTrait = apTrait[nT];
+									break;
+								}
+							}
+							if( pSrcTrait ){
+								pMeth = PH7_ClassExtractMethod(pSrcTrait,sMethod.zString,sMethod.nByte);
+							}
+						}else{
+							pMeth = PH7_ClassExtractMethod(pClass,sMethod.zString,sMethod.nByte);
+						}
+						if( pMeth ){
+							/* php: a method declared in the class BODY wins over a trait alias
+							 * of the same name (e.g. an explicit __construct over `init as
+							 * __construct`). If pClass already declares sAlias ITSELF — an own
+							 * method, sFunc.pUserData == pClass — keep it: SyHashInsert is LIFO,
+							 * so an unconditional insert would shadow the class method at lookup
+							 * and `new` would run the alias. A name held only by another trait is
+							 * a genuine conflict resolved by the insteadof pass above. */
+							int bClassWins = 0;
+							if( sAlias.nByte > 0 ){
+								ph7_class_method *pOwn = PH7_ClassExtractMethod(pClass,sAlias.zString,sAlias.nByte);
+								bClassWins = (pOwn && pOwn->sFunc.pUserData == pClass);
+							}
+							if( sAlias.nByte > 0 && !bClassWins ){
+								/* Create a shallow copy of the method struct for the alias
+								 * so it can carry its own visibility without affecting the original.
+								 */
+								ph7_class_method *pAlias;
+								char *zAliasDup;
+								pAlias = (ph7_class_method *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(ph7_class_method));
+								if( pAlias ){
+									SyMemcpy(pMeth,pAlias,sizeof(ph7_class_method));
+									if( iNewVis >= 0 ){
+										if( iNewVis == PH7_TKWRD_PUBLIC ) pAlias->iProtection = PH7_CLASS_PROT_PUBLIC;
+										else if( iNewVis == PH7_TKWRD_PROTECTED ) pAlias->iProtection = PH7_CLASS_PROT_PROTECTED;
+										else pAlias->iProtection = PH7_CLASS_PROT_PRIVATE;
+									}
+									zAliasDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,sAlias.zString,sAlias.nByte);
+									if( zAliasDup ){
+										SyHashInsert(&pClass->hMethod,(const void *)zAliasDup,sAlias.nByte,pAlias);
+									}
+								}
+							}else if( sAlias.nByte == 0 && iNewVis >= 0 ){
+								/* Visibility-only change (no alias name): also needs a copy */
+								ph7_class_method *pCopy;
+								pCopy = (ph7_class_method *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(ph7_class_method));
+								if( pCopy ){
+									SyString *pMN = &pMeth->sFunc.sName;
+									SyMemcpy(pMeth,pCopy,sizeof(ph7_class_method));
+									if( iNewVis == PH7_TKWRD_PUBLIC ) pCopy->iProtection = PH7_CLASS_PROT_PUBLIC;
+									else if( iNewVis == PH7_TKWRD_PROTECTED ) pCopy->iProtection = PH7_CLASS_PROT_PROTECTED;
+									else pCopy->iProtection = PH7_CLASS_PROT_PRIVATE;
+									/* Replace the method in the class hash */
+									SyHashDeleteEntry(&pClass->hMethod,(const void *)pMN->zString,pMN->nByte,0);
+									SyHashInsert(&pClass->hMethod,(const void *)pMN->zString,pMN->nByte,pCopy);
+								}
+							}
+						}
+						SXUNUSED(hasQual);
+					}
+					while( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_SEMI) == 0 ){ pR++; }
+				}
+			}
+			SySetRelease(&pUse->aTraits);
+		}
+	}
+	return rc;
+}
+/*
  * Compile a class declaration, named or anonymous.
  *
  * For a named class pAnonName is 0 and the class name is read from the token
@@ -4189,237 +4433,11 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 	/* Apply collected traits (per use-statement) before installing the class.
 	 * Each use-statement carries its own set of traits and optional resolution block.
 	 */
-	{
-		TraitUseEntry *apUse;
-		sxu32 nU;
-		apUse = (TraitUseEntry *)SySetBasePtr(&aUseEntries);
-		for( nU = 0 ; nU < SySetUsed(&aUseEntries) ; nU++ ){
-			TraitUseEntry *pUse = &apUse[nU];
-			ph7_class **apTrait = (ph7_class **)SySetBasePtr(&pUse->aTraits);
-			sxu32 nTraits = SySetUsed(&pUse->aTraits);
-			int hasResolution = (pUse->pResolvStart && pUse->pResolvStart < pUse->pResolvEnd) ? 1 : 0;
-			sxu32 nT;
-			if( !hasResolution ){
-				/* No conflict resolution block: use standard trait application */
-				for( nT = 0 ; nT < nTraits ; nT++ ){
-					rc = PH7_ClassUseTrait(&(*pGen),pClass,apTrait[nT]);
-					if( rc != SXRET_OK ){
-						break;
-					}
-				}
-			}else{
-				/* With resolution block: copy attributes, record traits,
-				 * then use the block to resolve method conflicts.
-				 */
-				SyToken *pR;
-				for( nT = 0 ; nT < nTraits ; nT++ ){
-					ph7_class *pTR = apTrait[nT];
-					ph7_class_attr *pAR;
-					SyHashEntry *pER;
-					SyString *pNR;
-					SyHashResetLoopCursor(&pTR->hAttr);
-					while((pER = SyHashGetNextEntry(&pTR->hAttr)) != 0 ){
-						pAR = (ph7_class_attr *)pER->pUserData;
-						pNR = &pAR->sName;
-						if( SyHashGet(&pClass->hAttr,(const void *)pNR->zString,pNR->nByte) == 0 ){
-							SyHashInsertTail(&pClass->hAttr,(const void *)pNR->zString,pNR->nByte,pAR);
-						}
-					}
-					/* Trait constants (PHP 8.2) live in the separate hConst namespace */
-					SyHashResetLoopCursor(&pTR->hConst);
-					while((pER = SyHashGetNextEntry(&pTR->hConst)) != 0 ){
-						pAR = (ph7_class_attr *)pER->pUserData;
-						pNR = &pAR->sName;
-						if( SyHashGet(&pClass->hConst,(const void *)pNR->zString,pNR->nByte) == 0 ){
-							SyHashInsertTail(&pClass->hConst,(const void *)pNR->zString,pNR->nByte,pAR);
-						}
-					}
-					SySetPut(&pClass->aTrait,(const void *)&pTR);
-				}
-				/* Pass 1: process insteadof rules to install winning methods */
-				pR = pUse->pResolvStart;
-				while( pR < pUse->pResolvEnd ){
-					SyString sTrait,sMethod;
-					ph7_class *pSrcTrait;
-					ph7_class_method *pMeth;
-					sxi32 nRKwrd;
-					while( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_SEMI) ){ pR++; }
-					if( pR >= pUse->pResolvEnd ) break;
-					SyStringInitFromBuf(&sTrait,"",0);
-					SyStringInitFromBuf(&sMethod,"",0);
-					if( (pR->nType & PH7_TK_ID) == 0 ){ pR++; continue; }
-					sMethod = pR->sData;
-					pR++;
-					if( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_OP) ){
-						const ph7_expr_op *pOp = (const ph7_expr_op *)pR->pUserData;
-						if( pOp && pOp->iOp == EXPR_OP_DC ){
-							sTrait = sMethod;
-							pR++;
-							if( pR >= pUse->pResolvEnd || (pR->nType & PH7_TK_ID) == 0 ) break;
-							sMethod = pR->sData;
-							pR++;
-						}
-					}
-					if( pR >= pUse->pResolvEnd || (pR->nType & PH7_TK_KEYWORD) == 0 ){
-						while( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_SEMI) == 0 ){ pR++; }
-						continue;
-					}
-					nRKwrd = SX_PTR_TO_INT(pR->pUserData);
-					pR++;
-					if( nRKwrd == PH7_TKWRD_INSTEADOF && sTrait.nByte > 0 ){
-						pSrcTrait = 0;
-						for( nT = 0 ; nT < nTraits ; nT++ ){
-							SyString *pTN = &apTrait[nT]->sName;
-							if( pTN->nByte >= sTrait.nByte &&
-								SyMemcmp(&pTN->zString[pTN->nByte - sTrait.nByte],sTrait.zString,sTrait.nByte) == 0 ){
-								pSrcTrait = apTrait[nT];
-								break;
-							}
-						}
-						if( pSrcTrait ){
-							pMeth = PH7_ClassExtractMethod(pSrcTrait,sMethod.zString,sMethod.nByte);
-							if( pMeth ){
-								SyString *pMN = &pMeth->sFunc.sName;
-								if( SyHashGet(&pClass->hMethod,(const void *)pMN->zString,pMN->nByte) == 0 ){
-									SyHashInsert(&pClass->hMethod,(const void *)pMN->zString,pMN->nByte,pMeth);
-								}
-							}
-						}
-					}
-					while( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_SEMI) == 0 ){ pR++; }
-				}
-				/* Install remaining non-conflicting methods from this use's traits */
-				for( nT = 0 ; nT < nTraits ; nT++ ){
-					ph7_class_method *pMR;
-					SyHashEntry *pER;
-					SyString *pNR;
-					SyHashResetLoopCursor(&apTrait[nT]->hMethod);
-					while((pER = SyHashGetNextEntry(&apTrait[nT]->hMethod)) != 0 ){
-						pMR = (ph7_class_method *)pER->pUserData;
-						pNR = &pMR->sFunc.sName;
-						if( SyHashGet(&pClass->hMethod,(const void *)pNR->zString,pNR->nByte) == 0 ){
-							SyHashInsert(&pClass->hMethod,(const void *)pNR->zString,pNR->nByte,pMR);
-						}
-					}
-				}
-				/* Pass 2: process as rules (aliases and visibility changes) */
-				pR = pUse->pResolvStart;
-				while( pR < pUse->pResolvEnd ){
-					SyString sTrait,sMethod,sAlias;
-					ph7_class *pSrcTrait;
-					ph7_class_method *pMeth;
-					int hasQual = 0;
-					sxi32 nRKwrd;
-					while( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_SEMI) ){ pR++; }
-					if( pR >= pUse->pResolvEnd ) break;
-					SyStringInitFromBuf(&sTrait,"",0);
-					SyStringInitFromBuf(&sMethod,"",0);
-					SyStringInitFromBuf(&sAlias,"",0);
-					if( (pR->nType & PH7_TK_ID) == 0 ){ pR++; continue; }
-					sMethod = pR->sData;
-					pR++;
-					if( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_OP) ){
-						const ph7_expr_op *pOp = (const ph7_expr_op *)pR->pUserData;
-						if( pOp && pOp->iOp == EXPR_OP_DC ){
-							sTrait = sMethod;
-							hasQual = 1;
-							pR++;
-							if( pR >= pUse->pResolvEnd || (pR->nType & PH7_TK_ID) == 0 ) break;
-							sMethod = pR->sData;
-							pR++;
-						}
-					}
-					if( pR >= pUse->pResolvEnd || (pR->nType & PH7_TK_KEYWORD) == 0 ){
-						while( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_SEMI) == 0 ){ pR++; }
-						continue;
-					}
-					nRKwrd = SX_PTR_TO_INT(pR->pUserData);
-					pR++;
-					if( nRKwrd == PH7_TKWRD_AS ){
-						sxi32 iNewVis = -1;
-						if( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_KEYWORD) ){
-							sxi32 nAK = SX_PTR_TO_INT(pR->pUserData);
-							if( nAK == PH7_TKWRD_PUBLIC || nAK == PH7_TKWRD_PROTECTED || nAK == PH7_TKWRD_PRIVATE ){
-								iNewVis = nAK;
-								pR++;
-							}
-						}
-						if( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_ID) ){
-							sAlias = pR->sData;
-							pR++;
-						}
-						pMeth = 0;
-						if( hasQual ){
-							pSrcTrait = 0;
-							for( nT = 0 ; nT < nTraits ; nT++ ){
-								SyString *pTN = &apTrait[nT]->sName;
-								if( pTN->nByte >= sTrait.nByte &&
-									SyMemcmp(&pTN->zString[pTN->nByte - sTrait.nByte],sTrait.zString,sTrait.nByte) == 0 ){
-									pSrcTrait = apTrait[nT];
-									break;
-								}
-							}
-							if( pSrcTrait ){
-								pMeth = PH7_ClassExtractMethod(pSrcTrait,sMethod.zString,sMethod.nByte);
-							}
-						}else{
-							pMeth = PH7_ClassExtractMethod(pClass,sMethod.zString,sMethod.nByte);
-						}
-						if( pMeth ){
-							/* php: a method declared in the class BODY wins over a trait alias
-							 * of the same name (e.g. an explicit __construct over `init as
-							 * __construct`). If pClass already declares sAlias ITSELF — an own
-							 * method, sFunc.pUserData == pClass — keep it: SyHashInsert is LIFO,
-							 * so an unconditional insert would shadow the class method at lookup
-							 * and `new` would run the alias. A name held only by another trait is
-							 * a genuine conflict resolved by the insteadof pass above. */
-							int bClassWins = 0;
-							if( sAlias.nByte > 0 ){
-								ph7_class_method *pOwn = PH7_ClassExtractMethod(pClass,sAlias.zString,sAlias.nByte);
-								bClassWins = (pOwn && pOwn->sFunc.pUserData == pClass);
-							}
-							if( sAlias.nByte > 0 && !bClassWins ){
-								/* Create a shallow copy of the method struct for the alias
-								 * so it can carry its own visibility without affecting the original.
-								 */
-								ph7_class_method *pAlias;
-								char *zAliasDup;
-								pAlias = (ph7_class_method *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(ph7_class_method));
-								if( pAlias ){
-									SyMemcpy(pMeth,pAlias,sizeof(ph7_class_method));
-									if( iNewVis >= 0 ){
-										if( iNewVis == PH7_TKWRD_PUBLIC ) pAlias->iProtection = PH7_CLASS_PROT_PUBLIC;
-										else if( iNewVis == PH7_TKWRD_PROTECTED ) pAlias->iProtection = PH7_CLASS_PROT_PROTECTED;
-										else pAlias->iProtection = PH7_CLASS_PROT_PRIVATE;
-									}
-									zAliasDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,sAlias.zString,sAlias.nByte);
-									if( zAliasDup ){
-										SyHashInsert(&pClass->hMethod,(const void *)zAliasDup,sAlias.nByte,pAlias);
-									}
-								}
-							}else if( sAlias.nByte == 0 && iNewVis >= 0 ){
-								/* Visibility-only change (no alias name): also needs a copy */
-								ph7_class_method *pCopy;
-								pCopy = (ph7_class_method *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(ph7_class_method));
-								if( pCopy ){
-									SyString *pMN = &pMeth->sFunc.sName;
-									SyMemcpy(pMeth,pCopy,sizeof(ph7_class_method));
-									if( iNewVis == PH7_TKWRD_PUBLIC ) pCopy->iProtection = PH7_CLASS_PROT_PUBLIC;
-									else if( iNewVis == PH7_TKWRD_PROTECTED ) pCopy->iProtection = PH7_CLASS_PROT_PROTECTED;
-									else pCopy->iProtection = PH7_CLASS_PROT_PRIVATE;
-									/* Replace the method in the class hash */
-									SyHashDeleteEntry(&pClass->hMethod,(const void *)pMN->zString,pMN->nByte,0);
-									SyHashInsert(&pClass->hMethod,(const void *)pMN->zString,pMN->nByte,pCopy);
-								}
-							}
-						}
-						SXUNUSED(hasQual);
-					}
-					while( pR < pUse->pResolvEnd && (pR->nType & PH7_TK_SEMI) == 0 ){ pR++; }
-				}
-			}
-			SySetRelease(&pUse->aTraits);
-		}
+	rc = GenStateApplyTraitUses(&(*pGen),pClass,&aUseEntries);
+	if( rc == SXERR_ABORT ){
+		SySetRelease(&aUseEntries);
+		SySetRelease(&aInterfaces);
+		return SXERR_ABORT;
 	}
 	if( pClass->iFlags & PH7_CLASS_ENUM ){
 		/* Enum validation + name/value props + cases()/from()/tryFrom() synthesis.
@@ -4762,6 +4780,7 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 	SyToken *pEnd,*pTmp;
 	sxi32 iProtection;
 	sxi32 iAttrflags;
+	SySet aUseEntries; /* trait-body `use` statements (incl. adaptation blocks) */
 	SyString *pName;
 	sxi32 nKwrd;
 	sxi32 rc;
@@ -4773,6 +4792,7 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 			return rcDefer == SXERR_ABORT ? SXERR_ABORT : SXRET_OK;
 		}
 	}
+	SySetInit(&aUseEntries,&pGen->pVm->sAllocator,sizeof(TraitUseEntry));
 	/* Jump the 'trait' keyword */
 	pGen->pIn++;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_ID) == 0 ){
@@ -4859,11 +4879,16 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 		if( pGen->pIn->nType & PH7_TK_KEYWORD ){
 			nKwrd = SX_PTR_TO_INT(pGen->pIn->pUserData);
 			if( nKwrd == PH7_TKWRD_USE ){
-				/* Trait uses another trait: use OtherTrait; A trait name is a full
-				 * class reference — qualified or fully-qualified (`use Foo\T;`,
-				 * `use \Foo\T;`) — so parse it with the shared class-reference
-				 * reader like the CLASS body's trait-use does, instead of the old
-				 * single-identifier read, which choked on the leading '\'. */
+				/* Trait uses another trait: use T[, T2] [{ resolution }]; A trait
+				 * name is a full class reference — qualified or fully-qualified
+				 * (`use Foo\T;`, `use \Foo\T;`) — so parse it with the shared
+				 * class-reference reader like the CLASS body's trait-use does
+				 * (the old single-identifier read choked on the leading '\'),
+				 * and collect a TraitUseEntry so an adaptation block
+				 * (insteadof/as) applies through the same shared machinery. */
+				TraitUseEntry sUse;
+				SySetInit(&sUse.aTraits,&pGen->pVm->sAllocator,sizeof(ph7_class *));
+				sUse.pResolvStart = sUse.pResolvEnd = 0;
 				pGen->pIn++; /* Jump 'use' */
 				for(;;){
 					ph7_class *pUsedTrait;
@@ -4895,7 +4920,7 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 							return SXERR_ABORT;
 						}
 					}else{
-						PH7_ClassUseTrait(&(*pGen),pClass,pUsedTrait);
+						SySetPut(&sUse.aTraits,(const void *)&pUsedTrait);
 					}
 					SyBlobRelease(&sResolved);
 					if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_COMMA) == 0 ){
@@ -4903,6 +4928,20 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 					}
 					pGen->pIn++;
 				}
+				/* Optional adaptation block (conflict resolution) */
+				if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OCB) ){
+					SyToken *pBlock;
+					pGen->pIn++; /* Jump '{' */
+					PH7_DelimitNestedTokens(pGen->pIn,pGen->pEnd,PH7_TK_OCB,PH7_TK_CCB,&pBlock);
+					sUse.pResolvStart = pGen->pIn;
+					sUse.pResolvEnd = pBlock;
+					if( pBlock < pGen->pEnd ){
+						pGen->pIn = &pBlock[1]; /* Skip past '}' */
+					}else{
+						pGen->pIn = pGen->pEnd;
+					}
+				}
+				SySetPut(&aUseEntries,(const void *)&sUse);
 				continue;
 			}
 			if( nKwrd == PH7_TKWRD_PUBLIC || nKwrd == PH7_TKWRD_PRIVATE || nKwrd == PH7_TKWRD_PROTECTED ){
@@ -5057,6 +5096,13 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 				goto done;
 			}
 		}
+	}
+	/* Apply the collected `use` entries (incl. adaptation blocks) through the
+	 * machinery shared with the class-body compiler. */
+	rc = GenStateApplyTraitUses(&(*pGen),pClass,&aUseEntries);
+	SySetRelease(&aUseEntries);
+	if( rc == SXERR_ABORT ){
+		return SXERR_ABORT;
 	}
 	/* Reject a php-fatal redeclaration before hoisting the trait */
 	if( GenStateGuardClassRedeclaration(pGen,pClass) == SXERR_ABORT ){

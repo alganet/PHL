@@ -586,6 +586,9 @@ PH7_PRIVATE int vm_builtin_get_class_methods(ph7_context *pCtx,int nArg,ph7_valu
 		SyHashEntry **apEntry;
 		ph7_class *pLevel;
 		sxu32 n;
+		/* Names are emitted from each entry's HASH KEY, not sFunc.sName: a trait
+		 * adaptation alias (`hi as bHi`) keeps the original name in its method
+		 * struct while the key carries the alias — php lists the alias. */
 		SySetInit(&aTmp,&pCtx->pVm->sAllocator,sizeof(SyHashEntry *));
 		SyHashResetLoopCursor(&pClass->hMethod);
 		while((pEntry = SyHashGetNextEntry(&pClass->hMethod)) != 0 ){
@@ -597,9 +600,9 @@ PH7_PRIVATE int vm_builtin_get_class_methods(ph7_context *pCtx,int nArg,ph7_valu
 			 * (sorted by nLine — same-level methods share a source file; a
 			 * hash-order fallback covers line-less internal methods). */
 			SySet aLvl;
-			ph7_class_method **apLvl;
+			SyHashEntry **apLvl;
 			sxu32 i,j;
-			SySetInit(&aLvl,&pCtx->pVm->sAllocator,sizeof(ph7_class_method *));
+			SySetInit(&aLvl,&pCtx->pVm->sAllocator,sizeof(SyHashEntry *));
 			/* Hash-order fallback for same-line methods: the class's OWN entries
 			 * come out in declaration order when walked newest-first, while
 			 * inherited copies (inserted by PH7_ClassInherit's walk of the base
@@ -624,20 +627,21 @@ PH7_PRIVATE int vm_builtin_get_class_methods(ph7_context *pCtx,int nArg,ph7_valu
 						continue; /* in-chain: its own level emits it */
 					}
 				}
-				SySetPut(&aLvl,(const void *)&pMethod);
+				SySetPut(&aLvl,(const void *)&apEntry[nPick]);
 			}
-			apLvl = (ph7_class_method **)SySetBasePtr(&aLvl);
+			apLvl = (SyHashEntry **)SySetBasePtr(&aLvl);
 			/* Insertion sort by declaration line (stable) */
 			for( i = 1; i < SySetUsed(&aLvl); i++ ){
-				ph7_class_method *pKey = apLvl[i];
-				for( j = i; j > 0 && apLvl[j-1]->nLine > pKey->nLine; j-- ){
+				SyHashEntry *pKey = apLvl[i];
+				for( j = i; j > 0 && ((ph7_class_method *)apLvl[j-1]->pUserData)->nLine
+						> ((ph7_class_method *)pKey->pUserData)->nLine; j-- ){
 					apLvl[j] = apLvl[j-1];
 				}
 				apLvl[j] = pKey;
 			}
 			for( i = 0; i < SySetUsed(&aLvl); i++ ){
-				/* Insert method name */
-				ph7_value_string(pName,SyStringData(&apLvl[i]->sFunc.sName),(int)SyStringLength(&apLvl[i]->sFunc.sName));
+				/* Insert method name (the hash key: alias-aware) */
+				ph7_value_string(pName,(const char *)apLvl[i]->pKey,(int)apLvl[i]->nKeyLen);
 				ph7_array_add_elem(pArray,0/*Automatic index assign*/,pName); /* Will make it's own copy */
 				/* Reset the cursor */
 				ph7_value_reset_string_cursor(pName);
