@@ -1254,15 +1254,18 @@ static sxi32 GenStateEmitExprCode(
 			sxu32 nNsJmp = 0;
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_NULLSAFE_JMP,0,0,0,&nNsJmp);
 			SySetPut(&pGen->aNullsafeJmp,(const void *)&nNsJmp);
-		}else if( pNode->pOp->iPrec == 18 /* Combined binary operators [i.e: =,'.=','+=',*=' ...] precedence */ ){
-			/* The lvalue is the RIGHT operand (these ops are right-associative). Mark it a write
-			 * target so a missing member (the base of a subscript-write, or a bare `$o->p`) is
-			 * auto-created — PHP auto-vivifies on write. */
+		}else if( pNode->pOp->iPrec == 18 /* Combined binary operators [i.e: =,'.=','+=',*=' ...] precedence */
+			|| pNode->pOp->iOp == EXPR_OP_REF /* `=&` reference bind */ ){
+			/* The lvalue is the RIGHT operand (prec-18 ops are right-associative; `=&`
+			 * swaps its operands in parse.c so its target is pRight too). Mark it a write
+			 * target so a missing base (the container of a subscript-write, or a bare
+			 * `$o->p`) is auto-created — PHP auto-vivifies on a plain write AND on a `=&`
+			 * bind (`$a[0] =& $x` creates $a as [0 => &$x], it does not warn). */
 			iFlags |= EXPR_FLAG_LOAD_IDX_STORE | EXPR_FLAG_MEMBER_WRITE;
-			if( iVmOp != PH7_OP_STORE ){
+			if( iVmOp != PH7_OP_STORE && pNode->pOp->iOp != EXPR_OP_REF ){
 				/* COMPOUND assignment (`.=`, `+=`, ...) READS the target first, so
-				 * php warns when it is undefined and then seeds it; a plain `=`
-				 * writes without reading and stays silent. */
+				 * php warns when it is undefined and then seeds it; a plain `=` and a
+				 * `=&` rebind write without reading the target and stay silent. */
 				iFlags |= EXPR_FLAG_RMW_LOAD;
 			}
 		}
