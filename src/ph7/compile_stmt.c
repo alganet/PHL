@@ -88,6 +88,21 @@ Loop:
 		goto Synchronize;
 	}
 	pGen->pIn++; /*Jump the equal sign */
+	/* php: a closure in a constant expression must be `static function`; a
+	 * non-static closure and any arrow fn are compile-time fatals with distinct
+	 * messages. Checked ahead of the call scan (it skips closure bodies). */
+	{
+		int iClo = PH7_GenStateInitClosureError(pGen);
+		if( iClo ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,
+				iClo == 2 ? "Closures in constant expressions must be static"
+				          : "Constant expression contains invalid operations");
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			goto Synchronize;
+		}
+	}
 	/* php: a constant expression may not CALL anything --
 	 * "Constant expression contains invalid operations". PHL used to evaluate the
 	 * call happily, so `const X = strlen("ab");` defined X as 2. */
@@ -179,9 +194,27 @@ Loop:
 	}
 	return SXRET_OK;
 Synchronize:
-	/* Synchronize with the next-semi-colon and avoid compiling this erroneous statement */
-	while(pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) == 0 ){
-		pGen->pIn++;
+	/* Synchronize with the next top-level semicolon and avoid compiling this
+	 * erroneous statement. BRACE-aware (only `{`...`}`): a rejected closure
+	 * initializer's body holds inner `;` that are not statement terminators, so
+	 * without this its `;` and `}` dangle into a spurious second error where php
+	 * halts at the first fatal. Parentheses and brackets are deliberately NOT
+	 * tracked -- a lone unbalanced `(`/`[` in erroneous input must not swallow the
+	 * following statements (which would drop later error reports); a `{` never
+	 * appears in a valid global-const initializer except as a closure body. */
+	{
+		int iBrace = 0;
+		while( pGen->pIn < pGen->pEnd ){
+			if( iBrace == 0 && (pGen->pIn->nType & PH7_TK_SEMI) ){
+				break;
+			}
+			if( pGen->pIn->nType & PH7_TK_OCB ){
+				iBrace++;
+			}else if( pGen->pIn->nType & PH7_TK_CCB ){
+				if( iBrace > 0 ){ iBrace--; }
+			}
+			pGen->pIn++;
+		}
 	}
 	return SXRET_OK;
 }

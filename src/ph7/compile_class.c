@@ -430,6 +430,96 @@ PH7_PRIVATE int PH7_GenStateInitHasCallExpr(ph7_gen_state *pGen)
 	return 0;
 }
 /*
+ * Scan a constant-expression initializer for a closure / arrow-function literal
+ * and report php's two compile-time rules the call scanner above does NOT: a
+ * NON-STATIC closure is `Fatal error: Closures in constant expressions must be
+ * static`, and ANY arrow function is `Constant expression contains invalid
+ * operations` (there is no static-`fn` escape -- `static fn()=>1` is rejected
+ * too). Only `static function(){...}` is accepted; its body is regular runtime
+ * code, so a closure NESTED inside it is skipped, not rejected.
+ *
+ * Returns 0 (clean), 1 (arrow fn -> "invalid operations") or 2 (non-static
+ * closure -> "must be static"). Mirrors PH7_GenStateInitHasCallExpr's construct
+ * skip and initializer-terminator tracking, but WITHOUT its conservative ternary
+ * bail-out: php rejects the closure even inside a branch it would fold away
+ * (`true ? function(){} : 1` still fatals), because nothing is constant-folded at
+ * this stage. Wired beside every call-scanner site (global `const`, class /
+ * interface constants, property defaults).
+ */
+PH7_PRIVATE int PH7_GenStateInitClosureError(ph7_gen_state *pGen)
+{
+	SyToken *p = pGen->pIn;
+	int iDepth = 0;
+	while( p < pGen->pEnd ){
+		if( iDepth == 0 && (p->nType & (PH7_TK_SEMI|PH7_TK_COMMA)) ){
+			break; /* end of this initializer */
+		}
+		if( (p->nType & PH7_TK_KEYWORD)
+			&& ( SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FUNCTION
+				|| SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FN ) ){
+			if( SX_PTR_TO_INT(p->pUserData) == PH7_TKWRD_FN ){
+				/* An arrow function is never a valid constant expression. */
+				return 1;
+			}
+			/* A closure literal must be `static function`: the modifier sits in the
+			 * token immediately before `function`. `static::X` never reaches here
+			 * (its next token is `::`, not the keyword). */
+			if( !(p > pGen->pIn && (p[-1].nType & PH7_TK_KEYWORD)
+				&& SX_PTR_TO_INT(p[-1].pUserData) == PH7_TKWRD_STATIC) ){
+				return 2;
+			}
+			/* `static function(){...}`: accepted -- skip the whole construct
+			 * (parameter parens then the brace-balanced body) exactly like the call
+			 * scanner, then keep looking for a sibling closure in the initializer. */
+			p++;
+			{
+				int iLocal = 0;
+				while( p < pGen->pEnd ){
+					if( iLocal == 0 && (p->nType & PH7_TK_OCB) ){
+						break;
+					}
+					if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+						iLocal++;
+					}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+						if( iLocal > 0 ){ iLocal--; }
+					}
+					p++;
+				}
+				if( p < pGen->pEnd ){
+					int iBrace = 0;
+					while( p < pGen->pEnd ){
+						if( p->nType & PH7_TK_OCB ){
+							iBrace++;
+						}else if( p->nType & PH7_TK_CCB ){
+							iBrace--;
+							if( iBrace == 0 ){
+								p++;
+								break;
+							}
+						}
+						p++;
+					}
+				}
+			}
+			continue;
+		}
+		if( p->nType & PH7_TK_OCB ){
+			if( iDepth == 0 ){
+				break; /* property-hook list: the default expression ends here */
+			}
+			iDepth++;
+		}else if( p->nType & (PH7_TK_LPAREN|PH7_TK_OSB) ){
+			iDepth++;
+		}else if( p->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+			if( iDepth > 0 ){
+				iDepth--;
+			}
+		}
+		p++;
+	}
+	return 0;
+}
+/*
  * Copy a parsed declared type onto a freshly created class attribute (property,
  * promoted property or class constant). nType/pClass/pTypeName/iTypeFlags come
  * straight from GenStateParseUnionTypeDecl; for a union the alternatives are
@@ -553,6 +643,20 @@ loop:
 			return SXERR_ABORT;
 		}
 		goto Synchronize;
+	}
+	/* php: a closure in a class/interface constant must be `static function`;
+	 * same rule (and messages) as the global `const` path in compile_stmt.c. */
+	{
+		int iClo = PH7_GenStateInitClosureError(pGen);
+		if( iClo ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				iClo == 2 ? "Closures in constant expressions must be static"
+				          : "Constant expression contains invalid operations");
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			goto Synchronize;
+		}
 	}
 	/* php: a constant expression may not CALL anything. Same rule as the global
 	 * `const` path in compile_stmt.c. */
@@ -1109,6 +1213,19 @@ loop:
 	 * the class-constant path above. pGen->pIn is still on the '=' (the scan skips
 	 * it and reads the initializer non-destructively); no '=' means no default, so
 	 * the helper stops at the ';'/',' and returns 0. */
+	/* php: a property default holding a closure must use `static function` too. */
+	if( pGen->pIn->nType & PH7_TK_EQUAL /*'='*/ ){
+		int iClo = PH7_GenStateInitClosureError(pGen);
+		if( iClo ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+				iClo == 2 ? "Closures in constant expressions must be static"
+				          : "Constant expression contains invalid operations");
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			goto Synchronize;
+		}
+	}
 	/* php: a property default may not CALL anything either. */
 	if( (pGen->pIn->nType & PH7_TK_EQUAL /*'='*/) && PH7_GenStateInitHasCallExpr(pGen) ){
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
