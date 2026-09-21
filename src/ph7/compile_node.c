@@ -1157,6 +1157,34 @@ static sxi32 GenStateLoadLiteral(ph7_gen_state *pGen)
 	sxu32 nIdx;
 	/* Extract token value */
 	pStr = &pToken->sData;
+	/* php's MAGIC constants are case-insensitive like the rest of its reserved words —
+	 * `__line__`, `__Dir__` and `__CLASS__` are one constant each — but every one of them
+	 * is recognised by a BYTE-EXACT compare: the compile-time branches just below, and
+	 * `__CLASS__` through constant.c's (deliberately case-sensitive) constant table. Fold
+	 * the spelling to the canonical upper case here, once, so both mechanisms see it; any
+	 * other spelling used to reach the plain-literal path and raise `Undefined constant
+	 * "__line__"`. Two of the branches below also read a single byte to tell a pair apart
+	 * (`zString[2]` for __DIR__ vs __FILE__ and __METHOD__ vs __FUNCTION__), which only
+	 * works on the canonical form.
+	 *
+	 * User constants stay case-SENSITIVE (php) — this fold is limited to the eight names
+	 * below, and skips a member NAME, where `C::__LINE__` is an ordinary class constant. */
+	if( (pToken->nType & PH7_TK_MEMBER_NAME) == 0 && pStr->nByte > 4
+		&& pStr->zString[0] == '_' && pStr->zString[1] == '_' ){
+		static const char * const azMagic[] = {
+			"__LINE__", "__FILE__", "__DIR__", "__FUNCTION__", "__CLASS__",
+			"__METHOD__", "__NAMESPACE__", "__TRAIT__"
+		};
+		sxu32 i;
+		for( i = 0 ; i < SX_ARRAYSIZE(azMagic) ; ++i ){
+			sxu32 nMagic = SyStrlen(azMagic[i]);
+			if( pStr->nByte == nMagic && SyStrnicmp(pStr->zString,azMagic[i],nMagic) == 0 ){
+				SyStringInitFromBuf(&sCanon,azMagic[i],nMagic);
+				pStr = &sCanon;
+				break;
+			}
+		}
+	}
 	/* Deal with the reserved literals [i.e: null,false,true,...] first. A reserved
 	 * word used as a member NAME (Enum::Null, C::Array, $o->list()) is a plain
 	 * identifier — the parser flagged its token so the whole value-folding chain is
