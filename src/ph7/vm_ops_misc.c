@@ -282,17 +282,31 @@ PH7_PRIVATE VmOpRc VmExecOpThrow(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr
 		 * (face c). */
 		sxi32 iResumePc;
 		if( VmRecordedResume(pVm,&iResumePc,pState->pEntryFrame,aInstr) ){
+			PH7_RESUME_DRAIN()
 			pc = iResumePc;
 			VM_EXIT_BREAK;
 		}
 		VM_EXIT_EXCEPTION;
 	}
 	/* No in-place catch recorded: this throw's own enclosing try caught it (the
-	 * common case; its landing pad is exactly nJump). Perform an unconditional jump
-	 * to the try's OP_POP_EXCEPTION landing pad, which tears down the try frame, runs
-	 * finally, and (when a catch/finally issued a `return`) materializes the body
-	 * frame's pending return. Routing the return through OP_POP_EXCEPTION keeps the
-	 * frame stack balanced. */
+	 * common case; its landing pad is exactly nJump). A throw-EXPRESSION
+	 * (`$q = 1 + throw new E`) abandons its outer expression's pending operands
+	 * above the try's base — drain to the catching activation's recorded depth
+	 * (matched by landing pad + bytecode array so an unrelated activation can
+	 * never be consulted) before jumping, or each caught throw leaks a slot.
+	 * Then jump to the try's OP_POP_EXCEPTION landing pad, which tears down the
+	 * try frame, runs finally, and (when a catch/finally issued a `return`)
+	 * materializes the body frame's pending return. Routing the return through
+	 * OP_POP_EXCEPTION keeps the frame stack balanced. */
+	if( SySetUsed(&pVm->aException) > 0 ){
+		ph7_exception *pTopExc = ((ph7_exception **)SySetBasePtr(&pVm->aException))[SySetUsed(&pVm->aException)-1];
+		if( pTopExc->iLandingPc == (sxu32)nJump && pTopExc->pOwnerInstr == (void *)aInstr ){
+			while( (sxi32)(pTos - pStack) > pTopExc->iStackDepth ){
+				PH7_MemObjRelease(pTos);
+				pTos--;
+			}
+		}
+	}
 	pc = nJump - 1;
 	VM_EXIT_BREAK;
 	VM_EXIT_BREAK;

@@ -39,6 +39,19 @@
 		VM_EXIT_BREAK; \
 	}
 /*
+ * Drain the abandoned mid-expression operand slots back to the catching try's
+ * base after VmRecordedResume matched (iResumeStackDepth was recorded with the
+ * resume target — the try-entry depth). Everything above it is dead: the ops
+ * that would have consumed those slots were abandoned by the throw, and the
+ * landing pad expects the try-entry depth. NOT draining leaks one slot per
+ * caught throw — a try/catch loop around a throwing op eventually overflows
+ * the operand stack (ASan heap-buffer-overflow; hit by the typed-property
+ * throw paths). Mirrors the fetch-point router and the generator inject path,
+ * which have always drained.
+ */
+#define PH7_RESUME_DRAIN() \
+	while( (sxi32)(pTos - pStack) > pVm->iResumeStackDepth ){ PH7_MemObjRelease(pTos); pTos--; }
+/*
  * Route a throw raised by the VM in the MIDDLE of an expression (an opcode that is not a
  * call boundary: OP_LOADC, OP_LOAD_IDX, ...). Mirrors OP_THROW's tail, which is the only
  * place that got this right, with one difference: OP_THROW is handed its enclosing try's
@@ -58,6 +71,7 @@
 	if( (rcVar) == PH7_EXCEPTION || pVm->pResumeFrame || pVm->pInlineInstr ){ \
 		sxi32 _iRpM; \
 		if( VmRecordedResume(pVm,&_iRpM,sState.pEntryFrame,aInstr) ){ \
+			PH7_RESUME_DRAIN() \
 			pc = _iRpM; \
 			VM_EXIT_BREAK; \
 		} \
@@ -79,6 +93,7 @@
 		sxi32 _iRpE; \
 		PH7_INLINE_RESUME_BREAK() \
 		if( VmRecordedResume(pVm,&_iRpE,sState.pEntryFrame,aInstr) ){ \
+			PH7_RESUME_DRAIN() \
 			pc = _iRpE; \
 			VM_EXIT_BREAK; \
 		} \
@@ -105,6 +120,7 @@
 		PH7_INLINE_RESUME_BREAK() \
 		if( VmRecordedResume(pVm,&_iRpI,sState.pEntryFrame,aInstr) ){ \
 			if( (nPopOnResume) > 0 ){ VmPopOperand(&pTos,(nPopOnResume)); } \
+			PH7_RESUME_DRAIN() \
 			pc = _iRpI; \
 			VM_EXIT_BREAK; \
 		} \

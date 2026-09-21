@@ -246,8 +246,16 @@ static sxi32 VmCallFinish(ph7_vm *pVm,VmExecState *pCaller,VmCallRecord *pCallee
 			pVm->pInlineInstr = 0;
 			rc = PH7_OK;
 		}else if( !pCaller->is_callback && VmRecordedResume(pVm,&iResumePc,pCaller->pEntryFrame,pCaller->aInstr) ){
-			/* Pop the result */
+			/* Pop the result, then drain any abandoned outer-expression operands
+			 * to the catching try's base (like the inline branch above) — the
+			 * ops that would have consumed them were abandoned by the throw, and
+			 * leaving them leaks one slot per caught throw (`try { $a = 1 + f(); }`
+			 * in a loop overflowed the operand stack). */
 			VmPopOperand(&pCaller->pTos,1);
+			while( (sxi32)(pCaller->pTos - pCaller->pStack) > pVm->iResumeStackDepth ){
+				PH7_MemObjRelease(pCaller->pTos);
+				pCaller->pTos--;
+			}
 			pCaller->pc = iResumePc;
 			rc = PH7_OK;
 		}else{
@@ -1988,12 +1996,14 @@ case PH7_OP_STORE: {
 			}
 			if( rcT == PH7_EXCEPTION ){
 				/* TypeError was thrown. Pop the rejected rvalue and hand
-				 * control to the nearest catch block if any, otherwise
-				 * propagate out of the VM loop. */
+				 * control to the nearest catch block if any (draining any
+				 * abandoned outer-expression operands to the try's base),
+				 * otherwise propagate out of the VM loop. */
 				VmPopOperand(&pTos,1);
 				{
 					sxi32 iRp;
 					if( VmRecordedResume(pVm,&iRp,sState.pEntryFrame,aInstr) ){
+						PH7_RESUME_DRAIN()
 						pc = iRp;
 						break;
 					}
@@ -6195,12 +6205,14 @@ SkipFuncBody:
 				goto Exception;
 			}
 			/* Exception was caught in place by THIS body's try: pop args and the
-			 * result slot to restore the pre-try stack, then resume. */
+			 * result slot, then drain any abandoned outer-expression operands to
+			 * the try's base and resume. */
 			PH7_MemObjRelease(&sRet);
 			if( nCallArgs > 0 ){
 				VmPopOperand(&pTos,nCallArgs); /* spread-adjusted; see the normal-return path */
 			}
 			VmPopOperand(&pTos,1);
+			PH7_RESUME_DRAIN()
 			pc = iResumePc;
 			break;
 		}
