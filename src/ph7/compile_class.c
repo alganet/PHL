@@ -271,19 +271,16 @@ static int GenStateInitHasNewExpr(ph7_gen_state *pGen)
 /*
  * php keeps class CONSTANTS and PROPERTIES in separate namespaces: a class may
  * declare `const C` and `public $C` together, and `$obj->C` never resolves to the
- * constant. PHL stores both in the single hAttr table (a constant is just an attr
- * carrying PH7_CLASS_ATTR_CONSTANT), so a bare PH7_ClassExtractAttribute() collides
- * across the two. These two lookups keep the namespaces apart.
+ * constant. PHL stores each in its own table (constants in hConst, properties in
+ * hAttr), so these two lookups target the right namespace and never collide.
  */
 static ph7_class_attr * GenStateExtractConstant(ph7_class *pClass,SyString *pName)
 {
-	ph7_class_attr *pAttr = PH7_ClassExtractAttribute(pClass,pName->zString,pName->nByte);
-	return ( pAttr && (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) ) ? pAttr : 0;
+	return PH7_ClassExtractConstant(pClass,pName->zString,pName->nByte);
 }
 static ph7_class_attr * GenStateExtractProperty(ph7_class *pClass,const char *zName,sxu32 nByte)
 {
-	ph7_class_attr *pAttr = PH7_ClassExtractAttribute(pClass,zName,nByte);
-	return ( pAttr && (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ) ? pAttr : 0;
+	return PH7_ClassExtractAttribute(pClass,zName,nByte);
 }
 /*
  * Return TRUE if the constant expression starting at the current token performs a
@@ -682,21 +679,9 @@ loop:
 	/* php: a class constant may not be redefined in the same class body. The
 	 * property path already guarded this; the constant path did not, so
 	 * `class C{const X=1; const X=2;}` silently kept one of them. */
-	/* php allows `const C` and `public $C` side by side -- separate namespaces --
-	 * but PHL resolves both through the single hAttr table, so the member lookup
-	 * would return whichever was declared last. Rejecting it LOUDLY is the honest
-	 * state: refusing valid php is a discoverable limitation, silently returning
-	 * the wrong member is not. A recorded divergence. */
-	if( GenStateExtractConstant(pClass,pName) == 0
-	 && GenStateExtractProperty(pClass,pName->zString,pName->nByte) != 0 ){
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-			"Class constant %z::%z collides with a property of the same name"
-			" (unsupported: PHL resolves both through one table)",&pClass->sName,pName);
-		if( rc == SXERR_ABORT ){
-			return SXERR_ABORT;
-		}
-		goto Synchronize;
-	}
+	/* php keeps constants and properties in SEPARATE namespaces, so `const C` and
+	 * `public $C` coexist. PHL now stores them in disjoint tables (hConst / hAttr),
+	 * so no collision — only a genuine constant redefinition is rejected below. */
 	if( GenStateExtractConstant(pClass,pName) != 0 ){
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 			"Cannot redefine class constant %z::%z",&pClass->sName,pName);
@@ -1186,19 +1171,9 @@ loop:
 			goto Synchronize;
 		}
 	}
-	/* Reject redeclaration (catches clash with an earlier promoted property). */
-	/* Mirror of the class-constant path: same-name const + property is valid php
-	 * that PHL cannot represent, so reject it loudly rather than resolve wrongly. */
-	if( GenStateExtractProperty(pClass,pName->zString,pName->nByte) == 0
-	 && GenStateExtractConstant(pClass,pName) != 0 ){
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-			"Property %z::$%z collides with a class constant of the same name"
-			" (unsupported: PHL resolves both through one table)",&pClass->sName,pName);
-		if( rc == SXERR_ABORT ){
-			return SXERR_ABORT;
-		}
-		goto Synchronize;
-	}
+	/* Reject redeclaration (catches clash with an earlier promoted property).
+	 * A same-name class CONSTANT is NOT a clash — php's separate namespaces let
+	 * `const C` and `public $C` coexist (stored in disjoint hConst / hAttr tables). */
 	if( GenStateExtractProperty(pClass,pName->zString,pName->nByte) != 0 ){
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 			"Cannot redeclare %z::$%z",&pClass->sName,pName);
@@ -2879,7 +2854,7 @@ static sxi32 GenStateCompileEnumCase(ph7_gen_state *pGen,ph7_class *pClass)
 	}
 	pName = &pGen->pIn->sData;
 	/* Cases share the class-constant namespace (php: "Cannot redefine class constant") */
-	if( SyHashGet(&pClass->hAttr,(const void *)pName->zString,pName->nByte) != 0 ){
+	if( SyHashGet(&pClass->hConst,(const void *)pName->zString,pName->nByte) != 0 ){
 		rc = PH7_GenCompileError(pGen,E_ERROR,pGen->pIn->nLine,
 			"Cannot redefine class constant %z::%z",&pClass->sName,pName);
 		if( rc == SXERR_ABORT ){
@@ -3809,6 +3784,15 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 						pNR = &pAR->sName;
 						if( SyHashGet(&pClass->hAttr,(const void *)pNR->zString,pNR->nByte) == 0 ){
 							SyHashInsertTail(&pClass->hAttr,(const void *)pNR->zString,pNR->nByte,pAR);
+						}
+					}
+					/* Trait constants (PHP 8.2) live in the separate hConst namespace */
+					SyHashResetLoopCursor(&pTR->hConst);
+					while((pER = SyHashGetNextEntry(&pTR->hConst)) != 0 ){
+						pAR = (ph7_class_attr *)pER->pUserData;
+						pNR = &pAR->sName;
+						if( SyHashGet(&pClass->hConst,(const void *)pNR->zString,pNR->nByte) == 0 ){
+							SyHashInsertTail(&pClass->hConst,(const void *)pNR->zString,pNR->nByte,pAR);
 						}
 					}
 					SySetPut(&pClass->aTrait,(const void *)&pTR);

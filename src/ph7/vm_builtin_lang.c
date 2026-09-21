@@ -309,7 +309,9 @@ PH7_PRIVATE int vm_builtin_constant(ph7_context *pCtx,int nArg,ph7_value **apArg
 					"Class \"%.*s\" not found",iSep,zName);
 			}
 			if( iSep + 2 < nLen ){
-				ph7_class_attr *pAttr = PH7_ClassExtractAttribute(pClass,
+				/* constant("C::NAME") names a class CONSTANT or enum case (hConst),
+				 * never a property. */
+				ph7_class_attr *pAttr = PH7_ClassExtractConstant(pClass,
 					&zName[iSep+2],(sxu32)(nLen - iSep - 2));
 				if( pAttr && pAttr->nIdx == SXU32_HIGH ){
 					/* Unmaterialized: enum case → materialize the singletons

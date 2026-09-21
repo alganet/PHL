@@ -1145,10 +1145,18 @@ static sxi32 VmMountUserClassAttrs(
 {
 	ph7_class_attr *pAttr;
 	SyHashEntry *pEntry;
+	/* Static properties live in hAttr, constants (incl. enum cases) in hConst —
+	 * separate php member namespaces. Both need their slots reserved, so mount
+	 * over both tables. */
+	SyHash *apMount[2];
+	int iMount;
+	apMount[0] = &pClass->hAttr;
+	apMount[1] = &pClass->hConst;
+	for( iMount = 0 ; iMount < 2 ; iMount++ ){
 	/* Reset the loop cursor */
-	SyHashResetLoopCursor(&pClass->hAttr);
+	SyHashResetLoopCursor(apMount[iMount]);
 	/* Process only static and constant attribute */
-	while( (pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){
+	while( (pEntry = SyHashGetNextEntry(apMount[iMount])) != 0 ){
 		/* Extract the current attribute */
 		pAttr = (ph7_class_attr *)pEntry->pUserData;
 		if( (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT)
@@ -1249,6 +1257,7 @@ static sxi32 VmMountUserClassAttrs(
 			}
 		}
 	}
+	} /* for iMount */
 	return SXRET_OK;
 }
 PH7_PRIVATE sxi32 VmMountUserClass(
@@ -2683,6 +2692,14 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 					pAttr->nIdx = SXU32_HIGH;
 					pAttr->iFlags &= ~PH7_CLASS_ATTR_EVALING;
 				}
+			}
+			/* Constants live in the separate hConst namespace; invalidate their
+			 * slots too so VM reuse re-evaluates them. */
+			SyHashResetLoopCursor(&pClass->hConst);
+			while( (pAttrEntry = SyHashGetNextEntry(&pClass->hConst)) != 0 ){
+				pAttr = (ph7_class_attr *)pAttrEntry->pUserData;
+				pAttr->nIdx = SXU32_HIGH;
+				pAttr->iFlags &= ~PH7_CLASS_ATTR_EVALING;
 			}
 		}
 		SyHashResetLoopCursor(&pVm->hClass);

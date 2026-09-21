@@ -1479,6 +1479,15 @@ static sxi32 GenStateEmitExprCode(
 				pInstr = PH7_VmPeekInstr(pGen->pVm);
 				if( pInstr && pInstr->iOp == PH7_OP_LOAD ){
 					p3 = pInstr->p3;
+					/* A `$`-form (`C::$s`, `C::$$x`, `C::${$e}`) is a STATIC PROPERTY
+					 * access, never a constant. A LITERAL name folds into p3 (non-zero)
+					 * and the exec side reads it there; a DYNAMIC name (`$$x`/`${$e}`)
+					 * leaves p3==0 with the computed name on the stack — the SAME shape
+					 * as a bareword constant `C::C`. Mark iP1=2 so exec still routes it
+					 * to the property table (hAttr), not the constant table (hConst). */
+					if( p3 == 0 ){
+						iP1 = 2;
+					}
 					(void)PH7_VmPopInstr(pGen->pVm);
 				}
 			}
