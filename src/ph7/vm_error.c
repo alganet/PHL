@@ -3884,6 +3884,20 @@ Rethrow:
 				if( pOwnerFrame->bHasRet ){
 					if( pOwnerFrame == pThrowFrame ){
 						pThrowFrame->iFlags &= ~VM_FRAME_THROW;
+						/* Record the landing pad like the cross-frame case below.
+						 * OP_THROW lands on its compiler-given nJump anyway, but a
+						 * VM-RAISED throw site (undefined function, non-callable,
+						 * arith TypeError…) has no nJump: without a recorded target
+						 * its router unwound as an exception and the Unwind discard
+						 * dropped the parked return — `function f(){ try {
+						 * nosuchfn(); } finally { return 5; } }` returned null
+						 * where php returns 5. The pad's OP_POP_EXCEPTION tears the
+						 * try frame down and its bHasRet tail materializes the
+						 * return, same as the in-place-catch landing. */
+						pVm->pResumeFrame = pOwnerFrame;
+						pVm->iResumePc = pException->iLandingPc;
+						pVm->pResumeInstr = pException->pOwnerInstr;
+						pVm->iResumeStackDepth = pException->iStackDepth;
 						VmExcRelease(&(*pVm),pException);
 						return SXRET_OK;
 					}
