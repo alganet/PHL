@@ -363,6 +363,24 @@ static int WinVfs_FileExists(const char *zPath)
 	}
 	return PH7_OK;
 }
+/* Open a path for a STAT-family read. Same as OpenReadOnly but with
+ * FILE_FLAG_BACKUP_SEMANTICS, which is the only way CreateFileW will open a
+ * DIRECTORY — without it filemtime()/fileatime()/filectime() answered -1 for every
+ * directory on Windows (a plain read-only open fails with ERROR_ACCESS_DENIED),
+ * where php reports the timestamp. FILE_READ_ATTRIBUTES is all
+ * GetFileInformationByHandle needs, so this also works on a file another process
+ * holds open for writing. */
+static HANDLE OpenForStat(LPCWSTR pPath)
+{
+	HANDLE pHandle;
+	pHandle = CreateFileW(pPath,FILE_READ_ATTRIBUTES,
+		FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,0,OPEN_EXISTING,
+		FILE_ATTRIBUTE_NORMAL|FILE_FLAG_BACKUP_SEMANTICS,0);
+	if( pHandle == INVALID_HANDLE_VALUE ){
+		return 0;
+	}
+	return pHandle;
+}
 /* Open a file in a read-only mode */
 static HANDLE OpenReadOnly(LPCWSTR pPath)
 {
@@ -420,11 +438,14 @@ static ph7_int64 convertWindowsTimeToUnixTime(LPFILETIME pTime)
 /* Convert UNIX timestamp to Windows timestamp */
 static void convertUnixTimeToWindowsTime(ph7_int64 nUnixtime,LPFILETIME pOut)
 {
+  /* The converted value has to be the one that is STORED: this computed `result` and
+   * then wrote the raw unix seconds into the FILETIME, so a requested 1000000000
+   * landed as 100 seconds past the 1601 epoch and read back as -11644473500. */
   ph7_int64 result = EPOCH_DIFFERENCE;
   result += nUnixtime;
-  result *= 10000000LL;
-  pOut->dwHighDateTime = (DWORD)(nUnixtime>>32);
-  pOut->dwLowDateTime = (DWORD)nUnixtime;
+  result *= TICKS_PER_SECOND;
+  pOut->dwHighDateTime = (DWORD)((sxu64)result >> 32);
+  pOut->dwLowDateTime = (DWORD)((sxu64)result & 0xFFFFFFFFu);
 }
 /* int (*xTouch)(const char *,ph7_int64,ph7_int64) */
 static int WinVfs_Touch(const char *zPath,ph7_int64 touch_time,ph7_int64 access_time)
@@ -433,24 +454,36 @@ static int WinVfs_Touch(const char *zPath,ph7_int64 touch_time,ph7_int64 access_
 	void *pConverted;
 	void *pHandle;
 	BOOL rc = 0;
+	/* Accept file:// like every other path-taking entry in this VFS (the POSIX
+	 * driver already does) — this was the only one that skipped the mapping. */
+	zPath = WinVfsLocalPath(zPath);
 	pConverted = convertUtf8Filename(zPath);
 	if( pConverted == 0 ){
 		return -1;
 	}
-	pHandle = OpenReadOnly((LPCWSTR)pConverted);
+	/* php's touch() CREATES a missing file (OPEN_ALWAYS), and SetFileTime needs write
+	 * access — the read-only handle this used could not stamp an existing file either.
+	 * FILE_FLAG_BACKUP_SEMANTICS is what lets a DIRECTORY be opened at all (php's
+	 * win32 utime passes it for the same reason, and the POSIX driver's utime() works
+	 * on directories); it does not change what OPEN_ALWAYS creates for a missing path.
+	 * Mirrors the POSIX driver's utime + open(O_CREAT) fallback. */
+	pHandle = CreateFileW((LPCWSTR)pConverted,FILE_WRITE_ATTRIBUTES,
+		FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,0,OPEN_ALWAYS,
+		FILE_ATTRIBUTE_NORMAL|FILE_FLAG_BACKUP_SEMANTICS,0);
+	if( pHandle == INVALID_HANDLE_VALUE ){
+		pHandle = 0;
+	}
 	if( pHandle ){
-		if( touch_time < 0 ){
-			GetSystemTimeAsFileTime(&sTouch);
-		}else{
-			convertUnixTimeToWindowsTime(touch_time,&sTouch);
-		}
-		if( access_time < 0 ){
-			/* Use the touch time */
-			sAccess = sTouch; /* Structure assignment */
-		}else{
-			convertUnixTimeToWindowsTime(access_time,&sAccess);
-		}
-		rc = SetFileTime(pHandle,&sTouch,&sAccess,0);
+		/* Both stamps are real values: the builtin resolves php's "now" default, so a
+		 * NEGATIVE timestamp (legal to php) is no longer read as "not given". */
+		convertUnixTimeToWindowsTime(touch_time,&sTouch);
+		convertUnixTimeToWindowsTime(access_time,&sAccess);
+		/* SetFileTime(hFile, creation, lastAccess, lastWrite): the modification stamp
+		 * belongs in the LAST slot. It used to be passed as the CREATION time with
+		 * lastWrite left NULL, so touch($f, $mtime) changed a stamp nothing reads and
+		 * left filemtime() reporting whatever the file already had. Creation stays
+		 * untouched, like php. */
+		rc = SetFileTime(pHandle,0,&sAccess,&sTouch);
 		/* Close the handle */
 		CloseHandle(pHandle);
 	}
@@ -469,8 +502,8 @@ static ph7_int64 WinVfs_FileAtime(const char *zPath)
 	if( pConverted == 0 ){
 		return -1;
 	}
-	/* Open the file in read-only mode */
-	pHandle = OpenReadOnly((LPCWSTR)pConverted);
+	/* Open for a stat read (directories included) */
+	pHandle = OpenForStat((LPCWSTR)pConverted);
 	if( pHandle ){
 		BOOL rc;
 		rc = GetFileInformationByHandle(pHandle,&sInfo);
@@ -498,8 +531,8 @@ static ph7_int64 WinVfs_FileMtime(const char *zPath)
 	if( pConverted == 0 ){
 		return -1;
 	}
-	/* Open the file in read-only mode */
-	pHandle = OpenReadOnly((LPCWSTR)pConverted);
+	/* Open for a stat read (directories included) */
+	pHandle = OpenForStat((LPCWSTR)pConverted);
 	if( pHandle ){
 		BOOL rc;
 		rc = GetFileInformationByHandle(pHandle,&sInfo);
@@ -527,8 +560,8 @@ static ph7_int64 WinVfs_FileCtime(const char *zPath)
 	if( pConverted == 0 ){
 		return -1;
 	}
-	/* Open the file in read-only mode */
-	pHandle = OpenReadOnly((LPCWSTR)pConverted);
+	/* Open for a stat read (directories included) */
+	pHandle = OpenForStat((LPCWSTR)pConverted);
 	if( pHandle ){
 		BOOL rc;
 		rc = GetFileInformationByHandle(pHandle,&sInfo);

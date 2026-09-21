@@ -165,8 +165,21 @@ PH7_PRIVATE int PH7_builtin_fseek(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Extract the offset */
 	iOfft = ph7_value_to_int64(apArg[1]);
 	whence = 0;/* SEEK_SET */
-	if( nArg > 2 && ph7_value_is_int(apArg[2]) ){
-		whence = ph7_value_to_int(apArg[2]);
+	if( nArg > 2 ){
+		/* Read whatever was passed, coercing like php's ZPP: gating this on
+		 * ph7_value_is_int() left `fseek($f, 4, "99")` and `fseek($f, 4, 99.9)`
+		 * falling back to whence 0, i.e. the very silent-SEEK_SET the check below
+		 * exists to stop (and it disagreed with `99.0`, which is_int accepts). */
+		whence = (int)ph7_value_to_int64(apArg[2]);
+	}
+	if( whence != 0 /* SEEK_SET */ && whence != 1 /* SEEK_CUR */ && whence != 2 /* SEEK_END */ ){
+		/* php's php_stream_seek rejects an unknown whence and answers -1 WITHOUT
+		 * moving the cursor. PHL passed the raw value through to the driver, where
+		 * every non-CUR/END value fell into the SEEK_SET arm — so fseek($f, 0, 99)
+		 * reported success (0) AND silently seeked to the start of the stream, two
+		 * wrong answers from one unchecked argument. php raises no error here. */
+		ph7_result_int(pCtx,-1);
+		return PH7_OK;
 	}
 	/* Perform the requested operation */
 	rc = pStream->xSeek(pDev->pHandle,iOfft,whence);
@@ -1580,6 +1593,25 @@ PH7_PRIVATE int PH7_builtin_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	iFlags = 0;
+	if( nArg > 1 ){
+		/* php validates the mask FIRST — before the wrapper is resolved and before
+		 * anything is allocated, so file("bogus://x", 8) is the ValueError and not a
+		 * stream warning, and the throw cannot strand the io_private below (its chunk
+		 * is not auto-released). file() accepts only USE_INCLUDE_PATH|IGNORE_NEW_LINES|
+		 * SKIP_EMPTY_LINES|NO_DEFAULT_CONTEXT (1|2|4|16) — FILE_APPEND belongs to
+		 * file_put_contents and is rejected here like any other stray bit. PHL masked
+		 * the bits it knew and silently ignored the rest, so file($p, 8) and
+		 * file($p, -1) read the file with a flag combination the caller never asked
+		 * for. Read at 64-bit width so a high bit cannot be truncated into a valid
+		 * mask. */
+		ph7_int64 nFlags = ph7_value_to_int64(apArg[1]);
+		if( nFlags & ~(ph7_int64)(0x01|0x02|0x04|0x10) ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"file(): Argument #2 ($flags) must be a valid flag value");
+		}
+		iFlags = (int)nFlags;
+	}
 	/* Extract the file path */
 	zFile = ph7_value_to_string(apArg[0],&nLen);
 	/* Point to the target IO stream device */
@@ -1598,10 +1630,6 @@ PH7_PRIVATE int PH7_builtin_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Initialize the structure */
 	InitIOPrivate(pCtx->pVm,pStream,pDev);
-	iFlags = 0;
-	if( nArg > 1 ){
-		iFlags = ph7_value_to_int(apArg[1]);
-	}
 	if( iFlags & 0x01 /*FILE_USE_INCLUDE_PATH*/ ){
 		use_include = TRUE;
 	}
@@ -1637,23 +1665,27 @@ PH7_PRIVATE int PH7_builtin_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		zPtr = zBuf;
 		zEnd = &zBuf[n];
 		if( iFlags & 0x02 /* FILE_IGNORE_NEW_LINES */ ){
-			/* Ignore trailig lines */
-			while( zPtr < zEnd && (zEnd[-1] == '\n'
-#ifdef __WINNT__
-				|| zEnd[-1] == '\r'
-#endif
-				)){
+			/* php strips ONE line ending: the LF, plus the CR that immediately
+			 * precedes it. Not a run — "a\r\r\n" keeps its first CR and a
+			 * CR-TERMINATED last line ("a\r", no LF) keeps it entirely. The
+			 * platform-gated version this replaces left the CR on every CRLF line
+			 * read on POSIX; a strip-all loop would instead eat data php keeps. */
+			if( zEnd > zPtr && zEnd[-1] == '\n' ){
+				n--;
+				zEnd--;
+				if( zEnd > zPtr && zEnd[-1] == '\r' ){
 					n--;
 					zEnd--;
+				}
 			}
 		}
 		if( iFlags & 0x04 /* FILE_SKIP_EMPTY_LINES */ ){
-			/* Ignore empty lines */
-			while( zPtr < zEnd && (unsigned char)zPtr[0] < 0xc0 && SyisSpace(zPtr[0]) ){
-				zPtr++;
-			}
-			if( zPtr >= zEnd ){
-				/* Empty line */
+			/* php's "empty" is ZERO LENGTH after the optional newline strip — not
+			 * "blank". PHL skipped any all-whitespace line, so a line of spaces was
+			 * dropped where php keeps it, and without IGNORE_NEW_LINES a bare "\n"
+			 * line (never zero-length, since the newline is still attached) was
+			 * dropped too. Both are silent data loss from a read. */
+			if( zEnd <= zPtr ){
 				continue;
 			}
 		}
