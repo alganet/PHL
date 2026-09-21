@@ -1328,6 +1328,10 @@ static sxi32 VmEnforceGenArgType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_vm_func_ar
 				VmScalarTypeName(pFormal->nType,&pFormal->sTypeName,zTypeBuf,sizeof(zTypeBuf)),
 				VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf))));
 		}
+	}else{
+		/* Mask matched — an int param accepting a whole-real materializes
+		 * it (php: g(1.0) into int $x is int(1)). */
+		VmMaterializeIntTyped(pVal,pFormal->nType);
 	}
 	return SXRET_OK;
 }
@@ -1469,6 +1473,10 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 						if( xCast ){
 							xCast(pObj);
 						}
+					}else{
+						/* Mask matched — a const-indirected whole-real default
+						 * (`int $x = FOO` with FOO = 2.0) materializes as int. */
+						VmMaterializeIntTyped(pObj,aFormalArg[n].nType);
 					}
 				}
 				sSlot.nIdx = pObj->nIdx;

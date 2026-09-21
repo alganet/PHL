@@ -1163,6 +1163,39 @@ PH7_PRIVATE ph7_class *VmResolveTypeClass(ph7_vm *pVm, const SyString *pCN, ph7_
 	}
 	return PH7_VmExtractClass(pVm,pCN->zString,pCN->nByte,FALSE,0);
 }
+/*
+ * PHL's number model flags a whole-valued real MEMOBJ_REAL|MEMOBJ_INT (the
+ * float-identity leniency — see the typed-constant note above
+ * VmEnforceConstantType). Observer sites (is_int, gettype, var_dump, ===)
+ * treat REAL as dominant, so such a value READS as a float. But every
+ * TYPE-CHECK mask test (`iFlags & nType`) accepts it through its INT bit,
+ * so an int-typed parameter / return / property / union member silently
+ * kept the value LOOKING like a float where php produces a genuine int
+ * (weak-mode float->int here is lossless by construction). Call this after
+ * a mask ACCEPT to materialize the int. No-op for any other value/type
+ * pairing — including SXU32_HIGH and int|float-style masks (REAL bit
+ * present).
+ *
+ * Recorded leniency (strict_types): php rejects a float literal (`f(1.0)`)
+ * under strict_types, but the SAME dual-flagged shape also comes out of
+ * PHL arithmetic/builtins where php produces a genuine INT — `pow(2,3)`
+ * is php int(8), PHL whole-real float(8). PHL cannot tell those apart by
+ * flags, so strict mode accepts-and-materializes both rather than
+ * rejecting the php-valid `f(pow(2,3))`.
+ */
+PH7_PRIVATE void VmMaterializeIntTyped(ph7_value *pVal, sxu32 nType)
+{
+	if( (nType & MEMOBJ_INT) && (nType & MEMOBJ_REAL) == 0
+	 && (pVal->iFlags & (MEMOBJ_INT|MEMOBJ_REAL)) == (MEMOBJ_INT|MEMOBJ_REAL) ){
+		/* NOT PH7_MemObjToInteger — that no-ops when the INT bit is already
+		 * set, which is exactly the dual-flag case. x.iVal already holds the
+		 * exact integer (MemObjTryIntger only sets the INT bit when the
+		 * real->int->real round-trip is lossless); drop the REAL identity. */
+		pVal->x.iVal = (sxi64)pVal->rVal;
+		SyBlobRelease(&pVal->sBlob);
+		MemObjSetType(pVal, MEMOBJ_INT);
+	}
+}
 PH7_PRIVATE sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, int bNullable, int bStrict)
 {
 	sxu32 i;
@@ -1258,12 +1291,20 @@ PH7_PRIVATE sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, 
 	if( pValue->iFlags & MEMOBJ_HASHMAP ){
 		return bHasArray ? SXRET_OK : SXERR_INVALID;
 	}
-	/* Scalar handling — exact match first */
-	if( pValue->iFlags & MEMOBJ_INT ){
-		if( bHasInt ) return SXRET_OK;
-	}
+	/* Scalar handling — exact match first. REAL before INT: a whole-valued
+	 * real carries MEMOBJ_REAL|MEMOBJ_INT (float-identity leniency), reads as
+	 * a float, and must prefer a `float` member (php: 1.0 into int|float
+	 * stays float); absent one, an `int` member takes it as a genuine int
+	 * (php: 1.0 into int|string is int(1)) — materialize so it stops READING
+	 * as a float. A pure int never carries REAL, so its arm is unaffected. */
 	if( pValue->iFlags & MEMOBJ_REAL ){
 		if( bHasFloat ) return SXRET_OK;
+	}
+	if( pValue->iFlags & MEMOBJ_INT ){
+		if( bHasInt ){
+			VmMaterializeIntTyped(pValue, MEMOBJ_INT);
+			return SXRET_OK;
+		}
 	}
 	if( pValue->iFlags & MEMOBJ_STRING ){
 		if( bHasString ) return SXRET_OK;
@@ -1645,6 +1686,10 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 			}
 			xCast(pValue);
 		}
+	}else{
+		/* Mask matched — an int property accepting a whole-real must
+		 * materialize it as a genuine int (php: $o->i = 1.0 stores int(1)). */
+		VmMaterializeIntTyped(pValue,pAttr->nType);
 	}
 	pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
 	return SXRET_OK;
@@ -1832,6 +1877,7 @@ PH7_PRIVATE sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 	 * carries no MEMOBJ_INT and is correctly rejected here. Tightening the computed
 	 * residual needs PHL's float-identity/division model, which is out of scope. */
 	if( pValue->iFlags & pAttr->nType ){
+		VmMaterializeIntTyped(pValue,pAttr->nType);
 		return SXRET_OK;
 	}
 	if( pAttr->nType == MEMOBJ_REAL && (pValue->iFlags & MEMOBJ_INT) ){
@@ -2033,6 +2079,10 @@ PH7_PRIVATE sxi32 VmVariadicElementTypeCheck(ph7_vm *pVm,ph7_class *pSelfHint,ph
 				VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
 			return (rc == PH7_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
 		}
+	}else{
+		/* Mask matched — an int variadic accepting a whole-real materializes
+		 * it as a genuine int (php: f(int ...$a) with 1.0 collects int(1)). */
+		VmMaterializeIntTyped(pVal,pFormal->nType);
 	}
 	return SXRET_OK;
 }
@@ -2442,8 +2492,10 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 			VmScalarTypeName(pFunc->nReturnType,&pFunc->sReturnTypeName,zTypeBuf,sizeof(zTypeBuf)),
 			"null");
 	}
-	/* Exact match? Done. */
+	/* Exact match? Done. An `: int` return accepting a whole-real
+	 * materializes it (php: `return 1.0` from `: int` yields int(1)). */
 	if( pValue->iFlags & pFunc->nReturnType ){
+		VmMaterializeIntTyped(pValue,pFunc->nReturnType);
 		return SXRET_OK;
 	}
 	/* Object->scalar is never compatible, EXCEPT an object with __toString()
