@@ -113,13 +113,17 @@ static void PcreCache_Insert(const char *zPattern, sxu32 nLen, pcre2_code *pCode
 static sxi32 PcreParsePattern(
 	const char *zInput, int nInputLen,
 	const char **pPattern, int *pnPatternLen,
-	const char **pFlags, int *pnFlagLen)
+	const char **pFlags, int *pnFlagLen,
+	char *pCloseDelim, int *pbPaired)
 {
 	const char *zEnd = &zInput[nInputLen];
 	const char *z = zInput;
 	char cOpen, cClose;
 	const char *pStart;
 
+	/* Delimiter details for a "no ending delimiter" diagnostic (php names it) */
+	*pCloseDelim = 0;
+	*pbPaired = 0;
 	/* Skip leading whitespace */
 	while( z < zEnd && (unsigned char)*z <= 0x20 ){
 		z++;
@@ -140,6 +144,8 @@ static sxi32 PcreParsePattern(
 		case '<': cClose = '>'; break;
 		default:  cClose = cOpen; break;
 	}
+	*pCloseDelim = cClose;
+	*pbPaired = (cOpen != cClose);
 	z++; /* Skip opening delimiter */
 	pStart = z;
 	/* Scan for closing delimiter, respecting backslash escapes */
@@ -203,6 +209,8 @@ static pcre2_code *PcreCompile(
 	int errcode;
 	sxu32 nCapture;
 	sxi32 parseRc;
+	char cDelim;
+	int bPaired;
 
 	/* Check cache first */
 	pCode = PcreCache_Find(zFullPattern, (sxu32)nLen, pCaptureCount);
@@ -210,15 +218,20 @@ static pcre2_code *PcreCompile(
 		return pCode;
 	}
 	/* Parse delimiter */
-	parseRc = PcreParsePattern(zFullPattern, nLen, &zPat, &nPatLen, &zFlags, &nFlagLen);
+	parseRc = PcreParsePattern(zFullPattern, nLen, &zPat, &nPatLen, &zFlags, &nFlagLen,
+		&cDelim, &bPaired);
 	if( parseRc != PCRE_PARSE_OK ){
-		const char *zMsg;
-		switch( parseRc ){
-			case PCRE_PARSE_EMPTY:         zMsg = "Empty regular expression"; break;
-			case PCRE_PARSE_BAD_DELIMITER: zMsg = "Delimiter must not be alphanumeric, backslash, or whitespace"; break;
-			default:                       zMsg = "No ending delimiter found"; break;
+		if( parseRc == PCRE_PARSE_EMPTY ){
+			ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Empty regular expression");
+		}else if( parseRc == PCRE_PARSE_BAD_DELIMITER ){
+			ph7_context_throw_error(pCtx, PH7_CTX_WARNING,
+				"Delimiter must not be alphanumeric, backslash, or NUL byte");
+		}else{
+			/* php names the delimiter, and distinguishes paired delimiters */
+			ph7_context_throw_error_format(pCtx, PH7_CTX_WARNING,
+				bPaired ? "No ending matching delimiter '%c' found"
+				        : "No ending delimiter '%c' found", cDelim);
 		}
-		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, zMsg);
 		pCtx->pVm->iPcreLastError = PHP_PREG_INTERNAL_ERROR;
 		return 0;
 	}
