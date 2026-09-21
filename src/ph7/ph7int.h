@@ -88,6 +88,29 @@ struct ph7_value
 	SyBlob sBlob;       /* String values */
 	sxu32 nIdx;         /* Index number of this entry in the global object allocator */
 };
+/*
+ * D1 commit 2: a captured lvalue path for a deferred by-ref/by-value call argument
+ * ($a["k"], $o->p, and nested/undefined-base forms). Built on a lookup MISS by the
+ * LOAD_IDX/MEMBER record modes and re-walked by VmResolveDeferredArgs at OP_CALL once the
+ * callee's by-ref shape is known. Owned by a MEMOBJ_AUX_DEFPATH stack slot's x.pOther.
+ */
+typedef struct VmDeferStep VmDeferStep;
+typedef struct VmDeferredPath VmDeferredPath;
+struct VmDeferStep {
+	int       isProp;    /* 0 = subscript element, 1 = object property */
+	ph7_value sKey;      /* element: deep-copied index value (copied before pIdx is released) */
+	SyString  sProp;     /* property: name, into pName below (owned by the path allocation) */
+	char     *zProp;     /* property: owned copy of the name bytes (freed with the path) */
+};
+struct VmDeferredPath {
+	SyMemBackend *pAlloc;    /* allocator, so PH7_MemObjRelease can self-free without a pVm */
+	int           eRoot;     /* 0 = real container nIdx, 1 = undefined-var name, 2 = string base */
+	sxu32         nRootIdx;  /* eRoot==0: aMemObj slot of the root container ($a/$o) */
+	SyString      sRootName; /* eRoot==1: variable name (VM-lifetime bytecode string, borrowed) */
+	sxu32         nStep;     /* number of captured steps (outer-to-inner) */
+	sxu32         nAlloc;    /* capacity of aStep */
+	VmDeferStep  *aStep;     /* captured steps */
+};
 /* Allowed value types.
  */
 #define MEMOBJ_STRING    0x001  /* Memory value is a UTF-8 string */
@@ -114,6 +137,15 @@ struct ph7_value
                                     * materializes it for a by-ref parameter or warns+passes NULL for a
                                     * by-value one, clearing this flag. Never survives into a stored
                                     * value: it is part of MEMOBJ_AUX, so MemObjStore strips it. */
+#define MEMOBJ_AUX_DEFPATH 0x10000 /* Stack-only marker (D1 commit 2): a deferred call argument that is an
+                                    * array-element ($a["k"]) or property ($o->p) lvalue whose target was
+                                    * ABSENT at load time. The value is NULL; x.pOther owns a heap
+                                    * VmDeferredPath (captured lvalue chain). VmResolveDeferredArgs re-walks
+                                    * it in vivify-mode (by-ref) or read+warn-mode (by-value). Unlike
+                                    * MEMOBJ_AUX_DEFERRED (a borrowed name pointer), this OWNS heap memory:
+                                    * PH7_MemObjRelease frees it at the TOP, before its MEMOBJ_NULL
+                                    * short-circuit, so every pop/abort/exception path releases it. Part of
+                                    * MEMOBJ_AUX, so MemObjStore strips the flag on copy. */
 /* Mask of all known types */
 #define MEMOBJ_ALL (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)
 /* Scalar variables
@@ -122,7 +154,7 @@ struct ph7_value
  *  Types array, object and resource are not scalar.
  */
 #define MEMOBJ_SCALAR (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL)
-#define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_CUFVAL|MEMOBJ_AUX_DEFERRED)
+#define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_CUFVAL|MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH)
 /*
  * The following macro clear the current ph7_value type and replace
  * it with the given one.
@@ -1823,6 +1855,9 @@ enum ph7_vm_op {
 #define PH7_MEMBER_REF_TARGET 6 /* reference-store target ($o->p =& $x, C::$s =& $x): resolve the
                                  * property slot and stash it for the following OP_STORE_REF; skip
                                  * the read/hook/magic machinery (a ref bind neither reads nor coerces) */
+#define PH7_MEMBER_DEFPATH 7    /* D1 commit 2: deferred by-ref/by-value property call arg ($o->p). Reads a
+                                 * present property (like READ); on a miss/magic, records the lvalue path
+                                 * (MEMOBJ_AUX_DEFPATH) that OP_CALL re-walks in vivify or read+warn mode */
 /* -- END-OF INSTRUCTIONS -- */
 /*
  * Expression Operators ID.
@@ -2594,6 +2629,11 @@ PH7_PRIVATE sxi32 VmEnumMaterialize(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE void VmExpandConstantWithNotice(ph7_vm *pVm,ph7_constant *pCons,ph7_value *pOut);
 PH7_PRIVATE void VmTrackOutput(ph7_vm *pVm, sxu32 nLen);
 PH7_PRIVATE ph7_value * VmExtractMemObj(ph7_vm *pVm,const SyString *pName,int bDup,int bCreate);
+/* D1 commit 2: deferred-lvalue-path capture (built by the LOAD_IDX/MEMBER record modes) */
+PH7_PRIVATE VmDeferredPath * VmDeferPathNew(ph7_vm *pVm,int eRoot,sxu32 nRootIdx,const SyString *pName);
+PH7_PRIVATE sxi32 VmDeferPathPushElem(VmDeferredPath *pPath,ph7_value *pKey);
+PH7_PRIVATE sxi32 VmDeferPathPushProp(VmDeferredPath *pPath,const SyString *pName);
+PH7_PRIVATE void VmFreeDeferredPath(VmDeferredPath *pPath);
 PH7_PRIVATE void VmExpandUserConstant(ph7_value *pVal,void *pUserData);
 PH7_PRIVATE ph7_class * VmExtractEnumClass(ph7_vm *pVm,ph7_value *pName);
 PH7_PRIVATE int vm_builtin_compact(ph7_context *pCtx,int nArg,ph7_value **apArg);

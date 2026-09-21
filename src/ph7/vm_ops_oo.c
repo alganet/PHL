@@ -376,6 +376,33 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 			VM_EXIT_ABORT;
 		}
 #endif
+		if( pInstr->iP2 == PH7_MEMBER_DEFPATH
+		 && (pNos->iFlags & (MEMOBJ_AUX_DEFPATH|MEMOBJ_AUX_DEFERRED)) ){
+			/* D1 commit 2: deferred property arg ($o->p) whose base is itself a deferred lvalue
+			 * (a nested chain `$a["k"]->p`, or an undefined base object). Append a property step
+			 * to the base's captured path; OP_CALL re-walks it. */
+			SyString sProp;
+			VmDeferredPath *pPath = 0;
+			SyStringInitFromBuf(&sProp,(const char *)SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
+			if( pNos->iFlags & MEMOBJ_AUX_DEFPATH ){
+				pPath = (VmDeferredPath *)pNos->x.pOther;
+				VmDeferPathPushProp(pPath,&sProp);
+			}else{
+				SyString sRootName;
+				SyStringInitFromBuf(&sRootName,(const char *)pNos->x.pOther,
+					pNos->x.pOther ? SyStrlen((const char *)pNos->x.pOther) : 0);
+				pPath = VmDeferPathNew(&(*pVm),1,SXU32_HIGH,&sRootName);
+				if( pPath ){
+					pNos->iFlags &= ~MEMOBJ_AUX_DEFERRED; /* borrowed name */
+					pNos->x.pOther = pPath;
+					pNos->iFlags |= MEMOBJ_AUX_DEFPATH;
+					pNos->nIdx = SXU32_HIGH;
+					VmDeferPathPushProp(pPath,&sProp);
+				}
+			}
+			VmPopOperand(&pTos,1); /* drop the property name; the carrier stays as pTos */
+			VM_EXIT_BREAK;
+		}
 		if( pNos->iFlags & MEMOBJ_OBJ ){
 			ph7_class *pClass;
 			/* Class already instantiated */
@@ -687,6 +714,30 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							}
 						}
 					}
+				}
+				if( pObjAttr == 0 && pInstr->iP2 == PH7_MEMBER_DEFPATH && pNos->nIdx != SXU32_HIGH ){
+					/* D1 commit 2: deferred property arg, property absent on a REACHABLE object
+					 * base ($o is a real slot). Record a property step rooted at $o so OP_CALL can
+					 * vivify+bind (by-ref) or read via __get / warn (by-value). A magic __get/__set
+					 * class is recorded the same way; the resolve step emits php's Notice for the
+					 * by-ref case and dispatches __get for by-value. */
+					SyString sProp;
+					VmDeferredPath *pPath = VmDeferPathNew(&(*pVm),0,pNos->nIdx,0);
+					SyStringInitFromBuf(&sProp,sName.zString,sName.nByte);
+					if( pPath && VmDeferPathPushProp(pPath,&sProp) == SXRET_OK ){
+						VmPopOperand(&pTos,1);       /* drop the property name */
+						pThis->iRef++;
+						PH7_MemObjRelease(pTos);     /* collapse the object slot into the carrier */
+						pTos->x.pOther = pPath;
+						pTos->iFlags = MEMOBJ_NULL | MEMOBJ_AUX_DEFPATH;
+						pTos->nIdx = SXU32_HIGH;
+						PH7_ClassInstanceUnref(pThis);
+						VM_EXIT_BREAK;
+					}
+					if( pPath ){
+						VmFreeDeferredPath(pPath);
+					}
+					/* fall through to the normal miss handling on allocation failure */
 				}
 				if( pObjAttr == 0 ){
 					/* Missing property. On a plain READ, php dispatches __get($name) and the

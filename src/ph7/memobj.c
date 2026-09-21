@@ -1260,6 +1260,12 @@ PH7_PRIVATE sxi32 PH7_MemObjLoad(ph7_value *pSrc,ph7_value *pDest)
 {
 	SyMemcpy((const void *)&(*pSrc),&(*pDest),
 		sizeof(ph7_value)-(sizeof(ph7_vm *)+sizeof(SyBlob)+sizeof(sxu32)));
+	/* D1 commit 2: a MEMOBJ_AUX_DEFPATH carrier OWNS its heap descriptor via x.pOther, and
+	 * PH7_MemObjRelease frees it exactly once. An aliasing Load copies iFlags+x.pOther
+	 * verbatim, so a Load-duplicated carrier would let two slots free the same descriptor.
+	 * Carriers are transient (produced by LOAD_IDX/MEMBER, consumed at OP_CALL) and are never
+	 * Load-copied today; strip the flag defensively so the invariant can't be violated. */
+	pDest->iFlags &= ~MEMOBJ_AUX_DEFPATH;
 	if( pSrc->iFlags & MEMOBJ_HASHMAP ){
 		/* Increment reference count */
 		((ph7_hashmap *)pSrc->x.pOther)->iRef++;
@@ -1280,6 +1286,15 @@ PH7_PRIVATE sxi32 PH7_MemObjLoad(ph7_value *pSrc,ph7_value *pDest)
  */
 PH7_PRIVATE sxi32 PH7_MemObjRelease(ph7_value *pObj)
 {
+	if( pObj->iFlags & MEMOBJ_AUX_DEFPATH ){
+		/* D1 commit 2: a deferred element/property lvalue carrier OWNS a heap VmDeferredPath
+		 * on a NULL-typed slot. Free it HERE, before the MEMOBJ_NULL short-circuit below —
+		 * this is the universal release site every pop / abort / exception-unwind path routes
+		 * through, so the descriptor never leaks even when OP_CALL never consumes it. */
+		VmFreeDeferredPath((VmDeferredPath *)pObj->x.pOther);
+		pObj->x.pOther = 0;
+		pObj->iFlags &= ~MEMOBJ_AUX_DEFPATH;
+	}
 	if( (pObj->iFlags & MEMOBJ_NULL) == 0 ){
 		if( pObj->iFlags & MEMOBJ_HASHMAP ){
 			PH7_HashmapUnref((ph7_hashmap *)pObj->x.pOther);

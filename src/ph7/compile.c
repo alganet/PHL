@@ -918,11 +918,21 @@ static sxi32 GenStateEmitExprCode(
 				 * materializes it ONLY for a by-ref parameter once the callee is resolved
 				 * (VmResolveDeferredArgs). Excludes isset()/empty()/unset(), which compile
 				 * through this same call loop but must NEVER create their operand, and
-				 * named/spread args (positional-index and by-ref semantics don't apply). */
+				 * named/spread args (positional-index and by-ref semantics don't apply).
+				 *
+				 * D1 commit 2: the same reasoning extends to an array-element ($a["k"]) or
+				 * property ($o->p) argument — a by-ref user-function parameter must vivify the
+				 * element/property, a by-value one must warn and NOT vivify. Those nodes carry a
+				 * subscript/arrow operator (pOp != 0). The DEFER flag rides down to the base LOAD
+				 * (undefined base auto-defers via commit 1) and to the LOAD_IDX/MEMBER, which
+				 * record the lvalue path on a lookup miss. Static `::` and nullsafe `?->` stay
+				 * eager. */
 				if( (iFlags & (EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_EMPTY|EXPR_FLAG_LOAD_IDX_UNSET)) == 0
 				 && (iArgFlags & EXPR_FLAG_RDONLY_LOAD) /* not a known builtin by-ref slot (kept eager above) */
-				 && apNode[n]->pOp == 0 && apNode[n]->xCode == PH7_CompileVariable
-				 && (apNode[n]->iFlags & (EXPR_NODE_NAMED_ARG|EXPR_NODE_SPREAD)) == 0 ){
+				 && (apNode[n]->iFlags & (EXPR_NODE_NAMED_ARG|EXPR_NODE_SPREAD)) == 0
+				 && ( (apNode[n]->pOp == 0 && apNode[n]->xCode == PH7_CompileVariable)
+				   || (apNode[n]->pOp != 0 && (apNode[n]->pOp->iOp == EXPR_OP_SUBSCRIPT
+				                            || apNode[n]->pOp->iOp == EXPR_OP_ARROW)) ) ){
 					iArgFlags |= EXPR_FLAG_DEFER_ARG;
 				}
 				rc = GenStateEmitExprCode(&(*pGen),apNode[n],iArgFlags);
@@ -988,6 +998,21 @@ static sxi32 GenStateEmitExprCode(
 			sxi32 iLeftFlags = iFlags;
 			sxu32 nNullcLhsFirst = PH7_VmInstrLength(pGen->pVm);
 			int bNullcLhs = 0;
+			/* D1 commit 2: a deferred element/property call arg records its lvalue chain, but
+			 * that chain must be CONTIGUOUS. Only propagate DEFER_ARG to the base when the base
+			 * is itself a continuable lvalue — a plain variable (an undefined base auto-defers),
+			 * another subscript, or a `->` member. If the base is anything else (most importantly
+			 * a method CALL, e.g. `$o->items()->prop` or `$r->attributes->item(0)->nodeName`),
+			 * strip DEFER so that intermediate read is a NORMAL read, not a record-mode carrier. */
+			if( iLeftFlags & EXPR_FLAG_DEFER_ARG ){
+				int bContinuable = pNode->pLeft
+					&& ( (pNode->pLeft->pOp == 0 && pNode->pLeft->xCode == PH7_CompileVariable)
+					  || (pNode->pLeft->pOp != 0 && (pNode->pLeft->pOp->iOp == EXPR_OP_SUBSCRIPT
+					                              || pNode->pLeft->pOp->iOp == EXPR_OP_ARROW)) );
+				if( !bContinuable ){
+					iLeftFlags &= ~EXPR_FLAG_DEFER_ARG;
+				}
+			}
 			if( pNode->pLeft && pNode->pLeft->pOp
 				&& (pNode->pLeft->pOp->iOp == EXPR_OP_ARROW
 					|| pNode->pLeft->pOp->iOp == EXPR_OP_NULLSAFE_ARROW
@@ -1156,7 +1181,7 @@ static sxi32 GenStateEmitExprCode(
 			sxi32 iChildMask = ~(EXPR_FLAG_LOAD_IDX_STORE
 				|EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_UNSET
 				|EXPR_FLAG_LOAD_IDX_EMPTY|EXPR_FLAG_MEMBER_WRITE
-				|EXPR_FLAG_QUIET_VAR|EXPR_FLAG_RMW_LOAD);
+				|EXPR_FLAG_QUIET_VAR|EXPR_FLAG_RMW_LOAD|EXPR_FLAG_DEFER_ARG);
 			/* Recurse and generate bytecodes for array index */
 			apNode = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
 			for( n = 0 ; n < (sxi32)SySetUsed(&pNode->aNodeArgs) ; ++n ){
@@ -1186,6 +1211,11 @@ static sxi32 GenStateEmitExprCode(
 			}else if( iFlags & EXPR_FLAG_LOAD_IDX_STORE ){
 				/* Create an empty entry when the desired index is not found */
 				iP2 = 1;
+			}else if( iFlags & EXPR_FLAG_DEFER_ARG ){
+				/* D1 commit 2: deferred by-ref/by-value element arg. Behaves as a read but,
+				 * on a lookup miss, records the lvalue path instead of warning; OP_CALL
+				 * re-walks it in vivify (by-ref) or read+warn (by-value) mode. */
+				iP2 = 9;
 			}
 		}else if( pNode->pOp->iOp == EXPR_OP_COMMA ){
 			/* POP the left node */
@@ -1465,6 +1495,9 @@ static sxi32 GenStateEmitExprCode(
 				}else if( iFlags & EXPR_FLAG_MEMBER_WRITE ){
 					/* Write-lvalue base ($o->arr[$k]=v, $o->p ??= v): auto-create a missing prop. */
 					iP2 = PH7_MEMBER_WRITE;
+				}else if( iFlags & EXPR_FLAG_DEFER_ARG ){
+					/* D1 commit 2: deferred by-ref/by-value property arg ($o->p). */
+					iP2 = PH7_MEMBER_DEFPATH;
 				}
 			}
 		}
