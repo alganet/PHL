@@ -1032,8 +1032,19 @@ PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag)
 			}
 			return SXRET_OK;
 		}
-		/* Compile the expression holding the variable name */
-		rc = PH7_CompileExpr(&(*pGen),0,0);
+		/* Compile the expression holding the variable name. It is a pure READ, so
+		 * compile it read-only: `${$u}` warns on an undefined $u (php) instead of
+		 * silently creating it, matching the `$$u` name-read path below. A quiet
+		 * outer (isset()/empty()) suppresses that name warning too, so carry the
+		 * quiet flag into the name expression. */
+		sxi32 iNameFlags = EXPR_FLAG_RDONLY_LOAD;
+		if( iCompileFlag & (EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_EMPTY) ){
+			/* isset()/empty() suppress the name warning; `??` (EXPR_FLAG_QUIET_VAR)
+			 * does NOT — php warns `Undefined variable $u` for `${$u} ?? x` and only
+			 * quiets the TARGET read, so QUIET_VAR is deliberately excluded here. */
+			iNameFlags |= EXPR_FLAG_QUIET_VAR;
+		}
+		rc = PH7_CompileExpr(&(*pGen),iNameFlags,0);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}else if( rc == SXERR_EMPTY ){
@@ -1085,11 +1096,26 @@ PH7_PRIVATE sxi32 PH7_CompileVariable(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		 * writable slot, so it cannot use the read-only load above. */
 		iP2 = 2;
 	}
-	/* Emit the load instruction */
-	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD,iP1,iP2,p3,0);
-	while( iVv > 0 ){
+	/* Emit the load instruction(s). For a variable-variable ($$x, $$$x, ...) every
+	 * load EXCEPT the final dereference resolves a NAME: a pure read that warns on an
+	 * undefined name (php) and never creates it. Only the last load is the actual
+	 * variable and carries the caller's write/create context (iP1). Emitting the
+	 * outer create-mode for the name loads silently invented $n in `$$n = 5` and
+	 * skipped php's `Undefined variable $n` warning; a quiet outer (isset/empty)
+	 * still suppresses the name warning as php does. */
+	if( iVv > 0 ){
+		sxi32 iP2Name = (iCompileFlag & (EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_EMPTY))
+			? 1 /* isset()/empty() suppress the name warning too; `??` (QUIET_VAR)
+			     * does NOT — it warns the name and quiets only the target read. */ : 0;
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD,1/* read-only name */,iP2Name,p3,0);
+		while( iVv > 1 ){
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD,1/* read-only name */,iP2Name,0,0);
+			iVv--;
+		}
+		/* Final dereference: the actual variable, in the caller's context. */
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD,iP1,iP2,0,0);
-		iVv--;
+	}else{
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD,iP1,iP2,p3,0);
 	}
 	/* Node successfully compiled */
 	return SXRET_OK;
