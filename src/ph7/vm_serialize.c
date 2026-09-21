@@ -372,6 +372,10 @@ struct unserialize_data
 	const char *zCur; /* Current parse position */
 	const char *zEnd; /* End of the input buffer */
 	int depth;        /* Current nesting level */
+	int maxDepth;     /* php's max_depth option (default unserialize_max_depth) */
+	int depthErr;     /* max_depth was exceeded -> report php's extra warning */
+	const char *zErr; /* Start of the token that failed (php's reported offset) */
+	int shortErr;     /* A container's declared count outran its contents */
 	int exc;          /* A __wakeup()/__unserialize() threw -> propagate it */
 };
 static ph7_value * VmUnserializeValue(unserialize_data *ud);
@@ -415,15 +419,28 @@ static int VmUnParseInt64(unserialize_data *ud, ph7_int64 *pOut)
 /* Parse s:<len>:"<len bytes>"; returning the raw view (zStr,nStr). */
 static int VmUnParseString(unserialize_data *ud, const char **pzStr, int *pnStr)
 {
+	const char *zLen;
 	sxu32 nLen;
 	if( !VmUnExpect(ud,'s') || !VmUnExpect(ud,':') ){ return 0; }
+	zLen = ud->zCur;
 	if( !VmUnParseUInt(ud,&nLen) ){ return 0; }
 	if( !VmUnExpect(ud,':') || !VmUnExpect(ud,'"') ){ return 0; }
-	if( nLen > (sxu32)(ud->zEnd - ud->zCur) ){ return 0; } /* length compare avoids 32-bit pointer wrap */
+	/* Once the DECLARED length has been read, php stops blaming the token as a
+	 * whole and reports where the declaration turned out to be wrong: the length
+	 * digits when they overrun the buffer, the byte where the closing quote should
+	 * have been when they simply disagree with the payload. Length compare (not
+	 * pointer arithmetic) so a 32-bit pointer cannot wrap. */
+	if( nLen > (sxu32)(ud->zEnd - ud->zCur) ){
+		if( ud->zErr == 0 ){ ud->zErr = zLen; }
+		return 0;
+	}
 	*pzStr = ud->zCur;
 	*pnStr = (int)nLen;
 	ud->zCur += nLen;
-	if( !VmUnExpect(ud,'"') || !VmUnExpect(ud,';') ){ return 0; }
+	if( !VmUnExpect(ud,'"') || !VmUnExpect(ud,';') ){
+		if( ud->zErr == 0 ){ ud->zErr = ud->zCur; }
+		return 0;
+	}
 	return 1;
 }
 /* Strip object-property key mangling: "\0*\0name" / "\0Class\0name" -> name. */
@@ -437,6 +454,24 @@ static void VmUnstripKey(const char *z, int n, const char **pzName, int *pnName)
 	}
 	*pzName = z; *pnName = n;
 }
+/*
+ * A container declared N members but its closing brace arrives early. php words
+ * that one shape "Unexpected end of serialized data" (a genuinely TRUNCATED
+ * payload -- `a:1:{i:0;` -- gets only the offset warning), and reports the offset
+ * of the brace, so pin it here rather than letting the enclosing value latch its
+ * own start.
+ */
+static int VmUnserializeShortContainer(unserialize_data *ud)
+{
+	if( ud->zCur >= ud->zEnd || ud->zCur[0] != '}' ){
+		return 0;
+	}
+	ud->shortErr = 1;
+	if( ud->zErr == 0 ){
+		ud->zErr = ud->zCur;
+	}
+	return 1;
+}
 /* Parse a:<count>:{ <key><val> ... } into a fresh array value. */
 static ph7_value * VmUnserializeArray(unserialize_data *ud)
 {
@@ -449,8 +484,10 @@ static ph7_value * VmUnserializeArray(unserialize_data *ud)
 	if( pArray == 0 ){ return 0; }
 	ud->depth++;
 	for( i = 0; i < count; i++ ){
-		ph7_value *pKey = VmUnserializeValue(ud);
+		ph7_value *pKey;
 		ph7_value *pVal;
+		if( VmUnserializeShortContainer(ud) ){ ud->depth--; return 0; }
+		pKey = VmUnserializeValue(ud);
 		if( pKey == 0 ){ ud->depth--; return 0; }
 		pVal = VmUnserializeValue(ud);
 		if( pVal == 0 ){ ph7_context_release_value(ud->pCtx,pKey); ud->depth--; return 0; }
@@ -497,8 +534,10 @@ static ph7_value * VmUnserializeObject(unserialize_data *ud)
 	}
 	ud->depth++;
 	for( i = 0; i < count; i++ ){
-		ph7_value *pKey = VmUnserializeValue(ud);
+		ph7_value *pKey;
 		ph7_value *pVal;
+		if( VmUnserializeShortContainer(ud) ){ goto fail; }
+		pKey = VmUnserializeValue(ud);
 		if( pKey == 0 ){ goto fail; }
 		pVal = VmUnserializeValue(ud);
 		if( pVal == 0 ){ ph7_context_release_value(ud->pCtx,pKey); goto fail; }
@@ -592,11 +631,41 @@ static ph7_value * VmUnserializeEnumCase(unserialize_data *ud)
 	if( pOut ){ PH7_MemObjStore(pSlot,pOut); } /* retains the singleton */
 	return pOut;
 }
+/*
+ * Parse one value. Wrapped by VmUnserializeValue() so every failure records WHERE
+ * it began: php reports the offset of the token it could not match, not the byte
+ * its parser happened to stop on (`unserialize("i:1")` is "offset 0", the start of
+ * the unterminated `i:` token, and a short array is the offset of the element it
+ * went looking for). The first — innermost — failure to unwind wins, which is the
+ * one php names.
+ */
+static ph7_value * VmUnserializeValueBody(unserialize_data *ud);
 static ph7_value * VmUnserializeValue(unserialize_data *ud)
+{
+	const char *zStart = ud->zCur;
+	ph7_value *pOut = VmUnserializeValueBody(ud);
+	if( pOut == 0 && ud->zErr == 0 && !ud->exc ){
+		ud->zErr = zStart;
+	}
+	return pOut;
+}
+static ph7_value * VmUnserializeValueBody(unserialize_data *ud)
 {
 	ph7_value *pOut;
 	char c;
-	if( ud->depth > SERIALIZE_MAX_DEPTH || ud->zCur >= ud->zEnd ){ return 0; }
+	if( ud->depth > ud->maxDepth ){
+		/* php reports the limit once, names the knob, then falls through to the
+		 * generic "Error at offset" failure -- so latch it and keep unwinding. */
+		if( !ud->depthErr ){
+			ud->depthErr = 1;
+			ph7_context_throw_error_format(ud->pCtx,PH7_CTX_WARNING,
+				"Maximum depth of %d exceeded. The depth limit can be changed using "
+				"the max_depth unserialize() option or the unserialize_max_depth ini setting",
+				ud->maxDepth);
+		}
+		return 0;
+	}
+	if( ud->zCur >= ud->zEnd ){ return 0; }
 	c = ud->zCur[0];
 	switch( c ){
 	case 'N': /* N; */
@@ -667,6 +736,93 @@ static ph7_value * VmUnserializeValue(unserialize_data *ud)
 	}
 }
 /*
+ * php's "X given" name for an option value.
+ *
+ * VmValueGivenName() answers through ph7_type_name(), which reports a WHOLE REAL
+ * (2.0) as `int` because PHL caches the integer form in the same slot (the §7
+ * dual-flag model, and why ph7_value_is_int() is lenient). The option checks need
+ * php's DECLARED type, so a real is named `float` whatever it caches — and the
+ * int check below tests MEMOBJ_REAL first for the same reason.
+ */
+static const char * VmUnserializeOptionType(ph7_value *pVal, char *zBuf, sxu32 nBuf)
+{
+	if( ph7_value_is_float(pVal) ){
+		return "float";
+	}
+	return VmValueGivenName(pVal,zBuf,nBuf);
+}
+/* Reject a non-string member of an "allowed_classes" list. */
+static int VmUnserializeClassListWalker(ph7_value *pKey, ph7_value *pData, void *pUserData)
+{
+	ph7_context *pCtx = (ph7_context *)pUserData;
+	char zGiven[64];
+	SXUNUSED(pKey);
+	if( ph7_value_is_string(pData) ){
+		return PH7_OK;
+	}
+	PH7_VmThrowException(pCtx,"TypeError",
+		"unserialize(): Option \"allowed_classes\" must be an array of class names, "
+		"%s given",VmUnserializeOptionType(pData,zGiven,sizeof(zGiven)));
+	return SXERR_ABORT;
+}
+/*
+ * Validate unserialize()'s $options array, php's way.
+ *
+ * php checks the option map BEFORE parsing a single byte of $data, and the two
+ * options it knows have distinct shapes: "allowed_classes" is `array|bool` and,
+ * when it is an array, every element must be a class-name STRING; "max_depth" is
+ * a non-negative `int`. Any other key is ignored, with no diagnostic. PHL used to
+ * ignore the whole array, so a mistyped option silently did nothing at all.
+ *
+ * On success *piMaxDepth carries the effective depth limit.
+ */
+static sxi32 VmUnserializeCheckOptions(
+	ph7_context *pCtx,      /* Call context (for the throw) */
+	ph7_value *pOptions,    /* The $options array */
+	int *piMaxDepth         /* OUT: effective max_depth */
+	)
+{
+	char zGiven[64];
+	ph7_value *pOpt;
+	pOpt = ph7_array_fetch(pOptions,"allowed_classes",sizeof("allowed_classes")-1);
+	if( pOpt ){
+		if( ph7_value_is_array(pOpt) ){
+			if( ph7_array_walk(pOpt,VmUnserializeClassListWalker,pCtx) != PH7_OK ){
+				return PH7_EXCEPTION; /* the walker already threw */
+			}
+		}else if( !ph7_value_is_bool(pOpt) ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"unserialize(): Option \"allowed_classes\" must be of type array|bool, "
+				"%s given",VmUnserializeOptionType(pOpt,zGiven,sizeof(zGiven)));
+		}
+	}
+	pOpt = ph7_array_fetch(pOptions,"max_depth",sizeof("max_depth")-1);
+	if( pOpt ){
+		ph7_int64 iVal;
+		if( ph7_value_is_float(pOpt) || !ph7_value_is_int(pOpt) ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"unserialize(): Option \"max_depth\" must be of type int, %s given",
+				VmUnserializeOptionType(pOpt,zGiven,sizeof(zGiven)));
+		}
+		iVal = ph7_value_to_int64(pOpt);
+		if( iVal < 0 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"unserialize(): Option \"max_depth\" must be greater than or equal to 0");
+		}
+		/* php reads max_depth == 0 as UNLIMITED (the unserialize_max_depth ini
+		 * uses the same convention), so it falls back to PHL's own recursion
+		 * guard rather than rejecting everything nested — this parser is
+		 * recursive-descent and cannot actually run unbounded. Anything above
+		 * that guard is likewise capped by it. */
+		if( iVal == 0 || iVal > (ph7_int64)SERIALIZE_MAX_DEPTH ){
+			*piMaxDepth = SERIALIZE_MAX_DEPTH;
+		}else{
+			*piMaxDepth = (int)iVal;
+		}
+	}
+	return PH7_OK;
+}
+/*
  * mixed unserialize(string $str)
  *  Create a PHP value from a stored representation. Returns false on failure.
  */
@@ -675,10 +831,19 @@ PH7_PRIVATE int vm_builtin_unserialize(ph7_context *pCtx, int nArg, ph7_value **
 	unserialize_data ud;
 	const char *zIn;
 	int nByte;
+	int iMaxDepth = SERIALIZE_MAX_DEPTH;
 	ph7_value *pVal;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
+	}
+	/* php validates $options before touching $data — so a bad option throws even
+	 * for input that would not have parsed anyway. */
+	if( nArg > 1 && ph7_value_is_array(apArg[1]) ){
+		sxi32 rc = VmUnserializeCheckOptions(pCtx,apArg[1],&iMaxDepth);
+		if( rc != PH7_OK ){
+			return rc;
+		}
 	}
 	zIn = ph7_value_to_string(apArg[0],&nByte);
 	if( nByte < 1 ){
@@ -690,6 +855,10 @@ PH7_PRIVATE int vm_builtin_unserialize(ph7_context *pCtx, int nArg, ph7_value **
 	ud.zCur = zIn;
 	ud.zEnd = &zIn[nByte];
 	ud.depth = 0;
+	ud.maxDepth = iMaxDepth;
+	ud.depthErr = 0;
+	ud.zErr = 0;
+	ud.shortErr = 0;
 	ud.exc = 0;
 	pVal = VmUnserializeValue(&ud);
 	if( ud.exc ){
@@ -697,8 +866,23 @@ PH7_PRIVATE int vm_builtin_unserialize(ph7_context *pCtx, int nArg, ph7_value **
 		return PH7_EXCEPTION;
 	}
 	if( pVal == 0 ){
+		/* php always reports WHERE the parse gave up; PH7 failed silently, so a
+		 * corrupt payload was indistinguishable from a serialized `false`. */
+		if( ud.shortErr ){
+			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+				"Unexpected end of serialized data");
+		}
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+			"Error at offset %d of %d bytes",
+			(int)((ud.zErr ? ud.zErr : ud.zCur) - zIn),nByte);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
+	}
+	if( ud.zCur < ud.zEnd ){
+		/* php parses the FIRST value and keeps it, but says the rest was ignored. */
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+			"Extra data starting at offset %d of %d bytes",
+			(int)(ud.zCur - zIn),nByte);
 	}
 	ph7_result_value(pCtx,pVal);
 	ph7_context_release_value(pCtx,pVal);
