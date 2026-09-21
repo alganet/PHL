@@ -3452,18 +3452,25 @@ PH7_PRIVATE sxi32 PH7_VmThrowException(ph7_context *pCtx,const char *zClass,cons
 	if( zClass == 0 || zClass[0] == 0 ){
 		zClass = "Error";
 	}
+	/* The two degraded paths below cannot build the exception object, so they report an
+	 * uncaught fatal with a trace instead. They record whatever status that reporting
+	 * settled on, so the "nThrowRc mirrors what this function returned" invariant holds
+	 * on every exit and a caller that returns PH7_OK anyway still cannot resume past a
+	 * reported error (VmHostFuncThrowRc). */
 	pClass = PH7_VmExtractClass(&(*pVm),zClass,SyStrlen(zClass),TRUE,0);
 	if( pClass == 0 ){
-		return PH7_VmThrowExceptionTrace(pCtx,zClass,
+		pCtx->nThrowRc = PH7_VmThrowExceptionTrace(pCtx,zClass,
 			"Cannot throw internal exception, class '%s' is not available",
 			zClass
 			);
+		return pCtx->nThrowRc;
 	}
 	pThis = PH7_NewClassInstance(&(*pVm),pClass);
 	if( pThis == 0 ){
-		return PH7_VmThrowExceptionTrace(pCtx,zClass,
+		pCtx->nThrowRc = PH7_VmThrowExceptionTrace(pCtx,zClass,
 			"Cannot throw internal exception, PH7 is running out of memory"
 			);
+		return pCtx->nThrowRc;
 	}
 
 	SyBlobInit(&sMsg,&pVm->sAllocator);
@@ -3489,9 +3496,39 @@ PH7_PRIVATE sxi32 PH7_VmThrowException(ph7_context *pCtx,const char *zClass,cons
 	rc = VmThrowException(&(*pVm),pThis);
 	PH7_ClassInstanceUnref(pThis);
 	if( rc == SXERR_ABORT ){
+		pCtx->nThrowRc = PH7_ABORT;
 		return PH7_ABORT;
 	}
+	/* Record the status on the CALL CONTEXT as well. A host function that raises
+	 * here and then returns PH7_OK anyway — because the throw sits in a shared
+	 * argument-validation helper whose callers have no status channel — would
+	 * otherwise let OP_CALL treat the call as a normal return: the catch has
+	 * already run in place, so execution would carry on INSIDE the try the throw
+	 * abandoned (and, uncaught, past the reported fatal). VmHostFuncThrowRc()
+	 * re-reads this at the boundary; a caller that DOES propagate its rc is
+	 * unaffected (the escalation only fires on a non-throwing status). Same
+	 * rationale as VmBoundaryPark for callback throws, one call-frame narrower. */
+	pCtx->nThrowRc = PH7_EXCEPTION;
 	return PH7_EXCEPTION;
+}
+/*
+ * The status a host function's own throw should have returned. Consulted at the
+ * single OP_CALL host boundary right after the C routine returns: it upgrades a
+ * normal-looking status to the one PH7_VmThrowException recorded on the context,
+ * and is the identity when the routine never threw or already reported it.
+ *
+ * PH7_SUSPEND passes through with ABORT/EXCEPTION even though it is not a "throw
+ * already reported" status: it is a control transfer the fiber machinery must
+ * honour (the CALL's state is saved and the operand stack is left mid-flight), and
+ * no path produces both — every Fiber throw returns PH7_EXCEPTION.
+ */
+PH7_PRIVATE sxi32 VmHostFuncThrowRc(ph7_context *pCtx,sxi32 rc)
+{
+	if( pCtx->nThrowRc == 0
+	 || rc == PH7_ABORT || rc == PH7_EXCEPTION || rc == PH7_SUSPEND ){
+		return rc;
+	}
+	return pCtx->nThrowRc;
 }
 /*
  * Throw an internal error as a PHP-like uncaught exception message with stack trace.

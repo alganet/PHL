@@ -313,9 +313,13 @@ static void PH7_BuildCharMask(ph7_context *pCtx,const char *zList,int nLen,char 
  * when the arg is an actual null, leaving the resolution unchanged.
  */
 /* php only DEPRECATES passing null to a non-nullable string param; PHL targets php's
- * non-deprecated surface and rejects it with a TypeError. The throw parks a pending
- * exception that supersedes the builtin's result when it returns, so the callers can
- * keep calling this without threading a status back. */
+ * non-deprecated surface and rejects it with a TypeError. Every caller of this helper
+ * now also carries a `string $…` row in the vm_arg_check.c signature table, so
+ * VmEnforceBuiltinArgTypes raises that TypeError BEFORE the routine runs and this is a
+ * backstop rather than the live path. It stays correct either way: the throw records
+ * its status on the call context and the OP_CALL boundary (VmHostFuncThrowRc) reports
+ * it in place of the routine's own, so the call ABORTS as php's would without the
+ * callers threading a status back. */
 static void StrNullArgNotice(ph7_context *pCtx,ph7_value *pArg,const char *zFunc,int iArgNum,const char *zParamName)
 {
 	if( ph7_value_is_null(pArg) ){
