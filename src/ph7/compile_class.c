@@ -587,7 +587,16 @@ static sxi32 GenStateCompileClassConstant(ph7_gen_state *pGen,sxi32 iProtection,
 		iTypeFlags |= PH7_CLASS_ATTR_TYPED;
 	}
 loop:
-	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_ID) == 0 ){
+	/* php 8 accepts EVERY reserved word as a class-constant name — `const list = 5`,
+	 * `const match`, `const function`, even `const true` — because a class constant is
+	 * addressed only through `C::name`, where no keyword can be ambiguous. The single
+	 * exception is `class`, reserved for `C::class`, and it gets its own message.
+	 * (Method names already accept the whole set; this is the member-name side of the
+	 * same rule. Global `const` is NOT the same rule: php rejects a reserved word there.)
+	 * A keyword arrives as PH7_TK_KEYWORD, which this ID-only test rejected — so PHL
+	 * accepted only the alpha-OPERATOR keywords (`const new`, `const and`), which the
+	 * lexer marks PH7_TK_ID|PH7_TK_OP, and that partial allow-list looked like a design. */
+	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
 		/* Invalid constant name */
 		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Invalid constant name");
 		if( rc == SXERR_ABORT ){
@@ -598,16 +607,19 @@ loop:
 	}
 	/* Peek constant name */
 	pName = &pGen->pIn->sData;
-	/* Make sure the constant name isn't reserved */
-	if( GenStateIsReservedConstant(pName) ){
-		/* Reserved constant name */
-		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,"Cannot redeclare a reserved constant '%z'",pName);
+	if( (pGen->pIn->nType & PH7_TK_KEYWORD)
+		&& (sxu32)SX_PTR_TO_INT(pGen->pIn->pUserData) == PH7_TKWRD_CLASS ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+			"A class constant must not be called 'class'; it is reserved for class name fetching");
 		if( rc == SXERR_ABORT ){
-			/* Error count limit reached,abort immediately */
 			return SXERR_ABORT;
 		}
 		goto Synchronize;
 	}
+	/* No reserved-CONSTANT check here: true/false/null are reserved GLOBAL constant
+	 * names (compile_stmt.c still rejects `const true = 1`), but `C::true` addresses a
+	 * class constant and php accepts the declaration like any other reserved word. The
+	 * member-name flag keeps the read from folding into the boolean literal. */
 	/* Reject pseudo-types PHP forbids on a typed constant (callable/void/never) */
 	if( iTypeFlags & PH7_CLASS_ATTR_TYPED ){
 		rc = GenStateValidateMemberType(pGen,pClass,pName,nType,&sTypeClass,&sTypeText,
@@ -737,7 +749,9 @@ loop:
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COMMA /*','*/) ){
 		/* Multiple constants declarations [i.e: const min=-1,max = 10] */
 		pGen->pIn++; /* Jump the comma */
-		if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_ID) == 0 ){
+		/* A reserved word is a valid name for EVERY constant in the declaration, not
+		 * just the first (`const list = 1, match = 2`) — same allow-list as the head. */
+		if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
 			SyToken *pTok = pGen->pIn;
 			if( pTok >= pGen->pEnd ){
 				pTok--;
@@ -749,9 +763,7 @@ loop:
 				return SXERR_ABORT;
 			}
 		}else{
-			if( pGen->pIn->nType & PH7_TK_ID ){
-				goto loop;
-			}
+			goto loop;
 		}
 	}
 	SySetRelease(&aUnionAlts);
