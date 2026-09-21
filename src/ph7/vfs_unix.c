@@ -27,6 +27,7 @@
 #include <utime.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 /*
  * php's file:// wrapper is the default local-file scheme: a filesystem builtin
  * given "file://[authority]/path" acts on the plain "/path". The authority is
@@ -832,24 +833,32 @@ static int UnixFile_Seek(void *pUserData,ph7_int64 iOfft,int whence)
 	}
 	return PH7_OK;
 }
-/* int (*xLock)(void *,int) */
+/* int (*xLock)(void *,int) — see the lock_type value space in ph7.h */
 static int UnixFile_Lock(void *pUserData,int lock_type)
 {
 	int fd = SX_PTR_TO_INT(pUserData);
-	int rc = PH7_OK; /* cc warning */
+	int op;
+	int rc;
 	if( lock_type < 0 ){
 		/* Unlock the file */
-		rc = flock(fd,LOCK_UN);
+		op = LOCK_UN;
 	}else{
-		if( lock_type == 1 ){
-			/* Exculsive lock */
-			rc = flock(fd,LOCK_EX);
-		}else{
-			/* Shared lock */
-			rc = flock(fd,LOCK_SH);
+		op = (lock_type == PH7_IO_LOCK_EX || lock_type == PH7_IO_LOCK_EX_NB) ? LOCK_EX : LOCK_SH;
+		if( lock_type == PH7_IO_LOCK_SH_NB || lock_type == PH7_IO_LOCK_EX_NB ){
+			op |= LOCK_NB;
 		}
 	}
-	return !rc ? PH7_OK : -1;
+	rc = flock(fd,op);
+	if( rc == 0 ){
+		return PH7_OK;
+	}
+	/* A non-blocking request that another holder refused is php's $would_block,
+	 * not an IO failure. (EWOULDBLOCK and EAGAIN are the same value on every
+	 * platform this driver builds for.) */
+	if( errno == EWOULDBLOCK ){
+		return SXERR_BUSY;
+	}
+	return -1;
 }
 /* ph7_int64 (*xTell)(void *) */
 static ph7_int64 UnixFile_Tell(void *pUserData)

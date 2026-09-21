@@ -1218,7 +1218,7 @@ static int WinFile_Seek(void *pUserData,ph7_int64 iOfft,int whence)
 	}
 	return PH7_OK;
 }
-/* int (*xLock)(void *,int) */
+/* int (*xLock)(void *,int) — see the lock_type value space in ph7.h */
 static int WinFile_Lock(void *pUserData,int lock_type)
 {
 	HANDLE pHandle = (HANDLE)pUserData;
@@ -1228,16 +1228,25 @@ static int WinFile_Lock(void *pUserData,int lock_type)
 	/* Lock/unlock the whole file. php locks the maximal byte range, so the lock
 	 * is effective even for an empty or freshly-truncated file — the previous
 	 * code locked only GetFileSize() bytes (i.e. nothing for a 0-byte file). */
-	if( lock_type < 1 ){
+	if( lock_type < 0 ){
 		/* Unlock the file */
 		rc = UnlockFileEx(pHandle,0,0xFFFFFFFF,0xFFFFFFFF,&sDummy);
 	}else{
-		DWORD dwFlags = LOCKFILE_FAIL_IMMEDIATELY; /* Shared non-blocking lock by default*/
-		/* Lock the file */
-		if( lock_type == 1 /* LOCK_EXCL */ ){
+		/* LOCKFILE_FAIL_IMMEDIATELY belongs to the NON-BLOCKING requests only: it
+		 * used to be passed unconditionally, so a plain flock($f,LOCK_EX) answered
+		 * false under contention on Windows where php (and POSIX) waits. */
+		DWORD dwFlags = 0;
+		if( lock_type == PH7_IO_LOCK_EX || lock_type == PH7_IO_LOCK_EX_NB ){
 			dwFlags |= LOCKFILE_EXCLUSIVE_LOCK;
 		}
+		if( lock_type == PH7_IO_LOCK_SH_NB || lock_type == PH7_IO_LOCK_EX_NB ){
+			dwFlags |= LOCKFILE_FAIL_IMMEDIATELY;
+		}
 		rc = LockFileEx(pHandle,dwFlags,0,0xFFFFFFFF,0xFFFFFFFF,&sDummy);
+		if( !rc && GetLastError() == ERROR_LOCK_VIOLATION ){
+			/* Refused because another holder has the range: php's $would_block. */
+			return SXERR_BUSY;
+		}
 	}
 	return rc ? PH7_OK : -1 /* Lock error */;
 }

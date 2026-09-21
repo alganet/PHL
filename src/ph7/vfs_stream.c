@@ -1928,7 +1928,22 @@ PH7_PRIVATE int PH7_builtin_fwrite(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * bool flock(resource $handle,int $operation)
+ * Write flock()'s optional by-reference &$would_block out-param. php writes it on
+ * every call that does not throw — including the ones that answer FALSE — so a
+ * script can tell contention (1) from a plain failure (0).
+ */
+static void FlockStoreWouldBlock(ph7_context *pCtx,int nArg,ph7_value **apArg,int bWouldBlock)
+{
+	ph7_value sVal;
+	if( nArg < 3 ){
+		return;
+	}
+	PH7_MemObjInitFromInt(pCtx->pVm,&sVal,bWouldBlock ? 1 : 0);
+	PH7_VmStoreArgByRef(pCtx->pVm,apArg[2],&sVal);
+	PH7_MemObjRelease(&sVal);
+}
+/*
+ * bool flock(resource $handle,int $operation[,int &$would_block])
  *  Portable advisory file locking.
  * Parameters
  *  $handle
@@ -1938,6 +1953,10 @@ PH7_PRIVATE int PH7_builtin_fwrite(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *      LOCK_SH to acquire a shared lock (reader).
  *      LOCK_EX to acquire an exclusive lock (writer).
  *      LOCK_UN to release a lock (shared or exclusive).
+ *   optionally OR'd with LOCK_NB to fail immediately instead of waiting.
+ *  &$would_block
+ *   Set to 1 when a LOCK_NB request was refused because another holder has the
+ *   file, 0 otherwise. php writes it on every call that does not throw.
  * Return
  *  Returns TRUE on success or FALSE on failure.
  */
@@ -1975,27 +1994,31 @@ PH7_PRIVATE int PH7_builtin_flock(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	pStream = pDev->pStream;
 	if( pStream == 0  || pStream->xLock == 0){
 		/* php returns FALSE silently when the stream does not support locking
-		 * (php://memory & co) — no warning. */
+		 * (php://memory & co) — no warning. It still writes $would_block. */
+		FlockStoreWouldBlock(pCtx,nArg,apArg,0);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	/*
-	 * Translate php's operation (LOCK_SH=1, LOCK_EX=2, LOCK_UN=3, optionally |LOCK_NB=4)
-	 * into the xLock() vtable contract, which is a PUBLIC C API and stays as it is:
-	 * negative = unlock, 1 = exclusive, anything else = shared.
+	 * Translate php's operation (LOCK_SH=1, LOCK_EX=2, LOCK_UN=3, optionally
+	 * |LOCK_NB=4) into the xLock() vtable value space documented in ph7.h.
 	 */
 	{
 		int iOp = nLock & 3;
+		int bNoBlock = (nLock & 4 /* LOCK_NB */) != 0;
 		if( iOp == 3 /* LOCK_UN */ ){
 			nLock = -1;
 		}else if( iOp == 2 /* LOCK_EX */ ){
-			nLock = 1;
+			nLock = bNoBlock ? PH7_IO_LOCK_EX_NB : PH7_IO_LOCK_EX;
 		}else{
-			nLock = 0; /* LOCK_SH */
+			nLock = bNoBlock ? PH7_IO_LOCK_SH_NB : PH7_IO_LOCK_SH;
 		}
 	}
 	/* Lock operation */
 	rc = pStream->xLock(pDev->pHandle,nLock);
+	/* A refused non-blocking request is php's $would_block: FALSE, and the
+	 * out-param tells the script it was contention rather than an IO error. */
+	FlockStoreWouldBlock(pCtx,nArg,apArg,rc == SXERR_BUSY);
 	/* IO result */
 	ph7_result_bool(pCtx,rc == PH7_OK);
 	return PH7_OK;
