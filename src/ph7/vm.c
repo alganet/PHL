@@ -4225,9 +4225,8 @@ PH7_PRIVATE VmCallArgMap *VmEffCallArgMap(ph7_vm *pVm, VmInstr *pInstr,
 /*
  * Raise the PHP "Cannot use <type> as array" warning for a non-array source used in a
  * list / array-destructuring assignment. Shared by the positional OP_LOAD_LIST path and the
- * keyed OP_LOAD_IDX (iP2=7) path. The CALLER decides whether to warn at all — the two paths
- * disagree on which scalar types are silent (positional silences null+bool; keyed silences
- * only null, warning for bool to match PHP) — this only maps the type name and emits.
+ * keyed OP_LOAD_IDX (iP2=7) path. The CALLER decides whether to warn at all — both paths
+ * silence ONLY null (a bool source warns, php 8) — this only maps the type name and emits.
  */
 PH7_PRIVATE void VmWarnCannotUseAsArray(ph7_vm *pVm, sxi32 iFlags)
 {
