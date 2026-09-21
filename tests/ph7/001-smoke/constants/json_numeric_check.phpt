@@ -7,8 +7,8 @@ PH7 / PHP: JSON_NUMERIC_CHECK constant value
 <?php
 echo "JSON_NUMERIC_CHECK=" . JSON_NUMERIC_CHECK . "\n";
 ?>
---EXPECTF--
-JSON_NUMERIC_CHECK=%d
+--EXPECT--
+JSON_NUMERIC_CHECK=32
 --CLEAN--
 <?php
 

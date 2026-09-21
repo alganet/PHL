@@ -7,8 +7,8 @@ PH7 / PHP: LOCK_NB constant
 <?php
 echo "LOCK_NB=" . LOCK_NB . "\n";
 ?>
---EXPECTF--
-LOCK_NB=%d
+--EXPECT--
+LOCK_NB=4
 --CLEAN--
 <?php
 

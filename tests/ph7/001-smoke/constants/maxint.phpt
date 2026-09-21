@@ -15,8 +15,8 @@ if (function_exists('zend_version')) { echo 'skip PHL extension: MAXINT is not a
 // MAXINT mirrors PHP_INT_MAX
 echo "MAXINT=" . MAXINT . "\n";
 ?>
---EXPECTF--
-MAXINT=%d
+--EXPECT--
+MAXINT=9223372036854775807
 --CLEAN--
 <?php
 // nothing to clean

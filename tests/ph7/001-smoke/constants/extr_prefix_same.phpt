@@ -7,8 +7,8 @@ PH7 / PHP: EXTR_PREFIX_SAME constant
 <?php
 echo "EXTR_PREFIX_SAME=" . EXTR_PREFIX_SAME . "\n";
 ?>
---EXPECTF--
-EXTR_PREFIX_SAME=%d
+--EXPECT--
+EXTR_PREFIX_SAME=2
 --CLEAN--
 <?php
 

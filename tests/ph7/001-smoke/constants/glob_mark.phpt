@@ -7,8 +7,8 @@ PH7 / PHP: GLOB_MARK constant
 <?php
 echo "GLOB_MARK=" . GLOB_MARK . "\n";
 ?>
---EXPECTF--
-GLOB_MARK=%d
+--EXPECT--
+GLOB_MARK=8
 --CLEAN--
 <?php
 

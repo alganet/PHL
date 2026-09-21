@@ -7,8 +7,8 @@ PH7 / PHP: SEEK_CUR constant
 <?php
 echo "SEEK_CUR=" . SEEK_CUR . "\n";
 ?>
---EXPECTF--
-SEEK_CUR=%d
+--EXPECT--
+SEEK_CUR=1
 --CLEAN--
 <?php
 

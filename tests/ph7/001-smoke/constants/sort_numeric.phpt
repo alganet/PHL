@@ -7,8 +7,8 @@ PH7 / PHP: SORT_NUMERIC constant
 <?php
 echo "SORT_NUMERIC=" . SORT_NUMERIC . "\n";
 ?>
---EXPECTF--
-SORT_NUMERIC=%d
+--EXPECT--
+SORT_NUMERIC=1
 --CLEAN--
 <?php
 

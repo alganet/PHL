@@ -7,8 +7,8 @@ PH7 / PHP: E_USER_WARNING constant
 <?php
 echo "E_USER_WARNING=" . E_USER_WARNING . "\n";
 ?>
---EXPECTF--
-E_USER_WARNING=%d
+--EXPECT--
+E_USER_WARNING=512
 --CLEAN--
 <?php
 

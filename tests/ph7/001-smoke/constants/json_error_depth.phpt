@@ -7,8 +7,8 @@ PH7 / PHP: JSON_ERROR_DEPTH constant
 <?php
 echo "JSON_ERROR_DEPTH=" . JSON_ERROR_DEPTH . "\n";
 ?>
---EXPECTF--
-JSON_ERROR_DEPTH=%d
+--EXPECT--
+JSON_ERROR_DEPTH=1
 --CLEAN--
 <?php
 

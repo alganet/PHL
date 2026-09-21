@@ -7,8 +7,8 @@ PH7 / PHP: JSON_HEX_TAG constant value
 <?php
 echo "JSON_HEX_TAG=" . JSON_HEX_TAG . "\n";
 ?>
---EXPECTF--
-JSON_HEX_TAG=%d
+--EXPECT--
+JSON_HEX_TAG=1
 --CLEAN--
 <?php
 

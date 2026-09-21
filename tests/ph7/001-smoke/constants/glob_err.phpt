@@ -7,8 +7,8 @@ PH7 / PHP: GLOB_ERR constant
 <?php
 echo "GLOB_ERR=" . GLOB_ERR . "\n";
 ?>
---EXPECTF--
-GLOB_ERR=%d
+--EXPECT--
+GLOB_ERR=4
 --CLEAN--
 <?php
 

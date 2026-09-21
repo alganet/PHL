@@ -7,8 +7,8 @@ PH7 / PHP: E_COMPILE_ERROR constant
 <?php
 echo "E_COMPILE_ERROR=" . E_COMPILE_ERROR . "\n";
 ?>
---EXPECTF--
-E_COMPILE_ERROR=%d
+--EXPECT--
+E_COMPILE_ERROR=64
 --CLEAN--
 <?php
 

@@ -7,8 +7,8 @@ PH7 / PHP: SORT_STRING constant
 <?php
 echo "SORT_STRING=" . SORT_STRING . "\n";
 ?>
---EXPECTF--
-SORT_STRING=%d
+--EXPECT--
+SORT_STRING=2
 --CLEAN--
 <?php
 

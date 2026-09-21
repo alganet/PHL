@@ -7,8 +7,8 @@ PH7 / PHP: E_DEPRECATED constant
 <?php
 echo "E_DEPRECATED=" . E_DEPRECATED . "\n";
 ?>
---EXPECTF--
-E_DEPRECATED=%d
+--EXPECT--
+E_DEPRECATED=8192
 --CLEAN--
 <?php
 

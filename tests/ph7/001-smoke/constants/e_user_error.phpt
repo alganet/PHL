@@ -7,8 +7,8 @@ PH7 / PHP: E_USER_ERROR constant
 <?php
 echo "E_USER_ERROR=" . E_USER_ERROR . "\n";
 ?>
---EXPECTF--
-E_USER_ERROR=%d
+--EXPECT--
+E_USER_ERROR=256
 --CLEAN--
 <?php
 

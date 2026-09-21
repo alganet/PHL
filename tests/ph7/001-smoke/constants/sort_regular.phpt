@@ -7,8 +7,8 @@ PH7 / PHP: SORT_REGULAR constant
 <?php
 echo "SORT_REGULAR=" . SORT_REGULAR . "\n";
 ?>
---EXPECTF--
-SORT_REGULAR=%d
+--EXPECT--
+SORT_REGULAR=0
 --CLEAN--
 <?php
 

@@ -7,8 +7,8 @@ PH7 / PHP: E_NOTICE constant
 <?php
 echo "E_NOTICE=" . E_NOTICE . "\n";
 ?>
---EXPECTF--
-E_NOTICE=%d
+--EXPECT--
+E_NOTICE=8
 --CLEAN--
 <?php
 

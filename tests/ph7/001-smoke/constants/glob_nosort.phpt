@@ -7,8 +7,8 @@ PH7 / PHP: GLOB_NOSORT constant
 <?php
 echo "GLOB_NOSORT=" . GLOB_NOSORT . "\n";
 ?>
---EXPECTF--
-GLOB_NOSORT=%d
+--EXPECT--
+GLOB_NOSORT=32
 --CLEAN--
 <?php
 

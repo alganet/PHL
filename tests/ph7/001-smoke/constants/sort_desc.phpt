@@ -7,8 +7,8 @@ PH7 / PHP: SORT_DESC constant
 <?php
 echo "SORT_DESC=" . SORT_DESC . "\n";
 ?>
---EXPECTF--
-SORT_DESC=%d
+--EXPECT--
+SORT_DESC=3
 --CLEAN--
 <?php
 

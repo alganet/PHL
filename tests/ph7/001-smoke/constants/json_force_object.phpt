@@ -7,8 +7,8 @@ PH7 / PHP: JSON_FORCE_OBJECT constant value
 <?php
 echo "JSON_FORCE_OBJECT=" . JSON_FORCE_OBJECT . "\n";
 ?>
---EXPECTF--
-JSON_FORCE_OBJECT=%d
+--EXPECT--
+JSON_FORCE_OBJECT=16
 --CLEAN--
 <?php
 

@@ -7,8 +7,8 @@ PH7 / PHP: JSON_ERROR_UTF8 constant
 <?php
 echo "JSON_ERROR_UTF8=" . JSON_ERROR_UTF8 . "\n";
 ?>
---EXPECTF--
-JSON_ERROR_UTF8=%d
+--EXPECT--
+JSON_ERROR_UTF8=5
 --CLEAN--
 <?php
 

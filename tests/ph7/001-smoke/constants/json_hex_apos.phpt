@@ -7,8 +7,8 @@ PH7 / PHP: JSON_HEX_APOS constant value
 <?php
 echo "JSON_HEX_APOS=" . JSON_HEX_APOS . "\n";
 ?>
---EXPECTF--
-JSON_HEX_APOS=%d
+--EXPECT--
+JSON_HEX_APOS=4
 --CLEAN--
 <?php
 

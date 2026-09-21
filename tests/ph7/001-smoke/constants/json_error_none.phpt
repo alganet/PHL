@@ -7,8 +7,8 @@ PH7 / PHP: JSON_ERROR_NONE constant
 <?php
 echo "JSON_ERROR_NONE=" . JSON_ERROR_NONE . "\n";
 ?>
---EXPECTF--
-JSON_ERROR_NONE=%d
+--EXPECT--
+JSON_ERROR_NONE=0
 --CLEAN--
 <?php
 

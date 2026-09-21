@@ -7,8 +7,8 @@ PH7 / PHP: SEEK_END constant
 <?php
 echo "SEEK_END=" . SEEK_END . "\n";
 ?>
---EXPECTF--
-SEEK_END=%d
+--EXPECT--
+SEEK_END=2
 --CLEAN--
 <?php
 

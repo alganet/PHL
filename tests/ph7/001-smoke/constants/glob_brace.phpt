@@ -7,8 +7,8 @@ PH7 / PHP: GLOB_BRACE constant
 <?php
 echo "GLOB_BRACE=" . GLOB_BRACE . "\n";
 ?>
---EXPECTF--
-GLOB_BRACE=%d
+--EXPECT--
+GLOB_BRACE=128
 --CLEAN--
 <?php
 

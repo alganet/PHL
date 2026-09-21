@@ -7,8 +7,8 @@ PH7 / PHP: PHP_ROUND_HALF_EVEN constant
 <?php
 echo "PHP_ROUND_HALF_EVEN=" . PHP_ROUND_HALF_EVEN . "\n";
 ?>
---EXPECTF--
-PHP_ROUND_HALF_EVEN=%d
+--EXPECT--
+PHP_ROUND_HALF_EVEN=3
 --CLEAN--
 <?php
 

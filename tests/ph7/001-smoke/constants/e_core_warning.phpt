@@ -7,8 +7,8 @@ PH7 / PHP: E_CORE_WARNING constant
 <?php
 echo "E_CORE_WARNING=" . E_CORE_WARNING . "\n";
 ?>
---EXPECTF--
-E_CORE_WARNING=%d
+--EXPECT--
+E_CORE_WARNING=32
 --CLEAN--
 <?php
 

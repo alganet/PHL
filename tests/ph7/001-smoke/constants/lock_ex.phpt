@@ -7,8 +7,8 @@ PH7 / PHP: LOCK_EX constant
 <?php
 echo "LOCK_EX=" . LOCK_EX . "\n";
 ?>
---EXPECTF--
-LOCK_EX=%d
+--EXPECT--
+LOCK_EX=2
 --CLEAN--
 <?php
 
