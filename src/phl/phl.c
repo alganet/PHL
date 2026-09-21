@@ -765,9 +765,8 @@ int main(int argc,char **argv)
 		const char *zScriptName = (run_code || stdin_code) ? "Standard input code" : argv[n];
 		int argv_count = 0;
 		ph7_value *pArgc;
-		/* Count only the entries actually inserted: PH7_VM_CONFIG_ARGV_ENTRY skips
-		 * an empty string, so counting unconditionally would leave $argc greater
-		 * than count($argv) for an empty argument (e.g. `phl s.php "" x`). */
+		/* Count only the entries actually inserted, so $argc can never disagree
+		 * with count($argv) if a registration fails. */
 		if( ph7_vm_config(pVm,PH7_VM_CONFIG_ARGV_ENTRY,zScriptName) == PH7_OK ){
 			argv_count++;
 		}
