@@ -1866,8 +1866,8 @@ PH7_PRIVATE int vm_builtin_compact(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * The [extract()] function store it's state information in an instance
- * of the following structure.
+ * The [import_request_variables()] function store it's state information
+ * in an instance of the following structure.
  */
 typedef struct extract_aux_data extract_aux_data;
 struct extract_aux_data
@@ -1876,58 +1876,186 @@ struct extract_aux_data
 	int iCount;           /* Number of variables successfully imported  */
 	const char *zPrefix;  /* Prefix name */
 	int Prefixlen;        /* Prefix  length */
-	int iFlags;           /* Control flags */
 	char zWorker[1024];   /* Working buffer */
 };
-/* Forward declaration */
-static int VmExtractCallback(ph7_value *pKey,ph7_value *pValue,void *pUserData);
 /*
- * int extract(array &$var_array[,int $extract_type = EXTR_OVERWRITE[,string $prefix = NULL ]])
+ * php's php_valid_var_name(): a legal PHP variable name matches
+ * [A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]* . Byte-wise and locale-free on
+ * purpose (php has been locale-independent here since 8.0); the high-byte
+ * range is what lets UTF-8 identifiers through. extract() drops every key
+ * that does not pass, instead of installing an unreachable variable.
+ */
+static int VmIsValidVarName(const char *zName,sxu32 nByte)
+{
+	unsigned char c;
+	sxu32 i;
+	if( nByte < 1 ){
+		return FALSE;
+	}
+	c = (unsigned char)zName[0];
+	if( c != '_' && !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') && c < 0x80 ){
+		return FALSE;
+	}
+	for( i = 1 ; i < nByte ; ++i ){
+		c = (unsigned char)zName[i];
+		if( c != '_' && !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z')
+		 && !(c >= '0' && c <= '9') && c < 0x80 ){
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+/* TRUE when the name is exactly "this": php refuses to re-assign $this. */
+static int VmExtractIsThis(const char *zName,sxu32 nByte)
+{
+	return nByte == sizeof("this")-1 && SyMemcmp(zName,"this",sizeof("this")-1) == 0;
+}
+/*
+ * TRUE when the name belongs to the superglobal table ($GLOBALS, $_SERVER,
+ * $_GET, …). php hands extract() a per-frame symbol table that holds no
+ * superglobal, so such a key lands in the LOCAL table and the real superglobal
+ * is untouched. In PHL the name resolves to the superglobal SLOT itself
+ * (VmExtractMemObj consults hSuper first), so a plain store would replace
+ * $GLOBALS/$_SERVER with the imported value and take the whole symbol table /
+ * request environment with it. Those keys are dropped instead — a prefixed
+ * name ($p__SERVER) is a normal local and stores fine.
+ */
+static int VmExtractIsProtected(ph7_vm *pVm,const char *zName,sxu32 nByte)
+{
+	return SyHashGet(&pVm->hSuper,(const void *)zName,nByte) != 0;
+}
+/*
+ * TRUE when the calling frame already holds this variable name.
+ * "this" and the superglobals always answer FALSE, matching the symbol table
+ * php hands extract(): $this is bound implicitly and superglobals live outside
+ * the frame. So EXTR_IF_EXISTS/EXTR_PREFIX_IF_EXISTS skip those keys (php-exact)
+ * and EXTR_PREFIX_SAME takes its not-a-collision branch.
+ */
+static int VmExtractVarExists(ph7_vm *pVm,const char *zName,sxu32 nByte)
+{
+	SyString sVar;
+	if( VmExtractIsThis(zName,nByte) || VmExtractIsProtected(pVm,zName,nByte) ){
+		return FALSE;
+	}
+	SyStringInitFromBuf(&sVar,zName,nByte);
+	return VmExtractMemObj(pVm,&sVar,FALSE,FALSE) != 0;
+}
+/*
+ * Create-or-overwrite a variable of the calling frame with a copy of pValue.
+ * Returns TRUE when the variable was written (php counts exactly those).
+ */
+static int VmExtractStoreVar(ph7_vm *pVm,const char *zName,sxu32 nByte,ph7_value *pValue)
+{
+	ph7_value *pObj;
+	SyString sVar;
+	SyStringInitFromBuf(&sVar,zName,nByte);
+	/* bDup: the name lives in a scratch blob that is reused by the next entry */
+	pObj = VmExtractMemObj(pVm,&sVar,TRUE,TRUE);
+	if( pObj == 0 ){
+		return FALSE;
+	}
+	PH7_MemObjStore(pValue,pObj);
+	return TRUE;
+}
+/*
+ * Build php's prefixed name "<prefix>_<key>" (php_prefix_varname with
+ * add_underscore): the separator is unconditional, so an empty prefix still
+ * yields "_key" exactly like php.
+ */
+static sxi32 VmExtractPrefixName(SyBlob *pOut,const char *zPrefix,int nPrefix,
+	const char *zKey,sxu32 nKey)
+{
+	SyBlobReset(pOut);
+	if( nPrefix > 0 && SyBlobAppend(pOut,zPrefix,(sxu32)nPrefix) != SXRET_OK ){
+		return SXERR_MEM;
+	}
+	if( SyBlobAppend(pOut,"_",sizeof(char)) != SXRET_OK ){
+		return SXERR_MEM;
+	}
+	if( nKey > 0 && SyBlobAppend(pOut,zKey,nKey) != SXRET_OK ){
+		return SXERR_MEM;
+	}
+	return SXRET_OK;
+}
+/* What to do with one array entry, decided by the extract mode. */
+#define VM_EXTRACT_DROP     0 /* php skips this key entirely */
+#define VM_EXTRACT_PLAIN    1 /* install under the key itself */
+#define VM_EXTRACT_PREFIX   2 /* install under "<prefix>_<key>" */
+/*
+ * int extract(array &$array[,int $flags = EXTR_OVERWRITE[,string $prefix = "" ]])
  *   Import variables into the current symbol table from an array.
- * Parameters
- * $var_array
- *  An associative array. This function treats keys as variable names and values
- *  as variable values. For each key/value pair it will create a variable in the current symbol
- *  table, subject to extract_type and prefix parameters.
- *  You must use an associative array; a numerically indexed array will not produce results
- *  unless you use EXTR_PREFIX_ALL or EXTR_PREFIX_INVALID.
- * $extract_type
- *  The way invalid/numeric keys and collisions are treated is determined by the extract_type.
- *  It can be one of the following values:
- *   EXTR_OVERWRITE
- *       If there is a collision, overwrite the existing variable.
- *   EXTR_SKIP
- *       If there is a collision, don't overwrite the existing variable.
- *   EXTR_PREFIX_SAME
- *       If there is a collision, prefix the variable name with prefix.
- *   EXTR_PREFIX_ALL
- *       Prefix all variable names with prefix.
- *   EXTR_PREFIX_INVALID
- *       Only prefix invalid/numeric variable names with prefix.
- *   EXTR_IF_EXISTS
- *       Only overwrite the variable if it already exists in the current symbol table
- *       otherwise do nothing.
- *       This is useful for defining a list of valid variables and then extracting only those
- *       variables you have defined out of $_REQUEST, for example.
- *   EXTR_PREFIX_IF_EXISTS
- *       Only create prefixed variable names if the non-prefixed version of the same variable exists in
- *      the current symbol table.
- * $prefix
- *  Note that prefix is only required if extract_type is EXTR_PREFIX_SAME, EXTR_PREFIX_ALL
- *  EXTR_PREFIX_INVALID or EXTR_PREFIX_IF_EXISTS. If the prefixed result is not a valid variable name
- *  it is not imported into the symbol table. Prefixes are automatically separated from the array key by an
- *  underscore character.
+ *
+ * $flags is php's ENUM (PH7_EXTR_* in ph7int.h), not a bitmask: the mode is
+ * (flags & 0xff) and anything above EXTR_IF_EXISTS(6) is a ValueError. The
+ * modes, mirroring php's per-mode helpers in ext/standard/array.c:
+ *   EXTR_OVERWRITE(0)        collisions overwrite
+ *   EXTR_SKIP(1)             collisions keep the existing variable
+ *   EXTR_PREFIX_SAME(2)      collisions install "<prefix>_<key>"
+ *   EXTR_PREFIX_ALL(3)       every key installs as "<prefix>_<key>"
+ *   EXTR_PREFIX_INVALID(4)   only illegal names (and numeric keys) get prefixed
+ *   EXTR_PREFIX_IF_EXISTS(5) install "<prefix>_<key>" only if <key> exists
+ *   EXTR_IF_EXISTS(6)        overwrite only variables that already exist
+ * Modes 2..5 require $prefix (php: `is required when using this extract type`),
+ * a non-empty $prefix must itself be a legal identifier, and a key whose final
+ * name is not a legal variable name is dropped rather than installed. Only
+ * EXTR_PREFIX_ALL/EXTR_PREFIX_INVALID look at numeric keys at all.
+ *
+ * $this is never a target: php throws `Cannot re-assign $this` where a store
+ * would land on it, and skips it where a store would not (EXTR_SKIP), and
+ * $GLOBALS is never clobbered.
  * Return
  *   Returns the number of variables successfully imported into the symbol table.
  */
 PH7_PRIVATE int vm_builtin_extract(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	extract_aux_data sAux;
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pMap;
-	if( nArg < 1 || !ph7_value_is_array(apArg[0]) ){
-		/* Missing/Invalid arguments,return 0 */
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
+	const char *zPrefix = 0;
+	sxi64 iFlags = PH7_EXTR_OVERWRITE;
+	sxi64 iCount = 0;
+	ph7_value sValue;
+	SyBlob sWorker;
+	int nPrefix = 0;
+	sxi32 rc = PH7_OK;
+	int iType;
+	sxu32 n;
+	if( !ph7_value_is_array(apArg[0]) ){
+		char zBuf[64];
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"extract(): Argument #1 ($array) must be of type array, %s given",
+			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf)));
+	}
+	if( nArg > 1 ){
+		rc = PH7_IntArgResolve(pCtx,apArg[1],"extract",2,"$flags","int",&iFlags);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+	}
+	/* php: the mode is the low byte; EXTR_REFS(0x100) rides above it */
+	iType = (int)(iFlags & 0xff);
+	if( iType > PH7_EXTR_IF_EXISTS ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"extract(): Argument #2 ($flags) must be a valid extract type");
+	}
+	if( iType > PH7_EXTR_SKIP && iType <= PH7_EXTR_PREFIX_IF_EXISTS && nArg < 3 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"extract(): Argument #3 ($prefix) is required when using this extract type");
+	}
+	if( nArg > 2 ){
+		zPrefix = ph7_value_to_string(apArg[2],&nPrefix);
+		if( nPrefix > 0 && !VmIsValidVarName(zPrefix,(sxu32)nPrefix) ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"extract(): Argument #3 ($prefix) must be a valid identifier");
+		}
+	}
+	if( iFlags & PH7_EXTR_REFS ){
+		/* php binds each extracted name BY REFERENCE to its array slot. PHL has
+		 * no by-ref extraction; importing by VALUE instead would be a divergence
+		 * the caller cannot see (writes stop propagating), so it is loud (§10).
+		 * The EXTR_REFS constant itself stays undefined. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"extract(): Argument #2 ($flags) EXTR_REFS is not supported");
 	}
 	/* Point to the target hashmap */
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
@@ -1936,81 +2064,140 @@ PH7_PRIVATE int vm_builtin_extract(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
 	}
-	/* Prepare the aux data */
-	SyZero(&sAux,sizeof(extract_aux_data)-sizeof(sAux.zWorker));
-	if( nArg > 1 ){
-		sAux.iFlags = ph7_value_to_int(apArg[1]);
-		if( nArg > 2 ){
-			sAux.zPrefix = ph7_value_to_string(apArg[2],&sAux.Prefixlen);
+	SyBlobInit(&sWorker,&pVm->sAllocator);
+	PH7_MemObjInit(pVm,&sValue);
+	/* php walks a COPY of the array, so an entry that overwrites the caller's own
+	 * array variable ($arr = ['arr'=>1]; extract($arr)) cannot pull the map from
+	 * under the walk. Pinning the map for the walk is the same guarantee. */
+	pMap->iRef++;
+	pEntry = pMap->pFirst;
+	/* pFirst walks the insertion order through pPrev — PH7 links the entry list
+	 * in reverse (same traversal PH7_HashmapWalk uses). */
+	for( n = pMap->nEntry ; n > 0 && pEntry ; --n, pEntry = pEntry->pPrev ){
+		const char *zKey, *zFinal;
+		sxu32 nKey, nFinal;
+		char zNum[32];
+		int bIntKey, iAction;
+		/* Work off a COPY of the entry value: installing a variable can grow
+		 * pVm->aMemObj, and a pointer into that set would dangle across the
+		 * reallocation (this is why the walk API hands out copies too). The
+		 * release comes FIRST so it covers every continue/goto below: the load
+		 * takes a reference on an array/object value and does not drop the one
+		 * the previous entry left behind (PH7_HashmapWalk releases per iteration
+		 * for the same reason — without it a whole-array extract() pins every
+		 * value it copied, and their destructors never run). */
+		PH7_MemObjRelease(&sValue);
+		PH7_HashmapExtractNodeValue(pEntry,&sValue,FALSE);
+		bIntKey = (pEntry->iType == HASHMAP_INT_NODE);
+		if( bIntKey ){
+			/* Only the two prefixing modes below ever look at a numeric key */
+			nKey = SyBufferFormat(zNum,sizeof(zNum),"%qd",pEntry->xKey.iKey);
+			zKey = zNum;
+		}else{
+			zKey = (const char *)SyBlobData(&pEntry->xKey.sKey);
+			nKey = SyBlobLength(&pEntry->xKey.sKey);
 		}
-	}
-	sAux.pVm = pCtx->pVm;
-	/* Invoke the worker callback */
-	PH7_HashmapWalk(pMap,VmExtractCallback,&sAux);
-	/* Number of variables successfully imported */
-	ph7_result_int(pCtx,sAux.iCount);
-	return PH7_OK;
-}
-/*
- * Worker callback for the [extract()] function defined
- * below.
- */
-static int VmExtractCallback(ph7_value *pKey,ph7_value *pValue,void *pUserData)
-{
-	extract_aux_data *pAux = (extract_aux_data *)pUserData;
-	int iFlags = pAux->iFlags;
-	ph7_vm *pVm = pAux->pVm;
-	ph7_value *pObj;
-	SyString sVar;
-	if( (iFlags & 0x10/* EXTR_PREFIX_INVALID */) && (pKey->iFlags & (MEMOBJ_INT|MEMOBJ_BOOL|MEMOBJ_REAL))){
-		iFlags |= 0x08; /*EXTR_PREFIX_ALL*/
-	}
-	/* Perform a string cast */
-	PH7_MemObjToString(pKey);
-	if( SyBlobLength(&pKey->sBlob) < 1 ){
-		/* Unavailable variable name */
-		return SXRET_OK;
-	}
-	sVar.nByte = 0; /* cc warning */
-	if( (iFlags & 0x08/*EXTR_PREFIX_ALL*/ ) && pAux->Prefixlen > 0 ){
-		sVar.nByte = (sxu32)SyBufferFormat(pAux->zWorker,sizeof(pAux->zWorker),"%.*s_%.*s",
-			pAux->Prefixlen,pAux->zPrefix,
-			SyBlobLength(&pKey->sBlob),SyBlobData(&pKey->sBlob)
-			);
-	}else{
-		sVar.nByte = (sxu32) SyMemcpy(SyBlobData(&pKey->sBlob),pAux->zWorker,
-			SXMIN(SyBlobLength(&pKey->sBlob),sizeof(pAux->zWorker)));
-	}
-	sVar.zString = pAux->zWorker;
-	/* Try to extract the variable */
-	pObj = VmExtractMemObj(pVm,&sVar,TRUE,FALSE);
-	if( pObj ){
-		/* Collision */
-		if( iFlags & 0x02 /* EXTR_SKIP */ ){
-			return SXRET_OK;
-		}
-		if( iFlags & 0x04 /* EXTR_PREFIX_SAME */ ){
-			if( (iFlags & 0x08/*EXTR_PREFIX_ALL*/) || pAux->Prefixlen < 1){
-				/* Already prefixed */
-				return SXRET_OK;
+		iAction = VM_EXTRACT_DROP;
+		switch( iType ){
+		case PH7_EXTR_OVERWRITE:
+			if( bIntKey || !VmIsValidVarName(zKey,nKey) ){
+				break;
 			}
-			sVar.nByte = (sxu32)SyBufferFormat(pAux->zWorker,sizeof(pAux->zWorker),"%.*s_%.*s",
-				pAux->Prefixlen,pAux->zPrefix,
-				SyBlobLength(&pKey->sBlob),SyBlobData(&pKey->sBlob)
-				);
-			pObj = VmExtractMemObj(pVm,&sVar,TRUE,TRUE);
+			if( VmExtractIsThis(zKey,nKey) ){
+				goto this_error;
+			}
+			iAction = VM_EXTRACT_PLAIN;
+			break;
+		case PH7_EXTR_SKIP:
+			if( bIntKey || !VmIsValidVarName(zKey,nKey) || VmExtractIsThis(zKey,nKey) ){
+				break;
+			}
+			if( VmExtractVarExists(pVm,zKey,nKey) ){
+				break; /* collision: keep the existing variable */
+			}
+			iAction = VM_EXTRACT_PLAIN;
+			break;
+		case PH7_EXTR_IF_EXISTS:
+			if( bIntKey || !VmExtractVarExists(pVm,zKey,nKey) ){
+				break;
+			}
+			if( !VmIsValidVarName(zKey,nKey) ){
+				break;
+			}
+			if( VmExtractIsThis(zKey,nKey) ){
+				goto this_error;
+			}
+			iAction = VM_EXTRACT_PLAIN;
+			break;
+		case PH7_EXTR_PREFIX_SAME:
+			if( bIntKey || nKey < 1 ){
+				break;
+			}
+			if( VmExtractVarExists(pVm,zKey,nKey) ){
+				iAction = VM_EXTRACT_PREFIX; /* collision */
+			}else if( !VmIsValidVarName(zKey,nKey) ){
+				break;
+			}else{
+				/* $this cannot be a target, but its prefixed form can */
+				iAction = VmExtractIsThis(zKey,nKey) ? VM_EXTRACT_PREFIX : VM_EXTRACT_PLAIN;
+			}
+			break;
+		case PH7_EXTR_PREFIX_ALL:
+			if( !bIntKey && nKey < 1 ){
+				break;
+			}
+			iAction = VM_EXTRACT_PREFIX;
+			break;
+		case PH7_EXTR_PREFIX_INVALID:
+			iAction = (bIntKey || !VmIsValidVarName(zKey,nKey) || VmExtractIsThis(zKey,nKey))
+				? VM_EXTRACT_PREFIX : VM_EXTRACT_PLAIN;
+			break;
+		case PH7_EXTR_PREFIX_IF_EXISTS:
+			if( !bIntKey && VmExtractVarExists(pVm,zKey,nKey) ){
+				iAction = VM_EXTRACT_PREFIX;
+			}
+			break;
+		default:
+			break;
 		}
-	}else{
-		/* Create the variable */
-		pObj = VmExtractMemObj(pVm,&sVar,TRUE,TRUE);
+		if( iAction == VM_EXTRACT_DROP ){
+			continue;
+		}
+		if( iAction == VM_EXTRACT_PREFIX ){
+			if( VmExtractPrefixName(&sWorker,zPrefix,nPrefix,zKey,nKey) != SXRET_OK ){
+				rc = PH7_VmThrowException(pCtx,"Error","PH7 engine is running out of memory");
+				goto done;
+			}
+			zFinal = (const char *)SyBlobData(&sWorker);
+			nFinal = SyBlobLength(&sWorker);
+			if( !VmIsValidVarName(zFinal,nFinal) ){
+				continue; /* php drops a prefixed name that is not an identifier */
+			}
+			if( VmExtractIsThis(zFinal,nFinal) ){
+				goto this_error;
+			}
+		}else{
+			if( VmExtractIsProtected(pVm,zKey,nKey) ){
+				continue; /* $GLOBALS/$_SERVER/... are never a plain target */
+			}
+			zFinal = zKey;
+			nFinal = nKey;
+		}
+		if( VmExtractStoreVar(pVm,zFinal,nFinal,&sValue) ){
+			iCount++;
+		}
+		continue;
+this_error:
+		rc = PH7_VmThrowException(pCtx,"Error","Cannot re-assign $this");
+		goto done;
 	}
-	if( pObj ){
-		/* Overwrite the old value */
-		PH7_MemObjStore(pValue,pObj);
-		/* Increment counter */
-		pAux->iCount++;
-	}
-	return SXRET_OK;
+	/* Number of variables successfully imported */
+	ph7_result_int64(pCtx,iCount);
+done:
+	PH7_MemObjRelease(&sValue);
+	SyBlobRelease(&sWorker);
+	PH7_HashmapUnref(pMap);
+	return rc;
 }
 /*
  * Worker callback for the [import_request_variables()] function
