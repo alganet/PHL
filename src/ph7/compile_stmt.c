@@ -46,13 +46,16 @@ PH7_PRIVATE sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 	/* php forbids attributes on a comma-separated const list. Snapshot whether the
 	 * statement carries any now, before the first constant consumes them. */
 	int bHadAttrs = SySetUsed(&pGen->aPendingAttrs) > 0;
+	/* php attributes every const-statement compile error to the `const` keyword's
+	 * line, not the offending list element's own line (`const A=1,\nB=strlen()` blames
+	 * line 1). Capture it once here, before jumping the keyword. */
+	nLineLocal = pGen->pIn->nLine;
 	pGen->pIn++; /* Jump the 'const' keyword */
 	/* php allows a single `const` statement to declare several constants at once
 	 * (`const A = 1, B = 2;`). Loop over the comma-separated name = value pairs;
 	 * PH7_CompileExpr(EXPR_FLAG_COMMA_STATEMENT) stops each value at the first
 	 * top-level comma so the next pair starts cleanly. */
 Loop:
-	nLineLocal = pGen->pIn->nLine;
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_SSTR|PH7_TK_DSTR|PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
 		/* Invalid constant name */
 		rc = PH7_GenSyntaxError(pGen,pGen->pIn < pGen->pEnd ? pGen->pIn : 0,"identifier");
@@ -121,6 +124,14 @@ Loop:
 	PH7_VmSetByteCodeContainer(pGen->pVm,pInstrContainer);
 	if( rc == SXERR_ABORT ){
 		/* Don't worry about freeing memory, everything will be released shortly */
+		return SXERR_ABORT;
+	}
+	/* php parse-errors an empty initializer (`const A = ;`, or a `,B=` list hole);
+	 * the class-const path rejects it too. Reject loudly rather than silently
+	 * defining a NULL constant. (php's error KIND -- a parse error -- differs from
+	 * PHL's compile fatal, the recursive-descent-vs-bison family; both refuse.) */
+	if( rc == SXERR_EMPTY && PH7_GenCompileError(pGen,E_ERROR,nLineLocal,
+			"Empty constant '%z' value",pName) == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
 	SySetSetUserData(pConsCode,pGen->pVm);
