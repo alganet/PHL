@@ -5149,7 +5149,7 @@ case PH7_OP_CALL: {
 							}else if( pVal->iFlags & MEMOBJ_NULL ){
 								zGiven = "null";
 							}else{
-								zGiven = ph7_type_name(pVal);
+								zGiven = VmValueGivenName(pVal,zBuf,sizeof(zBuf));
 							}
 							if( SyStringLength(&aFormalArg[n].sTypeName) > 0 ){
 								zExpected = VmSyStringToCStr(&aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf));
@@ -5218,8 +5218,9 @@ case PH7_OP_CALL: {
 							}
 						}else if( (pVal->iFlags & aFormalArg[n].nType) == 0 ){
 							if( aFormalArg[n].nType == MEMOBJ_OBJ ){
+								char zGivenBuf[128];
 								rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
-									&aFormalArg[n].sName,"object",ph7_type_name(pVal));
+									&aFormalArg[n].sName,"object",VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
 								if( rc == PH7_ABORT ) goto Abort;
 								SyMemBackendFree(&pVm->sAllocator, aSlot);
 								PH7_MemObjRelease(pTos);
@@ -5229,10 +5230,11 @@ case PH7_OP_CALL: {
 								goto SkipFuncBody;
 							}else if( VmEnforceScalarType(pVal, aFormalArg[n].nType, bCallIsStrict) != SXRET_OK ){
 								char zTypeBuf[128];
+								char zGivenBuf[128];
 								rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
 									&aFormalArg[n].sName,
 									VmScalarTypeName(aFormalArg[n].nType, &aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf)),
-									ph7_type_name(pVal));
+									VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
 								if( rc == PH7_ABORT ) goto Abort;
 								SyMemBackendFree(&pVm->sAllocator, aSlot);
 								PH7_MemObjRelease(pTos);
@@ -5469,7 +5471,7 @@ case PH7_OP_CALL: {
 									}else if( pArg->iFlags & MEMOBJ_NULL ){
 										zGiven = "null";
 									}else{
-										zGiven = ph7_type_name(pArg);
+										zGiven = VmValueGivenName(pArg,zBuf,sizeof(zBuf));
 									}
 									if( SyStringLength(&aFormalArg[n].sTypeName) > 0 ){
 										zExpected = VmSyStringToCStr(&aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf));
@@ -5496,8 +5498,9 @@ case PH7_OP_CALL: {
 								&& (pArg->iFlags & aFormalArg[n].nType) == 0 ){
 								if( aFormalArg[n].nType == MEMOBJ_OBJ ){
 									/* object type hint on variadic: reject non-objects with TypeError */
+									char zGivenBuf[128];
 									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
-										&aFormalArg[n].sName,"object",ph7_type_name(pArg));
+										&aFormalArg[n].sName,"object",VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf)));
 									if( rc == PH7_ABORT ){
 										goto Abort;
 									}
@@ -5509,10 +5512,11 @@ case PH7_OP_CALL: {
 									goto SkipFuncBody;
 								}else if( VmEnforceScalarType(pArg, aFormalArg[n].nType, bCallIsStrict) != SXRET_OK ){
 									char zTypeBuf[128];
+									char zGivenBuf[128];
 									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
 										&aFormalArg[n].sName,
 										VmScalarTypeName(aFormalArg[n].nType, &aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf)),
-										ph7_type_name(pArg));
+										VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf)));
 									if( rc == PH7_ABORT ){
 										goto Abort;
 									}
@@ -5554,7 +5558,7 @@ case PH7_OP_CALL: {
 						}else if( pArg->iFlags & MEMOBJ_NULL ){
 							zGiven = "null";
 						}else{
-							zGiven = ph7_type_name(pArg);
+							zGiven = VmValueGivenName(pArg,zBuf,sizeof(zBuf));
 						}
 						if( SyStringLength(&aFormalArg[n].sTypeName) > 0 ){
 							zExpected = VmSyStringToCStr(&aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf));
@@ -5624,8 +5628,9 @@ case PH7_OP_CALL: {
 					}else if( ((pArg->iFlags & aFormalArg[n].nType) == 0) ){
 						if( aFormalArg[n].nType == MEMOBJ_OBJ ){
 							/* object type hint: reject non-objects with TypeError */
+							char zGivenBuf[128];
 							rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
-								&aFormalArg[n].sName,"object",ph7_type_name(pArg));
+								&aFormalArg[n].sName,"object",VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf)));
 							if( rc == PH7_ABORT ){
 								goto Abort;
 							}
@@ -5637,10 +5642,11 @@ case PH7_OP_CALL: {
 							goto SkipFuncBody;
 						}else if( VmEnforceScalarType(pArg, aFormalArg[n].nType, bCallIsStrict) != SXRET_OK ){
 							char zTypeBuf[128];
+							char zGivenBuf[128];
 							rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
 								&aFormalArg[n].sName,
 								VmScalarTypeName(aFormalArg[n].nType, &aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf)),
-								ph7_type_name(pArg));
+								VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf)));
 							if( rc == PH7_ABORT ){
 								goto Abort;
 							}

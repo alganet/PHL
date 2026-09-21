@@ -1449,6 +1449,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 	SyHashEntry *pSlot;
 	VmClassAttr *pVmAttr;
 	ph7_class_attr *pAttr;
+	char zGivenBuf[128];
 	pSlot = SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32));
 	if( pSlot == 0 ){
 		return SXRET_OK; /* Not a typed slot */
@@ -1518,7 +1519,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 			return VmThrowPropertyTypeError(pVm,pVmAttr,
 				VmFormatValueClassName(pValue,zBuf,sizeof(zBuf)));
 		}
-		return VmThrowPropertyTypeError(pVm,pVmAttr,ph7_type_name(pValue));
+		return VmThrowPropertyTypeError(pVm,pVmAttr,VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
 	}
 	/* NULL handling: allowed if the type is nullable, or is `mixed` (which
 	 * includes null). */
@@ -1535,7 +1536,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 	 * accepted by the nullable check above, so any non-null value here is a
 	 * type error. */
 	if( pAttr->nType == MEMOBJ_NULL ){
-		return VmThrowPropertyTypeError(pVm,pVmAttr,ph7_type_name(pValue));
+		return VmThrowPropertyTypeError(pVm,pVmAttr,VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
 	}
 	/* Bare 'object' type hint: accept any class instance, reject non-objects.
 	 * Must be checked before the generic scalar branch since MEMOBJ_OBJ is
@@ -1545,7 +1546,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 			pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
 			return SXRET_OK;
 		}
-		return VmThrowPropertyTypeError(pVm,pVmAttr,ph7_type_name(pValue));
+		return VmThrowPropertyTypeError(pVm,pVmAttr,VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
 	}
 	/* Pseudo-types stored as class-name atoms: `iterable` (array|Traversable),
 	 * `true`/`false` (matching bool), `mixed` (any value — its null case is
@@ -1559,7 +1560,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 			return SXRET_OK;
 		}
 		if( rcPseudo == 0 ){
-			return VmThrowPropertyTypeError(pVm,pVmAttr,ph7_type_name(pValue));
+			return VmThrowPropertyTypeError(pVm,pVmAttr,VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
 		}
 		/* rcPseudo == -1: real class — fall through to the instanceof branch. */
 	}
@@ -1568,7 +1569,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 		 * currently active on the self-stack. */
 		ph7_class *pExpected = VmResolveTypeClass(pVm,&pAttr->sClass,VmCurrentSelf(pVm));
 		if( (pValue->iFlags & MEMOBJ_OBJ) == 0 ){
-			return VmThrowPropertyTypeError(pVm,pVmAttr,ph7_type_name(pValue));
+			return VmThrowPropertyTypeError(pVm,pVmAttr,VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
 		}
 		if( pExpected ){
 			ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
@@ -1593,10 +1594,10 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 		if( xCast ){
 			/* Reject array<->scalar coercion to match PHP strictness */
 			if( pAttr->nType == MEMOBJ_HASHMAP && (pValue->iFlags & MEMOBJ_HASHMAP) == 0 ){
-				return VmThrowPropertyTypeError(pVm,pVmAttr,ph7_type_name(pValue));
+				return VmThrowPropertyTypeError(pVm,pVmAttr,VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
 			}
 			if( pAttr->nType != MEMOBJ_HASHMAP && (pValue->iFlags & MEMOBJ_HASHMAP) ){
-				return VmThrowPropertyTypeError(pVm,pVmAttr,ph7_type_name(pValue));
+				return VmThrowPropertyTypeError(pVm,pVmAttr,VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
 			}
 			/* PHP weak mode: reject string->int/float unless the string is
 			 * strictly numeric. Silent coercion of "abc" or "43x" to 0/43
@@ -2259,7 +2260,7 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 		}else if( pValue->iFlags & MEMOBJ_NULL ){
 			zGiven = "null";
 		}else{
-			zGiven = ph7_type_name(pValue);
+			zGiven = VmValueGivenName(pValue,zBuf,sizeof(zBuf));
 		}
 		if( SyStringLength(&pFunc->sReturnTypeName) > 0 ){
 			zExpected = VmSyStringToCStr(&pFunc->sReturnTypeName, zTypeBuf, sizeof(zTypeBuf));
@@ -2275,7 +2276,7 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 		ph7_class *pExpected = VmResolveTypeClass(pVm,pClassName,VmCurrentSelf(pVm));
 		zExpected = VmSyStringToCStr(pClassName, zTypeBuf, sizeof(zTypeBuf));
 		if( (pValue->iFlags & MEMOBJ_OBJ) == 0 ){
-			zGiven = (pValue->iFlags & MEMOBJ_NULL) ? "null" : ph7_type_name(pValue);
+			zGiven = (pValue->iFlags & MEMOBJ_NULL) ? "null" : VmValueGivenName(pValue,zBuf,sizeof(zBuf));
 			return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,zExpected,zGiven);
 		}
 		if( pExpected ){
@@ -2310,7 +2311,7 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 	if( ((sxu32)(pValue->iFlags) & MEMOBJ_HASHMAP) != (pFunc->nReturnType & MEMOBJ_HASHMAP) ){
 		return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,
 			VmScalarTypeName(pFunc->nReturnType,&pFunc->sReturnTypeName,zTypeBuf,sizeof(zTypeBuf)),
-			ph7_type_name(pValue));
+			VmValueGivenName(pValue,zBuf,sizeof(zBuf)));
 	}
 	/* PHP's weak-mode rule: string -> int/float is allowed only if the
 	 * string is strictly numeric. Silently coercing "abc"/"43x" to 0/43
@@ -2329,7 +2330,7 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 	}
 	return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,
 		VmScalarTypeName(pFunc->nReturnType,&pFunc->sReturnTypeName,zTypeBuf,sizeof(zTypeBuf)),
-		ph7_type_name(pValue));
+		VmValueGivenName(pValue,zBuf,sizeof(zBuf)));
 }
 /*
  * Report a fatal named-argument error.
