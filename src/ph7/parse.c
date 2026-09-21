@@ -388,10 +388,20 @@ static sxi32 ExprVerifyNodes(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nN
 			continue;
 		}
 		if( apNode[i]->pStart->nType & PH7_TK_LPAREN /*'('*/){
+			/* A short-array literal is a SELF-CONTAINED node whose start token is '['
+			 * (its ']' was consumed), so the raw-token CSB test below can never see it —
+			 * `[$obj, 'm']()` parsed the '(' as a grouping paren and silently DROPPED
+			 * the call (the expression evaluated to the array). php invokes the literal
+			 * array callable exactly like the variable-held form. */
 			if( i > 0 && ( apNode[i-1]->xCode == PH7_CompileVariable || apNode[i-1]->xCode == PH7_CompileLiteral ||
+				apNode[i-1]->xCode == PH7_CompileShortArray ||
 				(apNode[i - 1]->pStart->nType & (PH7_TK_ID|PH7_TK_KEYWORD|PH7_TK_SSTR|PH7_TK_DSTR|PH7_TK_RPAREN/*')'*/|PH7_TK_CSB/*']'*/|PH7_TK_CCB/*'}'*/))) ){
-					/* Ticket 1433-033: Take care to ignore alpha-stream [i.e: or,xor] operators followed by an opening parenthesis */
-					if( (apNode[i - 1]->pStart->nType & PH7_TK_OP) == 0 ){
+					/* Ticket 1433-033: Take care to ignore alpha-stream [i.e: or,xor] operators followed by an opening parenthesis.
+					 * A self-contained short-array node is exempt: its start token is '[',
+					 * which carries PH7_TK_OP as the subscript operator, but the node is a
+					 * complete array-literal TERM — `[$obj, 'm'](...)` is a call. */
+					if( (apNode[i - 1]->pStart->nType & PH7_TK_OP) == 0
+					 || apNode[i-1]->xCode == PH7_CompileShortArray ){
 						/* We are dealing with a postfix [i.e: function call]  operator
 						 * not a simple left parenthesis. Mark the node.
 						 */
