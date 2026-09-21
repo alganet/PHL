@@ -68,6 +68,7 @@ PH7_PRIVATE int PH7_builtin_ftruncate(ph7_context *pCtx,int nArg,ph7_value **apA
 {
 	const ph7_io_stream *pStream;
 	io_private *pDev;
+	ph7_int64 nSize;
 	int rc;
 	if( nArg < 2 || !ph7_value_is_resource(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
@@ -84,6 +85,13 @@ PH7_PRIVATE int PH7_builtin_ftruncate(ph7_context *pCtx,int nArg,ph7_value **apA
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	nSize = ph7_value_to_int64(apArg[1]);
+	if( nSize < 0 ){
+		/* php 8: catchable ValueError, raised BEFORE the unsupported-stream
+		 * check (php-src orders the size check first). PHL used to truncate. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"ftruncate(): Argument #2 ($size) must be greater than or equal to 0");
+	}
 	/* Point to the target IO stream device */
 	pStream = pDev->pStream;
 	if( pStream == 0  || pStream->xTrunc == 0){
@@ -95,7 +103,7 @@ PH7_PRIVATE int PH7_builtin_ftruncate(ph7_context *pCtx,int nArg,ph7_value **apA
 		return PH7_OK;
 	}
 	/* Perform the requested operation */
-	rc = pStream->xTrunc(pDev->pHandle,ph7_value_to_int64(apArg[1]));
+	rc = pStream->xTrunc(pDev->pHandle,nSize);
 	if( rc == PH7_OK ){
 		/* Discard buffered data */
 		ResetIOPrivate(pDev);
@@ -1858,11 +1866,17 @@ PH7_PRIVATE int PH7_builtin_fwrite(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Extract the data to write */
 	zString = ph7_value_to_string(apArg[1],&nLen);
-	if( nArg > 2 ){
-		/* Maximum data length to write */
-		n = ph7_value_to_int(apArg[2]);
-		if( n >= 0 && n < nLen ){
-			nLen = n;
+	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){
+		/* Maximum data length to write, read at 64-bit width so a large limit
+		 * (PHP_INT_MAX as "no limit" is a common idiom) does not truncate to a
+		 * negative int. php 8: NULL means "no limit" and a NEGATIVE $length
+		 * writes NOTHING and returns 0 (probed; PHL used to ignore a negative
+		 * and write the whole string). */
+		sxi64 nMax = ph7_value_to_int64(apArg[2]);
+		if( nMax < 0 ){
+			nLen = 0;
+		}else if( nMax < (sxi64)nLen ){
+			nLen = (int)nMax;
 		}
 	}
 	if( nLen < 1 ){
@@ -1916,25 +1930,30 @@ PH7_PRIVATE int PH7_builtin_flock(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	/* Requested lock operation. php 8 validates it BEFORE the stream's lock
+	 * support is considered: the low two bits select the action (its bison
+	 * table is act = operation & 3), 0 is invalid, and every higher bit except
+	 * LOCK_NB is ignored (flock($f,99) is LOCK_UN in php). */
+	nLock = ph7_value_to_int(apArg[1]);
+	if( (nLock & 3) == 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"flock(): Argument #2 ($operation) must be one of LOCK_SH, LOCK_EX, or LOCK_UN");
+	}
 	/* Point to the target IO stream device */
 	pStream = pDev->pStream;
 	if( pStream == 0  || pStream->xLock == 0){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
-			ph7_function_name(pCtx),pStream ? pStream->zName : "null_stream"
-			);
+		/* php returns FALSE silently when the stream does not support locking
+		 * (php://memory & co) — no warning. */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Requested lock operation */
-	nLock = ph7_value_to_int(apArg[1]);
 	/*
 	 * Translate php's operation (LOCK_SH=1, LOCK_EX=2, LOCK_UN=3, optionally |LOCK_NB=4)
 	 * into the xLock() vtable contract, which is a PUBLIC C API and stays as it is:
 	 * negative = unlock, 1 = exclusive, anything else = shared.
 	 */
 	{
-		int iOp = nLock & ~4 /* strip LOCK_NB */;
+		int iOp = nLock & 3;
 		if( iOp == 3 /* LOCK_UN */ ){
 			nLock = -1;
 		}else if( iOp == 2 /* LOCK_EX */ ){
