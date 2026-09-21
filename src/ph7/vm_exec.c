@@ -5243,6 +5243,10 @@ case PH7_OP_CALL: {
 								rc = PH7_EXCEPTION;
 								goto SkipFuncBody;
 							}
+						}else{
+							/* Mask matched — an int param accepting a whole-real
+							 * materializes it (php: f(1.0) into int $x is int(1)). */
+							VmMaterializeIntTyped(pVal,aFormalArg[n].nType);
 						}
 					}
 					/* Install: by reference or by value */
@@ -5362,6 +5366,10 @@ case PH7_OP_CALL: {
 								&& !((aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) && (pObj->iFlags & MEMOBJ_NULL)) ){
 								ProcMemObjCast xCast = PH7_MemObjCastMethod(aFormalArg[n].nType);
 								if( xCast ) xCast(pObj);
+							}else{
+								/* Mask matched — a const-indirected whole-real default
+								 * (`int $x = FOO` with FOO = 2.0) materializes as int. */
+								VmMaterializeIntTyped(pObj,aFormalArg[n].nType);
 							}
 						}
 					}
@@ -5633,6 +5641,10 @@ case PH7_OP_CALL: {
 							rc = PH7_EXCEPTION;
 							goto SkipFuncBody;
 						}
+					}else{
+						/* Mask matched — an int param accepting a whole-real
+						 * materializes it (php: f(1.0) into int $x is int(1)). */
+						VmMaterializeIntTyped(pArg,aFormalArg[n].nType);
 					}
 				}
 				if( aFormalArg[n].iFlags & VM_FUNC_ARG_BY_REF ){
@@ -5818,6 +5830,10 @@ case PH7_OP_CALL: {
 						ProcMemObjCast xCast = PH7_MemObjCastMethod(aFormalArg[n].nType);
 						/* Cast to the desired type */
 						xCast(pObj);
+					}else{
+						/* Mask matched — a const-indirected whole-real default
+						 * (`int $x = FOO` with FOO = 2.0) materializes as int. */
+						VmMaterializeIntTyped(pObj,aFormalArg[n].nType);
 					}
 				}
 			}
