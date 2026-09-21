@@ -3310,15 +3310,27 @@ PH7_PRIVATE int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 	}
 
-	/* Total number of entries to insert */
-	nEntry = ph7_value_to_int(apArg[1]);
+	/* Total number of entries to insert. Read as 64-bit FIRST: the old 32-bit
+	 * read truncated array_fill(0, PHP_INT_MAX, x) to -1 and reported the
+	 * negative-count message where php says "is too large". */
+	sxi64 nEntry64 = ph7_value_to_int64(apArg[1]);
 	/* Reject negative counts with a ValueError like PHP. */
-	if( nEntry < 0 ){
+	if( nEntry64 < 0 ){
 		return PH7_VmThrowException(pCtx,
 			"ValueError",
 			"array_fill(): Argument #2 ($count) must be greater than or equal to 0"
 			);
 	}
+	if( nEntry64 > 0x7fffffff ){
+		/* php's threshold (probed 8.5.8): count > INT32_MAX is the distinct
+		 * "is too large" ValueError; INT32_MAX itself proceeds to allocation
+		 * (php then dies on the overflowing allocation, PHL OOMs gracefully). */
+		return PH7_VmThrowException(pCtx,
+			"ValueError",
+			"array_fill(): Argument #2 ($count) is too large"
+			);
+	}
+	nEntry = (int)nEntry64;
 
 	/* If zero elements were requested, return an empty array without allocating */
 	if( nEntry == 0 ){

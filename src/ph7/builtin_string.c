@@ -1949,6 +1949,14 @@ PH7_PRIVATE int PH7_builtin_implode(ph7_context *pCtx,int nArg,ph7_value **apArg
 				VmValueGivenName(apArg[1],zBuf,sizeof(zBuf)));
 		}
 	}else{
+		if( nArg > 1 ){
+			/* php 8 removed the legacy swapped order: implode($pieces, $glue)
+			 * is a TypeError (PHL used to swap silently, a wrong ANSWER when
+			 * the caller meant php's signature). One array argument alone
+			 * stays the legal ""-glue form. */
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"implode(): Argument #1 ($separator) must be of type string, array given");
+		}
 		imp_data.zSep = 0;
 		imp_data.nSeplen = 0;
 		i = 0;
@@ -4734,10 +4742,14 @@ PH7_PRIVATE int PH7_builtin_str_pad(ph7_context *pCtx,int nArg,ph7_value **apArg
 				"str_pad(): Argument #3 ($pad_string) must not be empty");
 		}
 		if( nArg > 3 ){
-			/* Padd type */
+			/* Padd type. php 8: anything outside LEFT(0)/RIGHT(1)/BOTH(2) is a
+			 * catchable ValueError (PHL used to fall back to RIGHT silently);
+			 * like the empty-pad check above, php only reaches it once padding
+			 * is actually required (probed: str_pad("abc",2," ",9) is "abc"). */
 			iType = ph7_value_to_int(apArg[3]);
-			if( iType != 0 /* STR_PAD_LEFT */ && iType != 2 /* STR_PAD_BOTH */ ){
-				iType = 1 ; /* STR_PAD_RIGHT */
+			if( iType < 0 || iType > 2 ){
+				return PH7_VmThrowException(pCtx,"ValueError",
+					"str_pad(): Argument #4 ($pad_type) must be STR_PAD_LEFT, STR_PAD_RIGHT, or STR_PAD_BOTH");
 			}
 		}
 	}
