@@ -5144,120 +5144,19 @@ case PH7_OP_CALL: {
 					 * to the type check below (TypeError for a non-nullable typed param,
 					 * kept as null for a typeless one). An implicitly-nullable `Type $x =
 					 * null` param carries VM_FUNC_ARG_NULLABLE, so the check accepts null. */
-					/* Type checking: union types */
-					if( aFormalArg[n].iFlags & VM_FUNC_ARG_UNION ){
-						sxi32 rcU = VmCoerceToUnion(pVm, pVal, &aFormalArg[n].aUnionAlts,
-							(aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) ? 1 : 0,
-							bCallIsStrict);
-						if( rcU != SXRET_OK ){
-							const char *zGiven;
-							const char *zExpected = "union";
-							char zBuf[128];
-							char zTypeBuf[128];
-							if( pVal->iFlags & MEMOBJ_OBJ ){
-								zGiven = VmFormatValueClassName(pVal,zBuf,sizeof(zBuf));
-							}else if( pVal->iFlags & MEMOBJ_NULL ){
-								zGiven = "null";
-							}else{
-								zGiven = VmValueGivenName(pVal,zBuf,sizeof(zBuf));
-							}
-							if( SyStringLength(&aFormalArg[n].sTypeName) > 0 ){
-								zExpected = VmSyStringToCStr(&aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf));
-							}
-							rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
-								&aFormalArg[n].sName, zExpected, zGiven);
-							if( rc == PH7_ABORT ) goto Abort;
-							SyMemBackendFree(&pVm->sAllocator, aSlot);
-							PH7_MemObjRelease(pTos);
-							pTos = &pTos[-nCallArgs];
-							pFrameStack = 0;
-							rc = PH7_EXCEPTION;
-							goto SkipFuncBody;
-						}
-					}else if( aFormalArg[n].nType > 0
-						&& !((aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) && (pVal->iFlags & MEMOBJ_NULL)) ){
-						/* Scalar/class type checking */
-						if( aFormalArg[n].nType == SXU32_HIGH ){
-							SyString *pName = &aFormalArg[n].sClass;
-							ph7_class *pClass;
-							int rcPseudo = VmCheckPseudoType(&(*pVm),pVal,pName);
-							if( rcPseudo == 0 ){
-								/* Recognised pseudo-type (true/false/iterable); value mismatches */
-								char zTypeBuf[128],zGivenBuf[128];
-								rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
-									&aFormalArg[n].sName,
-									VmSyStringToCStr(pName,zTypeBuf,sizeof(zTypeBuf)),
-									VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
-								if( rc == PH7_ABORT ) goto Abort;
-								SyMemBackendFree(&pVm->sAllocator, aSlot);
-								PH7_MemObjRelease(pTos);
-								pTos = &pTos[-nCallArgs];
-								pFrameStack = 0;
-								rc = PH7_EXCEPTION;
-								goto SkipFuncBody;
-							}
-							/* rcPseudo==1 -> matched pseudo-type (accept); -1 -> real class.
-							 * Resolve via VmResolveTypeClass so `self`/`parent` resolve and
-							 * interface/abstract hints are included (iLoadable=FALSE), then throw a
-							 * catchable TypeError on mismatch — matching PHP — instead of the legacy
-							 * warn + NULL-coerce (which silently ran the body with a corrupted arg). */
-							pClass = (rcPseudo == 1) ? 0 : VmResolveTypeClass(&(*pVm),pName,pSelfHint);
-							if( pClass ){
-								/* Reaching here means the param is non-nullable (the guard
-								 * above skips nullable+null; a `Type $x = null` default is
-								 * marked implicitly nullable at compile time). So ANY
-								 * non-object — including an explicit null — is a TypeError,
-								 * matching PHP (&& below short-circuits so instanceof only
-								 * derefs a real object). */
-								int bBad = !((pVal->iFlags & MEMOBJ_OBJ)
-									&& PH7_VmInstanceOf(((ph7_class_instance *)pVal->x.pOther)->pClass,pClass));
-								if( bBad ){
-									char zTypeBuf[128],zGivenBuf[128];
-									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
-										&aFormalArg[n].sName,
-										VmSyStringToCStr(&pClass->sName,zTypeBuf,sizeof(zTypeBuf)),
-										VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
-									if( rc == PH7_ABORT ) goto Abort;
-									SyMemBackendFree(&pVm->sAllocator, aSlot);
-									PH7_MemObjRelease(pTos);
-									pTos = &pTos[-nCallArgs];
-									pFrameStack = 0;
-									rc = PH7_EXCEPTION;
-									goto SkipFuncBody;
-								}
-							}
-						}else if( (pVal->iFlags & aFormalArg[n].nType) == 0 ){
-							if( aFormalArg[n].nType == MEMOBJ_OBJ ){
-								char zGivenBuf[128];
-								rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
-									&aFormalArg[n].sName,"object",VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
-								if( rc == PH7_ABORT ) goto Abort;
-								SyMemBackendFree(&pVm->sAllocator, aSlot);
-								PH7_MemObjRelease(pTos);
-								pTos = &pTos[-nCallArgs];
-								pFrameStack = 0;
-								rc = PH7_EXCEPTION;
-								goto SkipFuncBody;
-							}else if( VmEnforceScalarType(pVal, aFormalArg[n].nType, bCallIsStrict) != SXRET_OK ){
-								char zTypeBuf[128];
-								char zGivenBuf[128];
-								rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
-									&aFormalArg[n].sName,
-									VmScalarTypeName(aFormalArg[n].nType, &aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf)),
-									VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
-								if( rc == PH7_ABORT ) goto Abort;
-								SyMemBackendFree(&pVm->sAllocator, aSlot);
-								PH7_MemObjRelease(pTos);
-								pTos = &pTos[-nCallArgs];
-								pFrameStack = 0;
-								rc = PH7_EXCEPTION;
-								goto SkipFuncBody;
-							}
-						}else{
-							/* Mask matched — an int param accepting a whole-real
-							 * materializes it (php: f(1.0) into int $x is int(1)). */
-							VmMaterializeIntTyped(pVal,aFormalArg[n].nType);
-						}
+					/* Type checking (union / class / pseudo / scalar, with weak-mode
+					 * coercion and whole-real materialization in place): the shared
+					 * per-argument helper — one implementation for both OP_CALL
+					 * paths and the generator/fiber binder (§7.1(f) fold). */
+					rc = VmEnforceArgType(&(*pVm),pVmFunc,&aFormalArg[n],n+1,pVal,bCallIsStrict,pSelfHint);
+					if( rc != SXRET_OK ){
+						if( rc == PH7_ABORT ) goto Abort;
+						SyMemBackendFree(&pVm->sAllocator, aSlot);
+						PH7_MemObjRelease(pTos);
+						pTos = &pTos[-nCallArgs];
+						pFrameStack = 0;
+						rc = PH7_EXCEPTION;
+						goto SkipFuncBody;
 					}
 					/* Install: by reference or by value */
 					if( aFormalArg[n].iFlags & VM_FUNC_ARG_BY_REF ){
@@ -5538,124 +5437,22 @@ case PH7_OP_CALL: {
 				 * below — TypeError for a non-nullable typed param, kept as null for a
 				 * typeless one. A `Type $x = null` param is flagged VM_FUNC_ARG_NULLABLE
 				 * at compile time so its check accepts null. */
-				/* Union type: dispatch to the shared coercion helper. */
-				if( aFormalArg[n].iFlags & VM_FUNC_ARG_UNION ){
-					sxi32 rcU = VmCoerceToUnion(pVm, pArg, &aFormalArg[n].aUnionAlts,
-						(aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) ? 1 : 0,
-						bCallIsStrict);
-					if( rcU != SXRET_OK ){
-						const char *zGiven;
-						const char *zExpected = "union";
-						char zBuf[128];
-						char zTypeBuf[128];
-						if( pArg->iFlags & MEMOBJ_OBJ ){
-							zGiven = VmFormatValueClassName(pArg,zBuf,sizeof(zBuf));
-						}else if( pArg->iFlags & MEMOBJ_NULL ){
-							zGiven = "null";
-						}else{
-							zGiven = VmValueGivenName(pArg,zBuf,sizeof(zBuf));
-						}
-						if( SyStringLength(&aFormalArg[n].sTypeName) > 0 ){
-							zExpected = VmSyStringToCStr(&aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf));
-						}
-						rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
-							&aFormalArg[n].sName, zExpected, zGiven);
-						if( rc == PH7_ABORT ){
-							goto Abort;
-						}
-						PH7_MemObjRelease(pTos);
-						pTos = &pTos[-nCallArgs];
-						pFrameStack = 0;
-						rc = PH7_EXCEPTION;
-						goto SkipFuncBody;
+				/* Type checking (union / class / pseudo / scalar, with weak-mode
+				 * coercion and whole-real materialization in place — nullable
+				 * types (?type) let null through): the shared per-argument
+				 * helper, one implementation for both OP_CALL paths and the
+				 * generator/fiber binder (§7.1(f) fold). */
+				rc = VmEnforceArgType(&(*pVm),pVmFunc,&aFormalArg[n],n+1,pArg,bCallIsStrict,pSelfHint);
+				if( rc != SXRET_OK ){
+					if( rc == PH7_ABORT ){
+						goto Abort;
 					}
-				}else
-				/* Make sure the given arguments are of the correct type.
-				 * Nullable types (?type) allow null through without coercion. */
-				if( aFormalArg[n].nType > 0
-					&& !((aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) && (pArg->iFlags & MEMOBJ_NULL)) ){
-					if ( aFormalArg[n].nType == SXU32_HIGH ){
-						/* Argument must be a class instance [i.e: object] */
-						SyString *pName = &aFormalArg[n].sClass;
-						ph7_class *pClass;
-						int rcPseudo = VmCheckPseudoType(&(*pVm),pArg,pName);
-						if( rcPseudo == 0 ){
-							/* Recognised pseudo-type (true/false/iterable); value mismatches */
-							char zTypeBuf[128],zGivenBuf[128];
-							rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
-								&aFormalArg[n].sName,
-								VmSyStringToCStr(pName,zTypeBuf,sizeof(zTypeBuf)),
-								VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf)));
-							if( rc == PH7_ABORT ) goto Abort;
-							PH7_MemObjRelease(pTos);
-							pTos = &pTos[-nCallArgs];
-							pFrameStack = 0;
-							rc = PH7_EXCEPTION;
-							goto SkipFuncBody;
-						}
-						/* rcPseudo==1 accepts a pseudo-type; -1 real class. Resolve via
-						 * VmResolveTypeClass (self/parent + interface/abstract, iLoadable=FALSE)
-						 * and throw a catchable TypeError on mismatch — matching PHP — instead of
-						 * the legacy warn + NULL-coerce. (Symmetric with the positional path.) */
-						pClass = (rcPseudo == 1) ? 0 : VmResolveTypeClass(&(*pVm),pName,pSelfHint);
-						if( pClass ){
-							/* Reaching here means the param is non-nullable (the guard above
-							 * skips nullable+null; a `Type $x = null` default is marked
-							 * implicitly nullable at compile time). So ANY non-object —
-							 * including an explicit null — is a TypeError, matching PHP
-							 * (&& below short-circuits so instanceof only derefs an object). */
-							int bBad = !((pArg->iFlags & MEMOBJ_OBJ)
-								&& PH7_VmInstanceOf(((ph7_class_instance *)pArg->x.pOther)->pClass,pClass));
-							if( bBad ){
-								char zTypeBuf[128],zGivenBuf[128];
-								rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
-									&aFormalArg[n].sName,
-									VmSyStringToCStr(&pClass->sName,zTypeBuf,sizeof(zTypeBuf)),
-									VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf)));
-								if( rc == PH7_ABORT ) goto Abort;
-								PH7_MemObjRelease(pTos);
-								pTos = &pTos[-nCallArgs];
-								pFrameStack = 0;
-								rc = PH7_EXCEPTION;
-								goto SkipFuncBody;
-							}
-						}
-					}else if( ((pArg->iFlags & aFormalArg[n].nType) == 0) ){
-						if( aFormalArg[n].nType == MEMOBJ_OBJ ){
-							/* object type hint: reject non-objects with TypeError */
-							char zGivenBuf[128];
-							rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
-								&aFormalArg[n].sName,"object",VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf)));
-							if( rc == PH7_ABORT ){
-								goto Abort;
-							}
-							/* Skip function body, route through normal cleanup */
-							PH7_MemObjRelease(pTos);
-							pTos = &pTos[-nCallArgs];
-							pFrameStack = 0;
-							rc = PH7_EXCEPTION;
-							goto SkipFuncBody;
-						}else if( VmEnforceScalarType(pArg, aFormalArg[n].nType, bCallIsStrict) != SXRET_OK ){
-							char zTypeBuf[128];
-							char zGivenBuf[128];
-							rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
-								&aFormalArg[n].sName,
-								VmScalarTypeName(aFormalArg[n].nType, &aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf)),
-								VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf)));
-							if( rc == PH7_ABORT ){
-								goto Abort;
-							}
-							PH7_MemObjRelease(pTos);
-							pTos = &pTos[-nCallArgs];
-							pFrameStack = 0;
-							rc = PH7_EXCEPTION;
-							goto SkipFuncBody;
-						}
-					}else{
-						/* Mask matched — an int param accepting a whole-real
-						 * materializes it (php: f(1.0) into int $x is int(1)). */
-						VmMaterializeIntTyped(pArg,aFormalArg[n].nType);
-					}
+					/* Skip function body, route through normal cleanup */
+					PH7_MemObjRelease(pTos);
+					pTos = &pTos[-nCallArgs];
+					pFrameStack = 0;
+					rc = PH7_EXCEPTION;
+					goto SkipFuncBody;
 				}
 				if( aFormalArg[n].iFlags & VM_FUNC_ARG_BY_REF ){
 					/* Pass by reference */
