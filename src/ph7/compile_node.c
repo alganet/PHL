@@ -1243,41 +1243,52 @@ static sxi32 GenStateLoadLiteral(ph7_gen_state *pGen)
 			 * __TRAIT__ is "" there, not the enclosing trait. "" outside any trait (global
 			 * scope, plain functions, non-trait methods) — php renders it the empty string,
 			 * not NULL. */
-			GenBlock *pBlock = pGen->pCurrent;
 			ph7_class *pTrait = 0;
-			while( pBlock ){
-				if( pBlock->iFlags & GEN_BLOCK_FUNC ){
-					ph7_vm_func *pFunc = (ph7_vm_func *)pBlock->pUserData;
-					if( pFunc == 0 ){
-						/* A SYNTHETIC function block carries no ph7_vm_func — e.g. the
-						 * per-arm throw-fixup block GenStateCompileMatchSubExpr enters to
-						 * host a match() expression. It is not a real lexical scope
-						 * boundary, so stay transparent and keep walking outward. */
-						pBlock = pBlock->pParent;
-						continue;
-					}
-					if( pFunc->iFlags & VM_FUNC_CLASS_METHOD ){
-						/* A class method (of any class, including an anonymous one) is an
-						 * OPAQUE scope boundary and fixes the answer: a trait method yields
-						 * its trait, any other class's method yields "". Tested BEFORE the
-						 * closure flags so a static method is never mistaken for transparent. */
-						if( pFunc->pUserData
-							&& (((ph7_class *)pFunc->pUserData)->iFlags & PH7_CLASS_TRAIT) ){
-							pTrait = (ph7_class *)pFunc->pUserData;
+			if( pGen->iInMemberDefault > 0 ){
+				/* A property/parameter DEFAULT is a const-expression that belongs to the
+				 * class whose body is being compiled (pCurClass), never to a lexically-
+				 * enclosing method. Read pCurClass directly — the block chain has no func
+				 * block for the default and would leak into the enclosing function (an
+				 * anonymous class's default inside a trait method is the anon's scope, "").*/
+				if( pGen->pCurClass && (pGen->pCurClass->iFlags & PH7_CLASS_TRAIT) ){
+					pTrait = pGen->pCurClass;
+				}
+			}else{
+				GenBlock *pBlock = pGen->pCurrent;
+				while( pBlock ){
+					if( pBlock->iFlags & GEN_BLOCK_FUNC ){
+						ph7_vm_func *pFunc = (ph7_vm_func *)pBlock->pUserData;
+						if( pFunc == 0 ){
+							/* A SYNTHETIC function block carries no ph7_vm_func — e.g. the
+							 * per-arm throw-fixup block GenStateCompileMatchSubExpr enters to
+							 * host a match() expression. It is not a real lexical scope
+							 * boundary, so stay transparent and keep walking outward. */
+							pBlock = pBlock->pParent;
+							continue;
 						}
+						if( pFunc->iFlags & VM_FUNC_CLASS_METHOD ){
+							/* A class method (of any class, including an anonymous one) is an
+							 * OPAQUE scope boundary and fixes the answer: a trait method yields
+							 * its trait, any other class's method yields "". Tested BEFORE the
+							 * closure flags so a static method is never mistaken for transparent. */
+							if( pFunc->pUserData
+								&& (((ph7_class *)pFunc->pUserData)->iFlags & PH7_CLASS_TRAIT) ){
+								pTrait = (ph7_class *)pFunc->pUserData;
+							}
+							break;
+						}
+						if( pFunc->iFlags & (VM_FUNC_CLOSURE|VM_FUNC_ARROW|VM_FUNC_STATIC_CL) ){
+							/* Closure / arrow fn (VM_FUNC_CLOSURE is only set when the closure
+							 * captures, so a capture-less static closure carries only
+							 * VM_FUNC_STATIC_CL — include it). Transparent: keep walking outward. */
+							pBlock = pBlock->pParent;
+							continue;
+						}
+						/* A plain named function is an opaque boundary: __TRAIT__ is "". */
 						break;
 					}
-					if( pFunc->iFlags & (VM_FUNC_CLOSURE|VM_FUNC_ARROW|VM_FUNC_STATIC_CL) ){
-						/* Closure / arrow fn (VM_FUNC_CLOSURE is only set when the closure
-						 * captures, so a capture-less static closure carries only
-						 * VM_FUNC_STATIC_CL — include it). Transparent: keep walking outward. */
-						pBlock = pBlock->pParent;
-						continue;
-					}
-					/* A plain named function is an opaque boundary: __TRAIT__ is "". */
-					break;
+					pBlock = pBlock->pParent;
 				}
-				pBlock = pBlock->pParent;
 			}
 			pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);
 			if( pObj == 0 ){

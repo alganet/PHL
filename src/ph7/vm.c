@@ -1270,16 +1270,11 @@ PH7_PRIVATE sxi32 VmMountUserClass(
 		 */
 		return SXRET_OK;
 	}
-	/* Create constructor alias if not yet done */
-	if( SyHashGet(&pClass->hMethod,"__construct",sizeof("__construct")-1) == 0 ){
-		/* User constructor with the same base class name */
-		pEntry = SyHashGet(&pClass->hMethod,SyStringData(&pClass->sName),SyStringLength(&pClass->sName));
-		if( pEntry ){
-			pMeth = (ph7_class_method *)pEntry->pUserData;
-			/* Create the alias */
-			SyHashInsert(&pClass->hMethod,"__construct",sizeof("__construct")-1,pMeth);
-		}
-	}
+	/* PHP-4-style constructors (a method named like the class) were REMOVED in
+	 * PHP 8.0: such a method is now a plain method, never the constructor. We used
+	 * to alias it to __construct here, which made `new C` on `class C{function c(){}}`
+	 * invoke c() as the ctor (and a required param there fataled at construction).
+	 * No alias now — only an explicit __construct is the constructor. */
 	/* Install the methods now */
 	SyHashResetLoopCursor(&pClass->hMethod);
 	while((pEntry = SyHashGetNextEntry(&pClass->hMethod)) != 0 ){

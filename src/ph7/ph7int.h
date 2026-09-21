@@ -561,6 +561,17 @@ struct ph7_gen_state
 	SyHash hNumLiteral;  /* Numeric literals table */
 	SyHash hVar;         /* Collected variable hashtable */
 	GenBlock *pCurrent;  /* Current processed block */
+	ph7_class *pCurClass; /* Class/interface/trait/enum whose BODY is currently being compiled
+	                       * (0 at top level). Saved/restored around each class-body compiler so
+	                       * a nested anonymous class overrides it. Lets a const-expression that
+	                       * compiles OUTSIDE any function block — a property default or a
+	                       * parameter default — resolve __TRAIT__ to the enclosing trait, which
+	                       * the block-chain walk alone cannot see (no func block on the chain). */
+	int iInMemberDefault; /* > 0 while compiling a property/parameter DEFAULT value. Such a
+	                       * const-expression belongs to pCurClass, never to a lexically-
+	                       * enclosing method, so __TRAIT__ reads pCurClass directly rather than
+	                       * walking the block chain (which would leak into the enclosing
+	                       * function — e.g. an anonymous class's default inside a trait method). */
 	GenBlock sGlobal;    /* Global block */
 	ProcConsumer xErr;   /* Error consumer callback */
 	void *pErrData;      /* Third argument to xErr() */

@@ -133,14 +133,15 @@ PH7_PRIVATE ph7_class_method * PH7_NewClassMethod(ph7_vm *pVm,ph7_class *pClass,
 		zName = (char *)pNamePtr->zString;
 	}
 	if( iProtection != PH7_CLASS_PROT_PUBLIC ){
-		if( (pName->nByte == sizeof("__destruct") - 1 && SyMemcmp(pName->zString,"__destruct",sizeof("__destruct") - 1 ) == 0)
-			|| SyStringCmp(pName,&pClass->sName,SyMemcmp) == 0 ){
-				/* Switch to public visibility for destructors and legacy class-name
-				 * constructors (the engine invokes destructors internally, bypassing
-				 * visibility either way). __construct KEEPS its declared visibility
-				 * (band A #4): php enforces it at `new` — a private/protected ctor
-				 * from the wrong scope is a catchable Error, checked at OP_NEW —
-				 * and ReflectionClass::isInstantiable()/newInstance() now see it. */
+		if( pName->nByte == sizeof("__destruct") - 1 && SyMemcmp(pName->zString,"__destruct",sizeof("__destruct") - 1 ) == 0 ){
+				/* Switch to public visibility for destructors (the engine invokes them
+				 * internally, bypassing visibility either way). __construct KEEPS its
+				 * declared visibility (band A #4): php enforces it at `new` — a
+				 * private/protected ctor from the wrong scope is a catchable Error,
+				 * checked at OP_NEW — and ReflectionClass::isInstantiable()/
+				 * newInstance() now see it. A method named like the class is a PLAIN
+				 * method (PHP-4 constructors removed in 8.0), so it keeps its declared
+				 * visibility too — no longer forced public. */
 				iProtection = PH7_CLASS_PROT_PUBLIC;
 		}
 	}
