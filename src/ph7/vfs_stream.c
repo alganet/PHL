@@ -882,6 +882,9 @@ PH7_PRIVATE int PH7_builtin_fgetcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 	const char *zLine;
 	io_private *pDev;
 	ph7_int64 n,nLen;
+	int delim  = ',';   /* Delimiter */
+	int encl   = '"' ;  /* Enclosure */
+	int escape = '\\';  /* Escape character */
 	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
@@ -907,6 +910,26 @@ PH7_PRIVATE int PH7_builtin_fgetcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	if( nArg > 2 ){
+		/* php validates $separator/$enclosure/$escape BEFORE $length (probed
+		 * ordering) and even when the stream is already at EOF. */
+		sxi32 rc = PH7_CsvCharArg(pCtx,apArg[2],3,"separator",0,&delim);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+		if( nArg > 3 ){
+			rc = PH7_CsvCharArg(pCtx,apArg[3],4,"enclosure",0,&encl);
+			if( rc != PH7_OK ){
+				return rc;
+			}
+			if( nArg > 4 ){
+				rc = PH7_CsvCharArg(pCtx,apArg[4],5,"escape",1,&escape);
+				if( rc != PH7_OK ){
+					return rc;
+				}
+			}
+		}
+	}
 	nLen = -1;
 	if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){
 		/* Maximum data to read. PHP 8 raises a catchable ValueError when the
@@ -926,38 +949,6 @@ PH7_PRIVATE int PH7_builtin_fgetcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ph7_result_bool(pCtx,0);
 	}else{
 		ph7_value *pArray;
-		int delim  = ',';   /* Delimiter */
-		int encl   = '"' ;  /* Enclosure */
-		int escape = '\\';  /* Escape character */
-		if( nArg > 2 ){
-			const char *zPtr;
-			int i;
-			if( ph7_value_is_string(apArg[2]) ){
-				/* Extract the delimiter */
-				zPtr = ph7_value_to_string(apArg[2],&i);
-				if( i > 0 ){
-					delim = zPtr[0];
-				}
-			}
-			if( nArg > 3 ){
-				if( ph7_value_is_string(apArg[3]) ){
-					/* Extract the enclosure */
-					zPtr = ph7_value_to_string(apArg[3],&i);
-					if( i > 0 ){
-						encl = zPtr[0];
-					}
-				}
-				if( nArg > 4 ){
-					if( ph7_value_is_string(apArg[4]) ){
-						/* Extract the escape character */
-						zPtr = ph7_value_to_string(apArg[4],&i);
-						if( i > 0 ){
-							escape = zPtr[0];
-						}
-					}
-				}
-			}
-		}
 		/* Create our array */
 		pArray = ph7_context_new_array(pCtx);
 		if( pArray == 0 ){
@@ -2130,17 +2121,23 @@ PH7_PRIVATE int PH7_builtin_fputcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 	sCsv.pDev = pDev;
 	sCsv.iCount = 0;
 	if( nArg > 2 ){
-		/* User delimiter */
-		const char *z;
-		int n;
-		z = ph7_value_to_string(apArg[2],&n);
-		if( n > 0 ){
-			sCsv.delimiter = z[0];
+		sxi32 rc = PH7_CsvCharArg(pCtx,apArg[2],3,"separator",0,&sCsv.delimiter);
+		if( rc != PH7_OK ){
+			return rc;
 		}
 		if( nArg > 3 ){
-			z = ph7_value_to_string(apArg[3],&n);
-			if( n > 0 ){
-				sCsv.enclosure = z[0];
+			rc = PH7_CsvCharArg(pCtx,apArg[3],4,"enclosure",0,&sCsv.enclosure);
+			if( rc != PH7_OK ){
+				return rc;
+			}
+			if( nArg > 4 ){
+				/* The writer does not model $escape (the CSV-writer slice);
+				 * validate it like php so the loud path matches. */
+				int iEscape;
+				rc = PH7_CsvCharArg(pCtx,apArg[4],5,"escape",1,&iEscape);
+				if( rc != PH7_OK ){
+					return rc;
+				}
 			}
 		}
 	}

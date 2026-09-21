@@ -1212,6 +1212,35 @@ PH7_PRIVATE sxi32 PH7_ProcessCsv(
 	return SXRET_OK;
 }
 /*
+ * Validate a CSV $separator/$enclosure/$escape argument like php 8 and
+ * extract its character. $separator/$enclosure must be exactly one
+ * character; $escape may also be empty, which disables escape processing
+ * (the caller gets PH7_CSV_NO_ESCAPE). The argument is coerced to string
+ * first like php's ZPP, so an int 5 separates on "5"; null and array
+ * arguments never reach here — the central type screen rejects them.
+ * Returns PH7_OK on success; otherwise the ValueError has been thrown and
+ * the caller must return the propagated status.
+ */
+PH7_PRIVATE sxi32 PH7_CsvCharArg(ph7_context *pCtx,ph7_value *pArg,int iArg,
+	const char *zName,int bAllowEmpty,int *pChar)
+{
+	const char *zPtr;
+	int n;
+	zPtr = ph7_value_to_string(pArg,&n);
+	if( n == 1 ){
+		*pChar = zPtr[0];
+		return PH7_OK;
+	}
+	if( n < 1 && bAllowEmpty ){
+		*pChar = PH7_CSV_NO_ESCAPE;
+		return PH7_OK;
+	}
+	return PH7_VmThrowException(pCtx,"ValueError",
+		"%s(): Argument #%d ($%s) must be %sa single character",
+		ph7_function_name(pCtx),iArg,zName,bAllowEmpty ? "empty or " : ""
+		);
+}
+/*
  * Default consumer callback for the CSV parsing routine defined above.
  * All the processed input is insereted into an array passed as the last
  * argument to this callback.
@@ -1250,7 +1279,7 @@ PH7_PRIVATE sxi32 PH7_CsvConsumer(const char *zToken,int nTokenLen,void *pUserDa
  */
 PH7_PRIVATE int PH7_builtin_str_getcsv(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const char *zInput,*zPtr;
+	const char *zInput;
 	ph7_value *pArray;
 	int delim  = ',';   /* Delimiter */
 	int encl   = '"' ;  /* Enclosure */
@@ -1264,29 +1293,19 @@ PH7_PRIVATE int PH7_builtin_str_getcsv(ph7_context *pCtx,int nArg,ph7_value **ap
 	/* Extract the raw input */
 	zInput = ph7_value_to_string(apArg[0],&nLen);
 	if( nArg > 1 ){
-		int i;
-		if( ph7_value_is_string(apArg[1]) ){
-			/* Extract the delimiter */
-			zPtr = ph7_value_to_string(apArg[1],&i);
-			if( i > 0 ){
-				delim = zPtr[0];
-			}
+		sxi32 rc = PH7_CsvCharArg(pCtx,apArg[1],2,"separator",0,&delim);
+		if( rc != PH7_OK ){
+			return rc;
 		}
 		if( nArg > 2 ){
-			if( ph7_value_is_string(apArg[2]) ){
-				/* Extract the enclosure */
-				zPtr = ph7_value_to_string(apArg[2],&i);
-				if( i > 0 ){
-					encl = zPtr[0];
-				}
+			rc = PH7_CsvCharArg(pCtx,apArg[2],3,"enclosure",0,&encl);
+			if( rc != PH7_OK ){
+				return rc;
 			}
 			if( nArg > 3 ){
-				if( ph7_value_is_string(apArg[3]) ){
-					/* Extract the escape character */
-					zPtr = ph7_value_to_string(apArg[3],&i);
-					if( i > 0 ){
-						escape = zPtr[0];
-					}
+				rc = PH7_CsvCharArg(pCtx,apArg[3],4,"escape",1,&escape);
+				if( rc != PH7_OK ){
+					return rc;
 				}
 			}
 		}
