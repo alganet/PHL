@@ -460,23 +460,18 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 				ph7_class *pDecl = ReflectMethodDeclClass(pClass, pMeth);
 				ph7_value *pMeta;
 				SyString sKey;
-				int bIsAlias;
 				SyStringInitFromBuf(&sKey, (const char *)pE->pKey, pE->nKeyLen);
-				bIsAlias = (sKey.nByte != SyStringLength(&pMeth->sFunc.sName)
-				 || SyMemcmp(sKey.zString, SyStringData(&pMeth->sFunc.sName), sKey.nByte) != 0);
 				if( sKey.nByte == sizeof("__construct")-1
 				 && SyMemcmp(sKey.zString, "__construct", sKey.nByte) == 0 ){
 					if( iCtorVis == 0 ){
 						iCtorVis = pMeth->iProtection;
 					}
-					if( bIsAlias ){
-						/* A __construct hash key that does not match the method's own
-						 * name is an ALIAS (e.g. a trait `use T { m as __construct; }`):
-						 * the method is already listed under its declared name, so skip
-						 * the duplicate. The legacy PHP-4 class-name-constructor mount
-						 * alias that also produced such a key is gone (removed in 8.0). */
-						continue;
-					}
+					/* A __construct key whose method has a DIFFERENT own name is a trait
+					 * `use T { m as __construct; }` alias. php lists such a method under
+					 * BOTH names (its own and __construct) and getConstructor() resolves
+					 * the __construct one, so emit the entry under this key too rather than
+					 * skipping it. (The legacy PHP-4 class-name-constructor mount alias that
+					 * also produced a __construct key is gone, removed in 8.0.) */
 				}else if( sKey.nByte == sizeof("__clone")-1
 				 && SyMemcmp(sKey.zString, "__clone", sKey.nByte) == 0 ){
 					if( iCloneVis == 0 ){
