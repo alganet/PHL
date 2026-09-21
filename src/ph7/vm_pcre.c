@@ -1079,7 +1079,7 @@ static int PH7_builtin_preg_replace(ph7_context *pCtx, int nArg, ph7_value **apA
 	 * throws a TypeError; PHL keeps preg_replace's warning-based arg-error style). */
 	if( !ph7_value_is_array(apArg[0]) && ph7_value_is_array(apArg[1]) ){
 		ph7_context_throw_error(pCtx, PH7_CTX_WARNING,
-			"preg_replace(): Parameter mismatch, pattern is a string while replacement is an array");
+			"Parameter mismatch, pattern is a string while replacement is an array");
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
