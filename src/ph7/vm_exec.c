@@ -4331,7 +4331,10 @@ case PH7_OP_CALL: {
 					rcCb = VmThrowFromVm(&(*pVm),"Error",zCbErr,(sxu32)SyStrlen(zCbErr));
 					if( rcCb == SXERR_ABORT ){ goto Abort; }
 					rc = rcCb;
-					PH7_DISPATCH_ENFORCE_RC(rc)
+					/* ENFORCE_RC never consulted pResumeFrame, so an in-place catch
+					 * (SXRET_OK + recorded resume) FELL THROUGH and kept dispatching
+					 * the malformed callable inside the try. Route like OP_THROW. */
+					PH7_THROW_ROUTE_MIDEXPR(rc)
 				}
 			}
 			/* Build the effective spread-key map (and consume this call's runs)
@@ -4377,6 +4380,10 @@ case PH7_OP_CALL: {
 				PH7_MemObjRelease(&sResult);
 				if( VmRecordedResume(pVm,&iResumePc,sState.pEntryFrame,aInstr) ){
 					PH7_MemObjRelease(pTos);
+					/* Drain the abandoned outer-expression operands (`1 + $cb()`)
+					 * to the try's base — one leaked slot per caught throw
+					 * otherwise (ASan heap-buffer-overflow in a catch loop). */
+					PH7_RESUME_DRAIN()
 					pc = iResumePc;
 					break;
 				}
@@ -4442,6 +4449,10 @@ case PH7_OP_CALL: {
 				{
 					sxi32 iRp;
 					if( VmRecordedResume(pVm,&iRp,sState.pEntryFrame,aInstr) ){
+						/* Drain the abandoned outer-expression operands
+						 * (`1 + $plainObj()`) to the try's base — one leaked
+						 * slot per caught throw otherwise. */
+						PH7_RESUME_DRAIN()
 						pc = iRp;
 						break;
 					}
@@ -4461,6 +4472,10 @@ case PH7_OP_CALL: {
 				PH7_MemObjRelease(&sResult);
 				if( VmRecordedResume(pVm,&iResumePc,sState.pEntryFrame,aInstr) ){
 					PH7_MemObjRelease(pTos);
+					/* Drain the abandoned outer-expression operands (`1 + $inv()`)
+					 * to the try's base — one leaked slot per caught throw
+					 * otherwise (ASan heap-buffer-overflow in a catch loop). */
+					PH7_RESUME_DRAIN()
 					pc = iResumePc;
 					break;
 				}
@@ -4497,7 +4512,10 @@ case PH7_OP_CALL: {
 			rcNc = VmThrowFromVm(&(*pVm),"Error",zMsg,(sxu32)SyStrlen(zMsg));
 			if( rcNc == SXERR_ABORT ){ goto Abort; }
 			rc = rcNc;
-			PH7_DISPATCH_ENFORCE_RC(rc)
+			/* ENFORCE_RC never consulted pResumeFrame, so an in-place catch
+			 * (SXRET_OK + recorded resume) FELL THROUGH and resumed the try body
+			 * right after the failed call. Route like OP_THROW. */
+			PH7_THROW_ROUTE_MIDEXPR(rc)
 		}
 		break;
 	}
@@ -4670,7 +4688,10 @@ case PH7_OP_CALL: {
 							rcVis = VmThrowFromVm(&(*pVm),"Error",zMsg,(sxu32)SyStrlen(zMsg));
 							if( rcVis == SXERR_ABORT ){ goto Abort; }
 							rc = rcVis;
-							PH7_DISPATCH_ENFORCE_RC(rc)
+							/* ENFORCE_RC never consulted pResumeFrame, so an in-place
+							 * catch (SXRET_OK + recorded resume) FELL THROUGH and
+							 * dispatched the DENIED method anyway. Route like OP_THROW. */
+							PH7_THROW_ROUTE_MIDEXPR(rc)
 						}
 					}
 				}
@@ -5852,6 +5873,10 @@ SkipFuncBody:
 						PH7_MemObjRelease(&sResult);
 						if( VmRecordedResume(pVm,&iResumePc,sState.pEntryFrame,aInstr) ){
 							PH7_MemObjRelease(pTos);
+							/* Drain the abandoned outer-expression operands
+							 * (`1 + "C::m"()`) to the try's base — one leaked
+							 * slot per caught throw otherwise. */
+							PH7_RESUME_DRAIN()
 							pc = iResumePc;
 							break;
 						}
@@ -5888,7 +5913,12 @@ SkipFuncBody:
 			if( rc == SXERR_ABORT ){
 				goto Abort;
 			}
-			goto Exception;
+			/* A catch may have run IN PLACE inside VmThrowFromVm (SXRET_OK +
+			 * recorded resume). An unconditional `goto Exception` here unwound the
+			 * exec ANYWAY, so `try { nosuchfn(); } catch (Error $e) {} rest();`
+			 * ran the catch and then silently dropped the rest of the script
+			 * (exit 0). Route like every other in-exec throw site. */
+			PH7_THROW_ROUTE_MIDEXPR(rc)
 			}
 		}
 		pFunc = (ph7_user_func *)pEntry->pUserData;
