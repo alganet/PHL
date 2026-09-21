@@ -22,9 +22,14 @@ class Ctor { public function __construct() { throw new Exception("x"); } }
 class Meth { public function m() { throw new Exception("x"); } }
 class TypedP { public int $p = 3; }
 class UninitS { public static int $s; }
+class SThrow { public static function b() { throw new Exception("x"); } }
+class Inv { public function __invoke() { throw new Exception("x"); } }
 
 $o = new Meth;
 $t = new TypedP;
+$cb = [$o, "m"];
+$inv = new Inv;
+$plain = new stdClass;
 
 for ($i = 0; $i < N; $i++) {
     try { $a = 1 + thrower(); } catch (Exception $e) {}
@@ -38,6 +43,14 @@ for ($i = 0; $i < N; $i++) {
         try { throw new Exception("a"); }
         catch (Exception $e) { throw new Exception("b"); }
     } catch (Exception $e) {}
+    // Call-boundary resume shapes: each abandoned a `1 +` operand per caught
+    // throw before the drain landed on their resume sites (string-callable,
+    // array-callable, __invoke, object-not-callable, undefined function).
+    try { $q = 1 + "SThrow::b"(); } catch (Exception $e) {}
+    try { $q = 1 + $cb(); } catch (Exception $e) {}
+    try { $q = 1 + $inv(); } catch (Exception $e) {}
+    try { $q = 1 + $plain(); } catch (Error $e) {}
+    try { $q = 1 + no_such_fn_leakprobe(); } catch (Error $e) {}
 }
 var_dump($t->p);
 echo "done\n";
