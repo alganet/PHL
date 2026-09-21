@@ -2772,6 +2772,13 @@ struct VmExecState
 	                         * across statements that share one operand stack. */
 	sxi32 pc;               /* Program counter (synced at boundaries) */
 	sxu32 nExceptionBase;   /* Exception-stack depth at entry (finally-drain floor) */
+	sxu32 nFinallyActBase;  /* aFinallyAction depth at entry: actions above it belong to
+	                         * this activation and are DISCARDED (refs released) when the
+	                         * activation ends — a `return` inside a redirect-entered
+	                         * finally short-circuits OP_END_FINALLY, orphaning its
+	                         * pending action (an FA_RETHROW holding the swallowed
+	                         * exception), which would otherwise be mis-popped by an
+	                         * enclosing function's next END_FINALLY. */
 	VmFrame *pEntryFrame;   /* Active frame at entry (exec identity for VmRecordedResume) */
 	ph7_value *pResult;     /* Where the terminal OP_DONE stores the result (or NULL) */
 	sxu32 *pLastRef;        /* By-ref return out-param (or NULL) */
@@ -2828,6 +2835,9 @@ struct VmParkedSegment
 	VmFrame *pTopFrame;    /* pVm->pFrame at suspend (innermost callee / open-try frame) */
 	sxu32 nOldExcBase;     /* pCtx->nExceptionBase at park — resume rebases the segment's
 	                        * absolute nExceptionBase floors by (newBase - nOldExcBase) */
+	sxu32 nOldFinBase;     /* pCtx->nFinallyBase at park — resume rebases the segment's
+	                        * absolute nFinallyActBase floors by its OWN delta (the two
+	                        * stacks move independently) */
 	int nRecords;          /* Chain length: each record contributed one nRecursionDepth++
 	                        * (and, if bSelfPushed, one aSelf push) that VmCallFinish never
 	                        * ran. Deactivate that accounting while parked, reactivate on
