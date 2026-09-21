@@ -1409,6 +1409,40 @@ case PH7_OP_USECONST: {
 	break;
 				}
 /*
+ * CLASS_DEFER: * * P3
+ *
+ * Execute a class declaration whose parent/interface/trait could not be
+ * resolved when the enclosing file compiled (its autoloader had not RUN yet).
+ * P3 is the VmDeferredClass record captured by the compiler. A dependency
+ * that is STILL missing throws php's catchable `... not found` Error; a
+ * failed re-compile aborts (its errors were already reported). See the
+ * deferral block comment in compile_class.c.
+ */
+case PH7_OP_CLASS_DEFER: {
+	VmDeferredClass *pDefer = (VmDeferredClass *)pInstr->p3;
+	VmDeferredReq *pMissing = 0;
+	sxi32 rcDecl = SXRET_OK;
+	if( pDefer ){
+		rcDecl = VmExecDeferredClass(&(*pVm),pDefer,&pMissing);
+	}
+	if( pMissing ){
+		static const char *azDeferKind[] = { "Class", "Interface", "Trait" };
+		char zDeclMsg[520];
+		sxu32 nDeclMsg = SyBufferFormat(zDeclMsg,sizeof(zDeclMsg),"%s \"%.*s\" not found",
+			azDeferKind[pMissing->cKind < 3 ? pMissing->cKind : 0],
+			(int)pMissing->sName.nByte,pMissing->sName.zString);
+		rc = VmThrowFromVm(&(*pVm),"Error",zDeclMsg,nDeclMsg);
+		if( rc == SXERR_ABORT ){
+			goto Abort;
+		}
+		PH7_THROW_ROUTE_MIDEXPR(rc)
+	}
+	if( rcDecl == SXERR_ABORT ){
+		goto Abort;
+	}
+	break;
+				}
+/*
  * CVT_INT: * * *
  *
  * Force the top of the stack to be an integer.

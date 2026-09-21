@@ -67,6 +67,9 @@ PH7_PRIVATE sxi32 VmEvalChunk(
 	pVm->pByteContainer = &aByteCode;
 	/* Compile the chunk */
 	PH7_CompileScript(pVm,pChunk,iFlags);
+	/* Record THIS unit's error count where the nested state restore below cannot
+	 * wipe it — VmExecDeferredClass reads it to detect a failed re-compile. */
+	pVm->nLastEvalErr = pVm->sCodeGen.nErr;
 	if( pVm->sCodeGen.nErr > 0 ){
 		/* Compilation error. php makes this a CATCHABLE ParseError for eval()
 		 * ("syntax error, unexpected ..."), where PHL merely returned false —
@@ -155,6 +158,55 @@ Cleanup:
 	 * of the statement; returning OK left `eval('bad'); echo 'x';` running the
 	 * echo even though php had already thrown. */
 	return rcThrow;
+}
+/*
+ * Execute a deferred class declaration (OP_CLASS_DEFER — see the deferral
+ * block comment in compile_class.c). At this point the declaration's
+ * execution order has been honored: any spl_autoload_register() statement
+ * that precedes it in the program has RUN, so each recorded dependency either
+ * resolves (possibly by autoload, fired inside PH7_VmExtractClass) or is
+ * genuinely missing. A missing one is reported through *ppMissing — the
+ * OP_CLASS_DEFER dispatcher throws php's catchable
+ * `Class/Interface/Trait "X" not found` Error. Once the dependencies resolve,
+ * the captured chunk re-compiles through VmEvalChunk (which also mounts the
+ * newly installed classes); a compile failure there (e.g. a body syntax error
+ * whose diagnosis was deferred along with the declaration) has already been
+ * reported through the engine's error consumer, so it aborts execution.
+ * The site is idempotent: bDone short-circuits re-execution (a loop around an
+ * anonymous class instantiates the same installed class, php's
+ * one-class-per-site semantics).
+ */
+PH7_PRIVATE sxi32 VmExecDeferredClass(ph7_vm *pVm,VmDeferredClass *pDefer,VmDeferredReq **ppMissing)
+{
+	VmDeferredReq *aReq;
+	sxu32 n;
+	*ppMissing = 0;
+	if( pDefer->bDone ){
+		return SXRET_OK;
+	}
+	aReq = (VmDeferredReq *)SySetBasePtr(&pDefer->aRequired);
+	for( n = 0 ; n < SySetUsed(&pDefer->aRequired) ; ++n ){
+		if( PH7_VmExtractClass(&(*pVm),aReq[n].sName.zString,aReq[n].sName.nByte,FALSE,0) == 0 ){
+			*ppMissing = &aReq[n];
+			return SXRET_OK; /* caller throws */
+		}
+	}
+	if( pDefer->sAnonName.nByte > 0 ){
+		pVm->sDeferAnonName = pDefer->sAnonName;
+	}
+	VmEvalChunk(&(*pVm),0,&pDefer->sText,PH7_PHP_ONLY,TRUE);
+	pVm->sDeferAnonName.zString = 0;
+	pVm->sDeferAnonName.nByte = 0;
+	if( pVm->nLastEvalErr > 0
+	 || PH7_VmExtractClass(&(*pVm),pDefer->sSelfName.zString,pDefer->sSelfName.nByte,FALSE,0) == 0 ){
+		/* The re-compile failed — a deferred-along syntax error or a
+		 * redeclaration fatal. It was already reported through the engine's
+		 * error consumer; halt like a fatal (php exits 255 for both). */
+		pVm->iExitStatus = 255;
+		return SXERR_ABORT;
+	}
+	pDefer->bDone = 1;
+	return SXRET_OK;
 }
 /*
  * Compile an embedded builtin PHP chunk into the VM. Thin exported wrapper
