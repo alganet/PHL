@@ -340,10 +340,10 @@ Coverage: 8/8 lines (100.00%)
 |    - |  330 | `	"}"\` |
 |    - |  331 | `	"class stdClass{"\` |
 |    - |  332 | `	"}"\` |
-|    - |  333 | `	"function dir(string $path){"\` |
-|    - |  334 | `	"   return new Directory($path);"\` |
-|    - |  335 | `	"}"\` |
-|    - |  336 | `	"function Dir(string $path){"\` |
+|    - |  333 | `	/* This one definition serves every spelling — function names are case-insensitive` |
+|    - |  334 | ``	   (hFunction, vm.c). The second, byte-identical `Dir()` copy that used to sit here`` |
+|    - |  335 | `	   was PH7's manual hack for that, the same one the keyword table had. */\` |
+|    - |  336 | `	"function dir(string $path){"\` |
 |    - |  337 | `	"   return new Directory($path);"\` |
 |    - |  338 | `	"}"\` |
 |    - |  339 | `	"function scandir(string $directory,int $sort_order = SCANDIR_SORT_ASCENDING)"\` |
@@ -356,699 +356,724 @@ Coverage: 8/8 lines (100.00%)
 |    - |  346 | `	"      $aDir[] = $pEntry;"\` |
 |    - |  347 | `	"   }"\` |
 |    - |  348 | `	"  closedir($pHandle);"\` |
-|    - |  349 | `	"  if( $sort_order == SCANDIR_SORT_DESCENDING ){"\` |
-|    - |  350 | `	"      rsort($aDir);"\` |
-|    - |  351 | `	"  }else if( $sort_order == SCANDIR_SORT_ASCENDING ){"\` |
-|    - |  352 | `	"      sort($aDir);"\` |
-|    - |  353 | `	"  }"\` |
-|    - |  354 | `	"  return $aDir;"\` |
-|    - |  355 | `	"}"\` |
-|    - |  356 | `	"function glob(string $pattern,int $iFlags = 0){"\` |
-|    - |  357 | `	"/* php keeps the literal directory portion of the pattern in every result;"\` |
-|    - |  358 | `	"   split off everything up to and including the last '/' as the prefix. */"\` |
-|    - |  359 | `	"$slash = strrpos($pattern,'/');"\` |
-|    - |  360 | `	"if( $slash === false ){ $zDir = '.'; $prefix = ''; $pat = $pattern; }"\` |
-|    - |  361 | `	"else { $zDir = substr($pattern,0,$slash); if( $zDir === '' ){ $zDir = '/'; } $prefix = substr($pattern,0,$slash+1); $pat = substr($pattern,$slash+1); }"\` |
-|    - |  362 | `	"$pHandle = opendir($zDir);"\` |
-|    - |  363 | `	"if( $pHandle == FALSE ){"\` |
-|    - |  364 | `	"   /* IO error while opening the target directory,return FALSE */"\` |
-|    - |  365 | `	"	return FALSE;"\` |
-|    - |  366 | `	"}"\` |
-|    - |  367 | `	"$pArray = array(); /* Empty array */"\` |
-|    - |  368 | `	"/* Loop throw available entries */"\` |
-|    - |  369 | `	"while( FALSE !== ($pEntry = readdir($pHandle)) ){"\` |
-|    - |  370 | `	" /* php's glob() never matches a leading-dot entry (incl. '.' and '..') unless"\` |
-|    - |  371 | `	"    the pattern itself starts with a dot */"\` |
-|    - |  372 | `	"	if( strlen($pEntry) > 0 && $pEntry[0] === '.' && (strlen($pat) < 1 \|\| $pat[0] !== '.') ){ continue; }"\` |
-|    - |  373 | `	" /* Use the built-in strglob function which is a Symisc eXtension for wildcard comparison*/"\` |
-|    - |  374 | `	"	$rc = strglob($pat,$pEntry);"\` |
-|    - |  375 | `	"	if( $rc ){"\` |
-|    - |  376 | `	"	   $zFull = $prefix . $pEntry;"\` |
-|    - |  377 | `	"	   if( is_dir($zDir . '/' . $pEntry) ){"\` |
-|    - |  378 | `	"	      if( $iFlags & GLOB_MARK ){"\` |
-|    - |  379 | `	"		     /* Adds a slash to each directory returned */"\` |
-|    - |  380 | `	"			 $zFull .= DIRECTORY_SEPARATOR;"\` |
-|    - |  381 | `	"		  }"\` |
-|    - |  382 | `	"	   }else if( $iFlags & GLOB_ONLYDIR ){"\` |
-|    - |  383 | `	"	     /* Not a directory,ignore */"\` |
-|    - |  384 | `	"		 continue;"\` |
-|    - |  385 | `	"	   }"\` |
-|    - |  386 | `	"	   /* Add the entry (with its literal directory prefix, php-style) */"\` |
-|    - |  387 | `	"	   $pArray[] = $zFull;"\` |
-|    - |  388 | `	"	}"\` |
-|    - |  389 | `	" }"\` |
-|    - |  390 | `	"/* Close the handle */"\` |
-|    - |  391 | `	"closedir($pHandle);"\` |
-|    - |  392 | `	"if( ($iFlags & GLOB_NOSORT) == 0 ){"\` |
-|    - |  393 | `	"  /* Sort the array */"\` |
-|    - |  394 | `	"  sort($pArray);"\` |
-|    - |  395 | `	"}"\` |
-|    - |  396 | `	"if( ($iFlags & GLOB_NOCHECK) && sizeof($pArray) < 1 ){"\` |
-|    - |  397 | `	"  /* Return the search pattern if no files matching were found */"\` |
-|    - |  398 | `	"  $pArray[] = $pattern;"\` |
-|    - |  399 | `	"}"\` |
-|    - |  400 | `	"/* Return the created array */"\` |
-|    - |  401 | `	"return $pArray;"\` |
-|    - |  402 | `   "}"\` |
-|    - |  403 | `   "/* Creates a temporary file */"\` |
-|    - |  404 | `   "function tmpfile(){"\` |
-|    - |  405 | `   "  /* Extract the temp directory */"\` |
-|    - |  406 | `   "  $zTempDir = sys_get_temp_dir();"\` |
-|    - |  407 | `   "  if( strlen($zTempDir) < 1 ){"\` |
-|    - |  408 | `   "    /* Use the current dir */"\` |
-|    - |  409 | `   "    $zTempDir = '.';"\` |
-|    - |  410 | `   "  }"\` |
-|    - |  411 | `   "  /* Create the file */"\` |
-|    - |  412 | `   "  $pHandle = fopen($zTempDir.DIRECTORY_SEPARATOR.'PH7'.rand_str(12),'w+');"\` |
-|    - |  413 | `   "  return $pHandle;"\` |
-|    - |  414 | `   "}"\` |
-|    - |  415 | `   "/* php's number_format(): missing entirely from PH7. */"\` |
-|    - |  416 | `   "function number_format($num, $decimals = 0, $dec_point = '.', $thousands_sep = ','){"\` |
-|    - |  417 | `   "  $num = (float)$num;"\` |
-|    - |  418 | `   "  $decimals = (int)$decimals;"\` |
-|    - |  419 | `   "  if( $decimals < 0 ){ $decimals = 0; }"\` |
-|    - |  420 | `   "  if( $dec_point === null ){ $dec_point = '.'; }"\` |
-|    - |  421 | `   "  if( $thousands_sep === null ){ $thousands_sep = ','; }"\` |
-|    - |  422 | `   "  /* round() first: sprintf uses banker's rounding, php's number_format rounds"\` |
-|    - |  423 | `   "   * half AWAY FROM ZERO (number_format(0.5) is '1', not '0'). */"\` |
-|    - |  424 | `   "  $num = round($num, $decimals);"\` |
-|    - |  425 | `   "  $s = sprintf('%.' . $decimals . 'f', $num);"\` |
-|    - |  426 | `   "  $neg = false;"\` |
-|    - |  427 | `   "  if( substr($s, 0, 1) === '-' ){ $neg = true; $s = substr($s, 1); }"\` |
-|    - |  428 | `   "  $parts = explode('.', $s);"\` |
-|    - |  429 | `   "  $int = $parts[0];"\` |
-|    - |  430 | `   "  $frac = count($parts) > 1 ? $parts[1] : '';"\` |
-|    - |  431 | `   "  $out = '';"\` |
-|    - |  432 | `   "  $len = strlen($int);"\` |
-|    - |  433 | `   "  $c = 0;"\` |
-|    - |  434 | `   "  for( $i = $len - 1 ; $i >= 0 ; $i-- ){"\` |
-|    - |  435 | `   "    $out = $int[$i] . $out;"\` |
-|    - |  436 | `   "    $c++;"\` |
-|    - |  437 | `   "    if( $c % 3 === 0 && $i > 0 ){ $out = $thousands_sep . $out; }"\` |
-|    - |  438 | `   "  }"\` |
-|    - |  439 | `   "  if( $decimals > 0 ){ $out = $out . $dec_point . $frac; }"\` |
-|    - |  440 | `   "  if( $neg ){ $out = '-' . $out; }"\` |
-|    - |  441 | `   "  return $out;"\` |
-|    - |  442 | `   "}"\` |
-|    - |  443 | `   "function is_nan($v){ $v = (float)$v; return $v != $v; }"\` |
-|    - |  444 | `   "function is_infinite($v){ $v = (float)$v; return $v == INF \|\| $v == -INF; }"\` |
-|    - |  445 | `   "function is_finite($v){ $v = (float)$v; return !is_nan($v) && !is_infinite($v); }"\` |
-|    - |  446 | `   "/* php's version_compare: canonicalise (separators + digit/alpha boundaries all"\` |
-|    - |  447 | `   " * become '.'), then compare parts with the special dev<alpha<beta<RC<#<pl ordering. */"\` |
-|    - |  448 | `   "function __phl_vcanon($v){"\` |
-|    - |  449 | `   "  $v = (string)$v; $len = strlen($v); $out = '';"\` |
-|    - |  450 | `   "  for( $i = 0; $i < $len; $i++ ){"\` |
-|    - |  451 | `   "   $c = $v[$i]; $rp = $i + 1 < $len ? $v[$i + 1] : '';"\` |
-|    - |  452 | `   "   $cd = ($c >= '0' && $c <= '9');"\` |
-|    - |  453 | `   "   $ca = $cd \|\| ($c >= 'a' && $c <= 'z') \|\| ($c >= 'A' && $c <= 'Z');"\` |
-|    - |  454 | `   "   if( !$ca ){"\` |
-|    - |  455 | `   "    /* any non-alphanumeric (., -, _, +, ...) is a separator: emit one '.' */"\` |
-|    - |  456 | `   "    if( $out !== '' && substr($out, -1) !== '.' ){ $out .= '.'; }"\` |
-|    - |  457 | `   "   }else{"\` |
-|    - |  458 | `   "    $out .= $c;"\` |
-|    - |  459 | `   "    $rd = ($rp >= '0' && $rp <= '9');"\` |
-|    - |  460 | `   "    $ra = $rd \|\| ($rp >= 'a' && $rp <= 'z') \|\| ($rp >= 'A' && $rp <= 'Z');"\` |
-|    - |  461 | `   "    if( $rp !== '' && $ra && ($cd !== $rd) ){ $out .= '.'; }"\` |
-|    - |  462 | `   "   }"\` |
-|    - |  463 | `   "  }"\` |
-|    - |  464 | `   "  return explode('.', $out);"\` |
-|    - |  465 | `   "}"\` |
-|    - |  466 | `   "function __phl_vform($s){"\` |
-|    - |  467 | `   "  if( $s === '' ){ return -1; }"\` |
-|    - |  468 | `   "  if( ctype_digit($s) ){ return 4; }"\` |
-|    - |  469 | `   "  $f = array('dev' => 0, 'alpha' => 1, 'a' => 1, 'beta' => 2, 'b' => 2, 'RC' => 3, 'rc' => 3, 'pl' => 5, 'p' => 5);"\` |
-|    - |  470 | `   "  foreach( $f as $name => $ord ){ if( strncmp($s, $name, strlen($name)) === 0 ){ return $ord; } }"\` |
-|    - |  471 | `   "  return -1;"\` |
-|    - |  472 | `   "}"\` |
-|    - |  473 | `   "function version_compare($version1, $version2, $operator = null){"\` |
-|    - |  474 | `   "  $v1 = __phl_vcanon($version1); $v2 = __phl_vcanon($version2);"\` |
-|    - |  475 | `   "  $n1 = count($v1); $n2 = count($v2); $n = $n1 > $n2 ? $n1 : $n2; $cmp = 0;"\` |
-|    - |  476 | `   "  for( $i = 0; $i < $n; $i++ ){"\` |
-|    - |  477 | `   "   $a = $i < $n1 ? $v1[$i] : null; $b = $i < $n2 ? $v2[$i] : null;"\` |
-|    - |  478 | `   "   if( $a === null ){ $cmp = ctype_digit($b) ? -1 : (4 <=> __phl_vform($b)); }"\` |
-|    - |  479 | `   "   elseif( $b === null ){ $cmp = ctype_digit($a) ? 1 : (__phl_vform($a) <=> 4); }"\` |
-|    - |  480 | `   "   elseif( ctype_digit($a) && ctype_digit($b) ){ $cmp = (int)$a <=> (int)$b; }"\` |
-|    - |  481 | `   "   else{ $cmp = __phl_vform($a) <=> __phl_vform($b); }"\` |
-|    - |  482 | `   "   if( $cmp !== 0 ){ break; }"\` |
-|    - |  483 | `   "  }"\` |
-|    - |  484 | `   "  if( $operator === null ){ return $cmp; }"\` |
-|    - |  485 | `   "  switch( (string)$operator ){"\` |
-|    - |  486 | `   "   case '<': case 'lt': return $cmp < 0;"\` |
-|    - |  487 | `   "   case '<=': case 'le': return $cmp <= 0;"\` |
-|    - |  488 | `   "   case '>': case 'gt': return $cmp > 0;"\` |
-|    - |  489 | `   "   case '>=': case 'ge': return $cmp >= 0;"\` |
-|    - |  490 | `   "   case '==': case '=': case 'eq': return $cmp === 0;"\` |
-|    - |  491 | `   "   case '!=': case '<>': case 'ne': return $cmp !== 0;"\` |
-|    - |  492 | `   "  }"\` |
-|    - |  493 | `   "  return null;"\` |
-|    - |  494 | `   "}"\` |
-|    - |  495 | `   "/* phl.stub_extensions (a -d/php.ini list, comma-separated) declares extensions"\` |
-|    - |  496 | `   " * PHL does not implement as LOADED, backed by no-op behaviour, so software that"\` |
-|    - |  497 | `   " * only GATES on extension_loaded() (e.g. PHPUnit's dom/xmlwriter check) runs"\` |
-|    - |  498 | `   " * unmodified. It does NOT synthesize the extension's classes/functions. */"\` |
-|    - |  499 | `   "function __phl_stub_exts(){"\` |
-|    - |  500 | `   "  $s = ini_get('phl.stub_extensions');"\` |
-|    - |  501 | `   "  if( $s === false \|\| $s === '' ){ return array(); }"\` |
-|    - |  502 | `   "  $out = array();"\` |
-|    - |  503 | `   "  foreach( explode(',', (string)$s) as $e ){ $e = trim($e); if( $e !== '' ){ $out[strtolower($e)] = $e; } }"\` |
-|    - |  504 | `   "  return $out;"\` |
-|    - |  505 | `   "}"\` |
-|    - |  506 | `   "function extension_loaded($name){"\` |
-|    - |  507 | `   "  static $ext = array('core' => 1, 'standard' => 1, 'pcre' => 1, 'json' => 1,"\` |
-|    - |  508 | `   "   'ctype' => 1, 'date' => 1, 'spl' => 1, 'reflection' => 1, 'mbstring' => 1,"\` |
-|    - |  509 | `   "   'hash' => 1, 'filter' => 1, 'session' => 1" PHL_EXT_LOADED_LIBXML ");"\` |
-|    - |  510 | `   "  $n = strtolower((string)$name);"\` |
-|    - |  511 | `   "  if( isset($ext[$n]) ){ return true; }"\` |
-|    - |  512 | `   "  $stub = __phl_stub_exts();"\` |
-|    - |  513 | `   "  return isset($stub[$n]);"\` |
-|    - |  514 | `   "}"\` |
-|    - |  515 | `   "function get_loaded_extensions($zend_extensions = false){"\` |
-|    - |  516 | `   "  if( $zend_extensions ){ return array(); }"\` |
-|    - |  517 | `   "  $base = array('Core','date','pcre','SPL','json','standard',"\` |
-|    - |  518 | `   "   'ctype','filter','hash','Reflection','session','mbstring'" PHL_EXT_LIST_LIBXML ");"\` |
-|    - |  519 | `   "  foreach( __phl_stub_exts() as $e ){ $base[] = $e; }"\` |
-|    - |  520 | `   "  return $base;"\` |
-|    - |  521 | `   "}"\` |
-|    - |  522 | `   "/* Inverse of bin2hex() */"\` |
-|    - |  523 | `   "function hex2bin($str){"\` |
-|    - |  524 | `   "  $str = (string)$str;"\` |
-|    - |  525 | `   "  $len = strlen($str);"\` |
-|    - |  526 | `   "  if( $len % 2 !== 0 ){"\` |
-|    - |  527 | `   "    trigger_error('hex2bin(): Hexadecimal input string must have an even length', E_USER_WARNING);"\` |
-|    - |  528 | `   "    return false;"\` |
-|    - |  529 | `   "  }"\` |
-|    - |  530 | `   "  $out = '';"\` |
-|    - |  531 | `   "  for( $i = 0 ; $i < $len ; $i += 2 ){"\` |
-|    - |  532 | `   "    $pair = substr($str, $i, 2);"\` |
-|    - |  533 | `   "    if( !ctype_xdigit($pair) ){"\` |
-|    - |  534 | `   "      trigger_error('hex2bin(): Input string must be hexadecimal string', E_USER_WARNING);"\` |
-|    - |  535 | `   "      return false;"\` |
-|    - |  536 | `   "    }"\` |
-|    - |  537 | `   "    $out = $out . chr(hexdec($pair));"\` |
-|    - |  538 | `   "  }"\` |
-|    - |  539 | `   "  return $out;"\` |
-|    - |  540 | `   "}"\` |
-|    - |  541 | `   "/* Division that never throws: INF/-INF/NAN like php */"\` |
-|    - |  542 | `   "function fdiv($a, $b){"\` |
-|    - |  543 | `   "  $a = (float)$a;"\` |
-|    - |  544 | `   "  $b = (float)$b;"\` |
-|    - |  545 | `   "  if( $b == 0.0 ){"\` |
-|    - |  546 | `   "    if( $a == 0.0 \|\| is_nan($a) ){ return NAN; }"\` |
-|    - |  547 | `   "    return $a > 0 ? INF : -INF;"\` |
-|    - |  548 | `   "  }"\` |
-|    - |  549 | `   "  return $a / $b;"\` |
-|    - |  550 | `   "}"\` |
-|    - |  551 | `   "function checkdate($month, $day, $year){"\` |
-|    - |  552 | `   "  $month = (int)$month; $day = (int)$day; $year = (int)$year;"\` |
-|    - |  553 | `   "  if( $month < 1 \|\| $month > 12 \|\| $year < 1 \|\| $year > 32767 \|\| $day < 1 ){ return false; }"\` |
-|    - |  554 | `   "  $days = array(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31);"\` |
-|    - |  555 | `   "  $max = $days[$month - 1];"\` |
-|    - |  556 | `   "  if( $month === 2 && ((($year % 4 === 0) && ($year % 100 !== 0)) \|\| ($year % 400 === 0)) ){"\` |
-|    - |  557 | `   "    $max = 29;"\` |
-|    - |  558 | `   "  }"\` |
-|    - |  559 | `   "  return $day <= $max;"\` |
-|    - |  560 | `   "}"\` |
-|    - |  561 | `   "function is_iterable($v){ return is_array($v) \|\| ($v instanceof Traversable); }"\` |
-|    - |  562 | `   "function is_countable($v){ return is_array($v) \|\| ($v instanceof Countable); }"\` |
-|    - |  563 | `   "function key_exists($key, $array){ return array_key_exists($key, $array); }"\` |
-|    - |  564 | `   "function doubleval($v){ return (float)$v; }"\` |
-|    - |  565 | `   "function array_count_values($array){"\` |
-|    - |  566 | `   "  $out = array();"\` |
-|    - |  567 | `   "  foreach( $array as $v ){"\` |
-|    - |  568 | `   "    if( !is_int($v) && !is_string($v) ){"\` |
-|    - |  569 | `   "      trigger_error('array_count_values(): Can only count string and integer values, entry skipped', E_USER_WARNING);"\` |
-|    - |  570 | `   "      continue;"\` |
-|    - |  571 | `   "    }"\` |
-|    - |  572 | `   "    if( isset($out[$v]) ){ $out[$v] = $out[$v] + 1; } else { $out[$v] = 1; }"\` |
-|    - |  573 | `   "  }"\` |
-|    - |  574 | `   "  return $out;"\` |
-|    - |  575 | `   "}"\` |
-|    - |  576 | `   "function array_change_key_case($array, $case = CASE_LOWER){"\` |
-|    - |  577 | `   "  $out = array();"\` |
-|    - |  578 | `   "  foreach( $array as $k => $v ){"\` |
-|    - |  579 | `   "    if( is_string($k) ){ $k = ($case == CASE_UPPER) ? strtoupper($k) : strtolower($k); }"\` |
-|    - |  580 | `   "    $out[$k] = $v;"\` |
-|    - |  581 | `   "  }"\` |
-|    - |  582 | `   "  return $out;"\` |
-|    - |  583 | `   "}"\` |
-|    - |  584 | `   "function array_replace_recursive($array, ...$others){"\` |
-|    - |  585 | `   "  foreach( $others as $o ){"\` |
-|    - |  586 | `   "    foreach( $o as $k => $v ){"\` |
-|    - |  587 | `   "      if( is_array($v) && isset($array[$k]) && is_array($array[$k]) ){"\` |
-|    - |  588 | `   "        $array[$k] = array_replace_recursive($array[$k], $v);"\` |
-|    - |  589 | `   "      }else{"\` |
-|    - |  590 | `   "        $array[$k] = $v;"\` |
-|    - |  591 | `   "      }"\` |
-|    - |  592 | `   "    }"\` |
-|    - |  593 | `   "  }"\` |
-|    - |  594 | `   "  return $array;"\` |
-|    - |  595 | `   "}"\` |
-|    - |  596 | `   "function class_uses($what, $autoload = true){"\` |
-|    - |  597 | `   "  $c = is_object($what) ? get_class($what) : (string)$what;"\` |
-|    - |  598 | `   "  if( !class_exists($c) ){ return false; }"\` |
-|    - |  599 | `   "  return array();  /* PHL has no traits yet -- always the empty set */"\` |
-|    - |  600 | `   "}"\` |
-|    - |  601 | `   "function count_chars($str, $mode = 0){"\` |
-|    - |  602 | `   "  $str = (string)$str;"\` |
-|    - |  603 | `   "  $counts = array();"\` |
-|    - |  604 | `   "  for( $i = 0 ; $i < 256 ; $i++ ){ $counts[$i] = 0; }"\` |
-|    - |  605 | `   "  $len = strlen($str);"\` |
-|    - |  606 | `   "  for( $i = 0 ; $i < $len ; $i++ ){ $b = ord($str[$i]); $counts[$b] = $counts[$b] + 1; }"\` |
-|    - |  607 | `   "  if( $mode == 1 ){"\` |
-|    - |  608 | `   "    $out = array();"\` |
-|    - |  609 | `   "    foreach( $counts as $b => $n ){ if( $n > 0 ){ $out[$b] = $n; } }"\` |
-|    - |  610 | `   "    return $out;"\` |
-|    - |  611 | `   "  }"\` |
-|    - |  612 | `   "  if( $mode == 3 ){"\` |
-|    - |  613 | `   "    $out = '';"\` |
-|    - |  614 | `   "    foreach( $counts as $b => $n ){ if( $n > 0 ){ $out = $out . chr($b); } }"\` |
-|    - |  615 | `   "    return $out;"\` |
-|    - |  616 | `   "  }"\` |
-|    - |  617 | `   "  return $counts;"\` |
-|    - |  618 | `   "}"\` |
-|    - |  619 | `   "function ip2long($ip){"\` |
-|    - |  620 | `   "  $p = explode('.', (string)$ip);"\` |
-|    - |  621 | `   "  if( count($p) !== 4 ){ return false; }"\` |
-|    - |  622 | `   "  $n = 0;"\` |
-|    - |  623 | `   "  foreach( $p as $o ){"\` |
-|    - |  624 | `   "    if( !ctype_digit($o) \|\| (int)$o < 0 \|\| (int)$o > 255 ){ return false; }"\` |
-|    - |  625 | `   "    $n = $n * 256 + (int)$o;"\` |
-|    - |  626 | `   "  }"\` |
-|    - |  627 | `   "  return $n;"\` |
-|    - |  628 | `   "}"\` |
-|    - |  629 | `   "function long2ip($n){"\` |
-|    - |  630 | `   "  $n = (int)$n;"\` |
-|    - |  631 | `   "  return (($n >> 24) & 255) . '.' . (($n >> 16) & 255) . '.' . (($n >> 8) & 255) . '.' . ($n & 255);"\` |
-|    - |  632 | `   "}"\` |
-|    - |  633 | `   "function preg_filter($pattern, $replacement, $subject, $limit = -1){"\` |
-|    - |  634 | `   "  if( is_array($subject) ){"\` |
-|    - |  635 | `   "    $out = array();"\` |
-|    - |  636 | `   "    foreach( $subject as $k => $v ){"\` |
-|    - |  637 | `   "      $r = preg_replace($pattern, $replacement, (string)$v, $limit, $cnt);"\` |
-|    - |  638 | `   "      if( $cnt > 0 ){ $out[$k] = $r; }"\` |
-|    - |  639 | `   "    }"\` |
-|    - |  640 | `   "    return $out;"\` |
+|    - |  349 | `	"  /* php's rule is a two-way split, not a three-value enum: SORT_NONE leaves the"\` |
+|    - |  350 | `	"     order alone and EVERY other value sorts -- ascending only for the exact"\` |
+|    - |  351 | `	"     SORT_ASCENDING, descending otherwise. PHL left an unknown value UNSORTED,"\` |
+|    - |  352 | `	"     which reads as SORT_NONE. */"\` |
+|    - |  353 | `	"  if( $sort_order != SCANDIR_SORT_NONE ){"\` |
+|    - |  354 | `	"      if( $sort_order == SCANDIR_SORT_ASCENDING ){ sort($aDir); }"\` |
+|    - |  355 | `	"      else { rsort($aDir); }"\` |
+|    - |  356 | `	"  }"\` |
+|    - |  357 | `	"  return $aDir;"\` |
+|    - |  358 | `	"}"\` |
+|    - |  359 | `	"function glob(string $pattern,int $iFlags = 0){"\` |
+|    - |  360 | `	"/* php rejects a mask holding any bit outside GLOB_AVAILABLE_FLAGS with a warning"\` |
+|    - |  361 | `	"   and FALSE. PHL accepted anything and just tested the bits it knew, so a stale"\` |
+|    - |  362 | `	"   script passing the OLD PHL glob values (1/2/4/...) silently got a plain glob."\` |
+|    - |  363 | `	"   The literal is GLOB_AVAILABLE_FLAGS; PHL does not define that constant yet. */"\` |
+|    - |  364 | `	"if( $iFlags & ~(GLOB_ERR\|GLOB_MARK\|GLOB_NOCHECK\|GLOB_NOSORT\|GLOB_BRACE\|GLOB_NOESCAPE\|GLOB_ONLYDIR) ){"\` |
+|    - |  365 | `	"  trigger_error('glob(): At least one of the passed flags is invalid or not supported on this platform', E_USER_WARNING);"\` |
+|    - |  366 | `	"  return FALSE;"\` |
+|    - |  367 | `	"}"\` |
+|    - |  368 | `	"/* php keeps the literal directory portion of the pattern in every result;"\` |
+|    - |  369 | `	"   split off everything up to and including the last '/' as the prefix. */"\` |
+|    - |  370 | `	"$slash = strrpos($pattern,'/');"\` |
+|    - |  371 | `	"if( $slash === false ){ $zDir = '.'; $prefix = ''; $pat = $pattern; }"\` |
+|    - |  372 | `	"else { $zDir = substr($pattern,0,$slash); if( $zDir === '' ){ $zDir = '/'; } $prefix = substr($pattern,0,$slash+1); $pat = substr($pattern,$slash+1); }"\` |
+|    - |  373 | `	"$pHandle = opendir($zDir);"\` |
+|    - |  374 | `	"if( $pHandle == FALSE ){"\` |
+|    - |  375 | `	"   /* IO error while opening the target directory,return FALSE */"\` |
+|    - |  376 | `	"	return FALSE;"\` |
+|    - |  377 | `	"}"\` |
+|    - |  378 | `	"$pArray = array(); /* Empty array */"\` |
+|    - |  379 | `	"/* Loop throw available entries */"\` |
+|    - |  380 | `	"while( FALSE !== ($pEntry = readdir($pHandle)) ){"\` |
+|    - |  381 | `	" /* php's glob() never matches a leading-dot entry (incl. '.' and '..') unless"\` |
+|    - |  382 | `	"    the pattern itself starts with a dot */"\` |
+|    - |  383 | `	"	if( strlen($pEntry) > 0 && $pEntry[0] === '.' && (strlen($pat) < 1 \|\| $pat[0] !== '.') ){ continue; }"\` |
+|    - |  384 | `	" /* Use the built-in strglob function which is a Symisc eXtension for wildcard comparison*/"\` |
+|    - |  385 | `	"	$rc = strglob($pat,$pEntry);"\` |
+|    - |  386 | `	"	if( $rc ){"\` |
+|    - |  387 | `	"	   $zFull = $prefix . $pEntry;"\` |
+|    - |  388 | `	"	   if( is_dir($zDir . '/' . $pEntry) ){"\` |
+|    - |  389 | `	"	      if( $iFlags & GLOB_MARK ){"\` |
+|    - |  390 | `	"		     /* Adds a slash to each directory returned */"\` |
+|    - |  391 | `	"			 $zFull .= DIRECTORY_SEPARATOR;"\` |
+|    - |  392 | `	"		  }"\` |
+|    - |  393 | `	"	   }else if( $iFlags & GLOB_ONLYDIR ){"\` |
+|    - |  394 | `	"	     /* Not a directory,ignore */"\` |
+|    - |  395 | `	"		 continue;"\` |
+|    - |  396 | `	"	   }"\` |
+|    - |  397 | `	"	   /* Add the entry (with its literal directory prefix, php-style) */"\` |
+|    - |  398 | `	"	   $pArray[] = $zFull;"\` |
+|    - |  399 | `	"	}"\` |
+|    - |  400 | `	" }"\` |
+|    - |  401 | `	"/* Close the handle */"\` |
+|    - |  402 | `	"closedir($pHandle);"\` |
+|    - |  403 | `	"if( ($iFlags & GLOB_NOSORT) == 0 ){"\` |
+|    - |  404 | `	"  /* Sort the array */"\` |
+|    - |  405 | `	"  sort($pArray);"\` |
+|    - |  406 | `	"}"\` |
+|    - |  407 | `	"if( ($iFlags & GLOB_NOCHECK) && sizeof($pArray) < 1 ){"\` |
+|    - |  408 | `	"  /* Return the search pattern if no files matching were found */"\` |
+|    - |  409 | `	"  $pArray[] = $pattern;"\` |
+|    - |  410 | `	"}"\` |
+|    - |  411 | `	"/* Return the created array */"\` |
+|    - |  412 | `	"return $pArray;"\` |
+|    - |  413 | `   "}"\` |
+|    - |  414 | `   "/* Creates a temporary file */"\` |
+|    - |  415 | `   "function tmpfile(){"\` |
+|    - |  416 | `   "  /* Extract the temp directory */"\` |
+|    - |  417 | `   "  $zTempDir = sys_get_temp_dir();"\` |
+|    - |  418 | `   "  if( strlen($zTempDir) < 1 ){"\` |
+|    - |  419 | `   "    /* Use the current dir */"\` |
+|    - |  420 | `   "    $zTempDir = '.';"\` |
+|    - |  421 | `   "  }"\` |
+|    - |  422 | `   "  /* Create the file */"\` |
+|    - |  423 | `   "  $pHandle = fopen($zTempDir.DIRECTORY_SEPARATOR.'PH7'.rand_str(12),'w+');"\` |
+|    - |  424 | `   "  return $pHandle;"\` |
+|    - |  425 | `   "}"\` |
+|    - |  426 | `   "/* php's number_format(): missing entirely from PH7. */"\` |
+|    - |  427 | `   "function number_format($num, $decimals = 0, $dec_point = '.', $thousands_sep = ','){"\` |
+|    - |  428 | `   "  $num = (float)$num;"\` |
+|    - |  429 | `   "  $decimals = (int)$decimals;"\` |
+|    - |  430 | `   "  if( $dec_point === null ){ $dec_point = '.'; }"\` |
+|    - |  431 | `   "  if( $thousands_sep === null ){ $thousands_sep = ','; }"\` |
+|    - |  432 | `   "  /* round() first: sprintf uses banker's rounding, php's number_format rounds"\` |
+|    - |  433 | `   "   * half AWAY FROM ZERO (number_format(0.5) is '1', not '0'). A NEGATIVE precision"\` |
+|    - |  434 | `   "   * rounds to tens/hundreds (php 8: number_format(1.5,-1) is '0'); the displayed"\` |
+|    - |  435 | `   "   * value never carries negative decimal places, so round with the real precision"\` |
+|    - |  436 | `   "   * but format/append with max(0, $decimals). */"\` |
+|    - |  437 | `   "  $num = round($num, $decimals);"\` |
+|    - |  438 | `   "  $fdec = $decimals < 0 ? 0 : $decimals;"\` |
+|    - |  439 | `   "  $s = sprintf('%.' . $fdec . 'f', $num);"\` |
+|    - |  440 | `   "  $neg = false;"\` |
+|    - |  441 | `   "  if( substr($s, 0, 1) === '-' ){ $neg = true; $s = substr($s, 1); }"\` |
+|    - |  442 | `   "  $parts = explode('.', $s);"\` |
+|    - |  443 | `   "  $int = $parts[0];"\` |
+|    - |  444 | `   "  $frac = count($parts) > 1 ? $parts[1] : '';"\` |
+|    - |  445 | `   "  $out = '';"\` |
+|    - |  446 | `   "  $len = strlen($int);"\` |
+|    - |  447 | `   "  $c = 0;"\` |
+|    - |  448 | `   "  for( $i = $len - 1 ; $i >= 0 ; $i-- ){"\` |
+|    - |  449 | `   "    $out = $int[$i] . $out;"\` |
+|    - |  450 | `   "    $c++;"\` |
+|    - |  451 | `   "    if( $c % 3 === 0 && $i > 0 ){ $out = $thousands_sep . $out; }"\` |
+|    - |  452 | `   "  }"\` |
+|    - |  453 | `   "  if( $fdec > 0 ){ $out = $out . $dec_point . $frac; }"\` |
+|    - |  454 | `   "  if( $neg ){ $out = '-' . $out; }"\` |
+|    - |  455 | `   "  return $out;"\` |
+|    - |  456 | `   "}"\` |
+|    - |  457 | `   "function is_nan($v){ $v = (float)$v; return $v != $v; }"\` |
+|    - |  458 | `   "function is_infinite($v){ $v = (float)$v; return $v == INF \|\| $v == -INF; }"\` |
+|    - |  459 | `   "function is_finite($v){ $v = (float)$v; return !is_nan($v) && !is_infinite($v); }"\` |
+|    - |  460 | `   "/* php's version_compare: canonicalise (separators + digit/alpha boundaries all"\` |
+|    - |  461 | `   " * become '.'), then compare parts with the special dev<alpha<beta<RC<#<pl ordering. */"\` |
+|    - |  462 | `   "function __phl_vcanon($v){"\` |
+|    - |  463 | `   "  $v = (string)$v; $len = strlen($v); $out = '';"\` |
+|    - |  464 | `   "  for( $i = 0; $i < $len; $i++ ){"\` |
+|    - |  465 | `   "   $c = $v[$i]; $rp = $i + 1 < $len ? $v[$i + 1] : '';"\` |
+|    - |  466 | `   "   $cd = ($c >= '0' && $c <= '9');"\` |
+|    - |  467 | `   "   $ca = $cd \|\| ($c >= 'a' && $c <= 'z') \|\| ($c >= 'A' && $c <= 'Z');"\` |
+|    - |  468 | `   "   if( !$ca ){"\` |
+|    - |  469 | `   "    /* any non-alphanumeric (., -, _, +, ...) is a separator: emit one '.' */"\` |
+|    - |  470 | `   "    if( $out !== '' && substr($out, -1) !== '.' ){ $out .= '.'; }"\` |
+|    - |  471 | `   "   }else{"\` |
+|    - |  472 | `   "    $out .= $c;"\` |
+|    - |  473 | `   "    $rd = ($rp >= '0' && $rp <= '9');"\` |
+|    - |  474 | `   "    $ra = $rd \|\| ($rp >= 'a' && $rp <= 'z') \|\| ($rp >= 'A' && $rp <= 'Z');"\` |
+|    - |  475 | `   "    if( $rp !== '' && $ra && ($cd !== $rd) ){ $out .= '.'; }"\` |
+|    - |  476 | `   "   }"\` |
+|    - |  477 | `   "  }"\` |
+|    - |  478 | `   "  return explode('.', $out);"\` |
+|    - |  479 | `   "}"\` |
+|    - |  480 | `   "function __phl_vform($s){"\` |
+|    - |  481 | `   "  if( $s === '' ){ return -1; }"\` |
+|    - |  482 | `   "  if( ctype_digit($s) ){ return 4; }"\` |
+|    - |  483 | `   "  $f = array('dev' => 0, 'alpha' => 1, 'a' => 1, 'beta' => 2, 'b' => 2, 'RC' => 3, 'rc' => 3, 'pl' => 5, 'p' => 5);"\` |
+|    - |  484 | `   "  foreach( $f as $name => $ord ){ if( strncmp($s, $name, strlen($name)) === 0 ){ return $ord; } }"\` |
+|    - |  485 | `   "  return -1;"\` |
+|    - |  486 | `   "}"\` |
+|    - |  487 | `   "function version_compare($version1, $version2, $operator = null){"\` |
+|    - |  488 | `   "  $v1 = __phl_vcanon($version1); $v2 = __phl_vcanon($version2);"\` |
+|    - |  489 | `   "  $n1 = count($v1); $n2 = count($v2); $n = $n1 > $n2 ? $n1 : $n2; $cmp = 0;"\` |
+|    - |  490 | `   "  for( $i = 0; $i < $n; $i++ ){"\` |
+|    - |  491 | `   "   $a = $i < $n1 ? $v1[$i] : null; $b = $i < $n2 ? $v2[$i] : null;"\` |
+|    - |  492 | `   "   if( $a === null ){ $cmp = ctype_digit($b) ? -1 : (4 <=> __phl_vform($b)); }"\` |
+|    - |  493 | `   "   elseif( $b === null ){ $cmp = ctype_digit($a) ? 1 : (__phl_vform($a) <=> 4); }"\` |
+|    - |  494 | `   "   elseif( ctype_digit($a) && ctype_digit($b) ){ $cmp = (int)$a <=> (int)$b; }"\` |
+|    - |  495 | `   "   else{ $cmp = __phl_vform($a) <=> __phl_vform($b); }"\` |
+|    - |  496 | `   "   if( $cmp !== 0 ){ break; }"\` |
+|    - |  497 | `   "  }"\` |
+|    - |  498 | `   "  if( $operator === null ){ return $cmp; }"\` |
+|    - |  499 | `   "  switch( (string)$operator ){"\` |
+|    - |  500 | `   "   case '<': case 'lt': return $cmp < 0;"\` |
+|    - |  501 | `   "   case '<=': case 'le': return $cmp <= 0;"\` |
+|    - |  502 | `   "   case '>': case 'gt': return $cmp > 0;"\` |
+|    - |  503 | `   "   case '>=': case 'ge': return $cmp >= 0;"\` |
+|    - |  504 | `   "   case '==': case '=': case 'eq': return $cmp === 0;"\` |
+|    - |  505 | `   "   case '!=': case '<>': case 'ne': return $cmp !== 0;"\` |
+|    - |  506 | `   "  }"\` |
+|    - |  507 | `   "  return null;"\` |
+|    - |  508 | `   "}"\` |
+|    - |  509 | `   "/* phl.stub_extensions (a -d/php.ini list, comma-separated) declares extensions"\` |
+|    - |  510 | `   " * PHL does not implement as LOADED, backed by no-op behaviour, so software that"\` |
+|    - |  511 | `   " * only GATES on extension_loaded() (e.g. PHPUnit's dom/xmlwriter check) runs"\` |
+|    - |  512 | `   " * unmodified. It does NOT synthesize the extension's classes/functions. */"\` |
+|    - |  513 | `   "function __phl_stub_exts(){"\` |
+|    - |  514 | `   "  $s = ini_get('phl.stub_extensions');"\` |
+|    - |  515 | `   "  if( $s === false \|\| $s === '' ){ return array(); }"\` |
+|    - |  516 | `   "  $out = array();"\` |
+|    - |  517 | `   "  foreach( explode(',', (string)$s) as $e ){ $e = trim($e); if( $e !== '' ){ $out[strtolower($e)] = $e; } }"\` |
+|    - |  518 | `   "  return $out;"\` |
+|    - |  519 | `   "}"\` |
+|    - |  520 | `   "function extension_loaded($name){"\` |
+|    - |  521 | `   "  static $ext = array('core' => 1, 'standard' => 1, 'pcre' => 1, 'json' => 1,"\` |
+|    - |  522 | `   "   'ctype' => 1, 'date' => 1, 'spl' => 1, 'reflection' => 1, 'mbstring' => 1,"\` |
+|    - |  523 | `   "   'hash' => 1, 'filter' => 1, 'session' => 1" PHL_EXT_LOADED_LIBXML ");"\` |
+|    - |  524 | `   "  $n = strtolower((string)$name);"\` |
+|    - |  525 | `   "  if( isset($ext[$n]) ){ return true; }"\` |
+|    - |  526 | `   "  $stub = __phl_stub_exts();"\` |
+|    - |  527 | `   "  return isset($stub[$n]);"\` |
+|    - |  528 | `   "}"\` |
+|    - |  529 | `   "function get_loaded_extensions($zend_extensions = false){"\` |
+|    - |  530 | `   "  if( $zend_extensions ){ return array(); }"\` |
+|    - |  531 | `   "  $base = array('Core','date','pcre','SPL','json','standard',"\` |
+|    - |  532 | `   "   'ctype','filter','hash','Reflection','session','mbstring'" PHL_EXT_LIST_LIBXML ");"\` |
+|    - |  533 | `   "  foreach( __phl_stub_exts() as $e ){ $base[] = $e; }"\` |
+|    - |  534 | `   "  return $base;"\` |
+|    - |  535 | `   "}"\` |
+|    - |  536 | `   "/* Inverse of bin2hex() */"\` |
+|    - |  537 | `   "function hex2bin($str){"\` |
+|    - |  538 | `   "  $str = (string)$str;"\` |
+|    - |  539 | `   "  $len = strlen($str);"\` |
+|    - |  540 | `   "  if( $len % 2 !== 0 ){"\` |
+|    - |  541 | `   "    trigger_error('hex2bin(): Hexadecimal input string must have an even length', E_USER_WARNING);"\` |
+|    - |  542 | `   "    return false;"\` |
+|    - |  543 | `   "  }"\` |
+|    - |  544 | `   "  $out = '';"\` |
+|    - |  545 | `   "  for( $i = 0 ; $i < $len ; $i += 2 ){"\` |
+|    - |  546 | `   "    $pair = substr($str, $i, 2);"\` |
+|    - |  547 | `   "    if( !ctype_xdigit($pair) ){"\` |
+|    - |  548 | `   "      trigger_error('hex2bin(): Input string must be hexadecimal string', E_USER_WARNING);"\` |
+|    - |  549 | `   "      return false;"\` |
+|    - |  550 | `   "    }"\` |
+|    - |  551 | `   "    $out = $out . chr(hexdec($pair));"\` |
+|    - |  552 | `   "  }"\` |
+|    - |  553 | `   "  return $out;"\` |
+|    - |  554 | `   "}"\` |
+|    - |  555 | `   "/* Division that never throws: INF/-INF/NAN like php */"\` |
+|    - |  556 | `   "function fdiv($a, $b){"\` |
+|    - |  557 | `   "  $a = (float)$a;"\` |
+|    - |  558 | `   "  $b = (float)$b;"\` |
+|    - |  559 | `   "  if( $b == 0.0 ){"\` |
+|    - |  560 | `   "    if( $a == 0.0 \|\| is_nan($a) ){ return NAN; }"\` |
+|    - |  561 | `   "    return $a > 0 ? INF : -INF;"\` |
+|    - |  562 | `   "  }"\` |
+|    - |  563 | `   "  return $a / $b;"\` |
+|    - |  564 | `   "}"\` |
+|    - |  565 | `   "function checkdate($month, $day, $year){"\` |
+|    - |  566 | `   "  $month = (int)$month; $day = (int)$day; $year = (int)$year;"\` |
+|    - |  567 | `   "  if( $month < 1 \|\| $month > 12 \|\| $year < 1 \|\| $year > 32767 \|\| $day < 1 ){ return false; }"\` |
+|    - |  568 | `   "  $days = array(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31);"\` |
+|    - |  569 | `   "  $max = $days[$month - 1];"\` |
+|    - |  570 | `   "  if( $month === 2 && ((($year % 4 === 0) && ($year % 100 !== 0)) \|\| ($year % 400 === 0)) ){"\` |
+|    - |  571 | `   "    $max = 29;"\` |
+|    - |  572 | `   "  }"\` |
+|    - |  573 | `   "  return $day <= $max;"\` |
+|    - |  574 | `   "}"\` |
+|    - |  575 | `   "function is_iterable($v){ return is_array($v) \|\| ($v instanceof Traversable); }"\` |
+|    - |  576 | `   "function is_countable($v){ return is_array($v) \|\| ($v instanceof Countable); }"\` |
+|    - |  577 | `   "function key_exists($key, $array){ return array_key_exists($key, $array); }"\` |
+|    - |  578 | `   "function doubleval($v){ return (float)$v; }"\` |
+|    - |  579 | `   "function array_count_values($array){"\` |
+|    - |  580 | `   "  $out = array();"\` |
+|    - |  581 | `   "  foreach( $array as $v ){"\` |
+|    - |  582 | `   "    if( !is_int($v) && !is_string($v) ){"\` |
+|    - |  583 | `   "      trigger_error('array_count_values(): Can only count string and integer values, entry skipped', E_USER_WARNING);"\` |
+|    - |  584 | `   "      continue;"\` |
+|    - |  585 | `   "    }"\` |
+|    - |  586 | `   "    if( isset($out[$v]) ){ $out[$v] = $out[$v] + 1; } else { $out[$v] = 1; }"\` |
+|    - |  587 | `   "  }"\` |
+|    - |  588 | `   "  return $out;"\` |
+|    - |  589 | `   "}"\` |
+|    - |  590 | `   "function array_change_key_case($array, $case = CASE_LOWER){"\` |
+|    - |  591 | `   "  $out = array();"\` |
+|    - |  592 | `   "  foreach( $array as $k => $v ){"\` |
+|    - |  593 | `   "    if( is_string($k) ){ $k = ($case == CASE_UPPER) ? strtoupper($k) : strtolower($k); }"\` |
+|    - |  594 | `   "    $out[$k] = $v;"\` |
+|    - |  595 | `   "  }"\` |
+|    - |  596 | `   "  return $out;"\` |
+|    - |  597 | `   "}"\` |
+|    - |  598 | `   "function array_replace_recursive($array, ...$others){"\` |
+|    - |  599 | `   "  foreach( $others as $o ){"\` |
+|    - |  600 | `   "    foreach( $o as $k => $v ){"\` |
+|    - |  601 | `   "      if( is_array($v) && isset($array[$k]) && is_array($array[$k]) ){"\` |
+|    - |  602 | `   "        $array[$k] = array_replace_recursive($array[$k], $v);"\` |
+|    - |  603 | `   "      }else{"\` |
+|    - |  604 | `   "        $array[$k] = $v;"\` |
+|    - |  605 | `   "      }"\` |
+|    - |  606 | `   "    }"\` |
+|    - |  607 | `   "  }"\` |
+|    - |  608 | `   "  return $array;"\` |
+|    - |  609 | `   "}"\` |
+|    - |  610 | `   "function class_uses($what, $autoload = true){"\` |
+|    - |  611 | `   "  $c = is_object($what) ? get_class($what) : (string)$what;"\` |
+|    - |  612 | `   "  if( !class_exists($c) ){ return false; }"\` |
+|    - |  613 | `   "  return array();  /* PHL has no traits yet -- always the empty set */"\` |
+|    - |  614 | `   "}"\` |
+|    - |  615 | `   /* count_chars: php's five modes are a 2x2 split plus mode 0 -- 1/2 answer an \` |
+|    - |  616 | `    * ARRAY, 3/4 a STRING, and the ODD modes report the bytes that WERE used \` |
+|    - |  617 | `    * where the EVEN ones report the bytes that were NOT. PH7 implemented 0/1/3 \` |
+|    - |  618 | `    * and let 2 and 4 fall through to mode 0's full table: the exact complement \` |
+|    - |  619 | `    * of the answer asked for, silently. Any other mode is php's ValueError. */\` |
+|    - |  620 | `   "function count_chars($str, $mode = 0){"\` |
+|    - |  621 | `   "  if( is_array($mode) \|\| is_object($mode) \|\| is_resource($mode)"\` |
+|    - |  622 | `   "   \|\| (is_string($mode) && !is_numeric($mode)) ){"\` |
+|    - |  623 | `   "    throw new TypeError('count_chars(): Argument #2 ($mode) must be of type int, ' . __php_zpp_type($mode) . ' given');"\` |
+|    - |  624 | `   "  }"\` |
+|    - |  625 | `   "  $mode = (int)$mode;"\` |
+|    - |  626 | `   "  if( $mode < 0 \|\| $mode > 4 ){"\` |
+|    - |  627 | `   "    throw new ValueError('count_chars(): Argument #2 ($mode) must be between 0 and 4 (inclusive)');"\` |
+|    - |  628 | `   "  }"\` |
+|    - |  629 | `   "  $str = (string)$str;"\` |
+|    - |  630 | `   "  $counts = array();"\` |
+|    - |  631 | `   "  for( $i = 0 ; $i < 256 ; $i++ ){ $counts[$i] = 0; }"\` |
+|    - |  632 | `   "  $len = strlen($str);"\` |
+|    - |  633 | `   "  for( $i = 0 ; $i < $len ; $i++ ){ $b = ord($str[$i]); $counts[$b] = $counts[$b] + 1; }"\` |
+|    - |  634 | `   "  if( $mode == 0 ){ return $counts; }"\` |
+|    - |  635 | `   "  $used = ($mode == 1 \|\| $mode == 3);"\` |
+|    - |  636 | `   "  $string = ($mode == 3 \|\| $mode == 4);"\` |
+|    - |  637 | `   "  $out = $string ? '' : array();"\` |
+|    - |  638 | `   "  foreach( $counts as $b => $n ){"\` |
+|    - |  639 | `   "    if( ($n > 0) !== $used ){ continue; }"\` |
+|    - |  640 | `   "    if( $string ){ $out = $out . chr($b); } else { $out[$b] = $n; }"\` |
 |    - |  641 | `   "  }"\` |
-|    - |  642 | `   "  $r = preg_replace($pattern, $replacement, (string)$subject, $limit, $cnt);"\` |
-|    - |  643 | `   "  return $cnt > 0 ? $r : null;"\` |
-|    - |  644 | `   "}"\` |
-|    - |  645 | `   "function preg_replace_callback_array($patterns, $subject, $limit = -1){"\` |
-|    - |  646 | `   "  foreach( $patterns as $pat => $cb ){"\` |
-|    - |  647 | `   "    $subject = preg_replace_callback($pat, $cb, $subject, $limit);"\` |
-|    - |  648 | `   "  }"\` |
-|    - |  649 | `   "  return $subject;"\` |
-|    - |  650 | `   "}"\` |
-|    - |  651 | `   "function cal_days_in_month($calendar, $month, $year){"\` |
-|    - |  652 | `   "  $month = (int)$month; $year = (int)$year;"\` |
-|    - |  653 | `   "  $days = array(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31);"\` |
-|    - |  654 | `   "  if( $month < 1 \|\| $month > 12 ){"\` |
-|    - |  655 | `   "    throw new ValueError('cal_days_in_month(): Argument #2 ($month) must be a valid month');"\` |
-|    - |  656 | `   "  }"\` |
-|    - |  657 | `   "  if( $month === 2 && ((($year % 4 === 0) && ($year % 100 !== 0)) \|\| ($year % 400 === 0)) ){"\` |
-|    - |  658 | `   "    return 29;"\` |
-|    - |  659 | `   "  }"\` |
-|    - |  660 | `   "  return $days[$month - 1];"\` |
-|    - |  661 | `   "}"\` |
-|    - |  662 | `   "function preg_grep($pattern, $array, $flags = 0){"\` |
-|    - |  663 | `   "  $out = array();"\` |
-|    - |  664 | `   "  foreach( $array as $k => $v ){"\` |
-|    - |  665 | `   "    $m = preg_match($pattern, (string)$v);"\` |
-|    - |  666 | `   "    if( $flags & PREG_GREP_INVERT ){ $m = !$m; }"\` |
-|    - |  667 | `   "    if( $m ){ $out[$k] = $v; }"\` |
-|    - |  668 | `   "  }"\` |
-|    - |  669 | `   "  return $out;"\` |
-|    - |  670 | `   "}"\` |
-|    - |  671 | `   "function class_implements($what, $autoload = true){"\` |
-|    - |  672 | `   "  $c = is_object($what) ? get_class($what) : (string)$what;"\` |
-|    - |  673 | `   "  if( !class_exists($c) && !interface_exists($c) ){ return false; }"\` |
-|    - |  674 | `   "  $out = array();"\` |
-|    - |  675 | `   "  $r = new ReflectionClass($c);"\` |
-|    - |  676 | `   "  foreach( $r->getInterfaceNames() as $i ){ $out[$i] = $i; }"\` |
-|    - |  677 | `   "  return $out;"\` |
-|    - |  678 | `   "}"\` |
-|    - |  679 | `   "function class_parents($what, $autoload = true){"\` |
-|    - |  680 | `   "  $c = is_object($what) ? get_class($what) : (string)$what;"\` |
-|    - |  681 | `   "  if( !class_exists($c) ){ return false; }"\` |
-|    - |  682 | `   "  $out = array();"\` |
-|    - |  683 | `   "  $r = new ReflectionClass($c);"\` |
-|    - |  684 | `   "  while( ($p = $r->getParentClass()) ){"\` |
-|    - |  685 | `   "    $n = $p->getName();"\` |
-|    - |  686 | `   "    $out[$n] = $n;"\` |
-|    - |  687 | `   "    $r = $p;"\` |
-|    - |  688 | `   "  }"\` |
-|    - |  689 | `   "  return $out;"\` |
-|    - |  690 | `   "}"\` |
-|    - |  691 | `   "/* php's http_build_query() -- missing from PH7. Skips null values, casts"\` |
-|    - |  692 | `   " * bool to 1/0, prefixes numeric top-level keys, urlencodes per RFC. */"\` |
-|    - |  693 | `   "function __phl_hbq_enc($s, $enc){"\` |
-|    - |  694 | `   "  return $enc == PHP_QUERY_RFC3986 ? rawurlencode((string)$s) : urlencode((string)$s);"\` |
+|    - |  642 | `   "  return $out;"\` |
+|    - |  643 | `   "}"\` |
+|    - |  644 | `   "function ip2long($ip){"\` |
+|    - |  645 | `   "  $p = explode('.', (string)$ip);"\` |
+|    - |  646 | `   "  if( count($p) !== 4 ){ return false; }"\` |
+|    - |  647 | `   "  $n = 0;"\` |
+|    - |  648 | `   "  foreach( $p as $o ){"\` |
+|    - |  649 | `   "    if( !ctype_digit($o) \|\| (int)$o < 0 \|\| (int)$o > 255 ){ return false; }"\` |
+|    - |  650 | `   "    $n = $n * 256 + (int)$o;"\` |
+|    - |  651 | `   "  }"\` |
+|    - |  652 | `   "  return $n;"\` |
+|    - |  653 | `   "}"\` |
+|    - |  654 | `   "function long2ip($n){"\` |
+|    - |  655 | `   "  $n = (int)$n;"\` |
+|    - |  656 | `   "  return (($n >> 24) & 255) . '.' . (($n >> 16) & 255) . '.' . (($n >> 8) & 255) . '.' . ($n & 255);"\` |
+|    - |  657 | `   "}"\` |
+|    - |  658 | `   "function preg_filter($pattern, $replacement, $subject, $limit = -1){"\` |
+|    - |  659 | `   "  if( is_array($subject) ){"\` |
+|    - |  660 | `   "    $out = array();"\` |
+|    - |  661 | `   "    foreach( $subject as $k => $v ){"\` |
+|    - |  662 | `   "      $r = preg_replace($pattern, $replacement, (string)$v, $limit, $cnt);"\` |
+|    - |  663 | `   "      if( $cnt > 0 ){ $out[$k] = $r; }"\` |
+|    - |  664 | `   "    }"\` |
+|    - |  665 | `   "    return $out;"\` |
+|    - |  666 | `   "  }"\` |
+|    - |  667 | `   "  $r = preg_replace($pattern, $replacement, (string)$subject, $limit, $cnt);"\` |
+|    - |  668 | `   "  return $cnt > 0 ? $r : null;"\` |
+|    - |  669 | `   "}"\` |
+|    - |  670 | `   "function preg_replace_callback_array($patterns, $subject, $limit = -1){"\` |
+|    - |  671 | `   "  foreach( $patterns as $pat => $cb ){"\` |
+|    - |  672 | `   "    $subject = preg_replace_callback($pat, $cb, $subject, $limit);"\` |
+|    - |  673 | `   "  }"\` |
+|    - |  674 | `   "  return $subject;"\` |
+|    - |  675 | `   "}"\` |
+|    - |  676 | `   "function cal_days_in_month($calendar, $month, $year){"\` |
+|    - |  677 | `   "  $month = (int)$month; $year = (int)$year;"\` |
+|    - |  678 | `   "  $days = array(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31);"\` |
+|    - |  679 | `   "  if( $month < 1 \|\| $month > 12 ){"\` |
+|    - |  680 | `   "    throw new ValueError('cal_days_in_month(): Argument #2 ($month) must be a valid month');"\` |
+|    - |  681 | `   "  }"\` |
+|    - |  682 | `   "  if( $month === 2 && ((($year % 4 === 0) && ($year % 100 !== 0)) \|\| ($year % 400 === 0)) ){"\` |
+|    - |  683 | `   "    return 29;"\` |
+|    - |  684 | `   "  }"\` |
+|    - |  685 | `   "  return $days[$month - 1];"\` |
+|    - |  686 | `   "}"\` |
+|    - |  687 | `   "function preg_grep($pattern, $array, $flags = 0){"\` |
+|    - |  688 | `   "  $out = array();"\` |
+|    - |  689 | `   "  foreach( $array as $k => $v ){"\` |
+|    - |  690 | `   "    $m = preg_match($pattern, (string)$v);"\` |
+|    - |  691 | `   "    if( $flags & PREG_GREP_INVERT ){ $m = !$m; }"\` |
+|    - |  692 | `   "    if( $m ){ $out[$k] = $v; }"\` |
+|    - |  693 | `   "  }"\` |
+|    - |  694 | `   "  return $out;"\` |
 |    - |  695 | `   "}"\` |
-|    - |  696 | `   "function __phl_hbq(&$pairs, $data, $key_prefix, $numeric_prefix, $sep, $enc){"\` |
-|    - |  697 | `   "  foreach( $data as $k => $v ){"\` |
-|    - |  698 | `   "    if( $v === null ){ continue; }"\` |
-|    - |  699 | `   "    if( $key_prefix === '' ){"\` |
-|    - |  700 | `   "      $ek = is_int($k) ? __phl_hbq_enc($numeric_prefix . $k, $enc) : __phl_hbq_enc($k, $enc);"\` |
-|    - |  701 | `   "    } else {"\` |
-|    - |  702 | `   "      $ek = $key_prefix . '%5B' . __phl_hbq_enc($k, $enc) . '%5D';"\` |
-|    - |  703 | `   "    }"\` |
-|    - |  704 | `   "    if( is_array($v) ){"\` |
-|    - |  705 | `   "      __phl_hbq($pairs, $v, $ek, $numeric_prefix, $sep, $enc);"\` |
-|    - |  706 | `   "    } elseif( is_object($v) ){"\` |
-|    - |  707 | `   "      __phl_hbq($pairs, get_object_vars($v), $ek, $numeric_prefix, $sep, $enc);"\` |
-|    - |  708 | `   "    } else {"\` |
-|    - |  709 | `   "      if( $v === true ){ $v = '1'; } elseif( $v === false ){ $v = '0'; }"\` |
-|    - |  710 | `   "      $pairs[] = $ek . '=' . __phl_hbq_enc($v, $enc);"\` |
-|    - |  711 | `   "    }"\` |
-|    - |  712 | `   "  }"\` |
-|    - |  713 | `   "}"\` |
-|    - |  714 | `   "function http_build_query($data, $numeric_prefix = '', $arg_separator = null, $encoding_type = PHP_QUERY_RFC1738){"\` |
-|    - |  715 | `   "  if( !is_array($data) && !is_object($data) ){"\` |
-|    - |  716 | `   "    throw new TypeError('http_build_query(): Argument #1 ($data) must be of type array\|object, ' . gettype($data) . ' given');"\` |
-|    - |  717 | `   "  }"\` |
-|    - |  718 | `   "  if( $arg_separator === null ){ $arg_separator = '&'; }"\` |
-|    - |  719 | `   "  $pairs = array();"\` |
-|    - |  720 | `   "  __phl_hbq($pairs, is_object($data) ? get_object_vars($data) : $data, '', (string)$numeric_prefix, $arg_separator, $encoding_type);"\` |
-|    - |  721 | `   "  return implode($arg_separator, $pairs);"\` |
-|    - |  722 | `   "}"\` |
-|    - |  723 | `   "/* php's parse_str() -- missing from PH7. Mangles the base name ('.'/' ' -> '_'),"\` |
-|    - |  724 | `   " * parses [key] nesting and [] appends, urldecodes keys and values. */"\` |
-|    - |  725 | `   "function __phl_parsestr_assign(&$arr, $segments, $i, $val){"\` |
-|    - |  726 | `   "  $seg = $segments[$i];"\` |
-|    - |  727 | `   "  $last = ($i === count($segments) - 1);"\` |
-|    - |  728 | `   "  if( $seg === '' ){"\` |
-|    - |  729 | `   "    if( $last ){ $arr[] = $val; return; }"\` |
-|    - |  730 | `   "    $arr[] = array();"\` |
-|    - |  731 | `   "    $k = array_key_last($arr);"\` |
-|    - |  732 | `   "    __phl_parsestr_assign($arr[$k], $segments, $i + 1, $val);"\` |
-|    - |  733 | `   "  } else {"\` |
-|    - |  734 | `   "    if( $last ){ $arr[$seg] = $val; return; }"\` |
-|    - |  735 | `   "    if( !isset($arr[$seg]) \|\| !is_array($arr[$seg]) ){ $arr[$seg] = array(); }"\` |
-|    - |  736 | `   "    __phl_parsestr_assign($arr[$seg], $segments, $i + 1, $val);"\` |
+|    - |  696 | `   "function class_implements($what, $autoload = true){"\` |
+|    - |  697 | `   "  $c = is_object($what) ? get_class($what) : (string)$what;"\` |
+|    - |  698 | `   "  if( !class_exists($c) && !interface_exists($c) ){ return false; }"\` |
+|    - |  699 | `   "  $out = array();"\` |
+|    - |  700 | `   "  $r = new ReflectionClass($c);"\` |
+|    - |  701 | `   "  foreach( $r->getInterfaceNames() as $i ){ $out[$i] = $i; }"\` |
+|    - |  702 | `   "  return $out;"\` |
+|    - |  703 | `   "}"\` |
+|    - |  704 | `   "function class_parents($what, $autoload = true){"\` |
+|    - |  705 | `   "  $c = is_object($what) ? get_class($what) : (string)$what;"\` |
+|    - |  706 | `   "  if( !class_exists($c) ){ return false; }"\` |
+|    - |  707 | `   "  $out = array();"\` |
+|    - |  708 | `   "  $r = new ReflectionClass($c);"\` |
+|    - |  709 | `   "  while( ($p = $r->getParentClass()) ){"\` |
+|    - |  710 | `   "    $n = $p->getName();"\` |
+|    - |  711 | `   "    $out[$n] = $n;"\` |
+|    - |  712 | `   "    $r = $p;"\` |
+|    - |  713 | `   "  }"\` |
+|    - |  714 | `   "  return $out;"\` |
+|    - |  715 | `   "}"\` |
+|    - |  716 | `   "/* php's http_build_query() -- missing from PH7. Skips null values, casts"\` |
+|    - |  717 | `   " * bool to 1/0, prefixes numeric top-level keys, urlencodes per RFC. */"\` |
+|    - |  718 | `   "function __phl_hbq_enc($s, $enc){"\` |
+|    - |  719 | `   "  return $enc == PHP_QUERY_RFC3986 ? rawurlencode((string)$s) : urlencode((string)$s);"\` |
+|    - |  720 | `   "}"\` |
+|    - |  721 | `   "function __phl_hbq(&$pairs, $data, $key_prefix, $numeric_prefix, $sep, $enc){"\` |
+|    - |  722 | `   "  foreach( $data as $k => $v ){"\` |
+|    - |  723 | `   "    if( $v === null ){ continue; }"\` |
+|    - |  724 | `   "    if( $key_prefix === '' ){"\` |
+|    - |  725 | `   "      $ek = is_int($k) ? __phl_hbq_enc($numeric_prefix . $k, $enc) : __phl_hbq_enc($k, $enc);"\` |
+|    - |  726 | `   "    } else {"\` |
+|    - |  727 | `   "      $ek = $key_prefix . '%5B' . __phl_hbq_enc($k, $enc) . '%5D';"\` |
+|    - |  728 | `   "    }"\` |
+|    - |  729 | `   "    if( is_array($v) ){"\` |
+|    - |  730 | `   "      __phl_hbq($pairs, $v, $ek, $numeric_prefix, $sep, $enc);"\` |
+|    - |  731 | `   "    } elseif( is_object($v) ){"\` |
+|    - |  732 | `   "      __phl_hbq($pairs, get_object_vars($v), $ek, $numeric_prefix, $sep, $enc);"\` |
+|    - |  733 | `   "    } else {"\` |
+|    - |  734 | `   "      if( $v === true ){ $v = '1'; } elseif( $v === false ){ $v = '0'; }"\` |
+|    - |  735 | `   "      $pairs[] = $ek . '=' . __phl_hbq_enc($v, $enc);"\` |
+|    - |  736 | `   "    }"\` |
 |    - |  737 | `   "  }"\` |
 |    - |  738 | `   "}"\` |
-|    - |  739 | `   "function parse_str($string, &$result){"\` |
-|    - |  740 | `   "  $result = array();"\` |
-|    - |  741 | `   "  $string = (string)$string;"\` |
-|    - |  742 | `   "  if( $string === '' ){ return; }"\` |
-|    - |  743 | `   "  foreach( explode('&', $string) as $pair ){"\` |
-|    - |  744 | `   "    if( $pair === '' ){ continue; }"\` |
-|    - |  745 | `   "    $eq = strpos($pair, '=');"\` |
-|    - |  746 | `   "    if( $eq === false ){ $rawkey = $pair; $val = ''; }"\` |
-|    - |  747 | `   "    else { $rawkey = substr($pair, 0, $eq); $val = urldecode(substr($pair, $eq + 1)); }"\` |
-|    - |  748 | `   "    if( $rawkey === '' ){ continue; }"\` |
-|    - |  749 | `   "    $bpos = strpos($rawkey, '[');"\` |
-|    - |  750 | `   "    if( $bpos === false ){ $base = $rawkey; $subs = array(); }"\` |
-|    - |  751 | `   "    else {"\` |
-|    - |  752 | `   "      $base = substr($rawkey, 0, $bpos);"\` |
-|    - |  753 | `   "      preg_match_all('/\\[([^\\]]*)\\]/', substr($rawkey, $bpos), $m);"\` |
-|    - |  754 | `   "      $subs = $m[1];"\` |
-|    - |  755 | `   "    }"\` |
-|    - |  756 | `   "    $base = str_replace(array(' ', '.'), '_', urldecode($base));"\` |
-|    - |  757 | `   "    if( $base === '' ){ continue; }"\` |
-|    - |  758 | `   "    $segs = array($base);"\` |
-|    - |  759 | `   "    foreach( $subs as $s ){ $segs[] = urldecode($s); }"\` |
-|    - |  760 | `   "    __phl_parsestr_assign($result, $segs, 0, $val);"\` |
-|    - |  761 | `   "  }"\` |
-|    - |  762 | `   "}"\` |
-|    - |  763 | `   "/* php 8.3 str_increment(): Perl-style alphanumeric increment. */"\` |
-|    - |  764 | `   "function str_increment($string){"\` |
-|    - |  765 | `   "  $string = (string)$string;"\` |
-|    - |  766 | `   "  if( $string === '' ){ throw new ValueError('str_increment(): Argument #1 ($string) must not be empty'); }"\` |
-|    - |  767 | `   "  if( !ctype_alnum($string) ){ throw new ValueError('str_increment(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters'); }"\` |
-|    - |  768 | `   "  for( $i = strlen($string) - 1 ; $i >= 0 ; $i-- ){"\` |
-|    - |  769 | `   "    $c = $string[$i];"\` |
-|    - |  770 | `   "    if( $c === 'z' ){ $string[$i] = 'a'; }"\` |
-|    - |  771 | `   "    elseif( $c === 'Z' ){ $string[$i] = 'A'; }"\` |
-|    - |  772 | `   "    elseif( $c === '9' ){ $string[$i] = '0'; }"\` |
-|    - |  773 | `   "    else { $string[$i] = chr(ord($c) + 1); return $string; }"\` |
-|    - |  774 | `   "  }"\` |
-|    - |  775 | `   "  $first = $string[0];"\` |
-|    - |  776 | `   "  if( $first === '0' ){ return '1' . $string; }"\` |
-|    - |  777 | `   "  if( $first === 'a' ){ return 'a' . $string; }"\` |
-|    - |  778 | `   "  return 'A' . $string;"\` |
-|    - |  779 | `   "}"\` |
-|    - |  780 | `   "/* php 8.3 str_decrement(): inverse of str_increment(); throws out of range"\` |
-|    - |  781 | `   " * at the bottom of the counting sequence. */"\` |
-|    - |  782 | `   "function str_decrement($string){"\` |
-|    - |  783 | `   "  $string = (string)$string;"\` |
-|    - |  784 | `   "  if( $string === '' ){ throw new ValueError('str_decrement(): Argument #1 ($string) must not be empty'); }"\` |
-|    - |  785 | `   "  if( !ctype_alnum($string) ){ throw new ValueError('str_decrement(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters'); }"\` |
-|    - |  786 | `   "  $orig = $string;"\` |
-|    - |  787 | `   "  $borrowed = false;"\` |
-|    - |  788 | `   "  for( $i = strlen($string) - 1 ; $i >= 0 ; $i-- ){"\` |
-|    - |  789 | `   "    $c = $string[$i];"\` |
-|    - |  790 | `   "    if( $c === 'a' ){ $string[$i] = 'z'; }"\` |
-|    - |  791 | `   "    elseif( $c === 'A' ){ $string[$i] = 'Z'; }"\` |
-|    - |  792 | `   "    elseif( $c === '0' ){ $string[$i] = '9'; }"\` |
-|    - |  793 | `   "    else { $string[$i] = chr(ord($c) - 1); $borrowed = false; break; }"\` |
-|    - |  794 | `   "    if( $i === 0 ){ $borrowed = true; }"\` |
-|    - |  795 | `   "  }"\` |
-|    - |  796 | `   "  if( $borrowed ){"\` |
-|    - |  797 | `   "    if( $string[0] === '9' ){ throw new ValueError('str_decrement(): Argument #1 ($string) \"' . $orig . '\" is out of decrement range'); }"\` |
-|    - |  798 | `   "    $string = substr($string, 1);"\` |
-|    - |  799 | `   "    if( $string === '' ){ throw new ValueError('str_decrement(): Argument #1 ($string) \"' . $orig . '\" is out of decrement range'); }"\` |
-|    - |  800 | `   "  } elseif( strlen($string) > 1 && $string[0] === '0' ){"\` |
-|    - |  801 | `   "    $string = substr($string, 1);"\` |
-|    - |  802 | `   "  }"\` |
-|    - |  803 | `   "  return $string;"\` |
+|    - |  739 | `   "function http_build_query($data, $numeric_prefix = '', $arg_separator = null, $encoding_type = PHP_QUERY_RFC1738){"\` |
+|    - |  740 | `   "  if( !is_array($data) && !is_object($data) ){"\` |
+|    - |  741 | `   "    throw new TypeError('http_build_query(): Argument #1 ($data) must be of type array, ' . __php_zpp_type($data) . ' given');"\` |
+|    - |  742 | `   "  }"\` |
+|    - |  743 | `   "  if( $arg_separator === null ){ $arg_separator = '&'; }"\` |
+|    - |  744 | `   "  $pairs = array();"\` |
+|    - |  745 | `   "  __phl_hbq($pairs, is_object($data) ? get_object_vars($data) : $data, '', (string)$numeric_prefix, $arg_separator, $encoding_type);"\` |
+|    - |  746 | `   "  return implode($arg_separator, $pairs);"\` |
+|    - |  747 | `   "}"\` |
+|    - |  748 | `   "/* php's parse_str() -- missing from PH7. Mangles the base name ('.'/' ' -> '_'),"\` |
+|    - |  749 | `   " * parses [key] nesting and [] appends, urldecodes keys and values. */"\` |
+|    - |  750 | `   "function __phl_parsestr_assign(&$arr, $segments, $i, $val){"\` |
+|    - |  751 | `   "  $seg = $segments[$i];"\` |
+|    - |  752 | `   "  $last = ($i === count($segments) - 1);"\` |
+|    - |  753 | `   "  if( $seg === '' ){"\` |
+|    - |  754 | `   "    if( $last ){ $arr[] = $val; return; }"\` |
+|    - |  755 | `   "    $arr[] = array();"\` |
+|    - |  756 | `   "    $k = array_key_last($arr);"\` |
+|    - |  757 | `   "    __phl_parsestr_assign($arr[$k], $segments, $i + 1, $val);"\` |
+|    - |  758 | `   "  } else {"\` |
+|    - |  759 | `   "    if( $last ){ $arr[$seg] = $val; return; }"\` |
+|    - |  760 | `   "    if( !isset($arr[$seg]) \|\| !is_array($arr[$seg]) ){ $arr[$seg] = array(); }"\` |
+|    - |  761 | `   "    __phl_parsestr_assign($arr[$seg], $segments, $i + 1, $val);"\` |
+|    - |  762 | `   "  }"\` |
+|    - |  763 | `   "}"\` |
+|    - |  764 | `   "function parse_str($string, &$result){"\` |
+|    - |  765 | `   "  $result = array();"\` |
+|    - |  766 | `   "  $string = (string)$string;"\` |
+|    - |  767 | `   "  if( $string === '' ){ return; }"\` |
+|    - |  768 | `   "  foreach( explode('&', $string) as $pair ){"\` |
+|    - |  769 | `   "    if( $pair === '' ){ continue; }"\` |
+|    - |  770 | `   "    $eq = strpos($pair, '=');"\` |
+|    - |  771 | `   "    if( $eq === false ){ $rawkey = $pair; $val = ''; }"\` |
+|    - |  772 | `   "    else { $rawkey = substr($pair, 0, $eq); $val = urldecode(substr($pair, $eq + 1)); }"\` |
+|    - |  773 | `   "    if( $rawkey === '' ){ continue; }"\` |
+|    - |  774 | `   "    $bpos = strpos($rawkey, '[');"\` |
+|    - |  775 | `   "    if( $bpos === false ){ $base = $rawkey; $subs = array(); }"\` |
+|    - |  776 | `   "    else {"\` |
+|    - |  777 | `   "      $base = substr($rawkey, 0, $bpos);"\` |
+|    - |  778 | `   "      preg_match_all('/\\[([^\\]]*)\\]/', substr($rawkey, $bpos), $m);"\` |
+|    - |  779 | `   "      $subs = $m[1];"\` |
+|    - |  780 | `   "    }"\` |
+|    - |  781 | `   "    $base = str_replace(array(' ', '.'), '_', urldecode($base));"\` |
+|    - |  782 | `   "    if( $base === '' ){ continue; }"\` |
+|    - |  783 | `   "    $segs = array($base);"\` |
+|    - |  784 | `   "    foreach( $subs as $s ){ $segs[] = urldecode($s); }"\` |
+|    - |  785 | `   "    __phl_parsestr_assign($result, $segs, 0, $val);"\` |
+|    - |  786 | `   "  }"\` |
+|    - |  787 | `   "}"\` |
+|    - |  788 | `   "/* php 8.3 str_increment(): Perl-style alphanumeric increment. */"\` |
+|    - |  789 | `   "function str_increment($string){"\` |
+|    - |  790 | `   "  $string = (string)$string;"\` |
+|    - |  791 | `   "  if( $string === '' ){ throw new ValueError('str_increment(): Argument #1 ($string) must not be empty'); }"\` |
+|    - |  792 | `   "  if( !ctype_alnum($string) ){ throw new ValueError('str_increment(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters'); }"\` |
+|    - |  793 | `   "  for( $i = strlen($string) - 1 ; $i >= 0 ; $i-- ){"\` |
+|    - |  794 | `   "    $c = $string[$i];"\` |
+|    - |  795 | `   "    if( $c === 'z' ){ $string[$i] = 'a'; }"\` |
+|    - |  796 | `   "    elseif( $c === 'Z' ){ $string[$i] = 'A'; }"\` |
+|    - |  797 | `   "    elseif( $c === '9' ){ $string[$i] = '0'; }"\` |
+|    - |  798 | `   "    else { $string[$i] = chr(ord($c) + 1); return $string; }"\` |
+|    - |  799 | `   "  }"\` |
+|    - |  800 | `   "  $first = $string[0];"\` |
+|    - |  801 | `   "  if( $first === '0' ){ return '1' . $string; }"\` |
+|    - |  802 | `   "  if( $first === 'a' ){ return 'a' . $string; }"\` |
+|    - |  803 | `   "  return 'A' . $string;"\` |
 |    - |  804 | `   "}"\` |
-|    - |  805 | `   "/* Permission bits via stat(); false + warning when stat fails, like php. */"\` |
-|    - |  806 | `   "function fileperms($filename){"\` |
-|    - |  807 | `   "  $s = @stat($filename);"\` |
-|    - |  808 | `   "  if( $s === false ){"\` |
-|    - |  809 | `   "    trigger_error('fileperms(): stat failed for ' . $filename, E_USER_WARNING);"\` |
-|    - |  810 | `   "    return false;"\` |
-|    - |  811 | `   "  }"\` |
-|    - |  812 | `   "  return $s['mode'];"\` |
-|    - |  813 | `   "}"\` |
-|    - |  814 | `   "/* PH7 keeps no stat cache, so this is a no-op like php on a clean cache. */"\` |
-|    - |  815 | `   "function clearstatcache($clear_realpath_cache = false, $filename = ''){}"\` |
-|    - |  816 | `   "/* php 8.4 mb_ucfirst/mb_lcfirst: case-map only the first multibyte char. */"\` |
-|    - |  817 | `   "function mb_ucfirst($string, $encoding = null){"\` |
-|    - |  818 | `   "  $string = (string)$string;"\` |
-|    - |  819 | `   "  if( $string === '' ){ return ''; }"\` |
-|    - |  820 | `   "  return mb_strtoupper(mb_substr($string, 0, 1)) . mb_substr($string, 1);"\` |
-|    - |  821 | `   "}"\` |
-|    - |  822 | `   "function mb_lcfirst($string, $encoding = null){"\` |
-|    - |  823 | `   "  $string = (string)$string;"\` |
-|    - |  824 | `   "  if( $string === '' ){ return ''; }"\` |
-|    - |  825 | `   "  return mb_strtolower(mb_substr($string, 0, 1)) . mb_substr($string, 1);"\` |
-|    - |  826 | `   "}"\` |
-|    - |  827 | `   "/* php 8.4 mb_trim family: strip leading/trailing characters (whole"\` |
-|    - |  828 | `   " * multibyte chars, NO range syntax), defaulting to php's Unicode"\` |
-|    - |  829 | `   " * whitespace set. */"\` |
-|    - |  830 | `   "function __phl_mb_ws(){"\` |
-|    - |  831 | `   "  static $set = null;"\` |
-|    - |  832 | `   "  if( $set === null ){"\` |
-|    - |  833 | `   "    $set = array();"\` |
-|    - |  834 | `   "    foreach( array(0x00,0x09,0x0A,0x0B,0x0C,0x0D,0x20,0x85,0xA0,0x1680,"\` |
-|    - |  835 | `   "      0x180E,0x2000,0x2001,0x2002,0x2003,0x2004,0x2005,0x2006,0x2007,0x2008,"\` |
-|    - |  836 | `   "      0x2009,0x200A,0x2028,0x2029,0x202F,0x205F,0x3000) as $cp ){"\` |
-|    - |  837 | `   "      $set[mb_chr($cp)] = true;"\` |
-|    - |  838 | `   "    }"\` |
-|    - |  839 | `   "  }"\` |
-|    - |  840 | `   "  return $set;"\` |
-|    - |  841 | `   "}"\` |
-|    - |  842 | `   "function __phl_mb_trim($string, $characters, $left, $right){"\` |
+|    - |  805 | `   "/* php 8.3 str_decrement(): inverse of str_increment(); throws out of range"\` |
+|    - |  806 | `   " * at the bottom of the counting sequence. */"\` |
+|    - |  807 | `   "function str_decrement($string){"\` |
+|    - |  808 | `   "  $string = (string)$string;"\` |
+|    - |  809 | `   "  if( $string === '' ){ throw new ValueError('str_decrement(): Argument #1 ($string) must not be empty'); }"\` |
+|    - |  810 | `   "  if( !ctype_alnum($string) ){ throw new ValueError('str_decrement(): Argument #1 ($string) must be composed only of alphanumeric ASCII characters'); }"\` |
+|    - |  811 | `   "  $orig = $string;"\` |
+|    - |  812 | `   "  $borrowed = false;"\` |
+|    - |  813 | `   "  for( $i = strlen($string) - 1 ; $i >= 0 ; $i-- ){"\` |
+|    - |  814 | `   "    $c = $string[$i];"\` |
+|    - |  815 | `   "    if( $c === 'a' ){ $string[$i] = 'z'; }"\` |
+|    - |  816 | `   "    elseif( $c === 'A' ){ $string[$i] = 'Z'; }"\` |
+|    - |  817 | `   "    elseif( $c === '0' ){ $string[$i] = '9'; }"\` |
+|    - |  818 | `   "    else { $string[$i] = chr(ord($c) - 1); $borrowed = false; break; }"\` |
+|    - |  819 | `   "    if( $i === 0 ){ $borrowed = true; }"\` |
+|    - |  820 | `   "  }"\` |
+|    - |  821 | `   "  if( $borrowed ){"\` |
+|    - |  822 | `   "    if( $string[0] === '9' ){ throw new ValueError('str_decrement(): Argument #1 ($string) \"' . $orig . '\" is out of decrement range'); }"\` |
+|    - |  823 | `   "    $string = substr($string, 1);"\` |
+|    - |  824 | `   "    if( $string === '' ){ throw new ValueError('str_decrement(): Argument #1 ($string) \"' . $orig . '\" is out of decrement range'); }"\` |
+|    - |  825 | `   "  } elseif( strlen($string) > 1 && $string[0] === '0' ){"\` |
+|    - |  826 | `   "    $string = substr($string, 1);"\` |
+|    - |  827 | `   "  }"\` |
+|    - |  828 | `   "  return $string;"\` |
+|    - |  829 | `   "}"\` |
+|    - |  830 | `   "/* Permission bits via stat(); false + warning when stat fails, like php. */"\` |
+|    - |  831 | `   "function fileperms($filename){"\` |
+|    - |  832 | `   "  $s = @stat($filename);"\` |
+|    - |  833 | `   "  if( $s === false ){"\` |
+|    - |  834 | `   "    trigger_error('fileperms(): stat failed for ' . $filename, E_USER_WARNING);"\` |
+|    - |  835 | `   "    return false;"\` |
+|    - |  836 | `   "  }"\` |
+|    - |  837 | `   "  return $s['mode'];"\` |
+|    - |  838 | `   "}"\` |
+|    - |  839 | `   "/* PH7 keeps no stat cache, so this is a no-op like php on a clean cache. */"\` |
+|    - |  840 | `   "function clearstatcache($clear_realpath_cache = false, $filename = ''){}"\` |
+|    - |  841 | `   "/* php 8.4 mb_ucfirst/mb_lcfirst: case-map only the first multibyte char. */"\` |
+|    - |  842 | `   "function mb_ucfirst($string, $encoding = null){"\` |
 |    - |  843 | `   "  $string = (string)$string;"\` |
 |    - |  844 | `   "  if( $string === '' ){ return ''; }"\` |
-|    - |  845 | `   "  if( $characters === null ){"\` |
-|    - |  846 | `   "    $set = __phl_mb_ws();"\` |
-|    - |  847 | `   "  } else {"\` |
-|    - |  848 | `   "    $set = array();"\` |
-|    - |  849 | `   "    foreach( mb_str_split((string)$characters) as $c ){ $set[$c] = true; }"\` |
-|    - |  850 | `   "  }"\` |
-|    - |  851 | `   "  $chars = mb_str_split($string);"\` |
-|    - |  852 | `   "  $n = count($chars);"\` |
-|    - |  853 | `   "  $i = 0; $j = $n;"\` |
-|    - |  854 | `   "  if( $left ){ while( $i < $j && isset($set[$chars[$i]]) ){ $i++; } }"\` |
-|    - |  855 | `   "  if( $right ){ while( $j > $i && isset($set[$chars[$j - 1]]) ){ $j--; } }"\` |
-|    - |  856 | `   "  return implode('', array_slice($chars, $i, $j - $i));"\` |
-|    - |  857 | `   "}"\` |
-|    - |  858 | `   "function mb_trim($string, $characters = null, $encoding = null){ return __phl_mb_trim($string, $characters, true, true); }"\` |
-|    - |  859 | `   "function mb_ltrim($string, $characters = null, $encoding = null){ return __phl_mb_trim($string, $characters, true, false); }"\` |
-|    - |  860 | `   "function mb_rtrim($string, $characters = null, $encoding = null){ return __phl_mb_trim($string, $characters, false, true); }"\` |
-|    - |  861 | `   "/* Creates a temporary file and returns its name */"\` |
-|    - |  862 | `   "function tempnam(string $zDir = sys_get_temp_dir() /* Symisc eXtension */,string $zPrefix = 'PH7')"\` |
-|    - |  863 | `   "{"\` |
-|    - |  864 | `   "   /* php CREATES the file (empty, mode 0600) and guarantees the name is unique --"\` |
-|    - |  865 | `   "    * returning a bare name left the caller with a path that does not exist, so"\` |
-|    - |  866 | `   "    * file_exists() was false and unlink() failed on it. */"\` |
-|    - |  867 | `   "   $zDir = rtrim($zDir, DIRECTORY_SEPARATOR);"\` |
-|    - |  868 | `   "   for( $i = 0 ; $i < 64 ; ++$i ){"\` |
-|    - |  869 | `   "     $zPath = $zDir.DIRECTORY_SEPARATOR.$zPrefix.rand_str(12);"\` |
-|    - |  870 | `   "     if( file_exists($zPath) ){ continue; }"\` |
-|    - |  871 | `   "     $pHandle = @fopen($zPath,'x');"\` |
-|    - |  872 | `   "     if( $pHandle === false ){ continue; }"\` |
-|    - |  873 | `   "     fclose($pHandle);"\` |
-|    - |  874 | `   "     @chmod($zPath, 0600);"\` |
-|    - |  875 | `   "     return $zPath;"\` |
-|    - |  876 | `   "   }"\` |
-|    - |  877 | `   "   return false;"\` |
-|    - |  878 | `   "}"\` |
-|    - |  879 | `   "function array_unshift(&$pArray ){"\` |
-|    - |  880 | `   " if( func_num_args() < 1 ){ throw new ArgumentCountError('array_unshift() expects at least 1 argument, 0 given'); }"\` |
-|    - |  881 | `   " if( !is_array($pArray) ){ throw new TypeError('array_unshift(): Argument #1 ($array) must be of type array, ' . gettype($pArray) . ' given'); }"\` |
-|    - |  882 | `   "/* Copy arguments */"\` |
-|    - |  883 | `   "$nArgs = func_num_args();"\` |
-|    - |  884 | `   "$pNew = array();"\` |
-|    - |  885 | `   "for( $i = 1 ; $i < $nArgs ; ++$i ){"\` |
-|    - |  886 | `    " $pNew[] = func_get_arg($i);"\` |
-|    - |  887 | `    "}"\` |
-|    - |  888 | `   	"/* Make a copy of the old entries */"\` |
-|    - |  889 | `	"$pOld = array_copy($pArray);"\` |
-|    - |  890 | `	"/* Erase */"\` |
-|    - |  891 | `	"array_erase($pArray);"\` |
-|    - |  892 | `	"/* Unshift */"\` |
-|    - |  893 | `	"$pArray = array_merge($pNew,$pOld);"\` |
-|    - |  894 | `	"return sizeof($pArray);"\` |
-|    - |  895 | `    "}"\` |
-|    - |  896 | `	"function array_merge_recursive(){"\` |
-|    - |  897 | `	" if( func_num_args() < 1 ){ return array(); }"\` |
-|    - |  898 | `    "$arrays = func_get_args();"\` |
-|    - |  899 | `    "$narrays = count($arrays);"\` |
-|    - |  900 | `    "$ret = array();"\` |
-|    - |  901 | `    "for( $i = 0; $i < $narrays; $i++ ){"\` |
-|    - |  902 | `	 " if( !is_array($arrays[$i]) ){"\` |
-|    - |  903 | `	 "  throw new TypeError('array_merge_recursive(): Argument #'.($i + 1).' must be of type array, '.gettype($arrays[$i]).' given');"\` |
-|    - |  904 | `	 " }"\` |
-|    - |  905 | `     " foreach ($arrays[$i] as $key => $value) {"\` |
-|    - |  906 | `     "  $keyIsInt = is_int($key) \|\| (is_string($key) && (string)intval($key) === $key);"\` |
-|    - |  907 | `     "  if( $keyIsInt ) {"\` |
-|    - |  908 | `     "   $ret[] = $value;"\` |
-|    - |  909 | `     "  } else {"\` |
-|    - |  910 | `     "   if (array_key_exists($key, $ret)) {"\` |
-|    - |  911 | `     "    $cur = $ret[$key];"\` |
-|    - |  912 | `     "    if (is_array($cur) && is_array($value)) {"\` |
-|    - |  913 | `     "     $ret[$key] = array_merge_recursive($cur, $value);"\` |
-|    - |  914 | `     "    } elseif (is_array($cur)) {"\` |
-|    - |  915 | `     "     $ret[$key] = array_merge_recursive($cur, array($value));"\` |
-|    - |  916 | `     "    } elseif (is_array($value)) {"\` |
-|    - |  917 | `     "     $ret[$key] = array_merge_recursive(array($cur), $value);"\` |
-|    - |  918 | `     "    } else {"\` |
-|    - |  919 | `     "     $ret[$key] = array($cur, $value);"\` |
-|    - |  920 | `     "    }"\` |
-|    - |  921 | `     "   } else {"\` |
-|    - |  922 | `     "    $ret[$key] = $value;"\` |
-|    - |  923 | `     "   }"\` |
-|    - |  924 | `     "  }"\` |
-|    - |  925 | `     " }"\` |
-|    - |  926 | `	 " }"\` |
-|    - |  927 | `	 " return $ret;"\` |
-|    - |  928 | `    "}"\` |
-|    - |  929 | `	/* __php_zpp_type: php's ZPP value-name for TypeError messages */\` |
-|    - |  930 | `	"function __php_zpp_type($v){"\` |
-|    - |  931 | `	" if( is_object($v) ){ return get_class($v); }"\` |
-|    - |  932 | `	" if( is_int($v) ){ return 'int'; }"\` |
-|    - |  933 | `	" if( is_float($v) ){ return 'float'; }"\` |
-|    - |  934 | `	" if( is_string($v) ){ return 'string'; }"\` |
-|    - |  935 | `	" if( is_bool($v) ){ return $v ? 'true' : 'false'; }"\` |
-|    - |  936 | `	" if( is_null($v) ){ return 'null'; }"\` |
-|    - |  937 | `	" if( is_array($v) ){ return 'array'; }"\` |
-|    - |  938 | `	" if( is_resource($v) ){ return 'resource'; }"\` |
-|    - |  939 | `	" return 'mixed';"\` |
-|    - |  940 | `	"}"\` |
-|    - |  941 | `	"function max(){"\` |
-|    - |  942 | `    "  $pArgs = func_get_args();"\` |
-|    - |  943 | `    " if( sizeof($pArgs) < 1 ){"\` |
-|    - |  944 | `	"  throw new ArgumentCountError('max() expects at least 1 argument, 0 given');"\` |
-|    - |  945 | `    " }"\` |
-|    - |  946 | `    " if( sizeof($pArgs) < 2 ){"\` |
-|    - |  947 | `    " $pArg = $pArgs[0];"\` |
-|    - |  948 | `	" if( !is_array($pArg) ){"\` |
-|    - |  949 | `	"   throw new TypeError('max(): Argument #1 ($value) must be of type array, ' . __php_zpp_type($pArg) . ' given');"\` |
-|    - |  950 | `	" }"\` |
-|    - |  951 | `	" if( sizeof($pArg) < 1 ){"\` |
-|    - |  952 | `	"   throw new ValueError('max(): Argument #1 ($value) must contain at least one element');"\` |
-|    - |  953 | `	" }"\` |
-|    - |  954 | `	" $max = null; $first = true;"\` |
-|    - |  955 | `	" foreach( $pArgs[0] as $val ){"\` |
-|    - |  956 | `	"   if( $first ){ $max = $val; $first = false; }"\` |
-|    - |  957 | `	"   else if( $val > $max ){ $max = $val; }"\` |
-|    - |  958 | `	" }"\` |
-|    - |  959 | `	" return $max;"\` |
-|    - |  960 | `    " }"\` |
-|    - |  961 | `    " $max = $pArgs[0];"\` |
-|    - |  962 | `    " for( $i = 1; $i < sizeof($pArgs) ; ++$i ){"\` |
-|    - |  963 | `    " $val = $pArgs[$i];"\` |
-|    - |  964 | `	"if( $val > $max ){"\` |
-|    - |  965 | `	" $max = $val;"\` |
-|    - |  966 | `	"}"\` |
-|    - |  967 | `    " }"\` |
-|    - |  968 | `	" return $max;"\` |
-|    - |  969 | `    "}"\` |
-|    - |  970 | `	"function min(){"\` |
-|    - |  971 | `    "  $pArgs = func_get_args();"\` |
-|    - |  972 | `    " if( sizeof($pArgs) < 1 ){"\` |
-|    - |  973 | `	"  throw new ArgumentCountError('min() expects at least 1 argument, 0 given');"\` |
-|    - |  974 | `    " }"\` |
-|    - |  975 | `    " if( sizeof($pArgs) < 2 ){"\` |
-|    - |  976 | `    " $pArg = $pArgs[0];"\` |
-|    - |  977 | `	" if( !is_array($pArg) ){"\` |
-|    - |  978 | `	"   throw new TypeError('min(): Argument #1 ($value) must be of type array, ' . __php_zpp_type($pArg) . ' given');"\` |
-|    - |  979 | `	" }"\` |
-|    - |  980 | `	" if( sizeof($pArg) < 1 ){"\` |
-|    - |  981 | `	"   throw new ValueError('min(): Argument #1 ($value) must contain at least one element');"\` |
-|    - |  982 | `	" }"\` |
-|    - |  983 | `	" $min = null; $first = true;"\` |
-|    - |  984 | `	" foreach( $pArgs[0] as $val ){"\` |
-|    - |  985 | `	"   if( $first ){ $min = $val; $first = false; }"\` |
-|    - |  986 | `	"   else if( $val < $min ){ $min = $val; }"\` |
-|    - |  987 | `	" }"\` |
-|    - |  988 | `	" return $min;"\` |
-|    - |  989 | `    " }"\` |
-|    - |  990 | `    " $min = $pArgs[0];"\` |
-|    - |  991 | `    " for( $i = 1; $i < sizeof($pArgs) ; ++$i ){"\` |
-|    - |  992 | `    " $val = $pArgs[$i];"\` |
-|    - |  993 | `	"if( $val < $min ){"\` |
-|    - |  994 | `	" $min = $val;"\` |
-|    - |  995 | `	" }"\` |
-|    - |  996 | `    " }"\` |
-|    - |  997 | `	" return $min;"\` |
-|    - |  998 | `	"}"\` |
-|    - |  999 | `	"function fileowner(string $file){"\` |
-|    - | 1000 | `    " $a = stat($file);"\` |
-|    - | 1001 | `	" if( !is_array($a) ){"\` |
-|    - | 1002 | `	"	return false;"\` |
-|    - | 1003 | `	" }"\` |
-|    - | 1004 | `	" return $a['uid'];"\` |
-|    - | 1005 | `    "}"\` |
-|    - | 1006 | `    "function filegroup(string $file){"\` |
-|    - | 1007 | `	" $a = stat($file);"\` |
-|    - | 1008 | `	" if( !is_array($a) ){"\` |
-|    - | 1009 | `	"	return false;"\` |
-|    - | 1010 | `	" }"\` |
-|    - | 1011 | `	" return $a['gid'];"\` |
-|    - | 1012 | `    "}"\` |
-|    - | 1013 | `	 "function fileinode(string $file){"\` |
-|    - | 1014 | `	" $a = stat($file);"\` |
-|    - | 1015 | `	" if( !is_array($a) ){"\` |
-|    - | 1016 | `	"	return false;"\` |
-|    - | 1017 | `	" }"\` |
-|    - | 1018 | `	" return $a['ino'];"\` |
-|    - | 1019 | `    "}"` |
-|    - | 1020 |  |
-| 3876 | 1021 | `PH7_PRIVATE sxi32 PH7_VmInstallBuiltinLib(ph7_vm *pVm)` |
-|    5 | 1022 | `{` |
-|    - | 1023 | `	SyString sBuiltin;` |
-|    - | 1024 | `	SyString sRandom;` |
-| 3881 | 1025 | `	SyStringInitFromBuf(&sBuiltin,PH7_BUILTIN_LIB,sizeof(PH7_BUILTIN_LIB)-1);` |
-|    - | 1026 | `	/* Compile the built-in library */` |
-| 3881 | 1027 | `	VmEvalChunk(&(*pVm),0,&sBuiltin,PH7_PHP_ONLY,FALSE);` |
-|    - | 1028 | `	/* Register the Random\RandomException namespaced class (PHP 8.2+).` |
-|    - | 1029 | `	 * Kept in its own VmEvalChunk (not appended to PH7_BUILTIN_LIB): a namespace` |
-|    - | 1030 | `	 * declaration is NOT reset at the block's closing brace in this engine, so` |
-|    - | 1031 | `	 * anything following it in the same chunk would leak into the Random` |
-|    - | 1032 | `	 * namespace. Isolation instead comes from VmEvalChunk saving/restoring` |
-|    - | 1033 | `	 * pVm->sNamespace (and PH7_ResetCodeGenerator clearing the compiler` |
-|    - | 1034 | `	 * namespace) per chunk, so this lands as Random\RandomException while later` |
-|    - | 1035 | `	 * user code still compiles in the global namespace. */` |
-|    - | 1036 | `	{` |
-|    - | 1037 | `		static const char zRandomLib[] =` |
-|    - | 1038 | `			"namespace Random { class RandomException extends \\Exception { } }";` |
-| 3881 | 1039 | `		SyStringInitFromBuf(&sRandom,zRandomLib,sizeof(zRandomLib)-1);` |
-| 3881 | 1040 | `		VmEvalChunk(&(*pVm),0,&sRandom,PH7_PHP_ONLY,FALSE);` |
-|    - | 1041 | `	}` |
-| 3881 | 1042 | `	return SXRET_OK;` |
-|    5 | 1043 | `}` |
-|    - | 1044 |  |
+|    - |  845 | `   "  return mb_strtoupper(mb_substr($string, 0, 1)) . mb_substr($string, 1);"\` |
+|    - |  846 | `   "}"\` |
+|    - |  847 | `   "function mb_lcfirst($string, $encoding = null){"\` |
+|    - |  848 | `   "  $string = (string)$string;"\` |
+|    - |  849 | `   "  if( $string === '' ){ return ''; }"\` |
+|    - |  850 | `   "  return mb_strtolower(mb_substr($string, 0, 1)) . mb_substr($string, 1);"\` |
+|    - |  851 | `   "}"\` |
+|    - |  852 | `   "/* php 8.4 mb_trim family: strip leading/trailing characters (whole"\` |
+|    - |  853 | `   " * multibyte chars, NO range syntax), defaulting to php's Unicode"\` |
+|    - |  854 | `   " * whitespace set. */"\` |
+|    - |  855 | `   "function __phl_mb_ws(){"\` |
+|    - |  856 | `   "  static $set = null;"\` |
+|    - |  857 | `   "  if( $set === null ){"\` |
+|    - |  858 | `   "    $set = array();"\` |
+|    - |  859 | `   "    foreach( array(0x00,0x09,0x0A,0x0B,0x0C,0x0D,0x20,0x85,0xA0,0x1680,"\` |
+|    - |  860 | `   "      0x180E,0x2000,0x2001,0x2002,0x2003,0x2004,0x2005,0x2006,0x2007,0x2008,"\` |
+|    - |  861 | `   "      0x2009,0x200A,0x2028,0x2029,0x202F,0x205F,0x3000) as $cp ){"\` |
+|    - |  862 | `   "      $set[mb_chr($cp)] = true;"\` |
+|    - |  863 | `   "    }"\` |
+|    - |  864 | `   "  }"\` |
+|    - |  865 | `   "  return $set;"\` |
+|    - |  866 | `   "}"\` |
+|    - |  867 | `   "function __phl_mb_trim($string, $characters, $left, $right){"\` |
+|    - |  868 | `   "  $string = (string)$string;"\` |
+|    - |  869 | `   "  if( $string === '' ){ return ''; }"\` |
+|    - |  870 | `   "  if( $characters === null ){"\` |
+|    - |  871 | `   "    $set = __phl_mb_ws();"\` |
+|    - |  872 | `   "  } else {"\` |
+|    - |  873 | `   "    $set = array();"\` |
+|    - |  874 | `   "    foreach( mb_str_split((string)$characters) as $c ){ $set[$c] = true; }"\` |
+|    - |  875 | `   "  }"\` |
+|    - |  876 | `   "  $chars = mb_str_split($string);"\` |
+|    - |  877 | `   "  $n = count($chars);"\` |
+|    - |  878 | `   "  $i = 0; $j = $n;"\` |
+|    - |  879 | `   "  if( $left ){ while( $i < $j && isset($set[$chars[$i]]) ){ $i++; } }"\` |
+|    - |  880 | `   "  if( $right ){ while( $j > $i && isset($set[$chars[$j - 1]]) ){ $j--; } }"\` |
+|    - |  881 | `   "  return implode('', array_slice($chars, $i, $j - $i));"\` |
+|    - |  882 | `   "}"\` |
+|    - |  883 | `   "function mb_trim($string, $characters = null, $encoding = null){ return __phl_mb_trim($string, $characters, true, true); }"\` |
+|    - |  884 | `   "function mb_ltrim($string, $characters = null, $encoding = null){ return __phl_mb_trim($string, $characters, true, false); }"\` |
+|    - |  885 | `   "function mb_rtrim($string, $characters = null, $encoding = null){ return __phl_mb_trim($string, $characters, false, true); }"\` |
+|    - |  886 | `   "/* Creates a temporary file and returns its name */"\` |
+|    - |  887 | `   "function tempnam(string $zDir = sys_get_temp_dir() /* Symisc eXtension */,string $zPrefix = 'PH7')"\` |
+|    - |  888 | `   "{"\` |
+|    - |  889 | `   "   /* php CREATES the file (empty, mode 0600) and guarantees the name is unique --"\` |
+|    - |  890 | `   "    * returning a bare name left the caller with a path that does not exist, so"\` |
+|    - |  891 | `   "    * file_exists() was false and unlink() failed on it. */"\` |
+|    - |  892 | `   "   $zDir = rtrim($zDir, DIRECTORY_SEPARATOR);"\` |
+|    - |  893 | `   "   for( $i = 0 ; $i < 64 ; ++$i ){"\` |
+|    - |  894 | `   "     $zPath = $zDir.DIRECTORY_SEPARATOR.$zPrefix.rand_str(12);"\` |
+|    - |  895 | `   "     if( file_exists($zPath) ){ continue; }"\` |
+|    - |  896 | `   "     $pHandle = @fopen($zPath,'x');"\` |
+|    - |  897 | `   "     if( $pHandle === false ){ continue; }"\` |
+|    - |  898 | `   "     fclose($pHandle);"\` |
+|    - |  899 | `   "     @chmod($zPath, 0600);"\` |
+|    - |  900 | `   "     return $zPath;"\` |
+|    - |  901 | `   "   }"\` |
+|    - |  902 | `   "   return false;"\` |
+|    - |  903 | `   "}"\` |
+|    - |  904 | `   "function array_unshift(&$pArray ){"\` |
+|    - |  905 | `   " if( func_num_args() < 1 ){ throw new ArgumentCountError('array_unshift() expects at least 1 argument, 0 given'); }"\` |
+|    - |  906 | `   " if( !is_array($pArray) ){ throw new TypeError('array_unshift(): Argument #1 ($array) must be of type array, ' . __php_zpp_type($pArray) . ' given'); }"\` |
+|    - |  907 | `   "/* Copy arguments */"\` |
+|    - |  908 | `   "$nArgs = func_num_args();"\` |
+|    - |  909 | `   "$pNew = array();"\` |
+|    - |  910 | `   "for( $i = 1 ; $i < $nArgs ; ++$i ){"\` |
+|    - |  911 | `    " $pNew[] = func_get_arg($i);"\` |
+|    - |  912 | `    "}"\` |
+|    - |  913 | `   	"/* Make a copy of the old entries */"\` |
+|    - |  914 | `	"$pOld = array_copy($pArray);"\` |
+|    - |  915 | `	"/* Erase */"\` |
+|    - |  916 | `	"array_erase($pArray);"\` |
+|    - |  917 | `	"/* Unshift */"\` |
+|    - |  918 | `	"$pArray = array_merge($pNew,$pOld);"\` |
+|    - |  919 | `	"return sizeof($pArray);"\` |
+|    - |  920 | `    "}"\` |
+|    - |  921 | `	"function array_merge_recursive(){"\` |
+|    - |  922 | `	" if( func_num_args() < 1 ){ return array(); }"\` |
+|    - |  923 | `    "$arrays = func_get_args();"\` |
+|    - |  924 | `    "$narrays = count($arrays);"\` |
+|    - |  925 | `    "$ret = array();"\` |
+|    - |  926 | `    "for( $i = 0; $i < $narrays; $i++ ){"\` |
+|    - |  927 | `	 " if( !is_array($arrays[$i]) ){"\` |
+|    - |  928 | `	 "  throw new TypeError('array_merge_recursive(): Argument #'.($i + 1).' must be of type array, '.__php_zpp_type($arrays[$i]).' given');"\` |
+|    - |  929 | `	 " }"\` |
+|    - |  930 | `     " foreach ($arrays[$i] as $key => $value) {"\` |
+|    - |  931 | `     "  $keyIsInt = is_int($key) \|\| (is_string($key) && (string)intval($key) === $key);"\` |
+|    - |  932 | `     "  if( $keyIsInt ) {"\` |
+|    - |  933 | `     "   $ret[] = $value;"\` |
+|    - |  934 | `     "  } else {"\` |
+|    - |  935 | `     "   if (array_key_exists($key, $ret)) {"\` |
+|    - |  936 | `     "    $cur = $ret[$key];"\` |
+|    - |  937 | `     "    if (is_array($cur) && is_array($value)) {"\` |
+|    - |  938 | `     "     $ret[$key] = array_merge_recursive($cur, $value);"\` |
+|    - |  939 | `     "    } elseif (is_array($cur)) {"\` |
+|    - |  940 | `     "     $ret[$key] = array_merge_recursive($cur, array($value));"\` |
+|    - |  941 | `     "    } elseif (is_array($value)) {"\` |
+|    - |  942 | `     "     $ret[$key] = array_merge_recursive(array($cur), $value);"\` |
+|    - |  943 | `     "    } else {"\` |
+|    - |  944 | `     "     $ret[$key] = array($cur, $value);"\` |
+|    - |  945 | `     "    }"\` |
+|    - |  946 | `     "   } else {"\` |
+|    - |  947 | `     "    $ret[$key] = $value;"\` |
+|    - |  948 | `     "   }"\` |
+|    - |  949 | `     "  }"\` |
+|    - |  950 | `     " }"\` |
+|    - |  951 | `	 " }"\` |
+|    - |  952 | `	 " return $ret;"\` |
+|    - |  953 | `    "}"\` |
+|    - |  954 | `	/* __php_zpp_type: php's ZPP value-name for TypeError messages */\` |
+|    - |  955 | `	"function __php_zpp_type($v){"\` |
+|    - |  956 | `	" if( is_object($v) ){ return get_class($v); }"\` |
+|    - |  957 | `	" if( is_int($v) ){ return 'int'; }"\` |
+|    - |  958 | `	" if( is_float($v) ){ return 'float'; }"\` |
+|    - |  959 | `	" if( is_string($v) ){ return 'string'; }"\` |
+|    - |  960 | `	" if( is_bool($v) ){ return $v ? 'true' : 'false'; }"\` |
+|    - |  961 | `	" if( is_null($v) ){ return 'null'; }"\` |
+|    - |  962 | `	" if( is_array($v) ){ return 'array'; }"\` |
+|    - |  963 | `	" if( is_resource($v) ){ return 'resource'; }"\` |
+|    - |  964 | `	" return 'mixed';"\` |
+|    - |  965 | `	"}"\` |
+|    - |  966 | `	"function max(){"\` |
+|    - |  967 | `    "  $pArgs = func_get_args();"\` |
+|    - |  968 | `    " if( sizeof($pArgs) < 1 ){"\` |
+|    - |  969 | `	"  throw new ArgumentCountError('max() expects at least 1 argument, 0 given');"\` |
+|    - |  970 | `    " }"\` |
+|    - |  971 | `    " if( sizeof($pArgs) < 2 ){"\` |
+|    - |  972 | `    " $pArg = $pArgs[0];"\` |
+|    - |  973 | `	" if( !is_array($pArg) ){"\` |
+|    - |  974 | `	"   throw new TypeError('max(): Argument #1 ($value) must be of type array, ' . __php_zpp_type($pArg) . ' given');"\` |
+|    - |  975 | `	" }"\` |
+|    - |  976 | `	" if( sizeof($pArg) < 1 ){"\` |
+|    - |  977 | `	"   throw new ValueError('max(): Argument #1 ($value) must contain at least one element');"\` |
+|    - |  978 | `	" }"\` |
+|    - |  979 | `	" $max = null; $first = true;"\` |
+|    - |  980 | `	" foreach( $pArgs[0] as $val ){"\` |
+|    - |  981 | `	"   if( $first ){ $max = $val; $first = false; }"\` |
+|    - |  982 | `	"   else if( $val > $max ){ $max = $val; }"\` |
+|    - |  983 | `	" }"\` |
+|    - |  984 | `	" return $max;"\` |
+|    - |  985 | `    " }"\` |
+|    - |  986 | `    " $max = $pArgs[0];"\` |
+|    - |  987 | `    " for( $i = 1; $i < sizeof($pArgs) ; ++$i ){"\` |
+|    - |  988 | `    " $val = $pArgs[$i];"\` |
+|    - |  989 | `	"if( $val > $max ){"\` |
+|    - |  990 | `	" $max = $val;"\` |
+|    - |  991 | `	"}"\` |
+|    - |  992 | `    " }"\` |
+|    - |  993 | `	" return $max;"\` |
+|    - |  994 | `    "}"\` |
+|    - |  995 | `	"function min(){"\` |
+|    - |  996 | `    "  $pArgs = func_get_args();"\` |
+|    - |  997 | `    " if( sizeof($pArgs) < 1 ){"\` |
+|    - |  998 | `	"  throw new ArgumentCountError('min() expects at least 1 argument, 0 given');"\` |
+|    - |  999 | `    " }"\` |
+|    - | 1000 | `    " if( sizeof($pArgs) < 2 ){"\` |
+|    - | 1001 | `    " $pArg = $pArgs[0];"\` |
+|    - | 1002 | `	" if( !is_array($pArg) ){"\` |
+|    - | 1003 | `	"   throw new TypeError('min(): Argument #1 ($value) must be of type array, ' . __php_zpp_type($pArg) . ' given');"\` |
+|    - | 1004 | `	" }"\` |
+|    - | 1005 | `	" if( sizeof($pArg) < 1 ){"\` |
+|    - | 1006 | `	"   throw new ValueError('min(): Argument #1 ($value) must contain at least one element');"\` |
+|    - | 1007 | `	" }"\` |
+|    - | 1008 | `	" $min = null; $first = true;"\` |
+|    - | 1009 | `	" foreach( $pArgs[0] as $val ){"\` |
+|    - | 1010 | `	"   if( $first ){ $min = $val; $first = false; }"\` |
+|    - | 1011 | `	"   else if( $val < $min ){ $min = $val; }"\` |
+|    - | 1012 | `	" }"\` |
+|    - | 1013 | `	" return $min;"\` |
+|    - | 1014 | `    " }"\` |
+|    - | 1015 | `    " $min = $pArgs[0];"\` |
+|    - | 1016 | `    " for( $i = 1; $i < sizeof($pArgs) ; ++$i ){"\` |
+|    - | 1017 | `    " $val = $pArgs[$i];"\` |
+|    - | 1018 | `	"if( $val < $min ){"\` |
+|    - | 1019 | `	" $min = $val;"\` |
+|    - | 1020 | `	" }"\` |
+|    - | 1021 | `    " }"\` |
+|    - | 1022 | `	" return $min;"\` |
+|    - | 1023 | `	"}"\` |
+|    - | 1024 | `	"function fileowner(string $file){"\` |
+|    - | 1025 | `    " $a = stat($file);"\` |
+|    - | 1026 | `	" if( !is_array($a) ){"\` |
+|    - | 1027 | `	"	return false;"\` |
+|    - | 1028 | `	" }"\` |
+|    - | 1029 | `	" return $a['uid'];"\` |
+|    - | 1030 | `    "}"\` |
+|    - | 1031 | `    "function filegroup(string $file){"\` |
+|    - | 1032 | `	" $a = stat($file);"\` |
+|    - | 1033 | `	" if( !is_array($a) ){"\` |
+|    - | 1034 | `	"	return false;"\` |
+|    - | 1035 | `	" }"\` |
+|    - | 1036 | `	" return $a['gid'];"\` |
+|    - | 1037 | `    "}"\` |
+|    - | 1038 | `	 "function fileinode(string $file){"\` |
+|    - | 1039 | `	" $a = stat($file);"\` |
+|    - | 1040 | `	" if( !is_array($a) ){"\` |
+|    - | 1041 | `	"	return false;"\` |
+|    - | 1042 | `	" }"\` |
+|    - | 1043 | `	" return $a['ino'];"\` |
+|    - | 1044 | `    "}"` |
+|    - | 1045 |  |
+| 4140 | 1046 | `PH7_PRIVATE sxi32 PH7_VmInstallBuiltinLib(ph7_vm *pVm)` |
+|    5 | 1047 | `{` |
+|    - | 1048 | `	SyString sBuiltin;` |
+|    - | 1049 | `	SyString sRandom;` |
+| 4145 | 1050 | `	SyStringInitFromBuf(&sBuiltin,PH7_BUILTIN_LIB,sizeof(PH7_BUILTIN_LIB)-1);` |
+|    - | 1051 | `	/* Compile the built-in library */` |
+| 4145 | 1052 | `	VmEvalChunk(&(*pVm),0,&sBuiltin,PH7_PHP_ONLY,FALSE);` |
+|    - | 1053 | `	/* Register the Random\RandomException namespaced class (PHP 8.2+).` |
+|    - | 1054 | `	 * Kept in its own VmEvalChunk (not appended to PH7_BUILTIN_LIB): a namespace` |
+|    - | 1055 | `	 * declaration is NOT reset at the block's closing brace in this engine, so` |
+|    - | 1056 | `	 * anything following it in the same chunk would leak into the Random` |
+|    - | 1057 | `	 * namespace. Isolation instead comes from VmEvalChunk saving/restoring` |
+|    - | 1058 | `	 * pVm->sNamespace (and PH7_ResetCodeGenerator clearing the compiler` |
+|    - | 1059 | `	 * namespace) per chunk, so this lands as Random\RandomException while later` |
+|    - | 1060 | `	 * user code still compiles in the global namespace. */` |
+|    - | 1061 | `	{` |
+|    - | 1062 | `		static const char zRandomLib[] =` |
+|    - | 1063 | `			"namespace Random { class RandomException extends \\Exception { } }";` |
+| 4145 | 1064 | `		SyStringInitFromBuf(&sRandom,zRandomLib,sizeof(zRandomLib)-1);` |
+| 4145 | 1065 | `		VmEvalChunk(&(*pVm),0,&sRandom,PH7_PHP_ONLY,FALSE);` |
+|    - | 1066 | `	}` |
+| 4145 | 1067 | `	return SXRET_OK;` |
+|    5 | 1068 | `}` |
+|    - | 1069 |  |

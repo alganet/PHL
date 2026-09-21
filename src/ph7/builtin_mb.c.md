@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 567/615 lines (92.20%)
+Coverage: 570/615 lines (92.68%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -149,65 +149,65 @@ Coverage: 567/615 lines (92.20%)
 |    - |  139 | ` * byte encodings → 1, anything else raises php's ValueError and returns -1.` |
 |    - |  140 | ` * (php accepts dozens of encodings; PHL's recorded scope is UTF-8 — a` |
 |    - |  141 | ` * php-VALID encoding like SJIS gets the same loud ValueError.) */` |
-|  260 |  142 | `static int MbEncodingArg(ph7_context *pCtx,ph7_value *pArg,const char *zFunc,int iArgNo)` |
-|    1 |  143 | `{` |
+| 4280 |  142 | `static int MbEncodingArg(ph7_context *pCtx,ph7_value *pArg,const char *zFunc,int iArgNo)` |
+|    2 |  143 | `{` |
 |    - |  144 | `	const char *zEnc;` |
 |    - |  145 | `	int nEnc;` |
-|  261 |  146 | `	if( pArg == 0 \|\| ph7_value_is_null(pArg) ){` |
+| 4282 |  146 | `	if( pArg == 0 \|\| ph7_value_is_null(pArg) ){` |
 |  251 |  147 | `		return 0;` |
 |    - |  148 | `	}` |
-|   11 |  149 | `	zEnc = ph7_value_to_string(pArg,&nEnc);` |
-|   10 |  150 | `	if( (nEnc == 5 && SyStrnicmp(zEnc,"UTF-8",5) == 0)` |
-|    8 |  151 | `	 \|\| (nEnc == 4 && SyStrnicmp(zEnc,"UTF8",4) == 0) ){` |
+| 4032 |  149 | `	zEnc = ph7_value_to_string(pArg,&nEnc);` |
+| 4030 |  150 | `	if( (nEnc == 5 && SyStrnicmp(zEnc,"UTF-8",5) == 0)` |
+| 4029 |  151 | `	 \|\| (nEnc == 4 && SyStrnicmp(zEnc,"UTF8",4) == 0) ){` |
 |    7 |  152 | `		return 0;` |
 |    - |  153 | `	}` |
-|    4 |  154 | `	if( (nEnc == 4 && SyStrnicmp(zEnc,"8bit",4) == 0)` |
-|    3 |  155 | `	 \|\| (nEnc == 5 && SyStrnicmp(zEnc,"ASCII",5) == 0)` |
-|    3 |  156 | `	 \|\| (nEnc == 6 && SyStrnicmp(zEnc,"binary",6) == 0) ){` |
+| 4024 |  154 | `	if( (nEnc == 4 && SyStrnicmp(zEnc,"8bit",4) == 0)` |
+| 4023 |  155 | `	 \|\| (nEnc == 5 && SyStrnicmp(zEnc,"ASCII",5) == 0)` |
+| 4024 |  156 | `	 \|\| (nEnc == 6 && SyStrnicmp(zEnc,"binary",6) == 0) ){` |
 |    3 |  157 | `		return 1;` |
 |    - |  158 | `	}` |
-|    4 |  159 | `	PH7_VmThrowException(pCtx,"ValueError",` |
+| 6035 |  159 | `	PH7_VmThrowException(pCtx,"ValueError",` |
 |    - |  160 | `		"%s(): Argument #%d ($encoding) must be a valid encoding, \"%.*s\" given",` |
-|    1 |  161 | `		zFunc,iArgNo,nEnc,zEnc);` |
-|    3 |  162 | `	return -1;` |
-|  131 |  163 | `}` |
+| 2011 |  161 | `		zFunc,iArgNo,nEnc,zEnc);` |
+| 4024 |  162 | `	return -1;` |
+| 2142 |  163 | `}` |
 |    - |  164 |  |
 |    - |  165 | `/* --- The functions ----------------------------------------------------- */` |
 |    - |  166 |  |
 |    - |  167 | `/* int mb_strlen(string $string, ?string $encoding = null) */` |
-|    4 |  168 | `static int PH7_builtin_mb_strlen(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  169 | `{` |
+| 4020 |  168 | `static int PH7_builtin_mb_strlen(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    2 |  169 | `{` |
 |    - |  170 | `	const char *zIn;` |
 |    - |  171 | `	int nByte,iEnc;` |
-|    5 |  172 | `	if( nArg < 1 ){` |
+| 4022 |  172 | `	if( nArg < 1 ){` |
 |  ! 0 |  173 | `		ph7_result_int(pCtx,0);` |
 |  ! 0 |  174 | `		return PH7_OK;` |
 |    - |  175 | `	}` |
-|    5 |  176 | `	iEnc = MbEncodingArg(pCtx,nArg > 1 ? apArg[1] : 0,"mb_strlen",2);` |
-|    5 |  177 | `	if( iEnc < 0 ){` |
-|  ! 0 |  178 | `		return PH7_OK;` |
+| 4022 |  176 | `	iEnc = MbEncodingArg(pCtx,nArg > 1 ? apArg[1] : 0,"mb_strlen",2);` |
+| 4022 |  177 | `	if( iEnc < 0 ){` |
+| 4018 |  178 | `		return PH7_OK;` |
 |    - |  179 | `	}` |
 |    5 |  180 | `	zIn = ph7_value_to_string(apArg[0],&nByte);` |
 |    6 |  181 | `	ph7_result_int64(pCtx,iEnc == 1 ? (ph7_int64)nByte` |
 |    2 |  182 | `		: (ph7_int64)MbUtf8Strlen(zIn,(sxu32)nByte));` |
 |    5 |  183 | `	return PH7_OK;` |
-|    3 |  184 | `}` |
+| 2012 |  184 | `}` |
 |    - |  185 | `/* string mb_substr(string $string, int $start, ?int $length = null,` |
 |    - |  186 | ` *                  ?string $encoding = null) */` |
-|   60 |  187 | `static int PH7_builtin_mb_substr(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   62 |  187 | `static int PH7_builtin_mb_substr(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  188 | `{` |
 |    - |  189 | `	const char *zIn;` |
 |    - |  190 | `	int nByte,iEnc;` |
 |    - |  191 | `	sxi64 iStart,iLen;` |
 |    - |  192 | `	sxu32 nCp,iOfft,iEnd;` |
-|   61 |  193 | `	int bLenSet = 0;` |
-|   61 |  194 | `	if( nArg < 2 ){` |
+|   63 |  193 | `	int bLenSet = 0;` |
+|   63 |  194 | `	if( nArg < 2 ){` |
 |  ! 0 |  195 | `		ph7_result_string(pCtx,"",0);` |
 |  ! 0 |  196 | `		return PH7_OK;` |
 |    - |  197 | `	}` |
-|   61 |  198 | `	iEnc = MbEncodingArg(pCtx,nArg > 3 ? apArg[3] : 0,"mb_substr",4);` |
-|   61 |  199 | `	if( iEnc < 0 ){` |
-|  ! 0 |  200 | `		return PH7_OK;` |
+|   63 |  198 | `	iEnc = MbEncodingArg(pCtx,nArg > 3 ? apArg[3] : 0,"mb_substr",4);` |
+|   63 |  199 | `	if( iEnc < 0 ){` |
+|    3 |  200 | `		return PH7_OK;` |
 |    - |  201 | `	}` |
 |   61 |  202 | `	zIn = ph7_value_to_string(apArg[0],&nByte);` |
 |   61 |  203 | `	iStart = ph7_value_to_int64(apArg[1]);` |
@@ -242,7 +242,7 @@ Coverage: 567/615 lines (92.20%)
 |   55 |  232 | `	iEnd  = iOfft + MbUtf8Skip(&zIn[iOfft],(sxu32)nByte - iOfft,(sxu32)iLen);` |
 |   55 |  233 | `	ph7_result_string(pCtx,&zIn[iOfft],(int)(iEnd - iOfft));` |
 |   55 |  234 | `	return PH7_OK;` |
-|   31 |  235 | `}` |
+|   32 |  235 | `}` |
 |    - |  236 | `/* Shared case transform: iMode 0 = lower, 1 = upper, 2 = title */` |
 |   44 |  237 | `static int MbCaseTransform(ph7_context *pCtx,const char *zIn,sxu32 nByte,int iMode)` |
 |    1 |  238 | `{` |
@@ -418,19 +418,19 @@ Coverage: 567/615 lines (92.20%)
 |   13 |  408 | `	return PH7_OK;` |
 |    7 |  409 | `}` |
 |    - |  410 | `/* array mb_str_split(string $string, int $length = 1, ?string $encoding) */` |
-|   38 |  411 | `static int PH7_builtin_mb_str_split(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   40 |  411 | `static int PH7_builtin_mb_str_split(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  412 | `{` |
 |    - |  413 | `	const char *zIn;` |
 |    - |  414 | `	int nByte;` |
-|   39 |  415 | `	sxi64 iChunk = 1;` |
+|   41 |  415 | `	sxi64 iChunk = 1;` |
 |    - |  416 | `	ph7_value *pArr,*pV;` |
 |    - |  417 | `	sxu32 i;` |
-|   39 |  418 | `	if( nArg < 1 ){` |
+|   41 |  418 | `	if( nArg < 1 ){` |
 |  ! 0 |  419 | `		ph7_result_bool(pCtx,0);` |
 |  ! 0 |  420 | `		return PH7_OK;` |
 |    - |  421 | `	}` |
-|   39 |  422 | `	if( MbEncodingArg(pCtx,nArg > 2 ? apArg[2] : 0,"mb_str_split",3) < 0 ){` |
-|  ! 0 |  423 | `		return PH7_OK;` |
+|   41 |  422 | `	if( MbEncodingArg(pCtx,nArg > 2 ? apArg[2] : 0,"mb_str_split",3) < 0 ){` |
+|    3 |  423 | `		return PH7_OK;` |
 |    - |  424 | `	}` |
 |   39 |  425 | `	if( nArg > 1 ){` |
 |    7 |  426 | `		iChunk = ph7_value_to_int64(apArg[1]);` |
@@ -454,7 +454,7 @@ Coverage: 567/615 lines (92.20%)
 |    1 |  444 | `	}` |
 |   37 |  445 | `	ph7_result_value(pCtx,pArr);` |
 |   37 |  446 | `	return PH7_OK;` |
-|   20 |  447 | `}` |
+|   21 |  447 | `}` |
 |    - |  448 | `/* string\|bool mb_internal_encoding(?string $encoding = null) */` |
 |    6 |  449 | `static int PH7_builtin_mb_internal_encoding(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |    1 |  450 | `{` |
@@ -882,12 +882,12 @@ Coverage: 567/615 lines (92.20%)
 |    - |  872 | ` * Install the mb_* functions (called from PH7_RegisterBuiltInFunction's` |
 |    - |  873 | ` * table in builtin.c via these PH7_PRIVATE symbols).` |
 |    - |  874 | ` */` |
-|    5 |  875 | `PH7_PRIVATE int PH7_builtin_mb_strlen_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strlen(pCtx,nArg,apArg); }` |
-|   61 |  876 | `PH7_PRIVATE int PH7_builtin_mb_substr_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_substr(pCtx,nArg,apArg); }` |
+| 4022 |  875 | `PH7_PRIVATE int PH7_builtin_mb_strlen_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strlen(pCtx,nArg,apArg); }` |
+|   63 |  876 | `PH7_PRIVATE int PH7_builtin_mb_substr_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_substr(pCtx,nArg,apArg); }` |
 |   39 |  877 | `PH7_PRIVATE int PH7_builtin_mb_case_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strtolower(pCtx,nArg,apArg); }` |
 |    7 |  878 | `PH7_PRIVATE int PH7_builtin_mb_convert_case_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_convert_case(pCtx,nArg,apArg); }` |
 |   13 |  879 | `PH7_PRIVATE int PH7_builtin_mb_strpos_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strpos(pCtx,nArg,apArg); }` |
-|   39 |  880 | `PH7_PRIVATE int PH7_builtin_mb_str_split_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_str_split(pCtx,nArg,apArg); }` |
+|   41 |  880 | `PH7_PRIVATE int PH7_builtin_mb_str_split_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_str_split(pCtx,nArg,apArg); }` |
 |    7 |  881 | `PH7_PRIVATE int PH7_builtin_mb_internal_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_internal_encoding(pCtx,nArg,apArg); }` |
 |    5 |  882 | `PH7_PRIVATE int PH7_builtin_mb_check_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_check_encoding(pCtx,nArg,apArg); }` |
 |    3 |  883 | `PH7_PRIVATE int PH7_builtin_mb_strwidth_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strwidth(pCtx,nArg,apArg); }` |

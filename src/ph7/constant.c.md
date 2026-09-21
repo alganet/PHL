@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 970/1042 lines (93.09%)
+Coverage: 978/1047 lines (93.41%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -70,22 +70,22 @@ Coverage: 970/1042 lines (93.09%)
 |      - |   60 | ` * PHP_OS` |
 |      - |   61 | ` *  Expand the name of the host Operating System.` |
 |      - |   62 | ` */` |
-|   3924 |   63 | `static void PH7_OS_Const(ph7_value *pVal,void *pUnused)` |
+|   4218 |   63 | `static void PH7_OS_Const(ph7_value *pVal,void *pUnused)` |
 |      5 |   64 | `{` |
 |      - |   65 | `#if defined(__WINNT__)` |
 |      5 |   66 | `	ph7_value_string(pVal,"WINNT",(int)sizeof("WINNT")-1);` |
 |      - |   67 | `#elif defined(__UNIXES__)` |
 |      - |   68 | `	struct utsname sInfo;` |
-|   3924 |   69 | `	if( uname(&sInfo) != 0 ){` |
+|   4218 |   69 | `	if( uname(&sInfo) != 0 ){` |
 |    ! 0 |   70 | `		ph7_value_string(pVal,"Unix",(int)sizeof("Unix")-1);` |
 |    ! 0 |   71 | `	}else{` |
-|   3924 |   72 | `		ph7_value_string(pVal,sInfo.sysname,-1);` |
+|   4218 |   72 | `		ph7_value_string(pVal,sInfo.sysname,-1);` |
 |      - |   73 | `	}` |
 |      - |   74 | `#else` |
 |      - |   75 | `	ph7_value_string(pVal,"Host OS",(int)sizeof("Host OS")-1);` |
 |      - |   76 | `#endif` |
-|   1962 |   77 | `	SXUNUSED(pUnused);` |
-|   3929 |   78 | `}` |
+|   2109 |   77 | `	SXUNUSED(pUnused);` |
+|   4223 |   78 | `}` |
 |      - |   79 | `/*` |
 |      - |   80 | ` * PHP_OS_FAMILY (php 7.2)` |
 |      - |   81 | ` *  One of 'Windows', 'BSD', 'Darwin', 'Solaris', 'Linux' or 'Unknown', derived` |
@@ -140,25 +140,25 @@ Coverage: 970/1042 lines (93.09%)
 |      - |  130 | ` * PHP_EOL` |
 |      - |  131 | ` *  Expand the correct 'End Of Line' symbol for this platform.` |
 |      - |  132 | ` */` |
-|    826 |  133 | `static void PH7_EOL_Const(ph7_value *pVal,void *pUnused)` |
+|    830 |  133 | `static void PH7_EOL_Const(ph7_value *pVal,void *pUnused)` |
 |      4 |  134 | `{` |
-|    413 |  135 | `	SXUNUSED(pUnused);` |
+|    415 |  135 | `	SXUNUSED(pUnused);` |
 |      - |  136 | `#ifdef __WINNT__` |
 |      4 |  137 | `	ph7_value_string(pVal,"\r\n",(int)sizeof("\r\n")-1);` |
 |      - |  138 | `#else` |
-|    826 |  139 | `	ph7_value_string(pVal,"\n",(int)sizeof(char));` |
+|    830 |  139 | `	ph7_value_string(pVal,"\n",(int)sizeof(char));` |
 |      - |  140 | `#endif` |
-|    830 |  141 | `}` |
+|    834 |  141 | `}` |
 |      - |  142 | `/*` |
 |      - |  143 | ` * PHP_INT_MAX` |
 |      - |  144 | ` * Expand the largest integer supported.` |
 |      - |  145 | ` * Note that PH7 deals with 64-bit integer for all platforms.` |
 |      - |  146 | ` */` |
-|    108 |  147 | `static void PH7_INTMAX_Const(ph7_value *pVal,void *pUnused)` |
+|    126 |  147 | `static void PH7_INTMAX_Const(ph7_value *pVal,void *pUnused)` |
 |      3 |  148 | `{` |
-|     54 |  149 | `	SXUNUSED(pUnused);` |
-|    111 |  150 | `	ph7_value_int64(pVal,SXI64_HIGH);` |
-|    111 |  151 | `}` |
+|     63 |  149 | `	SXUNUSED(pUnused);` |
+|    129 |  150 | `	ph7_value_int64(pVal,SXI64_HIGH);` |
+|    129 |  151 | `}` |
 |      - |  152 | `/* ext/calendar: the only calendar cal_days_in_month() is asked for in practice. */` |
 |      4 |  153 | `static void PH7_CAL_GREGORIAN_Const(ph7_value *pVal,void *pUnused)` |
 |      1 |  154 | `{` |
@@ -169,11 +169,11 @@ Coverage: 970/1042 lines (93.09%)
 |      - |  159 | ` * PHP_INT_MIN (php 7.0)` |
 |      - |  160 | ` * Expand the smallest integer supported.` |
 |      - |  161 | ` */` |
-|     46 |  162 | `static void PH7_INTMIN_Const(ph7_value *pVal,void *pUnused)` |
+|     52 |  162 | `static void PH7_INTMIN_Const(ph7_value *pVal,void *pUnused)` |
 |      1 |  163 | `{` |
-|     23 |  164 | `	SXUNUSED(pUnused);` |
-|     47 |  165 | `	ph7_value_int64(pVal,SMALLEST_INT64);` |
-|     47 |  166 | `}` |
+|     26 |  164 | `	SXUNUSED(pUnused);` |
+|     53 |  165 | `	ph7_value_int64(pVal,SMALLEST_INT64);` |
+|     53 |  166 | `}` |
 |      - |  167 | `/*` |
 |      - |  168 | ` * PHP_INT_SIZE` |
 |      - |  169 | ` * Expand the size in bytes of a 64-bit integer.` |
@@ -212,15 +212,15 @@ Coverage: 970/1042 lines (93.09%)
 |      - |  202 | ` * DIRECTORY_SEPARATOR.` |
 |      - |  203 | ` * Expand the directory separator character.` |
 |      - |  204 | ` */` |
-|    306 |  205 | `static void PH7_DIRSEP_Const(ph7_value *pVal,void *pUnused)` |
-|      4 |  206 | `{` |
-|    153 |  207 | `	SXUNUSED(pUnused);` |
+|    334 |  205 | `static void PH7_DIRSEP_Const(ph7_value *pVal,void *pUnused)` |
+|      3 |  206 | `{` |
+|    167 |  207 | `	SXUNUSED(pUnused);` |
 |      - |  208 | `#ifdef __WINNT__` |
-|      4 |  209 | `	ph7_value_string(pVal,"\\",(int)sizeof(char));` |
+|      3 |  209 | `	ph7_value_string(pVal,"\\",(int)sizeof(char));` |
 |      - |  210 | `#else` |
-|    306 |  211 | `	ph7_value_string(pVal,"/",(int)sizeof(char));` |
+|    334 |  211 | `	ph7_value_string(pVal,"/",(int)sizeof(char));` |
 |      - |  212 | `#endif` |
-|    310 |  213 | `}` |
+|    337 |  213 | `}` |
 |      - |  214 | `/*` |
 |      - |  215 | ` * PATH_SEPARATOR.` |
 |      - |  216 | ` * Expand the path separator character.` |
@@ -443,20 +443,20 @@ Coverage: 970/1042 lines (93.09%)
 |      - |  433 | ` * E_USER_WARNING` |
 |      - |  434 | ` * Expands 512` |
 |      - |  435 | ` */` |
-|     16 |  436 | `static void PH7_E_USER_WARNING_Const(ph7_value *pVal,void *pUserData)` |
+|     28 |  436 | `static void PH7_E_USER_WARNING_Const(ph7_value *pVal,void *pUserData)` |
 |      4 |  437 | `{` |
-|     20 |  438 | `	ph7_value_int(pVal,512);` |
-|      8 |  439 | `	SXUNUSED(pUserData);` |
-|     20 |  440 | `}` |
+|     32 |  438 | `	ph7_value_int(pVal,512);` |
+|     14 |  439 | `	SXUNUSED(pUserData);` |
+|     32 |  440 | `}` |
 |      - |  441 | `/*` |
 |      - |  442 | ` * E_USER_NOTICE` |
 |      - |  443 | ` * Expands 1024` |
 |      - |  444 | ` */` |
-|      8 |  445 | `static void PH7_E_USER_NOTICE_Const(ph7_value *pVal,void *pUserData)` |
+|     10 |  445 | `static void PH7_E_USER_NOTICE_Const(ph7_value *pVal,void *pUserData)` |
 |      4 |  446 | `{` |
-|     12 |  447 | `	ph7_value_int(pVal,1024);` |
-|      4 |  448 | `	SXUNUSED(pUserData);` |
-|     12 |  449 | `}` |
+|     14 |  447 | `	ph7_value_int(pVal,1024);` |
+|      5 |  448 | `	SXUNUSED(pUserData);` |
+|     14 |  449 | `}` |
 |      - |  450 | `/*` |
 |      - |  451 | ` * E_RECOVERABLE_ERROR` |
 |      - |  452 | ` * Expands 4096` |
@@ -515,29 +515,29 @@ Coverage: 970/1042 lines (93.09%)
 |      - |  505 | ` * STR_PAD_LEFT` |
 |      - |  506 | ` *  Expands 0.` |
 |      - |  507 | ` */` |
-|      4 |  508 | `static void PH7_STR_PAD_LEFT_Const(ph7_value *pVal,void *pUserData)` |
+|      6 |  508 | `static void PH7_STR_PAD_LEFT_Const(ph7_value *pVal,void *pUserData)` |
 |      1 |  509 | `{` |
-|      5 |  510 | `	ph7_value_int(pVal,0);` |
-|      2 |  511 | `	SXUNUSED(pUserData);` |
-|      5 |  512 | `}` |
+|      7 |  510 | `	ph7_value_int(pVal,0);` |
+|      3 |  511 | `	SXUNUSED(pUserData);` |
+|      7 |  512 | `}` |
 |      - |  513 | `/*` |
 |      - |  514 | ` * STR_PAD_RIGHT` |
 |      - |  515 | ` *  Expands 1.` |
 |      - |  516 | ` */` |
-|      4 |  517 | `static void PH7_STR_PAD_RIGHT_Const(ph7_value *pVal,void *pUserData)` |
+|      6 |  517 | `static void PH7_STR_PAD_RIGHT_Const(ph7_value *pVal,void *pUserData)` |
 |      1 |  518 | `{` |
-|      5 |  519 | `	ph7_value_int(pVal,1);` |
-|      2 |  520 | `	SXUNUSED(pUserData);` |
-|      5 |  521 | `}` |
+|      7 |  519 | `	ph7_value_int(pVal,1);` |
+|      3 |  520 | `	SXUNUSED(pUserData);` |
+|      7 |  521 | `}` |
 |      - |  522 | `/*` |
 |      - |  523 | ` * STR_PAD_BOTH` |
 |      - |  524 | ` *  Expands 2.` |
 |      - |  525 | ` */` |
-|      2 |  526 | `static void PH7_STR_PAD_BOTH_Const(ph7_value *pVal,void *pUserData)` |
+|      4 |  526 | `static void PH7_STR_PAD_BOTH_Const(ph7_value *pVal,void *pUserData)` |
 |      1 |  527 | `{` |
-|      3 |  528 | `	ph7_value_int(pVal,2);` |
-|      1 |  529 | `	SXUNUSED(pUserData);` |
-|      3 |  530 | `}` |
+|      5 |  528 | `	ph7_value_int(pVal,2);` |
+|      2 |  529 | `	SXUNUSED(pUserData);` |
+|      5 |  530 | `}` |
 |      - |  531 | `/*` |
 |      - |  532 | ` * COUNT_NORMAL` |
 |      - |  533 | ` *  Expands 0` |
@@ -574,21 +574,21 @@ Coverage: 970/1042 lines (93.09%)
 |      5 |  564 | `	ph7_value_int(pVal,3);` |
 |      2 |  565 | `	SXUNUSED(pUserData);` |
 |      5 |  566 | `}` |
-|      8 |  567 | `static void PH7_SORT_REG_Const(ph7_value *pVal,void *pUserData)` |
+|     10 |  567 | `static void PH7_SORT_REG_Const(ph7_value *pVal,void *pUserData)` |
 |      1 |  568 | `{` |
-|      9 |  569 | `	ph7_value_int(pVal,0);` |
-|      4 |  570 | `	SXUNUSED(pUserData);` |
-|      9 |  571 | `}` |
-|     18 |  572 | `static void PH7_SORT_NUMERIC_Const(ph7_value *pVal,void *pUserData)` |
+|     11 |  569 | `	ph7_value_int(pVal,0);` |
+|      5 |  570 | `	SXUNUSED(pUserData);` |
+|     11 |  571 | `}` |
+|     20 |  572 | `static void PH7_SORT_NUMERIC_Const(ph7_value *pVal,void *pUserData)` |
 |      1 |  573 | `{` |
-|     19 |  574 | `	ph7_value_int(pVal,1);` |
-|      9 |  575 | `	SXUNUSED(pUserData);` |
-|     19 |  576 | `}` |
-|     28 |  577 | `static void PH7_SORT_STRING_Const(ph7_value *pVal,void *pUserData)` |
+|     21 |  574 | `	ph7_value_int(pVal,1);` |
+|     10 |  575 | `	SXUNUSED(pUserData);` |
+|     21 |  576 | `}` |
+|     30 |  577 | `static void PH7_SORT_STRING_Const(ph7_value *pVal,void *pUserData)` |
 |      1 |  578 | `{` |
-|     29 |  579 | `	ph7_value_int(pVal,2);` |
-|     14 |  580 | `	SXUNUSED(pUserData);` |
-|     29 |  581 | `}` |
+|     31 |  579 | `	ph7_value_int(pVal,2);` |
+|     15 |  580 | `	SXUNUSED(pUserData);` |
+|     31 |  581 | `}` |
 |      2 |  582 | `static void PH7_SORT_LOCALE_STRING_Const(ph7_value *pVal,void *pUserData)` |
 |      1 |  583 | `{` |
 |      3 |  584 | `	ph7_value_int(pVal,5);` |
@@ -636,11 +636,11 @@ Coverage: 970/1042 lines (93.09%)
 |      - |  626 | ` * INI_USER / INI_PERDIR / INI_SYSTEM / INI_ALL` |
 |      - |  627 | ` *  php.ini access levels (1 / 2 / 4 / 7).` |
 |      - |  628 | ` */` |
-|     14 |  629 | `static void PH7_INI_USER_Const(ph7_value *pVal,void *pUserData)` |
-|      2 |  630 | `{` |
-|     16 |  631 | `	ph7_value_int(pVal,1);` |
-|      7 |  632 | `	SXUNUSED(pUserData);` |
-|     16 |  633 | `}` |
+|     16 |  629 | `static void PH7_INI_USER_Const(ph7_value *pVal,void *pUserData)` |
+|      3 |  630 | `{` |
+|     19 |  631 | `	ph7_value_int(pVal,1);` |
+|      8 |  632 | `	SXUNUSED(pUserData);` |
+|     19 |  633 | `}` |
 |      2 |  634 | `static void PH7_INI_PERDIR_Const(ph7_value *pVal,void *pUserData)` |
 |      1 |  635 | `{` |
 |      3 |  636 | `	ph7_value_int(pVal,2);` |
@@ -1178,11 +1178,11 @@ Coverage: 970/1042 lines (93.09%)
 |      - | 1168 | ` * PHP_QUERY_RFC1738` |
 |      - | 1169 | ` * Expand 1` |
 |      - | 1170 | ` */` |
-|     22 | 1171 | `static void PH7_PHP_QUERY_RFC1738_Const(ph7_value *pVal,void *pUserData)` |
-|      1 | 1172 | `{` |
-|     11 | 1173 | `	SXUNUSED(pUserData); /* cc warning */` |
-|     23 | 1174 | `	ph7_value_int(pVal,1);` |
-|     23 | 1175 | `}` |
+|     34 | 1171 | `static void PH7_PHP_QUERY_RFC1738_Const(ph7_value *pVal,void *pUserData)` |
+|      2 | 1172 | `{` |
+|     17 | 1173 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     36 | 1174 | `	ph7_value_int(pVal,1);` |
+|     36 | 1175 | `}` |
 |      - | 1176 | `/*` |
 |      - | 1177 | ` * PHP_QUERY_RFC3986` |
 |      - | 1178 | ` * Expand 1` |
@@ -1235,862 +1235,872 @@ Coverage: 970/1042 lines (93.09%)
 |      - | 1225 | ` * PATHINFO_DIRNAME` |
 |      - | 1226 | ` *  Expand 1.` |
 |      - | 1227 | ` */` |
-|      4 | 1228 | `static void PH7_PATHINFO_DIRNAME_Const(ph7_value *pVal,void *pUserData)` |
+|     22 | 1228 | `static void PH7_PATHINFO_DIRNAME_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1229 | `{` |
-|      2 | 1230 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      5 | 1231 | `	ph7_value_int(pVal,1);` |
-|      5 | 1232 | `}` |
+|     11 | 1230 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     23 | 1231 | `	ph7_value_int(pVal,PH7_PATHINFO_DIRNAME);` |
+|     23 | 1232 | `}` |
 |      - | 1233 | `/*` |
 |      - | 1234 | ` * PATHINFO_BASENAME` |
 |      - | 1235 | ` *  Expand 2.` |
 |      - | 1236 | ` */` |
-|      4 | 1237 | `static void PH7_PATHINFO_BASENAME_Const(ph7_value *pVal,void *pUserData)` |
+|     22 | 1237 | `static void PH7_PATHINFO_BASENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1238 | `{` |
-|      2 | 1239 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      5 | 1240 | `	ph7_value_int(pVal,2);` |
-|      5 | 1241 | `}` |
+|     11 | 1239 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     23 | 1240 | `	ph7_value_int(pVal,PH7_PATHINFO_BASENAME);` |
+|     23 | 1241 | `}` |
 |      - | 1242 | `/*` |
 |      - | 1243 | ` * PATHINFO_EXTENSION` |
-|      - | 1244 | ` *  Expand 3.` |
+|      - | 1244 | ` *  Expand php's 4 (a POWER OF TWO: the components are a bitmask).` |
 |      - | 1245 | ` */` |
-|   6576 | 1246 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
+|   6874 | 1246 | `static void PH7_PATHINFO_EXTENSION_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1247 | `{` |
-|   3288 | 1248 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6581 | 1249 | `	ph7_value_int(pVal,3);` |
-|   6581 | 1250 | `}` |
+|   3437 | 1248 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6879 | 1249 | `	ph7_value_int(pVal,PH7_PATHINFO_EXTENSION);` |
+|   6879 | 1250 | `}` |
 |      - | 1251 | `/*` |
 |      - | 1252 | ` * PATHINFO_FILENAME` |
-|      - | 1253 | ` *  Expand 4.` |
+|      - | 1253 | ` *  Expand php's 8 (a POWER OF TWO: the components are a bitmask).` |
 |      - | 1254 | ` */` |
-|   6568 | 1255 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
+|   6868 | 1255 | `static void PH7_PATHINFO_FILENAME_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1256 | `{` |
-|   3284 | 1257 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   6573 | 1258 | `	ph7_value_int(pVal,4);` |
-|   6573 | 1259 | `}` |
+|   3434 | 1257 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   6873 | 1258 | `	ph7_value_int(pVal,PH7_PATHINFO_FILENAME);` |
+|   6873 | 1259 | `}` |
 |      - | 1260 | `/*` |
-|      - | 1261 | ` * SEEK_SET.` |
-|      - | 1262 | ` *  Expand 0` |
+|      - | 1261 | ` * PATHINFO_ALL` |
+|      - | 1262 | ` *  Expand php's 15 — the default, and the one value that answers with the ARRAY.` |
 |      - | 1263 | ` */` |
-|      2 | 1264 | `static void PH7_SEEK_SET_Const(ph7_value *pVal,void *pUserData)` |
+|     10 | 1264 | `static void PH7_PATHINFO_ALL_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1265 | `{` |
-|      1 | 1266 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1267 | `	ph7_value_int(pVal,0);` |
-|      3 | 1268 | `}` |
+|      5 | 1266 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     11 | 1267 | `	ph7_value_int(pVal,PH7_PATHINFO_ALL);` |
+|     11 | 1268 | `}` |
 |      - | 1269 | `/*` |
-|      - | 1270 | ` * SEEK_CUR.` |
-|      - | 1271 | ` *  Expand 1` |
+|      - | 1270 | ` * SEEK_SET.` |
+|      - | 1271 | ` *  Expand 0` |
 |      - | 1272 | ` */` |
-|      2 | 1273 | `static void PH7_SEEK_CUR_Const(ph7_value *pVal,void *pUserData)` |
+|     20 | 1273 | `static void PH7_SEEK_SET_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1274 | `{` |
-|      1 | 1275 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1276 | `	ph7_value_int(pVal,1);` |
-|      3 | 1277 | `}` |
+|     10 | 1275 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     21 | 1276 | `	ph7_value_int(pVal,0);` |
+|     21 | 1277 | `}` |
 |      - | 1278 | `/*` |
-|      - | 1279 | ` * SEEK_END.` |
-|      - | 1280 | ` *  Expand 2` |
+|      - | 1279 | ` * SEEK_CUR.` |
+|      - | 1280 | ` *  Expand 1` |
 |      - | 1281 | ` */` |
-|      4 | 1282 | `static void PH7_SEEK_END_Const(ph7_value *pVal,void *pUserData)` |
+|      6 | 1282 | `static void PH7_SEEK_CUR_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1283 | `{` |
-|      2 | 1284 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      5 | 1285 | `	ph7_value_int(pVal,2);` |
-|      5 | 1286 | `}` |
+|      3 | 1284 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      7 | 1285 | `	ph7_value_int(pVal,1);` |
+|      7 | 1286 | `}` |
 |      - | 1287 | `/*` |
-|      - | 1288 | ` * LOCK_SH.` |
+|      - | 1288 | ` * SEEK_END.` |
 |      - | 1289 | ` *  Expand 2` |
 |      - | 1290 | ` */` |
-|      2 | 1291 | `static void PH7_LOCK_SH_Const(ph7_value *pVal,void *pUserData)` |
+|      8 | 1291 | `static void PH7_SEEK_END_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1292 | `{` |
-|      1 | 1293 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1294 | `	ph7_value_int(pVal,1);` |
-|      3 | 1295 | `}` |
+|      4 | 1293 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      9 | 1294 | `	ph7_value_int(pVal,2);` |
+|      9 | 1295 | `}` |
 |      - | 1296 | `/*` |
-|      - | 1297 | ` * LOCK_NB.` |
-|      - | 1298 | ` *  Expand 4 (php)` |
+|      - | 1297 | ` * LOCK_SH.` |
+|      - | 1298 | ` *  Expand 2` |
 |      - | 1299 | ` */` |
-|      2 | 1300 | `static void PH7_LOCK_NB_Const(ph7_value *pVal,void *pUserData)` |
+|     10 | 1300 | `static void PH7_LOCK_SH_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1301 | `{` |
-|      1 | 1302 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1303 | `	ph7_value_int(pVal,4);` |
-|      3 | 1304 | `}` |
+|      5 | 1302 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     11 | 1303 | `	ph7_value_int(pVal,1);` |
+|     11 | 1304 | `}` |
 |      - | 1305 | `/*` |
-|      - | 1306 | ` * LOCK_EX.` |
-|      - | 1307 | ` *  Expand 2 (php). PH7 used 1, which collided with LOCK_SH, and LOCK_UN was 0 — so` |
-|      - | 1308 | ` *  flock($h, LOCK_UN) asked the stream for a SHARED lock instead of releasing one.` |
-|      - | 1309 | ` */` |
-|      4 | 1310 | `static void PH7_LOCK_EX_Const(ph7_value *pVal,void *pUserData)` |
-|      1 | 1311 | `{` |
-|      2 | 1312 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      5 | 1313 | `	ph7_value_int(pVal,2);` |
-|      5 | 1314 | `}` |
-|      - | 1315 | `/*` |
-|      - | 1316 | ` * LOCK_UN.` |
-|      - | 1317 | ` *  Expand 3 (php)` |
+|      - | 1306 | ` * LOCK_NB.` |
+|      - | 1307 | ` *  Expand 4 (php)` |
+|      - | 1308 | ` */` |
+|     18 | 1309 | `static void PH7_LOCK_NB_Const(ph7_value *pVal,void *pUserData)` |
+|      1 | 1310 | `{` |
+|      9 | 1311 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     19 | 1312 | `	ph7_value_int(pVal,4);` |
+|     19 | 1313 | `}` |
+|      - | 1314 | `/*` |
+|      - | 1315 | ` * LOCK_EX.` |
+|      - | 1316 | ` *  Expand 2 (php). PH7 used 1, which collided with LOCK_SH, and LOCK_UN was 0 — so` |
+|      - | 1317 | ` *  flock($h, LOCK_UN) asked the stream for a SHARED lock instead of releasing one.` |
 |      - | 1318 | ` */` |
-|      4 | 1319 | `static void PH7_LOCK_UN_Const(ph7_value *pVal,void *pUserData)` |
+|     18 | 1319 | `static void PH7_LOCK_EX_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1320 | `{` |
-|      2 | 1321 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      5 | 1322 | `	ph7_value_int(pVal,3);` |
-|      5 | 1323 | `}` |
+|      9 | 1321 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     19 | 1322 | `	ph7_value_int(pVal,2);` |
+|     19 | 1323 | `}` |
 |      - | 1324 | `/*` |
-|      - | 1325 | ` * FILE_USE_INCLUDE_PATH` |
-|      - | 1326 | ` *  Expand 0x01 (Must be a power of two)` |
+|      - | 1325 | ` * LOCK_UN.` |
+|      - | 1326 | ` *  Expand 3 (php)` |
 |      - | 1327 | ` */` |
-|      2 | 1328 | `static void PH7_FILE_USE_INCLUDE_PATH_Const(ph7_value *pVal,void *pUserData)` |
+|      8 | 1328 | `static void PH7_LOCK_UN_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1329 | `{` |
-|      1 | 1330 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1331 | `	ph7_value_int(pVal,0x1);` |
-|      3 | 1332 | `}` |
+|      4 | 1330 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      9 | 1331 | `	ph7_value_int(pVal,3);` |
+|      9 | 1332 | `}` |
 |      - | 1333 | `/*` |
-|      - | 1334 | ` * FILE_IGNORE_NEW_LINES` |
-|      - | 1335 | ` *  Expand 0x02 (Must be a power of two)` |
+|      - | 1334 | ` * FILE_USE_INCLUDE_PATH` |
+|      - | 1335 | ` *  Expand 0x01 (Must be a power of two)` |
 |      - | 1336 | ` */` |
-|      2 | 1337 | `static void PH7_FILE_IGNORE_NEW_LINES_Const(ph7_value *pVal,void *pUserData)` |
+|      4 | 1337 | `static void PH7_FILE_USE_INCLUDE_PATH_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1338 | `{` |
-|      1 | 1339 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1340 | `	ph7_value_int(pVal,0x2);` |
-|      3 | 1341 | `}` |
+|      2 | 1339 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      5 | 1340 | `	ph7_value_int(pVal,0x1);` |
+|      5 | 1341 | `}` |
 |      - | 1342 | `/*` |
-|      - | 1343 | ` * FILE_SKIP_EMPTY_LINES` |
-|      - | 1344 | ` *  Expand 0x04 (Must be a power of two)` |
+|      - | 1343 | ` * FILE_IGNORE_NEW_LINES` |
+|      - | 1344 | ` *  Expand 0x02 (Must be a power of two)` |
 |      - | 1345 | ` */` |
-|      2 | 1346 | `static void PH7_FILE_SKIP_EMPTY_LINES_Const(ph7_value *pVal,void *pUserData)` |
+|     10 | 1346 | `static void PH7_FILE_IGNORE_NEW_LINES_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1347 | `{` |
-|      1 | 1348 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1349 | `	ph7_value_int(pVal,0x4);` |
-|      3 | 1350 | `}` |
+|      5 | 1348 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     11 | 1349 | `	ph7_value_int(pVal,0x2);` |
+|     11 | 1350 | `}` |
 |      - | 1351 | `/*` |
-|      - | 1352 | ` * FILE_APPEND` |
-|      - | 1353 | ` *  Expand 0x08 (Must be a power of two)` |
+|      - | 1352 | ` * FILE_SKIP_EMPTY_LINES` |
+|      - | 1353 | ` *  Expand 0x04 (Must be a power of two)` |
 |      - | 1354 | ` */` |
-|      2 | 1355 | `static void PH7_FILE_APPEND_Const(ph7_value *pVal,void *pUserData)` |
+|      4 | 1355 | `static void PH7_FILE_SKIP_EMPTY_LINES_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1356 | `{` |
-|      1 | 1357 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1358 | `	ph7_value_int(pVal,0x08);` |
-|      3 | 1359 | `}` |
+|      2 | 1357 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      5 | 1358 | `	ph7_value_int(pVal,0x4);` |
+|      5 | 1359 | `}` |
 |      - | 1360 | `/*` |
-|      - | 1361 | ` * SCANDIR_SORT_ASCENDING` |
-|      - | 1362 | ` *  Expand 0` |
+|      - | 1361 | ` * FILE_APPEND` |
+|      - | 1362 | ` *  Expand 0x08 (Must be a power of two)` |
 |      - | 1363 | ` */` |
-|   2106 | 1364 | `static void PH7_SCANDIR_SORT_ASCENDING_Const(ph7_value *pVal,void *pUserData)` |
-|      5 | 1365 | `{` |
-|   1053 | 1366 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   2111 | 1367 | `	ph7_value_int(pVal,0);` |
-|   2111 | 1368 | `}` |
+|      4 | 1364 | `static void PH7_FILE_APPEND_Const(ph7_value *pVal,void *pUserData)` |
+|      1 | 1365 | `{` |
+|      2 | 1366 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      5 | 1367 | `	ph7_value_int(pVal,0x08);` |
+|      5 | 1368 | `}` |
 |      - | 1369 | `/*` |
-|      - | 1370 | ` * SCANDIR_SORT_DESCENDING` |
-|      - | 1371 | ` *  Expand 1` |
+|      - | 1370 | ` * SCANDIR_SORT_ASCENDING` |
+|      - | 1371 | ` *  Expand 0` |
 |      - | 1372 | ` */` |
-|   1054 | 1373 | `static void PH7_SCANDIR_SORT_DESCENDING_Const(ph7_value *pVal,void *pUserData)` |
+|   2182 | 1373 | `static void PH7_SCANDIR_SORT_ASCENDING_Const(ph7_value *pVal,void *pUserData)` |
 |      5 | 1374 | `{` |
-|    527 | 1375 | `	SXUNUSED(pUserData); /* cc warning */` |
-|   1059 | 1376 | `	ph7_value_int(pVal,1);` |
-|   1059 | 1377 | `}` |
+|   1091 | 1375 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   2187 | 1376 | `	ph7_value_int(pVal,0);` |
+|   2187 | 1377 | `}` |
 |      - | 1378 | `/*` |
-|      - | 1379 | ` * SCANDIR_SORT_NONE` |
-|      - | 1380 | ` *  Expand 2` |
+|      - | 1379 | ` * SCANDIR_SORT_DESCENDING` |
+|      - | 1380 | ` *  Expand 1` |
 |      - | 1381 | ` */` |
-|      2 | 1382 | `static void PH7_SCANDIR_SORT_NONE_Const(ph7_value *pVal,void *pUserData)` |
+|      6 | 1382 | `static void PH7_SCANDIR_SORT_DESCENDING_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1383 | `{` |
-|      1 | 1384 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1385 | `	ph7_value_int(pVal,2);` |
-|      3 | 1386 | `}` |
+|      3 | 1384 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      7 | 1385 | `	ph7_value_int(pVal,1);` |
+|      7 | 1386 | `}` |
 |      - | 1387 | `/*` |
-|      - | 1388 | ` * GLOB_MARK` |
-|      - | 1389 | ` *  Expand 0x01 (must be a power of two)` |
+|      - | 1388 | ` * SCANDIR_SORT_NONE` |
+|      - | 1389 | ` *  Expand 2` |
 |      - | 1390 | ` */` |
-|     10 | 1391 | `static void PH7_GLOB_MARK_Const(ph7_value *pVal,void *pUserData)` |
-|      1 | 1392 | `{` |
-|      5 | 1393 | `	SXUNUSED(pUserData); /* cc warning */` |
-|     11 | 1394 | `	ph7_value_int(pVal,0x01);` |
-|     11 | 1395 | `}` |
+|   1102 | 1391 | `static void PH7_SCANDIR_SORT_NONE_Const(ph7_value *pVal,void *pUserData)` |
+|      5 | 1392 | `{` |
+|    551 | 1393 | `	SXUNUSED(pUserData); /* cc warning */` |
+|   1107 | 1394 | `	ph7_value_int(pVal,2);` |
+|   1107 | 1395 | `}` |
 |      - | 1396 | `/*` |
-|      - | 1397 | ` * GLOB_NOSORT` |
-|      - | 1398 | ` *  Expand 0x02 (must be a power of two)` |
+|      - | 1397 | ` * GLOB_MARK` |
+|      - | 1398 | ` *  Expand php's 0x08 (php's own portable glob flag set)` |
 |      - | 1399 | ` */` |
-|      8 | 1400 | `static void PH7_GLOB_NOSORT_Const(ph7_value *pVal,void *pUserData)` |
+|     38 | 1400 | `static void PH7_GLOB_MARK_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1401 | `{` |
-|      4 | 1402 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      9 | 1403 | `	ph7_value_int(pVal,0x02);` |
-|      9 | 1404 | `}` |
+|     19 | 1402 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     39 | 1403 | `	ph7_value_int(pVal,PH7_GLOB_MARK);` |
+|     39 | 1404 | `}` |
 |      - | 1405 | `/*` |
-|      - | 1406 | ` * GLOB_NOCHECK` |
-|      - | 1407 | ` *  Expand 0x04 (must be a power of two)` |
+|      - | 1406 | ` * GLOB_NOSORT` |
+|      - | 1407 | ` *  Expand php's 0x20` |
 |      - | 1408 | ` */` |
-|      8 | 1409 | `static void PH7_GLOB_NOCHECK_Const(ph7_value *pVal,void *pUserData)` |
+|     38 | 1409 | `static void PH7_GLOB_NOSORT_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1410 | `{` |
-|      4 | 1411 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      9 | 1412 | `	ph7_value_int(pVal,0x04);` |
-|      9 | 1413 | `}` |
+|     19 | 1411 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     39 | 1412 | `	ph7_value_int(pVal,PH7_GLOB_NOSORT);` |
+|     39 | 1413 | `}` |
 |      - | 1414 | `/*` |
-|      - | 1415 | ` * GLOB_NOESCAPE` |
-|      - | 1416 | ` *  Expand 0x08 (must be a power of two)` |
+|      - | 1415 | ` * GLOB_NOCHECK` |
+|      - | 1416 | ` *  Expand php's 0x10` |
 |      - | 1417 | ` */` |
-|      2 | 1418 | `static void PH7_GLOB_NOESCAPE_Const(ph7_value *pVal,void *pUserData)` |
+|     40 | 1418 | `static void PH7_GLOB_NOCHECK_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1419 | `{` |
-|      1 | 1420 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1421 | `	ph7_value_int(pVal,0x08);` |
-|      3 | 1422 | `}` |
+|     20 | 1420 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     41 | 1421 | `	ph7_value_int(pVal,PH7_GLOB_NOCHECK);` |
+|     41 | 1422 | `}` |
 |      - | 1423 | `/*` |
-|      - | 1424 | ` * GLOB_BRACE` |
-|      - | 1425 | ` *  Expand 0x10 (must be a power of two)` |
+|      - | 1424 | ` * GLOB_NOESCAPE` |
+|      - | 1425 | ` *  Expand php's 0x1000` |
 |      - | 1426 | ` */` |
-|      2 | 1427 | `static void PH7_GLOB_BRACE_Const(ph7_value *pVal,void *pUserData)` |
+|     26 | 1427 | `static void PH7_GLOB_NOESCAPE_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1428 | `{` |
-|      1 | 1429 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1430 | `	ph7_value_int(pVal,0x10);` |
-|      3 | 1431 | `}` |
+|     13 | 1429 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     27 | 1430 | `	ph7_value_int(pVal,PH7_GLOB_NOESCAPE);` |
+|     27 | 1431 | `}` |
 |      - | 1432 | `/*` |
-|      - | 1433 | ` * GLOB_ONLYDIR` |
-|      - | 1434 | ` *  Expand 0x20 (must be a power of two)` |
+|      - | 1433 | ` * GLOB_BRACE` |
+|      - | 1434 | ` *  Expand php's 0x80` |
 |      - | 1435 | ` */` |
-|     14 | 1436 | `static void PH7_GLOB_ONLYDIR_Const(ph7_value *pVal,void *pUserData)` |
+|     26 | 1436 | `static void PH7_GLOB_BRACE_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1437 | `{` |
-|      7 | 1438 | `	SXUNUSED(pUserData); /* cc warning */` |
-|     15 | 1439 | `	ph7_value_int(pVal,0x20);` |
-|     15 | 1440 | `}` |
+|     13 | 1438 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     27 | 1439 | `	ph7_value_int(pVal,PH7_GLOB_BRACE);` |
+|     27 | 1440 | `}` |
 |      - | 1441 | `/*` |
-|      - | 1442 | ` * GLOB_ERR` |
-|      - | 1443 | ` *  Expand 0x40 (must be a power of two)` |
+|      - | 1442 | ` * GLOB_ONLYDIR` |
+|      - | 1443 | ` *  Expand php's 0x40000000` |
 |      - | 1444 | ` */` |
-|      2 | 1445 | `static void PH7_GLOB_ERR_Const(ph7_value *pVal,void *pUserData)` |
+|     44 | 1445 | `static void PH7_GLOB_ONLYDIR_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1446 | `{` |
-|      1 | 1447 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1448 | `	ph7_value_int(pVal,0x40);` |
-|      3 | 1449 | `}` |
+|     22 | 1447 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     45 | 1448 | `	ph7_value_int(pVal,PH7_GLOB_ONLYDIR);` |
+|     45 | 1449 | `}` |
 |      - | 1450 | `/*` |
-|      - | 1451 | ` * STDIN` |
-|      - | 1452 | ` *  Expand the STDIN handle as a resource.` |
+|      - | 1451 | ` * GLOB_ERR` |
+|      - | 1452 | ` *  Expand php's 0x04` |
 |      - | 1453 | ` */` |
-|      2 | 1454 | `static void PH7_STDIN_Const(ph7_value *pVal,void *pUserData)` |
+|     26 | 1454 | `static void PH7_GLOB_ERR_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1455 | `{` |
-|      3 | 1456 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
-|      - | 1457 | `	void *pResource;` |
-|      3 | 1458 | `	pResource = PH7_ExportStdin(pVm);` |
-|      3 | 1459 | `	ph7_value_resource(pVal,pResource);` |
-|      3 | 1460 | `}` |
-|      - | 1461 | `/*` |
-|      - | 1462 | ` * STDOUT` |
-|      - | 1463 | ` *   Expand the STDOUT handle as a resource.` |
-|      - | 1464 | ` */` |
-|      8 | 1465 | `static void PH7_STDOUT_Const(ph7_value *pVal,void *pUserData)` |
-|      1 | 1466 | `{` |
-|      9 | 1467 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
-|      - | 1468 | `	void *pResource;` |
-|      9 | 1469 | `	pResource = PH7_ExportStdout(pVm);` |
-|      9 | 1470 | `	ph7_value_resource(pVal,pResource);` |
-|      9 | 1471 | `}` |
-|      - | 1472 | `/*` |
-|      - | 1473 | ` * STDERR` |
-|      - | 1474 | ` *  Expand the STDERR handle as a resource.` |
-|      - | 1475 | ` */` |
-|     10 | 1476 | `static void PH7_STDERR_Const(ph7_value *pVal,void *pUserData)` |
-|      1 | 1477 | `{` |
-|     11 | 1478 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
-|      - | 1479 | `	void *pResource;` |
-|     11 | 1480 | `	pResource = PH7_ExportStderr(pVm);` |
-|     11 | 1481 | `	ph7_value_resource(pVal,pResource);` |
-|     11 | 1482 | `}` |
-|      - | 1483 | `/*` |
-|      - | 1484 | ` * INI_SCANNER_NORMAL` |
-|      - | 1485 | ` *   Expand 1` |
-|      - | 1486 | ` */` |
-|      2 | 1487 | `static void PH7_INI_SCANNER_NORMAL_Const(ph7_value *pVal,void *pUserData)` |
-|      1 | 1488 | `{` |
-|      1 | 1489 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1490 | `	ph7_value_int(pVal,1);` |
-|      3 | 1491 | `}` |
+|     13 | 1456 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     27 | 1457 | `	ph7_value_int(pVal,PH7_GLOB_ERR);` |
+|     27 | 1458 | `}` |
+|      - | 1459 | `/*` |
+|      - | 1460 | ` * STDIN` |
+|      - | 1461 | ` *  Expand the STDIN handle as a resource.` |
+|      - | 1462 | ` */` |
+|      2 | 1463 | `static void PH7_STDIN_Const(ph7_value *pVal,void *pUserData)` |
+|      1 | 1464 | `{` |
+|      3 | 1465 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
+|      - | 1466 | `	void *pResource;` |
+|      3 | 1467 | `	pResource = PH7_ExportStdin(pVm);` |
+|      3 | 1468 | `	ph7_value_resource(pVal,pResource);` |
+|      3 | 1469 | `}` |
+|      - | 1470 | `/*` |
+|      - | 1471 | ` * STDOUT` |
+|      - | 1472 | ` *   Expand the STDOUT handle as a resource.` |
+|      - | 1473 | ` */` |
+|      8 | 1474 | `static void PH7_STDOUT_Const(ph7_value *pVal,void *pUserData)` |
+|      1 | 1475 | `{` |
+|      9 | 1476 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
+|      - | 1477 | `	void *pResource;` |
+|      9 | 1478 | `	pResource = PH7_ExportStdout(pVm);` |
+|      9 | 1479 | `	ph7_value_resource(pVal,pResource);` |
+|      9 | 1480 | `}` |
+|      - | 1481 | `/*` |
+|      - | 1482 | ` * STDERR` |
+|      - | 1483 | ` *  Expand the STDERR handle as a resource.` |
+|      - | 1484 | ` */` |
+|     10 | 1485 | `static void PH7_STDERR_Const(ph7_value *pVal,void *pUserData)` |
+|      1 | 1486 | `{` |
+|     11 | 1487 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
+|      - | 1488 | `	void *pResource;` |
+|     11 | 1489 | `	pResource = PH7_ExportStderr(pVm);` |
+|     11 | 1490 | `	ph7_value_resource(pVal,pResource);` |
+|     11 | 1491 | `}` |
 |      - | 1492 | `/*` |
-|      - | 1493 | ` * INI_SCANNER_RAW` |
-|      - | 1494 | ` *   Expand 2` |
+|      - | 1493 | ` * INI_SCANNER_NORMAL` |
+|      - | 1494 | ` *   Expand php's 0` |
 |      - | 1495 | ` */` |
-|      2 | 1496 | `static void PH7_INI_SCANNER_RAW_Const(ph7_value *pVal,void *pUserData)` |
+|      4 | 1496 | `static void PH7_INI_SCANNER_NORMAL_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1497 | `{` |
-|      1 | 1498 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1499 | `	ph7_value_int(pVal,2);` |
-|      3 | 1500 | `}` |
+|      2 | 1498 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      5 | 1499 | `	ph7_value_int(pVal,PH7_INI_SCANNER_NORMAL);` |
+|      5 | 1500 | `}` |
 |      - | 1501 | `/*` |
-|      - | 1502 | ` * EXTR_OVERWRITE` |
-|      - | 1503 | ` *   Expand 0x01 (Must be a power of two)` |
+|      - | 1502 | ` * INI_SCANNER_RAW` |
+|      - | 1503 | ` *   Expand php's 1` |
 |      - | 1504 | ` */` |
-|      2 | 1505 | `static void PH7_EXTR_OVERWRITE_Const(ph7_value *pVal,void *pUserData)` |
+|      4 | 1505 | `static void PH7_INI_SCANNER_RAW_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1506 | `{` |
-|      1 | 1507 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1508 | `	ph7_value_int(pVal,0x1);` |
-|      3 | 1509 | `}` |
+|      2 | 1507 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      5 | 1508 | `	ph7_value_int(pVal,PH7_INI_SCANNER_RAW);` |
+|      5 | 1509 | `}` |
 |      - | 1510 | `/*` |
-|      - | 1511 | ` * EXTR_SKIP` |
-|      - | 1512 | ` *   Expand 0x02 (Must be a power of two)` |
+|      - | 1511 | ` * EXTR_OVERWRITE` |
+|      - | 1512 | ` *   Expand 0 (php's enum value; see PH7_EXTR_* in ph7int.h)` |
 |      - | 1513 | ` */` |
-|      2 | 1514 | `static void PH7_EXTR_SKIP_Const(ph7_value *pVal,void *pUserData)` |
+|     12 | 1514 | `static void PH7_EXTR_OVERWRITE_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1515 | `{` |
-|      1 | 1516 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1517 | `	ph7_value_int(pVal,0x2);` |
-|      3 | 1518 | `}` |
+|      6 | 1516 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     13 | 1517 | `	ph7_value_int(pVal,PH7_EXTR_OVERWRITE);` |
+|     13 | 1518 | `}` |
 |      - | 1519 | `/*` |
-|      - | 1520 | ` * EXTR_PREFIX_SAME` |
-|      - | 1521 | ` *   Expand 0x04 (Must be a power of two)` |
+|      - | 1520 | ` * EXTR_SKIP` |
+|      - | 1521 | ` *   Expand 1` |
 |      - | 1522 | ` */` |
-|      2 | 1523 | `static void PH7_EXTR_PREFIX_SAME_Const(ph7_value *pVal,void *pUserData)` |
-|      1 | 1524 | `{` |
-|      1 | 1525 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1526 | `	ph7_value_int(pVal,0x4);` |
-|      3 | 1527 | `}` |
+|     14 | 1523 | `static void PH7_EXTR_SKIP_Const(ph7_value *pVal,void *pUserData)` |
+|      2 | 1524 | `{` |
+|      7 | 1525 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     16 | 1526 | `	ph7_value_int(pVal,PH7_EXTR_SKIP);` |
+|     16 | 1527 | `}` |
 |      - | 1528 | `/*` |
-|      - | 1529 | ` * EXTR_PREFIX_ALL` |
-|      - | 1530 | ` *   Expand 0x08 (Must be a power of two)` |
+|      - | 1529 | ` * EXTR_PREFIX_SAME` |
+|      - | 1530 | ` *   Expand 2` |
 |      - | 1531 | ` */` |
-|      2 | 1532 | `static void PH7_EXTR_PREFIX_ALL_Const(ph7_value *pVal,void *pUserData)` |
-|      1 | 1533 | `{` |
-|      1 | 1534 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1535 | `	ph7_value_int(pVal,0x8);` |
-|      3 | 1536 | `}` |
+|     34 | 1532 | `static void PH7_EXTR_PREFIX_SAME_Const(ph7_value *pVal,void *pUserData)` |
+|      2 | 1533 | `{` |
+|     17 | 1534 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     36 | 1535 | `	ph7_value_int(pVal,PH7_EXTR_PREFIX_SAME);` |
+|     36 | 1536 | `}` |
 |      - | 1537 | `/*` |
-|      - | 1538 | ` * EXTR_PREFIX_INVALID` |
-|      - | 1539 | ` *   Expand 0x10 (Must be a power of two)` |
+|      - | 1538 | ` * EXTR_PREFIX_ALL` |
+|      - | 1539 | ` *   Expand 3` |
 |      - | 1540 | ` */` |
-|      2 | 1541 | `static void PH7_EXTR_PREFIX_INVALID_Const(ph7_value *pVal,void *pUserData)` |
-|      1 | 1542 | `{` |
-|      1 | 1543 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1544 | `	ph7_value_int(pVal,0x10);` |
-|      3 | 1545 | `}` |
+|     24 | 1541 | `static void PH7_EXTR_PREFIX_ALL_Const(ph7_value *pVal,void *pUserData)` |
+|      2 | 1542 | `{` |
+|     12 | 1543 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     26 | 1544 | `	ph7_value_int(pVal,PH7_EXTR_PREFIX_ALL);` |
+|     26 | 1545 | `}` |
 |      - | 1546 | `/*` |
-|      - | 1547 | ` * EXTR_IF_EXISTS` |
-|      - | 1548 | ` *   Expand 0x20 (Must be a power of two)` |
+|      - | 1547 | ` * EXTR_PREFIX_INVALID` |
+|      - | 1548 | ` *   Expand 4` |
 |      - | 1549 | ` */` |
-|      2 | 1550 | `static void PH7_EXTR_IF_EXISTS_Const(ph7_value *pVal,void *pUserData)` |
+|      8 | 1550 | `static void PH7_EXTR_PREFIX_INVALID_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1551 | `{` |
-|      1 | 1552 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1553 | `	ph7_value_int(pVal,0x20);` |
-|      3 | 1554 | `}` |
+|      4 | 1552 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      9 | 1553 | `	ph7_value_int(pVal,PH7_EXTR_PREFIX_INVALID);` |
+|      9 | 1554 | `}` |
 |      - | 1555 | `/*` |
-|      - | 1556 | ` * EXTR_PREFIX_IF_EXISTS` |
-|      - | 1557 | ` *   Expand 0x40 (Must be a power of two)` |
+|      - | 1556 | ` * EXTR_IF_EXISTS` |
+|      - | 1557 | ` *   Expand 6 (php orders IF_EXISTS after PREFIX_IF_EXISTS)` |
 |      - | 1558 | ` */` |
-|      2 | 1559 | `static void PH7_EXTR_PREFIX_IF_EXISTS_Const(ph7_value *pVal,void *pUserData)` |
-|      1 | 1560 | `{` |
-|      1 | 1561 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1562 | `	ph7_value_int(pVal,0x40);` |
-|      3 | 1563 | `}` |
+|     14 | 1559 | `static void PH7_EXTR_IF_EXISTS_Const(ph7_value *pVal,void *pUserData)` |
+|      2 | 1560 | `{` |
+|      7 | 1561 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     16 | 1562 | `	ph7_value_int(pVal,PH7_EXTR_IF_EXISTS);` |
+|     16 | 1563 | `}` |
 |      - | 1564 | `/*` |
-|      - | 1565 | ` * JSON_HEX_TAG.` |
-|      - | 1566 | ` *   Expand the value of JSON_HEX_TAG defined in ph7Int.h.` |
+|      - | 1565 | ` * EXTR_PREFIX_IF_EXISTS` |
+|      - | 1566 | ` *   Expand 5` |
 |      - | 1567 | ` */` |
-|      2 | 1568 | `static void PH7_JSON_HEX_TAG_Const(ph7_value *pVal,void *pUserData)` |
-|      1 | 1569 | `{` |
-|      1 | 1570 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1571 | `	ph7_value_int(pVal,JSON_HEX_TAG);` |
-|      3 | 1572 | `}` |
+|     20 | 1568 | `static void PH7_EXTR_PREFIX_IF_EXISTS_Const(ph7_value *pVal,void *pUserData)` |
+|      2 | 1569 | `{` |
+|     10 | 1570 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     22 | 1571 | `	ph7_value_int(pVal,PH7_EXTR_PREFIX_IF_EXISTS);` |
+|     22 | 1572 | `}` |
 |      - | 1573 | `/*` |
-|      - | 1574 | ` * JSON_HEX_AMP.` |
-|      - | 1575 | ` *   Expand the value of JSON_HEX_AMP defined in ph7Int.h.` |
+|      - | 1574 | ` * JSON_HEX_TAG.` |
+|      - | 1575 | ` *   Expand the value of JSON_HEX_TAG defined in ph7Int.h.` |
 |      - | 1576 | ` */` |
-|      2 | 1577 | `static void PH7_JSON_HEX_AMP_Const(ph7_value *pVal,void *pUserData)` |
+|      4 | 1577 | `static void PH7_JSON_HEX_TAG_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1578 | `{` |
-|      1 | 1579 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1580 | `	ph7_value_int(pVal,JSON_HEX_AMP);` |
-|      3 | 1581 | `}` |
+|      2 | 1579 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      5 | 1580 | `	ph7_value_int(pVal,JSON_HEX_TAG);` |
+|      5 | 1581 | `}` |
 |      - | 1582 | `/*` |
-|      - | 1583 | ` * JSON_HEX_APOS.` |
-|      - | 1584 | ` *   Expand the value of JSON_HEX_APOS defined in ph7Int.h.` |
+|      - | 1583 | ` * JSON_HEX_AMP.` |
+|      - | 1584 | ` *   Expand the value of JSON_HEX_AMP defined in ph7Int.h.` |
 |      - | 1585 | ` */` |
-|      2 | 1586 | `static void PH7_JSON_HEX_APOS_Const(ph7_value *pVal,void *pUserData)` |
+|      4 | 1586 | `static void PH7_JSON_HEX_AMP_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1587 | `{` |
-|      1 | 1588 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1589 | `	ph7_value_int(pVal,JSON_HEX_APOS);` |
-|      3 | 1590 | `}` |
+|      2 | 1588 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      5 | 1589 | `	ph7_value_int(pVal,JSON_HEX_AMP);` |
+|      5 | 1590 | `}` |
 |      - | 1591 | `/*` |
-|      - | 1592 | ` * JSON_HEX_QUOT.` |
-|      - | 1593 | ` *   Expand the value of JSON_HEX_QUOT defined in ph7Int.h.` |
+|      - | 1592 | ` * JSON_HEX_APOS.` |
+|      - | 1593 | ` *   Expand the value of JSON_HEX_APOS defined in ph7Int.h.` |
 |      - | 1594 | ` */` |
-|      2 | 1595 | `static void PH7_JSON_HEX_QUOT_Const(ph7_value *pVal,void *pUserData)` |
+|      4 | 1595 | `static void PH7_JSON_HEX_APOS_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1596 | `{` |
-|      1 | 1597 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1598 | `	ph7_value_int(pVal,JSON_HEX_QUOT);` |
-|      3 | 1599 | `}` |
+|      2 | 1597 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      5 | 1598 | `	ph7_value_int(pVal,JSON_HEX_APOS);` |
+|      5 | 1599 | `}` |
 |      - | 1600 | `/*` |
-|      - | 1601 | ` * JSON_FORCE_OBJECT.` |
-|      - | 1602 | ` *   Expand the value of JSON_FORCE_OBJECT defined in ph7Int.h.` |
+|      - | 1601 | ` * JSON_HEX_QUOT.` |
+|      - | 1602 | ` *   Expand the value of JSON_HEX_QUOT defined in ph7Int.h.` |
 |      - | 1603 | ` */` |
-|      4 | 1604 | `static void PH7_JSON_FORCE_OBJECT_Const(ph7_value *pVal,void *pUserData)` |
+|      4 | 1604 | `static void PH7_JSON_HEX_QUOT_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1605 | `{` |
 |      2 | 1606 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      5 | 1607 | `	ph7_value_int(pVal,JSON_FORCE_OBJECT);` |
+|      5 | 1607 | `	ph7_value_int(pVal,JSON_HEX_QUOT);` |
 |      5 | 1608 | `}` |
 |      - | 1609 | `/*` |
-|      - | 1610 | ` * JSON_NUMERIC_CHECK.` |
-|      - | 1611 | ` *   Expand the value of JSON_NUMERIC_CHECK defined in ph7Int.h.` |
+|      - | 1610 | ` * JSON_FORCE_OBJECT.` |
+|      - | 1611 | ` *   Expand the value of JSON_FORCE_OBJECT defined in ph7Int.h.` |
 |      - | 1612 | ` */` |
-|      4 | 1613 | `static void PH7_JSON_NUMERIC_CHECK_Const(ph7_value *pVal,void *pUserData)` |
+|      6 | 1613 | `static void PH7_JSON_FORCE_OBJECT_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1614 | `{` |
-|      2 | 1615 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      5 | 1616 | `	ph7_value_int(pVal,JSON_NUMERIC_CHECK);` |
-|      5 | 1617 | `}` |
+|      3 | 1615 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      7 | 1616 | `	ph7_value_int(pVal,JSON_FORCE_OBJECT);` |
+|      7 | 1617 | `}` |
 |      - | 1618 | `/*` |
-|      - | 1619 | ` * JSON_BIGINT_AS_STRING.` |
-|      - | 1620 | ` *   Expand the value of JSON_BIGINT_AS_STRING defined in ph7Int.h.` |
+|      - | 1619 | ` * JSON_NUMERIC_CHECK.` |
+|      - | 1620 | ` *   Expand the value of JSON_NUMERIC_CHECK defined in ph7Int.h.` |
 |      - | 1621 | ` */` |
-|      2 | 1622 | `static void PH7_JSON_BIGINT_AS_STRING_Const(ph7_value *pVal,void *pUserData)` |
+|      6 | 1622 | `static void PH7_JSON_NUMERIC_CHECK_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1623 | `{` |
-|      1 | 1624 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1625 | `	ph7_value_int(pVal,JSON_BIGINT_AS_STRING);` |
-|      3 | 1626 | `}` |
+|      3 | 1624 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      7 | 1625 | `	ph7_value_int(pVal,JSON_NUMERIC_CHECK);` |
+|      7 | 1626 | `}` |
 |      - | 1627 | `/*` |
-|      - | 1628 | ` * JSON_PRETTY_PRINT.` |
-|      - | 1629 | ` *   Expand the value of JSON_PRETTY_PRINT defined in ph7Int.h.` |
+|      - | 1628 | ` * JSON_BIGINT_AS_STRING.` |
+|      - | 1629 | ` *   Expand the value of JSON_BIGINT_AS_STRING defined in ph7Int.h.` |
 |      - | 1630 | ` */` |
-|      6 | 1631 | `static void PH7_JSON_PRETTY_PRINT_Const(ph7_value *pVal,void *pUserData)` |
-|      2 | 1632 | `{` |
-|      3 | 1633 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      8 | 1634 | `	ph7_value_int(pVal,JSON_PRETTY_PRINT);` |
-|      8 | 1635 | `}` |
+|      2 | 1631 | `static void PH7_JSON_BIGINT_AS_STRING_Const(ph7_value *pVal,void *pUserData)` |
+|      1 | 1632 | `{` |
+|      1 | 1633 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      3 | 1634 | `	ph7_value_int(pVal,JSON_BIGINT_AS_STRING);` |
+|      3 | 1635 | `}` |
 |      - | 1636 | `/*` |
-|      - | 1637 | ` * JSON_UNESCAPED_SLASHES.` |
-|      - | 1638 | ` *   Expand the value of JSON_UNESCAPED_SLASHES defined in ph7Int.h.` |
+|      - | 1637 | ` * JSON_PRETTY_PRINT.` |
+|      - | 1638 | ` *   Expand the value of JSON_PRETTY_PRINT defined in ph7Int.h.` |
 |      - | 1639 | ` */` |
-|      6 | 1640 | `static void PH7_JSON_UNESCAPED_SLASHES_Const(ph7_value *pVal,void *pUserData)` |
+|      8 | 1640 | `static void PH7_JSON_PRETTY_PRINT_Const(ph7_value *pVal,void *pUserData)` |
 |      2 | 1641 | `{` |
-|      3 | 1642 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      8 | 1643 | `	ph7_value_int(pVal,JSON_UNESCAPED_SLASHES);` |
-|      8 | 1644 | `}` |
+|      4 | 1642 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     10 | 1643 | `	ph7_value_int(pVal,JSON_PRETTY_PRINT);` |
+|     10 | 1644 | `}` |
 |      - | 1645 | `/*` |
-|      - | 1646 | ` * JSON_UNESCAPED_UNICODE.` |
-|      - | 1647 | ` *   Expand the value of JSON_UNESCAPED_UNICODE defined in ph7Int.h.` |
+|      - | 1646 | ` * JSON_UNESCAPED_SLASHES.` |
+|      - | 1647 | ` *   Expand the value of JSON_UNESCAPED_SLASHES defined in ph7Int.h.` |
 |      - | 1648 | ` */` |
-|      2 | 1649 | `static void PH7_JSON_UNESCAPED_UNICODE_Const(ph7_value *pVal,void *pUserData)` |
-|      1 | 1650 | `{` |
-|      1 | 1651 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1652 | `	ph7_value_int(pVal,JSON_UNESCAPED_UNICODE);` |
-|      3 | 1653 | `}` |
+|      8 | 1649 | `static void PH7_JSON_UNESCAPED_SLASHES_Const(ph7_value *pVal,void *pUserData)` |
+|      2 | 1650 | `{` |
+|      4 | 1651 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     10 | 1652 | `	ph7_value_int(pVal,JSON_UNESCAPED_SLASHES);` |
+|     10 | 1653 | `}` |
 |      - | 1654 | `/*` |
-|      - | 1655 | ` * JSON_THROW_ON_ERROR.` |
-|      - | 1656 | ` *   Expand the value of JSON_THROW_ON_ERROR defined in ph7Int.h.` |
+|      - | 1655 | ` * JSON_UNESCAPED_UNICODE.` |
+|      - | 1656 | ` *   Expand the value of JSON_UNESCAPED_UNICODE defined in ph7Int.h.` |
 |      - | 1657 | ` */` |
-|      8 | 1658 | `static void PH7_JSON_THROW_ON_ERROR_Const(ph7_value *pVal,void *pUserData)` |
+|      4 | 1658 | `static void PH7_JSON_UNESCAPED_UNICODE_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1659 | `{` |
-|      4 | 1660 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      9 | 1661 | `	ph7_value_int(pVal,JSON_THROW_ON_ERROR);` |
-|      9 | 1662 | `}` |
+|      2 | 1660 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      5 | 1661 | `	ph7_value_int(pVal,JSON_UNESCAPED_UNICODE);` |
+|      5 | 1662 | `}` |
 |      - | 1663 | `/*` |
-|      - | 1664 | ` * JSON_ERROR_NONE.` |
-|      - | 1665 | ` *   Expand the value of JSON_ERROR_NONE defined in ph7Int.h.` |
+|      - | 1664 | ` * JSON_THROW_ON_ERROR.` |
+|      - | 1665 | ` *   Expand the value of JSON_THROW_ON_ERROR defined in ph7Int.h.` |
 |      - | 1666 | ` */` |
-|      4 | 1667 | `static void PH7_JSON_ERROR_NONE_Const(ph7_value *pVal,void *pUserData)` |
+|     10 | 1667 | `static void PH7_JSON_THROW_ON_ERROR_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1668 | `{` |
-|      2 | 1669 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      5 | 1670 | `	ph7_value_int(pVal,JSON_ERROR_NONE);` |
-|      5 | 1671 | `}` |
+|      5 | 1669 | `	SXUNUSED(pUserData); /* cc warning */` |
+|     11 | 1670 | `	ph7_value_int(pVal,JSON_THROW_ON_ERROR);` |
+|     11 | 1671 | `}` |
 |      - | 1672 | `/*` |
-|      - | 1673 | ` * JSON_ERROR_DEPTH.` |
-|      - | 1674 | ` *   Expand the value of JSON_ERROR_DEPTH defined in ph7Int.h.` |
+|      - | 1673 | ` * JSON_ERROR_NONE.` |
+|      - | 1674 | ` *   Expand the value of JSON_ERROR_NONE defined in ph7Int.h.` |
 |      - | 1675 | ` */` |
-|      2 | 1676 | `static void PH7_JSON_ERROR_DEPTH_Const(ph7_value *pVal,void *pUserData)` |
+|      4 | 1676 | `static void PH7_JSON_ERROR_NONE_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1677 | `{` |
-|      1 | 1678 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1679 | `	ph7_value_int(pVal,JSON_ERROR_DEPTH);` |
-|      3 | 1680 | `}` |
+|      2 | 1678 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      5 | 1679 | `	ph7_value_int(pVal,JSON_ERROR_NONE);` |
+|      5 | 1680 | `}` |
 |      - | 1681 | `/*` |
-|      - | 1682 | ` * JSON_ERROR_STATE_MISMATCH.` |
-|      - | 1683 | ` *   Expand the value of JSON_ERROR_STATE_MISMATCH defined in ph7Int.h.` |
+|      - | 1682 | ` * JSON_ERROR_DEPTH.` |
+|      - | 1683 | ` *   Expand the value of JSON_ERROR_DEPTH defined in ph7Int.h.` |
 |      - | 1684 | ` */` |
-|      2 | 1685 | `static void PH7_JSON_ERROR_STATE_MISMATCH_Const(ph7_value *pVal,void *pUserData)` |
+|      2 | 1685 | `static void PH7_JSON_ERROR_DEPTH_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1686 | `{` |
 |      1 | 1687 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1688 | `	ph7_value_int(pVal,JSON_ERROR_STATE_MISMATCH);` |
+|      3 | 1688 | `	ph7_value_int(pVal,JSON_ERROR_DEPTH);` |
 |      3 | 1689 | `}` |
 |      - | 1690 | `/*` |
-|      - | 1691 | ` * JSON_ERROR_CTRL_CHAR.` |
-|      - | 1692 | ` *   Expand the value of JSON_ERROR_CTRL_CHAR defined in ph7Int.h.` |
+|      - | 1691 | ` * JSON_ERROR_STATE_MISMATCH.` |
+|      - | 1692 | ` *   Expand the value of JSON_ERROR_STATE_MISMATCH defined in ph7Int.h.` |
 |      - | 1693 | ` */` |
-|      2 | 1694 | `static void PH7_JSON_ERROR_CTRL_CHAR_Const(ph7_value *pVal,void *pUserData)` |
+|      2 | 1694 | `static void PH7_JSON_ERROR_STATE_MISMATCH_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1695 | `{` |
 |      1 | 1696 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1697 | `	ph7_value_int(pVal,JSON_ERROR_CTRL_CHAR);` |
+|      3 | 1697 | `	ph7_value_int(pVal,JSON_ERROR_STATE_MISMATCH);` |
 |      3 | 1698 | `}` |
 |      - | 1699 | `/*` |
-|      - | 1700 | ` * JSON_ERROR_SYNTAX.` |
-|      - | 1701 | ` *   Expand the value of JSON_ERROR_SYNTAX defined in ph7Int.h.` |
+|      - | 1700 | ` * JSON_ERROR_CTRL_CHAR.` |
+|      - | 1701 | ` *   Expand the value of JSON_ERROR_CTRL_CHAR defined in ph7Int.h.` |
 |      - | 1702 | ` */` |
-|      4 | 1703 | `static void PH7_JSON_ERROR_SYNTAX_Const(ph7_value *pVal,void *pUserData)` |
+|      2 | 1703 | `static void PH7_JSON_ERROR_CTRL_CHAR_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1704 | `{` |
-|      2 | 1705 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      5 | 1706 | `	ph7_value_int(pVal,JSON_ERROR_SYNTAX);` |
-|      5 | 1707 | `}` |
+|      1 | 1705 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      3 | 1706 | `	ph7_value_int(pVal,JSON_ERROR_CTRL_CHAR);` |
+|      3 | 1707 | `}` |
 |      - | 1708 | `/*` |
-|      - | 1709 | ` * JSON_ERROR_UTF8.` |
-|      - | 1710 | ` *   Expand the value of JSON_ERROR_UTF8 defined in ph7Int.h.` |
+|      - | 1709 | ` * JSON_ERROR_SYNTAX.` |
+|      - | 1710 | ` *   Expand the value of JSON_ERROR_SYNTAX defined in ph7Int.h.` |
 |      - | 1711 | ` */` |
-|      2 | 1712 | `static void PH7_JSON_ERROR_UTF8_Const(ph7_value *pVal,void *pUserData)` |
+|      4 | 1712 | `static void PH7_JSON_ERROR_SYNTAX_Const(ph7_value *pVal,void *pUserData)` |
 |      1 | 1713 | `{` |
-|      1 | 1714 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1715 | `	ph7_value_int(pVal,JSON_ERROR_UTF8);` |
-|      3 | 1716 | `}` |
+|      2 | 1714 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      5 | 1715 | `	ph7_value_int(pVal,JSON_ERROR_SYNTAX);` |
+|      5 | 1716 | `}` |
 |      - | 1717 | `/*` |
-|      - | 1718 | ` * JSON_ERROR_NON_BACKED_ENUM.` |
-|      - | 1719 | ` *   Expand the value of JSON_ERROR_NON_BACKED_ENUM defined in ph7Int.h (php 8.1).` |
+|      - | 1718 | ` * JSON_ERROR_UTF8.` |
+|      - | 1719 | ` *   Expand the value of JSON_ERROR_UTF8 defined in ph7Int.h.` |
 |      - | 1720 | ` */` |
-|    ! 0 | 1721 | `static void PH7_JSON_ERROR_NON_BACKED_ENUM_Const(ph7_value *pVal,void *pUserData)` |
-|    ! 0 | 1722 | `{` |
-|    ! 0 | 1723 | `	SXUNUSED(pUserData); /* cc warning */` |
-|    ! 0 | 1724 | `	ph7_value_int(pVal,JSON_ERROR_NON_BACKED_ENUM);` |
-|    ! 0 | 1725 | `}` |
+|      2 | 1721 | `static void PH7_JSON_ERROR_UTF8_Const(ph7_value *pVal,void *pUserData)` |
+|      1 | 1722 | `{` |
+|      1 | 1723 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      3 | 1724 | `	ph7_value_int(pVal,JSON_ERROR_UTF8);` |
+|      3 | 1725 | `}` |
 |      - | 1726 | `/*` |
-|      - | 1727 | ` * JSON_ERROR_INF_OR_NAN.` |
-|      - | 1728 | ` *   Expand the value of JSON_ERROR_INF_OR_NAN defined in ph7Int.h.` |
+|      - | 1727 | ` * JSON_ERROR_NON_BACKED_ENUM.` |
+|      - | 1728 | ` *   Expand the value of JSON_ERROR_NON_BACKED_ENUM defined in ph7Int.h (php 8.1).` |
 |      - | 1729 | ` */` |
-|      2 | 1730 | `static void PH7_JSON_ERROR_INF_OR_NAN_Const(ph7_value *pVal,void *pUserData)` |
-|      1 | 1731 | `{` |
-|      1 | 1732 | `	SXUNUSED(pUserData); /* cc warning */` |
-|      3 | 1733 | `	ph7_value_int(pVal,JSON_ERROR_INF_OR_NAN);` |
-|      3 | 1734 | `}` |
+|    ! 0 | 1730 | `static void PH7_JSON_ERROR_NON_BACKED_ENUM_Const(ph7_value *pVal,void *pUserData)` |
+|    ! 0 | 1731 | `{` |
+|    ! 0 | 1732 | `	SXUNUSED(pUserData); /* cc warning */` |
+|    ! 0 | 1733 | `	ph7_value_int(pVal,JSON_ERROR_NON_BACKED_ENUM);` |
+|    ! 0 | 1734 | `}` |
 |      - | 1735 | `/*` |
-|      - | 1736 | ` * __CLASS__` |
-|      - | 1737 | ` *  The current class name, or the EMPTY STRING outside any class — php answers "",` |
-|      - | 1738 | `` *  not null (`__CLASS__ === ""` is true in global scope). `self` keeps its own`` |
-|      - | 1739 | ` *  expander below because php treats IT differently outside a class scope.` |
-|      - | 1740 | ` */` |
-|      2 | 1741 | `static void PH7_class_magic_Const(ph7_value *pVal,void *pUserData)` |
-|      1 | 1742 | `{` |
-|      3 | 1743 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
-|      - | 1744 | `	ph7_class *pClass;` |
-|      3 | 1745 | `	pClass = PH7_VmPeekDeclaringClass(pVm);` |
-|      3 | 1746 | `	if( pClass == 0 ){` |
-|      3 | 1747 | `		pClass = PH7_VmPeekTopClass(pVm);` |
-|      1 | 1748 | `	}` |
-|      3 | 1749 | `	if( pClass ){` |
-|    ! 0 | 1750 | `		SyString *pName = &pClass->sName;` |
-|    ! 0 | 1751 | `		ph7_value_string(pVal,pName->zString,(int)pName->nByte);` |
-|    ! 0 | 1752 | `	}else{` |
-|      3 | 1753 | `		ph7_value_string(pVal,"",0);` |
-|      - | 1754 | `	}` |
-|      3 | 1755 | `}` |
-|      - | 1756 |  |
-|      - | 1757 | `/*` |
-|      - | 1758 | ` * PASSWORD_BCRYPT / PASSWORD_DEFAULT` |
-|      - | 1759 | ` *  The bcrypt algorithm identifier (PHP 7.4+ exposes these as the string "2y").` |
-|      - | 1760 | ` *  PASSWORD_DEFAULT tracks the recommended default, currently bcrypt.` |
-|      - | 1761 | ` */` |
-|     20 | 1762 | `static void PH7_PASSWORD_BCRYPT_Const(ph7_value *pVal,void *pUnused)` |
-|      2 | 1763 | `{` |
-|     10 | 1764 | `	SXUNUSED(pUnused);` |
-|     22 | 1765 | `	ph7_value_string(pVal,"2y",(int)sizeof("2y")-1);` |
-|     22 | 1766 | `}` |
-|      - | 1767 | `/*` |
-|      - | 1768 | ` * PASSWORD_BCRYPT_DEFAULT_COST` |
-|      - | 1769 | ` *  The default bcrypt work factor used by password_hash() (currently 12).` |
+|      - | 1736 | ` * JSON_ERROR_INF_OR_NAN.` |
+|      - | 1737 | ` *   Expand the value of JSON_ERROR_INF_OR_NAN defined in ph7Int.h.` |
+|      - | 1738 | ` */` |
+|      2 | 1739 | `static void PH7_JSON_ERROR_INF_OR_NAN_Const(ph7_value *pVal,void *pUserData)` |
+|      1 | 1740 | `{` |
+|      1 | 1741 | `	SXUNUSED(pUserData); /* cc warning */` |
+|      3 | 1742 | `	ph7_value_int(pVal,JSON_ERROR_INF_OR_NAN);` |
+|      3 | 1743 | `}` |
+|      - | 1744 | `/*` |
+|      - | 1745 | ` * __CLASS__` |
+|      - | 1746 | ` *  The current class name, or the EMPTY STRING outside any class — php answers "",` |
+|      - | 1747 | `` *  not null (`__CLASS__ === ""` is true in global scope). `self` keeps its own`` |
+|      - | 1748 | ` *  expander below because php treats IT differently outside a class scope.` |
+|      - | 1749 | ` */` |
+|      8 | 1750 | `static void PH7_class_magic_Const(ph7_value *pVal,void *pUserData)` |
+|      1 | 1751 | `{` |
+|      9 | 1752 | `	ph7_vm *pVm = (ph7_vm *)pUserData;` |
+|      - | 1753 | `	ph7_class *pClass;` |
+|      9 | 1754 | `	pClass = PH7_VmPeekDeclaringClass(pVm);` |
+|      9 | 1755 | `	if( pClass == 0 ){` |
+|      3 | 1756 | `		pClass = PH7_VmPeekTopClass(pVm);` |
+|      1 | 1757 | `	}` |
+|      9 | 1758 | `	if( pClass ){` |
+|      7 | 1759 | `		SyString *pName = &pClass->sName;` |
+|      7 | 1760 | `		ph7_value_string(pVal,pName->zString,(int)pName->nByte);` |
+|      4 | 1761 | `	}else{` |
+|      3 | 1762 | `		ph7_value_string(pVal,"",0);` |
+|      - | 1763 | `	}` |
+|      9 | 1764 | `}` |
+|      - | 1765 |  |
+|      - | 1766 | `/*` |
+|      - | 1767 | ` * PASSWORD_BCRYPT / PASSWORD_DEFAULT` |
+|      - | 1768 | ` *  The bcrypt algorithm identifier (PHP 7.4+ exposes these as the string "2y").` |
+|      - | 1769 | ` *  PASSWORD_DEFAULT tracks the recommended default, currently bcrypt.` |
 |      - | 1770 | ` */` |
-|      2 | 1771 | `static void PH7_PASSWORD_COST_Const(ph7_value *pVal,void *pUnused)` |
-|      1 | 1772 | `{` |
-|      1 | 1773 | `	SXUNUSED(pUnused);` |
-|      3 | 1774 | `	ph7_value_int(pVal,12);` |
-|      3 | 1775 | `}` |
+|     20 | 1771 | `static void PH7_PASSWORD_BCRYPT_Const(ph7_value *pVal,void *pUnused)` |
+|      2 | 1772 | `{` |
+|     10 | 1773 | `	SXUNUSED(pUnused);` |
+|     22 | 1774 | `	ph7_value_string(pVal,"2y",(int)sizeof("2y")-1);` |
+|     22 | 1775 | `}` |
 |      - | 1776 | `/*` |
-|      - | 1777 | ` * filter_var() filter and flag identifiers (the ext/filter constants). Values` |
-|      - | 1778 | ` * match PHP 8.5. One tiny int-returning callback per constant, generated by a` |
-|      - | 1779 | ` * local macro to keep the ~25 near-identical definitions DRY.` |
-|      - | 1780 | ` */` |
-|      - | 1781 | `#define PH7_FILTER_INT_CONST(Name,Val) \` |
-|      - | 1782 | `	static void PH7_##Name##_Const(ph7_value *pVal,void *pUnused){ \` |
-|      - | 1783 | `		SXUNUSED(pUnused); ph7_value_int(pVal,Val); \` |
-|      - | 1784 | `	}` |
-|     10 | 1785 | `PH7_FILTER_INT_CONST(FILTER_DEFAULT,516)` |
-|     17 | 1786 | `PH7_FILTER_INT_CONST(FILTER_UNSAFE_RAW,516)` |
-|     64 | 1787 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_INT,257)` |
-|     29 | 1788 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_BOOLEAN,258)` |
-|     69 | 1789 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_FLOAT,259)` |
-|      8 | 1790 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_REGEXP,272)` |
-|     11 | 1791 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_DOMAIN,277)` |
-|     15 | 1792 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_URL,273)` |
-|     28 | 1793 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_EMAIL,274)` |
-|     25 | 1794 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_IP,275)` |
-|     11 | 1795 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_MAC,276)` |
-|      3 | 1796 | `PH7_FILTER_INT_CONST(FILTER_SANITIZE_NUMBER_INT,519)` |
-|      5 | 1797 | `PH7_FILTER_INT_CONST(FILTER_SANITIZE_NUMBER_FLOAT,520)` |
-|     13 | 1798 | `PH7_FILTER_INT_CONST(FILTER_SANITIZE_SPECIAL_CHARS,515)` |
-|     25 | 1799 | `PH7_FILTER_INT_CONST(FILTER_SANITIZE_FULL_SPECIAL_CHARS,522)` |
-|      3 | 1800 | `PH7_FILTER_INT_CONST(FILTER_SANITIZE_EMAIL,517)` |
-|      3 | 1801 | `PH7_FILTER_INT_CONST(FILTER_SANITIZE_URL,518)` |
-|      3 | 1802 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ALLOW_OCTAL,1)` |
-|      3 | 1803 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ALLOW_HEX,2)` |
-|      7 | 1804 | `PH7_FILTER_INT_CONST(FILTER_FLAG_STRIP_LOW,4)` |
-|      5 | 1805 | `PH7_FILTER_INT_CONST(FILTER_FLAG_STRIP_HIGH,8)` |
-|      5 | 1806 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ENCODE_LOW,16)` |
-|      5 | 1807 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ENCODE_HIGH,32)` |
-|      3 | 1808 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ENCODE_AMP,64)` |
-|      3 | 1809 | `PH7_FILTER_INT_CONST(FILTER_FLAG_NO_ENCODE_QUOTES,128)` |
-|      3 | 1810 | `PH7_FILTER_INT_CONST(FILTER_FLAG_STRIP_BACKTICK,512)` |
-|      3 | 1811 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ALLOW_FRACTION,4096)` |
-|     25 | 1812 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ALLOW_THOUSAND,8192)` |
-|      3 | 1813 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ALLOW_SCIENTIFIC,16384)` |
-|      5 | 1814 | `PH7_FILTER_INT_CONST(FILTER_FLAG_IPV4,1048576)` |
-|      3 | 1815 | `PH7_FILTER_INT_CONST(FILTER_FLAG_IPV6,2097152)` |
-|     14 | 1816 | `PH7_FILTER_INT_CONST(FILTER_NULL_ON_FAILURE,134217728)` |
-|      - | 1817 | `/* filter_input() source selectors (php values; SESSION/REQUEST are undefined in 8.5) */` |
-|      5 | 1818 | `PH7_FILTER_INT_CONST(INPUT_POST,0)` |
-|      8 | 1819 | `PH7_FILTER_INT_CONST(INPUT_GET,1)` |
-|      3 | 1820 | `PH7_FILTER_INT_CONST(INPUT_COOKIE,2)` |
-|      3 | 1821 | `PH7_FILTER_INT_CONST(INPUT_ENV,4)` |
-|     21 | 1822 | `PH7_FILTER_INT_CONST(INPUT_SERVER,5)` |
-|      - | 1823 | `/*` |
-|      - | 1824 | ` * Table of built-in constants.` |
-|      - | 1825 | ` */` |
-|      - | 1826 | `static const ph7_builtin_constant aBuiltIn[] = {` |
-|      - | 1827 | `	{"PH7_VERSION",          PH7_VER_Const      },` |
-|      - | 1828 | `	{"PH7_ENGINE",           PH7_VER_Const      },` |
-|      - | 1829 | `	{"__PH7__",              PH7_VER_Const      },` |
-|      - | 1830 | `	{"PHP_VERSION",          PH7_PHPVerConst    },` |
-|      - | 1831 | `	{"PHP_MAJOR_VERSION",    PH7_PHPMajorConst  },` |
-|      - | 1832 | `	{"PHP_MINOR_VERSION",    PH7_PHPMinorConst  },` |
-|      - | 1833 | `	{"PHP_RELEASE_VERSION",  PH7_PHPReleaseConst},` |
-|      - | 1834 | `	{"PHP_EXTRA_VERSION",    PH7_PHPExtraConst  },` |
-|      - | 1835 | `	{"PHP_VERSION_ID",       PH7_PHPVerIdConst  },` |
-|      - | 1836 | `	{"PHP_OS",               PH7_OS_Const       },` |
-|      - | 1837 | `	{"PHP_OS_FAMILY",        PH7_OS_FAMILY_Const},` |
-|      - | 1838 | `	{"PHP_SAPI",             PH7_SAPI_Const     },` |
-|      - | 1839 | `	{"PHP_EOL",              PH7_EOL_Const      },` |
-|      - | 1840 | `	{"PHP_SESSION_DISABLED", PH7_PHP_SESSION_DISABLED_Const },` |
-|      - | 1841 | `	{"PHP_SESSION_NONE",     PH7_PHP_SESSION_NONE_Const },` |
-|      - | 1842 | `	{"PHP_SESSION_ACTIVE",   PH7_PHP_SESSION_ACTIVE_Const },` |
-|      - | 1843 | `	{"INI_USER",             PH7_INI_USER_Const },` |
-|      - | 1844 | `	{"INI_PERDIR",           PH7_INI_PERDIR_Const },` |
-|      - | 1845 | `	{"INI_SYSTEM",           PH7_INI_SYSTEM_Const },` |
-|      - | 1846 | `	{"INI_ALL",              PH7_INI_ALL_Const },` |
-|      - | 1847 | `	{"MB_CASE_UPPER",        PH7_MB_CASE_UPPER_Const },` |
-|      - | 1848 | `	{"MB_CASE_LOWER",        PH7_MB_CASE_LOWER_Const },` |
-|      - | 1849 | `	{"MB_CASE_TITLE",        PH7_MB_CASE_TITLE_Const },` |
-|      - | 1850 | `	{"PASSWORD_BCRYPT",      PH7_PASSWORD_BCRYPT_Const },` |
-|      - | 1851 | `	{"PASSWORD_DEFAULT",     PH7_PASSWORD_BCRYPT_Const },` |
-|      - | 1852 | `	{"PASSWORD_BCRYPT_DEFAULT_COST", PH7_PASSWORD_COST_Const },` |
-|      - | 1853 | `	{"FILTER_DEFAULT",              PH7_FILTER_DEFAULT_Const },` |
-|      - | 1854 | `	{"FILTER_UNSAFE_RAW",           PH7_FILTER_UNSAFE_RAW_Const },` |
-|      - | 1855 | `	{"FILTER_VALIDATE_INT",         PH7_FILTER_VALIDATE_INT_Const },` |
-|      - | 1856 | `	{"FILTER_VALIDATE_BOOLEAN",     PH7_FILTER_VALIDATE_BOOLEAN_Const },` |
-|      - | 1857 | `	{"FILTER_VALIDATE_BOOL",        PH7_FILTER_VALIDATE_BOOLEAN_Const },` |
-|      - | 1858 | `	{"FILTER_VALIDATE_FLOAT",       PH7_FILTER_VALIDATE_FLOAT_Const },` |
-|      - | 1859 | `	{"FILTER_VALIDATE_REGEXP",      PH7_FILTER_VALIDATE_REGEXP_Const },` |
-|      - | 1860 | `	{"FILTER_VALIDATE_DOMAIN",      PH7_FILTER_VALIDATE_DOMAIN_Const },` |
-|      - | 1861 | `	{"FILTER_VALIDATE_URL",         PH7_FILTER_VALIDATE_URL_Const },` |
-|      - | 1862 | `	{"FILTER_VALIDATE_EMAIL",       PH7_FILTER_VALIDATE_EMAIL_Const },` |
-|      - | 1863 | `	{"FILTER_VALIDATE_IP",          PH7_FILTER_VALIDATE_IP_Const },` |
-|      - | 1864 | `	{"FILTER_VALIDATE_MAC",         PH7_FILTER_VALIDATE_MAC_Const },` |
-|      - | 1865 | `	{"FILTER_SANITIZE_NUMBER_INT",  PH7_FILTER_SANITIZE_NUMBER_INT_Const },` |
-|      - | 1866 | `	{"FILTER_SANITIZE_NUMBER_FLOAT",PH7_FILTER_SANITIZE_NUMBER_FLOAT_Const },` |
-|      - | 1867 | `	{"FILTER_SANITIZE_SPECIAL_CHARS",PH7_FILTER_SANITIZE_SPECIAL_CHARS_Const },` |
-|      - | 1868 | `	{"FILTER_SANITIZE_FULL_SPECIAL_CHARS",PH7_FILTER_SANITIZE_FULL_SPECIAL_CHARS_Const },` |
-|      - | 1869 | `	{"FILTER_SANITIZE_EMAIL",       PH7_FILTER_SANITIZE_EMAIL_Const },` |
-|      - | 1870 | `	{"FILTER_SANITIZE_URL",         PH7_FILTER_SANITIZE_URL_Const },` |
-|      - | 1871 | `	{"FILTER_FLAG_ALLOW_OCTAL",     PH7_FILTER_FLAG_ALLOW_OCTAL_Const },` |
-|      - | 1872 | `	{"FILTER_FLAG_ALLOW_HEX",       PH7_FILTER_FLAG_ALLOW_HEX_Const },` |
-|      - | 1873 | `	{"FILTER_FLAG_STRIP_LOW",       PH7_FILTER_FLAG_STRIP_LOW_Const },` |
-|      - | 1874 | `	{"FILTER_FLAG_STRIP_HIGH",      PH7_FILTER_FLAG_STRIP_HIGH_Const },` |
-|      - | 1875 | `	{"FILTER_FLAG_ENCODE_LOW",      PH7_FILTER_FLAG_ENCODE_LOW_Const },` |
-|      - | 1876 | `	{"FILTER_FLAG_ENCODE_HIGH",     PH7_FILTER_FLAG_ENCODE_HIGH_Const },` |
-|      - | 1877 | `	{"FILTER_FLAG_ENCODE_AMP",      PH7_FILTER_FLAG_ENCODE_AMP_Const },` |
-|      - | 1878 | `	{"FILTER_FLAG_NO_ENCODE_QUOTES",PH7_FILTER_FLAG_NO_ENCODE_QUOTES_Const },` |
-|      - | 1879 | `	{"FILTER_FLAG_STRIP_BACKTICK",  PH7_FILTER_FLAG_STRIP_BACKTICK_Const },` |
-|      - | 1880 | `	{"FILTER_FLAG_ALLOW_FRACTION",  PH7_FILTER_FLAG_ALLOW_FRACTION_Const },` |
-|      - | 1881 | `	{"FILTER_FLAG_ALLOW_THOUSAND",  PH7_FILTER_FLAG_ALLOW_THOUSAND_Const },` |
-|      - | 1882 | `	{"FILTER_FLAG_ALLOW_SCIENTIFIC",PH7_FILTER_FLAG_ALLOW_SCIENTIFIC_Const },` |
-|      - | 1883 | `	{"FILTER_FLAG_IPV4",            PH7_FILTER_FLAG_IPV4_Const },` |
-|      - | 1884 | `	{"FILTER_FLAG_IPV6",            PH7_FILTER_FLAG_IPV6_Const },` |
-|      - | 1885 | `	{"FILTER_NULL_ON_FAILURE",      PH7_FILTER_NULL_ON_FAILURE_Const },` |
-|      - | 1886 | `	{"INPUT_POST",                  PH7_INPUT_POST_Const },` |
-|      - | 1887 | `	{"INPUT_GET",                   PH7_INPUT_GET_Const },` |
-|      - | 1888 | `	{"INPUT_COOKIE",                PH7_INPUT_COOKIE_Const },` |
-|      - | 1889 | `	{"INPUT_ENV",                   PH7_INPUT_ENV_Const },` |
-|      - | 1890 | `	{"INPUT_SERVER",                PH7_INPUT_SERVER_Const },` |
-|      - | 1891 | `	{"CAL_GREGORIAN",        PH7_CAL_GREGORIAN_Const },` |
-|      - | 1892 | `	{"PHP_INT_MAX",          PH7_INTMAX_Const   },` |
-|      - | 1893 | `	{"MAXINT",               PH7_INTMAX_Const   },` |
-|      - | 1894 | `	{"PHP_INT_MIN",          PH7_INTMIN_Const   },` |
-|      - | 1895 | `	{"PHP_INT_SIZE",         PH7_INTSIZE_Const  },` |
-|      - | 1896 | `	{"PHP_FLOAT_EPSILON",    PH7_FLOATEPSILON_Const },` |
-|      - | 1897 | `	{"PHP_FLOAT_MAX",        PH7_FLOATMAX_Const },` |
-|      - | 1898 | `	{"PHP_FLOAT_MIN",        PH7_FLOATMIN_Const },` |
-|      - | 1899 | `	{"PHP_FLOAT_DIG",        PH7_FLOATDIG_Const },` |
-|      - | 1900 | `	{"PATH_SEPARATOR",       PH7_PATHSEP_Const  },` |
-|      - | 1901 | `	{"DIRECTORY_SEPARATOR",  PH7_DIRSEP_Const   },` |
-|      - | 1902 | `	{"DIR_SEP",              PH7_DIRSEP_Const   },` |
-|      - | 1903 | `	{"__TIME__",             PH7_TIME_Const     },` |
-|      - | 1904 | `	{"__DATE__",             PH7_DATE_Const     },` |
-|      - | 1905 | `	{"__FILE__",             PH7_FILE_Const     },` |
-|      - | 1906 | `	{"__DIR__",              PH7_DIR_Const      },` |
-|      - | 1907 | `	{"PHP_SHLIB_SUFFIX",     PH7_PHP_SHLIB_SUFFIX_Const },` |
-|      - | 1908 | `	{"E_ERROR",              PH7_E_ERROR_Const  },` |
-|      - | 1909 | `	{"E_WARNING",            PH7_E_WARNING_Const},` |
-|      - | 1910 | `	{"E_PARSE",              PH7_E_PARSE_Const  },` |
-|      - | 1911 | `	{"E_NOTICE",             PH7_E_NOTICE_Const },` |
-|      - | 1912 | `	{"E_CORE_ERROR",         PH7_E_CORE_ERROR_Const     },` |
-|      - | 1913 | `	{"E_CORE_WARNING",       PH7_E_CORE_WARNING_Const   },` |
-|      - | 1914 | `	{"E_COMPILE_ERROR",      PH7_E_COMPILE_ERROR_Const  },` |
-|      - | 1915 | `	{"E_COMPILE_WARNING",    PH7_E_COMPILE_WARNING_Const  },` |
-|      - | 1916 | `	{"E_USER_ERROR",         PH7_E_USER_ERROR_Const    },` |
-|      - | 1917 | `	{"E_USER_WARNING",       PH7_E_USER_WARNING_Const  },` |
-|      - | 1918 | `	{"E_USER_NOTICE ",       PH7_E_USER_NOTICE_Const   },` |
-|      - | 1919 | `	{"E_RECOVERABLE_ERROR",  PH7_E_RECOVERABLE_ERROR_Const  },` |
-|      - | 1920 | `	{"E_DEPRECATED",         PH7_E_DEPRECATED_Const    },` |
-|      - | 1921 | `	{"E_USER_DEPRECATED",    PH7_E_USER_DEPRECATED_Const  },` |
-|      - | 1922 | `	{"E_ALL",                PH7_E_ALL_Const              },` |
-|      - | 1923 | `	{"CASE_LOWER",           PH7_CASE_LOWER_Const   },` |
-|      - | 1924 | `	{"CASE_UPPER",           PH7_CASE_UPPER_Const   },` |
-|      - | 1925 | `	{"STR_PAD_LEFT",         PH7_STR_PAD_LEFT_Const },` |
-|      - | 1926 | `	{"STR_PAD_RIGHT",        PH7_STR_PAD_RIGHT_Const},` |
-|      - | 1927 | `	{"STR_PAD_BOTH",         PH7_STR_PAD_BOTH_Const },` |
-|      - | 1928 | `	{"COUNT_NORMAL",         PH7_COUNT_NORMAL_Const },` |
-|      - | 1929 | `	{"COUNT_RECURSIVE",      PH7_COUNT_RECURSIVE_Const },` |
-|      - | 1930 | `	{"SORT_ASC",             PH7_SORT_ASC_Const     },` |
-|      - | 1931 | `	{"SORT_DESC",            PH7_SORT_DESC_Const    },` |
-|      - | 1932 | `	{"SORT_REGULAR",         PH7_SORT_REG_Const     },` |
-|      - | 1933 | `	{"SORT_NUMERIC",         PH7_SORT_NUMERIC_Const },` |
-|      - | 1934 | `	{"SORT_STRING",          PH7_SORT_STRING_Const  },` |
-|      - | 1935 | `	{"SORT_LOCALE_STRING",   PH7_SORT_LOCALE_STRING_Const },` |
-|      - | 1936 | `	{"SORT_NATURAL",         PH7_SORT_NATURAL_Const },` |
-|      - | 1937 | `	{"SORT_FLAG_CASE",       PH7_SORT_FLAG_CASE_Const },` |
-|      - | 1938 | `	{"PHP_ROUND_HALF_DOWN",  PH7_PHP_ROUND_HALF_DOWN_Const },` |
-|      - | 1939 | `	{"PHP_ROUND_HALF_EVEN",  PH7_PHP_ROUND_HALF_EVEN_Const },` |
-|      - | 1940 | `	{"PHP_ROUND_HALF_UP",    PH7_PHP_ROUND_HALF_UP_Const   },` |
-|      - | 1941 | `	{"PHP_ROUND_HALF_ODD",   PH7_PHP_ROUND_HALF_ODD_Const  },` |
-|      - | 1942 | `	{"DEBUG_BACKTRACE_IGNORE_ARGS", PH7_DBIA_Const  },` |
-|      - | 1943 | `	{"DEBUG_BACKTRACE_PROVIDE_OBJECT",PH7_DBPO_Const},` |
-|      - | 1944 | `#ifdef PH7_ENABLE_MATH_FUNC` |
-|      - | 1945 | `	{"M_PI",                 PH7_M_PI_Const         },` |
-|      - | 1946 | `	{"M_E",                  PH7_M_E_Const          },` |
-|      - | 1947 | `	{"M_LOG2E",              PH7_M_LOG2E_Const      },` |
-|      - | 1948 | `	{"M_LOG10E",             PH7_M_LOG10E_Const     },` |
-|      - | 1949 | `	{"M_LN2",                PH7_M_LN2_Const        },` |
-|      - | 1950 | `	{"M_LN10",               PH7_M_LN10_Const       },` |
-|      - | 1951 | `	{"M_PI_2",               PH7_M_PI_2_Const       },` |
-|      - | 1952 | `	{"M_PI_4",               PH7_M_PI_4_Const       },` |
-|      - | 1953 | `	{"M_1_PI",               PH7_M_1_PI_Const       },` |
-|      - | 1954 | `	{"M_2_PI",               PH7_M_2_PI_Const       },` |
-|      - | 1955 | `	{"M_SQRTPI",             PH7_M_SQRTPI_Const     },` |
-|      - | 1956 | `	{"M_2_SQRTPI",           PH7_M_2_SQRTPI_Const   },` |
-|      - | 1957 | `	{"M_SQRT2",              PH7_M_SQRT2_Const      },` |
-|      - | 1958 | `	{"M_SQRT3",              PH7_M_SQRT3_Const      },` |
-|      - | 1959 | `	{"M_SQRT1_2",            PH7_M_SQRT1_2_Const    },` |
-|      - | 1960 | `	{"M_LNPI",               PH7_M_LNPI_Const       },` |
-|      - | 1961 | `	{"M_EULER",              PH7_M_EULER_Const      },` |
-|      - | 1962 | `	{"NAN",                  PH7_NAN_Const          },` |
-|      - | 1963 | `	{"INF",                  PH7_INF_Const          },` |
-|      - | 1964 | `#endif /* PH7_ENABLE_MATH_FUNC */` |
-|      - | 1965 | `	{"DATE_ATOM",            PH7_DATE_ATOM_Const    },` |
-|      - | 1966 | `	{"DATE_COOKIE",          PH7_DATE_COOKIE_Const  },` |
-|      - | 1967 | `	{"DATE_ISO8601",         PH7_DATE_ISO8601_Const },` |
-|      - | 1968 | `	{"DATE_RFC822",          PH7_DATE_RFC822_Const  },` |
-|      - | 1969 | `	{"DATE_RFC850",          PH7_DATE_RFC850_Const  },` |
-|      - | 1970 | `	{"DATE_RFC1036",         PH7_DATE_RFC1036_Const },` |
-|      - | 1971 | `	{"DATE_RFC1123",         PH7_DATE_RFC1123_Const },` |
-|      - | 1972 | `	{"DATE_RFC2822",         PH7_DATE_RFC2822_Const },` |
-|      - | 1973 | `	{"DATE_RFC3339",         PH7_DATE_ATOM_Const    },` |
-|      - | 1974 | `	{"DATE_RSS",             PH7_DATE_RSS_Const     },` |
-|      - | 1975 | `	{"DATE_W3C",             PH7_DATE_W3C_Const     },` |
-|      - | 1976 | `	{"ENT_COMPAT",           PH7_ENT_COMPAT_Const   },` |
-|      - | 1977 | `	{"ENT_QUOTES",           PH7_ENT_QUOTES_Const   },` |
-|      - | 1978 | `	{"ENT_NOQUOTES",         PH7_ENT_NOQUOTES_Const },` |
-|      - | 1979 | `	{"ENT_IGNORE",           PH7_ENT_IGNORE_Const   },` |
-|      - | 1980 | `	{"ENT_SUBSTITUTE",       PH7_ENT_SUBSTITUTE_Const},` |
-|      - | 1981 | `	{"ENT_DISALLOWED",       PH7_ENT_DISALLOWED_Const},` |
-|      - | 1982 | `	{"ENT_HTML401",          PH7_ENT_HTML401_Const  },` |
-|      - | 1983 | `	{"ENT_XML1",             PH7_ENT_XML1_Const     },` |
-|      - | 1984 | `	{"ENT_XHTML",            PH7_ENT_XHTML_Const    },` |
-|      - | 1985 | `	{"ENT_HTML5",            PH7_ENT_HTML5_Const    },` |
-|      - | 1986 | `	{"ISO-8859-1",           PH7_ISO88591_Const     },` |
-|      - | 1987 | `	{"ISO_8859_1",           PH7_ISO88591_Const     },` |
-|      - | 1988 | `	{"UTF-8",                PH7_UTF8_Const         },` |
-|      - | 1989 | `	{"UTF8",                 PH7_UTF8_Const         },` |
-|      - | 1990 | `	{"HTML_ENTITIES",        PH7_HTML_ENTITIES_Const},` |
-|      - | 1991 | `	{"HTML_SPECIALCHARS",    PH7_HTML_SPECIALCHARS_Const },` |
-|      - | 1992 | `	{"PHP_URL_SCHEME",       PH7_PHP_URL_SCHEME_Const},` |
-|      - | 1993 | `	{"PHP_URL_HOST",         PH7_PHP_URL_HOST_Const},` |
-|      - | 1994 | `	{"PHP_URL_PORT",         PH7_PHP_URL_PORT_Const},` |
-|      - | 1995 | `	{"PHP_URL_USER",         PH7_PHP_URL_USER_Const},` |
-|      - | 1996 | `	{"PHP_URL_PASS",         PH7_PHP_URL_PASS_Const},` |
-|      - | 1997 | `	{"PHP_URL_PATH",         PH7_PHP_URL_PATH_Const},` |
-|      - | 1998 | `	{"PHP_URL_QUERY",        PH7_PHP_URL_QUERY_Const},` |
-|      - | 1999 | `	{"PHP_URL_FRAGMENT",     PH7_PHP_URL_FRAGMENT_Const},` |
-|      - | 2000 | `	{"PHP_QUERY_RFC1738",    PH7_PHP_QUERY_RFC1738_Const},` |
-|      - | 2001 | `	{"PHP_QUERY_RFC3986",    PH7_PHP_QUERY_RFC3986_Const},` |
-|      - | 2002 | `	{"FNM_NOESCAPE",         PH7_FNM_NOESCAPE_Const },` |
-|      - | 2003 | `	{"FNM_PATHNAME",         PH7_FNM_PATHNAME_Const },` |
-|      - | 2004 | `	{"FNM_PERIOD",           PH7_FNM_PERIOD_Const   },` |
-|      - | 2005 | `	{"FNM_CASEFOLD",         PH7_FNM_CASEFOLD_Const },` |
-|      - | 2006 | `	{"PATHINFO_DIRNAME",     PH7_PATHINFO_DIRNAME_Const  },` |
-|      - | 2007 | `	{"PATHINFO_BASENAME",    PH7_PATHINFO_BASENAME_Const },` |
-|      - | 2008 | `	{"PATHINFO_EXTENSION",   PH7_PATHINFO_EXTENSION_Const},` |
-|      - | 2009 | `	{"PATHINFO_FILENAME",    PH7_PATHINFO_FILENAME_Const },` |
-|      - | 2010 | `	/* ASSERT_QUIET_EVAL was REMOVED in php 8.0: referencing it is an Error there */` |
-|      - | 2011 | `	{"SEEK_SET",             PH7_SEEK_SET_Const      },` |
-|      - | 2012 | `	{"SEEK_CUR",             PH7_SEEK_CUR_Const      },` |
-|      - | 2013 | `	{"SEEK_END",             PH7_SEEK_END_Const      },` |
-|      - | 2014 | `	{"LOCK_EX",              PH7_LOCK_EX_Const      },` |
-|      - | 2015 | `	{"LOCK_SH",              PH7_LOCK_SH_Const      },` |
-|      - | 2016 | `	{"LOCK_NB",              PH7_LOCK_NB_Const      },` |
-|      - | 2017 | `	{"LOCK_UN",              PH7_LOCK_UN_Const      },` |
-|      - | 2018 | `	{"FILE_USE_INCLUDE_PATH", PH7_FILE_USE_INCLUDE_PATH_Const},` |
-|      - | 2019 | `	{"FILE_IGNORE_NEW_LINES", PH7_FILE_IGNORE_NEW_LINES_Const},` |
-|      - | 2020 | `	{"FILE_SKIP_EMPTY_LINES", PH7_FILE_SKIP_EMPTY_LINES_Const},` |
-|      - | 2021 | `	{"FILE_APPEND",           PH7_FILE_APPEND_Const },` |
-|      - | 2022 | `	{"SCANDIR_SORT_ASCENDING", PH7_SCANDIR_SORT_ASCENDING_Const  },` |
-|      - | 2023 | `	{"SCANDIR_SORT_DESCENDING",PH7_SCANDIR_SORT_DESCENDING_Const },` |
-|      - | 2024 | `	{"SCANDIR_SORT_NONE",     PH7_SCANDIR_SORT_NONE_Const },` |
-|      - | 2025 | `	{"GLOB_MARK",            PH7_GLOB_MARK_Const    },` |
-|      - | 2026 | `	{"GLOB_NOSORT",          PH7_GLOB_NOSORT_Const  },` |
-|      - | 2027 | `	{"GLOB_NOCHECK",         PH7_GLOB_NOCHECK_Const },` |
-|      - | 2028 | `	{"GLOB_NOESCAPE",        PH7_GLOB_NOESCAPE_Const},` |
-|      - | 2029 | `	{"GLOB_BRACE",           PH7_GLOB_BRACE_Const   },` |
-|      - | 2030 | `	{"GLOB_ONLYDIR",         PH7_GLOB_ONLYDIR_Const },` |
-|      - | 2031 | `	{"GLOB_ERR",             PH7_GLOB_ERR_Const     },` |
-|      - | 2032 | `	{"STDIN",                PH7_STDIN_Const        },` |
-|      - | 2033 | `	{"stdin",                PH7_STDIN_Const        },` |
-|      - | 2034 | `	{"STDOUT",               PH7_STDOUT_Const       },` |
-|      - | 2035 | `	{"stdout",               PH7_STDOUT_Const       },` |
-|      - | 2036 | `	{"STDERR",               PH7_STDERR_Const       },` |
-|      - | 2037 | `	{"stderr",               PH7_STDERR_Const       },` |
-|      - | 2038 | `	{"INI_SCANNER_NORMAL",   PH7_INI_SCANNER_NORMAL_Const },` |
-|      - | 2039 | `	{"INI_SCANNER_RAW",      PH7_INI_SCANNER_RAW_Const    },` |
-|      - | 2040 | `	{"EXTR_OVERWRITE",       PH7_EXTR_OVERWRITE_Const     },` |
-|      - | 2041 | `	{"EXTR_SKIP",            PH7_EXTR_SKIP_Const        },` |
-|      - | 2042 | `	{"EXTR_PREFIX_SAME",     PH7_EXTR_PREFIX_SAME_Const },` |
-|      - | 2043 | `	{"EXTR_PREFIX_ALL",      PH7_EXTR_PREFIX_ALL_Const  },` |
-|      - | 2044 | `	{"EXTR_PREFIX_INVALID",  PH7_EXTR_PREFIX_INVALID_Const },` |
-|      - | 2045 | `	{"EXTR_IF_EXISTS",       PH7_EXTR_IF_EXISTS_Const   },` |
-|      - | 2046 | `	{"EXTR_PREFIX_IF_EXISTS",PH7_EXTR_PREFIX_IF_EXISTS_Const},` |
-|      - | 2047 | `	{"JSON_HEX_TAG",           PH7_JSON_HEX_TAG_Const},` |
-|      - | 2048 | `	{"JSON_HEX_AMP",           PH7_JSON_HEX_AMP_Const},` |
-|      - | 2049 | `	{"JSON_HEX_APOS",          PH7_JSON_HEX_APOS_Const},` |
-|      - | 2050 | `	{"JSON_HEX_QUOT",          PH7_JSON_HEX_QUOT_Const},` |
-|      - | 2051 | `	{"JSON_FORCE_OBJECT",      PH7_JSON_FORCE_OBJECT_Const},` |
-|      - | 2052 | `	{"JSON_NUMERIC_CHECK",     PH7_JSON_NUMERIC_CHECK_Const},` |
-|      - | 2053 | `	{"JSON_BIGINT_AS_STRING",  PH7_JSON_BIGINT_AS_STRING_Const},` |
-|      - | 2054 | `	{"JSON_PRETTY_PRINT",      PH7_JSON_PRETTY_PRINT_Const},` |
-|      - | 2055 | `	{"JSON_UNESCAPED_SLASHES", PH7_JSON_UNESCAPED_SLASHES_Const},` |
-|      - | 2056 | `	{"JSON_UNESCAPED_UNICODE", PH7_JSON_UNESCAPED_UNICODE_Const},` |
-|      - | 2057 | `	{"JSON_THROW_ON_ERROR",    PH7_JSON_THROW_ON_ERROR_Const},` |
-|      - | 2058 | `	{"JSON_ERROR_NONE",        PH7_JSON_ERROR_NONE_Const},` |
-|      - | 2059 | `	{"JSON_ERROR_DEPTH",       PH7_JSON_ERROR_DEPTH_Const},` |
-|      - | 2060 | `	{"JSON_ERROR_STATE_MISMATCH", PH7_JSON_ERROR_STATE_MISMATCH_Const},` |
-|      - | 2061 | `	{"JSON_ERROR_CTRL_CHAR", PH7_JSON_ERROR_CTRL_CHAR_Const},` |
-|      - | 2062 | `	{"JSON_ERROR_SYNTAX",    PH7_JSON_ERROR_SYNTAX_Const},` |
-|      - | 2063 | `	{"JSON_ERROR_UTF8",      PH7_JSON_ERROR_UTF8_Const},` |
-|      - | 2064 | `	{"JSON_ERROR_NON_BACKED_ENUM", PH7_JSON_ERROR_NON_BACKED_ENUM_Const},` |
-|      - | 2065 | `	{"JSON_ERROR_INF_OR_NAN", PH7_JSON_ERROR_INF_OR_NAN_Const},` |
-|      - | 2066 | ``	/* `self`, `parent` and `static` are KEYWORDS in php, not constants: using one as a bare`` |
-|      - | 2067 | ``	 * word is an "Undefined constant" Error (or a parse error for `static`). PH7 registered`` |
-|      - | 2068 | `	 * them as constants that quietly expanded to the class name / NULL, so a typo'd bare` |
-|      - | 2069 | ``	 * word silently produced a value. The `self::`/`parent::`/`static::` forms are handled`` |
-|      - | 2070 | ``	 * by the `::` compile path and do not go through the constant table. */`` |
-|      - | 2071 | `	{"__CLASS__",            PH7_class_magic_Const  }` |
-|      - | 2072 | `};` |
-|      - | 2073 | `/*` |
-|      - | 2074 | ` * Register the built-in constants defined above.` |
-|      - | 2075 | ` */` |
-|   3396 | 2076 | `PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm)` |
-|      5 | 2077 | `{` |
-|      - | 2078 | `	sxu32 n;` |
-|      - | 2079 | `	/*` |
-|      - | 2080 | `	 * Note that all built-in constants have access to the ph7 virtual machine` |
-|      - | 2081 | `	 * that trigger the constant invocation as their private data.` |
-|      - | 2082 | `	 */` |
-| 808253 | 2083 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltIn) ; ++n ){` |
-| 804857 | 2084 | `		ph7_create_constant(&(*pVm),aBuiltIn[n].zName,aBuiltIn[n].xExpand,&(*pVm));` |
-| 402431 | 2085 | `	}` |
-|   3401 | 2086 | `}` |
+|      - | 1777 | ` * PASSWORD_BCRYPT_DEFAULT_COST` |
+|      - | 1778 | ` *  The default bcrypt work factor used by password_hash() (currently 12).` |
+|      - | 1779 | ` */` |
+|      2 | 1780 | `static void PH7_PASSWORD_COST_Const(ph7_value *pVal,void *pUnused)` |
+|      1 | 1781 | `{` |
+|      1 | 1782 | `	SXUNUSED(pUnused);` |
+|      3 | 1783 | `	ph7_value_int(pVal,12);` |
+|      3 | 1784 | `}` |
+|      - | 1785 | `/*` |
+|      - | 1786 | ` * filter_var() filter and flag identifiers (the ext/filter constants). Values` |
+|      - | 1787 | ` * match PHP 8.5. One tiny int-returning callback per constant, generated by a` |
+|      - | 1788 | ` * local macro to keep the ~25 near-identical definitions DRY.` |
+|      - | 1789 | ` */` |
+|      - | 1790 | `#define PH7_FILTER_INT_CONST(Name,Val) \` |
+|      - | 1791 | `	static void PH7_##Name##_Const(ph7_value *pVal,void *pUnused){ \` |
+|      - | 1792 | `		SXUNUSED(pUnused); ph7_value_int(pVal,Val); \` |
+|      - | 1793 | `	}` |
+|     10 | 1794 | `PH7_FILTER_INT_CONST(FILTER_DEFAULT,516)` |
+|     17 | 1795 | `PH7_FILTER_INT_CONST(FILTER_UNSAFE_RAW,516)` |
+|     64 | 1796 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_INT,257)` |
+|     29 | 1797 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_BOOLEAN,258)` |
+|     69 | 1798 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_FLOAT,259)` |
+|      8 | 1799 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_REGEXP,272)` |
+|     11 | 1800 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_DOMAIN,277)` |
+|     15 | 1801 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_URL,273)` |
+|     28 | 1802 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_EMAIL,274)` |
+|     25 | 1803 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_IP,275)` |
+|     11 | 1804 | `PH7_FILTER_INT_CONST(FILTER_VALIDATE_MAC,276)` |
+|      3 | 1805 | `PH7_FILTER_INT_CONST(FILTER_SANITIZE_NUMBER_INT,519)` |
+|      5 | 1806 | `PH7_FILTER_INT_CONST(FILTER_SANITIZE_NUMBER_FLOAT,520)` |
+|     13 | 1807 | `PH7_FILTER_INT_CONST(FILTER_SANITIZE_SPECIAL_CHARS,515)` |
+|     25 | 1808 | `PH7_FILTER_INT_CONST(FILTER_SANITIZE_FULL_SPECIAL_CHARS,522)` |
+|      3 | 1809 | `PH7_FILTER_INT_CONST(FILTER_SANITIZE_EMAIL,517)` |
+|      3 | 1810 | `PH7_FILTER_INT_CONST(FILTER_SANITIZE_URL,518)` |
+|      3 | 1811 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ALLOW_OCTAL,1)` |
+|      3 | 1812 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ALLOW_HEX,2)` |
+|      7 | 1813 | `PH7_FILTER_INT_CONST(FILTER_FLAG_STRIP_LOW,4)` |
+|      5 | 1814 | `PH7_FILTER_INT_CONST(FILTER_FLAG_STRIP_HIGH,8)` |
+|      5 | 1815 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ENCODE_LOW,16)` |
+|      5 | 1816 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ENCODE_HIGH,32)` |
+|      3 | 1817 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ENCODE_AMP,64)` |
+|      3 | 1818 | `PH7_FILTER_INT_CONST(FILTER_FLAG_NO_ENCODE_QUOTES,128)` |
+|      3 | 1819 | `PH7_FILTER_INT_CONST(FILTER_FLAG_STRIP_BACKTICK,512)` |
+|      3 | 1820 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ALLOW_FRACTION,4096)` |
+|     25 | 1821 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ALLOW_THOUSAND,8192)` |
+|      3 | 1822 | `PH7_FILTER_INT_CONST(FILTER_FLAG_ALLOW_SCIENTIFIC,16384)` |
+|      5 | 1823 | `PH7_FILTER_INT_CONST(FILTER_FLAG_IPV4,1048576)` |
+|      3 | 1824 | `PH7_FILTER_INT_CONST(FILTER_FLAG_IPV6,2097152)` |
+|     14 | 1825 | `PH7_FILTER_INT_CONST(FILTER_NULL_ON_FAILURE,134217728)` |
+|      - | 1826 | `/* filter_input() source selectors (php values; SESSION/REQUEST are undefined in 8.5) */` |
+|      5 | 1827 | `PH7_FILTER_INT_CONST(INPUT_POST,0)` |
+|      8 | 1828 | `PH7_FILTER_INT_CONST(INPUT_GET,1)` |
+|      3 | 1829 | `PH7_FILTER_INT_CONST(INPUT_COOKIE,2)` |
+|      3 | 1830 | `PH7_FILTER_INT_CONST(INPUT_ENV,4)` |
+|     21 | 1831 | `PH7_FILTER_INT_CONST(INPUT_SERVER,5)` |
+|      - | 1832 | `/*` |
+|      - | 1833 | ` * Table of built-in constants.` |
+|      - | 1834 | ` */` |
+|      - | 1835 | `static const ph7_builtin_constant aBuiltIn[] = {` |
+|      - | 1836 | `	{"PH7_VERSION",          PH7_VER_Const      },` |
+|      - | 1837 | `	{"PH7_ENGINE",           PH7_VER_Const      },` |
+|      - | 1838 | `	{"__PH7__",              PH7_VER_Const      },` |
+|      - | 1839 | `	{"PHP_VERSION",          PH7_PHPVerConst    },` |
+|      - | 1840 | `	{"PHP_MAJOR_VERSION",    PH7_PHPMajorConst  },` |
+|      - | 1841 | `	{"PHP_MINOR_VERSION",    PH7_PHPMinorConst  },` |
+|      - | 1842 | `	{"PHP_RELEASE_VERSION",  PH7_PHPReleaseConst},` |
+|      - | 1843 | `	{"PHP_EXTRA_VERSION",    PH7_PHPExtraConst  },` |
+|      - | 1844 | `	{"PHP_VERSION_ID",       PH7_PHPVerIdConst  },` |
+|      - | 1845 | `	{"PHP_OS",               PH7_OS_Const       },` |
+|      - | 1846 | `	{"PHP_OS_FAMILY",        PH7_OS_FAMILY_Const},` |
+|      - | 1847 | `	{"PHP_SAPI",             PH7_SAPI_Const     },` |
+|      - | 1848 | `	{"PHP_EOL",              PH7_EOL_Const      },` |
+|      - | 1849 | `	{"PHP_SESSION_DISABLED", PH7_PHP_SESSION_DISABLED_Const },` |
+|      - | 1850 | `	{"PHP_SESSION_NONE",     PH7_PHP_SESSION_NONE_Const },` |
+|      - | 1851 | `	{"PHP_SESSION_ACTIVE",   PH7_PHP_SESSION_ACTIVE_Const },` |
+|      - | 1852 | `	{"INI_USER",             PH7_INI_USER_Const },` |
+|      - | 1853 | `	{"INI_PERDIR",           PH7_INI_PERDIR_Const },` |
+|      - | 1854 | `	{"INI_SYSTEM",           PH7_INI_SYSTEM_Const },` |
+|      - | 1855 | `	{"INI_ALL",              PH7_INI_ALL_Const },` |
+|      - | 1856 | `	{"MB_CASE_UPPER",        PH7_MB_CASE_UPPER_Const },` |
+|      - | 1857 | `	{"MB_CASE_LOWER",        PH7_MB_CASE_LOWER_Const },` |
+|      - | 1858 | `	{"MB_CASE_TITLE",        PH7_MB_CASE_TITLE_Const },` |
+|      - | 1859 | `	{"PASSWORD_BCRYPT",      PH7_PASSWORD_BCRYPT_Const },` |
+|      - | 1860 | `	{"PASSWORD_DEFAULT",     PH7_PASSWORD_BCRYPT_Const },` |
+|      - | 1861 | `	{"PASSWORD_BCRYPT_DEFAULT_COST", PH7_PASSWORD_COST_Const },` |
+|      - | 1862 | `	{"FILTER_DEFAULT",              PH7_FILTER_DEFAULT_Const },` |
+|      - | 1863 | `	{"FILTER_UNSAFE_RAW",           PH7_FILTER_UNSAFE_RAW_Const },` |
+|      - | 1864 | `	{"FILTER_VALIDATE_INT",         PH7_FILTER_VALIDATE_INT_Const },` |
+|      - | 1865 | `	{"FILTER_VALIDATE_BOOLEAN",     PH7_FILTER_VALIDATE_BOOLEAN_Const },` |
+|      - | 1866 | `	{"FILTER_VALIDATE_BOOL",        PH7_FILTER_VALIDATE_BOOLEAN_Const },` |
+|      - | 1867 | `	{"FILTER_VALIDATE_FLOAT",       PH7_FILTER_VALIDATE_FLOAT_Const },` |
+|      - | 1868 | `	{"FILTER_VALIDATE_REGEXP",      PH7_FILTER_VALIDATE_REGEXP_Const },` |
+|      - | 1869 | `	{"FILTER_VALIDATE_DOMAIN",      PH7_FILTER_VALIDATE_DOMAIN_Const },` |
+|      - | 1870 | `	{"FILTER_VALIDATE_URL",         PH7_FILTER_VALIDATE_URL_Const },` |
+|      - | 1871 | `	{"FILTER_VALIDATE_EMAIL",       PH7_FILTER_VALIDATE_EMAIL_Const },` |
+|      - | 1872 | `	{"FILTER_VALIDATE_IP",          PH7_FILTER_VALIDATE_IP_Const },` |
+|      - | 1873 | `	{"FILTER_VALIDATE_MAC",         PH7_FILTER_VALIDATE_MAC_Const },` |
+|      - | 1874 | `	{"FILTER_SANITIZE_NUMBER_INT",  PH7_FILTER_SANITIZE_NUMBER_INT_Const },` |
+|      - | 1875 | `	{"FILTER_SANITIZE_NUMBER_FLOAT",PH7_FILTER_SANITIZE_NUMBER_FLOAT_Const },` |
+|      - | 1876 | `	{"FILTER_SANITIZE_SPECIAL_CHARS",PH7_FILTER_SANITIZE_SPECIAL_CHARS_Const },` |
+|      - | 1877 | `	{"FILTER_SANITIZE_FULL_SPECIAL_CHARS",PH7_FILTER_SANITIZE_FULL_SPECIAL_CHARS_Const },` |
+|      - | 1878 | `	{"FILTER_SANITIZE_EMAIL",       PH7_FILTER_SANITIZE_EMAIL_Const },` |
+|      - | 1879 | `	{"FILTER_SANITIZE_URL",         PH7_FILTER_SANITIZE_URL_Const },` |
+|      - | 1880 | `	{"FILTER_FLAG_ALLOW_OCTAL",     PH7_FILTER_FLAG_ALLOW_OCTAL_Const },` |
+|      - | 1881 | `	{"FILTER_FLAG_ALLOW_HEX",       PH7_FILTER_FLAG_ALLOW_HEX_Const },` |
+|      - | 1882 | `	{"FILTER_FLAG_STRIP_LOW",       PH7_FILTER_FLAG_STRIP_LOW_Const },` |
+|      - | 1883 | `	{"FILTER_FLAG_STRIP_HIGH",      PH7_FILTER_FLAG_STRIP_HIGH_Const },` |
+|      - | 1884 | `	{"FILTER_FLAG_ENCODE_LOW",      PH7_FILTER_FLAG_ENCODE_LOW_Const },` |
+|      - | 1885 | `	{"FILTER_FLAG_ENCODE_HIGH",     PH7_FILTER_FLAG_ENCODE_HIGH_Const },` |
+|      - | 1886 | `	{"FILTER_FLAG_ENCODE_AMP",      PH7_FILTER_FLAG_ENCODE_AMP_Const },` |
+|      - | 1887 | `	{"FILTER_FLAG_NO_ENCODE_QUOTES",PH7_FILTER_FLAG_NO_ENCODE_QUOTES_Const },` |
+|      - | 1888 | `	{"FILTER_FLAG_STRIP_BACKTICK",  PH7_FILTER_FLAG_STRIP_BACKTICK_Const },` |
+|      - | 1889 | `	{"FILTER_FLAG_ALLOW_FRACTION",  PH7_FILTER_FLAG_ALLOW_FRACTION_Const },` |
+|      - | 1890 | `	{"FILTER_FLAG_ALLOW_THOUSAND",  PH7_FILTER_FLAG_ALLOW_THOUSAND_Const },` |
+|      - | 1891 | `	{"FILTER_FLAG_ALLOW_SCIENTIFIC",PH7_FILTER_FLAG_ALLOW_SCIENTIFIC_Const },` |
+|      - | 1892 | `	{"FILTER_FLAG_IPV4",            PH7_FILTER_FLAG_IPV4_Const },` |
+|      - | 1893 | `	{"FILTER_FLAG_IPV6",            PH7_FILTER_FLAG_IPV6_Const },` |
+|      - | 1894 | `	{"FILTER_NULL_ON_FAILURE",      PH7_FILTER_NULL_ON_FAILURE_Const },` |
+|      - | 1895 | `	{"INPUT_POST",                  PH7_INPUT_POST_Const },` |
+|      - | 1896 | `	{"INPUT_GET",                   PH7_INPUT_GET_Const },` |
+|      - | 1897 | `	{"INPUT_COOKIE",                PH7_INPUT_COOKIE_Const },` |
+|      - | 1898 | `	{"INPUT_ENV",                   PH7_INPUT_ENV_Const },` |
+|      - | 1899 | `	{"INPUT_SERVER",                PH7_INPUT_SERVER_Const },` |
+|      - | 1900 | `	{"CAL_GREGORIAN",        PH7_CAL_GREGORIAN_Const },` |
+|      - | 1901 | `	{"PHP_INT_MAX",          PH7_INTMAX_Const   },` |
+|      - | 1902 | `	{"MAXINT",               PH7_INTMAX_Const   },` |
+|      - | 1903 | `	{"PHP_INT_MIN",          PH7_INTMIN_Const   },` |
+|      - | 1904 | `	{"PHP_INT_SIZE",         PH7_INTSIZE_Const  },` |
+|      - | 1905 | `	{"PHP_FLOAT_EPSILON",    PH7_FLOATEPSILON_Const },` |
+|      - | 1906 | `	{"PHP_FLOAT_MAX",        PH7_FLOATMAX_Const },` |
+|      - | 1907 | `	{"PHP_FLOAT_MIN",        PH7_FLOATMIN_Const },` |
+|      - | 1908 | `	{"PHP_FLOAT_DIG",        PH7_FLOATDIG_Const },` |
+|      - | 1909 | `	{"PATH_SEPARATOR",       PH7_PATHSEP_Const  },` |
+|      - | 1910 | `	{"DIRECTORY_SEPARATOR",  PH7_DIRSEP_Const   },` |
+|      - | 1911 | `	{"DIR_SEP",              PH7_DIRSEP_Const   },` |
+|      - | 1912 | `	{"__TIME__",             PH7_TIME_Const     },` |
+|      - | 1913 | `	{"__DATE__",             PH7_DATE_Const     },` |
+|      - | 1914 | `	{"__FILE__",             PH7_FILE_Const     },` |
+|      - | 1915 | `	{"__DIR__",              PH7_DIR_Const      },` |
+|      - | 1916 | `	{"PHP_SHLIB_SUFFIX",     PH7_PHP_SHLIB_SUFFIX_Const },` |
+|      - | 1917 | `	{"E_ERROR",              PH7_E_ERROR_Const  },` |
+|      - | 1918 | `	{"E_WARNING",            PH7_E_WARNING_Const},` |
+|      - | 1919 | `	{"E_PARSE",              PH7_E_PARSE_Const  },` |
+|      - | 1920 | `	{"E_NOTICE",             PH7_E_NOTICE_Const },` |
+|      - | 1921 | `	{"E_CORE_ERROR",         PH7_E_CORE_ERROR_Const     },` |
+|      - | 1922 | `	{"E_CORE_WARNING",       PH7_E_CORE_WARNING_Const   },` |
+|      - | 1923 | `	{"E_COMPILE_ERROR",      PH7_E_COMPILE_ERROR_Const  },` |
+|      - | 1924 | `	{"E_COMPILE_WARNING",    PH7_E_COMPILE_WARNING_Const  },` |
+|      - | 1925 | `	{"E_USER_ERROR",         PH7_E_USER_ERROR_Const    },` |
+|      - | 1926 | `	{"E_USER_WARNING",       PH7_E_USER_WARNING_Const  },` |
+|      - | 1927 | `	{"E_USER_NOTICE ",       PH7_E_USER_NOTICE_Const   },` |
+|      - | 1928 | `	{"E_RECOVERABLE_ERROR",  PH7_E_RECOVERABLE_ERROR_Const  },` |
+|      - | 1929 | `	{"E_DEPRECATED",         PH7_E_DEPRECATED_Const    },` |
+|      - | 1930 | `	{"E_USER_DEPRECATED",    PH7_E_USER_DEPRECATED_Const  },` |
+|      - | 1931 | `	{"E_ALL",                PH7_E_ALL_Const              },` |
+|      - | 1932 | `	{"CASE_LOWER",           PH7_CASE_LOWER_Const   },` |
+|      - | 1933 | `	{"CASE_UPPER",           PH7_CASE_UPPER_Const   },` |
+|      - | 1934 | `	{"STR_PAD_LEFT",         PH7_STR_PAD_LEFT_Const },` |
+|      - | 1935 | `	{"STR_PAD_RIGHT",        PH7_STR_PAD_RIGHT_Const},` |
+|      - | 1936 | `	{"STR_PAD_BOTH",         PH7_STR_PAD_BOTH_Const },` |
+|      - | 1937 | `	{"COUNT_NORMAL",         PH7_COUNT_NORMAL_Const },` |
+|      - | 1938 | `	{"COUNT_RECURSIVE",      PH7_COUNT_RECURSIVE_Const },` |
+|      - | 1939 | `	{"SORT_ASC",             PH7_SORT_ASC_Const     },` |
+|      - | 1940 | `	{"SORT_DESC",            PH7_SORT_DESC_Const    },` |
+|      - | 1941 | `	{"SORT_REGULAR",         PH7_SORT_REG_Const     },` |
+|      - | 1942 | `	{"SORT_NUMERIC",         PH7_SORT_NUMERIC_Const },` |
+|      - | 1943 | `	{"SORT_STRING",          PH7_SORT_STRING_Const  },` |
+|      - | 1944 | `	{"SORT_LOCALE_STRING",   PH7_SORT_LOCALE_STRING_Const },` |
+|      - | 1945 | `	{"SORT_NATURAL",         PH7_SORT_NATURAL_Const },` |
+|      - | 1946 | `	{"SORT_FLAG_CASE",       PH7_SORT_FLAG_CASE_Const },` |
+|      - | 1947 | `	{"PHP_ROUND_HALF_DOWN",  PH7_PHP_ROUND_HALF_DOWN_Const },` |
+|      - | 1948 | `	{"PHP_ROUND_HALF_EVEN",  PH7_PHP_ROUND_HALF_EVEN_Const },` |
+|      - | 1949 | `	{"PHP_ROUND_HALF_UP",    PH7_PHP_ROUND_HALF_UP_Const   },` |
+|      - | 1950 | `	{"PHP_ROUND_HALF_ODD",   PH7_PHP_ROUND_HALF_ODD_Const  },` |
+|      - | 1951 | `	{"DEBUG_BACKTRACE_IGNORE_ARGS", PH7_DBIA_Const  },` |
+|      - | 1952 | `	{"DEBUG_BACKTRACE_PROVIDE_OBJECT",PH7_DBPO_Const},` |
+|      - | 1953 | `#ifdef PH7_ENABLE_MATH_FUNC` |
+|      - | 1954 | `	{"M_PI",                 PH7_M_PI_Const         },` |
+|      - | 1955 | `	{"M_E",                  PH7_M_E_Const          },` |
+|      - | 1956 | `	{"M_LOG2E",              PH7_M_LOG2E_Const      },` |
+|      - | 1957 | `	{"M_LOG10E",             PH7_M_LOG10E_Const     },` |
+|      - | 1958 | `	{"M_LN2",                PH7_M_LN2_Const        },` |
+|      - | 1959 | `	{"M_LN10",               PH7_M_LN10_Const       },` |
+|      - | 1960 | `	{"M_PI_2",               PH7_M_PI_2_Const       },` |
+|      - | 1961 | `	{"M_PI_4",               PH7_M_PI_4_Const       },` |
+|      - | 1962 | `	{"M_1_PI",               PH7_M_1_PI_Const       },` |
+|      - | 1963 | `	{"M_2_PI",               PH7_M_2_PI_Const       },` |
+|      - | 1964 | `	{"M_SQRTPI",             PH7_M_SQRTPI_Const     },` |
+|      - | 1965 | `	{"M_2_SQRTPI",           PH7_M_2_SQRTPI_Const   },` |
+|      - | 1966 | `	{"M_SQRT2",              PH7_M_SQRT2_Const      },` |
+|      - | 1967 | `	{"M_SQRT3",              PH7_M_SQRT3_Const      },` |
+|      - | 1968 | `	{"M_SQRT1_2",            PH7_M_SQRT1_2_Const    },` |
+|      - | 1969 | `	{"M_LNPI",               PH7_M_LNPI_Const       },` |
+|      - | 1970 | `	{"M_EULER",              PH7_M_EULER_Const      },` |
+|      - | 1971 | `	{"NAN",                  PH7_NAN_Const          },` |
+|      - | 1972 | `	{"INF",                  PH7_INF_Const          },` |
+|      - | 1973 | `#endif /* PH7_ENABLE_MATH_FUNC */` |
+|      - | 1974 | `	{"DATE_ATOM",            PH7_DATE_ATOM_Const    },` |
+|      - | 1975 | `	{"DATE_COOKIE",          PH7_DATE_COOKIE_Const  },` |
+|      - | 1976 | `	{"DATE_ISO8601",         PH7_DATE_ISO8601_Const },` |
+|      - | 1977 | `	{"DATE_RFC822",          PH7_DATE_RFC822_Const  },` |
+|      - | 1978 | `	{"DATE_RFC850",          PH7_DATE_RFC850_Const  },` |
+|      - | 1979 | `	{"DATE_RFC1036",         PH7_DATE_RFC1036_Const },` |
+|      - | 1980 | `	{"DATE_RFC1123",         PH7_DATE_RFC1123_Const },` |
+|      - | 1981 | `	{"DATE_RFC2822",         PH7_DATE_RFC2822_Const },` |
+|      - | 1982 | `	{"DATE_RFC3339",         PH7_DATE_ATOM_Const    },` |
+|      - | 1983 | `	{"DATE_RSS",             PH7_DATE_RSS_Const     },` |
+|      - | 1984 | `	{"DATE_W3C",             PH7_DATE_W3C_Const     },` |
+|      - | 1985 | `	{"ENT_COMPAT",           PH7_ENT_COMPAT_Const   },` |
+|      - | 1986 | `	{"ENT_QUOTES",           PH7_ENT_QUOTES_Const   },` |
+|      - | 1987 | `	{"ENT_NOQUOTES",         PH7_ENT_NOQUOTES_Const },` |
+|      - | 1988 | `	{"ENT_IGNORE",           PH7_ENT_IGNORE_Const   },` |
+|      - | 1989 | `	{"ENT_SUBSTITUTE",       PH7_ENT_SUBSTITUTE_Const},` |
+|      - | 1990 | `	{"ENT_DISALLOWED",       PH7_ENT_DISALLOWED_Const},` |
+|      - | 1991 | `	{"ENT_HTML401",          PH7_ENT_HTML401_Const  },` |
+|      - | 1992 | `	{"ENT_XML1",             PH7_ENT_XML1_Const     },` |
+|      - | 1993 | `	{"ENT_XHTML",            PH7_ENT_XHTML_Const    },` |
+|      - | 1994 | `	{"ENT_HTML5",            PH7_ENT_HTML5_Const    },` |
+|      - | 1995 | `	{"ISO-8859-1",           PH7_ISO88591_Const     },` |
+|      - | 1996 | `	{"ISO_8859_1",           PH7_ISO88591_Const     },` |
+|      - | 1997 | `	{"UTF-8",                PH7_UTF8_Const         },` |
+|      - | 1998 | `	{"UTF8",                 PH7_UTF8_Const         },` |
+|      - | 1999 | `	{"HTML_ENTITIES",        PH7_HTML_ENTITIES_Const},` |
+|      - | 2000 | `	{"HTML_SPECIALCHARS",    PH7_HTML_SPECIALCHARS_Const },` |
+|      - | 2001 | `	{"PHP_URL_SCHEME",       PH7_PHP_URL_SCHEME_Const},` |
+|      - | 2002 | `	{"PHP_URL_HOST",         PH7_PHP_URL_HOST_Const},` |
+|      - | 2003 | `	{"PHP_URL_PORT",         PH7_PHP_URL_PORT_Const},` |
+|      - | 2004 | `	{"PHP_URL_USER",         PH7_PHP_URL_USER_Const},` |
+|      - | 2005 | `	{"PHP_URL_PASS",         PH7_PHP_URL_PASS_Const},` |
+|      - | 2006 | `	{"PHP_URL_PATH",         PH7_PHP_URL_PATH_Const},` |
+|      - | 2007 | `	{"PHP_URL_QUERY",        PH7_PHP_URL_QUERY_Const},` |
+|      - | 2008 | `	{"PHP_URL_FRAGMENT",     PH7_PHP_URL_FRAGMENT_Const},` |
+|      - | 2009 | `	{"PHP_QUERY_RFC1738",    PH7_PHP_QUERY_RFC1738_Const},` |
+|      - | 2010 | `	{"PHP_QUERY_RFC3986",    PH7_PHP_QUERY_RFC3986_Const},` |
+|      - | 2011 | `	{"FNM_NOESCAPE",         PH7_FNM_NOESCAPE_Const },` |
+|      - | 2012 | `	{"FNM_PATHNAME",         PH7_FNM_PATHNAME_Const },` |
+|      - | 2013 | `	{"FNM_PERIOD",           PH7_FNM_PERIOD_Const   },` |
+|      - | 2014 | `	{"FNM_CASEFOLD",         PH7_FNM_CASEFOLD_Const },` |
+|      - | 2015 | `	{"PATHINFO_DIRNAME",     PH7_PATHINFO_DIRNAME_Const  },` |
+|      - | 2016 | `	{"PATHINFO_BASENAME",    PH7_PATHINFO_BASENAME_Const },` |
+|      - | 2017 | `	{"PATHINFO_EXTENSION",   PH7_PATHINFO_EXTENSION_Const},` |
+|      - | 2018 | `	{"PATHINFO_FILENAME",    PH7_PATHINFO_FILENAME_Const },` |
+|      - | 2019 | `	{"PATHINFO_ALL",         PH7_PATHINFO_ALL_Const },` |
+|      - | 2020 | `	/* ASSERT_QUIET_EVAL was REMOVED in php 8.0: referencing it is an Error there */` |
+|      - | 2021 | `	{"SEEK_SET",             PH7_SEEK_SET_Const      },` |
+|      - | 2022 | `	{"SEEK_CUR",             PH7_SEEK_CUR_Const      },` |
+|      - | 2023 | `	{"SEEK_END",             PH7_SEEK_END_Const      },` |
+|      - | 2024 | `	{"LOCK_EX",              PH7_LOCK_EX_Const      },` |
+|      - | 2025 | `	{"LOCK_SH",              PH7_LOCK_SH_Const      },` |
+|      - | 2026 | `	{"LOCK_NB",              PH7_LOCK_NB_Const      },` |
+|      - | 2027 | `	{"LOCK_UN",              PH7_LOCK_UN_Const      },` |
+|      - | 2028 | `	{"FILE_USE_INCLUDE_PATH", PH7_FILE_USE_INCLUDE_PATH_Const},` |
+|      - | 2029 | `	{"FILE_IGNORE_NEW_LINES", PH7_FILE_IGNORE_NEW_LINES_Const},` |
+|      - | 2030 | `	{"FILE_SKIP_EMPTY_LINES", PH7_FILE_SKIP_EMPTY_LINES_Const},` |
+|      - | 2031 | `	{"FILE_APPEND",           PH7_FILE_APPEND_Const },` |
+|      - | 2032 | `	{"SCANDIR_SORT_ASCENDING", PH7_SCANDIR_SORT_ASCENDING_Const  },` |
+|      - | 2033 | `	{"SCANDIR_SORT_DESCENDING",PH7_SCANDIR_SORT_DESCENDING_Const },` |
+|      - | 2034 | `	{"SCANDIR_SORT_NONE",     PH7_SCANDIR_SORT_NONE_Const },` |
+|      - | 2035 | `	{"GLOB_MARK",            PH7_GLOB_MARK_Const    },` |
+|      - | 2036 | `	{"GLOB_NOSORT",          PH7_GLOB_NOSORT_Const  },` |
+|      - | 2037 | `	{"GLOB_NOCHECK",         PH7_GLOB_NOCHECK_Const },` |
+|      - | 2038 | `	{"GLOB_NOESCAPE",        PH7_GLOB_NOESCAPE_Const},` |
+|      - | 2039 | `	{"GLOB_BRACE",           PH7_GLOB_BRACE_Const   },` |
+|      - | 2040 | `	{"GLOB_ONLYDIR",         PH7_GLOB_ONLYDIR_Const },` |
+|      - | 2041 | `	{"GLOB_ERR",             PH7_GLOB_ERR_Const     },` |
+|      - | 2042 | `	{"STDIN",                PH7_STDIN_Const        },` |
+|      - | 2043 | `	{"stdin",                PH7_STDIN_Const        },` |
+|      - | 2044 | `	{"STDOUT",               PH7_STDOUT_Const       },` |
+|      - | 2045 | `	{"stdout",               PH7_STDOUT_Const       },` |
+|      - | 2046 | `	{"STDERR",               PH7_STDERR_Const       },` |
+|      - | 2047 | `	{"stderr",               PH7_STDERR_Const       },` |
+|      - | 2048 | `	{"INI_SCANNER_NORMAL",   PH7_INI_SCANNER_NORMAL_Const },` |
+|      - | 2049 | `	{"INI_SCANNER_RAW",      PH7_INI_SCANNER_RAW_Const    },` |
+|      - | 2050 | `	{"EXTR_OVERWRITE",       PH7_EXTR_OVERWRITE_Const     },` |
+|      - | 2051 | `	{"EXTR_SKIP",            PH7_EXTR_SKIP_Const        },` |
+|      - | 2052 | `	{"EXTR_PREFIX_SAME",     PH7_EXTR_PREFIX_SAME_Const },` |
+|      - | 2053 | `	{"EXTR_PREFIX_ALL",      PH7_EXTR_PREFIX_ALL_Const  },` |
+|      - | 2054 | `	{"EXTR_PREFIX_INVALID",  PH7_EXTR_PREFIX_INVALID_Const },` |
+|      - | 2055 | `	{"EXTR_IF_EXISTS",       PH7_EXTR_IF_EXISTS_Const   },` |
+|      - | 2056 | `	{"EXTR_PREFIX_IF_EXISTS",PH7_EXTR_PREFIX_IF_EXISTS_Const},` |
+|      - | 2057 | `	{"JSON_HEX_TAG",           PH7_JSON_HEX_TAG_Const},` |
+|      - | 2058 | `	{"JSON_HEX_AMP",           PH7_JSON_HEX_AMP_Const},` |
+|      - | 2059 | `	{"JSON_HEX_APOS",          PH7_JSON_HEX_APOS_Const},` |
+|      - | 2060 | `	{"JSON_HEX_QUOT",          PH7_JSON_HEX_QUOT_Const},` |
+|      - | 2061 | `	{"JSON_FORCE_OBJECT",      PH7_JSON_FORCE_OBJECT_Const},` |
+|      - | 2062 | `	{"JSON_NUMERIC_CHECK",     PH7_JSON_NUMERIC_CHECK_Const},` |
+|      - | 2063 | `	{"JSON_BIGINT_AS_STRING",  PH7_JSON_BIGINT_AS_STRING_Const},` |
+|      - | 2064 | `	{"JSON_PRETTY_PRINT",      PH7_JSON_PRETTY_PRINT_Const},` |
+|      - | 2065 | `	{"JSON_UNESCAPED_SLASHES", PH7_JSON_UNESCAPED_SLASHES_Const},` |
+|      - | 2066 | `	{"JSON_UNESCAPED_UNICODE", PH7_JSON_UNESCAPED_UNICODE_Const},` |
+|      - | 2067 | `	{"JSON_THROW_ON_ERROR",    PH7_JSON_THROW_ON_ERROR_Const},` |
+|      - | 2068 | `	{"JSON_ERROR_NONE",        PH7_JSON_ERROR_NONE_Const},` |
+|      - | 2069 | `	{"JSON_ERROR_DEPTH",       PH7_JSON_ERROR_DEPTH_Const},` |
+|      - | 2070 | `	{"JSON_ERROR_STATE_MISMATCH", PH7_JSON_ERROR_STATE_MISMATCH_Const},` |
+|      - | 2071 | `	{"JSON_ERROR_CTRL_CHAR", PH7_JSON_ERROR_CTRL_CHAR_Const},` |
+|      - | 2072 | `	{"JSON_ERROR_SYNTAX",    PH7_JSON_ERROR_SYNTAX_Const},` |
+|      - | 2073 | `	{"JSON_ERROR_UTF8",      PH7_JSON_ERROR_UTF8_Const},` |
+|      - | 2074 | `	{"JSON_ERROR_NON_BACKED_ENUM", PH7_JSON_ERROR_NON_BACKED_ENUM_Const},` |
+|      - | 2075 | `	{"JSON_ERROR_INF_OR_NAN", PH7_JSON_ERROR_INF_OR_NAN_Const},` |
+|      - | 2076 | ``	/* `self`, `parent` and `static` are KEYWORDS in php, not constants: using one as a bare`` |
+|      - | 2077 | ``	 * word is an "Undefined constant" Error (or a parse error for `static`). PH7 registered`` |
+|      - | 2078 | `	 * them as constants that quietly expanded to the class name / NULL, so a typo'd bare` |
+|      - | 2079 | ``	 * word silently produced a value. The `self::`/`parent::`/`static::` forms are handled`` |
+|      - | 2080 | ``	 * by the `::` compile path and do not go through the constant table. */`` |
+|      - | 2081 | `	{"__CLASS__",            PH7_class_magic_Const  }` |
+|      - | 2082 | `};` |
+|      - | 2083 | `/*` |
+|      - | 2084 | ` * Register the built-in constants defined above.` |
+|      - | 2085 | ` */` |
+|   3646 | 2086 | `PH7_PRIVATE void PH7_RegisterBuiltInConstant(ph7_vm *pVm)` |
+|      5 | 2087 | `{` |
+|      - | 2088 | `	sxu32 n;` |
+|      - | 2089 | `	/*` |
+|      - | 2090 | `	 * Note that all built-in constants have access to the ph7 virtual machine` |
+|      - | 2091 | `	 * that trigger the constant invocation as their private data.` |
+|      - | 2092 | `	 */` |
+| 871399 | 2093 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltIn) ; ++n ){` |
+| 867753 | 2094 | `		ph7_create_constant(&(*pVm),aBuiltIn[n].zName,aBuiltIn[n].xExpand,&(*pVm));` |
+| 433879 | 2095 | `	}` |
+|   3651 | 2096 | `}` |

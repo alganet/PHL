@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 375/384 lines (97.66%)
+Coverage: 414/423 lines (97.87%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -339,20 +339,20 @@ Coverage: 375/384 lines (97.66%)
 |        - |  329 | ` * has been installed into hHostFunction. A name absent from the hash (e.g. a` |
 |        - |  330 | ` * build without a given extension) is simply skipped.` |
 |        - |  331 | ` */` |
-|     3396 |  332 | `PH7_PRIVATE void VmSetBuiltinArity(ph7_vm *pVm)` |
+|     3646 |  332 | `PH7_PRIVATE void VmSetBuiltinArity(ph7_vm *pVm)` |
 |        5 |  333 | `{` |
 |        - |  334 | `	sxu32 n;` |
-|   920321 |  335 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltinArity) ; ++n ){` |
-|   916925 |  336 | `		const struct VmBuiltinArity *p = &aBuiltinArity[n];` |
-|  1833845 |  337 | `		SyHashEntry *pEntry = SyHashGet(&pVm->hHostFunction,` |
-|   916920 |  338 | `			(const void *)p->zName,SyStrlen(p->zName));` |
-|   916925 |  339 | `		if( pEntry ){` |
-|   916925 |  340 | `			ph7_user_func *pFunc = (ph7_user_func *)pEntry->pUserData;` |
-|   916925 |  341 | `			pFunc->nMinArg  = p->nMin;` |
-|   916925 |  342 | `			pFunc->bAtLeast = p->bAtLeast;` |
-|   458460 |  343 | `		}` |
-|   458465 |  344 | `	}` |
-|     3401 |  345 | `}` |
+|   988071 |  335 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltinArity) ; ++n ){` |
+|   984425 |  336 | `		const struct VmBuiltinArity *p = &aBuiltinArity[n];` |
+|  1968845 |  337 | `		SyHashEntry *pEntry = SyHashGet(&pVm->hHostFunction,` |
+|   984420 |  338 | `			(const void *)p->zName,SyStrlen(p->zName));` |
+|   984425 |  339 | `		if( pEntry ){` |
+|   984425 |  340 | `			ph7_user_func *pFunc = (ph7_user_func *)pEntry->pUserData;` |
+|   984425 |  341 | `			pFunc->nMinArg  = p->nMin;` |
+|   984425 |  342 | `			pFunc->bAtLeast = p->bAtLeast;` |
+|   492210 |  343 | `		}` |
+|   492215 |  344 | `	}` |
+|     3651 |  345 | `}` |
 |        - |  346 | `/*` |
 |        - |  347 | ` * PHP 8.5 parameter signatures for the C builtins, generated offline from` |
 |        - |  348 | ` * a real PHP 8.5 ReflectionFunction dump over PHL's registered function` |
@@ -724,714 +724,781 @@ Coverage: 375/384 lines (97.66%)
 |        - |  714 | `	{ "hrtime", "bool $as_number = false", "array\|int" },` |
 |        - |  715 | `	{ "setcookie", "string $name, string $value = '', array\|int $expires_or_options = 0, string $path = '', string $domain = '', bool $secure = false, bool $httponly = false", "bool" },` |
 |        - |  716 | `	{ "setrawcookie", "string $name, string $value = '', array\|int $expires_or_options = 0, string $path = '', string $domain = '', bool $secure = false, bool $httponly = false", "bool" },` |
-|        - |  717 | `	{ "sha1", "string $string, bool $binary = false", "string" },` |
-|        - |  718 | `	{ "sha1_file", "string $filename, bool $binary = false", "string\|false" },` |
-|        - |  719 | `	{ "shuffle", "array &$array", "true" },` |
-|        - |  720 | `	{ "similar_text", "string $string1, string $string2, &$percent = NULL", "int" },` |
-|        - |  721 | `	{ "sin", "float $num", "float" },` |
-|        - |  722 | `	{ "sinh", "float $num", "float" },` |
-|        - |  723 | `	{ "sizeof", "Countable\|array $value, int $mode = 0", "int" },` |
-|        - |  724 | `	{ "sleep", "int $seconds", "int" },` |
-|        - |  725 | `	{ "sort", "array &$array, int $flags = 0", "true" },` |
-|        - |  726 | `	{ "soundex", "string $string", "string" },` |
-|        - |  727 | `	{ "spl_autoload", "string $class, ?string $file_extensions = NULL", "void" },` |
-|        - |  728 | `	{ "spl_autoload_functions", "", "array" },` |
-|        - |  729 | `	{ "spl_autoload_register", "?callable $callback = NULL, bool $throw = true, bool $prepend = false", "bool" },` |
-|        - |  730 | `	{ "spl_autoload_unregister", "callable $callback", "bool" },` |
-|        - |  731 | `	{ "spl_object_hash", "object $object", "string" },` |
-|        - |  732 | `	{ "spl_object_id", "object $object", "int" },` |
-|        - |  733 | `	{ "sprintf", "string $format, mixed ...$values = ?", "string" },` |
-|        - |  734 | `	{ "sqrt", "float $num", "float" },` |
-|        - |  735 | `	{ "srand", "?int $seed = NULL, int $mode = 0", "void" },` |
-|        - |  736 | `	{ "stat", "string $filename", "array\|false" },` |
-|        - |  737 | `	{ "str_contains", "string $haystack, string $needle", "bool" },` |
-|        - |  738 | `	{ "str_ends_with", "string $haystack, string $needle", "bool" },` |
-|        - |  739 | `	{ "str_getcsv", "string $string, string $separator = ',', string $enclosure = '\"', string $escape = '\\\\'", "array" },` |
-|        - |  740 | `	{ "str_ireplace", "array\|string $search, array\|string $replace, array\|string $subject, &$count = NULL", "array\|string" },` |
-|        - |  741 | `	{ "str_pad", "string $string, int $length, string $pad_string = ' ', int $pad_type = 1", "string" },` |
-|        - |  742 | `	{ "str_repeat", "string $string, int $times", "string" },` |
-|        - |  743 | `	{ "str_replace", "array\|string $search, array\|string $replace, array\|string $subject, &$count = NULL", "array\|string" },` |
-|        - |  744 | `	{ "str_shuffle", "string $string", "string" },` |
-|        - |  745 | `	{ "str_split", "string $string, int $length = 1", "array" },` |
-|        - |  746 | `	{ "str_starts_with", "string $haystack, string $needle", "bool" },` |
-|        - |  747 | `	{ "str_word_count", "string $string, int $format = 0, ?string $characters = NULL", "array\|int" },` |
-|        - |  748 | `	{ "strcasecmp", "string $string1, string $string2", "int" },` |
-|        - |  749 | `	{ "strchr", "string $haystack, string $needle, bool $before_needle = false", "string\|false" },` |
-|        - |  750 | `	{ "strcmp", "string $string1, string $string2", "int" },` |
-|        - |  751 | `	{ "strnatcasecmp", "string $string1, string $string2", "int" },` |
-|        - |  752 | `	{ "strnatcmp", "string $string1, string $string2", "int" },` |
-|        - |  753 | `	{ "strcoll", "string $string1, string $string2", "int" },` |
-|        - |  754 | `	{ "strcspn", "string $string, string $characters, int $offset = 0, ?int $length = NULL", "int" },` |
-|        - |  755 | `	{ "strip_tags", "string $string, array\|string\|null $allowed_tags = NULL", "string" },` |
-|        - |  756 | `	{ "stripos", "string $haystack, string $needle, int $offset = 0", "int\|false" },` |
-|        - |  757 | `	{ "stripslashes", "string $string", "string" },` |
-|        - |  758 | `	{ "stristr", "string $haystack, string $needle, bool $before_needle = false", "string\|false" },` |
-|        - |  759 | `	{ "strlen", "string $string", "int" },` |
-|        - |  760 | `	{ "strncasecmp", "string $string1, string $string2, int $length", "int" },` |
-|        - |  761 | `	{ "strncmp", "string $string1, string $string2, int $length", "int" },` |
-|        - |  762 | `	{ "strpbrk", "string $string, string $characters", "string\|false" },` |
-|        - |  763 | `	{ "strpos", "string $haystack, string $needle, int $offset = 0", "int\|false" },` |
-|        - |  764 | `	{ "strrchr", "string $haystack, string $needle, bool $before_needle = false", "string\|false" },` |
-|        - |  765 | `	{ "strrev", "string $string", "string" },` |
-|        - |  766 | `	{ "strripos", "string $haystack, string $needle, int $offset = 0", "int\|false" },` |
-|        - |  767 | `	{ "strrpos", "string $haystack, string $needle, int $offset = 0", "int\|false" },` |
-|        - |  768 | `	{ "strspn", "string $string, string $characters, int $offset = 0, ?int $length = NULL", "int" },` |
-|        - |  769 | `	{ "strstr", "string $haystack, string $needle, bool $before_needle = false", "string\|false" },` |
-|        - |  770 | `	{ "strtok", "string $string, ?string $token = NULL", "string\|false" },` |
-|        - |  771 | `	{ "strtolower", "string $string", "string" },` |
-|        - |  772 | `	{ "strtoupper", "string $string", "string" },` |
-|        - |  773 | `	{ "strtr", "string $string, array\|string $from, ?string $to = NULL", "string" },` |
-|        - |  774 | `	{ "strval", "mixed $value", "string" },` |
-|        - |  775 | `	{ "substr", "string $string, int $offset, ?int $length = NULL", "string" },` |
-|        - |  776 | `	{ "substr_compare", "string $haystack, string $needle, int $offset, ?int $length = NULL, bool $case_insensitive = false", "int" },` |
-|        - |  777 | `	{ "substr_count", "string $haystack, string $needle, int $offset = 0, ?int $length = NULL", "int" },` |
-|        - |  778 | `	{ "substr_replace", "array\|string $string, array\|string $replace, array\|int $offset, array\|int\|null $length = NULL", "array\|string" },` |
-|        - |  779 | `	{ "symlink", "string $target, string $link", "bool" },` |
-|        - |  780 | `	{ "sys_get_temp_dir", "", "string" },` |
-|        - |  781 | `	{ "tan", "float $num", "float" },` |
-|        - |  782 | `	{ "tanh", "float $num", "float" },` |
-|        - |  783 | `	{ "time", "", "int" },` |
-|        - |  784 | `	{ "touch", "string $filename, ?int $mtime = NULL, ?int $atime = NULL", "bool" },` |
-|        - |  785 | `	{ "trigger_error", "string $message, int $error_level = 1024", "true" },` |
-|        - |  786 | `	{ "trim", "string $string, string $characters = ?", "string" },` |
-|        - |  787 | `	{ "uasort", "array &$array, callable $callback", "true" },` |
-|        - |  788 | `	{ "ucfirst", "string $string", "string" },` |
-|        - |  789 | `	{ "ucwords", "string $string, string $separators = ?", "string" },` |
-|        - |  790 | `	{ "uksort", "array &$array, callable $callback", "true" },` |
-|        - |  791 | `	{ "umask", "?int $mask = NULL", "int" },` |
-|        - |  792 | `	{ "uniqid", "string $prefix = '', bool $more_entropy = false", "string" },` |
-|        - |  793 | `	{ "unlink", "string $filename, $context = NULL", "bool" },` |
-|        - |  794 | `	{ "unserialize", "string $data, array $options = ?", "mixed" },` |
-|        - |  795 | `	{ "urldecode", "string $string", "string" },` |
-|        - |  796 | `	{ "urlencode", "string $string", "string" },` |
-|        - |  797 | `	{ "user_error", "string $message, int $error_level = 1024", "true" },` |
-|        - |  798 | `	{ "usleep", "int $microseconds", "void" },` |
-|        - |  799 | `	{ "usort", "array &$array, callable $callback", "true" },` |
-|        - |  800 | `	{ "var_dump", "mixed $value, mixed ...$values = ?", "void" },` |
-|        - |  801 | `	{ "var_export", "mixed $value, bool $return = false", "?string" },` |
-|        - |  802 | `	{ "vfprintf", "$stream, string $format, array $values", "int" },` |
-|        - |  803 | `	{ "vprintf", "string $format, array $values", "int" },` |
-|        - |  804 | `	{ "vsprintf", "string $format, array $values", "string" },` |
-|        - |  805 | `	{ "wordwrap", "string $string, int $width = 75, string $break = ?, bool $cut_long_words = false", "string" },` |
-|        - |  806 | `	{ "zip_close", "$zip", "void" },` |
-|        - |  807 | `	{ "zip_entry_close", "$zip_entry", "bool" },` |
-|        - |  808 | `	{ "zip_entry_compressedsize", "$zip_entry", "int\|false" },` |
-|        - |  809 | `	{ "zip_entry_compressionmethod", "$zip_entry", "string\|false" },` |
-|        - |  810 | `	{ "zip_entry_filesize", "$zip_entry", "int\|false" },` |
-|        - |  811 | `	{ "zip_entry_name", "$zip_entry", "string\|false" },` |
-|        - |  812 | `	{ "zip_entry_open", "$zip_dp, $zip_entry, string $mode = 'rb'", "bool" },` |
-|        - |  813 | `	{ "zip_entry_read", "$zip_entry, int $len = 1024", "string\|false" },` |
-|        - |  814 | `	{ "zip_open", "string $filename", "" },` |
-|        - |  815 | `	{ "zip_read", "$zip", "" },` |
-|        - |  816 | `};` |
-|        - |  817 | `/*` |
-|        - |  818 | ` * Stamp the signature strings onto the registered host functions.` |
-|        - |  819 | ` * Runs once at PH7_VmMakeReady, after the builtins are registered.` |
-|        - |  820 | ` */` |
-|        - |  821 | `/*` |
-|        - |  822 | ` * Derive the minimum arity from a builtin's declared signature: a parameter is` |
-|        - |  823 | ` * optional when it carries a default ("int $length = 76") or is variadic` |
-|        - |  824 | ` * ("...$rest"), so the minimum is the count of the parameters that are neither,` |
-|        - |  825 | ` * and the ZPP wording is "at least" as soon as one optional/variadic exists.` |
-|        - |  826 | ` *` |
-|        - |  827 | ` * This makes aBuiltinSig[] the single source of truth for arity — the curated` |
-|        - |  828 | ` * aBuiltinArity[] table above stays as an OVERRIDE for the handful of builtins` |
-|        - |  829 | ` * php reports differently from their own signature (e.g. strtr(), whose 3-arg` |
-|        - |  830 | ` * form still reports "expects exactly 2", and the array_udiff() family, whose` |
-|        - |  831 | ` * variadic tail hides a second required argument). Verified against php 8.5.7` |
-|        - |  832 | ` * for all 462 signed builtins: 458 derive exactly, 4 are overridden.` |
-|        - |  833 | ` */` |
-|  1511220 |  834 | `static void VmDeriveArityFromSig(const char *zSig,sxi16 *pnMin,sxu8 *pbAtLeast,sxi16 *pnMax,sxu8 *pbHasMax)` |
-|        5 |  835 | `{` |
-|  1511225 |  836 | `	const char *zCur = zSig;` |
-|  1511225 |  837 | `	int nMin = 0, bAtLeast = 0, bSeen = 0, bOptional = 0;` |
-|  1511225 |  838 | `	int nTotal = 0, bVariadic = 0;` |
-| 23362782 |  839 | `	for(;;){` |
-| 48083969 |  840 | `		if( zCur[0] == '\0' \|\| zCur[0] == ',' ){` |
-|  2869625 |  841 | `			if( bSeen ){` |
-|  2699825 |  842 | `				nTotal++;` |
-|  2699825 |  843 | `				if( bOptional ){` |
-|  1062953 |  844 | `					bAtLeast = 1;` |
-|   531479 |  845 | `				}else{` |
-|  1636877 |  846 | `					nMin++;` |
-|        - |  847 | `				}` |
-|  1349910 |  848 | `			}` |
-|  2869625 |  849 | `			if( zCur[0] == '\0' ){` |
-|  1511225 |  850 | `				break;` |
-|        - |  851 | `			}` |
-|  1358405 |  852 | `			bSeen = bOptional = 0;` |
-|  1358405 |  853 | `			zCur++;` |
-|  1358405 |  854 | `			continue;` |
-|        - |  855 | `		}` |
-| 45214349 |  856 | `		if( zCur[0] != ' ' ){` |
-| 39264557 |  857 | `			bSeen = 1;` |
-| 19632276 |  858 | `		}` |
-| 45214349 |  859 | `		if( zCur[0] == '=' \|\| (zCur[0] == '.' && zCur[1] == '.' && zCur[2] == '.') ){` |
-|  1134269 |  860 | `			bOptional = 1;` |
-|   567132 |  861 | `		}` |
-| 45214349 |  862 | `		if( zCur[0] == '.' && zCur[1] == '.' && zCur[2] == '.' ){` |
-|    71321 |  863 | `			bVariadic = 1;` |
-|    35658 |  864 | `		}` |
-| 45214349 |  865 | `		zCur++;` |
-|        5 |  866 | `	}` |
-|  1511225 |  867 | `	*pnMin = (sxi16)nMin;` |
-|  1511225 |  868 | `	*pbAtLeast = (sxu8)bAtLeast;` |
-|        - |  869 | `	/* php enforces a MAXIMUM too ("expects at most 1 argument, 2 given"); a` |
-|        - |  870 | `	 * variadic tail means there is none. The parameter COUNT is the maximum,` |
-|        - |  871 | `	 * whether or not the parameters carry defaults. */` |
-|  1511225 |  872 | `	*pnMax = (sxi16)nTotal;` |
-|  1511225 |  873 | `	*pbHasMax = (sxu8)(bVariadic ? 0 : 1);` |
-|  1511225 |  874 | `}` |
-|        - |  875 | `/*` |
-|        - |  876 | ` * Does the declared type list (e.g. "array\|string", "?int", "callable") contain` |
-|        - |  877 | ` * the given token? Compares against each '\|'-separated alternative, ignoring a` |
-|        - |  878 | ` * leading nullable '?'.` |
-|        - |  879 | ` */` |
-|  1465724 |  880 | `static int VmSigTypeHas(const char *zType,int nType,const char *zTok)` |
-|        5 |  881 | `{` |
-|  1465729 |  882 | `	int nTok = (int)SyStrlen(zTok);` |
-|  1465729 |  883 | `	int i = 0;` |
-|  1465729 |  884 | `	if( zType[0] == '?' ){` |
-|   277017 |  885 | `		zType++;` |
-|   277017 |  886 | `		nType--;` |
-|   138506 |  887 | `	}` |
-|  2916847 |  888 | `	while( i < nType ){` |
-|  1600703 |  889 | `		int j = i;` |
-|  9301238 |  890 | `		while( j < nType && zType[j] != '\|' ){` |
-|  7700540 |  891 | `			j++;` |
-|        5 |  892 | `		}` |
-|  1600703 |  893 | `		if( j - i == nTok && SyMemcmp(&zType[i],zTok,(sxu32)nTok) == 0 ){` |
-|   149585 |  894 | `			return 1;` |
-|        - |  895 | `		}` |
-|  1451123 |  896 | `		i = j + 1;` |
-|        5 |  897 | `	}` |
-|  1316149 |  898 | `	return 0;` |
-|   733346 |  899 | `}` |
-|        - |  900 | `/*` |
-|        - |  901 | ` * Does the declared type list name a CLASS (anything that is not one of php's` |
-|        - |  902 | ` * builtin type keywords)? A class-typed parameter accepts an object, so it must` |
-|        - |  903 | ` * not be rejected by the array/object/resource screen below.` |
-|        - |  904 | ` */` |
-|      216 |  905 | `static int VmSigTypeHasClass(const char *zType,int nType)` |
-|        5 |  906 | `{` |
-|        - |  907 | `	static const char *azBuiltin[] = {` |
-|        - |  908 | `		"int","float","string","bool","array","object","callable","iterable",` |
-|        - |  909 | `		"mixed","null","void","resource","false","true","never","self","static"` |
-|        - |  910 | `	};` |
-|      221 |  911 | `	int i = 0;` |
-|      221 |  912 | `	if( zType[0] == '?' ){` |
-|        7 |  913 | `		zType++;` |
-|        7 |  914 | `		nType--;` |
-|        3 |  915 | `	}` |
-|      341 |  916 | `	while( i < nType ){` |
-|      235 |  917 | `		int j = i, k, bKnown = 0;` |
-|     1979 |  918 | `		while( j < nType && zType[j] != '\|' ){` |
-|     1749 |  919 | `			j++;` |
-|        5 |  920 | `		}` |
-|     2357 |  921 | `		for( k = 0 ; k < (int)SX_ARRAYSIZE(azBuiltin) ; ++k ){` |
-|     2247 |  922 | `			int nB = (int)SyStrlen(azBuiltin[k]);` |
-|     2247 |  923 | `			if( j - i == nB && SyMemcmp(&zType[i],azBuiltin[k],(sxu32)nB) == 0 ){` |
-|      124 |  924 | `				bKnown = 1;` |
-|      124 |  925 | `				break;` |
-|        - |  926 | `			}` |
-|     1066 |  927 | `		}` |
-|      235 |  928 | `		if( !bKnown && j > i ){` |
-|      115 |  929 | `			return 1;` |
-|        - |  930 | `		}` |
-|      124 |  931 | `		i = j + 1;` |
-|        4 |  932 | `	}` |
-|      110 |  933 | `	return 0;` |
-|      113 |  934 | `}` |
-|        - |  935 | `/*` |
-|        - |  936 | ` * php's ", X given" tail: like ph7_type_name() but an object reports its CLASS,` |
-|        - |  937 | ` * which is what php prints in a TypeError.` |
-|        - |  938 | ` */` |
-|       56 |  939 | `static const char * VmArgTypeName(ph7_value *pVal)` |
-|        4 |  940 | `{` |
-|       60 |  941 | `	if( (pVal->iFlags & MEMOBJ_OBJ) != 0 ){` |
-|       60 |  942 | `		ph7_class_instance *pInst = (ph7_class_instance *)pVal->x.pOther;` |
-|       60 |  943 | `		if( pInst && pInst->pClass ){` |
-|       60 |  944 | `			return pInst->pClass->sName.zString;` |
-|        - |  945 | `		}` |
-|      ! 0 |  946 | `	}` |
-|      ! 0 |  947 | `	return ph7_type_name(pVal);` |
-|       32 |  948 | `}` |
-|        - |  949 | `/*` |
-|        - |  950 | ` * PHP-8 ZPP type enforcement for host functions, driven by the aBuiltinSig[]` |
-|        - |  951 | ` * declaration (band A #7). Screens only the arguments that php can NEVER coerce` |
-|        - |  952 | ` * into a declared scalar parameter — arrays, resources, and objects without a` |
-|        - |  953 | ` * __toString() — and throws the catchable TypeError php throws, before the C` |
-|        - |  954 | ` * routine runs. Without this an array argument reached the builtin and was` |
-|        - |  955 | ` * stringified to the literal "Array" (strrev(['a']) returned "yarrA").` |
-|        - |  956 | ` *` |
-|        - |  957 | ` * Deliberately narrow: scalar-to-scalar coercion (and its deprecations) stays` |
-|        - |  958 | ` * with the per-builtin ZPP helpers. Those emit E_DEPRECATED, which does NOT` |
-|        - |  959 | ` * abort the call, so a central copy would double-fire — the trap that sank the` |
-|        - |  960 | ` * first central-ZPP attempt. A TypeError aborts, so there is nothing to double.` |
-|        - |  961 | ` */` |
-|   942521 |  962 | `PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(` |
-|        - |  963 | `	ph7_context *pCtx,    /* Call context (for the throw) */` |
-|        - |  964 | `	ph7_user_func *pFunc, /* Callee */` |
-|        - |  965 | `	int nGiven,           /* Argument count */` |
-|        - |  966 | `	ph7_value **apArg     /* Arguments */` |
-|        - |  967 | `	)` |
-|        5 |  968 | `{` |
-|        - |  969 | `	/*` |
-|        - |  970 | `	 * Builtins whose own argument check is php-exact and VALUE-based rather than` |
-|        - |  971 | `	 * type-based must not be pre-empted here, or their message is lost. Same rule` |
-|        - |  972 | `	 * the aBuiltinArity[] table follows: a builtin that already says what php says` |
-|        - |  973 | `	 * stays off the shared screen. get_class_vars() takes any stringifiable value` |
-|        - |  974 | `	 * and reports "must be a valid class name, Array given".` |
-|        - |  975 | `	 */` |
-|        - |  976 | `	static const char *azSelfChecked[] = { "get_class_vars" };` |
-|   942526 |  977 | `	const char *zSig = pFunc->zSig;` |
-|        - |  978 | `	const char *zCur, *zEnd;` |
-|   942526 |  979 | `	int iArg = 0;` |
-|   942526 |  980 | `	if( zSig == 0 ){` |
-|   175577 |  981 | `		return SXRET_OK;` |
-|        - |  982 | `	}` |
-|  1533899 |  983 | `	for( iArg = 0 ; iArg < (int)SX_ARRAYSIZE(azSelfChecked) ; ++iArg ){` |
-|  1150797 |  984 | `		if( SyStrncmp(pFunc->sName.zString,azSelfChecked[iArg],` |
-|  1150797 |  985 | `			(sxu32)SyStrlen(azSelfChecked[iArg])) == 0` |
-|   383855 |  986 | `		 && pFunc->sName.nByte == SyStrlen(azSelfChecked[iArg]) ){` |
-|        5 |  987 | `			return SXRET_OK;` |
-|        - |  988 | `		}` |
-|   383851 |  989 | `	}` |
-|   766950 |  990 | `	iArg = 0;` |
-|   766950 |  991 | `	zCur = zSig;` |
-|   766950 |  992 | `	zEnd = &zSig[SyStrlen(zSig)];` |
-|  2189280 |  993 | `	while( zCur < zEnd && iArg < nGiven ){` |
-|        - |  994 | `		const char *zType, *zName, *zStop;` |
-|        - |  995 | `		int nType, nName;` |
-|        - |  996 | `		ph7_value *pArg;` |
-|        - |  997 | `		/* Parameter = "<type> $<name>[ = <default>]"; the type is whatever` |
-|        - |  998 | `		 * precedes the '$', and an empty type means "untyped" (no screen). */` |
-|  2102322 |  999 | `		while( zCur < zEnd && zCur[0] == ' ' ){` |
-|   677814 | 1000 | `			zCur++;` |
-|        5 | 1001 | `		}` |
-|  1424513 | 1002 | `		zStop = zCur;` |
-| 22619050 | 1003 | `		while( zStop < zEnd && zStop[0] != ',' ){` |
-| 21194542 | 1004 | `			zStop++;` |
-|        5 | 1005 | `		}` |
-|  1424513 | 1006 | `		zName = zCur;` |
-| 10478320 | 1007 | `		while( zName < zStop && zName[0] != '$' ){` |
-|  9053812 | 1008 | `			zName++;` |
-|        5 | 1009 | `		}` |
-|  1424513 | 1010 | `		if( zName >= zStop ){` |
-|        7 | 1011 | `			break; /* malformed / no parameter name — stop screening */` |
-|        - | 1012 | `		}` |
-|  1424507 | 1013 | `		if( zName >= zCur + 3 && SyMemcmp(zName - 3,"...",3) == 0 ){` |
-|     1963 | 1014 | `			break; /* variadic tail: stop (its type applies to the rest) */` |
-|        - | 1015 | `		}` |
-|  1422549 | 1016 | `		zType = zCur;` |
-|  1422549 | 1017 | `		nType = (int)(zName - zCur);` |
-|        - | 1018 | `		/* Trim the trailing spaces and the by-ref marker of "array &$array" */` |
-|  3525290 | 1019 | `		while( nType > 0 && (zType[nType-1] == ' ' \|\| zType[nType-1] == '&') ){` |
-|  1390995 | 1020 | `			nType--;` |
-|        5 | 1021 | `		}` |
-|  1422549 | 1022 | `		zName++; /* skip '$' */` |
-|  1422549 | 1023 | `		nName = 0;` |
-| 10295811 | 1024 | `		while( &zName[nName] < zStop && zName[nName] != ' ' && zName[nName] != '=' ){` |
-|  8873267 | 1025 | `			nName++;` |
-|        5 | 1026 | `		}` |
-|  1422549 | 1027 | `		pArg = apArg[iArg];` |
-|  1422549 | 1028 | `		if( nType > 0 && !VmSigTypeHas(zType,nType,"mixed") ){` |
-|  1314247 | 1029 | `			const char *zGiven = 0;` |
-|  1314247 | 1030 | `			if( (pArg->iFlags & MEMOBJ_HASHMAP) != 0 ){` |
-|    74108 | 1031 | `				if( !VmSigTypeHas(zType,nType,"array")` |
-|    37129 | 1032 | `				 && !VmSigTypeHas(zType,nType,"iterable")` |
-|      155 | 1033 | `				 && !VmSigTypeHas(zType,nType,"callable") ){` |
-|      119 | 1034 | `					zGiven = "array";` |
-|       62 | 1035 | `				}` |
-|  1277193 | 1036 | `			}else if( (pArg->iFlags & MEMOBJ_OBJ) != 0 ){` |
-|     1588 | 1037 | `				if( !VmSigTypeHas(zType,nType,"object")` |
-|     1084 | 1038 | `				 && !VmSigTypeHas(zType,nType,"iterable")` |
-|      580 | 1039 | `				 && !VmSigTypeHas(zType,nType,"callable")` |
-|      402 | 1040 | `				 && !VmSigTypeHasClass(zType,nType) ){` |
-|        - | 1041 | `					/* An object with __toString() still satisfies a string` |
-|        - | 1042 | `					 * parameter in weak mode — php coerces it. */` |
-|      108 | 1043 | `					ph7_class_instance *pInst = (ph7_class_instance *)pArg->x.pOther;` |
-|      149 | 1044 | `					int bStringable = VmSigTypeHas(zType,nType,"string")` |
-|      104 | 1045 | `						&& pInst && PH7_ClassExtractMethod(pInst->pClass,"__toString",` |
-|       41 | 1046 | `							sizeof("__toString")-1) != 0;` |
-|      108 | 1047 | `					if( !bStringable ){` |
-|       60 | 1048 | `						zGiven = VmArgTypeName(pArg);` |
-|       28 | 1049 | `					}` |
-|       57 | 1050 | `				}` |
-|  1239345 | 1051 | `			}else if( (pArg->iFlags & MEMOBJ_NULL) != 0 ){` |
-|        - | 1052 | `				/* php only DEPRECATES null for a non-nullable parameter; PHL rejects` |
-|        - | 1053 | `				 * it (scope policy). A leading '?' or an explicit "null" arm in a` |
-|        - | 1054 | `				 * union declares the parameter nullable. A "callable" parameter is` |
-|        - | 1055 | `				 * left to the builtin's own callback check, which words the failure` |
-|        - | 1056 | `				 * php's way ("must be a valid callback, no array or string given") —` |
-|        - | 1057 | `				 * the same reason get_class_vars() sits on azSelfChecked[]. */` |
-|     4900 | 1058 | `				if( zType[0] != '?'` |
-|     2476 | 1059 | `				 && !VmSigTypeHas(zType,nType,"null")` |
-|       54 | 1060 | `				 && !VmSigTypeHas(zType,nType,"callable") ){` |
-|       46 | 1061 | `					zGiven = "null";` |
-|       25 | 1062 | `				}` |
-|  1236101 | 1063 | `			}else if( (pArg->iFlags & MEMOBJ_RES) != 0 ){` |
-|        - | 1064 | `				/* A class-typed parameter also accepts a resource: several handles php 8` |
-|        - | 1065 | `				 * models as objects are still resources here (xml_*'s XMLParser is the` |
-|        - | 1066 | `				 * one the signatures already declare php-8-style, for reflection). The` |
-|        - | 1067 | `				 * screen would otherwise reject the engine's own parser handle. Recorded` |
-|        - | 1068 | `				 * as a divergence in NEWPLAN §7 — it goes away when those handles become` |
-|        - | 1069 | `				 * real objects. */` |
-|        2 | 1070 | `				if( !VmSigTypeHas(zType,nType,"resource")` |
-|        3 | 1071 | `				 && !VmSigTypeHasClass(zType,nType) ){` |
-|        3 | 1072 | `					zGiven = "resource";` |
-|        1 | 1073 | `				}` |
-|        1 | 1074 | `			}` |
-|  1314247 | 1075 | `			if( zGiven ){` |
-|      326 | 1076 | `				return PH7_VmThrowException(pCtx,"TypeError",` |
-|        - | 1077 | `					"%z(): Argument #%d ($%.*s) must be of type %.*s, %s given",` |
-|      107 | 1078 | `					&pFunc->sName,iArg + 1,nName,zName,nType,zType,zGiven);` |
-|        - | 1079 | `			}` |
-|   657436 | 1080 | `		}` |
-|  1422335 | 1081 | `		zCur = (zStop < zEnd) ? zStop + 1 : zEnd;` |
-|  1422335 | 1082 | `		iArg++;` |
-|        5 | 1083 | `	}` |
-|   766736 | 1084 | `	return SXRET_OK;` |
-|   471639 | 1085 | `}` |
-|        - | 1086 | `/*` |
-|        - | 1087 | ` * Builtins whose accepted arity is NOT a contiguous range, so the signature` |
-|        - | 1088 | ` * cannot express it and the central too-many-arguments check must stay out of` |
-|        - | 1089 | ` * the way: rand()/mt_rand() take 0 OR 2 arguments (never 1), and php words the` |
-|        - | 1090 | ` * violation "expects exactly 2 arguments, 3 given" from their own check rather` |
-|        - | 1091 | ` * than the ZPP "at most". They validate themselves; leaving bHasMaxArg at 0` |
-|        - | 1092 | ` * keeps their message php-faithful.` |
-|        - | 1093 | ` */` |
-|  1511220 | 1094 | `static int VmBuiltinSelfValidatesArity(const char *zName)` |
-|        5 | 1095 | `{` |
-|        - | 1096 | `	static const char *const azSelf[] = { "rand", "mt_rand" };` |
-|        - | 1097 | `	sxu32 i;` |
-|  4523477 | 1098 | `	for( i = 0 ; i < SX_ARRAYSIZE(azSelf) ; i++ ){` |
-|  3019049 | 1099 | `		sxu32 nSelf = SyStrlen(azSelf[i]);` |
-|  3019049 | 1100 | `		if( SyStrlen(zName) == nSelf && SyStrncmp(zName,azSelf[i],nSelf) == 0 ){` |
-|     6797 | 1101 | `			return 1;` |
-|        - | 1102 | `		}` |
-|  1506131 | 1103 | `	}` |
-|  1504433 | 1104 | `	return 0;` |
-|   755615 | 1105 | `}` |
-|     3396 | 1106 | `PH7_PRIVATE void VmSetBuiltinSignatures(ph7_vm *pVm)` |
-|        5 | 1107 | `{` |
-|        - | 1108 | `	sxu32 n;` |
-|  1555373 | 1109 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltinSig) ; n++ ){` |
-|  2327963 | 1110 | `		SyHashEntry *pEntry = SyHashGet(&pVm->hHostFunction,` |
-|  1551972 | 1111 | `			(const void *)aBuiltinSig[n].zName,(sxu32)SyStrlen(aBuiltinSig[n].zName));` |
-|  1551977 | 1112 | `		if( pEntry ){` |
-|  1511225 | 1113 | `			ph7_user_func *pFunc = (ph7_user_func *)pEntry->pUserData;` |
-|  1511225 | 1114 | `			sxi16 nMin = 0, nMax = 0;` |
-|  1511225 | 1115 | `			sxu8 bAtLeast = 0, bHasMax = 0;` |
-|  1511225 | 1116 | `			pFunc->zSig = aBuiltinSig[n].zSig;` |
-|  1511225 | 1117 | `			pFunc->zRet = aBuiltinSig[n].zRet[0] ? aBuiltinSig[n].zRet : 0;` |
-|  1511225 | 1118 | `			VmDeriveArityFromSig(pFunc->zSig,&nMin,&bAtLeast,&nMax,&bHasMax);` |
-|        - | 1119 | `			/* The MAXIMUM always comes from the signature: the curated override` |
-|        - | 1120 | `			 * table speaks only to the minimum (and its wording). */` |
-|  1511225 | 1121 | `			pFunc->nMaxArg = nMax;` |
-|  1511225 | 1122 | `			pFunc->bHasMaxArg = (sxu8)(VmBuiltinSelfValidatesArity(aBuiltinSig[n].zName) ? 0 : bHasMax);` |
-|  1511225 | 1123 | `			if( pFunc->nMinArg < 1 ){` |
-|        - | 1124 | `				/* VmSetBuiltinArity() ran first: a non-zero minimum here means the` |
-|        - | 1125 | `				 * curated override already spoke for this builtin, so leave it. */` |
-|   628265 | 1126 | `				pFunc->nMinArg = nMin;` |
-|   628265 | 1127 | `				pFunc->bAtLeast = bAtLeast;` |
-|   314130 | 1128 | `			}` |
-|   755610 | 1129 | `		}` |
-|   775991 | 1130 | `	}` |
-|     3401 | 1131 | `}` |
-|        - | 1132 | `/*` |
-|        - | 1133 | ` * Signature lookup by function name, for the reflection layer: embedded-PHP` |
-|        - | 1134 | ` * builtins (max/min/Exception methods...) are ph7_vm_func instances, not` |
-|        - | 1135 | ` * host functions, so they miss the VmSetBuiltinSignatures stamping and pull` |
-|        - | 1136 | ` * their row on demand here. Linear scan — reflection-path only.` |
-|        - | 1137 | ` */` |
-|        4 | 1138 | `PH7_PRIVATE const char * PH7_VmBuiltinSigLookup(const char *zName,sxu32 nLen,const char **pzRet)` |
-|        1 | 1139 | `{` |
-|        - | 1140 | `	sxu32 n;` |
-|        5 | 1141 | `	if( pzRet ){` |
-|        5 | 1142 | `		*pzRet = 0;` |
-|        2 | 1143 | `	}` |
-|     1049 | 1144 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltinSig) ; n++ ){` |
-|     1048 | 1145 | `		if( SyStrlen(aBuiltinSig[n].zName) == nLen` |
-|      543 | 1146 | `		 && SyMemcmp(aBuiltinSig[n].zName,zName,nLen) == 0 ){` |
-|        5 | 1147 | `			if( pzRet && aBuiltinSig[n].zRet[0] ){` |
-|        5 | 1148 | `				*pzRet = aBuiltinSig[n].zRet;` |
-|        2 | 1149 | `			}` |
-|        5 | 1150 | `			return aBuiltinSig[n].zSig;` |
-|        - | 1151 | `		}` |
-|      523 | 1152 | `	}` |
-|      ! 0 | 1153 | `	return 0;` |
-|        3 | 1154 | `}` |
-|        - | 1155 | `/*` |
-|        - | 1156 | ` * Write a value back to the caller's variable through a builtin argument's` |
-|        - | 1157 | ` * stack-slot nIdx — the shared write-back for builtin by-reference` |
-|        - | 1158 | ` * out-parameters (preg_match $matches, preg_replace &$count, similar_text` |
-|        - | 1159 | ` * &$percent, ...).` |
-|        - | 1160 | ` *` |
-|        - | 1161 | ` * For a positional out-param argument the call compiler auto-vivifies known` |
-|        - | 1162 | ` * by-reference out-params (see GenStateByRefBuiltinMask in compile.c), so a` |
-|        - | 1163 | ` * bare undefined variable, an array subscript, and a declared/untyped` |
-|        - | 1164 | ` * property all arrive with a real nIdx and are written back here, matching` |
-|        - | 1165 | ` * PHP's reference semantics.` |
-|        - | 1166 | ` *` |
-|        - | 1167 | ` * nIdx stays SXU32_HIGH and the write-back to the caller is skipped (the` |
-|        - | 1168 | ` * value still lands in the local stack slot) when the argument cannot expose` |
-|        - | 1169 | ` * a stable memobj slot: a literal, a function-call result, a subscript of a` |
-|        - | 1170 | ` * non-lvalue parent (foo()['k']), or any variable in a call that also uses` |
-|        - | 1171 | ` * named or spread arguments (compile-time positions no longer map to the` |
-|        - | 1172 | ` * runtime arg slots, so the compiler conservatively does not vivify). An` |
-|        - | 1173 | ` * uninitialized typed property is also not wired (it throws before the` |
-|        - | 1174 | ` * write) -- see the recorded deferrals.` |
-|        - | 1175 | ` */` |
-|      208 | 1176 | `PH7_PRIVATE void PH7_VmStoreArgByRef(ph7_vm *pVm,ph7_value *pArg,ph7_value *pNewVal)` |
-|        5 | 1177 | `{` |
-|      213 | 1178 | `	if( pArg->nIdx != SXU32_HIGH ){` |
-|      211 | 1179 | `		ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pArg->nIdx);` |
-|      211 | 1180 | `		if( pObj ){` |
-|      211 | 1181 | `			PH7_MemObjStore(pNewVal,pObj);` |
-|      103 | 1182 | `		}` |
-|      103 | 1183 | `	}` |
-|      213 | 1184 | `	PH7_MemObjStore(pNewVal,pArg);` |
-|      213 | 1185 | `}` |
-|        - | 1186 | `/*` |
-|        - | 1187 | ` * Raise an E_WARNING whose text is used VERBATIM.` |
-|        - | 1188 | ` * ph7_context_throw_error_format() prepends "func(): " to whatever it is given, but php's` |
-|        - | 1189 | ` * IO warnings put the offending path inside those parens -- "file_get_contents(/nope):` |
-|        - | 1190 | ` * Failed to open stream: ..." -- so a caller that needs php's exact shape must build the` |
-|        - | 1191 | ` * whole line itself and come through here.` |
-|        - | 1192 | ` */` |
-|        - | 1193 | `/*` |
-|        - | 1194 | ` * Validate a callback argument and throw php's TypeError when it cannot be called.` |
-|        - | 1195 | ` *` |
-|        - | 1196 | ` * The shared dispatcher (PH7_VmCallUserFunctionWithMap) answers SXRET_OK with a NULL` |
-|        - | 1197 | ` * result for an unresolvable callable, so every caller that did not check first failed` |
-|        - | 1198 | ` * SILENTLY: call_user_func() returned NULL and usort() left the array sorted by nothing` |
-|        - | 1199 | ` * at all. php rejects the ARGUMENT up front, naming exactly why.` |
-|        - | 1200 | ` */` |
-|      162 | 1201 | `PH7_PRIVATE sxi32 PH7_CheckCallbackArg(` |
-|        - | 1202 | `	ph7_context *pCtx,   /* Calling context (names the function in the message) */` |
-|        - | 1203 | `	ph7_value *pCb,      /* The callback argument */` |
-|        - | 1204 | `	int iArg,            /* Its 1-based position */` |
-|        - | 1205 | `	const char *zParam,  /* Its php parameter name, e.g. "callback" */` |
-|        - | 1206 | `	int bNullable        /* TRUE when php's text says "or null" */` |
-|        - | 1207 | `	)` |
-|        3 | 1208 | `{` |
-|      165 | 1209 | `	const char *zOrNull = bNullable ? " or null" : "";` |
-|      165 | 1210 | `	if( ph7_value_is_callable(pCb) ){` |
-|      147 | 1211 | `		return PH7_OK;` |
-|        - | 1212 | `	}` |
-|       19 | 1213 | `	if( ph7_value_is_string(pCb) ){` |
-|        - | 1214 | `		int nLen;` |
-|       11 | 1215 | `		const char *zName = ph7_value_to_string(pCb,&nLen);` |
-|       16 | 1216 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
-|        - | 1217 | `			"%s(): Argument #%d ($%s) must be a valid callback%s, function \"%.*s\" not found or invalid function name",` |
-|        5 | 1218 | `			ph7_function_name(pCtx),iArg,zParam,zOrNull,nLen,zName);` |
-|        - | 1219 | `	}` |
-|        9 | 1220 | `	if( ph7_value_is_array(pCb) ){` |
-|        7 | 1221 | `		ph7_hashmap *pMap = (ph7_hashmap *)pCb->x.pOther;` |
-|        7 | 1222 | `		if( pMap == 0 \|\| pMap->nEntry != 2 ){` |
-|        4 | 1223 | `			return PH7_VmThrowException(pCtx,"TypeError",` |
-|        - | 1224 | `				"%s(): Argument #%d ($%s) must be a valid callback%s, array callback must have exactly two members",` |
-|        1 | 1225 | `				ph7_function_name(pCtx),iArg,zParam,zOrNull);` |
-|      ! 0 | 1226 | `		}else{` |
-|        5 | 1227 | `			ph7_vm *pVm = pCtx->pVm;` |
-|        5 | 1228 | `			ph7_value *pCls = (ph7_value *)SySetAt(&pVm->aMemObj,pMap->pFirst->nValIdx);` |
-|        5 | 1229 | `			ph7_value *pMeth = (ph7_value *)SySetAt(&pVm->aMemObj,pMap->pFirst->pPrev->nValIdx);` |
-|        5 | 1230 | `			ph7_class *pClass = pCls ? PH7_VmExtractClassFromValue(&(*pVm),pCls) : 0;` |
-|        5 | 1231 | `			if( pClass == 0 ){` |
-|        5 | 1232 | `				return PH7_VmThrowException(pCtx,"TypeError",` |
-|        - | 1233 | `					"%s(): Argument #%d ($%s) must be a valid callback%s, class \"%.*s\" not found",` |
-|        1 | 1234 | `					ph7_function_name(pCtx),iArg,zParam,zOrNull,` |
-|        2 | 1235 | `					pCls ? (int)SyBlobLength(&pCls->sBlob) : 0,` |
-|        1 | 1236 | `					pCls ? (const char *)SyBlobData(&pCls->sBlob) : "");` |
-|        - | 1237 | `			}` |
-|        5 | 1238 | `			return PH7_VmThrowException(pCtx,"TypeError",` |
-|        - | 1239 | `				"%s(): Argument #%d ($%s) must be a valid callback%s, class %z does not have a method \"%.*s\"",` |
-|        1 | 1240 | `				ph7_function_name(pCtx),iArg,zParam,zOrNull,&pClass->sName,` |
-|        2 | 1241 | `				pMeth ? (int)SyBlobLength(&pMeth->sBlob) : 0,` |
-|        1 | 1242 | `				pMeth ? (const char *)SyBlobData(&pMeth->sBlob) : "");` |
-|        - | 1243 | `		}` |
-|        - | 1244 | `	}` |
-|        4 | 1245 | `	return PH7_VmThrowException(pCtx,"TypeError",` |
-|        - | 1246 | `		"%s(): Argument #%d ($%s) must be a valid callback%s, no array or string given",` |
-|        1 | 1247 | `		ph7_function_name(pCtx),iArg,zParam,zOrNull);` |
-|       84 | 1248 | `}` |
-|    20072 | 1249 | `PH7_PRIVATE void PH7_VmThrowWarningFmt(ph7_vm *pVm,const char *zFmt,...)` |
-|        5 | 1250 | `{` |
-|        - | 1251 | `	va_list ap;` |
-|    20077 | 1252 | `	va_start(ap,zFmt);` |
-|    20077 | 1253 | `	PH7_VmThrowErrorAp(pVm,0,PH7_CTX_WARNING,zFmt,ap);` |
-|    20077 | 1254 | `	va_end(ap);` |
-|    20077 | 1255 | `}` |
-|        - | 1256 | `/*` |
-|        - | 1257 | ` * Emit a formatted E_USER_DEPRECATED diagnostic with no function-name prefix:` |
-|        - | 1258 | ` * php reports #[\Deprecated] as USER-deprecated (16384, it is userland-authored),` |
-|        - | 1259 | ` * not the engine's E_DEPRECATED (8192) — handler-visible errno matters.` |
-|        - | 1260 | ` */` |
-|       34 | 1261 | `static void VmThrowUserDeprecatedFmt(ph7_vm *pVm,const char *zFmt,...)` |
-|        1 | 1262 | `{` |
-|        - | 1263 | `	va_list ap;` |
-|       35 | 1264 | `	va_start(ap,zFmt);` |
-|       35 | 1265 | `	PH7_VmThrowErrorAp(pVm,0,E_USER_DEPRECATED,zFmt,ap);` |
-|       35 | 1266 | `	va_end(ap);` |
-|       35 | 1267 | `}` |
-|        - | 1268 | `/*` |
-|        - | 1269 | ` * php 8.4 #[\Deprecated]: emit the E_USER_DEPRECATED notice for a call to a user` |
-|        - | 1270 | ` * function/method carrying the attribute. Message shapes (php-exact):` |
-|        - | 1271 | ` *   Function f() is deprecated` |
-|        - | 1272 | ` *   Method C::m() is deprecated since 2.0, use g() instead` |
-|        - | 1273 | ` * ("since" from the attribute's since: argument; the trailing ", msg" from` |
-|        - | 1274 | ` * message:/positional #1.) The attribute arguments are compiled constant` |
-|        - | 1275 | ` * expressions — evaluated via VmLocalExec, the reflection thunks' pattern.` |
-|        - | 1276 | ` * Called from OP_CALL once per call, only when the callee HAS attributes;` |
-|        - | 1277 | ` * pDeclClass names the method's declaring class (0 for plain functions).` |
-|        - | 1278 | ` */` |
-|        - | 1279 | `/*` |
-|        - | 1280 | ` * Expand a global constant's value, emitting the php 8.5 #[\Deprecated]` |
-|        - | 1281 | ` * E_USER_DEPRECATED notice first when the constant carries attributes` |
-|        - | 1282 | `` * (`Constant GD is deprecated since 1.2` — every access re-warns).`` |
-|        - | 1283 | ` */` |
-|        - | 1284 | `static void VmDeprecatedAttrNoticeSubject(ph7_vm *pVm,SySet *pAttrs,` |
-|        - | 1285 | `	const char *zKind,const SyString *pQual,const SyString *pName);` |
-|        - | 1286 | `/*` |
-|        - | 1287 | ` * Expand a constant, emitting the php 8.5 #[\Deprecated] E_USER_DEPRECATED notice` |
-|        - | 1288 | `` * first when a USERLAND constant carries the attribute (`Constant GD is deprecated`` |
-|        - | 1289 | `` * since 1.2` — every access re-warns). Engine constants php merely deprecates are`` |
-|        - | 1290 | ` * not mimicked: PHL removes them outright (see the scope policy), so there is no` |
-|        - | 1291 | ` * engine-side E_DEPRECATED list here.` |
-|        - | 1292 | ` */` |
-|    23326 | 1293 | `PH7_PRIVATE void VmExpandConstantWithNotice(ph7_vm *pVm,ph7_constant *pCons,ph7_value *pOut)` |
-|        5 | 1294 | `{` |
-|    23331 | 1295 | `	if( SySetUsed(&pCons->aAttrs) > 0 ){` |
-|        7 | 1296 | `		VmDeprecatedAttrNoticeSubject(pVm,&pCons->aAttrs,"Constant",0,&pCons->sName);` |
-|        3 | 1297 | `	}` |
-|    23331 | 1298 | `	pCons->xExpand(pOut,pCons->pUserData);` |
-|    23331 | 1299 | `}` |
-|        - | 1300 | `/*` |
-|        - | 1301 | ` * Scan a declared-attribute set for #[\Deprecated]; when found, evaluate its` |
-|        - | 1302 | ` * message:/since: arguments (positional #0 = message, #1 = since) into the` |
-|        - | 1303 | ` * caller's values and return TRUE. The base subject text ("Function f()",` |
-|        - | 1304 | ` * "Constant C::K") is the caller's business.` |
-|        - | 1305 | ` */` |
-|      130 | 1306 | `static int VmDeprecatedAttrExtract(ph7_vm *pVm,SySet *pAttrs,` |
-|        - | 1307 | `	ph7_value *pMsg,int *pbMsg,ph7_value *pSince,int *pbSince)` |
-|        5 | 1308 | `{` |
-|      135 | 1309 | `	ph7_attribute *aAttr = (ph7_attribute *)SySetBasePtr(pAttrs);` |
-|        - | 1310 | `	sxu32 n;` |
-|      135 | 1311 | `	*pbMsg = *pbSince = 0;` |
-|      235 | 1312 | `	for( n = 0 ; n < SySetUsed(pAttrs) ; ++n ){` |
-|      139 | 1313 | `		ph7_attribute *pAttr = &aAttr[n];` |
-|        - | 1314 | `		ph7_attr_arg *aArg;` |
-|      139 | 1315 | `		sxu32 i,nPos = 0;` |
-|      134 | 1316 | `		if( SyStringLength(&pAttr->sName) != sizeof("Deprecated")-1` |
-|       89 | 1317 | `		 \|\| SyStrnicmp(SyStringData(&pAttr->sName),"Deprecated",sizeof("Deprecated")-1) != 0 ){` |
-|      105 | 1318 | `			continue;` |
-|        - | 1319 | `		}` |
-|       35 | 1320 | `		aArg = (ph7_attr_arg *)SySetBasePtr(&pAttr->aArgs);` |
-|       53 | 1321 | `		for( i = 0 ; i < SySetUsed(&pAttr->aArgs) ; ++i ){` |
-|       19 | 1322 | `			ph7_attr_arg *pArg = &aArg[i];` |
-|       19 | 1323 | `			int isMsg = 0,isSince = 0;` |
-|       19 | 1324 | `			if( SyStringLength(&pArg->sName) == 0 ){` |
-|        3 | 1325 | `				isMsg = (nPos == 0);` |
-|        3 | 1326 | `				isSince = (nPos == 1);` |
-|        3 | 1327 | `				nPos++;` |
-|       18 | 1328 | `			}else if( SyStringLength(&pArg->sName) == sizeof("message")-1` |
-|       12 | 1329 | `			 && SyMemcmp(SyStringData(&pArg->sName),"message",sizeof("message")-1) == 0 ){` |
-|        7 | 1330 | `				isMsg = 1;` |
-|       14 | 1331 | `			}else if( SyStringLength(&pArg->sName) == sizeof("since")-1` |
-|       11 | 1332 | `			 && SyMemcmp(SyStringData(&pArg->sName),"since",sizeof("since")-1) == 0 ){` |
-|       11 | 1333 | `				isSince = 1;` |
-|        5 | 1334 | `			}` |
-|       19 | 1335 | `			if( isMsg && !*pbMsg && SySetUsed(&pArg->aByteCode) > 0 ){` |
-|       13 | 1336 | `				if( VmLocalExec(pVm,&pArg->aByteCode,pMsg,FALSE) == SXRET_OK ){` |
-|        9 | 1337 | `					if( (pMsg->iFlags & MEMOBJ_STRING) == 0 ){` |
-|      ! 0 | 1338 | `						PH7_MemObjToString(pMsg);` |
-|      ! 0 | 1339 | `					}` |
-|        9 | 1340 | `					*pbMsg = 1;` |
-|        5 | 1341 | `				}` |
-|       15 | 1342 | `			}else if( isSince && !*pbSince && SySetUsed(&pArg->aByteCode) > 0 ){` |
-|       11 | 1343 | `				if( VmLocalExec(pVm,&pArg->aByteCode,pSince,FALSE) == SXRET_OK ){` |
-|       11 | 1344 | `					if( (pSince->iFlags & MEMOBJ_STRING) == 0 ){` |
-|      ! 0 | 1345 | `						PH7_MemObjToString(pSince);` |
-|      ! 0 | 1346 | `					}` |
-|       11 | 1347 | `					*pbSince = 1;` |
-|        5 | 1348 | `				}` |
-|        5 | 1349 | `			}` |
-|       10 | 1350 | `		}` |
-|       35 | 1351 | `		return 1;` |
-|      ! 0 | 1352 | `	}` |
-|      101 | 1353 | `	return 0;` |
-|       70 | 1354 | `}` |
-|        - | 1355 | `/*` |
-|        - | 1356 | ` * Append php's " since X" / ", message" suffixes to a built base subject and` |
-|        - | 1357 | ` * emit the E_USER_DEPRECATED notice.` |
-|        - | 1358 | ` */` |
-|       34 | 1359 | `static void VmDeprecatedEmit(ph7_vm *pVm,SyBlob *pOut,` |
-|        - | 1360 | `	ph7_value *pMsg,int bMsg,ph7_value *pSince,int bSince)` |
-|        1 | 1361 | `{` |
-|       35 | 1362 | `	if( bSince && SyBlobLength(&pSince->sBlob) > 0 ){` |
-|       16 | 1363 | `		SyBlobFormat(pOut," since %.*s",(int)SyBlobLength(&pSince->sBlob),` |
-|       10 | 1364 | `			(const char *)SyBlobData(&pSince->sBlob));` |
-|        5 | 1365 | `	}` |
-|       35 | 1366 | `	if( bMsg && SyBlobLength(&pMsg->sBlob) > 0 ){` |
-|       13 | 1367 | `		SyBlobFormat(pOut,", %.*s",(int)SyBlobLength(&pMsg->sBlob),` |
-|        8 | 1368 | `			(const char *)SyBlobData(&pMsg->sBlob));` |
-|        4 | 1369 | `	}` |
-|       35 | 1370 | `	VmThrowUserDeprecatedFmt(pVm,"%.*s",(int)SyBlobLength(pOut),(const char *)SyBlobData(pOut));` |
-|       35 | 1371 | `}` |
-|        - | 1372 | `/*` |
-|        - | 1373 | ` * Generic #[\Deprecated] notice for a named subject:` |
-|        - | 1374 | ` * "<Kind> [Qual::]Name is deprecated[ since X][, message]".` |
-|        - | 1375 | ` */` |
-|       18 | 1376 | `static void VmDeprecatedAttrNoticeSubject(ph7_vm *pVm,SySet *pAttrs,` |
-|        - | 1377 | `	const char *zKind,const SyString *pQual,const SyString *pName)` |
-|        1 | 1378 | `{` |
-|        - | 1379 | `	ph7_value sMsg,sSince;` |
-|        - | 1380 | `	SyBlob sOut;` |
-|        - | 1381 | `	int bMsg,bSince;` |
-|       19 | 1382 | `	PH7_MemObjInit(pVm,&sMsg);` |
-|       19 | 1383 | `	PH7_MemObjInit(pVm,&sSince);` |
-|       19 | 1384 | `	if( VmDeprecatedAttrExtract(pVm,pAttrs,&sMsg,&bMsg,&sSince,&bSince) ){` |
-|       15 | 1385 | `		SyBlobInit(&sOut,&pVm->sAllocator);` |
-|       15 | 1386 | `		if( pQual ){` |
-|       11 | 1387 | `			SyBlobFormat(&sOut,"%s %z::%z is deprecated",zKind,pQual,pName);` |
-|        6 | 1388 | `		}else{` |
-|        5 | 1389 | `			SyBlobFormat(&sOut,"%s %z is deprecated",zKind,pName);` |
-|        - | 1390 | `		}` |
-|       15 | 1391 | `		VmDeprecatedEmit(pVm,&sOut,&sMsg,bMsg,&sSince,bSince);` |
-|       15 | 1392 | `		SyBlobRelease(&sOut);` |
-|        7 | 1393 | `	}` |
-|       19 | 1394 | `	PH7_MemObjRelease(&sMsg);` |
-|       19 | 1395 | `	PH7_MemObjRelease(&sSince);` |
-|       19 | 1396 | `}` |
-|      112 | 1397 | `PH7_PRIVATE void VmDeprecatedAttrNotice(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_class *pDeclClass)` |
-|        5 | 1398 | `{` |
-|        - | 1399 | `	ph7_value sMsg,sSince;` |
-|        - | 1400 | `	SyBlob sOut;` |
-|        - | 1401 | `	int bMsg,bSince;` |
-|      117 | 1402 | `	PH7_MemObjInit(pVm,&sMsg);` |
-|      117 | 1403 | `	PH7_MemObjInit(pVm,&sSince);` |
-|      117 | 1404 | `	if( VmDeprecatedAttrExtract(pVm,&pFunc->aAttrs,&sMsg,&bMsg,&sSince,&bSince) ){` |
-|       21 | 1405 | `		SyBlobInit(&sOut,&pVm->sAllocator);` |
-|       21 | 1406 | `		if( pDeclClass ){` |
-|        5 | 1407 | `			SyBlobFormat(&sOut,"Method %z::%z() is deprecated",&pDeclClass->sName,&pFunc->sName);` |
-|        3 | 1408 | `		}else{` |
-|       17 | 1409 | `			SyBlobFormat(&sOut,"Function %z() is deprecated",&pFunc->sName);` |
-|        - | 1410 | `		}` |
-|       21 | 1411 | `		VmDeprecatedEmit(pVm,&sOut,&sMsg,bMsg,&sSince,bSince);` |
-|       21 | 1412 | `		SyBlobRelease(&sOut);` |
-|       10 | 1413 | `	}` |
-|      117 | 1414 | `	PH7_MemObjRelease(&sMsg);` |
-|      117 | 1415 | `	PH7_MemObjRelease(&sSince);` |
-|      117 | 1416 | `}` |
-|        - | 1417 | `/*` |
-|        - | 1418 | ` * Same notice for a #[\Deprecated] class constant, at its static-access site:` |
-|        - | 1419 | `` * php's `Constant C::K is deprecated` (each access re-warns).`` |
-|        - | 1420 | ` */` |
-|       12 | 1421 | `PH7_PRIVATE void VmDeprecatedConstNotice(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pMember)` |
-|        1 | 1422 | `{` |
-|       19 | 1423 | `	VmDeprecatedAttrNoticeSubject(pVm,&pMember->aAttrs,` |
-|       12 | 1424 | `		(pMember->iFlags & PH7_CLASS_ATTR_ENUMCASE) ? "Enum case" : "Constant",` |
-|       12 | 1425 | `		&pClass->sName,&pMember->sName);` |
-|       13 | 1426 | `}` |
-|        - | 1427 |  |
+|        - |  717 | `	{ "settype", "mixed &$var, string $type", "bool" },` |
+|        - |  718 | `	{ "sha1", "string $string, bool $binary = false", "string" },` |
+|        - |  719 | `	{ "sha1_file", "string $filename, bool $binary = false", "string\|false" },` |
+|        - |  720 | `	{ "shuffle", "array &$array", "true" },` |
+|        - |  721 | `	{ "similar_text", "string $string1, string $string2, &$percent = NULL", "int" },` |
+|        - |  722 | `	{ "sin", "float $num", "float" },` |
+|        - |  723 | `	{ "sinh", "float $num", "float" },` |
+|        - |  724 | `	{ "sizeof", "Countable\|array $value, int $mode = 0", "int" },` |
+|        - |  725 | `	{ "sleep", "int $seconds", "int" },` |
+|        - |  726 | `	{ "sort", "array &$array, int $flags = 0", "true" },` |
+|        - |  727 | `	{ "soundex", "string $string", "string" },` |
+|        - |  728 | `	{ "spl_autoload", "string $class, ?string $file_extensions = NULL", "void" },` |
+|        - |  729 | `	{ "spl_autoload_functions", "", "array" },` |
+|        - |  730 | `	{ "spl_autoload_register", "?callable $callback = NULL, bool $throw = true, bool $prepend = false", "bool" },` |
+|        - |  731 | `	{ "spl_autoload_unregister", "callable $callback", "bool" },` |
+|        - |  732 | `	{ "spl_object_hash", "object $object", "string" },` |
+|        - |  733 | `	{ "spl_object_id", "object $object", "int" },` |
+|        - |  734 | `	{ "sprintf", "string $format, mixed ...$values = ?", "string" },` |
+|        - |  735 | `	{ "sqrt", "float $num", "float" },` |
+|        - |  736 | `	{ "srand", "?int $seed = NULL, int $mode = 0", "void" },` |
+|        - |  737 | `	{ "stat", "string $filename", "array\|false" },` |
+|        - |  738 | `	{ "str_contains", "string $haystack, string $needle", "bool" },` |
+|        - |  739 | `	{ "str_ends_with", "string $haystack, string $needle", "bool" },` |
+|        - |  740 | `	{ "str_getcsv", "string $string, string $separator = ',', string $enclosure = '\"', string $escape = '\\\\'", "array" },` |
+|        - |  741 | `	{ "str_ireplace", "array\|string $search, array\|string $replace, array\|string $subject, &$count = NULL", "array\|string" },` |
+|        - |  742 | `	{ "str_pad", "string $string, int $length, string $pad_string = ' ', int $pad_type = 1", "string" },` |
+|        - |  743 | `	{ "str_repeat", "string $string, int $times", "string" },` |
+|        - |  744 | `	{ "str_replace", "array\|string $search, array\|string $replace, array\|string $subject, &$count = NULL", "array\|string" },` |
+|        - |  745 | `	{ "str_shuffle", "string $string", "string" },` |
+|        - |  746 | `	{ "str_split", "string $string, int $length = 1", "array" },` |
+|        - |  747 | `	{ "str_starts_with", "string $haystack, string $needle", "bool" },` |
+|        - |  748 | `	{ "str_word_count", "string $string, int $format = 0, ?string $characters = NULL", "array\|int" },` |
+|        - |  749 | `	{ "strcasecmp", "string $string1, string $string2", "int" },` |
+|        - |  750 | `	{ "strchr", "string $haystack, string $needle, bool $before_needle = false", "string\|false" },` |
+|        - |  751 | `	{ "strcmp", "string $string1, string $string2", "int" },` |
+|        - |  752 | `	{ "strnatcasecmp", "string $string1, string $string2", "int" },` |
+|        - |  753 | `	{ "strnatcmp", "string $string1, string $string2", "int" },` |
+|        - |  754 | `	{ "strcoll", "string $string1, string $string2", "int" },` |
+|        - |  755 | `	{ "strcspn", "string $string, string $characters, int $offset = 0, ?int $length = NULL", "int" },` |
+|        - |  756 | `	{ "strip_tags", "string $string, array\|string\|null $allowed_tags = NULL", "string" },` |
+|        - |  757 | `	{ "stripos", "string $haystack, string $needle, int $offset = 0", "int\|false" },` |
+|        - |  758 | `	{ "stripslashes", "string $string", "string" },` |
+|        - |  759 | `	{ "stristr", "string $haystack, string $needle, bool $before_needle = false", "string\|false" },` |
+|        - |  760 | `	{ "strlen", "string $string", "int" },` |
+|        - |  761 | `	{ "strncasecmp", "string $string1, string $string2, int $length", "int" },` |
+|        - |  762 | `	{ "strncmp", "string $string1, string $string2, int $length", "int" },` |
+|        - |  763 | `	{ "strpbrk", "string $string, string $characters", "string\|false" },` |
+|        - |  764 | `	{ "strpos", "string $haystack, string $needle, int $offset = 0", "int\|false" },` |
+|        - |  765 | `	{ "strrchr", "string $haystack, string $needle, bool $before_needle = false", "string\|false" },` |
+|        - |  766 | `	{ "strrev", "string $string", "string" },` |
+|        - |  767 | `	{ "strripos", "string $haystack, string $needle, int $offset = 0", "int\|false" },` |
+|        - |  768 | `	{ "strrpos", "string $haystack, string $needle, int $offset = 0", "int\|false" },` |
+|        - |  769 | `	{ "strspn", "string $string, string $characters, int $offset = 0, ?int $length = NULL", "int" },` |
+|        - |  770 | `	{ "strstr", "string $haystack, string $needle, bool $before_needle = false", "string\|false" },` |
+|        - |  771 | `	{ "strtok", "string $string, ?string $token = NULL", "string\|false" },` |
+|        - |  772 | `	{ "strtolower", "string $string", "string" },` |
+|        - |  773 | `	{ "strtoupper", "string $string", "string" },` |
+|        - |  774 | `	{ "strtr", "string $string, array\|string $from, ?string $to = NULL", "string" },` |
+|        - |  775 | `	{ "strval", "mixed $value", "string" },` |
+|        - |  776 | `	{ "substr", "string $string, int $offset, ?int $length = NULL", "string" },` |
+|        - |  777 | `	{ "substr_compare", "string $haystack, string $needle, int $offset, ?int $length = NULL, bool $case_insensitive = false", "int" },` |
+|        - |  778 | `	{ "substr_count", "string $haystack, string $needle, int $offset = 0, ?int $length = NULL", "int" },` |
+|        - |  779 | `	{ "substr_replace", "array\|string $string, array\|string $replace, array\|int $offset, array\|int\|null $length = NULL", "array\|string" },` |
+|        - |  780 | `	{ "symlink", "string $target, string $link", "bool" },` |
+|        - |  781 | `	{ "sys_get_temp_dir", "", "string" },` |
+|        - |  782 | `	{ "tan", "float $num", "float" },` |
+|        - |  783 | `	{ "tanh", "float $num", "float" },` |
+|        - |  784 | `	{ "time", "", "int" },` |
+|        - |  785 | `	{ "touch", "string $filename, ?int $mtime = NULL, ?int $atime = NULL", "bool" },` |
+|        - |  786 | `	{ "trigger_error", "string $message, int $error_level = 1024", "true" },` |
+|        - |  787 | `	{ "trim", "string $string, string $characters = ?", "string" },` |
+|        - |  788 | `	{ "uasort", "array &$array, callable $callback", "true" },` |
+|        - |  789 | `	{ "ucfirst", "string $string", "string" },` |
+|        - |  790 | `	{ "ucwords", "string $string, string $separators = ?", "string" },` |
+|        - |  791 | `	{ "uksort", "array &$array, callable $callback", "true" },` |
+|        - |  792 | `	{ "umask", "?int $mask = NULL", "int" },` |
+|        - |  793 | `	{ "uniqid", "string $prefix = '', bool $more_entropy = false", "string" },` |
+|        - |  794 | `	{ "unlink", "string $filename, $context = NULL", "bool" },` |
+|        - |  795 | `	{ "unserialize", "string $data, array $options = ?", "mixed" },` |
+|        - |  796 | `	{ "urldecode", "string $string", "string" },` |
+|        - |  797 | `	{ "urlencode", "string $string", "string" },` |
+|        - |  798 | `	{ "user_error", "string $message, int $error_level = 1024", "true" },` |
+|        - |  799 | `	{ "usleep", "int $microseconds", "void" },` |
+|        - |  800 | `	{ "usort", "array &$array, callable $callback", "true" },` |
+|        - |  801 | `	{ "var_dump", "mixed $value, mixed ...$values = ?", "void" },` |
+|        - |  802 | `	{ "var_export", "mixed $value, bool $return = false", "?string" },` |
+|        - |  803 | `	{ "vfprintf", "$stream, string $format, array $values", "int" },` |
+|        - |  804 | `	{ "vprintf", "string $format, array $values", "int" },` |
+|        - |  805 | `	{ "vsprintf", "string $format, array $values", "string" },` |
+|        - |  806 | `	{ "wordwrap", "string $string, int $width = 75, string $break = ?, bool $cut_long_words = false", "string" },` |
+|        - |  807 | `	{ "zip_close", "$zip", "void" },` |
+|        - |  808 | `	{ "zip_entry_close", "$zip_entry", "bool" },` |
+|        - |  809 | `	{ "zip_entry_compressedsize", "$zip_entry", "int\|false" },` |
+|        - |  810 | `	{ "zip_entry_compressionmethod", "$zip_entry", "string\|false" },` |
+|        - |  811 | `	{ "zip_entry_filesize", "$zip_entry", "int\|false" },` |
+|        - |  812 | `	{ "zip_entry_name", "$zip_entry", "string\|false" },` |
+|        - |  813 | `	{ "zip_entry_open", "$zip_dp, $zip_entry, string $mode = 'rb'", "bool" },` |
+|        - |  814 | `	{ "zip_entry_read", "$zip_entry, int $len = 1024", "string\|false" },` |
+|        - |  815 | `	{ "zip_open", "string $filename", "" },` |
+|        - |  816 | `	{ "zip_read", "$zip", "" },` |
+|        - |  817 | `};` |
+|        - |  818 | `/*` |
+|        - |  819 | ` * Stamp the signature strings onto the registered host functions.` |
+|        - |  820 | ` * Runs once at PH7_VmMakeReady, after the builtins are registered.` |
+|        - |  821 | ` */` |
+|        - |  822 | `/*` |
+|        - |  823 | ` * Derive the minimum arity from a builtin's declared signature: a parameter is` |
+|        - |  824 | ` * optional when it carries a default ("int $length = 76") or is variadic` |
+|        - |  825 | ` * ("...$rest"), so the minimum is the count of the parameters that are neither,` |
+|        - |  826 | ` * and the ZPP wording is "at least" as soon as one optional/variadic exists.` |
+|        - |  827 | ` *` |
+|        - |  828 | ` * This makes aBuiltinSig[] the single source of truth for arity — the curated` |
+|        - |  829 | ` * aBuiltinArity[] table above stays as an OVERRIDE for the handful of builtins` |
+|        - |  830 | ` * php reports differently from their own signature (e.g. strtr(), whose 3-arg` |
+|        - |  831 | ` * form still reports "expects exactly 2", and the array_udiff() family, whose` |
+|        - |  832 | ` * variadic tail hides a second required argument). Verified against php 8.5.7` |
+|        - |  833 | ` * for all 462 signed builtins: 458 derive exactly, 4 are overridden.` |
+|        - |  834 | ` */` |
+|  1626116 |  835 | `static void VmDeriveArityFromSig(const char *zSig,sxi16 *pnMin,sxu8 *pbAtLeast,sxi16 *pnMax,sxu8 *pbHasMax)` |
+|        5 |  836 | `{` |
+|  1626121 |  837 | `	const char *zCur = zSig;` |
+|  1626121 |  838 | `	int nMin = 0, bAtLeast = 0, bSeen = 0, bOptional = 0;` |
+|  1626121 |  839 | `	int nTotal = 0, bVariadic = 0;` |
+| 25128232 |  840 | `	for(;;){` |
+| 51718515 |  841 | `		if( zCur[0] == '\0' \|\| zCur[0] == ',' ){` |
+|  3088167 |  842 | `			if( bSeen ){` |
+|  2905867 |  843 | `				nTotal++;` |
+|  2905867 |  844 | `				if( bOptional ){` |
+|  1141203 |  845 | `					bAtLeast = 1;` |
+|   570604 |  846 | `				}else{` |
+|  1764669 |  847 | `					nMin++;` |
+|        - |  848 | `				}` |
+|  1452931 |  849 | `			}` |
+|  3088167 |  850 | `			if( zCur[0] == '\0' ){` |
+|  1626121 |  851 | `				break;` |
+|        - |  852 | `			}` |
+|  1462051 |  853 | `			bSeen = bOptional = 0;` |
+|  1462051 |  854 | `			zCur++;` |
+|  1462051 |  855 | `			continue;` |
+|        - |  856 | `		}` |
+| 48630353 |  857 | `		if( zCur[0] != ' ' ){` |
+| 42231623 |  858 | `			bSeen = 1;` |
+| 21115809 |  859 | `		}` |
+| 48630353 |  860 | `		if( zCur[0] == '=' \|\| (zCur[0] == '.' && zCur[1] == '.' && zCur[2] == '.') ){` |
+|  1217769 |  861 | `			bOptional = 1;` |
+|   608882 |  862 | `		}` |
+| 48630353 |  863 | `		if( zCur[0] == '.' && zCur[1] == '.' && zCur[2] == '.' ){` |
+|    76571 |  864 | `			bVariadic = 1;` |
+|    38283 |  865 | `		}` |
+| 48630353 |  866 | `		zCur++;` |
+|        5 |  867 | `	}` |
+|  1626121 |  868 | `	*pnMin = (sxi16)nMin;` |
+|  1626121 |  869 | `	*pbAtLeast = (sxu8)bAtLeast;` |
+|        - |  870 | `	/* php enforces a MAXIMUM too ("expects at most 1 argument, 2 given"); a` |
+|        - |  871 | `	 * variadic tail means there is none. The parameter COUNT is the maximum,` |
+|        - |  872 | `	 * whether or not the parameters carry defaults. */` |
+|  1626121 |  873 | `	*pnMax = (sxi16)nTotal;` |
+|  1626121 |  874 | `	*pbHasMax = (sxu8)(bVariadic ? 0 : 1);` |
+|  1626121 |  875 | `}` |
+|        - |  876 | `/*` |
+|        - |  877 | ` * Does the declared type list (e.g. "array\|string", "?int", "callable") contain` |
+|        - |  878 | ` * the given token? Compares against each '\|'-separated alternative, ignoring a` |
+|        - |  879 | ` * leading nullable '?'.` |
+|        - |  880 | ` */` |
+|  1625738 |  881 | `static int VmSigTypeHas(const char *zType,int nType,const char *zTok)` |
+|        5 |  882 | `{` |
+|  1625743 |  883 | `	int nTok = (int)SyStrlen(zTok);` |
+|  1625743 |  884 | `	int i = 0;` |
+|  1625743 |  885 | `	if( zType[0] == '?' ){` |
+|   295477 |  886 | `		zType++;` |
+|   295477 |  887 | `		nType--;` |
+|   147736 |  888 | `	}` |
+|  3271065 |  889 | `	while( i < nType ){` |
+|  1807679 |  890 | `		int j = i;` |
+| 10565232 |  891 | `		while( j < nType && zType[j] != '\|' ){` |
+|  8757558 |  892 | `			j++;` |
+|        5 |  893 | `		}` |
+|  1807679 |  894 | `		if( j - i == nTok && SyMemcmp(&zType[i],zTok,(sxu32)nTok) == 0 ){` |
+|   162357 |  895 | `			return 1;` |
+|        - |  896 | `		}` |
+|  1645327 |  897 | `		i = j + 1;` |
+|        5 |  898 | `	}` |
+|  1463391 |  899 | `	return 0;` |
+|   813639 |  900 | `}` |
+|        - |  901 | `/*` |
+|        - |  902 | ` * Does the declared type list name a CLASS (anything that is not one of php's` |
+|        - |  903 | ` * builtin type keywords)? A class-typed parameter accepts an object, so it must` |
+|        - |  904 | ` * not be rejected by the array/object/resource screen below.` |
+|        - |  905 | ` */` |
+|      216 |  906 | `static int VmSigTypeHasClass(const char *zType,int nType)` |
+|        5 |  907 | `{` |
+|        - |  908 | `	static const char *azBuiltin[] = {` |
+|        - |  909 | `		"int","float","string","bool","array","object","callable","iterable",` |
+|        - |  910 | `		"mixed","null","void","resource","false","true","never","self","static"` |
+|        - |  911 | `	};` |
+|      221 |  912 | `	int i = 0;` |
+|      221 |  913 | `	if( zType[0] == '?' ){` |
+|        7 |  914 | `		zType++;` |
+|        7 |  915 | `		nType--;` |
+|        3 |  916 | `	}` |
+|      341 |  917 | `	while( i < nType ){` |
+|      235 |  918 | `		int j = i, k, bKnown = 0;` |
+|     1979 |  919 | `		while( j < nType && zType[j] != '\|' ){` |
+|     1749 |  920 | `			j++;` |
+|        5 |  921 | `		}` |
+|     2357 |  922 | `		for( k = 0 ; k < (int)SX_ARRAYSIZE(azBuiltin) ; ++k ){` |
+|     2247 |  923 | `			int nB = (int)SyStrlen(azBuiltin[k]);` |
+|     2247 |  924 | `			if( j - i == nB && SyMemcmp(&zType[i],azBuiltin[k],(sxu32)nB) == 0 ){` |
+|      124 |  925 | `				bKnown = 1;` |
+|      124 |  926 | `				break;` |
+|        - |  927 | `			}` |
+|     1066 |  928 | `		}` |
+|      235 |  929 | `		if( !bKnown && j > i ){` |
+|      115 |  930 | `			return 1;` |
+|        - |  931 | `		}` |
+|      124 |  932 | `		i = j + 1;` |
+|        4 |  933 | `	}` |
+|      110 |  934 | `	return 0;` |
+|      113 |  935 | `}` |
+|        - |  936 | `/*` |
+|        - |  937 | ` * php's ", X given" tail: like ph7_type_name() but an object reports its CLASS,` |
+|        - |  938 | ` * which is what php prints in a TypeError.` |
+|        - |  939 | ` */` |
+|       56 |  940 | `static const char * VmArgTypeName(ph7_value *pVal)` |
+|        3 |  941 | `{` |
+|       59 |  942 | `	if( (pVal->iFlags & MEMOBJ_OBJ) != 0 ){` |
+|       59 |  943 | `		ph7_class_instance *pInst = (ph7_class_instance *)pVal->x.pOther;` |
+|       59 |  944 | `		if( pInst && pInst->pClass ){` |
+|       59 |  945 | `			return pInst->pClass->sName.zString;` |
+|        - |  946 | `		}` |
+|      ! 0 |  947 | `	}` |
+|      ! 0 |  948 | `	return ph7_type_name(pVal);` |
+|       31 |  949 | `}` |
+|        - |  950 | `/*` |
+|        - |  951 | `` * Does pArg satisfy a `string` parameter? The rule VmEnforceBuiltinArgTypes()`` |
+|        - |  952 | ` * below applies, factored out so a builtin that words its own overload dispatch` |
+|        - |  953 | ` * (strtr(), whose expected type depends on the ARITY and so cannot be spelled in` |
+|        - |  954 | ` * one signature) decides identically instead of forking the logic. An array never` |
+|        - |  955 | ` * satisfies one; an object does only through __toString(); a resource does not;` |
+|        - |  956 | ` * null does under php, with a deprecation, but not under PHL's §10 null-strictness` |
+|        - |  957 | ` * policy — the screen and this helper both report it as a mismatch.` |
+|        - |  958 | ` */` |
+|      294 |  959 | `PH7_PRIVATE int PH7_ArgSatisfiesString(ph7_value *pArg)` |
+|        2 |  960 | `{` |
+|      296 |  961 | `	if( (pArg->iFlags & (MEMOBJ_HASHMAP\|MEMOBJ_NULL\|MEMOBJ_RES)) != 0 ){` |
+|       11 |  962 | `		return 0;` |
+|        - |  963 | `	}` |
+|      286 |  964 | `	if( (pArg->iFlags & MEMOBJ_OBJ) != 0 ){` |
+|       88 |  965 | `		ph7_class_instance *pInst = (ph7_class_instance *)pArg->x.pOther;` |
+|       88 |  966 | `		return pInst && PH7_ClassExtractMethod(pInst->pClass,"__toString",` |
+|       43 |  967 | `			sizeof("__toString")-1) != 0;` |
+|        - |  968 | `	}` |
+|      199 |  969 | `	return 1;` |
+|      149 |  970 | `}` |
+|        - |  971 | `/*` |
+|        - |  972 | ` * PHP-8 ZPP type enforcement for host functions, driven by the aBuiltinSig[]` |
+|        - |  973 | ` * declaration (band A #7). Screens only the arguments that php can NEVER coerce` |
+|        - |  974 | ` * into a declared scalar parameter — arrays, resources, and objects without a` |
+|        - |  975 | ` * __toString() — and throws the catchable TypeError php throws, before the C` |
+|        - |  976 | ` * routine runs. Without this an array argument reached the builtin and was` |
+|        - |  977 | ` * stringified to the literal "Array" (strrev(['a']) returned "yarrA").` |
+|        - |  978 | ` *` |
+|        - |  979 | ` * Deliberately narrow: scalar-to-scalar coercion (and its deprecations) stays` |
+|        - |  980 | ` * with the per-builtin ZPP helpers. Those emit E_DEPRECATED, which does NOT` |
+|        - |  981 | ` * abort the call, so a central copy would double-fire — the trap that sank the` |
+|        - |  982 | ` * first central-ZPP attempt. A TypeError aborts, so there is nothing to double.` |
+|        - |  983 | ` */` |
+|  3936537 |  984 | `PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(` |
+|        - |  985 | `	ph7_context *pCtx,    /* Call context (for the throw) */` |
+|        - |  986 | `	ph7_user_func *pFunc, /* Callee */` |
+|        - |  987 | `	int nGiven,           /* Argument count */` |
+|        - |  988 | `	ph7_value **apArg     /* Arguments */` |
+|        - |  989 | `	)` |
+|        5 |  990 | `{` |
+|        - |  991 | `	/*` |
+|        - |  992 | `	 * Builtins whose own argument check is php-exact and VALUE-based rather than` |
+|        - |  993 | `	 * type-based must not be pre-empted here, or their message is lost. Same rule` |
+|        - |  994 | `	 * the aBuiltinArity[] table follows: a builtin that already says what php says` |
+|        - |  995 | `	 * stays off the shared screen. get_class_vars() takes any stringifiable value` |
+|        - |  996 | `	 * and reports "must be a valid class name, Array given".` |
+|        - |  997 | `	 *` |
+|        - |  998 | `	 * strtr() is here for a structural reason: php declares it as two OVERLOADS` |
+|        - |  999 | `	 * dispatched on arity — strtr(string, array) and strtr(string, string, string)` |
+|        - | 1000 | `` 	 * — so the expected type of $from is `array` with two arguments and `string` `` |
+|        - | 1001 | ``	 * with three. One signature cannot say that (the stub's `array\|string` is the`` |
+|        - | 1002 | `	 * union of the two, which is the wording php never uses), so the builtin does` |
+|        - | 1003 | `	 * its own dispatch through PH7_ArgSatisfiesString(), the same rule as here.` |
+|        - | 1004 | `	 */` |
+|        - | 1005 | `	static const char *azSelfChecked[] = { "get_class_vars", "strtr" };` |
+|  3936542 | 1006 | `	const char *zSig = pFunc->zSig;` |
+|        - | 1007 | `	const char *zCur, *zEnd;` |
+|  3936542 | 1008 | `	int iArg = 0;` |
+|  3936542 | 1009 | `	if( zSig == 0 ){` |
+|  3082363 | 1010 | `		return SXRET_OK;` |
+|        - | 1011 | `	}` |
+|  2562436 | 1012 | `	for( iArg = 0 ; iArg < (int)SX_ARRAYSIZE(azSelfChecked) ; ++iArg ){` |
+|  2563733 | 1013 | `		if( SyStrncmp(pFunc->sName.zString,azSelfChecked[iArg],` |
+|  2563733 | 1014 | `			(sxu32)SyStrlen(azSelfChecked[iArg])) == 0` |
+|   855436 | 1015 | `		 && pFunc->sName.nByte == SyStrlen(azSelfChecked[iArg]) ){` |
+|      102 | 1016 | `			return SXRET_OK;` |
+|        - | 1017 | `		}` |
+|   855336 | 1018 | `	}` |
+|   854084 | 1019 | `	iArg = 0;` |
+|   854084 | 1020 | `	zCur = zSig;` |
+|   854084 | 1021 | `	zEnd = &zSig[SyStrlen(zSig)];` |
+|  2437300 | 1022 | `	while( zCur < zEnd && iArg < nGiven ){` |
+|        - | 1023 | `		const char *zType, *zName, *zStop;` |
+|        - | 1024 | `		int nType, nName;` |
+|        - | 1025 | `		ph7_value *pArg;` |
+|        - | 1026 | `		/* Parameter = "<type> $<name>[ = <default>]"; the type is whatever` |
+|        - | 1027 | `		 * precedes the '$', and an empty type means "untyped" (no screen). */` |
+|  2337876 | 1028 | `		while( zCur < zEnd && zCur[0] == ' ' ){` |
+|   752318 | 1029 | `			zCur++;` |
+|        5 | 1030 | `		}` |
+|  1585563 | 1031 | `		zStop = zCur;` |
+| 25336060 | 1032 | `		while( zStop < zEnd && zStop[0] != ',' ){` |
+| 23750502 | 1033 | `			zStop++;` |
+|        5 | 1034 | `		}` |
+|  1585563 | 1035 | `		zName = zCur;` |
+| 11897384 | 1036 | `		while( zName < zStop && zName[0] != '$' ){` |
+| 10311826 | 1037 | `			zName++;` |
+|        5 | 1038 | `		}` |
+|  1585563 | 1039 | `		if( zName >= zStop ){` |
+|       45 | 1040 | `			break; /* malformed / no parameter name — stop screening */` |
+|        - | 1041 | `		}` |
+|  1585519 | 1042 | `		if( zName >= zCur + 3 && SyMemcmp(zName - 3,"...",3) == 0 ){` |
+|     2085 | 1043 | `			break; /* variadic tail: stop (its type applies to the rest) */` |
+|        - | 1044 | `		}` |
+|  1583439 | 1045 | `		zType = zCur;` |
+|  1583439 | 1046 | `		nType = (int)(zName - zCur);` |
+|        - | 1047 | `		/* Trim the trailing spaces and the by-ref marker of "array &$array" */` |
+|  3923525 | 1048 | `		while( nType > 0 && (zType[nType-1] == ' ' \|\| zType[nType-1] == '&') ){` |
+|  1547609 | 1049 | `			nType--;` |
+|        5 | 1050 | `		}` |
+|  1583439 | 1051 | `		zName++; /* skip '$' */` |
+|  1583439 | 1052 | `		nName = 0;` |
+| 11462601 | 1053 | `		while( &zName[nName] < zStop && zName[nName] != ' ' && zName[nName] != '=' ){` |
+|  9879167 | 1054 | `			nName++;` |
+|        5 | 1055 | `		}` |
+|  1583439 | 1056 | `		pArg = apArg[iArg];` |
+|  1583439 | 1057 | `		if( nType > 0 && !VmSigTypeHas(zType,nType,"mixed") ){` |
+|  1461417 | 1058 | `			const char *zGiven = 0;` |
+|  1461417 | 1059 | `			if( (pArg->iFlags & MEMOBJ_HASHMAP) != 0 ){` |
+|    77644 | 1060 | `				if( !VmSigTypeHas(zType,nType,"array")` |
+|    38897 | 1061 | `				 && !VmSigTypeHas(zType,nType,"iterable")` |
+|      155 | 1062 | `				 && !VmSigTypeHas(zType,nType,"callable") ){` |
+|      119 | 1063 | `					zGiven = "array";` |
+|       62 | 1064 | `				}` |
+|  1422595 | 1065 | `			}else if( (pArg->iFlags & MEMOBJ_OBJ) != 0 ){` |
+|     1720 | 1066 | `				if( !VmSigTypeHas(zType,nType,"object")` |
+|     1166 | 1067 | `				 && !VmSigTypeHas(zType,nType,"iterable")` |
+|      612 | 1068 | `				 && !VmSigTypeHas(zType,nType,"callable")` |
+|      418 | 1069 | `				 && !VmSigTypeHasClass(zType,nType) ){` |
+|        - | 1070 | `					/* An object with __toString() still satisfies a string` |
+|        - | 1071 | `					 * parameter in weak mode — php coerces it. */` |
+|      148 | 1072 | `					int bStringable = VmSigTypeHas(zType,nType,"string")` |
+|      104 | 1073 | `						&& PH7_ArgSatisfiesString(pArg);` |
+|      107 | 1074 | `					if( !bStringable ){` |
+|       59 | 1075 | `						zGiven = VmArgTypeName(pArg);` |
+|       28 | 1076 | `					}` |
+|       57 | 1077 | `				}` |
+|  1382913 | 1078 | `			}else if( (pArg->iFlags & MEMOBJ_NULL) != 0 ){` |
+|        - | 1079 | `				/* php only DEPRECATES null for a non-nullable parameter; PHL rejects` |
+|        - | 1080 | `				 * it (scope policy). A leading '?' or an explicit "null" arm in a` |
+|        - | 1081 | `				 * union declares the parameter nullable. A "callable" parameter is` |
+|        - | 1082 | `				 * left to the builtin's own callback check, which words the failure` |
+|        - | 1083 | `				 * php's way ("must be a valid callback, no array or string given") —` |
+|        - | 1084 | `				 * the same reason get_class_vars() sits on azSelfChecked[]. */` |
+|     5044 | 1085 | `				if( zType[0] != '?'` |
+|     2550 | 1086 | `				 && !VmSigTypeHas(zType,nType,"null")` |
+|       58 | 1087 | `				 && !VmSigTypeHas(zType,nType,"callable") ){` |
+|       50 | 1088 | `					zGiven = "null";` |
+|       27 | 1089 | `				}` |
+|  1379531 | 1090 | `			}else if( (pArg->iFlags & MEMOBJ_RES) != 0 ){` |
+|        - | 1091 | `				/* A class-typed parameter also accepts a resource: several handles php 8` |
+|        - | 1092 | `				 * models as objects are still resources here (xml_*'s XMLParser is the` |
+|        - | 1093 | `				 * one the signatures already declare php-8-style, for reflection). The` |
+|        - | 1094 | `				 * screen would otherwise reject the engine's own parser handle. Recorded` |
+|        - | 1095 | `				 * as a divergence in NEWPLAN §7 — it goes away when those handles become` |
+|        - | 1096 | `				 * real objects. */` |
+|        2 | 1097 | `				if( !VmSigTypeHas(zType,nType,"resource")` |
+|        3 | 1098 | `				 && !VmSigTypeHasClass(zType,nType) ){` |
+|        3 | 1099 | `					zGiven = "resource";` |
+|        1 | 1100 | `				}` |
+|        1 | 1101 | `			}` |
+|  1461417 | 1102 | `			if( zGiven ){` |
+|      332 | 1103 | `				return PH7_VmThrowException(pCtx,"TypeError",` |
+|        - | 1104 | `					"%z(): Argument #%d ($%.*s) must be of type %.*s, %s given",` |
+|      109 | 1105 | `					&pFunc->sName,iArg + 1,nName,zName,nType,zType,zGiven);` |
+|        - | 1106 | `			}` |
+|   731247 | 1107 | `		}` |
+|  1583221 | 1108 | `		zCur = (zStop < zEnd) ? zStop + 1 : zEnd;` |
+|  1583221 | 1109 | `		iArg++;` |
+|        5 | 1110 | `	}` |
+|   853866 | 1111 | `	return SXRET_OK;` |
+|  1968876 | 1112 | `}` |
+|        - | 1113 | `/*` |
+|        - | 1114 | ` * Builtins whose accepted arity is NOT a contiguous range, so the signature` |
+|        - | 1115 | ` * cannot express it and the central too-many-arguments check must stay out of` |
+|        - | 1116 | ` * the way: rand()/mt_rand() take 0 OR 2 arguments (never 1), and php words the` |
+|        - | 1117 | ` * violation "expects exactly 2 arguments, 3 given" from their own check rather` |
+|        - | 1118 | ` * than the ZPP "at most". They validate themselves; leaving bHasMaxArg at 0` |
+|        - | 1119 | ` * keeps their message php-faithful.` |
+|        - | 1120 | ` */` |
+|  1626116 | 1121 | `static int VmBuiltinSelfValidatesArity(const char *zName)` |
+|        5 | 1122 | `{` |
+|        - | 1123 | `	static const char *const azSelf[] = { "rand", "mt_rand" };` |
+|        - | 1124 | `	sxu32 i;` |
+|  4867415 | 1125 | `	for( i = 0 ; i < SX_ARRAYSIZE(azSelf) ; i++ ){` |
+|  3248591 | 1126 | `		sxu32 nSelf = SyStrlen(azSelf[i]);` |
+|  3248591 | 1127 | `		if( SyStrlen(zName) == nSelf && SyStrncmp(zName,azSelf[i],nSelf) == 0 ){` |
+|     7297 | 1128 | `			return 1;` |
+|        - | 1129 | `		}` |
+|  1620652 | 1130 | `	}` |
+|  1618829 | 1131 | `	return 0;` |
+|   813063 | 1132 | `}` |
+|        - | 1133 | `/*` |
+|        - | 1134 | ` * D1: derive a by-reference position bitmask from a php-style signature string.` |
+|        - | 1135 | `` * Bit N is set when positional parameter N is declared by-reference (a `&` appears`` |
+|        - | 1136 | `` * anywhere in that comma-separated parameter, e.g. `&$matches`, `&...$vars`). Only`` |
+|        - | 1137 | ` * the first 31 positions are representable; a by-ref parameter past that is rare` |
+|        - | 1138 | ` * for a builtin and simply not tracked here. The scan mirrors VmDeriveArityFromSig.` |
+|        - | 1139 | ` */` |
+|  1626116 | 1140 | `static sxu32 VmDeriveByRefMaskFromSig(const char *zSig)` |
+|        5 | 1141 | `{` |
+|  1626121 | 1142 | `	sxu32 mask = 0;` |
+|  1626121 | 1143 | `	int n = 0;       /* current parameter index */` |
+|  1626121 | 1144 | `	int bSeen = 0;   /* current parameter has non-space content */` |
+|  1626121 | 1145 | ``	int bRef = 0;    /* current parameter carries a by-ref `&` */`` |
+|  1626121 | 1146 | `	const char *zCur = zSig;` |
+| 25128232 | 1147 | `	for(;;){` |
+| 51718515 | 1148 | `		if( zCur[0] == '\0' \|\| zCur[0] == ',' ){` |
+|  3088167 | 1149 | `			if( bSeen ){` |
+|  2905867 | 1150 | `				if( bRef && n < 31 ){` |
+|   145845 | 1151 | `					mask \|= (1u << n);` |
+|    72920 | 1152 | `				}` |
+|  2905867 | 1153 | `				n++;` |
+|  1452931 | 1154 | `			}` |
+|  3088167 | 1155 | `			if( zCur[0] == '\0' ){` |
+|  1626121 | 1156 | `				break;` |
+|        - | 1157 | `			}` |
+|  1462051 | 1158 | `			bSeen = bRef = 0;` |
+|  1462051 | 1159 | `			zCur++;` |
+|  1462051 | 1160 | `			continue;` |
+|        - | 1161 | `		}` |
+| 48630353 | 1162 | `		if( zCur[0] != ' ' ){` |
+| 42231623 | 1163 | `			bSeen = 1;` |
+| 21115809 | 1164 | `		}` |
+| 48630353 | 1165 | `		if( zCur[0] == '&' ){` |
+|   145845 | 1166 | `			bRef = 1;` |
+|    72920 | 1167 | `		}` |
+| 48630353 | 1168 | `		zCur++;` |
+|        5 | 1169 | `	}` |
+|  1626121 | 1170 | `	return mask;` |
+|        5 | 1171 | `}` |
+|     3646 | 1172 | `PH7_PRIVATE void VmSetBuiltinSignatures(ph7_vm *pVm)` |
+|        5 | 1173 | `{` |
+|        - | 1174 | `	sxu32 n;` |
+|  1673519 | 1175 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltinSig) ; n++ ){` |
+|  2504807 | 1176 | `		SyHashEntry *pEntry = SyHashGet(&pVm->hHostFunction,` |
+|  1669868 | 1177 | `			(const void *)aBuiltinSig[n].zName,(sxu32)SyStrlen(aBuiltinSig[n].zName));` |
+|  1669873 | 1178 | `		if( pEntry ){` |
+|  1626121 | 1179 | `			ph7_user_func *pFunc = (ph7_user_func *)pEntry->pUserData;` |
+|  1626121 | 1180 | `			sxi16 nMin = 0, nMax = 0;` |
+|  1626121 | 1181 | `			sxu8 bAtLeast = 0, bHasMax = 0;` |
+|  1626121 | 1182 | `			pFunc->zSig = aBuiltinSig[n].zSig;` |
+|  1626121 | 1183 | `			pFunc->zRet = aBuiltinSig[n].zRet[0] ? aBuiltinSig[n].zRet : 0;` |
+|  1626121 | 1184 | `			pFunc->nByRefMask = VmDeriveByRefMaskFromSig(pFunc->zSig);` |
+|  1626121 | 1185 | `			VmDeriveArityFromSig(pFunc->zSig,&nMin,&bAtLeast,&nMax,&bHasMax);` |
+|        - | 1186 | `			/* The MAXIMUM always comes from the signature: the curated override` |
+|        - | 1187 | `			 * table speaks only to the minimum (and its wording). */` |
+|  1626121 | 1188 | `			pFunc->nMaxArg = nMax;` |
+|  1626121 | 1189 | `			pFunc->bHasMaxArg = (sxu8)(VmBuiltinSelfValidatesArity(aBuiltinSig[n].zName) ? 0 : bHasMax);` |
+|  1626121 | 1190 | `			if( pFunc->nMinArg < 1 ){` |
+|        - | 1191 | `				/* VmSetBuiltinArity() ran first: a non-zero minimum here means the` |
+|        - | 1192 | `				 * curated override already spoke for this builtin, so leave it. */` |
+|   678161 | 1193 | `				pFunc->nMinArg = nMin;` |
+|   678161 | 1194 | `				pFunc->bAtLeast = bAtLeast;` |
+|   339078 | 1195 | `			}` |
+|   813058 | 1196 | `		}` |
+|   834939 | 1197 | `	}` |
+|     3651 | 1198 | `}` |
+|        - | 1199 | `/*` |
+|        - | 1200 | ` * Signature lookup by function name, for the reflection layer: embedded-PHP` |
+|        - | 1201 | ` * builtins (max/min/Exception methods...) are ph7_vm_func instances, not` |
+|        - | 1202 | ` * host functions, so they miss the VmSetBuiltinSignatures stamping and pull` |
+|        - | 1203 | ` * their row on demand here. Linear scan — reflection-path only.` |
+|        - | 1204 | ` */` |
+|        4 | 1205 | `PH7_PRIVATE const char * PH7_VmBuiltinSigLookup(const char *zName,sxu32 nLen,const char **pzRet)` |
+|        1 | 1206 | `{` |
+|        - | 1207 | `	sxu32 n;` |
+|        5 | 1208 | `	if( pzRet ){` |
+|        5 | 1209 | `		*pzRet = 0;` |
+|        2 | 1210 | `	}` |
+|     1049 | 1211 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltinSig) ; n++ ){` |
+|     1048 | 1212 | `		if( SyStrlen(aBuiltinSig[n].zName) == nLen` |
+|      543 | 1213 | `		 && SyMemcmp(aBuiltinSig[n].zName,zName,nLen) == 0 ){` |
+|        5 | 1214 | `			if( pzRet && aBuiltinSig[n].zRet[0] ){` |
+|        5 | 1215 | `				*pzRet = aBuiltinSig[n].zRet;` |
+|        2 | 1216 | `			}` |
+|        5 | 1217 | `			return aBuiltinSig[n].zSig;` |
+|        - | 1218 | `		}` |
+|      523 | 1219 | `	}` |
+|      ! 0 | 1220 | `	return 0;` |
+|        3 | 1221 | `}` |
+|        - | 1222 | `/*` |
+|        - | 1223 | ` * Write a value back to the caller's variable through a builtin argument's` |
+|        - | 1224 | ` * stack-slot nIdx — the shared write-back for builtin by-reference` |
+|        - | 1225 | ` * out-parameters (preg_match $matches, preg_replace &$count, similar_text` |
+|        - | 1226 | ` * &$percent, ...).` |
+|        - | 1227 | ` *` |
+|        - | 1228 | ` * For a positional out-param argument the call compiler auto-vivifies known` |
+|        - | 1229 | ` * by-reference out-params (see GenStateByRefBuiltinMask in compile.c), so a` |
+|        - | 1230 | ` * bare undefined variable, an array subscript, and a declared/untyped` |
+|        - | 1231 | ` * property all arrive with a real nIdx and are written back here, matching` |
+|        - | 1232 | ` * PHP's reference semantics.` |
+|        - | 1233 | ` *` |
+|        - | 1234 | ` * nIdx stays SXU32_HIGH and the write-back to the caller is skipped (the` |
+|        - | 1235 | ` * value still lands in the local stack slot) when the argument cannot expose` |
+|        - | 1236 | ` * a stable memobj slot: a literal, a function-call result, a subscript of a` |
+|        - | 1237 | ` * non-lvalue parent (foo()['k']), or any variable in a call that also uses` |
+|        - | 1238 | ` * named or spread arguments (compile-time positions no longer map to the` |
+|        - | 1239 | ` * runtime arg slots, so the compiler conservatively does not vivify). An` |
+|        - | 1240 | ` * uninitialized typed property is also not wired (it throws before the` |
+|        - | 1241 | ` * write) -- see the recorded deferrals.` |
+|        - | 1242 | ` */` |
+|      356 | 1243 | `PH7_PRIVATE void PH7_VmStoreArgByRef(ph7_vm *pVm,ph7_value *pArg,ph7_value *pNewVal)` |
+|        5 | 1244 | `{` |
+|      361 | 1245 | `	if( pArg->nIdx != SXU32_HIGH ){` |
+|      359 | 1246 | `		ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pArg->nIdx);` |
+|      359 | 1247 | `		if( pObj ){` |
+|      359 | 1248 | `			PH7_MemObjStore(pNewVal,pObj);` |
+|      177 | 1249 | `		}` |
+|      177 | 1250 | `	}` |
+|      361 | 1251 | `	PH7_MemObjStore(pNewVal,pArg);` |
+|      361 | 1252 | `}` |
+|        - | 1253 | `/*` |
+|        - | 1254 | ` * Raise an E_WARNING whose text is used VERBATIM.` |
+|        - | 1255 | ` * ph7_context_throw_error_format() prepends "func(): " to whatever it is given, but php's` |
+|        - | 1256 | ` * IO warnings put the offending path inside those parens -- "file_get_contents(/nope):` |
+|        - | 1257 | ` * Failed to open stream: ..." -- so a caller that needs php's exact shape must build the` |
+|        - | 1258 | ` * whole line itself and come through here.` |
+|        - | 1259 | ` */` |
+|        - | 1260 | `/*` |
+|        - | 1261 | ` * Validate a callback argument and throw php's TypeError when it cannot be called.` |
+|        - | 1262 | ` *` |
+|        - | 1263 | ` * The shared dispatcher (PH7_VmCallUserFunctionWithMap) answers SXRET_OK with a NULL` |
+|        - | 1264 | ` * result for an unresolvable callable, so every caller that did not check first failed` |
+|        - | 1265 | ` * SILENTLY: call_user_func() returned NULL and usort() left the array sorted by nothing` |
+|        - | 1266 | ` * at all. php rejects the ARGUMENT up front, naming exactly why.` |
+|        - | 1267 | ` */` |
+|      172 | 1268 | `PH7_PRIVATE sxi32 PH7_CheckCallbackArg(` |
+|        - | 1269 | `	ph7_context *pCtx,   /* Calling context (names the function in the message) */` |
+|        - | 1270 | `	ph7_value *pCb,      /* The callback argument */` |
+|        - | 1271 | `	int iArg,            /* Its 1-based position */` |
+|        - | 1272 | `	const char *zParam,  /* Its php parameter name, e.g. "callback" */` |
+|        - | 1273 | `	int bNullable        /* TRUE when php's text says "or null" */` |
+|        - | 1274 | `	)` |
+|        3 | 1275 | `{` |
+|      175 | 1276 | `	const char *zOrNull = bNullable ? " or null" : "";` |
+|      175 | 1277 | `	if( ph7_value_is_callable(pCb) ){` |
+|      157 | 1278 | `		return PH7_OK;` |
+|        - | 1279 | `	}` |
+|       19 | 1280 | `	if( ph7_value_is_string(pCb) ){` |
+|        - | 1281 | `		int nLen;` |
+|       11 | 1282 | `		const char *zName = ph7_value_to_string(pCb,&nLen);` |
+|       16 | 1283 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
+|        - | 1284 | `			"%s(): Argument #%d ($%s) must be a valid callback%s, function \"%.*s\" not found or invalid function name",` |
+|        5 | 1285 | `			ph7_function_name(pCtx),iArg,zParam,zOrNull,nLen,zName);` |
+|        - | 1286 | `	}` |
+|        9 | 1287 | `	if( ph7_value_is_array(pCb) ){` |
+|        7 | 1288 | `		ph7_hashmap *pMap = (ph7_hashmap *)pCb->x.pOther;` |
+|        7 | 1289 | `		if( pMap == 0 \|\| pMap->nEntry != 2 ){` |
+|        4 | 1290 | `			return PH7_VmThrowException(pCtx,"TypeError",` |
+|        - | 1291 | `				"%s(): Argument #%d ($%s) must be a valid callback%s, array callback must have exactly two members",` |
+|        1 | 1292 | `				ph7_function_name(pCtx),iArg,zParam,zOrNull);` |
+|      ! 0 | 1293 | `		}else{` |
+|        5 | 1294 | `			ph7_vm *pVm = pCtx->pVm;` |
+|        5 | 1295 | `			ph7_value *pCls = (ph7_value *)SySetAt(&pVm->aMemObj,pMap->pFirst->nValIdx);` |
+|        5 | 1296 | `			ph7_value *pMeth = (ph7_value *)SySetAt(&pVm->aMemObj,pMap->pFirst->pPrev->nValIdx);` |
+|        5 | 1297 | `			ph7_class *pClass = pCls ? PH7_VmExtractClassFromValue(&(*pVm),pCls) : 0;` |
+|        5 | 1298 | `			if( pClass == 0 ){` |
+|        5 | 1299 | `				return PH7_VmThrowException(pCtx,"TypeError",` |
+|        - | 1300 | `					"%s(): Argument #%d ($%s) must be a valid callback%s, class \"%.*s\" not found",` |
+|        1 | 1301 | `					ph7_function_name(pCtx),iArg,zParam,zOrNull,` |
+|        2 | 1302 | `					pCls ? (int)SyBlobLength(&pCls->sBlob) : 0,` |
+|        1 | 1303 | `					pCls ? (const char *)SyBlobData(&pCls->sBlob) : "");` |
+|        - | 1304 | `			}` |
+|        5 | 1305 | `			return PH7_VmThrowException(pCtx,"TypeError",` |
+|        - | 1306 | `				"%s(): Argument #%d ($%s) must be a valid callback%s, class %z does not have a method \"%.*s\"",` |
+|        1 | 1307 | `				ph7_function_name(pCtx),iArg,zParam,zOrNull,&pClass->sName,` |
+|        2 | 1308 | `				pMeth ? (int)SyBlobLength(&pMeth->sBlob) : 0,` |
+|        1 | 1309 | `				pMeth ? (const char *)SyBlobData(&pMeth->sBlob) : "");` |
+|        - | 1310 | `		}` |
+|        - | 1311 | `	}` |
+|        4 | 1312 | `	return PH7_VmThrowException(pCtx,"TypeError",` |
+|        - | 1313 | `		"%s(): Argument #%d ($%s) must be a valid callback%s, no array or string given",` |
+|        1 | 1314 | `		ph7_function_name(pCtx),iArg,zParam,zOrNull);` |
+|       89 | 1315 | `}` |
+|    20956 | 1316 | `PH7_PRIVATE void PH7_VmThrowWarningFmt(ph7_vm *pVm,const char *zFmt,...)` |
+|        5 | 1317 | `{` |
+|        - | 1318 | `	va_list ap;` |
+|    20961 | 1319 | `	va_start(ap,zFmt);` |
+|    20961 | 1320 | `	PH7_VmThrowErrorAp(pVm,0,PH7_CTX_WARNING,zFmt,ap);` |
+|    20961 | 1321 | `	va_end(ap);` |
+|    20961 | 1322 | `}` |
+|        - | 1323 | `/*` |
+|        - | 1324 | ` * Emit a formatted E_USER_DEPRECATED diagnostic with no function-name prefix:` |
+|        - | 1325 | ` * php reports #[\Deprecated] as USER-deprecated (16384, it is userland-authored),` |
+|        - | 1326 | ` * not the engine's E_DEPRECATED (8192) — handler-visible errno matters.` |
+|        - | 1327 | ` */` |
+|       34 | 1328 | `static void VmThrowUserDeprecatedFmt(ph7_vm *pVm,const char *zFmt,...)` |
+|        1 | 1329 | `{` |
+|        - | 1330 | `	va_list ap;` |
+|       35 | 1331 | `	va_start(ap,zFmt);` |
+|       35 | 1332 | `	PH7_VmThrowErrorAp(pVm,0,E_USER_DEPRECATED,zFmt,ap);` |
+|       35 | 1333 | `	va_end(ap);` |
+|       35 | 1334 | `}` |
+|        - | 1335 | `/*` |
+|        - | 1336 | ` * php 8.4 #[\Deprecated]: emit the E_USER_DEPRECATED notice for a call to a user` |
+|        - | 1337 | ` * function/method carrying the attribute. Message shapes (php-exact):` |
+|        - | 1338 | ` *   Function f() is deprecated` |
+|        - | 1339 | ` *   Method C::m() is deprecated since 2.0, use g() instead` |
+|        - | 1340 | ` * ("since" from the attribute's since: argument; the trailing ", msg" from` |
+|        - | 1341 | ` * message:/positional #1.) The attribute arguments are compiled constant` |
+|        - | 1342 | ` * expressions — evaluated via VmLocalExec, the reflection thunks' pattern.` |
+|        - | 1343 | ` * Called from OP_CALL once per call, only when the callee HAS attributes;` |
+|        - | 1344 | ` * pDeclClass names the method's declaring class (0 for plain functions).` |
+|        - | 1345 | ` */` |
+|        - | 1346 | `/*` |
+|        - | 1347 | ` * Expand a global constant's value, emitting the php 8.5 #[\Deprecated]` |
+|        - | 1348 | ` * E_USER_DEPRECATED notice first when the constant carries attributes` |
+|        - | 1349 | `` * (`Constant GD is deprecated since 1.2` — every access re-warns).`` |
+|        - | 1350 | ` */` |
+|        - | 1351 | `static void VmDeprecatedAttrNoticeSubject(ph7_vm *pVm,SySet *pAttrs,` |
+|        - | 1352 | `	const char *zKind,const SyString *pQual,const SyString *pName);` |
+|        - | 1353 | `/*` |
+|        - | 1354 | ` * Expand a constant, emitting the php 8.5 #[\Deprecated] E_USER_DEPRECATED notice` |
+|        - | 1355 | `` * first when a USERLAND constant carries the attribute (`Constant GD is deprecated`` |
+|        - | 1356 | `` * since 1.2` — every access re-warns). Engine constants php merely deprecates are`` |
+|        - | 1357 | ` * not mimicked: PHL removes them outright (see the scope policy), so there is no` |
+|        - | 1358 | ` * engine-side E_DEPRECATED list here.` |
+|        - | 1359 | ` */` |
+|   125020 | 1360 | `PH7_PRIVATE void VmExpandConstantWithNotice(ph7_vm *pVm,ph7_constant *pCons,ph7_value *pOut)` |
+|        5 | 1361 | `{` |
+|   125025 | 1362 | `	if( SySetUsed(&pCons->aAttrs) > 0 ){` |
+|        7 | 1363 | `		VmDeprecatedAttrNoticeSubject(pVm,&pCons->aAttrs,"Constant",0,&pCons->sName);` |
+|        3 | 1364 | `	}` |
+|   125025 | 1365 | `	pCons->xExpand(pOut,pCons->pUserData);` |
+|   125025 | 1366 | `}` |
+|        - | 1367 | `/*` |
+|        - | 1368 | ` * Scan a declared-attribute set for #[\Deprecated]; when found, evaluate its` |
+|        - | 1369 | ` * message:/since: arguments (positional #0 = message, #1 = since) into the` |
+|        - | 1370 | ` * caller's values and return TRUE. The base subject text ("Function f()",` |
+|        - | 1371 | ` * "Constant C::K") is the caller's business.` |
+|        - | 1372 | ` */` |
+|      130 | 1373 | `static int VmDeprecatedAttrExtract(ph7_vm *pVm,SySet *pAttrs,` |
+|        - | 1374 | `	ph7_value *pMsg,int *pbMsg,ph7_value *pSince,int *pbSince)` |
+|        5 | 1375 | `{` |
+|      135 | 1376 | `	ph7_attribute *aAttr = (ph7_attribute *)SySetBasePtr(pAttrs);` |
+|        - | 1377 | `	sxu32 n;` |
+|      135 | 1378 | `	*pbMsg = *pbSince = 0;` |
+|      235 | 1379 | `	for( n = 0 ; n < SySetUsed(pAttrs) ; ++n ){` |
+|      139 | 1380 | `		ph7_attribute *pAttr = &aAttr[n];` |
+|        - | 1381 | `		ph7_attr_arg *aArg;` |
+|      139 | 1382 | `		sxu32 i,nPos = 0;` |
+|      134 | 1383 | `		if( SyStringLength(&pAttr->sName) != sizeof("Deprecated")-1` |
+|       89 | 1384 | `		 \|\| SyStrnicmp(SyStringData(&pAttr->sName),"Deprecated",sizeof("Deprecated")-1) != 0 ){` |
+|      105 | 1385 | `			continue;` |
+|        - | 1386 | `		}` |
+|       35 | 1387 | `		aArg = (ph7_attr_arg *)SySetBasePtr(&pAttr->aArgs);` |
+|       53 | 1388 | `		for( i = 0 ; i < SySetUsed(&pAttr->aArgs) ; ++i ){` |
+|       19 | 1389 | `			ph7_attr_arg *pArg = &aArg[i];` |
+|       19 | 1390 | `			int isMsg = 0,isSince = 0;` |
+|       19 | 1391 | `			if( SyStringLength(&pArg->sName) == 0 ){` |
+|        3 | 1392 | `				isMsg = (nPos == 0);` |
+|        3 | 1393 | `				isSince = (nPos == 1);` |
+|        3 | 1394 | `				nPos++;` |
+|       18 | 1395 | `			}else if( SyStringLength(&pArg->sName) == sizeof("message")-1` |
+|       12 | 1396 | `			 && SyMemcmp(SyStringData(&pArg->sName),"message",sizeof("message")-1) == 0 ){` |
+|        7 | 1397 | `				isMsg = 1;` |
+|       14 | 1398 | `			}else if( SyStringLength(&pArg->sName) == sizeof("since")-1` |
+|       11 | 1399 | `			 && SyMemcmp(SyStringData(&pArg->sName),"since",sizeof("since")-1) == 0 ){` |
+|       11 | 1400 | `				isSince = 1;` |
+|        5 | 1401 | `			}` |
+|       19 | 1402 | `			if( isMsg && !*pbMsg && SySetUsed(&pArg->aByteCode) > 0 ){` |
+|       13 | 1403 | `				if( VmLocalExec(pVm,&pArg->aByteCode,pMsg,FALSE) == SXRET_OK ){` |
+|        9 | 1404 | `					if( (pMsg->iFlags & MEMOBJ_STRING) == 0 ){` |
+|      ! 0 | 1405 | `						PH7_MemObjToString(pMsg);` |
+|      ! 0 | 1406 | `					}` |
+|        9 | 1407 | `					*pbMsg = 1;` |
+|        5 | 1408 | `				}` |
+|       15 | 1409 | `			}else if( isSince && !*pbSince && SySetUsed(&pArg->aByteCode) > 0 ){` |
+|       11 | 1410 | `				if( VmLocalExec(pVm,&pArg->aByteCode,pSince,FALSE) == SXRET_OK ){` |
+|       11 | 1411 | `					if( (pSince->iFlags & MEMOBJ_STRING) == 0 ){` |
+|      ! 0 | 1412 | `						PH7_MemObjToString(pSince);` |
+|      ! 0 | 1413 | `					}` |
+|       11 | 1414 | `					*pbSince = 1;` |
+|        5 | 1415 | `				}` |
+|        5 | 1416 | `			}` |
+|       10 | 1417 | `		}` |
+|       35 | 1418 | `		return 1;` |
+|      ! 0 | 1419 | `	}` |
+|      101 | 1420 | `	return 0;` |
+|       70 | 1421 | `}` |
+|        - | 1422 | `/*` |
+|        - | 1423 | ` * Append php's " since X" / ", message" suffixes to a built base subject and` |
+|        - | 1424 | ` * emit the E_USER_DEPRECATED notice.` |
+|        - | 1425 | ` */` |
+|       34 | 1426 | `static void VmDeprecatedEmit(ph7_vm *pVm,SyBlob *pOut,` |
+|        - | 1427 | `	ph7_value *pMsg,int bMsg,ph7_value *pSince,int bSince)` |
+|        1 | 1428 | `{` |
+|       35 | 1429 | `	if( bSince && SyBlobLength(&pSince->sBlob) > 0 ){` |
+|       16 | 1430 | `		SyBlobFormat(pOut," since %.*s",(int)SyBlobLength(&pSince->sBlob),` |
+|       10 | 1431 | `			(const char *)SyBlobData(&pSince->sBlob));` |
+|        5 | 1432 | `	}` |
+|       35 | 1433 | `	if( bMsg && SyBlobLength(&pMsg->sBlob) > 0 ){` |
+|       13 | 1434 | `		SyBlobFormat(pOut,", %.*s",(int)SyBlobLength(&pMsg->sBlob),` |
+|        8 | 1435 | `			(const char *)SyBlobData(&pMsg->sBlob));` |
+|        4 | 1436 | `	}` |
+|       35 | 1437 | `	VmThrowUserDeprecatedFmt(pVm,"%.*s",(int)SyBlobLength(pOut),(const char *)SyBlobData(pOut));` |
+|       35 | 1438 | `}` |
+|        - | 1439 | `/*` |
+|        - | 1440 | ` * Generic #[\Deprecated] notice for a named subject:` |
+|        - | 1441 | ` * "<Kind> [Qual::]Name is deprecated[ since X][, message]".` |
+|        - | 1442 | ` */` |
+|       18 | 1443 | `static void VmDeprecatedAttrNoticeSubject(ph7_vm *pVm,SySet *pAttrs,` |
+|        - | 1444 | `	const char *zKind,const SyString *pQual,const SyString *pName)` |
+|        1 | 1445 | `{` |
+|        - | 1446 | `	ph7_value sMsg,sSince;` |
+|        - | 1447 | `	SyBlob sOut;` |
+|        - | 1448 | `	int bMsg,bSince;` |
+|       19 | 1449 | `	PH7_MemObjInit(pVm,&sMsg);` |
+|       19 | 1450 | `	PH7_MemObjInit(pVm,&sSince);` |
+|       19 | 1451 | `	if( VmDeprecatedAttrExtract(pVm,pAttrs,&sMsg,&bMsg,&sSince,&bSince) ){` |
+|       15 | 1452 | `		SyBlobInit(&sOut,&pVm->sAllocator);` |
+|       15 | 1453 | `		if( pQual ){` |
+|       11 | 1454 | `			SyBlobFormat(&sOut,"%s %z::%z is deprecated",zKind,pQual,pName);` |
+|        6 | 1455 | `		}else{` |
+|        5 | 1456 | `			SyBlobFormat(&sOut,"%s %z is deprecated",zKind,pName);` |
+|        - | 1457 | `		}` |
+|       15 | 1458 | `		VmDeprecatedEmit(pVm,&sOut,&sMsg,bMsg,&sSince,bSince);` |
+|       15 | 1459 | `		SyBlobRelease(&sOut);` |
+|        7 | 1460 | `	}` |
+|       19 | 1461 | `	PH7_MemObjRelease(&sMsg);` |
+|       19 | 1462 | `	PH7_MemObjRelease(&sSince);` |
+|       19 | 1463 | `}` |
+|      112 | 1464 | `PH7_PRIVATE void VmDeprecatedAttrNotice(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_class *pDeclClass)` |
+|        5 | 1465 | `{` |
+|        - | 1466 | `	ph7_value sMsg,sSince;` |
+|        - | 1467 | `	SyBlob sOut;` |
+|        - | 1468 | `	int bMsg,bSince;` |
+|      117 | 1469 | `	PH7_MemObjInit(pVm,&sMsg);` |
+|      117 | 1470 | `	PH7_MemObjInit(pVm,&sSince);` |
+|      117 | 1471 | `	if( VmDeprecatedAttrExtract(pVm,&pFunc->aAttrs,&sMsg,&bMsg,&sSince,&bSince) ){` |
+|       21 | 1472 | `		SyBlobInit(&sOut,&pVm->sAllocator);` |
+|       21 | 1473 | `		if( pDeclClass ){` |
+|        5 | 1474 | `			SyBlobFormat(&sOut,"Method %z::%z() is deprecated",&pDeclClass->sName,&pFunc->sName);` |
+|        3 | 1475 | `		}else{` |
+|       17 | 1476 | `			SyBlobFormat(&sOut,"Function %z() is deprecated",&pFunc->sName);` |
+|        - | 1477 | `		}` |
+|       21 | 1478 | `		VmDeprecatedEmit(pVm,&sOut,&sMsg,bMsg,&sSince,bSince);` |
+|       21 | 1479 | `		SyBlobRelease(&sOut);` |
+|       10 | 1480 | `	}` |
+|      117 | 1481 | `	PH7_MemObjRelease(&sMsg);` |
+|      117 | 1482 | `	PH7_MemObjRelease(&sSince);` |
+|      117 | 1483 | `}` |
+|        - | 1484 | `/*` |
+|        - | 1485 | ` * Same notice for a #[\Deprecated] class constant, at its static-access site:` |
+|        - | 1486 | `` * php's `Constant C::K is deprecated` (each access re-warns).`` |
+|        - | 1487 | ` */` |
+|       12 | 1488 | `PH7_PRIVATE void VmDeprecatedConstNotice(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pMember)` |
+|        1 | 1489 | `{` |
+|       19 | 1490 | `	VmDeprecatedAttrNoticeSubject(pVm,&pMember->aAttrs,` |
+|       12 | 1491 | `		(pMember->iFlags & PH7_CLASS_ATTR_ENUMCASE) ? "Enum case" : "Constant",` |
+|       12 | 1492 | `		&pClass->sName,&pMember->sName);` |
+|       13 | 1493 | `}` |
+|        - | 1494 |  |

@@ -25,7 +25,7 @@ Coverage: 195/279 lines (69.89%)
 |      - |   15 | ``/* Shared ZPP helper for `int` parameters — defined OUTSIDE the`` |
 |      - |   16 | ` * PH7_DISABLE_BUILTIN_FUNC guard because hashmap.c (array_slice) and` |
 |      - |   17 | ` * builtin_math.c (intdiv) call it and both compile in the tiny build. */` |
-| 501397 |   18 | `PH7_PRIVATE sxi32 PH7_IntArgResolve(` |
+| 539245 |   18 | `PH7_PRIVATE sxi32 PH7_IntArgResolve(` |
 |      - |   19 | `	ph7_context *pCtx,` |
 |      - |   20 | `	ph7_value *pArg,` |
 |      - |   21 | `	const char *zFunc,` |
@@ -34,7 +34,7 @@ Coverage: 195/279 lines (69.89%)
 |      - |   24 | `	const char *zTypeStr,` |
 |      - |   25 | `	sxi64 *pOut` |
 |      5 |   26 | `){` |
-| 501402 |   27 | `	if( ph7_value_is_null(pArg) ){` |
+| 539250 |   27 | `	if( ph7_value_is_null(pArg) ){` |
 |      - |   28 | `		/* php only DEPRECATES passing null to a non-nullable internal param; PHL` |
 |      - |   29 | `		 * targets php's non-deprecated surface and rejects it with the TypeError` |
 |      - |   30 | `		 * php will eventually raise. */` |
@@ -44,7 +44,7 @@ Coverage: 195/279 lines (69.89%)
 |    ! 0 |   34 | `			zFunc,iArgNum,zParamName,zTypeStr` |
 |      - |   35 | `			);` |
 |      - |   36 | `	}` |
-| 501402 |   37 | `	if( ph7_value_is_float(pArg) ){` |
+| 539250 |   37 | `	if( ph7_value_is_float(pArg) ){` |
 |     16 |   38 | `		double dVal = ph7_value_to_double(pArg);` |
 |      - |   39 | `		sxi64 iVal;` |
 |      - |   40 | `		/* php: NAN/INF/out-of-int64-range floats fail ZPP outright */` |
@@ -68,15 +68,15 @@ Coverage: 195/279 lines (69.89%)
 |      8 |   58 | `		*pOut = iVal;` |
 |      8 |   59 | `		return PH7_OK;` |
 |      - |   60 | `	}` |
-| 501388 |   61 | `	if( ph7_value_is_string(pArg) ){` |
+| 539236 |   61 | `	if( ph7_value_is_string(pArg) ){` |
 |      - |   62 | `		const char *zNum;` |
 |      - |   63 | `		int nSlen;` |
-|     18 |   64 | `		int i,bFloat = 0;` |
-|     18 |   65 | `		if( !PH7_MemObjStringIsNumeric(pArg) ){` |
-|     16 |   66 | `			return PH7_VmThrowException(pCtx,` |
+|     26 |   64 | `		int i,bFloat = 0;` |
+|     26 |   65 | `		if( !PH7_MemObjStringIsNumeric(pArg) ){` |
+|     28 |   66 | `			return PH7_VmThrowException(pCtx,` |
 |      - |   67 | `				"TypeError",` |
 |      - |   68 | `				"%s(): Argument #%d (%s) must be of type %s, string given",` |
-|      5 |   69 | `				zFunc,iArgNum,zParamName,zTypeStr` |
+|      9 |   69 | `				zFunc,iArgNum,zParamName,zTypeStr` |
 |      - |   70 | `				);` |
 |      - |   71 | `		}` |
 |      8 |   72 | `		zNum = ph7_value_to_string(pArg,&nSlen);` |
@@ -112,7 +112,7 @@ Coverage: 195/279 lines (69.89%)
 |      5 |  102 | `		*pOut = ph7_value_to_int64(pArg);` |
 |      5 |  103 | `		return PH7_OK;` |
 |      - |  104 | `	}` |
-| 501372 |  105 | `	if( !ph7_value_is_int(pArg) && !ph7_value_is_bool(pArg) ){` |
+| 539212 |  105 | `	if( !ph7_value_is_int(pArg) && !ph7_value_is_bool(pArg) ){` |
 |      - |  106 | `		/* Arrays, resources and objects: php names the class for objects */` |
 |    ! 0 |  107 | `		const char *zType = ph7_type_name(pArg);` |
 |    ! 0 |  108 | `		if( ph7_value_is_object(pArg) ){` |
@@ -127,9 +127,9 @@ Coverage: 195/279 lines (69.89%)
 |    ! 0 |  117 | `			zFunc,iArgNum,zParamName,zTypeStr,zType` |
 |      - |  118 | `			);` |
 |      - |  119 | `	}` |
-| 501372 |  120 | `	*pOut = ph7_value_to_int64(pArg);` |
-| 501372 |  121 | `	return PH7_OK;` |
-| 250809 |  122 | `}` |
+| 539212 |  120 | `	*pOut = ph7_value_to_int64(pArg);` |
+| 539212 |  121 | `	return PH7_OK;` |
+| 269790 |  122 | `}` |
 |      - |  123 |  |
 |      - |  124 | `/* This file implement built-in 'foreign' functions for the PH7 engine */` |
 |      - |  125 | `/*` |
@@ -146,16 +146,16 @@ Coverage: 195/279 lines (69.89%)
 |      - |  136 | ` * Return` |
 |      - |  137 | ` *  TRUE if var is a boolean. False otherwise.` |
 |      - |  138 | ` */` |
-|     76 |  139 | `static int PH7_builtin_is_bool(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      2 |  140 | `{` |
-|     78 |  141 | `	int res = 0; /* Assume false by default */` |
-|     78 |  142 | `	if( nArg > 0 ){` |
-|     78 |  143 | `		res = ph7_value_is_bool(apArg[0]);` |
-|     38 |  144 | `	}` |
+|     98 |  139 | `static int PH7_builtin_is_bool(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      4 |  140 | `{` |
+|    102 |  141 | `	int res = 0; /* Assume false by default */` |
+|    102 |  142 | `	if( nArg > 0 ){` |
+|    102 |  143 | `		res = ph7_value_is_bool(apArg[0]);` |
+|     49 |  144 | `	}` |
 |      - |  145 | `	/* Query result */` |
-|     78 |  146 | `	ph7_result_bool(pCtx,res);` |
-|     78 |  147 | `	return PH7_OK;` |
-|      2 |  148 | `}` |
+|    102 |  146 | `	ph7_result_bool(pCtx,res);` |
+|    102 |  147 | `	return PH7_OK;` |
+|      4 |  148 | `}` |
 |      - |  149 | `/*` |
 |      - |  150 | ` * bool is_float($var)` |
 |      - |  151 | ` * bool is_real($var)` |
@@ -166,16 +166,16 @@ Coverage: 195/279 lines (69.89%)
 |      - |  156 | ` * Return` |
 |      - |  157 | ` *  TRUE if var is a float. False otherwise.` |
 |      - |  158 | ` */` |
-|    310 |  159 | `static int PH7_builtin_is_float(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 |  160 | `{` |
-|    311 |  161 | `	int res = 0; /* Assume false by default */` |
-|    311 |  162 | `	if( nArg > 0 ){` |
-|    311 |  163 | `		res = ph7_value_is_float(apArg[0]);` |
-|    155 |  164 | `	}` |
+|    348 |  159 | `static int PH7_builtin_is_float(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      3 |  160 | `{` |
+|    351 |  161 | `	int res = 0; /* Assume false by default */` |
+|    351 |  162 | `	if( nArg > 0 ){` |
+|    351 |  163 | `		res = ph7_value_is_float(apArg[0]);` |
+|    174 |  164 | `	}` |
 |      - |  165 | `	/* Query result */` |
-|    311 |  166 | `	ph7_result_bool(pCtx,res);` |
-|    311 |  167 | `	return PH7_OK;` |
-|      1 |  168 | `}` |
+|    351 |  166 | `	ph7_result_bool(pCtx,res);` |
+|    351 |  167 | `	return PH7_OK;` |
+|      3 |  168 | `}` |
 |      - |  169 | `/*` |
 |      - |  170 | ` * bool is_int($var)` |
 |      - |  171 | ` * bool is_integer($var)` |
@@ -186,19 +186,19 @@ Coverage: 195/279 lines (69.89%)
 |      - |  176 | ` * Return` |
 |      - |  177 | ` *  TRUE if var is an integer. False otherwise.` |
 |      - |  178 | ` */` |
-|    928 |  179 | `static int PH7_builtin_is_int(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      4 |  180 | `{` |
-|    932 |  181 | `	int res = 0; /* Assume false by default */` |
-|    932 |  182 | `	if( nArg > 0 ){` |
+|    972 |  179 | `static int PH7_builtin_is_int(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      3 |  180 | `{` |
+|    975 |  181 | `	int res = 0; /* Assume false by default */` |
+|    975 |  182 | `	if( nArg > 0 ){` |
 |      - |  183 | `		/* Strict PHP identity: a float is never an int, even when it holds an` |
 |      - |  184 | `		 * integer value (1.0). An integer-valued real carries both MEMOBJ_INT` |
 |      - |  185 | `		 * (cached) and MEMOBJ_REAL, so REAL must be excluded here. */` |
-|    932 |  186 | `		res = ph7_value_is_int(apArg[0]) && !ph7_value_is_float(apArg[0]);` |
-|    464 |  187 | `	}` |
+|    975 |  186 | `		res = ph7_value_is_int(apArg[0]) && !ph7_value_is_float(apArg[0]);` |
+|    486 |  187 | `	}` |
 |      - |  188 | `	/* Query result */` |
-|    932 |  189 | `	ph7_result_bool(pCtx,res);` |
-|    932 |  190 | `	return PH7_OK;` |
-|      4 |  191 | `}` |
+|    975 |  189 | `	ph7_result_bool(pCtx,res);` |
+|    975 |  190 | `	return PH7_OK;` |
+|      3 |  191 | `}` |
 |      - |  192 | `/*` |
 |      - |  193 | ` * bool is_string($var)` |
 |      - |  194 | ` *  Finds out whether a variable is a string.` |
@@ -207,16 +207,16 @@ Coverage: 195/279 lines (69.89%)
 |      - |  197 | ` * Return` |
 |      - |  198 | ` *  TRUE if var is string. False otherwise.` |
 |      - |  199 | ` */` |
-|   1104 |  200 | `static int PH7_builtin_is_string(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      4 |  201 | `{` |
-|   1108 |  202 | `	int res = 0; /* Assume false by default */` |
-|   1108 |  203 | `	if( nArg > 0 ){` |
-|   1108 |  204 | `		res = ph7_value_is_string(apArg[0]);` |
-|    552 |  205 | `	}` |
+|   1210 |  200 | `static int PH7_builtin_is_string(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      5 |  201 | `{` |
+|   1215 |  202 | `	int res = 0; /* Assume false by default */` |
+|   1215 |  203 | `	if( nArg > 0 ){` |
+|   1215 |  204 | `		res = ph7_value_is_string(apArg[0]);` |
+|    605 |  205 | `	}` |
 |      - |  206 | `	/* Query result */` |
-|   1108 |  207 | `	ph7_result_bool(pCtx,res);` |
-|   1108 |  208 | `	return PH7_OK;` |
-|      4 |  209 | `}` |
+|   1215 |  207 | `	ph7_result_bool(pCtx,res);` |
+|   1215 |  208 | `	return PH7_OK;` |
+|      5 |  209 | `}` |
 |      - |  210 | `/*` |
 |      - |  211 | ` * bool is_null($var)` |
 |      - |  212 | ` *  Finds out whether a variable is NULL.` |
@@ -225,16 +225,16 @@ Coverage: 195/279 lines (69.89%)
 |      - |  215 | ` * Return` |
 |      - |  216 | ` *  TRUE if var is NULL. False otherwise.` |
 |      - |  217 | ` */` |
-|     84 |  218 | `static int PH7_builtin_is_null(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      2 |  219 | `{` |
-|     86 |  220 | `	int res = 0; /* Assume false by default */` |
-|     86 |  221 | `	if( nArg > 0 ){` |
-|     86 |  222 | `		res = ph7_value_is_null(apArg[0]);` |
-|     42 |  223 | `	}` |
+|     92 |  218 | `static int PH7_builtin_is_null(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      4 |  219 | `{` |
+|     96 |  220 | `	int res = 0; /* Assume false by default */` |
+|     96 |  221 | `	if( nArg > 0 ){` |
+|     96 |  222 | `		res = ph7_value_is_null(apArg[0]);` |
+|     46 |  223 | `	}` |
 |      - |  224 | `	/* Query result */` |
-|     86 |  225 | `	ph7_result_bool(pCtx,res);` |
-|     86 |  226 | `	return PH7_OK;` |
-|      2 |  227 | `}` |
+|     96 |  225 | `	ph7_result_bool(pCtx,res);` |
+|     96 |  226 | `	return PH7_OK;` |
+|      4 |  227 | `}` |
 |      - |  228 | `/*` |
 |      - |  229 | ` * bool is_numeric($var)` |
 |      - |  230 | ` *  Find out whether a variable is NULL.` |
@@ -243,19 +243,19 @@ Coverage: 195/279 lines (69.89%)
 |      - |  233 | ` * Return` |
 |      - |  234 | ` *  True if var is numeric. False otherwise.` |
 |      - |  235 | ` */` |
-|     94 |  236 | `static int PH7_builtin_is_numeric(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     98 |  236 | `static int PH7_builtin_is_numeric(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 |  237 | `{` |
-|     99 |  238 | `	int res = 0; /* Assume false by default */` |
-|     99 |  239 | `	if( nArg > 0 ){` |
+|    103 |  238 | `	int res = 0; /* Assume false by default */` |
+|    103 |  239 | `	if( nArg > 0 ){` |
 |      - |  240 | `		/* Strict PHP semantics: only int/float and numeric strings are numeric.` |
 |      - |  241 | `		 * PHL's lenient helper also reports booleans as numeric (they coerce for` |
 |      - |  242 | `		 * arithmetic), but php's is_numeric() rejects true/false, so exclude` |
 |      - |  243 | `		 * MEMOBJ_BOOL here. */` |
-|     99 |  244 | `		res = ph7_value_is_numeric(apArg[0]) && !ph7_value_is_bool(apArg[0]);` |
-|     47 |  245 | `	}` |
+|    103 |  244 | `		res = ph7_value_is_numeric(apArg[0]) && !ph7_value_is_bool(apArg[0]);` |
+|     49 |  245 | `	}` |
 |      - |  246 | `	/* Query result */` |
-|     99 |  247 | `	ph7_result_bool(pCtx,res);` |
-|     99 |  248 | `	return PH7_OK;` |
+|    103 |  247 | `	ph7_result_bool(pCtx,res);` |
+|    103 |  248 | `	return PH7_OK;` |
 |      5 |  249 | `}` |
 |      - |  250 | `/*` |
 |      - |  251 | ` * bool is_scalar($var)` |
@@ -286,15 +286,15 @@ Coverage: 195/279 lines (69.89%)
 |      - |  276 | ` * Return` |
 |      - |  277 | ` *  True if var is an array. False otherwise.` |
 |      - |  278 | ` */` |
-|   1388 |  279 | `static int PH7_builtin_is_array(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   1488 |  279 | `static int PH7_builtin_is_array(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 |  280 | `{` |
-|   1393 |  281 | `	int res = 0; /* Assume false by default */` |
-|   1393 |  282 | `	if( nArg > 0 ){` |
-|   1393 |  283 | `		res = ph7_value_is_array(apArg[0]);` |
-|    694 |  284 | `	}` |
+|   1493 |  281 | `	int res = 0; /* Assume false by default */` |
+|   1493 |  282 | `	if( nArg > 0 ){` |
+|   1493 |  283 | `		res = ph7_value_is_array(apArg[0]);` |
+|    744 |  284 | `	}` |
 |      - |  285 | `	/* Query result */` |
-|   1393 |  286 | `	ph7_result_bool(pCtx,res);` |
-|   1393 |  287 | `	return PH7_OK;` |
+|   1493 |  286 | `	ph7_result_bool(pCtx,res);` |
+|   1493 |  287 | `	return PH7_OK;` |
 |      5 |  288 | `}` |
 |      - |  289 | `/*` |
 |      - |  290 | ` * bool is_object($var)` |
@@ -304,16 +304,16 @@ Coverage: 195/279 lines (69.89%)
 |      - |  294 | ` * Return` |
 |      - |  295 | ` *  True if var is an object. False otherwise.` |
 |      - |  296 | ` */` |
-|   1598 |  297 | `static int PH7_builtin_is_object(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      5 |  298 | `{` |
-|   1603 |  299 | `	int res = 0; /* Assume false by default */` |
-|   1603 |  300 | `	if( nArg > 0 ){` |
-|   1603 |  301 | `		res = ph7_value_is_object(apArg[0]);` |
-|    799 |  302 | `	}` |
+|   1790 |  297 | `static int PH7_builtin_is_object(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      4 |  298 | `{` |
+|   1794 |  299 | `	int res = 0; /* Assume false by default */` |
+|   1794 |  300 | `	if( nArg > 0 ){` |
+|   1794 |  301 | `		res = ph7_value_is_object(apArg[0]);` |
+|    895 |  302 | `	}` |
 |      - |  303 | `	/* Query result */` |
-|   1603 |  304 | `	ph7_result_bool(pCtx,res);` |
-|   1603 |  305 | `	return PH7_OK;` |
-|      5 |  306 | `}` |
+|   1794 |  304 | `	ph7_result_bool(pCtx,res);` |
+|   1794 |  305 | `	return PH7_OK;` |
+|      4 |  306 | `}` |
 |      - |  307 | `/*` |
 |      - |  308 | ` * bool is_resource($var)` |
 |      - |  309 | ` *  Find out whether a variable is a resource.` |
@@ -322,17 +322,17 @@ Coverage: 195/279 lines (69.89%)
 |      - |  312 | ` * Return` |
 |      - |  313 | ` *  True if a resource. False otherwise.` |
 |      - |  314 | ` */` |
-|     30 |  315 | `static int PH7_builtin_is_resource(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      2 |  316 | `{` |
-|     32 |  317 | `	int res = 0; /* Assume false by default */` |
-|     32 |  318 | `	if( nArg > 0 && ph7_value_is_resource(apArg[0]) ){` |
+|     72 |  315 | `static int PH7_builtin_is_resource(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      3 |  316 | `{` |
+|     75 |  317 | `	int res = 0; /* Assume false by default */` |
+|     75 |  318 | `	if( nArg > 0 && ph7_value_is_resource(apArg[0]) ){` |
 |      - |  319 | `		/* A handle closed via fclose()/closedir()/pclose() is no longer a` |
 |      - |  320 | `		 * live resource — php's is_resource() returns false for it. */` |
 |     32 |  321 | `		res = !PH7_VfsResourceIsClosed(apArg[0]->x.pOther);` |
 |     15 |  322 | `	}` |
-|     32 |  323 | `	ph7_result_bool(pCtx,res);` |
-|     32 |  324 | `	return PH7_OK;` |
-|      2 |  325 | `}` |
+|     75 |  323 | `	ph7_result_bool(pCtx,res);` |
+|     75 |  324 | `	return PH7_OK;` |
+|      3 |  325 | `}` |
 |      - |  326 | `/*` |
 |      - |  327 | ` * float floatval($var)` |
 |      - |  328 | ` *  Get float value of a variable.` |
@@ -405,10 +405,10 @@ Coverage: 195/279 lines (69.89%)
 |      - |  395 | ` * Return` |
 |      - |  396 | ` *  the bool value of a variable.` |
 |      - |  397 | ` */` |
-|     16 |  398 | `static int PH7_builtin_boolval(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     22 |  398 | `static int PH7_builtin_boolval(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      1 |  399 | `{` |
 |      - |  400 | `	int bVal;` |
-|     17 |  401 | `	if( nArg != 1 ){` |
+|     23 |  401 | `	if( nArg != 1 ){` |
 |    ! 0 |  402 | `		return PH7_VmThrowException(pCtx,` |
 |      - |  403 | `			"ArgumentCountError",` |
 |      - |  404 | `			"boolval() expects exactly 1 argument, %d given",` |
@@ -416,10 +416,10 @@ Coverage: 195/279 lines (69.89%)
 |      - |  406 | `			);` |
 |      - |  407 | `	}` |
 |      - |  408 | `	/* Perform the cast */` |
-|     17 |  409 | `	bVal = ph7_value_to_bool(apArg[0]);` |
-|     17 |  410 | `	ph7_result_bool(pCtx,bVal);` |
-|     17 |  411 | `	return PH7_OK;` |
-|      9 |  412 | `}` |
+|     23 |  409 | `	bVal = ph7_value_to_bool(apArg[0]);` |
+|     23 |  410 | `	ph7_result_bool(pCtx,bVal);` |
+|     23 |  411 | `	return PH7_OK;` |
+|     12 |  412 | `}` |
 |      - |  413 | `/*` |
 |      - |  414 | ` * bool empty($var)` |
 |      - |  415 | ` *  Determine whether a variable is empty.` |
@@ -428,14 +428,14 @@ Coverage: 195/279 lines (69.89%)
 |      - |  418 | ` * Return` |
 |      - |  419 | ` *  0 if var has a non-empty and non-zero value.1 otherwise.` |
 |      - |  420 | ` */` |
-|  39428 |  421 | `static int PH7_builtin_empty(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  41064 |  421 | `static int PH7_builtin_empty(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |      5 |  422 | `{` |
-|  39433 |  423 | `	int res = 1; /* Assume empty by default */` |
-|  39433 |  424 | `	if( nArg > 0 ){` |
-|  39433 |  425 | `		res = ph7_value_is_empty(apArg[0]);` |
-|  19714 |  426 | `	}` |
-|  39433 |  427 | `	ph7_result_bool(pCtx,res);` |
-|  39433 |  428 | `	return PH7_OK;` |
+|  41069 |  423 | `	int res = 1; /* Assume empty by default */` |
+|  41069 |  424 | `	if( nArg > 0 ){` |
+|  41069 |  425 | `		res = ph7_value_is_empty(apArg[0]);` |
+|  20532 |  426 | `	}` |
+|  41069 |  427 | `	ph7_result_bool(pCtx,res);` |
+|  41069 |  428 | `	return PH7_OK;` |
 |      - |  429 |  |
 |      5 |  430 | `}` |
 |      - |  431 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
@@ -801,17 +801,17 @@ Coverage: 195/279 lines (69.89%)
 |      - |  791 | ` * Register the built-in functions defined above,the array functions` |
 |      - |  792 | ` * defined in hashmap.c and the IO functions defined in vfs.c.` |
 |      - |  793 | ` */` |
-|   3396 |  794 | `PH7_PRIVATE void PH7_RegisterBuiltInFunction(ph7_vm *pVm)` |
+|   3646 |  794 | `PH7_PRIVATE void PH7_RegisterBuiltInFunction(ph7_vm *pVm)` |
 |      5 |  795 | `{` |
 |      - |  796 | `	sxu32 n;` |
-| 702977 |  797 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltInFunc) ; ++n ){` |
-| 699581 |  798 | `		ph7_create_function(&(*pVm),aBuiltInFunc[n].zName,aBuiltInFunc[n].xFunc,0);` |
-| 349793 |  799 | `	}` |
+| 754727 |  797 | `	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltInFunc) ; ++n ){` |
+| 751081 |  798 | `		ph7_create_function(&(*pVm),aBuiltInFunc[n].zName,aBuiltInFunc[n].xFunc,0);` |
+| 375543 |  799 | `	}` |
 |      - |  800 | `	/* Register hashmap functions [i.e: array_merge(),sort(),count(),array_diff(),...] */` |
-|   3401 |  801 | `	PH7_RegisterHashmapFunctions(&(*pVm));` |
+|   3651 |  801 | `	PH7_RegisterHashmapFunctions(&(*pVm));` |
 |      - |  802 | `	/* Register IO functions [i.e: fread(),fwrite(),chdir(),mkdir(),file(),...] */` |
-|   3401 |  803 | `	PH7_RegisterIORoutine(&(*pVm));` |
-|   3401 |  804 | `}` |
+|   3651 |  803 | `	PH7_RegisterIORoutine(&(*pVm));` |
+|   3651 |  804 | `}` |
 |      - |  805 |  |
 |      - |  806 | `/*` |
 |      - |  807 | ` * UTF-8 codepoint reader shared by the glob/fnmatch matcher in vfs.c.` |
@@ -880,15 +880,15 @@ Coverage: 195/279 lines (69.89%)
 |      - |  870 | `        \|\| (c&0xFFFFF800)==0xD800                          \` |
 |      - |  871 | `        \|\| (c&0xFFFFFFFE)==0xFFFE ){  c = 0xFFFD; }        \` |
 |      - |  872 | `  }` |
-|    208 |  873 | `PH7_PRIVATE int PH7_Utf8Read(` |
+|    232 |  873 | `PH7_PRIVATE int PH7_Utf8Read(` |
 |      - |  874 | `  const unsigned char *z,         /* First byte of UTF-8 character */` |
 |      - |  875 | `  const unsigned char *zTerm,     /* Pretend this byte is 0x00 */` |
 |      - |  876 | `  const unsigned char **pzNext    /* Write first byte past UTF-8 char here */` |
 |      1 |  877 | `){` |
 |      - |  878 | `  int c;` |
-|    209 |  879 | `  READ_UTF8(z, zTerm, c);` |
-|    209 |  880 | `  *pzNext = z;` |
-|    209 |  881 | `  return c;` |
+|    233 |  879 | `  READ_UTF8(z, zTerm, c);` |
+|    233 |  880 | `  *pzNext = z;` |
+|    233 |  881 | `  return c;` |
 |      1 |  882 | `}` |
 |      - |  883 | `/* SPDX-SnippetEnd */` |
 |      - |  884 |  |
