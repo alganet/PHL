@@ -1984,9 +1984,38 @@ PH7_PRIVATE sxi32 VmVariadicElementTypeCheck(ph7_vm *pVm,ph7_class *pSelfHint,ph
 		return SXRET_OK;
 	}
 	if( pFormal->nType == SXU32_HIGH ){
-		/* Class/pseudo-type hint on a variadic: not yet enforced per element
-		 * (pre-existing gap in the positional path, kept for parity — its own
-		 * follow-up slice). */
+		/* Class or pseudo-type (true/false/iterable/mixed) hint — enforced
+		 * per element exactly like the non-variadic paths. */
+		SyString *pName = &pFormal->sClass;
+		ph7_class *pClass;
+		int rcPseudo = VmCheckPseudoType(&(*pVm),pVal,pName);
+		if( rcPseudo == 0 ){
+			/* Recognised pseudo-type; value mismatches */
+			char zTypeBuf[128],zGivenBuf[128];
+			rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pCallee,nArgPos,0,
+				VmSyStringToCStr(pName,zTypeBuf,sizeof(zTypeBuf)),
+				VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
+			return (rc == PH7_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+		}
+		/* rcPseudo==1 -> matched pseudo-type (accept); -1 -> real class.
+		 * Resolve via VmResolveTypeClass so `self`/`parent` resolve and
+		 * interface/abstract hints are included (iLoadable=FALSE); an
+		 * unresolvable name is accepted, like the non-variadic paths. */
+		pClass = (rcPseudo == 1) ? 0 : VmResolveTypeClass(&(*pVm),pName,pSelfHint);
+		if( pClass ){
+			/* Non-nullable here (the guard above skips nullable+null), so ANY
+			 * non-object is a TypeError, matching php (&& short-circuits so
+			 * instanceof only derefs a real object). */
+			int bBad = !((pVal->iFlags & MEMOBJ_OBJ)
+				&& PH7_VmInstanceOf(((ph7_class_instance *)pVal->x.pOther)->pClass,pClass));
+			if( bBad ){
+				char zTypeBuf[128],zGivenBuf[128];
+				rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pCallee,nArgPos,0,
+					VmSyStringToCStr(&pClass->sName,zTypeBuf,sizeof(zTypeBuf)),
+					VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
+				return (rc == PH7_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+			}
+		}
 		return SXRET_OK;
 	}
 	if( (pVal->iFlags & pFormal->nType) == 0 ){
