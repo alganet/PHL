@@ -741,6 +741,14 @@ PH7_PRIVATE int PH7_builtin_fgets(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			return PH7_VmThrowException(pCtx,"ValueError",
 				"fgets(): Argument #2 ($length) must be greater than 0");
 		}
+		/* php reads at most length-1 bytes -- one byte is reserved for the
+		 * string terminator -- so a length of 1 reads nothing and returns
+		 * false at any position, exactly like EOF. */
+		nLen -= 1;
+		if( nLen == 0 ){
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
 	}
 	/* Perform the requested operation */
 	n = StreamReadLine(pDev,&zLine,nLen);
