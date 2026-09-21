@@ -2284,34 +2284,136 @@ PH7_PRIVATE int PH7_builtin_base64_encode(ph7_context *pCtx,int nArg,ph7_value *
 	return PH7_OK;
 }
 /*
- * string base64_decode(string $data)
+ * php's base64 reverse table: -1 is skippable whitespace (\t \n \r and space,
+ * exactly php's set -- \v/\f are NOT skipped), -2 is an invalid byte, 0..63 the
+ * decoded 6-bit value. The pad byte '=' is handled before the lookup, so its
+ * table slot is never consulted.
+ */
+static const signed char aB64Rev[256] = {
+	-2,-2,-2,-2,-2,-2,-2,-2,-2,-1,-1,-2,-2,-1,-2,-2,
+	-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,
+	-1,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,62,-2,-2,-2,63,
+	52,53,54,55,56,57,58,59,60,61,-2,-2,-2,-2,-2,-2,
+	-2, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,
+	15,16,17,18,19,20,21,22,23,24,25,-2,-2,-2,-2,-2,
+	-2,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,
+	41,42,43,44,45,46,47,48,49,50,51,-2,-2,-2,-2,-2,
+	-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,
+	-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,
+	-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,
+	-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,
+	-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,
+	-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,
+	-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,
+	-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-2
+};
+/*
+ * string base64_decode(string $data, bool $strict = false)
  * string convert_uudecode(string $data)
  *  Decodes data encoded with MIME base64
- * Parameter
+ * Parameters
  *  $data
  *    Encoded data.
+ *  $strict
+ *    When true, return FALSE if the input contains a character outside the
+ *    base64 alphabet (whitespace is still skipped) or the padding/length is
+ *    malformed. When false, such bytes are silently skipped (best effort).
  * Return
  *  Returns the original data or FALSE on failure.
+ * Implementation note: a faithful port of php's php_base64_decode_ex(). The old
+ * code ignored $strict entirely and ran the shared SyBase64Decode(), which maps
+ * every non-alphabet byte (whitespace included) to 0 rather than skipping it --
+ * a silent wrong answer on padded/whitespace input in BOTH modes.
  */
 PH7_PRIVATE int PH7_builtin_base64_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	const char *zIn;
-	int nLen;
+	const unsigned char *zIn;
+	unsigned char *zOut;
+	int nLen,strict = 0;
+	int i = 0,j = 0,padding = 0,k;
 	if( nArg < 1 ){
 		/* Missing arguments,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	/* Extract the input string */
-	zIn = ph7_value_to_string(apArg[0],&nLen);
+	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);
 	if( nLen < 1 ){
 		/* php decodes the empty string to the EMPTY STRING, not FALSE (FALSE is reserved
 		 * for input that cannot be decoded at all). */
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
-	/* Perform the BASE64 decoding */
-	SyBase64Decode(zIn,(sxu32)nLen,Consumer,pCtx);
+	if( nArg > 1 ){
+		strict = ph7_value_to_bool(apArg[1]);
+	}
+	/* Output is at most 3/4 of the input; nLen bytes is a safe upper bound. */
+	zOut = (unsigned char *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,(sxu32)nLen + 1);
+	if( zOut == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	for( k = 0 ; k < nLen ; ++k ){
+		int ch = zIn[k];
+		int val;
+		if( ch == '=' ){
+			/* Pad byte: count it, decode nothing. */
+			padding++;
+			continue;
+		}
+		val = aB64Rev[ch];
+		if( !strict ){
+			/* Lenient: skip whitespace AND any invalid byte. */
+			if( val < 0 ){
+				continue;
+			}
+		}else{
+			if( val == -1 ){
+				/* Skippable whitespace. */
+				continue;
+			}
+			if( val == -2 ){
+				/* A byte outside the base64 alphabet. */
+				goto fail;
+			}
+			if( padding ){
+				/* Data must not follow the padding. */
+				goto fail;
+			}
+		}
+		switch( i & 3 ){
+			case 0:
+				zOut[j] = (unsigned char)(val << 2);
+				break;
+			case 1:
+				zOut[j++] |= (unsigned char)(val >> 4);
+				zOut[j] = (unsigned char)((val & 0x0F) << 4);
+				break;
+			case 2:
+				zOut[j++] |= (unsigned char)(val >> 2);
+				zOut[j] = (unsigned char)((val & 0x03) << 6);
+				break;
+			case 3:
+				zOut[j++] |= (unsigned char)val;
+				break;
+		}
+		i++;
+	}
+	if( strict ){
+		/* A lone trailing 6-bit group (one leftover char) cannot form a byte. */
+		if( (i & 3) == 1 ){
+			goto fail;
+		}
+		/* Padding must be 1 or 2 bytes and complete the 4-char group. */
+		if( padding && (padding > 2 || ((i + padding) & 3) != 0) ){
+			goto fail;
+		}
+	}
+	ph7_result_string(pCtx,(const char *)zOut,j);
+	SyMemBackendFree(&pCtx->pVm->sAllocator,zOut);
+	return PH7_OK;
+fail:
+	SyMemBackendFree(&pCtx->pVm->sAllocator,zOut);
+	ph7_result_bool(pCtx,0);
 	return PH7_OK;
 }
 /*
