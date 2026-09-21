@@ -1948,15 +1948,17 @@ PH7_PRIVATE int ph7_hashmap_in_array(ph7_context *pCtx,int nArg,ph7_value **apAr
 	}
 	pNeedle = apArg[0];
 	bStrict = 0;
+	if( !ph7_value_is_array(apArg[1]) ){
+		/* haystack must be an array,throw TypeError (matches array_search) */
+		char zBuf[64];
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"in_array(): Argument #2 ($haystack) must be of type array, %s given",
+			VmValueGivenName(apArg[1],zBuf,sizeof(zBuf))
+			);
+	}
 	if( nArg > 2 ){
 		bStrict = ph7_value_to_bool(apArg[2]);
-	}
-	if( !ph7_value_is_array(apArg[1]) ){
-		/* haystack must be an array,perform a standard comparison */
-		rc = ph7_value_compare(pNeedle,apArg[1],bStrict);
-		/* Set the comparison result */
-		ph7_result_bool(pCtx,rc == 0);
-		return PH7_OK;
 	}
 	/* Perform the lookup */
 	rc = HashmapFindValue((ph7_hashmap *)apArg[1]->x.pOther,pNeedle,0,bStrict);
@@ -1998,11 +2000,13 @@ PH7_PRIVATE int ph7_hashmap_search(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	bStrict = FALSE;
 	if( !ph7_value_is_array(apArg[1]) ){
-		/* haystack must be an array,throw TypeError */
+		/* haystack must be an array,throw TypeError. VmValueGivenName gives php's
+		 * ZPP value-name (true/false for bools, not ph7_type_name's "bool") */
+		char zBuf[64];
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
 			"array_search(): Argument #2 ($haystack) must be of type array, %s given",
-			ph7_type_name(apArg[1])
+			VmValueGivenName(apArg[1],zBuf,sizeof(zBuf))
 			);
 	}
 	if( nArg > 2 ){
