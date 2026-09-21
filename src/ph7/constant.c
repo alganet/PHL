@@ -1500,66 +1500,66 @@ static void PH7_INI_SCANNER_RAW_Const(ph7_value *pVal,void *pUserData)
 }
 /*
  * EXTR_OVERWRITE
- *   Expand 0x01 (Must be a power of two)
+ *   Expand 0 (php's enum value; see PH7_EXTR_* in ph7int.h)
  */
 static void PH7_EXTR_OVERWRITE_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x1);
+	ph7_value_int(pVal,PH7_EXTR_OVERWRITE);
 }
 /*
  * EXTR_SKIP
- *   Expand 0x02 (Must be a power of two)
+ *   Expand 1
  */
 static void PH7_EXTR_SKIP_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x2);
+	ph7_value_int(pVal,PH7_EXTR_SKIP);
 }
 /*
  * EXTR_PREFIX_SAME
- *   Expand 0x04 (Must be a power of two)
+ *   Expand 2
  */
 static void PH7_EXTR_PREFIX_SAME_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x4);
+	ph7_value_int(pVal,PH7_EXTR_PREFIX_SAME);
 }
 /*
  * EXTR_PREFIX_ALL
- *   Expand 0x08 (Must be a power of two)
+ *   Expand 3
  */
 static void PH7_EXTR_PREFIX_ALL_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x8);
+	ph7_value_int(pVal,PH7_EXTR_PREFIX_ALL);
 }
 /*
  * EXTR_PREFIX_INVALID
- *   Expand 0x10 (Must be a power of two)
+ *   Expand 4
  */
 static void PH7_EXTR_PREFIX_INVALID_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x10);
+	ph7_value_int(pVal,PH7_EXTR_PREFIX_INVALID);
 }
 /*
  * EXTR_IF_EXISTS
- *   Expand 0x20 (Must be a power of two)
+ *   Expand 6 (php orders IF_EXISTS after PREFIX_IF_EXISTS)
  */
 static void PH7_EXTR_IF_EXISTS_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x20);
+	ph7_value_int(pVal,PH7_EXTR_IF_EXISTS);
 }
 /*
  * EXTR_PREFIX_IF_EXISTS
- *   Expand 0x40 (Must be a power of two)
+ *   Expand 5
  */
 static void PH7_EXTR_PREFIX_IF_EXISTS_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
-	ph7_value_int(pVal,0x40);
+	ph7_value_int(pVal,PH7_EXTR_PREFIX_IF_EXISTS);
 }
 /*
  * JSON_HEX_TAG.

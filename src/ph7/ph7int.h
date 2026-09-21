@@ -2187,6 +2187,22 @@ enum json_err_code{
 #define JSON_UNESCAPED_UNICODE 0x200 /* Not used */
 #define JSON_THROW_ON_ERROR    0x400000 /* Throw JsonException on encode/decode error */
 /*
+ * extract() $flags — php's ENUM (ext/standard/php_array.h), not a bitmask.
+ * PH7 exposed a legacy power-of-two bitmask here (1/2/4/8/16/32/64), which
+ * changed the meaning of valid php source: extract($a,1) is EXTR_SKIP in php
+ * but was EXTR_OVERWRITE in PHL, and EXTR_PREFIX_ALL printed 8 instead of 3.
+ * The values below ARE php's, and vm_builtin_extract() dispatches on
+ * (flags & 0xff) exactly like php does.
+ */
+#define PH7_EXTR_OVERWRITE        0
+#define PH7_EXTR_SKIP             1
+#define PH7_EXTR_PREFIX_SAME      2
+#define PH7_EXTR_PREFIX_ALL       3
+#define PH7_EXTR_PREFIX_INVALID   4
+#define PH7_EXTR_PREFIX_IF_EXISTS 5
+#define PH7_EXTR_IF_EXISTS        6
+#define PH7_EXTR_REFS             0x100 /* php's by-reference extraction: unsupported, loud */
+/*
  * Each parsed URI is recorded and stored in an instance of the following structure.
  */
 typedef struct SyhttpUri SyhttpUri;
