@@ -24,6 +24,7 @@ function g() { g(); }
 g();
 echo "AFTER\n";
 ?>
---EXPECTF--
-Error: Maximum recursion depth of 64 reached in %s on line %d
+--EXPECT--
 SHUTDOWN
+--EXPECT_STDERR--
+PHP Error:  Maximum recursion depth of 64 reached in %s on line %d

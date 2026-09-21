@@ -20,8 +20,9 @@ $a->ref = $b;
 $b->ref = $a;
 $result = $a == $b;
 ?>
---EXPECTF--
-Error: Nesting limit reached: Infinite recursion? in %s on line %d
+--EXPECT--
+--EXPECT_STDERR--
+PHP Error:  Nesting limit reached: Infinite recursion? in %s on line %d
 --CLEAN--
 <?php
 unset($a, $b, $result);

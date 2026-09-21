@@ -24,9 +24,10 @@ class A {
 $a = new A();
 echo $a;
 ?>
---EXPECTF--
-Error: Maximum native nesting depth reached in %s on line %d
+--EXPECT--
 Object
+--EXPECT_STDERR--
+PHP Error:  Maximum native nesting depth reached in %s on line %d
 --CLEAN--
 <?php
 unset($a);

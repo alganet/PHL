@@ -1627,6 +1627,11 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	/* Initialize VM fields */
 	pVm->pEngine = &(*pEngine);
 	pVm->bGcEnabled = 1; /* php default: the cycle collector is enabled */
+	/* php CLI diagnostic-stream defaults: display_errors off (program stdout stays
+	 * clean), log_errors on (the log copy goes to stderr). -d/-c and ini_set()
+	 * override these; bErrReport is the separate master gate installed by the CLI. */
+	pVm->bDisplayErrors = 0;
+	pVm->bLogErrors = 1;
 	SyMemBackendInitFromParent(&pVm->sAllocator,&pEngine->sAllocator);
 	/* Instructions containers */
 	SySetInit(&pVm->aByteCode,&pVm->sAllocator,sizeof(VmInstr));
@@ -3186,6 +3191,25 @@ PH7_PRIVATE sxi32 PH7_VmHashmapInsert(
 	return rc;
 }
 /*
+ * Parse a php.ini boolean value the way zend_ini does: "on"/"yes"/"true"
+ * (case-insensitive) are true, any other string is true iff it parses as a
+ * non-zero integer ("1" -> on; "0"/""/"off"/"false"/"no" -> off).
+ */
+static int VmIniBool(const char *zValue,sxu32 nValue)
+{
+	sxi64 iVal = 0;
+	if( nValue == 0 ){
+		return 0;
+	}
+	if( (nValue == 2 && SyStrnicmp(zValue,"on",2) == 0)
+	 || (nValue == 3 && SyStrnicmp(zValue,"yes",3) == 0)
+	 || (nValue == 4 && SyStrnicmp(zValue,"true",4) == 0) ){
+		return 1;
+	}
+	SyStrToInt64(zValue,nValue,(void *)&iVal,0);
+	return iVal != 0;
+}
+/*
  * Configure a working virtual machine instance.
  *
  * This routine is used to configure a PH7 virtual machine obtained by a prior
@@ -3221,6 +3245,22 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 		pVm->sVmConsumer.pUserData = pUserData;
 		break;
 							   }
+	case PH7_VM_CONFIG_ERR_STREAM: {
+		ProcConsumer xConsumer = va_arg(ap,ProcConsumer);
+		void *pUserData = va_arg(ap,void *);
+		/* Diagnostics (stderr) consumer: runtime warnings/notices/deprecations and
+		 * uncaught-exception fatals route their LOG copy here (gated by log_errors)
+		 * instead of the program-output stream. */
+#ifdef UNTRUST
+		if( xConsumer == 0 ){
+			rc = SXERR_CORRUPT;
+			break;
+		}
+#endif
+		pVm->sVmErrConsumer.xConsumer = xConsumer;
+		pVm->sVmErrConsumer.pUserData = pUserData;
+		break;
+								   }
 	case PH7_VM_CONFIG_IMPORT_PATH: {
 		/* Import path */
 		  const char *zPath;
@@ -3527,6 +3567,15 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 				}else{
 					pVm->iAssertFlags |= PH7_ASSERT_ZEND_OFF;
 				}
+			}else if( nName == sizeof("display_errors")-1
+			 && SyMemcmp(zName,"display_errors",nName) == 0 ){
+				/* Mirror the display_errors gate C-side so it takes effect even
+				 * if the script never touches the INI API (ini_set keeps it in
+				 * sync at runtime via __ini_apply_err). */
+				pVm->bDisplayErrors = VmIniBool(zValue,nValue);
+			}else if( nName == sizeof("log_errors")-1
+			 && SyMemcmp(zName,"log_errors",nName) == 0 ){
+				pVm->bLogErrors = VmIniBool(zValue,nValue);
 			}
 		}
 		break;

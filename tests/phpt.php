@@ -8,7 +8,7 @@
  */
 
 // Valid section types
-$phpt_valid_sections = array('test', 'description', 'credits', 'skipif', 'file', 'expect', 'expectf', 'expectregex', 'clean', 'post', 'post_raw', 'get', 'cookie', 'stdin', 'ini', 'args', 'env');
+$phpt_valid_sections = array('test', 'description', 'credits', 'skipif', 'file', 'expect', 'expectf', 'expectregex', 'expect_stderr', 'clean', 'post', 'post_raw', 'get', 'cookie', 'stdin', 'ini', 'args', 'env');
 
 // Unimplemented section types. The remaining four all describe a CGI request;
 // PHL is CLI + `-S` only (scope policy), so they stay unimplemented by design
@@ -398,7 +398,7 @@ function build_env_prefix($phpt_env) {
 
 // Run a PHPT section file through an external target executable
 // Returns the combined stdout/stderr output as string, or false if popen() failed
-function run_file_with_target($phpt_target_executable, $phpt_file, $phpt_env = array(), $phpt_ini = array(), $phpt_argv_tail = '', $phpt_stdin = null) {
+function run_file_with_target($phpt_target_executable, $phpt_file, $phpt_env = array(), $phpt_ini = array(), $phpt_argv_tail = '', $phpt_stdin = null, $phpt_split_stderr = false, &$phpt_stderr_out = null) {
     // Export PHPT_TARGET_EXECUTABLE through the same per-OS, value-quoting path as
     // the --ENV-- vars (build_env_prefix) so a target path containing a space is
     // quoted too. The '+' keeps PHPT_TARGET_EXECUTABLE ahead of any --ENV-- vars.
@@ -431,12 +431,25 @@ function run_file_with_target($phpt_target_executable, $phpt_file, $phpt_env = a
         file_put_contents($phpt_stdin_path, $phpt_stdin);
         $cmd .= ' < "' . $phpt_stdin_path . '"';
     }
-    $cmd .= ' 2>&1';
+    // --EXPECT_STDERR-- opts a test into stream SEPARATION: redirect the child's
+    // stderr to a temp file (portable across cmd.exe/POSIX, same as the .stdin
+    // temp above) so stdout and stderr can be asserted independently. Without it,
+    // keep the default 2>&1 merge so the existing corpus is unaffected.
+    $phpt_stderr_path = null;
+    if ($phpt_split_stderr) {
+        $phpt_stderr_path = $phpt_file . '.stderr';
+        $cmd .= ' 2>"' . $phpt_stderr_path . '"';
+    } else {
+        $cmd .= ' 2>&1';
+    }
     $fp = popen($cmd, 'r');
     if ($fp === false) {
         // piped execution failed
         if ($phpt_stdin_path !== null) {
             @unlink($phpt_stdin_path);
+        }
+        if ($phpt_stderr_path !== null) {
+            @unlink($phpt_stderr_path);
         }
         return false;
     }
@@ -447,6 +460,10 @@ function run_file_with_target($phpt_target_executable, $phpt_file, $phpt_env = a
         $output .= $chunk;
     }
     pclose($fp);
+    if ($phpt_stderr_path !== null) {
+        $phpt_stderr_out = file_exists($phpt_stderr_path) ? file_get_contents($phpt_stderr_path) : '';
+        @unlink($phpt_stderr_path);
+    }
     if ($phpt_stdin_path !== null) {
         @unlink($phpt_stdin_path);
     }
@@ -618,8 +635,12 @@ foreach ($phpt_files as $phpt_file) {
         } else {
             // Test execution
             $phpt_file_path = $phpt_file . '.file';
+            // --EXPECT_STDERR-- asserts the child's stderr separately; only the
+            // subprocess (target-executable) tier can capture a distinct stderr.
+            $phpt_want_stderr = isset($phpt_sections['expect_stderr']);
+            $phpt_stderr_captured = '';
             if (!empty($phpt_target_executable)) {
-                $phpt_output = run_file_with_target($phpt_target_executable, $phpt_file_path, $phpt_env, $phpt_ini, $phpt_argv_tail, $phpt_stdin);
+                $phpt_output = run_file_with_target($phpt_target_executable, $phpt_file_path, $phpt_env, $phpt_ini, $phpt_argv_tail, $phpt_stdin, $phpt_want_stderr, $phpt_stderr_captured);
                 if ($phpt_output === false) {
                     echo "# ERROR: Failed to spawn test for $phpt_file_path\n";
                     $phpt_output = "";
@@ -640,8 +661,11 @@ foreach ($phpt_files as $phpt_file) {
             }
             $phpt_output = str_replace("\r\n", "\n", $phpt_output);
             $phpt_output = str_replace("\r", "", $phpt_output);
+            $phpt_stderr_captured = str_replace("\r\n", "\n", $phpt_stderr_captured);
+            $phpt_stderr_captured = str_replace("\r", "", $phpt_stderr_captured);
             chdir($phpt_curdir);
             $phpt_output = trim($phpt_output);
+            $phpt_stderr_captured = trim($phpt_stderr_captured);
 
             $phpt_expected = isset($phpt_sections['expect']) ? trim($phpt_sections['expect']) : '';
             $phpt_expectedf = isset($phpt_sections['expectf']) ? trim($phpt_sections['expectf']) : '';
@@ -659,6 +683,16 @@ foreach ($phpt_files as $phpt_file) {
                 $phpt_matches = match_expectf_pattern($phpt_expectedf, $phpt_output);
             } elseif ($phpt_output === $phpt_expected) {
                 $phpt_matches = true;
+            }
+
+            // --EXPECT_STDERR--: the child's stderr must additionally match. Matched
+            // with the EXPECTF engine so %s (file path) / %d (line) wildcards work.
+            // Only meaningful under a target-executable; in-process runs can't
+            // capture a subprocess stderr, so such a test must live in integration.
+            if ($phpt_want_stderr) {
+                $phpt_expected_stderr = trim($phpt_sections['expect_stderr']);
+                $phpt_matches = ($phpt_matches === true)
+                    && match_expectf_pattern($phpt_expected_stderr, $phpt_stderr_captured);
             }
 
             if ($phpt_matches === true) {

@@ -1544,6 +1544,12 @@ struct ph7_vm
 	void *pStdout;             /* STDOUT IO stream */
 	void *pStderr;             /* STDERR IO stream */
 	int bErrReport;            /* TRUE to report all runtime Error/Warning/Notice */
+	int bDisplayErrors;        /* display_errors ini gate: TRUE emits the DISPLAY copy of a
+	                            * runtime diagnostic (`\nWarning: msg in F on line N`) to the
+	                            * program output stream (stdout). php CLI default: off. */
+	int bLogErrors;            /* log_errors ini gate: TRUE emits the LOG copy of a runtime
+	                            * diagnostic (`PHP Warning:  msg in F on line N`) to the error
+	                            * stream (stderr via sVmErrConsumer). php CLI default: on. */
 	int bGcEnabled;            /* gc_enable()/gc_disable() state reported by gc_enabled()/
 	                            * gc_status(); PHL frees by refcount, so the cycle collector
 	                            * is a no-op and this flag is purely observational. */
@@ -1593,6 +1599,9 @@ struct ph7_vm
 	ProcErrLog xErrLog;        /* error_log() consumer [refer to PH7_VM_CONFIG_ERR_LOG_HANDLER] */
 	sxu32 nOutputLen;          /* Total number of generated output */
 	ph7_output_consumer sVmConsumer; /* Registered output consumer callback */
+	ph7_output_consumer sVmErrConsumer; /* Diagnostics (stderr) consumer [PH7_VM_CONFIG_ERR_STREAM].
+	                            * When xConsumer is 0 the log copy falls back to sVmConsumer so
+	                            * embedders that never wire a stderr stream still see diagnostics. */
 	int iAssertFlags;          /* Assertion flags */
 	ph7_value sAssertCallback; /* Callback to call on failed assertions */
 	VmRefObj **apRefObj;       /* Hashtable of referenced object */

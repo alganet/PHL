@@ -24,5 +24,6 @@ function r() { eval("r();"); }
 r();
 echo "AFTER\n";
 ?>
---EXPECTF--
-Error: Maximum native nesting depth reached in %s on line %d
+--EXPECT--
+--EXPECT_STDERR--
+PHP Error:  Maximum native nesting depth reached in %s on line %d

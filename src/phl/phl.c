@@ -143,6 +143,9 @@ static void Info(void)
 #ifndef STDOUT_FILENO
 #define STDOUT_FILENO	1
 #endif
+#ifndef STDERR_FILENO
+#define STDERR_FILENO	2
+#endif
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
@@ -202,6 +205,32 @@ static int Output_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUs
 	}
 #endif /* __WINT__ */
 	/* All done,VM output was redirected to STDOUT */
+	return PH7_OK;
+}
+/*
+ * VM diagnostics consumer (PH7_VM_CONFIG_ERR_STREAM): the log copy of a runtime
+ * warning/notice/deprecation and the uncaught-exception fatal go here — STDERR —
+ * so program STDOUT stays clean, matching stock CLI php.
+ */
+static int Error_Consumer(const void *pOutput,unsigned int nOutputLen,void *pUserData /* Unused */)
+{
+	(void)pUserData;
+#ifdef __WINNT__
+	BOOL rc;
+	rc = WriteFile(GetStdHandle(STD_ERROR_HANDLE),pOutput,(DWORD)nOutputLen,0,0);
+	if( !rc ){
+		/* Abort processing */
+		return PH7_ABORT;
+	}
+#else
+	ssize_t nWr;
+	nWr = write(STDERR_FILENO,pOutput,nOutputLen);
+	if( nWr < 0 ){
+		/* Abort processing */
+		return PH7_ABORT;
+	}
+#endif /* __WINNT__ */
+	/* All done, VM diagnostics were redirected to STDERR */
 	return PH7_OK;
 }
 /*
@@ -695,6 +724,17 @@ int main(int argc,char **argv)
 		);
 	if( rc != PH7_OK ){
 		Fatal("Error while installing the VM output consumer callback");
+	}
+	/* Diagnostics stream: route the log copy of runtime warnings/notices and the
+	 * uncaught-exception fatal to STDERR (gated by log_errors), so program STDOUT
+	 * stays clean like stock CLI php. */
+	rc = ph7_vm_config(pVm,
+		PH7_VM_CONFIG_ERR_STREAM,
+		Error_Consumer,     /* Diagnostics (STDERR) consumer callback */
+		0                   /* Callback private data */
+		);
+	if( rc != PH7_OK ){
+		Fatal("Error while installing the VM diagnostics consumer callback");
 	}
 	/* Optional recursion caps via the environment (like PHL_MAX_ALLOC). The host
 	 * defaults are PHP-parity — PHP call depth is UNBOUNDED (heap-bound) and only

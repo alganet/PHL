@@ -38,9 +38,10 @@ if ($a == $b) {
     echo "not equal\n";
 }
 ?>
---EXPECTF--
-Error: Nesting limit reached: Infinite recursion? in %s on line %d
+--EXPECT--
 not equal
+--EXPECT_STDERR--
+PHP Error:  Nesting limit reached: Infinite recursion? in %s on line %d
 --CLEAN--
 <?php
 unset($a, $current, $next, $b);
