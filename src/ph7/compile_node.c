@@ -229,14 +229,10 @@ static sxi32 GenStateArrowCaptureScan(
 		}
 		if( pScan->nType & PH7_TK_KEYWORD ){
 			sxu32 nKw = (sxu32)SX_PTR_TO_INT(pScan->pUserData);
-			SyToken *pFnKw = pScan;
-			if( nKw == PH7_TKWRD_STATIC && &pScan[1] < pEnd
-				&& (pScan[1].nType & PH7_TK_KEYWORD)
-				&& SX_PTR_TO_INT(pScan[1].pUserData) == PH7_TKWRD_FN ){
-				pFnKw = &pScan[1];
-				nKw = PH7_TKWRD_FN;
-			}
-			if( nKw == PH7_TKWRD_FN ){
+			SyToken *pFnKw = (nKw == PH7_TKWRD_STATIC) ? &pScan[1] : pScan;
+			/* A NESTED arrow function, not a `$fn`/`C::fn` name that merely
+			 * spells the keyword (see PH7_TokenOpensArrowFunc). */
+			if( PH7_TokenOpensArrowFunc(pStart,pScan,pEnd) ){
 				SyToken *pInnerSigStart;
 				SyToken *pInnerSigEnd;
 				SyToken *pInnerBodyEnd;
