@@ -1940,6 +1940,74 @@ PH7_PRIVATE sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,ph7_
 	return PH7_EXCEPTION;
 }
 /*
+ * Type-check (and weak-mode coerce, in place) ONE element collected into a
+ * variadic parameter — the shared per-element enforcement for BOTH the
+ * positional and the named-argument binding paths of OP_CALL.
+ *
+ * nArgPos is php's 1-based argument number for the message: a positional
+ * element uses its overall call position; a NAMED element always reports
+ * (total positional args) + 1, whichever named element fails. The `($name)`
+ * clause is omitted (pArgName = 0): many values share the one variadic
+ * formal, so no single parameter name applies.
+ *
+ * Returns SXRET_OK when the element passes (possibly coerced), PH7_ABORT or
+ * PH7_EXCEPTION after throwing php's TypeError otherwise.
+ */
+PH7_PRIVATE sxi32 VmVariadicElementTypeCheck(ph7_vm *pVm,ph7_class *pSelfHint,ph7_vm_func *pCallee,
+	ph7_vm_func_arg *pFormal,ph7_value *pVal,sxu32 nArgPos,int bCallIsStrict)
+{
+	sxi32 rc;
+	if( pFormal->iFlags & VM_FUNC_ARG_UNION ){
+		if( VmCoerceToUnion(&(*pVm), pVal, &pFormal->aUnionAlts,
+			(pFormal->iFlags & VM_FUNC_ARG_NULLABLE) ? 1 : 0, bCallIsStrict) != SXRET_OK ){
+			const char *zGiven;
+			const char *zExpected = "union";
+			char zBuf[128];
+			char zTypeBuf[128];
+			if( pVal->iFlags & MEMOBJ_OBJ ){
+				zGiven = VmFormatValueClassName(pVal,zBuf,sizeof(zBuf));
+			}else if( pVal->iFlags & MEMOBJ_NULL ){
+				zGiven = "null";
+			}else{
+				zGiven = VmValueGivenName(pVal,zBuf,sizeof(zBuf));
+			}
+			if( SyStringLength(&pFormal->sTypeName) > 0 ){
+				zExpected = VmSyStringToCStr(&pFormal->sTypeName, zTypeBuf, sizeof(zTypeBuf));
+			}
+			rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pCallee,nArgPos,0,zExpected,zGiven);
+			return (rc == PH7_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+		}
+		return SXRET_OK;
+	}
+	if( pFormal->nType < 1
+	 || ((pFormal->iFlags & VM_FUNC_ARG_NULLABLE) && (pVal->iFlags & MEMOBJ_NULL)) ){
+		return SXRET_OK;
+	}
+	if( pFormal->nType == SXU32_HIGH ){
+		/* Class/pseudo-type hint on a variadic: not yet enforced per element
+		 * (pre-existing gap in the positional path, kept for parity — its own
+		 * follow-up slice). */
+		return SXRET_OK;
+	}
+	if( (pVal->iFlags & pFormal->nType) == 0 ){
+		if( pFormal->nType == MEMOBJ_OBJ ){
+			char zGivenBuf[128];
+			rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pCallee,nArgPos,0,
+				"object",VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
+			return (rc == PH7_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+		}
+		if( VmEnforceScalarType(pVal, pFormal->nType, bCallIsStrict) != SXRET_OK ){
+			char zTypeBuf[128];
+			char zGivenBuf[128];
+			rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pCallee,nArgPos,0,
+				VmScalarTypeName(pFormal->nType, &pFormal->sTypeName, zTypeBuf, sizeof(zTypeBuf)),
+				VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
+			return (rc == PH7_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+		}
+	}
+	return SXRET_OK;
+}
+/*
  * Count php's REQUIRED arity for a user function: formals up to and including
  * the LAST one with no default value (php 8 treats an optional declared
  * before a required parameter as implicitly required), excluding a trailing

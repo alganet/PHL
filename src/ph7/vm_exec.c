@@ -5372,12 +5372,45 @@ case PH7_OP_CALL: {
 			if( iVariadicIdx >= 0 ){
 				pObj = VmExtractMemObj(&(*pVm),&aFormalArg[iVariadicIdx].sName,FALSE,TRUE);
 				if( pObj ){
+					/* Capture the slot index now: PH7_HashmapInsert below can
+					 * PH7_ReserveMemObj, reallocating pVm->aMemObj and dangling pObj
+					 * (same latent UAF the positional path guards against). */
+					sxu32 nVariadicSlot;
 					PH7_MemObjToHashmap(pObj);
+					nVariadicSlot = pObj->nIdx;
 					{
 						ph7_hashmap *pVarMap = (ph7_hashmap *)pObj->x.pOther;
+						/* php numbers a failing NAMED variadic element as
+						 * max(total positional args, declared non-variadic
+						 * formals) + 1 — zend's RECV slots always count —
+						 * whichever named element fails; a POSITIONAL element
+						 * uses its own 1-based call position. */
+						sxu32 nPositional = 0;
+						for( i = 0; i < nActual; i++ ){
+							if( !(i < pCallMap3->nTotal && pCallMap3->aNames[i].nByte > 0) ){
+								nPositional++;
+							}
+						}
 						for( i = 0; i < nActual; i++ ){
 							if( aSlot[i] == -1 ){
-								if( i < pCallMap3->nTotal && pCallMap3->aNames[i].nByte > 0 ){
+								int bNamed = (i < pCallMap3->nTotal && pCallMap3->aNames[i].nByte > 0);
+								/* Same per-element type check + weak coercion as the
+								 * positional-only path (shared helper; no `($name)`). */
+								rc = VmVariadicElementTypeCheck(&(*pVm),pSelfHint,pVmFunc,
+									&aFormalArg[iVariadicIdx],&pArg[i],
+									bNamed ? SXMAX(nPositional,nNonVariadic) + 1 : i + 1,bCallIsStrict);
+								if( rc != SXRET_OK ){
+									if( rc == PH7_ABORT ){
+										goto Abort;
+									}
+									SyMemBackendFree(&pVm->sAllocator, aSlot);
+									PH7_MemObjRelease(pTos);
+									pTos = &pTos[-nCallArgs];
+									pFrameStack = 0;
+									rc = PH7_EXCEPTION;
+									goto SkipFuncBody;
+								}
+								if( bNamed ){
 									/* Named variadic entry: insert with string key */
 									ph7_value sKey;
 									PH7_MemObjInit(pVm, &sKey);
@@ -5393,7 +5426,7 @@ case PH7_OP_CALL: {
 							}
 						}
 					}
-					sArg.nIdx = pObj->nIdx;
+					sArg.nIdx = nVariadicSlot; /* pObj may be stale here (aMemObj realloc) */
 					sArg.pUserData = 0;
 					SySetPut(&pFrame->sArg,(const void *)&sArg);
 				}
@@ -5453,82 +5486,23 @@ case PH7_OP_CALL: {
 					{
 						ph7_hashmap *pMap = (ph7_hashmap *)pObj->x.pOther;
 						while( pArg < pTos ){
-							/* Variadic type checks report php's per-ELEMENT argument
-							 * number ((pArg - pArgBase) + 1 — the offending element's
-							 * overall 1-based call position) and, like php, OMIT the
-							 * `($name)` (a variadic collects many values, so no single
-							 * parameter name applies): pass pArgName = 0. */
-							sxu32 nArgPos = (sxu32)(pArg - pArgBase) + 1;
-							/* Variadic union type: per-element coercion via the shared helper. */
-							if( aFormalArg[n].iFlags & VM_FUNC_ARG_UNION ){
-								sxi32 rcU = VmCoerceToUnion(pVm, pArg, &aFormalArg[n].aUnionAlts,
-									(aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) ? 1 : 0,
-									bCallIsStrict);
-								if( rcU != SXRET_OK ){
-									const char *zGiven;
-									const char *zExpected = "union";
-									char zBuf[128];
-									char zTypeBuf[128];
-									if( pArg->iFlags & MEMOBJ_OBJ ){
-										zGiven = VmFormatValueClassName(pArg,zBuf,sizeof(zBuf));
-									}else if( pArg->iFlags & MEMOBJ_NULL ){
-										zGiven = "null";
-									}else{
-										zGiven = VmValueGivenName(pArg,zBuf,sizeof(zBuf));
-									}
-									if( SyStringLength(&aFormalArg[n].sTypeName) > 0 ){
-										zExpected = VmSyStringToCStr(&aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf));
-									}
-									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,nArgPos,
-										0, zExpected, zGiven);
-									if( rc == PH7_ABORT ){
-										goto Abort;
-									}
-									PH7_MemObjRelease(pTos);
-									pTos = &pTos[-nCallArgs];
-									pFrameStack = 0;
-									rc = PH7_EXCEPTION;
-									goto SkipFuncBody;
+							/* Per-element type check + weak coercion (shared helper,
+							 * also used by the named-argument path). The argument
+							 * number is the element's overall 1-based call position
+							 * ((pArg - pArgBase) + 1) and, like php, the `($name)`
+							 * clause is omitted. */
+							rc = VmVariadicElementTypeCheck(&(*pVm),pSelfHint,pVmFunc,
+								&aFormalArg[n],pArg,(sxu32)(pArg - pArgBase) + 1,bCallIsStrict);
+							if( rc != SXRET_OK ){
+								if( rc == PH7_ABORT ){
+									goto Abort;
 								}
-								PH7_HashmapInsert(pMap, 0, pArg);
-								pArg++;
-								continue;
-							}
-							/* Apply type coercion to each element if the variadic has a type hint.
-							 * Nullable types (?type) allow null through without coercion. */
-							if( aFormalArg[n].nType > 0 && aFormalArg[n].nType != SXU32_HIGH
-								&& !((aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) && (pArg->iFlags & MEMOBJ_NULL))
-								&& (pArg->iFlags & aFormalArg[n].nType) == 0 ){
-								if( aFormalArg[n].nType == MEMOBJ_OBJ ){
-									/* object type hint on variadic: reject non-objects with TypeError */
-									char zGivenBuf[128];
-									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,nArgPos,
-										0,"object",VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf)));
-									if( rc == PH7_ABORT ){
-										goto Abort;
-									}
-									/* Skip function body, route through normal cleanup */
-									PH7_MemObjRelease(pTos);
-									pTos = &pTos[-nCallArgs];
-									pFrameStack = 0;
-									rc = PH7_EXCEPTION;
-									goto SkipFuncBody;
-								}else if( VmEnforceScalarType(pArg, aFormalArg[n].nType, bCallIsStrict) != SXRET_OK ){
-									char zTypeBuf[128];
-									char zGivenBuf[128];
-									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,nArgPos,
-										0,
-										VmScalarTypeName(aFormalArg[n].nType, &aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf)),
-										VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf)));
-									if( rc == PH7_ABORT ){
-										goto Abort;
-									}
-									PH7_MemObjRelease(pTos);
-									pTos = &pTos[-nCallArgs];
-									pFrameStack = 0;
-									rc = PH7_EXCEPTION;
-									goto SkipFuncBody;
-								}
+								/* Skip function body, route through normal cleanup */
+								PH7_MemObjRelease(pTos);
+								pTos = &pTos[-nCallArgs];
+								pFrameStack = 0;
+								rc = PH7_EXCEPTION;
+								goto SkipFuncBody;
 							}
 							PH7_HashmapInsert(pMap, 0, pArg);
 							pArg++;
