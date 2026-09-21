@@ -733,9 +733,14 @@ PH7_PRIVATE int PH7_builtin_fgets(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	nLen = -1;
-	if( nArg > 1 ){
-		/* Maximum data to read */
+	if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){
+		/* Maximum data to read. PHP 8 raises a catchable ValueError for a
+		 * non-positive length; a NULL (the ?int default) reads the whole line. */
 		nLen = ph7_value_to_int64(apArg[1]);
+		if( nLen < 1 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"fgets(): Argument #2 ($length) must be greater than 0");
+		}
 	}
 	/* Perform the requested operation */
 	n = StreamReadLine(pDev,&zLine,nLen);
@@ -793,9 +798,20 @@ PH7_PRIVATE int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
         nLen = 4096;
 	if( nArg > 1 ){
- 	  nLen = ph7_value_to_int(apArg[1]);
+	  /* PHP 8 raises a catchable ValueError for a non-positive length; the
+	   * $length parameter is non-nullable, so a NULL is rejected upstream by
+	   * the central type screen (the recorded null-policy divergence). */
+	  ph7_int64 nWant = ph7_value_to_int64(apArg[1]);
+	  if( nWant < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"fread(): Argument #2 ($length) must be greater than 0");
+	  }
+	  nLen = (int)nWant;
 	  if( nLen < 1 ){
-		/* Invalid length,set a default length */
+		/* A > INT_MAX length overflowed the int cast; read a single chunk
+		 * (StreamRead returns only what the stream holds) instead of
+		 * over-allocating -- matching the pre-existing behavior for lengths
+		 * that do not fit an int. */
 		nLen = 4096;
 	  }
         }
@@ -874,9 +890,16 @@ PH7_PRIVATE int PH7_builtin_fgetcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 		return PH7_OK;
 	}
 	nLen = -1;
-	if( nArg > 1 ){
-		/* Maximum data to read */
+	if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){
+		/* Maximum data to read. PHP 8 raises a catchable ValueError when the
+		 * length is negative or hits PHP_INT_MAX (the valid range is
+		 * 0..PHP_INT_MAX-1, where 0/NULL both mean "no limit"). */
 		nLen = ph7_value_to_int64(apArg[1]);
+		if( nLen < 0 || nLen >= SXI64_HIGH ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"fgetcsv(): Argument #2 ($length) must be between 0 and 9223372036854775806");
+		}
+		/* 0 means "no limit", which StreamReadLine already treats as unlimited. */
 	}
 	/* Perform the requested operation */
 	n = StreamReadLine(pDev,&zLine,nLen);
@@ -1316,6 +1339,16 @@ PH7_PRIVATE int PH7_builtin_file_get_contents(ph7_context *pCtx,int nArg,ph7_val
 	}
 	/* Extract the file path */
 	zFile = ph7_value_to_string(apArg[0],&nLen);
+	/* PHP 8 validates $length (arg #5) up front, before the wrapper is resolved
+	 * or the file opened, so a negative length raises its catchable ValueError
+	 * even for a bad wrapper or a missing file; a NULL (the ?int default) reads
+	 * the whole file. */
+	if( nArg > 4 && !ph7_value_is_null(apArg[4]) ){
+		if( ph7_value_to_int64(apArg[4]) < 0 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"file_get_contents(): Argument #5 ($length) must be greater than or equal to 0");
+		}
+	}
 	/* Point to the target IO stream device */
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
 	if( pStream == 0 ){
@@ -2529,8 +2562,14 @@ PH7_PRIVATE int PH7_builtin_stream_get_contents(ph7_context *pCtx,int nArg,ph7_v
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	if( nArg > 1 ){
+	if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){
+		/* PHP 8 raises a catchable ValueError below -1; -1 (or the NULL
+		 * default) means "read until EOF". */
 		nMax = ph7_value_to_int64(apArg[1]);
+		if( nMax < -1 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"stream_get_contents(): Argument #2 ($length) must be greater than or equal to -1");
+		}
 	}
 	if( nArg > 2 ){
 		ph7_int64 iOfft = ph7_value_to_int64(apArg[2]);
