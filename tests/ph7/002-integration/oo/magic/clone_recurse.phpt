@@ -20,8 +20,9 @@ class A {
 $a = new A;
 $b = clone $a;
 ?>
---EXPECTF--
-Error: Object clone limit reached,no more call to __clone() in %s on line %d
+--EXPECT--
+--EXPECT_STDERR--
+PHP Error:  Object clone limit reached,no more call to __clone() in %s on line %d
 --CLEAN--
 <?php
 unset($a, $b);

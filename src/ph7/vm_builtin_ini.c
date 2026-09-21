@@ -36,6 +36,29 @@ static int vm_builtin_ini_cli(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 
+/* void __ini_apply_err(string $name, int $on) — mirror the display_errors /
+ * log_errors gate into the C-side VM fields so an ini_set() at runtime reaches
+ * the diagnostic emitter (VmEmitDiagnostic). The -d/-c path already applies
+ * these in PH7_VM_CONFIG_INI_ENTRY; the caller (__ini_rt_set) passes an already
+ * php-coerced 0/1. */
+static int vm_builtin_ini_apply_err(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zName;
+	int nName = 0;
+	int bOn;
+	if( nArg < 2 ){
+		return PH7_OK;
+	}
+	zName = ph7_value_to_string(apArg[0],&nName);
+	bOn = ph7_value_to_int(apArg[1]) != 0;
+	if( nName == (int)sizeof("display_errors")-1 && SyMemcmp(zName,"display_errors",(sxu32)nName) == 0 ){
+		pCtx->pVm->bDisplayErrors = bOn;
+	}else if( nName == (int)sizeof("log_errors")-1 && SyMemcmp(zName,"log_errors",(sxu32)nName) == 0 ){
+		pCtx->pVm->bLogErrors = bOn;
+	}
+	return PH7_OK;
+}
+
 static const char zIniLib[] =
 "class __IniS {"
 " public static $t = null;"
@@ -49,8 +72,10 @@ static const char zIniLib[] =
 "  'date.timezone' => ['UTC', 7],"
 "  'default_charset' => ['UTF-8', 7],"
 "  'default_mimetype' => ['text/html', 7],"
-"  'display_errors' => ['1', 7],"
+"  'display_errors' => ['', 7],"
+"  'error_log' => ['', 7],"
 "  'error_reporting' => ['30719', 7],"
+"  'log_errors' => ['1', 7],"
 "  'highlight.comment' => ['#FF8000', 7],"
 "  'highlight.default' => ['#0000BB', 7],"
 "  'highlight.html' => ['#000000', 7],"
@@ -98,8 +123,19 @@ static const char zIniLib[] =
 " }"
 " return __IniS::$t[$name]['l'];"
 "}"
+"function __ini_truthy($v){"
+" /* zend_ini_parse_bool semantics, matching the C-side VmIniBool used by the"
+"  * -d/-c path: on/yes/true, else a non-zero integer parse. */"
+" $v = strtolower(trim((string)$v));"
+" if( $v === 'on' || $v === 'yes' || $v === 'true' ){ return true; }"
+" return (int)$v !== 0;"
+"}"
 "function __ini_rt_set($name, $value){"
 " if( $name === 'error_reporting' ){ error_reporting((int)$value); return; }"
+" if( $name === 'display_errors' || $name === 'log_errors' ){"
+"  __ini_apply_err($name, __ini_truthy($value) ? 1 : 0);"
+"  return;"
+" }"
 " if( $name === 'session.name' ){ __SessS::$name = $value; return; }"
 " if( $name === 'session.save_path' ){ __SessS::$path = rtrim($value, '/'); return; }"
 " if( $name === 'date.timezone' && preg_match('/^(UTC|GMT)$/i', $value) ){"
@@ -186,6 +222,7 @@ static const char zIniLib[] =
 PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm)
 {
 	ph7_create_function(&(*pVm),"__ini_cli",vm_builtin_ini_cli,0);
+	ph7_create_function(&(*pVm),"__ini_apply_err",vm_builtin_ini_apply_err,0);
 	return PH7_VmEvalBuiltinChunk(&(*pVm),zIniLib,sizeof(zIniLib)-1);
 }
 

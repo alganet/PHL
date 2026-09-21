@@ -223,6 +223,7 @@ typedef int (*ph7_clock)(void *pUserData, ph7_int64 *pSec, ph7_int64 *pUsec);
 #define PH7_VM_CONFIG_NATIVE_DEPTH    24  /* ONE ARGUMENT: int nMaxNativeDepth (native VmByteCodeExec nesting: eval/include, callbacks, coroutine resume; default 256 host / 16 embedded) */
 #define PH7_VM_CONFIG_INI_ENTRY       25  /* TWO ARGUMENTS: const char *zName,const char *zValue (a php.ini directive from -d/-c) */
 #define PH7_VM_CONFIG_SERVER_ARGV     26  /* NO ARGUMENTS: mirror $argv/$argc into $_SERVER['argv']/$_SERVER['argc'] */
+#define PH7_VM_CONFIG_ERR_STREAM      27  /* TWO ARGUMENTS: int (*xConsumer)(const void *pOut,unsigned int nLen,void *pUserData),void *pUserData (diagnostics/stderr stream) */
 /*
  * Global Library Configuration Commands.
  *

@@ -34,10 +34,24 @@ static void VmRecordLastError(ph7_vm *pVm,sxi32 iErr,const char *zMsg,sxu32 nMsg
 		SyBlobAppend(&pVm->sLastErrFile,pFile->zString,pFile->nByte);
 	}
 }
-static sxi32 VmCallErrorHandler(ph7_vm *pVm,SyBlob *pMsg)
+/*
+ * The stream a diagnostic's LOG copy goes to: the registered stderr consumer,
+ * or -- for embedders that never wired one -- the program-output consumer, so a
+ * diagnostic is never silently swallowed.
+ */
+static ph7_output_consumer * VmErrConsumer(ph7_vm *pVm)
 {
-	ph7_output_consumer *pCons = &pVm->sVmConsumer;
-	sxi32 rc = SXRET_OK;
+	return pVm->sVmErrConsumer.xConsumer ? &pVm->sVmErrConsumer : &pVm->sVmConsumer;
+}
+/*
+ * Append the platform newline and hand a finished diagnostic blob to a consumer.
+ * bTrack counts the bytes toward program output length (only the stdout DISPLAY
+ * copy is program output; the stderr LOG copy is not, and must not perturb
+ * headers_sent()/output accounting).
+ */
+static sxi32 VmWriteDiagnostic(ph7_vm *pVm,ph7_output_consumer *pCons,SyBlob *pMsg,int bTrack)
+{
+	sxi32 rc;
 	/* Append a new line */
 #ifdef __WINNT__
 	SyBlobAppend(pMsg,"\r\n",sizeof("\r\n")-1);
@@ -46,8 +60,26 @@ static sxi32 VmCallErrorHandler(ph7_vm *pVm,SyBlob *pMsg)
 #endif
 	/* Invoke the output consumer callback */
 	rc = pCons->xConsumer(SyBlobData(pMsg),SyBlobLength(pMsg),pCons->pUserData);
-	VmTrackOutput(pVm, SyBlobLength(pMsg));
+	if( bTrack ){
+		VmTrackOutput(pVm, SyBlobLength(pMsg));
+	}
 	return rc;
+}
+/*
+ * Route an already-formatted diagnostic blob (the uncaught-exception path builds
+ * php's `PHP Fatal error:  Uncaught ...` LOG shape itself) to the error stream
+ * when log_errors is on, else to the program-output stream when display_errors
+ * is on, else drop it -- matching php's stock-CLI gate for fatals (stderr only).
+ */
+static sxi32 VmCallErrorHandler(ph7_vm *pVm,SyBlob *pMsg)
+{
+	if( pVm->bLogErrors ){
+		return VmWriteDiagnostic(pVm,VmErrConsumer(pVm),pMsg,0);
+	}
+	if( pVm->bDisplayErrors ){
+		return VmWriteDiagnostic(pVm,&pVm->sVmConsumer,pMsg,1);
+	}
+	return SXRET_OK;
 }
 /*
  * Throw a run-time error and invoke the supplied VM output consumer callback.
@@ -199,6 +231,61 @@ static void VmDiagnosticLocation(SyBlob *pWorker,SyString *pFile,sxu32 nLine)
 			nLine ? nLine : 1);
 	}
 }
+/*
+ * php's LOG-shape diagnostic header: `PHP LABEL:  <func(): >` -- the `PHP `
+ * prefix and TWO spaces after the colon, matching the compile-error path
+ * (compile.c) and stock CLI's stderr log copy.
+ */
+static void VmDiagnosticLogHeader(SyBlob *pWorker,sxi32 iErr,SyString *pFuncName)
+{
+	SyBlobAppend(pWorker,"PHP ",sizeof("PHP ")-1);
+	SyBlobFormat(pWorker,"%s:  ",VmDiagnosticLabel(iErr));
+	if( pFuncName ){
+		SyBlobAppend(pWorker,pFuncName->zString,pFuncName->nByte);
+		SyBlobAppend(pWorker,"(): ",sizeof("(): ")-1);
+	}
+}
+/*
+ * Emit a runtime diagnostic as php's two copies, each behind its own ini gate
+ * (the caller has already cleared the error_reporting() mask and the '@' gate):
+ *   - LOG copy     -> the error (stderr) stream when log_errors is on:
+ *                     `PHP LABEL:  <func(): >BODY in FILE on line N`
+ *   - DISPLAY copy -> the program-output (stdout) stream when display_errors is on:
+ *                     `\nLABEL: <func(): >BODY in FILE on line N`
+ * Stock CLI php (display_errors off, log_errors on) writes only the stderr copy,
+ * keeping program stdout clean. BODY/location are shared; only the header and the
+ * display copy's leading blank line differ. sWorker is reused across the two
+ * copies; BODY must live in a separate buffer (it does at both call sites).
+ */
+static sxi32 VmEmitDiagnostic(ph7_vm *pVm,sxi32 iErr,SyString *pFuncName,
+	const char *zBody,sxu32 nBody,SyString *pFile,sxu32 nLine)
+{
+	SyBlob *pWorker = &pVm->sWorker;
+	sxi32 rc = SXRET_OK;
+	if( pVm->bLogErrors ){
+		SyBlobReset(pWorker);
+		VmDiagnosticLogHeader(pWorker,iErr,pFuncName);
+		SyBlobAppend(pWorker,zBody,nBody);
+		VmDiagnosticLocation(pWorker,pFile,nLine);
+		rc = VmWriteDiagnostic(pVm,VmErrConsumer(pVm),pWorker,0);
+	}
+	if( pVm->bDisplayErrors ){
+		sxi32 rc2;
+		SyBlobReset(pWorker);
+		/* php's text-mode display copy is prefixed with a blank line */
+		SyBlobAppend(pWorker,"\n",sizeof(char));
+		VmDiagnosticHeader(pWorker,iErr,pFuncName);
+		SyBlobAppend(pWorker,zBody,nBody);
+		VmDiagnosticLocation(pWorker,pFile,nLine);
+		rc2 = VmWriteDiagnostic(pVm,&pVm->sVmConsumer,pWorker,1);
+		/* keep the first failure (e.g. a PH7_ABORT from a broken stderr) rather
+		 * than letting a later successful write mask it */
+		if( rc == SXRET_OK ){
+			rc = rc2;
+		}
+	}
+	return rc;
+}
 PH7_PRIVATE sxi32 PH7_VmThrowError(
 	ph7_vm *pVm,         /* Target VM */
 	SyString *pFuncName, /* Function name. NULL otherwise */
@@ -206,20 +293,15 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(
 	const char *zMessage /* Null terminated error message */
 	)
 {
-	SyBlob *pWorker = &pVm->sWorker;
 	SyString *pFile;
+	sxu32 nMsg = (sxu32)SyStrlen(zMessage);
 	sxi32 rc = SXRET_OK;
-	/* Reset the working buffer */
-	SyBlobReset(pWorker);
 	/* Peek the processed file if available */
 	pFile = (SyString *)SySetPeek(&pVm->aFiles);
-	VmDiagnosticHeader(pWorker,iErr,pFuncName);
-	SyBlobAppend(pWorker,zMessage,SyStrlen(zMessage));
-	VmDiagnosticLocation(pWorker,pFile,pVm->nCurLine);
 	/* Check for user error handler. php calls it whatever error_reporting() says
 	 * (see VmThrowErrorAp) -- the mask gates only the printed copy below. */
-	if( VmInvokeErrorHandler(pVm, iErr, zMessage, (sxi32)SyStrlen(zMessage), pFile, (sxi32)pVm->nCurLine) ){
-		VmRecordLastError(&(*pVm),iErr,zMessage,SyStrlen(zMessage),pFile);
+	if( VmInvokeErrorHandler(pVm, iErr, zMessage, (sxi32)nMsg, pFile, (sxi32)pVm->nCurLine) ){
+		VmRecordLastError(&(*pVm),iErr,zMessage,nMsg,pFile);
 		if( !VmErrReportWants(pVm,iErr) ){
 			/* error_reporting() masks this severity out of the DISPLAY */
 			return SXRET_OK;
@@ -229,7 +311,7 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(
 			 * prints nothing itself. */
 			return SXRET_OK;
 		}
-		rc = VmCallErrorHandler(&(*pVm),pWorker);
+		rc = VmEmitDiagnostic(pVm,iErr,pFuncName,zMessage,nMsg,pFile,pVm->nCurLine);
 	}
 	return rc;
 }
@@ -364,15 +446,11 @@ static sxi32 VmThrowErrorAp(
 	va_list ap           /* Variable list of arguments */
 	)
 {
-	SyBlob *pWorker = &pVm->sWorker;
 	SyBlob sMsg;
 	SyString *pFile;
 	sxi32 rc = SXRET_OK;
-	/* Reset the working buffer */
-	SyBlobReset(pWorker);
 	/* Peek the processed file if available */
 	pFile = (SyString *)SySetPeek(&pVm->aFiles);
-	VmDiagnosticHeader(pWorker,iErr,pFuncName);
 	/* Format the raw message */
 	SyBlobInit(&sMsg, &pVm->sAllocator);
 	SyBlobFormatAp(&sMsg,zFormat,ap);
@@ -388,9 +466,8 @@ static sxi32 VmThrowErrorAp(
 			SyBlobRelease(&sMsg);
 			return SXRET_OK;
 		}
-		SyBlobAppend(pWorker,SyBlobData(&sMsg),SyBlobLength(&sMsg));
-		VmDiagnosticLocation(pWorker,pFile,pVm->nCurLine);
-		rc = VmCallErrorHandler(&(*pVm),pWorker);
+		rc = VmEmitDiagnostic(pVm,iErr,pFuncName,(const char *)SyBlobData(&sMsg),
+			SyBlobLength(&sMsg),pFile,pVm->nCurLine);
 	}
 	SyBlobRelease(&sMsg);
 	return rc;
