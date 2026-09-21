@@ -4904,6 +4904,129 @@ static int StrReplaceWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
 	return PH7_OK;
 }
 /*
+ * Run the collected search/replace pairs over a single subject string, writing
+ * the transformed bytes into pOut (reset here). Shared by the scalar-subject and
+ * the array-subject (element-wise) paths. The search/replace SySets are walked
+ * fresh on every call — cursors are reset here — so each array element is
+ * transformed independently, exactly like php. Returns SXRET_OK, or SXERR_MEM
+ * on an allocation failure inside StringReplace.
+ */
+static sxi32 StrReplaceOneSubject(
+	SyBlob *pOut,             /* Output buffer (reset then filled here) */
+	const char *zSubject,     /* Subject bytes */
+	sxu32 nSubject,           /* Subject length */
+	SySet *pSearch,           /* Collected search terms */
+	SySet *pReplace,          /* Collected replacement terms */
+	int rep_str,              /* TRUE: a single replacement reused for every search */
+	ProcStringMatch xMatch    /* SyBlobSearch (str_replace) / iPatternMatch (str_ireplace) */
+	)
+{
+	SyString *pSearch_,*pReplace_,sEmpty;
+	sxi32 rc;
+	SyBlobReset(pOut);
+	if( nSubject > 0 ){
+		rc = SyBlobAppend(pOut,(const void *)zSubject,nSubject);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	SyStringInitFromBuf(&sEmpty,"",0);
+	SySetResetCursor(pSearch);
+	SySetResetCursor(pReplace);
+	pSearch_ = pReplace_ = 0; /* cc warning */
+	while( SXRET_OK == SySetGetNextEntry(pSearch,(void **)&pSearch_) ){
+		sxu32 nCount,nOfft;
+		if( rep_str ){
+			/* Single replacement string reused for every search term */
+			pReplace_ = (SyString *)SySetPeek(pReplace);
+		}else if( SXRET_OK != SySetGetNextEntry(pReplace,(void **)&pReplace_) ){
+			/* 'replace set' has fewer values than the search set: an empty
+			 * string is used for the rest of the replacement values. */
+			pReplace_ = 0;
+		}
+		if( pReplace_ == 0 ){
+			pReplace_ = &sEmpty;
+		}
+		if( pSearch_->nByte < 1 ){
+			/* php ignores an empty search string, but it still CONSUMED a replace
+			 * slot above so the remaining pairs stay aligned. */
+			continue;
+		}
+		nOfft = nCount = 0;
+		for(;;){
+			if( nCount >= SyBlobLength(pOut) ){
+				break;
+			}
+			/* Perform a pattern lookup */
+			rc = xMatch(SyBlobDataAt(pOut,nCount),SyBlobLength(pOut) - nCount,
+				(const void *)pSearch_->zString,pSearch_->nByte,&nOfft);
+			if( rc != SXRET_OK ){
+				/* Pattern not found */
+				break;
+			}
+			/* Perform the replace operation */
+			rc = StringReplace(pOut,nCount+nOfft,(int)pSearch_->nByte,
+				pReplace_->zString,(int)pReplace_->nByte);
+			if( rc != SXRET_OK ){
+				/* Propagate an allocation failure so the caller raises a fatal
+				 * instead of returning a partially-replaced result. */
+				return rc;
+			}
+			/* Increment offset counter */
+			nCount += nOfft + pReplace_->nByte;
+		}
+	}
+	return SXRET_OK;
+}
+/* Per-call state for the array-subject form of str_replace()/str_ireplace(). */
+typedef struct str_replace_subject str_replace_subject;
+struct str_replace_subject
+{
+	ph7_value *pResult;    /* Result array (keys preserved) */
+	ph7_value *pScratch;   /* Reusable string value for each element */
+	SyBlob *pWorker;       /* Scratch output buffer for one element */
+	SySet *pSearch;        /* Collected search terms */
+	SySet *pReplace;       /* Collected replacement terms */
+	ProcStringMatch xMatch;/* Match routine (case-sensitive or not) */
+	int rep_str;           /* TRUE: scalar $replace */
+	sxi32 rc;              /* SXRET_OK or SXERR_MEM */
+};
+/*
+ * ph7_array_walk() callback over an array $subject: string-cast one element, run
+ * the search/replace over it, and insert the result under the element's original
+ * key. A non-string element is coerced exactly like php (int/float/bool/null via
+ * their string form). A nested-array element becomes "Array" — the value matches
+ * php, but PHL does not emit php's "Array to string conversion" warning here (the
+ * engine raises it at echo/interpolation sites, not this C-level cast; a
+ * recorded divergence).
+ */
+static int StrReplaceSubjectWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
+{
+	str_replace_subject *pS = (str_replace_subject *)pUserData;
+	const char *zSub;
+	int nSub;
+	/* php coerces every element to string (same cast used everywhere). */
+	zSub = ph7_value_to_string(pData,&nSub);
+	if( StrReplaceOneSubject(pS->pWorker,zSub,(sxu32)(nSub > 0 ? nSub : 0),
+			pS->pSearch,pS->pReplace,pS->rep_str,pS->xMatch) != SXRET_OK ){
+		pS->rc = SXERR_MEM;
+		return SXERR_ABORT;
+	}
+	/* Publish the transformed bytes as a string under the original key. */
+	ph7_value_reset_string_cursor(pS->pScratch);
+	if( SyBlobLength(pS->pWorker) > 0
+	 && ph7_value_string(pS->pScratch,(const char *)SyBlobData(pS->pWorker),
+			(int)SyBlobLength(pS->pWorker)) != SXRET_OK ){
+		pS->rc = SXERR_MEM;
+		return SXERR_ABORT;
+	}
+	if( ph7_array_add_elem(pS->pResult,pKey,pS->pScratch) != SXRET_OK ){
+		pS->rc = SXERR_MEM;
+		return SXERR_ABORT;
+	}
+	return PH7_OK;
+}
+/*
  * mixed str_replace(mixed $search,mixed $replace,mixed $subject[,int &$count ])
  * mixed str_ireplace(mixed $search,mixed $replace,mixed $subject[,int &$count ])
  *  Replace all occurrences of the search string with the replacement string.
@@ -4931,7 +5054,7 @@ static int StrReplaceWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
  */
 PH7_PRIVATE int PH7_builtin_str_replace(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	SyString sTemp,*pSearch,*pReplace;
+	SyString sTemp;
 	ProcStringMatch xMatch;
 	const char *zIn,*zFunc;
 	str_replace_data sRep;
@@ -4954,42 +5077,22 @@ PH7_PRIVATE int PH7_builtin_str_replace(ph7_context *pCtx,int nArg,ph7_value **a
 	sRep.pCtx = pCtx;
 	sRep.pCollector = &sSearch;
 	rep_str = 0;
-	/* Extract the subject */
-	zIn = ph7_value_to_string(apArg[2],&nByte);
-	if( nByte < 1 ){
-		/* Nothing to replace,return the empty string */
-		ph7_result_string(pCtx,"",0);
-		return PH7_OK;
-	}
-	/* Copy the subject */
-	SyBlobAppend(&sWorker,(const void *)zIn,(sxu32)nByte);
-	/* Search string */
+	/* Collect the search term(s) — independent of the subject. */
 	if( ph7_value_is_array(apArg[0]) ){
-		/* Collect search string */
 		ph7_array_walk(apArg[0],StrReplaceWalker,&sRep);
 	}else{
-		/* Single pattern */
 		zIn = ph7_value_to_string(apArg[0],&nByte);
-		if( nByte < 1 ){
-			/* Return the subject untouched since no search string is available */
-			ph7_result_value(pCtx,apArg[2]/* Subject as thrird argument*/);
-			return PH7_OK;
-		}
-		SyStringInitFromBuf(&sTemp,zIn,nByte);
-		/* Save for later processing */
+		SyStringInitFromBuf(&sTemp,zIn,nByte > 0 ? nByte : 0);
 		SySetPut(&sSearch,(const void *)&sTemp);
 	}
-	/* Replace string */
+	/* Collect the replacement term(s). */
 	if( ph7_value_is_array(apArg[1]) ){
-		/* Collect replace string */
 		sRep.pCollector = &sReplace;
 		ph7_array_walk(apArg[1],StrReplaceWalker,&sRep);
 	}else{
-		/* Single needle */
 		zIn = ph7_value_to_string(apArg[1],&nByte);
 		rep_str = 1;
-		SyStringInitFromBuf(&sTemp,zIn,nByte);
-		/* Save for later processing */
+		SyStringInitFromBuf(&sTemp,zIn,nByte > 0 ? nByte : 0);
 		SySetPut(&sReplace,(const void *)&sTemp);
 	}
 	/* Surface a collector allocation failure (StrReplaceWalker) as a fatal */
@@ -4999,70 +5102,57 @@ PH7_PRIVATE int PH7_builtin_str_replace(ph7_context *pCtx,int nArg,ph7_value **a
 		SyBlobRelease(&sWorker);
 		return PH7_ContextMemoryError(pCtx);
 	}
-	/* Reset loop cursors */
-	SySetResetCursor(&sSearch);
-	SySetResetCursor(&sReplace);
-	pReplace = pSearch = 0; /* cc warning */
-	SyStringInitFromBuf(&sTemp,"",0);
-	/* Extract function name */
+	/* Pick the match routine by function name */
 	zFunc = ph7_function_name(pCtx);
-	/* Set the default pattern match routine */
 	xMatch = SyBlobSearch;
 	if( SyStrncmp(zFunc,"str_ireplace",sizeof("str_ireplace") - 1) ==  0 ){
 		/* Case insensitive pattern match */
 		xMatch = iPatternMatch;
 	}
-	/* Start the replace process */
-	while( SXRET_OK == SySetGetNextEntry(&sSearch,(void **)&pSearch) ){
-		sxu32 nCount,nOfft;
-		/* Extract the replace string */
-		if( rep_str ){
-			pReplace = (SyString *)SySetPeek(&sReplace);
-		}else{
-			if( SXRET_OK != SySetGetNextEntry(&sReplace,(void **)&pReplace) ){
-				/* Sepecial case when 'replace set' has fewer values than the search set.
-				 * An empty string is used for the rest of replacement values
-				 */
-				pReplace = 0;
-			}
+	if( ph7_value_is_array(apArg[2]) ){
+		/* Array subject: replace element-wise and RETURN AN ARRAY whose keys
+		 * mirror the subject's (php semantics). */
+		str_replace_subject sSub;
+		ph7_value *pResult,*pScratch;
+		pResult = ph7_context_new_array(pCtx);
+		pScratch = ph7_context_new_scalar(pCtx);
+		if( pResult == 0 || pScratch == 0 ){
+			SySetRelease(&sSearch);
+			SySetRelease(&sReplace);
+			SyBlobRelease(&sWorker);
+			return PH7_ContextMemoryError(pCtx);
 		}
-		if( pReplace == 0 ){
-			/* Use an empty string instead */
-			pReplace = &sTemp;
+		ph7_value_string(pScratch,"",0); /* force string representation */
+		SyZero(&sSub,sizeof(sSub));
+		sSub.pResult  = pResult;
+		sSub.pScratch = pScratch;
+		sSub.pWorker  = &sWorker;
+		sSub.pSearch  = &sSearch;
+		sSub.pReplace = &sReplace;
+		sSub.xMatch   = xMatch;
+		sSub.rep_str  = rep_str;
+		ph7_array_walk(apArg[2],StrReplaceSubjectWalker,&sSub);
+		SySetRelease(&sSearch);
+		SySetRelease(&sReplace);
+		SyBlobRelease(&sWorker);
+		if( sSub.rc != SXRET_OK ){
+			return PH7_ContextMemoryError(pCtx);
 		}
-		if( pSearch->nByte <  1 ){
-			/* php ignores an empty search string, but its replacement still
-			 * CONSUMES a slot so the remaining pairs stay aligned. Skipping
-			 * before the fetch above shifted every later replacement by one:
-			 * str_replace(['','l'],['x','L'],'hello') answered "hexxo". */
-			continue;
-		}
-		nOfft = nCount = 0;
-		for(;;){
-			if( nCount >= SyBlobLength(&sWorker) ){
-				break;
-			}
-			/* Perform a pattern lookup */
-			rc = xMatch(SyBlobDataAt(&sWorker,nCount),SyBlobLength(&sWorker) - nCount,(const void *)pSearch->zString,
-				pSearch->nByte,&nOfft);
-			if( rc != SXRET_OK ){
-				/* Pattern not found */
-				break;
-			}
-			/* Perform the replace operation */
-			rc = StringReplace(&sWorker,nCount+nOfft,(int)pSearch->nByte,pReplace->zString,(int)pReplace->nByte);
-			if( rc != SXRET_OK ){
-				/* Allocation failure: surface a fatal instead of a partial result */
-				SySetRelease(&sSearch);
-				SySetRelease(&sReplace);
-				SyBlobRelease(&sWorker);
-				return PH7_ContextMemoryError(pCtx);
-			}
-			/* Increment offset counter */
-			nCount += nOfft + pReplace->nByte;
-		}
+		ph7_result_value(pCtx,pResult);
+		return PH7_OK;
 	}
-	/* All done,clean-up the mess left behind */
+	/* Scalar subject: run once and return a string. An empty subject yields the
+	 * empty string, and a lone empty search term leaves the subject untouched —
+	 * both fall out of StrReplaceOneSubject's empty-term skip. */
+	zIn = ph7_value_to_string(apArg[2],&nByte);
+	rc = StrReplaceOneSubject(&sWorker,zIn,(sxu32)(nByte > 0 ? nByte : 0),
+		&sSearch,&sReplace,rep_str,xMatch);
+	if( rc != SXRET_OK ){
+		SySetRelease(&sSearch);
+		SySetRelease(&sReplace);
+		SyBlobRelease(&sWorker);
+		return PH7_ContextMemoryError(pCtx);
+	}
 	rc = ph7_result_string(pCtx,(const char *)SyBlobData(&sWorker),(int)SyBlobLength(&sWorker));
 	SySetRelease(&sSearch);
 	SySetRelease(&sReplace);
