@@ -3943,7 +3943,19 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 							pMeth = PH7_ClassExtractMethod(pClass,sMethod.zString,sMethod.nByte);
 						}
 						if( pMeth ){
+							/* php: a method declared in the class BODY wins over a trait alias
+							 * of the same name (e.g. an explicit __construct over `init as
+							 * __construct`). If pClass already declares sAlias ITSELF — an own
+							 * method, sFunc.pUserData == pClass — keep it: SyHashInsert is LIFO,
+							 * so an unconditional insert would shadow the class method at lookup
+							 * and `new` would run the alias. A name held only by another trait is
+							 * a genuine conflict resolved by the insteadof pass above. */
+							int bClassWins = 0;
 							if( sAlias.nByte > 0 ){
+								ph7_class_method *pOwn = PH7_ClassExtractMethod(pClass,sAlias.zString,sAlias.nByte);
+								bClassWins = (pOwn && pOwn->sFunc.pUserData == pClass);
+							}
+							if( sAlias.nByte > 0 && !bClassWins ){
 								/* Create a shallow copy of the method struct for the alias
 								 * so it can carry its own visibility without affecting the original.
 								 */
@@ -3962,7 +3974,7 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 										SyHashInsert(&pClass->hMethod,(const void *)zAliasDup,sAlias.nByte,pAlias);
 									}
 								}
-							}else if( iNewVis >= 0 ){
+							}else if( sAlias.nByte == 0 && iNewVis >= 0 ){
 								/* Visibility-only change (no alias name): also needs a copy */
 								ph7_class_method *pCopy;
 								pCopy = (ph7_class_method *)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(ph7_class_method));
