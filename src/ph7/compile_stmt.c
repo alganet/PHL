@@ -1726,7 +1726,12 @@ PH7_PRIVATE sxi32 PH7_CompileReturn(ph7_gen_state *pGen)
 		/* php: a stray token after `return EXPR` is `... expecting ";"`. */
 		const char *zSave = pGen->zClauseCloser;
 		pGen->zClauseCloser = "\";\"";
-		rc = PH7_CompileExpr(&(*pGen),0,0);
+		/* A `return` READS its operand (the value is consumed), so compile it
+		 * read-only: a lone undefined variable `return $z` must warn at the read
+		 * exactly like echo/interpolation, not be loaded quietly (the same quiet
+		 * load that correctly keeps a bare `$z;` statement silent). Matches the
+		 * arrow-fn implicit-return body fix. */
+		rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_RDONLY_LOAD,0);
 		pGen->zClauseCloser = zSave;
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
