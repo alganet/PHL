@@ -453,7 +453,11 @@ static ph7_int64 StreamReadLine(io_private *pDev,const char **pzData,ph7_int64 n
 		/* Check if there is a line */
 		rc = GetLine(pDev,&n,pzData);
 		if( rc == SXRET_OK ){
-			/* Got line,update the cursor  */
+			/* Got line. php caps it at nMaxLen bytes even when the newline
+			 * falls later; the remainder (incl. the newline) stays buffered. */
+			if( nMaxLen > 0 && n > nMaxLen ){
+				n = nMaxLen;
+			}
 			pDev->nOfft += (sxu32)n;
 			return n;
 		}
@@ -472,17 +476,23 @@ static ph7_int64 StreamReadLine(io_private *pDev,const char **pzData,ph7_int64 n
 		/* Try to extract a line */
 		rc = GetLine(pDev,&n,pzData);
 		if( rc == SXRET_OK ){
-			/* Got one,return immediately */
+			/* Got one. Cap at nMaxLen (php's length limit); anything past the
+			 * cap, newline included, is left buffered for the next read. */
+			if( nMaxLen > 0 && n > nMaxLen ){
+				n = nMaxLen;
+			}
 			pDev->nOfft += (sxu32)n;
 			return n;
 		}
 		if( nMaxLen > 0 && (SyBlobLength(&pDev->sBuffer) - pDev->nOfft >= nMaxLen) ){
-			/* Read limit reached,return the available data */
+			/* Cap reached before a newline: return EXACTLY nMaxLen bytes (a prior
+			 * sub-cap leftover plus this read can hold more) and keep the
+			 * remainder buffered via nOfft for the next read, so we never hand
+			 * back more than nMaxLen. The top-of-function check reclaims the
+			 * buffer once it is fully consumed. */
 			*pzData = (const char *)SyBlobDataAt(&pDev->sBuffer,pDev->nOfft);
-			n = SyBlobLength(&pDev->sBuffer) - pDev->nOfft;
-			/* Reset the working buffer */
-			SyBlobReset(&pDev->sBuffer);
-			pDev->nOfft = 0;
+			n = nMaxLen;
+			pDev->nOfft += (sxu32)nMaxLen;
 			return n;
 		}
 	}
