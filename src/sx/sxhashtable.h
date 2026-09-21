@@ -62,6 +62,7 @@ PH7_PRIVATE sxi32 SyHashDeleteEntry2(SyHashEntry *pEntry);
 PH7_PRIVATE sxi32 SyHashResetLoopCursor(SyHash *pHash);
 PH7_PRIVATE SyHashEntry *SyHashGetNextEntry(SyHash *pHash);
 PH7_PRIVATE sxi32 SyHashForEach(SyHash *pHash,sxi32(*xStep)(SyHashEntry *,void *),void *pUserData);
+PH7_PRIVATE sxi32 SyHashForEachReverse(SyHash *pHash,sxi32(*xStep)(SyHashEntry *,void *),void *pUserData);
 PH7_PRIVATE sxi32 SyHashInsert(SyHash *pHash,const void *pKey,sxu32 nKeyLen,void *pUserData);
 PH7_PRIVATE SyHashEntry *SyHashLastEntry(SyHash *pHash);
 

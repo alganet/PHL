@@ -349,6 +349,37 @@ PH7_PRIVATE sxi32 SyHashForEach(SyHash *pHash,sxi32 (*xStep)(SyHashEntry *,void 
 	}
 	return SXRET_OK;
 }
+/*
+ * Like SyHashForEach but walks the entries from the tail (pLast) back to the
+ * head via pPrev. The frame's local-variable table is built with SyHashInsert
+ * (head-push), so its forward pList order is reverse-insertion (LIFO); walking
+ * it backward yields DECLARATION order, which is what php's get_defined_vars()
+ * reports. Kept as its own primitive so the shared head-push insert path — and
+ * the SyHashLastEntry()==pList head contract every RefObj install relies on —
+ * stays untouched.
+ */
+PH7_PRIVATE sxi32 SyHashForEachReverse(SyHash *pHash,sxi32 (*xStep)(SyHashEntry *,void *),void *pUserData)
+{
+	SyHashEntry_Pr *pEntry;
+	sxi32 rc;
+	sxu32 n;
+#if defined(UNTRUST)
+	if( INVALID_HASH(pHash) || xStep == 0){
+		return 0;
+	}
+#endif
+	pEntry = pHash->pLast;
+	for( n = 0 ; n < pHash->nEntry ; n++ ){
+		/* Invoke the callback */
+		rc = xStep((SyHashEntry *)pEntry,pUserData);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		/* Point to the previous entry */
+		pEntry = pEntry->pPrev;
+	}
+	return SXRET_OK;
+}
 static sxi32 HashGrowTable(SyHash *pHash)
 {
 	sxu32 nNewSize = pHash->nBucketSize * 2;

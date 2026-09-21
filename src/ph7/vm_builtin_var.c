@@ -340,8 +340,12 @@ PH7_PRIVATE int vm_builtin_get_defined_vars(ph7_context *pCtx,int nArg,ph7_value
 	if( pVm->pFrame->pParent == 0 ){
 		SyHashForEach(&pVm->hSuper,VmHashVarWalker,pArray);
 	}
-	/* Then variable defined in the current frame */
-	SyHashForEach(&pVm->pFrame->hVar,VmHashVarWalker,pArray);
+	/* Then variables defined in the current frame, in DECLARATION order.
+	 * The frame table is head-pushed (SyHashInsert), so its forward order is
+	 * reverse-insertion; walk it backward to match php, which returns locals in
+	 * the order they first appeared (a,b,c — a reassignment reuses the slot and
+	 * keeps its original position). */
+	SyHashForEachReverse(&pVm->pFrame->hVar,VmHashVarWalker,pArray);
 	/* Finally,return the created array */
 	ph7_result_value(pCtx,pArray);
 	return SXRET_OK;
