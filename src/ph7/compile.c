@@ -550,6 +550,7 @@ static sxu32 GenStateByRefBuiltinMask(SyString *pName)
 		sxu32 mask;
 	} aByRef[] = {
 		{ "parse_str",              9, 1u<<1 },  /* &$result (apArg[1]) */
+		{ "settype",                7, 1u<<0 },  /* &$var    (apArg[0]) */
 		{ "preg_match",            10, 1u<<2 },  /* $matches (apArg[2]) */
 		{ "preg_match_all",        14, 1u<<2 },  /* $matches (apArg[2]) */
 		{ "preg_replace",          12, 1u<<4 },  /* &$count  (apArg[4]) */
