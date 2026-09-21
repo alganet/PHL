@@ -1376,16 +1376,26 @@ PH7_PRIVATE int PH7_builtin_file_get_contents(ph7_context *pCtx,int nArg,ph7_val
 				pStream->xSeek(pHandle,n,0/*SEEK_SET*/);
 			}
 		}
-		if( nArg > 4 ){
-			/* Maximum data to read */
+		if( nArg > 4 && !ph7_value_is_null(apArg[4]) ){
+			/* Maximum data to read. An explicit 0 reads nothing (php returns
+			 * ""); only an omitted or NULL length keeps the -1 "whole file"
+			 * sentinel, so NULL must not collapse to 0 here. */
 			nMaxlen = ph7_value_to_int64(apArg[4]);
 		}
 	}
-	/* Perform the requested operation */
+	/* Perform the requested operation. nMaxlen: -1 = whole file, 0 = read
+	 * nothing, >0 = at most that many bytes. The nMaxlen==0 case falls straight
+	 * through to the empty-string result below. */
 	nRead = 0;
-	for(;;){
-		n = pStream->xRead(pHandle,zBuf,
-			(nMaxlen > 0 && (nMaxlen < (ph7_int64)sizeof(zBuf))) ? nMaxlen : (ph7_int64)sizeof(zBuf));
+	while( nMaxlen != 0 ){
+		/* Cap the chunk to the bytes STILL wanted (nMaxlen - nRead), not to the
+		 * whole nMaxlen: with a limit above the buffer size the final chunk would
+		 * otherwise overshoot and append past $length. */
+		ph7_int64 nAsk = (ph7_int64)sizeof(zBuf);
+		if( nMaxlen > 0 && (nMaxlen - nRead) < nAsk ){
+			nAsk = nMaxlen - nRead;
+		}
+		n = pStream->xRead(pHandle,zBuf,nAsk);
 		if( n < 1 ){
 			/* EOF or IO error,break immediately */
 			break;
