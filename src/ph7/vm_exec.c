@@ -5432,6 +5432,10 @@ case PH7_OP_CALL: {
 		/* ============================================================
 		 * Positional-only matching path (original)
 		 * ============================================================ */
+		/* Base of the actual argument stack, for php's per-ELEMENT argument
+		 * number in a variadic type-error (php numbers a variadic-collected
+		 * element by its overall 1-based call position, not the formal index). */
+		ph7_value *pArgBase = pArg;
 		n = 0;
 		while( pArg < pTos ){
 			if( n < SySetUsed(&pVmFunc->aArgs) && (aFormalArg[n].iFlags & VM_FUNC_ARG_VARIADIC) ){
@@ -5449,14 +5453,13 @@ case PH7_OP_CALL: {
 					{
 						ph7_hashmap *pMap = (ph7_hashmap *)pObj->x.pOther;
 						while( pArg < pTos ){
-							/* Variadic union type: per-element coercion via the shared helper.
-							 *
-							 * TODO: PHP reports the runtime element index here
-							 * ("Argument #3 must be...") but we report the formal-arg
-							 * index (always n+1, the position of the variadic). The
-							 * non-union variadic path below has the same limitation;
-							 * fixing both wants a separate counter for elements
-							 * already packed into the variadic array. */
+							/* Variadic type checks report php's per-ELEMENT argument
+							 * number ((pArg - pArgBase) + 1 — the offending element's
+							 * overall 1-based call position) and, like php, OMIT the
+							 * `($name)` (a variadic collects many values, so no single
+							 * parameter name applies): pass pArgName = 0. */
+							sxu32 nArgPos = (sxu32)(pArg - pArgBase) + 1;
+							/* Variadic union type: per-element coercion via the shared helper. */
 							if( aFormalArg[n].iFlags & VM_FUNC_ARG_UNION ){
 								sxi32 rcU = VmCoerceToUnion(pVm, pArg, &aFormalArg[n].aUnionAlts,
 									(aFormalArg[n].iFlags & VM_FUNC_ARG_NULLABLE) ? 1 : 0,
@@ -5476,8 +5479,8 @@ case PH7_OP_CALL: {
 									if( SyStringLength(&aFormalArg[n].sTypeName) > 0 ){
 										zExpected = VmSyStringToCStr(&aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf));
 									}
-									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
-										&aFormalArg[n].sName, zExpected, zGiven);
+									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,nArgPos,
+										0, zExpected, zGiven);
 									if( rc == PH7_ABORT ){
 										goto Abort;
 									}
@@ -5499,8 +5502,8 @@ case PH7_OP_CALL: {
 								if( aFormalArg[n].nType == MEMOBJ_OBJ ){
 									/* object type hint on variadic: reject non-objects with TypeError */
 									char zGivenBuf[128];
-									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
-										&aFormalArg[n].sName,"object",VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf)));
+									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,nArgPos,
+										0,"object",VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf)));
 									if( rc == PH7_ABORT ){
 										goto Abort;
 									}
@@ -5513,8 +5516,8 @@ case PH7_OP_CALL: {
 								}else if( VmEnforceScalarType(pArg, aFormalArg[n].nType, bCallIsStrict) != SXRET_OK ){
 									char zTypeBuf[128];
 									char zGivenBuf[128];
-									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,n+1,
-										&aFormalArg[n].sName,
+									rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pVmFunc,nArgPos,
+										0,
 										VmScalarTypeName(aFormalArg[n].nType, &aFormalArg[n].sTypeName, zTypeBuf, sizeof(zTypeBuf)),
 										VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf)));
 									if( rc == PH7_ABORT ){

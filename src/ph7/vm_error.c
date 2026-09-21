@@ -1886,15 +1886,28 @@ PH7_PRIVATE sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,ph7_
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	/* PHP qualifies a method's type-error with its declaring class ("Class::m()"); a free
 	 * function uses the bare name. pOwnerClass is NULL for free functions/closures. */
+	/* A NULL pArgName omits the ` ($name)` clause: php drops the parameter name
+	 * for a VARIADIC-collected element (many values share the one variadic
+	 * formal, so no single name applies) — "Argument #2 must be of type …". */
 	if( pOwnerClass ){
-		SyBlobFormat(&sMsg,"%z::%z(): Argument #%u ($%z) must be of type %s, %s given",
-			&pOwnerClass->sName,pFuncName,nArg,pArgName,zExpected,zGiven);
+		if( pArgName ){
+			SyBlobFormat(&sMsg,"%z::%z(): Argument #%u ($%z) must be of type %s, %s given",
+				&pOwnerClass->sName,pFuncName,nArg,pArgName,zExpected,zGiven);
+		}else{
+			SyBlobFormat(&sMsg,"%z::%z(): Argument #%u must be of type %s, %s given",
+				&pOwnerClass->sName,pFuncName,nArg,zExpected,zGiven);
+		}
 	}else{
 		/* A closure's internal lookup key ("[closure_3]") is not what php shows. */
 		const char *zShow = 0;
 		int nShow = VmFuncDisplayName(pVm,pCallee,&zShow);
-		SyBlobFormat(&sMsg,"%.*s(): Argument #%u ($%z) must be of type %s, %s given",
-			nShow,zShow,nArg,pArgName,zExpected,zGiven);
+		if( pArgName ){
+			SyBlobFormat(&sMsg,"%.*s(): Argument #%u ($%z) must be of type %s, %s given",
+				nShow,zShow,nArg,pArgName,zExpected,zGiven);
+		}else{
+			SyBlobFormat(&sMsg,"%.*s(): Argument #%u must be of type %s, %s given",
+				nShow,zShow,nArg,zExpected,zGiven);
+		}
 	}
 	/* php appends the CALL SITE to a userland callee's type error — internal
 	 * (hosted C) functions get the bare message. nCurLine is the line of the
