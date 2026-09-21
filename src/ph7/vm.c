@@ -1697,7 +1697,6 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyBlobInit(&pVm->sWorker,&pVm->sAllocator);
 	SyBlobInit(&pVm->sLastErrMsg,&pVm->sAllocator);
 	SyBlobInit(&pVm->sLastErrFile,&pVm->sAllocator);
-	SyBlobInit(&pVm->sArgv,&pVm->sAllocator);
 	SySetInit(&pVm->aLitObj,&pVm->sAllocator,sizeof(ph7_value));
 	SySetAlloc(&pVm->aLitObj,0xFF);
 	SyHashInit(&pVm->hHostFunction,&pVm->sAllocator,0,0);
@@ -3517,13 +3516,6 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 		/* Perform the insertion */
 		n = (sxu32)SyStrlen(zValue);
 		rc = PH7_VmHashmapInsert(pMap,0,0,zValue,(int)n);
-		if( rc == SXRET_OK ){
-			if( pMap->nEntry > 1 ){
-				/* Append space separator first */
-				SyBlobAppend(&pVm->sArgv,(const void *)" ",sizeof(char));
-			}
-			SyBlobAppend(&pVm->sArgv,(const void *)zValue,n);
-		}
 		break;
 								  }
 	case PH7_VM_CONFIG_SERVER_ARGV: {
