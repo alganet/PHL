@@ -1462,18 +1462,25 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								: PH7_ClassExtractConstant(pClass,sName.zString,sName.nByte);
 						}
 						if( pAttr == 0 ){
-							/* No such STATIC attribute. php raises a catchable Error
-							 * ("Access to undeclared static property") — instance magic
-							 * (__get) is never consulted for statics (band A #3b; the old
-							 * path warned + called __get with a null $this and discarded
-							 * it). isset()/empty() context stays silently false. Parked on
-							 * the boundary rail; the op completes benignly with NULL and
-							 * the fetch-point router lands the throw. */
+							/* No such member. php raises a catchable Error whose wording
+							 * depends on the ACCESS form (the same p3/iP1 signal used above):
+							 * a bareword `C::MISSING` (constant form) is "Undefined constant
+							 * C::MISSING", a `$`-form `C::$missing` is "Access to undeclared
+							 * static property C::$missing". Instance magic (__get) is never
+							 * consulted for statics (band A #3b). isset()/empty() context
+							 * stays silently false. Parked on the boundary rail; the op
+							 * completes benignly with NULL and the fetch-point router lands
+							 * the throw. */
 							if( !VmMemberCtxIsLookup(pInstr->iP2) ){
 								SyBlob sErrMsg;
 								SyBlobInit(&sErrMsg,&pVm->sAllocator);
-								SyBlobFormat(&sErrMsg,"Access to undeclared static property %z::$%z",
-									&pClass->sName,&sName);
+								if( pInstr->p3 == 0 && pInstr->iP1 != 2 ){
+									SyBlobFormat(&sErrMsg,"Undefined constant %z::%z",
+										&pClass->sName,&sName);
+								}else{
+									SyBlobFormat(&sErrMsg,"Access to undeclared static property %z::$%z",
+										&pClass->sName,&sName);
+								}
 								VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 							}
 						}
