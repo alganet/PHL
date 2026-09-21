@@ -4217,6 +4217,12 @@ static int VmBuildEffectiveArgMap(ph7_vm *pVm, VmCallArgMap *pCompile,
 	pEff->bIsNamespaced = pCompile ? pCompile->bIsNamespaced : 0;
 	pEff->bStrict = pCompile ? pCompile->bStrict : 0;
 	pEff->nOrigNameLit = pCompile ? pCompile->nOrigNameLit : 0;
+	if( pCompile ){
+		pEff->sAssertSrc = pCompile->sAssertSrc;
+	}else{
+		pEff->sAssertSrc.zString = 0;
+		pEff->sAssertSrc.nByte = 0;
+	}
 	pEff->nTotal = nActual;
 	pEff->aNames = (SyString *)SySetBasePtr(&pVm->aEffArgName);
 	return 1;

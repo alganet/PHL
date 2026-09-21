@@ -1299,6 +1299,9 @@ PH7_PRIVATE int vm_builtin_call_user_func(ph7_context *pCtx,int nArg,ph7_value *
 	if( pCtx->pArgMap && pCtx->pArgMap->bHasNamed && nArg > 1 ){
 		VmCallArgMap *pOuter = pCtx->pArgMap;
 		VmCallArgMap sInner;
+		/* Zero first: a field added to the map (sAssertSrc, ...) must read as
+		 * unset when forwarded, not as stack garbage. */
+		SyZero(&sInner,sizeof(sInner));
 		sInner.bHasNamed = 1;
 		sInner.bIsNamespaced = 0;
 		/* Named args to call_user_func coerce in WEAK mode even from a
@@ -1398,6 +1401,7 @@ PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_v
 	/* Try to invoke the callback */
 	if( aNames ){
 		VmCallArgMap sMap;
+		SyZero(&sMap,sizeof(sMap)); /* new map fields must read unset, not stack garbage */
 		sMap.bHasNamed = 1;
 		sMap.bIsNamespaced = 0;
 		/* Coercion strictness follows the caller's file; the OP_CALL dispatcher
