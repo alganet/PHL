@@ -758,9 +758,14 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 	ph7_hashmap_node *pNode = 0; /* cc warning */
 	ph7_hashmap *pMap = 0;
 	ph7_value *pIdx;
+	/* D1 commit 2: iP2==9 is the deferred-record mode. It behaves exactly like a plain read
+	 * (iP2==0) for base dispatch / the read tail, EXCEPT the dedicated block right after the
+	 * index is popped, which — on a lookup MISS with a reachable base — captures the lvalue
+	 * path (MEMOBJ_AUX_DEFPATH) instead of warning, and exits. Everything else sees iP2. */
+	sxi32 iP2 = (pInstr->iP2 == 9) ? 0 : pInstr->iP2;
 	pIdx = 0;
 	if( pInstr->iP1 == 0 ){
-		if( !pInstr->iP2){
+		if( !iP2){
 			/* No available index,load NULL */
 			if( pTos >= pStack ){
 				PH7_MemObjRelease(pTos);
@@ -779,7 +784,85 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		pIdx = pTos;
 		pTos--;
 	}
-	if( pInstr->iP2 == 7 && (pTos->iFlags & MEMOBJ_HASHMAP) == 0 ){
+	if( pInstr->iP2 == 9 && pIdx ){
+		/* D1 commit 2 record mode. Decide whether to CAPTURE this subscript as a deferred
+		 * lvalue step (the by-ref/by-value decision is not known until OP_CALL), or fall
+		 * through to a plain read (iP2 was normalized to 0 above). We defer only when the
+		 * base can be reached again at resolve time: an existing descriptor (nested), the
+		 * commit-1 undefined-variable marker, or a real container/string/scalar slot
+		 * (nIdx != SXU32_HIGH). On a present array key we DO NOT defer — a hit already
+		 * yields the aliasable read slot the by-ref binder needs. */
+		VmDeferredPath *pPath = 0;
+		int bDefer = 0, eRoot = 0;
+		if( pTos->iFlags & MEMOBJ_AUX_DEFPATH ){
+			/* Nested: the base already carries a descriptor — extend it in place. */
+			pPath = (VmDeferredPath *)pTos->x.pOther;
+			bDefer = 1;
+		}else if( pTos->iFlags & MEMOBJ_AUX_DEFERRED ){
+			/* Undefined base variable (commit-1 marker): root the descriptor by name. */
+			SyString sRootName;
+			SyStringInitFromBuf(&sRootName,(const char *)pTos->x.pOther,
+				pTos->x.pOther ? SyStrlen((const char *)pTos->x.pOther) : 0);
+			pPath = VmDeferPathNew(&(*pVm),1,SXU32_HIGH,&sRootName);
+			pTos->iFlags &= ~MEMOBJ_AUX_DEFERRED; /* borrowed name; don't free x.pOther */
+			pTos->x.pOther = 0;
+			bDefer = (pPath != 0);
+		}else if( pTos->nIdx != SXU32_HIGH ){
+			/* A real base slot: array/scalar -> eRoot 0 (by-ref may vivify), string -> 2. */
+			if( pTos->iFlags & MEMOBJ_HASHMAP ){
+				/* Probe hit/miss on a COPY of the key: PH7_HashmapLookup casts a NULL key to
+				 * "" in place, which would suppress the fall-through read's null-offset
+				 * deprecation (hit) and capture the wrong key in the step (miss). */
+				ph7_value idxProbe;
+				pMap = (ph7_hashmap *)pTos->x.pOther;
+				PH7_MemObjInit(&(*pVm),&idxProbe);
+				PH7_MemObjStore(pIdx,&idxProbe);
+				if( PH7_HashmapLookup(pMap,&idxProbe,&pNode) == SXRET_OK ){
+					bDefer = 0; /* present key: fall through and read it as an aliasable slot */
+				}else{
+					eRoot = 0; bDefer = 1;
+				}
+				PH7_MemObjRelease(&idxProbe);
+			}else if( pTos->iFlags & MEMOBJ_OBJ ){
+				bDefer = 0; /* ArrayAccess: not a deferrable lvalue — read normally */
+			}else if( pTos->iFlags & MEMOBJ_STRING ){
+				eRoot = 2; bDefer = 1;
+			}else{
+				eRoot = 0; bDefer = 1; /* NULL/other reachable scalar base */
+			}
+			if( bDefer && pPath == 0 ){
+				pPath = VmDeferPathNew(&(*pVm),eRoot,pTos->nIdx,0);
+				if( pPath == 0 ){
+					bDefer = 0;
+				}
+			}
+		}
+		if( bDefer ){
+			/* Append this element step (deep-copies pIdx) and leave the carrier on pTos. */
+			if( VmDeferPathPushElem(pPath,pIdx) == SXRET_OK ){
+				if( (pTos->iFlags & MEMOBJ_AUX_DEFPATH) == 0 ){
+					/* Collapse the base value into the descriptor carrier. */
+					PH7_MemObjRelease(pTos);
+					pTos->x.pOther = pPath;
+					pTos->iFlags = MEMOBJ_NULL | MEMOBJ_AUX_DEFPATH;
+					pTos->nIdx = SXU32_HIGH;
+				}
+				PH7_MemObjRelease(pIdx);
+				VM_EXIT_BREAK;
+			}
+			/* Out of memory appending a step. */
+			if( pTos->iFlags & MEMOBJ_AUX_DEFPATH ){
+				/* Nested base: pPath IS pTos's carrier and stays owned by it — keep it (a
+				 * step short) and exit, rather than fall through and misread a NULL-typed
+				 * carrier as an array base. Resolves the shorter path; OOM-only degradation. */
+				PH7_MemObjRelease(pIdx);
+				VM_EXIT_BREAK;
+			}
+			/* A freshly-allocated path we still own: drop it and fall back to a plain read. */
+			VmFreeDeferredPath(pPath);
+		}
+	}
+	if( iP2 == 7 && (pTos->iFlags & MEMOBJ_HASHMAP) == 0 ){
 		/* Keyed list destructuring `["k"=>$v] = $src` from a NON-array source: yield NULL
 		 * (never char-index a string), warning once per key — matching PHP, which warns per
 		 * key here. A NULL source is silent; unlike the positional OP_LOAD_LIST path, a bool
@@ -819,8 +902,8 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				/* LOAD_IDX carries its OWN iP2 codes, which do NOT line up with the
 				 * PH7_MEMBER_* ones: 4 = isset, 5 = unset, 6 = empty. All three are
 				 * lookups and must stay silent. */
-				int bQuiet = pInstr->iP2 == 4 || pInstr->iP2 == 5 || pInstr->iP2 == 6
-					|| pInstr->iP2 == 8 || VmIdxFeedsCoalesce(pInstr);
+				int bQuiet = iP2 == 4 || iP2 == 5 || iP2 == 6
+					|| iP2 == 8 || VmIdxFeedsCoalesce(pInstr);
 				PH7_MemObjRelease(pTos);
 				if( bQuiet ){
 					MemObjSetType(pTos,MEMOBJ_NULL);
@@ -863,7 +946,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 			ph7_class_method *pMeth;
 			ph7_value sResult;
 			ph7_value *apArg[1];
-			if( (pInstr->iP2 == 0 || pInstr->iP2 == 3 || pInstr->iP2 == 8) && pIdx == 0 ){
+			if( (iP2 == 0 || iP2 == 3 || iP2 == 8) && pIdx == 0 ){
 				/* `$obj[]` read — PHP rejects this. */
 				PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,
 					"Cannot use [] for reading");
@@ -872,7 +955,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				VM_EXIT_BREAK;
 			}
 			PH7_MemObjInit(&(*pVm),&sResult);
-			if( pInstr->iP2 == 4 || pInstr->iP2 == 6 || pInstr->iP2 == 3 || pInstr->iP2 == 8 ){
+			if( iP2 == 4 || iP2 == 6 || iP2 == 3 || iP2 == 8 ){
 				/* isset, empty, ??= and `??` all start with offsetExists. */
 				pMeth = PH7_ClassExtractMethod(pInst->pClass,
 					"offsetExists",sizeof("offsetExists")-1);
@@ -880,7 +963,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				if( pMeth ){
 					PH7_VmCallClassMethod(&(*pVm),pInst,pMeth,&sResult,pIdx ? 1 : 0,apArg);
 				}
-			}else if( pInstr->iP2 == 5 ){
+			}else if( iP2 == 5 ){
 				pMeth = PH7_ClassExtractMethod(pInst->pClass,
 					"offsetUnset",sizeof("offsetUnset")-1);
 				apArg[0] = pIdx;
@@ -895,7 +978,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 					PH7_VmCallClassMethod(&(*pVm),pInst,pMeth,&sResult,pIdx ? 1 : 0,apArg);
 				}
 			}
-			if( pInstr->iP2 == 4 ){
+			if( iP2 == 4 ){
 				/* isset: push MEMOBJ_BOOL so vm_builtin_isset reports the
 				 * right truth value AND skips its "Expecting a variable not
 				 * a constant" warning (keyed on MEMOBJ_BOOL). */
@@ -908,13 +991,13 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				}else{
 					MemObjSetType(pTos,MEMOBJ_NULL);
 				}
-			}else if( pInstr->iP2 == 5 ){
+			}else if( iP2 == 5 ){
 				/* offsetUnset return is discarded; push NULL so the trailing
 				 * vm_builtin_unset is a harmless no-op. */
 				PH7_MemObjRelease(pTos);
 				pTos->nIdx = SXU32_HIGH;
 				MemObjSetType(pTos,MEMOBJ_NULL);
-			}else if( pInstr->iP2 == 6 || pInstr->iP2 == 8 ){
+			}else if( iP2 == 6 || iP2 == 8 ){
 				/* empty: if offsetExists is false, push NULL so empty=true
 				 * without calling offsetGet. If true, call offsetGet and
 				 * push the value so PH7_builtin_empty evaluates emptiness.
@@ -940,7 +1023,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				}
 				if( pIdx ){ PH7_MemObjRelease(pIdx); }
 				VM_EXIT_BREAK; /* skip the duplicate sResult release below */
-			}else if( pInstr->iP2 == 3 ){
+			}else if( iP2 == 3 ){
 				/* ?? null-coalesce peek: emulate PHP semantics —
 				 *   if !offsetExists OR offsetGet() === null → arm
 				 *     coalesce slot (NULLC_STORE will call offsetSet)
@@ -1014,7 +1097,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 			PH7_THROW_ROUTE_MIDEXPR(rc)
 		}
 	}
-	if( (pInstr->iP2 == 1 || pInstr->iP2 == 3 || pInstr->iP2 == 5) && (pTos->iFlags & MEMOBJ_HASHMAP) == 0 ){
+	if( (iP2 == 1 || iP2 == 3 || iP2 == 5) && (pTos->iFlags & MEMOBJ_HASHMAP) == 0 ){
 		if( pTos->nIdx != SXU32_HIGH ){
 			ph7_value *pObj;
 			if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
@@ -1058,7 +1141,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 	 * accepted with a warning and becomes its integer id. */
 	if( (pTos->iFlags & MEMOBJ_HASHMAP) && pIdx ){
 		SyBlob sTypeMsg;
-		if( VmOffsetTypeRejected(&(*pVm),pIdx,pInstr->iP2,&sTypeMsg) ){
+		if( VmOffsetTypeRejected(&(*pVm),pIdx,iP2,&sTypeMsg) ){
 			VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sTypeMsg));
 			PH7_MemObjRelease(pIdx);
 			PH7_MemObjRelease(pTos);
@@ -1074,13 +1157,13 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		 * (2/7). Emit it here so all of them get it, not just read/write; the
 		 * lookup/insert below casts NULL->"", and a plain read miss then warns
 		 * `Undefined array key ""` on the now-string pIdx (php's exact pair). */
-		if( (pIdx->iFlags & MEMOBJ_NULL) && pInstr->iP2 != 5 ){
+		if( (pIdx->iFlags & MEMOBJ_NULL) && iP2 != 5 ){
 			VmNullOffsetDeprecate(&(*pVm),pIdx);
 		}
 		/* A lossy-FLOAT subscript stays a rejected TypeError on a READ or WRITE
 		 * (iP2 0/1) — the recorded non-deprecated-surface policy (§2); the lenient
 		 * contexts (isset/empty/??/unset) truncate quietly as php's value does. */
-		if( (pInstr->iP2 == 0 || pInstr->iP2 == 1)
+		if( (iP2 == 0 || iP2 == 1)
 		 && (pIdx->iFlags & MEMOBJ_REAL)
 		 && pIdx->rVal != (ph7_real)(sxi64)pIdx->rVal ){
 			SyBlob sErrMsg;
@@ -1095,7 +1178,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		}
 	}
 	if( pTos->iFlags & MEMOBJ_HASHMAP ){
-		if( pInstr->iP2 == 1 || pInstr->iP2 == 5 ){
+		if( iP2 == 1 || iP2 == 5 ){
 			/* Write-context access (iP2 = create-if-missing).  COW-separate
 			 * the parent so nested writes like $b[0][0] = 99 don't leak
 			 * through shared outer arrays.  Read-only loads (iP2 == 0) must
@@ -1110,7 +1193,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 			/* Load the desired entry */
 			rc = PH7_HashmapLookup(pMap,pIdx,&pNode);
 		}
-		if( pInstr->iP2 == 3 ){
+		if( iP2 == 3 ){
 			/* Null coalescing assign peek mode: separate only when we will
 			 * actually write back. If the looked-up value is non-null, the
 			 * caller's NULLC_JMP will short-circuit and no store happens, so
@@ -1138,7 +1221,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				}
 			}
 		}
-		if( rc != SXRET_OK && (pInstr->iP2 == 1 || pInstr->iP2 == 3 || pInstr->iP2 == 5) ){
+		if( rc != SXRET_OK && (iP2 == 1 || iP2 == 3 || iP2 == 5) ){
 			/* Create a new empty entry */
 			rc = PH7_HashmapInsert(pMap,pIdx,0);
 			if( rc == SXRET_OK ){
@@ -1153,7 +1236,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 			}
 		}
 	}
-	if( rc != SXRET_OK && pIdx && (pInstr->iP2 == 2 || pInstr->iP2 == 0)
+	if( rc != SXRET_OK && pIdx && (iP2 == 2 || iP2 == 0)
 	 && (pTos->iFlags & MEMOBJ_HASHMAP)
 	 && !VmIdxFeedsCoalesce(pInstr) ){
 		/* `$a['k'] ?? $d` compiles its LHS as a plain read (iP2 == 0) followed
@@ -1184,7 +1267,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		SyBlobRelease(&sMsg);
 	}
 	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_STRING|MEMOBJ_OBJ)) == 0
-	 && (pInstr->iP2 == 0 || pInstr->iP2 == 2)
+	 && (iP2 == 0 || iP2 == 2)
 	 && !VmIdxFeedsCoalesce(pInstr) ){
 		/* Subscripting a scalar base is a WARNING in php ("Trying to access array offset
 		 * on int") that yields NULL. PH7 yielded NULL in silence. */

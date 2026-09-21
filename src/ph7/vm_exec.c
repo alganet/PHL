@@ -379,6 +379,314 @@ PH7_PRIVATE sxi32 VmByteCodeExec(
 	return rc;
 }
 /*
+ * D1 commit 2: allocate a captured lvalue path for a deferred element/property call arg.
+ * eRoot picks the root container: 0 = a real aMemObj slot (nRootIdx), 1 = an undefined
+ * variable to vivify by name at resolve time (pName, a VM-lifetime bytecode string, borrowed),
+ * 2 = a string base (subscripting a string -> php refuses a by-ref bind). The struct owns its
+ * step array and each step's key/name; PH7_MemObjRelease frees it via VmFreeDeferredPath.
+ */
+PH7_PRIVATE VmDeferredPath * VmDeferPathNew(ph7_vm *pVm,int eRoot,sxu32 nRootIdx,const SyString *pName)
+{
+	VmDeferredPath *pPath = (VmDeferredPath *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmDeferredPath));
+	if( pPath == 0 ){
+		return 0;
+	}
+	SyZero(pPath,sizeof(VmDeferredPath));
+	pPath->pAlloc = &pVm->sAllocator;
+	pPath->eRoot = eRoot;
+	pPath->nRootIdx = nRootIdx;
+	if( eRoot == 1 && pName ){
+		pPath->sRootName = *pName; /* borrowed VM-lifetime bytes, not copied */
+	}
+	return pPath;
+}
+static VmDeferStep * VmDeferPathGrow(VmDeferredPath *pPath)
+{
+	if( pPath->nStep >= pPath->nAlloc ){
+		sxu32 nNew = pPath->nAlloc ? pPath->nAlloc * 2 : 4;
+		VmDeferStep *aNew = (VmDeferStep *)SyMemBackendRealloc(pPath->pAlloc,pPath->aStep,
+			nNew * sizeof(VmDeferStep));
+		if( aNew == 0 ){
+			return 0;
+		}
+		pPath->aStep = aNew;
+		pPath->nAlloc = nNew;
+	}
+	return &pPath->aStep[pPath->nStep];
+}
+/* Append an array-element step, deep-copying the index value (the caller releases pKey). */
+PH7_PRIVATE sxi32 VmDeferPathPushElem(VmDeferredPath *pPath,ph7_value *pKey)
+{
+	VmDeferStep *pStep = VmDeferPathGrow(pPath);
+	if( pStep == 0 ){
+		return SXERR_MEM;
+	}
+	pStep->isProp = 0;
+	pStep->sProp.zString = 0; pStep->sProp.nByte = 0; pStep->zProp = 0;
+	PH7_MemObjInit(pKey->pVm,&pStep->sKey);
+	PH7_MemObjStore(pKey,&pStep->sKey);
+	pPath->nStep++;
+	return SXRET_OK;
+}
+/* Append an object-property step, owning a private copy of the name bytes. */
+PH7_PRIVATE sxi32 VmDeferPathPushProp(VmDeferredPath *pPath,const SyString *pName)
+{
+	VmDeferStep *pStep = VmDeferPathGrow(pPath);
+	char *zCopy;
+	if( pStep == 0 ){
+		return SXERR_MEM;
+	}
+	zCopy = SyMemBackendStrDup(pPath->pAlloc,pName->zString,pName->nByte);
+	if( zCopy == 0 ){
+		return SXERR_MEM;
+	}
+	pStep->isProp = 1;
+	pStep->zProp = zCopy;
+	SyStringInitFromBuf(&pStep->sProp,zCopy,pName->nByte);
+	pPath->nStep++;
+	return SXRET_OK;
+}
+/* Release a captured lvalue path and everything it owns (element keys, property names). */
+PH7_PRIVATE void VmFreeDeferredPath(VmDeferredPath *pPath)
+{
+	sxu32 i;
+	if( pPath == 0 ){
+		return;
+	}
+	for( i = 0 ; i < pPath->nStep ; ++i ){
+		VmDeferStep *pStep = &pPath->aStep[i];
+		if( pStep->isProp ){
+			if( pStep->zProp ){
+				SyMemBackendFree(pPath->pAlloc,pStep->zProp);
+			}
+		}else{
+			PH7_MemObjRelease(&pStep->sKey);
+		}
+	}
+	if( pPath->aStep ){
+		SyMemBackendFree(pPath->pAlloc,pPath->aStep);
+	}
+	SyMemBackendFree(pPath->pAlloc,pPath);
+}
+/* Map an op-handler VmOpRc into the main-loop rc convention used by VmByteCodeExecBody. */
+static sxi32 VmOpRcToExecRc(VmOpRc rcOp)
+{
+	if( rcOp == VM_OP_ABORT ){
+		return PH7_ABORT;
+	}
+	if( rcOp == VM_OP_EXCEPTION ){
+		return PH7_EXCEPTION;
+	}
+	return SXRET_OK;
+}
+/*
+ * D1 commit 2: re-drive ONE captured lvalue step by invoking the real LOAD_IDX / MEMBER
+ * handler on a synthetic 2-slot stack. This reuses the proven COW / vivify / warning / magic
+ * machinery instead of hand-walking it. pBase carries the current container (its nIdx must be
+ * a real aMemObj slot for a by-ref write to vivify in place). iP2 selects the mode:
+ * LOAD_IDX 1=write(vivify,by-ref) / 0=read(by-value); MEMBER PH7_MEMBER_READ=by-value read.
+ * On success pOut receives the result value and its nIdx (the aliasable element slot for a
+ * vivified by-ref element).
+ */
+static sxi32 VmReDriveStep(ph7_vm *pVm,sxi32 iOp,sxu32 iP2,ph7_value *pBase,ph7_value *pKey,ph7_value *pOut)
+{
+	ph7_value mini[2];
+	VmInstr aI[2];
+	VmExecState st;
+	VmOpRc rcOp;
+	PH7_MemObjInit(pVm,&mini[0]);
+	PH7_MemObjInit(pVm,&mini[1]);
+	PH7_MemObjLoad(pBase,&mini[0]);
+	mini[0].nIdx = pBase->nIdx;
+	PH7_MemObjStore(pKey,&mini[1]);
+	SyZero((void *)aI,sizeof(aI));
+	/* LOAD_IDX: iP1=1 means "an index is present". MEMBER: iP1=0 means an INSTANCE member
+	 * (iP1=1 would be a static `::` access). */
+	aI[0].iOp = (sxu8)iOp; aI[0].iP1 = (iOp == PH7_OP_LOAD_IDX) ? 1 : 0; aI[0].iP2 = iP2;
+	SyZero((void *)&st,sizeof(st));
+	st.pStack = mini; st.pTos = &mini[1]; st.aInstr = aI; st.pc = 0;
+	if( iOp == PH7_OP_LOAD_IDX ){
+		rcOp = VmExecOpLoadIdx(&(*pVm),&st,&aI[0]);
+	}else{
+		rcOp = VmExecOpMember(&(*pVm),&st,&aI[0]);
+	}
+	/* The handler popped the key/name and left the result in the (now top) base slot.
+	 * DEEP-COPY it into pOut (MemObjStore, not MemObjLoad): the result is chained as the next
+	 * step's base and must OWN its buffer — mini[0] is released immediately below, and a
+	 * read-only view (MemObjLoad) would leave pOut dangling into freed memory. */
+	PH7_MemObjStore(st.pTos,pOut);
+	pOut->nIdx = st.pTos->nIdx;
+	PH7_MemObjRelease(&mini[0]);
+	return VmOpRcToExecRc(rcOp);
+}
+/*
+ * D1 commit 2: resolve an object property as a by-ref target. Given the object's aMemObj
+ * slot, return the property value's slot index in *pnOut so the by-ref binder can alias it.
+ * A present property binds directly; a missing one is created (recreate a declared+unset
+ * property, or a dynamic property on a dynamic-allowing class); a magic __get/__set property
+ * emits php's Notice and does NOT bind (*pbNoBind). Mirrors VmExecOpMember's write-create.
+ */
+static sxi32 VmBindPropByRef(ph7_vm *pVm,sxu32 nObjIdx,const SyString *pName,sxu32 *pnOut,int *pbNoBind)
+{
+	ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nObjIdx);
+	ph7_class_instance *pThis;
+	ph7_class *pClass;
+	SyHashEntry *pEntry;
+	VmClassAttr *pAttr = 0;
+	*pbNoBind = 0;
+	if( pObj == 0 || (pObj->iFlags & MEMOBJ_OBJ) == 0 ){
+		/* Base is not an object (e.g. a NULL intermediate): cannot bind a property by ref. */
+		*pbNoBind = 1;
+		return SXRET_OK;
+	}
+	pThis = (ph7_class_instance *)pObj->x.pOther;
+	pClass = pThis->pClass;
+	pEntry = SyHashGet(&pThis->hAttr,(const void *)pName->zString,pName->nByte);
+	if( pEntry ){
+		pAttr = (VmClassAttr *)pEntry->pUserData;
+		*pnOut = pAttr->nIdx;
+		return SXRET_OK;
+	}
+	if( PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1)
+	 || PH7_ClassExtractMethod(pClass,"__set",sizeof("__set")-1) ){
+		/* Overloaded (magic) property: php passes it by-value with a Notice and drops the
+		 * write-back — "has no effect". */
+		VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,
+			"Indirect modification of overloaded property %z::$%z has no effect",
+			&pClass->sName,pName);
+		*pbNoBind = 1;
+		return SXRET_OK;
+	}
+	{
+		ph7_class_attr *pDecl = PH7_ClassExtractAttribute(pClass,pName->zString,pName->nByte);
+		if( pDecl && (pDecl->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
+			VmRecreateDeclaredAttr(&(*pVm),pThis,pDecl,&pAttr);
+		}else if( VmClassAllowsDynamicProps(&(*pVm),pClass) ){
+			PH7_VmCreateDynamicAttr(&(*pVm),pThis,pName->zString,pName->nByte,&pAttr);
+		}else{
+			SyBlob sMsg;
+			sxi32 rcT;
+			SyBlobInit(&sMsg,&pVm->sAllocator);
+			SyBlobFormat(&sMsg,"Cannot create dynamic property %z::$%z",&pClass->sName,pName);
+			rcT = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sMsg),SyBlobLength(&sMsg));
+			SyBlobRelease(&sMsg);
+			*pbNoBind = 1;
+			return (rcT == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+		}
+		if( pAttr ){
+			*pnOut = pAttr->nIdx;
+		}else{
+			*pbNoBind = 1;
+		}
+	}
+	return SXRET_OK;
+}
+/* Resolve a captured lvalue path as a BY-REF target: vivify the whole chain in place and
+ * leave pSlot->nIdx pointing at the terminal (aliasable) slot for the by-ref binder. */
+static sxi32 VmResolvePathByRef(ph7_vm *pVm,VmDeferredPath *pPath,ph7_value *pSlot)
+{
+	sxu32 nCur;
+	sxu32 i;
+	sxi32 rc;
+	if( pPath->eRoot == 2 ){
+		/* Subscripting a string: php refuses a by-ref bind to a string offset. */
+		sxi32 rcT = VmThrowFromVm(&(*pVm),"Error",
+			"Cannot create references to/from string offsets",
+			sizeof("Cannot create references to/from string offsets")-1);
+		return (rcT == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+	}
+	if( pPath->eRoot == 1 ){
+		ph7_value *pRoot = VmExtractMemObj(&(*pVm),&pPath->sRootName,FALSE,TRUE); /* vivify $a */
+		if( pRoot == 0 ){
+			return SXRET_OK;
+		}
+		nCur = pRoot->nIdx;
+	}else{
+		nCur = pPath->nRootIdx;
+	}
+	for( i = 0 ; i < pPath->nStep ; ++i ){
+		VmDeferStep *pStep = &pPath->aStep[i];
+		if( pStep->isProp ){
+			sxu32 nOut = SXU32_HIGH;
+			int bNoBind = 0;
+			rc = VmBindPropByRef(&(*pVm),nCur,&pStep->sProp,&nOut,&bNoBind);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+			if( bNoBind ){
+				return SXRET_OK; /* magic/non-object: leave the slot a clean NULL, pass by value */
+			}
+			nCur = nOut;
+		}else{
+			ph7_value out;
+			ph7_value *pContainer = (ph7_value *)SySetAt(&pVm->aMemObj,nCur);
+			if( pContainer == 0 ){
+				return SXRET_OK;
+			}
+			PH7_MemObjInit(&(*pVm),&out);
+			rc = VmReDriveStep(&(*pVm),PH7_OP_LOAD_IDX,1,pContainer,&pStep->sKey,&out);
+			nCur = out.nIdx;
+			PH7_MemObjRelease(&out);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+			if( nCur == SXU32_HIGH ){
+				return SXRET_OK; /* no aliasable slot (e.g. a non-lvalue container): pass by value */
+			}
+		}
+	}
+	pSlot->nIdx = nCur;
+	return SXRET_OK;
+}
+/* Resolve a captured lvalue path as a BY-VALUE argument: read the chain (emitting php's
+ * undefined-key/property/offset warnings) WITHOUT vivifying, leaving the terminal value in
+ * pSlot. Re-drives the read handlers so the warning sequence matches php exactly. */
+static sxi32 VmResolvePathByValue(ph7_vm *pVm,VmDeferredPath *pPath,ph7_value *pSlot)
+{
+	ph7_value cur;
+	sxu32 i;
+	sxi32 rc = SXRET_OK;
+	PH7_MemObjInit(&(*pVm),&cur);
+	if( pPath->eRoot == 1 ){
+		ph7_value *pRoot = VmExtractMemObj(&(*pVm),&pPath->sRootName,FALSE,FALSE);
+		if( pRoot == 0 ){
+			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Undefined variable $%z",&pPath->sRootName);
+		}else{
+			PH7_MemObjLoad(pRoot,&cur);
+			cur.nIdx = pRoot->nIdx;
+		}
+	}else{
+		ph7_value *pRoot = (ph7_value *)SySetAt(&pVm->aMemObj,pPath->nRootIdx);
+		if( pRoot ){
+			PH7_MemObjLoad(pRoot,&cur);
+			cur.nIdx = pRoot->nIdx;
+		}
+	}
+	for( i = 0 ; i < pPath->nStep ; ++i ){
+		VmDeferStep *pStep = &pPath->aStep[i];
+		ph7_value out;
+		PH7_MemObjInit(&(*pVm),&out);
+		if( pStep->isProp ){
+			ph7_value nameVal;
+			PH7_MemObjInitFromString(&(*pVm),&nameVal,&pStep->sProp);
+			rc = VmReDriveStep(&(*pVm),PH7_OP_MEMBER,PH7_MEMBER_READ,&cur,&nameVal,&out);
+			PH7_MemObjRelease(&nameVal);
+		}else{
+			rc = VmReDriveStep(&(*pVm),PH7_OP_LOAD_IDX,0,&cur,&pStep->sKey,&out);
+		}
+		PH7_MemObjRelease(&cur);
+		cur = out;
+		if( rc != SXRET_OK ){
+			PH7_MemObjRelease(&cur);
+			return rc;
+		}
+	}
+	PH7_MemObjStore(&cur,pSlot);
+	pSlot->nIdx = SXU32_HIGH;
+	PH7_MemObjRelease(&cur);
+	return SXRET_OK;
+}
+/*
  * D1: resolve deferred call arguments in [pArg, pTos) before the callee consumes them.
  *
  * A plain `$var` call argument whose callee signature is unknown at compile time is
@@ -403,7 +711,7 @@ PH7_PRIVATE sxi32 VmByteCodeExec(
  * A DEFINED variable never carries the marker (it loads with its real nIdx), so this is a
  * no-op for it; a call with no deferred args pays only one flag test per slot.
  */
-static void VmResolveDeferredArgs(
+static sxi32 VmResolveDeferredArgs(
 	ph7_vm *pVm,
 	ph7_value *pArg,
 	ph7_value *pTos,
@@ -418,13 +726,23 @@ static void VmResolveDeferredArgs(
 	for( p = pArg ; p < pTos ; ++p, ++n ){
 		int bByRef = 0;
 		SyString sName;
-		if( (p->iFlags & MEMOBJ_AUX_DEFERRED) == 0 ){
+		if( (p->iFlags & (MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH)) == 0 ){
 			continue;
 		}
 		if( bAllByValue ){
 			bByRef = 0;
 		}else if( bAllByRef ){
-			bByRef = 1;
+			/* bAllByRef comes ONLY from the array-callable-value and __invoke dispatch paths,
+			 * which cannot expose the target's per-parameter by-ref flags here. Commit 1 chose
+			 * to over-vivify every deferred PLAIN-VAR arg on those paths (harmless: it just
+			 * materializes the caller variable), and that is preserved. But a deferred
+			 * ELEMENT/PROPERTY (MEMOBJ_AUX_DEFPATH) must NOT be blanket-vivified there: a missing
+			 * property would fatal ("Cannot create dynamic property") and a missing element would
+			 * silently vivify + swallow php's "Undefined array key" warning. Resolve those
+			 * by-value (warn + pass NULL), which matches php for a by-VALUE __invoke/callable —
+			 * the genuine by-ref-out-param-into-an-element case stays unsupported here, exactly
+			 * as it was before this slice. */
+			bByRef = (p->iFlags & MEMOBJ_AUX_DEFPATH) ? 0 : 1;
 		}else if( pFormal ){
 			sxu32 idx = n;
 			if( idx >= nFormal ){
@@ -438,6 +756,27 @@ static void VmResolveDeferredArgs(
 			}
 		}else{
 			bByRef = (n < 31 && (nByRefMask & (1u << n))) ? 1 : 0;
+		}
+		if( p->iFlags & MEMOBJ_AUX_DEFPATH ){
+			/* D1 commit 2: a deferred array-element/property lvalue. Detach the descriptor
+			 * FIRST (so an exception mid-resolve, or a later stack release, cannot double-free
+			 * it) then re-walk it in the chosen mode. */
+			VmDeferredPath *pPath = (VmDeferredPath *)p->x.pOther;
+			sxi32 rc;
+			p->iFlags &= ~MEMOBJ_AUX_DEFPATH;
+			p->x.pOther = 0;
+			MemObjSetType(p,MEMOBJ_NULL);
+			p->nIdx = SXU32_HIGH;
+			if( bByRef ){
+				rc = VmResolvePathByRef(&(*pVm),pPath,p);
+			}else{
+				rc = VmResolvePathByValue(&(*pVm),pPath,p);
+			}
+			VmFreeDeferredPath(pPath);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+			continue;
 		}
 		/* Recover the deferred variable name and drop the marker + carrier. */
 		SyStringInitFromBuf(&sName,(const char *)p->x.pOther,
@@ -457,6 +796,7 @@ static void VmResolveDeferredArgs(
 			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Undefined variable $%z",&sName);
 		}
 	}
+	return SXRET_OK;
 }
 static sxi32 VmByteCodeExecBody(
 	ph7_vm *pVm,         /* Target VM */
@@ -4009,7 +4349,14 @@ case PH7_OP_CALL: {
 			 * plain-var argument before D1 (so `[$o,'m'](&$x)` out-params worked); preserve that
 			 * by materializing every deferred arg as by-ref. Refining these to precise by-value
 			 * semantics is a later slice. */
-			VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,/*bAllByRef*/1,0);
+			{
+				sxi32 rcDA = VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,/*bAllByRef*/1,0);
+				if( rcDA == PH7_ABORT ){
+					goto Abort;
+				}else if( rcDA == PH7_EXCEPTION ){
+					goto Exception;
+				}
+			}
 			SySetReset(&aArg);
 			while( pArg < pTos ){
 				SySetPut(&aArg,(const void *)&pArg);
@@ -4056,7 +4403,14 @@ case PH7_OP_CALL: {
 			 * helper that hides the target's by-ref flags here. Preserve the pre-D1
 			 * over-vivification (so `$o(&$x)` out-params keep working) by materializing
 			 * every deferred arg as by-ref. */
-			VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,/*bAllByRef*/1,0);
+			{
+				sxi32 rcDA = VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,/*bAllByRef*/1,0);
+				if( rcDA == PH7_ABORT ){
+					goto Abort;
+				}else if( rcDA == PH7_EXCEPTION ){
+					goto Exception;
+				}
+			}
 			SySetReset(&aArg);
 			while( pArg < pTos ){
 				SySetPut(&aArg,(const void *)&pArg);
@@ -4389,9 +4743,16 @@ case PH7_OP_CALL: {
 		 * now — BEFORE the generator split and VmEnterFrame, while pVm->pFrame is still the
 		 * caller. pVmFunc is final here (post-overload). Covers plain functions, methods,
 		 * closures, dynamic-name calls and generators uniformly. */
-		VmResolveDeferredArgs(&(*pVm),pArg,pTos,
-			(ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs),SySetUsed(&pVmFunc->aArgs),
-			0,0,0);
+		{
+			sxi32 rcDA = VmResolveDeferredArgs(&(*pVm),pArg,pTos,
+				(ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs),SySetUsed(&pVmFunc->aArgs),
+				0,0,0);
+			if( rcDA == PH7_ABORT ){
+				goto Abort;
+			}else if( rcDA == PH7_EXCEPTION ){
+				goto Exception;
+			}
+		}
 		if( pVmFunc->iFlags & VM_FUNC_GENERATOR ){
 			/* Generator function: return a Generator object instead of executing */
 			ph7_exec_ctx *pExecCtx;
@@ -5747,7 +6108,14 @@ SkipFuncBody:
 		 * DYNAMIC-name by-ref builtin (`$f='preg_match'; $f($p,$s,$m)`) working now that the
 		 * compile-time mask no longer sees it. Every other (by-value) arg warns + passes
 		 * NULL, which is also what call_user_func & friends want. pVm->pFrame is the caller. */
-		VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,pFunc->nByRefMask,0,0);
+		{
+			sxi32 rcDA = VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,pFunc->nByRefMask,0,0);
+			if( rcDA == PH7_ABORT ){
+				goto Abort;
+			}else if( rcDA == PH7_EXCEPTION ){
+				goto Exception;
+			}
+		}
 		/* Host function (builtin): build the effective spread-key map so the
 		 * name-forwarding builtins (call_user_func & friends) relay string keys as
 		 * named args, and — critically — so this call's captured runs are consumed.
