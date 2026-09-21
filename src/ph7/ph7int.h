@@ -1472,7 +1472,6 @@ struct ph7_vm
 	SyHash hPDO;                /* PDO installed drivers */
 	SyBlob sConsumer;           /* Default VM consumer [i.e Redirect all VM output to this blob] */
 	SyBlob sWorker;             /* General purpose working buffer */
-	SyBlob sArgv;               /* $argv[] collector [refer to the [getopt()] implementation for more information] */
 	SySet aFiles;               /* Stack of processed files */
 	SySet aPaths;               /* Set of import paths */
 	SySet aIncluded;            /* Set of included files */

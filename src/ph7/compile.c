@@ -556,6 +556,7 @@ static sxu32 GenStateByRefBuiltinMask(SyString *pName)
 		{ "preg_replace",          12, 1u<<4 },  /* &$count  (apArg[4]) */
 		{ "preg_replace_callback", 21, 1u<<4 },  /* &$count  (apArg[4]) */
 		{ "flock",                  5, 1u<<2 },  /* &$would_block (apArg[2]) */
+		{ "getopt",                 6, 1u<<2 },  /* &$rest_index (apArg[2]) */
 		{ "is_callable",           11, 1u<<2 },  /* &$callable_name (apArg[2]) */
 		{ "similar_text",          12, 1u<<2 },  /* &$percent (apArg[2]) */
 		{ "str_replace",           11, 1u<<3 },  /* &$count  (apArg[3]) */
