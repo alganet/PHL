@@ -1229,13 +1229,80 @@ static sxi32 GenStateLoadLiteral(ph7_gen_state *pGen)
 			}
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
 			return SXRET_OK;
+	}else if( pStr->nByte == sizeof("__TRAIT__") - 1 &&
+		SyMemcmp(pStr->zString,"__TRAIT__",sizeof("__TRAIT__")-1) == 0 ){
+			/* __TRAIT__ magic constant: the name of the trait whose SOURCE lexically
+			 * encloses this token. php resolves it at compile time, and it is shared
+			 * across every using class because a trait method body compiles ONCE with
+			 * the trait as its owner (PH7_ClassUseTrait adopts the same method pointer).
+			 * Unlike __FUNCTION__/__METHOD__ (nearest function), __TRAIT__ is LEXICAL:
+			 * closures and arrow-fns are TRANSPARENT (a closure inside a trait method still
+			 * yields the trait), so we skip them and keep walking outward — but a class
+			 * method or a plain function is an OPAQUE lexical boundary that fixes the answer.
+			 * An anonymous class defined inside a trait method is a fresh scope, so
+			 * __TRAIT__ is "" there, not the enclosing trait. "" outside any trait (global
+			 * scope, plain functions, non-trait methods) — php renders it the empty string,
+			 * not NULL. */
+			GenBlock *pBlock = pGen->pCurrent;
+			ph7_class *pTrait = 0;
+			while( pBlock ){
+				if( pBlock->iFlags & GEN_BLOCK_FUNC ){
+					ph7_vm_func *pFunc = (ph7_vm_func *)pBlock->pUserData;
+					if( pFunc == 0 ){
+						/* A SYNTHETIC function block carries no ph7_vm_func — e.g. the
+						 * per-arm throw-fixup block GenStateCompileMatchSubExpr enters to
+						 * host a match() expression. It is not a real lexical scope
+						 * boundary, so stay transparent and keep walking outward. */
+						pBlock = pBlock->pParent;
+						continue;
+					}
+					if( pFunc->iFlags & VM_FUNC_CLASS_METHOD ){
+						/* A class method (of any class, including an anonymous one) is an
+						 * OPAQUE scope boundary and fixes the answer: a trait method yields
+						 * its trait, any other class's method yields "". Tested BEFORE the
+						 * closure flags so a static method is never mistaken for transparent. */
+						if( pFunc->pUserData
+							&& (((ph7_class *)pFunc->pUserData)->iFlags & PH7_CLASS_TRAIT) ){
+							pTrait = (ph7_class *)pFunc->pUserData;
+						}
+						break;
+					}
+					if( pFunc->iFlags & (VM_FUNC_CLOSURE|VM_FUNC_ARROW|VM_FUNC_STATIC_CL) ){
+						/* Closure / arrow fn (VM_FUNC_CLOSURE is only set when the closure
+						 * captures, so a capture-less static closure carries only
+						 * VM_FUNC_STATIC_CL — include it). Transparent: keep walking outward. */
+						pBlock = pBlock->pParent;
+						continue;
+					}
+					/* A plain named function is an opaque boundary: __TRAIT__ is "". */
+					break;
+				}
+				pBlock = pBlock->pParent;
+			}
+			pObj = PH7_ReserveConstObj(pGen->pVm,&nIdx);
+			if( pObj == 0 ){
+				PH7_GenCompileError(pGen,E_ERROR,pToken->nLine,"Fatal, PH7 engine is running out of memory");
+				return SXERR_ABORT;
+			}
+			if( pTrait ){
+				PH7_MemObjInitFromString(pGen->pVm,pObj,&pTrait->sName);
+			}else{
+				PH7_MemObjInitFromString(pGen->pVm,pObj,0); /* empty string */
+			}
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);
+			return SXRET_OK;
 	}else if( (pStr->nByte == sizeof("__FUNCTION__") - 1 &&
 		SyMemcmp(pStr->zString,"__FUNCTION__",sizeof("__FUNCTION__")-1) == 0) ||
 		(pStr->nByte == sizeof("__METHOD__") - 1 &&
 		SyMemcmp(pStr->zString,"__METHOD__",sizeof("__METHOD__")-1) == 0) ){
 			GenBlock *pBlock = pGen->pCurrent;
 			/* TICKET 1433-004: __FUNCTION__/__METHOD__ constants must be resolved at compile time,not run time */
-			while( pBlock && (pBlock->iFlags & GEN_BLOCK_FUNC) == 0 ){
+			/* Skip SYNTHETIC function blocks (GEN_BLOCK_FUNC with no ph7_vm_func in
+			 * pUserData — e.g. the per-arm throw-fixup block a match() expression enters):
+			 * they are not real function scopes. Without this a __FUNCTION__/__METHOD__
+			 * inside a match arm reached a NULL pUserData and dereferenced it (compile-time
+			 * crash); php resolves to the enclosing real function, which the walk now finds. */
+			while( pBlock && ((pBlock->iFlags & GEN_BLOCK_FUNC) == 0 || pBlock->pUserData == 0) ){
 				/* Point to the upper block */
 				pBlock = pBlock->pParent;
 			}
