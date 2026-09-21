@@ -1236,22 +1236,23 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
  * The fiber's frame must be at the top of pVm->pFrame when this is called.
  */
 /*
- * Enforce one formal parameter's declared type on an argument being installed
- * into a generator/fiber initial frame (band A #2). Mirrors the OP_CALL
- * install path's checks exactly: union types via VmCoerceToUnion, class and
+ * Enforce one formal parameter's declared type on an argument being installed.
+ * THE single implementation of the per-argument check, shared by the
+ * generator/fiber initial-frame binder below (band A #2) and both OP_CALL
+ * install paths (named-map and positional — they carried two verbatim copies
+ * until the §7.1(f) fold): union types via VmCoerceToUnion, class and
  * pseudo types (VmCheckPseudoType + VmResolveTypeClass + instanceof, so
  * interfaces/abstract classes and self/parent resolve), the bare `object`
  * hint, and scalars via VmEnforceScalarType (weak-mode coercion in place,
  * strict rejection otherwise) — with the VM_FUNC_ARG_NULLABLE guard letting
- * null through for `?type` and implicit-nullable `Type $x = null` params.
- * Pre-fix, VmFiberSetupFrame only xCast()ed on mismatch, so a typed
- * generator/fiber parameter silently coerced (g(int $x){yield $x;} g(null)
- * yielded int(0) where php throws TypeError at the call site).
+ * null through for `?type` and implicit-nullable `Type $x = null` params,
+ * and whole-real materialization on a mask match.
  * Returns SXRET_OK (value possibly coerced) or the VmThrowTypeErrorForArg
  * status for the caller to route — normalized so an INLINE-caught throw
  * (VmThrowInline records only a pc-redirect and reports SXRET_OK) still
- * comes back as PH7_EXCEPTION: the binding must stop and the OP_CALL
- * generator block's PH7_INLINE_RESUME_BREAK consumes the redirect.
+ * comes back as PH7_EXCEPTION: the binding must stop; the OP_CALL sites
+ * force rc = PH7_EXCEPTION on any non-OK status anyway, and the generator
+ * block's PH7_INLINE_RESUME_BREAK consumes the redirect.
  */
 static sxi32 VmGenArgThrowStatus(ph7_vm *pVm, sxi32 rcThrow)
 {
@@ -1260,7 +1261,7 @@ static sxi32 VmGenArgThrowStatus(ph7_vm *pVm, sxi32 rcThrow)
 	}
 	return rcThrow;
 }
-static sxi32 VmEnforceGenArgType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_vm_func_arg *pFormal,
+PH7_PRIVATE sxi32 VmEnforceArgType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_vm_func_arg *pFormal,
 	sxu32 nArgPos, ph7_value *pVal, int bStrict, ph7_class *pSelfHint)
 {
 	if( pFormal->iFlags & VM_FUNC_ARG_UNION ){
@@ -1412,7 +1413,7 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 				for( k = n; k < (sxu32)nArg; k++ ){
 					if( ((aFormalArg[n].iFlags & VM_FUNC_ARG_UNION)
 					   || (aFormalArg[n].nType > 0 && aFormalArg[n].nType != SXU32_HIGH)) ){
-						rc = VmEnforceGenArgType(pVm,pFunc,&aFormalArg[n],n+1,apArg[k],bStrict,pSelfHint);
+						rc = VmEnforceArgType(pVm,pFunc,&aFormalArg[n],n+1,apArg[k],bStrict,pSelfHint);
 						if( rc != SXRET_OK ){
 							return rc;
 						}
@@ -1430,14 +1431,14 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 			 * php binds and type-checks generator arguments EAGERLY at the
 			 * g(...) call site (and fiber arguments at Fiber::start()), so the
 			 * enforcement lives here, mirroring the OP_CALL install path via
-			 * VmEnforceGenArgType (TypeError on mismatch, weak coercion in
+			 * VmEnforceArgType (TypeError on mismatch, weak coercion in
 			 * place otherwise) instead of the old silent xCast. A variadic
 			 * formal collects as-is (no per-element declared-type model). */
 			pObj = VmExtractMemObj(pVm, &aFormalArg[n].sName, FALSE, TRUE);
 			if( pObj ){
 				PH7_MemObjStore(apArg[n], pObj);
 				if( (aFormalArg[n].iFlags & VM_FUNC_ARG_VARIADIC) == 0 ){
-					rc = VmEnforceGenArgType(pVm,pFunc,&aFormalArg[n],n+1,pObj,bStrict,pSelfHint);
+					rc = VmEnforceArgType(pVm,pFunc,&aFormalArg[n],n+1,pObj,bStrict,pSelfHint);
 					if( rc != SXRET_OK ){
 						return rc;
 					}
