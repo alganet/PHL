@@ -1174,7 +1174,7 @@ PH7_PRIVATE int PH7_builtin_proc_open(ph7_context *pCtx,int nArg,ph7_value **apA
 	/* --- Fork the child --- */
 	pid = fork();
 	if( pid < 0 ){
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"proc_open(): fork() failed");
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"fork() failed");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}

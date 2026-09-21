@@ -216,13 +216,9 @@ static const char * VmDiagnosticLabel(sxi32 iErr)
  * cross-engine tests wildcard it with %d) — the SHAPE is php's, so tests can
  * be authored cross-engine with --EXPECTF--.
  */
-static void VmDiagnosticHeader(SyBlob *pWorker,sxi32 iErr,SyString *pFuncName)
+static void VmDiagnosticHeader(SyBlob *pWorker,sxi32 iErr)
 {
 	SyBlobFormat(pWorker,"%s: ",VmDiagnosticLabel(iErr));
-	if( pFuncName ){
-		SyBlobAppend(pWorker,pFuncName->zString,pFuncName->nByte);
-		SyBlobAppend(pWorker,"(): ",sizeof("(): ")-1);
-	}
 }
 static void VmDiagnosticLocation(SyBlob *pWorker,SyString *pFile,sxu32 nLine)
 {
@@ -236,35 +232,51 @@ static void VmDiagnosticLocation(SyBlob *pWorker,SyString *pFile,sxu32 nLine)
  * prefix and TWO spaces after the colon, matching the compile-error path
  * (compile.c) and stock CLI's stderr log copy.
  */
-static void VmDiagnosticLogHeader(SyBlob *pWorker,sxi32 iErr,SyString *pFuncName)
+static void VmDiagnosticLogHeader(SyBlob *pWorker,sxi32 iErr)
 {
 	SyBlobAppend(pWorker,"PHP ",sizeof("PHP ")-1);
 	SyBlobFormat(pWorker,"%s:  ",VmDiagnosticLabel(iErr));
-	if( pFuncName ){
-		SyBlobAppend(pWorker,pFuncName->zString,pFuncName->nByte);
-		SyBlobAppend(pWorker,"(): ",sizeof("(): ")-1);
+}
+/*
+ * Prepend php's `func(): ` qualifier to a diagnostic body.
+ *
+ * php puts the raising function's name in the MESSAGE, not in the printed header,
+ * so its user error handler ($errstr), its error_get_last()['message'] and its
+ * printed copy all carry the same text. PHL used to add it in the two header
+ * builders above, i.e. only to the PRINTED copy -- so a set_error_handler() that
+ * matched on the function name never fired, and error_get_last() answered a body
+ * php never produces. Building it into the message here is the single place that
+ * fixes all three. Builtins that already spell the qualifier into their own text
+ * (`fopen(%s): Failed to open stream`) pass a NULL name and are untouched.
+ */
+static void VmDiagnosticQualify(SyBlob *pOut,SyString *pFuncName)
+{
+	if( pFuncName && pFuncName->nByte > 0 ){
+		SyBlobAppend(pOut,pFuncName->zString,pFuncName->nByte);
+		SyBlobAppend(pOut,"(): ",sizeof("(): ")-1);
 	}
 }
 /*
  * Emit a runtime diagnostic as php's two copies, each behind its own ini gate
  * (the caller has already cleared the error_reporting() mask and the '@' gate):
  *   - LOG copy     -> the error (stderr) stream when log_errors is on:
- *                     `PHP LABEL:  <func(): >BODY in FILE on line N`
+ *                     `PHP LABEL:  BODY in FILE on line N`
  *   - DISPLAY copy -> the program-output (stdout) stream when display_errors is on:
- *                     `\nLABEL: <func(): >BODY in FILE on line N`
+ *                     `\nLABEL: BODY in FILE on line N`
+ * BODY already carries php's `func(): ` qualifier (VmDiagnosticQualify).
  * Stock CLI php (display_errors off, log_errors on) writes only the stderr copy,
  * keeping program stdout clean. BODY/location are shared; only the header and the
  * display copy's leading blank line differ. sWorker is reused across the two
  * copies; BODY must live in a separate buffer (it does at both call sites).
  */
-static sxi32 VmEmitDiagnostic(ph7_vm *pVm,sxi32 iErr,SyString *pFuncName,
+static sxi32 VmEmitDiagnostic(ph7_vm *pVm,sxi32 iErr,
 	const char *zBody,sxu32 nBody,SyString *pFile,sxu32 nLine)
 {
 	SyBlob *pWorker = &pVm->sWorker;
 	sxi32 rc = SXRET_OK;
 	if( pVm->bLogErrors ){
 		SyBlobReset(pWorker);
-		VmDiagnosticLogHeader(pWorker,iErr,pFuncName);
+		VmDiagnosticLogHeader(pWorker,iErr);
 		SyBlobAppend(pWorker,zBody,nBody);
 		VmDiagnosticLocation(pWorker,pFile,nLine);
 		rc = VmWriteDiagnostic(pVm,VmErrConsumer(pVm),pWorker,0);
@@ -274,7 +286,7 @@ static sxi32 VmEmitDiagnostic(ph7_vm *pVm,sxi32 iErr,SyString *pFuncName,
 		SyBlobReset(pWorker);
 		/* php's text-mode display copy is prefixed with a blank line */
 		SyBlobAppend(pWorker,"\n",sizeof(char));
-		VmDiagnosticHeader(pWorker,iErr,pFuncName);
+		VmDiagnosticHeader(pWorker,iErr);
 		SyBlobAppend(pWorker,zBody,nBody);
 		VmDiagnosticLocation(pWorker,pFile,nLine);
 		rc2 = VmWriteDiagnostic(pVm,&pVm->sVmConsumer,pWorker,1);
@@ -293,26 +305,34 @@ PH7_PRIVATE sxi32 PH7_VmThrowError(
 	const char *zMessage /* Null terminated error message */
 	)
 {
+	SyBlob sMsg;
 	SyString *pFile;
 	sxu32 nMsg = (sxu32)SyStrlen(zMessage);
 	sxi32 rc = SXRET_OK;
 	/* Peek the processed file if available */
 	pFile = (SyString *)SySetPeek(&pVm->aFiles);
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	if( pFuncName && pFuncName->nByte > 0 ){
+		/* Qualify only when there IS a name: PH7_VmMemoryError() reports an
+		 * out-of-memory fatal through this path with none, and must not need
+		 * an allocation to say so. */
+		VmDiagnosticQualify(&sMsg,pFuncName);
+		SyBlobAppend(&sMsg,zMessage,nMsg);
+		zMessage = (const char *)SyBlobData(&sMsg);
+		nMsg = SyBlobLength(&sMsg);
+	}
 	/* Check for user error handler. php calls it whatever error_reporting() says
 	 * (see VmThrowErrorAp) -- the mask gates only the printed copy below. */
 	if( VmInvokeErrorHandler(pVm, iErr, zMessage, (sxi32)nMsg, pFile, (sxi32)pVm->nCurLine) ){
 		VmRecordLastError(&(*pVm),iErr,zMessage,nMsg,pFile);
-		if( !VmErrReportWants(pVm,iErr) ){
-			/* error_reporting() masks this severity out of the DISPLAY */
-			return SXRET_OK;
+		if( VmErrReportWants(pVm,iErr) && pVm->nErrSuppress == 0 ){
+			/* error_reporting() masks a severity out of the DISPLAY, and inside
+			 * '@' php still runs the handler (done just above) but prints
+			 * nothing itself. */
+			rc = VmEmitDiagnostic(pVm,iErr,zMessage,nMsg,pFile,pVm->nCurLine);
 		}
-		if( pVm->nErrSuppress > 0 ){
-			/* Inside '@': php still runs a user handler (done just above) but
-			 * prints nothing itself. */
-			return SXRET_OK;
-		}
-		rc = VmEmitDiagnostic(pVm,iErr,pFuncName,zMessage,nMsg,pFile,pVm->nCurLine);
 	}
+	SyBlobRelease(&sMsg);
 	return rc;
 }
 /*
@@ -451,8 +471,9 @@ static sxi32 VmThrowErrorAp(
 	sxi32 rc = SXRET_OK;
 	/* Peek the processed file if available */
 	pFile = (SyString *)SySetPeek(&pVm->aFiles);
-	/* Format the raw message */
+	/* Format the raw message behind php's `func(): ` qualifier */
 	SyBlobInit(&sMsg, &pVm->sAllocator);
+	VmDiagnosticQualify(&sMsg,pFuncName);
 	SyBlobFormatAp(&sMsg,zFormat,ap);
 	/* Check if a user error handler is installed. php calls it for EVERY diagnostic,
 	 * whatever error_reporting() says -- the mask only gates the built-in printer,
@@ -466,7 +487,7 @@ static sxi32 VmThrowErrorAp(
 			SyBlobRelease(&sMsg);
 			return SXRET_OK;
 		}
-		rc = VmEmitDiagnostic(pVm,iErr,pFuncName,(const char *)SyBlobData(&sMsg),
+		rc = VmEmitDiagnostic(pVm,iErr,(const char *)SyBlobData(&sMsg),
 			SyBlobLength(&sMsg),pFile,pVm->nCurLine);
 	}
 	SyBlobRelease(&sMsg);

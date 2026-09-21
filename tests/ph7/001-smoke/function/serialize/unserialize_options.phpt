@@ -43,13 +43,7 @@ foreach ([["allowed_classes" => true], ["allowed_classes" => false],
 $flat   = 'a:1:{i:0;i:1;}';
 $two    = 'a:1:{i:0;a:1:{i:0;i:1;}}';
 $three  = 'a:1:{i:0;a:1:{i:0;a:1:{i:0;i:1;}}}';
-// The "unserialize(): " prefix is stripped because a C builtin's warning reaches
-// a user handler WITHOUT it in PHL and WITH it in php -- engine-wide (§6), not
-// specific to these messages, and tracked as its own item.
-set_error_handler(function ($n, $s) {
-    echo "W: ", str_replace("unserialize(): ", "", $s), "\n";
-    return true;
-});
+set_error_handler(function ($n, $s) { echo "W: $s\n"; return true; });
 foreach ([0, 1, 2, 3] as $d) {
     foreach ([$flat, $two, $three] as $i => $s) {
         $r = unserialize($s, ["max_depth" => $d]); // warnings print before the echo
@@ -91,34 +85,34 @@ int(1)
 0/1 => true
 0/2 => true
 1/0 => true
-W: Maximum depth of 1 exceeded. The depth limit can be changed using the max_depth unserialize() option or the unserialize_max_depth ini setting
-W: Error at offset 14 of 24 bytes
+W: unserialize(): Maximum depth of 1 exceeded. The depth limit can be changed using the max_depth unserialize() option or the unserialize_max_depth ini setting
+W: unserialize(): Error at offset 14 of 24 bytes
 1/1 => false
-W: Maximum depth of 1 exceeded. The depth limit can be changed using the max_depth unserialize() option or the unserialize_max_depth ini setting
-W: Error at offset 14 of 34 bytes
+W: unserialize(): Maximum depth of 1 exceeded. The depth limit can be changed using the max_depth unserialize() option or the unserialize_max_depth ini setting
+W: unserialize(): Error at offset 14 of 34 bytes
 1/2 => false
 2/0 => true
 2/1 => true
-W: Maximum depth of 2 exceeded. The depth limit can be changed using the max_depth unserialize() option or the unserialize_max_depth ini setting
-W: Error at offset 23 of 34 bytes
+W: unserialize(): Maximum depth of 2 exceeded. The depth limit can be changed using the max_depth unserialize() option or the unserialize_max_depth ini setting
+W: unserialize(): Error at offset 23 of 34 bytes
 2/2 => false
 3/0 => true
 3/1 => true
 3/2 => true
-W: Error at offset 0 of 7 bytes
+W: unserialize(): Error at offset 0 of 7 bytes
 bool(false)
-W: Error at offset 0 of 3 bytes
+W: unserialize(): Error at offset 0 of 3 bytes
 bool(false)
-W: Error at offset 2 of 9 bytes
+W: unserialize(): Error at offset 2 of 9 bytes
 bool(false)
-W: Error at offset 6 of 9 bytes
+W: unserialize(): Error at offset 6 of 9 bytes
 bool(false)
-W: Error at offset 9 of 9 bytes
+W: unserialize(): Error at offset 9 of 9 bytes
 bool(false)
-W: Unexpected end of serialized data
-W: Error at offset 13 of 14 bytes
+W: unserialize(): Unexpected end of serialized data
+W: unserialize(): Error at offset 13 of 14 bytes
 bool(false)
-W: Extra data starting at offset 4 of 6 bytes
+W: unserialize(): Extra data starting at offset 4 of 6 bytes
 int(1)
 --CLEAN--
 <?php

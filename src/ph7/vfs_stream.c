@@ -1538,8 +1538,8 @@ PH7_PRIVATE int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_val
 		if( n < 0 ){
 			/* IO error,return FALSE — with php's write-failure diagnostic. */
 			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-				"%s(): Write of %d bytes failed with errno=%d %s",
-				ph7_function_name(pCtx),(int)nLen,errno,VfsStrerror(errno));
+				"Write of %d bytes failed with errno=%d %s",
+				(int)nLen,errno,VfsStrerror(errno));
 			ph7_result_bool(pCtx,0);
 		}else{
 			/* Total number of bytes written */
