@@ -1524,6 +1524,49 @@ PH7_PRIVATE const char *VmScalarTypeName(sxu32 nType, SyString *pDeclared, char 
 }
 
 /*
+ * Render the expected-type text of a single (non-union) CLASS or pseudo-type hint
+ * the way php writes it in a TypeError:
+ *
+ *   - the RESOLVED class, so `self`/`parent` name the class they stand for
+ *     (`?self` in class Cee reads `?Cee`); an unresolvable name stays as written;
+ *   - `iterable` expanded to its real alternatives, `Traversable|array`;
+ *   - a leading `?` whenever the hint is nullable — including the implicit
+ *     `Cee $c = null` form, which php also prints as `?Cee`.
+ *
+ * The scalar half of this is VmScalarTypeName (which reads the declared text
+ * straight off the formal, `?` included). A class hint cannot do that: its text
+ * is resolved per call site, so the `?` has to be re-applied here — which is why
+ * the message used to say `Cee` where php says `?Cee`.
+ */
+PH7_PRIVATE const char *VmClassHintTypeName(const SyString *pAsWritten,ph7_class *pResolved,
+	int bNullable,char *zBuf,sxu32 nBuf)
+{
+	const SyString *pName = pResolved ? &pResolved->sName : pAsWritten;
+	sxu32 nCopy;
+	sxu32 nAt = 0;
+	if( nBuf == 0 ){
+		return "";
+	}
+	if( pName && SyStringLength(pName) == sizeof("iterable")-1 && pName->zString
+	 && SyStrnicmp(pName->zString,"iterable",sizeof("iterable")-1) == 0 ){
+		const char *zIter = bNullable ? "Traversable|array|null" : "Traversable|array";
+		nCopy = SyStrlen(zIter);
+		if( nCopy >= nBuf ) nCopy = nBuf - 1;
+		SyMemcpy(zIter,zBuf,nCopy);
+		zBuf[nCopy] = 0;
+		return zBuf;
+	}
+	if( bNullable && nBuf > 1 ){
+		zBuf[nAt++] = '?';
+	}
+	nCopy = (pName && pName->zString) ? SyStringLength(pName) : 0;
+	if( nCopy >= nBuf - nAt ) nCopy = nBuf - nAt - 1;
+	if( nCopy > 0 ) SyMemcpy(pName->zString,&zBuf[nAt],nCopy);
+	zBuf[nAt + nCopy] = 0;
+	return zBuf;
+}
+
+/*
  * Format the class name of an object-typed ph7_value into a small caller
  * buffer, for use in TypeError messages. Returns the buffer pointer.
  */
@@ -2215,7 +2258,8 @@ PH7_PRIVATE sxi32 VmVariadicElementTypeCheck(ph7_vm *pVm,ph7_class *pSelfHint,ph
 			/* Recognised pseudo-type; value mismatches */
 			char zTypeBuf[128],zGivenBuf[128];
 			rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pCallee,nArgPos,0,
-				VmSyStringToCStr(pName,zTypeBuf,sizeof(zTypeBuf)),
+				VmClassHintTypeName(pName,0,
+					(pFormal->iFlags & VM_FUNC_ARG_NULLABLE) != 0,zTypeBuf,sizeof(zTypeBuf)),
 				VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
 			return (rc == PH7_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
 		}
@@ -2233,7 +2277,8 @@ PH7_PRIVATE sxi32 VmVariadicElementTypeCheck(ph7_vm *pVm,ph7_class *pSelfHint,ph
 			if( bBad ){
 				char zTypeBuf[128],zGivenBuf[128];
 				rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pCallee,nArgPos,0,
-					VmSyStringToCStr(&pClass->sName,zTypeBuf,sizeof(zTypeBuf)),
+					VmClassHintTypeName(pName,pClass,
+						(pFormal->iFlags & VM_FUNC_ARG_NULLABLE) != 0,zTypeBuf,sizeof(zTypeBuf)),
 					VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
 				return (rc == PH7_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
 			}
@@ -2411,27 +2456,56 @@ static sxi32 VmThrowTypeErrorMsg(ph7_vm *pVm,SyBlob *pMsg)
 	}
 	return PH7_EXCEPTION;
 }
-static sxi32 VmThrowTypeErrorForReturn(ph7_vm *pVm,SyString *pFuncName,const char *zExpected,const char *zGiven)
+/*
+ * The callee name php puts in front of a return-side message. A METHOD is
+ * qualified with its DECLARING class ("P::m", even when called on a subclass);
+ * anything else uses its display name (which is also what strips a closure's
+ * internal key). The argument-side messages take the owner class as a parameter
+ * instead — they are thrown from call sites that already resolved it.
+ */
+static void VmReturnFuncName(ph7_vm *pVm,ph7_vm_func *pFunc,SyBlob *pOut)
 {
-	SyBlob sMsg;
+	if( (pFunc->iFlags & VM_FUNC_CLASS_METHOD) && pFunc->pUserData ){
+		SyBlobFormat(pOut,"%z::%z",&((ph7_class *)pFunc->pUserData)->sName,&pFunc->sName);
+		return;
+	}
+	{
+		const char *zShow = 0;
+		int nShow = PH7_VmFuncDisplayName(pVm,pFunc,&zShow);
+		if( zShow && nShow > 0 ){
+			SyBlobAppend(pOut,zShow,(sxu32)nShow);
+		}
+	}
+}
+static sxi32 VmThrowTypeErrorForReturn(ph7_vm *pVm,ph7_vm_func *pFunc,const char *zExpected,const char *zGiven)
+{
+	SyBlob sMsg,sName;
 	sxi32 rc;
 	SyBlobInit(&sMsg,&pVm->sAllocator);
-	SyBlobFormat(&sMsg,"%z(): Return value must be of type %s, %s returned",
-		pFuncName,zExpected,zGiven);
+	SyBlobInit(&sName,&pVm->sAllocator);
+	VmReturnFuncName(pVm,pFunc,&sName);
+	SyBlobFormat(&sMsg,"%.*s(): Return value must be of type %s, %s returned",
+		(int)SyBlobLength(&sName),(const char *)SyBlobData(&sName),zExpected,zGiven);
 	rc = VmThrowTypeErrorMsg(pVm,&sMsg);
+	SyBlobRelease(&sName);
 	SyBlobRelease(&sMsg);
 	return rc;
 }
 /* A never-returning function that returned normally (fall-off). PHP bans an
- * explicit `return` at compile time, so this fires only for an implicit return. */
-static sxi32 VmThrowNeverReturnError(ph7_vm *pVm,SyString *pFuncName)
+ * explicit `return` at compile time, so this fires only for an implicit return.
+ * php calls it a "method" when it is one. */
+static sxi32 VmThrowNeverReturnError(ph7_vm *pVm,ph7_vm_func *pFunc)
 {
-	SyBlob sMsg;
+	SyBlob sMsg,sName;
 	sxi32 rc;
 	SyBlobInit(&sMsg,&pVm->sAllocator);
-	SyBlobFormat(&sMsg,"%z(): never-returning function must not implicitly return",
-		pFuncName);
+	SyBlobInit(&sName,&pVm->sAllocator);
+	VmReturnFuncName(pVm,pFunc,&sName);
+	SyBlobFormat(&sMsg,"%.*s(): never-returning %s must not implicitly return",
+		(int)SyBlobLength(&sName),(const char *)SyBlobData(&sName),
+		(pFunc->iFlags & VM_FUNC_CLASS_METHOD) ? "method" : "function");
 	rc = VmThrowTypeErrorMsg(pVm,&sMsg);
+	SyBlobRelease(&sName);
 	SyBlobRelease(&sMsg);
 	return rc;
 }
@@ -2564,7 +2638,7 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 	 * the end normally (a throw/exit is skipped by the VM_FRAME_THROW guard at
 	 * the call site). */
 	if( pFunc->nReturnType == MEMOBJ_NEVER ){
-		return VmThrowNeverReturnError(pVm,&pFunc->sName);
+		return VmThrowNeverReturnError(pVm,pFunc);
 	}
 	/* void return type: the function must not produce a value. */
 	if( pFunc->nReturnType == MEMOBJ_VOID ){
@@ -2574,7 +2648,7 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 		/* PHP allows `return;` but rejects `return null;` — iP1=1 with NULL
 		 * still counts as "returned a value" here. */
 		zGiven = (pValue->iFlags & MEMOBJ_NULL) ? "null" : ph7_type_name(pValue);
-		return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,"void",zGiven);
+		return VmThrowTypeErrorForReturn(pVm,pFunc,"void",zGiven);
 	}
 	/* Fell off the end or a bare `return;` with no value: PHP requires any typed
 	 * return (even a nullable one) to return a value explicitly — only an explicit
@@ -2584,7 +2658,7 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 		if( SyStringLength(&pFunc->sReturnTypeName) > 0 ){
 			zExpected = VmSyStringToCStr(&pFunc->sReturnTypeName, zTypeBuf, sizeof(zTypeBuf));
 		}
-		return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,zExpected,"null");
+		return VmThrowTypeErrorForReturn(pVm,pFunc,zExpected,"null");
 	}
 	/* standalone `null` return type (PHP 8.2): an explicit non-null return is a
 	 * TypeError. (Falling off the end is handled by the generic check above,
@@ -2593,7 +2667,7 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 		if( pValue->iFlags & MEMOBJ_NULL ){
 			return SXRET_OK;
 		}
-		return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,"null",
+		return VmThrowTypeErrorForReturn(pVm,pFunc,"null",
 			VmValueGivenName(pValue,zBuf,sizeof(zBuf)));
 	}
 	/* An explicit `return null` satisfies any nullable return type (`?T`, `T|null`,
@@ -2611,8 +2685,8 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 			return SXRET_OK;
 		}
 		if( rcPseudo == 0 ){
-			return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,
-				VmSyStringToCStr(&pFunc->sReturnClass,zTypeBuf,sizeof(zTypeBuf)),
+			return VmThrowTypeErrorForReturn(pVm,pFunc,
+				VmClassHintTypeName(&pFunc->sReturnClass,0,bNullable,zTypeBuf,sizeof(zTypeBuf)),
 				VmValueGivenName(pValue,zBuf,sizeof(zBuf)));
 		}
 		/* rcPseudo == -1: a real class — fall through to the instanceof branch. */
@@ -2637,7 +2711,7 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 		if( SyStringLength(&pFunc->sReturnTypeName) > 0 ){
 			zExpected = VmSyStringToCStr(&pFunc->sReturnTypeName, zTypeBuf, sizeof(zTypeBuf));
 		}
-		return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,zExpected,zGiven);
+		return VmThrowTypeErrorForReturn(pVm,pFunc,zExpected,zGiven);
 	}
 	/* Class return type — instanceof check. The class name is a length-
 	 * delimited SyString; copy it into a local buffer before formatting
@@ -2646,16 +2720,16 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 		SyString *pClassName = &pFunc->sReturnClass;
 		const char *zExpected;
 		ph7_class *pExpected = VmResolveTypeClass(pVm,pClassName,VmCurrentSelf(pVm));
-		zExpected = VmSyStringToCStr(pClassName, zTypeBuf, sizeof(zTypeBuf));
+		zExpected = VmClassHintTypeName(pClassName,pExpected,bNullable,zTypeBuf,sizeof(zTypeBuf));
 		if( (pValue->iFlags & MEMOBJ_OBJ) == 0 ){
 			zGiven = (pValue->iFlags & MEMOBJ_NULL) ? "null" : VmValueGivenName(pValue,zBuf,sizeof(zBuf));
-			return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,zExpected,zGiven);
+			return VmThrowTypeErrorForReturn(pVm,pFunc,zExpected,zGiven);
 		}
 		if( pExpected ){
 			ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
 			if( !PH7_VmInstanceOf(pInst->pClass,pExpected) ){
 				zGiven = VmFormatValueClassName(pValue,zBuf,sizeof(zBuf));
-				return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,zExpected,zGiven);
+				return VmThrowTypeErrorForReturn(pVm,pFunc,zExpected,zGiven);
 			}
 		}
 		return SXRET_OK;
@@ -2664,7 +2738,7 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 	 * the unified MEMOBJ_NULL+bNullable check above, so any null reaching here is a
 	 * non-nullable scalar return — a TypeError. */
 	if( pValue->iFlags & MEMOBJ_NULL ){
-		return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,
+		return VmThrowTypeErrorForReturn(pVm,pFunc,
 			VmScalarTypeName(pFunc->nReturnType,&pFunc->sReturnTypeName,zTypeBuf,sizeof(zTypeBuf)),
 			"null");
 	}
@@ -2683,14 +2757,14 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 		if( !(pFunc->nReturnType == MEMOBJ_STRING && pInst && pInst->pClass
 		      && PH7_ClassExtractMethod(pInst->pClass,"__toString",sizeof("__toString")-1)) ){
 			zGiven = VmFormatValueClassName(pValue,zBuf,sizeof(zBuf));
-			return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,
+			return VmThrowTypeErrorForReturn(pVm,pFunc,
 				VmScalarTypeName(pFunc->nReturnType,&pFunc->sReturnTypeName,zTypeBuf,sizeof(zTypeBuf)),
 				zGiven);
 		}
 	}
 	/* Array <-> scalar is never compatible. */
 	if( ((sxu32)(pValue->iFlags) & MEMOBJ_HASHMAP) != (pFunc->nReturnType & MEMOBJ_HASHMAP) ){
-		return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,
+		return VmThrowTypeErrorForReturn(pVm,pFunc,
 			VmScalarTypeName(pFunc->nReturnType,&pFunc->sReturnTypeName,zTypeBuf,sizeof(zTypeBuf)),
 			VmValueGivenName(pValue,zBuf,sizeof(zBuf)));
 	}
@@ -2702,14 +2776,14 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 	 && (pFunc->nReturnType == MEMOBJ_INT || pFunc->nReturnType == MEMOBJ_REAL)
 	 && (pValue->iFlags & MEMOBJ_STRING)
 	 && !PH7_MemObjStringIsNumeric(pValue) ){
-		return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,
+		return VmThrowTypeErrorForReturn(pVm,pFunc,
 			VmScalarTypeName(pFunc->nReturnType,&pFunc->sReturnTypeName,zTypeBuf,sizeof(zTypeBuf)),
 			"string");
 	}
 	if( VmEnforceScalarType(pValue, pFunc->nReturnType, bStrict) == SXRET_OK ){
 		return SXRET_OK;
 	}
-	return VmThrowTypeErrorForReturn(pVm,&pFunc->sName,
+	return VmThrowTypeErrorForReturn(pVm,pFunc,
 		VmScalarTypeName(pFunc->nReturnType,&pFunc->sReturnTypeName,zTypeBuf,sizeof(zTypeBuf)),
 		VmValueGivenName(pValue,zBuf,sizeof(zBuf)));
 }
