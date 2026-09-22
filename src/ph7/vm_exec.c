@@ -2571,6 +2571,9 @@ case PH7_OP_UMINUS:
 		goto Abort;
 	}
 #endif
+	/* php's `$x * -1` operand contract: an array, object, resource or
+	 * non-numeric string is a TypeError, not a warned int(-1). */
+	PH7_UNARY_ARITH_CONTRACT()
 	/* Force a numeric (integer,real or both) cast */
 	PH7_MemObjToNumeric(pTos);
 	if( pTos->iFlags & MEMOBJ_REAL ){
@@ -2609,6 +2612,9 @@ case PH7_OP_UPLUS:
 		goto Abort;
 	}
 #endif
+	/* Unary plus is php's `$x * 1`, so it answers the same TypeError as unary
+	 * minus -- naming `int` as the other operand, exactly as php does. */
+	PH7_UNARY_ARITH_CONTRACT()
 	/* Force a numeric (integer,real or both) cast */
 	PH7_MemObjToNumeric(pTos);
 	if( pTos->iFlags & MEMOBJ_REAL ){

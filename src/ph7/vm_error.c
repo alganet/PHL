@@ -3669,6 +3669,22 @@ PH7_PRIVATE void VmIncDecTypeErrorMsg(ph7_value *pVal,int bIncr,SyBlob *pMsgOut)
 	}
 	SyBlobFormat(pMsgOut,"Cannot %s %s",zVerb,ph7_type_name(pVal));
 }
+/*
+ * php compiles unary minus as `$x * -1` and unary plus as `$x * 1`, so both
+ * inherit the MULTIPLICATION operand contract -- message included: `-$o` is
+ * "Unsupported operand types: P * int", `-[1]` is "array * int" and `-"abc"` is
+ * "string * int", while a leading-numeric string ("-\"12abc\"") warns and
+ * computes with the prefix. Classify pVal against that contract.
+ */
+PH7_PRIVATE sxi32 VmUnaryArithOperandCheck(ph7_vm *pVm,ph7_value *pVal,SyBlob *pMsgOut)
+{
+	ph7_value sInt;
+	sxi32 rc;
+	PH7_MemObjInitFromInt(&(*pVm),&sInt,1);
+	rc = VmArithOperandCheck(&(*pVm),pVal,&sInt,"*",pMsgOut);
+	PH7_MemObjRelease(&sInt);
+	return rc;
+}
 PH7_PRIVATE sxi32 VmArithOperandCheck(ph7_vm *pVm,ph7_value *pLeft,ph7_value *pRight,const char *zOp,SyBlob *pMsgOut)
 {
 	int bBadL = 0, bBadR = 0;

@@ -172,6 +172,32 @@
 		PH7_DISPATCH_ENFORCE_RC(_rcR) \
 	}
 /*
+ * php's unary-arithmetic operand contract for OP_UMINUS / OP_UPLUS. php compiles
+ * `-$x` as `$x * -1`, so both operators reject the operands multiplication
+ * rejects, with multiplication's own wording ("Unsupported operand types:
+ * P * int"). The operand IS the op's result slot, so settle it to NULL before
+ * throwing -- an in-place catch resumes with a balanced stack. Must be used
+ * directly inside a case of the main switch.
+ */
+#define PH7_UNARY_ARITH_CONTRACT() \
+	{ \
+		SyBlob _sUnMsg; \
+		SyBlobInit(&_sUnMsg,&pVm->sAllocator); \
+		if( VmUnaryArithOperandCheck(&(*pVm),pTos,&_sUnMsg) != SXRET_OK ){ \
+			sxi32 _rcUn; \
+			PH7_MemObjRelease(pTos); \
+			MemObjSetType(pTos,MEMOBJ_NULL); \
+			pTos->nIdx = SXU32_HIGH; \
+			_rcUn = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&_sUnMsg), \
+				SyBlobLength(&_sUnMsg)); \
+			SyBlobRelease(&_sUnMsg); \
+			if( _rcUn == SXERR_ABORT ){ VM_EXIT_ABORT; } \
+			rc = _rcUn; \
+			PH7_THROW_ROUTE_MIDEXPR(rc) \
+		} \
+		SyBlobRelease(&_sUnMsg); \
+	}
+/*
  * Hook-RMW write-back for the tail of every read-modify-write opcode: if the
  * top pending VmHookRmw entry targets the slot this op just wrote (a SCRATCH
  * slot armed by the preceding OP_MEMBER on a hooked property), dispatch the
