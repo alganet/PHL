@@ -633,7 +633,7 @@ static sxi32 VmResolvePathByRef(ph7_vm *pVm,VmDeferredPath *pPath,ph7_value *pSl
 		if( pPath->nStep > 0 && !pPath->aStep[0].isProp ){
 			SyBlob sTypeMsg;
 			sxi64 iOfft = 0;
-			if( VmStringOffsetResolve(&(*pVm),&pPath->aStep[0].sKey,0,&iOfft,&sTypeMsg)
+			if( VmStringOffsetResolve(&(*pVm),&pPath->aStep[0].sKey,VM_STROFF_LOUD,&iOfft,&sTypeMsg)
 				== VM_STROFF_REJECT ){
 				rcT = VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sTypeMsg);
 				return (rcT == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;

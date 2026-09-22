@@ -3563,7 +3563,22 @@ PH7_PRIVATE const char *VmValueGivenName(ph7_value *pVal,char *zBuf,sxu32 nBuf);
 #define VM_STROFF_OK      0  /* *piOfft holds php's offset */
 #define VM_STROFF_REJECT  1  /* php's TypeError; pMsg carries its message */
 #define VM_STROFF_MISS    2  /* lenient context: answer "not set", say nothing */
-PH7_PRIVATE int VmStringOffsetResolve(ph7_vm *pVm,ph7_value *pIdx,int bQuiet,sxi64 *piOfft,SyBlob *pMsg);
+/* ...and its DIAGNOSTIC LEVEL, of which php has three, not two:
+ *   VM_STROFF_LOUD      a real read or write: every warning, and an offset TYPE
+ *                       php refuses is the TypeError.
+ *   VM_STROFF_COALESCE  a `??` / `??=` fetch: the NOT-SET diagnostics are
+ *                       suppressed (no `Uninitialized string offset`, and a
+ *                       refused offset TYPE answers "not set"), and so is the
+ *                       null/bool/float CAST notice — but the offset SHAPE
+ *                       warning still fires and the offset is still read:
+ *                       `$s["1x"] ?? "d"` warns `Illegal string offset "1x"`
+ *                       and answers `$s[1]`.
+ *   VM_STROFF_ISSET     isset()/empty()/unset(): fully quiet, every shape.
+ */
+#define VM_STROFF_LOUD     0
+#define VM_STROFF_COALESCE 1
+#define VM_STROFF_ISSET    2
+PH7_PRIVATE int VmStringOffsetResolve(ph7_vm *pVm,ph7_value *pIdx,int iLevel,sxi64 *piOfft,SyBlob *pMsg);
 /* Numeric-string classifier — php's is_numeric_string() grammar — shared from
  * hashmap.c (range/array_rand) for the stage-2 ZPP domain-error sweep
  * (PLAN §3.9(a)). RangeStrToNumber only ever returns ERROR/LONG/DOUBLE; the

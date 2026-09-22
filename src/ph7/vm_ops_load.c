@@ -367,13 +367,16 @@ static int VmStringOffsetInt(const char *zIn,sxu32 nByte,sxi64 *piVal)
  *   any other string        TypeError: Cannot access offset of type string on string
  *   array/object/resource   TypeError, naming the type (an object's CLASS)
  *
- * A lookup — isset()/empty()/`??` — raises NOTHING and answers "not set" for
- * every shape the read path would reject OR warn about: `isset($s["0x1"])` is
- * false even though reading it warns and yields `$s[0]`. bQuiet selects that.
+ * isset()/empty() raise NOTHING and answer "not set" for every shape the read
+ * path would reject OR warn about: `isset($s["0x1"])` is false even though
+ * reading it warns and yields `$s[0]`. A `??` fetch sits BETWEEN that and a real
+ * read — it suppresses the not-set diagnostics but still warns about the offset
+ * SHAPE and still reads it. iLevel selects which of the three (VM_STROFF_LOUD /
+ * _COALESCE / _ISSET).
  */
-PH7_PRIVATE int VmStringOffsetResolve(ph7_vm *pVm,ph7_value *pIdx,int bQuiet,sxi64 *piOfft,SyBlob *pMsg)
+PH7_PRIVATE int VmStringOffsetResolve(ph7_vm *pVm,ph7_value *pIdx,int iLevel,sxi64 *piOfft,SyBlob *pMsg)
 {
-	if( pIdx->iFlags & MEMOBJ_INT ){
+	if( (pIdx->iFlags & MEMOBJ_INT) != 0 && (pIdx->iFlags & MEMOBJ_REAL) == 0 ){
 		*piOfft = pIdx->x.iVal;
 		return VM_STROFF_OK;
 	}
@@ -383,24 +386,31 @@ PH7_PRIVATE int VmStringOffsetResolve(ph7_vm *pVm,ph7_value *pIdx,int bQuiet,sxi
 		if( eInt == 1 ){
 			return VM_STROFF_OK;
 		}
-		if( bQuiet ){
-			return VM_STROFF_MISS;
-		}
-		if( eInt == 2 ){
+		if( eInt == 2 && iLevel != VM_STROFF_ISSET ){
+			/* int-then-garbage. This is the one diagnostic a `??` fetch keeps:
+			 * `$s["1x"] ?? "d"` warns and answers $s[1] (PHL called it "not set"
+			 * and answered the default — a wrong VALUE, not just a missing
+			 * warning). Only isset()/empty() stay silent about it. */
 			SyString sKey;
 			SyStringInitFromBuf(&sKey,SyBlobData(&pIdx->sBlob),SyBlobLength(&pIdx->sBlob));
 			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Illegal string offset \"%z\"",&sKey);
 			return VM_STROFF_OK;
 		}
+		if( iLevel != VM_STROFF_LOUD ){
+			return VM_STROFF_MISS;
+		}
 	}else if( (pIdx->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)) == 0 ){
-		/* null / bool / float: php casts, but says so. */
-		if( !bQuiet ){
+		/* null / bool / float: php casts, but says so in a real read or write. */
+		if( iLevel == VM_STROFF_LOUD ){
 			PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,"String offset cast occurred");
 		}
 		PH7_MemObjToInteger(pIdx);
 		*piOfft = pIdx->x.iVal;
 		return VM_STROFF_OK;
-	}else if( bQuiet ){
+	}else if( iLevel == VM_STROFF_ISSET ){
+		/* An array/object/resource offset is "not set" for isset()/empty() — but a
+		 * `??` fetch RAISES for it (probed: `$s[[]] ?? "d"` is the TypeError while
+		 * `isset($s[[]])` is false), so only the fully-quiet level answers MISS. */
 		return VM_STROFF_MISS;
 	}
 	{
@@ -604,7 +614,7 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 				 * refuses is the TypeError alone. The RHS cast below used to happen
 				 * first, so every rejected shape — and `$s[] = [1,2]` above — came
 				 * with a spurious `Array to string conversion` in front of it. */
-				if( VmStringOffsetResolve(&(*pVm),pKey,0,&iOfft,&sTypeMsg) == VM_STROFF_REJECT ){
+				if( VmStringOffsetResolve(&(*pVm),pKey,VM_STROFF_LOUD,&iOfft,&sTypeMsg) == VM_STROFF_REJECT ){
 					sxi32 rcSc;
 					PH7_MemObjRelease(pKey);
 					rcSc = VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sTypeMsg);
@@ -1090,13 +1100,18 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 			sxi64 iOfft = 0, iRaw;
 			sxi64 nLen = (sxi64)SyBlobLength(&pTos->sBlob);
 			/* LOAD_IDX carries its OWN iP2 codes, which do NOT line up with the
-			 * PH7_MEMBER_* ones: 4 = isset, 5 = unset, 6 = empty, 8 = `??` read.
-			 * All of those are LOOKUPS: php raises nothing there and answers
-			 * "not set" for an offset the read path would reject or warn about. */
-			int bQuiet = iP2 == 4 || iP2 == 5 || iP2 == 6
-				|| iP2 == 8 || VmIdxFeedsCoalesce(pInstr);
+			 * PH7_MEMBER_* ones: 4 = isset, 5 = unset, 6 = empty, 8 = `??` read,
+			 * 3 = `??=` peek. All are LOOKUPS, but php splits them into TWO
+			 * levels: isset()/empty()/unset() say nothing at all, while a
+			 * `??`/`??=` fetch still warns about the offset SHAPE and reads it
+			 * (VM_STROFF_COALESCE). The ??= peek is recognised by the NULLC_JMP
+			 * that follows it, since its iP2 does not distinguish the base type. */
+			int iOfftLevel = (iP2 == 4 || iP2 == 5 || iP2 == 6) ? VM_STROFF_ISSET
+				: ((iP2 == 8 || VmIdxFeedsCoalesce(pInstr)) ? VM_STROFF_COALESCE
+				: VM_STROFF_LOUD);
+			int bQuiet = iOfftLevel != VM_STROFF_LOUD;
 			SyBlob sTypeMsg;
-			int eOfft = VmStringOffsetResolve(&(*pVm),pIdx,bQuiet,&iOfft,&sTypeMsg);
+			int eOfft = VmStringOffsetResolve(&(*pVm),pIdx,iOfftLevel,&iOfft,&sTypeMsg);
 			if( eOfft == VM_STROFF_MISS ){
 				/* A lookup over an offset php refuses: not set, in silence. */
 				PH7_MemObjRelease(pIdx);
