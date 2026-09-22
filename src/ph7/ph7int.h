@@ -1575,6 +1575,13 @@ struct ph7_vm
 	int bReflectBypass;         /* Consume-once: the next method OP_CALL skips the visibility
 	                             * check (ReflectionMethod::invoke bypasses protection like PHP
 	                             * 8.1+). Cleared by the check site; never survives past one call. */
+	int bMagicDispatch;         /* Consume-once: the next method OP_CALL is the ENGINE reaching for
+	                             * a magic method (PH7_VmCallMagicMethod), so the visibility check
+	                             * lets a non-public one through — php only WARNS at such a
+	                             * declaration and dispatches anyway. Set at the engine's own
+	                             * dispatch sites only, so a call the USER wrote (including a
+	                             * first-class `$o->__get(...)`, which reaches the same C
+	                             * dispatcher) is still denied. Cleared at the head of OP_CALL. */
 	char zDefTz[68];            /* date_default_timezone_set() identifier, stored verbatim like php
 	                             * (default "UTC"; only UTC/GMT are accepted — no tz database) */
 	sxu32 nDefTz;               /* zDefTz length in bytes */
@@ -3702,6 +3709,9 @@ PH7_PRIVATE ph7_class_attr   * PH7_ClassExtractAttribute(ph7_class *pClass,const
 PH7_PRIVATE ph7_class_attr   * PH7_ClassExtractConstant(ph7_class *pClass,const char *zName,sxu32 nByte);
 PH7_PRIVATE sxi32 PH7_ClassInstallAttr(ph7_class *pClass,ph7_class_attr *pAttr);
 PH7_PRIVATE sxi32 PH7_ClassInstallMethod(ph7_class *pClass,ph7_class_method *pMeth);
+PH7_PRIVATE int PH7_MagicMethodMustBePublic(const SyString *pName);
+PH7_PRIVATE sxi32 PH7_VmCallMagicMethod(ph7_vm *pVm,ph7_class_instance *pThis,
+	ph7_class_method *pMethod,ph7_value *pResult,int nArg,ph7_value **apArg);
 PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class *pBase);
 PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_class *pTrait);
 PH7_PRIVATE sxi32 PH7_ClassInterfaceInherit(ph7_class *pSub,ph7_class *pBase);

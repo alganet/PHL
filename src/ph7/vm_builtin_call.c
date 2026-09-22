@@ -1193,6 +1193,33 @@ PH7_PRIVATE sxi32 VmCallClassMethodWithMap(
 	VmBoundaryPark(&(*pVm),rc);
 	return rc;
 }
+/*
+ * Call a magic method the way php's ENGINE calls one: visibility is not
+ * consulted. php requires most magic methods to be public, but it says so with
+ * a compile-time WARNING and then dispatches whatever was declared — the engine
+ * reaching for `__get` is not the outside world reaching for a private member.
+ *
+ * The latch is consume-once and is read only for the names in
+ * PH7_MagicMethodMustBePublic, so it can never widen a non-magic call; and
+ * because it is set HERE rather than inferred from the instruction, the same C
+ * dispatcher still denies a first-class callable or a `$o->__get('x')` the user
+ * wrote, exactly as php denies those.
+ */
+PH7_PRIVATE sxi32 PH7_VmCallMagicMethod(
+	ph7_vm *pVm,
+	ph7_class_instance *pThis,
+	ph7_class_method *pMethod,
+	ph7_value *pResult,
+	int nArg,
+	ph7_value **apArg
+	)
+{
+	sxi32 rc;
+	pVm->bMagicDispatch = 1;
+	rc = VmCallClassMethodWithMap(&(*pVm),pThis,pMethod,pResult,nArg,apArg,0);
+	pVm->bMagicDispatch = 0; /* OP_CALL consumes it; clear if it never ran */
+	return rc;
+}
 PH7_PRIVATE sxi32 PH7_VmCallClassMethod(
 	ph7_vm *pVm,               /* Target VM */
 	ph7_class_instance *pThis, /* Target class instance [i.e: Object in the PHP jargon]*/
@@ -1355,7 +1382,16 @@ PH7_PRIVATE sxi32 VmCallObjectInvoke(
 		}
 		return SXERR_INVALID;
 	}
-	return VmCallClassMethodWithMap(pVm,pThis,pMethod,pResult,nArg,apArg,pMap);
+	{
+		/* php dispatches a non-public __invoke from any scope (it only WARNS at
+		 * the declaration), and this is the engine's own dispatch for every
+		 * spelling of it: `$o(...)`, call_user_func, a callback argument. */
+		sxi32 rcInv;
+		pVm->bMagicDispatch = 1;
+		rcInv = VmCallClassMethodWithMap(pVm,pThis,pMethod,pResult,nArg,apArg,pMap);
+		pVm->bMagicDispatch = 0;
+		return rcInv;
+	}
 }
 /*
  * Raise a catchable Error("Object of type X is not callable") when an object
@@ -1529,7 +1565,7 @@ static sxi32 VmCallMagicCallable(ph7_vm *pVm,ph7_class *pClass,ph7_class_instanc
 	MemObjSetType(&sArgs,MEMOBJ_HASHMAP);
 	apMagic[0] = &sName;
 	apMagic[1] = &sArgs;
-	rc = VmCallClassMethodWithMap(&(*pVm),pThis,pMagic,pResult,2,apMagic,0);
+	rc = PH7_VmCallMagicMethod(&(*pVm),pThis,pMagic,pResult,2,apMagic);
 	PH7_MemObjRelease(&sName);
 	PH7_MemObjRelease(&sArgs); /* frees the packed argument map */
 	return rc;

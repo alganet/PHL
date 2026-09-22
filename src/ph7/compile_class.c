@@ -1370,27 +1370,28 @@ struct MagicMethodRule
 	sxu32 nName;       /* Its length */
 	int nArgs;         /* Declared arguments php requires, -1 when it does not check */
 	int bStatic;       /* TRUE: must be static · FALSE: must NOT be static */
+	int bPublic;       /* TRUE: must be public — a WARNING, and dispatched anyway */
 	int bNoReturnType; /* TRUE: declaring ANY return type is a fatal */
 };
-#define MAGIC_METHOD_ROW(N,A,S,R) { N, sizeof(N)-1, A, S, R }
+#define MAGIC_METHOD_ROW(N,A,S,P,R) { N, sizeof(N)-1, A, S, P, R }
 static const MagicMethodRule aMagicMethod[] = {
-	MAGIC_METHOD_ROW("__construct",  -1, FALSE, TRUE),
-	MAGIC_METHOD_ROW("__destruct",    0, FALSE, TRUE),
-	MAGIC_METHOD_ROW("__clone",       0, FALSE, FALSE),
-	MAGIC_METHOD_ROW("__get",         1, FALSE, FALSE),
-	MAGIC_METHOD_ROW("__set",         2, FALSE, FALSE),
-	MAGIC_METHOD_ROW("__isset",       1, FALSE, FALSE),
-	MAGIC_METHOD_ROW("__unset",       1, FALSE, FALSE),
-	MAGIC_METHOD_ROW("__call",        2, FALSE, FALSE),
-	MAGIC_METHOD_ROW("__callStatic",  2, TRUE,  FALSE),
-	MAGIC_METHOD_ROW("__toString",    0, FALSE, FALSE),
-	MAGIC_METHOD_ROW("__invoke",     -1, FALSE, FALSE),
-	MAGIC_METHOD_ROW("__debugInfo",   0, FALSE, FALSE),
-	MAGIC_METHOD_ROW("__serialize",   0, FALSE, FALSE),
-	MAGIC_METHOD_ROW("__unserialize", 1, FALSE, FALSE),
-	MAGIC_METHOD_ROW("__sleep",       0, FALSE, FALSE),
-	MAGIC_METHOD_ROW("__wakeup",      0, FALSE, FALSE),
-	MAGIC_METHOD_ROW("__set_state",   1, TRUE,  FALSE)
+	MAGIC_METHOD_ROW("__construct",  -1, FALSE, FALSE, TRUE),
+	MAGIC_METHOD_ROW("__destruct",    0, FALSE, FALSE, TRUE),
+	MAGIC_METHOD_ROW("__clone",       0, FALSE, FALSE, FALSE),
+	MAGIC_METHOD_ROW("__get",         1, FALSE, TRUE,  FALSE),
+	MAGIC_METHOD_ROW("__set",         2, FALSE, TRUE,  FALSE),
+	MAGIC_METHOD_ROW("__isset",       1, FALSE, TRUE,  FALSE),
+	MAGIC_METHOD_ROW("__unset",       1, FALSE, TRUE,  FALSE),
+	MAGIC_METHOD_ROW("__call",        2, FALSE, TRUE,  FALSE),
+	MAGIC_METHOD_ROW("__callStatic",  2, TRUE,  TRUE,  FALSE),
+	MAGIC_METHOD_ROW("__toString",    0, FALSE, TRUE,  FALSE),
+	MAGIC_METHOD_ROW("__invoke",     -1, FALSE, TRUE,  FALSE),
+	MAGIC_METHOD_ROW("__debugInfo",   0, FALSE, TRUE,  FALSE),
+	MAGIC_METHOD_ROW("__serialize",   0, FALSE, TRUE,  FALSE),
+	MAGIC_METHOD_ROW("__unserialize", 1, FALSE, TRUE,  FALSE),
+	MAGIC_METHOD_ROW("__sleep",       0, FALSE, TRUE,  FALSE),
+	MAGIC_METHOD_ROW("__wakeup",      0, FALSE, TRUE,  FALSE),
+	MAGIC_METHOD_ROW("__set_state",   1, TRUE,  TRUE,  FALSE)
 };
 #undef MAGIC_METHOD_ROW
 /*
@@ -1413,17 +1414,35 @@ static const MagicMethodRule * GenStateMagicMethodRule(const SyString *pName)
 	return 0;
 }
 /*
+ * TRUE when php requires this magic method to be PUBLIC: the rows it merely
+ * WARNS about at the declaration and then dispatches regardless of what the
+ * declaration said. The runtime's visibility gate reads this to let an
+ * engine-built call through — a call the user WROTE stays denied.
+ *
+ * `__construct`/`__destruct`/`__clone` are deliberately not in the set: a
+ * private constructor is the singleton idiom, and php enforces those three at
+ * the call like any other method.
+ */
+PH7_PRIVATE int PH7_MagicMethodMustBePublic(const SyString *pName)
+{
+	const MagicMethodRule *pRule = GenStateMagicMethodRule(pName);
+	return pRule != 0 && pRule->bPublic;
+}
+/*
  * Enforce the rules of pRule against the declaration just parsed. pName is the
  * name AS WRITTEN — php quotes that spelling, not the canonical one.
  *
- * The message is FORMATTED, not reported: php decides these rules while the
+ * The diagnostic is FORMATTED, not reported: php decides these rules while the
  * signature is in hand (so the arity beats __toString's return-type rule) but
  * raises them only once the declaration has cleared the checks php makes
  * first — the redeclaration and abstract-placement rules, and any parse error
  * in the body php has already read. The caller reports the buffer at that
- * point. Returns TRUE when it wrote one.
+ * point.
+ *
+ * Returns the severity it wrote: E_ERROR, E_WARNING, or 0 for a clean
+ * declaration.
  */
-static int GenStateCheckMagicMethod(
+static sxi32 GenStateCheckMagicMethod(
 	ph7_class *pClass,
 	const SyString *pName,
 	ph7_class_method *pMeth,
@@ -1433,7 +1452,7 @@ static int GenStateCheckMagicMethod(
 {
 	const MagicMethodRule *pRule = GenStateMagicMethodRule(pName);
 	if( pRule == 0 ){
-		return FALSE;
+		return 0;
 	}
 	if( pRule->nArgs >= 0 ){
 		/* php counts DECLARED parameters — an optional one counts
@@ -1457,7 +1476,7 @@ static int GenStateCheckMagicMethod(
 				SyBufferFormat(zErr,nErrBuf,"Method %z::%z() must take exactly %d argument%s",
 					&pClass->sName,pName,pRule->nArgs,pRule->nArgs == 1 ? "" : "s");
 			}
-			return TRUE;
+			return E_ERROR;
 		}
 		/* None of the arguments the engine builds may be by-reference — there is
 		 * no caller variable to write back to. php checks as many arguments as
@@ -1471,7 +1490,7 @@ static int GenStateCheckMagicMethod(
 			if( pArg->iFlags & VM_FUNC_ARG_BY_REF ){
 				SyBufferFormat(zErr,nErrBuf,"Method %z::%z() cannot take arguments by reference",
 					&pClass->sName,pName);
-				return TRUE;
+				return E_ERROR;
 			}
 		}
 	}
@@ -1486,7 +1505,19 @@ static int GenStateCheckMagicMethod(
 	if( pRule->bStatic != ((pMeth->iFlags & PH7_CLASS_ATTR_STATIC) != 0) ){
 		SyBufferFormat(zErr,nErrBuf,"Method %z::%z() %s be static",
 			&pClass->sName,pName,pRule->bStatic ? "must" : "cannot");
-		return TRUE;
+		return E_ERROR;
+	}
+	/* Visibility. This one is a WARNING: php names the declaration and then
+	 * dispatches the method anyway, because the engine calling `__get` is not
+	 * the outside world reaching for a private member. PHL was silent at the
+	 * declaration and threw `Call to private method C::__get()` at the ACCESS —
+	 * the one rule of this family that changed what a program php RUNS does,
+	 * and it killed the script. The dispatch half is
+	 * PH7_MagicMethodMustBePublic, read by the runtime visibility gate. */
+	if( pRule->bPublic && pMeth->iProtection != PH7_CLASS_PROT_PUBLIC ){
+		SyBufferFormat(zErr,nErrBuf,"The magic method %z::%z() must have public visibility",
+			&pClass->sName,pName);
+		return E_WARNING;
 	}
 	/* A return type on the two methods that have no return VALUE. `new C` is the
 	 * instance, never whatever __construct returned, and __destruct is called by
@@ -1503,9 +1534,32 @@ static int GenStateCheckMagicMethod(
 	  || SySetUsed(&pMeth->sFunc.aReturnUnion) > 0) ){
 		SyBufferFormat(zErr,nErrBuf,"Method %z::%z() cannot declare a return type",
 			&pClass->sName,pName);
-		return TRUE;
+		return E_ERROR;
 	}
-	return FALSE;
+	return 0;
+}
+/*
+ * Raise the diagnostic GenStateCheckMagicMethod parked, once, and disarm it.
+ * Suppressed when this declaration has already reported a fatal php decides
+ * FIRST — a redeclaration, an abstract method in a non-abstract class, a parse
+ * error in the body — since php stops at its own first fatal.
+ */
+static sxi32 GenStateRaiseMagicDiag(
+	ph7_gen_state *pGen,
+	sxi32 *pnSeverity,   /* IN/OUT: the parked severity, zeroed here */
+	const char *zErr,
+	sxu32 nLine,
+	sxu32 nErrEntry      /* pGen->nErr when this declaration started */
+	)
+{
+	sxi32 rc = SXRET_OK;
+	if( *pnSeverity != 0 ){
+		if( pGen->nErr == nErrEntry ){
+			rc = PH7_GenCompileError(pGen,*pnSeverity,nLine,"%s",zErr);
+		}
+		*pnSeverity = 0;
+	}
+	return rc;
 }
 /*
  * Compile a class method.
@@ -1527,7 +1581,8 @@ static sxi32 GenStateCompileClassMethod(
 	sxu32 nKwLine = nLine; /* Line of the 'function' keyword (Reflection getStartLine) */
 	sxu32 nErrEntry = pGen->nErr; /* Errors already reported when this declaration started */
 	char zMagicErr[256];          /* Pending magic-method rule violation, reported at the end */
-	int bMagicErr = FALSE;
+	sxi32 nMagicSeverity = 0;     /* E_ERROR / E_WARNING while zMagicErr is still unreported */
+	int bMagicFatal = FALSE;      /* The parked diagnostic was a fatal: do not install the method */
 	ph7_class_method *pMeth;
 	sxi32 iFuncFlags;
 	SyString *pName;
@@ -1648,10 +1703,11 @@ static sxi32 GenStateCompileClassMethod(
 	 * signature in hand and before the __toString return-type rule below, which
 	 * is php's own order (`static function __toString($a): int` reports the
 	 * arity). Reported at the end of this function; see zMagicErr there. */
-	bMagicErr = GenStateCheckMagicMethod(pClass,pName,pMeth,zMagicErr,(int)sizeof(zMagicErr));
-	if( bMagicErr ){
+	nMagicSeverity = GenStateCheckMagicMethod(pClass,pName,pMeth,zMagicErr,(int)sizeof(zMagicErr));
+	if( nMagicSeverity == E_ERROR ){
 		/* Suppress the __toString rule below: php never reaches it on a
 		 * declaration the magic rules already rejected. */
+		bMagicFatal = TRUE;
 		goto SkipToStringType;
 	}
 	/*
@@ -1684,6 +1740,13 @@ static sxi32 GenStateCompileClassMethod(
 			if( pTsFunc->nReturnType != MEMOBJ_STRING
 			 || SySetUsed(&pTsFunc->aReturnUnion) > 0
 			 || (pTsFunc->iFlags & VM_FUNC_RETURN_NULLABLE) ){
+				/* php raises this one AFTER the magic rules, so a parked
+				 * visibility warning is php's first line here rather than a
+				 * casualty of the fatal about to be counted. */
+				if( GenStateRaiseMagicDiag(pGen,&nMagicSeverity,zMagicErr,
+						nKwLine,nErrEntry) == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
 				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
 					"%z::%z(): Return type must be string when declared",
 					&pClass->sName,pName);
@@ -1871,14 +1934,12 @@ SkipToStringType:
 	 * php stops at its first fatal, so one is all this declaration reports. The
 	 * line is the `function` KEYWORD's, which is where php points once a
 	 * signature wraps across lines. */
-	if( bMagicErr ){
-		if( pGen->nErr == nErrEntry ){
-			rc = PH7_GenCompileError(pGen,E_ERROR,nKwLine,"%s",zMagicErr);
-			if( rc == SXERR_ABORT ){
-				return SXERR_ABORT;
-			}
-		}
-		/* Never install a method php refused to declare */
+	if( GenStateRaiseMagicDiag(pGen,&nMagicSeverity,zMagicErr,nKwLine,nErrEntry) == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
+	if( bMagicFatal ){
+		/* Never install a method php refused to declare. A WARNING falls through:
+		 * php keeps the method and calls it. */
 		return SXRET_OK;
 	}
 	/* All done,install the method */

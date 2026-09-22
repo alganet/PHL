@@ -4745,7 +4745,7 @@ PH7_PRIVATE void VmMagicSetDispatch(ph7_vm *pVm,ph7_class_instance *pSetThis,con
 		apSetArg[0] = &sNameVal;
 		apSetArg[1] = pValue;
 		VmMagicGuardPush(pVm,(void *)pSetThis,pName,'s');
-		PH7_VmCallClassMethod(&(*pVm),pSetThis,pSetMeth,0,2,apSetArg);
+		PH7_VmCallMagicMethod(&(*pVm),pSetThis,pSetMeth,0,2,apSetArg);
 		VmMagicGuardPop(pVm);
 		PH7_MemObjRelease(&sNameVal);
 	}

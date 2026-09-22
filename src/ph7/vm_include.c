@@ -1078,7 +1078,7 @@ PH7_PRIVATE int vm_builtin_magic_call(ph7_context *pCtx,int nArg,ph7_value **apA
 	PH7_MemObjInit(pVm,&sResult);
 	apCall[0] = &sNameVal;
 	apCall[1] = &sArgsVal;
-	rc = PH7_VmCallClassMethod(pVm,pRecv,pMeth,&sResult,2,apCall);
+	rc = PH7_VmCallMagicMethod(pVm,pRecv,pMeth,&sResult,2,apCall);
 	if( rc == SXRET_OK ){
 		ph7_result_value(pCtx,&sResult);
 	}

@@ -601,6 +601,12 @@ static ph7_exec_ctx * VmFiberExtractCtx(ph7_vm *pVm, ph7_value *pFiberObj)
  * carries $__this/$__scope. Lets the hot plain-closure unwrap skip those attribute lookups.
  * (Distinct from CLASS_INSTANCE_DESTROYED 0x001 and VM_INSTANCE_DUMPING 0x002.) */
 #define VM_INSTANCE_FCC_BOUND 0x004
+/* ph7_class_instance.iFlags bit: this Closure wraps an __invoke OBJECT, and the engine —
+ * not the source — is what named `__invoke` (Closure::fromCallable($obj)). php resolves it
+ * the way it resolves `$obj()`, so a non-public __invoke is dispatched rather than denied;
+ * `$obj->__invoke(...)` and `[$obj,'__invoke']`, which the SOURCE names, stay denied and
+ * never carry this bit. Read by VmClosureUnwrap, which arms the engine's magic latch. */
+#define VM_INSTANCE_FCC_INVOKE_OBJ 0x010
 /*
  * A PHP closure (and a first-class callable `f(...)`) is a real object: an instance of
  * the built-in final `Closure` class carrying its underlying callable in a private
@@ -663,6 +669,11 @@ PH7_PRIVATE sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut)
 		bScope = pScope && (pScope->iFlags & MEMOBJ_STRING) && SyBlobLength(&pScope->sBlob) > 0;
 		if( bBoundObj || bScope ){
 			/* Method/static first-class callable -> [ target, "method" ] array callable. */
+			if( pThis->iFlags & VM_INSTANCE_FCC_INVOKE_OBJ ){
+				/* Closure::fromCallable($obj): the engine named __invoke, so this
+				 * dispatch is the engine's own and a non-public one still runs. */
+				pVm->bMagicDispatch = 1;
+			}
 			ph7_hashmap *pMap;
 			ph7_value sTarget, sMeth;
 			sxi32 rc;
@@ -919,11 +930,18 @@ PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue)
 		}
 	}
 	if( pValue->iFlags & MEMOBJ_OBJ ){
-		/* __invoke object (a real Closure is intercepted by the caller before this point). */
+		/* __invoke object (a real Closure is intercepted by the caller before this point).
+		 * The `__invoke` name is the ENGINE's, so mark the closure: php dispatches a
+		 * non-public __invoke through this wrapper exactly as it does through `$obj()`. */
 		ph7_class_instance *pObj = (ph7_class_instance *)pValue->x.pOther;
+		ph7_class_instance *pWrap;
 		SyString sInvoke;
 		SyStringInitFromBuf(&sInvoke, "__invoke", sizeof("__invoke") - 1);
-		return VmCreateClosure(pVm, &sInvoke, pObj, &pObj->pClass->sName);
+		pWrap = VmCreateClosure(pVm, &sInvoke, pObj, &pObj->pClass->sName);
+		if( pWrap ){
+			pWrap->iFlags |= VM_INSTANCE_FCC_INVOKE_OBJ;
+		}
+		return pWrap;
 	}
 	/* Unreachable in practice — the PH7_VmIsCallable gate admits only string/array/object, all
 	 * handled above; kept to satisfy the non-void return path. */

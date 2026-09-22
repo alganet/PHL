@@ -1652,7 +1652,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 		if( pDbg ){
 			ph7_value sResult;
 			PH7_MemObjInit(pThis->pVm,&sResult);
-			PH7_VmCallClassMethod(pThis->pVm,pThis,pDbg,&sResult,0,0);
+			PH7_VmCallMagicMethod(pThis->pVm,pThis,pDbg,&sResult,0,0);
 			if( sResult.iFlags & MEMOBJ_HASHMAP ){
 				ph7_hashmap *pMap = (ph7_hashmap *)sResult.x.pOther;
 				/* Header count is the debug array's entry count. */
@@ -1826,7 +1826,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceCallMagicMethod(
 		nArg = 1;
 	}
 	/* Call the magic method now */
-	rc = PH7_VmCallClassMethod(pVm,&(*pThis),pMeth,pResult,nArg,apArg);
+	rc = PH7_VmCallMagicMethod(pVm,&(*pThis),pMeth,pResult,nArg,apArg);
 	/* Clean up */
 	if( pAttrName ){
 		PH7_MemObjRelease(&sAttr);

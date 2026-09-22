@@ -4737,6 +4737,11 @@ case PH7_OP_CALL: {
 	 * be conflated, which a single shared accumulator could not express. */
 	sxi32 nCallArgs = pInstr->iP1 + (pInstr->iP2 ? VmSpreadOwnExtra(pVm,pInstr->iP1,pTos) : 0);
 	ph7_value *pArg;
+	/* Consume the engine's magic-dispatch latch here, at the head of the ONE call
+	 * it was set for, whatever path that call then takes. Left standing it would
+	 * describe the next call instead. */
+	int bMagicDispatch = pVm->bMagicDispatch;
+	pVm->bMagicDispatch = 0;
 	pArg = &pTos[-nCallArgs];
 	/* PHP 8.1: an unpack whose elements carry string keys binds them as NAMED
 	 * arguments, and a spread expanding to !=1 element shifts the actual positions
@@ -5138,6 +5143,20 @@ case PH7_OP_CALL: {
 					 * ignores visibility. Consume-once so nested calls made by the
 					 * invoked body are checked normally. */
 					pVm->bReflectBypass = 0;
+				}else
+				if( pSelf && bMagicDispatch && PH7_MagicMethodMustBePublic(&pVmFunc->sName) ){
+					/* The ENGINE reaching for a magic method php requires to be public.
+					 * php only WARNS at such a declaration and then dispatches the method
+					 * regardless -- the engine calling `__get` is not the outside world
+					 * reaching for a private member -- so a non-public
+					 * `__get`/`__call`/`__invoke`/`__sleep`/... still runs, where PHL threw
+					 * `Call to private method C::__get()` at the ACCESS and killed the
+					 * script.
+					 *
+					 * The latch is set by PH7_VmCallMagicMethod at the engine's own
+					 * dispatch sites. It is NOT inferred from the instruction: a
+					 * first-class `$o->__get(...)` and `$o->__get('x')` reach the same C
+					 * dispatcher, and php denies both. */
 				}else
 				if( pSelf ){ /* Paranoid edition */
 					/* Check if the call is allowed. php binds non-public method

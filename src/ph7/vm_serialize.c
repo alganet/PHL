@@ -250,7 +250,7 @@ static sxi32 VmSerializeObject(ph7_value *pIn, serialize_data *pData)
 		ph7_value sRes;
 		sxi32 rc;
 		PH7_MemObjInit(pVm,&sRes);
-		rc = PH7_VmCallClassMethod(pVm,pThis,pMethod,&sRes,0,0);
+		rc = PH7_VmCallMagicMethod(pVm,pThis,pMethod,&sRes,0,0);
 		if( rc == PH7_EXCEPTION ){ pData->exc = 1; }
 		else if( !ph7_value_is_array(&sRes) ){ pData->err = 1; }
 		else { nCount = ph7_array_count(&sRes); ph7_array_walk(&sRes,VmSerializeArrayWalk,pData); }
@@ -263,7 +263,7 @@ static sxi32 VmSerializeObject(ph7_value *pIn, serialize_data *pData)
 		ph7_value sRes;
 		sxi32 rc;
 		PH7_MemObjInit(pVm,&sRes);
-		rc = PH7_VmCallClassMethod(pVm,pThis,pMethod,&sRes,0,0);
+		rc = PH7_VmCallMagicMethod(pVm,pThis,pMethod,&sRes,0,0);
 		if( rc == PH7_EXCEPTION ){ pData->exc = 1; }
 		else if( ph7_value_is_array(&sRes) ){
 			sleep_ctx sleepCtx;
@@ -605,7 +605,7 @@ static ph7_value * VmUnserializeObject(unserialize_data *ud)
 	if( pMethod ){
 		ph7_value sRes; sxi32 rc;
 		PH7_MemObjInit(ud->pVm,&sRes);
-		rc = PH7_VmCallClassMethod(ud->pVm,pThis,pMethod,&sRes,1,&pArrVal);
+		rc = PH7_VmCallMagicMethod(ud->pVm,pThis,pMethod,&sRes,1,&pArrVal);
 		PH7_MemObjRelease(&sRes);
 		ph7_context_release_value(ud->pCtx,pArrVal);
 		if( rc == PH7_EXCEPTION ){ ud->exc = 1; return 0; }
@@ -614,7 +614,7 @@ static ph7_value * VmUnserializeObject(unserialize_data *ud)
 		if( pMethod ){
 			ph7_value sRes; sxi32 rc;
 			PH7_MemObjInit(ud->pVm,&sRes);
-			rc = PH7_VmCallClassMethod(ud->pVm,pThis,pMethod,&sRes,0,0);
+			rc = PH7_VmCallMagicMethod(ud->pVm,pThis,pMethod,&sRes,0,0);
 			PH7_MemObjRelease(&sRes);
 			if( rc == PH7_EXCEPTION ){ ud->exc = 1; return 0; }
 		}
