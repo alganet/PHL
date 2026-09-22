@@ -3556,8 +3556,8 @@ PH7_PRIVATE int PH7_builtin_strrev(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Extract the target string */
 	zIn = ph7_value_to_string(apArg[0],&nLen);
 	if( nLen < 1 ){
-		/* Empty string Return null */
-		ph7_result_null(pCtx);
+		/* php answers the empty STRING here, not null */
+		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
 	/* Perform the requested operation */
@@ -3728,8 +3728,8 @@ PH7_PRIVATE int PH7_builtin_nl2br(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Extract the target string */
 	zIn = ph7_value_to_string(apArg[0],&nLen);
 	if( nLen < 1 ){
-		/* Empty string,return null */
-		ph7_result_null(pCtx);
+		/* php answers the empty STRING here, not null */
+		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
 	if( nArg > 1 ){

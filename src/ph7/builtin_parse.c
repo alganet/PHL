@@ -2293,8 +2293,9 @@ PH7_PRIVATE int PH7_builtin_base64_encode(ph7_context *pCtx,int nArg,ph7_value *
 	/* Extract the input string */
 	zIn = ph7_value_to_string(apArg[0],&nLen);
 	if( nLen < 1 ){
-		/* Nothing to process,return FALSE */
-		ph7_result_bool(pCtx,0);
+		/* php encodes the empty string to the EMPTY STRING; base64_encode() cannot
+		 * fail at all, so FALSE was never one of its answers. */
+		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
 	/* Perform the BASE64 encoding */

@@ -1286,6 +1286,10 @@ static int PH7_builtin_preg_quote(ph7_context *pCtx, int nArg, ph7_value **apArg
 	if( nArg >= 2 ){
 		zDelim = ph7_value_to_string(apArg[1], &nDelimLen);
 	}
+	/* Type the result as a STRING up front: an empty subject quotes to the empty
+	 * string, and the loop below would otherwise never touch the result at all,
+	 * leaving php's `string` return as NULL. */
+	ph7_result_string(pCtx, "", 0);
 	z = zStr;
 	zEnd = &zStr[nLen];
 	while( z < zEnd ){
