@@ -652,7 +652,7 @@ static sxi32 MemObjThrowNotStringable(ph7_value *pObj)
  * an object and its class has no __toString(). Inherited and trait methods
  * count -- PH7_ClassExtractMethod walks the same chain the call would.
  */
-static int MemObjIsNotStringable(ph7_value *pObj)
+PH7_PRIVATE int PH7_MemObjIsNotStringable(ph7_value *pObj)
 {
 	ph7_class_instance *pInst;
 	if( (pObj->iFlags & MEMOBJ_OBJ) == 0 || pObj->pVm == 0 ){
@@ -695,7 +695,7 @@ PH7_PRIVATE sxi32 PH7_MemObjToStringUV(ph7_value *pObj)
 	if( (pObj->iFlags & MEMOBJ_HASHMAP) && pObj->pVm ){
 		PH7_VmThrowError(pObj->pVm,0,PH7_CTX_WARNING,"Array to string conversion");
 	}
-	if( MemObjIsNotStringable(pObj) ){
+	if( PH7_MemObjIsNotStringable(pObj) ){
 		return MemObjThrowNotStringable(pObj);
 	}
 	return PH7_MemObjToString(pObj);
@@ -1444,7 +1444,7 @@ static int MemObjCmpCastObject(ph7_value *pSelf,ph7_value *pOther,ph7_value *pOu
 	ph7_class_instance *pInst = (ph7_class_instance *)pSelf->x.pOther;
 	PH7_MemObjInit(pSelf->pVm,pOut);
 	if( pOther->iFlags & MEMOBJ_STRING ){
-		if( MemObjIsNotStringable(pSelf) ){
+		if( PH7_MemObjIsNotStringable(pSelf) ){
 			return FALSE;
 		}
 		PH7_MemObjLoad(pSelf,pOut);

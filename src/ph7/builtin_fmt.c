@@ -364,6 +364,7 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 	int precision;           /* Precision of the current field */
 	/* zExtra (unused) removed to prevent compiler warning. */
 	int c,rc,n;
+	ph7_value *pThrowArg = 0; /* First not-stringable %s argument; throws at the end */
 	int length;              /* Length of the field */
 	int prefix;
 	sxu8 xtype;              /* Conversion paradigm */
@@ -543,12 +544,36 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 			pArg = NEXT_ARG;
 			if( pArg == 0 ){
 				length = 0;
-			}else{
-				/* php's user-visible array->string warning for %s (§2) */
-				if( pArg->iFlags & MEMOBJ_HASHMAP ){
-					PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,"Array to string conversion");
+			}else if( PH7_MemObjIsNotStringable(pArg) ){
+				/* php's user-visible coercion for %s (§2), object half: a class with
+				 * no __toString() is the catchable "could not be converted to
+				 * string" Error — but php does NOT let it interrupt the format. The
+				 * conversion substitutes NOTHING, the format runs to the end, the
+				 * output is written, and only then does the Error surface. So the
+				 * throw cannot be RAISED here: PHL's VmThrowException runs an
+				 * in-place catch immediately, which would print the format's tail
+				 * after the catch body. Remember the value and throw once the
+				 * output is out (see the tail of this function). */
+				zBuf = "";
+				length = 0;
+				if( pThrowArg == 0 ){
+					pThrowArg = pArg;
 				}
-				zBuf = (char *)ph7_value_to_string(pArg,&length);
+			}else{
+				/* An ARRAY warns and renders as "Array"; a Stringable renders. */
+				const char *zSv;
+				sxi32 rcSv = PH7_ValueToStringUV(pCtx,pArg,&zSv,&length);
+				zBuf = (char *)zSv;
+				if( rcSv != SXRET_OK ){
+					/* A __toString() that THREW: unlike the case above this one
+					 * cannot be predicted, and the throw has already run any
+					 * in-place catch. Stop formatting rather than emitting the
+					 * format's tail after the catch body — every other builtin that
+					 * calls user code (array_map, usort) stops the same way. php
+					 * keeps going and prints the tail; recorded divergence, and
+					 * both engines raise the same exception. */
+					return rcSv;
+				}
 			}
 			if( length < 1 ){
 				/* An empty %s substitutes NOTHING in php. PH7 substituted a single
@@ -791,6 +816,12 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
       }
     }
  }/* for(;;) */
+	if( pThrowArg ){
+		/* The format ran to completion and its output is out; raise php's Error
+		 * now. `printf("A[%s]B", new P())` prints "A[]B" and THEN throws, while
+		 * sprintf()'s finished result is simply discarded by the unwind. */
+		return PH7_MemObjToStringUV(pThrowArg);
+	}
 	return SXRET_OK;
 }
 /*
@@ -816,6 +847,7 @@ static int sprintfConsumer(ph7_context *pCtx,const char *zInput,int nLen,void *p
  */
 PH7_PRIVATE int PH7_builtin_sprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	sxi32 rcFmt;
 	const char *zFormat;
 	sxi32 rc = SXRET_OK;
 	int nLen;
@@ -848,11 +880,18 @@ PH7_PRIVATE int PH7_builtin_sprintf(ph7_context *pCtx,int nArg,ph7_value **apArg
 		return rc;
 	}
 	/* Format the string; sprintfConsumer reports an allocation failure via &rc. */
-	PH7_InputFormat(sprintfConsumer,pCtx,zFormat,nLen,nArg,apArg,(void *)&rc,FALSE);
+	rcFmt = PH7_InputFormat(sprintfConsumer,pCtx,zFormat,nLen,nArg,apArg,(void *)&rc,FALSE);
 	if( rc != SXRET_OK ){
 		/* The result append ran out of memory: raise a fatal rather than
 		 * returning a silently-truncated string. */
 		return PH7_ContextMemoryError(pCtx);
+	}
+	/* A %s argument that could not be coerced raised php's Error mid-format. The
+	 * format still ran and the output/result still happened (php does exactly
+	 * that), so report the throw last. */
+	if( rcFmt != SXRET_OK ){
+		pCtx->nThrowRc = rcFmt;
+		return rcFmt;
 	}
 	return PH7_OK;
 }
@@ -879,6 +918,7 @@ static int printfConsumer(ph7_context *pCtx,const char *zInput,int nLen,void *pU
  */
 PH7_PRIVATE int PH7_builtin_printf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	sxi32 rcFmt;
 	ph7_int64 nCounter = 0;
 	const char *zFormat;
 	int nLen;
@@ -916,9 +956,16 @@ PH7_PRIVATE int PH7_builtin_printf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 	}
 	/* Format the string */
-	PH7_InputFormat(printfConsumer,pCtx,zFormat,nLen,nArg,apArg,(void *)&nCounter,FALSE);
+	rcFmt = PH7_InputFormat(printfConsumer,pCtx,zFormat,nLen,nArg,apArg,(void *)&nCounter,FALSE);
 	/* Return the length of the outputted string */
 	ph7_result_int64(pCtx,nCounter);
+	/* A %s argument that could not be coerced raised php's Error mid-format. The
+	 * format still ran and the output/result still happened (php does exactly
+	 * that), so report the throw last. */
+	if( rcFmt != SXRET_OK ){
+		pCtx->nThrowRc = rcFmt;
+		return rcFmt;
+	}
 	return PH7_OK;
 }
 /*
@@ -932,12 +979,12 @@ PH7_PRIVATE int PH7_builtin_printf(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int PH7_builtin_vprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	sxi32 rcFmt;
 	ph7_int64 nCounter = 0;
 	const char *zFormat;
 	ph7_hashmap *pMap;
 	SySet sArg;
 	int nLen,n;
-	sxi32 rcFmt;
 	if( nArg < 2 ){
 		/* Missing arguments,return 0 */
 		ph7_result_int(pCtx,0);
@@ -981,11 +1028,18 @@ PH7_PRIVATE int PH7_builtin_vprintf(ph7_context *pCtx,int nArg,ph7_value **apArg
 	/* Extract arguments from the hashmap */
 	n = PH7_HashmapValuesToSet(pMap,&sArg);
 	/* Format the string */
-	PH7_InputFormat(printfConsumer,pCtx,zFormat,nLen,n,(ph7_value **)SySetBasePtr(&sArg),(void *)&nCounter,TRUE);
+	rcFmt = PH7_InputFormat(printfConsumer,pCtx,zFormat,nLen,n,(ph7_value **)SySetBasePtr(&sArg),(void *)&nCounter,TRUE);
 	/* Release the container */
 	SySetRelease(&sArg);
 	/* Return the length of the outputted string */
 	ph7_result_int64(pCtx,nCounter);
+	/* A %s argument that could not be coerced raised php's Error mid-format. The
+	 * format still ran and the output/result still happened (php does exactly
+	 * that), so report the throw last. */
+	if( rcFmt != SXRET_OK ){
+		pCtx->nThrowRc = rcFmt;
+		return rcFmt;
+	}
 	return PH7_OK;
 }
 /*
@@ -999,11 +1053,11 @@ PH7_PRIVATE int PH7_builtin_vprintf(ph7_context *pCtx,int nArg,ph7_value **apArg
  */
 PH7_PRIVATE int PH7_builtin_vsprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	sxi32 rcFmt;
 	const char *zFormat;
 	ph7_hashmap *pMap;
 	SySet sArg;
 	sxi32 rc = SXRET_OK;
-	sxi32 rcFmt;
 	int nLen,n;
 	if( nArg < 2 ){
 		/* Missing arguments,return the empty string */
@@ -1046,12 +1100,19 @@ PH7_PRIVATE int PH7_builtin_vsprintf(ph7_context *pCtx,int nArg,ph7_value **apAr
 	/* Extract arguments from the hashmap */
 	n = PH7_HashmapValuesToSet(pMap,&sArg);
 	/* Format the string; sprintfConsumer reports an allocation failure via &rc. */
-	PH7_InputFormat(sprintfConsumer,pCtx,zFormat,nLen,n,(ph7_value **)SySetBasePtr(&sArg),(void *)&rc,TRUE);
+	rcFmt = PH7_InputFormat(sprintfConsumer,pCtx,zFormat,nLen,n,(ph7_value **)SySetBasePtr(&sArg),(void *)&rc,TRUE);
 	/* Release the container */
 	SySetRelease(&sArg);
 	if( rc != SXRET_OK ){
 		/* The result append ran out of memory: raise a fatal. */
 		return PH7_ContextMemoryError(pCtx);
+	}
+	/* A %s argument that could not be coerced raised php's Error mid-format. The
+	 * format still ran and the output/result still happened (php does exactly
+	 * that), so report the throw last. */
+	if( rcFmt != SXRET_OK ){
+		pCtx->nThrowRc = rcFmt;
+		return rcFmt;
 	}
 	return PH7_OK;
 }

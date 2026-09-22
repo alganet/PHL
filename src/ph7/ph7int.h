@@ -2376,6 +2376,7 @@ PH7_PRIVATE sxi32 PH7_MemObjToHashmap(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjToObject(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjToString(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjToStringUV(ph7_value *pObj);
+PH7_PRIVATE int PH7_MemObjIsNotStringable(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjToNull(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjToReal(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjToInteger(ph7_value *pObj);
@@ -2434,6 +2435,7 @@ PH7_PRIVATE sxi64 DtFloorDiv(sxi64 a,sxi64 b);
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 PH7_PRIVATE const char * PH7_VmBuiltinSigLookup(const char *zName,sxu32 nLen,const char **pzRet);
 PH7_PRIVATE void PH7_VmStoreArgByRef(ph7_vm *pVm,ph7_value *pArg,ph7_value *pNewVal);
+PH7_PRIVATE sxi32 PH7_ValueToStringUV(ph7_context *pCtx,ph7_value *pValue,const char **pzData,int *pnLen);
 PH7_PRIVATE void PH7_VmThrowWarningFmt(ph7_vm *pVm,const char *zFmt,...);
 PH7_PRIVATE sxi32 PH7_CheckCallbackArg(ph7_context *pCtx,ph7_value *pCb,int iArg,const char *zParam,int bNullable);
 PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm);

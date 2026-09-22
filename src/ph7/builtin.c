@@ -380,8 +380,13 @@ static int PH7_builtin_strval(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}else{
 		const char *zVal;
 		int iLen = 0; /* cc -O6 warning */
-		/* Perform the cast */
-		zVal = ph7_value_to_string(apArg[0],&iLen);
+		/* Perform the cast. It is the USER-VISIBLE one: strval() is php's
+		 * (string) cast spelled as a function, so an object with no
+		 * __toString() throws there too (it used to answer "Object"). */
+		sxi32 rcSv = PH7_ValueToStringUV(pCtx,apArg[0],&zVal,&iLen);
+		if( rcSv != SXRET_OK ){
+			return rcSv;
+		}
 		ph7_result_string(pCtx,zVal,iLen);
 	}
 	return PH7_OK;

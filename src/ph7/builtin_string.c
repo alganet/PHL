@@ -1857,6 +1857,7 @@ struct implode_data {
 	int bFirst;           /* TRUE if first call */
 	int nRecCount;        /* Recursion count to avoid infinite loop */
 	sxi32 rc;             /* Captured allocation rc; SXERR_MEM => the builtin raises an OOM fatal */
+	sxi32 rcThrow;        /* Captured coercion throw; the builtin propagates it instead of a result */
 };
 /*
  * Implode walker callback for the [ph7_array_walk()] interface.
@@ -1892,13 +1893,18 @@ static int implode_callback(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 		}
 		return PH7_OK;
 	}
-	/* php's user-visible array->string warning: implode of an array element
-	 * that is itself an array renders it as "Array" and warns (§2). */
-	if( pValue->iFlags & MEMOBJ_HASHMAP ){
-		PH7_VmThrowError(pData->pCtx->pVm,0,PH7_CTX_WARNING,"Array to string conversion");
+	/* Extract the string representation of the entry value, USER-VISIBLY: an
+	 * element that is itself an array renders as "Array" and warns, and one that
+	 * is an object with no __toString() is php's catchable Error (it used to
+	 * render as the literal "Object", §2). The walk cannot return a status, so
+	 * park it on the context struct and abort. */
+	{
+		sxi32 rcSv = PH7_ValueToStringUV(pData->pCtx,pValue,&zData,&nLen);
+		if( rcSv != SXRET_OK ){
+			pData->rcThrow = rcSv;
+			return PH7_ABORT;
+		}
 	}
-	/* Extract the string representation of the entry value */
-	zData = ph7_value_to_string(pValue,&nLen);
 	/* Manage separator insertion: always mark first seen; append separator for subsequent items */
 	if( pData->bFirst ){
 		pData->bFirst = 0;
@@ -1946,9 +1952,17 @@ PH7_PRIVATE int PH7_builtin_implode(ph7_context *pCtx,int nArg,ph7_value **apArg
 	imp_data.bFirst = 1;
 	imp_data.nRecCount = 0;
 	imp_data.rc = SXRET_OK;
+	imp_data.rcThrow = SXRET_OK;
 	if( !ph7_value_is_array(apArg[0]) ){
-		imp_data.zSep = ph7_value_to_string(apArg[0],&imp_data.nSeplen);
-		if( nArg > 1 && !ph7_value_is_array(apArg[1]) && !ph7_value_is_null(apArg[1]) ){
+		if( nArg < 2 || ph7_value_is_null(apArg[1]) ){
+			/* php: a string separator REQUIRES the array. `implode("x")` and
+			 * `implode("x", null)` both answered "" -- the `?array` in php's
+			 * signature is the DEFAULT's type, not a value it accepts. */
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"implode(): If argument #1 ($separator) is of type string, "
+				"argument #2 ($array) must be of type array, null given");
+		}
+		if( !ph7_value_is_array(apArg[1]) ){
 			/* php: implode($glue, $pieces) requires an ARRAY. PH7 stringified whatever it
 			 * was handed, so implode(",", 5) quietly returned "5". */
 			char zBuf[64];
@@ -1956,6 +1970,7 @@ PH7_PRIVATE int PH7_builtin_implode(ph7_context *pCtx,int nArg,ph7_value **apArg
 				"implode(): Argument #2 ($array) must be of type ?array, %s given",
 				VmValueGivenName(apArg[1],zBuf,sizeof(zBuf)));
 		}
+		imp_data.zSep = ph7_value_to_string(apArg[0],&imp_data.nSeplen);
 	}else{
 		if( nArg > 1 ){
 			/* php 8 removed the legacy swapped order: implode($pieces, $glue)
@@ -1977,6 +1992,10 @@ PH7_PRIVATE int PH7_builtin_implode(ph7_context *pCtx,int nArg,ph7_value **apArg
 		if( ph7_value_is_array(apArg[i]) ){
 			/* Iterate throw array entries */
 			ph7_array_walk(apArg[i],implode_callback,&imp_data);
+			/* An element whose coercion threw ends the join with that throw */
+			if( imp_data.rcThrow != SXRET_OK ){
+				return imp_data.rcThrow;
+			}
 			/* Surface a callback allocation failure as a fatal */
 			if( imp_data.rc != SXRET_OK ){
 				return PH7_ContextMemoryError(pCtx);
@@ -1984,8 +2003,11 @@ PH7_PRIVATE int PH7_builtin_implode(ph7_context *pCtx,int nArg,ph7_value **apArg
 		}else{
 			const char *zData;
 			int nLen;
-			/* Extract the string representation of the ph7 value */
-			zData = ph7_value_to_string(apArg[i],&nLen);
+			/* Extract the string representation of the ph7 value (user-visible) */
+			sxi32 rcSv = PH7_ValueToStringUV(pCtx,apArg[i],&zData,&nLen);
+			if( rcSv != SXRET_OK ){
+				return rcSv;
+			}
 			/* Manage separator insertion regardless of string length */
 			if( imp_data.bFirst ){
 				imp_data.bFirst = 0;
@@ -2037,6 +2059,7 @@ PH7_PRIVATE int PH7_builtin_implode_recursive(ph7_context *pCtx,int nArg,ph7_val
 	imp_data.bFirst = 1;
 	imp_data.nRecCount = 0;
 	imp_data.rc = SXRET_OK;
+	imp_data.rcThrow = SXRET_OK;
 	if( !ph7_value_is_array(apArg[0]) ){
 		imp_data.zSep = ph7_value_to_string(apArg[0],&imp_data.nSeplen);
 	}else{
@@ -2052,6 +2075,10 @@ PH7_PRIVATE int PH7_builtin_implode_recursive(ph7_context *pCtx,int nArg,ph7_val
 		if( ph7_value_is_array(apArg[i]) ){
 			/* Iterate throw array entries */
 			ph7_array_walk(apArg[i],implode_callback,&imp_data);
+			/* An element whose coercion threw ends the join with that throw */
+			if( imp_data.rcThrow != SXRET_OK ){
+				return imp_data.rcThrow;
+			}
 			/* Surface a callback allocation failure as a fatal */
 			if( imp_data.rc != SXRET_OK ){
 				return PH7_ContextMemoryError(pCtx);
@@ -2059,8 +2086,11 @@ PH7_PRIVATE int PH7_builtin_implode_recursive(ph7_context *pCtx,int nArg,ph7_val
 		}else{
 			const char *zData;
 			int nLen;
-			/* Extract the string representation of the ph7 value */
-			zData = ph7_value_to_string(apArg[i],&nLen);
+			/* Extract the string representation of the ph7 value (user-visible) */
+			sxi32 rcSv = PH7_ValueToStringUV(pCtx,apArg[i],&zData,&nLen);
+			if( rcSv != SXRET_OK ){
+				return rcSv;
+			}
 			/* Manage separator insertion regardless of string length */
 			if( imp_data.bFirst ){
 				imp_data.bFirst = 0;

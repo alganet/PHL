@@ -224,8 +224,16 @@ PH7_PRIVATE int vm_builtin_eval(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_null(pCtx);
 		return SXRET_OK;
 	}
-	/* Chunk to evaluate */
-	sChunk.zString = ph7_value_to_string(apArg[0],(int *)&sChunk.nByte);
+	/* Chunk to evaluate. Coerced USER-VISIBLY like every other string argument
+	 * spelled as a language construct: an object with no __toString() is php's
+	 * Error, where PHL used to hand the parser the literal "Object" and answer a
+	 * ParseError. */
+	{
+		sxi32 rcSv = PH7_ValueToStringUV(pCtx,apArg[0],&sChunk.zString,(int *)&sChunk.nByte);
+		if( rcSv != SXRET_OK ){
+			return rcSv;
+		}
+	}
 	if( sChunk.nByte < 1 ){
 		/* php: eval('') compiles nothing and yields FALSE (a whitespace-only
 		 * chunk still compiles, and yields NULL through the normal path). */
@@ -582,8 +590,15 @@ PH7_PRIVATE int vm_builtin_include(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_null(pCtx);
 		return SXRET_OK;
 	}
-	/* File to include */
-	sFile.zString = ph7_value_to_string(apArg[0],(int *)&sFile.nByte);
+	/* File to include. php coerces the path USER-VISIBLY, so an object with no
+	 * __toString() is the catchable "could not be converted to string" Error --
+	 * PHL used to include the literal path "Object" and warn about the IO error. */
+	{
+		sxi32 rcSv = PH7_ValueToStringUV(pCtx,apArg[0],&sFile.zString,(int *)&sFile.nByte);
+		if( rcSv != SXRET_OK ){
+			return rcSv;
+		}
+	}
 	if( sFile.nByte < 1 ){
 		/* Empty string,return NULL */
 		ph7_result_null(pCtx);
@@ -620,8 +635,15 @@ PH7_PRIVATE int vm_builtin_include_once(ph7_context *pCtx,int nArg,ph7_value **a
 		ph7_result_null(pCtx);
 		return SXRET_OK;
 	}
-	/* File to include */
-	sFile.zString = ph7_value_to_string(apArg[0],(int *)&sFile.nByte);
+	/* File to include. php coerces the path USER-VISIBLY, so an object with no
+	 * __toString() is the catchable "could not be converted to string" Error --
+	 * PHL used to include the literal path "Object" and warn about the IO error. */
+	{
+		sxi32 rcSv = PH7_ValueToStringUV(pCtx,apArg[0],&sFile.zString,(int *)&sFile.nByte);
+		if( rcSv != SXRET_OK ){
+			return rcSv;
+		}
+	}
 	if( sFile.nByte < 1 ){
 		/* Empty string,return NULL */
 		ph7_result_null(pCtx);
@@ -662,8 +684,15 @@ PH7_PRIVATE int vm_builtin_require(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_null(pCtx);
 		return SXRET_OK;
 	}
-	/* File to include */
-	sFile.zString = ph7_value_to_string(apArg[0],(int *)&sFile.nByte);
+	/* File to include. php coerces the path USER-VISIBLY, so an object with no
+	 * __toString() is the catchable "could not be converted to string" Error --
+	 * PHL used to include the literal path "Object" and warn about the IO error. */
+	{
+		sxi32 rcSv = PH7_ValueToStringUV(pCtx,apArg[0],&sFile.zString,(int *)&sFile.nByte);
+		if( rcSv != SXRET_OK ){
+			return rcSv;
+		}
+	}
 	if( sFile.nByte < 1 ){
 		/* Empty string,return NULL */
 		ph7_result_null(pCtx);
@@ -700,8 +729,15 @@ PH7_PRIVATE int vm_builtin_require_once(ph7_context *pCtx,int nArg,ph7_value **a
 		ph7_result_null(pCtx);
 		return SXRET_OK;
 	}
-	/* File to include */
-	sFile.zString = ph7_value_to_string(apArg[0],(int *)&sFile.nByte);
+	/* File to include. php coerces the path USER-VISIBLY, so an object with no
+	 * __toString() is the catchable "could not be converted to string" Error --
+	 * PHL used to include the literal path "Object" and warn about the IO error. */
+	{
+		sxi32 rcSv = PH7_ValueToStringUV(pCtx,apArg[0],&sFile.zString,(int *)&sFile.nByte);
+		if( rcSv != SXRET_OK ){
+			return rcSv;
+		}
+	}
 	if( sFile.nByte < 1 ){
 		/* Empty string,return NULL */
 		ph7_result_null(pCtx);

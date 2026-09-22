@@ -1466,3 +1466,45 @@ PH7_PRIVATE void VmDeprecatedConstNotice(ph7_vm *pVm,ph7_class *pClass,ph7_class
 		(pMember->iFlags & PH7_CLASS_ATTR_ENUMCASE) ? "Enum case" : "Constant",
 		&pClass->sName,&pMember->sName);
 }
+/*
+ * The USER-VISIBLE string coercion a builtin performs on a `mixed` argument or
+ * array element: the builtin-side twin of PH7_MemObjToStringUV's opcode sites.
+ * An ARRAY warns "Array to string conversion" and still renders as "Array"; an
+ * object whose class has no __toString() -- or one whose __toString() threw --
+ * is php's catchable "could not be converted to string" Error, and the builtin
+ * must answer that instead of a value.
+ *
+ * On success pzData and pnLen receive the NUL-terminated bytes (both optional).
+ * On a throw they are set to the empty string and the status is returned AND
+ * recorded on the call context, so OP_CALL cannot mistake the call for a normal
+ * return; a builtin that has already produced output (printf) still keeps it,
+ * which is what php does.
+ *
+ * The public ph7_value_to_string() stays SILENT on purpose: it is the embedder
+ * API, and the INTERNAL coercions behind it (array-key canonicalisation, sort
+ * comparisons, print_r/var_export/serialize) must not throw -- php's do not
+ * either.
+ */
+PH7_PRIVATE sxi32 PH7_ValueToStringUV(ph7_context *pCtx,ph7_value *pValue,const char **pzData,int *pnLen)
+{
+	sxi32 rc = PH7_MemObjToStringUV(pValue);
+	if( rc != SXRET_OK ){
+		if( pCtx ){
+			pCtx->nThrowRc = rc;
+		}
+		if( pzData ){
+			*pzData = "";
+		}
+		if( pnLen ){
+			*pnLen = 0;
+		}
+		return rc;
+	}
+	if( pzData || pnLen ){
+		const char *zData = ph7_value_to_string(pValue,pnLen);
+		if( pzData ){
+			*pzData = zData;
+		}
+	}
+	return SXRET_OK;
+}

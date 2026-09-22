@@ -2338,9 +2338,17 @@ PH7_PRIVATE int PH7_builtin_fprintf(ph7_context *pCtx,int nArg,ph7_value **apArg
 	sFdata.nCount = 0;
 	sFdata.pIO = pDev;
 	/* Format the string */
-	PH7_InputFormat(fprintfConsumer,pCtx,zFormat,nLen,nArg - 1,&apArg[1],(void *)&sFdata,FALSE);
+	{
+	sxi32 rcv = PH7_InputFormat(fprintfConsumer,pCtx,zFormat,nLen,nArg - 1,&apArg[1],(void *)&sFdata,FALSE);
 	/* Return total number of bytes written */
 	ph7_result_int64(pCtx,sFdata.nCount);
+	/* A %s argument that could not be coerced raised php's Error mid-format; the
+	 * bytes still went to the stream, as php's do, so report the throw last. */
+	if( rcv != SXRET_OK ){
+		pCtx->nThrowRc = rcv;
+		return rcv;
+	}
+	}
 	return PH7_OK;
 }
 /*
@@ -2439,10 +2447,18 @@ PH7_PRIVATE int PH7_builtin_vfprintf(ph7_context *pCtx,int nArg,ph7_value **apAr
 	sFdata.nCount = 0;
 	sFdata.pIO = pDev;
 	/* Format the string */
-	PH7_InputFormat(fprintfConsumer,pCtx,zFormat,nLen,n,(ph7_value **)SySetBasePtr(&sArg),(void *)&sFdata,TRUE);
+	{
+	sxi32 rcv = PH7_InputFormat(fprintfConsumer,pCtx,zFormat,nLen,n,(ph7_value **)SySetBasePtr(&sArg),(void *)&sFdata,TRUE);
 	/* Return total number of bytes written*/
 	ph7_result_int64(pCtx,sFdata.nCount);
 	SySetRelease(&sArg);
+	/* A %s argument that could not be coerced raised php's Error mid-format; the
+	 * bytes still went to the stream, as php's do, so report the throw last. */
+	if( rcv != SXRET_OK ){
+		pCtx->nThrowRc = rcv;
+		return rcv;
+	}
+	}
 	return PH7_OK;
 }
 /*

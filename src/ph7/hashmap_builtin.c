@@ -3341,10 +3341,34 @@ PH7_PRIVATE int ph7_hashmap_fill_keys(ph7_context *pCtx,int nArg,ph7_value **apA
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	/* Perform the requested operation */
+	/* Perform the requested operation. php has its own key rule here and it is
+	 * NOT the generic subscript canonicalisation: an INT goes in as an index, and
+	 * everything else takes the USER-VISIBLE (string) cast — so 1.5 becomes the
+	 * string key "1.5" (PHL made it the index 1), null becomes "" (PHL made it 0),
+	 * an array warns "Array to string conversion", and an object with no
+	 * __toString() throws php's Error (PHL keyed it under the literal "Object").
+	 * The resulting string then re-normalises the usual way, which is what turns
+	 * `true` into the index 1. */
 	pEntry = pSrc->pFirst;
 	for( n = 0 ; n < pSrc->nEntry ; n++ ){
-		ph7_array_add_elem(pArray,HashmapExtractNodeValue(pEntry),apArg[1]);
+		ph7_value *pKey = HashmapExtractNodeValue(pEntry);
+		if( pKey == 0 || (pKey->iFlags & (MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_STRING)) == MEMOBJ_INT
+		 || (pKey->iFlags & MEMOBJ_STRING) != 0 ){
+			ph7_array_add_elem(pArray,pKey,apArg[1]);
+		}else{
+			ph7_value sKey;
+			sxi32 rcSv;
+			/* Coerce a COPY: pKey is a live element of the caller's array. */
+			PH7_MemObjInit(pCtx->pVm,&sKey);
+			PH7_MemObjLoad(pKey,&sKey);
+			rcSv = PH7_ValueToStringUV(pCtx,&sKey,0,0);
+			if( rcSv != SXRET_OK ){
+				PH7_MemObjRelease(&sKey);
+				return rcSv;
+			}
+			ph7_array_add_elem(pArray,&sKey,apArg[1]);
+			PH7_MemObjRelease(&sKey);
+		}
 		/* Point to the next entry */
 		pEntry = pEntry->pPrev; /* Reverse link */
 	}
@@ -3418,22 +3442,32 @@ PH7_PRIVATE int ph7_hashmap_combine(ph7_context *pCtx,int nArg,ph7_value **apArg
 	for( n = 0 ; n < pKey->nEntry ; n++ ){
 		ph7_value *pKeyVal = HashmapExtractNodeValue(pKe);
 		ph7_value *pValVal = HashmapExtractNodeValue(pVe);
-		/* PHP treats floats used as keys in array_combine differently than
-		 * ordinary offset access: the float is stringified rather than
-		 * truncated.  To emulate this behavior we create a temporary copy of
-		 * the value when it is a float and convert the copy to string.  The
-		 * original array must not be mutated. */
+		/* php's key rule here is array_fill_keys()'s, not the ordinary offset
+		 * canonicalisation: an INT goes in as an index and everything else takes
+		 * the USER-VISIBLE (string) cast. Floats were already handled that way
+		 * (1.5 becomes the key "1.5", not the index 1); null now becomes "" rather
+		 * than 0, an array warns "Array to string conversion", and an object with
+		 * no __toString() throws php's Error instead of keying under the literal
+		 * "Object". The copy matters: the caller's array must not be mutated. */
 		ph7_value *pKeyCopy = pKeyVal;
-		if( ph7_value_is_float(pKeyVal) ){
-			ph7_value *pTmpKey = ph7_context_new_scalar(pCtx);
-			if( pTmpKey ){
-				PH7_MemObjStore(pKeyVal,pTmpKey);
-				/* Convert copy to string so it becomes "1.5" or "2" etc. */
-				PH7_MemObjToString(pTmpKey);
-				pKeyCopy = pTmpKey;
+		ph7_value sKeyTmp;
+		int bKeyTmp = 0;
+		if( pKeyVal && (pKeyVal->iFlags & (MEMOBJ_INT|MEMOBJ_STRING)) == 0 ){
+			sxi32 rcSv;
+			PH7_MemObjInit(pCtx->pVm,&sKeyTmp);
+			PH7_MemObjLoad(pKeyVal,&sKeyTmp);
+			bKeyTmp = 1;
+			rcSv = PH7_ValueToStringUV(pCtx,&sKeyTmp,0,0);
+			if( rcSv != SXRET_OK ){
+				PH7_MemObjRelease(&sKeyTmp);
+				return rcSv;
 			}
+			pKeyCopy = &sKeyTmp;
 		}
 		ph7_array_add_elem(pArray,pKeyCopy,pValVal);
+		if( bKeyTmp ){
+			PH7_MemObjRelease(&sKeyTmp);
+		}
 		/* Point to the next entry */
 		pKe = pKe->pPrev; /* Reverse link */
 		pVe = pVe->pPrev;
