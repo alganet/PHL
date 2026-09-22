@@ -333,12 +333,11 @@
 	/* This one definition serves every spelling — function names are case-insensitive
 	   (hFunction, vm.c). The second, byte-identical `Dir()` copy that used to sit here
 	   was PH7's manual hack for that, the same one the keyword table had. */\
-	"function dir(string $directory){"\
+	"function dir(string $directory, $context = null){"\
 	"   return new Directory($directory);"\
 	"}"\
 	"function scandir(string $directory,int $sorting_order = SCANDIR_SORT_ASCENDING)"\
     "{"\
-	"  if( func_num_args() < 1 ){ return FALSE; }"\
 	"  $aDir = array();"\
 	"  $pHandle = opendir($directory);"\
 	"  if( $pHandle == FALSE ){ return FALSE; }"\
@@ -899,7 +898,7 @@
    "function mb_ltrim($string, $characters = null, $encoding = null){ return __phl_mb_trim($string, $characters, true, false); }"\
    "function mb_rtrim($string, $characters = null, $encoding = null){ return __phl_mb_trim($string, $characters, false, true); }"\
    "/* Creates a temporary file and returns its name */"\
-   "function tempnam(string $directory = sys_get_temp_dir() /* Symisc eXtension */,string $prefix = 'PH7')"\
+   "function tempnam(string $directory,string $prefix)"\
    "{"\
    "   /* php CREATES the file (empty, mode 0600) and guarantees the name is unique --"\
    "    * returning a bare name left the caller with a path that does not exist, so"\
@@ -916,15 +915,10 @@
    "   }"\
    "   return false;"\
    "}"\
-   "function array_unshift(&$array ){"\
-   " if( func_num_args() < 1 ){ throw new ArgumentCountError('array_unshift() expects at least 1 argument, 0 given'); }"\
+   "function array_unshift(&$array, ...$values){"\
    " if( !is_array($array) ){ throw new TypeError('array_unshift(): Argument #1 ($array) must be of type array, ' . __php_zpp_type($array) . ' given'); }"\
    "/* Copy arguments */"\
-   "$nArgs = func_num_args();"\
-   "$pNew = array();"\
-   "for( $i = 1 ; $i < $nArgs ; ++$i ){"\
-    " $pNew[] = func_get_arg($i);"\
-    "}"\
+   "$pNew = $values;"\
    	"/* Make a copy of the old entries */"\
 	"$pOld = array_copy($array);"\
 	"/* Erase */"\
@@ -933,9 +927,7 @@
 	"$array = array_merge($pNew,$pOld);"\
 	"return sizeof($array);"\
     "}"\
-	"function array_merge_recursive(){"\
-	" if( func_num_args() < 1 ){ return array(); }"\
-    "$arrays = func_get_args();"\
+	"function array_merge_recursive(...$arrays){"\
     "$narrays = count($arrays);"\
     "$ret = array();"\
     "for( $i = 0; $i < $narrays; $i++ ){"\
@@ -978,11 +970,8 @@
 	" if( is_resource($v) ){ return 'resource'; }"\
 	" return 'mixed';"\
 	"}"\
-	"function max(){"\
+	"function max($value, ...$values){"\
     "  $pArgs = func_get_args();"\
-    " if( sizeof($pArgs) < 1 ){"\
-	"  throw new ArgumentCountError('max() expects at least 1 argument, 0 given');"\
-    " }"\
     " if( sizeof($pArgs) < 2 ){"\
     " $pArg = $pArgs[0];"\
 	" if( !is_array($pArg) ){"\
@@ -1007,11 +996,8 @@
     " }"\
 	" return $max;"\
     "}"\
-	"function min(){"\
+	"function min($value, ...$values){"\
     "  $pArgs = func_get_args();"\
-    " if( sizeof($pArgs) < 1 ){"\
-	"  throw new ArgumentCountError('min() expects at least 1 argument, 0 given');"\
-    " }"\
     " if( sizeof($pArgs) < 2 ){"\
     " $pArg = $pArgs[0];"\
 	" if( !is_array($pArg) ){"\

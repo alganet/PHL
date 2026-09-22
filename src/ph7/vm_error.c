@@ -2528,16 +2528,19 @@ PH7_PRIVATE sxi32 VmThrowTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString 
  * called with too few arguments, in php's ZPP wording:
  *   ReflectionProperty::__construct() expects exactly 2 arguments, 0 given
  * (php words internal callables this way — no call-site segment, argument(s)
- * pluralized on the expected count). Hosted builtin FUNCTIONS are not routed
- * here: their PHL signatures don't always mirror php's true arity (e.g.
- * array_unshift is (&$pArray)+func_get_args for php's (array, ...$values)),
- * so their in-body self-checks own the message.
+ * pluralized on the expected count).
+ *
+ * nMaxDeclared is the TOTAL formal count, variadic tail included — php's ZPP
+ * says "exactly" only when the callable accepts no more than it requires, and
+ * a variadic tail leaves no maximum at all (`max()` is "at least 1"). That is
+ * NOT the user-function rule VmThrowTooFewArgs applies: php words
+ * `function f($a, ...$b)` as "exactly 1 expected", ignoring the variadic.
  */
 PH7_PRIVATE sxi32 VmThrowBuiltinTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName,
-	sxu32 nPassed,sxu32 nRequired,sxu32 nNonVariadic)
+	sxu32 nPassed,sxu32 nRequired,sxu32 nMaxDeclared)
 {
 	SyBlob sMsg;
-	const char *zKind = (nRequired >= nNonVariadic) ? "exactly" : "at least";
+	const char *zKind = (nRequired >= nMaxDeclared) ? "exactly" : "at least";
 	const char *zPlural = (nRequired == 1) ? "" : "s";
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	if( pOwnerClass ){

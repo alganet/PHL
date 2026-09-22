@@ -5078,7 +5078,7 @@ case PH7_OP_CALL: {
 								}
 								goto Exception;
 							}
-							if( (pVmFunc->iFlags & (VM_FUNC_INTERNAL|VM_FUNC_CLASS_METHOD)) != VM_FUNC_INTERNAL ){
+							{
 								/* php's named-hole ArgumentCountError, checked BEFORE
 								 * hole compaction: compacting first would report the
 								 * positional wording with a fictitious count (g(b:2)
@@ -5376,22 +5376,18 @@ case PH7_OP_CALL: {
 			}
 			/* Pass 2: install arguments into the frame by formal parameter order */
 			{
-			/* php's required watermark for the hole check below (0 disables it
-			 * for hosted builtin FUNCTIONS, which self-manage — hosted-class
-			 * methods and all user code get php's named-hole error), plus the
+			/* php's required watermark for the hole check below, plus the
 			 * highest formal slot an actual resolved to: php words a hole
 			 * BELOW a filled slot `Argument #N ($x) not passed`, but a hole
 			 * with nothing filled above it gets the positional count message
 			 * (zend's RECV arg_num > EX(num_args) distinction). */
-			sxu32 nReqNamed = 0;
-			sxu32 nNVNamed = 0;
+			sxu32 nReqNamed;
+			sxu32 nNVNamed;
 			sxu32 nMaxFilled = 0;
-			if( (pVmFunc->iFlags & (VM_FUNC_INTERNAL|VM_FUNC_CLASS_METHOD)) != VM_FUNC_INTERNAL ){
-				nReqNamed = VmFuncRequiredArgCount(pVmFunc,&nNVNamed);
-				for( i = 0; i < nActual; i++ ){
-					if( aSlot[i] >= 0 && (sxu32)(aSlot[i] + 1) > nMaxFilled ){
-						nMaxFilled = (sxu32)(aSlot[i] + 1);
-					}
+			nReqNamed = VmFuncRequiredArgCount(pVmFunc,&nNVNamed);
+			for( i = 0; i < nActual; i++ ){
+				if( aSlot[i] >= 0 && (sxu32)(aSlot[i] + 1) > nMaxFilled ){
+					nMaxFilled = (sxu32)(aSlot[i] + 1);
 				}
 			}
 			for( n = 0; n < nNonVariadic; n++ ){
@@ -5509,7 +5505,7 @@ case PH7_OP_CALL: {
 						if( n + 1 > nMaxFilled ){
 							rc = (pVmFunc->iFlags & VM_FUNC_INTERNAL)
 								? VmThrowBuiltinTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,
-									nMaxFilled,nReqNamed,nNVNamed)
+									nMaxFilled,nReqNamed,SySetUsed(&pVmFunc->aArgs))
 								: VmThrowTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,
 									nMaxFilled,nReqNamed,nNVNamed,TRUE);
 						}else{
@@ -5840,20 +5836,20 @@ case PH7_OP_CALL: {
 		 * f("str") is a TypeError, not ArgumentCountError). The passed args
 		 * were already released by the install loop, so the standard throw
 		 * exit leaks nothing. The named path never fires this (its per-hole
-		 * check ran in-loop; n == nNonVariadic >= nRequired here). Hosted
-		 * builtin FUNCTIONS (VM_FUNC_INTERNAL) are exempt — their PHL
-		 * signatures don't always mirror php's true arity and their in-body
-		 * self-checks own php's wording (stage-2 family); hosted-class
-		 * METHODS get php's ZPP wording via VmThrowBuiltinTooFewArgs. */
-		if( n < SySetUsed(&pVmFunc->aArgs)
-		 && (pVmFunc->iFlags & (VM_FUNC_INTERNAL|VM_FUNC_CLASS_METHOD)) != VM_FUNC_INTERNAL ){
+		 * check ran in-loop; n == nNonVariadic >= nRequired here).
+		 * Builtins written as embedded PHP in the prelude (VM_FUNC_INTERNAL,
+		 * with or without VM_FUNC_CLASS_METHOD) are NOT exempt: their declared
+		 * signatures were swept against the php 8.5 oracle, so the derived
+		 * required count and wording are php's, and VmThrowBuiltinTooFewArgs
+		 * words them as php words an internal callable. */
+		if( n < SySetUsed(&pVmFunc->aArgs) ){
 			sxu32 nNonVar,nReq;
 			nReq = VmFuncRequiredArgCount(pVmFunc,&nNonVar);
 			if( n < nReq ){
 				sxu32 nPassed = pFrame->nActualArgs >= 0 ? (sxu32)pFrame->nActualArgs : n;
 				if( pVmFunc->iFlags & VM_FUNC_INTERNAL ){
 					rc = VmThrowBuiltinTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,
-						nPassed,nReq,nNonVar);
+						nPassed,nReq,SySetUsed(&pVmFunc->aArgs));
 				}else{
 					rc = VmThrowTooFewArgs(&(*pVm),pSelfHint,&pVmFunc->sName,
 						nPassed,nReq,nNonVar,TRUE);

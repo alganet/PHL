@@ -1412,11 +1412,9 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 		 * RECV order (a type error on a passed argument beats the count
 		 * error). Generators throw at the g(...) call site (message embeds
 		 * it); fibers at Fiber::start() (php omits the call-site segment).
-		 * Hosted builtin FUNCTIONS self-check; hosted-class methods get
-		 * php's ZPP wording. */
-	if( (pFunc->iFlags & (VM_FUNC_INTERNAL|VM_FUNC_CLASS_METHOD)) != VM_FUNC_INTERNAL ){
-		nReqGF = VmFuncRequiredArgCount(pFunc,&nNonVarGF);
-	}
+		 * Prelude builtins are included — VmThrowBuiltinTooFewArgs words them
+		 * as php words an internal callable. */
+	nReqGF = VmFuncRequiredArgCount(pFunc,&nNonVarGF);
 	}
 	for( n = 0; n < nFormal; n++ ){
 		ph7_value *pObj;
@@ -1480,7 +1478,7 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 			return VmGenArgThrowStatus(pVm,
 				(pFunc->iFlags & VM_FUNC_INTERNAL)
 					? VmThrowBuiltinTooFewArgs(pVm,pSelfHint,&pFunc->sName,
-						(sxu32)nArg,nReqGF,nNonVarGF)
+						(sxu32)nArg,nReqGF,SySetUsed(&pFunc->aArgs))
 					: VmThrowTooFewArgs(pVm,pSelfHint,&pFunc->sName,
 						(sxu32)nArg,nReqGF,nNonVarGF,bCallSiteInMsg));
 		}else if( SySetUsed(&aFormalArg[n].aByteCode) > 0 ){
