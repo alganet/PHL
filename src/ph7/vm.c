@@ -1326,42 +1326,48 @@ static sxi32 VmMountUserClassAttrs(
 				pAttr->iFlags |= PH7_CLASS_ATTR_EVALING; /* cycle guard, shared with the on-demand path */
 				pAttr->iFlags &= ~PH7_CLASS_ATTR_STATIC_DEFER; /* re-armed below; matters on a VM reset */
 				pVm->nConstEvalDepth++;
-				/* A STATIC property's default is php-LAZY, so evaluate it MUTED: a
-				 * throw at declaration time is not something php can see. What is
-				 * left here is the CONSTANT path (only TYPED constants are eager
-				 * now), which php does validate at declaration time. */
-				rcExec = bStaticProp
-					? VmEvalDefaultMuted(&(*pVm),&pAttr->aByteCode,&pMemObj)
-					: VmLocalExecIntoObj(&(*pVm),&pAttr->aByteCode,&pMemObj,FALSE);
+				/* MUTED, for both kinds. php evaluates a class-level initializer
+				 * when the member is first USED, so a throw at declaration time is
+				 * not something it can see. What reaches this line is a static
+				 * property's default (php-lazy throughout) or a TYPED constant's —
+				 * which php does validate here, but only when the initializer
+				 * actually produced a value: `const int A = "x"` and
+				 * `const int A = PHP_EOL` are both declaration-time fatals, while
+				 * `const int A = UNDEF` says nothing until the constant is read. */
+				rcExec = VmEvalDefaultMuted(&(*pVm),&pAttr->aByteCode,&pMemObj);
 				pVm->nConstEvalDepth--;
 				pAttr->iFlags &= ~PH7_CLASS_ATTR_EVALING;
 				pVm->pConstEvalClass = pSaveCtx;
-				if( (rcExec == PH7_EXCEPTION || rcExec == PH7_ABORT) && bStaticProp ){
+				if( rcExec == PH7_EXCEPTION || rcExec == PH7_ABORT ){
 					/* php has not reached this initializer: defer it whole to the
-					 * first static-table materialization, where the throw is raised
-					 * at the ACCESS site and is catchable there. The leftover value
-					 * is null and must NOT be type-checked below — a spurious
-					 * TypeError would replace the real Error (the instance path's
-					 * bDefThrew rule). */
-					pAttr->iFlags |= PH7_CLASS_ATTR_STATIC_DEFER;
-					pClass->iFlags |= PH7_CLASS_STATIC_DEFER;
-				}else if( rcExec == PH7_EXCEPTION || rcExec == PH7_ABORT ){
-					/* The initializer raised (self-referencing constant, or a
-					 * throwing enum-case reference): park it for the fetch-point
-					 * router — user classes mount mid-execution, so the throw
-					 * lands catchably at the declaration site. */
-					VmBoundaryPark(&(*pVm),rcExec);
-				}else if( pVm->pConstCycleAttr && pVm->nConstEvalDepth == 0 ){
-					/* A nested evaluation detected a self-referencing constant:
-					 * raise it at this, the outermost level. */
-					VmBoundaryPark(&(*pVm),VmConstCycleThrow(&(*pVm)));
-				}
-				/* Typed class constant (PHP 8.3): enforce the computed value
-				 * against the declared type. A mismatch is a non-catchable
-				 * fatal, raised here at definition time (matching PHP). */
-				if( (pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_TYPED))
+					 * first USE, where the throw is raised at the access site and is
+					 * catchable there. The leftover value is null and must NOT be
+					 * type-checked — a spurious TypeError/fatal would replace the
+					 * real Error (the instance path's bDefThrew rule). A static
+					 * property keeps its (already reserved) slot and re-runs through
+					 * PH7_VmMaterializeClassStatics; a constant gives its slot back
+					 * and re-runs through the on-demand path, which is keyed on an
+					 * unset nIdx. */
+					if( bStaticProp ){
+						pAttr->iFlags |= PH7_CLASS_ATTR_STATIC_DEFER;
+						pClass->iFlags |= PH7_CLASS_STATIC_DEFER;
+					}else{
+						VmSlot sSlot;
+						/* Release before recycling: PH7_ReserveMemObj re-inits a
+						 * reused slot without releasing it, and a muted eval that
+						 * only recorded a CYCLE still left its value here. */
+						sSlot.nIdx = pMemObj->nIdx;
+						sSlot.pUserData = 0;
+						PH7_MemObjRelease(pMemObj);
+						SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
+						continue;
+					}
+				}else if( (pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_TYPED))
 					== (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_TYPED) ){
-					sxi32 rcType = VmEnforceConstantType(&(*pVm),pClass,pAttr,pMemObj);
+					/* Typed class constant (PHP 8.3): enforce the computed value
+					 * against the declared type. A mismatch is a non-catchable
+					 * fatal, raised here at definition time (matching PHP). */
+					sxi32 rcType = VmEnforceConstantType(&(*pVm),pClass,pAttr,pMemObj,0 /* at the declaration */);
 					if( rcType != SXRET_OK ){
 						return rcType;
 					}

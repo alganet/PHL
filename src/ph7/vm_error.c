@@ -838,6 +838,28 @@ PH7_PRIVATE ph7_class * VmExtractEnumClass(ph7_vm *pVm,ph7_value *pName)
 	return pClass;
 }
 /*
+ * Hand a reserved memory-object slot back to the free list. Takes the INDEX,
+ * not the pointer: aMemObj is a by-value SySet, so any nested evaluation (an
+ * initializer, or the constructor of the very TypeError being raised) can grow
+ * and REALLOC the pool, leaving a pointer taken before it dangling — the rule
+ * VmLocalExecIntoObj is built around. The slot's contents are released first:
+ * PH7_ReserveMemObj re-inits a recycled slot without releasing it, so a string
+ * blob / array / object left in there would be orphaned once per evaluation,
+ * which for a constant that re-evaluates on every access grows without bound.
+ */
+static void VmRecycleMemObj(ph7_vm *pVm,sxu32 nIdx)
+{
+	ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
+	VmSlot sSlot;
+	if( pObj == 0 ){
+		return;
+	}
+	PH7_MemObjRelease(pObj);
+	sSlot.nIdx = nIdx;
+	sSlot.pUserData = 0;
+	SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
+}
+/*
  * Evaluate a class constant's initializer on demand.
  *
  * Constant slots are normally filled eagerly at class mount, but a constant
@@ -877,6 +899,7 @@ PH7_PRIVATE sxi32 VmClassConstEvalOnDemand(ph7_vm *pVm,ph7_class *pClass,ph7_cla
 		ph7_class *pSaveCtx = pVm->pConstEvalClass;
 		void *pSaveFrame = pVm->pConstEvalFrame;
 		ph7_class_attr *pSaveCycle = pVm->pConstCycleAttr;
+		sxu32 nSlot;
 		sxi32 rcExec;
 		pAttr->iFlags |= PH7_CLASS_ATTR_EVALING;
 		pVm->pConstEvalClass = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
@@ -890,44 +913,51 @@ PH7_PRIVATE sxi32 VmClassConstEvalOnDemand(ph7_vm *pVm,ph7_class *pClass,ph7_cla
 		pVm->pConstEvalClass = pSaveCtx;
 		pVm->pConstEvalFrame = pSaveFrame;
 		pAttr->iFlags &= ~PH7_CLASS_ATTR_EVALING;
-		if( pVm->nMuteThrow > 0
-		 && (rcExec == PH7_EXCEPTION || rcExec == PH7_ABORT
-		  || pVm->pConstCycleAttr != pSaveCycle) ){
-			/* Raised inside a MUTED evaluation (VmEvalDefaultMuted: a static
-			 * property's default at class mount, which php would not have run
-			 * yet). Memoizing here would be exactly the trace the muting exists
-			 * to prevent: the constant would read NULL for the rest of the run,
-			 * and the deferred re-run of the default that named it would find it
-			 * materialized and raise nothing at all. A recorded CYCLE counts as a
-			 * failure the same way: it does not throw where it is found, but the
-			 * value is unusable and the re-run must be able to detect it again.
-			 * Give the slot back and leave nIdx unset — the re-run reserves a
-			 * fresh one and raises there. */
-			VmSlot sSlot;
-			sSlot.nIdx = pMemObj->nIdx;
-			sSlot.pUserData = 0;
-			SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
-			return rcExec;
-		}
-		/* Memoize before any throw so re-access doesn't loop. */
-		pAttr->nIdx = pMemObj->nIdx;
-		PH7_VmRefObjInstall(&(*pVm),pMemObj->nIdx,0,0,VM_REF_IDX_KEEP);
-		if( rcExec == PH7_EXCEPTION || rcExec == PH7_ABORT ){
-			/* The initializer raised: hand the status to the caller to
-			 * park/route. */
-			return rcExec;
-		}
-		if( pVm->pConstCycleAttr && pVm->nConstEvalDepth == 0 ){
-			/* A nested evaluation detected a self-referencing constant:
-			 * raise it here, at opcode level, where it routes to a catch. */
-			return VmConstCycleThrow(&(*pVm));
+		nSlot = pMemObj->nIdx; /* the pool can move below; address the slot by index */
+		if( rcExec == PH7_EXCEPTION || rcExec == PH7_ABORT
+		 || pVm->pConstCycleAttr != pSaveCycle ){
+			/* The initializer FAILED. Do not memoize the slot: php evaluates a
+			 * class constant's expression at each access until one of them
+			 * succeeds, so `class C { const K = UNDEF; }` raises
+			 * `Undefined constant "UNDEF"` on EVERY read of C::K, not just the
+			 * first. Memoizing left the constant reading NULL, in silence, for
+			 * the rest of the run — and made a static default that named it
+			 * (whose own evaluation is deferred to first access) find it
+			 * materialized and raise nothing at all. Give the reserved slot back
+			 * and leave nIdx unset, which is what keys the on-demand path.
+			 * A recorded CYCLE is a failure the same way: it does not throw where
+			 * it is found — an inner level only records it — but the value is
+			 * unusable and the next access must be able to detect it again.
+			 * No loop: each access runs the initializer once and raises. */
+			VmRecycleMemObj(&(*pVm),nSlot);
+			if( rcExec == PH7_EXCEPTION || rcExec == PH7_ABORT ){
+				/* Hand the status to the caller to park/route. */
+				return rcExec;
+			}
+			if( pVm->nConstEvalDepth == 0 ){
+				/* Outermost level: raise the cycle here, at opcode level, where it
+				 * routes to a catch. Deeper in, the record travels outward. */
+				return VmConstCycleThrow(&(*pVm));
+			}
+			return SXRET_OK;
 		}
 		if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
-			sxi32 rcType = VmEnforceConstantType(&(*pVm),pClass,pAttr,pMemObj);
+			/* Typed constant (PHP 8.3) whose value only exists now: check BEFORE
+			 * memoizing, so a mismatch leaves the slot unmaterialized and the next
+			 * access raises again — php re-runs the whole materialization each
+			 * time. A pass may widen int -> float in place, which is the value
+			 * memoized below. The check can THROW, and constructing that TypeError
+			 * runs php code that may grow (and realloc) aMemObj — so the slot is
+			 * addressed by index from here on, never through pMemObj. */
+			sxi32 rcType = VmEnforceConstantType(&(*pVm),pClass,pAttr,pMemObj,1 /* lazy */);
 			if( rcType != SXRET_OK ){
+				VmRecycleMemObj(&(*pVm),nSlot);
 				return rcType;
 			}
 		}
+		/* Memoize the value. */
+		pAttr->nIdx = nSlot;
+		PH7_VmRefObjInstall(&(*pVm),nSlot,0,0,VM_REF_IDX_KEEP);
 		return SXRET_OK;
 	}
 	pAttr->nIdx = pMemObj->nIdx;
@@ -2042,7 +2072,7 @@ PH7_PRIVATE sxi32 VmCloneApplyUpdate(ph7_vm *pVm,ph7_class_instance *pClone,
  * prints the diagnostic, sets a nonzero exit status, requests a clean halt and
  * returns PH7_ABORT (so the caller unwinds and shutdown callbacks still run).
  */
-static sxi32 VmConstantTypeError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue)
+static sxi32 VmConstantTypeError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue,int bLazy)
 {
 	ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
 	char zBuf[128],zType[192];
@@ -2053,6 +2083,20 @@ static sxi32 VmConstantTypeError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *p
 		zGiven = VmFormatValueClassName(pValue,zBuf,sizeof(zBuf));
 	}else{
 		zGiven = ph7_type_name(pValue);
+	}
+	if( bLazy ){
+		/* The value only materialized at the first ACCESS, because the initializer
+		 * could not be evaluated at the declaration (it named a constant that did
+		 * not exist yet). php reports THAT with its own wording and its own kind:
+		 * a CATCHABLE `TypeError: Cannot assign string to class constant C::K of
+		 * type int`, raised at the access site — not the declaration-time fatal
+		 * below. The caller leaves the slot unmaterialized, so every later access
+		 * re-evaluates and re-raises, as php's does. */
+		SyBlob sMsg;
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		SyBlobFormat(&sMsg,"Cannot assign %s to class constant %z::%z of type %s",
+			zGiven,&pOwner->sName,&pAttr->sName,zTypeText);
+		return VmThrowBuiltinError(pVm,"TypeError",sizeof("TypeError")-1,&sMsg);
 	}
 	/* A class is normally mounted during the compile/VmMakeReady phase, where the
 	 * code-generator's error consumer is active but the host VM output consumer is
@@ -2082,7 +2126,7 @@ static sxi32 VmConstantTypeError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *p
  * the computed constant value (it may be widened in place). Returns SXRET_OK on
  * accept, or PH7_ABORT after raising the non-catchable fatal on mismatch.
  */
-PH7_PRIVATE sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue)
+PH7_PRIVATE sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue,int bLazy)
 {
 	int bNullable = (pAttr->iFlags & PH7_CLASS_ATTR_NULLABLE) ? 1 : 0;
 	/* NULL value: allowed only for nullable, standalone `null`, or `mixed`. */
@@ -2094,7 +2138,7 @@ PH7_PRIVATE sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 			&& SyStrnicmp(pAttr->sClass.zString,"mixed",5) == 0 ){
 			return SXRET_OK;
 		}
-		return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
+		return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue,bLazy);
 	}
 	/* Union type: reuse the shared coercion helper in strict mode. */
 	if( pAttr->iFlags & PH7_CLASS_ATTR_UNION ){
@@ -2102,18 +2146,18 @@ PH7_PRIVATE sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 			VmHintScopeClass(pVm,pAttr->pDeclClass,pClass)) == SXRET_OK ){
 			return SXRET_OK;
 		}
-		return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
+		return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue,bLazy);
 	}
 	/* standalone `null` type: a non-null value is a mismatch. */
 	if( pAttr->nType == MEMOBJ_NULL ){
-		return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
+		return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue,bLazy);
 	}
 	/* Bare `object` type: any class instance, nothing else. */
 	if( pAttr->nType == MEMOBJ_OBJ ){
 		if( pValue->iFlags & MEMOBJ_OBJ ){
 			return SXRET_OK;
 		}
-		return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
+		return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue,bLazy);
 	}
 	/* Class-name atom: pseudo-types (mixed/true/false/iterable) by value, else
 	 * a real class/interface verified by instanceof. */
@@ -2123,7 +2167,7 @@ PH7_PRIVATE sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 			return SXRET_OK;
 		}
 		if( rcPseudo == 0 ){
-			return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
+			return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue,bLazy);
 		}
 		/* rcPseudo == -1: a real class/interface type. A class constant's
 		 * self/parent resolve against the declaring class. */
@@ -2131,7 +2175,7 @@ PH7_PRIVATE sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 			ph7_class *pExpected = 0;
 			if( !VmClassHintMatches(pVm,&pAttr->sClass,
 				VmHintScopeClass(pVm,pAttr->pDeclClass,pClass),pValue,&pExpected) ){
-				return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
+				return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue,bLazy);
 			}
 		}
 		return SXRET_OK;
@@ -2158,7 +2202,7 @@ PH7_PRIVATE sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 		PH7_MemObjToReal(pValue);
 		return SXRET_OK;
 	}
-	return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
+	return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue,bLazy);
 }
 /*
  * php's CATCHABLE TypeError for a typed property DEFAULT whose computed value
