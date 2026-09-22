@@ -3728,105 +3728,147 @@ PH7_PRIVATE int ph7_hashmap_flip(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Return
  *  Returns the sum of values as an integer or float.
  */
-static void DoubleSum(ph7_context *pCtx,ph7_hashmap *pMap)
+/*
+ * array_sum() and array_product() are php's `+` and `*` FOLDED over the elements
+ * from an int identity (0 / 1), and every answer they give follows from that:
+ *
+ *  - The accumulator promotes to float the moment the int result would not fit,
+ *    exactly as the operator does. PH7's two-function split -- a first pass
+ *    guessing int-vs-float, then a pure int64 or pure double fold -- had no way
+ *    to express this, so the int fold WRAPPED: array_sum([PHP_INT_MAX, 1])
+ *    answered PHP_INT_MIN and array_product([PHP_INT_MAX, PHP_INT_MAX, 2])
+ *    answered 1.
+ *  - Every element is classified on its own. array_product()'s guess looked only
+ *    at the FIRST element, so array_product([1, 2.5]) truncated to int(2) and
+ *    array_product(["2.5", 2]) to int(4) -- wrong answers on ordinary input.
+ *  - A numeric string contributes the number the operator reads from it, through
+ *    the engine's ONE string->number conversion (so an integer-shaped digit run
+ *    past the int64 range contributes a float, like everywhere else). A
+ *    LEADING-numeric string contributes its prefix behind php's unprefixed
+ *    `A non-numeric value encountered` warning; array_sum() used to SKIP it, so
+ *    array_sum(["3abc", 2]) answered 2 where php answers 5.
+ *  - The operands the operator refuses report
+ *    `array_sum(): Addition is not supported on type X` (php names the CLASS for
+ *    an object). Of those, an array and an object are SKIPPED, while a resource
+ *    contributes its id and a string with no numeric prefix at all contributes 0
+ *    -- which is why array_product(["abc", 2]) is 0 and array_product([[1], 2])
+ *    is 2. array_product() reported none of these at all.
+ */
+static void HashmapArithFold(ph7_context *pCtx,ph7_hashmap *pMap,int bProduct)
 {
+	const char *zOp = bProduct ? "Multiplication" : "Addition";
 	ph7_hashmap_node *pEntry;
 	ph7_value *pObj;
-	double dSum = 0;
+	sxi64 iAcc = bProduct ? 1 : 0;   /* the accumulator while bReal is clear */
+	double dAcc = 0;                 /* ... and after it is set */
+	int bReal = 0;
 	sxu32 n;
 	pEntry = pMap->pFirst;
-	for( n = 0 ; n < pMap->nEntry ; n++ ){
+	for( n = 0 ; n < pMap->nEntry ; n++, pEntry = pEntry->pPrev /* Reverse link */ ){
+		sxi64 iVal = 0;
+		double dVal = 0;
+		int bValReal = 0;
 		pObj = HashmapExtractNodeValue(pEntry);
-		if( pObj ){
-			if( pObj->iFlags & MEMOBJ_REAL ){
-				dSum += pObj->rVal;
-			}else if( pObj->iFlags & (MEMOBJ_INT|MEMOBJ_BOOL) ){
-				dSum += (double)pObj->x.iVal;
-			}else if( pObj->iFlags & MEMOBJ_STRING ){
-				if( !PH7_MemObjStringIsNumeric(pObj) ){
-					/* php warns and SKIPS a non-numeric string (the array/object/
-					 * resource cases below already did; only this one was silent) */
-					ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-						"Addition is not supported on type string");
-				}else if( SyBlobLength(&pObj->sBlob) > 0 ){
-					double dv = 0;
-					SyStrToReal((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),(void *)&dv,0);
-					dSum += dv;
-				}
-			}else if( pObj->iFlags & MEMOBJ_HASHMAP ){
-				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
-					"array_sum(): Addition is not supported on type array");
-			}else if( pObj->iFlags & MEMOBJ_OBJ ){
-				/* php names the CLASS here, not the literal word "object" */
-				ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;
-				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-					"Addition is not supported on type %s",
-					pInst && pInst->pClass ? pInst->pClass->sName.zString : "object");
-			}else if( pObj->iFlags & MEMOBJ_RES ){
-				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
-					"array_sum(): Addition is not supported on type resource");
-			}
-			/* NULL is silently treated as 0 (matches PHP) */
+		if( pObj == 0 ){
+			continue;
 		}
-		/* Point to the next entry */
-		pEntry = pEntry->pPrev; /* Reverse link */
-	}
-	/* Return sum */
-	ph7_result_double(pCtx,dSum);
-}
-static void Int64Sum(ph7_context *pCtx,ph7_hashmap *pMap)
-{
-	ph7_hashmap_node *pEntry;
-	ph7_value *pObj;
-	sxi64 nSum = 0;
-	sxu32 n;
-	pEntry = pMap->pFirst;
-	for( n = 0 ; n < pMap->nEntry ; n++ ){
-		pObj = HashmapExtractNodeValue(pEntry);
-		if( pObj ){
-			if( pObj->iFlags & (MEMOBJ_INT|MEMOBJ_BOOL) ){
-				nSum += pObj->x.iVal;
-			}else if( pObj->iFlags & MEMOBJ_STRING ){
-				if( !PH7_MemObjStringIsNumeric(pObj) ){
-					/* php warns and SKIPS a non-numeric string */
-					ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-						"Addition is not supported on type string");
-				}else if( SyBlobLength(&pObj->sBlob) > 0 ){
-					sxi64 nv = 0;
-					SyStrToInt64((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),(void *)&nv,0);
-					nSum += nv;
-				}
-			}else if( pObj->iFlags & MEMOBJ_HASHMAP ){
-				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
-					"array_sum(): Addition is not supported on type array");
-			}else if( pObj->iFlags & MEMOBJ_OBJ ){
-				/* php names the CLASS here, not the literal word "object" */
-				ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;
+		if( pObj->iFlags & MEMOBJ_REAL ){
+			dVal = (double)pObj->rVal;
+			bValReal = 1;
+		}else if( pObj->iFlags & (MEMOBJ_INT|MEMOBJ_BOOL) ){
+			iVal = pObj->x.iVal;
+		}else if( pObj->iFlags & MEMOBJ_NULL ){
+			iVal = 0;  /* php folds null in as 0, in silence */
+		}else if( pObj->iFlags & MEMOBJ_STRING ){
+			const char *zTail = 0;
+			if( !PH7_MemObjStringNumericPrefix(pObj,&zTail) ){
+				/* No numeric prefix at all ("abc", ""): the refused operand, folded
+				 * in as 0. */
 				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-					"Addition is not supported on type %s",
-					pInst && pInst->pClass ? pInst->pClass->sName.zString : "object");
-			}else if( pObj->iFlags & MEMOBJ_RES ){
-				PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
-					"array_sum(): Addition is not supported on type resource");
+					"%s is not supported on type string",zOp);
+				iVal = 0;
+			}else{
+				ph7_value sNum;
+				if( !PH7_MemObjStringIsNumeric(pObj) ){
+					/* Leading-numeric: php's operator warning, then the prefix. */
+					PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
+						"A non-numeric value encountered");
+				}
+				/* Convert a DUPLICATE: PH7_MemObjToNumeric converts in place, and the
+				 * element belongs to the caller's array. */
+				PH7_MemObjInit(pCtx->pVm,&sNum);
+				PH7_MemObjLoad(pObj,&sNum);
+				PH7_MemObjToNumeric(&sNum);
+				if( sNum.iFlags & MEMOBJ_REAL ){
+					dVal = (double)sNum.rVal;
+					bValReal = 1;
+				}else{
+					iVal = sNum.x.iVal;
+				}
+				PH7_MemObjRelease(&sNum);
 			}
-			/* NULL is silently treated as 0 (matches PHP) */
+		}else if( pObj->iFlags & MEMOBJ_HASHMAP ){
+			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+				"%s is not supported on type array",zOp);
+			continue;
+		}else if( pObj->iFlags & MEMOBJ_OBJ ){
+			/* php names the CLASS here, not the literal word "object" */
+			ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;
+			if( pInst && pInst->pClass ){
+				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+					"%s is not supported on type %z",zOp,&pInst->pClass->sName);
+			}else{
+				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+					"%s is not supported on type object",zOp);
+			}
+			continue;
+		}else if( pObj->iFlags & MEMOBJ_RES ){
+			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+				"%s is not supported on type resource",zOp);
+			iVal = (sxi64)PH7_VmResourceId(pCtx->pVm,pObj->x.pOther);
+		}else{
+			continue;
 		}
-		/* Point to the next entry */
-		pEntry = pEntry->pPrev; /* Reverse link */
+		/* Fold the contribution in */
+		if( bReal || bValReal ){
+			if( !bReal ){
+				dAcc = (double)iAcc;
+				bReal = 1;
+			}
+			if( !bValReal ){
+				dVal = (double)iVal;
+			}
+			dAcc = bProduct ? dAcc * dVal : dAcc + dVal;
+		}else{
+			sxi64 iRes;
+			int bOv = bProduct ? PH7_MUL_OVERFLOW64(iAcc,iVal,&iRes)
+			                   : PH7_ADD_OVERFLOW64(iAcc,iVal,&iRes);
+			if( bOv ){
+#ifndef PH7_OMIT_FLOATING_POINT
+				dAcc = bProduct ? (double)iAcc * (double)iVal : (double)iAcc + (double)iVal;
+				bReal = 1;
+#else
+				/* The integer-only build has no float to promote to, so it wraps --
+				 * the same choice OP_ADD's overflow arm makes there. */
+				iAcc = iRes;
+#endif
+			}else{
+				iAcc = iRes;
+			}
+		}
 	}
-	/* Return sum */
-	ph7_result_int64(pCtx,nSum);
+	if( bReal ){
+		ph7_result_double(pCtx,dAcc);
+	}else{
+		ph7_result_int64(pCtx,iAcc);
+	}
 }
 /* number array_sum(array $array )
  * (See block-coment above)
  */
 PH7_PRIVATE int ph7_hashmap_sum(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pMap;
-	ph7_value *pObj;
-	int useDouble = 0;
-	sxu32 n;
 	/* PHP requires exactly one argument */
 	if( nArg != 1 ){
 		return PH7_VmThrowException(pCtx,
@@ -3851,39 +3893,7 @@ PH7_PRIVATE int ph7_hashmap_sum(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
 	}
-	/* Scan all elements: if any value is a float, use floating-point
-	 * arithmetic for the entire sum (matches PHP behaviour).
-	 */
-	pEntry = pMap->pFirst;
-	for( n = 0 ; n < pMap->nEntry ; n++ ){
-		pObj = HashmapExtractNodeValue(pEntry);
-		if( pObj ){
-			if( pObj->iFlags & MEMOBJ_REAL ){
-				useDouble = 1;
-				break;
-			}
-			if( pObj->iFlags & MEMOBJ_STRING ){
-				const char *zStr = (const char *)SyBlobData(&pObj->sBlob);
-				sxu32 nLen = SyBlobLength(&pObj->sBlob);
-				sxu32 i;
-				for( i = 0 ; i < nLen ; i++ ){
-					if( zStr[i] == '.' || zStr[i] == 'e' || zStr[i] == 'E' ){
-						useDouble = 1;
-						break;
-					}
-				}
-				if( useDouble ){
-					break;
-				}
-			}
-		}
-		pEntry = pEntry->pPrev;
-	}
-	if( useDouble ){
-		DoubleSum(pCtx,pMap);
-	}else{
-		Int64Sum(pCtx,pMap);
-	}
+	HashmapArithFold(pCtx,pMap,0);
 	return PH7_OK;
 }
 /*
@@ -3894,71 +3904,12 @@ PH7_PRIVATE int ph7_hashmap_sum(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Return
  *  Returns the product of values as an integer or float.
  */
-static void DoubleProd(ph7_context *pCtx,ph7_hashmap *pMap)
-{
-	ph7_hashmap_node *pEntry;
-	ph7_value *pObj;
-	double dProd;
-	sxu32 n;
-	pEntry = pMap->pFirst;
-	dProd = 1;
-	for( n = 0 ; n < pMap->nEntry ; n++ ){
-		pObj = HashmapExtractNodeValue(pEntry);
-		if( pObj && (pObj->iFlags & (MEMOBJ_NULL|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)) == 0){
-			if( pObj->iFlags & MEMOBJ_REAL ){
-				dProd *= pObj->rVal;
-			}else if( pObj->iFlags & (MEMOBJ_INT|MEMOBJ_BOOL) ){
-				dProd *= (double)pObj->x.iVal;
-			}else if( pObj->iFlags & MEMOBJ_STRING ){
-				if( SyBlobLength(&pObj->sBlob) > 0 ){
-					double dv = 0;
-					SyStrToReal((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),(void *)&dv,0);
-					dProd *= dv;
-				}
-			}
-		}
-		/* Point to the next entry */
-		pEntry = pEntry->pPrev; /* Reverse link */
-	}
-	/* Return product */
-	ph7_result_double(pCtx,dProd);
-}
-static void Int64Prod(ph7_context *pCtx,ph7_hashmap *pMap)
-{
-	ph7_hashmap_node *pEntry;
-	ph7_value *pObj;
-	sxi64 nProd;
-	sxu32 n;
-	pEntry = pMap->pFirst;
-	nProd = 1;
-	for( n = 0 ; n < pMap->nEntry ; n++ ){
-		pObj = HashmapExtractNodeValue(pEntry);
-		if( pObj && (pObj->iFlags & (MEMOBJ_NULL|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)) == 0){
-			if( pObj->iFlags & MEMOBJ_REAL ){
-				nProd *= (sxi64)pObj->rVal;
-			}else if( pObj->iFlags & (MEMOBJ_INT|MEMOBJ_BOOL) ){
-				nProd *= pObj->x.iVal;
-			}else if( pObj->iFlags & MEMOBJ_STRING ){
-				if( SyBlobLength(&pObj->sBlob) > 0 ){
-					sxi64 nv = 0;
-					SyStrToInt64((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),(void *)&nv,0);
-					nProd *= nv;
-				}
-			}
-		}
-		/* Point to the next entry */
-		pEntry = pEntry->pPrev; /* Reverse link */
-	}
-	/* Return product */
-	ph7_result_int64(pCtx,nProd);
-}
 /* number array_product(array $array )
  * (See block-block comment above)
  */
 PH7_PRIVATE int ph7_hashmap_product(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_hashmap *pMap;
-	ph7_value *pObj;
 	if( nArg < 1 ){
 		/* Missing arguments (arity is enforced upstream; defensive). */
 		ph7_result_int(pCtx,1);
@@ -3979,19 +3930,7 @@ PH7_PRIVATE int ph7_hashmap_product(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ph7_result_int(pCtx,1);
 		return PH7_OK;
 	}
-	/* If the first element is of type float,then perform floating
-	 * point computaion.Otherwise switch to int64 computaion.
-	 */
-	pObj = HashmapExtractNodeValue(pMap->pFirst);
-	if( pObj == 0 ){
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
-	}
-	if( pObj->iFlags & MEMOBJ_REAL ){
-		DoubleProd(pCtx,pMap);
-	}else{
-		Int64Prod(pCtx,pMap);
-	}
+	HashmapArithFold(pCtx,pMap,1);
 	return PH7_OK;
 }
 /*
