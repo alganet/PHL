@@ -843,6 +843,14 @@ static sxi32 VmJsonDecode(
 	){
 	ph7_value *pWorker; /* Worker variable */
 	sxi32 rc;
+	/* Nothing left to decode: the token stream is empty (a whitespace-only input
+	 * tokenizes to NO tokens at all, so pIn/pEnd are both the NULL base pointer of an
+	 * empty set) or a member value is missing after its colon ('{"a":'). Both are a
+	 * syntax error for php; without this screen the reads below dereference pEnd. */
+	if( pDecoder->pIn >= pDecoder->pEnd ){
+		*pDecoder->pErr = JSON_ERROR_SYNTAX;
+		return SXERR_ABORT;
+	}
 	/* Check if we do not nest to much */
 	if( pDecoder->rec_count >= pDecoder->rec_depth ){
 		/* Nesting limit reached,abort decoding immediately */
