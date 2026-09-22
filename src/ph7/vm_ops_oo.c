@@ -877,9 +877,11 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							PH7_MemObjToBool(&sIssetRet);
 							bSet = sIssetRet.x.iVal != 0;
 							PH7_MemObjRelease(&sIssetRet);
-							if( bSet && pInstr->iP2 == PH7_MEMBER_EMPTY ){
-								/* empty(): __isset said set — fetch the value via __get
-								 * (php) so emptiness is judged on the real value. */
+							if( bSet && VmMemberCtxWantsValue(pInstr->iP2) ){
+								/* empty() and `??`: __isset said set, so php goes on to
+								 * __get for the VALUE — emptiness is judged on it, and the
+								 * coalesce simply IS it (a null answer then takes the
+								 * default, which OP_NULLC does for free). */
 								ph7_class_method *pEmptyGet = PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1);
 								ph7_value sEmptyVal;
 								PH7_MemObjInit(pVm,&sEmptyVal);
@@ -911,12 +913,16 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							VM_EXIT_BREAK;
 						}
 					}
-					if( !VmMemberCtxIsLookup(pInstr->iP2) && pInstr->iP2 != PH7_MEMBER_LIST_TARGET
+					if( (!VmMemberCtxIsLookup(pInstr->iP2) || pInstr->iP2 == PH7_MEMBER_COALESCE)
+					 && pInstr->iP2 != PH7_MEMBER_LIST_TARGET
 					 && !VmMemberNextIsWrite(pInstr + 1) ){
 						/* Plain reads AND the ??=/subscript write-base (PH7_MEMBER_WRITE,
 						 * which php reads through __get); read-modify-write forms are
 						 * excluded (they vivified above — approximate, recorded), and so is
-						 * a destructuring target (a pure write — php never reads it). */
+						 * a destructuring target (a pure write — php never reads it).
+						 * `??` reaches here only when the class declares NO __isset — the
+						 * branch above has returned otherwise — so php's gate is absent and
+						 * __get answers on its own. */
 						pGetMagic = PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1);
 					}
 					if( pGetMagic && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'g') ){
@@ -1052,16 +1058,26 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								VM_EXIT_BREAK;
 							}
 							if( VmMemberCtxIsLookup(pInstr->iP2) ){
-								/* isset()/empty() on a hooked property calls the get hook
-								 * (php): isset is "get() !== null", empty tests the value. */
+								/* isset()/empty()/`??` on a hooked property all call the get
+								 * hook (php): isset is "get() !== null", empty tests the
+								 * value, and `??` IS the value. */
 								ph7_value sHookRet;
 								PH7_MemObjInit(pVm,&sHookRet);
 								if( PH7_VmHookGetAttrValue(pThis,pObjAttr,&sHookRet) != SXERR_NOTFOUND ){
-									if( pInstr->iP2 == PH7_MEMBER_ISSET ){
-										pTos->x.iVal = (sHookRet.iFlags & MEMOBJ_NULL) == 0;
-										MemObjSetType(pTos,MEMOBJ_BOOL);
+									if( !VmMemberCtxWantsValue(pInstr->iP2) ){
+										/* isset(): the trailing builtin tests NULL-ness of what
+										 * it is handed, so "not set" has to BE null. Storing
+										 * bool(FALSE) here made `isset($o->p)` answer TRUE for
+										 * a get hook returning null — the same non-null marker
+										 * convention the __isset path uses. */
+										if( (sHookRet.iFlags & MEMOBJ_NULL) == 0 ){
+											pTos->x.iVal = 1;
+											MemObjSetType(pTos,MEMOBJ_BOOL);
+										}else{
+											MemObjSetType(pTos,MEMOBJ_NULL);
+										}
 									}else{
-										/* empty(): hand the value to the truthiness test */
+										/* empty() judges the value; `??` IS the value. */
 										PH7_MemObjStore(&sHookRet,pTos);
 									}
 									pTos->nIdx = SXU32_HIGH;
@@ -1267,8 +1283,27 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								bSet = sIssetRet.x.iVal != 0;
 								PH7_MemObjRelease(&sIssetRet);
 							}
+							if( pInstr->iP2 == PH7_MEMBER_COALESCE && pIssetMagic == 0 ){
+								/* `??` with no __isset to gate it: php reads straight through
+								 * __get, exactly as it does for a MISSING property. The
+								 * __get dispatch just above this block is gated on a
+								 * non-lookup context, so answer here. */
+								ph7_class_method *pCoalGet = PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1);
+								if( pCoalGet && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'g') ){
+									ph7_value sCoalRet;
+									PH7_MemObjInit(pVm,&sCoalRet);
+									VmMagicGuardPush(pVm,(void *)pThis,&sName,'g');
+									PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__get",sizeof("__get")-1,&sName,&sCoalRet);
+									VmMagicGuardPop(pVm);
+									PH7_MemObjStore(&sCoalRet,pTos);
+									pTos->nIdx = SXU32_HIGH;
+									PH7_MemObjRelease(&sCoalRet);
+								}
+								PH7_ClassInstanceUnref(pThis);
+								VM_EXIT_BREAK;
+							}
 							if( bSet ){
-								if( pInstr->iP2 == PH7_MEMBER_EMPTY ){
+								if( VmMemberCtxWantsValue(pInstr->iP2) ){
 									ph7_class_method *pEmptyGet = PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1);
 									ph7_value sEmptyVal;
 									PH7_MemObjInit(pVm,&sEmptyVal);

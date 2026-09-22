@@ -2085,6 +2085,13 @@ enum ph7_vm_op {
 #define PH7_MEMBER_DEFPATH 7    /* D1 commit 2: deferred by-ref/by-value property call arg ($o->p). Reads a
                                  * present property (like READ); on a miss/magic, records the lvalue path
                                  * (MEMOBJ_AUX_DEFPATH) that OP_CALL re-walks in vivify or read+warn mode */
+#define PH7_MEMBER_COALESCE 9 /* `$o->p ?? d`: php's THIRD accessor level, between a read and an
+                               * isset(). Silent on a read-miss like isset()/empty(), but the
+                               * expression takes the property's VALUE, not a truth: __isset()
+                               * GATES the access and __get() (or a get HOOK) ANSWERS it, and
+                               * with no __isset declared the accessor answers on its own.
+                               * `??` used to compile as PH7_MEMBER_ISSET, so every accessor
+                               * path handed the coalesce a BOOLEAN. */
 #define PH7_MEMBER_LIST_TARGET 8 /* positional list-destructuring store target ([$o->p] = [...]): a pure
                                   * write whose value arrives only at the following OP_LOAD_LIST, which
                                   * writes the slot directly (with typed-slot enforcement). Skip the
@@ -3197,6 +3204,7 @@ PH7_PRIVATE int VmClassAllowsDynamicProps(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE int VmClassHasAttributeNamed(ph7_class *pClass,const char *zName,sxu32 nName);
 PH7_PRIVATE void VmRecreateDeclaredAttr(ph7_vm *pVm,ph7_class_instance *pThis,ph7_class_attr *pAttr,VmClassAttr **ppAttr);
 PH7_PRIVATE int VmMemberCtxIsLookup(sxi32 iP2);
+PH7_PRIVATE int VmMemberCtxWantsValue(sxi32 iP2);
 PH7_PRIVATE int VmMemberNextIsWrite(const VmInstr *pNext);
 PH7_PRIVATE sxi32 VmSpreadOwnExtra(ph7_vm *pVm, sxi32 iP1, ph7_value *pTos);
 PH7_PRIVATE VmCallArgMap *VmEffCallArgMap(ph7_vm *pVm, VmInstr *pInstr, ph7_value *pArg, sxu32 nActual, VmCallArgMap *pStorage);

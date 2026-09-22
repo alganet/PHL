@@ -4466,13 +4466,23 @@ PH7_PRIVATE void VmWarnCannotUseAsArray(ph7_vm *pVm, sxi32 iFlags)
 	PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,zMsg);
 }
 /*
- * A member access in isset()/empty() context (OP_MEMBER iP2 = PH7_MEMBER_ISSET/EMPTY) is a silent
- * lookup: a read-miss must not raise the "Undefined class attribute" / "Expecting class instance"
- * warnings, mirroring the array isset/empty path.
+ * A member access in isset()/empty()/`??` context (OP_MEMBER iP2 = PH7_MEMBER_ISSET/EMPTY/COALESCE)
+ * is a silent lookup: a read-miss must not raise the "Undefined class attribute" / "Expecting class
+ * instance" warnings, mirroring the array isset/empty path. What the access ANSWERS still differs
+ * per context — see VmMemberCtxWantsValue.
  */
 PH7_PRIVATE int VmMemberCtxIsLookup(sxi32 iP2)
 {
-	return iP2 == PH7_MEMBER_ISSET || iP2 == PH7_MEMBER_EMPTY;
+	return iP2 == PH7_MEMBER_ISSET || iP2 == PH7_MEMBER_EMPTY || iP2 == PH7_MEMBER_COALESCE;
+}
+/*
+ * Of the three silent lookups, the two that take the property's VALUE rather than a truth:
+ * empty() judges emptiness on the value, and `??` IS the value (php's BP_VAR_IS read). Only
+ * isset() stops at the truth.
+ */
+PH7_PRIVATE int VmMemberCtxWantsValue(sxi32 iP2)
+{
+	return iP2 == PH7_MEMBER_EMPTY || iP2 == PH7_MEMBER_COALESCE;
 }
 /*
  * In-flight magic-accessor guard (band A #3a) — php's property guard.

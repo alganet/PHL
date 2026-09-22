@@ -158,6 +158,12 @@ struct LangConstruct
                                            * EXPR_FLAG_LOAD_IDX_ISSET, which also switches LOAD_IDX to
                                            * offsetExists — wrong for `$o[$k] ?? d`, which needs the
                                            * offsetGet value. Emits OP_LOAD iP2=1. */
+#define EXPR_FLAG_MEMBER_COALESCE   0x400 /* Sub-tree is the member LHS of `??`: tag a target OP_MEMBER
+                                           * iP2=PH7_MEMBER_COALESCE. Distinct from
+                                           * EXPR_FLAG_LOAD_IDX_ISSET, which the coalesce used to
+                                           * borrow: both are SILENT on a miss, but isset() context
+                                           * makes every accessor answer a truth where `??` needs the
+                                           * accessor's VALUE. */
 #define EXPR_FLAG_DEFER_ARG         0x200 /* A plain `$var` call argument whose callee signature is unknown
                                            * at compile time. Emits OP_LOAD iP1=1,iP2=3 (deferred): an
                                            * undefined variable is NOT created and does NOT warn at load;

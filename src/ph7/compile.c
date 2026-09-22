@@ -1106,7 +1106,8 @@ static sxi32 GenStateEmitExprCode(
 				 * (undefined base auto-defers via commit 1) and to the LOAD_IDX/MEMBER, which
 				 * record the lvalue path on a lookup miss. Static `::` and nullsafe `?->` stay
 				 * eager. */
-				if( (iFlags & (EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_EMPTY|EXPR_FLAG_LOAD_IDX_UNSET)) == 0
+				if( (iFlags & (EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_EMPTY|EXPR_FLAG_LOAD_IDX_UNSET
+				               |EXPR_FLAG_MEMBER_COALESCE)) == 0
 				 && (iArgFlags & EXPR_FLAG_RDONLY_LOAD) /* not a known builtin by-ref slot (kept eager above) */
 				 && (apNode[n]->iFlags & (EXPR_NODE_NAMED_ARG|EXPR_NODE_SPREAD)) == 0
 				 && ( (apNode[n]->pOp == 0 && apNode[n]->xCode == PH7_CompileVariable)
@@ -1291,13 +1292,17 @@ static sxi32 GenStateEmitExprCode(
 					&& (pNode->pLeft->pOp->iOp == EXPR_OP_ARROW
 						|| pNode->pLeft->pOp->iOp == EXPR_OP_NULLSAFE_ARROW
 						|| pNode->pLeft->pOp->iOp == EXPR_OP_DC) ){
-					/* A member-access LHS additionally takes OP_MEMBER's silent
-					 * lookup (iP2 = ISSET) so an uninitialized typed property
-					 * yields the default instead of an Error. A SUBSCRIPT LHS must
-					 * NOT: LOAD_IDX's ISSET mode means offsetExists (a bool), while
-					 * `$o[$k] ?? d` needs the offsetGet value — OP_NULLC already
-					 * handles that path. */
-					iLeftFlags |= EXPR_FLAG_LOAD_IDX_ISSET;
+					/* A member-access LHS additionally takes OP_MEMBER's SILENT
+					 * lookup so an uninitialized typed property yields the default
+					 * instead of an Error. It used to borrow isset()'s context for
+					 * that, which is the same mistake the comment below records for
+					 * subscripts: silence is shared, but isset() context makes every
+					 * ACCESSOR answer a truth, and `$o->p ?? d` needs the accessor's
+					 * VALUE — so `??` has its own member context. A SUBSCRIPT LHS
+					 * still takes neither: LOAD_IDX's ISSET mode means offsetExists
+					 * (a bool), while `$o[$k] ?? d` needs the offsetGet value —
+					 * OP_NULLC already handles that path. */
+					iLeftFlags |= EXPR_FLAG_MEMBER_COALESCE;
 				}
 			}
 			if( iVmOp == PH7_OP_ERR_CTRL ){
@@ -1411,6 +1416,7 @@ static sxi32 GenStateEmitExprCode(
 			sxi32 iChildMask = ~(EXPR_FLAG_LOAD_IDX_STORE
 				|EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_UNSET
 				|EXPR_FLAG_LOAD_IDX_EMPTY|EXPR_FLAG_MEMBER_WRITE
+				|EXPR_FLAG_MEMBER_COALESCE
 				|EXPR_FLAG_QUIET_VAR|EXPR_FLAG_RMW_LOAD|EXPR_FLAG_DEFER_ARG);
 			/* Recurse and generate bytecodes for array index */
 			apNode = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
@@ -1731,6 +1737,8 @@ static sxi32 GenStateEmitExprCode(
 					iP2 = PH7_MEMBER_ISSET;
 				}else if( iFlags & EXPR_FLAG_LOAD_IDX_EMPTY ){
 					iP2 = PH7_MEMBER_EMPTY;
+				}else if( iFlags & EXPR_FLAG_MEMBER_COALESCE ){
+					iP2 = PH7_MEMBER_COALESCE;
 				}else if( iFlags & EXPR_FLAG_MEMBER_WRITE ){
 					/* Write-lvalue base ($o->arr[$k]=v, $o->p ??= v): auto-create a missing prop. */
 					iP2 = PH7_MEMBER_WRITE;
