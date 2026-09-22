@@ -333,10 +333,10 @@
 	/* This one definition serves every spelling — function names are case-insensitive
 	   (hFunction, vm.c). The second, byte-identical `Dir()` copy that used to sit here
 	   was PH7's manual hack for that, the same one the keyword table had. */\
-	"function dir(string $path){"\
-	"   return new Directory($path);"\
+	"function dir(string $directory){"\
+	"   return new Directory($directory);"\
 	"}"\
-	"function scandir(string $directory,int $sort_order = SCANDIR_SORT_ASCENDING)"\
+	"function scandir(string $directory,int $sorting_order = SCANDIR_SORT_ASCENDING)"\
     "{"\
 	"  if( func_num_args() < 1 ){ return FALSE; }"\
 	"  $aDir = array();"\
@@ -350,18 +350,18 @@
 	"     order alone and EVERY other value sorts -- ascending only for the exact"\
 	"     SORT_ASCENDING, descending otherwise. PHL left an unknown value UNSORTED,"\
 	"     which reads as SORT_NONE. */"\
-	"  if( $sort_order != SCANDIR_SORT_NONE ){"\
-	"      if( $sort_order == SCANDIR_SORT_ASCENDING ){ sort($aDir); }"\
+	"  if( $sorting_order != SCANDIR_SORT_NONE ){"\
+	"      if( $sorting_order == SCANDIR_SORT_ASCENDING ){ sort($aDir); }"\
 	"      else { rsort($aDir); }"\
 	"  }"\
 	"  return $aDir;"\
 	"}"\
-	"function glob(string $pattern,int $iFlags = 0){"\
+	"function glob(string $pattern,int $flags = 0){"\
 	"/* php rejects a mask holding any bit outside GLOB_AVAILABLE_FLAGS with a warning"\
 	"   and FALSE. PHL accepted anything and just tested the bits it knew, so a stale"\
 	"   script passing the OLD PHL glob values (1/2/4/...) silently got a plain glob."\
 	"   The literal is GLOB_AVAILABLE_FLAGS; PHL does not define that constant yet. */"\
-	"if( $iFlags & ~(GLOB_ERR|GLOB_MARK|GLOB_NOCHECK|GLOB_NOSORT|GLOB_BRACE|GLOB_NOESCAPE|GLOB_ONLYDIR) ){"\
+	"if( $flags & ~(GLOB_ERR|GLOB_MARK|GLOB_NOCHECK|GLOB_NOSORT|GLOB_BRACE|GLOB_NOESCAPE|GLOB_ONLYDIR) ){"\
 	"  trigger_error('glob(): At least one of the passed flags is invalid or not supported on this platform', E_USER_WARNING);"\
 	"  return FALSE;"\
 	"}"\
@@ -386,11 +386,11 @@
 	"	if( $rc ){"\
 	"	   $zFull = $prefix . $pEntry;"\
 	"	   if( is_dir($zDir . '/' . $pEntry) ){"\
-	"	      if( $iFlags & GLOB_MARK ){"\
+	"	      if( $flags & GLOB_MARK ){"\
 	"		     /* Adds a slash to each directory returned */"\
 	"			 $zFull .= DIRECTORY_SEPARATOR;"\
 	"		  }"\
-	"	   }else if( $iFlags & GLOB_ONLYDIR ){"\
+	"	   }else if( $flags & GLOB_ONLYDIR ){"\
 	"	     /* Not a directory,ignore */"\
 	"		 continue;"\
 	"	   }"\
@@ -400,11 +400,11 @@
 	" }"\
 	"/* Close the handle */"\
 	"closedir($pHandle);"\
-	"if( ($iFlags & GLOB_NOSORT) == 0 ){"\
+	"if( ($flags & GLOB_NOSORT) == 0 ){"\
 	"  /* Sort the array */"\
 	"  sort($pArray);"\
 	"}"\
-	"if( ($iFlags & GLOB_NOCHECK) && sizeof($pArray) < 1 ){"\
+	"if( ($flags & GLOB_NOCHECK) && sizeof($pArray) < 1 ){"\
 	"  /* Return the search pattern if no files matching were found */"\
 	"  $pArray[] = $pattern;"\
 	"}"\
@@ -424,11 +424,11 @@
    "  return $pHandle;"\
    "}"\
    "/* php's number_format(): missing entirely from PH7. */"\
-   "function number_format($num, $decimals = 0, $dec_point = '.', $thousands_sep = ','){"\
+   "function number_format($num, $decimals = 0, $decimal_separator = '.', $thousands_separator = ','){"\
    "  $num = (float)$num;"\
    "  $decimals = (int)$decimals;"\
-   "  if( $dec_point === null ){ $dec_point = '.'; }"\
-   "  if( $thousands_sep === null ){ $thousands_sep = ','; }"\
+   "  if( $decimal_separator === null ){ $decimal_separator = '.'; }"\
+   "  if( $thousands_separator === null ){ $thousands_separator = ','; }"\
    "  /* round() first: sprintf uses banker's rounding, php's number_format rounds"\
    "   * half AWAY FROM ZERO (number_format(0.5) is '1', not '0'). A NEGATIVE precision"\
    "   * rounds to tens/hundreds (php 8: number_format(1.5,-1) is '0'); the displayed"\
@@ -448,15 +448,15 @@
    "  for( $i = $len - 1 ; $i >= 0 ; $i-- ){"\
    "    $out = $int[$i] . $out;"\
    "    $c++;"\
-   "    if( $c % 3 === 0 && $i > 0 ){ $out = $thousands_sep . $out; }"\
+   "    if( $c % 3 === 0 && $i > 0 ){ $out = $thousands_separator . $out; }"\
    "  }"\
-   "  if( $fdec > 0 ){ $out = $out . $dec_point . $frac; }"\
+   "  if( $fdec > 0 ){ $out = $out . $decimal_separator . $frac; }"\
    "  if( $neg ){ $out = '-' . $out; }"\
    "  return $out;"\
    "}"\
-   "function is_nan($v){ $v = (float)$v; return $v != $v; }"\
-   "function is_infinite($v){ $v = (float)$v; return $v == INF || $v == -INF; }"\
-   "function is_finite($v){ $v = (float)$v; return !is_nan($v) && !is_infinite($v); }"\
+   "function is_nan($num){ $num = (float)$num; return $num != $num; }"\
+   "function is_infinite($num){ $num = (float)$num; return $num == INF || $num == -INF; }"\
+   "function is_finite($num){ $num = (float)$num; return !is_nan($num) && !is_infinite($num); }"\
    "/* php's version_compare: canonicalise (separators + digit/alpha boundaries all"\
    " * become '.'), then compare parts with the special dev<alpha<beta<RC<#<pl ordering. */"\
    "function __phl_vcanon($v){"\
@@ -517,11 +517,11 @@
    "  foreach( explode(',', (string)$s) as $e ){ $e = trim($e); if( $e !== '' ){ $out[strtolower($e)] = $e; } }"\
    "  return $out;"\
    "}"\
-   "function extension_loaded($name){"\
+   "function extension_loaded($extension){"\
    "  static $ext = array('core' => 1, 'standard' => 1, 'pcre' => 1, 'json' => 1,"\
    "   'ctype' => 1, 'date' => 1, 'spl' => 1, 'reflection' => 1, 'mbstring' => 1,"\
    "   'hash' => 1, 'filter' => 1, 'session' => 1" PHL_EXT_LOADED_LIBXML ");"\
-   "  $n = strtolower((string)$name);"\
+   "  $n = strtolower((string)$extension);"\
    "  if( isset($ext[$n]) ){ return true; }"\
    "  $stub = __phl_stub_exts();"\
    "  return isset($stub[$n]);"\
@@ -534,16 +534,16 @@
    "  return $base;"\
    "}"\
    "/* Inverse of bin2hex() */"\
-   "function hex2bin($str){"\
-   "  $str = (string)$str;"\
-   "  $len = strlen($str);"\
+   "function hex2bin($string){"\
+   "  $string = (string)$string;"\
+   "  $len = strlen($string);"\
    "  if( $len % 2 !== 0 ){"\
    "    trigger_error('hex2bin(): Hexadecimal input string must have an even length', E_USER_WARNING);"\
    "    return false;"\
    "  }"\
    "  $out = '';"\
    "  for( $i = 0 ; $i < $len ; $i += 2 ){"\
-   "    $pair = substr($str, $i, 2);"\
+   "    $pair = substr($string, $i, 2);"\
    "    if( !ctype_xdigit($pair) ){"\
    "      trigger_error('hex2bin(): Input string must be hexadecimal string', E_USER_WARNING);"\
    "      return false;"\
@@ -553,14 +553,14 @@
    "  return $out;"\
    "}"\
    "/* Division that never throws: INF/-INF/NAN like php */"\
-   "function fdiv($a, $b){"\
-   "  $a = (float)$a;"\
-   "  $b = (float)$b;"\
-   "  if( $b == 0.0 ){"\
-   "    if( $a == 0.0 || is_nan($a) ){ return NAN; }"\
-   "    return $a > 0 ? INF : -INF;"\
+   "function fdiv($num1, $num2){"\
+   "  $num1 = (float)$num1;"\
+   "  $num2 = (float)$num2;"\
+   "  if( $num2 == 0.0 ){"\
+   "    if( $num1 == 0.0 || is_nan($num1) ){ return NAN; }"\
+   "    return $num1 > 0 ? INF : -INF;"\
    "  }"\
-   "  return $a / $b;"\
+   "  return $num1 / $num2;"\
    "}"\
    "function checkdate($month, $day, $year){"\
    "  $month = (int)$month; $day = (int)$day; $year = (int)$year;"\
@@ -572,10 +572,10 @@
    "  }"\
    "  return $day <= $max;"\
    "}"\
-   "function is_iterable($v){ return is_array($v) || ($v instanceof Traversable); }"\
-   "function is_countable($v){ return is_array($v) || ($v instanceof Countable); }"\
+   "function is_iterable($value){ return is_array($value) || ($value instanceof Traversable); }"\
+   "function is_countable($value){ return is_array($value) || ($value instanceof Countable); }"\
    "function key_exists($key, $array){ return array_key_exists($key, $array); }"\
-   "function doubleval($v){ return (float)$v; }"\
+   "function doubleval($value){ return (float)$value; }"\
    "function array_count_values($array){"\
    "  $out = array();"\
    "  foreach( $array as $v ){"\
@@ -595,8 +595,8 @@
    "  }"\
    "  return $out;"\
    "}"\
-   "function array_replace_recursive($array, ...$others){"\
-   "  foreach( $others as $o ){"\
+   "function array_replace_recursive($array, ...$replacements){"\
+   "  foreach( $replacements as $o ){"\
    "    foreach( $o as $k => $v ){"\
    "      if( is_array($v) && isset($array[$k]) && is_array($array[$k]) ){"\
    "        $array[$k] = array_replace_recursive($array[$k], $v);"\
@@ -607,8 +607,8 @@
    "  }"\
    "  return $array;"\
    "}"\
-   "function class_uses($what, $autoload = true){"\
-   "  $c = is_object($what) ? get_class($what) : (string)$what;"\
+   "function class_uses($object_or_class, $autoload = true){"\
+   "  $c = is_object($object_or_class) ? get_class($object_or_class) : (string)$object_or_class;"\
    "  if( !class_exists($c) ){ return false; }"\
    "  return array();  /* PHL has no traits yet -- always the empty set */"\
    "}"\
@@ -617,7 +617,7 @@
     * where the EVEN ones report the bytes that were NOT. PH7 implemented 0/1/3 \
     * and let 2 and 4 fall through to mode 0's full table: the exact complement \
     * of the answer asked for, silently. Any other mode is php's ValueError. */\
-   "function count_chars($str, $mode = 0){"\
+   "function count_chars($string, $mode = 0){"\
    "  if( is_array($mode) || is_object($mode) || is_resource($mode)"\
    "   || (is_string($mode) && !is_numeric($mode)) ){"\
    "    throw new TypeError('count_chars(): Argument #2 ($mode) must be of type int, ' . __php_zpp_type($mode) . ' given');"\
@@ -626,18 +626,18 @@
    "  if( $mode < 0 || $mode > 4 ){"\
    "    throw new ValueError('count_chars(): Argument #2 ($mode) must be between 0 and 4 (inclusive)');"\
    "  }"\
-   "  $str = (string)$str;"\
+   "  $string = (string)$string;"\
    "  $counts = array();"\
    "  for( $i = 0 ; $i < 256 ; $i++ ){ $counts[$i] = 0; }"\
-   "  $len = strlen($str);"\
-   "  for( $i = 0 ; $i < $len ; $i++ ){ $b = ord($str[$i]); $counts[$b] = $counts[$b] + 1; }"\
+   "  $len = strlen($string);"\
+   "  for( $i = 0 ; $i < $len ; $i++ ){ $b = ord($string[$i]); $counts[$b] = $counts[$b] + 1; }"\
    "  if( $mode == 0 ){ return $counts; }"\
    "  $used = ($mode == 1 || $mode == 3);"\
-   "  $string = ($mode == 3 || $mode == 4);"\
-   "  $out = $string ? '' : array();"\
+   "  $asStr = ($mode == 3 || $mode == 4);"\
+   "  $out = $asStr ? '' : array();"\
    "  foreach( $counts as $b => $n ){"\
    "    if( ($n > 0) !== $used ){ continue; }"\
-   "    if( $string ){ $out = $out . chr($b); } else { $out[$b] = $n; }"\
+   "    if( $asStr ){ $out = $out . chr($b); } else { $out[$b] = $n; }"\
    "  }"\
    "  return $out;"\
    "}"\
@@ -651,8 +651,8 @@
    "  }"\
    "  return $n;"\
    "}"\
-   "function long2ip($n){"\
-   "  $n = (int)$n;"\
+   "function long2ip($ip){"\
+   "  $n = (int)$ip;"\
    "  return (($n >> 24) & 255) . '.' . (($n >> 16) & 255) . '.' . (($n >> 8) & 255) . '.' . ($n & 255);"\
    "}"\
    "function preg_filter($pattern, $replacement, $subject, $limit = -1){"\
@@ -667,8 +667,8 @@
    "  $r = preg_replace($pattern, $replacement, (string)$subject, $limit, $cnt);"\
    "  return $cnt > 0 ? $r : null;"\
    "}"\
-   "function preg_replace_callback_array($patterns, $subject, $limit = -1){"\
-   "  foreach( $patterns as $pat => $cb ){"\
+   "function preg_replace_callback_array($pattern, $subject, $limit = -1){"\
+   "  foreach( $pattern as $pat => $cb ){"\
    "    $subject = preg_replace_callback($pat, $cb, $subject, $limit);"\
    "  }"\
    "  return $subject;"\
@@ -693,16 +693,16 @@
    "  }"\
    "  return $out;"\
    "}"\
-   "function class_implements($what, $autoload = true){"\
-   "  $c = is_object($what) ? get_class($what) : (string)$what;"\
+   "function class_implements($object_or_class, $autoload = true){"\
+   "  $c = is_object($object_or_class) ? get_class($object_or_class) : (string)$object_or_class;"\
    "  if( !class_exists($c) && !interface_exists($c) ){ return false; }"\
    "  $out = array();"\
    "  $r = new ReflectionClass($c);"\
    "  foreach( $r->getInterfaceNames() as $i ){ $out[$i] = $i; }"\
    "  return $out;"\
    "}"\
-   "function class_parents($what, $autoload = true){"\
-   "  $c = is_object($what) ? get_class($what) : (string)$what;"\
+   "function class_parents($object_or_class, $autoload = true){"\
+   "  $c = is_object($object_or_class) ? get_class($object_or_class) : (string)$object_or_class;"\
    "  if( !class_exists($c) ){ return false; }"\
    "  $out = array();"\
    "  $r = new ReflectionClass($c);"\
@@ -884,14 +884,14 @@
    "function mb_ltrim($string, $characters = null, $encoding = null){ return __phl_mb_trim($string, $characters, true, false); }"\
    "function mb_rtrim($string, $characters = null, $encoding = null){ return __phl_mb_trim($string, $characters, false, true); }"\
    "/* Creates a temporary file and returns its name */"\
-   "function tempnam(string $zDir = sys_get_temp_dir() /* Symisc eXtension */,string $zPrefix = 'PH7')"\
+   "function tempnam(string $directory = sys_get_temp_dir() /* Symisc eXtension */,string $prefix = 'PH7')"\
    "{"\
    "   /* php CREATES the file (empty, mode 0600) and guarantees the name is unique --"\
    "    * returning a bare name left the caller with a path that does not exist, so"\
    "    * file_exists() was false and unlink() failed on it. */"\
-   "   $zDir = rtrim($zDir, DIRECTORY_SEPARATOR);"\
+   "   $directory = rtrim($directory, DIRECTORY_SEPARATOR);"\
    "   for( $i = 0 ; $i < 64 ; ++$i ){"\
-   "     $zPath = $zDir.DIRECTORY_SEPARATOR.$zPrefix.rand_str(12);"\
+   "     $zPath = $directory.DIRECTORY_SEPARATOR.$prefix.rand_str(12);"\
    "     if( file_exists($zPath) ){ continue; }"\
    "     $pHandle = @fopen($zPath,'x');"\
    "     if( $pHandle === false ){ continue; }"\
@@ -901,9 +901,9 @@
    "   }"\
    "   return false;"\
    "}"\
-   "function array_unshift(&$pArray ){"\
+   "function array_unshift(&$array ){"\
    " if( func_num_args() < 1 ){ throw new ArgumentCountError('array_unshift() expects at least 1 argument, 0 given'); }"\
-   " if( !is_array($pArray) ){ throw new TypeError('array_unshift(): Argument #1 ($array) must be of type array, ' . __php_zpp_type($pArray) . ' given'); }"\
+   " if( !is_array($array) ){ throw new TypeError('array_unshift(): Argument #1 ($array) must be of type array, ' . __php_zpp_type($array) . ' given'); }"\
    "/* Copy arguments */"\
    "$nArgs = func_num_args();"\
    "$pNew = array();"\
@@ -911,12 +911,12 @@
     " $pNew[] = func_get_arg($i);"\
     "}"\
    	"/* Make a copy of the old entries */"\
-	"$pOld = array_copy($pArray);"\
+	"$pOld = array_copy($array);"\
 	"/* Erase */"\
-	"array_erase($pArray);"\
+	"array_erase($array);"\
 	"/* Unshift */"\
-	"$pArray = array_merge($pNew,$pOld);"\
-	"return sizeof($pArray);"\
+	"$array = array_merge($pNew,$pOld);"\
+	"return sizeof($array);"\
     "}"\
 	"function array_merge_recursive(){"\
 	" if( func_num_args() < 1 ){ return array(); }"\
@@ -1021,22 +1021,22 @@
     " }"\
 	" return $min;"\
 	"}"\
-	"function fileowner(string $file){"\
-    " $a = stat($file);"\
+	"function fileowner(string $filename){"\
+    " $a = stat($filename);"\
 	" if( !is_array($a) ){"\
 	"	return false;"\
 	" }"\
 	" return $a['uid'];"\
     "}"\
-    "function filegroup(string $file){"\
-	" $a = stat($file);"\
+    "function filegroup(string $filename){"\
+	" $a = stat($filename);"\
 	" if( !is_array($a) ){"\
 	"	return false;"\
 	" }"\
 	" return $a['gid'];"\
     "}"\
-	 "function fileinode(string $file){"\
-	" $a = stat($file);"\
+	 "function fileinode(string $filename){"\
+	" $a = stat($filename);"\
 	" if( !is_array($a) ){"\
 	"	return false;"\
 	" }"\
