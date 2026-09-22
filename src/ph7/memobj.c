@@ -106,16 +106,26 @@ static sxi64 MemObjRealToInt(ph7_value *pObj)
   ** So we define our own static constants here using nothing
   ** larger than a 32-bit integer constant.
   */
-  static const sxi64 maxInt = LARGEST_INT64;
   static const sxi64 minInt = SMALLEST_INT64;
   ph7_real r = pObj->rVal;
-  if( r<(ph7_real)minInt ){
-    return minInt;
-  }else if( r>(ph7_real)maxInt ){
-    /* minInt is correct here - not maxInt.  It turns out that assigning
-    ** a very large positive number to an integer results in a very large
-    ** negative integer.  This makes no sense, but it is what x86 hardware
-    ** does so for compatibility we will do the same in software. */
+  /* The bounds are tested in DOUBLE space, and the arithmetic there is exact:
+  ** (ph7_real)minInt is -2^63 to the bit, so -(ph7_real)minInt is +2^63 -- one
+  ** past the range -- and no double exists between LARGEST_INT64 and it. Hence
+  ** `>=` on the way up and `<` on the way down.
+  **
+  ** The upper test used to be `r > (ph7_real)maxInt`, and (ph7_real)maxInt ROUNDS
+  ** UP to 2^63: a double of exactly 2^63 passed the guard and reached `(sxi64)r`,
+  ** which is undefined behaviour. x86 happens to answer minInt there -- the same
+  ** value this returns -- but aarch64 saturates to maxInt, so PHL answered two
+  ** different values for `(int)9.2233720368547758E+18` on the two platforms it
+  ** builds for. NaN compares false against every bound and reached the same cast,
+  ** so it is screened here too.
+  **
+  ** minInt is deliberate for BOTH directions, not maxInt going up: it is the
+  ** answer x86's cast produced, and the corpus pins it. php's own answer for a
+  ** non-representable float is a modular wrap (and a warning) -- a divergence
+  ** recorded in §2, not something this boundary fix changes. */
+  if( PH7_IS_NAN(r) || r < (ph7_real)minInt || r >= -(ph7_real)minInt ){
     return minInt;
   }else{
     return (sxi64)r;
