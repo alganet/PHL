@@ -16,15 +16,22 @@
 /*
  * Return TRUE if c is a valid digit for the given numeric base.
  *   base 16 => SyisHex (0-9, a-f, A-F)
+ *   base  8 => 0-7
  *   base  2 => 0 or 1
  *   base 10 => SyisDigit (0-9, also used for octal literals which share the
  *              decimal scan in the lexer)
  */
 static int GenStateIsBaseDigit(int c, int base)
 {
-	if( base == 16 ){ return SyisHex(c); }
+	/* ASCII arithmetic, not <ctype.h>: the byte can be any value in a string
+	 * literal, and isdigit()/isxdigit() are both locale-dependent and undefined
+	 * for a negative char. */
+	if( base == 16 ){
+		return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+	}
+	if( base == 8 ){ return c >= '0' && c <= '7'; }
 	if( base == 2 ){ return c == '0' || c == '1'; }
-	return SyisDigit(c);
+	return c >= '0' && c <= '9';
 }
 /*
  * Given the raw text of a numeric literal token, locate a misplaced PHP 7.4
@@ -634,6 +641,25 @@ static sxi32 GenStateProcessStringExpression(
 	return rc;
 }
 /*
+ * Line number of a POSITION inside the string body being compiled: the
+ * token's line plus every newline before it. php reports the offending
+ * construct's own line, not the string's opening line, so every diagnostic
+ * raised from inside a body -- an escape sequence, a malformed subscript --
+ * goes through here. A heredoc body starts on the line after the '<<<'
+ * marker, hence the +1.
+ */
+static sxu32 GenStateStringEscLine(ph7_gen_state *pGen,const char *zPos,int bHeredoc)
+{
+	const char *z = pGen->pIn->sData.zString;
+	sxu32 nLine = pGen->pIn->nLine + (bHeredoc ? 1 : 0);
+	for( ; z < zPos ; z++ ){
+		if( z[0] == '\n' ){
+			nLine++;
+		}
+	}
+	return nLine;
+}
+/*
  * TRUE when c can OPEN a php label — the byte class the engine's own identifier
  * scanner uses (lex.c): a letter, '_', or a UTF-8 lead byte. php's own class is
  * [a-zA-Z_\x80-\xff], one byte wider; a 0x80-0xbf lead is never
@@ -666,6 +692,196 @@ static void GenStateSkipStringLabel(const char **pz,const char *zEnd)
 		break;
 	}
 	*pz = zIn;
+}
+/*
+ * Scan one php INTEGER literal at z in the flavour php's simple-syntax subscript
+ * accepts: LNUM, HNUM (0x...), BNUM (0b...) or ONUM (0o...), each allowing '_'
+ * separators BETWEEN digits. There is no float and no exponent in this grammar --
+ * "$a[1.5]" and "$a[1e2]" are php parse errors. Returns the byte after the
+ * literal, or z itself when the cursor is not on one.
+ */
+static const char * GenStateScanOffsetNumber(const char *z,const char *zEnd)
+{
+	const char *zStart = z;
+	int base = 10;
+	if( z >= zEnd || !GenStateIsBaseDigit((unsigned char)z[0],10) ){
+		return z;
+	}
+	if( z[0] == '0' && &z[1] < zEnd ){
+		int b = 0;
+		if( z[1] == 'x' || z[1] == 'X' ){
+			b = 16;
+		}else if( z[1] == 'b' || z[1] == 'B' ){
+			b = 2;
+		}else if( z[1] == 'o' || z[1] == 'O' ){
+			b = 8;
+		}
+		/* A prefix with no digit behind it is not a literal: php then matches the
+		 * lone "0" and lexes the rest as a label ("$a[0x]" is a parse error). */
+		if( b && &z[2] < zEnd && GenStateIsBaseDigit((unsigned char)z[2],b) ){
+			base = b;
+			z += 2;
+		}
+	}
+	while( z < zEnd ){
+		if( GenStateIsBaseDigit((unsigned char)z[0],base) ){
+			z++;
+			continue;
+		}
+		if( z[0] == '_' && z > zStart && GenStateIsBaseDigit((unsigned char)z[-1],base)
+			&& &z[1] < zEnd && GenStateIsBaseDigit((unsigned char)z[1],base) ){
+			z += 2;
+			continue;
+		}
+		break;
+	}
+	return z;
+}
+/*
+ * TRUE when the digit run [z,zEnd) is php's CANONICAL spelling of an INTEGER
+ * offset: "0", or [1-9][0-9]* that fits a signed 64-bit int. php carries every
+ * other spelling -- leading zeros, a base prefix, '_' separators, a magnitude
+ * past the int range -- as the raw TEXT, i.e. a STRING key. (zend also spells
+ * out any 19-digit run, but its hashmap folds that straight back to an integer
+ * key, so the two agree on everything an array can observe.)
+ */
+static int GenStateOffsetIsCanonicalInt(const char *z,const char *zEnd,int bNeg)
+{
+	sxu32 n = (sxu32)(zEnd - z);
+	sxu32 i;
+	if( n < 1 ){
+		return FALSE;
+	}
+	if( z[0] == '0' ){
+		/* "0" alone is the integer key 0; "-0", "00" and "007" are text */
+		return n == 1 && !bNeg;
+	}
+	for( i = 0 ; i < n ; ++i ){
+		if( !GenStateIsBaseDigit((unsigned char)z[i],10) ){
+			return FALSE;
+		}
+	}
+	/* INT64_MAX bounds BOTH signs here, not INT64_MIN: the rewrite re-emits a
+	 * canonical offset as SOURCE, and no php expression can spell INT64_MIN as a
+	 * literal (the '-' is unary minus over an out-of-range literal, which
+	 * promotes to a float). "-9223372036854775808" therefore takes the string
+	 * path, where the hashmap's numeric-string rule folds it back to the integer
+	 * key -- and where an ArrayAccess offsetGet() receives php's own string. */
+	if( n > 19 || (n == 19 && SyMemcmp(z,"9223372036854775807",19) > 0) ){
+		return FALSE;
+	}
+	return TRUE;
+}
+/*
+ * php's parse error for a malformed simple-syntax subscript. zBad points at the
+ * first byte php would refuse; iExpect picks which of php's "expecting" tails
+ * applies -- 1 after an otherwise good offset, 2 after a lone '-', 0 at the
+ * offset's start. Always returns SXERR_ABORT so the caller can just pass it on.
+ */
+static sxi32 GenStateOffsetSyntaxError(ph7_gen_state *pGen,const char *zBad,const char *zEnd,int iExpect,int bHeredoc)
+{
+	SyString sTok;
+	sxu32 n = (sxu32)(zEnd - zBad);
+	if( n < 1 ){
+		/* Empty offset: name the ']' that zEnd points at */
+		n = 1;
+	}
+	if( n > 16 ){
+		n = 16;
+	}
+	SyStringInitFromBuf(&sTok,zBad,n);
+	if( iExpect == 1 ){
+		PH7_GenCompileError(&(*pGen),E_PARSE,GenStateStringEscLine(&(*pGen),zBad,bHeredoc),
+			"syntax error, unexpected token \"%z\", expecting \"]\"",&sTok);
+	}else if( iExpect == 2 ){
+		PH7_GenCompileError(&(*pGen),E_PARSE,GenStateStringEscLine(&(*pGen),zBad,bHeredoc),
+			"syntax error, unexpected token \"%z\", expecting number",&sTok);
+	}else{
+		PH7_GenCompileError(&(*pGen),E_PARSE,GenStateStringEscLine(&(*pGen),zBad,bHeredoc),
+			"syntax error, unexpected token \"%z\", expecting \"-\" or identifier or variable or number",&sTok);
+	}
+	return SXERR_ABORT;
+}
+/*
+ * Compile the SUBSCRIPT of a simple-syntax "$name[offset]" interpolation:
+ * [zKey,zKeyEnd) is the raw text between the brackets, and the php-equivalent
+ * "[...]" source is appended to pOut.
+ *
+ * php does NOT parse this as an expression. zend's `encaps_var_offset` grammar
+ * admits exactly four things and nothing else -- a bare LABEL (always the STRING
+ * key, never a constant), an integer literal, '-' plus an integer literal, or a
+ * "$name" -- and only a canonical decimal is an INTEGER key. PH7 handed the text
+ * to the expression compiler, which read every integer SPELLING as a number and
+ * accepted shapes php rejects outright.
+ */
+static sxi32 GenStateCompileStringOffset(
+	ph7_gen_state *pGen,
+	const char *zKey,
+	const char *zKeyEnd,
+	SyBlob *pOut,
+	int bHeredoc
+	)
+{
+	const char *z = zKey;
+	int bNeg = 0;
+	if( z >= zKeyEnd ){
+		return GenStateOffsetSyntaxError(&(*pGen),z,zKeyEnd,0,bHeredoc);
+	}
+	if( z[0] == '$' ){
+		/* "$name" -- the one offset php actually EVALUATES; pass it through */
+		const char *zName = &z[1];
+		if( zName >= zKeyEnd || !GEN_STRING_LABEL_START(zName[0]) ){
+			return GenStateOffsetSyntaxError(&(*pGen),z,zKeyEnd,0,bHeredoc);
+		}
+		z = zName;
+		GenStateSkipStringLabel(&z,zKeyEnd);
+		if( z != zKeyEnd ){
+			return GenStateOffsetSyntaxError(&(*pGen),z,zKeyEnd,1,bHeredoc);
+		}
+		SyBlobAppend(pOut,"[",sizeof(char));
+		SyBlobAppend(pOut,zKey,(sxu32)(zKeyEnd - zKey));
+		SyBlobAppend(pOut,"]",sizeof(char));
+		return SXRET_OK;
+	}
+	if( z[0] == '-' ){
+		bNeg = 1;
+		z++;
+	}
+	if( z < zKeyEnd && GenStateIsBaseDigit((unsigned char)z[0],10) ){
+		const char *zNum = z;
+		z = GenStateScanOffsetNumber(z,zKeyEnd);
+		if( z != zKeyEnd ){
+			return GenStateOffsetSyntaxError(&(*pGen),z,zKeyEnd,1,bHeredoc);
+		}
+		/* "-0" is php's string key "-0", not the integer 0: zend negates a LONG
+		 * num-string but spells a ZERO one back out as text. */
+		if( GenStateOffsetIsCanonicalInt(zNum,zKeyEnd,bNeg) ){
+			SyBlobAppend(pOut,"[",sizeof(char));
+			SyBlobAppend(pOut,zKey,(sxu32)(zKeyEnd - zKey));
+			SyBlobAppend(pOut,"]",sizeof(char));
+		}else{
+			SyBlobAppend(pOut,"['",sizeof(char)*2);
+			SyBlobAppend(pOut,zKey,(sxu32)(zKeyEnd - zKey));
+			SyBlobAppend(pOut,"']",sizeof(char)*2);
+		}
+		return SXRET_OK;
+	}
+	if( bNeg ){
+		/* php's '-' takes a NUMBER and nothing else */
+		return GenStateOffsetSyntaxError(&(*pGen),z,zKeyEnd,2,bHeredoc);
+	}
+	if( GEN_STRING_LABEL_START(z[0]) ){
+		GenStateSkipStringLabel(&z,zKeyEnd);
+		if( z != zKeyEnd ){
+			return GenStateOffsetSyntaxError(&(*pGen),z,zKeyEnd,1,bHeredoc);
+		}
+		/* A bare word is the STRING key, never a constant */
+		SyBlobAppend(pOut,"['",sizeof(char)*2);
+		SyBlobAppend(pOut,zKey,(sxu32)(zKeyEnd - zKey));
+		SyBlobAppend(pOut,"']",sizeof(char)*2);
+		return SXRET_OK;
+	}
+	return GenStateOffsetSyntaxError(&(*pGen),z,zKeyEnd,0,bHeredoc);
 }
 /*
  * Reserve a new constant for a double quoted/heredoc string.
@@ -729,23 +945,6 @@ static ph7_value * GenStateNewStrObj(ph7_gen_state *pGen,sxi32 *pCount)
  * The most important feature of double-quoted strings is the fact that variable names will be expanded.
  * See string parsing for details.
  */
-/*
- * Line number of an escape sequence inside the string body being compiled:
- * the token's line plus every newline before the escape (php reports the
- * escape's own line, not the string's opening line). A heredoc body starts
- * on the line after the '<<<' marker, hence the +1.
- */
-static sxu32 GenStateStringEscLine(ph7_gen_state *pGen,const char *zPos,int bHeredoc)
-{
-	const char *z = pGen->pIn->sData.zString;
-	sxu32 nLine = pGen->pIn->nLine + (bHeredoc ? 1 : 0);
-	for( ; z < zPos ; z++ ){
-		if( z[0] == '\n' ){
-			nLine++;
-		}
-	}
-	return nLine;
-}
 /* bHeredoc: php strips the backslash from '\"' only when '"' is the active
  * quote character; a heredoc has none, so '\"' stays verbatim there. */
 static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)
@@ -1005,6 +1204,7 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)
 			 * shapes silently answered something else than php on VALID source.
 			 */
 			const char *zExpr = zIn;
+			int bSubscript = 0;
 			/*
 			 * "${...}" string interpolation (every form: ${name}, ${expr}, ${$x}) was
 			 * DEPRECATED by php 8.2 in favor of the canonical "{$...}". PHL targets php's
@@ -1027,6 +1227,7 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)
 			/* …then at most ONE accessor */
 			if( zIn < zEnd && zIn[0] == '[' ){
 				sxi32 iSquare = 1;
+				bSubscript = 1;
 				zIn++;
 				while( zIn < zEnd ){
 					if( zIn[0] == '[' ){
@@ -1054,51 +1255,50 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)
 				GenStateSkipStringLabel(&zIn,zEnd);
 			}
 			/*
-			 * "$a[name]" — php's SIMPLE syntax takes an unquoted subscript as the string key
-			 * 'name', never as a constant. PH7 handed "$a[name]" straight to the expression
-			 * compiler, where the bare word only resolved because an unknown constant used to
-			 * fall back to its own name as a string. With undefined constants now a real
-			 * Error, quote the key here so the simple syntax keeps meaning what php means.
-			 * A numeric ($a[0]) or variable ($a[$k]) subscript is already unambiguous.
+			 * "$a[offset]" -- php parses a simple-syntax subscript with its OWN tiny
+			 * grammar (zend's `encaps_var_offset`), never as an expression, so rewrite
+			 * it into the equivalent php source and hand THAT to the compiler. PH7 fed
+			 * the raw text straight in, which read every integer SPELLING as a number
+			 * ("$a[007]" / "$a[0x1A]" / "$a[1_000]" / "$a[-0]" answered the integer
+			 * keys 7/26/1000/0 where php reads the STRING keys "007"/"0x1A"/"1_000"/
+			 * "-0"), read a non-ASCII bare word as a CONSTANT ("$a[\xc3\xa9]" raised
+			 * "Undefined constant"), and quietly accepted every shape php rejects
+			 * ("$a[ 0]", "$a[0 ]", "$a['x']", "$a[+1]", "$a[-$k]", "$a[[]", "$a[]").
 			 */
-			{
+			if( bSubscript ){
 				const char *zBr = zExpr;
+				SyBlob sSub;
 				while( zBr < zIn && zBr[0] != '[' ){
 					zBr++;
 				}
-				if( zBr < zIn && zIn[-1] == ']' ){
-					const char *zKey = &zBr[1];
-					const char *zKeyEnd = &zIn[-1];
-					const char *zScan = zKey;
-					int bBare = (zKey < zKeyEnd) && !SyisDigit(zKey[0]);
-					while( bBare && zScan < zKeyEnd ){
-						if( !SyisAlphaNum(zScan[0]) && zScan[0] != '_' ){
-							bBare = 0;
-						}
-						zScan++;
-					}
-					if( bBare ){
-						SyBlob sSub;
-						SyBlobInit(&sSub,&pGen->pVm->sAllocator);
-						SyBlobAppend(&sSub,zExpr,(sxu32)(zBr - zExpr));
-						SyBlobAppend(&sSub,"['",2);
-						SyBlobAppend(&sSub,zKey,(sxu32)(zKeyEnd - zKey));
-						SyBlobAppend(&sSub,"']",2);
-						rc = GenStateProcessStringExpression(&(*pGen),pGen->pIn->nLine,
-							(const char *)SyBlobData(&sSub),
-							(const char *)SyBlobData(&sSub) + SyBlobLength(&sSub));
-						SyBlobRelease(&sSub);
-						if( rc == SXERR_ABORT ){
-							return SXERR_ABORT;
-						}
-						if( rc != SXERR_EMPTY ){
-							++iCons;
-							++nInterp;
-						}
-						pObj = 0;
-						continue;
-					}
+				if( zIn <= zBr || zIn[-1] != ']' ){
+					/* Unterminated: the body ended inside the brackets. php names the
+					  * closing quote it reached instead; there is no offending TOKEN to
+					  * quote here, and zIn is one past the body, so never read it. */
+					PH7_GenCompileError(&(*pGen),E_PARSE,GenStateStringEscLine(&(*pGen),zBr,bHeredoc),
+						"syntax error, unexpected end of string, expecting \"-\" or identifier or variable or number");
+					return SXERR_ABORT;
 				}
+				SyBlobInit(&sSub,&pGen->pVm->sAllocator);
+				SyBlobAppend(&sSub,zExpr,(sxu32)(zBr - zExpr));
+				rc = GenStateCompileStringOffset(&(*pGen),&zBr[1],&zIn[-1],&sSub,bHeredoc);
+				if( rc != SXRET_OK ){
+					SyBlobRelease(&sSub);
+					return SXERR_ABORT;
+				}
+				rc = GenStateProcessStringExpression(&(*pGen),pGen->pIn->nLine,
+					(const char *)SyBlobData(&sSub),
+					(const char *)SyBlobData(&sSub) + SyBlobLength(&sSub));
+				SyBlobRelease(&sSub);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				if( rc != SXERR_EMPTY ){
+					++iCons;
+					++nInterp;
+				}
+				pObj = 0;
+				continue;
 			}
 			/* Process the expression */
 			rc = GenStateProcessStringExpression(&(*pGen),pGen->pIn->nLine,zExpr,zIn);
