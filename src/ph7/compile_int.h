@@ -191,6 +191,8 @@ PH7_PRIVATE GenBlock * GenStateFetchBlock(GenBlock *pCurrent,sxi32 iBlockType,sx
 PH7_PRIVATE sxi32 GenStateNewJumpFixup(GenBlock *pBlock,sxi32 nJumpType,sxu32 nInstrIdx);
 PH7_PRIVATE const char * TokenTypeName(sxu32 nType);
 PH7_PRIVATE sxu32 GenStateNsQualifyName(ph7_gen_state *pGen,sxu32 nOrigIdx,SyHash *pImports,int *pFromImport);
+PH7_PRIVATE int GenStateNsRelPrefix(ph7_gen_state *pGen,SyToken **ppIn,SyToken *pEnd,SyBlob *pOut);
+PH7_PRIVATE int GenStateIsNsRelName(SyToken *pIn,SyToken *pEnd);
 PH7_PRIVATE int PH7_GenStateInitHasCallExpr(ph7_gen_state *pGen);
 PH7_PRIVATE int PH7_GenStateInitClosureError(ph7_gen_state *pGen);
 PH7_PRIVATE sxi32 PH7_CompileConstant(ph7_gen_state *pGen);

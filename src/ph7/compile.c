@@ -2105,6 +2105,10 @@ static sxi32 GenStateCompileAttrSpan(ph7_gen_state *pGen,ph7_trivia *pTrivia,SyS
 			pIn++;
 		}
 		SyBlobInit(&sFQN,&pGen->pVm->sAllocator);
+		/* `#[namespace\Attr]` — the current namespace, absolute from there. */
+		if( !bAbsolute && GenStateNsRelPrefix(pGen,&pIn,pEnd,&sFQN) ){
+			bAbsolute = 1;
+		}
 		while( pIn < pEnd && (pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
 			SyBlobAppend(&sFQN,pIn->sData.zString,pIn->sData.nByte);
 			pIn++;
@@ -2341,6 +2345,11 @@ PH7_PRIVATE sxi32 GenStateCompileChunk(
 				/* `enum Name …` (PHP 8.1) — `enum` is a context-sensitive ID,
 				 * so it is detected here rather than the keyword dispatcher. */
 				xCons = PH7_CompileEnum;
+			}else if( GenStateIsNsRelName(pGen->pIn,pGen->pEnd) ){
+				/* A statement that STARTS with php's `namespace\X` name operator
+				 * (`namespace\Cee::m();`) is an expression, not a namespace
+				 * DECLARATION — the glued `\` is what tells the two apart. */
+				xCons = 0;
 			}else if( pGen->pIn->nType & PH7_TK_KEYWORD ){
 				sxu32 nKeyword = (sxu32)SX_PTR_TO_INT(pGen->pIn->pUserData);
 				/* Try to extract a language construct handler */

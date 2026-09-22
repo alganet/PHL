@@ -835,6 +835,36 @@ static sxi32 GenStateParseOneTypeAtom(ph7_gen_state *pGen, PhlTypeAtom *pOut)
 			return SXERR_SYNTAX;
 		}
 	}
+	/* `namespace\X` type hint: the CURRENT namespace spelled out, fully qualified
+	 * from there. Collected here rather than below because the leading `namespace`
+	 * is a KEYWORD token, which the atom parser would otherwise reject outright. */
+	if( !bAbsolute ){
+		SyBlob sRel;
+		SyBlobInit(&sRel,&pGen->pVm->sAllocator);
+		if( GenStateNsRelPrefix(pGen,&pIn,pGen->pEnd,&sRel) ){
+			char *zDup;
+			SyBlobAppend(&sRel,pIn->sData.zString,pIn->sData.nByte);
+			pIn++;
+			while( pIn + 1 < pGen->pEnd && (pIn->nType & PH7_TK_NSSEP)
+				&& (pIn[1].nType & PH7_TK_ID) ){
+				SyBlobAppend(&sRel,"\\",1);
+				SyBlobAppend(&sRel,pIn[1].sData.zString,pIn[1].sData.nByte);
+				pIn += 2;
+			}
+			zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+				(const char *)SyBlobData(&sRel),SyBlobLength(&sRel));
+			if( zDup == 0 ){
+				SyBlobRelease(&sRel);
+				return SXERR_ABORT;
+			}
+			pOut->nType = SXU32_HIGH;
+			SyStringInitFromBuf(&pOut->sClass,zDup,SyBlobLength(&sRel));
+			SyBlobRelease(&sRel);
+			pGen->pIn = pIn;
+			return SXRET_OK;
+		}
+		SyBlobRelease(&sRel);
+	}
 	if( (pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
 		return SXERR_SYNTAX;
 	}

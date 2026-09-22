@@ -2262,6 +2262,53 @@ PH7_PRIVATE void GenStateBuildFQN(ph7_gen_state *pGen,const SyString *pName,SyBl
 	SyBlobAppend(pOut,pName->zString,pName->nByte);
 }
 /*
+ * php's `namespace\X` NAME OPERATOR (5.3): a leading `namespace` keyword glued to
+ * a `\` names the CURRENT namespace, and the whole name is then FULLY QUALIFIED —
+ * `namespace\X` inside `namespace B;` is `\B\X`, and plain `\X` at global scope.
+ * php's lexer matches it as one token (T_NAME_RELATIVE, `"namespace"("\\"{LABEL})+`,
+ * case-insensitively), so the `\` must be GLUED to the keyword: `namespace \X` is a
+ * php parse error, and this mirrors that by comparing source offsets.
+ *
+ * This predicate only RECOGNIZES the operator (it consumes nothing), which is what
+ * the statement dispatcher needs to tell `namespace\X::m();` from a namespace
+ * DECLARATION; GenStateNsRelPrefix below is what the name collectors call.
+ */
+PH7_PRIVATE int GenStateIsNsRelName(SyToken *pIn,SyToken *pEnd)
+{
+	if( pIn >= pEnd || (pIn->nType & PH7_TK_KEYWORD) == 0
+	 || (sxu32)SX_PTR_TO_INT(pIn->pUserData) != PH7_TKWRD_NAMESPACE ){
+		return 0;
+	}
+	if( &pIn[1] >= pEnd || (pIn[1].nType & PH7_TK_NSSEP) == 0 ){
+		return 0;
+	}
+	if( &pIn[2] >= pEnd || (pIn[2].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
+		return 0; /* php's T_NAME_RELATIVE needs at least one segment after the `\` */
+	}
+	/* Glued? The tokenizer drops whitespace, so adjacency is the source offsets. */
+	return pIn->sData.zString + pIn->sData.nByte == pIn[1].sData.zString;
+}
+/*
+ * Consume a leading `namespace\` (see GenStateIsNsRelName) at *ppIn and seed pOut
+ * with the current namespace plus its separator — nothing at global scope, where
+ * the bare name already IS the FQN. Returns TRUE when it fired, and the caller
+ * must then treat the name it goes on to collect as ABSOLUTE: no `use` import may
+ * apply to it, and the current namespace is already in place.
+ */
+PH7_PRIVATE int GenStateNsRelPrefix(ph7_gen_state *pGen,SyToken **ppIn,SyToken *pEnd,SyBlob *pOut)
+{
+	SyToken *pIn = *ppIn;
+	if( !GenStateIsNsRelName(pIn,pEnd) ){
+		return 0;
+	}
+	if( SyBlobLength(&pGen->sNamespace) > 0 ){
+		SyBlobAppend(pOut,SyBlobData(&pGen->sNamespace),SyBlobLength(&pGen->sNamespace));
+		SyBlobAppend(pOut,"\\",1);
+	}
+	*ppIn = &pIn[2];
+	return 1;
+}
+/*
  * Compile a namespace statement
  * According to the PHP language reference manual
  *  What are namespaces? In the broadest definition namespaces are a way of encapsulating items.

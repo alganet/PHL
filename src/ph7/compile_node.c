@@ -1475,6 +1475,11 @@ static sxi32 GenStateResolveNamespaceLiteral(ph7_gen_state *pGen)
 		{
 			SyBlob sRaw;
 			SyBlobInit(&sRaw,&pGen->pVm->sAllocator);
+			/* `namespace\X` spells the CURRENT namespace and is FULLY QUALIFIED from
+			 * there: no import ever applies to it, and the namespace is already in. */
+			if( !isAbsolute && GenStateNsRelPrefix(pGen,&pGen->pIn,pGen->pEnd,&sRaw) ){
+				isAbsolute = 1;
+			}
 			while( pGen->pIn <= &pGen->pEnd[-1] ){
 				if( pGen->pIn->nType & PH7_TK_NSSEP ){
 					SyBlobAppend(&sRaw,"\\",1);

@@ -2772,11 +2772,16 @@ PH7_PRIVATE sxi32 GenStateParseClassReference(ph7_gen_state *pGen,SyBlob *pFqn)
 		isAbsolute = 1;
 		pGen->pIn++;
 	}
+	SyBlobInit(&sName,&pGen->pVm->sAllocator);
+	/* `namespace\X` names the CURRENT namespace and is fully qualified from there. */
+	if( !isAbsolute && GenStateNsRelPrefix(pGen,&pGen->pIn,pGen->pEnd,&sName) ){
+		isAbsolute = 1;
+	}
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & (PH7_TK_ID|PH7_TK_KEYWORD)) == 0 ){
+		SyBlobRelease(&sName);
 		pGen->pIn = pStart;
 		return SXERR_INVALID;
 	}
-	SyBlobInit(&sName,&pGen->pVm->sAllocator);
 	SyBlobAppend(&sName,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);
 	pGen->pIn++;
 	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NSSEP) &&
