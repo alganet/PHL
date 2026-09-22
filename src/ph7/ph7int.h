@@ -3115,6 +3115,7 @@ PH7_PRIVATE sxi32 VmEnforceScalarType(ph7_value *pVal, sxu32 nType, int bStrict)
 PH7_PRIVATE void VmExcReleaseAll(ph7_vm *pVm,SySet *pSet);
 PH7_PRIVATE const char *VmFormatValueClassName(ph7_value *pValue,char *zBuf,sxu32 nBuf);
 PH7_PRIVATE int VmFuncHasReturnType(ph7_vm_func *pFunc);
+PH7_PRIVATE int PH7_VmHookFuncName(ph7_class *pClass,ph7_vm_func *pFunc,SyBlob *pOut);
 PH7_PRIVATE sxu32 VmFuncRequiredArgCount(ph7_vm_func *pFunc,sxu32 *pnNonVariadic);
 PH7_PRIVATE void VmLeaveFrame(ph7_vm *pVm);
 PH7_PRIVATE int VmNativeNestingExceeded(ph7_vm *pVm);

@@ -2963,6 +2963,38 @@ static sxi32 VmThrowTypeErrorMsg(ph7_vm *pVm,SyBlob *pMsg)
 	return PH7_EXCEPTION;
 }
 /*
+ * php names a property HOOK after the property it belongs to — `C::$p::get()`,
+ * `C::$p::set()` — never after a method, because in php a hook is not one. PHL
+ * synthesizes each hook as a hidden method `__phl_hook_get_NAME` /
+ * `__phl_hook_set_NAME` on the declaring class, so the php-facing name is a
+ * prefix rewrite. Returns TRUE (and writes pOut) only for such a method; every
+ * other callee falls through to the ordinary Class::method rendering.
+ */
+#define PH7_HOOK_METH_PFX "__phl_hook_"
+PH7_PRIVATE int PH7_VmHookFuncName(ph7_class *pClass,ph7_vm_func *pFunc,SyBlob *pOut)
+{
+	const sxu32 nPfx = sizeof(PH7_HOOK_METH_PFX)-1;
+	SyString *pName = &pFunc->sName;
+	SyString sProp;
+	const char *zKind;
+	if( pClass == 0 || pName->zString == 0 || pName->nByte <= nPfx + 4 ){
+		return 0;
+	}
+	if( SyMemcmp(pName->zString,PH7_HOOK_METH_PFX,nPfx) != 0 ){
+		return 0;
+	}
+	if( SyMemcmp(&pName->zString[nPfx],"get_",4) == 0 ){
+		zKind = "get";
+	}else if( SyMemcmp(&pName->zString[nPfx],"set_",4) == 0 ){
+		zKind = "set";
+	}else{
+		return 0;
+	}
+	SyStringInitFromBuf(&sProp,&pName->zString[nPfx+4],pName->nByte-(nPfx+4));
+	SyBlobFormat(pOut,"%z::$%z::%s",&pClass->sName,&sProp,zKind);
+	return 1;
+}
+/*
  * The callee name php puts in front of a return-side message. A METHOD is
  * qualified with its DECLARING class ("P::m", even when called on a subclass);
  * anything else uses its display name (which is also what strips a closure's
@@ -2972,6 +3004,9 @@ static sxi32 VmThrowTypeErrorMsg(ph7_vm *pVm,SyBlob *pMsg)
 static void VmReturnFuncName(ph7_vm *pVm,ph7_vm_func *pFunc,SyBlob *pOut)
 {
 	if( (pFunc->iFlags & VM_FUNC_CLASS_METHOD) && pFunc->pUserData ){
+		if( PH7_VmHookFuncName((ph7_class *)pFunc->pUserData,pFunc,pOut) ){
+			return;
+		}
 		SyBlobFormat(pOut,"%z::%z",&((ph7_class *)pFunc->pUserData)->sName,&pFunc->sName);
 		return;
 	}

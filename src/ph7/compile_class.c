@@ -1822,6 +1822,38 @@ static sxi32 GenStateRewriteParentHookCalls(ph7_gen_state *pGen,SySet *pCopy,
 	}
 	return SXRET_OK;
 }
+/*
+ * A `get` hook's return type IS the property's declared type — php never lets a
+ * hook declare one, so there is nothing else it could be, and that is what makes
+ * `public int $p { get { return "5"; } }` answer int(5) and a `get` returning
+ * "x" raise `C::$p::get(): Return value must be of type int, string returned`.
+ * Installing it on the synthesized method reuses the return enforcement that
+ * already matches php byte for byte (the same move the __toString implicit
+ * `string` type made), and lets the compile-time bare-`return;` check see the
+ * hook as the typed function php treats it as.
+ *
+ * The union alternatives are SHARED, not copied: their class-name SyStrings are
+ * VM-allocator owned and outlive both records, which is the same contract
+ * GenStateCopyTypeToAttr relies on.
+ */
+static void GenStateHookGetReturnType(ph7_vm_func *pFunc,ph7_class_attr *pAttr)
+{
+	if( (pAttr->iFlags & PH7_CLASS_ATTR_TYPED) == 0 ){
+		return; /* untyped property: the hook is untyped too */
+	}
+	pFunc->nReturnType = pAttr->nType;
+	pFunc->sReturnClass = pAttr->sClass;
+	pFunc->sReturnTypeName = pAttr->sTypeName;
+	if( pAttr->iFlags & PH7_CLASS_ATTR_NULLABLE ){
+		pFunc->iFlags |= VM_FUNC_RETURN_NULLABLE;
+	}
+	if( pAttr->iFlags & PH7_CLASS_ATTR_UNION ){
+		sxu32 i;
+		for( i = 0 ; i < SySetUsed(&pAttr->aUnionAlts) ; i++ ){
+			SySetPut(&pFunc->aReturnUnion,SySetAt(&pAttr->aUnionAlts,i));
+		}
+	}
+}
 PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pClass,ph7_class_attr *pAttr)
 {
 	sxu32 nLine = pGen->pIn->nLine;
@@ -1886,6 +1918,9 @@ PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pC
 				return SXERR_ABORT;
 			}
 			pMeth->sFunc.nLine = nHLine;
+			if( bGet ){
+				GenStateHookGetReturnType(&pMeth->sFunc,pAttr);
+			}
 			if( !bGet ){
 				/* The implicit `$value` formal keeps the stub's signature
 				 * compatible with concrete set-hook implementations (which
@@ -1937,6 +1972,9 @@ PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pC
 			return SXERR_ABORT;
 		}
 		pMeth->sFunc.nLine = nHLine;
+		if( bGet ){
+			GenStateHookGetReturnType(&pMeth->sFunc,pAttr);
+		}
 		if( !bGet ){
 			/* Parameter list: explicit `set(Type $v)` or the implicit `$value` */
 			if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_LPAREN) ){
