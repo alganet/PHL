@@ -1735,7 +1735,11 @@ PH7_PRIVATE int PH7_builtin_strnatcmp(ph7_context *pCtx,int nArg,ph7_value **apA
 		return PH7_OK;
 	}
 	zFunc = ph7_function_name(pCtx);
-	bFold = zFunc[sizeof("strnat")-1] == 'c'; /* strnatCasecmp */
+	/* Both names carry a 'c' at that offset -- "strnat|c|mp" as much as
+	 * "strnat|c|asecmp" -- so testing it alone made strnatcmp() fold as well, and
+	 * natsort()/ArrayObject::natsort() (prelude wrappers over strnatcmp) with it:
+	 * 'Hello' and 'hello' compared EQUAL where php answers -1. */
+	bFold = SyStrnicmp(zFunc,"strnatcase",sizeof("strnatcase")-1) == 0;
 	z1 = ph7_value_to_string(apArg[0],&n1);
 	z2 = ph7_value_to_string(apArg[1],&n2);
 	ph7_result_int(pCtx,PH7_StrNatCmp(z1,n1,z2,n2,bFold));
