@@ -78,7 +78,6 @@ struct Label
 	sxu32 nLoopId;       /* Innermost loop/switch enclosing this label (0 = none) */
 	SySet *pContainer;   /* Bytecode container nJumpDest indexes (see JumpFixup.pContainer) */
 	sxu32 nScopeId;      /* Try/catch scope it sits in (ph7_gen_state.aScope; 0 = none) */
-	sxu8 bRef;           /* True if the label was referenced */
 };
 /*
  * Compilation of some PHP constructs such as if, for, while, the logical or
@@ -231,6 +230,7 @@ PH7_PRIVATE sxi32 GenStateValidateMemberType(ph7_gen_state *pGen,ph7_class *pCla
 	sxu32 nType,const SyString *pTypeClass,const SyString *pTypeText,SySet *pUnionAlts,const char *zErrFmt,sxu32 nLine);
 PH7_PRIVATE sxi32 GenStateParseClassReference(ph7_gen_state *pGen,SyBlob *pFqn);
 PH7_PRIVATE sxi32 GenStateFixGoto(ph7_gen_state *pGen,sxu32 nOfft);
+PH7_PRIVATE sxi32 GenStateGetLabel(ph7_gen_state *pGen,SyString *pName,ph7_vm_func *pFunc,Label **ppOut);
 PH7_PRIVATE sxi32 PH7_CompileBlock(ph7_gen_state *pGen,sxi32 nKeywordEnd);
 /* compile_func.c — cross-unit prototypes */
 PH7_PRIVATE sxi32 GenStateCompileFunc(ph7_gen_state *pGen,SyString *pName,sxi32 iFlags,int bHandleClosure,ph7_vm_func **ppFunc);

@@ -486,13 +486,30 @@ static ph7_vm_func * GenStateOwningFunc(ph7_gen_state *pGen)
 PH7_PRIVATE sxi32 PH7_CompileLabel(ph7_gen_state *pGen)
 {
 	Label sLabel;
-	/* php places NO restriction on where a label may be DEFINED — inside a loop, a switch
-	 * or a try{} is all fine. The only rule is on the jump: you may not goto INTO a loop
+	/* php places almost NO restriction on where a label may be DEFINED — inside a loop, a
+	 * switch or a try{} is all fine; the one rule is that a name may not be declared twice
+	 * in the same function (below). The rest is on the jump: you may not goto INTO a loop
 	 * or switch from outside it, which is checked once the labels are all known (see
 	 * GenStateFixJumps). Record the loop this label sits in so that check can run. */
 	{
 		SyString *pTarget = &pGen->pIn->sData;
+		ph7_vm_func *pFunc = GenStateOwningFunc(&(*pGen));
 		char *zDup;
+		/* One name, one destination: php compile-rejects a label its function already
+		 * declares, wherever the two sit (`L: L:`, one per branch of an if, one in a loop
+		 * and one after it). PHL used to accept the redeclaration and silently give every
+		 * goto the FIRST one. The owning function is part of the key, so the same name in
+		 * another function — or at file scope beside it — is untouched by this. On the
+		 * duplicate, keep the first declaration and record nothing: the compile has already
+		 * failed, and a second entry under the same key would only shadow it. */
+		if( SXRET_OK == GenStateGetLabel(&(*pGen),pTarget,pFunc,0) ){
+			if( SXERR_ABORT == PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
+				"Label '%z' already defined",pTarget) ){
+				return SXERR_ABORT;
+			}
+			pGen->pIn += 2; /* Jump the label name and the semi-colon */
+			return SXRET_OK;
+		}
 		/* Initialize label fields */
 		sLabel.nJumpDest = PH7_VmInstrLength(pGen->pVm);
 		/* Duplicate label name */
@@ -502,7 +519,6 @@ PH7_PRIVATE sxi32 PH7_CompileLabel(ph7_gen_state *pGen)
 			return SXERR_ABORT;
 		}
 		SyStringInitFromBuf(&sLabel.sName,zDup,pTarget->nByte);
-		sLabel.bRef  = FALSE;
 		sLabel.nLine = pGen->pIn->nLine;
 		sLabel.nLoopId = pGen->nCurLoopId;
 		/* Where the label sits, so a goto from a detached catch/finally body can be told
@@ -514,7 +530,7 @@ PH7_PRIVATE sxi32 PH7_CompileLabel(ph7_gen_state *pGen)
 		 * try or catch body to "no function" — so from anywhere in a function such a
 		 * label read as undefined, including from the very catch body declaring it.
 		 * Whether a label may be jumped TO is decided by its container, not by this. */
-		sLabel.pFunc = GenStateOwningFunc(&(*pGen));
+		sLabel.pFunc = pFunc;
 		/* Insert in label set */
 		SySetPut(&pGen->aLabel,(const void *)&sLabel);
 	}

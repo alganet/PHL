@@ -25,8 +25,11 @@
  * only its own. Matching on the name alone made the first declaration win everywhere,
  * which rejected `function a(){ done: } function b(){ goto done; done: }` — ordinary
  * php — as a jump to an undefined label.
+ *
+ * Also serves PH7_CompileLabel, which asks the same question at DECLARATION time to reject
+ * a name its function already declared.
  */
-static sxi32 GenStateGetLabel(ph7_gen_state *pGen,SyString *pName,ph7_vm_func *pFunc,Label **ppOut)
+PH7_PRIVATE sxi32 GenStateGetLabel(ph7_gen_state *pGen,SyString *pName,ph7_vm_func *pFunc,Label **ppOut)
 {
 	Label *aLabel;
 	sxu32 n;
@@ -35,7 +38,6 @@ static sxi32 GenStateGetLabel(ph7_gen_state *pGen,SyString *pName,ph7_vm_func *p
 	for( n = 0 ; n < SySetUsed(&pGen->aLabel) ; ++n ){
 		if( aLabel[n].pFunc == pFunc && SyStringCmp(&aLabel[n].sName,pName,SyMemcmp) == 0 ){
 			/* Jump destination found */
-			aLabel[n].bRef = TRUE;
 			if( ppOut ){
 				*ppOut = &aLabel[n];
 			}
