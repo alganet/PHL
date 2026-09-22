@@ -2799,7 +2799,9 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 			zExpected = VmHintTextResolved(pVm,&pFunc->sReturnTypeName,
 				VmHintScopeClass(pVm,PH7_VmPeekDeclaringClass(pVm),0),zTypeBuf,sizeof(zTypeBuf));
 		}
-		return VmThrowTypeErrorForReturn(pVm,pFunc,zExpected,"null");
+		/* php's word for "no value at all" is `none`, not `null` — `null returned`
+		 * is what it says for an explicit `return null;`, a different program. */
+		return VmThrowTypeErrorForReturn(pVm,pFunc,zExpected,"none");
 	}
 	/* standalone `null` return type (PHP 8.2): an explicit non-null return is a
 	 * TypeError. (Falling off the end is handled by the generic check above,
