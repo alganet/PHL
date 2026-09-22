@@ -1331,18 +1331,14 @@ PH7_PRIVATE sxi32 VmEnforceArgType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_vm_func_
 					(pFormal->iFlags & VM_FUNC_ARG_NULLABLE) != 0,zTypeBuf,sizeof(zTypeBuf)),
 				VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf))));
 		}
-		pClass = (rcPseudo == 1) ? 0 : VmResolveTypeClass(&(*pVm),pName,pSelfHint);
-		if( pClass ){
-			int bBad = !((pVal->iFlags & MEMOBJ_OBJ)
-				&& PH7_VmInstanceOf(((ph7_class_instance *)pVal->x.pOther)->pClass,pClass));
-			if( bBad ){
-				char zTypeBuf[128],zGivenBuf[128];
-				return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pFunc,(int)nArgPos,
-					&pFormal->sName,
-					VmClassHintTypeName(pName,pClass,
-						(pFormal->iFlags & VM_FUNC_ARG_NULLABLE) != 0,zTypeBuf,sizeof(zTypeBuf)),
-					VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf))));
-			}
+		pClass = 0;
+		if( rcPseudo != 1 && !VmClassHintMatches(&(*pVm),pName,pSelfHint,pVal,&pClass) ){
+			char zTypeBuf[128],zGivenBuf[128];
+			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pFunc,(int)nArgPos,
+				&pFormal->sName,
+				VmClassHintTypeName(pName,pClass,
+					(pFormal->iFlags & VM_FUNC_ARG_NULLABLE) != 0,zTypeBuf,sizeof(zTypeBuf)),
+				VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf))));
 		}
 		return SXRET_OK;
 	}

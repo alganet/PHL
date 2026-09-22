@@ -1237,6 +1237,57 @@ PH7_PRIVATE ph7_class *VmResolveTypeClass(ph7_vm *pVm, const SyString *pCN, ph7_
 	return PH7_VmExtractClass(pVm,pCN->zString,pCN->nByte,FALSE,0);
 }
 /*
+ * Is *pCN* one of the three SCOPE KEYWORDS rather than a class name? Those are
+ * the only hints VmResolveTypeClass may legitimately answer 0 for — `self` with
+ * no active scope, `parent` with no base class — which php rejects at COMPILE
+ * time, so there is no runtime behaviour to be faithful to and the caller keeps
+ * accepting. Any OTHER name that resolves to nothing is a class that does not
+ * exist, and that is a mismatch (see VmClassHintMatches).
+ * (vm_builtin_call.c carries the same list for CALLABLE strings — `'self::m'`,
+ * `['parent','m']` — where the rule is about dispatch, not types.)
+ */
+static int VmHintIsScopeKeyword(const SyString *pCN)
+{
+	return (pCN->nByte == 4 && SyStrnicmp(pCN->zString,"self",4) == 0)
+		|| (pCN->nByte == 6 && SyStrnicmp(pCN->zString,"parent",6) == 0)
+		|| (pCN->nByte == 6 && SyStrnicmp(pCN->zString,"static",6) == 0);
+}
+/*
+ * Does *pVal* satisfy the single (non-union) CLASS hint *pName*, written in the
+ * scope *pScope* (see VmHintScopeClass)? THE one implementation of the rule,
+ * shared by the argument, variadic-element, return, property, class-constant and
+ * typed-default checks — each of which then formats its own message. The
+ * resolved class is handed back through *ppResolved for the message builder
+ * (VmClassHintTypeName prints the resolved name, or the name as written when
+ * nothing resolved).
+ *
+ * A name that resolves to NOTHING used to make every one of those sites skip its
+ * check, so a hint naming a class that does not exist enforced nothing at all:
+ * `function f(Missing $c){} f(new Oth);` ran the body where php throws. Nothing
+ * can be an instance of a class that does not exist, so that is a mismatch.
+ * A scope KEYWORD is the exception, and only half of one: with no scope to
+ * resolve against there is no class to compare to — a position php rejects at
+ * compile time, so any object passes — but a class hint still demands an object.
+ *
+ * Null never reaches here: a nullable hint accepts it at every call site before
+ * the class branch. The resolution AUTOLOADS (PH7_VmExtractClass), so a
+ * not-yet-loaded class is loaded and genuinely checked; only a name no
+ * autoloader can produce fails.
+ */
+PH7_PRIVATE int VmClassHintMatches(ph7_vm *pVm,const SyString *pName,ph7_class *pScope,
+	ph7_value *pVal,ph7_class **ppResolved)
+{
+	ph7_class *pExpected = VmResolveTypeClass(pVm,pName,pScope);
+	*ppResolved = pExpected;
+	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 ){
+		return 0;
+	}
+	if( pExpected == 0 ){
+		return VmHintIsScopeKeyword(pName);
+	}
+	return PH7_VmInstanceOf(((ph7_class_instance *)pVal->x.pOther)->pClass,pExpected);
+}
+/*
  * PHL's number model flags a whole-valued real MEMOBJ_REAL|MEMOBJ_INT (the
  * float-identity leniency — see the typed-constant note above
  * VmEnforceConstantType). Observer sites (is_int, gettype, var_dump, ===)
@@ -1757,17 +1808,13 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 	if( pAttr->nType == SXU32_HIGH ){
 		/* Class / interface type. Resolve self/parent relative to the DECLARING
 		 * class (pHintScope), not the instance's runtime class. */
-		ph7_class *pExpected = VmResolveTypeClass(pVm,&pAttr->sClass,pHintScope);
-		if( (pValue->iFlags & MEMOBJ_OBJ) == 0 ){
-			return VmThrowPropertyTypeError(pVm,pVmAttr,VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
-		}
-		if( pExpected ){
-			ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
-			if( !PH7_VmInstanceOf(pInst->pClass,pExpected) ){
-				char zBuf[128];
-				return VmThrowPropertyTypeError(pVm,pVmAttr,
-					VmFormatValueClassName(pValue,zBuf,sizeof(zBuf)));
-			}
+		ph7_class *pExpected = 0;
+		if( !VmClassHintMatches(pVm,&pAttr->sClass,pHintScope,pValue,&pExpected) ){
+			char zBuf[128];
+			return VmThrowPropertyTypeError(pVm,pVmAttr,
+				(pValue->iFlags & MEMOBJ_OBJ)
+					? VmFormatValueClassName(pValue,zBuf,sizeof(zBuf))
+					: VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
 		}
 		pVmAttr->iState &= ~(VM_CLASS_ATTR_UNINIT|VM_CLASS_ATTR_TYPE_DEFER);
 		return SXRET_OK;
@@ -1967,19 +2014,13 @@ PH7_PRIVATE sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 		if( rcPseudo == 0 ){
 			return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
 		}
-		/* rcPseudo == -1: a real class/interface type. */
-		if( (pValue->iFlags & MEMOBJ_OBJ) == 0 ){
-			return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
-		}
+		/* rcPseudo == -1: a real class/interface type. A class constant's
+		 * self/parent resolve against the declaring class. */
 		{
-			/* A class constant's self/parent resolve against the declaring class. */
-			ph7_class *pExpected = VmResolveTypeClass(pVm,&pAttr->sClass,
-				VmHintScopeClass(pVm,pAttr->pDeclClass,pClass));
-			if( pExpected ){
-				ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
-				if( !PH7_VmInstanceOf(pInst->pClass,pExpected) ){
-					return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
-				}
+			ph7_class *pExpected = 0;
+			if( !VmClassHintMatches(pVm,&pAttr->sClass,
+				VmHintScopeClass(pVm,pAttr->pDeclClass,pClass),pValue,&pExpected) ){
+				return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
 			}
 		}
 		return SXRET_OK;
@@ -2090,18 +2131,12 @@ PH7_PRIVATE sxi32 VmCheckTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_at
 		if( rcPseudo == 0 ){
 			return SXERR_INVALID;
 		}
-		if( (pValue->iFlags & MEMOBJ_OBJ) == 0 ){
-			return SXERR_INVALID;
-		}
 		{
 			/* self/parent in the hint resolve against the declaring class. */
-			ph7_class *pExpected = VmResolveTypeClass(pVm,&pAttr->sClass,
-				VmHintScopeClass(pVm,pAttr->pDeclClass,pClass));
-			if( pExpected ){
-				ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
-				if( !PH7_VmInstanceOf(pInst->pClass,pExpected) ){
-					return SXERR_INVALID;
-				}
+			ph7_class *pExpected = 0;
+			if( !VmClassHintMatches(pVm,&pAttr->sClass,
+				VmHintScopeClass(pVm,pAttr->pDeclClass,pClass),pValue,&pExpected) ){
+				return SXERR_INVALID;
 			}
 		}
 		return SXRET_OK;
@@ -2322,25 +2357,19 @@ PH7_PRIVATE sxi32 VmVariadicElementTypeCheck(ph7_vm *pVm,ph7_class *pSelfHint,ph
 				VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
 			return (rc == PH7_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
 		}
-		/* rcPseudo==1 -> matched pseudo-type (accept); -1 -> real class.
-		 * Resolve via VmResolveTypeClass so `self`/`parent` resolve and
-		 * interface/abstract hints are included (iLoadable=FALSE); an
-		 * unresolvable name is accepted, like the non-variadic paths. */
-		pClass = (rcPseudo == 1) ? 0 : VmResolveTypeClass(&(*pVm),pName,pSelfHint);
-		if( pClass ){
-			/* Non-nullable here (the guard above skips nullable+null), so ANY
-			 * non-object is a TypeError, matching php (&& short-circuits so
-			 * instanceof only derefs a real object). */
-			int bBad = !((pVal->iFlags & MEMOBJ_OBJ)
-				&& PH7_VmInstanceOf(((ph7_class_instance *)pVal->x.pOther)->pClass,pClass));
-			if( bBad ){
-				char zTypeBuf[128],zGivenBuf[128];
-				rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pCallee,nArgPos,0,
-					VmClassHintTypeName(pName,pClass,
-						(pFormal->iFlags & VM_FUNC_ARG_NULLABLE) != 0,zTypeBuf,sizeof(zTypeBuf)),
-					VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
-				return (rc == PH7_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
-			}
+		/* rcPseudo==1 -> matched pseudo-type (accept); -1 -> real class, put
+		 * through the shared VmClassHintMatches rule (self/parent/static,
+		 * interface/abstract hints via iLoadable=FALSE, and a name that resolves
+		 * to nothing). Non-nullable here — the guard above skips nullable+null —
+		 * so ANY non-object is a TypeError, matching php. */
+		pClass = 0;
+		if( rcPseudo != 1 && !VmClassHintMatches(&(*pVm),pName,pSelfHint,pVal,&pClass) ){
+			char zTypeBuf[128],zGivenBuf[128];
+			rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pCallee,nArgPos,0,
+				VmClassHintTypeName(pName,pClass,
+					(pFormal->iFlags & VM_FUNC_ARG_NULLABLE) != 0,zTypeBuf,sizeof(zTypeBuf)),
+				VmValueGivenName(pVal,zGivenBuf,sizeof(zGivenBuf)));
+			return (rc == PH7_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
 		}
 		return SXRET_OK;
 	}
@@ -2786,19 +2815,15 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 	 * it into the TypeError message. */
 	if( pFunc->nReturnType == SXU32_HIGH ){
 		SyString *pClassName = &pFunc->sReturnClass;
-		const char *zExpected;
-		ph7_class *pExpected = VmResolveTypeClass(pVm,pClassName,pHintScope);
-		zExpected = VmClassHintTypeName(pClassName,pExpected,bNullable,zTypeBuf,sizeof(zTypeBuf));
-		if( (pValue->iFlags & MEMOBJ_OBJ) == 0 ){
-			zGiven = (pValue->iFlags & MEMOBJ_NULL) ? "null" : VmValueGivenName(pValue,zBuf,sizeof(zBuf));
-			return VmThrowTypeErrorForReturn(pVm,pFunc,zExpected,zGiven);
-		}
-		if( pExpected ){
-			ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
-			if( !PH7_VmInstanceOf(pInst->pClass,pExpected) ){
+		ph7_class *pExpected = 0;
+		if( !VmClassHintMatches(pVm,pClassName,pHintScope,pValue,&pExpected) ){
+			if( pValue->iFlags & MEMOBJ_OBJ ){
 				zGiven = VmFormatValueClassName(pValue,zBuf,sizeof(zBuf));
-				return VmThrowTypeErrorForReturn(pVm,pFunc,zExpected,zGiven);
+			}else{
+				zGiven = (pValue->iFlags & MEMOBJ_NULL) ? "null" : VmValueGivenName(pValue,zBuf,sizeof(zBuf));
 			}
+			return VmThrowTypeErrorForReturn(pVm,pFunc,
+				VmClassHintTypeName(pClassName,pExpected,bNullable,zTypeBuf,sizeof(zTypeBuf)),zGiven);
 		}
 		return SXRET_OK;
 	}
