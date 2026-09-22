@@ -953,6 +953,49 @@ PH7_PRIVATE int PH7_MemObjStringIsNumeric(ph7_value *pValue)
 	return zTail == zEnd ? 1 : 0;
 }
 /*
+ * php's three-way is_numeric_string classification, which only the loose
+ * string/string comparison needs to tell apart. Returns TRUE when pObj is a
+ * wholly-numeric INTEGER-shaped string -- the shape php reads as a long -- and
+ * then reports through *piOverflow whether its digit run ran PAST the int64
+ * range (1 positive side, -1 negative, 0 fits) and through *prVal the double
+ * those bytes convert to when it did.
+ *
+ * FALSE covers a value that is not a string, a string that is not wholly
+ * numeric, and a FLOAT-shaped one -- php reports no overflow for that last case
+ * however large it is, because it was always going to be a double, so making it
+ * one lost no digits.
+ *
+ * Reads pObj without converting it: the comparison still needs the operand
+ * intact when this says no.
+ */
+static int MemObjStringIntShape(ph7_value *pObj,int *piOverflow,ph7_real *prVal)
+{
+	const char *z, *zTail = 0;
+	int iOverflow = 0;
+	*piOverflow = 0;
+	if( (pObj->iFlags & MEMOBJ_STRING) == 0 || !PH7_MemObjStringIsNumeric(pObj) ){
+		return FALSE;
+	}
+	if( !PH7_MemObjStringNumericPrefix(pObj,&zTail) ){
+		return FALSE;
+	}
+	/* Integer-shaped only: a '.' or a complete exponent inside the prefix makes
+	 * it a float, exactly as PH7_MemObjToNumeric decides the type. */
+	z = (const char *)SyBlobData(&pObj->sBlob);
+	while( z < zTail ){
+		if( z[0] == '.' || z[0] == 'e' || z[0] == 'E' ){
+			return FALSE;
+		}
+		z++;
+	}
+	MemObjStringToInt(pObj,&iOverflow);
+	*piOverflow = iOverflow;
+	if( iOverflow != 0 && prVal ){
+		SyStrToReal((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),(void *)prVal,0);
+	}
+	return TRUE;
+}
+/*
  * Check whether the ph7_value is numeric [i.e: int/float/bool] or looks
  * like a numeric number [i.e: if the ph7_value is of type string.].
  * Return TRUE if numeric.FALSE otherwise.
@@ -1687,8 +1730,46 @@ PH7_PRIVATE sxi32 PH7_MemObjCmp(ph7_value *pObj1,ph7_value *pObj2,int bStrict,in
 			 * below, unchanged.
 			 */
 			if( PH7_MemObjIsNumeric(pObj1) && PH7_MemObjIsNumeric(pObj2) ){
-				/* Perform a numeric comparison */
-				goto Numeric;
+				/*
+				 * Two INTEGER-shaped numeric STRINGS past the int64 range are not
+				 * compared through their doubles, because the conversion threw away
+				 * the digits that tell them apart. php has two rules for them, both
+				 * only for a string against a string (a string against an int VALUE
+				 * really does compare as doubles, so
+				 * `"9223372036854775808" == PHP_INT_MAX` is true):
+				 *
+				 *  - Same side, same double: compare the BYTES. So
+				 *    "9223372036854775808" == "9223372036854775809" is FALSE, and it
+				 *    is the RAW bytes -- sign, leading zeros and whitespace included
+				 *    -- so "9223372036854775808" != "09223372036854775808" too. Two
+				 *    digit runs that both overflow to infinity land here as well.
+				 *  - One side past the range, the other an integer-shaped string that
+				 *    FITS: the overflowing side simply IS the greater (or lesser)
+				 *    one, no conversion involved -- which is why
+				 *    "9223372036854775808" > "9223372036854775807" even though both
+				 *    reach the same double.
+				 *
+				 * Everything else stays numeric: opposite sides, unequal doubles, a
+				 * float-SHAPED operand, or anything that is not a string.
+				 */
+				int bBytes = 0;
+				{
+					ph7_real r1 = 0, r2 = 0;
+					int iOf1 = 0, iOf2 = 0;
+					int bInt1 = MemObjStringIntShape(pObj1,&iOf1,&r1);
+					int bInt2 = MemObjStringIntShape(pObj2,&iOf2,&r2);
+					if( iOf1 != 0 && iOf1 == iOf2 && r1 == r2 ){
+						bBytes = 1;
+					}else if( iOf1 != 0 && bInt2 && iOf2 == 0 ){
+						return iOf1;
+					}else if( iOf2 != 0 && bInt1 && iOf1 == 0 ){
+						return -iOf2;
+					}
+				}
+				if( !bBytes ){
+					/* Perform a numeric comparison */
+					goto Numeric;
+				}
 			}
 		}
 		/* Perform a strict string comparison.*/
