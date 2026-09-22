@@ -1294,7 +1294,7 @@ PH7_PRIVATE sxi32 VmEnforceArgType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_vm_func_
 {
 	if( pFormal->iFlags & VM_FUNC_ARG_UNION ){
 		if( VmCoerceToUnion(pVm,pVal,&pFormal->aUnionAlts,
-			(pFormal->iFlags & VM_FUNC_ARG_NULLABLE) ? 1 : 0,bStrict) != SXRET_OK ){
+			(pFormal->iFlags & VM_FUNC_ARG_NULLABLE) ? 1 : 0,bStrict,pSelfHint) != SXRET_OK ){
 			const char *zGiven;
 			const char *zExpected = "union";
 			char zBuf[128];

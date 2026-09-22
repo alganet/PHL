@@ -1143,6 +1143,29 @@ PH7_PRIVATE int VmCheckPseudoType(ph7_vm *pVm, ph7_value *pValue, const SyString
 	return -1;
 }
 /*
+ * The scope a `self`/`parent` written in a TYPE HINT resolves against: the class
+ * the hint was DECLARED in, never the class the value happens to be reached
+ * through. php binds the keyword where the hint is written, so
+ * `class P { public function s(): self {…} }` still expects a P when called on a
+ * `Q extends P` — resolving against the runtime (late-static-binding) class made
+ * such a return, and a `self`-typed property written from an inherited method,
+ * throw a TypeError over perfectly valid code.
+ *
+ * pDecl is the declaring class (0 when the site cannot name one); pUsing is the
+ * composing/runtime class to stand in for a TRAIT — php flattens a trait into
+ * the using class, and the trait itself sits in no instanceof hierarchy — or 0
+ * to fall back to the active self. This is the same rule OP_CALL already applies
+ * to PARAMETER hints when it computes pSelfHint (vm_exec.c), and the one
+ * VmResolveTypeClass applies to `parent`.
+ */
+PH7_PRIVATE ph7_class *VmHintScopeClass(ph7_vm *pVm, ph7_class *pDecl, ph7_class *pUsing)
+{
+	if( pDecl && (pDecl->iFlags & PH7_CLASS_TRAIT) == 0 ){
+		return pDecl;
+	}
+	return pUsing ? pUsing : VmCurrentSelf(pVm);
+}
+/*
  * Try to coerce *pValue* to fit one of the alternatives in *pAlts*. When
  * *bStrict* is zero this applies PHP 8 weak-mode union semantics (permissive
  * scalar coercion). When bStrict is non-zero, only exact type matches are
@@ -1152,15 +1175,18 @@ PH7_PRIVATE int VmCheckPseudoType(ph7_vm *pVm, ph7_value *pValue, const SyString
  * SXERR_INVALID on reject. Caller is responsible for the actual TypeError
  * throw.
  *
- * The class match for object values consults the active VM self-stack to
- * resolve `self`/`parent` aliases when present.
+ * The class match for object values resolves `self`/`parent` alternatives
+ * against *pSelf* — the DECLARING scope of the hint the union came from, which
+ * every caller computes through VmHintScopeClass (the self-stack top is the
+ * runtime class, which is the wrong answer for an inherited hint).
  */
 /*
  * Resolve a class/interface name from a type declaration to its ph7_class*,
- * handling the `self`/`parent` aliases against the supplied scope class pSelf
- * (the active self for params/returns/properties, or the declaring class for a
- * class constant). Used by every type-enforcement site so the resolution rule —
- * including the iLoadable flag — lives in one place.
+ * handling the `self`/`parent` aliases against the supplied scope class pSelf —
+ * the class the hint was DECLARED in, which every enforcement site computes
+ * through VmHintScopeClass above (OP_CALL's pSelfHint for parameters). Used by
+ * every type-enforcement site so the resolution rule — including the iLoadable
+ * flag — lives in one place.
  *
  * Always resolves with iLoadable=FALSE: every caller is an instanceof/type-
  * compatibility target, where the type may legitimately be an interface or
@@ -1217,7 +1243,8 @@ PH7_PRIVATE void VmMaterializeIntTyped(ph7_value *pVal, sxu32 nType)
 		MemObjSetType(pVal, MEMOBJ_INT);
 	}
 }
-PH7_PRIVATE sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, int bNullable, int bStrict)
+PH7_PRIVATE sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, int bNullable, int bStrict,
+	ph7_class *pSelf)
 {
 	sxu32 i;
 	sxu32 nAlts;
@@ -1248,7 +1275,6 @@ PH7_PRIVATE sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, 
 	 * union (the common case), which then pays nothing for the group machinery. */
 	if( bHasIntersection && (pValue->iFlags & MEMOBJ_OBJ) ){
 		ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
-		ph7_class *pSelfNow = VmCurrentSelf(pVm);
 		sxu32 g;
 		for( g = 0; g < PHL_UNION_MAX_ALTS; g++ ){
 			int bAll;
@@ -1258,7 +1284,7 @@ PH7_PRIVATE sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, 
 				ph7_class *pExpected;
 				if( aAlts[i].nGroup != g ) continue;
 				if( aAlts[i].nType != SXU32_HIGH ){ bAll = 0; break; }
-				pExpected = VmResolveTypeClass(pVm,&aAlts[i].sClass,pSelfNow);
+				pExpected = VmResolveTypeClass(pVm,&aAlts[i].sClass,pSelf);
 				if( pExpected == 0 || !PH7_VmInstanceOf(pInst->pClass,pExpected) ){
 					bAll = 0;
 					break;
@@ -1295,12 +1321,11 @@ PH7_PRIVATE sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, 
 		if( bHasObjAlt ) return SXRET_OK;
 		if( bHasClassAlt ){
 			ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
-			ph7_class *pSelfNow = VmCurrentSelf(pVm);
 			for( i = 0; i < nAlts; i++ ){
 				ph7_class *pExpected;
 				if( aGroupCount[aAlts[i].nGroup] >= 2 ) continue;
 				if( aAlts[i].nType != SXU32_HIGH ) continue;
-				pExpected = VmResolveTypeClass(pVm,&aAlts[i].sClass,pSelfNow);
+				pExpected = VmResolveTypeClass(pVm,&aAlts[i].sClass,pSelf);
 				if( pExpected && PH7_VmInstanceOf(pInst->pClass,pExpected) ){
 					return SXRET_OK;
 				}
@@ -1583,6 +1608,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 	SyHashEntry *pSlot;
 	VmClassAttr *pVmAttr;
 	ph7_class_attr *pAttr;
+	ph7_class *pHintScope;
 	char zGivenBuf[128];
 	pSlot = SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32));
 	if( pSlot == 0 ){
@@ -1593,6 +1619,10 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 	if( pAttr == 0 || (pAttr->iFlags & PH7_CLASS_ATTR_TYPED) == 0 ){
 		return SXRET_OK;
 	}
+	/* `self`/`parent` in the declared type resolve against the class that DECLARED
+	 * the property (a trait's members count as the composing class), not the
+	 * instance's runtime class — see VmHintScopeClass. */
+	pHintScope = VmHintScopeClass(pVm,pAttr->pDeclClass,pVmAttr->pOwner);
 	/* readonly enforcement (PHP 8.1), checked before type coercion. A readonly
 	 * property may be written exactly once and only from within the declaring
 	 * class scope (its set-scope is protected). */
@@ -1643,7 +1673,7 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 	if( pAttr->iFlags & PH7_CLASS_ATTR_UNION ){
 		sxi32 rc = VmCoerceToUnion(pVm, pValue, &pAttr->aUnionAlts,
 			(pAttr->iFlags & PH7_CLASS_ATTR_NULLABLE) ? 1 : 0,
-			0 /* bStrict: properties never apply strict_types */);
+			0 /* bStrict: properties never apply strict_types */,pHintScope);
 		if( rc == SXRET_OK ){
 			pVmAttr->iState &= ~(VM_CLASS_ATTR_UNINIT|VM_CLASS_ATTR_TYPE_DEFER);
 			return SXRET_OK;
@@ -1699,9 +1729,9 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 		/* rcPseudo == -1: real class — fall through to the instanceof branch. */
 	}
 	if( pAttr->nType == SXU32_HIGH ){
-		/* Class / interface type. Resolve self/parent relative to the class
-		 * currently active on the self-stack. */
-		ph7_class *pExpected = VmResolveTypeClass(pVm,&pAttr->sClass,VmCurrentSelf(pVm));
+		/* Class / interface type. Resolve self/parent relative to the DECLARING
+		 * class (pHintScope), not the instance's runtime class. */
+		ph7_class *pExpected = VmResolveTypeClass(pVm,&pAttr->sClass,pHintScope);
 		if( (pValue->iFlags & MEMOBJ_OBJ) == 0 ){
 			return VmThrowPropertyTypeError(pVm,pVmAttr,VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
 		}
@@ -1884,7 +1914,8 @@ PH7_PRIVATE sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 	}
 	/* Union type: reuse the shared coercion helper in strict mode. */
 	if( pAttr->iFlags & PH7_CLASS_ATTR_UNION ){
-		if( VmCoerceToUnion(&(*pVm),pValue,&pAttr->aUnionAlts,bNullable,1 /* strict */) == SXRET_OK ){
+		if( VmCoerceToUnion(&(*pVm),pValue,&pAttr->aUnionAlts,bNullable,1 /* strict */,
+			VmHintScopeClass(pVm,pAttr->pDeclClass,pClass)) == SXRET_OK ){
 			return SXRET_OK;
 		}
 		return VmConstantTypeError(&(*pVm),pClass,pAttr,pValue);
@@ -1916,7 +1947,8 @@ PH7_PRIVATE sxi32 VmEnforceConstantType(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 		}
 		{
 			/* A class constant's self/parent resolve against the declaring class. */
-			ph7_class *pExpected = VmResolveTypeClass(pVm,&pAttr->sClass,pClass);
+			ph7_class *pExpected = VmResolveTypeClass(pVm,&pAttr->sClass,
+				VmHintScopeClass(pVm,pAttr->pDeclClass,pClass));
 			if( pExpected ){
 				ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
 				if( !PH7_VmInstanceOf(pInst->pClass,pExpected) ){
@@ -2009,7 +2041,8 @@ PH7_PRIVATE sxi32 VmCheckTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_at
 		return SXERR_INVALID;
 	}
 	if( pAttr->iFlags & PH7_CLASS_ATTR_UNION ){
-		if( VmCoerceToUnion(&(*pVm),pValue,&pAttr->aUnionAlts,bNullable,1 /* strict */) == SXRET_OK ){
+		if( VmCoerceToUnion(&(*pVm),pValue,&pAttr->aUnionAlts,bNullable,1 /* strict */,
+			VmHintScopeClass(pVm,pAttr->pDeclClass,pClass)) == SXRET_OK ){
 			return SXRET_OK;
 		}
 		return SXERR_INVALID;
@@ -2037,7 +2070,7 @@ PH7_PRIVATE sxi32 VmCheckTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_at
 		{
 			/* self/parent in the hint resolve against the declaring class. */
 			ph7_class *pExpected = VmResolveTypeClass(pVm,&pAttr->sClass,
-				pAttr->pDeclClass ? pAttr->pDeclClass : pClass);
+				VmHintScopeClass(pVm,pAttr->pDeclClass,pClass));
 			if( pExpected ){
 				ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
 				if( !PH7_VmInstanceOf(pInst->pClass,pExpected) ){
@@ -2224,7 +2257,7 @@ PH7_PRIVATE sxi32 VmVariadicElementTypeCheck(ph7_vm *pVm,ph7_class *pSelfHint,ph
 	sxi32 rc;
 	if( pFormal->iFlags & VM_FUNC_ARG_UNION ){
 		if( VmCoerceToUnion(&(*pVm), pVal, &pFormal->aUnionAlts,
-			(pFormal->iFlags & VM_FUNC_ARG_NULLABLE) ? 1 : 0, bCallIsStrict) != SXRET_OK ){
+			(pFormal->iFlags & VM_FUNC_ARG_NULLABLE) ? 1 : 0, bCallIsStrict, pSelfHint) != SXRET_OK ){
 			const char *zGiven;
 			const char *zExpected = "union";
 			char zBuf[128];
@@ -2627,6 +2660,7 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 	int bStrict = pFunc->bStrictTypes ? 1 : 0;
 	int bNullable = (pFunc->iFlags & VM_FUNC_RETURN_NULLABLE) ? 1 : 0;
 	const char *zGiven;
+	ph7_class *pHintScope;
 	char zBuf[128];
 	char zTypeBuf[128];
 	/* Untyped function: no enforcement (no single type and no union/intersection). */
@@ -2691,13 +2725,21 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 		}
 		/* rcPseudo == -1: a real class — fall through to the instanceof branch. */
 	}
+	/* The two branches below are the only ones that can name a class, so the
+	 * hint scope is resolved here rather than on every scalar/void return.
+	 * `self`/`parent` in a return hint resolve against the class that DECLARED
+	 * the callee — the check runs inside the callee's own frame, so the same walk
+	 * `self::` uses answers it (a closure's bound scope included). The self-STACK
+	 * top is the late-static-binding class, which made an inherited `: self`
+	 * demand the SUBCLASS. See VmHintScopeClass. */
+	pHintScope = VmHintScopeClass(pVm,PH7_VmPeekDeclaringClass(pVm),0);
 	/* Union/intersection return type — delegate. A null alternative is not stored
 	 * in aReturnUnion (dropped at parse), so nullability comes from the func's
 	 * VM_FUNC_RETURN_NULLABLE flag (already consumed above for an explicit null). */
 	if( SySetUsed(&pFunc->aReturnUnion) > 0 ){
 		sxi32 rcU;
 		const char *zExpected = "union";
-		rcU = VmCoerceToUnion(pVm, pValue, &pFunc->aReturnUnion, bNullable, bStrict);
+		rcU = VmCoerceToUnion(pVm, pValue, &pFunc->aReturnUnion, bNullable, bStrict, pHintScope);
 		if( rcU == SXRET_OK ){
 			return SXRET_OK;
 		}
@@ -2719,7 +2761,7 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 	if( pFunc->nReturnType == SXU32_HIGH ){
 		SyString *pClassName = &pFunc->sReturnClass;
 		const char *zExpected;
-		ph7_class *pExpected = VmResolveTypeClass(pVm,pClassName,VmCurrentSelf(pVm));
+		ph7_class *pExpected = VmResolveTypeClass(pVm,pClassName,pHintScope);
 		zExpected = VmClassHintTypeName(pClassName,pExpected,bNullable,zTypeBuf,sizeof(zTypeBuf));
 		if( (pValue->iFlags & MEMOBJ_OBJ) == 0 ){
 			zGiven = (pValue->iFlags & MEMOBJ_NULL) ? "null" : VmValueGivenName(pValue,zBuf,sizeof(zBuf));
