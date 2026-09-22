@@ -422,12 +422,47 @@
    "  $pHandle = fopen($zTempDir.DIRECTORY_SEPARATOR.'PH7'.rand_str(12),'w+');"\
    "  return $pHandle;"\
    "}"\
-   "/* php's number_format(): missing entirely from PH7. */"\
+   "/* php's number_format(): missing entirely from PH7."\
+   " * Signature: number_format(float $num, int $decimals = 0, ?string $decimal_separator = '.',"\
+   " * ?string $thousands_separator = ','): string. Being a PRELUDE function it is out of reach"\
+   " * of the aBuiltinSig[] ZPP screen (host builtins only), so the four rows are checked here in"\
+   " * the shape php's ZPP reports them (__php_zpp_type, the pattern count_chars/max/min use)."\
+   " * Without them an array, a not-stringable object, a resource and a non-numeric string all"\
+   " * reached the (float) cast and ANSWERED -- number_format(new Bare()) warned and returned"\
+   " * '1', number_format('abc') returned '0'. A leading-numeric string ('12abc') is php's"\
+   " * TypeError too, not a silent 12. null and a lossy float stay PHL's TypeError rather than"\
+   " * php's deprecate-and-coerce (§10), matching what str_repeat() already answers for the"\
+   " * same two; the two SEPARATORS are declared ?string, so null is legal there. */"\
    "function number_format($num, $decimals = 0, $decimal_separator = '.', $thousands_separator = ','){"\
+   "  if( is_array($num) || is_object($num) || is_resource($num) || $num === null"\
+   "   || (is_string($num) && !is_numeric($num)) ){"\
+   "    throw new TypeError('number_format(): Argument #1 ($num) must be of type int|float, '"\
+   "      . __php_zpp_type($num) . ' given');"\
+   "  }"\
+   "  if( is_array($decimals) || is_object($decimals) || is_resource($decimals) || $decimals === null"\
+   "   || (is_string($decimals) && !is_numeric($decimals)) ){"\
+   "    throw new TypeError('number_format(): Argument #2 ($decimals) must be of type int, '"\
+   "      . __php_zpp_type($decimals) . ' given');"\
+   "  }"\
+   "  if( is_float($decimals) && $decimals != (int)$decimals ){"\
+   "    throw new TypeError('number_format(): Argument #2 ($decimals) must be of type int, float given');"\
+   "  }"\
+   "  if( is_array($decimal_separator) || is_resource($decimal_separator)"\
+   "   || (is_object($decimal_separator) && !method_exists($decimal_separator, '__toString')) ){"\
+   "    throw new TypeError('number_format(): Argument #3 ($decimal_separator) must be of type ?string, '"\
+   "      . __php_zpp_type($decimal_separator) . ' given');"\
+   "  }"\
+   "  if( is_array($thousands_separator) || is_resource($thousands_separator)"\
+   "   || (is_object($thousands_separator) && !method_exists($thousands_separator, '__toString')) ){"\
+   "    throw new TypeError('number_format(): Argument #4 ($thousands_separator) must be of type ?string, '"\
+   "      . __php_zpp_type($thousands_separator) . ' given');"\
+   "  }"\
    "  $num = (float)$num;"\
    "  $decimals = (int)$decimals;"\
    "  if( $decimal_separator === null ){ $decimal_separator = '.'; }"\
    "  if( $thousands_separator === null ){ $thousands_separator = ','; }"\
+   "  $decimal_separator = (string)$decimal_separator;"\
+   "  $thousands_separator = (string)$thousands_separator;"\
    "  /* round() first: sprintf uses banker's rounding, php's number_format rounds"\
    "   * half AWAY FROM ZERO (number_format(0.5) is '1', not '0'). A NEGATIVE precision"\
    "   * rounds to tens/hundreds (php 8: number_format(1.5,-1) is '0'); the displayed"\
