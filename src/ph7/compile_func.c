@@ -949,10 +949,50 @@ static sxi32 GenStateParseOneTypeAtom(ph7_gen_state *pGen, PhlTypeAtom *pOut)
 	return SXRET_OK;
 }
 
+/* Class-name ATOMS that php files with the BUILT-IN types rather than the
+ * classes. `callable`, `false` and `true` are type-mask bits in zend, so they
+ * print AFTER every class name however they were written (`false|A1` reads
+ * `A1|false`). `iterable` is two types at once: the class `Traversable`, which
+ * keeps the atom's declaration position among the classes, plus `array`, which
+ * prints with the builtins (`iterable|A1` reads `Traversable|A1|array`). PH7
+ * parses all four as class-name atoms, which is why they used to sort with the
+ * classes. */
+#define GEN_ATOM_PLAIN    0
+#define GEN_ATOM_CALLABLE 1
+#define GEN_ATOM_FALSE    2
+#define GEN_ATOM_TRUE     3
+#define GEN_ATOM_ITERABLE 4
+static int GenAtomMaskKind(const PhlTypeAtom *pAtom)
+{
+	const SyString *p = &pAtom->sClass;
+	if( pAtom->nType != SXU32_HIGH || p->zString == 0 ){
+		return GEN_ATOM_PLAIN;
+	}
+	if( p->nByte == 8 && SyStrnicmp(p->zString,"callable",8) == 0 ) return GEN_ATOM_CALLABLE;
+	if( p->nByte == 5 && SyStrnicmp(p->zString,"false",5) == 0 )    return GEN_ATOM_FALSE;
+	if( p->nByte == 4 && SyStrnicmp(p->zString,"true",4) == 0 )     return GEN_ATOM_TRUE;
+	if( p->nByte == 8 && SyStrnicmp(p->zString,"iterable",8) == 0 ) return GEN_ATOM_ITERABLE;
+	return GEN_ATOM_PLAIN;
+}
+/* Emit one class-like atom: when *bExpandIterable*, `iterable` contributes only
+ * its Traversable half here (the `array` half rides the built-in pass). php
+ * expands it only in a COMPOUND type — a standalone `iterable`/`?iterable` keeps
+ * its name in the canonical text (which is what Reflection prints; the TypeError
+ * for a standalone hint is rendered separately, by VmClassHintTypeName). */
+static void GenAppendClassAtom(SyBlob *pBlob, const PhlTypeAtom *pAtom, int bExpandIterable)
+{
+	if( bExpandIterable && GenAtomMaskKind(pAtom) == GEN_ATOM_ITERABLE ){
+		SyBlobAppend(pBlob, "Traversable", sizeof("Traversable")-1);
+		return;
+	}
+	SyBlobAppend(pBlob, pAtom->sClass.zString, pAtom->sClass.nByte);
+}
 /*
  * Build the canonical PHP-formatted type text into pBlob from a list of
  * atoms. Order matches PHP's `zend_type` rendering:
- *   classes (in declaration order) | object | array | string | int | float | bool [| null]
+ *   classes (in declaration order)
+ *   | callable | object | array | string | int | float | bool | false | true
+ *   [| null]
  * If exactly one non-null atom is present and bNullable is true, the
  * shorthand `?T` form is emitted instead of `T|null`.
  */
@@ -1001,7 +1041,7 @@ static void GenBuildUnionTypeText(SyBlob *pBlob, PhlTypeAtom *aAtoms, int nAtoms
 				if( aAtoms[i].nType == UTA_NULL_FLAG || aAtoms[i].nGroup != g ) continue;
 				if( !bFirstMember ) SyBlobAppend(pBlob, "&", 1);
 				if( aAtoms[i].nType == SXU32_HIGH ){
-					SyBlobAppend(pBlob, aAtoms[i].sClass.zString, aAtoms[i].sClass.nByte);
+					GenAppendClassAtom(pBlob, &aAtoms[i], 1);
 				}else{
 					SyBlobAppend(pBlob, aAtoms[i].zCanon, aAtoms[i].nCanon);
 				}
@@ -1009,6 +1049,15 @@ static void GenBuildUnionTypeText(SyBlob *pBlob, PhlTypeAtom *aAtoms, int nAtoms
 			}
 			if( bWrap ) SyBlobAppend(pBlob, ")", 1);
 			bFirstGroup = 0;
+		}
+		/* `iterable` printed its Traversable half in place; its `array` half goes
+		 * last, as php does (`(I1&I2)|iterable` reads `(I1&I2)|Traversable|array`). */
+		for( i = 0; i < nAtoms; i++ ){
+			if( GenAtomMaskKind(&aAtoms[i]) == GEN_ATOM_ITERABLE ){
+				SyBlobAppend(pBlob, "|", 1);
+				SyBlobAppend(pBlob, "array", sizeof("array")-1);
+				break;
+			}
 		}
 		if( bNullable ){
 			SyBlobAppend(pBlob, "|", 1);
@@ -1031,27 +1080,51 @@ static void GenBuildUnionTypeText(SyBlob *pBlob, PhlTypeAtom *aAtoms, int nAtoms
 	}
 	{
 		int bFirst = 1;
-		/* 1) Classes in declaration order */
+		/* 1) Classes in declaration order — minus the class-name atoms php counts
+		 * as built-in types (see GenAtomMaskKind); `iterable` leaves Traversable. */
 		for( i = 0; i < nAtoms; i++ ){
-			if( aAtoms[i].nType == SXU32_HIGH ){
-				if( !bFirst ) SyBlobAppend(pBlob, "|", 1);
-				SyBlobAppend(pBlob, aAtoms[i].sClass.zString, aAtoms[i].sClass.nByte);
-				bFirst = 0;
+			int nKind;
+			if( aAtoms[i].nType != SXU32_HIGH ) continue;
+			nKind = GenAtomMaskKind(&aAtoms[i]);
+			if( nKind == GEN_ATOM_CALLABLE || nKind == GEN_ATOM_FALSE || nKind == GEN_ATOM_TRUE ){
+				continue;
 			}
+			if( !bFirst ) SyBlobAppend(pBlob, "|", 1);
+			GenAppendClassAtom(pBlob, &aAtoms[i], nNonNull > 1);
+			bFirst = 0;
 		}
-		/* 2) Built-ins in canonical order */
+		/* 2) Built-ins in php's canonical order. A slot is filled either by a
+		 * plain atom of that MEMOBJ_* type or by a class-name atom of the matching
+		 * kind; the `array` slot also takes `iterable`'s second half. */
 		{
-			static const sxu32 aOrder[] = { MEMOBJ_OBJ, MEMOBJ_HASHMAP, MEMOBJ_STRING,
-				MEMOBJ_INT, MEMOBJ_REAL, MEMOBJ_BOOL };
+			static const struct {
+				sxu32 nType;        /* plain atom type, 0 when kind-only */
+				int nKind;          /* GEN_ATOM_* atom, GEN_ATOM_PLAIN when type-only */
+				const char *zText;
+				sxu32 nText;
+			} aOrder[] = {
+				{ 0,               GEN_ATOM_CALLABLE, "callable", sizeof("callable")-1 },
+				{ MEMOBJ_OBJ,      GEN_ATOM_PLAIN,    "object",   sizeof("object")-1 },
+				{ MEMOBJ_HASHMAP,  GEN_ATOM_ITERABLE, "array",    sizeof("array")-1 },
+				{ MEMOBJ_STRING,   GEN_ATOM_PLAIN,    "string",   sizeof("string")-1 },
+				{ MEMOBJ_INT,      GEN_ATOM_PLAIN,    "int",      sizeof("int")-1 },
+				{ MEMOBJ_REAL,     GEN_ATOM_PLAIN,    "float",    sizeof("float")-1 },
+				{ MEMOBJ_BOOL,     GEN_ATOM_PLAIN,    "bool",     sizeof("bool")-1 },
+				{ 0,               GEN_ATOM_FALSE,    "false",    sizeof("false")-1 },
+				{ 0,               GEN_ATOM_TRUE,     "true",     sizeof("true")-1 }
+			};
 			int k;
 			for( k = 0; k < (int)(sizeof(aOrder)/sizeof(aOrder[0])); k++ ){
 				for( i = 0; i < nAtoms; i++ ){
-					if( aAtoms[i].nType == aOrder[k] ){
-						if( !bFirst ) SyBlobAppend(pBlob, "|", 1);
-						SyBlobAppend(pBlob, aAtoms[i].zCanon, aAtoms[i].nCanon);
-						bFirst = 0;
-						break;
-					}
+					int bHit = (aOrder[k].nType != 0 && aAtoms[i].nType == aOrder[k].nType)
+						|| (aOrder[k].nKind != GEN_ATOM_PLAIN
+						    && GenAtomMaskKind(&aAtoms[i]) == aOrder[k].nKind
+						    && (aOrder[k].nKind != GEN_ATOM_ITERABLE || nNonNull > 1));
+					if( !bHit ) continue;
+					if( !bFirst ) SyBlobAppend(pBlob, "|", 1);
+					SyBlobAppend(pBlob, aOrder[k].zText, aOrder[k].nText);
+					bFirst = 0;
+					break;
 				}
 			}
 		}
