@@ -634,6 +634,14 @@ static sxi32 GenStateProcessStringExpression(
 	return rc;
 }
 /*
+ * TRUE when c can OPEN a php label — the byte class the engine's own identifier
+ * scanner uses (lex.c): a letter, '_', or a UTF-8 lead byte. php's own class is
+ * [a-zA-Z_\x80-\xff], one byte wider; a 0x80-0xbf lead is never
+ * valid UTF-8, so the two agree on every well-formed source.
+ */
+#define GEN_STRING_LABEL_START(c) \
+	( (unsigned char)(c) >= 0xc0 || SyisAlpha(c) || (c) == '_' )
+/*
  * Advance *pz over a php LABEL — the name half of "$name" and of the "->name"
  * accessor inside a double-quoted string or a heredoc body. php's label is
  * [a-zA-Z_\x80-\xff][a-zA-Z0-9_\x80-\xff]*; PHL keeps the historical UTF-8
@@ -1034,8 +1042,14 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)
 				if( zIn < zEnd ){
 					zIn++;
 				}
-			}else if( &zIn[1] < zEnd && zIn[0] == '-' && zIn[1] == '>' ){
-				/* Member access operator '->' */
+			}else if( &zIn[2] < zEnd && zIn[0] == '-' && zIn[1] == '>'
+				&& GEN_STRING_LABEL_START(zIn[2]) ){
+				/* Member access operator '->'. php takes it only when a LABEL
+				 * follows; with anything else -- a digit, a space, a '{', the end
+				 * of the body -- the arrow is literal TEXT and the interpolation is
+				 * just the variable. PHL swallowed the bare '->' and handed the
+				 * compiler a dangling "$o->", fatalling
+				 * "'->': Missing/Invalid member name" on source php RUNS. */
 				zIn += 2;
 				GenStateSkipStringLabel(&zIn,zEnd);
 			}
