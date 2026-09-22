@@ -3670,6 +3670,33 @@ PH7_PRIVATE void VmIncDecTypeErrorMsg(ph7_value *pVal,int bIncr,SyBlob *pMsgOut)
 	SyBlobFormat(pMsgOut,"Cannot %s %s",zVerb,ph7_type_name(pVal));
 }
 /*
+ * php's operand name in the bitwise-not diagnostic. It is NOT the arithmetic
+ * type name: zend spells a BOOL there as the literal `true`/`false` (where
+ * "Unsupported operand types" says `bool`), and an object as its CLASS. Only the
+ * types `~` refuses reach this — a string is complemented byte-wise and a
+ * number is complemented as an integer — and an UNINITIALIZED slot is php's
+ * null, which is what an undefined variable answers.
+ */
+PH7_PRIVATE void VmBitNotTypeErrorMsg(ph7_value *pVal,SyBlob *pMsgOut)
+{
+	if( (pVal->iFlags & MEMOBJ_OBJ) != 0 ){
+		ph7_class_instance *pInst = (ph7_class_instance *)pVal->x.pOther;
+		if( pInst && pInst->pClass ){
+			SyBlobFormat(pMsgOut,"Cannot perform bitwise not on %z",&pInst->pClass->sName);
+			return;
+		}
+	}
+	if( pVal->iFlags & MEMOBJ_BOOL ){
+		SyBlobFormat(pMsgOut,"Cannot perform bitwise not on %s",
+			pVal->x.iVal ? "true" : "false");
+	}else if( pVal->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_RES|MEMOBJ_OBJ) ){
+		SyBlobFormat(pMsgOut,"Cannot perform bitwise not on %s",ph7_type_name(pVal));
+	}else{
+		SyBlobAppend(pMsgOut,"Cannot perform bitwise not on null",
+			sizeof("Cannot perform bitwise not on null")-1);
+	}
+}
+/*
  * php compiles unary minus as `$x * -1` and unary plus as `$x * 1`, so both
  * inherit the MULTIPLICATION operand contract -- message included: `-$o` is
  * "Unsupported operand types: P * int", `-[1]` is "array * int" and `-"abc"` is

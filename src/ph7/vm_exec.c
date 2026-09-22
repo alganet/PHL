@@ -2658,6 +2658,47 @@ case PH7_OP_BITNOT:
 		goto Abort;
 	}
 #endif
+	if( pTos->iFlags & MEMOBJ_STRING ){
+		/* php's `~` over a STRING is a per-BYTE ones-complement of the same
+		 * length — a binary string, not an integer operation, so `~"abc"` is
+		 * "\x9e\x9d\x9c" where PHL cast the string to an int and answered
+		 * int(-1). The operand's blob can be a READ-ONLY VIEW of the variable's
+		 * own buffer (PH7_MemObjLoad), so complement into a fresh blob and swap
+		 * it in rather than writing through the view. */
+		SyBlob sNotBuf;
+		const unsigned char *zNotIn = (const unsigned char *)SyBlobData(&pTos->sBlob);
+		sxu32 nNotIn = SyBlobLength(&pTos->sBlob), iNot;
+		SyBlobInit(&sNotBuf,&pVm->sAllocator);
+		for( iNot = 0 ; iNot < nNotIn ; ++iNot ){
+			unsigned char cNot = (unsigned char)~zNotIn[iNot];
+			SyBlobAppend(&sNotBuf,(const void *)&cNot,sizeof(char));
+		}
+		PH7_MemObjRelease(pTos);
+		MemObjSetType(pTos,MEMOBJ_STRING);
+		if( SyBlobLength(&sNotBuf) > 0 ){
+			SyBlobAppend(&pTos->sBlob,SyBlobData(&sNotBuf),SyBlobLength(&sNotBuf));
+		}
+		SyBlobRelease(&sNotBuf);
+		break;
+	}
+	if( (pTos->iFlags & (MEMOBJ_INT|MEMOBJ_REAL)) == 0 ){
+		/* Everything else — null, a bool, an array, an object, a resource — has
+		 * no bitwise-not in php at all: a catchable TypeError naming the operand,
+		 * where PHL cast it to an int and answered ~0 / ~1. */
+		SyBlob sNotMsg;
+		sxi32 rcNot;
+		SyBlobInit(&sNotMsg,&pVm->sAllocator);
+		VmBitNotTypeErrorMsg(pTos,&sNotMsg);
+		PH7_MemObjRelease(pTos);
+		MemObjSetType(pTos,MEMOBJ_NULL);
+		pTos->nIdx = SXU32_HIGH;
+		rcNot = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sNotMsg),
+			SyBlobLength(&sNotMsg));
+		SyBlobRelease(&sNotMsg);
+		if( rcNot == SXERR_ABORT ){ goto Abort; }
+		rc = rcNot;
+		PH7_THROW_ROUTE_MIDEXPR(rc)
+	}
 	/* Force an integer cast (php deprecates a lossy float here too) */
 	rc = VmRejectFloatOperand(&(*pVm),pTos);
 	PH7_DISPATCH_ENFORCE_RC(rc)
@@ -2665,6 +2706,10 @@ case PH7_OP_BITNOT:
 		PH7_MemObjToInteger(pTos);
 	}
 	pTos->x.iVal = ~pTos->x.iVal;
+	/* An INTEGRAL float carries a cached MEMOBJ_INT beside MEMOBJ_REAL, so the
+	 * cast above is skipped and the value kept rendering as a float: `~2.0`
+	 * answered 2.0 instead of -3. `~` always yields an int. */
+	MemObjSetType(pTos,MEMOBJ_INT);
 	break;
 /* OP_MUL * * *
  * OP_MUL_STORE * * *
