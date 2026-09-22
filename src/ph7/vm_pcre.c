@@ -1294,6 +1294,14 @@ static int PH7_builtin_preg_quote(ph7_context *pCtx, int nArg, ph7_value **apArg
 	zEnd = &zStr[nLen];
 	while( z < zEnd ){
 		char c = *z;
+		if( c == '\0' ){
+			/* php spells NUL as the three-digit escape "\000" (a backslash and a raw NUL
+			 * byte, which is what this emitted, is not an escape at all: pcre reads the
+			 * backslash as quoting the byte that FOLLOWS the NUL). */
+			ph7_result_string(pCtx, "\\000", 4);
+			z++;
+			continue;
+		}
 		switch( c ){
 			case '.': case '\\': case '+': case '*': case '?':
 			case '[': case '^': case ']': case '$': case '(':
