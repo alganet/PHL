@@ -2396,6 +2396,173 @@ PH7_PRIVATE void GenStateResetUseImports(ph7_gen_state *pGen,ph7_vm *pVm)
 	GenStateInitUseImports(&(*pGen),&(*pVm));
 }
 /*
+ * Register one resolved `use` import: alias -> FQN, in the table its KIND owns
+ * (iUseType: 0 = class, 1 = function, 2 = const).  Shared by the plain form
+ * (`use A\Cee;`) and by each member of a group (`use A\{Cee, Dee};`).
+ */
+static sxi32 GenStateAddImport(
+	ph7_gen_state *pGen,  /* Code generator state */
+	int iUseType,         /* 0=class, 1=function, 2=const */
+	SyBlob *pPath,        /* Fully qualified name being imported */
+	SyString *pAlias,     /* Short name it is imported under */
+	sxu32 nLine           /* Line of the 'use' keyword (for diagnostics) */
+	)
+{
+	SyHash *pGenHash;   /* Compile-time import table */
+	char *zDup;
+	sxi32 rc;
+	/* Select the target hash table based on import type.  Class and function
+	 * imports are resolved entirely at compile time; only const imports need a
+	 * runtime table, which PH7_OP_USECONST fills so imports stay namespace-scoped. */
+	switch( iUseType ){
+		case 1:  pGenHash = &pGen->hUseFuncImports; break;
+		case 2:  pGenHash = &pGen->hUseConstImports; break;
+		default: pGenHash = &pGen->hUseImports; break;
+	}
+	/* Check for duplicate import alias (per-type) */
+	if( SyHashGet(pGenHash,pAlias->zString,pAlias->nByte) != 0 ){
+		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+			"Cannot use %.*s as %z because the name is already in use",
+			(int)SyBlobLength(pPath),(const char *)SyBlobData(pPath),pAlias);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+	}
+	/* Register the import: alias -> FQN.
+	 * Strings are allocated from the VM pool allocator and freed
+	 * when the entire VM is released. SyHashRelease does not free
+	 * user-data, but pool memory is reclaimed in bulk at shutdown. */
+	zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+		(const char *)SyBlobData(pPath),SyBlobLength(pPath));
+	if( zDup ){
+		SyHashInsert(pGenHash,pAlias->zString,pAlias->nByte,zDup);
+		if( iUseType == 2 ){
+			/* Const imports: emit a runtime instruction so imports are
+			 * namespace-scoped (NSSWITCH clears the VM table). */
+			char *zAliasDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,pAlias->zString,pAlias->nByte);
+			if( zAliasDup ){
+				/* Encode alias length in iP1, alias string in p3 is not enough —
+				 * we need both alias and FQN.  Pack them: iP1=alias length,
+				 * iP2 unused, p3 points to a two-pointer struct. */
+				char **azPair = (char **)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(char*)*2);
+				if( azPair ){
+					azPair[0] = zAliasDup;
+					azPair[1] = zDup;
+					PH7_VmEmitInstr(pGen->pVm,PH7_OP_USECONST,(sxi32)pAlias->nByte,0,azPair,0);
+				}
+			}
+		}
+	}
+	return SXRET_OK;
+}
+/*
+ * Collect one `\`-separated name into pOut (appending to whatever it holds, with
+ * a separator when needed) and return its LAST segment token, or 0 when the
+ * cursor is not on a name at all.
+ */
+static SyToken * GenStateCollectNsPath(ph7_gen_state *pGen,SyBlob *pOut)
+{
+	SyToken *pLast = 0;
+	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_NSSEP|PH7_TK_ID)) ){
+		if( pGen->pIn->nType & PH7_TK_ID ){
+			pLast = pGen->pIn;
+			if( SyBlobLength(pOut) > 0 ){
+				SyBlobAppend(pOut,"\\",1);
+			}
+			SyBlobAppend(pOut,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);
+		}
+		pGen->pIn++;
+	}
+	return pLast;
+}
+/*
+ * Consume the optional `as Alias` clause, leaving *pAlias untouched when absent.
+ */
+static void GenStateCollectImportAlias(ph7_gen_state *pGen,SyString *pAlias)
+{
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD)
+		&& PH7_TKWRD_AS == SX_PTR_TO_INT(pGen->pIn->pUserData) ){
+		pGen->pIn++; /* Jump 'as' */
+		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_ID) ){
+			*pAlias = pGen->pIn->sData;
+			pGen->pIn++;
+		}
+	}
+}
+/*
+ * Compile the members of a GROUP use declaration (php 7.0):
+ *
+ *      use A\{Cee, Dee as D2, Sub\Eee};
+ *      use function A\{f, g as h};
+ *      use A\{function f, const K, Cee};   // per-member kind, untyped group only
+ *
+ * pPrefix holds the path before the brace; the cursor sits on `{`.  Each member
+ * is the prefix, a `\`, and the member's own (possibly multi-segment) name.  A
+ * trailing comma is allowed, an empty group is not.
+ */
+static sxi32 GenStateCompileGroupUse(ph7_gen_state *pGen,SyBlob *pPrefix,int iUseType,sxu32 nLine)
+{
+	SyBlob sPath;
+	sxi32 rc = SXRET_OK;
+	pGen->pIn++; /* Jump '{' */
+	SyBlobInit(&sPath,&pGen->pVm->sAllocator);
+	for(;;){
+		int iMemberType = iUseType;
+		SyString sAlias;
+		SyToken *pLast;
+		/* `function`/`const` may qualify a single member, but only inside a
+		 * group that is not itself typed (php rejects `use function A\{const C}`). */
+		if( iUseType == 0 && pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
+			sxu32 nKey = (sxu32)(SX_PTR_TO_INT(pGen->pIn->pUserData));
+			if( nKey == PH7_TKWRD_FUNCTION ){
+				iMemberType = 1;
+				pGen->pIn++;
+			}else if( nKey == PH7_TKWRD_CONST ){
+				iMemberType = 2;
+				pGen->pIn++;
+			}
+		}
+		SyBlobReset(&sPath);
+		SyBlobAppend(&sPath,SyBlobData(pPrefix),SyBlobLength(pPrefix));
+		pLast = GenStateCollectNsPath(pGen,&sPath);
+		if( pLast == 0 ){
+			/* No member name: `use A\{};` or a stray token.  Report once, then
+			 * skip to the end of the group so the statement does not cascade. */
+			rc = PH7_GenCompileError(&(*pGen),E_PARSE,nLine,
+				"syntax error, unexpected %s \"%z\", expecting identifier",
+				TokenTypeName(pGen->pIn < pGen->pEnd ? pGen->pIn->nType : 0),
+				pGen->pIn < pGen->pEnd ? &pGen->pIn->sData : 0);
+			while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_CCB|PH7_TK_SEMI)) == 0 ){
+				pGen->pIn++;
+			}
+			break;
+		}
+		sAlias = pLast->sData; /* Default alias is the member's last component */
+		GenStateCollectImportAlias(pGen,&sAlias);
+		rc = GenStateAddImport(&(*pGen),iMemberType,&sPath,&sAlias,nLine);
+		if( rc == SXERR_ABORT ){
+			break;
+		}
+		rc = SXRET_OK;
+		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COMMA) ){
+			pGen->pIn++;
+			if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_CCB) ){
+				break; /* Trailing comma before the closing brace */
+			}
+			continue;
+		}
+		break;
+	}
+	SyBlobRelease(&sPath);
+	if( rc == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_CCB) ){
+		pGen->pIn++; /* Jump '}' */
+	}
+	return SXRET_OK;
+}
+/*
  * Compile the 'use' statement
  * According to the PHP language reference manual
  *  The ability to refer to an external fully qualified name with an alias or importing
@@ -2416,9 +2583,7 @@ PH7_PRIVATE sxi32 PH7_CompileUse(ph7_gen_state *pGen)
 	SyBlob sPath;
 	SyString sAlias;
 	SyToken *pLast;
-	char *zDup;
 	int iUseType; /* 0=class, 1=function, 2=const */
-	SyHash *pGenHash;   /* Compile-time import table */
 	nLine = pGen->pIn->nLine;
 	pGen->pIn++; /* Jump the 'use' keyword */
 	/* Detect 'function' or 'const' keyword after 'use' (PHP 5.6+) */
@@ -2433,14 +2598,6 @@ PH7_PRIVATE sxi32 PH7_CompileUse(ph7_gen_state *pGen)
 			pGen->pIn++;
 		}
 	}
-	/* Select the target hash table based on import type.  Class and function
-	 * imports are resolved entirely at compile time; only const imports need a
-	 * runtime table, which PH7_OP_USECONST fills so imports stay namespace-scoped. */
-	switch( iUseType ){
-		case 1:  pGenHash = &pGen->hUseFuncImports; break;
-		case 2:  pGenHash = &pGen->hUseConstImports; break;
-		default: pGenHash = &pGen->hUseImports; break;
-	}
 	SyBlobInit(&sPath,&pGen->pVm->sAllocator);
 	/* Process one or more use declarations separated by commas */
 	for(;;){
@@ -2448,17 +2605,18 @@ PH7_PRIVATE sxi32 PH7_CompileUse(ph7_gen_state *pGen)
 			break;
 		}
 		SyBlobReset(&sPath);
-		pLast = 0;
 		/* Collect the full namespace path */
-		while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_NSSEP|PH7_TK_ID)) ){
-			if( pGen->pIn->nType & PH7_TK_ID ){
-				pLast = pGen->pIn;
-				if( SyBlobLength(&sPath) > 0 ){
-					SyBlobAppend(&sPath,"\\",1);
-				}
-				SyBlobAppend(&sPath,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);
+		pLast = GenStateCollectNsPath(pGen,&sPath);
+		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OCB) && SyBlobLength(&sPath) > 0 ){
+			/* GROUP declaration: what was collected is the shared prefix.  php
+			 * does not let a group be comma-combined with another declaration,
+			 * so the members close the statement. */
+			rc = GenStateCompileGroupUse(&(*pGen),&sPath,iUseType,nLine);
+			if( rc == SXERR_ABORT ){
+				SyBlobRelease(&sPath);
+				return SXERR_ABORT;
 			}
-			pGen->pIn++;
+			break;
 		}
 		if( pLast == 0 ){
 			/* Empty path */
@@ -2467,48 +2625,11 @@ PH7_PRIVATE sxi32 PH7_CompileUse(ph7_gen_state *pGen)
 		/* Default alias is the last component of the path */
 		sAlias = pLast->sData;
 		/* Check for explicit alias: use Foo\Bar as Baz */
-		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_KEYWORD)
-			&& PH7_TKWRD_AS == SX_PTR_TO_INT(pGen->pIn->pUserData) ){
-			pGen->pIn++; /* Jump 'as' */
-			if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_ID) ){
-				sAlias = pGen->pIn->sData;
-				pGen->pIn++;
-			}
-		}
-		/* Check for duplicate import alias (per-type) */
-		if( SyHashGet(pGenHash,sAlias.zString,sAlias.nByte) != 0 ){
-			rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
-				"Cannot use %.*s as %z because the name is already in use",
-				(int)SyBlobLength(&sPath),(const char *)SyBlobData(&sPath),&sAlias);
-			if( rc == SXERR_ABORT ){
-				SyBlobRelease(&sPath);
-				return SXERR_ABORT;
-			}
-		}
-		/* Register the import: alias -> FQN.
-		 * Strings are allocated from the VM pool allocator and freed
-		 * when the entire VM is released. SyHashRelease does not free
-		 * user-data, but pool memory is reclaimed in bulk at shutdown. */
-		zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
-			(const char *)SyBlobData(&sPath),SyBlobLength(&sPath));
-		if( zDup ){
-			SyHashInsert(pGenHash,sAlias.zString,sAlias.nByte,zDup);
-			if( iUseType == 2 ){
-				/* Const imports: emit a runtime instruction so imports are
-				 * namespace-scoped (NSSWITCH clears the VM table). */
-				char *zAliasDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,sAlias.zString,sAlias.nByte);
-				if( zAliasDup ){
-					/* Encode alias length in iP1, alias string in p3 is not enough —
-					 * we need both alias and FQN.  Pack them: iP1=alias length,
-					 * iP2 unused, p3 points to a two-pointer struct. */
-					char **azPair = (char **)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(char*)*2);
-					if( azPair ){
-						azPair[0] = zAliasDup;
-						azPair[1] = zDup;
-						PH7_VmEmitInstr(pGen->pVm,PH7_OP_USECONST,(sxi32)sAlias.nByte,0,azPair,0);
-					}
-				}
-			}
+		GenStateCollectImportAlias(pGen,&sAlias);
+		rc = GenStateAddImport(&(*pGen),iUseType,&sPath,&sAlias,nLine);
+		if( rc == SXERR_ABORT ){
+			SyBlobRelease(&sPath);
+			return SXERR_ABORT;
 		}
 		/* Check for comma (multiple use declarations) */
 		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_COMMA) ){
