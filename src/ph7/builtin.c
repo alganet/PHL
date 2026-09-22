@@ -779,8 +779,8 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	        /* URL functions */
 	{ "base64_encode",PH7_builtin_base64_encode },
 	{ "base64_decode",PH7_builtin_base64_decode },
-	{ "convert_uuencode",PH7_builtin_base64_encode },
-	{ "convert_uudecode",PH7_builtin_base64_decode },
+	{ "convert_uuencode",PH7_builtin_convert_uuencode },
+	{ "convert_uudecode",PH7_builtin_convert_uudecode },
 	{ "urlencode",    PH7_builtin_urlencode },
 	{ "urldecode",    PH7_builtin_urldecode },
 	{ "rawurlencode", PH7_builtin_rawurlencode },

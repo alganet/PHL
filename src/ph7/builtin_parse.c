@@ -2274,7 +2274,6 @@ static int Consumer(const void *pData,unsigned int nLen,void *pUserData)
 }
 /*
  * string base64_encode(string $data)
- * string convert_uuencode(string $data)
  *  Encodes data with MIME base64
  * Parameter
  *  $data
@@ -2328,7 +2327,6 @@ static const signed char aB64Rev[256] = {
 };
 /*
  * string base64_decode(string $data, bool $strict = false)
- * string convert_uudecode(string $data)
  *  Decodes data encoded with MIME base64
  * Parameters
  *  $data
@@ -2432,6 +2430,183 @@ PH7_PRIVATE int PH7_builtin_base64_decode(ph7_context *pCtx,int nArg,ph7_value *
 	return PH7_OK;
 fail:
 	SyMemBackendFree(&pCtx->pVm->sAllocator,zOut);
+	ph7_result_bool(pCtx,0);
+	return PH7_OK;
+}
+/*
+ * uuencode's six-bit alphabet: a value of 0 is written as the backtick php uses
+ * instead of the historical space, every other value as ' ' + value. The three
+ * PH7_UU_ENC_C* helpers pack the 6-bit groups exactly like php's macros: each
+ * contribution is masked to its own bit window, so the result never depends on
+ * whether the platform's char is signed.
+ */
+#define PH7_UU_ENC(c)      ((char)((c) ? (((c) & 077) + ' ') : '`'))
+#define PH7_UU_ENC_C1(a)   PH7_UU_ENC((a) >> 2)
+#define PH7_UU_ENC_C2(a,b) PH7_UU_ENC((((a) << 4) & 060) | (((b) >> 4) & 017))
+#define PH7_UU_ENC_C3(b,c) PH7_UU_ENC((((b) << 2) & 074) | (((c) >> 6) & 003))
+#define PH7_UU_ENC_C4(c)   PH7_UU_ENC((c) & 077)
+#define PH7_UU_DEC(c)      ((((int)(c)) - ' ') & 077)
+/*
+ * string convert_uuencode(string $data)
+ *  Uuencode a string.
+ * Parameter
+ *  $data
+ *   Data to encode.
+ * Return
+ *  The uuencoded data: 45-byte lines, each prefixed with its encoded length and
+ *  terminated by a newline, followed by php's "`\n" end marker. An empty input
+ *  answers just that marker.
+ * Implementation note: a faithful port of php's php_uuencode(). This used to be
+ * registered as an ALIAS of base64_encode() -- a wrong ALGORITHM, so every answer
+ * was silently a base64 string (convert_uuencode("abc") gave "YWJj" where php
+ * gives "#86)C\n`\n").
+ */
+PH7_PRIVATE int PH7_builtin_convert_uuencode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const unsigned char *zIn,*zEnd,*zStop;
+	char zLine[64]; /* one full line is 1 length byte + 60 data bytes + '\n' */
+	int nLen,iLen = 45,n;
+	if( nArg < 1 ){
+		/* Missing arguments,return FALSE */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* Extract the input string */
+	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);
+	if( nLen < 0 ){
+		nLen = 0;
+	}
+	zEnd = &zIn[nLen];
+	/* Emit whole groups while at least four bytes remain: the last line is closed by
+	 * the tail block below so a group of one or two bytes gets php's '`' filler. */
+	while( &zIn[3] < zEnd ){
+		zStop = &zIn[iLen];
+		if( zStop > zEnd ){
+			/* A short final line: its length byte counts every remaining byte, but only
+			 * whole three-byte groups are encoded here -- the leftovers ride the tail
+			 * block, which then adds no length byte of its own. */
+			iLen = (int)(zEnd - zIn);
+			zStop = &zIn[(iLen/3)*3];
+		}
+		n = 0;
+		zLine[n++] = PH7_UU_ENC(iLen);
+		while( zIn < zStop ){
+			zLine[n++] = PH7_UU_ENC_C1(zIn[0]);
+			zLine[n++] = PH7_UU_ENC_C2(zIn[0],zIn[1]);
+			zLine[n++] = PH7_UU_ENC_C3(zIn[1],zIn[2]);
+			zLine[n++] = PH7_UU_ENC_C4(zIn[2]);
+			zIn += 3;
+		}
+		if( iLen == 45 ){
+			zLine[n++] = '\n';
+		}
+		ph7_result_string(pCtx,zLine,n);
+	}
+	if( zIn < zEnd ){
+		/* One to three trailing bytes. php reads the bytes past the end of the string
+		 * (its buffers are NUL terminated); the missing ones are zero here. */
+		unsigned char c0 = zIn[0];
+		unsigned char c1 = (&zIn[1] < zEnd) ? zIn[1] : 0;
+		unsigned char c2 = (&zIn[2] < zEnd) ? zIn[2] : 0;
+		n = 0;
+		if( iLen == 45 ){
+			/* No short line was opened above: this group is a line of its own. */
+			zLine[n++] = PH7_UU_ENC((int)(zEnd - zIn));
+			iLen = 0;
+		}
+		zLine[n++] = PH7_UU_ENC_C1(c0);
+		zLine[n++] = PH7_UU_ENC_C2(c0,c1);
+		zLine[n++] = ((zEnd - zIn) > 1) ? PH7_UU_ENC_C3(c1,c2) : '`';
+		zLine[n++] = ((zEnd - zIn) > 2) ? PH7_UU_ENC_C4(c2)     : '`';
+		ph7_result_string(pCtx,zLine,n);
+	}
+	if( iLen != 45 ){
+		/* A short (or tail) line is still open; a run of whole 45-byte lines -- and the
+		 * empty input, which opens no line at all -- is already newline-terminated. */
+		ph7_result_string(pCtx,"\n",1);
+	}
+	/* php's end marker: a zero-length line. */
+	ph7_result_string(pCtx,"`\n",2);
+	return PH7_OK;
+}
+/*
+ * string|false convert_uudecode(string $data)
+ *  Decode a uuencoded string.
+ * Parameter
+ *  $data
+ *   Uuencoded data.
+ * Return
+ *  The decoded data, or FALSE (with a warning) when $data is not a valid uuencoded
+ *  string: an empty input, a line claiming more bytes than the whole input holds, or
+ *  a line whose data is truncated. Trailing garbage after the first short line is
+ *  ignored, exactly like php.
+ * Implementation note: a faithful port of php's php_uudecode(); see the encoder above
+ * for why this was not a decoder at all before.
+ */
+PH7_PRIVATE int PH7_builtin_convert_uudecode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const unsigned char *zIn,*zEnd,*zStop;
+	unsigned char *zOut;
+	int nLen,iLen;
+	sxu32 nOut = 0,nTotal = 0;
+	if( nArg < 1 ){
+		/* Missing arguments,return FALSE */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* Extract the input string */
+	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);
+	if( nLen < 1 ){
+		/* php refuses the empty string rather than decoding it to "". */
+		goto fail;
+	}
+	zEnd = &zIn[nLen];
+	/* Every four input characters yield three bytes and each line spends one more
+	 * character on its length, so the input length is a safe upper bound. */
+	zOut = (unsigned char *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,(sxu32)nLen + 1);
+	if( zOut == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	while( zIn < zEnd ){
+		iLen = PH7_UU_DEC(*zIn++);
+		if( iLen == 0 ){
+			/* The end marker (or any line claiming zero bytes) stops the decoding. */
+			break;
+		}
+		if( iLen > nLen ){
+			goto err;
+		}
+		nTotal += (sxu32)iLen;
+		/* A line carries four characters per three-byte group, whole groups only. */
+		zStop = zIn + ((iLen + 2)/3)*4;
+		if( zStop > zEnd ){
+			goto err;
+		}
+		while( zIn < zStop ){
+			zOut[nOut++] = (unsigned char)((PH7_UU_DEC(zIn[0]) << 2) | (PH7_UU_DEC(zIn[1]) >> 4));
+			zOut[nOut++] = (unsigned char)((PH7_UU_DEC(zIn[1]) << 4) | (PH7_UU_DEC(zIn[2]) >> 2));
+			zOut[nOut++] = (unsigned char)((PH7_UU_DEC(zIn[2]) << 6) |  PH7_UU_DEC(zIn[3]));
+			zIn += 4;
+		}
+		if( iLen < 45 ){
+			/* A short line ends the payload; whatever follows is ignored. */
+			break;
+		}
+		zIn++; /* Skip the line separator */
+	}
+	/* Drop the padding the last group carried: php keeps only as many bytes as the
+	 * length bytes declared, counted over the WHOLE input rather than per line. */
+	if( nOut > nTotal ){
+		nOut = nTotal;
+	}
+	ph7_result_string(pCtx,(const char *)zOut,(int)nOut);
+	SyMemBackendFree(&pCtx->pVm->sAllocator,zOut);
+	return PH7_OK;
+err:
+	SyMemBackendFree(&pCtx->pVm->sAllocator,zOut);
+fail:
+	ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+		"Argument #1 ($data) is not a valid uuencoded string"); /* the "convert_uudecode(): " prefix is added by the handler */
 	ph7_result_bool(pCtx,0);
 	return PH7_OK;
 }
