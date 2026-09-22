@@ -1054,10 +1054,10 @@ PH7_PRIVATE sxi32 PH7_VmInstallBuiltinLib(ph7_vm *pVm)
 	 * Kept in its own VmEvalChunk (not appended to PH7_BUILTIN_LIB): a namespace
 	 * declaration is NOT reset at the block's closing brace in this engine, so
 	 * anything following it in the same chunk would leak into the Random
-	 * namespace. Isolation instead comes from VmEvalChunk saving/restoring
-	 * pVm->sNamespace (and PH7_ResetCodeGenerator clearing the compiler
-	 * namespace) per chunk, so this lands as Random\RandomException while later
-	 * user code still compiles in the global namespace. */
+	 * namespace. Isolation instead comes from the compile state being per CHUNK
+	 * (PH7_ResetCodeGenerator/PH7_CompilerSaveState clear the compiler namespace),
+	 * so this lands as Random\RandomException while later user code still compiles
+	 * in the global namespace. */
 	{
 		static const char zRandomLib[] =
 			"namespace Random { class RandomException extends \\Exception { } }";

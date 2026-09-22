@@ -28,7 +28,6 @@ PH7_PRIVATE sxi32 VmEvalChunk(
 	)
 {
 	SySet *pByteCode,aByteCode;
-	SyBlob sSavedNs;
 	ProcConsumer xErr = 0;
 	void *pErrData = 0;
 	ph7_gen_state sSavedGen;
@@ -52,15 +51,6 @@ PH7_PRIVATE sxi32 VmEvalChunk(
 		PH7_CompilerSaveState(pVm,&sSavedGen,xErr,pErrData);
 	}else{
 		PH7_ResetCodeGenerator(pVm,xErr,pErrData);
-	}
-	/* Save and reset VM namespace state for the new compilation unit.
-	 * Each included file has its own namespace scope; after execution,
-	 * the caller's namespace is restored. */
-	SyBlobInit(&sSavedNs,&pVm->sAllocator);
-	SyBlobDup(&pVm->sNamespace,&sSavedNs);
-	if( bTrueReturn ){
-		/* Include/require: start in a fresh (global) namespace scope. */
-		SyBlobReset(&pVm->sNamespace);
 	}
 	/* Swap bytecode container */
 	pByteCode = pVm->pByteContainer;
@@ -146,10 +136,6 @@ Cleanup:
 	/* Cleanup the mess left behind */
 	pVm->pByteContainer = pByteCode;
 	SySetRelease(&aByteCode);
-	/* Restore caller's namespace state */
-	SyBlobReset(&pVm->sNamespace);
-	SyBlobDup(&sSavedNs,&pVm->sNamespace);
-	SyBlobRelease(&sSavedNs);
 	/* Restore the outer compile's generator state if this was a nested unit. */
 	if( bNested ){
 		PH7_CompilerRestoreState(pVm,&sSavedGen);

@@ -26,12 +26,11 @@ echo $out;
 ====================================================
 PH7 VM Dump
 ====================================================
-NSSWITCH           0        0        0 [0] L%d
-LOADC              0 %A [1] L%d
-CONSUME            1        0        0 [2] L%d
-LOADC              0 %A [3] L%d
-CONSUME            1        0        0 [4] L%d
-DONE               0        0        0 [5] L%d
+LOADC              0 %A [0] L%d
+CONSUME            1        0        0 [1] L%d
+LOADC              0 %A [2] L%d
+CONSUME            1        0        0 [3] L%d
+DONE               0        0        0 [4] L%d
 Hello World!
 --CLEAN--
 <?php

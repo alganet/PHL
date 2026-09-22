@@ -2369,19 +2369,13 @@ PH7_PRIVATE sxi32 PH7_CompileNamespace(ph7_gen_state *pGen)
 	SyBlobReset(&pGen->sNamespace);
 	GenStateResetUseImports(&(*pGen),pGen->pVm);
 	if( pGen->pIn >= pGen->pEnd ){
-		/* Global namespace (bare "namespace;") */
-		PH7_VmEmitInstr(pGen->pVm,PH7_OP_NSSWITCH,0,0,0,0);
-		return SXRET_OK;
+		return SXRET_OK; /* Global namespace (bare "namespace;") */
 	}
 	if( pGen->pIn->nType & PH7_TK_SEMI ){
-		/* namespace; — switch to global namespace */
-		PH7_VmEmitInstr(pGen->pVm,PH7_OP_NSSWITCH,0,0,0,0);
-		return SXRET_OK;
+		return SXRET_OK; /* namespace; — switch to global namespace */
 	}
 	if( pGen->pIn->nType & PH7_TK_OCB ){
-		/* namespace { } — global namespace block */
-		PH7_VmEmitInstr(pGen->pVm,PH7_OP_NSSWITCH,0,0,0,0);
-		return SXRET_OK;
+		return SXRET_OK; /* namespace { } — global namespace block */
 	}
 	/* Collect the namespace path: namespace Foo\Bar\Baz */
 	while( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_NSSEP|PH7_TK_ID|PH7_TK_KEYWORD)) ){
@@ -2395,16 +2389,6 @@ PH7_PRIVATE sxi32 PH7_CompileNamespace(ph7_gen_state *pGen)
 			SyBlobAppend(&pGen->sNamespace,pGen->pIn->sData.zString,pGen->pIn->sData.nByte);
 		}
 		pGen->pIn++;
-	}
-	/* Emit a runtime namespace switch so the VM tracks the active namespace
-	 * at the correct program counter, not just the last one compiled. */
-	{
-		char *zNsDup = 0;
-		if( SyBlobLength(&pGen->sNamespace) > 0 ){
-			zNsDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
-				(const char *)SyBlobData(&pGen->sNamespace),SyBlobLength(&pGen->sNamespace));
-		}
-		PH7_VmEmitInstr(pGen->pVm,PH7_OP_NSSWITCH,0,0,zNsDup,0);
 	}
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_SEMI|PH7_TK_OCB)) == 0 ){
 		rc = PH7_GenCompileError(&(*pGen),E_PARSE,nLine,

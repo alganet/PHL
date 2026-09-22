@@ -2572,10 +2572,6 @@ PH7_PRIVATE sxi32 PH7_CompileScript(
 		goto cleanup;
 	}
 	nObjIdx = 0;
-	/* Each compilation unit starts in the global namespace.
-	 * Emit NSSWITCH(NULL) so the VM resets namespace state at runtime,
-	 * preventing namespace bleeding across include()d files. */
-	PH7_VmEmitInstr(pVm,PH7_OP_NSSWITCH,0,0,0,0);
 	/* Start the compilation process */
 	for(;;){
 		if( pCodeGen->pRawIn >= pCodeGen->pRawEnd ){

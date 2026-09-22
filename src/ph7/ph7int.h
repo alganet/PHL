@@ -1469,7 +1469,6 @@ struct ph7_vm
 	SyHash hConstant;           /* Host-application and user defined constants container */
 	SyHash hHostFunction;       /* Host-application installable functions */
 	SyHash hFunction;           /* Compiled functions */
-	SyBlob sNamespace;          /* Current namespace (e.g. "App\\Models") */
 	SyHash hSuper;              /* Superglobals hashtable */
 	SyHash hPDO;                /* PDO installed drivers */
 	SyBlob sConsumer;           /* Default VM consumer [i.e Redirect all VM output to this blob] */
@@ -1914,7 +1913,6 @@ enum ph7_vm_op {
   PH7_OP_MATCH,         /* Match expression (PHP 8.0) */
   PH7_OP_ERR_CTRL,     /* Error control */
   PH7_OP_DUP,          /* Duplicate top of stack */
-  PH7_OP_NSSWITCH,     /* Switch active namespace at runtime */
   PH7_OP_NULLC,         /* Null coalescing ?? */
   PH7_OP_NULLC_JMP,     /* Null coalescing assign short-circuit jump */
   PH7_OP_NULLC_STORE,   /* Null coalescing assign store */

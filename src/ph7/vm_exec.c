@@ -1516,19 +1516,6 @@ case PH7_OP_DUP:
 	PH7_MemObjStore(pTos - 1,pTos);
 	break;
 /*
- * NSSWITCH: * * P3
- *
- * Switch the active namespace at runtime.
- * P3 points to the namespace string (pool-allocated, NULL for global).
- */
-case PH7_OP_NSSWITCH:
-	SyBlobReset(&pVm->sNamespace);
-	if( pInstr->p3 ){
-		const char *zNs = (const char *)pInstr->p3;
-		SyBlobAppend(&pVm->sNamespace,zNs,SyStrlen(zNs));
-	}
-	break;
-/*
  * CLASS_DEFER: * * P3
  *
  * Execute a class declaration whose parent/interface/trait could not be
