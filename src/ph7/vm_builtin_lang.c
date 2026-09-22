@@ -80,6 +80,14 @@ static int VmClassConstLookup(
 	if( pAttr == 0 || (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
 		return VM_CCONST_NOCONST;
 	}
+	if( pAttr->iProtection == PH7_CLASS_PROT_PRIVATE
+	 && pAttr->pDeclClass && pAttr->pDeclClass != pClass ){
+		/* php does not put a private constant in a SUBCLASS's table at all, so naming it
+		 * through the child is not an access denial but a plain miss — `Sub::P` reports
+		 * `Undefined constant Sub::P` even from inside the declaring class, and
+		 * defined("Sub::P") is false there too. Only the declaring class can answer. */
+		return VM_CCONST_NOCONST;
+	}
 	*ppAttr = pAttr;
 	/* php answers by the CALLING scope, the same rule the direct `C::K` access uses:
 	 * a private constant is invisible from outside its declaring class even to a
@@ -88,6 +96,46 @@ static int VmClassConstLookup(
 		return VM_CCONST_NOACCESS;
 	}
 	return VM_CCONST_OK;
+}
+/*
+ * Raise the Error php raises for a "C::K" name that did not resolve. php prints the class
+ * part exactly as the caller WROTE it — `c::Q`, `self::P`, `parent::P` — rather than the
+ * canonical class name, so the message quotes the source span. Never called with
+ * VM_CCONST_OK or VM_CCONST_PLAIN.
+ */
+static int VmClassConstError(
+	ph7_context *pCtx,      /* Call context */
+	int rc,                 /* VmClassConstLookup() verdict */
+	const char *zName,      /* The whole "C::K" name */
+	int nLen,               /* zName length */
+	int iSep,               /* Offset of the "::" */
+	ph7_class_attr *pAttr   /* The constant, when one was found */
+	)
+{
+	if( nLen > 0 && zName[0] == '\\' ){
+		/* The global-namespace anchor is not part of the name php echoes back: `\C::P`
+		 * reports `C::P` (exactly ONE leading backslash goes, the rest stays). */
+		zName++;
+		nLen--;
+		iSep--;
+	}
+	switch( rc ){
+		case VM_CCONST_NOCLASS:
+			return PH7_VmThrowException(pCtx,"Error","Class \"%.*s\" not found",iSep,zName);
+		case VM_CCONST_NOSCOPE:
+			return PH7_VmThrowException(pCtx,"Error",
+				"Cannot access \"%.*s\" when no class scope is active",iSep,zName);
+		case VM_CCONST_NOPARENT:
+			return PH7_VmThrowException(pCtx,"Error",
+				"Cannot access \"parent\" when current class scope has no parent");
+		case VM_CCONST_NOACCESS:
+			return PH7_VmThrowException(pCtx,"Error","Cannot access %s constant %.*s",
+				(pAttr && pAttr->iProtection == PH7_CLASS_PROT_PRIVATE) ? "private" : "protected",
+				nLen,zName);
+		default:
+			break;
+	}
+	return PH7_VmThrowException(pCtx,"Error","Undefined constant %.*s",nLen,zName);
 }
 /*
  * bool defined(string $name)
@@ -119,20 +167,19 @@ PH7_PRIVATE int vm_builtin_defined(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	 * global constant table only, so EVERY class constant answered false while
 	 * constant() read the same name correctly). */
 	if( nLen > 0 ){
-		switch( VmClassConstLookup(pCtx->pVm,zName,nLen,&pClass,&pAttr,&iSep) ){
+		int iRc = VmClassConstLookup(pCtx->pVm,zName,nLen,&pClass,&pAttr,&iSep);
+		switch( iRc ){
 			case VM_CCONST_PLAIN:
 				break;
 			case VM_CCONST_OK:
 				ph7_result_bool(pCtx,1);
 				return SXRET_OK;
 			case VM_CCONST_NOSCOPE:
-				/* php refuses the question rather than answering it: naming `self` where
-				 * no class scope is active is an Error, not a `false`. */
-				return PH7_VmThrowException(pCtx,"Error",
-					"Cannot access \"%.*s\" when no class scope is active",iSep,zName);
 			case VM_CCONST_NOPARENT:
-				return PH7_VmThrowException(pCtx,"Error",
-					"Cannot access \"parent\" when current class scope has no parent");
+				/* php refuses the question rather than answering it: naming `self` where
+				 * no class scope is active is an Error, not a `false`. Every OTHER miss
+				 * is a false, so only these two reach the shared thrower. */
+				return VmClassConstError(pCtx,iRc,zName,nLen,iSep,pAttr);
 			default:
 				ph7_result_bool(pCtx,0);
 				return SXRET_OK;
@@ -397,54 +444,49 @@ PH7_PRIVATE int vm_builtin_constant(ph7_context *pCtx,int nArg,ph7_value **apArg
 	 * included — and read the mounted constant slot; php throws a catchable
 	 * Error for an unknown class or constant (pre-fix this path warned
 	 * "Undefined constant" and returned NULL without ever looking at the
-	 * class). */
+	 * class). The resolution is defined()'s: it also answers `self`/`parent`/`static`
+	 * against the live class scope and refuses a constant that is not VISIBLE from
+	 * here — both of which this used to walk straight past, so a `private const` was
+	 * readable from anywhere through the string form while the direct `C::K` access
+	 * threw. */
 	{
-		int iSep;
-		for( iSep = 0; iSep + 1 < nLen; iSep++ ){
-			if( zName[iSep] == ':' && zName[iSep+1] == ':' ){
-				break;
+		ph7_class_attr *pAttr = 0;
+		ph7_class *pClass = 0;
+		int iSep = 0;
+		int iRc = VmClassConstLookup(pCtx->pVm,zName,nLen,&pClass,&pAttr,&iSep);
+		if( iRc != VM_CCONST_PLAIN ){
+			if( iRc != VM_CCONST_OK ){
+				return VmClassConstError(pCtx,iRc,zName,nLen,iSep,pAttr);
 			}
-		}
-		if( iSep + 1 < nLen ){
-			ph7_class *pClass = iSep > 0 ?
-				PH7_VmExtractClass(pCtx->pVm,zName,(sxu32)iSep,FALSE,0) : 0;
-			if( pClass == 0 ){
-				return PH7_VmThrowException(pCtx,"Error",
-					"Class \"%.*s\" not found",iSep,zName);
-			}
-			if( iSep + 2 < nLen ){
-				/* constant("C::NAME") names a class CONSTANT or enum case (hConst),
-				 * never a property. */
-				ph7_class_attr *pAttr = PH7_ClassExtractConstant(pClass,
-					&zName[iSep+2],(sxu32)(nLen - iSep - 2));
-				if( pAttr && pAttr->nIdx == SXU32_HIGH ){
-					/* Unmaterialized: enum case → materialize the singletons
-					 * (all of them: constant("S::A") is a direct access, like
-					 * OP_MEMBER); plain constant → run its initializer. */
-					sxi32 rcEnum;
-					if( pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE ){
-						rcEnum = VmEnumMaterialize(pCtx->pVm,pClass);
-					}else{
-						rcEnum = VmClassConstEvalOnDemand(pCtx->pVm,pClass,pAttr);
-					}
-					if( rcEnum != SXRET_OK ){
-						return rcEnum;
-					}
+			if( pAttr->nIdx == SXU32_HIGH ){
+				/* Unmaterialized: enum case → materialize the singletons
+				 * (all of them: constant("S::A") is a direct access, like
+				 * OP_MEMBER); plain constant → run its initializer. Unlike
+				 * defined(), reading the value has to force this. */
+				sxi32 rcEnum;
+				if( pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE ){
+					rcEnum = VmEnumMaterialize(pCtx->pVm,pClass);
+				}else{
+					rcEnum = VmClassConstEvalOnDemand(pCtx->pVm,pClass,pAttr);
 				}
-				if( pAttr && (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) ){
-					ph7_value *pValue = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pAttr->nIdx);
-					if( pValue ){
-						if( SySetUsed(&pAttr->aAttrs) > 0 ){
-							/* #[\Deprecated] warns through constant() too (php) */
-							VmDeprecatedConstNotice(pCtx->pVm,pClass,pAttr);
-						}
-						ph7_result_value(pCtx,pValue);
-						return SXRET_OK;
-					}
+				if( rcEnum != SXRET_OK ){
+					return rcEnum;
 				}
 			}
-			return PH7_VmThrowException(pCtx,"Error",
-				"Undefined constant %.*s",nLen,zName);
+			{
+				ph7_value *pValue = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pAttr->nIdx);
+				if( pValue ){
+					if( SySetUsed(&pAttr->aAttrs) > 0 ){
+						/* #[\Deprecated] warns through constant() too (php) */
+						VmDeprecatedConstNotice(pCtx->pVm,pClass,pAttr);
+					}
+					ph7_result_value(pCtx,pValue);
+					return SXRET_OK;
+				}
+			}
+			/* Declared but with no slot to read: the same dead end the pre-fix code
+			 * fell through to. */
+			return VmClassConstError(pCtx,VM_CCONST_NOCONST,zName,nLen,iSep,pAttr);
 		}
 	}
 	/* Perform the query */
