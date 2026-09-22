@@ -1317,32 +1317,8 @@ static sxi32 VmMountUserClassAttrs(
 				return SXERR_MEM;
 			}
 			if( pAttr->pNativeValue ){
-				/* A native class's literal initializer. There is no expression to
-				 * run: the C builder handed the value directly, so write it into the
-				 * slot the same way an evaluated literal byte-code would have. */
-				const PH7_NativeConstDef *pLit = (const PH7_NativeConstDef *)pAttr->pNativeValue;
-				switch( pLit->iType ){
-					case PH7_NATIVE_VAL_INT:
-						PH7_MemObjInitFromInt(&(*pVm),pMemObj,pLit->iValue);
-						break;
-					case PH7_NATIVE_VAL_BOOL:
-						PH7_MemObjInitFromBool(&(*pVm),pMemObj,(sxi32)pLit->iValue);
-						break;
-					case PH7_NATIVE_VAL_STRING: {
-						SyString sLit;
-						SyStringInitFromBuf(&sLit,pLit->zValue,SyStrlen(pLit->zValue));
-						PH7_MemObjInitFromString(&(*pVm),pMemObj,&sLit);
-						break;
-					}
-#ifndef PH7_OMIT_FLOATING_POINT
-					case PH7_NATIVE_VAL_DOUBLE:
-						PH7_MemObjInitFromReal(&(*pVm),pMemObj,pLit->rValue);
-						break;
-#endif
-					default:
-						PH7_MemObjInit(&(*pVm),pMemObj);
-						break;
-				}
+				/* A native class's literal initializer: no expression to run. */
+				PH7_NativeLiteralValue(&(*pVm),pAttr->pNativeValue,pMemObj);
 			}else if( SySetUsed(&pAttr->aByteCode) > 0 ){
 				/* Initialize attribute default value (any complex expression).
 				 * pConstEvalClass lets self::/parent:: in the initializer
@@ -1543,7 +1519,12 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 			pVmAttr->nIdx = pMemObj->nIdx;
 			pVmAttr->iState = 0;
 			pVmAttr->pOwner = pClass;
-			if( SySetUsed(&pAttr->aByteCode) > 0 ){
+			if( pAttr->pNativeValue ){
+				/* Native class, literal default: no initializer to execute, so none
+				 * of the throw/typed-default machinery below can apply either — a
+				 * literal cannot throw and the builder states the type itself. */
+				PH7_NativeLiteralValue(&(*pVm),pAttr->pNativeValue,pMemObj);
+			}else if( SySetUsed(&pAttr->aByteCode) > 0 ){
 				/* Initialize attribute default value (any complex expression).
 				 * pConstEvalClass: self::CONST in a property default resolves
 				 * against the declaring class (no method frame here). */
@@ -2056,8 +2037,6 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	PH7_VmInstallBuiltinLib(&(*pVm));
 	/* bCompilingBuiltin stays set until the Reflection library below has
 	 * compiled — its classes are internal too. */
-	/* Cache the Fiber class pointer for fast dispatch */
-	pVm->pFiberClass = PH7_VmExtractClass(pVm,"Fiber",5,0,0);
 	/* Cache built-in interface pointers used on hot dispatch paths */
 	pVm->pArrayAccessClass = PH7_VmExtractClass(pVm,"ArrayAccess",sizeof("ArrayAccess")-1,0,0);
 	pVm->pCountableClass   = PH7_VmExtractClass(pVm,"Countable",sizeof("Countable")-1,0,0);
@@ -2068,8 +2047,11 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->pCoalesceObj = 0;
 	pVm->bCoalesceArmed = 0;
 	PH7_MemObjInit(pVm,&pVm->sCoalesceKey);
-	/* Fiber's methods, as real C bodies rather than global __fiber_* thunks. */
+	/* Declare Fiber -- class, private slots and every method are C now, so it does
+	 * not exist until this runs. Cache the pointer only AFTER: a NULL cache here
+	 * segfaults the first `new Fiber`. */
 	PH7_VmInstallFiberNative(&(*pVm));
+	pVm->pFiberClass = PH7_VmExtractClass(pVm,"Fiber",5,0,0);
 	/* Cache the Closure class pointer (closures are instances of it) */
 	pVm->pClosureClass = PH7_VmExtractClass(pVm,"Closure",7,0,0);
 	pVm->pClosureThis = 0; /* transient bound-$this slot, consumed per call */
@@ -2079,11 +2061,12 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	PH7_VmInstallClosureNative(&(*pVm));
 	/* Cache the stdClass pointer ((object) cast target + dynamic-property owner) */
 	pVm->pStdClass = PH7_VmExtractClass(pVm,"stdClass",sizeof("stdClass")-1,0,0);
-	/* Cache the Generator class pointer, then install its methods as C bodies
-	 * (the __gen_* thunks are gone). Iterator must already be compiled: the
-	 * install re-attaches `implements Iterator`, which the chunk cannot carry. */
-	pVm->pGeneratorClass = PH7_VmExtractClass(pVm,"Generator",9,0,0);
+	/* Declare Generator, THEN cache the pointer -- it no longer exists until the
+	 * native install creates it, and a NULL cache here segfaults the first `yield`.
+	 * Iterator must already be compiled: the install attaches `implements Iterator`
+	 * after the methods, which is why the class cannot live in the chunk. */
 	PH7_VmInstallGeneratorNative(&(*pVm));
+	pVm->pGeneratorClass = PH7_VmExtractClass(pVm,"Generator",9,0,0);
 	/* Install the Reflection library (embedded classes + __reflect_* thunks).
 	 * Still inside the bCompilingBuiltin window so its classes are flagged
 	 * internal; the Traversable pointer above must already be cached. */

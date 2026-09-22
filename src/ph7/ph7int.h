@@ -1234,6 +1234,19 @@ struct PH7_NativeConstDef
 	const char *zValue;      /* STRING */
 	double rValue;           /* DOUBLE */
 };
+/*
+ * A declared property. Its default is the same literal record a constant uses --
+ * a compiled declaration would carry compiled byte-code here, which the builder
+ * has no compiler to emit, so the value is stated directly and materialized at
+ * `new` (instance) or at mount (static) by PH7_NativeLiteralValue.
+ */
+typedef struct PH7_NativePropDef PH7_NativePropDef;
+struct PH7_NativePropDef
+{
+	const char *zName;
+	sxi32 iMods;             /* PH7_MOD_* (STATIC supported; FINAL ignored) */
+	PH7_NativeConstDef sDefault; /* iType PH7_NATIVE_VAL_NULL = plain null default */
+};
 struct PH7_NativeClassSpec
 {
 	const char *zName;
@@ -1242,10 +1255,14 @@ struct PH7_NativeClassSpec
 	sxi32 iFlags;            /* PH7_CLASS_FINAL / ABSTRACT / INTERFACE / READONLY */
 	const PH7_NativeMethodDef *aMethod; sxu32 nMethod;
 	const PH7_NativeConstDef  *aConst;  sxu32 nConst;
+	const PH7_NativePropDef   *aProp;   sxu32 nProp;
 };
 PH7_PRIVATE sxi32 PH7_InstallNativeClasses(ph7_vm *pVm,const PH7_NativeClassSpec *aSpec,sxu32 nSpec);
 PH7_PRIVATE sxi32 PH7_NativeClassInstallMethod(ph7_vm *pVm,ph7_class *pClass,
 	const PH7_NativeMethodDef *pDef,void *pUserData);
+PH7_PRIVATE sxi32 PH7_NativeClassInstallProperty(ph7_vm *pVm,ph7_class *pClass,
+	const PH7_NativePropDef *pDef);
+PH7_PRIVATE void PH7_NativeLiteralValue(ph7_vm *pVm,const void *pLiteral,ph7_value *pOut);
 /*
  * Each class method is parsed out and stored in an instance of the following
  * structure.

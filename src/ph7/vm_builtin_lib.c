@@ -268,21 +268,12 @@
 	"    $this->handle = null;"\
 	"}"\
 	"}"\
-	/* Fiber and Generator keep only their STORAGE here; every method is native
-	 * (PH7_VmInstallFiberNative / PH7_VmInstallGeneratorNative), so the
-	 * `__fiber_` and `__gen_` global thunks the one-line bodies used to forward to
-	 * are gone. Generator's `implements Iterator` is attached from C too, and must be:
-	 * PH7_ClassImplement installs an ABSTRACT stub for every interface method the
-	 * class does not already declare, and at chunk-compile time this body declares
-	 * none of them — the class would be rejected as abstract before the native
-	 * methods could ever be attached. */\
-	"class Fiber {"\
-	"  private $__ctx;"\
-	"  private $__callable;"\
-	"}"\
-	"class Generator {"\
-	"  private $__ctx;"\
-	"}"\
+	/* Fiber and Generator are declared ENTIRELY from C — class, private slots and
+	 * every method — by PH7_VmInstallFiberNative / PH7_VmInstallGeneratorNative.
+	 * They are the first two builtin classes with no presence in this chunk at all.
+	 * Generator's `implements Iterator` is attached there too, and has to be: it is
+	 * applied AFTER its methods exist, because PH7_ClassImplement installs an
+	 * ABSTRACT stub for every interface method a class does not already declare. */\
 	"final class Closure {"\
 	"  private $__fn;"\
 	"  private $__this;"\

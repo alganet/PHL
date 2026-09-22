@@ -51,6 +51,14 @@ foreach ([
 var_dump(function_exists('__gen_next'), function_exists('__fiber_start'),
          function_exists('__fiber_suspend'));
 var_dump((new ReflectionMethod('Fiber', 'suspend'))->isStatic());
+
+/* Both classes are declared entirely from C now — class, private slots and every
+ * method — with no presence in any embedded PHP chunk. They must still look like
+ * ordinary internal classes: internal, no defining file, concrete. */
+foreach (['Fiber', 'Generator'] as $c) {
+    $r = new ReflectionClass($c);
+    var_dump($c, $r->isInternal(), $r->getFileName(), $r->isAbstract(), $r->isInterface());
+}
 ?>
 --EXPECT--
 bool(true)
@@ -80,5 +88,15 @@ bool(false)
 bool(false)
 bool(false)
 bool(true)
+string(5) "Fiber"
+bool(true)
+bool(false)
+bool(false)
+bool(false)
+string(9) "Generator"
+bool(true)
+bool(false)
+bool(false)
+bool(false)
 --CLEAN--
 <?php

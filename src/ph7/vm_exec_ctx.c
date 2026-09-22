@@ -1066,18 +1066,19 @@ PH7_PRIVATE sxi32 PH7_VmInstallFiberNative(ph7_vm *pVm)
 		  vm_builtin_Fiber_suspend },
 		{ "__destruct",   PH7_MOD_PUBLIC, "",                    "",       vm_builtin_Fiber_destruct },
 	};
-	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"Fiber",sizeof("Fiber")-1,0,0);
-	sxu32 n;
-	if( pClass == 0 ){
-		return SXERR_NOTFOUND;
-	}
-	for( n = 0 ; n < SX_ARRAYSIZE(aMethod) ; n++ ){
-		sxi32 rc = PH7_NativeClassInstallMethod(&(*pVm),pClass,&aMethod[n],0);
-		if( rc != SXRET_OK ){
-			return rc;
-		}
-	}
-	return SXRET_OK;
+	/* The two private slots the methods above keep their state in: the execution
+	 * context (a resource) and the callable handed to the constructor. */
+	static const PH7_NativePropDef aProp[] = {
+		{ "__ctx",      PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ "__callable", PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+	};
+	static const PH7_NativeClassSpec sSpec = {
+		"Fiber", 0, 0, 0,
+		aMethod, SX_ARRAYSIZE(aMethod),
+		0, 0,
+		aProp, SX_ARRAYSIZE(aProp)
+	};
+	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);
 }
 /*
  * Generator's C-bodied methods, plus the `implements Iterator` the chunk can no
@@ -1101,20 +1102,25 @@ PH7_PRIVATE sxi32 PH7_VmInstallGeneratorNative(ph7_vm *pVm)
 		{ "getReturn",  PH7_MOD_PUBLIC, "",                 "mixed", vm_builtin_Generator_getReturn },
 		{ "__destruct", PH7_MOD_PUBLIC, "",                 "",      vm_builtin_Generator_destruct },
 	};
-	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"Generator",sizeof("Generator")-1,0,0);
+	static const PH7_NativePropDef aProp[] = {
+		{ "__ctx", PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+	};
+	static const PH7_NativeClassSpec sSpec = {
+		"Generator", 0, 0, 0,
+		aMethod, SX_ARRAYSIZE(aMethod),
+		0, 0,
+		aProp, SX_ARRAYSIZE(aProp)
+	};
+	ph7_class *pClass;
 	ph7_class *pIterator;
-	sxu32 n;
-	if( pClass == 0 ){
-		return SXERR_NOTFOUND;
+	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),&sSpec,1);
+	if( rc != SXRET_OK ){
+		return rc;
 	}
-	for( n = 0 ; n < SX_ARRAYSIZE(aMethod) ; n++ ){
-		sxi32 rc = PH7_NativeClassInstallMethod(&(*pVm),pClass,&aMethod[n],0);
-		if( rc != SXRET_OK ){
-			return rc;
-		}
-	}
+	/* `implements Iterator` last, for the reason in this function's header. */
+	pClass = PH7_VmExtractClass(&(*pVm),"Generator",sizeof("Generator")-1,0,0);
 	pIterator = PH7_VmExtractClass(&(*pVm),"Iterator",sizeof("Iterator")-1,0,0);
-	if( pIterator == 0 ){
+	if( pClass == 0 || pIterator == 0 ){
 		return SXERR_NOTFOUND;
 	}
 	return PH7_ClassImplement(pClass,pIterator);

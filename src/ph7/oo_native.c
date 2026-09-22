@@ -25,6 +25,41 @@
  * visibility and autoloading all see an ordinary one.
  */
 /*
+ * Materialize a native declaration's literal initializer into a value slot.
+ *
+ * A compiled declaration expresses its default as byte-code evaluated at mount
+ * (constants, statics) or at `new` (instance properties). The C builder has no
+ * compiler to emit that, so it carries the literal on the attribute
+ * (ph7_class_attr::pNativeValue) and both of those sites call this instead --
+ * which is what a literal initializer's byte-code would have produced anyway.
+ */
+PH7_PRIVATE void PH7_NativeLiteralValue(ph7_vm *pVm,const void *pLiteral,ph7_value *pOut)
+{
+	const PH7_NativeConstDef *pLit = (const PH7_NativeConstDef *)pLiteral;
+	switch( pLit->iType ){
+		case PH7_NATIVE_VAL_INT:
+			PH7_MemObjInitFromInt(&(*pVm),pOut,pLit->iValue);
+			break;
+		case PH7_NATIVE_VAL_BOOL:
+			PH7_MemObjInitFromBool(&(*pVm),pOut,(sxi32)pLit->iValue);
+			break;
+		case PH7_NATIVE_VAL_STRING: {
+			SyString sLit;
+			SyStringInitFromBuf(&sLit,pLit->zValue,SyStrlen(pLit->zValue));
+			PH7_MemObjInitFromString(&(*pVm),pOut,&sLit);
+			break;
+		}
+#ifndef PH7_OMIT_FLOATING_POINT
+		case PH7_NATIVE_VAL_DOUBLE:
+			PH7_MemObjInitFromReal(&(*pVm),pOut,pLit->rValue);
+			break;
+#endif
+		default:
+			PH7_MemObjInit(&(*pVm),pOut);
+			break;
+	}
+}
+/*
  * Resolve a class by name for the builder's own use (parents and interfaces).
  * Autoload is deliberately NOT triggered: these run at VM init, where the only
  * classes that can exist are the ones installed before this call, and a missing
@@ -163,6 +198,31 @@ static sxi32 NativeInstallConstant(ph7_vm *pVm,ph7_class *pClass,const PH7_Nativ
 	return PH7_ClassInstallAttr(pClass,pAttr);
 }
 /*
+ * Install one declared property.
+ *
+ * The default is carried as a literal rather than compiled byte-code (see
+ * PH7_NativeLiteralValue); an instance property materializes it at `new`, a static
+ * one at mount. A PH7_NATIVE_VAL_NULL default is the plain `public $p;` case.
+ */
+PH7_PRIVATE sxi32 PH7_NativeClassInstallProperty(ph7_vm *pVm,ph7_class *pClass,
+	const PH7_NativePropDef *pDef)
+{
+	ph7_class_attr *pAttr;
+	SyString sName;
+	sxi32 iFlags = 0;
+	SyStringInitFromBuf(&sName,pDef->zName,SyStrlen(pDef->zName));
+	if( pDef->iMods & PH7_MOD_STATIC ){
+		iFlags |= PH7_CLASS_ATTR_STATIC;
+	}
+	pAttr = PH7_NewClassAttr(&(*pVm),&sName,0,NativeProtection(pDef->iMods),iFlags);
+	if( pAttr == 0 ){
+		return SXERR_MEM;
+	}
+	pAttr->pDeclClass = pClass;
+	pAttr->pNativeValue = &pDef->sDefault;
+	return PH7_ClassInstallAttr(pClass,pAttr);
+}
+/*
  * Create and install ONE class from its spec, without its methods.
  *
  * Split from the method pass because a spec table may describe classes that extend
@@ -184,6 +244,12 @@ static sxi32 NativeDeclareClass(ph7_vm *pVm,const PH7_NativeClassSpec *pSpec,ph7
 	pClass->iFlags |= pSpec->iFlags;
 	for( n = 0 ; n < pSpec->nConst ; n++ ){
 		rc = NativeInstallConstant(&(*pVm),pClass,&pSpec->aConst[n]);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	for( n = 0 ; n < pSpec->nProp ; n++ ){
+		rc = PH7_NativeClassInstallProperty(&(*pVm),pClass,&pSpec->aProp[n]);
 		if( rc != SXRET_OK ){
 			return rc;
 		}
