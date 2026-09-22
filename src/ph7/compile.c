@@ -133,11 +133,13 @@ PH7_PRIVATE sxi32 GenStateEnterBlock(
 		GenScope sScope;
 		sScope.nParent = pGen->nCurScopeId;
 		sScope.pUserData = pUserData;
-		if( iType & GEN_BLOCK_DETACHED ){
+		if( iType & GEN_BLOCK_FINALLY ){
+			sScope.iKind = GEN_SCOPE_FINALLY;
+		}else if( iType & GEN_BLOCK_DETACHED ){
 			sScope.iKind = GEN_SCOPE_DETACHED;
-		}else if( pUserData == 0 ){
-			sScope.iKind = GEN_SCOPE_INLINE_BODY;
 		}else{
+			/* A try. pUserData is its ph7_exception, which every try-block site passes at
+			 * ENTRY precisely so this can classify it. */
 			sScope.iKind = GenStateInlineTryCatch(pGen) ? GEN_SCOPE_TRY_INLINE : GEN_SCOPE_TRY;
 		}
 		if( SySetPut(&pGen->aScope,(const void *)&sScope) == SXRET_OK ){
@@ -337,16 +339,22 @@ PH7_PRIVATE int GenStateJumpScope(ph7_gen_state *pGen,sxu32 nFrom,sxu32 nTo,int 
 			return FALSE; /* ran off the top without meeting nTo */
 		}
 		pScopeEnt = &aScope[nCur - 1];
-		if( pScopeEnt->iKind == GEN_SCOPE_DETACHED ){
+		if( pScopeEnt->iKind == GEN_SCOPE_FINALLY ){
+			/* php: `jump out of a finally block is disallowed`. Counted, not rejected
+			 * here — the caller owns the diagnostic and its line. A jump that stays
+			 * INSIDE the finally never reaches this scope, so it stays legal. */
+			pScope->nFinally++;
+			if( pScope->nDet == 0 ){
+				pScope->nTry = 0;
+				pScope->nInline = 0;
+			}
+			pScope->nDet++;
+		}else if( pScopeEnt->iKind == GEN_SCOPE_DETACHED ){
 			if( pScope->nDet == 0 ){
 				pScope->nTry = 0;    /* below the first boundary: not the landing pad's */
 				pScope->nInline = 0;
 			}
 			pScope->nDet++;
-		}else if( pScopeEnt->iKind == GEN_SCOPE_INLINE_BODY ){
-			/* An inline catch/finally body: a sub-execution cannot cross into the parent
-			 * try from inside it. Stop counting and accept, as this always did. */
-			break;
 		}else if( pScopeEnt->iKind == GEN_SCOPE_TRY_INLINE ){
 			pScope->nInline++;
 		}else if( pScope->nDet == 0 && bEmitPops ){
@@ -503,6 +511,13 @@ PH7_PRIVATE sxi32 GenStateFixGoto(ph7_gen_state *pGen,sxu32 nOfft)
 			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pJump->nLine,
 				"'goto' into a try, catch or finally block is disallowed");
 			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			continue;
+		}
+		if( sCross.nFinally > 0 ){
+			/* php's other structural rule, shared with break/continue. */
+			if( GenStateJumpOutOfFinally(&(*pGen),pJump->nLine) == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
 			continue;

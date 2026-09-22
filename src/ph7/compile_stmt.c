@@ -241,12 +241,21 @@ Synchronize:
  * emitting the POP_EXCEPTIONs for the crossed trys this statement can resolve here and
  * now. All the classification lives in GenStateJumpScope, which `goto` shares.
  */
-static sxi32 GenStateLoopJumpOp(ph7_gen_state *pGen,GenBlock *pLoop,sxi32 *piP1)
+static sxi32 GenStateLoopJumpOp(ph7_gen_state *pGen,GenBlock *pLoop,sxi32 *piP1,
+	GenJumpScope *pCross)
 {
-	GenJumpScope sCross;
 	/* The loop encloses the break by construction, so the walk always reaches it. */
-	GenStateJumpScope(&(*pGen),pGen->nCurScopeId,pLoop->nScopeId,TRUE,&sCross);
-	return GenStateScopeJumpOp(&sCross,piP1);
+	GenStateJumpScope(&(*pGen),pGen->nCurScopeId,pLoop->nScopeId,TRUE,pCross);
+	return GenStateScopeJumpOp(pCross,piP1);
+}
+/*
+ * php compile-rejects a `break`/`continue`/`goto` that leaves a `finally` body (a
+ * `return` is fine). One wording, one place, for all three statements.
+ */
+PH7_PRIVATE sxi32 GenStateJumpOutOfFinally(ph7_gen_state *pGen,sxu32 nLine)
+{
+	return PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+		"jump out of a finally block is disallowed");
 }
 PH7_PRIVATE sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 {
@@ -313,8 +322,13 @@ PH7_PRIVATE sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 	}else{
 		sxu32 nInstrIdx = 0;
 		sxi32 iP1 = 0;
-		sxi32 iJmpOp = GenStateLoopJumpOp(&(*pGen),pLoop,&iP1);
-		if( pLoop->iFlags & GEN_BLOCK_SWITCH ){
+		GenJumpScope sCross;
+		sxi32 iJmpOp = GenStateLoopJumpOp(&(*pGen),pLoop,&iP1,&sCross);
+		if( sCross.nFinally > 0 ){
+			if( GenStateJumpOutOfFinally(&(*pGen),nLineLocal) == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+		}else if( pLoop->iFlags & GEN_BLOCK_SWITCH ){
 			/* `continue` inside a switch acts like `break` — which is almost never what
 			 * the author meant, so php 7.3+ says so at compile time. The generated jump
 			 * is unchanged; only the diagnostic was missing. An explicit level
@@ -361,9 +375,11 @@ PH7_PRIVATE sxi32 PH7_CompileBreak(ph7_gen_state *pGen)
 	GenBlock *pLoop; /* Target loop */
 	sxi32 iLevel;    /* How many nesting loop to skip */
 	sxi32 iRawLevel; /* The level as WRITTEN, kept for php's diagnostics */
+	sxu32 nLineLocal;
 	sxi32 rc;
 	iLevel = 0;
 	iRawLevel = 1;
+	nLineLocal = pGen->pIn->nLine;
 	/* Jump the 'break' keyword */
 	pGen->pIn++;
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_NUM) ){
@@ -420,11 +436,18 @@ PH7_PRIVATE sxi32 PH7_CompileBreak(ph7_gen_state *pGen)
 	}else{
 		sxu32 nInstrIdx;
 		sxi32 iP1 = 0;
-		sxi32 iJmpOp = GenStateLoopJumpOp(&(*pGen),pLoop,&iP1);
-		rc = PH7_VmEmitInstr(pGen->pVm,iJmpOp,iP1,0,0,&nInstrIdx);
-		if( rc == SXRET_OK ){
-			/* Fix the jump later when the jump destination is resolved */
-			GenStateNewJumpFixup(pLoop,PH7_OP_JMP,nInstrIdx);
+		GenJumpScope sCross;
+		sxi32 iJmpOp = GenStateLoopJumpOp(&(*pGen),pLoop,&iP1,&sCross);
+		if( sCross.nFinally > 0 ){
+			if( GenStateJumpOutOfFinally(&(*pGen),nLineLocal) == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+		}else{
+			rc = PH7_VmEmitInstr(pGen->pVm,iJmpOp,iP1,0,0,&nInstrIdx);
+			if( rc == SXRET_OK ){
+				/* Fix the jump later when the jump destination is resolved */
+				GenStateNewJumpFixup(pLoop,PH7_OP_JMP,nInstrIdx);
+			}
 		}
 	}
 BreakLevelDone:
@@ -3261,7 +3284,8 @@ static sxi32 PH7_CompileTryInline(ph7_gen_state *pGen, ph7_exception *pException
 		GenBlock *pFinBlk;
 		pGen->pIn++; /* Jump 'finally' */
 		pException->iFinallyPc = PH7_VmInstrLength(pGen->pVm);
-		rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION,PH7_VmInstrLength(pGen->pVm),0,&pFinBlk);
+		rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION|GEN_BLOCK_FINALLY,
+			PH7_VmInstrLength(pGen->pVm),0,&pFinBlk);
 		if( rc != SXRET_OK ){ return SXERR_ABORT; }
 		rc = PH7_CompileBlock(&(*pGen),0);
 		if( rc == SXERR_ABORT ){ return SXERR_ABORT; }
@@ -3536,7 +3560,8 @@ PH7_PRIVATE sxi32 PH7_CompileTry(ph7_gen_state *pGen)
 		pGen->pIn++; /* Jump the 'finally' keyword */
 		/* Create the finally block for jump fixup bookkeeping (detached: the body
 		 * compiles into pException->sFinally, see GEN_BLOCK_DETACHED). */
-		rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION|GEN_BLOCK_DETACHED,PH7_VmInstrLength(pGen->pVm),0,&pFinBlock);
+		rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION|GEN_BLOCK_DETACHED|GEN_BLOCK_FINALLY,
+			PH7_VmInstrLength(pGen->pVm),0,&pFinBlock);
 		if( rc != SXRET_OK ){
 			return SXERR_ABORT;
 		}

@@ -26,6 +26,9 @@ typedef struct Label         Label;
 #define GEN_BLOCK_STD         0x080    /* Standard block */
 #define GEN_BLOCK_EXCEPTION   0x100    /* Exception block [i.e: try{ } }*/
 #define GEN_BLOCK_SWITCH      0x200    /* Switch statement */
+#define GEN_BLOCK_FINALLY     0x800    /* A `finally` body (as opposed to a catch body). php
+                                        * forbids jumping OUT of one, which is the only rule
+                                        * that tells the two apart. */
 #define GEN_BLOCK_DETACHED    0x400    /* A catch/finally body compiled into its OWN bytecode
                                         * container (legacy try), run detached by VmLocalExec.
                                         * A break/continue crossing one cannot be a plain jump:
@@ -33,8 +36,8 @@ typedef struct Label         Label;
 /* Kinds of try/catch scope recorded in ph7_gen_state.aScope. */
 #define GEN_SCOPE_TRY        1  /* a legacy try, whose finally is a detached mini-program */
 #define GEN_SCOPE_TRY_INLINE 2  /* a ROOT C inline try (generator body) */
-#define GEN_SCOPE_DETACHED   3  /* a catch/finally BODY compiled into its own array */
-#define GEN_SCOPE_INLINE_BODY 4 /* a ROOT C inline catch/finally body */
+#define GEN_SCOPE_DETACHED   3  /* a catch BODY compiled into its own array */
+#define GEN_SCOPE_FINALLY    4  /* a `finally` body — jumping OUT of one is a php compile error */
 typedef struct GenScope GenScope;
 struct GenScope
 {
@@ -52,6 +55,7 @@ struct GenJumpScope
 	sxu16 nDet;    /* DETACHED catch/finally bodies left (jump target is in another array) */
 	sxu16 nTry;    /* legacy trys left whose OP_POP_EXCEPTION the jump skips */
 	sxu16 nInline; /* ROOT C inline trys left (crossed with OP_SET_FINALLY_JMP) */
+	sxu16 nFinally;/* `finally` bodies left — php rejects the jump outright when this is > 0 */
 };
 /*
  * Each label seen in the input is recorded in an instance
@@ -237,6 +241,7 @@ PH7_PRIVATE int GenStateInlineTryCatch(ph7_gen_state *pGen);
 PH7_PRIVATE int GenStateJumpScope(ph7_gen_state *pGen,sxu32 nFrom,sxu32 nTo,int bEmitPops,
 	GenJumpScope *pScope);
 PH7_PRIVATE sxi32 GenStateScopeJumpOp(const GenJumpScope *pCross,sxi32 *piP1);
+PH7_PRIVATE sxi32 GenStateJumpOutOfFinally(ph7_gen_state *pGen,sxu32 nLine);
 PH7_PRIVATE const char * TokenTypeName(sxu32 nType);
 PH7_PRIVATE sxu32 GenStateNsQualifyName(ph7_gen_state *pGen,sxu32 nOrigIdx,SyHash *pImports,int *pFromImport);
 PH7_PRIVATE int GenStateNsRelPrefix(ph7_gen_state *pGen,SyToken **ppIn,SyToken *pEnd,SyBlob *pOut);
