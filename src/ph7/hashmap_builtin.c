@@ -126,10 +126,13 @@ PH7_PRIVATE int ph7_hashmap_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
 }
 /*
  * bool array_key_exists(value $key,array $search)
+ * bool key_exists(value $key,array $search)
  *  Checks if the given key or index exists in the array.
  * Parameters
  * $key
- *   Value to check.
+ *   Value to check. Follows php's ARRAY-OFFSET rules, not a `string|int` ZPP row
+ *   (PH7_VmArrayKeyArg): the key this builtin looks up is the key `$search[$key]`
+ *   would look up, down to the diagnostics.
  * $search
  *  An array with keys to check.
  * Return
@@ -137,13 +140,16 @@ PH7_PRIVATE int ph7_hashmap_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_key_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	const char *zName = ph7_function_name(pCtx);
+	int bAlias = zName && zName[0] == 'k'; /* key_exists(): php words its reject differently */
+	ph7_value sKey;
 	sxi32 rc;
 	if( nArg != 2 ){
 		/* PHP requires exactly two arguments */
 		return PH7_VmThrowException(pCtx,
 			"ArgumentCountError",
-			"array_key_exists() expects exactly 2 arguments, %d given",
-			nArg
+			"%s() expects exactly 2 arguments, %d given",
+			zName,nArg
 			);
 	}
 	/* Make sure we are dealing with a valid hashmap */
@@ -151,23 +157,22 @@ PH7_PRIVATE int ph7_hashmap_key_exists(ph7_context *pCtx,int nArg,ph7_value **ap
 		/* Type mismatch -> TypeError */
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
-			"array_key_exists(): Argument #2 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[1])
+			"%s(): Argument #2 ($array) must be of type array, %s given",
+			zName,ph7_type_name(apArg[1])
 			);
 	}
-	/* php only DEPRECATES a null / lossy-float key here; PHL rejects it. */
-	if( apArg[0]->iFlags & MEMOBJ_NULL ){
-		return PH7_VmThrowException(pCtx,"TypeError",
-			"array_key_exists(): Argument #1 ($key) must be of type string|int, null given");
-	}else if( apArg[0]->iFlags & MEMOBJ_REAL ){
-		ph7_real rVal = apArg[0]->rVal;
-		if( rVal != (ph7_real)(sxi64)rVal ){
-			return PH7_VmThrowException(pCtx,"TypeError",
-				"array_key_exists(): Argument #1 ($key) must be of type string|int, float given");
-		}
+	/* Normalize the key on a PRIVATE copy — a resource key is rewritten to its id
+	 * and the caller's own variable must not change. */
+	PH7_MemObjInit(pCtx->pVm,&sKey);
+	PH7_MemObjStore(apArg[0],&sKey);
+	rc = PH7_VmArrayKeyArg(pCtx,&sKey,bAlias);
+	if( rc != SXRET_OK ){
+		PH7_MemObjRelease(&sKey);
+		return rc;
 	}
 	/* Perform the lookup */
-	rc = PH7_HashmapLookup((ph7_hashmap *)apArg[1]->x.pOther,apArg[0],0);
+	rc = PH7_HashmapLookup((ph7_hashmap *)apArg[1]->x.pOther,&sKey,0);
+	PH7_MemObjRelease(&sKey);
 	/* lookup result */
 	ph7_result_bool(pCtx,rc == SXRET_OK ? 1 : 0);
 	return PH7_OK;

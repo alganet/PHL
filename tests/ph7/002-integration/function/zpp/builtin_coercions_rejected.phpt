@@ -16,8 +16,10 @@ tc(fn() => addslashes(null));
 tc(fn() => addcslashes(null, "x"));
 tc(fn() => base_convert(null, 16, 10));
 tc(fn() => str_contains(null, "x"));
-tc(fn() => array_key_exists(null, [1]));
 tc(fn() => chr(1.5));
+// array_key_exists() follows the ARRAY-OFFSET rules, so its lossy-float rejection is
+// worded like $a[1.5]'s (and its NULL key is php-exact now -- see
+// 002-integration/array/array_key_exists_offset_rules.phpt).
 tc(fn() => array_key_exists(1.5, [1]));
 tc(fn() => ord(null));
 tc(fn() => ord(""));
@@ -38,9 +40,8 @@ TypeError: addslashes(): Argument #1 ($string) must be of type string, null give
 TypeError: addcslashes(): Argument #1 ($string) must be of type string, null given
 TypeError: base_convert(): Argument #1 ($num) must be of type string, null given
 TypeError: str_contains(): Argument #1 ($haystack) must be of type string, null given
-TypeError: array_key_exists(): Argument #1 ($key) must be of type string|int, null given
 TypeError: chr(): Argument #1 ($codepoint) must be of type int, float given
-TypeError: array_key_exists(): Argument #1 ($key) must be of type string|int, float given
+TypeError: Cannot access offset of type float on array
 TypeError: ord(): Argument #1 ($character) must be of type string, null given
 ValueError: ord(): Argument #1 ($character) must not be empty
 ValueError: ord(): Argument #1 ($character) must be a single byte, use ord($str[0]) instead

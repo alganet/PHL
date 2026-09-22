@@ -2251,6 +2251,7 @@ static const ph7_builtin_func aHashmapFunc[] = {
 	{"count",             ph7_hashmap_count },
 	{"sizeof",            ph7_hashmap_count },
 	{"array_key_exists",  ph7_hashmap_key_exists },
+	{"key_exists",        ph7_hashmap_key_exists },
 	{"array_pop",         ph7_hashmap_pop     },
 	{"array_push",        ph7_hashmap_push    },
 	{"array_shift",       ph7_hashmap_shift   },

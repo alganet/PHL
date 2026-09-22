@@ -607,6 +607,7 @@ static const struct VmBuiltinSig {
 	{ "json_last_error_msg", "", "string" },
 	{ "json_validate", "string $json, int $depth = 512, int $flags = 0", "bool" },
 	{ "key", "object|array $array", "string|int|null" },
+	{ "key_exists", "$key, array $array", "bool" },
 	{ "krsort", "array &$array, int $flags = 0", "true" },
 	{ "ksort", "array &$array, int $flags = 0", "true" },
 	{ "lcfirst", "string $string", "string" },

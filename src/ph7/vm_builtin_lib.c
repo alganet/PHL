@@ -573,7 +573,6 @@
    "}"\
    "function is_iterable($value){ return is_array($value) || ($value instanceof Traversable); }"\
    "function is_countable($value){ return is_array($value) || ($value instanceof Countable); }"\
-   "function key_exists($key, $array){ return array_key_exists($key, $array); }"\
    "function doubleval($value){ return (float)$value; }"\
    "function array_count_values($array){"\
    "  $out = array();"\
