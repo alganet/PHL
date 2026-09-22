@@ -222,11 +222,37 @@ PH7_PRIVATE VmOpRc VmExecOpDiv(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 	if( ((pTos->iFlags|pNos->iFlags) & MEMOBJ_REAL) == 0 ){
 		sxi64 ia = pNos->x.iVal;
 		sxi64 ib = pTos->x.iVal;
+		sxi64 iQuot = 0;
+		int bExact = 0;
 		if( ib == 0 ){
 			rc = VmThrowFixedError(&(*pVm),"DivisionByZeroError","Division by zero");
 			PH7_DISPATCH_ENFORCE_RC(rc)
-		}else if( ia % ib == 0 && !(ib == -1 && ia == SMALLEST_INT64) ){
-			pNos->x.iVal = ia / ib;
+		}else if( ib == -1 ){
+			/* `a / -1` is the exact int -a for every a but PHP_INT_MIN, whose
+			 * magnitude does not fit -- that one leaves bExact clear and takes the
+			 * float path below, as php does. The divisor has to be screened BEFORE
+			 * `ia % ib` runs: x86 computes the overflowing quotient PHP_INT_MIN/-1
+			 * alongside the remainder, so testing the remainder first trapped
+			 * (SIGFPE) on exactly the value the guard was written to protect.
+			 * OP_MOD screens the same hazard the same way. */
+#ifdef PH7_OMIT_FLOATING_POINT
+			/* The integer-only build has no float to promote to (as OP_ADD's
+			 * overflow arm) and its `real` division is this same trapping integer
+			 * one, so answer the wrapped quotient -- which is PHP_INT_MIN. */
+			iQuot = ( ia != SMALLEST_INT64 ) ? -ia : SMALLEST_INT64;
+			bExact = 1;
+#else
+			if( ia != SMALLEST_INT64 ){
+				iQuot = -ia;
+				bExact = 1;
+			}
+#endif
+		}else if( ia % ib == 0 ){
+			iQuot = ia / ib;
+			bExact = 1;
+		}
+		if( bExact ){
+			pNos->x.iVal = iQuot;
 			MemObjSetType(pNos,MEMOBJ_INT);
 			VmPopOperand(&pTos,1);
 			VM_EXIT_BREAK;

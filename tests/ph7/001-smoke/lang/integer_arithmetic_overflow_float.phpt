@@ -64,6 +64,18 @@ $h = 10; $h += 5; $h *= 3; echo tyArith($h), " ", $h, "\n"; // int 45
 // as a%b would trap (SIGFPE) on x86 for PHP_INT_MIN, so it is special-cased.
 echo (PHP_INT_MIN % -1), " ", (7 % -1), " ", (PHP_INT_MIN % -2), "\n"; // 0 0 0
 $m = PHP_INT_MIN; $m %= -1; echo $m, "\n";                             // 0
+
+// Division at the same boundary: PHP_INT_MIN / -1 is the one int/int quotient
+// that does not fit, so it promotes to float; every other `/ -1` stays an exact
+// int. This traps on x86 too if the divisor is not screened before the
+// remainder test.
+echo tyArith(PHP_INT_MIN / -1), "\n";                     // float
+echo (PHP_INT_MIN / -1) === 9223372036854775808 ? "div_ok\n" : "div_bad\n";
+echo tyArith(PHP_INT_MAX / -1), " ", (PHP_INT_MAX / -1), "\n"; // int -9223372036854775807
+echo tyArith(6 / -1), " ", (6 / -1), "\n";                     // int -6
+echo tyArith(0 / -1), " ", (0 / -1), "\n";                     // int 0
+echo tyArith(7 / -2), " ", (7 / -2), "\n";                     // float -3.5
+$n = PHP_INT_MIN; $n /= -1; echo tyArith($n), "\n";            // float
 ?>
 --EXPECT--
 float
@@ -97,5 +109,12 @@ float
 int 45
 0 0 0
 0
+float
+div_ok
+int -9223372036854775807
+int -6
+int 0
+float -3.5
+float
 --CLEAN--
 <?php
