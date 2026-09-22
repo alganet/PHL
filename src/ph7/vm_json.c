@@ -598,6 +598,7 @@ static const char * JsonErrorMsg(int rc)
 	case JSON_ERROR_SYNTAX:          return "Syntax error";
 	case JSON_ERROR_UTF8:            return "Malformed UTF-8 characters, possibly incorrectly encoded";
 	case JSON_ERROR_INF_OR_NAN:     return "Inf and NaN cannot be JSON encoded";
+	case JSON_ERROR_UTF16:           return "Single unpaired UTF-16 surrogate in unicode escape";
 	case JSON_ERROR_NON_BACKED_ENUM: return "Non-backed enums have no default serialization";
 	default:                         return "Unknown error";
 	}
@@ -673,21 +674,42 @@ static sxi32 VmJsonTokenize(SyStream *pStream,SyToken *pToken,void *pUserData,vo
 		/* JSON string */
 		pStream->zText++;
 		pStr->zString++;
-		/* Delimit the string */
+		/* Delimit the string. The backslash state is tracked explicitly: the old
+		 * "the previous byte is not a backslash" test mis-read an ESCAPED
+		 * backslash sitting before the closing quote, so the perfectly valid
+		 * "\\" (a one-character string holding a backslash) was reported as an
+		 * unterminated string — json_decode('"\\\\"') answered NULL with a
+		 * syntax error where php answers "\". */
 		while( pStream->zText < pStream->zEnd ){
-			if( pStream->zText[0] == '"' && pStream->zText[-1] != '\\' ){
+			if( pStream->zText[0] == '\\' ){
+				/* Whatever follows belongs to the escape, closing quote
+				 * included; VmJsonDequoteString below decides if it is legal. */
+				pStream->zText++;
+				if( pStream->zText >= pStream->zEnd ){
+					break;
+				}
+				pStream->zText++;
+				continue;
+			}
+			if( pStream->zText[0] == '"' ){
 				break;
 			}
-			if( pStream->zText[0] == '\n' ){
-				/* Update line counter */
-				pStream->nLine++;
+			if( (unsigned char)pStream->zText[0] < 0x20 ){
+				/* php: a control character must be escaped inside a JSON string;
+				 * a raw one is JSON_ERROR_CTRL_CHAR (a literal newline included). */
+				pToken->nType = JSON_TK_INVALID;
+				*pJsonErr = JSON_ERROR_CTRL_CHAR;
+				return SXERR_ABORT;
 			}
 			pStream->zText++;
 		}
 		if( pStream->zText >= pStream->zEnd ){
-			/* Missing closing '"' */
+			/* Missing closing '"'. php reports this as JSON_ERROR_CTRL_CHAR, not
+			 * a syntax error: its scanner runs the string off the end of the
+			 * input and lands in the same state an unescaped control character
+			 * puts it in. */
 			pToken->nType = JSON_TK_INVALID;
-			*pJsonErr = JSON_ERROR_SYNTAX;
+			*pJsonErr = JSON_ERROR_CTRL_CHAR;
 		}else{
 			pToken->nType = JSON_TK_STR;
 			pStream->zText++; /* Jump the closing double quotes */
@@ -799,10 +821,44 @@ struct json_decoder
 /* Forward declaration */
 static int VmJsonArrayDecoder(ph7_context *pCtx,ph7_value *pKey,ph7_value *pWorker,void *pUserData);
 /*
- * Dequote [i.e: Resolve all backslash escapes ] a JSON string and store
- * the result in the given ph7_value.
+ * Read the four hex digits of a \uXXXX escape out of z[0..n-1]. Returns
+ * SXRET_OK and the value, or SXERR_SYNTAX when fewer than four are there or one
+ * is not a hex digit (php: JSON_ERROR_SYNTAX).
  */
-static void VmJsonDequoteString(const SyString *pStr,ph7_value *pWorker)
+static sxi32 VmJsonHex4(const char *z,sxu32 n,sxu32 *pVal)
+{
+	sxu32 v = 0;
+	int i;
+	if( n < 4 ){
+		return SXERR_SYNTAX;
+	}
+	for( i = 0 ; i < 4 ; ++i ){
+		int c = (unsigned char)z[i];
+		if( c >= '0' && c <= '9' ){
+			v = (v << 4) | (sxu32)(c - '0');
+		}else if( c >= 'a' && c <= 'f' ){
+			v = (v << 4) | (sxu32)(c - 'a' + 10);
+		}else if( c >= 'A' && c <= 'F' ){
+			v = (v << 4) | (sxu32)(c - 'A' + 10);
+		}else{
+			return SXERR_SYNTAX;
+		}
+	}
+	*pVal = v;
+	return SXRET_OK;
+}
+/*
+ * Dequote [i.e: Resolve all backslash escapes ] a JSON string and store
+ * the result in the given ph7_value. Returns JSON_ERROR_NONE, or the json_rc
+ * php reports for the malformed escape it stopped on.
+ *
+ * The \uXXXX form used to fall through to the default branch, which dropped the
+ * backslash and kept the rest as literal text: json_decode('"é"') answered
+ * the five characters u00e9 instead of "é". \b was mangled the same way (it
+ * answered "b"), and an escape JSON does not define (\q) was silently accepted
+ * where php raises a syntax error.
+ */
+static int VmJsonDequoteString(const SyString *pStr,ph7_value *pWorker)
 {
 	const char *zIn = pStr->zString;
 	const char *zEnd = &pStr->zString[pStr->nByte];
@@ -827,19 +883,49 @@ static void VmJsonDequoteString(const SyString *pStr,ph7_value *pWorker)
 		c = zIn[0];
 		/* Unescape the character */
 		switch(c){
-		case '"':  ph7_value_string(pWorker,(const char *)&c,(int)sizeof(char)); break;
-		case '\\': ph7_value_string(pWorker,(const char *)&c,(int)sizeof(char)); break;
+		case '"':  ph7_value_string(pWorker,"\"",(int)sizeof(char)); break;
+		case '\\': ph7_value_string(pWorker,"\\",(int)sizeof(char)); break;
+		case '/':  ph7_value_string(pWorker,"/",(int)sizeof(char)); break;
+		case 'b':  ph7_value_string(pWorker,"\b",(int)sizeof(char)); break;
+		case 'f':  ph7_value_string(pWorker,"\f",(int)sizeof(char)); break;
 		case 'n':  ph7_value_string(pWorker,"\n",(int)sizeof(char)); break;
 		case 'r':  ph7_value_string(pWorker,"\r",(int)sizeof(char)); break;
 		case 't':  ph7_value_string(pWorker,"\t",(int)sizeof(char)); break;
-		case 'f':  ph7_value_string(pWorker,"\f",(int)sizeof(char)); break;
-		default:
-			ph7_value_string(pWorker,(const char *)&c,(int)sizeof(char));
+		case 'u': {
+			/* \uXXXX, and the surrogate PAIR that is JSON's only way to spell a
+			 * code point above the BMP. An unpaired half is php's
+			 * JSON_ERROR_UTF16, distinct from a malformed escape. */
+			unsigned char zUtf8[4];
+			unsigned char *zW = zUtf8;
+			sxu32 cp,cpLow = 0; /* cpLow pre-set: MSVC /W4 flags the short-circuit as a maybe-uninitialized read */
+			if( VmJsonHex4(&zIn[1],(sxu32)(zEnd - zIn - 1),&cp) != SXRET_OK ){
+				return JSON_ERROR_SYNTAX;
+			}
+			zIn += 4;
+			if( cp >= 0xDC00 && cp <= 0xDFFF ){
+				return JSON_ERROR_UTF16; /* a low half with no high half before it */
+			}
+			if( cp >= 0xD800 && cp <= 0xDBFF ){
+				if( zEnd - zIn < 3 || zIn[1] != '\\' || zIn[2] != 'u'
+				 || VmJsonHex4(&zIn[3],(sxu32)(zEnd - zIn - 3),&cpLow) != SXRET_OK
+				 || cpLow < 0xDC00 || cpLow > 0xDFFF ){
+					return JSON_ERROR_UTF16;
+				}
+				cp = 0x10000 + ((cp - 0xD800) << 10) + (cpLow - 0xDC00);
+				zIn += 6;
+			}
+			SX_WRITE_UTF8(zW,cp);
+			ph7_value_string(pWorker,(const char *)zUtf8,(int)(zW - zUtf8));
 			break;
+		}
+		default:
+			/* Not one of JSON's nine escapes */
+			return JSON_ERROR_SYNTAX;
 		}
 		/* Advance the stream cursor */
 		zIn++;
 	}
+	return JSON_ERROR_NONE;
 }
 /*
  * Returns a ph7_value holding the image of a JSON string. In other word perform a JSON decoding operation.
@@ -862,6 +948,7 @@ static sxi32 VmJsonDecode(
 	){
 	ph7_value *pWorker; /* Worker variable */
 	sxi32 rc;
+	int rcQ;            /* VmJsonDequoteString() status */
 	/* Nothing left to decode: the token stream is empty (a whitespace-only input
 	 * tokenizes to NO tokens at all, so pIn/pEnd are both the NULL base pointer of an
 	 * empty set) or a member value is missing after its colon ('{"a":'). Both are a
@@ -903,7 +990,11 @@ static sxi32 VmJsonDecode(
 			PH7_MemObjToNumeric(pWorker);
 		}else{
 			/* Dequote the string */
-			VmJsonDequoteString(&pDecoder->pIn->sData,pWorker);
+			rcQ = VmJsonDequoteString(&pDecoder->pIn->sData,pWorker);
+			if( rcQ != JSON_ERROR_NONE ){
+				*pDecoder->pErr = rcQ;
+				return SXERR_ABORT;
+			}
 		}
 		/* Invoke the consumer callback */
 		rc = pDecoder->xConsumer(pDecoder->pCtx,pArrayKey,pWorker,pDecoder->pUserData);
@@ -1016,7 +1107,11 @@ static sxi32 VmJsonDecode(
 					return SXERR_ABORT;
 			}
 			/* Dequote the key */
-			VmJsonDequoteString(&pDecoder->pIn->sData,pKey);
+			rcQ = VmJsonDequoteString(&pDecoder->pIn->sData,pKey);
+			if( rcQ != JSON_ERROR_NONE ){
+				*pDecoder->pErr = rcQ;
+				return SXERR_ABORT;
+			}
 			/* Jump the key and the colon */
 			pDecoder->pIn += 2;
 			/* Recurse and decode the value */
