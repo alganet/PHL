@@ -1354,6 +1354,128 @@ Synchronize:
 	return SXERR_CORRUPT;
 }
 /*
+ * php validates a magic method's DECLARATION at compile time
+ * (zend_check_magic_method_implementation): the ENGINE builds the arguments and
+ * calls these methods on its own, so a wrong shape is rejected where it is
+ * written rather than discovered — or silently tolerated — at the dispatch.
+ *
+ * One row per magic name; its fields are the checks php makes for that name.
+ * Arity is the first of them, in php's order — which is what decides the message
+ * when a declaration breaks more than one of php's rules at once.
+ */
+typedef struct MagicMethodRule MagicMethodRule;
+struct MagicMethodRule
+{
+	const char *zName; /* Magic method name */
+	sxu32 nName;       /* Its length */
+	int nArgs;         /* Declared arguments php requires, -1 when it does not check */
+};
+#define MAGIC_METHOD_ROW(N,A) { N, sizeof(N)-1, A }
+static const MagicMethodRule aMagicMethod[] = {
+	MAGIC_METHOD_ROW("__construct",  -1),
+	MAGIC_METHOD_ROW("__destruct",    0),
+	MAGIC_METHOD_ROW("__clone",       0),
+	MAGIC_METHOD_ROW("__get",         1),
+	MAGIC_METHOD_ROW("__set",         2),
+	MAGIC_METHOD_ROW("__isset",       1),
+	MAGIC_METHOD_ROW("__unset",       1),
+	MAGIC_METHOD_ROW("__call",        2),
+	MAGIC_METHOD_ROW("__callStatic",  2),
+	MAGIC_METHOD_ROW("__toString",    0),
+	MAGIC_METHOD_ROW("__invoke",     -1),
+	MAGIC_METHOD_ROW("__debugInfo",   0),
+	MAGIC_METHOD_ROW("__serialize",   0),
+	MAGIC_METHOD_ROW("__unserialize", 1),
+	MAGIC_METHOD_ROW("__sleep",       0),
+	MAGIC_METHOD_ROW("__wakeup",      0),
+	MAGIC_METHOD_ROW("__set_state",   1)
+};
+#undef MAGIC_METHOD_ROW
+/*
+ * Find the rule for a declared method name, or 0 when the name is not magic.
+ * php matches method names case-insensitively everywhere, so `__GET` is `__get`;
+ * the two-underscore prefix test is php's own cheap reject.
+ */
+static const MagicMethodRule * GenStateMagicMethodRule(const SyString *pName)
+{
+	sxu32 n;
+	if( pName->nByte < sizeof("__x")-1 || pName->zString[0] != '_' || pName->zString[1] != '_' ){
+		return 0;
+	}
+	for( n = 0 ; n < SX_ARRAYSIZE(aMagicMethod) ; ++n ){
+		if( pName->nByte == aMagicMethod[n].nName
+		 && SyStrnicmp(pName->zString,aMagicMethod[n].zName,aMagicMethod[n].nName) == 0 ){
+			return &aMagicMethod[n];
+		}
+	}
+	return 0;
+}
+/*
+ * Enforce the rules of pRule against the declaration just parsed. pName is the
+ * name AS WRITTEN — php quotes that spelling, not the canonical one.
+ *
+ * The message is FORMATTED, not reported: php decides these rules while the
+ * signature is in hand (so the arity beats __toString's return-type rule) but
+ * raises them only once the declaration has cleared the checks php makes
+ * first — the redeclaration and abstract-placement rules, and any parse error
+ * in the body php has already read. The caller reports the buffer at that
+ * point. Returns TRUE when it wrote one.
+ */
+static int GenStateCheckMagicMethod(
+	ph7_class *pClass,
+	const SyString *pName,
+	ph7_class_method *pMeth,
+	char *zErr,
+	int nErrBuf
+	)
+{
+	const MagicMethodRule *pRule = GenStateMagicMethodRule(pName);
+	if( pRule == 0 ){
+		return FALSE;
+	}
+	if( pRule->nArgs >= 0 ){
+		/* php counts DECLARED parameters — an optional one counts
+		 * (`__destruct($a = null)` is rejected) and the variadic tail does not
+		 * (`__clone(...$a)` declares zero and passes, `__get(...$a)` declares
+		 * zero where one is required and does not). */
+		sxu32 nDecl = SySetUsed(&pMeth->sFunc.aArgs);
+		sxu32 nGiven = 0;
+		sxu32 n;
+		for( n = 0 ; n < nDecl ; ++n ){
+			ph7_vm_func_arg *pArg = (ph7_vm_func_arg *)SySetAt(&pMeth->sFunc.aArgs,n);
+			if( pArg && (pArg->iFlags & VM_FUNC_ARG_VARIADIC) == 0 ){
+				nGiven++;
+			}
+		}
+		if( nGiven != (sxu32)pRule->nArgs ){
+			if( pRule->nArgs == 0 ){
+				SyBufferFormat(zErr,nErrBuf,"Method %z::%z() cannot take arguments",
+					&pClass->sName,pName);
+			}else{
+				SyBufferFormat(zErr,nErrBuf,"Method %z::%z() must take exactly %d argument%s",
+					&pClass->sName,pName,pRule->nArgs,pRule->nArgs == 1 ? "" : "s");
+			}
+			return TRUE;
+		}
+		/* None of the arguments the engine builds may be by-reference — there is
+		 * no caller variable to write back to. php checks as many arguments as
+		 * the rule counts, and the count above already skipped variadics, so
+		 * this walk skips them the same way. */
+		for( n = 0 ; n < nDecl ; ++n ){
+			ph7_vm_func_arg *pArg = (ph7_vm_func_arg *)SySetAt(&pMeth->sFunc.aArgs,n);
+			if( pArg == 0 || (pArg->iFlags & VM_FUNC_ARG_VARIADIC) ){
+				continue;
+			}
+			if( pArg->iFlags & VM_FUNC_ARG_BY_REF ){
+				SyBufferFormat(zErr,nErrBuf,"Method %z::%z() cannot take arguments by reference",
+					&pClass->sName,pName);
+				return TRUE;
+			}
+		}
+	}
+	return FALSE;
+}
+/*
  * Compile a class method.
  *
  * Refer to the official documentation for more information
@@ -1371,6 +1493,9 @@ static sxi32 GenStateCompileClassMethod(
 {
 	sxu32 nLine = pGen->pIn->nLine;
 	sxu32 nKwLine = nLine; /* Line of the 'function' keyword (Reflection getStartLine) */
+	sxu32 nErrEntry = pGen->nErr; /* Errors already reported when this declaration started */
+	char zMagicErr[256];          /* Pending magic-method rule violation, reported at the end */
+	int bMagicErr = FALSE;
 	ph7_class_method *pMeth;
 	sxi32 iFuncFlags;
 	SyString *pName;
@@ -1487,6 +1612,16 @@ static sxi32 GenStateCompileClassMethod(
 			goto Synchronize;
 		}
 	}
+	/* php's compile-time magic-method declaration rules, DECIDED here — with the
+	 * signature in hand and before the __toString return-type rule below, which
+	 * is php's own order (`static function __toString($a): int` reports the
+	 * arity). Reported at the end of this function; see zMagicErr there. */
+	bMagicErr = GenStateCheckMagicMethod(pClass,pName,pMeth,zMagicErr,(int)sizeof(zMagicErr));
+	if( bMagicErr ){
+		/* Suppress the __toString rule below: php never reaches it on a
+		 * declaration the magic rules already rejected. */
+		goto SkipToStringType;
+	}
 	/*
 	 * php gives __toString() an IMPLICIT `string` return type. That is what makes
 	 * `return 42` coerce to "42" and `return null` / an array / an object / falling
@@ -1534,6 +1669,7 @@ static sxi32 GenStateCompileClassMethod(
 			}
 		}
 	}
+SkipToStringType:
 	/* Install promoted constructor properties as class attributes. Runtime
 	 * property init/typecheck is handled by the generic typed-property path
 	 * since we mint real ph7_class_attr entries. */
@@ -1693,6 +1829,24 @@ static sxi32 GenStateCompileClassMethod(
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
+		return SXRET_OK;
+	}
+	/* The magic-method rule this declaration broke (decided above, with the
+	 * signature in hand). It is raised HERE because php raises it last of the
+	 * declaration's fatals: a redeclaration, an abstract method in a class that
+	 * is not abstract, and any parse error inside the body php has already read
+	 * all win — and each of them has, by now, either returned or bumped nErr.
+	 * php stops at its first fatal, so one is all this declaration reports. The
+	 * line is the `function` KEYWORD's, which is where php points once a
+	 * signature wraps across lines. */
+	if( bMagicErr ){
+		if( pGen->nErr == nErrEntry ){
+			rc = PH7_GenCompileError(pGen,E_ERROR,nKwLine,"%s",zMagicErr);
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+		}
+		/* Never install a method php refused to declare */
 		return SXRET_OK;
 	}
 	/* All done,install the method */
