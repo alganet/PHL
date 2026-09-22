@@ -762,6 +762,15 @@ PH7_PRIVATE int VmRecordedResume(ph7_vm *pVm,sxi32 *pResumePc,VmFrame *pEntryFra
 	if( pVm->pResumeFrame == 0 ){
 		return FALSE; /* no in-place catch recorded for this in-flight throw */
 	}
+	if( pEntryFrame == 0 ){
+		/* A SYNTHETIC exec state — VmReDriveStep runs a single LOAD_IDX/MEMBER on a
+		 * two-slot stack with a zeroed VmExecState, so it has no entry frame and no
+		 * landing pad of its own. It can never be the exec that owns the catching
+		 * try, so propagate (the re-drive's caller turns that into PH7_EXCEPTION at
+		 * the OP_CALL site). Without the guard VmSkipExceptionFrames dereferences
+		 * NULL and the process dies. */
+		return FALSE;
+	}
 	/* Resume here only when THIS exec is the one that owns the catching try: same
 	 * body frame AND same bytecode array. The bytecode-array check is essential
 	 * because a catch/finally mini-program runs in its enclosing body's frame (no

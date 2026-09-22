@@ -626,8 +626,20 @@ static sxi32 VmResolvePathByRef(ph7_vm *pVm,VmDeferredPath *pPath,ph7_value *pSl
 	sxu32 i;
 	sxi32 rc;
 	if( pPath->eRoot == 2 ){
-		/* Subscripting a string: php refuses a by-ref bind to a string offset. */
-		sxi32 rcT = VmThrowFromVm(&(*pVm),"Error",
+		/* Subscripting a string: php refuses a by-ref bind to a string offset — but
+		 * it applies its OFFSET rules first, so `f($s["p"])` is the offset TypeError
+		 * and `f($s[1.5])` warns about the cast before this Error is raised. */
+		sxi32 rcT;
+		if( pPath->nStep > 0 && !pPath->aStep[0].isProp ){
+			SyBlob sTypeMsg;
+			sxi64 iOfft = 0;
+			if( VmStringOffsetResolve(&(*pVm),&pPath->aStep[0].sKey,0,&iOfft,&sTypeMsg)
+				== VM_STROFF_REJECT ){
+				rcT = VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sTypeMsg);
+				return (rcT == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+			}
+		}
+		rcT = VmThrowFromVm(&(*pVm),"Error",
 			"Cannot create references to/from string offsets",
 			sizeof("Cannot create references to/from string offsets")-1);
 		return (rcT == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;

@@ -3538,6 +3538,11 @@ PH7_PRIVATE int PH7_HashmapIsList(ph7_hashmap *pMap);
  * array_rand() domain-error messages in hashmap.c, which are compiled in every
  * mode, so it must stay outside the PH7_DISABLE_DISK_IO guard. */
 PH7_PRIVATE const char *VmValueGivenName(ph7_value *pVal,char *zBuf,sxu32 nBuf);
+/* Outcomes of php's STRING-container offset rules (VmStringOffsetResolve). */
+#define VM_STROFF_OK      0  /* *piOfft holds php's offset */
+#define VM_STROFF_REJECT  1  /* php's TypeError; pMsg carries its message */
+#define VM_STROFF_MISS    2  /* lenient context: answer "not set", say nothing */
+PH7_PRIVATE int VmStringOffsetResolve(ph7_vm *pVm,ph7_value *pIdx,int bQuiet,sxi64 *piOfft,SyBlob *pMsg);
 /* Numeric-string classifier — php's is_numeric_string() grammar — shared from
  * hashmap.c (range/array_rand) for the stage-2 ZPP domain-error sweep
  * (PLAN §3.9(a)). RangeStrToNumber only ever returns ERROR/LONG/DOUBLE; the

@@ -255,6 +255,133 @@ static int VmNullOffsetDeprecate(ph7_vm *pVm,ph7_value *pKey)
 	return TRUE;
 }
 /*
+ * Does this string START with an integer php's is_numeric_string would answer
+ * IS_LONG for? Returns 0 when it does not — no digits at all ("", "-", "p"), a
+ * FLOAT-shaped prefix ("1.5", ".5", "1.", "1e2", "1E2x") or a run that overflows
+ * a signed 64-bit int ("9223372036854775808") — 1 when it does and only optional
+ * trailing WHITESPACE follows (" 12 ", "+12", "007"), and 2 when it does but
+ * trailing DATA follows ("12abc", "0x1", "1e", "1 x"), which is php's
+ * `Illegal string offset` warning. *piVal receives the integer for 1 and 2.
+ *
+ * php reaches the same three answers through is_numeric_string_ex(allow_errors=1)
+ * plus its IS_LONG/IS_DOUBLE verdict: a fraction or a well-formed exponent makes
+ * the verdict IS_DOUBLE, which a string offset refuses, while a bare 'e' is just
+ * trailing data.
+ */
+static int VmStringOffsetInt(const char *zIn,sxu32 nByte,sxi64 *piVal)
+{
+	const char *z = zIn, *zEnd = &zIn[nByte], *zDigit;
+	sxu64 uVal = 0, uLimit;
+	int isNeg = 0, nDigit, i;
+	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisSpace(z[0]) ){
+		z++;
+	}
+	if( z < zEnd && (z[0] == '+' || z[0] == '-') ){
+		isNeg = z[0] == '-';
+		z++;
+	}
+	zDigit = z;
+	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisDigit(z[0]) ){
+		z++;
+	}
+	nDigit = (int)(z - zDigit);
+	if( nDigit < 1 ){
+		return 0;
+	}
+	if( z < zEnd && z[0] == '.' ){
+		/* "1." and "1.5" alike: php reads a double from here. */
+		return 0;
+	}
+	if( z < zEnd && (z[0] == 'e' || z[0] == 'E') ){
+		const char *zExp = &z[1];
+		if( zExp < zEnd && (zExp[0] == '+' || zExp[0] == '-') ){
+			zExp++;
+		}
+		if( zExp < zEnd && (unsigned char)zExp[0] < 0xc0 && SyisDigit(zExp[0]) ){
+			return 0;
+		}
+	}
+	/* Accumulate unsigned so PHP_INT_MIN's magnitude (2^63) is representable —
+	 * "-9223372036854775808" is a legal offset, "9223372036854775808" is not. */
+	while( nDigit > 1 && zDigit[0] == '0' ){
+		zDigit++; nDigit--;
+	}
+	uLimit = isNeg ? (sxu64)SXI64_HIGH + 1 : (sxu64)SXI64_HIGH;
+	if( nDigit > 19 ){
+		return 0;
+	}
+	for( i = 0 ; i < nDigit ; ++i ){
+		sxu64 d = (sxu64)(zDigit[i] - '0');
+		if( uVal > (uLimit - d)/10 ){
+			return 0;
+		}
+		uVal = uVal*10 + d;
+	}
+	*piVal = isNeg ? (sxi64)(~uVal + 1) : (sxi64)uVal;
+	while( z < zEnd && (unsigned char)z[0] < 0xc0 && SyisSpace(z[0]) ){
+		z++;
+	}
+	return z == zEnd ? 1 : 2;
+}
+/*
+ * php's offset rules for a STRING container (zend_check_string_offset, and the
+ * isset/empty arm of ZEND_ISSET_ISEMPTY_DIM_OBJ). They are NOT the array rules,
+ * and PHL applied none of them: every offset went through an int cast, so
+ * `$s[""]`, `$s["-"]` and `$s["p"]` all answered `$s[0]` — a silent wrong answer
+ * on code php refuses to run. php's table:
+ *
+ *   int                     the offset
+ *   null / bool / float     Warning: String offset cast occurred, then cast
+ *   integer-shaped string   the offset (leading/trailing space and '+' allowed)
+ *   int-then-garbage string Warning: Illegal string offset "12abc", then 12
+ *   any other string        TypeError: Cannot access offset of type string on string
+ *   array/object/resource   TypeError, naming the type (an object's CLASS)
+ *
+ * A lookup — isset()/empty()/`??` — raises NOTHING and answers "not set" for
+ * every shape the read path would reject OR warn about: `isset($s["0x1"])` is
+ * false even though reading it warns and yields `$s[0]`. bQuiet selects that.
+ */
+PH7_PRIVATE int VmStringOffsetResolve(ph7_vm *pVm,ph7_value *pIdx,int bQuiet,sxi64 *piOfft,SyBlob *pMsg)
+{
+	if( pIdx->iFlags & MEMOBJ_INT ){
+		*piOfft = pIdx->x.iVal;
+		return VM_STROFF_OK;
+	}
+	if( pIdx->iFlags & MEMOBJ_STRING ){
+		int eInt = VmStringOffsetInt((const char *)SyBlobData(&pIdx->sBlob),
+			SyBlobLength(&pIdx->sBlob),piOfft);
+		if( eInt == 1 ){
+			return VM_STROFF_OK;
+		}
+		if( bQuiet ){
+			return VM_STROFF_MISS;
+		}
+		if( eInt == 2 ){
+			SyString sKey;
+			SyStringInitFromBuf(&sKey,SyBlobData(&pIdx->sBlob),SyBlobLength(&pIdx->sBlob));
+			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Illegal string offset \"%z\"",&sKey);
+			return VM_STROFF_OK;
+		}
+	}else if( (pIdx->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)) == 0 ){
+		/* null / bool / float: php casts, but says so. */
+		if( !bQuiet ){
+			PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,"String offset cast occurred");
+		}
+		PH7_MemObjToInteger(pIdx);
+		*piOfft = pIdx->x.iVal;
+		return VM_STROFF_OK;
+	}else if( bQuiet ){
+		return VM_STROFF_MISS;
+	}
+	{
+		char zBuf[128];
+		SyBlobInit(pMsg,&pVm->sAllocator);
+		SyBlobFormat(pMsg,"Cannot access offset of type %s on string",
+			VmValueGivenName(pIdx,zBuf,sizeof(zBuf)));
+	}
+	return VM_STROFF_REJECT;
+}
+/*
  * OP_STORE_IDX_REF: body moved verbatim from the OP_STORE_IDX_REF arm of
  * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
  */
@@ -426,9 +553,6 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 		/* Phase#1: Load the array */
 		if( (pObj->iFlags & MEMOBJ_STRING) && (pInstr->iOp != PH7_OP_STORE_IDX_REF) ){
 			VmPopOperand(&pTos,1);
-			/* Force a string cast on the RHS (user-visible: an array warns
-			 * "Array to string conversion" before the offset write, §2) */
-			PH7_MemObjToStringUV(pTos);
 			if( pKey == 0 ){
 				/* `$s[] = 'x'` on a STRING: php raises the catchable Error
 				 * "[] operator not supported for strings" and leaves the string
@@ -443,20 +567,32 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 				VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 				VM_EXIT_BREAK;
 			}else{
-				sxi64 iOfft;
+				sxi64 iOfft = 0;
 				sxi64 nLen;
-				if((pKey->iFlags & MEMOBJ_INT) == 0 ){
-					/* Force an int cast */
-					PH7_MemObjToInteger(pKey);
+				SyBlob sTypeMsg;
+				/* php's offset rules run BEFORE the RHS is looked at: an offset it
+				 * refuses is the TypeError alone. The RHS cast below used to happen
+				 * first, so every rejected shape — and `$s[] = [1,2]` above — came
+				 * with a spurious `Array to string conversion` in front of it. */
+				if( VmStringOffsetResolve(&(*pVm),pKey,0,&iOfft,&sTypeMsg) == VM_STROFF_REJECT ){
+					sxi32 rcSc;
+					PH7_MemObjRelease(pKey);
+					rcSc = VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sTypeMsg);
+					if( rcSc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+					rc = rcSc;
+					PH7_THROW_ROUTE_MIDEXPR(rc)
 				}
-				iOfft = pKey->x.iVal;
+				/* Force a string cast on the RHS (user-visible: an array warns
+				 * "Array to string conversion" before the offset write, §2) */
+				PH7_MemObjToStringUV(pTos);
 				nLen = (sxi64)SyBlobLength(&pObj->sBlob);
 				if( iOfft < 0 ){
 					/* php 7.1: a negative offset writes back from the end. */
+					sxi64 iRaw = iOfft;
 					iOfft += nLen;
 					if( iOfft < 0 ){
 						VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Illegal string offset %qd",
-							pKey->x.iVal);
+							iRaw);
 						PH7_MemObjRelease(pKey);
 						VM_EXIT_BREAK;
 					}
@@ -881,13 +1017,39 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 	if( pTos->iFlags & MEMOBJ_STRING ){
 		/* String access */
 		if( pIdx ){
-			sxi64 iOfft;
+			sxi64 iOfft = 0, iRaw;
 			sxi64 nLen = (sxi64)SyBlobLength(&pTos->sBlob);
-			if( (pIdx->iFlags & MEMOBJ_INT) == 0 ){
-				/* Force an int cast */
-				PH7_MemObjToInteger(pIdx);
+			/* LOAD_IDX carries its OWN iP2 codes, which do NOT line up with the
+			 * PH7_MEMBER_* ones: 4 = isset, 5 = unset, 6 = empty, 8 = `??` read.
+			 * All of those are LOOKUPS: php raises nothing there and answers
+			 * "not set" for an offset the read path would reject or warn about. */
+			int bQuiet = iP2 == 4 || iP2 == 5 || iP2 == 6
+				|| iP2 == 8 || VmIdxFeedsCoalesce(pInstr);
+			SyBlob sTypeMsg;
+			int eOfft = VmStringOffsetResolve(&(*pVm),pIdx,bQuiet,&iOfft,&sTypeMsg);
+			if( eOfft == VM_STROFF_MISS ){
+				/* A lookup over an offset php refuses: not set, in silence. */
+				PH7_MemObjRelease(pIdx);
+				PH7_MemObjRelease(pTos);
+				MemObjSetType(pTos,MEMOBJ_NULL);
+				pTos->nIdx = SXU32_HIGH;
+				VM_EXIT_BREAK;
 			}
-			iOfft = pIdx->x.iVal;
+			if( eOfft == VM_STROFF_REJECT ){
+				/* php's TypeError for an offset type a string refuses. PHL cast
+				 * every offset to int, so `$s[""]`, `$s["-"]` and `$s["p"]` all
+				 * answered `$s[0]`. Routed as a mid-expression throw (this opcode
+				 * is not a call boundary), so the rest of the expression is
+				 * abandoned the way php abandons it. */
+				rc = VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sTypeMsg);
+				PH7_MemObjRelease(pIdx);
+				PH7_MemObjRelease(pTos);
+				MemObjSetType(pTos,MEMOBJ_NULL);
+				pTos->nIdx = SXU32_HIGH;
+				if( rc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+				PH7_THROW_ROUTE_MIDEXPR(rc)
+			}
+			iRaw = iOfft;
 			/* php 7.1: a NEGATIVE offset counts back from the end ($s[-1] is the last
 			 * character). The offset used to be cast to UNSIGNED, so -1 became a huge
 			 * number, ran past the end and quietly produced NULL. */
@@ -898,18 +1060,13 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				/* Out of range. In an isset()/empty() lookup php answers FALSE, so load
 				 * NULL there; everywhere else it WARNS and yields the empty string (PH7
 				 * silently produced NULL in both cases). */
-				/* LOAD_IDX carries its OWN iP2 codes, which do NOT line up with the
-				 * PH7_MEMBER_* ones: 4 = isset, 5 = unset, 6 = empty. All three are
-				 * lookups and must stay silent. */
-				int bQuiet = iP2 == 4 || iP2 == 5 || iP2 == 6
-					|| iP2 == 8 || VmIdxFeedsCoalesce(pInstr);
 				PH7_MemObjRelease(pTos);
 				if( bQuiet ){
 					MemObjSetType(pTos,MEMOBJ_NULL);
 				}else{
 					MemObjSetType(pTos,MEMOBJ_STRING);
 					VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Uninitialized string offset %qd",
-						pIdx->x.iVal);
+						iRaw);
 				}
 			}else{
 				const char *zData = (const char *)SyBlobData(&pTos->sBlob);
