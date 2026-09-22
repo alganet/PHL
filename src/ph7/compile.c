@@ -262,9 +262,20 @@ PH7_PRIVATE sxi32 GenStateNewJumpFixup(GenBlock *pBlock,sxi32 nJumpType,sxu32 nI
 	/* Init the JumpFixup structure */
 	sJumpFix.nJumpType = nJumpType;
 	sJumpFix.nInstrIdx = nInstrIdx;
+	/* Remember which bytecode array the emitted instruction lives in: the block whose
+	 * table this lands in may be resolved after a container swap (see JumpFixup). */
+	sJumpFix.pContainer = PH7_VmGetByteCodeContainer(pBlock->pGen->pVm);
 	/* Insert in the jump fixup table */
 	rc = SySetPut(&pBlock->aJumpFix,(const void *)&sJumpFix);
 	return rc;
+}
+/*
+ * Resolve a recorded fixup to its VM instruction, in the container it was emitted
+ * into (see JumpFixup.pContainer) rather than whichever one is current now.
+ */
+PH7_PRIVATE VmInstr * GenStateFixupInstr(const JumpFixup *pFix)
+{
+	return (VmInstr *)SySetAt(pFix->pContainer,pFix->nInstrIdx);
 }
 /*
  * Fix a forward jump now the jump destination is resolved.
@@ -296,7 +307,7 @@ PH7_PRIVATE sxu32 GenStateFixJumps(GenBlock *pBlock,sxi32 nJumpType,sxu32 nJumpD
 			continue;
 		}
 		/* Point to the instruction to fix */
-		pInstr = PH7_VmGetInstr(pBlock->pGen->pVm,aFix[n].nInstrIdx);
+		pInstr = GenStateFixupInstr(&aFix[n]);
 		if( pInstr ){
 			pInstr->iP2 = nJumpDest;
 			nFixed++;
@@ -367,7 +378,11 @@ PH7_PRIVATE sxi32 GenStateFixGoto(ph7_gen_state *pGen,sxu32 nOfft)
 				return SXERR_ABORT;
 			}
 		}
-		/* Fix the jump now the destination is resolved */
+		/* Fix the jump now the destination is resolved. NOTE: still resolved through the
+		 * CURRENT container, not pJump->pContainer — a `goto` out of a detached
+		 * catch/finally is its own open item (it needs OP_CATCH_JMP the way break/continue
+		 * now do), and container-correct patching without it only turns that hang into an
+		 * out-of-bounds jump. Both land in the same slice. */
 		pInstr = PH7_VmGetInstr(pGen->pVm,pJump->nInstrIdx);
 		if( pInstr ){
 			pInstr->iP2 = pLabel->nJumpDest;

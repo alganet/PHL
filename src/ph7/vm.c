@@ -952,14 +952,17 @@ PH7_PRIVATE sxi32 VmDrainFinally(ph7_vm *pVm, sxu32 nExceptionBase)
 	return rcOut;
 }
 /*
- * Drop a body frame's pending catch/finally return: clear the flag and release
- * the slot value. Safe on a frame with no pending return (the slot is then an
- * empty MEMOBJ_NULL value and the release is a no-op).
+ * Drop a body frame's pending catch/finally ACTION — the `return` parked on sRet and
+ * the `break`/`continue` parked by OP_CATCH_JMP. Both mean "when this try's landing
+ * pad is reached, do X instead of falling through", and every path that abandons the
+ * frame or lets an exception supersede it has to drop both. Safe on a frame with
+ * nothing pending (the slot is then an empty MEMOBJ_NULL value, release is a no-op).
  */
-PH7_PRIVATE void VmClearFrameReturn(VmFrame *pFrame)
+PH7_PRIVATE void VmClearFramePending(VmFrame *pFrame)
 {
 	pFrame->bHasRet = 0;
 	PH7_MemObjRelease(&pFrame->sRet);
+	pFrame->nCatchJmpPc = 0;
 }
 /*
  * Materialize a `return` issued inside a catch/finally mini-program: copy the
@@ -975,7 +978,7 @@ PH7_PRIVATE void VmMaterializeCatchReturn(ph7_vm *pVm, ph7_value *pResult, VmFra
 	if( pResult ){
 		PH7_MemObjStore(&pEntryFrame->sRet,pResult);
 	}
-	VmClearFrameReturn(pEntryFrame);
+	VmClearFramePending(pEntryFrame);
 	while( pVm->pFrame && pVm->pFrame != pEntryFrame ){
 		VmLeaveFrame(&(*pVm));
 	}

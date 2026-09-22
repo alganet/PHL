@@ -237,39 +237,70 @@ Synchronize:
  *   continue 0; and continue 1; is the same as running continue;.
  */
 /*
- * Emit PH7_OP_POP_EXCEPTION for each exception block between the current
- * block and the target loop block. This ensures finally blocks run when
- * break/continue crosses a try boundary.
+ * Walk from the current block out to the target loop of a `break`/`continue` and
+ * emit/classify everything the jump has to cross. Writes, through *pnLevels and
+ * *pnCross, what OP_CATCH_JMP needs; returns the generator inline-try count.
  *
- * Stop walking at catch/finally blocks (GEN_BLOCK_EXCEPTION without pUserData):
- * those are compiled into separate bytecode containers executed via VmLocalExec,
- * so we must not emit POP_EXCEPTION for the parent try from inside them.
+ * Three kinds of crossed try:
+ *  - inside the body we are compiling: emit its PH7_OP_POP_EXCEPTION here, exactly as
+ *    before, so its finally runs on the way out (in a generator, whose catch/finally
+ *    ARE inlined, count it instead so the caller emits one OP_SET_FINALLY_JMP);
+ *  - a GEN_BLOCK_DETACHED block — the body of a legacy catch/finally, compiled into
+ *    its own bytecode array and run by VmLocalExec. The jump cannot address the
+ *    target from in there, so it is parked and travels out through one
+ *    OP_POP_EXCEPTION landing pad per boundary: count them in *pnLevels;
+ *  - a try OUTSIDE the detached body (i.e. seen after a boundary): the parked jump
+ *    lands past its OP_POP_EXCEPTION, so nothing would run its finally. Count it in
+ *    *pnCross for OP_CATCH_JMP to drain at the landing pad.
+ *
+ * An inline (ROOT C) catch/finally block is NOT detached — it compiles into the
+ * function's own array — so the walk stops at one, as it always did.
  */
-static int GenStateEmitExceptionPopForBreak(ph7_gen_state *pGen,GenBlock *pTarget)
+static int GenStateEmitExceptionPopForBreak(ph7_gen_state *pGen,GenBlock *pTarget,
+	int *pnLevels,int *pnCross)
 {
 	GenBlock *pBlock = pGen->pCurrent;
 	int nInlineTry = 0;
+	*pnLevels = 0;
+	*pnCross  = 0;
 	while( pBlock && pBlock != pTarget ){
-		if( pBlock->iFlags & GEN_BLOCK_EXCEPTION ){
-			if( pBlock->pUserData ){
-				/* A try block with an exception context. In a generator its catch/finally
-				 * are inlined: count it so the caller emits a single OP_SET_FINALLY_JMP that
-				 * runs each crossed finally (VmFinallyAdvance) before taking the loop jump.
-				 * Legacy path: emit POP_EXCEPTION per crossed try as before. */
-				if( pGen->bInGenerator ){
-					nInlineTry++;
-				}else{
-					PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP_EXCEPTION,0,0,pBlock->pUserData,0);
-				}
-			}else{
-				/* A catch/finally block compiled into a separate bytecode container
-				 * (legacy). Stop — cannot cross into the parent try from a sub-execution. */
+		if( pBlock->iFlags & GEN_BLOCK_DETACHED ){
+			(*pnLevels)++;
+		}else if( pBlock->iFlags & GEN_BLOCK_EXCEPTION ){
+			if( pBlock->pUserData == 0 ){
+				/* An inline catch/finally body: cannot cross into the parent try. */
 				break;
+			}
+			if( *pnLevels > 0 ){
+				(*pnCross)++;
+			}else if( pGen->bInGenerator ){
+				nInlineTry++;
+			}else{
+				PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP_EXCEPTION,0,0,pBlock->pUserData,0);
 			}
 		}
 		pBlock = pBlock->pParent;
 	}
 	return nInlineTry;
+}
+/*
+ * Pick the jump opcode for a `break`/`continue` targeting pLoop and fill in its iP1,
+ * emitting the crossed trys' POP_EXCEPTIONs on the way. Shared by both statements —
+ * the only difference between them is the jump TARGET, resolved by the caller.
+ */
+static sxi32 GenStateLoopJumpOp(ph7_gen_state *pGen,GenBlock *pLoop,sxi32 *piP1)
+{
+	int nLevels = 0, nCross = 0;
+	int nInlineTry = GenStateEmitExceptionPopForBreak(&(*pGen),pLoop,&nLevels,&nCross);
+	if( nLevels > 0 ){
+		/* Leaving one or more detached catch/finally mini-programs. */
+		*piP1 = PH7_CATCH_JMP_P1(nLevels,nCross);
+		return PH7_OP_CATCH_JMP;
+	}
+	/* ROOT C: in a generator, a break/continue crossing inline trys must run their
+	 * finallys first. OP_SET_FINALLY_JMP(iP1=count) does that then takes the loop jump. */
+	*piP1 = nInlineTry;
+	return nInlineTry > 0 ? PH7_OP_SET_FINALLY_JMP : PH7_OP_JMP;
 }
 PH7_PRIVATE sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 {
@@ -335,11 +366,8 @@ PH7_PRIVATE sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 		}
 	}else{
 		sxu32 nInstrIdx = 0;
-		/* Emit POP_EXCEPTION (legacy) for crossed try blocks, or count them (generator). */
-		int nCross = GenStateEmitExceptionPopForBreak(&(*pGen),pLoop);
-		/* ROOT C: in a generator, a break/continue crossing inline trys must run their
-		 * finallys first. OP_SET_FINALLY_JMP(iP1=count) does that then takes the loop jump. */
-		sxi32 iJmpOp = nCross > 0 ? PH7_OP_SET_FINALLY_JMP : PH7_OP_JMP;
+		sxi32 iP1 = 0;
+		sxi32 iJmpOp = GenStateLoopJumpOp(&(*pGen),pLoop,&iP1);
 		if( pLoop->iFlags & GEN_BLOCK_SWITCH ){
 			/* `continue` inside a switch acts like `break` — which is almost never what
 			 * the author meant, so php 7.3+ says so at compile time. The generated jump
@@ -350,18 +378,19 @@ PH7_PRIVATE sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 					"\"continue\" targeting switch is equivalent to \"break\"."
 					" Did you mean to use \"continue 2\"?");
 			}
-			rc = PH7_VmEmitInstr(pGen->pVm,iJmpOp,nCross,0,0,&nInstrIdx);
+			rc = PH7_VmEmitInstr(pGen->pVm,iJmpOp,iP1,0,0,&nInstrIdx);
 			if( rc == SXRET_OK ){
 				GenStateNewJumpFixup(pLoop,PH7_OP_JMP,nInstrIdx);
 			}
 		}else{
 			/* Emit the unconditional jump to the beginning of the target loop */
-			PH7_VmEmitInstr(pGen->pVm,iJmpOp,nCross,pLoop->nFirstInstr,0,&nInstrIdx);
+			PH7_VmEmitInstr(pGen->pVm,iJmpOp,iP1,pLoop->nFirstInstr,0,&nInstrIdx);
 			if( pLoop->bPostContinue == TRUE ){
 				JumpFixup sJumpFix;
 				/* Post-continue */
 				sJumpFix.nJumpType = PH7_OP_JMP;
 				sJumpFix.nInstrIdx = nInstrIdx;
+				sJumpFix.pContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
 				SySetPut(&pLoop->aPostContFix,(const void *)&sJumpFix);
 			}
 		}
@@ -444,10 +473,9 @@ PH7_PRIVATE sxi32 PH7_CompileBreak(ph7_gen_state *pGen)
 		}
 	}else{
 		sxu32 nInstrIdx;
-		/* Emit POP_EXCEPTION (legacy) for crossed try blocks, or count them (generator). */
-		int nCross = GenStateEmitExceptionPopForBreak(&(*pGen),pLoop);
-		/* ROOT C: OP_SET_FINALLY_JMP runs the crossed inline finallys before the break jump. */
-		rc = PH7_VmEmitInstr(pGen->pVm,nCross > 0 ? PH7_OP_SET_FINALLY_JMP : PH7_OP_JMP,nCross,0,0,&nInstrIdx);
+		sxi32 iP1 = 0;
+		sxi32 iJmpOp = GenStateLoopJumpOp(&(*pGen),pLoop,&iP1);
+		rc = PH7_VmEmitInstr(pGen->pVm,iJmpOp,iP1,0,0,&nInstrIdx);
 		if( rc == SXRET_OK ){
 			/* Fix the jump later when the jump destination is resolved */
 			GenStateNewJumpFixup(pLoop,PH7_OP_JMP,nInstrIdx);
@@ -553,6 +581,8 @@ PH7_PRIVATE sxi32 PH7_CompileGoto(ph7_gen_state *pGen)
 		/* Prepare the jump destination */
 		sJump.nJumpType = PH7_OP_JMP;
 		sJump.nLine = pGen->pIn->nLine;
+		/* Gotos resolve at end of compilation, well after any container swap. */
+		sJump.pContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
 		/* Duplicate label name */
 		zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,pTarget->zString,pTarget->nByte);
 		if( zDup == 0 ){
@@ -966,7 +996,7 @@ PH7_PRIVATE sxi32 PH7_CompileDoWhile(ph7_gen_state *pGen)
 		aPost = (JumpFixup *)SySetBasePtr(&pDoBlock->aPostContFix);
 		nJumpDest = PH7_VmInstrLength(pGen->pVm);
 		for( n = 0 ; n < SySetUsed(&pDoBlock->aPostContFix) ; ++n ){
-			pInstr = PH7_VmGetInstr(pGen->pVm,aPost[n].nInstrIdx);
+			pInstr = GenStateFixupInstr(&aPost[n]);
 			if( pInstr ){
 				/* Fix */
 				pInstr->iP2 = nJumpDest;
@@ -1144,7 +1174,7 @@ PH7_PRIVATE sxi32 PH7_CompileFor(ph7_gen_state *pGen)
 		aPost = (JumpFixup *)SySetBasePtr(&pForBlock->aPostContFix);
 		nJumpDest = PH7_VmInstrLength(pGen->pVm);
 		for( n = 0 ; n < SySetUsed(&pForBlock->aPostContFix) ; ++n ){
-			pInstr = PH7_VmGetInstr(pGen->pVm,aPost[n].nInstrIdx);
+			pInstr = GenStateFixupInstr(&aPost[n]);
 			if( pInstr ){
 				/* Fix jump */
 				pInstr->iP2 = nJumpDest;
@@ -3134,7 +3164,7 @@ static sxi32 GenStateParseCatchHeader(ph7_gen_state *pGen, ph7_exception_block *
 	pGen->pIn++; /* Jump the 'catch' keyword */
 	SyZero(pCatch,sizeof(ph7_exception_block));
 	SySetInit(&pCatch->aClasses,&pGen->pVm->sAllocator,sizeof(SyString));
-	SySetInit(&pCatch->sByteCode,&pGen->pVm->sAllocator,sizeof(VmInstr));
+	/* Inline catches compile into the function's own container; pByteCode stays NULL. */
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 ){
 		pToken = pGen->pIn; if( pToken >= pGen->pEnd ){ pToken--; }
 		PH7_GenCompileError(pGen,E_PARSE,pToken->nLine,"syntax error, unexpected %s \"%z\"",
@@ -3331,7 +3361,14 @@ static sxi32 PH7_CompileCatch(ph7_gen_state *pGen,ph7_exception *pException)
 	SyZero(&sCatch,sizeof(ph7_exception_block));
 	/* Initialize fields */
 	SySetInit(&sCatch.aClasses,&pException->pVm->sAllocator,sizeof(SyString));
-	SySetInit(&sCatch.sByteCode,&pException->pVm->sAllocator,sizeof(VmInstr));
+	/* The catch body gets its own bytecode array, allocated (not embedded) so its address
+	 * survives both this stack frame and any later growth of pException->sEntry — a
+	 * break/continue inside the body records it in its JumpFixup (see JumpFixup). */
+	sCatch.pByteCode = (SySet *)SyMemBackendAlloc(&pException->pVm->sAllocator,sizeof(SySet));
+	if( sCatch.pByteCode == 0 ){
+		goto Mem;
+	}
+	SySetInit(sCatch.pByteCode,&pException->pVm->sAllocator,sizeof(VmInstr));
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_LPAREN) == 0 /*(*/ ){
 			/* Unexpected token,break immediately */
 			pToken = pGen->pIn;
@@ -3435,14 +3472,15 @@ CatchBody:
 	}
 	/* Compile the block */
 	pGen->pIn++; /* Jump the right parenthesis */
-	/* Create the catch block */
-	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION,PH7_VmInstrLength(pGen->pVm),0,&pCatch);
+	/* Create the catch block. GEN_BLOCK_DETACHED: the body below compiles into
+	 * sCatch.pByteCode, not into the enclosing function's array. */
+	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION|GEN_BLOCK_DETACHED,PH7_VmInstrLength(pGen->pVm),0,&pCatch);
 	if( rc != SXRET_OK ){
 		return SXERR_ABORT;
 	}
 	/* Swap bytecode container */
 	pInstrContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
-	PH7_VmSetByteCodeContainer(pGen->pVm,&sCatch.sByteCode);
+	PH7_VmSetByteCodeContainer(pGen->pVm,sCatch.pByteCode);
 	/* Compile the block */
 	PH7_CompileBlock(&(*pGen),0);
 	/* Fix forward jumps now the destination is resolved  */
@@ -3493,11 +3531,10 @@ PH7_PRIVATE sxi32 PH7_CompileTry(ph7_gen_state *pGen)
 	pException->iFinallyDone = 0;
 	pException->pVm = pGen->pVm;
 	/* ROOT C: inside a generator body, compile the whole try/catch/finally inline so a
-	 * `yield` in a catch/finally suspends correctly. Non-generators keep the legacy path.
-	 * DORMANT until the inline VM handlers (OP_CATCH / OP_END_FINALLY dispatch,
-	 * VmThrowException pc-redirect, return/break-through-finally threading, generator
-	 * park of aFinallyAction) land — the compiler emits the layout but the VM cannot yet
-	 * execute it. Guarded by pVm->bInlineTryCatch (default 0) so the tree stays green. */
+	 * `yield` in a catch/finally suspends correctly. Non-generators keep the DETACHED path
+	 * below — deliberately, not pending migration: it is the proven one, and inlining was
+	 * scoped to generators so no other code path changed. `bInlineTryCatch` is 1 since the
+	 * inline VM handlers landed, so `bInGenerator` is what actually selects here. */
 	if( pGen->bInGenerator && pGen->pVm->bInlineTryCatch ){
 		return PH7_CompileTryInline(&(*pGen),pException);
 	}
@@ -3545,8 +3582,9 @@ PH7_PRIVATE sxi32 PH7_CompileTry(ph7_gen_state *pGen)
 		SySet *pInstrContainer;
 		GenBlock *pFinBlock;
 		pGen->pIn++; /* Jump the 'finally' keyword */
-		/* Create the finally block for jump fixup bookkeeping */
-		rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION,PH7_VmInstrLength(pGen->pVm),0,&pFinBlock);
+		/* Create the finally block for jump fixup bookkeeping (detached: the body
+		 * compiles into pException->sFinally, see GEN_BLOCK_DETACHED). */
+		rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION|GEN_BLOCK_DETACHED,PH7_VmInstrLength(pGen->pVm),0,&pFinBlock);
 		if( rc != SXRET_OK ){
 			return SXERR_ABORT;
 		}

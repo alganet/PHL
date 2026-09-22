@@ -167,7 +167,7 @@ static sxi32 VmExecFinalize(ph7_vm *pVm,VmExecState *pState,SySet *pArg,ph7_valu
 		VmDiscardFinallyActions(&(*pVm),pState->nFinallyActBase);
 	}
 	if( rcTerm != PH7_SUSPEND && !pState->bReturnPropagates ){
-		VmClearFrameReturn(pState->pEntryFrame);
+		VmClearFramePending(pState->pEntryFrame);
 	}
 	SySetRelease(pArg);
 	if( rcTerm == PH7_ABORT || rcTerm == PH7_EXCEPTION ){
@@ -1377,7 +1377,7 @@ case PH7_OP_DONE:
 		 * enforcement above), that exception supersedes the return: discard it.
 		 * Otherwise materialize it as this function's result. */
 		if( VmSkipExceptionFrames(pVm->pFrame)->iFlags & VM_FRAME_THROW ){
-			VmClearFrameReturn(sState.pEntryFrame);
+			VmClearFramePending(sState.pEntryFrame);
 		}else{
 			VmMaterializeCatchReturn(&(*pVm),sState.pResult,sState.pEntryFrame);
 		}
@@ -3707,6 +3707,7 @@ case PH7_OP_LOAD_EXCEPTION: {
  */
 case PH7_OP_POP_EXCEPTION: {
 	ph7_exception *pCompiledExc = (ph7_exception *)pInstr->p3;
+	VmFrame *pBodyFrame;
 	/* BYTECODE stage 2b: the stack holds ACTIVATIONS — pop ours when it is on
 	 * top (matched by compiled origin). pException == NULL means this try's
 	 * activation was already consumed (an in-place catch handled a throw and
@@ -3782,7 +3783,8 @@ case PH7_OP_POP_EXCEPTION: {
 		}
 	}
 	VmExcRelease(&(*pVm),pException); /* no-finally / already-done paths (may be NULL) */
-	if( VmSkipExceptionFrames(pVm->pFrame)->bHasRet ){
+	pBodyFrame = VmSkipExceptionFrames(pVm->pFrame);
+	if( pBodyFrame->bHasRet ){
 		/* `return` inside the finally (normal try completion) returns from the
 		 * function. The return targets the body frame this try belongs to. Drain
 		 * outer finally blocks first, then — only in the real function body
@@ -3800,8 +3802,70 @@ case PH7_OP_POP_EXCEPTION: {
 		}
 		goto Done;
 	}
+	if( pBodyFrame->nCatchJmpPc > 0 ){
+		/* A `break`/`continue` inside the catch (OP_CATCH_JMP) parked its loop-exit
+		 * target on this body frame, and this is a landing pad on its way out. */
+		if( pBodyFrame->nCatchJmpLevels > 1 ){
+			/* Still one or more detached bodies out from the target's array — this try
+			 * was declared INSIDE another catch/finally mini-program. End this one and
+			 * let the park travel outward; the next landing pad decrements again. */
+			pBodyFrame->nCatchJmpLevels--;
+			goto Done;
+		}
+		if( pBodyFrame->nCatchJmpCross > 0 ){
+			/* Enclosing trys between the catch and the loop: the jump lands past their
+			 * OP_POP_EXCEPTION, so run their finally (and leave their frames) here. */
+			sxu32 nUsed = SySetUsed(&pVm->aException);
+			sxu32 nBase = nUsed > (sxu32)pBodyFrame->nCatchJmpCross
+				? nUsed - pBodyFrame->nCatchJmpCross : 0;
+			if( nBase < sState.nExceptionBase ){
+				nBase = sState.nExceptionBase;
+			}
+			pBodyFrame->nCatchJmpCross = 0;
+			rc = VmDrainFinally(&(*pVm),nBase);
+			if( rc == SXERR_ABORT ){
+				goto Abort;
+			}
+			if( rc == PH7_EXCEPTION ){
+				/* A drained finally threw past itself — it supersedes the loop exit. */
+				pBodyFrame->nCatchJmpPc = 0;
+				goto Exception;
+			}
+		}
+		pc = (sxi32)pBodyFrame->nCatchJmpPc - 1;
+		pBodyFrame->nCatchJmpPc = 0;
+		break;
+	}
 	break;
 							}
+/*
+ * OP_CATCH_JMP * P2(target pc) *
+ * A `break`/`continue` whose target loop encloses the try but is compiled into the
+ * OWNING body's bytecode, executed from inside a detached catch mini-program. The
+ * mini-program cannot jump there itself (iP2 indexes the body's array, not its own),
+ * so park the target on the body frame and end the mini-program — mirroring how an
+ * explicit `return` in a catch parks on sRet at OP_DONE above. VmThrowException then
+ * runs this try's finally and returns; the resume lands on the try's OP_POP_EXCEPTION,
+ * which takes the parked jump.
+ */
+case PH7_OP_CATCH_JMP: {
+	VmFrame *pTgt = VmSkipExceptionFrames(pVm->pFrame);
+	pTgt->nCatchJmpPc = (sxu32)pInstr->iP2;
+	pTgt->nCatchJmpLevels = PH7_CATCH_JMP_LEVELS(pInstr->iP1);
+	pTgt->nCatchJmpCross = PH7_CATCH_JMP_CROSS(pInstr->iP1);
+	/* A try opened INSIDE this catch body that the jump crosses had its finally run by
+	 * the compiler-emitted OP_POP_EXCEPTION; drain anything still pending here. */
+	rc = VmDrainFinally(&(*pVm),sState.nExceptionBase);
+	if( rc == SXERR_ABORT ){
+		goto Abort;
+	}
+	if( rc == PH7_EXCEPTION ){
+		/* A drained finally threw past itself — it discards this jump. */
+		pTgt->nCatchJmpPc = 0;
+		goto Exception;
+	}
+	goto Done;
+					   }
 /*
  * OP_CATCH iP1(catch-index) * P3(ph7_exception)
  * ROOT C: entry of an inline catch body. Bind the in-flight exception (held on
@@ -6384,7 +6448,7 @@ Unwind:
 			return VmExecFinalize(&(*pVm),&sState,&aArg,pTos,rc);
 		}
 		if( rc == PH7_ABORT || rc == PH7_EXCEPTION ){
-			VmClearFrameReturn(sState.pEntryFrame);
+			VmClearFramePending(sState.pEntryFrame);
 			while( pTos >= pStack ){
 				PH7_MemObjRelease(pTos);
 				pTos--;

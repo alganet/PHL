@@ -4317,7 +4317,7 @@ Rethrow:
 				MemObjSetType(pObj,MEMOBJ_OBJ);
 			}
 			/* Execute the catch block */
-			rc = VmLocalExec(&(*pVm),&pCatch->sByteCode,0,TRUE);
+			rc = VmLocalExec(&(*pVm),pCatch->pByteCode,0,TRUE);
 			/* Leave the frame (sets pVm->pFrame = pCatchBody via the re-parent), then
 			 * restore the real throw-site frame so the unwind continues normally.
 			 * Guarded like VmExecFinallyInOwner's wrapper teardown: a catch body
@@ -4382,9 +4382,15 @@ Rethrow:
 			 * ONLY if the slot still holds it (nRetGen unchanged). If an outer catch
 			 * (same body frame) ran during the finally and OVERWROTE the slot with
 			 * its own return, nRetGen advanced and that return must survive. */
-			if( (rcf == PH7_EXCEPTION || SySetUsed(&pVm->aException) < nExcBefore)
-			 && pBody->bHasRet && pBody->nRetGen == nGenBefore ){
-				VmClearFrameReturn(pBody);
+			if( rcf == PH7_EXCEPTION || SySetUsed(&pVm->aException) < nExcBefore ){
+				if( pBody->bHasRet && pBody->nRetGen == nGenBefore ){
+					VmClearFramePending(pBody);
+				}
+				/* Same rule for a `break`/`continue` parked by the catch
+				 * (OP_CATCH_JMP): the escaping exception supersedes the loop exit.
+				 * Unconditional — a jump has no nRetGen equivalent, nothing can
+				 * legitimately have re-armed it during the finally. */
+				pBody->nCatchJmpPc = 0;
 			}
 			if( rcf == PH7_EXCEPTION ){
 				/* The finally's exception propagated past this try; drop any deferred
@@ -4411,8 +4417,13 @@ Rethrow:
 		 */
 		if( pVm->pPendingException ){
 			/* Stage 2b: the swallow decision reads the OWNER's parked return. */
-			if( !(pCatchBody ? pCatchBody : VmSkipExceptionFrames(pVm->pFrame))->bHasRet ){
+			VmFrame *pOwner = pCatchBody ? pCatchBody : VmSkipExceptionFrames(pVm->pFrame);
+			if( !pOwner->bHasRet ){
 				ph7_class_instance *pReThrow = pVm->pPendingException;
+				/* Unlike a `return`, a parked `break`/`continue` does NOT swallow the
+				 * re-throw: control unwinds past the loop, so drop the loop exit rather
+				 * than leave it armed for an unrelated later landing. */
+				pOwner->nCatchJmpPc = 0;
 				pVm->pPendingException = 0;
 				VmExcRelease(&(*pVm),pException);
 				/* Continue unwinding with the re-thrown exception (flat loop) */

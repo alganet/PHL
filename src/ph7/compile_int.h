@@ -26,6 +26,10 @@ typedef struct Label         Label;
 #define GEN_BLOCK_STD         0x080    /* Standard block */
 #define GEN_BLOCK_EXCEPTION   0x100    /* Exception block [i.e: try{ } }*/
 #define GEN_BLOCK_SWITCH      0x200    /* Switch statement */
+#define GEN_BLOCK_DETACHED    0x400    /* A catch/finally body compiled into its OWN bytecode
+                                        * container (legacy try), run detached by VmLocalExec.
+                                        * A break/continue crossing one cannot be a plain jump:
+                                        * its target indexes the OWNING body's array. */
 /*
  * Each label seen in the input is recorded in an instance
  * of the following structure.
@@ -59,6 +63,13 @@ struct JumpFixup
 	/* The following fields are only used by the goto statement */
 	SyString sLabel;    /* Label name */
 	ph7_vm_func *pFunc; /* Compiled function inside which the goto was emitted. NULL otherwise */
+	SySet *pContainer;  /* Bytecode container nInstrIdx indexes. Instruction indices are
+	                     * container-RELATIVE, but a fixup outlives the container swap it was
+	                     * emitted under: a catch/finally body compiles into its own array
+	                     * (GEN_BLOCK_DETACHED) while its enclosing loop resolves the fixup
+	                     * later, with the function's array current again. Resolving through
+	                     * pVm->pByteContainer then patched an unrelated instruction of the
+	                     * enclosing function. Every producer sets this. */
 	sxu32 nLine;        /* Track line number */
 	sxu32 nLoopId;      /* Innermost loop/switch enclosing this goto (0 = none) */
 };
@@ -195,6 +206,7 @@ PH7_PRIVATE sxi32 GenStateGuardFuncRedeclaration(ph7_gen_state *pGen,ph7_vm_func
 /* compile_stmt.c — cross-unit prototypes */
 PH7_PRIVATE GenBlock * GenStateFetchBlock(GenBlock *pCurrent,sxi32 iBlockType,sxi32 iCount);
 PH7_PRIVATE sxi32 GenStateNewJumpFixup(GenBlock *pBlock,sxi32 nJumpType,sxu32 nInstrIdx);
+PH7_PRIVATE VmInstr * GenStateFixupInstr(const JumpFixup *pFix);
 PH7_PRIVATE const char * TokenTypeName(sxu32 nType);
 PH7_PRIVATE sxu32 GenStateNsQualifyName(ph7_gen_state *pGen,sxu32 nOrigIdx,SyHash *pImports,int *pFromImport);
 PH7_PRIVATE int GenStateNsRelPrefix(ph7_gen_state *pGen,SyToken **ppIn,SyToken *pEnd,SyBlob *pOut);

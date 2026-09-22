@@ -659,6 +659,13 @@ struct VmFrame
 	ph7_value sRet;   /* Deferred catch/finally `return` value targeting THIS body frame */
 	int bHasRet;      /* TRUE when sRet holds a live pending return */
 	sxu32 nRetGen;    /* Bumped on every sRet write (see VmThrowException finally path) */
+	sxu32 nCatchJmpPc;/* Pending loop jump parked by a break/continue that left a DETACHED catch
+	                   * mini-program (OP_CATCH_JMP): its target pc in this body frame's
+	                   * bytecode, 0 when none is armed. The sibling of bHasRet/sRet — the same
+	                   * park-here, act-at-the-landing-pad contract, cleared by the same
+	                   * VmClearFramePending. Consumed by the owning try's OP_POP_EXCEPTION. */
+	sxu16 nCatchJmpLevels;/* Detached-container boundaries still to leave before it is taken */
+	sxu16 nCatchJmpCross; /* Enclosing try activations to drain (run their finally) before it */
 	sxu32 nCallLine;  /* Line of the OP_CALL that pushed this frame (0 for the global frame).
 	                   * debug_backtrace() reports a frame's line as the line of the call
 	                   * SITE, not of the code running inside it. */
@@ -1249,7 +1256,12 @@ struct ph7_exception_block
 {
 	SySet aClasses;  /* Exception class names (SyString instances) for multi-catch */
 	SyString sThis;  /* Instance name [i.e: $e..] */
-	SySet sByteCode; /* Block compiled instructions (legacy; unused once ROOT C inlining lands) */
+	SySet *pByteCode;/* Compiled instructions of a DETACHED catch body (the path every
+	                  * non-generator try takes; NULL for a ROOT C inline catch, which compiles
+	                  * into the function's own array). Heap-allocated so its ADDRESS is stable:
+	                  * a `break`/`continue` inside the body records this container in its
+	                  * JumpFixup, resolved long after PH7_CompileCatch returned and after
+	                  * sEntry grew (both would move an embedded SySet). */
 	sxu32 iHandlerPc;/* ROOT C: inline PC where this catch body begins (0 = not inlined) */
 };
 /*
@@ -1923,6 +1935,12 @@ enum ph7_vm_op {
   PH7_OP_END_FINALLY,   /* Terminate an inline finally: dispatch the pending action (ROOT C) */
   PH7_OP_SET_FINALLY_RET,/* Seed a pending RETURN and enter the innermost enclosing finally (ROOT C) */
   PH7_OP_SET_FINALLY_JMP,/* Seed a pending BREAK/CONTINUE (jump target) and enter a finally (ROOT C) */
+  PH7_OP_CATCH_JMP,     /* break/continue leaving a DETACHED catch/finally mini-program: park iP2
+                         * (a pc in the OWNING body's bytecode) on that body's frame and end the
+                         * mini-program. The try's OP_POP_EXCEPTION landing pad takes the jump,
+                         * exactly as it materializes a catch's parked `return`. iP1 packs how
+                         * many boundaries it still has to travel out through and how many
+                         * enclosing trys it skips — see PH7_CATCH_JMP_P1. */
   PH7_OP_UNSET_VAR,     /* unset($name): drop ONE name binding (p3 = name), never the shared slot */
   PH7_OP_CLASS_DEFER    /* Deferred class declaration: p3 = VmDeferredClass. Compile-time
                          * resolution of a parent/interface/trait failed (autoloader not yet
@@ -1931,6 +1949,17 @@ enum ph7_vm_op {
                          * spl_autoload_register has taken effect. php's own model: classes with
                          * unresolved parents are declared in execution order, not hoisted. */
 };
+/*
+ * PH7_OP_CATCH_JMP.iP1 payload. Both halves are nesting depths of the source, never
+ * large: LEVELS = detached catch/finally boundaries the parked jump still has to
+ * travel out through (>= 1), CROSS = enclosing try activations whose
+ * OP_POP_EXCEPTION the jump skips, and whose finally the landing pad must therefore
+ * drain itself.
+ */
+#define PH7_CATCH_JMP_P1(LEVELS,CROSS) \
+	((sxi32)((((sxu32)(CROSS)) << 16) | ((sxu32)(LEVELS) & 0xFFFFu)))
+#define PH7_CATCH_JMP_LEVELS(P1) ((sxu16)((sxu32)(P1) & 0xFFFFu))
+#define PH7_CATCH_JMP_CROSS(P1)  ((sxu16)(((sxu32)(P1) >> 16) & 0xFFFFu))
 /* LOADC.iP1 bit flags */
 #define PH7_LOADC_EXPAND   0x01 /* Candidate for constant/function/class expansion */
 #define PH7_LOADC_NOKEY    0x04 /* The nil this pushes is an ABSENT array-literal key (auto-index),
@@ -3126,7 +3155,7 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 PH7_PRIVATE void VmGetFrameContext(ph7_vm *pVm,const char **pzFuncName,int *pnFuncLen);
 PH7_PRIVATE sxi32 VmEnterFrame(ph7_vm *pVm,void *pUserData,ph7_class_instance *pThis,VmFrame **ppFrame);
 PH7_PRIVATE void VmExcRelease(ph7_vm *pVm,ph7_exception *pExc);
-PH7_PRIVATE void VmClearFrameReturn(VmFrame *pFrame);
+PH7_PRIVATE void VmClearFramePending(VmFrame *pFrame);
 PH7_PRIVATE sxi32 VmLocalExecIntoObj(ph7_vm *pVm,SySet *pByteCode,ph7_value **ppMemObj,int bReturnPropagates);
 
 PH7_PRIVATE sxi32 VmArithOperandCheck(ph7_vm *pVm,ph7_value *pLeft,ph7_value *pRight,const char *zOp,SyBlob *pMsgOut);
