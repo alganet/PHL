@@ -13,6 +13,7 @@
 #include "sxuri.h"
 #include "sxtime.h"
 #include "sxstr.h"
+#include "sxutils.h" /* SyHexToint(), used by SyUriDecode() */
 
 PH7_PRIVATE sxu32 SyBinHash(const void *pSrc,sxu32 nLen)
 {
@@ -295,107 +296,64 @@ PH7_PRIVATE sxi32 SyUriEncodeRaw(const char *zSrc,sxu32 nLen,ProcConsumer xConsu
 	return SyUriEncodeInternal(zSrc,nLen,xConsumer,pUserData,1);
 }
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
-static sxi32 SyAsciiToHex(sxi32 c)
+/*
+ * php's php_url_decode()/php_raw_url_decode(): a BYTE-exact walk -- "%" followed by
+ * two hex digits becomes that byte, "+" becomes a space when bPlus is set, and
+ * anything else (a truncated "%4"/"%", a "%zz" that is not hex, a raw high byte)
+ * is copied through untouched.
+ *
+ * The routine this replaced tried to be clever about UTF-8: it folded a %XX byte
+ * >= 0xC0 and its continuation bytes into a codepoint and re-encoded it, dropped
+ * a truncated escape entirely, and read a non-hex digit as 0. That round-tripped
+ * VALID UTF-8 and silently corrupted everything else -- "%FF" decoded to NUL,
+ * "%C3" to \x03, "abc%" to "abc", "a%zzb" to "a\0b" -- and it reached $_GET,
+ * $_POST, cookies and parse_str() as well as urldecode() itself.
+ */
+PH7_PRIVATE sxi32 SyUriDecode(const char *zSrc,sxu32 nLen,ProcConsumer xConsumer,void *pUserData,int bPlus)
 {
-	if( c >= 'a' && c <= 'f' ){
-		c += 10 - 'a';
-		return c;
-	}
-	if( c >= '0' && c <= '9' ){
-		c -= '0';
-		return c;
-	}
-	if( c >= 'A' && c <= 'F') {
-		c += 10 - 'A';
-		return c;
-	}
-	return 0;
-}
-PH7_PRIVATE sxi32 SyUriDecode(const char *zSrc,sxu32 nLen,ProcConsumer xConsumer,void *pUserData,int bUTF8)
-{
-	static const sxu8 Utf8Trans[] = {
-		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-		0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
-		0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
-		0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
-		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-		0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
-		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-		0x00, 0x01, 0x02, 0x03, 0x00, 0x01, 0x00, 0x00
-	};
-	const char *zIn = zSrc;
-	const char *zEnd;
-	const char *zCur;
-	sxu8 *zOutPtr;
-	sxu8 zOut[10];
-	sxi32 c,d;
-	sxi32 rc;
+	const char *zIn,*zCur,*zEnd;
+	sxi32 rc = SXRET_OK;
 #if defined(UNTRUST)
 	if( SX_EMPTY_STR(zSrc) || xConsumer == 0 ){
 		return SXERR_EMPTY;
 	}
 #endif
-	rc = SXRET_OK;
+	zIn = zCur = zSrc;
 	zEnd = &zSrc[nLen];
-	zCur = zIn;
-	for(;;){
-		while(zCur < zEnd && zCur[0] != '%' && zCur[0] != '+' ){
+	while( zCur < zEnd ){
+		unsigned char zByte[1];
+		int nSkip;
+		if( zCur[0] == '%' && &zCur[2] < zEnd
+			&& SyHexToint(zCur[1]) >= 0 && SyHexToint(zCur[2]) >= 0 ){
+			zByte[0] = (unsigned char)((SyHexToint(zCur[1]) << 4) | SyHexToint(zCur[2]));
+			nSkip = 3;
+		}else if( bPlus && zCur[0] == '+' ){
+			zByte[0] = ' ';
+			nSkip = 1;
+		}else{
+			/* Verbatim: batched with its neighbours and flushed below. */
 			zCur++;
+			continue;
 		}
-		if( zCur != zIn ){
-			/* Consume input */
+		if( zCur > zIn ){
 			rc = xConsumer(zIn,(unsigned int)(zCur-zIn),pUserData);
 			if( rc != SXRET_OK ){
-				/* User consumer routine request an operation abort */
-				break;
+				return rc;
 			}
 		}
-		if( zCur >= zEnd ){
-			rc = SXRET_OK;
-			break;
-		}
-		/* Decode unsafe HTTP characters */
-		zOutPtr = zOut;
-		if( zCur[0] == '+' ){
-			*zOutPtr++ = ' ';
-			zCur++;
-		}else{
-			if( &zCur[2] >= zEnd ){
-				rc = SXERR_OVERFLOW;
-				break;
-			}
-			c = (SyAsciiToHex(zCur[1]) <<4) | SyAsciiToHex(zCur[2]);
-			zCur += 3;
-			if( c < 0x000C0 ){
-				*zOutPtr++ = (sxu8)c;
-			}else{
-				c = Utf8Trans[c-0xC0];
-				while( zCur[0] == '%' ){
-					d = (SyAsciiToHex(zCur[1]) <<4) | SyAsciiToHex(zCur[2]);
-					if( (d&0xC0) != 0x80 ){
-						break;
-					}
-					c = (c<<6) + (0x3f & d);
-					zCur += 3;
-				}
-				if( bUTF8 == FALSE ){
-					*zOutPtr++ = (sxu8)c;
-				}else{
-					SX_WRITE_UTF8(zOutPtr,c);
-				}
-			}
-
-		}
-		/* Consume the decoded characters */
-		rc = xConsumer((const void *)zOut,(unsigned int)(zOutPtr-zOut),pUserData);
+		rc = xConsumer((const void *)zByte,sizeof(zByte),pUserData);
 		if( rc != SXRET_OK ){
-			break;
+			return rc;
 		}
-		/* Synchronize pointers */
+		zCur += nSkip;
 		zIn = zCur;
+	}
+	if( zCur > zIn ){
+		rc = xConsumer(zIn,(unsigned int)(zCur-zIn),pUserData);
 	}
 	return rc;
 }
+
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 static const char *zEngDay[] = {
 	"Sunday","Monday","Tuesday","Wednesday",

@@ -2669,13 +2669,17 @@ PH7_PRIVATE int PH7_builtin_rawurlencode(ph7_context *pCtx,int nArg,ph7_value **
  * string urldecode(string $str)
  *  Decodes any %## encoding in the given string.
  *  Plus symbols ('+') are decoded to a space character.
+ * string rawurldecode(string $str)
+ *  The same, except that '+' is NOT a space: RFC 3986 has no plus convention, so
+ *  php leaves it alone. rawurldecode() used to be registered as an ALIAS of
+ *  urldecode(), which turned every literal '+' into a space.
  * Parameter
  *  $data
  *    Input string.
  * Return
  *  Decoded URL or FALSE on failure.
  */
-PH7_PRIVATE int PH7_builtin_urldecode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+static int UrlDecodeCommon(ph7_context *pCtx,int nArg,ph7_value **apArg,int bPlus)
 {
 	const char *zIn;
 	int nLen;
@@ -2692,7 +2696,15 @@ PH7_PRIVATE int PH7_builtin_urldecode(ph7_context *pCtx,int nArg,ph7_value **apA
 		return PH7_OK;
 	}
 	/* Perform the URL decoding */
-	SyUriDecode(zIn,(sxu32)nLen,Consumer,pCtx,TRUE);
+	SyUriDecode(zIn,(sxu32)nLen,Consumer,pCtx,bPlus);
 	return PH7_OK;
+}
+PH7_PRIVATE int PH7_builtin_urldecode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return UrlDecodeCommon(pCtx,nArg,apArg,TRUE);
+}
+PH7_PRIVATE int PH7_builtin_rawurldecode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return UrlDecodeCommon(pCtx,nArg,apArg,FALSE);
 }
 #endif /* PH7_NEED_BUILTIN_REG */
