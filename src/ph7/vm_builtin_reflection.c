@@ -563,6 +563,30 @@ static int vm_builtin_reflect_const_value(ph7_context *pCtx, int nArg, ph7_value
 	return PH7_OK;
 }
 /*
+ * bool __reflect_static_materialize(string $class)
+ * Materialize the class's static table (php does this BEFORE looking a static
+ * property up, so `getStaticPropertyValue('nope')` on a class with a broken
+ * default reports the default's error, not "property does not exist"). The
+ * chunk calls this first; the per-slot readers below gate again for the paths
+ * that reach them directly.
+ */
+static int vm_builtin_reflect_static_materialize(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass;
+	if( nArg < 1 || (pClass = ReflectResolveClass(pCtx->pVm, apArg[0])) == 0 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	if( VmClassStaticDeferPending(pClass) ){
+		sxi32 rcMat = PH7_VmMaterializeClassStatics(pCtx->pVm, pClass);
+		if( rcMat != SXRET_OK ){
+			return rcMat;
+		}
+	}
+	ph7_result_bool(pCtx, 1);
+	return PH7_OK;
+}
+/*
  * mixed __reflect_static_value(string $class, string $name)
  * Current value of a static property (visibility ignored).
  */
@@ -576,6 +600,16 @@ static int vm_builtin_reflect_static_value(ph7_context *pCtx, int nArg, ph7_valu
 	 || (pAttr->iFlags & PH7_CLASS_ATTR_STATIC) == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
+	}
+	if( VmClassStaticDeferPending(pClass) ){
+		/* Reading a static through reflection materializes the class's static
+		 * table exactly as `C::$s` does, so a default that threw at the
+		 * declaration raises HERE (php: getStaticPropertyValue() /
+		 * getStaticProperties() / ReflectionProperty::getValue() all do). */
+		sxi32 rcMat = PH7_VmMaterializeClassStatics(pCtx->pVm, pClass);
+		if( rcMat != SXRET_OK ){
+			return rcMat;
+		}
 	}
 	{
 		/* Uninitialized typed static: same Error the VM raises on read */
@@ -612,6 +646,14 @@ static int vm_builtin_reflect_static_set(ph7_context *pCtx, int nArg, ph7_value 
 	 || (pAttr->iFlags & PH7_CLASS_ATTR_STATIC) == 0 ){
 		ph7_result_bool(pCtx, 0);
 		return PH7_OK;
+	}
+	if( VmClassStaticDeferPending(pClass) ){
+		/* A WRITE materializes the table too (php's setStaticPropertyValue()
+		 * raises on a broken default before storing anything). */
+		sxi32 rcMat = PH7_VmMaterializeClassStatics(pCtx->pVm, pClass);
+		if( rcMat != SXRET_OK ){
+			return rcMat;
+		}
 	}
 	pValue = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
 	if( pValue == 0 ){
@@ -714,6 +756,14 @@ static int vm_builtin_reflect_new_instance(ph7_context *pCtx, int nArg, ph7_valu
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
+	if( VmClassStaticDeferPending(pClass) ){
+		/* Instantiation materializes the static table (OP_NEW does it too), so a
+		 * broken default raises BEFORE any object exists. */
+		sxi32 rcMat = PH7_VmMaterializeClassStatics(pVm, pClass);
+		if( rcMat != SXRET_OK ){
+			return rcMat;
+		}
+	}
 	pThis = PH7_NewClassInstance(pVm, pClass);
 	if( pThis == 0 ){
 		ph7_result_null(pCtx);
@@ -762,6 +812,14 @@ static int vm_builtin_reflect_new_no_ctor(ph7_context *pCtx, int nArg, ph7_value
 	if( nArg < 1 || (pClass = ReflectResolveClass(pCtx->pVm, apArg[0])) == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
+	}
+	if( VmClassStaticDeferPending(pClass) ){
+		/* Same materialization the engine's own access sites run (see
+		 * PH7_VmMaterializeClassStatics). */
+		sxi32 rcMat = PH7_VmMaterializeClassStatics(pCtx->pVm, pClass);
+		if( rcMat != SXRET_OK ){
+			return rcMat;
+		}
 	}
 	return ReflectResultObject(pCtx, PH7_NewClassInstance(pCtx->pVm, pClass));
 }
@@ -912,7 +970,16 @@ static int vm_builtin_reflect_prop_state(ph7_context *pCtx, int nArg, ph7_value 
 		ph7_class *pClass = ReflectResolveClass(pCtx->pVm, apArg[0]);
 		ph7_class_attr *pAttr = pClass ? ReflectFetchAttr(pClass, apArg[1]) : 0;
 		if( pAttr && (pAttr->iFlags & PH7_CLASS_ATTR_STATIC) ){
-			SyHashEntry *pSlot = SyHashGet(&pCtx->pVm->hTypedSlot, (const void *)&pAttr->nIdx, sizeof(sxu32));
+			SyHashEntry *pSlot;
+			if( VmClassStaticDeferPending(pClass) ){
+				/* isInitialized() reads the slot state, so it materializes the
+				 * table too (php raises the default's error before answering). */
+				sxi32 rcMat = PH7_VmMaterializeClassStatics(pCtx->pVm, pClass);
+				if( rcMat != SXRET_OK ){
+					return rcMat;
+				}
+			}
+			pSlot = SyHashGet(&pCtx->pVm->hTypedSlot, (const void *)&pAttr->nIdx, sizeof(sxu32));
 			iState |= 1 | 2;
 			if( pSlot && (((VmClassAttr *)pSlot->pUserData)->iState & VM_CLASS_ATTR_UNINIT) ){
 				iState &= ~2;
@@ -1781,6 +1848,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 	} aFunc[] = {
 		{ "__reflect_class_info",     vm_builtin_reflect_class_info },
 		{ "__reflect_const_value",    vm_builtin_reflect_const_value },
+		{ "__reflect_static_materialize", vm_builtin_reflect_static_materialize },
 		{ "__reflect_static_value",   vm_builtin_reflect_static_value },
 		{ "__reflect_static_set",     vm_builtin_reflect_static_set },
 		{ "__reflect_prop_default",   vm_builtin_reflect_prop_default },

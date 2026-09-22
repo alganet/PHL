@@ -864,6 +864,15 @@ PH7_PRIVATE int vm_builtin_get_class_vars(ph7_context *pCtx,int nArg,ph7_value *
 			"get_class_vars(): Argument #1 ($class) must be a valid class name, %.*s given",
 			nLen,zVal);
 	}
+	if( VmClassStaticDeferPending(pClass) ){
+		/* Listing the properties reads every static slot, which materializes the
+		 * class's static table: a default that threw at the declaration raises
+		 * here, as it does in php. */
+		sxi32 rcMat = PH7_VmMaterializeClassStatics(pCtx->pVm,pClass);
+		if( rcMat != SXRET_OK ){
+			return rcMat;
+		}
+	}
 	/* Create a new array  */
 	pArray = ph7_context_new_array(pCtx);
 	pName = ph7_context_new_scalar(pCtx);

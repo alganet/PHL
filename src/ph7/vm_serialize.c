@@ -544,6 +544,14 @@ static ph7_value * VmUnserializeObject(unserialize_data *ud)
 	if( !VmUnExpect(ud,':') || !VmUnExpect(ud,'{') ){ return 0; }
 	pClass = PH7_VmExtractClass(ud->pVm,zClass,nLen,TRUE,0);
 	if( pClass == 0 ){ return 0; }
+	if( VmClassStaticDeferPending(pClass) ){
+		/* Instantiating materializes the class's static table, so a default that
+		 * threw at the declaration raises here — before any object exists —
+		 * exactly as `new C` does. Propagated through ud->exc like a throwing
+		 * __wakeup(), not as a parse failure. */
+		sxi32 rcMat = PH7_VmMaterializeClassStatics(ud->pVm,pClass);
+		if( rcMat != SXRET_OK ){ ud->exc = 1; return 0; }
+	}
 	pThis = PH7_NewClassInstance(ud->pVm,pClass);
 	if( pThis == 0 ){ return 0; }
 	pObjVal = ph7_context_new_scalar(ud->pCtx);

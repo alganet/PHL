@@ -1635,6 +1635,33 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							 * for the following member-marked OP_STORE_REF (class-level, shared
 							 * across instances — matches php). Skip the read machinery below. */
 							if( pAttr && (pAttr->iFlags & PH7_CLASS_ATTR_STATIC)
+							 && (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0
+							 && VmClassStaticDeferPending(pClass) ){
+								/* Binding a reference TO a static touches the table, so it
+								 * materializes first, like every other static access. */
+								sxi32 rcRt = PH7_VmMaterializeClassStatics(&(*pVm),pClass);
+								if( rcRt != SXRET_OK ){
+									pVm->pRefTargetStaticAttr = 0;
+									pVm->pRefTargetAttr = 0;
+									pVm->pRefTargetThis = 0;
+									if( pThis ){
+										PH7_ClassInstanceUnref(pThis);
+									}
+									if( rcRt == PH7_ABORT ){
+										VM_EXIT_ABORT;
+									}
+									{
+										sxi32 iRpR;
+										if( VmRecordedResume(pVm,&iRpR,pState->pEntryFrame,aInstr) ){
+											PH7_RESUME_DRAIN()
+											pc = iRpR;
+											VM_EXIT_BREAK;
+										}
+									}
+									VM_EXIT_EXCEPTION;
+								}
+							}
+							if( pAttr && (pAttr->iFlags & PH7_CLASS_ATTR_STATIC)
 							 && PH7_VmClassMemberAccess(&(*pVm),pClass,&pAttr->sName,pAttr->iProtection,FALSE) ){
 								pVm->pRefTargetStaticAttr = pAttr;
 								pVm->pRefTargetAttr = 0;
