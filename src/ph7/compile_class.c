@@ -1854,6 +1854,42 @@ static void GenStateHookGetReturnType(ph7_vm_func *pFunc,ph7_class_attr *pAttr)
 		}
 	}
 }
+/*
+ * The mirror for a `set` hook. php gives it two implicit pieces of signature:
+ * the implicit `$value` formal carries the PROPERTY's declared type (so
+ * `public int $p { set { ... } }` coerces `$o->p = "7"` to int(7) and rejects
+ * "abc" with `C::$p::set(): Argument #1 ($value) must be of type int, string
+ * given`), and the hook itself returns `void` — a set hook that returns a value
+ * is php's `A void method must not return a value`, on an untyped property too.
+ * An EXPLICIT `set(T $v)` keeps its own declared type; only the implicit formal
+ * is typed from the property, which is why the caller passes pValueArg only
+ * when it synthesized one.
+ */
+static void GenStateHookSetSignature(ph7_gen_state *pGen,ph7_vm_func *pFunc,
+	ph7_class_attr *pAttr,ph7_vm_func_arg *pValueArg)
+{
+	char *zVoid;
+	if( pValueArg && (pAttr->iFlags & PH7_CLASS_ATTR_TYPED) ){
+		pValueArg->nType = pAttr->nType;
+		pValueArg->sClass = pAttr->sClass;
+		pValueArg->sTypeName = pAttr->sTypeName;
+		if( pAttr->iFlags & PH7_CLASS_ATTR_NULLABLE ){
+			pValueArg->iFlags |= VM_FUNC_ARG_NULLABLE;
+		}
+		if( pAttr->iFlags & PH7_CLASS_ATTR_UNION ){
+			sxu32 i;
+			pValueArg->iFlags |= VM_FUNC_ARG_UNION;
+			for( i = 0 ; i < SySetUsed(&pAttr->aUnionAlts) ; i++ ){
+				SySetPut(&pValueArg->aUnionAlts,SySetAt(&pAttr->aUnionAlts,i));
+			}
+		}
+	}
+	pFunc->nReturnType = MEMOBJ_VOID;
+	zVoid = SyMemBackendStrDup(&pGen->pVm->sAllocator,"void",sizeof("void")-1);
+	if( zVoid ){
+		SyStringInitFromBuf(&pFunc->sReturnTypeName,zVoid,sizeof("void")-1);
+	}
+}
 PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pClass,ph7_class_attr *pAttr)
 {
 	sxu32 nLine = pGen->pIn->nLine;
@@ -1939,12 +1975,7 @@ PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pC
 				SySetInit(&sVArg.aByteCode,&pGen->pVm->sAllocator,sizeof(VmInstr));
 				SySetInit(&sVArg.aUnionAlts,&pGen->pVm->sAllocator,sizeof(ph7_type_alt));
 				SySetInit(&sVArg.aAttrs,&pGen->pVm->sAllocator,sizeof(ph7_attribute));
-				sVArg.nType = pAttr->nType;
-				sVArg.sClass = pAttr->sClass;
-				sVArg.sTypeName = pAttr->sTypeName;
-				if( pAttr->iFlags & PH7_CLASS_ATTR_NULLABLE ){
-					sVArg.iFlags |= VM_FUNC_ARG_NULLABLE;
-				}
+				GenStateHookSetSignature(&(*pGen),&pMeth->sFunc,pAttr,&sVArg);
 				SySetPut(&pMeth->sFunc.aArgs,(const void *)&sVArg);
 			}
 			rc = PH7_ClassInstallMethod(pClass,pMeth);
@@ -2006,7 +2037,12 @@ PH7_PRIVATE sxi32 GenStateCompilePropertyHooks(ph7_gen_state *pGen,ph7_class *pC
 				SySetInit(&sVArg.aUnionAlts,&pGen->pVm->sAllocator,sizeof(ph7_type_alt));
 				SySetInit(&sVArg.aAttrs,&pGen->pVm->sAllocator,sizeof(ph7_attribute));
 				SyStringInitFromBuf(&sVArg.sTypeName,0,0);
+				GenStateHookSetSignature(&(*pGen),&pMeth->sFunc,pAttr,&sVArg);
 				SySetPut(&pMeth->sFunc.aArgs,(const void *)&sVArg);
+			}else{
+				/* An EXPLICIT `set(T $v)` keeps its own parameter type; only the
+				 * void return is implicit. */
+				GenStateHookSetSignature(&(*pGen),&pMeth->sFunc,pAttr,0);
 			}
 		}
 		if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_OCB) ){

@@ -2637,6 +2637,24 @@ PH7_PRIVATE sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,ph7_
 	 * for a VARIADIC-collected element (many values share the one variadic
 	 * formal, so no single name applies) — "Argument #2 must be of type …". */
 	if( pOwnerClass ){
+		/* A property hook is named after its PROPERTY, never after the method
+		 * PHL synthesizes for it (`C::$p::set`, not `C::__phl_hook_set_p`). */
+		SyBlob sHook;
+		SyBlobInit(&sHook,&pVm->sAllocator);
+		if( PH7_VmHookFuncName(pOwnerClass,pCallee,&sHook) ){
+			if( pArgName ){
+				SyBlobFormat(&sMsg,"%.*s(): Argument #%u ($%z) must be of type %s, %s given",
+					(int)SyBlobLength(&sHook),(const char *)SyBlobData(&sHook),
+					nArg,pArgName,zExpected,zGiven);
+			}else{
+				SyBlobFormat(&sMsg,"%.*s(): Argument #%u must be of type %s, %s given",
+					(int)SyBlobLength(&sHook),(const char *)SyBlobData(&sHook),
+					nArg,zExpected,zGiven);
+			}
+			SyBlobRelease(&sHook);
+			goto ArgMsgBuilt;
+		}
+		SyBlobRelease(&sHook);
 		if( pArgName ){
 			SyBlobFormat(&sMsg,"%z::%z(): Argument #%u ($%z) must be of type %s, %s given",
 				&pOwnerClass->sName,pFuncName,nArg,pArgName,zExpected,zGiven);
@@ -2656,6 +2674,7 @@ PH7_PRIVATE sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,ph7_
 				nShow,zShow,nArg,zExpected,zGiven);
 		}
 	}
+ArgMsgBuilt:
 	/* php appends the CALL SITE to a userland callee's type error — internal
 	 * (hosted C) functions get the bare message. nCurLine is the line of the
 	 * call instruction being bound, which is exactly php's "called in". */
@@ -3165,6 +3184,14 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 	/* void return type: the function must not produce a value. */
 	if( pFunc->nReturnType == MEMOBJ_VOID ){
 		if( pValue == 0 ){
+			return SXRET_OK;
+		}
+		/* `set => expr` is php's SHORTHAND for assigning expr to the backing
+		 * store, not a return: php compiles no return statement there at all,
+		 * and still reports the hook's return type as void. PHL carries the
+		 * value out of the hook body to hand it to the write-back dispatcher,
+		 * so the one implicit value this arm must not reject is that one. */
+		if( pFunc->iFlags & VM_FUNC_HOOK_SET_EXPR ){
 			return SXRET_OK;
 		}
 		/* PHP allows `return;` but rejects `return null;` — iP1=1 with NULL
