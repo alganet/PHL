@@ -141,8 +141,20 @@
 
 /* Rely on the standard ctype */
 #include <ctype.h>
-#define SyToUpper(c) toupper(c)
-#define SyToLower(c) tolower(c)
+/* ...except for CASE FOLDING, which php defines as ASCII-only and
+ * locale-INDEPENDENT everywhere it folds: name resolution (the class / method /
+ * function / use-import tables fold through SyStrHash and SyStrnicmp) and the
+ * string builtins alike (strtolower, strtoupper, ucfirst, lcfirst, ucwords,
+ * strcasecmp/strncasecmp, stristr/str_ireplace, natcasesort, SORT_FLAG_CASE,
+ * soundex — all ASCII-only in php 8).  libc tolower()/toupper() follow LC_CTYPE,
+ * so in an embedder that calls setlocale(LC_CTYPE,"tr_TR.UTF-8") the dotless-i
+ * rule would leak in: STRLEN would stop resolving to strlen and strtolower("I")
+ * would answer something other than "i".  Plain ASCII arithmetic keeps the fold
+ * the same in every locale (and drops a libc call per byte on the name-table
+ * hash/compare path).  The ctype PREDICATES below stay libc's: they classify,
+ * they do not fold. */
+#define SyToUpper(c) (((c) >= 'a' && (c) <= 'z') ? ((c) - ('a' - 'A')) : (c))
+#define SyToLower(c) (((c) >= 'A' && (c) <= 'Z') ? ((c) + ('a' - 'A')) : (c))
 #define SyisUpper(c) isupper(c)
 #define SyisLower(c) islower(c)
 #define SyisSpace(c) isspace(c)
@@ -159,8 +171,10 @@
 #define SyisGraph(c)     isgraph(c)
 #define SyDigToHex(c)    "0123456789ABCDEF"[c & 0x0F]
 #define SyDigToInt(c)     ((c < 0xc0 && SyisDigit(c))? (c - '0') : 0 )
-#define SyCharToUpper(c)  ((c < 0xc0 && SyisLower(c))? SyToUpper(c) : c)
-#define SyCharToLower(c)  ((c < 0xc0 && SyisUpper(c))? SyToLower(c) : c)
+/* The `< 0xc0` guard these used to carry kept libc's locale fold off UTF-8 lead
+ * bytes; an ASCII-only fold never touches them, so the guard is redundant. */
+#define SyCharToUpper(c)  SyToUpper(c)
+#define SyCharToLower(c)  SyToLower(c)
 
 /* Remove white space/NUL byte from a raw string */
 #define SyStringLeftTrim(RAW)\
