@@ -847,7 +847,7 @@ static sxi32 VmResolveDeferredArgs(
  *
  * Snapshot (nBoundaryRc, pResumeFrame) before the lookup and pass them here after.
  */
-static int VmClassLookupRaised(ph7_vm *pVm,sxi32 nBrcBefore,const void *pResumeBefore)
+PH7_PRIVATE int PH7_VmClassLookupRaised(ph7_vm *pVm,sxi32 nBrcBefore,const void *pResumeBefore)
 {
 	return pVm->nBoundaryRc != nBrcBefore || (const void *)pVm->pResumeFrame != pResumeBefore;
 }
@@ -4513,7 +4513,7 @@ case PH7_OP_CALL: {
 						const void *pCbRes = (const void *)pVm->pResumeFrame;
 						zCbErr = VmDirectArrayCallableError(&(*pVm),pCbCls,pCbMeth,
 							zCbMsg,sizeof(zCbMsg));
-						if( zCbErr && VmClassLookupRaised(&(*pVm),nCbBrc,pCbRes) ){
+						if( zCbErr && PH7_VmClassLookupRaised(&(*pVm),nCbBrc,pCbRes) ){
 							bCbRaised = 1;
 						}
 					}
@@ -6061,7 +6061,7 @@ SkipFuncBody:
 					zCbCls,nCbCls,zCbMeth,nCbMeth,TRUE,zSmMsg,sizeof(zSmMsg));
 				if( zSmErr ){
 					sxi32 rcSmErr;
-					int bSmRaised = VmClassLookupRaised(&(*pVm),nSmBrc,pSmRes);
+					int bSmRaised = PH7_VmClassLookupRaised(&(*pVm),nSmBrc,pSmRes);
 					if( pInstr->iP2 ){
 						VmSpreadConsume(pVm);
 					}

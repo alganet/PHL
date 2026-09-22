@@ -151,6 +151,13 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 	ph7_value *pArg;
 	ph7_class *pClass = 0;
 	ph7_class_instance *pNew;
+	/* Resolving the class below can run an AUTOLOADER that throws. Snapshot the boundary
+	 * rail so the "not found" report can tell a missing class from an autoloader that
+	 * raised — php propagates the autoloader's exception and reports nothing else, while
+	 * this arm used to throw its own Error on top of it (uncaught, killing the script
+	 * right after the real exception had been handled). */
+	sxi32 nNewBrc = pVm->nBoundaryRc;
+	const void *pNewRes = (const void *)pVm->pResumeFrame;
 	pArg = &pTos[-nCtorArgs]; /* Constructor arguments (if available) */
 	/* Same PHP 8.1 spread-key realignment as OP_CALL: build a per-actual-slot name
 	 * map when the ctor arg list unpacked string-keyed elements. NEW keeps the
@@ -196,6 +203,23 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 		SyBlob sErrM;
 		sxi32 rcErr;
 		ph7_class *pNotNew = 0;
+		if( PH7_VmClassLookupRaised(&(*pVm),nNewBrc,pNewRes) ){
+			/* The autoloader threw: land THAT (an in-place catch leaves 0 behind plus a
+			 * recorded resume frame, which the router picks up). */
+			sxi32 rcAuto = pVm->nBoundaryRc;
+			pVm->nBoundaryRc = 0;
+			if( nCtorArgs > 0 ){
+				VmPopOperand(&pTos,nCtorArgs);
+			}
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			if( rcAuto == PH7_ABORT ){
+				VM_EXIT_ABORT;
+			}
+			rc = PH7_EXCEPTION;
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
 		SyBlobInit(&sErrM,&pVm->sAllocator);
 		if( (pTos->iFlags & MEMOBJ_STRING) && SyBlobLength(&pTos->sBlob) > 0 ){
 			/* The extract above only accepts NEW-able classes, so an interface or an
@@ -1348,6 +1372,10 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 			 * after the method name is pushed. */
 			int bForwardingCall = 0;
 			ph7_class *pForwardLsb = 0;
+			/* Same rail snapshot as OP_NEW: the lookup below can run an autoloader that
+			 * throws, and php then reports that exception and nothing else. */
+			sxi32 nMbBrc = pVm->nBoundaryRc;
+			const void *pMbRes = (const void *)pVm->pResumeFrame;
 			if( pNos->iFlags & MEMOBJ_OBJ ){
 				/* Class already instantiated */
 				pThis = (ph7_class_instance *)pNos->x.pOther;
@@ -1384,6 +1412,23 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 				/* Undefined class: php throws a catchable Error */
 				SyBlob sErrM;
 				sxi32 rcErr;
+				if( PH7_VmClassLookupRaised(&(*pVm),nMbBrc,pMbRes) ){
+					/* ...unless an autoloader raised: land THAT instead of reporting the
+					 * class missing on top of it. */
+					sxi32 rcAutoM = pVm->nBoundaryRc;
+					pVm->nBoundaryRc = 0;
+					if( !pInstr->p3 ){
+						VmPopOperand(&pTos,1);
+					}
+					PH7_MemObjRelease(pTos);
+					MemObjSetType(pTos,MEMOBJ_NULL);
+					pTos->nIdx = SXU32_HIGH;
+					if( rcAutoM == PH7_ABORT ){
+						VM_EXIT_ABORT;
+					}
+					rc = PH7_EXCEPTION;
+					PH7_THROW_ROUTE_MIDEXPR(rc)
+				}
 				SyBlobInit(&sErrM,&pVm->sAllocator);
 				SyBlobFormat(&sErrM,"Class \"%.*s\" not found",
 					SyBlobLength(&pNos->sBlob),(const char *)SyBlobData(&pNos->sBlob));
