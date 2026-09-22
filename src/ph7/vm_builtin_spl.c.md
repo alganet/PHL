@@ -16,225 +16,225 @@ Coverage: 56/70 lines (80.00%)
 |    - |    6 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
 |    - |    7 | `/*` |
 |    - |    8 | ` * SPL iterators, slice 1 (NEWPLAN band D): SeekableIterator, ArrayIterator,` |
-|    - |    9 | ` * ArrayObject, plus the natsort()/natcasesort() array functions they need.` |
-|    - |   10 | ` * Embedded-PHP chunk following the Reflection architecture — installed` |
-|    - |   11 | ` * inside the bCompilingBuiltin window, backed by the engine's native array` |
-|    - |   12 | ` * internal-pointer builtins (reset/next/key/current keep their position on a` |
-|    - |   13 | ` * property, so ArrayIterator's cursor IS the backing array's pointer).` |
-|    - |   14 | ` */` |
-|    - |   15 |  |
-|    - |   16 | `/* void __spl_deprecated(string $msg) — E_DEPRECATED with php's exact text` |
-|    - |   17 | ` * (no auto-prepended function name, unlike ph7_context_throw_error) */` |
-|  ! 0 |   18 | `static int vm_builtin_spl_deprecated(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|  ! 0 |   19 | `{` |
-|    - |   20 | `	/* php DEPRECATES a handful of SPL methods (SplObjectStorage attach/detach/…);` |
-|    - |   21 | `	 * PHL keeps them (they ADD surface, they don't change valid-php meaning) but does` |
-|    - |   22 | `	 * not mimic php's E_DEPRECATED notice. So this helper is now a no-op. */` |
-|  ! 0 |   23 | `	SXUNUSED(pCtx); SXUNUSED(nArg); SXUNUSED(apArg);` |
-|  ! 0 |   24 | `	return PH7_OK;` |
-|  ! 0 |   25 | `}` |
-|    - |   26 |  |
-|    - |   27 | `/* int __weak_create(object $obj) — register/share the weak cell for $obj,` |
-|    - |   28 | ` * returning the cell pointer as an opaque int handle */` |
-|   14 |   29 | `static int vm_builtin_weak_create(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |   30 | `{` |
-|   15 |   31 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    - |   32 | `	ph7_class_instance *pObj;` |
-|   15 |   33 | `	VmWeakCell *pCell = 0;` |
-|    - |   34 | `	SyHashEntry *pEntry;` |
-|   15 |   35 | `	if( nArg < 1 \|\| (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){` |
-|  ! 0 |   36 | `		ph7_result_int(pCtx,0);` |
-|  ! 0 |   37 | `		return PH7_OK;` |
-|    - |   38 | `	}` |
-|   15 |   39 | `	pObj = (ph7_class_instance *)apArg[0]->x.pOther;` |
-|   15 |   40 | `	pEntry = SyHashGet(&pVm->hWeakCell,(const void *)&pObj,sizeof(void *));` |
-|   15 |   41 | `	if( pEntry ){` |
-|    3 |   42 | `		pCell = (VmWeakCell *)pEntry->pUserData;` |
-|    3 |   43 | `		pCell->nRef++;` |
-|    2 |   44 | `	}else{` |
-|   13 |   45 | `		pCell = (VmWeakCell *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmWeakCell));` |
-|   13 |   46 | `		if( pCell == 0 ){` |
-|  ! 0 |   47 | `			return PH7_ContextMemoryError(pCtx);` |
-|    - |   48 | `		}` |
-|   13 |   49 | `		pCell->pObj = pObj;` |
-|   13 |   50 | `		pCell->nRef = 1;` |
-|    - |   51 | `		/* SyHash stores the key POINTER (no copy): key off the cell's own` |
-|    - |   52 | `		 * pObj field — heap-stable for the entry's whole lifetime, and it` |
-|    - |   53 | `		 * holds the live pointer bytes until the release hook nulls it` |
-|    - |   54 | `		 * (which happens only after the entry is deleted). */` |
-|   13 |   55 | `		if( SyHashInsert(&pVm->hWeakCell,(const void *)&pCell->pObj,sizeof(void *),pCell) != SXRET_OK ){` |
-|  ! 0 |   56 | `			SyMemBackendFree(&pVm->sAllocator,pCell);` |
-|  ! 0 |   57 | `			return PH7_ContextMemoryError(pCtx);` |
-|    - |   58 | `		}` |
-|    - |   59 | `	}` |
-|   15 |   60 | `	ph7_result_int64(pCtx,(ph7_int64)(sxu64)(sxuptr)pCell);` |
-|   15 |   61 | `	return PH7_OK;` |
-|    8 |   62 | `}` |
-|    - |   63 | `/* ?object __weak_get(int $handle) — the target instance, or null once dead */` |
-|   28 |   64 | `static int vm_builtin_weak_get(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |   65 | `{` |
-|    - |   66 | `	VmWeakCell *pCell;` |
-|   29 |   67 | `	if( nArg < 1 ){` |
-|  ! 0 |   68 | `		ph7_result_null(pCtx);` |
-|  ! 0 |   69 | `		return PH7_OK;` |
-|    - |   70 | `	}` |
-|   29 |   71 | `	pCell = (VmWeakCell *)(sxuptr)(sxu64)ph7_value_to_int64(apArg[0]);` |
-|   29 |   72 | `	if( pCell == 0 \|\| pCell->pObj == 0 ){` |
-|   11 |   73 | `		ph7_result_null(pCtx);` |
-|   11 |   74 | `		return PH7_OK;` |
-|    - |   75 | `	}` |
-|    - |   76 | `	{` |
-|    - |   77 | `		/* Hand the instance back: ph7_result_value's MemObjStore takes the` |
-|    - |   78 | `		 * reference, so the temp holds none of its own. */` |
-|    - |   79 | `		ph7_value sObj;` |
-|   19 |   80 | `		PH7_MemObjInit(pCtx->pVm,&sObj);` |
-|   19 |   81 | `		sObj.x.pOther = pCell->pObj;` |
-|   19 |   82 | `		MemObjSetType(&sObj,MEMOBJ_OBJ);` |
-|   19 |   83 | `		ph7_result_value(pCtx,&sObj);` |
-|    - |   84 | `	}` |
-|   19 |   85 | `	return PH7_OK;` |
-|   15 |   86 | `}` |
-|    - |   87 | `/* void __weak_drop(int $handle) — release one PHP-side handle */` |
-|   14 |   88 | `static int vm_builtin_weak_drop(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |   89 | `{` |
-|   15 |   90 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    - |   91 | `	VmWeakCell *pCell;` |
-|   15 |   92 | `	if( nArg < 1 ){` |
-|  ! 0 |   93 | `		return PH7_OK;` |
-|    - |   94 | `	}` |
-|   15 |   95 | `	pCell = (VmWeakCell *)(sxuptr)(sxu64)ph7_value_to_int64(apArg[0]);` |
-|   15 |   96 | `	if( pCell == 0 \|\| pCell->nRef == 0 ){` |
-|  ! 0 |   97 | `		return PH7_OK;` |
-|    - |   98 | `	}` |
-|   15 |   99 | `	pCell->nRef--;` |
-|   15 |  100 | `	if( pCell->nRef == 0 ){` |
-|   13 |  101 | `		if( pCell->pObj ){` |
-|    - |  102 | `			/* Still alive: unhook the registry entry before freeing */` |
-|    5 |  103 | `			void *pDummy = 0;` |
-|    5 |  104 | `			SyHashDeleteEntry(&pVm->hWeakCell,(const void *)&pCell->pObj,sizeof(void *),&pDummy);` |
-|    2 |  105 | `		}` |
-|   13 |  106 | `		SyMemBackendFree(&pVm->sAllocator,pCell);` |
-|    6 |  107 | `	}` |
-|   15 |  108 | `	return PH7_OK;` |
-|    8 |  109 | `}` |
-|    - |  110 |  |
-|    - |  111 | `static const char zSplLib[] =` |
-|    - |  112 | `"interface SeekableIterator extends Iterator {"` |
-|    - |  113 | `" public function seek($offset);"` |
-|    - |  114 | `"}"` |
-|    - |  115 | `"trait __SplStoreT {"` |
-|    - |  116 | `" private $__d = [];"` |
-|    - |  117 | `" private $__f = 0;"` |
-|    - |  118 | `" private function __splInitStore($array, $flags, $owner){"` |
-|    - |  119 | `"  /* $owner is the DECLARING method (php names the declaring class in these"` |
-|    - |  120 | `"   * diagnostics, so a RecursiveArrayIterator misuse still says"` |
-|    - |  121 | `"   * ArrayIterator::__construct) */"` |
-|    - |  122 | `"  if( is_array($array) ){"` |
-|    - |  123 | `"   $this->__d = $array;"` |
-|    - |  124 | `"  }elseif( is_object($array) ){"` |
-|    - |  125 | `"   __spl_deprecated($owner . '(): Using an object as a backing array for '"` |
-|    - |  126 | `"    . get_class($this) . ' is deprecated, as it allows violating class"` |
-|    - |  127 | `" constraints and invariants');"` |
-|    - |  128 | `"  $this->__d = get_object_vars($array);"` |
-|    - |  129 | `"  }else{"` |
-|    - |  130 | `"   throw new TypeError($owner . '(): Argument #1 ($array) must be of type"` |
-|    - |  131 | `" array, ' . get_debug_type($array) . ' given');"` |
-|    - |  132 | `"  }"` |
-|    - |  133 | `"  $this->__f = (int)$flags;"` |
-|    - |  134 | `" }"` |
-|    - |  135 | `" public function offsetExists($key){ return array_key_exists($key, $this->__d); }"` |
-|    - |  136 | `" public function offsetGet($key){ return $this->__d[$key]; }"` |
-|    - |  137 | `" public function offsetSet($key, $value){"` |
-|    - |  138 | `"  if( $key === null ){ $this->__d[] = $value; }"` |
-|    - |  139 | `"  else { $this->__d[$key] = $value; }"` |
-|    - |  140 | `" }"` |
-|    - |  141 | `" public function offsetUnset($key){ unset($this->__d[$key]); }"` |
-|    - |  142 | `" public function append($value){ $this->__d[] = $value; }"` |
-|    - |  143 | `" public function getArrayCopy(){ return $this->__d; }"` |
-|    - |  144 | `" public function count(){ return count($this->__d); }"` |
-|    - |  145 | `" public function getFlags(){ return $this->__f; }"` |
-|    - |  146 | `" public function setFlags($flags){ $this->__f = (int)$flags; }"` |
-|    - |  147 | `" public function asort($flags = 0){ asort($this->__d); return true; }"` |
-|    - |  148 | `" public function ksort($flags = 0){ ksort($this->__d); return true; }"` |
-|    - |  149 | `" public function uasort($callback){ uasort($this->__d, $callback); return true; }"` |
-|    - |  150 | `" public function uksort($callback){ uksort($this->__d, $callback); return true; }"` |
-|    - |  151 | `" public function natsort(){ uasort($this->__d, 'strnatcmp'); return true; }"` |
-|    - |  152 | `" public function natcasesort(){ uasort($this->__d, 'strnatcasecmp'); return true; }"` |
-|    - |  153 | `"}"` |
-|    - |  154 | `"class ArrayIterator implements SeekableIterator, ArrayAccess, Countable {"` |
-|    - |  155 | `" use __SplStoreT;"` |
-|    - |  156 | `" const STD_PROP_LIST = 1;"` |
-|    - |  157 | `" const ARRAY_AS_PROPS = 2;"` |
-|    - |  158 | `" public function __construct($array = [], $flags = 0){"` |
-|    - |  159 | `"  $this->__splInitStore($array, $flags, 'ArrayIterator::__construct');"` |
-|    - |  160 | `"  reset($this->__d);"` |
-|    - |  161 | `" }"` |
-|    - |  162 | `" public function current(){"` |
-|    - |  163 | `"  if( key($this->__d) === null ){ return null; }"` |
-|    - |  164 | `"  return current($this->__d);"` |
-|    - |  165 | `" }"` |
-|    - |  166 | `" public function key(){ return key($this->__d); }"` |
-|    - |  167 | `" public function next(){ next($this->__d); }"` |
-|    - |  168 | `" public function rewind(){ reset($this->__d); }"` |
-|    - |  169 | `" public function valid(){ return key($this->__d) !== null; }"` |
-|    - |  170 | `" public function seek($offset){"` |
-|    - |  171 | `"  $offset = (int)$offset;"` |
-|    - |  172 | `"  if( $offset < 0 \|\| $offset >= count($this->__d) ){"` |
-|    - |  173 | `"   throw new OutOfBoundsException('Seek position ' . $offset . ' is out of range');"` |
-|    - |  174 | `"  }"` |
-|    - |  175 | `"  reset($this->__d);"` |
-|    - |  176 | `"  for( $i = 0; $i < $offset; $i++ ){ next($this->__d); }"` |
-|    - |  177 | `" }"` |
-|    - |  178 | `"}"` |
-|    - |  179 | `"class ArrayObject implements IteratorAggregate, ArrayAccess, Countable {"` |
-|    - |  180 | `" use __SplStoreT;"` |
-|    - |  181 | `" const STD_PROP_LIST = 1;"` |
-|    - |  182 | `" const ARRAY_AS_PROPS = 2;"` |
-|    - |  183 | `" private $__it = 'ArrayIterator';"` |
-|    - |  184 | `" public function __construct($array = [], $flags = 0, $iteratorClass = 'ArrayIterator'){"` |
-|    - |  185 | `"  $this->__splInitStore($array, $flags, 'ArrayObject::__construct');"` |
-|    - |  186 | `"  if( $iteratorClass !== 'ArrayIterator' ){ $this->setIteratorClass($iteratorClass); }"` |
-|    - |  187 | `" }"` |
-|    - |  188 | `" public function getIterator(){"` |
-|    - |  189 | `"  $c = $this->__it;"` |
-|    - |  190 | `"  return new $c($this->__d);"` |
-|    - |  191 | `" }"` |
-|    - |  192 | `" public function exchangeArray($array){"` |
-|    - |  193 | `"  $old = $this->__d;"` |
-|    - |  194 | `"  $this->__splInitStore($array, $this->__f, 'ArrayObject::exchangeArray');"` |
-|    - |  195 | `"  return $old;"` |
-|    - |  196 | `" }"` |
-|    - |  197 | `" public function setIteratorClass($iteratorClass){"` |
-|    - |  198 | `"  $c = (string)$iteratorClass;"` |
-|    - |  199 | `"  if( $c !== 'ArrayIterator'"` |
-|    - |  200 | `"   && (!class_exists($c) \|\| !is_subclass_of($c, 'ArrayIterator')) ){"` |
-|    - |  201 | `"   throw new TypeError('ArrayObject::setIteratorClass(): Argument #1"` |
-|    - |  202 | `" ($iteratorClass) must be a class name derived from ArrayIterator, ' . $c . ' given');"` |
-|    - |  203 | `"  }"` |
-|    - |  204 | `"  $this->__it = $c;"` |
-|    - |  205 | `" }"` |
-|    - |  206 | `" public function getIteratorClass(){ return $this->__it; }"` |
-|    - |  207 | `" public function __get($name){"` |
-|    - |  208 | `"  /* ?? null: a missing key must not raise php's undefined-array-key warning"` |
-|    - |  209 | `"   * from INSIDE the wrapper (php's ArrayObject warns about the PROPERTY, and"` |
-|    - |  210 | `"   * PHL's own magic-read path already diagnoses that) */"` |
-|    - |  211 | `"  if( $this->__f & 2 ){ return $this->__d[$name] ?? null; }"` |
-|    - |  212 | `"  return null;"` |
-|    - |  213 | `" }"` |
-|    - |  214 | `" public function __set($name, $value){"` |
-|    - |  215 | `"  if( $this->__f & 2 ){ $this->__d[$name] = $value; return; }"` |
-|    - |  216 | `"  $this->{$name} = $value;"` |
-|    - |  217 | `" }"` |
-|    - |  218 | `" public function __isset($name){"` |
-|    - |  219 | `"  if( $this->__f & 2 ){ return isset($this->__d[$name]); }"` |
-|    - |  220 | `"  return false;"` |
-|    - |  221 | `" }"` |
-|    - |  222 | `" public function __unset($name){"` |
-|    - |  223 | `"  if( $this->__f & 2 ){ unset($this->__d[$name]); }"` |
-|    - |  224 | `" }"` |
-|    - |  225 | `"}"` |
-|    - |  226 | `"function natsort(&$array){ return uasort($array, 'strnatcmp'); }"` |
-|    - |  227 | `"function natcasesort(&$array){ return uasort($array, 'strnatcasecmp'); }"` |
+|    - |    9 | ` * ArrayObject. (natsort()/natcasesort() used to be declared here as prelude` |
+|    - |   10 | ` * wrappers over uasort(...,'strnatcmp'); they are C builtins in hashmap_sort.c` |
+|    - |   11 | ` * now -- see ph7_hashmap_natsort -- and the methods below delegate to them.)` |
+|    - |   12 | ` * Embedded-PHP chunk following the Reflection architecture — installed` |
+|    - |   13 | ` * inside the bCompilingBuiltin window, backed by the engine's native array` |
+|    - |   14 | ` * internal-pointer builtins (reset/next/key/current keep their position on a` |
+|    - |   15 | ` * property, so ArrayIterator's cursor IS the backing array's pointer).` |
+|    - |   16 | ` */` |
+|    - |   17 |  |
+|    - |   18 | `/* void __spl_deprecated(string $msg) — E_DEPRECATED with php's exact text` |
+|    - |   19 | ` * (no auto-prepended function name, unlike ph7_context_throw_error) */` |
+|  ! 0 |   20 | `static int vm_builtin_spl_deprecated(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  ! 0 |   21 | `{` |
+|    - |   22 | `	/* php DEPRECATES a handful of SPL methods (SplObjectStorage attach/detach/…);` |
+|    - |   23 | `	 * PHL keeps them (they ADD surface, they don't change valid-php meaning) but does` |
+|    - |   24 | `	 * not mimic php's E_DEPRECATED notice. So this helper is now a no-op. */` |
+|  ! 0 |   25 | `	SXUNUSED(pCtx); SXUNUSED(nArg); SXUNUSED(apArg);` |
+|  ! 0 |   26 | `	return PH7_OK;` |
+|  ! 0 |   27 | `}` |
+|    - |   28 |  |
+|    - |   29 | `/* int __weak_create(object $obj) — register/share the weak cell for $obj,` |
+|    - |   30 | ` * returning the cell pointer as an opaque int handle */` |
+|   14 |   31 | `static int vm_builtin_weak_create(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1 |   32 | `{` |
+|   15 |   33 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    - |   34 | `	ph7_class_instance *pObj;` |
+|   15 |   35 | `	VmWeakCell *pCell = 0;` |
+|    - |   36 | `	SyHashEntry *pEntry;` |
+|   15 |   37 | `	if( nArg < 1 \|\| (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){` |
+|  ! 0 |   38 | `		ph7_result_int(pCtx,0);` |
+|  ! 0 |   39 | `		return PH7_OK;` |
+|    - |   40 | `	}` |
+|   15 |   41 | `	pObj = (ph7_class_instance *)apArg[0]->x.pOther;` |
+|   15 |   42 | `	pEntry = SyHashGet(&pVm->hWeakCell,(const void *)&pObj,sizeof(void *));` |
+|   15 |   43 | `	if( pEntry ){` |
+|    3 |   44 | `		pCell = (VmWeakCell *)pEntry->pUserData;` |
+|    3 |   45 | `		pCell->nRef++;` |
+|    2 |   46 | `	}else{` |
+|   13 |   47 | `		pCell = (VmWeakCell *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmWeakCell));` |
+|   13 |   48 | `		if( pCell == 0 ){` |
+|  ! 0 |   49 | `			return PH7_ContextMemoryError(pCtx);` |
+|    - |   50 | `		}` |
+|   13 |   51 | `		pCell->pObj = pObj;` |
+|   13 |   52 | `		pCell->nRef = 1;` |
+|    - |   53 | `		/* SyHash stores the key POINTER (no copy): key off the cell's own` |
+|    - |   54 | `		 * pObj field — heap-stable for the entry's whole lifetime, and it` |
+|    - |   55 | `		 * holds the live pointer bytes until the release hook nulls it` |
+|    - |   56 | `		 * (which happens only after the entry is deleted). */` |
+|   13 |   57 | `		if( SyHashInsert(&pVm->hWeakCell,(const void *)&pCell->pObj,sizeof(void *),pCell) != SXRET_OK ){` |
+|  ! 0 |   58 | `			SyMemBackendFree(&pVm->sAllocator,pCell);` |
+|  ! 0 |   59 | `			return PH7_ContextMemoryError(pCtx);` |
+|    - |   60 | `		}` |
+|    - |   61 | `	}` |
+|   15 |   62 | `	ph7_result_int64(pCtx,(ph7_int64)(sxu64)(sxuptr)pCell);` |
+|   15 |   63 | `	return PH7_OK;` |
+|    8 |   64 | `}` |
+|    - |   65 | `/* ?object __weak_get(int $handle) — the target instance, or null once dead */` |
+|   28 |   66 | `static int vm_builtin_weak_get(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1 |   67 | `{` |
+|    - |   68 | `	VmWeakCell *pCell;` |
+|   29 |   69 | `	if( nArg < 1 ){` |
+|  ! 0 |   70 | `		ph7_result_null(pCtx);` |
+|  ! 0 |   71 | `		return PH7_OK;` |
+|    - |   72 | `	}` |
+|   29 |   73 | `	pCell = (VmWeakCell *)(sxuptr)(sxu64)ph7_value_to_int64(apArg[0]);` |
+|   29 |   74 | `	if( pCell == 0 \|\| pCell->pObj == 0 ){` |
+|   11 |   75 | `		ph7_result_null(pCtx);` |
+|   11 |   76 | `		return PH7_OK;` |
+|    - |   77 | `	}` |
+|    - |   78 | `	{` |
+|    - |   79 | `		/* Hand the instance back: ph7_result_value's MemObjStore takes the` |
+|    - |   80 | `		 * reference, so the temp holds none of its own. */` |
+|    - |   81 | `		ph7_value sObj;` |
+|   19 |   82 | `		PH7_MemObjInit(pCtx->pVm,&sObj);` |
+|   19 |   83 | `		sObj.x.pOther = pCell->pObj;` |
+|   19 |   84 | `		MemObjSetType(&sObj,MEMOBJ_OBJ);` |
+|   19 |   85 | `		ph7_result_value(pCtx,&sObj);` |
+|    - |   86 | `	}` |
+|   19 |   87 | `	return PH7_OK;` |
+|   15 |   88 | `}` |
+|    - |   89 | `/* void __weak_drop(int $handle) — release one PHP-side handle */` |
+|   14 |   90 | `static int vm_builtin_weak_drop(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    1 |   91 | `{` |
+|   15 |   92 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    - |   93 | `	VmWeakCell *pCell;` |
+|   15 |   94 | `	if( nArg < 1 ){` |
+|  ! 0 |   95 | `		return PH7_OK;` |
+|    - |   96 | `	}` |
+|   15 |   97 | `	pCell = (VmWeakCell *)(sxuptr)(sxu64)ph7_value_to_int64(apArg[0]);` |
+|   15 |   98 | `	if( pCell == 0 \|\| pCell->nRef == 0 ){` |
+|  ! 0 |   99 | `		return PH7_OK;` |
+|    - |  100 | `	}` |
+|   15 |  101 | `	pCell->nRef--;` |
+|   15 |  102 | `	if( pCell->nRef == 0 ){` |
+|   13 |  103 | `		if( pCell->pObj ){` |
+|    - |  104 | `			/* Still alive: unhook the registry entry before freeing */` |
+|    5 |  105 | `			void *pDummy = 0;` |
+|    5 |  106 | `			SyHashDeleteEntry(&pVm->hWeakCell,(const void *)&pCell->pObj,sizeof(void *),&pDummy);` |
+|    2 |  107 | `		}` |
+|   13 |  108 | `		SyMemBackendFree(&pVm->sAllocator,pCell);` |
+|    6 |  109 | `	}` |
+|   15 |  110 | `	return PH7_OK;` |
+|    8 |  111 | `}` |
+|    - |  112 |  |
+|    - |  113 | `static const char zSplLib[] =` |
+|    - |  114 | `"interface SeekableIterator extends Iterator {"` |
+|    - |  115 | `" public function seek($offset);"` |
+|    - |  116 | `"}"` |
+|    - |  117 | `"trait __SplStoreT {"` |
+|    - |  118 | `" private $__d = [];"` |
+|    - |  119 | `" private $__f = 0;"` |
+|    - |  120 | `" private function __splInitStore($array, $flags, $owner){"` |
+|    - |  121 | `"  /* $owner is the DECLARING method (php names the declaring class in these"` |
+|    - |  122 | `"   * diagnostics, so a RecursiveArrayIterator misuse still says"` |
+|    - |  123 | `"   * ArrayIterator::__construct) */"` |
+|    - |  124 | `"  if( is_array($array) ){"` |
+|    - |  125 | `"   $this->__d = $array;"` |
+|    - |  126 | `"  }elseif( is_object($array) ){"` |
+|    - |  127 | `"   __spl_deprecated($owner . '(): Using an object as a backing array for '"` |
+|    - |  128 | `"    . get_class($this) . ' is deprecated, as it allows violating class"` |
+|    - |  129 | `" constraints and invariants');"` |
+|    - |  130 | `"  $this->__d = get_object_vars($array);"` |
+|    - |  131 | `"  }else{"` |
+|    - |  132 | `"   throw new TypeError($owner . '(): Argument #1 ($array) must be of type"` |
+|    - |  133 | `" array, ' . get_debug_type($array) . ' given');"` |
+|    - |  134 | `"  }"` |
+|    - |  135 | `"  $this->__f = (int)$flags;"` |
+|    - |  136 | `" }"` |
+|    - |  137 | `" public function offsetExists($key){ return array_key_exists($key, $this->__d); }"` |
+|    - |  138 | `" public function offsetGet($key){ return $this->__d[$key]; }"` |
+|    - |  139 | `" public function offsetSet($key, $value){"` |
+|    - |  140 | `"  if( $key === null ){ $this->__d[] = $value; }"` |
+|    - |  141 | `"  else { $this->__d[$key] = $value; }"` |
+|    - |  142 | `" }"` |
+|    - |  143 | `" public function offsetUnset($key){ unset($this->__d[$key]); }"` |
+|    - |  144 | `" public function append($value){ $this->__d[] = $value; }"` |
+|    - |  145 | `" public function getArrayCopy(){ return $this->__d; }"` |
+|    - |  146 | `" public function count(){ return count($this->__d); }"` |
+|    - |  147 | `" public function getFlags(){ return $this->__f; }"` |
+|    - |  148 | `" public function setFlags($flags){ $this->__f = (int)$flags; }"` |
+|    - |  149 | `" public function asort($flags = 0){ asort($this->__d); return true; }"` |
+|    - |  150 | `" public function ksort($flags = 0){ ksort($this->__d); return true; }"` |
+|    - |  151 | `" public function uasort($callback){ uasort($this->__d, $callback); return true; }"` |
+|    - |  152 | `" public function uksort($callback){ uksort($this->__d, $callback); return true; }"` |
+|    - |  153 | `" public function natsort(){ natsort($this->__d); return true; }"` |
+|    - |  154 | `" public function natcasesort(){ natcasesort($this->__d); return true; }"` |
+|    - |  155 | `"}"` |
+|    - |  156 | `"class ArrayIterator implements SeekableIterator, ArrayAccess, Countable {"` |
+|    - |  157 | `" use __SplStoreT;"` |
+|    - |  158 | `" const STD_PROP_LIST = 1;"` |
+|    - |  159 | `" const ARRAY_AS_PROPS = 2;"` |
+|    - |  160 | `" public function __construct($array = [], $flags = 0){"` |
+|    - |  161 | `"  $this->__splInitStore($array, $flags, 'ArrayIterator::__construct');"` |
+|    - |  162 | `"  reset($this->__d);"` |
+|    - |  163 | `" }"` |
+|    - |  164 | `" public function current(){"` |
+|    - |  165 | `"  if( key($this->__d) === null ){ return null; }"` |
+|    - |  166 | `"  return current($this->__d);"` |
+|    - |  167 | `" }"` |
+|    - |  168 | `" public function key(){ return key($this->__d); }"` |
+|    - |  169 | `" public function next(){ next($this->__d); }"` |
+|    - |  170 | `" public function rewind(){ reset($this->__d); }"` |
+|    - |  171 | `" public function valid(){ return key($this->__d) !== null; }"` |
+|    - |  172 | `" public function seek($offset){"` |
+|    - |  173 | `"  $offset = (int)$offset;"` |
+|    - |  174 | `"  if( $offset < 0 \|\| $offset >= count($this->__d) ){"` |
+|    - |  175 | `"   throw new OutOfBoundsException('Seek position ' . $offset . ' is out of range');"` |
+|    - |  176 | `"  }"` |
+|    - |  177 | `"  reset($this->__d);"` |
+|    - |  178 | `"  for( $i = 0; $i < $offset; $i++ ){ next($this->__d); }"` |
+|    - |  179 | `" }"` |
+|    - |  180 | `"}"` |
+|    - |  181 | `"class ArrayObject implements IteratorAggregate, ArrayAccess, Countable {"` |
+|    - |  182 | `" use __SplStoreT;"` |
+|    - |  183 | `" const STD_PROP_LIST = 1;"` |
+|    - |  184 | `" const ARRAY_AS_PROPS = 2;"` |
+|    - |  185 | `" private $__it = 'ArrayIterator';"` |
+|    - |  186 | `" public function __construct($array = [], $flags = 0, $iteratorClass = 'ArrayIterator'){"` |
+|    - |  187 | `"  $this->__splInitStore($array, $flags, 'ArrayObject::__construct');"` |
+|    - |  188 | `"  if( $iteratorClass !== 'ArrayIterator' ){ $this->setIteratorClass($iteratorClass); }"` |
+|    - |  189 | `" }"` |
+|    - |  190 | `" public function getIterator(){"` |
+|    - |  191 | `"  $c = $this->__it;"` |
+|    - |  192 | `"  return new $c($this->__d);"` |
+|    - |  193 | `" }"` |
+|    - |  194 | `" public function exchangeArray($array){"` |
+|    - |  195 | `"  $old = $this->__d;"` |
+|    - |  196 | `"  $this->__splInitStore($array, $this->__f, 'ArrayObject::exchangeArray');"` |
+|    - |  197 | `"  return $old;"` |
+|    - |  198 | `" }"` |
+|    - |  199 | `" public function setIteratorClass($iteratorClass){"` |
+|    - |  200 | `"  $c = (string)$iteratorClass;"` |
+|    - |  201 | `"  if( $c !== 'ArrayIterator'"` |
+|    - |  202 | `"   && (!class_exists($c) \|\| !is_subclass_of($c, 'ArrayIterator')) ){"` |
+|    - |  203 | `"   throw new TypeError('ArrayObject::setIteratorClass(): Argument #1"` |
+|    - |  204 | `" ($iteratorClass) must be a class name derived from ArrayIterator, ' . $c . ' given');"` |
+|    - |  205 | `"  }"` |
+|    - |  206 | `"  $this->__it = $c;"` |
+|    - |  207 | `" }"` |
+|    - |  208 | `" public function getIteratorClass(){ return $this->__it; }"` |
+|    - |  209 | `" public function __get($name){"` |
+|    - |  210 | `"  /* ?? null: a missing key must not raise php's undefined-array-key warning"` |
+|    - |  211 | `"   * from INSIDE the wrapper (php's ArrayObject warns about the PROPERTY, and"` |
+|    - |  212 | `"   * PHL's own magic-read path already diagnoses that) */"` |
+|    - |  213 | `"  if( $this->__f & 2 ){ return $this->__d[$name] ?? null; }"` |
+|    - |  214 | `"  return null;"` |
+|    - |  215 | `" }"` |
+|    - |  216 | `" public function __set($name, $value){"` |
+|    - |  217 | `"  if( $this->__f & 2 ){ $this->__d[$name] = $value; return; }"` |
+|    - |  218 | `"  $this->{$name} = $value;"` |
+|    - |  219 | `" }"` |
+|    - |  220 | `" public function __isset($name){"` |
+|    - |  221 | `"  if( $this->__f & 2 ){ return isset($this->__d[$name]); }"` |
+|    - |  222 | `"  return false;"` |
+|    - |  223 | `" }"` |
+|    - |  224 | `" public function __unset($name){"` |
+|    - |  225 | `"  if( $this->__f & 2 ){ unset($this->__d[$name]); }"` |
+|    - |  226 | `" }"` |
+|    - |  227 | `"}"` |
 |    - |  228 | `"interface OuterIterator extends Iterator {"` |
 |    - |  229 | `" public function getInnerIterator();"` |
 |    - |  230 | `"}"` |
@@ -1207,13 +1207,13 @@ Coverage: 56/70 lines (80.00%)
 |    - | 1197 | `"}"` |
 |    - | 1198 | `;` |
 |    - | 1199 |  |
-| 4140 | 1200 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)` |
+| 4528 | 1200 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)` |
 |    5 | 1201 | `{` |
-| 4145 | 1202 | `	ph7_create_function(&(*pVm),"__spl_deprecated",vm_builtin_spl_deprecated,0);` |
-| 4145 | 1203 | `	ph7_create_function(&(*pVm),"__weak_create",vm_builtin_weak_create,0);` |
-| 4145 | 1204 | `	ph7_create_function(&(*pVm),"__weak_get",vm_builtin_weak_get,0);` |
-| 4145 | 1205 | `	ph7_create_function(&(*pVm),"__weak_drop",vm_builtin_weak_drop,0);` |
-| 4145 | 1206 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zSplLib,sizeof(zSplLib)-1);` |
+| 4533 | 1202 | `	ph7_create_function(&(*pVm),"__spl_deprecated",vm_builtin_spl_deprecated,0);` |
+| 4533 | 1203 | `	ph7_create_function(&(*pVm),"__weak_create",vm_builtin_weak_create,0);` |
+| 4533 | 1204 | `	ph7_create_function(&(*pVm),"__weak_get",vm_builtin_weak_get,0);` |
+| 4533 | 1205 | `	ph7_create_function(&(*pVm),"__weak_drop",vm_builtin_weak_drop,0);` |
+| 4533 | 1206 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zSplLib,sizeof(zSplLib)-1);` |
 |    5 | 1207 | `}` |
 |    - | 1208 |  |
 |    - | 1209 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |

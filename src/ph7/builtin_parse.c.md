@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 1287/1432 lines (89.87%)
+Coverage: 1388/1538 lines (90.25%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -1429,24 +1429,24 @@ Coverage: 1287/1432 lines (89.87%)
 |     - | 1419 | ` * with all NUL bytes,HTML and PHP tags stripped from a given string.` |
 |     - | 1420 | ` * Refer to [strip_tags()].` |
 |     - | 1421 | ` */` |
-|    16 | 1422 | `PH7_PRIVATE sxi32 PH7_StripTagsFromString(ph7_context *pCtx,const char *zIn,int nByte,const char *zTaglist,int nTaglen)` |
-|     1 | 1423 | `{` |
-|    17 | 1424 | `	const char *zEnd = &zIn[nByte];` |
+|    18 | 1422 | `PH7_PRIVATE sxi32 PH7_StripTagsFromString(ph7_context *pCtx,const char *zIn,int nByte,const char *zTaglist,int nTaglen)` |
+|     2 | 1423 | `{` |
+|    20 | 1424 | `	const char *zEnd = &zIn[nByte];` |
 |     - | 1425 | `	const char *zPtr,*zTag;` |
 |     - | 1426 | `	SySet sSet;` |
 |     - | 1427 | `	/* initialize the set of allowed tags */` |
-|    17 | 1428 | `	SySetInit(&sSet,&pCtx->pVm->sAllocator,sizeof(SyString));` |
-|    17 | 1429 | `	if( nTaglen > 0 ){` |
+|    20 | 1428 | `	SySetInit(&sSet,&pCtx->pVm->sAllocator,sizeof(SyString));` |
+|    20 | 1429 | `	if( nTaglen > 0 ){` |
 |     - | 1430 | `		/* Set of allowed tags */` |
 |    11 | 1431 | `		AddTag(&sSet,zTaglist,nTaglen);` |
 |     5 | 1432 | `	}` |
 |     - | 1433 | `	/* Set the empty string */` |
-|    17 | 1434 | `	ph7_result_string(pCtx,"",0);` |
+|    20 | 1434 | `	ph7_result_string(pCtx,"",0);` |
 |     - | 1435 | `	/* Start processing */` |
-|    26 | 1436 | `	for(;;){` |
-|    53 | 1437 | `		if(zIn >= zEnd){` |
+|    27 | 1436 | `	for(;;){` |
+|    56 | 1437 | `		if(zIn >= zEnd){` |
 |     - | 1438 | `			/* No more input to process */` |
-|    15 | 1439 | `			break;` |
+|    18 | 1439 | `			break;` |
 |     - | 1440 | `		}` |
 |    39 | 1441 | `		zPtr = zIn;` |
 |     - | 1442 | `		/* Find a tag */` |
@@ -1484,9 +1484,9 @@ Coverage: 1287/1432 lines (89.87%)
 |    18 | 1474 | `		}` |
 |     1 | 1475 | `	}` |
 |     - | 1476 | `	/* Cleanup */` |
-|    17 | 1477 | `	SySetRelease(&sSet);` |
-|    17 | 1478 | `	return SXRET_OK;` |
-|     1 | 1479 | `}` |
+|    20 | 1477 | `	SySetRelease(&sSet);` |
+|    20 | 1478 | `	return SXRET_OK;` |
+|     2 | 1479 | `}` |
 |     - | 1480 | `/*` |
 |     - | 1481 | ` * string strip_tags(string $str[,string $allowable_tags])` |
 |     - | 1482 | ` *   Strip HTML and PHP tags from a string.` |
@@ -1498,27 +1498,27 @@ Coverage: 1287/1432 lines (89.87%)
 |     - | 1488 | ` * Return` |
 |     - | 1489 | ` *  Returns the stripped string.` |
 |     - | 1490 | ` */` |
-|    14 | 1491 | `PH7_PRIVATE int PH7_builtin_strip_tags(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 1492 | `{` |
-|    15 | 1493 | `	const char *zTaglist = 0;` |
+|    16 | 1491 | `PH7_PRIVATE int PH7_builtin_strip_tags(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 | 1492 | `{` |
+|    18 | 1493 | `	const char *zTaglist = 0;` |
 |     - | 1494 | `	const char *zString;` |
-|    15 | 1495 | `	int nTaglen = 0;` |
+|    18 | 1495 | `	int nTaglen = 0;` |
 |     - | 1496 | `	int nLen;` |
-|    15 | 1497 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
+|    18 | 1497 | `	if( nArg < 1 \|\| !ph7_value_is_string(apArg[0]) ){` |
 |     - | 1498 | `		/* Missing/Invalid arguments,return the empty string */` |
 |   ! 0 | 1499 | `		ph7_result_string(pCtx,"",0);` |
 |   ! 0 | 1500 | `		return PH7_OK;` |
 |     - | 1501 | `	}` |
 |     - | 1502 | `	/* Point to the raw string */` |
-|    15 | 1503 | `	zString = ph7_value_to_string(apArg[0],&nLen);` |
-|    15 | 1504 | `	if( nArg > 1 && ph7_value_is_string(apArg[1]) ){` |
+|    18 | 1503 | `	zString = ph7_value_to_string(apArg[0],&nLen);` |
+|    18 | 1504 | `	if( nArg > 1 && ph7_value_is_string(apArg[1]) ){` |
 |     - | 1505 | `		/* Allowed tag */` |
 |    11 | 1506 | `		zTaglist = ph7_value_to_string(apArg[1],&nTaglen);` |
 |     5 | 1507 | `	}` |
 |     - | 1508 | `	/* Process input */` |
-|    15 | 1509 | `	PH7_StripTagsFromString(pCtx,zString,nLen,zTaglist,nTaglen);` |
-|    15 | 1510 | `	return PH7_OK;` |
-|     8 | 1511 | `}` |
+|    18 | 1509 | `	PH7_StripTagsFromString(pCtx,zString,nLen,zTaglist,nTaglen);` |
+|    18 | 1510 | `	return PH7_OK;` |
+|    10 | 1511 | `}` |
 |     - | 1512 | `#endif /* PH7_NEED_FMT_AND_INI */` |
 |     - | 1513 | `#ifdef PH7_NEED_FMT_AND_INI` |
 |     - | 1514 | `/*` |
@@ -1899,44 +1899,44 @@ Coverage: 1287/1432 lines (89.87%)
 |     - | 1889 | ` * Return` |
 |     - | 1890 | ` *  TRUE if every character in the string text is a decimal digit, FALSE otherwise.` |
 |     - | 1891 | ` */` |
-|  1580 | 1892 | `PH7_PRIVATE int PH7_builtin_ctype_digit(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|  2060 | 1892 | `PH7_PRIVATE int PH7_builtin_ctype_digit(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     5 | 1893 | `{` |
 |     - | 1894 | `	const unsigned char *zIn,*zEnd;` |
 |     - | 1895 | `	int nLen;` |
-|  1585 | 1896 | `	if( nArg < 1 ){` |
+|  2065 | 1896 | `	if( nArg < 1 ){` |
 |     - | 1897 | `		/* Missing arguments,return FALSE */` |
 |   ! 0 | 1898 | `		ph7_result_bool(pCtx,0);` |
 |   ! 0 | 1899 | `		return PH7_OK;` |
 |     - | 1900 | `	}` |
 |     - | 1901 | `	/* Extract the target string */` |
-|  1585 | 1902 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
-|  1585 | 1903 | `	zEnd = &zIn[nLen];` |
-|  1585 | 1904 | `	if( nLen < 1 ){` |
+|  2065 | 1902 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
+|  2065 | 1903 | `	zEnd = &zIn[nLen];` |
+|  2065 | 1904 | `	if( nLen < 1 ){` |
 |     - | 1905 | `		/* Empty string,return FALSE */` |
 |     9 | 1906 | `		ph7_result_bool(pCtx,0);` |
 |     9 | 1907 | `		return PH7_OK;` |
 |     - | 1908 | `	}` |
 |     - | 1909 | `	/* Perform the requested operation */` |
-|  1436 | 1910 | `	for(;;){` |
-|  2877 | 1911 | `		if( zIn >= zEnd ){` |
+|  1859 | 1910 | `	for(;;){` |
+|  3723 | 1911 | `		if( zIn >= zEnd ){` |
 |     - | 1912 | `			/* If we reach the end of the string,then the test succeeded. */` |
-|  1237 | 1913 | `			ph7_result_bool(pCtx,1);` |
-|  1237 | 1914 | `			return PH7_OK;` |
+|  1599 | 1913 | `			ph7_result_bool(pCtx,1);` |
+|  1599 | 1914 | `			return PH7_OK;` |
 |     - | 1915 | `		}` |
-|  1645 | 1916 | `		if( zIn[0] >= 0xc0 ){` |
+|  2129 | 1916 | `		if( zIn[0] >= 0xc0 ){` |
 |     - | 1917 | `			/* UTF-8 stream  */` |
 |   ! 0 | 1918 | `			break;` |
 |     - | 1919 | `		}` |
-|  1645 | 1920 | `		if( !SyisDigit(zIn[0]) ){` |
-|   345 | 1921 | `			break;` |
+|  2129 | 1920 | `		if( !SyisDigit(zIn[0]) ){` |
+|   463 | 1921 | `			break;` |
 |     - | 1922 | `		}` |
 |     - | 1923 | `		/* Point to the next character */` |
-|  1305 | 1924 | `		zIn++;` |
+|  1671 | 1924 | `		zIn++;` |
 |     5 | 1925 | `	}` |
 |     - | 1926 | `	/* The test failed,return FALSE */` |
-|   345 | 1927 | `	ph7_result_bool(pCtx,0);` |
-|   345 | 1928 | `	return PH7_OK;` |
-|   795 | 1929 | `}` |
+|   463 | 1927 | `	ph7_result_bool(pCtx,0);` |
+|   463 | 1928 | `	return PH7_OK;` |
+|  1035 | 1929 | `}` |
 |     - | 1930 | `/*` |
 |     - | 1931 | ` * bool ctype_xdigit(string $text)` |
 |     - | 1932 | ` *  Check for character(s) representing a hexadecimal digit.` |
@@ -1947,44 +1947,44 @@ Coverage: 1287/1432 lines (89.87%)
 |     - | 1937 | ` *  Returns TRUE if every character in text is a hexadecimal 'digit', that is` |
 |     - | 1938 | ` * a decimal digit or a character from [A-Fa-f] , FALSE otherwise.` |
 |     - | 1939 | ` */` |
-|    38 | 1940 | `PH7_PRIVATE int PH7_builtin_ctype_xdigit(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    44 | 1940 | `PH7_PRIVATE int PH7_builtin_ctype_xdigit(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     2 | 1941 | `{` |
 |     - | 1942 | `	const unsigned char *zIn,*zEnd;` |
 |     - | 1943 | `	int nLen;` |
-|    40 | 1944 | `	if( nArg < 1 ){` |
+|    46 | 1944 | `	if( nArg < 1 ){` |
 |     - | 1945 | `		/* Missing arguments,return FALSE */` |
 |   ! 0 | 1946 | `		ph7_result_bool(pCtx,0);` |
 |   ! 0 | 1947 | `		return PH7_OK;` |
 |     - | 1948 | `	}` |
 |     - | 1949 | `	/* Extract the target string */` |
-|    40 | 1950 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
-|    40 | 1951 | `	zEnd = &zIn[nLen];` |
-|    40 | 1952 | `	if( nLen < 1 ){` |
+|    46 | 1950 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
+|    46 | 1951 | `	zEnd = &zIn[nLen];` |
+|    46 | 1952 | `	if( nLen < 1 ){` |
 |     - | 1953 | `		/* Empty string,return FALSE */` |
 |     3 | 1954 | `		ph7_result_bool(pCtx,0);` |
 |     3 | 1955 | `		return PH7_OK;` |
 |     - | 1956 | `	}` |
 |     - | 1957 | `	/* Perform the requested operation */` |
-|    76 | 1958 | `	for(;;){` |
-|   154 | 1959 | `		if( zIn >= zEnd ){` |
+|    85 | 1958 | `	for(;;){` |
+|   172 | 1959 | `		if( zIn >= zEnd ){` |
 |     - | 1960 | `			/* If we reach the end of the string,then the test succeeded. */` |
-|    32 | 1961 | `			ph7_result_bool(pCtx,1);` |
-|    32 | 1962 | `			return PH7_OK;` |
+|    38 | 1961 | `			ph7_result_bool(pCtx,1);` |
+|    38 | 1962 | `			return PH7_OK;` |
 |     - | 1963 | `		}` |
-|   124 | 1964 | `		if( zIn[0] >= 0xc0 ){` |
+|   136 | 1964 | `		if( zIn[0] >= 0xc0 ){` |
 |     - | 1965 | `			/* UTF-8 stream  */` |
 |   ! 0 | 1966 | `			break;` |
 |     - | 1967 | `		}` |
-|   124 | 1968 | `		if( !SyisHex(zIn[0]) ){` |
+|   136 | 1968 | `		if( !SyisHex(zIn[0]) ){` |
 |     7 | 1969 | `			break;` |
 |     - | 1970 | `		}` |
 |     - | 1971 | `		/* Point to the next character */` |
-|   118 | 1972 | `		zIn++;` |
+|   130 | 1972 | `		zIn++;` |
 |     2 | 1973 | `	}` |
 |     - | 1974 | `	/* The test failed,return FALSE */` |
 |     7 | 1975 | `	ph7_result_bool(pCtx,0);` |
 |     7 | 1976 | `	return PH7_OK;` |
-|    21 | 1977 | `}` |
+|    24 | 1977 | `}` |
 |     - | 1978 | `/*` |
 |     - | 1979 | ` * bool ctype_graph(string $text)` |
 |     - | 1980 | ` *  Checks if all of the characters in the provided string, text, creates visible output.` |
@@ -2141,44 +2141,44 @@ Coverage: 1287/1432 lines (89.87%)
 |     - | 2131 | ` *  Besides the blank character this also includes tab, vertical tab, line feed, carriage return` |
 |     - | 2132 | ` *  and form feed characters.` |
 |     - | 2133 | ` */` |
-| 22200 | 2134 | `PH7_PRIVATE int PH7_builtin_ctype_space(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+| 36675 | 2134 | `PH7_PRIVATE int PH7_builtin_ctype_space(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     5 | 2135 | `{` |
 |     - | 2136 | `	const unsigned char *zIn,*zEnd;` |
 |     - | 2137 | `	int nLen;` |
-| 22205 | 2138 | `	if( nArg < 1 ){` |
+| 36680 | 2138 | `	if( nArg < 1 ){` |
 |     - | 2139 | `		/* Missing arguments,return FALSE */` |
 |   ! 0 | 2140 | `		ph7_result_bool(pCtx,0);` |
 |   ! 0 | 2141 | `		return PH7_OK;` |
 |     - | 2142 | `	}` |
 |     - | 2143 | `	/* Extract the target string */` |
-| 22205 | 2144 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
-| 22205 | 2145 | `	zEnd = &zIn[nLen];` |
-| 22205 | 2146 | `	if( nLen < 1 ){` |
+| 36680 | 2144 | `	zIn  = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
+| 36680 | 2145 | `	zEnd = &zIn[nLen];` |
+| 36680 | 2146 | `	if( nLen < 1 ){` |
 |     - | 2147 | `		/* Empty string,return FALSE */` |
 |     3 | 2148 | `		ph7_result_bool(pCtx,0);` |
 |     3 | 2149 | `		return PH7_OK;` |
 |     - | 2150 | `	}` |
 |     - | 2151 | `	/* Perform the requested operation */` |
-| 11231 | 2152 | `	for(;;){` |
-| 22237 | 2153 | `		if( zIn >= zEnd ){` |
+| 18504 | 2152 | `	for(;;){` |
+| 36712 | 2153 | `		if( zIn >= zEnd ){` |
 |     - | 2154 | `			/* If we reach the end of the string,then the test succeeded. */` |
 |    11 | 2155 | `			ph7_result_bool(pCtx,1);` |
 |    11 | 2156 | `			return PH7_OK;` |
 |     - | 2157 | `		}` |
-| 22227 | 2158 | `		if( zIn[0] >= 0xc0 ){` |
+| 36702 | 2158 | `		if( zIn[0] >= 0xc0 ){` |
 |     - | 2159 | `			/* UTF-8 stream  */` |
 |   ! 0 | 2160 | `			break;` |
 |     - | 2161 | `		}` |
-| 22227 | 2162 | `		if( !SyisSpace(zIn[0]) ){` |
-| 22193 | 2163 | `			break;` |
+| 36702 | 2162 | `		if( !SyisSpace(zIn[0]) ){` |
+| 36668 | 2163 | `			break;` |
 |     - | 2164 | `		}` |
 |     - | 2165 | `		/* Point to the next character */` |
 |    35 | 2166 | `		zIn++;` |
 |     1 | 2167 | `	}` |
 |     - | 2168 | `	/* The test failed,return FALSE */` |
-| 22193 | 2169 | `	ph7_result_bool(pCtx,0);` |
-| 22193 | 2170 | `	return PH7_OK;` |
-| 11220 | 2171 | `}` |
+| 36668 | 2169 | `	ph7_result_bool(pCtx,0);` |
+| 36668 | 2170 | `	return PH7_OK;` |
+| 18493 | 2171 | `}` |
 |     - | 2172 | `/*` |
 |     - | 2173 | ` * bool ctype_lower(string $text)` |
 |     - | 2174 | ` *  Checks if all of the characters in the provided string, text, are lowercase letters.` |
@@ -2276,42 +2276,42 @@ Coverage: 1287/1432 lines (89.87%)
 |     - | 2266 | ` * Output consumer callback for the standard Symisc routines.` |
 |     - | 2267 | ` * [i.e: SyBase64Encode(),SyBase64Decode(),SyUriEncode(),...].` |
 |     - | 2268 | ` */` |
-|   274 | 2269 | `static int Consumer(const void *pData,unsigned int nLen,void *pUserData)` |
-|     1 | 2270 | `{` |
+|  2052 | 2269 | `static int Consumer(const void *pData,unsigned int nLen,void *pUserData)` |
+|     3 | 2270 | `{` |
 |     - | 2271 | `	/* Store in the call context result buffer */` |
-|   275 | 2272 | `	ph7_result_string((ph7_context *)pUserData,(const char *)pData,(int)nLen);` |
-|   275 | 2273 | `	return SXRET_OK;` |
-|     1 | 2274 | `}` |
+|  2055 | 2272 | `	ph7_result_string((ph7_context *)pUserData,(const char *)pData,(int)nLen);` |
+|  2055 | 2273 | `	return SXRET_OK;` |
+|     3 | 2274 | `}` |
 |     - | 2275 | `/*` |
 |     - | 2276 | ` * string base64_encode(string $data)` |
-|     - | 2277 | ` * string convert_uuencode(string $data)` |
-|     - | 2278 | ` *  Encodes data with MIME base64` |
-|     - | 2279 | ` * Parameter` |
-|     - | 2280 | ` *  $data` |
-|     - | 2281 | ` *    Data to encode` |
-|     - | 2282 | ` * Return` |
-|     - | 2283 | ` *  Encoded data or FALSE on failure.` |
-|     - | 2284 | ` */` |
-|     6 | 2285 | `PH7_PRIVATE int PH7_builtin_base64_encode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 2286 | `{` |
-|     - | 2287 | `	const char *zIn;` |
-|     - | 2288 | `	int nLen;` |
-|     7 | 2289 | `	if( nArg < 1 ){` |
-|     - | 2290 | `		/* Missing arguments,return FALSE */` |
-|   ! 0 | 2291 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 | 2292 | `		return PH7_OK;` |
-|     - | 2293 | `	}` |
-|     - | 2294 | `	/* Extract the input string */` |
-|     7 | 2295 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
-|     7 | 2296 | `	if( nLen < 1 ){` |
-|     - | 2297 | `		/* Nothing to process,return FALSE */` |
-|   ! 0 | 2298 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 | 2299 | `		return PH7_OK;` |
+|     - | 2277 | ` *  Encodes data with MIME base64` |
+|     - | 2278 | ` * Parameter` |
+|     - | 2279 | ` *  $data` |
+|     - | 2280 | ` *    Data to encode` |
+|     - | 2281 | ` * Return` |
+|     - | 2282 | ` *  Encoded data or FALSE on failure.` |
+|     - | 2283 | ` */` |
+|    10 | 2284 | `PH7_PRIVATE int PH7_builtin_base64_encode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 | 2285 | `{` |
+|     - | 2286 | `	const char *zIn;` |
+|     - | 2287 | `	int nLen;` |
+|    12 | 2288 | `	if( nArg < 1 ){` |
+|     - | 2289 | `		/* Missing arguments,return FALSE */` |
+|   ! 0 | 2290 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 | 2291 | `		return PH7_OK;` |
+|     - | 2292 | `	}` |
+|     - | 2293 | `	/* Extract the input string */` |
+|    12 | 2294 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
+|    12 | 2295 | `	if( nLen < 1 ){` |
+|     - | 2296 | `		/* php encodes the empty string to the EMPTY STRING; base64_encode() cannot` |
+|     - | 2297 | `		 * fail at all, so FALSE was never one of its answers. */` |
+|     3 | 2298 | `		ph7_result_string(pCtx,"",0);` |
+|     3 | 2299 | `		return PH7_OK;` |
 |     - | 2300 | `	}` |
 |     - | 2301 | `	/* Perform the BASE64 encoding */` |
-|     7 | 2302 | `	SyBase64Encode(zIn,(sxu32)nLen,Consumer,pCtx);` |
-|     7 | 2303 | `	return PH7_OK;` |
-|     4 | 2304 | `}` |
+|    10 | 2302 | `	SyBase64Encode(zIn,(sxu32)nLen,Consumer,pCtx);` |
+|    10 | 2303 | `	return PH7_OK;` |
+|     7 | 2304 | `}` |
 |     - | 2305 | `/*` |
 |     - | 2306 | ` * php's base64 reverse table: -1 is skippable whitespace (\t \n \r and space,` |
 |     - | 2307 | ` * exactly php's set -- \v/\f are NOT skipped), -2 is an invalid byte, 0..63 the` |
@@ -2338,197 +2338,385 @@ Coverage: 1287/1432 lines (89.87%)
 |     - | 2328 | `};` |
 |     - | 2329 | `/*` |
 |     - | 2330 | ` * string base64_decode(string $data, bool $strict = false)` |
-|     - | 2331 | ` * string convert_uudecode(string $data)` |
-|     - | 2332 | ` *  Decodes data encoded with MIME base64` |
-|     - | 2333 | ` * Parameters` |
-|     - | 2334 | ` *  $data` |
-|     - | 2335 | ` *    Encoded data.` |
-|     - | 2336 | ` *  $strict` |
-|     - | 2337 | ` *    When true, return FALSE if the input contains a character outside the` |
-|     - | 2338 | ` *    base64 alphabet (whitespace is still skipped) or the padding/length is` |
-|     - | 2339 | ` *    malformed. When false, such bytes are silently skipped (best effort).` |
-|     - | 2340 | ` * Return` |
-|     - | 2341 | ` *  Returns the original data or FALSE on failure.` |
-|     - | 2342 | ` * Implementation note: a faithful port of php's php_base64_decode_ex(). The old` |
-|     - | 2343 | ` * code ignored $strict entirely and ran the shared SyBase64Decode(), which maps` |
-|     - | 2344 | ` * every non-alphabet byte (whitespace included) to 0 rather than skipping it --` |
-|     - | 2345 | ` * a silent wrong answer on padded/whitespace input in BOTH modes.` |
-|     - | 2346 | ` */` |
-|    38 | 2347 | `PH7_PRIVATE int PH7_builtin_base64_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 2348 | `{` |
-|     - | 2349 | `	const unsigned char *zIn;` |
-|     - | 2350 | `	unsigned char *zOut;` |
-|    39 | 2351 | `	int nLen,strict = 0;` |
-|    39 | 2352 | `	int i = 0,j = 0,padding = 0,k;` |
-|    39 | 2353 | `	if( nArg < 1 ){` |
-|     - | 2354 | `		/* Missing arguments,return FALSE */` |
-|   ! 0 | 2355 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 | 2356 | `		return PH7_OK;` |
-|     - | 2357 | `	}` |
-|     - | 2358 | `	/* Extract the input string */` |
-|    39 | 2359 | `	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
-|    39 | 2360 | `	if( nLen < 1 ){` |
-|     - | 2361 | `		/* php decodes the empty string to the EMPTY STRING, not FALSE (FALSE is reserved` |
-|     - | 2362 | `		 * for input that cannot be decoded at all). */` |
-|     3 | 2363 | `		ph7_result_string(pCtx,"",0);` |
-|     3 | 2364 | `		return PH7_OK;` |
-|     - | 2365 | `	}` |
-|    37 | 2366 | `	if( nArg > 1 ){` |
-|    31 | 2367 | `		strict = ph7_value_to_bool(apArg[1]);` |
-|    15 | 2368 | `	}` |
-|     - | 2369 | `	/* Output is at most 3/4 of the input; nLen bytes is a safe upper bound. */` |
-|    37 | 2370 | `	zOut = (unsigned char *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,(sxu32)nLen + 1);` |
-|    37 | 2371 | `	if( zOut == 0 ){` |
-|   ! 0 | 2372 | `		return PH7_ContextMemoryError(pCtx);` |
-|     - | 2373 | `	}` |
-|   187 | 2374 | `	for( k = 0 ; k < nLen ; ++k ){` |
-|   155 | 2375 | `		int ch = zIn[k];` |
-|     - | 2376 | `		int val;` |
-|   155 | 2377 | `		if( ch == '=' ){` |
-|     - | 2378 | `			/* Pad byte: count it, decode nothing. */` |
-|    23 | 2379 | `			padding++;` |
-|    23 | 2380 | `			continue;` |
-|     - | 2381 | `		}` |
-|   133 | 2382 | `		val = aB64Rev[ch];` |
-|   133 | 2383 | `		if( !strict ){` |
-|     - | 2384 | `			/* Lenient: skip whitespace AND any invalid byte. */` |
-|    61 | 2385 | `			if( val < 0 ){` |
-|    15 | 2386 | `				continue;` |
-|     - | 2387 | `			}` |
-|    24 | 2388 | `		}else{` |
-|    73 | 2389 | `			if( val == -1 ){` |
-|     - | 2390 | `				/* Skippable whitespace. */` |
-|     7 | 2391 | `				continue;` |
-|     - | 2392 | `			}` |
-|    67 | 2393 | `			if( val == -2 ){` |
-|     - | 2394 | `				/* A byte outside the base64 alphabet. */` |
-|     5 | 2395 | `				goto fail;` |
-|     - | 2396 | `			}` |
-|    63 | 2397 | `			if( padding ){` |
-|     - | 2398 | `				/* Data must not follow the padding. */` |
-|   ! 0 | 2399 | `				goto fail;` |
-|     - | 2400 | `			}` |
-|     - | 2401 | `		}` |
-|   109 | 2402 | `		switch( i & 3 ){` |
-|    20 | 2403 | `			case 0:` |
-|    41 | 2404 | `				zOut[j] = (unsigned char)(val << 2);` |
-|    41 | 2405 | `				break;` |
-|    18 | 2406 | `			case 1:` |
-|    37 | 2407 | `				zOut[j++] \|= (unsigned char)(val >> 4);` |
-|    37 | 2408 | `				zOut[j] = (unsigned char)((val & 0x0F) << 4);` |
-|    37 | 2409 | `				break;` |
-|    11 | 2410 | `			case 2:` |
-|    23 | 2411 | `				zOut[j++] \|= (unsigned char)(val >> 2);` |
-|    23 | 2412 | `				zOut[j] = (unsigned char)((val & 0x03) << 6);` |
-|    23 | 2413 | `				break;` |
-|     5 | 2414 | `			case 3:` |
-|    11 | 2415 | `				zOut[j++] \|= (unsigned char)val;` |
-|    10 | 2416 | `				break;` |
-|     - | 2417 | `		}` |
-|   109 | 2418 | `		i++;` |
-|    55 | 2419 | `	}` |
-|    33 | 2420 | `	if( strict ){` |
-|     - | 2421 | `		/* A lone trailing 6-bit group (one leftover char) cannot form a byte. */` |
-|    21 | 2422 | `		if( (i & 3) == 1 ){` |
-|     3 | 2423 | `			goto fail;` |
-|     - | 2424 | `		}` |
-|     - | 2425 | `		/* Padding must be 1 or 2 bytes and complete the 4-char group. */` |
-|    19 | 2426 | `		if( padding && (padding > 2 \|\| ((i + padding) & 3) != 0) ){` |
-|     3 | 2427 | `			goto fail;` |
-|     - | 2428 | `		}` |
-|     8 | 2429 | `	}` |
-|    29 | 2430 | `	ph7_result_string(pCtx,(const char *)zOut,j);` |
-|    29 | 2431 | `	SyMemBackendFree(&pCtx->pVm->sAllocator,zOut);` |
-|    29 | 2432 | `	return PH7_OK;` |
-|     4 | 2433 | `fail:` |
-|     9 | 2434 | `	SyMemBackendFree(&pCtx->pVm->sAllocator,zOut);` |
-|     9 | 2435 | `	ph7_result_bool(pCtx,0);` |
-|     9 | 2436 | `	return PH7_OK;` |
-|    20 | 2437 | `}` |
-|     - | 2438 | `/*` |
-|     - | 2439 | ` * string urlencode(string $str)` |
-|     - | 2440 | ` *  URL encoding` |
-|     - | 2441 | ` * Parameter` |
-|     - | 2442 | ` *  $data` |
-|     - | 2443 | ` *   Input string.` |
-|     - | 2444 | ` * Return` |
-|     - | 2445 | ` *  Returns a string in which all non-alphanumeric characters except -_. have` |
-|     - | 2446 | ` *  been replaced with a percent (%) sign followed by two hex digits and spaces` |
-|     - | 2447 | ` *  encoded as plus (+) signs.` |
-|     - | 2448 | ` */` |
-|   100 | 2449 | `PH7_PRIVATE int PH7_builtin_urlencode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 2450 | `{` |
-|     - | 2451 | `	const char *zIn;` |
-|     - | 2452 | `	int nLen;` |
-|   101 | 2453 | `	if( nArg < 1 ){` |
-|     - | 2454 | `		/* Missing arguments,return FALSE */` |
-|   ! 0 | 2455 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 | 2456 | `		return PH7_OK;` |
-|     - | 2457 | `	}` |
-|     - | 2458 | `	/* Extract the input string */` |
-|   101 | 2459 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
-|   101 | 2460 | `	if( nLen < 1 ){` |
-|     - | 2461 | `		/* php returns an empty string for empty input, not FALSE */` |
-|     3 | 2462 | `		ph7_result_string(pCtx,"",0);` |
-|     3 | 2463 | `		return PH7_OK;` |
-|     - | 2464 | `	}` |
-|     - | 2465 | `	/* Perform the URL encoding */` |
-|    99 | 2466 | `	SyUriEncode(zIn,(sxu32)nLen,Consumer,pCtx);` |
-|    99 | 2467 | `	return PH7_OK;` |
-|    51 | 2468 | `}` |
-|     - | 2469 | `/*` |
-|     - | 2470 | ` * string rawurlencode(string $str)` |
-|     - | 2471 | ` *  RFC 3986 URL encoding: spaces become %20 (not '+') and '~' is left intact.` |
-|     - | 2472 | ` */` |
-|    14 | 2473 | `PH7_PRIVATE int PH7_builtin_rawurlencode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 2474 | `{` |
-|     - | 2475 | `	const char *zIn;` |
-|     - | 2476 | `	int nLen;` |
-|    15 | 2477 | `	if( nArg < 1 ){` |
-|     - | 2478 | `		/* Missing arguments,return FALSE */` |
-|   ! 0 | 2479 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 | 2480 | `		return PH7_OK;` |
-|     - | 2481 | `	}` |
-|     - | 2482 | `	/* Extract the input string */` |
-|    15 | 2483 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
-|    15 | 2484 | `	if( nLen < 1 ){` |
-|     - | 2485 | `		/* php returns an empty string for empty input, not FALSE */` |
-|     3 | 2486 | `		ph7_result_string(pCtx,"",0);` |
-|     3 | 2487 | `		return PH7_OK;` |
-|     - | 2488 | `	}` |
-|     - | 2489 | `	/* Perform the RFC 3986 URL encoding */` |
-|    13 | 2490 | `	SyUriEncodeRaw(zIn,(sxu32)nLen,Consumer,pCtx);` |
-|    13 | 2491 | `	return PH7_OK;` |
-|     8 | 2492 | `}` |
-|     - | 2493 | `/*` |
-|     - | 2494 | ` * string urldecode(string $str)` |
-|     - | 2495 | ` *  Decodes any %## encoding in the given string.` |
-|     - | 2496 | ` *  Plus symbols ('+') are decoded to a space character.` |
-|     - | 2497 | ` * Parameter` |
-|     - | 2498 | ` *  $data` |
-|     - | 2499 | ` *    Input string.` |
-|     - | 2500 | ` * Return` |
-|     - | 2501 | ` *  Decoded URL or FALSE on failure.` |
-|     - | 2502 | ` */` |
-|   110 | 2503 | `PH7_PRIVATE int PH7_builtin_urldecode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 2504 | `{` |
-|     - | 2505 | `	const char *zIn;` |
-|     - | 2506 | `	int nLen;` |
-|   111 | 2507 | `	if( nArg < 1 ){` |
-|     - | 2508 | `		/* Missing arguments,return FALSE */` |
-|   ! 0 | 2509 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 | 2510 | `		return PH7_OK;` |
-|     - | 2511 | `	}` |
-|     - | 2512 | `	/* Extract the input string */` |
-|   111 | 2513 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
-|   111 | 2514 | `	if( nLen < 1 ){` |
-|     - | 2515 | `		/* php returns an empty string for empty input, not FALSE */` |
-|    17 | 2516 | `		ph7_result_string(pCtx,"",0);` |
-|    17 | 2517 | `		return PH7_OK;` |
-|     - | 2518 | `	}` |
-|     - | 2519 | `	/* Perform the URL decoding */` |
-|    95 | 2520 | `	SyUriDecode(zIn,(sxu32)nLen,Consumer,pCtx,TRUE);` |
-|    95 | 2521 | `	return PH7_OK;` |
-|    56 | 2522 | `}` |
-|     - | 2523 | `#endif /* PH7_NEED_BUILTIN_REG */` |
-|     - | 2524 |  |
+|     - | 2331 | ` *  Decodes data encoded with MIME base64` |
+|     - | 2332 | ` * Parameters` |
+|     - | 2333 | ` *  $data` |
+|     - | 2334 | ` *    Encoded data.` |
+|     - | 2335 | ` *  $strict` |
+|     - | 2336 | ` *    When true, return FALSE if the input contains a character outside the` |
+|     - | 2337 | ` *    base64 alphabet (whitespace is still skipped) or the padding/length is` |
+|     - | 2338 | ` *    malformed. When false, such bytes are silently skipped (best effort).` |
+|     - | 2339 | ` * Return` |
+|     - | 2340 | ` *  Returns the original data or FALSE on failure.` |
+|     - | 2341 | ` * Implementation note: a faithful port of php's php_base64_decode_ex(). The old` |
+|     - | 2342 | ` * code ignored $strict entirely and ran the shared SyBase64Decode(), which maps` |
+|     - | 2343 | ` * every non-alphabet byte (whitespace included) to 0 rather than skipping it --` |
+|     - | 2344 | ` * a silent wrong answer on padded/whitespace input in BOTH modes.` |
+|     - | 2345 | ` */` |
+|    40 | 2346 | `PH7_PRIVATE int PH7_builtin_base64_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 | 2347 | `{` |
+|     - | 2348 | `	const unsigned char *zIn;` |
+|     - | 2349 | `	unsigned char *zOut;` |
+|    42 | 2350 | `	int nLen,strict = 0;` |
+|    42 | 2351 | `	int i = 0,j = 0,padding = 0,k;` |
+|    42 | 2352 | `	if( nArg < 1 ){` |
+|     - | 2353 | `		/* Missing arguments,return FALSE */` |
+|   ! 0 | 2354 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 | 2355 | `		return PH7_OK;` |
+|     - | 2356 | `	}` |
+|     - | 2357 | `	/* Extract the input string */` |
+|    42 | 2358 | `	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
+|    42 | 2359 | `	if( nLen < 1 ){` |
+|     - | 2360 | `		/* php decodes the empty string to the EMPTY STRING, not FALSE (FALSE is reserved` |
+|     - | 2361 | `		 * for input that cannot be decoded at all). */` |
+|     6 | 2362 | `		ph7_result_string(pCtx,"",0);` |
+|     6 | 2363 | `		return PH7_OK;` |
+|     - | 2364 | `	}` |
+|    37 | 2365 | `	if( nArg > 1 ){` |
+|    31 | 2366 | `		strict = ph7_value_to_bool(apArg[1]);` |
+|    15 | 2367 | `	}` |
+|     - | 2368 | `	/* Output is at most 3/4 of the input; nLen bytes is a safe upper bound. */` |
+|    37 | 2369 | `	zOut = (unsigned char *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,(sxu32)nLen + 1);` |
+|    37 | 2370 | `	if( zOut == 0 ){` |
+|   ! 0 | 2371 | `		return PH7_ContextMemoryError(pCtx);` |
+|     - | 2372 | `	}` |
+|   187 | 2373 | `	for( k = 0 ; k < nLen ; ++k ){` |
+|   155 | 2374 | `		int ch = zIn[k];` |
+|     - | 2375 | `		int val;` |
+|   155 | 2376 | `		if( ch == '=' ){` |
+|     - | 2377 | `			/* Pad byte: count it, decode nothing. */` |
+|    23 | 2378 | `			padding++;` |
+|    23 | 2379 | `			continue;` |
+|     - | 2380 | `		}` |
+|   133 | 2381 | `		val = aB64Rev[ch];` |
+|   133 | 2382 | `		if( !strict ){` |
+|     - | 2383 | `			/* Lenient: skip whitespace AND any invalid byte. */` |
+|    61 | 2384 | `			if( val < 0 ){` |
+|    15 | 2385 | `				continue;` |
+|     - | 2386 | `			}` |
+|    24 | 2387 | `		}else{` |
+|    73 | 2388 | `			if( val == -1 ){` |
+|     - | 2389 | `				/* Skippable whitespace. */` |
+|     7 | 2390 | `				continue;` |
+|     - | 2391 | `			}` |
+|    67 | 2392 | `			if( val == -2 ){` |
+|     - | 2393 | `				/* A byte outside the base64 alphabet. */` |
+|     5 | 2394 | `				goto fail;` |
+|     - | 2395 | `			}` |
+|    63 | 2396 | `			if( padding ){` |
+|     - | 2397 | `				/* Data must not follow the padding. */` |
+|   ! 0 | 2398 | `				goto fail;` |
+|     - | 2399 | `			}` |
+|     - | 2400 | `		}` |
+|   109 | 2401 | `		switch( i & 3 ){` |
+|    20 | 2402 | `			case 0:` |
+|    41 | 2403 | `				zOut[j] = (unsigned char)(val << 2);` |
+|    41 | 2404 | `				break;` |
+|    18 | 2405 | `			case 1:` |
+|    37 | 2406 | `				zOut[j++] \|= (unsigned char)(val >> 4);` |
+|    37 | 2407 | `				zOut[j] = (unsigned char)((val & 0x0F) << 4);` |
+|    37 | 2408 | `				break;` |
+|    11 | 2409 | `			case 2:` |
+|    23 | 2410 | `				zOut[j++] \|= (unsigned char)(val >> 2);` |
+|    23 | 2411 | `				zOut[j] = (unsigned char)((val & 0x03) << 6);` |
+|    23 | 2412 | `				break;` |
+|     5 | 2413 | `			case 3:` |
+|    11 | 2414 | `				zOut[j++] \|= (unsigned char)val;` |
+|    10 | 2415 | `				break;` |
+|     - | 2416 | `		}` |
+|   109 | 2417 | `		i++;` |
+|    55 | 2418 | `	}` |
+|    33 | 2419 | `	if( strict ){` |
+|     - | 2420 | `		/* A lone trailing 6-bit group (one leftover char) cannot form a byte. */` |
+|    21 | 2421 | `		if( (i & 3) == 1 ){` |
+|     3 | 2422 | `			goto fail;` |
+|     - | 2423 | `		}` |
+|     - | 2424 | `		/* Padding must be 1 or 2 bytes and complete the 4-char group. */` |
+|    19 | 2425 | `		if( padding && (padding > 2 \|\| ((i + padding) & 3) != 0) ){` |
+|     3 | 2426 | `			goto fail;` |
+|     - | 2427 | `		}` |
+|     8 | 2428 | `	}` |
+|    29 | 2429 | `	ph7_result_string(pCtx,(const char *)zOut,j);` |
+|    29 | 2430 | `	SyMemBackendFree(&pCtx->pVm->sAllocator,zOut);` |
+|    29 | 2431 | `	return PH7_OK;` |
+|     4 | 2432 | `fail:` |
+|     9 | 2433 | `	SyMemBackendFree(&pCtx->pVm->sAllocator,zOut);` |
+|     9 | 2434 | `	ph7_result_bool(pCtx,0);` |
+|     9 | 2435 | `	return PH7_OK;` |
+|    22 | 2436 | `}` |
+|     - | 2437 | `/*` |
+|     - | 2438 | ` * uuencode's six-bit alphabet: a value of 0 is written as the backtick php uses` |
+|     - | 2439 | ` * instead of the historical space, every other value as ' ' + value. The three` |
+|     - | 2440 | ` * PH7_UU_ENC_C* helpers pack the 6-bit groups exactly like php's macros: each` |
+|     - | 2441 | ` * contribution is masked to its own bit window, so the result never depends on` |
+|     - | 2442 | ` * whether the platform's char is signed.` |
+|     - | 2443 | ` */` |
+|     - | 2444 | ``#define PH7_UU_ENC(c)      ((char)((c) ? (((c) & 077) + ' ') : '`'))`` |
+|     - | 2445 | `#define PH7_UU_ENC_C1(a)   PH7_UU_ENC((a) >> 2)` |
+|     - | 2446 | `#define PH7_UU_ENC_C2(a,b) PH7_UU_ENC((((a) << 4) & 060) \| (((b) >> 4) & 017))` |
+|     - | 2447 | `#define PH7_UU_ENC_C3(b,c) PH7_UU_ENC((((b) << 2) & 074) \| (((c) >> 6) & 003))` |
+|     - | 2448 | `#define PH7_UU_ENC_C4(c)   PH7_UU_ENC((c) & 077)` |
+|     - | 2449 | `#define PH7_UU_DEC(c)      ((((int)(c)) - ' ') & 077)` |
+|     - | 2450 | `/*` |
+|     - | 2451 | ` * string convert_uuencode(string $data)` |
+|     - | 2452 | ` *  Uuencode a string.` |
+|     - | 2453 | ` * Parameter` |
+|     - | 2454 | ` *  $data` |
+|     - | 2455 | ` *   Data to encode.` |
+|     - | 2456 | ` * Return` |
+|     - | 2457 | ` *  The uuencoded data: 45-byte lines, each prefixed with its encoded length and` |
+|     - | 2458 | `` *  terminated by a newline, followed by php's "`\n" end marker. An empty input`` |
+|     - | 2459 | ` *  answers just that marker.` |
+|     - | 2460 | ` * Implementation note: a faithful port of php's php_uuencode(). This used to be` |
+|     - | 2461 | ` * registered as an ALIAS of base64_encode() -- a wrong ALGORITHM, so every answer` |
+|     - | 2462 | ` * was silently a base64 string (convert_uuencode("abc") gave "YWJj" where php` |
+|     - | 2463 | `` * gives "#86)C\n`\n").`` |
+|     - | 2464 | ` */` |
+|    36 | 2465 | `PH7_PRIVATE int PH7_builtin_convert_uuencode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 | 2466 | `{` |
+|     - | 2467 | `	const unsigned char *zIn,*zEnd,*zStop;` |
+|     - | 2468 | `	char zLine[64]; /* one full line is 1 length byte + 60 data bytes + '\n' */` |
+|    38 | 2469 | `	int nLen,iLen = 45,n;` |
+|    38 | 2470 | `	if( nArg < 1 ){` |
+|     - | 2471 | `		/* Missing arguments,return FALSE */` |
+|   ! 0 | 2472 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 | 2473 | `		return PH7_OK;` |
+|     - | 2474 | `	}` |
+|     - | 2475 | `	/* Extract the input string */` |
+|    38 | 2476 | `	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
+|    38 | 2477 | `	if( nLen < 0 ){` |
+|   ! 0 | 2478 | `		nLen = 0;` |
+|   ! 0 | 2479 | `	}` |
+|    38 | 2480 | `	zEnd = &zIn[nLen];` |
+|     - | 2481 | `	/* Emit whole groups while at least four bytes remain: the last line is closed by` |
+|     - | 2482 | ``	 * the tail block below so a group of one or two bytes gets php's '`' filler. */`` |
+|    70 | 2483 | `	while( &zIn[3] < zEnd ){` |
+|    34 | 2484 | `		zStop = &zIn[iLen];` |
+|    34 | 2485 | `		if( zStop > zEnd ){` |
+|     - | 2486 | `			/* A short final line: its length byte counts every remaining byte, but only` |
+|     - | 2487 | `			 * whole three-byte groups are encoded here -- the leftovers ride the tail` |
+|     - | 2488 | `			 * block, which then adds no length byte of its own. */` |
+|    10 | 2489 | `			iLen = (int)(zEnd - zIn);` |
+|    10 | 2490 | `			zStop = &zIn[(iLen/3)*3];` |
+|     4 | 2491 | `		}` |
+|    34 | 2492 | `		n = 0;` |
+|    34 | 2493 | `		zLine[n++] = PH7_UU_ENC(iLen);` |
+|   476 | 2494 | `		while( zIn < zStop ){` |
+|   444 | 2495 | `			zLine[n++] = PH7_UU_ENC_C1(zIn[0]);` |
+|   444 | 2496 | `			zLine[n++] = PH7_UU_ENC_C2(zIn[0],zIn[1]);` |
+|   444 | 2497 | `			zLine[n++] = PH7_UU_ENC_C3(zIn[1],zIn[2]);` |
+|   444 | 2498 | `			zLine[n++] = PH7_UU_ENC_C4(zIn[2]);` |
+|   444 | 2499 | `			zIn += 3;` |
+|     2 | 2500 | `		}` |
+|    34 | 2501 | `		if( iLen == 45 ){` |
+|    25 | 2502 | `			zLine[n++] = '\n';` |
+|    12 | 2503 | `		}` |
+|    34 | 2504 | `		ph7_result_string(pCtx,zLine,n);` |
+|     2 | 2505 | `	}` |
+|    38 | 2506 | `	if( zIn < zEnd ){` |
+|     - | 2507 | `		/* One to three trailing bytes. php reads the bytes past the end of the string` |
+|     - | 2508 | `		 * (its buffers are NUL terminated); the missing ones are zero here. */` |
+|    30 | 2509 | `		unsigned char c0 = zIn[0];` |
+|    30 | 2510 | `		unsigned char c1 = (&zIn[1] < zEnd) ? zIn[1] : 0;` |
+|    30 | 2511 | `		unsigned char c2 = (&zIn[2] < zEnd) ? zIn[2] : 0;` |
+|    30 | 2512 | `		n = 0;` |
+|    30 | 2513 | `		if( iLen == 45 ){` |
+|     - | 2514 | `			/* No short line was opened above: this group is a line of its own. */` |
+|    22 | 2515 | `			zLine[n++] = PH7_UU_ENC((int)(zEnd - zIn));` |
+|    22 | 2516 | `			iLen = 0;` |
+|    10 | 2517 | `		}` |
+|    30 | 2518 | `		zLine[n++] = PH7_UU_ENC_C1(c0);` |
+|    30 | 2519 | `		zLine[n++] = PH7_UU_ENC_C2(c0,c1);` |
+|    30 | 2520 | ``		zLine[n++] = ((zEnd - zIn) > 1) ? PH7_UU_ENC_C3(c1,c2) : '`';`` |
+|    30 | 2521 | ``		zLine[n++] = ((zEnd - zIn) > 2) ? PH7_UU_ENC_C4(c2)     : '`';`` |
+|    30 | 2522 | `		ph7_result_string(pCtx,zLine,n);` |
+|    14 | 2523 | `	}` |
+|    38 | 2524 | `	if( iLen != 45 ){` |
+|     - | 2525 | `		/* A short (or tail) line is still open; a run of whole 45-byte lines -- and the` |
+|     - | 2526 | `		 * empty input, which opens no line at all -- is already newline-terminated. */` |
+|    30 | 2527 | `		ph7_result_string(pCtx,"\n",1);` |
+|    14 | 2528 | `	}` |
+|     - | 2529 | `	/* php's end marker: a zero-length line. */` |
+|    38 | 2530 | ``	ph7_result_string(pCtx,"`\n",2);`` |
+|    38 | 2531 | `	return PH7_OK;` |
+|    20 | 2532 | `}` |
+|     - | 2533 | `/*` |
+|     - | 2534 | ` * string\|false convert_uudecode(string $data)` |
+|     - | 2535 | ` *  Decode a uuencoded string.` |
+|     - | 2536 | ` * Parameter` |
+|     - | 2537 | ` *  $data` |
+|     - | 2538 | ` *   Uuencoded data.` |
+|     - | 2539 | ` * Return` |
+|     - | 2540 | ` *  The decoded data, or FALSE (with a warning) when $data is not a valid uuencoded` |
+|     - | 2541 | ` *  string: an empty input, a line claiming more bytes than the whole input holds, or` |
+|     - | 2542 | ` *  a line whose data is truncated. Trailing garbage after the first short line is` |
+|     - | 2543 | ` *  ignored, exactly like php.` |
+|     - | 2544 | ` * Implementation note: a faithful port of php's php_uudecode(); see the encoder above` |
+|     - | 2545 | ` * for why this was not a decoder at all before.` |
+|     - | 2546 | ` */` |
+|    48 | 2547 | `PH7_PRIVATE int PH7_builtin_convert_uudecode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 | 2548 | `{` |
+|     - | 2549 | `	const unsigned char *zIn,*zEnd,*zStop;` |
+|     - | 2550 | `	unsigned char *zOut;` |
+|     - | 2551 | `	int nLen,iLen;` |
+|    50 | 2552 | `	sxu32 nOut = 0,nTotal = 0;` |
+|    50 | 2553 | `	if( nArg < 1 ){` |
+|     - | 2554 | `		/* Missing arguments,return FALSE */` |
+|   ! 0 | 2555 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 | 2556 | `		return PH7_OK;` |
+|     - | 2557 | `	}` |
+|     - | 2558 | `	/* Extract the input string */` |
+|    50 | 2559 | `	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);` |
+|    50 | 2560 | `	if( nLen < 1 ){` |
+|     - | 2561 | `		/* php refuses the empty string rather than decoding it to "". */` |
+|     3 | 2562 | `		goto fail;` |
+|     - | 2563 | `	}` |
+|    48 | 2564 | `	zEnd = &zIn[nLen];` |
+|     - | 2565 | `	/* Every four input characters yield three bytes and each line spends one more` |
+|     - | 2566 | `	 * character on its length, so the input length is a safe upper bound. */` |
+|    48 | 2567 | `	zOut = (unsigned char *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,(sxu32)nLen + 1);` |
+|    48 | 2568 | `	if( zOut == 0 ){` |
+|   ! 0 | 2569 | `		return PH7_ContextMemoryError(pCtx);` |
+|     - | 2570 | `	}` |
+|    72 | 2571 | `	while( zIn < zEnd ){` |
+|    72 | 2572 | `		iLen = PH7_UU_DEC(*zIn++);` |
+|    72 | 2573 | `		if( iLen == 0 ){` |
+|     - | 2574 | `			/* The end marker (or any line claiming zero bytes) stops the decoding. */` |
+|    12 | 2575 | `			break;` |
+|     - | 2576 | `		}` |
+|    62 | 2577 | `		if( iLen > nLen ){` |
+|     5 | 2578 | `			goto err;` |
+|     - | 2579 | `		}` |
+|    58 | 2580 | `		nTotal += (sxu32)iLen;` |
+|     - | 2581 | `		/* A line carries four characters per three-byte group, whole groups only. */` |
+|    58 | 2582 | `		zStop = zIn + ((iLen + 2)/3)*4;` |
+|    58 | 2583 | `		if( zStop > zEnd ){` |
+|     5 | 2584 | `			goto err;` |
+|     - | 2585 | `		}` |
+|   544 | 2586 | `		while( zIn < zStop ){` |
+|   492 | 2587 | `			zOut[nOut++] = (unsigned char)((PH7_UU_DEC(zIn[0]) << 2) \| (PH7_UU_DEC(zIn[1]) >> 4));` |
+|   492 | 2588 | `			zOut[nOut++] = (unsigned char)((PH7_UU_DEC(zIn[1]) << 4) \| (PH7_UU_DEC(zIn[2]) >> 2));` |
+|   492 | 2589 | `			zOut[nOut++] = (unsigned char)((PH7_UU_DEC(zIn[2]) << 6) \|  PH7_UU_DEC(zIn[3]));` |
+|   492 | 2590 | `			zIn += 4;` |
+|     2 | 2591 | `		}` |
+|    54 | 2592 | `		if( iLen < 45 ){` |
+|     - | 2593 | `			/* A short line ends the payload; whatever follows is ignored. */` |
+|    30 | 2594 | `			break;` |
+|     - | 2595 | `		}` |
+|    25 | 2596 | `		zIn++; /* Skip the line separator */` |
+|     1 | 2597 | `	}` |
+|     - | 2598 | `	/* Drop the padding the last group carried: php keeps only as many bytes as the` |
+|     - | 2599 | `	 * length bytes declared, counted over the WHOLE input rather than per line. */` |
+|    40 | 2600 | `	if( nOut > nTotal ){` |
+|    20 | 2601 | `		nOut = nTotal;` |
+|     9 | 2602 | `	}` |
+|    40 | 2603 | `	ph7_result_string(pCtx,(const char *)zOut,(int)nOut);` |
+|    40 | 2604 | `	SyMemBackendFree(&pCtx->pVm->sAllocator,zOut);` |
+|    40 | 2605 | `	return PH7_OK;` |
+|     4 | 2606 | `err:` |
+|     9 | 2607 | `	SyMemBackendFree(&pCtx->pVm->sAllocator,zOut);` |
+|     5 | 2608 | `fail:` |
+|    11 | 2609 | `	ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,` |
+|     - | 2610 | `		"Argument #1 ($data) is not a valid uuencoded string"); /* the "convert_uudecode(): " prefix is added by the handler */` |
+|    11 | 2611 | `	ph7_result_bool(pCtx,0);` |
+|    11 | 2612 | `	return PH7_OK;` |
+|    26 | 2613 | `}` |
+|     - | 2614 | `/*` |
+|     - | 2615 | ` * string urlencode(string $str)` |
+|     - | 2616 | ` *  URL encoding` |
+|     - | 2617 | ` * Parameter` |
+|     - | 2618 | ` *  $data` |
+|     - | 2619 | ` *   Input string.` |
+|     - | 2620 | ` * Return` |
+|     - | 2621 | ` *  Returns a string in which all non-alphanumeric characters except -_. have` |
+|     - | 2622 | ` *  been replaced with a percent (%) sign followed by two hex digits and spaces` |
+|     - | 2623 | ` *  encoded as plus (+) signs.` |
+|     - | 2624 | ` */` |
+|   104 | 2625 | `PH7_PRIVATE int PH7_builtin_urlencode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     3 | 2626 | `{` |
+|     - | 2627 | `	const char *zIn;` |
+|     - | 2628 | `	int nLen;` |
+|   107 | 2629 | `	if( nArg < 1 ){` |
+|     - | 2630 | `		/* Missing arguments,return FALSE */` |
+|   ! 0 | 2631 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 | 2632 | `		return PH7_OK;` |
+|     - | 2633 | `	}` |
+|     - | 2634 | `	/* Extract the input string */` |
+|   107 | 2635 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
+|   107 | 2636 | `	if( nLen < 1 ){` |
+|     - | 2637 | `		/* php returns an empty string for empty input, not FALSE */` |
+|     6 | 2638 | `		ph7_result_string(pCtx,"",0);` |
+|     6 | 2639 | `		return PH7_OK;` |
+|     - | 2640 | `	}` |
+|     - | 2641 | `	/* Perform the URL encoding */` |
+|   102 | 2642 | `	SyUriEncode(zIn,(sxu32)nLen,Consumer,pCtx);` |
+|   102 | 2643 | `	return PH7_OK;` |
+|    55 | 2644 | `}` |
+|     - | 2645 | `/*` |
+|     - | 2646 | ` * string rawurlencode(string $str)` |
+|     - | 2647 | ` *  RFC 3986 URL encoding: spaces become %20 (not '+') and '~' is left intact.` |
+|     - | 2648 | ` */` |
+|    18 | 2649 | `PH7_PRIVATE int PH7_builtin_rawurlencode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     3 | 2650 | `{` |
+|     - | 2651 | `	const char *zIn;` |
+|     - | 2652 | `	int nLen;` |
+|    21 | 2653 | `	if( nArg < 1 ){` |
+|     - | 2654 | `		/* Missing arguments,return FALSE */` |
+|   ! 0 | 2655 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 | 2656 | `		return PH7_OK;` |
+|     - | 2657 | `	}` |
+|     - | 2658 | `	/* Extract the input string */` |
+|    21 | 2659 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
+|    21 | 2660 | `	if( nLen < 1 ){` |
+|     - | 2661 | `		/* php returns an empty string for empty input, not FALSE */` |
+|     6 | 2662 | `		ph7_result_string(pCtx,"",0);` |
+|     6 | 2663 | `		return PH7_OK;` |
+|     - | 2664 | `	}` |
+|     - | 2665 | `	/* Perform the RFC 3986 URL encoding */` |
+|    16 | 2666 | `	SyUriEncodeRaw(zIn,(sxu32)nLen,Consumer,pCtx);` |
+|    16 | 2667 | `	return PH7_OK;` |
+|    12 | 2668 | `}` |
+|     - | 2669 | `/*` |
+|     - | 2670 | ` * string urldecode(string $str)` |
+|     - | 2671 | ` *  Decodes any %## encoding in the given string.` |
+|     - | 2672 | ` *  Plus symbols ('+') are decoded to a space character.` |
+|     - | 2673 | ` * string rawurldecode(string $str)` |
+|     - | 2674 | ` *  The same, except that '+' is NOT a space: RFC 3986 has no plus convention, so` |
+|     - | 2675 | ` *  php leaves it alone. rawurldecode() used to be registered as an ALIAS of` |
+|     - | 2676 | ` *  urldecode(), which turned every literal '+' into a space.` |
+|     - | 2677 | ` * Parameter` |
+|     - | 2678 | ` *  $data` |
+|     - | 2679 | ` *    Input string.` |
+|     - | 2680 | ` * Return` |
+|     - | 2681 | ` *  Decoded URL or FALSE on failure.` |
+|     - | 2682 | ` */` |
+|   242 | 2683 | `static int UrlDecodeCommon(ph7_context *pCtx,int nArg,ph7_value **apArg,int bPlus)` |
+|     3 | 2684 | `{` |
+|     - | 2685 | `	const char *zIn;` |
+|     - | 2686 | `	int nLen;` |
+|   245 | 2687 | `	if( nArg < 1 ){` |
+|     - | 2688 | `		/* Missing arguments,return FALSE */` |
+|   ! 0 | 2689 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 | 2690 | `		return PH7_OK;` |
+|     - | 2691 | `	}` |
+|     - | 2692 | `	/* Extract the input string */` |
+|   245 | 2693 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
+|   245 | 2694 | `	if( nLen < 1 ){` |
+|     - | 2695 | `		/* php returns an empty string for empty input, not FALSE */` |
+|    27 | 2696 | `		ph7_result_string(pCtx,"",0);` |
+|    27 | 2697 | `		return PH7_OK;` |
+|     - | 2698 | `	}` |
+|     - | 2699 | `	/* Perform the URL decoding */` |
+|   220 | 2700 | `	SyUriDecode(zIn,(sxu32)nLen,Consumer,pCtx,bPlus);` |
+|   220 | 2701 | `	return PH7_OK;` |
+|   124 | 2702 | `}` |
+|   186 | 2703 | `PH7_PRIVATE int PH7_builtin_urldecode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     3 | 2704 | `{` |
+|   189 | 2705 | `	return UrlDecodeCommon(pCtx,nArg,apArg,TRUE);` |
+|     3 | 2706 | `}` |
+|    56 | 2707 | `PH7_PRIVATE int PH7_builtin_rawurldecode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     3 | 2708 | `{` |
+|    59 | 2709 | `	return UrlDecodeCommon(pCtx,nArg,apArg,FALSE);` |
+|     3 | 2710 | `}` |
+|     - | 2711 | `#endif /* PH7_NEED_BUILTIN_REG */` |
+|     - | 2712 |  |

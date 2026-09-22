@@ -37,34 +37,34 @@ Coverage: 256/292 lines (87.67%)
 |    - |   27 | ` * Return` |
 |    - |   28 | ` *  MD5 Hash as a 32-character hexadecimal string.` |
 |    - |   29 | ` */` |
-|   12 |   30 | `PH7_PRIVATE int PH7_builtin_md5(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |   31 | `{` |
+|   16 |   30 | `PH7_PRIVATE int PH7_builtin_md5(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    3 |   31 | `{` |
 |    - |   32 | `	unsigned char zDigest[16];` |
-|   13 |   33 | `	int raw_output = FALSE;` |
+|   19 |   33 | `	int raw_output = FALSE;` |
 |    - |   34 | `	const void *pIn;` |
 |    - |   35 | `	int nLen;` |
-|   13 |   36 | `	if( nArg < 1 ){` |
+|   19 |   36 | `	if( nArg < 1 ){` |
 |    - |   37 | `		/* Missing arguments,return the empty string */` |
 |  ! 0 |   38 | `		ph7_result_string(pCtx,"",0);` |
 |  ! 0 |   39 | `		return PH7_OK;` |
 |    - |   40 | `	}` |
 |    - |   41 | `	/* Extract the input string (the empty string hashes to a well-defined` |
 |    - |   42 | `	 * digest in PHP — d41d8cd9… — so it must NOT short-circuit). */` |
-|   13 |   43 | `	pIn = (const void *)ph7_value_to_string(apArg[0],&nLen);` |
-|   13 |   44 | `	if( nArg > 1 && ph7_value_is_bool(apArg[1])){` |
+|   19 |   43 | `	pIn = (const void *)ph7_value_to_string(apArg[0],&nLen);` |
+|   19 |   44 | `	if( nArg > 1 && ph7_value_is_bool(apArg[1])){` |
 |    5 |   45 | `		raw_output = ph7_value_to_bool(apArg[1]);` |
 |    2 |   46 | `	}` |
 |    - |   47 | `	/* Compute the MD5 digest */` |
-|   13 |   48 | `	SyMD5Compute(pIn,(sxu32)nLen,zDigest);` |
-|   13 |   49 | `	if( raw_output ){` |
+|   19 |   48 | `	SyMD5Compute(pIn,(sxu32)nLen,zDigest);` |
+|   19 |   49 | `	if( raw_output ){` |
 |    - |   50 | `		/* Output raw digest */` |
 |    5 |   51 | `		ph7_result_string(pCtx,(const char *)zDigest,(int)sizeof(zDigest));` |
 |    3 |   52 | `	}else{` |
 |    - |   53 | `		/* Perform a binary to hex conversion */` |
-|    9 |   54 | `		SyBinToHexConsumer((const void *)zDigest,sizeof(zDigest),HashConsumer,pCtx);` |
+|   15 |   54 | `		SyBinToHexConsumer((const void *)zDigest,sizeof(zDigest),HashConsumer,pCtx);` |
 |    - |   55 | `	}` |
-|   13 |   56 | `	return PH7_OK;` |
-|    7 |   57 | `}` |
+|   19 |   56 | `	return PH7_OK;` |
+|   11 |   57 | `}` |
 |    - |   58 | `/*` |
 |    - |   59 | ` * string sha1(string $str[,bool $raw_output = false])` |
 |    - |   60 | ` *   Calculate the sha1 hash of a string.` |

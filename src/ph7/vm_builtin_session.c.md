@@ -220,22 +220,22 @@ Coverage: 4/4 lines (100.00%)
 |    - |  210 | `" __SessS::$id = '';"` |
 |    - |  211 | `" return true;"` |
 |    - |  212 | `"}"` |
-|    - |  213 | `"function session_regenerate_id($deleteOldSession = false){"` |
+|    - |  213 | `"function session_regenerate_id($delete_old_session = false){"` |
 |    - |  214 | `" if( __SessS::$status !== PHP_SESSION_ACTIVE ){"` |
 |    - |  215 | `"  trigger_error('session_regenerate_id(): Session ID cannot be regenerated when"` |
 |    - |  216 | `" there is no active session', E_USER_WARNING);"` |
 |    - |  217 | `"  return false;"` |
 |    - |  218 | `" }"` |
 |    - |  219 | `" $oldFile = __sess_file();"` |
-|    - |  220 | `" if( $deleteOldSession && file_exists($oldFile) ){ unlink($oldFile); }"` |
+|    - |  220 | `" if( $delete_old_session && file_exists($oldFile) ){ unlink($oldFile); }"` |
 |    - |  221 | `" __SessS::$id = __sess_genid();"` |
 |    - |  222 | `" return true;"` |
 |    - |  223 | `"}"` |
 |    - |  224 | `;` |
 |    - |  225 |  |
-| 4140 |  226 | `PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm)` |
+| 4528 |  226 | `PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm)` |
 |    5 |  227 | `{` |
-| 4145 |  228 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zSessionLib,sizeof(zSessionLib)-1);` |
+| 4533 |  228 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zSessionLib,sizeof(zSessionLib)-1);` |
 |    5 |  229 | `}` |
 |    - |  230 |  |
 |    - |  231 | `#endif /* PH7_DISABLE_DISK_IO */` |

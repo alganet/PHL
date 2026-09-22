@@ -36,17 +36,17 @@ Coverage: 948/1079 lines (87.86%)
 |     - |   26 | ` * algorithms): no time_t / libc dependence, correct far past 2038 and` |
 |     - |   27 | ` * before 1970 on every platform. Day 0 == 1970-01-01.` |
 |     - |   28 | ` */` |
-|  1114 |   29 | `PH7_PRIVATE sxi64 DtDaysFromCivil(sxi64 y,int m,int d)` |
-|     1 |   30 | `{` |
+|  1120 |   29 | `PH7_PRIVATE sxi64 DtDaysFromCivil(sxi64 y,int m,int d)` |
+|     2 |   30 | `{` |
 |     - |   31 | `	sxi64 era;` |
 |     - |   32 | `	unsigned yoe,doy,doe;` |
-|  1115 |   33 | `	y -= (m <= 2);` |
-|  1115 |   34 | `	era = (y >= 0 ? y : y - 399) / 400;` |
-|  1115 |   35 | `	yoe = (unsigned)(y - era * 400);` |
-|  1115 |   36 | `	doy = (unsigned)((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1);` |
-|  1115 |   37 | `	doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;` |
-|  1115 |   38 | `	return era * 146097 + (sxi64)doe - 719468;` |
-|     1 |   39 | `}` |
+|  1122 |   33 | `	y -= (m <= 2);` |
+|  1122 |   34 | `	era = (y >= 0 ? y : y - 399) / 400;` |
+|  1122 |   35 | `	yoe = (unsigned)(y - era * 400);` |
+|  1122 |   36 | `	doy = (unsigned)((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1);` |
+|  1122 |   37 | `	doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;` |
+|  1122 |   38 | `	return era * 146097 + (sxi64)doe - 719468;` |
+|     2 |   39 | `}` |
 |   446 |   40 | `PH7_PRIVATE void DtCivilFromDays(sxi64 z,sxi64 *py,int *pm,int *pd)` |
 |     1 |   41 | `{` |
 |     - |   42 | `	sxi64 era;` |
@@ -93,10 +93,10 @@ Coverage: 948/1079 lines (87.86%)
 |   183 |   83 | `	pTm->tm_zone = zZone;` |
 |   183 |   84 | `	pTm->tm_gmtoff = (long)iOff;` |
 |   183 |   85 | `}` |
-|   244 |   86 | `static sxi64 DtMakeTs(sxi64 y,int mo,int d,int h,int mi,int s,sxi32 iOff)` |
-|     1 |   87 | `{` |
-|   245 |   88 | `	return DtDaysFromCivil(y,mo,d) * 86400 + (sxi64)h*3600 + (sxi64)mi*60 + s - iOff;` |
-|     1 |   89 | `}` |
+|   250 |   86 | `static sxi64 DtMakeTs(sxi64 y,int mo,int d,int h,int mi,int s,sxi32 iOff)` |
+|     2 |   87 | `{` |
+|   252 |   88 | `	return DtDaysFromCivil(y,mo,d) * 86400 + (sxi64)h*3600 + (sxi64)mi*60 + s - iOff;` |
+|     2 |   89 | `}` |
 |     - |   90 | `/* Month-arithmetic with php's overflow semantics (Jan 31 +1 month -> Mar 2/3):` |
 |     - |   91 | ` * normalize the month, keep the day — the civil day-count formula is linear in` |
 |     - |   92 | ` * d, so an out-of-range day simply lands in the following month. */` |
@@ -140,12 +140,12 @@ Coverage: 948/1079 lines (87.86%)
 |     - |  130 | ` * not a time was present), or a 1-based error position into zIn (negative encodes` |
 |     - |  131 | ` * php's "Double time specification"). Shared by every absolute-date branch.` |
 |     - |  132 | ` */` |
-|   196 |  133 | `static int DtTimeSuffix(const char **pz,const char *zEnd,const char *zIn,` |
+|   202 |  133 | `static int DtTimeSuffix(const char **pz,const char *zEnd,const char *zIn,` |
 |     - |  134 | `	int *ph,int *pmi,int *ps,sxi32 *piOff,int *pbOffSet,int *pUs)` |
-|     1 |  135 | `{` |
-|   197 |  136 | `	const char *z = *pz;` |
-|   196 |  137 | `	if( z < zEnd && (z[0]=='T' \|\| z[0]==' ') && zEnd-z >= 6` |
-|    82 |  138 | `	 && SyisDigit(z[1]) && SyisDigit(z[2]) && z[3]==':' ){` |
+|     2 |  135 | `{` |
+|   204 |  136 | `	const char *z = *pz;` |
+|   202 |  137 | `	if( z < zEnd && (z[0]=='T' \|\| z[0]==' ') && zEnd-z >= 6` |
+|    83 |  138 | `	 && SyisDigit(z[1]) && SyisDigit(z[2]) && z[3]==':' ){` |
 |    79 |  139 | `		z++;` |
 |    79 |  140 | `		*ph  = (z[0]-'0')*10 + (z[1]-'0');` |
 |    79 |  141 | `		*pmi = (z[3]-'0')*10 + (z[4]-'0');` |
@@ -181,9 +181,9 @@ Coverage: 948/1079 lines (87.86%)
 |     7 |  171 | `			*pbOffSet = 1;` |
 |     3 |  172 | `		}` |
 |    36 |  173 | `	}` |
-|   191 |  174 | `	*pz = z;` |
-|   191 |  175 | `	return 0;` |
-|    99 |  176 | `}` |
+|   198 |  174 | `	*pz = z;` |
+|   198 |  175 | `	return 0;` |
+|   103 |  176 | `}` |
 |     - |  177 | `/*` |
 |     - |  178 | ` * Read one or two decimal digits at z (z<zEnd guaranteed by caller for the first).` |
 |     - |  179 | ` * Returns the value; *pn = digits consumed (1 or 2).` |
@@ -422,22 +422,22 @@ Coverage: 948/1079 lines (87.86%)
 |     - |  412 | ` * success (ts/off/bOffSet out), or the byte position of the first` |
 |     - |  413 | ` * unparseable character +1 (for php's "at position N" message).` |
 |     - |  414 | ` */` |
-|   458 |  415 | `static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,` |
+|   464 |  415 | `static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,` |
 |     - |  416 | `	sxi64 *pTs,sxi32 *pOff,int *pbOffSet,int *pUs)` |
-|     1 |  417 | `{` |
-|   459 |  418 | `	const char *z = zIn, *zEnd = &zIn[nLen];` |
-|   459 |  419 | `	sxi64 iTs = iBaseTs;` |
-|   459 |  420 | `	sxi32 iOff = iBaseOff;` |
-|   459 |  421 | `	int bOffSet = 0;` |
-|   459 |  422 | `	int bAny = 0;` |
+|     2 |  417 | `{` |
+|   466 |  418 | `	const char *z = zIn, *zEnd = &zIn[nLen];` |
+|   466 |  419 | `	sxi64 iTs = iBaseTs;` |
+|   466 |  420 | `	sxi32 iOff = iBaseOff;` |
+|   466 |  421 | `	int bOffSet = 0;` |
+|   466 |  422 | `	int bAny = 0;` |
 |     - |  423 | `	int iNumRc,iMonRc;` |
-|   459 |  424 | `	int uSec = 0;` |
-|   459 |  425 | `	*pUs = 0;` |
+|   466 |  424 | `	int uSec = 0;` |
+|   466 |  425 | `	*pUs = 0;` |
 |     - |  426 | `#define DT_SKIP_WS() while( z < zEnd && (z[0]==' '\|\|z[0]=='\t'\|\|z[0]==',') ){ z++; }` |
 |     - |  427 | `#define DT_LOWEQ(zKw,nKw) (zEnd-z >= (nKw) && SyStrnicmp(z,zKw,nKw) == 0 \` |
 |     - |  428 | `	&& (zEnd-z == (nKw) \|\| !SyisAlpha(z[(nKw)])))` |
-|   694 |  429 | `	DT_SKIP_WS();` |
-|   459 |  430 | `	if( z >= zEnd ){` |
+|   704 |  429 | `	DT_SKIP_WS();` |
+|   466 |  430 | `	if( z >= zEnd ){` |
 |     - |  431 | `		/* php: the empty string is "now" */` |
 |     3 |  432 | `		*pTs = iTs;` |
 |     3 |  433 | `		*pOff = iOff;` |
@@ -445,7 +445,7 @@ Coverage: 948/1079 lines (87.86%)
 |     3 |  435 | `		return 0;` |
 |     - |  436 | `	}` |
 |     - |  437 | `	/* "@<seconds>" absolute epoch */` |
-|   457 |  438 | `	if( z[0] == '@' ){` |
+|   464 |  438 | `	if( z[0] == '@' ){` |
 |    81 |  439 | `		int neg = 0;` |
 |    81 |  440 | `		sxi64 v = 0;` |
 |    81 |  441 | `		const char *zAt = z;` |
@@ -465,30 +465,30 @@ Coverage: 948/1079 lines (87.86%)
 |    79 |  455 | `		return (z < zEnd) ? (int)(z - zIn) + 1 : 0;` |
 |     - |  456 | `	}` |
 |     - |  457 | `	/* Absolute date: YYYY-MM-DD[...] */` |
-|   376 |  458 | `	if( zEnd-z >= 10 && SyisDigit(z[0]) && SyisDigit(z[1]) && SyisDigit(z[2])` |
-|   147 |  459 | `	 && SyisDigit(z[3]) && z[4]=='-' ){` |
-|   111 |  460 | `		sxi64 y = (z[0]-'0')*1000 + (z[1]-'0')*100 + (z[2]-'0')*10 + (z[3]-'0');` |
-|   111 |  461 | `		int mo,d,h=0,mi=0,s=0;` |
-|   111 |  462 | `		if( !SyisDigit(z[5])\|\|!SyisDigit(z[6])\|\|z[7] != '-'\|\|!SyisDigit(z[8])\|\|!SyisDigit(z[9]) ){` |
+|   382 |  458 | `	if( zEnd-z >= 10 && SyisDigit(z[0]) && SyisDigit(z[1]) && SyisDigit(z[2])` |
+|   154 |  459 | `	 && SyisDigit(z[3]) && z[4]=='-' ){` |
+|   118 |  460 | `		sxi64 y = (z[0]-'0')*1000 + (z[1]-'0')*100 + (z[2]-'0')*10 + (z[3]-'0');` |
+|   118 |  461 | `		int mo,d,h=0,mi=0,s=0;` |
+|   118 |  462 | `		if( !SyisDigit(z[5])\|\|!SyisDigit(z[6])\|\|z[7] != '-'\|\|!SyisDigit(z[8])\|\|!SyisDigit(z[9]) ){` |
 |   ! 0 |  463 | `			return (int)(z - zIn) + 1;` |
 |     - |  464 | `		}` |
-|   111 |  465 | `		mo = (z[5]-'0')*10 + (z[6]-'0');` |
-|   111 |  466 | `		d  = (z[8]-'0')*10 + (z[9]-'0');` |
+|   118 |  465 | `		mo = (z[5]-'0')*10 + (z[6]-'0');` |
+|   118 |  466 | `		d  = (z[8]-'0')*10 + (z[9]-'0');` |
 |     - |  467 | `		/* php's lexer dies on the SECOND digit of an out-of-range month/day` |
 |     - |  468 | `		 * (either the two-digit pattern fails there, or a one-digit component` |
 |     - |  469 | `		 * matched and the separator check fails there); "00" lexes fine and` |
 |     - |  470 | `		 * normalizes (month 0 == December of the previous year). */` |
-|   111 |  471 | `		if( mo > 12 ){ return (int)(&z[6] - zIn) + 1; }` |
-|   105 |  472 | `		if( d > 31 ){ return (int)(&z[9] - zIn) + 1; }` |
-|   101 |  473 | `		if( mo == 0 ){ mo = 12; y--; }` |
-|   101 |  474 | `		z += 10;` |
+|   118 |  471 | `		if( mo > 12 ){ return (int)(&z[6] - zIn) + 1; }` |
+|   112 |  472 | `		if( d > 31 ){ return (int)(&z[9] - zIn) + 1; }` |
+|   108 |  473 | `		if( mo == 0 ){ mo = 12; y--; }` |
+|   108 |  474 | `		z += 10;` |
 |     - |  475 | `		{` |
-|   101 |  476 | `			int rcT = DtTimeSuffix(&z,zEnd,zIn,&h,&mi,&s,&iOff,&bOffSet,&uSec);` |
-|   101 |  477 | `			if( rcT != 0 ){ return rcT; }` |
+|   108 |  476 | `			int rcT = DtTimeSuffix(&z,zEnd,zIn,&h,&mi,&s,&iOff,&bOffSet,&uSec);` |
+|   108 |  477 | `			if( rcT != 0 ){ return rcT; }` |
 |     - |  478 | `		}` |
-|    95 |  479 | `		iTs = DtMakeTs(y,mo,d,h,mi,s,iOff);` |
-|    95 |  480 | `		bAny = 1;` |
-|   314 |  481 | `	}else if( SyisDigit(z[0])` |
+|   102 |  479 | `		iTs = DtMakeTs(y,mo,d,h,mi,s,iOff);` |
+|   102 |  480 | `		bAny = 1;` |
+|   318 |  481 | `	}else if( SyisDigit(z[0])` |
 |   179 |  482 | `	 && (iNumRc = DtTryNumericDate(z,zEnd,&z,&iTs,&iOff,&bOffSet,zIn,&uSec)) != 0 ){` |
 |     - |  483 | `		/* DD-MM-YYYY / DD.MM.YYYY (day first), MM/DD/YYYY (slash, American), and` |
 |     - |  484 | `		 * YYYY/MM/DD (slash, year first) — see DtTryNumericDate. Anything other than` |
@@ -527,10 +527,10 @@ Coverage: 948/1079 lines (87.86%)
 |     3 |  517 | `		bAny = 1;` |
 |     1 |  518 | `	}` |
 |     - |  519 | `	/* Relative / keyword sequence */` |
-|   173 |  520 | `	for(;;){` |
-|   608 |  521 | `		DT_SKIP_WS();` |
-|   497 |  522 | `		if( z >= zEnd ){` |
-|   329 |  523 | `			break;` |
+|   176 |  520 | `	for(;;){` |
+|   615 |  521 | `		DT_SKIP_WS();` |
+|   504 |  522 | `		if( z >= zEnd ){` |
+|   336 |  523 | `			break;` |
 |     - |  524 | `		}` |
 |   169 |  525 | `		if( DT_LOWEQ("today",5) \|\| DT_LOWEQ("midnight",8) ){` |
 |     9 |  526 | `			sxi64 days = DtFloorDiv(iTs + iOff,86400);` |
@@ -733,48 +733,48 @@ Coverage: 948/1079 lines (87.86%)
 |     - |  723 | `		}` |
 |    13 |  724 | `		return (int)(z - zIn) + 1;` |
 |   ! 0 |  725 | `	}` |
-|   329 |  726 | `	if( !bAny ){` |
+|   336 |  726 | `	if( !bAny ){` |
 |   ! 0 |  727 | `		return 1;` |
 |     - |  728 | `	}` |
-|   329 |  729 | `	*pTs = iTs;` |
-|   329 |  730 | `	*pOff = iOff;` |
-|   329 |  731 | `	*pbOffSet = bOffSet;` |
-|   329 |  732 | `	*pUs = uSec;` |
-|   329 |  733 | `	return 0;` |
+|   336 |  729 | `	*pTs = iTs;` |
+|   336 |  730 | `	*pOff = iOff;` |
+|   336 |  731 | `	*pbOffSet = bOffSet;` |
+|   336 |  732 | `	*pUs = uSec;` |
+|   336 |  733 | `	return 0;` |
 |     - |  734 | `#undef DT_SKIP_WS` |
 |     - |  735 | `#undef DT_LOWEQ` |
-|   230 |  736 | `}` |
+|   234 |  736 | `}` |
 |     - |  737 | `/* int __dt_now() */` |
-|   240 |  738 | `static int vm_builtin_dt_now(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 |  739 | `{` |
-|   120 |  740 | `	SXUNUSED(nArg);` |
-|   120 |  741 | `	SXUNUSED(apArg);` |
-|   241 |  742 | `	ph7_result_int64(pCtx,(ph7_int64)time(0));` |
-|   241 |  743 | `	return PH7_OK;` |
-|     1 |  744 | `}` |
+|   246 |  738 | `static int vm_builtin_dt_now(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 |  739 | `{` |
+|   123 |  740 | `	SXUNUSED(nArg);` |
+|   123 |  741 | `	SXUNUSED(apArg);` |
+|   248 |  742 | `	ph7_result_int64(pCtx,(ph7_int64)time(0));` |
+|   248 |  743 | `	return PH7_OK;` |
+|     2 |  744 | `}` |
 |     - |  745 | `/* mixed __dt_parse(string $s, int $baseTs, int $baseOff)` |
 |     - |  746 | ` *   -> [ts, off, offWasExplicit] on success; php's error MESSAGE string on` |
 |     - |  747 | ` *      failure (the chunk wraps it in DateMalformedStringException). */` |
-|   458 |  748 | `static int vm_builtin_dt_parse(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 |  749 | `{` |
+|   464 |  748 | `static int vm_builtin_dt_parse(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 |  749 | `{` |
 |     - |  750 | `	const char *zIn;` |
 |     - |  751 | `	int nLen;` |
 |     - |  752 | `	sxi64 iBaseTs;` |
 |     - |  753 | `	sxi32 iBaseOff;` |
-|   459 |  754 | `	sxi64 iTs = 0;` |
-|   459 |  755 | `	sxi32 iOff = 0;` |
-|   459 |  756 | `	int bOffSet = 0;` |
-|   459 |  757 | `	int uSec = 0;` |
+|   466 |  754 | `	sxi64 iTs = 0;` |
+|   466 |  755 | `	sxi32 iOff = 0;` |
+|   466 |  756 | `	int bOffSet = 0;` |
+|   466 |  757 | `	int uSec = 0;` |
 |     - |  758 | `	int iErrPos;` |
-|   459 |  759 | `	if( nArg < 3 ){` |
+|   466 |  759 | `	if( nArg < 3 ){` |
 |   ! 0 |  760 | `		ph7_result_bool(pCtx,0);` |
 |   ! 0 |  761 | `		return PH7_OK;` |
 |     - |  762 | `	}` |
-|   459 |  763 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
-|   459 |  764 | `	iBaseTs  = ph7_value_to_int64(apArg[1]);` |
-|   459 |  765 | `	iBaseOff = (sxi32)ph7_value_to_int64(apArg[2]);` |
-|   459 |  766 | `	iErrPos = DtParse(zIn,nLen,iBaseTs,iBaseOff,&iTs,&iOff,&bOffSet,&uSec);` |
-|   459 |  767 | `	if( iErrPos != 0 ){` |
+|   466 |  763 | `	zIn = ph7_value_to_string(apArg[0],&nLen);` |
+|   466 |  764 | `	iBaseTs  = ph7_value_to_int64(apArg[1]);` |
+|   466 |  765 | `	iBaseOff = (sxi32)ph7_value_to_int64(apArg[2]);` |
+|   466 |  766 | `	iErrPos = DtParse(zIn,nLen,iBaseTs,iBaseOff,&iTs,&iOff,&bOffSet,&uSec);` |
+|   466 |  767 | `	if( iErrPos != 0 ){` |
 |     - |  768 | `		/* Negative encoding: php's "Double time specification" reason */` |
 |    51 |  769 | `		int bDouble = iErrPos < 0;` |
 |    51 |  770 | `		int iPos = (bDouble ? -iErrPos : iErrPos) - 1;` |
@@ -791,34 +791,34 @@ Coverage: 948/1079 lines (87.86%)
 |    51 |  781 | `		return PH7_OK;` |
 |     - |  782 | `	}` |
 |     - |  783 | `	{` |
-|   409 |  784 | `		ph7_value *pArr = ph7_context_new_array(pCtx);` |
-|   409 |  785 | `		ph7_value *pV = ph7_context_new_scalar(pCtx);` |
-|   409 |  786 | `		if( pArr == 0 \|\| pV == 0 ){` |
+|   416 |  784 | `		ph7_value *pArr = ph7_context_new_array(pCtx);` |
+|   416 |  785 | `		ph7_value *pV = ph7_context_new_scalar(pCtx);` |
+|   416 |  786 | `		if( pArr == 0 \|\| pV == 0 ){` |
 |   ! 0 |  787 | `			return PH7_ContextMemoryError(pCtx);` |
 |     - |  788 | `		}` |
-|   409 |  789 | `		ph7_value_int64(pV,iTs);` |
-|   409 |  790 | `		ph7_array_add_elem(pArr,0,pV);` |
-|   409 |  791 | `		ph7_value_int64(pV,iOff);` |
-|   409 |  792 | `		ph7_array_add_elem(pArr,0,pV);` |
+|   416 |  789 | `		ph7_value_int64(pV,iTs);` |
+|   416 |  790 | `		ph7_array_add_elem(pArr,0,pV);` |
+|   416 |  791 | `		ph7_value_int64(pV,iOff);` |
+|   416 |  792 | `		ph7_array_add_elem(pArr,0,pV);` |
 |     - |  793 | `		/* int, not bool: 0 = no explicit offset, 1 = numeric offset/@epoch,` |
 |     - |  794 | `		 * 2 = literal "Z" (php keeps the distinction in the zone name) */` |
-|   409 |  795 | `		ph7_value_int64(pV,bOffSet);` |
-|   409 |  796 | `		ph7_array_add_elem(pArr,0,pV);` |
+|   416 |  795 | `		ph7_value_int64(pV,bOffSet);` |
+|   416 |  796 | `		ph7_array_add_elem(pArr,0,pV);` |
 |     - |  797 | `		/* [3] = microseconds parsed from a fractional-seconds part (0 when absent) */` |
-|   409 |  798 | `		ph7_value_int64(pV,uSec);` |
-|   409 |  799 | `		ph7_array_add_elem(pArr,0,pV);` |
-|   409 |  800 | `		ph7_result_value(pCtx,pArr);` |
+|   416 |  798 | `		ph7_value_int64(pV,uSec);` |
+|   416 |  799 | `		ph7_array_add_elem(pArr,0,pV);` |
+|   416 |  800 | `		ph7_result_value(pCtx,pArr);` |
 |     - |  801 | `	}` |
-|   409 |  802 | `	return PH7_OK;` |
-|   230 |  803 | `}` |
+|   416 |  802 | `	return PH7_OK;` |
+|   234 |  803 | `}` |
 |     - |  804 | `/* string __dt_default_tz(void) — the date_default_timezone_set() identifier */` |
-|   240 |  805 | `static int vm_builtin_dt_default_tz(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 |  806 | `{` |
-|   120 |  807 | `	SXUNUSED(nArg);` |
-|   120 |  808 | `	SXUNUSED(apArg);` |
-|   241 |  809 | `	ph7_result_string(pCtx,pCtx->pVm->zDefTz,(int)pCtx->pVm->nDefTz);` |
-|   241 |  810 | `	return PH7_OK;` |
-|     1 |  811 | `}` |
+|   246 |  805 | `static int vm_builtin_dt_default_tz(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 |  806 | `{` |
+|   123 |  807 | `	SXUNUSED(nArg);` |
+|   123 |  808 | `	SXUNUSED(apArg);` |
+|   248 |  809 | `	ph7_result_string(pCtx,pCtx->pVm->zDefTz,(int)pCtx->pVm->nDefTz);` |
+|   248 |  810 | `	return PH7_OK;` |
+|     2 |  811 | `}` |
 |     - |  812 | `/* string __dt_format(int $ts, int $off, string $tzname, string $format, int $us = 0) */` |
 |   182 |  813 | `static int vm_builtin_dt_format(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 |  814 | `{` |
@@ -1945,7 +1945,7 @@ Coverage: 948/1079 lines (87.86%)
 |     - | 1935 | ` * PH7_VmInit inside the bCompilingBuiltin window, after the Reflection` |
 |     - | 1936 | ` * install (Exception must exist).` |
 |     - | 1937 | ` */` |
-|  4140 | 1938 | `PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)` |
+|  4528 | 1938 | `PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)` |
 |     5 | 1939 | `{` |
 |     - | 1940 | `	static const struct {` |
 |     - | 1941 | `		const char *zName;` |
@@ -1963,12 +1963,12 @@ Coverage: 948/1079 lines (87.86%)
 |     - | 1953 | `	};` |
 |     - | 1954 | `	sxu32 n;` |
 |     - | 1955 | `	/* php's date.timezone default */` |
-|  4145 | 1956 | `	SyMemcpy("UTC",pVm->zDefTz,sizeof("UTC"));` |
-|  4145 | 1957 | `	pVm->nDefTz = sizeof("UTC") - 1;` |
-| 41405 | 1958 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
-| 37265 | 1959 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-| 18635 | 1960 | `	}` |
-|  4145 | 1961 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zDateTimeLib,sizeof(zDateTimeLib)-1);` |
+|  4533 | 1956 | `	SyMemcpy("UTC",pVm->zDefTz,sizeof("UTC"));` |
+|  4533 | 1957 | `	pVm->nDefTz = sizeof("UTC") - 1;` |
+| 45285 | 1958 | `	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){` |
+| 40757 | 1959 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+| 20381 | 1960 | `	}` |
+|  4533 | 1961 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zDateTimeLib,sizeof(zDateTimeLib)-1);` |
 |     5 | 1962 | `}` |
 |     - | 1963 |  |
 |     - | 1964 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |

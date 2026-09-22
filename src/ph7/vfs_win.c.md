@@ -165,20 +165,20 @@ Coverage: 602/717 lines (83.96%)
 |    5 |  155 | `}` |
 |    - |  156 | `/* int (*xMkdir)(const char *,int,int) */` |
 |    - |  157 | `static int WinVfs_mkdir(const char *zPath,int mode,int recursive)` |
-|    4 |  158 | `{` |
+|    3 |  158 | `{` |
 |    - |  159 | `	void * pConverted;` |
 |    - |  160 | `	BOOL rc;` |
-|    4 |  161 | `	pConverted = convertUtf8Filename(zPath);` |
-|    4 |  162 | `	if( pConverted == 0 ){` |
+|    3 |  161 | `	pConverted = convertUtf8Filename(zPath);` |
+|    3 |  162 | `	if( pConverted == 0 ){` |
 |  ! 0 |  163 | `		return -1;` |
 |    - |  164 | `	}` |
-|    4 |  165 | `	mode= 0; /* MSVC warning */` |
-|    4 |  166 | `	recursive = 0;` |
-|    4 |  167 | `	rc = CreateDirectoryW((LPCWSTR)pConverted,0);` |
-|    4 |  168 | `	if( !rc ){ WinVfsMapErrno(); }` |
-|    4 |  169 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    4 |  170 | `	return rc ? PH7_OK : -1;` |
-|    4 |  171 | `}` |
+|    3 |  165 | `	mode= 0; /* MSVC warning */` |
+|    3 |  166 | `	recursive = 0;` |
+|    3 |  167 | `	rc = CreateDirectoryW((LPCWSTR)pConverted,0);` |
+|    3 |  168 | `	if( !rc ){ WinVfsMapErrno(); }` |
+|    3 |  169 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    3 |  170 | `	return rc ? PH7_OK : -1;` |
+|    3 |  171 | `}` |
 |    - |  172 | `/* int (*xRmdir)(const char *) */` |
 |    - |  173 | `static int WinVfs_rmdir(const char *zPath)` |
 |    3 |  174 | `{` |
@@ -282,20 +282,20 @@ Coverage: 602/717 lines (83.96%)
 |    5 |  272 | `}` |
 |    - |  273 | `/* int (*xChmod)(const char *,int) */` |
 |    - |  274 | `static int WinVfs_chmod(const char *zPath,int mode)` |
-|    2 |  275 | `{` |
+|    3 |  275 | `{` |
 |    - |  276 | `	void * pConverted;` |
 |    - |  277 | `	int rc;` |
-|    2 |  278 | `	pConverted = convertUtf8Filename(zPath);` |
-|    2 |  279 | `	if( pConverted == 0 ){` |
+|    3 |  278 | `	pConverted = convertUtf8Filename(zPath);` |
+|    3 |  279 | `	if( pConverted == 0 ){` |
 |  ! 0 |  280 | `		return -1;` |
 |    - |  281 | `	}` |
 |    - |  282 | `	/* Windows honors only the read-only attribute: a set owner-write bit (0200)` |
 |    - |  283 | `	 * clears it, otherwise the file is made read-only. This mirrors php, whose` |
 |    - |  284 | `	 * chmod() on Windows likewise maps through _wchmod and returns success. */` |
-|    2 |  285 | `	rc = _wchmod((const wchar_t *)pConverted,(mode & 0200) ? (_S_IREAD\|_S_IWRITE) : _S_IREAD);` |
-|    2 |  286 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    2 |  287 | `	return rc == 0 ? PH7_OK : - 1;` |
-|    2 |  288 | `}` |
+|    3 |  285 | `	rc = _wchmod((const wchar_t *)pConverted,(mode & 0200) ? (_S_IREAD\|_S_IWRITE) : _S_IREAD);` |
+|    3 |  286 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    3 |  287 | `	return rc == 0 ? PH7_OK : - 1;` |
+|    3 |  288 | `}` |
 |    - |  289 | `/* ph7_int64 (*xFreeSpace)(const char *) */` |
 |    - |  290 | `static ph7_int64 WinVfs_DiskFreeSpace(const char *zPath)` |
 |    1 |  291 | `{` |
@@ -1014,7 +1014,7 @@ Coverage: 602/717 lines (83.96%)
 |    - | 1004 | `		/* Creates a new file, only if it does not already exist.` |
 |    - | 1005 | `		* If the file exists, it fails.` |
 |    - | 1006 | `		*/` |
-|    2 | 1007 | `		dwCreate = CREATE_NEW;` |
+|    3 | 1007 | `		dwCreate = CREATE_NEW;` |
 |    5 | 1008 | `	}else if( iOpenMode & PH7_IO_OPEN_TRUNC ){` |
 |    - | 1009 | `		/* Opens a file and truncates it so that its size is zero bytes` |
 |    - | 1010 | `		 * The file must exist.` |
@@ -1029,7 +1029,7 @@ Coverage: 602/717 lines (83.96%)
 |    5 | 1019 | `		dwAccess \|= GENERIC_WRITE;` |
 |    5 | 1020 | `	}else if( iOpenMode & PH7_IO_OPEN_WRONLY ){` |
 |    - | 1021 | `		/* Write only access */` |
-|    2 | 1022 | `		dwAccess = GENERIC_WRITE;` |
+|    3 | 1022 | `		dwAccess = GENERIC_WRITE;` |
 |    - | 1023 | `	}` |
 |    5 | 1024 | `	if( iOpenMode & PH7_IO_OPEN_APPEND ){` |
 |    - | 1025 | `		/* Append mode */` |
@@ -1044,7 +1044,7 @@ Coverage: 602/717 lines (83.96%)
 |    5 | 1034 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
 |    5 | 1035 | `	if( pHandle == INVALID_HANDLE_VALUE){` |
 |    - | 1036 | `		SXUNUSED(pResource); /* MSVC warning */` |
-|    4 | 1037 | `		return -1;` |
+|    5 | 1037 | `		return -1;` |
 |    - | 1038 | `	}` |
 |    - | 1039 | `	/* Make the handle accessible to the upper layer */` |
 |    5 | 1040 | `	*ppHandle = (void *)pHandle;` |

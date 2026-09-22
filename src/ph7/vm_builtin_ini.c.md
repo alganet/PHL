@@ -25,26 +25,26 @@ Coverage: 33/37 lines (89.19%)
 |    - |   15 |  |
 |    - |   16 | `/* array __ini_cli(void) — the queued -d/-c directives, in order */` |
 |   20 |   17 | `static int vm_builtin_ini_cli(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    5 |   18 | `{` |
+|    4 |   18 | `{` |
 |    - |   19 | `	ph7_value *pArr,*pV;` |
 |    - |   20 | `	VmIniEntry *aEntry;` |
 |    - |   21 | `	sxu32 n;` |
 |   10 |   22 | `	SXUNUSED(nArg);` |
 |   10 |   23 | `	SXUNUSED(apArg);` |
-|   25 |   24 | `	pArr = ph7_context_new_array(pCtx);` |
-|   25 |   25 | `	pV = ph7_context_new_scalar(pCtx);` |
-|   25 |   26 | `	if( pArr == 0 \|\| pV == 0 ){` |
+|   24 |   24 | `	pArr = ph7_context_new_array(pCtx);` |
+|   24 |   25 | `	pV = ph7_context_new_scalar(pCtx);` |
+|   24 |   26 | `	if( pArr == 0 \|\| pV == 0 ){` |
 |  ! 0 |   27 | `		return PH7_ContextMemoryError(pCtx);` |
 |    - |   28 | `	}` |
-|   25 |   29 | `	aEntry = (VmIniEntry *)SySetBasePtr(&pCtx->pVm->aIniCli);` |
-|   45 |   30 | `	for( n = 0 ; n < SySetUsed(&pCtx->pVm->aIniCli) ; n++ ){` |
-|   22 |   31 | `		ph7_value_string(pV,aEntry[n].sValue.zString,(int)aEntry[n].sValue.nByte);` |
-|   22 |   32 | `		ph7_array_add_strkey_elem(pArr,aEntry[n].sName.zString,pV);` |
-|   22 |   33 | `		ph7_value_reset_string_cursor(pV);` |
-|   12 |   34 | `	}` |
-|   25 |   35 | `	ph7_result_value(pCtx,pArr);` |
-|   25 |   36 | `	return PH7_OK;` |
-|   15 |   37 | `}` |
+|   24 |   29 | `	aEntry = (VmIniEntry *)SySetBasePtr(&pCtx->pVm->aIniCli);` |
+|   44 |   30 | `	for( n = 0 ; n < SySetUsed(&pCtx->pVm->aIniCli) ; n++ ){` |
+|   21 |   31 | `		ph7_value_string(pV,aEntry[n].sValue.zString,(int)aEntry[n].sValue.nByte);` |
+|   21 |   32 | `		ph7_array_add_strkey_elem(pArr,aEntry[n].sName.zString,pV);` |
+|   21 |   33 | `		ph7_value_reset_string_cursor(pV);` |
+|   11 |   34 | `	}` |
+|   24 |   35 | `	ph7_result_value(pCtx,pArr);` |
+|   24 |   36 | `	return PH7_OK;` |
+|   14 |   37 | `}` |
 |    - |   38 |  |
 |    - |   39 | `/* void __ini_apply_err(string $name, int $on) — mirror the display_errors /` |
 |    - |   40 | ` * log_errors gate into the C-side VM fields so an ini_set() at runtime reaches` |
@@ -229,11 +229,11 @@ Coverage: 33/37 lines (89.19%)
 |    - |  219 | `"}"` |
 |    - |  220 | `;` |
 |    - |  221 |  |
-| 4140 |  222 | `PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm)` |
+| 4528 |  222 | `PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm)` |
 |    5 |  223 | `{` |
-| 4145 |  224 | `	ph7_create_function(&(*pVm),"__ini_cli",vm_builtin_ini_cli,0);` |
-| 4145 |  225 | `	ph7_create_function(&(*pVm),"__ini_apply_err",vm_builtin_ini_apply_err,0);` |
-| 4145 |  226 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zIniLib,sizeof(zIniLib)-1);` |
+| 4533 |  224 | `	ph7_create_function(&(*pVm),"__ini_cli",vm_builtin_ini_cli,0);` |
+| 4533 |  225 | `	ph7_create_function(&(*pVm),"__ini_apply_err",vm_builtin_ini_apply_err,0);` |
+| 4533 |  226 | `	return PH7_VmEvalBuiltinChunk(&(*pVm),zIniLib,sizeof(zIniLib)-1);` |
 |    5 |  227 | `}` |
 |    - |  228 |  |
 |    - |  229 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
