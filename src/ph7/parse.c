@@ -1940,16 +1940,19 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 					 }
 					 return rc;
 				 }
-				 /* Link the node to the tree */
-				 pNode->pLeft = apNode[iLeft];
+				 /* Validate the left operand BEFORE linking it. A node that is both
+				  * still in apNode[] and already reachable as pNode->pLeft is freed
+				  * TWICE by PH7_ExprFreeTree on the error path — a heap-use-after-free
+				  * that `1->x;`, `"s"->x;` and `[1]->x;` all reached. Ownership moves
+				  * out of the set only once the link is certain. */
 				 if( (pNode->pOp->iOp == EXPR_OP_ARROW /*'->'*/ || pNode->pOp->iOp == EXPR_OP_NULLSAFE_ARROW /*'?->'*/)
-					 && pNode->pLeft->pOp == 0 &&
-					 pNode->pLeft->xCode != PH7_CompileVariable &&
+					 && apNode[iLeft]->pOp == 0 &&
+					 apNode[iLeft]->xCode != PH7_CompileVariable &&
 					 /* A clone(...) call term (pOp==0, xCode set) produces an object,
 					  * so `(clone($o))->x` is a valid arrow left operand — like the
 					  * `clone $o` operator form (pOp!=0), which this guard already
 					  * accepts. */
-					 pNode->pLeft->xCode != PH7_CompileCloneCall ){
+					 apNode[iLeft]->xCode != PH7_CompileCloneCall ){
 						 /* Syntax error */
 						 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
 							 "'%z': Expecting a variable as left operand",&pNode->pOp->sOp);
@@ -1958,6 +1961,8 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 						 }
 						 return rc;
 				 }
+				 /* Link the node to the tree */
+				 pNode->pLeft = apNode[iLeft];
 				 pNode->pRight = apNode[iRight];
 				 apNode[iLeft] = apNode[iRight] = 0;
 			 }
