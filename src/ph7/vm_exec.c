@@ -4754,6 +4754,23 @@ case PH7_OP_CALL: {
 	VmCallArgMap *pEffCallMap = (VmCallArgMap *)pInstr->p3;
 	SyHashEntry *pEntry;
 	SyString sName;
+	/* The host-call trio, hoisted out of the foreign-function branch below so the
+	 * NativeCall label there can also be reached from the compiled-function branch:
+	 * a VM_FUNC_NATIVE method is a C body wearing a method's clothes, and it runs on
+	 * exactly the foreign path (no frame, no call record, no operand stack) once
+	 * $this and the called class have been resolved the method way. Jumping into
+	 * that branch would otherwise cross these declarations. */
+	ph7_user_func *pFunc;
+	ph7_context sCtx;
+	ph7_value sRet;
+	/* Native-METHOD call state; all 0 for a plain host function, which is what the
+	 * foreign branch's own fallthrough leaves.
+	 *   pNativeOwned — the reference the method path took, released at the shared tail
+	 *   pNativeRecv  — what the body actually sees as $this (0 for a static method)
+	 *   pNativeClass — the late-static-binding target */
+	ph7_class_instance *pNativeOwned = 0;
+	ph7_class_instance *pNativeRecv = 0;
+	ph7_class *pNativeClass = 0;
 	/* A Closure object is callable: unwrap it to its underlying string callable so the
 	 * dispatch below handles it (rather than treating it as a generic object and looking
 	 * for __invoke). pTos here is a stack copy of the call target. Gated on VmValueIsClosure
@@ -5263,15 +5280,52 @@ case PH7_OP_CALL: {
 			VmDeprecatedAttrNotice(&(*pVm),pVmFunc,
 				(pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ? pSelfHint : 0);
 		}
-		/* D1: resolve deferred plain-var arguments against this callee's formal parameters
-		 * now — BEFORE the generator split and VmEnterFrame, while pVm->pFrame is still the
-		 * caller. pVmFunc is final here (post-overload). Covers plain functions, methods,
-		 * closures, dynamic-name calls and generators uniformly. */
+		/* D1: resolve deferred plain-var arguments against this callee's declaration
+		 * now — BEFORE the native/generator splits and VmEnterFrame, while pVm->pFrame is
+		 * still the caller. pVmFunc is final here (post-overload). Covers plain functions,
+		 * methods, closures, dynamic-name calls, generators and native methods uniformly;
+		 * only the SOURCE of the by-ref positions differs between the last one and the
+		 * rest (a signature string vs. compiled formal parameters). */
 		{
-			sxi32 rcDA = VmResolveDeferredArgs(&(*pVm),pArg,pTos,
-				(ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs),SySetUsed(&pVmFunc->aArgs),
-				0,0,0);
+			sxi32 rcDA;
+			if( pVmFunc->iFlags & VM_FUNC_NATIVE ){
+				/* A native method declares no formal parameters to match against —
+				 * its by-ref positions come from the same signature-derived mask a
+				 * builtin uses, so resolve them the builtin way. Sharing this one
+				 * site (rather than repeating it in the branch below) keeps the
+				 * throw routing identical for both kinds of callee. */
+				rcDA = VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,
+					pVmFunc->pNative->nByRefMask,0,0);
+			}else{
+				rcDA = VmResolveDeferredArgs(&(*pVm),pArg,pTos,
+					(ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs),SySetUsed(&pVmFunc->aArgs),
+					0,0,0);
+			}
 			PH7_DISPATCH_ENFORCE_RC(rcDA)
+		}
+		if( pVmFunc->iFlags & VM_FUNC_NATIVE ){
+			/* C-bodied method (VM_FUNC_NATIVE): hand it to the foreign-function path.
+			 *
+			 * Everything a METHOD needs has already happened above — the sVmName
+			 * lookup, overload selection, $this / self / late-static-binding
+			 * resolution, the visibility check, the #[\Deprecated] notice, deferred
+			 * argument materialization — and everything BELOW is exactly what a C
+			 * body has no use for: a frame, an operand stack, a call record.
+			 *
+			 * The stack shape already matches a builtin's, because the method branch
+			 * popped both the method-name slot and the target slot: [pArg,pTos) are
+			 * this call's arguments and pTos is the slot that receives the result.
+			 * So the jump lands on shared code, not a copy of it. */
+			pFunc = pVmFunc->pNative;
+			pNativeOwned = pThis; /* borrowed; the shared tail drops this reference */
+			/* A `C::m()` call reaches the method path with no object in the target
+			 * slot, and the path then adopts the CALLER's $this so an instance-context
+			 * `self::m()` still finds one. A native STATIC method must not see that —
+			 * it would read its argument list one slot off — so the receiver handed to
+			 * the body is gated on the declaration, not on what the fallback found. */
+			pNativeRecv = (pVmFunc->iFlags & VM_FUNC_NATIVE_STATIC) ? 0 : pThis;
+			pNativeClass = pSelf;
+			goto NativeCall;
 		}
 		if( pVmFunc->iFlags & VM_FUNC_GENERATOR ){
 			/* Generator function: return a Generator object instead of executing */
@@ -6331,9 +6385,6 @@ SkipFuncBody:
 			goto VmLoopFetch;
 		}
 	}else{
-		ph7_user_func *pFunc;
-		ph7_context sCtx;
-		ph7_value sRet;
 		/* Look for an installed foreign function.
 		 * Host functions are registered with short names (strlen, etc.).
 		 * If the compiler namespace-qualified the name, extract the short
@@ -6506,6 +6557,13 @@ SkipFuncBody:
 		 * pArg is the top base here (a builtin call pops no method-name slot). */
 		pEffCallMap = VmEffCallArgMap(pVm,pInstr,pArg,
 			nCallArgs > 0 ? (sxu32)nCallArgs : 0,&sEffMap);
+NativeCall:
+		/* A VM_FUNC_NATIVE method joins here, having done the two steps above for
+		 * itself: its by-ref mask comes from the same signature machinery, and its
+		 * effective arg map was already built (and this call's spread runs already
+		 * consumed) on the method path — building it a second time here would
+		 * consume them twice. Everything from this point down is shared verbatim:
+		 * a native method IS a host call that happens to carry a receiver. */
 		/* Start collecting function arguments */
 		SySetReset(&aArg);
 		while( pArg < pTos ){
@@ -6523,6 +6581,13 @@ SkipFuncBody:
 		 * when its own call site is purely positional; only the two forwarding
 		 * builtins read pArgMap, so this is inert for every other host function. */
 		sCtx.pArgMap = pEffCallMap;
+		/* Receiver + late-static-binding class for a native METHOD. Both stay 0 for a
+		 * plain host function (the locals are initialized once per OP_CALL), so this
+		 * is inert on the builtin path. The reference on pNativeOwned belongs to the
+		 * caller for the span of the call — the native body borrows it and must not
+		 * unref, exactly as a bytecode method's frame $this is borrowed. */
+		sCtx.pThis = pNativeRecv;
+		sCtx.pCalledClass = pNativeClass;
 		{
 		int nGiven = (int)SySetUsed(&aArg);
 		/* PHP-8 arity enforcement (band A #5): a builtin declaring a minimum
@@ -6570,6 +6635,18 @@ SkipFuncBody:
 		}
 		/* Release the call context */
 		VmReleaseCallContext(&sCtx);
+		if( pNativeOwned ){
+			/* Drop the receiver reference the method branch took (pThis->iRef++ before
+			 * the target slot was released). A bytecode method hands this to its frame
+			 * and lets the teardown do it; a native method has no frame, so it is
+			 * dropped here — the one point EVERY route out of the call passes through,
+			 * including the throw/abort/suspend ones below. Ordered after the context
+			 * release because sCtx.sThis aliases the instance. Always 0 for a plain
+			 * host function. */
+			PH7_ClassInstanceUnref(pNativeOwned);
+			pNativeOwned = 0;
+			pNativeRecv = 0;
+		}
 		if( rc == PH7_ABORT ){
 			/* Release the (possibly partially-built) result slot before unwinding;
 			 * the Abort: label only frees the operand stack, not this local

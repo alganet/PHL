@@ -1043,6 +1043,46 @@ static int VmClosureResolveScope(ph7_value *pScopeArg, SyString *pOut)
 	return 0;
 }
 /*
+ * Closure's C-bodied methods.
+ *
+ * These are the first methods in the engine whose body is a C routine rather than
+ * bytecode (VM_FUNC_NATIVE). They were global `__closure_bindTo` /
+ * `__closure_fromCallable` thunks that the prelude's one-line PHP methods forwarded
+ * to — the shape every builtin class had to take before a method could BE C. The
+ * class is still declared in the builtin chunk; only these three methods are
+ * attached from here, after that chunk has compiled.
+ */
+PH7_PRIVATE sxi32 PH7_VmInstallClosureNative(ph7_vm *pVm)
+{
+	static const PH7_NativeMethodDef aMethod[] = {
+		/* Parameter names are php's own ($newScope, not $scope): this string is the
+		 * declaration of record for arity, by-ref positions and — once the reflection
+		 * chunk reads a native method's signature the way it already reads a
+		 * builtin's — the reported parameter list. */
+		{ "bindTo",       PH7_MOD_PUBLIC,
+		  "?object $newThis, object|string|null $newScope = \"static\"", "?Closure",
+		  vm_builtin_Closure_bindTo },
+		{ "bind",         PH7_MOD_PUBLIC|PH7_MOD_STATIC,
+		  "Closure $closure, ?object $newThis, object|string|null $newScope = \"static\"", "?Closure",
+		  vm_builtin_Closure_bindTo },
+		{ "fromCallable", PH7_MOD_PUBLIC|PH7_MOD_STATIC,
+		  "callable $callback", "Closure",
+		  vm_builtin_Closure_fromCallable },
+	};
+	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"Closure",sizeof("Closure")-1,0,0);
+	sxu32 n;
+	if( pClass == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	for( n = 0 ; n < SX_ARRAYSIZE(aMethod) ; n++ ){
+		sxi32 rc = PH7_NativeClassInstallMethod(&(*pVm),pClass,&aMethod[n],0);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	return SXRET_OK;
+}
+/*
  * Closure::bindTo($newThis, $scope='static') / Closure::bind($closure, $newThis, $scope='static').
  * Clone the receiver and rebind $this/$scope; returns the new Closure (NULL on a non-Closure
  * receiver, matching PHP's failure mode).
@@ -1052,14 +1092,31 @@ PH7_PRIVATE int vm_builtin_Closure_bindTo(ph7_context *pCtx, int nArg, ph7_value
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pClosure, *pNewThis, *pClone;
 	ph7_value *pNewThisArg;
+	ph7_value *pRecv;
 	SyString sScope;
 	const SyString *pScopePtr = 0;
-	if( nArg < 2 || !VmValueIsClosure(pVm, apArg[0]) ){
+	/* One body, both spellings — as it always was, except the closure now arrives
+	 * the way php passes it rather than as a hand-written first argument. Called as
+	 * the instance method bindTo(), the receiver IS the closure and the arguments
+	 * start at $newThis; called as the static bind(), the closure is argument #1.
+	 * Normalizing here is what lets the two share an implementation. */
+	if( PH7_ContextThis(pCtx) ){
+		pRecv = PH7_ContextThisValue(pCtx);
+	}else{
+		if( nArg < 1 ){
+			ph7_result_null(pCtx);
+			return PH7_OK;
+		}
+		pRecv = apArg[0];
+		apArg++;
+		nArg--;
+	}
+	if( nArg < 1 || !VmValueIsClosure(pVm, pRecv) ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	pClosure = (ph7_class_instance *)apArg[0]->x.pOther;
-	pNewThisArg = apArg[1];
+	pClosure = (ph7_class_instance *)pRecv->x.pOther;
+	pNewThisArg = apArg[0];
 	if( pNewThisArg->iFlags & MEMOBJ_NULL ){
 		pNewThis = 0;
 	}else if( pNewThisArg->iFlags & MEMOBJ_OBJ ){
@@ -1084,7 +1141,7 @@ PH7_PRIVATE int vm_builtin_Closure_bindTo(ph7_context *pCtx, int nArg, ph7_value
 			}
 		}
 	}
-	if( VmClosureResolveScope((nArg > 2) ? apArg[2] : 0, &sScope) ){
+	if( VmClosureResolveScope((nArg > 1) ? apArg[1] : 0, &sScope) ){
 		pScopePtr = &sScope;
 	}
 	pClone = PH7_CloneClassInstance(pClosure);

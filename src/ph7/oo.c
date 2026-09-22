@@ -2001,3 +2001,55 @@ PH7_PRIVATE ph7_value * PH7_ClassInstanceFetchAttr(ph7_class_instance *pThis,con
 	/* Return the attribute value */
 	return ExtractClassAttrValue(pThis->pVm,pAttr);
 }
+/*
+ * The three accessors a VM_FUNC_NATIVE method body uses to reach its receiver.
+ *
+ * A native method is dispatched down the host-function path, so it is handed the
+ * plain (ph7_context*, argc, argv) of any builtin — the receiver rides on the
+ * context instead of occupying an argument slot. That is the whole point: the C
+ * routine that used to be a global `__prefix_verb($target, ...)` thunk taking its
+ * target explicitly becomes a method whose target is $this.
+ */
+/*
+ * The receiver, or NULL when the method was called statically (and always NULL in
+ * a plain host function). Borrowed: the operand stack holds the reference for the
+ * duration of the call, so the body must not unref it.
+ */
+PH7_PRIVATE ph7_class_instance * PH7_ContextThis(ph7_context *pCtx)
+{
+	return pCtx->pThis;
+}
+/*
+ * The class the call was made THROUGH — php's late-static-binding target, so an
+ * inherited native method sees the SUBCLASS here, not the class that declared it.
+ * NULL in a plain host function.
+ */
+PH7_PRIVATE ph7_class * PH7_ContextCalledClass(ph7_context *pCtx)
+{
+	return pCtx->pCalledClass;
+}
+/*
+ * The receiver as a ph7_value, so the body can use the ordinary object helpers
+ * (ph7_object_fetch_attr, ph7_value_is_object, ph7_result_value, ...) instead of
+ * reaching into ph7_class_instance. NULL when there is no receiver.
+ *
+ * The view ALIASES the instance without bumping its refcount: it lives exactly as
+ * long as the call, during which the caller's reference is already keeping the
+ * object alive, and VmReleaseCallContext drops the alias without unreffing. Handing
+ * it to ph7_result_value() is safe — that copies through PH7_MemObjStore, which
+ * takes its own reference.
+ */
+PH7_PRIVATE ph7_value * PH7_ContextThisValue(ph7_context *pCtx)
+{
+	if( pCtx->pThis == 0 ){
+		return 0;
+	}
+	if( !pCtx->bThisInit ){
+		PH7_MemObjInit(pCtx->pVm,&pCtx->sThis);
+		pCtx->sThis.x.pOther = pCtx->pThis;
+		pCtx->sThis.iFlags = MEMOBJ_OBJ;
+		pCtx->sThis.nIdx = SXU32_HIGH;
+		pCtx->bThisInit = 1;
+	}
+	return &pCtx->sThis;
+}

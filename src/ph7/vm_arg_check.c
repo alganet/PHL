@@ -835,7 +835,7 @@ static const struct VmBuiltinSig {
  * variadic tail hides a second required argument). Verified against php 8.5.7
  * for all 462 signed builtins: 458 derive exactly, 4 are overridden.
  */
-static void VmDeriveArityFromSig(const char *zSig,sxi16 *pnMin,sxu8 *pbAtLeast,sxi16 *pnMax,sxu8 *pbHasMax)
+PH7_PRIVATE void VmDeriveArityFromSig(const char *zSig,sxi16 *pnMin,sxu8 *pbAtLeast,sxi16 *pnMax,sxu8 *pbHasMax)
 {
 	const char *zCur = zSig;
 	int nMin = 0, bAtLeast = 0, bSeen = 0, bOptional = 0;
@@ -1153,7 +1153,7 @@ static int VmBuiltinSelfValidatesArity(const char *zName)
  * the first 31 positions are representable; a by-ref parameter past that is rare
  * for a builtin and simply not tracked here. The scan mirrors VmDeriveArityFromSig.
  */
-static sxu32 VmDeriveByRefMaskFromSig(const char *zSig)
+PH7_PRIVATE sxu32 VmDeriveByRefMaskFromSig(const char *zSig)
 {
 	sxu32 mask = 0;
 	int n = 0;       /* current parameter index */

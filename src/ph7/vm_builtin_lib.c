@@ -299,10 +299,12 @@
 	"  private $__this;"\
 	"  private $__scope;"\
 	"  public function __construct(){ throw new \\Error('Instantiation of class Closure is not allowed'); }"\
-	"  public function bindTo($newThis, $scope = 'static'){ return __closure_bindTo($this, $newThis, $scope); }"\
-	"  public function call($newThis, ...$args){ $bound = __closure_bindTo($this, $newThis, get_class($newThis)); return $bound(...$args); }"\
-	"  public static function bind($closure, $newThis, $scope = 'static'){ return __closure_bindTo($closure, $newThis, $scope); }"\
-	"  public static function fromCallable($callable){ return __closure_fromCallable($callable); }"\
+	/* bindTo()/bind()/fromCallable() are NATIVE methods installed by
+	 * PH7_VmInstallClosureNative() — they used to be one-line forwards to the
+	 * global __closure_bindTo/__closure_fromCallable thunks, which no longer
+	 * exist. call() stays here because its body is genuinely PHP: it rebinds and
+	 * then invokes with an argument unpack. */\
+	"  public function call($newThis, ...$args){ $bound = $this->bindTo($newThis, get_class($newThis)); return $bound(...$args); }"\
 	"}"\
 	/* stdClass is empty (PHP-exact): holds only dynamic (runtime-added) properties. */\
 	"#[Attribute(Attribute::TARGET_CLASS)]"\

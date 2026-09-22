@@ -56,6 +56,7 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/lex$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/memobj$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/oo$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/oo_native$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/parse$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vfs$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vfs_io_driver$(OBJ_SUFFIX) \

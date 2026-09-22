@@ -342,6 +342,20 @@ struct ph7_context
 	VmCallArgMap *pArgMap;  /* Call-site named-argument map (or 0). Lets a builtin
 	                         * such as call_user_func forward its callers' name:
 	                         * arguments to the inner callback. */
+	ph7_class_instance *pThis; /* VM_FUNC_NATIVE method only: the receiver, or 0 for a static
+	                         * call and for every plain host function. Read through
+	                         * PH7_ContextThis(); the reference is owned by the CALLER for the
+	                         * duration of the call, so a native body must not unref it. */
+	ph7_class *pCalledClass;/* VM_FUNC_NATIVE method only: the class the call was made
+	                         * THROUGH (php's late-static-binding target), which for an
+	                         * inherited method is the subclass, not the declaring class. 0 for
+	                         * a plain host function. */
+	ph7_value sThis;        /* Scratch MEMOBJ_OBJ view of pThis, materialized on the first
+	                         * PH7_ContextThisValue() call so a native body can reach the
+	                         * receiver through the ordinary ph7_value object helpers
+	                         * (ph7_object_fetch_attr & co). bThisInit gates the lazy init;
+	                         * VmReleaseCallContext tears it down. */
+	sxu8 bThisInit;         /* 1 once sThis has been initialized */
 };
 /*
  * Each hashmap entry [i.e: array(4,5,6)] is recorded in an instance
@@ -941,7 +955,25 @@ struct ph7_vm_func_closure_env
                                       * clause. php does not warn about an undefined auto-capture at
                                       * closure creation — the read fires the warning inside the body —
                                       * so the OP_LOAD_CLOSURE undefined-capture warning is suppressed. */
-/* next free bit: 0x100000 */
+#define VM_FUNC_NATIVE       0x100000 /* The body is a C routine, not bytecode: ph7_vm_func::pNative
+                                       * holds it and aByteCode stays EMPTY. OP_CALL branches to the
+                                       * host-function path (no frame, no call record, no operand
+                                       * stack) while every step BEFORE the branch — the sVmName
+                                       * lookup, $this/self resolution, visibility — runs unchanged,
+                                       * so a native method inherits, overrides and dispatches like
+                                       * any other. This is what lets a builtin class own its C code
+                                       * as a METHOD instead of a global `__prefix_verb` thunk. */
+#define VM_FUNC_NATIVE_STATIC 0x200000 /* A VM_FUNC_NATIVE method declared static. Staticness is
+                                       * otherwise recorded only on ph7_class_method::iFlags, which
+                                       * the OP_CALL dispatcher does not hold — and it must know,
+                                       * because the method path falls back to the CALLER's $this
+                                       * when the target slot carries a class name rather than an
+                                       * object. For a bytecode method that fallback is harmless;
+                                       * for a native one it would hand the body a receiver on a
+                                       * `C::m()` call and shift how it reads its arguments. Set by
+                                       * the native builder only: the compiler's behaviour for
+                                       * bytecode methods is deliberately left untouched. */
+/* next free bit: 0x400000 */
 /*
  * Each user defined function is parsed out and stored in an instance
  * of the following structure.
@@ -984,6 +1016,14 @@ struct ph7_vm_func
 	void *pLsbClass;     /* For a closure: the late-static-binding class captured at its
 	                      * creation site (ph7_class*), so `static::` inside the body
 	                      * resolves like php. NULL for a plain function/method. */
+	ph7_user_func *pNative; /* VM_FUNC_NATIVE only: the C body. A ph7_user_func rather than a
+	                      * bespoke record because that struct ALREADY carries everything the
+	                      * host-call path reads — xFunc, pUserData, sName, the min/max arity
+	                      * bounds, zSig/zRet and nByRefMask — so the existing OP_CALL foreign
+	                      * block, VmInitCallContext, ph7_context_user_data(), ph7_function_name()
+	                      * and VmEnforceBuiltinArgTypes all work on it verbatim. It is NOT
+	                      * registered in pVm->hHostFunction: it hangs off this method alone and
+	                      * is reachable only through the method, never as a global name. */
 	ph7_vm_func *pNextName; /* Next VM function with the same name as this one */
 };
 /* Forward reference */
@@ -1093,6 +1133,11 @@ struct ph7_class_attr
 	ph7_class *pDeclClass; /* Class that originally declared this attribute */
 	SyString sDoc;       /* Doc-comment preceding the declaration (duplicated; empty = none) */
 	SySet aAttrs;        /* Declared #[...] attributes (ph7_attribute records) */
+	const void *pNativeValue; /* A native class's literal initializer (PH7_NativeConstDef*), or 0.
+	                      * A compiled declaration expresses its default as aByteCode evaluated at
+	                      * mount; the C builder has no compiler to emit that, so it hands the
+	                      * literal here and the mount writes it straight into the reserved slot.
+	                      * Mutually exclusive with a non-empty aByteCode. */
 };
 /* Attribute configuration */
 #define PH7_CLASS_ATTR_STATIC       0x001  /* Static attribute */
@@ -1144,6 +1189,63 @@ struct ph7_class_attr
                                             * it names was define()d after the declaration) answers the
                                             * value, as php's does. */
 /* next free bit: 0x40000 */
+/*
+ * Declaring a class from C (oo_native.c).
+ *
+ * A subsystem describes its classes as static tables and hands them to
+ * PH7_InstallNativeClasses(), which drives the very builders the compiler drives
+ * for `class Foo {}`. The point of the exercise is the METHOD table: a method's
+ * body may be a C routine (VM_FUNC_NATIVE), so the engine-access helpers that had
+ * to be global `__prefix_verb()` thunks — because only a global function could be
+ * C — become methods of the class they always belonged to.
+ */
+/* Member modifiers. Visibility defaults to public when none is given. */
+#define PH7_MOD_PUBLIC     0x00
+#define PH7_MOD_PROTECTED  0x01
+#define PH7_MOD_PRIVATE    0x02
+#define PH7_MOD_STATIC     0x04
+#define PH7_MOD_FINAL      0x08
+/* Literal kinds a native class constant may carry */
+#define PH7_NATIVE_VAL_NULL   0
+#define PH7_NATIVE_VAL_INT    1
+#define PH7_NATIVE_VAL_STRING 2
+#define PH7_NATIVE_VAL_BOOL   3
+#define PH7_NATIVE_VAL_DOUBLE 4
+typedef struct PH7_NativeMethodDef PH7_NativeMethodDef;
+typedef struct PH7_NativeConstDef  PH7_NativeConstDef;
+typedef struct PH7_NativeClassSpec PH7_NativeClassSpec;
+struct PH7_NativeMethodDef
+{
+	const char *zName;       /* php-visible method name */
+	sxi32 iMods;             /* PH7_MOD_* */
+	const char *zSig;        /* PHP-style parameter list ("string $name, int $flags = 0"),
+	                          * or 0 for "unenforced". Static storage: never freed. Drives
+	                          * arity enforcement, the by-ref mask AND Reflection, from the
+	                          * one string — the same contract aBuiltinSig[] has. */
+	const char *zRet;        /* Return-type text, or 0 */
+	ProchHostFunction xFunc; /* The body */
+};
+struct PH7_NativeConstDef
+{
+	const char *zName;
+	sxi32 iMods;
+	sxi32 iType;             /* PH7_NATIVE_VAL_* */
+	ph7_int64 iValue;        /* INT / BOOL */
+	const char *zValue;      /* STRING */
+	double rValue;           /* DOUBLE */
+};
+struct PH7_NativeClassSpec
+{
+	const char *zName;
+	const char *zParent;     /* or 0 */
+	const char *zImplements; /* comma-separated list, or 0 */
+	sxi32 iFlags;            /* PH7_CLASS_FINAL / ABSTRACT / INTERFACE / READONLY */
+	const PH7_NativeMethodDef *aMethod; sxu32 nMethod;
+	const PH7_NativeConstDef  *aConst;  sxu32 nConst;
+};
+PH7_PRIVATE sxi32 PH7_InstallNativeClasses(ph7_vm *pVm,const PH7_NativeClassSpec *aSpec,sxu32 nSpec);
+PH7_PRIVATE sxi32 PH7_NativeClassInstallMethod(ph7_vm *pVm,ph7_class *pClass,
+	const PH7_NativeMethodDef *pDef,void *pUserData);
 /*
  * Each class method is parsed out and stored in an instance of the following
  * structure.
@@ -2485,6 +2587,10 @@ PH7_PRIVATE sxi32 PH7_VmRegisterConstant(ph7_vm *pVm,const SyString *pName,ProcC
 PH7_PRIVATE sxi32 PH7_VmRegisterConstantEx(ph7_vm *pVm,const SyString *pName,ProcConstant xExpand,
 	void *pUserData,const SyString *pFile,sxu32 nLine,int bUser);
 PH7_PRIVATE sxi32 PH7_VmInstallForeignFunction(ph7_vm *pVm,const SyString *pName,ProchHostFunction xFunc,void *pUserData);
+/* Builds a ph7_user_func WITHOUT registering it as a global name. The native-class
+ * builder uses it for method bodies, which are reachable only through their class. */
+PH7_PRIVATE sxi32 PH7_NewForeignFunction(ph7_vm *pVm,const SyString *pName,ProchHostFunction xFunc,
+	void *pUserData,ph7_user_func **ppOut);
 PH7_PRIVATE sxi32 PH7_VmInstallClass(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE sxi32 PH7_VmBlobConsumer(const void *pSrc,unsigned int nLen,void *pUserData);
 PH7_PRIVATE ph7_value * PH7_ReserveMemObj(ph7_vm *pVm);
@@ -3319,10 +3425,18 @@ PH7_PRIVATE sxi32 VmUncaughtException(ph7_vm *pVm, ph7_class_instance *pThis);
 /* vm_arg_check.c — builtin arity/signature enforcement, called from vm.c */
 PH7_PRIVATE void VmSetBuiltinArity(ph7_vm *pVm);
 PH7_PRIVATE void VmSetBuiltinSignatures(ph7_vm *pVm);
+/* Signature-string derivations, shared with the native-class builder: one
+ * PHP-style parameter list ("string $s, int $o = 0") is the single source of a
+ * callee's arity bounds and by-ref positions, for a builtin and a native method
+ * alike — which is how a native method gets the too-few/too-many ArgumentCountError
+ * that a prelude-declared method never had. */
+PH7_PRIVATE void VmDeriveArityFromSig(const char *zSig,sxi16 *pnMin,sxu8 *pbAtLeast,sxi16 *pnMax,sxu8 *pbHasMax);
+PH7_PRIVATE sxu32 VmDeriveByRefMaskFromSig(const char *zSig);
 PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(ph7_context *pCtx,ph7_user_func *pFunc,int nGiven,ph7_value **apArg);
 PH7_PRIVATE int PH7_ArgSatisfiesString(ph7_value *pArg);
 PH7_PRIVATE void VmDeprecatedAttrNotice(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_class *pDeclClass);
 /* vm_exec_ctx.c — Fiber/Generator/Closure engine shared with vm.c */
+PH7_PRIVATE sxi32 PH7_VmInstallClosureNative(ph7_vm *pVm);
 PH7_PRIVATE int vm_builtin_Closure_bindTo(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Fiber_construct(ph7_context *pCtx, int nArg, ph7_value **apArg);
@@ -3740,6 +3854,9 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmap(ph7_class_instance *pThis,ph7_hashm
 PH7_PRIVATE sxi32 PH7_ClassInstanceWalk(ph7_class_instance *pThis,
 	int (*xWalk)(const char *,ph7_value *,void *),void *pUserData);
 PH7_PRIVATE ph7_value * PH7_ClassInstanceFetchAttr(ph7_class_instance *pThis,const SyString *pName);
+PH7_PRIVATE ph7_class_instance * PH7_ContextThis(ph7_context *pCtx);
+PH7_PRIVATE ph7_class * PH7_ContextCalledClass(ph7_context *pCtx);
+PH7_PRIVATE ph7_value * PH7_ContextThisValue(ph7_context *pCtx);
 /* vfs.c */
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream,const char *zFile,

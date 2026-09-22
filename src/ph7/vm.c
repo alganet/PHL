@@ -223,7 +223,7 @@ PH7_PRIVATE sxi32 PH7_VmRegisterConstantEx(
  * Please refer to the official documentation for an introduction to
  * the foreign function mechanism.
  */
-static sxi32 PH7_NewForeignFunction(
+PH7_PRIVATE sxi32 PH7_NewForeignFunction(
 	ph7_vm *pVm,              /* Target VM */
 	const SyString *pName,    /* Foreign function name */
 	ProchHostFunction xFunc,  /* Foreign function implementation */
@@ -1316,7 +1316,34 @@ static sxi32 VmMountUserClassAttrs(
 					);
 				return SXERR_MEM;
 			}
-			if( SySetUsed(&pAttr->aByteCode) > 0 ){
+			if( pAttr->pNativeValue ){
+				/* A native class's literal initializer. There is no expression to
+				 * run: the C builder handed the value directly, so write it into the
+				 * slot the same way an evaluated literal byte-code would have. */
+				const PH7_NativeConstDef *pLit = (const PH7_NativeConstDef *)pAttr->pNativeValue;
+				switch( pLit->iType ){
+					case PH7_NATIVE_VAL_INT:
+						PH7_MemObjInitFromInt(&(*pVm),pMemObj,pLit->iValue);
+						break;
+					case PH7_NATIVE_VAL_BOOL:
+						PH7_MemObjInitFromBool(&(*pVm),pMemObj,(sxi32)pLit->iValue);
+						break;
+					case PH7_NATIVE_VAL_STRING: {
+						SyString sLit;
+						SyStringInitFromBuf(&sLit,pLit->zValue,SyStrlen(pLit->zValue));
+						PH7_MemObjInitFromString(&(*pVm),pMemObj,&sLit);
+						break;
+					}
+#ifndef PH7_OMIT_FLOATING_POINT
+					case PH7_NATIVE_VAL_DOUBLE:
+						PH7_MemObjInitFromReal(&(*pVm),pMemObj,pLit->rValue);
+						break;
+#endif
+					default:
+						PH7_MemObjInit(&(*pVm),pMemObj);
+						break;
+				}
+			}else if( SySetUsed(&pAttr->aByteCode) > 0 ){
 				/* Initialize attribute default value (any complex expression).
 				 * pConstEvalClass lets self::/parent:: in the initializer
 				 * resolve (VmLocalExec runs without a method frame). */
@@ -2056,9 +2083,9 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->pClosureClass = PH7_VmExtractClass(pVm,"Closure",7,0,0);
 	pVm->pClosureThis = 0; /* transient bound-$this slot, consumed per call */
 	pVm->pClosureScope = 0; /* transient bound-scope slot, consumed per call */
-	/* Closure::bind/bindTo/call/fromCallable native delegates (Increment 2) */
-	ph7_create_function(pVm,"__closure_bindTo",vm_builtin_Closure_bindTo,0);
-	ph7_create_function(pVm,"__closure_fromCallable",vm_builtin_Closure_fromCallable,0);
+	/* Closure::bindTo/bind/fromCallable, as real C-bodied METHODS rather than the
+	 * global __closure_* thunks a prelude method used to forward to. */
+	PH7_VmInstallClosureNative(&(*pVm));
 	/* Cache the stdClass pointer ((object) cast target + dynamic-property owner) */
 	pVm->pStdClass = PH7_VmExtractClass(pVm,"stdClass",sizeof("stdClass")-1,0,0);
 	/* Cache the Generator class pointer and register generator functions */
@@ -3034,6 +3061,13 @@ PH7_PRIVATE sxi32 VmInitCallContext(
 	pOut->iFlags = iFlags;
 	pOut->nThrowRc = 0; /* Set by PH7_VmThrowException, read back by VmHostFuncThrowRc */
 	pOut->pArgMap = 0; /* Set by the OP_CALL dispatcher for named-arg-aware builtins */
+	/* Native-method receiver: left empty here and filled in by the OP_CALL dispatcher
+	 * for a VM_FUNC_NATIVE callee only, so a plain host function always sees 0. The
+	 * sThis view stays uninitialized until PH7_ContextThisValue() asks for it —
+	 * bThisInit is the gate, and VmReleaseCallContext tears it down. */
+	pOut->pThis = 0;
+	pOut->pCalledClass = 0;
+	pOut->bThisInit = 0;
 	return SXRET_OK;
 }
 /*
@@ -3043,6 +3077,16 @@ PH7_PRIVATE sxi32 VmInitCallContext(
 PH7_PRIVATE void VmReleaseCallContext(ph7_context *pCtx)
 {
 	sxu32 n;
+	if( pCtx->bThisInit ){
+		/* The lazy $this view. It only ever aliases the receiver (MEMOBJ_OBJ pointing
+		 * at pThis without a refcount bump — see PH7_ContextThisValue), so releasing
+		 * it must NOT unref the instance: clear the object flag first and let
+		 * PH7_MemObjRelease free nothing but the (empty) blob. */
+		pCtx->sThis.iFlags = MEMOBJ_NULL;
+		pCtx->sThis.x.pOther = 0;
+		PH7_MemObjRelease(&pCtx->sThis);
+		pCtx->bThisInit = 0;
+	}
 	if( SySetUsed(&pCtx->sVar) > 0 ){
 		ph7_value **apObj = (ph7_value **)SySetBasePtr(&pCtx->sVar);
 		for( n = 0 ; n < SySetUsed(&pCtx->sVar) ; ++n ){
