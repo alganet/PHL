@@ -161,24 +161,15 @@ static sxi32 GenStateArrowScanInterpolatedString(
 			continue;
 		}
 		if( zIn[0] == '$' && &zIn[1] < zEnd
-			&& ((unsigned char)zIn[1] >= 0xc0
+			&& ((unsigned char)zIn[1] >= 0x80
 				|| SyisAlpha(zIn[1]) || zIn[1] == '_') ){
+			/* php's label bytes, the flat set (LEX_LABEL_START in lex.c). */
 			const char *zName;
 			zIn++; /* skip '$' */
 			zName = zIn;
-			while( zIn < zEnd ){
-				unsigned char c = (unsigned char)zIn[0];
-				if( c >= 0xc0 ){
-					zIn++;
-					while( zIn < zEnd
-						&& (((unsigned char)zIn[0] & 0xc0) == 0x80) ){
-						zIn++;
-					}
-					continue;
-				}
-				if( !SyisAlphaNum(zIn[0]) && zIn[0] != '_' ){
-					break;
-				}
+			while( zIn < zEnd
+				&& ((unsigned char)zIn[0] >= 0x80
+					|| SyisAlphaNum(zIn[0]) || zIn[0] == '_') ){
 				zIn++;
 			}
 			if( zIn > zName ){

@@ -660,36 +660,24 @@ static sxu32 GenStateStringEscLine(ph7_gen_state *pGen,const char *zPos,int bHer
 	return nLine;
 }
 /*
- * TRUE when c can OPEN a php label — the byte class the engine's own identifier
- * scanner uses (lex.c): a letter, '_', or a UTF-8 lead byte. php's own class is
- * [a-zA-Z_\x80-\xff], one byte wider; a 0x80-0xbf lead is never
- * valid UTF-8, so the two agree on every well-formed source.
+ * TRUE when c can OPEN a php label — the same byte class the engine's identifier
+ * scanner uses (LEX_LABEL_START in lex.c): [a-zA-Z_\x80-\xff].
  */
 #define GEN_STRING_LABEL_START(c) \
-	( (unsigned char)(c) >= 0xc0 || SyisAlpha(c) || (c) == '_' )
+	( (unsigned char)(c) >= 0x80 || SyisAlpha(c) || (c) == '_' )
 /*
  * Advance *pz over a php LABEL — the name half of "$name" and of the "->name"
  * accessor inside a double-quoted string or a heredoc body. php's label is
- * [a-zA-Z_\x80-\xff][a-zA-Z0-9_\x80-\xff]*; PHL keeps the historical UTF-8
- * handling (a >= 0xc0 lead byte plus its continuation bytes) so a multibyte
- * name is consumed whole. Stops at *pz when the cursor is not on a label byte.
+ * [a-zA-Z_\x80-\xff][a-zA-Z0-9_\x80-\xff]*, a flat byte set: a multibyte name
+ * is consumed because every byte of it is >= 0x80, no UTF-8 decoding involved.
+ * Stops at *pz when the cursor is not on a label byte.
  */
 static void GenStateSkipStringLabel(const char **pz,const char *zEnd)
 {
 	const char *zIn = *pz;
-	for(;;){
-		while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && (SyisAlphaNum(zIn[0]) || zIn[0] == '_' ) ){
-			zIn++;
-		}
-		if( zIn < zEnd && (unsigned char)zIn[0] >= 0xc0 ){
-			/* UTF-8 stream */
-			zIn++;
-			while( zIn < zEnd && (((unsigned char)zIn[0] & 0xc0) == 0x80) ){
-				zIn++;
-			}
-			continue;
-		}
-		break;
+	while( zIn < zEnd
+		&& ((unsigned char)zIn[0] >= 0x80 || SyisAlphaNum(zIn[0]) || zIn[0] == '_') ){
+		zIn++;
 	}
 	*pz = zIn;
 }
@@ -976,7 +964,7 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)
 			if( zIn[0] == '{' && &zIn[1] < zEnd && zIn[1] == '$' ){
 				break;
 			}else if(zIn[0] == '$' && &zIn[1] < zEnd &&
-				(((unsigned char)zIn[1] >= 0xc0 || SyisAlpha(zIn[1]) || zIn[1] == '{' || zIn[1] == '_')) ){
+				(GEN_STRING_LABEL_START(zIn[1]) || zIn[1] == '{') ){
 					break;
 			}
 			zIn++;

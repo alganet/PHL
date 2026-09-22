@@ -8,6 +8,24 @@
  * This file implement an efficient hand-coded,thread-safe and full-reentrant
  * lexical analyzer/Tokenizer for the PH7 engine.
  */
+/*
+ * php's LABEL byte class, the one rule behind every identifier the engine reads —
+ * a variable name, a function/class name, a keyword, a constant, and the name half
+ * of "$name" inside a double-quoted string (compile_literal.c mirrors it):
+ *
+ *     label       [a-zA-Z_\x80-\xff][a-zA-Z0-9_\x80-\xff]*
+ *
+ * Every byte >= 0x80 is a label byte, which is what makes a UTF-8 name work without
+ * decoding it. PH7's scanners required a UTF-8 LEAD byte (>= 0xc0) and then walked
+ * the continuation bytes, so the 0x80-0xbf half of php's class was missing: `$\x80ab`
+ * was a PHL parse error where php accepts it, and `"$\x80ab"` printed as literal text
+ * where php read the variable. Malformed-source-only (0x80-0xbf never LEADS a valid
+ * UTF-8 sequence), but it is the same class php applies everywhere.
+ */
+#define LEX_LABEL_START(c) \
+	( (unsigned char)(c) >= 0x80 || SyisAlpha(c) || (c) == '_' )
+#define LEX_LABEL_BYTE(c) \
+	( (unsigned char)(c) >= 0x80 || SyisAlphaNum(c) || (c) == '_' )
 /* Forward declaration */
 static sxu32 KeywordCode(const char *z, int n);
 static sxu32 KeywordCodeCI(const char *zRaw, int n);
@@ -39,40 +57,19 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 	pToken->pUserData = 0;
 	pStr = &pToken->sData;
 	SyStringInitFromBuf(pStr,pStream->zText,0);
-	if( pStream->zText[0] >= 0xc0 || SyisAlpha(pStream->zText[0]) || pStream->zText[0] == '_' ){
-		/* The following code fragment is taken verbatim from the xPP source tree.
-		 * xPP is a modern embeddable macro processor with advanced features useful for
-		 * application seeking for a production quality,ready to use macro processor.
-		 * xPP is a widely used library developed and maintened by Symisc Systems.
-		 * You can reach the xPP home page by following this link:
-		 * http://xpp.symisc.net/
-		 */
+	if( LEX_LABEL_START(pStream->zText[0]) ){
 		const unsigned char *zIn;
 		sxu32 nKeyword;
-		/* Isolate UTF-8 or alphanumeric stream */
-		if( pStream->zText[0] < 0xc0 ){
-			pStream->zText++;
+		/* Isolate the LABEL. php's class is a flat byte set — [a-zA-Z_\x80-\xff] then
+		 * [a-zA-Z0-9_\x80-\xff]* — so no UTF-8 decoding is involved: a multibyte name
+		 * is consumed because every one of its bytes is >= 0x80. (This replaces the
+		 * xPP lead-byte-plus-continuations dance, which required a lead >= 0xc0 and so
+		 * stopped one byte class short of php's own rule; see LEX_LABEL_START.) */
+		zIn = &pStream->zText[1];
+		while( zIn < pStream->zEnd && LEX_LABEL_BYTE(zIn[0]) ){
+			zIn++;
 		}
-		for(;;){
-			zIn = pStream->zText;
-			if( zIn[0] >= 0xc0 ){
-				zIn++;
-				/* UTF-8 stream */
-				while( zIn < pStream->zEnd && ((zIn[0] & 0xc0) == 0x80) ){
-					zIn++;
-				}
-			}
-			/* Skip alphanumeric stream */
-			while( zIn < pStream->zEnd && zIn[0] < 0xc0 && (SyisAlphaNum(zIn[0]) || zIn[0] == '_') ){
-				zIn++;
-			}
-			if( zIn == pStream->zText ){
-				/* Not an UTF-8 or alphanumeric stream */
-				break;
-			}
-			/* Synchronize pointers */
-			pStream->zText = zIn;
-		}
+		pStream->zText = zIn;
 		/* Record token length */
 		pStr->nByte = (sxu32)((const char *)pStream->zText-pStr->zString);
 		nKeyword = KeywordCodeCI(pStr->zString,(int)pStr->nByte);
@@ -1081,32 +1078,17 @@ static sxi32 LexExtractHeredoc(SyStream *pStream,SyToken *pToken)
 		bNowDoc =  zIn[0] == '\'' ? TRUE : FALSE;
 		zIn++;
 	}
-	if( zIn[0] < 0xc0 && !SyisAlphaNum(zIn[0]) && zIn[0] != '_' ){
+	if( !LEX_LABEL_BYTE(zIn[0]) ){
 		/* Invalid delimiter,return immediately */
 		return SXERR_CONTINUE;
 	}
-	/* Isolate the identifier */
+	/* Isolate the identifier (php's label bytes; see LEX_LABEL_START) */
 	sDelim.zString = (const char *)zIn;
-	for(;;){
-		zPtr = zIn;
-		/* Skip alphanumeric stream */
-		while( zPtr < zEnd && zPtr[0] < 0xc0 && (SyisAlphaNum(zPtr[0]) || zPtr[0] == '_') ){
-			zPtr++;
-		}
-		if( zPtr < zEnd && zPtr[0] >= 0xc0 ){
-			zPtr++;
-			/* UTF-8 stream */
-			while( zPtr < zEnd && ((zPtr[0] & 0xc0) == 0x80) ){
-				zPtr++;
-			}
-		}
-		if( zPtr == zIn ){
-			/* Not an UTF-8 or alphanumeric stream */
-			break;
-		}
-		/* Synchronize pointers */
-		zIn = zPtr;
+	zPtr = zIn;
+	while( zPtr < zEnd && LEX_LABEL_BYTE(zPtr[0]) ){
+		zPtr++;
 	}
+	zIn = zPtr;
 	/* Get the identifier length */
 	sDelim.nByte = (sxu32)((const char *)zIn-sDelim.zString);
 	if( zIn[0] == '"' || (bNowDoc && zIn[0] == '\'') ){
@@ -1142,16 +1124,9 @@ static sxi32 LexExtractHeredoc(SyStream *pStream,SyToken *pToken)
 				&& SyMemcmp((const void *)sDelim.zString,(const void *)zIn,sDelim.nByte) == 0 ){
 				int bIdentCont;
 				zPtr = &zIn[sDelim.nByte];
-				/* Disambiguate: next byte must not continue an identifier.
-				 * A leading byte >= 0xc0 starts a multi-byte UTF-8 sequence,
-				 * which PHP identifiers may contain, so treat it as ident. */
-				if( zPtr >= zEnd ){
-					bIdentCont = 0;
-				}else if( zPtr[0] >= 0xc0 ){
-					bIdentCont = 1;
-				}else{
-					bIdentCont = (SyisAlphaNum(zPtr[0]) || zPtr[0] == '_');
-				}
+				/* Disambiguate: the next byte must not continue an identifier
+				 * (php's label bytes; see LEX_LABEL_START). */
+				bIdentCont = zPtr < zEnd && LEX_LABEL_BYTE(zPtr[0]);
 				if( !bIdentCont ){
 					/* Closing marker found */
 					nIndent = (sxu32)(zIn - zLineStart);
@@ -1406,16 +1381,8 @@ PH7_PRIVATE sxi32 PH7_TokenizeRawText(const char *zInput,sxu32 nLen,SySet *pOut,
 						zIn++;
 					}
 					zPtr = zIn;
-					while( zIn < zEnd ){
-						if( (unsigned char)zIn[0] >= 0xc0 ){
-							/* UTF-8 stream */
-							zIn++;
-							SX_JMP_UTF8(zIn,zEnd);
-						}else if( !SyisAlphaNum(zIn[0]) && zIn[0] != '_' ){
-							break;
-						}else{
-							zIn++;
-						}
+					while( zIn < zEnd && LEX_LABEL_BYTE(zIn[0]) ){
+						zIn++;
 					}
 					if( (sxu32)(zIn - zPtr) == sDoc.nByte && SyMemcmp(sDoc.zString,zPtr,sDoc.nByte) == 0 ){
 						iNest = 0;
@@ -1431,16 +1398,8 @@ PH7_PRIVATE sxi32 PH7_TokenizeRawText(const char *zInput,sxu32 nLen,SySet *pOut,
 					zIn++;
 				}
 				zPtr = zIn;
-				while( zIn < zEnd ){
-					if( (unsigned char)zIn[0] >= 0xc0 ){
-						/* UTF-8 stream */
-						zIn++;
-						SX_JMP_UTF8(zIn,zEnd);
-					}else if( !SyisAlphaNum(zIn[0]) && zIn[0] != '_' ){
-						break;
-					}else{
-						zIn++;
-					}
+				while( zIn < zEnd && LEX_LABEL_BYTE(zIn[0]) ){
+					zIn++;
 				}
 				SyStringInitFromBuf(&sDoc,zPtr,zIn-zPtr);
 				SyStringFullTrim(&sDoc);
