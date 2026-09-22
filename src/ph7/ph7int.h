@@ -1723,6 +1723,18 @@ struct ph7_vm
 	int nExcCtorDepth;         /* Engine-raised throws whose exception __construct is running
 	                            * (VmExcCtorEnter): caps the self-feeding case where building
 	                            * an exception throws again. */
+	sxu32 nLazyInitLine;       /* While a LAZY class initializer runs (a static property's
+	                            * deferred default, a class constant's on-demand evaluation):
+	                            * the line of the ACCESS that triggered it. A Throwable born
+	                            * in the initializer's OWN bytecode is stamped with THIS line
+	                            * rather than the initializer's, because that is where php
+	                            * evaluates the expression. 0 = not in one, or the access site
+	                            * was internal (prelude) code whose line means nothing in the
+	                            * file the stamp names. See PH7_VmStampThrowableSite. */
+	sxi32 nLazyInitDepth;      /* nVmExecDepth of that initializer's own activation. The
+	                            * override applies at THIS depth only: anything the
+	                            * initializer manages to call — an autoloader, a nested
+	                            * constant's evaluation — runs its own lines and keeps them. */
 	int nMuteThrow;            /* > 0 while an initializer runs MUTED (VmEvalDefaultMuted): an
 	                            * uncaught throw runs no exception handler, prints no report and
 	                            * leaves iExitStatus alone, because php has not reached that code

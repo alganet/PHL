@@ -838,6 +838,23 @@ PH7_PRIVATE ph7_class * VmExtractEnumClass(ph7_vm *pVm,ph7_value *pName)
 	return pClass;
 }
 /*
+ * The line a LAZY class initializer about to run should report a throw at: the
+ * line of the access that triggered it. Answers 0 — meaning "keep the
+ * initializer's own line" — when the access site is INTERNAL code (a prelude
+ * chunk, e.g. ReflectionClass::getConstants() calling the materializer): its
+ * line numbers belong to an embedded source that PH7_VmStampThrowableSite will
+ * not name, so reporting one would pair a foreign line with the user's file.
+ */
+static sxu32 VmLazyInitLineHere(ph7_vm *pVm)
+{
+	VmFrame *pInner = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
+	if( pInner && pInner->pUserData
+	 && ((ph7_vm_func *)pInner->pUserData)->sFile.nByte == 0 ){
+		return 0;
+	}
+	return pVm->nCurLine;
+}
+/*
  * Hand a reserved memory-object slot back to the free list. Takes the INDEX,
  * not the pointer: aMemObj is a by-value SySet, so any nested evaluation (an
  * initializer, or the constructor of the very TypeError being raised) can grow
@@ -899,6 +916,8 @@ PH7_PRIVATE sxi32 VmClassConstEvalOnDemand(ph7_vm *pVm,ph7_class *pClass,ph7_cla
 		ph7_class *pSaveCtx = pVm->pConstEvalClass;
 		void *pSaveFrame = pVm->pConstEvalFrame;
 		ph7_class_attr *pSaveCycle = pVm->pConstCycleAttr;
+		sxu32 nSaveLazyLine;
+		sxi32 nSaveLazyDepth;
 		sxu32 nSlot;
 		sxi32 rcExec;
 		pAttr->iFlags |= PH7_CLASS_ATTR_EVALING;
@@ -907,9 +926,17 @@ PH7_PRIVATE sxi32 VmClassConstEvalOnDemand(ph7_vm *pVm,ph7_class *pClass,ph7_cla
 		 * parent:: in the initializer resolve to pConstEvalClass rather than the
 		 * enclosing method's class (VmLocalExec pushes no frame of its own). */
 		pVm->pConstEvalFrame = (void *)VmSkipExceptionFrames(pVm->pFrame);
+		/* php evaluates this expression HERE, at the access, so that is the line a
+		 * throw out of its own bytecode carries. */
+		nSaveLazyLine = pVm->nLazyInitLine;
+		nSaveLazyDepth = pVm->nLazyInitDepth;
+		pVm->nLazyInitLine = VmLazyInitLineHere(&(*pVm));
+		pVm->nLazyInitDepth = pVm->nVmExecDepth + 1; /* the activation VmLocalExec is about to push */
 		pVm->nConstEvalDepth++;
 		rcExec = VmLocalExecIntoObj(&(*pVm),&pAttr->aByteCode,&pMemObj,FALSE);
 		pVm->nConstEvalDepth--;
+		pVm->nLazyInitLine = nSaveLazyLine;
+		pVm->nLazyInitDepth = nSaveLazyDepth;
 		pVm->pConstEvalClass = pSaveCtx;
 		pVm->pConstEvalFrame = pSaveFrame;
 		pAttr->iFlags &= ~PH7_CLASS_ATTR_EVALING;
@@ -2465,6 +2492,8 @@ static sxi32 VmEvalDeferredStaticDefaults(ph7_vm *pVm,ph7_class *pClass,int *pbL
 		ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
 		ph7_class *pSaveCtx;
 		void *pSaveFrame;
+		sxu32 nSaveLazyLine;
+		sxi32 nSaveLazyDepth;
 		ph7_value *pMemObj;
 		sxi32 rcExec;
 		if( (pAttr->iFlags & PH7_CLASS_ATTR_STATIC_DEFER) == 0 ){
@@ -2483,10 +2512,18 @@ static sxi32 VmEvalDeferredStaticDefaults(ph7_vm *pVm,ph7_class *pClass,int *pbL
 		 * DECLARING class rather than that method's, exactly as the class-constant
 		 * on-demand path does (VmLocalExec pushes no frame of its own). */
 		pVm->pConstEvalFrame = (void *)VmSkipExceptionFrames(pVm->pFrame);
+		/* The initializer runs HERE, at the access: that is the line php reports
+		 * for a throw out of its own bytecode (see PH7_VmStampThrowableSite). */
+		nSaveLazyLine = pVm->nLazyInitLine;
+		nSaveLazyDepth = pVm->nLazyInitDepth;
+		pVm->nLazyInitLine = VmLazyInitLineHere(&(*pVm));
+		pVm->nLazyInitDepth = pVm->nVmExecDepth + 1; /* the activation VmLocalExec is about to push */
 		pAttr->iFlags |= PH7_CLASS_ATTR_EVALING; /* cycle guard, as at mount */
 		pVm->nConstEvalDepth++;
 		rcExec = VmLocalExecIntoObj(&(*pVm),&pAttr->aByteCode,&pMemObj,FALSE);
 		pVm->nConstEvalDepth--;
+		pVm->nLazyInitLine = nSaveLazyLine;
+		pVm->nLazyInitDepth = nSaveLazyDepth;
 		pAttr->iFlags &= ~PH7_CLASS_ATTR_EVALING;
 		pVm->pConstEvalClass = pSaveCtx;
 		pVm->pConstEvalFrame = pSaveFrame;
@@ -3897,8 +3934,19 @@ PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis)
 				PH7_MemObjInitFromString(&(*pVm),pAttrValue,pSiteFile);
 			}
 		}else if( n == 1 ){
+			/* nLazyInitLine wins while a lazily-evaluated class initializer runs its
+			 * OWN bytecode: php evaluates that expression AT THE ACCESS, so
+			 * `class C { public static $s = UNDEF; } ... C::$s;` reports the
+			 * access's line, not the declaration's. The depth test keeps the window
+			 * off everything the initializer calls — an autoloader, a nested
+			 * constant's evaluation — which report their own lines in both engines.
+			 * (Enum cases never set it: php reports the CASE's own line there, and
+			 * PHL already matches.) */
+			sxu32 nLine = (pVm->nLazyInitLine && pVm->nVmExecDepth == pVm->nLazyInitDepth)
+				? pVm->nLazyInitLine
+				: (pVm->nCurLine ? pVm->nCurLine : 1);
 			PH7_MemObjRelease(pAttrValue);
-			PH7_MemObjInitFromInt(&(*pVm),pAttrValue,(sxi64)(pVm->nCurLine ? pVm->nCurLine : 1));
+			PH7_MemObjInitFromInt(&(*pVm),pAttrValue,(sxi64)nLine);
 		}else{
 			/* trace: php captures the FULL backtrace at the CREATION site (innermost
 			 * = the function that ran `new`, reported at its call site). Reuse the
