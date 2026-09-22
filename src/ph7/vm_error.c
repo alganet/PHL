@@ -942,16 +942,19 @@ static sxi32 VmThrowPropertyTypeError(ph7_vm *pVm,VmClassAttr *pVmAttr,const cha
 {
 	ph7_class_attr *pAttr = pVmAttr->pAttr;
 	ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pVmAttr->pOwner;
+	char zType[192];
+	const char *zTypeText = VmHintTextResolved(pVm,&pAttr->sTypeName,
+		VmHintScopeClass(pVm,pAttr->pDeclClass,pVmAttr->pOwner),zType,sizeof(zType));
 	SyBlob sMsg;
 	SyBlobInit(&sMsg,&pVm->sAllocator);
 	/* Prefer the declaring class over the runtime instance class so that an
 	 * inherited typed property reports its original owner, matching PHP. */
 	if( pOwner ){
-		SyBlobFormat(&sMsg,"Cannot assign %s to property %z::$%z of type %z",
-			zGiven,&pOwner->sName,&pAttr->sName,&pAttr->sTypeName);
+		SyBlobFormat(&sMsg,"Cannot assign %s to property %z::$%z of type %s",
+			zGiven,&pOwner->sName,&pAttr->sName,zTypeText);
 	}else{
-		SyBlobFormat(&sMsg,"Cannot assign %s to property $%z of type %z",
-			zGiven,&pAttr->sName,&pAttr->sTypeName);
+		SyBlobFormat(&sMsg,"Cannot assign %s to property $%z of type %s",
+			zGiven,&pAttr->sName,zTypeText);
 	}
 	return VmThrowBuiltinError(pVm,"TypeError",sizeof("TypeError")-1,&sMsg);
 }
@@ -1286,6 +1289,69 @@ PH7_PRIVATE int VmClassHintMatches(ph7_vm *pVm,const SyString *pName,ph7_class *
 		return VmHintIsScopeKeyword(pName);
 	}
 	return PH7_VmInstanceOf(((ph7_class_instance *)pVal->x.pOther)->pClass,pExpected);
+}
+/* A character that can be part of a type NAME, as opposed to the punctuation
+ * that separates the parts of a declared type (`?A`, `A|B`, `(A&B)|null`). */
+static int VmHintNameChar(int c)
+{
+	return !(c == '|' || c == '&' || c == '?' || c == '(' || c == ')'
+		|| c == ' ' || c == '\t');
+}
+/*
+ * Render a DECLARED type text for a message with the scope keywords RESOLVED,
+ * the way php prints it: `of type self` reads `of type P`, `self|false` reads
+ * `P|false`, `?static` reads `?Q`. The declared text is what the compiler
+ * canonicalised (php's own member order, `?T` shorthand and all), so rewriting
+ * it name-by-name keeps that shape — only the three names that cannot be
+ * resolved until the call site are substituted.
+ *
+ * A single CLASS hint has its own builder, VmClassHintTypeName, which resolves
+ * from the ph7_class* the check already produced; this one is for the texts that
+ * are only ever available as source: unions/intersections, and the property /
+ * class-constant messages, which print the declared type whatever its shape.
+ * An unresolvable keyword is left as written (there is no class to name).
+ */
+PH7_PRIVATE const char *VmHintTextResolved(ph7_vm *pVm,const SyString *pDeclared,ph7_class *pScope,
+	char *zBuf,sxu32 nBuf)
+{
+	const char *z;
+	sxu32 n, i = 0, nAt = 0;
+	if( nBuf == 0 ){
+		return "";
+	}
+	z = pDeclared ? pDeclared->zString : 0;
+	n = z ? pDeclared->nByte : 0;
+	while( i < n && nAt + 1 < nBuf ){
+		sxu32 nStart, nCopy;
+		SyString sTok;
+		const SyString *pOut;
+		if( !VmHintNameChar(z[i]) ){
+			zBuf[nAt++] = z[i++];
+			continue;
+		}
+		nStart = i;
+		while( i < n && VmHintNameChar(z[i]) ){
+			i++;
+		}
+		SyStringInitFromBuf(&sTok,&z[nStart],i - nStart);
+		pOut = &sTok;
+		if( VmHintIsScopeKeyword(&sTok) ){
+			ph7_class *pRes = VmResolveTypeClass(pVm,&sTok,pScope);
+			if( pRes ){
+				pOut = &pRes->sName;
+			}
+		}
+		nCopy = pOut->nByte;
+		if( nCopy > nBuf - nAt - 1 ){
+			nCopy = nBuf - nAt - 1;
+		}
+		if( nCopy > 0 ){
+			SyMemcpy(pOut->zString,&zBuf[nAt],nCopy);
+			nAt += nCopy;
+		}
+	}
+	zBuf[nAt] = 0;
+	return zBuf;
 }
 /*
  * PHL's number model flags a whole-valued real MEMOBJ_REAL|MEMOBJ_INT (the
@@ -1936,8 +2002,10 @@ PH7_PRIVATE sxi32 VmCloneApplyUpdate(ph7_vm *pVm,ph7_class_instance *pClone,
 static sxi32 VmConstantTypeError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue)
 {
 	ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
-	char zBuf[128];
+	char zBuf[128],zType[192];
 	const char *zGiven;
+	const char *zTypeText = VmHintTextResolved(pVm,&pAttr->sTypeName,
+		VmHintScopeClass(pVm,pAttr->pDeclClass,pClass),zType,sizeof(zType));
 	if( pValue->iFlags & MEMOBJ_OBJ ){
 		zGiven = VmFormatValueClassName(pValue,zBuf,sizeof(zBuf));
 	}else{
@@ -1952,12 +2020,12 @@ static sxi32 VmConstantTypeError(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *p
 	 * so the fatal is still reported rather than the program halting silently. */
 	if( pVm->sCodeGen.xErr ){
 		PH7_GenCompileError(&pVm->sCodeGen,E_ERROR,pAttr->nLine,
-			"Cannot use %s as value for class constant %z::%z of type %z",
-			zGiven,&pOwner->sName,&pAttr->sName,&pAttr->sTypeName);
+			"Cannot use %s as value for class constant %z::%z of type %s",
+			zGiven,&pOwner->sName,&pAttr->sName,zTypeText);
 	}else{
 		VmErrorFormat(&(*pVm),PH7_CTX_ERR,
-			"Cannot use %s as value for class constant %z::%z of type %z",
-			zGiven,&pOwner->sName,&pAttr->sName,&pAttr->sTypeName);
+			"Cannot use %s as value for class constant %z::%z of type %s",
+			zGiven,&pOwner->sName,&pAttr->sName,zTypeText);
 	}
 	pVm->iExitStatus = 255;
 	pVm->bHaltRequested = 1;
@@ -2059,7 +2127,9 @@ static sxi32 VmDefaultPropertyTypeError(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 {
 	ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
 	const char *zGiven;
-	char zBuf[128];
+	char zBuf[128],zType[192];
+	const char *zTypeText = VmHintTextResolved(pVm,&pAttr->sTypeName,
+		VmHintScopeClass(pVm,pAttr->pDeclClass,pClass),zType,sizeof(zType));
 	SyBlob sMsg;
 	if( pValue->iFlags & MEMOBJ_OBJ ){
 		zGiven = VmFormatValueClassName(pValue,zBuf,sizeof(zBuf));
@@ -2067,8 +2137,8 @@ static sxi32 VmDefaultPropertyTypeError(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 		zGiven = ph7_type_name(pValue);
 	}
 	SyBlobInit(&sMsg,&pVm->sAllocator);
-	SyBlobFormat(&sMsg,"Cannot assign %s to property %z::$%z of type %z",
-		zGiven,&pOwner->sName,&pAttr->sName,&pAttr->sTypeName);
+	SyBlobFormat(&sMsg,"Cannot assign %s to property %z::$%z of type %s",
+		zGiven,&pOwner->sName,&pAttr->sName,zTypeText);
 	return VmThrowBuiltinError(pVm,"TypeError",sizeof("TypeError")-1,&sMsg);
 }
 /*
@@ -2331,7 +2401,8 @@ PH7_PRIVATE sxi32 VmVariadicElementTypeCheck(ph7_vm *pVm,ph7_class *pSelfHint,ph
 				zGiven = VmValueGivenName(pVal,zBuf,sizeof(zBuf));
 			}
 			if( SyStringLength(&pFormal->sTypeName) > 0 ){
-				zExpected = VmSyStringToCStr(&pFormal->sTypeName, zTypeBuf, sizeof(zTypeBuf));
+				zExpected = VmHintTextResolved(&(*pVm),&pFormal->sTypeName,pSelfHint,
+					zTypeBuf,sizeof(zTypeBuf));
 			}
 			rc = VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pCallee,nArgPos,0,zExpected,zGiven);
 			return (rc == PH7_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
@@ -2681,26 +2752,6 @@ PH7_PRIVATE sxi32 VmThrowSpreadError(ph7_vm *pVm,ph7_value *pBad)
  * violation, throws TypeError and returns PH7_EXCEPTION.
  */
 /*
- * Bounded-copy *pStr* into *zBuf* (NUL-terminated, max nBuf-1 bytes). The
- * caller's buffer is then safe to pass through "%s" formatters. An empty or
- * null SyString yields an empty C string. Returns zBuf.
- */
-PH7_PRIVATE const char *VmSyStringToCStr(const SyString *pStr, char *zBuf, sxu32 nBuf)
-{
-	sxu32 nCopy;
-	if( nBuf == 0 ) return "";
-	if( pStr == 0 || pStr->zString == 0 ){
-		zBuf[0] = 0;
-		return zBuf;
-	}
-	nCopy = SyStringLength(pStr);
-	if( nCopy >= nBuf ) nCopy = nBuf - 1;
-	if( nCopy > 0 ) SyMemcpy(pStr->zString, zBuf, nCopy);
-	zBuf[nCopy] = 0;
-	return zBuf;
-}
-
-/*
  * TRUE if a function declares a return type that must be enforced — a single
  * type (nReturnType) OR a union/intersection (aReturnUnion, where nReturnType is
  * left 0). The return-enforcement gates must consult both, not just the single
@@ -2745,7 +2796,8 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 	if( pValue == 0 ){
 		const char *zExpected = "value";
 		if( SyStringLength(&pFunc->sReturnTypeName) > 0 ){
-			zExpected = VmSyStringToCStr(&pFunc->sReturnTypeName, zTypeBuf, sizeof(zTypeBuf));
+			zExpected = VmHintTextResolved(pVm,&pFunc->sReturnTypeName,
+				VmHintScopeClass(pVm,PH7_VmPeekDeclaringClass(pVm),0),zTypeBuf,sizeof(zTypeBuf));
 		}
 		return VmThrowTypeErrorForReturn(pVm,pFunc,zExpected,"null");
 	}
@@ -2806,7 +2858,8 @@ PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value
 			zGiven = VmValueGivenName(pValue,zBuf,sizeof(zBuf));
 		}
 		if( SyStringLength(&pFunc->sReturnTypeName) > 0 ){
-			zExpected = VmSyStringToCStr(&pFunc->sReturnTypeName, zTypeBuf, sizeof(zTypeBuf));
+			zExpected = VmHintTextResolved(pVm,&pFunc->sReturnTypeName,pHintScope,
+				zTypeBuf,sizeof(zTypeBuf));
 		}
 		return VmThrowTypeErrorForReturn(pVm,pFunc,zExpected,zGiven);
 	}

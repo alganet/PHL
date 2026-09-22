@@ -1307,7 +1307,8 @@ PH7_PRIVATE sxi32 VmEnforceArgType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_vm_func_
 				zGiven = VmValueGivenName(pVal,zBuf,sizeof(zBuf));
 			}
 			if( SyStringLength(&pFormal->sTypeName) > 0 ){
-				zExpected = VmSyStringToCStr(&pFormal->sTypeName,zTypeBuf,sizeof(zTypeBuf));
+				zExpected = VmHintTextResolved(pVm,&pFormal->sTypeName,pSelfHint,
+					zTypeBuf,sizeof(zTypeBuf));
 			}
 			return VmGenArgThrowStatus(pVm,VmThrowTypeErrorForArg(&(*pVm),pSelfHint,pFunc,(int)nArgPos,
 				&pFormal->sName,zExpected,zGiven));

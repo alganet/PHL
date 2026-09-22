@@ -32,13 +32,6 @@ class UsesT { use T; }
 $show = function (callable $fn) {
     try { $fn(); echo "ok\n"; } catch (TypeError $e) { echo $e->getMessage(), "\n"; }
 };
-// A property message ends with ` of type <declared text>`; that tail is a separate
-// gap (PHL prints the hint AS WRITTEN, php prints it resolved), so pin the part
-// this test is about — which value was rejected for which property.
-$reject = function (callable $fn) {
-    try { $fn(); echo "ok\n"; }
-    catch (TypeError $e) { echo strstr($e->getMessage(), ' of type ', true), "\n"; }
-};
 
 // Reached through a SUBCLASS instance, a hint written in P still means P.
 $q = new Q;
@@ -51,8 +44,8 @@ $show(fn() => $q->setPar(new Base));
 
 // The check is still a real check: an unrelated class is rejected either way.
 $show(fn() => $q->bad());
-$reject(fn() => $q->setProp(new Oth));
-$reject(fn() => $q->setUnion(new Oth));
+$show(fn() => $q->setProp(new Oth));
+$show(fn() => $q->setUnion(new Oth));
 
 // A trait's `self` is the USING class (php flattens the trait in).
 $u = new UsesT;
@@ -69,8 +62,8 @@ ok
 ok
 ok
 P::bad(): Return value must be of type P, Oth returned
-Cannot assign Oth to property P::$prop
-Cannot assign Oth to property P::$uprop
+Cannot assign Oth to property P::$prop of type P
+Cannot assign Oth to property P::$uprop of type P|false
 string(5) "UsesT"
 ok
 --CLEAN--
