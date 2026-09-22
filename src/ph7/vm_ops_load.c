@@ -1016,6 +1016,24 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 	}
 	if( pTos->iFlags & MEMOBJ_STRING ){
 		/* String access */
+		if( iP2 == VM_IDX_CTX_UNSET ){
+			/* php: a string offset cannot be unset AT ALL — `unset($s[0])` is the
+			 * catchable `Error: Cannot unset string offsets`, whatever the offset is
+			 * and whether or not it is in range. PHL read the character but left the
+			 * BASE VARIABLE's slot index on the result, so the trailing unset()
+			 * builtin freed the base itself: `$s = "abc"; unset($s[1]);` left $s
+			 * UNDEFINED, and `unset($a["k"][0])` deleted the whole element. */
+			rc = VmThrowFromVm(&(*pVm),"Error","Cannot unset string offsets",
+				sizeof("Cannot unset string offsets")-1);
+			if( pIdx ){
+				PH7_MemObjRelease(pIdx);
+			}
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			if( rc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
 		if( pIdx ){
 			sxi64 iOfft = 0, iRaw;
 			sxi64 nLen = (sxi64)SyBlobLength(&pTos->sBlob);
@@ -1268,10 +1286,14 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				 * rejects it like any other scalar base (null still auto-vivifies —
 				 * it is not a bool). */
 				if( (pObj->iFlags & (MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_RES|MEMOBJ_BOOL)) != 0 ){
+					/* unset() has its own wording for the same base: php's
+					 * "Cannot unset offset in a non-array variable". */
+					const char *zErr = (iP2 == VM_IDX_CTX_UNSET)
+						? "Cannot unset offset in a non-array variable"
+						: "Cannot use a scalar value as an array";
 					SyBlob sErrMsg;
 					SyBlobInit(&sErrMsg,&pVm->sAllocator);
-					SyBlobAppend(&sErrMsg,"Cannot use a scalar value as an array",
-						sizeof("Cannot use a scalar value as an array")-1);
+					SyBlobAppend(&sErrMsg,zErr,(sxu32)SyStrlen(zErr));
 					VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 					if( pIdx ){
 						PH7_MemObjRelease(pIdx);
@@ -1280,8 +1302,16 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 					pTos->nIdx = SXU32_HIGH;
 					VM_EXIT_BREAK;
 				}
-				PH7_MemObjToHashmap(pObj);
-				PH7_MemObjLoad(pObj,pTos);
+				/* unset() CREATES NOTHING: a null/undefined base stays null where PHL
+				 * converted it to an empty array (`$n = null; unset($n[0]);` left
+				 * $n === []), which is also what materialised the missing intermediate
+				 * in `unset($a["y"]["z"])`. Leaving the base alone, the lookup below
+				 * misses, the tail loads NULL with no slot index, and the trailing
+				 * unset() builtin is the no-op php's is. */
+				if( iP2 != VM_IDX_CTX_UNSET ){
+					PH7_MemObjToHashmap(pObj);
+					PH7_MemObjLoad(pObj,pTos);
+				}
 			}
 		}
 	}
@@ -1377,7 +1407,13 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				}
 			}
 		}
-		if( rc != SXRET_OK && (iP2 == 1 || iP2 == 3 || iP2 == 5) ){
+		/* iP2 == 5 (unset) is deliberately NOT here: php's unset() never creates
+		 * the key it is about to remove, so a MISS must stay a miss. The
+		 * insert-then-unset round trip was invisible on the LAST step but left
+		 * every INTERMEDIATE behind -- `unset($a["y"]["z"])` grew an empty
+		 * $a["y"]. The COW separation the unset context needs happened above and
+		 * does not depend on this insert. */
+		if( rc != SXRET_OK && (iP2 == 1 || iP2 == 3) ){
 			/* Create a new empty entry */
 			rc = PH7_HashmapInsert(pMap,pIdx,0);
 			if( rc == SXRET_OK ){
