@@ -636,6 +636,8 @@ static const struct VmBuiltinSig {
 	{ "mt_getrandmax", "", "int" },
 	{ "mt_rand", "int $min = ?, int $max = ?", "int" },
 	{ "mt_srand", "?int $seed = NULL, int $mode = 0", "void" },
+	{ "natcasesort", "array &$array", "true" },
+	{ "natsort", "array &$array", "true" },
 	{ "next", "object|array &$array", "mixed" },
 	{ "nl2br", "string $string, bool $use_xhtml = true", "string" },
 	{ "ob_clean", "", "bool" },

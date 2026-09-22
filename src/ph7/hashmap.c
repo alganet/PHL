@@ -2303,6 +2303,8 @@ static const ph7_builtin_func aHashmapFunc[] = {
 	{"in_array",          ph7_hashmap_in_array},
 	{"sort",              ph7_hashmap_sort    },
 	{"asort",             ph7_hashmap_asort   },
+	{"natsort",           ph7_hashmap_natsort },
+	{"natcasesort",       ph7_hashmap_natsort },
 	{"arsort",            ph7_hashmap_arsort  },
 	{"ksort",             ph7_hashmap_ksort   },
 	{"krsort",            ph7_hashmap_krsort  },

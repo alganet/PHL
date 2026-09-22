@@ -6,7 +6,9 @@
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 /*
  * SPL iterators, slice 1 (NEWPLAN band D): SeekableIterator, ArrayIterator,
- * ArrayObject, plus the natsort()/natcasesort() array functions they need.
+ * ArrayObject. (natsort()/natcasesort() used to be declared here as prelude
+ * wrappers over uasort(...,'strnatcmp'); they are C builtins in hashmap_sort.c
+ * now -- see ph7_hashmap_natsort -- and the methods below delegate to them.)
  * Embedded-PHP chunk following the Reflection architecture — installed
  * inside the bCompilingBuiltin window, backed by the engine's native array
  * internal-pointer builtins (reset/next/key/current keep their position on a
@@ -148,8 +150,8 @@ static const char zSplLib[] =
 " public function ksort($flags = 0){ ksort($this->__d); return true; }"
 " public function uasort($callback){ uasort($this->__d, $callback); return true; }"
 " public function uksort($callback){ uksort($this->__d, $callback); return true; }"
-" public function natsort(){ uasort($this->__d, 'strnatcmp'); return true; }"
-" public function natcasesort(){ uasort($this->__d, 'strnatcasecmp'); return true; }"
+" public function natsort(){ natsort($this->__d); return true; }"
+" public function natcasesort(){ natcasesort($this->__d); return true; }"
 "}"
 "class ArrayIterator implements SeekableIterator, ArrayAccess, Countable {"
 " use __SplStoreT;"
@@ -223,8 +225,6 @@ static const char zSplLib[] =
 "  if( $this->__f & 2 ){ unset($this->__d[$name]); }"
 " }"
 "}"
-"function natsort(&$array){ return uasort($array, 'strnatcmp'); }"
-"function natcasesort(&$array){ return uasort($array, 'strnatcasecmp'); }"
 "interface OuterIterator extends Iterator {"
 " public function getInnerIterator();"
 "}"

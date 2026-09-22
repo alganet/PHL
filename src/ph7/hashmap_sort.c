@@ -637,6 +637,63 @@ PH7_PRIVATE int ph7_hashmap_asort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * bool natsort(array &$array)
+ * bool natcasesort(array &$array)
+ *  Sort an array with php's "natural order" algorithm, maintaining index
+ *  association: exactly asort() under SORT_NATURAL (plus SORT_FLAG_CASE for the
+ *  case-insensitive twin), which is how php implements them too.
+ *
+ *  They used to be PRELUDE wrappers over `uasort($array, 'strnatcmp')`, and that
+ *  is a different function: uasort hands each element to a userland callback, so
+ *  every element had to satisfy strnatcmp's `string` ZPP row. php's natsort
+ *  COERCES each element the way any string comparison does, so
+ *  `natsort([10, "9", null])` — nothing exotic, just a mixed array — was a
+ *  TypeError in PHL and a sorted array in php, and an object with no
+ *  __toString() answered strnatcmp's ZPP TypeError instead of php's coercion
+ *  Error. Routing through the flag comparator picks up HashmapFlagStringify,
+ *  which already renders arrays with php's "Array to string conversion" warning
+ *  and raises the coercion Error once per sort.
+ */
+PH7_PRIVATE int ph7_hashmap_natsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zName = ph7_function_name(pCtx);
+	int bFold = zName && zName[3] == 'c'; /* natcasesort */
+	ph7_hashmap *pMap;
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"%s() expects exactly 1 argument, 0 given",zName
+			);
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"%s(): Argument #1 ($array) must be of type array, %s given",
+			zName,ph7_type_name(apArg[0])
+			);
+	}
+	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
+	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
+	if( pMap->nEntry > 1 ){
+		/* SORT_NATURAL (6), optionally | SORT_FLAG_CASE (8) — the same iFlags
+		 * word asort() forwards, so this is asort($a, SORT_NATURAL) exactly. */
+		sxi32 iCmpFlags = bFold ? (6|8) : 6;
+		pCtx->pVm->iCmpCallbackExc = 0;
+		HashmapMergeSort(pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));
+		while(pMap->pLast->pPrev){
+			pMap->pLast = pMap->pLast->pPrev;
+		}
+	}
+	{
+		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);
+		if( rcCmp != PH7_OK ){
+			return rcCmp;
+		}
+	}
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/*
  * bool arsort(array &$array[,int $sort_flags = SORT_REGULAR ] )
  *  Sort an array in reverse order and maintain index association.
  * Parameters
