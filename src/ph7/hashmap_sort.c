@@ -122,6 +122,39 @@ PH7_PRIVATE sxi32 HashmapMergeSort(ph7_hashmap *pMap,ProcNodeCmp xCmp,void *pCmp
 }
 /* SPDX-SnippetEnd */
 /*
+ * Coerce one operand of a STRING-flag comparison (SORT_STRING and friends), the
+ * way php's zval_get_string() does. An ARRAY warns "Array to string conversion"
+ * and renders as "Array"; an object with no __toString() raises php's catchable
+ * "could not be converted to string" Error and renders as the EMPTY string --
+ * which is why php's array comes out fully SORTED after the throw, with the
+ * object first. PHL used to render it as the literal "Object" and sort on that,
+ * silently.
+ *
+ * A comparator has no status channel, so the Error is raised once per sort and
+ * flagged on the VM through iCmpCallbackExc -- the rail a throwing user callback
+ * already uses; every flag-sort driver clears the flag before its merge sort and
+ * answers PH7_EXCEPTION after it (HashmapFlagSortStatus), and array_unique() does
+ * the same around its walk. The flag is also what keeps the second and later
+ * comparisons from raising the same Error again.
+ */
+static void HashmapFlagStringify(ph7_value *pVal)
+{
+	ph7_vm *pVm = pVal->pVm;
+	if( !PH7_MemObjIsNotStringable(pVal) ){
+		if( PH7_MemObjToStringUV(pVal) == SXRET_OK ){
+			return;
+		}
+		/* A __toString() that THREW. Same shape as a refused cast from here on. */
+	}else if( pVm == 0 || pVm->iCmpCallbackExc == 0 ){
+		PH7_MemObjToStringUV(pVal); /* raises php's Error */
+	}
+	if( pVm ){
+		pVm->iCmpCallbackExc = 1;
+	}
+	PH7_MemObjRelease(pVal);
+	MemObjSetType(pVal,MEMOBJ_STRING);
+}
+/*
  * Node comparison callback.
  * used-by: [sort(),asort(),...]
  */
@@ -145,8 +178,8 @@ static sxi32 HashmapScalarFlagCmp(ph7_value *pA,ph7_value *pB,int base,int bFold
 		/* SORT_STRING (2) / SORT_LOCALE_STRING (5) / SORT_NATURAL (6) */
 		const char *zA,*zB;
 		sxu32 nA,nB,nMin,i;
-		if( (pA->iFlags & MEMOBJ_STRING) == 0 ){ PH7_MemObjToString(pA); }
-		if( (pB->iFlags & MEMOBJ_STRING) == 0 ){ PH7_MemObjToString(pB); }
+		if( (pA->iFlags & MEMOBJ_STRING) == 0 ){ HashmapFlagStringify(pA); }
+		if( (pB->iFlags & MEMOBJ_STRING) == 0 ){ HashmapFlagStringify(pB); }
 		zA = (const char *)SyBlobData(&pA->sBlob);
 		zB = (const char *)SyBlobData(&pB->sBlob);
 		nA = SyBlobLength(&pA->sBlob);
@@ -474,6 +507,23 @@ PH7_PRIVATE void HashmapSortRehash(ph7_hashmap *pMap)
  *  Stable.
  */
 /*
+ * Reset / report the comparator-throw flag around a FLAG sort. The string sort
+ * flags coerce their operands user-visibly (HashmapScalarFlagCmp), and a
+ * not-stringable object raises php's Error there; the comparator can only flag
+ * it, so every flag-sort driver clears the flag before its merge sort and
+ * answers PH7_EXCEPTION after it. php's array is sorted after the throw too, so
+ * the rehash still runs.
+ */
+static sxi32 HashmapFlagSortStatus(ph7_context *pCtx)
+{
+	if( pCtx->pVm->iCmpCallbackExc ){
+		pCtx->pVm->iCmpCallbackExc = 0;
+		pCtx->nThrowRc = PH7_EXCEPTION;
+		return PH7_EXCEPTION;
+	}
+	return PH7_OK;
+}
+/*
  * bool sort(array &$array[,int $sort_flags = SORT_REGULAR ] )
  * Sort an array.
  * Parameters
@@ -508,12 +558,19 @@ PH7_PRIVATE int ph7_hashmap_sort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			iCmpFlags = ph7_value_to_int(apArg[1]);
 		}
 		/* Do the merge sort */
+		pCtx->pVm->iCmpCallbackExc = 0;
 		HashmapMergeSort(pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));
 		/* Rehash [Do not maintain index association as requested by the PHP specification] */
 		HashmapSortRehash(pMap);
 	}else if( pMap->nEntry == 1 ){
 		/* php reindexes even a single-element array: a string key becomes 0 */
 		HashmapSortRehash(pMap);
+	}
+	{
+		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);
+		if( rcCmp != PH7_OK ){
+			return rcCmp;
+		}
 	}
 	/* All done,return TRUE */
 	ph7_result_bool(pCtx,1);
@@ -562,10 +619,17 @@ PH7_PRIVATE int ph7_hashmap_asort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			iCmpFlags = ph7_value_to_int(apArg[1]);
 		}
 		/* Do the merge sort */
+		pCtx->pVm->iCmpCallbackExc = 0;
 		HashmapMergeSort(pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));
 		/* Fix the last link broken by the merge */
 		while(pMap->pLast->pPrev){
 			pMap->pLast = pMap->pLast->pPrev;
+		}
+	}
+	{
+		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);
+		if( rcCmp != PH7_OK ){
+			return rcCmp;
 		}
 	}
 	/* All done,return TRUE */
@@ -615,10 +679,17 @@ PH7_PRIVATE int ph7_hashmap_arsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			iCmpFlags = ph7_value_to_int(apArg[1]);
 		}
 		/* Do the merge sort */
+		pCtx->pVm->iCmpCallbackExc = 0;
 		HashmapMergeSort(pMap,HashmapCmpCallback3,SX_INT_TO_PTR(iCmpFlags));
 		/* Fix the last link broken by the merge */
 		while(pMap->pLast->pPrev){
 			pMap->pLast = pMap->pLast->pPrev;
+		}
+	}
+	{
+		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);
+		if( rcCmp != PH7_OK ){
+			return rcCmp;
 		}
 	}
 	/* All done,return TRUE */
@@ -659,10 +730,17 @@ PH7_PRIVATE int ph7_hashmap_ksort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			iCmpFlags = ph7_value_to_int(apArg[1]);
 		}
 		/* Do the merge sort */
+		pCtx->pVm->iCmpCallbackExc = 0;
 		HashmapMergeSort(pMap,HashmapCmpCallback2,SX_INT_TO_PTR(iCmpFlags));
 		/* Fix the last link broken by the merge */
 		while(pMap->pLast->pPrev){
 			pMap->pLast = pMap->pLast->pPrev;
+		}
+	}
+	{
+		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);
+		if( rcCmp != PH7_OK ){
+			return rcCmp;
 		}
 	}
 	/* All done,return TRUE */
@@ -703,10 +781,17 @@ PH7_PRIVATE int ph7_hashmap_krsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			iCmpFlags = ph7_value_to_int(apArg[1]);
 		}
 		/* Do the merge sort */
+		pCtx->pVm->iCmpCallbackExc = 0;
 		HashmapMergeSort(pMap,HashmapCmpCallback5,SX_INT_TO_PTR(iCmpFlags));
 		/* Fix the last link broken by the merge */
 		while(pMap->pLast->pPrev){
 			pMap->pLast = pMap->pLast->pPrev;
+		}
+	}
+	{
+		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);
+		if( rcCmp != PH7_OK ){
+			return rcCmp;
 		}
 	}
 	/* All done,return TRUE */
@@ -747,12 +832,19 @@ PH7_PRIVATE int ph7_hashmap_rsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			iCmpFlags = ph7_value_to_int(apArg[1]);
 		}
 		/* Do the merge sort */
+		pCtx->pVm->iCmpCallbackExc = 0;
 		HashmapMergeSort(pMap,HashmapCmpCallback3,SX_INT_TO_PTR(iCmpFlags));
 		/* Rehash [Do not maintain index association as requested by the PHP specification] */
 		HashmapSortRehash(pMap);
 	}else if( pMap->nEntry == 1 ){
 		/* php reindexes even a single-element array: a string key becomes 0 */
 		HashmapSortRehash(pMap);
+	}
+	{
+		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);
+		if( rcCmp != PH7_OK ){
+			return rcCmp;
+		}
 	}
 	/* All done,return TRUE */
 	ph7_result_bool(pCtx,1);

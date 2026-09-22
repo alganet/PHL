@@ -3593,7 +3593,13 @@ PH7_PRIVATE int ph7_hashmap_unique(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	/* Perform the requested operation */
+	/* Perform the requested operation. The string flags coerce their operands
+	 * user-visibly, and a not-stringable object raises php's Error inside the
+	 * comparison, which has no status channel: HashmapValueFlagEqual flags the VM
+	 * (the rail the throwing user-callback sorts use), so clear it before the walk
+	 * and report it after. Skipping the clear leaks the flag into the NEXT
+	 * comparison-based call, which then calls every pair equal. */
+	pCtx->pVm->iCmpCallbackExc = 0;
 	pEntry = pSrc->pFirst;
 	for( n = 0 ; n < pSrc->nEntry ; n++ ){
 		pNeedle = HashmapExtractNodeValue(pEntry);
@@ -3619,6 +3625,12 @@ PH7_PRIVATE int ph7_hashmap_unique(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 		/* Point to the next entry */
 		pEntry = pEntry->pPrev; /* Reverse link */
+	}
+	if( pCtx->pVm->iCmpCallbackExc ){
+		/* A comparison raised the coercion Error: answer the throw, not an array. */
+		pCtx->pVm->iCmpCallbackExc = 0;
+		pCtx->nThrowRc = PH7_EXCEPTION;
+		return PH7_EXCEPTION;
 	}
 	/* Return the freshly created array */
 	ph7_result_value(pCtx,pArray);
