@@ -1184,9 +1184,16 @@ PH7_PRIVATE ph7_class *VmHintScopeClass(ph7_vm *pVm, ph7_class *pDecl, ph7_class
  * Resolve a class/interface name from a type declaration to its ph7_class*,
  * handling the `self`/`parent` aliases against the supplied scope class pSelf —
  * the class the hint was DECLARED in, which every enforcement site computes
- * through VmHintScopeClass above (OP_CALL's pSelfHint for parameters). Used by
- * every type-enforcement site so the resolution rule — including the iLoadable
- * flag — lives in one place.
+ * through VmHintScopeClass above (OP_CALL's pSelfHint for parameters) — and
+ * `static`, which is php's late-static-binding CALLED class and so ignores pSelf.
+ * Used by every type-enforcement site so the resolution rule — including the
+ * iLoadable flag — lives in one place.
+ *
+ * The three keyword names are matched case-INSENSITIVELY, like every other type
+ * keyword (VmCheckPseudoType's mixed/true/false/iterable) and like php: a hint
+ * spelled `SELF` used to miss the exact-match arm, fall through to the class
+ * table, find nothing, and leave the caller with 0 — which every caller reads as
+ * "unresolvable, accept anything", so the hint enforced NOTHING.
  *
  * Always resolves with iLoadable=FALSE: every caller is an instanceof/type-
  * compatibility target, where the type may legitimately be an interface or
@@ -1197,10 +1204,18 @@ PH7_PRIVATE ph7_class *VmHintScopeClass(ph7_vm *pVm, ph7_class *pDecl, ph7_class
  */
 PH7_PRIVATE ph7_class *VmResolveTypeClass(ph7_vm *pVm, const SyString *pCN, ph7_class *pSelf)
 {
-	if( pCN->nByte == 4 && SyMemcmp(pCN->zString,"self",4) == 0 ){
+	if( pCN->nByte == 4 && SyStrnicmp(pCN->zString,"self",4) == 0 ){
 		return pSelf;
 	}
-	if( pCN->nByte == 6 && SyMemcmp(pCN->zString,"parent",6) == 0 ){
+	if( pCN->nByte == 6 && SyStrnicmp(pCN->zString,"static",6) == 0 ){
+		/* php 8.0 `static` return type: the LATE-STATIC-BINDING class, i.e. the
+		 * class the call was made through — so `P::s(): static` returning a P is a
+		 * TypeError once s() is reached on a `Q extends P`. It is deliberately NOT
+		 * pSelf (that is where the hint was written); php allows the keyword in a
+		 * return position only, but resolving it here keeps every site consistent. */
+		return PH7_VmPeekTopClass(pVm);
+	}
+	if( pCN->nByte == 6 && SyStrnicmp(pCN->zString,"parent",6) == 0 ){
 		/* A trait method's declaring class is the trait (shared by pointer); parent::
 		 * resolves against the runtime using class, matching the self:: trait rule. */
 		if( pSelf && (pSelf->iFlags & PH7_CLASS_TRAIT) ){
