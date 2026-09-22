@@ -3650,6 +3650,25 @@ PH7_PRIVATE const char * VmArithTypeName(ph7_value *pVal)
 	}
 	return ph7_type_name(pVal);
 }
+/*
+ * php's ++/-- operand contract: an array, object or resource operand is a
+ * TypeError ("Cannot increment array", "Cannot decrement P", "Cannot increment
+ * resource"), never the silent no-op PH7 used to perform. Word it once here so
+ * the plain opcode path and the hooked-property path cannot drift apart.
+ * bIncr selects the verb; the value itself is left untouched by php.
+ */
+PH7_PRIVATE void VmIncDecTypeErrorMsg(ph7_value *pVal,int bIncr,SyBlob *pMsgOut)
+{
+	const char *zVerb = bIncr ? "increment" : "decrement";
+	if( (pVal->iFlags & MEMOBJ_OBJ) != 0 ){
+		ph7_class_instance *pInst = (ph7_class_instance *)pVal->x.pOther;
+		if( pInst && pInst->pClass ){
+			SyBlobFormat(pMsgOut,"Cannot %s %z",zVerb,&pInst->pClass->sName);
+			return;
+		}
+	}
+	SyBlobFormat(pMsgOut,"Cannot %s %s",zVerb,ph7_type_name(pVal));
+}
 PH7_PRIVATE sxi32 VmArithOperandCheck(ph7_vm *pVm,ph7_value *pLeft,ph7_value *pRight,const char *zOp,SyBlob *pMsgOut)
 {
 	int bBadL = 0, bBadR = 0;

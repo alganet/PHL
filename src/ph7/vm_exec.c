@@ -2288,21 +2288,38 @@ case PH7_OP_INCR:
 		if( pTopInc->iKind == VM_HOOK_PEND_RMW && pTopInc->nScratchIdx == pTos->nIdx ){
 			SyBlob sErrMsg;
 			SyBlobInit(&sErrMsg,&pVm->sAllocator);
-			if( pTos->iFlags & MEMOBJ_HASHMAP ){
-				SyBlobAppend(&sErrMsg,"Cannot increment array",sizeof("Cannot increment array")-1);
-			}else if( pTos->iFlags & MEMOBJ_OBJ ){
-				SyBlobFormat(&sErrMsg,"Cannot increment %z",
-					&((ph7_class_instance *)pTos->x.pOther)->pClass->sName);
-			}else{
-				SyBlobAppend(&sErrMsg,"Cannot increment resource",sizeof("Cannot increment resource")-1);
-			}
+			VmIncDecTypeErrorMsg(pTos,TRUE,&sErrMsg);
 			VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sErrMsg));
 			VmHookRmwDropTop(&(*pVm));
 			pTos->nIdx = SXU32_HIGH;
 			break;
 		}
 	}
-	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)) == 0 ){
+	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)) != 0 ){
+		/* php's ++ operand contract: an array, object or resource is a catchable
+		 * TypeError, not the silent no-op this used to be. Settle the operand
+		 * (the op's result slot) BEFORE throwing, like the arithmetic sites. */
+		SyBlob sIncMsg;
+		sxi32 rcInc;
+		SyBlobInit(&sIncMsg,&pVm->sAllocator);
+		VmIncDecTypeErrorMsg(pTos,TRUE,&sIncMsg);
+		PH7_MemObjRelease(pTos);
+		MemObjSetType(pTos,MEMOBJ_NULL);
+		pTos->nIdx = SXU32_HIGH;
+		rcInc = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sIncMsg),
+			SyBlobLength(&sIncMsg));
+		SyBlobRelease(&sIncMsg);
+		if( rcInc == SXERR_ABORT ){ goto Abort; }
+		rc = rcInc;
+		PH7_THROW_ROUTE_MIDEXPR(rc)
+	}
+	/* php 8.3+: `++` on a BOOL is a no-op it warns about (E_WARNING, errno 2 —
+	 * same shape as the null `--` below), where PH7 coerced true to int 2. */
+	if( pTos->iFlags & MEMOBJ_BOOL ){
+		VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+			"Increment on type bool has no effect, this will change in the next major version of PHP");
+	}
+	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_BOOL)) == 0 ){
 		if( pTos->nIdx != SXU32_HIGH ){
 			ph7_value *pObj;
 			if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
@@ -2422,28 +2439,39 @@ case PH7_OP_DECR:
 		if( pTopDec->iKind == VM_HOOK_PEND_RMW && pTopDec->nScratchIdx == pTos->nIdx ){
 			SyBlob sErrMsg;
 			SyBlobInit(&sErrMsg,&pVm->sAllocator);
-			if( pTos->iFlags & MEMOBJ_HASHMAP ){
-				SyBlobAppend(&sErrMsg,"Cannot decrement array",sizeof("Cannot decrement array")-1);
-			}else if( pTos->iFlags & MEMOBJ_OBJ ){
-				SyBlobFormat(&sErrMsg,"Cannot decrement %z",
-					&((ph7_class_instance *)pTos->x.pOther)->pClass->sName);
-			}else{
-				SyBlobAppend(&sErrMsg,"Cannot decrement resource",sizeof("Cannot decrement resource")-1);
-			}
+			VmIncDecTypeErrorMsg(pTos,FALSE,&sErrMsg);
 			VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sErrMsg));
 			VmHookRmwDropTop(&(*pVm));
 			pTos->nIdx = SXU32_HIGH;
 			break;
 		}
 	}
-	/* NULL stays excluded: PHP leaves `--` on null untouched (no-op) -- but 8.3
-	 * deprecates that no-op, same as the non-numeric-string one below. */
-	if( pTos->iFlags & MEMOBJ_NULL ){
-		/* E_WARNING, not E_DEPRECATED -- php reports this one at errno 2. */
-		VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
-			"Decrement on type null has no effect, this will change in the next major version of PHP");
+	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)) != 0 ){
+		/* php's `--` operand contract, the mirror of INCR's: an array, object or
+		 * resource is a catchable TypeError, not a silent no-op. */
+		SyBlob sDecMsg;
+		sxi32 rcDec;
+		SyBlobInit(&sDecMsg,&pVm->sAllocator);
+		VmIncDecTypeErrorMsg(pTos,FALSE,&sDecMsg);
+		PH7_MemObjRelease(pTos);
+		MemObjSetType(pTos,MEMOBJ_NULL);
+		pTos->nIdx = SXU32_HIGH;
+		rcDec = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sDecMsg),
+			SyBlobLength(&sDecMsg));
+		SyBlobRelease(&sDecMsg);
+		if( rcDec == SXERR_ABORT ){ goto Abort; }
+		rc = rcDec;
+		PH7_THROW_ROUTE_MIDEXPR(rc)
 	}
-	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL)) == 0 ){
+	/* NULL and BOOL stay excluded: PHP leaves `--` on either untouched (no-op) --
+	 * but 8.3 warns about both no-ops, same as the non-numeric-string one below. */
+	if( pTos->iFlags & (MEMOBJ_NULL|MEMOBJ_BOOL) ){
+		/* E_WARNING, not E_DEPRECATED -- php reports these at errno 2. */
+		VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+			"Decrement on type %s has no effect, this will change in the next major version of PHP",
+			(pTos->iFlags & MEMOBJ_NULL) ? "null" : "bool");
+	}
+	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL|MEMOBJ_BOOL)) == 0 ){
 		if( pTos->nIdx != SXU32_HIGH ){
 			ph7_value *pObj;
 			if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
