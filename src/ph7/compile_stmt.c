@@ -1778,6 +1778,37 @@ PH7_PRIVATE sxi32 PH7_CompileGlobal(ph7_gen_state *pGen)
 	return SXRET_OK;
 }
 /*
+ * php's NOUN for a compile-time return diagnostic is the LEXICAL scope, not the
+ * kind of function the `return` sits in: zend reads CG(active_class_entry), so a
+ * closure written inside a class body reports "method" and the very same closure
+ * written at file scope reports "function". pCurClass is the compiler's exact
+ * counterpart (the class/interface/trait/enum whose BODY is being compiled).
+ */
+static const char * GenStateReturnNoun(ph7_gen_state *pGen)
+{
+	return pGen->pCurClass ? "method" : "function";
+}
+/*
+ * TRUE when a declared return type ACCEPTS null — the condition under which php
+ * appends its `did you mean "return null;"` hint to the missing-value error.
+ * That is every nullable declaration (`?T`, `T|null`, and the standalone `null`
+ * type, all of which set VM_FUNC_RETURN_NULLABLE) plus `mixed`, which includes
+ * null but is stored as a pseudo-CLASS atom rather than through the flag.
+ */
+static int GenStateReturnTypeAllowsNull(ph7_vm_func *pFunc)
+{
+	SyString *pCls;
+	if( pFunc->iFlags & VM_FUNC_RETURN_NULLABLE ){
+		return 1;
+	}
+	pCls = &pFunc->sReturnClass;
+	if( pFunc->nReturnType == SXU32_HIGH && pCls->nByte == sizeof("mixed")-1
+	 && SyStrnicmp(pCls->zString,"mixed",sizeof("mixed")-1) == 0 ){
+		return 1;
+	}
+	return 0;
+}
+/*
  * Compile the return statement.
  * According to the PHP language reference
  *  If called from within a function, the return() statement immediately ends execution
@@ -1799,6 +1830,7 @@ PH7_PRIVATE sxi32 PH7_CompileReturn(ph7_gen_state *pGen)
 	sxi32 rc;
 	sxu32 nLine = pGen->pIn->nLine;
 	GenBlock *pFuncBlock = pGen->pCurrent;
+	ph7_vm_func *pFunc;
 	/* A `never`-returning function must not contain a `return` statement at all
 	 * (PHP compile error), with or without a value. Find the enclosing function
 	 * (nearest GEN_BLOCK_FUNC) and check its declared return type. The error is
@@ -1807,10 +1839,10 @@ PH7_PRIVATE sxi32 PH7_CompileReturn(ph7_gen_state *pGen)
 	while( pFuncBlock && (pFuncBlock->iFlags & GEN_BLOCK_FUNC) == 0 ){
 		pFuncBlock = pFuncBlock->pParent;
 	}
-	if( pFuncBlock && pFuncBlock->pUserData
-	 && ((ph7_vm_func *)pFuncBlock->pUserData)->nReturnType == MEMOBJ_NEVER ){
+	pFunc = pFuncBlock ? (ph7_vm_func *)pFuncBlock->pUserData : 0;
+	if( pFunc && pFunc->nReturnType == MEMOBJ_NEVER ){
 		rc = PH7_GenCompileError(pGen, E_ERROR, nLine,
-			"A never-returning function must not return");
+			"A never-returning %s must not return", GenStateReturnNoun(pGen));
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
@@ -1832,6 +1864,24 @@ PH7_PRIVATE sxi32 PH7_CompileReturn(ph7_gen_state *pGen)
 			return SXERR_ABORT;
 		}else if(rc != SXERR_EMPTY ){
 			nRet = 1;
+		}
+	}
+	/* A bare `return;` inside a function that DECLARES a return type is a php
+	 * COMPILE error, not the runtime TypeError PHL used to raise on the way out:
+	 * php rejects the program before it runs. `void` (which is what `return;`
+	 * means) and `never` (handled above) are the two declarations exempt from it,
+	 * and a GENERATOR is exempt whatever it declares — there `return;` ends the
+	 * generator, and the declared type describes the Generator object the call
+	 * produced, never the returned value. */
+	if( nRet == 0 && pFunc && !pGen->bInGenerator && VmFuncHasReturnType(pFunc)
+	 && pFunc->nReturnType != MEMOBJ_VOID && pFunc->nReturnType != MEMOBJ_NEVER ){
+		rc = PH7_GenCompileError(pGen, E_ERROR, nLine,
+			"A %s with return type must return a value%s",
+			GenStateReturnNoun(pGen),
+			GenStateReturnTypeAllowsNull(pFunc)
+				? " (did you mean \"return null;\" instead of \"return;\"?)" : "");
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
 		}
 	}
 	/* ROOT C: inside a generator body, route `return` through OP_SET_FINALLY_RET so every
