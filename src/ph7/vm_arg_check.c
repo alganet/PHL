@@ -1004,8 +1004,21 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 	 * with three. One signature cannot say that (the stub's `array|string` is the
 	 * union of the two, which is the wording php never uses), so the builtin does
 	 * its own dispatch through PH7_ArgSatisfiesString(), the same rule as here.
+	 *
+	 * implode() is the same structure: `array|string $separator` is what the two
+	 * ARITIES accept between them, never what one call can use. Once an $array
+	 * argument is present php has resolved the overload and reports
+	 * `must be of type string`, and with the array in position #1 it reports
+	 * `must be of type string, array given` against #1 rather than a #2 error.
+	 * PH7_builtin_implode words all of that itself.
+	 *
+	 * Its alias join() is here for the same reason and then some: php 8.5 does not
+	 * word the two the same, so the builtin reproduces BOTH orders keyed on the
+	 * invoked name (see PH7_builtin_implode's header for the value-for-value
+	 * table against 8.5.8). php's own asymmetry between a target and its alias,
+	 * reproduced rather than smoothed over — parity is binding (§10).
 	 */
-	static const char *azSelfChecked[] = { "get_class_vars", "strtr" };
+	static const char *azSelfChecked[] = { "get_class_vars", "strtr", "implode", "join" };
 	const char *zSig = pFunc->zSig;
 	const char *zCur, *zEnd;
 	int iArg = 0;

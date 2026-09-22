@@ -1940,6 +1940,32 @@ static int implode_callback(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 PH7_PRIVATE int PH7_builtin_implode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	struct implode_data imp_data;
+	/*
+	 * php's contract for implode()/join(): one function, a `array|string $separator`
+	 * and a `?array $array` row, and a body that resolves the two ARITIES. The
+	 * messages report the overload as already resolved -- an $array argument in
+	 * position #2 means #1 is the SEPARATOR and must be a `string`, never the
+	 * union (which is only what the two arities accept BETWEEN them), and an ARRAY
+	 * in position #1 with a second argument is that same #1 error. One aBuiltinSig
+	 * row cannot say either (it drives both the accepted set and the message),
+	 * which is why implode/join sit on azSelfChecked[] with strtr() and check
+	 * their own rows here.
+	 *
+	 * The messages name the INVOKED function: php reports `join(): ...` for
+	 * join(), where this builtin used to hardcode `implode(): ...`.
+	 *
+	 * One divergence, twin-paired in
+	 * 002-integration/function/implode_separator_type{,_zend}.phpt. php 8.5 words
+	 * the three cases below through a SPECIALIZED handler that only a DIRECT,
+	 * compile-time-resolved `implode(...)` call reaches; join(),
+	 * `$f='implode'; $f(...)` and call_user_func('implode', ...) fall back to a
+	 * generic path that answers differently (`array|string` for the first, a #2
+	 * error for the second, and "ab" for the third). It is a call-FORM
+	 * specialization, not a semantic rule -- it does not change with opcache off
+	 * -- so PHL gives every call form the one contract php's direct calls use,
+	 * which is the form real code writes and the form the corpus pins.
+	 */
+	const char *zName = ph7_function_name(pCtx);
 	int i = 1;
 	if( nArg < 1 ){
 		/* Missing argument,return NULL */
@@ -1954,31 +1980,48 @@ PH7_PRIVATE int PH7_builtin_implode(ph7_context *pCtx,int nArg,ph7_value **apArg
 	imp_data.rc = SXRET_OK;
 	imp_data.rcThrow = SXRET_OK;
 	if( !ph7_value_is_array(apArg[0]) ){
+		if( apArg[0]->iFlags & MEMOBJ_NULL ){
+			/* php only DEPRECATES null for the union parameter and coerces it to
+			 * ""; PHL rejects it (§10 null-strictness), naming php's DECLARED type
+			 * -- the one case where `array|string` is the right wording, because
+			 * php never narrows the union for a value it accepts. */
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"%s(): Argument #1 ($separator) must be of type array|string, null given",zName);
+		}
 		if( nArg < 2 || ph7_value_is_null(apArg[1]) ){
 			/* php: a string separator REQUIRES the array. `implode("x")` and
 			 * `implode("x", null)` both answered "" -- the `?array` in php's
 			 * signature is the DEFAULT's type, not a value it accepts. */
 			return PH7_VmThrowException(pCtx,"TypeError",
-				"implode(): If argument #1 ($separator) is of type string, "
-				"argument #2 ($array) must be of type array, null given");
+				"%s(): If argument #1 ($separator) is of type string, "
+				"argument #2 ($array) must be of type array, null given",zName);
 		}
-		if( !ph7_value_is_array(apArg[1]) ){
-			/* php: implode($glue, $pieces) requires an ARRAY. PH7 stringified whatever it
-			 * was handed, so implode(",", 5) quietly returned "5". */
+		if( !PH7_ArgSatisfiesString(apArg[0]) ){
+			/* The overload is resolved, so #1 is the separator and must be a
+			 * STRING. PHL used to fall through to the central screen here and
+			 * report the whole `array|string` union instead. */
 			char zBuf[64];
 			return PH7_VmThrowException(pCtx,"TypeError",
-				"implode(): Argument #2 ($array) must be of type ?array, %s given",
-				VmValueGivenName(apArg[1],zBuf,sizeof(zBuf)));
+				"%s(): Argument #1 ($separator) must be of type string, %s given",
+				zName,VmValueGivenName(apArg[0],zBuf,sizeof(zBuf)));
+		}
+		if( !ph7_value_is_array(apArg[1]) ){
+			/* php: implode($glue, $pieces) requires an ARRAY. PH7 stringified
+			 * whatever it was handed, so implode(",", 5) quietly returned "5". */
+			char zBuf[64];
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"%s(): Argument #2 ($array) must be of type ?array, %s given",
+				zName,VmValueGivenName(apArg[1],zBuf,sizeof(zBuf)));
 		}
 		imp_data.zSep = ph7_value_to_string(apArg[0],&imp_data.nSeplen);
 	}else{
 		if( nArg > 1 ){
-			/* php 8 removed the legacy swapped order: implode($pieces, $glue)
-			 * is a TypeError (PHL used to swap silently, a wrong ANSWER when
-			 * the caller meant php's signature). One array argument alone
-			 * stays the legal ""-glue form. */
+			/* php 8 removed the legacy swapped order: implode($pieces, $glue) is a
+			 * TypeError whatever $glue holds (PHL used to swap silently, a wrong
+			 * ANSWER when the caller meant php's signature). One array argument
+			 * alone stays the legal ""-glue form. */
 			return PH7_VmThrowException(pCtx,"TypeError",
-				"implode(): Argument #1 ($separator) must be of type string, array given");
+				"%s(): Argument #1 ($separator) must be of type string, array given",zName);
 		}
 		imp_data.zSep = 0;
 		imp_data.nSeplen = 0;
