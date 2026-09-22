@@ -2113,6 +2113,21 @@ PH7_PRIVATE int ph7_hashmap_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				);
 		}
 	}
+	/* php sorts every input array before diffing, which string-coerces each
+	 * element exactly once — that is where its "Array to string conversion"
+	 * warnings come from, and why a not-stringable object throws even when an
+	 * earlier element already matched. Do that pass first, USER-VISIBLY, so the
+	 * comparisons below can render silently (see HashmapValueStrEq).
+	 * It runs BEFORE the one-argument shortcut on purpose: php sorts even then,
+	 * so `array_diff([[1]])` warns while `array_intersect([[1]])` — whose sort php
+	 * skips — does not. Asymmetric, and matched deliberately. */
+	for( i = 0 ; i < nArg ; i++ ){
+		sxi32 rcStr = HashmapStringifyElems((ph7_hashmap *)apArg[i]->x.pOther);
+		if( rcStr != SXRET_OK ){
+			pCtx->nThrowRc = rcStr;
+			return rcStr;
+		}
+	}
 	if( nArg == 1 ){
 		/* Return the first array since we cannot perform a diff */
 		ph7_result_value(pCtx,apArg[0]);
@@ -2137,10 +2152,15 @@ PH7_PRIVATE int ph7_hashmap_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		pVal = HashmapExtractNodeValue(pEntry);
 		if( pVal ){
 			for( i = 1 ; i < nArg ; i++ ){
+				sxi32 rcStr;
 				/* Point to the internal representation of the hashmap */
 				pMap = (ph7_hashmap *)apArg[i]->x.pOther;
 				/* Perform the lookup */
-				rc = HashmapFindValue(pMap,pVal,0,TRUE);
+				rc = HashmapFindStringValue(pMap,pVal,0,&rcStr);
+				if( rcStr != SXRET_OK ){
+					pCtx->nThrowRc = rcStr;
+					return rcStr;
+				}
 				if( rc == SXRET_OK ){
 					/* Value exist */
 					break;
@@ -2377,20 +2397,18 @@ PH7_PRIVATE int ph7_hashmap_diff_assoc(ph7_context *pCtx,int nArg,ph7_value **ap
 				/* directly compare with value at pN1 rather than searching again */
 				ph7_value *pVal2 = HashmapExtractNodeValue(pN1);
 				if( pVal2 ){
-					ph7_value sV1,sV2;
-					sxi32 cmp;
-					/* Compare on duplicates: PH7_MemObjCmp converts its
-					 * operands in place and these are LIVE array elements (a
-					 * null element used to come back bool(false) in the
-					 * caller's array). */
-					PH7_MemObjInit(pEntry->pMap->pVm,&sV1);
-					PH7_MemObjInit(pEntry->pMap->pVm,&sV2);
-					PH7_MemObjLoad(pVal,&sV1);
-					PH7_MemObjLoad(pVal2,&sV2);
-					cmp = PH7_MemObjCmp(&sV1,&sV2,TRUE,0);
-					PH7_MemObjRelease(&sV1);
-					PH7_MemObjRelease(&sV2);
-					if( cmp == 0 ){
+					sxi32 rcStr;
+					/* php compares the two values as (string)$a === (string)$b
+					 * (HashmapValueStrEq, which works on copies — these are LIVE
+					 * array elements). It converts LAZILY, only for a key that
+					 * matched, so a not-stringable object under a key nobody else
+					 * has never throws. */
+					int bEq = HashmapValueStrEq(pVal,pVal2,/*bUserVisible*/1,&rcStr);
+					if( rcStr != SXRET_OK ){
+						pCtx->nThrowRc = rcStr;
+						return rcStr;
+					}
+					if( bEq ){
 						/* identical key+value found in one of the arrays => drop it */
 						keep = 0;
 						break;
@@ -2551,18 +2569,20 @@ PH7_PRIVATE int ph7_hashmap_diff_uassoc(ph7_context *pCtx,int nArg,ph7_value **a
 						ph7_value *pVal1 = HashmapExtractNodeValue(pEntry);
 						ph7_value *pVal2 = HashmapExtractNodeValue(pIt);
 						if( pVal1 && pVal2 ){
-							ph7_value sV1,sV2;
-							sxi32 cmp;
-							/* Compare on duplicates: PH7_MemObjCmp converts in
-							 * place and these are LIVE array elements. */
-							PH7_MemObjInit(pEntry->pMap->pVm,&sV1);
-							PH7_MemObjInit(pEntry->pMap->pVm,&sV2);
-							PH7_MemObjLoad(pVal1,&sV1);
-							PH7_MemObjLoad(pVal2,&sV2);
-							cmp = PH7_MemObjCmp(&sV1,&sV2,TRUE,0);
-							PH7_MemObjRelease(&sV1);
-							PH7_MemObjRelease(&sV2);
-							if( cmp == 0 ){
+							sxi32 rcStr;
+							/* Only the KEYS go through the callback here; the VALUES
+							 * take php's own array_diff comparison,
+							 * (string)$a === (string)$b (HashmapValueStrEq, on
+							 * copies — these are LIVE array elements). */
+							int bEq = HashmapValueStrEq(pVal1,pVal2,/*bUserVisible*/1,&rcStr);
+							if( rcStr != SXRET_OK ){
+								PH7_MemObjRelease(&result);
+								PH7_MemObjRelease(&key1);
+								PH7_MemObjRelease(&key2);
+								pCtx->nThrowRc = rcStr;
+								return rcStr;
+							}
+							if( bEq ){
 								keep = 0;
 								PH7_MemObjRelease(&result);
 								/* release keys too before breaking */
@@ -2755,6 +2775,15 @@ PH7_PRIVATE int ph7_hashmap_intersect(ph7_context *pCtx,int nArg,ph7_value **apA
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
+	/* Same pre-pass as array_diff: php's sort of every input array is what
+	 * converts each element once (see HashmapStringifyElems). */
+	for( i = 0 ; i < nArg ; i++ ){
+		sxi32 rcStr = HashmapStringifyElems((ph7_hashmap *)apArg[i]->x.pOther);
+		if( rcStr != SXRET_OK ){
+			pCtx->nThrowRc = rcStr;
+			return rcStr;
+		}
+	}
 	/* Point to the internal representation of the source hashmap */
 	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;
 	/* Perform the intersection */
@@ -2768,10 +2797,15 @@ PH7_PRIVATE int ph7_hashmap_intersect(ph7_context *pCtx,int nArg,ph7_value **apA
 		pVal = HashmapExtractNodeValue(pEntry);
 		if( pVal ){
 			for( i = 1 ; i < nArg ; i++ ){
+				sxi32 rcStr;
 				/* Point to the internal representation of the hashmap */
 				pMap = (ph7_hashmap *)apArg[i]->x.pOther;
 				/* Perform the lookup */
-				rc = HashmapFindValue(pMap,pVal,0,TRUE);
+				rc = HashmapFindStringValue(pMap,pVal,0,&rcStr);
+				if( rcStr != SXRET_OK ){
+					pCtx->nThrowRc = rcStr;
+					return rcStr;
+				}
 				if( rc != SXRET_OK ){
 					/* Value does not exist */
 					break;
@@ -2874,11 +2908,23 @@ PH7_PRIVATE int ph7_hashmap_intersect_assoc(ph7_context *pCtx,int nArg,ph7_value
 					/* No such key,break immediately */
 					break;
 				}
-				/* Perform the lookup */
-				rc = HashmapFindValue(pMap,pVal,&pN2,TRUE);
-				if( rc != SXRET_OK || pN1 != pN2 ){
-					/* Value does not exist */
-					break;
+				/* The key matched, so compare THAT node's value — php compares
+				 * (string)$a === (string)$b here (HashmapValueStrEq), and lazily:
+				 * a key that matched nowhere never coerces anything. Scanning the
+				 * whole map for an equal value and then demanding it be the
+				 * key-matched node answered the same question the long way. */
+				{
+					ph7_value *pVal2 = HashmapExtractNodeValue(pN1);
+					sxi32 rcStr = SXRET_OK;
+					int bEq = pVal2 != 0 && HashmapValueStrEq(pVal,pVal2,/*bUserVisible*/1,&rcStr);
+					if( rcStr != SXRET_OK ){
+						pCtx->nThrowRc = rcStr;
+						return rcStr;
+					}
+					if( !bEq ){
+						/* Value does not exist */
+						break;
+					}
 				}
 			}
 			if( i >= nArg ){

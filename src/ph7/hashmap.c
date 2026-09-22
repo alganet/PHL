@@ -1049,6 +1049,138 @@ PH7_PRIVATE int HashmapFindValue(
 	return SXERR_NOTFOUND;
 }
 /*
+ * The element comparison array_diff()/array_intersect() and their _assoc pair
+ * use, which is NOT the engine's value comparison: php's manual defines all four
+ * as
+ *     (string)$elem1 === (string)$elem2
+ * a PURE string comparison — not numeric-string aware, so array_diff(["10"],
+ * ["1e1"]) keeps "10" — where PHL used to call PH7_MemObjCmp with bStrict. That
+ * made no int ever match its own decimal string, so array_diff([1,2,3],
+ * ["1","2"]) answered the whole first array instead of [2=>3].
+ *
+ * bUserVisible picks the coercion: TRUE emits php's user-visible diagnostics (an
+ * ARRAY element warns "Array to string conversion", an object with no
+ * __toString() throws the catchable "could not be converted to string" Error,
+ * reported through *pRc so the builtin answers the throw instead of a result),
+ * FALSE renders silently. The two diff families need different answers there:
+ * the _assoc pair converts LAZILY, only when a key matched, so it coerces
+ * user-visibly right here; array_diff/array_intersect convert every element of
+ * every input array up front (php sorts them), so those pre-pass with
+ * HashmapStringifyElems and compare silently afterwards — which is what makes
+ * the warning COUNT and the "throws even though an earlier element matched"
+ * behaviour come out php-exact.
+ *
+ * Both operands are coerced on COPIES: these are live array elements, and a
+ * diff must not rewrite the caller's array.
+ */
+PH7_PRIVATE int HashmapValueStrEq(ph7_value *pA,ph7_value *pB,int bUserVisible,sxi32 *pRc)
+{
+	ph7_value sA,sB;
+	int bEq = FALSE;
+	sxi32 rc;
+	*pRc = SXRET_OK;
+	/* Two fast paths that need no rendering at all, because each type's string
+	 * form is canonical and injective: two STRINGS already ARE their string form,
+	 * and two INTS are string-equal exactly when they are equal. Without them
+	 * array_diff() over a pair of integer ranges formatted both operands of every
+	 * one of its O(n*m) comparisons (~4x slower than the strict compare it
+	 * replaced). A value carrying MEMOBJ_INT alongside MEMOBJ_REAL is an integral
+	 * FLOAT, whose "1" can equal an int's — the mask sends it down the slow path
+	 * rather than comparing rVal-derived iVal, and bools/null/resources likewise. */
+	if( (pA->iFlags & MEMOBJ_STRING) && (pB->iFlags & MEMOBJ_STRING) ){
+		return SyBlobLength(&pA->sBlob) == SyBlobLength(&pB->sBlob)
+		    && ( SyBlobLength(&pA->sBlob) == 0
+		      || SyMemcmp(SyBlobData(&pA->sBlob),SyBlobData(&pB->sBlob),
+		                  SyBlobLength(&pA->sBlob)) == 0 );
+	}
+	if( (pA->iFlags & (MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_STRING)) == MEMOBJ_INT
+	 && (pB->iFlags & (MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_STRING)) == MEMOBJ_INT ){
+		return pA->x.iVal == pB->x.iVal;
+	}
+	PH7_MemObjInit(pA->pVm,&sA);
+	PH7_MemObjInit(pA->pVm,&sB);
+	PH7_MemObjLoad(pA,&sA);
+	PH7_MemObjLoad(pB,&sB);
+	rc = bUserVisible ? PH7_MemObjToStringUV(&sA) : PH7_MemObjToString(&sA);
+	if( rc == SXRET_OK ){
+		rc = bUserVisible ? PH7_MemObjToStringUV(&sB) : PH7_MemObjToString(&sB);
+	}
+	if( rc != SXRET_OK ){
+		*pRc = rc;
+	}else if( SyBlobLength(&sA.sBlob) == SyBlobLength(&sB.sBlob) ){
+		bEq = SyBlobLength(&sA.sBlob) == 0
+		   || SyMemcmp(SyBlobData(&sA.sBlob),SyBlobData(&sB.sBlob),SyBlobLength(&sA.sBlob)) == 0;
+	}
+	PH7_MemObjRelease(&sA);
+	PH7_MemObjRelease(&sB);
+	return bEq;
+}
+/*
+ * Run the USER-VISIBLE string coercion over every element of pMap once, in
+ * insertion order, discarding the result: php's array_diff/array_intersect sort
+ * each input array, which converts every element exactly once, so this is where
+ * their "Array to string conversion" warnings and their not-stringable-object
+ * Error come from. Doing it as a pre-pass is what lets
+ * array_diff([1,2],[1,new P()]) throw the way php's does even though the first
+ * element already matched. Returns the throw status, SXRET_OK otherwise.
+ */
+PH7_PRIVATE sxi32 HashmapStringifyElems(ph7_hashmap *pMap)
+{
+	ph7_hashmap_node *pEntry = pMap->pFirst;
+	sxu32 n = pMap->nEntry;
+	while( n > 0 && pEntry ){
+		ph7_value *pVal = HashmapExtractNodeValue(pEntry);
+		if( pVal && (pVal->iFlags & MEMOBJ_STRING) == 0 ){
+			ph7_value sTmp;
+			sxi32 rc;
+			PH7_MemObjInit(pMap->pVm,&sTmp);
+			PH7_MemObjLoad(pVal,&sTmp);
+			rc = PH7_MemObjToStringUV(&sTmp);
+			PH7_MemObjRelease(&sTmp);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+		}
+		pEntry = pEntry->pPrev; /* Reverse link — insertion order */
+		n--;
+	}
+	return SXRET_OK;
+}
+/*
+ * Perform a linear search on a given hashmap, comparing values the way
+ * array_diff()/array_intersect() do (see HashmapValueStrEq). Writes a pointer to
+ * the target node on success; SXERR_NOTFOUND otherwise, with *pRc carrying the
+ * status of a coercion that threw.
+ */
+PH7_PRIVATE int HashmapFindStringValue(
+	ph7_hashmap *pMap,   /* Target hashmap */
+	ph7_value *pNeedle,  /* Lookup value */
+	ph7_hashmap_node **ppNode, /* OUT: target node on success */
+	sxi32 *pRc           /* OUT: coercion status */
+	)
+{
+	ph7_hashmap_node *pEntry = pMap->pFirst;
+	sxu32 n = pMap->nEntry;
+	*pRc = SXRET_OK;
+	while( n > 0 && pEntry ){
+		ph7_value *pVal = HashmapExtractNodeValue(pEntry);
+		if( pVal ){
+			if( HashmapValueStrEq(pNeedle,pVal,/*bUserVisible*/0,pRc) ){
+				if( ppNode ){
+					*ppNode = pEntry;
+				}
+				return SXRET_OK;
+			}
+			if( *pRc != SXRET_OK ){
+				return SXERR_NOTFOUND;
+			}
+		}
+		pEntry = pEntry->pPrev; /* Reverse link */
+		n--;
+	}
+	return SXERR_NOTFOUND;
+}
+/*
  * Perform a linear search on a given hashmap but use an user-defined callback
  * for values comparison.
  * Write a pointer to the target node on success.
