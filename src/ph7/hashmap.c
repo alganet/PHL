@@ -505,13 +505,26 @@ static int HashmapIsIntKey(SyBlob *pKey)
 	if( zIn >= zEnd ){
 		return FALSE;
 	}
-	if( (int)(zEnd-zIn) > 1 && zIn[0] == '0' ){
-		/* Octal not decimal number */
-		return FALSE;
-	}
-	if( (zIn[0] == '-' || zIn[0] == '+') && &zIn[1] < zEnd ){
-		isNeg = (zIn[0] == '-');
+	/* php's rule (_zend_handle_numeric_str_ex), byte for byte:
+	 *   - a leading '-' is allowed, a leading '+' is NOT ('+1' stays a
+	 *     string key)
+	 *   - after the sign, a leading '0' disqualifies the key unless the
+	 *     WHOLE key is the single digit "0" -- so "00", "01", "-0" and
+	 *     "-01" all stay string keys. The length is measured over the key,
+	 *     sign included, which is what makes "-0" fail.
+	 * PH7 tested the leading zero BEFORE skipping the sign and accepted '+',
+	 * so $a['-0'], $a['+0'], $a['+1'] and $a['-01'] canonicalised onto the
+	 * integer keys 0/0/1/-1 -- silently COLLIDING with a genuine 0/1/-1 entry
+	 * ($a = ['-0'=>'a','0'=>'d'] kept one element where php keeps two) and
+	 * carrying the wrong key through array_keys/array_flip/json_decode/
+	 * serialize/array_count_values alike. */
+	if( zIn[0] == '-' && &zIn[1] < zEnd ){
+		isNeg = TRUE;
 		zIn++;
+	}
+	if( zIn < zEnd && zIn[0] == '0' && SyBlobLength(pKey) > 1 ){
+		/* Leading zero: octal-looking, signed zero, or just padded */
+		return FALSE;
 	}
 	zDigit = zIn;
 	for(;;){
@@ -530,7 +543,7 @@ static int HashmapIsIntKey(SyBlob *pKey)
 	 * PHP_INT_MAX/MIN and collide with the genuine boundary key. */
 	nDigit = (int)(zEnd - zDigit);
 	if( nDigit < 1 ){
-		/* A lone sign ("-"/"+") */
+		/* A lone "-" (the digit loop rejects it first; kept defensive) */
 		return FALSE;
 	}
 	if( nDigit > 19 ||
