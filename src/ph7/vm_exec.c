@@ -835,6 +835,100 @@ static sxi32 VmResolveDeferredArgs(
 	}
 	return SXRET_OK;
 }
+/*
+ * Did resolving a class NAME raise?
+ *
+ * The lookup can run an AUTOLOADER, and that autoloader can throw. The boundary rail
+ * either parks the status in nBoundaryRc or — when a try caught it in place — records a
+ * resume frame; either way the throw is already the engine's to land. A call site that
+ * sees the class "missing" and piles its own `Class "X" not found` Error on top reports a
+ * failure php never reports, and that second Error belongs to nobody: it came back
+ * UNCAUGHT and killed the script right after the real exception had been handled.
+ *
+ * Snapshot (nBoundaryRc, pResumeFrame) before the lookup and pass them here after.
+ */
+static int VmClassLookupRaised(ph7_vm *pVm,sxi32 nBrcBefore,const void *pResumeBefore)
+{
+	return pVm->nBoundaryRc != nBrcBefore || (const void *)pVm->pResumeFrame != pResumeBefore;
+}
+/*
+ * Name php's error for a class+method callable that the DIRECT `$cb()` dispatch cannot
+ * call, or return 0 when it resolves.
+ *
+ * The shared dispatcher (PH7_VmCallUserFunctionWithMap) answers SXRET_OK with a NULL
+ * result for an unresolvable pair — silence a caller cannot detect — so the direct call
+ * site has to decide for itself. It used to do that only for the ARRAY form; the
+ * `"Class::method"` STRING form went straight to the dispatcher, and `$cb='C::nosuch'`
+ * evaluated to NULL with no diagnostic at all where php throws.
+ *
+ * pClass is the resolved target class (0 when the name named nothing); zCls/nCls is the
+ * class name AS WRITTEN, which is what php's not-found message quotes. Messages that
+ * interpolate a name are built into zBuf.
+ *
+ * Visibility is NOT checked here: an inaccessible method is diagnosed downstream by the
+ * dispatch itself ("Call to private method C::p() from global scope"), php-exact already.
+ */
+static const char * VmCallableClassMethodError(
+	ph7_class *pClass,             /* Resolved target class, or 0 */
+	const char *zCls,sxu32 nCls,   /* Its name as the callable wrote it */
+	const char *zMeth,sxu32 nMeth, /* The method name */
+	char *zBuf,int nBuf            /* Scratch for the messages that quote a name */
+	)
+{
+	if( pClass == 0 ){
+		SyBufferFormat(zBuf,nBuf,"Class \"%.*s\" not found",(int)nCls,zCls);
+		return zBuf;
+	}
+	if( PH7_ClassExtractMethod(pClass,zMeth,nMeth) == 0 ){
+		SyBufferFormat(zBuf,nBuf,"Call to undefined method %z::%.*s()",
+			&pClass->sName,(int)nMeth,zMeth);
+		return zBuf;
+	}
+	return 0;
+}
+/*
+ * The same check for the ARRAY form, whose two members carry php's own shape messages
+ * before anything is resolved: the target must be an object or a class-name string, the
+ * method must be a string. php probes them in that order (`[5,5]` names the FIRST member,
+ * `['NoSuch',5]` the SECOND — the member shape decides before the class is looked up).
+ */
+static const char * VmDirectArrayCallableError(ph7_vm *pVm,ph7_value *pTarget,ph7_value *pMethod,
+	char *zBuf,int nBuf)
+{
+	ph7_class *pClass;
+	if( (pTarget->iFlags & (MEMOBJ_OBJ|MEMOBJ_STRING)) == 0 ){
+		return "First array member is not a valid class name or object";
+	}
+	if( (pMethod->iFlags & MEMOBJ_STRING) == 0 ){
+		return "Second array member is not a valid method";
+	}
+	pClass = PH7_VmExtractClassFromValue(&(*pVm),pTarget);
+	return VmCallableClassMethodError(pClass,
+		(const char *)SyBlobData(&pTarget->sBlob),SyBlobLength(&pTarget->sBlob),
+		(const char *)SyBlobData(&pMethod->sBlob),SyBlobLength(&pMethod->sBlob),
+		zBuf,nBuf);
+}
+/*
+ * Split a `"Class::method"` callable string. php scans for the LAST "::" (zend_memrchr),
+ * so `"C::s::x"` names the class `C::s` — not `C` — and reports it not found. Returns TRUE
+ * and the two halves (either may be empty: `"C::"` and `"::s"` are shapes php accepts here
+ * and rejects further down), FALSE when the string carries no "::" at all.
+ */
+static int VmCallableStringParts(const char *zName,sxu32 nName,
+	const char **pzCls,sxu32 *pnCls,const char **pzMeth,sxu32 *pnMeth)
+{
+	sxu32 i;
+	for( i = nName ; i >= 2 ; --i ){
+		if( zName[i-2] == ':' && zName[i-1] == ':' ){
+			*pzCls = zName;
+			*pnCls = i - 2;
+			*pzMeth = &zName[i];
+			*pnMeth = nName - i;
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
 static sxi32 VmByteCodeExecBody(
 	ph7_vm *pVm,         /* Target VM */
 	VmInstr *aInstr,     /* PH7 bytecode program */
@@ -4355,6 +4449,7 @@ case PH7_OP_CALL: {
 				ph7_hashmap *pCbMap = (ph7_hashmap *)pTos->x.pOther;
 				char zCbMsg[192];
 				const char *zCbErr = 0;
+				int bCbRaised = 0; /* the class lookup ran an autoloader that threw */
 				if( pCbMap && pCbMap->nEntry == 2 ){
 					/* Shape is right; now check it actually RESOLVES. The shared dispatcher
 					 * (PH7_VmCallUserFunctionWithMap) answers SXRET_OK with a NULL result for
@@ -4371,21 +4466,14 @@ case PH7_OP_CALL: {
 					if( !PH7_VmArrayCallableParts(&(*pVm),pCbMap,&pCbCls,&pCbMeth) ){
 						zCbErr = "Array callback has to contain indices 0 and 1";
 					}else{
-						/* Both parts are present (the decode guarantees it); resolve them. */
-						ph7_class *pCbClass = PH7_VmExtractClassFromValue(&(*pVm),pCbCls);
-						if( pCbClass == 0 ){
-							SyBufferFormat(zCbMsg,sizeof(zCbMsg),"Class \"%.*s\" not found",
-								(int)SyBlobLength(&pCbCls->sBlob),
-								(const char *)SyBlobData(&pCbCls->sBlob));
-							zCbErr = zCbMsg;
-						}else if( (pCbMeth->iFlags & MEMOBJ_STRING) == 0
-							|| PH7_ClassExtractMethod(pCbClass,(const char *)SyBlobData(&pCbMeth->sBlob),
-								SyBlobLength(&pCbMeth->sBlob)) == 0 ){
-							SyBufferFormat(zCbMsg,sizeof(zCbMsg),"Call to undefined method %z::%.*s()",
-								&pCbClass->sName,
-								(int)SyBlobLength(&pCbMeth->sBlob),
-								(const char *)SyBlobData(&pCbMeth->sBlob));
-							zCbErr = zCbMsg;
+						/* The resolution below can run an autoloader that throws; when it does,
+						 * php propagates THAT exception and never reports the class missing. */
+						sxi32 nCbBrc = pVm->nBoundaryRc;
+						const void *pCbRes = (const void *)pVm->pResumeFrame;
+						zCbErr = VmDirectArrayCallableError(&(*pVm),pCbCls,pCbMeth,
+							zCbMsg,sizeof(zCbMsg));
+						if( zCbErr && VmClassLookupRaised(&(*pVm),nCbBrc,pCbRes) ){
+							bCbRaised = 1;
 						}
 					}
 				}
@@ -4400,6 +4488,16 @@ case PH7_OP_CALL: {
 					PH7_MemObjRelease(pTos);
 					MemObjSetType(pTos,MEMOBJ_NULL);
 					pTos->nIdx = SXU32_HIGH;
+					if( bCbRaised ){
+						/* Land the autoloader's own throw: consume the parked status (an
+						 * in-place catch leaves 0 behind plus a recorded resume frame, which
+						 * the router below picks up). */
+						rcCb = pVm->nBoundaryRc;
+						pVm->nBoundaryRc = 0;
+						if( rcCb == PH7_ABORT ){ goto Abort; }
+						rc = PH7_EXCEPTION;
+						PH7_THROW_ROUTE_MIDEXPR(rc)
+					}
 					if( zCbErr == 0 ){
 						zCbErr = "Array callback must have exactly two elements";
 					}
@@ -5899,14 +5997,56 @@ SkipFuncBody:
 		if( pEntry == 0 ){
 			/* php accepts the "Class::method" STATIC-callable string everywhere a
 			 * callable goes ($f = "C::s"; $f(), call_user_func, array_map, …).
-			 * Split on the first "::" and route through the shared array-callable
-			 * machinery ([class-name, method-name]) instead of warning undefined. */
-			sxu32 iSep;
-			int bScoped = 0;
-			for( iSep = 1 ; iSep + 2 < sName.nByte ; ++iSep ){
-				if( sName.zString[iSep] == ':' && sName.zString[iSep+1] == ':' ){
-					bScoped = 1;
-					break;
+			 * Split on the LAST "::" (php's own zend_memrchr scan) and route through the
+			 * shared array-callable machinery ([class-name, method-name]) instead of
+			 * warning undefined. */
+			const char *zCbCls = 0,*zCbMeth = 0;
+			sxu32 nCbCls = 0,nCbMeth = 0;
+			int bScoped = VmCallableStringParts(sName.zString,sName.nByte,
+				&zCbCls,&nCbCls,&zCbMeth,&nCbMeth);
+			if( bScoped ){
+				/* Resolve BEFORE dispatching: the shared dispatcher answers SXRET_OK with
+				 * a NULL result for a pair it cannot resolve, so `$cb='C::nosuch'; $cb();`
+				 * evaluated to NULL with no diagnostic at all — where php throws the same
+				 * Errors the ARRAY form of the same call already raised here. (Its own
+				 * `if( bScoped )` block: this scratch buffer and the dispatch block's
+				 * hashmap are both block-head declarations, and the check runs between
+				 * them.) */
+				char zSmMsg[192];
+				sxi32 nSmBrc = pVm->nBoundaryRc;
+				const void *pSmRes = (const void *)pVm->pResumeFrame;
+				const char *zSmErr = VmCallableClassMethodError(
+					PH7_VmExtractClass(&(*pVm),zCbCls,nCbCls,FALSE,0),
+					zCbCls,nCbCls,zCbMeth,nCbMeth,zSmMsg,sizeof(zSmMsg));
+				if( zSmErr ){
+					sxi32 rcSmErr;
+					int bSmRaised = VmClassLookupRaised(&(*pVm),nSmBrc,pSmRes);
+					if( pInstr->iP2 ){
+						VmSpreadConsume(pVm);
+					}
+					if( nCallArgs > 0 ){
+						VmPopOperand(&pTos,nCallArgs);
+					}
+					PH7_MemObjRelease(pTos);
+					MemObjSetType(pTos,MEMOBJ_NULL);
+					pTos->nIdx = SXU32_HIGH;
+					if( bSmRaised ){
+						/* The class name's autoloader threw: land THAT, exactly as the array
+						 * form does — php never reports the class missing in this case. */
+						rcSmErr = pVm->nBoundaryRc;
+						pVm->nBoundaryRc = 0;
+						if( rcSmErr == PH7_ABORT ){
+							goto Abort;
+						}
+						rc = PH7_EXCEPTION;
+						PH7_THROW_ROUTE_MIDEXPR(rc)
+					}
+					rcSmErr = VmThrowFromVm(&(*pVm),"Error",zSmErr,(sxu32)SyStrlen(zSmErr));
+					if( rcSmErr == SXERR_ABORT ){
+						goto Abort;
+					}
+					rc = rcSmErr;
+					PH7_THROW_ROUTE_MIDEXPR(rc)
 				}
 			}
 			if( bScoped ){
@@ -5922,11 +6062,11 @@ SkipFuncBody:
 						pArg++;
 					}
 					PH7_MemObjInit(pVm,&sElem);
-					PH7_MemObjStringAppend(&sElem,sName.zString,iSep);
+					PH7_MemObjStringAppend(&sElem,zCbCls,nCbCls);
 					PH7_HashmapInsert(pCbMap,0,&sElem);
 					PH7_MemObjRelease(&sElem);
 					PH7_MemObjInit(pVm,&sElem);
-					PH7_MemObjStringAppend(&sElem,&sName.zString[iSep+2],sName.nByte-(iSep+2));
+					PH7_MemObjStringAppend(&sElem,zCbMeth,nCbMeth);
 					PH7_HashmapInsert(pCbMap,0,&sElem);
 					PH7_MemObjRelease(&sElem);
 					PH7_MemObjInit(pVm,&sCallable);
