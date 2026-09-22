@@ -1168,10 +1168,19 @@ PH7_PRIVATE sxi32 VmCallClassMethodWithMap(
 	aInstr[0].iP1 = nArg;
 	aInstr[0].iP2 = 0;
 	aInstr[0].p3  = (void *)pMap; /* forward named-arg metadata */
+	/* nLine 0 = "could not attribute", which is what the executor's line-publish
+	 * step expects for a SYNTHETIC instruction: it leaves the caller's line
+	 * standing. Left uninitialized, this stack struct published whatever byte
+	 * pattern the frame held into pVm->nCurLine, and every diagnostic raised
+	 * inside the callee — a hook's TypeError "called in %s on line %d", a
+	 * backtrace frame, debug_backtrace() — reported a different garbage line on
+	 * every run. */
+	aInstr[0].nLine = 0;
 	aInstr[1].iOp = PH7_OP_DONE;
 	aInstr[1].iP1 = 1;
 	aInstr[1].iP2 = 0;
 	aInstr[1].p3  = 0;
+	aInstr[1].nLine = 0;
 	{
 		sxu32 nStkCap = (sxu32)(2+nArg) + VM_STACK_GUARD; /* what VmNewOperandStack handed out */
 		rc = VmByteCodeExec(&(*pVm),aInstr,aStack,iCursor,pResult,0,TRUE,0,0,FALSE,0,&aStack,&nStkCap,nStkCap);
@@ -1707,11 +1716,13 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 	aInstr[0].iP1 = nArg; /* Total number of given arguments */
 	aInstr[0].iP2 = 0;
 	aInstr[0].p3  = (void *)pArgMap; /* Named-arg map (0 for positional callers) */
+	aInstr[0].nLine = 0; /* synthetic: keep the caller's line (see the sibling site) */
 	/* Emit the DONE instruction */
 	aInstr[1].iOp = PH7_OP_DONE;
 	aInstr[1].iP1 = 1;   /* Extract function return value if available */
 	aInstr[1].iP2 = 0;
 	aInstr[1].p3  = 0;
+	aInstr[1].nLine = 0;
 	/* Execute the function body (if available) */
 	{
 		sxi32 rcExec;
