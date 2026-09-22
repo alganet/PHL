@@ -242,6 +242,59 @@
 		SyBlobRelease(&_sBwMsg); \
 	}
 /*
+ * The shift operators' half of the contract above. `<<`/`>>` have no string arm
+ * at all (`"abc" << 1` is "Unsupported operand types: string << int", while
+ * `"12" << 2` is 48), and their message is POSITIONAL on both sides. pLeftArg is
+ * the shifted value, pRightArg the count. Must be used directly inside a case of
+ * the main switch (or an opcode handler with the same locals).
+ */
+#define PH7_SHIFT_ARITH_CONTRACT(pLeftArg,pRightArg) \
+	{ \
+		char _zShOp[3]; \
+		_zShOp[0] = _zShOp[1] = pInstr->iOp == PH7_OP_SHL || pInstr->iOp == PH7_OP_SHL_STORE ? '<' : '>'; \
+		_zShOp[2] = 0; \
+		PH7_BITWISE_ARITH_CONTRACT((pLeftArg),(pRightArg),_zShOp,0) \
+	}
+/*
+ * php's rules for the shift COUNT, none of which PHL applied — it truncated the
+ * count to 32 bits and handed it to C's `<<`/`>>`, which is UNDEFINED for a
+ * negative count or one past the operand width (x86 masks it to 6 bits, so
+ * `1 << 64` answered 1 and `8 >> 64` answered 8):
+ *   negative      a catchable ArithmeticError, php's "Bit shift by negative
+ *                 number" — settled and routed mid-expression like the operand
+ *                 contract, since the shift is not a call boundary.
+ *   >= 64         php saturates instead of wrapping: `<<` shifts every bit out
+ *                 (0), `>>` keeps the SIGN (0, or -1 for a negative operand).
+ *   `<<` in range done in UNSIGNED space: `1 << 63` is php's PHP_INT_MIN, and a
+ *                 signed left shift into the sign bit is UB.
+ * iCountArg is the raw 64-bit count, aArg the value being shifted, rArg the
+ * result lvalue, bLeftArg true for `<<`. The stack effect on the throw mirrors
+ * the two-operand sites (pop one, settle the survivor to NULL).
+ */
+#define PH7_SHIFT_COUNT_RULES(iCountArg,aArg,rArg,bLeftArg) \
+	{ \
+		sxi64 _iShCount = (iCountArg); \
+		if( _iShCount < 0 ){ \
+			sxi32 _rcSh; \
+			VmPopOperand(&pTos,1); \
+			PH7_MemObjRelease(pTos); \
+			MemObjSetType(pTos,MEMOBJ_NULL); \
+			pTos->nIdx = SXU32_HIGH; \
+			_rcSh = VmThrowFromVm(&(*pVm),"ArithmeticError","Bit shift by negative number", \
+				sizeof("Bit shift by negative number")-1); \
+			if( _rcSh == SXERR_ABORT ){ VM_EXIT_ABORT; } \
+			rc = _rcSh; \
+			PH7_THROW_ROUTE_MIDEXPR(rc) \
+		} \
+		if( _iShCount >= 64 ){ \
+			(rArg) = (bLeftArg) ? 0 : ((aArg) < 0 ? -1 : 0); \
+		}else if( bLeftArg ){ \
+			(rArg) = (sxi64)((sxu64)(aArg) << _iShCount); \
+		}else{ \
+			(rArg) = (aArg) >> _iShCount; \
+		} \
+	}
+/*
  * Replace pDestArg with the per-byte result of a two-STRING `&`/`|`/`^`
  * (VmStringBitwise). The destination may be one of the two operands, so the
  * bytes are built in a scratch blob first — and its own blob can be a READ-ONLY

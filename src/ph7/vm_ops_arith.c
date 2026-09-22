@@ -993,12 +993,14 @@ PH7_PRIVATE VmOpRc VmExecOpShrStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 	ph7_value *pNos = &pTos[-1];
 	ph7_value *pObj;
 	sxi64 a,r;
-	sxi32 b;
 #ifdef UNTRUST
 	if( pNos < pStack ){
 		VM_EXIT_ABORT;
 	}
 #endif
+	/* (The string-offset lvalue rejection happens in the dispatch arm that calls
+	 * this handler, beside the other eleven compound stores.) */
+	PH7_SHIFT_ARITH_CONTRACT(pTos,pNos)
 	/* Force the operands to be integer (php deprecates a lossy float here) */
 	rc = VmRejectFloatOperand(&(*pVm),pNos);
 	PH7_DISPATCH_ENFORCE_RC(rc)
@@ -1012,12 +1014,7 @@ PH7_PRIVATE VmOpRc VmExecOpShrStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 	}
 	/* Perform the requested operation */
 	a = pTos->x.iVal;
-	b = (sxi32)pNos->x.iVal;
-	if( pInstr->iOp == PH7_OP_SHL_STORE ){
-		r = a << b;
-	}else{
-		r = a >> b;
-	}
+	PH7_SHIFT_COUNT_RULES(pNos->x.iVal,a,r,pInstr->iOp == PH7_OP_SHL_STORE)
 	/* Push the result */
 	pNos->x.iVal = r;
 	MemObjSetType(pNos,MEMOBJ_INT);
@@ -1047,12 +1044,12 @@ PH7_PRIVATE VmOpRc VmExecOpShr(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 	SXUNUSED(pVm); SXUNUSED(pInstr); SXUNUSED(pStack); SXUNUSED(aInstr); SXUNUSED(rc);
 	ph7_value *pNos = &pTos[-1];
 	sxi64 a,r;
-	sxi32 b;
 #ifdef UNTRUST
 	if( pNos < pStack ){
 		VM_EXIT_ABORT;
 	}
 #endif
+	PH7_SHIFT_ARITH_CONTRACT(pNos,pTos)
 	/* Force the operands to be integer (php deprecates a lossy float here) */
 	rc = VmRejectFloatOperand(&(*pVm),pNos);
 	PH7_DISPATCH_ENFORCE_RC(rc)
@@ -1066,12 +1063,7 @@ PH7_PRIVATE VmOpRc VmExecOpShr(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 	}
 	/* Perform the requested operation */
 	a = pNos->x.iVal;
-	b = (sxi32)pTos->x.iVal;
-	if( pInstr->iOp == PH7_OP_SHL ){
-		r = a << b;
-	}else{
-		r = a >> b;
-	}
+	PH7_SHIFT_COUNT_RULES(pTos->x.iVal,a,r,pInstr->iOp == PH7_OP_SHL)
 	/* Push the result */
 	pNos->x.iVal = r;
 	MemObjSetType(pNos,MEMOBJ_INT);
