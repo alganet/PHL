@@ -141,7 +141,11 @@ PH7_PRIVATE int ph7_hashmap_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int ph7_hashmap_key_exists(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zName = ph7_function_name(pCtx);
-	int bAlias = zName && zName[0] == 'k'; /* key_exists(): php words its reject differently */
+	/* php words the illegal-key rejection differently in the ALIAS than in
+	 * array_key_exists() itself; the two names share this routine, so match the
+	 * whole name rather than a leading byte. */
+	int bAlias = zName && SyStrlen(zName) == sizeof("key_exists")-1
+		&& SyMemcmp(zName,"key_exists",sizeof("key_exists")-1) == 0;
 	ph7_value sKey;
 	sxi32 rc;
 	if( nArg != 2 ){

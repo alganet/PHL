@@ -671,7 +671,9 @@ PH7_PRIVATE int ph7_hashmap_asort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int ph7_hashmap_natsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zName = ph7_function_name(pCtx);
-	int bFold = zName && zName[3] == 'c'; /* natcasesort */
+	/* natcasesort() is the SORT_FLAG_CASE twin; match the whole name, not a byte. */
+	int bFold = zName && SyStrlen(zName) == sizeof("natcasesort")-1
+		&& SyMemcmp(zName,"natcasesort",sizeof("natcasesort")-1) == 0;
 	ph7_hashmap *pMap;
 	if( nArg < 1 ){
 		return PH7_VmThrowException(pCtx,
