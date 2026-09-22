@@ -4361,22 +4361,32 @@ case PH7_OP_CALL: {
 					 * an unresolvable [class,method] pair -- silence a caller cannot detect --
 					 * and its contract is relied on by call_user_func/usort, so the throw
 					 * belongs here at the call site. */
-					ph7_value *pCbCls = (ph7_value *)SySetAt(&pVm->aMemObj,pCbMap->pFirst->nValIdx);
-					ph7_value *pCbMeth = (ph7_value *)SySetAt(&pVm->aMemObj,pCbMap->pFirst->pPrev->nValIdx);
-					ph7_class *pCbClass = pCbCls ? PH7_VmExtractClassFromValue(&(*pVm),pCbCls) : 0;
-					if( pCbClass == 0 ){
-						SyBufferFormat(zCbMsg,sizeof(zCbMsg),"Class \"%.*s\" not found",
-							pCbCls ? (int)SyBlobLength(&pCbCls->sBlob) : 0,
-							pCbCls ? (const char *)SyBlobData(&pCbCls->sBlob) : "");
-						zCbErr = zCbMsg;
-					}else if( pCbMeth == 0 || (pCbMeth->iFlags & MEMOBJ_STRING) == 0
-						|| PH7_ClassExtractMethod(pCbClass,(const char *)SyBlobData(&pCbMeth->sBlob),
-							SyBlobLength(&pCbMeth->sBlob)) == 0 ){
-						SyBufferFormat(zCbMsg,sizeof(zCbMsg),"Call to undefined method %z::%.*s()",
-							&pCbClass->sName,
-							pCbMeth ? (int)SyBlobLength(&pCbMeth->sBlob) : 0,
-							pCbMeth ? (const char *)SyBlobData(&pCbMeth->sBlob) : "");
-						zCbErr = zCbMsg;
+					ph7_value *pCbCls = 0;
+					ph7_value *pCbMeth = 0;
+					/* php reads the INTEGER indices 0 and 1, not the first two entries in
+					 * insertion order. Two entries at other keys are a SHAPE error of their
+					 * own ("has to contain indices 0 and 1"), distinct from the
+					 * wrong-element-COUNT message below; `[1=>'m',0=>'C']` holds both, so
+					 * the target is index 0 -- the reverse of what PH7 walked. */
+					if( !PH7_VmArrayCallableParts(&(*pVm),pCbMap,&pCbCls,&pCbMeth) ){
+						zCbErr = "Array callback has to contain indices 0 and 1";
+					}else{
+						/* Both parts are present (the decode guarantees it); resolve them. */
+						ph7_class *pCbClass = PH7_VmExtractClassFromValue(&(*pVm),pCbCls);
+						if( pCbClass == 0 ){
+							SyBufferFormat(zCbMsg,sizeof(zCbMsg),"Class \"%.*s\" not found",
+								(int)SyBlobLength(&pCbCls->sBlob),
+								(const char *)SyBlobData(&pCbCls->sBlob));
+							zCbErr = zCbMsg;
+						}else if( (pCbMeth->iFlags & MEMOBJ_STRING) == 0
+							|| PH7_ClassExtractMethod(pCbClass,(const char *)SyBlobData(&pCbMeth->sBlob),
+								SyBlobLength(&pCbMeth->sBlob)) == 0 ){
+							SyBufferFormat(zCbMsg,sizeof(zCbMsg),"Call to undefined method %z::%.*s()",
+								&pCbClass->sName,
+								(int)SyBlobLength(&pCbMeth->sBlob),
+								(const char *)SyBlobData(&pCbMeth->sBlob));
+							zCbErr = zCbMsg;
+						}
 					}
 				}
 				if( pCbMap == 0 || pCbMap->nEntry != 2 || zCbErr ){

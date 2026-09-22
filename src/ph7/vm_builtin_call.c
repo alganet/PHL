@@ -346,8 +346,13 @@ PH7_PRIVATE int vm_builtin_func_exists(ph7_context *pCtx,int nArg,ph7_value **ap
  *
  * Returns TRUE, and fills the two out-params, only for an exactly-two-entry map that
  * holds both indices.
+ *
+ * Shared by the predicate (is_callable and its $callable_name builder), by the callback
+ * ARGUMENT check, and by the three DISPATCH sites (the OP_CALL array-callable path, the
+ * shared PH7_VmCallUserFunctionWithMap, and the callable-value -> Closure wrapper), so
+ * "what php calls this array" is decided in exactly one place.
  */
-static int VmArrayCallableParts(ph7_vm *pVm,ph7_hashmap *pMap,ph7_value **ppTarget,ph7_value **ppMethod)
+PH7_PRIVATE int PH7_VmArrayCallableParts(ph7_vm *pVm,ph7_hashmap *pMap,ph7_value **ppTarget,ph7_value **ppMethod)
 {
 	ph7_value *apPart[2];
 	int i;
@@ -470,7 +475,7 @@ PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)
 		ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;
 		ph7_value *pTarget = 0;
 		ph7_value *pName = 0;
-		if( VmArrayCallableParts(pVm,pMap,&pTarget,&pName) ){
+		if( PH7_VmArrayCallableParts(pVm,pMap,&pTarget,&pName) ){
 			ph7_class *pClass = PH7_VmExtractClassFromValue(pVm,pTarget);
 			if( pClass && (pName->iFlags & MEMOBJ_STRING) && SyBlobLength(&pName->sBlob) > 0 ){
 				/* A class-NAME target names the method statically; an object target
@@ -557,7 +562,7 @@ static int VmIsCallableSyntaxOnly(ph7_vm *pVm,ph7_value *pValue)
 		ph7_value *pMethod = 0;
 		/* The two-INDEX rule is part of the shape, so php rejects `['a'=>'C','b'=>'m']`
 		 * even in syntax-only mode. */
-		if( VmArrayCallableParts(pVm,pMap,&pTarget,&pMethod)
+		if( PH7_VmArrayCallableParts(pVm,pMap,&pTarget,&pMethod)
 		 && (pMethod->iFlags & MEMOBJ_STRING)
 		 && (pTarget->iFlags & (MEMOBJ_OBJ|MEMOBJ_STRING)) ){
 			return 1;
@@ -654,7 +659,7 @@ static void VmCallableName(ph7_vm *pVm,ph7_value *pValue,SyBlob *pOut)
 		ph7_value *pMethod = 0;
 		/* The shape gate above already proved both indices are there; decode again
 		 * rather than trust that, so this stays safe if the gate ever changes. */
-		if( !VmArrayCallableParts(pVm,pMap,&pTarget,&pMethod) ){
+		if( !PH7_VmArrayCallableParts(pVm,pMap,&pTarget,&pMethod) ){
 			return;
 		}
 		if( pTarget->iFlags & MEMOBJ_OBJ ){
@@ -1364,10 +1369,15 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 		ph7_class_method *pMethod = 0;
 		ph7_class_instance *pThis = 0;
 		ph7_class *pClass = 0;
-		ph7_value *pValue;
+		ph7_value *pValue, *pName;
 		sxi32 rc;
-		if( pMap->nEntry < 2 /* Class name/instance + method name */){
-			/* Empty hashmap,nothing to call */
+		/* php reads the INTEGER indices 0 and 1, not the first two entries in insertion
+		 * order — the same decode the predicate uses, so `[1=>'m',0=>'C']` dispatches
+		 * (target at index 0) and `['a'=>'C','b'=>'m']` does not resolve at all. The
+		 * callers validate the argument first (PH7_CheckCallbackArg) or throw the shape
+		 * Error themselves (the OP_CALL path); staying silent here keeps this helper's
+		 * long-standing "unresolvable -> SXRET_OK + NULL result" contract. */
+		if( !PH7_VmArrayCallableParts(&(*pVm),pMap,&pValue,&pName) ){
 			if( pResult ){
 				/* Assume a null return value */
 				PH7_MemObjRelease(pResult);
@@ -1375,10 +1385,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			return SXRET_OK;
 		}
 		/* Extract the class name or an instance of it */
-		pValue = (ph7_value *)SySetAt(&pVm->aMemObj,pMap->pFirst->nValIdx);
-		if( pValue ){
-			pClass = PH7_VmExtractClassFromValue(&(*pVm),pValue);
-		}
+		pClass = PH7_VmExtractClassFromValue(&(*pVm),pValue);
 		if( pClass == 0 ){
 			/* No such class,return NULL */
 			if( pResult ){
@@ -1390,13 +1397,10 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			/* Point to the class instance */
 			pThis = (ph7_class_instance *)pValue->x.pOther;
 		}
-		/* Try to extract the method */
-		pValue = (ph7_value *)SySetAt(&pVm->aMemObj,pMap->pFirst->pPrev->nValIdx);
-		if( pValue ){
-			if( (pValue->iFlags & MEMOBJ_STRING) && SyBlobLength(&pValue->sBlob) > 0 ){
-				pMethod = PH7_ClassExtractMethod(pClass,(const char *)SyBlobData(&pValue->sBlob),
-					SyBlobLength(&pValue->sBlob));
-			}
+		/* Try to extract the method (index 1) */
+		if( (pName->iFlags & MEMOBJ_STRING) && SyBlobLength(&pName->sBlob) > 0 ){
+			pMethod = PH7_ClassExtractMethod(pClass,(const char *)SyBlobData(&pName->sBlob),
+				SyBlobLength(&pName->sBlob));
 		}
 		if( pMethod == 0 ){
 			/* No such method,return NULL */

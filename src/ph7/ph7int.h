@@ -2425,6 +2425,7 @@ PH7_PRIVATE void PH7_VmRandomString(ph7_vm *pVm,char *zBuf,int nLen);
 PH7_PRIVATE ph7_class * PH7_VmPeekTopClass(ph7_vm *pVm);
 PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm);
 PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke);
+PH7_PRIVATE int PH7_VmArrayCallableParts(ph7_vm *pVm,ph7_hashmap *pMap,ph7_value **ppTarget,ph7_value **ppMethod);
 PH7_PRIVATE ph7_value * PH7_VmExtractSuper(ph7_vm *pVm,const char *zName,sxu32 nByte);
 PH7_PRIVATE sxi32 PH7_VmHashmapInsert(ph7_hashmap *pMap,const char *zKey,int nKeylen,const char *zData,int nLen);
 #ifndef PH7_DISABLE_DISK_IO

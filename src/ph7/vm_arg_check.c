@@ -1292,21 +1292,27 @@ PH7_PRIVATE sxi32 PH7_CheckCallbackArg(
 				ph7_function_name(pCtx),iArg,zParam,zOrNull);
 		}else{
 			ph7_vm *pVm = pCtx->pVm;
-			ph7_value *pCls = (ph7_value *)SySetAt(&pVm->aMemObj,pMap->pFirst->nValIdx);
-			ph7_value *pMeth = (ph7_value *)SySetAt(&pVm->aMemObj,pMap->pFirst->pPrev->nValIdx);
-			ph7_class *pClass = pCls ? PH7_VmExtractClassFromValue(&(*pVm),pCls) : 0;
+			ph7_value *pCls = 0;
+			ph7_value *pMeth = 0;
+			ph7_class *pClass;
+			if( !PH7_VmArrayCallableParts(&(*pVm),pMap,&pCls,&pMeth) ){
+				/* Two entries, but not at the integer indices php reads. */
+				return PH7_VmThrowException(pCtx,"TypeError",
+					"%s(): Argument #%d ($%s) must be a valid callback%s, array callback has to contain indices 0 and 1",
+					ph7_function_name(pCtx),iArg,zParam,zOrNull);
+			}
+			/* Both parts exist from here on (the decode guarantees it). */
+			pClass = PH7_VmExtractClassFromValue(&(*pVm),pCls);
 			if( pClass == 0 ){
 				return PH7_VmThrowException(pCtx,"TypeError",
 					"%s(): Argument #%d ($%s) must be a valid callback%s, class \"%.*s\" not found",
 					ph7_function_name(pCtx),iArg,zParam,zOrNull,
-					pCls ? (int)SyBlobLength(&pCls->sBlob) : 0,
-					pCls ? (const char *)SyBlobData(&pCls->sBlob) : "");
+					(int)SyBlobLength(&pCls->sBlob),(const char *)SyBlobData(&pCls->sBlob));
 			}
 			return PH7_VmThrowException(pCtx,"TypeError",
 				"%s(): Argument #%d ($%s) must be a valid callback%s, class %z does not have a method \"%.*s\"",
 				ph7_function_name(pCtx),iArg,zParam,zOrNull,&pClass->sName,
-				pMeth ? (int)SyBlobLength(&pMeth->sBlob) : 0,
-				pMeth ? (const char *)SyBlobData(&pMeth->sBlob) : "");
+				(int)SyBlobLength(&pMeth->sBlob),(const char *)SyBlobData(&pMeth->sBlob));
 		}
 	}
 	return PH7_VmThrowException(pCtx,"TypeError",

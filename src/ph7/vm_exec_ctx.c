@@ -884,17 +884,15 @@ PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue)
 		return VmCreateClosure(pVm, &sName, 0, 0);
 	}
 	if( pValue->iFlags & MEMOBJ_HASHMAP ){
-		/* [target, method] — same two-slot decode PH7_VmIsCallable uses to validate it. */
+		/* [target, method] — the same index-0/1 decode PH7_VmIsCallable uses to validate it
+		 * (php reads the INTEGER indices, not insertion order). */
 		ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;
 		ph7_value *pTarget, *pMeth;
 		SyString sName;
-		if( pMap->nEntry != 2 ){
+		if( !PH7_VmArrayCallableParts(pVm, pMap, &pTarget, &pMeth) ){
 			return 0;
 		}
-		pTarget = (ph7_value *)SySetAt(&pVm->aMemObj, pMap->pFirst->nValIdx);
-		pMeth   = (ph7_value *)SySetAt(&pVm->aMemObj, pMap->pFirst->pPrev->nValIdx);
-		if( pTarget == 0 || pMeth == 0 || (pMeth->iFlags & MEMOBJ_STRING) == 0
-			|| SyBlobLength(&pMeth->sBlob) == 0 ){
+		if( (pMeth->iFlags & MEMOBJ_STRING) == 0 || SyBlobLength(&pMeth->sBlob) == 0 ){
 			return 0;
 		}
 		SyStringInitFromBuf(&sName, SyBlobData(&pMeth->sBlob), SyBlobLength(&pMeth->sBlob));
