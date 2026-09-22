@@ -1414,6 +1414,33 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 		rc = VmCallClassMethodWithMap(&(*pVm),pThis,pMethod,pResult,nArg,apArg,pArgMap);
 		return rc;
 	}
+	{
+		/* php's `"Class::method"` static-callable STRING resolves exactly like the
+		 * `['Class','method']` pair — same lookup, same `$this` inheritance from the
+		 * calling frame. Deciding it HERE, rather than letting it fall through to the
+		 * synthetic OP_CALL below, keeps every callable-ARGUMENT caller (call_user_func,
+		 * array_map, usort, the C API) on php's CALLBACK rules, which are deliberately
+		 * laxer than the direct `$cb()` dispatch's: php lets a callback name a non-static
+		 * method through its class when the caller has a compatible `$this`, and refuses
+		 * the very same spelling written as a direct call. */
+		const char *zCmCls,*zCmMeth;
+		sxu32 nCmCls,nCmMeth;
+		if( PH7_VmCallableStringParts((const char *)SyBlobData(&pFunc->sBlob),
+				SyBlobLength(&pFunc->sBlob),&zCmCls,&nCmCls,&zCmMeth,&nCmMeth) ){
+			ph7_class *pCmClass = PH7_VmExtractClass(&(*pVm),zCmCls,nCmCls,FALSE,0);
+			ph7_class_method *pCmMethod = pCmClass
+				? PH7_ClassExtractMethod(pCmClass,zCmMeth,nCmMeth) : 0;
+			if( pCmMethod == 0 ){
+				/* Unresolvable: the long-standing "SXRET_OK + NULL result" contract, which
+				 * the callers detect by validating the argument first. */
+				if( pResult ){
+					PH7_MemObjRelease(pResult);
+				}
+				return SXRET_OK;
+			}
+			return VmCallClassMethodWithMap(&(*pVm),0,pCmMethod,pResult,nArg,apArg,pArgMap);
+		}
+	}
 	/* Create a new operand stack */
 	aStack = VmNewOperandStack(&(*pVm),1+nArg);
 	if( aStack == 0 ){

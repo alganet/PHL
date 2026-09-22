@@ -862,27 +862,59 @@ static int VmClassLookupRaised(ph7_vm *pVm,sxi32 nBrcBefore,const void *pResumeB
  * evaluated to NULL with no diagnostic at all where php throws.
  *
  * pClass is the resolved target class (0 when the name named nothing); zCls/nCls is the
- * class name AS WRITTEN, which is what php's not-found message quotes. Messages that
- * interpolate a name are built into zBuf.
+ * class name AS WRITTEN, which is what php's not-found message quotes. bStaticForm says the
+ * target was a class NAME rather than an object. Messages that interpolate a name are built
+ * into zBuf.
  *
- * Visibility is NOT checked here: an inaccessible method is diagnosed downstream by the
- * dispatch itself ("Call to private method C::p() from global scope"), php-exact already.
+ * Visibility is NOT decided here: an inaccessible method is diagnosed downstream by the
+ * dispatch itself ("Call to private method C::p() from global scope"), php-exact already —
+ * and php reports visibility BEFORE staticness, so the static rule below has to stay quiet
+ * for a method this scope could not reach anyway.
  */
 static const char * VmCallableClassMethodError(
+	ph7_vm *pVm,
 	ph7_class *pClass,             /* Resolved target class, or 0 */
 	const char *zCls,sxu32 nCls,   /* Its name as the callable wrote it */
 	const char *zMeth,sxu32 nMeth, /* The method name */
+	int bStaticForm,               /* TRUE when the target is a class NAME, not an object */
 	char *zBuf,int nBuf            /* Scratch for the messages that quote a name */
 	)
 {
+	ph7_class_method *pMethod;
+	ph7_class *pDecl;
+	SyString sMeth;
 	if( pClass == 0 ){
 		SyBufferFormat(zBuf,nBuf,"Class \"%.*s\" not found",(int)nCls,zCls);
 		return zBuf;
 	}
-	if( PH7_ClassExtractMethod(pClass,zMeth,nMeth) == 0 ){
+	pMethod = PH7_ClassExtractMethod(pClass,zMeth,nMeth);
+	if( pMethod == 0 ){
 		SyBufferFormat(zBuf,nBuf,"Call to undefined method %z::%.*s()",
 			&pClass->sName,(int)nMeth,zMeth);
 		return zBuf;
+	}
+	/* An ABSTRACT method (an interface's included) has no body to call — the same message
+	 * the `C::m()` SYNTAX raises in vm_ops_oo.c, which this dispatch reached only as a
+	 * mangled internal function name. */
+	SyStringInitFromBuf(&sMeth,zMeth,nMeth);
+	if( pMethod->iFlags & PH7_CLASS_ATTR_ABSTRACT ){
+		SyBufferFormat(zBuf,nBuf,"Cannot call abstract method %z::%z()",&pClass->sName,&sMeth);
+		return zBuf;
+	}
+	/* Named through a class NAME, a non-static method is never callable: php refuses even
+	 * when the CALLER has a compatible $this (unlike call_user_func, which binds it). The
+	 * message names the DECLARING class and the method's declared spelling. */
+	pDecl = pMethod->sFunc.pUserData ? (ph7_class *)pMethod->sFunc.pUserData : pClass;
+	if( bStaticForm && (pMethod->iFlags & PH7_CLASS_ATTR_STATIC) == 0 ){
+		SyString sDecl;
+		SyStringInitFromBuf(&sDecl,SyStringData(&pMethod->sFunc.sName),
+			SyStringLength(&pMethod->sFunc.sName));
+		if( pMethod->iProtection == PH7_CLASS_PROT_PUBLIC
+		 || PH7_VmClassMemberAccess(&(*pVm),pDecl,&sDecl,pMethod->iProtection,FALSE) ){
+			SyBufferFormat(zBuf,nBuf,"Non-static method %z::%z() cannot be called statically",
+				&pDecl->sName,&sDecl);
+			return zBuf;
+		}
 	}
 	return 0;
 }
@@ -903,9 +935,11 @@ static const char * VmDirectArrayCallableError(ph7_vm *pVm,ph7_value *pTarget,ph
 		return "Second array member is not a valid method";
 	}
 	pClass = PH7_VmExtractClassFromValue(&(*pVm),pTarget);
-	return VmCallableClassMethodError(pClass,
+	return VmCallableClassMethodError(&(*pVm),pClass,
 		(const char *)SyBlobData(&pTarget->sBlob),SyBlobLength(&pTarget->sBlob),
 		(const char *)SyBlobData(&pMethod->sBlob),SyBlobLength(&pMethod->sBlob),
+		/* An OBJECT target carries its own $this; only a class NAME is the static form. */
+		(pTarget->iFlags & MEMOBJ_OBJ) ? FALSE : TRUE,
 		zBuf,nBuf);
 }
 /*
@@ -914,7 +948,7 @@ static const char * VmDirectArrayCallableError(ph7_vm *pVm,ph7_value *pTarget,ph
  * and the two halves (either may be empty: `"C::"` and `"::s"` are shapes php accepts here
  * and rejects further down), FALSE when the string carries no "::" at all.
  */
-static int VmCallableStringParts(const char *zName,sxu32 nName,
+PH7_PRIVATE int PH7_VmCallableStringParts(const char *zName,sxu32 nName,
 	const char **pzCls,sxu32 *pnCls,const char **pzMeth,sxu32 *pnMeth)
 {
 	sxu32 i;
@@ -6002,7 +6036,7 @@ SkipFuncBody:
 			 * warning undefined. */
 			const char *zCbCls = 0,*zCbMeth = 0;
 			sxu32 nCbCls = 0,nCbMeth = 0;
-			int bScoped = VmCallableStringParts(sName.zString,sName.nByte,
+			int bScoped = PH7_VmCallableStringParts(sName.zString,sName.nByte,
 				&zCbCls,&nCbCls,&zCbMeth,&nCbMeth);
 			if( bScoped ){
 				/* Resolve BEFORE dispatching: the shared dispatcher answers SXRET_OK with
@@ -6015,9 +6049,9 @@ SkipFuncBody:
 				char zSmMsg[192];
 				sxi32 nSmBrc = pVm->nBoundaryRc;
 				const void *pSmRes = (const void *)pVm->pResumeFrame;
-				const char *zSmErr = VmCallableClassMethodError(
+				const char *zSmErr = VmCallableClassMethodError(&(*pVm),
 					PH7_VmExtractClass(&(*pVm),zCbCls,nCbCls,FALSE,0),
-					zCbCls,nCbCls,zCbMeth,nCbMeth,zSmMsg,sizeof(zSmMsg));
+					zCbCls,nCbCls,zCbMeth,nCbMeth,TRUE,zSmMsg,sizeof(zSmMsg));
 				if( zSmErr ){
 					sxi32 rcSmErr;
 					int bSmRaised = VmClassLookupRaised(&(*pVm),nSmBrc,pSmRes);
@@ -6050,58 +6084,47 @@ SkipFuncBody:
 				}
 			}
 			if( bScoped ){
-				ph7_hashmap *pCbMap = PH7_NewHashmap(&(*pVm),0,0);
-				if( pCbMap ){
-					ph7_value sCallable,sElem,sResult;
-					sxi32 rcSm;
-					pEffCallMap = VmEffCallArgMap(pVm,pInstr,pArg,
-						nCallArgs > 0 ? (sxu32)nCallArgs : 0,&sEffMap);
-					SySetReset(&aArg);
-					while( pArg < pTos ){
-						SySetPut(&aArg,(const void *)&pArg);
-						pArg++;
-					}
-					PH7_MemObjInit(pVm,&sElem);
-					PH7_MemObjStringAppend(&sElem,zCbCls,nCbCls);
-					PH7_HashmapInsert(pCbMap,0,&sElem);
-					PH7_MemObjRelease(&sElem);
-					PH7_MemObjInit(pVm,&sElem);
-					PH7_MemObjStringAppend(&sElem,zCbMeth,nCbMeth);
-					PH7_HashmapInsert(pCbMap,0,&sElem);
-					PH7_MemObjRelease(&sElem);
-					PH7_MemObjInit(pVm,&sCallable);
-					sCallable.x.pOther = pCbMap;
-					MemObjSetType(&sCallable,MEMOBJ_HASHMAP);
-					PH7_MemObjInit(pVm,&sResult);
-					rcSm = PH7_VmCallUserFunctionWithMap(pVm,&sCallable,(int)SySetUsed(&aArg),
-						(ph7_value **)SySetBasePtr(&aArg),&sResult,pEffCallMap);
-					SySetReset(&aArg);
-					PH7_MemObjRelease(&sCallable);
-					if( nCallArgs > 0 ){
-						VmPopOperand(&pTos,nCallArgs);
-					}
-					if( rcSm == PH7_ABORT ){
-						PH7_MemObjRelease(&sResult);
-						goto Abort;
-					}
-					if( rcSm == PH7_EXCEPTION ){
-						sxi32 iResumePc;
-						PH7_MemObjRelease(&sResult);
-						if( VmRecordedResume(pVm,&iResumePc,sState.pEntryFrame,aInstr) ){
-							PH7_MemObjRelease(pTos);
-							/* Drain the abandoned outer-expression operands
-							 * (`1 + "C::m"()`) to the try's base — one leaked
-							 * slot per caught throw otherwise. */
-							PH7_RESUME_DRAIN()
-							pc = iResumePc;
-							break;
-						}
-						goto Exception;
-					}
-					PH7_MemObjStore(&sResult,pTos);
-					PH7_MemObjRelease(&sResult);
-					break;
+				/* Resolved: hand the callable STRING itself to the shared dispatcher, which
+				 * decodes `Class::method` the same way (it has to, for the callback-argument
+				 * callers). This used to build a throwaway [class,method] map here and enter
+				 * through the hashmap branch — two decoders for one spelling. */
+				ph7_value sResult;
+				sxi32 rcSm;
+				pEffCallMap = VmEffCallArgMap(pVm,pInstr,pArg,
+					nCallArgs > 0 ? (sxu32)nCallArgs : 0,&sEffMap);
+				SySetReset(&aArg);
+				while( pArg < pTos ){
+					SySetPut(&aArg,(const void *)&pArg);
+					pArg++;
 				}
+				PH7_MemObjInit(pVm,&sResult);
+				rcSm = PH7_VmCallUserFunctionWithMap(pVm,pTos,(int)SySetUsed(&aArg),
+					(ph7_value **)SySetBasePtr(&aArg),&sResult,pEffCallMap);
+				SySetReset(&aArg);
+				if( nCallArgs > 0 ){
+					VmPopOperand(&pTos,nCallArgs);
+				}
+				if( rcSm == PH7_ABORT ){
+					PH7_MemObjRelease(&sResult);
+					goto Abort;
+				}
+				if( rcSm == PH7_EXCEPTION ){
+					sxi32 iResumePc;
+					PH7_MemObjRelease(&sResult);
+					if( VmRecordedResume(pVm,&iResumePc,sState.pEntryFrame,aInstr) ){
+						PH7_MemObjRelease(pTos);
+						/* Drain the abandoned outer-expression operands
+						 * (`1 + "C::m"()`) to the try's base — one leaked
+						 * slot per caught throw otherwise. */
+						PH7_RESUME_DRAIN()
+						pc = iResumePc;
+						break;
+					}
+					goto Exception;
+				}
+				PH7_MemObjStore(&sResult,pTos);
+				PH7_MemObjRelease(&sResult);
+				break;
 			}
 			/* Call to an undefined function is a catchable Error in php 8 — it does
 			 * NOT warn and hand back null and carry on, which is what PH7 did (and
