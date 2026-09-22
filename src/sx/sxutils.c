@@ -166,6 +166,18 @@ PH7_PRIVATE sxi32 SyStrToInt32(const char *zSrc,sxu32 nLen,void * pOutVal,const 
 }
 PH7_PRIVATE sxi32 SyStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,const char **zRest)
 {
+	return SyStrToInt64Ex(zSrc,nLen,pOutVal,zRest,0);
+}
+/*
+ * SyStrToInt64 plus the one fact its saturating reader threw away: whether the
+ * digit run ran PAST the int64 range. *pOverflow comes back 1 for the positive
+ * side, -1 for the negative one and 0 when the value fits. The integer handed
+ * back is still the saturated one, which is what php's (int) cast wants -- but a
+ * caller converting a numeric STRING to a NUMBER needs to know, because php's
+ * answer there is a float, not PHP_INT_MAX.
+ */
+PH7_PRIVATE sxi32 SyStrToInt64Ex(const char *zSrc,sxu32 nLen,void * pOutVal,const char **zRest,int *pOverflow)
+{
 	int isNeg = FALSE;
 	const char *zEnd;
 	sxi64 nVal;
@@ -176,6 +188,9 @@ PH7_PRIVATE sxi32 SyStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,const 
 	 * negative one. */
 	sxu64 uVal, cutoff;
 	int bOverflow = FALSE;
+	if( pOverflow ){
+		*pOverflow = 0;
+	}
 #if defined(UNTRUST)
 	if( SX_EMPTY_STR(zSrc) ){
 		if( pOutVal ){
@@ -209,6 +224,9 @@ PH7_PRIVATE sxi32 SyStrToInt64(const char *zSrc,sxu32 nLen,void * pOutVal,const 
 	}
 	if( bOverflow ){
 		uVal = cutoff;
+		if( pOverflow ){
+			*pOverflow = isNeg ? -1 : 1;
+		}
 	}
 	/* Skip trailing spaces */
 	while(zSrc < zEnd && SyisSpace(zSrc[0])){

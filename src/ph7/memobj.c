@@ -165,13 +165,13 @@ PH7_PRIVATE sxi64 PH7_TokenValueToInt64(SyString *pVal)
  * do at representing the value that pObj describes as a string
  * representation.
  */
-static sxi64 MemObjStringToInt(ph7_value *pObj)
+static sxi64 MemObjStringToInt(ph7_value *pObj,int *pOverflow)
 {
 	sxi64 iVal = 0;
 	/* A *string* is always read in base 10 by php: "012" is 12, "0x1A" and "0b11"
 	 * are 0. Only a source *literal* carries a base prefix, and that is decoded by
 	 * the compiler (PH7_TokenValueToInt64) -- not here. */
-	SyStrToInt64((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),(void *)&iVal,0);
+	SyStrToInt64Ex((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),(void *)&iVal,0,pOverflow);
 	return iVal;
 }
 /*
@@ -218,7 +218,10 @@ static sxi64 MemObjIntValue(ph7_value *pObj)
 	}else if( iFlags & (MEMOBJ_INT|MEMOBJ_BOOL) ){
 		return pObj->x.iVal;
 	}else if (iFlags & MEMOBJ_STRING) {
-		return MemObjStringToInt(&(*pObj));
+		/* php's (int) cast SATURATES an out-of-range numeric string, so the
+		 * overflow report is deliberately dropped here. Only the string->NUMBER
+		 * conversion (PH7_MemObjToNumeric) acts on it. */
+		return MemObjStringToInt(&(*pObj),0);
 	}else if( iFlags & MEMOBJ_NULL ){
 		return 0;
 	}else if( iFlags & MEMOBJ_HASHMAP ){
@@ -277,7 +280,7 @@ static ph7_real MemObjRealValue(ph7_value *pObj)
 		if( SyBlobLength(&pObj->sBlob) > 0 ){
 			/* Convert as much as we can */
 #ifdef PH7_OMIT_FLOATING_POINT
-			rVal = MemObjStringToInt(&(*pObj));
+			rVal = MemObjStringToInt(&(*pObj),0);
 #else
 			SyStrToReal(sString.zString,sString.nByte,(void *)&rVal,0);
 #endif
@@ -1058,8 +1061,26 @@ PH7_PRIVATE sxi32 PH7_MemObjToNumeric(ph7_value *pObj)
 				/* The input does not look at all like a number,set the value to 0 */
 				pObj->x.iVal = 0;
 			}else{
+				int iOverflow = 0;
 				/* Convert as much as we can */
-				pObj->x.iVal = MemObjStringToInt(&(*pObj));
+				pObj->x.iVal = MemObjStringToInt(&(*pObj),&iOverflow);
+#ifndef PH7_OMIT_FLOATING_POINT
+				if( iOverflow ){
+					/* php: an integer-shaped numeric string whose digit run runs past
+					 * the int64 range is a FLOAT, and every arithmetic operator
+					 * inherits that because they all come through here. Clamping it
+					 * instead answered PHP_INT_MAX for "9223372036854775808" + 0 and
+					 * -- worse -- PHP_INT_MIN for "-9223372036854775809" + 0, a value
+					 * with no relation to the input. The float is read from the same
+					 * bytes by MemObjRealValue's SyStrToReal, which is also what the
+					 * (float) cast has always answered; the (int) CAST keeps
+					 * saturating, as php's does. The integer-only build has no float
+					 * to promote TO, so it keeps the saturated int -- the same choice
+					 * OP_ADD's overflow arm makes there. */
+					PH7_MemObjToReal(&(*pObj));
+					return SXRET_OK;
+				}
+#endif
 			}
 			MemObjSetType(pObj,MEMOBJ_INT);
 			SyBlobRelease(&pObj->sBlob);
