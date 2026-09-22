@@ -3672,19 +3672,20 @@ PH7_PRIVATE sxi32 VmArithOperandCheck(ph7_vm *pVm,ph7_value *pLeft,ph7_value *pR
 }
 /*
  * Throw an internal exception instance that can be intercepted by try/catch.
+ * iCode becomes the exception's $code (php's second constructor argument);
+ * pass 0 for the engine errors that leave it at its default.
  */
-PH7_PRIVATE sxi32 PH7_VmThrowException(ph7_context *pCtx,const char *zClass,const char *zFormat,...)
+static sxi32 VmThrowInternalAp(ph7_context *pCtx,const char *zClass,sxi32 iCode,const char *zFormat,va_list ap)
 {
 	ph7_vm *pVm;
 	ph7_class *pClass;
 	ph7_class_instance *pThis;
 	ph7_class_method *pCons;
-	ph7_value sArg;
-	ph7_value *apArg[1];
+	ph7_value sArg,sCode;
+	ph7_value *apArg[2];
 	SyBlob sMsg;
 	SyString sMsgStr;
 	VmFrame *pFrame;
-	va_list ap;
 	sxi32 rc;
 
 	if( pCtx == 0 || pCtx->pVm == 0 ){
@@ -3716,16 +3717,23 @@ PH7_PRIVATE sxi32 PH7_VmThrowException(ph7_context *pCtx,const char *zClass,cons
 	}
 
 	SyBlobInit(&sMsg,&pVm->sAllocator);
-	va_start(ap,zFormat);
 	SyBlobFormatAp(&sMsg,zFormat,ap);
-	va_end(ap);
 
 	pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
 	if( pCons ){
+		int nArg = 1;
 		SyStringInitFromBuf(&sMsgStr,(const char *)SyBlobData(&sMsg),SyBlobLength(&sMsg));
 		PH7_MemObjInitFromString(&(*pVm),&sArg,&sMsgStr);
 		apArg[0] = &sArg;
-		PH7_VmCallClassMethod(&(*pVm),pThis,pCons,0,1,apArg);
+		if( iCode != 0 ){
+			PH7_MemObjInitFromInt(&(*pVm),&sCode,(sxi64)iCode);
+			apArg[1] = &sCode;
+			nArg = 2;
+		}
+		PH7_VmCallClassMethod(&(*pVm),pThis,pCons,0,nArg,apArg);
+		if( iCode != 0 ){
+			PH7_MemObjRelease(&sCode);
+		}
 		PH7_MemObjRelease(&sArg);
 	}
 	SyBlobRelease(&sMsg);
@@ -3752,6 +3760,25 @@ PH7_PRIVATE sxi32 PH7_VmThrowException(ph7_context *pCtx,const char *zClass,cons
 	 * rationale as VmBoundaryPark for callback throws, one call-frame narrower. */
 	pCtx->nThrowRc = PH7_EXCEPTION;
 	return PH7_EXCEPTION;
+}
+PH7_PRIVATE sxi32 PH7_VmThrowException(ph7_context *pCtx,const char *zClass,const char *zFormat,...)
+{
+	va_list ap;
+	sxi32 rc;
+	va_start(ap,zFormat);
+	rc = VmThrowInternalAp(pCtx,zClass,0,zFormat,ap);
+	va_end(ap);
+	return rc;
+}
+/* Same, carrying php's exception $code (JsonException gets json_last_error()). */
+PH7_PRIVATE sxi32 PH7_VmThrowExceptionCode(ph7_context *pCtx,const char *zClass,sxi32 iCode,const char *zFormat,...)
+{
+	va_list ap;
+	sxi32 rc;
+	va_start(ap,zFormat);
+	rc = VmThrowInternalAp(pCtx,zClass,iCode,zFormat,ap);
+	va_end(ap);
+	return rc;
 }
 /*
  * The status a host function's own throw should have returned. Consulted at the

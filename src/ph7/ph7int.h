@@ -2239,6 +2239,8 @@ enum json_err_code{
 #define JSON_UNESCAPED_SLASHES 0x40  /* Don't escape '/' */
 #define JSON_UNESCAPED_UNICODE 0x100 /* Emit multibyte UTF-8 raw instead of \uXXXX */
 #define JSON_UNESCAPED_LINE_TERMINATORS 0x800 /* ...U+2028/U+2029 included */
+#define JSON_INVALID_UTF8_IGNORE     0x100000 /* Drop ill-formed UTF-8 instead of failing */
+#define JSON_INVALID_UTF8_SUBSTITUTE 0x200000 /* ...replace it with U+FFFD */
 #define JSON_THROW_ON_ERROR    0x400000 /* Throw JsonException on encode/decode error */
 /* DECODE flag: php numbers the decode options in their own space, so this shares a
  * bit with an encode flag exactly as php's JSON_BIGINT_AS_STRING shares 2 with
@@ -2403,6 +2405,7 @@ PH7_PRIVATE sxi32 PH7_VmMemoryError(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_ContextMemoryError(ph7_context *pCtx);
 PH7_PRIVATE sxu32 PH7_VmResourceId(ph7_vm *pVm,void *pRes);
 PH7_PRIVATE sxi32 PH7_VmThrowException(ph7_context *pCtx,const char *zClass,const char *zFormat,...);
+PH7_PRIVATE sxi32 PH7_VmThrowExceptionCode(ph7_context *pCtx,const char *zClass,sxi32 iCode,const char *zFormat,...);
 PH7_PRIVATE sxi32 VmHostFuncThrowRc(ph7_context *pCtx,sxi32 rc);
 PH7_PRIVATE sxi32 PH7_VmThrowArrayNextIndexError(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmThrowGlobalsAppendError(ph7_vm *pVm);

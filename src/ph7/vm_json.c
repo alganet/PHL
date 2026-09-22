@@ -89,6 +89,34 @@ static sxi32 VmJsonPretty(json_private_data *pJson,int depth)
 	return rc;
 }
 /*
+ * Byte length of the ill-formed UTF-8 run at z[0..n-1] as php's JSON encoder
+ * measures it: a byte that could LEAD a sequence (C2..F4) swallows every
+ * following byte that is merely continuation-SHAPED (10xxxxxx), up to the
+ * length its lead announces, and the whole prefix is ONE error. So "\xed\xa0\x80"
+ * (a surrogate) is a single JSON_ERROR_UTF8 / a single U+FFFD, while
+ * "\xf5\x80\x80\x80" is four — F5 leads nothing, so each byte fails alone.
+ *
+ * php's mbstring measures the same runs with the STRICTER per-lead ranges
+ * (builtin_mb.c's MbUtf8BadLen), which is why the two disagree on a surrogate:
+ * mb_strtolower("\xed\xa0\x80") is "???" while json substitutes one U+FFFD.
+ * Two php decoders, two rules — each matched where it belongs.
+ */
+static sxu32 VmJsonBadUtf8Len(const unsigned char *z,sxu32 n)
+{
+	sxu32 c = z[0],need,i;
+	if( c >= 0xC2 && c <= 0xDF ){
+		need = 2;
+	}else if( c >= 0xE0 && c <= 0xEF ){
+		need = 3;
+	}else if( c >= 0xF0 && c <= 0xF4 ){
+		need = 4;
+	}else{
+		return 1; /* 80..C1 or F5..FF: leads nothing */
+	}
+	for( i = 1 ; i < need && i < n && (z[i] & 0xC0) == 0x80 ; ++i ){}
+	return i;
+}
+/*
  * Emit one code point as php's \uXXXX escape (lowercase hex), spelling anything
  * outside the BMP as the UTF-16 surrogate pair JSON has no other way to carry:
  * U+1F600 is "😀", exactly like php.
@@ -152,13 +180,29 @@ static sxi32 VmJsonEncodeString(json_private_data *pData,const char *zIn,int nBy
 		}
 		if( (unsigned char)zIn[0] >= 0x80 ){
 			/* A UTF-8 sequence: decode it strictly, since \uXXXX needs the code
-			 * point and not the bytes. An ill-formed one still goes out raw
-			 * here — php refuses the whole encode instead, which is the
-			 * JSON_ERROR_UTF8 slice, not this one. */
+			 * point and not the bytes. */
 			sxu32 nLen,cp;
 			sxi32 iCp = PH7_Utf8ReadStrict((const unsigned char *)zIn,(sxu32)(zEnd - zIn),&nLen);
 			if( iCp < 0 ){
-				rc = ph7_result_string(pCtx,zIn,(int)nLen);
+				/* Ill-formed. php REFUSES to encode it: json_encode returns
+				 * false with json_last_error() == JSON_ERROR_UTF8, because
+				 * there is no honest JSON spelling for a byte that is not
+				 * text. PHL used to pass the byte through, so the caller got a
+				 * valid-looking payload php would never have produced and no
+				 * error check could see it. The two JSON_INVALID_UTF8_* flags
+				 * are the opt-outs php offers. */
+				nLen = VmJsonBadUtf8Len((const unsigned char *)zIn,(sxu32)(zEnd - zIn));
+				if( iFlags & JSON_INVALID_UTF8_IGNORE ){
+					rc = SXRET_OK; /* drop the run */
+				}else if( iFlags & JSON_INVALID_UTF8_SUBSTITUTE ){
+					rc = (iFlags & JSON_UNESCAPED_UNICODE)
+						? ph7_result_string(pCtx,"\357\277\275",3) /* U+FFFD */
+						: VmJsonEmitUnicodeEscape(pCtx,0xFFFD);
+				}else{
+					pData->fail = 1;
+					pData->failRc = JSON_ERROR_UTF8;
+					return SXRET_OK; /* the whole encode is discarded */
+				}
 			}else{
 				cp = (sxu32)iCp;
 				if( (iFlags & JSON_UNESCAPED_UNICODE) == 0
@@ -475,8 +519,9 @@ static sxi32 VmJsonEncode(
 static int VmJsonArrayEncode(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 {
 	json_private_data *pJson = (json_private_data *)pUserData;
-	if( pJson->nRecCount > 31 || pJson->exc || pJson->oom ){
-		/* Recursion limit reached, a callback threw, or OOM — return immediately */
+	if( pJson->nRecCount > 31 || pJson->exc || pJson->oom || pJson->fail ){
+		/* Recursion limit reached, a callback threw, OOM, or the value is
+		 * unencodable (the result is discarded) — return immediately */
 		return PH7_OK;
 	}
 	if( !pJson->isFirst ){
@@ -517,8 +562,9 @@ static int VmJsonArrayEncode(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 static int VmJsonObjectEncode(const SyString *pAttr,ph7_value *pValue,void *pUserData)
 {
 	json_private_data *pJson = (json_private_data *)pUserData;
-	if( pJson->nRecCount > 31 || pJson->exc || pJson->oom ){
-		/* Recursion limit reached, a callback threw, or OOM — return immediately */
+	if( pJson->nRecCount > 31 || pJson->exc || pJson->oom || pJson->fail ){
+		/* Recursion limit reached, a callback threw, OOM, or the value is
+		 * unencodable (the result is discarded) — return immediately */
 		return PH7_OK;
 	}
 	if( !pJson->isFirst ){
@@ -605,7 +651,8 @@ PH7_PRIVATE int vm_builtin_json_encode(ph7_context *pCtx,int nArg,ph7_value **ap
 		if( sJson.iFlags & JSON_THROW_ON_ERROR ){
 			/* php: raise a JsonException carrying json_last_error_msg() instead
 			 * of returning FALSE. */
-			return PH7_VmThrowException(pCtx,"JsonException","%s",
+			return PH7_VmThrowExceptionCode(pCtx,"JsonException",
+				(sxi32)pCtx->pVm->json_rc,"%s",
 				JsonErrorMsg(pCtx->pVm->json_rc));
 		}
 		ph7_result_bool(pCtx,0);
@@ -1339,8 +1386,8 @@ PH7_PRIVATE int vm_builtin_json_decode(ph7_context *pCtx,int nArg,ph7_value **ap
 		 * returns NULL, or raises a JsonException with JSON_THROW_ON_ERROR. */
 		pCtx->pVm->json_rc = JSON_ERROR_SYNTAX;
 		if( iFlags & JSON_THROW_ON_ERROR ){
-			return PH7_VmThrowException(pCtx,"JsonException","%s",
-				JsonErrorMsg(JSON_ERROR_SYNTAX));
+			return PH7_VmThrowExceptionCode(pCtx,"JsonException",
+				JSON_ERROR_SYNTAX,"%s",JsonErrorMsg(JSON_ERROR_SYNTAX));
 		}
 		ph7_result_null(pCtx);
 		return PH7_OK;
@@ -1372,7 +1419,8 @@ PH7_PRIVATE int vm_builtin_json_decode(ph7_context *pCtx,int nArg,ph7_value **ap
 		/* Something goes wrong while decoding JSON input. */
 		if( iFlags & JSON_THROW_ON_ERROR ){
 			/* php: raise a JsonException carrying json_last_error_msg() text. */
-			return PH7_VmThrowException(pCtx,"JsonException","%s",
+			return PH7_VmThrowExceptionCode(pCtx,"JsonException",
+				(sxi32)pCtx->pVm->json_rc,"%s",
 				JsonErrorMsg(pCtx->pVm->json_rc));
 		}
 		ph7_result_null(pCtx);
