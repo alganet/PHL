@@ -1401,7 +1401,17 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 					 * enum case): its exception is already registered — do NOT
 					 * also type-check the leftover value (a spurious second
 					 * TypeError would escape the user's catch), and throw
-					 * nothing further for the remaining attributes. */
+					 * nothing further for the remaining attributes.
+					 *
+					 * PARK the status too, exactly as the typed-default branch
+					 * below does. The initializer is a mini-program (VmLocalExec)
+					 * sharing this frame, so an enclosing try caught it IN PLACE
+					 * and the throw came back as a status nobody read: this
+					 * function answered SXRET_OK, so OP_NEW finished the object
+					 * and the whole statement RESUMED after the catch — php
+					 * abandons it. Parking hands the same status to OP_NEW's
+					 * existing construction-aborted route. */
+					VmBoundaryPark(&(*pVm),rcExec);
 					bDefThrew = 1;
 				}else if( !bDefThrew && (pAttr->iFlags & PH7_CLASS_ATTR_TYPED) ){
 					/* Typed property DEFAULT: php validates the computed value
