@@ -4606,11 +4606,7 @@ case PH7_OP_CALL: {
 			 * semantics is a later slice. */
 			{
 				sxi32 rcDA = VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,/*bAllByRef*/1,0);
-				if( rcDA == PH7_ABORT ){
-					goto Abort;
-				}else if( rcDA == PH7_EXCEPTION ){
-					goto Exception;
-				}
+				PH7_DISPATCH_ENFORCE_RC(rcDA)
 			}
 			SySetReset(&aArg);
 			while( pArg < pTos ){
@@ -4664,11 +4660,7 @@ case PH7_OP_CALL: {
 			 * every deferred arg as by-ref. */
 			{
 				sxi32 rcDA = VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,/*bAllByRef*/1,0);
-				if( rcDA == PH7_ABORT ){
-					goto Abort;
-				}else if( rcDA == PH7_EXCEPTION ){
-					goto Exception;
-				}
+				PH7_DISPATCH_ENFORCE_RC(rcDA)
 			}
 			SySetReset(&aArg);
 			while( pArg < pTos ){
@@ -5020,11 +5012,7 @@ case PH7_OP_CALL: {
 			sxi32 rcDA = VmResolveDeferredArgs(&(*pVm),pArg,pTos,
 				(ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs),SySetUsed(&pVmFunc->aArgs),
 				0,0,0);
-			if( rcDA == PH7_ABORT ){
-				goto Abort;
-			}else if( rcDA == PH7_EXCEPTION ){
-				goto Exception;
-			}
+			PH7_DISPATCH_ENFORCE_RC(rcDA)
 		}
 		if( pVmFunc->iFlags & VM_FUNC_GENERATOR ){
 			/* Generator function: return a Generator object instead of executing */
@@ -6243,11 +6231,7 @@ SkipFuncBody:
 		 * NULL, which is also what call_user_func & friends want. pVm->pFrame is the caller. */
 		{
 			sxi32 rcDA = VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,pFunc->nByRefMask,0,0);
-			if( rcDA == PH7_ABORT ){
-				goto Abort;
-			}else if( rcDA == PH7_EXCEPTION ){
-				goto Exception;
-			}
+			PH7_DISPATCH_ENFORCE_RC(rcDA)
 		}
 		/* Host function (builtin): build the effective spread-key map so the
 		 * name-forwarding builtins (call_user_func & friends) relay string keys as

@@ -1328,11 +1328,18 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 	if( (pTos->iFlags & MEMOBJ_HASHMAP) && pIdx ){
 		SyBlob sTypeMsg;
 		if( VmOffsetTypeRejected(&(*pVm),pIdx,iP2,&sTypeMsg) ){
-			VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sTypeMsg));
+			/* Routed as a mid-expression throw, like the STRING arm above: this
+			 * opcode is not a call boundary, so PARKING it let the rest of the
+			 * expression run first — `str_repeat($a[$obj], 2)` reached the builtin
+			 * with the NULL the abandoned read left and died on its ZPP TypeError
+			 * instead, and a CAUGHT one still ran the enclosing call afterwards. */
+			rc = VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sTypeMsg);
 			PH7_MemObjRelease(pIdx);
 			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
 			pTos->nIdx = SXU32_HIGH;
-			VM_EXIT_BREAK;
+			if( rc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+			PH7_THROW_ROUTE_MIDEXPR(rc)
 		}
 		VmOffsetResourceWarn(&(*pVm),pIdx);
 	}
