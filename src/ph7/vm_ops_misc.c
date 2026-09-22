@@ -88,6 +88,9 @@ PH7_PRIVATE VmOpRc VmExecOpMatch(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr
 	ph7_match_arm *aArm,*pArm,*pDefault = 0;
 	ph7_value sSubject,sCond,sResult;
 	sxu32 i,j,nArm,nCond;
+	sxi32 rcArm = SXRET_OK;
+	const void *pResumeBefore = (const void *)pVm->pResumeFrame;
+	const void *pInlineBefore = (const void *)pVm->pInlineInstr;
 	int matched = 0;
 #ifdef UNTRUST
 	if( pMatch == 0 || pTos < pStack ){
@@ -100,7 +103,12 @@ PH7_PRIVATE VmOpRc VmExecOpMatch(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr
 	PH7_MemObjInit(pVm,&sCond);
 	PH7_MemObjInit(pVm,&sResult);
 	PH7_MemObjLoad(pTos,&sSubject);
-	for( i = 0; i < nArm && !matched; ++i ){
+	/* Each condition and each arm BODY is its own bytecode container, run by
+	 * VmLocalExec. A throw inside one abandons the whole match expression in php,
+	 * so its status is routed below (VmLocalExecThrew): ignoring it let a caught
+	 * throw fall through to the NEXT condition — and then to the default arm,
+	 * which php never reaches — and handed the abandoned statement a value. */
+	for( i = 0; i < nArm && !matched && rcArm == SXRET_OK; ++i ){
 		pArm = &aArm[i];
 		if( pArm->bDefault ){
 			pDefault = pArm;
@@ -112,19 +120,36 @@ PH7_PRIVATE VmOpRc VmExecOpMatch(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr
 			if( pCondBc == 0 ){
 				continue;
 			}
-			VmLocalExec(pVm,pCondBc,&sCond,FALSE);
+			rcArm = VmLocalExec(pVm,pCondBc,&sCond,FALSE);
+			if( rcArm == PH7_ABORT || VmLocalExecThrew(pVm,rcArm,pResumeBefore,pInlineBefore) ){
+				break;
+			}
+			rcArm = SXRET_OK;
 			rc = PH7_MemObjCmp(&sSubject,&sCond,TRUE /* strict */,0);
 			PH7_MemObjRelease(&sCond);
 			if( rc == 0 ){
-				VmLocalExec(pVm,&pArm->aResult,&sResult,FALSE);
+				rcArm = VmLocalExec(pVm,&pArm->aResult,&sResult,FALSE);
 				matched = 1;
 				break;
 			}
 		}
 	}
-	if( !matched && pDefault ){
-		VmLocalExec(pVm,&pDefault->aResult,&sResult,FALSE);
+	if( !matched && pDefault && rcArm != PH7_ABORT && !VmLocalExecThrew(pVm,rcArm,pResumeBefore,pInlineBefore) ){
+		rcArm = VmLocalExec(pVm,&pDefault->aResult,&sResult,FALSE);
 		matched = 1;
+	}
+	if( rcArm == PH7_ABORT ){
+		PH7_MemObjRelease(&sCond);
+		PH7_MemObjRelease(&sSubject);
+		PH7_MemObjRelease(&sResult);
+		VM_EXIT_ABORT;
+	}
+	if( VmLocalExecThrew(pVm,rcArm,pResumeBefore,pInlineBefore) ){
+		PH7_MemObjRelease(&sCond);
+		PH7_MemObjRelease(&sSubject);
+		PH7_MemObjRelease(&sResult);
+		VmPopOperand(&pTos,1); /* the subject this OP_MATCH would have replaced */
+		PH7_THROW_ROUTE_MIDEXPR(rcArm)
 	}
 	if( !matched ){
 		const char *zType = "unknown";
@@ -340,6 +365,8 @@ PH7_PRIVATE VmOpRc VmExecOpSwitch(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 	ph7_case_expr *aCase,*pCase;
 	ph7_value sValue,sCaseValue;
 	sxu32 n,nEntry;
+	const void *pResumeBefore = (const void *)pVm->pResumeFrame;
+	const void *pInlineBefore = (const void *)pVm->pInlineInstr;
 #ifdef UNTRUST
 	if( pSwitch == 0 || pTos < pStack ){
 		VM_EXIT_ABORT;
@@ -352,10 +379,24 @@ PH7_PRIVATE VmOpRc VmExecOpSwitch(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 	PH7_MemObjInit(pVm,&sValue);
 	PH7_MemObjInit(pVm,&sCaseValue);
 	for( n = 0 ; n < nEntry ; ++n ){
+		sxi32 rcCase;
 		pCase = &aCase[n];
 		PH7_MemObjLoad(pTos,&sValue);
-		/* Execute the case expression first */
-		VmLocalExec(pVm,&pCase->aByteCode,&sCaseValue,FALSE);
+		/* Execute the case expression first. It is its own bytecode container
+		 * (VmLocalExec), so a throw inside it — `case boom():` — used to be caught
+		 * in place and then IGNORED here: the scan carried on into the remaining
+		 * cases and finally jumped to `default:`, running a branch php never
+		 * reaches. Route the status the way any mid-expression throw is routed. */
+		rcCase = VmLocalExec(pVm,&pCase->aByteCode,&sCaseValue,FALSE);
+		if( rcCase == PH7_ABORT || VmLocalExecThrew(pVm,rcCase,pResumeBefore,pInlineBefore) ){
+			PH7_MemObjRelease(&sValue);
+			PH7_MemObjRelease(&sCaseValue);
+			if( rcCase == PH7_ABORT ){
+				VM_EXIT_ABORT;
+			}
+			VmPopOperand(&pTos,1); /* the switch subject */
+			PH7_THROW_ROUTE_MIDEXPR(rcCase)
+		}
 		/* Compare the two expression */
 		rc = PH7_MemObjCmp(&sValue,&sCaseValue,FALSE,0);
 		PH7_MemObjRelease(&sValue);

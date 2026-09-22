@@ -4686,6 +4686,36 @@ PH7_PRIVATE sxi32 VmLocalExec(ph7_vm *pVm,SySet *pByteCode,ph7_value *pResult,in
 	return rc;
 }
 /*
+ * Did the mini-program VmLocalExec just ran end in a THROW that its HOST
+ * statement must honour?
+ *
+ * A mini-program (a match arm or condition, a switch case expression, a
+ * property default) is compiled into its own bytecode container but shares the
+ * caller's VM frame, so an enclosing try/catch is found and its catch body runs
+ * IN PLACE at the throw site — and then VmByteCodeExec unwinds out of the nested
+ * exec with PH7_EXCEPTION, having recorded where the catching body should resume
+ * (pResumeFrame / pInlineInstr). A host site that ignores that status carries on
+ * as if the arm had produced a value: php ABANDONS the whole statement, PHL ran
+ * the rest of it (`match` picked its default arm AFTER the catch, `switch` fell
+ * through to its default case). The status is what PH7_THROW_ROUTE_MIDEXPR
+ * consumes; this predicate is its guard, named once so the host sites cannot
+ * drift apart.
+ *
+ * The two recorded-resume fields are compared against a SNAPSHOT taken before
+ * the nested exec, not against 0 — the same rule PH7_VmClassLookupRaised follows
+ * for an autoloader's throw. Testing them for non-zero would misread a record
+ * this opcode did not create as its own throw.
+ *
+ * PH7_ABORT is deliberately NOT folded in — it is not a throw and its host must
+ * exit the loop, not route to a landing pad, so each caller screens it first.
+ */
+PH7_PRIVATE int VmLocalExecThrew(ph7_vm *pVm,sxi32 rc,const void *pResumeBefore,const void *pInlineBefore)
+{
+	return rc == PH7_EXCEPTION
+		|| (const void *)pVm->pResumeFrame != pResumeBefore
+		|| (const void *)pVm->pInlineInstr != pInlineBefore;
+}
+/*
  * Evaluate an attribute-argument bytecode with the attribute's DECLARING class
  * installed as the const-eval scope, so `self::`/`parent::`/`self::CONST` inside
  * the argument resolve against that class (like php) rather than the reflection
