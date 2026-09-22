@@ -1421,6 +1421,62 @@ PH7_PRIVATE sxi32 PH7_MemObjRelease(ph7_value *pObj)
 	return SXRET_OK;
 }
 /*
+ * php's object-vs-scalar comparison cast: the default arm of zend_compare hands
+ * the object to its class's cast_object handler with the OTHER operand's type,
+ * and compares the result. Build that cast of pSelf in *pOut and answer TRUE;
+ * answer FALSE when php's std handler refuses the conversion, in which case the
+ * caller reports the object as greater, exactly as php does.
+ *
+ * The refusals are: a STRING target with no __toString(), and any null / array /
+ * resource target (php's handler only knows string, bool, int and float). *pOut
+ * is always initialized, so the caller can release it either way.
+ *
+ * The int and float targets never fail — the object becomes 1 / 1.0 — but they
+ * do diagnose, and at E_NOTICE, where the `(int)`/`(float)` CASTS raise
+ * E_WARNING from MemObjIntValue/MemObjRealValue. php raises the two from
+ * different places with different severities, so this one is emitted here rather
+ * than borrowed from the cast helpers. It names the OTHER operand's type, so
+ * `$o <=> 20.0` says "float" even though 20.0 is an integral value (which in PHL
+ * carries MEMOBJ_INT alongside MEMOBJ_REAL — hence testing REAL first).
+ */
+static int MemObjCmpCastObject(ph7_value *pSelf,ph7_value *pOther,ph7_value *pOut)
+{
+	ph7_class_instance *pInst = (ph7_class_instance *)pSelf->x.pOther;
+	PH7_MemObjInit(pSelf->pVm,pOut);
+	if( pOther->iFlags & MEMOBJ_STRING ){
+		if( MemObjIsNotStringable(pSelf) ){
+			return FALSE;
+		}
+		PH7_MemObjLoad(pSelf,pOut);
+		if( PH7_MemObjToString(pOut) != SXRET_OK ){
+			/* __toString() threw. The throw is parked and lands at the next fetch
+			 * point; until then order the operands the way a refused cast does. */
+			return FALSE;
+		}
+		return TRUE;
+	}
+	if( pOther->iFlags & MEMOBJ_BOOL ){
+		/* An object is always truthy, with no diagnostic (php has no __toBool). */
+		PH7_MemObjInitFromBool(pSelf->pVm,pOut,1);
+		return TRUE;
+	}
+	if( pOther->iFlags & (MEMOBJ_INT|MEMOBJ_REAL) ){
+		int bReal = (pOther->iFlags & MEMOBJ_REAL) != 0;
+		if( pInst && pInst->pClass && pSelf->pVm ){
+			VmErrorFormat(pSelf->pVm,PH7_CTX_NOTICE,
+				"Object of class %z could not be converted to %s",
+				&pInst->pClass->sName,bReal ? "float" : "int");
+		}
+		if( bReal ){
+			PH7_MemObjInitFromReal(pSelf->pVm,pOut,(ph7_real)1.0);
+		}else{
+			PH7_MemObjInitFromInt(pSelf->pVm,pOut,1);
+		}
+		return TRUE;
+	}
+	return FALSE;
+}
+/*
  * Compare two ph7_values.
  * Return 0 if the values are equals, > 0 if pObj1 is greater than pObj2
  * or < 0 if pObj2 is greater than pObj1.
@@ -1515,6 +1571,37 @@ PH7_PRIVATE sxi32 PH7_MemObjCmp(ph7_value *pObj1,ph7_value *pObj2,int bStrict,in
 		sxu32 nId2 = PH7_VmResourceId(pObj2->pVm,pObj2->x.pOther);
 		return nId1 == nId2 ? 0 : (nId1 < nId2 ? -1 : 1);
 	}
+	if( !bStrict && ((pObj1->iFlags ^ pObj2->iFlags) & MEMOBJ_OBJ) != 0 ){
+		/*
+		 * An object loosely compared with a NON-object: php's zend_compare has ONE
+		 * rule for this, and it is not type precedence — it casts the OBJECT to the
+		 * OTHER operand's type and compares the result, answering "the object is
+		 * greater" only when that cast FAILS. PHL fell through to its own branches
+		 * instead, and every one of them was wrong somewhere: a Stringable object
+		 * never compared as its string (`$s == "abc"` was FALSE, and
+		 * sort()/in_array()/array_search()/switch inherited that), an object against
+		 * an int compared as two bools (`$n < 20` was FALSE where php compares 1
+		 * with 20), an ARRAY was called greater than an object, and an object
+		 * equalled every open resource.
+		 *
+		 * `===` never arrives here: the flags differ, so the strict block above has
+		 * already answered 1.
+		 */
+		int bObj1 = (pObj1->iFlags & MEMOBJ_OBJ) != 0;
+		ph7_value *pSelf  = bObj1 ? pObj1 : pObj2;
+		ph7_value *pOther = bObj1 ? pObj2 : pObj1;
+		ph7_value sCast;
+		if( MemObjCmpCastObject(pSelf,pOther,&sCast) ){
+			/* sCast is a scalar, so the recursion cannot come back through here. */
+			rc = bObj1 ? PH7_MemObjCmp(&sCast,pOther,bStrict,iNest)
+			           : PH7_MemObjCmp(pOther,&sCast,bStrict,iNest);
+			PH7_MemObjRelease(&sCast);
+			return rc;
+		}
+		PH7_MemObjRelease(&sCast);
+		/* Cast refused (null, array, resource, or no __toString): object is greater. */
+		return bObj1 ? 1 : -1;
+	}
 	if( iComb & (MEMOBJ_NULL|MEMOBJ_RES|MEMOBJ_BOOL) ){
 		/* Convert to boolean: Keep in mind FALSE < TRUE */
 		if( (pObj1->iFlags & MEMOBJ_BOOL) == 0 ){
@@ -1538,7 +1625,10 @@ PH7_PRIVATE sxi32 PH7_MemObjCmp(ph7_value *pObj1,ph7_value *pObj2,int bStrict,in
 		rc = PH7_HashmapCmp((ph7_hashmap *)pObj1->x.pOther,(ph7_hashmap *)pObj2->x.pOther,bStrict);
 		return rc;
 	}else if(iComb & MEMOBJ_OBJ ){
-		/* Object comparison */
+		/* Object comparison. Only a pair of objects can get here: a strict compare
+		 * of mixed types answered 1 at the top, and a loose one went through the
+		 * cast rule above — but keep the guards, so no future flag combination can
+		 * hand PH7_ClassInstanceCmp something that is not an instance. */
 		if( (pObj1->iFlags & MEMOBJ_OBJ) == 0 ){
 			/* Object is always greater */
 			return -1;
