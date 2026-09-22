@@ -634,6 +634,32 @@ static sxi32 GenStateProcessStringExpression(
 	return rc;
 }
 /*
+ * Advance *pz over a php LABEL — the name half of "$name" and of the "->name"
+ * accessor inside a double-quoted string or a heredoc body. php's label is
+ * [a-zA-Z_\x80-\xff][a-zA-Z0-9_\x80-\xff]*; PHL keeps the historical UTF-8
+ * handling (a >= 0xc0 lead byte plus its continuation bytes) so a multibyte
+ * name is consumed whole. Stops at *pz when the cursor is not on a label byte.
+ */
+static void GenStateSkipStringLabel(const char **pz,const char *zEnd)
+{
+	const char *zIn = *pz;
+	for(;;){
+		while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && (SyisAlphaNum(zIn[0]) || zIn[0] == '_' ) ){
+			zIn++;
+		}
+		if( zIn < zEnd && (unsigned char)zIn[0] >= 0xc0 ){
+			/* UTF-8 stream */
+			zIn++;
+			while( zIn < zEnd && (((unsigned char)zIn[0] & 0xc0) == 0x80) ){
+				zIn++;
+			}
+			continue;
+		}
+		break;
+	}
+	*pz = zIn;
+}
+/*
  * Reserve a new constant for a double quoted/heredoc string.
  */
 static ph7_value * GenStateNewStrObj(ph7_gen_state *pGen,sxi32 *pCount)
@@ -956,76 +982,62 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)
 				zIn++;
 			}
 		}else{
-			/* Simple syntax */
+			/*
+			 * Simple syntax. php's simple "$var…" form is a LEXER rule, not an
+			 * expression: it takes the variable name plus EXACTLY ONE accessor —
+			 * "$var", "$var[offset]" or "$var->prop" — and stops there. Everything
+			 * past that one accessor is literal text: a second subscript
+			 * ("$o->p[0]" is the property then a literal "[0]"), a second arrow
+			 * ("$o->p->q" is "$o->p" then a literal "->q"), any "::" at all
+			 * ("$c::C" is the VALUE of $c then a literal "::C", never a class
+			 * constant), and any "{…}" ("$x{'a'}" is $x then literal). Only the
+			 * complex "{$expr}" form reaches those, and it is handled above.
+			 *
+			 * PHL used to loop here, greedily chaining accessors, so those four
+			 * shapes silently answered something else than php on VALID source.
+			 */
 			const char *zExpr = zIn;
-			/* Assemble variable name */
-			for(;;){
-				/* Jump leading dollars */
-				while( zIn < zEnd && zIn[0] == '$' ){
+			/*
+			 * "${...}" string interpolation (every form: ${name}, ${expr}, ${$x}) was
+			 * DEPRECATED by php 8.2 in favor of the canonical "{$...}". PHL targets php's
+			 * *non-deprecated* surface, so it is a hard parse error here — never silently
+			 * rewritten. The canonical "{$var}" reaches this compiler by a different path
+			 * and is unaffected. Checked before the scan: '{' is not an accessor, so the
+			 * cursor would otherwise stop on the '$' and read the brace as literal text.
+			 */
+			if( &zIn[1] < zEnd && zIn[0] == '$' && zIn[1] == '{' ){
+				PH7_GenCompileError(&(*pGen),E_PARSE,pGen->pIn->nLine,
+					"syntax error, \"${\" string interpolation was removed in php 8.2, use \"{$...}\" instead");
+				return SXERR_ABORT;
+			}
+			/* Jump leading dollars */
+			while( zIn < zEnd && zIn[0] == '$' ){
+				zIn++;
+			}
+			/* Variable name */
+			GenStateSkipStringLabel(&zIn,zEnd);
+			/* …then at most ONE accessor */
+			if( zIn < zEnd && zIn[0] == '[' ){
+				sxi32 iSquare = 1;
+				zIn++;
+				while( zIn < zEnd ){
+					if( zIn[0] == '[' ){
+						iSquare++;
+					}else if (zIn[0] == ']' ){
+						iSquare--;
+						if( iSquare <= 0 ){
+							break;
+						}
+					}
 					zIn++;
 				}
-				for(;;){
-					while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && (SyisAlphaNum(zIn[0]) || zIn[0] == '_' ) ){
-						zIn++;
-					}
-					if((unsigned char)zIn[0] >= 0xc0 ){
-						/* UTF-8 stream */
-						zIn++;
-						while( zIn < zEnd && (((unsigned char)zIn[0] & 0xc0) == 0x80) ){
-							zIn++;
-						}
-						continue;
-					}
-					break;
-				}
-				if( zIn >= zEnd ){
-					break;
-				}
-				if( zIn[0] == '[' ){
-					sxi32 iSquare = 1;
+				if( zIn < zEnd ){
 					zIn++;
-					while( zIn < zEnd ){
-						if( zIn[0] == '[' ){
-							iSquare++;
-						}else if (zIn[0] == ']' ){
-							iSquare--;
-							if( iSquare <= 0 ){
-								break;
-							}
-						}
-						zIn++;
-					}
-					if( zIn < zEnd ){
-						zIn++;
-					}
-					break;
-				}else if(zIn[0] == '{' ){
-					sxi32 iCurly = 1;
-					zIn++;
-					while( zIn < zEnd ){
-						if( zIn[0] == '{' ){
-							iCurly++;
-						}else if (zIn[0] == '}' ){
-							iCurly--;
-							if( iCurly <= 0 ){
-								break;
-							}
-						}
-						zIn++;
-					}
-					if( zIn < zEnd ){
-						zIn++;
-					}
-					break;
-				}else if( zIn[0] == '-' && &zIn[1] < zEnd && zIn[1] == '>' ){
-					/* Member access operator '->' */
-					zIn += 2;
-				}else if(zIn[0] == ':' && &zIn[1] < zEnd && zIn[1] == ':'){
-					/* Static member access operator '::' */
-					zIn += 2;
-				}else{
-					break;
 				}
+			}else if( &zIn[1] < zEnd && zIn[0] == '-' && zIn[1] == '>' ){
+				/* Member access operator '->' */
+				zIn += 2;
+				GenStateSkipStringLabel(&zIn,zEnd);
 			}
 			/*
 			 * "$a[name]" — php's SIMPLE syntax takes an unquoted subscript as the string key
@@ -1073,18 +1085,6 @@ static sxi32 GenStateCompileString(ph7_gen_state *pGen,int bHeredoc)
 						continue;
 					}
 				}
-			}
-			/*
-			 * "${...}" string interpolation (every form: ${name}, ${expr}, ${$x}) was
-			 * DEPRECATED by php 8.2 in favor of the canonical "{$...}". PHL targets php's
-			 * *non-deprecated* surface, so it is a hard parse error here — never silently
-			 * rewritten. The canonical "{$var}" reaches this compiler by a different path
-			 * and is unaffected.
-			 */
-			if( &zExpr[1] < zIn && zExpr[0] == '$' && zExpr[1] == '{' ){
-				PH7_GenCompileError(&(*pGen),E_PARSE,pGen->pIn->nLine,
-					"syntax error, \"${\" string interpolation was removed in php 8.2, use \"{$...}\" instead");
-				return SXERR_ABORT;
 			}
 			/* Process the expression */
 			rc = GenStateProcessStringExpression(&(*pGen),pGen->pIn->nLine,zExpr,zIn);
