@@ -440,6 +440,7 @@ PH7_PRIVATE sxi32 PH7_VmEmitInstr(
 	 * compiled (that is how they read its text), so the current token IS this
 	 * instruction's source position; pIn can sit one past the end of the stream
 	 * between statements, hence the range check. */
+	sInstr.bStrict = (sxu8)(pGen->bStrictTypes ? 1 : 0);
 	sInstr.nLine = 0;
 	if( pGen->pIn && pGen->pEnd && pGen->pIn < pGen->pEnd ){
 		sInstr.nLine = pGen->pIn->nLine;

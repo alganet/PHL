@@ -1195,6 +1195,12 @@ typedef struct VmInstr VmInstr;
 struct VmInstr
 {
 	sxu8  iOp; /* Operation to preform */
+	sxu8  bStrict; /* strict_types mode of the COMPILATION UNIT this instruction came from.
+	                * Stamped by PH7_VmEmitInstr beside nLine, and published to
+	                * pVm->bCurStrict under the same nLine != 0 gate, so an engine-dispatched
+	                * call (a magic method, a property hook) can bind its arguments under the
+	                * CALLING file's mode — php's rule — instead of always coercing. Sits in
+	                * the padding after iOp: sizeof(VmInstr) is unchanged. */
 	sxi32 iP1; /* First operand */
 	sxu32 iP2; /* Second operand (Often the jump destination) */
 	void *p3;  /* Third operand (Often Upper layer private data) */
@@ -1762,6 +1768,11 @@ struct ph7_vm
 	sxu32 nCurLine;            /* Line of the instruction currently executing (0 outside the
 	                            * dispatch loop). Every runtime diagnostic, debug_backtrace()
 	                            * and Throwable reads its line from here. */
+	sxu8 bCurStrict;           /* strict_types mode of the unit that instruction came from,
+	                            * published beside nCurLine. Read by the argument binder when
+	                            * an OP_CALL carries no compiled call map — which is every
+	                            * ENGINE-dispatched call (magic method, property hook), where
+	                            * php still applies the calling file's mode. */
 	sxi32 nLastErrType;        /* error_get_last(): severity of the last UNHANDLED diagnostic
 	                            * (0 = none yet). php records one even when '@' or
 	                            * error_reporting() hides it, but NOT when a user handler

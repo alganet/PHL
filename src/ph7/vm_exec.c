@@ -1310,8 +1310,11 @@ VmLoopFetch:
 		if( pInstr->nLine ){
 			/* Publish the source position for diagnostics, debug_backtrace() and
 			 * Throwable. Instructions the compiler could not attribute (nLine 0)
-			 * leave the last known line standing rather than reporting line 0. */
+			 * leave the last known line standing rather than reporting line 0.
+			 * The compilation unit's strict_types mode rides the same gate: a
+			 * SYNTHETIC instruction (nLine 0) must not claim to speak for a file. */
 			pVm->nCurLine = pInstr->nLine;
+			pVm->bCurStrict = pInstr->bStrict;
 		}
 		rc = SXRET_OK;
 /*
@@ -5419,7 +5422,8 @@ case PH7_OP_CALL: {
 			pExecCtx->pFrame->pParent = pVm->pFrame;
 			pVm->pFrame = pExecCtx->pFrame;
 			rc = VmFiberSetupFrame(pVm, pExecCtx, pThis, nGenArgs, apCallArgs,
-				(pEffCallMap && pEffCallMap->bStrict) ? 1 : 0, pSelfHint,
+				pEffCallMap ? (pEffCallMap->bStrict ? 1 : 0) : (pVm->bCurStrict ? 1 : 0),
+				pSelfHint,
 				TRUE/*generator: the g(...) call site is in the message*/);
 			pVm->pFrame = pExecCtx->pFrame->pParent;
 			pExecCtx->pFrame->pParent = 0;
@@ -5556,7 +5560,14 @@ case PH7_OP_CALL: {
 		VmCallArgMap *pCallMap3 = pEffCallMap;
 		/* Caller file's strict_types mode — governs parameter coercion
 		 * (but NOT return coercion, which uses the callee's file). */
-		int bCallIsStrict = (pCallMap3 && pCallMap3->bStrict) ? 1 : 0;
+		/* A compiled call in a strict file always carries a map with bStrict set
+		 * (GenStateAttachStrictFlag); with no map at all the call is either a
+		 * compiled WEAK one — where bCurStrict is 0 for the same unit — or an
+		 * ENGINE-dispatched one, whose synthetic OP_CALL has no map to carry the
+		 * caller's mode. php scopes parameter coercion by the CALLING file either
+		 * way, and bCurStrict is that file's mode. */
+		int bCallIsStrict = pCallMap3 ? (pCallMap3->bStrict ? 1 : 0)
+		                              : (pVm->bCurStrict ? 1 : 0);
 		if( pCallMap3 && pCallMap3->bHasNamed ){
 			/* ============================================================
 			 * Named-argument matching path (PHP 8.0)
