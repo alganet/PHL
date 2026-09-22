@@ -1153,6 +1153,87 @@ PH7_PRIVATE sxi32 VmLocalExecIntoObj(ph7_vm *pVm,SySet *pByteCode,ph7_value **pp
 	return rc;
 }
 /*
+ * Evaluate an initializer with the engine's THROW machinery muted: the live
+ * try activations are hidden for the duration (so no user catch runs IN PLACE),
+ * no exception handler is invoked, no uncaught report is printed, and the exit
+ * status, the C-boundary park and any recorded in-place-catch resume are
+ * restored on the way out. A throw comes back only as the returned status.
+ *
+ * This is what lets a class STATIC property's default be evaluated EAGERLY at
+ * mount while php evaluates it LAZILY: php has not reached the initializer at
+ * declaration time, so a throw there is not the declaration's business. Muted,
+ * the failed attempt leaves NO trace — the attribute is flagged
+ * PH7_CLASS_ATTR_STATIC_DEFER and the initializer re-runs, unmuted, at the
+ * first static-table materialization (PH7_VmMaterializeClassStatics), which is
+ * where php raises it. Without the muting the throw would be dispatched here:
+ * a `try { include "decl.php"; } catch` ran its catch at the DECLARATION and
+ * then carried on into the include, and a top-level declaration merely stamped
+ * exit status 255 with no diagnostic at all (mount runs before bErrReport).
+ */
+static sxi32 VmEvalDefaultMuted(ph7_vm *pVm,SySet *pByteCode,ph7_value **ppMemObj)
+{
+	ph7_exception **apSaved = 0;             /* try activations hidden for the eval */
+	sxu32 nSaved = SySetUsed(&pVm->aException);
+	sxi32 iSaveStatus = pVm->iExitStatus;
+	sxi32 iSaveBoundary = pVm->nBoundaryRc;
+	VmFrame *pSaveResume = pVm->pResumeFrame;
+	ph7_class_attr *pSaveCycleAttr = pVm->pConstCycleAttr;
+	ph7_class *pSaveCycleClass = pVm->pConstCycleClass;
+	VmFrame *pFrame;
+	sxi32 rc;
+	if( nSaved > 0 ){
+		apSaved = (ph7_exception **)SyMemBackendAlloc(&pVm->sAllocator,nSaved * sizeof(ph7_exception *));
+		if( apSaved ){
+			SyMemcpy(SySetBasePtr(&pVm->aException),apSaved,nSaved * sizeof(ph7_exception *));
+			SySetReset(&pVm->aException);
+		}
+	}
+	pVm->nMuteThrow++;
+	rc = VmLocalExecIntoObj(&(*pVm),pByteCode,ppMemObj,FALSE);
+	pVm->nMuteThrow--;
+	if( rc == SXRET_OK && pVm->pConstCycleAttr != pSaveCycleAttr ){
+		/* The initializer named a SELF-REFERENCING constant. That does not throw
+		 * where it is found — the innermost evaluation only records it for an
+		 * outer level to raise — but the value is unusable and php raises at the
+		 * access, so report it as a throw: the caller defers, and the re-run
+		 * records the cycle again and raises it there. */
+		rc = PH7_EXCEPTION;
+	}
+	/* Nothing may push onto the hidden stack (an initializer has no try of its
+	 * own), but a muted throw unwinding out of one would leave an activation
+	 * behind: release whatever is there whether or not anything was hidden. */
+	VmExcReleaseAll(&(*pVm),&pVm->aException);
+	SySetReset(&pVm->aException);
+	if( apSaved ){
+		sxu32 k;
+		for( k = 0 ; k < nSaved ; ++k ){
+			SySetPut(&pVm->aException,(const void *)&apSaved[k]);
+		}
+		SyMemBackendFree(&pVm->sAllocator,apSaved);
+	}
+	if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
+		/* Roll the attempt back whole: the throw stamped the frame (which the
+		 * enclosing execution would read as an unwind in progress), the uncaught
+		 * exit status, and possibly a C-boundary park / resume target. */
+		pFrame = pVm->pFrame;
+		if( pFrame ){
+			pFrame = VmSkipExceptionFrames(pFrame);
+			pFrame->iFlags &= ~VM_FRAME_THROW;
+		}
+		pVm->iExitStatus = iSaveStatus;
+		pVm->nBoundaryRc = iSaveBoundary;
+		pVm->pResumeFrame = pSaveResume;
+		/* A self-referencing constant reached by the abandoned initializer only
+		 * RECORDS itself here (VmClassConstEvalOnDemand) for an outer level to
+		 * raise. Left standing it would be raised, unmuted, by the next attribute
+		 * whose default happens to succeed — at the declaration site, and blamed
+		 * on the wrong member. The deferred re-run detects the cycle again. */
+		pVm->pConstCycleAttr = pSaveCycleAttr;
+		pVm->pConstCycleClass = pSaveCycleClass;
+	}
+	return rc;
+}
+/*
  * Mount a compiled class into the freshly created vitual machine so that
  * it can be instanciated from the executed PHP script.
  */
@@ -1206,14 +1287,21 @@ static sxi32 VmMountUserClassAttrs(
 				/* Already materialized (an attr shared with an earlier-mounted
 				 * class). PH7_VmReset invalidates every nIdx before its
 				 * re-mount pass, so VM reuse still re-evaluates. Propagate a
-				 * deferred static-default type failure to THIS class too, so a
-				 * subclass's static access / instantiation throws like php's. */
-				if( (pAttr->iFlags & PH7_CLASS_ATTR_TYPED)
-				 && (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
-					SyHashEntry *pSlotD = SyHashGet(&pVm->hTypedSlot,
-						(const void *)&pAttr->nIdx,sizeof(sxu32));
-					if( pSlotD && (((VmClassAttr *)pSlotD->pUserData)->iState & VM_CLASS_ATTR_TYPE_DEFER) ){
-						pClass->iFlags |= PH7_CLASS_STATIC_TYPE_DEFER;
+				 * pending static-default failure — a deferred EVALUATION or a
+				 * failed TYPE check — to THIS class too, so a subclass's static
+				 * access / instantiation throws like php's. */
+				if( (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
+					if( pAttr->iFlags & PH7_CLASS_ATTR_STATIC_DEFER ){
+						/* Its default threw at the other class's mount and is
+						 * pending re-evaluation (php: the shared slot belongs to
+						 * both static tables). */
+						pClass->iFlags |= PH7_CLASS_STATIC_DEFER;
+					}else if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+						SyHashEntry *pSlotD = SyHashGet(&pVm->hTypedSlot,
+							(const void *)&pAttr->nIdx,sizeof(sxu32));
+						if( pSlotD && (((VmClassAttr *)pSlotD->pUserData)->iState & VM_CLASS_ATTR_TYPE_DEFER) ){
+							pClass->iFlags |= PH7_CLASS_STATIC_DEFER;
+						}
 					}
 				}
 				continue;
@@ -1232,15 +1320,32 @@ static sxi32 VmMountUserClassAttrs(
 				 * pConstEvalClass lets self::/parent:: in the initializer
 				 * resolve (VmLocalExec runs without a method frame). */
 				ph7_class *pSaveCtx = pVm->pConstEvalClass;
+				int bStaticProp = (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0;
 				sxi32 rcExec;
 				pVm->pConstEvalClass = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
 				pAttr->iFlags |= PH7_CLASS_ATTR_EVALING; /* cycle guard, shared with the on-demand path */
+				pAttr->iFlags &= ~PH7_CLASS_ATTR_STATIC_DEFER; /* re-armed below; matters on a VM reset */
 				pVm->nConstEvalDepth++;
-				rcExec = VmLocalExecIntoObj(&(*pVm),&pAttr->aByteCode,&pMemObj,FALSE);
+				/* A STATIC property's default is php-LAZY, so evaluate it MUTED: a
+				 * throw at declaration time is not something php can see. What is
+				 * left here is the CONSTANT path (only TYPED constants are eager
+				 * now), which php does validate at declaration time. */
+				rcExec = bStaticProp
+					? VmEvalDefaultMuted(&(*pVm),&pAttr->aByteCode,&pMemObj)
+					: VmLocalExecIntoObj(&(*pVm),&pAttr->aByteCode,&pMemObj,FALSE);
 				pVm->nConstEvalDepth--;
 				pAttr->iFlags &= ~PH7_CLASS_ATTR_EVALING;
 				pVm->pConstEvalClass = pSaveCtx;
-				if( rcExec == PH7_EXCEPTION || rcExec == PH7_ABORT ){
+				if( (rcExec == PH7_EXCEPTION || rcExec == PH7_ABORT) && bStaticProp ){
+					/* php has not reached this initializer: defer it whole to the
+					 * first static-table materialization, where the throw is raised
+					 * at the ACCESS site and is catchable there. The leftover value
+					 * is null and must NOT be type-checked below — a spurious
+					 * TypeError would replace the real Error (the instance path's
+					 * bDefThrew rule). */
+					pAttr->iFlags |= PH7_CLASS_ATTR_STATIC_DEFER;
+					pClass->iFlags |= PH7_CLASS_STATIC_DEFER;
+				}else if( rcExec == PH7_EXCEPTION || rcExec == PH7_ABORT ){
 					/* The initializer raised (self-referencing constant, or a
 					 * throwing enum-case reference): park it for the fetch-point
 					 * router — user classes mount mid-execution, so the throw
@@ -1286,7 +1391,7 @@ static sxi32 VmMountUserClassAttrs(
 				 * (constants are already excluded by the enclosing condition). */
 				if( SySetUsed(&pAttr->aByteCode) == 0 ){
 					pVmAttrS->iState |= VM_CLASS_ATTR_UNINIT;
-				}else{
+				}else if( (pAttr->iFlags & PH7_CLASS_ATTR_STATIC_DEFER) == 0 ){
 					/* The default was evaluated EAGERLY above, but php validates a
 					 * typed static default LAZILY at the first static-property
 					 * access / instantiation (a never-touched bad default is
@@ -1294,10 +1399,12 @@ static sxi32 VmMountUserClassAttrs(
 					 * place (int -> float widening, whole-real materialization,
 					 * matching php's access-time value) and a failure is DEFERRED:
 					 * the slot and the class are flagged, and the access sites
-					 * throw via VmThrowDeferredStaticType. */
+					 * throw via PH7_VmMaterializeClassStatics. A default whose own
+					 * EVALUATION was deferred (it threw) has no value to check yet:
+					 * the materializer checks it after the re-run. */
 					if( VmCheckTypedDefault(&(*pVm),pClass,pAttr,pMemObj) != SXRET_OK ){
 						pVmAttrS->iState |= VM_CLASS_ATTR_TYPE_DEFER;
-						pClass->iFlags |= PH7_CLASS_STATIC_TYPE_DEFER;
+						pClass->iFlags |= PH7_CLASS_STATIC_DEFER;
 					}
 				}
 				if( SyHashInsert(&pVm->hTypedSlot,(const void *)&pVmAttrS->nIdx,sizeof(sxu32),pVmAttrS) != SXRET_OK ){
@@ -1310,19 +1417,19 @@ static sxi32 VmMountUserClassAttrs(
 	} /* for iMount */
 	return SXRET_OK;
 }
-PH7_PRIVATE sxi32 VmMountUserClass(
+/*
+ * The other half of mounting: install the class's invocable methods. Split from
+ * the attribute half above because PH7_VmMakeReady must run it for EVERY class
+ * BEFORE any attribute initializer executes — see the two-pass loop there.
+ */
+static sxi32 VmMountUserClassMethods(
 	ph7_vm *pVm,      /* Target VM */
-	ph7_class *pClass /* Class to be mounted */
+	ph7_class *pClass /* Class whose methods are installed */
 	)
 {
 	ph7_class_method *pMeth;
 	SyHashEntry *pEntry;
 	sxi32 rc;
-	/* Reserve/initialize the static and constant attribute slots */
-	rc = VmMountUserClassAttrs(&(*pVm),pClass);
-	if( rc != SXRET_OK ){
-		return rc;
-	}
 	/* Install class methods */
 	if( pClass->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_TRAIT) ){
 		/* Do not mount interface/trait methods since they are not directly invocable.
@@ -1348,6 +1455,21 @@ PH7_PRIVATE sxi32 VmMountUserClass(
 	/* Mark class as mounted to avoid redundant mounting */
 	pClass->bMounted = TRUE;
 	return SXRET_OK;
+}
+PH7_PRIVATE sxi32 VmMountUserClass(
+	ph7_vm *pVm,      /* Target VM */
+	ph7_class *pClass /* Class to be mounted */
+	)
+{
+	/* Reserve/initialize the static and constant attribute slots, then install
+	 * the methods. Mid-execution mounts (include/require, a deferred declaration)
+	 * take this whole-class form: every builtin class is mounted by then, so an
+	 * initializer that throws finds the exception classes ready. */
+	sxi32 rc = VmMountUserClassAttrs(&(*pVm),pClass);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	return VmMountUserClassMethods(&(*pVm),pClass);
 }
 /*
  * Allocate a private frame for attributes of the given
@@ -2409,9 +2531,26 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	 * global frame via VmEnterFrame above, the superglobals via CreateSuper, and
 	 * these class static/const slots) is rebuilt on every ph7_vm_reset() — keep
 	 * that function in sync when changing what is reserved here. */
+	/* TWO passes, methods first: evaluating an attribute initializer can THROW,
+	 * and building the Error instance for that throw calls Error::__construct —
+	 * which only exists once ITS class has been method-mounted. hClass iterates
+	 * in hash order, so a one-class-at-a-time loop could reach a user class's
+	 * static default while the exception classes were still unmounted: the throw
+	 * failed to construct its own exception, that failure threw again, and the
+	 * pair recursed to the native-nesting cap. The visible result was a process
+	 * that exited 255 with no diagnostic at all (mount runs before bErrReport).
+	 * The passes are independent — attribute initializers reference constants and
+	 * enum cases, which materialize on demand, never a method table. */
 	SyHashResetLoopCursor(&pVm->hClass);
 	while((pEntry = SyHashGetNextEntry(&pVm->hClass)) != 0 ){
-		rc = VmMountUserClass(&(*pVm),(ph7_class *)pEntry->pUserData);
+		rc = VmMountUserClassMethods(&(*pVm),(ph7_class *)pEntry->pUserData);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	SyHashResetLoopCursor(&pVm->hClass);
+	while((pEntry = SyHashGetNextEntry(&pVm->hClass)) != 0 ){
+		rc = VmMountUserClassAttrs(&(*pVm),(ph7_class *)pEntry->pUserData);
 		if( rc != SXRET_OK ){
 			return rc;
 		}

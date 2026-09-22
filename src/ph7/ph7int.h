@@ -1057,12 +1057,15 @@ struct ph7_class
                                      * library). Reflection reports it as internal: isInternal() true,
                                      * getFileName() false. */
 #define PH7_CLASS_ENUM        0x080 /* Class is an enum (PHP 8.1). Also carries PH7_CLASS_FINAL. */
-#define PH7_CLASS_STATIC_TYPE_DEFER 0x200 /* At least one typed STATIC property's default failed its
-                                           * type check at mount (VM_CLASS_ATTR_TYPE_DEFER on the slot).
-                                           * A hint only: access/instantiation sites call
-                                           * VmThrowDeferredStaticType, which re-scans the slots. Set on
-                                           * the declaring class AND propagated to every subclass at its
-                                           * mount (shared static slots). */
+#define PH7_CLASS_STATIC_DEFER 0x200 /* This class's static table is not fully materialized: at least
+                                      * one static property's default THREW when it was evaluated at
+                                      * mount (PH7_CLASS_ATTR_STATIC_DEFER on the attribute) or failed
+                                      * its type check (VM_CLASS_ATTR_TYPE_DEFER on the slot). A hint
+                                      * only: the access/instantiation sites call
+                                      * PH7_VmMaterializeClassStatics, which re-scans the whole base
+                                      * chain. Set on the class whose mount saw the failure; the gate
+                                      * (VmClassStaticDeferPending) walks the bases, so mount ORDER
+                                      * between a base and its subclass does not matter. */
 #define PH7_CLASS_BOUND       0x100 /* Bound by an UNCONDITIONAL top-level declaration. PHP fatals on a
                                      * second such binding of the same name ("Cannot redeclare ..."); a
                                      * conditional (if/loop/func-nested) declaration is NOT marked, so the
@@ -1127,7 +1130,20 @@ struct ph7_class_attr
                                             * has no get hook), no default allowed, reads without a
                                             * get hook are php's "is write-only" Error. PHL still
                                             * allocates the (null) backing slot; this flag hides it. */
-/* next free bit: 0x20000 */
+#define PH7_CLASS_ATTR_STATIC_DEFER 0x20000 /* STATIC property whose default initializer THREW when it
+                                            * was evaluated at class mount. php never evaluates a static
+                                            * default at declaration time — it materializes the class's
+                                            * static table at the FIRST static-property access — so the
+                                            * mount-time throw is raised MUTED (VmEvalDefaultMuted: no
+                                            * catch runs, nothing is reported) and rolled back whole,
+                                            * and the initializer re-runs at that first access
+                                            * (PH7_VmMaterializeClassStatics), where php raises it.
+                                            * Cleared once the initializer completes without throwing:
+                                            * a class whose bad default is never READ stays silent in
+                                            * both engines, and a re-run that now succeeds (the constant
+                                            * it names was define()d after the declaration) answers the
+                                            * value, as php's does. */
+/* next free bit: 0x40000 */
 /*
  * Each class method is parsed out and stored in an instance of the following
  * structure.
@@ -1261,7 +1277,10 @@ struct VmClassAttr
                                        * on the class (read/write/isset, any property) and any
                                        * instantiation throws the catchable "Cannot assign <kind> to
                                        * property C::$s of type T" TypeError; a never-touched class
-                                       * stays silent. See VmThrowDeferredStaticType. */
+                                       * stays silent. Raised by PH7_VmMaterializeClassStatics, which
+                                       * also sets the flag when a DEFERRED default (the sibling
+                                       * PH7_CLASS_ATTR_STATIC_DEFER) evaluates at first access and
+                                       * only then fails its type check. */
 #define VM_CLASS_ATTR_REFBOUND 0x02 /* Property is bound to a reference (`$o->p =& $x`): its nIdx
                                     * slot is SHARED with (and pinned by) the source variable, so
                                     * PH7_VmReleaseInstanceAttr must NOT release/recycle it — the
@@ -1701,6 +1720,13 @@ struct ph7_vm
 	                            * pIdleCallFrames). Allocator-owned; freed wholesale. */
 	int nObDepth;              /* OB depth */
 	int nExceptDepth;          /* Exception depth */
+	int nExcCtorDepth;         /* Engine-raised throws whose exception __construct is running
+	                            * (VmExcCtorEnter): caps the self-feeding case where building
+	                            * an exception throws again. */
+	int nMuteThrow;            /* > 0 while an initializer runs MUTED (VmEvalDefaultMuted): an
+	                            * uncaught throw runs no exception handler, prints no report and
+	                            * leaves iExitStatus alone, because php has not reached that code
+	                            * yet. Depth-counted (an initializer can mount another class). */
 	int closure_cnt;           /* Loaded closures counter */
 	int json_rc;               /* JSON return status [refer to json_encode()/json_decode()]*/
 	sxu32 unique_id;           /* Random number used to generate unique ID [refer to uniqid() for more info]*/
@@ -3234,7 +3260,8 @@ PH7_PRIVATE sxi32 VmEnforceTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 PH7_PRIVATE sxi32 VmCheckTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr,ph7_value *pValue);
 PH7_PRIVATE sxi32 VmEnforceArgType(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_vm_func_arg *pFormal,
 	sxu32 nArgPos,ph7_value *pVal,int bStrict,ph7_class *pSelfHint);
-PH7_PRIVATE sxi32 VmThrowDeferredStaticType(ph7_vm *pVm,ph7_class *pClass);
+PH7_PRIVATE int VmClassStaticDeferPending(ph7_class *pClass);
+PH7_PRIVATE sxi32 PH7_VmMaterializeClassStatics(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE sxi32 VmEnforceReturnType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_value *pValue);
 PH7_PRIVATE sxi32 VmEnumMaterializeCase(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pCase);
 PH7_PRIVATE int VmFinallyAdvance(ph7_vm *pVm, VmInstr *aInstr, int *pnCross, sxu32 *pPc);

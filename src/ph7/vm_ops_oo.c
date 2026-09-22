@@ -263,13 +263,13 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 		PH7_MemObjRelease(pTos);
 		pTos->nIdx = SXU32_HIGH;
 		VM_EXIT_BREAK;
-	}else if( (pClass->iFlags & PH7_CLASS_STATIC_TYPE_DEFER)
-	       && (rc = VmThrowDeferredStaticType(&(*pVm),pClass)) != SXRET_OK ){
-		/* Deferred typed-static-default failure: php also materializes the
-		 * static table at instantiation, so `new C` throws the catchable
-		 * TypeError BEFORE any construction (no instance, no __destruct) —
-		 * same shape as the enum reject above: park the status, settle the
-		 * stack, and let the fetch-point router land it. */
+	}else if( VmClassStaticDeferPending(pClass)
+	       && (rc = PH7_VmMaterializeClassStatics(&(*pVm),pClass)) != SXRET_OK ){
+		/* php materializes the static table at instantiation too, so a default
+		 * that THREW at the declaration (or failed its type check) raises BEFORE
+		 * any construction (no instance, no __destruct) — same shape as the enum
+		 * reject above: park the status, settle the stack, and let the
+		 * fetch-point router land it. */
 		VmBoundaryPark(&(*pVm),rc);
 		if( nCtorArgs > 0 ){
 			VmPopOperand(&pTos,nCtorArgs);
@@ -1658,15 +1658,17 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 									);
 							}else{
 								ph7_value *pValue;
-								/* Deferred typed-static-default failure: php materializes the
-								 * class's static table at the FIRST static-property access
-								 * (any property, any context — read, write, even isset), so a
-								 * bad default throws its catchable TypeError here. Constants
-								 * and method calls do not trigger it (php-exact). */
+								/* php materializes the class's static table at the FIRST
+								 * static-property access (any property, any context — read,
+								 * write, even isset): a default whose evaluation was DEFERRED
+								 * (it threw at the declaration) runs here, and a typed one that
+								 * failed its check throws its catchable TypeError here. Class
+								 * constants and static method calls do not trigger the
+								 * materialization (php-exact). */
 								if( (pAttr->iFlags & PH7_CLASS_ATTR_STATIC)
 								 && (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0
-								 && (pClass->iFlags & PH7_CLASS_STATIC_TYPE_DEFER) ){
-									sxi32 rcD = VmThrowDeferredStaticType(&(*pVm),pClass);
+								 && VmClassStaticDeferPending(pClass) ){
+									sxi32 rcD = PH7_VmMaterializeClassStatics(&(*pVm),pClass);
 									if( rcD != SXRET_OK ){
 										if( pThis ){
 											PH7_ClassInstanceUnref(pThis);

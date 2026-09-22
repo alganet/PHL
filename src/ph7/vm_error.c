@@ -506,6 +506,28 @@ PH7_PRIVATE ph7_class * VmCurrentSelf(ph7_vm *pVm)
 	return 0;
 }
 /*
+ * May the engine run an exception class's __construct for a throw it is raising
+ * itself? Yes, until the nesting gets absurd. The constructor CALL can throw in
+ * turn (a message-formatting error, or — the case that forced this — a
+ * constructor whose own class is not method-mounted yet, which OP_CALL reports
+ * as an undefined function and therefore as another engine throw). Each such
+ * throw would construct another exception and recurse until the native-nesting
+ * cap halted the VM with no diagnostic. A small cap keeps legitimate nesting
+ * (an engine throw from inside a user exception's constructor) working and
+ * stops the self-feeding case at four levels: the innermost exception is simply
+ * left with an empty message. On TRUE the caller must decrement nExcCtorDepth
+ * after the call.
+ */
+#define VM_EXC_CTOR_MAX_DEPTH 4
+static int VmExcCtorEnter(ph7_vm *pVm)
+{
+	if( pVm->nExcCtorDepth >= VM_EXC_CTOR_MAX_DEPTH ){
+		return 0;
+	}
+	pVm->nExcCtorDepth++;
+	return 1;
+}
+/*
  * Instantiate a built-in error class (e.g. "Error"/"TypeError"), construct it
  * with the message held in *pMsg, and throw it from the current frame. Consumes
  * and releases *pMsg. Returns PH7_EXCEPTION on success, or PH7_ABORT when the
@@ -530,7 +552,7 @@ PH7_PRIVATE sxi32 VmThrowBuiltinError(ph7_vm *pVm,const char *zClass,sxu32 nClas
 		return PH7_ABORT;
 	}
 	pCons = PH7_ClassExtractMethod(pErrClass,"__construct",sizeof("__construct")-1);
-	if( pCons ){
+	if( pCons && VmExcCtorEnter(&(*pVm)) ){
 		ph7_value sArg;
 		ph7_value *apArg[1];
 		SyString sMsgStr;
@@ -539,6 +561,7 @@ PH7_PRIVATE sxi32 VmThrowBuiltinError(ph7_vm *pVm,const char *zClass,sxu32 nClas
 		apArg[0] = &sArg;
 		PH7_VmCallClassMethod(&(*pVm),pThis,pCons,0,1,apArg);
 		PH7_MemObjRelease(&sArg);
+		pVm->nExcCtorDepth--;
 	}
 	SyBlobRelease(pMsg);
 	pFrame = pVm->pFrame;
@@ -853,6 +876,7 @@ PH7_PRIVATE sxi32 VmClassConstEvalOnDemand(ph7_vm *pVm,ph7_class *pClass,ph7_cla
 	if( SySetUsed(&pAttr->aByteCode) > 0 ){
 		ph7_class *pSaveCtx = pVm->pConstEvalClass;
 		void *pSaveFrame = pVm->pConstEvalFrame;
+		ph7_class_attr *pSaveCycle = pVm->pConstCycleAttr;
 		sxi32 rcExec;
 		pAttr->iFlags |= PH7_CLASS_ATTR_EVALING;
 		pVm->pConstEvalClass = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
@@ -866,6 +890,25 @@ PH7_PRIVATE sxi32 VmClassConstEvalOnDemand(ph7_vm *pVm,ph7_class *pClass,ph7_cla
 		pVm->pConstEvalClass = pSaveCtx;
 		pVm->pConstEvalFrame = pSaveFrame;
 		pAttr->iFlags &= ~PH7_CLASS_ATTR_EVALING;
+		if( pVm->nMuteThrow > 0
+		 && (rcExec == PH7_EXCEPTION || rcExec == PH7_ABORT
+		  || pVm->pConstCycleAttr != pSaveCycle) ){
+			/* Raised inside a MUTED evaluation (VmEvalDefaultMuted: a static
+			 * property's default at class mount, which php would not have run
+			 * yet). Memoizing here would be exactly the trace the muting exists
+			 * to prevent: the constant would read NULL for the rest of the run,
+			 * and the deferred re-run of the default that named it would find it
+			 * materialized and raise nothing at all. A recorded CYCLE counts as a
+			 * failure the same way: it does not throw where it is found, but the
+			 * value is unusable and the re-run must be able to detect it again.
+			 * Give the slot back and leave nIdx unset — the re-run reserves a
+			 * fresh one and raises there. */
+			VmSlot sSlot;
+			sSlot.nIdx = pMemObj->nIdx;
+			sSlot.pUserData = 0;
+			SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
+			return rcExec;
+		}
 		/* Memoize before any throw so re-access doesn't loop. */
 		pAttr->nIdx = pMemObj->nIdx;
 		PH7_VmRefObjInstall(&(*pVm),pMemObj->nIdx,0,0,VM_REF_IDX_KEEP);
@@ -2240,7 +2283,7 @@ PH7_PRIVATE sxi32 VmEnforceTypedDefault(ph7_vm *pVm,ph7_class *pClass,ph7_class_
  * Returns SXRET_OK when nothing is pending (the class flag is only a hint),
  * else the PH7_EXCEPTION/PH7_ABORT of the throw.
  */
-PH7_PRIVATE sxi32 VmThrowDeferredStaticType(ph7_vm *pVm,ph7_class *pClass)
+static sxi32 VmThrowDeferredStaticType(ph7_vm *pVm,ph7_class *pClass)
 {
 	ph7_class *pScan;
 	for( pScan = pClass ; pScan ; pScan = pScan->pBase ){
@@ -2269,6 +2312,200 @@ PH7_PRIVATE sxi32 VmThrowDeferredStaticType(ph7_vm *pVm,ph7_class *pClass)
 		}
 	}
 	return SXRET_OK;
+}
+/*
+ * TRUE when [pClass] (or any of its bases) still owes its static table a
+ * materialization: an initializer that threw at mount and was deferred
+ * (PH7_CLASS_ATTR_STATIC_DEFER) or a typed default that failed its check
+ * (VM_CLASS_ATTR_TYPE_DEFER). The gate the access sites test before paying for
+ * PH7_VmMaterializeClassStatics. The BASES are walked here rather than relying
+ * on the flag being copied down at mount, because classes mount in hash order:
+ * a subclass can be mounted before the base whose default failed.
+ */
+PH7_PRIVATE int VmClassStaticDeferPending(ph7_class *pClass)
+{
+	while( pClass ){
+		if( pClass->iFlags & PH7_CLASS_STATIC_DEFER ){
+			return 1;
+		}
+		pClass = pClass->pBase;
+	}
+	return 0;
+}
+/*
+ * Re-run the initializers of the static properties whose evaluation was
+ * DEFERRED at class mount because they threw (PH7_CLASS_ATTR_STATIC_DEFER).
+ *
+ * php builds a class's static table on first use, evaluating each slot's
+ * initializer THERE — so `class C { public static $s = UNDEF; }` is silent at
+ * the declaration and raises `Undefined constant "UNDEF"` at the first access,
+ * catchably, at THAT line. It also means the re-run sees the world as it is at
+ * the access: a constant define()d after the class declaration resolves.
+ *
+ * Order is php's table order: the BASE's slots first (a subclass access raises
+ * the base's broken default, not its own), then declaration order within a
+ * class. A slot that evaluates cleanly is memoized (the flag is cleared) and a
+ * later failure of a SIBLING slot re-runs only what is still pending, matching
+ * php's partially-materialized table. A slot that throws keeps its flag: php
+ * re-raises on every access too.
+ */
+static sxi32 VmCollectDeferredStaticDefaults(ph7_class *pClass,SySet *pOut,int *pbLeft)
+{
+	SyHashEntry *pEntry;
+	sxi32 rc;
+	if( pClass->pBase ){
+		rc = VmCollectDeferredStaticDefaults(pClass->pBase,pOut,pbLeft);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	SyHashResetLoopCursor(&pClass->hAttr);
+	while( (pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){
+		ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
+		if( (pAttr->iFlags & PH7_CLASS_ATTR_STATIC_DEFER) == 0 ){
+			/* Not pending. An inherited slot the base pass already collected
+			 * lands here too (a subclass's hAttr shares the base's attribute);
+			 * the evaluation loop re-tests the flag, so a duplicate is a no-op. */
+			continue;
+		}
+		if( pAttr->iFlags & PH7_CLASS_ATTR_EVALING ){
+			/* Pending but already RUNNING: an initializer that reads a static
+			 * property re-enters this walk through OP_MEMBER, and re-running the
+			 * initializer it is inside would not terminate. The in-flight slot
+			 * reads as it stands, like the constant path's cycle guard — and the
+			 * class keeps its hint flag so a later access retries. */
+			*pbLeft = 1;
+			continue;
+		}
+		rc = SySetPut(pOut,(const void *)&pAttr);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	return SXRET_OK;
+}
+/*
+ * Re-run the initializers of the static properties whose evaluation was
+ * DEFERRED at class mount because they threw (PH7_CLASS_ATTR_STATIC_DEFER).
+ *
+ * php builds a class's static table on first use, evaluating each slot's
+ * initializer THERE — so `class C { public static $s = UNDEF; }` is silent at
+ * the declaration and raises `Undefined constant "UNDEF"` at the first access,
+ * catchably, at THAT line. It also means the re-run sees the world as it is at
+ * the access: a constant define()d after the class declaration resolves.
+ *
+ * Order is php's table order: the BASE's slots first (a subclass access raises
+ * the base's broken default, not its own), then declaration order within a
+ * class. A slot that evaluates cleanly is memoized (the flag is cleared) and a
+ * later failure of a SIBLING slot re-runs only what is still pending, matching
+ * php's partially-materialized table. A slot that throws keeps its flag: php
+ * re-raises on every access too.
+ *
+ * The pending slots are COLLECTED before any of them runs: an initializer is
+ * user-visible execution that can re-enter this walk, and SyHash carries a
+ * single shared loop cursor, so evaluating mid-walk would let the nested walk
+ * cut the outer one short.
+ */
+static sxi32 VmEvalDeferredStaticDefaults(ph7_vm *pVm,ph7_class *pClass,int *pbLeft)
+{
+	SySet aPending; /* ph7_class_attr * , php's static-table order */
+	ph7_class_attr **apPending;
+	sxu32 n,nUsed;
+	sxi32 rc;
+	SySetInit(&aPending,&pVm->sAllocator,sizeof(ph7_class_attr *));
+	rc = VmCollectDeferredStaticDefaults(pClass,&aPending,pbLeft);
+	apPending = (ph7_class_attr **)SySetBasePtr(&aPending);
+	nUsed = SySetUsed(&aPending);
+	for( n = 0 ; rc == SXRET_OK && n < nUsed ; ++n ){
+		ph7_class_attr *pAttr = apPending[n];
+		ph7_class *pOwner = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+		ph7_class *pSaveCtx;
+		void *pSaveFrame;
+		ph7_value *pMemObj;
+		sxi32 rcExec;
+		if( (pAttr->iFlags & PH7_CLASS_ATTR_STATIC_DEFER) == 0 ){
+			continue; /* the base pass already ran this shared slot */
+		}
+		pMemObj = (ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx);
+		if( pMemObj == 0 ){
+			continue;
+		}
+		pSaveCtx = pVm->pConstEvalClass;
+		pSaveFrame = pVm->pConstEvalFrame;
+		pVm->pConstEvalClass = pOwner;
+		/* Unlike the mount pass, this runs at an arbitrary point in execution —
+		 * possibly inside a METHOD of another class. Mark the frame current at
+		 * eval start so self::/parent:: in the initializer resolve against the
+		 * DECLARING class rather than that method's, exactly as the class-constant
+		 * on-demand path does (VmLocalExec pushes no frame of its own). */
+		pVm->pConstEvalFrame = (void *)VmSkipExceptionFrames(pVm->pFrame);
+		pAttr->iFlags |= PH7_CLASS_ATTR_EVALING; /* cycle guard, as at mount */
+		pVm->nConstEvalDepth++;
+		rcExec = VmLocalExecIntoObj(&(*pVm),&pAttr->aByteCode,&pMemObj,FALSE);
+		pVm->nConstEvalDepth--;
+		pAttr->iFlags &= ~PH7_CLASS_ATTR_EVALING;
+		pVm->pConstEvalClass = pSaveCtx;
+		pVm->pConstEvalFrame = pSaveFrame;
+		if( rcExec == PH7_EXCEPTION || rcExec == PH7_ABORT ){
+			/* Raised at the access site, where it belongs: hand the status to the
+			 * caller to route (a catch here is the user's own). */
+			rc = rcExec;
+			break;
+		}
+		pAttr->iFlags &= ~PH7_CLASS_ATTR_STATIC_DEFER;
+		if( pVm->pConstCycleAttr && pVm->nConstEvalDepth == 0 ){
+			/* The initializer named a self-referencing constant. Like the mount
+			 * path, the innermost evaluation only RECORDS it; raise it here, at
+			 * the access, where a catch can see it. */
+			rc = VmConstCycleThrow(&(*pVm));
+			break;
+		}
+		if( (pAttr->iFlags & PH7_CLASS_ATTR_TYPED)
+		 && (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
+			/* Now that a value exists, apply the typed-default rule the mount pass
+			 * had to skip. Flag the slot as well so every later access re-throws
+			 * through the deferred-type scan, as php's failing materialization does. */
+			SyHashEntry *pSlot = SyHashGet(&pVm->hTypedSlot,(const void *)&pAttr->nIdx,sizeof(sxu32));
+			if( pSlot && VmCheckTypedDefault(&(*pVm),pOwner,pAttr,pMemObj) != SXRET_OK ){
+				VmClassAttr *pVmAttr = (VmClassAttr *)pSlot->pUserData;
+				pVmAttr->iState |= VM_CLASS_ATTR_TYPE_DEFER;
+				rc = VmDefaultPropertyTypeError(&(*pVm),pVmAttr->pOwner,pAttr,pMemObj);
+				break;
+			}
+		}
+	}
+	if( rc != SXRET_OK ){
+		*pbLeft = 1; /* whatever is still flagged stays pending for the next access */
+	}
+	SySetRelease(&aPending);
+	return rc;
+}
+/*
+ * Materialize [pClass]'s static table, php's way: evaluate whatever the mount
+ * pass deferred, then raise any typed-default failure. Called by the sites php
+ * materializes at — the first static-PROPERTY access (read, write, isset; a
+ * class CONSTANT or a static METHOD CALL does not materialize, php-exact) and
+ * instantiation. Returns SXRET_OK when the table is (or already was) whole,
+ * else the PH7_EXCEPTION/PH7_ABORT of the throw for the caller to route.
+ */
+PH7_PRIVATE sxi32 PH7_VmMaterializeClassStatics(ph7_vm *pVm,ph7_class *pClass)
+{
+	int bLeft = 0;
+	sxi32 rc = VmEvalDeferredStaticDefaults(&(*pVm),pClass,&bLeft);
+	if( rc == SXRET_OK ){
+		rc = VmThrowDeferredStaticType(&(*pVm),pClass);
+	}
+	if( rc == SXRET_OK && !bLeft ){
+		/* The table is whole and nothing failed: retire the hint on the whole
+		 * chain, so the ordinary static accesses that follow stop paying for the
+		 * scan. A re-mount (VM reset) re-arms it, and a failure above leaves it
+		 * set — php's materialization keeps failing too. */
+		ph7_class *pScan;
+		for( pScan = pClass ; pScan ; pScan = pScan->pBase ){
+			pScan->iFlags &= ~PH7_CLASS_STATIC_DEFER;
+		}
+	}
+	return rc;
 }
 
 /*
@@ -3402,7 +3639,7 @@ PH7_PRIVATE sxi32 VmThrowFromVm(
 		return SXERR_ABORT;
 	}
 	pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
-	if( pCons ){
+	if( pCons && VmExcCtorEnter(pVm) ){
 		ph7_value sArg;
 		ph7_value *apArg[1];
 		SyString sMsgStr;
@@ -3412,6 +3649,7 @@ PH7_PRIVATE sxi32 VmThrowFromVm(
 		apArg[0] = &sArg;
 		PH7_VmCallClassMethod(pVm,pThis,pCons,0,1,apArg);
 		PH7_MemObjRelease(&sArg);
+		pVm->nExcCtorDepth--;
 	}
 	pFrame = pVm->pFrame;
 	if( pFrame ){
@@ -3974,6 +4212,14 @@ PH7_PRIVATE sxi32 VmUncaughtException(
 	ph7_value *apArg[2],sArg;
 	int nArg = 1;
 	sxi32 rc;
+	if( pVm->nMuteThrow > 0 ){
+		/* A MUTED initializer (VmEvalDefaultMuted: a class static property's
+		 * default at mount) — php has not reached this code, so nothing may be
+		 * observable: no exception handler runs, no report is printed and the
+		 * exit status stays put. Unwind the mini-program at once; the mount path
+		 * rolls the attempt back and re-runs the initializer at first access. */
+		return SXERR_ABORT;
+	}
 	if( pVm->nExceptDepth > 15 ){
 		/* Nesting limit reached */
 		return SXRET_OK;
@@ -4355,6 +4601,17 @@ Rethrow:
 			 * iteration per unwound level instead of one native frame. */
 			VmExcRelease(&(*pVm),pException);
 			goto Rethrow;
+		}
+		if( pVm->nMuteThrow > 0 ){
+			/* MUTED evaluation (VmEvalDefaultMuted: a class static property's
+			 * default at class mount, which php would not have evaluated yet).
+			 * Nothing outside the initializer may observe this throw: no
+			 * deferral into pPendingException for an enclosing catch to pick up,
+			 * no handler, no report. The tries pushed INSIDE the eval had their
+			 * chance above; hand the status back so the mini-program unwinds and
+			 * the mount path rolls the whole attempt back. */
+			VmExcRelease(&(*pVm),pException);
+			return SXERR_ABORT;
 		}
 		/* No outer handler. If the handlers were temporarily hidden
 		 * (catch body re-throw with finally pending), defer the
