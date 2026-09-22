@@ -336,6 +336,116 @@ PH7_PRIVATE int vm_builtin_func_exists(ph7_context *pCtx,int nArg,ph7_value **ap
 	return SXRET_OK;
 }
 /*
+ * Decode php's `[target, method]` array callable.
+ *
+ * php reads the INTEGER indices 0 and 1 — not the first two entries in insertion order,
+ * which is what PH7 walked (pFirst, pFirst->pPrev). The difference is observable both
+ * ways: `['a'=>'C','b'=>'m']` has two entries at the wrong keys and php rejects it
+ * (`Array callback has to contain indices 0 and 1`), while `[1=>'C',0=>'m']` DOES have
+ * both indices, so php takes index 0 as the target — the reverse of insertion order.
+ *
+ * Returns TRUE, and fills the two out-params, only for an exactly-two-entry map that
+ * holds both indices.
+ */
+static int VmArrayCallableParts(ph7_vm *pVm,ph7_hashmap *pMap,ph7_value **ppTarget,ph7_value **ppMethod)
+{
+	ph7_value *apPart[2];
+	int i;
+	if( pMap->nEntry != 2 ){
+		return FALSE;
+	}
+	for( i = 0 ; i < 2 ; ++i ){
+		ph7_hashmap_node *pNode = 0;
+		ph7_value sKey;
+		sxi32 rc;
+		PH7_MemObjInitFromInt(pVm,&sKey,i);
+		rc = PH7_HashmapLookup(pMap,&sKey,&pNode);
+		PH7_MemObjRelease(&sKey);
+		if( rc != SXRET_OK || pNode == 0 ){
+			return FALSE;
+		}
+		apPart[i] = (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
+		if( apPart[i] == 0 ){
+			return FALSE;
+		}
+	}
+	*ppTarget = apPart[0];
+	*ppMethod = apPart[1];
+	return TRUE;
+}
+/*
+ * Is the calling frame's `$this` an instance of pClass?
+ *
+ * php's rule for a method named through a CLASS NAME (`'C::m'`, `['C','m']`): a static
+ * method is callable, and a NON-static one is callable only when the caller has a
+ * compatible `$this` for it to run on — `is_callable('C::instanceMethod')` is true inside
+ * C's own instance methods (and inside a subclass's), false from C's static methods and
+ * false from unrelated scopes. A host builtin does not push a frame of its own, so
+ * pVm->pFrame is the caller's.
+ */
+static int VmCallerThisIsA(ph7_vm *pVm,ph7_class *pClass)
+{
+	VmFrame *pFrame = pVm->pFrame;
+	while( pFrame && pFrame->pParent && (pFrame->iFlags & (VM_FRAME_EXCEPTION|VM_FRAME_CATCH)) ){
+		/* Skip the exception bookkeeping frames, like PH7_VmClassMemberAccess does */
+		pFrame = pFrame->pParent;
+	}
+	if( pFrame == 0 || pFrame->pThis == 0 ){
+		return FALSE;
+	}
+	return PH7_VmInstanceOf(pFrame->pThis->pClass,pClass) ? TRUE : FALSE;
+}
+/*
+ * php's callability rule for one resolved class + method NAME, probed value-for-value
+ * against 8.5.8. `bStaticForm` distinguishes naming the method through a class name
+ * (`'C::m'`, `['C','m']`) from naming it on an object (`[$obj,'m']`).
+ *
+ *   - a missing method is still callable when the class can answer for it magically:
+ *     `__call` for an object target, `__callStatic` for a class-name one;
+ *   - an ABSTRACT method — an interface's methods included — is never callable;
+ *   - a non-public method is callable only from a scope that could call it, decided by
+ *     the same PH7_VmClassMemberAccess the call itself uses (so a private method is
+ *     callable from inside its class and nowhere else);
+ *   - through a class NAME, a non-static method needs a compatible caller `$this`.
+ */
+static int VmMethodIsCallable(ph7_vm *pVm,ph7_class *pClass,const char *zMethod,sxu32 nMethod,int bStaticForm)
+{
+	/* The catch-all that answers for a name this class cannot reach directly */
+	const char *zMagic = bStaticForm ? "__callStatic" : "__call";
+	sxu32 nMagic = (sxu32)SyStrlen(zMagic);
+	ph7_class_method *pMethod;
+	SyString sName;
+	if( nMethod < 1 ){
+		return FALSE;
+	}
+	pMethod = PH7_ClassExtractMethod(pClass,zMethod,nMethod);
+	if( pMethod == 0 ){
+		/* No such method: the magic catch-all makes any name callable */
+		return PH7_ClassExtractMethod(pClass,zMagic,nMagic) ? TRUE : FALSE;
+	}
+	if( pMethod->iFlags & PH7_CLASS_ATTR_ABSTRACT ){
+		return FALSE;
+	}
+	SyStringInitFromBuf(&sName,SyStringData(&pMethod->sFunc.sName),SyStringLength(&pMethod->sFunc.sName));
+	if( pMethod->iProtection != PH7_CLASS_PROT_PUBLIC
+		&& !PH7_VmClassMemberAccess(&(*pVm),
+			/* The DECLARING class decides, not the instance's: a child method may not
+			 * reach a base PRIVATE it merely inherited. Same argument the dispatch path
+			 * in vm_ops_oo.c passes. */
+			pMethod->sFunc.pUserData ? (ph7_class *)pMethod->sFunc.pUserData : pClass,
+			&sName,pMethod->iProtection,FALSE) ){
+			/* Inaccessible from here — but php still calls it callable when the class
+			 * routes inaccessible names through __call/__callStatic, exactly as the
+			 * dispatch path does. */
+			return PH7_ClassExtractMethod(pClass,zMagic,nMagic) ? TRUE : FALSE;
+	}
+	if( bStaticForm && (pMethod->iFlags & PH7_CLASS_ATTR_STATIC) == 0
+		&& !VmCallerThisIsA(pVm,pClass) ){
+			return FALSE;
+	}
+	return TRUE;
+}
+/*
  * Verify that the contents of a variable can be called as a function.
  * [i.e: Whether it is callable or not].
  * Return TRUE if callable.FALSE otherwise.
@@ -358,26 +468,15 @@ PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)
 		(void)CallInvoke;
 	}else if( pValue->iFlags & MEMOBJ_HASHMAP ){
 		ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;
-		if( pMap->nEntry == 2 ){
-			ph7_class *pClass;
-			ph7_value *pV;
-			/* Extract the target class */
-			pV = (ph7_value *)SySetAt(&pVm->aMemObj,pMap->pFirst->nValIdx);
-			if( pV ){
-				pClass = PH7_VmExtractClassFromValue(pVm,pV);
-				if( pClass ){
-					ph7_class_method *pMethod;
-					/* Extract the target method */
-					pV = (ph7_value *)SySetAt(&pVm->aMemObj,pMap->pFirst->pPrev->nValIdx);
-					if( pV && (pV->iFlags & MEMOBJ_STRING) && SyBlobLength(&pV->sBlob) > 0 ){
-						/* Perform the lookup */
-						pMethod = PH7_ClassExtractMethod(pClass,(const char *)SyBlobData(&pV->sBlob),SyBlobLength(&pV->sBlob));
-						if( pMethod ){
-							/* Method is callable */
-							res = 1;
-						}
-					}
-				}
+		ph7_value *pTarget = 0;
+		ph7_value *pName = 0;
+		if( VmArrayCallableParts(pVm,pMap,&pTarget,&pName) ){
+			ph7_class *pClass = PH7_VmExtractClassFromValue(pVm,pTarget);
+			if( pClass && (pName->iFlags & MEMOBJ_STRING) && SyBlobLength(&pName->sBlob) > 0 ){
+				/* A class-NAME target names the method statically; an object target
+				 * carries its own $this, so the static/visibility rules differ. */
+				res = VmMethodIsCallable(pVm,pClass,(const char *)SyBlobData(&pName->sBlob),
+					SyBlobLength(&pName->sBlob),(pTarget->iFlags & MEMOBJ_OBJ) ? FALSE : TRUE);
 			}
 		}
 	}else if( pValue->iFlags & MEMOBJ_STRING ){
@@ -402,13 +501,15 @@ PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)
 				/* Function is callable */
 				res = 1;
 		}else if( nLen > 3 ){
-			/* php's "Class::method" static-callable string */
+			/* php's "Class::method" static-callable string: the same rules as the
+			 * `['Class','method']` array form (static-or-compatible-$this, visibility,
+			 * no abstract, __callStatic). */
 			int i;
 			for( i = 1 ; i + 2 < nLen ; ++i ){
 				if( zName[i] == ':' && zName[i+1] == ':' ){
 					ph7_class *pClass = PH7_VmExtractClass(pVm,zName,(sxu32)i,FALSE,0);
-					if( pClass && PH7_ClassExtractMethod(pClass,&zName[i+2],(sxu32)(nLen-(i+2))) ){
-						res = 1;
+					if( pClass ){
+						res = VmMethodIsCallable(pVm,pClass,&zName[i+2],(sxu32)(nLen-(i+2)),TRUE);
 					}
 					break;
 				}
@@ -452,13 +553,14 @@ static int VmIsCallableSyntaxOnly(ph7_vm *pVm,ph7_value *pValue)
 	}
 	if( pValue->iFlags & MEMOBJ_HASHMAP ){
 		ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;
-		if( pMap->nEntry == 2 ){
-			ph7_value *pTarget = (ph7_value *)SySetAt(&pVm->aMemObj,pMap->pFirst->nValIdx);
-			ph7_value *pMethod = (ph7_value *)SySetAt(&pVm->aMemObj,pMap->pFirst->pPrev->nValIdx);
-			if( pTarget && pMethod && (pMethod->iFlags & MEMOBJ_STRING)
-			 && (pTarget->iFlags & (MEMOBJ_OBJ|MEMOBJ_STRING)) ){
-				return 1;
-			}
+		ph7_value *pTarget = 0;
+		ph7_value *pMethod = 0;
+		/* The two-INDEX rule is part of the shape, so php rejects `['a'=>'C','b'=>'m']`
+		 * even in syntax-only mode. */
+		if( VmArrayCallableParts(pVm,pMap,&pTarget,&pMethod)
+		 && (pMethod->iFlags & MEMOBJ_STRING)
+		 && (pTarget->iFlags & (MEMOBJ_OBJ|MEMOBJ_STRING)) ){
+			return 1;
 		}
 	}
 	return 0;
@@ -548,8 +650,13 @@ static void VmCallableName(ph7_vm *pVm,ph7_value *pValue,SyBlob *pOut)
 	}
 	if( (pValue->iFlags & MEMOBJ_HASHMAP) && VmIsCallableSyntaxOnly(pVm,pValue) ){
 		ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;
-		ph7_value *pTarget = (ph7_value *)SySetAt(&pVm->aMemObj,pMap->pFirst->nValIdx);
-		ph7_value *pMethod = (ph7_value *)SySetAt(&pVm->aMemObj,pMap->pFirst->pPrev->nValIdx);
+		ph7_value *pTarget = 0;
+		ph7_value *pMethod = 0;
+		/* The shape gate above already proved both indices are there; decode again
+		 * rather than trust that, so this stays safe if the gate ever changes. */
+		if( !VmArrayCallableParts(pVm,pMap,&pTarget,&pMethod) ){
+			return;
+		}
 		if( pTarget->iFlags & MEMOBJ_OBJ ){
 			ph7_class_instance *pObj = (ph7_class_instance *)pTarget->x.pOther;
 			SyBlobAppend(pOut,pObj->pClass->sName.zString,pObj->pClass->sName.nByte);
