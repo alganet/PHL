@@ -1154,52 +1154,31 @@ set_count:
 	return PH7_OK;
 }
 
-/* ======================================================================
- * preg_replace_callback(pattern, callback, subject [, limit [, &count]])
- * ====================================================================== */
-static int PH7_builtin_preg_replace_callback(ph7_context *pCtx, int nArg, ph7_value **apArg)
+/* ===== Helper: run the callback over ONE compiled pattern on ONE subject =====
+ * The mirror of PcreDoReplace() for preg_replace_callback: the replacement text
+ * comes from a user callback fed the match array (shaped by $flags) instead of
+ * from a template. Appends the whole replaced subject to pOut and adds its own
+ * replacement count to *pCount. Returns SXRET_OK, or PH7_EXCEPTION when the
+ * callback threw — the caller then unwinds without producing a result. */
+static sxi32 PcreDoCallbackReplace(
+	ph7_context *pCtx,
+	pcre2_code *pCode,
+	const char *zSubject, int nSubLen,
+	ph7_value *pCallback,
+	int limit,
+	int iFlags,
+	int *pCount,
+	SyBlob *pOut)
 {
-	const char *zPattern, *zSubject;
-	int nPatLen, nSubLen;
-	pcre2_code *pCode;
 	pcre2_match_data *pMatchData;
-	sxu32 nCapture;
-	SyBlob sOut;
 	PCRE2_SIZE startOffset = 0;
-	int limit = -1;
-	int count = 0;
+	int nReplacements = 0;
 	int rc;
 
-	if( nArg < 3 ){
-		ph7_context_throw_error(pCtx, PH7_CTX_WARNING,
-			"preg_replace_callback() expects at least 3 parameters");
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	zPattern = ph7_value_to_string(apArg[0], &nPatLen);
-	zSubject = ph7_value_to_string(apArg[2], &nSubLen);
-	if( nArg >= 4 ){
-		limit = ph7_value_to_int(apArg[3]);
-	}
-	if( !ph7_value_is_callable(apArg[1]) ){
-		ph7_context_throw_error(pCtx, PH7_CTX_WARNING,
-			"preg_replace_callback() expects parameter 2 to be a valid callback");
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	pCode = PcreCompile(pCtx, zPattern, nPatLen, &nCapture);
-	if( pCode == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
 	pMatchData = pcre2_match_data_create_from_pattern(pCode, NULL);
 	if( pMatchData == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		return SXRET_OK;
 	}
-	SyBlobInit(&sOut, &pCtx->pVm->sAllocator);
-	pCtx->pVm->iPcreLastError = PHP_PREG_NO_ERROR;
-
 	while( startOffset <= (PCRE2_SIZE)nSubLen ){
 		PCRE2_SIZE *ovector;
 		ph7_value *pMatchArr;
@@ -1208,7 +1187,7 @@ static int PH7_builtin_preg_replace_callback(ph7_context *pCtx, int nArg, ph7_va
 		const char *zReplacement;
 		int nReplLen;
 
-		if( limit >= 0 && count >= limit ) break;
+		if( limit >= 0 && nReplacements >= limit ) break;
 		rc = pcre2_match(pCode, (PCRE2_SPTR)zSubject, (PCRE2_SIZE)nSubLen,
 			startOffset, 0, pMatchData, NULL);
 		if( rc < 0 ){
@@ -1220,32 +1199,37 @@ static int PH7_builtin_preg_replace_callback(ph7_context *pCtx, int nArg, ph7_va
 		ovector = pcre2_get_ovector_pointer(pMatchData);
 		/* Copy text before match */
 		if( ovector[0] > startOffset ){
-			SyBlobAppend(&sOut, &zSubject[startOffset], (sxu32)(ovector[0] - startOffset));
+			SyBlobAppend(pOut, &zSubject[startOffset], (sxu32)(ovector[0] - startOffset));
 		}
 		/* Build matches array for callback */
 		pMatchArr = ph7_context_new_array(pCtx);
-		PcrePopulateMatches(pCtx, pMatchArr, zSubject, ovector, rc, pCode, 0);
+		PcrePopulateMatches(pCtx, pMatchArr, zSubject, ovector, rc, pCode, iFlags);
 		/* Call the callback */
 		PH7_MemObjInit(pCtx->pVm, &sResult);
 		apCbArg[0] = pMatchArr;
-		if( PH7_VmCallUserFunction(pCtx->pVm, apArg[1], 1, apCbArg, &sResult) == PH7_EXCEPTION ){
+		if( PH7_VmCallUserFunction(pCtx->pVm, pCallback, 1, apCbArg, &sResult) == PH7_EXCEPTION ){
 			/* The callback raised: propagate so the dispatcher unwinds. */
 			PH7_MemObjRelease(&sResult);
 			ph7_context_release_value(pCtx, pMatchArr);
-			SyBlobRelease(&sOut);
 			pcre2_match_data_free(pMatchData);
+			*pCount += nReplacements;
 			return PH7_EXCEPTION;
 		}
 		/* Get replacement string from callback result */
 		zReplacement = ph7_value_to_string(&sResult, &nReplLen);
-		SyBlobAppend(&sOut, zReplacement, (sxu32)nReplLen);
+		SyBlobAppend(pOut, zReplacement, (sxu32)nReplLen);
 		PH7_MemObjRelease(&sResult);
 		ph7_context_release_value(pCtx, pMatchArr);
-		count++;
+		nReplacements++;
 		/* Advance */
 		if( ovector[1] == ovector[0] ){
-			if( startOffset < (PCRE2_SIZE)nSubLen ){
-				SyBlobAppend(&sOut, &zSubject[startOffset], 1);
+			/* Zero-width match: emit the character AT THE MATCH POSITION and step
+			 * past it. The match can sit AHEAD of the search start (a lookaround
+			 * assertion, e.g. the camelCase split), so copying zSubject[startOffset]
+			 * grabbed the wrong byte ("fooBar" -> "foo far") — the same fix
+			 * PcreDoReplace() carries. */
+			if( ovector[0] < (PCRE2_SIZE)nSubLen ){
+				SyBlobAppend(pOut, &zSubject[ovector[0]], 1);
 			}
 			startOffset = ovector[0] + 1;
 		}else{
@@ -1254,12 +1238,198 @@ static int PH7_builtin_preg_replace_callback(ph7_context *pCtx, int nArg, ph7_va
 	}
 	/* Copy remainder */
 	if( startOffset < (PCRE2_SIZE)nSubLen ){
-		SyBlobAppend(&sOut, &zSubject[startOffset], (sxu32)(nSubLen - startOffset));
+		SyBlobAppend(pOut, &zSubject[startOffset], (sxu32)(nSubLen - startOffset));
 	}
-	ph7_result_string(pCtx, (const char *)SyBlobData(&sOut), (int)SyBlobLength(&sOut));
-	SyBlobRelease(&sOut);
+	*pCount += nReplacements;
 	pcre2_match_data_free(pMatchData);
-	/* Set &$count if provided */
+	return SXRET_OK;
+}
+
+/* ===== Helper: apply pattern(s)+callback to ONE subject string =====
+ * The callback twin of PcreReplaceSubject(): pPattern is a string or an ARRAY of
+ * patterns applied sequentially, each to the result of the previous (php
+ * semantics), ping-ponging two blobs. Returns SXRET_OK, SXERR_ABORT on a bad
+ * pattern (the caller then yields NULL / an empty array like the template path),
+ * or PH7_EXCEPTION when the callback threw. */
+static sxi32 PcreCallbackReplaceSubject(
+	ph7_context *pCtx,
+	ph7_value *pPattern,
+	ph7_value *pCallback,
+	const char *zSubject, int nSubLen,
+	int limit,
+	int iFlags,
+	int *pCount,
+	SyBlob *pOut)
+{
+	sxu32 nCapture;
+	if( !ph7_value_is_array(pPattern) ){
+		const char *zPattern;
+		int nPatLen;
+		pcre2_code *pCode;
+		zPattern = ph7_value_to_string(pPattern, &nPatLen);
+		pCode = PcreCompile(pCtx, zPattern, nPatLen, &nCapture);
+		if( pCode == 0 ){
+			return SXERR_ABORT;
+		}
+		return PcreDoCallbackReplace(pCtx, pCode, zSubject, nSubLen, pCallback,
+			limit, iFlags, pCount, pOut);
+	}else{
+		ph7_hashmap *pPatMap = (ph7_hashmap *)pPattern->x.pOther;
+		ph7_hashmap_node *pPatNode;
+		ph7_value sPat;
+		SyBlob sA, sB, *pSrc, *pDst;
+		sxu32 n;
+		sxi32 rc = SXRET_OK;
+		SyBlobInit(&sA, &pCtx->pVm->sAllocator);
+		SyBlobInit(&sB, &pCtx->pVm->sAllocator);
+		SyBlobAppend(&sA, zSubject, (sxu32)nSubLen); /* seed with the subject */
+		pSrc = &sA; pDst = &sB;
+		PH7_MemObjInit(pCtx->pVm, &sPat);
+		pPatNode = pPatMap ? pPatMap->pFirst : 0;
+		n = pPatMap ? pPatMap->nEntry : 0;
+		while( n > 0 ){
+			const char *zPattern;
+			int nPatLen;
+			pcre2_code *pCode;
+			SyBlob *pSwap;
+			PH7_HashmapExtractNodeValue(pPatNode, &sPat, FALSE);
+			zPattern = ph7_value_to_string(&sPat, &nPatLen);
+			pCode = PcreCompile(pCtx, zPattern, nPatLen, &nCapture);
+			if( pCode == 0 ){
+				rc = SXERR_ABORT;
+				PH7_MemObjRelease(&sPat);
+				break;
+			}
+			SyBlobReset(pDst);
+			rc = PcreDoCallbackReplace(pCtx, pCode,
+				(const char *)SyBlobData(pSrc), (int)SyBlobLength(pSrc),
+				pCallback, limit, iFlags, pCount, pDst);
+			/* The freshly-produced text becomes the subject for the next pattern */
+			pSwap = pSrc; pSrc = pDst; pDst = pSwap;
+			PH7_MemObjRelease(&sPat);
+			if( rc == PH7_EXCEPTION ){
+				break;
+			}
+			pPatNode = pPatNode->pPrev; /* insertion-order walk (reverse link) */
+			n--;
+		}
+		if( rc == SXRET_OK ){
+			SyBlobAppend(pOut, SyBlobData(pSrc), SyBlobLength(pSrc));
+		}
+		SyBlobRelease(&sA);
+		SyBlobRelease(&sB);
+		return rc;
+	}
+}
+
+/* ======================================================================
+ * preg_replace_callback(pattern, callback, subject [, limit [, &count [, flags]]])
+ * ====================================================================== */
+static int PH7_builtin_preg_replace_callback(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	int limit = -1;
+	int iFlags = 0;
+	int count = 0;
+	sxi32 rc;
+
+	if( nArg < 3 ){
+		ph7_context_throw_error(pCtx, PH7_CTX_WARNING,
+			"preg_replace_callback() expects at least 3 parameters");
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	if( !ph7_value_is_callable(apArg[1]) ){
+		ph7_context_throw_error(pCtx, PH7_CTX_WARNING,
+			"preg_replace_callback() expects parameter 2 to be a valid callback");
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	if( nArg >= 4 ){
+		limit = ph7_value_to_int(apArg[3]);
+	}
+	if( nArg >= 6 ){
+		/* $flags shapes the match array handed to the callback exactly as it
+		 * shapes preg_match()'s &$matches (PREG_OFFSET_CAPTURE /
+		 * PREG_UNMATCHED_AS_NULL). php validates nothing here, so neither do we. */
+		iFlags = ph7_value_to_int(apArg[5]);
+	}
+	pCtx->pVm->iPcreLastError = PHP_PREG_NO_ERROR;
+
+	if( ph7_value_is_array(apArg[2]) ){
+		/* Array subject: return an array, each element replaced, keys preserved
+		 * (php; PHL used to stringify the whole array to "Array" and replace in
+		 * THAT — a silent wrong answer). */
+		ph7_hashmap *pSubMap = (ph7_hashmap *)apArg[2]->x.pOther;
+		ph7_value *pResult = ph7_context_new_array(pCtx);
+		ph7_value *pElem = ph7_context_new_scalar(pCtx);
+		ph7_value sKey, sVal;
+		ph7_hashmap_node *pNode;
+		sxu32 n;
+		if( pResult == 0 || pElem == 0 ){
+			ph7_result_null(pCtx);
+			return PH7_OK;
+		}
+		PH7_MemObjInit(pCtx->pVm, &sKey);
+		PH7_MemObjInit(pCtx->pVm, &sVal);
+		pNode = pSubMap ? pSubMap->pFirst : 0;
+		n = pSubMap ? pSubMap->nEntry : 0;
+		while( n > 0 ){
+			const char *zSubject;
+			int nSubLen;
+			SyBlob sOut;
+			PH7_HashmapExtractNodeKey(pNode, &sKey);
+			PH7_HashmapExtractNodeValue(pNode, &sVal, FALSE);
+			zSubject = ph7_value_to_string(&sVal, &nSubLen);
+			SyBlobInit(&sOut, &pCtx->pVm->sAllocator);
+			rc = PcreCallbackReplaceSubject(pCtx, apArg[0], apArg[1], zSubject, nSubLen,
+				limit, iFlags, &count, &sOut);
+			if( rc != SXRET_OK ){
+				/* A bad pattern with an array subject yields an empty array (php);
+				 * the failure hits the first element, so pResult is still empty.
+				 * A throwing callback unwinds with no result at all. */
+				SyBlobRelease(&sOut);
+				PH7_MemObjRelease(&sKey);
+				PH7_MemObjRelease(&sVal);
+				if( rc == PH7_EXCEPTION ){
+					return PH7_EXCEPTION;
+				}
+				ph7_result_value(pCtx, pResult);
+				goto set_count;
+			}
+			ph7_value_string(pElem, (const char *)SyBlobData(&sOut), (int)SyBlobLength(&sOut));
+			ph7_array_add_elem(pResult, &sKey, pElem); /* copies key+value */
+			ph7_value_reset_string_cursor(pElem);
+			SyBlobRelease(&sOut);
+			PH7_MemObjRelease(&sKey);
+			PH7_MemObjRelease(&sVal);
+			pNode = pNode->pPrev; /* insertion-order walk (reverse link) */
+			n--;
+		}
+		ph7_result_value(pCtx, pResult);
+	}else{
+		/* Scalar subject: one replaced string. */
+		const char *zSubject;
+		int nSubLen;
+		SyBlob sOut;
+		zSubject = ph7_value_to_string(apArg[2], &nSubLen);
+		SyBlobInit(&sOut, &pCtx->pVm->sAllocator);
+		rc = PcreCallbackReplaceSubject(pCtx, apArg[0], apArg[1], zSubject, nSubLen,
+			limit, iFlags, &count, &sOut);
+		if( rc != SXRET_OK ){
+			SyBlobRelease(&sOut);
+			if( rc == PH7_EXCEPTION ){
+				return PH7_EXCEPTION;
+			}
+			/* Scalar subject: a bad pattern returns NULL (php). */
+			ph7_result_null(pCtx);
+			goto set_count;
+		}
+		ph7_result_string(pCtx, (const char *)SyBlobData(&sOut), (int)SyBlobLength(&sOut));
+		SyBlobRelease(&sOut);
+	}
+set_count:
+	/* Set &$count if provided — written on success AND on a bad-pattern failure
+	 * (php always writes it: 0, or the count accumulated by earlier good patterns). */
 	if( nArg >= 5 ){
 		ph7_value sCount;
 		PH7_MemObjInitFromInt(pCtx->pVm, &sCount, count);
