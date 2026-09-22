@@ -484,6 +484,36 @@ PH7_PRIVATE sxi32 VmDeferPathPushProp(VmDeferredPath *pPath,const SyString *pNam
 	return SXRET_OK;
 }
 /* Release a captured lvalue path and everything it owns (element keys, property names). */
+/*
+ * The pending offset of a `$s[k] ??= v`: a heap copy of the RAW key, owned by the
+ * peek's MEMOBJ_AUX_COALSTROFF result on the operand stack. One carrier per
+ * pending ??=, so `$s[9] ??= ($t[9] ??= "q")` nests — a single VM-wide slot could
+ * not (the inner peek overwrote the outer's offset, and the outer store then
+ * replaced the whole string).
+ */
+PH7_PRIVATE VmCoalStrOff * VmCoalStrOffNew(ph7_vm *pVm,ph7_value *pKey)
+{
+	VmCoalStrOff *pCoal = (VmCoalStrOff *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmCoalStrOff));
+	if( pCoal == 0 ){
+		return 0;
+	}
+	pCoal->pAlloc = &pVm->sAllocator;
+	PH7_MemObjInit(&(*pVm),&pCoal->sKey);
+	if( pKey ){
+		PH7_MemObjStore(pKey,&pCoal->sKey);
+	}
+	return pCoal;
+}
+PH7_PRIVATE void VmFreeCoalStrOff(VmCoalStrOff *pCoal)
+{
+	SyMemBackend *pAlloc;
+	if( pCoal == 0 ){
+		return;
+	}
+	pAlloc = pCoal->pAlloc;
+	PH7_MemObjRelease(&pCoal->sKey);
+	SyMemBackendFree(pAlloc,pCoal);
+}
 PH7_PRIVATE void VmFreeDeferredPath(VmDeferredPath *pPath)
 {
 	sxu32 i;

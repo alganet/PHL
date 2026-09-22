@@ -88,6 +88,15 @@ struct ph7_value
 	SyBlob sBlob;       /* String values */
 	sxu32 nIdx;         /* Index number of this entry in the global object allocator */
 };
+/* The pending offset of a `$s[k] ??= v`, owned by its MEMOBJ_AUX_COALSTROFF peek result.
+ * Carries its own allocator so PH7_MemObjRelease can free it without a VM pointer, exactly
+ * like VmDeferredPath. */
+typedef struct VmCoalStrOff VmCoalStrOff;
+struct VmCoalStrOff
+{
+	SyMemBackend *pAlloc;
+	ph7_value sKey;      /* the RAW offset, unresolved: the store re-resolves it LOUDLY */
+};
 /*
  * D1 commit 2: a captured lvalue path for a deferred by-ref/by-value call argument
  * ($a["k"], $o->p, and nested/undefined-base forms). Built on a lookup MISS by the
@@ -146,6 +155,16 @@ struct VmDeferredPath {
                                     * PH7_MemObjRelease frees it at the TOP, before its MEMOBJ_NULL
                                     * short-circuit, so every pop/abort/exception path releases it. Part of
                                     * MEMOBJ_AUX, so MemObjStore strips the flag on copy. */
+#define MEMOBJ_AUX_COALSTROFF 0x40000 /* Stack-only marker: this NULL is the peek result of a
+                                       * `$s[k] ??= v` over a STRING, and it OWNS a heap
+                                       * VmCoalStrOff holding the RAW offset (x.pOther) for the
+                                       * OP_NULLC_STORE that follows — which has to write into
+                                       * the string OFFSET, and by then the offset value is gone.
+                                       * Same ownership contract as MEMOBJ_AUX_DEFPATH:
+                                       * PH7_MemObjRelease frees it, so an abandoned statement
+                                       * cannot leak it, and it nests (one carrier per pending
+                                       * ??= on the operand stack) where a single VM-wide slot
+                                       * could not. */
 #define MEMOBJ_AUX_STROFFSET 0x20000 /* Stack-only marker: this value was READ OUT of a string by a
                                       * subscript ($s[1]). It carries the BASE's slot index like any
                                       * other element read, but a string offset is not a slot: php
@@ -163,7 +182,7 @@ struct VmDeferredPath {
  *  Types array, object and resource are not scalar.
  */
 #define MEMOBJ_SCALAR (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL)
-#define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_CUFVAL|MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH|MEMOBJ_AUX_STROFFSET)
+#define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_CUFVAL|MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH|MEMOBJ_AUX_STROFFSET|MEMOBJ_AUX_COALSTROFF)
 /*
  * The following macro clear the current ph7_value type and replace
  * it with the given one.
@@ -2868,6 +2887,8 @@ PH7_PRIVATE VmDeferredPath * VmDeferPathNew(ph7_vm *pVm,int eRoot,sxu32 nRootIdx
 PH7_PRIVATE sxi32 VmDeferPathPushElem(VmDeferredPath *pPath,ph7_value *pKey);
 PH7_PRIVATE sxi32 VmDeferPathPushProp(VmDeferredPath *pPath,const SyString *pName);
 PH7_PRIVATE void VmFreeDeferredPath(VmDeferredPath *pPath);
+PH7_PRIVATE VmCoalStrOff * VmCoalStrOffNew(ph7_vm *pVm,ph7_value *pKey);
+PH7_PRIVATE void VmFreeCoalStrOff(VmCoalStrOff *pCoal);
 PH7_PRIVATE void VmExpandUserConstant(ph7_value *pVal,void *pUserData);
 PH7_PRIVATE ph7_class * VmExtractEnumClass(ph7_vm *pVm,ph7_value *pName);
 PH7_PRIVATE int vm_builtin_compact(ph7_context *pCtx,int nArg,ph7_value **apArg);
@@ -3579,6 +3600,7 @@ PH7_PRIVATE const char *VmValueGivenName(ph7_value *pVal,char *zBuf,sxu32 nBuf);
 #define VM_STROFF_COALESCE 1
 #define VM_STROFF_ISSET    2
 PH7_PRIVATE int VmStringOffsetResolve(ph7_vm *pVm,ph7_value *pIdx,int iLevel,sxi64 *piOfft,SyBlob *pMsg);
+PH7_PRIVATE sxi32 VmStringOffsetWrite(ph7_vm *pVm,ph7_value *pStr,sxi64 iRawOfft,ph7_value *pVal);
 /* Numeric-string classifier — php's is_numeric_string() grammar — shared from
  * hashmap.c (range/array_rand) for the stage-2 ZPP domain-error sweep
  * (PLAN §3.9(a)). RangeStrToNumber only ever returns ERROR/LONG/DOUBLE; the

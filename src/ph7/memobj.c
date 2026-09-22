@@ -1398,6 +1398,16 @@ PH7_PRIVATE sxi32 PH7_MemObjLoad(ph7_value *pSrc,ph7_value *pDest)
  */
 PH7_PRIVATE sxi32 PH7_MemObjRelease(ph7_value *pObj)
 {
+	if( pObj->iFlags & MEMOBJ_AUX_COALSTROFF ){
+		/* A `$s[k] ??= v` peek result OWNS the heap VmCoalStrOff holding its raw
+		 * offset. Free it HERE, before the MEMOBJ_NULL short-circuit below and for
+		 * the same reason as the DEFPATH carrier above: this is the universal
+		 * release site every pop / abort / exception-unwind routes through, so an
+		 * abandoned `??=` cannot leak the offset. */
+		VmFreeCoalStrOff((VmCoalStrOff *)pObj->x.pOther);
+		pObj->x.pOther = 0;
+		pObj->iFlags &= ~MEMOBJ_AUX_COALSTROFF;
+	}
 	if( pObj->iFlags & MEMOBJ_AUX_DEFPATH ){
 		/* D1 commit 2: a deferred element/property lvalue carrier OWNS a heap VmDeferredPath
 		 * on a NULL-typed slot. Free it HERE, before the MEMOBJ_NULL short-circuit below —

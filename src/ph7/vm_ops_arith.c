@@ -96,6 +96,68 @@ PH7_PRIVATE VmOpRc VmExecOpNullcStore(ph7_vm *pVm,VmExecState *pState,VmInstr *p
 		VmCoalesceDisarm(pVm);
 		VM_EXIT_BREAK;
 	}
+	if( (pNos->iFlags & MEMOBJ_AUX_COALSTROFF) != 0 && pNos->x.pOther != 0 ){
+		/* `$s[k] ??= v` on a STRING: php performs a real string-OFFSET store —
+		 * `??=` is not an assign-op — padding with spaces when the offset is past
+		 * the end. Writing the RHS through pNos->nIdx, which is all a string offset
+		 * carries (the BASE VARIABLE's slot), REPLACED the whole string with it:
+		 * `$s = "abc"; $s[9] ??= "z";` left $s === "z". The offset rides here on the
+		 * peek's own result (the MEMOBJ_AUX_COALSTROFF carrier it owns, so nested
+		 * `??=`s cannot clobber each other), and php re-resolves it LOUDLY here: an
+		 * offset the quiet peek let through raises at the store. */
+		VmCoalStrOff *pCoalOff = (VmCoalStrOff *)pNos->x.pOther;
+		ph7_value *pStrBase = pNos->nIdx != SXU32_HIGH
+			? (ph7_value *)SySetAt(&pVm->aMemObj,pNos->nIdx) : 0;
+		sxi64 iOfft = 0;
+		SyBlob sTypeMsg;
+		int eOfft;
+		SyBlobInit(&sTypeMsg,&pVm->sAllocator);
+		eOfft = VmStringOffsetResolve(&(*pVm),&pCoalOff->sKey,VM_STROFF_LOUD,
+			&iOfft,&sTypeMsg);
+		if( eOfft == VM_STROFF_REJECT ){
+			sxi32 rcSo;
+			VmPopOperand(&pTos,1);
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			rcSo = VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sTypeMsg);
+			if( rcSo == SXERR_ABORT ){ VM_EXIT_ABORT; }
+			rc = rcSo;
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
+		SyBlobRelease(&sTypeMsg);
+		/* The RHS takes the same user-visible string coercion as a plain store. */
+		{
+			sxi32 rcSv = PH7_MemObjToStringUV(pTos);
+			PH7_DISPATCH_TOSTRING_RC(rcSv)
+		}
+		if( pStrBase && (pStrBase->iFlags & MEMOBJ_STRING) ){
+			if( VmStringOffsetWrite(&(*pVm),pStrBase,iOfft,pTos) != SXRET_OK ){
+				sxi32 rcEm;
+				VmPopOperand(&pTos,1);
+				PH7_MemObjRelease(pTos);
+				MemObjSetType(pTos,MEMOBJ_NULL);
+				pTos->nIdx = SXU32_HIGH;
+				rcEm = VmThrowFromVm(&(*pVm),"Error",
+					"Cannot assign an empty string to a string offset",
+					sizeof("Cannot assign an empty string to a string offset")-1);
+				if( rcEm == SXERR_ABORT ){ VM_EXIT_ABORT; }
+				rc = rcEm;
+				PH7_THROW_ROUTE_MIDEXPR(rc)
+			}
+		}
+		/* Done with the offset. PH7_MemObjStore only STRIPS the AUX flag, it does
+		 * not free what the carrier owns, so release it here — every other exit
+		 * from this arm routes through PH7_MemObjRelease, which does. */
+		VmFreeCoalStrOff(pCoalOff);
+		pNos->x.pOther = 0;
+		pNos->iFlags &= ~MEMOBJ_AUX_COALSTROFF;
+		/* Leave the RHS as the expression's value, like every other arm. */
+		PH7_MemObjStore(pTos,pNos);
+		pNos->nIdx = SXU32_HIGH;
+		VmPopOperand(&pTos,1);
+		VM_EXIT_BREAK;
+	}
 	nIdx = pNos->nIdx;
 	if( nIdx == SXU32_HIGH ){
 		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,

@@ -608,7 +608,6 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 				VM_EXIT_BREAK;
 			}else{
 				sxi64 iOfft = 0;
-				sxi64 nLen;
 				SyBlob sTypeMsg;
 				/* php's offset rules run BEFORE the RHS is looked at: an offset it
 				 * refuses is the TypeError alone. The RHS cast below used to happen
@@ -632,37 +631,15 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 						PH7_DISPATCH_TOSTRING_RC(rcSv)
 					}
 				}
-				nLen = (sxi64)SyBlobLength(&pObj->sBlob);
-				if( iOfft < 0 ){
-					/* php 7.1: a negative offset writes back from the end. */
-					sxi64 iRaw = iOfft;
-					iOfft += nLen;
-					if( iOfft < 0 ){
-						VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Illegal string offset %qd",
-							iRaw);
-						PH7_MemObjRelease(pKey);
-						VM_EXIT_BREAK;
-					}
-				}
-				if( SyBlobLength(&pTos->sBlob) > 0 ){
-					const char *zBlob = (const char *)SyBlobData(&pTos->sBlob);
-					if( SyBlobLength(&pTos->sBlob) > 1 ){
-						VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
-							"Only the first byte will be assigned to the string offset");
-					}
-					if( iOfft >= nLen ){
-						/* php PADS WITH SPACES up to the offset. PH7 simply appended the
-						 * byte, so "abc" with [6]="Z" became "abcZ" rather than "abc   Z"
-						 * -- a silently wrong string. */
-						sxi64 nPad;
-						for( nPad = nLen ; nPad < iOfft ; ++nPad ){
-							SyBlobAppend(&pObj->sBlob," ",sizeof(char));
-						}
-						SyBlobAppend(&pObj->sBlob,(const void *)zBlob,sizeof(char));
-					}else{
-						char *zData = (char *)SyBlobData(&pObj->sBlob);
-						zData[iOfft] = zBlob[0];
-					}
+				if( VmStringOffsetWrite(&(*pVm),pObj,iOfft,pTos) != SXRET_OK ){
+					sxi32 rcEm;
+					PH7_MemObjRelease(pKey);
+					rcEm = VmThrowFromVm(&(*pVm),"Error",
+						"Cannot assign an empty string to a string offset",
+						sizeof("Cannot assign an empty string to a string offset")-1);
+					if( rcEm == SXERR_ABORT ){ VM_EXIT_ABORT; }
+					rc = rcEm;
+					PH7_THROW_ROUTE_MIDEXPR(rc)
 				}
 			}
 			if( pKey ){
@@ -941,6 +918,70 @@ static int VmIdxFeedsCoalesce(const VmInstr *pInstr)
 	return (pInstr+1)->iOp == PH7_OP_NULLC || (pInstr+1)->iOp == PH7_OP_NULLC_JMP;
 }
 /*
+ * php's string-offset STORE, shared by `$s[i] = v` (OP_STORE_IDX) and
+ * `$s[i] ??= v` (OP_NULLC_STORE — `??=` is not an assign-op, so php performs a
+ * real offset write there): resolve iRawOfft against the string's CURRENT length
+ * (a negative offset counts back from the end and, when it still lands before the
+ * start, warns `Illegal string offset` and writes NOTHING), refuse an EMPTY
+ * replacement, warn when more than one byte was handed over, PAD WITH SPACES up
+ * to the offset, then write the first byte.
+ *
+ * pVal must ALREADY be a string: that coercion is user-visible (it warns for an
+ * array, throws for a not-stringable object) and stays with the callers, which
+ * are the only places that can route a throw. Answers SXRET_OK when the store
+ * happened or was skipped, and SXERR_INVALID for php's `Cannot assign an empty
+ * string to a string offset` Error — raised by the caller for the same reason.
+ */
+PH7_PRIVATE sxi32 VmStringOffsetWrite(ph7_vm *pVm,ph7_value *pStr,sxi64 iRawOfft,ph7_value *pVal)
+{
+	sxi64 nLen = (sxi64)SyBlobLength(&pStr->sBlob);
+	sxi64 iOfft = iRawOfft;
+	const char *zVal;
+	if( iOfft < 0 ){
+		/* php 7.1: a negative offset writes back from the end. */
+		iOfft += nLen;
+		if( iOfft < 0 ){
+			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Illegal string offset %qd",iRawOfft);
+			return SXRET_OK;
+		}
+	}
+	if( SyBlobLength(&pVal->sBlob) < 1 ){
+		/* php refuses to write NOTHING into an offset — `$s[2] = ""`, and the
+		 * `= null` / `= false` that stringify to "" — where PHL silently ignored
+		 * the store. */
+		return SXERR_INVALID;
+	}
+	zVal = (const char *)SyBlobData(&pVal->sBlob);
+	if( SyBlobLength(&pVal->sBlob) > 1 ){
+		VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+			"Only the first byte will be assigned to the string offset");
+	}
+	if( iOfft >= nLen ){
+		/* php PADS WITH SPACES up to the offset. PH7 simply appended the byte, so
+		 * "abc" with [6]="Z" became "abcZ" rather than "abc   Z" -- a silently
+		 * wrong string. */
+		sxi64 nPad;
+		for( nPad = nLen ; nPad < iOfft ; ++nPad ){
+			SyBlobAppend(&pStr->sBlob," ",sizeof(char));
+		}
+		SyBlobAppend(&pStr->sBlob,(const void *)zVal,sizeof(char));
+	}else{
+		char *zData = (char *)SyBlobData(&pStr->sBlob);
+		zData[iOfft] = zVal[0];
+	}
+	return SXRET_OK;
+}
+/*
+ * Does this LOAD_IDX feed a `??=` (rather than a plain `??`)? The compiler emits
+ * the LHS peek, then OP_NULLC_JMP, then the RHS, then OP_NULLC_STORE — so the
+ * NULLC_JMP right after is what distinguishes the assigning form, whose store
+ * still has to happen when the peek answers null.
+ */
+static int VmIdxFeedsCoalesceAssign(const VmInstr *pInstr)
+{
+	return (pInstr+1)->iOp == PH7_OP_NULLC_JMP;
+}
+/*
  * OP_LOAD_IDX: body moved verbatim from the OP_LOAD_IDX arm of
  * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
  */
@@ -1111,13 +1152,33 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				: VM_STROFF_LOUD);
 			int bQuiet = iOfftLevel != VM_STROFF_LOUD;
 			SyBlob sTypeMsg;
-			int eOfft = VmStringOffsetResolve(&(*pVm),pIdx,iOfftLevel,&iOfft,&sTypeMsg);
+			int eOfft;
+			VmCoalStrOff *pCoalOff = 0;
+			if( VmIdxFeedsCoalesceAssign(pInstr) ){
+				/* `$s[k] ??= v`: the OP_NULLC_STORE ahead has to write into the
+				 * string OFFSET, and by then the offset is gone — this op consumes
+				 * it. Carry the RAW index to the store on the peek's own result
+				 * (MEMOBJ_AUX_COALSTROFF), which nests and cannot leak; the copy
+				 * must predate the resolution below, which casts a float/null/bool
+				 * in place, because php re-resolves the offset LOUDLY at the store:
+				 * the peek is the quiet half of its pair. */
+				pCoalOff = VmCoalStrOffNew(&(*pVm),pIdx);
+			}
+			eOfft = VmStringOffsetResolve(&(*pVm),pIdx,iOfftLevel,&iOfft,&sTypeMsg);
 			if( eOfft == VM_STROFF_MISS ){
 				/* A lookup over an offset php refuses: not set, in silence. */
 				PH7_MemObjRelease(pIdx);
 				PH7_MemObjRelease(pTos);
 				MemObjSetType(pTos,MEMOBJ_NULL);
-				pTos->nIdx = SXU32_HIGH;
+				if( pCoalOff ){
+					/* A `??=` whose offset the READ refuses: php raises at the
+					 * STORE instead, so keep the base slot reachable and hand the
+					 * offset to OP_NULLC_STORE. */
+					pTos->x.pOther = (void *)pCoalOff;
+					pTos->iFlags |= MEMOBJ_AUX_STROFFSET|MEMOBJ_AUX_COALSTROFF;
+				}else{
+					pTos->nIdx = SXU32_HIGH;
+				}
 				VM_EXIT_BREAK;
 			}
 			if( eOfft == VM_STROFF_REJECT ){
@@ -1126,6 +1187,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				 * answered `$s[0]`. Routed as a mid-expression throw (this opcode
 				 * is not a call boundary), so the rest of the expression is
 				 * abandoned the way php abandons it. */
+				VmFreeCoalStrOff(pCoalOff);
 				rc = VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sTypeMsg);
 				PH7_MemObjRelease(pIdx);
 				PH7_MemObjRelease(pTos);
@@ -1159,6 +1221,16 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				PH7_MemObjRelease(pTos);
 				MemObjSetType(pTos,MEMOBJ_STRING);
 				SyBlobAppend(&pTos->sBlob,(const void *)&c,sizeof(char));
+			}
+			if( pCoalOff ){
+				if( pTos->iFlags & MEMOBJ_NULL ){
+					/* Out of range: the `??=` will store, so hand the offset over. */
+					pTos->x.pOther = (void *)pCoalOff;
+					pTos->iFlags |= MEMOBJ_AUX_COALSTROFF;
+				}else{
+					/* A real byte: the `??=` short-circuits over the store. */
+					VmFreeCoalStrOff(pCoalOff);
+				}
 			}
 			/* The result still carries the BASE VARIABLE's slot index, which is
 			 * harmless for a plain read and WRONG for anything that would ALIAS it:
