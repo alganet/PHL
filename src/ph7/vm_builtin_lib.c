@@ -655,22 +655,37 @@
    "  $n = (int)$ip;"\
    "  return (($n >> 24) & 255) . '.' . (($n >> 16) & 255) . '.' . (($n >> 8) & 255) . '.' . ($n & 255);"\
    "}"\
-   "function preg_filter($pattern, $replacement, $subject, $limit = -1){"\
+   "function preg_filter($pattern, $replacement, $subject, $limit = -1, &$count = null){"\
+   "  /* php declares &$count and always writes it -- the total number of"\
+   "   * replacements across every subject, 0 when nothing matched. PHL never"\
+   "   * declared the parameter, so a caller reading it got its previous value. */"\
    "  if( is_array($subject) ){"\
+   "    $total = 0;"\
    "    $out = array();"\
    "    foreach( $subject as $k => $v ){"\
    "      $r = preg_replace($pattern, $replacement, (string)$v, $limit, $cnt);"\
+   "      $total = $total + $cnt;"\
    "      if( $cnt > 0 ){ $out[$k] = $r; }"\
    "    }"\
+   "    $count = $total;"\
    "    return $out;"\
    "  }"\
    "  $r = preg_replace($pattern, $replacement, (string)$subject, $limit, $cnt);"\
+   "  $count = $cnt;"\
    "  return $cnt > 0 ? $r : null;"\
    "}"\
-   "function preg_replace_callback_array($pattern, $subject, $limit = -1){"\
+   "function preg_replace_callback_array($pattern, $subject, $limit = -1, &$count = null, $flags = 0){"\
+   "  /* &$count is the total across every pattern; $flags shapes each callback's"\
+   "   * match array. php writes &$count only when the whole run SUCCEEDED -- a"\
+   "   * pattern that fails to compile answers null and leaves it untouched (an"\
+   "   * array subject is not a failure: it degrades to the empty array, count 0). */"\
+   "  $total = 0;"\
    "  foreach( $pattern as $pat => $cb ){"\
-   "    $subject = preg_replace_callback($pat, $cb, $subject, $limit);"\
+   "    $subject = preg_replace_callback($pat, $cb, $subject, $limit, $cnt, $flags);"\
+   "    if( $subject === null ){ return null; }"\
+   "    $total = $total + $cnt;"\
    "  }"\
+   "  $count = $total;"\
    "  return $subject;"\
    "}"\
    "function cal_days_in_month($calendar, $month, $year){"\
