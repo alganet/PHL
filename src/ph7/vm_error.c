@@ -1105,9 +1105,10 @@ static int VmStringNumericKind(ph7_value *pValue)
 
 /*
  * Check a value against a "pseudo-type" stored as an SXU32_HIGH class-name atom.
- * PH7 parses `true`/`false`/`iterable`/`mixed` as class-name atoms (they are not
- * scalar keywords), so without this every enforcement site — return, parameter,
- * property, union alternative — would have to string-match the name itself.
+ * PH7 parses `true`/`false`/`iterable`/`callable`/`mixed` as class-name atoms
+ * (they are not scalar keywords), so without this every enforcement site —
+ * return, parameter, property, union alternative — would have to string-match
+ * the name itself.
  * Centralising it here keeps the four sites consistent and is the single place
  * to extend when another literal/pseudo type is added.
  *   returns  1 : recognised pseudo-type AND the value satisfies it
@@ -1126,6 +1127,16 @@ PH7_PRIVATE int VmCheckPseudoType(ph7_vm *pVm, ph7_value *pValue, const SyString
 	}
 	if( n == 5 && SyStrnicmp(z,"false",5) == 0 ){
 		return ( (pValue->iFlags & MEMOBJ_BOOL) && pValue->x.iVal == 0 ) ? 1 : 0;
+	}
+	if( n == 8 && SyStrnicmp(z,"callable",8) == 0 ){
+		/* php's `callable` type is is_callable() itself — a function-name string,
+		 * a "C::m" string, a [target,method] pair, a Closure, or an __invoke
+		 * object; scope-sensitive, so a private method is callable only from
+		 * inside. Same predicate the builtin answers with, so the type and
+		 * is_callable() can never disagree. (Parameters and return values only:
+		 * the compiler rejects `callable` on a property or class constant, as
+		 * php does.) */
+		return PH7_VmIsCallable(pVm,pValue,TRUE) ? 1 : 0;
 	}
 	if( n == 8 && SyStrnicmp(z,"iterable",8) == 0 ){
 		/* iterable === array | Traversable */
