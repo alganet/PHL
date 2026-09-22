@@ -400,20 +400,44 @@ static int VmUnParseUInt(unserialize_data *ud, sxu32 *pOut)
 	*pOut = v;
 	return 1;
 }
-/* Parse a signed 64-bit decimal into *pOut; 0 on failure. */
-static int VmUnParseInt64(unserialize_data *ud, ph7_int64 *pOut)
+/* Parse a signed 64-bit decimal into *pOut; 0 on failure. A digit run PAST the
+ * int64 range saturates to PHP_INT_MAX/MIN and sets *pOverflow, which is what php
+ * does (strtol clamping, then its own warning) -- the magnitude used to be
+ * accumulated with unchecked wraparound, so `i:99999999999999999999;` came back
+ * as some unrelated number.
+ *
+ * The reader stays local rather than calling SyStrToInt64Ex: that one tolerates
+ * surrounding whitespace, and the serialization grammar does not (`i: 1;` is a
+ * parse failure at offset 0, on both engines). */
+static int VmUnParseInt64(unserialize_data *ud, ph7_int64 *pOut, int *pOverflow)
 {
-	int neg = 0, n = 0;
-	sxu64 v = 0;
+	int neg = 0, n = 0, ovf = 0;
+	sxu64 v = 0, cutoff;
 	if( ud->zCur < ud->zEnd && (ud->zCur[0]=='-' || ud->zCur[0]=='+') ){
 		neg = (ud->zCur[0]=='-'); ud->zCur++;
 	}
+	/* Largest magnitude that fits: PHP_INT_MAX going up, |PHP_INT_MIN| going down. */
+	cutoff = neg ? ((sxu64)LARGEST_INT64 + 1) : (sxu64)LARGEST_INT64;
 	while( ud->zCur < ud->zEnd && ud->zCur[0] >= '0' && ud->zCur[0] <= '9' ){
-		v = v*10 + (sxu64)(ud->zCur[0]-'0');
+		sxu64 d = (sxu64)(ud->zCur[0]-'0');
+		if( v > cutoff/10 || (v == cutoff/10 && d > cutoff%10) ){
+			ovf = 1;
+		}else{
+			v = v*10 + d;
+		}
 		ud->zCur++; n++;
 	}
 	if( n == 0 ){ return 0; }
-	*pOut = neg ? (ph7_int64)(0ULL - v) : (ph7_int64)v;
+	if( ovf ){
+		v = cutoff;
+	}
+	if( pOverflow ){
+		*pOverflow = ovf;
+	}
+	/* The negative cap |PHP_INT_MIN| has no positive ph7_int64 form, so materialize
+	 * PHP_INT_MIN directly instead of negating it. */
+	*pOut = neg ? ( v > (sxu64)LARGEST_INT64 ? SMALLEST_INT64 : -(ph7_int64)v )
+	            : (ph7_int64)v;
 	return 1;
 }
 /* Parse s:<len>:"<len bytes>"; returning the raw view (zStr,nStr). */
@@ -683,8 +707,17 @@ static ph7_value * VmUnserializeValueBody(unserialize_data *ud)
 		return pOut;
 	case 'i': { /* i:<int>; */
 		ph7_int64 v;
+		int ovf = 0;
 		if( !VmUnExpect(ud,'i') || !VmUnExpect(ud,':') ){ return 0; }
-		if( !VmUnParseInt64(ud,&v) || !VmUnExpect(ud,';') ){ return 0; }
+		if( !VmUnParseInt64(ud,&v,&ovf) || !VmUnExpect(ud,';') ){ return 0; }
+		if( ovf ){
+			/* php reports the clamp and keeps the saturated value, once per TOKEN --
+			 * so an array of out-of-range integers warns once per element. Reported
+			 * only after the token parses: a malformed one (`i:99...9X`) is php's
+			 * "Error at offset" and nothing else. */
+			ph7_context_throw_error_format(ud->pCtx,PH7_CTX_WARNING,
+				"Numerical result out of range");
+		}
 		pOut = ph7_context_new_scalar(ud->pCtx);
 		if( pOut ){ ph7_value_int64(pOut,v); }
 		return pOut;
