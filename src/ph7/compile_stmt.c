@@ -1831,6 +1831,7 @@ PH7_PRIVATE sxi32 PH7_CompileReturn(ph7_gen_state *pGen)
 	sxu32 nLine = pGen->pIn->nLine;
 	GenBlock *pFuncBlock = pGen->pCurrent;
 	ph7_vm_func *pFunc;
+	sxu32 nInstrBefore;
 	/* A `never`-returning function must not contain a `return` statement at all
 	 * (PHP compile error), with or without a value. Find the enclosing function
 	 * (nearest GEN_BLOCK_FUNC) and check its declared return type. The error is
@@ -1849,6 +1850,7 @@ PH7_PRIVATE sxi32 PH7_CompileReturn(ph7_gen_state *pGen)
 	}
 	/* Jump the 'return' keyword */
 	pGen->pIn++;
+	nInstrBefore = PH7_VmInstrLength(pGen->pVm);
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) == 0 ){
 		/* php: a stray token after `return EXPR` is `... expecting ";"`. */
 		const char *zSave = pGen->zClauseCloser;
@@ -1880,6 +1882,29 @@ PH7_PRIVATE sxi32 PH7_CompileReturn(ph7_gen_state *pGen)
 			GenStateReturnNoun(pGen),
 			GenStateReturnTypeAllowsNull(pFunc)
 				? " (did you mean \"return null;\" instead of \"return;\"?)" : "");
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+	}
+	/* The mirror rule: a `void` function must not return a VALUE, and php stops
+	 * the program at the return statement rather than throwing on the way out.
+	 * Generators keep their own diagnostic (a void generator is rejected as
+	 * `Generator return type must be a supertype of Generator`), so they are
+	 * skipped here exactly as above. php's hint fires when the operand is a
+	 * compile-time constant null; PHL folds the `null` KEYWORD (constant index 0,
+	 * emitted as a lone OP_LOADC and unchanged by any wrapping parens), which is
+	 * every shape real code writes. */
+	if( nRet != 0 && pFunc && !pGen->bInGenerator
+	 && pFunc->nReturnType == MEMOBJ_VOID ){
+		VmInstr *pLast = PH7_VmPeekInstr(pGen->pVm);
+		int bNullLiteral = (PH7_VmInstrLength(pGen->pVm) == nInstrBefore + 1)
+			&& pLast && pLast->iOp == PH7_OP_LOADC
+			&& pLast->iP1 == 0 && pLast->iP2 == 0;
+		rc = PH7_GenCompileError(pGen, E_ERROR, nLine,
+			"A void %s must not return a value%s",
+			GenStateReturnNoun(pGen),
+			bNullLiteral
+				? " (did you mean \"return;\" instead of \"return null;\"?)" : "");
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
