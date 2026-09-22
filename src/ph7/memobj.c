@@ -445,11 +445,20 @@ static sxi32 MemObjStringValue(SyBlob *pOut,ph7_value *pObj,sxu8 bStrictBool)
 			PH7_MemObjRelease(&sResult);
 			return rc;
 		}
-		if( rc == SXRET_OK && (sResult.iFlags & MEMOBJ_STRING) && SyBlobLength(&sResult.sBlob) > 0){
-			/* Expand method return value */
+		if( rc == SXRET_OK && (sResult.iFlags & MEMOBJ_STRING) ){
+			/* Expand the method return value, the EMPTY string included: `""` is a
+			 * value, and requiring a non-empty one sent
+			 * `__toString(){ return ""; }` down the placeholder path, so `"[$o]"`
+			 * read "[Object]" where php reads "[]". php's own guarantee that the
+			 * result IS a string is the implicit `string` return type on
+			 * __toString (installed at its declaration); the fallback below is now
+			 * reachable only for a class with no __toString at all -- which only
+			 * the SILENT coercions get this far with -- or a C-thunk method whose
+			 * result no return-type check governs. */
 			SyBlobDup(&sResult.sBlob,pOut);
 		}else{
-			/* Expand "Object" as requested by the PHP language reference manual */
+			/* Expand "Object": a PHL-internal rendering for the coercions php never
+			 * performs (array keys, sort comparisons, print_r), never user-visible. */
 			SyBlobAppend(&(*pOut),"Object",sizeof("Object")-1);
 		}
 		PH7_ClassInstanceUnref((ph7_class_instance *)pObj->x.pOther);

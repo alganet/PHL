@@ -1487,6 +1487,53 @@ static sxi32 GenStateCompileClassMethod(
 			goto Synchronize;
 		}
 	}
+	/*
+	 * php gives __toString() an IMPLICIT `string` return type. That is what makes
+	 * `return 42` coerce to "42" and `return null` / an array / an object / falling
+	 * off the end raise
+	 *   C::__toString(): Return value must be of type string, X returned
+	 * PHL enforced DECLARED return types only, so an undeclared __toString could
+	 * answer anything and MemObjStringValue fell back to the "Object" placeholder
+	 * for whatever was not a non-empty string. Installing the type here reuses the
+	 * enforcement that already matches php byte for byte.
+	 *
+	 * sReturnTypeName is filled in as well, for two reasons: reflection reports the
+	 * implicit type exactly as php does (hasReturnType() TRUE, getReturnType()
+	 * "string" for an undeclared __toString), and the generator-return-type fatal
+	 * renders from it — so a __toString with a `yield` in it now reports php's
+	 * "Generator return type must be a supertype of Generator, string given".
+	 *
+	 * Declaring any OTHER return type is php's own compile fatal, `?string`, a
+	 * union, `mixed`, `static` and `void` included. (php checks
+	 * "A void method must not return a value" FIRST when a `: void` __toString also
+	 * returns a value; PHL has no such check yet, so it reports this one instead —
+	 * both reject, on doubly-invalid input only.)
+	 */
+	if( pName->nByte == sizeof("__toString")-1
+	 && SyStrnicmp(pName->zString,"__toString",sizeof("__toString")-1) == 0 ){
+		ph7_vm_func *pTsFunc = &pMeth->sFunc;
+		int bTsDeclared = pTsFunc->nReturnType > 0 || SySetUsed(&pTsFunc->aReturnUnion) > 0;
+		if( bTsDeclared ){
+			if( pTsFunc->nReturnType != MEMOBJ_STRING
+			 || SySetUsed(&pTsFunc->aReturnUnion) > 0
+			 || (pTsFunc->iFlags & VM_FUNC_RETURN_NULLABLE) ){
+				rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
+					"%z::%z(): Return type must be string when declared",
+					&pClass->sName,pName);
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
+				goto Synchronize;
+			}
+		}else{
+			char *zTsType = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+				"string",sizeof("string")-1);
+			pTsFunc->nReturnType = MEMOBJ_STRING;
+			if( zTsType ){
+				SyStringInitFromBuf(&pTsFunc->sReturnTypeName,zTsType,sizeof("string")-1);
+			}
+		}
+	}
 	/* Install promoted constructor properties as class attributes. Runtime
 	 * property init/typecheck is handled by the generic typed-property path
 	 * since we mint real ph7_class_attr entries. */
