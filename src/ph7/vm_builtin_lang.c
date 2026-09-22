@@ -14,6 +14,82 @@
  *    Stable.
  */
 /*
+ * What a "C::K" constant NAME resolved to. php's defined() and constant() ask the same
+ * question of the same string and only differ in how they REPORT the answer — defined()
+ * turns every miss into `false`, constant() into a catchable Error — so the resolution
+ * itself lives here once.
+ */
+#define VM_CCONST_PLAIN     0 /* no "::" in the name: a global constant, not this form */
+#define VM_CCONST_OK        1 /* class and constant found, and visible from here */
+#define VM_CCONST_NOCLASS   2 /* the class part names nothing (autoload already tried) */
+#define VM_CCONST_NOSCOPE   3 /* self/parent/static named with no class scope active */
+#define VM_CCONST_NOCONST   4 /* the class exists but declares no such constant */
+#define VM_CCONST_NOACCESS  5 /* it exists but is private/protected out of scope */
+#define VM_CCONST_NOPARENT  6 /* `parent` named from a class that has none */
+/*
+ * Split "C::K" and resolve both halves. The class half goes through
+ * PH7_VmResolveScopeName, so `self`/`parent`/`static` answer against the live class
+ * context and a plain name AUTOLOADS on a miss (php does both here). The constant half
+ * is looked up without evaluating anything: an unmaterialized enum case or an on-demand
+ * constant initializer must not run just because someone ASKED whether the name exists.
+ * The class name is case-insensitive and the constant name is not, exactly as php.
+ */
+static int VmClassConstLookup(
+	ph7_vm *pVm,             /* Target VM */
+	const char *zName,       /* Constant name, possibly of the "C::K" form */
+	int nLen,                /* zName length */
+	ph7_class **ppClass,     /* OUT: resolved class (may be 0) */
+	ph7_class_attr **ppAttr, /* OUT: resolved constant (may be 0) */
+	int *pSep                /* OUT: offset of the "::" separator */
+	)
+{
+	ph7_class_attr *pAttr;
+	ph7_class *pClass;
+	int iSep;
+	*ppClass = 0;
+	*ppAttr = 0;
+	for( iSep = 0; iSep + 1 < nLen; iSep++ ){
+		if( zName[iSep] == ':' && zName[iSep+1] == ':' ){
+			break;
+		}
+	}
+	if( iSep + 1 >= nLen ){
+		return VM_CCONST_PLAIN;
+	}
+	*pSep = iSep;
+	pClass = iSep > 0 ? PH7_VmResolveScopeName(&(*pVm),zName,(sxu32)iSep) : 0;
+	if( pClass == 0 ){
+		if( iSep > 0 && PH7_VmIsScopeKeyword(zName,(sxu32)iSep) ){
+			/* php separates the two ways a keyword can fail to resolve, so tell them
+			 * apart here: `parent` inside a class that simply has no parent is a
+			 * different sentence from a keyword named with no class scope at all. */
+			if( iSep == 6 && SyMemcmp(zName,"parent",6) == 0
+			 && (PH7_VmPeekTopClass(&(*pVm)) || PH7_VmPeekDeclaringClass(&(*pVm))) ){
+				return VM_CCONST_NOPARENT;
+			}
+			return VM_CCONST_NOSCOPE;
+		}
+		return VM_CCONST_NOCLASS;
+	}
+	*ppClass = pClass;
+	if( iSep + 2 >= nLen ){
+		return VM_CCONST_NOCONST; /* "C::" names no constant */
+	}
+	/* This form names a class CONSTANT or an enum case (hConst), never a property. */
+	pAttr = PH7_ClassExtractConstant(pClass,&zName[iSep+2],(sxu32)(nLen - iSep - 2));
+	if( pAttr == 0 || (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
+		return VM_CCONST_NOCONST;
+	}
+	*ppAttr = pAttr;
+	/* php answers by the CALLING scope, the same rule the direct `C::K` access uses:
+	 * a private constant is invisible from outside its declaring class even to a
+	 * subclass, and a protected one is visible down the hierarchy. */
+	if( !PH7_VmClassMemberAccess(&(*pVm),pClass,&pAttr->sName,pAttr->iProtection,FALSE) ){
+		return VM_CCONST_NOACCESS;
+	}
+	return VM_CCONST_OK;
+}
+/*
  * bool defined(string $name)
  *  Checks whether a given named constant exists.
  * Parameter:
@@ -23,8 +99,11 @@
  */
 PH7_PRIVATE int vm_builtin_defined(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	ph7_class_attr *pAttr;
+	ph7_class *pClass;
 	const char *zName;
 	int nLen = 0;
+	int iSep = 0;
 	int res = 0;
 	if( nArg < 1 ){
 		/* Missing constant name,return FALSE */
@@ -34,6 +113,31 @@ PH7_PRIVATE int vm_builtin_defined(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Extract constant name */
 	zName = ph7_value_to_string(apArg[0],&nLen);
+	/* Class-constant form "C::K": every miss — unknown class, unknown constant, or one
+	 * that is not visible from here — is a plain FALSE, since asking whether a name is
+	 * defined is exactly what defined() is for (this used to consult the
+	 * global constant table only, so EVERY class constant answered false while
+	 * constant() read the same name correctly). */
+	if( nLen > 0 ){
+		switch( VmClassConstLookup(pCtx->pVm,zName,nLen,&pClass,&pAttr,&iSep) ){
+			case VM_CCONST_PLAIN:
+				break;
+			case VM_CCONST_OK:
+				ph7_result_bool(pCtx,1);
+				return SXRET_OK;
+			case VM_CCONST_NOSCOPE:
+				/* php refuses the question rather than answering it: naming `self` where
+				 * no class scope is active is an Error, not a `false`. */
+				return PH7_VmThrowException(pCtx,"Error",
+					"Cannot access \"%.*s\" when no class scope is active",iSep,zName);
+			case VM_CCONST_NOPARENT:
+				return PH7_VmThrowException(pCtx,"Error",
+					"Cannot access \"parent\" when current class scope has no parent");
+			default:
+				ph7_result_bool(pCtx,0);
+				return SXRET_OK;
+		}
+	}
 	/* Perform the lookup */
 	if( nLen > 0 && SyHashGet(&pCtx->pVm->hConstant,(const void *)zName,(sxu32)nLen) != 0 ){
 		/* Already defined */

@@ -386,7 +386,7 @@ PH7_PRIVATE int PH7_VmArrayCallableParts(ph7_vm *pVm,ph7_hashmap *pMap,ph7_value
  * `Class "self" not found` there — so the keyword resolution lives here, not in the
  * OP_CALL check.
  */
-static int VmIsScopeKeyword(const char *zName,sxu32 nName)
+PH7_PRIVATE int PH7_VmIsScopeKeyword(const char *zName,sxu32 nName)
 {
 	return (nName == 4 && SyMemcmp(zName,"self",4) == 0)
 		|| (nName == 6 && SyMemcmp(zName,"parent",6) == 0)
@@ -564,7 +564,7 @@ PH7_PRIVATE const char * PH7_VmCallableReason(ph7_vm *pVm,ph7_value *pValue,char
 		if( pClass == 0 ){
 			const char *zCls = (const char *)SyBlobData(&pTarget->sBlob);
 			sxu32 nCls = SyBlobLength(&pTarget->sBlob);
-			if( VmIsScopeKeyword(zCls,nCls) ){
+			if( PH7_VmIsScopeKeyword(zCls,nCls) ){
 				SyBufferFormat(zBuf,nBuf,
 					"cannot access \"%.*s\" when no class scope is active",(int)nCls,zCls);
 				return zBuf;
@@ -584,7 +584,7 @@ PH7_PRIVATE const char * PH7_VmCallableReason(ph7_vm *pVm,ph7_value *pValue,char
 		if( PH7_VmCallableStringParts(zName,nName,&zCls,&nCls,&zMeth,&nMeth) ){
 			ph7_class *pClass = PH7_VmResolveScopeName(&(*pVm),zCls,nCls);
 			if( pClass == 0 ){
-				if( VmIsScopeKeyword(zCls,nCls) ){
+				if( PH7_VmIsScopeKeyword(zCls,nCls) ){
 					SyBufferFormat(zBuf,nBuf,
 						"cannot access \"%.*s\" when no class scope is active",(int)nCls,zCls);
 					return zBuf;
