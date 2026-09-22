@@ -890,11 +890,19 @@ static sxi32 VmJsonTokenize(SyStream *pStream,SyToken *pToken,void *pUserData,vo
 			/* Advance the stream cursor */
 			pStream->zText += sizeof("null")-1;
 	}else{
-		/* Unexpected token */
+		/* Unexpected token — but a byte that is not valid UTF-8 is php's
+		 * JSON_ERROR_UTF8, not a syntax error, wherever in the document it sits
+		 * (a valid non-ASCII character outside a string stays a syntax error).
+		 * The JSON_INVALID_UTF8_* flags do NOT reach here: php applies them
+		 * inside string tokens only. */
+		sxu32 nLen;
 		pToken->nType = JSON_TK_INVALID;
+		*pJsonErr = ((unsigned char)pStream->zText[0] >= 0x80
+			&& PH7_Utf8ReadStrict((const unsigned char *)pStream->zText,
+				(sxu32)(pStream->zEnd - pStream->zText),&nLen) < 0)
+			? JSON_ERROR_UTF8 : JSON_ERROR_SYNTAX;
 		/* Advance the stream cursor */
 		pStream->zText++;
-		*pJsonErr = JSON_ERROR_SYNTAX;
 		/* Abort processing immediatley */
 		return SXERR_ABORT;
 	}
@@ -920,6 +928,7 @@ struct json_decoder
 	ProcJsonConsumer xConsumer; /* Consumer callback */
 	void *pUserData;   /* Last argument to xConsumer() */
 	int iFlags;        /* Configuration flags */
+	int iUserFlags;    /* json_decode()'s own $flags (JSON_INVALID_UTF8_* live here) */
 	SyToken *pIn;      /* Token stream */
 	SyToken *pEnd;     /* End of the token stream */
 	int rec_depth;     /* Recursion limit */
@@ -957,6 +966,48 @@ static sxi32 VmJsonHex4(const char *z,sxu32 n,sxu32 *pVal)
 	return SXRET_OK;
 }
 /*
+ * Append one run of un-escaped string bytes, checking that it really is UTF-8:
+ * php rejects a JSON document carrying a byte that is not text with
+ * JSON_ERROR_UTF8, exactly as it refuses to ENCODE one. Only inside a string do
+ * the JSON_INVALID_UTF8_* flags apply — a stray byte between tokens is an error
+ * either way. Returns JSON_ERROR_NONE or JSON_ERROR_UTF8.
+ */
+static int VmJsonAppendChecked(ph7_value *pWorker,const char *zIn,sxu32 nByte,int iFlags)
+{
+	const unsigned char *z = (const unsigned char *)zIn;
+	sxu32 i = 0,iRun = 0,nLen;
+	while( i < nByte ){
+		if( z[i] < 0x80 ){
+			i++;
+			continue;
+		}
+		if( PH7_Utf8ReadStrict(&z[i],nByte - i,&nLen) >= 0 ){
+			i += nLen;
+			continue;
+		}
+		if( (iFlags & (JSON_INVALID_UTF8_IGNORE|JSON_INVALID_UTF8_SUBSTITUTE)) == 0 ){
+			return JSON_ERROR_UTF8;
+		}
+		/* With BOTH flags set php's decoder substitutes while its encoder drops
+		 * (probed both ways); the order of these two tests is that asymmetry,
+		 * not an oversight. */
+		/* Flush what is good, then stand in for the run */
+		if( i > iRun ){
+			ph7_value_string(pWorker,&zIn[iRun],(int)(i - iRun));
+		}
+		nLen = VmJsonBadUtf8Len(&z[i],nByte - i);
+		if( iFlags & JSON_INVALID_UTF8_SUBSTITUTE ){
+			ph7_value_string(pWorker,"\357\277\275",3); /* U+FFFD */
+		}
+		i += nLen;
+		iRun = i;
+	}
+	if( i > iRun ){
+		ph7_value_string(pWorker,&zIn[iRun],(int)(i - iRun));
+	}
+	return JSON_ERROR_NONE;
+}
+/*
  * Dequote [i.e: Resolve all backslash escapes ] a JSON string and store
  * the result in the given ph7_value. Returns JSON_ERROR_NONE, or the json_rc
  * php reports for the malformed escape it stopped on.
@@ -967,7 +1018,7 @@ static sxi32 VmJsonHex4(const char *z,sxu32 n,sxu32 *pVal)
  * answered "b"), and an escape JSON does not define (\q) was silently accepted
  * where php raises a syntax error.
  */
-static int VmJsonDequoteString(const SyString *pStr,ph7_value *pWorker)
+static int VmJsonDequoteString(const SyString *pStr,ph7_value *pWorker,int iFlags)
 {
 	const char *zIn = pStr->zString;
 	const char *zEnd = &pStr->zString[pStr->nByte];
@@ -981,8 +1032,10 @@ static int VmJsonDequoteString(const SyString *pStr,ph7_value *pWorker)
 			zIn++;
 		}
 		if( zIn > zCur ){
-			/* Append chunk verbatim */
-			ph7_value_string(pWorker,zCur,(int)(zIn-zCur));
+			int rcChunk = VmJsonAppendChecked(pWorker,zCur,(sxu32)(zIn-zCur),iFlags);
+			if( rcChunk != JSON_ERROR_NONE ){
+				return rcChunk;
+			}
 		}
 		zIn++;
 		if( zIn >= zEnd ){
@@ -1099,7 +1152,7 @@ static sxi32 VmJsonDecode(
 			PH7_MemObjToNumeric(pWorker);
 		}else{
 			/* Dequote the string */
-			rcQ = VmJsonDequoteString(&pDecoder->pIn->sData,pWorker);
+			rcQ = VmJsonDequoteString(&pDecoder->pIn->sData,pWorker,pDecoder->iUserFlags);
 			if( rcQ != JSON_ERROR_NONE ){
 				*pDecoder->pErr = rcQ;
 				return SXERR_ABORT;
@@ -1216,7 +1269,7 @@ static sxi32 VmJsonDecode(
 					return SXERR_ABORT;
 			}
 			/* Dequote the key */
-			rcQ = VmJsonDequoteString(&pDecoder->pIn->sData,pKey);
+			rcQ = VmJsonDequoteString(&pDecoder->pIn->sData,pKey,pDecoder->iUserFlags);
 			if( rcQ != JSON_ERROR_NONE ){
 				*pDecoder->pErr = rcQ;
 				return SXERR_ABORT;
@@ -1308,7 +1361,7 @@ static int VmJsonDefaultDecoder(ph7_context *pCtx,ph7_value *pKey,ph7_value *pWo
  * (e.g: out of memory) is reported as JSON_ERROR_SYNTAX so callers can branch on a single
  * value, preserving the original "abort || error => failure" json_decode semantics.
  */
-static int VmJsonDecodeInput(ph7_context *pCtx,const char *zIn,int nByte,int iAssoc,int nDepth)
+static int VmJsonDecodeInput(ph7_context *pCtx,const char *zIn,int nByte,int iAssoc,int nDepth,int iUserFlags)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	json_decoder sDecoder;
@@ -1337,6 +1390,7 @@ static int VmJsonDecodeInput(ph7_context *pCtx,const char *zIn,int nByte,int iAs
 		/* Returned objects will be converted into associative arrays */
 		sDecoder.iFlags |= JSON_DECODE_ASSOC;
 	}
+	sDecoder.iUserFlags = iUserFlags;
 	sDecoder.rec_depth = 32;
 	if( nDepth > 1 && nDepth < 32 ){
 		sDecoder.rec_depth = nDepth;
@@ -1415,7 +1469,7 @@ PH7_PRIVATE int vm_builtin_json_decode(ph7_context *pCtx,int nArg,ph7_value **ap
 	}
 	/* Decode the raw JSON input.The default consumer sets the decoded value as the
 	 * call-context result; on failure we replace it with NULL (or throw). */
-	if( VmJsonDecodeInput(pCtx,zIn,nByte,iAssoc,nDepth) != JSON_ERROR_NONE ){
+	if( VmJsonDecodeInput(pCtx,zIn,nByte,iAssoc,nDepth,iFlags) != JSON_ERROR_NONE ){
 		/* Something goes wrong while decoding JSON input. */
 		if( iFlags & JSON_THROW_ON_ERROR ){
 			/* php: raise a JsonException carrying json_last_error_msg() text. */
@@ -1475,9 +1529,13 @@ PH7_PRIVATE int vm_builtin_json_validate(ph7_context *pCtx,int nArg,ph7_value **
 		}
 		nDepth = (int)nWant;
 	}
-	/* apArg[2] ($flags) is accepted and ignored: no decode flag is implemented.
-	 * Decode in associative mode so the "objects are returned as an array" warning is
-	 * not raised - the decoded value is discarded, only its validity matters. */
-	ph7_result_bool(pCtx,VmJsonDecodeInput(pCtx,zIn,nByte,1,nDepth) == JSON_ERROR_NONE);
+	/* php's only meaningful $flags value here is JSON_INVALID_UTF8_IGNORE, which
+	 * makes a payload with undecodable bytes VALID; it rides the same rail as
+	 * json_decode's. Decode in associative mode so the "objects are returned as an
+	 * array" warning is not raised - the decoded value is discarded, only its
+	 * validity matters. */
+	ph7_result_bool(pCtx,VmJsonDecodeInput(pCtx,zIn,nByte,1,nDepth,
+		(nArg > 2 && ph7_value_is_int(apArg[2])) ? ph7_value_to_int(apArg[2]) : 0)
+		== JSON_ERROR_NONE);
 	return PH7_OK;
 }
