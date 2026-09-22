@@ -225,79 +225,6 @@ static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
 	return HashmapFlagValueCmp(pA,pB,SX_PTR_TO_INT(pCmpData));
 }
 /*
- * Shared key comparison for ksort()/krsort(): php 8 semantics. Two string
- * keys compare bytewise. Mixed int/string keys: a NUMERIC string compares
- * numerically with the int key; a non-numeric one makes the int key compare
- * AS A STRING ("5" < "b", so int keys land before alphabetic ones — pre-fix
- * PHL cast "b" to 0 and sorted string keys first).
- */
-/* True lexicographic compare (memcmp on the common prefix, length breaks
- * ties) — SyBlobCmp compares LENGTH first, which is fine for equality but
- * wrong for ordering ("c" would sort before "a.y"). */
-static sxi32 HashmapLexCmp(const char *zA,sxu32 nA,const char *zB,sxu32 nB)
-{
-	sxu32 nMin = nA < nB ? nA : nB;
-	sxi32 rc = nMin ? SyMemcmp(zA,zB,nMin) : 0;
-	if( rc == 0 ){
-		rc = (sxi32)nA - (sxi32)nB;
-	}
-	return rc;
-}
-static sxi32 HashmapKeyNodeCmp(ph7_hashmap_node *pA,ph7_hashmap_node *pB)
-{
-	sxi32 rc;
-	if( pA->iType == HASHMAP_BLOB_NODE && pB->iType == HASHMAP_BLOB_NODE ){
-		/* Perform a string comparison */
-		rc = HashmapLexCmp((const char *)SyBlobData(&pA->xKey.sKey),SyBlobLength(&pA->xKey.sKey),
-			(const char *)SyBlobData(&pB->xKey.sKey),SyBlobLength(&pB->xKey.sKey));
-	}else{
-		SyString sStr;
-		sxi64 iA = 0,iB = 0;
-		int bNum = 1;
-		if( pA->iType == HASHMAP_BLOB_NODE ){
-			SyStringInitFromBuf(&sStr,SyBlobData(&pA->xKey.sKey),SyBlobLength(&pA->xKey.sKey));
-			if( sStr.nByte < 1 || SyStrIsNumeric(sStr.zString,sStr.nByte,0,0) != SXRET_OK ){
-				bNum = 0;
-			}else{
-				SyStrToInt64(sStr.zString,sStr.nByte,(void *)&iA,0);
-			}
-		}else{
-			iA = pA->xKey.iKey;
-		}
-		if( pB->iType == HASHMAP_BLOB_NODE ){
-			SyStringInitFromBuf(&sStr,SyBlobData(&pB->xKey.sKey),SyBlobLength(&pB->xKey.sKey));
-			if( sStr.nByte < 1 || SyStrIsNumeric(sStr.zString,sStr.nByte,0,0) != SXRET_OK ){
-				bNum = 0;
-			}else{
-				SyStrToInt64(sStr.zString,sStr.nByte,(void *)&iB,0);
-			}
-		}else{
-			iB = pB->xKey.iKey;
-		}
-		if( bNum ){
-			rc = iA < iB ? -1 : (iA > iB ? 1 : 0);
-		}else{
-			/* Render the int key and compare bytewise like php */
-			char zNumA[24],zNumB[24];
-			SyString sA,sB;
-			if( pA->iType != HASHMAP_BLOB_NODE ){
-				sxu32 n = SyBufferFormat(zNumA,sizeof(zNumA),"%qd",pA->xKey.iKey);
-				SyStringInitFromBuf(&sA,zNumA,n);
-			}else{
-				SyStringInitFromBuf(&sA,SyBlobData(&pA->xKey.sKey),SyBlobLength(&pA->xKey.sKey));
-			}
-			if( pB->iType != HASHMAP_BLOB_NODE ){
-				sxu32 n = SyBufferFormat(zNumB,sizeof(zNumB),"%qd",pB->xKey.iKey);
-				SyStringInitFromBuf(&sB,zNumB,n);
-			}else{
-				SyStringInitFromBuf(&sB,SyBlobData(&pB->xKey.sKey),SyBlobLength(&pB->xKey.sKey));
-			}
-			rc = HashmapLexCmp(sA.zString,sA.nByte,sB.zString,sB.nByte);
-		}
-	}
-	return rc;
-}
-/*
  * Materialise a node's KEY as a scalar ph7_value (int key -> integer, string key
  * -> string) for a flag-aware key comparison.
  */
@@ -310,6 +237,32 @@ static void HashmapNodeKeyToValue(ph7_hashmap_node *pNode,ph7_value *pOut)
 		PH7_MemObjStringAppend(pOut,(const char *)SyBlobData(&pNode->xKey.sKey),
 			SyBlobLength(&pNode->xKey.sKey));
 	}
+}
+/*
+ * Shared key comparison for ksort()/krsort() under SORT_REGULAR: php compares
+ * two array KEYS exactly the way it compares two VALUES, so materialise them
+ * and hand them to the standard comparison — the same one sort()/`<=>` use.
+ *
+ * The hand-rolled version this replaces got the mixed int/string case right but
+ * compared two STRING keys BYTEWISE, so two numeric strings sorted by their
+ * bytes: ksort(['10.0'=>1,'9.0'=>2]) answered ['10.0','9.0'] where php answers
+ * ['9.0','10.0'], ksort(['1e3'=>1,'20'=>2]) put 1e3 (1000) first, and keys that
+ * compare EQUAL ('1.0', '01', 1) lost php's stable order.
+ */
+static sxi32 HashmapKeyNodeCmp(ph7_hashmap_node *pA,ph7_hashmap_node *pB)
+{
+	ph7_value sA,sB;
+	sxi32 rc;
+	if( pA->iType == HASHMAP_INT_NODE && pB->iType == HASHMAP_INT_NODE ){
+		/* Two integer keys: the common case, and no allocation needed */
+		return pA->xKey.iKey < pB->xKey.iKey ? -1 : (pA->xKey.iKey > pB->xKey.iKey ? 1 : 0);
+	}
+	HashmapNodeKeyToValue(pA,&sA);
+	HashmapNodeKeyToValue(pB,&sB);
+	rc = PH7_MemObjCmp(&sA,&sB,FALSE,0);
+	PH7_MemObjRelease(&sA);
+	PH7_MemObjRelease(&sB);
+	return rc;
 }
 /*
  * Compare two node KEYS under php's sort_flags. base 0 = SORT_REGULAR keeps the
