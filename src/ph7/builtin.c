@@ -148,7 +148,6 @@ static int PH7_builtin_is_bool(ph7_context *pCtx,int nArg,ph7_value **apArg)
 }
 /*
  * bool is_float($var)
- * bool is_real($var)
  * bool is_double($var)
  *  Finds out whether a variable is a float.
  * Parameters
@@ -559,7 +558,6 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	   /* Variable handling functions */
 	{ "is_bool"    , PH7_builtin_is_bool     },
 	{ "is_float"   , PH7_builtin_is_float    },
-	{ "is_real"    , PH7_builtin_is_float    },
 	{ "is_double"  , PH7_builtin_is_float    },
 	{ "is_int"     , PH7_builtin_is_int      },
 	{ "is_integer" , PH7_builtin_is_int      },
@@ -571,7 +569,6 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "is_array"   , PH7_builtin_is_array    },
 	{ "is_object"  , PH7_builtin_is_object   },
 	{ "is_resource", PH7_builtin_is_resource },
-	{ "douleval"   , PH7_builtin_floatval    },
 	{ "floatval"   , PH7_builtin_floatval    },
 	{ "intval"     , PH7_builtin_intval      },
 	{ "strval"     , PH7_builtin_strval      },
