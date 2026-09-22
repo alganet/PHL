@@ -170,10 +170,24 @@ static sxi32 HashmapScalarFlagCmp(ph7_value *pA,ph7_value *pB,int base,int bFold
 {
 	sxi32 rc;
 	if( base == 1 ){
-		/* SORT_NUMERIC */
-		PH7_MemObjToNumeric(pA);
-		PH7_MemObjToNumeric(pB);
-		rc = PH7_MemObjCmp(pA,pB,FALSE,0);
+		/* SORT_NUMERIC compares as DOUBLES. php's numeric_compare_function is
+		 * `zval_get_double(a)` vs `zval_get_double(b)` under ZEND_THREEWAY_COMPARE
+		 * — not a value comparison over whatever type each operand happens to
+		 * settle on. Two consequences PHL got wrong by folding to a NUMBER and
+		 * calling the ordinary comparator: the diagnostic named the wrong type
+		 * (an object warned "could not be converted to int" where php says
+		 * "to float"), and integers above 2^53 were ordered EXACTLY where php's
+		 * doubles tie — `sort([PHP_INT_MAX, PHP_INT_MAX-1], SORT_NUMERIC)` left
+		 * php's stable sort's original order and PHL re-ordered them. Matching php
+		 * means adopting its precision loss, which is what parity is (§10).
+		 * The == / < shape is ZEND_THREEWAY_COMPARE's, so NaN — equal to nothing,
+		 * less than nothing — answers 1 in both engines. */
+		ph7_real rA,rB;
+		PH7_MemObjToReal(pA);
+		PH7_MemObjToReal(pB);
+		rA = pA->rVal;
+		rB = pB->rVal;
+		rc = (rA == rB) ? 0 : ((rA < rB) ? -1 : 1);
 	}else{
 		/* SORT_STRING (2) / SORT_LOCALE_STRING (5) / SORT_NATURAL (6) */
 		const char *zA,*zB;
