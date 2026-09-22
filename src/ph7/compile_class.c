@@ -1370,26 +1370,27 @@ struct MagicMethodRule
 	sxu32 nName;       /* Its length */
 	int nArgs;         /* Declared arguments php requires, -1 when it does not check */
 	int bStatic;       /* TRUE: must be static · FALSE: must NOT be static */
+	int bNoReturnType; /* TRUE: declaring ANY return type is a fatal */
 };
-#define MAGIC_METHOD_ROW(N,A,S) { N, sizeof(N)-1, A, S }
+#define MAGIC_METHOD_ROW(N,A,S,R) { N, sizeof(N)-1, A, S, R }
 static const MagicMethodRule aMagicMethod[] = {
-	MAGIC_METHOD_ROW("__construct",  -1, FALSE),
-	MAGIC_METHOD_ROW("__destruct",    0, FALSE),
-	MAGIC_METHOD_ROW("__clone",       0, FALSE),
-	MAGIC_METHOD_ROW("__get",         1, FALSE),
-	MAGIC_METHOD_ROW("__set",         2, FALSE),
-	MAGIC_METHOD_ROW("__isset",       1, FALSE),
-	MAGIC_METHOD_ROW("__unset",       1, FALSE),
-	MAGIC_METHOD_ROW("__call",        2, FALSE),
-	MAGIC_METHOD_ROW("__callStatic",  2, TRUE),
-	MAGIC_METHOD_ROW("__toString",    0, FALSE),
-	MAGIC_METHOD_ROW("__invoke",     -1, FALSE),
-	MAGIC_METHOD_ROW("__debugInfo",   0, FALSE),
-	MAGIC_METHOD_ROW("__serialize",   0, FALSE),
-	MAGIC_METHOD_ROW("__unserialize", 1, FALSE),
-	MAGIC_METHOD_ROW("__sleep",       0, FALSE),
-	MAGIC_METHOD_ROW("__wakeup",      0, FALSE),
-	MAGIC_METHOD_ROW("__set_state",   1, TRUE)
+	MAGIC_METHOD_ROW("__construct",  -1, FALSE, TRUE),
+	MAGIC_METHOD_ROW("__destruct",    0, FALSE, TRUE),
+	MAGIC_METHOD_ROW("__clone",       0, FALSE, FALSE),
+	MAGIC_METHOD_ROW("__get",         1, FALSE, FALSE),
+	MAGIC_METHOD_ROW("__set",         2, FALSE, FALSE),
+	MAGIC_METHOD_ROW("__isset",       1, FALSE, FALSE),
+	MAGIC_METHOD_ROW("__unset",       1, FALSE, FALSE),
+	MAGIC_METHOD_ROW("__call",        2, FALSE, FALSE),
+	MAGIC_METHOD_ROW("__callStatic",  2, TRUE,  FALSE),
+	MAGIC_METHOD_ROW("__toString",    0, FALSE, FALSE),
+	MAGIC_METHOD_ROW("__invoke",     -1, FALSE, FALSE),
+	MAGIC_METHOD_ROW("__debugInfo",   0, FALSE, FALSE),
+	MAGIC_METHOD_ROW("__serialize",   0, FALSE, FALSE),
+	MAGIC_METHOD_ROW("__unserialize", 1, FALSE, FALSE),
+	MAGIC_METHOD_ROW("__sleep",       0, FALSE, FALSE),
+	MAGIC_METHOD_ROW("__wakeup",      0, FALSE, FALSE),
+	MAGIC_METHOD_ROW("__set_state",   1, TRUE,  FALSE)
 };
 #undef MAGIC_METHOD_ROW
 /*
@@ -1485,6 +1486,23 @@ static int GenStateCheckMagicMethod(
 	if( pRule->bStatic != ((pMeth->iFlags & PH7_CLASS_ATTR_STATIC) != 0) ){
 		SyBufferFormat(zErr,nErrBuf,"Method %z::%z() %s be static",
 			&pClass->sName,pName,pRule->bStatic ? "must" : "cannot");
+		return TRUE;
+	}
+	/* A return type on the two methods that have no return VALUE. `new C` is the
+	 * instance, never whatever __construct returned, and __destruct is called by
+	 * the engine at a point with nowhere to put an answer — so php rejects any
+	 * declared type on either, `void` and `never` included, rather than let a
+	 * declaration promise something no caller can read. (`__clone` is NOT in
+	 * this row: `: void` on it is valid php.) PHL enforced the declared type at
+	 * runtime instead, so `__construct(): int` raised a TypeError at every
+	 * instantiation — a diagnostic on the CALL for a mistake in the
+	 * declaration. */
+	if( pRule->bNoReturnType
+	 && (pMeth->sFunc.nReturnType > 0
+	  || SyStringLength(&pMeth->sFunc.sReturnClass) > 0
+	  || SySetUsed(&pMeth->sFunc.aReturnUnion) > 0) ){
+		SyBufferFormat(zErr,nErrBuf,"Method %z::%z() cannot declare a return type",
+			&pClass->sName,pName);
 		return TRUE;
 	}
 	return FALSE;

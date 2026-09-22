@@ -16,6 +16,8 @@ written a little too eagerly.
   * returning BY REFERENCE is not taking an argument by reference;
   * `__construct` and `__invoke` have no arity rule at all — php lets them take
     whatever they like, promoted constructor properties included;
+  * `__clone` may declare `: void`, where its two neighbours `__construct` and
+    `__destruct` may declare no return type at all;
   * `__set_state` and `__callStatic` are the two rows that must be static —
     every other row must not be — and they take one and two arguments;
   * and a name that merely LOOKS magic (`__notMagic`) has no rules at all.
@@ -35,7 +37,7 @@ class Shapes
         return "get:$name";
     }
 
-    public function __clone(...$rest)
+    public function __clone(...$rest): void
     {
         $this->bag = ["cloned"];
     }
