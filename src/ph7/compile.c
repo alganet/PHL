@@ -15,18 +15,25 @@
  * Local utility routines used in the code generation phase.
  */
 /*
- * Check if the given name refer to a valid label.
+ * Check if the given name refer to a valid label declared in the given function
+ * (NULL = file scope).
  * Return SXRET_OK and write a pointer to that label on success.
  * Any other return value indicates no such label.
+ *
+ * Labels are scoped PER FUNCTION in php, so the owning function is part of the key:
+ * the same name may be declared in as many functions as one likes, and each goto sees
+ * only its own. Matching on the name alone made the first declaration win everywhere,
+ * which rejected `function a(){ done: } function b(){ goto done; done: }` — ordinary
+ * php — as a jump to an undefined label.
  */
-static sxi32 GenStateGetLabel(ph7_gen_state *pGen,SyString *pName,Label **ppOut)
+static sxi32 GenStateGetLabel(ph7_gen_state *pGen,SyString *pName,ph7_vm_func *pFunc,Label **ppOut)
 {
 	Label *aLabel;
 	sxu32 n;
 	/* Perform a linear scan on the label table */
 	aLabel = (Label *)SySetBasePtr(&pGen->aLabel);
 	for( n = 0 ; n < SySetUsed(&pGen->aLabel) ; ++n ){
-		if( SyStringCmp(&aLabel[n].sName,pName,SyMemcmp) == 0 ){
+		if( aLabel[n].pFunc == pFunc && SyStringCmp(&aLabel[n].sName,pName,SyMemcmp) == 0 ){
 			/* Jump destination found */
 			aLabel[n].bRef = TRUE;
 			if( ppOut ){
@@ -456,7 +463,10 @@ PH7_PRIVATE sxi32 GenStateFixGoto(ph7_gen_state *pGen,sxu32 nOfft)
 	for( n = nOfft ; n < SySetUsed(&pGen->aGoto) ; ++n ){
 		pJump = &aJumps[n];
 		/* Extract the target label */
-		rc = GenStateGetLabel(&(*pGen),&pJump->sLabel,&pLabel);
+		/* A label declared in ANOTHER function is not a destination: the lookup is keyed
+		 * on the goto's own function, so a same-named label elsewhere simply does not
+		 * answer and this reports php's undefined-label fatal. */
+		rc = GenStateGetLabel(&(*pGen),&pJump->sLabel,pJump->pFunc,&pLabel);
 		if( rc != SXRET_OK ){
 			/* No such label */
 			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pJump->nLine,"'goto' to undefined label '%z'",&pJump->sLabel);
@@ -488,19 +498,6 @@ PH7_PRIVATE sxi32 GenStateFixGoto(ph7_gen_state *pGen,sxu32 nOfft)
 				}
 				continue;
 			}
-		}
-		/* Make sure the target label is reachable */
-		if( pLabel->pFunc != pJump->pFunc ){
-			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pJump->nLine,"'goto' to undefined label '%z'",&pJump->sLabel);
-			if( rc == SXERR_ABORT ){
-				return SXERR_ABORT;
-			}
-			/* Nothing below may read this label: it belongs to another function, so its
-			 * container and depths describe a scope this goto is not in and would raise a
-			 * second, contradictory diagnostic. (GenStateGetLabel matches on NAME alone,
-			 * so this also fires for a label name legitimately reused in two functions —
-			 * a recorded divergence.) */
-			continue;
 		}
 		/* What the jump crosses, and whether it is legal at all: the label's scope must
 		 * ENCLOSE the goto. Jumping INTO a try/catch/finally is fine in php (its handlers
