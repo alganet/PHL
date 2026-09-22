@@ -12,7 +12,7 @@
  */
 /* Forward reference */
 static int VmJsonArrayEncode(ph7_value *pKey,ph7_value *pValue,void *pUserData);
-static int VmJsonObjectEncode(const char *zAttr,ph7_value *pValue,void *pUserData);
+static int VmJsonObjectEncode(const SyString *pAttr,ph7_value *pValue,void *pUserData);
 /*
  * JSON encoder state is stored in an instance
  * of the following structure.
@@ -89,6 +89,91 @@ static sxi32 VmJsonPretty(json_private_data *pJson,int depth)
 	return rc;
 }
 /*
+ * Emit one JSON string literal — the opening quote, the escaped body, the
+ * closing quote. Shared by the string VALUE path and by both KEY paths (array
+ * keys and object property names), which used to append their bytes raw: a key
+ * carrying a '"', a backslash or a control character produced UNPARSEABLE
+ * output (php: json_encode(["a\"b"=>1]) is {"a\"b":1}, PHL emitted {"a"b":1}).
+ * Everything php escapes in a string it escapes in a key, the JSON_HEX_*
+ * and JSON_UNESCAPED_SLASHES flags included.
+ */
+static sxi32 VmJsonEncodeString(json_private_data *pData,const char *zIn,int nByte)
+{
+	ph7_context *pCtx = pData->pCtx;
+	int iFlags = pData->iFlags;
+	const char *zEnd = &zIn[nByte];
+	sxi32 rc;
+	char c;
+	rc = ph7_result_string(pCtx,"\"",(int)sizeof(char));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	for(;;){
+		if( zIn >= zEnd ){
+			/* No more input to process */
+			break;
+		}
+		c = zIn[0];
+		/* Advance the stream cursor */
+		zIn++;
+		if( (c == '<' || c == '>') && (iFlags & JSON_HEX_TAG) ){
+			/* All < and > are converted to \u003C and \u003E */
+			if( c == '<' ){
+				rc = ph7_result_string(pCtx,"\\u003C",(int)sizeof("\\u003C")-1);
+			}else{
+				rc = ph7_result_string(pCtx,"\\u003E",(int)sizeof("\\u003E")-1);
+			}
+		}else if( c == '&' && (iFlags & JSON_HEX_AMP) ){
+			/* All &s are converted to \u0026.  */
+			rc = ph7_result_string(pCtx,"\\u0026",(int)sizeof("\\u0026")-1);
+		}else if( c == '\'' && (iFlags & JSON_HEX_APOS) ){
+			/* All ' are converted to \u0027.   */
+			rc = ph7_result_string(pCtx,"\\u0027",(int)sizeof("\\u0027")-1);
+		}else if( c == '"' && (iFlags & JSON_HEX_QUOT) ){
+			/* All " are converted to \u0022. */
+			rc = ph7_result_string(pCtx,"\\u0022",(int)sizeof("\\u0022")-1);
+		}else if( (unsigned char)c < 0x20 ){
+			/* Control characters (band A #4): php emits the short escapes for
+			 * \b \f \n \r \t and \u00xx for the rest — pre-fix these were
+			 * emitted RAW (invalid JSON). */
+			static const char zHex[] = "0123456789abcdef";
+			char zEsc[6] = { '\\', 'u', '0', '0', 0, 0 };
+			switch(c){
+			case '\b': rc = ph7_result_string(pCtx,"\\b",2); break;
+			case '\f': rc = ph7_result_string(pCtx,"\\f",2); break;
+			case '\n': rc = ph7_result_string(pCtx,"\\n",2); break;
+			case '\r': rc = ph7_result_string(pCtx,"\\r",2); break;
+			case '\t': rc = ph7_result_string(pCtx,"\\t",2); break;
+			default:
+				zEsc[4] = zHex[(c >> 4) & 0x0F];
+				zEsc[5] = zHex[c & 0x0F];
+				rc = ph7_result_string(pCtx,zEsc,6);
+				break;
+			}
+		}else{
+			if( c == '"' || c == '\\' ){
+				/* Escape the quote/backslash (php escapes the backslash
+				 * unconditionally — the old code wrongly tied it to
+				 * JSON_UNESCAPED_SLASHES, which governs '/' below) */
+				rc = ph7_result_string(pCtx,"\\",(int)sizeof(char));
+			}else if( c == '/' && (iFlags & JSON_UNESCAPED_SLASHES) == 0 ){
+				/* php escapes forward slashes by default */
+				rc = ph7_result_string(pCtx,"\\",(int)sizeof(char));
+			}else{
+				rc = SXRET_OK;
+			}
+			if( rc == SXRET_OK ){
+				/* Append character verbatim */
+				rc = ph7_result_string(pCtx,&c,(int)sizeof(char));
+			}
+		}
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	return ph7_result_string(pCtx,"\"",(int)sizeof(char));
+}
+/*
  * Returns the JSON representation of a value.In other word perform a JSON encoding operation.
  * According to wikipedia
  * JSON's basic types are:
@@ -149,75 +234,10 @@ static sxi32 VmJsonEncode(
 				PH7_MemObjToReal(pIn); /* Force a numeric cast */
 				JSON_EMIT(pData,VmJsonEmitReal(pCtx,ph7_value_to_double(pIn)));
 			}else{
-				const char *zIn,*zEnd;
-				int c;
+				const char *zIn;
 				/* Encode the string */
 				zIn = ph7_value_to_string(pIn,&nByte);
-				zEnd = &zIn[nByte];
-				/* Append the double quote */
-				JSON_EMIT(pData,ph7_result_string(pCtx,"\"",(int)sizeof(char)));
-				for(;;){
-					if( zIn >= zEnd ){
-						/* No more input to process */
-						break;
-					}
-					c = zIn[0];
-					/* Advance the stream cursor */
-					zIn++;
-					if( (c == '<' || c == '>') && (iFlags & JSON_HEX_TAG) ){
-						/* All < and > are converted to \u003C and \u003E */
-						if( c == '<' ){
-							JSON_EMIT(pData,ph7_result_string(pCtx,"\\u003C",(int)sizeof("\\u003C")-1));
-						}else{
-							JSON_EMIT(pData,ph7_result_string(pCtx,"\\u003E",(int)sizeof("\\u003E")-1));
-						}
-						continue;
-					}else if( c == '&' && (iFlags & JSON_HEX_AMP) ){
-						/* All &s are converted to \u0026.  */
-						JSON_EMIT(pData,ph7_result_string(pCtx,"\\u0026",(int)sizeof("\\u0026")-1));
-						continue;
-					}else if( c == '\'' && (iFlags & JSON_HEX_APOS) ){
-						/* All ' are converted to \u0027.   */
-						JSON_EMIT(pData,ph7_result_string(pCtx,"\\u0027",(int)sizeof("\\u0027")-1));
-						continue;
-					}else if( c == '"' && (iFlags & JSON_HEX_QUOT) ){
-						/* All " are converted to \u0022. */
-						JSON_EMIT(pData,ph7_result_string(pCtx,"\\u0022",(int)sizeof("\\u0022")-1));
-						continue;
-					}
-					if( c == '"' || c == '\\' ){
-						/* Escape the quote/backslash (php escapes the backslash
-						 * unconditionally — the old code wrongly tied it to
-						 * JSON_UNESCAPED_SLASHES, which governs '/' below) */
-						JSON_EMIT(pData,ph7_result_string(pCtx,"\\",(int)sizeof(char)));
-					}else if( c == '/' && (iFlags & JSON_UNESCAPED_SLASHES) == 0 ){
-						/* php escapes forward slashes by default */
-						JSON_EMIT(pData,ph7_result_string(pCtx,"\\",(int)sizeof(char)));
-					}else if( (unsigned char)c < 0x20 ){
-						/* Control characters (band A #4): php emits the short
-						 * escapes for \b \f \n \r \t and \u00xx for the rest —
-						 * pre-fix these were emitted RAW (invalid JSON). */
-						static const char zHex[] = "0123456789abcdef";
-						char zEsc[6] = { '\\', 'u', '0', '0', 0, 0 };
-						switch(c){
-						case '\b': JSON_EMIT(pData,ph7_result_string(pCtx,"\\b",2)); break;
-						case '\f': JSON_EMIT(pData,ph7_result_string(pCtx,"\\f",2)); break;
-						case '\n': JSON_EMIT(pData,ph7_result_string(pCtx,"\\n",2)); break;
-						case '\r': JSON_EMIT(pData,ph7_result_string(pCtx,"\\r",2)); break;
-						case '\t': JSON_EMIT(pData,ph7_result_string(pCtx,"\\t",2)); break;
-						default:
-							zEsc[4] = zHex[(c >> 4) & 0x0F];
-							zEsc[5] = zHex[c & 0x0F];
-							JSON_EMIT(pData,ph7_result_string(pCtx,zEsc,6));
-							break;
-						}
-						continue;
-					}
-					/* Append character verbatim */
-					JSON_EMIT(pData,ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char)));
-				}
-				/* Append the double quote */
-				JSON_EMIT(pData,ph7_result_string(pCtx,"\"",(int)sizeof(char)));
+				JSON_EMIT(pData,VmJsonEncodeString(pData,zIn,nByte));
 			}
 		}else if( ph7_value_is_array(pIn) ){
 			/* An array encodes as a JSON array iff it is a "list" [consecutive
@@ -359,7 +379,7 @@ static sxi32 VmJsonEncode(
 						return PH7_EXCEPTION;
 					}
 					if( pAttrVal ){
-						VmJsonObjectEncode(SyStringData(&pVmAttr->pAttr->sName),pAttrVal,pData);
+						VmJsonObjectEncode(&pVmAttr->pAttr->sName,pAttrVal,pData);
 					}
 					PH7_MemObjRelease(&sHookVal);
 					if( pData->exc ){
@@ -410,12 +430,12 @@ static int VmJsonArrayEncode(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 		int nByte;
 		/* Extract a string representation of the key */
 		zKey = ph7_value_to_string(pKey,&nByte);
-		/* Append the quoted key and the colon (checked, so an OOM here is caught
-		 * rather than silently truncating; matches the prior "%.*s" emit byte for
-		 * byte — keys are not JSON-escaped, a pre-existing behavior). */
-		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,"\"",(int)sizeof(char)));
-		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,zKey,nByte));
-		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,"\":",(int)sizeof("\":")-1));
+		/* Append the quoted key and the colon. The key goes through the same
+		 * escaper as a string VALUE (php escapes both identically): emitting it
+		 * raw produced invalid JSON for any key holding '"', '\' or a control
+		 * character. */
+		JSON_EMIT(pJson,VmJsonEncodeString(pJson,zKey,nByte));
+		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,":",(int)sizeof(char)));
 		/* php puts a space after the colon in pretty mode */
 		if( pJson->iFlags & JSON_PRETTY_PRINT ){
 			JSON_EMIT(pJson,ph7_result_string(pJson->pCtx," ",(int)sizeof(char)));
@@ -432,7 +452,7 @@ static int VmJsonArrayEncode(ph7_value *pKey,ph7_value *pValue,void *pUserData)
  * The following walker callback is invoked each time we need to encode
  * a class instance [i.e: Object in the PHP jargon] to JSON.
  */
-static int VmJsonObjectEncode(const char *zAttr,ph7_value *pValue,void *pUserData)
+static int VmJsonObjectEncode(const SyString *pAttr,ph7_value *pValue,void *pUserData)
 {
 	json_private_data *pJson = (json_private_data *)pUserData;
 	if( pJson->nRecCount > 31 || pJson->exc || pJson->oom ){
@@ -445,11 +465,10 @@ static int VmJsonObjectEncode(const char *zAttr,ph7_value *pValue,void *pUserDat
 	}
 	/* Pretty-print: member on its own indented line, one level deeper. */
 	JSON_EMIT(pJson,VmJsonPretty(pJson,pJson->nRecCount + 1));
-	/* Append the quoted attribute name and the colon (checked; matches the prior
-	 * "%s" emit byte for byte — attribute names are not JSON-escaped). */
-	JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,"\"",(int)sizeof(char)));
-	JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,zAttr,-1));
-	JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,"\":",(int)sizeof("\":")-1));
+	/* Append the quoted attribute name and the colon — escaped like a string
+	 * value, same as the array-key path above. */
+	JSON_EMIT(pJson,VmJsonEncodeString(pJson,SyStringData(pAttr),(int)SyStringLength(pAttr)));
+	JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,":",(int)sizeof(char)));
 	/* php puts a space after the colon in pretty mode */
 	if( pJson->iFlags & JSON_PRETTY_PRINT ){
 		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx," ",(int)sizeof(char)));
