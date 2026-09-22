@@ -3067,11 +3067,26 @@ case PH7_OP_BOR:
 case PH7_OP_BXOR:{
 	ph7_value *pNos = &pTos[-1];
 	sxi64 a,b,r;
+	int cBwOp;
 #ifdef UNTRUST
 	if( pNos < pStack ){
 		goto Abort;
 	}
 #endif
+	cBwOp = pInstr->iOp == PH7_OP_BOR ? '|' : (pInstr->iOp == PH7_OP_BXOR ? '^' : '&');
+	if( (pNos->iFlags & MEMOBJ_STRING) && (pTos->iFlags & MEMOBJ_STRING) ){
+		/* TWO strings: php's per-byte string operation, result a string. */
+		PH7_STRING_BITWISE_RESULT(pNos,pNos,pTos,cBwOp)
+		VmPopOperand(&pTos,1);
+		break;
+	}
+	{
+		char zBwOp[2];
+		zBwOp[0] = (char)cBwOp; zBwOp[1] = 0;
+		/* Anything else is php's arithmetic operand contract, named for this
+		 * operator (`array & int`), not a silent integer cast. */
+		PH7_BITWISE_ARITH_CONTRACT(pNos,pTos,zBwOp,1)
+	}
 	/* Force the operands to be integer (php deprecates a lossy float here) */
 	rc = VmRejectFloatOperand(&(*pVm),pNos);
 	PH7_DISPATCH_ENFORCE_RC(rc)
@@ -3125,6 +3140,7 @@ case PH7_OP_BXOR_STORE:{
 	ph7_value *pNos = &pTos[-1];
 	ph7_value *pObj;
 	sxi64 a,b,r;
+	int cBwOp,bBwStr;
 #ifdef UNTRUST
 	if( pNos < pStack ){
 		goto Abort;
@@ -3132,17 +3148,35 @@ case PH7_OP_BXOR_STORE:{
 #endif
 	/* php refuses a compound assignment THROUGH a string offset. */
 	PH7_REJECT_STROFFSET_ASSIGNOP()
-	/* Force the operands to be integer (php deprecates a lossy float here) */
-	rc = VmRejectFloatOperand(&(*pVm),pNos);
-	PH7_DISPATCH_ENFORCE_RC(rc)
-	rc = VmRejectFloatOperand(&(*pVm),pTos);
-	PH7_DISPATCH_ENFORCE_RC(rc)
-	if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
-		PH7_MemObjToInteger(pTos);
+	cBwOp = pInstr->iOp == PH7_OP_BOR_STORE ? '|' : (pInstr->iOp == PH7_OP_BXOR_STORE ? '^' : '&');
+	bBwStr = (pNos->iFlags & MEMOBJ_STRING) != 0 && (pTos->iFlags & MEMOBJ_STRING) != 0;
+	if( !bBwStr ){
+		char zBwOp[2];
+		zBwOp[0] = (char)cBwOp; zBwOp[1] = 0;
+		/* `$x &= v` answers the same contract as `$x & v` (php's compound
+		 * assignment is the operator plus a store), but through its own error
+		 * path, which is POSITIONAL: the lvalue is named first even when the
+		 * right operand is the offender (`$x = 1; $x &= $o` is "int & BsocP",
+		 * where the plain `1 & $o` is "BsocP & int"). */
+		PH7_BITWISE_ARITH_CONTRACT(pTos,pNos,zBwOp,0)
+		/* Force the operands to be integer (php deprecates a lossy float here) */
+		rc = VmRejectFloatOperand(&(*pVm),pNos);
+		PH7_DISPATCH_ENFORCE_RC(rc)
+		rc = VmRejectFloatOperand(&(*pVm),pTos);
+		PH7_DISPATCH_ENFORCE_RC(rc)
+		if( (pTos->iFlags & MEMOBJ_INT) == 0 ){
+			PH7_MemObjToInteger(pTos);
+		}
+		if( (pNos->iFlags & MEMOBJ_INT) == 0 ){
+			PH7_MemObjToInteger(pNos);
+		}
 	}
-	if( (pNos->iFlags & MEMOBJ_INT) == 0 ){
-		PH7_MemObjToInteger(pNos);
-	}
+	if( bBwStr ){
+		/* TWO strings: php's per-byte string operation, result a string. The
+		 * result lands in pNos, which the store tail below writes into the
+		 * lvalue's slot exactly like the integer result. */
+		PH7_STRING_BITWISE_RESULT(pNos,pTos,pNos,cBwOp)
+	}else{
 	/* Perform the requested operation */
 	a = pTos->x.iVal;
 	b = pNos->x.iVal;
@@ -3158,6 +3192,7 @@ case PH7_OP_BXOR_STORE:{
 	/* Push the result */
 	pNos->x.iVal = r;
 	MemObjSetType(pNos,MEMOBJ_INT);
+	}
 	if( pTos->nIdx == SXU32_HIGH ){
 		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
 	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){

@@ -198,6 +198,69 @@
 		SyBlobRelease(&_sUnMsg); \
 	}
 /*
+ * php's operand contract for the BITWISE binary operators (`&`, `|`, `^`, `<<`,
+ * `>>`), which is the ARITHMETIC one with the operator's own name in the
+ * message: an array, object, resource or non-numeric string operand is
+ * "Unsupported operand types: array & int", and a leading-numeric string warns
+ * and computes with the prefix. PHL cast every operand to an int and answered a
+ * number. cOpArg is php's spelling of the operator; the stack effect on the
+ * throw mirrors the arithmetic sites (pop one, settle the survivor to NULL).
+ *
+ * bOffenderFirstArg selects php's operand ORDER in the message, which is not
+ * uniform (probed value-for-value): the plain `&`/`|`/`^` name a RESOURCE
+ * operand first, then an OBJECT one, whichever side it is actually on — `1 & $o`
+ * is "P & int", `$o & $res` and `$res & $o` are both "resource & P" — because
+ * zend reaches the message through op2's do_operation attempt, which hands the
+ * operands over in that order. The COMPOUND ASSIGNMENTS (`$x &= $o` is
+ * "int & BsocP") and the SHIFTS (`1 << $o` is "int << P") have their own error
+ * paths and stay positional, as do all the arithmetic operators. Pass 0 there.
+ * Must be used directly inside a case of the main switch.
+ */
+#define PH7_BITWISE_ARITH_CONTRACT(pLeftArg,pRightArg,cOpArg,bOffenderFirstArg) \
+	{ \
+		SyBlob _sBwMsg; \
+		ph7_value *_pBwL = (pLeftArg), *_pBwR = (pRightArg); \
+		if( (bOffenderFirstArg) \
+		 && (((_pBwR->iFlags & MEMOBJ_RES) != 0 && (_pBwL->iFlags & MEMOBJ_RES) == 0) \
+		  || ((_pBwR->iFlags & MEMOBJ_OBJ) != 0 && (_pBwL->iFlags & (MEMOBJ_OBJ|MEMOBJ_RES)) == 0)) ){ \
+			ph7_value *_pBwT = _pBwL; _pBwL = _pBwR; _pBwR = _pBwT; \
+		} \
+		SyBlobInit(&_sBwMsg,&pVm->sAllocator); \
+		if( VmArithOperandCheck(&(*pVm),_pBwL,_pBwR,(cOpArg),&_sBwMsg) != SXRET_OK ){ \
+			sxi32 _rcBw; \
+			VmPopOperand(&pTos,1); \
+			PH7_MemObjRelease(pTos); \
+			MemObjSetType(pTos,MEMOBJ_NULL); \
+			pTos->nIdx = SXU32_HIGH; \
+			_rcBw = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&_sBwMsg), \
+				SyBlobLength(&_sBwMsg)); \
+			SyBlobRelease(&_sBwMsg); \
+			if( _rcBw == SXERR_ABORT ){ VM_EXIT_ABORT; } \
+			rc = _rcBw; \
+			PH7_THROW_ROUTE_MIDEXPR(rc) \
+		} \
+		SyBlobRelease(&_sBwMsg); \
+	}
+/*
+ * Replace pDestArg with the per-byte result of a two-STRING `&`/`|`/`^`
+ * (VmStringBitwise). The destination may be one of the two operands, so the
+ * bytes are built in a scratch blob first — and its own blob can be a READ-ONLY
+ * view of a variable's buffer (PH7_MemObjLoad), which is why this releases
+ * before appending rather than writing in place.
+ */
+#define PH7_STRING_BITWISE_RESULT(pDestArg,pLeftArg,pRightArg,cOpArg) \
+	{ \
+		SyBlob _sBwBuf; \
+		SyBlobInit(&_sBwBuf,&pVm->sAllocator); \
+		VmStringBitwise((pLeftArg),(pRightArg),(cOpArg),&_sBwBuf); \
+		PH7_MemObjRelease(pDestArg); \
+		MemObjSetType((pDestArg),MEMOBJ_STRING); \
+		if( SyBlobLength(&_sBwBuf) > 0 ){ \
+			SyBlobAppend(&(pDestArg)->sBlob,SyBlobData(&_sBwBuf),SyBlobLength(&_sBwBuf)); \
+		} \
+		SyBlobRelease(&_sBwBuf); \
+	}
+/*
  * php refuses to READ-MODIFY-WRITE a string offset: `$s[0]++`, `$s[0]--` and
  * every `$s[0] op= v` raise a catchable Error instead. The value read out of a
  * string still carries the BASE VARIABLE's slot index (a string offset is not a

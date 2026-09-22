@@ -3670,6 +3670,39 @@ PH7_PRIVATE void VmIncDecTypeErrorMsg(ph7_value *pVal,int bIncr,SyBlob *pMsgOut)
 	SyBlobFormat(pMsgOut,"Cannot %s %s",zVerb,ph7_type_name(pVal));
 }
 /*
+ * php's `&`, `|` and `^` over TWO STRINGS: a per-BYTE operation whose result is
+ * a binary STRING, not an integer — `"abc" & "abd"` is "ab`", and PHL answered
+ * int(0) for every such pair because it cast both sides to int first. `&` and
+ * `^` stop at the SHORTER operand; `|` runs to the LONGER one, the missing bytes
+ * reading as 0, so the longer operand's tail is copied verbatim. cOp is '&', '|'
+ * or '^'; the result is appended to *pOut (the caller owns it).
+ */
+PH7_PRIVATE void VmStringBitwise(ph7_value *pLeft,ph7_value *pRight,int cOp,SyBlob *pOut)
+{
+	const unsigned char *zL = (const unsigned char *)SyBlobData(&pLeft->sBlob);
+	const unsigned char *zR = (const unsigned char *)SyBlobData(&pRight->sBlob);
+	sxu32 nL = SyBlobLength(&pLeft->sBlob);
+	sxu32 nR = SyBlobLength(&pRight->sBlob);
+	sxu32 nMin = nL < nR ? nL : nR;
+	sxu32 i;
+	for( i = 0 ; i < nMin ; ++i ){
+		unsigned char c;
+		if( cOp == '|' ){
+			c = (unsigned char)(zL[i] | zR[i]);
+		}else if( cOp == '^' ){
+			c = (unsigned char)(zL[i] ^ zR[i]);
+		}else{
+			c = (unsigned char)(zL[i] & zR[i]);
+		}
+		SyBlobAppend(pOut,(const void *)&c,sizeof(char));
+	}
+	if( cOp == '|' && nL != nR ){
+		const unsigned char *zTail = nL > nR ? &zL[nMin] : &zR[nMin];
+		sxu32 nTail = (nL > nR ? nL : nR) - nMin;
+		SyBlobAppend(pOut,(const void *)zTail,nTail);
+	}
+}
+/*
  * php's operand name in the bitwise-not diagnostic. It is NOT the arithmetic
  * type name: zend spells a BOOL there as the literal `true`/`false` (where
  * "Unsupported operand types" says `bool`), and an object as its CLASS. Only the
