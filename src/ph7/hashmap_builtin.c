@@ -2211,29 +2211,11 @@ PH7_PRIVATE int ph7_hashmap_udiff(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	 * not Argument #2 (the non-array). PHL had the middle-array loop first, so it
 	 * named the wrong argument whenever both were invalid. */
 	pCallback = apArg[nArg - 1];
-	if( !ph7_value_is_callable(pCallback) ){
-		if( ph7_value_is_array(pCallback) ){
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"array_udiff(): Argument #%d must be a valid callback, array callback must have exactly two members",
-				nArg
-				);
-		}
-		if( ph7_value_is_string(pCallback) ){
-			int len;
-			const char *zName = ph7_value_to_string(pCallback, &len);
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"array_udiff(): Argument #%d must be a valid callback, function \"%s\" not found or invalid function name",
-				nArg,
-				zName
-				);
-		}
-		return PH7_VmThrowException(pCtx,
-			"TypeError",
-			"array_udiff(): Argument #%d must be a valid callback, no array or string given",
-			nArg
-			);
+	/* php names the reason it cannot be called; one shared builder answers for every
+	 * callback argument (vm_arg_check.c). */
+	{
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,pCallback,nArg,0,FALSE);
+		if( rcCb != PH7_OK ){ return rcCb; }
 	}
 
 	/* Now the intermediary arguments (arrays), left to right. */
@@ -2476,36 +2458,9 @@ PH7_PRIVATE int ph7_hashmap_diff_uassoc(ph7_context *pCtx,int nArg,ph7_value **a
 	 * expected to be a callback. */
 	/* php checks the CALLBACK before the intermediary arrays (see array_udiff). */
 	pCallback = apArg[nArg - 1];
-	if( !ph7_value_is_callable(pCallback) ){
-		/* Compose an error message that closely matches PHP output. When the
-		 * argument is an array of the wrong shape we include an extra clause.
-		 * If the value is neither array nor string, PHP says "no array or
-		 * string given" which we also reproduce. */
-		if( ph7_value_is_array(pCallback) ){
-			/* ARRAY CALLBACK must have exactly two members */
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"array_diff_uassoc(): Argument #%d must be a valid callback, array callback must have exactly two members",
-				nArg
-				);
-		}
-		if( ph7_value_is_string(pCallback) ){
-			/* A non-callable string names the function, like array_udiff. */
-			int len;
-			const char *zName = ph7_value_to_string(pCallback,&len);
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"array_diff_uassoc(): Argument #%d must be a valid callback, function \"%s\" not found or invalid function name",
-				nArg,
-				zName
-				);
-		}
-		/* neither array nor string */
-		return PH7_VmThrowException(pCtx,
-			"TypeError",
-			"array_diff_uassoc(): Argument #%d must be a valid callback, no array or string given",
-			nArg
-			);
+	{
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,pCallback,nArg,0,FALSE);
+		if( rcCb != PH7_OK ){ return rcCb; }
 	}
 	/* Now the intermediary arrays, left to right. */
 	for(i = 1 ; i < nArg - 1; i++){
@@ -3081,73 +3036,9 @@ PH7_PRIVATE int ph7_hashmap_uintersect(ph7_context *pCtx,int nArg,ph7_value **ap
 
 	/* php checks the CALLBACK before the intermediary arrays (see array_udiff). */
 	pCallback = apArg[nArg - 1];
-	if( !ph7_value_is_callable(pCallback) ){
-		if( ph7_value_is_array(pCallback) ){
-			/* PHP emits a special message when the array length is wrong.
-			 * If the array has two elements but is still not callable (e.g. missing
-			 * method / missing class), we must emit a more general error instead.
-			 */
-			ph7_hashmap *pCb = (ph7_hashmap *)pCallback->x.pOther;
-			if( pCb->nEntry != 2 ){
-				return PH7_VmThrowException(pCtx,
-					"TypeError",
-					"array_uintersect(): Argument #%d must be a valid callback, array callback must have exactly two members",
-					nArg
-					);
-			}
-			/* Try to provide a more precise error like PHP does for missing classes/methods. */
-			{
-				ph7_value *pKey = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pCb->pFirst->nValIdx);
-				ph7_value *pMethod = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pCb->pFirst->pPrev->nValIdx);
-				if( pKey && pMethod && (pMethod->iFlags & MEMOBJ_STRING) ){
-					int nMethodLen;
-					const char *zMethod = ph7_value_to_string(pMethod,&nMethodLen);
-					ph7_class *pClass = PH7_VmExtractClassFromValue(pCtx->pVm,pKey);
-					if( pClass ){
-						/* Class exists but method is missing. */
-						return PH7_VmThrowException(pCtx,
-							"TypeError",
-							"array_uintersect(): Argument #%d must be a valid callback, class %s does not have a method \"%s\"",
-							nArg,
-							(const char *)SyStringData(&pClass->sName),
-							zMethod
-							);
-					}
-					/* Class not found */
-					{
-						int nName;
-						const char *zName = ph7_value_to_string(pKey,&nName);
-						return PH7_VmThrowException(pCtx,
-							"TypeError",
-							"array_uintersect(): Argument #%d must be a valid callback, class \"%s\" not found",
-							nArg,
-							zName
-							);
-					}
-				}
-			}
-			/* Fallback message */
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"array_uintersect(): Argument #%d must be a valid callback, no array or string given",
-				nArg
-				);
-		}
-		if( ph7_value_is_string(pCallback) ){
-			int len;
-			const char *zName = ph7_value_to_string(pCallback, &len);
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"array_uintersect(): Argument #%d must be a valid callback, function \"%s\" not found or invalid function name",
-				nArg,
-				zName
-				);
-		}
-		return PH7_VmThrowException(pCtx,
-			"TypeError",
-			"array_uintersect(): Argument #%d must be a valid callback, no array or string given",
-			nArg
-			);
+	{
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,pCallback,nArg,0,FALSE);
+		if( rcCb != PH7_OK ){ return rcCb; }
 	}
 
 	/* Now the intermediary arrays, left to right. */
@@ -4608,6 +4499,14 @@ PH7_PRIVATE int ph7_hashmap_filter(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf))
 			);
 	}
+	/* php validates the callback UP FRONT, so `array_filter([], 'nosuchfn')` throws too —
+	 * PHL checked inside the element loop, which an empty array never entered. */
+	if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",TRUE);
+		if( rcCb != PH7_OK ){
+			return rcCb;
+		}
+	}
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);
 	if( pArray == 0 ){
@@ -4627,26 +4526,7 @@ PH7_PRIVATE int ph7_hashmap_filter(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			/* Can happen if SySetAt() failed earlier; drop the entry. */
 			keep = FALSE;
 		}else if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){
-			/* Callback was supplied (not NULL).  PHP 8 throws a
-				* TypeError when the value is not callable or null; prior PH7
-				* silently dropped the element.  Emit similar message. */
-			if( !ph7_value_is_callable(apArg[1]) ){
-				if( ph7_value_is_string(apArg[1]) ){
-					int len;
-					const char *zName = ph7_value_to_string(apArg[1], &len);
-					return PH7_VmThrowException(pCtx,
-						"TypeError",
-						"array_filter(): Argument #2 ($callback) must be a valid callback or null, function \"%s\" not found or invalid function name",
-						zName
-						);
-				}else{
-					return PH7_VmThrowException(pCtx,
-						"TypeError",
-						"array_filter(): Argument #2 ($callback) must be a valid callback or null, %s given",
-						ph7_type_name(apArg[1])
-						);
-				}
-			}
+			/* Callback supplied (not NULL) and already validated above. */
 			keep = FALSE;
 			rc = PH7_VmCallUserFunction(pMap->pVm,apArg[1],1,&pValue,&sResult);
 			if( rc == PH7_EXCEPTION ){
@@ -4713,21 +4593,9 @@ PH7_PRIVATE int ph7_hashmap_map(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			);
 	}
 	bNullCallback = ph7_value_is_null(apArg[0]);
-	if( !bNullCallback && !ph7_value_is_callable(apArg[0]) ){
-		if( ph7_value_is_string(apArg[0]) ){
-			const char *zFunc = ph7_value_to_string(apArg[0],0);
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"array_map(): Argument #1 ($callback) must be a valid callback or null, "
-				"function \"%s\" not found or invalid function name",
-				zFunc
-				);
-		}
-		return PH7_VmThrowException(pCtx,
-			"TypeError",
-			"array_map(): Argument #1 ($callback) must be a valid callback or null, "
-			"no array or string given"
-			);
+	if( !bNullCallback ){
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[0],1,"callback",TRUE);
+		if( rcCb != PH7_OK ){ return rcCb; }
 	}
 	/* Every remaining argument must be an array */
 	for( i = 1 ; i < nArg ; i++ ){
@@ -4910,28 +4778,9 @@ PH7_PRIVATE int ph7_hashmap_reduce(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			ph7_type_name(apArg[0])
 			);
 	}
-	if( !ph7_value_is_callable(apArg[1]) ){
-		if( ph7_value_is_string(apArg[1]) ){
-			const char *zFunc = ph7_value_to_string(apArg[1],0);
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"array_reduce(): Argument #2 ($callback) must be a valid callback, "
-				"function \"%s\" not found or invalid function name",
-				zFunc
-				);
-		}
-		if( ph7_value_is_array(apArg[1]) ){
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"array_reduce(): Argument #2 ($callback) must be a valid callback, "
-				"array callback must have exactly two members"
-				);
-		}
-		return PH7_VmThrowException(pCtx,
-			"TypeError",
-			"array_reduce(): Argument #2 ($callback) must be a valid callback, "
-			"no array or string given"
-			);
+	{
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",FALSE);
+		if( rcCb != PH7_OK ){ return rcCb; }
 	}
 	/* Point to the internal representation of the input hashmap */
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
@@ -5007,28 +4856,9 @@ PH7_PRIVATE int ph7_hashmap_walk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			ph7_type_name(apArg[0])
 			);
 	}
-	if( !ph7_value_is_callable(apArg[1]) ){
-		if( ph7_value_is_string(apArg[1]) ){
-			const char *zFunc = ph7_value_to_string(apArg[1],0);
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"array_walk(): Argument #2 ($callback) must be a valid callback, "
-				"function \"%s\" not found or invalid function name",
-				zFunc
-				);
-		}
-		if( ph7_value_is_array(apArg[1]) ){
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"array_walk(): Argument #2 ($callback) must be a valid callback, "
-				"array callback must have exactly two members"
-				);
-		}
-		return PH7_VmThrowException(pCtx,
-			"TypeError",
-			"array_walk(): Argument #2 ($callback) must be a valid callback, "
-			"no array or string given"
-			);
+	{
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",FALSE);
+		if( rcCb != PH7_OK ){ return rcCb; }
 	}
 	pUserData = nArg > 2 ? apArg[2] : 0;
 	/* Point to the internal representation of the input hashmap */
@@ -5153,28 +4983,9 @@ PH7_PRIVATE int ph7_hashmap_walk_recursive(ph7_context *pCtx,int nArg,ph7_value 
 			ph7_type_name(apArg[0])
 			);
 	}
-	if( !ph7_value_is_callable(apArg[1]) ){
-		if( ph7_value_is_string(apArg[1]) ){
-			const char *zFunc = ph7_value_to_string(apArg[1],0);
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"array_walk_recursive(): Argument #2 ($callback) must be a valid callback, "
-				"function \"%s\" not found or invalid function name",
-				zFunc
-				);
-		}
-		if( ph7_value_is_array(apArg[1]) ){
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"array_walk_recursive(): Argument #2 ($callback) must be a valid callback, "
-				"array callback must have exactly two members"
-				);
-		}
-		return PH7_VmThrowException(pCtx,
-			"TypeError",
-			"array_walk_recursive(): Argument #2 ($callback) must be a valid callback, "
-			"no array or string given"
-			);
+	{
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",FALSE);
+		if( rcCb != PH7_OK ){ return rcCb; }
 	}
 	/* Point to the internal representation of the input hashmap */
 	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
@@ -5462,12 +5273,9 @@ static sxi32 HashmapCallbackSearch(
 			zName,ph7_type_name(apArg[0])
 			);
 	}
-	if( !ph7_value_is_callable(apArg[1]) ){
-		return PH7_VmThrowException(pCtx,
-			"TypeError",
-			"%s(): Argument #2 ($callback) must be a valid callback, %s given",
-			zName,ph7_type_name(apArg[1])
-			);
+	{
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",FALSE);
+		if( rcCb != PH7_OK ){ return rcCb; }
 	}
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	pEntry = pMap->pFirst;
@@ -5701,9 +5509,9 @@ PH7_PRIVATE int ph7_iterator_apply(ph7_context *pCtx, int nArg, ph7_value **apAr
 	struct IterApply sApp;
 	sxi32 rc;
 	if( nArg < 2 ){ ph7_result_int(pCtx,0); return PH7_OK; }
-	if( !ph7_value_is_callable(apArg[1]) ){
-		return PH7_VmThrowException(pCtx,"TypeError",
-			"iterator_apply(): Argument #2 ($callback) must be a valid callback");
+	{
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",FALSE);
+		if( rcCb != PH7_OK ){ return rcCb; }
 	}
 	sApp.pCallback = apArg[1];
 	sApp.pArgsArray = (nArg > 2 && ph7_value_is_array(apArg[2])) ? apArg[2] : 0;

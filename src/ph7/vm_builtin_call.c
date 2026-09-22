@@ -386,6 +386,12 @@ PH7_PRIVATE int PH7_VmArrayCallableParts(ph7_vm *pVm,ph7_hashmap *pMap,ph7_value
  * `Class "self" not found` there — so the keyword resolution lives here, not in the
  * OP_CALL check.
  */
+static int VmIsScopeKeyword(const char *zName,sxu32 nName)
+{
+	return (nName == 4 && SyMemcmp(zName,"self",4) == 0)
+		|| (nName == 6 && SyMemcmp(zName,"parent",6) == 0)
+		|| (nName == 6 && SyMemcmp(zName,"static",6) == 0);
+}
 static ph7_class * VmCallbackTargetClass(ph7_vm *pVm,ph7_value *pTarget)
 {
 	if( pTarget->iFlags & MEMOBJ_OBJ ){
@@ -468,6 +474,132 @@ static int VmMethodIsCallable(ph7_vm *pVm,ph7_class *pClass,const char *zMethod,
 			return FALSE;
 	}
 	return TRUE;
+}
+/*
+ * Say WHY a class+method pair is not callable, in php's callback-argument wording, or
+ * return 0 when it is. The taxonomy mirrors VmMethodIsCallable decision for decision, so
+ * the predicate and the reason can never drift apart: php's message names the same rule
+ * that made is_callable() answer false.
+ */
+static const char * VmMethodCallableReason(ph7_vm *pVm,ph7_class *pClass,
+	const char *zMethod,sxu32 nMethod,int bStaticForm,char *zBuf,int nBuf)
+{
+	const char *zMagic = bStaticForm ? "__callStatic" : "__call";
+	ph7_class_method *pMethod;
+	ph7_class *pDecl;
+	SyString sDecl;
+	if( nMethod < 1 ){
+		SyBufferFormat(zBuf,nBuf,"class %z does not have a method \"\"",&pClass->sName);
+		return zBuf;
+	}
+	pMethod = PH7_ClassExtractMethod(pClass,zMethod,nMethod);
+	if( pMethod == 0 ){
+		if( PH7_ClassExtractMethod(pClass,zMagic,(sxu32)SyStrlen(zMagic)) ){
+			return 0; /* the catch-all answers for any name */
+		}
+		SyBufferFormat(zBuf,nBuf,"class %z does not have a method \"%.*s\"",
+			&pClass->sName,(int)nMethod,zMethod);
+		return zBuf;
+	}
+	pDecl = pMethod->sFunc.pUserData ? (ph7_class *)pMethod->sFunc.pUserData : pClass;
+	SyStringInitFromBuf(&sDecl,SyStringData(&pMethod->sFunc.sName),
+		SyStringLength(&pMethod->sFunc.sName));
+	if( pMethod->iFlags & PH7_CLASS_ATTR_ABSTRACT ){
+		SyBufferFormat(zBuf,nBuf,"cannot call abstract method %z::%.*s()",
+			&pClass->sName,(int)nMethod,zMethod);
+		return zBuf;
+	}
+	/* php's CALLBACK reason reports staticness BEFORE visibility — the reverse of the
+	 * direct dispatch, which answers "Call to private method" for the same pair. */
+	if( bStaticForm && (pMethod->iFlags & PH7_CLASS_ATTR_STATIC) == 0
+	 && !VmCallerThisIsA(pVm,pClass) ){
+		SyBufferFormat(zBuf,nBuf,"non-static method %z::%z() cannot be called statically",
+			&pDecl->sName,&sDecl);
+		return zBuf;
+	}
+	if( pMethod->iProtection != PH7_CLASS_PROT_PUBLIC
+	 && !PH7_VmClassMemberAccess(&(*pVm),pDecl,&sDecl,pMethod->iProtection,FALSE) ){
+		if( PH7_ClassExtractMethod(pClass,zMagic,(sxu32)SyStrlen(zMagic)) ){
+			return 0; /* inaccessible, but the catch-all answers for it */
+		}
+		SyBufferFormat(zBuf,nBuf,"cannot access %s method %z::%z()",
+			pMethod->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected",
+			&pDecl->sName,&sDecl);
+		return zBuf;
+	}
+	return 0;
+}
+/*
+ * The whole "why is this callback argument invalid" taxonomy, in one place: php prints it
+ * as the tail of `f(): Argument #N ($callback) must be a valid callback, <reason>`, and
+ * every reason names the rule that made the value uncallable. Returns 0 when the value IS
+ * callable. Messages that quote a name are built into zBuf.
+ *
+ * The scope keywords get their own reason at global scope ("cannot access \"self\" when no
+ * class scope is active"), since a callback — unlike the direct dispatch — is exactly where
+ * php WOULD have resolved them.
+ */
+PH7_PRIVATE const char * PH7_VmCallableReason(ph7_vm *pVm,ph7_value *pValue,char *zBuf,int nBuf)
+{
+	if( PH7_VmIsCallable(pVm,pValue,TRUE) ){
+		return 0;
+	}
+	if( pValue->iFlags & MEMOBJ_HASHMAP ){
+		ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;
+		ph7_value *pTarget = 0,*pName = 0;
+		ph7_class *pClass;
+		if( pMap == 0 || pMap->nEntry != 2 ){
+			return "array callback must have exactly two members";
+		}
+		if( !PH7_VmArrayCallableParts(&(*pVm),pMap,&pTarget,&pName) ){
+			return "array callback has to contain indices 0 and 1";
+		}
+		if( (pTarget->iFlags & (MEMOBJ_OBJ|MEMOBJ_STRING)) == 0 ){
+			return "first array member is not a valid class name or object";
+		}
+		if( (pName->iFlags & MEMOBJ_STRING) == 0 ){
+			return "second array member is not a valid method";
+		}
+		pClass = VmCallbackTargetClass(&(*pVm),pTarget);
+		if( pClass == 0 ){
+			const char *zCls = (const char *)SyBlobData(&pTarget->sBlob);
+			sxu32 nCls = SyBlobLength(&pTarget->sBlob);
+			if( VmIsScopeKeyword(zCls,nCls) ){
+				SyBufferFormat(zBuf,nBuf,
+					"cannot access \"%.*s\" when no class scope is active",(int)nCls,zCls);
+				return zBuf;
+			}
+			SyBufferFormat(zBuf,nBuf,"class \"%.*s\" not found",(int)nCls,zCls);
+			return zBuf;
+		}
+		return VmMethodCallableReason(&(*pVm),pClass,
+			(const char *)SyBlobData(&pName->sBlob),SyBlobLength(&pName->sBlob),
+			(pTarget->iFlags & MEMOBJ_OBJ) ? FALSE : TRUE,zBuf,nBuf);
+	}
+	if( pValue->iFlags & MEMOBJ_STRING ){
+		const char *zCls,*zMeth;
+		sxu32 nCls,nMeth;
+		const char *zName = (const char *)SyBlobData(&pValue->sBlob);
+		sxu32 nName = SyBlobLength(&pValue->sBlob);
+		if( PH7_VmCallableStringParts(zName,nName,&zCls,&nCls,&zMeth,&nMeth) ){
+			ph7_class *pClass = PH7_VmResolveScopeName(&(*pVm),zCls,nCls);
+			if( pClass == 0 ){
+				if( VmIsScopeKeyword(zCls,nCls) ){
+					SyBufferFormat(zBuf,nBuf,
+						"cannot access \"%.*s\" when no class scope is active",(int)nCls,zCls);
+					return zBuf;
+				}
+				SyBufferFormat(zBuf,nBuf,"class \"%.*s\" not found",(int)nCls,zCls);
+				return zBuf;
+			}
+			return VmMethodCallableReason(&(*pVm),pClass,zMeth,nMeth,TRUE,zBuf,nBuf);
+		}
+		SyBufferFormat(zBuf,nBuf,
+			"function \"%.*s\" not found or invalid function name",(int)nName,zName);
+		return zBuf;
+	}
+	/* An object with no __invoke, and every non-string non-array value: php says only this. */
+	return "no array or string given";
 }
 /*
  * Verify that the contents of a variable can be called as a function.

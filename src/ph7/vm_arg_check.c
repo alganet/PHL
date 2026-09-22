@@ -1269,55 +1269,24 @@ PH7_PRIVATE sxi32 PH7_CheckCallbackArg(
 	ph7_context *pCtx,   /* Calling context (names the function in the message) */
 	ph7_value *pCb,      /* The callback argument */
 	int iArg,            /* Its 1-based position */
-	const char *zParam,  /* Its php parameter name, e.g. "callback" */
+	const char *zParam,  /* Its php parameter name ("callback"), or 0 for the variadic
+	                      * comparators php names by position only (array_udiff …) */
 	int bNullable        /* TRUE when php's text says "or null" */
 	)
 {
-	const char *zOrNull = bNullable ? " or null" : "";
-	if( ph7_value_is_callable(pCb) ){
+	char zReason[256];
+	const char *zWhy = PH7_VmCallableReason(pCtx->pVm,pCb,zReason,sizeof(zReason));
+	if( zWhy == 0 ){
 		return PH7_OK;
 	}
-	if( ph7_value_is_string(pCb) ){
-		int nLen;
-		const char *zName = ph7_value_to_string(pCb,&nLen);
+	if( zParam ){
 		return PH7_VmThrowException(pCtx,"TypeError",
-			"%s(): Argument #%d ($%s) must be a valid callback%s, function \"%.*s\" not found or invalid function name",
-			ph7_function_name(pCtx),iArg,zParam,zOrNull,nLen,zName);
-	}
-	if( ph7_value_is_array(pCb) ){
-		ph7_hashmap *pMap = (ph7_hashmap *)pCb->x.pOther;
-		if( pMap == 0 || pMap->nEntry != 2 ){
-			return PH7_VmThrowException(pCtx,"TypeError",
-				"%s(): Argument #%d ($%s) must be a valid callback%s, array callback must have exactly two members",
-				ph7_function_name(pCtx),iArg,zParam,zOrNull);
-		}else{
-			ph7_vm *pVm = pCtx->pVm;
-			ph7_value *pCls = 0;
-			ph7_value *pMeth = 0;
-			ph7_class *pClass;
-			if( !PH7_VmArrayCallableParts(&(*pVm),pMap,&pCls,&pMeth) ){
-				/* Two entries, but not at the integer indices php reads. */
-				return PH7_VmThrowException(pCtx,"TypeError",
-					"%s(): Argument #%d ($%s) must be a valid callback%s, array callback has to contain indices 0 and 1",
-					ph7_function_name(pCtx),iArg,zParam,zOrNull);
-			}
-			/* Both parts exist from here on (the decode guarantees it). */
-			pClass = PH7_VmExtractClassFromValue(&(*pVm),pCls);
-			if( pClass == 0 ){
-				return PH7_VmThrowException(pCtx,"TypeError",
-					"%s(): Argument #%d ($%s) must be a valid callback%s, class \"%.*s\" not found",
-					ph7_function_name(pCtx),iArg,zParam,zOrNull,
-					(int)SyBlobLength(&pCls->sBlob),(const char *)SyBlobData(&pCls->sBlob));
-			}
-			return PH7_VmThrowException(pCtx,"TypeError",
-				"%s(): Argument #%d ($%s) must be a valid callback%s, class %z does not have a method \"%.*s\"",
-				ph7_function_name(pCtx),iArg,zParam,zOrNull,&pClass->sName,
-				(int)SyBlobLength(&pMeth->sBlob),(const char *)SyBlobData(&pMeth->sBlob));
-		}
+			"%s(): Argument #%d ($%s) must be a valid callback%s, %s",
+			ph7_function_name(pCtx),iArg,zParam,bNullable ? " or null" : "",zWhy);
 	}
 	return PH7_VmThrowException(pCtx,"TypeError",
-		"%s(): Argument #%d ($%s) must be a valid callback%s, no array or string given",
-		ph7_function_name(pCtx),iArg,zParam,zOrNull);
+		"%s(): Argument #%d must be a valid callback%s, %s",
+		ph7_function_name(pCtx),iArg,bNullable ? " or null" : "",zWhy);
 }
 PH7_PRIVATE void PH7_VmThrowWarningFmt(ph7_vm *pVm,const char *zFmt,...)
 {
