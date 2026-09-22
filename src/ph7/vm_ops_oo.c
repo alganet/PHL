@@ -1469,6 +1469,37 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						}
 						PH7_MemObjRelease(pTos);
 					}else{
+						/* Inaccessible from this scope: php routes through __callStatic when
+						 * declared — the same rule the instance twin applies with __call, and
+						 * the reason `C::privateStatic()` runs the catch-all instead of the
+						 * "Call to private method" Error OP_CALL would raise below. */
+						ph7_class_method *pDeniedStatic = 0;
+						if( pMeth->iProtection != PH7_CLASS_PROT_PUBLIC ){
+							ph7_class *pDeclCls = pMeth->sFunc.pUserData
+								? (ph7_class *)pMeth->sFunc.pUserData : pClass;
+							if( !PH7_VmClassMemberAccess(&(*pVm),pDeclCls,&sName,pMeth->iProtection,FALSE) ){
+								pDeniedStatic = PH7_ClassExtractMethod(pClass,"__callStatic",
+									sizeof("__callStatic")-1);
+							}
+						}
+						if( pDeniedStatic ){
+							/* The trampoline is a plain function: drop the method-name slot so
+							 * its name lands on the RECEIVER slot, exactly as the
+							 * missing-method twin above does (leaving the class name in place
+							 * would pack it as the first $args entry). */
+							SyBlobReset(&pVm->sMagicCallName);
+							SyBlobAppend(&pVm->sMagicCallName,(const void *)sName.zString,sName.nByte);
+							pVm->pMagicCallThis = 0;
+							pVm->pMagicCallClass = pClass;
+							if( !pInstr->p3 ){
+								VmPopOperand(&pTos,1);
+							}
+							PH7_MemObjRelease(pTos);
+							SyBlobAppend(&pTos->sBlob,"__phl_magic_call",sizeof("__phl_magic_call")-1);
+							MemObjSetType(pTos,MEMOBJ_STRING);
+							pTos->nIdx = SXU32_HIGH;
+							VM_EXIT_BREAK;
+						}
 						/* Push method name on the stack */
 						PH7_MemObjRelease(pTos);
 						SyBlobAppend(&pTos->sBlob,SyStringData(&pMeth->sVmName),SyStringLength(&pMeth->sVmName));

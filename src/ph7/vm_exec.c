@@ -889,6 +889,13 @@ static const char * VmCallableClassMethodError(
 	}
 	pMethod = PH7_ClassExtractMethod(pClass,zMeth,nMeth);
 	if( pMethod == 0 ){
+		/* A class that answers for unknown names through the catch-all has nothing to
+		 * report: php runs __callStatic (class-name target) / __call (object target) for
+		 * ANY method name, and the dispatcher below routes it. */
+		const char *zMagic = bStaticForm ? "__callStatic" : "__call";
+		if( PH7_ClassExtractMethod(pClass,zMagic,(sxu32)SyStrlen(zMagic)) ){
+			return 0;
+		}
 		SyBufferFormat(zBuf,nBuf,"Call to undefined method %z::%.*s()",
 			&pClass->sName,(int)nMeth,zMeth);
 		return zBuf;

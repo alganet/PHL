@@ -1309,6 +1309,71 @@ PH7_PRIVATE void PH7_VmCufDropByRefArgs(ph7_context *pCtx,ph7_value *pCallable,i
 		}
 	}
 }
+/*
+ * Can a callable reach this method DIRECTLY from the calling scope? A non-public method is
+ * decided by the same PH7_VmClassMemberAccess the call itself uses, with the method's
+ * DECLARING class as the argument (a child may not reach a base private it merely
+ * inherited) — the rule PH7_VmIsCallable already answers with.
+ */
+static int VmCallableMethodAccessible(ph7_vm *pVm,ph7_class *pClass,ph7_class_method *pMethod)
+{
+	SyString sName;
+	if( pMethod->iProtection == PH7_CLASS_PROT_PUBLIC ){
+		return TRUE;
+	}
+	SyStringInitFromBuf(&sName,SyStringData(&pMethod->sFunc.sName),
+		SyStringLength(&pMethod->sFunc.sName));
+	return PH7_VmClassMemberAccess(&(*pVm),
+		pMethod->sFunc.pUserData ? (ph7_class *)pMethod->sFunc.pUserData : pClass,
+		&sName,pMethod->iProtection,FALSE) ? TRUE : FALSE;
+}
+/*
+ * php's catch-all routing for a callable naming a method the class cannot answer directly —
+ * missing, or present but inaccessible from here. An OBJECT target routes to `__call`, a
+ * class-NAME target to `__callStatic`, both invoked as `($name, $args)` with the given
+ * arguments packed into the array php passes.
+ *
+ * Only the `C::m()`/`$o->m()` SYNTAX used to do this (through the packing trampoline), so
+ * every callable spelling of the same call — `$cb()`, call_user_func, array_map, usort —
+ * threw "Call to undefined method" or, through the dispatcher's unresolvable contract,
+ * silently answered NULL where php ran the magic method.
+ *
+ * Returns SXERR_NOTFOUND when the class has no catch-all, leaving the caller's own
+ * diagnostic in charge. Named arguments are packed positionally (php keys them by name in
+ * $args — a §7 residual of the named-arg map, not modelled here).
+ */
+static sxi32 VmCallMagicCallable(ph7_vm *pVm,ph7_class *pClass,ph7_class_instance *pThis,
+	const char *zName,sxu32 nName,ph7_value *pResult,int nArg,ph7_value **apArg)
+{
+	const char *zMagic = pThis ? "__call" : "__callStatic";
+	ph7_class_method *pMagic = PH7_ClassExtractMethod(pClass,zMagic,(sxu32)SyStrlen(zMagic));
+	ph7_hashmap *pArgs;
+	ph7_value sName,sArgs;
+	ph7_value *apMagic[2];
+	sxi32 rc;
+	int i;
+	if( pMagic == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	pArgs = PH7_NewHashmap(&(*pVm),0,0);
+	if( pArgs == 0 ){
+		return SXERR_MEM;
+	}
+	for( i = 0 ; i < nArg ; ++i ){
+		PH7_HashmapInsert(pArgs,0,apArg[i]);
+	}
+	PH7_MemObjInit(pVm,&sName);
+	PH7_MemObjStringAppend(&sName,zName,nName);
+	PH7_MemObjInit(pVm,&sArgs);
+	sArgs.x.pOther = pArgs;
+	MemObjSetType(&sArgs,MEMOBJ_HASHMAP);
+	apMagic[0] = &sName;
+	apMagic[1] = &sArgs;
+	rc = VmCallClassMethodWithMap(&(*pVm),pThis,pMagic,pResult,2,apMagic,0);
+	PH7_MemObjRelease(&sName);
+	PH7_MemObjRelease(&sArgs); /* frees the packed argument map */
+	return rc;
+}
 PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 	ph7_vm *pVm,       /* Target VM */
 	ph7_value *pFunc,  /* Callback name */
@@ -1402,6 +1467,18 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			pMethod = PH7_ClassExtractMethod(pClass,(const char *)SyBlobData(&pName->sBlob),
 				SyBlobLength(&pName->sBlob));
 		}
+		if( pMethod == 0 || !VmCallableMethodAccessible(&(*pVm),pClass,pMethod) ){
+			/* php answers for a name the class cannot reach directly through __call /
+			 * __callStatic, in a CALLABLE exactly as in the method-call syntax. */
+			if( (pName->iFlags & MEMOBJ_STRING) && SyBlobLength(&pName->sBlob) > 0 ){
+				rc = VmCallMagicCallable(&(*pVm),pClass,pThis,
+					(const char *)SyBlobData(&pName->sBlob),SyBlobLength(&pName->sBlob),
+					pResult,nArg,apArg);
+				if( rc != SXERR_NOTFOUND ){
+					return rc;
+				}
+			}
+		}
 		if( pMethod == 0 ){
 			/* No such method,return NULL */
 			if( pResult ){
@@ -1430,6 +1507,15 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			ph7_class *pCmClass = PH7_VmExtractClass(&(*pVm),zCmCls,nCmCls,FALSE,0);
 			ph7_class_method *pCmMethod = pCmClass
 				? PH7_ClassExtractMethod(pCmClass,zCmMeth,nCmMeth) : 0;
+			if( pCmClass && (pCmMethod == 0
+				|| !VmCallableMethodAccessible(&(*pVm),pCmClass,pCmMethod)) ){
+				/* Same catch-all routing as the ['Class','method'] pair. */
+				sxi32 rcMagic = VmCallMagicCallable(&(*pVm),pCmClass,0,zCmMeth,nCmMeth,
+					pResult,nArg,apArg);
+				if( rcMagic != SXERR_NOTFOUND ){
+					return rcMagic;
+				}
+			}
 			if( pCmMethod == 0 ){
 				/* Unresolvable: the long-standing "SXRET_OK + NULL result" contract, which
 				 * the callers detect by validating the argument first. */
