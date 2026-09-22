@@ -2278,6 +2278,8 @@ case PH7_OP_INCR:
 	 * type (it bypasses the store path), so enforce before the type guard below
 	 * — which otherwise skips object/array/resource operands. */
 	PH7_ENFORCE_READONLY_MUTATE(pTos->nIdx);
+	/* php refuses to increment a string OFFSET, whatever byte it holds. */
+	PH7_REJECT_STROFFSET_INCDEC()
 	/* A hooked property whose get hook returned an array/object/resource:
 	 * php's TypeError, raised BEFORE any set dispatch (the type guard below
 	 * would skip the mutation and the tail write-back would otherwise call
@@ -2430,6 +2432,8 @@ case PH7_OP_DECR:
 	 * — which otherwise skips null/object/array/resource operands (e.g. a readonly
 	 * property currently holding null). */
 	PH7_ENFORCE_READONLY_MUTATE(pTos->nIdx);
+	/* php refuses to decrement a string OFFSET, whatever byte it holds. */
+	PH7_REJECT_STROFFSET_INCDEC()
 	/* A hooked property whose get hook returned an array/object/resource:
 	 * php's TypeError, raised BEFORE any set dispatch (null stays excluded —
 	 * `--` on null is php's no-op and its write-back still dispatches set). */
@@ -2671,6 +2675,8 @@ case PH7_OP_BITNOT:
 case PH7_OP_MUL:
 case PH7_OP_MUL_STORE: {
 	VmOpRc rcOp;
+	/* php refuses a compound assignment THROUGH a string offset. */
+	PH7_REJECT_STROFFSET_ASSIGNOP()
 	sState.pTos = pTos;
 	sState.pc = pc;
 	rcOp = VmExecOpMulStore(&(*pVm),&sState,pInstr);
@@ -2694,6 +2700,8 @@ case PH7_OP_MUL_STORE: {
 case PH7_OP_POW:
 case PH7_OP_POW_STORE: {
 	VmOpRc rcOp;
+	/* php refuses a compound assignment THROUGH a string offset. */
+	PH7_REJECT_STROFFSET_ASSIGNOP()
 	sState.pTos = pTos;
 	sState.pc = pc;
 	rcOp = VmExecOpPowStore(&(*pVm),&sState,pInstr);
@@ -2759,6 +2767,8 @@ case PH7_OP_ADD_STORE:{
 		goto Abort;
 	}
 #endif
+	/* php refuses a compound assignment THROUGH a string offset. */
+	PH7_REJECT_STROFFSET_ASSIGNOP()
 	{
 		/* php's operand contract: a compound-assign with a non-numeric string,
 		 * array, object or resource operand is a TypeError too. */
@@ -2832,6 +2842,8 @@ case PH7_OP_SUB: {
  */
 case PH7_OP_SUB_STORE: {
 	VmOpRc rcOp;
+	/* php refuses a compound assignment THROUGH a string offset. */
+	PH7_REJECT_STROFFSET_ASSIGNOP()
 	sState.pTos = pTos;
 	sState.pc = pc;
 	rcOp = VmExecOpSubStore(&(*pVm),&sState,pInstr);
@@ -2879,6 +2891,8 @@ case PH7_OP_MOD: {
  */
 case PH7_OP_MOD_STORE: {
 	VmOpRc rcOp;
+	/* php refuses a compound assignment THROUGH a string offset. */
+	PH7_REJECT_STROFFSET_ASSIGNOP()
 	sState.pTos = pTos;
 	sState.pc = pc;
 	rcOp = VmExecOpModStore(&(*pVm),&sState,pInstr);
@@ -2930,6 +2944,8 @@ case PH7_OP_DIV_STORE:{
 		goto Abort;
 	}
 #endif
+	/* php refuses a compound assignment THROUGH a string offset. */
+	PH7_REJECT_STROFFSET_ASSIGNOP()
 	{
 		/* php's operand contract: a compound-assign with a non-numeric string,
 		 * array, object or resource operand is a TypeError too. */
@@ -3069,6 +3085,8 @@ case PH7_OP_BXOR_STORE:{
 		goto Abort;
 	}
 #endif
+	/* php refuses a compound assignment THROUGH a string offset. */
+	PH7_REJECT_STROFFSET_ASSIGNOP()
 	/* Force the operands to be integer (php deprecates a lossy float here) */
 	rc = VmRejectFloatOperand(&(*pVm),pNos);
 	PH7_DISPATCH_ENFORCE_RC(rc)
@@ -3151,6 +3169,8 @@ case PH7_OP_SHR: {
 case PH7_OP_SHL_STORE:
 case PH7_OP_SHR_STORE: {
 	VmOpRc rcOp;
+	/* php refuses a compound assignment THROUGH a string offset. */
+	PH7_REJECT_STROFFSET_ASSIGNOP()
 	sState.pTos = pTos;
 	sState.pc = pc;
 	rcOp = VmExecOpShrStore(&(*pVm),&sState,pInstr);
@@ -3228,6 +3248,8 @@ case PH7_OP_CAT_STORE:{
 		goto Abort;
 	}
 #endif
+	/* php refuses a compound assignment THROUGH a string offset. */
+	PH7_REJECT_STROFFSET_ASSIGNOP()
 	/* The right operand must be a string to append it (user-visible, §2) */
 	{
 		sxi32 rcSv = PH7_MemObjToStringUV(pNos);

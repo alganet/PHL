@@ -198,6 +198,47 @@
 		SyBlobRelease(&_sUnMsg); \
 	}
 /*
+ * php refuses to READ-MODIFY-WRITE a string offset: `$s[0]++`, `$s[0]--` and
+ * every `$s[0] op= v` raise a catchable Error instead. The value read out of a
+ * string still carries the BASE VARIABLE's slot index (a string offset is not a
+ * slot of its own), so writing the computed result back through that index
+ * replaced the WHOLE STRING with it — `$s = "5abc"; $s[0] += 1;` left
+ * `$s === 6`, and `$s[0] .= "x"` appended to the whole string. Same marker the
+ * reference-binding sites test (MEMOBJ_AUX_STROFFSET).
+ *
+ * PH7_REJECT_STROFFSET_INCDEC() is for the one-operand mutation opcodes (the
+ * operand IS the result slot); PH7_REJECT_STROFFSET_ASSIGNOP() is for the
+ * two-operand compound stores, whose lvalue is pTos and whose normal stack
+ * effect pops one operand. Both must be used directly inside a case of the main
+ * switch, BEFORE the op touches the operand.
+ */
+#define PH7_REJECT_STROFFSET_INCDEC() \
+	if( pTos->iFlags & MEMOBJ_AUX_STROFFSET ){ \
+		sxi32 _rcSo; \
+		PH7_MemObjRelease(pTos); \
+		MemObjSetType(pTos,MEMOBJ_NULL); \
+		pTos->nIdx = SXU32_HIGH; \
+		_rcSo = VmThrowFromVm(&(*pVm),"Error","Cannot increment/decrement string offsets", \
+			sizeof("Cannot increment/decrement string offsets")-1); \
+		if( _rcSo == SXERR_ABORT ){ VM_EXIT_ABORT; } \
+		rc = _rcSo; \
+		PH7_THROW_ROUTE_MIDEXPR(rc) \
+	}
+#define PH7_REJECT_STROFFSET_ASSIGNOP() \
+	if( pTos->iFlags & MEMOBJ_AUX_STROFFSET ){ \
+		sxi32 _rcSo; \
+		VmPopOperand(&pTos,1); \
+		PH7_MemObjRelease(pTos); \
+		MemObjSetType(pTos,MEMOBJ_NULL); \
+		pTos->nIdx = SXU32_HIGH; \
+		_rcSo = VmThrowFromVm(&(*pVm),"Error", \
+			"Cannot use assign-op operators with string offsets", \
+			sizeof("Cannot use assign-op operators with string offsets")-1); \
+		if( _rcSo == SXERR_ABORT ){ VM_EXIT_ABORT; } \
+		rc = _rcSo; \
+		PH7_THROW_ROUTE_MIDEXPR(rc) \
+	}
+/*
  * Hook-RMW write-back for the tail of every read-modify-write opcode: if the
  * top pending VmHookRmw entry targets the slot this op just wrote (a SCRATCH
  * slot armed by the preceding OP_MEMBER on a hooked property), dispatch the
