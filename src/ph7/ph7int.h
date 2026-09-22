@@ -2237,7 +2237,8 @@ enum json_err_code{
 #define JSON_NUMERIC_CHECK     0x20  /* Encodes numeric strings as numbers. */
 #define JSON_PRETTY_PRINT      0x80  /* Use whitespace in returned data to format it.*/
 #define JSON_UNESCAPED_SLASHES 0x40  /* Don't escape '/' */
-#define JSON_UNESCAPED_UNICODE 0x100 /* Not used */
+#define JSON_UNESCAPED_UNICODE 0x100 /* Emit multibyte UTF-8 raw instead of \uXXXX */
+#define JSON_UNESCAPED_LINE_TERMINATORS 0x800 /* ...U+2028/U+2029 included */
 #define JSON_THROW_ON_ERROR    0x400000 /* Throw JsonException on encode/decode error */
 /* DECODE flag: php numbers the decode options in their own space, so this shares a
  * bit with an encode flag exactly as php's JSON_BIGINT_AS_STRING shares 2 with
@@ -2778,6 +2779,7 @@ PH7_PRIVATE int PH7_Utf8Read(
   const unsigned char *zTerm,     /* Pretend this byte is 0x00 */
   const unsigned char **pzNext    /* Write first byte past UTF-8 char here */
 );
+PH7_PRIVATE sxi32 PH7_Utf8ReadStrict(const unsigned char *z,sxu32 n,sxu32 *pLen);
 /* parse.c function prototypes */
 PH7_PRIVATE int PH7_IsLangConstruct(sxu32 nKeyID,sxu8 bCheckFunc);
 PH7_PRIVATE sxi32 PH7_ExprMakeTree(ph7_gen_state *pGen,SySet *pExprNode,ph7_expr_node **ppRoot);

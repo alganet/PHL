@@ -878,3 +878,63 @@ PH7_PRIVATE int PH7_Utf8Read(
   return c;
 }
 /* SPDX-SnippetEnd */
+/*
+ * Read one STRICTLY well-formed UTF-8 sequence from z[0..n-1].
+ *
+ * Unlike PH7_Utf8Read above (the lenient SQLite reader, which renders anything
+ * dubious as U+FFFD and happily accepts over-long forms), this one implements
+ * the RFC 3629 / Unicode "Table 3-7 well-formed byte sequences" rule php uses
+ * wherever it has to decide whether a php string really is UTF-8:
+ *
+ *   00..7F                          one byte
+ *   C2..DF  80..BF                  (C0/C1 are over-long two-byte forms)
+ *   E0      A0..BF  80..BF          (E0 80..9F is over-long)
+ *   E1..EC  80..BF  80..BF
+ *   ED      80..9F  80..BF          (ED A0..BF is a UTF-16 surrogate)
+ *   EE..EF  80..BF  80..BF
+ *   F0      90..BF  80..BF  80..BF  (F0 80..8F is over-long)
+ *   F1..F3  80..BF  80..BF  80..BF
+ *   F4      80..8F  80..BF  80..BF  (past U+10FFFF)
+ *
+ * Returns the code point and writes the sequence length to *pLen. On an
+ * ill-formed sequence it returns -1 and writes 1, so a caller can apply its own
+ * php policy to the single offending byte (json_encode: JSON_ERROR_UTF8 or the
+ * JSON_INVALID_UTF8_* substitution; mb_strtolower: '?') and resume at the next
+ * byte exactly like php does. n must be >= 1.
+ */
+PH7_PRIVATE sxi32 PH7_Utf8ReadStrict(const unsigned char *z,sxu32 n,sxu32 *pLen)
+{
+	sxu32 c = z[0];
+	*pLen = 1;
+	if( c < 0x80 ){
+		return (sxi32)c;
+	}
+	if( c >= 0xC2 && c <= 0xDF ){
+		if( n < 2 || (z[1] & 0xC0) != 0x80 ){
+			return -1;
+		}
+		*pLen = 2;
+		return (sxi32)(((c & 0x1F) << 6) | (z[1] & 0x3F));
+	}
+	if( c >= 0xE0 && c <= 0xEF ){
+		sxu32 iLow = (c == 0xE0) ? 0xA0 : 0x80;
+		sxu32 iHigh = (c == 0xED) ? 0x9F : 0xBF;
+		if( n < 3 || z[1] < iLow || z[1] > iHigh || (z[2] & 0xC0) != 0x80 ){
+			return -1;
+		}
+		*pLen = 3;
+		return (sxi32)(((c & 0x0F) << 12) | ((z[1] & 0x3F) << 6) | (z[2] & 0x3F));
+	}
+	if( c >= 0xF0 && c <= 0xF4 ){
+		sxu32 iLow = (c == 0xF0) ? 0x90 : 0x80;
+		sxu32 iHigh = (c == 0xF4) ? 0x8F : 0xBF;
+		if( n < 4 || z[1] < iLow || z[1] > iHigh
+		 || (z[2] & 0xC0) != 0x80 || (z[3] & 0xC0) != 0x80 ){
+			return -1;
+		}
+		*pLen = 4;
+		return (sxi32)(((c & 0x07) << 18) | ((z[1] & 0x3F) << 12)
+			| ((z[2] & 0x3F) << 6) | (z[3] & 0x3F));
+	}
+	return -1; /* 80..C1 as a lead byte, or F5..FF */
+}

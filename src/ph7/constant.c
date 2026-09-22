@@ -1661,6 +1661,15 @@ static void PH7_JSON_UNESCAPED_UNICODE_Const(ph7_value *pVal,void *pUserData)
 	ph7_value_int(pVal,JSON_UNESCAPED_UNICODE);
 }
 /*
+ * JSON_UNESCAPED_LINE_TERMINATORS.
+ *   Expand the value of JSON_UNESCAPED_LINE_TERMINATORS defined in ph7Int.h.
+ */
+static void PH7_JSON_UNESCAPED_LINE_TERMINATORS_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,JSON_UNESCAPED_LINE_TERMINATORS);
+}
+/*
  * JSON_THROW_ON_ERROR.
  *   Expand the value of JSON_THROW_ON_ERROR defined in ph7Int.h.
  */
@@ -2073,6 +2082,7 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"JSON_PRETTY_PRINT",      PH7_JSON_PRETTY_PRINT_Const},
 	{"JSON_UNESCAPED_SLASHES", PH7_JSON_UNESCAPED_SLASHES_Const},
 	{"JSON_UNESCAPED_UNICODE", PH7_JSON_UNESCAPED_UNICODE_Const},
+	{"JSON_UNESCAPED_LINE_TERMINATORS", PH7_JSON_UNESCAPED_LINE_TERMINATORS_Const},
 	{"JSON_THROW_ON_ERROR",    PH7_JSON_THROW_ON_ERROR_Const},
 	{"JSON_ERROR_NONE",        PH7_JSON_ERROR_NONE_Const},
 	{"JSON_ERROR_DEPTH",       PH7_JSON_ERROR_DEPTH_Const},

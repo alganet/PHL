@@ -89,6 +89,36 @@ static sxi32 VmJsonPretty(json_private_data *pJson,int depth)
 	return rc;
 }
 /*
+ * Emit one code point as php's \uXXXX escape (lowercase hex), spelling anything
+ * outside the BMP as the UTF-16 surrogate pair JSON has no other way to carry:
+ * U+1F600 is "😀", exactly like php.
+ */
+static sxi32 VmJsonEmitUnicodeEscape(ph7_context *pCtx,sxu32 cp)
+{
+	static const char zHex[] = "0123456789abcdef";
+	sxu32 aUnit[2];
+	int nUnit,i;
+	char zEsc[12];
+	if( cp >= 0x10000 ){
+		sxu32 v = cp - 0x10000;
+		aUnit[0] = 0xD800 + (v >> 10);
+		aUnit[1] = 0xDC00 + (v & 0x3FF);
+		nUnit = 2;
+	}else{
+		aUnit[0] = cp;
+		nUnit = 1;
+	}
+	for( i = 0 ; i < nUnit ; ++i ){
+		zEsc[i*6 + 0] = '\\';
+		zEsc[i*6 + 1] = 'u';
+		zEsc[i*6 + 2] = zHex[(aUnit[i] >> 12) & 0x0F];
+		zEsc[i*6 + 3] = zHex[(aUnit[i] >>  8) & 0x0F];
+		zEsc[i*6 + 4] = zHex[(aUnit[i] >>  4) & 0x0F];
+		zEsc[i*6 + 5] = zHex[ aUnit[i]        & 0x0F];
+	}
+	return ph7_result_string(pCtx,zEsc,nUnit * 6);
+}
+/*
  * Emit one JSON string literal — the opening quote, the escaped body, the
  * closing quote. Shared by the string VALUE path and by both KEY paths (array
  * keys and object property names), which used to append their bytes raw: a key
@@ -96,6 +126,13 @@ static sxi32 VmJsonPretty(json_private_data *pJson,int depth)
  * output (php: json_encode(["a\"b"=>1]) is {"a\"b":1}, PHL emitted {"a"b":1}).
  * Everything php escapes in a string it escapes in a key, the JSON_HEX_*
  * and JSON_UNESCAPED_SLASHES flags included.
+ *
+ * Non-ASCII is escaped as \uXXXX by DEFAULT, which is what php does and what
+ * JSON_UNESCAPED_UNICODE turns off — PHL used to emit the raw UTF-8 bytes
+ * unconditionally, i.e. behave as if that flag were always set (the flag was
+ * defined but never read). Even with it set php still escapes U+2028/U+2029,
+ * the two line terminators JavaScript's eval() chokes on, unless
+ * JSON_UNESCAPED_LINE_TERMINATORS is set too.
  */
 static sxi32 VmJsonEncodeString(json_private_data *pData,const char *zIn,int nByte)
 {
@@ -112,6 +149,31 @@ static sxi32 VmJsonEncodeString(json_private_data *pData,const char *zIn,int nBy
 		if( zIn >= zEnd ){
 			/* No more input to process */
 			break;
+		}
+		if( (unsigned char)zIn[0] >= 0x80 ){
+			/* A UTF-8 sequence: decode it strictly, since \uXXXX needs the code
+			 * point and not the bytes. An ill-formed one still goes out raw
+			 * here — php refuses the whole encode instead, which is the
+			 * JSON_ERROR_UTF8 slice, not this one. */
+			sxu32 nLen,cp;
+			sxi32 iCp = PH7_Utf8ReadStrict((const unsigned char *)zIn,(sxu32)(zEnd - zIn),&nLen);
+			if( iCp < 0 ){
+				rc = ph7_result_string(pCtx,zIn,(int)nLen);
+			}else{
+				cp = (sxu32)iCp;
+				if( (iFlags & JSON_UNESCAPED_UNICODE) == 0
+				 || ((cp == 0x2028 || cp == 0x2029)
+				  && (iFlags & JSON_UNESCAPED_LINE_TERMINATORS) == 0) ){
+					rc = VmJsonEmitUnicodeEscape(pCtx,cp);
+				}else{
+					rc = ph7_result_string(pCtx,zIn,(int)nLen);
+				}
+			}
+			zIn += nLen;
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+			continue;
 		}
 		c = zIn[0];
 		/* Advance the stream cursor */
