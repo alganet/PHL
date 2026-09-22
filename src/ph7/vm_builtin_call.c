@@ -379,6 +379,25 @@ PH7_PRIVATE int PH7_VmArrayCallableParts(ph7_vm *pVm,ph7_hashmap *pMap,ph7_value
 	return TRUE;
 }
 /*
+ * Resolve a callable's TARGET in a callback context (is_callable, call_user_func, array_map,
+ * usort …), where php also accepts the scope keywords: `'self::m'`, `['parent','m']`,
+ * `'static::m'` all resolve against the live class context, and answer nothing at global
+ * scope. The direct `$cb()` dispatch deliberately does NOT do this — php reports
+ * `Class "self" not found` there — so the keyword resolution lives here, not in the
+ * OP_CALL check.
+ */
+static ph7_class * VmCallbackTargetClass(ph7_vm *pVm,ph7_value *pTarget)
+{
+	if( pTarget->iFlags & MEMOBJ_OBJ ){
+		return ((ph7_class_instance *)pTarget->x.pOther)->pClass;
+	}
+	if( (pTarget->iFlags & MEMOBJ_STRING) == 0 || SyBlobLength(&pTarget->sBlob) < 1 ){
+		return 0;
+	}
+	return PH7_VmResolveScopeName(&(*pVm),(const char *)SyBlobData(&pTarget->sBlob),
+		SyBlobLength(&pTarget->sBlob));
+}
+/*
  * Is the calling frame's `$this` an instance of pClass?
  *
  * php's rule for a method named through a CLASS NAME (`'C::m'`, `['C','m']`): a static
@@ -476,7 +495,7 @@ PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)
 		ph7_value *pTarget = 0;
 		ph7_value *pName = 0;
 		if( PH7_VmArrayCallableParts(pVm,pMap,&pTarget,&pName) ){
-			ph7_class *pClass = PH7_VmExtractClassFromValue(pVm,pTarget);
+			ph7_class *pClass = VmCallbackTargetClass(pVm,pTarget);
 			if( pClass && (pName->iFlags & MEMOBJ_STRING) && SyBlobLength(&pName->sBlob) > 0 ){
 				/* A class-NAME target names the method statically; an object target
 				 * carries its own $this, so the static/visibility rules differ. */
@@ -512,7 +531,7 @@ PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)
 			int i;
 			for( i = 1 ; i + 2 < nLen ; ++i ){
 				if( zName[i] == ':' && zName[i+1] == ':' ){
-					ph7_class *pClass = PH7_VmExtractClass(pVm,zName,(sxu32)i,FALSE,0);
+					ph7_class *pClass = PH7_VmResolveScopeName(pVm,zName,(sxu32)i);
 					if( pClass ){
 						res = VmMethodIsCallable(pVm,pClass,&zName[i+2],(sxu32)(nLen-(i+2)),TRUE);
 					}
@@ -1449,8 +1468,9 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			}
 			return SXRET_OK;
 		}
-		/* Extract the class name or an instance of it */
-		pClass = PH7_VmExtractClassFromValue(&(*pVm),pValue);
+		/* Extract the class name or an instance of it (a callback also accepts the scope
+		 * keywords, which the direct dispatch refuses). */
+		pClass = VmCallbackTargetClass(&(*pVm),pValue);
 		if( pClass == 0 ){
 			/* No such class,return NULL */
 			if( pResult ){
@@ -1504,7 +1524,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 		sxu32 nCmCls,nCmMeth;
 		if( PH7_VmCallableStringParts((const char *)SyBlobData(&pFunc->sBlob),
 				SyBlobLength(&pFunc->sBlob),&zCmCls,&nCmCls,&zCmMeth,&nCmMeth) ){
-			ph7_class *pCmClass = PH7_VmExtractClass(&(*pVm),zCmCls,nCmCls,FALSE,0);
+			ph7_class *pCmClass = PH7_VmResolveScopeName(&(*pVm),zCmCls,nCmCls);
 			ph7_class_method *pCmMethod = pCmClass
 				? PH7_ClassExtractMethod(pCmClass,zCmMeth,nCmMeth) : 0;
 			if( pCmClass && (pCmMethod == 0

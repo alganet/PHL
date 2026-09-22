@@ -755,8 +755,18 @@ PH7_PRIVATE sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut)
  */
 PH7_PRIVATE ph7_class * VmFccResolveScope(ph7_vm *pVm, ph7_value *pTarget)
 {
-	const char *zCls = (const char *)SyBlobData(&pTarget->sBlob);
-	sxu32 nCls = (sxu32)SyBlobLength(&pTarget->sBlob);
+	return PH7_VmResolveScopeName(&(*pVm),(const char *)SyBlobData(&pTarget->sBlob),
+		(sxu32)SyBlobLength(&pTarget->sBlob));
+}
+/*
+ * The same resolution over a raw (name, length) pair, for the callable machinery: php
+ * resolves `self`/`parent`/`static` in a CALLBACK (is_callable, call_user_func, array_map …)
+ * against the live class context, and refuses them in the direct `$cb()` dispatch — so this
+ * is deliberately NOT wired into the OP_CALL resolve check, which must keep answering
+ * `Class "self" not found`.
+ */
+PH7_PRIVATE ph7_class * PH7_VmResolveScopeName(ph7_vm *pVm, const char *zCls, sxu32 nCls)
+{
 	ph7_class *pClass;
 	if( nCls == 4 && SyMemcmp(zCls,"self",4) == 0 ){
 		pClass = PH7_VmPeekDeclaringClass(&(*pVm));
