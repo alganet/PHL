@@ -4274,9 +4274,6 @@ PH7_PRIVATE int PH7_builtin_strpbrk(ph7_context *pCtx,int nArg,ph7_value **apArg
 	}
 	return PH7_OK;
 }
-/* SPDX-SnippetBegin */
-/* SPDX-SnippetCopyrightText: D. Richard Hipp and the SQLite authors <https://sqlite.org/> */
-/* SPDX-License-Identifier: blessing */
 /*
  * string soundex(string $str)
  *  Calculate the soundex key of a string.
@@ -4286,56 +4283,66 @@ PH7_PRIVATE int PH7_builtin_strpbrk(ph7_context *pCtx,int nArg,ph7_value **apArg
  * Return
  *  Returns the soundex key as a string.
  * Note:
- *  This implementation is based on the one found in the SQLite3
- * source tree.
+ *  Knuth's algorithm as php implements it (ext/standard/soundex.c). The
+ *  previous implementation came from SQLite and diverged from php on three
+ *  counts, each of them a silent wrong answer:
+ *
+ *   - a NON-LETTER inside the word RESET the "same code in a row" state, so
+ *     soundex("S s") answered S200 where php answers S000 and soundex("b1b")
+ *     answered B100 where php answers B000. php simply skips anything that is
+ *     not a letter; only a VOWEL separates two consonants sharing a code.
+ *   - the scan stopped at the first byte >= 0xC0, taking every UTF-8 lead byte
+ *     for a letter and copying it raw into the key: soundex("\xff\xfe") answered
+ *     "\xff000" where php answers "0000", and a leading accent HID the letters
+ *     behind it (soundex("éa") answered "\xc3000" for php's A000). Inside the
+ *     loop the table was indexed by `byte & 0x7f`, which folds high bytes onto
+ *     ASCII letters and invents codes for them.
+ *   - the input was walked as a NUL-terminated C string, so soundex("a\0b")
+ *     stopped at the NUL (A000) where php walks the whole php string (A100).
+ *
+ *  Classification is ASCII-only, matching php's own A-Z table (§7's locale
+ *  dependence family: the old code asked libc's isalpha() through SyisAlpha,
+ *  which answers differently under a non-C LC_CTYPE).
  */
 PH7_PRIVATE int PH7_builtin_soundex(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	/* Code per letter A-Z; 0 means "no code" (a vowel, plus H/W/Y) */
+	static const char zCode[] = "01230120022455012623010202";
 	const unsigned char *zIn;
-	char zResult[8];
-	int i, j;
-	static const unsigned char iCode[] = {
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 1, 2, 3, 0, 1, 2, 0, 0, 2, 2, 4, 5, 5, 0,
-		1, 2, 6, 2, 3, 0, 1, 0, 2, 0, 2, 0, 0, 0, 0, 0,
-		0, 0, 1, 2, 3, 0, 1, 2, 0, 0, 2, 2, 4, 5, 5, 0,
-		1, 2, 6, 2, 3, 0, 1, 0, 2, 0, 2, 0, 0, 0, 0, 0,
-	};
+	char zResult[4];
+	int nByte,i,nOut = 0,iLast = -1;
 	if( nArg < 1 ){
 		/* Missing arguments,return the empty string */
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
-	zIn = (unsigned char *)ph7_value_to_string(apArg[0],0);
-	for(i=0; zIn[i] && zIn[i] < 0xc0 && !SyisAlpha(zIn[i]); i++){}
-	if( zIn[i] ){
-		unsigned char prevcode = iCode[zIn[i]&0x7f];
-		zResult[0] = (char)SyToUpper(zIn[i]);
-		for(j=1; j<4 && zIn[i]; i++){
-			int code = iCode[zIn[i]&0x7f];
-			if( code>0 ){
-				if( code!=prevcode ){
-					prevcode = (unsigned char)code;
-					zResult[j++] = (char)code + '0';
-				}
-			}else{
-				prevcode = 0;
-			}
+	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nByte);
+	for( i = 0 ; i < nByte && nOut < 4 ; ++i ){
+		int c = zIn[i];
+		int code;
+		if( c >= 'a' && c <= 'z' ){
+			c -= 'a' - 'A';
 		}
-		while( j<4 ){
-			zResult[j++] = '0';
+		if( c < 'A' || c > 'Z' ){
+			continue; /* not a letter: skipped outright, state untouched */
 		}
-		ph7_result_string(pCtx,zResult,4);
-	}else{
-	  /* No alphabetic character: PHP returns "0000" (not the SQLite "?000"). */
-	  ph7_result_string(pCtx,"0000",4);
+		code = zCode[c - 'A'] - '0';
+		if( nOut == 0 ){
+			/* The key opens with the first letter itself */
+			zResult[nOut++] = (char)c;
+		}else if( code != iLast && code != 0 ){
+			zResult[nOut++] = (char)(code + '0');
+		}
+		iLast = code;
 	}
+	/* Pad to four characters. A string with no letter at all pads from nothing,
+	 * which is php's "0000" (an empty input included). */
+	while( nOut < 4 ){
+		zResult[nOut++] = '0';
+	}
+	ph7_result_string(pCtx,zResult,4);
 	return PH7_OK;
 }
-/* SPDX-SnippetEnd */
 /*
  * string wordwrap(string $str[,int $width = 75[,string $break = "\n"]])
  *  Wraps a string to a given number of characters.
