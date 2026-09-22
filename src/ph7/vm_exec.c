@@ -611,8 +611,23 @@ static sxi32 VmBindPropByRef(ph7_vm *pVm,sxu32 nObjIdx,const SyString *pName,sxu
 	pEntry = SyHashGet(&pThis->hAttr,(const void *)pName->zString,pName->nByte);
 	if( pEntry ){
 		pAttr = (VmClassAttr *)pEntry->pUserData;
-		*pnOut = pAttr->nIdx;
-		return SXRET_OK;
+		if( (pAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
+			*pnOut = pAttr->nIdx;
+			return SXRET_OK;
+		}
+		/* A static property is the CLASS's: php does not find it through an
+		 * instance, so binding `f($o->s)` by reference must not hand out the
+		 * class slot — that let a by-ref callee overwrite shared class state
+		 * through an object, and with no diagnostic at all (the value pass that
+		 * carries the notice at the fetch site never runs for a by-ref arg).
+		 * Notice here and fall through to the missing-property handling. */
+		if( PH7_VmClassMemberAccess(&(*pVm),pClass,&pAttr->pAttr->sName,
+			pAttr->pAttr->iProtection,FALSE) ){
+			VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,
+				"Accessing static property %z::$%z as non static",
+				&pClass->sName,pName);
+		}
+		pAttr = 0;
 	}
 	if( PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1)
 	 || PH7_ClassExtractMethod(pClass,"__set",sizeof("__set")-1) ){

@@ -585,6 +585,48 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						pObjAttr = (VmClassAttr *)pEntry->pUserData;
 					}
 				}
+				if( pObjAttr
+				 && (pObjAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT))
+				 && PH7_VmClassMemberAccess(&(*pVm),pClass,&pObjAttr->pAttr->sName,
+					pObjAttr->pAttr->iProtection,FALSE) ){
+					/* A static property (or a constant) belongs to the CLASS: php does
+					 * not find it through an instance at all. It notices the attempt —
+					 * `Accessing static property C::$s as non static` — and then treats
+					 * the name as an ordinary MISSING property: a read warns and answers
+					 * null, isset() is false, a write goes to a dynamic property (which
+					 * PHL rejects by the §10 policy, like any other undeclared write).
+					 * PHL's instance table carries an entry for every declared member
+					 * (statics share the class slot), so `$o->s` used to READ and — far
+					 * worse — WRITE the class's own static in silence. isset()/empty()
+					 * pass silently, as php's do. */
+					if( !VmMemberCtxIsLookup(pInstr->iP2)
+					 && pInstr->iP2 != PH7_MEMBER_DEFPATH ){
+						/* Silent where php is silent: isset()/empty(), and any class
+						 * that declares the MAGIC accessor this context would dispatch
+						 * (php passes `silent = ce->__get/__set/__unset != NULL` to its
+						 * property-offset lookup). Once per access, too: the deferred
+						 * call-argument PRE-PASS (PH7_MEMBER_DEFPATH) re-runs this op for
+						 * the same source `$o->s` and the value pass carries the notice
+						 * — the BY-REF form has no value pass and notices at its own
+						 * site (VmBindPropByRef). */
+						const char *zMagic;
+						if( pInstr->iP2 == PH7_MEMBER_UNSET ){
+							zMagic = "__unset";
+						}else if( pInstr->iP2 == PH7_MEMBER_LIST_TARGET
+						       || VmMemberNextIsWrite(pInstr + 1) ){
+							zMagic = "__set";
+						}else{
+							zMagic = "__get";
+						}
+						if( PH7_ClassExtractMethod(pClass,zMagic,(sxu32)SyStrlen(zMagic)) == 0 ){
+							VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,
+								"Accessing static property %z::$%z as non static",
+								&pClass->sName,&pObjAttr->pAttr->sName);
+						}
+					}
+					pEntry = 0;
+					pObjAttr = 0;
+				}
 				if( pInstr->iP2 == PH7_MEMBER_UNSET ){
 					/* unset($o->prop): remove the property entirely so it disappears from
 					 * foreach / json_encode / get_object_vars / (array) — matching PHP (a value-only

@@ -200,6 +200,14 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 		/* Point to the next attribute */
 		while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
 			pVmAttr = (VmClassAttr *)pEntry->pUserData;
+			if( pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT) ){
+				/* A static property belongs to the CLASS, never to an object: php
+				 * iterates only the instance's own properties. PHL's instance
+				 * attribute table carries an entry for every declared member
+				 * (statics share the class slot), so it has to filter here — the
+				 * same test var_dump/get_object_vars/json/serialize already make. */
+				continue;
+			}
 			if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_VIRTUAL))
 			 == PH7_CLASS_ATTR_HOOK_VIRTUAL ){
 				continue; /* virtual set-only property: iteration skips it (php) */
