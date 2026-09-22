@@ -1369,26 +1369,27 @@ struct MagicMethodRule
 	const char *zName; /* Magic method name */
 	sxu32 nName;       /* Its length */
 	int nArgs;         /* Declared arguments php requires, -1 when it does not check */
+	int bStatic;       /* TRUE: must be static · FALSE: must NOT be static */
 };
-#define MAGIC_METHOD_ROW(N,A) { N, sizeof(N)-1, A }
+#define MAGIC_METHOD_ROW(N,A,S) { N, sizeof(N)-1, A, S }
 static const MagicMethodRule aMagicMethod[] = {
-	MAGIC_METHOD_ROW("__construct",  -1),
-	MAGIC_METHOD_ROW("__destruct",    0),
-	MAGIC_METHOD_ROW("__clone",       0),
-	MAGIC_METHOD_ROW("__get",         1),
-	MAGIC_METHOD_ROW("__set",         2),
-	MAGIC_METHOD_ROW("__isset",       1),
-	MAGIC_METHOD_ROW("__unset",       1),
-	MAGIC_METHOD_ROW("__call",        2),
-	MAGIC_METHOD_ROW("__callStatic",  2),
-	MAGIC_METHOD_ROW("__toString",    0),
-	MAGIC_METHOD_ROW("__invoke",     -1),
-	MAGIC_METHOD_ROW("__debugInfo",   0),
-	MAGIC_METHOD_ROW("__serialize",   0),
-	MAGIC_METHOD_ROW("__unserialize", 1),
-	MAGIC_METHOD_ROW("__sleep",       0),
-	MAGIC_METHOD_ROW("__wakeup",      0),
-	MAGIC_METHOD_ROW("__set_state",   1)
+	MAGIC_METHOD_ROW("__construct",  -1, FALSE),
+	MAGIC_METHOD_ROW("__destruct",    0, FALSE),
+	MAGIC_METHOD_ROW("__clone",       0, FALSE),
+	MAGIC_METHOD_ROW("__get",         1, FALSE),
+	MAGIC_METHOD_ROW("__set",         2, FALSE),
+	MAGIC_METHOD_ROW("__isset",       1, FALSE),
+	MAGIC_METHOD_ROW("__unset",       1, FALSE),
+	MAGIC_METHOD_ROW("__call",        2, FALSE),
+	MAGIC_METHOD_ROW("__callStatic",  2, TRUE),
+	MAGIC_METHOD_ROW("__toString",    0, FALSE),
+	MAGIC_METHOD_ROW("__invoke",     -1, FALSE),
+	MAGIC_METHOD_ROW("__debugInfo",   0, FALSE),
+	MAGIC_METHOD_ROW("__serialize",   0, FALSE),
+	MAGIC_METHOD_ROW("__unserialize", 1, FALSE),
+	MAGIC_METHOD_ROW("__sleep",       0, FALSE),
+	MAGIC_METHOD_ROW("__wakeup",      0, FALSE),
+	MAGIC_METHOD_ROW("__set_state",   1, TRUE)
 };
 #undef MAGIC_METHOD_ROW
 /*
@@ -1472,6 +1473,19 @@ static int GenStateCheckMagicMethod(
 				return TRUE;
 			}
 		}
+	}
+	/* Static-ness. Whether the engine has a receiver for a magic method is not
+	 * the declaration's to choose: `__callStatic` and `__set_state` are reached
+	 * with a class and nothing else, every other row is reached through an
+	 * object. PHL took the declaration at its word and then dispatched the
+	 * method anyway — a `static function __get()` ran with no `$this` at all,
+	 * so a hook property table or a lazy-loading accessor read whatever the
+	 * unbound scope happened to hold. php checks this after the arity, which is
+	 * why `static function __get($a,$b)` reports the count first. */
+	if( pRule->bStatic != ((pMeth->iFlags & PH7_CLASS_ATTR_STATIC) != 0) ){
+		SyBufferFormat(zErr,nErrBuf,"Method %z::%z() %s be static",
+			&pClass->sName,pName,pRule->bStatic ? "must" : "cannot");
+		return TRUE;
 	}
 	return FALSE;
 }

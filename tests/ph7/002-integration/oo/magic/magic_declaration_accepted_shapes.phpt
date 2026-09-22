@@ -16,8 +16,8 @@ written a little too eagerly.
   * returning BY REFERENCE is not taking an argument by reference;
   * `__construct` and `__invoke` have no arity rule at all — php lets them take
     whatever they like, promoted constructor properties included;
-  * `__set_state` is one of the two rows that must be static, and it takes one
-    argument;
+  * `__set_state` and `__callStatic` are the two rows that must be static —
+    every other row must not be — and they take one and two arguments;
   * and a name that merely LOOKS magic (`__notMagic`) has no rules at all.
 --FILE--
 <?php
@@ -50,6 +50,11 @@ class Shapes
         return "set_state:" . count($properties);
     }
 
+    public static function __callStatic($name, $arguments)
+    {
+        return "callStatic:$name/" . count($arguments);
+    }
+
     public function __notMagic($a, &$b, ...$c)
     {
         $b = "written";
@@ -73,6 +78,7 @@ echo implode(",", $o->bag), "\n";
 echo $o->missing, "\n";
 echo $o(1, 2), "\n";
 echo Shapes::__set_state(["a" => 1, "b" => 2]), "\n";
+echo Shapes::absent(1, 2, 3), "\n";
 
 $clone = clone $o;
 echo implode(",", $clone->bag), "\n";
@@ -89,6 +95,7 @@ echo $r->k, "\n";
 get:missing
 invoke:6
 set_state:2
+callStatic:absent/3
 cloned
 notMagic written
 v
