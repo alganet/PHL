@@ -1550,7 +1550,10 @@ PH7_PRIVATE sxi32 GenStateCompileFunc(
 	if( pFunc == 0 ){
 		goto OutOfMem;
 	}
-	/* Build the function name, prepending namespace if active */
+	/* Build the function name, prepending namespace if active.
+	 * A NAMED function (never a closure) also answers to php's import rules: its
+	 * short name must not already be a local `use function` import, and the name it
+	 * takes is remembered so a later `use function` in this unit sees it. */
 	if( SyBlobLength(&pGen->sNamespace) > 0 && !bHandleClosure ){
 		SyBlob sFQN;
 		sxu32 nLen;
@@ -1571,6 +1574,12 @@ PH7_PRIVATE sxi32 GenStateCompileFunc(
 			goto OutOfMem;
 		}
 		PH7_VmInitFuncState(pGen->pVm,pFunc,zName,pName->nByte,iFlags,0);
+	}
+	if( !bHandleClosure ){
+		if( GenStateGuardImportRedeclare(pGen,1,pName,&pFunc->sName,nLine) == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		GenStateRecordDeclaredName(pGen,1,&pFunc->sName);
 	}
 	/* Fallback start line (the '(' token); callers that know the line of the
 	 * 'function'/'fn' keyword overwrite this with the exact PHP getStartLine. */

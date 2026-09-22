@@ -612,6 +612,10 @@ struct ph7_gen_state
 	SyHash hUseImports;      /* use imports: short alias -> FQN (classes) */
 	SyHash hUseFuncImports;  /* use function imports: short alias -> FQN */
 	SyHash hUseConstImports; /* use const imports: short alias -> FQN */
+	SyHash hSeenClass;       /* FQNs of the classes DECLARED so far in this compile unit */
+	SyHash hSeenFunc;        /* FQNs of the functions DECLARED so far in this compile unit
+	                          * (both: php refuses an import a declaration already took —
+	                          * these outlive a namespace switch, unlike the import tables) */
 	SyToken *pIn;        /* Current processed token */
 	SyToken *pEnd;       /* Last token in the stream */
 	sxu32 nErr;          /* Total number of compilation error */

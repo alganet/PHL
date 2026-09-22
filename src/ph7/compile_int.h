@@ -135,6 +135,12 @@ PH7_PRIVATE void GenStateConsumeDoc(ph7_gen_state *pGen,SyString *pOut);
 PH7_PRIVATE void GenStateSetPendingDoc(ph7_gen_state *pGen);
 PH7_PRIVATE void GenStateInitUseImports(ph7_gen_state *pGen,ph7_vm *pVm);
 PH7_PRIVATE void GenStateResetUseImports(ph7_gen_state *pGen,ph7_vm *pVm);
+PH7_PRIVATE void GenStateInitSeenSymbols(ph7_gen_state *pGen,ph7_vm *pVm);
+PH7_PRIVATE void GenStateResetSeenSymbols(ph7_gen_state *pGen,ph7_vm *pVm);
+PH7_PRIVATE void GenStateReleaseSeenSymbols(ph7_gen_state *pGen);
+PH7_PRIVATE void GenStateRecordDeclaredName(ph7_gen_state *pGen,int bFunc,const SyString *pFqn);
+PH7_PRIVATE sxi32 GenStateGuardImportRedeclare(ph7_gen_state *pGen,int iKind,
+	const SyString *pShort,const SyString *pFqn,sxu32 nLine);
 PH7_PRIVATE void GenStateBuildFQN(ph7_gen_state *pGen,const SyString *pName,SyBlob *pOut);
 PH7_PRIVATE void GenStateResolveName(ph7_gen_state *pGen,const SyString *pName,SyBlob *pOut);
 PH7_PRIVATE int GenStateUnconditionalTopLevel(ph7_gen_state *pGen);

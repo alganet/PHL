@@ -2140,6 +2140,12 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 		SyBlobInit(&sFQN,&pGen->pVm->sAllocator);
 		GenStateBuildFQN(pGen,pName,&sFQN);
 		SyStringInitFromBuf(&sFQNStr,(const char *)SyBlobData(&sFQN),SyBlobLength(&sFQN));
+		/* php refuses a declaration whose short name a local `use` already took. */
+		if( GenStateGuardImportRedeclare(pGen,0,pName,&sFQNStr,nLine) == SXERR_ABORT ){
+			SyBlobRelease(&sFQN);
+			return SXERR_ABORT;
+		}
+		GenStateRecordDeclaredName(pGen,0,&sFQNStr);
 		pClass = PH7_NewRawClass(pGen->pVm,&sFQNStr,nLine);
 		SyBlobRelease(&sFQN);
 	}
@@ -3814,6 +3820,12 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 			SyBlobInit(&sFQN,&pGen->pVm->sAllocator);
 			GenStateBuildFQN(pGen,pName,&sFQN);
 			SyStringInitFromBuf(&sFQNStr,(const char *)SyBlobData(&sFQN),SyBlobLength(&sFQN));
+			/* php refuses a declaration whose short name a local `use` already took. */
+			if( GenStateGuardImportRedeclare(pGen,0,pName,&sFQNStr,nLine) == SXERR_ABORT ){
+				SyBlobRelease(&sFQN);
+				return SXERR_ABORT;
+			}
+			GenStateRecordDeclaredName(pGen,0,&sFQNStr);
 			pClass = PH7_NewRawClass(pGen->pVm,&sFQNStr,nLine);
 			SyBlobRelease(&sFQN);
 		}
@@ -4831,6 +4843,12 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 		SyBlobInit(&sFQN,&pGen->pVm->sAllocator);
 		GenStateBuildFQN(pGen,pName,&sFQN);
 		SyStringInitFromBuf(&sFQNStr,(const char *)SyBlobData(&sFQN),SyBlobLength(&sFQN));
+		/* php refuses a declaration whose short name a local `use` already took. */
+		if( GenStateGuardImportRedeclare(pGen,0,pName,&sFQNStr,nLine) == SXERR_ABORT ){
+			SyBlobRelease(&sFQN);
+			return SXERR_ABORT;
+		}
+		GenStateRecordDeclaredName(pGen,0,&sFQNStr);
 		pClass = PH7_NewRawClass(pGen->pVm,&sFQNStr,nLine);
 		SyBlobRelease(&sFQN);
 	}

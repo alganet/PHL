@@ -157,6 +157,11 @@ Loop:
 		SyBlobInit(&sFQN,&pGen->pVm->sAllocator);
 		GenStateBuildFQN(pGen,pName,&sFQN);
 		SyStringInitFromBuf(&sFQNStr,(const char *)SyBlobData(&sFQN),SyBlobLength(&sFQN));
+		/* php refuses a `const` whose name a local `use const` already took. */
+		if( GenStateGuardImportRedeclare(pGen,2,pName,&sFQNStr,nLineLocal) == SXERR_ABORT ){
+			SyBlobRelease(&sFQN);
+			return SXERR_ABORT;
+		}
 		rc = PH7_VmRegisterConstantEx(pGen->pVm,&sFQNStr,PH7_VmExpandConstantValue,pConsCode,
 			(SyString *)SySetPeek(&pGen->pVm->aFiles),nLineLocal,1);
 		if( rc == SXRET_OK && SySetUsed(&pGen->aPendingAttrs) > 0 ){
@@ -2443,6 +2448,91 @@ PH7_PRIVATE void GenStateResetUseImports(ph7_gen_state *pGen,ph7_vm *pVm)
 	GenStateInitUseImports(&(*pGen),&(*pVm));
 }
 /*
+ * The two DECLARED-name tables (classes and functions declared so far in this
+ * compile unit). php refuses an import whose name a declaration already took, and
+ * the check is per COMPILE UNIT and case-INSENSITIVE — a class declared by a file
+ * this one later `require`s is invisible to it, because that file compiles after
+ * this one has finished. Both tables key on the FQN, so they survive a namespace
+ * switch (which clears only the imports).
+ */
+PH7_PRIVATE void GenStateInitSeenSymbols(ph7_gen_state *pGen,ph7_vm *pVm)
+{
+	SyHashInit(&pGen->hSeenClass,&pVm->sAllocator,SyStrHash,SyStrnmicmp);
+	SyHashInit(&pGen->hSeenFunc,&pVm->sAllocator,SyStrHash,SyStrnmicmp);
+}
+PH7_PRIVATE void GenStateReleaseSeenSymbols(ph7_gen_state *pGen)
+{
+	SyHashRelease(&pGen->hSeenClass);
+	SyHashRelease(&pGen->hSeenFunc);
+}
+PH7_PRIVATE void GenStateResetSeenSymbols(ph7_gen_state *pGen,ph7_vm *pVm)
+{
+	GenStateReleaseSeenSymbols(&(*pGen));
+	GenStateInitSeenSymbols(&(*pGen),&(*pVm));
+}
+/*
+ * Record one declared CLASS (bFunc = 0) or FUNCTION (bFunc = 1) FQN so a later
+ * `use` in this compile unit can see that the name is taken.
+ */
+PH7_PRIVATE void GenStateRecordDeclaredName(ph7_gen_state *pGen,int bFunc,const SyString *pFqn)
+{
+	SyHash *pHash = bFunc ? &pGen->hSeenFunc : &pGen->hSeenClass;
+	char *zDup;
+	if( pFqn->nByte < 1 || SyHashGet(pHash,pFqn->zString,pFqn->nByte) != 0 ){
+		return;
+	}
+	zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,pFqn->zString,pFqn->nByte);
+	if( zDup ){
+		/* The blob the caller built is released on its way out, so the table owns
+		 * a pool copy (freed in bulk with the VM, like the import FQNs). */
+		SyHashInsert(pHash,zDup,pFqn->nByte,zDup);
+	}
+}
+/*
+ * php refuses a DECLARATION whose short name a local `use` import already took:
+ *
+ *   use A\Cee;  class Cee {}    Cannot redeclare class B\Cee (previously declared as local import)
+ *   use function A\eff;  function eff(){}
+ *                               Cannot redeclare function B\eff() (previously declared as local import)
+ *   use const A\KAY;  const KAY = 1;
+ *                               Cannot declare const B\KAY because the name is already in use
+ *
+ * A SELF-import (`use B\Cee;` inside `namespace B;`) names this very declaration
+ * and is a no-op, so it is exempt. iKind: 0 = class family (interface/trait/enum
+ * included — php says "class" for all four), 1 = function, 2 = const.
+ */
+PH7_PRIVATE sxi32 GenStateGuardImportRedeclare(ph7_gen_state *pGen,int iKind,
+	const SyString *pShort,const SyString *pFqn,sxu32 nLine)
+{
+	SyHash *pImports;
+	SyHashEntry *pEntry;
+	const char *zImported;
+	sxu32 nImported;
+	switch( iKind ){
+		case 1:  pImports = &pGen->hUseFuncImports; break;
+		case 2:  pImports = &pGen->hUseConstImports; break;
+		default: pImports = &pGen->hUseImports; break;
+	}
+	pEntry = SyHashGet(pImports,(const void *)pShort->zString,pShort->nByte);
+	if( pEntry == 0 ){
+		return SXRET_OK;
+	}
+	zImported = (const char *)pEntry->pUserData;
+	nImported = SyStrlen(zImported);
+	if( nImported == pFqn->nByte
+	 && (iKind == 2 ? SyMemcmp((const void *)zImported,(const void *)pFqn->zString,nImported) == 0
+	                : SyStrnicmp(zImported,pFqn->zString,nImported) == 0) ){
+		return SXRET_OK; /* the import IS this declaration */
+	}
+	if( iKind == 2 ){
+		return PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+			"Cannot declare const %z because the name is already in use",pFqn);
+	}
+	return PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+		iKind == 1 ? "Cannot redeclare function %z() (previously declared as local import)"
+		           : "Cannot redeclare class %z (previously declared as local import)",pFqn);
+}
+/*
  * Register one resolved `use` import: alias -> FQN, in the table its KIND owns
  * (iUseType: 0 = class, 1 = function, 2 = const).  Shared by the plain form
  * (`use A\Cee;`) and by each member of a group (`use A\{Cee, Dee};`).
@@ -2456,6 +2546,7 @@ static sxi32 GenStateAddImport(
 	)
 {
 	SyHash *pGenHash;   /* Compile-time import table */
+	const char *zKind;  /* php's kind word in the "already in use" message */
 	char *zDup;
 	sxi32 rc;
 	/* Select the target hash table based on import type.  Class and function
@@ -2466,14 +2557,41 @@ static sxi32 GenStateAddImport(
 		case 2:  pGenHash = &pGen->hUseConstImports; break;
 		default: pGenHash = &pGen->hUseImports; break;
 	}
+	/* php names the KIND of a non-class import in this message: "Cannot use
+	 * function A\eff as eff …" / "Cannot use const A\KAY as KAY …". */
+	zKind = iUseType == 1 ? "function " : iUseType == 2 ? "const " : "";
 	/* Check for duplicate import alias (per-type) */
 	if( SyHashGet(pGenHash,pAlias->zString,pAlias->nByte) != 0 ){
 		rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
-			"Cannot use %.*s as %z because the name is already in use",
-			(int)SyBlobLength(pPath),(const char *)SyBlobData(pPath),pAlias);
+			"Cannot use %s%.*s as %z because the name is already in use",
+			zKind,(int)SyBlobLength(pPath),(const char *)SyBlobData(pPath),pAlias);
 		if( rc == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
+	}
+	/* …and refuses one whose name a DECLARATION in this compile unit already took
+	 * (`class Cee {} use A\Cee;`), unless the import names that very declaration.
+	 * The name an import occupies is the alias in the CURRENT namespace, which is
+	 * what the seen tables key on. php runs this check for classes and functions
+	 * only — a `const` declaration followed by its own `use const` is accepted. */
+	if( iUseType != 2 ){
+		SyBlob sTaken;
+		SyBlobInit(&sTaken,&pGen->pVm->sAllocator);
+		GenStateBuildFQN(&(*pGen),pAlias,&sTaken);
+		if( SyHashGet(iUseType == 1 ? &pGen->hSeenFunc : &pGen->hSeenClass,
+				SyBlobData(&sTaken),SyBlobLength(&sTaken)) != 0
+		 && (SyBlobLength(&sTaken) != SyBlobLength(pPath)
+			|| SyStrnicmp((const char *)SyBlobData(&sTaken),(const char *)SyBlobData(pPath),
+				(sxu32)SyBlobLength(&sTaken)) != 0) ){
+			rc = PH7_GenCompileError(&(*pGen),E_ERROR,nLine,
+				"Cannot use %s%.*s as %z because the name is already in use",
+				zKind,(int)SyBlobLength(pPath),(const char *)SyBlobData(pPath),pAlias);
+			if( rc == SXERR_ABORT ){
+				SyBlobRelease(&sTaken);
+				return SXERR_ABORT;
+			}
+		}
+		SyBlobRelease(&sTaken);
 	}
 	/* Register the import: alias -> FQN.
 	 * Strings are allocated from the VM pool allocator and freed
