@@ -237,70 +237,16 @@ Synchronize:
  *   continue 0; and continue 1; is the same as running continue;.
  */
 /*
- * Walk from the current block out to the target loop of a `break`/`continue` and
- * emit/classify everything the jump has to cross. Writes, through *pnLevels and
- * *pnCross, what OP_CATCH_JMP needs; returns the generator inline-try count.
- *
- * Three kinds of crossed try:
- *  - inside the body we are compiling: emit its PH7_OP_POP_EXCEPTION here, exactly as
- *    before, so its finally runs on the way out (in a generator, whose catch/finally
- *    ARE inlined, count it instead so the caller emits one OP_SET_FINALLY_JMP);
- *  - a GEN_BLOCK_DETACHED block — the body of a legacy catch/finally, compiled into
- *    its own bytecode array and run by VmLocalExec. The jump cannot address the
- *    target from in there, so it is parked and travels out through one
- *    OP_POP_EXCEPTION landing pad per boundary: count them in *pnLevels;
- *  - a try OUTSIDE the detached body (i.e. seen after a boundary): the parked jump
- *    lands past its OP_POP_EXCEPTION, so nothing would run its finally. Count it in
- *    *pnCross for OP_CATCH_JMP to drain at the landing pad.
- *
- * An inline (ROOT C) catch/finally block is NOT detached — it compiles into the
- * function's own array — so the walk stops at one, as it always did.
- */
-static int GenStateEmitExceptionPopForBreak(ph7_gen_state *pGen,GenBlock *pTarget,
-	int *pnLevels,int *pnCross)
-{
-	GenBlock *pBlock = pGen->pCurrent;
-	int nInlineTry = 0;
-	*pnLevels = 0;
-	*pnCross  = 0;
-	while( pBlock && pBlock != pTarget ){
-		if( pBlock->iFlags & GEN_BLOCK_DETACHED ){
-			(*pnLevels)++;
-		}else if( pBlock->iFlags & GEN_BLOCK_EXCEPTION ){
-			if( pBlock->pUserData == 0 ){
-				/* An inline catch/finally body: cannot cross into the parent try. */
-				break;
-			}
-			if( *pnLevels > 0 ){
-				(*pnCross)++;
-			}else if( pGen->bInGenerator ){
-				nInlineTry++;
-			}else{
-				PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP_EXCEPTION,0,0,pBlock->pUserData,0);
-			}
-		}
-		pBlock = pBlock->pParent;
-	}
-	return nInlineTry;
-}
-/*
  * Pick the jump opcode for a `break`/`continue` targeting pLoop and fill in its iP1,
- * emitting the crossed trys' POP_EXCEPTIONs on the way. Shared by both statements —
- * the only difference between them is the jump TARGET, resolved by the caller.
+ * emitting the POP_EXCEPTIONs for the crossed trys this statement can resolve here and
+ * now. All the classification lives in GenStateJumpScope, which `goto` shares.
  */
 static sxi32 GenStateLoopJumpOp(ph7_gen_state *pGen,GenBlock *pLoop,sxi32 *piP1)
 {
-	int nLevels = 0, nCross = 0;
-	int nInlineTry = GenStateEmitExceptionPopForBreak(&(*pGen),pLoop,&nLevels,&nCross);
-	if( nLevels > 0 ){
-		/* Leaving one or more detached catch/finally mini-programs. */
-		*piP1 = PH7_CATCH_JMP_P1(nLevels,nCross);
-		return PH7_OP_CATCH_JMP;
-	}
-	/* ROOT C: in a generator, a break/continue crossing inline trys must run their
-	 * finallys first. OP_SET_FINALLY_JMP(iP1=count) does that then takes the loop jump. */
-	*piP1 = nInlineTry;
-	return nInlineTry > 0 ? PH7_OP_SET_FINALLY_JMP : PH7_OP_JMP;
+	GenJumpScope sCross;
+	/* The loop encloses the break by construction, so the walk always reaches it. */
+	GenStateJumpScope(&(*pGen),pGen->nCurScopeId,pLoop->nScopeId,TRUE,&sCross);
+	return GenStateScopeJumpOp(&sCross,piP1);
 }
 PH7_PRIVATE sxi32 PH7_CompileContinue(ph7_gen_state *pGen)
 {
@@ -490,6 +436,18 @@ BreakLevelDone:
 	return SXRET_OK;
 }
 /*
+ * The function body a goto or a label sits in, or NULL at file scope. A goto may not
+ * cross functions, so GenStateFixGoto pairs the two on this.
+ */
+static ph7_vm_func * GenStateOwningFunc(ph7_gen_state *pGen)
+{
+	GenBlock *pBlock = pGen->pCurrent;
+	while( pBlock && (pBlock->iFlags & GEN_BLOCK_FUNC) == 0 ){
+		pBlock = pBlock->pParent;
+	}
+	return pBlock ? (ph7_vm_func *)pBlock->pUserData : 0;
+}
+/*
  * Compile or record a label.
  *  A label is a target point that is specified by an identifier followed by a colon.
  * Example
@@ -500,7 +458,6 @@ BreakLevelDone:
  */
 PH7_PRIVATE sxi32 PH7_CompileLabel(ph7_gen_state *pGen)
 {
-	GenBlock *pBlock;
 	Label sLabel;
 	/* php places NO restriction on where a label may be DEFINED — inside a loop, a switch
 	 * or a try{} is all fine. The only rule is on the jump: you may not goto INTO a loop
@@ -521,19 +478,16 @@ PH7_PRIVATE sxi32 PH7_CompileLabel(ph7_gen_state *pGen)
 		sLabel.bRef  = FALSE;
 		sLabel.nLine = pGen->pIn->nLine;
 		sLabel.nLoopId = pGen->nCurLoopId;
-		pBlock = pGen->pCurrent;
-		while( pBlock ){
-			if( pBlock->iFlags & (GEN_BLOCK_FUNC|GEN_BLOCK_EXCEPTION) ){
-				break;
-			}
-			/* Point to the upper block */
-			pBlock = pBlock->pParent;
-		}
-		if( pBlock ){
-			sLabel.pFunc = (ph7_vm_func *)pBlock->pUserData;
-		}else{
-			sLabel.pFunc = 0;
-		}
+		/* Where the label sits, so a goto from a detached catch/finally body can be told
+		 * what it has to cross to reach it (GenStateJumpScope). */
+		sLabel.pContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
+		sLabel.nScopeId = pGen->nCurScopeId;
+		/* The owning FUNCTION, matched against the goto's in GenStateFixGoto. This used
+		 * to stop at GEN_BLOCK_EXCEPTION as well, which attributed every label inside a
+		 * try or catch body to "no function" — so from anywhere in a function such a
+		 * label read as undefined, including from the very catch body declaring it.
+		 * Whether a label may be jumped TO is decided by its container, not by this. */
+		sLabel.pFunc = GenStateOwningFunc(&(*pGen));
 		/* Insert in label set */
 		SySetPut(&pGen->aLabel,(const void *)&sLabel);
 	}
@@ -576,13 +530,13 @@ PH7_PRIVATE sxi32 PH7_CompileGoto(ph7_gen_state *pGen)
 		}
 	}else{
 		SyString *pTarget = &pGen->pIn->sData;
-		GenBlock *pBlock;
 		char *zDup;
 		/* Prepare the jump destination */
 		sJump.nJumpType = PH7_OP_JMP;
 		sJump.nLine = pGen->pIn->nLine;
 		/* Gotos resolve at end of compilation, well after any container swap. */
 		sJump.pContainer = PH7_VmGetByteCodeContainer(pGen->pVm);
+		sJump.nScopeId = pGen->nCurScopeId;
 		/* Duplicate label name */
 		zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,pTarget->zString,pTarget->nByte);
 		if( zDup == 0 ){
@@ -594,21 +548,15 @@ PH7_PRIVATE sxi32 PH7_CompileGoto(ph7_gen_state *pGen)
 		sJump.nLoopId = pGen->nCurLoopId;
 		/* A goto inside a try{}/catch{} is legal php (jumping OUT of the block is fine);
 		 * only the owning function matters here, since a goto may not cross functions. */
-		pBlock = pGen->pCurrent;
-		while( pBlock ){
-			if( pBlock->iFlags & GEN_BLOCK_FUNC ){
-				break;
-			}
-			/* Point to the upper block */
-			pBlock = pBlock->pParent;
-		}
-		if( pBlock && (pBlock->iFlags & GEN_BLOCK_FUNC)){
-			sJump.pFunc = (ph7_vm_func *)pBlock->pUserData;
-		}else{
-			sJump.pFunc = 0;
-		}
-		/* Emit the unconditional jump */
-		if( SXRET_OK == PH7_VmEmitInstr(pGen->pVm,PH7_OP_JMP,0,0,0,&sJump.nInstrIdx) ){
+		sJump.pFunc = GenStateOwningFunc(&(*pGen));
+		/* Emit the unconditional jump. Inside a DETACHED catch/finally body the target may
+		 * lie in another bytecode array, which a plain OP_JMP cannot address; enclosing
+		 * trys likewise need their finally run on the way out, which a plain jump would
+		 * skip. Emit a structure-crossing jump whenever either is possible — the label is
+		 * not known yet, so GenStateFixGoto picks the final opcode (and may downgrade it
+		 * back to OP_JMP once the counts prove to cancel). */
+		if( SXRET_OK == PH7_VmEmitInstr(pGen->pVm,
+			sJump.nScopeId > 0 ? PH7_OP_CATCH_JMP : PH7_OP_JMP,0,0,0,&sJump.nInstrIdx) ){
 			SySetPut(&pGen->aGoto,(const void *)&sJump);
 		}
 	}
@@ -3251,10 +3199,11 @@ static sxi32 PH7_CompileTryInline(ph7_gen_state *pGen, ph7_exception *pException
 	SySet aCatchJmp;         /* instruction indices of each catch-end JMP, to fix later */
 	sxi32 rc;
 	SySetInit(&aCatchJmp,&pGen->pVm->sAllocator,sizeof(sxu32));
-	/* Try block (pUserData=pException so break/continue emit POP_EXCEPTION) */
-	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION,PH7_VmInstrLength(pGen->pVm),0,&pTry);
+	/* Try block (pUserData=pException so break/continue emit POP_EXCEPTION; passed at
+	 * ENTRY so GenStateEnterBlock can classify the scope with it) */
+	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION,PH7_VmInstrLength(pGen->pVm),
+		pException,&pTry);
 	if( rc != SXRET_OK ){ return SXERR_ABORT; }
-	pTry->pUserData = pException;
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_EXCEPTION,0,0,pException,&idxLoad);
 	pGen->pIn++; /* Jump the 'try' keyword */
 	rc = PH7_CompileBlock(&(*pGen),0);
@@ -3285,12 +3234,13 @@ static sxi32 PH7_CompileTryInline(ph7_gen_state *pGen, ph7_exception *pException
 			if( rc != SXRET_OK ){ return SXERR_INVALID; }
 			sCatch.iHandlerPc = PH7_VmInstrLength(pGen->pVm);
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_CATCH,(sxi32)k,0,pException,0);
-			rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION,PH7_VmInstrLength(pGen->pVm),0,&pCatchBlk);
-			if( rc != SXRET_OK ){ return SXERR_ABORT; }
 			/* Tag the catch block with its try so a break/continue leaving the catch counts
 			 * this try's finally (VmThrowInline keeps the handler on aException as iInCatch
-			 * during the catch, so VmFinallyAdvance can run the finally then take the jump). */
-			pCatchBlk->pUserData = pException;
+			 * during the catch, so VmFinallyAdvance can run the finally then take the jump).
+			 * Passed at ENTRY: GenStateEnterBlock reads it to classify the block's scope. */
+			rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION,PH7_VmInstrLength(pGen->pVm),
+				pException,&pCatchBlk);
+			if( rc != SXRET_OK ){ return SXERR_ABORT; }
 			rc = PH7_CompileBlock(&(*pGen),0);
 			if( rc == SXERR_ABORT ){ return SXERR_ABORT; }
 			GenStateFixJumps(pCatchBlk,-1,PH7_VmInstrLength(pGen->pVm));
@@ -3539,12 +3489,14 @@ PH7_PRIVATE sxi32 PH7_CompileTry(ph7_gen_state *pGen)
 		return PH7_CompileTryInline(&(*pGen),pException);
 	}
 	/* Create the try block */
-	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION,PH7_VmInstrLength(pGen->pVm),0,&pTry);
+	/* pUserData is the exception context, passed at ENTRY (not assigned after) because
+	 * GenStateEnterBlock reads it to classify the block's try/catch scope — see aScope.
+	 * It is also what a break/continue crossing this try emits its POP_EXCEPTION with. */
+	rc = GenStateEnterBlock(&(*pGen),GEN_BLOCK_EXCEPTION,PH7_VmInstrLength(pGen->pVm),
+		pException,&pTry);
 	if( rc != SXRET_OK ){
 		return SXERR_ABORT;
 	}
-	/* Store exception pointer so break/continue can emit POP_EXCEPTION */
-	pTry->pUserData = pException;
 	/* Emit the 'LOAD_EXCEPTION' instruction */
 	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD_EXCEPTION,0,0,pException,&nJmpIdx);
 	/* Fix the jump later when the destination is resolved */

@@ -124,6 +124,27 @@ PH7_PRIVATE sxi32 GenStateEnterBlock(
 		pBlock->nOuterLoopId = nParent;
 		pGen->nCurLoopId = pGen->nLoopId;
 	}
+	/* A try/catch/finally block gets a scope id, and remembers the scope it nests inside,
+	 * so the chain between any two points can be walked after compilation (aScope). Every
+	 * other block simply inherits the scope in effect. */
+	pBlock->nOuterScopeId = pGen->nCurScopeId;
+	pBlock->nScopeId = pGen->nCurScopeId;
+	if( iType & GEN_BLOCK_EXCEPTION ){
+		GenScope sScope;
+		sScope.nParent = pGen->nCurScopeId;
+		sScope.pUserData = pUserData;
+		if( iType & GEN_BLOCK_DETACHED ){
+			sScope.iKind = GEN_SCOPE_DETACHED;
+		}else if( pUserData == 0 ){
+			sScope.iKind = GEN_SCOPE_INLINE_BODY;
+		}else{
+			sScope.iKind = GenStateInlineTryCatch(pGen) ? GEN_SCOPE_TRY_INLINE : GEN_SCOPE_TRY;
+		}
+		if( SySetPut(&pGen->aScope,(const void *)&sScope) == SXRET_OK ){
+			pBlock->nScopeId = SySetUsed(&pGen->aScope);
+			pGen->nCurScopeId = pBlock->nScopeId;
+		}
+	}
 	/* Mark as the current block */
 	pGen->pCurrent = pBlock;
 	if( ppBlock ){
@@ -162,6 +183,9 @@ PH7_PRIVATE sxi32 GenStateLeaveBlock(ph7_gen_state *pGen,GenBlock **ppBlock)
 	}
 	if( pBlock->iFlags & (GEN_BLOCK_LOOP|GEN_BLOCK_SWITCH) ){
 		pGen->nCurLoopId = pBlock->nOuterLoopId;
+	}
+	if( pBlock->iFlags & GEN_BLOCK_EXCEPTION ){
+		pGen->nCurScopeId = pBlock->nOuterScopeId;
 	}
 	/* Point to the upper block */
 	pGen->pCurrent = pBlock->pParent;
@@ -270,6 +294,89 @@ PH7_PRIVATE sxi32 GenStateNewJumpFixup(GenBlock *pBlock,sxi32 nJumpType,sxu32 nI
 	return rc;
 }
 /*
+ * TRUE when the body being compiled has its try/catch/finally compiled INLINE
+ * (ROOT C, generator bodies) rather than into detached mini-programs.
+ */
+PH7_PRIVATE int GenStateInlineTryCatch(ph7_gen_state *pGen)
+{
+	return pGen->bInGenerator && pGen->pVm->bInlineTryCatch;
+}
+/*
+ * Walk the scope chain from nFrom (where a jump is) out to nTo (where it lands) and
+ * describe what it crosses. One walk serves `break`, `continue` and `goto` alike,
+ * because they all ask the same question of the same chain — only the two endpoints
+ * differ, and for a goto they are not both known until compilation ends.
+ *
+ * Returns TRUE when nTo was actually reached, i.e. the target's scope ENCLOSES the
+ * jump. FALSE means the target sits inside a try/catch the jump is not in — jumping
+ * into one, which PHL cannot express (its handler is pushed by the try's
+ * OP_LOAD_EXCEPTION, and a catch body is a mini-program entered at instruction 0).
+ * Depth counting cannot answer this: two sibling trys have the same depth.
+ *
+ * What is counted, for the opcode the caller then picks:
+ *  nDet    — DETACHED catch/finally bodies left. Each is its own bytecode array, so a
+ *            jump out of one cannot be a plain OP_JMP: it parks and travels out through
+ *            one OP_POP_EXCEPTION landing pad per boundary (OP_CATCH_JMP);
+ *  nTry    — legacy trys left whose OP_POP_EXCEPTION the jump SKIPS, so nothing else
+ *            would run their finally. Trys BELOW the first boundary do not qualify: a
+ *            break/continue emits their OP_POP_EXCEPTION right here (bEmitPops), and a
+ *            goto drains them where it parks — hence the reset when one is reached;
+ *  nInline — ROOT C inline trys left. Their finallys are driven by VmFinallyAdvance,
+ *            not by the aException drain, so they are crossed with OP_SET_FINALLY_JMP.
+ */
+PH7_PRIVATE int GenStateJumpScope(ph7_gen_state *pGen,sxu32 nFrom,sxu32 nTo,int bEmitPops,
+	GenJumpScope *pScope)
+{
+	GenScope *aScope = (GenScope *)SySetBasePtr(&pGen->aScope);
+	sxu32 nUsed = SySetUsed(&pGen->aScope);
+	sxu32 nCur = nFrom;
+	SyZero(pScope,sizeof(*pScope));
+	while( nCur != nTo ){
+		GenScope *pScopeEnt;
+		if( nCur == 0 || nCur > nUsed ){
+			return FALSE; /* ran off the top without meeting nTo */
+		}
+		pScopeEnt = &aScope[nCur - 1];
+		if( pScopeEnt->iKind == GEN_SCOPE_DETACHED ){
+			if( pScope->nDet == 0 ){
+				pScope->nTry = 0;    /* below the first boundary: not the landing pad's */
+				pScope->nInline = 0;
+			}
+			pScope->nDet++;
+		}else if( pScopeEnt->iKind == GEN_SCOPE_INLINE_BODY ){
+			/* An inline catch/finally body: a sub-execution cannot cross into the parent
+			 * try from inside it. Stop counting and accept, as this always did. */
+			break;
+		}else if( pScopeEnt->iKind == GEN_SCOPE_TRY_INLINE ){
+			pScope->nInline++;
+		}else if( pScope->nDet == 0 && bEmitPops ){
+			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP_EXCEPTION,0,0,pScopeEnt->pUserData,0);
+		}else{
+			pScope->nTry++;
+		}
+		nCur = pScopeEnt->nParent;
+	}
+	return TRUE;
+}
+/*
+ * Pick the jump opcode for a crossing described by GenStateJumpScope, and its iP1.
+ * Shared by break/continue (which know their target at emit time) and goto (which
+ * settles this in GenStateFixGoto, once the label fixes the counts).
+ */
+PH7_PRIVATE sxi32 GenStateScopeJumpOp(const GenJumpScope *pCross,sxi32 *piP1)
+{
+	if( pCross->nDet > 0 || pCross->nTry > 0 ){
+		*piP1 = PH7_CATCH_JMP_P1(pCross->nDet,pCross->nTry);
+		return PH7_OP_CATCH_JMP;
+	}
+	if( pCross->nInline > 0 ){
+		*piP1 = (sxi32)pCross->nInline;
+		return PH7_OP_SET_FINALLY_JMP;
+	}
+	*piP1 = 0;
+	return PH7_OP_JMP;
+}
+/*
  * Resolve a recorded fixup to its VM instruction, in the container it was emitted
  * into (see JumpFixup.pContainer) rather than whichever one is current now.
  */
@@ -328,6 +435,7 @@ PH7_PRIVATE sxu32 GenStateFixJumps(GenBlock *pBlock,sxi32 nJumpType,sxu32 nJumpD
 PH7_PRIVATE sxi32 GenStateFixGoto(ph7_gen_state *pGen,sxu32 nOfft)
 {
 	JumpFixup *pJump,*aJumps;
+	GenJumpScope sCross;
 	Label *pLabel;
 	VmInstr *pInstr;
 	sxi32 rc;
@@ -377,15 +485,42 @@ PH7_PRIVATE sxi32 GenStateFixGoto(ph7_gen_state *pGen,sxu32 nOfft)
 			if( rc == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}
+			/* Nothing below may read this label: it belongs to another function, so its
+			 * container and depths describe a scope this goto is not in and would raise a
+			 * second, contradictory diagnostic. (GenStateGetLabel matches on NAME alone,
+			 * so this also fires for a label name legitimately reused in two functions —
+			 * a recorded divergence.) */
+			continue;
 		}
-		/* Fix the jump now the destination is resolved. NOTE: still resolved through the
-		 * CURRENT container, not pJump->pContainer — a `goto` out of a detached
-		 * catch/finally is its own open item (it needs OP_CATCH_JMP the way break/continue
-		 * now do), and container-correct patching without it only turns that hang into an
-		 * out-of-bounds jump. Both land in the same slice. */
-		pInstr = PH7_VmGetInstr(pGen->pVm,pJump->nInstrIdx);
+		/* What the jump crosses, and whether it is legal at all: the label's scope must
+		 * ENCLOSE the goto. Jumping INTO a try/catch/finally is fine in php (its handlers
+		 * are instruction RANGES, so landing anywhere in the body is being in the try),
+		 * but PHL pushes a handler at the try's OP_LOAD_EXCEPTION and runs a catch body
+		 * as a mini-program entered at its first instruction — there is no way to arrive
+		 * mid-body with the handler live. Say so rather than jump nowhere in silence,
+		 * skip a finally, or land in a foreign array. */
+		if( !GenStateJumpScope(&(*pGen),pJump->nScopeId,pLabel->nScopeId,FALSE,&sCross) ){
+			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pJump->nLine,
+				"'goto' into a try, catch or finally block is disallowed");
+			if( rc == SXERR_ABORT ){
+				return SXERR_ABORT;
+			}
+			continue;
+		}
+		/* Fix the jump now the destination is resolved — in the container the goto was
+		 * emitted into, which for a goto inside a catch/finally body is not the one
+		 * current here (gotos resolve at end of compilation, after every swap back). */
+		pInstr = GenStateFixupInstr(pJump);
 		if( pInstr ){
 			pInstr->iP2 = pLabel->nJumpDest;
+			if( pInstr->iOp == PH7_OP_CATCH_JMP ){
+				/* Emitted as a structure-crossing jump because the goto sits inside a
+				 * try or a detached body. Now that the crossing is known it may well
+				 * turn out to leave nothing, and downgrade to a plain OP_JMP. */
+				sxi32 iP1 = 0;
+				pInstr->iOp = (sxu8)GenStateScopeJumpOp(&sCross,&iP1);
+				pInstr->iP1 = iP1;
+			}
 		}
 	}
 	/* php says nothing about a label nobody jumps to — the old "defined but not
@@ -2650,6 +2785,7 @@ PH7_PRIVATE sxi32 PH7_InitCodeGenerator(
 	SySetInit(&pGen->aLabel,&pVm->sAllocator,sizeof(Label));
 	SySetInit(&pGen->aGoto,&pVm->sAllocator,sizeof(JumpFixup));
 	SySetInit(&pGen->aLoopParent,&pVm->sAllocator,sizeof(sxu32));
+	SySetInit(&pGen->aScope,&pVm->sAllocator,sizeof(GenScope));
 	pGen->nLoopId = pGen->nCurLoopId = 0;
 	SySetInit(&pGen->aNullsafeJmp,&pVm->sAllocator,sizeof(sxu32));
 	SySetInit(&pGen->aTrivia,&pVm->sAllocator,sizeof(ph7_trivia));
@@ -2752,6 +2888,7 @@ PH7_PRIVATE void PH7_CompilerSaveState(ph7_vm *pVm,ph7_gen_state *pSaved,ProcCon
 	SySetInit(&pGen->aGoto,&pVm->sAllocator,sizeof(JumpFixup));
 	SySetInit(&pGen->aNullsafeJmp,&pVm->sAllocator,sizeof(sxu32));
 	SySetInit(&pGen->aLoopParent,&pVm->sAllocator,sizeof(sxu32));
+	SySetInit(&pGen->aScope,&pVm->sAllocator,sizeof(GenScope));
 	SySetInit(&pGen->aTrivia,&pVm->sAllocator,sizeof(ph7_trivia));
 	SySetInit(&pGen->aPendingAttrs,&pVm->sAllocator,sizeof(ph7_trivia));
 	SyBlobInit(&pGen->sWorker,&pVm->sAllocator);
@@ -2808,6 +2945,7 @@ PH7_PRIVATE void PH7_CompilerRestoreState(ph7_vm *pVm,ph7_gen_state *pSaved)
 	SySetRelease(&pGen->aGoto);
 	SySetRelease(&pGen->aNullsafeJmp);
 	SySetRelease(&pGen->aLoopParent);
+	SySetRelease(&pGen->aScope);
 	SySetRelease(&pGen->aTrivia);
 	SySetRelease(&pGen->aPendingAttrs);
 	SyBlobRelease(&pGen->sWorker);

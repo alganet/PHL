@@ -545,6 +545,9 @@ struct GenBlock
 	void *pUserData;      /* Upper layer private data */
 	sxu32 nLoopId;        /* This block's loop/switch id (0 when it is neither) */
 	sxu32 nOuterLoopId;   /* Loop/switch that was innermost when this one was entered */
+	sxu32 nScopeId;       /* Try/catch scope in effect INSIDE this block (0 = none). An
+	                       * exception block mints its own; every other block inherits. */
+	sxu32 nOuterScopeId;  /* Scope that was innermost when this block was entered */
 	/* The following two fields are used only when compiling
 	 * the 'do..while()' language construct.
 	 */
@@ -606,6 +609,16 @@ struct ph7_gen_state
 	                      * illegal exactly when the LABEL sits in a loop that does not also
 	                      * enclose the GOTO. Both ends record their loop id; the fixup pass
 	                      * walks up from the goto's to look for the label's. */
+	sxu32 nScopeId;      /* Monotonic id handed to each try/catch/finally block entered */
+	sxu32 nCurScopeId;   /* Innermost such block currently open (0 = none) */
+	SySet aScope;        /* aScope[id-1] = that block's GenScope: its enclosing scope id and
+	                      * its kind. Same shape and purpose as aLoopParent above, for the
+	                      * other after-the-fact goto question: a jump out of a try/catch is
+	                      * legal exactly when the LABEL's scope also ENCLOSES the goto, and
+	                      * what it must unwind on the way is read off the chain between them
+	                      * (GenStateJumpScope). Comparing NESTING DEPTHS instead cannot tell
+	                      * two sibling trys apart, which let a goto jump into one — skipping
+	                      * its OP_LOAD_EXCEPTION, or landing in another bytecode array. */
 	SyBlob sWorker;      /* General purpose working buffer */
 	SyBlob sErrBuf;      /* Error buffer */
 	SyBlob sNamespace;   /* Current namespace path (e.g. "App\\Models") */
@@ -1935,12 +1948,16 @@ enum ph7_vm_op {
   PH7_OP_END_FINALLY,   /* Terminate an inline finally: dispatch the pending action (ROOT C) */
   PH7_OP_SET_FINALLY_RET,/* Seed a pending RETURN and enter the innermost enclosing finally (ROOT C) */
   PH7_OP_SET_FINALLY_JMP,/* Seed a pending BREAK/CONTINUE (jump target) and enter a finally (ROOT C) */
-  PH7_OP_CATCH_JMP,     /* break/continue leaving a DETACHED catch/finally mini-program: park iP2
-                         * (a pc in the OWNING body's bytecode) on that body's frame and end the
-                         * mini-program. The try's OP_POP_EXCEPTION landing pad takes the jump,
-                         * exactly as it materializes a catch's parked `return`. iP1 packs how
-                         * many boundaries it still has to travel out through and how many
-                         * enclosing trys it skips — see PH7_CATCH_JMP_P1. */
+  PH7_OP_CATCH_JMP,     /* Jump to iP2, leaving the try/catch structures iP1 describes (see
+                         * PH7_CATCH_JMP_P1): LEVELS detached catch/finally mini-programs and
+                         * CROSS enclosing trys whose OP_POP_EXCEPTION the jump skips. Two
+                         * regimes. LEVELS > 0: iP2 is a pc in the OWNING body's bytecode, which
+                         * this mini-program cannot address — park it on that body's frame and
+                         * end the mini-program; each try's OP_POP_EXCEPTION landing pad on the
+                         * way out decrements, and the last one drains CROSS and takes the jump,
+                         * exactly as it materializes a catch's parked `return`. LEVELS == 0:
+                         * iP2 is in THIS array (a `goto` out of a try body) — just drain CROSS
+                         * and jump. Emitted for break/continue/goto alike. */
   PH7_OP_UNSET_VAR,     /* unset($name): drop ONE name binding (p3 = name), never the shared slot */
   PH7_OP_CLASS_DEFER    /* Deferred class declaration: p3 = VmDeferredClass. Compile-time
                          * resolution of a parent/interface/trait failed (autoloader not yet
@@ -1951,10 +1968,9 @@ enum ph7_vm_op {
 };
 /*
  * PH7_OP_CATCH_JMP.iP1 payload. Both halves are nesting depths of the source, never
- * large: LEVELS = detached catch/finally boundaries the parked jump still has to
- * travel out through (>= 1), CROSS = enclosing try activations whose
- * OP_POP_EXCEPTION the jump skips, and whose finally the landing pad must therefore
- * drain itself.
+ * large: LEVELS = detached catch/finally boundaries the jump leaves (0 = none, it
+ * stays in this bytecode array), CROSS = enclosing try activations whose
+ * OP_POP_EXCEPTION the jump skips, and whose finally it must therefore drain itself.
  */
 #define PH7_CATCH_JMP_P1(LEVELS,CROSS) \
 	((sxi32)((((sxu32)(CROSS)) << 16) | ((sxu32)(LEVELS) & 0xFFFFu)))
@@ -3156,6 +3172,7 @@ PH7_PRIVATE void VmGetFrameContext(ph7_vm *pVm,const char **pzFuncName,int *pnFu
 PH7_PRIVATE sxi32 VmEnterFrame(ph7_vm *pVm,void *pUserData,ph7_class_instance *pThis,VmFrame **ppFrame);
 PH7_PRIVATE void VmExcRelease(ph7_vm *pVm,ph7_exception *pExc);
 PH7_PRIVATE void VmClearFramePending(VmFrame *pFrame);
+PH7_PRIVATE sxi32 VmDrainCrossedTrys(ph7_vm *pVm,sxu32 nCross,sxu32 nFloor);
 PH7_PRIVATE sxi32 VmLocalExecIntoObj(ph7_vm *pVm,SySet *pByteCode,ph7_value **ppMemObj,int bReturnPropagates);
 
 PH7_PRIVATE sxi32 VmArithOperandCheck(ph7_vm *pVm,ph7_value *pLeft,ph7_value *pRight,const char *zOp,SyBlob *pMsgOut);

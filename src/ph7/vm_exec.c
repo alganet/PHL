@@ -3815,14 +3815,9 @@ case PH7_OP_POP_EXCEPTION: {
 		if( pBodyFrame->nCatchJmpCross > 0 ){
 			/* Enclosing trys between the catch and the loop: the jump lands past their
 			 * OP_POP_EXCEPTION, so run their finally (and leave their frames) here. */
-			sxu32 nUsed = SySetUsed(&pVm->aException);
-			sxu32 nBase = nUsed > (sxu32)pBodyFrame->nCatchJmpCross
-				? nUsed - pBodyFrame->nCatchJmpCross : 0;
-			if( nBase < sState.nExceptionBase ){
-				nBase = sState.nExceptionBase;
-			}
+			sxu32 nCross = pBodyFrame->nCatchJmpCross;
 			pBodyFrame->nCatchJmpCross = 0;
-			rc = VmDrainFinally(&(*pVm),nBase);
+			rc = VmDrainCrossedTrys(&(*pVm),nCross,sState.nExceptionBase);
 			if( rc == SXERR_ABORT ){
 				goto Abort;
 			}
@@ -3839,17 +3834,37 @@ case PH7_OP_POP_EXCEPTION: {
 	break;
 							}
 /*
- * OP_CATCH_JMP * P2(target pc) *
- * A `break`/`continue` whose target loop encloses the try but is compiled into the
- * OWNING body's bytecode, executed from inside a detached catch mini-program. The
- * mini-program cannot jump there itself (iP2 indexes the body's array, not its own),
- * so park the target on the body frame and end the mini-program — mirroring how an
- * explicit `return` in a catch parks on sRet at OP_DONE above. VmThrowException then
- * runs this try's finally and returns; the resume lands on the try's OP_POP_EXCEPTION,
- * which takes the parked jump.
+ * OP_CATCH_JMP P1(levels,cross) P2(target pc) *
+ * Jump to iP2, leaving the try/catch structures iP1 describes (PH7_CATCH_JMP_P1).
+ *
+ * CROSS enclosing trys are being left without reaching their OP_POP_EXCEPTION, so this
+ * runs their finallys itself. LEVELS says whether the target is even addressable from
+ * here: 0 means it is in this same array (a `goto` out of a try body) and the jump is
+ * taken on the spot; above 0 the jump starts inside a DETACHED catch/finally
+ * mini-program whose array is not the target's, so the target is PARKED on the owning
+ * body's frame and this mini-program ends — mirroring how an explicit `return` in a
+ * catch parks on sRet at OP_DONE above. VmThrowException then runs this try's finally
+ * and returns; the resume lands on the try's OP_POP_EXCEPTION, which decrements LEVELS
+ * and either re-parks (another mini-program out) or takes the jump.
  */
 case PH7_OP_CATCH_JMP: {
-	VmFrame *pTgt = VmSkipExceptionFrames(pVm->pFrame);
+	VmFrame *pTgt;
+	if( PH7_CATCH_JMP_LEVELS(pInstr->iP1) == 0 ){
+		/* No detached body to leave — a `goto` whose target is in THIS array, but which
+		 * jumps out of one or more enclosing trys. Nothing to park: run their finallys
+		 * (a bare jump would leave them to fire at teardown) and go. */
+		rc = VmDrainCrossedTrys(&(*pVm),PH7_CATCH_JMP_CROSS(pInstr->iP1),sState.nExceptionBase);
+		if( rc == SXERR_ABORT ){
+			goto Abort;
+		}
+		if( rc == PH7_EXCEPTION ){
+			/* A drained finally threw past itself — it supersedes the jump. */
+			goto Exception;
+		}
+		pc = (sxi32)pInstr->iP2 - 1;
+		break;
+	}
+	pTgt = VmSkipExceptionFrames(pVm->pFrame);
 	pTgt->nCatchJmpPc = (sxu32)pInstr->iP2;
 	pTgt->nCatchJmpLevels = PH7_CATCH_JMP_LEVELS(pInstr->iP1);
 	pTgt->nCatchJmpCross = PH7_CATCH_JMP_CROSS(pInstr->iP1);

@@ -30,6 +30,29 @@ typedef struct Label         Label;
                                         * container (legacy try), run detached by VmLocalExec.
                                         * A break/continue crossing one cannot be a plain jump:
                                         * its target indexes the OWNING body's array. */
+/* Kinds of try/catch scope recorded in ph7_gen_state.aScope. */
+#define GEN_SCOPE_TRY        1  /* a legacy try, whose finally is a detached mini-program */
+#define GEN_SCOPE_TRY_INLINE 2  /* a ROOT C inline try (generator body) */
+#define GEN_SCOPE_DETACHED   3  /* a catch/finally BODY compiled into its own array */
+#define GEN_SCOPE_INLINE_BODY 4 /* a ROOT C inline catch/finally body */
+typedef struct GenScope GenScope;
+struct GenScope
+{
+	sxu32 nParent;    /* Enclosing try/catch scope id, 0 at the top */
+	void *pUserData;  /* The try's ph7_exception, for the POP_EXCEPTION a break emits */
+	sxu8 iKind;       /* One of GEN_SCOPE_* */
+};
+/*
+ * What a jump crosses on its way out of the try/catch structures it sits in — the
+ * result of walking the scope chain between its two ends (GenStateJumpScope).
+ */
+typedef struct GenJumpScope GenJumpScope;
+struct GenJumpScope
+{
+	sxu16 nDet;    /* DETACHED catch/finally bodies left (jump target is in another array) */
+	sxu16 nTry;    /* legacy trys left whose OP_POP_EXCEPTION the jump skips */
+	sxu16 nInline; /* ROOT C inline trys left (crossed with OP_SET_FINALLY_JMP) */
+};
 /*
  * Each label seen in the input is recorded in an instance
  * of the following structure.
@@ -46,6 +69,8 @@ struct Label
 	SyString sName;      /* Label name */
 	sxu32 nLine;         /* Line number this label occurs */
 	sxu32 nLoopId;       /* Innermost loop/switch enclosing this label (0 = none) */
+	SySet *pContainer;   /* Bytecode container nJumpDest indexes (see JumpFixup.pContainer) */
+	sxu32 nScopeId;      /* Try/catch scope it sits in (ph7_gen_state.aScope; 0 = none) */
 	sxu8 bRef;           /* True if the label was referenced */
 };
 /*
@@ -72,6 +97,7 @@ struct JumpFixup
 	                     * enclosing function. Every producer sets this. */
 	sxu32 nLine;        /* Track line number */
 	sxu32 nLoopId;      /* Innermost loop/switch enclosing this goto (0 = none) */
+	sxu32 nScopeId;     /* goto only: try/catch scope it sits in (0 = none) */
 };
 /*
  * Each language construct is represented by an instance
@@ -207,6 +233,10 @@ PH7_PRIVATE sxi32 GenStateGuardFuncRedeclaration(ph7_gen_state *pGen,ph7_vm_func
 PH7_PRIVATE GenBlock * GenStateFetchBlock(GenBlock *pCurrent,sxi32 iBlockType,sxi32 iCount);
 PH7_PRIVATE sxi32 GenStateNewJumpFixup(GenBlock *pBlock,sxi32 nJumpType,sxu32 nInstrIdx);
 PH7_PRIVATE VmInstr * GenStateFixupInstr(const JumpFixup *pFix);
+PH7_PRIVATE int GenStateInlineTryCatch(ph7_gen_state *pGen);
+PH7_PRIVATE int GenStateJumpScope(ph7_gen_state *pGen,sxu32 nFrom,sxu32 nTo,int bEmitPops,
+	GenJumpScope *pScope);
+PH7_PRIVATE sxi32 GenStateScopeJumpOp(const GenJumpScope *pCross,sxi32 *piP1);
 PH7_PRIVATE const char * TokenTypeName(sxu32 nType);
 PH7_PRIVATE sxu32 GenStateNsQualifyName(ph7_gen_state *pGen,sxu32 nOrigIdx,SyHash *pImports,int *pFromImport);
 PH7_PRIVATE int GenStateNsRelPrefix(ph7_gen_state *pGen,SyToken **ppIn,SyToken *pEnd,SyBlob *pOut);

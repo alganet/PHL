@@ -898,6 +898,21 @@ PH7_PRIVATE void VmExcReleaseAll(ph7_vm *pVm,SySet *pSet)
 	}
 }
 /*
+ * Drain the topmost nCross try activations — the ones a jump is leaving without
+ * reaching their OP_POP_EXCEPTION, so nothing else would run their finally. nFloor is
+ * the running execution's exception base: never drain below it, or a jump would tear
+ * down a try belonging to the caller.
+ */
+PH7_PRIVATE sxi32 VmDrainCrossedTrys(ph7_vm *pVm,sxu32 nCross,sxu32 nFloor)
+{
+	sxu32 nUsed = SySetUsed(&pVm->aException);
+	sxu32 nBase = nUsed > nCross ? nUsed - nCross : 0;
+	if( nBase < nFloor ){
+		nBase = nFloor;
+	}
+	return VmDrainFinally(&(*pVm),nBase);
+}
+/*
  * The live activation of a lexical try: the topmost aException entry cloned
  * from pCompiled. Used by the inline opcodes (OP_CATCH) whose instruction
  * only carries the compiled pointer.
