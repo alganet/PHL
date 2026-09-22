@@ -1376,17 +1376,34 @@ static sxi32 GenStateLoadLiteral(ph7_gen_state *pGen)
 				 * PH7 loaded NULL, so __METHOD__ was empty in every free function and
 				 * unqualified in every method).
 				 */
-				if( bMethod && (pFunc->iFlags & VM_FUNC_CLASS_METHOD) && pFunc->pUserData ){
-					SyString *pCls = &((ph7_class *)pFunc->pUserData)->sName;
+				/* A property hook answers php's `$p::get`, never the method name
+				 * PHL synthesizes for it — so __METHOD__ reads `C::$p::get`, the
+				 * same rendering the runtime diagnostics use. */
+				{
+					SyString sProp,sSelf;
+					const char *zKind;
 					SyBlob sQual;
 					SyString sOut;
+					int bHook = PH7_VmHookSplitName(&pFunc->sName,&sProp,&zKind);
 					SyBlobInit(&sQual,&pGen->pVm->sAllocator);
-					SyBlobFormat(&sQual,"%z::%z",pCls,&pFunc->sName);
-					SyStringInitFromBuf(&sOut,SyBlobData(&sQual),SyBlobLength(&sQual));
-					PH7_MemObjInitFromString(pGen->pVm,pObj,&sOut);
+					if( bHook ){
+						SyBlobFormat(&sQual,"$%z::%s",&sProp,zKind);
+						SyStringInitFromBuf(&sSelf,SyBlobData(&sQual),SyBlobLength(&sQual));
+					}else{
+						sSelf = pFunc->sName;
+					}
+					if( bMethod && (pFunc->iFlags & VM_FUNC_CLASS_METHOD) && pFunc->pUserData ){
+						SyString *pCls = &((ph7_class *)pFunc->pUserData)->sName;
+						SyBlob sFull;
+						SyBlobInit(&sFull,&pGen->pVm->sAllocator);
+						SyBlobFormat(&sFull,"%z::%z",pCls,&sSelf);
+						SyStringInitFromBuf(&sOut,SyBlobData(&sFull),SyBlobLength(&sFull));
+						PH7_MemObjInitFromString(pGen->pVm,pObj,&sOut);
+						SyBlobRelease(&sFull);
+					}else{
+						PH7_MemObjInitFromString(pGen->pVm,pObj,&sSelf);
+					}
 					SyBlobRelease(&sQual);
-				}else{
-					PH7_MemObjInitFromString(pGen->pVm,pObj,&pFunc->sName);
 				}
 				/* Emit the load constant instruction */
 				PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,0,nIdx,0,0);

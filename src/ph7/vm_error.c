@@ -2990,26 +2990,32 @@ static sxi32 VmThrowTypeErrorMsg(ph7_vm *pVm,SyBlob *pMsg)
  * other callee falls through to the ordinary Class::method rendering.
  */
 #define PH7_HOOK_METH_PFX "__phl_hook_"
-PH7_PRIVATE int PH7_VmHookFuncName(ph7_class *pClass,ph7_vm_func *pFunc,SyBlob *pOut)
+PH7_PRIVATE int PH7_VmHookSplitName(SyString *pName,SyString *pProp,const char **pzKind)
 {
 	const sxu32 nPfx = sizeof(PH7_HOOK_METH_PFX)-1;
-	SyString *pName = &pFunc->sName;
-	SyString sProp;
-	const char *zKind;
-	if( pClass == 0 || pName->zString == 0 || pName->nByte <= nPfx + 4 ){
+	if( pName->zString == 0 || pName->nByte <= nPfx + 4 ){
 		return 0;
 	}
 	if( SyMemcmp(pName->zString,PH7_HOOK_METH_PFX,nPfx) != 0 ){
 		return 0;
 	}
 	if( SyMemcmp(&pName->zString[nPfx],"get_",4) == 0 ){
-		zKind = "get";
+		*pzKind = "get";
 	}else if( SyMemcmp(&pName->zString[nPfx],"set_",4) == 0 ){
-		zKind = "set";
+		*pzKind = "set";
 	}else{
 		return 0;
 	}
-	SyStringInitFromBuf(&sProp,&pName->zString[nPfx+4],pName->nByte-(nPfx+4));
+	SyStringInitFromBuf(pProp,&pName->zString[nPfx+4],pName->nByte-(nPfx+4));
+	return 1;
+}
+PH7_PRIVATE int PH7_VmHookFuncName(ph7_class *pClass,ph7_vm_func *pFunc,SyBlob *pOut)
+{
+	SyString sProp;
+	const char *zKind;
+	if( pClass == 0 || !PH7_VmHookSplitName(&pFunc->sName,&sProp,&zKind) ){
+		return 0;
+	}
 	SyBlobFormat(pOut,"%z::$%z::%s",&pClass->sName,&sProp,zKind);
 	return 1;
 }
@@ -3389,6 +3395,22 @@ PH7_PRIVATE int PH7_VmFuncDisplayName(ph7_vm *pVm,ph7_vm_func *pFunc,const char 
 	int nName = (int)pFunc->sName.nByte;
 	int bClosure = (nName > 9 && SyMemcmp(zName,"[closure_",9) == 0)
 		|| (nName > 8 && SyMemcmp(zName,"[lambda_",8) == 0);
+	/* A property hook is not a method in php and never shows the name PHL
+	 * synthesizes for it: php calls it `$p::get` / `$p::set` — which is what
+	 * `__FUNCTION__`, `debug_backtrace()['function']` and a Throwable's trace
+	 * report from inside one, and what makes the trace line read
+	 * `C->$p::get()`. `__METHOD__` prepends the class and lands on php's
+	 * `C::$p::get` for free. */
+	{
+		SyString sProp;
+		const char *zKind;
+		if( PH7_VmHookSplitName(&pFunc->sName,&sProp,&zKind) ){
+			int n = (int)SyBufferFormat(pVm->zDisplayName,sizeof(pVm->zDisplayName),
+				"$%z::%s",&sProp,zKind);
+			*pzOut = pVm->zDisplayName;
+			return n;
+		}
+	}
 	if( bClosure ){
 		int n;
 		if( pFunc->sFile.nByte > 0 ){
