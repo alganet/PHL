@@ -111,6 +111,15 @@ static sxi32 GenStateArrowAddCapture(
 		&& SyMemcmp(zName,"this",sizeof("this")-1) == 0 ){
 		return SXRET_OK;
 	}
+	if( PH7_VmIsAutoGlobal(zName,nByte) ){
+		/* php never auto-captures an auto-global — it is already visible inside
+		 * the arrow function. Capturing one was actively destructive here: the
+		 * install resolves the name through hSuper and so wrote the by-value
+		 * SNAPSHOT over the superglobal's own slot, which for $GLOBALS froze the
+		 * whole symbol-table view at closure-creation time for the rest of the
+		 * program. */
+		return SXRET_OK;
+	}
 	for( n = 0 ; n < nShadow ; n++ ){
 		if( SyStringLength(&aShadow[n]) == nByte
 			&& SyMemcmp(SyStringData(&aShadow[n]),zName,nByte) == 0 ){

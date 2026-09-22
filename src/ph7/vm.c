@@ -4719,6 +4719,41 @@ PH7_PRIVATE sxi32 VmLocalExec(ph7_vm *pVm,SySet *pByteCode,ph7_value *pResult,in
  * PH7_ABORT is deliberately NOT folded in — it is not a throw and its host must
  * exit the loop, not route to a landing pad, so each caller screens it first.
  */
+/*
+ * Is this an AUTO-GLOBAL ($GLOBALS, $_SERVER, $_GET, ...)?
+ *
+ * php's auto-globals are visible in every scope without importing them, and it
+ * REFUSES to let one be captured: `use ($GLOBALS)` is the compile fatal
+ * `Cannot use auto-global as lexical variable`, and an arrow function does not
+ * auto-capture one either. That is not cosmetic. A capture resolves the name
+ * through VmExtractMemObj, which consults hSuper FIRST, so installing the
+ * captured value writes over the superglobal's own slot: calling
+ * `fn() => $GLOBALS['a']` replaced the live symbol-table view with the by-value
+ * SNAPSHOT taken when the closure was created, and every later global became
+ * invisible to every reader in the program. extract() already screens for the
+ * same reason (VmExtractIsProtected), but through hSuper, which cannot be used
+ * here — hSuper is filled by PH7_VmMakeReady, which runs AFTER compilation.
+ *
+ * Hence the static list. It is php's nine plus PHL's own `_HEADER`, and it
+ * deliberately does NOT include `argv`: PHL installs $argv as a superglobal for
+ * convenience, but php's is an ordinary global and `use ($argv)` /
+ * `fn() => $argv` are legal there, so screening it would reject valid php.
+ */
+PH7_PRIVATE int PH7_VmIsAutoGlobal(const char *zName,sxu32 nByte)
+{
+	static const char *const azAuto[] = {
+		"GLOBALS", "_SERVER", "_GET", "_POST", "_FILES",
+		"_COOKIE", "_SESSION", "_REQUEST", "_ENV", "_HEADER"
+	};
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(azAuto) ; ++n ){
+		sxu32 nLen = (sxu32)SyStrlen(azAuto[n]);
+		if( nLen == nByte && SyMemcmp(azAuto[n],zName,nByte) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
 PH7_PRIVATE int VmLocalExecThrew(ph7_vm *pVm,sxi32 rc,const void *pResumeBefore,const void *pInlineBefore)
 {
 	return rc == PH7_EXCEPTION

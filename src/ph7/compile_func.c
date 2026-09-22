@@ -1729,6 +1729,20 @@ PH7_PRIVATE sxi32 GenStateCompileFunc(
 						char *zDup;
 						/* Duplicate variable name */
 						pNameLocal = &pGen->pIn[1].sData;
+						if( PH7_VmIsAutoGlobal(pNameLocal->zString,pNameLocal->nByte) ){
+							/* php's compile fatal. It is a real protection, not a
+							 * style rule: the import resolves through hSuper, so
+							 * installing the captured value would overwrite the
+							 * superglobal's own slot — `use ($GLOBALS)` replaced the
+							 * live symbol-table view with a snapshot and every later
+							 * global went missing program-wide. */
+							rc = PH7_GenCompileError(pGen,E_ERROR,nLineLocal,
+								"Cannot use auto-global as lexical variable");
+							if( rc == SXERR_ABORT ){
+								return SXERR_ABORT;
+							}
+							return SXERR_SYNTAX;
+						}
 						zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,pNameLocal->zString,pNameLocal->nByte);
 						if( zDup ){
 							/* Zero the structure */
