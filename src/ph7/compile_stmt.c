@@ -244,7 +244,11 @@ Synchronize:
 static sxi32 GenStateLoopJumpOp(ph7_gen_state *pGen,GenBlock *pLoop,sxi32 *piP1,
 	GenJumpScope *pCross)
 {
-	/* The loop encloses the break by construction, so the walk always reaches it. */
+	/* The loop encloses the break by construction, so the walk always reaches it. Note the
+	 * walk EMITS the crossed trys' POP_EXCEPTIONs as it goes, before the caller can see
+	 * pCross->nFinally and reject: a statement about to be fatal therefore leaves a few
+	 * dead instructions behind. Harmless — the compile error stops the program from
+	 * running at all — and the alternative is walking the chain twice on every jump. */
 	GenStateJumpScope(&(*pGen),pGen->nCurScopeId,pLoop->nScopeId,TRUE,pCross);
 	return GenStateScopeJumpOp(pCross,piP1);
 }

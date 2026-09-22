@@ -324,7 +324,9 @@ PH7_PRIVATE int GenStateInlineTryCatch(ph7_gen_state *pGen)
  *            break/continue emits their OP_POP_EXCEPTION right here (bEmitPops), and a
  *            goto drains them where it parks — hence the reset when one is reached;
  *  nInline — ROOT C inline trys left. Their finallys are driven by VmFinallyAdvance,
- *            not by the aException drain, so they are crossed with OP_SET_FINALLY_JMP.
+ *            not by the aException drain, so they are crossed with OP_SET_FINALLY_JMP;
+ *  nFinally — `finally` bodies left, which php forbids outright. When this is non-zero the
+ *            three above are NOT computed: callers must test it first and reject.
  */
 PH7_PRIVATE int GenStateJumpScope(ph7_gen_state *pGen,sxu32 nFrom,sxu32 nTo,int bEmitPops,
 	GenJumpScope *pScope)
@@ -340,15 +342,15 @@ PH7_PRIVATE int GenStateJumpScope(ph7_gen_state *pGen,sxu32 nFrom,sxu32 nTo,int 
 		}
 		pScopeEnt = &aScope[nCur - 1];
 		if( pScopeEnt->iKind == GEN_SCOPE_FINALLY ){
-			/* php: `jump out of a finally block is disallowed`. Counted, not rejected
-			 * here — the caller owns the diagnostic and its line. A jump that stays
+			/* php: `jump out of a finally block is disallowed`. Counted rather than
+			 * rejected here because the caller owns the diagnostic and its line — but
+			 * ONLY counted: the jump is illegal, so the other three fields are left as
+			 * they are rather than pretending to describe a crossing that will never be
+			 * emitted. (They could not be right anyway: this kind covers both the legacy
+			 * detached finally and the generator's INLINE one, which is not a separate
+			 * bytecode container.) Every caller tests nFinally first. A jump that stays
 			 * INSIDE the finally never reaches this scope, so it stays legal. */
 			pScope->nFinally++;
-			if( pScope->nDet == 0 ){
-				pScope->nTry = 0;
-				pScope->nInline = 0;
-			}
-			pScope->nDet++;
 		}else if( pScopeEnt->iKind == GEN_SCOPE_DETACHED ){
 			if( pScope->nDet == 0 ){
 				pScope->nTry = 0;    /* below the first boundary: not the landing pad's */
@@ -516,7 +518,14 @@ PH7_PRIVATE sxi32 GenStateFixGoto(ph7_gen_state *pGen,sxu32 nOfft)
 			continue;
 		}
 		if( sCross.nFinally > 0 ){
-			/* php's other structural rule, shared with break/continue. */
+			/* php's other structural rule, shared with break/continue. Tested AFTER the
+			 * reach test above, so a goto that both leaves a finally and lands somewhere
+			 * that does not enclose it reports the into-a-try wording instead of this
+			 * one. Both are fatal on the same line, and the two cannot be told apart
+			 * without a second walk outward from the LABEL — php accepts one of them
+			 * (`finally { goto L; try { L: … } }`), which is the §7.2 divergence, and
+			 * rejects the other. Not worth a second walk for a message on input that is
+			 * rejected either way. */
 			if( GenStateJumpOutOfFinally(&(*pGen),pJump->nLine) == SXERR_ABORT ){
 				return SXERR_ABORT;
 			}

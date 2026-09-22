@@ -26,13 +26,14 @@ typedef struct Label         Label;
 #define GEN_BLOCK_STD         0x080    /* Standard block */
 #define GEN_BLOCK_EXCEPTION   0x100    /* Exception block [i.e: try{ } }*/
 #define GEN_BLOCK_SWITCH      0x200    /* Switch statement */
-#define GEN_BLOCK_FINALLY     0x800    /* A `finally` body (as opposed to a catch body). php
-                                        * forbids jumping OUT of one, which is the only rule
-                                        * that tells the two apart. */
 #define GEN_BLOCK_DETACHED    0x400    /* A catch/finally body compiled into its OWN bytecode
                                         * container (legacy try), run detached by VmLocalExec.
                                         * A break/continue crossing one cannot be a plain jump:
                                         * its target indexes the OWNING body's array. */
+#define GEN_BLOCK_FINALLY     0x800    /* A `finally` body (as opposed to a catch body). php
+                                        * forbids jumping OUT of one, which is the only rule
+                                        * that tells the two apart. Set on BOTH the legacy
+                                        * (detached) and the ROOT C inline finally. */
 /* Kinds of try/catch scope recorded in ph7_gen_state.aScope. */
 #define GEN_SCOPE_TRY        1  /* a legacy try, whose finally is a detached mini-program */
 #define GEN_SCOPE_TRY_INLINE 2  /* a ROOT C inline try (generator body) */
@@ -55,7 +56,9 @@ struct GenJumpScope
 	sxu16 nDet;    /* DETACHED catch/finally bodies left (jump target is in another array) */
 	sxu16 nTry;    /* legacy trys left whose OP_POP_EXCEPTION the jump skips */
 	sxu16 nInline; /* ROOT C inline trys left (crossed with OP_SET_FINALLY_JMP) */
-	sxu16 nFinally;/* `finally` bodies left — php rejects the jump outright when this is > 0 */
+	sxu16 nFinally;/* `finally` bodies left. php rejects the jump outright when this is > 0, so
+	                * the three fields above are then NOT computed — every caller must test
+	                * this one first, and none may read the others when it is set. */
 };
 /*
  * Each label seen in the input is recorded in an instance
