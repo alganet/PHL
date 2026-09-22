@@ -14,31 +14,50 @@
 
 /* --- UTF-8 primitives ------------------------------------------------- */
 
-/* Decode the codepoint at z (n bytes available); *pLen = sequence length.
- * Invalid lead bytes decode as themselves with length 1 (byte-transparent,
- * so malformed input degrades instead of exploding). */
-static sxu32 MbUtf8Decode(const unsigned char *z,sxu32 n,sxu32 *pLen)
+/* Byte length of the ill-formed run at z[0..n-1]: the maximal prefix php's
+ * decoder consumes before giving up — the lead byte plus every continuation
+ * byte that is still in range for it. mbstring reports that whole prefix as ONE
+ * character and substitutes ONE '?' for it, so "\xe0\xa0" (a truncated 3-byte
+ * sequence) is one character, while "\xff\xfe" is two: neither byte can lead. */
+static sxu32 MbUtf8BadLen(const unsigned char *z,sxu32 n)
 {
-	sxu32 c = z[0];
-	if( c < 0x80 ){
-		*pLen = 1;
-		return c;
+	sxu32 c = z[0],need,iLow,iHigh,i;
+	if( c >= 0xC2 && c <= 0xDF ){
+		need = 2; iLow = 0x80; iHigh = 0xBF;
+	}else if( c >= 0xE0 && c <= 0xEF ){
+		need = 3; iLow = (c == 0xE0) ? 0xA0 : 0x80; iHigh = (c == 0xED) ? 0x9F : 0xBF;
+	}else if( c >= 0xF0 && c <= 0xF4 ){
+		need = 4; iLow = (c == 0xF0) ? 0x90 : 0x80; iHigh = (c == 0xF4) ? 0x8F : 0xBF;
+	}else{
+		return 1; /* 80..C1 or F5..FF: cannot lead anything */
 	}
-	if( (c & 0xE0) == 0xC0 && n >= 2 && (z[1] & 0xC0) == 0x80 ){
-		*pLen = 2;
-		return ((c & 0x1F) << 6) | (z[1] & 0x3F);
+	for( i = 1 ; i < need && i < n ; ++i ){
+		sxu32 lo = (i == 1) ? iLow : 0x80;
+		sxu32 hi = (i == 1) ? iHigh : 0xBF;
+		if( z[i] < lo || z[i] > hi ){
+			break;
+		}
 	}
-	if( (c & 0xF0) == 0xE0 && n >= 3 && (z[1] & 0xC0) == 0x80 && (z[2] & 0xC0) == 0x80 ){
-		*pLen = 3;
-		return ((c & 0x0F) << 12) | ((z[1] & 0x3F) << 6) | (z[2] & 0x3F);
+	return i;
+}
+/* Decode the character at z (n bytes available); *pLen = the bytes it occupies.
+ * Returns the codepoint, or -1 when the sequence is ILL-FORMED — in which case
+ * *pLen is the run above, which php's mbstring counts as one character and
+ * re-encodes as '?'.
+ *
+ * This used to be byte-transparent: an undecodable byte came back AS ITSELF
+ * with length 1, so mb_strtolower("\xff\xfe") answered the two bytes
+ * re-encoded as UTF-8 (\xc3\xbf\xc3\xbe) — latin-1 semantics php does not have,
+ * and characters PHL invented — where php answers "??". The over-long,
+ * surrogate and past-U+10FFFF forms were accepted as well; validation is
+ * PH7_Utf8ReadStrict's job now (the same reader json_encode uses). */
+static sxi32 MbUtf8Decode(const unsigned char *z,sxu32 n,sxu32 *pLen)
+{
+	sxi32 iCp = PH7_Utf8ReadStrict(z,n,pLen);
+	if( iCp < 0 ){
+		*pLen = MbUtf8BadLen(z,n);
 	}
-	if( (c & 0xF8) == 0xF0 && n >= 4 && (z[1] & 0xC0) == 0x80 && (z[2] & 0xC0) == 0x80
-	 && (z[3] & 0xC0) == 0x80 ){
-		*pLen = 4;
-		return ((c & 0x07) << 18) | ((z[1] & 0x3F) << 12) | ((z[2] & 0x3F) << 6) | (z[3] & 0x3F);
-	}
-	*pLen = 1;
-	return c;
+	return iCp;
 }
 /* Encode cp into z (up to 4 bytes); returns the byte count */
 static sxu32 MbUtf8Encode(sxu32 cp,unsigned char *z)
@@ -182,6 +201,35 @@ static int PH7_builtin_mb_strlen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		: (ph7_int64)MbUtf8Strlen(zIn,(sxu32)nByte));
 	return PH7_OK;
 }
+/* Set the call result to zIn[0..nByte-1] with every ill-formed run replaced by
+ * '?', php's substitution character. A well-formed buffer copies verbatim. */
+static void MbResultSubstituted(ph7_context *pCtx,const char *zIn,sxu32 nByte)
+{
+	const unsigned char *z = (const unsigned char *)zIn;
+	SyBlob sOut;
+	sxu32 i = 0,nLen;
+	/* Well-formed is the overwhelmingly common case: check first and hand back
+	 * the buffer as it stands rather than rebuilding it. */
+	while( i < nByte && MbUtf8Decode(&z[i],nByte - i,&nLen) >= 0 ){
+		i += nLen;
+	}
+	if( i >= nByte ){
+		ph7_result_string(pCtx,zIn,(int)nByte);
+		return;
+	}
+	i = 0;
+	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+	while( i < nByte ){
+		if( MbUtf8Decode(&z[i],nByte - i,&nLen) < 0 ){
+			SyBlobAppend(&sOut,"?",1);
+		}else{
+			SyBlobAppend(&sOut,&z[i],nLen);
+		}
+		i += nLen;
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+}
 /* string mb_substr(string $string, int $start, ?int $length = null,
  *                  ?string $encoding = null) */
 static int PH7_builtin_mb_substr(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -230,7 +278,10 @@ static int PH7_builtin_mb_substr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	iOfft = MbUtf8Skip(zIn,(sxu32)nByte,(sxu32)iStart);
 	iEnd  = iOfft + MbUtf8Skip(&zIn[iOfft],(sxu32)nByte - iOfft,(sxu32)iLen);
-	ph7_result_string(pCtx,&zIn[iOfft],(int)(iEnd - iOfft));
+	/* php decodes and re-encodes the slice rather than copying its bytes, so an
+	 * undecodable run inside it comes out as '?' — mb_substr("ab\xffcd",2,1) is
+	 * "?", not the raw \xff PHL used to hand back. */
+	MbResultSubstituted(pCtx,&zIn[iOfft],iEnd - iOfft);
 	return PH7_OK;
 }
 /* Shared case transform: iMode 0 = lower, 1 = upper, 2 = title */
@@ -243,8 +294,18 @@ static int MbCaseTransform(ph7_context *pCtx,const char *zIn,sxu32 nByte,int iMo
 	int bWordStart = 1;
 	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
 	while( i < nByte ){
-		cp = MbUtf8Decode(&z[i],nByte - i,&nLen);
+		sxi32 iCp = MbUtf8Decode(&z[i],nByte - i,&nLen);
 		i += nLen;
+		if( iCp < 0 ){
+			/* php substitutes '?' for an undecodable run. For TITLE mode the run
+			 * is neither a word character nor a separator — it leaves the
+			 * word-start flag exactly as it found it, so "\xffab" titles to
+			 * "?Ab" (the run did not open a word, 'a' still does) while
+			 * "a\xffb" titles to "A?b" ('b' is still mid-word). */
+			SyBlobAppend(&sOut,"?",1);
+			continue;
+		}
+		cp = (sxu32)iCp;
 		if( iMode == 1 ){
 			if( cp == 0x00DF ){ /* php: mb_strtoupper('ß') === 'SS' */
 				SyBlobAppend(&sOut,"SS",2);
@@ -254,11 +315,12 @@ static int MbCaseTransform(ph7_context *pCtx,const char *zIn,sxu32 nByte,int iMo
 		}else if( iMode == 0 ){
 			if( cp == 0x03A3 ){
 				/* Greek capital sigma: final position lowers to ς, else σ */
-				sxu32 nPeek,cpNext = 0;
+				sxu32 nPeek;
+				sxi32 iNext = -1;
 				if( i < nByte ){
-					cpNext = MbUtf8Decode(&z[i],nByte - i,&nPeek);
+					iNext = MbUtf8Decode(&z[i],nByte - i,&nPeek);
 				}
-				mapped = (i >= nByte || !MbIsAlnum(cpNext) ) ? 0x03C2 : 0x03C3;
+				mapped = (iNext < 0 || !MbIsAlnum((sxu32)iNext) ) ? 0x03C2 : 0x03C3;
 			}else{
 				mapped = MbToLower(cp);
 			}
@@ -331,21 +393,24 @@ static sxi64 MbSearch(const char *zH,sxu32 nH,const char *zN,sxu32 nN,
 	if( bCaseFold ){
 		/* fold both through the case mapper */
 		const unsigned char *z;
-		sxu32 k,nLen,cp;
+		sxu32 k,nLen;
+		sxi32 iCp;
 		unsigned char zEnc[4];
 		SyBlobInit(&sFh,&pCtx->pVm->sAllocator);
 		SyBlobInit(&sFn,&pCtx->pVm->sAllocator);
 		z = (const unsigned char *)zH;
 		for( k = 0 ; k < nH ; ){
-			cp = MbUtf8Decode(&z[k],nH - k,&nLen);
+			iCp = MbUtf8Decode(&z[k],nH - k,&nLen);
 			k += nLen;
-			SyBlobAppend(&sFh,zEnc,MbUtf8Encode(MbToLower(cp),zEnc));
+			if( iCp < 0 ){ SyBlobAppend(&sFh,"?",1); continue; }
+			SyBlobAppend(&sFh,zEnc,MbUtf8Encode(MbToLower((sxu32)iCp),zEnc));
 		}
 		z = (const unsigned char *)zN;
 		for( k = 0 ; k < nN ; ){
-			cp = MbUtf8Decode(&z[k],nN - k,&nLen);
+			iCp = MbUtf8Decode(&z[k],nN - k,&nLen);
 			k += nLen;
-			SyBlobAppend(&sFn,zEnc,MbUtf8Encode(MbToLower(cp),zEnc));
+			if( iCp < 0 ){ SyBlobAppend(&sFn,"?",1); continue; }
+			SyBlobAppend(&sFn,zEnc,MbUtf8Encode(MbToLower((sxu32)iCp),zEnc));
 		}
 		zHay = (const char *)SyBlobData(&sFh);
 		nH = SyBlobLength(&sFh);
@@ -465,7 +530,7 @@ static int PH7_builtin_mb_check_encoding(ph7_context *pCtx,int nArg,ph7_value **
 	const unsigned char *z;
 	const char *zIn;
 	int nByte;
-	sxu32 i = 0,nLen,cp;
+	sxu32 i = 0,nLen;
 	if( nArg < 1 ){
 		ph7_result_bool(pCtx,1);
 		return PH7_OK;
@@ -476,9 +541,7 @@ static int PH7_builtin_mb_check_encoding(ph7_context *pCtx,int nArg,ph7_value **
 	zIn = ph7_value_to_string(apArg[0],&nByte);
 	z = (const unsigned char *)zIn;
 	while( i < (sxu32)nByte ){
-		cp = MbUtf8Decode(&z[i],(sxu32)nByte - i,&nLen);
-		if( nLen == 1 && cp >= 0x80 ){
-			/* a lead/continuation byte that failed to decode */
+		if( MbUtf8Decode(&z[i],(sxu32)nByte - i,&nLen) < 0 ){
 			ph7_result_bool(pCtx,0);
 			return PH7_OK;
 		}
@@ -493,6 +556,7 @@ static int PH7_builtin_mb_strwidth(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const unsigned char *z;
 	const char *zIn;
 	int nByte;
+	sxi32 iCp;
 	sxu32 i = 0,nLen,cp;
 	ph7_int64 nWidth = 0;
 	if( nArg < 1 ){
@@ -505,8 +569,10 @@ static int PH7_builtin_mb_strwidth(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	zIn = ph7_value_to_string(apArg[0],&nByte);
 	z = (const unsigned char *)zIn;
 	while( i < (sxu32)nByte ){
-		cp = MbUtf8Decode(&z[i],(sxu32)nByte - i,&nLen);
+		iCp = MbUtf8Decode(&z[i],(sxu32)nByte - i,&nLen);
 		i += nLen;
+		/* An ill-formed run stands in for '?': one column */
+		cp = (iCp < 0) ? (sxu32)'?' : (sxu32)iCp;
 		/* php's East Asian wide/fullwidth set */
 		if( (cp >= 0x1100 && cp <= 0x115F) || (cp >= 0x2E80 && cp <= 0xA4CF)
 		 || (cp >= 0xAC00 && cp <= 0xD7A3) || (cp >= 0xF900 && cp <= 0xFAFF)
@@ -551,7 +617,8 @@ static int PH7_builtin_mb_ord(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zIn;
 	const unsigned char *z;
 	int nByte;
-	sxu32 cp,nLen;
+	sxi32 iCp;
+	sxu32 nLen;
 	if( MbEncodingArg(pCtx,nArg > 1 ? apArg[1] : 0,"mb_ord",2) < 0 ){
 		return PH7_OK;
 	}
@@ -562,15 +629,14 @@ static int PH7_builtin_mb_ord(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			"mb_ord(): Argument #1 ($string) must not be empty");
 	}
 	z = (const unsigned char *)zIn;
-	cp = MbUtf8Decode(z,(sxu32)nByte,&nLen);
 	/* Reject a malformed first character (invalid lead / truncated / bad
-	 * continuation): MbUtf8Decode is byte-transparent, so a high byte that did
-	 * not form a valid sequence comes back with nLen == 1. */
-	if( nLen == 1 && z[0] >= 0x80 ){
+	 * continuation / over-long / surrogate) the way php does */
+	iCp = MbUtf8Decode(z,(sxu32)nByte,&nLen);
+	if( iCp < 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	ph7_result_int64(pCtx,(sxi64)cp);
+	ph7_result_int64(pCtx,(sxi64)iCp);
 	return PH7_OK;
 }
 /*
@@ -601,8 +667,7 @@ static int MbUtf8Errors(const unsigned char *z,int n)
 	sxu32 i = 0,nLen;
 	int e = 0;
 	while( i < (sxu32)n ){
-		MbUtf8Decode(&z[i],(sxu32)n - i,&nLen);
-		if( nLen == 1 && z[i] >= 0x80 ){ e++; i++; }
+		if( MbUtf8Decode(&z[i],(sxu32)n - i,&nLen) < 0 ){ e++; i++; }
 		else{ i += nLen; }
 	}
 	return e;
@@ -767,8 +832,8 @@ static void MbConvertBuffer(SyBlob *pOut,const char *zIn,sxu32 nByte,int idFrom,
 	unsigned char zEnc[4];
 	while( i < nByte ){
 		if( idFrom == MB_ENC_UTF8 ){
-			cp = MbUtf8Decode(&z[i],nByte - i,&nLen);
-			if( nLen == 1 && z[i] >= 0x80 ){ cp = '?'; } /* invalid sequence */
+			sxi32 iCp = MbUtf8Decode(&z[i],nByte - i,&nLen);
+			cp = (iCp < 0) ? (sxu32)'?' : (sxu32)iCp; /* invalid sequence */
 			i += nLen;
 		}else{
 			cp = z[i];
