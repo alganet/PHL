@@ -146,6 +146,15 @@ struct VmDeferredPath {
                                     * PH7_MemObjRelease frees it at the TOP, before its MEMOBJ_NULL
                                     * short-circuit, so every pop/abort/exception path releases it. Part of
                                     * MEMOBJ_AUX, so MemObjStore strips the flag on copy. */
+#define MEMOBJ_AUX_STROFFSET 0x20000 /* Stack-only marker: this value was READ OUT of a string by a
+                                      * subscript ($s[1]). It carries the BASE's slot index like any
+                                      * other element read, but a string offset is not a slot: php
+                                      * refuses to make a reference to one
+                                      * ("Cannot create references to/from string offsets"), and
+                                      * binding the index anyway aliased the WHOLE STRING — writing
+                                      * through the reference replaced it. The reference-binding
+                                      * sites test this. Part of MEMOBJ_AUX, so MemObjStore strips
+                                      * it: a plain `$c = $s[1]` copy carries nothing. */
 /* Mask of all known types */
 #define MEMOBJ_ALL (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)
 /* Scalar variables
@@ -154,7 +163,7 @@ struct VmDeferredPath {
  *  Types array, object and resource are not scalar.
  */
 #define MEMOBJ_SCALAR (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL)
-#define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_CUFVAL|MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH)
+#define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_CUFVAL|MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH|MEMOBJ_AUX_STROFFSET)
 /*
  * The following macro clear the current ph7_value type and replace
  * it with the given one.

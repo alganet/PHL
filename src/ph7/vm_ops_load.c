@@ -53,6 +53,22 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 		sxu32 nSrcIdx = pSrc->nIdx;
 		VmClassAttr *pVmAttr = pVm->pRefTargetAttr;
 		ph7_class_attr *pStAttr = pVm->pRefTargetStaticAttr;
+		if( pSrc->iFlags & MEMOBJ_AUX_STROFFSET ){
+			/* `$o->p =& $s[1]`: a string offset is not a slot (its index is the
+			 * BASE STRING's), and php refuses the reference outright. Settle the
+			 * stashed target state exactly as the success path does, then throw. */
+			if( pVm->pRefTargetThis ){
+				PH7_ClassInstanceUnref(pVm->pRefTargetThis);
+			}
+			pVm->pRefTargetAttr = 0;
+			pVm->pRefTargetStaticAttr = 0;
+			pVm->pRefTargetThis = 0;
+			VmPopOperand(&pTos,1); /* the member result */
+			rc = VmThrowFromVm(&(*pVm),"Error","Cannot create references to/from string offsets",
+				sizeof("Cannot create references to/from string offsets")-1);
+			if( rc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
 		if( nSrcIdx == SXU32_HIGH ){
 			/* php: the RHS of `=&` must be a variable, not a constant expression.
 			 * (The compiler already rejects the obvious literal forms.) */
@@ -109,6 +125,20 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 		pTos--;
 	}else{
 		SyStringInitFromBuf(&sName,pInstr->p3,SyStrlen((const char *)pInstr->p3));
+	}
+	if( pTos->iFlags & MEMOBJ_AUX_STROFFSET ){
+		/* php: a string OFFSET cannot be either end of a reference. The value read
+		 * out of a string still carries the BASE VARIABLE's slot, so binding it
+		 * aliased the whole string and a later write through the reference REPLACED
+		 * it ($s = "abc"; $r = &$s[1]; $r = "Z"; left $s === "Z"). Same Error the
+		 * by-ref ARGUMENT path raises for f($s[1]). */
+		rc = VmThrowFromVm(&(*pVm),"Error","Cannot create references to/from string offsets",
+			sizeof("Cannot create references to/from string offsets")-1);
+		PH7_MemObjRelease(pTos);
+		MemObjSetType(pTos,MEMOBJ_NULL);
+		pTos->nIdx = SXU32_HIGH;
+		if( rc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+		PH7_THROW_ROUTE_MIDEXPR(rc)
 	}
 	nIdx = pTos->nIdx;
 	if(nIdx == SXU32_HIGH ){
@@ -660,6 +690,21 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 	 * HashmapInsertByRef both then cast NULL->"". A null pKey==0 (an append, no key)
 	 * is not a null OFFSET and is left alone. */
 	VmNullOffsetDeprecate(&(*pVm),pKey);
+	if( pInstr->iOp == PH7_OP_STORE_IDX_REF && (pTos->iFlags & MEMOBJ_AUX_STROFFSET) ){
+		/* `$a[] = &$s[1]`: the source is a string OFFSET, which php refuses to
+		 * reference — and whose slot index is the BASE STRING's, so binding it
+		 * aliased the whole string. Same Error the `=&` / by-ref-argument paths
+		 * raise. The key is already popped; drop it and abandon the store. */
+		sxi32 rcSc;
+		if( pKey ){
+			PH7_MemObjRelease(pKey);
+		}
+		rcSc = VmThrowFromVm(&(*pVm),"Error","Cannot create references to/from string offsets",
+			sizeof("Cannot create references to/from string offsets")-1);
+		if( rcSc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+		rc = rcSc;
+		PH7_THROW_ROUTE_MIDEXPR(rc)
+	}
 	if( pInstr->iOp == PH7_OP_STORE_IDX_REF && pTos->nIdx != SXU32_HIGH ){
 		if( pMap == pVm->pGlobal ){
 			/* php 8.1: $GLOBALS['y'] =& $x binds the global $y to $x's
@@ -1093,6 +1138,12 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				MemObjSetType(pTos,MEMOBJ_STRING);
 				SyBlobAppend(&pTos->sBlob,(const void *)&c,sizeof(char));
 			}
+			/* The result still carries the BASE VARIABLE's slot index, which is
+			 * harmless for a plain read and WRONG for anything that would ALIAS it:
+			 * a string offset is not a slot. Mark it so the reference-binding sites
+			 * raise php's Error instead of aliasing the whole string --
+			 * `$r = &$s[1]; $r = "Z";` REPLACED $s with "Z". */
+			pTos->iFlags |= MEMOBJ_AUX_STROFFSET;
 		}else{
 			/* No available index,load NULL */
 			MemObjSetType(pTos,MEMOBJ_NULL);

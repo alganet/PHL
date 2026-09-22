@@ -3641,6 +3641,19 @@ case PH7_OP_LOAD_REF: {
 		goto Abort;
 	}
 #endif
+	if( pTos->iFlags & MEMOBJ_AUX_STROFFSET ){
+		/* php: a string OFFSET cannot be either end of a reference. The value read
+		 * out of a string still carries the BASE VARIABLE's slot index, so taking a
+		 * reference to it aliased the WHOLE STRING — `$x = [&$s[1]]; $x[0] = "Z";`
+		 * left $s === "Z". Same Error the `=&` and by-ref-argument paths raise. */
+		rc = VmThrowFromVm(&(*pVm),"Error","Cannot create references to/from string offsets",
+			sizeof("Cannot create references to/from string offsets")-1);
+		PH7_MemObjRelease(pTos);
+		MemObjSetType(pTos,MEMOBJ_NULL);
+		pTos->nIdx = SXU32_HIGH;
+		PH7_DISPATCH_ENFORCE_RC(rc)
+		break;
+	}
 	/* Extract memory object index */
 	nIdx = pTos->nIdx;
 	if( nIdx != SXU32_HIGH /* Not a constant */ ){
