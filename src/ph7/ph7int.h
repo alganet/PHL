@@ -3534,6 +3534,9 @@ PH7_PRIVATE sxi32 PH7_HashmapDump(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,in
 PH7_PRIVATE sxi32 PH7_HashmapDumpEntries(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,int nTab,int nDepth);
 PH7_PRIVATE sxi32 PH7_HashmapWalk(ph7_hashmap *pMap,int (*xWalk)(ph7_value *,ph7_value *,void *),void *pUserData);
 PH7_PRIVATE int PH7_HashmapIsList(ph7_hashmap *pMap);
+/* php's key fold, shared with the diagnostics that must print a key the way the
+ * LOOKUP saw it. Leaves a non-integer key as a printable string value. */
+PH7_PRIVATE int PH7_HashmapKeyIsInt(ph7_value *pKey);
 /* php value-name helper (true/false/class-name/null); used by the range()/
  * array_rand() domain-error messages in hashmap.c, which are compiled in every
  * mode, so it must stay outside the PH7_DISABLE_DISK_IO guard. */

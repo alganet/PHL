@@ -1438,21 +1438,24 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		 * (iP2 == 2). isset/empty/??/unset (iP2 3-6) and write-context
 		 * vivification (iP2 == 1) stay silent, as does a read on a non-array
 		 * base (already diagnosed above). php prints an INT key bare and a
-		 * STRING key quoted. */
+		 * STRING key quoted, and it decides which one the key IS by the same fold
+		 * the lookup just used: `$a["10"]` looked for the INTEGER key 10, so php
+		 * says `Undefined array key 10`. PHL rendered the operand as WRITTEN --
+		 * quoting every string and, worse, printing `$a[false]` as the "" key it
+		 * never looked in (false is the integer key 0). The canonical-numeric rule
+		 * is the hashmap's own, so ask it rather than re-derive it. */
 		SyBlob sMsg;
 		SyBlobInit(&sMsg,&pVm->sAllocator);
-		if( pIdx->iFlags & (MEMOBJ_STRING|MEMOBJ_BOOL|MEMOBJ_NULL) ){
-			SyString sKey;
-			if( (pIdx->iFlags & MEMOBJ_STRING) == 0 ){
-				PH7_MemObjToString(pIdx);
-			}
-			SyStringInitFromBuf(&sKey,SyBlobData(&pIdx->sBlob),SyBlobLength(&pIdx->sBlob));
-			SyBlobFormat(&sMsg,"Undefined array key \"%z\"",&sKey);
-		}else{
+		if( PH7_HashmapKeyIsInt(pIdx) ){
 			if( (pIdx->iFlags & MEMOBJ_INT) == 0 ){
 				PH7_MemObjToInteger(pIdx);
 			}
 			SyBlobFormat(&sMsg,"Undefined array key %qd",pIdx->x.iVal);
+		}else{
+			/* Not an integer key: PH7_HashmapKeyIsInt left it a printable string. */
+			SyString sKey;
+			SyStringInitFromBuf(&sKey,SyBlobData(&pIdx->sBlob),SyBlobLength(&pIdx->sBlob));
+			SyBlobFormat(&sMsg,"Undefined array key \"%z\"",&sKey);
 		}
 		SyBlobNullAppend(&sMsg);
 		PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));

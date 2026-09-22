@@ -553,6 +553,26 @@ static int HashmapIsIntKey(SyBlob *pKey)
 	return TRUE;
 }
 /*
+ * TRUE when this key value lands on an INTEGER key — the same fold HashmapLookup
+ * and HashmapInsert perform below, exposed so a DIAGNOSTIC can name the key the
+ * way the lookup saw it rather than the way it was written ($a["10"] misses the
+ * integer key 10, so php's warning says `Undefined array key 10`, unquoted).
+ * A non-integer key is left as a STRING with its blob ready to print — including
+ * the NULL key, which folds to "" exactly as the lookup folds it.
+ */
+PH7_PRIVATE int PH7_HashmapKeyIsInt(ph7_value *pKey)
+{
+	if( pKey->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL) ){
+		if( (pKey->iFlags & MEMOBJ_STRING) == 0 ){
+			/* Force a string cast (NULL becomes "", php's empty-string key) */
+			PH7_MemObjToString(&(*pKey));
+		}
+		return HashmapIsIntKey(&pKey->sBlob) ? TRUE : FALSE;
+	}
+	/* int / float / BOOL all reach an integer key ($a[false] is $a[0]) */
+	return TRUE;
+}
+/*
  * Check if a given key exists in the given hashmap.
  * Write a pointer to the target node on success.
  * Otherwise SXERR_NOTFOUND is returned on failure.
