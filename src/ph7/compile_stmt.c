@@ -2549,9 +2549,7 @@ static sxi32 GenStateAddImport(
 	const char *zKind;  /* php's kind word in the "already in use" message */
 	char *zDup;
 	sxi32 rc;
-	/* Select the target hash table based on import type.  Class and function
-	 * imports are resolved entirely at compile time; only const imports need a
-	 * runtime table, which PH7_OP_USECONST fills so imports stay namespace-scoped. */
+	/* Select the target hash table based on import type. */
 	switch( iUseType ){
 		case 1:  pGenHash = &pGen->hUseFuncImports; break;
 		case 2:  pGenHash = &pGen->hUseConstImports; break;
@@ -2600,23 +2598,10 @@ static sxi32 GenStateAddImport(
 	zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
 		(const char *)SyBlobData(pPath),SyBlobLength(pPath));
 	if( zDup ){
+		/* All three kinds resolve entirely at COMPILE time — a const import is read
+		 * by the OP_LOADC candidate builder (compile_node.c), so no runtime table
+		 * is needed for it either. */
 		SyHashInsert(pGenHash,pAlias->zString,pAlias->nByte,zDup);
-		if( iUseType == 2 ){
-			/* Const imports: emit a runtime instruction so imports are
-			 * namespace-scoped (NSSWITCH clears the VM table). */
-			char *zAliasDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,pAlias->zString,pAlias->nByte);
-			if( zAliasDup ){
-				/* Encode alias length in iP1, alias string in p3 is not enough —
-				 * we need both alias and FQN.  Pack them: iP1=alias length,
-				 * iP2 unused, p3 points to a two-pointer struct. */
-				char **azPair = (char **)SyMemBackendPoolAlloc(&pGen->pVm->sAllocator,sizeof(char*)*2);
-				if( azPair ){
-					azPair[0] = zAliasDup;
-					azPair[1] = zDup;
-					PH7_VmEmitInstr(pGen->pVm,PH7_OP_USECONST,(sxi32)pAlias->nByte,0,azPair,0);
-				}
-			}
-		}
 	}
 	return SXRET_OK;
 }

@@ -1527,22 +1527,7 @@ case PH7_OP_NSSWITCH:
 		const char *zNs = (const char *)pInstr->p3;
 		SyBlobAppend(&pVm->sNamespace,zNs,SyStrlen(zNs));
 	}
-	/* Clear namespace-scoped use-const imports */
-	SyHashRelease(&pVm->hUseConstImports);
-	SyHashInit(&pVm->hUseConstImports,&pVm->sAllocator,0,0);
 	break;
-/* OP_USECONST P1 * P3
- * Register a use-const import at runtime. P1 is the alias length,
- * P3 points to a two-pointer array: [0]=alias, [1]=FQN.
- * This is namespace-scoped: NSSWITCH clears all imports.
- */
-case PH7_OP_USECONST: {
-	char **azPair = (char **)pInstr->p3;
-	if( azPair ){
-		SyHashInsert(&pVm->hUseConstImports,azPair[0],(sxu32)pInstr->iP1,azPair[1]);
-	}
-	break;
-				}
 /*
  * CLASS_DEFER: * * P3
  *
@@ -1804,92 +1789,73 @@ case PH7_OP_LOADC: {
 	if( (pObj = (ph7_value *)SySetAt(&pVm->aLitObj,pInstr->iP2)) != 0 ){
 		if( (pInstr->iP1 & PH7_LOADC_EXPAND) && SyBlobLength(&pObj->sBlob) <= 64 ){
 			SyHashEntry *pEntry;
-			/* Check use const imports first — imports take precedence */
-			{
-				SyHashEntry *pConstImport;
-				pConstImport = SyHashGet(&pVm->hUseConstImports,
-					SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob));
-				if( pConstImport ){
-					const char *zFQN = (const char *)pConstImport->pUserData;
-					pEntry = SyHashGet(&pVm->hConstant,zFQN,SyStrlen(zFQN));
-					if( pEntry ){
-						ph7_constant *pCons = (ph7_constant *)pEntry->pUserData;
-						MemObjSetType(pTos,MEMOBJ_NULL);
-						SyBlobReset(&pTos->sBlob);
-						VmExpandConstantWithNotice(&(*pVm),pCons,pTos);
-						pTos->nIdx = SXU32_HIGH;
-						break;
-					}
-					/* Import found but constant not defined — fall through */
-				}
-			}
-			/* Candidate for expansion via user defined callbacks */
-			pEntry = SyHashGet(&pVm->hConstant,SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob));
-			if( pEntry ){
-				ph7_constant *pCons = (ph7_constant *)pEntry->pUserData;
-				/* Set a NULL default value */
-				MemObjSetType(pTos,MEMOBJ_NULL);
-				SyBlobReset(&pTos->sBlob);
-				/* Invoke the callback and deal with the expanded value */
-				VmExpandConstantWithNotice(&(*pVm),pCons,pTos);
-				/* Mark as constant */
-				pTos->nIdx = SXU32_HIGH;
-				break;
-			}
-			/* Constant not found by bare name.  If a namespace is active and
-			 * the name is unqualified, try namespace\name (PHP resolution order:
-			 * use-const imports → current NS → global → string fallback).
-			 * Absolute references (\NAME) skip the NS fallback too. */
-			{
-				const char *zLit = (const char *)SyBlobData(&pObj->sBlob);
-				sxu32 nLit = (sxu32)SyBlobLength(&pObj->sBlob);
-				sxu32 j;
-				int isQualified = (pInstr->iP1 & PH7_LOADC_ABSOLUTE) != 0;
-				for( j = 0; !isQualified && j < nLit; j++ ){
-					if( zLit[j] == '\\' ){ isQualified = 1; break; }
-				}
-				if( !isQualified && SyBlobLength(&pVm->sNamespace) > 0 ){
-					/* Try current_namespace\name */
-					SyBlobReset(&pVm->sWorker);
-					SyBlobAppend(&pVm->sWorker,SyBlobData(&pVm->sNamespace),SyBlobLength(&pVm->sNamespace));
-					SyBlobAppend(&pVm->sWorker,"\\",1);
-					SyBlobAppend(&pVm->sWorker,zLit,nLit);
-					pEntry = SyHashGet(&pVm->hConstant,SyBlobData(&pVm->sWorker),SyBlobLength(&pVm->sWorker));
-					if( pEntry ){
-						ph7_constant *pCons = (ph7_constant *)pEntry->pUserData;
-						MemObjSetType(pTos,MEMOBJ_NULL);
-						SyBlobReset(&pTos->sBlob);
-						VmExpandConstantWithNotice(&(*pVm),pCons,pTos);
-						pTos->nIdx = SXU32_HIGH;
-						break;
-					}
-					/* Not in current namespace either — fall through to global/string */
-				}
-				{
-					/*
-					 * php 8 has no bare-word fallback: an unresolved constant is a catchable
-					 * Error, not its own name as a string. PH7 answered "X" for an unknown
-					 * X, so a typo — or a constant php REMOVED, like ASSERT_QUIET_EVAL —
-					 * silently became a string and flowed on.
-					 *
-					 * Routed through PH7_THROW_ROUTE_MIDEXPR: OP_LOADC is not a call
-					 * boundary, so neither a bare `break` nor `goto Exception` is correct
-					 * here (see the macro).
-					 */
-					SyBlob sMsg;
-					SyBlobInit(&sMsg,&pVm->sAllocator);
-					SyBlobFormat(&sMsg,"Undefined constant \"%.*s\"",nLit,zLit);
+			/* The name php looks up FIRST for an unqualified constant is decided at
+			 * COMPILE time and travels in p3: a `use const` import's FQN, or
+			 * `current-namespace\NAME`. Absent (global scope, or an already-qualified
+			 * literal), the bare literal is the only name there is. Resolving it here
+			 * rather than against the RUNTIME namespace is what makes a function keep
+			 * its own namespace when it is called from another one, and what lets a
+			 * namespaced constant shadow a global one of the same short name. */
+			const char *zCand = (const char *)pInstr->p3;
+			const char *zLit = (const char *)SyBlobData(&pObj->sBlob);
+			sxu32 nLit = (sxu32)SyBlobLength(&pObj->sBlob);
+			if( zCand ){
+				pEntry = SyHashGet(&pVm->hConstant,zCand,SyStrlen(zCand));
+				if( pEntry ){
+					ph7_constant *pCons = (ph7_constant *)pEntry->pUserData;
 					MemObjSetType(pTos,MEMOBJ_NULL);
 					SyBlobReset(&pTos->sBlob);
+					VmExpandConstantWithNotice(&(*pVm),pCons,pTos);
 					pTos->nIdx = SXU32_HIGH;
-					rc = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sMsg),
-						SyBlobLength(&sMsg));
-					SyBlobRelease(&sMsg);
-					if( rc == SXERR_ABORT ){
-						goto Abort;
-					}
-					PH7_THROW_ROUTE_MIDEXPR(rc)
+					break;
 				}
+			}
+			/* The GLOBAL step — skipped when the candidate came from an import, which
+			 * php resolves without any fallback. */
+			if( (pInstr->iP1 & PH7_LOADC_NOGLOBAL) == 0 ){
+				pEntry = SyHashGet(&pVm->hConstant,(const void *)zLit,nLit);
+				if( pEntry ){
+					ph7_constant *pCons = (ph7_constant *)pEntry->pUserData;
+					/* Set a NULL default value */
+					MemObjSetType(pTos,MEMOBJ_NULL);
+					SyBlobReset(&pTos->sBlob);
+					/* Invoke the callback and deal with the expanded value */
+					VmExpandConstantWithNotice(&(*pVm),pCons,pTos);
+					/* Mark as constant */
+					pTos->nIdx = SXU32_HIGH;
+					break;
+				}
+			}
+			{
+				/*
+				 * php 8 has no bare-word fallback: an unresolved constant is a catchable
+				 * Error, not its own name as a string. PH7 answered "X" for an unknown
+				 * X, so a typo — or a constant php REMOVED, like ASSERT_QUIET_EVAL —
+				 * silently became a string and flowed on. php names the name it looked
+				 * for FIRST, so the message reports the candidate when there was one
+				 * ("Undefined constant \"B\NOPE\"" inside `namespace B;`).
+				 *
+				 * Routed through PH7_THROW_ROUTE_MIDEXPR: OP_LOADC is not a call
+				 * boundary, so neither a bare `break` nor `goto Exception` is correct
+				 * here (see the macro).
+				 */
+				SyBlob sMsg;
+				SyBlobInit(&sMsg,&pVm->sAllocator);
+				if( zCand ){
+					SyBlobFormat(&sMsg,"Undefined constant \"%s\"",zCand);
+				}else{
+					SyBlobFormat(&sMsg,"Undefined constant \"%.*s\"",nLit,zLit);
+				}
+				MemObjSetType(pTos,MEMOBJ_NULL);
+				SyBlobReset(&pTos->sBlob);
+				pTos->nIdx = SXU32_HIGH;
+				rc = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sMsg),
+					SyBlobLength(&sMsg));
+				SyBlobRelease(&sMsg);
+				if( rc == SXERR_ABORT ){
+					goto Abort;
+				}
+				PH7_THROW_ROUTE_MIDEXPR(rc)
 			}
 		}
 		PH7_MemObjLoad(pObj,pTos);

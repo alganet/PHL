@@ -1440,8 +1440,43 @@ static sxi32 GenStateLoadLiteral(ph7_gen_state *pGen)
 		PH7_MemObjInitFromString(pGen->pVm,pLitObj,pStr);
 		GenStateInstallLiteral(&(*pGen),pLitObj,nIdx);
 	}
-	/* Emit the load constant instruction */
-	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,1,nIdx,0,0);
+	/* Emit the load constant instruction.
+	 *
+	 * php resolves an UNQUALIFIED constant against the namespace its SOURCE sits in,
+	 * decided at COMPILE time — so a function keeps its own namespace when called from
+	 * another one — and in a fixed order: a `use const` import first (and an import has
+	 * NO global fallback), else `current-namespace\NAME`, else the global `NAME`. The
+	 * candidate that order picks is resolved here and travels in the instruction's p3;
+	 * the VM's own lookup of the bare literal is then just the global step, and the
+	 * "Undefined constant" message names the candidate, as php does.
+	 *
+	 * Only a name that could BE a constant needs one: a keyword literal never is (the
+	 * scope keywords and isset/empty/eval reach the OO and call handlers by this same
+	 * literal), and a call/new site clears PH7_LOADC_EXPAND before the constant path
+	 * can ever run. */
+	{
+		sxi32 iLoadFlags = PH7_LOADC_EXPAND;
+		char *zCand = 0;
+		if( (pToken->nType & PH7_TK_KEYWORD) == 0 ){
+			SyHashEntry *pImport = SyHashGet(&pGen->hUseConstImports,
+				(const void *)pStr->zString,pStr->nByte);
+			if( pImport ){
+				const char *zFQN = (const char *)pImport->pUserData;
+				zCand = SyMemBackendStrDup(&pGen->pVm->sAllocator,zFQN,SyStrlen(zFQN));
+				iLoadFlags |= PH7_LOADC_NOGLOBAL;
+			}else if( SyBlobLength(&pGen->sNamespace) > 0 ){
+				SyBlob sCand;
+				SyBlobInit(&sCand,&pGen->pVm->sAllocator);
+				SyBlobAppend(&sCand,SyBlobData(&pGen->sNamespace),SyBlobLength(&pGen->sNamespace));
+				SyBlobAppend(&sCand,"\\",1);
+				SyBlobAppend(&sCand,pStr->zString,pStr->nByte);
+				zCand = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+					(const char *)SyBlobData(&sCand),SyBlobLength(&sCand));
+				SyBlobRelease(&sCand);
+			}
+		}
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOADC,iLoadFlags,nIdx,zCand,0);
+	}
 	return SXRET_OK;
 }
 /*

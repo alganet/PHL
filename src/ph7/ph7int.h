@@ -1470,7 +1470,6 @@ struct ph7_vm
 	SyHash hHostFunction;       /* Host-application installable functions */
 	SyHash hFunction;           /* Compiled functions */
 	SyBlob sNamespace;          /* Current namespace (e.g. "App\\Models") */
-	SyHash hUseConstImports;    /* Current use const imports: short alias -> FQN */
 	SyHash hSuper;              /* Superglobals hashtable */
 	SyHash hPDO;                /* PDO installed drivers */
 	SyBlob sConsumer;           /* Default VM consumer [i.e Redirect all VM output to this blob] */
@@ -1916,7 +1915,6 @@ enum ph7_vm_op {
   PH7_OP_ERR_CTRL,     /* Error control */
   PH7_OP_DUP,          /* Duplicate top of stack */
   PH7_OP_NSSWITCH,     /* Switch active namespace at runtime */
-  PH7_OP_USECONST,     /* Register a use-const import at runtime */
   PH7_OP_NULLC,         /* Null coalescing ?? */
   PH7_OP_NULLC_JMP,     /* Null coalescing assign short-circuit jump */
   PH7_OP_NULLC_STORE,   /* Null coalescing assign store */
@@ -1942,6 +1940,10 @@ enum ph7_vm_op {
                                  * stack, and LOAD_MAP must tell them apart: an absent key auto-indexes
                                  * silently, an explicit null key deprecates and stores under "". */
 #define PH7_LOADC_ABSOLUTE 0x02 /* Fully-qualified — skip namespace prefixing */
+#define PH7_LOADC_NOGLOBAL 0x08 /* The p3 candidate came from a `use const` import, which php
+                                 * resolves WITHOUT a global fallback: if that exact name is
+                                 * undefined the read is an Error, even when a global constant
+                                 * of the imported alias's short name exists. */
 /* MEMBER.iP2 — member-access context. 0=read is the default; the unset/isset/empty modes mirror the
  * array LOAD_IDX context modes so unset()/isset()/empty() on a property behave like on an array elem. */
 #define PH7_MEMBER_READ   0 /* attribute read */

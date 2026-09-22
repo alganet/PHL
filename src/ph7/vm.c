@@ -1710,7 +1710,6 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyHashInit(&pVm->hHostFunction,&pVm->sAllocator,SyStrHash,SyStrnmicmp);
 	SyHashInit(&pVm->hFunction,&pVm->sAllocator,SyStrHash,SyStrnmicmp);
 	SyBlobInit(&pVm->sNamespace,&pVm->sAllocator);
-	SyHashInit(&pVm->hUseConstImports,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hClass,&pVm->sAllocator,SyStrHash,SyStrnmicmp);
 	SyHashInit(&pVm->hConstant,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hSuper,&pVm->sAllocator,0,0);
@@ -4920,7 +4919,6 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_PULL:       zOp = "PULL       "; break;
 	case PH7_OP_DUP:        zOp = "DUP        "; break;
 	case PH7_OP_NSSWITCH:   zOp = "NSSWITCH   "; break;
-	case PH7_OP_USECONST:   zOp = "USECONST   "; break;
 	case PH7_OP_SWAP:       zOp = "SWAP       "; break;
 	case PH7_OP_YIELD:      zOp = "YIELD      "; break;
 	case PH7_OP_YIELD_FROM: zOp = "YIELD_FROM "; break;
