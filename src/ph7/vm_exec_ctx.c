@@ -1043,6 +1043,83 @@ static int VmClosureResolveScope(ph7_value *pScopeArg, SyString *pOut)
 	return 0;
 }
 /*
+ * Fiber's C-bodied methods. Every one of them was a global `__fiber_verb($this,…)`
+ * thunk that a one-line prelude method forwarded to; the class body in the builtin
+ * chunk now holds only its two private slots.
+ */
+PH7_PRIVATE sxi32 PH7_VmInstallFiberNative(ph7_vm *pVm)
+{
+	static const PH7_NativeMethodDef aMethod[] = {
+		{ "__construct",  PH7_MOD_PUBLIC, "callable $callback",  "",       vm_builtin_Fiber_construct },
+		/* Variadic: the arguments now reach the C body directly instead of being
+		 * repackaged by a func_get_args() call in the prelude. */
+		{ "start",        PH7_MOD_PUBLIC, "mixed ...$args",      "mixed",  vm_builtin_Fiber_start },
+		{ "resume",       PH7_MOD_PUBLIC, "mixed $value = null", "mixed",  vm_builtin_Fiber_resume },
+		{ "getReturn",    PH7_MOD_PUBLIC, "",                    "mixed",  vm_builtin_Fiber_getReturn },
+		{ "isStarted",    PH7_MOD_PUBLIC, "",                    "bool",   vm_builtin_Fiber_isStarted },
+		{ "isRunning",    PH7_MOD_PUBLIC, "",                    "bool",   vm_builtin_Fiber_isRunning },
+		{ "isSuspended",  PH7_MOD_PUBLIC, "",                    "bool",   vm_builtin_Fiber_isSuspended },
+		{ "isTerminated", PH7_MOD_PUBLIC, "",                    "bool",   vm_builtin_Fiber_isTerminated },
+		/* Static, and the only one that never took a receiver even as a thunk:
+		 * `__fiber_suspend($value)` already read the value from argument #0. */
+		{ "suspend",      PH7_MOD_PUBLIC|PH7_MOD_STATIC, "mixed $value = null", "mixed",
+		  vm_builtin_Fiber_suspend },
+		{ "__destruct",   PH7_MOD_PUBLIC, "",                    "",       vm_builtin_Fiber_destruct },
+	};
+	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"Fiber",sizeof("Fiber")-1,0,0);
+	sxu32 n;
+	if( pClass == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	for( n = 0 ; n < SX_ARRAYSIZE(aMethod) ; n++ ){
+		sxi32 rc = PH7_NativeClassInstallMethod(&(*pVm),pClass,&aMethod[n],0);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	return SXRET_OK;
+}
+/*
+ * Generator's C-bodied methods, plus the `implements Iterator` the chunk can no
+ * longer carry: PH7_ClassImplement installs an abstract stub for any interface
+ * method the class does not already declare, so it has to run AFTER the eight
+ * methods below exist — at which point the stubs are skipped and the class is
+ * concrete, exactly as the prelude declaration used to make it.
+ */
+PH7_PRIVATE sxi32 PH7_VmInstallGeneratorNative(ph7_vm *pVm)
+{
+	static const PH7_NativeMethodDef aMethod[] = {
+		{ "current",    PH7_MOD_PUBLIC, "",                 "mixed", vm_builtin_Generator_current },
+		{ "key",        PH7_MOD_PUBLIC, "",                 "mixed", vm_builtin_Generator_key },
+		{ "next",       PH7_MOD_PUBLIC, "",                 "void",  vm_builtin_Generator_next },
+		{ "rewind",     PH7_MOD_PUBLIC, "",                 "void",  vm_builtin_Generator_rewind },
+		{ "valid",      PH7_MOD_PUBLIC, "",                 "bool",  vm_builtin_Generator_valid },
+		/* php REQUIRES the argument here; the prelude declared `$value = null`, so
+		 * `$gen->send()` used to answer the first yielded value instead of raising. */
+		{ "send",       PH7_MOD_PUBLIC, "mixed $value",     "mixed", vm_builtin_Generator_send },
+		{ "throw",      PH7_MOD_PUBLIC, "Throwable $exception", "mixed", vm_builtin_Generator_throw },
+		{ "getReturn",  PH7_MOD_PUBLIC, "",                 "mixed", vm_builtin_Generator_getReturn },
+		{ "__destruct", PH7_MOD_PUBLIC, "",                 "",      vm_builtin_Generator_destruct },
+	};
+	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"Generator",sizeof("Generator")-1,0,0);
+	ph7_class *pIterator;
+	sxu32 n;
+	if( pClass == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	for( n = 0 ; n < SX_ARRAYSIZE(aMethod) ; n++ ){
+		sxi32 rc = PH7_NativeClassInstallMethod(&(*pVm),pClass,&aMethod[n],0);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	pIterator = PH7_VmExtractClass(&(*pVm),"Iterator",sizeof("Iterator")-1,0,0);
+	if( pIterator == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	return PH7_ClassImplement(pClass,pIterator);
+}
+/*
  * Closure's C-bodied methods.
  *
  * These are the first methods in the engine whose body is a C routine rather than
@@ -1220,21 +1297,23 @@ PH7_PRIVATE int vm_builtin_Fiber_construct(ph7_context *pCtx, int nArg, ph7_valu
 	ph7_class_instance *pThis;
 	ph7_value *pAttr;
 	SyString sAttrName;
-	if( nArg < 2 ){
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	if( pRecv == 0 ){ return PH7_OK; }
+	if( nArg < 1 ){
 		return PH7_VmThrowException(pCtx, "FiberError",
 			"Fiber::__construct() expects a callable argument");
 	}
-	if( (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+	if( (pRecv->iFlags & MEMOBJ_OBJ) == 0 ){
 		return PH7_VmThrowException(pCtx, "FiberError",
 			"Fiber::__construct(): invalid $this");
 	}
-	pThis = (ph7_class_instance *)apArg[0]->x.pOther;
+	pThis = (ph7_class_instance *)pRecv->x.pOther;
 	if( pThis->pClass != pCtx->pVm->pFiberClass ){
 		return PH7_VmThrowException(pCtx, "FiberError",
 			"Fiber::__construct(): $this is not a Fiber instance");
 	}
 	/* Basic validation: callable must be a string or closure (object) */
-	if( (apArg[1]->iFlags & (MEMOBJ_STRING|MEMOBJ_OBJ)) == 0 ){
+	if( (apArg[0]->iFlags & (MEMOBJ_STRING|MEMOBJ_OBJ)) == 0 ){
 		return PH7_VmThrowException(pCtx, "FiberError",
 			"Fiber::__construct() expects a callable (string or closure)");
 	}
@@ -1242,7 +1321,7 @@ PH7_PRIVATE int vm_builtin_Fiber_construct(ph7_context *pCtx, int nArg, ph7_valu
 	SyStringInitFromBuf(&sAttrName, "__callable", 10);
 	pAttr = PH7_ClassInstanceFetchAttr(pThis, &sAttrName);
 	if( pAttr ){
-		PH7_MemObjStore(apArg[1], pAttr);
+		PH7_MemObjStore(apArg[0], pAttr);
 	}
 	return PH7_OK;
 }
@@ -1625,7 +1704,10 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 /*
  * Fiber->start(...$args) — resolve callable, create exec context, install
  * arguments/closure-env/$this (matching OP_CALL semantics), and start.
- * apArg[0] = $this, apArg[1] = func_get_args() array
+ *
+ * As a native VARIADIC method the arguments arrive directly as (nArg, apArg);
+ * the prelude used to hand them over as a single func_get_args() array, which
+ * this had to walk and snapshot out of pVm->aMemObj.
  */
 PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
@@ -1638,12 +1720,13 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 	ph7_value *pCtxAttr;
 	SyString sAttrName;
 	sxi32 rc;
-	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	if( pRecv == 0 || (pRecv->iFlags & MEMOBJ_OBJ) == 0 ){
 		return PH7_VmThrowException(pCtx, "FiberError", "Fiber::start() requires $this");
 	}
-	pThis = (ph7_class_instance *)apArg[0]->x.pOther;
+	pThis = (ph7_class_instance *)pRecv->x.pOther;
 	/* Check if already started (has a __ctx) */
-	pExecCtx = VmFiberExtractCtx(pVm, apArg[0]);
+	pExecCtx = VmFiberExtractCtx(pVm, pRecv);
 	if( pExecCtx != 0 ){
 		return PH7_VmThrowException(pCtx, "FiberError",
 			"Cannot start a fiber that has already been started");
@@ -1673,51 +1756,20 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 	pVm->pFrame = pExecCtx->pFrame;
 	/* Unpack the args array and install into the frame */
 	{
-		ph7_value **apValues = 0;
-		ph7_value *aStore = 0;
-		int nActual = 0;
-		if( nArg >= 2 && (apArg[1]->iFlags & MEMOBJ_HASHMAP) ){
-			ph7_hashmap *pMap = (ph7_hashmap *)apArg[1]->x.pOther;
-			ph7_hashmap_node *pNode;
-			sxu32 nCount = pMap->nEntry;
-			if( nCount > 0 ){
-				sxu32 idx = 0;
-				apValues = (ph7_value **)SyMemBackendAlloc(&pVm->sAllocator,
-					nCount * sizeof(ph7_value *));
-				aStore = (ph7_value *)SyMemBackendAlloc(&pVm->sAllocator,
-					nCount * sizeof(ph7_value));
-				if( apValues && aStore ){
-					pNode = pMap->pFirst;
-					while( pNode && idx < nCount ){
-						/* Snapshot each source into stable storage: VmFiberSetupFrame reserves
-						 * memory objects (VmExtractMemObj) before reading the args, which can
-						 * reallocate (move) pVm->aMemObj and dangle a raw pool pointer. A
-						 * shallow copy is a safe source — the referent and the heap-resident
-						 * blob data survive the move (same sSafeVal idiom the hashmap inserters
-						 * use); it owns nothing independently, so it needs no release. */
-						ph7_value *pSrc = (ph7_value *)SySetAt(&pVm->aMemObj, pNode->nValIdx);
-						if( pSrc ){
-							aStore[idx] = *pSrc;
-						}else{
-							PH7_MemObjInit(pVm, &aStore[idx]);
-						}
-						apValues[idx] = &aStore[idx];
-						idx++;
-						pNode = pNode->pPrev;
-					}
-					nActual = (int)idx;
-				}
-			}
-		}
+		/* The arguments are this call's own operand-stack slots, so they can be
+		 * handed to the frame setup as-is. The old form had to snapshot them out of
+		 * pVm->aMemObj first, because they arrived as a func_get_args() hashmap
+		 * whose element values live in that set — and VmFiberSetupFrame reserves
+		 * memory objects (VmExtractMemObj) before reading its arguments, which can
+		 * reallocate the set and dangle a raw pool pointer. Operand slots do not
+		 * move, so the copy is gone with the array that made it necessary. */
+		ph7_value **apValues = (nArg > 0) ? apArg : 0;
+		int nActual = nArg;
 		rc = VmFiberSetupFrame(pVm, pExecCtx, pClosureThis, nActual, apValues,
 			0 /* weak-mode arg binding, like call_user_func */, 0,
 			FALSE/*Fiber::start(): php omits the call-site segment*/);
-		if( aStore ){
-			SyMemBackendFree(&pVm->sAllocator, aStore);
-		}
-		if( apValues ){
-			SyMemBackendFree(&pVm->sAllocator, apValues);
-		}
+		/* Nothing to free: apValues aliases the operand stack now, it is not a
+		 * buffer this function allocated. */
 	}
 	/* Detach the frame — VmStartCtx will re-attach it */
 	pVm->pFrame = pExecCtx->pFrame->pParent;
@@ -1751,11 +1803,13 @@ PH7_PRIVATE int vm_builtin_Fiber_resume(ph7_context *pCtx, int nArg, ph7_value *
 	ph7_value sResult;
 	ph7_value *pResumeVal;
 	sxi32 rc;
-	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	if( pRecv == 0 ){ return PH7_OK; }
+	if( (pRecv->iFlags & MEMOBJ_OBJ) == 0 ){
 		ph7_context_throw_error(pCtx, PH7_CTX_ERR, "Fiber::resume() requires $this");
 		return PH7_OK;
 	}
-	pExecCtx = VmFiberExtractCtx(pVm, apArg[0]);
+	pExecCtx = VmFiberExtractCtx(pVm, pRecv);
 	if( pExecCtx == 0 ){
 		ph7_context_throw_error(pCtx, PH7_CTX_ERR, "Invalid Fiber object");
 		return PH7_OK;
@@ -1764,7 +1818,7 @@ PH7_PRIVATE int vm_builtin_Fiber_resume(ph7_context *pCtx, int nArg, ph7_value *
 		return PH7_VmThrowException(pCtx, "FiberError",
 			"Cannot resume a fiber that is not suspended");
 	}
-	pResumeVal = (nArg > 1) ? apArg[1] : 0;
+	pResumeVal = (nArg > 0) ? apArg[0] : 0;
 	PH7_MemObjInit(pVm, &sResult);
 	rc = VmResumeCtx(pVm, pExecCtx, pResumeVal, &sResult);
 	if( rc == PH7_ABORT ){
@@ -1786,11 +1840,15 @@ PH7_PRIVATE int vm_builtin_Fiber_getReturn(ph7_context *pCtx, int nArg, ph7_valu
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_exec_ctx *pExecCtx;
-	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	SXUNUSED(apArg);
+	SXUNUSED(nArg);
+	if( pRecv == 0 ){ return PH7_OK; }
+	if( (pRecv->iFlags & MEMOBJ_OBJ) == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	pExecCtx = VmFiberExtractCtx(pVm, apArg[0]);
+	pExecCtx = VmFiberExtractCtx(pVm, pRecv);
 	if( pExecCtx == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
@@ -1812,32 +1870,44 @@ PH7_PRIVATE int vm_builtin_Fiber_getReturn(ph7_context *pCtx, int nArg, ph7_valu
 PH7_PRIVATE int vm_builtin_Fiber_isStarted(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ph7_exec_ctx *pExecCtx;
-	if( nArg < 1 ){ ph7_result_bool(pCtx, 0); return PH7_OK; }
-	pExecCtx = VmFiberExtractCtx(pCtx->pVm, apArg[0]);
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	SXUNUSED(apArg);
+	SXUNUSED(nArg);
+	if( pRecv == 0 ){ ph7_result_bool(pCtx, 0); return PH7_OK; }
+	pExecCtx = VmFiberExtractCtx(pCtx->pVm, pRecv);
 	ph7_result_bool(pCtx, pExecCtx && pExecCtx->iState != PH7_CTX_STATE_CREATED);
 	return PH7_OK;
 }
 PH7_PRIVATE int vm_builtin_Fiber_isRunning(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ph7_exec_ctx *pExecCtx;
-	if( nArg < 1 ){ ph7_result_bool(pCtx, 0); return PH7_OK; }
-	pExecCtx = VmFiberExtractCtx(pCtx->pVm, apArg[0]);
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	SXUNUSED(apArg);
+	SXUNUSED(nArg);
+	if( pRecv == 0 ){ ph7_result_bool(pCtx, 0); return PH7_OK; }
+	pExecCtx = VmFiberExtractCtx(pCtx->pVm, pRecv);
 	ph7_result_bool(pCtx, pExecCtx && pExecCtx->iState == PH7_CTX_STATE_RUNNING);
 	return PH7_OK;
 }
 PH7_PRIVATE int vm_builtin_Fiber_isSuspended(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ph7_exec_ctx *pExecCtx;
-	if( nArg < 1 ){ ph7_result_bool(pCtx, 0); return PH7_OK; }
-	pExecCtx = VmFiberExtractCtx(pCtx->pVm, apArg[0]);
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	SXUNUSED(apArg);
+	SXUNUSED(nArg);
+	if( pRecv == 0 ){ ph7_result_bool(pCtx, 0); return PH7_OK; }
+	pExecCtx = VmFiberExtractCtx(pCtx->pVm, pRecv);
 	ph7_result_bool(pCtx, pExecCtx && pExecCtx->iState == PH7_CTX_STATE_SUSPENDED);
 	return PH7_OK;
 }
 PH7_PRIVATE int vm_builtin_Fiber_isTerminated(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ph7_exec_ctx *pExecCtx;
-	if( nArg < 1 ){ ph7_result_bool(pCtx, 0); return PH7_OK; }
-	pExecCtx = VmFiberExtractCtx(pCtx->pVm, apArg[0]);
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	SXUNUSED(apArg);
+	SXUNUSED(nArg);
+	if( pRecv == 0 ){ ph7_result_bool(pCtx, 0); return PH7_OK; }
+	pExecCtx = VmFiberExtractCtx(pCtx->pVm, pRecv);
 	ph7_result_bool(pCtx, pExecCtx && pExecCtx->iState == PH7_CTX_STATE_COMPLETED);
 	return PH7_OK;
 }
@@ -1848,15 +1918,18 @@ PH7_PRIVATE int vm_builtin_Fiber_destruct(ph7_context *pCtx, int nArg, ph7_value
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_exec_ctx *pExecCtx;
-	if( nArg < 1 ){
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	SXUNUSED(apArg);
+	SXUNUSED(nArg);
+	if( pRecv == 0 ){
 		return PH7_OK;
 	}
-	pExecCtx = VmFiberExtractCtx(pVm, apArg[0]);
+	pExecCtx = VmFiberExtractCtx(pVm, pRecv);
 	if( pExecCtx ){
 		VmReleaseExecCtx(pVm, pExecCtx);
 		/* Clear the attribute so double-free is prevented */
-		if( apArg[0]->iFlags & MEMOBJ_OBJ ){
-			ph7_class_instance *pThis = (ph7_class_instance *)apArg[0]->x.pOther;
+		if( pRecv->iFlags & MEMOBJ_OBJ ){
+			ph7_class_instance *pThis = (ph7_class_instance *)pRecv->x.pOther;
 			SyString sAttrName;
 			ph7_value *pAttr;
 			SyStringInitFromBuf(&sAttrName, "__ctx", 5);
@@ -2036,8 +2109,11 @@ PH7_PRIVATE int vm_builtin_Generator_rewind(ph7_context *pCtx, int nArg, ph7_val
 {
 	ph7_generator *pGen;
 	sxi32 rc;
-	if( nArg < 1 ) return PH7_OK;
-	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	SXUNUSED(apArg);
+	SXUNUSED(nArg);
+	if( pRecv == 0 ) return PH7_OK;
+	pGen = VmGeneratorExtractCtx(pCtx->pVm, pRecv);
 	if( pGen == 0 ) return PH7_OK;
 	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){
 		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);
@@ -2052,8 +2128,11 @@ PH7_PRIVATE int vm_builtin_Generator_rewind(ph7_context *pCtx, int nArg, ph7_val
 PH7_PRIVATE int vm_builtin_Generator_valid(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ph7_generator *pGen;
-	if( nArg < 1 ){ ph7_result_bool(pCtx, 0); return PH7_OK; }
-	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	SXUNUSED(apArg);
+	SXUNUSED(nArg);
+	if( pRecv == 0 ){ ph7_result_bool(pCtx, 0); return PH7_OK; }
+	pGen = VmGeneratorExtractCtx(pCtx->pVm, pRecv);
 	ph7_result_bool(pCtx, pGen && pGen->pCtx->iState == PH7_CTX_STATE_SUSPENDED);
 	return PH7_OK;
 }
@@ -2065,8 +2144,11 @@ PH7_PRIVATE int vm_builtin_Generator_current(ph7_context *pCtx, int nArg, ph7_va
 {
 	ph7_generator *pGen;
 	sxi32 rc;
-	if( nArg < 1 ){ ph7_result_null(pCtx); return PH7_OK; }
-	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	SXUNUSED(apArg);
+	SXUNUSED(nArg);
+	if( pRecv == 0 ){ ph7_result_null(pCtx); return PH7_OK; }
+	pGen = VmGeneratorExtractCtx(pCtx->pVm, pRecv);
 	if( pGen == 0 ){ ph7_result_null(pCtx); return PH7_OK; }
 	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){
 		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);
@@ -2088,8 +2170,11 @@ PH7_PRIVATE int vm_builtin_Generator_key(ph7_context *pCtx, int nArg, ph7_value 
 {
 	ph7_generator *pGen;
 	sxi32 rc;
-	if( nArg < 1 ){ ph7_result_null(pCtx); return PH7_OK; }
-	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	SXUNUSED(apArg);
+	SXUNUSED(nArg);
+	if( pRecv == 0 ){ ph7_result_null(pCtx); return PH7_OK; }
+	pGen = VmGeneratorExtractCtx(pCtx->pVm, pRecv);
 	if( pGen == 0 ){ ph7_result_null(pCtx); return PH7_OK; }
 	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){
 		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);
@@ -2110,8 +2195,11 @@ PH7_PRIVATE int vm_builtin_Generator_next(ph7_context *pCtx, int nArg, ph7_value
 {
 	ph7_generator *pGen;
 	sxi32 rc;
-	if( nArg < 1 ) return PH7_OK;
-	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	SXUNUSED(apArg);
+	SXUNUSED(nArg);
+	if( pRecv == 0 ) return PH7_OK;
+	pGen = VmGeneratorExtractCtx(pCtx->pVm, pRecv);
 	if( pGen == 0 ) return PH7_OK;
 	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){
 		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);
@@ -2132,10 +2220,11 @@ PH7_PRIVATE int vm_builtin_Generator_send(ph7_context *pCtx, int nArg, ph7_value
 	ph7_generator *pGen;
 	ph7_value *pSendVal;
 	sxi32 rc;
-	if( nArg < 1 ) return PH7_OK;
-	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	if( pRecv == 0 ) return PH7_OK;
+	pGen = VmGeneratorExtractCtx(pCtx->pVm, pRecv);
 	if( pGen == 0 ){ ph7_result_null(pCtx); return PH7_OK; }
-	pSendVal = (nArg > 1) ? apArg[1] : 0;
+	pSendVal = (nArg > 0) ? apArg[0] : 0;
 	if( pGen->pCtx->iState == PH7_CTX_STATE_CREATED ){
 		/* First send starts the generator; sent value is ignored per PHP semantics */
 		rc = VmStartCtx(pCtx->pVm, pGen->pCtx, 0);
@@ -2179,18 +2268,20 @@ PH7_PRIVATE int vm_builtin_Generator_throw(ph7_context *pCtx, int nArg, ph7_valu
 	ph7_class *pThrowable;
 	VmFrame *pFrame;
 	sxi32 rc;
-	if( nArg < 2 ) return PH7_OK;
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	if( pRecv == 0 ){ return PH7_OK; }
+	if( nArg < 1 ) return PH7_OK;
 	/* Argument #1 must be a Throwable; otherwise PHP raises a TypeError naming
 	 * the given type (class name for objects, "null"/"string"/... for scalars). */
 	pThrowable = PH7_VmExtractClass(pCtx->pVm, "Throwable", sizeof("Throwable")-1, 0, 0);
-	if( (apArg[1]->iFlags & MEMOBJ_OBJ) == 0
-	 || (pThrowable && !PH7_VmInstanceOf(((ph7_class_instance *)apArg[1]->x.pOther)->pClass, pThrowable)) ){
+	if( (apArg[0]->iFlags & MEMOBJ_OBJ) == 0
+	 || (pThrowable && !PH7_VmInstanceOf(((ph7_class_instance *)apArg[0]->x.pOther)->pClass, pThrowable)) ){
 		char zCls[128];
-		const char *zGiven = VmValueGivenName(apArg[1], zCls, sizeof(zCls));
+		const char *zGiven = VmValueGivenName(apArg[0], zCls, sizeof(zCls));
 		return PH7_VmThrowException(pCtx, "TypeError",
 			"Generator::throw(): Argument #1 ($exception) must be of type Throwable, %s given", zGiven);
 	}
-	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);
+	pGen = VmGeneratorExtractCtx(pCtx->pVm, pRecv);
 	if( pGen == 0 ) return PH7_OK;
 	/* PHP forbids resuming/throwing into a generator that is currently executing. */
 	if( pGen->pCtx->iState == PH7_CTX_STATE_RUNNING ){
@@ -2200,7 +2291,7 @@ PH7_PRIVATE int vm_builtin_Generator_throw(ph7_context *pCtx, int nArg, ph7_valu
 	/* Hold a reference to the injected instance for the whole operation: the VM loop
 	 * (inject path) or VmThrowException (propagate path) may run catch blocks that bind
 	 * and later release it. Dropped on every return path below. */
-	pInj = (ph7_class_instance *)apArg[1]->x.pOther;
+	pInj = (ph7_class_instance *)apArg[0]->x.pOther;
 	pInj->iRef++;
 	/* A never-started generator runs to its first yield, then the exception is injected
 	 * there (PHP). Start it first; if it suspended at a yield, fall through to inject; if
@@ -2253,8 +2344,11 @@ PH7_PRIVATE int vm_builtin_Generator_throw(ph7_context *pCtx, int nArg, ph7_valu
 PH7_PRIVATE int vm_builtin_Generator_getReturn(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ph7_generator *pGen;
-	if( nArg < 1 ){ ph7_result_null(pCtx); return PH7_OK; }
-	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	SXUNUSED(apArg);
+	SXUNUSED(nArg);
+	if( pRecv == 0 ){ ph7_result_null(pCtx); return PH7_OK; }
+	pGen = VmGeneratorExtractCtx(pCtx->pVm, pRecv);
 	if( pGen == 0 ){ ph7_result_null(pCtx); return PH7_OK; }
 	if( pGen->pCtx->iState != PH7_CTX_STATE_COMPLETED ){
 		return PH7_VmThrowException(pCtx, "Error",
@@ -2270,8 +2364,11 @@ PH7_PRIVATE int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_v
 {
 	ph7_generator *pGen;
 	sxi32 rcClose = SXRET_OK;
-	if( nArg < 1 ) return PH7_OK;
-	pGen = VmGeneratorExtractCtx(pCtx->pVm, apArg[0]);
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	SXUNUSED(apArg);
+	SXUNUSED(nArg);
+	if( pRecv == 0 ) return PH7_OK;
+	pGen = VmGeneratorExtractCtx(pCtx->pVm, pRecv);
 	if( pGen ){
 		/* A generator abandoned before it completes still runs its pending `finally`
 		 * blocks (PHP runs them at generator close/GC). Drive them before teardown. */
@@ -2279,8 +2376,8 @@ PH7_PRIVATE int vm_builtin_Generator_destruct(ph7_context *pCtx, int nArg, ph7_v
 			rcClose = VmCloseCtx(pCtx->pVm, pGen->pCtx);
 		}
 		VmReleaseGenerator(pCtx->pVm, pGen);
-		if( apArg[0]->iFlags & MEMOBJ_OBJ ){
-			ph7_class_instance *pThis = (ph7_class_instance *)apArg[0]->x.pOther;
+		if( pRecv->iFlags & MEMOBJ_OBJ ){
+			ph7_class_instance *pThis = (ph7_class_instance *)pRecv->x.pOther;
 			SyString sAttrName;
 			ph7_value *pAttr;
 			SyStringInitFromBuf(&sAttrName, "__ctx", 5);

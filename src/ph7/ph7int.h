@@ -3437,6 +3437,8 @@ PH7_PRIVATE int PH7_ArgSatisfiesString(ph7_value *pArg);
 PH7_PRIVATE void VmDeprecatedAttrNotice(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_class *pDeclClass);
 /* vm_exec_ctx.c — Fiber/Generator/Closure engine shared with vm.c */
 PH7_PRIVATE sxi32 PH7_VmInstallClosureNative(ph7_vm *pVm);
+PH7_PRIVATE sxi32 PH7_VmInstallFiberNative(ph7_vm *pVm);
+PH7_PRIVATE sxi32 PH7_VmInstallGeneratorNative(ph7_vm *pVm);
 PH7_PRIVATE int vm_builtin_Closure_bindTo(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Fiber_construct(ph7_context *pCtx, int nArg, ph7_value **apArg);

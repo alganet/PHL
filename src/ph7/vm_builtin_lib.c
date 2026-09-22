@@ -268,31 +268,20 @@
 	"    $this->handle = null;"\
 	"}"\
 	"}"\
+	/* Fiber and Generator keep only their STORAGE here; every method is native
+	 * (PH7_VmInstallFiberNative / PH7_VmInstallGeneratorNative), so the
+	 * `__fiber_` and `__gen_` global thunks the one-line bodies used to forward to
+	 * are gone. Generator's `implements Iterator` is attached from C too, and must be:
+	 * PH7_ClassImplement installs an ABSTRACT stub for every interface method the
+	 * class does not already declare, and at chunk-compile time this body declares
+	 * none of them — the class would be rejected as abstract before the native
+	 * methods could ever be attached. */\
 	"class Fiber {"\
 	"  private $__ctx;"\
 	"  private $__callable;"\
-	"  public function __construct($callable){ __fiber_construct($this,$callable); }"\
-	"  public function start(){ return __fiber_start($this, func_get_args()); }"\
-	"  public function resume($value = null){ return __fiber_resume($this,$value); }"\
-	"  public function getReturn(){ return __fiber_getReturn($this); }"\
-	"  public function isStarted(){ return __fiber_isStarted($this); }"\
-	"  public function isRunning(){ return __fiber_isRunning($this); }"\
-	"  public function isSuspended(){ return __fiber_isSuspended($this); }"\
-	"  public function isTerminated(){ return __fiber_isTerminated($this); }"\
-	"  public static function suspend($value = null){ return __fiber_suspend($value); }"\
-	"  public function __destruct(){ __fiber_destruct($this); }"\
 	"}"\
-	"class Generator implements Iterator {"\
+	"class Generator {"\
 	"  private $__ctx;"\
-	"  public function current(){ return __gen_current($this); }"\
-	"  public function key(){ return __gen_key($this); }"\
-	"  public function next(){ return __gen_next($this); }"\
-	"  public function rewind(){ return __gen_rewind($this); }"\
-	"  public function valid(){ return __gen_valid($this); }"\
-	"  public function send($value = null){ return __gen_send($this,$value); }"\
-	"  public function throw(Throwable $exception){ return __gen_throw($this,$exception); }"\
-	"  public function getReturn(){ return __gen_getReturn($this); }"\
-	"  public function __destruct(){ __gen_destruct($this); }"\
 	"}"\
 	"final class Closure {"\
 	"  private $__fn;"\

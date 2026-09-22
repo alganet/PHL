@@ -102,10 +102,18 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallMethod(
 	}
 	/* Arity bounds and by-ref positions come from the declared signature, exactly
 	 * as they do for a builtin (VmSetBuiltinSignatures) -- one string is the single
-	 * source of truth, and it doubles as the Reflection parameter list. A method
-	 * declared with no signature stays unenforced rather than "accepts zero args":
-	 * the ph7_user_func was SyZero'd, and bHasMaxArg == 0 means "unchecked". */
-	if( pDef->zSig && pDef->zSig[0] ){
+	 * source of truth, and it doubles as the Reflection parameter list.
+	 *
+	 * NULL and "" mean different things here, and the difference is load-bearing.
+	 * A builtin without a row in aBuiltinSig[] is simply undescribed, so it stays
+	 * UNENFORCED (the SyZero'd bHasMaxArg == 0 reads as "unchecked", never as
+	 * "accepts at most zero"). A native method, by contrast, always states its
+	 * signature deliberately, so "" is a positive declaration of ZERO parameters
+	 * and must enforce a maximum of zero -- otherwise `$gen->current(1)` and
+	 * `$fiber->isStarted(1)` are swallowed where php raises "expects exactly 0
+	 * arguments, 1 given". VmDeriveArityFromSig("") already answers min 0 / max 0 /
+	 * enforced; only NULL opts out. */
+	if( pDef->zSig ){
 		sxi16 nMin = 0, nMax = 0;
 		sxu8 bAtLeast = 0, bHasMax = 0;
 		pNative->zSig = pDef->zSig;

@@ -2068,17 +2068,8 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->pCoalesceObj = 0;
 	pVm->bCoalesceArmed = 0;
 	PH7_MemObjInit(pVm,&pVm->sCoalesceKey);
-	/* Register Fiber internal C functions */
-	ph7_create_function(pVm,"__fiber_suspend",vm_builtin_Fiber_suspend,0);
-	ph7_create_function(pVm,"__fiber_construct",vm_builtin_Fiber_construct,0);
-	ph7_create_function(pVm,"__fiber_start",vm_builtin_Fiber_start,0);
-	ph7_create_function(pVm,"__fiber_resume",vm_builtin_Fiber_resume,0);
-	ph7_create_function(pVm,"__fiber_getReturn",vm_builtin_Fiber_getReturn,0);
-	ph7_create_function(pVm,"__fiber_isStarted",vm_builtin_Fiber_isStarted,0);
-	ph7_create_function(pVm,"__fiber_isRunning",vm_builtin_Fiber_isRunning,0);
-	ph7_create_function(pVm,"__fiber_isSuspended",vm_builtin_Fiber_isSuspended,0);
-	ph7_create_function(pVm,"__fiber_isTerminated",vm_builtin_Fiber_isTerminated,0);
-	ph7_create_function(pVm,"__fiber_destruct",vm_builtin_Fiber_destruct,0);
+	/* Fiber's methods, as real C bodies rather than global __fiber_* thunks. */
+	PH7_VmInstallFiberNative(&(*pVm));
 	/* Cache the Closure class pointer (closures are instances of it) */
 	pVm->pClosureClass = PH7_VmExtractClass(pVm,"Closure",7,0,0);
 	pVm->pClosureThis = 0; /* transient bound-$this slot, consumed per call */
@@ -2088,17 +2079,11 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	PH7_VmInstallClosureNative(&(*pVm));
 	/* Cache the stdClass pointer ((object) cast target + dynamic-property owner) */
 	pVm->pStdClass = PH7_VmExtractClass(pVm,"stdClass",sizeof("stdClass")-1,0,0);
-	/* Cache the Generator class pointer and register generator functions */
+	/* Cache the Generator class pointer, then install its methods as C bodies
+	 * (the __gen_* thunks are gone). Iterator must already be compiled: the
+	 * install re-attaches `implements Iterator`, which the chunk cannot carry. */
 	pVm->pGeneratorClass = PH7_VmExtractClass(pVm,"Generator",9,0,0);
-	ph7_create_function(pVm,"__gen_rewind",vm_builtin_Generator_rewind,0);
-	ph7_create_function(pVm,"__gen_valid",vm_builtin_Generator_valid,0);
-	ph7_create_function(pVm,"__gen_current",vm_builtin_Generator_current,0);
-	ph7_create_function(pVm,"__gen_key",vm_builtin_Generator_key,0);
-	ph7_create_function(pVm,"__gen_next",vm_builtin_Generator_next,0);
-	ph7_create_function(pVm,"__gen_send",vm_builtin_Generator_send,0);
-	ph7_create_function(pVm,"__gen_throw",vm_builtin_Generator_throw,0);
-	ph7_create_function(pVm,"__gen_getReturn",vm_builtin_Generator_getReturn,0);
-	ph7_create_function(pVm,"__gen_destruct",vm_builtin_Generator_destruct,0);
+	PH7_VmInstallGeneratorNative(&(*pVm));
 	/* Install the Reflection library (embedded classes + __reflect_* thunks).
 	 * Still inside the bCompilingBuiltin window so its classes are flagged
 	 * internal; the Traversable pointer above must already be cached. */
