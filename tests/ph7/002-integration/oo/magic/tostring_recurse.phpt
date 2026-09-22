@@ -9,6 +9,11 @@ VmByteCodeExec re-entry), not the OP_CALL trampoline — so unbounded __toString
 recursion is bounded by the native-nesting cap (PH7_VM_CONFIG_NATIVE_DEPTH),
 lowered here to 32 for a fast, deterministic fatal (BYTECODE.md stage 5).
 phl-only: an engine-internal cap real php does not express.
+
+The cap now HALTS the script (exit 255, nothing on stdout). It used to report
+the error, expand the "Object" placeholder for the abandoned cast and KEEP
+RUNNING -- the same silent-wrong-answer shape as the missing-__toString case
+(see tostring_missing_throws.phpt).
 --SKIPIF--
 <?php if (function_exists('zend_version')) echo 'skip phl-only: engine-internal native-nesting cap, not expressible in php'; ?>
 --ENV--
@@ -23,9 +28,9 @@ class A {
 
 $a = new A();
 echo $a;
+echo "NOT REACHED\n";
 ?>
 --EXPECT--
-Object
 --EXPECT_STDERR--
 PHP Error:  Maximum native nesting depth reached in %s on line %d
 --CLEAN--

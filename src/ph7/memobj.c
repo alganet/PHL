@@ -194,10 +194,11 @@ static sxi32 MemObjCallClassCastMethod(
 		/* No such method */
 		return SXERR_NOTFOUND;
 	}
-	/* Invoke the desired method */
-	PH7_VmCallClassMethod(&(*pVm),&(*pThis),pMethod,&(*pResult),0,0);
-	/* Method successfully called,pResult should hold the return value */
-	return SXRET_OK;
+	/* Invoke the desired method and hand back ITS status: a magic cast method
+	 * that threw must not be reported as a successful call, or the caller
+	 * expands its fallback and the abandoned coercion produces a value (echo
+	 * printed "Object" after a caught __toString() throw). */
+	return PH7_VmCallClassMethod(&(*pVm),&(*pThis),pMethod,&(*pResult),0,0);
 }
 /*
  * Return some kind of integer value which is the best we can
@@ -371,7 +372,9 @@ PH7_PRIVATE sxi32 PH7_PhpFloatShape(char *zBuf,sxi32 nLen,int bGeneric)
 #endif /* PH7_OMIT_FLOATING_POINT */
 /*
  * Return the string representation of a given ph7_value.
- * This function never fail and always return SXRET_OK.
+ * Returns SXRET_OK, or the PH7_EXCEPTION/PH7_ABORT status of a __toString()
+ * that threw -- the only way this can fail, and the only case in which pOut is
+ * left without a rendering of pObj.
  */
 static sxi32 MemObjStringValue(SyBlob *pOut,ph7_value *pObj,sxu8 bStrictBool)
 {
@@ -432,6 +435,16 @@ static sxi32 MemObjStringValue(SyBlob *pOut,ph7_value *pObj,sxu8 bStrictBool)
 		PH7_MemObjInit(pObj->pVm,&sResult);
 		rc = MemObjCallClassCastMethod(pObj->pVm,(ph7_class_instance *)pObj->x.pOther,
 			"__toString",sizeof("__toString")-1,&sResult);
+		if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
+			/* __toString() threw: php abandons the coercion and propagates. Append
+			 * NOTHING -- appending the placeholder here made `echo $o` print
+			 * "Object" AFTER the catch had already run, and turned the `.=`
+			 * lvalue and settype()'s target into that string. Return BEFORE the
+			 * unref: the caller keeps pObj as it was, so it still owns this
+			 * instance reference. */
+			PH7_MemObjRelease(&sResult);
+			return rc;
+		}
 		if( rc == SXRET_OK && (sResult.iFlags & MEMOBJ_STRING) && SyBlobLength(&sResult.sBlob) > 0){
 			/* Expand method return value */
 			SyBlobDup(&sResult.sBlob,pOut);
@@ -584,9 +597,63 @@ PH7_PRIVATE sxi32 PH7_MemObjToString(ph7_value *pObj)
 		/* Perform the conversion */
 		SyBlobReset(&pObj->sBlob); /* Reset the internal buffer */
 		rc = MemObjStringValue(&pObj->sBlob,&(*pObj),TRUE);
+		if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
+			/* A __toString() that threw: the coercion is abandoned, so the value
+			 * keeps its own type (and its instance reference — MemObjStringValue
+			 * skipped the unref for exactly this). php's `$o .= "x"` likewise
+			 * leaves $o holding the object after the throw is caught. */
+			return rc;
+		}
 		MemObjSetType(pObj,MEMOBJ_STRING);
 	}
 	return rc;
+}
+/*
+ * php's cast_object handler with IS_STRING: an object whose class declares no
+ * __toString() cannot be coerced, and php answers the CATCHABLE
+ *   Error: Object of class X could not be converted to string
+ * PH7 instead expanded the literal placeholder "Object" (a PH7-ism the old
+ * comment attributed to the language manual), so `echo $o`, `"$o"`,
+ * `(string)$o` and `"x".$o` all produced a six-byte string where php throws —
+ * a silent wrong answer that survived every arity and type check. The int and
+ * float casts have diagnosed php's way for a while (MemObjIntValue /
+ * MemObjRealValue warn "could not be converted to int/float"); only the string
+ * cast still carried the placeholder.
+ *
+ * The object is left UNTOUCHED: php's throw abandons the coercion, so the
+ * lvalue that reached a `$o .= "x"` or a settype($o,'string') still holds its
+ * object afterwards. Every caller either routes the status (the opcode sites,
+ * via PH7_DISPATCH_TOSTRING_RC) or records it on its call context (the builtin
+ * sites: echo/print/settype), and none of them reads the value back. The
+ * settype() site then blanks its target itself, because php's
+ * convert_to_string() has already done so by the time the Error escapes.
+ */
+static sxi32 MemObjThrowNotStringable(ph7_value *pObj)
+{
+	ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;
+	SyBlob sMsg;
+	SyBlobInit(&sMsg,&pObj->pVm->sAllocator);
+	SyBlobFormat(&sMsg,"Object of class %z could not be converted to string",
+		&pInst->pClass->sName);
+	/* VmThrowBuiltinError consumes (releases) sMsg */
+	return VmThrowBuiltinError(pObj->pVm,"Error",sizeof("Error")-1,&sMsg);
+}
+/*
+ * TRUE when a user-visible string coercion of pObj must throw instead: pObj is
+ * an object and its class has no __toString(). Inherited and trait methods
+ * count -- PH7_ClassExtractMethod walks the same chain the call would.
+ */
+static int MemObjIsNotStringable(ph7_value *pObj)
+{
+	ph7_class_instance *pInst;
+	if( (pObj->iFlags & MEMOBJ_OBJ) == 0 || pObj->pVm == 0 ){
+		return FALSE;
+	}
+	pInst = (ph7_class_instance *)pObj->x.pOther;
+	if( pInst == 0 || pInst->pClass == 0 ){
+		return FALSE;
+	}
+	return PH7_ClassExtractMethod(pInst->pClass,"__toString",sizeof("__toString")-1) == 0;
 }
 /*
  * User-visible array->string coercion. php emits an E_WARNING
@@ -600,9 +667,16 @@ PH7_PRIVATE sxi32 PH7_MemObjToString(ph7_value *pObj)
  * the bare PH7_MemObjToString; the user-visible ones call this instead.
  *
  * Behaviour is otherwise identical to PH7_MemObjToString: a no-op when pObj is
- * already a string, and OBJECTS are left to their own __toString /
- * not-stringable path (only a MEMOBJ_HASHMAP warns here). The warning routes
- * through pObj->pVm, which every VM-owned ph7_value carries.
+ * already a string. The warning routes through pObj->pVm, which every VM-owned
+ * ph7_value carries.
+ *
+ * The OBJECT side is the other half of "user-visible": a class with no
+ * __toString() throws php's catchable Error here (MemObjThrowNotStringable)
+ * and the value is left alone, while the SILENT internal coercions keep
+ * rendering it -- so an array key, a sort comparison or print_r never throws,
+ * exactly as php never throws for them.
+ *
+ * Returns SXRET_OK, or the PH7_EXCEPTION/PH7_ABORT status of the throw.
  */
 PH7_PRIVATE sxi32 PH7_MemObjToStringUV(ph7_value *pObj)
 {
@@ -611,6 +685,9 @@ PH7_PRIVATE sxi32 PH7_MemObjToStringUV(ph7_value *pObj)
 	}
 	if( (pObj->iFlags & MEMOBJ_HASHMAP) && pObj->pVm ){
 		PH7_VmThrowError(pObj->pVm,0,PH7_CTX_WARNING,"Array to string conversion");
+	}
+	if( MemObjIsNotStringable(pObj) ){
+		return MemObjThrowNotStringable(pObj);
 	}
 	return PH7_MemObjToString(pObj);
 }

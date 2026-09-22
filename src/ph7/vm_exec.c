@@ -1607,8 +1607,11 @@ case PH7_OP_CVT_STR:
 	}
 #endif
 	/* (string) cast + string interpolation "$arr": php's user-visible
-	 * array->string warning site (§2). */
-	PH7_MemObjToStringUV(pTos);
+	 * array->string warning site, and the not-stringable-object throw (§2). */
+	{
+		sxi32 rcSv = PH7_MemObjToStringUV(pTos);
+		PH7_DISPATCH_TOSTRING_RC(rcSv)
+	}
 	break;
 /*
  * CVT_BOOL: * * *
@@ -1885,7 +1888,10 @@ case PH7_OP_LOAD:{
 		}
 #endif
 		/* Force a string cast — variable-variable name $$arr (user-visible, §2) */
-		PH7_MemObjToStringUV(pTos);
+		{
+			sxi32 rcSv = PH7_MemObjToStringUV(pTos);
+			PH7_DISPATCH_TOSTRING_RC(rcSv)
+		}
 		SyStringInitFromBuf(&sName,SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
 	}else{
 		SyStringInitFromBuf(&sName,pInstr->p3,SyStrlen((const char *)pInstr->p3));
@@ -2186,7 +2192,10 @@ case PH7_OP_STORE: {
 	}else if( pInstr->p3 == 0 ){
 		/* Take the variable name from the next on the stack (user-visible: a
 		 * variable-variable NAME $$arr warns on an array, §2) */
-		PH7_MemObjToStringUV(pTos);
+		{
+			sxi32 rcSv = PH7_MemObjToStringUV(pTos);
+			PH7_DISPATCH_TOSTRING_RC(rcSv)
+		}
 		SyStringInitFromBuf(&sName,SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
 		pTos--;
 #ifdef UNTRUST
@@ -3137,21 +3146,36 @@ case PH7_OP_CAT:{
 		goto Abort;
 	}
 #endif
-	/* Force a string cast (user-visible: warns on an array operand, §2) */
-	PH7_MemObjToStringUV(pNos);
+	/* Force a string cast (user-visible: warns on an array operand, §2).
+	 * php coerces the operands left to right, so the leftmost not-stringable
+	 * object is the one that throws. */
+	{
+		sxi32 rcSv = PH7_MemObjToStringUV(pNos);
+		PH7_DISPATCH_TOSTRING_RC(rcSv)
+	}
 	pCur = &pNos[1];
-	while( pCur <= pTos ){
-		PH7_MemObjToStringUV(pCur);
-		/* Perform the concatenation */
-		if( SyBlobLength(&pCur->sBlob) > 0 ){
-			if( PH7_MemObjStringAppend(pNos,(const char *)SyBlobData(&pCur->sBlob),SyBlobLength(&pCur->sBlob)) != SXRET_OK ){
-				/* Allocation failure: raise a fatal instead of a truncated concat */
-				PH7_VmMemoryError(&(*pVm));
-				goto Abort;
+	{
+		/* rcSv leaves the loop with the coercion status: the routing macro expands
+		 * to a bare `break` here, which inside the while would fall THROUGH to the
+		 * `pTos = pNos` below with a throw pending. Route it at case level. */
+		sxi32 rcSv = SXRET_OK;
+		while( pCur <= pTos ){
+			rcSv = PH7_MemObjToStringUV(pCur);
+			if( rcSv != SXRET_OK ){
+				break;
 			}
+			/* Perform the concatenation */
+			if( SyBlobLength(&pCur->sBlob) > 0 ){
+				if( PH7_MemObjStringAppend(pNos,(const char *)SyBlobData(&pCur->sBlob),SyBlobLength(&pCur->sBlob)) != SXRET_OK ){
+					/* Allocation failure: raise a fatal instead of a truncated concat */
+					PH7_VmMemoryError(&(*pVm));
+					goto Abort;
+				}
+			}
+			SyBlobRelease(&pCur->sBlob);
+			pCur++;
 		}
-		SyBlobRelease(&pCur->sBlob);
-		pCur++;
+		PH7_DISPATCH_TOSTRING_RC(rcSv)
 	}
 	pTos = pNos;
 	break;
@@ -3171,7 +3195,10 @@ case PH7_OP_CAT_STORE:{
 	}
 #endif
 	/* The right operand must be a string to append it (user-visible, §2) */
-	PH7_MemObjToStringUV(pNos);
+	{
+		sxi32 rcSv = PH7_MemObjToStringUV(pNos);
+		PH7_DISPATCH_TOSTRING_RC(rcSv)
+	}
 	nIdx = pTos->nIdx;
 	/* Fast path: append straight into the lvalue's own (geometrically grown) buffer
 	 * instead of copy-on-write-dup'ing the read-only-aliased stack value and then
@@ -3189,8 +3216,13 @@ case PH7_OP_CAT_STORE:{
 	 && (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx)) != 0
 	 && (SyHashTotalEntry(&pVm->hTypedSlot) == 0
 	     || SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32)) == 0) ){
-		/* e.g. $x = 5; $x .= "a";  ->  "5a" (user-visible: warns if $x is an array) */
-		PH7_MemObjToStringUV(pObj);
+		/* e.g. $x = 5; $x .= "a";  ->  "5a" (user-visible: warns if $x is an array,
+		 * throws if it is a not-stringable object — and then the lvalue keeps
+		 * holding that object, since the throw abandons the coercion) */
+		{
+			sxi32 rcSv = PH7_MemObjToStringUV(pObj);
+			PH7_DISPATCH_TOSTRING_RC(rcSv)
+		}
 		if( SyBlobLength(&pNos->sBlob) > 0 ){
 			if( PH7_MemObjStringAppend(pObj,(const char *)SyBlobData(&pNos->sBlob),SyBlobLength(&pNos->sBlob)) != SXRET_OK ){
 				/* Allocation failure: the grow happens before the copy, so pObj
@@ -3223,7 +3255,10 @@ case PH7_OP_CAT_STORE:{
 	}
 	/* Slow path: read-only/typed/constant-attribute/self-aliasing lvalues. */
 	/* Force a string cast (user-visible: warns if the lvalue is an array, §2) */
-	PH7_MemObjToStringUV(pTos);
+	{
+		sxi32 rcSv = PH7_MemObjToStringUV(pTos);
+		PH7_DISPATCH_TOSTRING_RC(rcSv)
+	}
 	/* Perform the concatenation (Reverse order) */
 	if( SyBlobLength(&pNos->sBlob) > 0 ){
 		if( PH7_MemObjStringAppend(pTos,(const char *)SyBlobData(&pNos->sBlob),SyBlobLength(&pNos->sBlob)) != SXRET_OK ){
@@ -3693,16 +3728,24 @@ case PH7_OP_UPLINK: {
 	if( pVm->pFrame->pParent ){
 		ph7_value *pLink = &pTos[-pInstr->iP1+1];
 		SyString sName;
+		/* rcSv carries the coercion status OUT of the loop: the routing macro is a
+		 * bare `break` here, which would only leave the while and then pop the
+		 * operands with a throw pending. */
+		sxi32 rcSv = SXRET_OK;
 		/* Perform the link */
 		while( pLink <= pTos ){
 			/* Force a string cast — global $$arr link name (user-visible, §2) */
-			PH7_MemObjToStringUV(pLink);
+			rcSv = PH7_MemObjToStringUV(pLink);
+			if( rcSv != SXRET_OK ){
+				break;
+			}
 			SyStringInitFromBuf(&sName,SyBlobData(&pLink->sBlob),SyBlobLength(&pLink->sBlob));
 			if( sName.nByte > 0 ){
 				VmFrameLink(&(*pVm),&sName);
 			}
 			pLink++;
 		}
+		PH7_DISPATCH_TOSTRING_RC(rcSv)
 	}
 	VmPopOperand(&pTos,pInstr->iP1);
 	break;

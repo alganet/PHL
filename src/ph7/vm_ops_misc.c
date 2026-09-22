@@ -40,8 +40,20 @@ PH7_PRIVATE VmOpRc VmExecOpConsume(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 	pCur = pOut;
 	/* Start the consume process  */
 	while( pOut <= pTos ){
-		/* Force a string cast (echo/print: user-visible array->string warning, §2) */
-		PH7_MemObjToStringUV(pOut);
+		/* Force a string cast (echo/print: user-visible array->string warning, §2).
+		 * A not-stringable object throws HERE, mid-list: php compiles `echo a,b,c`
+		 * to one ECHO per operand, so everything left of the object is already
+		 * out. Release what is left so the abandoned operands don't outlive the
+		 * op, then route. */
+		sxi32 rcSv = PH7_MemObjToStringUV(pOut);
+		if( rcSv != SXRET_OK ){
+			while( pOut <= pTos ){
+				PH7_MemObjRelease(pOut);
+				pOut++;
+			}
+			pTos = &pCur[-1];
+			PH7_DISPATCH_TOSTRING_RC(rcSv)
+		}
 		if( SyBlobLength(&pOut->sBlob) > 0 ){
 			/*SyBlobNullAppend(&pOut->sBlob);*/
 			/* Invoke the output consumer callback */

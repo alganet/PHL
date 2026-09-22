@@ -1057,6 +1057,24 @@ PH7_PRIVATE int vm_builtin_uniqid(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *    Stable.
  */
 /*
+ * The user-visible string coercion an OUTPUT construct performs on one of its
+ * arguments (echo/print reached as host functions rather than as OP_CONSUME).
+ * An ARRAY warns and still renders as "Array"; an object whose class has no
+ * __toString() is php's catchable "could not be converted to string" Error,
+ * and the construct outputs nothing for it. The status is recorded on the
+ * context too, so OP_CALL cannot treat the throwing call as a normal return.
+ */
+static sxi32 VmOutputArgToString(ph7_context *pCtx,ph7_value *pArg,const char **pzData,int *pnLen)
+{
+	sxi32 rc = PH7_MemObjToStringUV(pArg);
+	if( rc != SXRET_OK ){
+		pCtx->nThrowRc = rc;
+		return rc;
+	}
+	*pzData = ph7_value_to_string(pArg,pnLen);
+	return SXRET_OK;
+}
+/*
  * void echo($string...)
  *  Output one or more messages.
  * Parameters
@@ -1075,12 +1093,10 @@ PH7_PRIVATE int vm_builtin_echo(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	pVm = pCtx->pVm;
 	/* Output */
 	for( i = 0 ; i < nArg ; ++i ){
-		/* php's user-visible array->string warning (§2); the value still renders
-		 * as "Array". */
-		if( apArg[i]->iFlags & MEMOBJ_HASHMAP ){
-			PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,"Array to string conversion");
+		sxi32 rcSv = VmOutputArgToString(pCtx,apArg[i],&zData,&nDataLen);
+		if( rcSv != SXRET_OK ){
+			return rcSv;
 		}
-		zData = ph7_value_to_string(apArg[i],&nDataLen);
 		if( nDataLen > 0 ){
 			rc = pVm->sVmConsumer.xConsumer((const void *)zData,(unsigned int)nDataLen,pVm->sVmConsumer.pUserData);
 			VmTrackOutput(pVm, (sxu32)nDataLen);
@@ -1111,12 +1127,10 @@ PH7_PRIVATE int vm_builtin_print(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	pVm = pCtx->pVm;
 	/* Output */
 	for( i = 0 ; i < nArg ; ++i ){
-		/* php's user-visible array->string warning (§2); the value still renders
-		 * as "Array". */
-		if( apArg[i]->iFlags & MEMOBJ_HASHMAP ){
-			PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,"Array to string conversion");
+		sxi32 rcSv = VmOutputArgToString(pCtx,apArg[i],&zData,&nDataLen);
+		if( rcSv != SXRET_OK ){
+			return rcSv;
 		}
-		zData = ph7_value_to_string(apArg[i],&nDataLen);
 		if( nDataLen > 0 ){
 			rc = pVm->sVmConsumer.xConsumer((const void *)zData,(unsigned int)nDataLen,pVm->sVmConsumer.pUserData);
 			VmTrackOutput(pVm, (sxu32)nDataLen);

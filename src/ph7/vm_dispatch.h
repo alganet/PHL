@@ -87,6 +87,21 @@
 		} \
 	} \
 	VM_EXIT_EXCEPTION;
+/*
+ * Route the status of a USER-VISIBLE string coercion (PH7_MemObjToStringUV).
+ * An object with no __toString() is php's catchable
+ * "Object of class X could not be converted to string" Error, raised at the
+ * coercion itself — echo/print, `.`/`.=`, the (string) cast, interpolation, a
+ * variable-variable NAME, a string-offset store. None of those is a call
+ * boundary, so the throw is routed mid-expression: parking it would let the
+ * rest of the expression run on the value the abandoned coercion left behind.
+ * Named once so the coercion sites cannot drift apart.
+ */
+#define PH7_DISPATCH_TOSTRING_RC(rcVar) \
+	if( (rcVar) != SXRET_OK ){ \
+		if( (rcVar) == PH7_ABORT ){ VM_EXIT_ABORT; } \
+		PH7_THROW_ROUTE_MIDEXPR(rcVar) \
+	}
 #define PH7_DISPATCH_ENFORCE_RC(rcVar) \
 	if( (rcVar) == PH7_ABORT ){ VM_EXIT_ABORT; } \
 	if( (rcVar) == PH7_EXCEPTION || pVm->pInlineInstr ){ \

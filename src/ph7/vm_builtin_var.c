@@ -464,8 +464,20 @@ PH7_PRIVATE int vm_builtin_settype(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		PH7_MemObjToReal(pNew);
 		MemObjSetType(pNew,MEMOBJ_REAL);
 	}else if( nLen == 6 && SyStrnicmp(zType,"string",6) == 0 ){
-		/* php emits "Array to string conversion" for settype($arr,'string') */
-		PH7_MemObjToStringUV(pNew);
+		/* php emits "Array to string conversion" for settype($arr,'string'), and
+		 * throws "Object of class X could not be converted to string" for an
+		 * object with no __toString() (or propagates one that threw). php's
+		 * convert_to_string() has already blanked the zval by then, so a CAUGHT
+		 * settype() leaves $var === "" — store that, then propagate instead of
+		 * answering true. */
+		sxi32 rcSv = PH7_MemObjToStringUV(pNew);
+		if( rcSv != SXRET_OK ){
+			PH7_MemObjRelease(pNew);
+			MemObjSetType(pNew,MEMOBJ_STRING);
+			PH7_VmStoreArgByRef(pCtx->pVm,apArg[0],pNew);
+			pCtx->nThrowRc = rcSv;
+			return rcSv;
+		}
 	}else if( (nLen == 4 && SyStrnicmp(zType,"bool",4) == 0)
 	       || (nLen == 7 && SyStrnicmp(zType,"boolean",7) == 0) ){
 		PH7_MemObjToBool(pNew);

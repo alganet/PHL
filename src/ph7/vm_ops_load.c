@@ -613,8 +613,15 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 					PH7_THROW_ROUTE_MIDEXPR(rc)
 				}
 				/* Force a string cast on the RHS (user-visible: an array warns
-				 * "Array to string conversion" before the offset write, §2) */
-				PH7_MemObjToStringUV(pTos);
+				 * "Array to string conversion" before the offset write, §2, and a
+				 * not-stringable object throws — the target string is untouched) */
+				{
+					sxi32 rcSv = PH7_MemObjToStringUV(pTos);
+					if( rcSv != SXRET_OK ){
+						PH7_MemObjRelease(pKey);
+						PH7_DISPATCH_TOSTRING_RC(rcSv)
+					}
+				}
 				nLen = (sxi64)SyBlobLength(&pObj->sBlob);
 				if( iOfft < 0 ){
 					/* php 7.1: a negative offset writes back from the end. */
