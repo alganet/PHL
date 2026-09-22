@@ -2642,9 +2642,7 @@ PH7_PRIVATE sxi32 PH7_InitCodeGenerator(
 	SyBlobInit(&pGen->sWorker,&pVm->sAllocator);
 	/* Namespace state */
 	SyBlobInit(&pGen->sNamespace,&pVm->sAllocator);
-	SyHashInit(&pGen->hUseImports,&pVm->sAllocator,0,0);
-	SyHashInit(&pGen->hUseFuncImports,&pVm->sAllocator,0,0);
-	SyHashInit(&pGen->hUseConstImports,&pVm->sAllocator,0,0);
+	GenStateInitUseImports(&(*pGen),&(*pVm));
 	/* Create the global scope */
 	GenStateInitBlock(pGen,&pGen->sGlobal,GEN_BLOCK_GLOBAL,PH7_VmInstrLength(&(*pVm)),0);
 	/* Point to the global scope */
@@ -2673,12 +2671,7 @@ PH7_PRIVATE sxi32 PH7_ResetCodeGenerator(
 	SyBlobRelease(&pGen->sWorker);
 	SyBlobRelease(&pGen->sNamespace);
 	SyBlobInit(&pGen->sNamespace,&pVm->sAllocator);
-	SyHashRelease(&pGen->hUseImports);
-	SyHashInit(&pGen->hUseImports,&pVm->sAllocator,0,0);
-	SyHashRelease(&pGen->hUseFuncImports);
-	SyHashInit(&pGen->hUseFuncImports,&pVm->sAllocator,0,0);
-	SyHashRelease(&pGen->hUseConstImports);
-	SyHashInit(&pGen->hUseConstImports,&pVm->sAllocator,0,0);
+	GenStateResetUseImports(&(*pGen),&(*pVm));
 	/* Note: pGen->hVar and pGen->hLiteral are intentionally NOT reset here.
 	 * They intern variable names and literal strings that are referenced by
 	 * compiled bytecode (pInstr->p3) and runtime frame hash tables (pFrame->hVar).
@@ -2741,9 +2734,7 @@ PH7_PRIVATE void PH7_CompilerSaveState(ph7_vm *pVm,ph7_gen_state *pSaved,ProcCon
 	SyBlobInit(&pGen->sWorker,&pVm->sAllocator);
 	SyBlobInit(&pGen->sErrBuf,&pVm->sAllocator);
 	SyBlobInit(&pGen->sNamespace,&pVm->sAllocator);
-	SyHashInit(&pGen->hUseImports,&pVm->sAllocator,0,0);
-	SyHashInit(&pGen->hUseFuncImports,&pVm->sAllocator,0,0);
-	SyHashInit(&pGen->hUseConstImports,&pVm->sAllocator,0,0);
+	GenStateInitUseImports(&(*pGen),&(*pVm));
 	/* Fresh global scope for the nested unit (address of the embedded sGlobal is
 	 * stable, so any outer block still parented to it stays valid across restore). */
 	GenStateInitBlock(pGen,&pGen->sGlobal,GEN_BLOCK_GLOBAL,PH7_VmInstrLength(pVm),0);

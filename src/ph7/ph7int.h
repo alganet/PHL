@@ -1466,7 +1466,6 @@ struct ph7_vm
 	SyHash hHostFunction;       /* Host-application installable functions */
 	SyHash hFunction;           /* Compiled functions */
 	SyBlob sNamespace;          /* Current namespace (e.g. "App\\Models") */
-	SyHash hUseImports;         /* Current use imports: short alias -> FQN (classes) */
 	SyHash hUseConstImports;    /* Current use const imports: short alias -> FQN */
 	SyHash hSuper;              /* Superglobals hashtable */
 	SyHash hPDO;                /* PDO installed drivers */

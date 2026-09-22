@@ -2315,12 +2315,7 @@ PH7_PRIVATE sxi32 PH7_CompileNamespace(ph7_gen_state *pGen)
 	pGen->pIn++; /* Jump the 'namespace' keyword */
 	/* Reset namespace and clear previous use imports */
 	SyBlobReset(&pGen->sNamespace);
-	SyHashRelease(&pGen->hUseImports);
-	SyHashInit(&pGen->hUseImports,&pGen->pVm->sAllocator,0,0);
-	SyHashRelease(&pGen->hUseFuncImports);
-	SyHashInit(&pGen->hUseFuncImports,&pGen->pVm->sAllocator,0,0);
-	SyHashRelease(&pGen->hUseConstImports);
-	SyHashInit(&pGen->hUseConstImports,&pGen->pVm->sAllocator,0,0);
+	GenStateResetUseImports(&(*pGen),pGen->pVm);
 	if( pGen->pIn >= pGen->pEnd ){
 		/* Global namespace (bare "namespace;") */
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_NSSWITCH,0,0,0,0);
@@ -2370,6 +2365,37 @@ PH7_PRIVATE sxi32 PH7_CompileNamespace(ph7_gen_state *pGen)
 	return SXRET_OK;
 }
 /*
+ * Initialize the three use-import tables of a code generator.
+ *
+ * php resolves CLASS and FUNCTION imports case-INSENSITIVELY, like every other
+ * name in those two families: `use A\Cee;` then `CEE::K`, `use A\Cee as Alias;`
+ * then `ALIAS::K`, `use function A\eff;` then `EFF()`, and a wrong-case leading
+ * segment of an imported namespace (`use A\B;` then `b\Cee::K`) all resolve.
+ * So both tables fold through SyStrHash/SyStrnmicmp, exactly like hClass /
+ * hMethod / hFunction.
+ *
+ * The CONST table stays BYTE-EXACT: php keeps constant names case-sensitive,
+ * so `use const A\KAY;` followed by `kay` must remain an undefined constant.
+ * That asymmetry is why the three tables exist separately.
+ */
+PH7_PRIVATE void GenStateInitUseImports(ph7_gen_state *pGen,ph7_vm *pVm)
+{
+	SyHashInit(&pGen->hUseImports,&pVm->sAllocator,SyStrHash,SyStrnmicmp);
+	SyHashInit(&pGen->hUseFuncImports,&pVm->sAllocator,SyStrHash,SyStrnmicmp);
+	SyHashInit(&pGen->hUseConstImports,&pVm->sAllocator,0,0);
+}
+/*
+ * Drop every import currently in scope and start a fresh set (a namespace
+ * switch clears imports).  Keeps the case rules of GenStateInitUseImports.
+ */
+PH7_PRIVATE void GenStateResetUseImports(ph7_gen_state *pGen,ph7_vm *pVm)
+{
+	SyHashRelease(&pGen->hUseImports);
+	SyHashRelease(&pGen->hUseFuncImports);
+	SyHashRelease(&pGen->hUseConstImports);
+	GenStateInitUseImports(&(*pGen),&(*pVm));
+}
+/*
  * Compile the 'use' statement
  * According to the PHP language reference manual
  *  The ability to refer to an external fully qualified name with an alias or importing
@@ -2393,7 +2419,6 @@ PH7_PRIVATE sxi32 PH7_CompileUse(ph7_gen_state *pGen)
 	char *zDup;
 	int iUseType; /* 0=class, 1=function, 2=const */
 	SyHash *pGenHash;   /* Compile-time import table */
-	SyHash *pVmHash;    /* Runtime import table (NULL if not needed) */
 	nLine = pGen->pIn->nLine;
 	pGen->pIn++; /* Jump the 'use' keyword */
 	/* Detect 'function' or 'const' keyword after 'use' (PHP 5.6+) */
@@ -2408,20 +2433,13 @@ PH7_PRIVATE sxi32 PH7_CompileUse(ph7_gen_state *pGen)
 			pGen->pIn++;
 		}
 	}
-	/* Select target hash tables based on import type */
+	/* Select the target hash table based on import type.  Class and function
+	 * imports are resolved entirely at compile time; only const imports need a
+	 * runtime table, which PH7_OP_USECONST fills so imports stay namespace-scoped. */
 	switch( iUseType ){
-		case 1:
-			pGenHash = &pGen->hUseFuncImports;
-			pVmHash = 0; /* Function imports resolved at compile time only */
-			break;
-		case 2:
-			pGenHash = &pGen->hUseConstImports;
-			pVmHash = 0; /* Const imports use PH7_OP_USECONST for runtime scoping */
-			break;
-		default:
-			pGenHash = &pGen->hUseImports;
-			pVmHash = &pGen->pVm->hUseImports;
-			break;
+		case 1:  pGenHash = &pGen->hUseFuncImports; break;
+		case 2:  pGenHash = &pGen->hUseConstImports; break;
+		default: pGenHash = &pGen->hUseImports; break;
 	}
 	SyBlobInit(&sPath,&pGen->pVm->sAllocator);
 	/* Process one or more use declarations separated by commas */
@@ -2475,14 +2493,6 @@ PH7_PRIVATE sxi32 PH7_CompileUse(ph7_gen_state *pGen)
 			(const char *)SyBlobData(&sPath),SyBlobLength(&sPath));
 		if( zDup ){
 			SyHashInsert(pGenHash,sAlias.zString,sAlias.nByte,zDup);
-			if( pVmHash ){
-				/* Class imports: populate VM table directly (class resolution
-				 * is compile-time only, the VM copy is kept for legacy reasons). */
-				char *zAliasDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,sAlias.zString,sAlias.nByte);
-				if( zAliasDup ){
-					SyHashInsert(pVmHash,zAliasDup,sAlias.nByte,zDup);
-				}
-			}
 			if( iUseType == 2 ){
 				/* Const imports: emit a runtime instruction so imports are
 				 * namespace-scoped (NSSWITCH clears the VM table). */
