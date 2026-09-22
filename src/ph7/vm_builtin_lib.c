@@ -336,7 +336,7 @@
 	"function dir(string $directory, $context = null){"\
 	"   return new Directory($directory);"\
 	"}"\
-	"function scandir(string $directory,int $sorting_order = SCANDIR_SORT_ASCENDING)"\
+	"function scandir(string $directory,int $sorting_order = SCANDIR_SORT_ASCENDING, $context = null)"\
     "{"\
 	"  $aDir = array();"\
 	"  $pHandle = opendir($directory);"\

@@ -5863,6 +5863,33 @@ case PH7_OP_CALL: {
 				rc = PH7_EXCEPTION;
 				goto SkipFuncBody;
 			}
+		}else if( (pVmFunc->iFlags & (VM_FUNC_INTERNAL|VM_FUNC_CLASS_METHOD)) == VM_FUNC_INTERNAL ){
+			/* Too-MANY arguments, the mirror php enforces for an internal
+			 * callable ("count_chars() expects at most 2 arguments, 3 given").
+			 * PHL accepted the extras silently — the surplus only ever reached
+			 * func_get_args(). Every formal is filled on this branch, so the call
+			 * is over the maximum exactly when more actuals arrived than there are
+			 * non-variadic formals; a VARIADIC tail means php declares no maximum
+			 * at all, so nNonVar below the formal count is exempt. Prelude
+			 * FUNCTIONS only: the chunk-backed class METHODS were not swept against
+			 * php's signatures (Fiber::start() is declared argless and reads
+			 * func_get_args()). */
+			sxu32 nNonVar,nReq;
+			nReq = VmFuncRequiredArgCount(pVmFunc,&nNonVar);
+			if( nNonVar == SySetUsed(&pVmFunc->aArgs)
+			 && pFrame->nActualArgs >= 0
+			 && (sxu32)pFrame->nActualArgs > nNonVar ){
+				rc = VmThrowBuiltinTooManyArgs(&(*pVm),pSelfHint,&pVmFunc->sName,
+					(sxu32)pFrame->nActualArgs,nNonVar,nReq);
+				if( rc == PH7_ABORT ){
+					goto Abort;
+				}
+				PH7_MemObjRelease(pTos);
+				pTos = &pTos[-nCallArgs];
+				pFrameStack = 0;
+				rc = PH7_EXCEPTION;
+				goto SkipFuncBody;
+			}
 		}
 		/* Process default values for remaining formal parameters */
 		while( n < SySetUsed(&pVmFunc->aArgs) ){

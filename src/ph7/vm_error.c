@@ -2554,6 +2554,32 @@ PH7_PRIVATE sxi32 VmThrowBuiltinTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,Sy
 	return VmThrowBuiltinError(pVm,"ArgumentCountError",sizeof("ArgumentCountError")-1,&sMsg);
 }
 /*
+ * php's ArgumentCountError for an INTERNAL (builtin-chunk) callable handed too
+ * MANY arguments, in php's ZPP wording:
+ *   count_chars() expects at most 2 arguments, 3 given
+ * "exactly" when the bounds coincide, "at most" when optional parameters make
+ * them differ; the plural follows the MAXIMUM, so a zero-parameter builtin
+ * reports "exactly 0 arguments". A variadic tail leaves php no maximum at all,
+ * so the caller must not route such a callee here.
+ */
+PH7_PRIVATE sxi32 VmThrowBuiltinTooManyArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName,
+	sxu32 nPassed,sxu32 nMax,sxu32 nRequired)
+{
+	SyBlob sMsg;
+	const char *zKind = (nRequired >= nMax) ? "exactly" : "at most";
+	const char *zPlural = (nMax == 1) ? "" : "s";
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	if( pOwnerClass ){
+		SyBlobFormat(&sMsg,"%z::%z() expects %s %u argument%s, %u given",
+			&pOwnerClass->sName,pFuncName,zKind,nMax,zPlural,nPassed);
+	}else{
+		SyBlobFormat(&sMsg,"%z() expects %s %u argument%s, %u given",
+			pFuncName,zKind,nMax,zPlural,nPassed);
+	}
+	/* VmThrowBuiltinError consumes (releases) sMsg */
+	return VmThrowBuiltinError(pVm,"ArgumentCountError",sizeof("ArgumentCountError")-1,&sMsg);
+}
+/*
  * Throw php's named-call ArgumentCountError for a required parameter no
  * named or positional argument resolved to:
  *   C::f(): Argument #N ($x) not passed
