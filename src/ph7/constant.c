@@ -1367,6 +1367,18 @@ static void PH7_FILE_APPEND_Const(ph7_value *pVal,void *pUserData)
 	ph7_value_int(pVal,0x08);
 }
 /*
+ * FILE_NO_DEFAULT_CONTEXT
+ *  Expand php's 0x10. PHL has no stream_context_set_default(), so "do not use
+ *  the default context" is already how every call behaves — the flag is
+ *  accepted (file()'s validator counts it a valid bit) and changes nothing,
+ *  which is php's own behaviour when no default context was ever set.
+ */
+static void PH7_FILE_NO_DEFAULT_CONTEXT_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,0x10);
+}
+/*
  * SCANDIR_SORT_ASCENDING
  *  Expand 0
  */
@@ -1455,6 +1467,18 @@ static void PH7_GLOB_ERR_Const(ph7_value *pVal,void *pUserData)
 {
 	SXUNUSED(pUserData); /* cc warning */
 	ph7_value_int(pVal,PH7_GLOB_ERR);
+}
+/*
+ * GLOB_AVAILABLE_FLAGS
+ *  Expand the OR of every glob flag php's portable glob accepts — the mask
+ *  glob() itself validates against (1073746108 on every platform, since the
+ *  GLOB_* values are php 8.5's own portable set).
+ */
+static void PH7_GLOB_AVAILABLE_FLAGS_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,PH7_GLOB_ERR|PH7_GLOB_MARK|PH7_GLOB_NOCHECK|PH7_GLOB_NOSORT
+		|PH7_GLOB_BRACE|PH7_GLOB_NOESCAPE|PH7_GLOB_ONLYDIR);
 }
 /*
  * STDIN
@@ -2139,6 +2163,7 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"FILE_IGNORE_NEW_LINES", PH7_FILE_IGNORE_NEW_LINES_Const},
 	{"FILE_SKIP_EMPTY_LINES", PH7_FILE_SKIP_EMPTY_LINES_Const},
 	{"FILE_APPEND",           PH7_FILE_APPEND_Const },
+	{"FILE_NO_DEFAULT_CONTEXT", PH7_FILE_NO_DEFAULT_CONTEXT_Const },
 	{"SCANDIR_SORT_ASCENDING", PH7_SCANDIR_SORT_ASCENDING_Const  },
 	{"SCANDIR_SORT_DESCENDING",PH7_SCANDIR_SORT_DESCENDING_Const },
 	{"SCANDIR_SORT_NONE",     PH7_SCANDIR_SORT_NONE_Const },
@@ -2149,6 +2174,7 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"GLOB_BRACE",           PH7_GLOB_BRACE_Const   },
 	{"GLOB_ONLYDIR",         PH7_GLOB_ONLYDIR_Const },
 	{"GLOB_ERR",             PH7_GLOB_ERR_Const     },
+	{"GLOB_AVAILABLE_FLAGS", PH7_GLOB_AVAILABLE_FLAGS_Const },
 	{"STDIN",                PH7_STDIN_Const        },
 	{"stdin",                PH7_STDIN_Const        },
 	{"STDOUT",               PH7_STDOUT_Const       },

@@ -52,23 +52,57 @@
 	"function glob(string $pattern,int $flags = 0){"\
 	"/* php rejects a mask holding any bit outside GLOB_AVAILABLE_FLAGS with a warning"\
 	"   and FALSE. PHL accepted anything and just tested the bits it knew, so a stale"\
-	"   script passing the OLD PHL glob values (1/2/4/...) silently got a plain glob."\
-	"   The literal is GLOB_AVAILABLE_FLAGS; PHL does not define that constant yet. */"\
-	"if( $flags & ~(GLOB_ERR|GLOB_MARK|GLOB_NOCHECK|GLOB_NOSORT|GLOB_BRACE|GLOB_NOESCAPE|GLOB_ONLYDIR) ){"\
+	"   script passing the OLD PHL glob values (1/2/4/...) silently got a plain glob. */"\
+	"if( $flags & ~GLOB_AVAILABLE_FLAGS ){"\
 	"  trigger_error('glob(): At least one of the passed flags is invalid or not supported on this platform', E_USER_WARNING);"\
 	"  return FALSE;"\
+	"}"\
+	"/* GLOB_BRACE: expand the FIRST top-level {a,b,...} group and glob each"\
+	"   alternative IN ORDER, concatenating the answers (each sub-glob sorts its"\
+	"   own results; php never re-sorts across alternatives). Nested groups are"\
+	"   handled by the recursion, and GLOB_NOCHECK applies per EXPANDED pattern,"\
+	"   which is php's answer too. The flag used to be accepted and IGNORED, so"\
+	"   any braced pattern answered [] in silence. */"\
+	"if( $flags & GLOB_BRACE ){"\
+	"  $nLen = strlen($pattern); $iOpen = -1; $iClose = -1; $iDepth = 0;"\
+	"  for( $i = 0 ; $i < $nLen ; $i++ ){"\
+	"    $ch = $pattern[$i];"\
+	"    if( $ch === '{' ){ if( $iDepth === 0 ){ $iOpen = $i; } $iDepth++; }"\
+	"    else if( $ch === '}' && $iDepth > 0 ){ $iDepth--; if( $iDepth === 0 ){ $iClose = $i; break; } }"\
+	"  }"\
+	"  if( $iOpen >= 0 && $iClose > $iOpen ){"\
+	"    $zHead = substr($pattern,0,$iOpen);"\
+	"    $zBody = (string)substr($pattern,$iOpen+1,$iClose-$iOpen-1);"\
+	"    $zTail = (string)substr($pattern,$iClose+1);"\
+	"    $aAlt = array(); $zCur = ''; $iDepth = 0;"\
+	"    for( $i = 0 ; $i < strlen($zBody) ; $i++ ){"\
+	"      $ch = $zBody[$i];"\
+	"      if( $ch === '{' ){ $iDepth++; }"\
+	"      else if( $ch === '}' ){ $iDepth--; }"\
+	"      if( $ch === ',' && $iDepth === 0 ){ $aAlt[] = $zCur; $zCur = ''; continue; }"\
+	"      $zCur .= $ch;"\
+	"    }"\
+	"    $aAlt[] = $zCur;"\
+	"    $pArray = array();"\
+	"    foreach( $aAlt as $zAlt ){"\
+	"      $aSub = glob($zHead . $zAlt . $zTail,$flags);"\
+	"      if( $aSub !== false ){ foreach( $aSub as $zHit ){ $pArray[] = $zHit; } }"\
+	"    }"\
+	"    return $pArray;"\
+	"  }"\
 	"}"\
 	"/* php keeps the literal directory portion of the pattern in every result;"\
 	"   split off everything up to and including the last '/' as the prefix. */"\
 	"$slash = strrpos($pattern,'/');"\
 	"if( $slash === false ){ $zDir = '.'; $prefix = ''; $pat = $pattern; }"\
 	"else { $zDir = substr($pattern,0,$slash); if( $zDir === '' ){ $zDir = '/'; } $prefix = substr($pattern,0,$slash+1); $pat = substr($pattern,$slash+1); }"\
-	"$pHandle = opendir($zDir);"\
-	"if( $pHandle == FALSE ){"\
-	"   /* IO error while opening the target directory,return FALSE */"\
-	"	return FALSE;"\
-	"}"\
 	"$pArray = array(); /* Empty array */"\
+	"/* php answers [] in SILENCE for a directory that cannot be opened — a"\
+	"   nonexistent path is simply zero matches (GLOB_ERR included; that flag is"\
+	"   about errors during the walk, not about the path). PHL used to let"\
+	"   opendir() warn and answered FALSE. */"\
+	"$pHandle = @opendir($zDir);"\
+	"if( $pHandle != FALSE ){"\
 	"/* Loop throw available entries */"\
 	"while( FALSE !== ($pEntry = readdir($pHandle)) ){"\
 	" /* php's glob() never matches a leading-dot entry (incl. '.' and '..') unless"\
@@ -93,6 +127,7 @@
 	" }"\
 	"/* Close the handle */"\
 	"closedir($pHandle);"\
+	"}"\
 	"if( ($flags & GLOB_NOSORT) == 0 ){"\
 	"  /* Sort the array */"\
 	"  sort($pArray);"\
