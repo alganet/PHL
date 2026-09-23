@@ -2085,6 +2085,15 @@ PH7_PRIVATE int PH7_builtin_fwrite(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
 	}
+	if( pDev->nOfft < SyBlobLength(&pDev->sBuffer) && pStream->xSeek ){
+		/* The device sits PAST the line readers' read-ahead: php writes at the
+		 * LOGICAL position (fgets() then fwrite() overwrites what fgets left
+		 * unread), so step the device back by the unconsumed remainder and
+		 * drop the buffer — the ftell()/SEEK_CUR rule, applied to the write. */
+		pStream->xSeek(pDev->pHandle,
+			-(ph7_int64)(SyBlobLength(&pDev->sBuffer) - pDev->nOfft),1/*SEEK_CUR*/);
+		ResetIOPrivate(pDev);
+	}
 	/* Perform the requested operation */
 	n = (int)pStream->xWrite(pDev->pHandle,(const void *)zString,nLen);
 	if( n <  0 ){
