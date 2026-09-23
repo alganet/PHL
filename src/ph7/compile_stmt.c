@@ -1210,6 +1210,36 @@ PH7_PRIVATE sxi32 PH7_CompileFor(ph7_gen_state *pGen)
 	/* Statement successfully compiled */
 	return SXRET_OK;
 }
+/*
+ * Is this keyword token part of a NAME rather than a keyword in its own right?
+ *
+ * The lexer marks `as` a keyword wherever it appears, and php lets it BE a name
+ * in three places the token stream reaches through a preceding operator: a
+ * variable ($as lexes as PH7_TK_DOLLAR followed by the identifier), a property
+ * ($o->as, $o?->as) and a class constant (A::as). foreach's separator scan has
+ * to look at what PRECEDES the keyword, or it splits inside the name and hands
+ * the subject compiler a bare `$`.
+ */
+static int GenStateKeywordIsName(SyToken *pStart,SyToken *pCur)
+{
+	SyToken *pPrev;
+	if( pCur <= pStart ){
+		return 0;
+	}
+	pPrev = pCur - 1;
+	if( pPrev->nType & PH7_TK_DOLLAR ){
+		return 1;
+	}
+	if( (pPrev->nType & PH7_TK_OP) == 0 ){
+		return 0;
+	}
+	return (pPrev->sData.nByte == sizeof("->")-1
+			&& SyMemcmp(pPrev->sData.zString,"->",sizeof("->")-1) == 0)
+		|| (pPrev->sData.nByte == sizeof("::")-1
+			&& SyMemcmp(pPrev->sData.zString,"::",sizeof("::")-1) == 0)
+		|| (pPrev->sData.nByte == sizeof("?->")-1
+			&& SyMemcmp(pPrev->sData.zString,"?->",sizeof("?->")-1) == 0);
+}
 /* Expression tree validator callback used by the 'foreach' statement.
  * Note that only variable expression [i.e: $x; ${'My'.'Var'}; ${$a['key]};...]
  * are allowed.
@@ -1303,8 +1333,9 @@ PH7_PRIVATE sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 	while( pCur < pEnd ){
 		if( pCur->nType & PH7_TK_KEYWORD ){
 			sxi32 nKeywrd = SX_PTR_TO_INT(pCur->pUserData);
-			if( nKeywrd == PH7_TKWRD_AS ){
-				/* Break with the first 'as' found */
+			if( nKeywrd == PH7_TKWRD_AS && !GenStateKeywordIsName(pGen->pIn,pCur) ){
+				/* Break with the first 'as' that is the SEPARATOR — one that is
+				 * part of a name ($as, $o->as, A::as) is not one. */
 				break;
 			}
 		}
