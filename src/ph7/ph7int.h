@@ -1188,7 +1188,19 @@ struct ph7_class
                                      * class, php's answer for every class holding engine state.
                                      * Without it the default object path emits the private slots —
                                      * for these classes a raw POINTER, which unserialize() would
-                                     * hand straight back to a method. */
+                                     * hand straight back to a method. php's ZEND_ACC_NOT_SERIALIZABLE:
+                                     * tested FIRST and unconditionally, so a subclass declaring
+                                     * __serialize() is refused too (DOMXPath is the case that shows
+                                     * it). INHERITED — the serializer walks pBase, because php's flag
+                                     * rides down to every user subclass. */
+#define PH7_CLASS_NOSERIALIZE_SUBOK 0x2000 /* The SOFT refusal: php's `ce->serialize` deny HANDLER,
+                                     * which the serializer consults only AFTER looking for
+                                     * __serialize()/__sleep() — so a SUBCLASS that declares either
+                                     * one serializes normally, and php says so in the sentence
+                                     * ("…is not allowed, unless serialization methods are
+                                     * implemented in a subclass"). The DOM node classes are the
+                                     * users; __wakeup() alone does NOT rescue them. Inherited the
+                                     * same way as the hard flag. */
 #define PH7_CLASS_NOINSTANTIATE 0x1000 /* `new C` is refused by the OBJECT-CREATION step, before the
                                      * constructor's visibility is ever consulted — php's
                                      * "Instantiation of class %s is not allowed", which its

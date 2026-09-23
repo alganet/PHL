@@ -209,6 +209,27 @@ static void VmSerializeObjectHeader(SyBlob *pOut, SyString *pClassName, sxu32 nC
 	if( SyBlobLength(pBody) > 0 ){ SyBlobAppend(pOut,SyBlobData(pBody),SyBlobLength(pBody)); }
 	SyBlobAppend(pOut,"}",1);
 }
+/*
+ * php refuses to serialize some classes, and it does so in TWO different places.
+ *
+ * `ZEND_ACC_NOT_SERIALIZABLE` (PH7_CLASS_NOSERIALIZE) is tested before anything
+ * else, so a subclass declaring `__serialize()` is refused all the same; a deny
+ * `ce->serialize` HANDLER (PH7_CLASS_NOSERIALIZE_SUBOK) is consulted only after the
+ * magic lookup, so there the subclass wins — and php's sentence says which kind you
+ * hit. Both ride down to every user subclass, which is why this walks pBase: the
+ * receiver's own iFlags are empty for `class Kid extends SplFileInfo {}`, and PHL
+ * happily serialized one where php refuses.
+ */
+static int VmClassRefusesSerialize(ph7_class *pClass,sxi32 iFlag)
+{
+	while( pClass ){
+		if( pClass->iFlags & iFlag ){
+			return 1;
+		}
+		pClass = pClass->pBase;
+	}
+	return 0;
+}
 /* Serialize a class instance, honoring __serialize()/__sleep() then the default.
  * The object body is built into a temp blob (so the entry count and __sleep's
  * array order come out right) before the O: header is written. */
@@ -232,8 +253,9 @@ static sxi32 VmSerializeObject(ph7_value *pIn, serialize_data *pData)
 	}
 	/* Nor can a class holding engine state — Closure, Fiber, Generator, WeakReference,
 	 * WeakMap. Guard before the generic object path would otherwise emit their private
-	 * slots, which for the native ones are raw pointers. */
-	if( pThis->pClass->iFlags & PH7_CLASS_NOSERIALIZE ){
+	 * slots, which for the native ones are raw pointers. php names the RECEIVER, so a
+	 * subclass of one reports its own name. */
+	if( VmClassRefusesSerialize(pThis->pClass,PH7_CLASS_NOSERIALIZE) ){
 		PH7_VmThrowException(pData->pCtx,"Exception",
 			"Serialization of '%z' is not allowed",pClassName);
 		pData->exc = 1;
@@ -287,7 +309,18 @@ static sxi32 VmSerializeObject(ph7_value *pIn, serialize_data *pData)
 		PH7_MemObjRelease(&sRes);
 		goto done;
 	}
-	/* (3) default: every non-static/const property in declaration order. */
+	/* (3) php's deny HANDLER, which sits HERE and not with the flag above: the two
+	 * magic methods win over it, so a subclass of a DOM node that declares either one
+	 * serializes normally and php's sentence names that escape. `__wakeup()` alone is
+	 * not one of the two. */
+	if( VmClassRefusesSerialize(pThis->pClass,PH7_CLASS_NOSERIALIZE_SUBOK) ){
+		PH7_VmThrowException(pData->pCtx,"Exception",
+			"Serialization of '%z' is not allowed, unless serialization methods "
+			"are implemented in a subclass",pClassName);
+		pData->exc = 1;
+		goto done;
+	}
+	/* (4) default: every non-static/const property in declaration order. */
 	SyHashResetLoopCursor(&pThis->hAttr);
 	while( (pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
 		ph7_value *pVal;
