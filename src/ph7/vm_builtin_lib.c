@@ -138,10 +138,11 @@
    "  }"\
    "  return $out;"\
    "}"\
-   "/* Division that never throws: INF/-INF/NAN like php */"\
-   "function fdiv($num1, $num2){"\
-   "  $num1 = (float)$num1;"\
-   "  $num2 = (float)$num2;"\
+   "/* Division that never throws: INF/-INF/NAN like php. The two `float`"\
+   " * declarations are php's own: they are what refuses a non-numeric string"\
+   " * (an untyped $num1 cast to 0.0 and DIVIDED, so fdiv('abc',2) answered"\
+   " * float(0)), and what ReflectionFunction prints. */"\
+   "function fdiv(float $num1, float $num2): float {"\
    "  if( $num2 == 0.0 ){"\
    "    if( $num1 == 0.0 || is_nan($num1) ){ return NAN; }"\
    "    return $num1 > 0 ? INF : -INF;"\

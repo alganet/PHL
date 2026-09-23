@@ -386,6 +386,7 @@ static const struct VmBuiltinSig {
 	{ "session_write_close", "", "bool" },
 	{ "abs", "int|float $num", "int|float" },
 	{ "acos", "float $num", "float" },
+	{ "acosh", "float $num", "float" },
 	{ "addcslashes", "string $string, string $characters", "string" },
 	{ "addslashes", "string $string", "string" },
 	{ "array_all", "array $array, callable $callback", "bool" },
@@ -438,9 +439,11 @@ static const struct VmBuiltinSig {
 	{ "array_walk_recursive", "object|array &$array, callable $callback, mixed $arg = ?", "true" },
 	{ "arsort", "array &$array, int $flags = 0", "true" },
 	{ "asin", "float $num", "float" },
+	{ "asinh", "float $num", "float" },
 	{ "asort", "array &$array, int $flags = 0", "true" },
 	{ "assert", "mixed $assertion, Throwable|string|null $description = NULL", "bool" },
 	{ "atan", "float $num", "float" },
+	{ "atanh", "float $num", "float" },
 	{ "atan2", "float $y, float $x", "float" },
 	{ "base64_decode", "string $string, bool $strict = false", "string|false" },
 	{ "base64_encode", "string $string", "string" },
@@ -518,6 +521,7 @@ static const struct VmBuiltinSig {
 	{ "decoct", "int $num", "string" },
 	{ "define", "string $constant_name, mixed $value, bool $case_insensitive = false", "bool" },
 	{ "defined", "string $constant_name", "bool" },
+	{ "deg2rad", "float $num", "float" },
 	{ "die", "string|int $status = 0", "never" },
 	{ "dir", "string $directory, $context = NULL", "Directory|false" },
 	{ "dirname", "string $path, int $levels = 1", "string" },
@@ -531,6 +535,7 @@ static const struct VmBuiltinSig {
 	{ "error_reporting", "?int $error_level = NULL", "int" },
 	{ "exit", "string|int $status = 0", "never" },
 	{ "exp", "float $num", "float" },
+	{ "expm1", "float $num", "float" },
 	{ "explode", "string $separator, string $string, int $limit = 9223372036854775807", "array" },
 	{ "extension_loaded", "string $extension", "bool" },
 	{ "extract", "array &$array, int $flags = 0, string $prefix = ''", "int" },
@@ -560,6 +565,7 @@ static const struct VmBuiltinSig {
 	{ "fopen", "string $filename, string $mode, bool $use_include_path = false, $context = NULL", "" },
 	{ "forward_static_call", "callable $callback, mixed ...$args = ?", "mixed" },
 	{ "forward_static_call_array", "callable $callback, array $args", "mixed" },
+	{ "fpow", "float $num, float $exponent", "float" },
 	{ "fpassthru", "$stream", "int" },
 	{ "fprintf", "$stream, string $format, mixed ...$values = ?", "int" },
 	{ "fputcsv", "$stream, array $fields, string $separator = ',', string $enclosure = '\"', string $escape = '\\\\', string $eol = ?", "int|false" },
@@ -675,6 +681,7 @@ static const struct VmBuiltinSig {
 	{ "localtime", "?int $timestamp = NULL, bool $associative = false", "array" },
 	{ "log", "float $num, float $base = 2.718281828459045", "float" },
 	{ "log10", "float $num", "float" },
+	{ "log1p", "float $num", "float" },
 	{ "lstat", "string $filename", "array|false" },
 	{ "ltrim", "string $string, string $characters = ?", "string" },
 	{ "max", "mixed $value, mixed ...$values = ?", "mixed" },
@@ -753,6 +760,7 @@ static const struct VmBuiltinSig {
 	{ "property_exists", "$object_or_class, string $property", "bool" },
 	{ "putenv", "string $assignment", "bool" },
 	{ "quotemeta", "string $string", "string" },
+	{ "rad2deg", "float $num", "float" },
 	{ "rand", "int $min = ?, int $max = ?", "int" },
 	{ "random_bytes", "int $length", "string" },
 	{ "random_int", "int $min, int $max", "int" },
@@ -1318,7 +1326,8 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 					zGiven = VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf));
 				}
 			}else if( (pArg->iFlags & (MEMOBJ_STRING|MEMOBJ_NULL)) == MEMOBJ_STRING
-			       && VmSigTypeHas(zType,nType,"int")
+			       && (VmSigTypeHas(zType,nType,"int")
+			        || VmSigTypeHas(zType,nType,"float"))
 			       && !VmSigTypeHas(zType,nType,"string")
 			       && !VmSigTypeHas(zType,nType,"array")
 			       && !VmSigTypeHas(zType,nType,"object")
@@ -1326,21 +1335,29 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 			       && !VmSigTypeHas(zType,nType,"callable")
 			       && !VmSigTypeHas(zType,nType,"bool")
 			       && !VmSigTypeHasClass(zType,nType) ){
-				/* A STRING against an int-only parameter. Weak mode coerces a
-				 * NUMERIC one and php refuses every other — "x", "2abc" and "0x2"
-				 * are all `must be of type int, string given` (rule 41: a numeric
-				 * PREFIX is not enough, which is what SyStrIsNumeric would have
-				 * accepted). Every BUILTIN with an int parameter already got this
-				 * from PH7_IntArgResolve, called from its own body; a native METHOD
-				 * has no body to call it from, so `ArrayIterator::seek('x')` seeked
-				 * to 0, `DateTime::setTimestamp('abc')` set 0 and
+				/* A STRING against a NUMBER-only parameter — `int`, `float`, or the
+				 * `int|float` union, with no arm a string can satisfy. Weak mode
+				 * coerces a NUMERIC one and php refuses every other — "x", "2abc"
+				 * and "0x2" are all `must be of type int, string given` (rule 41: a
+				 * numeric PREFIX is not enough, which is what SyStrIsNumeric would
+				 * have accepted). Every BUILTIN with an int parameter already got
+				 * this from PH7_IntArgResolve, called from its own body; a native
+				 * METHOD has no body to call it from, so `ArrayIterator::seek('x')`
+				 * seeked to 0, `DateTime::setTimestamp('abc')` set 0 and
 				 * `DOMNodeList::item('zz')` answered element 0 — wrong ANSWERS,
 				 * not missing errors. Screening the declared type here covers both
 				 * callee kinds from one place.
 				 *
-				 * The FLOAT and NULL rules stay where they are: a lossy float is
-				 * already refused by the arithmetic path, and PHL rejects null for
-				 * a non-nullable parameter by policy (§10) where php deprecates. */
+				 * The FLOAT arm is the same hazard one type over, and it was the
+				 * half nothing covered: PH7_IntArgResolve has no float twin, so a
+				 * `float $num` builtin that did not hand-roll its own check simply
+				 * converted the string to 0.0 and COMPUTED with it —
+				 * `cos("nope")` answered `float(1)`, `sqrt("nope")` `float(0)`,
+				 * `log("nope")` `float(-INF)`. Numbers with nothing wrong-looking
+				 * about them, from input php refuses outright.
+				 *
+				 * The NULL rule stays where it is: PHL rejects null for a
+				 * non-nullable parameter by policy (§10) where php deprecates. */
 				if( !PH7_MemObjStringIsNumeric(pArg) ){
 					zGiven = "string";
 				}
