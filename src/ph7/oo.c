@@ -1704,7 +1704,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 			SyHashResetLoopCursor(&pThis->hAttr);
 			while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0){
 				VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
-				if((pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_HOOK_VIRTUAL)) == 0 ){
+				if((pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_HOOK_VIRTUAL|PH7_CLASS_ATTR_HIDDEN)) == 0 ){
 					nProp++;
 				}
 			}
@@ -1723,7 +1723,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 	SyHashResetLoopCursor(&pThis->hAttr);
 	while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0){
 		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
-		if((pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_HOOK_VIRTUAL)) == 0 ){
+		if((pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_HOOK_VIRTUAL|PH7_CLASS_ATTR_HIDDEN)) == 0 ){
 			/* Dump non-static/constant attribute only */
 			pValue = ExtractClassAttrValue(pThis->pVm,pVmAttr);
 			if( pValue == 0 ){
@@ -1903,7 +1903,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmap(ph7_class_instance *pThis,ph7_hashm
 	while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
 		/* Point to the current attribute */
 		pAttr = (VmClassAttr *)pEntry->pUserData;
-		if( pAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT) ){
+		if( pAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HIDDEN) ){
 			/* A static property is the CLASS's, not the object's: php's cast
 			 * yields only the instance's own properties. */
 			continue;
@@ -1970,7 +1970,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceWalk(
 	while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
 		/* Point to the current attribute */
 		pAttr = (VmClassAttr *)pEntry->pUserData;
-		if( pAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT) ){
+		if( pAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HIDDEN) ){
 			/* Class-level members are not part of the object (php) */
 			continue;
 		}

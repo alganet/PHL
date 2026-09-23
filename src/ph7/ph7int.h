@@ -1231,6 +1231,18 @@ struct ph7_class_attr
                                             * has no get hook), no default allowed, reads without a
                                             * get hook are php's "is write-only" Error. PHL still
                                             * allocates the (null) backing slot; this flag hides it. */
+#define PH7_CLASS_ATTR_HIDDEN       0x40000 /* A NATIVE class's engine slot: real storage that php keeps
+                                            * in its own C struct and therefore never shows. Excluded
+                                            * from every PRESENTATION surface — var_dump/print_r/
+                                            * var_export, (array), get_object_vars, foreach, json_encode,
+                                            * serialize, http_build_query and Reflection's property
+                                            * listing — while `new`, clone and the native bodies' own
+                                            * PH7_NativeAttr() reads still see it. Set from
+                                            * PH7_MOD_HIDDEN on a PH7_NativePropDef. Use it for a slot
+                                            * php shows NOTHING for (a handle, a cursor cache); a slot
+                                            * php shows under a DIFFERENT name (ArrayObject's `storage`,
+                                            * DateTime's `date`) wants the presentation hook §7.4 (e)
+                                            * still asks for, not this bit. */
 #define PH7_CLASS_ATTR_STATIC_DEFER 0x20000 /* STATIC property whose default initializer THREW when it
                                             * was evaluated at class mount. php never evaluates a static
                                             * default at declaration time — it materializes the class's
@@ -1262,6 +1274,8 @@ struct ph7_class_attr
 #define PH7_MOD_STATIC     0x04
 #define PH7_MOD_FINAL      0x08
 #define PH7_MOD_ABSTRACT   0x10 /* No body: an interface's method, or an abstract declaration */
+#define PH7_MOD_HIDDEN     0x20 /* PROPERTY only: an engine slot php keeps in its own struct and
+                                 * never presents (PH7_CLASS_ATTR_HIDDEN). */
 /* Literal kinds a native class constant may carry */
 #define PH7_NATIVE_VAL_NULL   0
 #define PH7_NATIVE_VAL_INT    1

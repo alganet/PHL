@@ -1030,7 +1030,7 @@ PH7_PRIVATE int vm_builtin_get_object_vars(ph7_context *pCtx,int nArg,ph7_value 
 		SyHashResetLoopCursor(&pThis->hAttr);
 		while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
 			VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
-			if( pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT) ){
+			if( pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HIDDEN) ){
 				/* Only non-static/constant attributes are extracted */
 				continue;
 			}

@@ -266,6 +266,11 @@ static void ReflectMembers(ph7_vm *pVm, ph7_class *pClass, SySet *pOut, int bLoo
 			while( (pEntry = SyHashGetNextEntry(pSrcHash)) != 0 ){
 				ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
 				ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pLevel;
+				if( pAttr->iFlags & PH7_CLASS_ATTR_HIDDEN ){
+					/* A native class's engine slot: php holds that state in its own C
+					 * struct and reports no property for it at all. */
+					continue;
+				}
 				if( iLevel == 0 ){
 					sxu32 j;
 					/* Own = declared here or by an off-chain provider (trait) */
@@ -1387,22 +1392,22 @@ static ph7_class_instance * ReflectMakeType(ph7_context *pCtx, const char *zText
 PH7_PRIVATE sxi32 PH7_VmInstallReflectionTypes(ph7_vm *pVm)
 {
 	static const PH7_NativePropDef aBaseProp[] = {
-		{ RT_TEXT,     PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
-		{ RT_NULLABLE, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_BOOL,   0, 0, 0.0 } },
+		{ RT_TEXT,     PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
+		{ RT_NULLABLE, PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_BOOL,   0, 0, 0.0 } },
 	};
 	static const PH7_NativeMethodDef aBaseMethod[] = {
 		{ "allowsNull", PH7_MOD_PUBLIC, "", "",       vm_builtin_ReflectionType_allowsNull },
 		{ "__toString", PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionType_toString },
 	};
 	static const PH7_NativePropDef aNamedProp[] = {
-		{ RT_TNAME, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
+		{ RT_TNAME, PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
 	};
 	static const PH7_NativeMethodDef aNamedMethod[] = {
 		{ "getName",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionNamedType_getName },
 		{ "isBuiltin", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionNamedType_isBuiltin },
 	};
 	static const PH7_NativePropDef aCompProp[] = {
-		{ RT_TYPES, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ RT_TYPES, PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
 	};
 	static const PH7_NativeMethodDef aCompMethod[] = {
 		{ "getTypes", PH7_MOD_PUBLIC, "", "array", vm_builtin_ReflectionType_getTypes },
@@ -1673,7 +1678,7 @@ static void ReflectExportValue(ph7_context *pCtx, SyBlob *pOut, ph7_value *pVal,
 				VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
 				ph7_value *pSlot;
 				if( pVmAttr->pAttr->iFlags
-					& (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_HOOK_VIRTUAL) ){
+					& (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_HOOK_VIRTUAL|PH7_CLASS_ATTR_HIDDEN) ){
 					continue; /* class-level members are not part of the object */
 				}
 				pSlot = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pVmAttr->nIdx);
@@ -2006,10 +2011,10 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionAttribute(ph7_vm *pVm)
 		 * reopens the target. php holds the same state on the C struct behind the
 		 * object, invisible; PHL has no hidden-slot bit yet (§7.4 (e)), so these
 		 * four still show up in a var_dump where php shows only $name. */
-		{ RA_SPEC,   PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0,  0.0 } },
-		{ RA_IDX,    PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0,  0.0 } },
-		{ RA_TARGET, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0,  0.0 } },
-		{ RA_REP,    PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_BOOL,   0, 0,  0.0 } },
+		{ RA_SPEC,   PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0,  0.0 } },
+		{ RA_IDX,    PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0,  0.0 } },
+		{ RA_TARGET, PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0,  0.0 } },
+		{ RA_REP,    PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_BOOL,   0, 0,  0.0 } },
 	};
 	/* php's own listing order, which is what __toString() prints. */
 	static const PH7_NativeMethodDef aMethod[] = {
@@ -2694,7 +2699,7 @@ static int vm_builtin_ReflectionReference_construct(ph7_context *pCtx, int nArg,
 PH7_PRIVATE sxi32 PH7_VmInstallReflectionSmall(ph7_vm *pVm)
 {
 	static const PH7_NativePropDef aGenProp[] = {
-		{ RG_GEN, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ RG_GEN, PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
 	};
 	static const PH7_NativeMethodDef aGenMethod[] = {
 		{ "__construct",           PH7_MOD_PUBLIC, "Generator $generator", "",
@@ -2711,7 +2716,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionSmall(ph7_vm *pVm)
 		  vm_builtin_ReflectionGenerator_trace },
 	};
 	static const PH7_NativePropDef aFiberProp[] = {
-		{ RF_FIBER, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ RF_FIBER, PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
 	};
 	static const PH7_NativeMethodDef aFiberMethod[] = {
 		{ "__construct",      PH7_MOD_PUBLIC, "Fiber $fiber", "", vm_builtin_ReflectionFiber_construct },
@@ -2765,7 +2770,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionSmall(ph7_vm *pVm)
 		{ "__toString",  PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionZendExtension_toString },
 	};
 	static const PH7_NativePropDef aRefProp[] = {
-		{ RR_ID, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
+		{ RR_ID, PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
 	};
 	static const PH7_NativeMethodDef aRefMethod[] = {
 		/* php declares the constructor PRIVATE, so `new ReflectionReference` is
@@ -4366,7 +4371,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionClass(ph7_vm *pVm)
 		{ "name",  PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
 		/* PHL-only: the instance a ReflectionObject was built over. php keeps it
 		 * out of sight; PHL has no hidden-slot bit yet (§7.4 (e)). */
-		{ RC_OBJ,  PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ RC_OBJ,  PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
 	};
 	static const PH7_NativeMethodDef aClassMethod[] = {
 		{ "__clone",     PH7_MOD_PRIVATE, "", "void", vm_builtin_ReflectionClass_clone },
@@ -6347,7 +6352,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm)
 		{ "name",  PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
 		/* PHL-only: the Closure being reflected. php reaches the same state from
 		 * the function record itself; PHL has no hidden-slot bit yet (§7.4 (e)). */
-		{ RF_CL,   PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ RF_CL,   PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
 	};
 	static const PH7_NativeMethodDef aAbstractMethod[] = {
 		{ "__clone",       PH7_MOD_PRIVATE, "", "void", vm_builtin_ReflectionFunc_clone },
@@ -6449,9 +6454,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm)
 	static const PH7_NativePropDef aParamProp[] = {
 		{ "name", PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
 		/* PHL-only, the three that identify the parameter (§7.4 (e)) */
-		{ RP_T,   PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ RP_M,   PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ RP_P,   PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 } },
+		{ RP_T,   PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ RP_M,   PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ RP_P,   PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 } },
 	};
 	static const PH7_NativeMethodDef aParamMethod[] = {
 		{ "__clone",     PH7_MOD_PRIVATE, "", "void", vm_builtin_ReflectionFunc_clone },
@@ -7437,7 +7442,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionMember(ph7_vm *pVm)
 		{ "name",  PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
 		{ "class", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
 		/* PHL-only: the instance a DYNAMIC property was reached through (§7.4 (e)) */
-		{ RP_DYNOBJ, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ RP_DYNOBJ, PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
 	};
 	static const PH7_NativeConstDef aPropConst[] = {
 		{ "IS_STATIC",        PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 16,   0, 0.0 },

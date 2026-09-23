@@ -154,7 +154,14 @@ static void VmSerializePropKey(SyBlob *pOut, ph7_class_attr *pAttr)
 static int VmAttrIsProperty(VmClassAttr *pVmAttr)
 {
 	/* php 8.4: VIRTUAL hooked properties have no backing store — serialize()
-	 * excludes them (raw surface; the get hook is NOT consulted). */
+	 * excludes them (raw surface; the get hook is NOT consulted).
+	 *
+	 * PH7_CLASS_ATTR_HIDDEN is deliberately NOT excluded here, unlike every other
+	 * presentation surface: a native class's engine slot is the only place its state
+	 * lives, and php replaces that state with an `__serialize`/`__unserialize` pair
+	 * PHL does not have yet. Hiding it would make `unserialize(serialize($date))`
+	 * answer an EMPTY DateTime — a wrong answer traded for a byte-exact one. The
+	 * leak stays recorded (§7.4) until those handlers exist. */
 	return (pVmAttr->pAttr->iFlags
 		& (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HOOK_VIRTUAL)) == 0;
 }

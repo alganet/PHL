@@ -392,6 +392,9 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallProperty(ph7_vm *pVm,ph7_class *pClass,
 	if( pDef->iMods & PH7_MOD_STATIC ){
 		iFlags |= PH7_CLASS_ATTR_STATIC;
 	}
+	if( pDef->iMods & PH7_MOD_HIDDEN ){
+		iFlags |= PH7_CLASS_ATTR_HIDDEN;
+	}
 	pAttr = PH7_NewClassAttr(&(*pVm),&sName,0,NativeProtection(pDef->iMods),iFlags);
 	if( pAttr == 0 ){
 		return SXERR_MEM;
@@ -916,12 +919,12 @@ PH7_PRIVATE ph7_class_instance * PH7_NativeIteratorNew(ph7_vm *pVm,ph7_class_ins
 PH7_PRIVATE sxi32 PH7_VmInstallNativeIterator(ph7_vm *pVm)
 {
 	static const PH7_NativePropDef aProp[] = {
-		{ PH7_NATIVE_IT_SRC,  PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ PH7_NATIVE_IT_CUR,  PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ PH7_NATIVE_IT_KEY,  PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ PH7_NATIVE_IT_POS,  PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 } },
-		{ PH7_NATIVE_IT_AUX,  PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 } },
-		{ PH7_NATIVE_IT_DONE, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 } },
+		{ PH7_NATIVE_IT_SRC,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ PH7_NATIVE_IT_CUR,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ PH7_NATIVE_IT_KEY,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ PH7_NATIVE_IT_POS,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 } },
+		{ PH7_NATIVE_IT_AUX,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 } },
+		{ PH7_NATIVE_IT_DONE, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 } },
 	};
 	static const PH7_NativeMethodDef aMethod[] = {
 		{ "__construct", PH7_MOD_PRIVATE, "", "", vm_builtin_InternalIterator_construct },

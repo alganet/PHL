@@ -472,7 +472,7 @@ static sxi32 VmInstallWeak(ph7_vm *pVm)
 	static const PH7_NativePropDef aRefProp[] = {
 		/* The shared cell, as a pointer. Private to a final class and never handed
 		 * to PHP -- what `__weak_create()` used to return into a userland slot. */
-		{ "__h", PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
+		{ "__h", PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
 	};
 	static const PH7_NativeMethodDef aRefMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC, "", "", vm_builtin_WeakReference_construct },
@@ -481,8 +481,8 @@ static sxi32 VmInstallWeak(ph7_vm *pVm)
 		{ "get",         PH7_MOD_PUBLIC, "", "?object", vm_builtin_WeakReference_get },
 	};
 	static const PH7_NativePropDef aMapProp[] = {
-		{ WM_REFS, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ WM_VALS, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ WM_REFS, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ WM_VALS, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
 	};
 	static const PH7_NativeMethodDef aMapMethod[] = {
 		/* php leaves the key parameter UNTYPED and screens it in the body, so that
@@ -1088,13 +1088,13 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 		{ "seek", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "int $offset", 0, 0 },
 	};
 	static const PH7_NativePropDef aItProp[] = {
-		{ SPL_D, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ SPL_F, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
+		{ SPL_D, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ SPL_F, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
 	};
 	static const PH7_NativePropDef aObjProp[] = {
-		{ SPL_D,  PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ SPL_F,  PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
-		{ SPL_IT, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "ArrayIterator", 0.0 } },
+		{ SPL_D,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ SPL_F,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
+		{ SPL_IT, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "ArrayIterator", 0.0 } },
 	};
 	static const PH7_NativeConstDef aConst[] = {
 		{ "STD_PROP_LIST",  PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 1, 0, 0.0 },
@@ -2043,19 +2043,19 @@ static int vm_builtin_EmptyIterator_key(ph7_context *pCtx,int nArg,ph7_value **a
 static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 {
 	static const PH7_NativePropDef aDualProp[] = {
-		{ IT_IN, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ IT_IT, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ IT_CD, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ IT_CK, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ IT_CF, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
-		{ IT_CP, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
+		{ IT_IN, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ IT_IT, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ IT_CD, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ IT_CK, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ IT_CF, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
+		{ IT_CP, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
 	};
 	static const PH7_NativePropDef aLimitProp[] = {
-		{ IT_OFF, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
-		{ IT_LIM, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT, -1, 0, 0.0 } },
+		{ IT_OFF, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
+		{ IT_LIM, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, -1, 0, 0.0 } },
 	};
 	static const PH7_NativePropDef aCbProp[] = {
-		{ IT_CB, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ IT_CB, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
 	};
 	static const PH7_NativeMethodDef aOuterMethod[] = {
 		{ "getInnerIterator", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", 0, 0 },

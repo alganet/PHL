@@ -3200,10 +3200,10 @@ static int vm_builtin_timezone_offset_get(ph7_context *pCtx,int nArg,ph7_value *
  * exactly what `use __DtCoreT` did.
  */
 #define DT_NATIVE_STATE_PROPS \
-	{ DT_TS,   PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 } }, \
-	{ DT_OFF,  PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 } }, \
-	{ DT_NAME, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "UTC", 0.0 } }, \
-	{ DT_US,   PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 } }
+	{ DT_TS,   PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 } }, \
+	{ DT_OFF,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 } }, \
+	{ DT_NAME, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "UTC", 0.0 } }, \
+	{ DT_US,   PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 } }
 /*
  * The methods DateTime and DateTimeImmutable share -- the whole of the old trait
  * plus the mutators, whose one difference (write $this, or write a clone) the
@@ -3274,8 +3274,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		DT_IFACE_CONST("W3C","Y-m-d\\TH:i:sP"),
 	};
 	static const PH7_NativePropDef aZoneProp[] = {
-		{ DTZ_OFF,  PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 } },
-		{ DTZ_NAME, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "UTC", 0.0 } },
+		{ DTZ_OFF,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 } },
+		{ DTZ_NAME, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "UTC", 0.0 } },
 	};
 	static const PH7_NativeMethodDef aZoneMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC, "string $timezone", "", vm_builtin_DateTimeZone_construct },

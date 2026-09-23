@@ -1644,8 +1644,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 	 * public: hiding them is the per-class debug-info hook's job (§7.4 (e)), which
 	 * DateTime, XMLWriter, Fiber, Generator and WeakReference all wait on too. */
 	static const PH7_NativePropDef aNodeProp[] = {
-		{ DOM_RES, PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ DOM_DOC, PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ DOM_RES, PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ DOM_DOC, PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
 	};
 	/* php's own signatures. Declaring `DOMNode $node` is what makes
 	 * `$n->appendChild(1)` the TypeError php raises instead of a warning from
@@ -1670,7 +1670,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "preserveWhiteSpace", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 } },
 		{ "formatOutput",       PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 } },
 		/* The identity cache DomWrap keys by node pointer. */
-		{ DOM_NODES,            PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ DOM_NODES,            PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
 	};
 	static const PH7_NativeMethodDef aDocMethod[] = {
 		{ "__construct",          PH7_MOD_PUBLIC, "string $version = '1.0', string $encoding = ''", "",
@@ -1725,10 +1725,10 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 	 * ($__owner), the document to wrap results against ($__doc), and -- for the
 	 * two node-list kinds -- the tag name or the frozen snapshot. */
 	static const PH7_NativePropDef aListProp[] = {
-		{ DNL_KIND,      PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 } },
-		{ DOM_DOC,       PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0, 0.0 } },
-		{ DNL_OWNER,     PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0, 0.0 } },
-		{ DNL_NAME,      PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
+		{ DNL_KIND,      PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 } },
+		{ DOM_DOC,       PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0, 0.0 } },
+		{ DNL_OWNER,     PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0, 0.0 } },
+		{ DNL_NAME,      PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
 		{ DNL_SNAP_SLOT, PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0, 0.0 } },
 	};
 	static const PH7_NativeMethodDef aListMethod[] = {
