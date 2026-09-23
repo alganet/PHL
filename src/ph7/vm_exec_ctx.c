@@ -743,6 +743,19 @@ PH7_PRIVATE sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut)
 				PH7_HashmapRelease(pMap, TRUE); /* free the partial map, no leak */
 				return SXERR_NOTFOUND;
 			}
+			if( pThis->iFlags & VM_INSTANCE_FCC_SCREENED ){
+				/* php resolves a method Closure's callee ONCE, where the closure is built, and
+				 * keeps the resolved function: an escaped `$this->priv(...)` runs anywhere. PHL
+				 * keeps only a NAME, so every dispatch site would re-decide visibility against the
+				 * CALLER and refuse the closure php runs. The creation sites screen (OP_LOAD_FCC's
+				 * VmFccMemberError, Closure::fromCallable's PH7_VmIsCallable gate, and reflection,
+				 * which php lets past protection on purpose) and stamp the mark only when a real
+				 * method answered — a name the class reaches through __call carries no mark and
+				 * still routes to the catch-all. Armed only once the pair below really exists, so
+				 * a failed build cannot leave it standing; the consumers clear it like
+				 * pClosureThis/pClosureScope. */
+				pVm->bClosureScreened = 1;
+			}
 			pOut->x.pOther = pMap;
 			MemObjSetType(pOut, MEMOBJ_HASHMAP);
 			return SXRET_OK;
@@ -914,6 +927,12 @@ PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue)
 				&pBoundThis->pClass->sName);
 			if( pFccObj ){
 				pFccObj->iFlags |= VM_INSTANCE_FCC_METHOD; /* $__fn is a METHOD name */
+				if( PH7_VmFccMethodIsDirect(pVm,pBoundThis->pClass,
+						SyStringData(&sName),SyStringLength(&sName)) ){
+					/* The PH7_VmIsCallable gate above is php's creation-time screen; a pair it
+					 * admitted because the class routes the name through __call is NOT settled. */
+					pFccObj->iFlags |= VM_INSTANCE_FCC_SCREENED;
+				}
 			}
 			return pFccObj;
 		}else{
@@ -926,6 +945,10 @@ PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue)
 				? VmCreateClosure(pVm, &sName, 0, &pScopeCls->sName) : 0;
 			if( pFccObj ){
 				pFccObj->iFlags |= VM_INSTANCE_FCC_METHOD; /* $__fn is a METHOD name */
+				if( PH7_VmFccMethodIsDirect(pVm,pScopeCls,
+						SyStringData(&sName),SyStringLength(&sName)) ){
+					pFccObj->iFlags |= VM_INSTANCE_FCC_SCREENED;
+				}
 			}
 			return pFccObj;
 		}
@@ -1489,6 +1512,7 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
 					pVm->pClosureThis = 0;
 				}
 				pVm->pClosureScope = 0;
+				pVm->bClosureScreened = 0;
 				return (ph7_vm_func *)pEntry->pUserData;
 			}
 			if( pVm->pClosureThis ){
@@ -1498,6 +1522,7 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
 				pVm->pClosureThis = 0;
 			}
 			pVm->pClosureScope = 0;
+			pVm->bClosureScreened = 0;
 			PH7_VmThrowException(pCtx, "FiberError", "Fiber callable closure could not be resolved");
 			return 0;
 		}

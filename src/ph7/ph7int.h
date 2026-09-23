@@ -232,6 +232,14 @@ struct VmDeferredPath {
  * (`function(){…}->bindTo($o)`) never carries this bit, which is what the guess was really
  * trying to detect. */
 #define VM_INSTANCE_FCC_METHOD 0x020
+/* ph7_class_instance.iFlags bit: this Closure's callee was RESOLVED to a real, directly
+ * callable method when the closure was BUILT — the way php resolves one, keeping the
+ * function itself rather than a name. No dispatch site may re-decide its visibility against
+ * the CALLER: that is what killed an escaped `$this->priv(...)` php runs anywhere. A closure
+ * whose creation resolved to the class's __call/__callStatic TRAMPOLINE instead (a missing or
+ * inaccessible name on a class that declares one) deliberately does NOT carry the bit — its
+ * dispatch has to reach the catch-all, as php's does. */
+#define VM_INSTANCE_FCC_SCREENED 0x040
 /*
  * The following macro clear the current ph7_value type and replace
  * it with the given one.
@@ -2020,6 +2028,15 @@ struct ph7_vm
 	                             * dispatch sites only, so a call the USER wrote (including a
 	                             * first-class `$o->__get(...)`, which reaches the same C
 	                             * dispatcher) is still denied. Cleared at the head of OP_CALL. */
+	int bClosureScreened;       /* Consume-once: the method call now being dispatched comes out of a
+	                             * Closure whose callee was RESOLVED and screened when the closure was
+	                             * BUILT (`$this->p(...)`, `Closure::fromCallable([$this,'p'])`,
+	                             * ReflectionMethod::getClosure), so no site may re-decide its
+	                             * visibility against the CALLER. php stores a resolved function +
+	                             * scope in the Closure and never looks the name up again; PHL keeps a
+	                             * name, so without this latch an escaped closure over a private method
+	                             * died at the invocation php runs. Armed by VmClosureUnwrap, read by
+	                             * the array-callable dispatch sites, cleared at the head of OP_CALL. */
 	char zDefTz[68];            /* date_default_timezone_set() identifier, stored verbatim like php
 	                             * (default "UTC"; only UTC/GMT are accepted — no tz database) */
 	sxu32 nDefTz;               /* zDefTz length in bytes */
@@ -3205,6 +3222,7 @@ PH7_PRIVATE int PH7_VmClassMemberAccess(ph7_vm *pVm,ph7_class *pClass,const SySt
 PH7_PRIVATE ph7_class * PH7_VmCallerScope(ph7_vm *pVm);
 PH7_PRIVATE ph7_class * PH7_VmCallerScopeName(ph7_vm *pVm);
 PH7_PRIVATE ph7_class * PH7_VmMethodScopeName(ph7_vm *pVm,ph7_class *pClass,ph7_class_method *pMeth);
+PH7_PRIVATE int PH7_VmFccMethodIsDirect(ph7_vm *pVm,ph7_class *pClass,const char *zName,sxu32 nName);
 PH7_PRIVATE ph7_class * PH7_VmComposingClass(ph7_class *pClass,ph7_class *pDecl);
 PH7_PRIVATE void PH7_ClassMethodRegisteredName(ph7_class *pClass,const char *zName,sxu32 nByte,SyString *pOut);
 PH7_PRIVATE ph7_class * PH7_VmExtractClassFromValue(ph7_vm *pVm,ph7_value *pArg);

@@ -1815,6 +1815,10 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			/* The scope transient can stand alone (scope-only rebind); it holds no
 			 * owned reference — just clear it if the dispatch didn't consume it. */
 			pVm->pClosureScope = 0;
+			/* Same hygiene for the screened-callee latch: OP_CALL consumes it, but a
+			 * dispatch that never reached one (unresolvable class, OOM) would leave it
+			 * standing and stand the visibility screen down for the NEXT call. */
+			pVm->bClosureScreened = 0;
 			PH7_MemObjRelease(&sCallable);
 			return rcClo;
 		}
@@ -1877,7 +1881,8 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			pMethod = PH7_ClassExtractMethod(pClass,(const char *)SyBlobData(&pName->sBlob),
 				SyBlobLength(&pName->sBlob));
 		}
-		if( pMethod == 0 || !VmCallableMethodAccessible(&(*pVm),pClass,pMethod) ){
+		if( pMethod == 0
+		 || (!pVm->bClosureScreened && !VmCallableMethodAccessible(&(*pVm),pClass,pMethod)) ){
 			/* php answers for a name the class cannot reach directly through __call /
 			 * __callStatic, in a CALLABLE exactly as in the method-call syntax — including
 			 * the receiver rule: a class-NAME pair still reaches __call, on the CALLER's own

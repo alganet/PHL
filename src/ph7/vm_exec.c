@@ -1130,6 +1130,35 @@ static const char * VmMethodVisibilityMsg(ph7_vm *pVm,ph7_class *pDecl,
 	return zBuf;
 }
 /*
+ * Is this class+method pair one a call would reach DIRECTLY from here — a real method (not
+ * abstract, not a name only the catch-all answers) that the current scope may call? php
+ * decides exactly this when it BUILDS a method Closure, and stores the resolved function; the
+ * answer is what the VM_INSTANCE_FCC_SCREENED mark records, so the invocation never asks again.
+ * A pair that answers FALSE here is the __call/__callStatic trampoline's, and its closure must
+ * keep routing there.
+ */
+PH7_PRIVATE int PH7_VmFccMethodIsDirect(ph7_vm *pVm,ph7_class *pClass,const char *zName,sxu32 nName)
+{
+	ph7_class_method *pMethod;
+	SyString sDecl;
+	if( pClass == 0 || nName < 1 ){
+		return 0;
+	}
+	pMethod = PH7_ClassExtractMethod(pClass,zName,nName);
+	if( pMethod == 0 || (pMethod->iFlags & PH7_CLASS_ATTR_ABSTRACT) ){
+		return 0;
+	}
+	if( pMethod->iProtection == PH7_CLASS_PROT_PUBLIC ){
+		return 1;
+	}
+	SyStringInitFromBuf(&sDecl,SyStringData(&pMethod->sFunc.sName),
+		SyStringLength(&pMethod->sFunc.sName));
+	/* The OWNING class decides (a trait method is owned by the class that composed it) — the
+	 * same argument every other visibility site passes. */
+	return PH7_VmClassMemberAccess(&(*pVm),PH7_VmMethodScopeName(&(*pVm),pClass,pMethod),
+		&sDecl,pMethod->iProtection,FALSE) ? 1 : 0;
+}
+/*
  * Resolve `$o->m(...)` / `C::m(...)` the way php resolves the CALL it stands for, and say
  * why when it cannot. php builds a first-class callable through the same member lookup a
  * real call goes through, so every refusal a call would raise happens HERE, at creation:
@@ -2399,6 +2428,12 @@ case PH7_OP_LOAD_FCC:{
 			 * declare: the unwrap must not go looking for a FUNCTION of that name, and a
 			 * name the class answers only through __call is still a method call. */
 			pCloObj->iFlags |= VM_INSTANCE_FCC_METHOD;
+			/* The screen above already ran, HERE, where php runs it — so record that this
+			 * closure's callee is settled and the invocation must not re-decide it. A name
+			 * that resolved to the catch-all instead keeps routing there. */
+			if( PH7_VmFccMethodIsDirect(&(*pVm),pFccCls,SyStringData(&sName),SyStringLength(&sName)) ){
+				pCloObj->iFlags |= VM_INSTANCE_FCC_SCREENED;
+			}
 		}
 		/* Pop the method name and the target, push the Closure. */
 		PH7_MemObjRelease(pTos);
@@ -5011,8 +5046,10 @@ case PH7_OP_CALL: {
 	/* ...and the member resolution's own verdict, which rides the callee SLOT rather
 	 * than the VM: an OP_MEMBER that produced this callee already decided its
 	 * visibility against the entry it chose, so the screen below must stand down. */
-	int bMemberScreened = (pTos->iFlags & MEMOBJ_AUX_MEMBERCALL) != 0;
+	int bMemberScreened = (pTos->iFlags & MEMOBJ_AUX_MEMBERCALL) != 0
+		|| pVm->bClosureScreened;
 	pVm->bMagicDispatch = 0;
+	pVm->bClosureScreened = 0;
 	pTos->iFlags &= ~MEMOBJ_AUX_MEMBERCALL;
 	pArg = &pTos[-nCallArgs];
 	/* PHP 8.1: an unpack whose elements carry string keys binds them as NAMED
@@ -5096,7 +5133,13 @@ case PH7_OP_CALL: {
 				char zCbMsg[192];
 				const char *zCbErr = 0;
 				int bCbRaised = 0; /* the class lookup ran an autoloader that threw */
-				if( pCbMap && pCbMap->nEntry == 2 ){
+				/* A pair the closure UNWRAP just built is not an array the program wrote: its
+				 * callee was resolved and screened where the closure was BUILT, the way php
+				 * resolves one, and it is a well-formed [target, method] by construction.
+				 * Re-deciding it here, against the CALLER, is what refused an escaped
+				 * `$this->priv(...)` php runs. */
+				int bCbScreened = pVm->bClosureScreened;
+				if( !bCbScreened && pCbMap && pCbMap->nEntry == 2 ){
 					/* Shape is right; now check it actually RESOLVES. The shared dispatcher
 					 * (PH7_VmCallUserFunctionWithMap) answers SXRET_OK with a NULL result for
 					 * an unresolvable [class,method] pair -- silence a caller cannot detect --
@@ -5123,7 +5166,7 @@ case PH7_OP_CALL: {
 						}
 					}
 				}
-				if( pCbMap == 0 || pCbMap->nEntry != 2 || zCbErr ){
+				if( !bCbScreened && (pCbMap == 0 || pCbMap->nEntry != 2 || zCbErr) ){
 					sxi32 rcCb;
 					if( pInstr->iP2 ){
 						VmSpreadConsume(pVm);
@@ -5179,6 +5222,10 @@ case PH7_OP_CALL: {
 			 * (pInstr->p3) so an FCC array callable invoked as `$c(name: …)` binds by name —
 			 * mirroring the __invoke-object branch below. */
 			rcArr = PH7_VmCallUserFunctionWithMap(pVm,pTos,(int)SySetUsed(&aArg),(ph7_value **)SySetBasePtr(&aArg),&sResult,pEffCallMap);
+			/* The screened-callee latch is consumed by the method OP_CALL this dispatch
+			 * builds; clear it here for the paths that never reach one, so it cannot stand
+			 * the visibility screen down for an unrelated later call. */
+			pVm->bClosureScreened = 0;
 			SySetReset(&aArg);
 			/* Pop given arguments */
 			if( nCallArgs > 0 ){

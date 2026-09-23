@@ -6225,8 +6225,17 @@ static int vm_builtin_ReflectionMethod_getClosure(ph7_context *pCtx, int nArg, p
 	if( rc != PH7_OK ){
 		return rc;
 	}
-	return ReflectResultObject(pCtx,
-		PH7_VmNewClosure(pCtx->pVm, &sRef.pMeth->sFunc.sName, pRecv, &sRef.pClass->sName));
+	{
+		/* php hands back a closure over the RESOLVED method and reflection is allowed past
+		 * protection (8.1+), so this one must dispatch without a second visibility decision —
+		 * the FCC_METHOD mark is what tells the unwrap its $__fn is a screened METHOD name. */
+		ph7_class_instance *pClo = PH7_VmNewClosure(pCtx->pVm, &sRef.pMeth->sFunc.sName,
+			pRecv, &sRef.pClass->sName);
+		if( pClo ){
+			pClo->iFlags |= VM_INSTANCE_FCC_METHOD|VM_INSTANCE_FCC_SCREENED;
+		}
+		return ReflectResultObject(pCtx, pClo);
+	}
 }
 /* php 8.1 made every reflected member accessible; the setter is a no-op it kept. */
 static int vm_builtin_ReflectionMethod_setAccessible(ph7_context *pCtx, int nArg, ph7_value **apArg)
