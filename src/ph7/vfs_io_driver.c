@@ -1396,6 +1396,61 @@ PH7_PRIVATE int PH7_builtin_passthru(ph7_context *pCtx,int nArg,ph7_value **apAr
 {
 	return ShellRunCommand(pCtx,SHELL_RUN_RAW,nArg,apArg);
 }
+/*
+ * bool proc_nice(int $priority)
+ *  Change the priority of the running process — the last member of php's own
+ *  process-execution surface, and the only one of the seven that runs no shell.
+ */
+PH7_PRIVATE int PH7_builtin_proc_nice(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_int64 iPri;
+	SXUNUSED(nArg);   /* Arity is enforced from aBuiltinSig[] before the call */
+	iPri = ph7_value_to_int64(apArg[0]);
+#ifdef __WINNT__
+	{
+		/* php's own mapping (win32/nice.c): cmd.exe has no nice value, so the
+		 * POSIX increment is bucketed into the five priority CLASSES Windows
+		 * has. REALTIME is deliberately not reachable there, and neither is it
+		 * here. */
+		DWORD dwFlag = NORMAL_PRIORITY_CLASS;
+		if( iPri < -9 ){
+			dwFlag = HIGH_PRIORITY_CLASS;
+		}else if( iPri < -4 ){
+			dwFlag = ABOVE_NORMAL_PRIORITY_CLASS;
+		}else if( iPri > 9 ){
+			dwFlag = IDLE_PRIORITY_CLASS;
+		}else if( iPri > 4 ){
+			dwFlag = BELOW_NORMAL_PRIORITY_CLASS;
+		}
+		SetPriorityClass(GetCurrentProcess(),dwFlag);
+		/* php answers TRUE whatever that returned: its nice() reports failure
+		 * through its return value and leaves errno alone, and proc_nice() reads
+		 * only errno. */
+		ph7_result_bool(pCtx,1);
+	}
+#elif defined(__UNIXES__)
+	{
+		int iIgnored;
+		/* nice() legitimately answers -1 (it returns the NEW nice value), so
+		 * errno is the only failure evidence — php clears it first for the same
+		 * reason. */
+		errno = 0;
+		iIgnored = nice((int)iPri);
+		(void)iIgnored;
+		if( errno != 0 ){
+			PH7_VmThrowWarningFmt(pCtx->pVm,
+				"%s(): Only a super user may attempt to increase the priority of a process",
+				ph7_function_name(pCtx));
+			ph7_result_bool(pCtx,0);
+		}else{
+			ph7_result_bool(pCtx,1);
+		}
+	}
+#else
+	ph7_result_bool(pCtx,0);
+#endif
+	return PH7_OK;
+}
 PH7_PRIVATE int PH7_builtin_popen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zCommand, *zMode;

@@ -828,6 +828,7 @@ static const struct VmBuiltinSig {
 	{ "memory_reset_peak_usage", "", "void" },
 	{ "proc_close", "$process", "int" },
 	{ "proc_get_status", "$process", "array" },
+	{ "proc_nice", "int $priority", "bool" },
 	{ "proc_open", "array|string $command, array $descriptor_spec, &$pipes, ?string $cwd = NULL, ?array $env_vars = NULL, ?array $options = NULL", "" },
 	{ "proc_terminate", "$process, int $signal = 15", "bool" },
 	{ "set_include_path", "string $include_path", "string|false" },
