@@ -265,7 +265,11 @@ static int PH7_vfs_chdir(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *   The path to change the root directory to
  * Return
  *  TRUE on success or FALSE on failure.
+ *
+ * POSIX only, like php's: the registration below is guarded the same way, and an
+ * unreferenced static is an error under the Windows build's /W4 /WX.
  */
+#ifndef __WINNT__
 static int PH7_vfs_chroot(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zPath;
@@ -290,11 +294,21 @@ static int PH7_vfs_chroot(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Point to the desired directory */
 	zPath = ph7_value_to_string(apArg[0],0);
 	/* Perform the requested operation */
+	errno = 0;
 	rc = pVfs->xChroot(zPath);
+	if( rc != PH7_OK ){
+		/* php's own wording, and the failure a script actually meets: chroot(2)
+		 * needs privilege, so an ordinary process gets EPERM. PHL answered the
+		 * bare false in SILENCE — a refused chroot() and a chroot() that did
+		 * nothing looked the same to the caller. */
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s (errno %d)",
+			ph7_function_name(pCtx),VfsStrerror(errno),errno);
+	}
 	/* IO return value */
 	ph7_result_bool(pCtx,rc == PH7_OK);
 	return PH7_OK;
 }
+#endif /* __WINNT__ */
 /*
  * string getcwd(void)
  *  Gets the current working directory.
@@ -2891,7 +2905,15 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 	/* VFS: disk I/O related functions */
 	static const ph7_builtin_func aVfsDiskFunc[] = {
 		{"chdir",   PH7_vfs_chdir   },
+#ifndef __WINNT__
+		/* php declares chroot() on POSIX only — there is no such call on Windows,
+		 * so `function_exists('chroot')` is FALSE there and the name is free for a
+		 * script to define. PHL used to declare it on both and answer a
+		 * "not implemented in the underlying VFS" warning + false on Windows,
+		 * which is a different thing from php's undefined function. (chown/chgrp/
+		 * link/symlink/readlink stay: php declares all five on Windows.) */
 		{"chroot",  PH7_vfs_chroot  },
+#endif
 		{"getcwd",  PH7_vfs_getcwd  },
 		{"rmdir",   PH7_vfs_rmdir   },
 		{"is_dir",  PH7_vfs_is_dir  },

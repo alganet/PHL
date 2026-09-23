@@ -3,6 +3,8 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 chroot() with no arguments is php's ArgumentCountError
+--SKIPIF--
+skip: win macos for now
 --DESCRIPTION--
 The signature row that gives chroot() its `string $directory` also gives it its
 arity. It had neither, so a bare chroot() ran the builtin with no arguments and

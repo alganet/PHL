@@ -3,6 +3,8 @@ SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 chroot() refuses an argument its declared string cannot take
+--SKIPIF--
+skip: win macos for now
 --DESCRIPTION--
 chroot() is php's own `chroot(string $directory): bool` — the SKIPIF this test
 used to carry, claiming it as a PHL extension absent from php, was wrong — and

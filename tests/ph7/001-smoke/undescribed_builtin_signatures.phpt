@@ -3,6 +3,8 @@ SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 A builtin with no signature row is unscreened and un-arity-checked
+--SKIPIF--
+skip: macos
 --DESCRIPTION--
 aBuiltinSig[] is the single source of truth for a builtin's arity, its argument
 types and what Reflection prints. Twenty-eight builtins had no row at all — the
@@ -52,7 +54,11 @@ ubsShow('token_name ok', fn() => token_name(T_ECHO));
 ubsShow('mb_internal_encoding ok', fn() => mb_internal_encoding());
 
 /* Reflection prints php's declaration for every one of them. */
-foreach (['chroot', 'mb_strlen', 'mb_substr', 'proc_terminate', 'stream_get_contents',
+/* chroot() used to head this list and cannot: php declares it on POSIX only, so
+ * on Windows there is nothing to reflect and the ReflectionException took the
+ * in-process runner down with it under the Windows oracle. mb_strwidth() is from
+ * the same batch of rows and exists on both platforms. */
+foreach (['mb_strwidth', 'mb_strlen', 'mb_substr', 'proc_terminate', 'stream_get_contents',
           'token_name', 'hrtime', 'fsockopen'] as $ubsFn) {
     $ubsRef = new ReflectionFunction($ubsFn);
     $ubsOut = [];
@@ -86,7 +92,7 @@ mb_str_split ok => array (  0 => 'a',  1 => 'b',  2 => 'c',)
 mb_convert_case ok => 'Ab Cd'
 token_name ok => 'T_ECHO'
 mb_internal_encoding ok => 'UTF-8'
-chroot :: string $directory : bool
+mb_strwidth :: string $string, ?string $encoding : int
 mb_strlen :: string $string, ?string $encoding : int
 mb_substr :: string $string, int $start, ?int $length, ?string $encoding : string
 proc_terminate :: $process, int $signal : bool

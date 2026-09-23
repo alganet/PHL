@@ -2,21 +2,21 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-chroot() changes the root directory
+chroot() reports why it could not change the root directory
 --SKIPIF--
-<?php
-// PHL extension: `chroot()` does not exist in php (it is an added API surface,
-// allowed by the section 10 scope policy as a documented PHL extension —
-// it does not change the meaning of valid php source). Engine-specific by design.
-if (function_exists('zend_version')) { echo 'skip PHL extension: chroot() is not a php symbol'; }
-?>
+skip: win macos for now
 --FILE--
 <?php
-// Try to change to root directory (likely to fail on most systems, but tests the code path)
-echo chroot("/") ? "true\n" : "false\n";
+/* php answers false and says why -- `chroot(): <strerror> (errno N)` -- where
+ * PHL used to answer the bare false in silence, so a refused chroot() and one
+ * that had done nothing looked identical to the caller. The handler takes the
+ * message BODY: the runner's prefix differs between the two engines. */
+set_error_handler(function ($n, $s) { echo 'W: ', $s, "\n"; return true; });
+var_dump(chroot('/'));
+restore_error_handler();
 ?>
 --EXPECT--
-false
+W: chroot(): Operation not permitted (errno 1)
+bool(false)
 --CLEAN--
 <?php
-
