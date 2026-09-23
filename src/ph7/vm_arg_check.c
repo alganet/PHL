@@ -1305,6 +1305,33 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 					 * already followed, and which this screen now runs first). */
 					zGiven = VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf));
 				}
+			}else if( (pArg->iFlags & (MEMOBJ_STRING|MEMOBJ_NULL)) == MEMOBJ_STRING
+			       && VmSigTypeHas(zType,nType,"int")
+			       && !VmSigTypeHas(zType,nType,"string")
+			       && !VmSigTypeHas(zType,nType,"array")
+			       && !VmSigTypeHas(zType,nType,"object")
+			       && !VmSigTypeHas(zType,nType,"iterable")
+			       && !VmSigTypeHas(zType,nType,"callable")
+			       && !VmSigTypeHas(zType,nType,"bool")
+			       && !VmSigTypeHasClass(zType,nType) ){
+				/* A STRING against an int-only parameter. Weak mode coerces a
+				 * NUMERIC one and php refuses every other — "x", "2abc" and "0x2"
+				 * are all `must be of type int, string given` (rule 41: a numeric
+				 * PREFIX is not enough, which is what SyStrIsNumeric would have
+				 * accepted). Every BUILTIN with an int parameter already got this
+				 * from PH7_IntArgResolve, called from its own body; a native METHOD
+				 * has no body to call it from, so `ArrayIterator::seek('x')` seeked
+				 * to 0, `DateTime::setTimestamp('abc')` set 0 and
+				 * `DOMNodeList::item('zz')` answered element 0 — wrong ANSWERS,
+				 * not missing errors. Screening the declared type here covers both
+				 * callee kinds from one place.
+				 *
+				 * The FLOAT and NULL rules stay where they are: a lossy float is
+				 * already refused by the arithmetic path, and PHL rejects null for
+				 * a non-nullable parameter by policy (§10) where php deprecates. */
+				if( !PH7_MemObjStringIsNumeric(pArg) ){
+					zGiven = "string";
+				}
 			}else if( (pArg->iFlags & MEMOBJ_RES) != 0 ){
 				/* A class-typed parameter also accepts a resource: several handles php 8
 				 * models as objects are still resources here (xml_*'s XMLParser is the
