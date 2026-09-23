@@ -15,99 +15,519 @@
  * property, so ArrayIterator's cursor IS the backing array's pointer).
  */
 
-/* void __spl_deprecated(string $msg) — E_DEPRECATED with php's exact text
- * (no auto-prepended function name, unlike ph7_context_throw_error) */
-static int vm_builtin_spl_deprecated(ph7_context *pCtx,int nArg,ph7_value **apArg)
+/*
+ * ---------------------------------------------------------------------------
+ * The weak-reference family: WeakReference and WeakMap, declared and bodied in C.
+ *
+ * They used to be PHP classes over three global thunks (`__weak_create()`,
+ * `__weak_get()`, `__weak_drop()`) that traded the cell pointer back and forth as
+ * an opaque int. The cell never belonged in PHP: it is a C lifetime, and the moment
+ * a class can have C METHOD bodies the thunks are just the methods, spelled with
+ * the pointer left in the open. They are gone; `__h` is the only slot left, and it
+ * is private to a final, uncloneable class.
+ * ---------------------------------------------------------------------------
+ */
+/* The shared cell for a target, created on first use. Takes ONE handle. */
+static VmWeakCell * WkCellFor(ph7_vm *pVm,ph7_class_instance *pObj)
 {
-	/* php DEPRECATES a handful of SPL methods (SplObjectStorage attach/detach/…);
-	 * PHL keeps them (they ADD surface, they don't change valid-php meaning) but does
-	 * not mimic php's E_DEPRECATED notice. So this helper is now a no-op. */
-	SXUNUSED(pCtx); SXUNUSED(nArg); SXUNUSED(apArg);
-	return PH7_OK;
-}
-
-/* int __weak_create(object $obj) — register/share the weak cell for $obj,
- * returning the cell pointer as an opaque int handle */
-static int vm_builtin_weak_create(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	ph7_vm *pVm = pCtx->pVm;
-	ph7_class_instance *pObj;
-	VmWeakCell *pCell = 0;
-	SyHashEntry *pEntry;
-	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
-		ph7_result_int(pCtx,0);
-		return PH7_OK;
-	}
-	pObj = (ph7_class_instance *)apArg[0]->x.pOther;
-	pEntry = SyHashGet(&pVm->hWeakCell,(const void *)&pObj,sizeof(void *));
+	SyHashEntry *pEntry = SyHashGet(&pVm->hWeakCell,(const void *)&pObj,sizeof(void *));
+	VmWeakCell *pCell;
 	if( pEntry ){
 		pCell = (VmWeakCell *)pEntry->pUserData;
 		pCell->nRef++;
-	}else{
-		pCell = (VmWeakCell *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmWeakCell));
-		if( pCell == 0 ){
-			return PH7_ContextMemoryError(pCtx);
-		}
-		pCell->pObj = pObj;
-		pCell->nRef = 1;
-		/* SyHash stores the key POINTER (no copy): key off the cell's own
-		 * pObj field — heap-stable for the entry's whole lifetime, and it
-		 * holds the live pointer bytes until the release hook nulls it
-		 * (which happens only after the entry is deleted). */
-		if( SyHashInsert(&pVm->hWeakCell,(const void *)&pCell->pObj,sizeof(void *),pCell) != SXRET_OK ){
-			SyMemBackendFree(&pVm->sAllocator,pCell);
-			return PH7_ContextMemoryError(pCtx);
-		}
+		return pCell;
 	}
-	ph7_result_int64(pCtx,(ph7_int64)(sxu64)(sxuptr)pCell);
-	return PH7_OK;
+	pCell = (VmWeakCell *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmWeakCell));
+	if( pCell == 0 ){
+		return 0;
+	}
+	pCell->pObj = pObj;
+	pCell->pRef = 0;
+	pCell->nRef = 1;
+	/* SyHash stores the key POINTER (no copy): key off the cell's own pObj field —
+	 * heap-stable for the entry's whole lifetime, and it holds the live pointer
+	 * bytes until the release hook nulls it (which happens only after the entry
+	 * is deleted). */
+	if( SyHashInsert(&pVm->hWeakCell,(const void *)&pCell->pObj,sizeof(void *),pCell) != SXRET_OK ){
+		SyMemBackendFree(&pVm->sAllocator,pCell);
+		return 0;
+	}
+	return pCell;
 }
-/* ?object __weak_get(int $handle) — the target instance, or null once dead */
-static int vm_builtin_weak_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
+/* Give one handle back; the last one frees the cell. */
+static void WkCellDrop(ph7_vm *pVm,VmWeakCell *pCell)
 {
-	VmWeakCell *pCell;
-	if( nArg < 1 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	pCell = (VmWeakCell *)(sxuptr)(sxu64)ph7_value_to_int64(apArg[0]);
-	if( pCell == 0 || pCell->pObj == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	{
-		/* Hand the instance back: ph7_result_value's MemObjStore takes the
-		 * reference, so the temp holds none of its own. */
-		ph7_value sObj;
-		PH7_MemObjInit(pCtx->pVm,&sObj);
-		sObj.x.pOther = pCell->pObj;
-		MemObjSetType(&sObj,MEMOBJ_OBJ);
-		ph7_result_value(pCtx,&sObj);
-	}
-	return PH7_OK;
-}
-/* void __weak_drop(int $handle) — release one PHP-side handle */
-static int vm_builtin_weak_drop(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	ph7_vm *pVm = pCtx->pVm;
-	VmWeakCell *pCell;
-	if( nArg < 1 ){
-		return PH7_OK;
-	}
-	pCell = (VmWeakCell *)(sxuptr)(sxu64)ph7_value_to_int64(apArg[0]);
 	if( pCell == 0 || pCell->nRef == 0 ){
-		return PH7_OK;
+		return;
 	}
 	pCell->nRef--;
 	if( pCell->nRef == 0 ){
 		if( pCell->pObj ){
-			/* Still alive: unhook the registry entry before freeing */
+			/* Target still alive: unhook the registry entry before freeing. */
 			void *pDummy = 0;
 			SyHashDeleteEntry(&pVm->hWeakCell,(const void *)&pCell->pObj,sizeof(void *),&pDummy);
 		}
 		SyMemBackendFree(&pVm->sAllocator,pCell);
 	}
+}
+/* The cell a WeakReference instance holds, or NULL. */
+static VmWeakCell * WkCellOf(ph7_class_instance *pRef)
+{
+	return (VmWeakCell *)(sxuptr)(sxu64)PH7_NativeAttrInt(pRef,"__h");
+}
+/* Hand an instance back without owning a reference of our own (ph7_result_value's
+ * MemObjStore takes the one the result needs). */
+static void WkResultBorrowed(ph7_context *pCtx,ph7_class_instance *pObj)
+{
+	ph7_value sObj;
+	PH7_MemObjInit(pCtx->pVm,&sObj);
+	sObj.x.pOther = pObj;
+	MemObjSetType(&sObj,MEMOBJ_OBJ);
+	ph7_result_value(pCtx,&sObj);
+}
+/*
+ * The ONE WeakReference published for a target, created on first ask.
+ *
+ * php answers the same object for the same target every time, so the cell caches
+ * what it handed out. `*pbOwned` says whether the caller holds the fresh instance's
+ * reference (and so must give it up once it has been stored somewhere) or is merely
+ * borrowing the published one.
+ */
+static ph7_class_instance * WkRefFor(ph7_vm *pVm,ph7_class_instance *pObj,int *pbOwned)
+{
+	VmWeakCell *pCell = WkCellFor(pVm,pObj);
+	ph7_class *pClass;
+	ph7_class_instance *pRef;
+	*pbOwned = 0;
+	if( pCell == 0 ){
+		return 0;
+	}
+	if( pCell->pRef ){
+		/* Give back the handle WkCellFor just took: the publication owns the only one. */
+		WkCellDrop(pVm,pCell);
+		return pCell->pRef;
+	}
+	/* Built directly rather than through `new`, whose constructor exists only to
+	 * refuse (below). */
+	pClass = PH7_VmExtractClass(pVm,"WeakReference",sizeof("WeakReference")-1,FALSE,0);
+	pRef = pClass ? PH7_NewClassInstance(pVm,pClass) : 0;
+	if( pRef == 0 ){
+		WkCellDrop(pVm,pCell);
+		return 0;
+	}
+	PH7_NativeSetAttrInt(pVm,pRef,"__h",(sxi64)(sxu64)(sxuptr)pCell);
+	pCell->pRef = pRef;
+	*pbOwned = 1;
+	return pRef;
+}
+/* WeakReference::create(object $object): WeakReference */
+static int vm_builtin_WeakReference_create(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pRef;
+	int bOwned = 0;
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pRef = WkRefFor(pCtx->pVm,(ph7_class_instance *)apArg[0]->x.pOther,&bOwned);
+	if( pRef == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( bOwned ){
+		PH7_NativeResultObject(pCtx,pRef);
+	}else{
+		WkResultBorrowed(pCtx,pRef);
+	}
 	return PH7_OK;
+}
+/* WeakReference::get(): ?object — the target, or null once it has died. */
+static int vm_builtin_WeakReference_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	VmWeakCell *pCell = pThis ? WkCellOf(pThis) : 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pCell == 0 || pCell->pObj == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	WkResultBorrowed(pCtx,pCell->pObj);
+	return PH7_OK;
+}
+/*
+ * WeakReference::__construct()
+ *
+ * php declares it PUBLIC and refuses to run it: the class has no way to be built
+ * except through create(), and the refusal is an Error rather than a visibility
+ * failure, so `(new ReflectionClass('WeakReference'))->newInstance()` says the same
+ * thing `new WeakReference()` does.
+ */
+static int vm_builtin_WeakReference_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return PH7_VmThrowException(pCtx,"Error",
+		"Direct instantiation of WeakReference is not allowed, use WeakReference::create instead");
+}
+/* The handle dies with the instance. This is xRelease, not __destruct: php's
+ * WeakReference declares no destructor and Reflection must not grow one. */
+static void WkRefRelease(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	VmWeakCell *pCell = WkCellOf(pThis);
+	if( pCell == 0 ){
+		return;
+	}
+	if( pCell->pRef == pThis ){
+		pCell->pRef = 0;   /* stop publishing an object that is going away */
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,"__h",0);
+	WkCellDrop(pVm,pCell);
+}
+/*
+ * WeakMap.
+ *
+ * Two private arrays keyed by the target's object id (`spl_object_id`, which this
+ * engine never reuses): __r holds the WeakReference for the key, __v the value
+ * mapped to it. Building the weakness out of WeakReference rather than out of raw
+ * cells is what makes `clone $map` right for free -- the copied array increments
+ * each WeakReference's own reference count, and no cell is dropped twice.
+ */
+#define WM_REFS "__r"
+#define WM_VALS "__v"
+/* One of the two backing arrays, materialized and separated from any copy that
+ * shares it (a cloned WeakMap starts out sharing both). */
+static ph7_hashmap * WmStore(ph7_vm *pVm,ph7_class_instance *pWm,const char *zSlot)
+{
+	ph7_value *pSlot = PH7_NativeAttr(pWm,zSlot);
+	if( pSlot == 0 ){
+		return 0;
+	}
+	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){
+			return 0;
+		}
+	}
+	return PH7_HashmapCowSeparate(pVm,pSlot);
+}
+/* The entry for an object id, or NULL. */
+static ph7_hashmap_node * WmFind(ph7_vm *pVm,ph7_hashmap *pMap,sxi64 iId)
+{
+	ph7_value sKey;
+	ph7_hashmap_node *pNode = 0;
+	if( pMap == 0 ){
+		return 0;
+	}
+	PH7_MemObjInitFromInt(pVm,&sKey,iId);
+	if( PH7_HashmapLookup(pMap,&sKey,&pNode) != SXRET_OK ){
+		pNode = 0;
+	}
+	PH7_MemObjRelease(&sKey);
+	return pNode;
+}
+static void WmPut(ph7_vm *pVm,ph7_hashmap *pMap,sxi64 iId,ph7_value *pVal)
+{
+	ph7_value sKey;
+	if( pMap == 0 ){
+		return;
+	}
+	PH7_MemObjInitFromInt(pVm,&sKey,iId);
+	PH7_HashmapInsert(pMap,&sKey,pVal);
+	PH7_MemObjRelease(&sKey);
+}
+static void WmErase(ph7_vm *pVm,ph7_hashmap *pMap,sxi64 iId)
+{
+	ph7_hashmap_node *pNode = WmFind(pVm,pMap,iId);
+	if( pNode ){
+		PH7_HashmapUnlinkNode(pNode,TRUE);
+	}
+}
+/* The target a __r entry still points at, or NULL once it has died. */
+static ph7_class_instance * WmNodeTarget(ph7_hashmap_node *pNode)
+{
+	ph7_value *pVal = pNode ? HashmapExtractNodeValue(pNode) : 0;
+	VmWeakCell *pCell;
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_OBJ) == 0 ){
+		return 0;
+	}
+	pCell = WkCellOf((ph7_class_instance *)pVal->x.pOther);
+	return pCell ? pCell->pObj : 0;
+}
+/* Forget every entry whose key has died. php prunes on count() and on iteration,
+ * which is the only reason a WeakMap's size ever changes on its own. */
+static void WmPrune(ph7_vm *pVm,ph7_class_instance *pWm)
+{
+	ph7_hashmap *pRefs = WmStore(pVm,pWm,WM_REFS);
+	ph7_hashmap *pVals = WmStore(pVm,pWm,WM_VALS);
+	ph7_hashmap_node *pNode,*pNext;
+	if( pRefs == 0 ){
+		return;
+	}
+	/* pFirst then the pPrev chain IS insertion order here: MACRO_LD_PUSH links a
+	 * new node in through pNext, so pNext points at the OLDER neighbour. */
+	for( pNode = pRefs->pFirst ; pNode ; pNode = pNext ){
+		pNext = pNode->pPrev;
+		if( WmNodeTarget(pNode) == 0 ){
+			sxi64 iId = pNode->xKey.iKey;
+			PH7_HashmapUnlinkNode(pNode,TRUE);
+			WmErase(pVm,pVals,iId);
+		}
+	}
+}
+/* Every WeakMap entry point but count() takes an object key and says so the same
+ * way php does. Answers the id, or -1 after raising the TypeError. */
+static sxi64 WmKeyId(ph7_context *pCtx,int nArg,ph7_value **apArg,ph7_class_instance **ppObj)
+{
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+		PH7_VmThrowException(pCtx,"TypeError","WeakMap key must be an object");
+		return -1;
+	}
+	*ppObj = (ph7_class_instance *)apArg[0]->x.pOther;
+	return (sxi64)(*ppObj)->nObjId;
+}
+static int vm_builtin_WeakMap_offsetSet(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pObj = 0;
+	ph7_hashmap *pRefs,*pVals;
+	sxi64 iId = WmKeyId(pCtx,nArg,apArg,&pObj);
+	if( pThis == 0 || iId < 0 ){
+		return PH7_OK;
+	}
+	pRefs = WmStore(pVm,pThis,WM_REFS);
+	pVals = WmStore(pVm,pThis,WM_VALS);
+	if( WmFind(pVm,pRefs,iId) == 0 ){
+		/* First value for this key: hold it through the very WeakReference
+		 * create() publishes, so the map and userland share one cell. */
+		int bOwned = 0;
+		ph7_class_instance *pRef = WkRefFor(pVm,pObj,&bOwned);
+		ph7_value sRef;
+		if( pRef == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		PH7_MemObjInit(pVm,&sRef);
+		sRef.x.pOther = pRef;
+		MemObjSetType(&sRef,MEMOBJ_OBJ);
+		WmPut(pVm,pRefs,iId,&sRef);   /* takes a reference of its own */
+		if( bOwned ){
+			PH7_ClassInstanceUnref(pRef);
+		}
+	}
+	WmPut(pVm,pVals,iId,nArg > 1 ? apArg[1] : 0);
+	return PH7_OK;
+}
+static int vm_builtin_WeakMap_offsetGet(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pObj = 0;
+	ph7_hashmap_node *pNode;
+	sxi64 iId = WmKeyId(pCtx,nArg,apArg,&pObj);
+	if( pThis == 0 || iId < 0 ){
+		return PH7_OK;
+	}
+	if( WmNodeTarget(WmFind(pVm,WmStore(pVm,pThis,WM_REFS),iId)) != pObj ){
+		return PH7_VmThrowException(pCtx,"Error","Object %z#%d not contained in WeakMap",
+			&pObj->pClass->sName,(int)pObj->nObjId);
+	}
+	pNode = WmFind(pVm,WmStore(pVm,pThis,WM_VALS),iId);
+	if( pNode ){
+		ph7_result_value(pCtx,HashmapExtractNodeValue(pNode));
+	}
+	return PH7_OK;
+}
+static int vm_builtin_WeakMap_offsetExists(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pObj = 0;
+	sxi64 iId = WmKeyId(pCtx,nArg,apArg,&pObj);
+	if( pThis == 0 || iId < 0 ){
+		return PH7_OK;
+	}
+	ph7_result_bool(pCtx,WmNodeTarget(WmFind(pVm,WmStore(pVm,pThis,WM_REFS),iId)) == pObj);
+	return PH7_OK;
+}
+static int vm_builtin_WeakMap_offsetUnset(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pObj = 0;
+	sxi64 iId = WmKeyId(pCtx,nArg,apArg,&pObj);
+	if( pThis == 0 || iId < 0 ){
+		return PH7_OK;
+	}
+	WmErase(pVm,WmStore(pVm,pThis,WM_REFS),iId);
+	WmErase(pVm,WmStore(pVm,pThis,WM_VALS),iId);
+	return PH7_OK;
+}
+static int vm_builtin_WeakMap_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_hashmap *pRefs;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 ){
+		ph7_result_int(pCtx,0);
+		return PH7_OK;
+	}
+	WmPrune(pVm,pThis);
+	pRefs = WmStore(pVm,pThis,WM_REFS);
+	ph7_result_int64(pCtx,pRefs ? (ph7_int64)pRefs->nEntry : 0);
+	return PH7_OK;
+}
+/*
+ * The WeakMap walk, as the vtable an InternalIterator drives.
+ *
+ * The cursor is the object id it sits on (POS), plus the id it expects to move to
+ * (AUX). Both are looked up fresh at every step, which is what makes the walk LIVE:
+ * an entry added during a foreach is reached (it is the current node's new pNext),
+ * one removed ahead of the cursor is skipped, and removing the CURRENT entry -- the
+ * `foreach($m as $k=>$v) unset($m[$k]);` idiom -- still lands on the successor AUX
+ * recorded when the cursor settled.
+ */
+static void WmSettle(ph7_vm *pVm,ph7_class_instance *pIt,ph7_hashmap_node *pNode)
+{
+	ph7_class_instance *pWm = PH7_NativeAttrObj(pIt,PH7_NATIVE_IT_SRC);
+	ph7_class_instance *pTarget = 0;
+	ph7_hashmap_node *pVal;
+	ph7_value *pSlot;
+	while( pNode ){
+		pTarget = WmNodeTarget(pNode);
+		if( pTarget ){
+			break;
+		}
+		pNode = pNode->pPrev;   /* a key that died since the last prune */
+	}
+	if( pNode == 0 || pTarget == 0 || pWm == 0 ){
+		PH7_NativeSetAttrBool(pVm,pIt,PH7_NATIVE_IT_DONE,1);
+		return;
+	}
+	PH7_NativeSetAttrInt(pVm,pIt,PH7_NATIVE_IT_POS,pNode->xKey.iKey);
+	PH7_NativeSetAttrInt(pVm,pIt,PH7_NATIVE_IT_AUX,pNode->pPrev ? pNode->pPrev->xKey.iKey : -1);
+	PH7_NativeSetAttrObj(pVm,pIt,PH7_NATIVE_IT_KEY,pTarget);
+	pVal = WmFind(pVm,WmStore(pVm,pWm,WM_VALS),pNode->xKey.iKey);
+	pSlot = pVal ? PH7_NativeAttr(pIt,PH7_NATIVE_IT_CUR) : 0;
+	if( pSlot ){
+		PH7_MemObjStore(HashmapExtractNodeValue(pVal),pSlot);
+	}else{
+		PH7_NativeSetAttrObj(pVm,pIt,PH7_NATIVE_IT_CUR,0);   /* stores NULL */
+	}
+	PH7_NativeSetAttrBool(pVm,pIt,PH7_NATIVE_IT_DONE,0);
+}
+static void WmRewind(ph7_vm *pVm,ph7_class_instance *pIt)
+{
+	ph7_class_instance *pWm = PH7_NativeAttrObj(pIt,PH7_NATIVE_IT_SRC);
+	ph7_hashmap *pRefs;
+	if( pWm == 0 ){
+		PH7_NativeSetAttrBool(pVm,pIt,PH7_NATIVE_IT_DONE,1);
+		return;
+	}
+	WmPrune(pVm,pWm);
+	pRefs = WmStore(pVm,pWm,WM_REFS);
+	WmSettle(pVm,pIt,pRefs ? pRefs->pFirst : 0);
+}
+static void WmNext(ph7_vm *pVm,ph7_class_instance *pIt)
+{
+	ph7_class_instance *pWm = PH7_NativeAttrObj(pIt,PH7_NATIVE_IT_SRC);
+	ph7_hashmap *pRefs = pWm ? WmStore(pVm,pWm,WM_REFS) : 0;
+	ph7_hashmap_node *pNode = WmFind(pVm,pRefs,PH7_NativeAttrInt(pIt,PH7_NATIVE_IT_POS));
+	if( pNode ){
+		pNode = pNode->pPrev;   /* the next-inserted entry; see WmPrune */
+	}else{
+		/* The entry we were sitting on is gone: fall back on the successor
+		 * recorded when it settled. */
+		sxi64 iAux = PH7_NativeAttrInt(pIt,PH7_NATIVE_IT_AUX);
+		pNode = iAux < 0 ? 0 : WmFind(pVm,pRefs,iAux);
+	}
+	WmSettle(pVm,pIt,pNode);
+}
+static const PH7_NativeIterVtab sWmIterVtab = { WmRewind, WmNext };
+/* WeakMap::getIterator(): Iterator — a PHP GENERATOR before, which a C body cannot
+ * be; php answers an InternalIterator here, and so does this. */
+static int vm_builtin_WeakMap_getIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pIt;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	pIt = PH7_NativeIteratorNew(pCtx->pVm,pThis);
+	if( pIt == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_NativeResultObject(pCtx,pIt);
+	return PH7_OK;
+}
+/*
+ * Declare both classes. WeakMap's three interfaces all declare METHODS, so they are
+ * attached only once its own exist -- PH7_ClassImplement stubs a missing one as
+ * ABSTRACT, which would leave the class uninstantiable.
+ */
+static sxi32 VmInstallWeak(ph7_vm *pVm)
+{
+	static const PH7_NativePropDef aRefProp[] = {
+		/* The shared cell, as a pointer. Private to a final class and never handed
+		 * to PHP -- what `__weak_create()` used to return into a userland slot. */
+		{ "__h", PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
+	};
+	static const PH7_NativeMethodDef aRefMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "", "", vm_builtin_WeakReference_construct },
+		{ "create",      PH7_MOD_PUBLIC|PH7_MOD_STATIC, "object $object", "WeakReference",
+		  vm_builtin_WeakReference_create },
+		{ "get",         PH7_MOD_PUBLIC, "", "?object", vm_builtin_WeakReference_get },
+	};
+	static const PH7_NativePropDef aMapProp[] = {
+		{ WM_REFS, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ WM_VALS, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+	};
+	static const PH7_NativeMethodDef aMapMethod[] = {
+		/* php leaves the key parameter UNTYPED and screens it in the body, so that
+		 * a scalar key is "WeakMap key must be an object" rather than a ZPP report. */
+		/* php's declaration order, which is the order Reflection reports. */
+		{ "offsetGet",    PH7_MOD_PUBLIC, "$object", "mixed", vm_builtin_WeakMap_offsetGet },
+		{ "offsetSet",    PH7_MOD_PUBLIC, "$object, mixed $value", "void", vm_builtin_WeakMap_offsetSet },
+		{ "offsetExists", PH7_MOD_PUBLIC, "$object", "bool", vm_builtin_WeakMap_offsetExists },
+		{ "offsetUnset",  PH7_MOD_PUBLIC, "$object", "void", vm_builtin_WeakMap_offsetUnset },
+		{ "count",        PH7_MOD_PUBLIC, "", "int", vm_builtin_WeakMap_count },
+		{ "getIterator",  PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_WeakMap_getIterator },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		/* Uncloneable in php too: the cell `__h` names is shared, and a slot-by-slot
+		 * copy would drop it twice. */
+		{ "WeakReference", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
+		  aRefMethod, SX_ARRAYSIZE(aRefMethod), 0, 0, aRefProp, SX_ARRAYSIZE(aRefProp),
+		  WkRefRelease, 0 },
+		{ "WeakMap", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE,
+		  aMapMethod, SX_ARRAYSIZE(aMapMethod), 0, 0, aMapProp, SX_ARRAYSIZE(aMapProp),
+		  0, &sWmIterVtab },
+	};
+	static const char *azMapIface[] = { "ArrayAccess", "Countable", "IteratorAggregate" };
+	ph7_class *pMap;
+	sxu32 n;
+	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	pMap = PH7_VmExtractClass(&(*pVm),"WeakMap",sizeof("WeakMap")-1,FALSE,0);
+	if( pMap == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	for( n = 0 ; n < SX_ARRAYSIZE(azMapIface) ; n++ ){
+		ph7_class *pIface = PH7_VmExtractClass(&(*pVm),azMapIface[n],
+			(sxu32)SyStrlen(azMapIface[n]),FALSE,0);
+		if( pIface == 0 ){
+			return SXERR_NOTFOUND;
+		}
+		rc = PH7_ClassImplement(pMap,pIface);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	return SXRET_OK;
 }
 
 static const char zSplLib[] =
@@ -124,9 +544,6 @@ static const char zSplLib[] =
 "  if( is_array($array) ){"
 "   $this->__d = $array;"
 "  }elseif( is_object($array) ){"
-"   __spl_deprecated($owner . '(): Using an object as a backing array for '"
-"    . get_class($this) . ' is deprecated, as it allows violating class"
-" constraints and invariants');"
 "  $this->__d = get_object_vars($array);"
 "  }else{"
 "   throw new TypeError($owner . '(): Argument #1 ($array) must be of type"
@@ -582,89 +999,6 @@ static const char zSplLib[] =
 "  $this->__riFetch();"
 " }"
 "}"
-"class WeakReference {"
-" private $__h = 0;"
-" private function __construct(){}"
-" public static function create($object){"
-"  if( !is_object($object) ){"
-"   throw new TypeError('WeakReference::create(): Argument #1 ($object) must be"
-" of type object, ' . get_debug_type($object) . ' given');"
-"  }"
-"  $w = new WeakReference();"
-"  $w->__h = __weak_create($object);"
-"  return $w;"
-" }"
-" public function get(){ return $this->__h ? __weak_get($this->__h) : null; }"
-" public function __destruct(){"
-"  if( $this->__h ){ __weak_drop($this->__h); $this->__h = 0; }"
-" }"
-"}"
-"class WeakMap implements ArrayAccess, Countable, IteratorAggregate {"
-" private $__e = [];"
-" private function __wmPrune(){"
-"  foreach( $this->__e as $id => $p ){"
-"   if( __weak_get($p[0]) === null ){"
-"    __weak_drop($p[0]);"
-"    unset($this->__e[$id]);"
-"   }"
-"  }"
-" }"
-" public function offsetSet($object, $value){"
-"  if( !is_object($object) ){"
-"   throw new TypeError('WeakMap key must be an object');"
-"  }"
-"  $id = spl_object_id($object);"
-"  if( isset($this->__e[$id]) && __weak_get($this->__e[$id][0]) !== null ){"
-"   $this->__e[$id][1] = $value;"
-"   return;"
-"  }"
-"  if( isset($this->__e[$id]) ){ __weak_drop($this->__e[$id][0]); }"
-"  $this->__e[$id] = [__weak_create($object), $value];"
-" }"
-" public function offsetGet($object){"
-"  if( !is_object($object) ){"
-"   throw new TypeError('WeakMap key must be an object');"
-"  }"
-"  $id = spl_object_id($object);"
-"  if( isset($this->__e[$id]) && __weak_get($this->__e[$id][0]) === $object ){"
-"   return $this->__e[$id][1];"
-"  }"
-"  throw new Error('Object ' . get_class($object) . '#' . $id . ' not contained"
-" in WeakMap');"
-" }"
-" public function offsetExists($object){"
-"  if( !is_object($object) ){"
-"   throw new TypeError('WeakMap key must be an object');"
-"  }"
-"  $id = spl_object_id($object);"
-"  return isset($this->__e[$id]) && __weak_get($this->__e[$id][0]) === $object;"
-" }"
-" public function offsetUnset($object){"
-"  if( !is_object($object) ){"
-"   throw new TypeError('WeakMap key must be an object');"
-"  }"
-"  $id = spl_object_id($object);"
-"  if( isset($this->__e[$id]) ){"
-"   __weak_drop($this->__e[$id][0]);"
-"   unset($this->__e[$id]);"
-"  }"
-" }"
-" public function count(){"
-"  $this->__wmPrune();"
-"  return count($this->__e);"
-" }"
-" public function getIterator(): Generator {"
-"  $this->__wmPrune();"
-"  foreach( $this->__e as $p ){"
-"   $o = __weak_get($p[0]);"
-"   if( $o !== null ){ yield $o => $p[1]; }"
-"  }"
-" }"
-" public function __destruct(){"
-"  foreach( $this->__e as $p ){ __weak_drop($p[0]); }"
-"  $this->__e = [];"
-" }"
-"}"
 "class EmptyIterator implements Iterator {"
 " public function current(){"
 "  throw new BadMethodCallException('Accessing the value of an EmptyIterator');"
@@ -997,21 +1331,13 @@ static const char zSplLib[] =
 "class SplObjectStorage implements Countable, Iterator, ArrayAccess {"
 " private $__o = [];"
 " private $__i = 0;"
-" public function attach($object, $info = null){"
-"  __spl_deprecated('Method SplObjectStorage::attach() is deprecated since 8.5, use"
-" method SplObjectStorage::offsetSet() instead');"
-"  $this->offsetSet($object, $info);"
-" }"
-" public function detach($object){"
-"  __spl_deprecated('Method SplObjectStorage::detach() is deprecated since 8.5, use"
-" method SplObjectStorage::offsetUnset() instead');"
-"  $this->offsetUnset($object);"
-" }"
-" public function contains($object){"
-"  __spl_deprecated('Method SplObjectStorage::contains() is deprecated since 8.5, use"
-" method SplObjectStorage::offsetExists() instead');"
-"  return $this->offsetExists($object);"
-" }"
+/* php DEPRECATES the next three since 8.5. PHL keeps them working and says
+ * nothing: the notice is the only difference, and it is not one valid php
+ * depends on. The `__spl_deprecated()` thunk that used to stand in these
+ * bodies had been a no-op for exactly that reason, so it is gone. */
+" public function attach($object, $info = null){ $this->offsetSet($object, $info); }"
+" public function detach($object){ $this->offsetUnset($object); }"
+" public function contains($object){ return $this->offsetExists($object); }"
 " public function offsetSet($object, $info = null){"
 "  $this->__o[spl_object_id($object)] = [$object, $info];"
 " }"
@@ -1199,10 +1525,10 @@ static const char zSplLib[] =
 
 PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)
 {
-	ph7_create_function(&(*pVm),"__spl_deprecated",vm_builtin_spl_deprecated,0);
-	ph7_create_function(&(*pVm),"__weak_create",vm_builtin_weak_create,0);
-	ph7_create_function(&(*pVm),"__weak_get",vm_builtin_weak_get,0);
-	ph7_create_function(&(*pVm),"__weak_drop",vm_builtin_weak_drop,0);
+	sxi32 rc = VmInstallWeak(&(*pVm));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
 	return PH7_VmEvalBuiltinChunk(&(*pVm),zSplLib,sizeof(zSplLib)-1);
 }
 

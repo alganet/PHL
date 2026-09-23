@@ -575,7 +575,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallLibxml(ph7_vm *pVm)
 		{ "line",    PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
 	};
 	static const PH7_NativeClassSpec sSpec = {
-		"LibXMLError", 0, 0, 0, 0, 0, 0, 0, aProp, SX_ARRAYSIZE(aProp)
+		"LibXMLError", 0, 0, 0, 0, 0, 0, 0, aProp, SX_ARRAYSIZE(aProp), 0, 0
 	};
 	sxu32 n;
 	LibxmlGlobalInit();

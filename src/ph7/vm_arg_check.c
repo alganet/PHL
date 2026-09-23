@@ -1214,21 +1214,31 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 					zGiven = "null";
 				}
 			}else if( (pArg->iFlags & (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL)) != 0
-			       && VmSigTypeHasClass(zType,nType) ){
-				/* A SCALAR against a class-typed parameter. Every other scalar
+			       && (VmSigTypeHasClass(zType,nType)
+			        || VmSigTypeHas(zType,nType,"object")) ){
+				/* A SCALAR against a parameter that can only hold an INSTANCE —
+				 * a named class, or the bare `object` keyword. Every other scalar
 				 * pairing is left to weak-mode coercion, which is why nothing
 				 * screened scalars here at all — but no coercion produces an
 				 * instance, so php rejects this one. Found converting DateTime:
 				 * `$d->diff('x')` and `new DateTime('now','UTC')` ran on with a
-				 * string where php raises. An arm a scalar CAN satisfy (a union
-				 * with string/int/float/bool, or callable, which a string is)
-				 * keeps the parameter unscreened. */
+				 * string where php raises. The `object` half was still blind when
+				 * WeakReference::create() declared the first such parameter, which
+				 * also retires the "graceful degradation" NULL that spl_object_id(),
+				 * spl_object_hash() and get_object_vars() used to answer. An arm a
+				 * scalar CAN satisfy (a union with string/int/float/bool, or
+				 * callable, which a string is) keeps the parameter unscreened —
+				 * and so does an `array` arm, whose refusal php words from the
+				 * builtin's own check rather than from the declared type
+				 * (array_walk's `array|object &$array` says "must be of type
+				 * array", not "of type array|object"). */
 				if( !VmSigTypeHas(zType,nType,"string")
 				 && !VmSigTypeHas(zType,nType,"int")
 				 && !VmSigTypeHas(zType,nType,"float")
 				 && !VmSigTypeHas(zType,nType,"bool")
 				 && !VmSigTypeHas(zType,nType,"true")
 				 && !VmSigTypeHas(zType,nType,"false")
+				 && !VmSigTypeHas(zType,nType,"array")
 				 && !VmSigTypeHas(zType,nType,"callable") ){
 					/* php's VALUE name, not the type's: a bool is reported as
 					 * `true`/`false` (the rule Generator::throw()'s own check

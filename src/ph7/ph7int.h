@@ -66,6 +66,7 @@ typedef struct ph7_foreach_step   ph7_foreach_step;
 typedef struct ph7_hashmap_node   ph7_hashmap_node;
 typedef struct ph7_hashmap        ph7_hashmap;
 typedef struct ph7_class          ph7_class;
+typedef struct PH7_NativeIterVtab PH7_NativeIterVtab;
 
 
 /* PH7 private declaration */
@@ -1085,6 +1086,14 @@ struct ph7_class
 	                       * materialize lazily and INDIVIDUALLY on first access (php 8.1: a broken
 	                       * sibling case does not poison a valid one); an unmaterialized case has
 	                       * nIdx == SXU32_HIGH. */
+	void (*xRelease)(ph7_vm *,ph7_class_instance *); /* Native teardown for an instance of this class,
+	                       * run by PH7_ClassInstanceRelease while the instance's slots are still
+	                       * readable. This is NOT __destruct: php's WeakReference declares no
+	                       * destructor, so a native class that must release a C-side resource
+	                       * states it here instead of growing a method Reflection would report. */
+	const PH7_NativeIterVtab *pIterVtab; /* How an InternalIterator walks an instance of this class
+	                       * (php's get_iterator handler). Set on native IteratorAggregates whose
+	                       * getIterator() answers PH7_NativeIteratorNew(); 0 everywhere else. */
 };
 /* Class configuration flags */
 #define PH7_CLASS_FINAL       0x001 /* Class is final [cannot be extended] */
@@ -1110,6 +1119,17 @@ struct ph7_class
                                      * second such binding of the same name ("Cannot redeclare ..."); a
                                      * conditional (if/loop/func-nested) declaration is NOT marked, so the
                                      * `if(false){class C{}}` / `if(!class_exists){..}` guard idioms hoist. */
+#define PH7_CLASS_NOCLONE     0x400 /* `clone $o` is a catchable Error for this class. A native class whose
+                                     * instances own a C-side resource keyed by a private slot cannot be
+                                     * copied slot-by-slot (WeakReference's shared cell would be dropped
+                                     * twice), which is exactly why php makes those classes uncloneable.
+                                     * Enum cases carry the same rule through PH7_CLASS_ENUM; Generator
+                                     * and Fiber still take an older warn-only path in OP_CLONE. */
+#define PH7_CLASS_NOSERIALIZE 0x800 /* serialize() of an instance is a catchable Exception naming the
+                                     * class, php's answer for every class holding engine state.
+                                     * Without it the default object path emits the private slots —
+                                     * for these classes a raw POINTER, which unserialize() would
+                                     * hand straight back to a method. */
 /* Class attribute/methods/constants protection levels */
 #define PH7_CLASS_PROT_PUBLIC     1 /* public */
 #define PH7_CLASS_PROT_PROTECTED  2 /* protected */
@@ -1256,6 +1276,8 @@ struct PH7_NativeClassSpec
 	const PH7_NativeMethodDef *aMethod; sxu32 nMethod;
 	const PH7_NativeConstDef  *aConst;  sxu32 nConst;
 	const PH7_NativePropDef   *aProp;   sxu32 nProp;
+	void (*xRelease)(ph7_vm *,ph7_class_instance *); /* or 0; see ph7_class::xRelease */
+	const PH7_NativeIterVtab *pIterVtab; /* or 0; see ph7_class::pIterVtab */
 };
 PH7_PRIVATE sxi32 PH7_InstallNativeClasses(ph7_vm *pVm,const PH7_NativeClassSpec *aSpec,sxu32 nSpec);
 PH7_PRIVATE sxi32 PH7_NativeClassInstallMethod(ph7_vm *pVm,ph7_class *pClass,
@@ -1265,6 +1287,49 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallProperty(ph7_vm *pVm,ph7_class *pClass,
 PH7_PRIVATE void PH7_NativeLiteralValue(ph7_vm *pVm,const void *pLiteral,ph7_value *pOut);
 PH7_PRIVATE void PH7_NativeSetProp(ph7_vm *pVm,ph7_class_instance *pObj,
 	const char *zProp,sxu32 nProp,ph7_value *pSrcVal);
+/*
+ * Reading and writing a native instance's own declared slots. Every native class
+ * does this constantly (the date family had a private copy of the whole set), so
+ * the accessors live with the builder that declares the slots.
+ */
+PH7_PRIVATE ph7_value * PH7_NativeAttr(ph7_class_instance *pObj,const char *zName);
+PH7_PRIVATE sxi64 PH7_NativeAttrInt(ph7_class_instance *pObj,const char *zName);
+PH7_PRIVATE ph7_class_instance * PH7_NativeAttrObj(ph7_class_instance *pObj,const char *zName);
+PH7_PRIVATE int PH7_NativeAttrTruthy(ph7_class_instance *pObj,const char *zName);
+PH7_PRIVATE void PH7_NativeAttrStr(ph7_class_instance *pObj,const char *zName,
+	const char **pzOut,int *pnOut);
+PH7_PRIVATE void PH7_NativeSetAttrInt(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,sxi64 iVal);
+PH7_PRIVATE void PH7_NativeSetAttrStr(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,
+	const char *zVal,int nVal);
+PH7_PRIVATE void PH7_NativeSetAttrBool(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,int bVal);
+PH7_PRIVATE void PH7_NativeSetAttrObj(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,
+	ph7_class_instance *pVal);
+PH7_PRIVATE void PH7_NativeResultObject(ph7_context *pCtx,ph7_class_instance *pObj);
+/*
+ * php's InternalIterator: the Iterator a native IteratorAggregate answers when the
+ * PHP it replaced was a GENERATOR -- the one body a C method cannot be. It is one
+ * class in php too, wrapping whatever internal iterator the aggregate handed over,
+ * so PHL gives it the same shape: fixed state slots on the iterator, and a vtable
+ * on the AGGREGATE'S CLASS (ph7_class::pIterVtab, php's get_iterator handler) that
+ * knows how to position and advance that aggregate's cursor. current()/key()/valid()
+ * need no vtable entry -- they read the slots the two below leave behind.
+ */
+struct PH7_NativeIterVtab
+{
+	void (*xRewind)(ph7_vm *pVm,ph7_class_instance *pIt); /* settle on the first element */
+	void (*xNext)(ph7_vm *pVm,ph7_class_instance *pIt);   /* settle on the one after */
+};
+/* The state slots, private to InternalIterator and shared by every vtable:
+ * the aggregate, the value and key at the cursor, an integer cursor and a spare
+ * one for the vtable's own bookkeeping, and whether the walk is over. */
+#define PH7_NATIVE_IT_SRC  "__src"
+#define PH7_NATIVE_IT_CUR  "__cur"
+#define PH7_NATIVE_IT_KEY  "__key"
+#define PH7_NATIVE_IT_POS  "__pos"
+#define PH7_NATIVE_IT_AUX  "__aux"
+#define PH7_NATIVE_IT_DONE "__done"
+PH7_PRIVATE sxi32 PH7_VmInstallNativeIterator(ph7_vm *pVm);
+PH7_PRIVATE ph7_class_instance * PH7_NativeIteratorNew(ph7_vm *pVm,ph7_class_instance *pSrc);
 /*
  * Each class method is parsed out and stored in an instance of the following
  * structure.
@@ -1637,6 +1702,10 @@ typedef struct VmWeakCell VmWeakCell;
 struct VmWeakCell
 {
 	ph7_class_instance *pObj; /* target instance; 0 once dead */
+	ph7_class_instance *pRef; /* the ONE WeakReference handed out for pObj, so
+	                           * WeakReference::create($o) answers the same object
+	                           * twice as php's does. NOT owned: the WeakReference's
+	                           * own release nulls it. */
 	sxu32 nRef;               /* PHP-side handle count */
 };
 /* One -d/-c php.ini directive queued for the INI chunk (name/value are

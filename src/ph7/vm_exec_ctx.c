@@ -1073,10 +1073,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallFiberNative(ph7_vm *pVm)
 		{ "__callable", PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
 	};
 	static const PH7_NativeClassSpec sSpec = {
-		"Fiber", 0, 0, 0,
+		"Fiber", 0, 0, PH7_CLASS_NOSERIALIZE,
 		aMethod, SX_ARRAYSIZE(aMethod),
 		0, 0,
-		aProp, SX_ARRAYSIZE(aProp)
+		aProp, SX_ARRAYSIZE(aProp),
+		0, 0
 	};
 	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);
 }
@@ -1106,10 +1107,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallGeneratorNative(ph7_vm *pVm)
 		{ "__ctx", PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
 	};
 	static const PH7_NativeClassSpec sSpec = {
-		"Generator", 0, 0, 0,
+		"Generator", 0, 0, PH7_CLASS_NOSERIALIZE,
 		aMethod, SX_ARRAYSIZE(aMethod),
 		0, 0,
-		aProp, SX_ARRAYSIZE(aProp)
+		aProp, SX_ARRAYSIZE(aProp),
+		0, 0
 	};
 	ph7_class *pClass;
 	ph7_class *pIterator;

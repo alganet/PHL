@@ -218,11 +218,12 @@ static sxi32 VmSerializeObject(ph7_value *pIn, serialize_data *pData)
 		pData->exc = 1;
 		return PH7_EXCEPTION;
 	}
-	/* Closures cannot be serialized either (PHP throws). Guard before the generic
-	 * object path would otherwise emit the Closure object's private callable attributes. */
-	if( pThis->pClass == pVm->pClosureClass ){
+	/* Nor can a class holding engine state — Closure, Fiber, Generator, WeakReference,
+	 * WeakMap. Guard before the generic object path would otherwise emit their private
+	 * slots, which for the native ones are raw pointers. */
+	if( pThis->pClass->iFlags & PH7_CLASS_NOSERIALIZE ){
 		PH7_VmThrowException(pData->pCtx,"Exception",
-			"Serialization of 'Closure' is not allowed");
+			"Serialization of '%z' is not allowed",pClassName);
 		pData->exc = 1;
 		return PH7_EXCEPTION;
 	}

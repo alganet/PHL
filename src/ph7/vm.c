@@ -2060,8 +2060,12 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	 * segfaults the first `new Fiber`. */
 	PH7_VmInstallFiberNative(&(*pVm));
 	pVm->pFiberClass = PH7_VmExtractClass(pVm,"Fiber",5,0,0);
-	/* Cache the Closure class pointer (closures are instances of it) */
+	/* Cache the Closure class pointer (closures are instances of it). It is declared
+	 * in the chunk, so its no-serialize rule is stamped here rather than on a spec. */
 	pVm->pClosureClass = PH7_VmExtractClass(pVm,"Closure",7,0,0);
+	if( pVm->pClosureClass ){
+		pVm->pClosureClass->iFlags |= PH7_CLASS_NOSERIALIZE;
+	}
 	pVm->pClosureThis = 0; /* transient bound-$this slot, consumed per call */
 	pVm->pClosureScope = 0; /* transient bound-scope slot, consumed per call */
 	/* Closure::bindTo/bind/fromCallable, as real C-bodied METHODS rather than the
@@ -2075,6 +2079,10 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	 * after the methods, which is why the class cannot live in the chunk. */
 	PH7_VmInstallGeneratorNative(&(*pVm));
 	pVm->pGeneratorClass = PH7_VmExtractClass(pVm,"Generator",9,0,0);
+	/* InternalIterator: what a native IteratorAggregate answers where the PHP it
+	 * replaced returned a Generator. Declared before the subsystems that hand one
+	 * out (DatePeriod, WeakMap); Iterator comes from the builtin lib chunk above. */
+	PH7_VmInstallNativeIterator(&(*pVm));
 	/* Install the Reflection library (embedded classes + __reflect_* thunks).
 	 * Still inside the bCompilingBuiltin window so its classes are flagged
 	 * internal; the Traversable pointer above must already be cached. */

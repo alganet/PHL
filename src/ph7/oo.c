@@ -1330,6 +1330,12 @@ static void PH7_ClassInstanceRelease(ph7_class_instance *pThis)
 		pThis->iRef = 2; /* Prevent garbage collection */
 		PH7_VmCallClassMethod(pVm,pThis,pDestr,0,0,0);
 	}
+	/* A native class's own teardown, while its slots are still readable. Not a
+	 * __destruct: the classes that need this (WeakReference) declare none in php,
+	 * and Reflection must not grow one. */
+	if( pClass->xRelease ){
+		pClass->xRelease(pVm,pThis);
+	}
 	/* Weak-reference registry: kill the cell for this instance so every
 	 * WeakReference/WeakMap handle observes the death (the cell outlives the
 	 * instance until its own handles drop; removing the hash entry here keeps

@@ -1959,8 +1959,9 @@ PH7_PRIVATE VmOpRc VmExecOpClone(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr
 	/* Point to the source */
 	pSrc = (ph7_class_instance *)pTos->x.pOther;
 	/* Enum cases are not cloneable — php's catchable Error (the singleton
-	 * identity would break). */
-	if( pSrc->pClass->iFlags & PH7_CLASS_ENUM ){
+	 * identity would break) — and neither is a class whose instances own a
+	 * C-side resource a slot-by-slot copy would double-free (PH7_CLASS_NOCLONE). */
+	if( pSrc->pClass->iFlags & (PH7_CLASS_ENUM|PH7_CLASS_NOCLONE) ){
 		SyBlob sMsg;
 		SyBlobInit(&sMsg,&pVm->sAllocator);
 		SyBlobFormat(&sMsg,"Trying to clone an uncloneable object of class %z",

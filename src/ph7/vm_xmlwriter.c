@@ -366,7 +366,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)
 		"XMLWriter", 0, 0, 0,
 		aMethod, SX_ARRAYSIZE(aMethod),
 		0, 0,
-		aProp, SX_ARRAYSIZE(aProp)
+		aProp, SX_ARRAYSIZE(aProp),
+		0, 0
 	};
 	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);
 }

@@ -1409,60 +1409,6 @@ struct dt_state
 	const char *zName;   /* borrowed from the instance's own slot */
 	int nName;
 };
-/* Fetch a declared instance slot by name (never a static/constant one). */
-static ph7_value * DtAttr(ph7_class_instance *pObj,const char *zName)
-{
-	SyString sName;
-	SyStringInitFromBuf(&sName,zName,SyStrlen(zName));
-	return PH7_ClassInstanceFetchAttr(pObj,&sName);
-}
-/* Read an int slot without converting it: these slots only ever hold integers,
- * and ph7_value_to_int64() would convert the attribute IN PLACE. */
-static sxi64 DtAttrInt(ph7_class_instance *pObj,const char *zName)
-{
-	ph7_value *pVal = DtAttr(pObj,zName);
-	if( pVal == 0 ){
-		return 0;
-	}
-	if( pVal->iFlags & MEMOBJ_INT ){
-		return pVal->x.iVal;
-	}
-	return 0;
-}
-static void DtAttrStr(ph7_class_instance *pObj,const char *zName,const char **pzOut,int *pnOut)
-{
-	ph7_value *pVal = DtAttr(pObj,zName);
-	*pzOut = "";
-	*pnOut = 0;
-	if( pVal && (pVal->iFlags & MEMOBJ_STRING) ){
-		*pzOut = (const char *)SyBlobData(&pVal->sBlob);
-		*pnOut = (int)SyBlobLength(&pVal->sBlob);
-	}
-}
-static void DtSetInt(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,sxi64 iVal)
-{
-	ph7_value *pSlot = DtAttr(pObj,zName);
-	ph7_value sVal;
-	if( pSlot == 0 ){
-		return;
-	}
-	PH7_MemObjInitFromInt(&(*pVm),&sVal,iVal);
-	PH7_MemObjStore(&sVal,pSlot);
-	PH7_MemObjRelease(&sVal);
-}
-static void DtSetStr(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,const char *zVal,int nVal)
-{
-	ph7_value *pSlot = DtAttr(pObj,zName);
-	ph7_value sVal;
-	SyString sStr;
-	if( pSlot == 0 ){
-		return;
-	}
-	SyStringInitFromBuf(&sStr,zVal,nVal);
-	PH7_MemObjInitFromString(&(*pVm),&sVal,&sStr);
-	PH7_MemObjStore(&sVal,pSlot);
-	PH7_MemObjRelease(&sVal);
-}
 /* php's name for a fixed offset: "+HH:MM" (and "+00:00" for zero, never "-00:00"). */
 static int DtOffName(char *zBuf,sxu32 nBuf,sxi32 iOff)
 {
@@ -1472,34 +1418,23 @@ static int DtOffName(char *zBuf,sxu32 nBuf,sxi32 iOff)
 }
 static void DtLoad(ph7_class_instance *pObj,dt_state *pOut)
 {
-	pOut->iTs  = DtAttrInt(pObj,DT_TS);
-	pOut->iOff = (sxi32)DtAttrInt(pObj,DT_OFF);
-	pOut->uSec = (int)DtAttrInt(pObj,DT_US);
-	DtAttrStr(pObj,DT_NAME,&pOut->zName,&pOut->nName);
+	pOut->iTs  = PH7_NativeAttrInt(pObj,DT_TS);
+	pOut->iOff = (sxi32)PH7_NativeAttrInt(pObj,DT_OFF);
+	pOut->uSec = (int)PH7_NativeAttrInt(pObj,DT_US);
+	PH7_NativeAttrStr(pObj,DT_NAME,&pOut->zName,&pOut->nName);
 }
 static void DtStore(ph7_vm *pVm,ph7_class_instance *pObj,const dt_state *pIn)
 {
-	DtSetInt(pVm,pObj,DT_TS,pIn->iTs);
-	DtSetInt(pVm,pObj,DT_OFF,pIn->iOff);
-	DtSetInt(pVm,pObj,DT_US,pIn->uSec);
-	DtSetStr(pVm,pObj,DT_NAME,pIn->zName,pIn->nName);
+	PH7_NativeSetAttrInt(pVm,pObj,DT_TS,pIn->iTs);
+	PH7_NativeSetAttrInt(pVm,pObj,DT_OFF,pIn->iOff);
+	PH7_NativeSetAttrInt(pVm,pObj,DT_US,pIn->uSec);
+	PH7_NativeSetAttrStr(pVm,pObj,DT_NAME,pIn->zName,pIn->nName);
 }
 /* The receiver of a native method, or NULL when the call has no object (which the
  * dispatcher only allows for a static one). */
 static ph7_class_instance * DtThis(ph7_context *pCtx)
 {
 	return PH7_ContextThis(pCtx);
-}
-/* Hand an instance back as the call's result, dropping the reference
- * PH7_NewClassInstance/PH7_CloneClassInstance handed us. */
-static void DtResultObject(ph7_context *pCtx,ph7_class_instance *pObj)
-{
-	ph7_value sRes;
-	PH7_MemObjInit(pCtx->pVm,&sRes);
-	sRes.x.pOther = pObj;
-	sRes.iFlags = MEMOBJ_OBJ;
-	ph7_result_value(pCtx,&sRes);   /* takes its own reference */
-	PH7_ClassInstanceUnref(pObj);
 }
 static ph7_class * DtClass(ph7_vm *pVm,const char *zName)
 {
@@ -1531,7 +1466,7 @@ static ph7_class_instance * DtMutTarget(ph7_context *pCtx,ph7_class_instance *pT
 static void DtMutResult(ph7_context *pCtx,ph7_class_instance *pTarget,int bCopy)
 {
 	if( bCopy ){
-		DtResultObject(pCtx,pTarget);
+		PH7_NativeResultObject(pCtx,pTarget);
 	}else{
 		ph7_result_value(pCtx,PH7_ContextThisValue(pCtx));
 	}
@@ -1546,11 +1481,11 @@ static int DtZoneOf(ph7_value *pArg,sxi32 *piOff,const char **pzName,int *pnName
 		return 0;
 	}
 	pObj = (ph7_class_instance *)pArg->x.pOther;
-	if( DtAttr(pObj,DTZ_NAME) == 0 ){
+	if( PH7_NativeAttr(pObj,DTZ_NAME) == 0 ){
 		return 0;
 	}
-	*piOff = (sxi32)DtAttrInt(pObj,DTZ_OFF);
-	DtAttrStr(pObj,DTZ_NAME,pzName,pnName);
+	*piOff = (sxi32)PH7_NativeAttrInt(pObj,DTZ_OFF);
+	PH7_NativeAttrStr(pObj,DTZ_NAME,pzName,pnName);
 	return 1;
 }
 /*
@@ -1667,8 +1602,8 @@ static int vm_builtin_DateTimeZone_construct(ph7_context *pCtx,int nArg,ph7_valu
 		return PH7_VmThrowException(pCtx,"DateInvalidTimeZoneException",
 			"DateTimeZone::__construct(): Unknown or bad timezone (%.*s)",nTz,zTz);
 	}
-	DtSetInt(pCtx->pVm,pThis,DTZ_OFF,iOff);
-	DtSetStr(pCtx->pVm,pThis,DTZ_NAME,zName,nName);
+	PH7_NativeSetAttrInt(pCtx->pVm,pThis,DTZ_OFF,iOff);
+	PH7_NativeSetAttrStr(pCtx->pVm,pThis,DTZ_NAME,zName,nName);
 	return PH7_OK;
 }
 /* DateTimeZone::getName() */
@@ -1682,7 +1617,7 @@ static int vm_builtin_DateTimeZone_getName(ph7_context *pCtx,int nArg,ph7_value 
 	if( pThis == 0 ){
 		return PH7_OK;
 	}
-	DtAttrStr(pThis,DTZ_NAME,&zName,&nName);
+	PH7_NativeAttrStr(pThis,DTZ_NAME,&zName,&nName);
 	ph7_result_string(pCtx,zName,nName);
 	return PH7_OK;
 }
@@ -1696,7 +1631,7 @@ static int vm_builtin_DateTimeZone_getOffset(ph7_context *pCtx,int nArg,ph7_valu
 		return PH7_OK;
 	}
 	/* Fixed-offset zones only, so the instant does not change the answer. */
-	ph7_result_int64(pCtx,DtAttrInt(pThis,DTZ_OFF));
+	ph7_result_int64(pCtx,PH7_NativeAttrInt(pThis,DTZ_OFF));
 	return PH7_OK;
 }
 /* DateTime::__construct(string $datetime = 'now', ?DateTimeZone $timezone = null) */
@@ -1772,7 +1707,7 @@ static int vm_builtin_DateTime_getTimestamp(ph7_context *pCtx,int nArg,ph7_value
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	if( pThis ){
-		ph7_result_int64(pCtx,DtAttrInt(pThis,DT_TS));
+		ph7_result_int64(pCtx,PH7_NativeAttrInt(pThis,DT_TS));
 	}
 	return PH7_OK;
 }
@@ -1782,7 +1717,7 @@ static int vm_builtin_DateTime_getMicrosecond(ph7_context *pCtx,int nArg,ph7_val
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	if( pThis ){
-		ph7_result_int64(pCtx,DtAttrInt(pThis,DT_US));
+		ph7_result_int64(pCtx,PH7_NativeAttrInt(pThis,DT_US));
 	}
 	return PH7_OK;
 }
@@ -1792,7 +1727,7 @@ static int vm_builtin_DateTime_getOffset(ph7_context *pCtx,int nArg,ph7_value **
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	if( pThis ){
-		ph7_result_int64(pCtx,DtAttrInt(pThis,DT_OFF));
+		ph7_result_int64(pCtx,PH7_NativeAttrInt(pThis,DT_OFF));
 	}
 	return PH7_OK;
 }
@@ -1813,10 +1748,10 @@ static int DtTimezoneResult(ph7_context *pCtx,ph7_class_instance *pObj)
 	if( pZone == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
-	DtAttrStr(pObj,DT_NAME,&zName,&nName);
-	DtSetInt(pVm,pZone,DTZ_OFF,DtAttrInt(pObj,DT_OFF));
-	DtSetStr(pVm,pZone,DTZ_NAME,zName,nName);
-	DtResultObject(pCtx,pZone);
+	PH7_NativeAttrStr(pObj,DT_NAME,&zName,&nName);
+	PH7_NativeSetAttrInt(pVm,pZone,DTZ_OFF,PH7_NativeAttrInt(pObj,DT_OFF));
+	PH7_NativeSetAttrStr(pVm,pZone,DTZ_NAME,zName,nName);
+	PH7_NativeResultObject(pCtx,pZone);
 	return PH7_OK;
 }
 /* DateTime::getTimezone() */
@@ -1855,21 +1790,21 @@ static int DtDiffResult(ph7_context *pCtx,ph7_class_instance *pBase,
 	if( pIvClass == 0 ){
 		return PH7_OK;
 	}
-	DtCivilDiff(DtAttrInt(pBase,DT_TS),(sxi32)DtAttrInt(pBase,DT_OFF),
-		DtAttrInt(pTarget,DT_TS),&sDiff);
+	DtCivilDiff(PH7_NativeAttrInt(pBase,DT_TS),(sxi32)PH7_NativeAttrInt(pBase,DT_OFF),
+		PH7_NativeAttrInt(pTarget,DT_TS),&sDiff);
 	pIv = PH7_NewClassInstance(pVm,pIvClass);
 	if( pIv == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
-	DtSetInt(pVm,pIv,"y",sDiff.y);
-	DtSetInt(pVm,pIv,"m",sDiff.m);
-	DtSetInt(pVm,pIv,"d",sDiff.d);
-	DtSetInt(pVm,pIv,"h",sDiff.h);
-	DtSetInt(pVm,pIv,"i",sDiff.i);
-	DtSetInt(pVm,pIv,"s",sDiff.s);
-	DtSetInt(pVm,pIv,"days",sDiff.nDays);
-	DtSetInt(pVm,pIv,"invert",bAbsolute ? 0 : sDiff.bInvert);
-	DtResultObject(pCtx,pIv);
+	PH7_NativeSetAttrInt(pVm,pIv,"y",sDiff.y);
+	PH7_NativeSetAttrInt(pVm,pIv,"m",sDiff.m);
+	PH7_NativeSetAttrInt(pVm,pIv,"d",sDiff.d);
+	PH7_NativeSetAttrInt(pVm,pIv,"h",sDiff.h);
+	PH7_NativeSetAttrInt(pVm,pIv,"i",sDiff.i);
+	PH7_NativeSetAttrInt(pVm,pIv,"s",sDiff.s);
+	PH7_NativeSetAttrInt(pVm,pIv,"days",sDiff.nDays);
+	PH7_NativeSetAttrInt(pVm,pIv,"invert",bAbsolute ? 0 : sDiff.bInvert);
+	PH7_NativeResultObject(pCtx,pIv);
 	return PH7_OK;
 }
 /* DateTime::diff(DateTimeInterface $targetObject, bool $absolute = false) */
@@ -1903,7 +1838,7 @@ static int vm_builtin_DateTime_modify(ph7_context *pCtx,int nArg,ph7_value **apA
 		return PH7_OK;
 	}
 	zMod = ph7_value_to_string(apArg[0],&nMod);
-	iErrPos = DtParse(zMod,nMod,DtAttrInt(pThis,DT_TS),(sxi32)DtAttrInt(pThis,DT_OFF),
+	iErrPos = DtParse(zMod,nMod,PH7_NativeAttrInt(pThis,DT_TS),(sxi32)PH7_NativeAttrInt(pThis,DT_OFF),
 		&iTs,&iOff,&bOffSet,&uSec);
 	if( iErrPos != 0 ){
 		int bImm = DtIsImmutable(pVm,pThis);
@@ -1913,7 +1848,7 @@ static int vm_builtin_DateTime_modify(ph7_context *pCtx,int nArg,ph7_value **apA
 			bImm ? "DateTimeImmutable" : "DateTime",nMod,zMod,iPos,cAt,zErr);
 	}
 	pTarget = DtMutTarget(pCtx,pThis,&bCopy);
-	DtSetInt(pVm,pTarget,DT_TS,iTs);
+	PH7_NativeSetAttrInt(pVm,pTarget,DT_TS,iTs);
 	DtMutResult(pCtx,pTarget,bCopy);
 	return PH7_OK;
 }
@@ -1927,8 +1862,8 @@ static int vm_builtin_DateTime_setTimestamp(ph7_context *pCtx,int nArg,ph7_value
 		return PH7_OK;
 	}
 	pTarget = DtMutTarget(pCtx,pThis,&bCopy);
-	DtSetInt(pCtx->pVm,pTarget,DT_TS,ph7_value_to_int64(apArg[0]));
-	DtSetInt(pCtx->pVm,pTarget,DT_US,0);
+	PH7_NativeSetAttrInt(pCtx->pVm,pTarget,DT_TS,ph7_value_to_int64(apArg[0]));
+	PH7_NativeSetAttrInt(pCtx->pVm,pTarget,DT_US,0);
 	DtMutResult(pCtx,pTarget,bCopy);
 	return PH7_OK;
 }
@@ -1942,7 +1877,7 @@ static int vm_builtin_DateTime_setMicrosecond(ph7_context *pCtx,int nArg,ph7_val
 		return PH7_OK;
 	}
 	pTarget = DtMutTarget(pCtx,pThis,&bCopy);
-	DtSetInt(pCtx->pVm,pTarget,DT_US,ph7_value_to_int64(apArg[0]));
+	PH7_NativeSetAttrInt(pCtx->pVm,pTarget,DT_US,ph7_value_to_int64(apArg[0]));
 	DtMutResult(pCtx,pTarget,bCopy);
 	return PH7_OK;
 }
@@ -1961,8 +1896,8 @@ static int vm_builtin_DateTime_setTimezone(ph7_context *pCtx,int nArg,ph7_value 
 		return PH7_OK;
 	}
 	pTarget = DtMutTarget(pCtx,pThis,&bCopy);
-	DtSetInt(pCtx->pVm,pTarget,DT_OFF,iOff);
-	DtSetStr(pCtx->pVm,pTarget,DT_NAME,zName,nName);
+	PH7_NativeSetAttrInt(pCtx->pVm,pTarget,DT_OFF,iOff);
+	PH7_NativeSetAttrStr(pCtx->pVm,pTarget,DT_NAME,zName,nName);
 	DtMutResult(pCtx,pTarget,bCopy);
 	return PH7_OK;
 }
@@ -1970,23 +1905,23 @@ static int vm_builtin_DateTime_setTimezone(ph7_context *pCtx,int nArg,ph7_value 
  * expressed in never changes). Shared with the date_date_set() alias. */
 static void DtSetDateOf(ph7_context *pCtx,ph7_class_instance *pObj,sxi64 y,int mo,int d)
 {
-	sxi64 iLocal = DtAttrInt(pObj,DT_TS) + DtAttrInt(pObj,DT_OFF);
+	sxi64 iLocal = PH7_NativeAttrInt(pObj,DT_TS) + PH7_NativeAttrInt(pObj,DT_OFF);
 	sxi64 iDays = DtFloorDiv(iLocal,86400);
 	sxi64 iSecs = iLocal - iDays*86400;
-	DtSetInt(pCtx->pVm,pObj,DT_TS,
+	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_TS,
 		DtMakeTs(y,mo,d,(int)(iSecs / 3600),(int)((iSecs / 60) % 60),(int)(iSecs % 60),
-			(sxi32)DtAttrInt(pObj,DT_OFF)));
+			(sxi32)PH7_NativeAttrInt(pObj,DT_OFF)));
 }
 /* Replace the TIME of day, keeping the date. Shared with date_time_set(). */
 static void DtSetTimeOf(ph7_context *pCtx,ph7_class_instance *pObj,int h,int mi,int s,sxi64 uSec)
 {
-	sxi64 iLocal = DtAttrInt(pObj,DT_TS) + DtAttrInt(pObj,DT_OFF);
+	sxi64 iLocal = PH7_NativeAttrInt(pObj,DT_TS) + PH7_NativeAttrInt(pObj,DT_OFF);
 	sxi64 iDays = DtFloorDiv(iLocal,86400);
 	sxi64 y;
 	int mo,d;
 	DtCivilFromDays(iDays,&y,&mo,&d);
-	DtSetInt(pCtx->pVm,pObj,DT_TS,DtMakeTs(y,mo,d,h,mi,s,(sxi32)DtAttrInt(pObj,DT_OFF)));
-	DtSetInt(pCtx->pVm,pObj,DT_US,uSec);
+	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_TS,DtMakeTs(y,mo,d,h,mi,s,(sxi32)PH7_NativeAttrInt(pObj,DT_OFF)));
+	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_US,uSec);
 }
 /* DateTime::setDate(int $year, int $month, int $day) — the time of day is kept */
 static int vm_builtin_DateTime_setDate(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -2029,8 +1964,8 @@ static int vm_builtin_DateTime_setISODate(ph7_context *pCtx,int nArg,ph7_value *
 		return PH7_OK;
 	}
 	pTarget = DtMutTarget(pCtx,pThis,&bCopy);
-	DtSetInt(pCtx->pVm,pTarget,DT_TS,
-		DtIsoDate(DtAttrInt(pThis,DT_TS),(sxi32)DtAttrInt(pThis,DT_OFF),
+	PH7_NativeSetAttrInt(pCtx->pVm,pTarget,DT_TS,
+		DtIsoDate(PH7_NativeAttrInt(pThis,DT_TS),(sxi32)PH7_NativeAttrInt(pThis,DT_OFF),
 			ph7_value_to_int64(apArg[0]),ph7_value_to_int64(apArg[1]),
 			nArg > 2 ? ph7_value_to_int64(apArg[2]) : 1));
 	DtMutResult(pCtx,pTarget,bCopy);
@@ -2047,14 +1982,14 @@ static int DtAddSub(ph7_context *pCtx,int nArg,ph7_value **apArg,int iSign)
 		return PH7_OK;
 	}
 	pIv = (ph7_class_instance *)apArg[0]->x.pOther;
-	if( DtAttrInt(pIv,"invert") ){
+	if( PH7_NativeAttrInt(pIv,"invert") ){
 		iSign = -iSign;
 	}
 	pTarget = DtMutTarget(pCtx,pThis,&bCopy);
-	DtSetInt(pCtx->pVm,pTarget,DT_TS,
-		DtCivilAdd(DtAttrInt(pThis,DT_TS),(sxi32)DtAttrInt(pThis,DT_OFF),
-			DtAttrInt(pIv,"y"),DtAttrInt(pIv,"m"),DtAttrInt(pIv,"d"),
-			DtAttrInt(pIv,"h"),DtAttrInt(pIv,"i"),DtAttrInt(pIv,"s"),iSign));
+	PH7_NativeSetAttrInt(pCtx->pVm,pTarget,DT_TS,
+		DtCivilAdd(PH7_NativeAttrInt(pThis,DT_TS),(sxi32)PH7_NativeAttrInt(pThis,DT_OFF),
+			PH7_NativeAttrInt(pIv,"y"),PH7_NativeAttrInt(pIv,"m"),PH7_NativeAttrInt(pIv,"d"),
+			PH7_NativeAttrInt(pIv,"h"),PH7_NativeAttrInt(pIv,"i"),PH7_NativeAttrInt(pIv,"s"),iSign));
 	DtMutResult(pCtx,pTarget,bCopy);
 	return PH7_OK;
 }
@@ -2174,7 +2109,7 @@ static int DtCreateFromFormat(ph7_context *pCtx,int nArg,ph7_value **apArg,const
 		return PH7_ContextMemoryError(pCtx);
 	}
 	DtStore(pVm,pObj,&sState);
-	DtResultObject(pCtx,pObj);
+	PH7_NativeResultObject(pCtx,pObj);
 	return PH7_OK;
 }
 static int vm_builtin_DateTime_createFromFormat(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -2202,7 +2137,7 @@ static int DtCopyOf(ph7_context *pCtx,int nArg,ph7_value **apArg,const char *zFa
 		return PH7_ContextMemoryError(pCtx);
 	}
 	DtStore(pVm,pObj,&sState);
-	DtResultObject(pCtx,pObj);
+	PH7_NativeResultObject(pCtx,pObj);
 	return PH7_OK;
 }
 static int vm_builtin_DateTime_copyOf(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -2415,7 +2350,7 @@ static void DtIvStore(ph7_vm *pVm,ph7_class_instance *pObj,const sxi64 *aVal)
 {
 	int k;
 	for( k = 0 ; k < 6 ; k++ ){
-		DtSetInt(pVm,pObj,azDtIvField[k],aVal[k]);
+		PH7_NativeSetAttrInt(pVm,pObj,azDtIvField[k],aVal[k]);
 	}
 }
 /* DateInterval::__construct(string $duration) */
@@ -2482,7 +2417,7 @@ static int vm_builtin_DateInterval_createFromDateString(ph7_context *pCtx,int nA
 		return PH7_VmThrowException(pCtx,"DateMalformedIntervalStringException",
 			"Unknown or bad format (%.*s) at position %d (%c): %s",nIn,zIn,iPos,cAt,zReason);
 	}
-	DtResultObject(pCtx,pObj);
+	PH7_NativeResultObject(pCtx,pObj);
 	return PH7_OK;
 }
 /*
@@ -2509,20 +2444,20 @@ static void DtIvFormat(ph7_context *pCtx,ph7_class_instance *pObj,const char *zF
 		}
 		t = zFmt[k];
 		switch( t ){
-			case 'Y': SyBlobFormat(&sOut,"%02d",(int)DtAttrInt(pObj,"y")); break;
-			case 'y': SyBlobFormat(&sOut,"%qd",DtAttrInt(pObj,"y")); break;
-			case 'M': SyBlobFormat(&sOut,"%02d",(int)DtAttrInt(pObj,"m")); break;
-			case 'm': SyBlobFormat(&sOut,"%qd",DtAttrInt(pObj,"m")); break;
-			case 'D': SyBlobFormat(&sOut,"%02d",(int)DtAttrInt(pObj,"d")); break;
-			case 'd': SyBlobFormat(&sOut,"%qd",DtAttrInt(pObj,"d")); break;
-			case 'H': SyBlobFormat(&sOut,"%02d",(int)DtAttrInt(pObj,"h")); break;
-			case 'h': SyBlobFormat(&sOut,"%qd",DtAttrInt(pObj,"h")); break;
-			case 'I': SyBlobFormat(&sOut,"%02d",(int)DtAttrInt(pObj,"i")); break;
-			case 'i': SyBlobFormat(&sOut,"%qd",DtAttrInt(pObj,"i")); break;
-			case 'S': SyBlobFormat(&sOut,"%02d",(int)DtAttrInt(pObj,"s")); break;
-			case 's': SyBlobFormat(&sOut,"%qd",DtAttrInt(pObj,"s")); break;
+			case 'Y': SyBlobFormat(&sOut,"%02d",(int)PH7_NativeAttrInt(pObj,"y")); break;
+			case 'y': SyBlobFormat(&sOut,"%qd",PH7_NativeAttrInt(pObj,"y")); break;
+			case 'M': SyBlobFormat(&sOut,"%02d",(int)PH7_NativeAttrInt(pObj,"m")); break;
+			case 'm': SyBlobFormat(&sOut,"%qd",PH7_NativeAttrInt(pObj,"m")); break;
+			case 'D': SyBlobFormat(&sOut,"%02d",(int)PH7_NativeAttrInt(pObj,"d")); break;
+			case 'd': SyBlobFormat(&sOut,"%qd",PH7_NativeAttrInt(pObj,"d")); break;
+			case 'H': SyBlobFormat(&sOut,"%02d",(int)PH7_NativeAttrInt(pObj,"h")); break;
+			case 'h': SyBlobFormat(&sOut,"%qd",PH7_NativeAttrInt(pObj,"h")); break;
+			case 'I': SyBlobFormat(&sOut,"%02d",(int)PH7_NativeAttrInt(pObj,"i")); break;
+			case 'i': SyBlobFormat(&sOut,"%qd",PH7_NativeAttrInt(pObj,"i")); break;
+			case 'S': SyBlobFormat(&sOut,"%02d",(int)PH7_NativeAttrInt(pObj,"s")); break;
+			case 's': SyBlobFormat(&sOut,"%qd",PH7_NativeAttrInt(pObj,"s")); break;
 			case 'F': case 'f': {
-				ph7_value *pF = DtAttr(pObj,"f");
+				ph7_value *pF = PH7_NativeAttr(pObj,"f");
 				double r = 0.0;
 				sxi64 uS;
 				if( pF && (pF->iFlags & MEMOBJ_REAL) ){
@@ -2538,10 +2473,10 @@ static void DtIvFormat(ph7_context *pCtx,ph7_class_instance *pObj,const char *zF
 				}
 				break;
 			}
-			case 'R': SyBlobAppend(&sOut,DtAttrInt(pObj,"invert") ? "-" : "+",1); break;
-			case 'r': if( DtAttrInt(pObj,"invert") ){ SyBlobAppend(&sOut,"-",1); } break;
+			case 'R': SyBlobAppend(&sOut,PH7_NativeAttrInt(pObj,"invert") ? "-" : "+",1); break;
+			case 'r': if( PH7_NativeAttrInt(pObj,"invert") ){ SyBlobAppend(&sOut,"-",1); } break;
 			case 'a':
-				pDays = DtAttr(pObj,"days");
+				pDays = PH7_NativeAttr(pObj,"days");
 				if( pDays && (pDays->iFlags & MEMOBJ_INT) ){
 					SyBlobFormat(&sOut,"%qd",pDays->x.iVal);
 				}else{
@@ -2591,55 +2526,6 @@ static int DtValueIsA(ph7_vm *pVm,ph7_value *pVal,const char *zClass)
  * under it (which is what it did: `foreach` over a DatePeriod crashed on the second
  * element's `->format()`). The caller keeps owning whatever it passed in.
  */
-static void DtSetObj(ph7_vm *pVm,ph7_class_instance *pObj,const char *zProp,
-	ph7_class_instance *pVal)
-{
-	ph7_value *pSlot = DtAttr(pObj,zProp);
-	ph7_value sVal;
-	if( pSlot == 0 ){
-		return;
-	}
-	PH7_MemObjInit(&(*pVm),&sVal);
-	if( pVal ){
-		sVal.x.pOther = pVal;
-		sVal.iFlags = MEMOBJ_OBJ;
-	}
-	PH7_MemObjStore(&sVal,pSlot);
-}
-static void DtSetBool(ph7_vm *pVm,ph7_class_instance *pObj,const char *zProp,int bVal)
-{
-	ph7_value *pSlot = DtAttr(pObj,zProp);
-	ph7_value sVal;
-	if( pSlot == 0 ){
-		return;
-	}
-	PH7_MemObjInitFromBool(&(*pVm),&sVal,bVal);
-	PH7_MemObjStore(&sVal,pSlot);
-	PH7_MemObjRelease(&sVal);
-}
-/* The object stored in a declared property, or NULL. */
-static ph7_class_instance * DtAttrObj(ph7_class_instance *pObj,const char *zProp)
-{
-	ph7_value *pVal = DtAttr(pObj,zProp);
-	if( pVal == 0 || (pVal->iFlags & MEMOBJ_OBJ) == 0 ){
-		return 0;
-	}
-	return (ph7_class_instance *)pVal->x.pOther;
-}
-static int DtAttrTruthy(ph7_class_instance *pObj,const char *zProp)
-{
-	ph7_value *pVal = DtAttr(pObj,zProp);
-	if( pVal == 0 ){
-		return 0;
-	}
-	if( pVal->iFlags & MEMOBJ_BOOL ){
-		return pVal->x.iVal != 0;
-	}
-	if( pVal->iFlags & MEMOBJ_INT ){
-		return pVal->x.iVal != 0;
-	}
-	return 0;
-}
 /*
  * DatePeriod::__construct($start, $interval, $end, $options)
  *
@@ -2712,11 +2598,11 @@ static int DpConstructInto(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,
 		}
 		DtStore(pVm,pStart,&sState);
 		DtIvStore(pVm,pIv,aIv);
-		DtSetObj(pVm,pThis,"start",pStart);
-		DtSetObj(pVm,pThis,"interval",pIv);
+		PH7_NativeSetAttrObj(pVm,pThis,"start",pStart);
+		PH7_NativeSetAttrObj(pVm,pThis,"interval",pIv);
 		PH7_ClassInstanceUnref(pStart);
 		PH7_ClassInstanceUnref(pIv);
-		DtSetInt(pVm,pThis,"recurrences",nRec + 1);
+		PH7_NativeSetAttrInt(pVm,pThis,"recurrences",nRec + 1);
 	}else{
 		ph7_class_instance *pStart,*pIv,*pEnd;
 		if( !DtValueIsA(pVm,apArg[0],"DateTimeInterface")
@@ -2734,22 +2620,22 @@ static int DpConstructInto(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,
 		if( pStart == 0 ){
 			return PH7_ContextMemoryError(pCtx);
 		}
-		DtSetObj(pVm,pThis,"start",pStart);
+		PH7_NativeSetAttrObj(pVm,pThis,"start",pStart);
 		PH7_ClassInstanceUnref(pStart);
-		DtSetObj(pVm,pThis,"interval",pIv);
+		PH7_NativeSetAttrObj(pVm,pThis,"interval",pIv);
 		if( apArg[2]->iFlags & MEMOBJ_INT ){
-			DtSetInt(pVm,pThis,"recurrences",apArg[2]->x.iVal + 1);
+			PH7_NativeSetAttrInt(pVm,pThis,"recurrences",apArg[2]->x.iVal + 1);
 		}else{
 			pEnd = PH7_CloneClassInstance((ph7_class_instance *)apArg[2]->x.pOther);
 			if( pEnd == 0 ){
 				return PH7_ContextMemoryError(pCtx);
 			}
-			DtSetObj(pVm,pThis,"end",pEnd);
+			PH7_NativeSetAttrObj(pVm,pThis,"end",pEnd);
 			PH7_ClassInstanceUnref(pEnd);
 		}
 	}
-	DtSetBool(pVm,pThis,"include_start_date",(iOptions & 1) == 0);
-	DtSetBool(pVm,pThis,"include_end_date",(iOptions & 2) != 0);
+	PH7_NativeSetAttrBool(pVm,pThis,"include_start_date",(iOptions & 1) == 0);
+	PH7_NativeSetAttrBool(pVm,pThis,"include_end_date",(iOptions & 2) != 0);
 	return PH7_OK;
 }
 static int vm_builtin_DatePeriod_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -2780,7 +2666,7 @@ static int vm_builtin_DatePeriod_createFromISO8601String(ph7_context *pCtx,int n
 		PH7_ClassInstanceUnref(pObj);
 		return rc;
 	}
-	DtResultObject(pCtx,pObj);
+	PH7_NativeResultObject(pCtx,pObj);
 	return PH7_OK;
 }
 static int vm_builtin_DatePeriod_getStartDate(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -2789,7 +2675,7 @@ static int vm_builtin_DatePeriod_getStartDate(ph7_context *pCtx,int nArg,ph7_val
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	if( pThis ){
-		ph7_value *pVal = DtAttr(pThis,"start");
+		ph7_value *pVal = PH7_NativeAttr(pThis,"start");
 		if( pVal ){
 			ph7_result_value(pCtx,pVal);
 		}
@@ -2802,7 +2688,7 @@ static int vm_builtin_DatePeriod_getEndDate(ph7_context *pCtx,int nArg,ph7_value
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	if( pThis ){
-		ph7_value *pVal = DtAttr(pThis,"end");
+		ph7_value *pVal = PH7_NativeAttr(pThis,"end");
 		if( pVal ){
 			ph7_result_value(pCtx,pVal);
 		}
@@ -2815,7 +2701,7 @@ static int vm_builtin_DatePeriod_getDateInterval(ph7_context *pCtx,int nArg,ph7_
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	if( pThis ){
-		ph7_value *pVal = DtAttr(pThis,"interval");
+		ph7_value *pVal = PH7_NativeAttr(pThis,"interval");
 		if( pVal ){
 			ph7_result_value(pCtx,pVal);
 		}
@@ -2832,23 +2718,20 @@ static int vm_builtin_DatePeriod_getRecurrences(ph7_context *pCtx,int nArg,ph7_v
 	ph7_class_instance *pThis = DtThis(pCtx);
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	if( pThis == 0 || DtAttrObj(pThis,"end") != 0 ){
+	if( pThis == 0 || PH7_NativeAttrObj(pThis,"end") != 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	ph7_result_int64(pCtx,DtAttrInt(pThis,"recurrences") - 1);
+	ph7_result_int64(pCtx,PH7_NativeAttrInt(pThis,"recurrences") - 1);
 	return PH7_OK;
 }
 /*
- * The period iterator's state, kept in InternalIterator's own private slots:
- * the period, the date the cursor sits on, the emitted key, the loop counter and
- * whether the walk is over.
+ * The period walk, expressed as the vtable an InternalIterator drives (oo_native.c).
+ * It uses the shared cursor slots: SRC is the period, CUR the date the cursor sits
+ * on, KEY the emitted position and POS the loop counter (which differs from KEY,
+ * since an excluded start date is stepped over without emitting one).
  */
-#define DP_IT_PERIOD "__period"
-#define DP_IT_CUR    "__cur"
-#define DP_IT_KEY    "__key"
-#define DP_IT_STEP   "__step"
-#define DP_IT_DONE   "__done"
+#define DP_IT_STEP PH7_NATIVE_IT_POS
 /* One interval step from a date object: a NEW object, so a value already handed
  * to the caller is never mutated underneath it (php's iterator answers a fresh
  * object per position too). */
@@ -2856,14 +2739,14 @@ static ph7_class_instance * DpAdvance(ph7_vm *pVm,ph7_class_instance *pCur,
 	ph7_class_instance *pIv)
 {
 	ph7_class_instance *pNext = PH7_CloneClassInstance(pCur);
-	int iSign = DtAttrInt(pIv,"invert") ? -1 : 1;
+	int iSign = PH7_NativeAttrInt(pIv,"invert") ? -1 : 1;
 	if( pNext == 0 ){
 		return 0;
 	}
-	DtSetInt(&(*pVm),pNext,DT_TS,
-		DtCivilAdd(DtAttrInt(pCur,DT_TS),(sxi32)DtAttrInt(pCur,DT_OFF),
-			DtAttrInt(pIv,"y"),DtAttrInt(pIv,"m"),DtAttrInt(pIv,"d"),
-			DtAttrInt(pIv,"h"),DtAttrInt(pIv,"i"),DtAttrInt(pIv,"s"),iSign));
+	PH7_NativeSetAttrInt(&(*pVm),pNext,DT_TS,
+		DtCivilAdd(PH7_NativeAttrInt(pCur,DT_TS),(sxi32)PH7_NativeAttrInt(pCur,DT_OFF),
+			PH7_NativeAttrInt(pIv,"y"),PH7_NativeAttrInt(pIv,"m"),PH7_NativeAttrInt(pIv,"d"),
+			PH7_NativeAttrInt(pIv,"h"),PH7_NativeAttrInt(pIv,"i"),PH7_NativeAttrInt(pIv,"s"),iSign));
 	return pNext;
 }
 /*
@@ -2874,188 +2757,113 @@ static ph7_class_instance * DpAdvance(ph7_vm *pVm,ph7_class_instance *pCur,
  */
 static void DpSettle(ph7_vm *pVm,ph7_class_instance *pIt)
 {
-	ph7_class_instance *pPeriod = DtAttrObj(pIt,DP_IT_PERIOD);
+	ph7_class_instance *pPeriod = PH7_NativeAttrObj(pIt,PH7_NATIVE_IT_SRC);
 	ph7_class_instance *pEnd,*pIv;
 	int bInclStart,bInclEnd;
 	sxi64 nTotal;
 	if( pPeriod == 0 ){
-		DtSetBool(&(*pVm),pIt,DP_IT_DONE,1);
+		PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);
 		return;
 	}
-	pEnd = DtAttrObj(pPeriod,"end");
-	pIv = DtAttrObj(pPeriod,"interval");
-	bInclStart = DtAttrTruthy(pPeriod,"include_start_date");
-	bInclEnd = DtAttrTruthy(pPeriod,"include_end_date");
-	nTotal = DtAttrInt(pPeriod,"recurrences") + (bInclEnd ? 1 : 0);
+	pEnd = PH7_NativeAttrObj(pPeriod,"end");
+	pIv = PH7_NativeAttrObj(pPeriod,"interval");
+	bInclStart = PH7_NativeAttrTruthy(pPeriod,"include_start_date");
+	bInclEnd = PH7_NativeAttrTruthy(pPeriod,"include_end_date");
+	nTotal = PH7_NativeAttrInt(pPeriod,"recurrences") + (bInclEnd ? 1 : 0);
 	for(;;){
-		ph7_class_instance *pCur = DtAttrObj(pIt,DP_IT_CUR);
-		sxi64 iStep = DtAttrInt(pIt,DP_IT_STEP);
+		ph7_class_instance *pCur = PH7_NativeAttrObj(pIt,PH7_NATIVE_IT_CUR);
+		sxi64 iStep = PH7_NativeAttrInt(pIt,DP_IT_STEP);
 		ph7_class_instance *pNext;
 		if( pCur == 0 ){
-			DtSetBool(&(*pVm),pIt,DP_IT_DONE,1);
+			PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);
 			return;
 		}
 		if( pEnd != 0 ){
-			sxi64 iTs = DtAttrInt(pCur,DT_TS);
-			sxi64 iEndTs = DtAttrInt(pEnd,DT_TS);
+			sxi64 iTs = PH7_NativeAttrInt(pCur,DT_TS);
+			sxi64 iEndTs = PH7_NativeAttrInt(pEnd,DT_TS);
 			if( bInclEnd ? (iTs > iEndTs) : (iTs >= iEndTs) ){
-				DtSetBool(&(*pVm),pIt,DP_IT_DONE,1);
+				PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);
 				return;
 			}
 		}else if( iStep >= nTotal ){
-			DtSetBool(&(*pVm),pIt,DP_IT_DONE,1);
+			PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);
 			return;
 		}
 		if( iStep > 0 || bInclStart ){
-			DtSetBool(&(*pVm),pIt,DP_IT_DONE,0);
+			PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,0);
 			return;
 		}
 		/* The excluded start: step over it without emitting a key. */
 		if( pIv == 0 ){
-			DtSetBool(&(*pVm),pIt,DP_IT_DONE,1);
+			PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);
 			return;
 		}
 		pNext = DpAdvance(&(*pVm),pCur,pIv);
 		if( pNext == 0 ){
-			DtSetBool(&(*pVm),pIt,DP_IT_DONE,1);
+			PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);
 			return;
 		}
-		DtSetObj(&(*pVm),pIt,DP_IT_CUR,pNext);
+		PH7_NativeSetAttrObj(&(*pVm),pIt,PH7_NATIVE_IT_CUR,pNext);
 		PH7_ClassInstanceUnref(pNext);
-		DtSetInt(&(*pVm),pIt,DP_IT_STEP,iStep + 1);
+		PH7_NativeSetAttrInt(&(*pVm),pIt,DP_IT_STEP,iStep + 1);
 	}
 }
-static int DpRewindInto(ph7_context *pCtx,ph7_class_instance *pThis)
+static void DpRewind(ph7_vm *pVm,ph7_class_instance *pThis)
 {
-	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pPeriod,*pStart,*pCur;
-	pPeriod = DtAttrObj(pThis,DP_IT_PERIOD);
-	pStart = pPeriod ? DtAttrObj(pPeriod,"start") : 0;
-	if( pStart == 0 ){
-		DtSetBool(pVm,pThis,DP_IT_DONE,1);
-		return PH7_OK;
-	}
-	pCur = PH7_CloneClassInstance(pStart);
+	pPeriod = PH7_NativeAttrObj(pThis,PH7_NATIVE_IT_SRC);
+	pStart = pPeriod ? PH7_NativeAttrObj(pPeriod,"start") : 0;
+	pCur = pStart ? PH7_CloneClassInstance(pStart) : 0;
 	if( pCur == 0 ){
-		return PH7_ContextMemoryError(pCtx);
+		PH7_NativeSetAttrBool(pVm,pThis,PH7_NATIVE_IT_DONE,1);
+		return;
 	}
-	DtSetObj(pVm,pThis,DP_IT_CUR,pCur);
+	PH7_NativeSetAttrObj(pVm,pThis,PH7_NATIVE_IT_CUR,pCur);
 	PH7_ClassInstanceUnref(pCur);
-	DtSetInt(pVm,pThis,DP_IT_KEY,0);
-	DtSetInt(pVm,pThis,DP_IT_STEP,0);
+	PH7_NativeSetAttrInt(pVm,pThis,PH7_NATIVE_IT_KEY,0);
+	PH7_NativeSetAttrInt(pVm,pThis,DP_IT_STEP,0);
 	DpSettle(pVm,pThis);
-	return PH7_OK;
 }
-static int vm_builtin_InternalIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
+static void DpNext(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_class_instance *pPeriod,*pIv,*pCur,*pNext;
+	pPeriod = PH7_NativeAttrObj(pThis,PH7_NATIVE_IT_SRC);
+	pIv = pPeriod ? PH7_NativeAttrObj(pPeriod,"interval") : 0;
+	pCur = PH7_NativeAttrObj(pThis,PH7_NATIVE_IT_CUR);
+	pNext = (pIv && pCur) ? DpAdvance(pVm,pCur,pIv) : 0;
+	if( pNext == 0 ){
+		PH7_NativeSetAttrBool(pVm,pThis,PH7_NATIVE_IT_DONE,1);
+		return;
+	}
+	PH7_NativeSetAttrObj(pVm,pThis,PH7_NATIVE_IT_CUR,pNext);
+	PH7_ClassInstanceUnref(pNext);
+	PH7_NativeSetAttrInt(pVm,pThis,DP_IT_STEP,PH7_NativeAttrInt(pThis,DP_IT_STEP) + 1);
+	PH7_NativeSetAttrInt(pVm,pThis,PH7_NATIVE_IT_KEY,PH7_NativeAttrInt(pThis,PH7_NATIVE_IT_KEY) + 1);
+	DpSettle(pVm,pThis);
+}
+static const PH7_NativeIterVtab sDpIterVtab = { DpRewind, DpNext };
+/*
+ * DatePeriod::getIterator(): Iterator
+ *
+ * This was a PHP GENERATOR, the one thing a C body cannot be. php answers an
+ * InternalIterator here, so PHL answers the shared one (oo_native.c) driven by
+ * the vtable above -- and stops diverging on `get_class($period->getIterator())`.
+ * A fresh one per call, as php's is.
+ */
+static int vm_builtin_DatePeriod_getIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_class_instance *pThis = DtThis(pCtx);
+	ph7_class_instance *pIt;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	if( pThis == 0 ){
 		return PH7_OK;
 	}
-	return DpRewindInto(pCtx,pThis);
-}
-static int vm_builtin_InternalIterator_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	ph7_class_instance *pThis = DtThis(pCtx);
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	ph7_result_bool(pCtx,pThis != 0 && !DtAttrTruthy(pThis,DP_IT_DONE));
-	return PH7_OK;
-}
-static int vm_builtin_InternalIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	ph7_class_instance *pThis = DtThis(pCtx);
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	if( pThis == 0 || DtAttrTruthy(pThis,DP_IT_DONE) ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	{
-		ph7_value *pVal = DtAttr(pThis,DP_IT_CUR);
-		if( pVal ){
-			ph7_result_value(pCtx,pVal);
-		}
-	}
-	return PH7_OK;
-}
-static int vm_builtin_InternalIterator_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	ph7_class_instance *pThis = DtThis(pCtx);
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	if( pThis == 0 || DtAttrTruthy(pThis,DP_IT_DONE) ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	ph7_result_int64(pCtx,DtAttrInt(pThis,DP_IT_KEY));
-	return PH7_OK;
-}
-static int vm_builtin_InternalIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	ph7_vm *pVm = pCtx->pVm;
-	ph7_class_instance *pThis = DtThis(pCtx);
-	ph7_class_instance *pPeriod,*pIv,*pCur,*pNext;
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	if( pThis == 0 || DtAttrTruthy(pThis,DP_IT_DONE) ){
-		return PH7_OK;
-	}
-	pPeriod = DtAttrObj(pThis,DP_IT_PERIOD);
-	pIv = pPeriod ? DtAttrObj(pPeriod,"interval") : 0;
-	pCur = DtAttrObj(pThis,DP_IT_CUR);
-	if( pIv == 0 || pCur == 0 ){
-		DtSetBool(pVm,pThis,DP_IT_DONE,1);
-		return PH7_OK;
-	}
-	pNext = DpAdvance(pVm,pCur,pIv);
-	if( pNext == 0 ){
-		return PH7_ContextMemoryError(pCtx);
-	}
-	DtSetObj(pVm,pThis,DP_IT_CUR,pNext);
-	PH7_ClassInstanceUnref(pNext);
-	DtSetInt(pVm,pThis,DP_IT_STEP,DtAttrInt(pThis,DP_IT_STEP) + 1);
-	DtSetInt(pVm,pThis,DP_IT_KEY,DtAttrInt(pThis,DP_IT_KEY) + 1);
-	DpSettle(pVm,pThis);
-	return PH7_OK;
-}
-/*
- * DatePeriod::getIterator(): Iterator
- *
- * This was a PHP GENERATOR, the one thing a C body cannot be. php answers an
- * InternalIterator here, so PHL builds one -- and stops diverging on
- * `get_class($period->getIterator())`. A fresh one per call, as php's is.
- */
-static int vm_builtin_DatePeriod_getIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	ph7_vm *pVm = pCtx->pVm;
-	ph7_class_instance *pThis = DtThis(pCtx);
-	ph7_class *pClass = DtClass(pVm,"InternalIterator");
-	ph7_class_instance *pIt;
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	if( pThis == 0 || pClass == 0 ){
-		return PH7_OK;
-	}
-	pIt = PH7_NewClassInstance(pVm,pClass);
+	pIt = PH7_NativeIteratorNew(pCtx->pVm,pThis);
 	if( pIt == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
-	DtSetObj(pVm,pIt,DP_IT_PERIOD,pThis);
-	DtSetBool(pVm,pIt,DP_IT_DONE,1);
-	/* Position it now: php's iterator is valid before the first rewind(). */
-	DpRewindInto(pCtx,pIt);
-	DtResultObject(pCtx,pIt);
-	return PH7_OK;
-}
-/* InternalIterator::__construct() — private in php, and never reached from PHP. */
-static int vm_builtin_InternalIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	SXUNUSED(pCtx);
+	PH7_NativeResultObject(pCtx,pIt);
 	return PH7_OK;
 }
 /*
@@ -3117,7 +2925,7 @@ static int DtProcCreate(ph7_context *pCtx,int nArg,ph7_value **apArg,const char 
 		return PH7_ContextMemoryError(pCtx);
 	}
 	DtStore(pVm,pObj,&sState);
-	DtResultObject(pCtx,pObj);
+	PH7_NativeResultObject(pCtx,pObj);
 	return PH7_OK;
 }
 static int vm_builtin_date_create(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -3162,7 +2970,7 @@ static int vm_builtin_date_modify(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	zMod = ph7_value_to_string(apArg[1],&nMod);
-	iErrPos = DtParse(zMod,nMod,DtAttrInt(pObj,DT_TS),(sxi32)DtAttrInt(pObj,DT_OFF),
+	iErrPos = DtParse(zMod,nMod,PH7_NativeAttrInt(pObj,DT_TS),(sxi32)PH7_NativeAttrInt(pObj,DT_OFF),
 		&iTs,&iOff,&bOffSet,&uSec);
 	if( iErrPos != 0 ){
 		zErr = DtParseErr(zMod,nMod,iErrPos,&iPos,&cAt);
@@ -3172,7 +2980,7 @@ static int vm_builtin_date_modify(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	DtSetInt(pCtx->pVm,pObj,DT_TS,iTs);
+	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_TS,iTs);
 	DtResultArg(pCtx,apArg);
 	return PH7_OK;
 }
@@ -3183,13 +2991,13 @@ static int DtProcAddSub(ph7_context *pCtx,int nArg,ph7_value **apArg,int iSign)
 	if( pObj == 0 || pIv == 0 ){
 		return PH7_OK;
 	}
-	if( DtAttrInt(pIv,"invert") ){
+	if( PH7_NativeAttrInt(pIv,"invert") ){
 		iSign = -iSign;
 	}
-	DtSetInt(pCtx->pVm,pObj,DT_TS,
-		DtCivilAdd(DtAttrInt(pObj,DT_TS),(sxi32)DtAttrInt(pObj,DT_OFF),
-			DtAttrInt(pIv,"y"),DtAttrInt(pIv,"m"),DtAttrInt(pIv,"d"),
-			DtAttrInt(pIv,"h"),DtAttrInt(pIv,"i"),DtAttrInt(pIv,"s"),iSign));
+	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_TS,
+		DtCivilAdd(PH7_NativeAttrInt(pObj,DT_TS),(sxi32)PH7_NativeAttrInt(pObj,DT_OFF),
+			PH7_NativeAttrInt(pIv,"y"),PH7_NativeAttrInt(pIv,"m"),PH7_NativeAttrInt(pIv,"d"),
+			PH7_NativeAttrInt(pIv,"h"),PH7_NativeAttrInt(pIv,"i"),PH7_NativeAttrInt(pIv,"s"),iSign));
 	DtResultArg(pCtx,apArg);
 	return PH7_OK;
 }
@@ -3218,7 +3026,7 @@ static int vm_builtin_date_timestamp_get(ph7_context *pCtx,int nArg,ph7_value **
 {
 	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
 	if( pObj ){
-		ph7_result_int64(pCtx,DtAttrInt(pObj,DT_TS));
+		ph7_result_int64(pCtx,PH7_NativeAttrInt(pObj,DT_TS));
 	}
 	return PH7_OK;
 }
@@ -3228,8 +3036,8 @@ static int vm_builtin_date_timestamp_set(ph7_context *pCtx,int nArg,ph7_value **
 	if( pObj == 0 || nArg < 2 ){
 		return PH7_OK;
 	}
-	DtSetInt(pCtx->pVm,pObj,DT_TS,ph7_value_to_int64(apArg[1]));
-	DtSetInt(pCtx->pVm,pObj,DT_US,0);
+	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_TS,ph7_value_to_int64(apArg[1]));
+	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_US,0);
 	DtResultArg(pCtx,apArg);
 	return PH7_OK;
 }
@@ -3250,8 +3058,8 @@ static int vm_builtin_date_timezone_set(ph7_context *pCtx,int nArg,ph7_value **a
 	if( pObj == 0 || nArg < 2 || !DtZoneOf(apArg[1],&iOff,&zName,&nName) ){
 		return PH7_OK;
 	}
-	DtSetInt(pCtx->pVm,pObj,DT_OFF,iOff);
-	DtSetStr(pCtx->pVm,pObj,DT_NAME,zName,nName);
+	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_OFF,iOff);
+	PH7_NativeSetAttrStr(pCtx->pVm,pObj,DT_NAME,zName,nName);
 	DtResultArg(pCtx,apArg);
 	return PH7_OK;
 }
@@ -3259,7 +3067,7 @@ static int vm_builtin_date_offset_get(ph7_context *pCtx,int nArg,ph7_value **apA
 {
 	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
 	if( pObj ){
-		ph7_result_int64(pCtx,DtAttrInt(pObj,DT_OFF));
+		ph7_result_int64(pCtx,PH7_NativeAttrInt(pObj,DT_OFF));
 	}
 	return PH7_OK;
 }
@@ -3292,8 +3100,8 @@ static int vm_builtin_date_isodate_set(ph7_context *pCtx,int nArg,ph7_value **ap
 	if( pObj == 0 || nArg < 3 ){
 		return PH7_OK;
 	}
-	DtSetInt(pCtx->pVm,pObj,DT_TS,
-		DtIsoDate(DtAttrInt(pObj,DT_TS),(sxi32)DtAttrInt(pObj,DT_OFF),
+	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_TS,
+		DtIsoDate(PH7_NativeAttrInt(pObj,DT_TS),(sxi32)PH7_NativeAttrInt(pObj,DT_OFF),
 			ph7_value_to_int64(apArg[1]),ph7_value_to_int64(apArg[2]),
 			nArg > 3 ? ph7_value_to_int64(apArg[3]) : 1));
 	DtResultArg(pCtx,apArg);
@@ -3319,7 +3127,7 @@ static int vm_builtin_date_interval_create_from_date_string(ph7_context *pCtx,in
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	DtResultObject(pCtx,pObj);
+	PH7_NativeResultObject(pCtx,pObj);
 	return PH7_OK;
 }
 static int vm_builtin_date_interval_format(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -3361,9 +3169,9 @@ static int vm_builtin_timezone_open(ph7_context *pCtx,int nArg,ph7_value **apArg
 	if( pObj == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
-	DtSetInt(pVm,pObj,DTZ_OFF,iOff);
-	DtSetStr(pVm,pObj,DTZ_NAME,zName,nName);
-	DtResultObject(pCtx,pObj);
+	PH7_NativeSetAttrInt(pVm,pObj,DTZ_OFF,iOff);
+	PH7_NativeSetAttrStr(pVm,pObj,DTZ_NAME,zName,nName);
+	PH7_NativeResultObject(pCtx,pObj);
 	return PH7_OK;
 }
 static int vm_builtin_timezone_name_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -3374,7 +3182,7 @@ static int vm_builtin_timezone_name_get(ph7_context *pCtx,int nArg,ph7_value **a
 	if( pObj == 0 ){
 		return PH7_OK;
 	}
-	DtAttrStr(pObj,DTZ_NAME,&zName,&nName);
+	PH7_NativeAttrStr(pObj,DTZ_NAME,&zName,&nName);
 	ph7_result_string(pCtx,zName,nName);
 	return PH7_OK;
 }
@@ -3382,7 +3190,7 @@ static int vm_builtin_timezone_offset_get(ph7_context *pCtx,int nArg,ph7_value *
 {
 	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
 	if( pObj ){
-		ph7_result_int64(pCtx,DtAttrInt(pObj,DTZ_OFF));
+		ph7_result_int64(pCtx,PH7_NativeAttrInt(pObj,DTZ_OFF));
 	}
 	return PH7_OK;
 }
@@ -3437,14 +3245,15 @@ static int vm_builtin_timezone_offset_get(ph7_context *pCtx,int nArg,ph7_value *
 	{ NAME, PH7_MOD_PUBLIC, PH7_NATIVE_VAL_STRING, 0, VALUE, 0.0 }
 /*
  * Install the whole date family from C: the exceptions and DateTimeInterface, then
- * DateTimeZone / DateTime / DateTimeImmutable, DateInterval, DatePeriod and the
- * InternalIterator its getIterator() answers, then the procedural aliases.
+ * DateTimeZone / DateTime / DateTimeImmutable, DateInterval and DatePeriod, then the
+ * procedural aliases. The InternalIterator its getIterator() answers is not declared
+ * here — it is shared native machinery (oo_native.c), reached through the vtable
+ * DatePeriod's spec row names.
  *
  * Called from PH7_VmInit inside the bCompilingBuiltin window, after the Reflection
- * install (Exception must exist). Two interfaces are attached AFTER their class's
- * methods exist, for the abstract-stub reason above: DatePeriod's IteratorAggregate
- * and InternalIterator's Iterator both declare methods. DateTimeInterface declares
- * none, so it can ride the spec table.
+ * install (Exception must exist). IteratorAggregate is attached AFTER DatePeriod's
+ * methods exist, for the abstract-stub reason above; DateTimeInterface declares no
+ * method, so it can ride the spec table.
  */
 PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 {
@@ -3544,43 +3353,26 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "getRecurrences",  PH7_MOD_PUBLIC, "", "?int", vm_builtin_DatePeriod_getRecurrences },
 		{ "getIterator",     PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_DatePeriod_getIterator },
 	};
-	static const PH7_NativePropDef aItProp[] = {
-		{ DP_IT_PERIOD, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ DP_IT_CUR,    PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ DP_IT_KEY,    PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 } },
-		{ DP_IT_STEP,   PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 } },
-		{ DP_IT_DONE,   PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 } },
-	};
-	static const PH7_NativeMethodDef aItMethod[] = {
-		{ "__construct", PH7_MOD_PRIVATE, "", "", vm_builtin_InternalIterator_construct },
-		{ "current",     PH7_MOD_PUBLIC, "", "mixed", vm_builtin_InternalIterator_current },
-		{ "key",         PH7_MOD_PUBLIC, "", "mixed", vm_builtin_InternalIterator_key },
-		{ "next",        PH7_MOD_PUBLIC, "", "void",  vm_builtin_InternalIterator_next },
-		{ "valid",       PH7_MOD_PUBLIC, "", "bool",  vm_builtin_InternalIterator_valid },
-		{ "rewind",      PH7_MOD_PUBLIC, "", "void",  vm_builtin_InternalIterator_rewind },
-	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		/* Exceptions first: the classes below throw them. */
-		{ "DateException", "Exception", 0, 0, 0, 0, 0, 0, 0, 0 },
-		{ "DateMalformedStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0 },
-		{ "DateInvalidTimeZoneException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0 },
-		{ "DateMalformedIntervalStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0 },
-		{ "DateMalformedPeriodStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DateException", "Exception", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DateMalformedStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DateInvalidTimeZoneException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DateMalformedIntervalStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DateMalformedPeriodStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "DateTimeInterface", 0, 0, PH7_CLASS_INTERFACE,
-		  0, 0, aIfaceConst, SX_ARRAYSIZE(aIfaceConst), 0, 0 },
+		  0, 0, aIfaceConst, SX_ARRAYSIZE(aIfaceConst), 0, 0, 0, 0 },
 		{ "DateTimeZone", 0, 0, 0,
-		  aZoneMethod, SX_ARRAYSIZE(aZoneMethod), 0, 0, aZoneProp, SX_ARRAYSIZE(aZoneProp) },
+		  aZoneMethod, SX_ARRAYSIZE(aZoneMethod), 0, 0, aZoneProp, SX_ARRAYSIZE(aZoneProp), 0, 0 },
 		{ "DateTime", 0, "DateTimeInterface", 0,
-		  aDtMethod, SX_ARRAYSIZE(aDtMethod), 0, 0, aDtProp, SX_ARRAYSIZE(aDtProp) },
+		  aDtMethod, SX_ARRAYSIZE(aDtMethod), 0, 0, aDtProp, SX_ARRAYSIZE(aDtProp), 0, 0 },
 		{ "DateTimeImmutable", 0, "DateTimeInterface", 0,
-		  aImmMethod, SX_ARRAYSIZE(aImmMethod), 0, 0, aDtProp, SX_ARRAYSIZE(aDtProp) },
+		  aImmMethod, SX_ARRAYSIZE(aImmMethod), 0, 0, aDtProp, SX_ARRAYSIZE(aDtProp), 0, 0 },
 		{ "DateInterval", 0, 0, 0,
-		  aIvMethod, SX_ARRAYSIZE(aIvMethod), 0, 0, aIvProp, SX_ARRAYSIZE(aIvProp) },
+		  aIvMethod, SX_ARRAYSIZE(aIvMethod), 0, 0, aIvProp, SX_ARRAYSIZE(aIvProp), 0, 0 },
 		{ "DatePeriod", 0, 0, 0,
 		  aDpMethod, SX_ARRAYSIZE(aDpMethod), aDpConst, SX_ARRAYSIZE(aDpConst),
-		  aDpProp, SX_ARRAYSIZE(aDpProp) },
-		{ "InternalIterator", 0, 0, PH7_CLASS_FINAL,
-		  aItMethod, SX_ARRAYSIZE(aItMethod), 0, 0, aItProp, SX_ARRAYSIZE(aItProp) },
+		  aDpProp, SX_ARRAYSIZE(aDpProp), 0, &sDpIterVtab },
 	};
 	/* php's procedural aliases. Each is a function in its own right, not a forward,
 	 * and each owes aBuiltinSig[] a row (vm_arg_check.c). */
@@ -3626,22 +3418,16 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	/* The two interfaces that declare METHODS, attached now that the classes have
-	 * their own: PH7_ClassImplement stubs a missing one as ABSTRACT, which would
-	 * have made both classes uninstantiable. */
+	/* IteratorAggregate declares a METHOD, so it is attached now that DatePeriod has
+	 * its own: PH7_ClassImplement stubs a missing one as ABSTRACT, which would have
+	 * made the class uninstantiable. */
 	{
 		ph7_class *pPeriod = DtClass(&(*pVm),"DatePeriod");
-		ph7_class *pIt = DtClass(&(*pVm),"InternalIterator");
 		ph7_class *pAggregate = DtClass(&(*pVm),"IteratorAggregate");
-		ph7_class *pIterator = DtClass(&(*pVm),"Iterator");
-		if( pPeriod == 0 || pIt == 0 || pAggregate == 0 || pIterator == 0 ){
+		if( pPeriod == 0 || pAggregate == 0 ){
 			return SXERR_NOTFOUND;
 		}
 		rc = PH7_ClassImplement(pPeriod,pAggregate);
-		if( rc != SXRET_OK ){
-			return rc;
-		}
-		rc = PH7_ClassImplement(pIt,pIterator);
 	}
 	return rc;
 }

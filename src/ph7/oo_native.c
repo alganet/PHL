@@ -94,6 +94,130 @@ PH7_PRIVATE void PH7_NativeSetProp(ph7_vm *pVm,ph7_class_instance *pObj,
 	pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
 }
 /*
+ * ---------------------------------------------------------------------------
+ * Reading and writing a native instance's own declared slots.
+ *
+ * A compiled method reaches `$this->p` through the byte-code that resolves the
+ * attribute; a C body has to walk the instance's slot table itself. Every native
+ * class needs the same six or seven moves, so they live here rather than being
+ * re-declared per subsystem (the date family carried a private copy of the whole
+ * set, which is what these replace).
+ * ---------------------------------------------------------------------------
+ */
+/* Fetch a declared INSTANCE slot by name (never a static or a constant). */
+PH7_PRIVATE ph7_value * PH7_NativeAttr(ph7_class_instance *pObj,const char *zName)
+{
+	SyString sName;
+	SyStringInitFromBuf(&sName,zName,SyStrlen(zName));
+	return PH7_ClassInstanceFetchAttr(pObj,&sName);
+}
+/* Read an int slot WITHOUT converting it: ph7_value_to_int64() converts the
+ * attribute in place, which would rewrite the object's own state. */
+PH7_PRIVATE sxi64 PH7_NativeAttrInt(ph7_class_instance *pObj,const char *zName)
+{
+	ph7_value *pVal = PH7_NativeAttr(pObj,zName);
+	if( pVal && (pVal->iFlags & MEMOBJ_INT) ){
+		return pVal->x.iVal;
+	}
+	return 0;
+}
+/* Borrow a string slot's bytes (empty when it holds anything else). */
+PH7_PRIVATE void PH7_NativeAttrStr(ph7_class_instance *pObj,const char *zName,
+	const char **pzOut,int *pnOut)
+{
+	ph7_value *pVal = PH7_NativeAttr(pObj,zName);
+	*pzOut = "";
+	*pnOut = 0;
+	if( pVal && (pVal->iFlags & MEMOBJ_STRING) ){
+		*pzOut = (const char *)SyBlobData(&pVal->sBlob);
+		*pnOut = (int)SyBlobLength(&pVal->sBlob);
+	}
+}
+/* The object stored in a slot, or NULL when it holds anything else. */
+PH7_PRIVATE ph7_class_instance * PH7_NativeAttrObj(ph7_class_instance *pObj,const char *zName)
+{
+	ph7_value *pVal = PH7_NativeAttr(pObj,zName);
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_OBJ) == 0 ){
+		return 0;
+	}
+	return (ph7_class_instance *)pVal->x.pOther;
+}
+/* Truth of a bool/int slot, again without converting it. */
+PH7_PRIVATE int PH7_NativeAttrTruthy(ph7_class_instance *pObj,const char *zName)
+{
+	ph7_value *pVal = PH7_NativeAttr(pObj,zName);
+	if( pVal && (pVal->iFlags & (MEMOBJ_BOOL|MEMOBJ_INT)) ){
+		return pVal->x.iVal != 0;
+	}
+	return 0;
+}
+PH7_PRIVATE void PH7_NativeSetAttrInt(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,sxi64 iVal)
+{
+	ph7_value *pSlot = PH7_NativeAttr(pObj,zName);
+	ph7_value sVal;
+	if( pSlot == 0 ){
+		return;
+	}
+	PH7_MemObjInitFromInt(&(*pVm),&sVal,iVal);
+	PH7_MemObjStore(&sVal,pSlot);
+	PH7_MemObjRelease(&sVal);
+}
+PH7_PRIVATE void PH7_NativeSetAttrStr(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,
+	const char *zVal,int nVal)
+{
+	ph7_value *pSlot = PH7_NativeAttr(pObj,zName);
+	ph7_value sVal;
+	SyString sStr;
+	if( pSlot == 0 ){
+		return;
+	}
+	SyStringInitFromBuf(&sStr,zVal,nVal);
+	PH7_MemObjInitFromString(&(*pVm),&sVal,&sStr);
+	PH7_MemObjStore(&sVal,pSlot);
+	PH7_MemObjRelease(&sVal);
+}
+PH7_PRIVATE void PH7_NativeSetAttrBool(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,int bVal)
+{
+	ph7_value *pSlot = PH7_NativeAttr(pObj,zName);
+	ph7_value sVal;
+	if( pSlot == 0 ){
+		return;
+	}
+	PH7_MemObjInitFromBool(&(*pVm),&sVal,bVal);
+	PH7_MemObjStore(&sVal,pSlot);
+	PH7_MemObjRelease(&sVal);
+}
+/* Store an object in a slot, or NULL to clear it. PH7_MemObjStore takes the
+ * reference the slot needs, so the temp never holds one of its own. */
+PH7_PRIVATE void PH7_NativeSetAttrObj(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,
+	ph7_class_instance *pVal)
+{
+	ph7_value *pSlot = PH7_NativeAttr(pObj,zName);
+	ph7_value sVal;
+	if( pSlot == 0 ){
+		return;
+	}
+	PH7_MemObjInit(&(*pVm),&sVal);
+	if( pVal ){
+		sVal.x.pOther = pVal;
+		sVal.iFlags = MEMOBJ_OBJ;
+	}
+	PH7_MemObjStore(&sVal,pSlot);
+}
+/*
+ * Hand an instance back as a native call's result, dropping the reference
+ * PH7_NewClassInstance/PH7_CloneClassInstance handed the caller.
+ */
+PH7_PRIVATE void PH7_NativeResultObject(ph7_context *pCtx,ph7_class_instance *pObj)
+{
+	ph7_value sRes;
+	PH7_MemObjInit(pCtx->pVm,&sRes);
+	sRes.x.pOther = pObj;
+	sRes.iFlags = MEMOBJ_OBJ;
+	ph7_result_value(pCtx,&sRes);   /* takes its own reference */
+	PH7_ClassInstanceUnref(pObj);
+}
+/*
  * Resolve a class by name for the builder's own use (parents and interfaces).
  * Autoload is deliberately NOT triggered: these run at VM init, where the only
  * classes that can exist are the ones installed before this call, and a missing
@@ -276,6 +400,8 @@ static sxi32 NativeDeclareClass(ph7_vm *pVm,const PH7_NativeClassSpec *pSpec,ph7
 		return SXERR_MEM;
 	}
 	pClass->iFlags |= pSpec->iFlags;
+	pClass->xRelease = pSpec->xRelease;
+	pClass->pIterVtab = pSpec->pIterVtab;
 	for( n = 0 ; n < pSpec->nConst ; n++ ){
 		rc = NativeInstallConstant(&(*pVm),pClass,&pSpec->aConst[n]);
 		if( rc != SXRET_OK ){
@@ -389,4 +515,167 @@ PH7_PRIVATE sxi32 PH7_InstallNativeClasses(ph7_vm *pVm,const PH7_NativeClassSpec
 Done:
 	SyMemBackendFree(&pVm->sAllocator,apClass);
 	return rc;
+}
+/*
+ * ---------------------------------------------------------------------------
+ * InternalIterator.
+ *
+ * A native IteratorAggregate cannot answer a Generator: a PHP generator IS its
+ * byte-code, and a C body has none. php never answers one either -- its internal
+ * aggregates hand back an InternalIterator wrapping the iterator their class
+ * declared -- so PHL declares that class once, here, and every native aggregate
+ * reaches it through ph7_class::pIterVtab.
+ *
+ * The cursor lives entirely in the iterator's own private slots. A vtable states
+ * only how to REACH a position; reading it back is the same three methods for
+ * everyone.
+ * ---------------------------------------------------------------------------
+ */
+/* The walk THIS iterator was made for: the vtable of the aggregate it holds. */
+static const PH7_NativeIterVtab * NativeIterVtab(ph7_class_instance *pIt)
+{
+	ph7_class_instance *pSrc = PH7_NativeAttrObj(pIt,PH7_NATIVE_IT_SRC);
+	return pSrc ? pSrc->pClass->pIterVtab : 0;
+}
+static int vm_builtin_InternalIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const PH7_NativeIterVtab *pVtab;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	pVtab = NativeIterVtab(pThis);
+	if( pVtab == 0 || pVtab->xRewind == 0 ){
+		PH7_NativeSetAttrBool(pCtx->pVm,pThis,PH7_NATIVE_IT_DONE,1);
+		return PH7_OK;
+	}
+	pVtab->xRewind(pCtx->pVm,pThis);
+	return PH7_OK;
+}
+static int vm_builtin_InternalIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const PH7_NativeIterVtab *pVtab;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || PH7_NativeAttrTruthy(pThis,PH7_NATIVE_IT_DONE) ){
+		return PH7_OK;
+	}
+	pVtab = NativeIterVtab(pThis);
+	if( pVtab == 0 || pVtab->xNext == 0 ){
+		PH7_NativeSetAttrBool(pCtx->pVm,pThis,PH7_NATIVE_IT_DONE,1);
+		return PH7_OK;
+	}
+	pVtab->xNext(pCtx->pVm,pThis);
+	return PH7_OK;
+}
+static int vm_builtin_InternalIterator_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx,pThis != 0 && !PH7_NativeAttrTruthy(pThis,PH7_NATIVE_IT_DONE));
+	return PH7_OK;
+}
+/* current() and key() answer the slots the walk left behind -- and NULL once it
+ * is over, which is what php's exhausted InternalIterator answers too. */
+static int NativeIterReadSlot(ph7_context *pCtx,const char *zSlot)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pVal;
+	if( pThis == 0 || PH7_NativeAttrTruthy(pThis,PH7_NATIVE_IT_DONE) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pVal = PH7_NativeAttr(pThis,zSlot);
+	if( pVal ){
+		ph7_result_value(pCtx,pVal);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_InternalIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return NativeIterReadSlot(pCtx,PH7_NATIVE_IT_CUR);
+}
+static int vm_builtin_InternalIterator_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return NativeIterReadSlot(pCtx,PH7_NATIVE_IT_KEY);
+}
+/* InternalIterator::__construct() — private in php, and never reached from PHP:
+ * PH7_NativeIteratorNew builds the instance directly. */
+static int vm_builtin_InternalIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	SXUNUSED(pCtx);
+	return PH7_OK;
+}
+/*
+ * The iterator a native getIterator() answers: bound to its aggregate and already
+ * positioned, because php's is valid() before the first rewind().
+ */
+PH7_PRIVATE ph7_class_instance * PH7_NativeIteratorNew(ph7_vm *pVm,ph7_class_instance *pSrc)
+{
+	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"InternalIterator",
+		sizeof("InternalIterator")-1,FALSE,0);
+	ph7_class_instance *pIt;
+	const PH7_NativeIterVtab *pVtab;
+	if( pClass == 0 || pSrc == 0 ){
+		return 0;
+	}
+	pIt = PH7_NewClassInstance(&(*pVm),pClass);
+	if( pIt == 0 ){
+		return 0;
+	}
+	PH7_NativeSetAttrObj(&(*pVm),pIt,PH7_NATIVE_IT_SRC,pSrc);
+	PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);
+	pVtab = pSrc->pClass->pIterVtab;
+	if( pVtab && pVtab->xRewind ){
+		pVtab->xRewind(&(*pVm),pIt);
+	}
+	return pIt;
+}
+PH7_PRIVATE sxi32 PH7_VmInstallNativeIterator(ph7_vm *pVm)
+{
+	static const PH7_NativePropDef aProp[] = {
+		{ PH7_NATIVE_IT_SRC,  PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ PH7_NATIVE_IT_CUR,  PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ PH7_NATIVE_IT_KEY,  PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ PH7_NATIVE_IT_POS,  PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 } },
+		{ PH7_NATIVE_IT_AUX,  PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 } },
+		{ PH7_NATIVE_IT_DONE, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 } },
+	};
+	static const PH7_NativeMethodDef aMethod[] = {
+		{ "__construct", PH7_MOD_PRIVATE, "", "", vm_builtin_InternalIterator_construct },
+		{ "current",     PH7_MOD_PUBLIC, "", "mixed", vm_builtin_InternalIterator_current },
+		{ "key",         PH7_MOD_PUBLIC, "", "mixed", vm_builtin_InternalIterator_key },
+		{ "next",        PH7_MOD_PUBLIC, "", "void",  vm_builtin_InternalIterator_next },
+		{ "valid",       PH7_MOD_PUBLIC, "", "bool",  vm_builtin_InternalIterator_valid },
+		{ "rewind",      PH7_MOD_PUBLIC, "", "void",  vm_builtin_InternalIterator_rewind },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "InternalIterator", 0, 0, PH7_CLASS_FINAL,
+		  aMethod, SX_ARRAYSIZE(aMethod), 0, 0, aProp, SX_ARRAYSIZE(aProp), 0, 0 },
+	};
+	ph7_class *pIt,*pIterator;
+	sxi32 rc;
+	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* `implements Iterator` only NOW: PH7_ClassImplement stubs every interface
+	 * method the class does not already declare as ABSTRACT, so attaching it
+	 * through the spec would have made InternalIterator uninstantiable. */
+	pIt = NativeLookupClass(&(*pVm),"InternalIterator");
+	pIterator = NativeLookupClass(&(*pVm),"Iterator");
+	if( pIt == 0 || pIterator == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	return PH7_ClassImplement(pIt,pIterator);
 }
