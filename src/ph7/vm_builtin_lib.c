@@ -12,18 +12,6 @@
  * so the chunk string and its sizeof stay in one translation unit (the
  * vm_builtin_reflection_lib.c pattern).
  */
-/* The libxml-backed extensions (libxml/dom/xmlwriter) are reported by
- * extension_loaded()/get_loaded_extensions() only when compiled in. These
- * string fragments splice into the prelude arrays via adjacent-literal
- * concatenation; they are leading-comma so they append cleanly and vanish
- * to "" in tiny/non-libxml builds. */
-#ifdef PH7_ENABLE_LIBXML
-#define PHL_EXT_LOADED_LIBXML ", 'libxml' => 1, 'dom' => 1, 'xmlwriter' => 1"
-#define PHL_EXT_LIST_LIBXML   ",'libxml','dom','xmlwriter'"
-#else
-#define PHL_EXT_LOADED_LIBXML ""
-#define PHL_EXT_LIST_LIBXML   ""
-#endif
 #define PH7_BUILTIN_LIB \
 	"interface Throwable {"\
 	"public function getMessage();"\
@@ -411,33 +399,6 @@
    "function is_nan($num){ $num = (float)$num; return $num != $num; }"\
    "function is_infinite($num){ $num = (float)$num; return $num == INF || $num == -INF; }"\
    "function is_finite($num){ $num = (float)$num; return !is_nan($num) && !is_infinite($num); }"\
-   "/* phl.stub_extensions (a -d/php.ini list, comma-separated) declares extensions"\
-   " * PHL does not implement as LOADED, backed by no-op behaviour, so software that"\
-   " * only GATES on extension_loaded() (e.g. PHPUnit's dom/xmlwriter check) runs"\
-   " * unmodified. It does NOT synthesize the extension's classes/functions. */"\
-   "function __phl_stub_exts(){"\
-   "  $s = ini_get('phl.stub_extensions');"\
-   "  if( $s === false || $s === '' ){ return array(); }"\
-   "  $out = array();"\
-   "  foreach( explode(',', (string)$s) as $e ){ $e = trim($e); if( $e !== '' ){ $out[strtolower($e)] = $e; } }"\
-   "  return $out;"\
-   "}"\
-   "function extension_loaded($extension){"\
-   "  static $ext = array('core' => 1, 'standard' => 1, 'pcre' => 1, 'json' => 1,"\
-   "   'ctype' => 1, 'date' => 1, 'spl' => 1, 'reflection' => 1, 'mbstring' => 1,"\
-   "   'hash' => 1, 'filter' => 1, 'session' => 1" PHL_EXT_LOADED_LIBXML ");"\
-   "  $n = strtolower((string)$extension);"\
-   "  if( isset($ext[$n]) ){ return true; }"\
-   "  $stub = __phl_stub_exts();"\
-   "  return isset($stub[$n]);"\
-   "}"\
-   "function get_loaded_extensions($zend_extensions = false){"\
-   "  if( $zend_extensions ){ return array(); }"\
-   "  $base = array('Core','date','pcre','SPL','json','standard',"\
-   "   'ctype','filter','hash','Reflection','session','mbstring'" PHL_EXT_LIST_LIBXML ");"\
-   "  foreach( __phl_stub_exts() as $e ){ $base[] = $e; }"\
-   "  return $base;"\
-   "}"\
    "/* Inverse of bin2hex() */"\
    "function hex2bin($string){"\
    "  $string = (string)$string;"\

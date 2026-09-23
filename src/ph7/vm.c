@@ -5404,6 +5404,8 @@ static const ph7_builtin_func aVmFunc[] = {
 	  /* Release info */
 	{"ph7version",       vm_builtin_ph7_version  },
 	{"phpversion",       vm_builtin_phpversion    },
+	{"extension_loaded", vm_builtin_extension_loaded },
+	{"get_loaded_extensions", vm_builtin_get_loaded_extensions },
 	{"php_sapi_name",    vm_builtin_php_sapi_name },
 	{"ph7credits",       vm_builtin_ph7_credits  },
 	{"ph7info",          vm_builtin_ph7_credits  },
