@@ -1028,7 +1028,7 @@ static sxi32 VmScreenGenByRefArgs(ph7_vm *pVm,ph7_vm_func *pFunc,VmCallArgMap *p
  * A DEFINED variable never carries the marker (it loads with its real nIdx), so this is a
  * no-op for it; a call with no deferred args pays only one flag test per slot.
  */
-static sxi32 VmResolveDeferredArgs(
+PH7_PRIVATE sxi32 PH7_VmResolveDeferredArgs(
 	ph7_vm *pVm,
 	ph7_value *pArg,
 	ph7_value *pTos,
@@ -2436,7 +2436,7 @@ case PH7_OP_LOAD:{
 				 * know yet whether the callee wants it by-ref (materialize + bind) or
 				 * by-value (warn + pass NULL). Tag the slot and stash the variable name
 				 * (a VM-lifetime bytecode string, nothing to free) so OP_CALL's
-				 * VmResolveDeferredArgs can decide once the callee is resolved. */
+				 * PH7_VmResolveDeferredArgs can decide once the callee is resolved. */
 				pTos->iFlags |= MEMOBJ_AUX_DEFERRED;
 				pTos->x.pOther = pInstr->p3;
 			}
@@ -5529,7 +5529,7 @@ case PH7_OP_CALL: {
 		 * ARRAY), so every deferred argument materializes by value, exactly as it did
 		 * through the named trampoline's zero by-ref mask. */
 		{
-			sxi32 rcDA = VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,0,0);
+			sxi32 rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,0,0);
 			PH7_DISPATCH_ENFORCE_RC(rcDA)
 		}
 		pEffCallMap = VmEffCallArgMap(pVm,pInstr,pArg,
@@ -5644,7 +5644,7 @@ case PH7_OP_CALL: {
 			 * by materializing every deferred arg as by-ref. Refining these to precise by-value
 			 * semantics is a later slice. */
 			{
-				sxi32 rcDA = VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,/*bAllByRef*/1,0);
+				sxi32 rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,/*bAllByRef*/1,0);
 				PH7_DISPATCH_ENFORCE_RC(rcDA)
 			}
 			SySetReset(&aArg);
@@ -5702,7 +5702,7 @@ case PH7_OP_CALL: {
 			 * over-vivification (so `$o(&$x)` out-params keep working) by materializing
 			 * every deferred arg as by-ref. */
 			{
-				sxi32 rcDA = VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,/*bAllByRef*/1,0);
+				sxi32 rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,/*bAllByRef*/1,0);
 				PH7_DISPATCH_ENFORCE_RC(rcDA)
 			}
 			SySetReset(&aArg);
@@ -6087,10 +6087,10 @@ case PH7_OP_CALL: {
 				 * builtin uses, so resolve them the builtin way. Sharing this one
 				 * site (rather than repeating it in the branch below) keeps the
 				 * throw routing identical for both kinds of callee. */
-				rcDA = VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,
+				rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,
 					pVmFunc->pNative->nByRefMask,0,0);
 			}else{
-				rcDA = VmResolveDeferredArgs(&(*pVm),pArg,pTos,
+				rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,
 					(ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs),SySetUsed(&pVmFunc->aArgs),
 					0,0,0);
 			}
@@ -7437,7 +7437,7 @@ SkipFuncBody:
 		 * compile-time mask no longer sees it. Every other (by-value) arg warns + passes
 		 * NULL, which is also what call_user_func & friends want. pVm->pFrame is the caller. */
 		{
-			sxi32 rcDA = VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,pFunc->nByRefMask,0,0);
+			sxi32 rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,pFunc->nByRefMask,0,0);
 			PH7_DISPATCH_ENFORCE_RC(rcDA)
 		}
 		/* Host function (builtin): build the effective spread-key map so the

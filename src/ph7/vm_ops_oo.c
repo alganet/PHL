@@ -267,6 +267,49 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 			 * the real pass and let the arguments run. */
 			VM_EXIT_BREAK;
 		}
+		if( nCtorArgs > 0 ){
+			/* D1: a `new`'s arguments are ARGUMENTS. An element/property one whose
+			 * target was absent at load time rides a deferred carrier that only OP_CALL
+			 * resolved, and the ctor call reaches its callee by pointer rather than
+			 * through that opcode — so `new C($a['missing'])` passed a silent NULL where
+			 * php warns, and a by-REFERENCE ctor parameter (`new C($a['fresh'])` with
+			 * `__construct(&$x)`) never vivified the target at all: php writes the
+			 * element, PHL left it uncreated. Resolve here, where the constructor is
+			 * known and pVm->pFrame is still the caller, exactly as every OP_CALL
+			 * dispatch branch does. A class with NO constructor still resolves — the
+			 * arguments were evaluated and php reports what reading them found. */
+			ph7_class_method *pCtorArgs = pCons;
+			sxi32 rcDA;
+			if( pCtorArgs == 0 ){
+				rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,0,0);
+			}else if( pCtorArgs->sFunc.iFlags & VM_FUNC_NATIVE ){
+				/* A native constructor has no compiled formals; its by-ref positions
+				 * come from the signature-derived mask, the builtin way. */
+				rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,
+					pCtorArgs->sFunc.pNative ? pCtorArgs->sFunc.pNative->nByRefMask : 0,0,0);
+			}else{
+				rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,
+					(ph7_vm_func_arg *)SySetBasePtr(&pCtorArgs->sFunc.aArgs),
+					SySetUsed(&pCtorArgs->sFunc.aArgs),0,0,0);
+			}
+			if( rcDA == PH7_ABORT || rcDA == PH7_EXCEPTION ){
+				/* Reading an argument raised (a string-offset Error, a magic accessor's
+				 * throw): no object is created, and the stack is tidied exactly as the
+				 * constructor-throw path below tidies it. */
+				sxi32 iResumeDA;
+				if( rcDA == PH7_ABORT ){
+					VM_EXIT_ABORT;
+				}
+				if( VmRecordedResume(pVm,&iResumeDA,pState->pEntryFrame,aInstr) ){
+					VmPopOperand(&pTos,nCtorArgs);
+					PH7_MemObjRelease(pTos);
+					PH7_RESUME_DRAIN()
+					pc = iResumeDA;
+					VM_EXIT_BREAK;
+				}
+				VM_EXIT_EXCEPTION;
+			}
+		}
 		/* Create a new class instance */
 		pNew = PH7_NewClassInstance(&(*pVm),pClass);
 		if( pNew == 0 ){
