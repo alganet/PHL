@@ -1279,7 +1279,21 @@ struct PH7_NativeClassSpec
 	void (*xRelease)(ph7_vm *,ph7_class_instance *); /* or 0; see ph7_class::xRelease */
 	const PH7_NativeIterVtab *pIterVtab; /* or 0; see ph7_class::pIterVtab */
 };
+/*
+ * One `case Name = <literal>;` of a native ENUM. The backing value is the same
+ * literal record a constant carries; iType PH7_NATIVE_VAL_NULL is a PURE enum's
+ * case, which has no value at all.
+ */
+typedef struct PH7_NativeEnumCase PH7_NativeEnumCase;
+struct PH7_NativeEnumCase
+{
+	const char *zName;
+	PH7_NativeConstDef sValue;   /* the backing literal; zName/iMods unused */
+};
 PH7_PRIVATE sxi32 PH7_InstallNativeClasses(ph7_vm *pVm,const PH7_NativeClassSpec *aSpec,sxu32 nSpec);
+PH7_PRIVATE sxi32 PH7_InstallNativeEnum(ph7_vm *pVm,const char *zName,sxu32 nBacking,
+	const PH7_NativeEnumCase *aCase,sxu32 nCase,
+	const PH7_NativeMethodDef *aMethod,sxu32 nMethod);
 PH7_PRIVATE sxi32 PH7_NativeClassInstallMethod(ph7_vm *pVm,ph7_class *pClass,
 	const PH7_NativeMethodDef *pDef,void *pUserData);
 PH7_PRIVATE sxi32 PH7_NativeClassInstallProperty(ph7_vm *pVm,ph7_class *pClass,
@@ -2787,6 +2801,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionTypes(ph7_vm *pVm); /* vm_builtin_refle
 PH7_PRIVATE sxi32 PH7_VmInstallReflectionSmall(ph7_vm *pVm); /* vm_builtin_reflection.c */
 PH7_PRIVATE sxi32 PH7_VmInstallReflectionClass(ph7_vm *pVm); /* vm_builtin_reflection.c */
 PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm);  /* vm_builtin_reflection.c */
+PH7_PRIVATE sxi32 PH7_VmInstallReflectionHookType(ph7_vm *pVm); /* vm_builtin_reflection.c */
+PH7_PRIVATE sxi32 PH7_VmInstallReflectionMember(ph7_vm *pVm); /* vm_builtin_reflection.c */
 PH7_PRIVATE sxi32 PH7_VmInstallBuiltinLib(ph7_vm *pVm); /* vm_builtin_lib.c */
 PH7_PRIVATE ph7_class_instance * PH7_VmNewClosure(ph7_vm *pVm,const SyString *pName,
 	ph7_class_instance *pBoundThis,const SyString *pScope);

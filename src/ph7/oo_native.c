@@ -537,6 +537,200 @@ Done:
 }
 /*
  * ---------------------------------------------------------------------------
+ * Declaring an ENUM from C.
+ *
+ * An enum is not a class with constants: each `case` is a class constant whose
+ * slot holds THE singleton instance of the enum for that case, materialized
+ * lazily on first access (VmEnumMaterializeCase). The compiler builds one by
+ * declaring the readonly `name`/`value` properties, pushing each case onto
+ * ph7_class::aEnumCases, and SYNTHESIZING cases()/from()/tryFrom() as PHP
+ * source that forwards to the `__phl_enum_*` thunks.
+ *
+ * This does the same three things without a compiler: the case's backing value
+ * rides as a literal (ph7_class_attr::pNativeValue, which the materializer
+ * reads where a compiled case has byte-code), and the three interface methods
+ * are C bodies that call the very same engine workers the synthesized PHP
+ * forwards to — so a native enum is an ordinary one to `instanceof`,
+ * `match`, Reflection and `===` case identity.
+ * ---------------------------------------------------------------------------
+ */
+/* The enum a static native method was called on. */
+static ph7_class * NativeEnumSelf(ph7_context *pCtx,ph7_value *pName)
+{
+	ph7_class *pClass = PH7_ContextCalledClass(pCtx);
+	PH7_MemObjInit(pCtx->pVm,pName);
+	if( pClass ){
+		ph7_value_string(pName,SyStringData(&pClass->sName),(int)SyStringLength(&pClass->sName));
+	}
+	return pClass;
+}
+/*
+ * cases() / from() / tryFrom(): the engine thunks take the enum's FQN as their
+ * first argument, exactly as the compiler's synthesized bodies pass it.
+ */
+static int vm_builtin_NativeEnum_cases(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value sName;
+	ph7_value *ap[1];
+	int rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( NativeEnumSelf(pCtx,&sName) == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	ap[0] = &sName;
+	rc = vm_builtin_enum_cases(pCtx,1,ap);
+	PH7_MemObjRelease(&sName);
+	return rc;
+}
+static int NativeEnumFrom(ph7_context *pCtx,int nArg,ph7_value **apArg,int bTry)
+{
+	ph7_value sName;
+	ph7_value *ap[2];
+	int rc;
+	if( nArg < 1 || NativeEnumSelf(pCtx,&sName) == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	ap[0] = &sName;
+	ap[1] = apArg[0];
+	rc = bTry ? vm_builtin_enum_tryfrom(pCtx,2,ap) : vm_builtin_enum_from(pCtx,2,ap);
+	PH7_MemObjRelease(&sName);
+	return rc;
+}
+static int vm_builtin_NativeEnum_from(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return NativeEnumFrom(pCtx,nArg,apArg,0);
+}
+static int vm_builtin_NativeEnum_tryFrom(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return NativeEnumFrom(pCtx,nArg,apArg,1);
+}
+/* The readonly `name` (every enum) and `value` (backed only) case properties,
+ * declared exactly as GenStateCompileEnum does. */
+static sxi32 NativeEnumInstallProp(ph7_vm *pVm,ph7_class *pClass,const char *zName,
+	sxu32 nType,const char *zTypeName)
+{
+	SyString sName;
+	ph7_class_attr *pAttr;
+	SyStringInitFromBuf(&sName,zName,SyStrlen(zName));
+	pAttr = PH7_NewClassAttr(&(*pVm),&sName,0,PH7_CLASS_PROT_PUBLIC,
+		PH7_CLASS_ATTR_READONLY|PH7_CLASS_ATTR_TYPED);
+	if( pAttr == 0 ){
+		return SXERR_MEM;
+	}
+	pAttr->nType = nType;
+	SyStringInitFromBuf(&pAttr->sTypeName,zTypeName,SyStrlen(zTypeName));
+	return PH7_ClassInstallAttr(pClass,pAttr);
+}
+PH7_PRIVATE sxi32 PH7_InstallNativeEnum(ph7_vm *pVm,const char *zName,sxu32 nBacking,
+	const PH7_NativeEnumCase *aCase,sxu32 nCase,
+	const PH7_NativeMethodDef *aMethod,sxu32 nMethod)
+{
+	static const PH7_NativeMethodDef aCasesMethod[] = {
+		{ "cases", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "", "array", vm_builtin_NativeEnum_cases },
+	};
+	static const PH7_NativeMethodDef aIntFrom[] = {
+		{ "from",    PH7_MOD_PUBLIC|PH7_MOD_STATIC, "int $value", "static", vm_builtin_NativeEnum_from },
+		{ "tryFrom", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "int $value", "?static", vm_builtin_NativeEnum_tryFrom },
+	};
+	static const PH7_NativeMethodDef aStrFrom[] = {
+		{ "from",    PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $value", "static", vm_builtin_NativeEnum_from },
+		{ "tryFrom", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $value", "?static", vm_builtin_NativeEnum_tryFrom },
+	};
+	ph7_class *pClass, *pIface;
+	SyString sName;
+	sxu32 n;
+	sxi32 rc;
+	SyStringInitFromBuf(&sName,zName,SyStrlen(zName));
+	pClass = PH7_NewRawClass(&(*pVm),&sName,0);
+	if( pClass == 0 ){
+		return SXERR_MEM;
+	}
+	/* php: an enum is implicitly FINAL and cannot be instantiated. */
+	pClass->iFlags |= PH7_CLASS_ENUM|PH7_CLASS_FINAL;
+	pClass->nEnumBacking = nBacking;
+	rc = NativeEnumInstallProp(&(*pVm),pClass,"name",MEMOBJ_STRING,"string");
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	if( nBacking != 0 ){
+		rc = NativeEnumInstallProp(&(*pVm),pClass,"value",nBacking,
+			nBacking == MEMOBJ_INT ? "int" : "string");
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	for( n = 0 ; n < nCase ; n++ ){
+		ph7_class_attr *pAttr;
+		SyString sCase;
+		SyStringInitFromBuf(&sCase,aCase[n].zName,SyStrlen(aCase[n].zName));
+		pAttr = PH7_NewClassAttr(&(*pVm),&sCase,0,PH7_CLASS_PROT_PUBLIC,
+			PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_ENUMCASE);
+		if( pAttr == 0 ){
+			return SXERR_MEM;
+		}
+		pAttr->pDeclClass = pClass;
+		/* The backing literal where a compiled case carries byte-code. */
+		if( nBacking != 0 ){
+			pAttr->pNativeValue = &aCase[n].sValue;
+		}
+		rc = PH7_ClassInstallAttr(pClass,pAttr);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		/* Declaration order, which is the order cases() reports. */
+		SySetPut(&pClass->aEnumCases,(const void *)&pAttr);
+	}
+	for( n = 0 ; n < nMethod ; n++ ){
+		rc = PH7_NativeClassInstallMethod(&(*pVm),pClass,&aMethod[n],0);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	rc = PH7_NativeClassInstallMethod(&(*pVm),pClass,&aCasesMethod[0],0);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	if( nBacking != 0 ){
+		const PH7_NativeMethodDef *aFrom = (nBacking == MEMOBJ_INT) ? aIntFrom : aStrFrom;
+		for( n = 0 ; n < 2 ; n++ ){
+			rc = PH7_NativeClassInstallMethod(&(*pVm),pClass,&aFrom[n],0);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+		}
+	}
+	rc = PH7_VmInstallClass(&(*pVm),pClass);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* php 8.1: every enum satisfies `instanceof UnitEnum`, a backed one
+	 * `BackedEnum` too. Attached AFTER the methods, so PH7_ClassImplement's
+	 * abstract stubbing finds cases()/from()/tryFrom() already declared. */
+	pIface = NativeLookupClass(&(*pVm),"UnitEnum");
+	if( pIface == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	rc = PH7_ClassImplement(pClass,pIface);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	if( nBacking != 0 ){
+		pIface = NativeLookupClass(&(*pVm),"BackedEnum");
+		if( pIface == 0 ){
+			return SXERR_NOTFOUND;
+		}
+		rc = PH7_ClassImplement(pClass,pIface);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	return VmMountUserClass(&(*pVm),pClass);
+}
+/*
+ * ---------------------------------------------------------------------------
  * InternalIterator.
  *
  * A native IteratorAggregate cannot answer a Generator: a PHP generator IS its

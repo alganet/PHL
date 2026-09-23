@@ -671,7 +671,12 @@ PH7_PRIVATE sxi32 VmEnumMaterializeCase(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 	}
 	PH7_MemObjInit(pVm,&sBacking);
 	if( pClass->nEnumBacking != 0 ){
-		if( SySetUsed(&pCase->aByteCode) > 0 ){
+		if( pCase->pNativeValue ){
+			/* A NATIVE enum states its backing value as a literal: there is no
+			 * compiler to have emitted the byte-code branch below, and a literal
+			 * is what that byte-code would have produced anyway. */
+			PH7_NativeLiteralValue(&(*pVm),pCase->pNativeValue,&sBacking);
+		}else if( SySetUsed(&pCase->aByteCode) > 0 ){
 			/* pConstEvalClass: `case A = self::OFF + 1` resolves self:: */
 			ph7_class *pSaveCtx = pVm->pConstEvalClass;
 			sxi32 rcExec;

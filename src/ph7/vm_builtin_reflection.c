@@ -693,143 +693,6 @@ static int vm_builtin_phl_rcinfo(ph7_context *pCtx, int nArg, ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * mixed __reflect_const_value(string $class, string $name)
- * Value of a class constant. The PHP layer guarantees existence.
- */
-static int vm_builtin_reflect_const_value(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	ph7_class *pClass;
-	ph7_class_attr *pAttr;
-	ph7_value *pValue;
-	if( nArg < 2 || (pClass = ReflectResolveClass(pCtx->pVm, apArg[0])) == 0
-	 || (pAttr = ReflectFetchConst(pClass, apArg[1])) == 0
-	 || (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	/* Constant slots are evaluated lazily on first access */
-	if( PH7_VmMaterializeClassConst(pCtx->pVm,pClass,pAttr) != SXRET_OK ){
-		/* Initializer raised: the throw is in flight; report null here */
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	pValue = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
-	if( pValue ){
-		ph7_result_value(pCtx, pValue);
-	}else{
-		ph7_result_null(pCtx);
-	}
-	return PH7_OK;
-}
-/*
- * mixed __reflect_static_value(string $class, string $name)
- * Current value of a static property (visibility ignored).
- */
-static int vm_builtin_reflect_static_value(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	ph7_class *pClass;
-	ph7_class_attr *pAttr;
-	ph7_value *pValue;
-	if( nArg < 2 || (pClass = ReflectResolveClass(pCtx->pVm, apArg[0])) == 0
-	 || (pAttr = ReflectFetchAttr(pClass, apArg[1])) == 0
-	 || (pAttr->iFlags & PH7_CLASS_ATTR_STATIC) == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	if( VmClassStaticDeferPending(pClass) ){
-		/* Reading a static through reflection materializes the class's static
-		 * table exactly as `C::$s` does, so a default that threw at the
-		 * declaration raises HERE (php: getStaticPropertyValue() /
-		 * getStaticProperties() / ReflectionProperty::getValue() all do). */
-		sxi32 rcMat = PH7_VmMaterializeClassStatics(pCtx->pVm, pClass);
-		if( rcMat != SXRET_OK ){
-			return rcMat;
-		}
-	}
-	{
-		/* Uninitialized typed static: same Error the VM raises on read */
-		SyHashEntry *pSlot = SyHashGet(&pCtx->pVm->hTypedSlot, (const void *)&pAttr->nIdx, sizeof(sxu32));
-		if( pSlot ){
-			VmClassAttr *pVmAttr = (VmClassAttr *)pSlot->pUserData;
-			if( pVmAttr->iState & VM_CLASS_ATTR_UNINIT ){
-				ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
-				return PH7_VmThrowException(pCtx, "Error",
-					"Typed static property %z::$%z must not be accessed before initialization",
-					&pDecl->sName, &pAttr->sName);
-			}
-		}
-	}
-	pValue = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
-	if( pValue ){
-		ph7_result_value(pCtx, pValue);
-	}else{
-		ph7_result_null(pCtx);
-	}
-	return PH7_OK;
-}
-/*
- * bool __reflect_static_set(string $class, string $name, mixed $value)
- * Overwrite a static property's shared slot (visibility ignored).
- */
-static int vm_builtin_reflect_static_set(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	ph7_class *pClass;
-	ph7_class_attr *pAttr;
-	ph7_value *pValue;
-	if( nArg < 3 || (pClass = ReflectResolveClass(pCtx->pVm, apArg[0])) == 0
-	 || (pAttr = ReflectFetchAttr(pClass, apArg[1])) == 0
-	 || (pAttr->iFlags & PH7_CLASS_ATTR_STATIC) == 0 ){
-		ph7_result_bool(pCtx, 0);
-		return PH7_OK;
-	}
-	if( VmClassStaticDeferPending(pClass) ){
-		/* A WRITE materializes the table too (php's setStaticPropertyValue()
-		 * raises on a broken default before storing anything). */
-		sxi32 rcMat = PH7_VmMaterializeClassStatics(pCtx->pVm, pClass);
-		if( rcMat != SXRET_OK ){
-			return rcMat;
-		}
-	}
-	pValue = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
-	if( pValue == 0 ){
-		ph7_result_bool(pCtx, 0);
-		return PH7_OK;
-	}
-	{
-		sxi32 rc = ReflectEnforceStore(pCtx, pAttr->nIdx, apArg[2]);
-		if( rc != SXRET_OK ){
-			return rc;
-		}
-	}
-	PH7_MemObjStore(apArg[2], pValue);
-	ph7_result_bool(pCtx, 1);
-	return PH7_OK;
-}
-/*
- * mixed __reflect_prop_default(string $class, string $name)
- * Evaluate a non-static property's compiled default expression
- * (null when the property has no default).
- */
-static int vm_builtin_reflect_prop_default(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	ph7_class *pClass;
-	ph7_class_attr *pAttr;
-	ph7_value sValue;
-	if( nArg < 2 || (pClass = ReflectResolveClass(pCtx->pVm, apArg[0])) == 0
-	 || (pAttr = ReflectFetchAttr(pClass, apArg[1])) == 0
-	 || (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) != 0
-	 || SySetUsed(&pAttr->aByteCode) < 1 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	PH7_MemObjInit(pCtx->pVm, &sValue);
-	/* Same evaluation path the VM uses for omitted call arguments */
-	VmLocalExec(pCtx->pVm, &pAttr->aByteCode, &sValue, FALSE);
-	ph7_result_value(pCtx, &sValue);
-	PH7_MemObjRelease(&sValue);
-	return PH7_OK;
-}
-/*
  * Collect a PHP array's values into a ph7_value* set (call arguments).
  * When ppNames is non-NULL, string keys become named arguments: a name
  * map is lazily allocated (like call_user_func_array's) with one entry
@@ -990,139 +853,6 @@ static sxi32 ReflectEnforceStore(ph7_context *pCtx, sxu32 nIdx, ph7_value *pValu
 	rc = PH7_VmEnforcePropStore(pVm, nIdx, pValue);
 	pAttr->iFlags = iSaved;
 	return rc;
-}
-/*
- * mixed __reflect_prop_read(object $obj, string $name)
- * Instance property read, visibility ignored. Throws PHP's Error for an
- * uninitialized typed property.
- */
-static int vm_builtin_reflect_prop_read(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	ph7_class_instance *pThis;
-	SyHashEntry *pEntry;
-	VmClassAttr *pVmAttr;
-	ph7_value *pValue;
-	const char *zName;
-	int nLen;
-	if( nArg < 2 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	pThis = (ph7_class_instance *)apArg[0]->x.pOther;
-	zName = ph7_value_to_string(apArg[1], &nLen);
-	pEntry = nLen > 0 ? SyHashGet(&pThis->hAttr, (const void *)zName, (sxu32)nLen) : 0;
-	if( pEntry == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	pVmAttr = (VmClassAttr *)pEntry->pUserData;
-	if( pVmAttr->iState & VM_CLASS_ATTR_UNINIT ){
-		ph7_class *pDecl = pVmAttr->pAttr->pDeclClass ? pVmAttr->pAttr->pDeclClass : pThis->pClass;
-		return PH7_VmThrowException(pCtx, "Error",
-			"Typed property %z::$%z must not be accessed before initialization",
-			&pDecl->sName, &pVmAttr->pAttr->sName);
-	}
-	pValue = PH7_ClassInstanceExtractAttrValue(pThis, pVmAttr);
-	if( pValue ){
-		ph7_result_value(pCtx, pValue);
-	}else{
-		ph7_result_null(pCtx);
-	}
-	return PH7_OK;
-}
-/*
- * bool __reflect_prop_write(object $obj, string $name, mixed $value)
- * Instance property write, visibility ignored; typed and readonly rules
- * enforced (see ReflectEnforceStore).
- */
-static int vm_builtin_reflect_prop_write(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	ph7_class_instance *pThis;
-	SyHashEntry *pEntry;
-	VmClassAttr *pVmAttr;
-	ph7_value *pValue;
-	const char *zName;
-	sxi32 rc;
-	int nLen;
-	if( nArg < 3 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
-		ph7_result_bool(pCtx, 0);
-		return PH7_OK;
-	}
-	pThis = (ph7_class_instance *)apArg[0]->x.pOther;
-	zName = ph7_value_to_string(apArg[1], &nLen);
-	pEntry = nLen > 0 ? SyHashGet(&pThis->hAttr, (const void *)zName, (sxu32)nLen) : 0;
-	if( pEntry == 0 ){
-		ph7_result_bool(pCtx, 0);
-		return PH7_OK;
-	}
-	pVmAttr = (VmClassAttr *)pEntry->pUserData;
-	rc = ReflectEnforceStore(pCtx, pVmAttr->nIdx, apArg[2]);
-	if( rc != SXRET_OK ){
-		return rc;
-	}
-	pValue = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pVmAttr->nIdx);
-	if( pValue == 0 ){
-		ph7_result_bool(pCtx, 0);
-		return PH7_OK;
-	}
-	PH7_MemObjStore(apArg[2], pValue);
-	ph7_result_bool(pCtx, 1);
-	return PH7_OK;
-}
-/*
- * int __reflect_prop_state(object|string $target, string $name)
- * Bitfield: 1 = exists (instance attr / static slot), 2 = initialized,
- * 4 = dynamic (instance-owned, not class-declared).
- */
-static int vm_builtin_reflect_prop_state(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	int iState = 0;
-	const char *zName;
-	int nLen;
-	if( nArg < 2 ){
-		ph7_result_int(pCtx, 0);
-		return PH7_OK;
-	}
-	zName = ph7_value_to_string(apArg[1], &nLen);
-	if( nLen < 1 ){
-		ph7_result_int(pCtx, 0);
-		return PH7_OK;
-	}
-	if( apArg[0]->iFlags & MEMOBJ_OBJ ){
-		ph7_class_instance *pThis = (ph7_class_instance *)apArg[0]->x.pOther;
-		SyHashEntry *pEntry = SyHashGet(&pThis->hAttr, (const void *)zName, (sxu32)nLen);
-		if( pEntry ){
-			VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
-			iState |= 1;
-			if( (pVmAttr->iState & VM_CLASS_ATTR_UNINIT) == 0 ){
-				iState |= 2;
-			}
-			if( pVmAttr->pAttr && (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_DYNAMIC) ){
-				iState |= 4;
-			}
-		}
-	}else{
-		ph7_class *pClass = ReflectResolveClass(pCtx->pVm, apArg[0]);
-		ph7_class_attr *pAttr = pClass ? ReflectFetchAttr(pClass, apArg[1]) : 0;
-		if( pAttr && (pAttr->iFlags & PH7_CLASS_ATTR_STATIC) ){
-			SyHashEntry *pSlot;
-			if( VmClassStaticDeferPending(pClass) ){
-				/* isInitialized() reads the slot state, so it materializes the
-				 * table too (php raises the default's error before answering). */
-				sxi32 rcMat = PH7_VmMaterializeClassStatics(pCtx->pVm, pClass);
-				if( rcMat != SXRET_OK ){
-					return rcMat;
-				}
-			}
-			pSlot = SyHashGet(&pCtx->pVm->hTypedSlot, (const void *)&pAttr->nIdx, sizeof(sxu32));
-			iState |= 1 | 2;
-			if( pSlot && (((VmClassAttr *)pSlot->pUserData)->iState & VM_CLASS_ATTR_UNINIT) ){
-				iState &= ~2;
-			}
-		}
-	}
-	ph7_result_int(pCtx, iState);
-	return PH7_OK;
 }
 /* Hand an EXISTING instance to the caller: takes an extra reference
  * (unlike ReflectResultObject, which transfers a fresh instance's one). */
@@ -3519,7 +3249,16 @@ static sxi64 ReflectPropModifiers(ph7_class_attr *pAttr)
 {
 	sxi64 iMods = ReflectVisMask(pAttr->iProtection);
 	if( pAttr->iFlags & PH7_CLASS_ATTR_STATIC ){ iMods |= 16; }
-	if( pAttr->iFlags & PH7_CLASS_ATTR_READONLY ){ iMods |= 128; }
+	if( pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL ){ iMods |= 512; }
+	if( pAttr->iFlags & PH7_CLASS_ATTR_READONLY ){
+		/* php models readonly as protected(set) and reports the bit. */
+		iMods |= 128|2048;
+	}
+	if( pAttr->iFlags & PH7_CLASS_ATTR_PROTECTED_SET ){ iMods |= 2048; }
+	if( pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET ){
+		/* private(set) cannot be widened by a subclass, so php reports it FINAL. */
+		iMods |= 4096|32;
+	}
 	return iMods;
 }
 static sxi64 ReflectMethodModifiers(ph7_class_method *pMeth)
@@ -3652,6 +3391,9 @@ static int vm_builtin_ReflectionClass_getConstant(ph7_context *pCtx, int nArg, p
 	}
 	SySetRelease(&aMembers);
 	if( pFound == 0 ){
+		PH7_VmThrowError(pCtx->pVm, 0, E_DEPRECATED,
+			"ReflectionClass::getConstant() for a non-existent constant is deprecated, "
+			"use ReflectionClass::hasConstant() to check if the constant exists");
 		ph7_result_bool(pCtx, 0);
 		return PH7_OK;
 	}
@@ -4365,32 +4107,42 @@ static int vm_builtin_ReflectionClass_isUninitializedLazyObject(ph7_context *pCt
 	ph7_result_bool(pCtx, 0);
 	return PH7_OK;
 }
-/* Reflection::getModifierNames(int $modifiers) */
+/*
+ * Reflection::getModifierNames(int $modifiers)
+ *
+ * php's own order and its own SWITCH: the visibility names come out of one
+ * three-way choice and the set-visibility names out of another, so a mask with
+ * two visibility bits set names NEITHER (which is what php answers).
+ */
 static int vm_builtin_Reflection_getModifierNames(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
-	static const struct { sxi64 iBit; const char *zName; } aMod[] = {
-		{ 64,  "abstract" },
-		{ 32,  "final" },
-		{ 1,   "public" },
-		{ 2,   "protected" },
-		{ 4,   "private" },
-		{ 16,  "static" },
-		{ 128, "readonly" },
-	};
 	ph7_value *pOut = ph7_context_new_array(pCtx);
 	sxi64 iMods = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;
-	sxu32 n;
+	const char *azName[8];
+	int nName = 0, n;
 	if( pOut == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
-	for( n = 0 ; n < SX_ARRAYSIZE(aMod) ; n++ ){
-		ph7_value *pName;
-		if( (iMods & aMod[n].iBit) == 0 ){
-			continue;
-		}
-		pName = ph7_context_new_scalar(pCtx);
+	if( iMods & 64 ){ azName[nName++] = "abstract"; }
+	if( iMods & 32 ){ azName[nName++] = "final"; }
+	if( iMods & 512 ){ azName[nName++] = "virtual"; }
+	switch( iMods & (1|2|4) ){
+	case 1: azName[nName++] = "public"; break;
+	case 2: azName[nName++] = "protected"; break;
+	case 4: azName[nName++] = "private"; break;
+	default: break;
+	}
+	switch( iMods & (2048|4096) ){
+	case 2048: azName[nName++] = "protected(set)"; break;
+	case 4096: azName[nName++] = "private(set)"; break;
+	default: break;
+	}
+	if( iMods & 16 ){ azName[nName++] = "static"; }
+	if( iMods & 128 ){ azName[nName++] = "readonly"; }
+	for( n = 0 ; n < nName ; n++ ){
+		ph7_value *pName = ph7_context_new_scalar(pCtx);
 		if( pName == 0 ){ break; }
-		ph7_value_string(pName, aMod[n].zName, -1);
+		ph7_value_string(pName, azName[n], -1);
 		ph7_array_add_elem(pOut, 0, pName);
 	}
 	ph7_result_value(pCtx, pOut);
@@ -5531,8 +5283,14 @@ static int vm_builtin_ReflectionMethod_construct(ph7_context *pCtx, int nArg, ph
 			"Method %z::%.*s() does not exist", &pClass->sName, nMethod, zMethod);
 		goto Done;
 	}
-	PH7_NativeSetAttrStr(pVm, pThis, "class", SyStringData(&pClass->sName),
-		(int)SyStringLength(&pClass->sName));
+	{
+		/* php's $class is the DECLARING class, not the one the lookup went
+		 * through: `new ReflectionMethod('Kid','bm')` on an inherited method
+		 * reports Base. */
+		ph7_class *pDecl = ReflectMethodDeclClass(pClass, (ph7_class_method *)pEntry->pUserData);
+		PH7_NativeSetAttrStr(pVm, pThis, "class", SyStringData(&pDecl->sName),
+			(int)SyStringLength(&pDecl->sName));
+	}
 	/* The DECLARED spelling, whatever case was asked for. */
 	PH7_NativeSetAttrStr(pVm, pThis, "name", (const char *)pEntry->pKey, (int)pEntry->nKeyLen);
 Done:
@@ -6350,6 +6108,19 @@ static int vm_builtin_ReflectionParameter_toString(ph7_context *pCtx, int nArg, 
  *
  * The method tables are in php's own DECLARATION order.
  */
+/*
+ * PropertyHookType — php's `enum PropertyHookType: string { Get; Set; }`, the
+ * argument ReflectionProperty::getHook()/hasHook() take.
+ */
+PH7_PRIVATE sxi32 PH7_VmInstallReflectionHookType(ph7_vm *pVm)
+{
+	static const PH7_NativeEnumCase aCase[] = {
+		{ "Get", { 0, 0, PH7_NATIVE_VAL_STRING, 0, "get", 0.0 } },
+		{ "Set", { 0, 0, PH7_NATIVE_VAL_STRING, 0, "set", 0.0 } },
+	};
+	return PH7_InstallNativeEnum(&(*pVm), "PropertyHookType", MEMOBJ_STRING,
+		aCase, SX_ARRAYSIZE(aCase), 0, 0);
+}
 PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm)
 {
 	static const PH7_NativePropDef aAbstractProp[] = {
@@ -6516,6 +6287,1065 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm)
 	};
 	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));
 }
+/*
+ * ---------------------------------------------------------------------------
+ * ReflectionProperty and ReflectionClassConstant.
+ *
+ * Chunk 3, the last of the three that made up "the core". Seven thunks retire
+ * with it — __reflect_prop_read, __reflect_prop_write, __reflect_prop_state,
+ * __reflect_prop_default, __reflect_static_value, __reflect_static_set and
+ * __reflect_const_value — because a native method reaches an instance's slot
+ * table, a static's shared slot and a constant's lazy slot directly.
+ * ---------------------------------------------------------------------------
+ */
+#define RP_DYNOBJ "__dynobj"   /* the instance a DYNAMIC property lives on */
+
+/* skipLazyInitialization() is a no-op on an object that is not lazy, which is
+ * every object PHL can build — so it answers what php answers rather than
+ * refusing (§7.4). */
+static int vm_builtin_ReflectionProperty_noop(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return PH7_OK;
+}
+/*
+ * A STATIC property's shared slot, read and written the way `C::$s` is: the
+ * class's static table materializes first (a default that threw at the
+ * declaration raises HERE), and an uninitialized typed static is php's Error.
+ */
+static int ReflectStaticSlotRead(ph7_context *pCtx, ph7_class *pClass, ph7_class_attr *pAttr)
+{
+	SyHashEntry *pSlot;
+	ph7_value *pVal;
+	sxi32 rc = ReflectMaterializeStatics(pCtx, pClass);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	pSlot = SyHashGet(&pCtx->pVm->hTypedSlot, (const void *)&pAttr->nIdx, sizeof(sxu32));
+	if( pSlot && (((VmClassAttr *)pSlot->pUserData)->iState & VM_CLASS_ATTR_UNINIT) ){
+		ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+		return PH7_VmThrowException(pCtx, "Error",
+			"Typed static property %z::$%z must not be accessed before initialization",
+			&pDecl->sName, &pAttr->sName);
+	}
+	pVal = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
+	if( pVal ){
+		ph7_result_value(pCtx, pVal);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+static int ReflectStaticSlotWrite(ph7_context *pCtx, ph7_class *pClass, ph7_class_attr *pAttr,
+	ph7_value *pValue)
+{
+	ph7_value *pSlot;
+	sxi32 rc = ReflectMaterializeStatics(pCtx, pClass);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	rc = ReflectEnforceStore(pCtx, pAttr->nIdx, pValue);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	pSlot = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
+	if( pSlot ){
+		PH7_MemObjStore(pValue, pSlot);
+	}
+	return PH7_OK;
+}
+
+/* What a ReflectionProperty / ReflectionClassConstant is looking at. */
+typedef struct ReflectMemberRef ReflectMemberRef;
+struct ReflectMemberRef
+{
+	ph7_class *pClass;            /* the reflected class */
+	ph7_class_attr *pAttr;        /* the declared member (NULL for a dynamic property) */
+	ph7_class_instance *pDynObj;  /* the instance a dynamic property lives on */
+	const char *zName;            /* the member's name (borrowed from the slot) */
+	int nName;
+};
+/*
+ * Resolve `$this->class` + `$this->name` into the member. Uses the LISTING
+ * answer of the member walk, which is php's: a base class's PRIVATE member is
+ * not reachable by name from the subclass (`new ReflectionProperty('B','pp')`
+ * raises where `B extends A` and `A::$pp` is private).
+ */
+static int ReflectMemberOfThis(ph7_context *pCtx, ReflectMemberRef *pOut, int iKind)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zClass;
+	int nClass;
+	SySet aMembers;
+	sxu32 n;
+	SyZero(pOut, sizeof(*pOut));
+	if( pThis == 0 ){
+		return 0;
+	}
+	PH7_NativeAttrStr(pThis, "class", &zClass, &nClass);
+	PH7_NativeAttrStr(pThis, "name", &pOut->zName, &pOut->nName);
+	if( nClass < 1 ){
+		return 0;
+	}
+	pOut->pClass = PH7_VmExtractClass(pCtx->pVm, zClass, (sxu32)nClass, FALSE, 0);
+	if( pOut->pClass == 0 ){
+		return 0;
+	}
+	if( iKind == REFLECT_MEMBER_PROP ){
+		pOut->pDynObj = PH7_NativeAttrObj(pThis, RP_DYNOBJ);
+	}
+	SySetInit(&aMembers, &pCtx->pVm->sAllocator, sizeof(ReflectMember));
+	ReflectMembers(pCtx->pVm, pOut->pClass, &aMembers, 0);
+	for( n = 0 ; n < SySetUsed(&aMembers) ; n++ ){
+		ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);
+		if( pM->iKind == iKind && ReflectKeyIs(pM, pOut->zName, pOut->nName) ){
+			pOut->pAttr = pM->pAttr;
+			break;
+		}
+	}
+	SySetRelease(&aMembers);
+	return pOut->pAttr != 0 || pOut->pDynObj != 0;
+}
+/* The class php reports as the member's declarer. */
+static ph7_class * ReflectMemberDecl(const ReflectMemberRef *pRef)
+{
+	if( pRef->pAttr && pRef->pAttr->pDeclClass ){
+		return pRef->pAttr->pDeclClass;
+	}
+	return pRef->pClass;
+}
+/* The instance slot record for a dynamic (or any instance-owned) property. */
+static VmClassAttr * ReflectInstanceAttr(ph7_class_instance *pObj, const char *zName, int nName)
+{
+	SyHashEntry *pEntry;
+	if( pObj == 0 || nName < 1 ){
+		return 0;
+	}
+	pEntry = SyHashGet(&pObj->hAttr, (const void *)zName, (sxu32)nName);
+	return pEntry ? (VmClassAttr *)pEntry->pUserData : 0;
+}
+/* ---- ReflectionProperty ---- */
+/* ReflectionProperty::__construct(object|string $class, string $property) */
+static int vm_builtin_ReflectionProperty_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pObj = 0;
+	ph7_class *pClass;
+	const char *zProp;
+	int nProp;
+	SySet aMembers;
+	sxu32 n;
+	int bFound = 0;
+	if( pThis == 0 || nArg < 2 ){
+		return PH7_OK;
+	}
+	if( apArg[0]->iFlags & MEMOBJ_OBJ ){
+		pObj = (ph7_class_instance *)apArg[0]->x.pOther;
+	}
+	pClass = ReflectResolveClass(pVm, apArg[0]);
+	if( pClass == 0 ){
+		const char *zName;
+		int nName;
+		zName = ph7_value_to_string(apArg[0], &nName);
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Class \"%.*s\" does not exist", nName, zName);
+	}
+	zProp = ph7_value_to_string(apArg[1], &nProp);
+	SySetInit(&aMembers, &pVm->sAllocator, sizeof(ReflectMember));
+	ReflectMembers(pVm, pClass, &aMembers, 0);
+	for( n = 0 ; n < SySetUsed(&aMembers) ; n++ ){
+		ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);
+		if( pM->iKind == REFLECT_MEMBER_PROP && ReflectKeyIs(pM, zProp, nProp) ){
+			/* php's $class is the DECLARING class, not the one asked about. */
+			pClass = pM->pDecl ? pM->pDecl : pClass;
+			bFound = 1;
+			break;
+		}
+	}
+	SySetRelease(&aMembers);
+	PH7_NativeSetAttrStr(pVm, pThis, "class", SyStringData(&pClass->sName),
+		(int)SyStringLength(&pClass->sName));
+	if( bFound ){
+		PH7_NativeSetAttrStr(pVm, pThis, "name", zProp, nProp);
+		return PH7_OK;
+	}
+	/* Not declared: an OBJECT may still own it as a dynamic property. */
+	if( ReflectInstanceAttr(pObj, zProp, nProp) ){
+		PH7_NativeSetAttrStr(pVm, pThis, "name", zProp, nProp);
+		PH7_NativeSetAttrObj(pVm, pThis, RP_DYNOBJ, pObj);
+		return PH7_OK;
+	}
+	return PH7_VmThrowException(pCtx, "ReflectionException",
+		"Property %z::$%.*s does not exist", &pClass->sName, nProp, zProp);
+}
+static int vm_builtin_ReflectionProperty_getName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName = "";
+	int nName = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	}
+	ph7_result_string(pCtx, zName, nName);
+	return PH7_OK;
+}
+/*
+ * getMangledName(): the name php stores the slot under —  plain for a public
+ * property, "\0*\0name" for a protected one and "\0Class\0name" for a private
+ * one. PHL's tables are not mangled, so the name is COMPOSED here; what php
+ * exposes is the spelling, not the storage.
+ */
+static int vm_builtin_ReflectionProperty_getMangledName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	SyBlob sOut;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) || sRef.pAttr == 0 ){
+		ph7_result_string(pCtx, sRef.zName, sRef.nName);
+		return PH7_OK;
+	}
+	if( sRef.pAttr->iProtection == PH7_CLASS_PROT_PUBLIC ){
+		ph7_result_string(pCtx, sRef.zName, sRef.nName);
+		return PH7_OK;
+	}
+	SyBlobInit(&sOut, &pCtx->pVm->sAllocator);
+	SyBlobAppend(&sOut, "\0", 1);
+	if( sRef.pAttr->iProtection == PH7_CLASS_PROT_PROTECTED ){
+		SyBlobAppend(&sOut, "*", 1);
+	}else{
+		ph7_class *pDecl = ReflectMemberDecl(&sRef);
+		SyBlobAppend(&sOut, SyStringData(&pDecl->sName), SyStringLength(&pDecl->sName));
+	}
+	SyBlobAppend(&sOut, "\0", 1);
+	SyBlobAppend(&sOut, sRef.zName, (sxu32)sRef.nName);
+	ph7_result_string(pCtx, (const char *)SyBlobData(&sOut), (int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+	return PH7_OK;
+}
+/* The boolean predicates, all off the declared attribute. */
+static int ReflectPropFlag(ph7_context *pCtx, int iWhat)
+{
+	ReflectMemberRef sRef;
+	int bYes = 0;
+	if( ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) && sRef.pAttr ){
+		ph7_class_attr *pAttr = sRef.pAttr;
+		switch( iWhat ){
+		case 0: bYes = pAttr->iProtection == PH7_CLASS_PROT_PUBLIC; break;
+		case 1: bYes = pAttr->iProtection == PH7_CLASS_PROT_PRIVATE; break;
+		case 2: bYes = pAttr->iProtection == PH7_CLASS_PROT_PROTECTED; break;
+		case 3: bYes = (pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET) != 0; break;
+		case 4: bYes = (pAttr->iFlags & PH7_CLASS_ATTR_PROTECTED_SET) != 0; break;
+		case 5: bYes = (pAttr->iFlags & PH7_CLASS_ATTR_STATIC) != 0; break;
+		case 6: bYes = (pAttr->iFlags & PH7_CLASS_ATTR_READONLY) != 0; break;
+		case 7: bYes = 1; break;                                    /* isDefault */
+		case 8: bYes = 0; break;                                    /* isDynamic */
+		case 9: bYes = (pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL) != 0; break;
+		default:
+			bYes = (pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_SET)) != 0;
+			break;
+		}
+	}else if( iWhat == 0 || iWhat == 8 ){
+		/* A dynamic property is public and, by definition, not a default one. */
+		bYes = 1;
+	}
+	ph7_result_bool(pCtx, bYes);
+	return PH7_OK;
+}
+#define REFLECT_PROP_FLAG(NAME,WHAT) \
+	static int NAME(ph7_context *pCtx, int nArg, ph7_value **apArg) \
+	{ \
+		SXUNUSED(nArg); \
+		SXUNUSED(apArg); \
+		return ReflectPropFlag(pCtx, WHAT); \
+	}
+REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_isPublic, 0)
+REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_isPrivate, 1)
+REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_isProtected, 2)
+REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_isPrivateSet, 3)
+REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_isProtectedSet, 4)
+REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_isStatic, 5)
+REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_isReadOnly, 6)
+REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_isDefault, 7)
+REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_isDynamic, 8)
+REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_isVirtual, 9)
+REFLECT_PROP_FLAG(vm_builtin_ReflectionProperty_hasHooks, 10)
+
+/* php has no abstract properties outside an interface stub, and PHL none at
+ * all; isLazy() answers what is true of a VM without lazy objects. */
+static int vm_builtin_ReflectionProperty_false(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx, 0);
+	return PH7_OK;
+}
+/*
+ * isPromoted(): the property came from a constructor-promoted parameter. PHL
+ * records promotion on the ARGUMENT (VM_FUNC_ARG_PROMOTED), not on the
+ * attribute, so the constructor's parameter list is what answers.
+ */
+static int vm_builtin_ReflectionProperty_isPromoted(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	ph7_class_method *pCons;
+	ph7_vm_func_arg *aArg;
+	sxu32 n;
+	int bYes = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) && sRef.pAttr ){
+		ph7_class *pDecl = ReflectMemberDecl(&sRef);
+		pCons = PH7_ClassExtractMethod(pDecl, "__construct", sizeof("__construct")-1);
+		if( pCons ){
+			aArg = (ph7_vm_func_arg *)SySetBasePtr(&pCons->sFunc.aArgs);
+			for( n = 0 ; n < SySetUsed(&pCons->sFunc.aArgs) ; n++ ){
+				if( (aArg[n].iFlags & VM_FUNC_ARG_PROMOTED) == 0 ){
+					continue;
+				}
+				if( SyStringLength(&aArg[n].sName) == (sxu32)sRef.nName
+				 && SyMemcmp(SyStringData(&aArg[n].sName), sRef.zName, (sxu32)sRef.nName) == 0 ){
+					bYes = 1;
+					break;
+				}
+			}
+		}
+	}
+	ph7_result_bool(pCtx, bYes);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionProperty_getModifiers(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) || sRef.pAttr == 0 ){
+		ph7_result_int(pCtx, 1);   /* a dynamic property is public */
+		return PH7_OK;
+	}
+	ph7_result_int64(pCtx, ReflectPropModifiers(sRef.pAttr));
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionProperty_getDeclaringClass(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return ReflectResultClassOf(pCtx, ReflectMemberDecl(&sRef));
+}
+static int vm_builtin_ReflectionProperty_getDocComment(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) && sRef.pAttr
+	 && SyStringLength(&sRef.pAttr->sDoc) > 0 ){
+		ph7_result_string(pCtx, SyStringData(&sRef.pAttr->sDoc),
+			(int)SyStringLength(&sRef.pAttr->sDoc));
+	}else{
+		ph7_result_bool(pCtx, 0);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionProperty_hasType(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx, ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP)
+		&& sRef.pAttr && (sRef.pAttr->iFlags & PH7_CLASS_ATTR_TYPED) != 0);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionProperty_getType(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) || sRef.pAttr == 0
+	 || (sRef.pAttr->iFlags & PH7_CLASS_ATTR_TYPED) == 0
+	 || SyStringLength(&sRef.pAttr->sTypeName) < 1 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return ReflectResultObject(pCtx, ReflectMakeType(pCtx,
+		SyStringData(&sRef.pAttr->sTypeName), (int)SyStringLength(&sRef.pAttr->sTypeName)));
+}
+static int vm_builtin_ReflectionProperty_hasDefaultValue(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) || sRef.pAttr == 0 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	if( SySetUsed(&sRef.pAttr->aByteCode) > 0 || sRef.pAttr->pNativeValue ){
+		ph7_result_bool(pCtx, 1);
+		return PH7_OK;
+	}
+	/* An UNTYPED property with no initializer still defaults to null. */
+	ph7_result_bool(pCtx, (sRef.pAttr->iFlags & PH7_CLASS_ATTR_TYPED) == 0);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionProperty_getDefaultValue(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	ph7_value sValue;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) || sRef.pAttr == 0
+	 || SySetUsed(&sRef.pAttr->aByteCode) < 1 ){
+		/* php 8.5 deprecates the question when there is no default — an
+		 * UNTYPED property still has one (null), a typed one without an
+		 * initializer does not. */
+		if( sRef.pAttr == 0 || (sRef.pAttr->iFlags & PH7_CLASS_ATTR_TYPED) ){
+			PH7_VmThrowError(pCtx->pVm, 0, E_DEPRECATED,
+				"ReflectionProperty::getDefaultValue() for a property without a default "
+				"value is deprecated, use ReflectionProperty::hasDefaultValue() to check "
+				"if the default value exists");
+		}
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	/* Same evaluation path the VM uses for an omitted call argument */
+	PH7_MemObjInit(pCtx->pVm, &sValue);
+	VmLocalExec(pCtx->pVm, &sRef.pAttr->aByteCode, &sValue, FALSE);
+	ph7_result_value(pCtx, &sValue);
+	PH7_MemObjRelease(&sValue);
+	return PH7_OK;
+}
+/* php 8.1 made every reflected member accessible; the setter is a no-op it kept. */
+static int vm_builtin_ReflectionProperty_setAccessible(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return PH7_OK;
+}
+/* getValue()/setValue()/isInitialized() all need the same receiver check. */
+static sxi32 ReflectPropReceiver(ph7_context *pCtx, ReflectMemberRef *pRef,
+	ph7_value *pObject, ph7_class_instance **ppThis, const char *zWho)
+{
+	*ppThis = 0;
+	SXUNUSED(pRef);
+	if( pObject && (pObject->iFlags & MEMOBJ_OBJ) ){
+		*ppThis = (ph7_class_instance *)pObject->x.pOther;
+		return PH7_OK;
+	}
+	return PH7_VmThrowException(pCtx, "TypeError",
+		"ReflectionProperty::%s(): Argument #1 ($object) must be provided for instance properties",
+		zWho);
+}
+static int vm_builtin_ReflectionProperty_getValue(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	ph7_class_instance *pObj;
+	VmClassAttr *pVmAttr;
+	ph7_value *pValue;
+	sxi32 rc;
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	if( sRef.pAttr && (sRef.pAttr->iFlags & PH7_CLASS_ATTR_STATIC) ){
+		return ReflectStaticSlotRead(pCtx, sRef.pClass, sRef.pAttr);
+	}
+	rc = ReflectPropReceiver(pCtx, &sRef, nArg > 0 ? apArg[0] : 0, &pObj, "getValue");
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	pVmAttr = ReflectInstanceAttr(pObj, sRef.zName, sRef.nName);
+	if( pVmAttr == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	if( pVmAttr->iState & VM_CLASS_ATTR_UNINIT ){
+		ph7_class *pDecl = pVmAttr->pAttr && pVmAttr->pAttr->pDeclClass
+			? pVmAttr->pAttr->pDeclClass : pObj->pClass;
+		return PH7_VmThrowException(pCtx, "Error",
+			"Typed property %z::$%.*s must not be accessed before initialization",
+			&pDecl->sName, sRef.nName, sRef.zName);
+	}
+	pValue = PH7_ClassInstanceExtractAttrValue(pObj, pVmAttr);
+	if( pValue ){
+		ph7_result_value(pCtx, pValue);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionProperty_setValue(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	ph7_class_instance *pObj;
+	VmClassAttr *pVmAttr;
+	ph7_value *pSlot;
+	sxi32 rc;
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) || nArg < 1 ){
+		return PH7_OK;
+	}
+	if( sRef.pAttr && (sRef.pAttr->iFlags & PH7_CLASS_ATTR_STATIC) ){
+		/* php's one-argument spelling for a static: setValue($value). Two
+		 * arguments, or one OBJECT, means the instance form was used and the
+		 * value is the second. */
+		ph7_value *pVal = apArg[0];
+		if( nArg > 1 ){
+			pVal = apArg[1];
+		}else if( apArg[0]->iFlags & MEMOBJ_OBJ ){
+			return PH7_OK;
+		}
+		return ReflectStaticSlotWrite(pCtx, sRef.pClass, sRef.pAttr, pVal);
+	}
+	rc = ReflectPropReceiver(pCtx, &sRef, apArg[0], &pObj, "setValue");
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	pVmAttr = ReflectInstanceAttr(pObj, sRef.zName, sRef.nName);
+	if( pVmAttr == 0 ){
+		return PH7_OK;
+	}
+	{
+		ph7_value *pVal = nArg > 1 ? apArg[1] : 0;
+		ph7_value sNull;
+		PH7_MemObjInit(pCtx->pVm, &sNull);
+		if( pVal == 0 ){
+			pVal = &sNull;
+		}
+		rc = ReflectEnforceStore(pCtx, pVmAttr->nIdx, pVal);
+		if( rc != SXRET_OK ){
+			PH7_MemObjRelease(&sNull);
+			return rc;
+		}
+		pSlot = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pVmAttr->nIdx);
+		if( pSlot ){
+			PH7_MemObjStore(pVal, pSlot);
+			pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
+		}
+		PH7_MemObjRelease(&sNull);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionProperty_isInitialized(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	ph7_class_instance *pObj;
+	VmClassAttr *pVmAttr;
+	sxi32 rc;
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	if( sRef.pAttr && (sRef.pAttr->iFlags & PH7_CLASS_ATTR_STATIC) ){
+		SyHashEntry *pSlot;
+		rc = ReflectMaterializeStatics(pCtx, sRef.pClass);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		pSlot = SyHashGet(&pCtx->pVm->hTypedSlot, (const void *)&sRef.pAttr->nIdx, sizeof(sxu32));
+		ph7_result_bool(pCtx, pSlot == 0
+			|| (((VmClassAttr *)pSlot->pUserData)->iState & VM_CLASS_ATTR_UNINIT) == 0);
+		return PH7_OK;
+	}
+	rc = ReflectPropReceiver(pCtx, &sRef, nArg > 0 ? apArg[0] : 0, &pObj, "isInitialized");
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	pVmAttr = ReflectInstanceAttr(pObj, sRef.zName, sRef.nName);
+	ph7_result_bool(pCtx, pVmAttr != 0 && (pVmAttr->iState & VM_CLASS_ATTR_UNINIT) == 0);
+	return PH7_OK;
+}
+/*
+ * The property HOOKS (php 8.4). PHL compiles `public $p { get => ...; }` into
+ * synthesized methods named `__phl_hook_get_NAME` / `__phl_hook_set_NAME`, so
+ * the reflector php answers is a ReflectionMethod over one of those.
+ */
+static int ReflectHookMethod(ph7_context *pCtx, ReflectMemberRef *pRef, int bSet,
+	ph7_class_instance **ppOut)
+{
+	char zName[128];
+	ph7_value sClass, sName;
+	ph7_value *apCtor[2];
+	ph7_class *pDecl;
+	sxi32 rc;
+	int nName;
+	*ppOut = 0;
+	if( pRef->pAttr == 0 ){
+		return PH7_OK;
+	}
+	if( (pRef->pAttr->iFlags & (bSet ? PH7_CLASS_ATTR_HOOK_SET : PH7_CLASS_ATTR_HOOK_GET)) == 0 ){
+		return PH7_OK;
+	}
+	pDecl = ReflectMemberDecl(pRef);
+	nName = SyBufferFormat(zName, sizeof(zName), "%s%.*s",
+		bSet ? "__phl_hook_set_" : "__phl_hook_get_", pRef->nName, pRef->zName);
+	PH7_MemObjInit(pCtx->pVm, &sClass);
+	PH7_MemObjInit(pCtx->pVm, &sName);
+	ph7_value_string(&sClass, SyStringData(&pDecl->sName), (int)SyStringLength(&pDecl->sName));
+	ph7_value_string(&sName, zName, nName);
+	apCtor[0] = &sClass;
+	apCtor[1] = &sName;
+	*ppOut = ReflectConstruct(pCtx, "ReflectionMethod", 2, apCtor, &rc);
+	PH7_MemObjRelease(&sClass);
+	PH7_MemObjRelease(&sName);
+	return rc;
+}
+static int vm_builtin_ReflectionProperty_getHooks(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	ph7_value *pOut = ph7_context_new_array(pCtx);
+	int iHook;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pOut == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) ){
+		ph7_result_value(pCtx, pOut);
+		return PH7_OK;
+	}
+	for( iHook = 0 ; iHook < 2 ; iHook++ ){
+		ph7_class_instance *pMeth = 0;
+		ph7_value sVal, *pKey;
+		sxi32 rc = ReflectHookMethod(pCtx, &sRef, iHook, &pMeth);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+		if( pMeth == 0 ){
+			continue;
+		}
+		pKey = ph7_context_new_scalar(pCtx);
+		if( pKey == 0 ){
+			PH7_ClassInstanceUnref(pMeth);
+			break;
+		}
+		ph7_value_string(pKey, iHook ? "set" : "get", 3);
+		PH7_MemObjInit(pCtx->pVm, &sVal);
+		sVal.x.pOther = pMeth;
+		sVal.iFlags = MEMOBJ_OBJ;
+		ph7_array_add_elem(pOut, pKey, &sVal);   /* takes its own reference */
+		PH7_ClassInstanceUnref(pMeth);
+	}
+	ph7_result_value(pCtx, pOut);
+	return PH7_OK;
+}
+/* `get`/`set` out of a PropertyHookType case (or the bare string php also takes). */
+static int ReflectHookKind(ph7_value *pArg)
+{
+	const char *z;
+	int n;
+	if( pArg == 0 ){
+		return -1;
+	}
+	if( pArg->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pCase = (ph7_class_instance *)pArg->x.pOther;
+		ph7_value *pVal = PH7_NativeAttr(pCase, "value");
+		if( pVal == 0 || (pVal->iFlags & MEMOBJ_STRING) == 0 ){
+			return -1;
+		}
+		z = (const char *)SyBlobData(&pVal->sBlob);
+		n = (int)SyBlobLength(&pVal->sBlob);
+	}else{
+		z = ph7_value_to_string(pArg, &n);
+	}
+	if( n == 3 && SyMemcmp(z, "get", 3) == 0 ){
+		return 0;
+	}
+	if( n == 3 && SyMemcmp(z, "set", 3) == 0 ){
+		return 1;
+	}
+	return -1;
+}
+static int vm_builtin_ReflectionProperty_hasHook(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	int iHook = ReflectHookKind(nArg > 0 ? apArg[0] : 0);
+	int bYes = 0;
+	if( iHook >= 0 && ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) && sRef.pAttr ){
+		bYes = (sRef.pAttr->iFlags & (iHook ? PH7_CLASS_ATTR_HOOK_SET : PH7_CLASS_ATTR_HOOK_GET)) != 0;
+	}
+	ph7_result_bool(pCtx, bYes);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionProperty_getHook(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	ph7_class_instance *pMeth = 0;
+	int iHook = ReflectHookKind(nArg > 0 ? apArg[0] : 0);
+	sxi32 rc;
+	if( iHook < 0 || !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	rc = ReflectHookMethod(pCtx, &sRef, iHook, &pMeth);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( pMeth == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return ReflectResultObject(pCtx, pMeth);
+}
+static int vm_builtin_ReflectionProperty_getAttributes(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ReflectMemberRef sRef;
+	ph7_value sTarget;
+	const char *zClass;
+	int nClass, rc;
+	if( pThis == 0 || !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) || sRef.pAttr == 0 ){
+		ph7_result_value(pCtx, ph7_context_new_array(pCtx));
+		return PH7_OK;
+	}
+	PH7_NativeAttrStr(pThis, "class", &zClass, &nClass);
+	PH7_MemObjInit(pCtx->pVm, &sTarget);
+	ph7_value_string(&sTarget, zClass, nClass);
+	/* 8 = Attribute::TARGET_PROPERTY */
+	rc = ReflectBuildAttrs(pCtx, &sRef.pAttr->aAttrs, "attr", &sTarget,
+		sRef.zName, sRef.nName, 0, 8, nArg, apArg);
+	PH7_MemObjRelease(&sTarget);
+	return rc;
+}
+static int vm_builtin_ReflectionProperty_toString(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return ReflectExportSelf(pCtx, "__reflect_export_prop", 0);
+}
+/* ---- ReflectionClassConstant ---- */
+/* ReflectionClassConstant::__construct(object|string $class, string $constant) */
+static int vm_builtin_ReflectionClassConstant_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class *pClass, *pDecl = 0;
+	const char *zConst;
+	int nConst;
+	SySet aMembers;
+	sxu32 n;
+	int bFound = 0;
+	if( pThis == 0 || nArg < 2 ){
+		return PH7_OK;
+	}
+	pClass = ReflectResolveClass(pVm, apArg[0]);
+	if( pClass == 0 ){
+		const char *zName;
+		int nName;
+		zName = ph7_value_to_string(apArg[0], &nName);
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Class \"%.*s\" does not exist", nName, zName);
+	}
+	zConst = ph7_value_to_string(apArg[1], &nConst);
+	SySetInit(&aMembers, &pVm->sAllocator, sizeof(ReflectMember));
+	ReflectMembers(pVm, pClass, &aMembers, 0);
+	for( n = 0 ; n < SySetUsed(&aMembers) ; n++ ){
+		ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);
+		if( pM->iKind == REFLECT_MEMBER_CONST && ReflectKeyIs(pM, zConst, nConst) ){
+			pDecl = pM->pDecl ? pM->pDecl : pClass;
+			bFound = 1;
+			break;
+		}
+	}
+	SySetRelease(&aMembers);
+	if( !bFound ){
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Constant %z::%.*s does not exist", &pClass->sName, nConst, zConst);
+	}
+	/* php's $class is the DECLARING class, not the one asked about. */
+	pClass = pDecl;
+	PH7_NativeSetAttrStr(pVm, pThis, "class", SyStringData(&pClass->sName),
+		(int)SyStringLength(&pClass->sName));
+	PH7_NativeSetAttrStr(pVm, pThis, "name", zConst, nConst);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClassConstant_getValue(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	ph7_value *pVal;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_CONST) || sRef.pAttr == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	rc = ReflectConstSlot(pCtx, sRef.pClass, sRef.pAttr, &pVal);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	if( pVal ){
+		ph7_result_value(pCtx, pVal);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+static int ReflectConstFlag(ph7_context *pCtx, int iWhat)
+{
+	ReflectMemberRef sRef;
+	int bYes = 0;
+	if( ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_CONST) && sRef.pAttr ){
+		ph7_class_attr *pAttr = sRef.pAttr;
+		switch( iWhat ){
+		case 0: bYes = pAttr->iProtection == PH7_CLASS_PROT_PUBLIC; break;
+		case 1: bYes = pAttr->iProtection == PH7_CLASS_PROT_PRIVATE; break;
+		case 2: bYes = pAttr->iProtection == PH7_CLASS_PROT_PROTECTED; break;
+		case 3: bYes = (pAttr->iFlags & PH7_CLASS_ATTR_FINAL) != 0; break;
+		case 4: bYes = (pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE) != 0; break;
+		case 5: bYes = ReflectHasDeprecated(&pAttr->aAttrs); break;
+		default: bYes = (pAttr->iFlags & PH7_CLASS_ATTR_TYPED) != 0; break;
+		}
+	}
+	ph7_result_bool(pCtx, bYes);
+	return PH7_OK;
+}
+#define REFLECT_CONST_FLAG(NAME,WHAT) \
+	static int NAME(ph7_context *pCtx, int nArg, ph7_value **apArg) \
+	{ \
+		SXUNUSED(nArg); \
+		SXUNUSED(apArg); \
+		return ReflectConstFlag(pCtx, WHAT); \
+	}
+REFLECT_CONST_FLAG(vm_builtin_ReflectionClassConstant_isPublic, 0)
+REFLECT_CONST_FLAG(vm_builtin_ReflectionClassConstant_isPrivate, 1)
+REFLECT_CONST_FLAG(vm_builtin_ReflectionClassConstant_isProtected, 2)
+REFLECT_CONST_FLAG(vm_builtin_ReflectionClassConstant_isFinal, 3)
+REFLECT_CONST_FLAG(vm_builtin_ReflectionClassConstant_isEnumCase, 4)
+REFLECT_CONST_FLAG(vm_builtin_ReflectionClassConstant_isDeprecated, 5)
+REFLECT_CONST_FLAG(vm_builtin_ReflectionClassConstant_hasType, 6)
+
+static int vm_builtin_ReflectionClassConstant_getModifiers(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_CONST) || sRef.pAttr == 0 ){
+		ph7_result_int(pCtx, 0);
+		return PH7_OK;
+	}
+	ph7_result_int64(pCtx, ReflectConstModifiers(sRef.pAttr));
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClassConstant_getDeclaringClass(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_CONST) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return ReflectResultClassOf(pCtx, ReflectMemberDecl(&sRef));
+}
+static int vm_builtin_ReflectionClassConstant_getDocComment(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_CONST) && sRef.pAttr
+	 && SyStringLength(&sRef.pAttr->sDoc) > 0 ){
+		ph7_result_string(pCtx, SyStringData(&sRef.pAttr->sDoc),
+			(int)SyStringLength(&sRef.pAttr->sDoc));
+	}else{
+		ph7_result_bool(pCtx, 0);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClassConstant_getType(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_CONST) || sRef.pAttr == 0
+	 || (sRef.pAttr->iFlags & PH7_CLASS_ATTR_TYPED) == 0
+	 || SyStringLength(&sRef.pAttr->sTypeName) < 1 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return ReflectResultObject(pCtx, ReflectMakeType(pCtx,
+		SyStringData(&sRef.pAttr->sTypeName), (int)SyStringLength(&sRef.pAttr->sTypeName)));
+}
+static int vm_builtin_ReflectionClassConstant_getAttributes(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ReflectMemberRef sRef;
+	ph7_value sTarget;
+	const char *zClass;
+	int nClass, rc;
+	if( pThis == 0 || !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_CONST) || sRef.pAttr == 0 ){
+		ph7_result_value(pCtx, ph7_context_new_array(pCtx));
+		return PH7_OK;
+	}
+	PH7_NativeAttrStr(pThis, "class", &zClass, &nClass);
+	PH7_MemObjInit(pCtx->pVm, &sTarget);
+	ph7_value_string(&sTarget, zClass, nClass);
+	/* 16 = Attribute::TARGET_CLASS_CONSTANT */
+	rc = ReflectBuildAttrs(pCtx, &sRef.pAttr->aAttrs, "attr", &sTarget,
+		sRef.zName, sRef.nName, 0, 16, nArg, apArg);
+	PH7_MemObjRelease(&sTarget);
+	return rc;
+}
+static int vm_builtin_ReflectionClassConstant_toString(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return ReflectExportSelf(pCtx, "__reflect_export_cconst", 0);
+}
+/*
+ * Declare chunk 3. Called from PH7_VmInstallReflectionLib where it used to be
+ * compiled — after chunks 1 and 2, whose ReflectionClass and ReflectionMethod
+ * these answer, and after PropertyHookType, which hasHook()/getHook() declare.
+ *
+ * The method tables are in php's own DECLARATION order.
+ */
+PH7_PRIVATE sxi32 PH7_VmInstallReflectionMember(ph7_vm *pVm)
+{
+	static const PH7_NativePropDef aMemberProp[] = {
+		{ "name",  PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
+		{ "class", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
+	};
+	static const PH7_NativePropDef aPropProp[] = {
+		{ "name",  PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
+		{ "class", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
+		/* PHL-only: the instance a DYNAMIC property was reached through (§7.4 (e)) */
+		{ RP_DYNOBJ, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+	};
+	static const PH7_NativeConstDef aPropConst[] = {
+		{ "IS_STATIC",        PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 16,   0, 0.0 },
+		{ "IS_READONLY",      PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 128,  0, 0.0 },
+		{ "IS_PUBLIC",        PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 1,    0, 0.0 },
+		{ "IS_PROTECTED",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 2,    0, 0.0 },
+		{ "IS_PRIVATE",       PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 4,    0, 0.0 },
+		{ "IS_ABSTRACT",      PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 64,   0, 0.0 },
+		{ "IS_PROTECTED_SET", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 2048, 0, 0.0 },
+		{ "IS_PRIVATE_SET",   PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 4096, 0, 0.0 },
+		{ "IS_VIRTUAL",       PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 512,  0, 0.0 },
+		{ "IS_FINAL",         PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 32,   0, 0.0 },
+	};
+	static const PH7_NativeMethodDef aPropMethod[] = {
+		{ "__clone",     PH7_MOD_PRIVATE, "", "void", vm_builtin_ReflectionFunc_clone },
+		{ "__construct", PH7_MOD_PUBLIC, "object|string $class, string $property", "",
+		  vm_builtin_ReflectionProperty_construct },
+		{ "__toString",  PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionProperty_toString },
+		{ "getName",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_getName },
+		{ "getMangledName", PH7_MOD_PUBLIC, "", "string",
+		  vm_builtin_ReflectionProperty_getMangledName },
+		{ "getValue",    PH7_MOD_PUBLIC, "?object $object = null", "",
+		  vm_builtin_ReflectionProperty_getValue },
+		{ "setValue",    PH7_MOD_PUBLIC, "mixed $objectOrValue, mixed $value = ?", "",
+		  vm_builtin_ReflectionProperty_setValue },
+		{ "getRawValue", PH7_MOD_PUBLIC, "object $object", "mixed",
+		  vm_builtin_ReflectionProperty_getValue },
+		{ "setRawValue", PH7_MOD_PUBLIC, "object $object, mixed $value", "void",
+		  vm_builtin_ReflectionProperty_setValue },
+		/* On a non-lazy object — the only kind PHL has — php's two lazy writers
+		 * are an ordinary raw write and a no-op. */
+		{ "setRawValueWithoutLazyInitialization", PH7_MOD_PUBLIC,
+		  "object $object, mixed $value", "void", vm_builtin_ReflectionProperty_setValue },
+		{ "skipLazyInitialization", PH7_MOD_PUBLIC, "object $object", "void",
+		  vm_builtin_ReflectionProperty_noop },
+		{ "isLazy",      PH7_MOD_PUBLIC, "object $object", "bool",
+		  vm_builtin_ReflectionProperty_false },
+		{ "isInitialized", PH7_MOD_PUBLIC, "?object $object = null", "",
+		  vm_builtin_ReflectionProperty_isInitialized },
+		{ "isPublic",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_isPublic },
+		{ "isPrivate",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_isPrivate },
+		{ "isProtected", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_isProtected },
+		{ "isPrivateSet", PH7_MOD_PUBLIC, "", "bool",
+		  vm_builtin_ReflectionProperty_isPrivateSet },
+		{ "isProtectedSet", PH7_MOD_PUBLIC, "", "bool",
+		  vm_builtin_ReflectionProperty_isProtectedSet },
+		{ "isStatic",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_isStatic },
+		{ "isReadOnly",  PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionProperty_isReadOnly },
+		{ "isDefault",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_isDefault },
+		{ "isDynamic",   PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionProperty_isDynamic },
+		/* PHL has no abstract properties: the modifier only exists on an
+		 * interface's hooked property stub, which PHL does not model. */
+		{ "isAbstract",  PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionProperty_false },
+		{ "isVirtual",   PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionProperty_isVirtual },
+		{ "isPromoted",  PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionProperty_isPromoted },
+		{ "getModifiers", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_getModifiers },
+		{ "getDeclaringClass", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionProperty_getDeclaringClass },
+		{ "getDocComment", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_getDocComment },
+		{ "setAccessible", PH7_MOD_PUBLIC, "bool $accessible", "",
+		  vm_builtin_ReflectionProperty_setAccessible },
+		{ "getType",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_getType },
+		/* php's settable type differs from the declared one only for a hooked
+		 * property with a widening `set` — which PHL does not model. */
+		{ "getSettableType", PH7_MOD_PUBLIC, "", "?ReflectionType",
+		  vm_builtin_ReflectionProperty_getType },
+		{ "hasType",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_hasType },
+		{ "hasDefaultValue", PH7_MOD_PUBLIC, "", "bool",
+		  vm_builtin_ReflectionProperty_hasDefaultValue },
+		{ "getDefaultValue", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionProperty_getDefaultValue },
+		{ "getAttributes", PH7_MOD_PUBLIC, "?string $name = null, int $flags = 0", "array",
+		  vm_builtin_ReflectionProperty_getAttributes },
+		{ "hasHooks",    PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionProperty_hasHooks },
+		{ "getHooks",    PH7_MOD_PUBLIC, "", "array", vm_builtin_ReflectionProperty_getHooks },
+		{ "hasHook",     PH7_MOD_PUBLIC, "PropertyHookType $type", "bool",
+		  vm_builtin_ReflectionProperty_hasHook },
+		{ "getHook",     PH7_MOD_PUBLIC, "PropertyHookType $type", "?ReflectionMethod",
+		  vm_builtin_ReflectionProperty_getHook },
+		{ "isFinal",     PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionProperty_false },
+	};
+	static const PH7_NativeConstDef aConstConst[] = {
+		{ "IS_PUBLIC",    PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 1,  0, 0.0 },
+		{ "IS_PROTECTED", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 2,  0, 0.0 },
+		{ "IS_PRIVATE",   PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 4,  0, 0.0 },
+		{ "IS_FINAL",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 32, 0, 0.0 },
+	};
+	static const PH7_NativeMethodDef aConstMethod[] = {
+		{ "__clone",     PH7_MOD_PRIVATE, "", "void", vm_builtin_ReflectionFunc_clone },
+		{ "__construct", PH7_MOD_PUBLIC, "object|string $class, string $constant", "",
+		  vm_builtin_ReflectionClassConstant_construct },
+		{ "__toString",  PH7_MOD_PUBLIC, "", "string",
+		  vm_builtin_ReflectionClassConstant_toString },
+		{ "getName",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_getName },
+		{ "getValue",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClassConstant_getValue },
+		{ "isPublic",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClassConstant_isPublic },
+		{ "isPrivate",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClassConstant_isPrivate },
+		{ "isProtected", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionClassConstant_isProtected },
+		{ "isFinal",     PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionClassConstant_isFinal },
+		{ "getModifiers", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionClassConstant_getModifiers },
+		{ "getDeclaringClass", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionClassConstant_getDeclaringClass },
+		{ "getDocComment", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionClassConstant_getDocComment },
+		{ "getAttributes", PH7_MOD_PUBLIC, "?string $name = null, int $flags = 0", "array",
+		  vm_builtin_ReflectionClassConstant_getAttributes },
+		{ "isEnumCase",  PH7_MOD_PUBLIC, "", "bool",
+		  vm_builtin_ReflectionClassConstant_isEnumCase },
+		{ "isDeprecated", PH7_MOD_PUBLIC, "", "bool",
+		  vm_builtin_ReflectionClassConstant_isDeprecated },
+		{ "hasType",     PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionClassConstant_hasType },
+		{ "getType",     PH7_MOD_PUBLIC, "", "?ReflectionType",
+		  vm_builtin_ReflectionClassConstant_getType },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "ReflectionProperty", 0, "Reflector", PH7_CLASS_NOCLONE,
+		  aPropMethod, SX_ARRAYSIZE(aPropMethod),
+		  aPropConst, SX_ARRAYSIZE(aPropConst),
+		  aPropProp, SX_ARRAYSIZE(aPropProp), 0, 0 },
+		{ "ReflectionClassConstant", 0, "Reflector", PH7_CLASS_NOCLONE,
+		  aConstMethod, SX_ARRAYSIZE(aConstMethod),
+		  aConstConst, SX_ARRAYSIZE(aConstConst),
+		  aMemberProp, SX_ARRAYSIZE(aMemberProp), 0, 0 },
+	};
+	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));
+}
 PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 {
 	static const struct {
@@ -6523,15 +7353,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 		ProchHostFunction xFunc;
 	} aFunc[] = {
 		{ "__phl_rcinfo",             vm_builtin_phl_rcinfo },
-		{ "__reflect_const_value",    vm_builtin_reflect_const_value },
-		{ "__reflect_static_value",   vm_builtin_reflect_static_value },
-		{ "__reflect_static_set",     vm_builtin_reflect_static_set },
-		{ "__reflect_prop_default",   vm_builtin_reflect_prop_default },
 		{ "__reflect_new_instance",   vm_builtin_reflect_new_instance },
 		{ "__reflect_new_no_ctor",    vm_builtin_reflect_new_no_ctor },
-		{ "__reflect_prop_read",      vm_builtin_reflect_prop_read },
-		{ "__reflect_prop_write",     vm_builtin_reflect_prop_write },
-		{ "__reflect_prop_state",     vm_builtin_reflect_prop_state },
 		{ "__reflect_attr_args",      vm_builtin_reflect_attr_args },
 		{ "__reflect_make_type",      vm_builtin_reflect_make_type },
 	};
