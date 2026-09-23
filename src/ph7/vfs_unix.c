@@ -804,8 +804,12 @@ static ph7_int64 UnixFile_Read(void *pUserData,void *pBuffer,ph7_int64 nDatatoRe
 {
 	ssize_t nRd;
 	nRd = read(SX_PTR_TO_INT(pUserData),pBuffer,(size_t)nDatatoRead);
-	if( nRd < 1 ){
-		/* EOF or IO error */
+	if( nRd < 0 ){
+		/* An IO error. EOF is read()'s ZERO and rides through as one: it is not a
+		 * failure, and the readers above need to tell the two apart — fread() at
+		 * EOF is php's "" and only a real error is its false. Every consumer of
+		 * this driver stops on `< 1`, so both still end a read loop. The Windows
+		 * driver already answers this way (ReadFile succeeds with 0 bytes). */
 		return -1;
 	}
 	return (ph7_int64)nRd;

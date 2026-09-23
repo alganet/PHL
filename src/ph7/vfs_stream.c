@@ -987,11 +987,15 @@ PH7_PRIVATE int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Perform the requested operation */
 	nRead = StreamRead(pDev,pBuf,(ph7_int64)nLen);
-	if( nRead < 1 ){
-		/* Nothing read,return FALSE */
+	if( nRead < 0 ){
+		/* An IO ERROR, which is php's only false here */
 		ph7_result_bool(pCtx,0);
 	}else{
-		/* Make a copy of the data just read */
+		/* Make a copy of the data just read. Zero bytes is EOF, not a failure:
+		 * php answers "" for it (php_stream_read returns 0 and the empty string
+		 * rides through), where PHL answered FALSE — so the ordinary
+		 * `while (!feof($f)) $buf .= fread($f, 8192);` loop ended on a value
+		 * that means "the read failed" and a `=== false` guard fired at EOF. */
 		ph7_result_string(pCtx,(const char *)pBuf,(int)nRead);
 	}
 	/* Release the buffer */
