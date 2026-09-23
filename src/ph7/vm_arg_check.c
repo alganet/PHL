@@ -1358,6 +1358,228 @@ static int VmBuiltinSelfValidatesArity(const char *zName)
 	return 0;
 }
 /*
+ * One parameter of a declared signature, for the named-argument binder below.
+ */
+typedef struct VmSigParam VmSigParam;
+struct VmSigParam
+{
+	const char *zName; int nName;   /* without the '$' */
+	const char *zDef;  int nDef;    /* default TEXT, or 0 when the parameter is required */
+	int bVariadic;
+};
+/*
+ * Split a signature into its parameters: the NAME each one binds by and the default
+ * TEXT to fall back on. The scan is VmDeriveArityFromSig's, kept apart because that one
+ * only counts; a quoted default (`string $separator = ','`) hides a comma, which is why
+ * both go through VmSigSkipQuoted.
+ */
+static int VmSigParams(const char *zSig,VmSigParam *aOut,int nMax)
+{
+	const char *zCur = zSig;
+	const char *zStart = zSig;
+	int n = 0;
+	for(;;){
+		if( zCur[0] == '\'' || zCur[0] == '"' ){
+			zCur = VmSigSkipQuoted(zCur);
+			if( zCur[0] != '\0' ){
+				zCur++;
+			}
+			continue;
+		}
+		if( zCur[0] == '\0' || zCur[0] == ',' ){
+			const char *z = zStart;
+			const char *zEnd = zCur;
+			if( n < nMax ){
+				VmSigParam *p = &aOut[n];
+				const char *zEq = 0;
+				const char *zDollar = 0;
+				p->zName = 0; p->nName = 0; p->zDef = 0; p->nDef = 0; p->bVariadic = 0;
+				for( ; z < zEnd ; z++ ){
+					if( z[0] == '$' && zDollar == 0 ){
+						zDollar = z + 1;
+					}else if( z[0] == '=' && zEq == 0 ){
+						zEq = z + 1;
+					}else if( z[0] == '.' && z + 2 < zEnd && z[1] == '.' && z[2] == '.' ){
+						p->bVariadic = 1;
+					}
+				}
+				if( zDollar ){
+					const char *zStop = zEq ? zEq - 1 : zEnd;
+					const char *zN = zDollar;
+					while( zN < zStop && zN[0] != ' ' && zN[0] != '=' ){
+						zN++;
+					}
+					p->zName = zDollar;
+					p->nName = (int)(zN - zDollar);
+				}
+				if( zEq ){
+					while( zEq < zEnd && zEq[0] == ' ' ){
+						zEq++;
+					}
+					p->zDef = zEq;
+					p->nDef = (int)(zEnd - zEq);
+					while( p->nDef > 0 && p->zDef[p->nDef-1] == ' ' ){
+						p->nDef--;
+					}
+				}
+				if( p->nName > 0 ){
+					n++;
+				}
+			}
+			if( zCur[0] == '\0' ){
+				break;
+			}
+			zCur++;
+			zStart = zCur;
+			continue;
+		}
+		zCur++;
+	}
+	return n;
+}
+/*
+ * Materialize a signature default's TEXT into pOut. php's own stub values, which is a
+ * small set: null, true/false, an integer or float, a quoted string, and `[]`. A default
+ * the table could not state (`= ?`, ~50 rows — §7.4) answers 0, and the caller then reports
+ * the parameter as not passed rather than inventing a value.
+ */
+static int VmSigDefaultValue(ph7_vm *pVm,const VmSigParam *pParam,ph7_value *pOut)
+{
+	const char *z = pParam->zDef;
+	int n = pParam->nDef;
+	if( z == 0 || n < 1 || (n == 1 && z[0] == '?') ){
+		return 0;
+	}
+	if( n == 4 && (SyStrnicmp(z,"null",4) == 0) ){
+		PH7_MemObjRelease(pOut);
+		return 1; /* a released value IS null */
+	}
+	if( n == 4 && SyStrnicmp(z,"true",4) == 0 ){
+		PH7_MemObjInitFromBool(pVm,pOut,1);
+		return 1;
+	}
+	if( n == 5 && SyStrnicmp(z,"false",5) == 0 ){
+		PH7_MemObjInitFromBool(pVm,pOut,0);
+		return 1;
+	}
+	if( n == 2 && z[0] == '[' && z[1] == ']' ){
+		ph7_hashmap *pMap = PH7_NewHashmap(pVm,0,0);
+		if( pMap == 0 ){
+			return 0;
+		}
+		PH7_MemObjRelease(pOut);
+		pOut->x.pOther = pMap;
+		MemObjSetType(pOut,MEMOBJ_HASHMAP);
+		return 1;
+	}
+	if( z[0] == '\'' || z[0] == '"' ){
+		SyString sStr;
+		SyStringInitFromBuf(&sStr,z + 1,n >= 2 ? n - 2 : 0);
+		PH7_MemObjInitFromString(pVm,pOut,&sStr);
+		return 1;
+	}
+	if( z[0] == '-' || z[0] == '+' || (z[0] >= '0' && z[0] <= '9') ){
+		SyString sNum;
+		SyStringInitFromBuf(&sNum,z,(sxu32)n);
+		if( PH7_MemObjInitFromString(pVm,pOut,&sNum) != SXRET_OK ){
+			return 0;
+		}
+		PH7_MemObjToNumeric(pOut);
+		return 1;
+	}
+	return 0; /* a constant expression (M_PI, PHP_ROUND_HALF_UP, …): not evaluated here */
+}
+/*
+ * Bind a call's NAMED arguments to the callee's declared parameter POSITIONS.
+ *
+ * A compiled function does this from its parameter records (VmResolveNamedArgs); a host
+ * function and a native method have none, so every named argument was simply passed in the
+ * order it was WRITTEN. `str_pad(length: 5, string: "x")` reached the builtin as
+ * ("x" at #2, 5 at #1) and reported a TypeError, and — worse, because it is silent —
+ * `str_pad("x", 5, pad_type: STR_PAD_LEFT)` bound the flag as $pad_string and answered
+ * "x0000" where php answers "    x". Both spellings are php 8.0 syntax, and the whole
+ * ~650-builtin surface plus every native method was affected.
+ *
+ * The declared signature is the source of names, defaults and positions — the same string
+ * Reflection prints. Rewrites *pnArg / apArg in place (the caller's argument vector is
+ * scratch it owns) and answers SXRET_OK, or throws php's Error and returns its status.
+ * Callees with a VARIADIC tail are left alone: php collects extra named arguments into it
+ * by NAME, which the positional vector here cannot express.
+ */
+PH7_PRIVATE sxi32 PH7_VmBindNamedArgsToSig(
+	ph7_context *pCtx,      /* Call context (for the throws) */
+	ph7_user_func *pFunc,   /* Callee: its zSig names the parameters */
+	VmCallArgMap *pMap,     /* Call-site map; its aNames[] are per ACTUAL slot */
+	int *pnArg,             /* IN/OUT: argument count */
+	ph7_value **apArg       /* IN/OUT: argument vector */
+	)
+{
+	/* php's own stubs top out well under this; a signature with more parameters simply
+	 * keeps the positional binding it had. */
+#define VM_SIG_MAX_PARAM 32
+	VmSigParam aParam[VM_SIG_MAX_PARAM];
+	ph7_value *apBound[VM_SIG_MAX_PARAM];
+	int nParam,nArg,i,nLast;
+	if( pFunc == 0 || pFunc->zSig == 0 || pMap == 0 || pMap->bHasNamed == 0 ){
+		return SXRET_OK;
+	}
+	nArg = *pnArg;
+	if( nArg < 1 || nArg > VM_SIG_MAX_PARAM ){
+		return SXRET_OK;
+	}
+	nParam = VmSigParams(pFunc->zSig,aParam,VM_SIG_MAX_PARAM);
+	if( nParam < 1 || aParam[nParam-1].bVariadic ){
+		return SXRET_OK;
+	}
+	for( i = 0 ; i < nParam ; ++i ){
+		apBound[i] = 0;
+	}
+	nLast = -1;
+	for( i = 0 ; i < nArg ; ++i ){
+		int p = i;
+		if( i < (int)pMap->nTotal && pMap->aNames[i].nByte > 0 ){
+			SyString *pName = &pMap->aNames[i];
+			for( p = 0 ; p < nParam ; ++p ){
+				if( (int)pName->nByte == aParam[p].nName
+				 && SyMemcmp(pName->zString,aParam[p].zName,pName->nByte) == 0 ){
+					break;
+				}
+			}
+			if( p >= nParam ){
+				return PH7_VmThrowException(pCtx,"Error",
+					"Unknown named parameter $%z",pName);
+			}
+			if( apBound[p] ){
+				return PH7_VmThrowException(pCtx,"Error",
+					"Named parameter $%z overwrites previous argument",pName);
+			}
+		}else if( p >= nParam ){
+			return SXRET_OK; /* more positional arguments than the signature knows */
+		}
+		apBound[p] = apArg[i];
+		if( p > nLast ){
+			nLast = p;
+		}
+	}
+	for( i = 0 ; i <= nLast ; ++i ){
+		if( apBound[i] == 0 ){
+			ph7_value *pDef = ph7_context_new_scalar(pCtx);
+			if( pDef == 0 || !VmSigDefaultValue(pCtx->pVm,&aParam[i],pDef) ){
+				SyString sName;
+				SyStringInitFromBuf(&sName,aParam[i].zName,(sxu32)aParam[i].nName);
+				return PH7_VmThrowException(pCtx,"ArgumentCountError",
+					"%z(): Argument #%d ($%z) not passed",&pFunc->sName,i + 1,&sName);
+			}
+			apBound[i] = pDef;
+		}
+	}
+	for( i = 0 ; i <= nLast ; ++i ){
+		apArg[i] = apBound[i];
+	}
+	*pnArg = nLast + 1;
+	return SXRET_OK;
+}
+/*
  * D1: derive a by-reference position bitmask from a php-style signature string.
  * Bit N is set when positional parameter N is declared by-reference (a `&` appears
  * anywhere in that comma-separated parameter, e.g. `&$matches`, `&...$vars`). Only

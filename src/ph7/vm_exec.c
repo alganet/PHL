@@ -6781,6 +6781,19 @@ NativeCall:
 		sCtx.pCalledClass = pNativeClass;
 		{
 		int nGiven = (int)SySetUsed(&aArg);
+		/* Bind `name:` arguments to the callee's declared POSITIONS before anything
+		 * reads the vector — the arity screen, the ZPP screen and the C body all take
+		 * it positionally. A host function has no compiled parameter records for
+		 * VmResolveNamedArgs to walk, so its signature string is the source of names
+		 * and defaults (PH7_VmBindNamedArgsToSig). Without this every named argument
+		 * simply stayed where it was WRITTEN. */
+		if( pEffCallMap && pEffCallMap->bHasNamed && nGiven > 0 ){
+			rc = PH7_VmBindNamedArgsToSig(&sCtx,pFunc,pEffCallMap,&nGiven,
+				(ph7_value **)SySetBasePtr(&aArg));
+			if( rc != SXRET_OK ){
+				goto NativeCallDone;
+			}
+		}
 		/* PHP-8 arity enforcement (band A #5): a builtin declaring a minimum
 		 * argument count (aBuiltinArity[]) throws a catchable ArgumentCountError
 		 * before the C routine runs when called with too few arguments — instead
@@ -6823,6 +6836,8 @@ NativeCall:
 			 * callers have no channel to thread a status back. */
 			rc = VmHostFuncThrowRc(&sCtx,rc);
 		}
+NativeCallDone:
+		(void)nGiven; /* the named-arg binder's early exit lands here */
 		}
 		/* Release the call context */
 		VmReleaseCallContext(&sCtx);
