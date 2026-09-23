@@ -4148,6 +4148,22 @@ PH7_PRIVATE const char * VmArithTypeName(ph7_value *pVal)
 	return ph7_type_name(pVal);
 }
 /*
+ * php's VALUE name (zend_zval_value_name, 8.3+) rather than its TYPE name: a
+ * boolean is named by the value it holds — `false` / `true` — everywhere php
+ * describes an operand it could not use as one ("on false", "false given").
+ * Deliberately NOT the whole diagnostic surface: the ZPP messages,
+ * `Value of type bool is not callable` and `Unsupported operand types: bool +
+ * array` stay on the TYPE name, which is why this sits beside VmArithTypeName
+ * instead of replacing it.
+ */
+PH7_PRIVATE const char * VmArithValueName(ph7_value *pVal)
+{
+	if( (pVal->iFlags & (MEMOBJ_BOOL|MEMOBJ_OBJ)) == MEMOBJ_BOOL ){
+		return pVal->x.iVal ? "true" : "false";
+	}
+	return VmArithTypeName(&(*pVal));
+}
+/*
  * php's ++/-- operand contract: an array, object or resource operand is a
  * TypeError ("Cannot increment array", "Cannot decrement P", "Cannot increment
  * resource"), never the silent no-op PH7 used to perform. Word it once here so

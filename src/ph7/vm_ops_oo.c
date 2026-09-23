@@ -1575,13 +1575,44 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 				 * Warning that yields NULL. PH7 raised the same notice for both and
 				 * carried on with NULL, so `$null->m()` silently did nothing. */
 				SyString sMemb;
+				const char *zVerb = 0;
 				SyStringInitFromBuf(&sMemb,(const char *)SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
-				if( pInstr->iP2 == PH7_MEMBER_METHOD ){
+				/* WRITING one is an Error too, and php picks its verb from what the
+				 * write actually is. PH7 warned about a READ it never performed and
+				 * then let the store fail into its own
+				 * "Cannot perform assignment on a constant class attribute", so the
+				 * script carried on past a statement php stops it for. The kind is
+				 * read off the following instruction, the way every other write
+				 * classification in this handler is (VmMemberFetchForWrite). */
+				if( pInstr->iP2 == PH7_MEMBER_WRITE ){
+					const VmInstr *pNextW = pInstr + 1;
+					if( (pNextW->iOp == PH7_OP_STORE && pNextW->iP2 != 0)
+					 || pNextW->iOp == PH7_OP_NULLC_JMP /* `$u->p ??= v` */
+					 || VmNextIsCompoundAssign(pNextW) ){
+						zVerb = "assign";
+					}else if( pNextW->iOp == PH7_OP_INCR || pNextW->iOp == PH7_OP_DECR ){
+						zVerb = "increment/decrement";
+					}else{
+						/* The base of a subscript write (`$u->p[] = v`): php asks the
+						 * property for something to modify, and there is no property. */
+						zVerb = "modify";
+					}
+				}else if( pInstr->iP2 == PH7_MEMBER_LIST_TARGET ){
+					zVerb = "assign";
+				}else if( pInstr->iP2 == PH7_MEMBER_REF_TARGET ){
+					zVerb = "modify";
+				}
+				if( pInstr->iP2 == PH7_MEMBER_METHOD || zVerb ){
 					SyBlob sErrM;
 					sxi32 rcErr;
 					SyBlobInit(&sErrM,&pVm->sAllocator);
-					SyBlobFormat(&sErrM,"Call to a member function %z() on %s",
-						&sMemb,VmArithTypeName(pNos));
+					if( zVerb ){
+						SyBlobFormat(&sErrM,"Attempt to %s property \"%z\" on %s",
+							zVerb,&sMemb,VmArithValueName(pNos));
+					}else{
+						SyBlobFormat(&sErrM,"Call to a member function %z() on %s",
+							&sMemb,VmArithValueName(pNos));
+					}
 					VmPopOperand(&pTos,1);
 					PH7_MemObjRelease(pTos);
 					MemObjSetType(pTos,MEMOBJ_NULL);
@@ -1594,7 +1625,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					PH7_THROW_ROUTE_MIDEXPR(rc)
 				}
 				VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Attempt to read property \"%z\" on %s",
-					&sMemb,VmArithTypeName(pNos));
+					&sMemb,VmArithValueName(pNos));
 			}
 			VmPopOperand(&pTos,1);
 			PH7_MemObjRelease(pTos);
@@ -2130,13 +2161,22 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 				}
 			}
 		}else{
-			/* Pop operands */
-			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Invalid class name,PH7 is loading NULL");
+			/* `$v::X` where $v holds neither an object nor a class NAME. php's
+			 * catchable Error, which STOPS the statement; PH7 raised its own
+			 * uncatchable wording and carried on with NULL, so a `$obj::$s = 1`
+			 * through a null base went on to fail again in OP_STORE. */
+			sxi32 rcCn;
 			if( !pInstr->p3 ){
 				VmPopOperand(&pTos,1);
 			}
 			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
 			pTos->nIdx = SXU32_HIGH;
+			rcCn = VmThrowFromVm(&(*pVm),"Error","Class name must be a valid object or a string",
+				sizeof("Class name must be a valid object or a string")-1);
+			if( rcCn == SXERR_ABORT ){ VM_EXIT_ABORT; }
+			rc = rcCn;
+			PH7_THROW_ROUTE_MIDEXPR(rc)
 		}
 	}
 	VM_EXIT_BREAK;

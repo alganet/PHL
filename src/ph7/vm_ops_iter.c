@@ -355,7 +355,7 @@ PH7_PRIVATE VmOpRc VmExecOpForeachInit(ph7_vm *pVm,VmExecState *pState,VmInstr *
 			/* php warns for EVERY non-iterable, null included (PH7 exempted null). */
 			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
 				"foreach() argument must be of type array|object, %s given",
-				VmArithTypeName(pTos));
+				VmArithValueName(pTos));
 		}
 		pc = pInstr->iP2 - 1;
 	}else{

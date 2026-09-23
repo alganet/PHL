@@ -1868,7 +1868,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		/* Subscripting a scalar base is a WARNING in php ("Trying to access array offset
 		 * on int") that yields NULL. PH7 yielded NULL in silence. */
 		VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Trying to access array offset on %s",
-			VmArithTypeName(pTos));
+			VmArithValueName(pTos));
 	}
 	if( iP2 == VM_IDX_CTX_UNSET && rc == SXRET_OK && pNode != 0
 	 && (pTos->iFlags & MEMOBJ_HASHMAP) ){
