@@ -356,10 +356,18 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 	const ph7_fmt_info *pInfo;  /* Pointer to the appropriate info structure */
 	int flag_alternateform; /* True if "#" flag is present */
 	int flag_leftjustify;   /* True if "-" flag is present */
-	int flag_blanksign;     /* True if " " flag is present */
 	int flag_plussign;      /* True if "+" flag is present */
-	int flag_zeropad;       /* True if field width constant starts with zero */
+	int flag_zeropad;       /* True if the pad character is '0' */
+	/* php has ONE pad character per specifier, and the LAST pad flag wins:
+	 * ' ' selects a space (the default), '0' a zero, "'<c>" any byte
+	 * (php_formatted_print's single `padding` local). PH7 carried three
+	 * independent flags instead — a `spaces[]` buffer, a `flag_zeropad` and a
+	 * C-style `flag_blanksign` — so "%0 5d" padded with zeros where php pads with
+	 * spaces, "%0'x5d" ignored the 'x', and "% d" printed C's space-for-a-positive
+	 * -sign ("% d" of 5 was " 5" where php answers "5") — php has no such flag. */
+	char cPad;
 	ph7_value *pArg;         /* Current processed argument */
+	int bDropDigits;         /* php's explicit-precision-empties-%x/%X/%o/%b rule */
 	ph7_int64 iVal;
 	int precision;           /* Precision of the current field */
 	/* zExtra (unused) removed to prevent compiler warning. */
@@ -394,28 +402,25 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 			break;
 		}
 		/* Find out what flags are present */
-		flag_leftjustify = flag_plussign = flag_blanksign =
+		flag_leftjustify = flag_plussign =
 			flag_alternateform = flag_zeropad = 0;
-		/* Reset the pad buffer to spaces: a custom pad char ('X) — or the string
-		 * zero-pad below — from a PREVIOUS specifier must not bleed into this one.
-		 * php resets the pad character for every specifier. */
-		for( idx = 0 ; idx < etSPACESIZE ; ++idx ){ spaces[idx] = ' '; }
+		/* Reset the pad character: a custom pad ('X) from a PREVIOUS specifier must
+		 * not bleed into this one. php resets it for every specifier. */
+		cPad = ' ';
+		bDropDigits = 0;
 		zIn++; /* Jump the precent sign */
 		do{
 			c = zIn[0];
 			switch( c ){
 			case '-':   flag_leftjustify = 1;     c = 0;   break;
 			case '+':   flag_plussign = 1;        c = 0;   break;
-			case ' ':   flag_blanksign = 1;       c = 0;   break;
-			case '0':   flag_zeropad = 1;         c = 0;   break;
+			case ' ':   cPad = ' ';               c = 0;   break;
+			case '0':   cPad = '0';               c = 0;   break;
 			case '\'':
 				zIn++;
 				if( zIn < zEnd ){
 					/* An alternate padding character can be specified by prefixing it with a single quote (') */
-					c = zIn[0];
-					for(idx = 0 ; idx < etSPACESIZE ; ++idx ){
-						spaces[idx] = (char)c;
-					}
+					cPad = zIn[0];
 					c = 0;
 				}
 				break;
@@ -446,15 +451,12 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 				switch( c ){
 				case '-':   flag_leftjustify = 1;     c = 0;   break;
 				case '+':   flag_plussign = 1;        c = 0;   break;
-				case ' ':   flag_blanksign = 1;       c = 0;   break;
-				case '0':   flag_zeropad = 1;         c = 0;   break;
+				case ' ':   cPad = ' ';               c = 0;   break;
+				case '0':   cPad = '0';               c = 0;   break;
 				case '\'':
 					zIn++;
 					if( zIn < zEnd ){
-						c = zIn[0];
-						for(idx = 0 ; idx < etSPACESIZE ; ++idx ){
-							spaces[idx] = (char)c;
-						}
+						cPad = zIn[0];
 						c = 0;
 					}
 					break;
@@ -503,6 +505,11 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 		}
 		zBuf = zWorker; /* Point to the working buffer */
 		length = 0;
+		/* A '0' pad — however it was spelled, "%05d" or the custom "%'05d" — is
+		 * also php's "put the sign in front of the padding" rule
+		 * (php_sprintf_appendstring's `(neg || always_sign) && padding == '0'`),
+		 * which is what the two zero-pad blocks below implement. */
+		flag_zeropad = (cPad == '0');
 		/* zExtra previously assigned here; not used anywhere, removed. */
 		 /*
 		  ** At this point, variables are initialized as follows:
@@ -538,6 +545,10 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 			/* NUL byte is an acceptable value */
 			zWorker[0] = (char)c;
 			length = (int)sizeof(char);
+			/* php's 'c' is the one conversion with no field: it appends the byte
+			 * through php_sprintf_appendchar, which takes neither a width nor an
+			 * alignment, so "%5c" and "%-5c" are both a bare one-byte string. */
+			width = 0;
 			break;
 		case PH7_FMT_STRING:
 			/* the argument is treated as and presented as a string */
@@ -585,12 +596,6 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 			if( precision>=0 && precision<length ){
 				length = precision;
 			}
-			if( flag_zeropad ){
-				/* zero-padding works on strings too */
-				for(idx = 0 ; idx < etSPACESIZE ; ++idx ){
-					spaces[idx] = '0';
-				}
-			}
 			break;
 		case PH7_FMT_RADIX: {
 			/* The digits are produced from an UNSIGNED accumulator. Two php rules
@@ -619,6 +624,28 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 			if( precision>PH7_FMT_BUFSIZ-40 ){
 				precision = PH7_FMT_BUFSIZ-40;
 			}
+			/* An integer conversion has no PRECISION in php: the '.' part of the
+			 * specifier never reaches the digits. `%.5d` of 42 is "42", not the
+			 * "00042" C would print — php's php_sprintf_appendint simply is not
+			 * handed one. For the other radices the same absence is louder:
+			 * php_sprintf_append2n forwards a max_width of 0 with the
+			 * "precision was given" flag set, so ANY explicit precision truncates
+			 * the digits to nothing and `%.1x` of 42 is the EMPTY string (padded
+			 * to $width, which is why "%5.1x" is five spaces). Reproduced rather
+			 * than smoothed over — parity is binding (§10). */
+			bDropDigits = (precision >= 0 && pInfo->base != 10);
+			if( precision >= 0 ){
+				precision = -1;
+			}
+			/* php's "Can't right-pad 0's on integers" (php_sprintf_appendint, which
+			 * %u shares) — and only there: %x/%X/%o/%b go through append2n and %e/%f
+			 * through appenddouble, which both DO right-pad with zeros, so
+			 * "%-08x" of 5 really is "50000000" while "%-08d" is "5       ".
+			 * base 10 is exactly the 'd'/'u' pair of the table above. */
+			if( flag_leftjustify && flag_zeropad && pInfo->base == 10 ){
+				flag_zeropad = 0;
+				cPad = ' ';
+			}
         /* For the format %#x, the value zero is printed "0" not "0x0". */
         if( iVal==0 ) flag_alternateform = 0;
         if( pInfo->flags & PH7_FMT_FLAG_SIGNED ){
@@ -627,15 +654,19 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
             prefix = '-';
           }else{
             uVal = (sxu64)iVal;
-            if( flag_plussign )      prefix = '+';
-            else if( flag_blanksign )prefix = ' ';
-            else                     prefix = 0;
+            /* php's ' ' is a PAD selector, not C's space-for-a-positive-sign, so
+             * '+' is the only flag that prefixes a non-negative value. */
+            prefix = flag_plussign ? '+' : 0;
           }
         }else{
 			uVal = (sxu64)iVal;
 			prefix = 0;
 		}
-        if( flag_zeropad && precision<width-(prefix!=0) ){
+        /* Zero padding is a RIGHT-aligned idea: it fills between the sign and the
+         * first digit. Left-aligned, php pads on the far side like any other pad
+         * character (append2n hands the '0' straight to appendstring's ALIGN_LEFT
+         * arm), so "%-08x" of 5 is "50000000". */
+        if( flag_zeropad && !flag_leftjustify && precision<width-(prefix!=0) ){
           precision = width-(prefix!=0);
         }
         zBuf = &zWorker[PH7_FMT_BUFSIZ-1];
@@ -662,6 +693,9 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
           }
         }
 		length = (int)(&zWorker[PH7_FMT_BUFSIZ-1]-zBuf);
+		if( bDropDigits ){
+			length = 0;
+		}
 		break;
 		}
 		case PH7_FMT_FLOAT:
@@ -772,6 +806,10 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 		 ** "length" characters long.The field width is "width".Do
 		 ** the output.
 		 */
+    if( width > length ){
+      /* Fill the pad buffer with THIS specifier's pad character. */
+      for( idx = 0 ; idx < etSPACESIZE ; ++idx ){ spaces[idx] = cPad; }
+    }
     if( !flag_leftjustify ){
       register int nspace;
       nspace = width-length;
@@ -880,6 +918,11 @@ PH7_PRIVATE int PH7_builtin_sprintf(ph7_context *pCtx,int nArg,ph7_value **apArg
 	if( rc != PH7_OK ){
 		return rc;
 	}
+	/* Seed the result with the empty string: a format whose every conversion
+	 * substitutes NOTHING ("%s" of "", false or null) never calls the consumer at
+	 * all, and an untouched return value is NULL — so sprintf("%s","") answered
+	 * NULL where php answers "". */
+	ph7_result_string(pCtx,"",0);
 	/* Format the string; sprintfConsumer reports an allocation failure via &rc. */
 	rcFmt = PH7_InputFormat(sprintfConsumer,pCtx,zFormat,nLen,nArg,apArg,(void *)&rc,FALSE);
 	if( rc != SXRET_OK ){
@@ -1101,6 +1144,8 @@ PH7_PRIVATE int PH7_builtin_vsprintf(ph7_context *pCtx,int nArg,ph7_value **apAr
 	/* Extract arguments from the hashmap */
 	n = PH7_HashmapValuesToSet(pMap,&sArg);
 	/* Format the string; sprintfConsumer reports an allocation failure via &rc. */
+	/* Empty-result seed — see PH7_builtin_sprintf. */
+	ph7_result_string(pCtx,"",0);
 	rcFmt = PH7_InputFormat(sprintfConsumer,pCtx,zFormat,nLen,n,(ph7_value **)SySetBasePtr(&sArg),(void *)&rc,TRUE);
 	/* Release the container */
 	SySetRelease(&sArg);
