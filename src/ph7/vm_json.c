@@ -1577,13 +1577,24 @@ PH7_PRIVATE int vm_builtin_json_validate(ph7_context *pCtx,int nArg,ph7_value **
 		}
 		nDepth = (int)nWant;
 	}
-	/* php's only meaningful $flags value here is JSON_INVALID_UTF8_IGNORE, which
+	/* php's only ACCEPTED $flags value here is JSON_INVALID_UTF8_IGNORE, which
 	 * makes a payload with undecodable bytes VALID; it rides the same rail as
-	 * json_decode's. Decode in associative mode so the "objects are returned as an
-	 * array" warning is not raised - the decoded value is discarded, only its
-	 * validity matters. */
-	ph7_result_bool(pCtx,VmJsonDecodeInput(pCtx,zIn,nByte,1,nDepth,
-		(nArg > 2 && ph7_value_is_int(apArg[2])) ? ph7_value_to_int(apArg[2]) : 0)
-		== JSON_ERROR_NONE);
+	 * json_decode's. Any other bit is a ValueError naming the one flag there is --
+	 * php refuses the whole json_decode set for this function, and PHL used to take
+	 * whatever it was given and validate on. Decode in associative mode so the
+	 * "objects are returned as an array" warning is not raised - the decoded value
+	 * is discarded, only its validity matters. */
+	{
+		int iFlags = (nArg > 2 && ph7_value_is_int(apArg[2]))
+			? ph7_value_to_int(apArg[2]) : 0;
+		if( (iFlags & ~JSON_INVALID_UTF8_IGNORE) != 0 ){
+			pVm->json_rc = JSON_ERROR_NONE;
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"json_validate(): Argument #3 ($flags) must be a valid flag "
+				"(allowed flags: JSON_INVALID_UTF8_IGNORE)");
+		}
+		ph7_result_bool(pCtx,VmJsonDecodeInput(pCtx,zIn,nByte,1,nDepth,iFlags)
+			== JSON_ERROR_NONE);
+	}
 	return PH7_OK;
 }

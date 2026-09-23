@@ -88,9 +88,13 @@ PH7_PRIVATE int ph7_hashmap_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	if( nArg > 1 ){
 		sxi32 iMode = ph7_value_to_int(apArg[1]);
 		if( iMode != 0 /* COUNT_NORMAL */ && iMode != 1 /* COUNT_RECURSIVE */ ){
+			/* php words a diagnostic with the name the call was WRITTEN with, so
+			 * `sizeof([1],3)` says "sizeof():". The literal here named count() for
+			 * both. */
 			return PH7_VmThrowException(pCtx,
 				"ValueError",
-				"count(): Argument #2 ($mode) must be either COUNT_NORMAL or COUNT_RECURSIVE"
+				"%s(): Argument #2 ($mode) must be either COUNT_NORMAL or COUNT_RECURSIVE",
+				ph7_function_name(pCtx)
 				);
 		}
 		bRecursive = iMode == 1;

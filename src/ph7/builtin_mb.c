@@ -379,9 +379,14 @@ static int PH7_builtin_mb_convert_case(ph7_context *pCtx,int nArg,ph7_value **ap
 	return MbCaseTransform(pCtx,zIn,(sxu32)nByte,
 		iMode == 0 ? 1 : (iMode == 1 ? 0 : 2));
 }
-/* Shared search core: returns the codepoint index or -1 */
+/* Shared search core: returns the codepoint index or -1.
+ *
+ * iOfftCp is the LOWEST codepoint index a match may start at; iMaxCp the highest,
+ * or -1 for no upper bound. The pair is php's asymmetric strrpos rule (a negative
+ * $offset is an upper bound counted back from the end, a non-negative one a lower
+ * bound) — the same split StrRSearchWindow() applies to the 8-bit family. */
 static sxi64 MbSearch(const char *zH,sxu32 nH,const char *zN,sxu32 nN,
-	sxi64 iOfftCp,int bCaseFold,int bReverse,ph7_context *pCtx)
+	sxi64 iOfftCp,sxi64 iMaxCp,int bCaseFold,int bReverse,ph7_context *pCtx)
 {
 	sxu32 iByte,i;
 	SyBlob sFh,sFn;
@@ -420,7 +425,11 @@ static sxi64 MbSearch(const char *zH,sxu32 nH,const char *zN,sxu32 nN,
 	iByte = MbUtf8Skip(zHay,nH,(sxu32)(iOfftCp > 0 ? iOfftCp : 0));
 	for( i = iByte ; i + nN <= nH ; ){
 		if( SyMemcmp(&zHay[i],zNee,nN) == 0 ){
-			iFound = (sxi64)MbUtf8Strlen(zHay,i);
+			sxi64 iAt = (sxi64)MbUtf8Strlen(zHay,i);
+			if( iMaxCp >= 0 && iAt > iMaxCp ){
+				break; /* past the window's upper bound; nothing later qualifies */
+			}
+			iFound = iAt;
 			if( !bReverse ){
 				break;
 			}
@@ -443,7 +452,7 @@ static int PH7_builtin_mb_strpos(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zH,*zN,*zFunc;
 	int nH,nN;
-	sxi64 iOfft = 0,iPos;
+	sxi64 iOfft = 0,iMax = -1,iPos,nCp;
 	int bFold,bRev;
 	if( nArg < 2 ){
 		ph7_result_bool(pCtx,0);
@@ -457,14 +466,48 @@ static int PH7_builtin_mb_strpos(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	zH = ph7_value_to_string(apArg[0],&nH);
 	zN = ph7_value_to_string(apArg[1],&nN);
+	nCp = (sxi64)MbUtf8Strlen(zH,(sxu32)nH);
 	if( nArg > 2 ){
 		iOfft = ph7_value_to_int64(apArg[2]);
-		if( iOfft < 0 ){
-			iOfft = (sxi64)MbUtf8Strlen(zH,(sxu32)nH) + iOfft;
-			if( iOfft < 0 ){ iOfft = 0; }
+		/* php requires -strlen <= $offset <= strlen, in CODE POINTS here, and
+		 * raises rather than answering "not found" — the same rule the 8-bit
+		 * family got, which these three were left out of: mb_strpos("abc","c",7)
+		 * answered false, and false is what a genuine miss answers too. */
+		if( iOfft < 0 ? (iOfft < -nCp) : (iOfft > nCp) ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"%s(): Argument #3 ($offset) must be contained in argument #1 ($haystack)",
+				zFunc);
+		}
+		if( bRev ){
+			/* A negative offset is an UPPER bound on where the match may START,
+			 * not a start position: mb_strrpos("áéíóú","í",-1) is 2 in php, where
+			 * counting it forward answered false — and -5 is php's false, where
+			 * counting it forward answered 2. */
+			if( iOfft < 0 ){
+				iMax = nCp + iOfft;
+				iOfft = 0;
+			}
+		}else if( iOfft < 0 ){
+			iOfft = nCp + iOfft;
 		}
 	}
-	iPos = MbSearch(zH,(sxu32)nH,zN,(sxu32)nN,iOfft,bFold,bRev,pCtx);
+	if( nN == 0 ){
+		/* php 8 matches an EMPTY needle at the offset itself (and, searching
+		 * backwards, at the last position the window allows) — `mb_strpos("abc","")`
+		 * is 0 and `mb_strrpos("abc","")` is 3. These three answered false, which is
+		 * also what a genuine miss answers; the 8-bit family already had the rule. */
+		iPos = bRev ? (iMax >= 0 ? iMax : nCp) : iOfft;
+		if( iPos > nCp ){
+			iPos = nCp;
+		}
+		if( iPos < iOfft ){
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		ph7_result_int64(pCtx,iPos);
+		return PH7_OK;
+	}
+	iPos = MbSearch(zH,(sxu32)nH,zN,(sxu32)nN,iOfft,iMax,bFold,bRev,pCtx);
 	if( iPos < 0 ){
 		ph7_result_bool(pCtx,0);
 	}else{
