@@ -482,6 +482,18 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallProperty(ph7_vm *pVm,ph7_class *pClass,
 	if( pDef->iMods & PH7_MOD_HIDDEN ){
 		iFlags |= PH7_CLASS_ATTR_HIDDEN;
 	}
+	/* php declares several native slots readonly and asymmetrically visible
+	 * (`public protected(set) readonly string $path` on Directory), and both are
+	 * php-visible twice over: the write refusal and Reflection's modifier list. */
+	if( pDef->iMods & PH7_MOD_READONLY ){
+		iFlags |= PH7_CLASS_ATTR_READONLY;
+	}
+	if( pDef->iMods & PH7_MOD_PROT_SET ){
+		iFlags |= PH7_CLASS_ATTR_PROTECTED_SET;
+	}
+	if( pDef->iMods & PH7_MOD_PRIV_SET ){
+		iFlags |= PH7_CLASS_ATTR_PRIVATE_SET;
+	}
 	pAttr = PH7_NewClassAttr(&(*pVm),&sName,0,NativeProtection(pDef->iMods),iFlags);
 	if( pAttr == 0 ){
 		return SXERR_MEM;

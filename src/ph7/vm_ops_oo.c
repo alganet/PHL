@@ -257,7 +257,13 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 		 * shape as the enum reject below: no instance, no __destruct. */
 		SyBlob sErrMsg;
 		SyBlobInit(&sErrMsg,&pVm->sAllocator);
-		SyBlobFormat(&sErrMsg,"Instantiation of class %z is not allowed",&pClass->sName);
+		if( pClass->zNewRefusal ){
+			/* php words a few of these per class — Directory's names dir() as the
+			 * way to get one — so the spec's own sentence wins when it has one. */
+			SyBlobAppend(&sErrMsg,pClass->zNewRefusal,SyStrlen(pClass->zNewRefusal));
+		}else{
+			SyBlobFormat(&sErrMsg,"Instantiation of class %z is not allowed",&pClass->sName);
+		}
 		VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 		if( nCtorArgs > 0 ){
 			VmPopOperand(&pTos,nCtorArgs);

@@ -1144,6 +1144,10 @@ struct ph7_class
 	                       * keys to both. Never consulted by get_object_vars()/foreach, which php
 	                       * answers from the real (scoped) properties, nor yet by serialize(),
 	                       * where php's answer is an __serialize/__unserialize pair. */
+	const char *zNewRefusal; /* php's create_object refusal TEXT for a PH7_CLASS_NOINSTANTIATE
+	                       * class, when it is not the usual "Instantiation of class %s is not
+	                       * allowed". php words Directory's as "Cannot directly construct
+	                       * Directory, use dir() instead"; 0 selects the standard sentence. */
 };
 /* Class configuration flags */
 #define PH7_CLASS_FINAL       0x001 /* Class is final [cannot be extended] */
@@ -1299,6 +1303,9 @@ struct ph7_class_attr
 #define PH7_MOD_ABSTRACT   0x10 /* No body: an interface's method, or an abstract declaration */
 #define PH7_MOD_HIDDEN     0x20 /* PROPERTY only: an engine slot php keeps in its own struct and
                                  * never presents (PH7_CLASS_ATTR_HIDDEN). */
+#define PH7_MOD_READONLY   0x40 /* PROPERTY only: php's `readonly` (PH7_CLASS_ATTR_READONLY) */
+#define PH7_MOD_PROT_SET   0x80 /* PROPERTY only: php's `protected(set)` asymmetric visibility */
+#define PH7_MOD_PRIV_SET   0x100 /* PROPERTY only: php's `private(set)` asymmetric visibility */
 /* Literal kinds a native class constant may carry */
 #define PH7_NATIVE_VAL_NULL   0
 #define PH7_NATIVE_VAL_INT    1
@@ -4224,6 +4231,7 @@ PH7_PRIVATE int PH7_builtin_ftruncate(ph7_context *pCtx,int nArg,ph7_value **apA
 PH7_PRIVATE int PH7_builtin_fwrite(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_md5_file(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_dir(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_parse_ini_file(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_pclose(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_popen(ph7_context *pCtx,int nArg,ph7_value **apArg);

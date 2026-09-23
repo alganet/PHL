@@ -4269,7 +4269,8 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 					pBase = 0; /* Never inherit from an enum */
 				}else if( pBase->iFlags & PH7_CLASS_FINAL ){
 					rc = PH7_GenCompileError(pGen,E_ERROR,nLine,
-						"Class '%z' may not inherit from final class '%z'",pName,&pBase->sName);
+						/* php's wording, unquoted: "Class B cannot extend final class A". */
+						"Class %z cannot extend final class %z",pName,&pBase->sName);
 					if( rc == SXERR_ABORT ){
 						SyBlobRelease(&sResolved);
 						return SXERR_ABORT;

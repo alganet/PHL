@@ -2751,6 +2751,11 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"rewinddir", PH7_builtin_rewinddir },
 		{"closedir",  PH7_builtin_closedir},
 		{"opendir",   PH7_builtin_opendir },
+		/* php's dir() lives with opendir(), which is what it calls and what its
+		 * failure warning is worded by. Registering it here also means the TINY
+		 * build drops BOTH: the prelude copy was defined there and fataled on
+		 * "Call to undefined function opendir()" the moment it was called. */
+		{"dir",       PH7_builtin_dir },
 		{"readfile",  PH7_builtin_readfile},
 		{"file_get_contents", PH7_builtin_file_get_contents},
 		{"file_put_contents", PH7_builtin_file_put_contents},

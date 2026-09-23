@@ -19,37 +19,6 @@
  * Throwable's `extends Stringable`, the exception family's FINAL getters and
  * private __clone, or a typed slot with no default (Error::$line). */
 #define PH7_BUILTIN_LIB \
-	"/* Directory releated IO */"\
-	"class Directory {"\
-	"public $handle = null;"\
-	"public $path  = null;"\
-	"public function __construct(string $path)"\
-	"{"\
-	"   $this->handle = opendir($path);"\
-	"   if( $this->handle !== FALSE ){"\
-	"      $this->path = $path;"\
-	"   }"\
-	"}"\
-	"public function __destruct()"\
-	"{"\
-	"  if( $this->handle != null ){"\
-	"       closedir($this->handle);"\
-	"  }"\
-	"}"\
-	"public function read()"\
-	"{"\
-	"    return readdir($this->handle);"\
-	"}"\
-	"public function rewind()"\
-	"{"\
-	"    rewinddir($this->handle);"\
-	"}"\
-	"public function close()"\
-	"{"\
-	"    closedir($this->handle);"\
-	"    $this->handle = null;"\
-	"}"\
-	"}"\
 	/* Fiber and Generator are declared ENTIRELY from C — class, private slots and
 	 * every method — by PH7_VmInstallFiberNative / PH7_VmInstallGeneratorNative.
 	 * They are the first two builtin classes with no presence in this chunk at all.
@@ -83,12 +52,6 @@
 	"    $this->message = $message;"\
 	"    $this->since = $since;"\
 	"  }"\
-	"}"\
-	/* This one definition serves every spelling — function names are case-insensitive
-	   (hFunction, vm.c). The second, byte-identical `Dir()` copy that used to sit here
-	   was PH7's manual hack for that, the same one the keyword table had. */\
-	"function dir(string $directory, $context = null){"\
-	"   return new Directory($directory);"\
 	"}"\
 	"function scandir(string $directory,int $sorting_order = SCANDIR_SORT_ASCENDING, $context = null)"\
     "{"\
@@ -1183,6 +1146,107 @@ static sxi32 VmInstallCoreInterfaces(ph7_vm *pVm)
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }
 /*
+ * ---------------------------------------------------------------------------
+ * php's Directory — the object `dir()` answers.
+ *
+ * php declares it FINAL with **no constructor at all**: the class is created by
+ * `dir()` and `new Directory` is refused in the create_object handler, with a
+ * sentence that names dir() as the way to get one. Its two slots are
+ * `public protected(set) readonly`, so a script can read `$d->path` and never
+ * write it, and its three methods declare return types (`read(): string|false`).
+ * The chunk had a public constructor, a __destruct php does not declare, no
+ * types anywhere and writable slots.
+ * ---------------------------------------------------------------------------
+ */
+#define DIR_HANDLE "handle"
+#define DIR_PATH   "path"
+/*
+ * Forward one method to the engine's own directory builtin (rule 7: call, don't
+ * reimplement). php's Directory methods are `php_stream_readdir(...)` on the very
+ * stream `readdir()` uses, and a CLOSED handle is a TypeError there — the one
+ * place php's wording names the class rather than the function.
+ */
+static int VmDirClosed(ph7_value *pHandle)
+{
+	io_private *pDev = (io_private *)pHandle->x.pOther;
+	return IO_PRIVATE_INVALID(pDev);
+}
+static int VmDirForward(ph7_context *pCtx,const char *zFunc,const char *zMethod)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pHandle = pThis ? PH7_NativeAttr(pThis,DIR_HANDLE) : 0;
+	ph7_value *apArg[1];
+	ph7_value sResult;
+	ph7_value sName;
+	SyString sStr;
+	sxi32 rc;
+	/* php's check is `php_stream_from_zval` on a stream it CLOSED: closedir()
+	 * keeps the resource alive and marks it (gettype() answers
+	 * "resource (closed)"), so the test is the magic, not the type. */
+	if( pHandle == 0 || (pHandle->iFlags & MEMOBJ_RES) == 0
+	 || VmDirClosed(pHandle) ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"Directory::%s(): cannot use Directory resource after it has been closed",
+			zMethod);
+	}
+	SyStringInitFromBuf(&sStr,zFunc,SyStrlen(zFunc));
+	PH7_MemObjInit(pCtx->pVm,&sName);
+	PH7_MemObjInitFromString(pCtx->pVm,&sName,&sStr);
+	PH7_MemObjInit(pCtx->pVm,&sResult);
+	apArg[0] = pHandle;
+	rc = PH7_VmCallUserFunction(pCtx->pVm,&sName,1,apArg,&sResult);
+	PH7_MemObjRelease(&sName);
+	if( rc == SXRET_OK ){
+		ph7_result_value(pCtx,&sResult);
+	}
+	PH7_MemObjRelease(&sResult);
+	return PH7_OK;
+}
+static int vm_builtin_Directory_read(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return VmDirForward(pCtx,"readdir","read");
+}
+static int vm_builtin_Directory_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return VmDirForward(pCtx,"rewinddir","rewind");
+}
+static int vm_builtin_Directory_close(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return VmDirForward(pCtx,"closedir","close");
+}
+static sxi32 VmInstallDirectory(ph7_vm *pVm)
+{
+	static const PH7_NativePropDef aDirProp[] = {
+		{ DIR_PATH,   PH7_MOD_PUBLIC|PH7_MOD_PROT_SET|PH7_MOD_READONLY,
+		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
+		{ DIR_HANDLE, PH7_MOD_PUBLIC|PH7_MOD_PROT_SET|PH7_MOD_READONLY,
+		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "mixed" },
+	};
+	static const PH7_NativeMethodDef aDirMethod[] = {
+		{ "close",  PH7_MOD_PUBLIC, "", "void", vm_builtin_Directory_close },
+		{ "rewind", PH7_MOD_PUBLIC, "", "void", vm_builtin_Directory_rewind },
+		{ "read",   PH7_MOD_PUBLIC, "", "string|false", vm_builtin_Directory_read },
+	};
+	static const PH7_NativeClassSpec sSpec = {
+		"Directory", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_NOINSTANTIATE,
+		aDirMethod, SX_ARRAYSIZE(aDirMethod), 0, 0,
+		aDirProp, SX_ARRAYSIZE(aDirProp), 0, 0, 0
+	};
+	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),&sSpec,1);
+	if( rc == SXRET_OK ){
+		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"Directory",sizeof("Directory")-1,FALSE,0);
+		if( pClass ){
+			/* php words this refusal per class rather than with the generic
+			 * "Instantiation of class %s is not allowed". */
+			pClass->zNewRefusal = "Cannot directly construct Directory, use dir() instead";
+		}
+	}
+	return rc;
+}
+/*
  * stdClass and Random\RandomException.
  *
  * stdClass is EMPTY in php too — it holds only dynamic properties — so the whole
@@ -1212,6 +1276,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallBuiltinLib(ph7_vm *pVm)
 	VmInstallCoreInterfaces(&(*pVm));
 	VmInstallExceptions(&(*pVm));
 	VmInstallStdClasses(&(*pVm));
+	VmInstallDirectory(&(*pVm));
 	SyStringInitFromBuf(&sBuiltin,PH7_BUILTIN_LIB,sizeof(PH7_BUILTIN_LIB)-1);
 	/* Compile the built-in library */
 	VmEvalChunk(&(*pVm),0,&sBuiltin,PH7_PHP_ONLY,FALSE);

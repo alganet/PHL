@@ -3537,6 +3537,9 @@ static sxi32 ReflectCheckInstantiable(ph7_context *pCtx, ph7_class *pClass)
 		/* The `new` path's create_object refusal, which php raises here too —
 		 * ReflectionClass::newInstance() on a Closure is the same Error, not a
 		 * visibility one about its private constructor. */
+		if( pClass->zNewRefusal ){
+			return PH7_VmThrowException(pCtx, "Error", "%s", pClass->zNewRefusal);
+		}
 		return PH7_VmThrowException(pCtx, "Error",
 			"Instantiation of class %z is not allowed", &pClass->sName);
 	}

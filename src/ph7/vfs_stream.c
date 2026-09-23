@@ -1243,13 +1243,58 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 	/* Open the target directory */
 	rc = pStream->xOpenDir(zPath,nArg > 1 ? apArg[1] : 0,&pDev->pHandle);
 	if( rc != PH7_OK ){
-		/* IO error,return FALSE */
+		/* IO error: php WARNS here — `opendir(/nope): Failed to open directory: No
+		 * such file or directory` — and PHL returned FALSE in silence. The message
+		 * names the ACTIVE function, which is how dir() gets php's `dir(...)`
+		 * wording out of the same call. */
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s): Failed to open directory: %s",
+			ph7_function_name(pCtx),zPath,VfsStrerror(errno));
 		ReleaseIOPrivate(pCtx,pDev);
 		ph7_result_bool(pCtx,0);
 	}else{
 		/* Return the handle as a resource */
 		ph7_result_resource(pCtx,pDev);
 	}
+	return PH7_OK;
+}
+/*
+ * `dir(string $directory, $context = null): Directory|false`
+ *
+ * php's own dir() opens the stream and fills the object itself, which is why its
+ * class needs no constructor. The open goes through the engine's opendir builtin
+ * with THIS context, so the failure warning names `dir(...)` exactly as php's
+ * does; a failed open is FALSE, where the chunk's version handed back a Directory
+ * whose handle was `false`.
+ */
+PH7_PRIVATE int PH7_builtin_dir(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pObj;
+	ph7_class *pClass;
+	ph7_value *pRet;
+	int rc;
+	rc = PH7_builtin_opendir(pCtx,nArg,apArg);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	pRet = pCtx->pRet;
+	if( pRet == 0 || (pRet->iFlags & MEMOBJ_RES) == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pClass = PH7_VmExtractClass(pCtx->pVm,"Directory",sizeof("Directory")-1,FALSE,0);
+	pObj = pClass ? PH7_NewClassInstance(pCtx->pVm,pClass) : 0;
+	if( pObj == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* php's order: the path first, then the handle (var_dump shows both). */
+	{
+		int nPath = 0;
+		const char *zPath = nArg > 0 ? ph7_value_to_string(apArg[0],&nPath) : "";
+		PH7_NativeSetAttrStr(pCtx->pVm,pObj,"path",zPath,nPath);
+	}
+	PH7_NativeSetProp(pCtx->pVm,pObj,"handle",sizeof("handle")-1,pRet);
+	PH7_NativeResultObject(pCtx,pObj);
 	return PH7_OK;
 }
 /*
