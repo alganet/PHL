@@ -481,6 +481,29 @@ static const struct VmBuiltinSig {
 	{ "ctype_xdigit", "mixed $text", "bool" },
 	{ "current", "object|array $array", "mixed" },
 	{ "date", "string $format, ?int $timestamp = NULL", "string" },
+	{ "date_add", "DateTime $object, DateInterval $interval", "DateTime" },
+	{ "date_create", "string $datetime = 'now', ?DateTimeZone $timezone = NULL", "DateTime|false" },
+	{ "date_create_from_format", "string $format, string $datetime, ?DateTimeZone $timezone = NULL", "DateTime|false" },
+	{ "date_create_immutable", "string $datetime = 'now', ?DateTimeZone $timezone = NULL", "DateTimeImmutable|false" },
+	{ "date_create_immutable_from_format", "string $format, string $datetime, ?DateTimeZone $timezone = NULL", "DateTimeImmutable|false" },
+	{ "date_date_set", "DateTime $object, int $year, int $month, int $day", "DateTime" },
+	{ "date_diff", "DateTimeInterface $baseObject, DateTimeInterface $targetObject, bool $absolute = false", "DateInterval" },
+	{ "date_format", "DateTimeInterface $object, string $format", "string" },
+	{ "date_get_last_errors", "", "array|false" },
+	{ "date_interval_create_from_date_string", "string $datetime", "DateInterval|false" },
+	{ "date_interval_format", "DateInterval $object, string $format", "string" },
+	{ "date_isodate_set", "DateTime $object, int $year, int $week, int $dayOfWeek = 1", "DateTime" },
+	{ "date_modify", "DateTime $object, string $modifier", "DateTime|false" },
+	{ "date_offset_get", "DateTimeInterface $object", "int" },
+	{ "date_sub", "DateTime $object, DateInterval $interval", "DateTime" },
+	{ "date_time_set", "DateTime $object, int $hour, int $minute, int $second = 0, int $microsecond = 0", "DateTime" },
+	{ "date_timestamp_get", "DateTimeInterface $object", "int" },
+	{ "date_timestamp_set", "DateTime $object, int $timestamp", "DateTime" },
+	{ "date_timezone_get", "DateTimeInterface $object", "DateTimeZone|false" },
+	{ "date_timezone_set", "DateTime $object, DateTimeZone $timezone", "DateTime" },
+	{ "timezone_name_get", "DateTimeZone $object", "string" },
+	{ "timezone_offset_get", "DateTimeZone $object, DateTimeInterface $datetime", "int" },
+	{ "timezone_open", "string $timezone", "DateTimeZone|false" },
 	{ "date_default_timezone_get", "", "string" },
 	{ "date_default_timezone_set", "string $timezoneId", "bool" },
 	{ "debug_backtrace", "int $options = 1, int $limit = 0", "array" },
@@ -933,30 +956,35 @@ static int VmSigTypeHas(const char *zType,int nType,const char *zTok)
  * builtin type keywords)? A class-typed parameter accepts an object, so it must
  * not be rejected by the array/object/resource screen below.
  */
-static int VmSigTypeHasClass(const char *zType,int nType)
+/* Is this one arm of a declared type a BUILTIN type name rather than a class? */
+static int VmSigArmIsBuiltinType(const char *zArm,int nArm)
 {
 	static const char *azBuiltin[] = {
 		"int","float","string","bool","array","object","callable","iterable",
 		"mixed","null","void","resource","false","true","never","self","static"
 	};
+	int k;
+	for( k = 0 ; k < (int)SX_ARRAYSIZE(azBuiltin) ; ++k ){
+		int nB = (int)SyStrlen(azBuiltin[k]);
+		if( nArm == nB && SyMemcmp(zArm,azBuiltin[k],(sxu32)nB) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+static int VmSigTypeHasClass(const char *zType,int nType)
+{
 	int i = 0;
 	if( zType[0] == '?' ){
 		zType++;
 		nType--;
 	}
 	while( i < nType ){
-		int j = i, k, bKnown = 0;
+		int j = i;
 		while( j < nType && zType[j] != '|' ){
 			j++;
 		}
-		for( k = 0 ; k < (int)SX_ARRAYSIZE(azBuiltin) ; ++k ){
-			int nB = (int)SyStrlen(azBuiltin[k]);
-			if( j - i == nB && SyMemcmp(&zType[i],azBuiltin[k],(sxu32)nB) == 0 ){
-				bKnown = 1;
-				break;
-			}
-		}
-		if( !bKnown && j > i ){
+		if( j > i && !VmSigArmIsBuiltinType(&zType[i],j - i) ){
 			return 1;
 		}
 		i = j + 1;
@@ -967,6 +995,45 @@ static int VmSigTypeHasClass(const char *zType,int nType)
  * php's ", X given" tail: like ph7_type_name() but an object reports its CLASS,
  * which is what php prints in a TypeError.
  */
+/*
+ * Does pObj satisfy any CLASS arm of a declared type?
+ *
+ * Answers TRUE (unscreened) when an arm names something this VM has not declared:
+ * the signatures describe php's surface, parts of which PHL models differently
+ * (the resource-backed handles the RES branch below already excuses), and a name
+ * that resolves to nothing must not turn into a rejection of a valid argument.
+ */
+static int VmSigObjSatisfiesClass(ph7_vm *pVm,const char *zType,int nType,
+	ph7_class_instance *pObj)
+{
+	int i = 0;
+	if( pObj == 0 || pObj->pClass == 0 ){
+		return 1;
+	}
+	if( zType[0] == '?' ){
+		zType++;
+		nType--;
+	}
+	while( i < nType ){
+		int j = i;
+		while( j < nType && zType[j] != '|' ){
+			j++;
+		}
+		if( j > i && !VmSigArmIsBuiltinType(&zType[i],j - i) ){
+			ph7_class *pClass = PH7_VmExtractClass(&(*pVm),&zType[i],(sxu32)(j - i),FALSE,0);
+			if( pClass == 0 ){
+				/* Either a builtin type name (already excluded by the caller) or a
+				 * class this build does not declare: nothing to judge. */
+				return 1;
+			}
+			if( PH7_VmInstanceOf(pObj->pClass,pClass) ){
+				return 1;
+			}
+		}
+		i = j + 1;
+	}
+	return 0;
+}
 static const char * VmArgTypeName(ph7_value *pVal)
 {
 	if( (pVal->iFlags & MEMOBJ_OBJ) != 0 ){
@@ -1116,6 +1183,21 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 					int bStringable = VmSigTypeHas(zType,nType,"string")
 						&& PH7_ArgSatisfiesString(pArg);
 					if( !bStringable ){
+						zGiven = VmArgTypeName(pArg);
+					}
+				}else if( VmSigTypeHasClass(zType,nType)
+				       && !VmSigTypeHas(zType,nType,"object")
+				       && !VmSigTypeHas(zType,nType,"iterable")
+				       && !VmSigTypeHas(zType,nType,"callable")
+				       && !VmSigTypeHas(zType,nType,"string") ){
+					/* A class-typed parameter given an object of the WRONG class.
+					 * Naming a class used to be enough to let ANY object through, so
+					 * `date_modify($immutable)` and `timezone_name_get($date)`
+					 * answered silently where php raises. Only decided when every
+					 * class arm resolves to a declared class: an arm PHL does not
+					 * declare cannot be judged, so the parameter stays unscreened. */
+					if( !VmSigObjSatisfiesClass(pCtx->pVm,zType,nType,
+						(ph7_class_instance *)pArg->x.pOther) ){
 						zGiven = VmArgTypeName(pArg);
 					}
 				}

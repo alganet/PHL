@@ -36,6 +36,13 @@
 PH7_PRIVATE void PH7_NativeLiteralValue(ph7_vm *pVm,const void *pLiteral,ph7_value *pOut)
 {
 	const PH7_NativeConstDef *pLit = (const PH7_NativeConstDef *)pLiteral;
+	/* Every PH7_MemObjInitFrom* below SyZeros the whole value, nIdx included — and
+	 * a CONSTANT's or STATIC's slot is addressed by that index afterwards
+	 * (`pAttr->nIdx = pMemObj->nIdx`). Losing it pointed every native class
+	 * constant at slot 0, which reads as $GLOBALS. The instance-property path was
+	 * unaffected (it records the index before calling this), which is why nothing
+	 * saw it until the date family declared the first native constants. */
+	sxu32 nSlot = pOut->nIdx;
 	switch( pLit->iType ){
 		case PH7_NATIVE_VAL_INT:
 			PH7_MemObjInitFromInt(&(*pVm),pOut,pLit->iValue);
@@ -58,6 +65,7 @@ PH7_PRIVATE void PH7_NativeLiteralValue(ph7_vm *pVm,const void *pLiteral,ph7_val
 			PH7_MemObjInit(&(*pVm),pOut);
 			break;
 	}
+	pOut->nIdx = nSlot;
 }
 /*
  * Write a declared property of an instance from C.
@@ -292,9 +300,13 @@ static sxi32 NativeDeclareClass(ph7_vm *pVm,const PH7_NativeClassSpec *pSpec,ph7
 		if( pBase == 0 ){
 			return SXERR_NOTFOUND;
 		}
+		/* The VM's OWN generator state, not a NULL one: PH7_ClassInherit takes its
+		 * scratch allocator from pGen->pVm and reports every inheritance rule it
+		 * enforces through PH7_GenCompileError(pGen, ...). Passing 0 crashed the
+		 * moment a native spec first named a parent (the date exceptions). */
 		rc = (pClass->iFlags & PH7_CLASS_INTERFACE)
 			? PH7_ClassInterfaceInherit(pClass,pBase)
-			: PH7_ClassInherit(0,pClass,pBase);
+			: PH7_ClassInherit(&pVm->sCodeGen,pClass,pBase);
 		if( rc != SXRET_OK ){
 			return rc;
 		}

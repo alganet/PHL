@@ -690,7 +690,14 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
 			int neg = 0;
 			sxi64 v = 0;
 			const char *zNumStart = z;
-			if( z[0]=='+' || z[0]=='-' ){ neg = (z[0]=='-'); z++; }
+			if( z[0]=='+' || z[0]=='-' ){
+				neg = (z[0]=='-');
+				z++;
+				/* php's lexer takes the sign as its own token, so whitespace may
+				 * follow it: "1 year + 3 months" is a relative sequence there and
+				 * was a parse FAILURE here. */
+				DT_SKIP_WS();
+			}
 			if( z >= zEnd || !SyisDigit(z[0]) ){ return (int)(zNumStart - zIn) + 1; }
 			while( z < zEnd && SyisDigit(z[0]) ){ v = v*10 + (z[0]-'0'); z++; }
 			if( neg ){ v = -v; }
@@ -1604,27 +1611,27 @@ static int DtInitState(ph7_context *pCtx,const char *zIn,int nIn,sxi32 iZoneOff,
 	SXUNUSED(pCtx);
 	return 0;
 }
-/* DateTimeZone::__construct(string $timezone) */
-static int vm_builtin_DateTimeZone_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+/*
+ * The timezone spellings PHL understands with no tz database: UTC, GMT, Z and a
+ * fixed [+-]HH:?MM offset. Shared by DateTimeZone::__construct(), which throws on
+ * a miss, and timezone_open(), which warns and answers false.
+ */
+static int DtZoneParse(const char *zTz,int nTz,sxi32 *piOff,const char **pzName,
+	int *pnName,char *zBuf,sxu32 nBuf)
 {
-	ph7_class_instance *pThis = DtThis(pCtx);
-	const char *zTz;
-	int nTz,iOff = 0;
-	char zName[16];
-	int nName;
-	if( pThis == 0 || nArg < 1 ){
-		return PH7_OK;
+	if( nTz == 1 && zTz[0] == 'Z' ){
+		*piOff = 0;
+		*pzName = "Z";
+		*pnName = 1;
+		return 0;
 	}
-	zTz = ph7_value_to_string(apArg[0],&nTz);
-	if( (nTz == 3 && SyStrnicmp(zTz,"UTC",3) == 0) || (nTz == 3 && SyStrnicmp(zTz,"GMT",3) == 0)
-	 || (nTz == 1 && zTz[0] == 'Z') ){
-		/* The three names PHL has no database for but does understand. php keeps
-		 * the spelling the caller used for Z and folds the other two to upper. */
-		DtSetInt(pCtx->pVm,pThis,DTZ_OFF,0);
-		DtSetStr(pCtx->pVm,pThis,DTZ_NAME,nTz == 1 ? "Z" : (zTz[0] == 'u' || zTz[0] == 'U') ? "UTC" : "GMT",nTz);
-		return PH7_OK;
+	if( nTz == 3 && (SyStrnicmp(zTz,"UTC",3) == 0 || SyStrnicmp(zTz,"GMT",3) == 0) ){
+		/* php answers the canonical spelling, whatever case the caller used. */
+		*piOff = 0;
+		*pzName = (zTz[0] == 'u' || zTz[0] == 'U') ? "UTC" : "GMT";
+		*pnName = 3;
+		return 0;
 	}
-	/* [+-]HH:?MM, php's only other accepted spelling without a tz database. */
 	if( (nTz == 6 || nTz == 5) && (zTz[0] == '+' || zTz[0] == '-')
 	 && SyisDigit(zTz[1]) && SyisDigit(zTz[2])
 	 && (nTz == 5 ? (SyisDigit(zTz[3]) && SyisDigit(zTz[4]))
@@ -1632,17 +1639,37 @@ static int vm_builtin_DateTimeZone_construct(ph7_context *pCtx,int nArg,ph7_valu
 		int h = (zTz[1] - '0') * 10 + (zTz[2] - '0');
 		int m = nTz == 5 ? (zTz[3] - '0') * 10 + (zTz[4] - '0')
 		                 : (zTz[4] - '0') * 10 + (zTz[5] - '0');
-		iOff = h * 3600 + m * 60;
+		sxi32 iOff = h * 3600 + m * 60;
 		if( zTz[0] == '-' ){
 			iOff = -iOff;
 		}
-		nName = DtOffName(zName,sizeof(zName),iOff);
-		DtSetInt(pCtx->pVm,pThis,DTZ_OFF,iOff);
-		DtSetStr(pCtx->pVm,pThis,DTZ_NAME,zName,nName);
+		*piOff = iOff;
+		/* php normalizes the NAME through the offset, so "-00:00" is "+00:00". */
+		*pnName = DtOffName(zBuf,nBuf,iOff);
+		*pzName = zBuf;
+		return 0;
+	}
+	return -1;
+}
+/* DateTimeZone::__construct(string $timezone) */
+static int vm_builtin_DateTimeZone_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);
+	const char *zTz,*zName;
+	int nTz,nName;
+	sxi32 iOff = 0;
+	char zBuf[16];
+	if( pThis == 0 || nArg < 1 ){
 		return PH7_OK;
 	}
-	return PH7_VmThrowException(pCtx,"DateInvalidTimeZoneException",
-		"DateTimeZone::__construct(): Unknown or bad timezone (%.*s)",nTz,zTz);
+	zTz = ph7_value_to_string(apArg[0],&nTz);
+	if( DtZoneParse(zTz,nTz,&iOff,&zName,&nName,zBuf,sizeof(zBuf)) != 0 ){
+		return PH7_VmThrowException(pCtx,"DateInvalidTimeZoneException",
+			"DateTimeZone::__construct(): Unknown or bad timezone (%.*s)",nTz,zTz);
+	}
+	DtSetInt(pCtx->pVm,pThis,DTZ_OFF,iOff);
+	DtSetStr(pCtx->pVm,pThis,DTZ_NAME,zName,nName);
+	return PH7_OK;
 }
 /* DateTimeZone::getName() */
 static int vm_builtin_DateTimeZone_getName(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -1708,20 +1735,14 @@ static int vm_builtin_DateTime_construct(ph7_context *pCtx,int nArg,ph7_value **
 	DtStore(pVm,pThis,&sState);
 	return PH7_OK;
 }
-/* DateTime::format(string $format) */
-static int vm_builtin_DateTime_format(ph7_context *pCtx,int nArg,ph7_value **apArg)
+/* One date object's `format()`, shared with the date_format() alias. */
+static void DtFormatOf(ph7_context *pCtx,ph7_class_instance *pObj,const char *zFmt,int nFmt)
 {
-	ph7_class_instance *pThis = DtThis(pCtx);
 	dt_state sState;
 	Sytm sTm;
 	char zZone[64];
-	const char *zFmt;
-	int nFmt,nName;
-	if( pThis == 0 || nArg < 1 ){
-		return PH7_OK;
-	}
-	DtLoad(pThis,&sState);
-	zFmt = ph7_value_to_string(apArg[0],&nFmt);
+	int nName;
+	DtLoad(pObj,&sState);
 	nName = sState.nName;
 	if( nName >= (int)sizeof(zZone) ){
 		nName = (int)sizeof(zZone) - 1;
@@ -1730,6 +1751,18 @@ static int vm_builtin_DateTime_format(ph7_context *pCtx,int nArg,ph7_value **apA
 	zZone[nName] = 0;
 	DtFillSytm(sState.iTs,sState.iOff,zZone,&sTm);
 	DateFormat(pCtx,zFmt,nFmt,&sTm,sState.uSec);
+}
+/* DateTime::format(string $format) */
+static int vm_builtin_DateTime_format(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);
+	const char *zFmt;
+	int nFmt;
+	if( pThis == 0 || nArg < 1 ){
+		return PH7_OK;
+	}
+	zFmt = ph7_value_to_string(apArg[0],&nFmt);
+	DtFormatOf(pCtx,pThis,zFmt,nFmt);
 	return PH7_OK;
 }
 /* DateTime::getTimestamp() / getMicrosecond() / getOffset() */
@@ -1763,56 +1796,66 @@ static int vm_builtin_DateTime_getOffset(ph7_context *pCtx,int nArg,ph7_value **
 	}
 	return PH7_OK;
 }
-/* DateTime::getTimezone() — the zone is built from the stored name and offset, so
- * an identifier PHL stored but cannot re-parse still round-trips. */
-static int vm_builtin_DateTime_getTimezone(ph7_context *pCtx,int nArg,ph7_value **apArg)
+/* The zone object of a date, built from its stored name and offset, so an
+ * identifier PHL stored but cannot re-parse still round-trips. Shared with the
+ * date_timezone_get() alias. */
+static int DtTimezoneResult(ph7_context *pCtx,ph7_class_instance *pObj)
 {
 	ph7_vm *pVm = pCtx->pVm;
-	ph7_class_instance *pThis = DtThis(pCtx);
 	ph7_class *pZoneClass = DtClass(pVm,"DateTimeZone");
 	ph7_class_instance *pZone;
 	const char *zName;
 	int nName;
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	if( pThis == 0 || pZoneClass == 0 ){
+	if( pZoneClass == 0 ){
 		return PH7_OK;
 	}
 	pZone = PH7_NewClassInstance(pVm,pZoneClass);
 	if( pZone == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
-	DtAttrStr(pThis,DT_NAME,&zName,&nName);
-	DtSetInt(pVm,pZone,DTZ_OFF,DtAttrInt(pThis,DT_OFF));
+	DtAttrStr(pObj,DT_NAME,&zName,&nName);
+	DtSetInt(pVm,pZone,DTZ_OFF,DtAttrInt(pObj,DT_OFF));
 	DtSetStr(pVm,pZone,DTZ_NAME,zName,nName);
 	DtResultObject(pCtx,pZone);
 	return PH7_OK;
 }
-/* DateTime::diff(DateTimeInterface $targetObject, bool $absolute = false) */
-static int vm_builtin_DateTime_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)
+/* DateTime::getTimezone() */
+static int vm_builtin_DateTime_getTimezone(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	return DtTimezoneResult(pCtx,pThis);
+}
+/* The truth of a value, without converting the caller's copy of it. */
+static int DtValueTruth(ph7_vm *pVm,ph7_value *pVal)
+{
+	ph7_value sTmp;
+	int bRes;
+	PH7_MemObjInit(&(*pVm),&sTmp);
+	PH7_MemObjStore(pVal,&sTmp);
+	/* PH7_MemObjToBool converts IN PLACE and returns a STATUS: the answer is in
+	 * x.iVal (reading the return is a silent always-false). */
+	PH7_MemObjToBool(&sTmp);
+	bRes = sTmp.x.iVal != 0;
+	PH7_MemObjRelease(&sTmp);
+	return bRes;
+}
+/* The DateInterval two dates differ by. Shared with the date_diff() alias. */
+static int DtDiffResult(ph7_context *pCtx,ph7_class_instance *pBase,
+	ph7_class_instance *pTarget,int bAbsolute)
 {
 	ph7_vm *pVm = pCtx->pVm;
-	ph7_class_instance *pThis = DtThis(pCtx);
 	ph7_class *pIvClass = DtClass(pVm,"DateInterval");
-	ph7_class_instance *pTarget,*pIv;
+	ph7_class_instance *pIv;
 	dt_diff sDiff;
-	int bAbsolute = 0;
-	if( pThis == 0 || pIvClass == 0 || nArg < 1 ){
+	if( pIvClass == 0 ){
 		return PH7_OK;
 	}
-	if( (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
-		return PH7_OK;
-	}
-	pTarget = (ph7_class_instance *)apArg[0]->x.pOther;
-	if( nArg > 1 ){
-		ph7_value sTmp;
-		PH7_MemObjInit(pVm,&sTmp);
-		PH7_MemObjStore(apArg[1],&sTmp);
-		PH7_MemObjToBool(&sTmp);
-		bAbsolute = sTmp.x.iVal != 0;
-		PH7_MemObjRelease(&sTmp);
-	}
-	DtCivilDiff(DtAttrInt(pThis,DT_TS),(sxi32)DtAttrInt(pThis,DT_OFF),
+	DtCivilDiff(DtAttrInt(pBase,DT_TS),(sxi32)DtAttrInt(pBase,DT_OFF),
 		DtAttrInt(pTarget,DT_TS),&sDiff);
 	pIv = PH7_NewClassInstance(pVm,pIvClass);
 	if( pIv == 0 ){
@@ -1828,6 +1871,21 @@ static int vm_builtin_DateTime_diff(ph7_context *pCtx,int nArg,ph7_value **apArg
 	DtSetInt(pVm,pIv,"invert",bAbsolute ? 0 : sDiff.bInvert);
 	DtResultObject(pCtx,pIv);
 	return PH7_OK;
+}
+/* DateTime::diff(DateTimeInterface $targetObject, bool $absolute = false) */
+static int vm_builtin_DateTime_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);
+	ph7_class_instance *pTarget;
+	int bAbsolute = 0;
+	if( pThis == 0 || nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+		return PH7_OK;
+	}
+	pTarget = (ph7_class_instance *)apArg[0]->x.pOther;
+	if( nArg > 1 ){
+		bAbsolute = DtValueTruth(pCtx->pVm,apArg[1]);
+	}
+	return DtDiffResult(pCtx,pThis,pTarget,bAbsolute);
 }
 /* DateTime::modify(string $modifier) */
 static int vm_builtin_DateTime_modify(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -1908,26 +1966,40 @@ static int vm_builtin_DateTime_setTimezone(ph7_context *pCtx,int nArg,ph7_value 
 	DtMutResult(pCtx,pTarget,bCopy);
 	return PH7_OK;
 }
+/* Replace the DATE of an object, keeping its time of day (the offset it is
+ * expressed in never changes). Shared with the date_date_set() alias. */
+static void DtSetDateOf(ph7_context *pCtx,ph7_class_instance *pObj,sxi64 y,int mo,int d)
+{
+	sxi64 iLocal = DtAttrInt(pObj,DT_TS) + DtAttrInt(pObj,DT_OFF);
+	sxi64 iDays = DtFloorDiv(iLocal,86400);
+	sxi64 iSecs = iLocal - iDays*86400;
+	DtSetInt(pCtx->pVm,pObj,DT_TS,
+		DtMakeTs(y,mo,d,(int)(iSecs / 3600),(int)((iSecs / 60) % 60),(int)(iSecs % 60),
+			(sxi32)DtAttrInt(pObj,DT_OFF)));
+}
+/* Replace the TIME of day, keeping the date. Shared with date_time_set(). */
+static void DtSetTimeOf(ph7_context *pCtx,ph7_class_instance *pObj,int h,int mi,int s,sxi64 uSec)
+{
+	sxi64 iLocal = DtAttrInt(pObj,DT_TS) + DtAttrInt(pObj,DT_OFF);
+	sxi64 iDays = DtFloorDiv(iLocal,86400);
+	sxi64 y;
+	int mo,d;
+	DtCivilFromDays(iDays,&y,&mo,&d);
+	DtSetInt(pCtx->pVm,pObj,DT_TS,DtMakeTs(y,mo,d,h,mi,s,(sxi32)DtAttrInt(pObj,DT_OFF)));
+	DtSetInt(pCtx->pVm,pObj,DT_US,uSec);
+}
 /* DateTime::setDate(int $year, int $month, int $day) — the time of day is kept */
 static int vm_builtin_DateTime_setDate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_class_instance *pThis = DtThis(pCtx);
 	ph7_class_instance *pTarget;
-	dt_state sState;
-	sxi64 iLocal,iDays,iSecs;
 	int bCopy = 0;
 	if( pThis == 0 || nArg < 3 ){
 		return PH7_OK;
 	}
-	DtLoad(pThis,&sState);
-	iLocal = sState.iTs + sState.iOff;
-	iDays = DtFloorDiv(iLocal,86400);
-	iSecs = iLocal - iDays*86400;
 	pTarget = DtMutTarget(pCtx,pThis,&bCopy);
-	DtSetInt(pCtx->pVm,pTarget,DT_TS,
-		DtMakeTs(ph7_value_to_int64(apArg[0]),ph7_value_to_int(apArg[1]),
-			ph7_value_to_int(apArg[2]),(int)(iSecs / 3600),(int)((iSecs / 60) % 60),
-			(int)(iSecs % 60),sState.iOff));
+	DtSetDateOf(pCtx,pTarget,ph7_value_to_int64(apArg[0]),ph7_value_to_int(apArg[1]),
+		ph7_value_to_int(apArg[2]));
 	DtMutResult(pCtx,pTarget,bCopy);
 	return PH7_OK;
 }
@@ -1936,21 +2008,14 @@ static int vm_builtin_DateTime_setTime(ph7_context *pCtx,int nArg,ph7_value **ap
 {
 	ph7_class_instance *pThis = DtThis(pCtx);
 	ph7_class_instance *pTarget;
-	dt_state sState;
-	sxi64 iLocal,iDays,y;
-	int mo,d,bCopy = 0;
+	int bCopy = 0;
 	if( pThis == 0 || nArg < 2 ){
 		return PH7_OK;
 	}
-	DtLoad(pThis,&sState);
-	iLocal = sState.iTs + sState.iOff;
-	iDays = DtFloorDiv(iLocal,86400);
-	DtCivilFromDays(iDays,&y,&mo,&d);
 	pTarget = DtMutTarget(pCtx,pThis,&bCopy);
-	DtSetInt(pCtx->pVm,pTarget,DT_TS,
-		DtMakeTs(y,mo,d,ph7_value_to_int(apArg[0]),ph7_value_to_int(apArg[1]),
-			nArg > 2 ? ph7_value_to_int(apArg[2]) : 0,sState.iOff));
-	DtSetInt(pCtx->pVm,pTarget,DT_US,nArg > 3 ? ph7_value_to_int64(apArg[3]) : 0);
+	DtSetTimeOf(pCtx,pTarget,ph7_value_to_int(apArg[0]),ph7_value_to_int(apArg[1]),
+		nArg > 2 ? ph7_value_to_int(apArg[2]) : 0,
+		nArg > 3 ? ph7_value_to_int64(apArg[3]) : 0);
 	DtMutResult(pCtx,pTarget,bCopy);
 	return PH7_OK;
 }
@@ -2183,238 +2248,1144 @@ static int vm_builtin_strtotime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * The embedded DateTime library. Timezone scope: UTC + fixed offsets.
+ * ---------------------------------------------------------------------------
+ * DateInterval, DatePeriod and its iterator, declared from C.
+ *
+ * The rest of the date chunk. DateInterval's two constructors were `preg_match`
+ * calls in PHP; DatePeriod's `getIterator()` was a PHP GENERATOR, which a C body
+ * cannot be -- so it answers a native `InternalIterator`, which is exactly the
+ * class php answers there.
+ * ---------------------------------------------------------------------------
  */
-static const char zDateTimeLib[] =
-"class DateException extends Exception {}"
-"class DateMalformedStringException extends DateException {}"
-"class DateInvalidTimeZoneException extends DateException {}"
-"class DateMalformedIntervalStringException extends DateException {}"
-"class DateMalformedPeriodStringException extends DateException {}"
-"interface DateTimeInterface {"
-" const ATOM = 'Y-m-d\\TH:i:sP';"
-" const COOKIE = 'l, d-M-Y H:i:s T';"
-" const ISO8601 = 'Y-m-d\\TH:i:sO';"
-" const ISO8601_EXPANDED = 'X-m-d\\TH:i:sP';"
-" const RFC822 = 'D, d M y H:i:s O';"
-" const RFC850 = 'l, d-M-y H:i:s T';"
-" const RFC1036 = 'D, d M y H:i:s O';"
-" const RFC1123 = 'D, d M Y H:i:s O';"
-" const RFC7231 = 'D, d M Y H:i:s \\G\\M\\T';"
-" const RFC2822 = 'D, d M Y H:i:s O';"
-" const RFC3339 = 'Y-m-d\\TH:i:sP';"
-" const RFC3339_EXTENDED = 'Y-m-d\\TH:i:s.vP';"
-" const RSS = 'D, d M Y H:i:s O';"
-" const W3C = 'Y-m-d\\TH:i:sP';"
-"}"
-"function date_create($datetime = 'now', $timezone = null){"
-" try { return new DateTime($datetime, $timezone); } catch (Exception $e) { return false; }"
-"}"
-"function date_create_immutable($datetime = 'now', $timezone = null){"
-" try { return new DateTimeImmutable($datetime, $timezone); } catch (Exception $e) { return false; }"
-"}"
-/* Procedural aliases of the createFromFormat statics: same (format, datetime,
- * ?timezone) order, returning false on failure like php. */
-"function date_create_from_format($format, $datetime, $timezone = null){"
-" return DateTime::createFromFormat($format, $datetime, $timezone);"
-"}"
-"function date_create_immutable_from_format($format, $datetime, $timezone = null){"
-" return DateTimeImmutable::createFromFormat($format, $datetime, $timezone);"
-"}"
-"class DateInterval {"
-" public $y = 0;"
-" public $m = 0;"
-" public $d = 0;"
-" public $h = 0;"
-" public $i = 0;"
-" public $s = 0;"
-" public $f = 0;"
-" public $invert = 0;"
-" public $days = false;"
-" public $from_string = false;"
-" public function __construct($duration = 'P0D'){"
-"  $dur = (string)$duration;"
-"  $mm = null;"
-"  if( strlen($dur) < 2 || substr($dur, -1) === 'T'"
-"   || !preg_match('/^P(?:(\\d+)Y)?(?:(\\d+)M)?(?:(\\d+)W)?(?:(\\d+)D)?(?:T(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?)?$/', $dur, $mm) ){"
-"   throw new DateMalformedIntervalStringException('Unknown or bad format (' . $dur . ')');"
-"  }"
-"  $this->y = (int)($mm[1] ?? 0);"
-"  $this->m = (int)($mm[2] ?? 0);"
-"  $this->d = (int)($mm[4] ?? 0) + 7 * (int)($mm[3] ?? 0);"
-"  $this->h = (int)($mm[5] ?? 0);"
-"  $this->i = (int)($mm[6] ?? 0);"
-"  $this->s = (int)($mm[7] ?? 0);"
-" }"
-" public static function createFromDateString($datetime){"
-"  $s = trim((string)$datetime);"
-"  $iv = new DateInterval('P0D');"
-"  $rest = $s;"
-"  $any = false;"
-"  while( $rest !== '' ){"
-"   $mm = null;"
-"   if( !preg_match('/^[\\s,+]*([+-]?\\d+)\\s*(sec|secs|second|seconds|min|mins|minute|minutes|hour|hours|day|days|week|weeks|fortnight|fortnights|month|months|year|years)\\b/i', $rest, $mm) ){"
-"    throw new DateMalformedIntervalStringException("
-"     'DateInterval::createFromDateString(): Unknown or bad format (' . $s . ')');"
-"   }"
-"   $n = (int)$mm[1];"
-"   $u = strtolower($mm[2]);"
-"   if( $u === 'sec' || $u === 'secs' || $u === 'second' || $u === 'seconds' ){ $iv->s += $n; }"
-"   elseif( $u === 'min' || $u === 'mins' || $u === 'minute' || $u === 'minutes' ){ $iv->i += $n; }"
-"   elseif( $u === 'hour' || $u === 'hours' ){ $iv->h += $n; }"
-"   elseif( $u === 'day' || $u === 'days' ){ $iv->d += $n; }"
-"   elseif( $u === 'week' || $u === 'weeks' ){ $iv->d += 7 * $n; }"
-"   elseif( $u === 'fortnight' || $u === 'fortnights' ){ $iv->d += 14 * $n; }"
-"   elseif( $u === 'month' || $u === 'months' ){ $iv->m += $n; }"
-"   else { $iv->y += $n; }"
-"   $any = true;"
-"   $rest = ltrim(substr($rest, strlen($mm[0])));"
-"  }"
-"  if( !$any ){"
-"   throw new DateMalformedIntervalStringException("
-"    'DateInterval::createFromDateString(): Unknown or bad format (' . $s . ')');"
-"  }"
-"  return $iv;"
-" }"
-" public function format($format){"
-"  $f = (string)$format;"
-"  $out = '';"
-"  $n = strlen($f);"
-"  for( $k = 0; $k < $n; $k++ ){"
-"   $c = $f[$k];"
-"   if( $c !== '%' ){ $out .= $c; continue; }"
-"   $k++;"
-"   if( $k >= $n ){ $out .= '%'; break; }"
-"   $t = $f[$k];"
-"   if( $t === 'Y' ){ $out .= sprintf('%02d', $this->y); }"
-"   elseif( $t === 'y' ){ $out .= $this->y; }"
-"   elseif( $t === 'M' ){ $out .= sprintf('%02d', $this->m); }"
-"   elseif( $t === 'm' ){ $out .= $this->m; }"
-"   elseif( $t === 'D' ){ $out .= sprintf('%02d', $this->d); }"
-"   elseif( $t === 'd' ){ $out .= $this->d; }"
-"   elseif( $t === 'H' ){ $out .= sprintf('%02d', $this->h); }"
-"   elseif( $t === 'h' ){ $out .= $this->h; }"
-"   elseif( $t === 'I' ){ $out .= sprintf('%02d', $this->i); }"
-"   elseif( $t === 'i' ){ $out .= $this->i; }"
-"   elseif( $t === 'S' ){ $out .= sprintf('%02d', $this->s); }"
-"   elseif( $t === 's' ){ $out .= $this->s; }"
-"   elseif( $t === 'F' ){ $out .= sprintf('%06d', (int)round($this->f * 1000000)); }"
-"   elseif( $t === 'f' ){ $out .= (int)round($this->f * 1000000); }"
-"   elseif( $t === 'R' ){ $out .= $this->invert ? '-' : '+'; }"
-"   elseif( $t === 'r' ){ $out .= $this->invert ? '-' : ''; }"
-"   elseif( $t === 'a' ){ $out .= $this->days === false ? '(unknown)' : $this->days; }"
-"   elseif( $t === '%' ){ $out .= '%'; }"
-"   else { $out .= $t; }"
-"  }"
-"  return $out;"
-" }"
-"}"
-"class DatePeriod implements IteratorAggregate {"
-" const EXCLUDE_START_DATE = 1;"
-" const INCLUDE_END_DATE = 2;"
-" public $start = null;"
-" public $current = null;"
-" public $end = null;"
-" public $interval = null;"
-" public $recurrences = 1;"
-" public $include_start_date = true;"
-" public $include_end_date = false;"
-" private $__dpN = null;"
-" public function __construct($start, $interval = null, $end = null, $options = 0){"
-"  if( is_string($start) ){"
-"   $mm = null;"
-"   if( !preg_match('/^R(\\d+)\\/(.+)\\/(P.+)$/', $start, $mm) ){"
-"    throw new DateMalformedPeriodStringException("
-"     'DatePeriod::__construct(): Unknown or bad format (' . $start . ')');"
-"   }"
-"   $options = is_int($interval) ? $interval : 0;"
-"   $this->start = new DateTimeImmutable($mm[2]);"
-"   $this->interval = new DateInterval($mm[3]);"
-"   $this->__dpN = (int)$mm[1];"
-"   $this->recurrences = $this->__dpN + 1;"
-"  }else{"
-"   $this->start = clone $start;"
-"   $this->interval = $interval;"
-"   if( is_int($end) ){"
-"    $this->__dpN = $end;"
-"    $this->recurrences = $end + 1;"
-"   }else{"
-"    $this->end = $end === null ? null : (clone $end);"
-"   }"
-"  }"
-"  $this->include_start_date = !((int)$options & 1);"
-"  $this->include_end_date = ((int)$options & 2) !== 0;"
-" }"
-" public static function createFromISO8601String($specification, $options = 0){"
-"  return new DatePeriod((string)$specification, (int)$options);"
-" }"
-" public function getStartDate(){ return $this->start; }"
-" public function getEndDate(){ return $this->end; }"
-" public function getDateInterval(){ return $this->interval; }"
-" public function getRecurrences(){ return $this->__dpN; }"
-" public function getIterator(): Generator {"
-"  $cur = $this->start;"
-"  $iv = $this->interval;"
-"  $k = 0;"
-"  if( $this->end !== null ){"
-"   $endTs = $this->end->getTimestamp();"
-"   $first = true;"
-"   while( true ){"
-"    $ts = $cur->getTimestamp();"
-"    if( $this->include_end_date ? ($ts > $endTs) : ($ts >= $endTs) ){ break; }"
-"    if( !$first || $this->include_start_date ){"
-"     yield $k => (clone $cur);"
-"     $k++;"
-"    }"
-"    $first = false;"
-"    $next = clone $cur;"
-"    $cur = $next->add($iv);"
-"   }"
-"   return;"
-"  }"
-"  $total = $this->__dpN + 1 + ($this->include_end_date ? 1 : 0);"
-"  for( $j = 0; $j < $total; $j++ ){"
-"   if( $j > 0 || $this->include_start_date ){"
-"    yield $k => (clone $cur);"
-"    $k++;"
-"   }"
-"   $next = clone $cur;"
-"   $cur = $next->add($iv);"
-"  }"
-" }"
-"}"
-"function date_format($object, $format){ return $object->format($format); }"
-"function date_modify($object, $modifier){"
-" try { return $object->modify($modifier); } catch (Exception $e) { return false; }"
-"}"
-"function date_add($object, $interval){ return $object->add($interval); }"
-"function date_sub($object, $interval){ return $object->sub($interval); }"
-"function date_diff($baseObject, $targetObject, $absolute = false){"
-" return $baseObject->diff($targetObject, $absolute);"
-"}"
-"function date_timestamp_get($object){ return $object->getTimestamp(); }"
-"function date_timestamp_set($object, $timestamp){ return $object->setTimestamp($timestamp); }"
-"function date_timezone_get($object){ return $object->getTimezone(); }"
-"function date_timezone_set($object, $timezone){ return $object->setTimezone($timezone); }"
-"function date_offset_get($object){ return $object->getOffset(); }"
-"function date_date_set($object, $year, $month, $day){ return $object->setDate($year, $month, $day); }"
-"function date_time_set($object, $hour, $minute, $second = 0, $microsecond = 0){"
-" return $object->setTime($hour, $minute, $second, $microsecond);"
-"}"
-"function date_isodate_set($object, $year, $week, $dayOfWeek = 1){"
-" return $object->setISODate($year, $week, $dayOfWeek);"
-"}"
-"function date_interval_create_from_date_string($datetime){"
-" return DateInterval::createFromDateString($datetime);"
-"}"
-"function date_interval_format($object, $format){ return $object->format($format); }"
-"function date_get_last_errors(){ return DateTime::getLastErrors(); }"
-"function timezone_open($timezone){"
-" try { return new DateTimeZone($timezone); } catch (Exception $e) { return false; }"
-"}"
-"function timezone_name_get($object){ return $object->getName(); }"
-"function timezone_offset_get($object, $datetime){ return $object->getOffset($datetime); }"
-;
+/* php's unit words for DateInterval::createFromDateString(), longest first so a
+ * prefix never wins over the word that contains it. */
+typedef struct dt_unit dt_unit;
+struct dt_unit
+{
+	const char *zName;
+	int iField;   /* 0=y 1=m 2=d 3=h 4=i 5=s */
+	int nMul;
+};
+static const dt_unit aDtUnit[] = {
+	{ "seconds", 5, 1 }, { "second", 5, 1 }, { "secs", 5, 1 }, { "sec", 5, 1 },
+	{ "minutes", 4, 1 }, { "minute", 4, 1 }, { "mins", 4, 1 }, { "min", 4, 1 },
+	{ "hours", 3, 1 },   { "hour", 3, 1 },
+	{ "fortnights", 2, 14 }, { "fortnight", 2, 14 },
+	{ "weeks", 2, 7 },   { "week", 2, 7 },
+	{ "days", 2, 1 },    { "day", 2, 1 },
+	{ "months", 1, 1 },  { "month", 1, 1 },
+	{ "years", 0, 1 },   { "year", 0, 1 },
+};
+static const char * const azDtIvField[] = { "y", "m", "d", "h", "i", "s" };
+/* Read an unsigned run of digits; returns the count consumed. */
+static int DtIvDigits(const char *z,const char *zEnd,sxi64 *pVal)
+{
+	int n = 0;
+	sxi64 v = 0;
+	while( &z[n] < zEnd && SyisDigit(z[n]) ){
+		v = v*10 + (z[n] - '0');
+		n++;
+	}
+	*pVal = v;
+	return n;
+}
+/*
+ * php's ISO-8601 duration grammar: P[nY][nM][nW][nD][T[nH][nM][nS]], every field
+ * an unsigned integer. A bare "P", a trailing "T" and a fractional second are all
+ * rejected, as php rejects them.
+ */
+static int DtIvParseIso(const char *zIn,int nIn,sxi64 *aOut)
+{
+	const char *z = zIn,*zEnd = &zIn[nIn];
+	int bTime = 0,bAny = 0;
+	int k;
+	for( k = 0 ; k < 6 ; k++ ){
+		aOut[k] = 0;
+	}
+	if( nIn < 2 || zIn[0] != 'P' || zIn[nIn-1] == 'T' ){
+		return -1;
+	}
+	z++;
+	while( z < zEnd ){
+		sxi64 v;
+		int n;
+		if( z[0] == 'T' ){
+			if( bTime ){
+				return -1;
+			}
+			bTime = 1;
+			z++;
+			continue;
+		}
+		n = DtIvDigits(z,zEnd,&v);
+		if( n == 0 || z + n >= zEnd ){
+			return -1;
+		}
+		z += n;
+		switch( z[0] ){
+			case 'Y': if( bTime ){ return -1; } aOut[0] += v; break;
+			case 'W': if( bTime ){ return -1; } aOut[2] += v * 7; break;
+			case 'D': if( bTime ){ return -1; } aOut[2] += v; break;
+			case 'H': if( !bTime ){ return -1; } aOut[3] += v; break;
+			case 'S': if( !bTime ){ return -1; } aOut[5] += v; break;
+			case 'M':
+				/* The one ambiguous designator: months before T, minutes after. */
+				if( bTime ){ aOut[4] += v; }else{ aOut[1] += v; }
+				break;
+			default:
+				return -1;
+		}
+		z++;
+		bAny = 1;
+	}
+	return bAny ? 0 : -1;
+}
+/*
+ * php's relative-string interval. The string is VALIDATED by the same parser
+ * strtotime() uses -- which is where php's "at position N (c): reason" wording
+ * comes from -- and the number/unit pairs it understands are then summed. A
+ * string the parser accepts but that names no unit ("next monday") is php's
+ * all-zero interval, not an error.
+ */
+static int DtIvParseRelative(const char *zIn,int nIn,sxi64 *aOut,int *piPos,
+	char *pcAt,const char **pzReason)
+{
+	const char *z = zIn,*zEnd = &zIn[nIn];
+	sxi64 iTs = 0;
+	sxi32 iOff = 0;
+	int bOffSet = 0,uSec = 0,iErr;
+	int k;
+	for( k = 0 ; k < 6 ; k++ ){
+		aOut[k] = 0;
+	}
+	if( nIn < 1 ){
+		*piPos = 0;
+		*pcAt = ' ';
+		*pzReason = "Empty string";
+		return -1;
+	}
+	iErr = DtParse(zIn,nIn,0,0,&iTs,&iOff,&bOffSet,&uSec);
+	if( iErr != 0 ){
+		*pzReason = DtParseErr(zIn,nIn,iErr,piPos,pcAt);
+		return -1;
+	}
+	while( z < zEnd ){
+		sxi64 v;
+		int n,iSign = 1,iUnit;
+		while( z < zEnd && (z[0] == ' ' || z[0] == '\t' || z[0] == '\n' || z[0] == '\r'
+		 || z[0] == ',' || z[0] == '+') ){
+			z++;
+		}
+		if( z < zEnd && z[0] == '-' ){
+			iSign = -1;
+			z++;
+		}
+		n = DtIvDigits(z,zEnd,&v);
+		if( n == 0 ){
+			/* Not a number: skip the token (php's parser already accepted the
+			 * string, so this is a relative form with no interval field). */
+			while( z < zEnd && z[0] != ' ' && z[0] != ',' ){
+				z++;
+			}
+			continue;
+		}
+		z += n;
+		while( z < zEnd && (z[0] == ' ' || z[0] == '\t') ){
+			z++;
+		}
+		iUnit = -1;
+		for( k = 0 ; k < (int)SX_ARRAYSIZE(aDtUnit) ; k++ ){
+			int nU = (int)SyStrlen(aDtUnit[k].zName);
+			if( zEnd - z >= nU && SyStrnicmp(z,aDtUnit[k].zName,(sxu32)nU) == 0
+			 && (zEnd - z == nU || !(SyisAlphaNum(z[nU]) || z[nU] == '_')) ){
+				iUnit = k;
+				z += nU;
+				break;
+			}
+		}
+		if( iUnit < 0 ){
+			continue;
+		}
+		aOut[aDtUnit[iUnit].iField] += iSign * v * aDtUnit[iUnit].nMul;
+	}
+	return 0;
+}
+/* Write the six relative fields onto a DateInterval instance. */
+static void DtIvStore(ph7_vm *pVm,ph7_class_instance *pObj,const sxi64 *aVal)
+{
+	int k;
+	for( k = 0 ; k < 6 ; k++ ){
+		DtSetInt(pVm,pObj,azDtIvField[k],aVal[k]);
+	}
+}
+/* DateInterval::__construct(string $duration) */
+static int vm_builtin_DateInterval_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);
+	const char *zDur;
+	int nDur;
+	sxi64 aVal[6];
+	if( pThis == 0 || nArg < 1 ){
+		return PH7_OK;
+	}
+	zDur = ph7_value_to_string(apArg[0],&nDur);
+	if( DtIvParseIso(zDur,nDur,aVal) != 0 ){
+		return PH7_VmThrowException(pCtx,"DateMalformedIntervalStringException",
+			"Unknown or bad format (%.*s)",nDur,zDur);
+	}
+	DtIvStore(pCtx->pVm,pThis,aVal);
+	return PH7_OK;
+}
+/*
+ * DateInterval::createFromDateString(string $datetime). Shared with the
+ * date_interval_create_from_date_string() alias, which WARNS and answers false
+ * where the method throws.
+ */
+static ph7_class_instance * DtIvFromDateString(ph7_context *pCtx,const char *zIn,int nIn,
+	int *piPos,char *pcAt,const char **pzReason)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pClass = DtFactoryClass(pCtx,"DateInterval");
+	ph7_class_instance *pObj;
+	sxi64 aVal[6];
+	ph7_value sVal;
+	if( pClass == 0 ){
+		return 0;
+	}
+	if( DtIvParseRelative(zIn,nIn,aVal,piPos,pcAt,pzReason) != 0 ){
+		return 0;
+	}
+	pObj = PH7_NewClassInstance(pVm,pClass);
+	if( pObj == 0 ){
+		return 0;
+	}
+	DtIvStore(pVm,pObj,aVal);
+	/* php marks the interval as built from a string; the `date_string` property it
+	 * adds with it needs a dynamic property PHL has no equivalent of (§7.4). */
+	PH7_MemObjInitFromBool(pVm,&sVal,1);
+	PH7_NativeSetProp(pVm,pObj,"from_string",sizeof("from_string")-1,&sVal);
+	PH7_MemObjRelease(&sVal);
+	return pObj;
+}
+static int vm_builtin_DateInterval_createFromDateString(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zIn,*zReason = "";
+	int nIn,iPos = 0;
+	char cAt = ' ';
+	ph7_class_instance *pObj;
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	zIn = ph7_value_to_string(apArg[0],&nIn);
+	pObj = DtIvFromDateString(pCtx,zIn,nIn,&iPos,&cAt,&zReason);
+	if( pObj == 0 ){
+		return PH7_VmThrowException(pCtx,"DateMalformedIntervalStringException",
+			"Unknown or bad format (%.*s) at position %d (%c): %s",nIn,zIn,iPos,cAt,zReason);
+	}
+	DtResultObject(pCtx,pObj);
+	return PH7_OK;
+}
+/*
+ * DateInterval::format(string $format) -- php's own %-token loop, including the
+ * rule the chunk got wrong: an UNKNOWN token keeps its '%' (`%q` is "%q").
+ */
+static void DtIvFormat(ph7_context *pCtx,ph7_class_instance *pObj,const char *zFmt,int nFmt)
+{
+	SyBlob sOut;
+	ph7_value *pDays;
+	int k;
+	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+	for( k = 0 ; k < nFmt ; k++ ){
+		char c = zFmt[k];
+		char t;
+		if( c != '%' ){
+			SyBlobAppend(&sOut,&c,1);
+			continue;
+		}
+		k++;
+		if( k >= nFmt ){
+			/* php drops a trailing lone '%' rather than echoing it. */
+			break;
+		}
+		t = zFmt[k];
+		switch( t ){
+			case 'Y': SyBlobFormat(&sOut,"%02d",(int)DtAttrInt(pObj,"y")); break;
+			case 'y': SyBlobFormat(&sOut,"%qd",DtAttrInt(pObj,"y")); break;
+			case 'M': SyBlobFormat(&sOut,"%02d",(int)DtAttrInt(pObj,"m")); break;
+			case 'm': SyBlobFormat(&sOut,"%qd",DtAttrInt(pObj,"m")); break;
+			case 'D': SyBlobFormat(&sOut,"%02d",(int)DtAttrInt(pObj,"d")); break;
+			case 'd': SyBlobFormat(&sOut,"%qd",DtAttrInt(pObj,"d")); break;
+			case 'H': SyBlobFormat(&sOut,"%02d",(int)DtAttrInt(pObj,"h")); break;
+			case 'h': SyBlobFormat(&sOut,"%qd",DtAttrInt(pObj,"h")); break;
+			case 'I': SyBlobFormat(&sOut,"%02d",(int)DtAttrInt(pObj,"i")); break;
+			case 'i': SyBlobFormat(&sOut,"%qd",DtAttrInt(pObj,"i")); break;
+			case 'S': SyBlobFormat(&sOut,"%02d",(int)DtAttrInt(pObj,"s")); break;
+			case 's': SyBlobFormat(&sOut,"%qd",DtAttrInt(pObj,"s")); break;
+			case 'F': case 'f': {
+				ph7_value *pF = DtAttr(pObj,"f");
+				double r = 0.0;
+				sxi64 uS;
+				if( pF && (pF->iFlags & MEMOBJ_REAL) ){
+					r = pF->rVal;
+				}else if( pF && (pF->iFlags & MEMOBJ_INT) ){
+					r = (double)pF->x.iVal;
+				}
+				uS = (sxi64)(r * 1000000.0 + (r < 0 ? -0.5 : 0.5));
+				if( t == 'F' ){
+					SyBlobFormat(&sOut,"%06d",(int)uS);
+				}else{
+					SyBlobFormat(&sOut,"%qd",uS);
+				}
+				break;
+			}
+			case 'R': SyBlobAppend(&sOut,DtAttrInt(pObj,"invert") ? "-" : "+",1); break;
+			case 'r': if( DtAttrInt(pObj,"invert") ){ SyBlobAppend(&sOut,"-",1); } break;
+			case 'a':
+				pDays = DtAttr(pObj,"days");
+				if( pDays && (pDays->iFlags & MEMOBJ_INT) ){
+					SyBlobFormat(&sOut,"%qd",pDays->x.iVal);
+				}else{
+					SyBlobAppend(&sOut,"(unknown)",sizeof("(unknown)")-1);
+				}
+				break;
+			case '%': SyBlobAppend(&sOut,"%",1); break;
+			default:
+				/* php keeps BOTH bytes of an unrecognised token. */
+				SyBlobAppend(&sOut,"%",1);
+				SyBlobAppend(&sOut,&t,1);
+				break;
+		}
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+}
+static int vm_builtin_DateInterval_format(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);
+	const char *zFmt;
+	int nFmt;
+	if( pThis == 0 || nArg < 1 ){
+		return PH7_OK;
+	}
+	zFmt = ph7_value_to_string(apArg[0],&nFmt);
+	DtIvFormat(pCtx,pThis,zFmt,nFmt);
+	return PH7_OK;
+}
+/* Is this value an instance of the named class? */
+static int DtValueIsA(ph7_vm *pVm,ph7_value *pVal,const char *zClass)
+{
+	ph7_class *pClass;
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_OBJ) == 0 ){
+		return 0;
+	}
+	pClass = DtClass(&(*pVm),zClass);
+	return pClass != 0
+		&& PH7_VmInstanceOf(((ph7_class_instance *)pVal->x.pOther)->pClass,pClass);
+}
+/*
+ * Write an object (or null) into a declared property of another object.
+ *
+ * The scratch value ALIASES the instance rather than owning it, and
+ * PH7_MemObjStore takes the reference the slot keeps -- so releasing the scratch
+ * afterwards would hand back the slot's own reference and free the object out from
+ * under it (which is what it did: `foreach` over a DatePeriod crashed on the second
+ * element's `->format()`). The caller keeps owning whatever it passed in.
+ */
+static void DtSetObj(ph7_vm *pVm,ph7_class_instance *pObj,const char *zProp,
+	ph7_class_instance *pVal)
+{
+	ph7_value *pSlot = DtAttr(pObj,zProp);
+	ph7_value sVal;
+	if( pSlot == 0 ){
+		return;
+	}
+	PH7_MemObjInit(&(*pVm),&sVal);
+	if( pVal ){
+		sVal.x.pOther = pVal;
+		sVal.iFlags = MEMOBJ_OBJ;
+	}
+	PH7_MemObjStore(&sVal,pSlot);
+}
+static void DtSetBool(ph7_vm *pVm,ph7_class_instance *pObj,const char *zProp,int bVal)
+{
+	ph7_value *pSlot = DtAttr(pObj,zProp);
+	ph7_value sVal;
+	if( pSlot == 0 ){
+		return;
+	}
+	PH7_MemObjInitFromBool(&(*pVm),&sVal,bVal);
+	PH7_MemObjStore(&sVal,pSlot);
+	PH7_MemObjRelease(&sVal);
+}
+/* The object stored in a declared property, or NULL. */
+static ph7_class_instance * DtAttrObj(ph7_class_instance *pObj,const char *zProp)
+{
+	ph7_value *pVal = DtAttr(pObj,zProp);
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_OBJ) == 0 ){
+		return 0;
+	}
+	return (ph7_class_instance *)pVal->x.pOther;
+}
+static int DtAttrTruthy(ph7_class_instance *pObj,const char *zProp)
+{
+	ph7_value *pVal = DtAttr(pObj,zProp);
+	if( pVal == 0 ){
+		return 0;
+	}
+	if( pVal->iFlags & MEMOBJ_BOOL ){
+		return pVal->x.iVal != 0;
+	}
+	if( pVal->iFlags & MEMOBJ_INT ){
+		return pVal->x.iVal != 0;
+	}
+	return 0;
+}
+/*
+ * DatePeriod::__construct($start, $interval, $end, $options)
+ *
+ * php overloads it three ways and rejects everything else with ONE message, which
+ * is why the signature stays unenforced and the shapes are checked here.
+ */
+static int DpConstructInto(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,ph7_value **apArg,
+	const char *zIsoStartClass)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	sxi64 iOptions = 0;
+	static const char *zBadArgs =
+		"DatePeriod::__construct() accepts (DateTimeInterface, DateInterval, int [, int]), "
+		"or (DateTimeInterface, DateInterval, DateTime [, int]), or (string [, int]) as arguments";
+	if( pThis == 0 || nArg < 1 ){
+		return PH7_VmThrowException(pCtx,"TypeError","%s",zBadArgs);
+	}
+	if( apArg[0]->iFlags & MEMOBJ_STRING ){
+		/* The ISO-8601 form: "R<n>/<start>/<duration>". php's second argument is
+		 * then the OPTIONS bitmask, not an interval. */
+		const char *zSpec = (const char *)SyBlobData(&apArg[0]->sBlob);
+		int nSpec = (int)SyBlobLength(&apArg[0]->sBlob);
+		const char *zStart,*zDur;
+		int nStart,nDur,k;
+		sxi64 nRec = 0;
+		sxi64 aIv[6];
+		dt_state sState;
+		char zNameBuf[16];
+		const char *zErr;
+		int iPos,nDigits;
+		char cAt;
+		ph7_class_instance *pStart,*pIv;
+		if( nArg > 1 && (apArg[1]->iFlags & MEMOBJ_INT) ){
+			iOptions = apArg[1]->x.iVal;
+		}
+		if( nSpec < 2 || zSpec[0] != 'R' ){
+			return PH7_VmThrowException(pCtx,"DateMalformedPeriodStringException",
+				"Unknown or bad format (%.*s)",nSpec,zSpec);
+		}
+		nDigits = DtIvDigits(&zSpec[1],&zSpec[nSpec],&nRec);
+		k = 1 + nDigits;
+		if( nDigits == 0 || k >= nSpec || zSpec[k] != '/' ){
+			return PH7_VmThrowException(pCtx,"DateMalformedPeriodStringException",
+				"Unknown or bad format (%.*s)",nSpec,zSpec);
+		}
+		zStart = &zSpec[k+1];
+		nStart = 0;
+		while( &zStart[nStart] < &zSpec[nSpec] && zStart[nStart] != '/' ){
+			nStart++;
+		}
+		if( &zStart[nStart] >= &zSpec[nSpec] ){
+			return PH7_VmThrowException(pCtx,"DateMalformedPeriodStringException",
+				"Unknown or bad format (%.*s)",nSpec,zSpec);
+		}
+		zDur = &zStart[nStart+1];
+		nDur = (int)(&zSpec[nSpec] - zDur);
+		if( DtInitState(pCtx,zStart,nStart,0,pVm->zDefTz,(int)pVm->nDefTz,&sState,
+			zNameBuf,sizeof(zNameBuf),&zErr,&iPos,&cAt) != 0
+		 || DtIvParseIso(zDur,nDur,aIv) != 0 ){
+			return PH7_VmThrowException(pCtx,"DateMalformedPeriodStringException",
+				"Unknown or bad format (%.*s)",nSpec,zSpec);
+		}
+		/* php's two ISO entry points disagree on the class they build, and both
+		 * answers are load-bearing: `new DatePeriod("R2/...")` yields DateTime
+		 * where DatePeriod::createFromISO8601String() yields DateTimeImmutable. */
+		pStart = PH7_NewClassInstance(pVm,DtClass(pVm,zIsoStartClass));
+		pIv = PH7_NewClassInstance(pVm,DtClass(pVm,"DateInterval"));
+		if( pStart == 0 || pIv == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		DtStore(pVm,pStart,&sState);
+		DtIvStore(pVm,pIv,aIv);
+		DtSetObj(pVm,pThis,"start",pStart);
+		DtSetObj(pVm,pThis,"interval",pIv);
+		PH7_ClassInstanceUnref(pStart);
+		PH7_ClassInstanceUnref(pIv);
+		DtSetInt(pVm,pThis,"recurrences",nRec + 1);
+	}else{
+		ph7_class_instance *pStart,*pIv,*pEnd;
+		if( !DtValueIsA(pVm,apArg[0],"DateTimeInterface")
+		 || nArg < 3
+		 || !DtValueIsA(pVm,apArg[1],"DateInterval")
+		 || ((apArg[2]->iFlags & MEMOBJ_INT) == 0
+		     && !DtValueIsA(pVm,apArg[2],"DateTimeInterface")) ){
+			return PH7_VmThrowException(pCtx,"TypeError","%s",zBadArgs);
+		}
+		if( nArg > 3 ){
+			iOptions = ph7_value_to_int64(apArg[3]);
+		}
+		pStart = PH7_CloneClassInstance((ph7_class_instance *)apArg[0]->x.pOther);
+		pIv = (ph7_class_instance *)apArg[1]->x.pOther;
+		if( pStart == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		DtSetObj(pVm,pThis,"start",pStart);
+		PH7_ClassInstanceUnref(pStart);
+		DtSetObj(pVm,pThis,"interval",pIv);
+		if( apArg[2]->iFlags & MEMOBJ_INT ){
+			DtSetInt(pVm,pThis,"recurrences",apArg[2]->x.iVal + 1);
+		}else{
+			pEnd = PH7_CloneClassInstance((ph7_class_instance *)apArg[2]->x.pOther);
+			if( pEnd == 0 ){
+				return PH7_ContextMemoryError(pCtx);
+			}
+			DtSetObj(pVm,pThis,"end",pEnd);
+			PH7_ClassInstanceUnref(pEnd);
+		}
+	}
+	DtSetBool(pVm,pThis,"include_start_date",(iOptions & 1) == 0);
+	DtSetBool(pVm,pThis,"include_end_date",(iOptions & 2) != 0);
+	return PH7_OK;
+}
+static int vm_builtin_DatePeriod_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	return DpConstructInto(pCtx,pThis,nArg,apArg,"DateTime");
+}
+/* DatePeriod::createFromISO8601String(string $specification, int $options = 0) */
+static int vm_builtin_DatePeriod_createFromISO8601String(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pClass = DtFactoryClass(pCtx,"DatePeriod");
+	ph7_class_instance *pObj;
+	sxi32 rc;
+	if( pClass == 0 || nArg < 1 ){
+		return PH7_OK;
+	}
+	pObj = PH7_NewClassInstance(pVm,pClass);
+	if( pObj == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	/* php's factory IS the constructor, with the same overloaded argument shape. */
+	rc = DpConstructInto(pCtx,pObj,nArg,apArg,"DateTimeImmutable");
+	if( rc != PH7_OK || pCtx->nThrowRc != 0 ){
+		PH7_ClassInstanceUnref(pObj);
+		return rc;
+	}
+	DtResultObject(pCtx,pObj);
+	return PH7_OK;
+}
+static int vm_builtin_DatePeriod_getStartDate(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		ph7_value *pVal = DtAttr(pThis,"start");
+		if( pVal ){
+			ph7_result_value(pCtx,pVal);
+		}
+	}
+	return PH7_OK;
+}
+static int vm_builtin_DatePeriod_getEndDate(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		ph7_value *pVal = DtAttr(pThis,"end");
+		if( pVal ){
+			ph7_result_value(pCtx,pVal);
+		}
+	}
+	return PH7_OK;
+}
+static int vm_builtin_DatePeriod_getDateInterval(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		ph7_value *pVal = DtAttr(pThis,"interval");
+		if( pVal ){
+			ph7_result_value(pCtx,pVal);
+		}
+	}
+	return PH7_OK;
+}
+/*
+ * DatePeriod::getRecurrences() -- php answers NULL for a period bounded by an END
+ * DATE and the recurrence COUNT otherwise, which is `recurrences - 1` (php stores
+ * the count of dates, one more than the recurrences). No private slot needed.
+ */
+static int vm_builtin_DatePeriod_getRecurrences(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || DtAttrObj(pThis,"end") != 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	ph7_result_int64(pCtx,DtAttrInt(pThis,"recurrences") - 1);
+	return PH7_OK;
+}
+/*
+ * The period iterator's state, kept in InternalIterator's own private slots:
+ * the period, the date the cursor sits on, the emitted key, the loop counter and
+ * whether the walk is over.
+ */
+#define DP_IT_PERIOD "__period"
+#define DP_IT_CUR    "__cur"
+#define DP_IT_KEY    "__key"
+#define DP_IT_STEP   "__step"
+#define DP_IT_DONE   "__done"
+/* One interval step from a date object: a NEW object, so a value already handed
+ * to the caller is never mutated underneath it (php's iterator answers a fresh
+ * object per position too). */
+static ph7_class_instance * DpAdvance(ph7_vm *pVm,ph7_class_instance *pCur,
+	ph7_class_instance *pIv)
+{
+	ph7_class_instance *pNext = PH7_CloneClassInstance(pCur);
+	int iSign = DtAttrInt(pIv,"invert") ? -1 : 1;
+	if( pNext == 0 ){
+		return 0;
+	}
+	DtSetInt(&(*pVm),pNext,DT_TS,
+		DtCivilAdd(DtAttrInt(pCur,DT_TS),(sxi32)DtAttrInt(pCur,DT_OFF),
+			DtAttrInt(pIv,"y"),DtAttrInt(pIv,"m"),DtAttrInt(pIv,"d"),
+			DtAttrInt(pIv,"h"),DtAttrInt(pIv,"i"),DtAttrInt(pIv,"s"),iSign));
+	return pNext;
+}
+/*
+ * Settle the cursor on the next date the period EMITS, mirroring the generator
+ * this replaced: a start excluded by EXCLUDE_START_DATE is stepped over, an end
+ * date stops the walk (inclusively under INCLUDE_END_DATE) and a recurrence count
+ * bounds the number of steps instead.
+ */
+static void DpSettle(ph7_vm *pVm,ph7_class_instance *pIt)
+{
+	ph7_class_instance *pPeriod = DtAttrObj(pIt,DP_IT_PERIOD);
+	ph7_class_instance *pEnd,*pIv;
+	int bInclStart,bInclEnd;
+	sxi64 nTotal;
+	if( pPeriod == 0 ){
+		DtSetBool(&(*pVm),pIt,DP_IT_DONE,1);
+		return;
+	}
+	pEnd = DtAttrObj(pPeriod,"end");
+	pIv = DtAttrObj(pPeriod,"interval");
+	bInclStart = DtAttrTruthy(pPeriod,"include_start_date");
+	bInclEnd = DtAttrTruthy(pPeriod,"include_end_date");
+	nTotal = DtAttrInt(pPeriod,"recurrences") + (bInclEnd ? 1 : 0);
+	for(;;){
+		ph7_class_instance *pCur = DtAttrObj(pIt,DP_IT_CUR);
+		sxi64 iStep = DtAttrInt(pIt,DP_IT_STEP);
+		ph7_class_instance *pNext;
+		if( pCur == 0 ){
+			DtSetBool(&(*pVm),pIt,DP_IT_DONE,1);
+			return;
+		}
+		if( pEnd != 0 ){
+			sxi64 iTs = DtAttrInt(pCur,DT_TS);
+			sxi64 iEndTs = DtAttrInt(pEnd,DT_TS);
+			if( bInclEnd ? (iTs > iEndTs) : (iTs >= iEndTs) ){
+				DtSetBool(&(*pVm),pIt,DP_IT_DONE,1);
+				return;
+			}
+		}else if( iStep >= nTotal ){
+			DtSetBool(&(*pVm),pIt,DP_IT_DONE,1);
+			return;
+		}
+		if( iStep > 0 || bInclStart ){
+			DtSetBool(&(*pVm),pIt,DP_IT_DONE,0);
+			return;
+		}
+		/* The excluded start: step over it without emitting a key. */
+		if( pIv == 0 ){
+			DtSetBool(&(*pVm),pIt,DP_IT_DONE,1);
+			return;
+		}
+		pNext = DpAdvance(&(*pVm),pCur,pIv);
+		if( pNext == 0 ){
+			DtSetBool(&(*pVm),pIt,DP_IT_DONE,1);
+			return;
+		}
+		DtSetObj(&(*pVm),pIt,DP_IT_CUR,pNext);
+		PH7_ClassInstanceUnref(pNext);
+		DtSetInt(&(*pVm),pIt,DP_IT_STEP,iStep + 1);
+	}
+}
+static int DpRewindInto(ph7_context *pCtx,ph7_class_instance *pThis)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pPeriod,*pStart,*pCur;
+	pPeriod = DtAttrObj(pThis,DP_IT_PERIOD);
+	pStart = pPeriod ? DtAttrObj(pPeriod,"start") : 0;
+	if( pStart == 0 ){
+		DtSetBool(pVm,pThis,DP_IT_DONE,1);
+		return PH7_OK;
+	}
+	pCur = PH7_CloneClassInstance(pStart);
+	if( pCur == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	DtSetObj(pVm,pThis,DP_IT_CUR,pCur);
+	PH7_ClassInstanceUnref(pCur);
+	DtSetInt(pVm,pThis,DP_IT_KEY,0);
+	DtSetInt(pVm,pThis,DP_IT_STEP,0);
+	DpSettle(pVm,pThis);
+	return PH7_OK;
+}
+static int vm_builtin_InternalIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	return DpRewindInto(pCtx,pThis);
+}
+static int vm_builtin_InternalIterator_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx,pThis != 0 && !DtAttrTruthy(pThis,DP_IT_DONE));
+	return PH7_OK;
+}
+static int vm_builtin_InternalIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || DtAttrTruthy(pThis,DP_IT_DONE) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	{
+		ph7_value *pVal = DtAttr(pThis,DP_IT_CUR);
+		if( pVal ){
+			ph7_result_value(pCtx,pVal);
+		}
+	}
+	return PH7_OK;
+}
+static int vm_builtin_InternalIterator_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || DtAttrTruthy(pThis,DP_IT_DONE) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	ph7_result_int64(pCtx,DtAttrInt(pThis,DP_IT_KEY));
+	return PH7_OK;
+}
+static int vm_builtin_InternalIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = DtThis(pCtx);
+	ph7_class_instance *pPeriod,*pIv,*pCur,*pNext;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || DtAttrTruthy(pThis,DP_IT_DONE) ){
+		return PH7_OK;
+	}
+	pPeriod = DtAttrObj(pThis,DP_IT_PERIOD);
+	pIv = pPeriod ? DtAttrObj(pPeriod,"interval") : 0;
+	pCur = DtAttrObj(pThis,DP_IT_CUR);
+	if( pIv == 0 || pCur == 0 ){
+		DtSetBool(pVm,pThis,DP_IT_DONE,1);
+		return PH7_OK;
+	}
+	pNext = DpAdvance(pVm,pCur,pIv);
+	if( pNext == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	DtSetObj(pVm,pThis,DP_IT_CUR,pNext);
+	PH7_ClassInstanceUnref(pNext);
+	DtSetInt(pVm,pThis,DP_IT_STEP,DtAttrInt(pThis,DP_IT_STEP) + 1);
+	DtSetInt(pVm,pThis,DP_IT_KEY,DtAttrInt(pThis,DP_IT_KEY) + 1);
+	DpSettle(pVm,pThis);
+	return PH7_OK;
+}
+/*
+ * DatePeriod::getIterator(): Iterator
+ *
+ * This was a PHP GENERATOR, the one thing a C body cannot be. php answers an
+ * InternalIterator here, so PHL builds one -- and stops diverging on
+ * `get_class($period->getIterator())`. A fresh one per call, as php's is.
+ */
+static int vm_builtin_DatePeriod_getIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = DtThis(pCtx);
+	ph7_class *pClass = DtClass(pVm,"InternalIterator");
+	ph7_class_instance *pIt;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || pClass == 0 ){
+		return PH7_OK;
+	}
+	pIt = PH7_NewClassInstance(pVm,pClass);
+	if( pIt == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	DtSetObj(pVm,pIt,DP_IT_PERIOD,pThis);
+	DtSetBool(pVm,pIt,DP_IT_DONE,1);
+	/* Position it now: php's iterator is valid before the first rewind(). */
+	DpRewindInto(pCtx,pIt);
+	DtResultObject(pCtx,pIt);
+	return PH7_OK;
+}
+/* InternalIterator::__construct() — private in php, and never reached from PHP. */
+static int vm_builtin_InternalIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	SXUNUSED(pCtx);
+	return PH7_OK;
+}
+/*
+ * ---------------------------------------------------------------------------
+ * The procedural date API.
+ *
+ * php's aliases are functions in their own right, not forwards: they reach the
+ * same implementation the methods do, so an overridden method in a subclass is
+ * NOT what they call, and the ones that can fail WARN and answer false where the
+ * method throws. Each owes aBuiltinSig[] a row (vm_arg_check.c).
+ * ---------------------------------------------------------------------------
+ */
+/* The receiver argument of a procedural alias (already type-screened by its row). */
+static ph7_class_instance * DtArgObj(int nArg,ph7_value **apArg,int iArg)
+{
+	if( iArg >= nArg || (apArg[iArg]->iFlags & MEMOBJ_OBJ) == 0 ){
+		return 0;
+	}
+	return (ph7_class_instance *)apArg[iArg]->x.pOther;
+}
+/* Answer the receiver itself, the way every mutating alias does. */
+static void DtResultArg(ph7_context *pCtx,ph7_value **apArg)
+{
+	ph7_result_value(pCtx,apArg[0]);
+}
+/* date_create()/date_create_immutable(): php answers false on a parse failure and
+ * says nothing -- the constructor's exception does not escape the alias. */
+static int DtProcCreate(ph7_context *pCtx,int nArg,ph7_value **apArg,const char *zClass)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pClass = DtClass(pVm,zClass);
+	ph7_class_instance *pObj;
+	const char *zIn = "now",*zZone;
+	int nIn = 3,nZone,iPos;
+	sxi32 iZoneOff = 0;
+	dt_state sState;
+	char zNameBuf[16],cAt;
+	const char *zErr;
+	if( pClass == 0 ){
+		return PH7_OK;
+	}
+	zZone = pVm->zDefTz;
+	nZone = (int)pVm->nDefTz;
+	if( nArg > 0 ){
+		zIn = ph7_value_to_string(apArg[0],&nIn);
+	}
+	if( nArg > 1 && (apArg[1]->iFlags & MEMOBJ_NULL) == 0 ){
+		DtZoneOf(apArg[1],&iZoneOff,&zZone,&nZone);
+	}
+	if( DtInitState(pCtx,zIn,nIn,iZoneOff,zZone,nZone,&sState,zNameBuf,sizeof(zNameBuf),
+		&zErr,&iPos,&cAt) != 0 ){
+		DtLastErrOne(pVm,iPos,zErr);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	DtLastErrClear(pVm);
+	pObj = PH7_NewClassInstance(pVm,pClass);
+	if( pObj == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	DtStore(pVm,pObj,&sState);
+	DtResultObject(pCtx,pObj);
+	return PH7_OK;
+}
+static int vm_builtin_date_create(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtProcCreate(pCtx,nArg,apArg,"DateTime");
+}
+static int vm_builtin_date_create_immutable(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtProcCreate(pCtx,nArg,apArg,"DateTimeImmutable");
+}
+static int vm_builtin_date_create_from_format(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtCreateFromFormat(pCtx,nArg,apArg,"DateTime");
+}
+static int vm_builtin_date_create_immutable_from_format(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtCreateFromFormat(pCtx,nArg,apArg,"DateTimeImmutable");
+}
+static int vm_builtin_date_format(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	const char *zFmt;
+	int nFmt;
+	if( pObj == 0 || nArg < 2 ){
+		return PH7_OK;
+	}
+	zFmt = ph7_value_to_string(apArg[1],&nFmt);
+	DtFormatOf(pCtx,pObj,zFmt,nFmt);
+	return PH7_OK;
+}
+/* date_modify(): php WARNS and answers false where DateTime::modify() throws. */
+static int vm_builtin_date_modify(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	const char *zMod,*zErr;
+	int nMod,iPos,iErrPos;
+	char cAt;
+	sxi64 iTs = 0;
+	sxi32 iOff = 0;
+	int bOffSet = 0,uSec = 0;
+	if( pObj == 0 || nArg < 2 ){
+		return PH7_OK;
+	}
+	zMod = ph7_value_to_string(apArg[1],&nMod);
+	iErrPos = DtParse(zMod,nMod,DtAttrInt(pObj,DT_TS),(sxi32)DtAttrInt(pObj,DT_OFF),
+		&iTs,&iOff,&bOffSet,&uSec);
+	if( iErrPos != 0 ){
+		zErr = DtParseErr(zMod,nMod,iErrPos,&iPos,&cAt);
+		PH7_VmThrowWarningFmt(pCtx->pVm,
+			"date_modify(): Failed to parse time string (%.*s) at position %d (%c): %s",
+			nMod,zMod,iPos,cAt,zErr);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	DtSetInt(pCtx->pVm,pObj,DT_TS,iTs);
+	DtResultArg(pCtx,apArg);
+	return PH7_OK;
+}
+static int DtProcAddSub(ph7_context *pCtx,int nArg,ph7_value **apArg,int iSign)
+{
+	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	ph7_class_instance *pIv = DtArgObj(nArg,apArg,1);
+	if( pObj == 0 || pIv == 0 ){
+		return PH7_OK;
+	}
+	if( DtAttrInt(pIv,"invert") ){
+		iSign = -iSign;
+	}
+	DtSetInt(pCtx->pVm,pObj,DT_TS,
+		DtCivilAdd(DtAttrInt(pObj,DT_TS),(sxi32)DtAttrInt(pObj,DT_OFF),
+			DtAttrInt(pIv,"y"),DtAttrInt(pIv,"m"),DtAttrInt(pIv,"d"),
+			DtAttrInt(pIv,"h"),DtAttrInt(pIv,"i"),DtAttrInt(pIv,"s"),iSign));
+	DtResultArg(pCtx,apArg);
+	return PH7_OK;
+}
+static int vm_builtin_date_add(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtProcAddSub(pCtx,nArg,apArg,1);
+}
+static int vm_builtin_date_sub(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtProcAddSub(pCtx,nArg,apArg,-1);
+}
+static int vm_builtin_date_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pBase = DtArgObj(nArg,apArg,0);
+	ph7_class_instance *pTarget = DtArgObj(nArg,apArg,1);
+	int bAbsolute = 0;
+	if( pBase == 0 || pTarget == 0 ){
+		return PH7_OK;
+	}
+	if( nArg > 2 ){
+		bAbsolute = DtValueTruth(pCtx->pVm,apArg[2]);
+	}
+	return DtDiffResult(pCtx,pBase,pTarget,bAbsolute);
+}
+static int vm_builtin_date_timestamp_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	if( pObj ){
+		ph7_result_int64(pCtx,DtAttrInt(pObj,DT_TS));
+	}
+	return PH7_OK;
+}
+static int vm_builtin_date_timestamp_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	if( pObj == 0 || nArg < 2 ){
+		return PH7_OK;
+	}
+	DtSetInt(pCtx->pVm,pObj,DT_TS,ph7_value_to_int64(apArg[1]));
+	DtSetInt(pCtx->pVm,pObj,DT_US,0);
+	DtResultArg(pCtx,apArg);
+	return PH7_OK;
+}
+static int vm_builtin_date_timezone_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	if( pObj == 0 ){
+		return PH7_OK;
+	}
+	return DtTimezoneResult(pCtx,pObj);
+}
+static int vm_builtin_date_timezone_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	const char *zName = "UTC";
+	int nName = 3;
+	sxi32 iOff = 0;
+	if( pObj == 0 || nArg < 2 || !DtZoneOf(apArg[1],&iOff,&zName,&nName) ){
+		return PH7_OK;
+	}
+	DtSetInt(pCtx->pVm,pObj,DT_OFF,iOff);
+	DtSetStr(pCtx->pVm,pObj,DT_NAME,zName,nName);
+	DtResultArg(pCtx,apArg);
+	return PH7_OK;
+}
+static int vm_builtin_date_offset_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	if( pObj ){
+		ph7_result_int64(pCtx,DtAttrInt(pObj,DT_OFF));
+	}
+	return PH7_OK;
+}
+static int vm_builtin_date_date_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	if( pObj == 0 || nArg < 4 ){
+		return PH7_OK;
+	}
+	DtSetDateOf(pCtx,pObj,ph7_value_to_int64(apArg[1]),ph7_value_to_int(apArg[2]),
+		ph7_value_to_int(apArg[3]));
+	DtResultArg(pCtx,apArg);
+	return PH7_OK;
+}
+static int vm_builtin_date_time_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	if( pObj == 0 || nArg < 3 ){
+		return PH7_OK;
+	}
+	DtSetTimeOf(pCtx,pObj,ph7_value_to_int(apArg[1]),ph7_value_to_int(apArg[2]),
+		nArg > 3 ? ph7_value_to_int(apArg[3]) : 0,
+		nArg > 4 ? ph7_value_to_int64(apArg[4]) : 0);
+	DtResultArg(pCtx,apArg);
+	return PH7_OK;
+}
+static int vm_builtin_date_isodate_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	if( pObj == 0 || nArg < 3 ){
+		return PH7_OK;
+	}
+	DtSetInt(pCtx->pVm,pObj,DT_TS,
+		DtIsoDate(DtAttrInt(pObj,DT_TS),(sxi32)DtAttrInt(pObj,DT_OFF),
+			ph7_value_to_int64(apArg[1]),ph7_value_to_int64(apArg[2]),
+			nArg > 3 ? ph7_value_to_int64(apArg[3]) : 1));
+	DtResultArg(pCtx,apArg);
+	return PH7_OK;
+}
+/* date_interval_create_from_date_string(): warns and answers false where the
+ * method throws. */
+static int vm_builtin_date_interval_create_from_date_string(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zIn,*zReason = "";
+	int nIn,iPos = 0;
+	char cAt = ' ';
+	ph7_class_instance *pObj;
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	zIn = ph7_value_to_string(apArg[0],&nIn);
+	pObj = DtIvFromDateString(pCtx,zIn,nIn,&iPos,&cAt,&zReason);
+	if( pObj == 0 ){
+		PH7_VmThrowWarningFmt(pCtx->pVm,
+			"date_interval_create_from_date_string(): Unknown or bad format (%.*s) "
+			"at position %d (%c): %s",nIn,zIn,iPos,cAt,zReason);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	DtResultObject(pCtx,pObj);
+	return PH7_OK;
+}
+static int vm_builtin_date_interval_format(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	const char *zFmt;
+	int nFmt;
+	if( pObj == 0 || nArg < 2 ){
+		return PH7_OK;
+	}
+	zFmt = ph7_value_to_string(apArg[1],&nFmt);
+	DtIvFormat(pCtx,pObj,zFmt,nFmt);
+	return PH7_OK;
+}
+static int vm_builtin_date_get_last_errors(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return vm_builtin_DateTime_getLastErrors(pCtx,nArg,apArg);
+}
+/* timezone_open(): warns and answers false where the constructor throws. */
+static int vm_builtin_timezone_open(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pClass = DtClass(pVm,"DateTimeZone");
+	ph7_class_instance *pObj;
+	const char *zTz,*zName;
+	int nTz,nName;
+	sxi32 iOff = 0;
+	char zBuf[16];
+	if( pClass == 0 || nArg < 1 ){
+		return PH7_OK;
+	}
+	zTz = ph7_value_to_string(apArg[0],&nTz);
+	if( DtZoneParse(zTz,nTz,&iOff,&zName,&nName,zBuf,sizeof(zBuf)) != 0 ){
+		PH7_VmThrowWarningFmt(pVm,"timezone_open(): Unknown or bad timezone (%.*s)",nTz,zTz);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pObj = PH7_NewClassInstance(pVm,pClass);
+	if( pObj == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	DtSetInt(pVm,pObj,DTZ_OFF,iOff);
+	DtSetStr(pVm,pObj,DTZ_NAME,zName,nName);
+	DtResultObject(pCtx,pObj);
+	return PH7_OK;
+}
+static int vm_builtin_timezone_name_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	const char *zName;
+	int nName;
+	if( pObj == 0 ){
+		return PH7_OK;
+	}
+	DtAttrStr(pObj,DTZ_NAME,&zName,&nName);
+	ph7_result_string(pCtx,zName,nName);
+	return PH7_OK;
+}
+static int vm_builtin_timezone_offset_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	if( pObj ){
+		ph7_result_int64(pCtx,DtAttrInt(pObj,DTZ_OFF));
+	}
+	return PH7_OK;
+}
 /*
  * The four private slots a date object keeps its state in. Both classes declare
  * them: `trait __DtCoreT` had no native equivalent, and replaying the table is
@@ -2458,18 +3429,41 @@ static const char zDateTimeLib[] =
 	{ "sub",             PH7_MOD_PUBLIC, "DateInterval $interval", "static", vm_builtin_DateTime_sub }, \
 	{ "getLastErrors",   PH7_MOD_PUBLIC|PH7_MOD_STATIC, "", "array|false", \
 	  vm_builtin_DateTime_getLastErrors }
+/* php's DateTimeInterface constants, the whole of that interface's surface here
+ * (its abstract METHODS are deliberately not declared: PH7_ClassImplement installs
+ * a stub for every interface method an implementor lacks, so declaring them would
+ * make every implementor abstract before its native methods are attached). */
+#define DT_IFACE_CONST(NAME,VALUE) \
+	{ NAME, PH7_MOD_PUBLIC, PH7_NATIVE_VAL_STRING, 0, VALUE, 0.0 }
 /*
- * Install the DateTime family: the chunk first (its exceptions, DateTimeInterface
- * and DateInterval are what the native classes throw, implement and build), then
- * DateTimeZone / DateTime / DateTimeImmutable, which are C.
+ * Install the whole date family from C: the exceptions and DateTimeInterface, then
+ * DateTimeZone / DateTime / DateTimeImmutable, DateInterval, DatePeriod and the
+ * InternalIterator its getIterator() answers, then the procedural aliases.
  *
  * Called from PH7_VmInit inside the bCompilingBuiltin window, after the Reflection
- * install (Exception must exist). `implements DateTimeInterface` rides the spec
- * because that interface declares CONSTANTS only -- PH7_ClassImplement's abstract-
- * stub rule needs interface methods to bite.
+ * install (Exception must exist). Two interfaces are attached AFTER their class's
+ * methods exist, for the abstract-stub reason above: DatePeriod's IteratorAggregate
+ * and InternalIterator's Iterator both declare methods. DateTimeInterface declares
+ * none, so it can ride the spec table.
  */
 PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 {
+	static const PH7_NativeConstDef aIfaceConst[] = {
+		DT_IFACE_CONST("ATOM","Y-m-d\\TH:i:sP"),
+		DT_IFACE_CONST("COOKIE","l, d-M-Y H:i:s T"),
+		DT_IFACE_CONST("ISO8601","Y-m-d\\TH:i:sO"),
+		DT_IFACE_CONST("ISO8601_EXPANDED","X-m-d\\TH:i:sP"),
+		DT_IFACE_CONST("RFC822","D, d M y H:i:s O"),
+		DT_IFACE_CONST("RFC850","l, d-M-y H:i:s T"),
+		DT_IFACE_CONST("RFC1036","D, d M y H:i:s O"),
+		DT_IFACE_CONST("RFC1123","D, d M Y H:i:s O"),
+		DT_IFACE_CONST("RFC7231","D, d M Y H:i:s \\G\\M\\T"),
+		DT_IFACE_CONST("RFC2822","D, d M Y H:i:s O"),
+		DT_IFACE_CONST("RFC3339","Y-m-d\\TH:i:sP"),
+		DT_IFACE_CONST("RFC3339_EXTENDED","Y-m-d\\TH:i:s.vP"),
+		DT_IFACE_CONST("RSS","D, d M Y H:i:s O"),
+		DT_IFACE_CONST("W3C","Y-m-d\\TH:i:sP"),
+	};
 	static const PH7_NativePropDef aZoneProp[] = {
 		{ DTZ_OFF,  PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 } },
 		{ DTZ_NAME, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "UTC", 0.0 } },
@@ -2501,27 +3495,155 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "createFromInterface", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "DateTimeInterface $object", "static",
 		  vm_builtin_DateTimeImmutable_copyOf },
 	};
+	static const PH7_NativePropDef aIvProp[] = {
+		{ "y",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 } },
+		{ "m",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 } },
+		{ "d",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 } },
+		{ "h",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 } },
+		{ "i",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 } },
+		{ "s",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 } },
+		/* php's `f` is a FLOAT; the chunk's `= 0` made it an int. */
+		{ "f",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_DOUBLE, 0, 0, 0.0 } },
+		{ "invert",      PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 } },
+		{ "days",        PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL,   0, 0, 0.0 } },
+		{ "from_string", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL,   0, 0, 0.0 } },
+	};
+	static const PH7_NativeMethodDef aIvMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "string $duration", "",
+		  vm_builtin_DateInterval_construct },
+		{ "createFromDateString", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $datetime", "static|false",
+		  vm_builtin_DateInterval_createFromDateString },
+		{ "format",      PH7_MOD_PUBLIC, "string $format", "string", vm_builtin_DateInterval_format },
+	};
+	static const PH7_NativePropDef aDpProp[] = {
+		{ "start",              PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ "current",            PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ "end",                PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ "interval",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ "recurrences",        PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,  1, 0, 0.0 } },
+		{ "include_start_date", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 } },
+		{ "include_end_date",   PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 } },
+	};
+	static const PH7_NativeConstDef aDpConst[] = {
+		{ "EXCLUDE_START_DATE", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 1, 0, 0.0 },
+		{ "INCLUDE_END_DATE",   PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 2, 0, 0.0 },
+	};
+	static const PH7_NativeMethodDef aDpMethod[] = {
+		/* php overloads this constructor three ways and rejects everything else with
+		 * ONE message, so the signature stays unenforced and the body decides. */
+		{ "__construct",     PH7_MOD_PUBLIC, 0, "", vm_builtin_DatePeriod_construct },
+		{ "createFromISO8601String", PH7_MOD_PUBLIC|PH7_MOD_STATIC,
+		  "string $specification, int $options = 0", "static",
+		  vm_builtin_DatePeriod_createFromISO8601String },
+		{ "getStartDate",    PH7_MOD_PUBLIC, "", "DateTimeInterface",
+		  vm_builtin_DatePeriod_getStartDate },
+		{ "getEndDate",      PH7_MOD_PUBLIC, "", "?DateTimeInterface",
+		  vm_builtin_DatePeriod_getEndDate },
+		{ "getDateInterval", PH7_MOD_PUBLIC, "", "DateInterval",
+		  vm_builtin_DatePeriod_getDateInterval },
+		{ "getRecurrences",  PH7_MOD_PUBLIC, "", "?int", vm_builtin_DatePeriod_getRecurrences },
+		{ "getIterator",     PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_DatePeriod_getIterator },
+	};
+	static const PH7_NativePropDef aItProp[] = {
+		{ DP_IT_PERIOD, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ DP_IT_CUR,    PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ DP_IT_KEY,    PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 } },
+		{ DP_IT_STEP,   PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 } },
+		{ DP_IT_DONE,   PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 } },
+	};
+	static const PH7_NativeMethodDef aItMethod[] = {
+		{ "__construct", PH7_MOD_PRIVATE, "", "", vm_builtin_InternalIterator_construct },
+		{ "current",     PH7_MOD_PUBLIC, "", "mixed", vm_builtin_InternalIterator_current },
+		{ "key",         PH7_MOD_PUBLIC, "", "mixed", vm_builtin_InternalIterator_key },
+		{ "next",        PH7_MOD_PUBLIC, "", "void",  vm_builtin_InternalIterator_next },
+		{ "valid",       PH7_MOD_PUBLIC, "", "bool",  vm_builtin_InternalIterator_valid },
+		{ "rewind",      PH7_MOD_PUBLIC, "", "void",  vm_builtin_InternalIterator_rewind },
+	};
 	static const PH7_NativeClassSpec aSpec[] = {
+		/* Exceptions first: the classes below throw them. */
+		{ "DateException", "Exception", 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DateMalformedStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DateInvalidTimeZoneException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DateMalformedIntervalStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DateMalformedPeriodStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DateTimeInterface", 0, 0, PH7_CLASS_INTERFACE,
+		  0, 0, aIfaceConst, SX_ARRAYSIZE(aIfaceConst), 0, 0 },
 		{ "DateTimeZone", 0, 0, 0,
 		  aZoneMethod, SX_ARRAYSIZE(aZoneMethod), 0, 0, aZoneProp, SX_ARRAYSIZE(aZoneProp) },
 		{ "DateTime", 0, "DateTimeInterface", 0,
 		  aDtMethod, SX_ARRAYSIZE(aDtMethod), 0, 0, aDtProp, SX_ARRAYSIZE(aDtProp) },
 		{ "DateTimeImmutable", 0, "DateTimeInterface", 0,
 		  aImmMethod, SX_ARRAYSIZE(aImmMethod), 0, 0, aDtProp, SX_ARRAYSIZE(aDtProp) },
+		{ "DateInterval", 0, 0, 0,
+		  aIvMethod, SX_ARRAYSIZE(aIvMethod), 0, 0, aIvProp, SX_ARRAYSIZE(aIvProp) },
+		{ "DatePeriod", 0, 0, 0,
+		  aDpMethod, SX_ARRAYSIZE(aDpMethod), aDpConst, SX_ARRAYSIZE(aDpConst),
+		  aDpProp, SX_ARRAYSIZE(aDpProp) },
+		{ "InternalIterator", 0, 0, PH7_CLASS_FINAL,
+		  aItMethod, SX_ARRAYSIZE(aItMethod), 0, 0, aItProp, SX_ARRAYSIZE(aItProp) },
 	};
+	/* php's procedural aliases. Each is a function in its own right, not a forward,
+	 * and each owes aBuiltinSig[] a row (vm_arg_check.c). */
+	static const struct {
+		const char *zName;
+		ProchHostFunction xFunc;
+	} aFunc[] = {
+		{ "strtotime",                    vm_builtin_strtotime },
+		{ "date_create",                  vm_builtin_date_create },
+		{ "date_create_immutable",        vm_builtin_date_create_immutable },
+		{ "date_create_from_format",      vm_builtin_date_create_from_format },
+		{ "date_create_immutable_from_format", vm_builtin_date_create_immutable_from_format },
+		{ "date_format",                  vm_builtin_date_format },
+		{ "date_modify",                  vm_builtin_date_modify },
+		{ "date_add",                     vm_builtin_date_add },
+		{ "date_sub",                     vm_builtin_date_sub },
+		{ "date_diff",                    vm_builtin_date_diff },
+		{ "date_timestamp_get",           vm_builtin_date_timestamp_get },
+		{ "date_timestamp_set",           vm_builtin_date_timestamp_set },
+		{ "date_timezone_get",            vm_builtin_date_timezone_get },
+		{ "date_timezone_set",            vm_builtin_date_timezone_set },
+		{ "date_offset_get",              vm_builtin_date_offset_get },
+		{ "date_date_set",                vm_builtin_date_date_set },
+		{ "date_time_set",                vm_builtin_date_time_set },
+		{ "date_isodate_set",             vm_builtin_date_isodate_set },
+		{ "date_interval_create_from_date_string", vm_builtin_date_interval_create_from_date_string },
+		{ "date_interval_format",         vm_builtin_date_interval_format },
+		{ "date_get_last_errors",         vm_builtin_date_get_last_errors },
+		{ "timezone_open",                vm_builtin_timezone_open },
+		{ "timezone_name_get",            vm_builtin_timezone_name_get },
+		{ "timezone_offset_get",          vm_builtin_timezone_offset_get },
+	};
+	sxu32 n;
 	sxi32 rc;
 	/* php's date.timezone default */
 	SyMemcpy("UTC",pVm->zDefTz,sizeof("UTC"));
 	pVm->nDefTz = sizeof("UTC") - 1;
 	DtLastErrClear(&(*pVm));
-	/* strtotime() was a prelude function over two of the retired thunks; as a C
-	 * builtin it owes aBuiltinSig[] a row (vm_arg_check.c) for its parameters. */
-	ph7_create_function(&(*pVm),"strtotime",vm_builtin_strtotime,0);
-	rc = PH7_VmEvalBuiltinChunk(&(*pVm),zDateTimeLib,sizeof(zDateTimeLib)-1);
+	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){
+		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);
+	}
+	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+	/* The two interfaces that declare METHODS, attached now that the classes have
+	 * their own: PH7_ClassImplement stubs a missing one as ABSTRACT, which would
+	 * have made both classes uninstantiable. */
+	{
+		ph7_class *pPeriod = DtClass(&(*pVm),"DatePeriod");
+		ph7_class *pIt = DtClass(&(*pVm),"InternalIterator");
+		ph7_class *pAggregate = DtClass(&(*pVm),"IteratorAggregate");
+		ph7_class *pIterator = DtClass(&(*pVm),"Iterator");
+		if( pPeriod == 0 || pIt == 0 || pAggregate == 0 || pIterator == 0 ){
+			return SXERR_NOTFOUND;
+		}
+		rc = PH7_ClassImplement(pPeriod,pAggregate);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		rc = PH7_ClassImplement(pIt,pIterator);
+	}
+	return rc;
 }
 
 #endif /* PH7_DISABLE_BUILTIN_FUNC */

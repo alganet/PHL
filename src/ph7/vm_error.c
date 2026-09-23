@@ -896,6 +896,19 @@ PH7_PRIVATE sxi32 VmClassConstEvalOnDemand(ph7_vm *pVm,ph7_class *pClass,ph7_cla
 	if( pMemObj == 0 ){
 		return SXERR_MEM;
 	}
+	if( pAttr->pNativeValue ){
+		/* A NATIVE class's constant carries a literal instead of byte-code. The
+		 * mount loop materializes those, but it stopped visiting untyped constants
+		 * when they went lazy (17th session), so this path — the only one an
+		 * untyped constant now reaches — has to know about them too. It did not,
+		 * which is why every native class constant read NULL: nothing had declared
+		 * one until the date family did (DateTimeInterface::ATOM,
+		 * DatePeriod::EXCLUDE_START_DATE). A literal cannot throw, so there is no
+		 * failure path to mirror below. */
+		PH7_NativeLiteralValue(&(*pVm),pAttr->pNativeValue,pMemObj);
+		pAttr->nIdx = pMemObj->nIdx;
+		return SXRET_OK;
+	}
 	if( SySetUsed(&pAttr->aByteCode) > 0 ){
 		ph7_class *pSaveCtx = pVm->pConstEvalClass;
 		void *pSaveFrame = pVm->pConstEvalFrame;
