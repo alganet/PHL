@@ -381,12 +381,13 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallProperty(ph7_vm *pVm,ph7_class *pClass,
 	return PH7_ClassInstallAttr(pClass,pAttr);
 }
 /*
- * Create and install ONE class from its spec, without its methods.
+ * Create and install ONE class from its spec: constants and properties, but
+ * neither methods nor its base chain.
  *
- * Split from the method pass because a spec table may describe classes that extend
- * each other, and PH7_ClassInherit needs the parent to exist first: callers list
- * bases before subclasses, and PH7_InstallNativeClasses runs this pass over the
- * whole table before touching any method.
+ * Split from the two passes that follow because a spec table may describe
+ * classes that extend each other, and PH7_ClassInherit needs the parent to
+ * exist -- and to already CARRY ITS METHODS, since inheriting is what copies
+ * them down.
  */
 static sxi32 NativeDeclareClass(ph7_vm *pVm,const PH7_NativeClassSpec *pSpec,ph7_class **ppOut)
 {
@@ -414,13 +415,25 @@ static sxi32 NativeDeclareClass(ph7_vm *pVm,const PH7_NativeClassSpec *pSpec,ph7
 			return rc;
 		}
 	}
-	rc = PH7_VmInstallClass(&(*pVm),pClass);
-	if( rc != SXRET_OK ){
-		return rc;
-	}
-	/* Inheritance AFTER installation, mirroring the compiler's order in
-	 * GenStateCompileClassEx: the class must be findable while its own base chain
-	 * is wired, or a self-referential hierarchy cannot resolve. */
+	*ppOut = pClass;
+	return PH7_VmInstallClass(&(*pVm),pClass);
+}
+/*
+ * Wire ONE class's base chain and interfaces.
+ *
+ * This runs AFTER every class in the table has its own methods, which is the
+ * compiler's order too (GenStateCompileClassEx compiles the whole body and only
+ * then calls PH7_ClassInherit/PH7_ClassImplement). Two things depend on it:
+ * PH7_ClassInherit COPIES the base's methods into the subclass, so a base whose
+ * methods were not installed yet hands down an empty table -- which is how
+ * `DOMDocument::C14N()` came out undefined, the first time a native class
+ * extended another native class that had methods; and PH7_ClassImplement stubs
+ * every interface method the class lacks as ABSTRACT, so a spec may now name an
+ * interface it implements itself rather than attaching it by hand afterwards.
+ */
+static sxi32 NativeLinkClass(ph7_vm *pVm,const PH7_NativeClassSpec *pSpec,ph7_class *pClass)
+{
+	sxi32 rc;
 	if( pSpec->zParent ){
 		ph7_class *pBase = NativeLookupClass(&(*pVm),pSpec->zParent);
 		if( pBase == 0 ){
@@ -471,12 +484,12 @@ static sxi32 NativeDeclareClass(ph7_vm *pVm,const PH7_NativeClassSpec *pSpec,ph7
 			}
 		}
 	}
-	*ppOut = pClass;
 	return SXRET_OK;
 }
 /*
- * Install a whole table of native classes: declare them all (so later rows may
- * extend earlier ones), then fill in their methods, then mount.
+ * Install a whole table of native classes, in the compiler's own order: declare
+ * them all (so later rows may extend earlier ones), fill in their methods, wire
+ * the base chains and interfaces, then mount.
  *
  * Interfaces are declared but never mounted -- VmMountUserClass skips them anyway,
  * their methods being non-invocable.
@@ -503,6 +516,12 @@ PH7_PRIVATE sxi32 PH7_InstallNativeClasses(ph7_vm *pVm,const PH7_NativeClassSpec
 			if( rc != SXRET_OK ){
 				goto Done;
 			}
+		}
+	}
+	for( i = 0 ; i < nSpec ; i++ ){
+		rc = NativeLinkClass(&(*pVm),&aSpec[i],apClass[i]);
+		if( rc != SXRET_OK ){
+			goto Done;
 		}
 	}
 	for( i = 0 ; i < nSpec ; i++ ){
