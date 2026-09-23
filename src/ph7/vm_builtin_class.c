@@ -159,18 +159,39 @@ PH7_PRIVATE int vm_builtin_property_exists(ph7_context *pCtx,int nArg,ph7_value 
 			/* Extract attribute name */
 			zName = ph7_value_to_string(apArg[1],&nLen);
 			if( nLen > 0 ){
-				/* Perform the lookup in the attribute and method table */
-				if( SyHashGet(&pClass->hAttr,(const void *)zName,(sxu32)nLen) != 0
-					|| SyHashGet(&pClass->hMethod,(const void *)zName,(sxu32)nLen) != 0 ){
-						/* property exists,flag that */
-						res = 1;
+				/* php looks in ce->properties_info and NOWHERE else: a METHOD of this
+				 * name is not a property (`property_exists('C','someMethod')` is false),
+				 * and neither is a class CONSTANT. PHL searched the method table too and
+				 * answered true for both. */
+				SyHashEntry *pAttrE = SyHashGet(&pClass->hAttr,(const void *)zName,(sxu32)nLen);
+				ph7_class_attr *pAttr = pAttrE ? (ph7_class_attr *)pAttrE->pUserData : 0;
+				if( pAttr && (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
+					/* A base's PRIVATE property is invisible to the child it was asked
+					 * about, php's `property_info->ce == ce` rule: PHL copies one down
+					 * onto every child (its own methods read it through $this), so the
+					 * table alone said true where php says false. Static or instance,
+					 * the rule is the same; protected and public are inherited outright.
+					 * A trait's property belongs to the class that COMPOSED it. */
+					res = 1;
+					if( pAttr->iProtection == PH7_CLASS_PROT_PRIVATE
+					 && pAttr->pDeclClass != 0
+					 && PH7_VmComposingClass(pClass,pAttr->pDeclClass) != pClass ){
+						res = 0;
+					}
 				}
 				/* A DYNAMIC (runtime-added) property lives on the INSTANCE's
 				 * attribute table, not the class's — php reports those too
 				 * (band A #3b; pre-fix property_exists() was blind to them). */
 				if( res == 0 && (apArg[0]->iFlags & MEMOBJ_OBJ) ){
 					ph7_class_instance *pThis = (ph7_class_instance *)apArg[0]->x.pOther;
-					if( pThis && SyHashGet(&pThis->hAttr,(const void *)zName,(sxu32)nLen) != 0 ){
+					SyHashEntry *pObjE = pThis
+						? SyHashGet(&pThis->hAttr,(const void *)zName,(sxu32)nLen) : 0;
+					VmClassAttr *pObjAttr = pObjE ? (VmClassAttr *)pObjE->pUserData : 0;
+					/* Only a genuinely DYNAMIC one: every instance carries a slot for every
+					 * DECLARED member too, so an unqualified instance lookup answered true
+					 * for the base private the class-table rule above had just refused. */
+					if( pObjAttr && pObjAttr->pAttr
+					 && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_DYNAMIC) ){
 						res = 1;
 					}
 				}
@@ -204,9 +225,23 @@ PH7_PRIVATE int vm_builtin_method_exists(ph7_context *pCtx,int nArg,ph7_value **
 			zName = ph7_value_to_string(apArg[1],&nLen);
 			if( nLen > 0 ){
 				/* Perform the lookup in the method table */
-				if( SyHashGet(&pClass->hMethod,(const void *)zName,(sxu32)nLen) != 0 ){
-					/* method exists,flag that */
+				SyHashEntry *pEntry = SyHashGet(&pClass->hMethod,(const void *)zName,(sxu32)nLen);
+				if( pEntry ){
+					/* ...and apply php's one visibility rule here (`func->common.scope
+					 * == ce`): a PRIVATE method is only a method of the class that
+					 * declares it. PHL copies a base's private down so an inherited
+					 * public method can still dispatch it, which made
+					 * `method_exists('Child','basePrivate')` answer true where php
+					 * answers false — the same shape property_exists() had. Nothing
+					 * about the CALLING scope enters into it: php answers false for the
+					 * child from inside the BASE too. A trait's method belongs to the
+					 * class that COMPOSED it. */
+					ph7_class_method *pMeth = (ph7_class_method *)pEntry->pUserData;
 					res = 1;
+					if( pMeth->iProtection == PH7_CLASS_PROT_PRIVATE
+					 && PH7_VmMethodScopeName(pCtx->pVm,pClass,pMeth) != pClass ){
+						res = 0;
+					}
 				}
 			}
 		}
@@ -784,9 +819,20 @@ PH7_PRIVATE ph7_class * PH7_VmCallerScopeName(ph7_vm *pVm)
  */
 PH7_PRIVATE ph7_class * PH7_VmMethodScopeName(ph7_vm *pVm,ph7_class *pClass,ph7_class_method *pMeth)
 {
-	ph7_class *pDecl = (pMeth && pMeth->sFunc.pUserData) ? (ph7_class *)pMeth->sFunc.pUserData : pClass;
-	ph7_class *pWalk;
 	SXUNUSED(pVm);
+	return PH7_VmComposingClass(pClass,
+		(pMeth && pMeth->sFunc.pUserData) ? (ph7_class *)pMeth->sFunc.pUserData : pClass);
+}
+/*
+ * The rule itself, shared by the method side above and the ATTRIBUTE side (a trait's
+ * property is composed into the using class exactly as its methods are, and
+ * property_exists() asks the same "is this member's class the one I asked about"
+ * question). A declarer that is not a trait is the answer; a trait resolves to the first
+ * class in pClass's ancestry that uses it, and stands for itself when nothing does.
+ */
+PH7_PRIVATE ph7_class * PH7_VmComposingClass(ph7_class *pClass,ph7_class *pDecl)
+{
+	ph7_class *pWalk;
 	if( pDecl == 0 || (pDecl->iFlags & PH7_CLASS_TRAIT) == 0 ){
 		return pDecl;
 	}
