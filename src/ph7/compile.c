@@ -1870,7 +1870,7 @@ static sxi32 GenStateEmitExprCode(
 			iP2 = 0;
 			p3 = 0;
 			pInstr = PH7_VmPeekInstr(pGen->pVm);
-			if( pInstr && pInstr->iOp == PH7_OP_MEMBER ){
+			if( pInstr && pInstr->iOp == PH7_OP_MEMBER && pInstr->iP2 == PH7_MEMBER_METHOD ){
 				/* A static call with a DYNAMIC method name (`C::$m(...)`) folded that name
 				 * into OP_MEMBER->p3 and left only [class] on the stack (the name's OP_LOAD
 				 * was popped at the static-`::` codegen above). Re-load it so OP_LOAD_FCC
@@ -1882,6 +1882,13 @@ static sxi32 GenStateEmitExprCode(
 				}
 				iP1 = 2;
 			}else{
+				/* Only a METHOD member is the callee's NAME. A parenthesised PROPERTY read
+				 * (`($o->cb)(...)`, `(C::$cb)(...)`) is php's variable-invocation: the member
+				 * op stays, its VALUE is the callable, and this is the iP1=1 wrap. Dropping it
+				 * here read the property NAME as a method name and answered
+				 * `Call to undefined method H::cb()` for a closure the object was holding —
+				 * the CALL codegen above already made the distinction (it leaves the member a
+				 * plain read for a parenthesised callee) and this branch undid it. */
 				iP1 = 1;
 			}
 		}
