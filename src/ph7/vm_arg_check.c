@@ -550,6 +550,8 @@ static const struct VmBuiltinSig {
 	{ "error_clear_last", "", "void" },
 	{ "error_log", "string $message, int $message_type = 0, ?string $destination = NULL, ?string $additional_headers = NULL", "bool" },
 	{ "error_reporting", "?int $error_level = NULL", "int" },
+	{ "escapeshellarg", "string $arg", "string" },
+	{ "escapeshellcmd", "string $command", "string" },
 	{ "exit", "string|int $status = 0", "never" },
 	{ "exp", "float $num", "float" },
 	{ "expm1", "float $num", "float" },
@@ -1351,9 +1353,13 @@ static sxu32 VmBuiltinPathMask(SyString *pName)
 		{ "set_include_path", 16, 1u<<0 },
 		{ "session_save_path", 17, 1u<<0 },
 		{ "error_log",         9, 1u<<2 },
-		/* Commands handed to the shell */
+		/* Commands handed to the shell — and the two escapers, which php screens
+		 * the same way even though neither of them runs anything: a NUL in what a
+		 * script is about to hand a shell is refused where it is WRITTEN. */
 		{ "shell_exec",       10, 1u<<0 },
 		{ "popen",             5, 1u<<0 },
+		{ "escapeshellarg",   14, 1u<<0 },
+		{ "escapeshellcmd",   14, 1u<<0 },
 		/* The SPL path constructors, which php screens identically and reports
 		 * under their QUALIFIED name (`SplFileInfo::__construct(): Argument #1
 		 * ($filename) …`). They are native methods, so their signature reaches this

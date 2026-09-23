@@ -49,6 +49,8 @@ $cases = [
 	'error_log #3'      => fn() => error_log('m', 3, $p),
 	'shell_exec'        => fn() => shell_exec("echo\0hi"),
 	'popen'             => fn() => popen("echo\0hi", 'r'),
+	'escapeshellarg'    => fn() => escapeshellarg("echo\0hi"),
+	'escapeshellcmd'    => fn() => escapeshellcmd("echo\0hi"),
 ];
 foreach ($cases as $name => $fn) {
 	echo str_pad($name, 20);
@@ -148,6 +150,8 @@ session_save_path   session_save_path(): Argument #1 ($path) must not contain an
 error_log #3        error_log(): Argument #3 ($destination) must not contain any null bytes
 shell_exec          shell_exec(): Argument #1 ($command) must not contain any null bytes
 popen               popen(): Argument #1 ($command) must not contain any null bytes
+escapeshellarg      escapeshellarg(): Argument #1 ($arg) must not contain any null bytes
+escapeshellcmd      escapeshellcmd(): Argument #1 ($command) must not contain any null bytes
 aa exists: false
 named               fopen(): Argument #1 ($filename) must not contain any null bytes
 cuf                 unlink(): Argument #1 ($filename) must not contain any null bytes

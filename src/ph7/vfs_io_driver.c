@@ -857,6 +857,275 @@ static int is_pipe_stream(const ph7_io_stream *pStream)
  *  Returns a file pointer on success, or FALSE on error.
  */
 /*
+ * The longest command line the platform's shell accepts — php's `cmd_max_len`,
+ * which both escapers refuse to exceed. php reads it once at startup from
+ * sysconf(_SC_ARG_MAX) and hardcodes cmd.exe's constant on Windows.
+ */
+static sxu32 ShellMaxCmdLen(void)
+{
+#ifdef __WINNT__
+	/* An escaped command runs through cmd.exe, whose limit is a constant. */
+	return 8192;
+#elif defined(__UNIXES__) && defined(_SC_ARG_MAX)
+	long iMax = sysconf(_SC_ARG_MAX);
+	if( iMax <= 0 ){
+		return 4096;   /* php's _POSIX_ARG_MAX fallback */
+	}
+	return (sxu32)iMax;
+#else
+	return 4096;
+#endif
+}
+/*
+ * How the two escapers WALK their argument, and the one thing they share.
+ *
+ * php walks it with php_mblen(), the process LC_CTYPE's multibyte reader: a
+ * well-formed sequence is copied through untouched (a metacharacter's byte value
+ * inside one is NOT a metacharacter), and a byte the encoding cannot start a
+ * character with is DROPPED. That reader's answer is platform-shaped, and this
+ * follows it on both, because it is what php answers on each:
+ *
+ *   POSIX    php picks LC_CTYPE up from the environment at startup, so the
+ *            everyday answer is a UTF-8 one — a well-formed sequence rides
+ *            through and an ill-formed byte is dropped. PHL is UTF-8-only (§10)
+ *            and has no setlocale, so PH7_Utf8ReadStrict IS that reader.
+ *            (php in the "C" locale glibc falls back to drops every byte >= 0x80
+ *            instead, which is why the corpus guards this half on the oracle's
+ *            own LC_CTYPE rather than pinning it unconditionally.)
+ *   Windows  php reports LC_CTYPE "C", and MSVCRT's C locale is SINGLE-BYTE, not
+ *            ASCII: mblen() answers 1 for every byte, so nothing is ever dropped
+ *            and `\xFF` reaches the escape table below. Verified against php
+ *            8.5.8 on the gate VM, which does have an oracle — walking UTF-8
+ *            there instead deleted bytes php keeps.
+ *
+ * Neither escaper can see a NUL byte: php parses both parameters with
+ * Z_PARAM_PATH and the central screen (VmBuiltinPathMask) refuses one first.
+ */
+static int ShellCharIsWellFormed(const unsigned char *zIn,sxu32 nLeft,sxu32 *pnSeq)
+{
+#ifdef __WINNT__
+	SXUNUSED(zIn);
+	SXUNUSED(nLeft);
+	*pnSeq = 1;
+	return 1;
+#else
+	return PH7_Utf8ReadStrict(zIn,nLeft,pnSeq) >= 0;
+#endif
+}
+/*
+ * php's escapeshellarg(): wrap the whole argument in quotes the shell does not
+ * look inside, and neutralise the one byte that could end them.
+ *
+ * POSIX: single quotes, and a `'` becomes `'\''` — close, escape, reopen.
+ * Windows: double quotes; there is no in-quote escape for `"` on cmd.exe, so php
+ * REPLACES `"` (and `%`/`!`, which cmd.exe still expands inside quotes) with a
+ * space, and doubles a trailing ODD run of backslashes so the last one escapes
+ * itself rather than the closing quote.
+ */
+static void ShellEscapeArg(const unsigned char *zIn,sxu32 nLen,SyBlob *pOut)
+{
+	sxu32 i = 0;
+#ifdef __WINNT__
+	SyBlobAppend(pOut,"\"",sizeof(char));
+#else
+	SyBlobAppend(pOut,"'",sizeof(char));
+#endif
+	while( i < nLen ){
+		sxu32 nSeq = 1;
+		if( !ShellCharIsWellFormed(&zIn[i],nLen - i,&nSeq) ){
+			/* Ill-formed: php skips the byte rather than escaping it */
+			i += nSeq;
+			continue;
+		}
+		if( nSeq > 1 ){
+			SyBlobAppend(pOut,(const char *)&zIn[i],nSeq);
+			i += nSeq;
+			continue;
+		}
+#ifdef __WINNT__
+		if( zIn[i] == '"' || zIn[i] == '%' || zIn[i] == '!' ){
+			SyBlobAppend(pOut," ",sizeof(char));
+		}else{
+			SyBlobAppend(pOut,(const char *)&zIn[i],sizeof(char));
+		}
+#else
+		if( zIn[i] == '\'' ){
+			SyBlobAppend(pOut,"'\\'",sizeof("'\\'")-1);
+		}
+		SyBlobAppend(pOut,(const char *)&zIn[i],sizeof(char));
+#endif
+		i++;
+	}
+#ifdef __WINNT__
+	{
+		/* A trailing run of backslashes would escape the closing quote if it is
+		 * odd; the opening quote at offset 0 stops the scan the way php's does. */
+		const char *zCur = (const char *)SyBlobData(pOut);
+		sxu32 nCur = SyBlobLength(pOut);
+		sxu32 k = 0;
+		while( k < nCur && zCur[nCur - 1 - k] == '\\' ){
+			k++;
+		}
+		if( (k & 1) != 0 ){
+			SyBlobAppend(pOut,"\\",sizeof(char));
+		}
+	}
+	SyBlobAppend(pOut,"\"",sizeof(char));
+#else
+	SyBlobAppend(pOut,"'",sizeof(char));
+#endif
+}
+/*
+ * php's escapeshellcmd(): the argument is a COMMAND, so it is not quoted at all —
+ * every byte that could break out of one is prefixed with the shell's escape
+ * character instead (`\` on POSIX, `^` on cmd.exe).
+ *
+ * The one shape that is not a straight escape is a quote on POSIX: php leaves a
+ * PAIR of them alone (the command may legitimately quote one of its own
+ * arguments) and escapes an unpaired one. `pPair` is php's own one-slot state for
+ * that — it remembers the partner it found for the quote currently open, so the
+ * closing one is recognised and the pairing resets. cmd.exe has no such rule, so
+ * both quote characters (and `%`/`!`) are ordinary escapes there.
+ */
+static void ShellEscapeCmd(const unsigned char *zIn,sxu32 nLen,SyBlob *pOut)
+{
+	sxu32 i = 0;
+#ifndef __WINNT__
+	const unsigned char *pPair = 0;
+	static const char zEsc[] = "\\";
+#else
+	static const char zEsc[] = "^";
+#endif
+	while( i < nLen ){
+		sxu32 nSeq = 1;
+		if( !ShellCharIsWellFormed(&zIn[i],nLen - i,&nSeq) ){
+			i += nSeq;
+			continue;
+		}
+		if( nSeq > 1 ){
+			SyBlobAppend(pOut,(const char *)&zIn[i],nSeq);
+			i += nSeq;
+			continue;
+		}
+		switch( zIn[i] ){
+#ifndef __WINNT__
+		case '"':
+		case '\'':
+			if( pPair == 0
+			 && (pPair = (const unsigned char *)memchr(&zIn[i+1],zIn[i],nLen - i - 1)) != 0 ){
+				/* This quote opens a pair: leave both of them alone */
+			}else if( pPair != 0 && pPair[0] == zIn[i] ){
+				pPair = 0;   /* the partner: pairing satisfied */
+			}else{
+				SyBlobAppend(pOut,zEsc,sizeof(char));
+			}
+			SyBlobAppend(pOut,(const char *)&zIn[i],sizeof(char));
+			break;
+#else
+		/* cmd.exe expands %VAR% and !VAR! even inside quotes, and has no
+		 * in-quote escape, so all four are plain `^` escapes there. */
+		case '%':
+		case '!':
+		case '"':
+		case '\'':
+#endif
+		case '#':
+		case '&':
+		case ';':
+		case '`':
+		case '|':
+		case '*':
+		case '?':
+		case '~':
+		case '<':
+		case '>':
+		case '^':
+		case '(':
+		case ')':
+		case '[':
+		case ']':
+		case '{':
+		case '}':
+		case '$':
+		case '\\':
+		case 0x0A:
+		/* php escapes 0xFF too, and this is the row that decides the walk above
+		 * is worth getting right: it is unreachable under the UTF-8 walk (0xF5..
+		 * 0xFF is never a lead byte, so the reader drops the byte first) and
+		 * REACHED on Windows, where php's single-byte C locale hands it here —
+		 * `escapeshellcmd("a\xffb")` is `a^\xffb` on the oracle. */
+		case 0xFF:
+			SyBlobAppend(pOut,zEsc,sizeof(char));
+			/* fall through */
+		default:
+			SyBlobAppend(pOut,(const char *)&zIn[i],sizeof(char));
+			break;
+		}
+		i++;
+	}
+}
+/*
+ * string escapeshellarg(string $arg)
+ *  Escape an argument so a shell passes it to the command as ONE word, whatever
+ *  it contains.
+ */
+PH7_PRIVATE int PH7_builtin_escapeshellarg(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxu32 nMax = ShellMaxCmdLen();
+	const char *zArg;
+	SyBlob sOut;
+	int nLen;
+	SXUNUSED(nArg);   /* Arity is enforced from aBuiltinSig[] before the call */
+	zArg = ph7_value_to_string(apArg[0],&nLen);
+	/* php's own bound: the command line has to hold the two quotes and a NUL */
+	if( nLen > 0 && (sxu32)nLen > nMax - 3 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"Argument exceeds the allowed length of %d bytes",(int)nMax);
+	}
+	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+	ShellEscapeArg((const unsigned char *)zArg,(sxu32)nLen,&sOut);
+	if( SyBlobLength(&sOut) > nMax + 1 ){
+		SyBlobRelease(&sOut);
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"Escaped argument exceeds the allowed length of %d bytes",(int)nMax);
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+	return PH7_OK;
+}
+/*
+ * string escapeshellcmd(string $command)
+ *  Escape every character that could break out of a shell command.
+ */
+PH7_PRIVATE int PH7_builtin_escapeshellcmd(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxu32 nMax = ShellMaxCmdLen();
+	const char *zCmd;
+	SyBlob sOut;
+	int nLen;
+	SXUNUSED(nArg);   /* Arity is enforced from aBuiltinSig[] before the call */
+	zCmd = ph7_value_to_string(apArg[0],&nLen);
+	if( nLen < 1 ){
+		/* php answers "" without running the escaper at all */
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	if( (sxu32)nLen > nMax - 3 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"Command exceeds the allowed length of %d bytes",(int)nMax);
+	}
+	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+	ShellEscapeCmd((const unsigned char *)zCmd,(sxu32)nLen,&sOut);
+	if( SyBlobLength(&sOut) > nMax + 1 ){
+		SyBlobRelease(&sOut);
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"Escaped command exceeds the allowed length of %d bytes",(int)nMax);
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+	return PH7_OK;
+}
+/*
  * string|false|null shell_exec(string $command)
  *  Execute a command via the shell and return the complete output as a string.
  * Returns NULL when the command produces no output, FALSE when the pipe cannot be
