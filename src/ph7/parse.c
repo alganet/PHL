@@ -962,6 +962,43 @@ Synchronize:
 	return rc;
 }
 /*
+ * PHP 8.5 `clone (`: tell the clone() CALL form from the clone OPERATOR applied to a
+ * parenthesised operand. php's grammar has both, and its parser resolves the conflict
+ * by continuing the parenthesised expression whenever the token after the ')' can
+ * dereference it — so `clone ($a)->b()` clones what `b()` returns, `clone ($c)[0]`
+ * clones the ELEMENT and `clone ($f)()` clones the call's result, while a plain
+ * `clone ($a)` (nothing dereferencing) is the one-argument call, which means the same
+ * thing either way. PHL took the call form for every `clone (`, so the receiver was
+ * cloned and the member access ran on the ORIGINAL — a silent wrong answer with no
+ * diagnostic, out of `clone (new A)->b()`.
+ *
+ * pClone points at the 'clone' token and pClone[1] at its '('. Returns TRUE when the
+ * call-form branch should take the tokens (including the unterminated case, which that
+ * branch reports), FALSE to leave them to the precedence-1 operator path.
+ */
+static int CloneCallFormFollows(SyToken *pClone,SyToken *pEnd)
+{
+	SyToken *pNext = &pClone[2]; /* first token inside the '(' */
+	PH7_DelimitNestedTokens(pNext,pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pNext);
+	if( pNext >= pEnd ){
+		return TRUE; /* unterminated '(' — the call-form branch raises php's ')' error */
+	}
+	pNext++; /* step past the matching ')' */
+	if( pNext >= pEnd ){
+		return TRUE;
+	}
+	if( pNext->nType & (PH7_TK_OSB /*'['*/|PH7_TK_LPAREN /*'('*/) ){
+		return FALSE;
+	}
+	if( (pNext->nType & PH7_TK_OP) && pNext->pUserData ){
+		sxi32 iOp = ((const ph7_expr_op *)pNext->pUserData)->iOp;
+		if( iOp == EXPR_OP_ARROW || iOp == EXPR_OP_NULLSAFE_ARROW || iOp == EXPR_OP_DC ){
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+/*
  * Extract a single expression node from the input.
  * On success store the freshly extractd node in ppNode.
  * When errors,PH7 take care of generating the appropriate error message.
@@ -1057,7 +1094,8 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 		pNode->xCode = PH7_CompileLiteral;
 	}else if( (pCur->nType & PH7_TK_OP) && pCur->pUserData
 		&& ((const ph7_expr_op *)pCur->pUserData)->iOp == EXPR_OP_CLONE
-		&& &pCur[1] < pGen->pEnd && (pCur[1].nType & PH7_TK_LPAREN) ){
+		&& &pCur[1] < pGen->pEnd && (pCur[1].nType & PH7_TK_LPAREN)
+		&& CloneCallFormFollows(pCur,pGen->pEnd) ){
 		/* PHP 8.5 clone(...) call form: clone($object [, $withProperties]).
 		 * `clone` is an alpha-stream operator, so `clone(` is NOT auto-marked
 		 * as a function call the way `foo(` is — collect the parenthesised
