@@ -748,14 +748,43 @@ static ph7_value * VmUnserializeObject(unserialize_data *ud)
 	ph7_value *pObjVal, *pArrVal = 0;
 	int bIncomplete = 0;   /* build the carrier instead of the named class */
 	int bStampName = 0;    /* ... and remember the payload's name on it */
+	const char *zLen;
 	if( !VmUnExpect(ud,'O') || !VmUnExpect(ud,':') ){ return 0; }
+	zLen = ud->zCur;
 	if( !VmUnParseUInt(ud,&nLen) ){ return 0; }
 	if( !VmUnExpect(ud,':') || !VmUnExpect(ud,'"') ){ return 0; }
-	if( nLen > (sxu32)(ud->zEnd - ud->zCur) ){ return 0; } /* length compare avoids 32-bit pointer wrap */
+	/* Past the DECLARED length php stops blaming the token and reports where the
+	 * declaration turned out to be wrong — the s: reader's own two rules, which
+	 * this header never had, so every one of these was offset 0. A length that
+	 * overruns the buffer (or an EMPTY class name, which php refuses outright)
+	 * blames the length DIGITS; a length that merely disagrees with the payload
+	 * blames the byte where the closing quote should have been. */
+	if( nLen < 1 || nLen > (sxu32)(ud->zEnd - ud->zCur) ){
+		if( ud->zErr == 0 ){ ud->zErr = zLen; }
+		return 0;
+	}
 	zClass = ud->zCur; ud->zCur += nLen;
-	if( !VmUnExpect(ud,'"') || !VmUnExpect(ud,':') ){ return 0; }
-	if( !VmUnParseUInt(ud,&count) ){ return 0; }
-	if( !VmUnExpect(ud,':') || !VmUnExpect(ud,'{') ){ return 0; }
+	if( !VmUnExpect(ud,'"') ){
+		if( ud->zErr == 0 ){ ud->zErr = ud->zCur; }
+		return 0;
+	}
+	/* From here on the header is well-formed enough that php reports where the
+	 * parser actually stopped rather than the token's start. A NEGATIVE count is
+	 * read and then rejected, so the blame falls PAST its digits — php's own
+	 * signed reader, which is why the sign is skipped here before the report. */
+	if( !VmUnExpect(ud,':') || !VmUnParseUInt(ud,&count)
+	 || !VmUnExpect(ud,':') || !VmUnExpect(ud,'{') ){
+		if( ud->zErr == 0 ){
+			if( ud->zCur < ud->zEnd && (ud->zCur[0] == '-' || ud->zCur[0] == '+') ){
+				ud->zCur++;
+				while( ud->zCur < ud->zEnd && ud->zCur[0] >= '0' && ud->zCur[0] <= '9' ){
+					ud->zCur++;
+				}
+			}
+			ud->zErr = ud->zCur;
+		}
+		return 0;
+	}
 	if( !VmUnserializeClassAllowed(ud,zClass,nLen) ){
 		/* A class the option refuses becomes __PHP_Incomplete_Class WITHOUT a
 		 * class lookup: php never autoloads a name it was told not to build. */
@@ -935,12 +964,25 @@ static ph7_value * VmUnserializeEnumCase(unserialize_data *ud)
 	ph7_class *pClass;
 	ph7_class_attr *pAttr;
 	ph7_value *pSlot, *pOut;
+	const char *zLen;
 	if( !VmUnExpect(ud,'E') || !VmUnExpect(ud,':') ){ return 0; }
+	zLen = ud->zCur;
 	if( !VmUnParseUInt(ud,&nLen) ){ return 0; }
 	if( !VmUnExpect(ud,':') || !VmUnExpect(ud,'"') ){ return 0; }
-	if( nLen > (sxu32)(ud->zEnd - ud->zCur) ){ return 0; }
+	/* Same two offset rules as the O: header above. */
+	if( nLen < 1 || nLen > (sxu32)(ud->zEnd - ud->zCur) ){
+		if( ud->zErr == 0 ){ ud->zErr = zLen; }
+		return 0;
+	}
 	zBody = ud->zCur; ud->zCur += nLen;
-	if( !VmUnExpect(ud,'"') || !VmUnExpect(ud,';') ){ return 0; }
+	if( !VmUnExpect(ud,'"') ){
+		if( ud->zErr == 0 ){ ud->zErr = ud->zCur; }
+		return 0;
+	}
+	if( !VmUnExpect(ud,';') ){
+		if( ud->zErr == 0 ){ ud->zErr = ud->zCur; }
+		return 0;
+	}
 	/* Split "Class:CASE" at the LAST ':' (class names never contain ':') */
 	nCls = 0;
 	for( i = nLen ; i > 0 ; i-- ){
@@ -951,7 +993,14 @@ static ph7_value * VmUnserializeEnumCase(unserialize_data *ud)
 	while( pClass && (pClass->iFlags & PH7_CLASS_ENUM) == 0 ){
 		pClass = pClass->pNextName;
 	}
-	if( pClass == 0 ){ return 0; }
+	if( pClass == 0 ){
+		/* php names the class it could not find before the generic offset report.
+		 * An enum has no incomplete-object fallback: the case IDENTITY is the whole
+		 * point of the E: tag, so there is nothing to stand in for it. */
+		ph7_context_throw_error_format(ud->pCtx,PH7_CTX_WARNING,
+			"Class '%.*s' not found",(int)nCls,zBody);
+		return 0;
+	}
 	pAttr = PH7_ClassExtractConstant(pClass,&zBody[nCls+1],nLen - nCls - 1);
 	if( pAttr == 0 || (pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE) == 0 ){ return 0; }
 	if( PH7_VmMaterializeClassConst(ud->pVm,pClass,pAttr) != SXRET_OK ){
