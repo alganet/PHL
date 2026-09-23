@@ -203,12 +203,12 @@ Coverage: 126/255 lines (49.41%)
 |     - |  193 | ` * bool headers_sent()` |
 |     - |  194 | ` *   Returns TRUE if headers have already been sent (output started).` |
 |     - |  195 | ` */` |
-|    22 |  196 | `static int vm_builtin_headers_sent(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     3 |  197 | `{` |
-|    11 |  198 | `	(void)nArg; (void)apArg;` |
-|    25 |  199 | `	ph7_result_bool(pCtx, pCtx->pVm->bHeadersSent);` |
-|    25 |  200 | `	return PH7_OK;` |
-|     3 |  201 | `}` |
+|     8 |  196 | `static int vm_builtin_headers_sent(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     1 |  197 | `{` |
+|     4 |  198 | `	(void)nArg; (void)apArg;` |
+|     9 |  199 | `	ph7_result_bool(pCtx, pCtx->pVm->bHeadersSent);` |
+|     9 |  200 | `	return PH7_OK;` |
+|     1 |  201 | `}` |
 |     - |  202 | `/*` |
 |     - |  203 | ` * array headers_list()` |
 |     - |  204 | ` *   Returns a list of response headers as "Name: Value" strings.` |
@@ -404,7 +404,7 @@ Coverage: 126/255 lines (49.41%)
 |     - |  394 | `/*` |
 |     - |  395 | ` * Register all HTTP response functions with the VM.` |
 |     - |  396 | ` */` |
-|  3956 |  397 | `PH7_PRIVATE void PH7_RegisterHttpResponseFunctions(ph7_vm *pVm)` |
+|  4076 |  397 | `PH7_PRIVATE void PH7_RegisterHttpResponseFunctions(ph7_vm *pVm)` |
 |     5 |  398 | `{` |
 |     - |  399 | `	static const ph7_builtin_func aFunc[] = {` |
 |     - |  400 | `		{ "header",             vm_builtin_header             },` |
@@ -416,8 +416,8 @@ Coverage: 126/255 lines (49.41%)
 |     - |  406 | `		{ "setrawcookie",       vm_builtin_setrawcookie       },` |
 |     - |  407 | `	};` |
 |     - |  408 | `	sxu32 n;` |
-| 31653 |  409 | `	for( n = 0; n < SX_ARRAYSIZE(aFunc); n++ ){` |
-| 27697 |  410 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
-| 13851 |  411 | `	}` |
-|  3961 |  412 | `}` |
+| 32613 |  409 | `	for( n = 0; n < SX_ARRAYSIZE(aFunc); n++ ){` |
+| 28537 |  410 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
+| 14271 |  411 | `	}` |
+|  4081 |  412 | `}` |
 |     - |  413 |  |

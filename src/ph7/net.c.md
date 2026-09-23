@@ -113,50 +113,50 @@ Coverage: 81/141 lines (57.45%)
 |    - |  103 | ` * reports through its by-ref out-params.` |
 |    - |  104 | ` * Returns the connected socket, or PH7_NET_INVALID_SOCKET on error.` |
 |    - |  105 | ` */` |
-|    6 |  106 | `PH7_PRIVATE ph7_socket PH7_NetConnect(const char *zHost, int iPort, int iTimeoutMs,` |
+|   32 |  106 | `PH7_PRIVATE ph7_socket PH7_NetConnect(const char *zHost, int iPort, int iTimeoutMs,` |
 |    - |  107 | `	int *pErrno, const char **pzErr)` |
 |  ! 0 |  108 | `{` |
-|    6 |  109 | `	struct addrinfo hints, *res = 0, *rp;` |
+|   32 |  109 | `	struct addrinfo hints, *res = 0, *rp;` |
 |    - |  110 | `	char zPort[16];` |
-|    6 |  111 | `	ph7_socket sock = PH7_NET_INVALID_SOCKET;` |
-|    6 |  112 | `	if( pErrno ){ *pErrno = 0; }` |
-|    6 |  113 | `	if( pzErr ){ *pzErr = ""; }` |
-|    6 |  114 | `	if( zHost == 0 \|\| zHost[0] == 0 ){` |
+|   32 |  111 | `	ph7_socket sock = PH7_NET_INVALID_SOCKET;` |
+|   32 |  112 | `	if( pErrno ){ *pErrno = 0; }` |
+|   32 |  113 | `	if( pzErr ){ *pzErr = ""; }` |
+|   32 |  114 | `	if( zHost == 0 \|\| zHost[0] == 0 ){` |
 |  ! 0 |  115 | `		if( pErrno ){ *pErrno = -1; }` |
 |  ! 0 |  116 | `		if( pzErr ){ *pzErr = "Empty host"; }` |
 |  ! 0 |  117 | `		return PH7_NET_INVALID_SOCKET;` |
 |    - |  118 | `	}` |
-|    6 |  119 | `	snprintf(zPort, sizeof(zPort), "%d", iPort);` |
-|    6 |  120 | `	memset(&hints, 0, sizeof(hints));` |
-|    6 |  121 | `	hints.ai_family = AF_UNSPEC;` |
-|    6 |  122 | `	hints.ai_socktype = SOCK_STREAM;` |
-|    6 |  123 | `	if( getaddrinfo(zHost, zPort, &hints, &res) != 0 \|\| res == 0 ){` |
+|   32 |  119 | `	snprintf(zPort, sizeof(zPort), "%d", iPort);` |
+|   32 |  120 | `	memset(&hints, 0, sizeof(hints));` |
+|   32 |  121 | `	hints.ai_family = AF_UNSPEC;` |
+|   32 |  122 | `	hints.ai_socktype = SOCK_STREAM;` |
+|   32 |  123 | `	if( getaddrinfo(zHost, zPort, &hints, &res) != 0 \|\| res == 0 ){` |
 |  ! 0 |  124 | `		if( pErrno ){ *pErrno = -3; }` |
 |  ! 0 |  125 | `		if( pzErr ){ *pzErr = "php_network_getaddresses: getaddrinfo failed: Name or service not known"; }` |
 |  ! 0 |  126 | `		return PH7_NET_INVALID_SOCKET;` |
 |    - |  127 | `	}` |
-|    8 |  128 | `	for( rp = res ; rp != 0 ; rp = rp->ai_next ){` |
-|    6 |  129 | `		sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);` |
-|    6 |  130 | `		if( sock == PH7_NET_INVALID_SOCKET ){` |
+|   60 |  128 | `	for( rp = res ; rp != 0 ; rp = rp->ai_next ){` |
+|   32 |  129 | `		sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);` |
+|   32 |  130 | `		if( sock == PH7_NET_INVALID_SOCKET ){` |
 |  ! 0 |  131 | `			continue;` |
 |    - |  132 | `		}` |
-|    6 |  133 | `		if( iTimeoutMs > 0 ){` |
+|   32 |  133 | `		if( iTimeoutMs > 0 ){` |
 |    - |  134 | `			/* the connect() itself stays blocking; the timeout bounds the` |
 |    - |  135 | `			 * subsequent recv/send (php applies it to both — recorded) */` |
-|    6 |  136 | `			PH7_NetSetTimeout(sock, iTimeoutMs);` |
-|    3 |  137 | `		}` |
-|    6 |  138 | `		if( connect(sock, rp->ai_addr, (ph7_socklen)rp->ai_addrlen) == 0 ){` |
+|   32 |  136 | `			PH7_NetSetTimeout(sock, iTimeoutMs);` |
+|   16 |  137 | `		}` |
+|   32 |  138 | `		if( connect(sock, rp->ai_addr, (ph7_socklen)rp->ai_addrlen) == 0 ){` |
 |    4 |  139 | `			freeaddrinfo(res);` |
 |    4 |  140 | `			return sock;` |
 |    - |  141 | `		}` |
-|    2 |  142 | `		PH7_NetClose(sock);` |
-|    2 |  143 | `		sock = PH7_NET_INVALID_SOCKET;` |
-|    1 |  144 | `	}` |
-|    2 |  145 | `	freeaddrinfo(res);` |
-|    2 |  146 | `	if( pErrno ){ *pErrno = 111; }` |
-|    2 |  147 | `	if( pzErr ){ *pzErr = "Connection refused"; }` |
-|    2 |  148 | `	return PH7_NET_INVALID_SOCKET;` |
-|    3 |  149 | `}` |
+|   28 |  142 | `		PH7_NetClose(sock);` |
+|   28 |  143 | `		sock = PH7_NET_INVALID_SOCKET;` |
+|   14 |  144 | `	}` |
+|   28 |  145 | `	freeaddrinfo(res);` |
+|   28 |  146 | `	if( pErrno ){ *pErrno = 111; }` |
+|   28 |  147 | `	if( pzErr ){ *pzErr = "Connection refused"; }` |
+|   28 |  148 | `	return PH7_NET_INVALID_SOCKET;` |
+|   16 |  149 | `}` |
 |    - |  150 | `/*` |
 |    - |  151 | ` * Accept an incoming connection on a listening socket.` |
 |    - |  152 | ` * If pAddr and pAddrLen are non-NULL, the client address is stored there.` |
@@ -170,9 +170,9 @@ Coverage: 81/141 lines (57.45%)
 |    - |  160 | ` * Receive data from a socket.` |
 |    - |  161 | ` * Returns the number of bytes received, or -1 on error.` |
 |    - |  162 | ` */` |
-|   52 |  163 | `PH7_PRIVATE int PH7_NetRecv(ph7_socket sock, void *pBuf, int nLen, int flags)` |
+|   50 |  163 | `PH7_PRIVATE int PH7_NetRecv(ph7_socket sock, void *pBuf, int nLen, int flags)` |
 |  ! 0 |  164 | `{` |
-|   52 |  165 | `	return (int)recv(sock, (char *)pBuf, nLen, flags);` |
+|   50 |  165 | `	return (int)recv(sock, (char *)pBuf, nLen, flags);` |
 |  ! 0 |  166 | `}` |
 |    - |  167 | `/*` |
 |    - |  168 | ` * Send data on a socket.` |
@@ -203,32 +203,32 @@ Coverage: 81/141 lines (57.45%)
 |    - |  193 | `/*` |
 |    - |  194 | ` * Close a socket.` |
 |    - |  195 | ` */` |
-|   76 |  196 | `PH7_PRIVATE void PH7_NetClose(ph7_socket sock)` |
+|  102 |  196 | `PH7_PRIVATE void PH7_NetClose(ph7_socket sock)` |
 |  ! 0 |  197 | `{` |
-|   76 |  198 | `	if( sock == PH7_NET_INVALID_SOCKET ){` |
+|  102 |  198 | `	if( sock == PH7_NET_INVALID_SOCKET ){` |
 |  ! 0 |  199 | `		return;` |
 |    - |  200 | `	}` |
 |    - |  201 | `#ifdef __WINNT__` |
 |  ! 0 |  202 | `	closesocket(sock);` |
 |    - |  203 | `#else` |
-|   76 |  204 | `	close(sock);` |
+|  102 |  204 | `	close(sock);` |
 |    - |  205 | `#endif` |
-|   38 |  206 | `}` |
+|   51 |  206 | `}` |
 |    - |  207 | `/*` |
 |    - |  208 | ` * Set a receive timeout on a socket (in milliseconds).` |
 |    - |  209 | ` */` |
-|   44 |  210 | `PH7_PRIVATE void PH7_NetSetTimeout(ph7_socket sock, int iMilliseconds)` |
+|   70 |  210 | `PH7_PRIVATE void PH7_NetSetTimeout(ph7_socket sock, int iMilliseconds)` |
 |  ! 0 |  211 | `{` |
 |    - |  212 | `#ifdef __WINNT__` |
 |  ! 0 |  213 | `	DWORD tv = (DWORD)iMilliseconds;` |
 |  ! 0 |  214 | `	setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof(tv));` |
 |    - |  215 | `#else` |
 |    - |  216 | `	struct timeval tv;` |
-|   44 |  217 | `	tv.tv_sec = iMilliseconds / 1000;` |
-|   44 |  218 | `	tv.tv_usec = (iMilliseconds % 1000) * 1000;` |
-|   44 |  219 | `	setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const void *)&tv, sizeof(tv));` |
+|   70 |  217 | `	tv.tv_sec = iMilliseconds / 1000;` |
+|   70 |  218 | `	tv.tv_usec = (iMilliseconds % 1000) * 1000;` |
+|   70 |  219 | `	setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const void *)&tv, sizeof(tv));` |
 |    - |  220 | `#endif` |
-|   44 |  221 | `}` |
+|   70 |  221 | `}` |
 |    - |  222 | `/*` |
 |    - |  223 | ` * Extract a human-readable IP address string from a sockaddr.` |
 |    - |  224 | ` * Writes at most nBufLen bytes (including NUL) to zBuf.` |

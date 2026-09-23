@@ -1,10 +1,10 @@
 # src/phl/
 
-Coverage: 623/903 lines (68.99%)
+Coverage: 628/903 lines (69.55%)
 
 [Up](../index.md)
 
 | Name | Rate | Hit/Total |
 |:---|---:|---:|
-|[phl.c](phl.c.md)|75.88%|324/427|
+|[phl.c](phl.c.md)|77.05%|329/427|
 |[server.c](server.c.md)|62.82%|299/476|
