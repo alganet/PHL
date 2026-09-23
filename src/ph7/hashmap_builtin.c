@@ -14,6 +14,9 @@
  * Status:
  *    Stable.
  */
+/* Relink the last-inserted node into iteration order (array_unshift/array_splice);
+ * defined with the splice helpers further down. */
+static void HashmapMoveLastAfter(ph7_hashmap *pMap,ph7_hashmap_node *pAfter);
 /*
  * bool shuffle(array &$array)
  *  shuffles (randomizes the order of the elements in) an array.
@@ -367,6 +370,72 @@ PH7_PRIVATE int ph7_hashmap_shift(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Reset the cursor */
 		pMap->pCur = pMap->pFirst;
 	}
+	return PH7_OK;
+}
+/*
+ * int array_unshift(array &$array,mixed ...$values)
+ *  Prepend one or more elements to the beginning of an array.
+ * Parameters
+ *  $array
+ *   The input array, modified in place.
+ *  $values
+ *   The values to prepend, in the order they are written.
+ * Return
+ *  The new number of elements.
+ * Note
+ *  php renumbers every INTEGER key afterwards (string keys keep theirs), on
+ *  every call -- including one that prepends nothing.
+ */
+PH7_PRIVATE int ph7_hashmap_unshift(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_hashmap_node *pEntry;
+	ph7_hashmap *pMap;
+	sxu32 n;
+	int i;
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_unshift() expects at least 1 argument, %d given",
+			nArg
+			);
+	}
+	/* Detect constants or literals, which cannot be passed by reference. */
+	if( apArg[0]->nIdx == SXU32_HIGH ){
+		return PH7_VmThrowException(pCtx,
+			"Error",
+			"array_unshift(): Argument #1 ($array) could not be passed by reference"
+			);
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		char zBuf[64];
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"array_unshift(): Argument #1 ($array) must be of type array, %s given",
+			VmValueGivenName(apArg[0],zBuf,sizeof(zBuf))
+			);
+	}
+	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
+	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
+	/* Prepend by inserting at the END and relinking to the front, LAST value
+	 * first so the arguments end up in the order they were written. */
+	for( i = nArg - 1 ; i >= 1 ; --i ){
+		if( HashmapInsert(pMap,0,apArg[i]) != SXRET_OK ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		HashmapMoveLastAfter(pMap,0 /* the very beginning */);
+	}
+	/* Renumber the integer keys in iteration order; a string key keeps its own. */
+	pMap->iNextIdx = 0;
+	pMap->bIntKeySeen = 0;
+	pEntry = pMap->pFirst;
+	for( n = pMap->nEntry ; n > 0 ; --n ){
+		if( pEntry->iType == HASHMAP_INT_NODE ){
+			HashmapRehashIntNode(pEntry);
+		}
+		pEntry = pEntry->pPrev; /* Reverse link */
+	}
+	pMap->pCur = pMap->pFirst;
+	ph7_result_int64(pCtx,(sxi64)pMap->nEntry);
 	return PH7_OK;
 }
 /*

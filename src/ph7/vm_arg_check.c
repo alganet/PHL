@@ -429,6 +429,7 @@ static const struct VmBuiltinSig {
 	{ "array_udiff", "array $array, ...$rest = ?", "array" },
 	{ "array_uintersect", "array $array, ...$rest = ?", "array" },
 	{ "array_unique", "array $array, int $flags = 2", "array" },
+	{ "array_unshift", "array &$array, mixed ...$values = ?", "int" },
 	{ "array_values", "array $array", "array" },
 	{ "array_walk", "object|array &$array, callable $callback, mixed $arg = ?", "true" },
 	{ "array_walk_recursive", "object|array &$array, callable $callback, mixed $arg = ?", "true" },

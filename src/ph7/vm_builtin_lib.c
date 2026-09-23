@@ -752,18 +752,6 @@
    "   }"\
    "   return false;"\
    "}"\
-   "function array_unshift(&$array, ...$values){"\
-   " if( !is_array($array) ){ throw new TypeError('array_unshift(): Argument #1 ($array) must be of type array, ' . __php_zpp_type($array) . ' given'); }"\
-   "/* Copy arguments */"\
-   "$pNew = $values;"\
-   	"/* Make a copy of the old entries */"\
-	"$pOld = array_copy($array);"\
-	"/* Erase */"\
-	"array_erase($array);"\
-	"/* Unshift */"\
-	"$array = array_merge($pNew,$pOld);"\
-	"return sizeof($array);"\
-    "}"\
 	"function array_merge_recursive(...$arrays){"\
     "$narrays = count($arrays);"\
     "$ret = array();"\
