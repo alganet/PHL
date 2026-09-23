@@ -147,6 +147,32 @@ PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile)
 		ph7_function_name(pCtx),zFile ? zFile : "",VfsStrerror(errno));
 }
 /*
+ * php's stat-failure warning: `filemtime(): stat failed for /nope`, and
+ * `filetype(): Lstat failed for /nope` for the two members that LSTAT. php raises
+ * it from php_stat() for the whole family and answers FALSE; PHL answered the
+ * VFS's raw -1 (or the string "unknown") for most of them, in silence -- and -1 is
+ * TRUTHY, so `if (filemtime($f))` took the found branch for a file that is not
+ * there and `filemtime($a) > filemtime($b)` compared a real time against it.
+ */
+static void VfsThrowStatWarning(ph7_context *pCtx,const char *zPath,int bLstat)
+{
+	PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s failed for %s",
+		ph7_function_name(pCtx),bLstat ? "Lstat" : "stat",zPath ? zPath : "");
+}
+/*
+ * Can this path be stat'ed at all? The three TIME readers report a failure as -1,
+ * which is also a legitimate timestamp (a file stamped in the last second before
+ * the epoch), so the failure verdict is asked of the VFS separately rather than
+ * read off the value -- one extra call, and only on the negative branch.
+ */
+static int VfsPathStatable(ph7_vfs *pVfs,const char *zPath)
+{
+	if( pVfs == 0 || pVfs->xFileExists == 0 ){
+		return 0;
+	}
+	return pVfs->xFileExists(zPath) == PH7_OK;
+}
+/*
  * bool chdir(string $directory)
  *  Change the current directory.
  * Parameters
@@ -972,6 +998,14 @@ static int PH7_vfs_file_atime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	zPath = ph7_value_to_string(apArg[0],0);
 	/* Perform the requested operation */
 	iTime = pVfs->xFileAtime(zPath);
+	if( iTime < 0 && !VfsPathStatable(pVfs,zPath) ){
+		/* php: a stat failure warns and answers FALSE. PH7 answered int(-1) --
+		 * truthy, and one second before the epoch is also a real timestamp, which
+		 * is why the verdict comes from the VFS rather than from the value. */
+		VfsThrowStatWarning(pCtx,zPath,0);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
 	/* IO return value */
 	ph7_result_int64(pCtx,iTime);
 	return PH7_OK;
@@ -1010,6 +1044,14 @@ static int PH7_vfs_file_mtime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	zPath = ph7_value_to_string(apArg[0],0);
 	/* Perform the requested operation */
 	iTime = pVfs->xFileMtime(zPath);
+	if( iTime < 0 && !VfsPathStatable(pVfs,zPath) ){
+		/* php: a stat failure warns and answers FALSE. PH7 answered int(-1) --
+		 * truthy, and one second before the epoch is also a real timestamp, which
+		 * is why the verdict comes from the VFS rather than from the value. */
+		VfsThrowStatWarning(pCtx,zPath,0);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
 	/* IO return value */
 	ph7_result_int64(pCtx,iTime);
 	return PH7_OK;
@@ -1048,6 +1090,14 @@ static int PH7_vfs_file_ctime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	zPath = ph7_value_to_string(apArg[0],0);
 	/* Perform the requested operation */
 	iTime = pVfs->xFileCtime(zPath);
+	if( iTime < 0 && !VfsPathStatable(pVfs,zPath) ){
+		/* php: a stat failure warns and answers FALSE. PH7 answered int(-1) --
+		 * truthy, and one second before the epoch is also a real timestamp, which
+		 * is why the verdict comes from the VFS rather than from the value. */
+		VfsThrowStatWarning(pCtx,zPath,0);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
 	/* IO return value */
 	ph7_result_int64(pCtx,iTime);
 	return PH7_OK;
@@ -1277,7 +1327,14 @@ static int PH7_vfs_filetype(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Set the empty string as the default return value */
 	ph7_result_string(pCtx,"",0);
 	/* Perform the requested operation */
-	pVfs->xFiletype(zPath,pCtx);
+	if( pVfs->xFiletype(zPath,pCtx) != PH7_OK ){
+		/* php LSTATs here (which is why a symlink answers "link") and a failure is
+		 * the `Lstat failed for` warning plus FALSE. PHL answered the string
+		 * "unknown" -- a real return value of this function, so a caller could not
+		 * tell a missing path from a socket or a fifo. */
+		VfsThrowStatWarning(pCtx,zPath,1);
+		ph7_result_bool(pCtx,0);
+	}
 	return PH7_OK;
 }
 /*
@@ -1339,7 +1396,10 @@ static int PH7_vfs_stat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Perform the requested operation */
 	rc = pVfs->xStat(zPath,pArray,pValue);
 	if( rc != PH7_OK ){
-		/* IO error,return FALSE */
+		/* php warns before answering FALSE -- the same `stat failed for` /
+		 * `Lstat failed for` line the rest of the family raises. PHL returned the
+		 * FALSE in silence, so a missing path and an empty result looked alike. */
+		VfsThrowStatWarning(pCtx,zPath,0);
 		ph7_result_bool(pCtx,0);
 	}else{
 		/* Return the associative array */
@@ -1408,7 +1468,10 @@ static int PH7_vfs_lstat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Perform the requested operation */
 	rc = pVfs->xlStat(zPath,pArray,pValue);
 	if( rc != PH7_OK ){
-		/* IO error,return FALSE */
+		/* php warns before answering FALSE -- the same `stat failed for` /
+		 * `Lstat failed for` line the rest of the family raises. PHL returned the
+		 * FALSE in silence, so a missing path and an empty result looked alike. */
+		VfsThrowStatWarning(pCtx,zPath,1);
 		ph7_result_bool(pCtx,0);
 	}else{
 		/* Return the associative array */
@@ -1417,6 +1480,77 @@ static int PH7_vfs_lstat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Don't worry about freeing memory here,everything will be released
 	 * automatically as soon we return from this function. */
 	return PH7_OK;
+}
+/*
+ * int|false fileowner / filegroup / fileinode / fileperms (string $filename)
+ *  One stat() with one of its fields taken out of it, which is exactly how php
+ *  implements them (php_stat's FS_OWNER / FS_GROUP / FS_INODE / FS_PERMS arms).
+ *
+ * They were prelude PHP wrapping stat(), which cost them php's diagnostic twice
+ * over: three of the four said NOTHING on a failed stat (the fourth raised its own
+ * `trigger_error`, so its errno was E_USER_WARNING's 512 rather than E_WARNING's 2
+ * and its line was the prelude's, not the caller's). In C the family shares one
+ * warning site with the rest of stat(), and the four get real signature rows.
+ */
+static int VfsStatField(ph7_context *pCtx,int nArg,ph7_value **apArg,const char *zField)
+{
+	ph7_value *pArray,*pValue,*pField;
+	const char *zPath;
+	ph7_vfs *pVfs;
+	int rc;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
+	if( pVfs == 0 || pVfs->xStat == 0 ){
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",
+			ph7_function_name(pCtx)
+			);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pArray = ph7_context_new_array(pCtx);
+	pValue = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pValue == 0 ){
+		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zPath = ph7_value_to_string(apArg[0],0);
+	rc = pVfs->xStat(zPath,pArray,pValue);
+	if( rc != PH7_OK ){
+		VfsThrowStatWarning(pCtx,zPath,0);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pField = ph7_array_fetch(pArray,zField,-1);
+	if( pField == 0 ){
+		/* The VFS answered a stat array without this field: nothing to report but
+		 * the failure itself, which is what php answers when its own stat has no
+		 * such member either. */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_int64(pCtx,ph7_value_to_int64(pField));
+	return PH7_OK;
+}
+static int PH7_vfs_file_owner(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return VfsStatField(pCtx,nArg,apArg,"uid");
+}
+static int PH7_vfs_file_group(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return VfsStatField(pCtx,nArg,apArg,"gid");
+}
+static int PH7_vfs_file_inode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return VfsStatField(pCtx,nArg,apArg,"ino");
+}
+static int PH7_vfs_file_perms(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return VfsStatField(pCtx,nArg,apArg,"mode");
 }
 /*
  * string getenv(string $varname)
@@ -2713,6 +2847,10 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"filetype",    PH7_vfs_filetype },
 		{"stat",        PH7_vfs_stat     },
 		{"lstat",       PH7_vfs_lstat    },
+		{"fileowner",   PH7_vfs_file_owner},
+		{"filegroup",   PH7_vfs_file_group},
+		{"fileinode",   PH7_vfs_file_inode},
+		{"fileperms",   PH7_vfs_file_perms},
 		{"getenv",      PH7_vfs_getenv   },
 		{"setenv",      PH7_vfs_putenv   },
 		{"putenv",      PH7_vfs_putenv   },

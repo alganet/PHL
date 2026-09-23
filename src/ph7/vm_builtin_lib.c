@@ -374,15 +374,10 @@
    "  }"\
    "  return $string;"\
    "}"\
-   "/* Permission bits via stat(); false + warning when stat fails, like php. */"\
-   "function fileperms($filename){"\
-   "  $s = @stat($filename);"\
-   "  if( $s === false ){"\
-   "    trigger_error('fileperms(): stat failed for ' . $filename, E_USER_WARNING);"\
-   "    return false;"\
-   "  }"\
-   "  return $s['mode'];"\
-   "}"\
+   /* fileperms/fileowner/filegroup/fileinode moved to C (vfs.c, VfsStatField):
+    * as prelude wrappers over stat() three of them said nothing on a failed stat
+    * and the fourth raised trigger_error, whose errno is E_USER_WARNING's 512 and
+    * whose line is this chunk's rather than the caller's. */\
    "/* PH7 keeps no stat cache, so this is a no-op like php on a clean cache. */"\
    "function clearstatcache($clear_realpath_cache = false, $filename = ''){}"\
    "/* php 8.4 mb_ucfirst/mb_lcfirst: case-map only the first multibyte char. */"\
@@ -423,27 +418,8 @@
    "   }"\
    "   return false;"\
    "}"\
-	"function fileowner(string $filename){"\
-    " $a = stat($filename);"\
-	" if( !is_array($a) ){"\
-	"	return false;"\
-	" }"\
-	" return $a['uid'];"\
-    "}"\
-    "function filegroup(string $filename){"\
-	" $a = stat($filename);"\
-	" if( !is_array($a) ){"\
-	"	return false;"\
-	" }"\
-	" return $a['gid'];"\
-    "}"\
-	 "function fileinode(string $filename){"\
-	" $a = stat($filename);"\
-	" if( !is_array($a) ){"\
-	"	return false;"\
-	" }"\
-	" return $a['ino'];"\
-    "}"
+	/* fileowner/filegroup/fileinode: see the note beside fileperms above. */\
+	""
 
 /*
  * ---------------------------------------------------------------------------
