@@ -156,14 +156,19 @@ static int VmAttrIsProperty(VmClassAttr *pVmAttr)
 	/* php 8.4: VIRTUAL hooked properties have no backing store — serialize()
 	 * excludes them (raw surface; the get hook is NOT consulted).
 	 *
-	 * PH7_CLASS_ATTR_HIDDEN is deliberately NOT excluded here, unlike every other
-	 * presentation surface: a native class's engine slot is the only place its state
-	 * lives, and php replaces that state with an `__serialize`/`__unserialize` pair
-	 * PHL does not have yet. Hiding it would make `unserialize(serialize($date))`
-	 * answer an EMPTY DateTime — a wrong answer traded for a byte-exact one. The
-	 * leak stays recorded (§7.4) until those handlers exist. */
+	 * PH7_CLASS_ATTR_HIDDEN is excluded too, which makes serialize() agree with the
+	 * other eight presentation surfaces at last. It could not be until 3 Aug: a
+	 * native class's engine slot is the only place its state lives, so hiding it
+	 * without php's replacement made `unserialize(serialize($date))` answer an EMPTY
+	 * object. php's replacement is an `__serialize`/`__unserialize` pair, and every
+	 * class here that php round-trips now declares one (the date family, the SPL
+	 * containers, ArrayObject/ArrayIterator). What is left holding a hidden slot is
+	 * the SPL DECORATOR family, whose state php does not round-trip either — its
+	 * payload is `O:16:"IteratorIterator":0:{}`, which is exactly what dropping the
+	 * slots produces. */
 	return (pVmAttr->pAttr->iFlags
-		& (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HOOK_VIRTUAL)) == 0;
+		& (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HOOK_VIRTUAL
+		  |PH7_CLASS_ATTR_HIDDEN)) == 0;
 }
 /* __sleep() walker state: emit each named property in the array's order. */
 typedef struct sleep_ctx sleep_ctx;
