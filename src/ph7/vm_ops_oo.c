@@ -452,6 +452,88 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 }
 
 /*
+ * Does an OVERLOADED read-modify-write apply to this property access? php runs
+ * one only when the class answers BOTH sides; the guard means we are already
+ * inside this property's own __get, where php behaves as if the accessor were
+ * absent.
+ */
+static int VmMagicRmwEligible(ph7_vm *pVm,ph7_class *pClass,ph7_class_instance *pThis,const SyString *pName)
+{
+	return PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1) != 0
+	    && PH7_ClassExtractMethod(pClass,"__set",sizeof("__set")-1) != 0
+	    && !VmMagicGuardHeld(pVm,(void *)pThis,pName,'g');
+}
+/*
+ * php's read-modify-write of an OVERLOADED property — `$o->n++`, `--$o->n`,
+ * `$o->n += 2`, `$o->n .= 'x'` on a name the instance does not expose. php reads
+ * the current value through __get, lets the modify op compute on it, and writes
+ * the result back through __set; PHL fell through to dynamic-property creation
+ * instead, so the ordinary shape (a class declaring BOTH accessors) died on
+ * `Cannot create dynamic property C::$n` — or, when the name IS declared but
+ * inaccessible from this scope, on `Cannot access private property C::$n` —
+ * for a statement php runs.
+ *
+ * The write-back rides the same pending-entry rail property HOOKS use: the
+ * current value goes into a fresh SCRATCH memobj the modify op mutates in
+ * place, and the entry makes that op's tail (PH7_HOOK_RMW_WRITEBACK) dispatch
+ * __set with the computed value.
+ *
+ * BOTH accessors are required, which is php's own split: with only __get php
+ * goes on to CREATE the property (PHL's §10 policy refuses a dynamic property),
+ * and with only __set it warns `Undefined property` and reads null — neither is
+ * this path.
+ *
+ * *pOut takes __get's value and *pnScratch the slot the modify op must address;
+ * the caller does its own stack surgery afterwards, because pName still aliases
+ * the NAME operand when the name is dynamic (`$o->$k++`) and releasing that
+ * operand first would leave it dangling. *pnScratch stays SXU32_HIGH when __get
+ * threw (nothing is armed — the fetch-point router lands the parked throw and
+ * php's __set never runs) or when the scratch reservation failed.
+ */
+static void VmMagicRmwArm(
+	ph7_vm *pVm,
+	ph7_class_instance *pThis,
+	ph7_class *pClass,
+	const SyString *pName,
+	ph7_value *pOut,
+	sxu32 *pnScratch,
+	void *pOwnerStack,
+	void *pInstrs,
+	sxu32 nPc
+	)
+{
+	ph7_value *pScr;
+	VmHookRmw sRmw;
+	*pnScratch = SXU32_HIGH;
+	VmMagicGuardPush(pVm,(void *)pThis,pName,'g');
+	PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__get",sizeof("__get")-1,pName,pOut);
+	VmMagicGuardPop(pVm);
+	if( pVm->nBoundaryRc != 0 ){
+		PH7_MemObjRelease(pOut);
+		return;
+	}
+	pScr = PH7_ReserveMemObj(&(*pVm));
+	if( pScr == 0 ){
+		/* OOM: loud allocator diagnostics already fired; the value still stands. */
+		return;
+	}
+	PH7_MemObjStore(pOut,pScr);
+	sRmw.iKind = VM_HOOK_PEND_RMW_MAGIC;
+	sRmw.pThis = pThis;
+	sRmw.pAttr = 0;
+	sRmw.nBackIdx = SXU32_HIGH;
+	sRmw.nScratchIdx = pScr->nIdx;
+	SyBlobInit(&sRmw.sName,&pVm->sAllocator);
+	SyBlobAppend(&sRmw.sName,(const void *)pName->zString,pName->nByte);
+	sRmw.pOwnerStack = pOwnerStack;
+	sRmw.pInstrs = pInstrs;
+	sRmw.nJmpPc = nPc;  /* the modify op ... */
+	sRmw.nPc = nPc;     /* ... is the whole window */
+	pThis->iRef++;
+	SySetPut(&pVm->aHookRmw,(const void *)&sRmw);
+	*pnScratch = pScr->nIdx;
+}
+/*
  * OP_MEMBER: body moved verbatim from the OP_MEMBER arm of
  * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
  */
@@ -872,6 +954,28 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								PH7_MemObjRelease(&sTest);
 								PH7_ClassInstanceUnref(pThis);
 								VM_EXIT_BREAK;
+							}else if( VmMemberNextIsRmw(pNext)
+							 && VmMagicRmwEligible(pVm,pClass,pThis,&sName) ){
+								/* ++/--/compound-assign on an overloaded property: php
+								 * reads through __get and writes the computed value back
+								 * through __set. Arm the scratch slot the modify op will
+								 * mutate and finish the op here — the pre-existing path
+								 * vivified a dynamic property instead, which on any
+								 * ordinary accessor class is PHL's
+								 * "Cannot create dynamic property" Error. */
+								ph7_value sRmwVal;
+								sxu32 nRmwScratch;
+								PH7_MemObjInit(pVm,&sRmwVal);
+								VmMagicRmwArm(&(*pVm),pThis,pClass,&sName,&sRmwVal,&nRmwScratch,
+									(void *)pStack,(void *)aInstr,(sxu32)(pc + 1));
+								VmPopOperand(&pTos,1);   /* drop the property name */
+								pThis->iRef++;
+								PH7_MemObjRelease(pTos); /* collapse the object slot */
+								PH7_MemObjStore(&sRmwVal,pTos);
+								pTos->nIdx = nRmwScratch;
+								PH7_MemObjRelease(&sRmwVal);
+								PH7_ClassInstanceUnref(pThis);
+								VM_EXIT_BREAK;
 							}else if( !bPlainStore && pInstr->iP2 == PH7_MEMBER_WRITE
 							 && !VmMemberNextIsWrite(pNext)
 							 && PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1) ){
@@ -880,13 +984,8 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								 * is lost, like php's indirect-modification case). A PLAIN
 								 * store (bPlainStore — the compiler tags those
 								 * PH7_MEMBER_WRITE too) is NOT this case: it falls through
-								 * to dynamic creation. A direct ++/--/compound-assign
-								 * (VmMemberNextIsWrite — the compiler now tags those
-								 * PH7_MEMBER_WRITE as well) is NOT this case either: it
-								 * falls through to dynamic creation like before (the
-								 * recorded RMW-vivifies-instead-of-__get residual, §7).
-								 * Leave the miss path — the read gate below dispatches
-								 * __get. */
+								 * to dynamic creation. Leave the miss path — the read gate
+								 * below dispatches __get. */
 							}else if( pThis->pClass->iFlags & PH7_CLASS_READONLY ){
 								SyBlob sErrMsg;
 								SyBlobInit(&sErrMsg,&pVm->sAllocator);
@@ -1329,6 +1428,26 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						if( pInstr->iP2 != PH7_MEMBER_WRITE && !VmMemberCtxIsLookup(pInstr->iP2)
 						 && !VmMemberNextIsWrite(pInstr + 1) ){
 							pGetMagic = PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1);
+						}
+						/* ++/--/compound-assign on a DECLARED but inaccessible property:
+						 * php's accessors answer for it exactly as they do for a missing
+						 * one (__get, modify, __set), where PHL raised
+						 * `Cannot access private property C::$n`. A plain store keeps its
+						 * own __set park below — it is a write, but not a read-modify-write. */
+						if( VmMemberNextIsRmw(pInstr + 1)
+						 && VmMagicRmwEligible(pVm,pClass,pThis,&sName) ){
+							/* The name was already popped and pTos released above, so
+							 * sName is the instruction's own literal here. */
+							ph7_value sRmwVal;
+							sxu32 nRmwScratch;
+							PH7_MemObjInit(pVm,&sRmwVal);
+							VmMagicRmwArm(&(*pVm),pThis,pClass,&sName,&sRmwVal,&nRmwScratch,
+								(void *)pStack,(void *)aInstr,(sxu32)(pc + 1));
+							PH7_MemObjStore(&sRmwVal,pTos);
+							pTos->nIdx = nRmwScratch;
+							PH7_MemObjRelease(&sRmwVal);
+							PH7_ClassInstanceUnref(pThis);
+							VM_EXIT_BREAK;
 						}
 						if( pGetMagic && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'g') ){
 							ph7_value sMagicRet;

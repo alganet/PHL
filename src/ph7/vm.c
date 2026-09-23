@@ -4736,6 +4736,27 @@ PH7_PRIVATE int VmMemberNextIsWrite(const VmInstr *pNext)
 	}
 }
 /*
+ * The READ-MODIFY-WRITE subset of VmMemberNextIsWrite: the ops that need the
+ * member's CURRENT value before they produce the new one (`$o->n++`, `$o->n .= 'x'`,
+ * `$o->n += 1`). A plain store and a reference store are writes but not
+ * read-modify-writes — neither reads the member — so an accessor class must not
+ * treat them as one.
+ */
+PH7_PRIVATE int VmMemberNextIsRmw(const VmInstr *pNext)
+{
+	switch( pNext->iOp ){
+		case PH7_OP_ADD_STORE: case PH7_OP_SUB_STORE: case PH7_OP_MUL_STORE:
+		case PH7_OP_DIV_STORE: case PH7_OP_MOD_STORE: case PH7_OP_POW_STORE:
+		case PH7_OP_CAT_STORE:
+		case PH7_OP_SHL_STORE: case PH7_OP_SHR_STORE:
+		case PH7_OP_INCR: case PH7_OP_DECR:
+		case PH7_OP_BAND_STORE: case PH7_OP_BOR_STORE: case PH7_OP_BXOR_STORE:
+			return 1;
+		default:
+			return 0;
+	}
+}
+/*
  * Whether execution is currently INSIDE one of pName's own hook bodies on this
  * instance. php's rule: within ANY hook of property x (get or set alike),
  * `$this->x` addresses the raw backing store for BOTH reads and writes — so
@@ -4901,7 +4922,7 @@ PH7_PRIVATE sxi32 VmHookRmwConsume(ph7_vm *pVm,sxu32 nIdx)
 	ph7_value sVal;
 	sxi32 rc = SXRET_OK;
 	pEnt = (VmHookRmw *)SySetPeek(&pVm->aHookRmw);
-	if( pEnt == 0 || pEnt->iKind != VM_HOOK_PEND_RMW || pEnt->nScratchIdx != nIdx ){
+	if( pEnt == 0 || !VM_HOOK_PEND_IS_RMW(pEnt->iKind) || pEnt->nScratchIdx != nIdx ){
 		return SXERR_NOTFOUND;
 	}
 	sEnt = *pEnt;
@@ -4917,8 +4938,17 @@ PH7_PRIVATE sxi32 VmHookRmwConsume(ph7_vm *pVm,sxu32 nIdx)
 	VmHookRmwFreeScratch(&(*pVm),sEnt.nScratchIdx);
 	sVal.nIdx = SXU32_HIGH;
 	if( pVm->nBoundaryRc == 0 ){
-		rc = VmHookSetDispatch(&(*pVm),sEnt.pThis,sEnt.pAttr,sEnt.nBackIdx,&sVal);
+		if( sEnt.iKind == VM_HOOK_PEND_RMW_MAGIC ){
+			/* Overloaded property: the write side is __set($name, $computed) —
+			 * php's second half of `$o->n++` on a class with both accessors. */
+			SyString sPropName;
+			SyStringInitFromBuf(&sPropName,SyBlobData(&sEnt.sName),SyBlobLength(&sEnt.sName));
+			VmMagicSetDispatch(&(*pVm),sEnt.pThis,&sPropName,&sVal);
+		}else{
+			rc = VmHookSetDispatch(&(*pVm),sEnt.pThis,sEnt.pAttr,sEnt.nBackIdx,&sVal);
+		}
 	}
+	SyBlobRelease(&sEnt.sName);
 	PH7_MemObjRelease(&sVal);
 	PH7_ClassInstanceUnref(sEnt.pThis);
 	return rc;

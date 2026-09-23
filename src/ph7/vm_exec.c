@@ -2745,7 +2745,7 @@ case PH7_OP_INCR:
 	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)) != 0
 	 && SySetUsed(&pVm->aHookRmw) > 0 ){
 		VmHookRmw *pTopInc = (VmHookRmw *)SySetPeek(&pVm->aHookRmw);
-		if( pTopInc->iKind == VM_HOOK_PEND_RMW && pTopInc->nScratchIdx == pTos->nIdx ){
+		if( VM_HOOK_PEND_IS_RMW(pTopInc->iKind) && pTopInc->nScratchIdx == pTos->nIdx ){
 			SyBlob sErrMsg;
 			SyBlobInit(&sErrMsg,&pVm->sAllocator);
 			VmIncDecTypeErrorMsg(pTos,TRUE,&sErrMsg);
@@ -2898,7 +2898,7 @@ case PH7_OP_DECR:
 	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)) != 0
 	 && SySetUsed(&pVm->aHookRmw) > 0 ){
 		VmHookRmw *pTopDec = (VmHookRmw *)SySetPeek(&pVm->aHookRmw);
-		if( pTopDec->iKind == VM_HOOK_PEND_RMW && pTopDec->nScratchIdx == pTos->nIdx ){
+		if( VM_HOOK_PEND_IS_RMW(pTopDec->iKind) && pTopDec->nScratchIdx == pTos->nIdx ){
 			SyBlob sErrMsg;
 			SyBlobInit(&sErrMsg,&pVm->sAllocator);
 			VmIncDecTypeErrorMsg(pTos,FALSE,&sErrMsg);

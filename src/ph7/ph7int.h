@@ -1869,6 +1869,11 @@ struct VmMagicGuard
  *   VM_HOOK_PEND_COAL_MAGIC — `$o->p ??= v` on a missing property whose class
  *                             declares __set: consumed the same way, dispatching
  *                             __set(sName, value).
+ *   VM_HOOK_PEND_RMW_MAGIC  — read-modify-write on an OVERLOADED property
+ *                             (`$o->n++`, `$o->n .= 'x'`): the same scratch-slot
+ *                             rail as VM_HOOK_PEND_RMW, with __get having
+ *                             provided the current value and __set(sName, value)
+ *                             taking the computed one.
  * The armed window is [nJmpPc, nPc]: an owner fetch outside it means the
  * statement was abandoned (a routed throw) or the ??= short-circuit jump was
  * taken — the entry is dropped, no set dispatch (php: the throw/skip discards
@@ -1879,6 +1884,11 @@ struct VmMagicGuard
 #define VM_HOOK_PEND_RMW         0
 #define VM_HOOK_PEND_COAL_HOOK   1
 #define VM_HOOK_PEND_COAL_MAGIC  2
+#define VM_HOOK_PEND_RMW_MAGIC   3
+/* The two SCRATCH-slot kinds: armed by OP_MEMBER, consumed by the modify op's
+ * tail through VmHookRmwConsume (matched by scratch index). */
+#define VM_HOOK_PEND_IS_RMW(iKind) \
+	((iKind) == VM_HOOK_PEND_RMW || (iKind) == VM_HOOK_PEND_RMW_MAGIC)
 typedef struct VmHookRmw VmHookRmw;
 struct VmHookRmw
 {
@@ -3744,6 +3754,7 @@ PH7_PRIVATE void VmRecreateDeclaredAttr(ph7_vm *pVm,ph7_class_instance *pThis,ph
 PH7_PRIVATE int VmMemberCtxIsLookup(sxi32 iP2);
 PH7_PRIVATE int VmMemberCtxWantsValue(sxi32 iP2);
 PH7_PRIVATE int VmMemberNextIsWrite(const VmInstr *pNext);
+PH7_PRIVATE int VmMemberNextIsRmw(const VmInstr *pNext);
 PH7_PRIVATE sxi32 VmSpreadOwnExtra(ph7_vm *pVm, sxi32 iP1, ph7_value *pTos);
 PH7_PRIVATE VmCallArgMap *VmEffCallArgMap(ph7_vm *pVm, VmInstr *pInstr, ph7_value *pArg, sxu32 nActual, VmCallArgMap *pStorage);
 PH7_PRIVATE int VmMagicGuardHeld(ph7_vm *pVm,void *pThis,const SyString *pName,sxu8 cKind);
