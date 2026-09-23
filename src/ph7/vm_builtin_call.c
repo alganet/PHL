@@ -1529,17 +1529,19 @@ static int VmCallableMethodAccessible(ph7_vm *pVm,ph7_class *pClass,ph7_class_me
  * class-NAME target to `__callStatic`, both invoked as `($name, $args)` with the given
  * arguments packed into the array php passes.
  *
- * Only the `C::m()`/`$o->m()` SYNTAX used to do this (through the packing trampoline), so
- * every callable spelling of the same call — `$cb()`, call_user_func, array_map, usort —
- * threw "Call to undefined method" or, through the dispatcher's unresolvable contract,
- * silently answered NULL where php ran the magic method.
+ * Only the `C::m()`/`$o->m()` SYNTAX used to do this, so every callable spelling of the same
+ * call — `$cb()`, call_user_func, array_map, usort — threw "Call to undefined method" or,
+ * through the dispatcher's unresolvable contract, silently answered NULL where php ran the
+ * magic method. It is the ONE packing site now: the OP_MEMBER routing goes through it too
+ * (VmMagicCallDispatch, vm_include.c), so the two can no longer answer differently — which
+ * they did, about the very argument names below.
  *
  * Returns SXERR_NOTFOUND when the class has no catch-all, leaving the caller's own
- * diagnostic in charge. Named arguments are packed positionally (php keys them by name in
- * $args — a §7 residual of the named-arg map, not modelled here).
+ * diagnostic in charge.
  */
-static sxi32 VmCallMagicCallable(ph7_vm *pVm,ph7_class *pClass,ph7_class_instance *pThis,
-	const char *zName,sxu32 nName,ph7_value *pResult,int nArg,ph7_value **apArg)
+PH7_PRIVATE sxi32 PH7_VmDispatchMagicCall(ph7_vm *pVm,ph7_class *pClass,ph7_class_instance *pThis,
+	const char *zName,sxu32 nName,ph7_value *pResult,int nArg,ph7_value **apArg,
+	VmCallArgMap *pArgMap)
 {
 	const char *zMagic = pThis ? "__call" : "__callStatic";
 	ph7_class_method *pMagic = PH7_ClassExtractMethod(pClass,zMagic,(sxu32)SyStrlen(zMagic));
@@ -1556,7 +1558,21 @@ static sxi32 VmCallMagicCallable(ph7_vm *pVm,ph7_class *pClass,ph7_class_instanc
 		return SXERR_MEM;
 	}
 	for( i = 0 ; i < nArg ; ++i ){
-		PH7_HashmapInsert(pArgs,0,apArg[i]);
+		/* php packs the catch-all's $args with the NAMES the call was made with:
+		 * `$o->m(a: 1)`, `$o->m(...['a'=>1])` and `$cb(a: 1)` all arrive as ['a' => 1].
+		 * Every argument used to go in at an auto index, so a handler reading
+		 * $args['a'] found nothing and one reading $args[0] was handed a value php
+		 * would never have put there. The map is the call site's EFFECTIVE one, and it
+		 * has to be: a string-keyed unpack contributes names no compile-time map has. */
+		if( pArgMap && pArgMap->bHasNamed && i < (int)pArgMap->nTotal
+		 && pArgMap->aNames[i].nByte > 0 ){
+			ph7_value sKey;
+			PH7_MemObjInitFromString(pVm,&sKey,&pArgMap->aNames[i]);
+			PH7_HashmapInsert(pArgs,&sKey,apArg[i]);
+			PH7_MemObjRelease(&sKey);
+		}else{
+			PH7_HashmapInsert(pArgs,0,apArg[i]);
+		}
 	}
 	PH7_MemObjInit(pVm,&sName);
 	PH7_MemObjStringAppend(&sName,zName,nName);
@@ -1668,9 +1684,9 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			/* php answers for a name the class cannot reach directly through __call /
 			 * __callStatic, in a CALLABLE exactly as in the method-call syntax. */
 			if( (pName->iFlags & MEMOBJ_STRING) && SyBlobLength(&pName->sBlob) > 0 ){
-				rc = VmCallMagicCallable(&(*pVm),pClass,pThis,
+				rc = PH7_VmDispatchMagicCall(&(*pVm),pClass,pThis,
 					(const char *)SyBlobData(&pName->sBlob),SyBlobLength(&pName->sBlob),
-					pResult,nArg,apArg);
+					pResult,nArg,apArg,pArgMap);
 				if( rc != SXERR_NOTFOUND ){
 					return rc;
 				}
@@ -1707,8 +1723,8 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			if( pCmClass && (pCmMethod == 0
 				|| !VmCallableMethodAccessible(&(*pVm),pCmClass,pCmMethod)) ){
 				/* Same catch-all routing as the ['Class','method'] pair. */
-				sxi32 rcMagic = VmCallMagicCallable(&(*pVm),pCmClass,0,zCmMeth,nCmMeth,
-					pResult,nArg,apArg);
+				sxi32 rcMagic = PH7_VmDispatchMagicCall(&(*pVm),pCmClass,0,zCmMeth,nCmMeth,
+					pResult,nArg,apArg,pArgMap);
 				if( rcMagic != SXERR_NOTFOUND ){
 					return rcMagic;
 				}

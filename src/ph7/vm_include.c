@@ -1038,13 +1038,9 @@ static int VmMagicCallDispatch(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pRecv = pVm->pMagicCallThis;
 	ph7_class *pClass = pVm->pMagicCallClass;
-	ph7_class_method *pMeth = 0;
-	ph7_hashmap *pMap;
-	ph7_value sNameVal,sArgsVal,sResult;
-	ph7_value *apCall[2];
+	ph7_value sResult;
 	SyString sMethName;
 	sxi32 rc;
-	int i;
 	/* Consume the pending dispatch (one-shot) */
 	pVm->pMagicCallThis = 0;
 	pVm->pMagicCallClass = 0;
@@ -1056,43 +1052,20 @@ static int VmMagicCallDispatch(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	pMeth = PH7_ClassExtractMethod(pClass,
-		pRecv ? "__call" : "__callStatic",
-		pRecv ? sizeof("__call")-1 : sizeof("__callStatic")-1);
-	if( pMeth == 0 ){
-		/* Unreachable: OP_MEMBER verified the handler exists */
-		if( pRecv ){
-			PH7_ClassInstanceUnref(pRecv);
-		}
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	pMap = PH7_NewHashmap(pVm,0,0);
-	if( pMap == 0 ){
-		if( pRecv ){
-			PH7_ClassInstanceUnref(pRecv);
-		}
-		PH7_VmMemoryError(pVm);
-		return PH7_ABORT;
-	}
-	for( i = 0 ; i < nArg ; i++ ){
-		PH7_HashmapInsert(pMap,0,apArg[i]);
-	}
 	SyStringInitFromBuf(&sMethName,SyBlobData(&pVm->sMagicCallName),SyBlobLength(&pVm->sMagicCallName));
-	PH7_MemObjInitFromString(pVm,&sNameVal,&sMethName);
-	sNameVal.nIdx = SXU32_HIGH;
-	PH7_MemObjInitFromArray(pVm,&sArgsVal,pMap);
-	sArgsVal.nIdx = SXU32_HIGH;
 	PH7_MemObjInit(pVm,&sResult);
-	apCall[0] = &sNameVal;
-	apCall[1] = &sArgsVal;
-	rc = PH7_VmCallMagicMethod(pVm,pRecv,pMeth,&sResult,2,apCall);
+	/* The one packing site, shared with every CALLABLE spelling of the same call
+	 * (PH7_VmDispatchMagicCall, vm_builtin_call.c): the handler lookup, the $args array
+	 * — named arguments keyed by name, as php keys them — and the engine-dispatch
+	 * visibility rule all live there. Two copies of this is how the syntax path and the
+	 * callable path came to disagree about the argument names in the first place.
+	 * SXERR_NOTFOUND is unreachable: OP_MEMBER verified the handler exists. */
+	rc = PH7_VmDispatchMagicCall(pVm,pClass,pRecv,SyStringData(&sMethName),
+		SyStringLength(&sMethName),&sResult,nArg,apArg,pCtx->pArgMap);
 	if( rc == SXRET_OK ){
 		ph7_result_value(pCtx,&sResult);
 	}
 	PH7_MemObjRelease(&sResult);
-	PH7_MemObjRelease(&sNameVal);
-	PH7_MemObjRelease(&sArgsVal); /* drops the packed array */
 	if( pRecv ){
 		PH7_ClassInstanceUnref(pRecv);
 	}
