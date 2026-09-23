@@ -51,12 +51,16 @@
 	"interface JsonSerializable {"\
 	"public function jsonSerialize();"\
 	"}"\
+	/* php declares the enum interfaces TYPED, and the concrete cases()/from()/
+	 * tryFrom() an enum gets are native methods declared to match (oo_native.c,
+	 * PH7_InstallEnumInterfaceMethods) -- so an untyped prototype here would
+	 * fail the engine's own signature-compatibility check. */\
 	"interface UnitEnum {"\
-	"public static function cases();"\
+	"public static function cases(): array;"\
 	"}"\
 	"interface BackedEnum extends UnitEnum {"\
-	"public static function from($value);"\
-	"public static function tryFrom($value);"\
+	"public static function from(string|int $value): static;"\
+	"public static function tryFrom(string|int $value): ?static;"\
 	"}"\
 	"class Exception implements Throwable { "\
     "protected $message = '';"\

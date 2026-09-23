@@ -343,9 +343,51 @@ PH7_PRIVATE int vm_builtin_enum_cases(ph7_context *pCtx,int nArg,ph7_value **apA
 	ph7_result_value(pCtx,pArray);
 	return SXRET_OK;
 }
+/*
+ * php declares from()/tryFrom() as `string|int $value` on the BackedEnum
+ * prototype, so the argument arrives in either form and the enum's own backing
+ * type decides what happens next -- which is why the refusal is worded against
+ * the BACKING type ("must be of type int, string given" for an int-backed enum
+ * given "2x") and not against the declared union. php words the union only when
+ * the value is neither a string nor an int and the enum is string-backed; the
+ * asymmetry is php's own.
+ *
+ * Everything else is ordinary weak coercion, so an int-backed enum accepts "02"
+ * and " 2" as 2, and a string-backed one takes an int (or a bool, or a
+ * non-lossy float) through the INT arm first: S::from(1.0) looks for "1", not
+ * "1.0", and S::from(false) for "0". A LOSSY float and a null are php
+ * DEPRECATIONS, so PH7_IntArgResolve refuses them (§10 scope policy) with the
+ * TypeError php will eventually raise.
+ */
+static sxi32 VmEnumCoerceNeedle(ph7_context *pCtx,ph7_class *pClass,ph7_value *pArg,
+	ph7_value *pOut)
+{
+	int bStrBacked = pClass->nEnumBacking != MEMOBJ_INT;
+	sxi64 iVal = 0;
+	sxi32 rc;
+	PH7_MemObjInit(pCtx->pVm,pOut);
+	if( ph7_value_is_string(pArg) && bStrBacked ){
+		PH7_MemObjLoad(pArg,pOut);
+		return SXRET_OK;
+	}
+	/* A native method's own name is already qualified ("I2::from"). */
+	rc = PH7_IntArgResolve(pCtx,pArg,ph7_function_name(pCtx),1,"$value",
+		bStrBacked ? "string|int" : "int",&iVal);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( bStrBacked ){
+		char zNum[32];
+		int nNum = SyBufferFormat(zNum,sizeof(zNum),"%qd",iVal);
+		PH7_MemObjStringAppend(pOut,zNum,(sxu32)nNum);
+	}else{
+		pOut->x.iVal = iVal;
+		MemObjSetType(pOut,MEMOBJ_INT);
+	}
+	return SXRET_OK;
+}
 /* Shared scan for from()/tryFrom(): return the slot of the case whose backing
- * value equals *pNeedle (already coerced to the backing type by the synthesized
- * method's signature), or 0 on miss. */
+ * value equals *pNeedle (already coerced to the backing type), or 0 on miss. */
 static ph7_value * VmEnumFindCaseByValue(ph7_vm *pVm,ph7_class *pClass,ph7_value *pNeedle)
 {
 	ph7_class_attr **apCase = (ph7_class_attr **)SySetBasePtr(&pClass->aEnumCases);
@@ -375,6 +417,7 @@ static int VmEnumFromCommon(ph7_context *pCtx,int nArg,ph7_value **apArg,int bTr
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class *pClass;
 	ph7_value *pFound;
+	ph7_value sNeedle;
 	sxi32 rc;
 	if( nArg < 2 || (pClass = VmExtractEnumClass(pVm,apArg[0])) == 0 ){
 		ph7_result_null(pCtx);
@@ -384,25 +427,35 @@ static int VmEnumFromCommon(ph7_context *pCtx,int nArg,ph7_value **apArg,int bTr
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	pFound = VmEnumFindCaseByValue(pVm,pClass,apArg[1]);
+	rc = VmEnumCoerceNeedle(pCtx,pClass,apArg[1],&sNeedle);
+	if( rc != SXRET_OK ){
+		PH7_MemObjRelease(&sNeedle);
+		return rc;
+	}
+	pFound = VmEnumFindCaseByValue(pVm,pClass,&sNeedle);
 	if( pFound ){
 		ph7_result_value(pCtx,pFound);
+		PH7_MemObjRelease(&sNeedle);
 		return SXRET_OK;
 	}
 	if( bTry ){
 		ph7_result_null(pCtx);
+		PH7_MemObjRelease(&sNeedle);
 		return SXRET_OK;
 	}
 	if( pClass->nEnumBacking == MEMOBJ_INT ){
 		char zVal[32];
-		SyBufferFormat(zVal,sizeof(zVal),"%qd",ph7_value_to_int64(apArg[1]));
-		return PH7_VmThrowException(pCtx,"ValueError",
+		SyBufferFormat(zVal,sizeof(zVal),"%qd",sNeedle.x.iVal);
+		rc = PH7_VmThrowException(pCtx,"ValueError",
 			"%s is not a valid backing value for enum %z",zVal,&pClass->sName);
+	}else{
+		rc = PH7_VmThrowException(pCtx,"ValueError",
+			"\"%.*s\" is not a valid backing value for enum %z",
+			(int)SyBlobLength(&sNeedle.sBlob),(const char *)SyBlobData(&sNeedle.sBlob),
+			&pClass->sName);
 	}
-	return PH7_VmThrowException(pCtx,"ValueError",
-		"\"%.*s\" is not a valid backing value for enum %z",
-		(int)SyBlobLength(&apArg[1]->sBlob),(const char *)SyBlobData(&apArg[1]->sBlob),
-		&pClass->sName);
+	PH7_MemObjRelease(&sNeedle);
+	return rc;
 }
 PH7_PRIVATE int vm_builtin_enum_from(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {

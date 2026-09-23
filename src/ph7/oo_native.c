@@ -624,21 +624,69 @@ static sxi32 NativeEnumInstallProp(ph7_vm *pVm,ph7_class *pClass,const char *zNa
 	SyStringInitFromBuf(&pAttr->sTypeName,zTypeName,SyStrlen(zTypeName));
 	return PH7_ClassInstallAttr(pClass,pAttr);
 }
+/*
+ * cases()/from()/tryFrom(), installed on ANY enum -- one declared from C here
+ * and one the compiler just finished reading from source. php declares them on
+ * the UnitEnum/BackedEnum prototypes, which is why `from` takes `string|int`
+ * rather than the enum's own backing type: the refusal for the wrong one is a
+ * VALUE check inside the body, not the parameter's.
+ *
+ * The compiler used to synthesize PHP source forwarding to three global
+ * `__phl_enum_*` thunks. Those names were php-visible, and the methods reported
+ * as `<user>` with the enum's file and line where php reports
+ * `<internal, prototype BackedEnum>`.
+ */
+/*
+ * Install one of them and stamp it INTERNAL unconditionally. The usual
+ * `bCompilingBuiltin` stamp only fires while the engine compiles its OWN
+ * sources, and these three are attached to a class the compiler is reading out
+ * of a USER file — but php reports them as internal wherever the enum is
+ * declared: isInternal() true, getFileName() false, getStartLine() 0.
+ */
+static sxi32 NativeEnumInstallMethod(ph7_vm *pVm,ph7_class *pClass,
+	const PH7_NativeMethodDef *pDef)
+{
+	ph7_class_method *pMeth;
+	sxi32 rc = PH7_NativeClassInstallMethod(&(*pVm),pClass,pDef,0);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	pMeth = PH7_ClassExtractMethod(pClass,pDef->zName,(sxu32)SyStrlen(pDef->zName));
+	if( pMeth ){
+		pMeth->sFunc.iFlags |= VM_FUNC_INTERNAL;
+		/* getFileName() reads the recorded source file rather than the flag, and
+		 * PH7_NewClassMethod stamped the user file the enum was read from. */
+		SyStringInitFromBuf(&pMeth->sFunc.sFile,"",0);
+	}
+	return SXRET_OK;
+}
+PH7_PRIVATE sxi32 PH7_InstallEnumInterfaceMethods(ph7_vm *pVm,ph7_class *pClass)
+{
+	static const PH7_NativeMethodDef sCases =
+		{ "cases", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "", "array", vm_builtin_NativeEnum_cases };
+	static const PH7_NativeMethodDef aFrom[] = {
+		{ "from",    PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string|int $value", "static",
+		  vm_builtin_NativeEnum_from },
+		{ "tryFrom", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string|int $value", "?static",
+		  vm_builtin_NativeEnum_tryFrom },
+	};
+	sxu32 n;
+	sxi32 rc = NativeEnumInstallMethod(&(*pVm),pClass,&sCases);
+	if( rc != SXRET_OK || pClass->nEnumBacking == 0 ){
+		return rc;
+	}
+	for( n = 0 ; n < SX_ARRAYSIZE(aFrom) ; n++ ){
+		rc = NativeEnumInstallMethod(&(*pVm),pClass,&aFrom[n]);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	return SXRET_OK;
+}
 PH7_PRIVATE sxi32 PH7_InstallNativeEnum(ph7_vm *pVm,const char *zName,sxu32 nBacking,
 	const PH7_NativeEnumCase *aCase,sxu32 nCase,
 	const PH7_NativeMethodDef *aMethod,sxu32 nMethod)
 {
-	static const PH7_NativeMethodDef aCasesMethod[] = {
-		{ "cases", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "", "array", vm_builtin_NativeEnum_cases },
-	};
-	static const PH7_NativeMethodDef aIntFrom[] = {
-		{ "from",    PH7_MOD_PUBLIC|PH7_MOD_STATIC, "int $value", "static", vm_builtin_NativeEnum_from },
-		{ "tryFrom", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "int $value", "?static", vm_builtin_NativeEnum_tryFrom },
-	};
-	static const PH7_NativeMethodDef aStrFrom[] = {
-		{ "from",    PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $value", "static", vm_builtin_NativeEnum_from },
-		{ "tryFrom", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $value", "?static", vm_builtin_NativeEnum_tryFrom },
-	};
 	ph7_class *pClass, *pIface;
 	SyString sName;
 	sxu32 n;
@@ -689,18 +737,9 @@ PH7_PRIVATE sxi32 PH7_InstallNativeEnum(ph7_vm *pVm,const char *zName,sxu32 nBac
 			return rc;
 		}
 	}
-	rc = PH7_NativeClassInstallMethod(&(*pVm),pClass,&aCasesMethod[0],0);
+	rc = PH7_InstallEnumInterfaceMethods(&(*pVm),pClass);
 	if( rc != SXRET_OK ){
 		return rc;
-	}
-	if( nBacking != 0 ){
-		const PH7_NativeMethodDef *aFrom = (nBacking == MEMOBJ_INT) ? aIntFrom : aStrFrom;
-		for( n = 0 ; n < 2 ; n++ ){
-			rc = PH7_NativeClassInstallMethod(&(*pVm),pClass,&aFrom[n],0);
-			if( rc != SXRET_OK ){
-				return rc;
-			}
-		}
 	}
 	rc = PH7_VmInstallClass(&(*pVm),pClass);
 	if( rc != SXRET_OK ){

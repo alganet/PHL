@@ -2880,7 +2880,15 @@ static sxi32 GenStateCheckInterfaceSignatures(ph7_gen_state *pGen,ph7_class *pCl
 				sxu32 nIfaceArgs = SySetUsed(&pIfaceMeth->sFunc.aArgs);
 				sxu32 nImplArgs = SySetUsed(&pImplMeth->sFunc.aArgs);
 				int sigError = 0;
-				if( nImplArgs < nIfaceArgs ){
+				if( ((pIfaceMeth->sFunc.iFlags | pImplMeth->sFunc.iFlags) & VM_FUNC_NATIVE) != 0 ){
+					/* A NATIVE method's parameters live in its zSig string, not in
+					 * compiled aArgs records, so there is nothing to count here --
+					 * and an engine-declared signature is compatible by
+					 * construction. Counting its empty aArgs as "no parameters" is
+					 * what made an enum's own from()/tryFrom() incompatible with
+					 * BackedEnum the moment they became native. */
+					sigError = 0;
+				}else if( nImplArgs < nIfaceArgs ){
 					sigError = 1;
 				}else if( nImplArgs > nIfaceArgs ){
 					/* Extra parameters must all have default values */
@@ -3325,53 +3333,24 @@ Synchronize:
 	return SXERR_CORRUPT;
 }
 /*
- * Synthesize the enum interface methods (PHP 8.1): cases() for every enum,
- * plus from()/tryFrom() for backed enums. Each is an ordinary public static
- * method whose body forwards to a __phl_enum_* engine thunk (vm.c) with the
- * enum's FQN embedded as a literal — the same forwarder pattern the
- * Generator/Fiber/Reflection builtins use. The source buffer is owned by the
- * VM allocator and never freed: tokens (method and parameter names) keep
- * pointers into it (see the constructor-promotion precedent above).
+ * Install the enum interface methods (PHP 8.1): cases() for every enum, plus
+ * from()/tryFrom() for backed ones. They are NATIVE methods — the very same C
+ * bodies an enum declared from C gets — because php's are internal: it reports
+ * them as `<internal, prototype BackedEnum>` with no file and no line, and
+ * declares `from(string|int $value): static` on the prototype rather than the
+ * enum's own backing type.
+ *
+ * This used to synthesize PHP source forwarding to three global
+ * `__phl_enum_*` thunks, which put those names in php's namespace and reported
+ * every enum's three methods as `<user>` at the enum's own line.
  */
 static sxi32 GenStateCompileEnumMethods(ph7_gen_state *pGen,ph7_class *pClass)
 {
-	SyToken *pSaveIn,*pSaveEnd;
-	const char *zBack;
-	SySet sToken;
-	char *zSrc;
-	sxu32 nSrc,nMax;
-	sxi32 rc = SXRET_OK;
-	nMax = 3*(sxu32)sizeof("function tryFrom(string $value){return __phl_enum_tryfrom('',$value);}")
-		+ 3*SyStringLength(&pClass->sName) + 64;
-	zSrc = (char *)SyMemBackendAlloc(&pGen->pVm->sAllocator,nMax);
-	if( zSrc == 0 ){
+	if( PH7_InstallEnumInterfaceMethods(pGen->pVm,pClass) != SXRET_OK ){
 		PH7_GenCompileError(pGen,E_ERROR,pClass->nLine,"Fatal, PH7 is running out of memory");
 		return SXERR_ABORT;
 	}
-	zBack = (pClass->nEnumBacking == MEMOBJ_INT) ? "int" : "string";
-	if( pClass->nEnumBacking != 0 ){
-		nSrc = SyBufferFormat(zSrc,nMax,
-			"function cases(){return __phl_enum_cases('%z');}"
-			"function from(%s $value){return __phl_enum_from('%z',$value);}"
-			"function tryFrom(%s $value){return __phl_enum_tryfrom('%z',$value);}",
-			&pClass->sName,zBack,&pClass->sName,zBack,&pClass->sName);
-	}else{
-		nSrc = SyBufferFormat(zSrc,nMax,
-			"function cases(){return __phl_enum_cases('%z');}",&pClass->sName);
-	}
-	SySetInit(&sToken,&pGen->pVm->sAllocator,sizeof(SyToken));
-	PH7_TokenizePHP(zSrc,nSrc,pClass->nLine,&sToken,0);
-	pSaveIn = pGen->pIn;
-	pSaveEnd = pGen->pEnd;
-	pGen->pIn = (SyToken *)SySetBasePtr(&sToken);
-	pGen->pEnd = &pGen->pIn[SySetUsed(&sToken)];
-	while( pGen->pIn < pGen->pEnd && rc != SXERR_ABORT ){
-		rc = GenStateCompileClassMethod(&(*pGen),PH7_TKWRD_PUBLIC,PH7_CLASS_ATTR_STATIC,TRUE,pClass);
-	}
-	pGen->pIn = pSaveIn;
-	pGen->pEnd = pSaveEnd;
-	SySetRelease(&sToken);
-	return (rc == SXERR_ABORT) ? SXERR_ABORT : SXRET_OK;
+	return SXRET_OK;
 }
 /*
  * Magic methods an enum may not declare (php 8.1, zend_enum.c list —

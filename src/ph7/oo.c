@@ -395,6 +395,17 @@ static sxi32 OoCheckOverrideCompat(ph7_gen_state *pGen, ph7_class *pBase, ph7_cl
 	 && SyStrnmicmp(pMName->zString,"__construct",pMName->nByte) == 0 ){
 		return SXRET_OK;
 	}
+	/*
+	 * A NATIVE method declares its parameters in a zSig STRING, so its aArgs set
+	 * is empty and there is nothing here to compare against. Reading that as
+	 * "declares no parameters" made every override of one incompatible: a user
+	 * class extending DOMDocument, a Reflection class or a native enum's own
+	 * cases()/from() all fataled on a declaration php accepts. An
+	 * engine-declared signature is compatible by construction, on either side.
+	 */
+	if( ((pPF->iFlags | pCF->iFlags) & VM_FUNC_NATIVE) != 0 ){
+		return SXRET_OK;
+	}
 	/* Return type — covariant. */
 	bBad = OoOverrideTypeBad(pVm, OoTypeFromReturn(pPF), OoTypeFromReturn(pCF), /* bCovariant */ 1);
 	/* Each overlapping parameter — contravariant. */

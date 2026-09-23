@@ -1291,6 +1291,7 @@ struct PH7_NativeEnumCase
 	PH7_NativeConstDef sValue;   /* the backing literal; zName/iMods unused */
 };
 PH7_PRIVATE sxi32 PH7_InstallNativeClasses(ph7_vm *pVm,const PH7_NativeClassSpec *aSpec,sxu32 nSpec);
+PH7_PRIVATE sxi32 PH7_InstallEnumInterfaceMethods(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE sxi32 PH7_InstallNativeEnum(ph7_vm *pVm,const char *zName,sxu32 nBacking,
 	const PH7_NativeEnumCase *aCase,sxu32 nCase,
 	const PH7_NativeMethodDef *aMethod,sxu32 nMethod);
