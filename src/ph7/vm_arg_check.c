@@ -600,6 +600,7 @@ static const struct VmBuiltinSig {
 	{ "getrandmax", "", "int" },
 	{ "gettimeofday", "bool $as_float = false", "array|float" },
 	{ "gettype", "mixed $value", "string" },
+	{ "get_debug_type", "mixed $value", "string" },
 	{ "gmdate", "string $format, ?int $timestamp = NULL", "string" },
 	{ "gmmktime", "int $hour, ?int $minute = NULL, ?int $second = NULL, ?int $month = NULL, ?int $day = NULL, ?int $year = NULL", "int|false" },
 	{ "hash", "string $algo, string $data, bool $binary = false, array $options = ?", "string" },

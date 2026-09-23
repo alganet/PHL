@@ -1902,6 +1902,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetInit(&pVm->aAutoload,&pVm->sAllocator,sizeof(VmAutoloadCB));
 	SyHashInit(&pVm->hAutoloadActive,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hWeakCell,&pVm->sAllocator,0,0);
+	SyHashInit(&pVm->hClassInfo,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hTypedSlot,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hResourceId,&pVm->sAllocator,0,0);
 	pVm->nResourceIdNext = 1;
@@ -5363,6 +5364,7 @@ static const ph7_builtin_func aVmFunc[] = {
 	  /* Variable handling functions */
 	{ "get_defined_vars",vm_builtin_get_defined_vars},
 	{ "gettype",   vm_builtin_gettype              },
+	{ "get_debug_type", vm_builtin_get_debug_type      },
 	{ "settype",   vm_builtin_settype              },
 	{ "get_resource_type", vm_builtin_get_resource_type},
 	{ "get_resource_id", vm_builtin_get_resource_id},

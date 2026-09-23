@@ -359,6 +359,49 @@ PH7_PRIVATE int vm_builtin_get_defined_vars(ph7_context *pCtx,int nArg,ph7_value
 	return SXRET_OK;
 }
 /*
+ * string get_debug_type(mixed $value)
+ *  php 8.0's type name for diagnostics: the SHORT scalar names, and a class
+ *  name for an object. Distinct from gettype(), which keeps php 4's long
+ *  spellings ("integer"/"boolean"/"NULL") for compatibility.
+ *
+ *  This was a prelude function in the Reflection chunk, where the TypeError
+ *  messages needed it; it is what php ships natively, and the SPL chunk's
+ *  messages want it too.
+ */
+PH7_PRIVATE int vm_builtin_get_debug_type(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zType = "null";
+	if( nArg > 0 ){
+		ph7_value *pVal = apArg[0];
+		if( pVal->iFlags & MEMOBJ_OBJ ){
+			ph7_class_instance *pThis = (ph7_class_instance *)pVal->x.pOther;
+			ph7_result_string(pCtx,SyStringData(&pThis->pClass->sName),
+				(int)SyStringLength(&pThis->pClass->sName));
+			return SXRET_OK;
+		}
+		if( pVal->iFlags & MEMOBJ_NULL ){
+			zType = "null";
+		}else if( pVal->iFlags & MEMOBJ_REAL ){
+			/* REAL wins over a cached MEMOBJ_INT, as it does for gettype() */
+			zType = "float";
+		}else if( pVal->iFlags & MEMOBJ_INT ){
+			zType = "int";
+		}else if( pVal->iFlags & MEMOBJ_STRING ){
+			zType = "string";
+		}else if( pVal->iFlags & MEMOBJ_BOOL ){
+			zType = "bool";
+		}else if( pVal->iFlags & MEMOBJ_HASHMAP ){
+			zType = "array";
+		}else if( pVal->iFlags & MEMOBJ_RES ){
+			/* php names the stream kind here; PHL reports what gettype() does,
+			 * which is the same gap gettype() already has (§7.4). */
+			zType = PH7_VfsResourceIsClosed(pVal->x.pOther) ? "resource (closed)" : "resource";
+		}
+	}
+	ph7_result_string(pCtx,zType,-1/*Compute length automatically*/);
+	return SXRET_OK;
+}
+/*
  * bool gettype($var)
  *  Get the type of a variable
  * Parameters

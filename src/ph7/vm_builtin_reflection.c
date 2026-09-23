@@ -201,6 +201,18 @@ static ph7_class * ReflectMethodDeclClass(ph7_class *pClass, ph7_class_method *p
 	}
 	return pDecl;
 }
+/*
+ * The interface list php reports for pClass: the transitive set, plus an
+ * INTERFACE's own parents (`interface B extends A` lists A). Caller owns the
+ * set (SySetInit with sizeof(ph7_class *)).
+ */
+static void ReflectInterfacesOf(ph7_class *pClass, SySet *pOut)
+{
+	ReflectCollectInterfaces(pClass, pOut, 0);
+	if( (pClass->iFlags & PH7_CLASS_INTERFACE) && pClass->pBase ){
+		ReflectAddInterface(pClass->pBase, pOut, 0);
+	}
+}
 /* Fetch a class attribute (property or constant) by plain name. */
 static ph7_class_attr * ReflectFetchAttr(ph7_class *pClass, ph7_value *pName)
 {
@@ -240,6 +252,221 @@ static ph7_class_attr * ReflectFetchMember(ph7_class *pClass, ph7_value *pName)
 	return pAttr;
 }
 /*
+ * ---------------------------------------------------------------------------
+ * The member walk.
+ *
+ * php reports a class's members in ONE order — the class's own first (in
+ * declaration order), then each inheritance level's, outward — and every
+ * accessor that lists or looks one up has to agree with it. It used to live
+ * inside the descriptor builder alone; the native ReflectionClass needs the
+ * same order for getMethods()/getProperties()/getReflectionConstants() and the
+ * same visibility filtering for hasMethod()/getMethod()/getConstructor(), so
+ * the walk is factored out here and every one of them drives it.
+ *
+ * Per level the DECLARING class's own hash is iterated — a subclass hash
+ * interleaves inherited pointers unpredictably — and a pointer-identity lookup
+ * in the reflected class's hash drops what is not visible there (overridden
+ * entries). Methods come out reversed because hMethod is still a head-insert
+ * table, while hAttr/hConst insert at the tail.
+ * ---------------------------------------------------------------------------
+ */
+#define REFLECT_MEMBER_PROP   0
+#define REFLECT_MEMBER_CONST  1
+#define REFLECT_MEMBER_METHOD 2
+
+typedef struct ReflectMember ReflectMember;
+struct ReflectMember
+{
+	int iKind;               /* REFLECT_MEMBER_* */
+	SyString sKey;           /* the name php reports it under: a trait
+	                          * `use T { m as n; }` alias differs from the
+	                          * method's own sFunc.sName, and php reports n */
+	ph7_class *pDecl;        /* declaring class */
+	ph7_class_attr *pAttr;   /* property or constant (NULL for a method) */
+	ph7_class_method *pMeth; /* method (NULL for a property or constant) */
+};
+/*
+ * Collect the members php would report for pClass, in php's own order, into a
+ * SySet of ReflectMember. The caller owns the set (SySetInit with
+ * sizeof(ReflectMember) / SySetRelease).
+ *
+ * bLookup selects which of php's TWO answers is wanted. The LISTING
+ * (getMethods()/getProperties()/getReflectionConstants(), bLookup = 0) hides a
+ * base class's private members; the LOOKUP (bLookup = 1) does not, because php
+ * keeps a parent's private in the child's tables and ReflectionMethod resolves
+ * against those. The two really do disagree: hasMethod('basePriv') is true on
+ * the subclass while getMethods() never mentions it.
+ */
+static void ReflectMembers(ph7_vm *pVm, ph7_class *pClass, SySet *pOut, int bLookup)
+{
+	ph7_class *aChain[REFLECT_WALK_MAX_DEPTH + 1];
+	ph7_class *pWalk = pClass;
+	SyHashEntry *pEntry;
+	SySet aTmp;
+	sxu32 nChain = 0, iLevel, nT;
+	while( pWalk && nChain < (sxu32)(REFLECT_WALK_MAX_DEPTH + 1) ){
+		aChain[nChain++] = pWalk;
+		pWalk = pWalk->pBase;
+	}
+	SySetInit(&aTmp, &pVm->sAllocator, sizeof(SyHashEntry *));
+	for( iLevel = 0 ; iLevel < nChain ; iLevel++ ){
+		ph7_class *pLevel = aChain[iLevel];
+		int iTab;
+		/* --- Properties (hAttr) then constants/enum cases (hConst) — php's two
+		 * separate member namespaces. Each table is collected and emitted
+		 * independently; the CONSTANT flag still decides which kind comes out. --- */
+		for( iTab = 0 ; iTab < 2 ; iTab++ ){
+			SyHash *pSrcHash = iTab ? &pLevel->hConst : &pLevel->hAttr;
+			SyHash *pRefHash = iTab ? &pClass->hConst : &pClass->hAttr;
+			SySetReset(&aTmp);
+			SyHashResetLoopCursor(pSrcHash);
+			while( (pEntry = SyHashGetNextEntry(pSrcHash)) != 0 ){
+				ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
+				ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pLevel;
+				if( iLevel == 0 ){
+					sxu32 j;
+					/* Own = declared here or by an off-chain provider (trait) */
+					for( j = 1 ; j < nChain ; j++ ){
+						if( aChain[j] == pDecl ){ break; }
+					}
+					if( j < nChain ){ continue; }
+				}else{
+					SyHashEntry *pSub;
+					if( pDecl != pLevel ){ continue; }
+					/* A base's PRIVATE member is not part of the subclass's
+					 * surface — php reports neither a private property nor a
+					 * private constant of a parent on the child. PHL's
+					 * inheritance copies them down all the same, so the filter
+					 * has to be here. */
+					if( !bLookup && pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ){ continue; }
+					/* Must still be the visible member in the reflected class */
+					pSub = SyHashGet(pRefHash, pEntry->pKey, pEntry->nKeyLen);
+					if( pSub == 0 || pSub->pUserData != (void *)pAttr ){ continue; }
+				}
+				SySetPut(&aTmp, (const void *)&pEntry);
+			}
+			/* Forward: hAttr/hConst iterate in DECLARATION order (tail inserts),
+			 * so members come out in the order php reports them. */
+			for( nT = 0 ; nT < SySetUsed(&aTmp) ; nT++ ){
+				SyHashEntry *pE = *(SyHashEntry **)SySetAt(&aTmp, nT);
+				ph7_class_attr *pAttr = (ph7_class_attr *)pE->pUserData;
+				ReflectMember sMember;
+				sMember.iKind = (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT)
+					? REFLECT_MEMBER_CONST : REFLECT_MEMBER_PROP;
+				sMember.sKey = pAttr->sName;
+				sMember.pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pLevel;
+				sMember.pAttr = pAttr;
+				sMember.pMeth = 0;
+				SySetPut(pOut, (const void *)&sMember);
+			}
+		}
+		/* --- Methods. The reported name is the hash-entry KEY, not the
+		 * function's own name (see ReflectMember::sKey). --- */
+		SySetReset(&aTmp);
+		SyHashResetLoopCursor(&pLevel->hMethod);
+		while( (pEntry = SyHashGetNextEntry(&pLevel->hMethod)) != 0 ){
+			ph7_class_method *pMeth = (ph7_class_method *)pEntry->pUserData;
+			ph7_class *pDecl = ReflectMethodDeclClass(pClass, pMeth);
+			if( iLevel == 0 ){
+				sxu32 j;
+				for( j = 1 ; j < nChain ; j++ ){
+					if( aChain[j] == pDecl ){ break; }
+				}
+				if( j < nChain ){ continue; }
+			}else{
+				SyHashEntry *pSub;
+				if( pDecl != pLevel ){ continue; }
+				/* Same rule as the members above: a base's PRIVATE method is
+				 * not on the subclass's surface. `class B extends A` lists
+				 * only A::q when A::p is private — php's inheritance never
+				 * hands the child a private, and PH7_ClassInherit's copy-down
+				 * does, so it is filtered here. */
+				if( !bLookup && pMeth->iProtection == PH7_CLASS_PROT_PRIVATE ){ continue; }
+				pSub = SyHashGet(&pClass->hMethod, pEntry->pKey, pEntry->nKeyLen);
+				if( pSub == 0 || pSub->pUserData != (void *)pMeth ){
+					/* Overridden below this level: already reported */
+					continue;
+				}
+			}
+			SySetPut(&aTmp, (const void *)&pEntry);
+		}
+		for( nT = SySetUsed(&aTmp) ; nT > 0 ; nT-- ){
+			SyHashEntry *pE = *(SyHashEntry **)SySetAt(&aTmp, nT - 1);
+			ReflectMember sMember;
+			sMember.iKind = REFLECT_MEMBER_METHOD;
+			SyStringInitFromBuf(&sMember.sKey, (const char *)pE->pKey, pE->nKeyLen);
+			sMember.pMeth = (ph7_class_method *)pE->pUserData;
+			sMember.pDecl = ReflectMethodDeclClass(pClass, sMember.pMeth);
+			sMember.pAttr = 0;
+			SySetPut(pOut, (const void *)&sMember);
+		}
+	}
+	SySetRelease(&aTmp);
+}
+/* Does a collected member name match zName exactly? */
+static int ReflectKeyIs(const ReflectMember *pM, const char *zName, int nName)
+{
+	return SyStringLength(&pM->sKey) == (sxu32)nName
+		&& SyMemcmp(SyStringData(&pM->sKey), zName, (sxu32)nName) == 0;
+}
+/*
+ * php's METHOD lookup, which is NOT the listing.
+ *
+ * getMethods() hides a base's private method, but hasMethod()/getMethod() find
+ * one: Zend keeps the parent's private in the child's function table and reads
+ * that table directly. PHL's inheritance copies methods down the same way, so
+ * the lookup is the class's own hMethod — case-insensitively, like php.
+ */
+static SyHashEntry * ReflectFindMethodEntry(ph7_class *pClass, const char *zName, int nName)
+{
+	SyHashEntry *pEntry;
+	if( nName < 1 ){
+		return 0;
+	}
+	pEntry = SyHashGet(&pClass->hMethod, (const void *)zName, (sxu32)nName);
+	if( pEntry ){
+		return pEntry;
+	}
+	SyHashResetLoopCursor(&pClass->hMethod);
+	while( (pEntry = SyHashGetNextEntry(&pClass->hMethod)) != 0 ){
+		if( (int)pEntry->nKeyLen == nName
+		 && SyStrnicmp((const char *)pEntry->pKey, zName, (sxu32)nName) == 0 ){
+			return pEntry;
+		}
+	}
+	return 0;
+}
+/*
+ * The visibility of the __construct / __clone `new` and `clone` would reach, or
+ * 0 when the class has none — what isInstantiable() and isCloneable() screen on.
+ * The LOOKUP, not the listing: a class that inherits a private constructor is
+ * still not instantiable even though getMethods() does not report one.
+ */
+static void ReflectCtorCloneVis(ph7_vm *pVm, ph7_class *pClass, sxi32 *piCtor, sxi32 *piClone)
+{
+	ph7_class_method *pMeth;
+	SXUNUSED(pVm);
+	*piCtor = *piClone = 0;
+	pMeth = PH7_ClassExtractMethod(pClass, "__construct", sizeof("__construct")-1);
+	if( pMeth ){
+		*piCtor = pMeth->iProtection;
+	}
+	pMeth = PH7_ClassExtractMethod(pClass, "__clone", sizeof("__clone")-1);
+	if( pMeth ){
+		*piClone = pMeth->iProtection;
+	}
+}
+/*
+ * The memo record. Its pClass field is the hash KEY: SyHashInsert borrows the
+ * key bytes it is handed rather than duplicating them.
+ */
+typedef struct ReflectInfoMemo ReflectInfoMemo;
+struct ReflectInfoMemo
+{
+	ph7_class *pClass;
+	ph7_value sInfo;
+};
+/*
  * array|null __phl_rcinfo(object|string $target)
  *
  * Full class descriptor, or null when the class cannot be resolved (after
@@ -251,13 +478,21 @@ static ph7_class_attr * ReflectFetchMember(ph7_class *pClass, ph7_value *pName)
  *   consts  {name: {vis, final, decl, line}},
  *   props   {name: {vis, static, readonly, hasdef, decl, line}},
  *   methods {name: {vis, static, abstract, final, decl, line}}
+ *
+ * Memoized per class (pVm->hClassInfo). Building one walks the whole
+ * inheritance chain, and the still-PHP Reflection classes ask for the SAME
+ * class's descriptor once per member they construct — without the memo a
+ * getMethods() over a ten-method class builds it eleven times. This was a
+ * `static $c` array inside the prelude function; it moved into the VM when the
+ * function became C. Only SUCCESSFUL lookups are remembered, so a class that
+ * has not been autoloaded yet is re-queried.
  */
-static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value **apArg)
+static int vm_builtin_phl_rcinfo(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class *pClass;
 	ph7_value *pInfo, *pConsts, *pProps, *pMethods, *pList;
-	SyHashEntry *pEntry;
+	SyHashEntry *pMemo;
 	SySet aIfaceSet;
 	sxi32 iCtorVis = 0, iCloneVis = 0;
 	int bIterable = 0;
@@ -269,6 +504,11 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 	pClass = ReflectResolveClass(pVm, apArg[0]);
 	if( pClass == 0 ){
 		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pMemo = SyHashGet(&pVm->hClassInfo, (const void *)&pClass, sizeof(ph7_class *));
+	if( pMemo ){
+		ph7_result_value(pCtx, &((ReflectInfoMemo *)pMemo->pUserData)->sInfo);
 		return PH7_OK;
 	}
 	pInfo = ph7_context_new_array(pCtx);
@@ -318,13 +558,7 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 	}
 	/* Transitive interfaces */
 	SySetInit(&aIfaceSet, &pVm->sAllocator, sizeof(ph7_class *));
-	ReflectCollectInterfaces(pClass, &aIfaceSet, 0);
-	if( pClass->iFlags & PH7_CLASS_INTERFACE ){
-		/* An interface's own parents count as its interface list */
-		if( pClass->pBase ){
-			ReflectAddInterface(pClass->pBase, &aIfaceSet, 0);
-		}
-	}
+	ReflectInterfacesOf(pClass, &aIfaceSet);
 	pList = ph7_context_new_array(pCtx);
 	if( pList ){
 		ph7_class **apIface = (ph7_class **)SySetBasePtr(&aIfaceSet);
@@ -363,68 +597,41 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 	ReflectMapAddInt(pCtx, pInfo, "endline", (sxi64)pClass->nEndLine);
 	ReflectMapAddDoc(pCtx, pInfo, &pClass->sDoc);
 	ReflectMapAddAttrs(pCtx, pInfo, &pClass->aAttrs);
-	/* Members are emitted in PHP's reporting order: the class's own members
-	 * first (declaration order), then each inheritance level's, outward.
-	 * Per level we iterate the DECLARING class's own hash — subclass hashes
-	 * interleave inherited pointers unpredictably — and emit buffered
-	 * entries in reverse, because SyHash lists are LIFO. A pointer-identity
-	 * lookup in the reflected class's hash filters out members that are not
-	 * visible there (base privates, overridden entries). */
+	/* Members, in PHP's reporting order — the shared walk (ReflectMembers), so
+	 * this descriptor and the native ReflectionClass accessors can never drift
+	 * apart on which members exist or what order they come in. */
 	{
-		ph7_class *aChain[REFLECT_WALK_MAX_DEPTH + 1];
-		ph7_class *pWalk = pClass;
-		SySet aTmp;
-		sxu32 nChain = 0, iLevel, nT;
-		while( pWalk && nChain < (sxu32)(REFLECT_WALK_MAX_DEPTH + 1) ){
-			aChain[nChain++] = pWalk;
-			pWalk = pWalk->pBase;
-		}
-		SySetInit(&aTmp, &pVm->sAllocator, sizeof(SyHashEntry *));
-		for( iLevel = 0 ; iLevel < nChain ; iLevel++ ){
-			ph7_class *pLevel = aChain[iLevel];
-			/* --- Properties (hAttr) then constants/enum cases (hConst) — php's two
-			 * separate member namespaces. Each table is collected and emitted
-			 * independently; the CONSTANT flag still routes each to pConsts/pProps. --- */
-			{
-			int iTab;
-			for( iTab = 0 ; iTab < 2 ; iTab++ ){
-			SyHash *pSrcHash = iTab ? &pLevel->hConst : &pLevel->hAttr;
-			SyHash *pRefHash = iTab ? &pClass->hConst : &pClass->hAttr;
-			SySetReset(&aTmp);
-			SyHashResetLoopCursor(pSrcHash);
-			while( (pEntry = SyHashGetNextEntry(pSrcHash)) != 0 ){
-				ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
-				ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pLevel;
-				if( iLevel == 0 ){
-					sxu32 j;
-					/* Own = declared here or by an off-chain provider (trait) */
-					for( j = 1 ; j < nChain ; j++ ){
-						if( aChain[j] == pDecl ){ break; }
-					}
-					if( j < nChain ){ continue; }
-				}else{
-					SyHashEntry *pSub;
-					if( pDecl != pLevel ){ continue; }
-					/* Must still be the visible member in the reflected class */
-					pSub = SyHashGet(pRefHash, pEntry->pKey, pEntry->nKeyLen);
-					if( pSub == 0 || pSub->pUserData != (void *)pAttr ){ continue; }
-				}
-				SySetPut(&aTmp, (const void *)&pEntry);
+		SySet aMembers;
+		sxu32 nM;
+		SySetInit(&aMembers, &pVm->sAllocator, sizeof(ReflectMember));
+		ReflectMembers(pVm, pClass, &aMembers, 1);
+		for( nM = 0 ; nM < SySetUsed(&aMembers) ; nM++ ){
+			ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, nM);
+			ph7_value *pMeta = ph7_context_new_array(pCtx);
+			if( pMeta == 0 ){ break; }
+			if( pM->iKind == REFLECT_MEMBER_METHOD ){
+				ph7_class_method *pMeth = pM->pMeth;
+				/* A __construct key whose method has a DIFFERENT own name is a trait
+				 * `use T { m as __construct; }` alias. php lists such a method under
+				 * BOTH names (its own and __construct) and getConstructor() resolves
+				 * the __construct one, so the entry is emitted under this key too
+				 * rather than skipped. (The legacy PHP-4 class-name-constructor mount
+				 * alias that also produced a __construct key is gone, removed in 8.0.) */
+				ReflectMapAddInt(pCtx, pMeta, "vis", (sxi64)pMeth->iProtection);
+				ReflectMapAddBool(pCtx, pMeta, "static", (pMeth->iFlags & PH7_CLASS_ATTR_STATIC) != 0);
+				ReflectMapAddBool(pCtx, pMeta, "abstract", (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) != 0);
+				ReflectMapAddBool(pCtx, pMeta, "final", (pMeth->iFlags & PH7_CLASS_ATTR_FINAL) != 0);
+				ReflectMapAddStr(pCtx, pMeta, "decl", SyStringData(&pM->pDecl->sName),
+					(int)SyStringLength(&pM->pDecl->sName));
+				ReflectMapAddInt(pCtx, pMeta, "line", (sxi64)pMeth->nLine);
+				ReflectMapAddDyn(pCtx, pMethods, &pM->sKey, pMeta);
+				continue;
 			}
-			/* Forward: hAttr now iterates in DECLARATION order (its inserts are
-			 * tail inserts), so members come out in the order php reports them.
-			 * This walked aTmp backwards to undo the table's old head-insert
-			 * (LIFO) storage; with that reversal gone from the table, reversing
-			 * here would emit members back to front. The METHOD loop below keeps
-			 * its reverse walk — hMethod is still a head-insert table. */
-			for( nT = 0 ; nT < SySetUsed(&aTmp) ; nT++ ){
-				SyHashEntry *pE = *(SyHashEntry **)SySetAt(&aTmp, nT);
-				ph7_class_attr *pAttr = (ph7_class_attr *)pE->pUserData;
-				ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pLevel;
-				ph7_value *pMeta = ph7_context_new_array(pCtx);
-				if( pMeta == 0 ){ break; }
+			{
+				ph7_class_attr *pAttr = pM->pAttr;
 				ReflectMapAddInt(pCtx, pMeta, "vis", (sxi64)pAttr->iProtection);
-				ReflectMapAddStr(pCtx, pMeta, "decl", SyStringData(&pDecl->sName), (int)SyStringLength(&pDecl->sName));
+				ReflectMapAddStr(pCtx, pMeta, "decl", SyStringData(&pM->pDecl->sName),
+					(int)SyStringLength(&pM->pDecl->sName));
 				ReflectMapAddInt(pCtx, pMeta, "line", (sxi64)pAttr->nLine);
 				ReflectMapAddDoc(pCtx, pMeta, &pAttr->sDoc);
 				ReflectMapAddAttrs(pCtx, pMeta, &pAttr->aAttrs);
@@ -435,10 +642,10 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 				}else{
 					ReflectMapAddNull(pCtx, pMeta, "typetext");
 				}
-				if( pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT ){
+				if( pM->iKind == REFLECT_MEMBER_CONST ){
 					ReflectMapAddBool(pCtx, pMeta, "final", (pAttr->iFlags & PH7_CLASS_ATTR_FINAL) != 0);
 					ReflectMapAddBool(pCtx, pMeta, "enumcase", (pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE) != 0);
-					ReflectMapAddDyn(pCtx, pConsts, &pAttr->sName, pMeta);
+					ReflectMapAddDyn(pCtx, pConsts, &pM->sKey, pMeta);
 				}else{
 					ReflectMapAddBool(pCtx, pMeta, "static", (pAttr->iFlags & PH7_CLASS_ATTR_STATIC) != 0);
 					ReflectMapAddBool(pCtx, pMeta, "readonly", (pAttr->iFlags & PH7_CLASS_ATTR_READONLY) != 0);
@@ -448,88 +655,40 @@ static int vm_builtin_reflect_class_info(ph7_context *pCtx, int nArg, ph7_value 
 					ReflectMapAddBool(pCtx, pMeta, "hookset", (pAttr->iFlags & PH7_CLASS_ATTR_HOOK_SET) != 0);
 					ReflectMapAddBool(pCtx, pMeta, "virtual", (pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL) != 0);
 					ReflectMapAddBool(pCtx, pMeta, "hasdef", SySetUsed(&pAttr->aByteCode) > 0);
-					ReflectMapAddDyn(pCtx, pProps, &pAttr->sName, pMeta);
+					ReflectMapAddDyn(pCtx, pProps, &pM->sKey, pMeta);
 				}
-			}
-			} /* for iTab */
-			}
-			/* --- Methods. The reported name is the hash-entry key: trait
-			 * aliasing installs a shallow copy under the alias name while
-			 * sFunc.sName keeps the original, and PHP reports the alias. --- */
-			SySetReset(&aTmp);
-			SyHashResetLoopCursor(&pLevel->hMethod);
-			while( (pEntry = SyHashGetNextEntry(&pLevel->hMethod)) != 0 ){
-				ph7_class_method *pMeth = (ph7_class_method *)pEntry->pUserData;
-				ph7_class *pDecl = ReflectMethodDeclClass(pClass, pMeth);
-				if( iLevel == 0 ){
-					sxu32 j;
-					for( j = 1 ; j < nChain ; j++ ){
-						if( aChain[j] == pDecl ){ break; }
-					}
-					if( j < nChain ){ continue; }
-				}else{
-					SyHashEntry *pSub;
-					if( pDecl != pLevel ){ continue; }
-					pSub = SyHashGet(&pClass->hMethod, pEntry->pKey, pEntry->nKeyLen);
-					if( pSub == 0 ){
-						/* Not in the subclass table: inheritance skips private
-						 * methods, but PHP still reports them on the subclass
-						 * (Zend copies privates into the child function table). */
-						if( pMeth->iProtection != PH7_CLASS_PROT_PRIVATE ){
-							continue;
-						}
-					}else if( pSub->pUserData != (void *)pMeth ){
-						/* Overridden below this level: already reported */
-						continue;
-					}
-				}
-				SySetPut(&aTmp, (const void *)&pEntry);
-			}
-			for( nT = SySetUsed(&aTmp) ; nT > 0 ; nT-- ){
-				SyHashEntry *pE = *(SyHashEntry **)SySetAt(&aTmp, nT - 1);
-				ph7_class_method *pMeth = (ph7_class_method *)pE->pUserData;
-				ph7_class *pDecl = ReflectMethodDeclClass(pClass, pMeth);
-				ph7_value *pMeta;
-				SyString sKey;
-				SyStringInitFromBuf(&sKey, (const char *)pE->pKey, pE->nKeyLen);
-				if( sKey.nByte == sizeof("__construct")-1
-				 && SyMemcmp(sKey.zString, "__construct", sKey.nByte) == 0 ){
-					if( iCtorVis == 0 ){
-						iCtorVis = pMeth->iProtection;
-					}
-					/* A __construct key whose method has a DIFFERENT own name is a trait
-					 * `use T { m as __construct; }` alias. php lists such a method under
-					 * BOTH names (its own and __construct) and getConstructor() resolves
-					 * the __construct one, so emit the entry under this key too rather than
-					 * skipping it. (The legacy PHP-4 class-name-constructor mount alias that
-					 * also produced a __construct key is gone, removed in 8.0.) */
-				}else if( sKey.nByte == sizeof("__clone")-1
-				 && SyMemcmp(sKey.zString, "__clone", sKey.nByte) == 0 ){
-					if( iCloneVis == 0 ){
-						iCloneVis = pMeth->iProtection;
-					}
-				}
-				/* No PHP-4 class-name constructor: a method named like the class is a
-				 * plain method (removed in 8.0), so getConstructor() stays null unless
-				 * an explicit __construct exists. */
-				pMeta = ph7_context_new_array(pCtx);
-				if( pMeta == 0 ){ break; }
-				ReflectMapAddInt(pCtx, pMeta, "vis", (sxi64)pMeth->iProtection);
-				ReflectMapAddBool(pCtx, pMeta, "static", (pMeth->iFlags & PH7_CLASS_ATTR_STATIC) != 0);
-				ReflectMapAddBool(pCtx, pMeta, "abstract", (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) != 0);
-				ReflectMapAddBool(pCtx, pMeta, "final", (pMeth->iFlags & PH7_CLASS_ATTR_FINAL) != 0);
-				ReflectMapAddStr(pCtx, pMeta, "decl", SyStringData(&pDecl->sName), (int)SyStringLength(&pDecl->sName));
-				ReflectMapAddInt(pCtx, pMeta, "line", (sxi64)pMeth->nLine);
-				ReflectMapAddDyn(pCtx, pMethods, &sKey, pMeta);
 			}
 		}
-		SySetRelease(&aTmp);
+		SySetRelease(&aMembers);
 	}
+	/* From the LOOKUP, not the listing: an inherited private __construct is not
+	 * reported as a member but still decides instantiability. */
+	ReflectCtorCloneVis(pVm, pClass, &iCtorVis, &iCloneVis);
 	ReflectMapAddInt(pCtx, pInfo, "ctorvis", (sxi64)iCtorVis);
 	ReflectMapAddInt(pCtx, pInfo, "clonevis", (sxi64)iCloneVis);
 	ph7_array_add_strkey_elem(pInfo, "consts", pConsts);
 	ph7_array_add_strkey_elem(pInfo, "props", pProps);
 	ph7_array_add_strkey_elem(pInfo, "methods", pMethods);
+	{
+		/* Remember it. The memo slot SHARES the descriptor's hashmap through
+		 * its reference count — which is exactly what the PHP `$c[$k] = $info`
+		 * did — so the context value below can still be released normally. It
+		 * lives for the VM's lifetime, like the class it describes. */
+		ReflectInfoMemo *pKeep;
+		pKeep = (ReflectInfoMemo *)SyMemBackendAlloc(&pVm->sAllocator, sizeof(ReflectInfoMemo));
+		if( pKeep ){
+			pKeep->pClass = pClass;
+			PH7_MemObjInit(pVm, &pKeep->sInfo);
+			PH7_MemObjStore(pInfo, &pKeep->sInfo);
+			/* The key bytes are BORROWED by SyHashInsert, never copied, so they
+			 * have to be the record's own field rather than a local. */
+			if( SyHashInsert(&pVm->hClassInfo, (const void *)&pKeep->pClass,
+				sizeof(ph7_class *), pKeep) != SXRET_OK ){
+				PH7_MemObjRelease(&pKeep->sInfo);
+				SyMemBackendFree(&pVm->sAllocator, pKeep);
+			}
+		}
+	}
 	ph7_result_value(pCtx, pInfo);
 	return PH7_OK;
 }
@@ -560,30 +719,6 @@ static int vm_builtin_reflect_const_value(ph7_context *pCtx, int nArg, ph7_value
 	}else{
 		ph7_result_null(pCtx);
 	}
-	return PH7_OK;
-}
-/*
- * bool __reflect_static_materialize(string $class)
- * Materialize the class's static table (php does this BEFORE looking a static
- * property up, so `getStaticPropertyValue('nope')` on a class with a broken
- * default reports the default's error, not "property does not exist"). The
- * chunk calls this first; the per-slot readers below gate again for the paths
- * that reach them directly.
- */
-static int vm_builtin_reflect_static_materialize(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	ph7_class *pClass;
-	if( nArg < 1 || (pClass = ReflectResolveClass(pCtx->pVm, apArg[0])) == 0 ){
-		ph7_result_bool(pCtx, 0);
-		return PH7_OK;
-	}
-	if( VmClassStaticDeferPending(pClass) ){
-		sxi32 rcMat = PH7_VmMaterializeClassStatics(pCtx->pVm, pClass);
-		if( rcMat != SXRET_OK ){
-			return rcMat;
-		}
-	}
-	ph7_result_bool(pCtx, 1);
 	return PH7_OK;
 }
 /*
@@ -989,36 +1124,6 @@ static int vm_builtin_reflect_prop_state(ph7_context *pCtx, int nArg, ph7_value 
 	ph7_result_int(pCtx, iState);
 	return PH7_OK;
 }
-/*
- * array __reflect_dyn_props(object $obj)
- * Names of the instance's runtime-added (dynamic) properties, in creation
- * order (the instance attr table inserts dynamics at the tail).
- */
-static int vm_builtin_reflect_dyn_props(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	ph7_class_instance *pThis;
-	SyHashEntry *pEntry;
-	ph7_value *pList;
-	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0
-	 || (pList = ph7_context_new_array(pCtx)) == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	pThis = (ph7_class_instance *)apArg[0]->x.pOther;
-	SyHashResetLoopCursor(&pThis->hAttr);
-	while( (pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
-		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
-		if( pVmAttr->pAttr && (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_DYNAMIC) ){
-			ph7_value *pName = ph7_context_new_scalar(pCtx);
-			if( pName == 0 ){ break; }
-			ph7_value_string(pName, SyStringData(&pVmAttr->pAttr->sName),
-				(int)SyStringLength(&pVmAttr->pAttr->sName));
-			ph7_array_add_elem(pList, 0, pName);
-		}
-	}
-	ph7_result_value(pCtx, pList);
-	return PH7_OK;
-}
 /* Hand an EXISTING instance to the caller: takes an extra reference
  * (unlike ReflectResultObject, which transfers a fresh instance's one). */
 static int ReflectResultExistingObject(ph7_context *pCtx, ph7_class_instance *pObj)
@@ -1409,7 +1514,7 @@ static void ReflectSigParam(ph7_context *pCtx, ph7_value *pParams,
 	const char *zDef = 0;
 	const char *zName;
 	int nDef = 0, nName;
-	int iEq, iDollar, iSpace, bVariadic, bTyped = 0;
+	int iEq, iDollar, iSpace, bVariadic, bTyped = 0, bOptional = 0;
 	if( pMeta == 0 ){
 		return;
 	}
@@ -1421,6 +1526,16 @@ static void ReflectSigParam(ph7_context *pCtx, ph7_value *pParams,
 		ReflectSigTrim(&zDef,&nDef);
 		n = iEq;
 		ReflectSigTrim(&z,&n);
+	}
+	if( zDef && nDef == 1 && zDef[0] == '?' ){
+		/* `= ?` is the table's OPTIONAL-but-no-default marker, php's own shape
+		 * for a parameter like ReflectionClass::getStaticPropertyValue()'s
+		 * $default: isOptional() true, isDefaultValueAvailable() FALSE, so
+		 * getDefaultValue() raises. Reporting it as a default (which is what
+		 * a bare `hasdef` did) made that call answer NULL instead. */
+		bOptional = 1;
+		zDef = 0;
+		nDef = 0;
 	}
 	bVariadic = ReflectSigHas(z,n,"...",3);
 	if( bVariadic ){
@@ -1441,6 +1556,7 @@ static void ReflectSigParam(ph7_context *pCtx, ph7_value *pParams,
 	ReflectMapAddBool(pCtx,pMeta,"byref",ReflectSigHas(z,n,"&",1));
 	ReflectMapAddBool(pCtx,pMeta,"variadic",bVariadic);
 	ReflectMapAddBool(pCtx,pMeta,"hasdef",zDef != 0);
+	ReflectMapAddBool(pCtx,pMeta,"optional",bOptional || bVariadic || zDef != 0);
 	if( iSpace >= 0 && iDollar >= 0 && iSpace < iDollar ){
 		/* The type is whatever precedes the first space, so `?DOMNode $child`
 		 * types as `?DOMNode` and an untyped `$x` types as nothing. */
@@ -2412,6 +2528,93 @@ static int ReflectResultBorrowed(ph7_context *pCtx, ph7_class_instance *pObj)
 	return PH7_OK;
 }
 /*
+ * The shared getAttributes() body.
+ *
+ * Hands the target's #[...] SUMMARY list and the [kind, target, member,
+ * paramIdx] spec to the prelude builder (__reflect_build_attrs, chunk 7),
+ * which turns them into ReflectionAttribute objects and applies the
+ * name / IS_INSTANCEOF filter. Argument VALUES stay lazy — the spec is what
+ * reopens them later through __reflect_attr_args — so every reflector that
+ * declares getAttributes() only has to say WHICH target it is.
+ */
+static int ReflectBuildAttrs(ph7_context *pCtx, SySet *pAttrs, const char *zKind,
+	const char *zTarget, int nTarget, const char *zMember, int nMember,
+	int iParamIdx, int iTargetBit, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value sMeta, sSpec, sTarget, sName, sFlags, sRes;
+	ph7_value *apCall[5];
+	sxi32 rc;
+	PH7_MemObjInit(pVm, &sMeta);
+	PH7_MemObjInit(pVm, &sSpec);
+	PH7_MemObjInit(pVm, &sTarget);
+	PH7_MemObjInit(pVm, &sName);
+	PH7_MemObjInit(pVm, &sFlags);
+	PH7_MemObjInit(pVm, &sRes);
+	{
+		ph7_value *pMeta = ph7_context_new_array(pCtx);
+		ph7_value *pSpec = ph7_context_new_array(pCtx);
+		ph7_value *pKind = ph7_context_new_scalar(pCtx);
+		ph7_value *pTgt  = ph7_context_new_scalar(pCtx);
+		ph7_value *pMem  = ph7_context_new_scalar(pCtx);
+		ph7_value *pIdx  = ph7_context_new_scalar(pCtx);
+		if( pMeta == 0 || pSpec == 0 || pKind == 0 || pTgt == 0 || pMem == 0 || pIdx == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		ReflectMapAddAttrs(pCtx, pMeta, pAttrs);
+		{
+			ph7_value *pList = ph7_array_fetch(pMeta, "attrs", -1);
+			if( pList ){
+				PH7_MemObjStore(pList, &sMeta);
+			}
+		}
+		ph7_value_string(pKind, zKind, -1);
+		ph7_value_string(pTgt, zTarget, nTarget);
+		if( zMember ){
+			ph7_value_string(pMem, zMember, nMember);
+		}else{
+			ph7_value_null(pMem);
+		}
+		ph7_value_int(pIdx, iParamIdx);
+		ph7_array_add_elem(pSpec, 0, pKind);
+		ph7_array_add_elem(pSpec, 0, pTgt);
+		ph7_array_add_elem(pSpec, 0, pMem);
+		ph7_array_add_elem(pSpec, 0, pIdx);
+		PH7_MemObjStore(pSpec, &sSpec);
+	}
+	ph7_value_int(&sTarget, iTargetBit);
+	if( nArg > 0 ){
+		PH7_MemObjStore(apArg[0], &sName);
+	}else{
+		ph7_value_null(&sName);
+	}
+	ph7_value_int(&sFlags, nArg > 1 ? ph7_value_to_int(apArg[1]) : 0);
+	apCall[0] = &sMeta;
+	apCall[1] = &sSpec;
+	apCall[2] = &sTarget;
+	apCall[3] = &sName;
+	apCall[4] = &sFlags;
+	{
+		ph7_value sFn;
+		SyString sStr;
+		PH7_MemObjInit(pVm, &sFn);
+		SyStringInitFromBuf(&sStr, "__reflect_build_attrs", sizeof("__reflect_build_attrs")-1);
+		PH7_MemObjInitFromString(pVm, &sFn, &sStr);
+		rc = PH7_VmCallUserFunction(pVm, &sFn, 5, apCall, &sRes);
+		PH7_MemObjRelease(&sFn);
+	}
+	if( rc == SXRET_OK ){
+		ph7_result_value(pCtx, &sRes);
+	}
+	PH7_MemObjRelease(&sMeta);
+	PH7_MemObjRelease(&sSpec);
+	PH7_MemObjRelease(&sTarget);
+	PH7_MemObjRelease(&sName);
+	PH7_MemObjRelease(&sFlags);
+	PH7_MemObjRelease(&sRes);
+	return PH7_OK;
+}
+/*
  * The three "no runtime line tracking" methods. php answers a file/line/trace
  * from the executing frame; PHL has no per-instruction line record (the same
  * gap debug_backtrace() has), so it says so loudly rather than inventing one.
@@ -2764,85 +2967,18 @@ static int vm_builtin_ReflectionConstant_getExtensionName(ph7_context *pCtx, int
  * ReflectionAttribute shape and the lazy argument evaluation. */
 static int vm_builtin_ReflectionConstant_getAttributes(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
-	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	ph7_constant *pCons = ReflectConstOf(pCtx);
-	ph7_value sMeta, sSpec, sTarget, sName, sFlags, sRes;
-	ph7_value *apCall[5];
 	const char *zName = "";
 	int nName = 0;
-	sxi32 rc;
 	if( pThis == 0 || pCons == 0 ){
 		ph7_result_value(pCtx, ph7_context_new_array(pCtx));
 		return PH7_OK;
 	}
 	PH7_NativeAttrStr(pThis, "name", &zName, &nName);
-	PH7_MemObjInit(pVm, &sMeta);
-	PH7_MemObjInit(pVm, &sSpec);
-	PH7_MemObjInit(pVm, &sTarget);
-	PH7_MemObjInit(pVm, &sName);
-	PH7_MemObjInit(pVm, &sFlags);
-	PH7_MemObjInit(pVm, &sRes);
-	{
-		/* The two arrays the builder expects: the attribute summary list, and
-		 * the [kind, target, member, paramIdx] spec that reopens it lazily. */
-		ph7_value *pMeta = ph7_context_new_array(pCtx);
-		ph7_value *pSpec = ph7_context_new_array(pCtx);
-		ph7_value *pKind = ph7_context_new_scalar(pCtx);
-		ph7_value *pTgt  = ph7_context_new_scalar(pCtx);
-		ph7_value *pNull = ph7_context_new_scalar(pCtx);
-		ph7_value *pIdx  = ph7_context_new_scalar(pCtx);
-		if( pMeta == 0 || pSpec == 0 || pKind == 0 || pTgt == 0 || pNull == 0 || pIdx == 0 ){
-			return PH7_ContextMemoryError(pCtx);
-		}
-		ReflectMapAddAttrs(pCtx, pMeta, &pCons->aAttrs);
-		{
-			ph7_value *pList = ph7_array_fetch(pMeta, "attrs", -1);
-			if( pList ){
-				PH7_MemObjStore(pList, &sMeta);
-			}
-		}
-		ph7_value_string(pKind, "const", 5);
-		ph7_value_string(pTgt, zName, nName);
-		ph7_value_null(pNull);
-		ph7_value_int(pIdx, 0);
-		ph7_array_add_elem(pSpec, 0, pKind);
-		ph7_array_add_elem(pSpec, 0, pTgt);
-		ph7_array_add_elem(pSpec, 0, pNull);
-		ph7_array_add_elem(pSpec, 0, pIdx);
-		PH7_MemObjStore(pSpec, &sSpec);
-	}
-	ph7_value_int(&sTarget, 64);   /* Attribute::TARGET_* bit for a constant */
-	if( nArg > 0 ){
-		PH7_MemObjStore(apArg[0], &sName);
-	}else{
-		ph7_value_null(&sName);
-	}
-	ph7_value_int(&sFlags, nArg > 1 ? ph7_value_to_int(apArg[1]) : 0);
-	apCall[0] = &sMeta;
-	apCall[1] = &sSpec;
-	apCall[2] = &sTarget;
-	apCall[3] = &sName;
-	apCall[4] = &sFlags;
-	{
-		ph7_value sFn;
-		SyString sStr;
-		PH7_MemObjInit(pVm, &sFn);
-		SyStringInitFromBuf(&sStr, "__reflect_build_attrs", sizeof("__reflect_build_attrs")-1);
-		PH7_MemObjInitFromString(pVm, &sFn, &sStr);
-		rc = PH7_VmCallUserFunction(pVm, &sFn, 5, apCall, &sRes);
-		PH7_MemObjRelease(&sFn);
-	}
-	if( rc == SXRET_OK ){
-		ph7_result_value(pCtx, &sRes);
-	}
-	PH7_MemObjRelease(&sMeta);
-	PH7_MemObjRelease(&sSpec);
-	PH7_MemObjRelease(&sTarget);
-	PH7_MemObjRelease(&sName);
-	PH7_MemObjRelease(&sFlags);
-	PH7_MemObjRelease(&sRes);
-	return PH7_OK;
+	/* 64 = Attribute::TARGET_CONSTANT */
+	return ReflectBuildAttrs(pCtx, &pCons->aAttrs, "const", zName, nName, 0, 0, 0, 64,
+		nArg, apArg);
 }
 static int vm_builtin_ReflectionConstant_toString(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
@@ -3142,15 +3278,1691 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionSmall(ph7_vm *pVm)
 	};
 	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));
 }
+/*
+ * ---------------------------------------------------------------------------
+ * Reflector, Reflection, ReflectionException, ReflectionClass, ReflectionObject.
+ *
+ * Chunk 1 — the core of the whole API. Its ~350 lines of PHP funnelled every
+ * accessor through __phl_rcinfo(), a memoized descriptor ARRAY built by a C
+ * thunk: sixty methods that each rebuilt or re-read a marshalled copy of state
+ * the engine was already holding. A native method reads ph7_class directly, so
+ * the descriptor is gone from this path entirely and the memo it needed with it.
+ *
+ * What stays behind is the prelude that has not moved yet, and these classes
+ * still reach it by name where php's own object graph does: getMethod() builds
+ * a ReflectionMethod, getProperty() a ReflectionProperty, getAttributes() calls
+ * __reflect_build_attrs, __toString() calls __reflect_export_class. Those become
+ * direct C the moment chunks 2, 3, 7 and 9 land.
+ * ---------------------------------------------------------------------------
+ */
+#define RC_OBJ "__obj"
+
+/* The class a ReflectionClass reflects: its `name` slot, resolved. The
+ * constructor already stored the canonical name, so no autoload can be needed
+ * here. */
+static ph7_class * ReflectClassOf(ph7_context *pCtx)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName;
+	int nName;
+	if( pThis == 0 ){
+		return 0;
+	}
+	PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	if( nName < 1 ){
+		return 0;
+	}
+	/* PH7_NativeAttrStr borrows bytes that are NOT NUL-terminated: the length
+	 * has to travel with them. */
+	return PH7_VmExtractClass(pCtx->pVm, zName, (sxu32)nName, FALSE, 0);
+}
+/* The instance a ReflectionObject was built over, or NULL for a plain
+ * ReflectionClass — what makes DYNAMIC properties visible. */
+static ph7_class_instance * ReflectClassObj(ph7_context *pCtx)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	return pThis ? PH7_NativeAttrObj(pThis, RC_OBJ) : 0;
+}
+/* $this->name as bytes. */
+static void ReflectClassName(ph7_context *pCtx, const char **pzOut, int *pnOut)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	*pzOut = "";
+	*pnOut = 0;
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, "name", pzOut, pnOut);
+	}
+}
+/* Answer the truth of one of the reflected class's iFlags bits. */
+static int ReflectClassFlag(ph7_context *pCtx, sxi32 iFlag)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	return pClass != 0 && (pClass->iFlags & iFlag) != 0;
+}
+#define REFLECT_CLASS_FLAG(NAME,FLAG,NEGATE) \
+	static int NAME(ph7_context *pCtx, int nArg, ph7_value **apArg) \
+	{ \
+		SXUNUSED(nArg); \
+		SXUNUSED(apArg); \
+		ph7_result_bool(pCtx, NEGATE ? !ReflectClassFlag(pCtx,FLAG) : ReflectClassFlag(pCtx,FLAG)); \
+		return PH7_OK; \
+	}
+REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isInternal,    PH7_CLASS_INTERNAL,  0)
+REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isUserDefined, PH7_CLASS_INTERNAL,  1)
+REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isInterface,   PH7_CLASS_INTERFACE, 0)
+REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isTrait,       PH7_CLASS_TRAIT,     0)
+REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isAbstract,    PH7_CLASS_ABSTRACT,  0)
+REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isFinal,       PH7_CLASS_FINAL,     0)
+REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isReadOnly,    PH7_CLASS_READONLY,  0)
+REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isEnum,        PH7_CLASS_ENUM,      0)
+
+/* Build a ReflectionClass over pTarget with its `name` already filled in: the
+ * constructor would only re-resolve a class this code is holding. */
+static int ReflectResultClassOf(ph7_context *pCtx, ph7_class *pTarget)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pRC;
+	ph7_class_instance *pObj;
+	if( pTarget == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pRC = PH7_VmExtractClass(pVm, "ReflectionClass", sizeof("ReflectionClass")-1, FALSE, 0);
+	if( pRC == 0 || (pObj = PH7_NewClassInstance(pVm, pRC)) == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_NativeSetAttrStr(pVm, pObj, "name", SyStringData(&pTarget->sName),
+		(int)SyStringLength(&pTarget->sName));
+	PH7_NativeResultObject(pCtx, pObj);
+	return PH7_OK;
+}
+/* The class an argument declared `ReflectionClass|string` denotes: a reflector's
+ * `name` slot, or the string itself. NULL when it names nothing (after
+ * autoload). */
+static ph7_class * ReflectClassArg(ph7_context *pCtx, ph7_value *pArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	if( pArg->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pObj = (ph7_class_instance *)pArg->x.pOther;
+		ph7_class *pRC = PH7_VmExtractClass(pVm, "ReflectionClass", sizeof("ReflectionClass")-1, FALSE, 0);
+		if( pRC && PH7_VmInstanceOf(pObj->pClass, pRC) ){
+			const char *zName;
+			int nName;
+			PH7_NativeAttrStr(pObj, "name", &zName, &nName);
+			return nName > 0 ? PH7_VmExtractClass(pVm, zName, (sxu32)nName, FALSE, 0) : 0;
+		}
+	}
+	return ReflectResolveClass(pVm, pArg);
+}
+/* ---- constructors ---- */
+/* ReflectionClass::__construct(object|string $objectOrClass) */
+static int vm_builtin_ReflectionClass_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class *pClass;
+	if( pThis == 0 || nArg < 1 ){
+		return PH7_OK;
+	}
+	pClass = ReflectResolveClass(pCtx->pVm, apArg[0]);
+	if( pClass == 0 ){
+		/* php reports the NAME it was handed, after the declared object|string
+		 * has coerced a scalar — `new ReflectionClass(1.5)` says Class "1.5". */
+		const char *zName;
+		int nName;
+		zName = ph7_value_to_string(apArg[0], &nName);
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Class \"%.*s\" does not exist", nName, zName);
+	}
+	PH7_NativeSetAttrStr(pCtx->pVm, pThis, "name", SyStringData(&pClass->sName),
+		(int)SyStringLength(&pClass->sName));
+	return PH7_OK;
+}
+/* ReflectionObject::__construct(object $object) — the same, plus the receiver
+ * whose DYNAMIC properties the inherited accessors then report. */
+static int vm_builtin_ReflectionObject_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi32 rc;
+	if( pThis == 0 || nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+		return PH7_OK;
+	}
+	rc = vm_builtin_ReflectionClass_construct(pCtx, nArg, apArg);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	PH7_NativeSetAttrObj(pCtx->pVm, pThis, RC_OBJ, (ph7_class_instance *)apArg[0]->x.pOther);
+	return PH7_OK;
+}
+/* ReflectionClass::__clone(): void — php declares it private, and the class is
+ * uncloneable besides (PH7_CLASS_NOCLONE answers before any body runs). */
+static int vm_builtin_ReflectionClass_clone(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return PH7_OK;
+}
+/* ---- name ---- */
+static int vm_builtin_ReflectionClass_getName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	const char *zName;
+	int nName;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ReflectClassName(pCtx, &zName, &nName);
+	ph7_result_string(pCtx, zName, nName);
+	return PH7_OK;
+}
+/* Offset just past the last namespace separator, or -1 when there is none. */
+static int ReflectNsCut(const char *zName, int nName)
+{
+	int i;
+	for( i = nName - 1 ; i >= 0 ; i-- ){
+		if( zName[i] == '\\' ){
+			return i;
+		}
+	}
+	return -1;
+}
+static int vm_builtin_ReflectionClass_getShortName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	const char *zName;
+	int nName, iCut;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ReflectClassName(pCtx, &zName, &nName);
+	iCut = ReflectNsCut(zName, nName);
+	if( iCut < 0 ){
+		ph7_result_string(pCtx, zName, nName);
+	}else{
+		ph7_result_string(pCtx, &zName[iCut+1], nName - iCut - 1);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_getNamespaceName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	const char *zName;
+	int nName, iCut;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ReflectClassName(pCtx, &zName, &nName);
+	iCut = ReflectNsCut(zName, nName);
+	ph7_result_string(pCtx, zName, iCut < 0 ? 0 : iCut);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_inNamespace(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	const char *zName;
+	int nName;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ReflectClassName(pCtx, &zName, &nName);
+	ph7_result_bool(pCtx, ReflectNsCut(zName, nName) >= 0);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_isAnonymous(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	const char *zName;
+	int nName;
+	static const char zAnon[] = "class@anonymous";
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ReflectClassName(pCtx, &zName, &nName);
+	ph7_result_bool(pCtx, nName >= (int)sizeof(zAnon)-1
+		&& SyMemcmp(zName, zAnon, sizeof(zAnon)-1) == 0);
+	return PH7_OK;
+}
+/* ---- shape ---- */
+static int vm_builtin_ReflectionClass_getModifiers(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	sxi64 iMods = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pClass ){
+		if( pClass->iFlags & PH7_CLASS_ABSTRACT ){ iMods |= 64; }
+		if( pClass->iFlags & PH7_CLASS_FINAL ){ iMods |= 32; }
+		if( pClass->iFlags & PH7_CLASS_READONLY ){ iMods |= 65536; }
+	}
+	ph7_result_int64(pCtx, iMods);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_getParentClass(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pClass == 0 || pClass->pBase == 0 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	return ReflectResultClassOf(pCtx, pClass->pBase);
+}
+/* getInterfaceNames()/getInterfaces()/getTraitNames()/getTraits() — one walk,
+ * four shapes. bReflector picks name-list vs {name: ReflectionClass}. */
+static int ReflectClassNameList(ph7_context *pCtx, int bTraits, int bReflector)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	ph7_value *pList = ph7_context_new_array(pCtx);
+	SySet aSet;
+	ph7_class **apOut;
+	sxu32 n, nOut;
+	if( pList == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( pClass == 0 ){
+		ph7_result_value(pCtx, pList);
+		return PH7_OK;
+	}
+	SySetInit(&aSet, &pCtx->pVm->sAllocator, sizeof(ph7_class *));
+	if( bTraits ){
+		apOut = (ph7_class **)SySetBasePtr(&pClass->aTrait);
+		nOut = SySetUsed(&pClass->aTrait);
+	}else{
+		ReflectInterfacesOf(pClass, &aSet);
+		apOut = (ph7_class **)SySetBasePtr(&aSet);
+		nOut = SySetUsed(&aSet);
+	}
+	for( n = 0 ; n < nOut ; n++ ){
+		SyString *pName = &apOut[n]->sName;
+		if( bReflector ){
+			/* {name: ReflectionClass} — the reflector is built here rather than
+			 * through ReflectResultClassOf, which writes the RESULT slot. */
+			ph7_class *pRC = PH7_VmExtractClass(pCtx->pVm, "ReflectionClass",
+				sizeof("ReflectionClass")-1, FALSE, 0);
+			ph7_class_instance *pObj = pRC ? PH7_NewClassInstance(pCtx->pVm, pRC) : 0;
+			ph7_value *pKey = ph7_context_new_scalar(pCtx);
+			ph7_value sVal;
+			if( pObj == 0 || pKey == 0 ){ break; }
+			PH7_NativeSetAttrStr(pCtx->pVm, pObj, "name", SyStringData(pName),
+				(int)SyStringLength(pName));
+			/* A STACK carrier, never a context scalar: releasing a MEMOBJ_OBJ
+			 * context value would unref the instance a second time. */
+			PH7_MemObjInit(pCtx->pVm, &sVal);
+			sVal.x.pOther = pObj;
+			sVal.iFlags = MEMOBJ_OBJ;
+			ph7_value_string(pKey, SyStringData(pName), (int)SyStringLength(pName));
+			ph7_array_add_elem(pList, pKey, &sVal);   /* takes its own reference */
+			PH7_ClassInstanceUnref(pObj);
+		}else{
+			ph7_value *pVal = ph7_context_new_scalar(pCtx);
+			if( pVal == 0 ){ break; }
+			ph7_value_string(pVal, SyStringData(pName), (int)SyStringLength(pName));
+			ph7_array_add_elem(pList, 0, pVal);
+		}
+	}
+	SySetRelease(&aSet);
+	ph7_result_value(pCtx, pList);
+	return PH7_OK;
+}
+#define REFLECT_CLASS_LIST(NAME,TRAITS,REFLECTOR) \
+	static int NAME(ph7_context *pCtx, int nArg, ph7_value **apArg) \
+	{ \
+		SXUNUSED(nArg); \
+		SXUNUSED(apArg); \
+		return ReflectClassNameList(pCtx,TRAITS,REFLECTOR); \
+	}
+REFLECT_CLASS_LIST(vm_builtin_ReflectionClass_getInterfaceNames, 0, 0)
+REFLECT_CLASS_LIST(vm_builtin_ReflectionClass_getInterfaces,     0, 1)
+REFLECT_CLASS_LIST(vm_builtin_ReflectionClass_getTraitNames,     1, 0)
+REFLECT_CLASS_LIST(vm_builtin_ReflectionClass_getTraits,         1, 1)
+
+/* getTraitAliases(): php reports `use T { m as n; }` renames; PHL's compiler
+ * installs the alias as a method and keeps no rename record, so the map is
+ * empty (§7.4). */
+static int vm_builtin_ReflectionClass_getTraitAliases(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_value(pCtx, ph7_context_new_array(pCtx));
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_isIterable(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	SySet aSet;
+	ph7_class **apIface;
+	sxu32 n;
+	int bIterable = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pClass == 0
+	 || (pClass->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_TRAIT|PH7_CLASS_ABSTRACT)) ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	SySetInit(&aSet, &pCtx->pVm->sAllocator, sizeof(ph7_class *));
+	ReflectInterfacesOf(pClass, &aSet);
+	apIface = (ph7_class **)SySetBasePtr(&aSet);
+	for( n = 0 ; n < SySetUsed(&aSet) ; n++ ){
+		if( pCtx->pVm->pTraversableClass && apIface[n] == pCtx->pVm->pTraversableClass ){
+			bIterable = 1;
+			break;
+		}
+	}
+	SySetRelease(&aSet);
+	ph7_result_bool(pCtx, bIterable);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_implementsInterface(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	ph7_class *pTarget;
+	SySet aSet;
+	ph7_class **apIface;
+	sxu32 n;
+	int bYes = 0;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	pTarget = ReflectClassArg(pCtx, apArg[0]);
+	if( pTarget == 0 ){
+		const char *zName;
+		int nName;
+		zName = ph7_value_to_string(apArg[0], &nName);
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Interface \"%.*s\" does not exist", nName, zName);
+	}
+	if( (pTarget->iFlags & PH7_CLASS_INTERFACE) == 0 ){
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"%z is not an interface", &pTarget->sName);
+	}
+	if( pClass == pTarget ){
+		ph7_result_bool(pCtx, 1);
+		return PH7_OK;
+	}
+	if( pClass == 0 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	SySetInit(&aSet, &pCtx->pVm->sAllocator, sizeof(ph7_class *));
+	ReflectInterfacesOf(pClass, &aSet);
+	apIface = (ph7_class **)SySetBasePtr(&aSet);
+	for( n = 0 ; n < SySetUsed(&aSet) ; n++ ){
+		if( apIface[n] == pTarget ){
+			bYes = 1;
+			break;
+		}
+	}
+	SySetRelease(&aSet);
+	ph7_result_bool(pCtx, bYes);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_isSubclassOf(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	ph7_class *pTarget, *pWalk;
+	SySet aSet;
+	ph7_class **apIface;
+	sxu32 n;
+	int iDepth = 0, bYes = 0;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	pTarget = ReflectClassArg(pCtx, apArg[0]);
+	if( pTarget == 0 ){
+		const char *zName;
+		int nName;
+		zName = ph7_value_to_string(apArg[0], &nName);
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Class \"%.*s\" does not exist", nName, zName);
+	}
+	/* php: a class is never a subclass of ITSELF */
+	if( pClass == 0 || pClass == pTarget ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	for( pWalk = pClass->pBase ; pWalk && iDepth <= REFLECT_WALK_MAX_DEPTH ; pWalk = pWalk->pBase ){
+		if( pWalk == pTarget ){
+			ph7_result_bool(pCtx, 1);
+			return PH7_OK;
+		}
+		iDepth++;
+	}
+	SySetInit(&aSet, &pCtx->pVm->sAllocator, sizeof(ph7_class *));
+	ReflectInterfacesOf(pClass, &aSet);
+	apIface = (ph7_class **)SySetBasePtr(&aSet);
+	for( n = 0 ; n < SySetUsed(&aSet) ; n++ ){
+		if( apIface[n] == pTarget ){
+			bYes = 1;
+			break;
+		}
+	}
+	SySetRelease(&aSet);
+	ph7_result_bool(pCtx, bYes);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_isInstance(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	ph7_class_instance *pObj;
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 || pClass == 0 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	pObj = (ph7_class_instance *)apArg[0]->x.pOther;
+	ph7_result_bool(pCtx, PH7_VmInstanceOf(pObj->pClass, pClass) != 0);
+	return PH7_OK;
+}
+/* ---- source position ---- */
+static int vm_builtin_ReflectionClass_getStartLine(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pClass == 0 || (pClass->iFlags & PH7_CLASS_INTERNAL) ){
+		ph7_result_bool(pCtx, 0);
+	}else{
+		ph7_result_int64(pCtx, (sxi64)pClass->nLine);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_getEndLine(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pClass == 0 || (pClass->iFlags & PH7_CLASS_INTERNAL) ){
+		ph7_result_bool(pCtx, 0);
+	}else{
+		ph7_result_int64(pCtx, (sxi64)pClass->nEndLine);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_getFileName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pClass && SyStringLength(&pClass->sFile) > 0 ){
+		ph7_result_string(pCtx, SyStringData(&pClass->sFile), (int)SyStringLength(&pClass->sFile));
+	}else{
+		ph7_result_bool(pCtx, 0);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_getDocComment(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pClass && SyStringLength(&pClass->sDoc) > 0 ){
+		ph7_result_string(pCtx, SyStringData(&pClass->sDoc), (int)SyStringLength(&pClass->sDoc));
+	}else{
+		ph7_result_bool(pCtx, 0);
+	}
+	return PH7_OK;
+}
+/* ---- instantiation ---- */
+static int vm_builtin_ReflectionClass_isInstantiable(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	sxi32 iCtor, iClone;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pClass == 0
+	 || (pClass->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_TRAIT|PH7_CLASS_ABSTRACT|PH7_CLASS_ENUM)) ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	ReflectCtorCloneVis(pCtx->pVm, pClass, &iCtor, &iClone);
+	ph7_result_bool(pCtx, iCtor == 0 || iCtor == PH7_CLASS_PROT_PUBLIC);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_isCloneable(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	sxi32 iCtor, iClone;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pClass == 0
+	 || (pClass->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_TRAIT|PH7_CLASS_ABSTRACT)) ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	ReflectCtorCloneVis(pCtx->pVm, pClass, &iCtor, &iClone);
+	ph7_result_bool(pCtx, iClone == 0 || iClone == PH7_CLASS_PROT_PUBLIC);
+	return PH7_OK;
+}
+/* php's own gate, raised before any object exists. */
+static sxi32 ReflectCheckInstantiable(ph7_context *pCtx, ph7_class *pClass)
+{
+	if( pClass->iFlags & PH7_CLASS_INTERFACE ){
+		return PH7_VmThrowException(pCtx, "Error", "Cannot instantiate interface %z", &pClass->sName);
+	}
+	if( pClass->iFlags & PH7_CLASS_TRAIT ){
+		return PH7_VmThrowException(pCtx, "Error", "Cannot instantiate trait %z", &pClass->sName);
+	}
+	if( pClass->iFlags & PH7_CLASS_ABSTRACT ){
+		return PH7_VmThrowException(pCtx, "Error", "Cannot instantiate abstract class %z", &pClass->sName);
+	}
+	return PH7_OK;
+}
+/*
+ * newInstance()/newInstanceArgs(): the checks php runs, then the constructor.
+ * apCtor/nCtor are already-collected positional arguments; pNames is the
+ * name map when the caller handed an array with string keys (php 8.1 accepts
+ * those as NAMED constructor arguments).
+ */
+static int ReflectNewInstance(ph7_context *pCtx, int nCtor, ph7_value **apCtor,
+	SyString *pNames)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	ph7_class_instance *pObj;
+	ph7_class_method *pCons;
+	sxi32 iCtorVis, iCloneVis, rc;
+	if( pClass == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	rc = ReflectCheckInstantiable(pCtx, pClass);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	ReflectCtorCloneVis(pVm, pClass, &iCtorVis, &iCloneVis);
+	if( iCtorVis != 0 && iCtorVis != PH7_CLASS_PROT_PUBLIC ){
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Access to non-public constructor of class %z", &pClass->sName);
+	}
+	if( iCtorVis == 0 && nCtor > 0 ){
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Class %z does not have a constructor, so you cannot pass any constructor arguments",
+			&pClass->sName);
+	}
+	if( VmClassStaticDeferPending(pClass) ){
+		/* Instantiation materializes the static table (OP_NEW does it too), so a
+		 * broken default raises BEFORE any object exists. */
+		sxi32 rcMat = PH7_VmMaterializeClassStatics(pVm, pClass);
+		if( rcMat != SXRET_OK ){
+			return rcMat;
+		}
+	}
+	pObj = PH7_NewClassInstance(pVm, pClass);
+	if( pObj == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pCons = PH7_ClassExtractMethod(pClass, "__construct", sizeof("__construct")-1);
+	if( pCons ){
+		if( pNames ){
+			VmCallArgMap sMap;
+			SyZero(&sMap, sizeof(sMap));
+			sMap.bHasNamed = 1;
+			sMap.nTotal = (sxu32)nCtor;
+			sMap.aNames = pNames;
+			rc = PH7_VmCallClassMethodMap(pVm, pObj, pCons, 0, nCtor, apCtor, &sMap);
+		}else{
+			rc = PH7_VmCallClassMethod(pVm, pObj, pCons, 0, nCtor, apCtor);
+		}
+		if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
+			PH7_ClassInstanceUnref(pObj);
+			return rc;
+		}
+	}
+	return ReflectResultObject(pCtx, pObj);
+}
+static int vm_builtin_ReflectionClass_newInstance(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	return ReflectNewInstance(pCtx, nArg, apArg, 0);
+}
+static int vm_builtin_ReflectionClass_newInstanceArgs(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SySet aArg;
+	SyString *aNames = 0;
+	int rc;
+	SySetInit(&aArg, &pCtx->pVm->sAllocator, sizeof(ph7_value *));
+	if( nArg > 0 ){
+		ReflectCollectArgs(pCtx, apArg[0], &aArg, &aNames);
+	}
+	rc = ReflectNewInstance(pCtx, (int)SySetUsed(&aArg),
+		(ph7_value **)SySetBasePtr(&aArg), aNames);
+	if( aNames ){
+		SyMemBackendFree(&pCtx->pVm->sAllocator, aNames);
+	}
+	SySetRelease(&aArg);
+	return rc;
+}
+static int vm_builtin_ReflectionClass_newInstanceWithoutConstructor(ph7_context *pCtx,
+	int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pClass == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	rc = ReflectCheckInstantiable(pCtx, pClass);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( VmClassStaticDeferPending(pClass) ){
+		sxi32 rcMat = PH7_VmMaterializeClassStatics(pCtx->pVm, pClass);
+		if( rcMat != SXRET_OK ){
+			return rcMat;
+		}
+	}
+	return ReflectResultObject(pCtx, PH7_NewClassInstance(pCtx->pVm, pClass));
+}
+/* ---- members ---- */
+/* The modifier mask php filters a member on. */
+static sxi64 ReflectVisMask(sxi32 iProt)
+{
+	if( iProt == PH7_CLASS_PROT_PUBLIC ){
+		return 1;
+	}
+	return iProt == PH7_CLASS_PROT_PROTECTED ? 2 : 4;
+}
+static sxi64 ReflectPropModifiers(ph7_class_attr *pAttr)
+{
+	sxi64 iMods = ReflectVisMask(pAttr->iProtection);
+	if( pAttr->iFlags & PH7_CLASS_ATTR_STATIC ){ iMods |= 16; }
+	if( pAttr->iFlags & PH7_CLASS_ATTR_READONLY ){ iMods |= 128; }
+	return iMods;
+}
+static sxi64 ReflectMethodModifiers(ph7_class_method *pMeth)
+{
+	sxi64 iMods = ReflectVisMask(pMeth->iProtection);
+	if( pMeth->iFlags & PH7_CLASS_ATTR_STATIC ){ iMods |= 16; }
+	if( pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT ){ iMods |= 64; }
+	if( pMeth->iFlags & PH7_CLASS_ATTR_FINAL ){ iMods |= 32; }
+	return iMods;
+}
+static sxi64 ReflectConstModifiers(ph7_class_attr *pAttr)
+{
+	sxi64 iMods = ReflectVisMask(pAttr->iProtection);
+	if( pAttr->iFlags & PH7_CLASS_ATTR_FINAL ){ iMods |= 32; }
+	return iMods;
+}
+/* Does the reflected object own a property under this name? (1 = exists) */
+static int ReflectObjHasProp(ph7_class_instance *pObj, const char *zName, int nName)
+{
+	return pObj != 0 && nName > 0
+		&& SyHashGet(&pObj->hAttr, (const void *)zName, (sxu32)nName) != 0;
+}
+static int vm_builtin_ReflectionClass_hasMethod(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	const char *zName;
+	int nName;
+	if( pClass == 0 || nArg < 1 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	zName = ph7_value_to_string(apArg[0], &nName);
+	ph7_result_bool(pCtx, ReflectFindMethodEntry(pClass, zName, nName) != 0);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_hasProperty(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	const char *zName;
+	int nName, bFound = 0;
+	SySet aMembers;
+	sxu32 n;
+	if( pClass == 0 || nArg < 1 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	zName = ph7_value_to_string(apArg[0], &nName);
+	SySetInit(&aMembers, &pCtx->pVm->sAllocator, sizeof(ReflectMember));
+	ReflectMembers(pCtx->pVm, pClass, &aMembers, 0);
+	for( n = 0 ; n < SySetUsed(&aMembers) ; n++ ){
+		ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);
+		if( pM->iKind == REFLECT_MEMBER_PROP && ReflectKeyIs(pM, zName, nName) ){
+			bFound = 1;
+			break;
+		}
+	}
+	SySetRelease(&aMembers);
+	/* A ReflectionObject also sees the instance's own dynamic properties */
+	if( !bFound ){
+		bFound = ReflectObjHasProp(ReflectClassObj(pCtx), zName, nName);
+	}
+	ph7_result_bool(pCtx, bFound);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_hasConstant(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	const char *zName;
+	int nName, bFound = 0;
+	SySet aMembers;
+	sxu32 n;
+	if( pClass == 0 || nArg < 1 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	zName = ph7_value_to_string(apArg[0], &nName);
+	SySetInit(&aMembers, &pCtx->pVm->sAllocator, sizeof(ReflectMember));
+	ReflectMembers(pCtx->pVm, pClass, &aMembers, 0);
+	for( n = 0 ; n < SySetUsed(&aMembers) ; n++ ){
+		ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);
+		if( pM->iKind == REFLECT_MEMBER_CONST && ReflectKeyIs(pM, zName, nName) ){
+			bFound = 1;
+			break;
+		}
+	}
+	SySetRelease(&aMembers);
+	ph7_result_bool(pCtx, bFound);
+	return PH7_OK;
+}
+/*
+ * The value of a class constant, materializing its lazily-evaluated slot.
+ *
+ * php re-evaluates a failed initializer on EVERY read, so this can raise; the
+ * status is returned rather than swallowed, because a native body that answers
+ * PH7_OK with a throw in flight lets the caller carry on and print the NULL it
+ * never should have seen.
+ */
+static sxi32 ReflectConstSlot(ph7_context *pCtx, ph7_class *pClass, ph7_class_attr *pAttr,
+	ph7_value **ppOut)
+{
+	sxi32 rc = PH7_VmMaterializeClassConst(pCtx->pVm, pClass, pAttr);
+	*ppOut = 0;
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	*ppOut = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
+	return SXRET_OK;
+}
+static int vm_builtin_ReflectionClass_getConstant(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	const char *zName;
+	int nName;
+	SySet aMembers;
+	sxu32 n;
+	ph7_class_attr *pFound = 0;
+	if( pClass == 0 || nArg < 1 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	zName = ph7_value_to_string(apArg[0], &nName);
+	SySetInit(&aMembers, &pCtx->pVm->sAllocator, sizeof(ReflectMember));
+	ReflectMembers(pCtx->pVm, pClass, &aMembers, 0);
+	for( n = 0 ; n < SySetUsed(&aMembers) ; n++ ){
+		ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);
+		if( pM->iKind == REFLECT_MEMBER_CONST && ReflectKeyIs(pM, zName, nName) ){
+			pFound = pM->pAttr;
+			break;
+		}
+	}
+	SySetRelease(&aMembers);
+	if( pFound == 0 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	{
+		ph7_value *pVal;
+		sxi32 rc = ReflectConstSlot(pCtx, pClass, pFound, &pVal);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		if( pVal ){
+			ph7_result_value(pCtx, pVal);
+		}else{
+			ph7_result_null(pCtx);
+		}
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_getConstants(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	ph7_value *pOut = ph7_context_new_array(pCtx);
+	SySet aMembers;
+	sxu32 n;
+	int bFilter = (nArg > 0 && (apArg[0]->iFlags & MEMOBJ_NULL) == 0);
+	sxi64 iFilter = bFilter ? ph7_value_to_int64(apArg[0]) : 0;
+	if( pOut == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( pClass == 0 ){
+		ph7_result_value(pCtx, pOut);
+		return PH7_OK;
+	}
+	SySetInit(&aMembers, &pCtx->pVm->sAllocator, sizeof(ReflectMember));
+	ReflectMembers(pCtx->pVm, pClass, &aMembers, 0);
+	for( n = 0 ; n < SySetUsed(&aMembers) ; n++ ){
+		ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);
+		ph7_value *pVal;
+		if( pM->iKind != REFLECT_MEMBER_CONST ){
+			continue;
+		}
+		if( bFilter && (ReflectConstModifiers(pM->pAttr) & iFilter) == 0 ){
+			continue;
+		}
+		{
+			sxi32 rc = ReflectConstSlot(pCtx, pClass, pM->pAttr, &pVal);
+			if( rc != SXRET_OK ){
+				SySetRelease(&aMembers);
+				return rc;
+			}
+		}
+		if( pVal ){
+			ReflectMapAddDyn(pCtx, pOut, &pM->sKey, pVal);
+		}
+	}
+	SySetRelease(&aMembers);
+	ph7_result_value(pCtx, pOut);
+	return PH7_OK;
+}
+/*
+ * getMethod()/getProperty()/getReflectionConstant() build a class that is still
+ * PRELUDE PHP, so they go through its constructor (ReflectConstruct). They
+ * become direct C when chunks 2 and 3 land.
+ */
+static int ReflectResultMember(ph7_context *pCtx, const char *zClass,
+	ph7_value *pTarget, const SyString *pName)
+{
+	ph7_value sName;
+	ph7_value *apCtor[2];
+	ph7_class_instance *pOut;
+	sxi32 rc;
+	PH7_MemObjInit(pCtx->pVm, &sName);
+	ph7_value_string(&sName, SyStringData(pName), (int)SyStringLength(pName));
+	apCtor[0] = pTarget;
+	apCtor[1] = &sName;
+	pOut = ReflectConstruct(pCtx, zClass, 2, apCtor, &rc);
+	PH7_MemObjRelease(&sName);
+	if( pOut == 0 ){
+		if( rc != PH7_OK ){
+			return rc;
+		}
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return ReflectResultObject(pCtx, pOut);
+}
+/* A `ReflectionMethod($this->name, ...)`-shaped first argument. */
+static void ReflectSelfName(ph7_context *pCtx, ph7_value *pOut)
+{
+	const char *zName;
+	int nName;
+	ReflectClassName(pCtx, &zName, &nName);
+	PH7_MemObjInit(pCtx->pVm, pOut);
+	ph7_value_string(pOut, zName, nName);
+}
+static int vm_builtin_ReflectionClass_getMethod(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	SyHashEntry *pEntry;
+	const char *zName;
+	int nName;
+	SyString sFound;
+	if( pClass == 0 || nArg < 1 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	zName = ph7_value_to_string(apArg[0], &nName);
+	pEntry = ReflectFindMethodEntry(pClass, zName, nName);
+	if( pEntry == 0 ){
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Method %z::%.*s() does not exist", &pClass->sName, nName, zName);
+	}
+	/* The reported name is the DECLARED spelling, whatever case was asked for. */
+	SyStringInitFromBuf(&sFound, (const char *)pEntry->pKey, pEntry->nKeyLen);
+	{
+		ph7_value sSelf;
+		int rc;
+		ReflectSelfName(pCtx, &sSelf);
+		rc = ReflectResultMember(pCtx, "ReflectionMethod", &sSelf, &sFound);
+		PH7_MemObjRelease(&sSelf);
+		return rc;
+	}
+}
+static int vm_builtin_ReflectionClass_getConstructor(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	SyHashEntry *pEntry;
+	SyString sFound;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pClass == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	/* No PHP-4 class-name constructor: a method named like the class is a plain
+	 * method (removed in 8.0), so this stays null without an explicit one. */
+	pEntry = ReflectFindMethodEntry(pClass, "__construct", sizeof("__construct")-1);
+	if( pEntry == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	SyStringInitFromBuf(&sFound, (const char *)pEntry->pKey, pEntry->nKeyLen);
+	{
+		ph7_value sSelf;
+		int rc;
+		ReflectSelfName(pCtx, &sSelf);
+		rc = ReflectResultMember(pCtx, "ReflectionMethod", &sSelf, &sFound);
+		PH7_MemObjRelease(&sSelf);
+		return rc;
+	}
+}
+/*
+ * getMethods() / getProperties() / getReflectionConstants(): one member walk,
+ * one reflector per surviving member. Each reflector is a prelude class built
+ * through its constructor, and is appended through a STACK carrier so the list
+ * takes its own reference rather than the creation one.
+ */
+static int ReflectMemberList(ph7_context *pCtx, int iKind, const char *zClass,
+	int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	ph7_class_instance *pObj = ReflectClassObj(pCtx);
+	ph7_value *pOut = ph7_context_new_array(pCtx);
+	ph7_value sSelf;
+	SySet aMembers;
+	sxu32 n;
+	int bFilter = (nArg > 0 && (apArg[0]->iFlags & MEMOBJ_NULL) == 0);
+	sxi64 iFilter = bFilter ? ph7_value_to_int64(apArg[0]) : 0;
+	if( pOut == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( pClass == 0 ){
+		ph7_result_value(pCtx, pOut);
+		return PH7_OK;
+	}
+	ReflectSelfName(pCtx, &sSelf);
+	SySetInit(&aMembers, &pCtx->pVm->sAllocator, sizeof(ReflectMember));
+	ReflectMembers(pCtx->pVm, pClass, &aMembers, 0);
+	for( n = 0 ; n < SySetUsed(&aMembers) ; n++ ){
+		ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);
+		ph7_value sName, sVal;
+		ph7_value *apCtor[2];
+		ph7_class_instance *pRef;
+		sxi32 rc;
+		if( pM->iKind != iKind ){
+			continue;
+		}
+		if( bFilter ){
+			sxi64 iMods = iKind == REFLECT_MEMBER_METHOD ? ReflectMethodModifiers(pM->pMeth)
+				: (iKind == REFLECT_MEMBER_CONST ? ReflectConstModifiers(pM->pAttr)
+				                                 : ReflectPropModifiers(pM->pAttr));
+			if( (iMods & iFilter) == 0 ){
+				continue;
+			}
+		}
+		PH7_MemObjInit(pCtx->pVm, &sName);
+		ph7_value_string(&sName, SyStringData(&pM->sKey), (int)SyStringLength(&pM->sKey));
+		apCtor[0] = &sSelf;
+		apCtor[1] = &sName;
+		pRef = ReflectConstruct(pCtx, zClass, 2, apCtor, &rc);
+		PH7_MemObjRelease(&sName);
+		if( pRef == 0 ){
+			SySetRelease(&aMembers);
+			PH7_MemObjRelease(&sSelf);
+			if( rc != PH7_OK ){
+				return rc;
+			}
+			ph7_result_value(pCtx, pOut);
+			return PH7_OK;
+		}
+		PH7_MemObjInit(pCtx->pVm, &sVal);
+		sVal.x.pOther = pRef;
+		sVal.iFlags = MEMOBJ_OBJ;
+		ph7_array_add_elem(pOut, 0, &sVal);   /* takes its own reference */
+		PH7_ClassInstanceUnref(pRef);
+	}
+	SySetRelease(&aMembers);
+	/* A ReflectionObject also reports the instance's own DYNAMIC properties,
+	 * which no class declaration knows about. */
+	if( iKind == REFLECT_MEMBER_PROP && pObj != 0 && (!bFilter || (iFilter & 1)) ){
+		SyHashEntry *pEntry;
+		ph7_value sTarget;
+		PH7_MemObjInit(pCtx->pVm, &sTarget);
+		sTarget.x.pOther = pObj;
+		sTarget.iFlags = MEMOBJ_OBJ;
+		SyHashResetLoopCursor(&pObj->hAttr);
+		while( (pEntry = SyHashGetNextEntry(&pObj->hAttr)) != 0 ){
+			VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
+			ph7_value sName, sVal;
+			ph7_value *apCtor[2];
+			ph7_class_instance *pRef;
+			sxi32 rc;
+			if( pVmAttr->pAttr == 0 || (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_DYNAMIC) == 0 ){
+				continue;
+			}
+			PH7_MemObjInit(pCtx->pVm, &sName);
+			ph7_value_string(&sName, SyStringData(&pVmAttr->pAttr->sName),
+				(int)SyStringLength(&pVmAttr->pAttr->sName));
+			apCtor[0] = &sTarget;
+			apCtor[1] = &sName;
+			pRef = ReflectConstruct(pCtx, zClass, 2, apCtor, &rc);
+			PH7_MemObjRelease(&sName);
+			if( pRef == 0 ){
+				break;
+			}
+			PH7_MemObjInit(pCtx->pVm, &sVal);
+			sVal.x.pOther = pRef;
+			sVal.iFlags = MEMOBJ_OBJ;
+			ph7_array_add_elem(pOut, 0, &sVal);
+			PH7_ClassInstanceUnref(pRef);
+		}
+		/* sTarget borrows pObj and never took a reference: nothing to release. */
+	}
+	PH7_MemObjRelease(&sSelf);
+	ph7_result_value(pCtx, pOut);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_getMethods(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	return ReflectMemberList(pCtx, REFLECT_MEMBER_METHOD, "ReflectionMethod", nArg, apArg);
+}
+static int vm_builtin_ReflectionClass_getProperties(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	return ReflectMemberList(pCtx, REFLECT_MEMBER_PROP, "ReflectionProperty", nArg, apArg);
+}
+static int vm_builtin_ReflectionClass_getReflectionConstants(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	return ReflectMemberList(pCtx, REFLECT_MEMBER_CONST, "ReflectionClassConstant", nArg, apArg);
+}
+static int vm_builtin_ReflectionClass_getProperty(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	ph7_class_instance *pObj = ReflectClassObj(pCtx);
+	const char *zName;
+	int nName, bFound = 0;
+	SySet aMembers;
+	sxu32 n;
+	SyString sFound;
+	if( pClass == 0 || nArg < 1 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	zName = ph7_value_to_string(apArg[0], &nName);
+	SySetInit(&aMembers, &pCtx->pVm->sAllocator, sizeof(ReflectMember));
+	ReflectMembers(pCtx->pVm, pClass, &aMembers, 0);
+	for( n = 0 ; n < SySetUsed(&aMembers) && !bFound ; n++ ){
+		ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);
+		if( pM->iKind == REFLECT_MEMBER_PROP && ReflectKeyIs(pM, zName, nName) ){
+			sFound = pM->sKey;
+			bFound = 1;
+		}
+	}
+	SySetRelease(&aMembers);
+	if( bFound ){
+		ph7_value sSelf;
+		int rc;
+		ReflectSelfName(pCtx, &sSelf);
+		rc = ReflectResultMember(pCtx, "ReflectionProperty", &sSelf, &sFound);
+		PH7_MemObjRelease(&sSelf);
+		return rc;
+	}
+	if( ReflectObjHasProp(pObj, zName, nName) ){
+		/* A dynamic property: the reflector is built over the OBJECT, since the
+		 * class declaration has no record of it. */
+		ph7_value sTarget;
+		SyString sName;
+		int rc;
+		PH7_MemObjInit(pCtx->pVm, &sTarget);
+		sTarget.x.pOther = pObj;
+		sTarget.iFlags = MEMOBJ_OBJ;
+		SyStringInitFromBuf(&sName, zName, nName);
+		rc = ReflectResultMember(pCtx, "ReflectionProperty", &sTarget, &sName);
+		return rc;
+	}
+	return PH7_VmThrowException(pCtx, "ReflectionException",
+		"Property %z::$%.*s does not exist", &pClass->sName, nName, zName);
+}
+static int vm_builtin_ReflectionClass_getReflectionConstant(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	const char *zName;
+	int nName, bFound = 0;
+	SySet aMembers;
+	sxu32 n;
+	SyString sFound;
+	if( pClass == 0 || nArg < 1 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	zName = ph7_value_to_string(apArg[0], &nName);
+	SySetInit(&aMembers, &pCtx->pVm->sAllocator, sizeof(ReflectMember));
+	ReflectMembers(pCtx->pVm, pClass, &aMembers, 0);
+	for( n = 0 ; n < SySetUsed(&aMembers) && !bFound ; n++ ){
+		ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);
+		if( pM->iKind == REFLECT_MEMBER_CONST && ReflectKeyIs(pM, zName, nName) ){
+			sFound = pM->sKey;
+			bFound = 1;
+		}
+	}
+	SySetRelease(&aMembers);
+	if( !bFound ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	{
+		ph7_value sSelf;
+		int rc;
+		ReflectSelfName(pCtx, &sSelf);
+		rc = ReflectResultMember(pCtx, "ReflectionClassConstant", &sSelf, &sFound);
+		PH7_MemObjRelease(&sSelf);
+		return rc;
+	}
+}
+/* ---- statics and defaults ---- */
+/* Reading or writing a static through reflection materializes the class's
+ * static table exactly as `C::$s` does, so a default that threw at the
+ * declaration raises HERE. */
+static sxi32 ReflectMaterializeStatics(ph7_context *pCtx, ph7_class *pClass)
+{
+	if( VmClassStaticDeferPending(pClass) ){
+		return PH7_VmMaterializeClassStatics(pCtx->pVm, pClass);
+	}
+	return SXRET_OK;
+}
+static int vm_builtin_ReflectionClass_getStaticProperties(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	ph7_value *pOut = ph7_context_new_array(pCtx);
+	SySet aMembers;
+	sxu32 n;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pOut == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( pClass == 0 ){
+		ph7_result_value(pCtx, pOut);
+		return PH7_OK;
+	}
+	{
+		sxi32 rc = ReflectMaterializeStatics(pCtx, pClass);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	SySetInit(&aMembers, &pCtx->pVm->sAllocator, sizeof(ReflectMember));
+	ReflectMembers(pCtx->pVm, pClass, &aMembers, 0);
+	for( n = 0 ; n < SySetUsed(&aMembers) ; n++ ){
+		ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);
+		ph7_value *pVal;
+		SyHashEntry *pSlot;
+		if( pM->iKind != REFLECT_MEMBER_PROP
+		 || (pM->pAttr->iFlags & PH7_CLASS_ATTR_STATIC) == 0 ){
+			continue;
+		}
+		/* An UNINITIALIZED typed static has no value to report, and php simply
+		 * leaves it out rather than raising the read Error here. */
+		pSlot = SyHashGet(&pCtx->pVm->hTypedSlot, (const void *)&pM->pAttr->nIdx, sizeof(sxu32));
+		if( pSlot && (((VmClassAttr *)pSlot->pUserData)->iState & VM_CLASS_ATTR_UNINIT) ){
+			continue;
+		}
+		pVal = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pM->pAttr->nIdx);
+		if( pVal ){
+			ReflectMapAddDyn(pCtx, pOut, &pM->sKey, pVal);
+		}
+	}
+	SySetRelease(&aMembers);
+	ph7_result_value(pCtx, pOut);
+	return PH7_OK;
+}
+/* The declared STATIC property of this name, or NULL. */
+static ph7_class_attr * ReflectStaticAttr(ph7_context *pCtx, ph7_class *pClass,
+	const char *zName, int nName)
+{
+	SyHashEntry *pEntry;
+	ph7_class_attr *pAttr;
+	if( nName < 1 ){
+		return 0;
+	}
+	pEntry = SyHashGet(&pClass->hAttr, (const void *)zName, (sxu32)nName);
+	if( pEntry == 0 ){
+		return 0;
+	}
+	pAttr = (ph7_class_attr *)pEntry->pUserData;
+	SXUNUSED(pCtx);
+	return (pAttr->iFlags & PH7_CLASS_ATTR_STATIC) ? pAttr : 0;
+}
+static int vm_builtin_ReflectionClass_getStaticPropertyValue(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	ph7_class_attr *pAttr;
+	const char *zName;
+	int nName;
+	if( pClass == 0 || nArg < 1 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	{
+		sxi32 rc = ReflectMaterializeStatics(pCtx, pClass);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	zName = ph7_value_to_string(apArg[0], &nName);
+	pAttr = ReflectStaticAttr(pCtx, pClass, zName, nName);
+	if( pAttr == 0 ){
+		if( nArg > 1 ){
+			ph7_result_value(pCtx, apArg[1]);
+			return PH7_OK;
+		}
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Property %z::$%.*s does not exist", &pClass->sName, nName, zName);
+	}
+	{
+		/* Uninitialized typed static: the same Error the VM raises on read */
+		SyHashEntry *pSlot = SyHashGet(&pCtx->pVm->hTypedSlot, (const void *)&pAttr->nIdx, sizeof(sxu32));
+		ph7_value *pVal;
+		if( pSlot && (((VmClassAttr *)pSlot->pUserData)->iState & VM_CLASS_ATTR_UNINIT) ){
+			/* php says "Typed property" HERE and "Typed static property" from
+			 * ReflectionProperty::getValue() and from `A::$s` itself — the
+			 * three wordings were checked against the oracle, they really do
+			 * differ by call site. */
+			ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
+			return PH7_VmThrowException(pCtx, "Error",
+				"Typed property %z::$%z must not be accessed before initialization",
+				&pDecl->sName, &pAttr->sName);
+		}
+		pVal = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
+		if( pVal ){
+			ph7_result_value(pCtx, pVal);
+		}else{
+			ph7_result_null(pCtx);
+		}
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_setStaticPropertyValue(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	ph7_class_attr *pAttr;
+	ph7_value *pSlot;
+	const char *zName;
+	int nName;
+	if( pClass == 0 || nArg < 2 ){
+		return PH7_OK;
+	}
+	{
+		sxi32 rc = ReflectMaterializeStatics(pCtx, pClass);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	zName = ph7_value_to_string(apArg[0], &nName);
+	pAttr = ReflectStaticAttr(pCtx, pClass, zName, nName);
+	if( pAttr == 0 ){
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Class %z does not have a property named %.*s", &pClass->sName, nName, zName);
+	}
+	pSlot = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pAttr->nIdx);
+	if( pSlot == 0 ){
+		return PH7_OK;
+	}
+	{
+		sxi32 rc = ReflectEnforceStore(pCtx, pAttr->nIdx, apArg[1]);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	PH7_MemObjStore(apArg[1], pSlot);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_getDefaultProperties(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	ph7_value *pOut = ph7_context_new_array(pCtx);
+	SySet aMembers;
+	sxu32 n;
+	int iPass;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pOut == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( pClass == 0 ){
+		ph7_result_value(pCtx, pOut);
+		return PH7_OK;
+	}
+	SySetInit(&aMembers, &pCtx->pVm->sAllocator, sizeof(ReflectMember));
+	ReflectMembers(pCtx->pVm, pClass, &aMembers, 0);
+	/* php reports the STATIC properties first, then the instance ones. */
+	for( iPass = 0 ; iPass < 2 ; iPass++ ){
+		for( n = 0 ; n < SySetUsed(&aMembers) ; n++ ){
+			ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);
+			int bStatic;
+			ph7_value sValue;
+			if( pM->iKind != REFLECT_MEMBER_PROP ){
+				continue;
+			}
+			bStatic = (pM->pAttr->iFlags & PH7_CLASS_ATTR_STATIC) != 0;
+			if( bStatic != (iPass == 0) ){
+				continue;
+			}
+			if( (pM->pAttr->iFlags & PH7_CLASS_ATTR_TYPED)
+			 && SySetUsed(&pM->pAttr->aByteCode) < 1 ){
+				/* A TYPED property with no initializer has no default at all —
+				 * it is uninitialized, and php leaves it out. An UNTYPED one
+				 * without an initializer defaults to null and is listed. */
+				continue;
+			}
+			PH7_MemObjInit(pCtx->pVm, &sValue);
+			if( SySetUsed(&pM->pAttr->aByteCode) > 0 ){
+				/* Same evaluation path the VM uses for omitted call arguments */
+				VmLocalExec(pCtx->pVm, &pM->pAttr->aByteCode, &sValue, FALSE);
+			}
+			ReflectMapAddDyn(pCtx, pOut, &pM->sKey, &sValue);
+			PH7_MemObjRelease(&sValue);
+		}
+	}
+	SySetRelease(&aMembers);
+	ph7_result_value(pCtx, pOut);
+	return PH7_OK;
+}
+/* ---- attributes, extension, export ---- */
+static int vm_builtin_ReflectionClass_getAttributes(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	const char *zName;
+	int nName;
+	if( pClass == 0 ){
+		ph7_result_value(pCtx, ph7_context_new_array(pCtx));
+		return PH7_OK;
+	}
+	ReflectClassName(pCtx, &zName, &nName);
+	/* 1 = Attribute::TARGET_CLASS */
+	return ReflectBuildAttrs(pCtx, &pClass->aAttrs, "class", zName, nName, 0, 0, 0, 1,
+		nArg, apArg);
+}
+static int vm_builtin_ReflectionClass_getExtensionName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( ReflectClassFlag(pCtx, PH7_CLASS_INTERNAL) ){
+		ph7_result_string(pCtx, "Core", sizeof("Core")-1);
+	}else{
+		ph7_result_bool(pCtx, 0);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_getExtension(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_value sName;
+	ph7_value *apCtor[1];
+	ph7_class_instance *pExt;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectClassFlag(pCtx, PH7_CLASS_INTERNAL) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pCtx->pVm, &sName);
+	ph7_value_string(&sName, "Core", sizeof("Core")-1);
+	apCtor[0] = &sName;
+	pExt = ReflectConstruct(pCtx, "ReflectionExtension", 1, apCtor, &rc);
+	PH7_MemObjRelease(&sName);
+	if( pExt == 0 ){
+		if( rc != PH7_OK ){
+			return rc;
+		}
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return ReflectResultObject(pCtx, pExt);
+}
+/* __toString(): php's export format, still chunk 9. */
+static int vm_builtin_ReflectionClass_toString(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value sSelf, sRes, sFn;
+	ph7_value *apCall[1];
+	SyString sStr;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 ){
+		ph7_result_string(pCtx, "", 0);
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pVm, &sSelf);
+	PH7_MemObjInit(pVm, &sRes);
+	PH7_MemObjInit(pVm, &sFn);
+	sSelf.x.pOther = pThis;
+	sSelf.iFlags = MEMOBJ_OBJ;
+	SyStringInitFromBuf(&sStr, "__reflect_export_class", sizeof("__reflect_export_class")-1);
+	PH7_MemObjInitFromString(pVm, &sFn, &sStr);
+	apCall[0] = &sSelf;
+	if( PH7_VmCallUserFunction(pVm, &sFn, 1, apCall, &sRes) == SXRET_OK ){
+		ph7_result_value(pCtx, &sRes);
+	}
+	PH7_MemObjRelease(&sFn);
+	PH7_MemObjRelease(&sRes);
+	/* sSelf borrows the receiver and never took a reference: not released. */
+	return PH7_OK;
+}
+/* ---- lazy objects: PHL has none (§7.4) ---- */
+static int ReflectNoLazy(ph7_context *pCtx, const char *zWho)
+{
+	return PH7_VmThrowException(pCtx, "Error",
+		"%s is not supported by PHL (no lazy objects)", zWho);
+}
+#define REFLECT_NO_LAZY(NAME,TEXT) \
+	static int NAME(ph7_context *pCtx, int nArg, ph7_value **apArg) \
+	{ \
+		SXUNUSED(nArg); \
+		SXUNUSED(apArg); \
+		return ReflectNoLazy(pCtx, TEXT); \
+	}
+REFLECT_NO_LAZY(vm_builtin_ReflectionClass_newLazyGhost,"ReflectionClass::newLazyGhost()")
+REFLECT_NO_LAZY(vm_builtin_ReflectionClass_newLazyProxy,"ReflectionClass::newLazyProxy()")
+REFLECT_NO_LAZY(vm_builtin_ReflectionClass_resetAsLazyGhost,"ReflectionClass::resetAsLazyGhost()")
+REFLECT_NO_LAZY(vm_builtin_ReflectionClass_resetAsLazyProxy,"ReflectionClass::resetAsLazyProxy()")
+/* The four QUERIES answer what is true of a VM with no lazy objects, rather
+ * than refusing: an object here is always initialized and never has one. */
+static int vm_builtin_ReflectionClass_getLazyInitializer(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_passThroughObject(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	if( nArg > 0 ){
+		ph7_result_value(pCtx, apArg[0]);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_isUninitializedLazyObject(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx, 0);
+	return PH7_OK;
+}
+/* Reflection::getModifierNames(int $modifiers) */
+static int vm_builtin_Reflection_getModifierNames(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	static const struct { sxi64 iBit; const char *zName; } aMod[] = {
+		{ 64,  "abstract" },
+		{ 32,  "final" },
+		{ 1,   "public" },
+		{ 2,   "protected" },
+		{ 4,   "private" },
+		{ 16,  "static" },
+		{ 128, "readonly" },
+	};
+	ph7_value *pOut = ph7_context_new_array(pCtx);
+	sxi64 iMods = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;
+	sxu32 n;
+	if( pOut == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	for( n = 0 ; n < SX_ARRAYSIZE(aMod) ; n++ ){
+		ph7_value *pName;
+		if( (iMods & aMod[n].iBit) == 0 ){
+			continue;
+		}
+		pName = ph7_context_new_scalar(pCtx);
+		if( pName == 0 ){ break; }
+		ph7_value_string(pName, aMod[n].zName, -1);
+		ph7_array_add_elem(pOut, 0, pName);
+	}
+	ph7_result_value(pCtx, pOut);
+	return PH7_OK;
+}
+/*
+ * Declare chunk 1. Called from PH7_VmInstallReflectionLib where it used to be
+ * compiled — before chunks 2 and 3, which name `Reflector` in their own
+ * `implements` clauses.
+ *
+ * The method table is in php's own DECLARATION order, which is the order
+ * ReflectionClass::getMethods() reports for these classes themselves.
+ */
+PH7_PRIVATE sxi32 PH7_VmInstallReflectionClass(ph7_vm *pVm)
+{
+	static const PH7_NativePropDef aClassProp[] = {
+		{ "name",  PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
+		/* PHL-only: the instance a ReflectionObject was built over. php keeps it
+		 * out of sight; PHL has no hidden-slot bit yet (§7.4 (e)). */
+		{ RC_OBJ,  PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+	};
+	static const PH7_NativeMethodDef aClassMethod[] = {
+		{ "__clone",     PH7_MOD_PRIVATE, "", "void", vm_builtin_ReflectionClass_clone },
+		{ "__construct", PH7_MOD_PUBLIC, "object|string $objectOrClass", "",
+		  vm_builtin_ReflectionClass_construct },
+		{ "__toString",  PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionClass_toString },
+		{ "getName",       PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getName },
+		{ "isInternal",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isInternal },
+		{ "isUserDefined", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isUserDefined },
+		{ "isAnonymous",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isAnonymous },
+		{ "isInstantiable",PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isInstantiable },
+		{ "isCloneable",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isCloneable },
+		{ "getFileName",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getFileName },
+		{ "getStartLine",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getStartLine },
+		{ "getEndLine",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getEndLine },
+		{ "getDocComment", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getDocComment },
+		{ "getConstructor",PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getConstructor },
+		{ "hasMethod",     PH7_MOD_PUBLIC, "string $name", "", vm_builtin_ReflectionClass_hasMethod },
+		{ "getMethod",     PH7_MOD_PUBLIC, "string $name", "", vm_builtin_ReflectionClass_getMethod },
+		{ "getMethods",    PH7_MOD_PUBLIC, "?int $filter = null", "",
+		  vm_builtin_ReflectionClass_getMethods },
+		{ "hasProperty",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_ReflectionClass_hasProperty },
+		{ "getProperty",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_ReflectionClass_getProperty },
+		{ "getProperties", PH7_MOD_PUBLIC, "?int $filter = null", "",
+		  vm_builtin_ReflectionClass_getProperties },
+		{ "hasConstant",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_ReflectionClass_hasConstant },
+		{ "getConstants",  PH7_MOD_PUBLIC, "?int $filter = null", "",
+		  vm_builtin_ReflectionClass_getConstants },
+		{ "getReflectionConstants", PH7_MOD_PUBLIC, "?int $filter = null", "",
+		  vm_builtin_ReflectionClass_getReflectionConstants },
+		{ "getConstant",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_ReflectionClass_getConstant },
+		{ "getReflectionConstant", PH7_MOD_PUBLIC, "string $name", "",
+		  vm_builtin_ReflectionClass_getReflectionConstant },
+		{ "getInterfaces",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getInterfaces },
+		{ "getInterfaceNames", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getInterfaceNames },
+		{ "isInterface",       PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isInterface },
+		{ "getTraits",         PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getTraits },
+		{ "getTraitNames",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getTraitNames },
+		{ "getTraitAliases",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getTraitAliases },
+		{ "isTrait",           PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isTrait },
+		{ "isEnum",            PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionClass_isEnum },
+		{ "isAbstract",        PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isAbstract },
+		{ "isFinal",           PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isFinal },
+		{ "isReadOnly",        PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionClass_isReadOnly },
+		{ "getModifiers",      PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getModifiers },
+		{ "isInstance",        PH7_MOD_PUBLIC, "object $object", "",
+		  vm_builtin_ReflectionClass_isInstance },
+		{ "newInstance",       PH7_MOD_PUBLIC, "mixed ...$args", "",
+		  vm_builtin_ReflectionClass_newInstance },
+		{ "newInstanceWithoutConstructor", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionClass_newInstanceWithoutConstructor },
+		{ "newInstanceArgs",   PH7_MOD_PUBLIC, "array $args = []", "",
+		  vm_builtin_ReflectionClass_newInstanceArgs },
+		{ "newLazyGhost",      PH7_MOD_PUBLIC, "callable $initializer, int $options = 0", "object",
+		  vm_builtin_ReflectionClass_newLazyGhost },
+		{ "newLazyProxy",      PH7_MOD_PUBLIC, "callable $factory, int $options = 0", "object",
+		  vm_builtin_ReflectionClass_newLazyProxy },
+		{ "resetAsLazyGhost",  PH7_MOD_PUBLIC,
+		  "object $object, callable $initializer, int $options = 0", "void",
+		  vm_builtin_ReflectionClass_resetAsLazyGhost },
+		{ "resetAsLazyProxy",  PH7_MOD_PUBLIC,
+		  "object $object, callable $factory, int $options = 0", "void",
+		  vm_builtin_ReflectionClass_resetAsLazyProxy },
+		{ "initializeLazyObject", PH7_MOD_PUBLIC, "object $object", "object",
+		  vm_builtin_ReflectionClass_passThroughObject },
+		{ "isUninitializedLazyObject", PH7_MOD_PUBLIC, "object $object", "bool",
+		  vm_builtin_ReflectionClass_isUninitializedLazyObject },
+		{ "markLazyObjectAsInitialized", PH7_MOD_PUBLIC, "object $object", "object",
+		  vm_builtin_ReflectionClass_passThroughObject },
+		{ "getLazyInitializer", PH7_MOD_PUBLIC, "object $object", "?callable",
+		  vm_builtin_ReflectionClass_getLazyInitializer },
+		{ "getParentClass",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getParentClass },
+		{ "isSubclassOf",      PH7_MOD_PUBLIC, "ReflectionClass|string $class", "",
+		  vm_builtin_ReflectionClass_isSubclassOf },
+		{ "getStaticProperties", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionClass_getStaticProperties },
+		/* `mixed $default = ?` is the table's "optional, no default VALUE"
+		 * marker — php's own shape here: isOptional() true,
+		 * isDefaultValueAvailable() false. */
+		{ "getStaticPropertyValue", PH7_MOD_PUBLIC, "string $name, mixed $default = ?", "",
+		  vm_builtin_ReflectionClass_getStaticPropertyValue },
+		{ "setStaticPropertyValue", PH7_MOD_PUBLIC, "string $name, mixed $value", "",
+		  vm_builtin_ReflectionClass_setStaticPropertyValue },
+		{ "getDefaultProperties", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionClass_getDefaultProperties },
+		{ "isIterable",        PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isIterable },
+		{ "isIterateable",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isIterable },
+		{ "implementsInterface", PH7_MOD_PUBLIC, "ReflectionClass|string $interface", "",
+		  vm_builtin_ReflectionClass_implementsInterface },
+		{ "getExtension",      PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getExtension },
+		{ "getExtensionName",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getExtensionName },
+		{ "inNamespace",       PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_inNamespace },
+		{ "getNamespaceName",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getNamespaceName },
+		{ "getShortName",      PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getShortName },
+		{ "getAttributes",     PH7_MOD_PUBLIC, "?string $name = null, int $flags = 0", "array",
+		  vm_builtin_ReflectionClass_getAttributes },
+	};
+	static const PH7_NativeConstDef aClassConst[] = {
+		{ "IS_IMPLICIT_ABSTRACT", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 16,    0, 0.0 },
+		{ "IS_EXPLICIT_ABSTRACT", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 64,    0, 0.0 },
+		{ "IS_FINAL",             PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 32,    0, 0.0 },
+		{ "IS_READONLY",          PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 65536, 0, 0.0 },
+		{ "SKIP_INITIALIZATION_ON_SERIALIZE", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 8, 0, 0.0 },
+		{ "SKIP_DESTRUCTOR",      PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 16,    0, 0.0 },
+	};
+	static const PH7_NativeMethodDef aObjectMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "object $object", "",
+		  vm_builtin_ReflectionObject_construct },
+	};
+	static const PH7_NativeMethodDef aReflectionMethod[] = {
+		{ "getModifierNames", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "int $modifiers", "",
+		  vm_builtin_Reflection_getModifierNames },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "Reflector", "Stringable", 0, PH7_CLASS_INTERFACE, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "ReflectionException", "Exception", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "Reflection", 0, 0, 0,
+		  aReflectionMethod, SX_ARRAYSIZE(aReflectionMethod), 0, 0, 0, 0, 0, 0 },
+		/* Uncloneable and unserializable in php too: `clone` is an Error and
+		 * serialize() a catchable Exception naming the class. */
+		{ "ReflectionClass", 0, "Reflector", PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
+		  aClassMethod, SX_ARRAYSIZE(aClassMethod),
+		  aClassConst, SX_ARRAYSIZE(aClassConst),
+		  aClassProp, SX_ARRAYSIZE(aClassProp), 0, 0 },
+		{ "ReflectionObject", "ReflectionClass", 0, PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
+		  aObjectMethod, SX_ARRAYSIZE(aObjectMethod), 0, 0, 0, 0, 0, 0 },
+	};
+	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));
+}
 PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 {
 	static const struct {
 		const char *zName;
 		ProchHostFunction xFunc;
 	} aFunc[] = {
-		{ "__reflect_class_info",     vm_builtin_reflect_class_info },
+		{ "__phl_rcinfo",             vm_builtin_phl_rcinfo },
 		{ "__reflect_const_value",    vm_builtin_reflect_const_value },
-		{ "__reflect_static_materialize", vm_builtin_reflect_static_materialize },
 		{ "__reflect_static_value",   vm_builtin_reflect_static_value },
 		{ "__reflect_static_set",     vm_builtin_reflect_static_set },
 		{ "__reflect_prop_default",   vm_builtin_reflect_prop_default },
@@ -3164,7 +4976,6 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 		{ "__reflect_prop_read",      vm_builtin_reflect_prop_read },
 		{ "__reflect_prop_write",     vm_builtin_reflect_prop_write },
 		{ "__reflect_prop_state",     vm_builtin_reflect_prop_state },
-		{ "__reflect_dyn_props",      vm_builtin_reflect_dyn_props },
 		{ "__reflect_attr_args",      vm_builtin_reflect_attr_args },
 		{ "__reflect_make_type",      vm_builtin_reflect_make_type },
 	};
