@@ -1694,6 +1694,196 @@ static void VmCufDropByRefBuiltinArgs(ph7_context *pCtx,ph7_value *pCallable,int
 	}
 }
 /*
+ * Resolve a callable VALUE to the callee a by-reference diagnostic must NAME: its
+ * ph7_vm_func (formals plus display name) and the class to qualify it with. Read-only
+ * on purpose — a Closure is decoded through its own `$__fn`/`$__this`/`$__scope`
+ * attributes rather than VmClosureUnwrap, whose job is to ARM the dispatch (it parks a
+ * $this reference the real call then consumes, so asking it twice would leak one).
+ *
+ * Answers 0 for a host builtin (whose by-ref positions come from its signature instead),
+ * for a name routed through __call/__callStatic, and for a malformed callable.
+ */
+static ph7_vm_func * VmCallableCalleeFunc(ph7_vm *pVm,ph7_value *pCallable,ph7_class **ppOwner)
+{
+	ph7_class *pClass = 0;
+	ph7_class_method *pMeth = 0;
+	const char *zName = 0;
+	sxu32 nName = 0;
+	*ppOwner = 0;
+	if( pCallable->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pThis = (ph7_class_instance *)pCallable->x.pOther;
+		if( pThis == 0 ){
+			return 0;
+		}
+		if( VmValueIsClosure(&(*pVm),pCallable) ){
+			SyString sAttr;
+			ph7_value *pFn,*pBound,*pScope;
+			SyHashEntry *pEntry;
+			SyStringInitFromBuf(&sAttr,"__fn",4);
+			pFn = PH7_ClassInstanceFetchAttr(pThis,&sAttr);
+			if( pFn == 0 || (pFn->iFlags & MEMOBJ_STRING) == 0
+			 || SyBlobLength(&pFn->sBlob) == 0 ){
+				return 0;
+			}
+			zName = (const char *)SyBlobData(&pFn->sBlob);
+			nName = SyBlobLength(&pFn->sBlob);
+			/* A method first-class callable carries the class it was taken from. */
+			SyStringInitFromBuf(&sAttr,"__this",6);
+			pBound = PH7_ClassInstanceFetchAttr(pThis,&sAttr);
+			SyStringInitFromBuf(&sAttr,"__scope",7);
+			pScope = PH7_ClassInstanceFetchAttr(pThis,&sAttr);
+			if( pBound && (pBound->iFlags & MEMOBJ_OBJ) && pBound->x.pOther ){
+				pClass = ((ph7_class_instance *)pBound->x.pOther)->pClass;
+			}else if( pScope && (pScope->iFlags & MEMOBJ_STRING)
+			 && SyBlobLength(&pScope->sBlob) > 0 ){
+				pClass = PH7_VmExtractClassFromValue(&(*pVm),pScope);
+			}
+			if( pClass ){
+				pMeth = PH7_ClassExtractMethod(pClass,zName,nName);
+			}
+			if( pMeth == 0 ){
+				/* A plain closure: `$__fn` is its own entry in the function table. */
+				pEntry = SyHashGet(&pVm->hFunction,(const void *)zName,nName);
+				return pEntry ? (ph7_vm_func *)pEntry->pUserData : 0;
+			}
+			*ppOwner = pClass;
+			return &pMeth->sFunc;
+		}
+		pMeth = PH7_ClassExtractMethod(pThis->pClass,"__invoke",sizeof("__invoke")-1);
+		if( pMeth == 0 ){
+			return 0;
+		}
+		*ppOwner = pThis->pClass;
+		return &pMeth->sFunc;
+	}
+	if( pCallable->iFlags & MEMOBJ_HASHMAP ){
+		ph7_hashmap *pMap = (ph7_hashmap *)pCallable->x.pOther;
+		ph7_value *pTarget = 0,*pName = 0;
+		if( pMap == 0 || pMap->nEntry != 2
+		 || !PH7_VmArrayCallableParts(&(*pVm),pMap,&pTarget,&pName)
+		 || (pName->iFlags & MEMOBJ_STRING) == 0 ){
+			return 0;
+		}
+		pClass = PH7_VmExtractClassFromValue(&(*pVm),pTarget);
+		zName = (const char *)SyBlobData(&pName->sBlob);
+		nName = SyBlobLength(&pName->sBlob);
+	}else if( pCallable->iFlags & MEMOBJ_STRING ){
+		const char *zStr = (const char *)SyBlobData(&pCallable->sBlob);
+		sxu32 n,nStr = SyBlobLength(&pCallable->sBlob);
+		sxu32 nSep = SXU32_HIGH;
+		if( nStr < 1 ){
+			return 0;
+		}
+		for( n = 0 ; n + 1 < nStr ; ++n ){
+			if( zStr[n] == ':' && zStr[n+1] == ':' ){
+				nSep = n;
+				break;
+			}
+		}
+		if( nSep == SXU32_HIGH ){
+			/* A plain function name: a HOST builtin answers 0 here by design. */
+			SyHashEntry *pEntry = SyHashGet(&pVm->hFunction,(const void *)zStr,nStr);
+			return pEntry ? (ph7_vm_func *)pEntry->pUserData : 0;
+		}
+		pClass = PH7_VmExtractClass(&(*pVm),zStr,nSep,TRUE,0);
+		zName = &zStr[nSep + 2];
+		nName = nStr - (nSep + 2);
+	}else{
+		return 0;
+	}
+	if( pClass == 0 || nName < 1 ){
+		return 0;
+	}
+	pMeth = PH7_ClassExtractMethod(pClass,zName,nName);
+	if( pMeth == 0 ){
+		return 0;
+	}
+	*ppOwner = pClass;
+	return &pMeth->sFunc;
+}
+/*
+ * php's `X(): Argument #N ($p) must be passed by reference, value given` for the two
+ * sites that hand a by-REFERENCE parameter something they cannot alias.
+ *
+ * call_user_func_array() honours by-reference only when the argument-array ELEMENT is
+ * itself a reference (`$args = [&$v]`); a plain element is copied and php warns. PHL had
+ * the VALUE right at both ends already — it aliases the array's own element, which for a
+ * literal `[$v]` IS a copy — and said nothing, so the one thing that told a caller its
+ * out-param would not come back was missing. Fiber::start() warns for EVERY by-reference
+ * parameter: its own `...$args` are by value whatever the body declares.
+ *
+ * apNode[i] is the argument array's node for position i; a NULL apNode means the site has
+ * no array to inspect and every by-ref parameter warns.
+ */
+PH7_PRIVATE void PH7_VmWarnByRefArgsGivenValue(ph7_vm *pVm,ph7_value *pCallable,int nArg,
+	ph7_hashmap_node **apNode)
+{
+	ph7_class *pOwner = 0;
+	ph7_vm_func *pFunc;
+	ph7_vm_func_arg *aFormal;
+	int i,nFormal;
+	if( pCallable == 0 || nArg < 1 ){
+		return;
+	}
+	pFunc = VmCallableCalleeFunc(&(*pVm),pCallable,&pOwner);
+	if( pFunc == 0 ){
+		/* A host builtin (`call_user_func_array('sort', [$a])`): its by-ref positions
+			 * and parameter names come from the declared signature, the same source the
+			 * call_user_func half already reads. */
+		SyHashEntry *pEntry;
+		ph7_user_func *pHost;
+		if( (pCallable->iFlags & MEMOBJ_STRING) == 0 ){
+			return;
+		}
+		pEntry = SyHashGet(&pVm->hHostFunction,SyBlobData(&pCallable->sBlob),
+			SyBlobLength(&pCallable->sBlob));
+		if( pEntry == 0 ){
+			return;
+		}
+		pHost = (ph7_user_func *)pEntry->pUserData;
+		for( i = 0 ; i < nArg && i < 31 ; ++i ){
+			SyString sName;
+			if( (pHost->nByRefMask & (1u << i)) == 0 ){
+				continue;
+			}
+			if( apNode && apNode[i] && PH7_HashmapNodeIsRef(apNode[i]) ){
+				continue; /* a REFERENCE element: php binds it and stays silent */
+			}
+			if( PH7_VmSigParamName(pHost->zSig,i,&sName) ){
+				VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+					"%z(): Argument #%d ($%z) must be passed by reference, value given",
+					&pHost->sName,i + 1,&sName);
+			}else{
+				VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+					"%z(): Argument #%d must be passed by reference, value given",
+					&pHost->sName,i + 1);
+			}
+		}
+		return;
+	}
+	aFormal = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);
+	nFormal = (int)SySetUsed(&pFunc->aArgs);
+	for( i = 0 ; i < nArg ; ++i ){
+		int idx = i;
+		if( idx >= nFormal ){
+			/* Past the declared formals: a trailing variadic absorbs the tail and
+				 * dictates its by-ref-ness, exactly as the argument binder reads it. */
+			if( nFormal < 1 || (aFormal[nFormal-1].iFlags & VM_FUNC_ARG_VARIADIC) == 0 ){
+				break;
+			}
+			idx = nFormal - 1;
+		}
+		if( (aFormal[idx].iFlags & VM_FUNC_ARG_BY_REF) == 0 ){
+			continue;
+		}
+		if( apNode && apNode[i] && PH7_HashmapNodeIsRef(apNode[i]) ){
+			continue; /* a REFERENCE element: php binds it and stays silent */
+		}
+		PH7_VmWarnByRefValueGiven(&(*pVm),pOwner,pFunc,(sxu32)(i + 1),
+			(aFormal[idx].iFlags & VM_FUNC_ARG_VARIADIC) ? 0 : &aFormal[idx].sName);
+	}
+}
+/*
  * Call a user defined or foreign function where the name of the function
  * is stored in the pFunc parameter and the given arguments are stored
  * in the apArg[] array.

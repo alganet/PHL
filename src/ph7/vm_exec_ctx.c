@@ -2080,6 +2080,19 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 	if( pFunc == 0 ){
 		return PH7_EXCEPTION;
 	}
+	/* Fiber::start()'s own `...$args` are by VALUE whatever the body declares, so php
+		 * warns for every by-reference parameter and the body operates on a copy — the
+		 * value PHL already produced, without the one diagnostic that says so. Named off
+		 * the stored callable, which is what carries the class for a method one. */
+	if( nArg > 0 ){
+		SyString sCbName;
+		ph7_value *pCbVal;
+		SyStringInitFromBuf(&sCbName, "__callable", 10);
+		pCbVal = PH7_ClassInstanceFetchAttr(pThis, &sCbName);
+		if( pCbVal ){
+			PH7_VmWarnByRefArgsGivenValue(pVm, pCbVal, nArg, 0);
+		}
+	}
 	/* Create execution context now that we know the function */
 	pExecCtx = VmNewExecCtx(pVm, pFunc);
 	if( pExecCtx == 0 ){

@@ -2922,6 +2922,41 @@ PH7_PRIVATE sxi32 VmThrowTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString 
  * ArgumentCountError above — php names the method's owner, and PHL used to report
  * the bare `m()`.
  */
+/*
+ * php's `X(): Argument #N ($p) must be passed by reference, value given` — a WARNING,
+ * raised where a by-REFERENCE parameter is handed something the site cannot alias, and
+ * then the callee operates on a copy. Two sites reach it: call_user_func_array(), whose
+ * argument-array element is a plain VALUE rather than a reference, and Fiber::start(),
+ * whose own `...$args` are by value whatever the body declares. The callee is named the
+ * way every other argument diagnostic names it — a method with its class, a closure with
+ * php's `{closure:file:line}`.
+ */
+PH7_PRIVATE void PH7_VmWarnByRefValueGiven(ph7_vm *pVm,ph7_class *pOwnerClass,
+	ph7_vm_func *pCallee,sxu32 nArgPos,SyString *pArgName)
+{
+	const char *zShow = 0;
+	int nShow = PH7_VmFuncDisplayName(&(*pVm),pCallee,&zShow);
+	/* A NULL pArgName omits the ` ($name)` clause, php's wording for an element
+	 * collected by a by-ref VARIADIC tail: many values share one formal, so no
+	 * single name applies (the refusal message splits the same way). */
+	if( pOwnerClass && pArgName ){
+		VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+			"%z::%.*s(): Argument #%u ($%z) must be passed by reference, value given",
+			&pOwnerClass->sName,nShow,zShow,nArgPos,pArgName);
+	}else if( pOwnerClass ){
+		VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+			"%z::%.*s(): Argument #%u must be passed by reference, value given",
+			&pOwnerClass->sName,nShow,zShow,nArgPos);
+	}else if( pArgName ){
+		VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+			"%.*s(): Argument #%u ($%z) must be passed by reference, value given",
+			nShow,zShow,nArgPos,pArgName);
+	}else{
+		VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+			"%.*s(): Argument #%u must be passed by reference, value given",
+			nShow,zShow,nArgPos);
+	}
+}
 PH7_PRIVATE sxi32 VmThrowByRefRefusal(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName,
 	sxu32 nArgPos,SyString *pArgName)
 {

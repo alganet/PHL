@@ -1747,6 +1747,7 @@ PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_v
 	ph7_hashmap *pMap;        /* Target hashmap */
 	SySet aArg;               /* Argument value pointers */
 	SyString *aNames = 0;     /* Name map, lazily allocated when a string key appears */
+	ph7_hashmap_node **apNode = 0; /* Per-position node: is this element a REFERENCE? */
 	sxu32 nSlot = 0;          /* Number of collected arguments */
 	sxi32 rc;
 	sxu32 n;
@@ -1784,17 +1785,39 @@ PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_v
 					if( aNames == 0 ){
 						SySetRelease(&aArg);
 						PH7_MemObjRelease(&sResult);
+						if( apNode ){
+							SyMemBackendFree(&pCtx->pVm->sAllocator,apNode);
+						}
 						return PH7_ContextMemoryError(pCtx);
 					}
 					SyZero(aNames,pMap->nEntry * sizeof(SyString));
 				}
 				SyStringInitFromBuf(&aNames[nSlot],SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey));
 			}
+			if( apNode == 0 ){
+				apNode = (ph7_hashmap_node **)SyMemBackendAlloc(&pCtx->pVm->sAllocator,
+					pMap->nEntry * sizeof(ph7_hashmap_node *));
+				if( apNode ){
+					SyZero(apNode,pMap->nEntry * sizeof(ph7_hashmap_node *));
+				}
+			}
+			if( apNode ){
+				apNode[nSlot] = pEntry;
+			}
 			SySetPut(&aArg,(const void *)&pValue);
 			nSlot++;
 		}
 		/* Point to the next entry */
 		pEntry = pEntry->pPrev; /* Reverse link */
+	}
+	/* php honours a by-REFERENCE parameter here only when the argument-array ELEMENT is
+		 * itself a reference; a plain element is copied, and php says so. The values were
+		 * already php-exact (the callee aliases the array's own element) — the diagnostic
+		 * was the whole gap. Raised before the invoke, which is where php raises it. */
+	if( apNode ){
+		PH7_VmWarnByRefArgsGivenValue(pCtx->pVm,apArg[0],(int)nSlot,apNode);
+		SyMemBackendFree(&pCtx->pVm->sAllocator,apNode);
+		apNode = 0;
 	}
 	/* Try to invoke the callback */
 	if( aNames ){
