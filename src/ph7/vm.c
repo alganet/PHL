@@ -733,6 +733,10 @@ PH7_PRIVATE void VmPinMemObjSlot(ph7_vm *pVm,sxu32 nIdx)
 	pRef = VmRefObjExtract(&(*pVm),nIdx);
 	if( pRef ){
 		pRef->iFlags |= VM_REF_IDX_KEEP;
+	}else{
+		/* No record yet — a pin on a slot nothing refers to was silently a NO-OP, so the
+		 * slot stayed releasable and (since a pin is a holder) nothing counted it. */
+		PH7_VmRefObjInstall(&(*pVm),nIdx,0,0,VM_REF_IDX_KEEP);
 	}
 }
 /*

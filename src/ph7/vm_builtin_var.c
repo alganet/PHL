@@ -159,8 +159,7 @@ PH7_PRIVATE sxi32 VmUnsetVarByNameEx(ph7_vm *pVm,VmFrame *pFrame,const char *zNa
 	}
 	{
 		SyHashEntry **apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);
-		ph7_hashmap_node **apNode = (ph7_hashmap_node **)SySetBasePtr(&pRef->aArrEntries);
-		sxu32 n, nLive = 0;
+		sxu32 n;
 		/* Forget THIS name in the slot's reference record (leave the others alone) */
 		for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){
 			if( apEntry[n] == pEntry ){
@@ -168,30 +167,12 @@ PH7_PRIVATE sxi32 VmUnsetVarByNameEx(ph7_vm *pVm,VmFrame *pFrame,const char *zNa
 			}
 		}
 		SyHashDeleteEntry2(pEntry);
-		/* Anything else still holding the slot? */
-		for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){
-			if( apEntry[n] ){
-				nLive++;
-			}
-		}
-		for( n = 0 ; n < SySetUsed(&pRef->aArrEntries) ; ++n ){
-			/* Only a node that STILL points at this slot is a holder. The reference table
-			 * keeps stale rows (a slot index is recycled through the free list, and the row
-			 * outlives the node that put it there), so an un-filtered count reports holders
-			 * that no longer exist and the value would never be released — the destructor
-			 * of `$o = new D; unset($o);` stopped running. */
-			if( apNode[n] && apNode[n]->nValIdx == nIdx ){
-				nLive++;
-			}
-		}
-		if( nLive < 1 ){
-			/* Last holder gone: now the value may go too */
-			PH7_VmUnsetMemObj(&(*pVm),nIdx,FALSE);
-			/* Slot returned to the free pool: drop its stale local-teardown entry so a
-			 * later reuse of the index is not double-freed on frame exit (see
-			 * VmDropFrameLocalSlot). */
-			VmDropFrameLocalSlot(&(*pVm),nIdx);
-		}
+		/* The value goes with the LAST holder and not before — the one rule, counted in
+		 * one place: other names, array nodes that still point here, and a PIN (a static's
+		 * storage, a `use (&$x)` capture, a reference-bound property), which is a holder
+		 * this table cannot name. Unsetting the name of a static used to release the
+		 * static's value, so the next call started over from the initializer. */
+		PH7_VmReleaseUnheldSlot(&(*pVm),nIdx);
 	}
 	return SXRET_OK;
 }

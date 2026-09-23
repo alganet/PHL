@@ -6118,9 +6118,16 @@ case PH7_OP_CALL: {
 						continue;
 					}
 				}
-				/* Install in the current frame */
-				SyHashInsert(&pFrame->hVar,SyStringData(&pStatic->sName),SyStringLength(&pStatic->sName),
-					SX_INT_TO_PTR(pStatic->nIdx));
+				/* Install in the current frame — a REGISTERED binding, and the slot is
+				 * PINNED: the static's storage belongs to the function, not to this
+				 * call, so neither the frame teardown nor an unset of the NAME may
+				 * recycle it. Poking hVar directly left the binding invisible to the
+				 * reference table, so an array element sharing the static (`[&$s]`)
+				 * did not count as a reference and `unset($s)` destroyed the storage —
+				 * the next call started over from the initializer. */
+				VmPinMemObjSlot(&(*pVm),pStatic->nIdx);
+				PH7_VmBindVarSlot(&(*pVm),pFrame,SyStringData(&pStatic->sName),
+					SyStringLength(&pStatic->sName),pStatic->nIdx);
 			}
 		}
 		/* Push arguments in the local frame */
