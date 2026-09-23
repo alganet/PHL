@@ -305,9 +305,17 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 			}else if( !PH7_VmClassMemberAccess(&(*pVm),pCtorDecl,&pCons->sFunc.sName,pCons->iProtection,FALSE) ){
 				SyBlob sErrMsg;
 				const char *zVis = pCons->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected";
+				/* php NAMES the calling scope when there is one (see the method twin in
+				 * OP_CALL); "global scope" is only for code outside every class. */
+				ph7_class *pCtorScope = PH7_VmCallerScopeName(&(*pVm));
 				SyBlobInit(&sErrMsg,&pVm->sAllocator);
-				SyBlobFormat(&sErrMsg,"Call to %s %z::__construct() from global scope",
-					zVis,&pClass->sName);
+				if( pCtorScope ){
+					SyBlobFormat(&sErrMsg,"Call to %s %z::__construct() from scope %z",
+						zVis,&pClass->sName,&pCtorScope->sName);
+				}else{
+					SyBlobFormat(&sErrMsg,"Call to %s %z::__construct() from global scope",
+						zVis,&pClass->sName);
+				}
 				VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
 				/* Pop ctor args + release the class-name operand, leave NULL
 				 * as the expression value; the fetch-point router lands the

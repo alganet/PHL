@@ -5246,9 +5246,23 @@ case PH7_OP_CALL: {
 							char zMsg[256];
 							sxi32 rcVis;
 							const char *zVis = pMeth->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected";
-							SyBufferFormat(zMsg,sizeof(zMsg),"Call to %s method %.*s::%.*s() from global scope",
-								zVis,(int)pDeclClass->sName.nByte,pDeclClass->sName.zString,
-								(int)pVmFunc->sName.nByte,pVmFunc->sName.zString);
+							/* php NAMES the calling scope when there is one — "from scope C" —
+							 * and says "global scope" only outside every class. This was a
+							 * hardcoded string, so a refusal raised from inside a class
+							 * (`$cb = ['C','priv']; $cb()` in a method) reported the wrong
+							 * one. The property twin next door (VmThrowSetVisibilityError)
+							 * already worded it php's way. */
+							ph7_class *pVisScope = PH7_VmCallerScopeName(&(*pVm));
+							if( pVisScope ){
+								SyBufferFormat(zMsg,sizeof(zMsg),"Call to %s method %.*s::%.*s() from scope %z",
+									zVis,(int)pDeclClass->sName.nByte,pDeclClass->sName.zString,
+									(int)pVmFunc->sName.nByte,pVmFunc->sName.zString,
+									&pVisScope->sName);
+							}else{
+								SyBufferFormat(zMsg,sizeof(zMsg),"Call to %s method %.*s::%.*s() from global scope",
+									zVis,(int)pDeclClass->sName.nByte,pDeclClass->sName.zString,
+									(int)pVmFunc->sName.nByte,pVmFunc->sName.zString);
+							}
 							/* Consume this call's captured spread runs — this visibility
 							 * error exits before the pVmFunc build below. */
 							if( pInstr->iP2 ){

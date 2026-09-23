@@ -659,6 +659,90 @@ PH7_PRIVATE int vm_builtin_get_class_methods(ph7_context *pCtx,int nArg,ph7_valu
 	return PH7_OK;
 }
 /*
+ * php's zend_get_executed_scope(): the class whose code is running, which is what every
+ * visibility decision is made against — and what php NAMES in the Error when it refuses
+ * ("... from scope C", or "from global scope" when this answers 0).
+ *
+ * Extracted from PH7_VmClassMemberAccess, which used to be the only reader; the message
+ * sites hardcoded "from global scope" and so reported the wrong scope for every
+ * private/protected refusal raised from inside a class.
+ */
+PH7_PRIVATE ph7_class * PH7_VmCallerScope(ph7_vm *pVm)
+{
+	VmFrame *pFrame = pVm->pFrame;
+	ph7_vm_func *pVmFunc;
+	while( pFrame && pFrame->pParent && (pFrame->iFlags & (VM_FRAME_EXCEPTION|VM_FRAME_CATCH) ) ){
+		/* Safely ignore the exception frame */
+		pFrame = pFrame->pParent;
+	}
+	if( pFrame == 0 ){
+		return 0;
+	}
+	pVmFunc = (ph7_vm_func *)pFrame->pUserData;
+	/* The calling scope is the executing method's declaring class — OR, for a bound closure
+	 * (Closure::bindTo/call), the explicit scope override carried on the frame (Increment 2). */
+	if( pFrame->pBoundScope ){
+		return pFrame->pBoundScope;
+	}
+	if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ){
+		return (ph7_class *)pVmFunc->pUserData;
+	}
+	if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLOSURE) && pVmFunc->pUserData ){
+		/* A closure/arrow-fn defined inside a class carries its creation-site
+		 * class in pUserData (stamped by OP_LOAD_CLOSURE via
+		 * PH7_VmPeekDeclaringClass, the same scope `self::`/`parent::` resolve
+		 * against inside the body). php binds that class as the closure's scope,
+		 * so `$this->privateMethod()` / `self::$private` inside the closure are
+		 * allowed — an explicit Closure::bindTo/bind rebind still wins above via
+		 * pBoundScope. */
+		return (ph7_class *)pVmFunc->pUserData;
+	}
+	if( pVm->pConstEvalClass ){
+		/* Constant/property initializer bytecode runs without a method
+		 * frame; its scope is the class being initialized (php: a private
+		 * constant is reachable from its own class's initializers). */
+		return pVm->pConstEvalClass;
+	}
+	return 0;
+}
+/*
+ * The scope php NAMES in a visibility Error. PH7_VmCallerScope with one adjustment: php
+ * flattens a TRAIT into the class that uses it, so code running in a trait method reports
+ * the USING class ("from scope Base"), never the trait — and not the RECEIVER's class
+ * either, so `class Kid extends Base` (Base being the one that composed the trait) still
+ * reports Base. Walk the receiver's ancestry to the first class that uses this trait; the
+ * trait itself stands when nothing does (nothing php would print, but better than a lie).
+ *
+ * Kept apart from PH7_VmCallerScope because the ACCESS decision genuinely wants the trait:
+ * its private/protected branches grant on "the caller is a trait used by the target class"
+ * and on the reverse, and both compare against the trait itself.
+ */
+PH7_PRIVATE ph7_class * PH7_VmCallerScopeName(ph7_vm *pVm)
+{
+	ph7_class *pScope = PH7_VmCallerScope(&(*pVm));
+	VmFrame *pFrame;
+	ph7_class *pWalk;
+	if( pScope == 0 || (pScope->iFlags & PH7_CLASS_TRAIT) == 0 ){
+		return pScope;
+	}
+	pFrame = pVm->pFrame;
+	while( pFrame && pFrame->pParent && (pFrame->iFlags & (VM_FRAME_EXCEPTION|VM_FRAME_CATCH)) ){
+		pFrame = pFrame->pParent;
+	}
+	pWalk = (pFrame && pFrame->pThis) ? pFrame->pThis->pClass : VmCurrentSelf(&(*pVm));
+	for( ; pWalk ; pWalk = pWalk->pBase ){
+		ph7_class **apTrait = (ph7_class **)SySetBasePtr(&pWalk->aTrait);
+		sxu32 nTrait = SySetUsed(&pWalk->aTrait);
+		sxu32 k;
+		for( k = 0 ; k < nTrait ; ++k ){
+			if( apTrait[k] == pScope ){
+				return pWalk;
+			}
+		}
+	}
+	return pScope;
+}
+/*
  * This function return TRUE(1) if the given class attribute stored
  * in the pAttrName parameter is visible and thus can be extracted
  * from the current scope.Otherwise FALSE is returned.
@@ -672,35 +756,8 @@ PH7_PRIVATE int PH7_VmClassMemberAccess(
 	)
 {
 	if( iProtection != PH7_CLASS_PROT_PUBLIC ){
-		VmFrame *pFrame = pVm->pFrame;
-		ph7_vm_func *pVmFunc;
-		ph7_class *pCallerScope;
-		while( pFrame->pParent && (pFrame->iFlags & (VM_FRAME_EXCEPTION|VM_FRAME_CATCH) ) ){
-			/* Safely ignore the exception frame */
-			pFrame = pFrame->pParent;
-		}
-		pVmFunc = (ph7_vm_func *)pFrame->pUserData;
-		/* The calling scope is the executing method's declaring class — OR, for a bound closure
-		 * (Closure::bindTo/call), the explicit scope override carried on the frame (Increment 2). */
-		if( pFrame->pBoundScope ){
-			pCallerScope = pFrame->pBoundScope;
-		}else if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ){
-			pCallerScope = (ph7_class *)pVmFunc->pUserData;
-		}else if( pVmFunc && (pVmFunc->iFlags & VM_FUNC_CLOSURE) && pVmFunc->pUserData ){
-			/* A closure/arrow-fn defined inside a class carries its creation-site
-			 * class in pUserData (stamped by OP_LOAD_CLOSURE via
-			 * PH7_VmPeekDeclaringClass, the same scope `self::`/`parent::` resolve
-			 * against inside the body). php binds that class as the closure's scope,
-			 * so `$this->privateMethod()` / `self::$private` inside the closure are
-			 * allowed — an explicit Closure::bindTo/bind rebind still wins above via
-			 * pBoundScope. */
-			pCallerScope = (ph7_class *)pVmFunc->pUserData;
-		}else if( pVm->pConstEvalClass ){
-			/* Constant/property initializer bytecode runs without a method
-			 * frame; its scope is the class being initialized (php: a private
-			 * constant is reachable from its own class's initializers). */
-			pCallerScope = pVm->pConstEvalClass;
-		}else{
+		ph7_class *pCallerScope = PH7_VmCallerScope(&(*pVm));
+		if( pCallerScope == 0 ){
 			goto dis; /* Not in a class scope: access is forbidden */
 		}
 		if( iProtection == PH7_CLASS_PROT_PRIVATE ){
