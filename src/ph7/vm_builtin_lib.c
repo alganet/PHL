@@ -32,6 +32,12 @@
 	/* stdClass is empty (PHP-exact): holds only dynamic (runtime-added) properties. */\
 	"function scandir(string $directory,int $sorting_order = SCANDIR_SORT_ASCENDING, $context = null)"\
     "{"\
+	"  /* php's Z_PARAM_PATH refusal, spelled here because this builtin is prelude PHP:"\
+	"     the C screen (VmBuiltinPathMask) reaches host builtins only, so without this"\
+	"     the NUL reached opendir() and the ValueError named opendir(), not scandir(). */"\
+	"  if( strpos($directory, chr(0)) !== false ){"\
+	"    throw new ValueError('scandir(): Argument #1 ($directory) must not contain any null bytes');"\
+	"  }"\
 	"  $aDir = array();"\
 	"  $pHandle = opendir($directory);"\
 	"  if( $pHandle == FALSE ){ return FALSE; }"\
@@ -50,6 +56,12 @@
 	"  return $aDir;"\
 	"}"\
 	"function glob(string $pattern,int $flags = 0){"\
+	"/* php's Z_PARAM_PATH refusal (see scandir above). It precedes the flag check:"\
+	"   php's ZPP runs before the function body. Without it the NUL was simply the end"\
+	"   of the pattern and glob() answered for the truncated one. */"\
+	"if( strpos($pattern, chr(0)) !== false ){"\
+	"  throw new ValueError('glob(): Argument #1 ($pattern) must not contain any null bytes');"\
+	"}"\
 	"/* php rejects a mask holding any bit outside GLOB_AVAILABLE_FLAGS with a warning"\
 	"   and FALSE. PHL accepted anything and just tested the bits it knew, so a stale"\
 	"   script passing the OLD PHL glob values (1/2/4/...) silently got a plain glob. */"\
@@ -387,6 +399,15 @@
    "/* Creates a temporary file and returns its name */"\
    "function tempnam(string $directory,string $prefix)"\
    "{"\
+   "   /* php's Z_PARAM_PATH refusal on BOTH parameters (see scandir above); the prefix"\
+   "    * is a path fragment there too, and PHL used to build a filename with the NUL"\
+   "    * still in it. */"\
+   "   if( strpos($directory, chr(0)) !== false ){"\
+   "     throw new ValueError('tempnam(): Argument #1 ($directory) must not contain any null bytes');"\
+   "   }"\
+   "   if( strpos($prefix, chr(0)) !== false ){"\
+   "     throw new ValueError('tempnam(): Argument #2 ($prefix) must not contain any null bytes');"\
+   "   }"\
    "   /* php CREATES the file (empty, mode 0600) and guarantees the name is unique --"\
    "    * returning a bare name left the caller with a path that does not exist, so"\
    "    * file_exists() was false and unlink() failed on it. */"\

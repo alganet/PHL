@@ -1267,6 +1267,125 @@ static int VmNumStrFitsInt(ph7_value *pArg)
 	}
 }
 /*
+ * PHP-8 PATH parameters: which positions carry a filesystem path, a shell
+ * command or an include-path list rather than an ordinary string.
+ *
+ * php spells this in the ZPP macro, not in the declared type: a path parameter
+ * is `Z_PARAM_PATH` where an ordinary one is `Z_PARAM_STR`, and both print as
+ * `string` in the stub Reflection reads. The difference is a single rule — a
+ * path may not contain a NUL byte — and php raises a catchable ValueError for
+ * one that does, BEFORE the call reaches the filesystem.
+ *
+ * PHL had no such notion, so every one of these arguments went to the C API as
+ * a NUL-terminated string and was silently TRUNCATED at the NUL. That is not a
+ * missing diagnostic: the truncated path is a DIFFERENT path, and the builtin
+ * then operated on it. `unlink("$dir/x\0.png")` deleted `$dir/x`,
+ * `file_put_contents("$dir/x\0.txt",$d)` wrote it, `touch`/`chmod`/`copy`/
+ * `rename`/`symlink`/`mkdir` all acted on the prefix, `glob` and `realpath`
+ * answered for it, and `shell_exec("cmd\0; rm -rf /")` ran the prefix as a
+ * command. It is the classic poison-NUL-byte shape php closed engine-wide: a
+ * script that concatenates request input into a filename gets a truncation
+ * where php gets a refusal, and the extension check the suffix was there to
+ * perform never runs.
+ *
+ * The mask is positional (bit N => parameter N is a path), which is how php
+ * carries it too. Only functions PHL actually registers are listed; each row's
+ * positions were verified against php 8.5 argument by argument (the answer is
+ * NOT derivable from the parameter name — preg_match's `$pattern` is an
+ * ordinary string, glob's is a path — nor from the type, which is `string`
+ * for both).
+ *
+ * What is deliberately NOT here: the stat family (file_exists, is_dir, stat,
+ * filesize, fileperms, …), which php parses with Z_PARAM_STR and answers
+ * `false` for in silence, and the pure PATH-STRING functions (basename,
+ * dirname, pathinfo), which php lets the NUL through untouched because they
+ * never touch the filesystem. Both are php-exact here already.
+ */
+static sxu32 VmBuiltinPathMask(SyString *pName)
+{
+	static const struct {
+		const char *zName;
+		sxu32 nByte;
+		sxu32 mask;
+	} aPath[] = {
+		/* Open / read / write */
+		{ "fopen",             5, 1u<<0 },
+		{ "file_get_contents", 17, 1u<<0 },
+		{ "file_put_contents", 17, 1u<<0 },
+		{ "file",              4, 1u<<0 },
+		{ "readfile",          8, 1u<<0 },
+		{ "parse_ini_file",   14, 1u<<0 },
+		{ "md5_file",          8, 1u<<0 },
+		{ "sha1_file",         9, 1u<<0 },
+		/* Metadata / mutation */
+		{ "unlink",            6, 1u<<0 },
+		{ "touch",             5, 1u<<0 },
+		{ "chmod",             5, 1u<<0 },
+		{ "chgrp",             5, 1u<<0 },
+		{ "chown",             5, 1u<<0 },
+		{ "rename",            6, (1u<<0)|(1u<<1) },
+		{ "copy",              4, (1u<<0)|(1u<<1) },
+		{ "link",              4, (1u<<0)|(1u<<1) },
+		{ "symlink",           7, (1u<<0)|(1u<<1) },
+		{ "readlink",          8, 1u<<0 },
+		{ "realpath",          8, 1u<<0 },
+		/* Directories */
+		{ "mkdir",             5, 1u<<0 },
+		{ "rmdir",             5, 1u<<0 },
+		{ "opendir",           7, 1u<<0 },
+		{ "dir",               3, 1u<<0 },
+		{ "scandir",           7, 1u<<0 },
+		{ "chdir",             5, 1u<<0 },
+		{ "chroot",            6, 1u<<0 },
+		{ "glob",              4, 1u<<0 },
+		{ "tempnam",           7, (1u<<0)|(1u<<1) },
+		{ "disk_free_space",  15, 1u<<0 },
+		{ "disk_total_space", 16, 1u<<0 },
+		{ "diskfreespace",    13, 1u<<0 },
+		/* Path-shaped settings and the pattern matcher */
+		{ "fnmatch",           7, (1u<<0)|(1u<<1) },
+		{ "set_include_path", 16, 1u<<0 },
+		{ "session_save_path", 17, 1u<<0 },
+		{ "error_log",         9, 1u<<2 },
+		/* Commands handed to the shell */
+		{ "shell_exec",       10, 1u<<0 },
+		{ "popen",             5, 1u<<0 },
+	};
+	sxu32 i;
+	if( pName == 0 || pName->zString == 0 || pName->nByte == 0 ){
+		return 0;
+	}
+	for( i = 0 ; i < SX_ARRAYSIZE(aPath) ; ++i ){
+		if( pName->nByte == aPath[i].nByte
+		 && SyStrnicmp(pName->zString,aPath[i].zName,pName->nByte) == 0 ){
+			return aPath[i].mask;
+		}
+	}
+	return 0;
+}
+/*
+ * Does this argument carry a NUL byte? Only a STRING can: every other scalar
+ * renders through the number/bool formatters, which emit none. An OBJECT is
+ * coerced by the caller before asking (php's ZPP order), so by the time this
+ * runs a Stringable is already the string it produced.
+ */
+static int VmArgHasNulByte(ph7_value *pArg)
+{
+	const char *zStr;
+	sxu32 n, nLen;
+	if( (pArg->iFlags & MEMOBJ_STRING) == 0 ){
+		return 0;
+	}
+	zStr = (const char *)SyBlobData(&pArg->sBlob);
+	nLen = SyBlobLength(&pArg->sBlob);
+	for( n = 0 ; n < nLen ; ++n ){
+		if( zStr[n] == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
  * Does php's strict_types rule refuse this argument for the declared type?
  *
  * A `declare(strict_types=1)` file gets NO scalar coercion at an internal call
@@ -1396,9 +1515,11 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 	 * map (weak when there is no map — a call that carries no compile-time metadata
 	 * was written in a weak-mode file, since a strict one always attaches one). */
 	int bStrict = (pCtx->pArgMap && pCtx->pArgMap->bStrict) ? 1 : 0;
+	sxu32 nPathMask;
 	if( zSig == 0 ){
 		return SXRET_OK;
 	}
+	nPathMask = VmBuiltinPathMask(&pFunc->sName);
 	for( iArg = 0 ; iArg < (int)SX_ARRAYSIZE(azSelfChecked) ; ++iArg ){
 		if( SyStrncmp(pFunc->sName.zString,azSelfChecked[iArg],
 			(sxu32)SyStrlen(azSelfChecked[iArg])) == 0
@@ -1668,6 +1789,34 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 				return PH7_VmThrowException(pCtx,"TypeError",
 					"%z(): Argument #%d ($%.*s) must be of type %.*s, %s given",
 					&pFunc->sName,iArg + 1,nName,zName,nType,zType,zGiven);
+			}
+		}
+		/* A PATH parameter, once its type is settled: php's Z_PARAM_PATH refuses a
+		 * NUL byte outright rather than letting the C API truncate at it. Raised
+		 * after the type verdict because that is php's order — the coercion runs
+		 * first, and only a value that could BE a path is asked whether it is a
+		 * legal one. */
+		if( iArg < 31 && (nPathMask & (1u<<iArg)) != 0 ){
+			if( (pArg->iFlags & MEMOBJ_OBJ) != 0 && PH7_ArgSatisfiesString(pArg) ){
+				/* A Stringable object: php coerces it and checks the RESULT, so
+				 * `unlink($o)` with a __toString() returning a NUL-bearing name is
+				 * the same ValueError. Converting IN PLACE is what keeps the
+				 * accessor running exactly ONCE — the builtin then receives the
+				 * string it would have produced itself. The argument a builtin sees
+				 * is its own copy on every dispatch route (a direct call, a spread,
+				 * both call_user_func forwards), so the caller's object is not
+				 * retyped; strict mode never gets here, because a Stringable does
+				 * not satisfy a `string` parameter there and the screen above has
+				 * already refused it. */
+				sxi32 rcConv = PH7_MemObjToStringUV(pArg);
+				if( rcConv != SXRET_OK ){
+					return rcConv; /* __toString() threw: php propagates it too */
+				}
+			}
+			if( VmArgHasNulByte(pArg) ){
+				return PH7_VmThrowException(pCtx,"ValueError",
+					"%z(): Argument #%d ($%.*s) must not contain any null bytes",
+					&pFunc->sName,iArg + 1,nName,zName);
 			}
 		}
 		zCur = (zStop < zEnd) ? zStop + 1 : zEnd;
