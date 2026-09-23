@@ -1471,11 +1471,8 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					sxu32 nCls = (sxu32)SyBlobLength(&pNos->sBlob);
 					/* Handle self/static/parent keywords */
 					if( nCls == 4 && SyMemcmp(zCls,"self",4) == 0 ){
-						pClass = PH7_VmPeekDeclaringClass(&(*pVm));
-						if( pClass && (pClass->iFlags & PH7_CLASS_TRAIT) ){
-							/* In a trait method, self:: resolves to the using class */
-							pClass = PH7_VmPeekTopClass(&(*pVm));
-						}
+						/* In a trait method, self:: resolves to the USING class */
+						pClass = PH7_VmPeekSelfClass(&(*pVm));
 						bForwardingCall = 1;
 						pForwardLsb = PH7_VmPeekTopClass(&(*pVm));
 					}else if( nCls == 6 && SyMemcmp(zCls,"static",6) == 0 ){

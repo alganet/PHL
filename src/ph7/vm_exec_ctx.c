@@ -774,10 +774,7 @@ PH7_PRIVATE ph7_class * PH7_VmResolveScopeName(ph7_vm *pVm, const char *zCls, sx
 {
 	ph7_class *pClass;
 	if( nCls == 4 && SyMemcmp(zCls,"self",4) == 0 ){
-		pClass = PH7_VmPeekDeclaringClass(&(*pVm));
-		if( pClass && (pClass->iFlags & PH7_CLASS_TRAIT) ){
-			pClass = PH7_VmPeekTopClass(&(*pVm)); /* self:: in a trait -> using class */
-		}
+		pClass = PH7_VmPeekSelfClass(&(*pVm)); /* self:: in a trait -> the USING class */
 	}else if( nCls == 6 && SyMemcmp(zCls,"static",6) == 0 ){
 		pClass = PH7_VmPeekTopClass(&(*pVm));     /* late static binding */
 	}else if( nCls == 6 && SyMemcmp(zCls,"parent",6) == 0 ){

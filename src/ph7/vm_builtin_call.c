@@ -1133,6 +1133,61 @@ PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm)
 	return pVm->pConstEvalClass;
 }
 /*
+ * The class a TRAIT was flattened into, walking up from pFrom (the runtime class) to the
+ * first one that uses pTrait — php composes a trait method INTO the using class, so that is
+ * what `self` and `__CLASS__` mean inside it, for every instance.
+ *
+ * The distinction only shows through inheritance: `class Base { use T; } class Kid extends
+ * Base {}` answers Base from a Kid instance too, so a `self::CONST` in the trait body reads
+ * BASE's constant even when Kid redeclares it. Answering the runtime class instead — which is
+ * what every site did, as the nearest available stand-in — silently read the child's.
+ * Falls back to pFrom when nothing in the chain lists the trait (a trait composed into
+ * another trait, which php resolves to the using class all the same).
+ */
+static int VmClassUsesTrait(ph7_class *pHost,ph7_class *pTrait,int nDepth)
+{
+	ph7_class **apTrait = (ph7_class **)SySetBasePtr(&pHost->aTrait);
+	sxu32 nTrait = SySetUsed(&pHost->aTrait);
+	sxu32 k;
+	if( nDepth > 16 ){
+		return 0; /* composition is acyclic by construction; bound it anyway */
+	}
+	for( k = 0 ; k < nTrait ; ++k ){
+		/* A trait can `use` another trait, and php flattens the whole composition into the
+		 * CLASS — so a method reached through Outer{use Inner} still belongs to the class
+		 * that used Outer, not to whichever class happens to be running it. */
+		if( apTrait[k] == pTrait || VmClassUsesTrait(apTrait[k],pTrait,nDepth + 1) ){
+			return 1;
+		}
+	}
+	return 0;
+}
+PH7_PRIVATE ph7_class * PH7_VmTraitUsingClass(ph7_vm *pVm,ph7_class *pTrait,ph7_class *pFrom)
+{
+	ph7_class *pWalk;
+	SXUNUSED(pVm);
+	for( pWalk = pFrom ; pWalk ; pWalk = pWalk->pBase ){
+		if( VmClassUsesTrait(pWalk,pTrait,0) ){
+			return pWalk;
+		}
+	}
+	return pFrom;
+}
+/*
+ * What `self` names where the source wrote it: the declaring class, or — for a trait method,
+ * whose declaring class stays the TRAIT because the method is shared by pointer — the class
+ * that used the trait. Every site that resolves `self`/`parent`/`__CLASS__` asks this, so the
+ * trait rule is stated once.
+ */
+PH7_PRIVATE ph7_class * PH7_VmPeekSelfClass(ph7_vm *pVm)
+{
+	ph7_class *pSelf = PH7_VmPeekDeclaringClass(&(*pVm));
+	if( pSelf && (pSelf->iFlags & PH7_CLASS_TRAIT) ){
+		return PH7_VmTraitUsingClass(&(*pVm),pSelf,PH7_VmPeekTopClass(&(*pVm)));
+	}
+	return pSelf;
+}
+/*
  * Resolve the `parent` keyword to the base class of the current method's scope.
  * A trait method is shared by pointer into every using class (its declaring class
  * stays the TRAIT), so `parent::` — like `self::` — must resolve against the
@@ -1143,10 +1198,7 @@ PH7_PRIVATE ph7_class * PH7_VmPeekDeclaringClass(ph7_vm *pVm)
  */
 PH7_PRIVATE ph7_class * PH7_VmResolveParentClass(ph7_vm *pVm)
 {
-	ph7_class *pSelf = PH7_VmPeekDeclaringClass(pVm);
-	if( pSelf && (pSelf->iFlags & PH7_CLASS_TRAIT) ){
-		pSelf = PH7_VmPeekTopClass(pVm);
-	}
+	ph7_class *pSelf = PH7_VmPeekSelfClass(pVm);
 	return (pSelf && pSelf->pBase) ? pSelf->pBase : 0;
 }
 

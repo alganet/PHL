@@ -1787,7 +1787,9 @@ static void PH7_class_magic_Const(ph7_value *pVal,void *pUserData)
 {
 	ph7_vm *pVm = (ph7_vm *)pUserData;
 	ph7_class *pClass;
-	pClass = PH7_VmPeekDeclaringClass(pVm);
+	/* php flattens a trait into the class that used it, so __CLASS__ inside a trait method
+	 * is THAT class (where __TRAIT__ and __METHOD__ stay the trait's — php's own asymmetry). */
+	pClass = PH7_VmPeekSelfClass(pVm);
 	if( pClass == 0 ){
 		pClass = PH7_VmPeekTopClass(pVm);
 	}

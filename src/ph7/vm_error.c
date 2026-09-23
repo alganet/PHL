@@ -1333,9 +1333,9 @@ PH7_PRIVATE ph7_class *VmResolveTypeClass(ph7_vm *pVm, const SyString *pCN, ph7_
 	}
 	if( pCN->nByte == 6 && SyStrnicmp(pCN->zString,"parent",6) == 0 ){
 		/* A trait method's declaring class is the trait (shared by pointer); parent::
-		 * resolves against the runtime using class, matching the self:: trait rule. */
+		 * resolves against the class that USED it, matching the self:: trait rule. */
 		if( pSelf && (pSelf->iFlags & PH7_CLASS_TRAIT) ){
-			pSelf = PH7_VmPeekTopClass(pVm);
+			pSelf = PH7_VmTraitUsingClass(pVm,pSelf,PH7_VmPeekTopClass(pVm));
 		}
 		return pSelf ? pSelf->pBase : 0;
 	}
