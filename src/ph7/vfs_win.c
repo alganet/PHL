@@ -238,6 +238,11 @@ static int WinVfs_Realpath(const char *zPath,ph7_context *pCtx)
 		}
 		GetFullPathNameW((LPCWSTR)pPath,n,zTemp,0);
 	}
+	/* GetFullPathNameW only NORMALIZES -- it answers happily for a path that does
+	 * not exist, and php's realpath() is false for one on every platform. */
+	if( n > 0 && GetFileAttributesW((LPCWSTR)pPath) == INVALID_FILE_ATTRIBUTES ){
+		n = 0;
+	}
 	HeapFree(GetProcessHeap(),0,pPath);
 	if( !n ){
 		return -1;
@@ -772,6 +777,9 @@ static int WinVfs_Readlink(const char *zPath,ph7_context *pCtx)
 	if( pConverted == 0 ){
 		return -1;
 	}
+	/* No reparse-point screen: php_win32_ioutil_readlink_w falls back to the
+	 * handle's final path when the name is not a link, so a plain file reads
+	 * back as itself on this platform rather than failing. */
 	pHandle = CreateFileW((LPCWSTR)pConverted,0,
 		FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,0,OPEN_EXISTING,
 		FILE_FLAG_BACKUP_SEMANTICS,0);

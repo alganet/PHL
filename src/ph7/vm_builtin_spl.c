@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "ph7int.h"
+#include <errno.h>   /* getLinkTarget names the errno text its readlink failed with */
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 /*
  * SPL iterators, slice 1 (NEWPLAN band D): SeekableIterator, ArrayIterator,
@@ -7080,40 +7081,647 @@ static sxi32 VmInstallSplObjectStorage(ph7_vm *pVm)
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }
+/*
+ * ---------------------------------------------------------------------------
+ * SplFileInfo.
+ *
+ * php's `spl_filesystem_object` keeps TWO strings for a path, and which one a
+ * method reads is the whole model: `file_name` is the pathname with any trailing
+ * slashes stripped, and `path` is everything before the LAST slash of it -- which
+ * is EMPTY when the name has no slash before its last component, so
+ * `(new SplFileInfo('/a.txt'))->getPath()` is `''` and `getFilename()` answers the
+ * whole `/a.txt`. Every accessor is a slice of that pair (php's own
+ * `spl_filesystem_info_set_filename`), and the chunk, which called `basename()` and
+ * `dirname()` per method instead, disagreed on all of it.
+ *
+ * The stat family is php's `FileInfoFunction` macro: `php_stat()` with the error
+ * handler REPLACED, so the warning a failed stat would print becomes a
+ * `RuntimeException` instead -- `getSize()` on a missing file RAISES there and
+ * warned-then-answered-false here. Two of the fifteen lstat rather than stat
+ * (`getType`, `isLink`), which is php's IS_LINK_OPERATION set.
+ *
+ * The two slots are PRIVATE and PRESENTED: php declares no properties at all
+ * (`getProperties()`, the `(array)` cast and `get_object_vars()` are empty) while
+ * `var_dump` shows `pathName`/`fileName` under their mangled private keys, and
+ * `__debugInfo()` hands back that same array. The class is `@not-serializable`.
+ *
+ * NOT converted, because they need a class PHL does not have: `openFile()` and
+ * `setFileClass()` answer an `SplFileObject`. `setInfoClass()` and the `?string
+ * $class` argument of `getFileInfo()`/`getPathInfo()` are here in full -- they
+ * only ever name a class derived from this one.
+ */
+#define SFI_N  "__n"   /* php's file_name: the pathname, trailing slashes stripped */
+#define SFI_P  "__p"   /* php's path: everything before its last slash */
+#define SFI_IC "__ic"  /* php's info_class */
+
+/* php's IS_SLASH is PLATFORM-dependent: a backslash separates on Windows and is an
+ * ordinary filename byte everywhere else, which is why `new SplFileInfo('C:\\x\\y')`
+ * has an empty path on unix. PH7_ExtractDirName draws the same line. */
+#ifdef __WINNT__
+# define SFI_IS_SLASH(c) ((c) == '/' || (c) == '\\')
+#else
+# define SFI_IS_SLASH(c) ((c) == '/')
+#endif
+
+/* One of the two path slots, as bytes. */
+static const char * SfiStr(ph7_class_instance *pThis,const char *zSlot,int *pnLen)
+{
+	ph7_value *pVal = pThis ? PH7_NativeAttr(pThis,zSlot) : 0;
+	*pnLen = 0;
+	if( pVal == 0 ){
+		return "";
+	}
+	return ph7_value_to_string(pVal,pnLen);
+}
+/*
+ * php's spl_filesystem_info_set_filename: strip the trailing slashes (never the
+ * only character), then cut the path at the last slash of what is left. A name
+ * with no slash before its final component keeps an EMPTY path, which is what
+ * makes getFilename() answer the whole thing.
+ */
+static void SfiSetName(ph7_vm *pVm,ph7_class_instance *pThis,const char *zPath,int nPath)
+{
+	int nFile = nPath;
+	int nDir;
+	if( nFile > 1 && SFI_IS_SLASH(zPath[nFile-1]) ){
+		do{
+			nFile--;
+		}while( nFile > 1 && SFI_IS_SLASH(zPath[nFile-1]) );
+	}
+	nDir = nFile;
+	while( nDir > 1 && !SFI_IS_SLASH(zPath[nDir-1]) ){
+		nDir--;
+	}
+	if( nDir > 0 ){
+		nDir--;
+	}
+	PH7_NativeSetAttrStr(pVm,pThis,SFI_N,zPath,nFile);
+	PH7_NativeSetAttrStr(pVm,pThis,SFI_P,zPath,nDir);
+}
+/*
+ * php's "the file name without the path": the slice after `path` + its slash when
+ * the path is a real prefix, and the whole name otherwise. getFilename(),
+ * getBasename() and getExtension() all start here.
+ */
+static const char * SfiTail(ph7_class_instance *pThis,int *pnLen)
+{
+	int nName = 0,nPath = 0;
+	const char *zName = SfiStr(pThis,SFI_N,&nName);
+	SfiStr(pThis,SFI_P,&nPath);
+	if( nPath > 0 && nPath < nName ){
+		*pnLen = nName - (nPath + 1);
+		return &zName[nPath + 1];
+	}
+	*pnLen = nName;
+	return zName;
+}
+/* The path this instance stands for, as a NUL-terminated buffer the VFS can take. */
+static sxi32 SfiPathBuf(ph7_class_instance *pThis,char *zBuf,int nBuf)
+{
+	int nName = 0;
+	const char *zName = SfiStr(pThis,SFI_N,&nName);
+	if( nName < 1 || nName >= nBuf ){
+		return SXERR_INVALID;
+	}
+	SyMemcpy(zName,zBuf,(sxu32)nName);
+	zBuf[nName] = 0;
+	return SXRET_OK;
+}
+/*
+ * php's FileInfoFunction: the stat that backs one accessor, with the failure
+ * promoted to a RuntimeException carrying the WARNING php would otherwise print.
+ * The two lstat users say "Lstat failed" there, which is php's own text.
+ */
+static sxi32 SfiStat(ph7_context *pCtx,const char *zMethod,int bLstat,ph7_value *pOut)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const ph7_vfs *pVfs = pVm->pEngine->pVfs;
+	ph7_value sWorker;
+	char zPath[4096];
+	int rc = -1;
+	if( PH7_MemObjToHashmap(pOut) != SXRET_OK ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_MemObjInit(pVm,&sWorker);
+	if( SfiPathBuf(pThis,zPath,(int)sizeof(zPath)) == SXRET_OK && pVfs ){
+		if( bLstat ){
+			rc = pVfs->xlStat ? pVfs->xlStat(zPath,pOut,&sWorker) : -1;
+		}else{
+			rc = pVfs->xStat ? pVfs->xStat(zPath,pOut,&sWorker) : -1;
+		}
+	}
+	PH7_MemObjRelease(&sWorker);
+	if( rc != PH7_OK ){
+		int nName = 0;
+		const char *zName = SfiStr(pThis,SFI_N,&nName);
+		return PH7_VmThrowException(pCtx,"RuntimeException",
+			"SplFileInfo::%s(): %s failed for %.*s",zMethod,bLstat ? "Lstat" : "stat",
+			nName,zName);
+	}
+	return PH7_OK;
+}
+/* One field of a stat array, as php's int. */
+static int SfiStatField(ph7_context *pCtx,const char *zMethod,int bLstat,const char *zField,
+	sxi64 *piOut)
+{
+	ph7_value sStat,*pField;
+	sxi32 rc;
+	*piOut = 0;
+	PH7_MemObjInit(pCtx->pVm,&sStat);
+	rc = SfiStat(pCtx,zMethod,bLstat,&sStat);
+	if( rc != PH7_OK ){
+		PH7_MemObjRelease(&sStat);
+		return rc;
+	}
+	pField = ph7_array_fetch(&sStat,zField,(int)SyStrlen(zField));
+	if( pField ){
+		*piOut = ph7_value_to_int64(pField);
+	}
+	PH7_MemObjRelease(&sStat);
+	return PH7_OK;
+}
+/* The eight stat accessors that answer an int, all with the same body. */
+static int SfiStatInt(ph7_context *pCtx,const char *zMethod,const char *zField)
+{
+	sxi64 iVal = 0;
+	sxi32 rc = SfiStatField(pCtx,zMethod,FALSE,zField,&iVal);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	ph7_result_int64(pCtx,iVal);
+	return PH7_OK;
+}
+static int vm_builtin_SplFileInfo_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zPath;
+	int nPath = 0;
+	if( pThis == 0 || nArg < 1 ){
+		return PH7_OK;
+	}
+	zPath = ph7_value_to_string(apArg[0],&nPath);
+	SfiSetName(pVm,pThis,zPath,nPath);
+	return PH7_OK;
+}
+static int vm_builtin_SplFileInfo_getPath(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	int nPath = 0;
+	const char *zPath = SfiStr(PH7_ContextThis(pCtx),SFI_P,&nPath);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_string(pCtx,zPath,nPath);
+	return PH7_OK;
+}
+static int vm_builtin_SplFileInfo_getPathname(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	int nName = 0;
+	const char *zName = SfiStr(PH7_ContextThis(pCtx),SFI_N,&nName);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_string(pCtx,zName,nName);
+	return PH7_OK;
+}
+static int vm_builtin_SplFileInfo_getFilename(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	int nTail = 0;
+	const char *zTail = SfiTail(PH7_ContextThis(pCtx),&nTail);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_string(pCtx,zTail,nTail);
+	return PH7_OK;
+}
+/* php's getBasename(): php_basename() of the tail, suffix rule included. */
+static int vm_builtin_SplFileInfo_getBasename(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	int nTail = 0,nBase = 0;
+	const char *zTail = SfiTail(PH7_ContextThis(pCtx),&nTail);
+	const char *zBase = PH7_ExtractBaseName(zTail,nTail,&nBase);
+	if( nArg > 0 ){
+		int nSuffix = 0;
+		const char *zSuffix = ph7_value_to_string(apArg[0],&nSuffix);
+		if( nSuffix > 0 && nSuffix < nBase
+		 && SyMemcmp(&zBase[nBase - nSuffix],zSuffix,(sxu32)nSuffix) == 0 ){
+			nBase -= nSuffix;
+		}
+	}
+	ph7_result_string(pCtx,zBase,nBase);
+	return PH7_OK;
+}
+/* php's getExtension(): everything after the LAST dot of the basename, and the
+ * empty string when there is none -- a leading dot counts, so '.hidden' has the
+ * extension 'hidden'. */
+static int vm_builtin_SplFileInfo_getExtension(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	int nTail = 0,nBase = 0,i;
+	const char *zTail = SfiTail(PH7_ContextThis(pCtx),&nTail);
+	const char *zBase = PH7_ExtractBaseName(zTail,nTail,&nBase);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	for( i = nBase - 1 ; i >= 0 ; --i ){
+		if( zBase[i] == '.' ){
+			ph7_result_string(pCtx,&zBase[i+1],nBase - i - 1);
+			return PH7_OK;
+		}
+	}
+	ph7_result_string(pCtx,"",0);
+	return PH7_OK;
+}
+static int vm_builtin_SplFileInfo_getPerms(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return SfiStatInt(pCtx,"getPerms","mode");
+}
+static int vm_builtin_SplFileInfo_getInode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return SfiStatInt(pCtx,"getInode","ino");
+}
+static int vm_builtin_SplFileInfo_getSize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return SfiStatInt(pCtx,"getSize","size");
+}
+static int vm_builtin_SplFileInfo_getOwner(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return SfiStatInt(pCtx,"getOwner","uid");
+}
+static int vm_builtin_SplFileInfo_getGroup(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return SfiStatInt(pCtx,"getGroup","gid");
+}
+static int vm_builtin_SplFileInfo_getATime(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return SfiStatInt(pCtx,"getATime","atime");
+}
+static int vm_builtin_SplFileInfo_getMTime(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return SfiStatInt(pCtx,"getMTime","mtime");
+}
+static int vm_builtin_SplFileInfo_getCTime(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return SfiStatInt(pCtx,"getCTime","ctime");
+}
+/*
+ * php's getType() is FS_TYPE: an LSTAT, so a symlink answers "link" rather than
+ * what it points at. The VFS's own xFiletype IS that question -- decoding a stat
+ * mode here instead would have answered "unknown" on Windows, where the mode
+ * field is not filled and the attributes are what carry the answer.
+ */
+static int vm_builtin_SplFileInfo_getType(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const ph7_vfs *pVfs = pCtx->pVm->pEngine->pVfs;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	char zPath[4096];
+	int rc = -1;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pVfs && pVfs->xFiletype && SfiPathBuf(pThis,zPath,(int)sizeof(zPath)) == SXRET_OK ){
+		rc = pVfs->xFiletype(zPath,pCtx);
+	}
+	if( rc != PH7_OK ){
+		int nName = 0;
+		const char *zName = SfiStr(pThis,SFI_N,&nName);
+		if( pCtx->pRet ){
+			PH7_MemObjRelease(pCtx->pRet);   /* xFiletype wrote "unknown" (rule 54) */
+		}
+		return PH7_VmThrowException(pCtx,"RuntimeException",
+			"SplFileInfo::getType(): Lstat failed for %.*s",nName,zName);
+	}
+	return PH7_OK;
+}
+/* The six predicates: a VFS question each, and never a diagnostic -- php answers
+ * false for a path that does not exist. */
+static int SfiPredicate(ph7_context *pCtx,int (*xTest)(const char *))
+{
+	char zPath[4096];
+	int bYes = 0;
+	if( xTest && SfiPathBuf(PH7_ContextThis(pCtx),zPath,(int)sizeof(zPath)) == SXRET_OK ){
+		bYes = xTest(zPath) == PH7_OK;
+	}
+	ph7_result_bool(pCtx,bYes);
+	return PH7_OK;
+}
+static int vm_builtin_SplFileInfo_isWritable(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return SfiPredicate(pCtx,pCtx->pVm->pEngine->pVfs ? pCtx->pVm->pEngine->pVfs->xWritable : 0);
+}
+static int vm_builtin_SplFileInfo_isReadable(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return SfiPredicate(pCtx,pCtx->pVm->pEngine->pVfs ? pCtx->pVm->pEngine->pVfs->xReadable : 0);
+}
+static int vm_builtin_SplFileInfo_isExecutable(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return SfiPredicate(pCtx,pCtx->pVm->pEngine->pVfs ? pCtx->pVm->pEngine->pVfs->xExecutable : 0);
+}
+static int vm_builtin_SplFileInfo_isFile(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return SfiPredicate(pCtx,pCtx->pVm->pEngine->pVfs ? pCtx->pVm->pEngine->pVfs->xIsfile : 0);
+}
+static int vm_builtin_SplFileInfo_isDir(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return SfiPredicate(pCtx,pCtx->pVm->pEngine->pVfs ? pCtx->pVm->pEngine->pVfs->xIsdir : 0);
+}
+static int vm_builtin_SplFileInfo_isLink(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return SfiPredicate(pCtx,pCtx->pVm->pEngine->pVfs ? pCtx->pVm->pEngine->pVfs->xIslink : 0);
+}
+/* php's getLinkTarget(): readlink(), and a RuntimeException naming the errno text
+ * when it fails -- which includes asking a plain file for its target. */
+static int vm_builtin_SplFileInfo_getLinkTarget(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const ph7_vfs *pVfs = pCtx->pVm->pEngine->pVfs;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	char zPath[4096];
+	int rc = -1;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pVfs && pVfs->xReadlink && SfiPathBuf(pThis,zPath,(int)sizeof(zPath)) == SXRET_OK ){
+		rc = pVfs->xReadlink(zPath,pCtx);
+	}
+	if( rc != PH7_OK ){
+		int nName = 0;
+		const char *zName = SfiStr(pThis,SFI_N,&nName);
+		return PH7_VmThrowException(pCtx,"RuntimeException",
+			"Unable to read link %.*s, error: %s",nName,zName,VfsStrerror(errno));
+	}
+	return PH7_OK;
+}
+static int vm_builtin_SplFileInfo_getRealPath(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const ph7_vfs *pVfs = pCtx->pVm->pEngine->pVfs;
+	char zPath[4096];
+	int rc = -1;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pVfs && pVfs->xRealpath
+	 && SfiPathBuf(PH7_ContextThis(pCtx),zPath,(int)sizeof(zPath)) == SXRET_OK ){
+		rc = pVfs->xRealpath(zPath,pCtx);
+	}
+	if( rc != PH7_OK ){
+		ph7_result_bool(pCtx,0);   /* php answers false, with no diagnostic */
+	}
+	return PH7_OK;
+}
+/*
+ * The class getFileInfo()/getPathInfo() build with: the argument when it names
+ * one, this instance's info_class otherwise. php refuses anything not derived
+ * from SplFileInfo, and words the refusal from the ARGUMENT position.
+ */
+static sxi32 SfiInfoClass(ph7_context *pCtx,const char *zMethod,ph7_value *pArg,
+	ph7_class **ppOut)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class *pBase = PH7_VmExtractClass(pVm,"SplFileInfo",sizeof("SplFileInfo")-1,FALSE,0);
+	ph7_class *pClass = 0;
+	const char *zName;
+	int nName = 0;
+	if( pArg && (pArg->iFlags & MEMOBJ_NULL) == 0 ){
+		zName = ph7_value_to_string(pArg,&nName);
+		pClass = PH7_VmExtractClass(pVm,zName,(sxu32)nName,TRUE,0);
+		if( pClass == 0 || pBase == 0 || !PH7_VmInstanceOf(pClass,pBase) ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"SplFileInfo::%s(): Argument #1 ($class) must be a class name derived "
+				"from SplFileInfo or null, %.*s given",zMethod,nName,zName);
+		}
+	}else{
+		int nCur = 0;
+		const char *zCur = SfiStr(pThis,SFI_IC,&nCur);
+		pClass = PH7_VmExtractClass(pVm,zCur,(sxu32)nCur,TRUE,0);
+	}
+	if( pClass == 0 ){
+		pClass = pBase;
+	}
+	*ppOut = pClass;
+	return pClass ? PH7_OK : PH7_ContextMemoryError(pCtx);
+}
+/*
+ * Build one of these for a path. php calls the CONSTRUCTOR when the class
+ * declares its own (a subclass may want it) and fills the slots directly when it
+ * does not -- reproduced here, because a subclass constructor is user code and
+ * skipping it would be visible.
+ */
+static sxi32 SfiMakeInfo(ph7_context *pCtx,ph7_class *pClass,const char *zPath,int nPath)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pNew;
+	ph7_class_method *pCons;
+	sxi32 rc = SXRET_OK;
+	pNew = PH7_NewClassInstance(pVm,pClass);
+	if( pNew == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	pNew->iRef++;
+	pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
+	if( pCons && (pCons->sFunc.iFlags & VM_FUNC_NATIVE) == 0 ){
+		ph7_value sArg,*apArg[1];
+		PH7_MemObjInitFromString(pVm,&sArg,0);
+		PH7_MemObjStringAppend(&sArg,zPath,(sxu32)nPath);
+		apArg[0] = &sArg;
+		rc = PH7_VmCallClassMethod(pVm,pNew,pCons,0,1,apArg);
+		PH7_MemObjRelease(&sArg);
+	}else{
+		SfiSetName(pVm,pNew,zPath,nPath);
+	}
+	if( rc != SXRET_OK ){
+		PH7_ClassInstanceUnref(pNew);
+		return rc;
+	}
+	PH7_NativeResultObject(pCtx,pNew);
+	PH7_ClassInstanceUnref(pNew);
+	return PH7_OK;
+}
+static int vm_builtin_SplFileInfo_getFileInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class *pClass = 0;
+	int nName = 0;
+	const char *zName;
+	sxi32 rc = SfiInfoClass(pCtx,"getFileInfo",nArg > 0 ? apArg[0] : 0,&pClass);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	zName = SfiStr(PH7_ContextThis(pCtx),SFI_N,&nName);
+	return SfiMakeInfo(pCtx,pClass,zName,nName);
+}
+/* php's getPathInfo(): the DIRNAME of the pathname, and nothing at all (null) for
+ * an empty one. */
+static int vm_builtin_SplFileInfo_getPathInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class *pClass = 0;
+	int nName = 0,nDir = 0;
+	const char *zName,*zDir;
+	sxi32 rc = SfiInfoClass(pCtx,"getPathInfo",nArg > 0 ? apArg[0] : 0,&pClass);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	zName = SfiStr(PH7_ContextThis(pCtx),SFI_N,&nName);
+	if( nName < 1 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	zDir = PH7_ExtractDirName(zName,nName,&nDir);
+	return SfiMakeInfo(pCtx,pClass,zDir,nDir);
+}
+static int vm_builtin_SplFileInfo_setInfoClass(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class *pBase = PH7_VmExtractClass(pVm,"SplFileInfo",sizeof("SplFileInfo")-1,FALSE,0);
+	ph7_class *pClass;
+	const char *zName = "SplFileInfo";
+	int nName = (int)sizeof("SplFileInfo")-1;
+	if( nArg > 0 ){
+		zName = ph7_value_to_string(apArg[0],&nName);
+	}
+	pClass = PH7_VmExtractClass(pVm,zName,(sxu32)nName,TRUE,0);
+	if( pClass == 0 || pBase == 0 || !PH7_VmInstanceOf(pClass,pBase) ){
+		/* php words this one WITHOUT the "or null" half getFileInfo() has: the
+		 * parameter is not nullable here. */
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"SplFileInfo::setInfoClass(): Argument #1 ($class) must be a class name "
+			"derived from SplFileInfo, %.*s given",nName,zName);
+	}
+	PH7_NativeSetAttrStr(pVm,pThis,SFI_IC,zName,nName);
+	return PH7_OK;
+}
+/*
+ * php's get_debug_info: the two slots under their MANGLED private names, which is
+ * how a class with no declared properties still shows something. __debugInfo()
+ * hands back the same array.
+ */
+static sxi32 SfiFillDebug(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
+{
+	ph7_value sKey,sVal;
+	int nName = 0,nTail = 0;
+	const char *zName = SfiStr(pThis,SFI_N,&nName);
+	const char *zTail = SfiTail(pThis,&nTail);
+	PH7_MemObjInitFromString(pVm,&sKey,0);
+	PH7_MemObjStringAppend(&sKey,"\0SplFileInfo\0pathName",
+		sizeof("\0SplFileInfo\0pathName")-1);
+	PH7_MemObjInitFromString(pVm,&sVal,0);
+	PH7_MemObjStringAppend(&sVal,zName,(sxu32)nName);
+	ph7_array_add_elem(pOut,&sKey,&sVal);
+	PH7_MemObjRelease(&sKey);
+	PH7_MemObjRelease(&sVal);
+	/* Re-read: the append above may have moved the slot the first read borrowed. */
+	zTail = SfiTail(pThis,&nTail);
+	PH7_MemObjInitFromString(pVm,&sKey,0);
+	PH7_MemObjStringAppend(&sKey,"\0SplFileInfo\0fileName",
+		sizeof("\0SplFileInfo\0fileName")-1);
+	PH7_MemObjInitFromString(pVm,&sVal,0);
+	PH7_MemObjStringAppend(&sVal,zTail,(sxu32)nTail);
+	ph7_array_add_elem(pOut,&sKey,&sVal);
+	PH7_MemObjRelease(&sKey);
+	PH7_MemObjRelease(&sVal);
+	return PH7_OK;
+}
+static sxi32 SfiPresent(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
+{
+	if( !bDebug ){
+		return PH7_OK;   /* php's (array) cast and var_export show nothing */
+	}
+	return SfiFillDebug(pVm,pThis,pOut);
+}
+static int vm_builtin_SplFileInfo_debugInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value sOut;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	PH7_MemObjInit(pVm,&sOut);
+	if( PH7_MemObjToHashmap(&sOut) != SXRET_OK ){
+		PH7_MemObjRelease(&sOut);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	SfiFillDebug(pVm,PH7_ContextThis(pCtx),&sOut);
+	ph7_result_value(pCtx,&sOut);
+	PH7_MemObjRelease(&sOut);
+	return PH7_OK;
+}
+/* php's own escape hatch for a subclass that forgot to call parent::__construct.
+ * It exists to be THROWN, and php marks it deprecated rather than removing it. */
+static int vm_builtin_SplFileInfo_badState(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return PH7_VmThrowException(pCtx,"Error",
+		"The parent constructor was not called: the object is in an invalid state");
+}
+/*
+ * The declaration. Method ORDER is spl_directory.stub.php's; openFile() and
+ * setFileClass() are absent because SplFileObject is (§7), and everything else is
+ * php's, tentative return types included.
+ */
+static sxi32 VmInstallSplFileInfo(ph7_vm *pVm)
+{
+	static const PH7_NativePropDef aSfiProp[] = {
+		{ SFI_N,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
+		{ SFI_P,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
+		{ SFI_IC, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN,
+		  { 0, 0, PH7_NATIVE_VAL_STRING, 0, "SplFileInfo", 0.0 }, 0 },
+	};
+	static const PH7_NativeMethodDef aSfiMethod[] = {
+		{ "__construct",   PH7_MOD_PUBLIC, "string $filename", 0,
+		  vm_builtin_SplFileInfo_construct },
+		{ "getPath",       PH7_MOD_PUBLIC, "", "@string", vm_builtin_SplFileInfo_getPath },
+		{ "getFilename",   PH7_MOD_PUBLIC, "", "@string", vm_builtin_SplFileInfo_getFilename },
+		{ "getExtension",  PH7_MOD_PUBLIC, "", "@string", vm_builtin_SplFileInfo_getExtension },
+		{ "getBasename",   PH7_MOD_PUBLIC, "string $suffix = \"\"", "@string",
+		  vm_builtin_SplFileInfo_getBasename },
+		{ "getPathname",   PH7_MOD_PUBLIC, "", "@string", vm_builtin_SplFileInfo_getPathname },
+		{ "getPerms",      PH7_MOD_PUBLIC, "", "@int|false", vm_builtin_SplFileInfo_getPerms },
+		{ "getInode",      PH7_MOD_PUBLIC, "", "@int|false", vm_builtin_SplFileInfo_getInode },
+		{ "getSize",       PH7_MOD_PUBLIC, "", "@int|false", vm_builtin_SplFileInfo_getSize },
+		{ "getOwner",      PH7_MOD_PUBLIC, "", "@int|false", vm_builtin_SplFileInfo_getOwner },
+		{ "getGroup",      PH7_MOD_PUBLIC, "", "@int|false", vm_builtin_SplFileInfo_getGroup },
+		{ "getATime",      PH7_MOD_PUBLIC, "", "@int|false", vm_builtin_SplFileInfo_getATime },
+		{ "getMTime",      PH7_MOD_PUBLIC, "", "@int|false", vm_builtin_SplFileInfo_getMTime },
+		{ "getCTime",      PH7_MOD_PUBLIC, "", "@int|false", vm_builtin_SplFileInfo_getCTime },
+		{ "getType",       PH7_MOD_PUBLIC, "", "@string|false", vm_builtin_SplFileInfo_getType },
+		{ "isWritable",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplFileInfo_isWritable },
+		{ "isReadable",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplFileInfo_isReadable },
+		{ "isExecutable",  PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplFileInfo_isExecutable },
+		{ "isFile",        PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplFileInfo_isFile },
+		{ "isDir",         PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplFileInfo_isDir },
+		{ "isLink",        PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplFileInfo_isLink },
+		{ "getLinkTarget", PH7_MOD_PUBLIC, "", "@string|false",
+		  vm_builtin_SplFileInfo_getLinkTarget },
+		{ "getRealPath",   PH7_MOD_PUBLIC, "", "@string|false",
+		  vm_builtin_SplFileInfo_getRealPath },
+		{ "getFileInfo",   PH7_MOD_PUBLIC, "?string $class = null", "@SplFileInfo",
+		  vm_builtin_SplFileInfo_getFileInfo },
+		{ "getPathInfo",   PH7_MOD_PUBLIC, "?string $class = null", "@?SplFileInfo",
+		  vm_builtin_SplFileInfo_getPathInfo },
+		{ "setInfoClass",  PH7_MOD_PUBLIC, "string $class = SplFileInfo::class", "@void",
+		  vm_builtin_SplFileInfo_setInfoClass },
+		{ "__toString",    PH7_MOD_PUBLIC, "", "string", vm_builtin_SplFileInfo_getPathname },
+		{ "__debugInfo",   PH7_MOD_PUBLIC, "", "@array", vm_builtin_SplFileInfo_debugInfo },
+		/* php does NOT mark this one tentative -- it is the only method here that
+		 * prints `Return [ void ]` rather than `Tentative return [ void ]`. */
+		{ "_bad_state_ex", PH7_MOD_PUBLIC|PH7_MOD_FINAL, "", "void",
+		  vm_builtin_SplFileInfo_badState },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "SplFileInfo", 0, "Stringable", PH7_CLASS_NOSERIALIZE,
+		  aSfiMethod, SX_ARRAYSIZE(aSfiMethod), 0, 0,
+		  aSfiProp, SX_ARRAYSIZE(aSfiProp), 0, 0, SfiPresent },
+	};
+	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+}
 static const char zSplLib[] =
-"class SplFileInfo implements Stringable {"
-" protected $__pathName = '';"
-" protected $__fileName = '';"
-" public function __construct($path){"
-"  $this->__pathName = (string)$path;"
-"  $this->__fileName = basename($this->__pathName);"
-" }"
-" public function getPathname(){ return $this->__pathName; }"
-" public function getFilename(){ return $this->__fileName; }"
-" public function getPath(){ return dirname($this->__pathName); }"
-" public function getBasename($suffix = ''){"
-"  $b = basename($this->__pathName);"
-"  if( $suffix !== '' && strlen($suffix) < strlen($b) && substr($b, -strlen($suffix)) === $suffix ){"
-"   $b = substr($b, 0, -strlen($suffix));"
-"  }"
-"  return $b;"
-" }"
-" public function getExtension(){ return pathinfo($this->__pathName, PATHINFO_EXTENSION); }"
-" public function getRealPath(){ return realpath($this->__pathName); }"
-" public function isDir(){ return is_dir($this->__pathName); }"
-" public function isFile(){ return is_file($this->__pathName); }"
-" public function isLink(){ return is_link($this->__pathName); }"
-" public function isReadable(){ return is_readable($this->__pathName); }"
-" public function isWritable(){ return is_writable($this->__pathName); }"
-" public function getSize(){ return filesize($this->__pathName); }"
-" public function getMTime(){ return filemtime($this->__pathName); }"
-" public function getATime(){ return fileatime($this->__pathName); }"
-" public function getCTime(){ return filectime($this->__pathName); }"
-" public function getType(){ return filetype($this->__pathName); }"
-" public function getFileInfo(){ return new SplFileInfo($this->__pathName); }"
-" public function getPathInfo(){ return new SplFileInfo(dirname($this->__pathName)); }"
-" public function __toString(){ return $this->__pathName; }"
-"}"
 "class DirectoryIterator extends SplFileInfo implements SeekableIterator {"
 " protected $__dir = '';"
 " protected $__entries = array();"
@@ -7139,15 +7747,15 @@ static const char zSplLib[] =
 "  $sep = ($last === '/' || $last === '\\\\' || $d === '') ? '' : '/';"
 "  return $d . $sep . $name;"
 " }"
+/* The two path slots live in the NATIVE parent now, so the only way to move this
+ * iterator to an entry is to re-run its constructor -- which is what php's
+ * dir_read does one layer down. This whole chunk goes native next. */
 " protected function __sync(){"
 "  if( $this->__pos >= 0 && $this->__pos < count($this->__entries) ){"
-"   $name = $this->__entries[$this->__pos];"
-"   $this->__fileName = $name;"
-"   $this->__pathName = $this->__join($name);"
+"   parent::__construct($this->__join($this->__entries[$this->__pos]));"
 "  }"
 " }"
-" public function isDot(){ $n = $this->__fileName; return $n === '.' || $n === '..'; }"
-" public function getFilename(){ return $this->__fileName; }"
+" public function isDot(){ $n = $this->getFilename(); return $n === '.' || $n === '..'; }"
 " public function current(){ return $this; }"
 " public function key(){ return $this->__pos; }"
 " public function next(){ $this->__pos++; $this->__sync(); }"
@@ -7246,6 +7854,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)
 		return rc;
 	}
 	rc = VmInstallSplObjectStorage(&(*pVm));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* Before the chunk too: DirectoryIterator is still PHP and extends this. */
+	rc = VmInstallSplFileInfo(&(*pVm));
 	if( rc != SXRET_OK ){
 		return rc;
 	}
