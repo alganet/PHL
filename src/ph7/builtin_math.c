@@ -649,31 +649,62 @@ PH7_PRIVATE int PH7_builtin_log10(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * number pow(number $base,number $exp)
+ * mixed pow(mixed $num,mixed $exponent)
  *  Exponential expression.
- * Parameter
- *  base
- *  The base to use.
- * exp
- *  The exponent.
+ *
+ *  php does not implement pow() separately: the function and the `**` operator
+ *  are the same ZEND_API pow_function, so they share an operand contract, a
+ *  result TYPE rule and every edge value. Reading the two arguments as doubles
+ *  and returning pow() shared none of it -- `pow(2,3)` answered float(8) where
+ *  `2 ** 3` answers int(8) (a wrong TYPE for the most ordinary call there is),
+ *  and the contract `**` enforces was absent entirely: pow('abc',2) answered
+ *  float(0), pow([1],2) float(1) and pow($obj,2) float(1) after a conversion
+ *  warning, where every one of them is
+ *  `TypeError: Unsupported operand types: … ** int`.
+ *
+ *  Both halves now come from the operator: VmArithOperandCheck() for the
+ *  contract (including the "A non-numeric value encountered" warning a
+ *  leading-numeric string gets before it computes with the prefix) and
+ *  PH7_MemObjPow() for the arithmetic.
  * Return
- *  base raised to the power of exp.
- *  If the result can be represented as integer it will be returned
- *  as type integer, else it will be returned as type float.
+ *  base raised to the power of exp -- int when both operands are int, the
+ *  exponent is non-negative and the exact result fits in an int64; float
+ *  otherwise.
  */
 PH7_PRIVATE int PH7_builtin_pow(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	double r,x,y;
-	if( nArg < 1 ){
-		/* Missing argument,return 0 */
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value sBase,sExp;
+	SyBlob sMsg;
+	sxi32 rc;
+	/* Arity (exactly 2) is enforced from aBuiltinArity[] before the call. */
+	if( nArg < 2 ){
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
 	}
-	x = ph7_value_to_double(apArg[0]);
-	y = ph7_value_to_double(apArg[1]);
-	/* Perform the requested operation */
-	r = pow(x,y);
-	ph7_result_double(pCtx,r);
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	if( VmArithOperandCheck(pVm,apArg[0],apArg[1],"**",&sMsg) != SXRET_OK ){
+		rc = PH7_VmThrowException(pCtx,"TypeError","%.*s",
+			(int)SyBlobLength(&sMsg),(const char *)SyBlobData(&sMsg));
+		SyBlobRelease(&sMsg);
+		return rc;
+	}
+	SyBlobRelease(&sMsg);
+	/* Work on COPIES: PH7_MemObjPow converts its operands in place, which the
+	 * opcode arm may do to its stack slots but a builtin may not do to the
+	 * caller's arguments. */
+	PH7_MemObjInit(pVm,&sBase);
+	PH7_MemObjInit(pVm,&sExp);
+	PH7_MemObjLoad(apArg[0],&sBase);
+	PH7_MemObjLoad(apArg[1],&sExp);
+	PH7_MemObjPow(&sBase,&sExp,&sBase);
+	if( (sBase.iFlags & MEMOBJ_REAL) != 0 ){
+		ph7_result_double(pCtx,sBase.rVal);
+	}else{
+		ph7_result_int64(pCtx,sBase.x.iVal);
+	}
+	PH7_MemObjRelease(&sBase);
+	PH7_MemObjRelease(&sExp);
 	return PH7_OK;
 }
 /*

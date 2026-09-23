@@ -619,6 +619,111 @@ PH7_PRIVATE VmOpRc VmExecOpSub(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 }
 
 /*
+ * php's `**`, as a value operation.
+ *
+ * In php pow() IS the exponentiation operator -- both compile to the same
+ * ZEND_API pow_function -- so the operand contract, the int-stays-int rule and
+ * every edge value have to come from ONE place here too. This is that place:
+ * OP_POW/OP_POW_STORE below and PH7_builtin_pow() in builtin_math.c both call
+ * it, after the caller has run VmArithOperandCheck() over the two operands (the
+ * two sites word their throw differently -- one settles an operand stack first,
+ * the other is inside a C builtin -- so the CHECK stays with the caller and only
+ * the arithmetic is shared).
+ *
+ * pBase and pExp are converted in place, which is what the opcode arm already
+ * did to its stack slots; pOut may alias either of them and is written last.
+ */
+PH7_PRIVATE void PH7_MemObjPow(ph7_value *pBase,ph7_value *pExp,ph7_value *pOut)
+{
+#ifndef PH7_OMIT_FLOATING_POINT
+	int bBothInt;
+	int usedInt = 0;
+	ph7_real a, b, r;
+#endif
+	sxi64 base_i = 0, exp_i = 0;
+	PH7_MemObjToNumeric(pBase);
+	PH7_MemObjToNumeric(pExp);
+#ifndef PH7_OMIT_FLOATING_POINT
+	bBothInt = ((pBase->iFlags & MEMOBJ_REAL) == 0) &&
+	           ((pExp->iFlags & MEMOBJ_REAL) == 0);
+	if( bBothInt ){
+		base_i = pBase->x.iVal;
+		exp_i  = pExp->x.iVal;
+	}
+	if( (pBase->iFlags & MEMOBJ_REAL) == 0 ){
+		PH7_MemObjToReal(pBase);
+	}
+	if( (pExp->iFlags & MEMOBJ_REAL) == 0 ){
+		PH7_MemObjToReal(pExp);
+	}
+	a = pBase->rVal;
+	b = pExp->rVal;
+	r = pow(a, b);
+	/* Match PHP: int**non-negative-int stays int when the exact result
+	 * fits in sxi64. Use exponentiation by squaring with overflow checks
+	 * rather than casting the double back, because the boundary 2^63 is
+	 * representable as double but not as signed int64. */
+	if( bBothInt && exp_i >= 0 ){
+		sxi64 result_i = 1;
+		sxi64 cur_base = base_i;
+		sxi64 cur_exp  = exp_i;
+		int overflow = 0;
+		while( cur_exp > 0 ){
+			if( cur_exp & 1 ){
+				if( PH7_MUL_OVERFLOW64(result_i, cur_base, &result_i) ){
+					overflow = 1;
+					break;
+				}
+			}
+			cur_exp >>= 1;
+			if( cur_exp > 0 ){
+				if( PH7_MUL_OVERFLOW64(cur_base, cur_base, &cur_base) ){
+					overflow = 1;
+					break;
+				}
+			}
+		}
+		if( !overflow ){
+			pOut->x.iVal = result_i;
+			MemObjSetType(pOut, MEMOBJ_INT);
+			usedInt = 1;
+		}
+	}
+	if( !usedInt ){
+		pOut->rVal = r;
+		MemObjSetType(pOut, MEMOBJ_REAL);
+	}
+#else
+	/* PH7_OMIT_FLOATING_POINT: integer-only build. No libm / no pow().
+	 * Exponentiation by squaring with silent wrap on overflow, matching
+	 * the integer-wrap semantics of PH7_OP_MUL in the same build mode.
+	 * Negative exponents yield 0 since fractional results cannot be
+	 * represented. */
+	base_i = pBase->x.iVal;
+	exp_i  = pExp->x.iVal;
+	{
+		sxi64 result_i = 1;
+		sxi64 cur_base = base_i;
+		sxi64 cur_exp  = exp_i;
+		if( cur_exp < 0 ){
+			result_i = 0;
+		}else{
+			while( cur_exp > 0 ){
+				if( cur_exp & 1 ){
+					result_i *= cur_base;
+				}
+				cur_exp >>= 1;
+				if( cur_exp > 0 ){
+					cur_base *= cur_base;
+				}
+			}
+		}
+		pOut->x.iVal = result_i;
+		MemObjSetType(pOut, MEMOBJ_INT);
+	}
+#endif /* PH7_OMIT_FLOATING_POINT */
+}
+/*
  * OP_POW_STORE: body moved verbatim from the OP_POW_STORE arm of
  * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
  */
@@ -659,98 +764,12 @@ PH7_PRIVATE VmOpRc VmExecOpPowStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 	 */
 	ph7_value *pBase = bStore ? pTos : pNos;
 	ph7_value *pExp  = bStore ? pNos : pTos;
-#ifndef PH7_OMIT_FLOATING_POINT
-	int bBothInt;
-	int usedInt = 0;
-	ph7_real a, b, r;
-#endif
-	sxi64 base_i = 0, exp_i = 0;
 #ifdef UNTRUST
 	if( pNos < pStack ){
 		VM_EXIT_ABORT;
 	}
 #endif
-	PH7_MemObjToNumeric(pTos);
-	PH7_MemObjToNumeric(pNos);
-#ifndef PH7_OMIT_FLOATING_POINT
-	bBothInt = ((pTos->iFlags & MEMOBJ_REAL) == 0) &&
-	           ((pNos->iFlags & MEMOBJ_REAL) == 0);
-	if( bBothInt ){
-		base_i = pBase->x.iVal;
-		exp_i  = pExp->x.iVal;
-	}
-	if( (pBase->iFlags & MEMOBJ_REAL) == 0 ){
-		PH7_MemObjToReal(pBase);
-	}
-	if( (pExp->iFlags & MEMOBJ_REAL) == 0 ){
-		PH7_MemObjToReal(pExp);
-	}
-	a = pBase->rVal;
-	b = pExp->rVal;
-	r = pow(a, b);
-	/* Match PHP: int**non-negative-int stays int when the exact result
-	 * fits in sxi64. Use exponentiation by squaring with overflow checks
-	 * rather than casting the double back, because the boundary 2^63 is
-	 * representable as double but not as signed int64. */
-	if( bBothInt && exp_i >= 0 ){
-		sxi64 result_i = 1;
-		sxi64 cur_base = base_i;
-		sxi64 cur_exp  = exp_i;
-		int overflow = 0;
-		while( cur_exp > 0 ){
-			if( cur_exp & 1 ){
-				if( PH7_MUL_OVERFLOW64(result_i, cur_base, &result_i) ){
-					overflow = 1;
-					break;
-				}
-			}
-			cur_exp >>= 1;
-			if( cur_exp > 0 ){
-				if( PH7_MUL_OVERFLOW64(cur_base, cur_base, &cur_base) ){
-					overflow = 1;
-					break;
-				}
-			}
-		}
-		if( !overflow ){
-			pNos->x.iVal = result_i;
-			MemObjSetType(pNos, MEMOBJ_INT);
-			usedInt = 1;
-		}
-	}
-	if( !usedInt ){
-		pNos->rVal = r;
-		MemObjSetType(pNos, MEMOBJ_REAL);
-	}
-#else
-	/* PH7_OMIT_FLOATING_POINT: integer-only build. No libm / no pow().
-	 * Exponentiation by squaring with silent wrap on overflow, matching
-	 * the integer-wrap semantics of PH7_OP_MUL in the same build mode.
-	 * Negative exponents yield 0 since fractional results cannot be
-	 * represented. */
-	base_i = pBase->x.iVal;
-	exp_i  = pExp->x.iVal;
-	{
-		sxi64 result_i = 1;
-		sxi64 cur_base = base_i;
-		sxi64 cur_exp  = exp_i;
-		if( cur_exp < 0 ){
-			result_i = 0;
-		}else{
-			while( cur_exp > 0 ){
-				if( cur_exp & 1 ){
-					result_i *= cur_base;
-				}
-				cur_exp >>= 1;
-				if( cur_exp > 0 ){
-					cur_base *= cur_base;
-				}
-			}
-		}
-		pNos->x.iVal = result_i;
-		MemObjSetType(pNos, MEMOBJ_INT);
-	}
-#endif /* PH7_OMIT_FLOATING_POINT */
+	PH7_MemObjPow(pBase,pExp,pNos);
 	if( bStore ){
 		ph7_value *pObj;
 		if( pTos->nIdx == SXU32_HIGH ){
