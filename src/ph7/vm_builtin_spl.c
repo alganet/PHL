@@ -668,6 +668,9 @@ static void SplMembersLoad(ph7_class_instance *pThis,ph7_value *pMembers)
  * test — sees the same masked value without asking.
  */
 #define SPL_FLAG_MASK 0xFFFF
+/* php's SPL_ARRAY_STD_PROP_LIST: the non-debug presentation surfaces answer the
+ * ordinary property table instead of the storage. */
+#define SPL_STD_PROP_LIST 0x0001
 /*
  * The instance's storage slot, separated for writing (every caller may mutate it). Answers
  * the SLOT rather than the hashmap because that is what the array builtins below take.
@@ -1247,6 +1250,80 @@ static int vm_builtin_SplStore_unserializeMagic(ph7_context *pCtx,int nArg,ph7_v
 	SplMembersLoad(pThis,pMembers);
 	return PH7_OK;
 }
+/*
+ * ---------------------------------------------------------------------------
+ * php's presentation for the array store (ph7_class::xPresent).
+ *
+ * php has two handlers here and they DISAGREE, which is the whole reason the hook
+ * is told which is asking. `spl_array_get_debug_info` always shows ONE entry —
+ * the storage under its MANGLED private name — after whatever real properties the
+ * instance has; `spl_array_get_properties_for` answers the storage's ELEMENTS
+ * directly for the var_export / (array) / json purposes, with no `storage` key at
+ * all, and hands back the ordinary property table when STD_PROP_LIST is set. The
+ * flag is therefore visible on one surface and invisible on the other: a
+ * STD_PROP_LIST ArrayObject still var_dumps its storage.
+ *
+ * The mangled name always spells the ROOT class, never the receiver's: a
+ * RecursiveArrayIterator shows `["storage":"ArrayIterator":private]`.
+ * ---------------------------------------------------------------------------
+ */
+static int SplStoreMangledKey(ph7_class_instance *pThis,char *zBuf,int nBuf)
+{
+	const char *zRoot = "ArrayObject";
+	ph7_class *pClass;
+	int nRoot,nOut = 0;
+	for( pClass = pThis->pClass ; pClass ; pClass = pClass->pBase ){
+		if( pClass->sName.nByte == sizeof("ArrayIterator")-1
+		 && SyMemcmp(pClass->sName.zString,"ArrayIterator",sizeof("ArrayIterator")-1) == 0 ){
+			zRoot = "ArrayIterator";
+			break;
+		}
+	}
+	nRoot = (int)SyStrlen(zRoot);
+	if( nRoot + (int)sizeof("\0\0storage") > nBuf ){
+		return 0;
+	}
+	zBuf[nOut++] = 0;
+	SyMemcpy(zRoot,&zBuf[nOut],(sxu32)nRoot);
+	nOut += nRoot;
+	zBuf[nOut++] = 0;
+	SyMemcpy("storage",&zBuf[nOut],sizeof("storage")-1);
+	nOut += (int)sizeof("storage")-1;
+	return nOut;
+}
+static int SplPresentWalk(ph7_value *pKey,ph7_value *pVal,void *pUserData)
+{
+	ph7_array_add_elem((ph7_value *)pUserData,pKey,pVal);
+	return PH7_OK;
+}
+static sxi32 SplStorePresent(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
+{
+	ph7_value *pStore = pThis ? PH7_NativeAttr(pThis,SPL_D) : 0;
+	if( bDebug ){
+		ph7_value sKey;
+		char zKey[64];
+		int nKey;
+		/* The instance's OWN properties come first — php's debug info starts from
+		 * the standard table and appends the storage entry to it. */
+		SplAddMembers(&(*pVm),pThis,pOut);
+		nKey = SplStoreMangledKey(pThis,zKey,(int)sizeof(zKey));
+		if( nKey > 0 && pStore ){
+			PH7_MemObjInitFromString(&(*pVm),&sKey,0);
+			PH7_MemObjStringAppend(&sKey,zKey,(sxu32)nKey);
+			ph7_array_add_elem(pOut,&sKey,pStore);
+			PH7_MemObjRelease(&sKey);
+		}
+		return SXRET_OK;
+	}
+	if( (PH7_NativeAttrInt(pThis,SPL_F) & SPL_STD_PROP_LIST) != 0 ){
+		SplAddMembers(&(*pVm),pThis,pOut);
+		return SXRET_OK;
+	}
+	if( pStore && (pStore->iFlags & MEMOBJ_HASHMAP) != 0 ){
+		ph7_array_walk(pStore,SplPresentWalk,pOut);
+	}
+	return SXRET_OK;
+}
 static int vm_builtin_ArrayObject_getIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
@@ -1450,10 +1527,10 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 		  aSeekMethod, SX_ARRAYSIZE(aSeekMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "ArrayIterator", 0, "SeekableIterator,ArrayAccess,Countable", 0,
 		  aItMethod, SX_ARRAYSIZE(aItMethod), aConst, SX_ARRAYSIZE(aConst),
-		  aItProp, SX_ARRAYSIZE(aItProp), 0, 0, 0 },
+		  aItProp, SX_ARRAYSIZE(aItProp), 0, 0, SplStorePresent },
 		{ "ArrayObject", 0, "IteratorAggregate,ArrayAccess,Countable", 0,
 		  aObjMethod, SX_ARRAYSIZE(aObjMethod), aConst, SX_ARRAYSIZE(aConst),
-		  aObjProp, SX_ARRAYSIZE(aObjProp), 0, 0, 0 },
+		  aObjProp, SX_ARRAYSIZE(aObjProp), 0, 0, SplStorePresent },
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }

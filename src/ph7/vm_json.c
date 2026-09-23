@@ -295,6 +295,44 @@ static sxi32 VmJsonEncodeString(json_private_data *pData,const char *zIn,int nBy
  * Non-significant white space may be added freely around the "structural characters"
  * (i.e. the brackets "[{]}", colon ":" and comma ",").
  */
+/*
+ * Encode a native class's PRESENTED shape, php's get_properties handler answering
+ * the JSON purpose. Answers 0 when the class declares no hook, so the caller falls
+ * through to the ordinary property walk.
+ *
+ * php emits an OBJECT here whatever the presented keys look like — an ArrayObject
+ * holding a plain list is `{"0":1,"1":2}`, never `[1,2]` — so the list test the
+ * array arm makes is deliberately not made.
+ */
+static int VmJsonPresent(ph7_class_instance *pThis,json_private_data *pData)
+{
+	ph7_context *pCtx = pData->pCtx;
+	ph7_value sPresent;
+	int savedObject;
+	PH7_MemObjInit(pThis->pVm,&sPresent);
+	if( PH7_MemObjToHashmap(&sPresent) != SXRET_OK ){
+		PH7_MemObjRelease(&sPresent);
+		return 0;
+	}
+	if( !PH7_ClassInstancePresent(pThis,&sPresent,0) ){
+		PH7_MemObjRelease(&sPresent);
+		return 0;
+	}
+	savedObject = pData->isObject;
+	pData->isObject = 1;
+	pData->isFirst = 1;
+	JSON_EMIT(pData,ph7_result_string(pCtx,"{",(int)sizeof(char)));
+	ph7_array_walk(&sPresent,VmJsonArrayEncode,pData);
+	if( !pData->oom ){
+		if( !pData->isFirst ){
+			JSON_EMIT(pData,VmJsonPretty(pData,pData->nRecCount));
+		}
+		JSON_EMIT(pData,ph7_result_string(pCtx,"}",(int)sizeof(char)));
+	}
+	pData->isObject = savedObject;
+	PH7_MemObjRelease(&sPresent);
+	return 1;
+}
 static sxi32 VmJsonEncode(
 	ph7_value *pIn,          /* Encode this value */
 	json_private_data *pData /* Context data */
@@ -421,6 +459,16 @@ static sxi32 VmJsonEncode(
 				}
 				if( pData->oom ){
 					return PH7_OK;
+				}
+			}else if( VmJsonPresent(pThis,pData) ){
+				/* A native class with php's get_properties handler: json is one of
+				 * the purposes that handler serves (php's ZEND_PROP_PURPOSE_JSON),
+				 * so a DateTime encodes as date/timezone_type/timezone and an
+				 * ArrayObject as its ELEMENTS — where walking the real slots below
+				 * finds nothing, every one of them being a hidden engine slot.
+				 * Handled inside VmJsonPresent so this arm is just the dispatch. */
+				if( pData->exc ){
+					return PH7_EXCEPTION;
 				}
 			}else{
 				SyHashEntry *pAttrEntry;

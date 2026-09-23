@@ -815,7 +815,7 @@ static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 				if( pPresent ){
 					sPresent.x.pOther = pPresent;
 					MemObjSetType(&sPresent,MEMOBJ_HASHMAP);
-					if( PH7_ClassInstancePresent(pThis,&sPresent,0) && pPresent->nEntry > 0 ){
+					if( PH7_ClassInstancePresent(pThis,&sPresent,0) ){
 						/* Same line shape the attribute loop below produces: an
 						 * object body's entries sit one deeper than an array's. */
 						VmExportCtx sCtx;

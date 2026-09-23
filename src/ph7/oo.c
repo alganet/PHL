@@ -1986,8 +1986,12 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmap(ph7_class_instance *pThis,ph7_hashm
 		/* php's get_properties handler, which is what the (array) cast reads: a
 		 * DateTime casts to date/timezone_type/timezone, not to the hidden slots
 		 * holding its timestamp. A class whose hook answers only the DEBUG surface
-		 * (WeakReference) fills nothing here, and the walk below finds nothing to
-		 * add either — which is php's empty array. */
+		 * (WeakReference) fills nothing here, and that EMPTY answer is php's — the
+		 * hook is authoritative, so there is no falling back to the slot walk. It
+		 * used to fall back when the hook filled nothing, which was invisible while
+		 * every hooked class also had no visible property: an ArrayObject SUBCLASS
+		 * with an empty storage would have cast to its own `p` where php casts to
+		 * the (empty) storage. */
 		ph7_value sPresent;
 		PH7_MemObjInit(pThis->pVm,&sPresent);
 		sPresent.x.pOther = pMap;
@@ -1996,9 +2000,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmap(ph7_class_instance *pThis,ph7_hashm
 			/* The map IS the destination; do not release the carrier's hashmap. */
 			sPresent.x.pOther = 0;
 			sPresent.iFlags = MEMOBJ_NULL;
-			if( pMap->nEntry > 0 ){
-				return SXRET_OK;
-			}
+			return SXRET_OK;
 		}
 		sPresent.x.pOther = 0;
 		sPresent.iFlags = MEMOBJ_NULL;
