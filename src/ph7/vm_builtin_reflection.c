@@ -8520,9 +8520,11 @@ static sxi32 ReflectExportClassBlock(ph7_context *pCtx, SyBlob *pOut, ph7_class 
 	SyBlobAppend(pOut, "> ", sizeof("> ")-1);
 	/* php tags a class that has an iteration handler, which its Traversable
 	 * implementers have — and so does anything with a HOOKED property, because
-	 * that is how php 8.4 walks one. */
+	 * that is how php 8.4 walks one. An INTERFACE never carries one: php
+	 * installs the handler when a CLASS implements Traversable, so
+	 * `interface I extends Iterator` prints no tag. */
 	{
-		int bIterable = pVm->pTraversableClass != 0
+		int bIterable = !bIface && pVm->pTraversableClass != 0
 			&& PH7_VmInstanceOf(pClass, pVm->pTraversableClass);
 		for( n = 0 ; !bIterable && n < SySetUsed(&aMembers) ; n++ ){
 			ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);

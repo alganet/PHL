@@ -12,44 +12,11 @@
  * so the chunk string and its sizeof stay in one translation unit (the
  * vm_builtin_reflection_lib.c pattern).
  */
+/* The eleven core INTERFACES are declared entirely from C by
+ * VmInstallCoreInterfaces() below -- they have no presence in this chunk at all.
+ * A chunk cannot express what php declares on them: a TENTATIVE return type
+ * (php marks nearly every one), and Throwable's `extends Stringable`. */
 #define PH7_BUILTIN_LIB \
-	"interface Throwable {"\
-	"public function getMessage();"\
-	"public function getCode();"\
-	"public function getFile();"\
-	"public function getLine();"\
-	"public function getTrace();"\
-	"public function getTraceAsString();"\
-	"public function getPrevious();"\
-	"public function __toString();"\
-	"}"\
-	"interface Traversable {}"\
-	"interface ArrayAccess {"\
-	"public function offsetExists($offset);"\
-	"public function offsetGet($offset);"\
-	"public function offsetSet($offset, $value);"\
-	"public function offsetUnset($offset);"\
-	"}"\
-	"interface Countable {"\
-	"public function count();"\
-	"}"\
-	"interface Stringable {"\
-	"public function __toString();"\
-	"}"\
-	"interface JsonSerializable {"\
-	"public function jsonSerialize();"\
-	"}"\
-	/* php declares the enum interfaces TYPED, and the concrete cases()/from()/
-	 * tryFrom() an enum gets are native methods declared to match (oo_native.c,
-	 * PH7_InstallEnumInterfaceMethods) -- so an untyped prototype here would
-	 * fail the engine's own signature-compatibility check. */\
-	"interface UnitEnum {"\
-	"public static function cases(): array;"\
-	"}"\
-	"interface BackedEnum extends UnitEnum {"\
-	"public static function from(string|int $value): static;"\
-	"public static function tryFrom(string|int $value): ?static;"\
-	"}"\
 	"class Exception implements Throwable { "\
     "protected $message = '';"\
     "protected $code = 0;"\
@@ -215,20 +182,6 @@
 	"class UnderflowException extends RuntimeException { }"\
 	"class UnexpectedValueException extends RuntimeException { }"\
 	"class JsonException extends Exception { }"\
-	"interface Iterator extends Traversable {"\
-	"public function current();"\
-	"public function key();"\
-	"public function next();"\
-	"public function rewind();"\
-	"public function valid();"\
-	"}"\
-	"interface IteratorAggregate extends Traversable {"\
-	"public function getIterator();"\
-	"}"\
-	"interface Serializable {"\
-	"public function serialize();"\
-	"public function unserialize(string $serialized);"\
-	"}"\
 	"/* Directory releated IO */"\
 	"class Directory {"\
 	"public $handle = null;"\
@@ -660,10 +613,116 @@
 	" return $a['ino'];"\
     "}"
 
+/*
+ * The eleven core interfaces, declared from C.
+ *
+ * They are contracts -- no method here has a body, every row is
+ * PH7_MOD_ABSTRACT -- so the conversion is entirely about what the DECLARATION
+ * says, which is where a chunk fell short in four php-visible ways:
+ *
+ *  - php's `interface Throwable extends Stringable`: the chunk redeclared
+ *    __toString() on Throwable instead, so no Exception was ever Stringable
+ *    (`$e instanceof Stringable` was false, and Reflection attributed the
+ *    method to Throwable rather than printing php's `inherits Stringable`);
+ *  - php declares a RETURN TYPE on all but three of these methods and marks
+ *    nearly all of them TENTATIVE (the leading `@`, rule 45) -- a chunk has no
+ *    way to say tentative at all;
+ *  - php's `mixed` on ArrayAccess's offsets, which the chunk left untyped;
+ *  - method ORDER, which Reflection prints: php lists Throwable's getPrevious
+ *    before getTraceAsString, and Iterator's as current/next/key/valid/rewind.
+ *
+ * Order within the table is php's stub order too; the declare-then-link phases
+ * of PH7_InstallNativeClasses let Throwable name Stringable and Iterator name
+ * Traversable regardless of row order. An interface's parent is `zParent`, not
+ * `zImplements` (Reflection walks pBase to attribute an inherited method).
+ */
+static sxi32 VmInstallCoreInterfaces(ph7_vm *pVm)
+{
+	static const PH7_NativeMethodDef aStringable[] = {
+		{ "__toString", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "string", 0 },
+	};
+	static const PH7_NativeMethodDef aThrowable[] = {
+		/* Not one of these is tentative: php's Throwable is a real contract. */
+		{ "getMessage",       PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "string", 0 },
+		{ "getCode",          PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", 0, 0 },
+		{ "getFile",          PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "string", 0 },
+		{ "getLine",          PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "int", 0 },
+		{ "getTrace",         PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "array", 0 },
+		{ "getPrevious",      PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "?Throwable", 0 },
+		{ "getTraceAsString", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "string", 0 },
+	};
+	static const PH7_NativeMethodDef aArrayAccess[] = {
+		{ "offsetExists", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "mixed $offset", "@bool", 0 },
+		{ "offsetGet",    PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "mixed $offset", "@mixed", 0 },
+		{ "offsetSet",    PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "mixed $offset, mixed $value",
+		  "@void", 0 },
+		{ "offsetUnset",  PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "mixed $offset", "@void", 0 },
+	};
+	static const PH7_NativeMethodDef aCountable[] = {
+		{ "count", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "@int", 0 },
+	};
+	static const PH7_NativeMethodDef aJsonSerializable[] = {
+		{ "jsonSerialize", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "@mixed", 0 },
+	};
+	/* The concrete cases()/from()/tryFrom() an enum gets are native methods
+	 * declared to match these (oo_native.c, PH7_InstallEnumInterfaceMethods). */
+	static const PH7_NativeMethodDef aUnitEnum[] = {
+		{ "cases", PH7_MOD_PUBLIC|PH7_MOD_STATIC|PH7_MOD_ABSTRACT, "", "array", 0 },
+	};
+	static const PH7_NativeMethodDef aBackedEnum[] = {
+		{ "from",    PH7_MOD_PUBLIC|PH7_MOD_STATIC|PH7_MOD_ABSTRACT, "string|int $value",
+		  "static", 0 },
+		{ "tryFrom", PH7_MOD_PUBLIC|PH7_MOD_STATIC|PH7_MOD_ABSTRACT, "string|int $value",
+		  "?static", 0 },
+	};
+	static const PH7_NativeMethodDef aIterator[] = {
+		{ "current", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "@mixed", 0 },
+		{ "next",    PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "@void", 0 },
+		{ "key",     PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "@mixed", 0 },
+		{ "valid",   PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "@bool", 0 },
+		{ "rewind",  PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "@void", 0 },
+	};
+	static const PH7_NativeMethodDef aIteratorAggregate[] = {
+		{ "getIterator", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "@Traversable", 0 },
+	};
+	/* php's legacy Serializable declares NO return type on either method. */
+	static const PH7_NativeMethodDef aSerializable[] = {
+		{ "serialize",   PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", 0, 0 },
+		{ "unserialize", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $data", 0, 0 },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "Traversable", 0, 0, PH7_CLASS_INTERFACE,
+		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "Stringable", 0, 0, PH7_CLASS_INTERFACE,
+		  aStringable, SX_ARRAYSIZE(aStringable), 0, 0, 0, 0, 0, 0, 0 },
+		{ "Throwable", "Stringable", 0, PH7_CLASS_INTERFACE,
+		  aThrowable, SX_ARRAYSIZE(aThrowable), 0, 0, 0, 0, 0, 0, 0 },
+		{ "ArrayAccess", 0, 0, PH7_CLASS_INTERFACE,
+		  aArrayAccess, SX_ARRAYSIZE(aArrayAccess), 0, 0, 0, 0, 0, 0, 0 },
+		{ "Countable", 0, 0, PH7_CLASS_INTERFACE,
+		  aCountable, SX_ARRAYSIZE(aCountable), 0, 0, 0, 0, 0, 0, 0 },
+		{ "JsonSerializable", 0, 0, PH7_CLASS_INTERFACE,
+		  aJsonSerializable, SX_ARRAYSIZE(aJsonSerializable), 0, 0, 0, 0, 0, 0, 0 },
+		{ "UnitEnum", 0, 0, PH7_CLASS_INTERFACE,
+		  aUnitEnum, SX_ARRAYSIZE(aUnitEnum), 0, 0, 0, 0, 0, 0, 0 },
+		{ "BackedEnum", "UnitEnum", 0, PH7_CLASS_INTERFACE,
+		  aBackedEnum, SX_ARRAYSIZE(aBackedEnum), 0, 0, 0, 0, 0, 0, 0 },
+		{ "Iterator", "Traversable", 0, PH7_CLASS_INTERFACE,
+		  aIterator, SX_ARRAYSIZE(aIterator), 0, 0, 0, 0, 0, 0, 0 },
+		{ "IteratorAggregate", "Traversable", 0, PH7_CLASS_INTERFACE,
+		  aIteratorAggregate, SX_ARRAYSIZE(aIteratorAggregate), 0, 0, 0, 0, 0, 0, 0 },
+		{ "Serializable", 0, 0, PH7_CLASS_INTERFACE,
+		  aSerializable, SX_ARRAYSIZE(aSerializable), 0, 0, 0, 0, 0, 0, 0 },
+	};
+	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+}
 PH7_PRIVATE sxi32 PH7_VmInstallBuiltinLib(ph7_vm *pVm)
 {
 	SyString sBuiltin;
 	SyString sRandom;
+	/* The interfaces first: the chunk below declares classes that implement
+	 * them (Exception implements Throwable). */
+	VmInstallCoreInterfaces(&(*pVm));
 	SyStringInitFromBuf(&sBuiltin,PH7_BUILTIN_LIB,sizeof(PH7_BUILTIN_LIB)-1);
 	/* Compile the built-in library */
 	VmEvalChunk(&(*pVm),0,&sBuiltin,PH7_PHP_ONLY,FALSE);
