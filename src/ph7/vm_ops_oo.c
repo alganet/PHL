@@ -553,9 +553,18 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					}
 				}else{
 					ph7_class_method *pDeniedCall = 0;
+					int bDenied = 0;
+					/* php decides a method's visibility against the class that OWNS it,
+					 * which for a trait method is the class that composed it — a trait is
+					 * a compile-time construct php has flattened away by now. Deciding
+					 * against the trait instead made every rule a question of who USES it:
+					 * a protected trait method was denied to a SUBCLASS of the composing
+					 * class (not a trait user itself) and granted to an unrelated class
+					 * that happened to use the same trait. */
+					ph7_class *pOwner = 0;
 					if( pMeth->iProtection != PH7_CLASS_PROT_PUBLIC
 					 && !PH7_VmClassMemberAccess(&(*pVm),
-						pMeth->sFunc.pUserData ? (ph7_class *)pMeth->sFunc.pUserData : pClass,
+						(pOwner = PH7_VmMethodScopeName(&(*pVm),pClass,pMeth)),
 						&sName,pMeth->iProtection,FALSE) ){
 						int bRebound = 0;
 						if( pMeth->iProtection == PH7_CLASS_PROT_PRIVATE ){
@@ -578,10 +587,47 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						}
 						if( !bRebound ){
 							/* Inaccessible from this scope: php routes through __call when
-							 * declared (band A #3b); without it OP_CALL raises its
-							 * "Call to private/protected method" Error as before. */
+							 * declared (band A #3b); without it the refusal is raised right
+							 * here, beside the undefined-method and abstract-method twins. */
 							pDeniedCall = PH7_ClassExtractMethod(pClass,"__call",sizeof("__call")-1);
+							bDenied = pDeniedCall == 0;
 						}
+					}
+					if( bDenied ){
+						/* php's visibility Error for `$o->m()`. It is raised HERE, at the
+						 * member resolution, and not left to OP_CALL: the method OP_CALL
+						 * would re-derive is looked up by the FUNCTION's own name against
+						 * its declaring class, which a trait adaptation splits away from
+						 * the entry this lookup actually chose — `hi as private pHi` gave
+						 * OP_CALL the trait's public `hi`, so the private alias ran from
+						 * global scope in silence. The entry that answered is right here,
+						 * with its composed protection.
+						 *
+						 * php names the method as the CALL SPELLS it (`$o->PQ()` on a
+						 * private `pQ()` reports `PQ`) and the class that OWNS the method,
+						 * which for a trait method is the composing class. */
+						SyBlob sErrM;
+						sxi32 rcErr;
+						ph7_class *pScope = PH7_VmCallerScopeName(&(*pVm));
+						const char *zVis = pMeth->iProtection == PH7_CLASS_PROT_PRIVATE
+							? "private" : "protected";
+						SyBlobInit(&sErrM,&pVm->sAllocator);
+						if( pScope ){
+							SyBlobFormat(&sErrM,"Call to %s method %z::%z() from scope %z",
+								zVis,&pOwner->sName,&sName,&pScope->sName);
+						}else{
+							SyBlobFormat(&sErrM,"Call to %s method %z::%z() from global scope",
+								zVis,&pOwner->sName,&sName);
+						}
+						VmPopOperand(&pTos,1);
+						PH7_MemObjRelease(pTos);
+						pTos->nIdx = SXU32_HIGH;
+						rcErr = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sErrM),
+							SyBlobLength(&sErrM));
+						SyBlobRelease(&sErrM);
+						if( rcErr == SXERR_ABORT ){ VM_EXIT_ABORT; }
+						rc = rcErr;
+						PH7_THROW_ROUTE_MIDEXPR(rc)
 					}
 					if( pDeniedCall ){
 						SyBlobReset(&pVm->sMagicCallName);
@@ -593,10 +639,14 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						PH7_MemObjRelease(pTos);
 						pTos->iFlags = MEMOBJ_NULL|MEMOBJ_AUX_MAGICCALL;
 					}else{
-						/* Push method name on the stack */
+						/* Push method name on the stack, MARKED as already screened: the
+						 * decision above was made against the entry this lookup chose,
+						 * which is the only place a trait adaptation's composed
+						 * protection is visible. */
 						PH7_MemObjRelease(pTos);
 						SyBlobAppend(&pTos->sBlob,SyStringData(&pMeth->sVmName),SyStringLength(&pMeth->sVmName));
 						MemObjSetType(pTos,MEMOBJ_STRING);
+						pTos->iFlags |= MEMOBJ_AUX_MEMBERCALL;
 					}
 				}
 				pTos->nIdx = SXU32_HIGH;
@@ -1629,17 +1679,53 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						 * below. */
 						ph7_class_method *pDeniedStatic = 0;
 						ph7_class_instance *pDeniedThis = 0;
+						int bDeniedStatic = 0;
 						if( pMeth->iProtection != PH7_CLASS_PROT_PUBLIC ){
-							ph7_class *pDeclCls = pMeth->sFunc.pUserData
-								? (ph7_class *)pMeth->sFunc.pUserData : pClass;
-							if( !PH7_VmClassMemberAccess(&(*pVm),pDeclCls,&sName,pMeth->iProtection,FALSE) ){
+							/* The OWNING class decides, as in the instance twin above: a
+							 * trait method's rules belong to the class that composed it. */
+							ph7_class *pOwnerCls = PH7_VmMethodScopeName(&(*pVm),pClass,pMeth);
+							if( !PH7_VmClassMemberAccess(&(*pVm),pOwnerCls,&sName,pMeth->iProtection,FALSE) ){
 								pDeniedThis = PH7_VmStaticFallbackThis(&(*pVm),pClass);
 								pDeniedStatic = pDeniedThis
 									? PH7_ClassExtractMethod(pDeniedThis->pClass,"__call",
 										sizeof("__call")-1)
 									: PH7_ClassExtractMethod(pClass,"__callStatic",
 										sizeof("__callStatic")-1);
+								bDeniedStatic = pDeniedStatic == 0;
 							}
+						}
+						if( bDeniedStatic ){
+							/* No catch-all answers for it: php's visibility Error, raised at
+							 * the resolution like the instance twin above. OP_CALL's own
+							 * screen re-derives the method from the FUNCTION's name against
+							 * its declaring class, which cannot see a trait adaptation's
+							 * composed protection — `sHi as private sPriv` ran from global
+							 * scope in silence. */
+							SyBlob sErrM;
+							sxi32 rcErr;
+							ph7_class *pOwner = PH7_VmMethodScopeName(&(*pVm),pClass,pMeth);
+							ph7_class *pScope = PH7_VmCallerScopeName(&(*pVm));
+							const char *zVis = pMeth->iProtection == PH7_CLASS_PROT_PRIVATE
+								? "private" : "protected";
+							SyBlobInit(&sErrM,&pVm->sAllocator);
+							if( pScope ){
+								SyBlobFormat(&sErrM,"Call to %s method %z::%z() from scope %z",
+									zVis,&pOwner->sName,&sName,&pScope->sName);
+							}else{
+								SyBlobFormat(&sErrM,"Call to %s method %z::%z() from global scope",
+									zVis,&pOwner->sName,&sName);
+							}
+							if( !pInstr->p3 ){
+								VmPopOperand(&pTos,1);
+							}
+							PH7_MemObjRelease(pTos);
+							pTos->nIdx = SXU32_HIGH;
+							rcErr = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sErrM),
+								SyBlobLength(&sErrM));
+							SyBlobRelease(&sErrM);
+							if( rcErr == SXERR_ABORT ){ VM_EXIT_ABORT; }
+							rc = rcErr;
+							PH7_THROW_ROUTE_MIDEXPR(rc)
 						}
 						if( pDeniedStatic ){
 							/* The packing body takes no receiver slot: drop the method-name
@@ -1661,10 +1747,12 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							pTos->nIdx = SXU32_HIGH;
 							VM_EXIT_BREAK;
 						}
-						/* Push method name on the stack */
+						/* Push method name on the stack, MARKED as already screened (see the
+						 * instance twin: OP_CALL cannot re-derive a composed protection). */
 						PH7_MemObjRelease(pTos);
 						SyBlobAppend(&pTos->sBlob,SyStringData(&pMeth->sVmName),SyStringLength(&pMeth->sVmName));
 						MemObjSetType(pTos,MEMOBJ_STRING);
+						pTos->iFlags |= MEMOBJ_AUX_MEMBERCALL;
 					}
 					pTos->nIdx = SXU32_HIGH;
 					/* Forwarding call (self::/parent::/static::): overwrite the receiver

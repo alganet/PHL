@@ -518,10 +518,11 @@ static int VmMethodIsCallable(ph7_vm *pVm,ph7_class *pClass,const char *zMethod,
 	SyStringInitFromBuf(&sName,SyStringData(&pMethod->sFunc.sName),SyStringLength(&pMethod->sFunc.sName));
 	if( pMethod->iProtection != PH7_CLASS_PROT_PUBLIC
 		&& !PH7_VmClassMemberAccess(&(*pVm),
-			/* The DECLARING class decides, not the instance's: a child method may not
-			 * reach a base PRIVATE it merely inherited. Same argument the dispatch path
-			 * in vm_ops_oo.c passes. */
-			pMethod->sFunc.pUserData ? (ph7_class *)pMethod->sFunc.pUserData : pClass,
+			/* The OWNING class decides, not the instance's: a child method may not reach a
+			 * base PRIVATE it merely inherited. Same argument the dispatch path in
+			 * vm_ops_oo.c passes — the declaring class, or for a trait method the class
+			 * that composed it (php has no trait left at run time). */
+			PH7_VmMethodScopeName(&(*pVm),pClass,pMethod),
 			&sName,pMethod->iProtection,FALSE) ){
 			/* Inaccessible from here — but php still calls it callable when the class
 			 * routes inaccessible names through __call/__callStatic, exactly as the
@@ -545,7 +546,7 @@ static const char * VmMethodCallableReason(ph7_vm *pVm,ph7_class *pClass,
 {
 	const char *zMagic = bStaticForm ? "__callStatic" : "__call";
 	ph7_class_method *pMethod;
-	ph7_class *pDecl;
+	ph7_class *pOwner;
 	SyString sDecl;
 	if( nMethod < 1 ){
 		SyBufferFormat(zBuf,nBuf,"class %z does not have a method \"\"",&pClass->sName);
@@ -560,9 +561,15 @@ static const char * VmMethodCallableReason(ph7_vm *pVm,ph7_class *pClass,
 			&pClass->sName,(int)nMethod,zMethod);
 		return zBuf;
 	}
-	pDecl = pMethod->sFunc.pUserData ? (ph7_class *)pMethod->sFunc.pUserData : pClass;
-	SyStringInitFromBuf(&sDecl,SyStringData(&pMethod->sFunc.sName),
-		SyStringLength(&pMethod->sFunc.sName));
+	/* Two different classes: the one that DECIDES and the one php NAMES. The decision is
+	 * the owning class's (the declaring class, or for a trait method the class that
+	 * composed it — php has no trait left at run time). The callback reason, though, names
+	 * the class the CALLABLE spelled, php's `ce_org`: `[new D1,'pv2']` on a private
+	 * inherited from C1 reads `cannot access private method D1::pv2()`. The method name is
+	 * the identity the class REGISTERED, so a trait alias reports the alias (`Dv::pHi`),
+	 * not the struct's `hi`. */
+	pOwner = PH7_VmMethodScopeName(&(*pVm),pClass,pMethod);
+	PH7_ClassMethodRegisteredName(pClass,zMethod,nMethod,&sDecl);
 	if( pMethod->iFlags & PH7_CLASS_ATTR_ABSTRACT ){
 		SyBufferFormat(zBuf,nBuf,"cannot call abstract method %z::%.*s()",
 			&pClass->sName,(int)nMethod,zMethod);
@@ -573,17 +580,17 @@ static const char * VmMethodCallableReason(ph7_vm *pVm,ph7_class *pClass,
 	if( bStaticForm && (pMethod->iFlags & PH7_CLASS_ATTR_STATIC) == 0
 	 && !VmCallerThisIsA(pVm,pClass) ){
 		SyBufferFormat(zBuf,nBuf,"non-static method %z::%z() cannot be called statically",
-			&pDecl->sName,&sDecl);
+			&pClass->sName,&sDecl);
 		return zBuf;
 	}
 	if( pMethod->iProtection != PH7_CLASS_PROT_PUBLIC
-	 && !PH7_VmClassMemberAccess(&(*pVm),pDecl,&sDecl,pMethod->iProtection,FALSE) ){
+	 && !PH7_VmClassMemberAccess(&(*pVm),pOwner,&sDecl,pMethod->iProtection,FALSE) ){
 		if( PH7_ClassExtractMethod(pClass,zMagic,(sxu32)SyStrlen(zMagic)) ){
 			return 0; /* inaccessible, but the catch-all answers for it */
 		}
 		SyBufferFormat(zBuf,nBuf,"cannot access %s method %z::%z()",
 			pMethod->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected",
-			&pDecl->sName,&sDecl);
+			&pClass->sName,&sDecl);
 		return zBuf;
 	}
 	return 0;
@@ -1660,7 +1667,7 @@ static int VmCallableMethodAccessible(ph7_vm *pVm,ph7_class *pClass,ph7_class_me
 	SyStringInitFromBuf(&sName,SyStringData(&pMethod->sFunc.sName),
 		SyStringLength(&pMethod->sFunc.sName));
 	return PH7_VmClassMemberAccess(&(*pVm),
-		pMethod->sFunc.pUserData ? (ph7_class *)pMethod->sFunc.pUserData : pClass,
+		PH7_VmMethodScopeName(&(*pVm),pClass,pMethod),
 		&sName,pMethod->iProtection,FALSE) ? TRUE : FALSE;
 }
 /*

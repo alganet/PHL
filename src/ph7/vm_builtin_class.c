@@ -743,6 +743,55 @@ PH7_PRIVATE ph7_class * PH7_VmCallerScopeName(ph7_vm *pVm)
 	return pScope;
 }
 /*
+ * The DECLARING-side twin of PH7_VmCallerScopeName: the class php NAMES as a method's
+ * owner. php composes a trait INTO the class that uses it — the composed method's scope
+ * IS that class — so `trait T { private function p(){} } class C { use T; }` refuses with
+ * "Call to private method C::p()", from a subclass instance too, and never says T. PHL
+ * keeps the trait in sFunc.pUserData (the ACCESS decision wants it there — see
+ * PH7_VmClassMemberAccess's trait grants), so the noun is derived here instead: walk the
+ * class the lookup went through up its ancestry to the first one that uses this trait.
+ *
+ * pClass is the class the method was reached through (the receiver's, or the named one).
+ * A non-trait declarer is returned unchanged, which is php too: a base's private method
+ * refused on a child instance names the BASE.
+ */
+PH7_PRIVATE ph7_class * PH7_VmMethodScopeName(ph7_vm *pVm,ph7_class *pClass,ph7_class_method *pMeth)
+{
+	ph7_class *pDecl = (pMeth && pMeth->sFunc.pUserData) ? (ph7_class *)pMeth->sFunc.pUserData : pClass;
+	ph7_class *pWalk;
+	SXUNUSED(pVm);
+	if( pDecl == 0 || (pDecl->iFlags & PH7_CLASS_TRAIT) == 0 ){
+		return pDecl;
+	}
+	for( pWalk = pClass ; pWalk ; pWalk = pWalk->pBase ){
+		ph7_class **apTrait = (ph7_class **)SySetBasePtr(&pWalk->aTrait);
+		sxu32 nTrait = SySetUsed(&pWalk->aTrait);
+		sxu32 k;
+		for( k = 0 ; k < nTrait ; ++k ){
+			if( apTrait[k] == pDecl ){
+				return pWalk;
+			}
+		}
+	}
+	return pDecl;
+}
+/*
+ * The name php prints for a method: the identity the class REGISTERED it under, not the
+ * one in the method struct. A trait adaptation splits the two — `hi as private pHi` files
+ * the method under `pHi` while the struct stays `hi` — and php, which compiles the alias
+ * into a function of its own, names `pHi`. Falls back to the requested name when the class
+ * holds no entry for it.
+ */
+PH7_PRIVATE void PH7_ClassMethodRegisteredName(ph7_class *pClass,const char *zName,sxu32 nByte,SyString *pOut)
+{
+	SyHashEntry *pEntry = pClass ? SyHashGet(&pClass->hMethod,(const void *)zName,nByte) : 0;
+	if( pEntry ){
+		SyStringInitFromBuf(pOut,(const char *)pEntry->pKey,pEntry->nKeyLen);
+	}else{
+		SyStringInitFromBuf(pOut,zName,nByte);
+	}
+}
+/*
  * This function return TRUE(1) if the given class attribute stored
  * in the pAttrName parameter is visible and thus can be extracted
  * from the current scope.Otherwise FALSE is returned.

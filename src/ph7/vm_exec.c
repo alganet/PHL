@@ -938,7 +938,6 @@ static const char * VmCallableClassMethodError(
 	)
 {
 	ph7_class_method *pMethod;
-	ph7_class *pDecl;
 	SyString sMeth;
 	/* php's fallback for a name this class cannot reach: when the CALLER holds a `$this`
 	 * that is an instance of it, the name resolves to the __call TRAMPOLINE rather than to
@@ -981,15 +980,15 @@ static const char * VmCallableClassMethodError(
 	}
 	/* Named through a class NAME, a non-static method is never callable: php refuses even
 	 * when the CALLER has a compatible $this (unlike call_user_func, which binds it). The
-	 * message names the DECLARING class and the method's declared spelling. */
-	pDecl = pMethod->sFunc.pUserData ? (ph7_class *)pMethod->sFunc.pUserData : pClass;
+	 * message names the OWNING class and the method's declared spelling. */
 	{
 		SyString sDecl;
 		int bAccessible;
 		SyStringInitFromBuf(&sDecl,SyStringData(&pMethod->sFunc.sName),
 			SyStringLength(&pMethod->sFunc.sName));
 		bAccessible = pMethod->iProtection == PH7_CLASS_PROT_PUBLIC
-			|| PH7_VmClassMemberAccess(&(*pVm),pDecl,&sDecl,pMethod->iProtection,FALSE);
+			|| PH7_VmClassMemberAccess(&(*pVm),PH7_VmMethodScopeName(&(*pVm),pClass,pMethod),
+				&sDecl,pMethod->iProtection,FALSE);
 		if( !bAccessible && bFallback ){
 			/* Inaccessible goes the same way as missing: php never reports the visibility,
 			 * because the name resolved to the trampoline before visibility could matter. */
@@ -998,8 +997,10 @@ static const char * VmCallableClassMethodError(
 			return zBuf;
 		}
 		if( bStaticForm && (pMethod->iFlags & PH7_CLASS_ATTR_STATIC) == 0 && bAccessible ){
+			/* Deciding class vs NAMED class: a trait is php's compile-time construct, so
+			 * every message names the class that composed it (PH7_VmMethodScopeName). */
 			SyBufferFormat(zBuf,nBuf,"Non-static method %z::%z() cannot be called statically",
-				&pDecl->sName,&sDecl);
+				&PH7_VmMethodScopeName(&(*pVm),pClass,pMethod)->sName,&sDecl);
 			return zBuf;
 		}
 	}
@@ -1047,7 +1048,6 @@ static const char * VmFccMemberError(ph7_vm *pVm,ph7_class *pClass,
 	ph7_class_instance **ppRecv,char *zBuf,int nBuf)
 {
 	ph7_class_method *pMethod;
-	ph7_class *pDecl;
 	SyString sDecl;
 	*ppRecv = 0;
 	if( pClass == 0 ){
@@ -1072,7 +1072,6 @@ static const char * VmFccMemberError(ph7_vm *pVm,ph7_class *pClass,
 			&pClass->sName,(int)nMeth,zMeth);
 		return zBuf;
 	}
-	pDecl = pMethod->sFunc.pUserData ? (ph7_class *)pMethod->sFunc.pUserData : pClass;
 	SyStringInitFromBuf(&sDecl,SyStringData(&pMethod->sFunc.sName),
 		SyStringLength(&pMethod->sFunc.sName));
 	if( pMethod->iFlags & PH7_CLASS_ATTR_ABSTRACT ){
@@ -1083,7 +1082,8 @@ static const char * VmFccMemberError(ph7_vm *pVm,ph7_class *pClass,
 		return zBuf;
 	}
 	if( pMethod->iProtection != PH7_CLASS_PROT_PUBLIC
-	 && !PH7_VmClassMemberAccess(&(*pVm),pDecl,&sDecl,pMethod->iProtection,FALSE) ){
+	 && !PH7_VmClassMemberAccess(&(*pVm),PH7_VmMethodScopeName(&(*pVm),pClass,pMethod),
+			&sDecl,pMethod->iProtection,FALSE) ){
 		/* Inaccessible: the catch-all answers for it, on the same receiver a call would use. */
 		*ppRecv = bStaticForm ? PH7_VmStaticFallbackThis(&(*pVm),pClass) : 0;
 		if( *ppRecv ){
@@ -1092,13 +1092,16 @@ static const char * VmFccMemberError(ph7_vm *pVm,ph7_class *pClass,
 		if( !bStaticForm && PH7_ClassExtractMethod(pClass,"__call",sizeof("__call")-1) ){
 			return 0;
 		}
-		return VmMethodVisibilityMsg(&(*pVm),pDecl,zMeth,nMeth,pMethod->iProtection,zBuf,nBuf);
+		/* The DECIDING class is the declaring one (its trait grants live there); the class
+		 * php NAMES is the composing one — a trait has no runtime existence in php. */
+		return VmMethodVisibilityMsg(&(*pVm),PH7_VmMethodScopeName(&(*pVm),pClass,pMethod),
+			zMeth,nMeth,pMethod->iProtection,zBuf,nBuf);
 	}
 	if( bStaticForm && (pMethod->iFlags & PH7_CLASS_ATTR_STATIC) == 0 ){
 		*ppRecv = PH7_VmCallerThisFor(&(*pVm),pClass);
 		if( *ppRecv == 0 ){
 			SyBufferFormat(zBuf,nBuf,"Non-static method %z::%z() cannot be called statically",
-				&pDecl->sName,&sDecl);
+				&PH7_VmMethodScopeName(&(*pVm),pClass,pMethod)->sName,&sDecl);
 			return zBuf;
 		}
 	}
@@ -4902,7 +4905,12 @@ case PH7_OP_CALL: {
 	 * it was set for, whatever path that call then takes. Left standing it would
 	 * describe the next call instead. */
 	int bMagicDispatch = pVm->bMagicDispatch;
+	/* ...and the member resolution's own verdict, which rides the callee SLOT rather
+	 * than the VM: an OP_MEMBER that produced this callee already decided its
+	 * visibility against the entry it chose, so the screen below must stand down. */
+	int bMemberScreened = (pTos->iFlags & MEMOBJ_AUX_MEMBERCALL) != 0;
 	pVm->bMagicDispatch = 0;
+	pTos->iFlags &= ~MEMOBJ_AUX_MEMBERCALL;
 	pArg = &pTos[-nCallArgs];
 	/* PHP 8.1: an unpack whose elements carry string keys binds them as NAMED
 	 * arguments, and a spread expanding to !=1 element shifts the actual positions
@@ -5363,7 +5371,7 @@ case PH7_OP_CALL: {
 					 * first-class `$o->__get(...)` and `$o->__get('x')` reach the same C
 					 * dispatcher, and php denies both. */
 				}else
-				if( pSelf ){ /* Paranoid edition */
+				if( pSelf && !bMemberScreened ){ /* Paranoid edition */
 					/* Check if the call is allowed. php binds non-public method
 					 * access by the DECLARING class (pVmFunc->pUserData — the class
 					 * the callee was compiled in), NOT the instance's class: an
@@ -5372,12 +5380,21 @@ case PH7_OP_CALL: {
 					 * check for a parent callee, and the denial message names the
 					 * declaring class like php. */
 					ph7_class *pDeclClass = pVmFunc->pUserData ? (ph7_class *)pVmFunc->pUserData : pSelf;
+					ph7_class *pOwnerClass;
 					pMeth = PH7_ClassExtractMethod(pDeclClass,pVmFunc->sName.zString,pVmFunc->sName.nByte);
 					if( pMeth == 0 && pDeclClass != pSelf ){
 						pMeth = PH7_ClassExtractMethod(pSelf,pVmFunc->sName.zString,pVmFunc->sName.nByte);
 					}
 					if( pMeth && pMeth->iProtection != PH7_CLASS_PROT_PUBLIC ){
-						if( !PH7_VmClassMemberAccess(&(*pVm),pDeclClass,&pVmFunc->sName,pMeth->iProtection,FALSE) ){
+						/* ...except that a TRAIT is not a class php still has at run time: it
+						 * composed the method INTO the using class, so that class owns the
+						 * rule and the name. Deciding against the trait refused a protected
+						 * trait method to a SUBCLASS of the composing class (which uses no
+						 * trait of its own) — `class Az { use Tz; } class Bz extends Az {
+						 * $this->pr(); }` was a fatal php runs. Identity for every non-trait
+						 * method. */
+						pOwnerClass = PH7_VmMethodScopeName(&(*pVm),pSelf,pMeth);
+						if( !PH7_VmClassMemberAccess(&(*pVm),pOwnerClass,&pVmFunc->sName,pMeth->iProtection,FALSE) ){
 							/* php throws a CATCHABLE Error here. The old code merely PRINTED an
 							 * uncaught-exception report and aborted, so `try { $o->priv(); }
 							 * catch (Error $e)` never caught it and the script died. */
@@ -5387,7 +5404,7 @@ case PH7_OP_CALL: {
 							 * and says "global scope" only outside every class; the wording is
 							 * shared with the first-class-callable screen
 							 * (VmMethodVisibilityMsg). */
-							VmMethodVisibilityMsg(&(*pVm),pDeclClass,
+							VmMethodVisibilityMsg(&(*pVm),pOwnerClass,
 								pVmFunc->sName.zString,pVmFunc->sName.nByte,
 								pMeth->iProtection,zMsg,sizeof(zMsg));
 							/* Consume this call's captured spread runs — this visibility
