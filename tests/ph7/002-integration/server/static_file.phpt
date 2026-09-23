@@ -14,7 +14,8 @@ if (strlen($out) == 0) { echo "skip curl not available"; }
 <?php
 $phl = getenv('PHPT_TARGET_EXECUTABLE');
 $tmpdir = sys_get_temp_dir() . '/phl_srvtest_' . getmypid();
-$port = 19300 + (getmypid() % 100);
+require __DIR__ . '/free_port.inc';
+$port = phpt_free_port(19300);
 mkdir($tmpdir);
 file_put_contents($tmpdir . '/hello.txt', 'static content here');
 
@@ -23,12 +24,12 @@ $pid = trim(fgets($fp));
 fclose($fp);
 usleep(500000);
 
-$fp2 = popen('curl -s http://localhost:' . $port . '/hello.txt 2>/dev/null', 'r');
+$fp2 = popen('curl -s --max-time 10 http://localhost:' . $port . '/hello.txt 2>/dev/null', 'r');
 $out = '';
 while (!feof($fp2)) { $out .= fgets($fp2); }
 fclose($fp2);
 
-$fp3 = popen('curl -s -o /dev/null -w "%{content_type}" http://localhost:' . $port . '/hello.txt 2>/dev/null', 'r');
+$fp3 = popen('curl -s --max-time 10 -o /dev/null -w "%{content_type}" http://localhost:' . $port . '/hello.txt 2>/dev/null', 'r');
 $ct = '';
 while (!feof($fp3)) { $ct .= fgets($fp3); }
 fclose($fp3);

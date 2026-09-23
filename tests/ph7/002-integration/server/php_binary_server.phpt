@@ -15,7 +15,8 @@ if (strlen($out) == 0) { echo "skip curl not available"; }
 <?php
 $phl = getenv('PHPT_TARGET_EXECUTABLE');
 $tmpdir = sys_get_temp_dir() . '/phl_binsrv_' . getmypid();
-$port = 19500 + (getmypid() % 100);
+require __DIR__ . '/free_port.inc';
+$port = phpt_free_port(19500);
 mkdir($tmpdir);
 file_put_contents($tmpdir . '/bin.php',
     "<?php echo (defined('PHP_BINARY') && PHP_BINARY !== '' && is_file(PHP_BINARY)) ? \"ok\\n\" : \"bad\\n\";\n");
@@ -25,7 +26,7 @@ $pid = trim(fgets($fp));
 fclose($fp);
 usleep(500000);
 
-$fp2 = popen('curl -s "http://localhost:' . $port . '/bin.php" 2>/dev/null', 'r');
+$fp2 = popen('curl -s --max-time 10 "http://localhost:' . $port . '/bin.php" 2>/dev/null', 'r');
 $out = '';
 while (!feof($fp2)) { $out .= fgets($fp2); }
 fclose($fp2);

@@ -14,7 +14,8 @@ if (strlen($out) == 0) { echo "skip curl not available"; }
 <?php
 $phl = getenv('PHPT_TARGET_EXECUTABLE');
 $tmpdir = sys_get_temp_dir() . '/phl_srvtest_' . getmypid();
-$port = 19200 + (getmypid() % 100);
+require __DIR__ . '/free_port.inc';
+$port = phpt_free_port(19200);
 mkdir($tmpdir);
 file_put_contents($tmpdir . '/test.php', '<?php echo $_SERVER["REQUEST_METHOD"] . " " . $_SERVER["REQUEST_URI"];');
 
@@ -23,7 +24,7 @@ $pid = trim(fgets($fp));
 fclose($fp);
 usleep(500000);
 
-$fp2 = popen('curl -s http://localhost:' . $port . '/test.php?foo=bar 2>/dev/null', 'r');
+$fp2 = popen('curl -s --max-time 10 http://localhost:' . $port . '/test.php?foo=bar 2>/dev/null', 'r');
 $out = '';
 while (!feof($fp2)) { $out .= fgets($fp2); }
 fclose($fp2);

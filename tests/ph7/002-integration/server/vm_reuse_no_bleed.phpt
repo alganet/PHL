@@ -22,7 +22,8 @@ if (strlen($out) == 0) { echo "skip curl not available"; }
  * subsequent request (cfg=1.0), not vanish once the file is no longer re-run. */
 $phl = getenv('PHPT_TARGET_EXECUTABLE');
 $tmpdir = sys_get_temp_dir() . '/phl_reusetest_' . getmypid();
-$port = 19300 + (getmypid() % 100);
+require __DIR__ . '/free_port.inc';
+$port = phpt_free_port(19300);
 mkdir($tmpdir);
 
 file_put_contents($tmpdir . '/cfg.php', "<?php define('CFG_VERSION', '1.0');\n");
@@ -46,7 +47,7 @@ fclose($fp);
 usleep(500000);
 
 foreach (array('a', 'b', 'c') as $q) {
-    $fp2 = popen('curl -s "http://localhost:' . $port . '/bleed.php?q=' . $q . '" 2>/dev/null', 'r');
+    $fp2 = popen('curl -s --max-time 10 "http://localhost:' . $port . '/bleed.php?q=' . $q . '" 2>/dev/null', 'r');
     $out = '';
     while (!feof($fp2)) { $out .= fgets($fp2); }
     fclose($fp2);

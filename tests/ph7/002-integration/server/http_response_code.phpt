@@ -14,7 +14,8 @@ if (strlen($out) == 0) { echo "skip curl not available"; }
 <?php
 $phl = getenv('PHPT_TARGET_EXECUTABLE');
 $tmpdir = sys_get_temp_dir() . '/phl_srvtest_' . getmypid();
-$port = 19600 + (getmypid() % 100);
+require __DIR__ . '/free_port.inc';
+$port = phpt_free_port(19600);
 mkdir($tmpdir);
 file_put_contents($tmpdir . '/status.php', '<?php http_response_code(403); echo "forbidden";');
 
@@ -23,7 +24,7 @@ $pid = trim(fgets($fp));
 fclose($fp);
 usleep(500000);
 
-$fp2 = popen('curl -s -o /dev/null -w "%{http_code}" http://localhost:' . $port . '/status.php 2>/dev/null', 'r');
+$fp2 = popen('curl -s --max-time 10 -o /dev/null -w "%{http_code}" http://localhost:' . $port . '/status.php 2>/dev/null', 'r');
 $code = '';
 while (!feof($fp2)) { $code .= fgets($fp2); }
 fclose($fp2);

@@ -18,7 +18,8 @@ if (DIRECTORY_SEPARATOR === '\\') { echo 'skip POSIX -S server + shell harness';
 <?php
 $bin = getenv('PHPT_TARGET_EXECUTABLE');
 $tmpdir = sys_get_temp_dir() . '/phl_socktest_' . getmypid();
-$port = 19600 + (getmypid() % 100);
+require __DIR__ . '/../../server/free_port.inc';
+$port = phpt_free_port(19600);
 mkdir($tmpdir);
 file_put_contents($tmpdir . '/a.php', '<?php echo "sock-ok";');
 

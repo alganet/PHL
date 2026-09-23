@@ -16,7 +16,8 @@ if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') { echo "skip fork workers are PO
 <?php
 $phl = getenv('PHPT_TARGET_EXECUTABLE');
 $tmpdir = sys_get_temp_dir() . '/phl_cwtest_' . getmypid();
-$port = 19400 + (getmypid() % 100);
+require __DIR__ . '/free_port.inc';
+$port = phpt_free_port(19400);
 mkdir($tmpdir);
 // each request sleeps a second, so two sequential ones would take >= 2s
 file_put_contents($tmpdir . '/slow.php', '<?php sleep(1); echo "done";');
@@ -29,8 +30,8 @@ usleep(700000);
 
 // fire two overlapping requests and time the pair
 $start = microtime(true);
-$cmd = 'curl -s http://localhost:' . $port . '/slow.php > /dev/null 2>&1 & '
-     . 'curl -s http://localhost:' . $port . '/slow.php 2>/dev/null; wait';
+$cmd = 'curl -s --max-time 10 http://localhost:' . $port . '/slow.php > /dev/null 2>&1 & '
+     . 'curl -s --max-time 10 http://localhost:' . $port . '/slow.php 2>/dev/null; wait';
 $fp2 = popen($cmd, 'r');
 $out = '';
 while (!feof($fp2)) { $out .= fgets($fp2); }
