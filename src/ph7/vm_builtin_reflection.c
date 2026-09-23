@@ -789,6 +789,98 @@ static int ReflectSigHasNoCase(const char *z, int n, const char *zNeedle, int nN
 	return 0;
 }
 /*
+ * One `C::K` (or `C::class`) term of a declared default, evaluated.
+ *
+ * php's stub writes these as SOURCE — `string $class = SplFileInfo::class`,
+ * `int $flags = FilesystemIterator::KEY_AS_PATHNAME|…` — and the reflector then
+ * answers both the text (the export line) and the VALUE (getDefaultValue()). A
+ * native method's zSig is that same source, so the value has to be read out of
+ * the class here; there are no compiled parameter records to hold it.
+ */
+static int ReflectSigClassConst(ph7_context *pCtx, const char *z, int n, ph7_value *pOut)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_attr *pAttr;
+	ph7_class *pClass;
+	ph7_value *pValue;
+	int iSep;
+	ReflectSigTrim(&z, &n);
+	for( iSep = 0 ; iSep + 1 < n ; ++iSep ){
+		if( z[iSep] == ':' && z[iSep+1] == ':' ){
+			break;
+		}
+	}
+	if( iSep + 1 >= n || iSep < 1 ){
+		return 0;
+	}
+	pClass = PH7_VmExtractClass(pVm, z, (sxu32)iSep, TRUE, 0);
+	if( pClass == 0 ){
+		return 0;
+	}
+	z += iSep + 2;
+	n -= iSep + 2;
+	if( n == (int)sizeof("class")-1 && SyMemcmp(z, "class", sizeof("class")-1) == 0 ){
+		/* `C::class` is the class NAME, and php prints the name it was DECLARED
+		 * with rather than the spelling in the signature. */
+		SyString *pName = &pClass->sName;
+		ph7_value_string(pOut, SyStringData(pName), (int)SyStringLength(pName));
+		return 1;
+	}
+	pAttr = PH7_ClassExtractConstant(pClass, z, (sxu32)n);
+	if( pAttr == 0 || (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
+		return 0;
+	}
+	if( pAttr->nIdx == SXU32_HIGH ){
+		/* Not materialized yet: run the initializer, exactly as a direct `C::K`
+		 * read would (an unread native constant is a literal waiting on this). */
+		if( VmClassConstEvalOnDemand(pVm, pClass, pAttr) != SXRET_OK ){
+			return 0;
+		}
+	}
+	pValue = (ph7_value *)SySetAt(&pVm->aMemObj, pAttr->nIdx);
+	if( pValue == 0 ){
+		return 0;
+	}
+	PH7_MemObjStore(pValue, pOut);
+	return 1;
+}
+/*
+ * A class-constant EXPRESSION: one term, or the `|` fold php's own stubs write
+ * for a flags default (`KEY_AS_PATHNAME | CURRENT_AS_FILEINFO | SKIP_DOTS`).
+ */
+static int ReflectSigConstExpr(ph7_context *pCtx, const char *z, int n, ph7_value *pOut)
+{
+	sxi64 iAcc = 0;
+	int iStart = 0;
+	int k, nTerm = 0;
+	if( !ReflectSigHas(z, n, "::", 2) ){
+		return 0;
+	}
+	for( k = 0 ; k <= n ; ++k ){
+		if( k < n && z[k] != '|' ){
+			continue;
+		}
+		if( !ReflectSigClassConst(pCtx, &z[iStart], k - iStart, pOut) ){
+			return 0;
+		}
+		nTerm++;
+		if( k < n || nTerm > 1 ){
+			/* A fold is arithmetic, so every arm has to be an integer; a lone
+			 * term keeps whatever type it had (`C::class` is a string). */
+			if( (pOut->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP|MEMOBJ_OBJ)) != 0 ){
+				return 0;
+			}
+			PH7_MemObjToInteger(pOut);
+			iAcc |= pOut->x.iVal;
+		}
+		iStart = k + 1;
+	}
+	if( nTerm > 1 ){
+		ph7_value_int64(pOut, iAcc);
+	}
+	return nTerm > 0;
+}
+/*
  * A default-value TEXT to a value, when the text denotes a scalar php can
  * reproduce. Answers 1 and fills pOut, or 0 for anything else (`[]`,
  * `array (`, a constant name) which the caller reports its own way.
@@ -829,6 +921,9 @@ static int ReflectSigScalar(ph7_context *pCtx, const char *z, int n, ph7_value *
 		}
 		ph7_value_string(pOut,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
 		SyBlobRelease(&sOut);
+		return 1;
+	}
+	if( ReflectSigConstExpr(pCtx,z,n,pOut) ){
 		return 1;
 	}
 	if( n > 0 && SyStrIsNumeric(z,(sxu32)n,&bReal,0) == SXRET_OK ){
@@ -8017,10 +8112,25 @@ static void ReflectExportDefault(ph7_context *pCtx, SyBlob *pOut, ReflectParamDe
 		const char *zDef = SyStringData(&pDesc->sDefText);
 		int nDef = (int)SyStringLength(&pDesc->sDefText);
 		ph7_value *pVal = ph7_context_new_scalar(pCtx);
+		if( ReflectSigHas(zDef, nDef, "::", 2) ){
+			/* Rule 28's split, on the declared side: php's stub keeps the SOURCE of a
+			 * constant-expression default, so the export prints
+			 * `= SplFileInfo::class` and `= A::K | A::J` verbatim while
+			 * getDefaultValue() answers what they evaluate to. */
+			SyBlobAppend(pOut, zDef, (sxu32)nDef);
+			return;
+		}
 		if( pVal && ReflectSigScalar(pCtx, zDef, nDef, pVal) ){
 			if( (pVal->iFlags & (MEMOBJ_STRING|MEMOBJ_NULL)) == MEMOBJ_STRING ){
 				ReflectExportStrQ(pOut, (const char *)SyBlobData(&pVal->sBlob),
 					SyBlobLength(&pVal->sBlob), '"');
+				return;
+			}
+			if( pVal->iFlags & MEMOBJ_NULL ){
+				/* The same internal/user split as the quote character above: php
+				 * spells an INTERNAL parameter's null default `null` and a
+				 * userland one `NULL` (`= null` for every `?T $x = null` stub row). */
+				SyBlobAppend(pOut, "null", sizeof("null")-1);
 				return;
 			}
 			ReflectExportValue(pCtx, pOut, pVal, 0);
