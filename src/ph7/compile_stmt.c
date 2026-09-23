@@ -37,6 +37,26 @@
  *    const HELLO = "Welcome "." guest ".rand_str(3); //Valid under PH7/Generate error using the zend engine
  *    Refer to the official documentation for more information on this feature.
  */
+/*
+ * The keyword-shaped names php still accepts as a GLOBAL constant name: its lexer
+ * does not reserve the type words or the scope words, so `const int = 1;` and
+ * `const self = 1;` parse there while every other keyword is a syntax error. Kept
+ * as a list rather than a token-class test because the two engines' keyword TABLES
+ * are not the same set — PHL lexes some words php leaves as plain identifiers.
+ */
+static int GenStateConstNameKeywordOk(SyString *pName)
+{
+	static const char *azOk[] = { "bool", "float", "int", "object", "string",
+	                              "self", "parent" };
+	sxu32 i;
+	for( i = 0 ; i < SX_ARRAYSIZE(azOk) ; ++i ){
+		sxu32 n = (sxu32)SyStrlen(azOk[i]);
+		if( pName->nByte == n && SyStrnicmp(pName->zString,azOk[i],n) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
 PH7_PRIVATE sxi32 PH7_CompileConstant(ph7_gen_state *pGen)
 {
 	SySet *pConsCode,*pInstrContainer;
@@ -67,6 +87,22 @@ Loop:
 	}
 	/* Peek constant name */
 	pName = &pGen->pIn->sData;
+	/* php's global `const` takes an IDENTIFIER: a reserved word is a parse error
+	 * there, and only a CLASS constant may carry one (`class C { const list = 5; }`
+	 * is php-legal, `const list = 5;` at file scope is not). PHL accepted both, so
+	 * `const LIST = 1;` compiled and READ back — source php refuses to parse.
+	 * The words php still allows are the ones its lexer does not reserve: the type
+	 * names and the scope words. The word OPERATORS (`and`, `or`, `xor`, `new`,
+	 * `clone`, `instanceof`) are reserved too — the lexer types those ID|OP rather
+	 * than KEYWORD, which is why the test reads both bits. */
+	if( (pGen->pIn->nType & (PH7_TK_KEYWORD|PH7_TK_OP))
+	 && !GenStateConstNameKeywordOk(pName) ){
+		rc = PH7_GenSyntaxError(pGen,pGen->pIn,"identifier");
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		goto Synchronize;
+	}
 	/* Make sure the constant name isn't reserved */
 	if( GenStateIsReservedConstant(pName) ){
 		/* Reserved constant */

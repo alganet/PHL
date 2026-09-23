@@ -6254,14 +6254,6 @@ PH7_PRIVATE void VmDropFrameRefEntry(ph7_vm *pVm,sxu32 nIdx,SyHashEntry *pEntry)
 	}
 }
 /*
- * Bind a NAME to an existing slot, creating the symbol-table entry when the name is
- * new and RE-BINDING it when it is not. This is what a by-reference `foreach` does to
- * its value variable on every step, and it goes through the reference table like any
- * other alias: a binding that is not registered there is not a HOLDER, so the element
- * it aliases did not count as referenced (no `&` in var_dump, and an array COPY quietly
- * stopped sharing it) and nothing kept its value alive when the array let go.
- */
-/*
  * Is this the name of an ENGINE temporary rather than a variable the program wrote?
  *
  * The compiler parks a step's value in a synthetic local when a construct's target
@@ -6275,6 +6267,14 @@ PH7_PRIVATE int PH7_VmVarNameIsInternal(const char *zName,sxu32 nByte)
 {
 	return nByte > 0 && zName[0] == '[';
 }
+/*
+ * Bind a NAME to an existing slot, creating the symbol-table entry when the name is
+ * new and RE-BINDING it when it is not. This is what a by-reference `foreach` does to
+ * its value variable on every step, and it goes through the reference table like any
+ * other alias: a binding that is not registered there is not a HOLDER, so the element
+ * it aliases did not count as referenced (no `&` in var_dump, and an array COPY quietly
+ * stopped sharing it) and nothing kept its value alive when the array let go.
+ */
 PH7_PRIVATE void PH7_VmBindVarSlot(ph7_vm *pVm,VmFrame *pFrame,const char *zName,sxu32 nByte,
 	sxu32 nIdx)
 {

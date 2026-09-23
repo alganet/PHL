@@ -856,13 +856,6 @@ static void GenStateCallBuiltinName(ph7_expr_node *pLeft, SyString *pOut)
 	*pOut = p->sData;
 }
 /*
- * Generate bytecode for a given expression tree.
- * If something goes wrong while generating bytecode
- * for the expression tree (A very unlikely scenario)
- * this function takes care of generating the appropriate
- * error message.
- */
-/*
  * Is this expression node the bare variable `$this`?
  */
 PH7_PRIVATE int PH7_ExprNodeIsThis(ph7_expr_node *pNode)
@@ -959,6 +952,13 @@ PH7_PRIVATE sxi32 GenStateWriteTargetCheck(ph7_gen_state *pGen,ph7_expr_node *pT
 		pTarget->pStart ? pTarget->pStart->nLine : 0,"%s",zMsg);
 	return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_INVALID;
 }
+/*
+ * Generate bytecode for a given expression tree.
+ * If something goes wrong while generating bytecode
+ * for the expression tree (A very unlikely scenario)
+ * this function takes care of generating the appropriate
+ * error message.
+ */
 static sxi32 GenStateEmitExprCode(
 	ph7_gen_state *pGen,  /* Code generator state */
 	ph7_expr_node *pNode, /* Root of the expression tree */
@@ -3320,6 +3320,10 @@ PH7_PRIVATE sxi32 PH7_GenSyntaxError(
 	const char *zExpecting /* ", expecting <this>" tail, or NULL */
 	)
 {
+	/* php's noun for the offending token. An ALPHA-stream operator (`and`, `or`,
+	 * `xor`, `new`, `clone`, `instanceof`) is lexed ID|OP here but php calls it a
+	 * TOKEN, like every other reserved word — only a real identifier gets the
+	 * "identifier" noun. */
 	const char *zNoun = "token";
 	sxu32 nLine;
 	if( pTok == 0 && pGen->pTokenSet ){
@@ -3340,7 +3344,7 @@ PH7_PRIVATE sxi32 PH7_GenSyntaxError(
 			           : "syntax error, unexpected end of file",
 			zExpecting);
 	}
-	if( pTok->nType & PH7_TK_ID ){
+	if( (pTok->nType & PH7_TK_ID) && (pTok->nType & PH7_TK_OP) == 0 ){
 		zNoun = "identifier";
 	}else if( pTok->nType & PH7_TK_DOLLAR ){
 		zNoun = "variable";
