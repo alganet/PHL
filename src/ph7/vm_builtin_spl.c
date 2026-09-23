@@ -530,118 +530,643 @@ static sxi32 VmInstallWeak(ph7_vm *pVm)
 	return SXRET_OK;
 }
 
+/*
+ * ArrayIterator / ArrayObject — the array STORE, in C.
+ *
+ * These two shared one implementation through `trait __SplStoreT`, the last PHL-only
+ * TRAIT and the last name in the §4 ledger that was not a function. php shares nothing
+ * between them at the TYPE level: both have no parent and no common interface beyond
+ * ArrayAccess/Countable, and the storage lives in ext/spl's own `spl_array_object` struct
+ * behind handlers. The recorded decision follows php: no shared type at all —
+ * one set of C bodies, named by BOTH spec rows. The builder installs a method table per
+ * class anyway, so "replaying the method table" is a second row and nothing else, and the
+ * php-visible shape stays exact (a native abstract BASE would have given both classes a
+ * parent php does not have).
+ *
+ * The store itself stays a plain PHP array in a declared private slot, exactly as the trait
+ * had it: nothing here is a C handle, so `clone` and `serialize()` keep working as php's do
+ * and neither class wants the NOCLONE/NOSERIALIZE flags an engine-state class needs. The
+ * bodies delegate to the engine's OWN array builtins (asort, ksort, uasort, reset, current,
+ * next, key), which is what the PHP did — one layer down, with no dispatcher round trip.
+ */
+#define SPL_D  "__d"  /* the stored array */
+#define SPL_F  "__f"  /* the flags word */
+#define SPL_IT "__it" /* ArrayObject's iterator class name */
+/*
+ * The instance's storage slot, separated for writing (every caller may mutate it). Answers
+ * the SLOT rather than the hashmap because that is what the array builtins below take.
+ */
+static ph7_value * SplStoreSlot(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,SPL_D) : 0;
+	if( pSlot == 0 ){
+		return 0;
+	}
+	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){
+			return 0;
+		}
+	}
+	if( PH7_HashmapCowSeparate(pVm,pSlot) == 0 ){
+		return 0;
+	}
+	return pSlot;
+}
+static ph7_hashmap * SplStore(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_value *pSlot = SplStoreSlot(pVm,pThis);
+	return pSlot ? (ph7_hashmap *)pSlot->x.pOther : 0;
+}
+/*
+ * `$this->__d = $array` for the constructor and exchangeArray(), with php's refusal.
+ *
+ * php DECLARES `object|array $array` — which is what Reflection prints — and then words the
+ * refusal as `must be of type array`, so the shared ZPP screen cannot say both (rule 41's
+ * shape) and the check is written here. An OBJECT contributes its properties, as the PHP
+ * did through get_object_vars().
+ */
+static sxi32 SplInitStore(ph7_context *pCtx,ph7_class_instance *pThis,
+	ph7_value *pArray,const char *zOwner)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,SPL_D) : 0;
+	if( pSlot == 0 ){
+		return PH7_OK;
+	}
+	if( pArray == 0 ){
+		/* No argument at all: php's `$array = []` default. A native method has no compiled
+		 * parameter records for the defaults to live in (rule 33's neighbour), so the body
+		 * applies it — and an EXPLICIT null still has to reach the refusal below, which is
+		 * why the two cases are distinguished here rather than by a NULL check. */
+		ph7_hashmap *pEmpty = PH7_NewHashmap(pVm,0,0);
+		if( pEmpty == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		PH7_MemObjRelease(pSlot);
+		pSlot->x.pOther = pEmpty;
+		MemObjSetType(pSlot,MEMOBJ_HASHMAP);
+		return PH7_OK;
+	}
+	if( pArray->iFlags & MEMOBJ_HASHMAP ){
+		PH7_MemObjRelease(pSlot);
+		PH7_MemObjStore(pArray,pSlot); /* a copy: the store is the object's own */
+		return PH7_OK;
+	}
+	if( pArray->iFlags & MEMOBJ_OBJ ){
+		/* The PHP read get_object_vars($array): the properties this scope can see, by
+		 * their plain names. php itself keeps the OBJECT and reads its property table
+		 * live (so getArrayCopy() answers the mangled private names and count() answers
+		 * the visible ones) — a divergence this conversion carries over unchanged rather
+		 * than widening, recorded in §7.4. */
+		ph7_class_instance *pObj = (ph7_class_instance *)pArray->x.pOther;
+		ph7_hashmap *pMap;
+		SyHashEntry *pEntry;
+		PH7_MemObjRelease(pSlot);
+		pMap = PH7_NewHashmap(pVm,0,0);
+		if( pMap == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		SyHashResetLoopCursor(&pObj->hAttr);
+		while( pObj && (pEntry = SyHashGetNextEntry(&pObj->hAttr)) != 0 ){
+			VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
+			ph7_value sKey;
+			ph7_value *pVal;
+			if( pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT) ){
+				continue;
+			}
+			if( pVmAttr->pAttr->iProtection != PH7_CLASS_PROT_PUBLIC ){
+				continue;
+			}
+			pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pVmAttr->nIdx);
+			if( pVal == 0 ){
+				continue;
+			}
+			PH7_MemObjInitFromString(pVm,&sKey,&pVmAttr->pAttr->sName);
+			PH7_HashmapInsert(pMap,&sKey,pVal);
+			PH7_MemObjRelease(&sKey);
+		}
+		pSlot->x.pOther = pMap;
+		MemObjSetType(pSlot,MEMOBJ_HASHMAP);
+		return PH7_OK;
+	}
+	return PH7_VmThrowException(pCtx,"TypeError",
+		"%s(): Argument #1 ($array) must be of type array, %s given",
+		zOwner,ph7_type_name(pArray));
+}
+/* Hand one of the engine's own array builtins the instance's storage slot. */
+static int SplArrayCall(ph7_context *pCtx,ProchHostFunction xFunc,ph7_value *pExtra)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *apCall[2];
+	ph7_value *pSlot = SplStoreSlot(pCtx->pVm,pThis);
+	if( pSlot == 0 ){
+		return PH7_OK;
+	}
+	apCall[0] = pSlot;
+	apCall[1] = pExtra;
+	return xFunc(pCtx,pExtra ? 2 : 1,apCall);
+}
+static int vm_builtin_SplStore_offsetExists(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));
+	ph7_hashmap_node *pNode = 0;
+	int bFound = 0;
+	if( pMap && nArg > 0 ){
+		/* array_key_exists(), not isset(): php's offsetExists() answers true for a key
+		 * holding NULL (the PHP said array_key_exists too). */
+		bFound = PH7_HashmapLookup(pMap,apArg[0],&pNode) == SXRET_OK;
+	}
+	ph7_result_bool(pCtx,bFound);
+	return PH7_OK;
+}
+static int vm_builtin_SplStore_offsetGet(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_hashmap *pMap = SplStore(pVm,PH7_ContextThis(pCtx));
+	ph7_hashmap_node *pNode = 0;
+	if( pMap == 0 || nArg < 1 || PH7_HashmapLookup(pMap,apArg[0],&pNode) != SXRET_OK ){
+		/* php warns "Undefined array key" for a missing offset, with the key rendered
+		 * the way the LOOKUP folded it (an integer bare, a string quoted) — the same
+		 * pair OP_LOAD_IDX prints. This one now reports the CALLER's line, where the
+		 * PHP reported the chunk's. */
+		if( nArg > 0 ){
+			SyBlob sMsg;
+			SyBlobInit(&sMsg,&pVm->sAllocator);
+			if( PH7_HashmapKeyIsInt(apArg[0]) ){
+				if( (apArg[0]->iFlags & MEMOBJ_INT) == 0 ){
+					PH7_MemObjToInteger(apArg[0]);
+				}
+				SyBlobFormat(&sMsg,"Undefined array key %qd",apArg[0]->x.iVal);
+			}else{
+				SyString sKey;
+				SyStringInitFromBuf(&sKey,SyBlobData(&apArg[0]->sBlob),
+					SyBlobLength(&apArg[0]->sBlob));
+				SyBlobFormat(&sMsg,"Undefined array key \"%z\"",&sKey);
+			}
+			SyBlobNullAppend(&sMsg);
+			PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));
+			SyBlobRelease(&sMsg);
+		}
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	ph7_result_value(pCtx,(ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx));
+	return PH7_OK;
+}
+static int vm_builtin_SplStore_offsetSet(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));
+	if( pMap && nArg > 1 ){
+		/* A NULL key is `$o[] = $v` — the append form, which is how php's offsetSet()
+		 * receives it. */
+		PH7_HashmapInsert(pMap,(apArg[0]->iFlags & MEMOBJ_NULL) ? 0 : apArg[0],apArg[1]);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_SplStore_offsetUnset(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));
+	ph7_hashmap_node *pNode = 0;
+	if( pMap && nArg > 0 && PH7_HashmapLookup(pMap,apArg[0],&pNode) == SXRET_OK ){
+		PH7_HashmapUnlinkNode(pNode,TRUE);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_SplStore_append(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));
+	if( pMap && nArg > 0 ){
+		PH7_HashmapInsert(pMap,0,apArg[0]);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_SplStore_getArrayCopy(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pSlot = SplStoreSlot(pCtx->pVm,PH7_ContextThis(pCtx));
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pSlot ){
+		ph7_result_value(pCtx,pSlot); /* a COPY: the caller must not alias the store */
+	}
+	return PH7_OK;
+}
+static int vm_builtin_SplStore_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_int64(pCtx,pMap ? (ph7_int64)pMap->nEntry : 0);
+	return PH7_OK;
+}
+static int vm_builtin_SplStore_getFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_int64(pCtx,pThis ? PH7_NativeAttrInt(pThis,SPL_F) : 0);
+	return PH7_OK;
+}
+static int vm_builtin_SplStore_setFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	if( pThis && nArg > 0 ){
+		PH7_NativeSetAttrInt(pCtx->pVm,pThis,SPL_F,ph7_value_to_int(apArg[0]));
+	}
+	return PH7_OK;
+}
+/*
+ * The six sorts. Each is the engine's own builtin over the stored array — including the
+ * `$flags` the PHP DROPPED on the floor (`asort($this->__d)` ignored its own parameter, so
+ * `$it->asort(SORT_STRING)` sorted numerically). natsort/natcasesort go through asort with
+ * php's own flag pair rather than by name: the shared body reads ph7_function_name() to tell
+ * the two apart, and a native method's name is `ArrayIterator::natcasesort`.
+ */
+static int vm_builtin_SplStore_asort(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return SplArrayCall(pCtx,ph7_hashmap_asort,nArg > 0 ? apArg[0] : 0);
+}
+static int vm_builtin_SplStore_ksort(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return SplArrayCall(pCtx,ph7_hashmap_ksort,nArg > 0 ? apArg[0] : 0);
+}
+static int vm_builtin_SplStore_uasort(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return SplArrayCall(pCtx,ph7_hashmap_uasort,nArg > 0 ? apArg[0] : 0);
+}
+static int vm_builtin_SplStore_uksort(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return SplArrayCall(pCtx,ph7_hashmap_uksort,nArg > 0 ? apArg[0] : 0);
+}
+static int SplNatSort(ph7_context *pCtx,int bFold)
+{
+	ph7_value sFlags;
+	int rc;
+	/* SORT_NATURAL (6), plus SORT_FLAG_CASE (8) for the folding twin — the same pair
+	 * ph7_hashmap_natsort forwards to asort(). */
+	PH7_MemObjInitFromInt(pCtx->pVm,&sFlags,bFold ? (6|8) : 6);
+	rc = SplArrayCall(pCtx,ph7_hashmap_asort,&sFlags);
+	PH7_MemObjRelease(&sFlags);
+	return rc;
+}
+static int vm_builtin_SplStore_natsort(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return SplNatSort(pCtx,0);
+}
+static int vm_builtin_SplStore_natcasesort(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return SplNatSort(pCtx,1);
+}
+/* ArrayIterator's cursor: the stored array's own internal pointer, as the PHP had it. */
+static int vm_builtin_ArrayIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pMap == 0 || pMap->pCur == 0 ){
+		/* Past the end php answers NULL, where current() the FUNCTION answers false. */
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return SplArrayCall(pCtx,ph7_hashmap_current,0);
+}
+static int vm_builtin_ArrayIterator_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return SplArrayCall(pCtx,ph7_hashmap_simple_key,0);
+}
+static int vm_builtin_ArrayIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	SplArrayCall(pCtx,ph7_hashmap_next,0);
+	ph7_result_null(pCtx); /* next() the METHOD returns void */
+	return PH7_OK;
+}
+static int vm_builtin_ArrayIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	SplArrayCall(pCtx,ph7_hashmap_reset,0);
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+static int vm_builtin_ArrayIterator_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx,pMap && pMap->pCur ? 1 : 0);
+	return PH7_OK;
+}
+static int vm_builtin_ArrayIterator_seek(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));
+	ph7_int64 iOffset = nArg > 0 ? ph7_value_to_int(apArg[0]) : 0;
+	ph7_int64 i;
+	if( pMap == 0 ){
+		return PH7_OK;
+	}
+	if( iOffset < 0 || iOffset >= (ph7_int64)pMap->nEntry ){
+		return PH7_VmThrowException(pCtx,"OutOfBoundsException",
+			"Seek position %qd is out of range",iOffset);
+	}
+	pMap->pCur = pMap->pFirst;
+	for( i = 0 ; i < iOffset && pMap->pCur ; ++i ){
+		pMap->pCur = pMap->pCur->pPrev; /* insertion order: pFirst, then the pPrev chain */
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ArrayIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_hashmap *pMap;
+	sxi32 rc = SplInitStore(pCtx,pThis,nArg > 0 ? apArg[0] : 0,
+		"ArrayIterator::__construct");
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( pThis && nArg > 1 ){
+		PH7_NativeSetAttrInt(pVm,pThis,SPL_F,ph7_value_to_int(apArg[1]));
+	}
+	pMap = SplStore(pVm,pThis);
+	if( pMap ){
+		pMap->pCur = pMap->pFirst; /* reset($this->__d) */
+	}
+	return PH7_OK;
+}
+/* ArrayObject */
+static int vm_builtin_ArrayObject_setIteratorClass(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName;
+	int nName;
+	if( pThis == 0 || nArg < 1 ){
+		return PH7_OK;
+	}
+	zName = ph7_value_to_string(apArg[0],&nName);
+	if( nName != (int)sizeof("ArrayIterator")-1
+	 || SyMemcmp(zName,"ArrayIterator",sizeof("ArrayIterator")-1) != 0 ){
+		ph7_class *pClass = PH7_VmExtractClass(pVm,zName,(sxu32)nName,FALSE,0);
+		ph7_class *pBase = PH7_VmExtractClass(pVm,"ArrayIterator",
+			sizeof("ArrayIterator")-1,FALSE,0);
+		if( pClass == 0 || pBase == 0 || pClass == pBase
+		 || !PH7_VmInstanceOf(pClass,pBase) ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"ArrayObject::setIteratorClass(): Argument #1 ($iteratorClass) must be "
+				"a class name derived from ArrayIterator, %.*s given",nName,zName);
+		}
+	}
+	PH7_NativeSetAttrStr(pVm,pThis,SPL_IT,zName,nName);
+	return PH7_OK;
+}
+static int vm_builtin_ArrayObject_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi32 rc = SplInitStore(pCtx,pThis,nArg > 0 ? apArg[0] : 0,
+		"ArrayObject::__construct");
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( pThis && nArg > 1 ){
+		PH7_NativeSetAttrInt(pVm,pThis,SPL_F,ph7_value_to_int(apArg[1]));
+	}
+	if( nArg > 2 ){
+		return vm_builtin_ArrayObject_setIteratorClass(pCtx,1,&apArg[2]);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ArrayObject_exchangeArray(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,SPL_D) : 0;
+	sxi32 rc;
+	if( pSlot ){
+		ph7_result_value(pCtx,pSlot); /* the OLD store is the return value */
+	}
+	rc = SplInitStore(pCtx,pThis,nArg > 0 ? apArg[0] : 0,"ArrayObject::exchangeArray");
+	return rc;
+}
+static int vm_builtin_ArrayObject_getIteratorClass(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName = 0;
+	int nName = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		PH7_NativeAttrStr(pThis,SPL_IT,&zName,&nName);
+	}
+	ph7_result_string(pCtx,nName > 0 ? zName : "ArrayIterator",nName > 0 ? nName : -1);
+	return PH7_OK;
+}
+static int vm_builtin_ArrayObject_getIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pIt;
+	ph7_class *pClass;
+	const char *zName = 0;
+	int nName = 0;
+	ph7_value *pSlot;
+	ph7_class_method *pCons;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	PH7_NativeAttrStr(pThis,SPL_IT,&zName,&nName);
+	if( nName < 1 ){
+		zName = "ArrayIterator";
+		nName = (int)sizeof("ArrayIterator")-1;
+	}
+	pClass = PH7_VmExtractClass(pVm,zName,(sxu32)nName,FALSE,0);
+	if( pClass == 0 ){
+		return PH7_OK;
+	}
+	pIt = PH7_NewClassInstance(pVm,pClass);
+	if( pIt == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	pIt->iRef++;
+	pSlot = SplStoreSlot(pVm,pThis);
+	pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
+	if( pCons && pSlot ){
+		/* `new $c($this->__d)`: the iterator gets a COPY of the store, as the PHP did —
+		 * a user subclass of ArrayIterator runs its own constructor here. */
+		ph7_value *apCtor[1];
+		apCtor[0] = pSlot;
+		PH7_VmCallClassMethod(pVm,pIt,pCons,0,1,apCtor);
+	}
+	PH7_NativeResultObject(pCtx,pIt);
+	PH7_ClassInstanceUnref(pIt);
+	return PH7_OK;
+}
+/*
+ * ARRAY_AS_PROPS (flag 2) reaches the store through the four magic accessors, which is how
+ * the PHP did it. php has no such methods — it implements the flag in its property handler,
+ * so `getMethods()` does not list them (a surface divergence carried over, §7.4).
+ */
+static int vm_builtin_ArrayObject_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pNode = 0;
+	if( pThis == 0 || nArg < 1 || (PH7_NativeAttrInt(pThis,SPL_F) & 2) == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pMap = SplStore(pVm,pThis);
+	if( pMap && PH7_HashmapLookup(pMap,apArg[0],&pNode) == SXRET_OK ){
+		ph7_result_value(pCtx,(ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx));
+		return PH7_OK;
+	}
+	/* `?? null`: a missing key must not raise the undefined-key warning from in here —
+	 * php reports the missing PROPERTY, and PHL's magic-read path already does. */
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+static int vm_builtin_ArrayObject_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_hashmap *pMap;
+	if( pThis == 0 || nArg < 2 || (PH7_NativeAttrInt(pThis,SPL_F) & 2) == 0 ){
+		return PH7_OK;
+	}
+	pMap = SplStore(pCtx->pVm,pThis);
+	if( pMap ){
+		PH7_HashmapInsert(pMap,apArg[0],apArg[1]);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ArrayObject_isset(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pNode = 0;
+	int bSet = 0;
+	if( pThis && nArg > 0 && (PH7_NativeAttrInt(pThis,SPL_F) & 2) ){
+		pMap = SplStore(pVm,pThis);
+		if( pMap && PH7_HashmapLookup(pMap,apArg[0],&pNode) == SXRET_OK ){
+			ph7_value *pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
+			bSet = pVal && (pVal->iFlags & MEMOBJ_NULL) == 0; /* isset(), not exists */
+		}
+	}
+	ph7_result_bool(pCtx,bSet);
+	return PH7_OK;
+}
+static int vm_builtin_ArrayObject_unset(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pNode = 0;
+	if( pThis && nArg > 0 && (PH7_NativeAttrInt(pThis,SPL_F) & 2) ){
+		pMap = SplStore(pCtx->pVm,pThis);
+		if( pMap && PH7_HashmapLookup(pMap,apArg[0],&pNode) == SXRET_OK ){
+			PH7_HashmapUnlinkNode(pNode,TRUE);
+		}
+	}
+	return PH7_OK;
+}
+/*
+ * Declare both classes plus SeekableIterator, which ArrayIterator implements and which
+ * therefore cannot wait for the chunk. RecursiveArrayIterator still lives there and extends
+ * ArrayIterator, so this install has to run BEFORE the chunk is evaluated.
+ */
+static sxi32 VmInstallSplStore(ph7_vm *pVm)
+{
+	static const PH7_NativeMethodDef aSeekMethod[] = {
+		{ "seek", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "int $offset", 0, 0 },
+	};
+	static const PH7_NativePropDef aItProp[] = {
+		{ SPL_D, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ SPL_F, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
+	};
+	static const PH7_NativePropDef aObjProp[] = {
+		{ SPL_D,  PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ SPL_F,  PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
+		{ SPL_IT, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "ArrayIterator", 0.0 } },
+	};
+	static const PH7_NativeConstDef aConst[] = {
+		{ "STD_PROP_LIST",  PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 1, 0, 0.0 },
+		{ "ARRAY_AS_PROPS", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 2, 0, 0.0 },
+	};
+	/* php's declaration order, which is the order Reflection reports. */
+	static const PH7_NativeMethodDef aItMethod[] = {
+		{ "__construct",  PH7_MOD_PUBLIC, "object|array $array = [], int $flags = 0", 0,
+		  vm_builtin_ArrayIterator_construct },
+		{ "offsetExists", PH7_MOD_PUBLIC, "mixed $key", 0, vm_builtin_SplStore_offsetExists },
+		{ "offsetGet",    PH7_MOD_PUBLIC, "mixed $key", 0, vm_builtin_SplStore_offsetGet },
+		{ "offsetSet",    PH7_MOD_PUBLIC, "mixed $key, mixed $value", 0, vm_builtin_SplStore_offsetSet },
+		{ "offsetUnset",  PH7_MOD_PUBLIC, "mixed $key", 0, vm_builtin_SplStore_offsetUnset },
+		{ "append",       PH7_MOD_PUBLIC, "mixed $value", 0, vm_builtin_SplStore_append },
+		{ "getArrayCopy", PH7_MOD_PUBLIC, "", 0, vm_builtin_SplStore_getArrayCopy },
+		{ "count",        PH7_MOD_PUBLIC, "", 0, vm_builtin_SplStore_count },
+		{ "getFlags",     PH7_MOD_PUBLIC, "", 0, vm_builtin_SplStore_getFlags },
+		{ "setFlags",     PH7_MOD_PUBLIC, "int $flags", 0, vm_builtin_SplStore_setFlags },
+		{ "asort",        PH7_MOD_PUBLIC, "int $flags = 0", 0, vm_builtin_SplStore_asort },
+		{ "ksort",        PH7_MOD_PUBLIC, "int $flags = 0", 0, vm_builtin_SplStore_ksort },
+		{ "uasort",       PH7_MOD_PUBLIC, "callable $callback", 0, vm_builtin_SplStore_uasort },
+		{ "uksort",       PH7_MOD_PUBLIC, "callable $callback", 0, vm_builtin_SplStore_uksort },
+		{ "natsort",      PH7_MOD_PUBLIC, "", 0, vm_builtin_SplStore_natsort },
+		{ "natcasesort",  PH7_MOD_PUBLIC, "", 0, vm_builtin_SplStore_natcasesort },
+		{ "current",      PH7_MOD_PUBLIC, "", 0, vm_builtin_ArrayIterator_current },
+		{ "key",          PH7_MOD_PUBLIC, "", 0, vm_builtin_ArrayIterator_key },
+		{ "next",         PH7_MOD_PUBLIC, "", 0, vm_builtin_ArrayIterator_next },
+		{ "rewind",       PH7_MOD_PUBLIC, "", 0, vm_builtin_ArrayIterator_rewind },
+		{ "valid",        PH7_MOD_PUBLIC, "", 0, vm_builtin_ArrayIterator_valid },
+		{ "seek",         PH7_MOD_PUBLIC, "int $offset", 0, vm_builtin_ArrayIterator_seek },
+	};
+	static const PH7_NativeMethodDef aObjMethod[] = {
+		{ "__construct",      PH7_MOD_PUBLIC,
+		  "object|array $array = [], int $flags = 0, string $iteratorClass = 'ArrayIterator'", 0,
+		  vm_builtin_ArrayObject_construct },
+		{ "offsetExists",     PH7_MOD_PUBLIC, "mixed $key", 0, vm_builtin_SplStore_offsetExists },
+		{ "offsetGet",        PH7_MOD_PUBLIC, "mixed $key", 0, vm_builtin_SplStore_offsetGet },
+		{ "offsetSet",        PH7_MOD_PUBLIC, "mixed $key, mixed $value", 0, vm_builtin_SplStore_offsetSet },
+		{ "offsetUnset",      PH7_MOD_PUBLIC, "mixed $key", 0, vm_builtin_SplStore_offsetUnset },
+		{ "append",           PH7_MOD_PUBLIC, "mixed $value", 0, vm_builtin_SplStore_append },
+		{ "getArrayCopy",     PH7_MOD_PUBLIC, "", 0, vm_builtin_SplStore_getArrayCopy },
+		{ "count",            PH7_MOD_PUBLIC, "", 0, vm_builtin_SplStore_count },
+		{ "getFlags",         PH7_MOD_PUBLIC, "", 0, vm_builtin_SplStore_getFlags },
+		{ "setFlags",         PH7_MOD_PUBLIC, "int $flags", 0, vm_builtin_SplStore_setFlags },
+		{ "asort",            PH7_MOD_PUBLIC, "int $flags = 0", 0, vm_builtin_SplStore_asort },
+		{ "ksort",            PH7_MOD_PUBLIC, "int $flags = 0", 0, vm_builtin_SplStore_ksort },
+		{ "uasort",           PH7_MOD_PUBLIC, "callable $callback", 0, vm_builtin_SplStore_uasort },
+		{ "uksort",           PH7_MOD_PUBLIC, "callable $callback", 0, vm_builtin_SplStore_uksort },
+		{ "natsort",          PH7_MOD_PUBLIC, "", 0, vm_builtin_SplStore_natsort },
+		{ "natcasesort",      PH7_MOD_PUBLIC, "", 0, vm_builtin_SplStore_natcasesort },
+		{ "exchangeArray",    PH7_MOD_PUBLIC, "object|array $array", 0, vm_builtin_ArrayObject_exchangeArray },
+		{ "getIterator",      PH7_MOD_PUBLIC, "", 0, vm_builtin_ArrayObject_getIterator },
+		{ "setIteratorClass", PH7_MOD_PUBLIC, "string $iteratorClass", 0, vm_builtin_ArrayObject_setIteratorClass },
+		{ "getIteratorClass", PH7_MOD_PUBLIC, "", 0, vm_builtin_ArrayObject_getIteratorClass },
+		{ "__get",            PH7_MOD_PUBLIC, "$name", 0, vm_builtin_ArrayObject_get },
+		{ "__set",            PH7_MOD_PUBLIC, "$name, $value", 0, vm_builtin_ArrayObject_set },
+		{ "__isset",          PH7_MOD_PUBLIC, "$name", 0, vm_builtin_ArrayObject_isset },
+		{ "__unset",          PH7_MOD_PUBLIC, "$name", 0, vm_builtin_ArrayObject_unset },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "SeekableIterator", 0, "Iterator", PH7_CLASS_INTERFACE,
+		  aSeekMethod, SX_ARRAYSIZE(aSeekMethod), 0, 0, 0, 0, 0, 0 },
+		{ "ArrayIterator", 0, "SeekableIterator,ArrayAccess,Countable", 0,
+		  aItMethod, SX_ARRAYSIZE(aItMethod), aConst, SX_ARRAYSIZE(aConst),
+		  aItProp, SX_ARRAYSIZE(aItProp), 0, 0 },
+		{ "ArrayObject", 0, "IteratorAggregate,ArrayAccess,Countable", 0,
+		  aObjMethod, SX_ARRAYSIZE(aObjMethod), aConst, SX_ARRAYSIZE(aConst),
+		  aObjProp, SX_ARRAYSIZE(aObjProp), 0, 0 },
+	};
+	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+}
 static const char zSplLib[] =
-"interface SeekableIterator extends Iterator {"
-" public function seek($offset);"
-"}"
-"trait __SplStoreT {"
-" private $__d = [];"
-" private $__f = 0;"
-" private function __splInitStore($array, $flags, $owner){"
-"  /* $owner is the DECLARING method (php names the declaring class in these"
-"   * diagnostics, so a RecursiveArrayIterator misuse still says"
-"   * ArrayIterator::__construct) */"
-"  if( is_array($array) ){"
-"   $this->__d = $array;"
-"  }elseif( is_object($array) ){"
-"  $this->__d = get_object_vars($array);"
-"  }else{"
-"   throw new TypeError($owner . '(): Argument #1 ($array) must be of type"
-" array, ' . get_debug_type($array) . ' given');"
-"  }"
-"  $this->__f = (int)$flags;"
-" }"
-" public function offsetExists($key){ return array_key_exists($key, $this->__d); }"
-" public function offsetGet($key){ return $this->__d[$key]; }"
-" public function offsetSet($key, $value){"
-"  if( $key === null ){ $this->__d[] = $value; }"
-"  else { $this->__d[$key] = $value; }"
-" }"
-" public function offsetUnset($key){ unset($this->__d[$key]); }"
-" public function append($value){ $this->__d[] = $value; }"
-" public function getArrayCopy(){ return $this->__d; }"
-" public function count(){ return count($this->__d); }"
-" public function getFlags(){ return $this->__f; }"
-" public function setFlags($flags){ $this->__f = (int)$flags; }"
-" public function asort($flags = 0){ asort($this->__d); return true; }"
-" public function ksort($flags = 0){ ksort($this->__d); return true; }"
-" public function uasort($callback){ uasort($this->__d, $callback); return true; }"
-" public function uksort($callback){ uksort($this->__d, $callback); return true; }"
-" public function natsort(){ natsort($this->__d); return true; }"
-" public function natcasesort(){ natcasesort($this->__d); return true; }"
-"}"
-"class ArrayIterator implements SeekableIterator, ArrayAccess, Countable {"
-" use __SplStoreT;"
-" const STD_PROP_LIST = 1;"
-" const ARRAY_AS_PROPS = 2;"
-" public function __construct($array = [], $flags = 0){"
-"  $this->__splInitStore($array, $flags, 'ArrayIterator::__construct');"
-"  reset($this->__d);"
-" }"
-" public function current(){"
-"  if( key($this->__d) === null ){ return null; }"
-"  return current($this->__d);"
-" }"
-" public function key(){ return key($this->__d); }"
-" public function next(){ next($this->__d); }"
-" public function rewind(){ reset($this->__d); }"
-" public function valid(){ return key($this->__d) !== null; }"
-" public function seek($offset){"
-"  $offset = (int)$offset;"
-"  if( $offset < 0 || $offset >= count($this->__d) ){"
-"   throw new OutOfBoundsException('Seek position ' . $offset . ' is out of range');"
-"  }"
-"  reset($this->__d);"
-"  for( $i = 0; $i < $offset; $i++ ){ next($this->__d); }"
-" }"
-"}"
-"class ArrayObject implements IteratorAggregate, ArrayAccess, Countable {"
-" use __SplStoreT;"
-" const STD_PROP_LIST = 1;"
-" const ARRAY_AS_PROPS = 2;"
-" private $__it = 'ArrayIterator';"
-" public function __construct($array = [], $flags = 0, $iteratorClass = 'ArrayIterator'){"
-"  $this->__splInitStore($array, $flags, 'ArrayObject::__construct');"
-"  if( $iteratorClass !== 'ArrayIterator' ){ $this->setIteratorClass($iteratorClass); }"
-" }"
-" public function getIterator(){"
-"  $c = $this->__it;"
-"  return new $c($this->__d);"
-" }"
-" public function exchangeArray($array){"
-"  $old = $this->__d;"
-"  $this->__splInitStore($array, $this->__f, 'ArrayObject::exchangeArray');"
-"  return $old;"
-" }"
-" public function setIteratorClass($iteratorClass){"
-"  $c = (string)$iteratorClass;"
-"  if( $c !== 'ArrayIterator'"
-"   && (!class_exists($c) || !is_subclass_of($c, 'ArrayIterator')) ){"
-"   throw new TypeError('ArrayObject::setIteratorClass(): Argument #1"
-" ($iteratorClass) must be a class name derived from ArrayIterator, ' . $c . ' given');"
-"  }"
-"  $this->__it = $c;"
-" }"
-" public function getIteratorClass(){ return $this->__it; }"
-" public function __get($name){"
-"  /* ?? null: a missing key must not raise php's undefined-array-key warning"
-"   * from INSIDE the wrapper (php's ArrayObject warns about the PROPERTY, and"
-"   * PHL's own magic-read path already diagnoses that) */"
-"  if( $this->__f & 2 ){ return $this->__d[$name] ?? null; }"
-"  return null;"
-" }"
-" public function __set($name, $value){"
-"  if( $this->__f & 2 ){ $this->__d[$name] = $value; return; }"
-"  $this->{$name} = $value;"
-" }"
-" public function __isset($name){"
-"  if( $this->__f & 2 ){ return isset($this->__d[$name]); }"
-"  return false;"
-" }"
-" public function __unset($name){"
-"  if( $this->__f & 2 ){ unset($this->__d[$name]); }"
-" }"
-"}"
 "interface OuterIterator extends Iterator {"
 " public function getInnerIterator();"
 "}"
@@ -1526,6 +2051,12 @@ static const char zSplLib[] =
 PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)
 {
 	sxi32 rc = VmInstallWeak(&(*pVm));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* Before the chunk, not after: `RecursiveArrayIterator extends ArrayIterator` is
+	 * still PHP, and the compiler has to find the native class it extends. */
+	rc = VmInstallSplStore(&(*pVm));
 	if( rc != SXRET_OK ){
 		return rc;
 	}

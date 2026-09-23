@@ -1261,6 +1261,7 @@ struct ph7_class_attr
 #define PH7_MOD_PRIVATE    0x02
 #define PH7_MOD_STATIC     0x04
 #define PH7_MOD_FINAL      0x08
+#define PH7_MOD_ABSTRACT   0x10 /* No body: an interface's method, or an abstract declaration */
 /* Literal kinds a native class constant may carry */
 #define PH7_NATIVE_VAL_NULL   0
 #define PH7_NATIVE_VAL_INT    1

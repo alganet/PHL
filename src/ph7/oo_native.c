@@ -273,7 +273,8 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallMethod(
 	}
 	pMeth = PH7_NewClassMethod(&(*pVm),pClass,&sName,0,
 		NativeProtection(pDef->iMods),
-		(pDef->iMods & PH7_MOD_FINAL) ? PH7_CLASS_ATTR_FINAL : 0,
+		((pDef->iMods & PH7_MOD_FINAL) ? PH7_CLASS_ATTR_FINAL : 0)
+		| ((pDef->iMods & PH7_MOD_ABSTRACT) ? PH7_CLASS_ATTR_ABSTRACT : 0),
 		iFuncFlags);
 	if( pMeth == 0 ){
 		return SXERR_MEM;
@@ -285,6 +286,25 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallMethod(
 	if( pDef->iMods & PH7_MOD_STATIC ){
 		pMeth->iFlags |= PH7_CLASS_ATTR_STATIC;
 		pMeth->sFunc.iFlags |= VM_FUNC_NATIVE_STATIC;
+	}
+	/* An ABSTRACT method has no body to install — an INTERFACE's methods are the
+	 * reason the builder needs the case at all (`SeekableIterator::seek()`), and
+	 * php reports them with their declared signature like any other. The dispatch
+	 * never reaches one: OP_CALL and OP_MEMBER both refuse an abstract method
+	 * ("Cannot call abstract method C::m()") before they look at a body. */
+	if( pDef->iMods & PH7_MOD_ABSTRACT ){
+		if( pDef->zSig ){
+			rc = PH7_NewForeignFunction(&(*pVm),&sName,pDef->xFunc,pUserData,&pNative);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+			pNative->zSig = pDef->zSig;
+			if( pDef->zRet && pDef->zRet[0] ){
+				pNative->zRet = pDef->zRet;
+			}
+			pMeth->sFunc.pNative = pNative;
+		}
+		return PH7_ClassInstallMethod(pClass,pMeth);
 	}
 	/* The C body. The diagnostic name is the qualified one php would print. */
 	SyBufferFormat(zQual,sizeof(zQual),"%z::%s",&pClass->sName,pDef->zName);
