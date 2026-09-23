@@ -4494,6 +4494,7 @@ PH7_PRIVATE ph7_value * PH7_ContextThisValue(ph7_context *pCtx);
 PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream,const char *zFile,
 	int iFlags,int use_include,ph7_value *pResource,int bPushInclude,int *pNew);
 PH7_PRIVATE sxi32 PH7_StreamReadWholeFile(void *pHandle,const ph7_io_stream *pStream,SyBlob *pOut);
+PH7_PRIVATE int PH7_VfsAppendFile(ph7_context *pCtx,const char *zFile,const void *pData,int nLen);
 PH7_PRIVATE void PH7_StreamCloseHandle(const ph7_io_stream *pStream,void *pHandle);
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 PH7_PRIVATE const char * PH7_ExtractDirName(const char *zPath,int nByte,int *pLen);

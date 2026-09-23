@@ -236,38 +236,86 @@ PH7_PRIVATE int vm_builtin_error_reporting(ph7_context *pCtx,int nArg,ph7_value 
  *   The extra headers. It's used when the message_type parameter is set to 1
  * Return
  *  TRUE on success or FALSE on failure.
- * NOTE:
- *  Actually,PH7 does not care about the given parameters,all this function does
- *  is to invoke any user callback registered using the PH7_VM_CONFIG_ERR_LOG_HANDLER
- *  configuration directive (refer to the official documentation for more information).
- *  Otherwise this function is no-op.
+ *
+ * This used to invoke the PH7_VM_CONFIG_ERR_LOG_HANDLER embedder callback and
+ * NOTHING else: with no callback installed — which is every CLI run — the whole
+ * function was a no-op that answered TRUE. `error_log($msg)` printed nothing,
+ * `error_log($msg, 3, $file)` wrote no file and still said it had, and a
+ * destination that could not be opened answered TRUE as well. Every "log this
+ * and carry on" call in a program silently disappeared, which is the one thing
+ * a logging call must not do.
+ *
+ * php's own routing, which is what it does now: type 3 APPENDS the message
+ * verbatim to $destination (no newline added, no timestamp) and answers FALSE
+ * with the open warning when it cannot; type 2 is php's ValueError; type 1 is
+ * mail(), which this engine has no transport for, so it answers FALSE rather
+ * than claiming a delivery; and every other value — 0, 4, and anything
+ * unrecognised, all of which php sends to the SAPI logger — writes the message
+ * plus a newline to the diagnostics stream. The embedder callback still wins
+ * when one is installed: that is what it is for.
  */
 PH7_PRIVATE int vm_builtin_error_log(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zMessage,*zDest,*zHeader;
 	ph7_vm *pVm = pCtx->pVm;
-	int iType = 0;
+	int iType = 0, nMsg = 0, nDest = 0;
 	if( nArg < 1 ){
 		/* Missing log message,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	if( pVm->xErrLog  ){
-		/* Invoke the user callback */
-		zMessage = ph7_value_to_string(apArg[0],0);
-		zDest = zHeader = ""; /* Empty string */
-		if( nArg > 1 ){
-			iType = ph7_value_to_int(apArg[1]);
-			if( nArg > 2 ){
-				zDest = ph7_value_to_string(apArg[2],0);
-				if( nArg > 3 ){
-					zHeader = ph7_value_to_string(apArg[3],0);
-				}
-			}
-		}
-		pVm->xErrLog(zMessage,iType,zDest,zHeader);
+	zMessage = ph7_value_to_string(apArg[0],&nMsg);
+	zDest = zHeader = ""; /* Empty string */
+	if( nArg > 1 ){
+		iType = ph7_value_to_int(apArg[1]);
 	}
-	/* Retun TRUE */
+	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){
+		zDest = ph7_value_to_string(apArg[2],&nDest);
+	}
+	if( nArg > 3 && !ph7_value_is_null(apArg[3]) ){
+		zHeader = ph7_value_to_string(apArg[3],0);
+	}
+	if( iType == 2 ){
+		/* php removed the TCP/IP destination in 8.0 and refuses the type outright. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"TCP/IP option is not available for error logging");
+	}
+	if( pVm->xErrLog ){
+		/* An embedder took the routing over (PH7_VM_CONFIG_ERR_LOG_HANDLER). */
+		pVm->xErrLog(zMessage,iType,zDest,zHeader);
+		ph7_result_bool(pCtx,1);
+		return PH7_OK;
+	}
+	if( iType == 1 ){
+		/* mail(): no transport in this engine, so the message did NOT go out.
+		 * Answering TRUE for it was the old no-op's worst face. */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+	if( iType == 3 ){
+		/* Appended VERBATIM: php adds neither a newline nor a timestamp here. */
+		if( PH7_VfsAppendFile(pCtx,zDest,zMessage,nMsg) != PH7_OK ){
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		ph7_result_bool(pCtx,1);
+		return PH7_OK;
+	}
+#endif /* PH7_DISABLE_BUILTIN_FUNC */
+	/* 0 (the configured log), 4 (the SAPI logger) and every other value: the
+	 * diagnostics stream, message plus a newline — php's CLI shape with no
+	 * `error_log` ini set. */
+	{
+		ph7_output_consumer *pCons = pVm->sVmErrConsumer.xConsumer
+			? &pVm->sVmErrConsumer : &pVm->sVmConsumer;
+		SyBlob sOut;
+		SyBlobInit(&sOut,&pVm->sAllocator);
+		SyBlobAppend(&sOut,zMessage,(sxu32)nMsg);
+		SyBlobAppend(&sOut,"\n",sizeof(char));
+		pCons->xConsumer(SyBlobData(&sOut),SyBlobLength(&sOut),pCons->pUserData);
+		SyBlobRelease(&sOut);
+	}
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }

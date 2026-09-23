@@ -1637,6 +1637,42 @@ PH7_PRIVATE int PH7_builtin_file_get_contents(ph7_context *pCtx,int nArg,ph7_val
  * Return
  *  The function returns the number of bytes that were written to the file, or FALSE on failure.
  */
+/*
+ * Append a buffer to a file, creating it when absent, and raise php's open
+ * warning (`f(/nope): Failed to open stream: …`) under the CALLING builtin's
+ * name when it cannot be opened. Returns PH7_OK or -1.
+ *
+ * This is error_log()'s message_type 3, factored here because that is where the
+ * stream device, the open flags and the warning shape already live.
+ */
+PH7_PRIVATE int PH7_VfsAppendFile(ph7_context *pCtx,const char *zFile,const void *pData,int nLen)
+{
+	const ph7_io_stream *pStream;
+	void *pHandle;
+	int nPath;
+	if( zFile == 0 || zFile[0] == 0 ){
+		VfsThrowOpenWarning(pCtx,zFile);
+		return -1;
+	}
+	nPath = (int)SyStrlen(zFile);
+	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nPath);
+	if( pStream == 0 || pStream->xWrite == 0 ){
+		VfsThrowOpenWarning(pCtx,zFile);
+		return -1;
+	}
+	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,
+		PH7_IO_OPEN_CREATE|PH7_IO_OPEN_RDWR|PH7_IO_OPEN_APPEND,FALSE,0,FALSE,0);
+	if( pHandle == 0 ){
+		VfsThrowOpenWarning(pCtx,zFile);
+		return -1;
+	}
+	if( nLen > 0 && pStream->xWrite(pHandle,pData,nLen) < 0 ){
+		PH7_StreamCloseHandle(pStream,pHandle);
+		return -1;
+	}
+	PH7_StreamCloseHandle(pStream,pHandle);
+	return PH7_OK;
+}
 PH7_PRIVATE int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	int use_include  = FALSE;
