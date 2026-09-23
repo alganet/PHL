@@ -1141,7 +1141,9 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 	 * type-based must not be pre-empted here, or their message is lost. Same rule
 	 * the aBuiltinArity[] table follows: a builtin that already says what php says
 	 * stays off the shared screen. get_class_vars() takes any stringifiable value
-	 * and reports "must be a valid class name, Array given".
+	 * and reports "must be a valid class name, Array given"; get_class_methods() is
+	 * the same shape with php's other wording ("must be an object or a valid class
+	 * name, int given") — the declared `object|string` never appears in either.
 	 *
 	 * strtr() is here for a structural reason: php declares it as two OVERLOADS
 	 * dispatched on arity — strtr(string, array) and strtr(string, string, string)
@@ -1175,8 +1177,8 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 	 * whose TypeError says `must be of type object`. A native method's diagnostic
 	 * name is the QUALIFIED one, so the row below matches it and nothing else.
 	 */
-	static const char *azSelfChecked[] = { "get_class_vars", "strtr", "implode", "join",
-		"number_format", "RecursiveIteratorIterator::__construct" };
+	static const char *azSelfChecked[] = { "get_class_vars", "get_class_methods", "strtr",
+		"implode", "join", "number_format", "RecursiveIteratorIterator::__construct" };
 	const char *zSig = pFunc->zSig;
 	const char *zCur, *zEnd;
 	int iArg = 0;

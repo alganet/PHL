@@ -562,9 +562,17 @@ PH7_PRIVATE int vm_builtin_get_class_methods(ph7_context *pCtx,int nArg,ph7_valu
 		pClass = PH7_VmExtractClassFromValue(pCtx->pVm,apArg[0]);
 	}
 	if( pClass == 0 ){
-		/* No such class,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		/* php screens the VALUE, not the type: anything that does not resolve to a
+		 * class — a name nothing declares, an int, an array, null — is ONE TypeError
+		 * naming the type given. PHL answered NULL for most of them (and the shared
+		 * ZPP screen's `must be of type object|string` for the rest), so a typo in a
+		 * class name silently listed nothing. This is why get_class_methods() joins
+		 * get_class_vars() on the self-checked list in vm_arg_check.c. */
+		char zGiven[64];
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"get_class_methods(): Argument #1 ($object_or_class) must be an object "
+			"or a valid class name, %s given",
+			nArg > 0 ? VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)) : "no value");
 	}
 	/* Create a new array  */
 	pArray = ph7_context_new_array(pCtx);
@@ -610,7 +618,26 @@ PH7_PRIVATE int vm_builtin_get_class_methods(ph7_context *pCtx,int nArg,ph7_valu
 			for( n = 0; n < SySetUsed(&aTmp); n++ ){
 				sxu32 nPick = (pLevel == pClass) ? (SySetUsed(&aTmp) - 1 - n) : n;
 				ph7_class_method *pMethod = (ph7_class_method *)apEntry[nPick]->pUserData;
-				ph7_class *pDecl = (ph7_class *)pMethod->sFunc.pUserData;
+				/* The level a method belongs to is the class that OWNS it — for a trait
+				 * method the class that composed it, not the trait. Reading sFunc.pUserData
+				 * raw put every trait method on the CLASS's own level even when a BASE was
+				 * the one that used the trait, so a subclass listed its inherited trait
+				 * methods before its own. */
+				ph7_class *pDecl = PH7_VmMethodScopeName(pCtx->pVm,pClass,pMethod);
+				/* php lists only what the CALLING scope could reach: public always,
+				 * protected within the hierarchy, private only from the class that
+				 * declares it. PHL listed the whole table, so global-scope code was handed
+				 * every private and protected name a class holds. Same decision
+				 * get_class_vars() already makes for properties. */
+				if( pMethod->iProtection != PH7_CLASS_PROT_PUBLIC ){
+					SyString sMName;
+					SyStringInitFromBuf(&sMName,(const char *)apEntry[nPick]->pKey,
+						apEntry[nPick]->nKeyLen);
+					if( !PH7_VmClassMemberAccess(pCtx->pVm,pDecl,&sMName,
+							pMethod->iProtection,FALSE) ){
+						continue;
+					}
+				}
 				if( pDecl != pLevel ){
 					/* A declarer outside the base chain (a used trait, or none)
 					 * counts as the class's own level, like php. */
