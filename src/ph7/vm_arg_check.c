@@ -613,6 +613,7 @@ static const struct VmBuiltinSig {
 	{ "headers_sent", "&$filename = NULL, &$line = NULL", "bool" },
 	{ "hexdec", "string $hex_string", "int|float" },
 	{ "html_entity_decode", "string $string, int $flags = 11, ?string $encoding = NULL", "string" },
+	{ "http_build_query", "object|array $data, string $numeric_prefix = '', ?string $arg_separator = null, int $encoding_type = 1", "string" },
 	{ "htmlentities", "string $string, int $flags = 11, ?string $encoding = NULL, bool $double_encode = true", "string" },
 	{ "htmlspecialchars", "string $string, int $flags = 11, ?string $encoding = NULL, bool $double_encode = true", "string" },
 	{ "htmlspecialchars_decode", "string $string, int $flags = 11", "string" },
@@ -1263,6 +1264,17 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 				}
 			}
 			if( zGiven ){
+				/* php's `object|array` parameters come from ONE ZPP macro
+				 * (Z_PARAM_ARRAY_OR_OBJECT) and it names only "array" in the
+				 * refusal — array_walk(null,…), current(null) and
+				 * http_build_query(null) all say "must be of type array". The
+				 * SCALAR branch above already encodes that rule by declining to
+				 * screen at all; the null and resource branches do screen, so the
+				 * reported type has to be corrected here instead. */
+				if( VmSigTypeHas(zType,nType,"array") && VmSigTypeHas(zType,nType,"object") ){
+					zType = "array";
+					nType = (int)sizeof("array")-1;
+				}
 				return PH7_VmThrowException(pCtx,"TypeError",
 					"%z(): Argument #%d ($%.*s) must be of type %.*s, %s given",
 					&pFunc->sName,iArg + 1,nName,zName,nType,zType,zGiven);

@@ -2666,6 +2666,322 @@ PH7_PRIVATE int PH7_builtin_rawurlencode(ph7_context *pCtx,int nArg,ph7_value **
 	SyUriEncodeRaw(zIn,(sxu32)nLen,Consumer,pCtx);
 	return PH7_OK;
 }
+/* --- http_build_query (php's ext/standard/http.c) ---------------------- */
+
+/*
+ * The chain of hashmaps and instances the walk is currently INSIDE. This is
+ * php's GC_TRY_PROTECT_RECURSION without a mark bit: a container that is its own
+ * ancestor contributes nothing, so `$a['self'] = &$a` builds "a=1" rather than
+ * recursing forever. PHL had no guard here at all and ran the allocator out of
+ * memory on exactly that input.
+ */
+typedef struct http_query_frame http_query_frame;
+struct http_query_frame {
+	const void *pWalked;                  /* the ph7_hashmap / ph7_class_instance */
+	const http_query_frame *pParent;
+};
+typedef struct http_query_state http_query_state;
+struct http_query_state {
+	ph7_context *pCtx;
+	SyBlob *pOut;      /* the form string built so far */
+	const char *zSep;  /* argument separator */
+	sxu32 nSep;
+	int bRaw;          /* PHP_QUERY_RFC3986 rather than RFC1738 */
+	int nDepth;
+	int rc;            /* PH7_OK, or the status of a throw in flight */
+};
+/*
+ * php has no fixed nesting limit here -- it asks the platform whether the C
+ * stack is nearly gone and throws "Maximum call stack size reached." when it is.
+ * PHL walks the same tree on the same C stack, so it needs a bound; this one is
+ * far above any query string anyone builds and reports php's own error.
+ */
+#define HTTP_QUERY_MAX_DEPTH 512
+
+static int HttpQueryIsAncestor(const http_query_frame *pFrame,const void *pWalked)
+{
+	while( pFrame ){
+		if( pFrame->pWalked == pWalked ){
+			return 1;
+		}
+		pFrame = pFrame->pParent;
+	}
+	return 0;
+}
+static int HttpQueryBlobConsumer(const void *pData,unsigned int nLen,void *pUserData)
+{
+	return (int)SyBlobAppend((SyBlob *)pUserData,pData,(sxu32)nLen);
+}
+static void HttpQueryEncodeTo(SyBlob *pOut,int bRaw,const char *zIn,sxu32 nByte)
+{
+	if( nByte < 1 ){
+		return;
+	}
+	if( bRaw ){
+		SyUriEncodeRaw(zIn,nByte,HttpQueryBlobConsumer,pOut);
+	}else{
+		SyUriEncode(zIn,nByte,HttpQueryBlobConsumer,pOut);
+	}
+}
+static int HttpQueryWalk(http_query_state *p,ph7_value *pData,
+	const char *zNumPrefix,sxu32 nNumPrefix,
+	const char *zKeyPrefix,sxu32 nKeyPrefix,
+	const http_query_frame *pParent);
+
+/*
+ * php_url_encode_scalar(): one "<key_prefix><key>[%5D]=<value>" leaf, preceded
+ * by the separator once anything has been written.
+ */
+static void HttpQueryScalar(http_query_state *p,
+	int bIntKey,sxi64 iKey,const char *zKey,sxu32 nKey,
+	ph7_value *pVal,
+	const char *zNumPrefix,sxu32 nNumPrefix,
+	const char *zKeyPrefix,sxu32 nKeyPrefix)
+{
+	if( SyBlobLength(p->pOut) > 0 ){
+		SyBlobAppend(p->pOut,p->zSep,p->nSep);
+	}
+	if( nKeyPrefix > 0 ){
+		SyBlobAppend(p->pOut,zKeyPrefix,nKeyPrefix);
+	}
+	if( bIntKey ){
+		/* The numeric prefix is appended RAW -- php never url-encodes it, which
+		 * is why http_build_query([1,2], "a b") answers "a b0=1&a b1=2". The
+		 * chunk encoded it and answered "a+b0=1". */
+		if( nNumPrefix > 0 ){
+			SyBlobAppend(p->pOut,zNumPrefix,nNumPrefix);
+		}
+		SyBlobFormat(p->pOut,"%qd",iKey);
+	}else{
+		HttpQueryEncodeTo(p->pOut,p->bRaw,zKey,nKey);
+	}
+	if( nKeyPrefix > 0 ){
+		SyBlobAppend(p->pOut,"%5D",sizeof("%5D")-1);
+	}
+	SyBlobAppend(p->pOut,"=",sizeof(char));
+	if( ph7_value_is_bool(pVal) ){
+		/* php writes the digit itself: to_string() would give "" for false. */
+		SyBlobAppend(p->pOut,ph7_value_to_bool(pVal) ? "1" : "0",sizeof(char));
+	}else{
+		int nVal;
+		const char *zVal = ph7_value_to_string(pVal,&nVal);
+		HttpQueryEncodeTo(p->pOut,p->bRaw,zVal,(sxu32)nVal);
+	}
+}
+/*
+ * Build the key prefix a nested container's members carry: php closes the
+ * PREVIOUS bracket and opens the next one in the same step, so a second level
+ * appends "%5D%5B" where the first opened with "%5B".
+ */
+static void HttpQueryNestPrefix(http_query_state *p,SyBlob *pPrefix,
+	int bIntKey,sxi64 iKey,const char *zKey,sxu32 nKey,
+	const char *zNumPrefix,sxu32 nNumPrefix,
+	const char *zKeyPrefix,sxu32 nKeyPrefix)
+{
+	if( nKeyPrefix > 0 ){
+		SyBlobAppend(pPrefix,zKeyPrefix,nKeyPrefix);
+	}else if( bIntKey && nNumPrefix > 0 ){
+		SyBlobAppend(pPrefix,zNumPrefix,nNumPrefix);
+	}
+	if( bIntKey ){
+		SyBlobFormat(pPrefix,"%qd",iKey);
+	}else{
+		HttpQueryEncodeTo(pPrefix,p->bRaw,zKey,nKey);
+	}
+	SyBlobAppend(pPrefix,nKeyPrefix > 0 ? "%5D%5B" : "%5B",
+		nKeyPrefix > 0 ? sizeof("%5D%5B")-1 : sizeof("%5B")-1);
+}
+/*
+ * One (key, value) pair, whichever container it came from. php skips NULL and
+ * RESOURCE outright, descends into an array or a non-enum object, and treats
+ * everything else -- a backed enum case included -- as a scalar.
+ */
+static void HttpQueryPair(http_query_state *p,
+	int bIntKey,sxi64 iKey,const char *zKey,sxu32 nKey,
+	ph7_value *pVal,
+	const char *zNumPrefix,sxu32 nNumPrefix,
+	const char *zKeyPrefix,sxu32 nKeyPrefix,
+	const http_query_frame *pParent)
+{
+	int bDescend;
+	if( p->rc != PH7_OK ){
+		return;
+	}
+	if( ph7_value_is_null(pVal) || ph7_value_is_resource(pVal) ){
+		return;
+	}
+	bDescend = ph7_value_is_array(pVal);
+	if( ph7_value_is_object(pVal) ){
+		ph7_class_instance *pInst = (ph7_class_instance *)pVal->x.pOther;
+		if( (pInst->pClass->iFlags & PH7_CLASS_ENUM) == 0 ){
+			bDescend = 1;
+		}else{
+			/* php compares an enum case by its BACKING value here; the chunk
+			 * descended into it and emitted its name/value properties. */
+			ph7_value *pBacking = PH7_EnumCaseBackingValueOf(pInst);
+			if( pBacking == 0 ){
+				p->rc = PH7_VmThrowException(p->pCtx,"ValueError",
+					"Unbacked enum %z cannot be converted to a string",
+					&pInst->pClass->sName);
+				return;
+			}
+			HttpQueryScalar(p,bIntKey,iKey,zKey,nKey,pBacking,
+				zNumPrefix,nNumPrefix,zKeyPrefix,nKeyPrefix);
+			return;
+		}
+	}
+	if( bDescend ){
+		SyBlob sPrefix;
+		SyBlobInit(&sPrefix,&p->pCtx->pVm->sAllocator);
+		HttpQueryNestPrefix(p,&sPrefix,bIntKey,iKey,zKey,nKey,
+			zNumPrefix,nNumPrefix,zKeyPrefix,nKeyPrefix);
+		/* php passes no numeric prefix down: it only ever prefixes a TOP-LEVEL
+		 * integer key. */
+		HttpQueryWalk(p,pVal,0,0,
+			(const char *)SyBlobData(&sPrefix),SyBlobLength(&sPrefix),pParent);
+		SyBlobRelease(&sPrefix);
+		return;
+	}
+	HttpQueryScalar(p,bIntKey,iKey,zKey,nKey,pVal,
+		zNumPrefix,nNumPrefix,zKeyPrefix,nKeyPrefix);
+}
+/* Every visible, non-static, materialized property of an instance, in
+ * declaration order. php asks the CALLER's scope, so http_build_query($this)
+ * from inside the class sees its private members -- the chunk reached them
+ * through a global-scope get_object_vars() and never did. */
+static void HttpQueryWalkObject(http_query_state *p,ph7_class_instance *pThis,
+	const char *zKeyPrefix,sxu32 nKeyPrefix,const http_query_frame *pFrame)
+{
+	SyHashEntry *pEntry;
+	ph7_value sValue;
+	PH7_MemObjInit(pThis->pVm,&sValue);
+	SyHashResetLoopCursor(&pThis->hAttr);
+	while( p->rc == PH7_OK && (pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
+		VmClassAttr *pAttr = (VmClassAttr *)pEntry->pUserData;
+		SyString *pName = &pAttr->pAttr->sName;
+		ph7_value *pValue;
+		if( pAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT) ){
+			continue;
+		}
+		if( pAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL ){
+			/* A virtual hooked property has no backing store, and php reads the
+			 * raw property table here rather than dispatching the get hook. */
+			continue;
+		}
+		if( !PH7_VmClassMemberAccess(pThis->pVm,pThis->pClass,pName,
+				pAttr->pAttr->iProtection,FALSE) ){
+			continue;
+		}
+		pValue = PH7_ClassInstanceExtractAttrValue(pThis,pAttr);
+		if( pValue == 0 ){
+			continue;
+		}
+		PH7_MemObjLoad(pValue,&sValue);
+		HttpQueryPair(p,0,0,SyStringData(pName),SyStringLength(pName),&sValue,
+			0,0,zKeyPrefix,nKeyPrefix,pFrame);
+		PH7_MemObjRelease(&sValue);
+	}
+	PH7_MemObjRelease(&sValue);
+}
+/* php_url_encode_hash_ex() over one array or object. */
+static int HttpQueryWalk(http_query_state *p,ph7_value *pData,
+	const char *zNumPrefix,sxu32 nNumPrefix,
+	const char *zKeyPrefix,sxu32 nKeyPrefix,
+	const http_query_frame *pParent)
+{
+	http_query_frame sFrame;
+	const void *pWalked = pData->x.pOther;
+	if( HttpQueryIsAncestor(pParent,pWalked) ){
+		return PH7_OK;
+	}
+	if( p->nDepth >= HTTP_QUERY_MAX_DEPTH ){
+		p->rc = PH7_VmThrowException(p->pCtx,"Error","Maximum call stack size reached.");
+		return p->rc;
+	}
+	sFrame.pWalked = pWalked;
+	sFrame.pParent = pParent;
+	p->nDepth++;
+	if( ph7_value_is_object(pData) ){
+		HttpQueryWalkObject(p,(ph7_class_instance *)pWalked,zKeyPrefix,nKeyPrefix,&sFrame);
+	}else{
+		ph7_hashmap *pMap = (ph7_hashmap *)pWalked;
+		ph7_hashmap_node *pNode = pMap->pFirst;
+		ph7_value sValue;
+		sxu32 n = pMap->nEntry;
+		PH7_MemObjInit(pMap->pVm,&sValue);
+		/* Insertion order runs pFirst then the pPrev chain (MACRO_LD_PUSH links
+		 * a new node in through pNext, so pNext is the OLDER neighbour). */
+		while( n > 0 && p->rc == PH7_OK ){
+			int bIntKey = (pNode->iType == HASHMAP_INT_NODE);
+			PH7_HashmapExtractNodeValue(pNode,&sValue,FALSE);
+			HttpQueryPair(p,bIntKey,bIntKey ? pNode->xKey.iKey : 0,
+				bIntKey ? 0 : (const char *)SyBlobData(&pNode->xKey.sKey),
+				bIntKey ? 0 : SyBlobLength(&pNode->xKey.sKey),
+				&sValue,zNumPrefix,nNumPrefix,zKeyPrefix,nKeyPrefix,&sFrame);
+			PH7_MemObjRelease(&sValue);
+			pNode = pNode->pPrev;
+			n--;
+		}
+		PH7_MemObjRelease(&sValue);
+	}
+	p->nDepth--;
+	return p->rc;
+}
+/*
+ * string http_build_query(object|array $data, string $numeric_prefix = "",
+ *                         ?string $arg_separator = null,
+ *                         int $encoding_type = PHP_QUERY_RFC1738)
+ *  Generate a URL-encoded query string from an array or an object.
+ */
+PH7_PRIVATE int PH7_builtin_http_build_query(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	http_query_state sState;
+	SyBlob sOut;
+	char zName[64];
+	const char *zNumPrefix = 0,*zSep = "&";
+	int nNumPrefix = 0,nSep = 1;
+	if( nArg < 1 ){
+		/* Arity is enforced from aBuiltinSig[] before the call. */
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	/* php DECLARES `object|array $data` and REPORTS "must be of type array" --
+	 * the shared ZPP screen leaves a union arm holding `array` alone for exactly
+	 * this reason, so the wording is the builtin's own. */
+	if( !ph7_value_is_array(apArg[0]) && !ph7_value_is_object(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"http_build_query(): Argument #1 ($data) must be of type array, %s given",
+			VmValueGivenName(apArg[0],zName,sizeof(zName)));
+	}
+	if( ph7_value_is_object(apArg[0]) ){
+		ph7_class_instance *pInst = (ph7_class_instance *)apArg[0]->x.pOther;
+		if( pInst->pClass->iFlags & PH7_CLASS_ENUM ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"http_build_query(): Argument #1 ($data) must not be an enum, %z given",
+				&pInst->pClass->sName);
+		}
+	}
+	if( nArg > 1 ){
+		zNumPrefix = ph7_value_to_string(apArg[1],&nNumPrefix);
+	}
+	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){
+		zSep = ph7_value_to_string(apArg[2],&nSep);
+	}
+	sState.pCtx = pCtx;
+	sState.zSep = zSep;
+	sState.nSep = (sxu32)nSep;
+	sState.bRaw = (nArg > 3) && (ph7_value_to_int(apArg[3]) == 2 /* PHP_QUERY_RFC3986 */);
+	sState.nDepth = 0;
+	sState.rc = PH7_OK;
+	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+	sState.pOut = &sOut;
+	HttpQueryWalk(&sState,apArg[0],zNumPrefix,(sxu32)nNumPrefix,0,0,0);
+	if( sState.rc == PH7_OK ){
+		ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	}
+	SyBlobRelease(&sOut);
+	return sState.rc;
+}
 /*
  * string urldecode(string $str)
  *  Decodes any %## encoding in the given string.

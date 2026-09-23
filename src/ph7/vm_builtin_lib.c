@@ -694,38 +694,6 @@
    "  }"\
    "  return $out;"\
    "}"\
-   "/* php's http_build_query() -- missing from PH7. Skips null values, casts"\
-   " * bool to 1/0, prefixes numeric top-level keys, urlencodes per RFC. */"\
-   "function __phl_hbq_enc($s, $enc){"\
-   "  return $enc == PHP_QUERY_RFC3986 ? rawurlencode((string)$s) : urlencode((string)$s);"\
-   "}"\
-   "function __phl_hbq(&$pairs, $data, $key_prefix, $numeric_prefix, $sep, $enc){"\
-   "  foreach( $data as $k => $v ){"\
-   "    if( $v === null ){ continue; }"\
-   "    if( $key_prefix === '' ){"\
-   "      $ek = is_int($k) ? __phl_hbq_enc($numeric_prefix . $k, $enc) : __phl_hbq_enc($k, $enc);"\
-   "    } else {"\
-   "      $ek = $key_prefix . '%5B' . __phl_hbq_enc($k, $enc) . '%5D';"\
-   "    }"\
-   "    if( is_array($v) ){"\
-   "      __phl_hbq($pairs, $v, $ek, $numeric_prefix, $sep, $enc);"\
-   "    } elseif( is_object($v) ){"\
-   "      __phl_hbq($pairs, get_object_vars($v), $ek, $numeric_prefix, $sep, $enc);"\
-   "    } else {"\
-   "      if( $v === true ){ $v = '1'; } elseif( $v === false ){ $v = '0'; }"\
-   "      $pairs[] = $ek . '=' . __phl_hbq_enc($v, $enc);"\
-   "    }"\
-   "  }"\
-   "}"\
-   "function http_build_query($data, $numeric_prefix = '', $arg_separator = null, $encoding_type = PHP_QUERY_RFC1738){"\
-   "  if( !is_array($data) && !is_object($data) ){"\
-   "    throw new TypeError('http_build_query(): Argument #1 ($data) must be of type array, ' . __php_zpp_type($data) . ' given');"\
-   "  }"\
-   "  if( $arg_separator === null ){ $arg_separator = '&'; }"\
-   "  $pairs = array();"\
-   "  __phl_hbq($pairs, is_object($data) ? get_object_vars($data) : $data, '', (string)$numeric_prefix, $arg_separator, $encoding_type);"\
-   "  return implode($arg_separator, $pairs);"\
-   "}"\
    "/* php's parse_str() -- missing from PH7. Mangles the base name ('.'/' ' -> '_'),"\
    " * parses [key] nesting and [] appends, urldecodes keys and values. */"\
    "function __phl_parsestr_assign(&$arr, $segments, $i, $val){"\
