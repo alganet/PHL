@@ -1399,32 +1399,55 @@ PH7_PRIVATE int PH7_builtin_passthru(ph7_context *pCtx,int nArg,ph7_value **apAr
 PH7_PRIVATE int PH7_builtin_popen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zCommand, *zMode;
+	char zPosix[8];
 	pipe_private *pPipe;
 	io_private *pDev;
-	int nCmdLen, nModeLen;
-	if( nArg < 2 || !ph7_value_is_string(apArg[0]) || !ph7_value_is_string(apArg[1]) ){
-		/* Missing/Invalid arguments, return FALSE */
-		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Expecting a command string and mode");
-		ph7_result_bool(pCtx, 0);
-		return PH7_OK;
-	}
+	int nCmdLen, nModeLen, nPosix, i, bDropped = 0;
+	SXUNUSED(nArg);   /* Arity is enforced from aBuiltinSig[] before the call */
 	/* Extract the command and mode */
 	zCommand = ph7_value_to_string(apArg[0], &nCmdLen);
 	zMode = ph7_value_to_string(apArg[1], &nModeLen);
-	if( nCmdLen < 1 ){
-		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Empty command");
-		ph7_result_bool(pCtx, 0);
-		return PH7_OK;
+	/*
+	 * php's mode rule, and the only one it has: ONE 'b' — C's binary flag, which
+	 * popen(3) itself refuses — is dropped from the mode on POSIX, and what is
+	 * left must be exactly "r", "w", "rb" or "wb". PHL used to read mode[0] and
+	 * hand the REST to popen(3) unexamined, which was wrong in both directions:
+	 * `popen($cmd, 'rb')`, the ordinary binary spelling, answered FALSE because
+	 * glibc rejected the 'b', and `popen($cmd, 'rr')` opened a pipe php refuses.
+	 */
+	nPosix = 0;
+#ifdef __WINNT__
+	SXUNUSED(bDropped);   /* cmd.exe keeps the 'b': _popen understands it */
+#endif
+	for( i = 0 ; i < nModeLen && nPosix < (int)sizeof(zPosix) - 1 ; ++i ){
+#ifndef __WINNT__
+		if( zMode[i] == 'b' && !bDropped ){
+			bDropped = 1;   /* php drops the FIRST one and only that one */
+			continue;
+		}
+#endif
+		zPosix[nPosix++] = zMode[i];
 	}
-	if( nModeLen < 1 || (zMode[0] != 'r' && zMode[0] != 'w') ){
-		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Invalid mode, expected 'r' or 'w'");
-		ph7_result_bool(pCtx, 0);
-		return PH7_OK;
+	zPosix[nPosix] = 0;
+	if( nPosix > 2
+	 || (nPosix == 1 && zPosix[0] != 'r' && zPosix[0] != 'w')
+	 || (nPosix == 2 && SyMemcmp(zPosix,"rb",sizeof("rb")-1) != 0
+	                 && SyMemcmp(zPosix,"wb",sizeof("wb")-1) != 0) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"popen(): Argument #2 ($mode) must be one of \"r\", \"rb\", \"w\", or \"wb\"");
 	}
-	/* Open the pipe */
-	pPipe = PipeOpen(pCtx->pVm, zCommand, zMode);
+	/* Open the pipe. An EMPTY mode passes php's check above and fails HERE, in
+	 * popen(3) — php reports it as an open failure and so does this, rather than
+	 * letting the platform layer read mode[0] out of an empty string. */
+	pPipe = nPosix > 0 ? PipeOpen(pCtx->pVm, zCommand, zPosix) : 0;
 	if( pPipe == 0 ){
-		/* Failed to open pipe */
+		/* php names both arguments in this one: `popen(cmd,mode): message`. PHL
+		 * answered FALSE in silence, so a script had nothing to report. */
+		if( nPosix < 1 ){
+			errno = EINVAL;
+		}
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s,%s): %s",
+			ph7_function_name(pCtx),zCommand,zPosix,VfsStrerror(errno));
 		ph7_result_bool(pCtx, 0);
 		return PH7_OK;
 	}
