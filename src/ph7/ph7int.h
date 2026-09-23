@@ -1815,6 +1815,19 @@ struct VmWeakCell
 	                           * own release nulls it. */
 	sxu32 nRef;               /* PHP-side handle count */
 };
+/* The OPEN directory handle behind one DirectoryIterator (php's u.dir.dirp).
+ * Registered per instance rather than in a property slot: a slot holding a C
+ * pointer would be compared by `==` (php's two equal-positioned iterators are
+ * equal) and COPIED by clone, and php's clone opens the directory again. The
+ * class's xRelease closes it. */
+typedef struct VmDirHandle VmDirHandle;
+struct VmDirHandle
+{
+	const ph7_io_stream *pStream; /* device that opened it */
+	void *pHandle;                /* its handle */
+	ph7_class_instance *pThis;    /* the owning instance -- and the hash KEY's bytes,
+	                               * which SyHashInsert borrows rather than copies */
+};
 /* One -d/-c php.ini directive queued for the INI chunk (name/value are
  * allocator-owned copies; see PH7_VM_CONFIG_INI_ENTRY) */
 typedef struct VmIniEntry VmIniEntry;
@@ -1945,6 +1958,8 @@ struct ph7_vm
 	sxu8 bSessWired;            /* the shutdown writer + cookie have been installed once */
 	SyHash hWeakCell;           /* instance pointer bytes -> VmWeakCell* (weak-reference registry;
 	                             * PH7_ClassInstanceRelease kills matching cells on free) */
+	SyHash hDirHandle;          /* instance pointer bytes -> VmDirHandle* (the open DIR* behind a
+	                             * DirectoryIterator; the class's xRelease closes and unregisters) */
 	SySet aAutoload;            /* Stack of spl_autoload callbacks */
 	SyHash hAutoloadActive;     /* Classes currently being autoloaded (reentrancy guard) */
 	SyHash hTypedSlot;          /* memobj nIdx -> VmClassAttr* for typed property enforcement */

@@ -30,7 +30,9 @@ sort($fsiFsi); echo "FSI: ", implode(',', $fsiFsi), "\n";
 $fsiRdi = new RecursiveDirectoryIterator($fsiDir, FilesystemIterator::SKIP_DOTS);
 $fsiAll = [];
 foreach (new RecursiveIteratorIterator($fsiRdi) as $f) {
-    $fsiAll[] = substr($f->getPathname(), strlen($fsiDir) + 1);
+    /* Normalized: the separator the engine joins with is the PLATFORM's
+     * (php's DEFAULT_SLASH), so a Windows walk answers sub\c.txt. */
+    $fsiAll[] = strtr(substr($f->getPathname(), strlen($fsiDir) + 1), '\\', '/');
 }
 sort($fsiAll); echo "RII: ", implode(',', $fsiAll), "\n";
 --EXPECT--

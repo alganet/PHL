@@ -7113,6 +7113,13 @@ static sxi32 VmInstallSplObjectStorage(ph7_vm *pVm)
 #define SFI_N  "__n"   /* php's file_name: the pathname, trailing slashes stripped */
 #define SFI_P  "__p"   /* php's path: everything before its last slash */
 #define SFI_IC "__ic"  /* php's info_class */
+/* The directory-iterator half of php's struct, on the same instance: its `u.dir`
+ * arm minus the handle, which cannot live in a php-visible slot (see VmDirHandle).
+ * Declared by DirectoryIterator, so `SplDirIs()` is what tells the two apart. */
+#define SDI_E  "__e"   /* php's u.dir.entry.d_name; "" once the walk has run out */
+#define SDI_I  "__i"   /* php's u.dir.index: what key() answers */
+#define SDI_F  "__f"   /* php's flags */
+#define SDI_S  "__s"   /* php's u.dir.sub_path (RecursiveDirectoryIterator) */
 
 /* php's IS_SLASH is PLATFORM-dependent: a backslash separates on Windows and is an
  * ordinary filename byte everywhere else, which is why `new SplFileInfo('C:\\x\\y')`
@@ -7123,6 +7130,17 @@ static sxi32 VmInstallSplObjectStorage(ph7_vm *pVm)
 # define SFI_IS_SLASH(c) ((c) == '/')
 #endif
 
+/*
+ * The directory-iterator half of this family, declared up here because php's
+ * SplFileInfo bodies BRANCH on `spl_filesystem_object::type`: a DIR instance
+ * keeps its pathname lazily (path + slash + the current entry, rebuilt after
+ * every read) and answers nothing at all once the walk has run out. Exactly
+ * five accessors below ask, which is the same five php branches in.
+ */
+static int SplDirIs(ph7_vm *pVm,ph7_class_instance *pThis);
+static const char * SplDirName(ph7_vm *pVm,ph7_class_instance *pThis,int *pnLen);
+static int SplDirAtEnd(ph7_class_instance *pThis);
+static VmDirHandle * SplDirState(ph7_vm *pVm,ph7_class_instance *pThis);
 /* One of the two path slots, as bytes. */
 static const char * SfiStr(ph7_class_instance *pThis,const char *zSlot,int *pnLen)
 {
@@ -7159,14 +7177,26 @@ static void SfiSetName(ph7_vm *pVm,ph7_class_instance *pThis,const char *zPath,i
 	PH7_NativeSetAttrStr(pVm,pThis,SFI_P,zPath,nDir);
 }
 /*
+ * php's `file_name`: the slot for a plain SplFileInfo, and the lazily rebuilt
+ * path+slash+entry for a directory iterator. Every accessor that works on the
+ * whole pathname goes through here.
+ */
+static const char * SfiName(ph7_vm *pVm,ph7_class_instance *pThis,int *pnLen)
+{
+	if( SplDirIs(pVm,pThis) ){
+		return SplDirName(pVm,pThis,pnLen);
+	}
+	return SfiStr(pThis,SFI_N,pnLen);
+}
+/*
  * php's "the file name without the path": the slice after `path` + its slash when
  * the path is a real prefix, and the whole name otherwise. getFilename(),
  * getBasename() and getExtension() all start here.
  */
-static const char * SfiTail(ph7_class_instance *pThis,int *pnLen)
+static const char * SfiTail(ph7_vm *pVm,ph7_class_instance *pThis,int *pnLen)
 {
 	int nName = 0,nPath = 0;
-	const char *zName = SfiStr(pThis,SFI_N,&nName);
+	const char *zName = SfiName(pVm,pThis,&nName);
 	SfiStr(pThis,SFI_P,&nPath);
 	if( nPath > 0 && nPath < nName ){
 		*pnLen = nName - (nPath + 1);
@@ -7176,16 +7206,33 @@ static const char * SfiTail(ph7_class_instance *pThis,int *pnLen)
 	return zName;
 }
 /* The path this instance stands for, as a NUL-terminated buffer the VFS can take. */
-static sxi32 SfiPathBuf(ph7_class_instance *pThis,char *zBuf,int nBuf)
+static sxi32 SfiPathBuf(ph7_vm *pVm,ph7_class_instance *pThis,char *zBuf,int nBuf)
 {
 	int nName = 0;
-	const char *zName = SfiStr(pThis,SFI_N,&nName);
+	const char *zName = SfiName(pVm,pThis,&nName);
 	if( nName < 1 || nName >= nBuf ){
 		return SXERR_INVALID;
 	}
 	SyMemcpy(zName,zBuf,(sxu32)nName);
 	zBuf[nName] = 0;
 	return SXRET_OK;
+}
+/*
+ * php's get_file_name() ahead of an accessor that needs a path: an object whose
+ * parent constructor never ran has no name AT ALL and raises Error rather than
+ * failing a stat -- which for a directory iterator is the case where the open
+ * never happened. Answers 0 when the caller must return *pRc.
+ */
+static int SfiDirReady(ph7_context *pCtx,sxi32 *pRc)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	*pRc = PH7_OK;
+	if( SplDirIs(pVm,pThis) && SplDirState(pVm,pThis) == 0 ){
+		*pRc = PH7_VmThrowException(pCtx,"Error","Object not initialized");
+		return 0;
+	}
+	return 1;
 }
 /*
  * php's FileInfoFunction: the stat that backs one accessor, with the failure
@@ -7200,11 +7247,15 @@ static sxi32 SfiStat(ph7_context *pCtx,const char *zMethod,int bLstat,ph7_value 
 	ph7_value sWorker;
 	char zPath[4096];
 	int rc = -1;
+	sxi32 rcReady;
+	if( !SfiDirReady(pCtx,&rcReady) ){
+		return rcReady;
+	}
 	if( PH7_MemObjToHashmap(pOut) != SXRET_OK ){
 		return PH7_ContextMemoryError(pCtx);
 	}
 	PH7_MemObjInit(pVm,&sWorker);
-	if( SfiPathBuf(pThis,zPath,(int)sizeof(zPath)) == SXRET_OK && pVfs ){
+	if( SfiPathBuf(pVm,pThis,zPath,(int)sizeof(zPath)) == SXRET_OK && pVfs ){
 		if( bLstat ){
 			rc = pVfs->xlStat ? pVfs->xlStat(zPath,pOut,&sWorker) : -1;
 		}else{
@@ -7214,7 +7265,7 @@ static sxi32 SfiStat(ph7_context *pCtx,const char *zMethod,int bLstat,ph7_value 
 	PH7_MemObjRelease(&sWorker);
 	if( rc != PH7_OK ){
 		int nName = 0;
-		const char *zName = SfiStr(pThis,SFI_N,&nName);
+		const char *zName = SfiName(pVm,pThis,&nName);
 		return PH7_VmThrowException(pCtx,"RuntimeException",
 			"SplFileInfo::%s(): %s failed for %.*s",zMethod,bLstat ? "Lstat" : "stat",
 			nName,zName);
@@ -7274,19 +7325,31 @@ static int vm_builtin_SplFileInfo_getPath(ph7_context *pCtx,int nArg,ph7_value *
 	ph7_result_string(pCtx,zPath,nPath);
 	return PH7_OK;
 }
+/*
+ * php's getPathname() is `spl_filesystem_object_get_pathname`, and for a DIR it
+ * answers NOTHING once the walk has run out — the empty string, without
+ * materializing the lazy name the stat family would still build (`getSize()`
+ * past the end stats the directory itself, and `var_dump` shows the difference).
+ */
 static int vm_builtin_SplFileInfo_getPathname(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	int nName = 0;
-	const char *zName = SfiStr(PH7_ContextThis(pCtx),SFI_N,&nName);
+	const char *zName;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
+	if( SplDirIs(pCtx->pVm,pThis) && SplDirAtEnd(pThis) ){
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	zName = SfiName(pCtx->pVm,pThis,&nName);
 	ph7_result_string(pCtx,zName,nName);
 	return PH7_OK;
 }
 static int vm_builtin_SplFileInfo_getFilename(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	int nTail = 0;
-	const char *zTail = SfiTail(PH7_ContextThis(pCtx),&nTail);
+	const char *zTail = SfiTail(pCtx->pVm,PH7_ContextThis(pCtx),&nTail);
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	ph7_result_string(pCtx,zTail,nTail);
@@ -7296,7 +7359,7 @@ static int vm_builtin_SplFileInfo_getFilename(ph7_context *pCtx,int nArg,ph7_val
 static int vm_builtin_SplFileInfo_getBasename(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	int nTail = 0,nBase = 0;
-	const char *zTail = SfiTail(PH7_ContextThis(pCtx),&nTail);
+	const char *zTail = SfiTail(pCtx->pVm,PH7_ContextThis(pCtx),&nTail);
 	const char *zBase = PH7_ExtractBaseName(zTail,nTail,&nBase);
 	if( nArg > 0 ){
 		int nSuffix = 0;
@@ -7315,7 +7378,7 @@ static int vm_builtin_SplFileInfo_getBasename(ph7_context *pCtx,int nArg,ph7_val
 static int vm_builtin_SplFileInfo_getExtension(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	int nTail = 0,nBase = 0,i;
-	const char *zTail = SfiTail(PH7_ContextThis(pCtx),&nTail);
+	const char *zTail = SfiTail(pCtx->pVm,PH7_ContextThis(pCtx),&nTail);
 	const char *zBase = PH7_ExtractBaseName(zTail,nTail,&nBase);
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
@@ -7380,14 +7443,19 @@ static int vm_builtin_SplFileInfo_getType(ph7_context *pCtx,int nArg,ph7_value *
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	char zPath[4096];
 	int rc = -1;
+	sxi32 rcReady;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	if( pVfs && pVfs->xFiletype && SfiPathBuf(pThis,zPath,(int)sizeof(zPath)) == SXRET_OK ){
+	if( !SfiDirReady(pCtx,&rcReady) ){
+		return rcReady;
+	}
+	if( pVfs && pVfs->xFiletype
+	 && SfiPathBuf(pCtx->pVm,pThis,zPath,(int)sizeof(zPath)) == SXRET_OK ){
 		rc = pVfs->xFiletype(zPath,pCtx);
 	}
 	if( rc != PH7_OK ){
 		int nName = 0;
-		const char *zName = SfiStr(pThis,SFI_N,&nName);
+		const char *zName = SfiName(pCtx->pVm,pThis,&nName);
 		if( pCtx->pRet ){
 			PH7_MemObjRelease(pCtx->pRet);   /* xFiletype wrote "unknown" (rule 54) */
 		}
@@ -7402,7 +7470,12 @@ static int SfiPredicate(ph7_context *pCtx,int (*xTest)(const char *))
 {
 	char zPath[4096];
 	int bYes = 0;
-	if( xTest && SfiPathBuf(PH7_ContextThis(pCtx),zPath,(int)sizeof(zPath)) == SXRET_OK ){
+	sxi32 rcReady;
+	if( !SfiDirReady(pCtx,&rcReady) ){
+		return rcReady;
+	}
+	if( xTest
+	 && SfiPathBuf(pCtx->pVm,PH7_ContextThis(pCtx),zPath,(int)sizeof(zPath)) == SXRET_OK ){
 		bYes = xTest(zPath) == PH7_OK;
 	}
 	ph7_result_bool(pCtx,bYes);
@@ -7446,14 +7519,19 @@ static int vm_builtin_SplFileInfo_getLinkTarget(ph7_context *pCtx,int nArg,ph7_v
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	char zPath[4096];
 	int rc = -1;
+	sxi32 rcReady;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	if( pVfs && pVfs->xReadlink && SfiPathBuf(pThis,zPath,(int)sizeof(zPath)) == SXRET_OK ){
+	if( !SfiDirReady(pCtx,&rcReady) ){
+		return rcReady;
+	}
+	if( pVfs && pVfs->xReadlink
+	 && SfiPathBuf(pCtx->pVm,pThis,zPath,(int)sizeof(zPath)) == SXRET_OK ){
 		rc = pVfs->xReadlink(zPath,pCtx);
 	}
 	if( rc != PH7_OK ){
 		int nName = 0;
-		const char *zName = SfiStr(pThis,SFI_N,&nName);
+		const char *zName = SfiName(pCtx->pVm,pThis,&nName);
 		return PH7_VmThrowException(pCtx,"RuntimeException",
 			"Unable to read link %.*s, error: %s",nName,zName,VfsStrerror(errno));
 	}
@@ -7467,7 +7545,7 @@ static int vm_builtin_SplFileInfo_getRealPath(ph7_context *pCtx,int nArg,ph7_val
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	if( pVfs && pVfs->xRealpath
-	 && SfiPathBuf(PH7_ContextThis(pCtx),zPath,(int)sizeof(zPath)) == SXRET_OK ){
+	 && SfiPathBuf(pCtx->pVm,PH7_ContextThis(pCtx),zPath,(int)sizeof(zPath)) == SXRET_OK ){
 		rc = pVfs->xRealpath(zPath,pCtx);
 	}
 	if( rc != PH7_OK ){
@@ -7514,7 +7592,8 @@ static sxi32 SfiInfoClass(ph7_context *pCtx,const char *zMethod,ph7_value *pArg,
  * does not -- reproduced here, because a subclass constructor is user code and
  * skipping it would be visible.
  */
-static sxi32 SfiMakeInfo(ph7_context *pCtx,ph7_class *pClass,const char *zPath,int nPath)
+static sxi32 SfiMakeInfoEx(ph7_context *pCtx,ph7_class *pClass,const char *zPath,int nPath,
+	const char *zDir,int nDir)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pNew;
@@ -7533,6 +7612,13 @@ static sxi32 SfiMakeInfo(ph7_context *pCtx,ph7_class *pClass,const char *zPath,i
 		apArg[0] = &sArg;
 		rc = PH7_VmCallClassMethod(pVm,pNew,pCons,0,1,apArg);
 		PH7_MemObjRelease(&sArg);
+	}else if( zDir ){
+		/* php's create_type for a DIR source hands the child BOTH strings rather
+		 * than re-deriving the second: the path is the directory being walked, so
+		 * `new DirectoryIterator('/')`'s entry keeps the path `/` and the name
+		 * `//x` that the walk itself produced. */
+		PH7_NativeSetAttrStr(pVm,pNew,SFI_N,zPath,nPath);
+		PH7_NativeSetAttrStr(pVm,pNew,SFI_P,zDir,nDir);
 	}else{
 		SfiSetName(pVm,pNew,zPath,nPath);
 	}
@@ -7544,22 +7630,42 @@ static sxi32 SfiMakeInfo(ph7_context *pCtx,ph7_class *pClass,const char *zPath,i
 	PH7_ClassInstanceUnref(pNew);
 	return PH7_OK;
 }
+static sxi32 SfiMakeInfo(ph7_context *pCtx,ph7_class *pClass,const char *zPath,int nPath)
+{
+	return SfiMakeInfoEx(pCtx,pClass,zPath,nPath,0,0);
+}
 static int vm_builtin_SplFileInfo_getFileInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	ph7_class *pClass = 0;
-	int nName = 0;
-	const char *zName;
+	int nName = 0,nDir = 0;
+	const char *zName,*zDir = 0;
 	sxi32 rc = SfiInfoClass(pCtx,"getFileInfo",nArg > 0 ? apArg[0] : 0,&pClass);
 	if( rc != PH7_OK ){
 		return rc;
 	}
-	zName = SfiStr(PH7_ContextThis(pCtx),SFI_N,&nName);
-	return SfiMakeInfo(pCtx,pClass,zName,nName);
+	if( SplDirIs(pVm,pThis) ){
+		if( SplDirState(pVm,pThis) == 0 ){
+			return PH7_VmThrowException(pCtx,"Error","Object not initialized");
+		}
+		/* php's create_type refuses to describe an entry that is not there —
+		 * the same RuntimeException a FilesystemIterator::current() past the end
+		 * raises, because it goes through this. */
+		if( SplDirAtEnd(pThis) ){
+			return PH7_VmThrowException(pCtx,"RuntimeException","Could not open file");
+		}
+		zDir = SfiStr(pThis,SFI_P,&nDir);
+	}
+	zName = SfiName(pVm,pThis,&nName);
+	return SfiMakeInfoEx(pCtx,pClass,zName,nName,zDir,nDir);
 }
 /* php's getPathInfo(): the DIRNAME of the pathname, and nothing at all (null) for
- * an empty one. */
+ * an empty one — which for a directory iterator includes one that has run out. */
 static int vm_builtin_SplFileInfo_getPathInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	ph7_class *pClass = 0;
 	int nName = 0,nDir = 0;
 	const char *zName,*zDir;
@@ -7567,7 +7673,11 @@ static int vm_builtin_SplFileInfo_getPathInfo(ph7_context *pCtx,int nArg,ph7_val
 	if( rc != PH7_OK ){
 		return rc;
 	}
-	zName = SfiStr(PH7_ContextThis(pCtx),SFI_N,&nName);
+	if( SplDirIs(pVm,pThis) && SplDirAtEnd(pThis) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	zName = SfiName(pVm,pThis,&nName);
 	if( nName < 1 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
@@ -7597,35 +7707,68 @@ static int vm_builtin_SplFileInfo_setInfoClass(ph7_context *pCtx,int nArg,ph7_va
 	PH7_NativeSetAttrStr(pVm,pThis,SFI_IC,zName,nName);
 	return PH7_OK;
 }
+/* One `"\0Class\0member" => <string>` entry of a debug array. */
+static void SfiDebugStr(ph7_vm *pVm,ph7_value *pOut,const char *zKey,int nKey,
+	const char *zVal,int nVal)
+{
+	ph7_value sKey,sVal;
+	PH7_MemObjInitFromString(pVm,&sKey,0);
+	PH7_MemObjStringAppend(&sKey,zKey,(sxu32)nKey);
+	PH7_MemObjInitFromString(pVm,&sVal,0);
+	PH7_MemObjStringAppend(&sVal,zVal,(sxu32)nVal);
+	ph7_array_add_elem(pOut,&sKey,&sVal);
+	PH7_MemObjRelease(&sKey);
+	PH7_MemObjRelease(&sVal);
+}
 /*
  * php's get_debug_info: the two slots under their MANGLED private names, which is
  * how a class with no declared properties still shows something. __debugInfo()
  * hands back the same array.
+ *
+ * A DIRECTORY iterator shows two more (`glob`, always false here — PHL has no
+ * GlobIterator — and `subPathName`), and shows `fileName` only if the pathname
+ * has been MATERIALIZED: php's `if (intern->file_name)` is the lazy name's
+ * presence, so an exhausted iterator has one key fewer until something asks it
+ * for a path.
  */
 static sxi32 SfiFillDebug(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
 {
-	ph7_value sKey,sVal;
-	int nName = 0,nTail = 0;
-	const char *zName = SfiStr(pThis,SFI_N,&nName);
-	const char *zTail = SfiTail(pThis,&nTail);
-	PH7_MemObjInitFromString(pVm,&sKey,0);
-	PH7_MemObjStringAppend(&sKey,"\0SplFileInfo\0pathName",
-		sizeof("\0SplFileInfo\0pathName")-1);
-	PH7_MemObjInitFromString(pVm,&sVal,0);
-	PH7_MemObjStringAppend(&sVal,zName,(sxu32)nName);
-	ph7_array_add_elem(pOut,&sKey,&sVal);
-	PH7_MemObjRelease(&sKey);
-	PH7_MemObjRelease(&sVal);
+	/* php's test is `type == SPL_FS_DIR`, which an object whose constructor never
+	 * ran does NOT satisfy: it shows the single `pathName` key a bare SplFileInfo
+	 * would, and neither of the two directory ones. */
+	int bDir = SplDirIs(pVm,pThis) && SplDirState(pVm,pThis) != 0;
+	int nName = 0,nTail = 0,nSub = 0;
+	const char *zName;
+	int bLive = bDir ? !SplDirAtEnd(pThis) : !SplDirIs(pVm,pThis);
+	if( bLive ){
+		zName = SfiName(pVm,pThis,&nName);
+	}else{
+		zName = SfiStr(pThis,SFI_N,&nName);   /* whatever a stat left behind, or "" */
+		nName = 0;
+	}
+	SfiDebugStr(pVm,pOut,"\0SplFileInfo\0pathName",
+		(int)sizeof("\0SplFileInfo\0pathName")-1,zName,nName);
 	/* Re-read: the append above may have moved the slot the first read borrowed. */
-	zTail = SfiTail(pThis,&nTail);
-	PH7_MemObjInitFromString(pVm,&sKey,0);
-	PH7_MemObjStringAppend(&sKey,"\0SplFileInfo\0fileName",
-		sizeof("\0SplFileInfo\0fileName")-1);
-	PH7_MemObjInitFromString(pVm,&sVal,0);
-	PH7_MemObjStringAppend(&sVal,zTail,(sxu32)nTail);
-	ph7_array_add_elem(pOut,&sKey,&sVal);
-	PH7_MemObjRelease(&sKey);
-	PH7_MemObjRelease(&sVal);
+	SfiStr(pThis,SFI_N,&nName);
+	if( bLive || (bDir && nName > 0) ){
+		const char *zTail = SfiTail(pVm,pThis,&nTail);
+		SfiDebugStr(pVm,pOut,"\0SplFileInfo\0fileName",
+			(int)sizeof("\0SplFileInfo\0fileName")-1,zTail,nTail);
+	}
+	if( bDir ){
+		ph7_value sKey,sVal;
+		const char *zSub;
+		PH7_MemObjInitFromString(pVm,&sKey,0);
+		PH7_MemObjStringAppend(&sKey,"\0DirectoryIterator\0glob",
+			sizeof("\0DirectoryIterator\0glob")-1);
+		PH7_MemObjInitFromBool(pVm,&sVal,0);
+		ph7_array_add_elem(pOut,&sKey,&sVal);
+		PH7_MemObjRelease(&sKey);
+		PH7_MemObjRelease(&sVal);
+		zSub = SfiStr(pThis,SDI_S,&nSub);
+		SfiDebugStr(pVm,pOut,"\0RecursiveDirectoryIterator\0subPathName",
+			(int)sizeof("\0RecursiveDirectoryIterator\0subPathName")-1,zSub,nSub);
+	}
 	return PH7_OK;
 }
 static sxi32 SfiPresent(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
@@ -7721,114 +7864,905 @@ static sxi32 VmInstallSplFileInfo(ph7_vm *pVm)
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }
-static const char zSplLib[] =
-"class DirectoryIterator extends SplFileInfo implements SeekableIterator {"
-" protected $__dir = '';"
-" protected $__entries = array();"
-" protected $__pos = 0;"
-" public function __construct($path){"
-"  $this->__dir = (string)$path;"
-"  parent::__construct($this->__dir);"
-"  $this->__load();"
-" }"
-" protected function __load(){"
-"  $this->__entries = array();"
-"  $h = @opendir($this->__dir);"
-"  if( $h !== false ){"
-"   while( ($e = readdir($h)) !== false ){ $this->__entries[] = $e; }"
-"   closedir($h);"
-"  }"
-"  $this->__pos = 0;"
-"  $this->__sync();"
-" }"
-" protected function __join($name){"
-"  $d = $this->__dir;"
-"  $last = substr($d, -1);"
-"  $sep = ($last === '/' || $last === '\\\\' || $d === '') ? '' : '/';"
-"  return $d . $sep . $name;"
-" }"
-/* The two path slots live in the NATIVE parent now, so the only way to move this
- * iterator to an entry is to re-run its constructor -- which is what php's
- * dir_read does one layer down. This whole chunk goes native next. */
-" protected function __sync(){"
-"  if( $this->__pos >= 0 && $this->__pos < count($this->__entries) ){"
-"   parent::__construct($this->__join($this->__entries[$this->__pos]));"
-"  }"
-" }"
-" public function isDot(){ $n = $this->getFilename(); return $n === '.' || $n === '..'; }"
-" public function current(){ return $this; }"
-" public function key(){ return $this->__pos; }"
-" public function next(){ $this->__pos++; $this->__sync(); }"
-" public function rewind(){ $this->__pos = 0; $this->__sync(); }"
-" public function valid(){ return $this->__pos < count($this->__entries); }"
-" public function seek($position){ $this->__pos = (int)$position; $this->__sync(); }"
-" public function getFlags(){ return 0; }"
-"}"
-"class FilesystemIterator extends DirectoryIterator {"
-" const CURRENT_AS_PATHNAME = 32;"
-" const CURRENT_AS_FILEINFO = 0;"
-" const CURRENT_AS_SELF = 16;"
-" const CURRENT_MODE_MASK = 240;"
-" const KEY_AS_PATHNAME = 0;"
-" const KEY_AS_FILENAME = 256;"
-" const FOLLOW_SYMLINKS = 512;"
-" const KEY_MODE_MASK = 3840;"
-" const NEW_CURRENT_AND_KEY = 256;"
-" const OTHER_MODE_MASK = 12288;"
-" const SKIP_DOTS = 4096;"
-" const UNIX_PATHS = 8192;"
-" protected $__flags = 4096;"
-" public function __construct($path, $flags = 4096){"
-"  $this->__flags = (int)$flags;"
-"  parent::__construct($path);"
-" }"
-" protected function __skipDots(){"
-"  if( $this->__flags & self::SKIP_DOTS ){"
-"   while( ($this->__pos < count($this->__entries)) && $this->isDot() ){ $this->__pos++; $this->__sync(); }"
-"  }"
-" }"
-" public function rewind(){ $this->__pos = 0; $this->__sync(); $this->__skipDots(); }"
-" public function next(){ $this->__pos++; $this->__sync(); $this->__skipDots(); }"
-" public function current(){"
-"  $mode = $this->__flags & self::CURRENT_MODE_MASK;"
-"  if( $mode === self::CURRENT_AS_PATHNAME ){ return $this->getPathname(); }"
-"  if( $mode === self::CURRENT_AS_SELF ){ return $this; }"
-"  return new SplFileInfo($this->getPathname());"
-" }"
-" public function key(){"
-"  if( $this->__flags & self::KEY_AS_FILENAME ){ return $this->getFilename(); }"
-"  return $this->getPathname();"
-" }"
-" public function getFlags(){ return $this->__flags; }"
-" public function setFlags($flags){ $this->__flags = (int)$flags; }"
-"}"
-"class RecursiveDirectoryIterator extends FilesystemIterator implements RecursiveIterator {"
-" public function hasChildren(){"
-"  if( $this->isDot() ){ return false; }"
-"  return $this->isDir();"
-" }"
-" public function getChildren(){"
-"  return new RecursiveDirectoryIterator($this->getPathname(), $this->__flags);"
-" }"
-" public function getSubPath(){ return ''; }"
-" public function getSubPathname(){ return $this->getFilename(); }"
-"}"
-;
+/*
+ * ---------------------------------------------------------------------------
+ * DirectoryIterator, FilesystemIterator and RecursiveDirectoryIterator.
+ *
+ * php's `spl_filesystem_object` holds an OPEN directory stream and ONE entry at
+ * a time (`u.dir.dirp`, `u.dir.entry`, `u.dir.index`); the chunk read the whole
+ * directory into an array at construction, and every difference followed from
+ * that one choice (rule 52). php's `rewind()` re-opens the directory and SEES A
+ * FILE CREATED SINCE, its `key()` is the read index rather than an array offset,
+ * its `seek()` walks FORWARD through the object's own valid()/next() — so a
+ * subclass overriding either is obeyed — and a `clone` opens the directory again
+ * and reads forward to the same index rather than sharing a cursor.
+ *
+ * The handle cannot live in a property slot, because CLONE copies slots: two
+ * objects would share one directory stream and close it twice. It lives in
+ * `pVm->hDirHandle` keyed by the instance, with the class's xRelease closing it,
+ * and a clone — finding no entry of its own — re-opens on first use, which IS
+ * php's clone handler, deferred. The one thing that deferral costs is a clone
+ * whose directory is removed before it is first used: php has the stream open
+ * already and answers, PHL raises "Object not initialized" (§7).
+ *
+ * `file_name` is LAZY here as it is in php: the path, a slash and the current
+ * entry, invalidated by every read and rebuilt on demand. That is php-visible
+ * twice over -- `getPathname()` answers "" past the end while `getSize()` stats
+ * the DIRECTORY (the join with an empty entry), and `var_dump` shows one key
+ * fewer until something has asked.
+ *
+ * The chunk had also INVENTED `DirectoryIterator::getFlags()` (php has no such
+ * method; only FilesystemIterator does), inherited SplFileInfo's `__toString()`
+ * where php aliases getFilename(), and mis-stated two constants:
+ * FOLLOW_SYMLINKS is 16384 (it said 512, colliding with nothing but reading as
+ * false for every real flags value) and OTHER_MODE_MASK is 28672.
+ * ---------------------------------------------------------------------------
+ */
+/* php's spl_directory.h flag set, verbatim -- the values the class constants
+ * publish and the masks its accessors compare with. */
+#define SDI_CURRENT_AS_FILEINFO 0x0000
+#define SDI_CURRENT_AS_SELF     0x0010
+#define SDI_CURRENT_AS_PATHNAME 0x0020
+#define SDI_CURRENT_MODE_MASK   0x00F0
+#define SDI_KEY_AS_PATHNAME     0x0000
+#define SDI_KEY_AS_FILENAME     0x0100
+#define SDI_KEY_MODE_MASK       0x0F00
+#define SDI_SKIPDOTS            0x1000
+#define SDI_UNIXPATHS           0x2000
+#define SDI_FOLLOW_SYMLINKS     0x4000
+#define SDI_OTHERS_MASK         0x7000
+#define SDI_FLAGS_MASK (SDI_KEY_MODE_MASK|SDI_CURRENT_MODE_MASK|SDI_OTHERS_MASK)
 
+/* php's DEFAULT_SLASH, and the UNIX_PATHS flag that overrides it. */
+static char SplDirSlash(sxi64 iFlags)
+{
+#ifdef __WINNT__
+	return (iFlags & SDI_UNIXPATHS) ? '/' : '\\';
+#else
+	SXUNUSED(iFlags);
+	return '/';
+#endif
+}
+/* php's spl_filesystem_is_dot. */
+static int SplDirIsDot(const char *zName,int nName)
+{
+	return (nName == 1 && zName[0] == '.')
+		|| (nName == 2 && zName[0] == '.' && zName[1] == '.');
+}
+/* Does this instance carry php's `u.dir` arm? Asked by the five SplFileInfo
+ * bodies that branch on the object TYPE, so it has to be the class question and
+ * not "does it have a __e slot" — a user class may declare anything. */
+static int SplDirIs(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_class *pDir;
+	if( pThis == 0 ){
+		return 0;
+	}
+	pDir = PH7_VmExtractClass(pVm,"DirectoryIterator",sizeof("DirectoryIterator")-1,FALSE,0);
+	return pDir && PH7_VmInstanceOf(pThis->pClass,pDir);
+}
+/* php's `!intern->u.dir.entry.d_name[0]`: the walk has nothing to describe. */
+static int SplDirAtEnd(ph7_class_instance *pThis)
+{
+	int nEntry = 0;
+	SfiStr(pThis,SDI_E,&nEntry);
+	return nEntry < 1;
+}
+/* The registry entry for this instance, or 0. */
+static VmDirHandle * SplDirFind(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	SyHashEntry *pEntry;
+	if( pThis == 0 || SyHashTotalEntry(&pVm->hDirHandle) < 1 ){
+		return 0;
+	}
+	pEntry = SyHashGet(&pVm->hDirHandle,(const void *)&pThis,sizeof(void *));
+	return pEntry ? (VmDirHandle *)pEntry->pUserData : 0;
+}
+/* Close the handle this instance owns, if any. The class's xRelease, and the
+ * first half of a re-open. */
+static void SplDirClose(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	void *pData = 0;
+	if( SyHashDeleteEntry(&pVm->hDirHandle,(const void *)&pThis,sizeof(void *),&pData) == SXRET_OK
+	 && pData ){
+		VmDirHandle *pH = (VmDirHandle *)pData;
+		if( pH->pStream && pH->pStream->xCloseDir ){
+			pH->pStream->xCloseDir(pH->pHandle);
+		}
+		SyMemBackendFree(&pVm->sAllocator,pH);
+	}
+}
+/*
+ * php's spl_filesystem_dir_read: invalidate the lazy name, then take ONE entry
+ * from the stream; running out leaves the entry empty, which is what valid()
+ * reports. The read goes through a scratch call context because the VFS reports
+ * a name by writing a RESULT -- borrowing the method's own return slot would
+ * append to whatever the body is about to answer (rule 54).
+ */
+static void SplDirRead(ph7_vm *pVm,ph7_class_instance *pThis,VmDirHandle *pH)
+{
+	ph7_context sCtx;
+	ph7_value sOut;
+	int rc = -1;
+	PH7_NativeSetAttrStr(pVm,pThis,SFI_N,"",0);
+	PH7_MemObjInit(pVm,&sOut);
+	VmInitCallContext(&sCtx,pVm,0,&sOut,0);
+	if( pH && pH->pStream && pH->pStream->xReadDir ){
+		rc = pH->pStream->xReadDir(pH->pHandle,&sCtx);
+	}
+	if( rc == PH7_OK ){
+		int nName = 0;
+		const char *zName = ph7_value_to_string(&sOut,&nName);
+		PH7_NativeSetAttrStr(pVm,pThis,SDI_E,zName,nName);
+	}else{
+		PH7_NativeSetAttrStr(pVm,pThis,SDI_E,"",0);
+	}
+	VmReleaseCallContext(&sCtx);
+	PH7_MemObjRelease(&sOut);
+}
+/* php's read loop: one entry, then more while SKIP_DOTS and this is a dot. */
+static void SplDirReadSkip(ph7_vm *pVm,ph7_class_instance *pThis,VmDirHandle *pH)
+{
+	sxi64 iFlags = PH7_NativeAttrInt(pThis,SDI_F);
+	for(;;){
+		int nEntry = 0;
+		const char *zEntry;
+		SplDirRead(pVm,pThis,pH);
+		if( (iFlags & SDI_SKIPDOTS) == 0 ){
+			return;
+		}
+		zEntry = SfiStr(pThis,SDI_E,&nEntry);
+		if( !SplDirIsDot(zEntry,nEntry) ){
+			return;
+		}
+	}
+}
+/*
+ * php's spl_filesystem_dir_open: open the directory, remember it under the path
+ * MINUS one trailing slash, and read the first entry. Answers 0 when the open
+ * failed, having still written the path (php sets it either way, so a caught
+ * constructor failure leaves the same shape behind).
+ */
+static VmDirHandle * SplDirOpen(ph7_vm *pVm,ph7_class_instance *pThis,
+	const char *zPath,int nPath)
+{
+	const ph7_io_stream *pStream;
+	const char *zDevice;
+	VmDirHandle *pH;
+	char zBuf[4096];
+	void *pHandle = 0;
+	int nKeep = nPath;
+	if( nPath < 1 || nPath >= (int)sizeof(zBuf) ){
+		return 0;
+	}
+	SyMemcpy(zPath,zBuf,(sxu32)nPath);
+	zBuf[nPath] = 0;
+	zDevice = zBuf;
+	pStream = PH7_VmGetStreamDevice(pVm,&zDevice,nPath);
+	if( nKeep > 1 && SFI_IS_SLASH(zPath[nKeep-1]) ){
+		nKeep--;
+	}
+	PH7_NativeSetAttrStr(pVm,pThis,SFI_P,zPath,nKeep);
+	PH7_NativeSetAttrInt(pVm,pThis,SDI_I,0);
+	PH7_NativeSetAttrStr(pVm,pThis,SDI_E,"",0);
+	PH7_NativeSetAttrStr(pVm,pThis,SFI_N,"",0);
+	if( pStream == 0 || pStream->xOpenDir == 0
+	 || pStream->xOpenDir(zDevice,0,&pHandle) != PH7_OK ){
+		return 0;
+	}
+	pH = (VmDirHandle *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmDirHandle));
+	if( pH == 0 ){
+		if( pStream->xCloseDir ){
+			pStream->xCloseDir(pHandle);
+		}
+		return 0;
+	}
+	pH->pStream = pStream;
+	pH->pHandle = pHandle;
+	pH->pThis = pThis;
+	/* SyHashInsert BORROWS the key bytes: key off the record's own field, which
+	 * lives exactly as long as the entry does (rule 22). */
+	if( SyHashInsert(&pVm->hDirHandle,(const void *)&pH->pThis,sizeof(void *),pH) != SXRET_OK ){
+		if( pStream->xCloseDir ){
+			pStream->xCloseDir(pHandle);
+		}
+		SyMemBackendFree(&pVm->sAllocator,pH);
+		return 0;
+	}
+	return pH;
+}
+/*
+ * The open handle behind this instance, RE-OPENING it for a fresh clone.
+ *
+ * php's clone handler opens the directory again and reads forward to the
+ * source's index, because a directory stream cannot be duplicated; PHL does the
+ * same work on first use instead, which is what keeps the handle out of every
+ * php-visible surface — a property slot carrying it would make `$a == clone $a`
+ * false, and php says true.
+ */
+static VmDirHandle * SplDirState(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	VmDirHandle *pH = SplDirFind(pVm,pThis);
+	sxi64 iIndex;
+	int nPath = 0;
+	const char *zPath;
+	SyBlob sPath;
+	if( pH ){
+		return pH;
+	}
+	zPath = SfiStr(pThis,SFI_P,&nPath);
+	if( nPath < 1 ){
+		return 0;   /* never constructed: php's "Object not initialized" */
+	}
+	/* The path slot is about to be rewritten by the open, so copy it out first. */
+	SyBlobInit(&sPath,&pVm->sAllocator);
+	SyBlobAppend(&sPath,zPath,(sxu32)nPath);
+	iIndex = PH7_NativeAttrInt(pThis,SDI_I);
+	pH = SplDirOpen(pVm,pThis,(const char *)SyBlobData(&sPath),(int)SyBlobLength(&sPath));
+	SyBlobRelease(&sPath);
+	if( pH == 0 ){
+		return 0;
+	}
+	SplDirReadSkip(pVm,pThis,pH);
+	{
+		sxi64 iAt = iIndex;
+		while( iAt-- > 0 ){
+			SplDirReadSkip(pVm,pThis,pH);
+		}
+	}
+	/* The open above reset the index; the clone stands where the source stood. */
+	PH7_NativeSetAttrInt(pVm,pThis,SDI_I,iIndex);
+	return pH;
+}
+/*
+ * php's spl_filesystem_object_get_file_name for a DIR: the path, a slash and the
+ * current entry, cached until the next read drops it. Called through SfiName(),
+ * so every SplFileInfo accessor sees the same lazy value php's do.
+ */
+static const char * SplDirName(ph7_vm *pVm,ph7_class_instance *pThis,int *pnLen)
+{
+	int nName = 0,nPath = 0,nEntry = 0;
+	const char *zName = SfiStr(pThis,SFI_N,&nName);
+	const char *zPath,*zEntry;
+	SyBlob sName;
+	if( nName > 0 ){
+		*pnLen = nName;
+		return zName;
+	}
+	zPath = SfiStr(pThis,SFI_P,&nPath);
+	if( nPath < 1 ){
+		*pnLen = 0;
+		return "";
+	}
+	SyBlobInit(&sName,&pVm->sAllocator);
+	SyBlobAppend(&sName,zPath,(sxu32)nPath);
+	{
+		char cSlash = SplDirSlash(PH7_NativeAttrInt(pThis,SDI_F));
+		SyBlobAppend(&sName,(const void *)&cSlash,sizeof(char));
+	}
+	zEntry = SfiStr(pThis,SDI_E,&nEntry);
+	SyBlobAppend(&sName,zEntry,(sxu32)nEntry);
+	PH7_NativeSetAttrStr(pVm,pThis,SFI_N,
+		(const char *)SyBlobData(&sName),(int)SyBlobLength(&sName));
+	SyBlobRelease(&sName);
+	return SfiStr(pThis,SFI_N,pnLen);
+}
+/* php's CHECK_DIRECTORY_ITERATOR_IS_INITIALIZED: every DirectoryIterator method
+ * refuses an object whose parent constructor never ran. */
+static VmDirHandle * SplDirChecked(ph7_context *pCtx,sxi32 *pRc)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	VmDirHandle *pH = SplDirState(pCtx->pVm,pThis);
+	*pRc = PH7_OK;
+	if( pH == 0 ){
+		*pRc = PH7_VmThrowException(pCtx,"Error","Object not initialized");
+	}
+	return pH;
+}
+/*
+ * The shared constructor: php's spl_filesystem_object_construct, whose two
+ * refusals are a ValueError for an empty path and an UnexpectedValueException
+ * carrying the OPEN's own errno text (php promotes the opendir warning, so the
+ * message is the warning's, prefixed with the constructor that raised it).
+ */
+static int SplDirConstruct(ph7_context *pCtx,const char *zClass,int nArg,ph7_value **apArg,
+	sxi64 iFlags)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zPath;
+	int nPath = 0;
+	if( pThis == 0 || nArg < 1 ){
+		return PH7_OK;
+	}
+	zPath = ph7_value_to_string(apArg[0],&nPath);
+	if( nPath < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s::__construct(): Argument #1 ($directory) must not be empty",zClass);
+	}
+	if( SplDirFind(pVm,pThis) ){
+		return PH7_VmThrowException(pCtx,"Error","Directory object is already initialized");
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,SDI_F,iFlags);
+	if( SplDirOpen(pVm,pThis,zPath,nPath) == 0 ){
+		return PH7_VmThrowException(pCtx,"UnexpectedValueException",
+			"%s::__construct(%.*s): Failed to open directory: %s",zClass,nPath,zPath,
+			VfsStrerror(errno));
+	}
+	SplDirReadSkip(pVm,pThis,SplDirFind(pVm,pThis));
+	return PH7_OK;
+}
+/* DirectoryIterator::__construct(string $directory) — php's flags for this one
+ * are KEY_AS_PATHNAME|CURRENT_AS_SELF, and it takes no flags argument. */
+static int vm_builtin_DirectoryIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return SplDirConstruct(pCtx,"DirectoryIterator",nArg,apArg,
+		SDI_KEY_AS_PATHNAME|SDI_CURRENT_AS_SELF);
+}
+/* The flags argument the two subclasses share: php's ZPP overwrites the whole
+ * default when one is given, so SKIP_DOTS is NOT implied by passing flags. */
+static sxi64 SplDirFlagArg(int nArg,ph7_value **apArg,sxi64 iDefault)
+{
+	return nArg > 1 ? ph7_value_to_int64(apArg[1]) : iDefault;
+}
+static int vm_builtin_FilesystemIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return SplDirConstruct(pCtx,"FilesystemIterator",nArg,apArg,
+		SplDirFlagArg(nArg,apArg,SDI_KEY_AS_PATHNAME|SDI_CURRENT_AS_FILEINFO|SDI_SKIPDOTS));
+}
+static int vm_builtin_RecursiveDirectoryIterator_construct(ph7_context *pCtx,int nArg,
+	ph7_value **apArg)
+{
+	return SplDirConstruct(pCtx,"RecursiveDirectoryIterator",nArg,apArg,
+		SplDirFlagArg(nArg,apArg,SDI_KEY_AS_PATHNAME|SDI_CURRENT_AS_FILEINFO));
+}
+/* DirectoryIterator::rewind(): php re-opens nothing — it rewinds the STREAM and
+ * takes one entry, with no dot skipping at this level. */
+static int vm_builtin_DirectoryIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	VmDirHandle *pH = SplDirChecked(pCtx,&rc);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pH == 0 ){
+		return rc;
+	}
+	PH7_NativeSetAttrInt(pCtx->pVm,PH7_ContextThis(pCtx),SDI_I,0);
+	if( pH->pStream->xRewindDir ){
+		pH->pStream->xRewindDir(pH->pHandle);
+	}
+	SplDirRead(pCtx->pVm,PH7_ContextThis(pCtx),pH);
+	return PH7_OK;
+}
+/* FilesystemIterator::rewind(): the same, plus the dot skipping, and php does
+ * NOT check the handle here (an uninitialized object simply rewinds to nothing). */
+static int vm_builtin_FilesystemIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	VmDirHandle *pH = SplDirState(pVm,pThis);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	PH7_NativeSetAttrInt(pVm,pThis,SDI_I,0);
+	if( pH && pH->pStream->xRewindDir ){
+		pH->pStream->xRewindDir(pH->pHandle);
+	}
+	SplDirReadSkip(pVm,pThis,pH);
+	return PH7_OK;
+}
+static int vm_builtin_DirectoryIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi32 rc;
+	VmDirHandle *pH = SplDirChecked(pCtx,&rc);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pH == 0 ){
+		return rc;
+	}
+	/* php advances the index PAST the end too, which is why key() keeps counting
+	 * once valid() is false. */
+	PH7_NativeSetAttrInt(pVm,pThis,SDI_I,PH7_NativeAttrInt(pThis,SDI_I) + 1);
+	SplDirReadSkip(pVm,pThis,pH);
+	return PH7_OK;
+}
+static int vm_builtin_DirectoryIterator_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	VmDirHandle *pH = SplDirChecked(pCtx,&rc);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pH == 0 ){
+		return rc;
+	}
+	ph7_result_bool(pCtx,!SplDirAtEnd(PH7_ContextThis(pCtx)));
+	return PH7_OK;
+}
+static int vm_builtin_DirectoryIterator_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	VmDirHandle *pH = SplDirChecked(pCtx,&rc);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pH == 0 ){
+		return rc;
+	}
+	ph7_result_int64(pCtx,PH7_NativeAttrInt(PH7_ContextThis(pCtx),SDI_I));
+	return PH7_OK;
+}
+static int vm_builtin_DirectoryIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	VmDirHandle *pH = SplDirChecked(pCtx,&rc);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pH == 0 ){
+		return rc;
+	}
+	SplResultBorrowed(pCtx,PH7_ContextThis(pCtx));
+	return PH7_OK;
+}
+static int vm_builtin_DirectoryIterator_isDot(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	int nEntry = 0;
+	const char *zEntry;
+	sxi32 rc;
+	VmDirHandle *pH = SplDirChecked(pCtx,&rc);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pH == 0 ){
+		return rc;
+	}
+	zEntry = SfiStr(PH7_ContextThis(pCtx),SDI_E,&nEntry);
+	ph7_result_bool(pCtx,SplDirIsDot(zEntry,nEntry));
+	return PH7_OK;
+}
+/*
+ * php's seek(): rewind if the target is behind us, then walk forward through
+ * the OBJECT's own valid()/next() — a subclass overriding either is obeyed, and
+ * running out raises php's OutOfBoundsException with the iterator left standing
+ * where the walk stopped.
+ */
+static int vm_builtin_DirectoryIterator_seek(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_method *pMethod;
+	sxi64 iPos;
+	sxi32 rc;
+	VmDirHandle *pH = SplDirChecked(pCtx,&rc);
+	if( pH == 0 ){
+		return rc;
+	}
+	iPos = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;
+	if( PH7_NativeAttrInt(pThis,SDI_I) > iPos ){
+		pMethod = PH7_ClassExtractMethod(pThis->pClass,"rewind",sizeof("rewind")-1);
+		if( pMethod ){
+			rc = PH7_VmCallClassMethod(pVm,pThis,pMethod,0,0,0);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+		}
+	}
+	while( PH7_NativeAttrInt(pThis,SDI_I) < iPos ){
+		ph7_value sRet;
+		int bValid;
+		pMethod = PH7_ClassExtractMethod(pThis->pClass,"valid",sizeof("valid")-1);
+		if( pMethod == 0 ){
+			break;
+		}
+		PH7_MemObjInit(pVm,&sRet);
+		rc = PH7_VmCallClassMethod(pVm,pThis,pMethod,&sRet,0,0);
+		bValid = rc == SXRET_OK && ph7_value_to_bool(&sRet);
+		PH7_MemObjRelease(&sRet);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		if( !bValid ){
+			return PH7_VmThrowException(pCtx,"OutOfBoundsException",
+				"Seek position %qd is out of range",iPos);
+		}
+		pMethod = PH7_ClassExtractMethod(pThis->pClass,"next",sizeof("next")-1);
+		if( pMethod == 0 ){
+			break;
+		}
+		rc = PH7_VmCallClassMethod(pVm,pThis,pMethod,0,0,0);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	return PH7_OK;
+}
+/* DirectoryIterator's three name accessors read the ENTRY, not the pathname —
+ * which is why `getFilename()` answers `..` where SplFileInfo's would answer the
+ * whole path, and why `__toString()` is aliased to this one rather than to
+ * getPathname(). */
+static int vm_builtin_DirectoryIterator_getFilename(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	int nEntry = 0;
+	const char *zEntry;
+	sxi32 rc;
+	VmDirHandle *pH = SplDirChecked(pCtx,&rc);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pH == 0 ){
+		return rc;
+	}
+	zEntry = SfiStr(PH7_ContextThis(pCtx),SDI_E,&nEntry);
+	ph7_result_string(pCtx,zEntry,nEntry);
+	return PH7_OK;
+}
+static int vm_builtin_DirectoryIterator_getBasename(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	int nEntry = 0,nBase = 0;
+	const char *zEntry,*zBase;
+	sxi32 rc;
+	VmDirHandle *pH = SplDirChecked(pCtx,&rc);
+	if( pH == 0 ){
+		return rc;
+	}
+	zEntry = SfiStr(PH7_ContextThis(pCtx),SDI_E,&nEntry);
+	zBase = PH7_ExtractBaseName(zEntry,nEntry,&nBase);
+	if( nArg > 0 ){
+		int nSuffix = 0;
+		const char *zSuffix = ph7_value_to_string(apArg[0],&nSuffix);
+		if( nSuffix > 0 && nSuffix < nBase
+		 && SyMemcmp(&zBase[nBase - nSuffix],zSuffix,(sxu32)nSuffix) == 0 ){
+			nBase -= nSuffix;
+		}
+	}
+	ph7_result_string(pCtx,zBase,nBase);
+	return PH7_OK;
+}
+static int vm_builtin_DirectoryIterator_getExtension(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	int nEntry = 0,nBase = 0,i;
+	const char *zEntry,*zBase;
+	sxi32 rc;
+	VmDirHandle *pH = SplDirChecked(pCtx,&rc);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pH == 0 ){
+		return rc;
+	}
+	zEntry = SfiStr(PH7_ContextThis(pCtx),SDI_E,&nEntry);
+	zBase = PH7_ExtractBaseName(zEntry,nEntry,&nBase);
+	for( i = nBase - 1 ; i >= 0 ; --i ){
+		if( zBase[i] == '.' ){
+			ph7_result_string(pCtx,&zBase[i+1],nBase - i - 1);
+			return PH7_OK;
+		}
+	}
+	ph7_result_string(pCtx,"",0);
+	return PH7_OK;
+}
+/*
+ * FilesystemIterator::key()/current(): php compares the flag against its MASK
+ * (`(flags & MODE_MASK) == mode`) rather than testing a bit, so a stray bit in
+ * another field cannot change either answer — which the chunk's `& KEY_AS_FILENAME`
+ * and `=== CURRENT_AS_PATHNAME` both got wrong in one direction or the other.
+ */
+static int vm_builtin_FilesystemIterator_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 iFlags = PH7_NativeAttrInt(pThis,SDI_F);
+	int nOut = 0;
+	const char *zOut;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( (iFlags & SDI_KEY_MODE_MASK) == SDI_KEY_AS_FILENAME ){
+		zOut = SfiStr(pThis,SDI_E,&nOut);
+		ph7_result_string(pCtx,zOut,nOut);
+		return PH7_OK;
+	}
+	if( SplDirState(pVm,pThis) == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","Object not initialized");
+	}
+	zOut = SfiName(pVm,pThis,&nOut);
+	ph7_result_string(pCtx,zOut,nOut);
+	return PH7_OK;
+}
+static int vm_builtin_FilesystemIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 iMode = PH7_NativeAttrInt(pThis,SDI_F) & SDI_CURRENT_MODE_MASK;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( iMode == SDI_CURRENT_AS_PATHNAME || iMode == SDI_CURRENT_AS_FILEINFO ){
+		if( SplDirState(pVm,pThis) == 0 ){
+			return PH7_VmThrowException(pCtx,"Error","Object not initialized");
+		}
+	}
+	if( iMode == SDI_CURRENT_AS_PATHNAME ){
+		int nName = 0;
+		const char *zName = SfiName(pVm,pThis,&nName);
+		ph7_result_string(pCtx,zName,nName);
+		return PH7_OK;
+	}
+	if( iMode == SDI_CURRENT_AS_FILEINFO ){
+		ph7_class *pClass = 0;
+		int nName = 0,nDir = 0;
+		const char *zName,*zDir;
+		sxi32 rc;
+		if( SplDirAtEnd(pThis) ){
+			/* php's create_type again: there is no entry to describe. */
+			return PH7_VmThrowException(pCtx,"RuntimeException","Could not open file");
+		}
+		rc = SfiInfoClass(pCtx,"current",0,&pClass);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+		zDir = SfiStr(pThis,SFI_P,&nDir);
+		zName = SfiName(pVm,pThis,&nName);
+		return SfiMakeInfoEx(pCtx,pClass,zName,nName,zDir,nDir);
+	}
+	SplResultBorrowed(pCtx,pThis);
+	return PH7_OK;
+}
+/* php's getFlags()/setFlags() answer and accept only the three mode fields;
+ * everything else in the word is engine state the class keeps to itself. */
+static int vm_builtin_FilesystemIterator_getFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_int64(pCtx,PH7_NativeAttrInt(PH7_ContextThis(pCtx),SDI_F) & SDI_FLAGS_MASK);
+	return PH7_OK;
+}
+static int vm_builtin_FilesystemIterator_setFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 iFlags = PH7_NativeAttrInt(pThis,SDI_F);
+	sxi64 iNew = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;
+	PH7_NativeSetAttrInt(pCtx->pVm,pThis,SDI_F,(iFlags & ~(sxi64)SDI_FLAGS_MASK)
+		| (iNew & (sxi64)SDI_FLAGS_MASK));
+	return PH7_OK;
+}
+/*
+ * RecursiveDirectoryIterator::hasChildren(bool $allowLinks = false).
+ *
+ * php lstats the entry and then asks two separate questions of it: a plain
+ * directory has children, and a SYMLINK has them only when the walk was told to
+ * follow links. Asked of the VFS rather than of a mode word, because the mode is
+ * not filled on Windows (the same lesson getType() learned).
+ */
+static int vm_builtin_RecursiveDirectoryIterator_hasChildren(ph7_context *pCtx,int nArg,
+	ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const ph7_vfs *pVfs = pVm->pEngine->pVfs;
+	int nEntry = 0;
+	const char *zEntry = SfiStr(pThis,SDI_E,&nEntry);
+	char zPath[4096];
+	int bAllow = nArg > 0 ? ph7_value_to_bool(apArg[0]) : 0;
+	sxi64 iFlags = PH7_NativeAttrInt(pThis,SDI_F);
+	if( nEntry < 1 || SplDirIsDot(zEntry,nEntry) || pVfs == 0
+	 || SfiPathBuf(pVm,pThis,zPath,(int)sizeof(zPath)) != SXRET_OK ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( pVfs->xIslink && pVfs->xIslink(zPath) == PH7_OK
+	 && !bAllow && (iFlags & SDI_FOLLOW_SYMLINKS) == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_bool(pCtx,pVfs->xIsdir && pVfs->xIsdir(zPath) == PH7_OK);
+	return PH7_OK;
+}
+/*
+ * getChildren(): php builds an instance of the RUNTIME class through its
+ * constructor with (pathname, flags), then hands it the sub path — which is what
+ * makes getSubPathname() name the whole nested route rather than just the entry
+ * (the chunk answered `''` and the filename, wrong at every depth below one).
+ */
+static int vm_builtin_RecursiveDirectoryIterator_getChildren(ph7_context *pCtx,int nArg,
+	ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pNew;
+	ph7_class_method *pCons;
+	ph7_value sPath,sFlags,*apCall[2];
+	int nName = 0,nSub = 0,nEntry = 0;
+	const char *zName;
+	sxi64 iFlags = PH7_NativeAttrInt(pThis,SDI_F);
+	sxi32 rc;
+	SyBlob sSub;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( SplDirState(pVm,pThis) == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","Object not initialized");
+	}
+	pNew = PH7_NewClassInstance(pVm,pThis->pClass);
+	if( pNew == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	pNew->iRef++;
+	zName = SfiName(pVm,pThis,&nName);
+	PH7_MemObjInitFromString(pVm,&sPath,0);
+	PH7_MemObjStringAppend(&sPath,zName,(sxu32)nName);
+	PH7_MemObjInitFromInt(pVm,&sFlags,iFlags);
+	apCall[0] = &sPath;
+	apCall[1] = &sFlags;
+	pCons = PH7_ClassExtractMethod(pThis->pClass,"__construct",sizeof("__construct")-1);
+	rc = pCons ? PH7_VmCallClassMethod(pVm,pNew,pCons,0,2,apCall) : SXRET_OK;
+	PH7_MemObjRelease(&sPath);
+	PH7_MemObjRelease(&sFlags);
+	if( rc != SXRET_OK ){
+		PH7_ClassInstanceUnref(pNew);
+		return rc;
+	}
+	/* php's sub_path: the parent's, this entry appended. */
+	SyBlobInit(&sSub,&pVm->sAllocator);
+	{
+		const char *zSub = SfiStr(pThis,SDI_S,&nSub);
+		SyBlobAppend(&sSub,zSub,(sxu32)nSub);
+	}
+	if( nSub > 0 ){
+		char cSlash = SplDirSlash(iFlags);
+		SyBlobAppend(&sSub,(const void *)&cSlash,sizeof(char));
+	}
+	{
+		const char *zEntry = SfiStr(pThis,SDI_E,&nEntry);
+		SyBlobAppend(&sSub,zEntry,(sxu32)nEntry);
+	}
+	PH7_NativeSetAttrStr(pVm,pNew,SDI_S,
+		(const char *)SyBlobData(&sSub),(int)SyBlobLength(&sSub));
+	SyBlobRelease(&sSub);
+	{
+		int nInfo = 0;
+		const char *zInfo = SfiStr(pThis,SFI_IC,&nInfo);
+		PH7_NativeSetAttrStr(pVm,pNew,SFI_IC,zInfo,nInfo);
+	}
+	PH7_NativeResultObject(pCtx,pNew);
+	PH7_ClassInstanceUnref(pNew);
+	return PH7_OK;
+}
+static int vm_builtin_RecursiveDirectoryIterator_getSubPath(ph7_context *pCtx,int nArg,
+	ph7_value **apArg)
+{
+	int nSub = 0;
+	const char *zSub = SfiStr(PH7_ContextThis(pCtx),SDI_S,&nSub);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_string(pCtx,zSub,nSub);
+	return PH7_OK;
+}
+static int vm_builtin_RecursiveDirectoryIterator_getSubPathname(ph7_context *pCtx,int nArg,
+	ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int nSub = 0,nEntry = 0;
+	const char *zSub = SfiStr(pThis,SDI_S,&nSub);
+	SyBlob sOut;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( nSub < 1 ){
+		const char *zEntry = SfiStr(pThis,SDI_E,&nEntry);
+		ph7_result_string(pCtx,zEntry,nEntry);
+		return PH7_OK;
+	}
+	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+	SyBlobAppend(&sOut,zSub,(sxu32)nSub);
+	{
+		char cSlash = SplDirSlash(PH7_NativeAttrInt(pThis,SDI_F));
+		SyBlobAppend(&sOut,(const void *)&cSlash,sizeof(char));
+	}
+	{
+		const char *zEntry = SfiStr(pThis,SDI_E,&nEntry);
+		SyBlobAppend(&sOut,zEntry,(sxu32)nEntry);
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+	return PH7_OK;
+}
+/*
+ * The three declarations. Method ORDER, signatures and tentative return types
+ * are spl_directory.stub.php's; the four slots are php's `u.dir` arm and carry
+ * PH7_MOD_HIDDEN because php declares no property at all here. Each class
+ * restates NOSERIALIZE and the presentation hook: a native subclass inherits
+ * neither (rule 29).
+ */
+static sxi32 VmInstallSplDirIterators(ph7_vm *pVm)
+{
+	static const PH7_NativePropDef aDirProp[] = {
+		{ SDI_E, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
+		{ SDI_I, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+		{ SDI_F, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+		{ SDI_S, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
+	};
+	static const PH7_NativeMethodDef aDirMethod[] = {
+		{ "__construct",  PH7_MOD_PUBLIC, "string $directory", 0,
+		  vm_builtin_DirectoryIterator_construct },
+		{ "getFilename",  PH7_MOD_PUBLIC, "", "@string",
+		  vm_builtin_DirectoryIterator_getFilename },
+		{ "getExtension", PH7_MOD_PUBLIC, "", "@string",
+		  vm_builtin_DirectoryIterator_getExtension },
+		{ "getBasename",  PH7_MOD_PUBLIC, "string $suffix = \"\"", "@string",
+		  vm_builtin_DirectoryIterator_getBasename },
+		{ "isDot",        PH7_MOD_PUBLIC, "", "@bool", vm_builtin_DirectoryIterator_isDot },
+		{ "rewind",       PH7_MOD_PUBLIC, "", "@void", vm_builtin_DirectoryIterator_rewind },
+		{ "valid",        PH7_MOD_PUBLIC, "", "@bool", vm_builtin_DirectoryIterator_valid },
+		{ "key",          PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_DirectoryIterator_key },
+		{ "current",      PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_DirectoryIterator_current },
+		{ "next",         PH7_MOD_PUBLIC, "", "@void", vm_builtin_DirectoryIterator_next },
+		{ "seek",         PH7_MOD_PUBLIC, "int $offset", "@void",
+		  vm_builtin_DirectoryIterator_seek },
+		/* php aliases this one to getFilename(), so `echo $it` prints the ENTRY where
+		 * SplFileInfo's __toString prints the whole pathname. Not tentative. */
+		{ "__toString",   PH7_MOD_PUBLIC, "", "string",
+		  vm_builtin_DirectoryIterator_getFilename },
+	};
+	static const PH7_NativeConstDef aFsConst[] = {
+		{ "CURRENT_MODE_MASK",   PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_CURRENT_MODE_MASK, 0, 0.0 },
+		{ "CURRENT_AS_PATHNAME", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_CURRENT_AS_PATHNAME, 0, 0.0 },
+		{ "CURRENT_AS_FILEINFO", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_CURRENT_AS_FILEINFO, 0, 0.0 },
+		{ "CURRENT_AS_SELF",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_CURRENT_AS_SELF, 0, 0.0 },
+		{ "KEY_MODE_MASK",       PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_KEY_MODE_MASK, 0, 0.0 },
+		{ "KEY_AS_PATHNAME",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_KEY_AS_PATHNAME, 0, 0.0 },
+		{ "FOLLOW_SYMLINKS",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_FOLLOW_SYMLINKS, 0, 0.0 },
+		{ "KEY_AS_FILENAME",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_KEY_AS_FILENAME, 0, 0.0 },
+		{ "NEW_CURRENT_AND_KEY", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_KEY_AS_FILENAME|SDI_CURRENT_AS_FILEINFO, 0, 0.0 },
+		{ "OTHER_MODE_MASK",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_OTHERS_MASK, 0, 0.0 },
+		{ "SKIP_DOTS",           PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_SKIPDOTS, 0, 0.0 },
+		{ "UNIX_PATHS",          PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_UNIXPATHS, 0, 0.0 },
+	};
+	static const PH7_NativeMethodDef aFsMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC,
+		  "string $directory, int $flags = FilesystemIterator::KEY_AS_PATHNAME | "
+		  "FilesystemIterator::CURRENT_AS_FILEINFO | FilesystemIterator::SKIP_DOTS", 0,
+		  vm_builtin_FilesystemIterator_construct },
+		{ "rewind",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_FilesystemIterator_rewind },
+		{ "key",         PH7_MOD_PUBLIC, "", "@string", vm_builtin_FilesystemIterator_key },
+		{ "current",     PH7_MOD_PUBLIC, "", "@SplFileInfo|FilesystemIterator|string",
+		  vm_builtin_FilesystemIterator_current },
+		{ "getFlags",    PH7_MOD_PUBLIC, "", "@int", vm_builtin_FilesystemIterator_getFlags },
+		{ "setFlags",    PH7_MOD_PUBLIC, "int $flags", "@void",
+		  vm_builtin_FilesystemIterator_setFlags },
+	};
+	static const PH7_NativeMethodDef aRdiMethod[] = {
+		{ "__construct",    PH7_MOD_PUBLIC,
+		  "string $directory, int $flags = FilesystemIterator::KEY_AS_PATHNAME | "
+		  "FilesystemIterator::CURRENT_AS_FILEINFO", 0,
+		  vm_builtin_RecursiveDirectoryIterator_construct },
+		{ "hasChildren",    PH7_MOD_PUBLIC, "bool $allowLinks = false", "@bool",
+		  vm_builtin_RecursiveDirectoryIterator_hasChildren },
+		{ "getChildren",    PH7_MOD_PUBLIC, "", "@RecursiveDirectoryIterator",
+		  vm_builtin_RecursiveDirectoryIterator_getChildren },
+		{ "getSubPath",     PH7_MOD_PUBLIC, "", "@string",
+		  vm_builtin_RecursiveDirectoryIterator_getSubPath },
+		{ "getSubPathname", PH7_MOD_PUBLIC, "", "@string",
+		  vm_builtin_RecursiveDirectoryIterator_getSubPathname },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "DirectoryIterator", "SplFileInfo", "SeekableIterator", PH7_CLASS_NOSERIALIZE,
+		  aDirMethod, SX_ARRAYSIZE(aDirMethod), 0, 0,
+		  aDirProp, SX_ARRAYSIZE(aDirProp), SplDirClose, 0, SfiPresent },
+		{ "FilesystemIterator", "DirectoryIterator", 0, PH7_CLASS_NOSERIALIZE,
+		  aFsMethod, SX_ARRAYSIZE(aFsMethod), aFsConst, SX_ARRAYSIZE(aFsConst),
+		  0, 0, SplDirClose, 0, SfiPresent },
+		{ "RecursiveDirectoryIterator", "FilesystemIterator", "RecursiveIterator",
+		  PH7_CLASS_NOSERIALIZE,
+		  aRdiMethod, SX_ARRAYSIZE(aRdiMethod), 0, 0,
+		  0, 0, SplDirClose, 0, SfiPresent },
+	};
+	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+}
 PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)
 {
 	sxi32 rc = VmInstallWeak(&(*pVm));
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	/* Before the chunk, not after: `RecursiveArrayIterator extends ArrayIterator` is
-	 * still PHP, and the compiler has to find the native class it extends. */
+	/* Ordering, now that zSplLib is gone: the remaining PHP in this subsystem is
+	 * the tokenizer chunk's, so these only have to satisfy each OTHER. */
 	rc = VmInstallSplStore(&(*pVm));
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	/* Also before the chunk: AppendIterator is still PHP and names OuterIterator as
-	 * it compiles, as do the Recursive family and the datastructures. */
 	rc = VmInstallSplDualIterators(&(*pVm));
 	if( rc != SXRET_OK ){
 		return rc;
@@ -7839,8 +8773,6 @@ PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	/* Also before the chunk: SplPriorityQueue and the heaps are still PHP and the
-	 * compiler reads them after these three are declared. */
 	rc = VmInstallSplDllist(&(*pVm));
 	if( rc != SXRET_OK ){
 		return rc;
@@ -7857,12 +8789,13 @@ PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	/* Before the chunk too: DirectoryIterator is still PHP and extends this. */
 	rc = VmInstallSplFileInfo(&(*pVm));
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	return PH7_VmEvalBuiltinChunk(&(*pVm),zSplLib,sizeof(zSplLib)-1);
+	/* After SplFileInfo: DirectoryIterator extends it, and PH7_ClassInherit copies
+	 * the base's methods DOWN (rule 14). */
+	return VmInstallSplDirIterators(&(*pVm));
 }
 
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
