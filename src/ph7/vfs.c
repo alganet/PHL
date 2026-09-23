@@ -2184,6 +2184,45 @@ static int PH7_vfs_link(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * string|false readlink(string $path)
+ *  Returns the target of a symbolic link.
+ * Parameters
+ *  $path
+ *   The symbolic link path.
+ * Return
+ *  The contents of the link, or FALSE (with a warning) when $path is not a link
+ *  or cannot be read -- php's own answer, error text included.
+ */
+static int PH7_vfs_readlink(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zPath;
+	ph7_vfs *pVfs;
+	int rc;
+	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
+	if( pVfs == 0 || pVfs->xReadlink == 0 ){
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+			"IO routine(%s) not implemented in the underlying VFS,PH7 is returning FALSE",
+			ph7_function_name(pCtx)
+			);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zPath = ph7_value_to_string(apArg[0],0);
+	rc = pVfs->xReadlink(zPath,pCtx);
+	if( rc != PH7_OK ){
+		/* php's wording is the errno text alone -- the engine prefixes the
+		 * function name already. */
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+			"%s",VfsStrerror(errno));
+		ph7_result_bool(pCtx,0);
+	}
+	return PH7_OK;
+}
+/*
  * bool symlink(string $target,string $link)
  *  Creates a symbolic link.
  * Parameters
@@ -2594,7 +2633,8 @@ static const ph7_vfs null_vfs __attribute__((unused)) = {
 	0, /* int (*xUid)(void) */
 	0, /* int (*xGid)(void) */
 	0, /* void (*xUsername)(ph7_context *) */
-	0  /* int (*xExec)(const char *,ph7_context *) */
+	0, /* int (*xExec)(const char *,ph7_context *) */
+	0  /* int (*xReadlink)(const char *,ph7_context *) */
 };
 /* Windows VFS implementation moved to vfs_win.c */
 /* Unix VFS implementation moved to vfs_unix.c */
@@ -2679,6 +2719,7 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"touch",       PH7_vfs_touch    },
 		{"link",        PH7_vfs_link     },
 		{"symlink",     PH7_vfs_symlink  },
+		{"readlink",    PH7_vfs_readlink },
 		{"umask",       PH7_vfs_umask    },
 		{"sys_get_temp_dir", PH7_vfs_sys_get_temp_dir },
 		{"get_current_user", PH7_vfs_get_current_user },

@@ -430,7 +430,10 @@ static int UnixVfs_islink(const char *zPath)
 	zPath = UnixVfsLocalPath(zPath);
 	struct stat st;
 	int rc;
-	rc = stat(zPath,&st);
+	/* LSTAT, not stat: stat() FOLLOWS the link and answers about its target, so
+	 * S_ISLNK could never be true here and is_link() was false for every symlink
+	 * in existence. php's is_link() is php_stat(FS_IS_LINK), which lstats. */
+	rc = lstat(zPath,&st);
 	if( rc != 0 ){
 	 return -1;
 	}
@@ -467,7 +470,10 @@ static int UnixVfs_Filetype(const char *zPath,ph7_context *pCtx)
 	zPath = UnixVfsLocalPath(zPath);
 	struct stat st;
 	int rc;
-    rc = stat(zPath,&st);
+	/* php's FS_TYPE lstats, which is why filetype() answers "link" for a symlink
+	 * and "file" for what it points at. stat() here made the "link" arm below
+	 * unreachable. */
+    rc = lstat(zPath,&st);
 	if( rc != 0 ){
 	  /* Expand 'unknown' */
 	  ph7_result_string(pCtx,"unknown",sizeof("unknown")-1);
@@ -488,6 +494,24 @@ static int UnixVfs_Filetype(const char *zPath,ph7_context *pCtx)
 	}else{
 		ph7_result_string(pCtx,"unknown",sizeof("unknown")-1);
 	}
+	return PH7_OK;
+}
+/* int (*xReadlink)(const char *,ph7_context *) */
+static int UnixVfs_Readlink(const char *zPath,ph7_context *pCtx)
+{
+	char zBuf[4096];
+	ssize_t n;
+	zPath = UnixVfsLocalPath(zPath);
+	n = readlink(zPath,zBuf,sizeof(zBuf));
+	if( n < 0 ){
+		return -1;
+	}
+	/* readlink() does NOT null-terminate, and truncates silently when the target
+	 * does not fit -- the length is the only thing that says what was read. */
+	if( (size_t)n >= sizeof(zBuf) ){
+		n = (ssize_t)sizeof(zBuf) - 1;
+	}
+	ph7_result_string(pCtx,zBuf,(int)n);
 	return PH7_OK;
 }
 /* int (*xGetenv)(const char *,ph7_context *) */
@@ -668,7 +692,8 @@ PH7_PRIVATE const ph7_vfs sUnixVfs = {
 	UnixVfs_uid, /* int (*xUid)(void) */
 	UnixVfs_gid, /* int (*xGid)(void) */
 	UnixVfs_Username,    /* void (*xUsername)(ph7_context *) */
-	0 /* int (*xExec)(const char *,ph7_context *) */
+	0, /* int (*xExec)(const char *,ph7_context *) */
+	UnixVfs_Readlink /* int (*xReadlink)(const char *,ph7_context *) */
 };
 /* UNIX File IO */
 #define PH7_UNIX_OPEN_MODE	0640 /* Default open mode */

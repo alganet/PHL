@@ -750,6 +750,54 @@ static int WinVfs_Filetype(const char *zPath,ph7_context *pCtx)
 	}
 	return PH7_OK;
 }
+/*
+ * int (*xReadlink)(const char *,ph7_context *)
+ *
+ * Windows has no readlink(2). php resolves the handle instead
+ * (GetFinalPathNameByHandleW) and strips the \\?\ prefix it comes back with, so
+ * the answer here is the target's CANONICAL path where a unix readlink() would
+ * hand back the link's raw text -- a relative symlink therefore reads back
+ * absolute on this platform.
+ */
+static int WinVfs_Readlink(const char *zPath,ph7_context *pCtx)
+{
+	void *pConverted;
+	HANDLE pHandle;
+	WCHAR zTarget[1024];
+	char zUtf8[1024*4];
+	DWORD nLen;
+	int nOut;
+	zPath = WinVfsLocalPath(zPath);
+	pConverted = convertUtf8Filename(zPath);
+	if( pConverted == 0 ){
+		return -1;
+	}
+	pHandle = CreateFileW((LPCWSTR)pConverted,0,
+		FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,0,OPEN_EXISTING,
+		FILE_FLAG_BACKUP_SEMANTICS,0);
+	HeapFree(GetProcessHeap(),0,pConverted);
+	if( pHandle == INVALID_HANDLE_VALUE ){
+		return -1;
+	}
+	nLen = GetFinalPathNameByHandleW(pHandle,zTarget,
+		(DWORD)(sizeof(zTarget)/sizeof(zTarget[0])) - 1,0);
+	CloseHandle(pHandle);
+	if( nLen < 1 || nLen >= (DWORD)(sizeof(zTarget)/sizeof(zTarget[0])) ){
+		return -1;
+	}
+	zTarget[nLen] = 0;
+	nOut = WideCharToMultiByte(CP_UTF8,0,zTarget,(int)nLen,zUtf8,(int)sizeof(zUtf8),0,0);
+	if( nOut < 1 ){
+		return -1;
+	}
+	/* Drop the \\?\ prefix the API always prepends, as php does. */
+	if( nOut > 4 && zUtf8[0] == '\\' && zUtf8[1] == '\\' && zUtf8[2] == '?' && zUtf8[3] == '\\' ){
+		ph7_result_string(pCtx,&zUtf8[4],nOut - 4);
+	}else{
+		ph7_result_string(pCtx,zUtf8,nOut);
+	}
+	return PH7_OK;
+}
 /* int (*xGetenv)(const char *,ph7_context *) */
 static int WinVfs_Getenv(const char *zVar,ph7_context *pCtx)
 {
@@ -973,7 +1021,8 @@ PH7_PRIVATE const ph7_vfs sWinVfs = {
 	WinVfs_Uid, /* int (*xUid)(void) */
 	WinVfs_Gid, /* int (*xGid)(void) */
 	WinVfs_Username,    /* void (*xUsername)(ph7_context *) */
-	0 /* int (*xExec)(const char *,ph7_context *) */
+	0, /* int (*xExec)(const char *,ph7_context *) */
+	WinVfs_Readlink /* int (*xReadlink)(const char *,ph7_context *) */
 };
 /* Windows file IO */
 #ifndef INVALID_SET_FILE_POINTER
