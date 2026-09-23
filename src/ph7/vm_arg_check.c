@@ -1736,6 +1736,27 @@ PH7_PRIVATE sxi32 PH7_VmBindNamedArgsToSig(
 	return SXRET_OK;
 }
 /*
+ * Name the Nth (0-based) parameter of a declared signature, without the '$'.
+ *
+ * The signature string is the only place a host function's parameter names live, and
+ * php puts them in diagnostics — `sort(): Argument #1 ($array) …`. Answers 0 when the
+ * signature has no such parameter (or none with a name).
+ */
+PH7_PRIVATE int PH7_VmSigParamName(const char *zSig,int nPos,SyString *pOut)
+{
+	VmSigParam aParam[VM_SIG_MAX_PARAM];
+	int nParam;
+	if( zSig == 0 || nPos < 0 || nPos >= VM_SIG_MAX_PARAM ){
+		return 0;
+	}
+	nParam = VmSigParams(zSig,aParam,VM_SIG_MAX_PARAM);
+	if( nPos >= nParam || aParam[nPos].nName < 1 ){
+		return 0;
+	}
+	SyStringInitFromBuf(pOut,aParam[nPos].zName,(sxu32)aParam[nPos].nName);
+	return 1;
+}
+/*
  * A `&` in a builtin's signature is not always php's ZEND_SEND_ARG_BY_REF.
  *
  * php has a second mode, ZEND_SEND_PREFER_REF: bind by reference when the argument IS a

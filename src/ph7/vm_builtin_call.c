@@ -1602,6 +1602,49 @@ PH7_PRIVATE sxi32 VmRaiseNotCallable(ph7_vm *pVm, ph7_class_instance *pThis)
 	return rc;
 }
 /*
+ * The host-function half of PH7_VmCufDropByRefArgs below.
+ *
+ * A builtin has no compiled parameter records, so its by-ref positions come from the
+ * declared signature (the mask VmDeriveByRefMaskFromSig already put on the callee) and
+ * its parameter NAMES from the same string. php's rule is the one the user-function half
+ * implements: warn, then hand the callee a copy.
+ */
+static void VmCufDropByRefBuiltinArgs(ph7_context *pCtx,ph7_value *pCallable,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SyHashEntry *pEntry;
+	ph7_user_func *pHost;
+	int i;
+	pEntry = SyHashGet(&pVm->hHostFunction,SyBlobData(&pCallable->sBlob),
+		SyBlobLength(&pCallable->sBlob));
+	if( pEntry == 0 ){
+		return;
+	}
+	pHost = (ph7_user_func *)pEntry->pUserData;
+	if( pHost->nByRefMask == 0 ){
+		return;
+	}
+	for( i = 0 ; i < nArg && i < 31 ; ++i ){
+		SyString sName;
+		if( (pHost->nByRefMask & (1u << i)) == 0 ){
+			continue;
+		}
+		if( PH7_VmSigParamName(pHost->zSig,i,&sName) ){
+			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+				"%z(): Argument #%d ($%z) must be passed by reference, value given",
+				&pHost->sName,i + 1,&sName);
+		}else{
+			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+				"%z(): Argument #%d must be passed by reference, value given",
+				&pHost->sName,i + 1);
+		}
+		if( apArg[i] ){
+			apArg[i]->nIdx = SXU32_HIGH; /* not an l-value any more: force a copy */
+			apArg[i]->iFlags |= MEMOBJ_AUX_CUFVAL; /* ...and this copy is INTENTIONAL */
+		}
+	}
+}
+/*
  * Call a user defined or foreign function where the name of the function
  * is stored in the pFunc parameter and the given arguments are stored
  * in the apArg[] array.
@@ -1634,6 +1677,13 @@ PH7_PRIVATE void PH7_VmCufDropByRefArgs(ph7_context *pCtx,ph7_value *pCallable,i
 	pEntry = SyHashGet(&pVm->hFunction,SyBlobData(&pCallable->sBlob),
 		SyBlobLength(&pCallable->sBlob));
 	if( pEntry == 0 ){
+		/* A HOST function (sort, array_pop, preg_match, …) has no compiled parameter
+		 * records — its by-ref positions come from the declared signature instead.
+		 * Left out until now, so the whole builtin half of the rule was missing:
+		 * `call_user_func('sort', $a)` SORTED the caller's array, `array_pop` removed
+		 * an element from it and `preg_match` filled its `$matches` variable, where php
+		 * warns and operates on a copy in every one of those cases. */
+		VmCufDropByRefBuiltinArgs(pCtx,pCallable,nArg,apArg);
 		return;
 	}
 	pFunc = (ph7_vm_func *)pEntry->pUserData;

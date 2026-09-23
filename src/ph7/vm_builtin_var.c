@@ -462,13 +462,11 @@ PH7_PRIVATE int vm_builtin_settype(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	int nLen;
 	ph7_value *pNew;
 	SXUNUSED(nArg); /* arity (exactly 2) enforced by the central arity table */
-	/* php binds $var by reference at the call boundary: a literal/constant (no
-	 * caller slot, nIdx == SXU32_HIGH) is a catchable Error, raised BEFORE the
-	 * $type validation — the same signal + wording array_pop() & co use. */
-	if( apArg[0]->nIdx == SXU32_HIGH ){
-		return PH7_VmThrowException(pCtx,"Error",
-			"settype(): Argument #1 ($var) could not be passed by reference");
-	}
+	/* php binds $var by reference at the CALL, and the refusal is the call site's
+	 * to raise (PH7_VmScreenByRefArgShapes) — only the compiler can tell a literal,
+	 * which php refuses, from the result of a call, which php accepts with a notice
+	 * and converts in place on the temporary. The `nIdx == SXU32_HIGH` test that
+	 * used to sit here conflated the two. */
 	zType = ph7_value_to_string(apArg[1],&nLen);
 	/* Validate the target type up-front (php checks $type before touching $var):
 	 * "resource" is a distinct ValueError, any other unknown name is the generic

@@ -203,14 +203,12 @@ PH7_PRIVATE int ph7_hashmap_pop(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			nArg
 			);
 	}
-	/* Passing a constant (including literals) or non-variable triggers the same
-	 * error message as official PHP. Check the index to detect constants. */
-	if( apArg[0]->nIdx == SXU32_HIGH ){
-		return PH7_VmThrowException(pCtx,
-			"Error",
-			"array_pop(): Argument #1 ($array) could not be passed by reference"
-			);
-	}
+	/* php refuses a non-variable at the CALL, not here: the refusal is the call
+	 * site's to raise (PH7_VmScreenByRefArgShapes), because only the compiler can
+	 * tell a literal — which php refuses — from the result of a CALL, which php
+	 * accepts with a notice and operates on. Testing `nIdx == SXU32_HIGH` here
+	 * conflated the two, and it also fired for the copy call_user_func() is
+	 * supposed to hand a by-ref parameter. */
 	/* Make sure we are dealing with a valid hashmap */
 	if( !ph7_value_is_array(apArg[0]) ){
 		return PH7_VmThrowException(pCtx,
@@ -264,14 +262,7 @@ PH7_PRIVATE int ph7_hashmap_push(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			nArg
 			);
 	}
-	/* Passing a constant (including literals) or non-variable triggers the same
-	 * error message as official PHP. Check the index to detect constants. */
-	if( apArg[0]->nIdx == SXU32_HIGH ){
-		return PH7_VmThrowException(pCtx,
-			"Error",
-			"array_push(): Argument #1 ($array) could not be passed by reference"
-			);
-	}
+	/* No by-reference refusal here: it belongs to the CALL (see ph7_hashmap_pop). */
 	/* Make sure we are dealing with a valid hashmap */
 	if( !ph7_value_is_array(apArg[0]) ){
 		return PH7_VmThrowException(pCtx,
@@ -317,13 +308,7 @@ PH7_PRIVATE int ph7_hashmap_shift(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			nArg
 			);
 	}
-	/* Detect constants or literals, which cannot be passed by reference. */
-	if( apArg[0]->nIdx == SXU32_HIGH ){
-		return PH7_VmThrowException(pCtx,
-			"Error",
-			"array_shift(): Argument #1 ($array) could not be passed by reference"
-			);
-	}
+	/* No by-reference refusal here: it belongs to the CALL (see ph7_hashmap_pop). */
 	/* Make sure we are dealing with a valid hashmap */
 	if( !ph7_value_is_array(apArg[0]) ){
 		return PH7_VmThrowException(pCtx,
@@ -399,13 +384,7 @@ PH7_PRIVATE int ph7_hashmap_unshift(ph7_context *pCtx,int nArg,ph7_value **apArg
 			nArg
 			);
 	}
-	/* Detect constants or literals, which cannot be passed by reference. */
-	if( apArg[0]->nIdx == SXU32_HIGH ){
-		return PH7_VmThrowException(pCtx,
-			"Error",
-			"array_unshift(): Argument #1 ($array) could not be passed by reference"
-			);
-	}
+	/* No by-reference refusal here: it belongs to the CALL (see ph7_hashmap_pop). */
 	if( !ph7_value_is_array(apArg[0]) ){
 		char zBuf[64];
 		return PH7_VmThrowException(pCtx,

@@ -3834,6 +3834,7 @@ PH7_PRIVATE sxu32 VmDeriveByRefMaskFromSig(const char *zSig);
 PH7_PRIVATE sxi32 PH7_VmBindNamedArgsToSig(ph7_context *pCtx,ph7_user_func *pFunc,VmCallArgMap *pMap,int *pnArg,ph7_value **apArg);
 PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(ph7_context *pCtx,ph7_user_func *pFunc,int nGiven,ph7_value **apArg);
 PH7_PRIVATE sxi32 PH7_VmScreenByRefArgShapes(ph7_context *pCtx,ph7_user_func *pFunc,VmCallArgMap *pMap,int nGiven);
+PH7_PRIVATE int PH7_VmSigParamName(const char *zSig,int nPos,SyString *pOut);
 PH7_PRIVATE int PH7_ArgSatisfiesString(ph7_value *pArg);
 PH7_PRIVATE void VmDeprecatedAttrNotice(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_class *pDeclClass);
 /* vm_exec_ctx.c — Fiber/Generator/Closure engine shared with vm.c */
