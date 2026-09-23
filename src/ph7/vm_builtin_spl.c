@@ -5509,76 +5509,490 @@ static sxi32 VmInstallSplHeap(ph7_vm *pVm)
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }
+/*
+ * ---------------------------------------------------------------------------
+ * SplFixedArray.
+ *
+ * php PRESENTS this one as its own elements: `var_dump` shows
+ * `object(SplFixedArray)#1 (3) { [0]=> … }`, the `(array)` cast yields the
+ * elements with their integer keys, and `serialize()` writes them as INTEGER
+ * property names (`O:13:"SplFixedArray":3:{i:0;…}`) because `__serialize()`
+ * simply hands the element array back. The chunk exposed `__a`/`__n` on all
+ * three surfaces instead.
+ *
+ * `getIterator()` answers php's **InternalIterator**, not a Generator. The chunk
+ * yielded, which is one class name wrong on a php-visible surface and also the
+ * thing rule 5's InternalIterator exists for — `pIterVtab` plus
+ * `PH7_NativeIteratorNew()` is the whole implementation, and it gets php's
+ * independent-cursor behaviour (two getIterator() calls, or nested foreach, walk
+ * separately) for free.
+ *
+ * php's offset rule is its own: an int, a bool and an INTEGER-LIKE string are
+ * accepted, everything else is `Cannot access offset of type %s on SplFixedArray`.
+ * The chunk refused bools. A FLOAT offset stays refused here, which is not php's
+ * answer (php truncates, with a precision deprecation when it is lossy) but IS
+ * PHL's engine-wide one — `$a[1.5]` on a plain array raises the same TypeError,
+ * so the class stays consistent with the engine it lives in rather than uniquely
+ * permissive (§10).
+ */
+#define FA_A "__a"   /* the elements, 0..n-1 */
+#define FA_N "__n"   /* php's size */
+
+static ph7_value * FaSlot(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,FA_A) : 0;
+	if( pSlot == 0 ){
+		return 0;
+	}
+	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){
+			return 0;
+		}
+	}
+	if( PH7_HashmapCowSeparate(pVm,pSlot) == 0 ){
+		return 0;
+	}
+	return pSlot;
+}
+static ph7_hashmap * FaMap(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_value *pSlot = FaSlot(pVm,pThis);
+	return pSlot ? (ph7_hashmap *)pSlot->x.pOther : 0;
+}
+static sxi64 FaSize(ph7_class_instance *pThis)
+{
+	return pThis ? PH7_NativeAttrInt(pThis,FA_N) : 0;
+}
+static ph7_value * FaAt(ph7_vm *pVm,ph7_class_instance *pThis,sxi64 i)
+{
+	ph7_hashmap *pMap = FaMap(pVm,pThis);
+	ph7_hashmap_node *pNode = 0;
+	if( pMap == 0 || HashmapLookupIntKey(pMap,i,&pNode) != SXRET_OK ){
+		return 0;
+	}
+	return HashmapExtractNodeValue(pNode);
+}
+static void FaPut(ph7_vm *pVm,ph7_class_instance *pThis,sxi64 i,ph7_value *pVal)
+{
+	ph7_hashmap *pMap = FaMap(pVm,pThis);
+	ph7_value sKey;
+	if( pMap == 0 ){
+		return;
+	}
+	PH7_MemObjInitFromInt(pVm,&sKey,i);
+	PH7_HashmapInsert(pMap,&sKey,pVal);
+	PH7_MemObjRelease(&sKey);
+}
+/*
+ * php's offset decode. An INTEGER-LIKE string is accepted (php's own
+ * `ZEND_HANDLE_NUMERIC_STRING`), a bool is its 0/1, and every other type is named
+ * in the refusal. Returns 0 and leaves a TypeError raised when it cannot decode.
+ */
+static int FaOffset(ph7_context *pCtx,ph7_value *pArg,sxi64 *piOut,sxi32 *pRc)
+{
+	*pRc = PH7_OK;
+	if( pArg == 0 ){
+		*piOut = 0;
+		return 1;
+	}
+	if( pArg->iFlags & MEMOBJ_INT ){
+		*piOut = pArg->x.iVal;
+		return 1;
+	}
+	if( pArg->iFlags & MEMOBJ_BOOL ){
+		*piOut = pArg->x.iVal ? 1 : 0;
+		return 1;
+	}
+	if( (pArg->iFlags & MEMOBJ_STRING) && PH7_MemObjStringIsNumeric(pArg) ){
+		ph7_value sTmp;
+		PH7_MemObjInit(pCtx->pVm,&sTmp);
+		PH7_MemObjStore(pArg,&sTmp);
+		PH7_MemObjToInteger(&sTmp);
+		*piOut = sTmp.x.iVal;
+		PH7_MemObjRelease(&sTmp);
+		return 1;
+	}
+	*piOut = 0;
+	*pRc = PH7_VmThrowException(pCtx,"TypeError",
+		"Cannot access offset of type %s on SplFixedArray",ph7_type_name(pArg));
+	return 0;
+}
+static sxi32 FaOutOfBounds(ph7_context *pCtx)
+{
+	return PH7_VmThrowException(pCtx,"OutOfBoundsException","Index invalid or out of range");
+}
+/* php's setSize: grow with nulls, shrink by dropping the tail, answer `true`. */
+static sxi32 FaResize(ph7_vm *pVm,ph7_class_instance *pThis,sxi64 nNew)
+{
+	sxi64 nOld = FaSize(pThis);
+	ph7_hashmap *pMap = FaMap(pVm,pThis);
+	sxi64 i;
+	if( pMap == 0 ){
+		return SXERR_MEM;
+	}
+	for( i = nNew ; i < nOld ; ++i ){
+		ph7_hashmap_node *pNode = 0;
+		if( HashmapLookupIntKey(pMap,i,&pNode) == SXRET_OK ){
+			PH7_HashmapUnlinkNode(pNode,TRUE);
+		}
+	}
+	for( i = nOld ; i < nNew ; ++i ){
+		ph7_value sNull;
+		PH7_MemObjInit(pVm,&sNull);
+		FaPut(pVm,pThis,i,&sNull);
+		PH7_MemObjRelease(&sNull);
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,FA_N,nNew);
+	return SXRET_OK;
+}
+static int vm_builtin_SplFixedArray_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 nSize = 0;
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	if( nArg > 0 ){
+		sxi32 rc = PH7_IntArgResolve(pCtx,apArg[0],"SplFixedArray::__construct",1,"$size","int",&nSize);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	if( nSize < 0 ){
+		/* php words this from __construct(), not from the setSize() it forwards to —
+		 * which is what the chunk's `$this->setSize()` reported. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"SplFixedArray::__construct(): Argument #1 ($size) must be greater than or equal to 0");
+	}
+	FaResize(pVm,pThis,nSize);
+	return PH7_OK;
+}
+static int vm_builtin_SplFixedArray_getSize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_int64(pCtx,FaSize(PH7_ContextThis(pCtx)));
+	return PH7_OK;
+}
+static int vm_builtin_SplFixedArray_setSize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi64 nSize = 0;
+	sxi32 rc;
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	rc = PH7_IntArgResolve(pCtx,apArg[0],"SplFixedArray::setSize",1,"$size","int",&nSize);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	if( nSize < 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"SplFixedArray::setSize(): Argument #1 ($size) must be greater than or equal to 0");
+	}
+	FaResize(pCtx->pVm,PH7_ContextThis(pCtx),nSize);
+	ph7_result_bool(pCtx,1);   /* php's `true` return type */
+	return PH7_OK;
+}
+static int vm_builtin_SplFixedArray_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_int64(pCtx,FaSize(PH7_ContextThis(pCtx)));
+	return PH7_OK;
+}
+static int vm_builtin_SplFixedArray_toArray(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pSlot = FaSlot(pCtx->pVm,PH7_ContextThis(pCtx));
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pSlot ){
+		ph7_result_value(pCtx,pSlot);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_SplFixedArray_offsetExists(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 iIdx = 0;
+	sxi32 rc = PH7_OK;
+	ph7_value *pVal;
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	/* offsetExists RAISES for an undecodable offset exactly as the other three do —
+	 * `isset($f['x'])` is a TypeError, not a false — and answers false only for a
+	 * decodable index that is out of range or holds null. */
+	if( !FaOffset(pCtx,apArg[0],&iIdx,&rc) ){
+		return rc;
+	}
+	if( iIdx < 0 || iIdx >= FaSize(pThis) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* php's isset() semantics: an unset slot holds null and is NOT set. */
+	pVal = FaAt(pCtx->pVm,pThis,iIdx);
+	ph7_result_bool(pCtx,pVal != 0 && (pVal->iFlags & MEMOBJ_NULL) == 0);
+	return PH7_OK;
+}
+static int vm_builtin_SplFixedArray_offsetGet(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 iIdx = 0;
+	sxi32 rc = PH7_OK;
+	ph7_value *pVal;
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	if( !FaOffset(pCtx,apArg[0],&iIdx,&rc) ){
+		return rc;
+	}
+	if( iIdx < 0 || iIdx >= FaSize(pThis) ){
+		return FaOutOfBounds(pCtx);
+	}
+	pVal = FaAt(pCtx->pVm,pThis,iIdx);
+	if( pVal ){
+		ph7_result_value(pCtx,pVal);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_SplFixedArray_offsetSet(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 iIdx = 0;
+	sxi32 rc = PH7_OK;
+	if( nArg < 2 ){
+		return PH7_OK;
+	}
+	if( !FaOffset(pCtx,apArg[0],&iIdx,&rc) ){
+		return rc;
+	}
+	if( iIdx < 0 || iIdx >= FaSize(pThis) ){
+		return FaOutOfBounds(pCtx);
+	}
+	FaPut(pCtx->pVm,pThis,iIdx,apArg[1]);
+	return PH7_OK;
+}
+static int vm_builtin_SplFixedArray_offsetUnset(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 iIdx = 0;
+	sxi32 rc = PH7_OK;
+	ph7_value sNull;
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	if( !FaOffset(pCtx,apArg[0],&iIdx,&rc) ){
+		return rc;
+	}
+	if( iIdx < 0 || iIdx >= FaSize(pThis) ){
+		return FaOutOfBounds(pCtx);
+	}
+	/* The slot survives at its index and becomes null: the array is FIXED. */
+	PH7_MemObjInit(pVm,&sNull);
+	FaPut(pVm,pThis,iIdx,&sNull);
+	PH7_MemObjRelease(&sNull);
+	return PH7_OK;
+}
+static int vm_builtin_SplFixedArray_fromArray(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pCls;
+	ph7_class_instance *pNew;
+	ph7_hashmap *pSrc;
+	ph7_hashmap_node *pNode,*pPrev;
+	int bPreserve = 1;
+	sxi64 nMax = -1, nNext = 0;
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"SplFixedArray::fromArray(): Argument #1 ($array) must be of type array, %s given",
+			nArg < 1 ? "none" : ph7_type_name(apArg[0]));
+	}
+	if( nArg > 1 ){
+		bPreserve = ph7_value_to_bool(apArg[1]);
+	}
+	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;
+	/* php walks the keys FIRST and refuses the whole call before building anything. */
+	if( bPreserve ){
+		for( pNode = pSrc->pFirst ; pNode ; pNode = pPrev ){
+			pPrev = pNode->pPrev;
+			if( pNode->iType != HASHMAP_INT_NODE || pNode->xKey.iKey < 0 ){
+				return PH7_VmThrowException(pCtx,"InvalidArgumentException",
+					"array must contain only positive integer keys");
+			}
+			if( pNode->xKey.iKey > nMax ){
+				nMax = pNode->xKey.iKey;
+			}
+			if( pNode == pSrc->pFirst && pPrev == 0 ){
+				break;
+			}
+		}
+	}
+	pCls = PH7_VmExtractClass(pVm,"SplFixedArray",sizeof("SplFixedArray")-1,FALSE,0);
+	if( pCls == 0 ){
+		return PH7_OK;
+	}
+	pNew = PH7_NewClassInstance(pVm,pCls);
+	if( pNew == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	pNew->iRef++;
+	FaResize(pVm,pNew,bPreserve ? nMax + 1 : (sxi64)pSrc->nEntry);
+	for( pNode = pSrc->pFirst ; pNode ; pNode = pPrev ){
+		ph7_value *pVal = HashmapExtractNodeValue(pNode);
+		pPrev = pNode->pPrev;
+		if( pVal ){
+			FaPut(pVm,pNew,bPreserve ? pNode->xKey.iKey : nNext,pVal);
+		}
+		nNext++;
+		if( pPrev == 0 ){
+			break;
+		}
+	}
+	PH7_NativeResultObject(pCtx,pNew);
+	PH7_ClassInstanceUnref(pNew);
+	return PH7_OK;
+}
+/* php's getIterator() answers an InternalIterator over the elements — the same
+ * machinery every native IteratorAggregate here uses, which is also what makes
+ * two iterators over one array independent. */
+static void FaIterSettle(ph7_vm *pVm,ph7_class_instance *pIt)
+{
+	ph7_class_instance *pSrc = PH7_NativeAttrObj(pIt,PH7_NATIVE_IT_SRC);
+	sxi64 iPos = PH7_NativeAttrInt(pIt,PH7_NATIVE_IT_POS);
+	ph7_value *pVal;
+	if( pSrc == 0 || iPos < 0 || iPos >= FaSize(pSrc) ){
+		PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);
+		return;
+	}
+	pVal = FaAt(&(*pVm),pSrc,iPos);
+	if( pVal ){
+		PH7_NativeSetProp(&(*pVm),pIt,PH7_NATIVE_IT_CUR,
+			(int)SyStrlen(PH7_NATIVE_IT_CUR),pVal);
+	}
+	PH7_NativeSetAttrInt(&(*pVm),pIt,PH7_NATIVE_IT_KEY,iPos);
+	PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,0);
+}
+static void FaIterRewind(ph7_vm *pVm,ph7_class_instance *pIt)
+{
+	PH7_NativeSetAttrInt(&(*pVm),pIt,PH7_NATIVE_IT_POS,0);
+	FaIterSettle(&(*pVm),pIt);
+}
+static void FaIterNext(ph7_vm *pVm,ph7_class_instance *pIt)
+{
+	PH7_NativeSetAttrInt(&(*pVm),pIt,PH7_NATIVE_IT_POS,
+		PH7_NativeAttrInt(pIt,PH7_NATIVE_IT_POS) + 1);
+	FaIterSettle(&(*pVm),pIt);
+}
+static const PH7_NativeIterVtab sFaIterVtab = { FaIterRewind, FaIterNext };
+static int vm_builtin_SplFixedArray_getIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pIt;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	pIt = PH7_NativeIteratorNew(pCtx->pVm,pThis);
+	if( pIt == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_NativeResultObject(pCtx,pIt);
+	return PH7_OK;
+}
+static int vm_builtin_SplFixedArray_wakeup(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	SXUNUSED(pCtx);
+	return PH7_OK;   /* php 8.4 keeps it, deprecated, doing nothing */
+}
+static int vm_builtin_SplFixedArray_unserializeMagic(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pSlot;
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_HASHMAP) == 0 || pThis == 0 ){
+		return PH7_OK;
+	}
+	pSlot = PH7_NativeAttr(pThis,FA_A);
+	if( pSlot ){
+		PH7_MemObjRelease(pSlot);
+		PH7_MemObjStore(apArg[0],pSlot);
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,FA_N,
+		(sxi64)((ph7_hashmap *)apArg[0]->x.pOther)->nEntry);
+	return PH7_OK;
+}
+/*
+ * php's get_properties: the ELEMENTS, keyed by index, on every surface —
+ * var_dump, print_r, the (array) cast and (through __serialize) serialize(). This
+ * is the one native class so far whose presentation is the same for the debug and
+ * the cast form.
+ */
+static sxi32 FaPresent(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
+{
+	sxi64 n = FaSize(pThis), i;
+	SXUNUSED(bDebug);
+	for( i = 0 ; i < n ; ++i ){
+		ph7_value sKey,*pVal = FaAt(&(*pVm),pThis,i);
+		if( pVal == 0 ){
+			continue;
+		}
+		PH7_MemObjInitFromInt(&(*pVm),&sKey,i);
+		ph7_array_add_elem(pOut,&sKey,pVal);
+		PH7_MemObjRelease(&sKey);
+	}
+	return PH7_OK;
+}
+/*
+ * The declaration. Method ORDER and the interface list are spl_fixedarray.stub's;
+ * note that __construct, __serialize, __unserialize, getIterator and jsonSerialize
+ * are the FIVE methods php does NOT mark tentative here.
+ */
+static sxi32 VmInstallSplFixedArray(ph7_vm *pVm)
+{
+	static const PH7_NativePropDef aFaProp[] = {
+		{ FA_A, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ FA_N, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+	};
+	static const PH7_NativeMethodDef aFaMethod[] = {
+		{ "__construct",   PH7_MOD_PUBLIC, "int $size = 0", 0,
+		  vm_builtin_SplFixedArray_construct },
+		{ "__wakeup",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_SplFixedArray_wakeup },
+		{ "__serialize",   PH7_MOD_PUBLIC, "", "array", vm_builtin_SplFixedArray_toArray },
+		{ "__unserialize", PH7_MOD_PUBLIC, "array $data", "void",
+		  vm_builtin_SplFixedArray_unserializeMagic },
+		{ "count",         PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplFixedArray_count },
+		{ "toArray",       PH7_MOD_PUBLIC, "", "@array", vm_builtin_SplFixedArray_toArray },
+		{ "fromArray",     PH7_MOD_PUBLIC|PH7_MOD_STATIC,
+		  "array $array, bool $preserveKeys = true", "@SplFixedArray",
+		  vm_builtin_SplFixedArray_fromArray },
+		{ "getSize",       PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplFixedArray_getSize },
+		{ "setSize",       PH7_MOD_PUBLIC, "int $size", "@true", vm_builtin_SplFixedArray_setSize },
+		/* php's stub leaves the four offsets UNTYPED and decodes them itself, the
+		 * same shape SplDoublyLinkedList has — but a different rule and a different
+		 * refusal, so FaOffset() rather than the DLL's PH7_IntArgResolve. */
+		{ "offsetExists",  PH7_MOD_PUBLIC, "$index", "@bool",
+		  vm_builtin_SplFixedArray_offsetExists },
+		{ "offsetGet",     PH7_MOD_PUBLIC, "$index", "@mixed", vm_builtin_SplFixedArray_offsetGet },
+		{ "offsetSet",     PH7_MOD_PUBLIC, "$index, mixed $value", "@void",
+		  vm_builtin_SplFixedArray_offsetSet },
+		{ "offsetUnset",   PH7_MOD_PUBLIC, "$index", "@void",
+		  vm_builtin_SplFixedArray_offsetUnset },
+		{ "getIterator",   PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_SplFixedArray_getIterator },
+		{ "jsonSerialize", PH7_MOD_PUBLIC, "", "array", vm_builtin_SplFixedArray_toArray },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "SplFixedArray", 0, "IteratorAggregate,ArrayAccess,Countable,JsonSerializable", 0,
+		  aFaMethod, SX_ARRAYSIZE(aFaMethod), 0, 0,
+		  aFaProp, SX_ARRAYSIZE(aFaProp), 0, &sFaIterVtab, FaPresent },
+	};
+	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+}
 static const char zSplLib[] =
-"class SplFixedArray implements ArrayAccess, Countable, IteratorAggregate, JsonSerializable {"
-" private $__a = [];"
-" private $__n = 0;"
-" public function __construct($size = 0){"
-"  $this->setSize((int)$size);"
-" }"
-" private function __faIdx($index, $method){"
-"  if( !is_int($index) ){"
-"   if( is_string($index) && ctype_digit($index) ){"
-"    $index = (int)$index;"
-"   }else{"
-"    throw new TypeError('Cannot access offset of type ' . get_debug_type($index)"
-"     . ' on SplFixedArray');"
-"   }"
-"  }"
-"  if( $index < 0 || $index >= $this->__n ){"
-"   throw new OutOfBoundsException('Index invalid or out of range');"
-"  }"
-"  return $index;"
-" }"
-" public function offsetExists($index){"
-"  if( !is_int($index) && !(is_string($index) && ctype_digit($index)) ){ return false; }"
-"  $index = (int)$index;"
-"  return $index >= 0 && $index < $this->__n && $this->__a[$index] !== null;"
-" }"
-" public function offsetGet($index){ return $this->__a[$this->__faIdx($index, 'offsetGet')]; }"
-" public function offsetSet($index, $value){ $this->__a[$this->__faIdx($index, 'offsetSet')] = $value; }"
-" public function offsetUnset($index){ $this->__a[$this->__faIdx($index, 'offsetUnset')] = null; }"
-" public function getSize(){ return $this->__n; }"
-" public function setSize($size){"
-"  $size = (int)$size;"
-"  if( $size < 0 ){"
-"   throw new ValueError('SplFixedArray::setSize(): Argument #1 ($size) must be"
-" greater than or equal to 0');"
-"  }"
-"  if( $size < $this->__n ){"
-"   $this->__a = array_slice($this->__a, 0, $size);"
-"  }else{"
-"   for( $i = $this->__n; $i < $size; $i++ ){ $this->__a[$i] = null; }"
-"  }"
-"  $this->__n = $size;"
-"  return true;"
-" }"
-" public function count(){ return $this->__n; }"
-" public function toArray(){ return $this->__a; }"
-" public static function fromArray($array, $preserveKeys = true){"
-"  $f = new SplFixedArray(0);"
-"  if( $preserveKeys ){"
-"   $max = -1;"
-"   foreach( $array as $k => $v ){"
-"    if( !is_int($k) || $k < 0 ){"
-"     throw new InvalidArgumentException('array must contain only positive integer keys');"
-"    }"
-"    if( $k > $max ){ $max = $k; }"
-"   }"
-"   $f->setSize($max + 1);"
-"   foreach( $array as $k => $v ){ $f[$k] = $v; }"
-"  }else{"
-"   $vals = array_values($array);"
-"   $f->setSize(count($vals));"
-"   foreach( $vals as $k => $v ){ $f[$k] = $v; }"
-"  }"
-"  return $f;"
-" }"
-" public function getIterator(): Generator {"
-"  for( $i = 0; $i < $this->__n; $i++ ){ yield $i => $this->__a[$i]; }"
-" }"
-" public function jsonSerialize(){ return $this->__a; }"
-"}"
 "class SplObjectStorage implements Countable, Iterator, ArrayAccess {"
 " private $__o = [];"
 " private $__i = 0;"
@@ -5805,6 +6219,10 @@ PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)
 		return rc;
 	}
 	rc = VmInstallSplHeap(&(*pVm));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	rc = VmInstallSplFixedArray(&(*pVm));
 	if( rc != SXRET_OK ){
 		return rc;
 	}
