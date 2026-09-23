@@ -1354,6 +1354,14 @@ static sxu32 VmBuiltinPathMask(SyString *pName)
 		/* Commands handed to the shell */
 		{ "shell_exec",       10, 1u<<0 },
 		{ "popen",             5, 1u<<0 },
+		/* The SPL path constructors, which php screens identically and reports
+		 * under their QUALIFIED name (`SplFileInfo::__construct(): Argument #1
+		 * ($filename) …`). They are native methods, so their signature reaches this
+		 * screen the same way a builtin's does. */
+		{ "SplFileInfo::__construct",                24, 1u<<0 },
+		{ "DirectoryIterator::__construct",          30, 1u<<0 },
+		{ "FilesystemIterator::__construct",         31, 1u<<0 },
+		{ "RecursiveDirectoryIterator::__construct", 39, 1u<<0 },
 	};
 	sxu32 i;
 	if( pName == 0 || pName->zString == 0 || pName->nByte == 0 ){
