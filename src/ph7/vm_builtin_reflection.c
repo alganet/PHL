@@ -1199,6 +1199,10 @@ static ph7_value * ReflectAttrArgs(ph7_context *pCtx, ph7_value **apArg, sxu32 n
 			 * / `self::CONST` / `parent::` resolve like php (else self:: would bind
 			 * to the reflection machinery's own class). */
 			PH7_VmExecAttrArg(pVm, &pArgRec->aByteCode, pDeclCls, &sValue);
+		}else if( pArgRec->pNativeValue ){
+			/* A NATIVE attribute (php's own `#[Attribute(...)]` on Attribute and
+			 * Deprecated): the argument is a literal, not byte-code. */
+			PH7_NativeLiteralValue(pVm, pArgRec->pNativeValue, &sValue);
 		}
 		if( SyStringLength(&pArgRec->sName) > 0 ){
 			ReflectMapAddDyn(pCtx, pOut, &pArgRec->sName, &sValue);
@@ -2070,6 +2074,27 @@ static int vm_builtin_ReflectionAttribute_newInstance(ph7_context *pCtx, int nAr
 		}
 	}
 	iTarget = (int)PH7_NativeAttrInt(pThis, RA_TARGET);
+	/* php's INTERNAL attributes carry a validator beside their mask, and
+	 * `#[\Deprecated]` has the one that matters here: its mask includes
+	 * TARGET_CLASS (php 8.5 marks a deprecated TRAIT with it), but every other
+	 * kind of class is refused by name — `Cannot apply #[\Deprecated] to class
+	 * X`. PHL has no traits, so the class target is always the refusal. php runs
+	 * this at COMPILE time; PHL's attribute checks all happen here. */
+	if( iTarget == 1
+	 && SyStringLength(&pClass->sName) == sizeof("Deprecated")-1
+	 && SyStrnicmp(SyStringData(&pClass->sName), "Deprecated", sizeof("Deprecated")-1) == 0 ){
+		ph7_class *pTarget = 0;
+		ph7_value *pSpec = PH7_NativeAttr(pThis, RA_SPEC);
+		if( pSpec && (pSpec->iFlags & MEMOBJ_HASHMAP) ){
+			ph7_value *pName = ph7_array_fetch(pSpec, "1", -1);
+			if( pName ){
+				pTarget = ReflectResolveClass(pVm, pName);
+			}
+		}
+		return PH7_VmThrowException(pCtx, "Error",
+			"Cannot apply #[\\Deprecated] to class %z",
+			pTarget ? &pTarget->sName : &pClass->sName);
+	}
 	if( (iFlags & iTarget) == 0 ){
 		SyBlob sAllowed;
 		sxi32 rc;

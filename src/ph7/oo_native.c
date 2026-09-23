@@ -514,6 +514,48 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallProperty(ph7_vm *pVm,ph7_class *pClass,
 	return PH7_ClassInstallAttr(pClass,pAttr);
 }
 /*
+ * Attach an `#[Attr(...)]` to a class declared from C.
+ *
+ * php declares `#[Attribute(Attribute::TARGET_CLASS)]` on Attribute itself and a
+ * target mask on Deprecated, and both records are LOAD-BEARING: the compiler
+ * reads them to decide whether a user's `#[Deprecated]` may sit where it does,
+ * and ReflectionAttribute answers them. A compiled attribute holds its argument
+ * as byte-code; there is no compiler here, so the argument rides as the same
+ * literal record a native constant or property default uses and every reader
+ * takes that branch when the byte-code is empty.
+ */
+PH7_PRIVATE sxi32 PH7_NativeClassAddAttribute(ph7_vm *pVm,ph7_class *pClass,
+	const char *zAttr,const PH7_NativeAttrArg *aArg,sxu32 nArg)
+{
+	ph7_attribute sAttr;
+	char *zDup;
+	sxu32 n;
+	if( pClass == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	SyZero(&sAttr,sizeof(sAttr));
+	zDup = SyMemBackendStrDup(&pVm->sAllocator,zAttr,SyStrlen(zAttr));
+	if( zDup == 0 ){
+		return SXERR_MEM;
+	}
+	SyStringInitFromBuf(&sAttr.sName,zDup,SyStrlen(zAttr));
+	SySetInit(&sAttr.aArgs,&pVm->sAllocator,sizeof(ph7_attr_arg));
+	for( n = 0 ; n < nArg ; n++ ){
+		ph7_attr_arg sArgRec;
+		SyZero(&sArgRec,sizeof(sArgRec));
+		SySetInit(&sArgRec.aByteCode,&pVm->sAllocator,sizeof(VmInstr));
+		if( aArg[n].zName ){
+			char *zN = SyMemBackendStrDup(&pVm->sAllocator,aArg[n].zName,SyStrlen(aArg[n].zName));
+			if( zN ){
+				SyStringInitFromBuf(&sArgRec.sName,zN,SyStrlen(aArg[n].zName));
+			}
+		}
+		sArgRec.pNativeValue = (const void *)&aArg[n].sValue;
+		SySetPut(&sAttr.aArgs,(const void *)&sArgRec);
+	}
+	return SySetPut(&pClass->aAttrs,(const void *)&sAttr);
+}
+/*
  * php's get_properties / get_debug_info handlers: the SHAPE a class SHOWS.
  *
  * Several native classes present something that is not their storage. php shows a

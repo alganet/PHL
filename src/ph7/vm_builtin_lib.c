@@ -30,29 +30,6 @@
 	 * methods. It cannot live here — a chunk-declared property is on every presentation
 	 * surface, and `call()` in PHP leaked get_class()'s own TypeError text. */\
 	/* stdClass is empty (PHP-exact): holds only dynamic (runtime-added) properties. */\
-	"#[Attribute(Attribute::TARGET_CLASS)]"\
-	"final class Attribute {"\
-	"  const TARGET_CLASS = 1;"\
-	"  const TARGET_FUNCTION = 2;"\
-	"  const TARGET_METHOD = 4;"\
-	"  const TARGET_PROPERTY = 8;"\
-	"  const TARGET_CLASS_CONSTANT = 16;"\
-	"  const TARGET_PARAMETER = 32;"\
-	"  const TARGET_CONSTANT = 64;"\
-	"  const TARGET_ALL = 127;"\
-	"  const IS_REPEATABLE = 128;"\
-	"  public $flags;"\
-	"  public function __construct($flags = 127){ $this->flags = $flags; }"\
-	"}"\
-	"#[Attribute(Attribute::TARGET_METHOD | Attribute::TARGET_FUNCTION | Attribute::TARGET_CLASS_CONSTANT | Attribute::TARGET_CONSTANT)]"\
-	"final class Deprecated {"\
-	"  public $message;"\
-	"  public $since;"\
-	"  public function __construct($message = null, $since = null){"\
-	"    $this->message = $message;"\
-	"    $this->since = $since;"\
-	"  }"\
-	"}"\
 	"function scandir(string $directory,int $sorting_order = SCANDIR_SORT_ASCENDING, $context = null)"\
     "{"\
 	"  $aDir = array();"\
@@ -1247,6 +1224,109 @@ static sxi32 VmInstallDirectory(ph7_vm *pVm)
 	return rc;
 }
 /*
+ * ---------------------------------------------------------------------------
+ * php's two attribute classes.
+ *
+ * Both carry an ATTRIBUTE of their own — `#[Attribute(Attribute::TARGET_CLASS)]`
+ * on Attribute, a target mask on Deprecated — and those records are load-bearing
+ * rather than decorative: the engine reads them to decide whether a user's
+ * `#[Deprecated]` may sit where it does, and ReflectionAttribute answers them.
+ * A compiled attribute holds its argument as byte-code, so this is what
+ * `PH7_NativeClassAddAttribute()` exists for (rule 11's next unused corner,
+ * exercised here): the argument rides as a literal.
+ *
+ * php's Deprecated mask is 87 — TARGET_CLASS|FUNCTION|METHOD|CLASS_CONSTANT|
+ * CONSTANT — where the chunk wrote 86 and left the CLASS bit out.
+ * ---------------------------------------------------------------------------
+ */
+static int vm_builtin_Attribute_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	if( pThis ){
+		PH7_NativeSetAttrInt(pCtx->pVm,pThis,"flags",
+			nArg > 0 ? ph7_value_to_int64(apArg[0]) : 127);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_Deprecated_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	static const char *const azSlot[] = { "message", "since" };
+	int n;
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	for( n = 0 ; n < 2 ; n++ ){
+		ph7_value sVal;
+		PH7_MemObjInit(pCtx->pVm,&sVal);
+		if( n < nArg ){
+			PH7_MemObjStore(apArg[n],&sVal);
+		}
+		PH7_NativeSetProp(pCtx->pVm,pThis,azSlot[n],SyStrlen(azSlot[n]),&sVal);
+		PH7_MemObjRelease(&sVal);
+	}
+	return PH7_OK;
+}
+static sxi32 VmInstallAttributes(ph7_vm *pVm)
+{
+	static const PH7_NativeConstDef aAttrConst[] = {
+		{ "TARGET_CLASS",          PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 1, 0, 0.0 },
+		{ "TARGET_FUNCTION",       PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 2, 0, 0.0 },
+		{ "TARGET_METHOD",         PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 4, 0, 0.0 },
+		{ "TARGET_PROPERTY",       PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 8, 0, 0.0 },
+		{ "TARGET_CLASS_CONSTANT", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 16, 0, 0.0 },
+		{ "TARGET_PARAMETER",      PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 32, 0, 0.0 },
+		{ "TARGET_CONSTANT",       PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 64, 0, 0.0 },
+		{ "TARGET_ALL",            PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 127, 0, 0.0 },
+		{ "IS_REPEATABLE",         PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 128, 0, 0.0 },
+	};
+	/* php declares `public int $flags;` — typed, NO default (the constructor is
+	 * the only writer), which is what the chunk's `public $flags;` could not say. */
+	static const PH7_NativePropDef aAttrProp[] = {
+		{ "flags", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "int" },
+	};
+	static const PH7_NativeMethodDef aAttrMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "int $flags = Attribute::TARGET_ALL", 0,
+		  vm_builtin_Attribute_construct },
+	};
+	static const PH7_NativePropDef aDepProp[] = {
+		{ "message", PH7_MOD_PUBLIC|PH7_MOD_PROT_SET|PH7_MOD_READONLY,
+		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "?string" },
+		{ "since",   PH7_MOD_PUBLIC|PH7_MOD_PROT_SET|PH7_MOD_READONLY,
+		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "?string" },
+	};
+	static const PH7_NativeMethodDef aDepMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "?string $message = null, ?string $since = null", 0,
+		  vm_builtin_Deprecated_construct },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "Attribute", 0, 0, PH7_CLASS_FINAL,
+		  aAttrMethod, SX_ARRAYSIZE(aAttrMethod), aAttrConst, SX_ARRAYSIZE(aAttrConst),
+		  aAttrProp, SX_ARRAYSIZE(aAttrProp), 0, 0, 0 },
+		{ "Deprecated", 0, 0, PH7_CLASS_FINAL,
+		  aDepMethod, SX_ARRAYSIZE(aDepMethod), 0, 0,
+		  aDepProp, SX_ARRAYSIZE(aDepProp), 0, 0, 0 },
+	};
+	static const PH7_NativeAttrArg aOnAttribute[] = {
+		{ 0, { 0, 0, PH7_NATIVE_VAL_INT, 1, 0, 0.0 } },   /* TARGET_CLASS */
+	};
+	static const PH7_NativeAttrArg aOnDeprecated[] = {
+		{ 0, { 0, 0, PH7_NATIVE_VAL_INT, 87, 0, 0.0 } },  /* php's own mask */
+	};
+	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+	if( rc == SXRET_OK ){
+		rc = PH7_NativeClassAddAttribute(&(*pVm),
+			PH7_VmExtractClass(&(*pVm),"Attribute",sizeof("Attribute")-1,FALSE,0),
+			"Attribute",aOnAttribute,SX_ARRAYSIZE(aOnAttribute));
+	}
+	if( rc == SXRET_OK ){
+		rc = PH7_NativeClassAddAttribute(&(*pVm),
+			PH7_VmExtractClass(&(*pVm),"Deprecated",sizeof("Deprecated")-1,FALSE,0),
+			"Attribute",aOnDeprecated,SX_ARRAYSIZE(aOnDeprecated));
+	}
+	return rc;
+}
+/*
  * stdClass and Random\RandomException.
  *
  * stdClass is EMPTY in php too — it holds only dynamic properties — so the whole
@@ -1277,6 +1357,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallBuiltinLib(ph7_vm *pVm)
 	VmInstallExceptions(&(*pVm));
 	VmInstallStdClasses(&(*pVm));
 	VmInstallDirectory(&(*pVm));
+	VmInstallAttributes(&(*pVm));
 	SyStringInitFromBuf(&sBuiltin,PH7_BUILTIN_LIB,sizeof(PH7_BUILTIN_LIB)-1);
 	/* Compile the built-in library */
 	VmEvalChunk(&(*pVm),0,&sBuiltin,PH7_PHP_ONLY,FALSE);

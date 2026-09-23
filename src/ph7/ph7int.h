@@ -553,6 +553,11 @@ struct ph7_attr_arg
 {
 	SyString sName;   /* Named-argument name (duplicated); nByte == 0 = positional */
 	SySet aByteCode;  /* Compiled expression, OP_DONE(p1=1) terminated (VmInstr) */
+	const void *pNativeValue; /* A NATIVE attribute's literal (PH7_NativeConstDef *), or 0.
+	                   * php declares `#[Attribute(Attribute::TARGET_CLASS)]` on two of its
+	                   * own classes, and a class declared from C has no compiler to emit
+	                   * byte-code for the argument — so the value rides as a literal and
+	                   * every reader takes this branch when aByteCode is empty. */
 };
 /*
  * One #[...] attribute as declared: the compile-time-resolved FQN and its
@@ -1399,6 +1404,20 @@ PH7_PRIVATE sxi32 PH7_InstallNativeEnum(ph7_vm *pVm,const char *zName,sxu32 nBac
 	const PH7_NativeMethodDef *aMethod,sxu32 nMethod);
 PH7_PRIVATE sxi32 PH7_NativeClassInstallMethod(ph7_vm *pVm,ph7_class *pClass,
 	const PH7_NativeMethodDef *pDef,void *pUserData);
+/*
+ * Attach one `#[Name(literal, ...)]` to a class declared from C. php puts an
+ * attribute on two of its own attribute classes, and the whole record — the FQN
+ * plus its arguments — is what the engine reads to VALIDATE a target and what
+ * ReflectionAttribute answers.
+ */
+typedef struct PH7_NativeAttrArg PH7_NativeAttrArg;
+struct PH7_NativeAttrArg
+{
+	const char *zName;           /* named argument, or 0 for a positional one */
+	PH7_NativeConstDef sValue;   /* the literal; zName/iMods unused */
+};
+PH7_PRIVATE sxi32 PH7_NativeClassAddAttribute(ph7_vm *pVm,ph7_class *pClass,
+	const char *zAttr,const PH7_NativeAttrArg *aArg,sxu32 nArg);
 PH7_PRIVATE sxi32 PH7_NativeClassInstallProperty(ph7_vm *pVm,ph7_class *pClass,
 	const PH7_NativePropDef *pDef);
 PH7_PRIVATE void PH7_NativeLiteralValue(ph7_vm *pVm,const void *pLiteral,ph7_value *pOut);
