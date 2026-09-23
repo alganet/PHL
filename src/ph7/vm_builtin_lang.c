@@ -2101,7 +2101,31 @@ struct compact_data
 {
 	ph7_value *pArray;  /* Target array */
 	int nRecCount;      /* Recursion count */
+	ph7_context *pCtx;  /* Call context, for php's two warnings */
+	int iArg;           /* 1-based ARGUMENT this element came from: php names the
+	                     * argument even for an element found inside a nested
+	                     * array, never the element's own position. */
 };
+/*
+ * php's two compact() diagnostics, both E_WARNING and both non-fatal (the entry
+ * is skipped and the rest of the call proceeds): a name that is neither a string
+ * nor an array of strings, and a string naming a variable the frame does not
+ * have. PHL emitted neither, so compact(1) and compact('typo') answered a
+ * shorter array with nothing said -- the caller's only clue that a name was
+ * dropped was the array's own size.
+ */
+static void VmCompactBadName(ph7_context *pCtx,int iArg,ph7_value *pValue)
+{
+	char zGiven[64];
+	ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+		"Argument #%d must be string or array of strings, %s given",
+		iArg,VmValueGivenName(pValue,zGiven,sizeof(zGiven)));
+}
+static void VmCompactUndefined(ph7_context *pCtx,SyString *pVar)
+{
+	ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+		"Undefined variable $%.*s",(int)pVar->nByte,pVar->zString);
+}
 /*
  * Walker callback for the [compact()] function defined below.
  */
@@ -2114,24 +2138,32 @@ static int VmCompactCallback(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 	if( ph7_value_is_string(pValue) ){
 		SyString sVar;
 		SyStringInitFromBuf(&sVar,SyBlobData(&pValue->sBlob),SyBlobLength(&pValue->sBlob));
-		if( sVar.nByte > 0 ){
-			/* Query the current frame */
-			pKey = VmExtractMemObj(pVm,&sVar,FALSE,FALSE);
-			/* ^
-			 * | Avoid wasting variable and use 'pKey' instead
-			 */
-			if( pKey ){
-				/* Perform the insertion */
-				ph7_array_add_elem(pArray,pValue/* Variable name*/,pKey/* Variable value */);
-			}
+		/* Query the current frame. An EMPTY name is looked up like any other:
+		 * php reports it as "Undefined variable $" rather than skipping it. */
+		pKey = VmExtractMemObj(pVm,&sVar,FALSE,FALSE);
+		/* ^
+		 * | Avoid wasting variable and use 'pKey' instead
+		 */
+		if( pKey ){
+			/* Perform the insertion */
+			ph7_array_add_elem(pArray,pValue/* Variable name*/,pKey/* Variable value */);
+		}else{
+			VmCompactUndefined(pData->pCtx,&sVar);
 		}
-	}else if( ph7_value_is_array(pValue) && pData->nRecCount < 32) {
-		int rc;
-		/* Recursively traverse this array */
-		pData->nRecCount++;
-		rc = PH7_HashmapWalk((ph7_hashmap *)pValue->x.pOther,VmCompactCallback,pUserData);
-		pData->nRecCount--;
-		return rc;
+	}else if( ph7_value_is_array(pValue) ){
+		/* Recursively traverse this array. Past the depth cap the element is
+		 * dropped in silence, as it always was: the cap is PHL's own guard and
+		 * the "must be string or array of strings" warning would be a lie about
+		 * an argument that IS an array of strings. */
+		if( pData->nRecCount < 32 ){
+			int rc;
+			pData->nRecCount++;
+			rc = PH7_HashmapWalk((ph7_hashmap *)pValue->x.pOther,VmCompactCallback,pUserData);
+			pData->nRecCount--;
+			return rc;
+		}
+	}else{
+		VmCompactBadName(pData->pCtx,pData->iArg,pValue);
 	}
 	return SXRET_OK;
 }
@@ -2182,18 +2214,23 @@ PH7_PRIVATE int vm_builtin_compact(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				/* Recursively walk the array */
 				sData.nRecCount = 0;
 				sData.pArray = pArray;
+				sData.pCtx = pCtx;
+				sData.iArg = i + 1;
 				PH7_HashmapWalk(pMap,VmCompactCallback,&sData);
+			}else{
+				VmCompactBadName(pCtx,i + 1,apArg[i]);
 			}
 		}else{
-			/* Extract variable name */
+			/* Extract variable name. An EMPTY one is looked up like any other:
+			 * php reports it as "Undefined variable $" rather than skipping it. */
 			zName = ph7_value_to_string(apArg[i],&nLen);
-			if( nLen > 0 ){
-				SyStringInitFromBuf(&sVar,zName,nLen);
-				/* Check if the variable is available in the current frame */
-				pObj = VmExtractMemObj(pVm,&sVar,FALSE,FALSE);
-				if( pObj ){
-					ph7_array_add_elem(pArray,apArg[i]/*Variable name*/,pObj/* Variable value */);
-				}
+			SyStringInitFromBuf(&sVar,zName,nLen);
+			/* Check if the variable is available in the current frame */
+			pObj = VmExtractMemObj(pVm,&sVar,FALSE,FALSE);
+			if( pObj ){
+				ph7_array_add_elem(pArray,apArg[i]/*Variable name*/,pObj/* Variable value */);
+			}else{
+				VmCompactUndefined(pCtx,&sVar);
 			}
 		}
 	}
