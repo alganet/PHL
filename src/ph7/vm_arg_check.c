@@ -895,12 +895,46 @@ static const struct VmBuiltinSig {
  * variadic tail hides a second required argument). Verified against php 8.5.7
  * for all 462 signed builtins: 458 derive exactly, 4 are overridden.
  */
+/*
+ * A DEFAULT can contain the parameter separator: php declares
+ * `string $separator = ','` and `string $enclosure = '"'`. Every scan of a
+ * signature therefore has to step over a quoted run, or the comma inside one
+ * splits the parameter in two — which is how fgetcsv()/fputcsv()/str_getcsv()
+ * came to count SIX parameters and accept a fifth argument php refuses.
+ * Answers the position of the closing quote (or of the NUL when the run is
+ * unterminated); the caller advances past it.
+ */
+static const char *VmSigSkipQuoted(const char *zCur)
+{
+	char c = zCur[0];
+	if( c != '\'' && c != '"' ){
+		return zCur;
+	}
+	for( zCur++ ; zCur[0] ; zCur++ ){
+		if( zCur[0] == '\\' && zCur[1] ){
+			zCur++;
+			continue;
+		}
+		if( zCur[0] == c ){
+			break;
+		}
+	}
+	return zCur;
+}
 PH7_PRIVATE void VmDeriveArityFromSig(const char *zSig,sxi16 *pnMin,sxu8 *pbAtLeast,sxi16 *pnMax,sxu8 *pbHasMax)
 {
 	const char *zCur = zSig;
 	int nMin = 0, bAtLeast = 0, bSeen = 0, bOptional = 0;
 	int nTotal = 0, bVariadic = 0;
 	for(;;){
+		if( zCur[0] == '\'' || zCur[0] == '"' ){
+			bSeen = 1;
+			zCur = VmSigSkipQuoted(zCur);
+			if( zCur[0] != '\0' ){
+				zCur++;
+			}
+			continue;
+		}
 		if( zCur[0] == '\0' || zCur[0] == ',' ){
 			if( bSeen ){
 				nTotal++;
@@ -1151,6 +1185,12 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 		}
 		zStop = zCur;
 		while( zStop < zEnd && zStop[0] != ',' ){
+			if( zStop[0] == '\'' || zStop[0] == '"' ){
+				zStop = VmSigSkipQuoted(zStop);
+				if( zStop >= zEnd ){
+					break;
+				}
+			}
 			zStop++;
 		}
 		zName = zCur;
@@ -1324,6 +1364,14 @@ PH7_PRIVATE sxu32 VmDeriveByRefMaskFromSig(const char *zSig)
 	int bRef = 0;    /* current parameter carries a by-ref `&` */
 	const char *zCur = zSig;
 	for(;;){
+		if( zCur[0] == '\'' || zCur[0] == '"' ){
+			bSeen = 1;
+			zCur = VmSigSkipQuoted(zCur);
+			if( zCur[0] != '\0' ){
+				zCur++;
+			}
+			continue;
+		}
 		if( zCur[0] == '\0' || zCur[0] == ',' ){
 			if( bSeen ){
 				if( bRef && n < 31 ){
