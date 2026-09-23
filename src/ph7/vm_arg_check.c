@@ -324,6 +324,13 @@ static const struct VmBuiltinArity {
 	{ "array_udiff",               2, 1 },
 	{ "array_uintersect",          2, 1 },
 	{ "array_diff_uassoc",         2, 1 },
+	{ "array_diff_ukey",           2, 1 },
+	{ "array_intersect_ukey",      2, 1 },
+	{ "array_intersect_uassoc",    2, 1 },
+	{ "array_udiff_assoc",         2, 1 },
+	{ "array_uintersect_assoc",    2, 1 },
+	{ "array_udiff_uassoc",        3, 1 },
+	{ "array_uintersect_uassoc",   3, 1 },
 };
 /*
  * Stamp the minimum-arity metadata from aBuiltinArity[] onto the already
@@ -398,6 +405,7 @@ static const struct VmBuiltinSig {
 	{ "array_diff_assoc", "array $array, array ...$arrays = ?", "array" },
 	{ "array_diff_key", "array $array, array ...$arrays = ?", "array" },
 	{ "array_diff_uassoc", "array $array, ...$rest = ?", "array" },
+	{ "array_diff_ukey", "array $array, ...$rest = ?", "array" },
 	{ "array_fill", "int $start_index, int $count, mixed $value", "array" },
 	{ "array_fill_keys", "array $keys, mixed $value", "array" },
 	{ "array_filter", "array $array, ?callable $callback = NULL, int $mode = 0", "array" },
@@ -408,6 +416,8 @@ static const struct VmBuiltinSig {
 	{ "array_intersect", "array $array, array ...$arrays = ?", "array" },
 	{ "array_intersect_assoc", "array $array, array ...$arrays = ?", "array" },
 	{ "array_intersect_key", "array $array, array ...$arrays = ?", "array" },
+	{ "array_intersect_uassoc", "array $array, ...$rest = ?", "array" },
+	{ "array_intersect_ukey", "array $array, ...$rest = ?", "array" },
 	{ "array_is_list", "array $array", "bool" },
 	{ "array_key_exists", "$key, array $array", "bool" },
 	{ "array_key_first", "array $array", "string|int|null" },
@@ -431,7 +441,11 @@ static const struct VmBuiltinSig {
 	{ "array_splice", "array &$array, int $offset, ?int $length = NULL, mixed $replacement = ?", "array" },
 	{ "array_sum", "array $array", "int|float" },
 	{ "array_udiff", "array $array, ...$rest = ?", "array" },
+	{ "array_udiff_assoc", "array $array, ...$rest = ?", "array" },
+	{ "array_udiff_uassoc", "array $array, ...$rest = ?", "array" },
 	{ "array_uintersect", "array $array, ...$rest = ?", "array" },
+	{ "array_uintersect_assoc", "array $array, ...$rest = ?", "array" },
+	{ "array_uintersect_uassoc", "array $array, ...$rest = ?", "array" },
 	{ "array_unique", "array $array, int $flags = 2", "array" },
 	{ "array_unshift", "array &$array, mixed ...$values = ?", "int" },
 	{ "array_values", "array $array", "array" },
@@ -1358,9 +1372,19 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 	 * `Traversable $iterator` (what Reflection prints) while its ZPP is a bare "o",
 	 * whose TypeError says `must be of type object`. A native method's diagnostic
 	 * name is the QUALIFIED one, so the row below matches it and nothing else.
+	 *
+	 * The array_udiff/array_uintersect u-variant family is here for its ORDER:
+	 * php validates the trailing comparison callback(s) before ANY of the
+	 * arrays — array_diff_ukey(123,[1],456) names Argument #3, not #1 — and a
+	 * positional screen cannot say that. HashmapUVariant performs the whole
+	 * php sequence itself (callbacks, then Argument #1, then the middles).
 	 */
 	static const char *azSelfChecked[] = { "get_class_vars", "get_class_methods", "strtr",
-		"implode", "join", "number_format", "RecursiveIteratorIterator::__construct" };
+		"implode", "join", "number_format", "RecursiveIteratorIterator::__construct",
+		"array_udiff", "array_udiff_assoc", "array_udiff_uassoc",
+		"array_uintersect", "array_uintersect_assoc", "array_uintersect_uassoc",
+		"array_diff_uassoc", "array_diff_ukey",
+		"array_intersect_uassoc", "array_intersect_ukey" };
 	const char *zSig = pFunc->zSig;
 	const char *zCur, *zEnd;
 	int iArg = 0;

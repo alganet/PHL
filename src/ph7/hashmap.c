@@ -1200,79 +1200,6 @@ PH7_PRIVATE int HashmapFindStringValue(
 	return SXERR_NOTFOUND;
 }
 /*
- * Perform a linear search on a given hashmap but use an user-defined callback
- * for values comparison.
- * Write a pointer to the target node on success.
- * Otherwise SXERR_NOTFOUND is returned on failure.
- * Refer to [array_uintersect(),array_udiff()...] implementations
- * for more information.
- */
-PH7_PRIVATE int HashmapFindValueByCallback(
-	ph7_hashmap *pMap,     /* Target hashmap */
-	ph7_value *pNeedle,    /* Lookup key */
-	ph7_value *pCallback,  /* User defined callback */
-	ph7_hashmap_node **ppNode /* OUT: target node on success */
-	)
-{
-	ph7_hashmap_node *pEntry;
-	ph7_value sResult,*pVal;
-	ph7_value *apArg[2];    /* Callback arguments */
-	sxi32 rc;
-	sxu32 n;
-	if( pMap->pVm->iCmpCallbackExc ){
-		/* A previous comparison already raised: stop invoking the callback so the
-		 * exception is not thrown again, and let the caller wind down. */
-		return SXERR_NOTFOUND;
-	}
-	/* Perform a linear search since we cannot sort the array based on values */
-	pEntry = pMap->pFirst;
-	n = pMap->nEntry;
-	/* Store callback result here */
-	PH7_MemObjInit(pMap->pVm,&sResult);
-	/* First argument to the callback */
-	apArg[0] = pNeedle;
-	for(;;){
-		if( n < 1 ){
-			break;
-		}
-		/* Extract node value */
-		pVal = HashmapExtractNodeValue(pEntry);
-		if( pVal ){
-			/* Invoke the user callback */
-			apArg[1] = pVal; /* Second argument to the callback */
-			rc = PH7_VmCallUserFunction(pMap->pVm,pCallback,2,apArg,&sResult);
-			if( rc == PH7_EXCEPTION ){
-				/* The callback raised: flag it so the caller aborts and propagates,
-				 * and report no match for the rest of the run. */
-				pMap->pVm->iCmpCallbackExc = 1;
-				PH7_MemObjRelease(&sResult);
-				return SXERR_NOTFOUND;
-			}
-			if( rc == SXRET_OK ){
-				/* Extract callback result */
-				if( (sResult.iFlags & MEMOBJ_INT) == 0 ){
-					/* Perform an int cast */
-					PH7_MemObjToInteger(&sResult);
-				}
-				rc = (sxi32)sResult.x.iVal;
-				PH7_MemObjRelease(&sResult);
-				if( rc == 0 ){
-					/* Match found*/
-					if( ppNode ){
-						*ppNode = pEntry;
-					}
-					return SXRET_OK;
-				}
-			}
-		}
-		/* Point to the next entry */
-		pEntry = pEntry->pPrev; /* Reverse link */
-		n--;
-	}
-	/* No such entry */
-	return SXERR_NOTFOUND;
-}
-/*
  * Compare two hashmaps.
  * Return 0 if the hashmaps are equals.Any other value indicates inequality.
  * Note on array comparison operators.
@@ -2287,13 +2214,20 @@ static const ph7_builtin_func aHashmapFunc[] = {
 	{"array_search",      ph7_hashmap_search  },
 	{"array_diff",        ph7_hashmap_diff    },
 	{"array_udiff",       ph7_hashmap_udiff   },
+	{"array_udiff_assoc", ph7_hashmap_udiff_assoc },
+	{"array_udiff_uassoc",ph7_hashmap_udiff_uassoc },
 	{"array_diff_assoc",  ph7_hashmap_diff_assoc },
 	{"array_diff_uassoc", ph7_hashmap_diff_uassoc },
 	{"array_diff_key",    ph7_hashmap_diff_key },
+	{"array_diff_ukey",   ph7_hashmap_diff_ukey },
 	{"array_intersect",   ph7_hashmap_intersect},
 	{"array_intersect_assoc", ph7_hashmap_intersect_assoc},
+	{"array_intersect_uassoc", ph7_hashmap_intersect_uassoc},
 	{"array_uintersect",  ph7_hashmap_uintersect},
+	{"array_uintersect_assoc", ph7_hashmap_uintersect_assoc},
+	{"array_uintersect_uassoc", ph7_hashmap_uintersect_uassoc},
 	{"array_intersect_key",   ph7_hashmap_intersect_key},
+	{"array_intersect_ukey",  ph7_hashmap_intersect_ukey},
 	{"array_copy",        ph7_hashmap_copy    },
 	{"array_erase",       ph7_hashmap_erase   },
 	{"array_fill",        ph7_hashmap_fill    },

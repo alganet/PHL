@@ -2463,6 +2463,272 @@ PH7_PRIVATE int ph7_hashmap_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * The callback-taking members of the diff/intersect family share one worker
+ * (HashmapUVariant below). Each member is the same question asked with a
+ * different pair of rules: how is an entry of $array MATCHED against another
+ * array's entries — by KEY (php's own array-key identity, or a user key
+ * callback, or not at all), and, for a key-matched candidate, by VALUE
+ * (php's (string)$a === (string)$b, a user value callback, or not at all).
+ * diff keeps the entries NO other array matches; intersect keeps the entries
+ * EVERY other array matches.
+ */
+/* Key rule: how a source entry finds its candidate(s) in another array. */
+#define HASHMAP_UVAR_KEY_ANY   0 /* keys ignored: every entry is a candidate (value-only compare) */
+#define HASHMAP_UVAR_KEY_EXACT 1 /* same key, php's array-key identity (hash lookup) */
+#define HASHMAP_UVAR_KEY_USER  2 /* keys equal when the user key callback answers 0 */
+/* Value rule, applied to each key-matched candidate. */
+#define HASHMAP_UVAR_VAL_NONE   0 /* values ignored (key-only compare) */
+#define HASHMAP_UVAR_VAL_STRING 1 /* php's (string)$a === (string)$b (HashmapValueStrEq) */
+#define HASHMAP_UVAR_VAL_USER   2 /* values equal when the user value callback answers 0 */
+/*
+ * Invoke a user comparison callback over two operands and reduce its result to
+ * an int, the usort() convention. Returns PH7_EXCEPTION verbatim when the
+ * callback throws — the caller must abandon the whole builtin so the enclosing
+ * catch runs with no spurious insertion performed (the builtin-throw rail).
+ */
+static sxi32 HashmapUserCmpCall(ph7_context *pCtx,ph7_value *pCallback,ph7_value *pA,ph7_value *pB,int *pCmp)
+{
+	ph7_value *apCbArg[2];
+	ph7_value sResult;
+	sxi32 rc;
+	PH7_MemObjInit(pCtx->pVm,&sResult);
+	apCbArg[0] = pA;
+	apCbArg[1] = pB;
+	rc = PH7_VmCallUserFunction(pCtx->pVm,pCallback,2,apCbArg,&sResult);
+	if( rc == PH7_EXCEPTION ){
+		PH7_MemObjRelease(&sResult);
+		return PH7_EXCEPTION;
+	}
+	*pCmp = -1; /* a failed dispatch compares unequal */
+	if( rc == SXRET_OK ){
+		if( (sResult.iFlags & MEMOBJ_INT) == 0 ){
+			PH7_MemObjToInteger(&sResult);
+		}
+		/* Reduce by SIGN on the full 64 bits: a bare (int) cast made a
+		 * callback answering 1<<32 count as "equal". */
+		*pCmp = (sResult.x.iVal < 0) ? -1 : (sResult.x.iVal > 0 ? 1 : 0);
+	}
+	PH7_MemObjRelease(&sResult);
+	return SXRET_OK;
+}
+/* Initialize pOut from a node's key (int or string), for handing to a key callback. */
+static void HashmapInitNodeKey(ph7_vm *pVm,ph7_hashmap_node *pNode,ph7_value *pOut)
+{
+	if( pNode->iType == HASHMAP_INT_NODE ){
+		PH7_MemObjInitFromInt(pVm,pOut,pNode->xKey.iKey);
+	}else{
+		SyString sStr;
+		SyStringInitFromBuf(&sStr,SyBlobData(&pNode->xKey.sKey),SyBlobLength(&pNode->xKey.sKey));
+		PH7_MemObjInitFromString(pVm,pOut,&sStr);
+	}
+}
+/*
+ * Apply the VALUE rule to a key-matched candidate. Sets *pFound. A non-OK
+ * return is an error to hand straight out of the builtin: PH7_EXCEPTION from a
+ * throwing value callback, or HashmapValueStrEq's report (a not-stringable
+ * object's Error), for which pCtx->nThrowRc is set the way the non-callback
+ * members of the family do.
+ */
+static sxi32 HashmapUVarValueMatch(ph7_context *pCtx,ph7_hashmap_node *pEntry,ph7_hashmap_node *pCandidate,int iValRule,ph7_value *pValCb,int *pFound)
+{
+	ph7_value *pV1,*pV2;
+	*pFound = 0;
+	if( iValRule == HASHMAP_UVAR_VAL_NONE ){
+		*pFound = 1;
+		return SXRET_OK;
+	}
+	pV1 = HashmapExtractNodeValue(pEntry);
+	pV2 = HashmapExtractNodeValue(pCandidate);
+	if( pV1 == 0 || pV2 == 0 ){
+		return SXRET_OK;
+	}
+	if( iValRule == HASHMAP_UVAR_VAL_STRING ){
+		/* php compares LAZILY — only a key-matched pair coerces — and
+		 * user-visibly: the "Array to string conversion" warning or a
+		 * not-stringable object's Error surfaces here (HashmapValueStrEq
+		 * works on copies; these are LIVE array elements). */
+		sxi32 rcStr = SXRET_OK;
+		int bEq = HashmapValueStrEq(pV1,pV2,/*bUserVisible*/1,&rcStr);
+		if( rcStr != SXRET_OK ){
+			pCtx->nThrowRc = rcStr;
+			return rcStr;
+		}
+		*pFound = bEq;
+		return SXRET_OK;
+	}
+	{
+		int iCmp = 0;
+		sxi32 rc = HashmapUserCmpCall(pCtx,pValCb,pV1,pV2,&iCmp);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		*pFound = (iCmp == 0) ? 1 : 0;
+	}
+	return SXRET_OK;
+}
+/*
+ * Decide whether pMap holds a match for pEntry under the given key/value rules.
+ * Sets *pFound; a non-OK return propagates out of the builtin (see above).
+ */
+static sxi32 HashmapUVarFindMatch(ph7_context *pCtx,ph7_hashmap *pMap,ph7_hashmap_node *pEntry,int iKeyRule,int iValRule,ph7_value *pKeyCb,ph7_value *pValCb,int *pFound)
+{
+	*pFound = 0;
+	if( iKeyRule == HASHMAP_UVAR_KEY_EXACT ){
+		ph7_hashmap_node *pCandidate = 0;
+		sxi32 rc;
+		if( pEntry->iType == HASHMAP_INT_NODE ){
+			rc = HashmapLookupIntKey(pMap,pEntry->xKey.iKey,&pCandidate);
+		}else{
+			rc = HashmapLookupBlobKey(pMap,SyBlobData(&pEntry->xKey.sKey),SyBlobLength(&pEntry->xKey.sKey),&pCandidate);
+		}
+		if( rc != SXRET_OK ){
+			return SXRET_OK; /* no such key: no match, no error */
+		}
+		return HashmapUVarValueMatch(pCtx,pEntry,pCandidate,iValRule,pValCb,pFound);
+	}
+	/* KEY_ANY / KEY_USER: linear scan — a callback-decided key cannot be hashed. */
+	{
+		ph7_hashmap_node *pIt = pMap->pFirst;
+		sxu32 n = pMap->nEntry;
+		while( n > 0 && pIt ){
+			sxi32 rc;
+			if( iKeyRule == HASHMAP_UVAR_KEY_USER ){
+				ph7_value sK1,sK2;
+				int iCmp = 0;
+				HashmapInitNodeKey(pCtx->pVm,pEntry,&sK1);
+				HashmapInitNodeKey(pCtx->pVm,pIt,&sK2);
+				rc = HashmapUserCmpCall(pCtx,pKeyCb,&sK1,&sK2,&iCmp);
+				PH7_MemObjRelease(&sK1);
+				PH7_MemObjRelease(&sK2);
+				if( rc != SXRET_OK ){
+					return rc;
+				}
+				if( iCmp != 0 ){
+					pIt = pIt->pPrev; /* Reverse link */
+					n--;
+					continue;
+				}
+			}
+			rc = HashmapUVarValueMatch(pCtx,pEntry,pIt,iValRule,pValCb,pFound);
+			if( rc != SXRET_OK || *pFound ){
+				return rc;
+			}
+			/* A key match whose VALUE differed: keep scanning — the callback
+			 * may equate this entry's key with a later candidate's too. */
+			pIt = pIt->pPrev; /* Reverse link */
+			n--;
+		}
+	}
+	return SXRET_OK;
+}
+/*
+ * The shared worker: validation, the degenerate no-comparand shortcut, and the
+ * keep/drop loop. php's validation ORDER, pinned by probe: the arity check,
+ * then the trailing callback(s) — BEFORE any of the arrays, including
+ * Argument #1 (array_diff_ukey(123,[1],456) names Argument #3), the value
+ * callback (the lower position) ahead of the key callback — then Argument #1,
+ * then the intermediary arrays left to right.
+ */
+static int HashmapUVariant(
+	ph7_context *pCtx,int nArg,ph7_value **apArg,
+	const char *zFunc,  /* php-facing function name, for diagnostics */
+	int bIntersect,     /* TRUE: keep entries every other array matches; FALSE (diff): keep entries none matches */
+	int iKeyRule,       /* HASHMAP_UVAR_KEY_* */
+	int iValRule        /* HASHMAP_UVAR_VAL_* */
+	)
+{
+	ph7_value *pKeyCb = 0,*pValCb = 0;
+	ph7_hashmap_node *pEntry;
+	ph7_hashmap *pSrc;
+	ph7_value *pArray;
+	sxu32 n;
+	int nCb,i;
+
+	nCb = (iKeyRule == HASHMAP_UVAR_KEY_USER ? 1 : 0) + (iValRule == HASHMAP_UVAR_VAL_USER ? 1 : 0);
+	if( nArg < 1 + nCb ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"%s() expects at least %d arguments, %d given",
+			zFunc,1 + nCb,nArg
+			);
+	}
+	if( iValRule == HASHMAP_UVAR_VAL_USER ){
+		sxi32 rcCb;
+		pValCb = apArg[nArg - nCb];
+		rcCb = PH7_CheckCallbackArg(pCtx,pValCb,nArg - nCb + 1,0,FALSE);
+		if( rcCb != PH7_OK ){ return rcCb; }
+	}
+	if( iKeyRule == HASHMAP_UVAR_KEY_USER ){
+		sxi32 rcCb;
+		pKeyCb = apArg[nArg - 1];
+		rcCb = PH7_CheckCallbackArg(pCtx,pKeyCb,nArg,0,FALSE);
+		if( rcCb != PH7_OK ){ return rcCb; }
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,
+			"TypeError",
+			"%s(): Argument #1 ($array) must be of type array, %s given",
+			zFunc,ph7_type_name(apArg[0])
+			);
+	}
+	for( i = 1 ; i < nArg - nCb ; i++ ){
+		if( !ph7_value_is_array(apArg[i]) ){
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"%s(): Argument #%d must be of type array, %s given",
+				zFunc,i + 1,ph7_type_name(apArg[i])
+				);
+		}
+	}
+	if( nArg == 1 + nCb ){
+		/* No array to compare against: php answers the first array as-is. */
+		ph7_result_value(pCtx,apArg[0]);
+		return PH7_OK;
+	}
+	/* Create the result array */
+	pArray = ph7_context_new_array(pCtx);
+	if( pArray == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	/* Point to the internal representation of the source hashmap */
+	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;
+	pEntry = pSrc->pFirst;
+	n = pSrc->nEntry;
+	while( n > 0 && pEntry ){
+		int bDrop = 0;
+		for( i = 1 ; i < nArg - nCb ; i++ ){
+			ph7_hashmap *pMap = (ph7_hashmap *)apArg[i]->x.pOther;
+			int bFound = 0;
+			sxi32 rc = HashmapUVarFindMatch(pCtx,pMap,pEntry,iKeyRule,iValRule,pKeyCb,pValCb,&bFound);
+			if( rc != SXRET_OK ){
+				/* A comparison raised (a throwing callback, a not-stringable
+				 * value): abandon the builtin before any spurious insertion. */
+				return rc;
+			}
+			if( bIntersect ){
+				if( !bFound ){
+					bDrop = 1;
+					break;
+				}
+			}else if( bFound ){
+				bDrop = 1;
+				break;
+			}
+		}
+		if( !bDrop ){
+			/* Perform the insertion */
+			HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);
+		}
+		/* Point to the next entry */
+		pEntry = pEntry->pPrev; /* Reverse link */
+		n--;
+	}
+	/* Return the freshly created array */
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/*
  * array array_udiff(array $array1,array $array2,...,$callback)
  *  Computes the difference of arrays by using a callback function for data comparison.
  * Parameters
@@ -2484,108 +2750,7 @@ PH7_PRIVATE int ph7_hashmap_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_udiff(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_hashmap_node *pEntry;
-	ph7_hashmap *pSrc,*pMap;
-	ph7_value *pCallback;
-	ph7_value *pArray;
-	ph7_value *pVal;
-	sxi32 rc;
-	sxu32 n;
-	int i;
-
-	/* Ensure the argument count matches PHP behaviour. */
-	if( nArg < 2 ){
-		return PH7_VmThrowException(pCtx,
-			"ArgumentCountError",
-			"array_udiff() expects at least 2 arguments, %d given",
-			nArg
-			);
-	}
-	if( !ph7_value_is_array(apArg[0]) ){
-		return PH7_VmThrowException(pCtx,
-			"TypeError",
-			"array_udiff(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
-			);
-	}
-
-	/* php validates the CALLBACK (the last argument) before the intermediary
-	 * arrays: `array_udiff([1],"x",123)` reports Argument #3 (the bad callback),
-	 * not Argument #2 (the non-array). PHL had the middle-array loop first, so it
-	 * named the wrong argument whenever both were invalid. */
-	pCallback = apArg[nArg - 1];
-	/* php names the reason it cannot be called; one shared builder answers for every
-	 * callback argument (vm_arg_check.c). */
-	{
-		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,pCallback,nArg,0,FALSE);
-		if( rcCb != PH7_OK ){ return rcCb; }
-	}
-
-	/* Now the intermediary arguments (arrays), left to right. */
-	for( i = 1 ; i < nArg - 1; i++ ){
-		if( !ph7_value_is_array(apArg[i]) ){
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"array_udiff(): Argument #%d must be of type array, %s given",
-				i + 1,
-				ph7_type_name(apArg[i])
-				);
-		}
-	}
-
-	if( nArg == 2 ){
-		/* Only the original array and the callback were provided. */
-		ph7_result_value(pCtx,apArg[0]);
-		return PH7_OK;
-	}
-
-	/* Create a new array */
-	pArray = ph7_context_new_array(pCtx);
-	if( pArray == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	/* Point to the internal representation of the source hashmap */
-	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;
-	/* Perform the diff */
-	pEntry = pSrc->pFirst;
-	n = pSrc->nEntry;
-	pCtx->pVm->iCmpCallbackExc = 0;
-	for(;;){
-		if( n < 1 ){
-			break;
-		}
-		/* Extract the node value */
-		pVal = HashmapExtractNodeValue(pEntry);
-		if( pVal ){
-			for( i = 1 ; i < nArg - 1; i++ ){
-				/* Point to the internal representation of the hashmap */
-				pMap = (ph7_hashmap *)apArg[i]->x.pOther;
-				/* Perform the lookup */
-				rc = HashmapFindValueByCallback(pMap,pVal,pCallback,0);
-				if( rc == SXRET_OK ){
-					/* Value exist */
-					break;
-				}
-			}
-			if( pCtx->pVm->iCmpCallbackExc ){
-				/* The comparison callback raised: propagate so the dispatcher
-				 * unwinds, before any spurious insertion into the result. */
-				pCtx->pVm->iCmpCallbackExc = 0;
-				return PH7_EXCEPTION;
-			}
-			if( i >= (nArg - 1)){
-				/* Perform the insertion */
-				HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);
-			}
-		}
-		/* Point to the next entry */
-		pEntry = pEntry->pPrev; /* Reverse link */
-		n--;
-	}
-	/* Return the freshly created array */
-	ph7_result_value(pCtx,pArray);
-	return PH7_OK;
+	return HashmapUVariant(pCtx,nArg,apArg,"array_udiff",FALSE,HASHMAP_UVAR_KEY_ANY,HASHMAP_UVAR_VAL_USER);
 }
 /*
  * array array_diff_assoc(array $array1,array $array2,...)
@@ -2732,170 +2897,7 @@ PH7_PRIVATE int ph7_hashmap_diff_assoc(ph7_context *pCtx,int nArg,ph7_value **ap
  */
 PH7_PRIVATE int ph7_hashmap_diff_uassoc(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_hashmap_node *pEntry;
-	ph7_hashmap *pSrc,*pMap;
-	ph7_value *pCallback;
-	ph7_value *pArray;
-	sxi32 rc;
-	sxu32 n;
-	int i;
-
-	/* Argument validation mimicking PHP errors. */
-	if( nArg < 2 ){
-		return PH7_VmThrowException(pCtx,
-			"ArgumentCountError",
-			"array_diff_uassoc() expects at least 2 arguments, %d given",
-			nArg
-			);
-	}
-	if( !ph7_value_is_array(apArg[0]) ){
-		return PH7_VmThrowException(pCtx,
-			"TypeError",
-			"array_diff_uassoc(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
-			);
-	}
-	/* Intermediate arguments (except last) must be arrays. Last argument is
-	 * expected to be a callback. */
-	/* php checks the CALLBACK before the intermediary arrays (see array_udiff). */
-	pCallback = apArg[nArg - 1];
-	{
-		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,pCallback,nArg,0,FALSE);
-		if( rcCb != PH7_OK ){ return rcCb; }
-	}
-	/* Now the intermediary arrays, left to right. */
-	for(i = 1 ; i < nArg - 1; i++){
-		if( !ph7_value_is_array(apArg[i]) ){
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"array_diff_uassoc(): Argument #%d must be of type array, %s given",
-				i + 1,
-				ph7_type_name(apArg[i])
-				);
-		}
-	}
-	if( nArg == 2 ){
-		/* If we only have the first array and the callback, just return the
-		 * input array. */
-		ph7_result_value(pCtx,apArg[0]);
-		return PH7_OK;
-	}
-	/* Create a new array */
-	pArray = ph7_context_new_array(pCtx);
-	if( pArray == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	/* Point to the internal representation of the source hashmap */
-	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;
-	/* Perform the diff */
-	pEntry = pSrc->pFirst;
-	n = pSrc->nEntry;
-	for(;;){
-		int keep;
-		if( n < 1 ){
-			break;
-		}
-		keep = 1;
-		for( i = 1 ; i < nArg - 1; i++ ){
-			/* each of these must already be arrays thanks to earlier validation */
-			pMap = (ph7_hashmap *)apArg[i]->x.pOther;
-			/* we must compare keys via callback, not by direct lookup */
-			ph7_hashmap_node *pIt = pMap->pFirst;
-			while( pIt ){
-				/* build temporary key values for callback */
-				ph7_value key1, key2, result;
-				/* initialise only once using the appropriate helper */
-				if( pEntry->iType == HASHMAP_INT_NODE ){
-					PH7_MemObjInitFromInt(pMap->pVm,&key1,pEntry->xKey.iKey);
-				}else{
-					SyString sStr;
-					SyStringInitFromBuf(&sStr,
-						SyBlobData(&pEntry->xKey.sKey),
-						SyBlobLength(&pEntry->xKey.sKey));
-					PH7_MemObjInitFromString(pMap->pVm,&key1,&sStr);
-				}
-				if( pIt->iType == HASHMAP_INT_NODE ){
-					PH7_MemObjInitFromInt(pMap->pVm,&key2,pIt->xKey.iKey);
-				}else{
-					SyString sStr;
-					SyStringInitFromBuf(&sStr,
-						SyBlobData(&pIt->xKey.sKey),
-						SyBlobLength(&pIt->xKey.sKey));
-					PH7_MemObjInitFromString(pMap->pVm,&key2,&sStr);
-				}
-				PH7_MemObjInit(pMap->pVm,&result);
-				/* call user callback with (key1, key2) */
-				{
-					ph7_value *apK[2];
-					apK[0] = &key1;
-					apK[1] = &key2;
-					rc = PH7_VmCallUserFunction(pMap->pVm,pCallback,2,apK,&result);
-				}
-				if( rc == PH7_EXCEPTION ){
-					/* The key comparison callback raised. Unlike array_udiff/
-					 * array_uintersect (which signal back from
-					 * HashmapFindValueByCallback via pVm->iCmpCallbackExc), this
-					 * function invokes the callback inline, so it cleans up its own
-					 * temporaries and propagates the exception directly. */
-					PH7_MemObjRelease(&result);
-					PH7_MemObjRelease(&key1);
-					PH7_MemObjRelease(&key2);
-					return PH7_EXCEPTION;
-				}
-				if( rc == SXRET_OK ){
-					if( (result.iFlags & MEMOBJ_INT) == 0 ){
-						PH7_MemObjToInteger(&result);
-					}
-					if( result.x.iVal == 0 ){
-						/* keys considered equal by callback; now compare values */
-						ph7_value *pVal1 = HashmapExtractNodeValue(pEntry);
-						ph7_value *pVal2 = HashmapExtractNodeValue(pIt);
-						if( pVal1 && pVal2 ){
-							sxi32 rcStr;
-							/* Only the KEYS go through the callback here; the VALUES
-							 * take php's own array_diff comparison,
-							 * (string)$a === (string)$b (HashmapValueStrEq, on
-							 * copies — these are LIVE array elements). */
-							int bEq = HashmapValueStrEq(pVal1,pVal2,/*bUserVisible*/1,&rcStr);
-							if( rcStr != SXRET_OK ){
-								PH7_MemObjRelease(&result);
-								PH7_MemObjRelease(&key1);
-								PH7_MemObjRelease(&key2);
-								pCtx->nThrowRc = rcStr;
-								return rcStr;
-							}
-							if( bEq ){
-								keep = 0;
-								PH7_MemObjRelease(&result);
-								/* release keys too before breaking */
-								PH7_MemObjRelease(&key1);
-								PH7_MemObjRelease(&key2);
-								break;
-							}
-						}
-					}
-				}
-				PH7_MemObjRelease(&result);
-				PH7_MemObjRelease(&key1);
-				PH7_MemObjRelease(&key2);
-				/* move to next node */
-				pIt = pIt->pPrev;
-				if( keep == 0 ) break;
-			}
-			if( keep == 0 ) break;
-		}
-		if( keep ){
-			/* Perform the insertion */
-			HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);
-		}
-		/* Point to the next entry */
-		pEntry = pEntry->pPrev; /* Reverse link */
-		n--;
-	}
-	/* Return the freshly created array */
-	ph7_result_value(pCtx,pArray);
-	return PH7_OK;
+	return HashmapUVariant(pCtx,nArg,apArg,"array_diff_uassoc",FALSE,HASHMAP_UVAR_KEY_USER,HASHMAP_UVAR_VAL_STRING);
 }
 /*
  * array array_diff_key(array $array1 ,array $array2,...)
@@ -3338,106 +3340,72 @@ PH7_PRIVATE int ph7_hashmap_intersect_key(ph7_context *pCtx,int nArg,ph7_value *
  */
 PH7_PRIVATE int ph7_hashmap_uintersect(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_hashmap_node *pEntry;
-	ph7_hashmap *pSrc,*pMap;
-	ph7_value *pCallback;
-	ph7_value *pArray;
-	ph7_value *pVal;
-	sxi32 rc;
-	sxu32 n;
-	int i;
-
-	/* Ensure the argument count matches PHP behaviour. */
-	if( nArg < 2 ){
-		return PH7_VmThrowException(pCtx,
-			"ArgumentCountError",
-			"array_uintersect() expects at least 2 arguments, %d given",
-			nArg
-			);
-	}
-	if( !ph7_value_is_array(apArg[0]) ){
-		return PH7_VmThrowException(pCtx,
-			"TypeError",
-			"array_uintersect(): Argument #1 ($array) must be of type array, %s given",
-			ph7_type_name(apArg[0])
-			);
-	}
-
-	/* php checks the CALLBACK before the intermediary arrays (see array_udiff). */
-	pCallback = apArg[nArg - 1];
-	{
-		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,pCallback,nArg,0,FALSE);
-		if( rcCb != PH7_OK ){ return rcCb; }
-	}
-
-	/* Now the intermediary arrays, left to right. */
-	for( i = 1 ; i < nArg - 1; i++ ){
-		if( !ph7_value_is_array(apArg[i]) ){
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"array_uintersect(): Argument #%d must be of type array, %s given",
-				i + 1,
-				ph7_type_name(apArg[i])
-				);
-		}
-	}
-
-	if( nArg == 2 ){
-		/* Only the original array and the callback were provided. */
-		ph7_result_value(pCtx,apArg[0]);
-		return PH7_OK;
-	}
-
-	/* Create a new array */
-	pArray = ph7_context_new_array(pCtx);
-	if( pArray == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	/* Point to the internal representation of the source hashmap */
-	pSrc = (ph7_hashmap *)apArg[0]->x.pOther;
-	/* Perform the intersection */
-	pEntry = pSrc->pFirst;
-	n = pSrc->nEntry;
-	pCtx->pVm->iCmpCallbackExc = 0;
-	for(;;){
-		if( n < 1 ){
-			break;
-		}
-		/* Extract the node value */
-		pVal = HashmapExtractNodeValue(pEntry);
-		if( pVal ){
-			for( i = 1 ; i < nArg - 1; i++ ){
-				if( !ph7_value_is_array(apArg[i])) {
-					/* ignore */
-					continue;
-				}
-				/* Point to the internal representation of the hashmap */
-				pMap = (ph7_hashmap *)apArg[i]->x.pOther;
-				/* Perform the lookup */
-				rc = HashmapFindValueByCallback(pMap,pVal,pCallback,0);
-				if( rc != SXRET_OK ){
-					/* Value does not exist */
-					break;
-				}
-			}
-			if( i >= (nArg-1) ){
-				/* Perform the insertion */
-				HashmapInsertNode((ph7_hashmap *)pArray->x.pOther,pEntry,TRUE);
-			}
-		}
-		if( pCtx->pVm->iCmpCallbackExc ){
-			/* The comparison callback raised: propagate so the dispatcher unwinds. */
-			pCtx->pVm->iCmpCallbackExc = 0;
-			return PH7_EXCEPTION;
-		}
-		/* Point to the next entry */
-		pEntry = pEntry->pPrev; /* Reverse link */
-		n--;
-	}
-	/* Return the freshly created array */
-	ph7_result_value(pCtx,pArray);
-	return PH7_OK;
+	return HashmapUVariant(pCtx,nArg,apArg,"array_uintersect",TRUE,HASHMAP_UVAR_KEY_ANY,HASHMAP_UVAR_VAL_USER);
+}
+/*
+ * array array_diff_ukey(array $array,array $array2,...,callable $key_compare_func)
+ *  Computes the difference of arrays using a callback function on the keys
+ *  for comparison. Values are not consulted.
+ */
+PH7_PRIVATE int ph7_hashmap_diff_ukey(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return HashmapUVariant(pCtx,nArg,apArg,"array_diff_ukey",FALSE,HASHMAP_UVAR_KEY_USER,HASHMAP_UVAR_VAL_NONE);
+}
+/*
+ * array array_intersect_ukey(array $array,array $array2,...,callable $key_compare_func)
+ *  Computes the intersection of arrays using a callback function on the keys
+ *  for comparison. Values are not consulted.
+ */
+PH7_PRIVATE int ph7_hashmap_intersect_ukey(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return HashmapUVariant(pCtx,nArg,apArg,"array_intersect_ukey",TRUE,HASHMAP_UVAR_KEY_USER,HASHMAP_UVAR_VAL_NONE);
+}
+/*
+ * array array_udiff_assoc(array $array,array $array2,...,callable $value_compare_func)
+ *  Computes the difference of arrays with additional index check: the keys take
+ *  php's array-key identity, the values the user callback.
+ */
+PH7_PRIVATE int ph7_hashmap_udiff_assoc(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return HashmapUVariant(pCtx,nArg,apArg,"array_udiff_assoc",FALSE,HASHMAP_UVAR_KEY_EXACT,HASHMAP_UVAR_VAL_USER);
+}
+/*
+ * array array_uintersect_assoc(array $array,array $array2,...,callable $value_compare_func)
+ *  Computes the intersection of arrays with additional index check: the keys
+ *  take php's array-key identity, the values the user callback.
+ */
+PH7_PRIVATE int ph7_hashmap_uintersect_assoc(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return HashmapUVariant(pCtx,nArg,apArg,"array_uintersect_assoc",TRUE,HASHMAP_UVAR_KEY_EXACT,HASHMAP_UVAR_VAL_USER);
+}
+/*
+ * array array_udiff_uassoc(array $array,array $array2,...,
+ *                          callable $value_compare_func,callable $key_compare_func)
+ *  Computes the difference of arrays with additional index check: keys AND
+ *  values each take their own user callback.
+ */
+PH7_PRIVATE int ph7_hashmap_udiff_uassoc(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return HashmapUVariant(pCtx,nArg,apArg,"array_udiff_uassoc",FALSE,HASHMAP_UVAR_KEY_USER,HASHMAP_UVAR_VAL_USER);
+}
+/*
+ * array array_uintersect_uassoc(array $array,array $array2,...,
+ *                               callable $value_compare_func,callable $key_compare_func)
+ *  Computes the intersection of arrays with additional index check: keys AND
+ *  values each take their own user callback.
+ */
+PH7_PRIVATE int ph7_hashmap_uintersect_uassoc(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return HashmapUVariant(pCtx,nArg,apArg,"array_uintersect_uassoc",TRUE,HASHMAP_UVAR_KEY_USER,HASHMAP_UVAR_VAL_USER);
+}
+/*
+ * array array_intersect_uassoc(array $array,array $array2,...,callable $key_compare_func)
+ *  Computes the intersection of arrays with additional index check: the keys
+ *  take the user callback, the values php's (string)$a === (string)$b.
+ */
+PH7_PRIVATE int ph7_hashmap_intersect_uassoc(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return HashmapUVariant(pCtx,nArg,apArg,"array_intersect_uassoc",TRUE,HASHMAP_UVAR_KEY_USER,HASHMAP_UVAR_VAL_STRING);
 }
 /*
  * array array_fill(int $start_index,int $num,var $value)
