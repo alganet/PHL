@@ -742,17 +742,16 @@ static int PipeClose(pipe_private *pPipe)
 	status = WinPclose(pPipe->pFile, pPipe->hProcess);
 #elif defined(__UNIXES__)
 	status = pclose(pPipe->pFile);
-	/* On Unix, pclose returns the status from waitpid, need to extract exit code */
-	if( status != -1 ){
-		if( WIFEXITED(status) ){
-			status = WEXITSTATUS(status);
-		}else if( WIFSIGNALED(status) ){
-			/* Process was killed by a signal - use shell convention: 128 + signal number */
-			status = 128 + WTERMSIG(status);
-		}else{
-			/* Unknown termination reason */
-			status = -1;
-		}
+	/* pclose() answers waitpid()'s raw status. php (php_stream_pclose) translates
+	 * exactly ONE case of it — a normal exit becomes its exit CODE — and hands the
+	 * raw word back for every other, so a process killed by a signal reports the
+	 * SIGNAL number: `kill -TERM $$` is 15, `kill -9 $$` is 9. PHL used to add the
+	 * shell's own 128 to it (143, 137), a number the same status word can also
+	 * mean as an ordinary `exit 143`, and answered -1 for a stopped child. This is
+	 * pclose()'s answer and, through it, exec()/system()/passthru()'s
+	 * $result_code. */
+	if( status != -1 && WIFEXITED(status) ){
+		status = WEXITSTATUS(status);
 	}
 #else /* OS_OTHER: no process pipes on this platform */
 	status = -1;
