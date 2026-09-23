@@ -453,16 +453,52 @@ PH7_PRIVATE VmDeferredPath * VmDeferPathNew(ph7_vm *pVm,int eRoot,sxu32 nRootIdx
  * value, and only the by-ref verdict is still pending (VM_DEFER_ROOT_PREFETCH). Takes a
  * copy of the value; the caller keeps its own.
  */
-PH7_PRIVATE VmDeferredPath * VmDeferPathNewPrefetch(ph7_vm *pVm,ph7_class *pClass,ph7_value *pVal)
+PH7_PRIVATE VmDeferredPath * VmDeferPathNewPrefetch(ph7_vm *pVm,int nKind,ph7_class *pClass,
+	const SyString *pName,ph7_value *pVal)
 {
 	VmDeferredPath *pPath = VmDeferPathNew(&(*pVm),VM_DEFER_ROOT_PREFETCH,SXU32_HIGH,0);
 	if( pPath == 0 ){
 		return 0;
 	}
+	pPath->nOverKind = (sxu8)nKind;
 	pPath->pOverClass = pClass;
+	if( pName && pName->nByte > 0 ){
+		pPath->zOverName = SyMemBackendStrDup(pPath->pAlloc,pName->zString,pName->nByte);
+		if( pPath->zOverName == 0 ){
+			VmFreeDeferredPath(pPath);
+			return 0;
+		}
+		SyStringInitFromBuf(&pPath->sOverName,pPath->zOverName,pName->nByte);
+	}
 	PH7_MemObjInit(&(*pVm),&pPath->sPrefetch);
 	PH7_MemObjStore(pVal,&pPath->sPrefetch);
 	return pPath;
+}
+/*
+ * The verdict a prefetched value gets when the callee turns out to want it BY REFERENCE:
+ * php asked the object for something to modify and it could only answer with a value.
+ * Two of the three are notices php carries on from; a HOOKED property is the one php
+ * refuses outright. All three stay silent for a by-VALUE parameter, which is the whole
+ * reason the fetch could not decide them itself.
+ */
+static sxi32 VmPrefetchByRefVerdict(ph7_vm *pVm,VmDeferredPath *pPath,ph7_value *pVal)
+{
+	if( pPath->nOverKind == VM_OVER_PROP ){
+		PH7_VmOverloadedPropNotice(&(*pVm),pPath->pOverClass,&pPath->sOverName,pVal);
+		return SXRET_OK;
+	}
+	if( pPath->nOverKind == VM_OVER_HOOK ){
+		SyBlob sErrMsg;
+		sxi32 rcH;
+		SyBlobInit(&sErrMsg,&pVm->sAllocator);
+		SyBlobFormat(&sErrMsg,"Indirect modification of %z::$%z is not allowed",
+			&pPath->pOverClass->sName,&pPath->sOverName);
+		rcH = VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg);
+		SyBlobRelease(&sErrMsg);
+		return (rcH == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+	}
+	PH7_VmOverloadedElemNotice(&(*pVm),pPath->pOverClass,pVal);
+	return SXRET_OK;
 }
 static VmDeferStep * VmDeferPathGrow(VmDeferredPath *pPath)
 {
@@ -617,6 +653,9 @@ PH7_PRIVATE void VmFreeDeferredPath(VmDeferredPath *pPath)
 	}
 	if( pPath->eRoot == VM_DEFER_ROOT_PREFETCH ){
 		PH7_MemObjRelease(&pPath->sPrefetch);
+		if( pPath->zOverName ){
+			SyMemBackendFree(pPath->pAlloc,pPath->zOverName);
+		}
 	}
 	if( pPath->aStep ){
 		SyMemBackendFree(pPath->pAlloc,pPath->aStep);
@@ -688,9 +727,8 @@ static sxi32 VmReDriveStep(ph7_vm *pVm,sxi32 iOp,sxu32 iP2,ph7_value *pBase,ph7_
  * pValOut (optional) for the by-VALUE pass php makes instead. Mirrors VmExecOpMember's
  * write-create.
  */
-static sxi32 VmBindPropByRef(ph7_vm *pVm,sxu32 nObjIdx,const SyString *pName,sxu32 *pnOut,int *pbNoBind,ph7_value *pValOut)
+static sxi32 VmBindPropByRef(ph7_vm *pVm,ph7_value *pObj,const SyString *pName,sxu32 *pnOut,int *pbNoBind,ph7_value *pValOut)
 {
-	ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nObjIdx);
 	ph7_class_instance *pThis;
 	ph7_class *pClass;
 	SyHashEntry *pEntry;
@@ -787,106 +825,18 @@ static sxi32 VmBindPropByRef(ph7_vm *pVm,sxu32 nObjIdx,const SyString *pName,sxu
 	return SXRET_OK;
 }
 /*
- * Walk a captured path's remaining steps over a VALUE rather than a slot — the
- * continuation both resolvers need once the chain has left addressable storage: an
- * overloaded container's answer is a temporary, and everything subscripted off it is a
- * temporary too. bWrite picks php's fetch mode for those steps: a by-REFERENCE argument
- * makes them W fetches, which vivify inside the temporary in SILENCE (php's
- * `f($o['a']['zz'])` says only its notice), while a by-VALUE one reads and warns about a
- * key that is not there.
+ * Walk a captured path's steps over SLOTS: each step vivifies in place and answers the
+ * next one, so the terminal slot is what the by-ref binder aliases. Split out of the
+ * resolver below because the VALUE walk hands control back to it — an accessor that
+ * answered with an OBJECT is a handle, not a temporary, and everything under it is
+ * addressable again.
  */
-static sxi32 VmWalkStepsOverValue(ph7_vm *pVm,VmDeferredPath *pPath,sxu32 iFrom,
-	ph7_value *pCur,int bWrite,ph7_value *pSlot)
+static sxi32 VmWalkStepsFromSlot(ph7_vm *pVm,VmDeferredPath *pPath,sxu32 iFrom,sxu32 nCur,
+	ph7_value *pSlot)
 {
-	sxi32 rc = SXRET_OK;
-	sxu32 i;
-	for( i = iFrom ; i < pPath->nStep ; ++i ){
-		VmDeferStep *pStep = &pPath->aStep[i];
-		ph7_value out;
-		PH7_MemObjInit(&(*pVm),&out);
-		if( pStep->isProp ){
-			ph7_value nameVal;
-			PH7_MemObjInitFromString(&(*pVm),&nameVal,&pStep->sProp);
-			rc = VmReDriveStep(&(*pVm),PH7_OP_MEMBER,PH7_MEMBER_READ,pCur,&nameVal,&out);
-			PH7_MemObjRelease(&nameVal);
-		}else if( pStep->bAppend ){
-			/* `f($o['a'][])`: the append lands in the temporary either way. A by-VALUE
-			 * binding is php's runtime `Cannot use [] for reading`, the same Error the
-			 * slot-based walk raises for it. */
-			sxi32 rcAp;
-			if( bWrite ){
-				/* The appended element is a fresh NULL that nothing else can see —
-				 * php binds the parameter to it and the temporary is dropped. */
-				PH7_MemObjRelease(pCur);
-				*pCur = out;
-				continue;
-			}
-			PH7_MemObjRelease(&out);
-			rcAp = VmThrowFromVm(&(*pVm),"Error","Cannot use [] for reading",
-				sizeof("Cannot use [] for reading")-1);
-			return (rcAp == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
-		}else{
-			rc = VmReDriveStep(&(*pVm),PH7_OP_LOAD_IDX,bWrite ? 1 : 0,pCur,&pStep->sKey,&out);
-		}
-		PH7_MemObjRelease(pCur);
-		*pCur = out;
-		if( rc != SXRET_OK ){
-			return rc;
-		}
-	}
-	PH7_MemObjStore(pCur,pSlot);
-	pSlot->nIdx = SXU32_HIGH;
-	return SXRET_OK;
-}
-/* Resolve a captured lvalue path as a BY-REF target: vivify the whole chain in place and
- * leave pSlot->nIdx pointing at the terminal (aliasable) slot for the by-ref binder. */
-static sxi32 VmResolvePathByRef(ph7_vm *pVm,VmDeferredPath *pPath,ph7_value *pSlot)
-{
-	sxu32 nCur;
 	sxu32 i;
 	sxi32 rc;
-	if( pPath->eRoot == VM_DEFER_ROOT_PREFETCH ){
-		/* An overloaded container was asked for something to MODIFY and could only hand
-		 * back a value: php notices that the write has no effect and carries on with the
-		 * temporary. The notice is raised HERE — the fetch itself cannot know whether the
-		 * parameter it feeds is by-reference, and a by-VALUE one is silent. */
-		ph7_value cur;
-		PH7_MemObjInit(&(*pVm),&cur);
-		PH7_MemObjStore(&pPath->sPrefetch,&cur);
-		PH7_VmOverloadedElemNotice(&(*pVm),pPath->pOverClass,&cur);
-		rc = VmWalkStepsOverValue(&(*pVm),pPath,0,&cur,TRUE,pSlot);
-		PH7_MemObjRelease(&cur);
-		return rc;
-	}
-	if( pPath->eRoot == 2 ){
-		/* Subscripting a string: php refuses a by-ref bind to a string offset — but
-		 * it applies its OFFSET rules first, so `f($s["p"])` is the offset TypeError
-		 * and `f($s[1.5])` warns about the cast before this Error is raised. */
-		sxi32 rcT;
-		if( pPath->nStep > 0 && !pPath->aStep[0].isProp ){
-			SyBlob sTypeMsg;
-			sxi64 iOfft = 0;
-			if( VmStringOffsetResolve(&(*pVm),&pPath->aStep[0].sKey,VM_STROFF_LOUD,&iOfft,&sTypeMsg)
-				== VM_STROFF_REJECT ){
-				rcT = VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sTypeMsg);
-				return (rcT == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
-			}
-		}
-		rcT = VmThrowFromVm(&(*pVm),"Error",
-			"Cannot create references to/from string offsets",
-			sizeof("Cannot create references to/from string offsets")-1);
-		return (rcT == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
-	}
-	if( pPath->eRoot == 1 ){
-		ph7_value *pRoot = VmExtractMemObj(&(*pVm),&pPath->sRootName,FALSE,TRUE); /* vivify $a */
-		if( pRoot == 0 ){
-			return SXRET_OK;
-		}
-		nCur = pRoot->nIdx;
-	}else{
-		nCur = pPath->nRootIdx;
-	}
-	for( i = 0 ; i < pPath->nStep ; ++i ){
+	for( i = iFrom ; i < pPath->nStep ; ++i ){
 		VmDeferStep *pStep = &pPath->aStep[i];
 		if( pStep->isProp ){
 			sxu32 nOut = SXU32_HIGH;
@@ -894,8 +844,8 @@ static sxi32 VmResolvePathByRef(ph7_vm *pVm,VmDeferredPath *pPath,ph7_value *pSl
 			ph7_value sMagicVal;
 			int bLastStep = (i + 1 == pPath->nStep);
 			PH7_MemObjInit(&(*pVm),&sMagicVal);
-			rc = VmBindPropByRef(&(*pVm),nCur,&pStep->sProp,&nOut,&bNoBind,
-				bLastStep ? &sMagicVal : 0);
+			rc = VmBindPropByRef(&(*pVm),(ph7_value *)SySetAt(&pVm->aMemObj,nCur),
+				&pStep->sProp,&nOut,&bNoBind,bLastStep ? &sMagicVal : 0);
 			if( rc != SXRET_OK ){
 				PH7_MemObjRelease(&sMagicVal);
 				return rc;
@@ -948,6 +898,136 @@ static sxi32 VmResolvePathByRef(ph7_vm *pVm,VmDeferredPath *pPath,ph7_value *pSl
 	}
 	pSlot->nIdx = nCur;
 	return SXRET_OK;
+}
+/*
+ * Walk a captured path's remaining steps over a VALUE rather than a slot — the
+ * continuation both resolvers need once the chain has left addressable storage: an
+ * overloaded container's answer is a temporary, and everything subscripted off it is a
+ * temporary too. bWrite picks php's fetch mode for those steps: a by-REFERENCE argument
+ * makes them W fetches, which vivify inside the temporary in SILENCE (php's
+ * `f($o['a']['zz'])` says only its notice), while a by-VALUE one reads and warns about a
+ * key that is not there.
+ */
+static sxi32 VmWalkStepsOverValue(ph7_vm *pVm,VmDeferredPath *pPath,sxu32 iFrom,
+	ph7_value *pCur,int bWrite,ph7_value *pSlot)
+{
+	sxi32 rc = SXRET_OK;
+	sxu32 i;
+	for( i = iFrom ; i < pPath->nStep ; ++i ){
+		VmDeferStep *pStep = &pPath->aStep[i];
+		ph7_value out;
+		PH7_MemObjInit(&(*pVm),&out);
+		if( pStep->isProp && bWrite && (pCur->iFlags & MEMOBJ_OBJ) ){
+			/* php's "indirect" only ever describes a VALUE: an object is a HANDLE, so a
+			 * write through one lands however the handle was obtained — which is also why
+			 * the notice above stays silent for an object. `f($o->magic->p)` with
+			 * `function f(&$x)` really does create and write `p` on the object __get
+			 * answered with. Bind the property and let the slot walk finish the chain. */
+			sxu32 nOut = SXU32_HIGH;
+			int bNoBind = 0;
+			int bLastStep = (i + 1 == pPath->nStep);
+			ph7_value sMagicVal;
+			PH7_MemObjRelease(&out);
+			PH7_MemObjInit(&(*pVm),&sMagicVal);
+			rc = VmBindPropByRef(&(*pVm),pCur,&pStep->sProp,&nOut,&bNoBind,
+				bLastStep ? &sMagicVal : 0);
+			if( rc != SXRET_OK || bNoBind ){
+				if( rc == SXRET_OK && bLastStep ){
+					/* An overloaded property one level down: its own notice has been
+					 * raised and what __get answered is what php passes. */
+					PH7_MemObjStore(&sMagicVal,pSlot);
+					pSlot->nIdx = SXU32_HIGH;
+				}
+				PH7_MemObjRelease(&sMagicVal);
+				return rc;
+			}
+			PH7_MemObjRelease(&sMagicVal);
+			return VmWalkStepsFromSlot(&(*pVm),pPath,i + 1,nOut,pSlot);
+		}
+		if( pStep->isProp ){
+			ph7_value nameVal;
+			PH7_MemObjInitFromString(&(*pVm),&nameVal,&pStep->sProp);
+			rc = VmReDriveStep(&(*pVm),PH7_OP_MEMBER,PH7_MEMBER_READ,pCur,&nameVal,&out);
+			PH7_MemObjRelease(&nameVal);
+		}else if( pStep->bAppend ){
+			/* `f($o['a'][])`: the append lands in the temporary either way. A by-VALUE
+			 * binding is php's runtime `Cannot use [] for reading`, the same Error the
+			 * slot-based walk raises for it. */
+			sxi32 rcAp;
+			if( bWrite ){
+				/* The appended element is a fresh NULL that nothing else can see —
+				 * php binds the parameter to it and the temporary is dropped. */
+				PH7_MemObjRelease(pCur);
+				*pCur = out;
+				continue;
+			}
+			PH7_MemObjRelease(&out);
+			rcAp = VmThrowFromVm(&(*pVm),"Error","Cannot use [] for reading",
+				sizeof("Cannot use [] for reading")-1);
+			return (rcAp == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+		}else{
+			rc = VmReDriveStep(&(*pVm),PH7_OP_LOAD_IDX,bWrite ? 1 : 0,pCur,&pStep->sKey,&out);
+		}
+		PH7_MemObjRelease(pCur);
+		*pCur = out;
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	PH7_MemObjStore(pCur,pSlot);
+	pSlot->nIdx = SXU32_HIGH;
+	return SXRET_OK;
+}
+/* Resolve a captured lvalue path as a BY-REF target: vivify the whole chain in place and
+ * leave pSlot->nIdx pointing at the terminal (aliasable) slot for the by-ref binder. */
+static sxi32 VmResolvePathByRef(ph7_vm *pVm,VmDeferredPath *pPath,ph7_value *pSlot)
+{
+	sxu32 nCur;
+	sxi32 rc;
+	if( pPath->eRoot == VM_DEFER_ROOT_PREFETCH ){
+		/* An overloaded container was asked for something to MODIFY and could only hand
+		 * back a value: php notices that the write has no effect and carries on with the
+		 * temporary. The notice is raised HERE — the fetch itself cannot know whether the
+		 * parameter it feeds is by-reference, and a by-VALUE one is silent. */
+		ph7_value cur;
+		PH7_MemObjInit(&(*pVm),&cur);
+		PH7_MemObjStore(&pPath->sPrefetch,&cur);
+		rc = VmPrefetchByRefVerdict(&(*pVm),pPath,&cur);
+		if( rc == SXRET_OK ){
+			rc = VmWalkStepsOverValue(&(*pVm),pPath,0,&cur,TRUE,pSlot);
+		}
+		PH7_MemObjRelease(&cur);
+		return rc;
+	}
+	if( pPath->eRoot == 2 ){
+		/* Subscripting a string: php refuses a by-ref bind to a string offset — but
+		 * it applies its OFFSET rules first, so `f($s["p"])` is the offset TypeError
+		 * and `f($s[1.5])` warns about the cast before this Error is raised. */
+		sxi32 rcT;
+		if( pPath->nStep > 0 && !pPath->aStep[0].isProp ){
+			SyBlob sTypeMsg;
+			sxi64 iOfft = 0;
+			if( VmStringOffsetResolve(&(*pVm),&pPath->aStep[0].sKey,VM_STROFF_LOUD,&iOfft,&sTypeMsg)
+				== VM_STROFF_REJECT ){
+				rcT = VmThrowBuiltinError(&(*pVm),"TypeError",sizeof("TypeError")-1,&sTypeMsg);
+				return (rcT == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+			}
+		}
+		rcT = VmThrowFromVm(&(*pVm),"Error",
+			"Cannot create references to/from string offsets",
+			sizeof("Cannot create references to/from string offsets")-1);
+		return (rcT == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+	}
+	if( pPath->eRoot == 1 ){
+		ph7_value *pRoot = VmExtractMemObj(&(*pVm),&pPath->sRootName,FALSE,TRUE); /* vivify $a */
+		if( pRoot == 0 ){
+			return SXRET_OK;
+		}
+		nCur = pRoot->nIdx;
+	}else{
+		nCur = pPath->nRootIdx;
+	}
+	return VmWalkStepsFromSlot(&(*pVm),pPath,0,nCur,pSlot);
 }
 /* Resolve a captured lvalue path as a BY-VALUE argument: read the chain (emitting php's
  * undefined-key/property/offset warnings) WITHOUT vivifying, leaving the terminal value in

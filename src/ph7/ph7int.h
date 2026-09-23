@@ -139,7 +139,10 @@ struct VmDeferredPath {
 	                          * 3 = a value ALREADY FETCHED (VM_DEFER_ROOT_PREFETCH below) */
 	sxu32         nRootIdx;  /* eRoot==0: aMemObj slot of the root container ($a/$o) */
 	SyString      sRootName; /* eRoot==1: variable name (VM-lifetime bytecode string, borrowed) */
-	ph7_class    *pOverClass;/* eRoot==3: the overloaded container's class — php's notice names it */
+	sxu8          nOverKind; /* eRoot==3: which verdict a by-REFERENCE binding gets (VM_OVER_*) */
+	ph7_class    *pOverClass;/* eRoot==3: the class that answered — php's message names it */
+	SyString      sOverName; /* eRoot==3: the PROPERTY name (empty for an element) */
+	char         *zOverName; /* eRoot==3: owned bytes behind sOverName */
 	ph7_value     sPrefetch; /* eRoot==3: what the accessor answered */
 	sxu32         nStep;     /* number of captured steps (outer-to-inner) */
 	sxu32         nAlloc;    /* capacity of aStep */
@@ -154,6 +157,12 @@ struct VmDeferredPath {
  * notice, since a value the container copied has no slot to alias either way.
  */
 #define VM_DEFER_ROOT_PREFETCH 3
+/* What a by-REFERENCE binding of a prefetched value is, in php's words. All three are
+ * decided at the CALL because none of them is about the fetch: the same fetch feeding a
+ * by-VALUE parameter is silent. */
+#define VM_OVER_ELEM 0 /* Notice: Indirect modification of overloaded element of C has no effect */
+#define VM_OVER_PROP 1 /* Notice: Indirect modification of overloaded property C::$p has no effect */
+#define VM_OVER_HOOK 2 /* Error:  Indirect modification of C::$p is not allowed */
 /* Allowed value types.
  */
 #define MEMOBJ_STRING    0x001  /* Memory value is a UTF-8 string */
@@ -3590,7 +3599,8 @@ PH7_PRIVATE void VmTrackOutput(ph7_vm *pVm, sxu32 nLen);
 PH7_PRIVATE ph7_value * VmExtractMemObj(ph7_vm *pVm,const SyString *pName,int bDup,int bCreate);
 /* D1 commit 2: deferred-lvalue-path capture (built by the LOAD_IDX/MEMBER record modes) */
 PH7_PRIVATE VmDeferredPath * VmDeferPathNew(ph7_vm *pVm,int eRoot,sxu32 nRootIdx,const SyString *pName);
-PH7_PRIVATE VmDeferredPath * VmDeferPathNewPrefetch(ph7_vm *pVm,ph7_class *pClass,ph7_value *pVal);
+PH7_PRIVATE VmDeferredPath * VmDeferPathNewPrefetch(ph7_vm *pVm,int nKind,ph7_class *pClass,
+	const SyString *pName,ph7_value *pVal);
 PH7_PRIVATE sxi32 VmDeferPathPushElem(VmDeferredPath *pPath,ph7_value *pKey);
 PH7_PRIVATE sxi32 VmDeferPathPushAppend(VmDeferredPath *pPath);
 PH7_PRIVATE sxi32 VmDeferPathPushProp(VmDeferredPath *pPath,const SyString *pName);
@@ -4430,6 +4440,7 @@ PH7_PRIVATE ph7_value * PH7_ClassInstanceFetchAttr(ph7_class_instance *pThis,con
 PH7_PRIVATE int PH7_VmDimFetchWritable(ph7_class *pClass);
 PH7_PRIVATE sxu32 PH7_SplDimElemSlot(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pKey,int bCreate);
 PH7_PRIVATE void PH7_VmOverloadedElemNotice(ph7_vm *pVm,ph7_class *pClass,ph7_value *pVal);
+PH7_PRIVATE void PH7_VmOverloadedPropNotice(ph7_vm *pVm,ph7_class *pClass,const SyString *pName,ph7_value *pVal);
 PH7_PRIVATE ph7_class_instance * PH7_ContextThis(ph7_context *pCtx);
 PH7_PRIVATE ph7_class * PH7_ContextCalledClass(ph7_context *pCtx);
 PH7_PRIVATE ph7_value * PH7_ContextThisValue(ph7_context *pCtx);

@@ -458,7 +458,7 @@ static int VmMemberFetchForWrite(const VmInstr *pInstr)
  * and writes through, in both engines). php stays silent for an OBJECT value too:
  * a handle is shared, so nothing about the write is indirect.
  */
-static void VmOverloadedPropNotice(ph7_vm *pVm,ph7_class *pClass,const SyString *pName,ph7_value *pVal)
+PH7_PRIVATE void PH7_VmOverloadedPropNotice(ph7_vm *pVm,ph7_class *pClass,const SyString *pName,ph7_value *pVal)
 {
 	ph7_class_method *pGet = PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1);
 	if( pGet == 0 || (pGet->sFunc.iFlags & VM_FUNC_NATIVE) ){
@@ -1042,7 +1042,9 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						}
 					}
 				}
-				if( pObjAttr == 0 && pInstr->iP2 == PH7_MEMBER_DEFPATH && pNos->nIdx != SXU32_HIGH ){
+				if( pObjAttr == 0 && pInstr->iP2 == PH7_MEMBER_DEFPATH && pNos->nIdx != SXU32_HIGH
+				 && !(PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1)
+				   && !VmMagicGuardHeld(pVm,(void *)pThis,&sName,'g')) ){
 					/* D1 commit 2: deferred property arg, property absent on a REACHABLE object
 					 * base ($o is a real slot). Record a property step rooted at $o so OP_CALL can
 					 * vivify+bind (by-ref) or read via __get / warn (by-value). A magic __get/__set
@@ -1146,7 +1148,29 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							 * that makes the write it describes land nowhere. Raised
 							 * BEFORE the pop below: sName still aliases the NAME
 							 * operand when the name is dynamic (`$o->$k[0] = v`). */
-							VmOverloadedPropNotice(&(*pVm),pClass,&sName,&sMagicRet);
+							PH7_VmOverloadedPropNotice(&(*pVm),pClass,&sName,&sMagicRet);
+						}else if( pInstr->iP2 == PH7_MEMBER_DEFPATH ){
+							/* A deferred call ARGUMENT: __get has answered — php calls it
+							 * where the property is WRITTEN, whatever the parameter turns
+							 * out to be — and only the by-ref verdict is still pending.
+							 * Carry the value with the class and name that produced it, so
+							 * the notice lands at the call for a by-REFERENCE parameter and
+							 * nothing is said for a by-value one, without __get running
+							 * twice or a second read arriving after a later argument's side
+							 * effects. */
+							VmDeferredPath *pPre = VmDeferPathNewPrefetch(&(*pVm),VM_OVER_PROP,
+								pClass,&sName,&sMagicRet);
+							if( pPre ){
+								VmPopOperand(&pTos,1);   /* drop the property name */
+								pThis->iRef++;
+								PH7_MemObjRelease(pTos); /* collapse the object slot into the carrier */
+								pTos->x.pOther = pPre;
+								pTos->iFlags = MEMOBJ_NULL | MEMOBJ_AUX_DEFPATH;
+								pTos->nIdx = SXU32_HIGH;
+								PH7_MemObjRelease(&sMagicRet);
+								PH7_ClassInstanceUnref(pThis);
+								VM_EXIT_BREAK;
+							}
 						}
 						/* Pop the attribute name, replace the object slot with the magic
 						 * result (a temp, not an lvalue — nIdx stays constant). A throw
@@ -1309,6 +1333,25 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								ph7_value sHookRet;
 								PH7_MemObjInit(pVm,&sHookRet);
 								if( PH7_VmHookGetAttrValue(pThis,pObjAttr,&sHookRet) != SXERR_NOTFOUND ){
+									if( pInstr->iP2 == PH7_MEMBER_DEFPATH ){
+										/* A deferred call ARGUMENT of a HOOKED property. The
+										 * get hook has answered, as php's does; what a
+										 * by-REFERENCE parameter then gets is not a notice
+										 * but php's refusal — a hook has no slot to alias
+										 * and `&get` does not exist here — while a by-VALUE
+										 * one simply takes the hook's value. */
+										VmDeferredPath *pPre = VmDeferPathNewPrefetch(&(*pVm),
+											VM_OVER_HOOK,pThis->pClass,&pObjAttr->pAttr->sName,&sHookRet);
+										if( pPre ){
+											PH7_MemObjRelease(pTos);
+											pTos->x.pOther = pPre;
+											pTos->iFlags = MEMOBJ_NULL | MEMOBJ_AUX_DEFPATH;
+											pTos->nIdx = SXU32_HIGH;
+											PH7_MemObjRelease(&sHookRet);
+											PH7_ClassInstanceUnref(pThis);
+											VM_EXIT_BREAK;
+										}
+									}
 									PH7_MemObjStore(&sHookRet,pTos);
 									pTos->nIdx = SXU32_HIGH;
 									PH7_MemObjRelease(&sHookRet);
@@ -1504,7 +1547,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__get",sizeof("__get")-1,&sName,&sMagicRet);
 							VmMagicGuardPop(pVm);
 							if( VmMemberFetchForWrite(pInstr) ){
-								VmOverloadedPropNotice(&(*pVm),pClass,&sName,&sMagicRet);
+								PH7_VmOverloadedPropNotice(&(*pVm),pClass,&sName,&sMagicRet);
 							}
 							/* The name was already popped and pTos released above; just
 							 * take the magic result as the expression value. */

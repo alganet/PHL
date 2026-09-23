@@ -1759,7 +1759,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 					 * argument arriving as NULL. The value would otherwise reach the callee
 					 * still SHARING the container's own nested map by COW, and a by-ref
 					 * `f($o['a']['b'])` wrote straight into the object php leaves untouched. */
-					VmDeferredPath *pPre = VmDeferPathNewPrefetch(&(*pVm),pInst->pClass,pTos);
+					VmDeferredPath *pPre = VmDeferPathNewPrefetch(&(*pVm),VM_OVER_ELEM,pInst->pClass,0,pTos);
 					if( pPre ){
 						PH7_MemObjRelease(pTos);
 						pTos->x.pOther = pPre;
