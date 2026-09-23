@@ -20,6 +20,7 @@ element takes php's no-name wording, since many values share the one formal.
 function bvgRef(&$x) { $x = 'W'; }
 function bvgSecond($p, &$q) { $q = 'W'; }
 function bvgTail(&...$xs) {}
+function bvgNamed($p = 0, &$q = null) { $q = 'W'; }
 class BvgC {
     public function m(&$x) { $x = 'M'; }
     public static function s(&$x) { $x = 'S'; }
@@ -64,6 +65,17 @@ var_dump($arr);
 echo "-- a by-VALUE parameter says nothing\n";
 call_user_func_array('strlen', ['abc']);
 
+echo "-- a STRING key names the parameter, and php reports ITS position\n";
+call_user_func_array('bvgNamed', ['q' => 'y']);
+$named = ['q' => &$a];
+call_user_func_array('bvgNamed', $named);
+call_user_func_array('sort', ['array' => $arr]);
+
+echo "-- an ABSTRACT class's static method is a valid callable\n";
+abstract class BvgAbstract { public static function s(&$x) { $x = 'A'; } }
+call_user_func_array('BvgAbstract::s', [$a]);
+call_user_func_array(['BvgAbstract', 's'], [$a]);
+
 echo "-- Fiber::start() is by value whatever the body declares\n";
 $c = 'c';
 $fiber = new Fiber('bvgRef');
@@ -102,6 +114,12 @@ array(3) {
   int(2)
 }
 -- a by-VALUE parameter says nothing
+-- a STRING key names the parameter, and php reports ITS position
+<bvgNamed(): Argument #2 ($q) must be passed by reference, value given>
+<sort(): Argument #1 ($array) must be passed by reference, value given>
+-- an ABSTRACT class's static method is a valid callable
+<BvgAbstract::s(): Argument #1 ($x) must be passed by reference, value given>
+<BvgAbstract::s(): Argument #1 ($x) must be passed by reference, value given>
 -- Fiber::start() is by value whatever the body declares
 <bvgRef(): Argument #1 ($x) must be passed by reference, value given>
 string(1) "c"

@@ -1785,7 +1785,9 @@ static ph7_vm_func * VmCallableCalleeFunc(ph7_vm *pVm,ph7_value *pCallable,ph7_c
 			SyHashEntry *pEntry = SyHashGet(&pVm->hFunction,(const void *)zStr,nStr);
 			return pEntry ? (ph7_vm_func *)pEntry->pUserData : 0;
 		}
-		pClass = PH7_VmExtractClass(&(*pVm),zStr,nSep,TRUE,0);
+		/* iLoadable=FALSE, the rule PH7_VmExtractClassFromValue applies to the pair
+		 * spelling: a static method on an ABSTRACT class is a valid callable. */
+		pClass = PH7_VmExtractClass(&(*pVm),zStr,nSep,FALSE,0);
 		zName = &zStr[nSep + 2];
 		nName = nStr - (nSep + 2);
 	}else{
@@ -1813,10 +1815,13 @@ static ph7_vm_func * VmCallableCalleeFunc(ph7_vm *pVm,ph7_value *pCallable,ph7_c
  * parameter: its own `...$args` are by value whatever the body declares.
  *
  * apNode[i] is the argument array's node for position i; a NULL apNode means the site has
- * no array to inspect and every by-ref parameter warns.
+ * no array to inspect and every by-ref parameter warns. aNames[i], when the array carried a
+ * STRING key there, is the parameter that element names — php reports the FORMAL's position
+ * for one of those (`['x' => $v]` on `r($a, &$x)` is its `Argument #2 ($x)`), so the lookup
+ * has to run here too rather than trusting the array order.
  */
 PH7_PRIVATE void PH7_VmWarnByRefArgsGivenValue(ph7_vm *pVm,ph7_value *pCallable,int nArg,
-	ph7_hashmap_node **apNode)
+	ph7_hashmap_node **apNode,SyString *aNames)
 {
 	ph7_class *pOwner = 0;
 	ph7_vm_func *pFunc;
@@ -1828,8 +1833,8 @@ PH7_PRIVATE void PH7_VmWarnByRefArgsGivenValue(ph7_vm *pVm,ph7_value *pCallable,
 	pFunc = VmCallableCalleeFunc(&(*pVm),pCallable,&pOwner);
 	if( pFunc == 0 ){
 		/* A host builtin (`call_user_func_array('sort', [$a])`): its by-ref positions
-			 * and parameter names come from the declared signature, the same source the
-			 * call_user_func half already reads. */
+		 * and parameter names come from the declared signature, the same source the
+		 * call_user_func half already reads. */
 		SyHashEntry *pEntry;
 		ph7_user_func *pHost;
 		if( (pCallable->iFlags & MEMOBJ_STRING) == 0 ){
@@ -1843,20 +1848,40 @@ PH7_PRIVATE void PH7_VmWarnByRefArgsGivenValue(ph7_vm *pVm,ph7_value *pCallable,
 		pHost = (ph7_user_func *)pEntry->pUserData;
 		for( i = 0 ; i < nArg && i < 31 ; ++i ){
 			SyString sName;
-			if( (pHost->nByRefMask & (1u << i)) == 0 ){
+			int idx = i;
+			if( aNames && aNames[i].nByte > 0 ){
+				/* A string key names the parameter; the signature answers by position,
+				 * so walk it until the names meet. */
+				int f;
+				idx = -1;
+				for( f = 0 ; f < 31 ; ++f ){
+					if( !PH7_VmSigParamName(pHost->zSig,f,&sName) ){
+						break;
+					}
+					if( sName.nByte == aNames[i].nByte
+					 && SyMemcmp(sName.zString,aNames[i].zString,sName.nByte) == 0 ){
+						idx = f;
+						break;
+					}
+				}
+				if( idx < 0 ){
+					continue;
+				}
+			}
+			if( (pHost->nByRefMask & (1u << idx)) == 0 ){
 				continue;
 			}
 			if( apNode && apNode[i] && PH7_HashmapNodeIsRef(apNode[i]) ){
 				continue; /* a REFERENCE element: php binds it and stays silent */
 			}
-			if( PH7_VmSigParamName(pHost->zSig,i,&sName) ){
+			if( PH7_VmSigParamName(pHost->zSig,idx,&sName) ){
 				VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
 					"%z(): Argument #%d ($%z) must be passed by reference, value given",
-					&pHost->sName,i + 1,&sName);
+					&pHost->sName,idx + 1,&sName);
 			}else{
 				VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
 					"%z(): Argument #%d must be passed by reference, value given",
-					&pHost->sName,i + 1);
+					&pHost->sName,idx + 1);
 			}
 		}
 		return;
@@ -1865,9 +1890,26 @@ PH7_PRIVATE void PH7_VmWarnByRefArgsGivenValue(ph7_vm *pVm,ph7_value *pCallable,
 	nFormal = (int)SySetUsed(&pFunc->aArgs);
 	for( i = 0 ; i < nArg ; ++i ){
 		int idx = i;
-		if( idx >= nFormal ){
+		int bNamed = (aNames && aNames[i].nByte > 0);
+		if( bNamed ){
+			/* A string key binds to the formal its NAME picks, and php reports THAT
+			 * position: `['x' => $v]` on `r($a, &$x)` is its `Argument #2 ($x)`. */
+			int f;
+			idx = -1;
+			for( f = 0 ; f < nFormal ; ++f ){
+				if( aNames[i].nByte == SyStringLength(&aFormal[f].sName)
+				 && SyMemcmp(aNames[i].zString,SyStringData(&aFormal[f].sName),
+					aNames[i].nByte) == 0 ){
+					idx = f;
+					break;
+				}
+			}
+			if( idx < 0 ){
+				continue;
+			}
+		}else if( idx >= nFormal ){
 			/* Past the declared formals: a trailing variadic absorbs the tail and
-				 * dictates its by-ref-ness, exactly as the argument binder reads it. */
+			 * dictates its by-ref-ness, exactly as the argument binder reads it. */
 			if( nFormal < 1 || (aFormal[nFormal-1].iFlags & VM_FUNC_ARG_VARIADIC) == 0 ){
 				break;
 			}
@@ -1879,7 +1921,9 @@ PH7_PRIVATE void PH7_VmWarnByRefArgsGivenValue(ph7_vm *pVm,ph7_value *pCallable,
 		if( apNode && apNode[i] && PH7_HashmapNodeIsRef(apNode[i]) ){
 			continue; /* a REFERENCE element: php binds it and stays silent */
 		}
-		PH7_VmWarnByRefValueGiven(&(*pVm),pOwner,pFunc,(sxu32)(i + 1),
+		/* php numbers a POSITIONAL element by its own place (a variadic tail's
+			 * elements each get one) and a NAMED one by the formal it picked. */
+		PH7_VmWarnByRefValueGiven(&(*pVm),pOwner,pFunc,(sxu32)((bNamed ? idx : i) + 1),
 			(aFormal[idx].iFlags & VM_FUNC_ARG_VARIADIC) ? 0 : &aFormal[idx].sName);
 	}
 }

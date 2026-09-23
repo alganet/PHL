@@ -1815,7 +1815,7 @@ PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_v
 		 * already php-exact (the callee aliases the array's own element) — the diagnostic
 		 * was the whole gap. Raised before the invoke, which is where php raises it. */
 	if( apNode ){
-		PH7_VmWarnByRefArgsGivenValue(pCtx->pVm,apArg[0],(int)nSlot,apNode);
+		PH7_VmWarnByRefArgsGivenValue(pCtx->pVm,apArg[0],(int)nSlot,apNode,aNames);
 		SyMemBackendFree(&pCtx->pVm->sAllocator,apNode);
 		apNode = 0;
 	}

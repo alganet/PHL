@@ -2090,7 +2090,7 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 		SyStringInitFromBuf(&sCbName, "__callable", 10);
 		pCbVal = PH7_ClassInstanceFetchAttr(pThis, &sCbName);
 		if( pCbVal ){
-			PH7_VmWarnByRefArgsGivenValue(pVm, pCbVal, nArg, 0);
+			PH7_VmWarnByRefArgsGivenValue(pVm, pCbVal, nArg, 0, 0);
 		}
 	}
 	/* Create execution context now that we know the function */
