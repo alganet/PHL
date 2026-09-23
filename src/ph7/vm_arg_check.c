@@ -356,6 +356,32 @@ static const struct VmBuiltinSig {
 	const char *zSig;
 	const char *zRet;
 } aBuiltinSig[] = {
+	/* The subsystems converted from embedded PHP into C (INI, libxml, sessions).
+	 * A prelude function declared its parameters in PHP and Reflection read them
+	 * from there; a C builtin has no declaration but this table, so without a row
+	 * here the same function reports NO parameters -- and loses its arity bounds
+	 * with them. */
+	{ "get_cfg_var", "string $option", "array|string|false" },
+	{ "ini_get", "string $option", "string|false" },
+	{ "ini_get_all", "?string $extension = null, bool $details = true", "array|false" },
+	{ "ini_restore", "string $option", "void" },
+	{ "ini_set", "string $option, string|int|float|bool|null $value", "string|false" },
+	{ "libxml_clear_errors", "", "void" },
+	{ "libxml_get_errors", "", "array" },
+	{ "libxml_get_last_error", "", "LibXMLError|false" },
+	{ "libxml_use_internal_errors", "?bool $use_errors = null", "bool" },
+	{ "session_abort", "", "bool" },
+	{ "session_commit", "", "bool" },
+	{ "session_destroy", "", "bool" },
+	{ "session_id", "?string $id = null", "string|false" },
+	{ "session_name", "?string $name = null", "string|false" },
+	{ "session_regenerate_id", "bool $delete_old_session = false", "bool" },
+	{ "session_reset", "", "bool" },
+	{ "session_save_path", "?string $path = null", "string|false" },
+	{ "session_start", "array $options = []", "bool" },
+	{ "session_status", "", "int" },
+	{ "session_unset", "", "bool" },
+	{ "session_write_close", "", "bool" },
 	{ "abs", "int|float $num", "int|float" },
 	{ "acos", "float $num", "float" },
 	{ "addcslashes", "string $string, string $characters", "string" },

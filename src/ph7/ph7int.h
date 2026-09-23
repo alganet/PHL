@@ -1730,6 +1730,14 @@ struct ph7_vm
 	SySet aIniTab;              /* The live directive table (VmIniSlot), sorted by name so
 	                             * ini_get_all() needs no sort of its own */
 	sxu8 bIniSeeded;            /* aIniTab has been built (lazily, on the first INI call) */
+	/* Session state. Was a private `__SessS` class with five static properties, which
+	 * the INI subsystem had to reach into to live-wire session.name/session.save_path;
+	 * both subsystems read these fields now, so neither depends on the other's shape. */
+	sxi32 iSessStatus;          /* PHP_SESSION_NONE / _ACTIVE */
+	SyBlob sSessId;             /* current session id ("" = none yet) */
+	SyBlob sSessName;           /* cookie/session name (default "PHPSESSID") */
+	SyBlob sSessPath;           /* save path ("" = not resolved yet -> sys_get_temp_dir()) */
+	sxu8 bSessWired;            /* the shutdown writer + cookie have been installed once */
 	SyHash hWeakCell;           /* instance pointer bytes -> VmWeakCell* (weak-reference registry;
 	                             * PH7_ClassInstanceRelease kills matching cells on free) */
 	SySet aAutoload;            /* Stack of spl_autoload callbacks */

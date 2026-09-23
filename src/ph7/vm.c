@@ -1893,6 +1893,12 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetInit(&pVm->aIniCli,&pVm->sAllocator,sizeof(VmIniEntry));
 	SySetInit(&pVm->aIniTab,&pVm->sAllocator,sizeof(VmIniSlot));
 	pVm->bIniSeeded = 0;
+	pVm->iSessStatus = 1; /* PHP_SESSION_NONE */
+	SyBlobInit(&pVm->sSessId,&pVm->sAllocator);
+	SyBlobInit(&pVm->sSessName,&pVm->sAllocator);
+	SyBlobInit(&pVm->sSessPath,&pVm->sAllocator);
+	SyBlobAppend(&pVm->sSessName,"PHPSESSID",sizeof("PHPSESSID")-1);
+	pVm->bSessWired = 0;
 	SySetInit(&pVm->aAutoload,&pVm->sAllocator,sizeof(VmAutoloadCB));
 	SyHashInit(&pVm->hAutoloadActive,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hWeakCell,&pVm->sAllocator,0,0);

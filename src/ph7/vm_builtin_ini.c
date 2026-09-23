@@ -69,25 +69,6 @@ static const struct {
 	{ "zend.assertions",          "-1",         VM_INI_ALL },
 };
 
-/*
- * A static property of the session state class, or NULL when sessions are not
- * compiled in (PH7_DISABLE_DISK_IO) -- the two session directives then behave as
- * ordinary stored values, which is the right answer when there is no session
- * subsystem to wire them to.
- */
-static ph7_value * IniSessSlot(ph7_vm *pVm,const char *zProp,sxu32 nProp)
-{
-	ph7_class *pCls = PH7_VmExtractClass(&(*pVm),"__SessS",sizeof("__SessS")-1,0,0);
-	ph7_class_attr *pAttr;
-	if( pCls == 0 ){
-		return 0;
-	}
-	pAttr = PH7_ClassExtractAttribute(pCls,zProp,nProp);
-	if( pAttr == 0 || pAttr->nIdx == SXU32_HIGH ){
-		return 0;
-	}
-	return (ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx);
-}
 static int IniNameIs(const VmIniSlot *pSlot,const char *zName)
 {
 	sxu32 n = (sxu32)SyStrlen(zName);
@@ -194,25 +175,23 @@ static sxi32 IniSeed(ph7_vm *pVm)
 	 * PH7_VM_CONFIG_INI_ENTRY. */
 	aSlot = (VmIniSlot *)SySetBasePtr(&pVm->aIniTab);
 	for( i = 0 ; i < SySetUsed(&pVm->aIniTab) ; i++ ){
-		ph7_value *pDst = 0;
+		SyBlob *pDst = 0;
 		if( IniNameIs(&aSlot[i],"session.name") ){
 			if( SyBlobLength(&aSlot[i].sGlobal) != sizeof("PHPSESSID")-1
 			 || SyMemcmp(SyBlobData(&aSlot[i].sGlobal),"PHPSESSID",sizeof("PHPSESSID")-1) != 0 ){
-				pDst = IniSessSlot(pVm,"name",sizeof("name")-1);
+				pDst = &pVm->sSessName;
 			}
 		}else if( IniNameIs(&aSlot[i],"session.save_path") ){
 			if( SyBlobLength(&aSlot[i].sGlobal) > 0 ){
-				pDst = IniSessSlot(pVm,"path",sizeof("path")-1);
+				pDst = &pVm->sSessPath;
 			}
 		}
 		if( pDst ){
-			SyString sVal;
 			sxu32 nLen = SyBlobLength(&aSlot[i].sGlobal);
 			const char *zVal = (const char *)SyBlobData(&aSlot[i].sGlobal);
 			while( nLen > 0 && zVal[nLen-1] == '/' ){ nLen--; } /* rtrim('/') */
-			SyStringInitFromBuf(&sVal,zVal,nLen);
-			PH7_MemObjRelease(pDst);
-			PH7_MemObjInitFromString(pVm,pDst,&sVal);
+			SyBlobReset(pDst);
+			SyBlobAppend(pDst,zVal,nLen);
 		}
 	}
 	return SXRET_OK;
@@ -245,17 +224,12 @@ static void IniLiveGet(ph7_vm *pVm,VmIniSlot *pSlot,SyBlob *pOut)
 		return;
 	}
 	if( IniNameIs(pSlot,"session.name") ){
-		ph7_value *pVal = IniSessSlot(pVm,"name",sizeof("name")-1);
-		if( pVal ){
-			SyBlobAppend(pOut,SyBlobData(&pVal->sBlob),SyBlobLength(&pVal->sBlob));
-			return;
-		}
-	}else if( IniNameIs(pSlot,"session.save_path") ){
-		ph7_value *pVal = IniSessSlot(pVm,"path",sizeof("path")-1);
-		if( pVal && SyBlobLength(&pVal->sBlob) > 0 ){
-			SyBlobAppend(pOut,SyBlobData(&pVal->sBlob),SyBlobLength(&pVal->sBlob));
-			return;
-		}
+		SyBlobAppend(pOut,SyBlobData(&pVm->sSessName),SyBlobLength(&pVm->sSessName));
+		return;
+	}
+	if( IniNameIs(pSlot,"session.save_path") && SyBlobLength(&pVm->sSessPath) > 0 ){
+		SyBlobAppend(pOut,SyBlobData(&pVm->sSessPath),SyBlobLength(&pVm->sSessPath));
+		return;
 	}
 	SyBlobAppend(pOut,SyBlobData(&pSlot->sLocal),SyBlobLength(&pSlot->sLocal));
 }
@@ -284,17 +258,13 @@ static void IniLiveSet(ph7_vm *pVm,VmIniSlot *pSlot,const char *zVal,sxu32 nVal)
 	}
 	if( IniNameIs(pSlot,"session.name") || IniNameIs(pSlot,"session.save_path") ){
 		int bPath = IniNameIs(pSlot,"session.save_path");
-		ph7_value *pDst = IniSessSlot(pVm,bPath ? "path" : "name",bPath ? 4 : 4);
-		if( pDst ){
-			SyString sVal;
-			sxu32 nLen = nVal;
-			if( bPath ){
-				while( nLen > 0 && zVal[nLen-1] == '/' ){ nLen--; }
-			}
-			SyStringInitFromBuf(&sVal,zVal,nLen);
-			PH7_MemObjRelease(pDst);
-			PH7_MemObjInitFromString(pVm,pDst,&sVal);
+		SyBlob *pDst = bPath ? &pVm->sSessPath : &pVm->sSessName;
+		sxu32 nLen = nVal;
+		if( bPath ){
+			while( nLen > 0 && zVal[nLen-1] == '/' ){ nLen--; }
 		}
+		SyBlobReset(pDst);
+		SyBlobAppend(pDst,zVal,nLen);
 		return;
 	}
 	if( IniNameIs(pSlot,"date.timezone") ){
