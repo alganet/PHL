@@ -2,20 +2,22 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-chroot() should return FALSE on invalid argument
---SKIPIF--
-<?php
-// PHL extension: `chroot()` does not exist in php (it is an added API surface,
-// allowed by the section 10 scope policy as a documented PHL extension —
-// it does not change the meaning of valid php source). Engine-specific by design.
-if (function_exists('zend_version')) { echo 'skip PHL extension: chroot() is not a php symbol'; }
-?>
+chroot() refuses an argument its declared string cannot take
+--DESCRIPTION--
+chroot() is php's own `chroot(string $directory): bool` — the SKIPIF this test
+used to carry, claiming it as a PHL extension absent from php, was wrong — and
+it had no signature row, so nothing screened its argument: an array reached the
+builtin, stringified to "Array", and the call answered false as if the path had
+merely been unusable. With the row it answers php's TypeError.
 --FILE--
 <?php
-echo chroot(array()) ? "true\n" : "false\n";
+try {
+    var_dump(chroot(array()));
+} catch (Throwable $e) {
+    echo get_class($e), ': ', $e->getMessage(), "\n";
+}
 ?>
 --EXPECT--
-false
+TypeError: chroot(): Argument #1 ($directory) must be of type string, array given
 --CLEAN--
 <?php
-
