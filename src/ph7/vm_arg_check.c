@@ -1011,6 +1011,42 @@ static int VmSigTypeHas(const char *zType,int nType,const char *zTok)
 	return 0;
 }
 /*
+ * Is EVERY arm of the declared type list `array` (a bare `array`, or `?array`,
+ * or the `array|null` union that spells the same thing)? Such a parameter has
+ * no arm a scalar can satisfy, and php refuses one outright.
+ *
+ * The screen used to exempt any type list carrying an `array` arm, union or
+ * not, for a wording reason: php's `array|object` parameters come from ONE ZPP
+ * macro (Z_PARAM_ARRAY_OR_OBJECT) that names only "array" in the refusal, so
+ * the declared type is not the text php prints. That ambiguity does not exist
+ * for a parameter typed exactly `array` -- there is one arm and php prints it.
+ */
+static int VmSigTypeIsArrayOnly(const char *zType,int nType)
+{
+	int i = 0, bArray = 0;
+	if( zType[0] == '?' ){
+		zType++;
+		nType--;
+	}
+	while( i < nType ){
+		int j = i;
+		while( j < nType && zType[j] != '|' ){
+			j++;
+		}
+		if( j > i ){
+			if( j - i == (int)sizeof("array")-1
+			 && SyMemcmp(&zType[i],"array",sizeof("array")-1) == 0 ){
+				bArray = 1;
+			}else if( !(j - i == (int)sizeof("null")-1
+			         && SyMemcmp(&zType[i],"null",sizeof("null")-1) == 0) ){
+				return 0;
+			}
+		}
+		i = j + 1;
+	}
+	return bArray;
+}
+/*
  * Does the declared type list name a CLASS (anything that is not one of php's
  * builtin type keywords)? A class-typed parameter accepts an object, so it must
  * not be rejected by the array/object/resource screen below.
@@ -1205,7 +1241,7 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 	zEnd = &zSig[SyStrlen(zSig)];
 	while( zCur < zEnd && iArg < nGiven ){
 		const char *zType, *zName, *zStop;
-		int nType, nName;
+		int nType, nName, bByRef;
 		ph7_value *pArg;
 		char zGivenBuf[64];
 		/* Parameter = "<type> $<name>[ = <default>]"; the type is whatever
@@ -1236,7 +1272,11 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 		zType = zCur;
 		nType = (int)(zName - zCur);
 		/* Trim the trailing spaces and the by-ref marker of "array &$array" */
+		bByRef = 0;
 		while( nType > 0 && (zType[nType-1] == ' ' || zType[nType-1] == '&') ){
+			if( zType[nType-1] == '&' ){
+				bByRef = 1;
+			}
 			nType--;
 		}
 		zName++; /* skip '$' */
@@ -1245,6 +1285,18 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 			nName++;
 		}
 		pArg = apArg[iArg];
+		if( bByRef && pArg->nIdx == SXU32_HIGH ){
+			/* A by-reference parameter handed something with no slot to write back
+			 * through -- a literal, a constant, the result of a call. php settles
+			 * that at the CALL, before the callee's ZPP runs, so the type screen
+			 * must not speak first: `array_pop('foo')` is
+			 * "could not be passed by reference" and not "must be of type array,
+			 * string given". Five builtins raise it from their own bodies on this
+			 * same nIdx test; the rest of the family raises nothing yet (§2). */
+			zCur = (zStop < zEnd) ? zStop + 1 : zEnd;
+			iArg++;
+			continue;
+		}
 		if( nType > 0 && !VmSigTypeHas(zType,nType,"mixed") ){
 			const char *zGiven = 0;
 			if( (pArg->iFlags & MEMOBJ_HASHMAP) != 0 ){
@@ -1361,6 +1413,24 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 				if( !PH7_MemObjStringIsNumeric(pArg) ){
 					zGiven = "string";
 				}
+			}else if( (pArg->iFlags & (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL)) != 0
+			       && VmSigTypeIsArrayOnly(zType,nType) ){
+				/* A SCALAR against a parameter typed exactly `array`. No coercion
+				 * produces one, so php refuses it -- but the screen exempted every
+				 * `array` arm, union or not, and a whole family had no check of its
+				 * own to fall back on: sort/rsort/ksort/krsort/shuffle and
+				 * usort/uasort/uksort each answered `false` for `sort($notAnArray)`,
+				 * which is also what they answer for a sort that genuinely failed.
+				 * call_user_func_array('strlen', 'x') answered false too,
+				 * iterator_apply RAN the callback, and getopt/hash/password_hash/
+				 * password_needs_rehash/unserialize/fputcsv simply carried on with
+				 * the string where an options ARRAY was declared.
+				 *
+				 * The builtins that DO check (array_keys, in_array, asort, ...) word
+				 * it identically, so the screen only pre-empts them -- and corrects
+				 * one detail on the way: their ph7_type_name() says "bool" where php
+				 * names the VALUE, `true` or `false`. */
+				zGiven = VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf));
 			}else if( (pArg->iFlags & MEMOBJ_RES) != 0 ){
 				/* A class-typed parameter also accepts a resource: several handles php 8
 				 * models as objects are still resources here (xml_*'s XMLParser is the
