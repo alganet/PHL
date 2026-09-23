@@ -5986,10 +5986,17 @@ case PH7_OP_CALL: {
 									SyBlobLength(&sMsg));
 								SyBlobRelease(&sMsg);
 								if( rcRef == SXERR_ABORT ){
-									pFrameStack = 0;
-									rc = PH7_ABORT;
-									goto SkipFuncBody;
+									goto Abort;
 								}
+								/* Same teardown as the type-check refusal above: free the slot
+								 * map, release the result slot and pop the actuals, then let
+								 * SkipFuncBody route the throw. Skipping it left the caller's
+								 * operand stack one result deep per refusal and leaked aSlot,
+								 * and the ABORT arm reached SkipFuncBody's non-exception side
+								 * with a NULL frame stack. */
+								SyMemBackendFree(&pVm->sAllocator, aSlot);
+								PH7_MemObjRelease(pTos);
+								pTos = &pTos[-nCallArgs];
 								pFrameStack = 0;
 								rc = PH7_EXCEPTION;
 								goto SkipFuncBody;
@@ -6279,7 +6286,19 @@ case PH7_OP_CALL: {
 							rcRef = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sMsg),
 								SyBlobLength(&sMsg));
 							SyBlobRelease(&sMsg);
-							return (rcRef == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+							if( rcRef == SXERR_ABORT ){
+								goto Abort;
+							}
+							/* Route the throw like every other binder refusal: release the
+							 * result slot, pop the actuals and let SkipFuncBody finish the
+							 * call. Returning from here walked out of the dispatch loop with
+							 * the callee's frame and stack still live, so a CAUGHT refusal
+							 * silently abandoned every statement after the catch. */
+							PH7_MemObjRelease(pTos);
+							pTos = &pTos[-nCallArgs];
+							pFrameStack = 0;
+							rc = PH7_EXCEPTION;
+							goto SkipFuncBody;
 						}
 						/* Switch to pass by value */
 						pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
