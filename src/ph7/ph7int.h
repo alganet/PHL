@@ -2917,6 +2917,9 @@ enum json_err_code{
 	JSON_ERROR_RECURSION, /* A container already being encoded shows up inside itself (php value 6) */
 	JSON_ERROR_INF_OR_NAN = 7, /* Inf or NaN given to json_encode (php value) */
 	JSON_ERROR_UNSUPPORTED_TYPE = 8, /* A resource given to json_encode (php value) */
+	JSON_ERROR_INVALID_PROPERTY_NAME = 9, /* Object-mode decode of a property name with a
+	                                       * LEADING NUL byte — php reserves that prefix for
+	                                       * mangled private/protected names (php value) */
 	JSON_ERROR_UTF16 = 10, /* Unpaired UTF-16 surrogate in a \uXXXX escape (php value) */
 	JSON_ERROR_NON_BACKED_ENUM = 11 /* Non-backed enum given to json_encode (php 8.1 value) */
 };
@@ -2934,9 +2937,10 @@ enum json_err_code{
 #define JSON_INVALID_UTF8_IGNORE     0x100000 /* Drop ill-formed UTF-8 instead of failing */
 #define JSON_INVALID_UTF8_SUBSTITUTE 0x200000 /* ...replace it with U+FFFD */
 #define JSON_THROW_ON_ERROR    0x400000 /* Throw JsonException on encode/decode error */
-/* DECODE flag: php numbers the decode options in their own space, so this shares a
+/* DECODE flags: php numbers the decode options in their own space, so each shares a
  * bit with an encode flag exactly as php's JSON_BIGINT_AS_STRING shares 2 with
- * JSON_HEX_AMP. Not consumed by the decoder yet (§5 JSON audit). */
+ * JSON_HEX_AMP (and JSON_OBJECT_AS_ARRAY shares 1 with JSON_HEX_TAG). */
+#define JSON_OBJECT_AS_ARRAY   0x01
 #define JSON_BIGINT_AS_STRING  0x02
 /*
  * extract() $flags — php's ENUM (ext/standard/php_array.h), not a bitmask.

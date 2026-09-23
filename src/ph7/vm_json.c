@@ -771,7 +771,7 @@ static int VmJsonObjectEncode(const SyString *pAttr,ph7_value *pValue,void *pUse
  *  JSON_HEX_QUOT  All " are converted to \u0022.
  *  JSON_FORCE_OBJECT  Outputs an object rather than an array.
  *  JSON_NUMERIC_CHECK Encodes numeric strings as numbers.
- *  JSON_BIGINT_AS_STRING   Not used
+ *  JSON_BIGINT_AS_STRING   Decode flag (large ints as strings), not an encode flag.
  *  JSON_PRETTY_PRINT       Use whitespace in returned data to format it.
  *  JSON_UNESCAPED_SLASHES  Don't escape '/'
  *  JSON_UNESCAPED_UNICODE  Not used.
@@ -891,6 +891,7 @@ static const char * JsonErrorMsg(int rc)
 	case JSON_ERROR_RECURSION:       return "Recursion detected";
 	case JSON_ERROR_INF_OR_NAN:     return "Inf and NaN cannot be JSON encoded";
 	case JSON_ERROR_UNSUPPORTED_TYPE: return "Type is not supported";
+	case JSON_ERROR_INVALID_PROPERTY_NAME: return "The decoded property name is invalid";
 	case JSON_ERROR_UTF16:           return "Single unpaired UTF-16 surrogate in unicode escape";
 	case JSON_ERROR_NON_BACKED_ENUM: return "Non-backed enums have no default serialization";
 	default:                         return "Unknown error";
@@ -1010,51 +1011,54 @@ static sxi32 VmJsonTokenize(SyStream *pStream,SyToken *pToken,void *pUserData,vo
 	}else if( (pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]))
 		|| (pStream->zText[0] == '-' && &pStream->zText[1] < pStream->zEnd
 			&& pStream->zText[1] < 0xc0 && SyisDigit(pStream->zText[1])) ){
-		/* Number (JSON allows an optional leading minus). Consuming the first
-		 * character here covers both the '-' and a leading digit; the digit run
-		 * below then eats the integer part. */
-		pStream->zText++;
-		pToken->nType = JSON_TK_NUM;
+		/* Number, held to JSON's grammar:
+		 *   -?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?
+		 * The old scanner took any digit soup, so "01", "-01", "5." and "1e"
+		 * all DECODED (and json_validate() answered TRUE) where php reports
+		 * JSON_ERROR_SYNTAX — accepting documents no JSON producer emits. */
+		int bBad = 0;
+		if( pStream->zText[0] == '-' ){
+			pStream->zText++;
+		}
+		if( pStream->zText[0] == '0' ){
+			pStream->zText++;
+			/* JSON forbids a leading zero ahead of another digit */
+			if( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){
+				bBad = 1;
+			}
+		}
 		while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){
 			pStream->zText++;
 		}
-		if( pStream->zText < pStream->zEnd ){
-			c = pStream->zText[0];
-			if( c == '.' ){
-					/* Real number */
-					pStream->zText++;
-					while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){
-						pStream->zText++;
-					}
-					if( pStream->zText < pStream->zEnd ){
-						c = pStream->zText[0];
-						if( c=='e' || c=='E' ){
-							pStream->zText++;
-							if( pStream->zText < pStream->zEnd ){
-								c = pStream->zText[0];
-								if( c =='+' || c=='-' ){
-									pStream->zText++;
-								}
-								while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){
-									pStream->zText++;
-								}
-							}
-						}
-					}
-				}else if( c=='e' || c=='E' ){
-					/* Real number */
-					pStream->zText++;
-					if( pStream->zText < pStream->zEnd ){
-						c = pStream->zText[0];
-						if( c =='+' || c=='-' ){
-							pStream->zText++;
-						}
-						while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){
-							pStream->zText++;
-						}
-					}
-				}
+		if( pStream->zText < pStream->zEnd && pStream->zText[0] == '.' ){
+			pStream->zText++;
+			/* JSON requires at least one digit after the point */
+			if( pStream->zText >= pStream->zEnd || pStream->zText[0] >= 0xc0 || !SyisDigit(pStream->zText[0]) ){
+				bBad = 1;
 			}
+			while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){
+				pStream->zText++;
+			}
+		}
+		if( pStream->zText < pStream->zEnd && (pStream->zText[0] == 'e' || pStream->zText[0] == 'E') ){
+			pStream->zText++;
+			if( pStream->zText < pStream->zEnd && (pStream->zText[0] == '+' || pStream->zText[0] == '-') ){
+				pStream->zText++;
+			}
+			/* ...and at least one digit in the exponent */
+			if( pStream->zText >= pStream->zEnd || pStream->zText[0] >= 0xc0 || !SyisDigit(pStream->zText[0]) ){
+				bBad = 1;
+			}
+			while( pStream->zText < pStream->zEnd && pStream->zText[0] < 0xc0 && SyisDigit(pStream->zText[0]) ){
+				pStream->zText++;
+			}
+		}
+		if( bBad ){
+			pToken->nType = JSON_TK_INVALID;
+			*pJsonErr = JSON_ERROR_SYNTAX;
+			return SXERR_ABORT;
+		}
+		pToken->nType = JSON_TK_NUM;
 	}else if( XLEX_IN_LEN(pStream) >= sizeof("true") -1 &&
 		SyStrnicmp((const char *)pStream->zText,"true",sizeof("true")-1) == 0 ){
 			/* boolean true */
@@ -1328,6 +1332,25 @@ static sxi32 VmJsonDecode(
 			ph7_value_string(pWorker,pStr->zString,(int)pStr->nByte);
 			/* Obtain a numeric representation */
 			PH7_MemObjToNumeric(pWorker);
+			if( (pDecoder->iUserFlags & JSON_BIGINT_AS_STRING) != 0
+			 && ph7_value_is_float(pWorker) ){
+				/* php: an INTEGER literal beyond int64 normally lands on a
+				 * float; under JSON_BIGINT_AS_STRING it stays the EXACT source
+				 * text as a string. Only integer SHAPES qualify — a '.', 'e'
+				 * or 'E' anywhere means the document asked for the float. */
+				sxu32 iCh;
+				int bIntShape = 1;
+				for( iCh = 0 ; iCh < pStr->nByte ; ++iCh ){
+					if( pStr->zString[iCh] == '.' || pStr->zString[iCh] == 'e'
+					 || pStr->zString[iCh] == 'E' ){
+						bIntShape = 0;
+						break;
+					}
+				}
+				if( bIntShape ){
+					ph7_value_string(pWorker,pStr->zString,(int)pStr->nByte);
+				}
+			}
 		}else{
 			/* Dequote the string */
 			rcQ = VmJsonDequoteString(&pDecoder->pIn->sData,pWorker,pDecoder->iUserFlags);
@@ -1465,6 +1488,21 @@ static sxi32 VmJsonDecode(
 				*pDecoder->pErr = rcQ;
 				return SXERR_ABORT;
 			}
+			if( (pDecoder->iFlags & JSON_DECODE_ASSOC) == 0 ){
+				/* Decoding to an OBJECT: php refuses a property name whose
+				 * FIRST byte is NUL ("\0...") with
+				 * JSON_ERROR_INVALID_PROPERTY_NAME — that prefix is reserved
+				 * for its mangled private/protected names. A NUL further in is
+				 * legal, and array mode (assoc / JSON_OBJECT_AS_ARRAY /
+				 * json_validate) takes any key. PHL used to build the property
+				 * in silence. */
+				int nKeyByte;
+				const char *zKey = ph7_value_to_string(pKey,&nKeyByte);
+				if( nKeyByte > 0 && zKey[0] == '\0' ){
+					*pDecoder->pErr = JSON_ERROR_INVALID_PROPERTY_NAME;
+					return SXERR_ABORT;
+				}
+			}
 			/* Jump the key and the colon */
 			pDecoder->pIn += 2;
 			/* Recurse and decode the value */
@@ -1536,8 +1574,10 @@ static int VmJsonDefaultDecoder(ph7_context *pCtx,ph7_value *pKey,ph7_value *pWo
  * $depth
  *   User specified recursion depth.
  * $options
- *   Bitmask of JSON decode options. Currently only JSON_BIGINT_AS_STRING is supported
- * (default is to cast large integers as floats)
+ *   Bitmask of JSON decode options: JSON_OBJECT_AS_ARRAY (objects decode as
+ *   associative arrays when $assoc is NULL), JSON_BIGINT_AS_STRING (an integer
+ *   beyond int64 stays the exact source text instead of a float),
+ *   JSON_INVALID_UTF8_IGNORE/_SUBSTITUTE and JSON_THROW_ON_ERROR
  * Return
  *  The value encoded in json in appropriate PHP type. Values true, false and null (case-insensitive)
  *  are returned as TRUE, FALSE and NULL respectively. NULL is returned if the json cannot be decoded
@@ -1623,7 +1663,8 @@ PH7_PRIVATE int vm_builtin_json_decode(ph7_context *pCtx,int nArg,ph7_value **ap
 		return PH7_OK;
 	}
 	if( nArg > 3 && ph7_value_is_int(apArg[3]) ){
-		/* $flags — only JSON_THROW_ON_ERROR is honored (see NEWPLAN §5). */
+		/* $flags (JSON_OBJECT_AS_ARRAY / JSON_BIGINT_AS_STRING /
+		 * JSON_INVALID_UTF8_* / JSON_THROW_ON_ERROR). */
 		iFlags = ph7_value_to_int(apArg[3]);
 	}
 	/* Extract the JSON string */
@@ -1639,8 +1680,15 @@ PH7_PRIVATE int vm_builtin_json_decode(ph7_context *pCtx,int nArg,ph7_value **ap
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	if( nArg > 1 && ph7_value_to_bool(apArg[1]) != 0 ){
-		iAssoc = 1;
+	if( nArg > 1 ){
+		/* php's $associative is a ?bool: an explicit true/false decides on its
+		 * own (false beats the flag), and only NULL lets JSON_OBJECT_AS_ARRAY
+		 * answer instead. */
+		if( ph7_value_is_null(apArg[1]) ){
+			iAssoc = (iFlags & JSON_OBJECT_AS_ARRAY) != 0;
+		}else{
+			iAssoc = ph7_value_to_bool(apArg[1]) != 0;
+		}
 	}
 	if( nArg > 2 && ph7_value_is_int(apArg[2]) ){
 		/* PHP 8: $depth must be in 1 .. INT_MAX (a catchable ValueError otherwise);

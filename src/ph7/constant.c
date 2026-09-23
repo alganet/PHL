@@ -1643,6 +1643,15 @@ static void PH7_JSON_BIGINT_AS_STRING_Const(ph7_value *pVal,void *pUserData)
 	ph7_value_int(pVal,JSON_BIGINT_AS_STRING);
 }
 /*
+ * JSON_OBJECT_AS_ARRAY.
+ *   Expand the value of JSON_OBJECT_AS_ARRAY defined in ph7Int.h.
+ */
+static void PH7_JSON_OBJECT_AS_ARRAY_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,JSON_OBJECT_AS_ARRAY);
+}
+/*
  * JSON_PRETTY_PRINT.
  *   Expand the value of JSON_PRETTY_PRINT defined in ph7Int.h.
  */
@@ -1776,6 +1785,15 @@ static void PH7_JSON_ERROR_UNSUPPORTED_TYPE_Const(ph7_value *pVal,void *pUserDat
 {
 	SXUNUSED(pUserData); /* cc warning */
 	ph7_value_int(pVal,JSON_ERROR_UNSUPPORTED_TYPE);
+}
+/*
+ * JSON_ERROR_INVALID_PROPERTY_NAME.
+ *   Expand the value of JSON_ERROR_INVALID_PROPERTY_NAME defined in ph7Int.h.
+ */
+static void PH7_JSON_ERROR_INVALID_PROPERTY_NAME_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,JSON_ERROR_INVALID_PROPERTY_NAME);
 }
 /*
  * JSON_ERROR_UTF16.
@@ -2127,6 +2145,7 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"JSON_FORCE_OBJECT",      PH7_JSON_FORCE_OBJECT_Const},
 	{"JSON_NUMERIC_CHECK",     PH7_JSON_NUMERIC_CHECK_Const},
 	{"JSON_BIGINT_AS_STRING",  PH7_JSON_BIGINT_AS_STRING_Const},
+	{"JSON_OBJECT_AS_ARRAY",   PH7_JSON_OBJECT_AS_ARRAY_Const},
 	{"JSON_PRETTY_PRINT",      PH7_JSON_PRETTY_PRINT_Const},
 	{"JSON_UNESCAPED_SLASHES", PH7_JSON_UNESCAPED_SLASHES_Const},
 	{"JSON_UNESCAPED_UNICODE", PH7_JSON_UNESCAPED_UNICODE_Const},
@@ -2142,6 +2161,7 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"JSON_ERROR_UTF8",      PH7_JSON_ERROR_UTF8_Const},
 	{"JSON_ERROR_RECURSION", PH7_JSON_ERROR_RECURSION_Const},
 	{"JSON_ERROR_UNSUPPORTED_TYPE", PH7_JSON_ERROR_UNSUPPORTED_TYPE_Const},
+	{"JSON_ERROR_INVALID_PROPERTY_NAME", PH7_JSON_ERROR_INVALID_PROPERTY_NAME_Const},
 	{"JSON_ERROR_UTF16",     PH7_JSON_ERROR_UTF16_Const},
 	{"JSON_ERROR_NON_BACKED_ENUM", PH7_JSON_ERROR_NON_BACKED_ENUM_Const},
 	{"JSON_ERROR_INF_OR_NAN", PH7_JSON_ERROR_INF_OR_NAN_Const},
