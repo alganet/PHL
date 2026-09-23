@@ -439,8 +439,20 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 	 * long string still costs no copy unless something writes to it. */
 	ph7_value sScratch;
 	int bDropDigits;         /* php's explicit-precision-empties-%x/%X/%o/%b rule */
+	/* A '0'-padded, right-aligned NUMBER puts its sign in front of the padding
+	 * (php_sprintf_appendstring writes it before the pad run). Holding it here
+	 * rather than building the zeros into zWorker is what lets the field be wider
+	 * than the conversion buffer. Zero for every other conversion, including a
+	 * `%s` — php passes appendstring `neg = false` there, which is why "%05s" of
+	 * "-5" really is "000-5". */
+	char cLeadSign;
 	ph7_int64 iVal;
 	int precision;           /* Precision of the current field */
+	/* php only has a precision when a DIGIT follows the '.' (its `expprec`): a bare
+	 * "%.s" is a precision of zero that nothing consults, so `sprintf("%.s","abc")`
+	 * is "abc" and `sprintf("%.x",42)` is "2a". Reading the dot alone as an
+	 * explicit zero truncated both to nothing. */
+	int bExplicitPrec;
 	/* zExtra (unused) removed to prevent compiler warning. */
 	int c,rc,n;
 	sxi32 rcRet = SXRET_OK;   /* Status to hand back through the single exit */
@@ -495,6 +507,7 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 		 * not bleed into this one. php resets it for every specifier. */
 		cPad = ' ';
 		bDropDigits = 0;
+		cLeadSign = 0;
 		nPos = -1;
 		zIn++; /* Jump the precent sign */
 		do{
@@ -546,13 +559,19 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 			}while( c==0 && (zIn++ < zEnd) );
 			width = FormatScanNumber(&zIn,zEnd);
 		}
-		if( width > PH7_FMT_BUFSIZ-10 ){
-			width = PH7_FMT_BUFSIZ-10;
-		}
+		/* No clamp on the WIDTH: it used to be cut to the conversion buffer
+		 * (PH7_FMT_BUFSIZ-10 = 1014 bytes) because the zero padding was built
+		 * INSIDE that buffer, so `sprintf("%%2000d",5)` answered 1014 characters and
+		 * `%%1100s` silently dropped 86 — a fixed-width record coming out short. The
+		 * padding is emitted by the output block below, which chunks it and has no
+		 * such bound; the two zero-pad-into-zWorker sites are what needed the
+		 * limit, and both are gone (see cLeadSign). */
 		/* Get the precision */
 		precision = -1;
+		bExplicitPrec = 0;
 		if( zIn < zEnd && zIn[0] == '.' ){
 			zIn++;
+			bExplicitPrec = ( zIn < zEnd && zIn[0]>='0' && zIn[0]<='9' );
 			precision = FormatScanNumber(&zIn,zEnd);
 		}
 		/* Consume a single 'l' length modifier (a C-ism php accepts and ignores,
@@ -670,7 +689,7 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 				zBuf = "";
 				length = 0;
 			}
-			if( precision>=0 && precision<length ){
+			if( bExplicitPrec && precision<length ){
 				length = precision;
 			}
 			break;
@@ -706,7 +725,7 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 			 * the digits to nothing and `%.1x` of 42 is the EMPTY string (padded
 			 * to $width, which is why "%5.1x" is five spaces). Reproduced rather
 			 * than smoothed over — parity is binding (§10). */
-			bDropDigits = (precision >= 0 && pInfo->base != 10);
+			bDropDigits = (bExplicitPrec && pInfo->base != 10);
 			if( precision >= 0 ){
 				precision = -1;
 			}
@@ -739,8 +758,9 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
          * first digit. Left-aligned, php pads on the far side like any other pad
          * character (append2n hands the '0' straight to appendstring's ALIGN_LEFT
          * arm), so "%-08x" of 5 is "50000000". */
-        if( flag_zeropad && !flag_leftjustify && precision<width-(prefix!=0) ){
-          precision = width-(prefix!=0);
+        if( flag_zeropad && !flag_leftjustify ){
+          cLeadSign = (char)prefix;
+          prefix = 0;
         }
         zBuf = &zWorker[PH7_FMT_BUFSIZ-1];
         {
@@ -846,21 +866,14 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 		nOut = (int)PH7_PhpFloatShape(zWorker,(sxi32)nOut,xtype==PH7_FMT_GENERIC);
 		zBuf = zWorker;
 		length = nOut;
-		/* Let the zero-pad block below insert zeros between the sign (written
-		 * by snprintf) and the first digit, as before. */
-		prefix = (zWorker[0]=='-' || zWorker[0]=='+' || zWorker[0]==' ') ? zWorker[0] : 0;
-        /* Special case:  Add leading zeros if the flag_zeropad flag is
-        ** set and we are not left justified */
-        if( flag_zeropad && !flag_leftjustify && length < width){
-          int i;
-          int nPad = width - length;
-          for(i=width; i>=nPad; i--){
-            zBuf[i] = zBuf[i-nPad];
-          }
-          i = prefix!=0;
-          while( nPad-- ) zBuf[i++] = '0';
-          length = width;
-        }
+		/* The zero padding goes between the sign snprintf wrote and the first
+		 * digit, so hand the sign to the output block and leave the rest here. */
+		if( flag_zeropad && !flag_leftjustify
+		 && (zWorker[0]=='-' || zWorker[0]=='+') ){
+			cLeadSign = zWorker[0];
+			zBuf++;
+			length--;
+		}
 #else
          zBuf = " ";
 		 length = (int)sizeof(char);
@@ -879,6 +892,16 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 		 ** "length" characters long.The field width is "width".Do
 		 ** the output.
 		 */
+    if( cLeadSign ){
+      /* php writes the sign ahead of a '0' pad run; it fills one byte of the
+       * field, so the padding below has that much less to do. */
+      rc = xConsumer(pCtx,&cLeadSign,1,pUserData);
+      if( rc != SXRET_OK ){
+        rcRet = SXERR_ABORT;
+        goto Done;
+      }
+      width--;
+    }
     if( width > length ){
       /* Fill the pad buffer with THIS specifier's pad character. */
       for( idx = 0 ; idx < etSPACESIZE ; ++idx ){ spaces[idx] = cPad; }
