@@ -1264,6 +1264,85 @@ static const char * VmDirectArrayCallableError(ph7_vm *pVm,ph7_value *pTarget,ph
 		zBuf,nBuf);
 }
 /*
+ * Why a VALUE cannot be made into a first-class callable. php answers `($v)(...)` with
+ * exactly what it answers `($v)()` — the taxonomy is the DIRECT dispatch's, word for word —
+ * so this walks the same three shapes the OP_CALL sites do and reuses their builders. PHL
+ * left a non-callable value STANDING instead: `$x = 5; $f = ($x)(...);` evaluated to int(5),
+ * an array to the array, a misspelled function name to its own string — a value that is not
+ * a Closure where php throws, silently, on every shape.
+ *
+ * Returns 0 when the value IS callable (unreachable through the FCC caller, which asks only
+ * after the wrap declined, but it keeps the helper honest for a direct reader).
+ */
+static const char * VmFccValueError(ph7_vm *pVm,ph7_value *pValue,char *zBuf,int nBuf)
+{
+	if( pValue->iFlags & MEMOBJ_HASHMAP ){
+		ph7_hashmap *pMap = (ph7_hashmap *)pValue->x.pOther;
+		ph7_value *pTarget = 0,*pMeth = 0;
+		const char *zWhy;
+		if( pMap == 0 || pMap->nEntry != 2 ){
+			return "Array callback must have exactly two elements";
+		}
+		if( !PH7_VmArrayCallableParts(&(*pVm),pMap,&pTarget,&pMeth) ){
+			return "Array callback has to contain indices 0 and 1";
+		}
+		zWhy = VmDirectArrayCallableError(&(*pVm),pTarget,pMeth,zBuf,nBuf);
+		if( zWhy ){
+			return zWhy;
+		}
+		/* That check deliberately leaves VISIBILITY to OP_CALL's own screen, which raises it
+		 * when the pair is finally called — and a first-class callable never gets there: php
+		 * refuses `[$o,'priv'](...)` at the creation, with the direct dispatch's wording.
+		 * Reached only for a pair PH7_VmIsCallable already declined, so a class routing the
+		 * name through __call (which makes it callable) cannot arrive here. */
+		if( (pMeth->iFlags & MEMOBJ_STRING) && SyBlobLength(&pMeth->sBlob) > 0 ){
+			ph7_class *pCbCls = PH7_VmExtractClassFromValue(&(*pVm),pTarget);
+			const char *zM = (const char *)SyBlobData(&pMeth->sBlob);
+			sxu32 nM = SyBlobLength(&pMeth->sBlob);
+			ph7_class_method *pCbMeth = pCbCls ? PH7_ClassExtractMethod(pCbCls,zM,nM) : 0;
+			if( pCbMeth && pCbMeth->iProtection != PH7_CLASS_PROT_PUBLIC
+			 && !PH7_VmFccMethodIsDirect(&(*pVm),pCbCls,zM,nM) ){
+				return VmMethodVisibilityMsg(&(*pVm),
+					PH7_VmMethodScopeName(&(*pVm),pCbCls,pCbMeth),
+					zM,nM,pCbMeth->iProtection,zBuf,nBuf);
+			}
+		}
+		return 0;
+	}
+	if( pValue->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pObj = (ph7_class_instance *)pValue->x.pOther;
+		if( pObj == 0 ){
+			return "Value of type object is not callable";
+		}
+		if( PH7_ClassExtractMethod(pObj->pClass,"__invoke",sizeof("__invoke")-1) ){
+			return 0;
+		}
+		SyBufferFormat(zBuf,nBuf,"Object of type %z is not callable",&pObj->pClass->sName);
+		return zBuf;
+	}
+	if( pValue->iFlags & MEMOBJ_STRING ){
+		const char *zCls = 0,*zMeth = 0;
+		sxu32 nCls = 0,nMeth = 0;
+		SyString sName;
+		SyStringInitFromBuf(&sName,SyBlobData(&pValue->sBlob),SyBlobLength(&pValue->sBlob));
+		/* A leading backslash only anchors the name to the global namespace. */
+		if( sName.nByte > 0 && sName.zString[0] == '\\' ){
+			sName.zString++;
+			sName.nByte--;
+		}
+		if( PH7_VmCallableStringParts(sName.zString,sName.nByte,&zCls,&nCls,&zMeth,&nMeth) ){
+			/* "Class::method" carries the class/method taxonomy, not the function one. */
+			return VmCallableClassMethodError(&(*pVm),
+				PH7_VmExtractClass(&(*pVm),zCls,nCls,FALSE,0),
+				zCls,nCls,zMeth,nMeth,TRUE,zBuf,nBuf);
+		}
+		SyBufferFormat(zBuf,nBuf,"Call to undefined function %z()",&sName);
+		return zBuf;
+	}
+	SyBufferFormat(zBuf,nBuf,"Value of type %s is not callable",VmArithTypeName(pValue));
+	return zBuf;
+}
+/*
  * Split a `"Class::method"` callable string. php scans for the LAST "::" (zend_memrchr),
  * so `"C::s::x"` names the class `C::s` — not `C` — and reports it not found. Returns TRUE
  * and the two halves (either may be empty: `"C::"` and `"::s"` are shapes php accepts here
@@ -2361,15 +2440,44 @@ case PH7_OP_LOAD_FCC:{
 		 * fresh Closure (PHP always yields a Closure). A non-callable value is left as-is
 		 * (graceful degradation), and so is the original on OOM — still whatever it was. */
 		ph7_class_instance *pCloObj;
+		sxi32 nFccBrc;
+		const void *pFccRes;
 		if( VmValueIsClosure(pVm, pTos) ){
 			break;
 		}
+		/* The array shape's class lookup can run an autoloader that throws; php propagates
+		 * THAT exception and never reports the callable bad, exactly as at the OP_CALL sites. */
+		nFccBrc = pVm->nBoundaryRc;
+		pFccRes = (const void *)pVm->pResumeFrame;
 		pCloObj = VmFccWrapValue(pVm, pTos);
 		if( pCloObj ){
 			PH7_MemObjRelease(pTos);
 			pCloObj->iRef++;
 			pTos->x.pOther = pCloObj;
 			MemObjSetType(pTos, MEMOBJ_OBJ);
+		}else{
+			/* php refuses a non-callable HERE, with the direct dispatch's own wording — the
+			 * `(...)` does not make a bad callable acceptable, it just defers the call. */
+			char zFccMsg[192];
+			const char *zFccBad = VmFccValueError(&(*pVm),pTos,zFccMsg,sizeof(zFccMsg));
+			int bFccRaised = PH7_VmClassLookupRaised(&(*pVm),nFccBrc,pFccRes);
+			if( zFccBad || bFccRaised ){
+				sxi32 rcFcc;
+				PH7_MemObjRelease(pTos);
+				MemObjSetType(pTos,MEMOBJ_NULL);
+				pTos->nIdx = SXU32_HIGH;
+				if( bFccRaised ){
+					rcFcc = pVm->nBoundaryRc;
+					pVm->nBoundaryRc = 0;
+					if( rcFcc == PH7_ABORT ){ goto Abort; }
+					rc = PH7_EXCEPTION;
+					PH7_THROW_ROUTE_MIDEXPR(rc)
+				}
+				rcFcc = VmThrowFromVm(&(*pVm),"Error",zFccBad,(sxu32)SyStrlen(zFccBad));
+				if( rcFcc == SXERR_ABORT ){ goto Abort; }
+				rc = rcFcc;
+				PH7_THROW_ROUTE_MIDEXPR(rc)
+			}
 		}
 	}else{
 		/* iP1 == 2: method/static. Stack is [ target (pTos[-1]), real-method-name (pTos) ]
