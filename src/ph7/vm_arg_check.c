@@ -413,6 +413,7 @@ static const struct VmBuiltinSig {
 	{ "array_last", "array $array", "mixed" },
 	{ "array_map", "?callable $callback, array $array, array ...$arrays = ?", "array" },
 	{ "array_merge", "array ...$arrays = ?", "array" },
+	{ "array_merge_recursive", "array ...$arrays = ?", "array" },
 	{ "array_pad", "array $array, int $length, mixed $value", "array" },
 	{ "array_pop", "array &$array", "mixed" },
 	{ "array_product", "array $array", "int|float" },

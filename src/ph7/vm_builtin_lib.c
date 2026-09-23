@@ -752,37 +752,6 @@
    "   }"\
    "   return false;"\
    "}"\
-	"function array_merge_recursive(...$arrays){"\
-    "$narrays = count($arrays);"\
-    "$ret = array();"\
-    "for( $i = 0; $i < $narrays; $i++ ){"\
-	 " if( !is_array($arrays[$i]) ){"\
-	 "  throw new TypeError('array_merge_recursive(): Argument #'.($i + 1).' must be of type array, '.__php_zpp_type($arrays[$i]).' given');"\
-	 " }"\
-     " foreach ($arrays[$i] as $key => $value) {"\
-     "  $keyIsInt = is_int($key) || (is_string($key) && (string)intval($key) === $key);"\
-     "  if( $keyIsInt ) {"\
-     "   $ret[] = $value;"\
-     "  } else {"\
-     "   if (array_key_exists($key, $ret)) {"\
-     "    $cur = $ret[$key];"\
-     "    if (is_array($cur) && is_array($value)) {"\
-     "     $ret[$key] = array_merge_recursive($cur, $value);"\
-     "    } elseif (is_array($cur)) {"\
-     "     $ret[$key] = array_merge_recursive($cur, array($value));"\
-     "    } elseif (is_array($value)) {"\
-     "     $ret[$key] = array_merge_recursive(array($cur), $value);"\
-     "    } else {"\
-     "     $ret[$key] = array($cur, $value);"\
-     "    }"\
-     "   } else {"\
-     "    $ret[$key] = $value;"\
-     "   }"\
-     "  }"\
-     " }"\
-	 " }"\
-	 " return $ret;"\
-    "}"\
 	/* __php_zpp_type: php's ZPP value-name for TypeError messages */\
 	"function __php_zpp_type($v){"\
 	" if( is_object($v) ){ return get_class($v); }"\

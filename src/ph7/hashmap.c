@@ -13,10 +13,7 @@
 /* This file implement generic hashmaps known as 'array' in the PHP world */
 /* HASHMAP_INT_NODE / HASHMAP_BLOB_NODE (node key types) are declared in ph7int.h
  * alongside ph7_hashmap_node so name-forwarding builtins can classify keys. */
-/* Node control flags */
-#define HASHMAP_NODE_FOREIGN_OBJ 0x001 /* Node hold a reference to a foreign ph7_value
-                                        * [i.e: array(&var)/$a[] =& $var ]
-										*/
+/* HASHMAP_NODE_FOREIGN_OBJ (node control flag) is declared in ph7int.h too. */
 /*
  * Default hash function for int [i.e; 64-bit integer] keys.
  */
@@ -2264,6 +2261,7 @@ static const ph7_builtin_func aHashmapFunc[] = {
 	{"array_values",      ph7_hashmap_values  },
 	{"array_same",        ph7_hashmap_same    },  /* Symisc eXtension */
 	{"array_merge",       ph7_hashmap_merge   },
+	{"array_merge_recursive", ph7_hashmap_merge_recursive },
 	{"array_slice",       ph7_hashmap_slice   },
 	{"array_splice",      ph7_hashmap_splice  },
 	{"array_search",      ph7_hashmap_search  },

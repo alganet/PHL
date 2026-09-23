@@ -439,6 +439,227 @@ PH7_PRIVATE int ph7_hashmap_unshift(ph7_context *pCtx,int nArg,ph7_value **apArg
 	return PH7_OK;
 }
 /*
+ * One level of array_merge_recursive()'s walk. php marks the destination
+ * hashtable it is about to descend into (GC_TRY_PROTECT_RECURSION) so a
+ * container that is its own ancestor stops rather than recursing forever; PHL
+ * carries the same set on the C stack instead of a mark bit, so nothing is left
+ * dirty if a throw unwinds. The pointer recorded is the destination's table
+ * BEFORE it is separated for writing — which is the table shared with the
+ * source, and the one php's own mark lands on.
+ */
+typedef struct merge_rec_frame merge_rec_frame;
+struct merge_rec_frame {
+	const void *pWalked;
+	const merge_rec_frame *pParent;
+};
+/*
+ * php has no fixed nesting limit here — it recurses until the platform stack
+ * gives out. PHL walks the same tree on the same C stack, so it needs a bound;
+ * this one is far above any real structure and reports php's own error.
+ */
+#define MERGE_REC_MAX_DEPTH 512
+static int MergeRecIsAncestor(const merge_rec_frame *pFrame,const void *pWalked)
+{
+	while( pFrame ){
+		if( pFrame->pWalked == pWalked ){
+			return 1;
+		}
+		pFrame = pFrame->pParent;
+	}
+	return 0;
+}
+static sxi32 MergeRecWalk(ph7_context *pCtx,ph7_hashmap *pDest,ph7_hashmap *pSrc,
+	int nDepth,const merge_rec_frame *pParent);
+/*
+ * php's SEPARATE_ZVAL on the destination entry. The result array carries a
+ * REFERENCED element across as a reference (`['k' => &$v]` still var_dumps as
+ * `&`), so a key that then has to MERGE would write through that reference and
+ * change the caller's variable — php gives the entry a private zval first.
+ * Here that is a private slot holding a copy, installed in place so the node
+ * keeps its key and its position.
+ */
+static ph7_value * MergeRecSeparateNode(ph7_vm *pVm,ph7_hashmap_node *pNode)
+{
+	ph7_value *pOld = HashmapExtractNodeValue(pNode);
+	ph7_value *pNew;
+	ph7_value sSafe;
+	if( pOld == 0 ){
+		return 0;
+	}
+	if( (pNode->iFlags & HASHMAP_NODE_FOREIGN_OBJ) == 0
+	 && !PH7_VmSlotIsReferenced(pVm,pNode->nValIdx) ){
+		/* Already this node's own value. */
+		return pOld;
+	}
+	/* Shallow snapshot first: reserving can grow (move) pVm->aMemObj, and pOld
+	 * points into it — the same rule HashmapInsertIntKey follows. */
+	sSafe = *pOld;
+	pNew = PH7_ReserveMemObj(pVm);
+	if( pNew == 0 ){
+		return 0;
+	}
+	PH7_MemObjStore(&sSafe,pNew);
+	PH7_VmRefObjRemove(pVm,pNode->nValIdx,0,pNode);
+	pNode->iFlags &= ~HASHMAP_NODE_FOREIGN_OBJ;
+	pNode->nValIdx = pNew->nIdx;
+	return pNew;
+}
+/*
+ * Merge one SOURCE value into the destination slot a string key already holds.
+ * php's rule: the destination becomes an ARRAY (a null one becomes `[null]`),
+ * an OBJECT source is read as its property array, and then either the two
+ * arrays merge or the scalar source is appended.
+ */
+static sxi32 MergeRecValue(ph7_context *pCtx,ph7_value *pDestVal,ph7_value *pSrcVal,
+	int nDepth,const merge_rec_frame *pParent)
+{
+	merge_rec_frame sFrame;
+	const void *pWalked;
+	ph7_hashmap *pDestMap;
+	ph7_value sSrc;
+	sxi32 rc;
+	int bNull = ph7_value_is_null(pDestVal);
+	/* The table the destination and the source still share, before the write
+	 * separates them: php protects exactly this one. */
+	pWalked = (pDestVal->iFlags & MEMOBJ_HASHMAP) ? pDestVal->x.pOther : 0;
+	if( pWalked && MergeRecIsAncestor(pParent,pWalked) ){
+		return PH7_VmThrowException(pCtx,"Error","Recursion detected");
+	}
+	if( nDepth >= MERGE_REC_MAX_DEPTH ){
+		return PH7_VmThrowException(pCtx,"Error","Maximum call stack size reached.");
+	}
+	/* Snapshot the SOURCE first. A referenced element (`$a['k']['self'] = &$a`)
+	 * reaches this function as ONE slot playing both parts, so converting or
+	 * separating the destination would change the source under the walk -- and
+	 * the two would then look like the same array, which reads as "nothing to
+	 * merge" instead of as the cycle it is.
+	 * An OBJECT source merges as its property array, and it is this copy that is
+	 * converted: the caller's object is untouched. */
+	PH7_MemObjInit(pCtx->pVm,&sSrc);
+	PH7_MemObjStore(pSrcVal,&sSrc);
+	if( ph7_value_is_object(&sSrc) ){
+		PH7_MemObjToHashmap(&sSrc);
+	}
+	if( PH7_MemObjToHashmap(pDestVal) != SXRET_OK ){
+		PH7_MemObjRelease(&sSrc);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	/* The destination array may still be shared with the source (values are
+	 * stored by reference count); separate it before writing through it. */
+	pDestMap = PH7_HashmapCowSeparate(pCtx->pVm,pDestVal);
+	if( bNull ){
+		/* php: convert_to_array() of a null gives the EMPTY array, and the merge
+		 * then puts an explicit null in it — so ['k' => null] merged with
+		 * ['k' => 2] is [null, 2], not [2]. */
+		ph7_value sNull;
+		PH7_MemObjInit(pCtx->pVm,&sNull);
+		PH7_HashmapInsert(pDestMap,0,&sNull);
+		PH7_MemObjRelease(&sNull);
+	}
+	if( ph7_value_is_array(&sSrc) ){
+		sFrame.pWalked = pWalked;
+		sFrame.pParent = pParent;
+		rc = MergeRecWalk(pCtx,pDestMap,(ph7_hashmap *)sSrc.x.pOther,nDepth + 1,
+			pWalked ? &sFrame : pParent);
+	}else{
+		rc = PH7_HashmapInsert(pDestMap,0 /* automatic index */,&sSrc);
+		if( rc != SXRET_OK ){
+			rc = PH7_ContextMemoryError(pCtx);
+		}
+	}
+	PH7_MemObjRelease(&sSrc);
+	return rc;
+}
+/* php_array_merge_recursive(): every INTEGER key appends, every STRING key
+ * either lands in a free slot or merges with what is already there. */
+static sxi32 MergeRecWalk(ph7_context *pCtx,ph7_hashmap *pDest,ph7_hashmap *pSrc,
+	int nDepth,const merge_rec_frame *pParent)
+{
+	ph7_hashmap_node *pEntry;
+	sxu32 n;
+	if( pSrc == pDest ){
+		/* Merging a map into itself would walk the nodes it is appending. php
+		 * cannot reach this (its source is a separate copy by then); PHL shares
+		 * maps by reference count, so guard it the way HashmapMerge does. */
+		return SXRET_OK;
+	}
+	pEntry = pSrc->pFirst;
+	for( n = pSrc->nEntry ; n > 0 ; --n, pEntry = pEntry->pPrev /* Reverse link */ ){
+		ph7_hashmap_node *pDup = 0;
+		ph7_value *pVal;
+		sxi32 rc;
+		if( pEntry->iType == HASHMAP_BLOB_NODE
+		 && HashmapLookupBlobKey(pDest,SyBlobData(&pEntry->xKey.sKey),
+			SyBlobLength(&pEntry->xKey.sKey),&pDup) == SXRET_OK && pDup ){
+			/* Separate FIRST: it can grow (move) pVm->aMemObj, which both value
+			 * pointers live in, so neither may be read before it runs. */
+			ph7_value *pDestVal = MergeRecSeparateNode(pCtx->pVm,pDup);
+			pVal = HashmapExtractNodeValue(pEntry);
+			if( pDestVal == 0 || pVal == 0 ){
+				continue;
+			}
+			rc = MergeRecValue(pCtx,pDestVal,pVal,nDepth,pParent);
+		}else{
+			pVal = HashmapExtractNodeValue(pEntry);
+			if( pVal == 0 ){
+				continue;
+			}
+			/* A free string key keeps its key; an integer key appends. Going
+			 * through HashmapInsertNode is what carries a REFERENCED element
+			 * across as a reference, the way php's zval copy does. */
+			rc = HashmapInsertNode(pDest,pEntry,pEntry->iType == HASHMAP_BLOB_NODE);
+		}
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	return SXRET_OK;
+}
+/*
+ * array array_merge_recursive(array ...$arrays)
+ *  Merge arrays, descending into the values two arrays share a STRING key for
+ *  rather than overwriting them.
+ * Return
+ *  The merged array. Integer keys are renumbered; a string key present in more
+ *  than one argument collects every value under it.
+ */
+PH7_PRIVATE int ph7_hashmap_merge_recursive(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pArray;
+	ph7_hashmap *pDest;
+	int i;
+	/* php screens EVERY argument before it merges anything. */
+	for( i = 0 ; i < nArg ; ++i ){
+		if( !ph7_value_is_array(apArg[i]) ){
+			char zBuf[64];
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"array_merge_recursive(): Argument #%d must be of type array, %s given",
+				i + 1,
+				VmValueGivenName(apArg[i],zBuf,sizeof(zBuf))
+				);
+		}
+	}
+	pArray = ph7_context_new_array(pCtx);
+	if( pArray == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	pDest = (ph7_hashmap *)pArray->x.pOther;
+	if( nArg > 0 ){
+		/* The first array is COPIED (php never merges it into itself), then each
+		 * of the others is merged in. */
+		sxi32 rc = HashmapMerge((ph7_hashmap *)apArg[0]->x.pOther,pDest);
+		for( i = 1 ; rc == SXRET_OK && i < nArg ; ++i ){
+			rc = MergeRecWalk(pCtx,pDest,(ph7_hashmap *)apArg[i]->x.pOther,0,0);
+		}
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/*
  * Extract the node cursor value.
  */
 static sxi32 HashmapCurrentValue(ph7_context *pCtx,ph7_hashmap *pMap,int iDirection)

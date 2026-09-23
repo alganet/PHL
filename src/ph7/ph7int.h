@@ -365,6 +365,9 @@ struct ph7_context
 /* Allowed hashmap node key types (iType below) */
 #define HASHMAP_INT_NODE   1  /* Node with an int [i.e: 64-bit integer] key */
 #define HASHMAP_BLOB_NODE  2  /* Node with a string/BLOB key */
+/* Node control flags (iFlags below) */
+#define HASHMAP_NODE_FOREIGN_OBJ 0x001 /* Node holds a reference to a foreign ph7_value
+                                        * [i.e: array(&var) / $a[] =& $var ] */
 struct ph7_hashmap_node
 {
 	ph7_hashmap *pMap;     /* Hashmap that own this instance */
@@ -3876,6 +3879,7 @@ PH7_PRIVATE int ph7_hashmap_pop(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int ph7_hashmap_push(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int ph7_hashmap_shift(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int ph7_hashmap_unshift(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int ph7_hashmap_merge_recursive(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int ph7_hashmap_current(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int ph7_hashmap_next(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int ph7_hashmap_prev(ph7_context *pCtx,int nArg,ph7_value **apArg);
