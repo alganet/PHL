@@ -5233,6 +5233,11 @@ case PH7_OP_CALL: {
 		if( pTos->iFlags & MEMOBJ_HASHMAP ){
 			ph7_value sResult;
 			sxi32 rcArr;
+			/* Taken off the VM at the head of the shape check below, not at the dispatch:
+			 * everything between the two (the deferred-argument materialization especially)
+			 * can throw and jump out of this branch, and a latch left armed would stand the
+			 * visibility screen down for whatever call runs next. */
+			int bCbScreened;
 			{
 				/* php validates the SHAPE of an array callable first: it must hold exactly
 				 * two elements. PH7 handed any array to the dispatcher, which failed
@@ -5246,7 +5251,8 @@ case PH7_OP_CALL: {
 				 * resolves one, and it is a well-formed [target, method] by construction.
 				 * Re-deciding it here, against the CALLER, is what refused an escaped
 				 * `$this->priv(...)` php runs. */
-				int bCbScreened = pVm->bClosureScreened;
+				bCbScreened = pVm->bClosureScreened;
+				pVm->bClosureScreened = 0; /* put back for the one dispatch that reads it */
 				if( !bCbScreened && pCbMap && pCbMap->nEntry == 2 ){
 					/* Shape is right; now check it actually RESOLVES. The shared dispatcher
 					 * (PH7_VmCallUserFunctionWithMap) answers SXRET_OK with a NULL result for
@@ -5329,10 +5335,10 @@ case PH7_OP_CALL: {
 			/* May be a class instance and it's static method. Forward this call's named-arg map
 			 * (pInstr->p3) so an FCC array callable invoked as `$c(name: …)` binds by name —
 			 * mirroring the __invoke-object branch below. */
+			pVm->bClosureScreened = bCbScreened; /* see the capture above */
 			rcArr = PH7_VmCallUserFunctionWithMap(pVm,pTos,(int)SySetUsed(&aArg),(ph7_value **)SySetBasePtr(&aArg),&sResult,pEffCallMap);
-			/* The screened-callee latch is consumed by the method OP_CALL this dispatch
-			 * builds; clear it here for the paths that never reach one, so it cannot stand
-			 * the visibility screen down for an unrelated later call. */
+			/* The latch is consumed by the method OP_CALL this dispatch builds; clear it here
+			 * for the paths that never reach one. */
 			pVm->bClosureScreened = 0;
 			SySetReset(&aArg);
 			/* Pop given arguments */

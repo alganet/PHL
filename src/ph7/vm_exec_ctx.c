@@ -1099,6 +1099,12 @@ static int VmClosureResolveScope(ph7_value *pScopeArg, SyString *pOut)
 		*pOut = pScopeObj->pClass->sName;
 		return 1;
 	}
+	if( (pScopeArg->iFlags & MEMOBJ_STRING) == 0 && (pScopeArg->iFlags & MEMOBJ_SCALAR) ){
+		/* php declares `object|string|null $newScope` and coerces a scalar into it in weak
+		 * mode, so `bindTo($o, 5)` reaches the lookup as the NAME "5" and warns that no such
+		 * class exists. Falling through as "keep the current scope" bound it silently. */
+		PH7_MemObjToString(pScopeArg);
+	}
 	if( pScopeArg->iFlags & MEMOBJ_STRING ){
 		SyStringInitFromBuf(pOut, (const char *)SyBlobData(&pScopeArg->sBlob), SyBlobLength(&pScopeArg->sBlob));
 		return 1;
@@ -1456,6 +1462,17 @@ PH7_PRIVATE int vm_builtin_Closure_bindTo(ph7_context *pCtx, int nArg, ph7_value
 	}
 	if( VmClosureResolveScope((nArg > 1) ? apArg[1] : 0, &sScope) ){
 		pScopePtr = &sScope;
+	}
+	/* php RESOLVES the scope argument before it decides anything else, and a name no class
+	 * answers to is its own warning — ahead of all four rebind refusals, for a plain closure
+	 * as much as for a method one. PHL bound the unresolvable scope in silence and then had
+	 * no scope at all, so `bindTo($o, 'Typo')` produced a closure that could not reach the
+	 * private members it was being bound for. */
+	if( pScopePtr && pScopePtr->nByte
+	 && PH7_VmResolveScopeName(pVm, pScopePtr->zString, pScopePtr->nByte) == 0 ){
+		VmErrorFormat(pVm,PH7_CTX_WARNING,"Class \"%z\" not found",pScopePtr);
+		ph7_result_null(pCtx);
+		return PH7_OK;
 	}
 	if( !VmClosureBindAllowed(pVm, pClosure, pNewThis, pScopePtr) ){
 		ph7_result_null(pCtx);
