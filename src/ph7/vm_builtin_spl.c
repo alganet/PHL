@@ -565,6 +565,81 @@ static sxi32 VmInstallWeak(ph7_vm *pVm)
 }
 
 /*
+ * ---------------------------------------------------------------------------
+ * The MEMBERS slot every SPL container's `__serialize()` carries.
+ *
+ * php's payload for these classes is its own state plus a members array, and that
+ * array is `zend_std_get_properties()` — the instance's REAL properties. For a bare
+ * SplObjectStorage or SplStack there are none, which is why every one of these bodies
+ * shipped with a hardcoded empty array; the moment a user SUBCLASSES one, its declared
+ * properties belong in the payload and PHL dropped them. `serialize()` then round-
+ * tripped a SplStack subclass back to its property DEFAULTS with nothing failing —
+ * the same shape of silent wrong answer the date family's hidden slots had, one layer
+ * up. These two are that walk, shared by every container below.
+ *
+ * The walk must skip `PH7_CLASS_ATTR_HIDDEN`: a native class's engine slots are
+ * exactly what the pair exists to replace. The load side writes only slots the class
+ * DECLARES, which is what the engine's own unserialize does with an unknown name
+ * (PHL has no dynamic properties).
+ * ---------------------------------------------------------------------------
+ */
+static void SplAddMembers(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
+{
+	SyHashEntry *pEntry;
+	if( pThis == 0 ){
+		return;
+	}
+	SyHashResetLoopCursor(&pThis->hAttr);
+	while( (pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
+		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
+		SyString *pName = &pVmAttr->pAttr->sName;
+		ph7_value *pVal;
+		ph7_value sKey;
+		if( pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT
+			|PH7_CLASS_ATTR_HIDDEN|PH7_CLASS_ATTR_HOOK_VIRTUAL) ){
+			continue;
+		}
+		pVal = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
+		if( pVal == 0 ){
+			continue;
+		}
+		PH7_MemObjInitFromString(&(*pVm),&sKey,0);
+		PH7_MemObjStringAppend(&sKey,pName->zString,pName->nByte);
+		ph7_array_add_elem(pOut,&sKey,pVal);
+		PH7_MemObjRelease(&sKey);
+	}
+}
+/* The same walk as a standalone array, which is the shape most payloads want. */
+static sxi32 SplMembersOf(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
+{
+	PH7_MemObjInit(&(*pVm),pOut);
+	if( PH7_MemObjToHashmap(pOut) != SXRET_OK ){
+		return SXERR_MEM;
+	}
+	SplAddMembers(&(*pVm),pThis,pOut);
+	return SXRET_OK;
+}
+static int SplMembersWalk(ph7_value *pKey,ph7_value *pVal,void *pUserData)
+{
+	ph7_class_instance *pThis = (ph7_class_instance *)pUserData;
+	const char *zKey;
+	int nKey;
+	if( !ph7_value_is_string(pKey) ){
+		return PH7_OK;
+	}
+	zKey = ph7_value_to_string(pKey,&nKey);
+	PH7_NativeSetProp(pThis->pVm,pThis,zKey,(sxu32)nKey,pVal);
+	return PH7_OK;
+}
+static void SplMembersLoad(ph7_class_instance *pThis,ph7_value *pMembers)
+{
+	if( pThis == 0 || pMembers == 0 || (pMembers->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return;
+	}
+	ph7_array_walk(pMembers,SplMembersWalk,pThis);
+}
+
+/*
  * ArrayIterator / ArrayObject — the array STORE, in C.
  *
  * These two shared one implementation through `trait __SplStoreT`, the last PHL-only
@@ -4457,10 +4532,9 @@ static int vm_builtin_SplDll_serializeMagic(ph7_context *pCtx,int nArg,ph7_value
 	if( pStore ){
 		ph7_array_add_elem(&sOut,0,pStore);
 	}
-	/* The members slot: php hands back the dynamic properties, and a native class
-	 * has none that are php-visible (every declared slot is hidden). */
-	PH7_MemObjInit(pVm,&sVal);
-	if( PH7_MemObjToHashmap(&sVal) == SXRET_OK ){
+	/* The members slot: php's own properties — empty for a bare SplStack, a
+	 * SUBCLASS's declared slots when there is one. */
+	if( SplMembersOf(pVm,pThis,&sVal) == SXRET_OK ){
 		ph7_array_add_elem(&sOut,0,&sVal);
 	}
 	PH7_MemObjRelease(&sVal);
@@ -4500,6 +4574,9 @@ static int vm_builtin_SplDll_unserializeMagic(ph7_context *pCtx,int nArg,ph7_val
 	if( pSlot ){
 		PH7_MemObjRelease(pSlot);
 		PH7_MemObjStore(pStore,pSlot);
+	}
+	if( HashmapLookupIntKey(pData,2,&pNode) == SXRET_OK ){
+		SplMembersLoad(pThis,HashmapExtractNodeValue(pNode));
 	}
 	return PH7_OK;
 }
@@ -5315,8 +5392,8 @@ static int vm_builtin_SplHeap_debugInfo(ph7_context *pCtx,int nArg,ph7_value **a
 }
 /*
  * php's __serialize(): [members, {flags, heap_elements}]. Note the OUTER array is
- * a two-element list whose first entry is the dynamic-property table — a native
- * class has none that are php-visible, so it is always empty here.
+ * a two-element list whose first entry is the instance's own property table —
+ * empty for a bare heap, a SUBCLASS's declared slots when there is one.
  */
 static int vm_builtin_SplHeap_serializeMagic(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -5330,10 +5407,9 @@ static int vm_builtin_SplHeap_serializeMagic(ph7_context *pCtx,int nArg,ph7_valu
 		return rc;
 	}
 	PH7_MemObjInit(pVm,&sOut);
-	PH7_MemObjInit(pVm,&sMembers);
 	PH7_MemObjInit(pVm,&sState);
-	if( PH7_MemObjToHashmap(&sOut) != SXRET_OK
-	 || PH7_MemObjToHashmap(&sMembers) != SXRET_OK
+	if( SplMembersOf(pVm,pThis,&sMembers) != SXRET_OK
+	 || PH7_MemObjToHashmap(&sOut) != SXRET_OK
 	 || PH7_MemObjToHashmap(&sState) != SXRET_OK ){
 		PH7_MemObjRelease(&sOut);
 		PH7_MemObjRelease(&sMembers);
@@ -5413,6 +5489,9 @@ static int vm_builtin_SplHeap_unserializeMagic(ph7_context *pCtx,int nArg,ph7_va
 	if( pSlot ){
 		PH7_MemObjRelease(pSlot);
 		PH7_MemObjStore(pElems,pSlot);
+	}
+	if( HashmapLookupIntKey(pData,0,&pNode) == SXRET_OK ){
+		SplMembersLoad(pThis,HashmapExtractNodeValue(pNode));
 	}
 	return PH7_OK;
 }
@@ -5911,21 +5990,80 @@ static int vm_builtin_SplFixedArray_wakeup(ph7_context *pCtx,int nArg,ph7_value 
 	SXUNUSED(pCtx);
 	return PH7_OK;   /* php 8.4 keeps it, deprecated, doing nothing */
 }
+/*
+ * php's __serialize() here is NOT toArray(): the members ride in the SAME array as
+ * the elements, told apart by their key — an INT key is an element and a STRING key
+ * is a property. That is the whole reason the payload of a SplFixedArray subclass
+ * reads `{i:0;N;i:1;N;s:1:"p";i:9;}` and not a nested pair.
+ */
+static int vm_builtin_SplFixedArray_serializeMagic(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value sOut,*pSlot;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	pSlot = FaSlot(pVm,pThis);
+	PH7_MemObjInit(pVm,&sOut);
+	if( pSlot ){
+		PH7_MemObjStore(pSlot,&sOut);
+	}
+	if( PH7_MemObjToHashmap(&sOut) != SXRET_OK ){
+		PH7_MemObjRelease(&sOut);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	SplAddMembers(pVm,pThis,&sOut);   /* string keys, beside the int-keyed elements */
+	ph7_result_value(pCtx,&sOut);
+	PH7_MemObjRelease(&sOut);
+	return PH7_OK;
+}
+/* Split the payload back apart: int keys rebuild the elements, string keys the
+ * properties. The element count is what the INT half holds, not the whole array. */
+typedef struct fa_unser_ctx fa_unser_ctx;
+struct fa_unser_ctx
+{
+	ph7_class_instance *pThis;
+	ph7_value *pElems;
+	sxi64 nElem;
+};
+static int FaUnserWalk(ph7_value *pKey,ph7_value *pVal,void *pUserData)
+{
+	fa_unser_ctx *pFa = (fa_unser_ctx *)pUserData;
+	if( ph7_value_is_string(pKey) ){
+		int nKey;
+		const char *zKey = ph7_value_to_string(pKey,&nKey);
+		PH7_NativeSetProp(pFa->pThis->pVm,pFa->pThis,zKey,(sxu32)nKey,pVal);
+		return PH7_OK;
+	}
+	ph7_array_add_elem(pFa->pElems,0,pVal);
+	pFa->nElem++;
+	return PH7_OK;
+}
 static int vm_builtin_SplFixedArray_unserializeMagic(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
-	ph7_value *pSlot;
+	fa_unser_ctx sFa;
+	ph7_value sElems,*pSlot;
 	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_HASHMAP) == 0 || pThis == 0 ){
 		return PH7_OK;
 	}
+	PH7_MemObjInit(pVm,&sElems);
+	if( PH7_MemObjToHashmap(&sElems) != SXRET_OK ){
+		PH7_MemObjRelease(&sElems);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	sFa.pThis = pThis;
+	sFa.pElems = &sElems;
+	sFa.nElem = 0;
+	ph7_array_walk(apArg[0],FaUnserWalk,&sFa);
 	pSlot = PH7_NativeAttr(pThis,FA_A);
 	if( pSlot ){
 		PH7_MemObjRelease(pSlot);
-		PH7_MemObjStore(apArg[0],pSlot);
+		PH7_MemObjStore(&sElems,pSlot);
 	}
-	PH7_NativeSetAttrInt(pVm,pThis,FA_N,
-		(sxi64)((ph7_hashmap *)apArg[0]->x.pOther)->nEntry);
+	PH7_MemObjRelease(&sElems);
+	PH7_NativeSetAttrInt(pVm,pThis,FA_N,sFa.nElem);
 	return PH7_OK;
 }
 /*
@@ -5964,7 +6102,7 @@ static sxi32 VmInstallSplFixedArray(ph7_vm *pVm)
 		{ "__construct",   PH7_MOD_PUBLIC, "int $size = 0", 0,
 		  vm_builtin_SplFixedArray_construct },
 		{ "__wakeup",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_SplFixedArray_wakeup },
-		{ "__serialize",   PH7_MOD_PUBLIC, "", "array", vm_builtin_SplFixedArray_toArray },
+		{ "__serialize",   PH7_MOD_PUBLIC, "", "array", vm_builtin_SplFixedArray_serializeMagic },
 		{ "__unserialize", PH7_MOD_PUBLIC, "array $data", "void",
 		  vm_builtin_SplFixedArray_unserializeMagic },
 		{ "count",         PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplFixedArray_count },
@@ -6733,13 +6871,14 @@ static int vm_builtin_SplObjectStorage_debugInfo(ph7_context *pCtx,int nArg,ph7_
 /*
  * php's __serialize(): [[obj, inf, obj, inf, …], members]. This is what serialize()
  * actually uses; the Serializable pair below is the legacy format nothing else in
- * php reads or writes. A native class has no php-visible dynamic properties, so the
- * members slot is always empty here.
+ * php reads or writes. The members slot is the instance's own properties — empty for
+ * a bare SplObjectStorage, a SUBCLASS's declared slots when there is one.
  */
 static int vm_builtin_SplObjectStorage_serializeMagic(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
-	ph7_hashmap *pMap = SosMap(pVm,PH7_ContextThis(pCtx));
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_hashmap *pMap = SosMap(pVm,pThis);
 	ph7_hashmap_node *pNode;
 	ph7_value sOut,sFlat,sMembers;
 	sxu32 n;
@@ -6747,10 +6886,9 @@ static int vm_builtin_SplObjectStorage_serializeMagic(ph7_context *pCtx,int nArg
 	SXUNUSED(apArg);
 	PH7_MemObjInit(pVm,&sOut);
 	PH7_MemObjInit(pVm,&sFlat);
-	PH7_MemObjInit(pVm,&sMembers);
-	if( PH7_MemObjToHashmap(&sOut) != SXRET_OK
-	 || PH7_MemObjToHashmap(&sFlat) != SXRET_OK
-	 || PH7_MemObjToHashmap(&sMembers) != SXRET_OK ){
+	if( SplMembersOf(pVm,pThis,&sMembers) != SXRET_OK
+	 || PH7_MemObjToHashmap(&sOut) != SXRET_OK
+	 || PH7_MemObjToHashmap(&sFlat) != SXRET_OK ){
 		PH7_MemObjRelease(&sOut);
 		PH7_MemObjRelease(&sFlat);
 		PH7_MemObjRelease(&sMembers);
@@ -6827,6 +6965,9 @@ static int vm_builtin_SplObjectStorage_unserializeMagic(ph7_context *pCtx,int nA
 		pInf = HashmapLookupIntKey(pFlat,i+1,&pNode) == SXRET_OK
 			? HashmapExtractNodeValue(pNode) : 0;
 		rc = SosAttach(pCtx,pThis,pObj,pInf);
+	}
+	if( rc == PH7_OK ){
+		SplMembersLoad(pThis,pMembers);
 	}
 	return rc;
 }
