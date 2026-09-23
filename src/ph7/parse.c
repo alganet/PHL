@@ -1948,6 +1948,14 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 				 if( (pNode->pOp->iOp == EXPR_OP_ARROW /*'->'*/ || pNode->pOp->iOp == EXPR_OP_NULLSAFE_ARROW /*'?->'*/)
 					 && apNode[iLeft]->pOp == 0 &&
 					 apNode[iLeft]->xCode != PH7_CompileVariable &&
+					 /* A PARENTHESISED group is php's `( expr )` dereferencable: whatever it
+					  * evaluates to may be reached through `->`, which is how the closure
+					  * idioms are written — `(function(){ … })->bindTo($o)`,
+					  * `(fn() => …)->call($o)`, `(match($k){ … })->m()`. PHL refused all of
+					  * them as "Expecting a variable as left operand", a compile fatal on
+					  * valid php, because a literal TERM carries no operator. Only a BARE
+					  * literal stays refused, which is php's own parse error for `1->x`. */
+					 (apNode[iLeft]->iFlags & EXPR_NODE_PARENS) == 0 &&
 					 /* A clone(...) call term (pOp==0, xCode set) produces an object,
 					  * so `(clone($o))->x` is a valid arrow left operand — like the
 					  * `clone $o` operator form (pOp!=0), which this guard already
