@@ -1736,6 +1736,86 @@ PH7_PRIVATE sxi32 PH7_VmBindNamedArgsToSig(
 	return SXRET_OK;
 }
 /*
+ * A `&` in a builtin's signature is not always php's ZEND_SEND_ARG_BY_REF.
+ *
+ * php has a second mode, ZEND_SEND_PREFER_REF: bind by reference when the argument IS a
+ * variable, and otherwise take it by value without a word. Reflection prints those
+ * parameters as by-reference like any other and PHL's signature string cannot say which
+ * mode a `&` means, so the two are told apart here. Probed value-for-value against php
+ * 8.5 over every `&` row PHL declares (41 of them): all but extract() refuse a
+ * non-variable, and extract() answers `int(1)` for `extract(['q' => 1])`.
+ *
+ * array_multisort() is listed with it because it is php's other prefer-ref builtin and
+ * PHL will need this the day it gains one (it is a MISSING builtin today, §5).
+ */
+static int VmBuiltinPrefersRef(SyString *pName)
+{
+	static const char *const azPreferRef[] = { "extract", "array_multisort" };
+	sxu32 i;
+	for( i = 0 ; i < SX_ARRAYSIZE(azPreferRef) ; ++i ){
+		sxu32 nByte = SyStrlen(azPreferRef[i]);
+		if( pName->nByte == nByte
+		 && SyMemcmp(pName->zString,azPreferRef[i],nByte) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
+ * php refuses a by-reference argument at the CALL, before the callee's ZPP runs, and it
+ * decides from the argument's SHAPE, not from its value: `sort([3,1])`, `usort('x',$cb)`
+ * and `preg_match($p,$s,'lit')` are all
+ * `Error: sort(): Argument #1 ($array) could not be passed by reference`.
+ *
+ * The call site's compile-time shape mask (VmCallArgMap.nNonLvalMask) is what says so.
+ * Only five builtins raised anything before this, from their own bodies, on the runtime
+ * `nIdx == SXU32_HIGH` signal — which cannot tell a literal from the result of a call, a
+ * shape php ACCEPTS with a notice. The thirty other `&` rows answered `true`/`false`/an
+ * int: the same answers they give for work they really did.
+ *
+ * Skipped when the call site has no shape mask (a spread, an indirect dispatch through
+ * call_user_func, an engine-synthesized call) or uses named arguments (which rebind
+ * positions the mask is indexed by). The by-ref positions come from the same declared
+ * signature everything else here reads.
+ */
+PH7_PRIVATE sxi32 PH7_VmScreenByRefArgShapes(
+	ph7_context *pCtx,     /* Call context (for the throw) */
+	ph7_user_func *pFunc,  /* Callee: its zSig names and marks the parameters */
+	VmCallArgMap *pMap,    /* Call-site map, or 0 */
+	int nGiven             /* Argument count */
+	)
+{
+	VmSigParam aParam[VM_SIG_MAX_PARAM];
+	int nParam,n;
+	/* The by-ref mask first: it is 0 for all but 41 of the ~650 host functions, so
+	 * every other call leaves through one test. */
+	if( pFunc == 0 || pFunc->nByRefMask == 0 || pFunc->zSig == 0 || nGiven < 1 ){
+		return SXRET_OK;
+	}
+	if( pMap == 0 || !pMap->bArgShapes || pMap->bHasNamed || pMap->nNonLvalMask == 0 ){
+		return SXRET_OK;
+	}
+	if( VmBuiltinPrefersRef(&pFunc->sName) ){
+		return SXRET_OK;
+	}
+	nParam = VmSigParams(pFunc->zSig,aParam,VM_SIG_MAX_PARAM);
+	for( n = 0 ; n < nGiven && n < 31 ; ++n ){
+		if( (pFunc->nByRefMask & (1u << n)) == 0
+		 || (pMap->nNonLvalMask & (1u << n)) == 0 ){
+			continue;
+		}
+		if( n < nParam && aParam[n].nName > 0 ){
+			return PH7_VmThrowException(pCtx,"Error",
+				"%z(): Argument #%d ($%.*s) could not be passed by reference",
+				&pFunc->sName,n + 1,aParam[n].nName,aParam[n].zName);
+		}
+		return PH7_VmThrowException(pCtx,"Error",
+			"%z(): Argument #%d could not be passed by reference",
+			&pFunc->sName,n + 1);
+	}
+	return SXRET_OK;
+}
+/*
  * D1: derive a by-reference position bitmask from a php-style signature string.
  * Bit N is set when positional parameter N is declared by-reference (a `&` appears
  * anywhere in that comma-separated parameter, e.g. `&$matches`, `&...$vars`). Only

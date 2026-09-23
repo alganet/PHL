@@ -781,6 +781,35 @@ static sxi32 VmResolvePathByValue(ph7_vm *pVm,VmDeferredPath *pPath,ph7_value *p
 	return SXRET_OK;
 }
 /*
+ * Is this actual argument REFUSED by a by-reference parameter?
+ *
+ * php answers from the argument's compile-time SHAPE, which the call site carries in
+ * VmCallArgMap.nNonLvalMask (GenStateArgShape, compile.c): a literal, an operator or
+ * cast result, a class constant, `@$x`, `$o?->p` or an assignment is a hard non-lvalue
+ * and binding one is `Argument #N ($p) could not be passed by reference`.
+ *
+ * nPos is the argument's position on the operand stack, which is the position the
+ * compiler classified — named arguments change which FORMAL a slot binds to, not the
+ * slot's index, so both binders index the mask the same way.
+ *
+ * Without a shape mask (a SPREAD call, an engine-synthesized call, an indirect dispatch
+ * through call_user_func or an array callable) this falls back to the runtime test the
+ * binders used before: no slot to write back through, and not one of the values PH7 has
+ * always passed by value instead. That test cannot tell a literal from a call RESULT —
+ * php accepts the latter — which is exactly why the mask exists.
+ */
+static int VmArgRefusedByRef(VmCallArgMap *pMap,sxu32 nPos,ph7_value *pVal)
+{
+	if( pMap && pMap->bArgShapes && nPos < 31 ){
+		return (pMap->nNonLvalMask & (1u << nPos)) != 0;
+	}
+	if( pVal->nIdx != SXU32_HIGH ){
+		return 0;
+	}
+	return (pVal->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL)) == 0
+	    && (pVal->iFlags & MEMOBJ_AUX_CUFVAL) == 0;
+}
+/*
  * D1: resolve deferred call arguments in [pArg, pTos) before the callee consumes them.
  *
  * A plain `$var` call argument whose callee signature is unknown at compile time is
@@ -5969,38 +5998,32 @@ case PH7_OP_CALL: {
 							rc = PH7_EXCEPTION;
 							goto SkipFuncBody;
 						}
-						if( pVal->nIdx == SXU32_HIGH ){
-							if( (pVal->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL)) == 0
-							 && (pVal->iFlags & MEMOBJ_AUX_CUFVAL) == 0 ){
-								/* A non-lvalue bound to a by-ref parameter is a catchable Error in
-								 * php — f(5) where f(&$x). PH7 only warned and quietly passed by
-								 * value, so the call ran with a copy and the caller never knew.
-								 * The one legitimate copy is call_user_func()'s (MEMOBJ_AUX_CUFVAL),
-								 * which php also permits, with its own warning. */
-								SyBlob sMsg;
-								sxi32 rcRef;
-								SyBlobInit(&sMsg,&pVm->sAllocator);
-								SyBlobFormat(&sMsg,"%z(): Argument #%d ($%z) could not be passed by reference",
-									&pVmFunc->sName,n+1,&aFormalArg[n].sName);
-								rcRef = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sMsg),
-									SyBlobLength(&sMsg));
-								SyBlobRelease(&sMsg);
-								if( rcRef == SXERR_ABORT ){
-									goto Abort;
-								}
-								/* Same teardown as the type-check refusal above: free the slot
-								 * map, release the result slot and pop the actuals, then let
-								 * SkipFuncBody route the throw. Skipping it left the caller's
-								 * operand stack one result deep per refusal and leaked aSlot,
-								 * and the ABORT arm reached SkipFuncBody's non-exception side
-								 * with a NULL frame stack. */
-								SyMemBackendFree(&pVm->sAllocator, aSlot);
-								PH7_MemObjRelease(pTos);
-								pTos = &pTos[-nCallArgs];
-								pFrameStack = 0;
-								rc = PH7_EXCEPTION;
-								goto SkipFuncBody;
+						if( VmArgRefusedByRef(pCallMap3,(sxu32)iSrc,pVal) ){
+							/* php refuses a by-ref argument whose EXPRESSION is not a variable, at
+							 * the call and before the callee runs. Deciding it from the VALUE that
+							 * arrived was wrong both ways: an operator result carries its LEFT
+							 * operand's slot, so `f($i + 1)` aliased and overwrote `$i`; and a
+							 * literal and a CALL result look alike there, where php accepts the
+							 * call. VmArgRefusedByRef reads the call site's compile-time shape mask
+							 * and falls back to the old runtime test only when there is none. */
+							sxi32 rcRef;
+							rcRef = VmThrowByRefRefusal(&(*pVm),
+								(pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ? pSelfHint : 0,
+								&pVmFunc->sName,(sxu32)(n+1),&aFormalArg[n].sName);
+							if( rcRef == PH7_ABORT ){
+								goto Abort;
 							}
+							/* Same teardown as the type-check refusal above: free the slot map,
+							 * release the result slot and pop the actuals, then let SkipFuncBody
+							 * route the throw. */
+							SyMemBackendFree(&pVm->sAllocator, aSlot);
+							PH7_MemObjRelease(pTos);
+							pTos = &pTos[-nCallArgs];
+							pFrameStack = 0;
+							rc = PH7_EXCEPTION;
+							goto SkipFuncBody;
+						}
+						if( pVal->nIdx == SXU32_HIGH ){
 							pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
 						}else{
 							SyHashEntry *pRefEntry = SyHashGet(&pFrame->hVar,
@@ -6272,35 +6295,29 @@ case PH7_OP_CALL: {
 						rc = PH7_EXCEPTION;
 						goto SkipFuncBody;
 					}
-					if( pArg->nIdx == SXU32_HIGH ){
-						if((pArg->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL)) == 0
-						 && (pArg->iFlags & MEMOBJ_AUX_CUFVAL) == 0 ){
-							/* php: a non-lvalue bound to a by-ref parameter is a catchable Error.
-							 * PH7 warned and silently passed by value (same site as the other
-							 * binder above). call_user_func()'s deliberate copy is exempt. */
-							SyBlob sMsg;
-							sxi32 rcRef;
-							SyBlobInit(&sMsg,&pVm->sAllocator);
-							SyBlobFormat(&sMsg,"%z(): Argument #%d ($%z) could not be passed by reference",
-								&pVmFunc->sName,n+1,&aFormalArg[n].sName);
-							rcRef = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sMsg),
-								SyBlobLength(&sMsg));
-							SyBlobRelease(&sMsg);
-							if( rcRef == SXERR_ABORT ){
-								goto Abort;
-							}
-							/* Route the throw like every other binder refusal: release the
-							 * result slot, pop the actuals and let SkipFuncBody finish the
-							 * call. Returning from here walked out of the dispatch loop with
-							 * the callee's frame and stack still live, so a CAUGHT refusal
-							 * silently abandoned every statement after the catch. */
-							PH7_MemObjRelease(pTos);
-							pTos = &pTos[-nCallArgs];
-							pFrameStack = 0;
-							rc = PH7_EXCEPTION;
-							goto SkipFuncBody;
+					if( VmArgRefusedByRef(pCallMap3,(sxu32)n,pArg) ){
+						/* php's refusal, decided from the argument's compile-time SHAPE (the
+						 * companion of the named-argument binder above; see VmArgRefusedByRef). */
+						sxi32 rcRef;
+						rcRef = VmThrowByRefRefusal(&(*pVm),
+							(pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ? pSelfHint : 0,
+							&pVmFunc->sName,(sxu32)(n+1),&aFormalArg[n].sName);
+						if( rcRef == PH7_ABORT ){
+							goto Abort;
 						}
-						/* Switch to pass by value */
+						/* Route the throw like every other binder refusal: release the result
+						 * slot, pop the actuals and let SkipFuncBody finish the call. Returning
+						 * from here walked out of the dispatch loop with the callee's frame and
+						 * stack still live, so a CAUGHT refusal silently abandoned every
+						 * statement after the catch. */
+						PH7_MemObjRelease(pTos);
+						pTos = &pTos[-nCallArgs];
+						pFrameStack = 0;
+						rc = PH7_EXCEPTION;
+						goto SkipFuncBody;
+					}
+					if( pArg->nIdx == SXU32_HIGH ){
+						/* Nothing to alias: pass by value. */
 						pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
 					}else{
 						SyHashEntry *pRefEntry;
@@ -6829,6 +6846,16 @@ NativeCall:
 			if( rc != SXRET_OK ){
 				goto NativeCallDone;
 			}
+		}
+		/* php binds a by-reference argument at the CALL, before the callee runs, so a
+		 * non-variable in a `&` position is refused ahead of every ZPP check — and
+		 * ahead of the too-MANY-arguments one (`array_pop([1,2],5)` is the reference
+		 * Error in php, not an ArgumentCountError). With no argument at all there is
+		 * nothing to refuse, which is why the too-FEW check below still speaks first
+		 * for `array_pop()`. */
+		rc = PH7_VmScreenByRefArgShapes(&sCtx,pFunc,pEffCallMap,nGiven);
+		if( rc != SXRET_OK ){
+			goto NativeCallDone;
 		}
 		/* PHP-8 arity enforcement (band A #5): a builtin declaring a minimum
 		 * argument count (aBuiltinArity[]) throws a catchable ArgumentCountError

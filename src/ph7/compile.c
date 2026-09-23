@@ -768,6 +768,61 @@ static sxu32 GenStateByRefBuiltinMask(SyString *pName)
 	return 0;
 }
 /*
+ * What may be passed by REFERENCE is decided from the argument's SHAPE, at compile
+ * time, exactly as php decides it (zend_compile_args -> zend_is_variable).
+ *
+ * php sorts every actual argument into three buckets:
+ *
+ *   GEN_ARG_LVALUE   a variable, an element, a property, a static property. It has a
+ *                    slot, so a by-ref parameter aliases it.
+ *   GEN_ARG_TEMPCALL the result of a call or of `new`. It has no slot, but php cannot
+ *                    know at compile time whether the callee returns a reference, so it
+ *                    defers: E_NOTICE "Only variables should be passed by reference",
+ *                    then it operates on the temporary.
+ *   GEN_ARG_NONE     everything else — a literal, an operator/cast result, a class
+ *                    constant, `@$x`, `$o?->p`, an assignment. Binding one to a by-ref
+ *                    parameter is a catchable Error at the CALL.
+ *
+ * Deciding it from the argument's runtime memobj instead does not work and was silently
+ * wrong in both directions: an arithmetic or concatenation result keeps its LEFT operand's
+ * slot index, so `f($i + 1)` with `function f(&$x)` aliased and overwrote `$i`; and a
+ * builtin's by-ref row saw only "no slot", which a call result has too.
+ */
+#define GEN_ARG_LVALUE   0
+#define GEN_ARG_TEMPCALL 1
+#define GEN_ARG_NONE     2
+static int GenStateArgShape(ph7_expr_node *pNode)
+{
+	if( pNode == 0 ){
+		return GEN_ARG_NONE;
+	}
+	if( pNode->pOp == 0 ){
+		/* A leaf: only the `$…` family is a variable. Everything else the parser
+		 * files here — a literal, an array/list constructor, a closure, `match`,
+		 * `clone` — is a temporary. */
+		return pNode->xCode == PH7_CompileVariable ? GEN_ARG_LVALUE : GEN_ARG_NONE;
+	}
+	switch( pNode->pOp->iOp ){
+	case EXPR_OP_SUBSCRIPT: /* $a[k], and any base: php accepts g()[0] and C::m()[0] */
+	case EXPR_OP_ARROW:     /* $o->p */
+		return GEN_ARG_LVALUE;
+	case EXPR_OP_DC:
+		/* `C::$s` is a static property (an lvalue); `C::K` is a class constant and
+		 * `C::CASE` an enum case, neither of which php will bind. The right operand
+		 * tells them apart. */
+		return ( pNode->pRight && pNode->pRight->pOp == 0
+		      && pNode->pRight->xCode == PH7_CompileVariable )
+			? GEN_ARG_LVALUE : GEN_ARG_NONE;
+	case EXPR_OP_FUNC_CALL:
+	case EXPR_OP_NEW:
+		return GEN_ARG_TEMPCALL;
+	default:
+		/* Includes `?->` (php: "Cannot use nullsafe operator in write context"),
+		 * `@$x`, `$q = …`, `clone $o` and every arithmetic/logical operator. */
+		return GEN_ARG_NONE;
+	}
+}
+/*
  * Recover the bare global-builtin name from a call's callee node.
  *
  * Handles the unqualified form `preg_match(...)` (a single PH7_TK_ID token) and
@@ -1228,6 +1283,38 @@ static sxi32 GenStateEmitExprCode(
 						}
 					}
 					SyBlobRelease(&sSrc);
+				}
+			}
+			/* Record each argument's compile-time SHAPE so the by-ref binders can
+			 * refuse a non-variable where php refuses it — at the CALL, before the
+			 * callee's ZPP runs. Skipped when the call SPREADS (one compile-time
+			 * argument becomes N runtime slots, so the positions no longer line up)
+			 * or when it carries more arguments than the masks can hold; a call
+			 * without the flag keeps the old runtime nIdx test. Named arguments are
+			 * fine: they change which FORMAL a slot binds to, not the slot's index. */
+			if( !bAnySpread && nArgs > 0 && nArgs <= 31 && !bFcc ){
+				sxu32 nNonLval = 0;
+				sxu32 nTempCall = 0;
+				for( n = 0 ; n < nArgs ; ++n ){
+					int iShape = GenStateArgShape(apNode[n]);
+					if( iShape == GEN_ARG_NONE ){
+						nNonLval |= (1u << n);
+					}else if( iShape == GEN_ARG_TEMPCALL ){
+						nTempCall |= (1u << n);
+					}
+				}
+				if( p3 == 0 ){
+					VmCallArgMap *pMap = (VmCallArgMap *)SyMemBackendAlloc(
+						&pGen->pVm->sAllocator,sizeof(VmCallArgMap));
+					if( pMap ){
+						SyZero(pMap,sizeof(VmCallArgMap));
+						p3 = (void *)pMap;
+					}
+				}
+				if( p3 ){
+					((VmCallArgMap *)p3)->bArgShapes = 1;
+					((VmCallArgMap *)p3)->nNonLvalMask = nNonLval;
+					((VmCallArgMap *)p3)->nTempCallMask = nTempCall;
 				}
 			}
 			/* Remove stale flags now */

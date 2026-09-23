@@ -2863,6 +2863,31 @@ PH7_PRIVATE sxi32 VmThrowTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString 
 	return VmThrowBuiltinError(pVm,"ArgumentCountError",sizeof("ArgumentCountError")-1,&sMsg);
 }
 /*
+ * Throw php's catchable Error for a by-reference parameter handed something that
+ * cannot be referenced:
+ *   C::m(): Argument #1 ($x) could not be passed by reference
+ * php refuses this at the CALL, before the callee's ZPP runs, and it decides from
+ * the argument's compile-time SHAPE (VmCallArgMap.nNonLvalMask) rather than from
+ * the value that arrived. The class prefix follows the same rule as the too-few
+ * ArgumentCountError above — php names the method's owner, and PHL used to report
+ * the bare `m()`.
+ */
+PH7_PRIVATE sxi32 VmThrowByRefRefusal(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName,
+	sxu32 nArgPos,SyString *pArgName)
+{
+	SyBlob sMsg;
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	if( pOwnerClass ){
+		SyBlobFormat(&sMsg,"%z::%z(): Argument #%u ($%z) could not be passed by reference",
+			&pOwnerClass->sName,pFuncName,nArgPos,pArgName);
+	}else{
+		SyBlobFormat(&sMsg,"%z(): Argument #%u ($%z) could not be passed by reference",
+			pFuncName,nArgPos,pArgName);
+	}
+	/* VmThrowBuiltinError consumes (releases) sMsg */
+	return VmThrowBuiltinError(pVm,"Error",sizeof("Error")-1,&sMsg);
+}
+/*
  * Throw php's ArgumentCountError for an INTERNAL (builtin-chunk) method
  * called with too few arguments, in php's ZPP wording:
  *   ReflectionProperty::__construct() expects exactly 2 arguments, 0 given

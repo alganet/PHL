@@ -1583,6 +1583,20 @@ struct VmCallArgMap
 						  * a following NEW can re-qualify with CLASS imports.
 						  * 0 = unset. (Formerly abused OP_CALL's iP2, colliding
 						  * with the hasSpread flag: `new N\C(...$args)`.) */
+	sxu8 bArgShapes;     /* 1 when the two masks below describe THIS call's argument
+						  * positions. The compiler sets it for every call whose actual
+						  * positions survive to the runtime stack unchanged — i.e. no
+						  * spread and at most 31 arguments. 0 means "unknown shapes":
+						  * the by-ref binders fall back to their runtime nIdx test. */
+	sxu32 nNonLvalMask;  /* bit N: argument N is a HARD non-lvalue (a literal, an operator
+						  * result, a cast, a class constant, `@$x`, `$o?->p`, an assignment
+						  * — php's `zend_is_variable` says no and it is not a call either).
+						  * Binding one to a by-ref parameter is php's catchable
+						  * `Argument #N ($p) could not be passed by reference` Error, raised
+						  * at the CALL before the callee's ZPP runs. */
+	sxu32 nTempCallMask; /* bit N: argument N is the RESULT of a call or a `new` — php's
+						  * SEND_VAR_NO_REF: an E_NOTICE ("Only variables should be passed
+						  * by reference") and then it operates on the temporary. */
 	sxu32 nTotal;        /* Total number of compile-time arguments */
 	SyString *aNames;    /* Array of nTotal names. nByte==0 means positional. */
 	SyString sAssertSrc; /* Direct assert() calls only: the first argument's rendered
@@ -3648,6 +3662,7 @@ PH7_PRIVATE const char *VmClassHintTypeName(const SyString *pAsWritten,ph7_class
 PH7_PRIVATE sxi32 VmThrowBuiltinTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName, sxu32 nPassed,sxu32 nRequired,sxu32 nMaxDeclared);
 PH7_PRIVATE sxi32 VmThrowBuiltinTooManyArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName, sxu32 nPassed,sxu32 nMax,sxu32 nRequired);
 PH7_PRIVATE sxi32 VmThrowTooFewArgs(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName, sxu32 nPassed,sxu32 nRequired,sxu32 nNonVariadic,int bCallSite);
+PH7_PRIVATE sxi32 VmThrowByRefRefusal(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName,sxu32 nArgPos,SyString *pArgName);
 PH7_PRIVATE sxi32 VmThrowTypeErrorForArg(ph7_vm *pVm,ph7_class *pOwnerClass,ph7_vm_func *pCallee,sxu32 nArg,SyString *pArgName,const char *zExpected,const char *zGiven);
 PH7_PRIVATE sxi32 VmVariadicElementTypeCheck(ph7_vm *pVm,ph7_class *pSelfHint,ph7_vm_func *pCallee,ph7_vm_func_arg *pFormal,ph7_value *pVal,sxu32 nArgPos,int bCallIsStrict);
 PH7_PRIVATE ph7_value * VmReserveMemObj(ph7_vm *pVm,sxu32 *pIndex);
@@ -3818,6 +3833,7 @@ PH7_PRIVATE void VmDeriveArityFromSig(const char *zSig,sxi16 *pnMin,sxu8 *pbAtLe
 PH7_PRIVATE sxu32 VmDeriveByRefMaskFromSig(const char *zSig);
 PH7_PRIVATE sxi32 PH7_VmBindNamedArgsToSig(ph7_context *pCtx,ph7_user_func *pFunc,VmCallArgMap *pMap,int *pnArg,ph7_value **apArg);
 PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(ph7_context *pCtx,ph7_user_func *pFunc,int nGiven,ph7_value **apArg);
+PH7_PRIVATE sxi32 PH7_VmScreenByRefArgShapes(ph7_context *pCtx,ph7_user_func *pFunc,VmCallArgMap *pMap,int nGiven);
 PH7_PRIVATE int PH7_ArgSatisfiesString(ph7_value *pArg);
 PH7_PRIVATE void VmDeprecatedAttrNotice(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_class *pDeclClass);
 /* vm_exec_ctx.c — Fiber/Generator/Closure engine shared with vm.c */

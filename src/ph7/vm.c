@@ -4501,6 +4501,13 @@ static int VmBuildEffectiveArgMap(ph7_vm *pVm, VmCallArgMap *pCompile,
 	pEff->bIsNamespaced = pCompile ? pCompile->bIsNamespaced : 0;
 	pEff->bStrict = pCompile ? pCompile->bStrict : 0;
 	pEff->nOrigNameLit = pCompile ? pCompile->nOrigNameLit : 0;
+	/* This map is only ever built for a SPREAD call, whose runtime positions do not
+	 * match the ones the compiler classified — so it carries no argument shapes and
+	 * the by-ref binders fall back to their runtime test. Zeroed explicitly: pStorage
+	 * is the caller's stack local. */
+	pEff->bArgShapes = 0;
+	pEff->nNonLvalMask = 0;
+	pEff->nTempCallMask = 0;
 	if( pCompile ){
 		pEff->sAssertSrc = pCompile->sAssertSrc;
 	}else{
