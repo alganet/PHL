@@ -854,6 +854,27 @@ IntKey:
 	return rc;
 }
 /*
+ * Is this element a php REFERENCE — that is, does the value it points at have a
+ * holder BESIDES this node?
+ *
+ * php's answer is a refcount: an element is a reference while at least two things
+ * share the value, and the marker (and the shared-through-a-copy behaviour that
+ * goes with it) disappears with the second-to-last holder. Every node is filed in
+ * its own slot's reference record, so "another holder" is simply a holder count of
+ * two or more — a name bound to the value (`$r = &$a[1]`), a second array node
+ * (`$b = [&$x]; $c = [&$x]`), or the variable a FOREIGN node points at.
+ *
+ * Reading the FOREIGN flag instead answered "was this element created by `&`",
+ * which stops being true the moment the other side goes away: `$v = 10; $a = [&$v];
+ * unset($v);` left the element marked `&int(10)` where php says `int(10)`, and — the
+ * half that was not cosmetic — a COPY of that array still shared the slot, so
+ * `$j = $i; $j[0] = 99;` wrote through to `$i[0]`.
+ */
+PH7_PRIVATE int PH7_HashmapNodeIsRef(ph7_hashmap_node *pNode)
+{
+	return PH7_VmSlotHolderCount(pNode->pMap->pVm,pNode->nValIdx) >= 2;
+}
+/*
  * Extract node value.
  */
 PH7_PRIVATE ph7_value * HashmapExtractNodeValue(ph7_hashmap_node *pNode)
@@ -877,8 +898,7 @@ PH7_PRIVATE sxi32 HashmapInsertNode(ph7_hashmap *pMap,ph7_hashmap_node *pNode,in
 	if( pObj == 0 ){
 		return SXERR_EMPTY;
 	}
-	if( (pNode->iFlags & HASHMAP_NODE_FOREIGN_OBJ)
-	 || PH7_VmSlotIsReferenced(pMap->pVm,pNode->nValIdx) ){
+	if( PH7_HashmapNodeIsRef(&(*pNode)) ){
 		/* A referenced element keeps its reference through the copy (php: array_slice()
 		 * of an array holding `$r = &$a[1]` still var_dumps that element as &int(2)).
 		 * Same rule HashmapDuplicateNode applies for array_merge()/spread. */
@@ -1409,8 +1429,7 @@ static sxi32 HashmapDuplicateNode(
 	ph7_value sKey;
 	sxi32 rc;
 
-	if( (pEntry->iFlags & HASHMAP_NODE_FOREIGN_OBJ)
-	 || PH7_VmSlotIsReferenced(pDest->pVm,pEntry->nValIdx) ){
+	if( PH7_HashmapNodeIsRef(&(*pEntry)) ){
 		/* The source node is a reference — either a FOREIGN one (`[&$x]`, the node points
 		 * at an outside slot) or, the case PH7 missed, an element somebody took a
 		 * reference TO (`$r = &$a[1]`). php carries an element's reference bit through
@@ -2370,8 +2389,7 @@ PH7_PRIVATE sxi32 PH7_HashmapDumpEntries(SyBlob *pOut,ph7_hashmap *pMap,int Show
 		pObj = HashmapExtractNodeValue(pEntry);
 		/* '&' marks an element ANY other holder refers to: a foreign node (array(&$x))
 		 * or, the case PH7 missed, an element someone took a reference to ($r = &$a[1]). */
-		isRef = ((pEntry->iFlags & HASHMAP_NODE_FOREIGN_OBJ) != 0)
-			|| PH7_VmSlotIsReferenced(pMap->pVm,pEntry->nValIdx);
+		isRef = PH7_HashmapNodeIsRef(pEntry);
 		if( ShowType ){
 			/* var_dump entry: `[key]=>` on its own line at nTab+2, the value
 			 * on the next line at the same indent (php). */

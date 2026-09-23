@@ -182,33 +182,6 @@ PH7_PRIVATE sxi32 VmUnsetVarByName(ph7_vm *pVm,VmFrame *pFrame,const char *zName
 	}
 	return SXRET_OK;
 }
-/*
- * Is this memory slot aliased — i.e. does anything other than its owner refer to it?
- * var_dump marks such an array element with '&' ("&int(2)"). PH7 only flagged nodes that
- * were FOREIGN (`array(&$x)`, where the node points at an outside slot) and so missed the
- * common case, a reference taken TO an element (`$r = &$a[1]`), where the array still owns
- * the value but is no longer its only holder.
- */
-PH7_PRIVATE int PH7_VmSlotIsReferenced(ph7_vm *pVm,sxu32 nIdx)
-{
-	VmRefObj *pRef;
-	sxu32 n, nLive = 0;
-	SyHashEntry **apEntry;
-	if( nIdx == SXU32_HIGH ){
-		return 0;
-	}
-	pRef = VmRefObjExtract(&(*pVm),nIdx);
-	if( pRef == 0 ){
-		return 0;
-	}
-	apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);
-	for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){
-		if( apEntry[n] ){
-			nLive++;
-		}
-	}
-	return nLive > 0;
-}
 PH7_PRIVATE sxi32 PH7_VmUnsetMemObj(ph7_vm *pVm,sxu32 nObjIdx,int bForce)
 {
 	ph7_value *pObj;

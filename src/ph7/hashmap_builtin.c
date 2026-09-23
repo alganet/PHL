@@ -465,8 +465,7 @@ static ph7_value * MergeRecSeparateNode(ph7_vm *pVm,ph7_hashmap_node *pNode)
 	if( pOld == 0 ){
 		return 0;
 	}
-	if( (pNode->iFlags & HASHMAP_NODE_FOREIGN_OBJ) == 0
-	 && !PH7_VmSlotIsReferenced(pVm,pNode->nValIdx) ){
+	if( !PH7_HashmapNodeIsRef(pNode) ){
 		/* Already this node's own value. */
 		return pOld;
 	}
