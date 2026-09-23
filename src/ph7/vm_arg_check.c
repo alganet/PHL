@@ -867,6 +867,7 @@ static const struct VmBuiltinSig {
 	{ "strcspn", "string $string, string $characters, int $offset = 0, ?int $length = NULL", "int" },
 	{ "stream_context_create", "?array $options = NULL, ?array $params = NULL", "" },
 	{ "stream_get_contents", "$stream, ?int $length = NULL, int $offset = -1", "string|false" },
+	{ "stream_get_line", "$stream, int $length, string $ending = ''", "string|false" },
 	{ "stream_get_meta_data", "$stream", "array" },
 	{ "stream_get_wrappers", "", "array" },
 	{ "stream_register_wrapper", "string $protocol, string $class, int $flags = 0", "bool" },

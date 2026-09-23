@@ -181,6 +181,14 @@ PH7_PRIVATE int PH7_builtin_fseek(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_int(pCtx,-1);
 		return PH7_OK;
 	}
+	if( whence == 1 /* SEEK_CUR */ ){
+		/* The CURRENT position is the LOGICAL one: the device sits past the
+		 * read-ahead the line readers buffer, so seek relative to where the
+		 * SCRIPT is, not where the device is (StreamLogicalAdjust). Without
+		 * this, fseek($f,2,SEEK_CUR) after an fgets() that buffered ahead
+		 * skipped everything still sitting in the buffer. */
+		iOfft -= (ph7_int64)(SyBlobLength(&pDev->sBuffer) - pDev->nOfft);
+	}
 	/* Perform the requested operation */
 	rc = pStream->xSeek(pDev->pHandle,iOfft,whence);
 	if( rc == PH7_OK ){
@@ -232,8 +240,12 @@ PH7_PRIVATE int PH7_builtin_ftell(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Perform the requested operation */
+	/* Perform the requested operation. The device sits past whatever the line
+	 * readers buffered ahead, so the SCRIPT's position is the device position
+	 * less the unconsumed remainder — ftell() after fgets("abcdefghij\nrest")
+	 * is php's 11, not the 15 the device already read. */
 	iOfft = pStream->xTell(pDev->pHandle);
+	iOfft -= (ph7_int64)(SyBlobLength(&pDev->sBuffer) - pDev->nOfft);
 	/* IO result */
 	ph7_result_int64(pCtx,iOfft);
 	return PH7_OK;
@@ -791,6 +803,118 @@ PH7_PRIVATE int PH7_builtin_fgets(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_string(pCtx,zLine,(int)n);
 	}
 	return PH7_OK;
+}
+/*
+ * string|false stream_get_line(resource $stream, int $length, string $ending = "")
+ *  Read a line from a stream, up to $length bytes or the FIRST occurrence of
+ *  $ending, whichever comes first. Unlike fgets(), the ending is CONSUMED but
+ *  never returned, and it may be any string.
+ *  php's window rule (php_stream_get_record), pinned by probe: the ending
+ *  counts only when it fits ENTIRELY inside the first $length bytes —
+ *  stream_get_line($h,4,"--") over "abc--def" answers "abc-", the raw window,
+ *  because the ending straddles its edge — and a capped read consumes no
+ *  ending that starts at the boundary. $length 0 means php's 8192 default; at
+ *  EOF the remainder is returned as-is, and false only when nothing is left.
+ */
+PH7_PRIVATE int PH7_builtin_stream_get_line(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const ph7_io_stream *pStream;
+	const char *zEnding = "";
+	io_private *pDev;
+	ph7_int64 nMaxLen;
+	int nEndLen = 0;
+	sxu32 iScanFrom = 0;
+	int bEof = 0;
+	if( nArg < 2 ){
+		/* The central arity screen reports this; keep a refusal for a direct call. */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( !ph7_value_is_resource(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"stream_get_line(): Argument #1 ($stream) must be of type resource, %s given",
+			ph7_type_name(apArg[0]));
+	}
+	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
+	if( IO_PRIVATE_INVALID(pDev) ){
+		/* A closed or foreign resource is php's own TypeError, not a warning. */
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"stream_get_line(): Argument #1 ($stream) must be an open stream resource");
+	}
+	pStream = pDev->pStream;
+	if( pStream == 0 ){
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
+			ph7_function_name(pCtx),"null_stream"
+			);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	nMaxLen = ph7_value_to_int64(apArg[1]);
+	if( nMaxLen < 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"stream_get_line(): Argument #2 ($length) must be greater than or equal to 0");
+	}
+	if( nMaxLen == 0 ){
+		/* php's documented default window */
+		nMaxLen = 8192;
+	}
+	if( nArg > 2 ){
+		zEnding = ph7_value_to_string(apArg[2],&nEndLen);
+	}
+	if( pDev->nOfft >= SyBlobLength(&pDev->sBuffer) ){
+		/* Reset the working buffer so that we avoid excessive memory allocation */
+		SyBlobReset(&pDev->sBuffer);
+		pDev->nOfft = 0;
+	}
+	/* Fill-and-scan: buffer chunks until the ending fits inside the window,
+	 * the window itself fills, or the stream dries up. */
+	for(;;){
+		const char *zData = (const char *)SyBlobDataAt(&pDev->sBuffer,pDev->nOfft);
+		sxu32 nAvail = SyBlobLength(&pDev->sBuffer) - pDev->nOfft;
+		sxu32 nWindow = (nMaxLen < (ph7_int64)nAvail) ? (sxu32)nMaxLen : nAvail;
+		ph7_int64 n;
+		char zBuf[8192];
+		if( nEndLen > 0 && (sxu32)nEndLen <= nWindow ){
+			/* The ending must END inside the window to count. Resume the scan
+			 * where the previous fill left off — a candidate can straddle two
+			 * fills, so back up by the ending's length less one. */
+			sxu32 i;
+			for( i = iScanFrom ; i + (sxu32)nEndLen <= nWindow ; i++ ){
+				if( zData[i] == zEnding[0] && SyMemcmp(&zData[i],zEnding,(sxu32)nEndLen) == 0 ){
+					pDev->nOfft += i + (sxu32)nEndLen;
+					ph7_result_string(pCtx,zData,(int)i);
+					return PH7_OK;
+				}
+			}
+			iScanFrom = i;
+		}
+		if( (ph7_int64)nAvail >= nMaxLen ){
+			/* Window full with no ending inside it: hand the window back raw,
+			 * anything past it (an ending included) stays buffered. */
+			pDev->nOfft += (sxu32)nMaxLen;
+			ph7_result_string(pCtx,zData,(int)nMaxLen);
+			return PH7_OK;
+		}
+		if( bEof ){
+			/* EOF: the remainder as-is, false when nothing is left. */
+			if( nAvail > 0 ){
+				pDev->nOfft += nAvail;
+				ph7_result_string(pCtx,zData,(int)nAvail);
+			}else{
+				ph7_result_bool(pCtx,0);
+			}
+			return PH7_OK;
+		}
+		n = pStream->xRead(pDev->pHandle,zBuf,(ph7_int64)sizeof(zBuf));
+		if( n < 1 ){
+			bEof = 1;
+			continue;
+		}
+		if( SXRET_OK != SyBlobAppend(&pDev->sBuffer,zBuf,(sxu32)n) ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+	}
 }
 /*
  * string fread(resource $handle,int64 $length)
