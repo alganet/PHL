@@ -160,6 +160,44 @@ static void VfsThrowStatWarning(ph7_context *pCtx,const char *zPath,int bLstat)
 		ph7_function_name(pCtx),bLstat ? "Lstat" : "stat",zPath ? zPath : "");
 }
 /*
+ * php's stat() answer is TWENTY-SIX entries, not thirteen: the same thirteen
+ * fields once at numeric indices 0..12 and once under their names, in this
+ * order. The numeric half is what php's own documentation indexes by ($s[7] is
+ * the size) and it is what a `list()`/destructuring reader takes, so a script
+ * written against php read `Undefined array key 7` here and answered NULL.
+ *
+ * The VFS fills the NAMED half (both the unix and Windows implementations use
+ * exactly these keys), so the doubling is done once, here, rather than in every
+ * xStat: pOut gets the numeric run first and then the names, which is php's own
+ * insertion order — visible through foreach, print_r, var_dump and json_encode.
+ */
+PH7_PRIVATE int PH7_VfsStatDoubleUp(ph7_value *pIn,ph7_value *pOut)
+{
+	static const char * const azField[] = {
+		"dev","ino","mode","nlink","uid","gid","rdev","size",
+		"atime","mtime","ctime","blksize","blocks"
+	};
+	sxu32 i;
+	if( pIn == 0 || pOut == 0 ){
+		return -1;
+	}
+	for( i = 0 ; i < SX_ARRAYSIZE(azField) ; ++i ){
+		ph7_value *pField = ph7_array_fetch(pIn,azField[i],-1);
+		if( pField == 0 ){
+			/* A VFS that does not report this field: php always has all thirteen,
+			 * so the doubling would silently shift every later index. Hand the
+			 * caller the named-only array it already had instead. */
+			return -1;
+		}
+		ph7_array_add_elem(pOut,0,pField);
+	}
+	for( i = 0 ; i < SX_ARRAYSIZE(azField) ; ++i ){
+		ph7_value *pField = ph7_array_fetch(pIn,azField[i],-1);
+		ph7_array_add_strkey_elem(pOut,azField[i],pField);
+	}
+	return PH7_OK;
+}
+/*
  * Can this path be stat'ed at all? The three TIME readers report a failure as -1,
  * which is also a legitimate timestamp (a file stamped in the last second before
  * the epoch), so the failure verdict is asked of the VFS separately rather than
@@ -1402,8 +1440,13 @@ static int PH7_vfs_stat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		VfsThrowStatWarning(pCtx,zPath,0);
 		ph7_result_bool(pCtx,0);
 	}else{
-		/* Return the associative array */
-		ph7_result_value(pCtx,pArray);
+		/* php's answer is the thirteen fields TWICE: numeric 0..12 then named. */
+		ph7_value *pFull = ph7_context_new_array(pCtx);
+		if( pFull && PH7_VfsStatDoubleUp(pArray,pFull) == PH7_OK ){
+			ph7_result_value(pCtx,pFull);
+		}else{
+			ph7_result_value(pCtx,pArray);
+		}
 	}
 	/* Don't worry about freeing memory here,everything will be released
 	 * automatically as soon we return from this function. */
@@ -1474,8 +1517,13 @@ static int PH7_vfs_lstat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		VfsThrowStatWarning(pCtx,zPath,1);
 		ph7_result_bool(pCtx,0);
 	}else{
-		/* Return the associative array */
-		ph7_result_value(pCtx,pArray);
+		/* php's answer is the thirteen fields TWICE: numeric 0..12 then named. */
+		ph7_value *pFull = ph7_context_new_array(pCtx);
+		if( pFull && PH7_VfsStatDoubleUp(pArray,pFull) == PH7_OK ){
+			ph7_result_value(pCtx,pFull);
+		}else{
+			ph7_result_value(pCtx,pArray);
+		}
 	}
 	/* Don't worry about freeing memory here,everything will be released
 	 * automatically as soon we return from this function. */

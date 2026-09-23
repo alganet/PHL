@@ -2013,6 +2013,16 @@ PH7_PRIVATE int PH7_builtin_fstat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Perform the requested operation */
 	pStream->xStat(pDev->pHandle,pArray,pValue);
+	/* php answers the same thirteen fields twice -- numeric 0..12, then named
+	 * (PH7_VfsStatDoubleUp); fstat() is stat()'s answer for an open handle and
+	 * had the same missing half. */
+	{
+		ph7_value *pFull = ph7_context_new_array(pCtx);
+		if( pFull && PH7_VfsStatDoubleUp(pArray,pFull) == PH7_OK ){
+			ph7_result_value(pCtx,pFull);
+			return PH7_OK;
+		}
+	}
 	/* Return the freshly created array */
 	ph7_result_value(pCtx,pArray);
 	/* Don't worry about freeing memory here,everything will be

@@ -3529,6 +3529,7 @@ PH7_PRIVATE void MarkIOPrivateClosed(io_private *pDev);
 /* "Failed to open stream" warning helper (vfs.c, errno-based); used by the
  * fopen/opendir/file_* family in vfs_stream.c. */
 PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile);
+PH7_PRIVATE int PH7_VfsStatDoubleUp(ph7_value *pIn,ph7_value *pOut);
 PH7_PRIVATE const char * VfsStrerror(int iErr);
 /* Stream-device predicates (vfs_io_driver.c) */
 PH7_PRIVATE int is_php_stream(const ph7_io_stream *pStream);
