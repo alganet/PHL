@@ -575,16 +575,64 @@ PH7_PRIVATE int vm_builtin_get_declared_interfaces(ph7_context *pCtx,int nArg,ph
 	return PH7_OK;
 }
 /*
- * array get_class_methods(string/object $class_name)
- *   Returns an array with the name of the class methods
+ * Does this method-table entry answer to the method's OWN name (rather than to an
+ * adaptation alias made from it)? Method names fold case, so the comparison does too.
+ */
+static int VmMethodEntryIsOwnName(SyHashEntry *pEntry,ph7_class_method *pMeth)
+{
+	return pEntry->nKeyLen == pMeth->sFunc.sName.nByte
+		&& SyStrnmicmp(pEntry->pKey,pMeth->sFunc.sName.zString,pEntry->nKeyLen) == 0;
+}
+/*
+ * Which inheritance LEVEL does this method-table entry belong to — the class php would
+ * have added it under? A method declared in a class body is its own; a trait's is the
+ * class that COMPOSED it, which is two different questions depending on the entry. An
+ * adaptation ALIAS is a copy no other class made, so the HIGHEST class in the chain still
+ * holding this key over this very struct is the one whose `use` block wrote it. A trait
+ * method under its own name is the same struct in every class that uses the trait, and
+ * php's own table shows the LOWEST one: a subclass that re-uses its parent's trait
+ * composes its own copy, and the parent's inherited entry never replaces it.
+ */
+static ph7_class * VmMethodListLevel(ph7_class *pClass,SyHashEntry *pEntry,ph7_class_method *pMeth)
+{
+	ph7_class *pDecl = (ph7_class *)pMeth->sFunc.pUserData;
+	ph7_class *pWalk,*pHigh = 0;
+	if( pDecl == 0 || (pDecl->iFlags & PH7_CLASS_TRAIT) == 0 ){
+		return pDecl;
+	}
+	if( !VmMethodEntryIsOwnName(pEntry,pMeth) ){
+		for( pWalk = pClass ; pWalk ; pWalk = pWalk->pBase ){
+			SyHashEntry *pE = SyHashGet(&pWalk->hMethod,pEntry->pKey,pEntry->nKeyLen);
+			if( pE && pE->pUserData == (void *)pMeth ){
+				pHigh = pWalk;
+			}
+		}
+		if( pHigh ){
+			return pHigh;
+		}
+	}
+	return PH7_VmComposingClass(pClass,pDecl);
+}
+/*
+ * Append one method-table entry's name to the result array. The name is the entry's HASH
+ * KEY, not sFunc.sName: a trait adaptation alias (`hi as bHi`) keeps the original name in
+ * its method struct while the key carries the alias — php lists the alias.
+ */
+static void VmEmitMethodName(ph7_value *pArray,ph7_value *pName,SyHashEntry *pEntry)
+{
+	ph7_value_string(pName,(const char *)pEntry->pKey,(int)pEntry->nKeyLen);
+	ph7_array_add_elem(pArray,0/*Automatic index assign*/,pName); /* Will make it's own copy */
+	ph7_value_reset_string_cursor(pName);
+}
+/*
+ * array get_class_methods(object|string $object_or_class)
+ *   Returns an array with the names of the class methods the CALLING SCOPE can reach,
+ *   in php's order: each class's own body methods, then its trait composition, then the
+ *   same again for every ancestor.
  * Parameters
- *  class_name
- *  The class name or class instance
- * Return
- *  Returns an array of method names defined for the class specified by class_name.
- *  In case of an error, it returns NULL.
- * Note:
- *   NULL is returned on failure.
+ *  object_or_class
+ *   The class name or a class instance. Anything that does not resolve to a class is a
+ *   TypeError naming the type given — this builtin never answers NULL.
  */
 PH7_PRIVATE int vm_builtin_get_class_methods(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -658,7 +706,7 @@ PH7_PRIVATE int vm_builtin_get_class_methods(ph7_context *pCtx,int nArg,ph7_valu
 				 * raw put every trait method on the CLASS's own level even when a BASE was
 				 * the one that used the trait, so a subclass listed its inherited trait
 				 * methods before its own. */
-				ph7_class *pDecl = PH7_VmMethodScopeName(pCtx->pVm,pClass,pMethod);
+				ph7_class *pDecl = VmMethodListLevel(pClass,apEntry[nPick],pMethod);
 				/* php lists only what the CALLING scope could reach: public always,
 				 * protected within the hierarchy, private only from the class that
 				 * declares it. PHL listed the whole table, so global-scope code was handed
@@ -668,7 +716,11 @@ PH7_PRIVATE int vm_builtin_get_class_methods(ph7_context *pCtx,int nArg,ph7_valu
 					SyString sMName;
 					SyStringInitFromBuf(&sMName,(const char *)apEntry[nPick]->pKey,
 						apEntry[nPick]->nKeyLen);
-					if( !PH7_VmClassMemberAccess(pCtx->pVm,pDecl,&sMName,
+					/* The DECISION is the owning class's, which is not always the LEVEL
+					 * above: an inherited alias is listed with the class whose `use` block
+					 * wrote it, and judged against the class that composed the method. */
+					if( !PH7_VmClassMemberAccess(pCtx->pVm,
+							PH7_VmMethodScopeName(pCtx->pVm,pClass,pMethod),&sMName,
 							pMethod->iProtection,FALSE) ){
 						continue;
 					}
@@ -701,12 +753,78 @@ PH7_PRIVATE int vm_builtin_get_class_methods(ph7_context *pCtx,int nArg,ph7_valu
 				}
 				apLvl[j] = pKey;
 			}
+			/* php's order INSIDE a level is not the line order: the class's own BODY methods
+			 * come first, then each USED trait in `use` order, and within a trait each of its
+			 * methods in the TRAIT's declaration order, preceded by the aliases made from it —
+			 * `class C { function own(){} use T { m1 as z1; m1 as y1; } }` answers own, z1, y1,
+			 * m1, m2. Sorting the level by line cannot say that: a trait method's line is the
+			 * TRAIT's, so a whole composition sorted ahead of the class's own body. The line
+			 * sort above still decides the body's order and, being stable, leaves two aliases
+			 * of the same method in their adaptation-block order for the walk below. An emitted
+			 * entry is cleared, so each name is listed once and anything these walks do not
+			 * claim still goes out at the end. */
 			for( i = 0; i < SySetUsed(&aLvl); i++ ){
-				/* Insert method name (the hash key: alias-aware) */
-				ph7_value_string(pName,(const char *)apLvl[i]->pKey,(int)apLvl[i]->nKeyLen);
-				ph7_array_add_elem(pArray,0/*Automatic index assign*/,pName); /* Will make it's own copy */
-				/* Reset the cursor */
-				ph7_value_reset_string_cursor(pName);
+				ph7_class_method *pM = (ph7_class_method *)apLvl[i]->pUserData;
+				ph7_class *pOwn = (ph7_class *)pM->sFunc.pUserData;
+				if( pOwn == 0 || pOwn == pLevel ){
+					VmEmitMethodName(pArray,pName,apLvl[i]);
+					apLvl[i] = 0;
+				}
+			}
+			{
+				ph7_class **apTrait = (ph7_class **)SySetBasePtr(&pLevel->aTrait);
+				sxu32 nTrait = SySetUsed(&pLevel->aTrait);
+				sxu32 k;
+				for( k = 0 ; k < nTrait ; ++k ){
+					ph7_class *pTrait = apTrait[k];
+					SySet aTr;
+					SyHashEntry **apTr;
+					SyHashEntry *pTrE;
+					sxu32 t;
+					SySetInit(&aTr,&pCtx->pVm->sAllocator,sizeof(SyHashEntry *));
+					SyHashResetLoopCursor(&pTrait->hMethod);
+					while((pTrE = SyHashGetNextEntry(&pTrait->hMethod)) != 0 ){
+						SySetPut(&aTr,(const void *)&pTrE);
+					}
+					apTr = (SyHashEntry **)SySetBasePtr(&aTr);
+					/* The trait's own table walks newest-first, so backwards is its
+					 * declaration order. */
+					for( t = SySetUsed(&aTr) ; t > 0 ; --t ){
+						ph7_class_method *pOrigin = (ph7_class_method *)apTr[t-1]->pUserData;
+						int bWantAlias;
+						/* First pass emits the aliases made from this method, second the
+						 * method itself — php's order for `m1 as z1`. */
+						for( bWantAlias = 1 ; bWantAlias >= 0 ; --bWantAlias ){
+							for( i = 0; i < SySetUsed(&aLvl); i++ ){
+								ph7_class_method *pM;
+								if( apLvl[i] == 0 ){
+									continue;
+								}
+								pM = (ph7_class_method *)apLvl[i]->pUserData;
+								if( (ph7_class *)pM->sFunc.pUserData != pTrait
+								 || pM->sFunc.sName.nByte != pOrigin->sFunc.sName.nByte
+								 || SyStrnmicmp(pM->sFunc.sName.zString,
+										pOrigin->sFunc.sName.zString,
+										pM->sFunc.sName.nByte) != 0 ){
+									continue;
+								}
+								if( VmMethodEntryIsOwnName(apLvl[i],pM) == bWantAlias ){
+									continue;
+								}
+								VmEmitMethodName(pArray,pName,apLvl[i]);
+								apLvl[i] = 0;
+							}
+						}
+					}
+					SySetRelease(&aTr);
+				}
+			}
+			for( i = 0; i < SySetUsed(&aLvl); i++ ){
+				/* Whatever the two walks above did not claim — an alias made inside a trait
+				 * that another trait then composed, say — keeps the line order. */
+				if( apLvl[i] != 0 ){
+					VmEmitMethodName(pArray,pName,apLvl[i]);
+				}
 			}
 			SySetRelease(&aLvl);
 		}
