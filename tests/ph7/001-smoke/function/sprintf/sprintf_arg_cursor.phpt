@@ -17,7 +17,10 @@ echo vsprintf('%2$s|%s|%s', ['a', 'b', 'c']), "\n";
 // are counted -- and each of them used to overflow instead.
 foreach (['%0$s', '%2$s%0$s', '%2147483647$s', '%2147483648$s',
           '%2147483647d', '%2147483648d', '%99999999999999999999d',
-          '%.2147483647f', '%.2147483648f'] as $sprintfCurBad) {
+          '%.2147483647f', '%.2147483648f',
+          // ...and so is a custom-pad flag the format string ends on, which php
+          // names in its own right rather than as the specifier it also lacks.
+          "%'", "a%'", "%1\$'", "%'x"] as $sprintfCurBad) {
     try {
         $sprintfCurRet = sprintf($sprintfCurBad, 'a');
         echo $sprintfCurBad, ' => len ', strlen($sprintfCurRet), "\n";
@@ -44,5 +47,9 @@ b|a|b
 %99999999999999999999d => ValueError: Width must be between 0 and 2147483647
 %.2147483647f => ValueError: Precision must be between 0 and 2147483647
 %.2147483648f => ValueError: Precision must be between 0 and 2147483647
+%' => ValueError: Missing padding character
+a%' => ValueError: Missing padding character
+%1$' => ValueError: Missing padding character
+%'x => ValueError: Missing format specifier at end of string
 --CLEAN--
 <?php

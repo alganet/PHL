@@ -229,13 +229,22 @@ static int FormatScanNumber(const char **pzIn,const char *zEnd)
  * sequential (non-positional) conversion count and the highest positional index
  * (`%N$`). `%%` consumes nothing. Mirrors FormatUnknownSpec's specifier walk.
  *
- * php also bounds the three NUMBERS a specifier can carry, and raises a
- * ValueError for each before it looks at how many values it was given. *pzBadNum
- * receives the offending one's noun ("Argument number specifier", "Width",
- * "Precision") when the format carries one; php's own wording differs between
- * them, which is why this reports the noun rather than a flag.
+ * php also refuses a specifier over its own SHAPE before it looks at how many
+ * values it was given: the three numbers it can carry are bounded, and a
+ * custom-pad flag the string ends on is named in its own right. *pzBad receives
+ * php's message for the FIRST such specifier — the scan returns there, since
+ * php's is a single left-to-right pass and the count it would have produced is
+ * moot once one of these is raised.
  */
-static int FormatRequiredArgs(const char *zIn,int nByte,const char **pzBadNum)
+/* The bound each message quotes is PH7_FMT_NUM_CAP above; php spells it out, so
+ * these do too (its two shapes differ: the positional one names the open
+ * interval, the other two the closed one). */
+#define PH7_FMT_BAD_ARGNUM \
+	"Argument number specifier must be greater than zero and less than 2147483647"
+#define PH7_FMT_BAD_WIDTH     "Width must be between 0 and 2147483647"
+#define PH7_FMT_BAD_PRECISION "Precision must be between 0 and 2147483647"
+#define PH7_FMT_BAD_PAD       "Missing padding character"
+static int FormatRequiredArgs(const char *zIn,int nByte,const char **pzBad)
 {
 	const char *zEnd = &zIn[nByte];
 	int c,seq = 0,maxpos = 0;
@@ -250,7 +259,17 @@ static int FormatRequiredArgs(const char *zIn,int nByte,const char **pzBadNum)
 		while( zIn < zEnd ){
 			c = zIn[0];
 			if( c=='-' || c=='+' || c==' ' || c=='0' ){ zIn++; continue; }
-			if( c=='\'' ){ zIn++; if( zIn < zEnd ){ zIn++; } continue; }
+			if( c=='\'' ){
+				zIn++;
+				if( zIn >= zEnd ){
+					/* A custom-pad flag the string ends on: php names THAT, not the
+					 * specifier it also lacks, and it does so before counting. */
+					*pzBad = PH7_FMT_BAD_PAD;
+					return seq;
+				}
+				zIn++;
+				continue;
+			}
 			break;
 		}
 		/* leading number: a positional index when a '$' follows, else the width */
@@ -261,28 +280,37 @@ static int FormatRequiredArgs(const char *zIn,int nByte,const char **pzBadNum)
 			 * ValueError — the second used to overflow the required-count report to
 			 * a NEGATIVE number, and anything past it fell back to sequential. */
 			if( pos < 1 || pos >= PH7_FMT_NUM_CAP ){
-				if( *pzBadNum == 0 ){
-					*pzBadNum = "Argument number specifier";
-				}
+				*pzBad = PH7_FMT_BAD_ARGNUM;
+				return seq;
 			}
 			zIn++;
 			/* flags then width may follow the positional marker */
 			while( zIn < zEnd ){
 				c = zIn[0];
 				if( c=='-' || c=='+' || c==' ' || c=='0' ){ zIn++; continue; }
-				if( c=='\'' ){ zIn++; if( zIn < zEnd ){ zIn++; } continue; }
+				if( c=='\'' ){
+					zIn++;
+					if( zIn >= zEnd ){
+						*pzBad = PH7_FMT_BAD_PAD;
+						return seq;
+					}
+					zIn++;
+					continue;
+				}
 				break;
 			}
 			numVal = FormatScanNumber(&zIn,zEnd);
 		}
-		if( numVal >= PH7_FMT_NUM_CAP && *pzBadNum == 0 ){
-			*pzBadNum = "Width";
+		if( numVal >= PH7_FMT_NUM_CAP ){
+			*pzBad = PH7_FMT_BAD_WIDTH;
+			return seq;
 		}
 		/* precision */
 		if( zIn < zEnd && zIn[0]=='.' ){
 			zIn++;
-			if( FormatScanNumber(&zIn,zEnd) >= PH7_FMT_NUM_CAP && *pzBadNum == 0 ){
-				*pzBadNum = "Precision";
+			if( FormatScanNumber(&zIn,zEnd) >= PH7_FMT_NUM_CAP ){
+				*pzBad = PH7_FMT_BAD_PRECISION;
+				return seq;
 			}
 		}
 		/* a single 'l' length modifier (ignored, php compat) */
@@ -323,20 +351,13 @@ static int FormatRequiredArgs(const char *zIn,int nByte,const char **pzBadNum)
  */
 PH7_PRIVATE sxi32 PH7_FormatCheckArgCount(ph7_context *pCtx,const char *zFormat,int nByte,int nValues,int nFixed,int bVararg)
 {
-	const char *zBadNum = 0;
-	int required = FormatRequiredArgs(zFormat,nByte,&zBadNum);
-	if( zBadNum ){
-		/* php checks a specifier's own numbers before it counts the values, so
-		 * `sprintf("%2$s%0$s","a")` is the ValueError and not the (also true)
-		 * ArgumentCountError. Its two wordings differ; the positional one names
-		 * the open interval, the other two the closed one. */
-		if( zBadNum[0] == 'A' ){
-			return PH7_VmThrowException(pCtx,"ValueError",
-				"Argument number specifier must be greater than zero and less than %d",
-				PH7_FMT_NUM_CAP);
-		}
-		return PH7_VmThrowException(pCtx,"ValueError",
-			"%s must be between 0 and %d",zBadNum,PH7_FMT_NUM_CAP);
+	const char *zBad = 0;
+	int required = FormatRequiredArgs(zFormat,nByte,&zBad);
+	if( zBad ){
+		/* php refuses a specifier's own shape before it counts the values, so
+		 * `sprintf("%2$s%0$s","a")` and `sprintf("%'","a")` are the ValueError and
+		 * not the (also true) ArgumentCountError. */
+		return PH7_VmThrowException(pCtx,"ValueError","%s",zBad);
 	}
 	if( nValues < required ){
 		if( bVararg ){
@@ -774,9 +795,8 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
           }while( uVal>0 );
         }
 		length = (int)(&zWorker[PH7_FMT_BUFSIZ-1]-zBuf);
-        for(idx=precision-length; idx>0; idx--){
-          *(--zBuf) = '0';                             /* Zero pad */
-        }
+        /* No zero fill here: a radix conversion has no precision to fill to, and
+         * the '0' pad is the output block's job now (see cLeadSign). */
         if( prefix ) *(--zBuf) = (char)prefix;               /* Add sign */
         if( flag_alternateform && pInfo->prefix ){      /* Add "0" or "0x" */
           char *pre, x;
