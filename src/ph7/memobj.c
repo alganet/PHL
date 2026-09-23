@@ -745,8 +745,19 @@ PH7_PRIVATE sxi32 PH7_MemObjToHashmap(ph7_value *pObj)
 			 *   and the value of the scalar which was converted.
 			 */
 			if( pObj->iFlags & MEMOBJ_OBJ ){
-				/* Object cast */
-				PH7_ClassInstanceToHashmap((ph7_class_instance *)pObj->x.pOther,pMap);
+				ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;
+				if( pInst && pObj->pVm->pClosureClass
+				 && pInst->pClass == pObj->pVm->pClosureClass ){
+					/* php's convert_to_array tests for a Closure FIRST, ahead of the
+					 * property handler, and wraps it the way it wraps a scalar:
+					 * `(array)$closure` is `[0 => $closure]`, not the shape
+					 * var_dump shows. Closure is final, so the exact-class test is
+					 * php's (Z_OBJCE_P(op) == zend_ce_closure). */
+					PH7_HashmapInsert(pMap,0/* Automatic index assign */,&(*pObj));
+				}else{
+					/* Object cast */
+					PH7_ClassInstanceToHashmap(pInst,pMap);
+				}
 			}else{
 				/* Insert a single element */
 				PH7_HashmapInsert(pMap,0/* Automatic index assign */,&(*pObj));

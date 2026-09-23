@@ -1234,12 +1234,16 @@ PH7_PRIVATE sxi32 PH7_VmInstallClosureNative(ph7_vm *pVm)
 		{ "__this",  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 		{ "__scope", PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
+	/* php's get_debug_info for a Closure shows a SHAPE none of those three slots
+	 * is (name/file/line or function, static, this, parameter) — see
+	 * PH7_ClosurePresent, which lives beside the reflection machinery that already
+	 * describes any callable's parameters. */
 	static const PH7_NativeClassSpec sSpec = {
 		"Closure", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE|PH7_CLASS_NOINSTANTIATE,
 		aMethod, SX_ARRAYSIZE(aMethod),
 		0, 0,
 		aProp, SX_ARRAYSIZE(aProp),
-		0, 0, 0
+		0, 0, PH7_ClosurePresent
 	};
 	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);
 }

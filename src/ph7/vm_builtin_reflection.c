@@ -617,11 +617,10 @@ static ph7_class_instance * ReflectValueClosure(ph7_vm *pVm, ph7_value *pVal)
  *     (*ppHost set, returns NULL).
  * Returns the ph7_vm_func, or NULL (host function or unresolvable).
  */
-static ph7_vm_func * ReflectResolveCallable(ph7_context *pCtx, ph7_value *pTarget,
+static ph7_vm_func * ReflectResolveCallable(ph7_vm *pVm, ph7_value *pTarget,
 	ph7_value *pMethodArg, ph7_class **ppClass, ph7_class_method **ppMeth,
 	ph7_user_func **ppHost, ph7_class_instance **ppClosure)
 {
-	ph7_vm *pVm = pCtx->pVm;
 	SyHashEntry *pEntry;
 	if( ppClass ){ *ppClass = 0; }
 	if( ppMeth ){ *ppMeth = 0; }
@@ -1167,13 +1166,13 @@ static ph7_value * ReflectAttrArgs(ph7_context *pCtx, ph7_value **apArg, sxu32 n
 		ph7_class_attr *pMember = pClass ? ReflectFetchMember(pClass, apArg[2]) : 0;
 		if( pMember ){ pAttrs = &pMember->aAttrs; pDeclCls = pClass; }
 	}else if( nKind == 6 && SyMemcmp(zKind, "method", 6) == 0 ){
-		ph7_vm_func *pFunc = ReflectResolveCallable(pCtx, apArg[1], apArg[2], 0, 0, 0, 0);
+		ph7_vm_func *pFunc = ReflectResolveCallable(pCtx->pVm, apArg[1], apArg[2], 0, 0, 0, 0);
 		if( pFunc ){ pAttrs = &pFunc->aAttrs; pDeclCls = (ph7_class *)pFunc->pUserData; }
 	}else if( nKind == 2 && SyMemcmp(zKind, "fn", 2) == 0 ){
-		ph7_vm_func *pFunc = ReflectResolveCallable(pCtx, apArg[1], 0, 0, 0, 0, 0);
+		ph7_vm_func *pFunc = ReflectResolveCallable(pCtx->pVm, apArg[1], 0, 0, 0, 0, 0);
 		if( pFunc ){ pAttrs = &pFunc->aAttrs; }
 	}else if( nKind == 5 && SyMemcmp(zKind, "param", 5) == 0 ){
-		ph7_vm_func *pFunc = ReflectResolveCallable(pCtx, apArg[1], apArg[2], 0, 0, 0, 0);
+		ph7_vm_func *pFunc = ReflectResolveCallable(pCtx->pVm, apArg[1], apArg[2], 0, 0, 0, 0);
 		ph7_vm_func_arg *pParam = pFunc
 			? (ph7_vm_func_arg *)SySetAt(&pFunc->aArgs, (sxu32)ph7_value_to_int(apArg[3])) : 0;
 		if( pParam ){ pAttrs = &pParam->aAttrs; pDeclCls = (ph7_class *)pFunc->pUserData; }
@@ -4750,11 +4749,11 @@ struct ReflectFuncRef
  * func_get_args()) wins over the compiled argument list, exactly as
  * ReflectSigFixup made it win in the descriptor.
  */
-static int ReflectFuncFill(ph7_context *pCtx, ph7_value *pTarget, ph7_value *pMethodArg,
+static int ReflectFuncFill(ph7_vm *pVm, ph7_value *pTarget, ph7_value *pMethodArg,
 	ReflectFuncRef *pOut)
 {
 	SyZero(pOut, sizeof(*pOut));
-	pOut->pFunc = ReflectResolveCallable(pCtx, pTarget, pMethodArg,
+	pOut->pFunc = ReflectResolveCallable(pVm, pTarget, pMethodArg,
 		&pOut->pClass, &pOut->pMeth, &pOut->pHost, &pOut->pClosure);
 	if( pOut->pFunc == 0 && pOut->pHost == 0 ){
 		return 0;
@@ -4824,7 +4823,7 @@ static int ReflectFuncOfThis(ph7_context *pCtx, ReflectFuncRef *pOut)
 	}else{
 		ph7_value_string(&sTarget, zName, nName);
 	}
-	rc = ReflectFuncFill(pCtx, &sTarget, (sMethod.iFlags & MEMOBJ_STRING) ? &sMethod : 0, pOut);
+	rc = ReflectFuncFill(pCtx->pVm, &sTarget, (sMethod.iFlags & MEMOBJ_STRING) ? &sMethod : 0, pOut);
 	/* sTarget only ever BORROWS the closure; releasing it would unref twice. */
 	if( (sTarget.iFlags & MEMOBJ_OBJ) == 0 ){
 		PH7_MemObjRelease(&sTarget);
@@ -5464,6 +5463,243 @@ static int vm_builtin_ReflectionFunc_getStaticVariables(ph7_context *pCtx, int n
 	ph7_result_value(pCtx, pOut);
 	return PH7_OK;
 }
+/* One `key => value` entry of a presented shape, by name. */
+static void ClosurePresentAdd(ph7_vm *pVm, ph7_value *pOut, const char *zKey, ph7_value *pVal)
+{
+	ph7_value sKey;
+	PH7_MemObjInitFromString(pVm, &sKey, 0);
+	PH7_MemObjStringAppend(&sKey, zKey, (sxu32)SyStrlen(zKey));
+	ph7_array_add_elem(pOut, &sKey, pVal);   /* takes its OWN reference */
+	PH7_MemObjRelease(&sKey);
+}
+/*
+ * php's DEBUG presentation for a Closure (ph7_class::xPresent) —
+ * `zend_closure_get_debug_info` (Zend/zend_closures.c), key for key and in php's
+ * order. Every key is CONDITIONAL, which is why a plain `function(){}` shows three
+ * and a bound one with captures shows five:
+ *
+ *   - a FAKE closure (php's ZEND_ACC_FAKE_CLOSURE — a first-class callable or
+ *     `Closure::fromCallable` over a NAMED function) shows one `function` key,
+ *     `Class::method` when it carries a scope and the bare name otherwise, and NO
+ *     name/file/line. A real closure shows `name` (php's `{closure:SCOPE:LINE}`,
+ *     which `PH7_VmFuncDisplayName` answers), `file` and an INT `line`;
+ *   - `static` is the closure's own variable state — the `use` captures AND the
+ *     body's `static $x` — keyed WITHOUT the `$`, and omitted when empty. php
+ *     shows it before the first call too, since the initializers are compiled;
+ *   - `this` is the bound receiver, present only when there is one (`bindTo`,
+ *     an instance first-class callable, or the implicit capture in a method);
+ *   - `parameter` is `"$name" => "<required>"|"<optional>"`, `&$name` for a by-ref
+ *     parameter, omitted when the callee takes none. php's cut is
+ *     `required_num_args`, which counts through the LAST required parameter — so
+ *     `function($a, $b = 1, $c)` reports all THREE as `<required>`, not two.
+ *
+ * The non-debug half answers nothing: php's `get_properties` for a Closure is an
+ * empty table, and `(array)$closure` never reaches it at all (php special-cases a
+ * Closure in `convert_to_array` and wraps it as a SCALAR, `[0 => $closure]`; PHL
+ * answers `[]` there — PLAN §4).
+ */
+PH7_PRIVATE sxi32 PH7_ClosurePresent(ph7_vm *pVm, ph7_class_instance *pThis,
+	ph7_value *pOut, int bDebug)
+{
+	ReflectFuncRef sRef;
+	ph7_value sCarrier, sVal;
+	int bFake = 1;
+	if( !bDebug || pThis == 0 ){
+		return SXRET_OK;
+	}
+	/* Rule 16's other half: this carrier never took a reference, so it must be
+	 * blanked before it is released or the Closure is unref'd a second time. */
+	PH7_MemObjInit(pVm, &sCarrier);
+	sCarrier.x.pOther = pThis;
+	MemObjSetType(&sCarrier, MEMOBJ_OBJ);
+	if( !ReflectFuncFill(pVm, &sCarrier, 0, &sRef) ){
+		sCarrier.x.pOther = 0;
+		sCarrier.iFlags = MEMOBJ_NULL;
+		PH7_MemObjRelease(&sCarrier);
+		return SXRET_OK;
+	}
+	sCarrier.x.pOther = 0;
+	sCarrier.iFlags = MEMOBJ_NULL;
+	PH7_MemObjRelease(&sCarrier);
+	/* php's FAKE-closure bit, read off what the callable actually resolved TO: a
+	 * real closure's body is the anonymous function itself (the compiler's
+	 * `{closure:...}` name, or the synthesized key that stands in for it). */
+	if( sRef.pFunc && sRef.pMeth == 0 ){
+		const SyString *pN = &sRef.pFunc->sName;
+		if( SyStringLength(&sRef.pFunc->sClosureName) > 0
+		 || (pN->nByte > 8 && SyMemcmp(pN->zString, "[lambda_", 8) == 0)
+		 || (pN->nByte > 9 && SyMemcmp(pN->zString, "[closure_", 9) == 0) ){
+			bFake = 0;
+		}
+	}
+	PH7_MemObjInit(pVm, &sVal);
+	if( bFake ){
+		ph7_class *pScope = ReflectFuncDeclClass(&sRef);
+		const SyString *pName = sRef.pFunc ? &sRef.pFunc->sName : &sRef.pHost->sName;
+		PH7_MemObjInitFromString(pVm, &sVal, 0);
+		if( pScope == 0 && sRef.pClass ){
+			pScope = sRef.pClass;
+		}
+		if( pScope ){
+			PH7_MemObjStringAppend(&sVal, SyStringData(&pScope->sName),
+				SyStringLength(&pScope->sName));
+			PH7_MemObjStringAppend(&sVal, "::", 2);
+		}
+		PH7_MemObjStringAppend(&sVal, SyStringData(pName), SyStringLength(pName));
+		ClosurePresentAdd(pVm, pOut, "function", &sVal);
+		PH7_MemObjRelease(&sVal);
+	}else{
+		const char *zShow;
+		int nShow = PH7_VmFuncDisplayName(pVm, sRef.pFunc, &zShow);
+		PH7_MemObjInitFromString(pVm, &sVal, 0);
+		PH7_MemObjStringAppend(&sVal, zShow, (sxu32)(nShow > 0 ? nShow : 0));
+		ClosurePresentAdd(pVm, pOut, "name", &sVal);
+		PH7_MemObjRelease(&sVal);
+		PH7_MemObjInitFromString(pVm, &sVal, 0);
+		PH7_MemObjStringAppend(&sVal, SyStringData(&sRef.pFunc->sFile),
+			SyStringLength(&sRef.pFunc->sFile));
+		ClosurePresentAdd(pVm, pOut, "file", &sVal);
+		PH7_MemObjRelease(&sVal);
+		PH7_MemObjInitFromInt(pVm, &sVal, (sxi64)sRef.pFunc->nLine);
+		ClosurePresentAdd(pVm, pOut, "line", &sVal);
+		PH7_MemObjRelease(&sVal);
+	}
+	/* `static`: the captured `use` variables first (php compiles them into the
+	 * same table, ahead of the body's own statics), then the body's `static $x`,
+	 * whose value is the live slot once it exists and the compiled initializer
+	 * before that — the rule getStaticVariables() already follows. */
+	if( sRef.pFunc ){
+		ph7_hashmap *pHm = PH7_NewHashmap(pVm, 0, 0);
+		sxu32 n;
+		if( pHm ){
+			ph7_value sMap;
+			ph7_value *pMap = &sMap;
+			ph7_vm_func_closure_env *aEnv =
+				(ph7_vm_func_closure_env *)SySetBasePtr(&sRef.pFunc->aClosureEnv);
+			ph7_vm_func_static_var *aStatic =
+				(ph7_vm_func_static_var *)SySetBasePtr(&sRef.pFunc->aStatic);
+			PH7_MemObjInitFromArray(pVm, pMap, pHm);
+			for( n = 0 ; n < SySetUsed(&sRef.pFunc->aClosureEnv) ; ++n ){
+				ph7_value *pVal = &aEnv[n].sValue;
+				ph7_value sKey;
+				if( SyStringLength(&aEnv[n].sName) == sizeof("this")-1
+				 && SyMemcmp(SyStringData(&aEnv[n].sName), "this", sizeof("this")-1) == 0 ){
+					/* PHL carries the auto-captured `$this` as an env entry; php keeps
+					 * it in its own `this_ptr` slot and never lists it as a static. It
+					 * is reported below, under `this`. */
+					continue;
+				}
+				if( aEnv[n].nIdx != SXU32_HIGH ){
+					/* `use (&$x)`: the capture is an alias onto a pinned slot, and
+					 * php reports what the slot holds NOW, not the birth value. */
+					ph7_value *pSlot = (ph7_value *)SySetAt(&pVm->aMemObj, aEnv[n].nIdx);
+					if( pSlot ){
+						pVal = pSlot;
+					}
+				}
+				PH7_MemObjInitFromString(pVm, &sKey, &aEnv[n].sName);
+				ph7_array_add_elem(pMap, &sKey, pVal);
+				PH7_MemObjRelease(&sKey);
+			}
+			for( n = 0 ; n < SySetUsed(&sRef.pFunc->aStatic) ; ++n ){
+				ph7_value *pVal = 0;
+				ph7_value sScratch, sKey;
+				int bScratch = 0;
+				if( aStatic[n].nIdx != SXU32_HIGH ){
+					pVal = (ph7_value *)SySetAt(&pVm->aMemObj, aStatic[n].nIdx);
+				}
+				if( pVal == 0 ){
+					PH7_MemObjInit(pVm, &sScratch);
+					if( SySetUsed(&aStatic[n].aByteCode) > 0 ){
+						VmLocalExec(pVm, &aStatic[n].aByteCode, &sScratch, FALSE);
+					}
+					pVal = &sScratch;
+					bScratch = 1;
+				}
+				PH7_MemObjInitFromString(pVm, &sKey, &aStatic[n].sName);
+				ph7_array_add_elem(pMap, &sKey, pVal);
+				PH7_MemObjRelease(&sKey);
+				if( bScratch ){
+					PH7_MemObjRelease(&sScratch);
+				}
+			}
+			if( ph7_array_count(pMap) > 0 ){
+				ClosurePresentAdd(pVm, pOut, "static", pMap);
+			}
+			PH7_MemObjRelease(pMap);
+		}
+	}
+	/* `this`: the bound receiver. php keeps ONE `this_ptr` however the binding
+	 * happened; PHL keeps two — an explicit bind (`bindTo`, an instance
+	 * first-class callable) writes the `$__this` slot, while the IMPLICIT capture a
+	 * closure written inside a method gets rides in the closure ENVIRONMENT under
+	 * the name `this`. Either one is php's answer here. */
+	{
+		SyString sAttr;
+		ph7_value *pBound;
+		SyStringInitFromBuf(&sAttr, "__this", 6);
+		pBound = PH7_ClassInstanceFetchAttr(pThis, &sAttr);
+		if( (pBound == 0 || (pBound->iFlags & MEMOBJ_OBJ) == 0) && sRef.pFunc ){
+			ph7_vm_func_closure_env *aEnv =
+				(ph7_vm_func_closure_env *)SySetBasePtr(&sRef.pFunc->aClosureEnv);
+			sxu32 n;
+			pBound = 0;
+			for( n = 0 ; n < SySetUsed(&sRef.pFunc->aClosureEnv) ; ++n ){
+				if( SyStringLength(&aEnv[n].sName) == sizeof("this")-1
+				 && SyMemcmp(SyStringData(&aEnv[n].sName), "this", sizeof("this")-1) == 0 ){
+					pBound = &aEnv[n].sValue;
+					break;
+				}
+			}
+		}
+		if( pBound && (pBound->iFlags & MEMOBJ_OBJ) && pBound->x.pOther ){
+			ClosurePresentAdd(pVm, pOut, "this", pBound);
+		}
+	}
+	/* `parameter`: php's cut is required_num_args, which runs through the LAST
+	 * required parameter rather than stopping at the first optional one. */
+	{
+		ReflectParamDesc sDesc;
+		int nArgTotal = 0, nRequired = 0, i;
+		while( ReflectParamAt(&sRef, nArgTotal, &sDesc) ){
+			if( !sDesc.bOptional ){
+				nRequired = nArgTotal + 1;
+			}
+			nArgTotal++;
+		}
+		if( nArgTotal > 0 ){
+			ph7_hashmap *pHm = PH7_NewHashmap(pVm, 0, 0);
+			if( pHm ){
+				ph7_value sMap;
+				ph7_value *pMap = &sMap;
+				PH7_MemObjInitFromArray(pVm, pMap, pHm);
+				for( i = 0 ; i < nArgTotal ; ++i ){
+					ph7_value sKey, sWhat;
+					if( !ReflectParamAt(&sRef, i, &sDesc) ){
+						break;
+					}
+					PH7_MemObjInitFromString(pVm, &sKey, 0);
+					if( sDesc.bByRef ){
+						PH7_MemObjStringAppend(&sKey, "&", 1);
+					}
+					PH7_MemObjStringAppend(&sKey, "$", 1);
+					PH7_MemObjStringAppend(&sKey, SyStringData(&sDesc.sName),
+						SyStringLength(&sDesc.sName));
+					PH7_MemObjInitFromString(pVm, &sWhat, 0);
+					PH7_MemObjStringAppend(&sWhat,
+						i >= nRequired ? "<optional>" : "<required>",
+						i >= nRequired ? sizeof("<optional>")-1 : sizeof("<required>")-1);
+					ph7_array_add_elem(pMap, &sKey, &sWhat);
+					PH7_MemObjRelease(&sKey);
+					PH7_MemObjRelease(&sWhat);
+				}
+				ClosurePresentAdd(pVm, pOut, "parameter", pMap);
+				PH7_MemObjRelease(pMap);
+			}
+		}
+	}
+	return SXRET_OK;
+}
 static int vm_builtin_ReflectionFunc_getExtensionName(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	ReflectFuncRef sRef;
@@ -5543,7 +5779,7 @@ static int vm_builtin_ReflectionFunction_construct(ph7_context *pCtx, int nArg, 
 		return PH7_OK;
 	}
 	pClo = ReflectValueClosure(pVm, apArg[0]);
-	if( !ReflectFuncFill(pCtx, apArg[0], 0, &sRef) ){
+	if( !ReflectFuncFill(pCtx->pVm, apArg[0], 0, &sRef) ){
 		const char *zName;
 		int nName;
 		if( pClo ){
@@ -6137,7 +6373,7 @@ static int ReflectParamOwner(ph7_context *pCtx, ReflectFuncRef *pRef, ReflectPar
 	if( pT == 0 ){
 		return 0;
 	}
-	rc = ReflectFuncFill(pCtx, pT, (pM && (pM->iFlags & MEMOBJ_STRING)) ? pM : 0, pRef);
+	rc = ReflectFuncFill(pCtx->pVm, pT, (pM && (pM->iFlags & MEMOBJ_STRING)) ? pM : 0, pRef);
 	if( rc == 0 || pDesc == 0 ){
 		return rc;
 	}
@@ -6180,7 +6416,7 @@ static int vm_builtin_ReflectionParameter_construct(ph7_context *pCtx, int nArg,
 		 * silently reflected the method. */
 		PH7_MemObjStore(apArg[0], &sTarget);
 	}
-	if( !ReflectFuncFill(pCtx, &sTarget, (sMethod.iFlags & MEMOBJ_STRING) ? &sMethod : 0, &sRef) ){
+	if( !ReflectFuncFill(pCtx->pVm, &sTarget, (sMethod.iFlags & MEMOBJ_STRING) ? &sMethod : 0, &sRef) ){
 		const char *zName;
 		int nName;
 		if( sMethod.iFlags & MEMOBJ_STRING ){
