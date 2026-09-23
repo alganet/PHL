@@ -13,7 +13,9 @@ if (function_exists('zend_version')) {
 <?php
 // php narrows the fractional value with a deprecation and still builds the array.
 // §10 rejects the lossy narrowing loudly, so the throw stops the builtin: $alia_r
-// keeps its previous value and the echo after the call never runs.
+// keeps its previous value and the echo after the call never runs. The refusal is
+// the aBuiltinSig[] `int` screen's, so it is worded like every other builtin's
+// (php's own ZPP text) rather than like the operators' deprecation.
 $alia_r = "untouched";
 foreach ([
     'fill_count'     => static fn() => array_fill(1, 1.5, "v"),
@@ -33,10 +35,10 @@ var_dump($alia_r);
 var_dump(array_fill(0, 2.0, "w"));
 ?>
 --EXPECT--
-fill_count: Implicit conversion from float to int loses precision
-fill_start_str: Implicit conversion from float-string to int loses precision
-chunk_len: Implicit conversion from float to int loses precision
-chunk_len_str: Implicit conversion from float-string to int loses precision
+fill_count: array_fill(): Argument #2 ($count) must be of type int, float given
+fill_start_str: array_fill(): Argument #1 ($start_index) must be of type int, string given
+chunk_len: array_chunk(): Argument #2 ($length) must be of type int, float given
+chunk_len_str: array_chunk(): Argument #2 ($length) must be of type int, string given
 string(9) "untouched"
 array(2) {
   [0]=>

@@ -47,8 +47,8 @@ ValueError: ord(): Argument #1 ($character) must not be empty
 ValueError: ord(): Argument #1 ($character) must be a single byte, use ord($str[0]) instead
 ValueError: Invalid characters passed for attempted conversion
 ValueError: Invalid characters passed for attempted conversion
-TypeError: Implicit conversion from float to int loses precision
-TypeError: Implicit conversion from float to int loses precision
+TypeError: array_fill(): Argument #2 ($count) must be of type int, float given
+TypeError: array_chunk(): Argument #2 ($length) must be of type int, float given
 TypeError: range(): Argument #1 ($start) must be of type string|int|float, null given
 TypeError: range(): Argument #3 ($step) must be of type int|float, null given
 3 A 65 255

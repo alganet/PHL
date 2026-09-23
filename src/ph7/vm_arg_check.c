@@ -1190,6 +1190,65 @@ PH7_PRIVATE int PH7_ArgSatisfiesString(ph7_value *pArg)
 	return 1;
 }
 /*
+ * Is the declared type exactly `int` — the only shape whose float argument the
+ * screen below can decide? A union with a `float`, `string` or `bool` arm has its
+ * own coercion rules per arm (and php words those refusals from the builtin), so
+ * only the plain form and its nullable spelling qualify.
+ */
+static int VmSigTypeIsIntOnly(const char *zType,int nType)
+{
+	if( nType > 0 && zType[0] == '?' ){
+		zType++;
+		nType--;
+	}
+	if( nType == (int)sizeof("int")-1 && SyMemcmp(zType,"int",3) == 0 ){
+		return 1;
+	}
+	/* `int|null` / `null|int`, the union spelling of `?int`. */
+	return VmSigTypeHas(zType,nType,"int") && VmSigTypeHas(zType,nType,"null")
+	    && !VmSigTypeHas(zType,nType,"float")
+	    && !VmSigTypeHas(zType,nType,"string")
+	    && !VmSigTypeHas(zType,nType,"bool")
+	    && !VmSigTypeHas(zType,nType,"array")
+	    && !VmSigTypeHas(zType,nType,"object")
+	    && !VmSigTypeHas(zType,nType,"iterable")
+	    && !VmSigTypeHas(zType,nType,"callable")
+	    && !VmSigTypeHasClass(zType,nType);
+}
+/*
+ * Can this float reach an `int` parameter without losing anything? php's rule is
+ * php_parse_arg_long's: in range, and integral. NaN and the infinities are out by
+ * the range test (a NaN compares false against both bounds, which is why the test
+ * is written as a pair of accepts rather than a pair of rejects).
+ */
+static int VmDoubleFitsInt(double d)
+{
+	if( !(d >= -9223372036854775808.0 && d < 9223372036854775808.0) ){
+		return 0;
+	}
+	return d == (double)(sxi64)d;
+}
+/*
+ * The same question for a NUMERIC string, which php asks with the same answer:
+ * `dechex("1e19")` and `dechex("99999999999999999999")` are both
+ * `must be of type int, string given`. RangeStrToNumber is php's
+ * is_numeric_string grammar and already reclassifies an integer too wide for an
+ * sxi64 as a DOUBLE, so the two shapes converge on one test.
+ */
+static int VmNumStrFitsInt(ph7_value *pArg)
+{
+	const char *zStr;
+	int nLen = 0;
+	sxi64 iVal = 0;
+	double dVal = 0;
+	zStr = ph7_value_to_string(pArg,&nLen);
+	switch( RangeStrToNumber(zStr,(sxu32)nLen,&iVal,&dVal) ){
+	case RANGE_IN_LONG:   return 1;
+	case RANGE_IN_DOUBLE: return VmDoubleFitsInt(dVal);
+	default:              return 0;
+	}
+}
+/*
  * Does php's strict_types rule refuse this argument for the declared type?
  *
  * A `declare(strict_types=1)` file gets NO scalar coercion at an internal call
@@ -1470,6 +1529,27 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 					 * already followed, and which this screen now runs first). */
 					zGiven = VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf));
 				}
+			}else if( (pArg->iFlags & MEMOBJ_REAL) != 0
+			       && VmSigTypeIsIntOnly(zType,nType)
+			       && !VmDoubleFitsInt((double)pArg->rVal) ){
+				/* A FLOAT against a parameter typed exactly `int` (or `?int`), and
+				 * one no int can hold: a fraction, a magnitude past the signed
+				 * 64-bit range, NaN or an infinity. php refuses every one of them
+				 * (zend_parse_arg_long's ZEND_DOUBLE_FITS_LONG / is-integral pair,
+				 * the fractional case with a deprecation PHL rejects outright by
+				 * §10) and the refusal is this screen's own wording.
+				 *
+				 * PH7_IntArgResolve has always said exactly this, but only for the
+				 * builtins that CALL it from their own body — so `dechex(1.5)`
+				 * answered '1', `array_fill(1.5,1,0)` filled from 1, and
+				 * `strpos("abc","c",1e19)` took the offset as PHP_INT_MIN and
+				 * reported a ValueError about a range it never had. Seventy-five
+				 * `int` parameters across the signature table were unscreened that
+				 * way, and a NATIVE METHOD has no body to call the helper from at
+				 * all. Deciding it from the declared type covers both callee kinds
+				 * from one place, and the per-builtin helper still stands for the
+				 * message rows this screen cannot reach (the `azSelfChecked` set). */
+				zGiven = "float";
 			}else if( (pArg->iFlags & (MEMOBJ_STRING|MEMOBJ_NULL)) == MEMOBJ_STRING
 			       && (VmSigTypeHas(zType,nType,"int")
 			        || VmSigTypeHas(zType,nType,"float"))
@@ -1504,6 +1584,15 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 				 * The NULL rule stays where it is: PHL rejects null for a
 				 * non-nullable parameter by policy (§10) where php deprecates. */
 				if( !PH7_MemObjStringIsNumeric(pArg) ){
+					zGiven = "string";
+				}else if( VmSigTypeIsIntOnly(zType,nType) && !VmNumStrFitsInt(pArg) ){
+					/* A NUMERIC string an int cannot hold — "1.5", "1e19",
+					 * "99999999999999999999". php refuses all three (the fractional
+					 * one after a deprecation §10 turns into the refusal), and PHL
+					 * narrowed them silently: `dechex("1e19")` answered '1' and
+					 * `str_repeat("a","99999999999999999999")` took PHP_INT_MAX as
+					 * the count. Same wording, same position as the float arm above,
+					 * because php reaches both through one ZPP macro. */
 					zGiven = "string";
 				}
 			}else if( (pArg->iFlags & (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL)) != 0

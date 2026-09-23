@@ -1870,8 +1870,10 @@ PH7_PRIVATE int ph7_hashmap_slice(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			ph7_type_name(apArg[0])
 			);
 	}
-	/* Validate $offset type: reject string, array, object, resource */
-	if( ph7_value_is_string(apArg[1]) || ph7_value_is_array(apArg[1]) ||
+	/* Validate $offset type: reject array, object, resource. NOT a string —
+	 * php coerces a numeric one (`array_slice([1,2,3],"1")` is [2,3]), and the
+	 * aBuiltinSig[] `int` screen refuses the rest before this routine runs. */
+	if( ph7_value_is_array(apArg[1]) ||
 		ph7_value_is_object(apArg[1]) || ph7_value_is_resource(apArg[1]) ){
 		return PH7_VmThrowException(pCtx,
 			"TypeError",
@@ -1881,7 +1883,7 @@ PH7_PRIVATE int ph7_hashmap_slice(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Validate $length type if provided: nullable int */
 	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){
-		if( ph7_value_is_string(apArg[2]) || ph7_value_is_array(apArg[2]) ||
+		if( ph7_value_is_array(apArg[2]) ||
 			ph7_value_is_object(apArg[2]) || ph7_value_is_resource(apArg[2]) ){
 			return PH7_VmThrowException(pCtx,
 				"TypeError",
@@ -3484,13 +3486,6 @@ PH7_PRIVATE int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				"array_fill(): Argument #1 ($start_index) must be of type int, string given"
 				);
 		}
-		if( bReal ){
-			/* php only DEPRECATES the lossy float-string -> int narrowing; §10 rejects
-			 * it loudly, and the throw ABORTS the call (php would fill the array).
-			 * Twin-pinned by array_lossy_int_arg_abort{,_zend}.phpt. */
-			return PH7_VmThrowException(pCtx,"TypeError",
-				"Implicit conversion from float-string to int loses precision");
-		}
 	}
 
 	/* Argument #2: count must be convertible to non-negative int.  Allow booleans,
@@ -3514,17 +3509,10 @@ PH7_PRIVATE int ph7_hashmap_fill(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				);
 		}
 	}
-	/* Note: booleans and WHOLE floats are accepted and converted by ph7_value_to_int
-	 * below; a FRACTIONAL float is the §10 lossy narrowing and aborts the call. */
-	if( ph7_value_is_float(apArg[1]) ){
-		double d = ph7_value_to_double(apArg[1]);
-		/* avoid hiding outer 'i' (loop index) */
-		sxi64 i64 = (sxi64)d;
-		if( d != (double)i64 ){
-			return PH7_VmThrowException(pCtx,"TypeError",
-				"Implicit conversion from float to int loses precision");
-		}
-	}
+	/* Booleans and WHOLE floats are accepted and converted by ph7_value_to_int
+	 * below; anything an int cannot hold — a fraction, an out-of-range magnitude,
+	 * a float-string — is refused by the aBuiltinSig[] `int` screen before this
+	 * routine runs (VmEnforceBuiltinArgTypes), in php's own ZPP wording. */
 
 	/* Total number of entries to insert. Read as 64-bit FIRST: the old 32-bit
 	 * read truncated array_fill(0, PHP_INT_MAX, x) to -1 and reported the
@@ -4634,24 +4622,9 @@ PH7_PRIVATE int ph7_hashmap_chunk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				"array_chunk(): Argument #2 ($length) must be of type int, string given"
 				);
 		}
-		if( bReal ){
-			/* php only DEPRECATES the lossy float-string -> int narrowing; §10 rejects
-			 * it loudly, and the throw ABORTS the call (php would chunk the array).
-			 * Twin-pinned by array_lossy_int_arg_abort{,_zend}.phpt. */
-			return PH7_VmThrowException(pCtx,"TypeError",
-				"Implicit conversion from float-string to int loses precision");
-		}
 	}
-	/* A FRACTIONAL float is the same §10 lossy narrowing and aborts the call; a whole
-	 * float falls through to the ph7_value_to_int conversion below. */
-	if( ph7_value_is_float(apArg[1]) ){
-		double d = ph7_value_to_double(apArg[1]);
-		sxi64 i = (sxi64)d;
-		if( d != (double)i ){
-			return PH7_VmThrowException(pCtx,"TypeError",
-				"Implicit conversion from float to int loses precision");
-		}
-	}
+	/* A float or float-string an int cannot hold is refused by the aBuiltinSig[]
+	 * `int` screen before this routine runs — see array_fill() above. */
 	/* Convert using ph7_value_to_int; now that float fractions are
 	 * eliminated, this will not produce a warning. */
 	{
