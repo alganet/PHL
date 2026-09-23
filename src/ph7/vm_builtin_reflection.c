@@ -59,36 +59,9 @@ static int ReflectResultObject(ph7_context *pCtx, ph7_class_instance *pObj)
 	MemObjSetType(pCtx->pRet, MEMOBJ_OBJ);
 	return PH7_OK;
 }
-/* --- Marshaling helpers: build the descriptor arrays handed to the PHP layer --- */
-static void ReflectMapAddBool(ph7_context *pCtx, ph7_value *pMap, const char *zKey, int b)
-{
-	ph7_value *p = ph7_context_new_scalar(pCtx);
-	if( p == 0 ){ return; }
-	ph7_value_bool(p, b);
-	ph7_array_add_strkey_elem(pMap, zKey, p);
-}
-static void ReflectMapAddInt(ph7_context *pCtx, ph7_value *pMap, const char *zKey, sxi64 iVal)
-{
-	ph7_value *p = ph7_context_new_scalar(pCtx);
-	if( p == 0 ){ return; }
-	ph7_value_int64(p, iVal);
-	ph7_array_add_strkey_elem(pMap, zKey, p);
-}
-static void ReflectMapAddStr(ph7_context *pCtx, ph7_value *pMap, const char *zKey,
-	const char *zVal, int nVal)
-{
-	ph7_value *p = ph7_context_new_scalar(pCtx);
-	if( p == 0 ){ return; }
-	ph7_value_string(p, zVal, nVal);
-	ph7_array_add_strkey_elem(pMap, zKey, p);
-}
-static void ReflectMapAddNull(ph7_context *pCtx, ph7_value *pMap, const char *zKey)
-{
-	ph7_value *p = ph7_context_new_scalar(pCtx);
-	if( p == 0 ){ return; }
-	ph7_value_null(p);
-	ph7_array_add_strkey_elem(pMap, zKey, p);
-}
+/* The last of the descriptor marshalling: ReflectMapAddDyn survives because
+ * ReflectAttrArgs() answers a php ARRAY whose named arguments are string keys.
+ * Its Bool/Int/Str/Null/Attrs/Doc siblings went with __phl_rcinfo. */
 /* Add an entry under a dynamic (SyString) key. */
 static void ReflectMapAddDyn(ph7_context *pCtx, ph7_value *pMap,
 	const SyString *pKey, ph7_value *pVal)
@@ -97,36 +70,6 @@ static void ReflectMapAddDyn(ph7_context *pCtx, ph7_value *pMap,
 	if( pK == 0 ){ return; }
 	ph7_value_string(pK, pKey->zString, (int)pKey->nByte);
 	ph7_array_add_elem(pMap, pK, pVal);
-}
-/* Emit the declared #[...] attributes of a target as a summary list:
- * [ {name, line} ... ]. Argument values stay lazy — the PHP layer pulls
- * them through __reflect_attr_args when ReflectionAttribute needs them. */
-static void ReflectMapAddAttrs(ph7_context *pCtx, ph7_value *pMap, SySet *pAttrs)
-{
-	ph7_value *pList = ph7_context_new_array(pCtx);
-	ph7_attribute *aA = (ph7_attribute *)SySetBasePtr(pAttrs);
-	sxu32 n;
-	if( pList == 0 ){
-		return;
-	}
-	for( n = 0 ; n < SySetUsed(pAttrs) ; n++ ){
-		ph7_value *pMeta = ph7_context_new_array(pCtx);
-		if( pMeta == 0 ){ break; }
-		ReflectMapAddStr(pCtx, pMeta, "name", SyStringData(&aA[n].sName), (int)SyStringLength(&aA[n].sName));
-		ReflectMapAddInt(pCtx, pMeta, "line", (sxi64)aA[n].nLine);
-		ph7_array_add_elem(pList, 0, pMeta);
-	}
-	ph7_array_add_strkey_elem(pMap, "attrs", pList);
-}
-/* Emit a doc-comment field: the text when present, else boolean false
- * (getDocComment()'s exact return contract). */
-static void ReflectMapAddDoc(ph7_context *pCtx, ph7_value *pMap, const SyString *pDoc)
-{
-	if( SyStringLength(pDoc) > 0 ){
-		ReflectMapAddStr(pCtx, pMap, "doc", SyStringData(pDoc), (int)SyStringLength(pDoc));
-	}else{
-		ReflectMapAddBool(pCtx, pMap, "doc", 0);
-	}
 }
 /*
  * Append pIface (and its parents / extended interfaces) to the dedup set
@@ -456,242 +399,11 @@ static void ReflectCtorCloneVis(ph7_vm *pVm, ph7_class *pClass, sxi32 *piCtor, s
 		*piClone = pMeth->iProtection;
 	}
 }
-/*
- * The memo record. Its pClass field is the hash KEY: SyHashInsert borrows the
- * key bytes it is handed rather than duplicating them.
- */
-typedef struct ReflectInfoMemo ReflectInfoMemo;
-struct ReflectInfoMemo
-{
-	ph7_class *pClass;
-	ph7_value sInfo;
-};
-/*
- * array|null __phl_rcinfo(object|string $target)
- *
- * Full class descriptor, or null when the class cannot be resolved (after
- * an autoload attempt). Shape:
- *   name, internal, interface, trait, abstract, final, readonly, iterable (bool),
- *   parent (string|null), interfaces (list), traits (list),
- *   file (string|false), line, endline (int),
- *   ctorvis, clonevis (0 = absent, else PH7_CLASS_PROT_*),
- *   consts  {name: {vis, final, decl, line}},
- *   props   {name: {vis, static, readonly, hasdef, decl, line}},
- *   methods {name: {vis, static, abstract, final, decl, line}}
- *
- * Memoized per class (pVm->hClassInfo). Building one walks the whole
- * inheritance chain, and the still-PHP Reflection classes ask for the SAME
- * class's descriptor once per member they construct — without the memo a
- * getMethods() over a ten-method class builds it eleven times. This was a
- * `static $c` array inside the prelude function; it moved into the VM when the
- * function became C. Only SUCCESSFUL lookups are remembered, so a class that
- * has not been autoloaded yet is re-queried.
- */
-static int vm_builtin_phl_rcinfo(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	ph7_vm *pVm = pCtx->pVm;
-	ph7_class *pClass;
-	ph7_value *pInfo, *pConsts, *pProps, *pMethods, *pList;
-	SyHashEntry *pMemo;
-	SySet aIfaceSet;
-	sxi32 iCtorVis = 0, iCloneVis = 0;
-	int bIterable = 0;
-	sxu32 n;
-	if( nArg < 1 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	pClass = ReflectResolveClass(pVm, apArg[0]);
-	if( pClass == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	pMemo = SyHashGet(&pVm->hClassInfo, (const void *)&pClass, sizeof(ph7_class *));
-	if( pMemo ){
-		ph7_result_value(pCtx, &((ReflectInfoMemo *)pMemo->pUserData)->sInfo);
-		return PH7_OK;
-	}
-	pInfo = ph7_context_new_array(pCtx);
-	pConsts = ph7_context_new_array(pCtx);
-	pProps = ph7_context_new_array(pCtx);
-	pMethods = ph7_context_new_array(pCtx);
-	if( pInfo == 0 || pConsts == 0 || pProps == 0 || pMethods == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	ReflectMapAddStr(pCtx, pInfo, "name", SyStringData(&pClass->sName), (int)SyStringLength(&pClass->sName));
-	ReflectMapAddBool(pCtx, pInfo, "internal", (pClass->iFlags & PH7_CLASS_INTERNAL) != 0);
-	ReflectMapAddBool(pCtx, pInfo, "interface", (pClass->iFlags & PH7_CLASS_INTERFACE) != 0);
-	ReflectMapAddBool(pCtx, pInfo, "trait", (pClass->iFlags & PH7_CLASS_TRAIT) != 0);
-	ReflectMapAddBool(pCtx, pInfo, "abstract", (pClass->iFlags & PH7_CLASS_ABSTRACT) != 0);
-	ReflectMapAddBool(pCtx, pInfo, "final", (pClass->iFlags & PH7_CLASS_FINAL) != 0);
-	ReflectMapAddBool(pCtx, pInfo, "readonly", (pClass->iFlags & PH7_CLASS_READONLY) != 0);
-	ReflectMapAddBool(pCtx, pInfo, "enum", (pClass->iFlags & PH7_CLASS_ENUM) != 0);
-	if( pClass->nEnumBacking == MEMOBJ_INT ){
-		ReflectMapAddStr(pCtx, pInfo, "enumbacking", "int", (int)sizeof("int")-1);
-	}else if( pClass->nEnumBacking == MEMOBJ_STRING ){
-		ReflectMapAddStr(pCtx, pInfo, "enumbacking", "string", (int)sizeof("string")-1);
-	}else{
-		ReflectMapAddStr(pCtx, pInfo, "enumbacking", "", 0);
-	}
-	{
-		/* Enum case names in declaration order (empty list for non-enums) */
-		ph7_value *pCases = ph7_context_new_array(pCtx);
-		if( pCases ){
-			ph7_class_attr **apCase = (ph7_class_attr **)SySetBasePtr(&pClass->aEnumCases);
-			sxu32 nCase;
-			for( nCase = 0 ; nCase < SySetUsed(&pClass->aEnumCases) ; nCase++ ){
-				ph7_value *pNm = ph7_context_new_scalar(pCtx);
-				if( pNm ){
-					ph7_value_string(pNm,apCase[nCase]->sName.zString,(int)apCase[nCase]->sName.nByte);
-					ph7_array_add_elem(pCases,0,pNm);
-				}
-			}
-			ph7_array_add_strkey_elem(pInfo,"cases",pCases);
-		}
-	}
-	if( pClass->pBase ){
-		ReflectMapAddStr(pCtx, pInfo, "parent", SyStringData(&pClass->pBase->sName),
-			(int)SyStringLength(&pClass->pBase->sName));
-	}else{
-		ReflectMapAddNull(pCtx, pInfo, "parent");
-	}
-	/* Transitive interfaces */
-	SySetInit(&aIfaceSet, &pVm->sAllocator, sizeof(ph7_class *));
-	ReflectInterfacesOf(pClass, &aIfaceSet);
-	pList = ph7_context_new_array(pCtx);
-	if( pList ){
-		ph7_class **apIface = (ph7_class **)SySetBasePtr(&aIfaceSet);
-		for( n = 0 ; n < SySetUsed(&aIfaceSet) ; n++ ){
-			ph7_value *pName = ph7_context_new_scalar(pCtx);
-			if( pName == 0 ){ break; }
-			ph7_value_string(pName, SyStringData(&apIface[n]->sName), (int)SyStringLength(&apIface[n]->sName));
-			ph7_array_add_elem(pList, 0, pName);
-			if( pVm->pTraversableClass && apIface[n] == pVm->pTraversableClass ){
-				bIterable = 1;
-			}
-		}
-		ph7_array_add_strkey_elem(pInfo, "interfaces", pList);
-	}
-	SySetRelease(&aIfaceSet);
-	ReflectMapAddBool(pCtx, pInfo, "iterable", bIterable);
-	/* Used traits */
-	pList = ph7_context_new_array(pCtx);
-	if( pList ){
-		ph7_class **apTrait = (ph7_class **)SySetBasePtr(&pClass->aTrait);
-		for( n = 0 ; n < SySetUsed(&pClass->aTrait) ; n++ ){
-			ph7_value *pName = ph7_context_new_scalar(pCtx);
-			if( pName == 0 ){ break; }
-			ph7_value_string(pName, SyStringData(&apTrait[n]->sName), (int)SyStringLength(&apTrait[n]->sName));
-			ph7_array_add_elem(pList, 0, pName);
-		}
-		ph7_array_add_strkey_elem(pInfo, "traits", pList);
-	}
-	/* File / lines: no file recorded => false, like PHP internals */
-	if( SyStringLength(&pClass->sFile) > 0 ){
-		ReflectMapAddStr(pCtx, pInfo, "file", SyStringData(&pClass->sFile), (int)SyStringLength(&pClass->sFile));
-	}else{
-		ReflectMapAddBool(pCtx, pInfo, "file", 0);
-	}
-	ReflectMapAddInt(pCtx, pInfo, "line", (sxi64)pClass->nLine);
-	ReflectMapAddInt(pCtx, pInfo, "endline", (sxi64)pClass->nEndLine);
-	ReflectMapAddDoc(pCtx, pInfo, &pClass->sDoc);
-	ReflectMapAddAttrs(pCtx, pInfo, &pClass->aAttrs);
-	/* Members, in PHP's reporting order — the shared walk (ReflectMembers), so
-	 * this descriptor and the native ReflectionClass accessors can never drift
-	 * apart on which members exist or what order they come in. */
-	{
-		SySet aMembers;
-		sxu32 nM;
-		SySetInit(&aMembers, &pVm->sAllocator, sizeof(ReflectMember));
-		ReflectMembers(pVm, pClass, &aMembers, 1);
-		for( nM = 0 ; nM < SySetUsed(&aMembers) ; nM++ ){
-			ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, nM);
-			ph7_value *pMeta = ph7_context_new_array(pCtx);
-			if( pMeta == 0 ){ break; }
-			if( pM->iKind == REFLECT_MEMBER_METHOD ){
-				ph7_class_method *pMeth = pM->pMeth;
-				/* A __construct key whose method has a DIFFERENT own name is a trait
-				 * `use T { m as __construct; }` alias. php lists such a method under
-				 * BOTH names (its own and __construct) and getConstructor() resolves
-				 * the __construct one, so the entry is emitted under this key too
-				 * rather than skipped. (The legacy PHP-4 class-name-constructor mount
-				 * alias that also produced a __construct key is gone, removed in 8.0.) */
-				ReflectMapAddInt(pCtx, pMeta, "vis", (sxi64)pMeth->iProtection);
-				ReflectMapAddBool(pCtx, pMeta, "static", (pMeth->iFlags & PH7_CLASS_ATTR_STATIC) != 0);
-				ReflectMapAddBool(pCtx, pMeta, "abstract", (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) != 0);
-				ReflectMapAddBool(pCtx, pMeta, "final", (pMeth->iFlags & PH7_CLASS_ATTR_FINAL) != 0);
-				ReflectMapAddStr(pCtx, pMeta, "decl", SyStringData(&pM->pDecl->sName),
-					(int)SyStringLength(&pM->pDecl->sName));
-				ReflectMapAddInt(pCtx, pMeta, "line", (sxi64)pMeth->nLine);
-				ReflectMapAddDyn(pCtx, pMethods, &pM->sKey, pMeta);
-				continue;
-			}
-			{
-				ph7_class_attr *pAttr = pM->pAttr;
-				ReflectMapAddInt(pCtx, pMeta, "vis", (sxi64)pAttr->iProtection);
-				ReflectMapAddStr(pCtx, pMeta, "decl", SyStringData(&pM->pDecl->sName),
-					(int)SyStringLength(&pM->pDecl->sName));
-				ReflectMapAddInt(pCtx, pMeta, "line", (sxi64)pAttr->nLine);
-				ReflectMapAddDoc(pCtx, pMeta, &pAttr->sDoc);
-				ReflectMapAddAttrs(pCtx, pMeta, &pAttr->aAttrs);
-				ReflectMapAddBool(pCtx, pMeta, "typed", (pAttr->iFlags & PH7_CLASS_ATTR_TYPED) != 0);
-				if( SyStringLength(&pAttr->sTypeName) > 0 ){
-					ReflectMapAddStr(pCtx, pMeta, "typetext", SyStringData(&pAttr->sTypeName),
-						(int)SyStringLength(&pAttr->sTypeName));
-				}else{
-					ReflectMapAddNull(pCtx, pMeta, "typetext");
-				}
-				if( pM->iKind == REFLECT_MEMBER_CONST ){
-					ReflectMapAddBool(pCtx, pMeta, "final", (pAttr->iFlags & PH7_CLASS_ATTR_FINAL) != 0);
-					ReflectMapAddBool(pCtx, pMeta, "enumcase", (pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE) != 0);
-					ReflectMapAddDyn(pCtx, pConsts, &pM->sKey, pMeta);
-				}else{
-					ReflectMapAddBool(pCtx, pMeta, "static", (pAttr->iFlags & PH7_CLASS_ATTR_STATIC) != 0);
-					ReflectMapAddBool(pCtx, pMeta, "readonly", (pAttr->iFlags & PH7_CLASS_ATTR_READONLY) != 0);
-					ReflectMapAddBool(pCtx, pMeta, "privset", (pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET) != 0);
-					ReflectMapAddBool(pCtx, pMeta, "protset", (pAttr->iFlags & PH7_CLASS_ATTR_PROTECTED_SET) != 0);
-					ReflectMapAddBool(pCtx, pMeta, "hookget", (pAttr->iFlags & PH7_CLASS_ATTR_HOOK_GET) != 0);
-					ReflectMapAddBool(pCtx, pMeta, "hookset", (pAttr->iFlags & PH7_CLASS_ATTR_HOOK_SET) != 0);
-					ReflectMapAddBool(pCtx, pMeta, "virtual", (pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL) != 0);
-					ReflectMapAddBool(pCtx, pMeta, "hasdef", SySetUsed(&pAttr->aByteCode) > 0);
-					ReflectMapAddDyn(pCtx, pProps, &pM->sKey, pMeta);
-				}
-			}
-		}
-		SySetRelease(&aMembers);
-	}
-	/* From the LOOKUP, not the listing: an inherited private __construct is not
-	 * reported as a member but still decides instantiability. */
-	ReflectCtorCloneVis(pVm, pClass, &iCtorVis, &iCloneVis);
-	ReflectMapAddInt(pCtx, pInfo, "ctorvis", (sxi64)iCtorVis);
-	ReflectMapAddInt(pCtx, pInfo, "clonevis", (sxi64)iCloneVis);
-	ph7_array_add_strkey_elem(pInfo, "consts", pConsts);
-	ph7_array_add_strkey_elem(pInfo, "props", pProps);
-	ph7_array_add_strkey_elem(pInfo, "methods", pMethods);
-	{
-		/* Remember it. The memo slot SHARES the descriptor's hashmap through
-		 * its reference count — which is exactly what the PHP `$c[$k] = $info`
-		 * did — so the context value below can still be released normally. It
-		 * lives for the VM's lifetime, like the class it describes. */
-		ReflectInfoMemo *pKeep;
-		pKeep = (ReflectInfoMemo *)SyMemBackendAlloc(&pVm->sAllocator, sizeof(ReflectInfoMemo));
-		if( pKeep ){
-			pKeep->pClass = pClass;
-			PH7_MemObjInit(pVm, &pKeep->sInfo);
-			PH7_MemObjStore(pInfo, &pKeep->sInfo);
-			/* The key bytes are BORROWED by SyHashInsert, never copied, so they
-			 * have to be the record's own field rather than a local. */
-			if( SyHashInsert(&pVm->hClassInfo, (const void *)&pKeep->pClass,
-				sizeof(ph7_class *), pKeep) != SXRET_OK ){
-				PH7_MemObjRelease(&pKeep->sInfo);
-				SyMemBackendFree(&pVm->sAllocator, pKeep);
-			}
-		}
-	}
-	ph7_result_value(pCtx, pInfo);
-	return PH7_OK;
-}
+/* Where __phl_rcinfo() was: a full class DESCRIPTOR array — every constant,
+ * property and method of the whole inheritance chain, marshalled once and
+ * memoized on pVm->hClassInfo because the prelude classes rebuilt it once per
+ * member they constructed. Every one of its readers is a native class now and
+ * reads ph7_class directly, so the builder and the VM memo are both gone. */
 /*
  * Collect a PHP array's values into a ph7_value* set (call arguments).
  * When ppNames is non-NULL, string keys become named arguments: a name
@@ -1656,31 +1368,6 @@ static ph7_class_instance * ReflectMakeType(ph7_context *pCtx, const char *zText
 		}
 	}
 	return ReflectMakeAtom(pCtx, zBody, nBody);
-}
-/*
- * ?ReflectionType __reflect_make_type(?string $text)
- *
- * Still a global: the reflection classes that ANSWER a type (getType,
- * getReturnType, ReflectionEnum::getBackingType) are prelude PHP for now, and
- * this is their factory. It retires with them.
- */
-static int vm_builtin_reflect_make_type(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	int nText = 0;
-	const char *zText;
-	ph7_class_instance *pType;
-	if( nArg < 1 || ph7_value_is_null(apArg[0]) ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	zText = ph7_value_to_string(apArg[0], &nText);
-	pType = ReflectMakeType(pCtx, zText, nText);
-	if( pType == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	PH7_NativeResultObject(pCtx, pType);
-	return PH7_OK;
 }
 /*
  * Declare the four type classes. Called from PH7_VmInstallReflectionLib where
@@ -7869,18 +7556,313 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionMember(ph7_vm *pVm)
 	};
 	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));
 }
+/*
+ * ---------------------------------------------------------------------------
+ * The ReflectionEnum family — chunk 6, and the end of __phl_rcinfo.
+ *
+ * Three classes that are very nearly their parents: `ReflectionEnum` IS a
+ * `ReflectionClass` that refuses a non-enum, and `ReflectionEnumUnitCase` IS a
+ * `ReflectionClassConstant` that refuses a constant which is not a case. What
+ * is their own is the CASE list, which the engine already holds in declaration
+ * order on `ph7_class::aEnumCases` — the chunk read a marshalled copy of it out
+ * of `__phl_rcinfo`, the descriptor builder that dies with this conversion.
+ * ---------------------------------------------------------------------------
+ */
+
+/* The enum case named zName, or NULL. A case is a class CONSTANT, so the match
+ * is case-SENSITIVE: php's hasCase('hearts') is false for `case Hearts`. */
+static ph7_class_attr * ReflectEnumCase(ph7_class *pClass, const char *zName, int nName)
+{
+	ph7_class_attr **apCase = (ph7_class_attr **)SySetBasePtr(&pClass->aEnumCases);
+	sxu32 n;
+	if( nName < 1 ){
+		return 0;
+	}
+	for( n = 0 ; n < SySetUsed(&pClass->aEnumCases) ; n++ ){
+		if( (int)SyStringLength(&apCase[n]->sName) == nName
+		 && SyMemcmp(SyStringData(&apCase[n]->sName), zName, (sxu32)nName) == 0 ){
+			return apCase[n];
+		}
+	}
+	return 0;
+}
+/*
+ * One case reflector for an already-validated case. php answers a BackedCase
+ * for a backed enum and a UnitCase for a pure one, and both carry the same two
+ * slots ReflectionClassConstant does — an enum cannot extend anything, so the
+ * declaring class is always the enum itself.
+ */
+static ph7_class_instance * ReflectEnumCaseNew(ph7_context *pCtx, ph7_class *pEnum,
+	const SyString *pCase)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const char *zClass = pEnum->nEnumBacking
+		? "ReflectionEnumBackedCase" : "ReflectionEnumUnitCase";
+	ph7_class *pRC = PH7_VmExtractClass(pVm, zClass, (sxu32)SyStrlen(zClass), FALSE, 0);
+	ph7_class_instance *pObj = pRC ? PH7_NewClassInstance(pVm, pRC) : 0;
+	if( pObj == 0 ){
+		return 0;
+	}
+	PH7_NativeSetAttrStr(pVm, pObj, "class", SyStringData(&pEnum->sName),
+		(int)SyStringLength(&pEnum->sName));
+	PH7_NativeSetAttrStr(pVm, pObj, "name", SyStringData(pCase), (int)SyStringLength(pCase));
+	return pObj;
+}
+/* ReflectionEnum::__construct(object|string $objectOrClass) */
+static int vm_builtin_ReflectionEnum_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass;
+	sxi32 rc = vm_builtin_ReflectionClass_construct(pCtx, nArg, apArg);
+	if( rc != PH7_OK ){
+		return rc; /* "Class %s does not exist", already php's */
+	}
+	pClass = ReflectClassOf(pCtx);
+	if( pClass && (pClass->iFlags & PH7_CLASS_ENUM) == 0 ){
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Class \"%z\" is not an enum", &pClass->sName);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionEnum_hasCase(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	const char *zName;
+	int nName;
+	if( pClass == 0 || nArg < 1 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	zName = ph7_value_to_string(apArg[0], &nName);
+	ph7_result_bool(pCtx, ReflectEnumCase(pClass, zName, nName) != 0);
+	return PH7_OK;
+}
+/*
+ * getCase(): php tells the two failures apart — a name that is a constant but
+ * not a case is "X::K is not a case", one that is neither is "Case X::K does
+ * not exist". The chunk answered the second for both.
+ */
+static int vm_builtin_ReflectionEnum_getCase(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	ph7_class_attr *pCase;
+	const char *zName;
+	int nName;
+	if( pClass == 0 || nArg < 1 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	zName = ph7_value_to_string(apArg[0], &nName);
+	pCase = ReflectEnumCase(pClass, zName, nName);
+	if( pCase == 0 ){
+		if( nName > 0 && SyHashGet(&pClass->hConst, (const void *)zName, (sxu32)nName) ){
+			return PH7_VmThrowException(pCtx, "ReflectionException",
+				"%z::%.*s is not a case", &pClass->sName, nName, zName);
+		}
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Case %z::%.*s does not exist", &pClass->sName, nName, zName);
+	}
+	return ReflectResultObject(pCtx, ReflectEnumCaseNew(pCtx, pClass, &pCase->sName));
+}
+static int vm_builtin_ReflectionEnum_getCases(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	ph7_value *pOut = ph7_context_new_array(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pOut == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( pClass ){
+		ph7_class_attr **apCase = (ph7_class_attr **)SySetBasePtr(&pClass->aEnumCases);
+		sxu32 n;
+		for( n = 0 ; n < SySetUsed(&pClass->aEnumCases) ; n++ ){
+			ReflectTypeListAdd(pCtx, pOut, ReflectEnumCaseNew(pCtx, pClass, &apCase[n]->sName));
+		}
+	}
+	ph7_result_value(pCtx, pOut);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionEnum_isBacked(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx, pClass != 0 && pClass->nEnumBacking != 0);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionEnum_getBackingType(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	const char *zText;
+	ph7_class_instance *pType;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pClass == 0 || pClass->nEnumBacking == 0 ){
+		ph7_result_null(pCtx); /* a PURE enum has no backing type */
+		return PH7_OK;
+	}
+	zText = (pClass->nEnumBacking & MEMOBJ_INT) ? "int" : "string";
+	pType = ReflectMakeType(pCtx, zText, (int)SyStrlen(zText));
+	if( pType == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_NativeResultObject(pCtx, pType);
+	return PH7_OK;
+}
+/*
+ * ReflectionEnumUnitCase::__construct(object|string $class, string $constant).
+ *
+ * The parent raises for a constant that does not exist; what is left is "not a
+ * case", and php words that one WITHOUT asking whether the class is an enum at
+ * all — `new ReflectionEnumUnitCase('Plain', 'K')` on an ordinary class says
+ * `Constant Plain::K is not a case`, not "is not an enum" as the chunk did.
+ * A non-enum's constant can never carry the ENUMCASE bit, so the one screen
+ * answers both shapes.
+ */
+static int vm_builtin_ReflectionEnumCase_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	sxi32 rc = vm_builtin_ReflectionClassConstant_construct(pCtx, nArg, apArg);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_CONST) || sRef.pAttr == 0 ){
+		return PH7_OK;
+	}
+	if( (sRef.pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE) == 0 ){
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Constant %z::%.*s is not a case", &sRef.pClass->sName, sRef.nName, sRef.zName);
+	}
+	return PH7_OK;
+}
+/* ReflectionEnumBackedCase::__construct() — the same, plus php's screen for a
+ * PURE enum's case, which has no backing value to answer with. */
+static int vm_builtin_ReflectionEnumBackedCase_construct(ph7_context *pCtx, int nArg,
+	ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	sxi32 rc = vm_builtin_ReflectionEnumCase_construct(pCtx, nArg, apArg);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_CONST) || sRef.pAttr == 0 ){
+		return PH7_OK;
+	}
+	if( sRef.pClass->nEnumBacking == 0 ){
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Enum case %z::%.*s is not a backed case", &sRef.pClass->sName,
+			sRef.nName, sRef.zName);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionEnumCase_getEnum(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ReflectMemberRef sRef;
+	ph7_class *pRC;
+	ph7_class_instance *pObj;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_CONST) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pRC = PH7_VmExtractClass(pVm, "ReflectionEnum", sizeof("ReflectionEnum")-1, FALSE, 0);
+	pObj = pRC ? PH7_NewClassInstance(pVm, pRC) : 0;
+	if( pObj == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_NativeSetAttrStr(pVm, pObj, "name", SyStringData(&sRef.pClass->sName),
+		(int)SyStringLength(&sRef.pClass->sName));
+	return ReflectResultObject(pCtx, pObj);
+}
+/* getBackingValue(): the `value` the case singleton carries. The singleton is
+ * the constant's own value, so the parent's accessor materializes it. */
+static int vm_builtin_ReflectionEnumCase_getBackingValue(ph7_context *pCtx, int nArg,
+	ph7_value **apArg)
+{
+	ReflectMemberRef sRef;
+	ph7_value *pVal, *pBacking;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_CONST) || sRef.pAttr == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	rc = ReflectConstSlot(pCtx, sRef.pClass, sRef.pAttr, &pVal);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	pBacking = (pVal && (pVal->iFlags & MEMOBJ_OBJ))
+		? PH7_NativeAttr((ph7_class_instance *)pVal->x.pOther, "value") : 0;
+	if( pBacking ){
+		ph7_result_value(pCtx, pBacking);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+/*
+ * Declare the three. Called from PH7_VmInstallReflectionLib where chunk 6 used
+ * to be compiled, so both parents are installed (PH7_ClassInherit COPIES a
+ * base's methods down — a native subclass needs its parent declared first).
+ *
+ * The uncloneable/unserializable flags are php's answer for each class and do
+ * NOT come down with the inheritance: without them `clone $enumReflector`
+ * reached the private __clone it inherited and reported that instead.
+ */
+PH7_PRIVATE sxi32 PH7_VmInstallReflectionEnum(ph7_vm *pVm)
+{
+	static const PH7_NativeMethodDef aEnumMethod[] = {
+		{ "__construct",    PH7_MOD_PUBLIC, "object|string $objectOrClass", "",
+		  vm_builtin_ReflectionEnum_construct },
+		{ "hasCase",        PH7_MOD_PUBLIC, "string $name", "bool",
+		  vm_builtin_ReflectionEnum_hasCase },
+		{ "getCase",        PH7_MOD_PUBLIC, "string $name", "ReflectionEnumUnitCase",
+		  vm_builtin_ReflectionEnum_getCase },
+		{ "getCases",       PH7_MOD_PUBLIC, "", "array", vm_builtin_ReflectionEnum_getCases },
+		{ "isBacked",       PH7_MOD_PUBLIC, "", "bool",  vm_builtin_ReflectionEnum_isBacked },
+		{ "getBackingType", PH7_MOD_PUBLIC, "", "?ReflectionNamedType",
+		  vm_builtin_ReflectionEnum_getBackingType },
+	};
+	static const PH7_NativeMethodDef aCaseMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "object|string $class, string $constant", "",
+		  vm_builtin_ReflectionEnumCase_construct },
+		{ "getEnum",     PH7_MOD_PUBLIC, "", "ReflectionEnum",
+		  vm_builtin_ReflectionEnumCase_getEnum },
+		/* php redeclares getValue() on the case reflector for its narrower
+		 * return type; the body is the parent's. */
+		{ "getValue",    PH7_MOD_PUBLIC, "", "UnitEnum",
+		  vm_builtin_ReflectionClassConstant_getValue },
+	};
+	static const PH7_NativeMethodDef aBackedMethod[] = {
+		{ "__construct",     PH7_MOD_PUBLIC, "object|string $class, string $constant", "",
+		  vm_builtin_ReflectionEnumBackedCase_construct },
+		{ "getBackingValue", PH7_MOD_PUBLIC, "", "string|int",
+		  vm_builtin_ReflectionEnumCase_getBackingValue },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "ReflectionEnum", "ReflectionClass", 0, PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
+		  aEnumMethod, SX_ARRAYSIZE(aEnumMethod), 0, 0, 0, 0, 0, 0 },
+		{ "ReflectionEnumUnitCase", "ReflectionClassConstant", 0,
+		  PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
+		  aCaseMethod, SX_ARRAYSIZE(aCaseMethod), 0, 0, 0, 0, 0, 0 },
+		{ "ReflectionEnumBackedCase", "ReflectionEnumUnitCase", 0,
+		  PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
+		  aBackedMethod, SX_ARRAYSIZE(aBackedMethod), 0, 0, 0, 0, 0, 0 },
+	};
+	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));
+}
+/*
+ * Install the Reflection API. There is nothing to register here any more: the
+ * global `__reflect_*`/`__phl_rcinfo` thunk table this function existed for is
+ * EMPTY — every one of them became a method of the class that always owned it,
+ * so Reflection now adds no global name to the php namespace at all.
+ */
 PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 {
-	static const struct {
-		const char *zName;
-		ProchHostFunction xFunc;
-	} aFunc[] = {
-		{ "__phl_rcinfo",             vm_builtin_phl_rcinfo },
-		{ "__reflect_make_type",      vm_builtin_reflect_make_type },
-	};
-	sxu32 n;
-	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){
-		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);
-	}
 	return PH7_VmInstallReflectionLib(&(*pVm));
 }

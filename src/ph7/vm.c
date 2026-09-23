@@ -1902,7 +1902,6 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetInit(&pVm->aAutoload,&pVm->sAllocator,sizeof(VmAutoloadCB));
 	SyHashInit(&pVm->hAutoloadActive,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hWeakCell,&pVm->sAllocator,0,0);
-	SyHashInit(&pVm->hClassInfo,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hTypedSlot,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hResourceId,&pVm->sAllocator,0,0);
 	pVm->nResourceIdNext = 1;

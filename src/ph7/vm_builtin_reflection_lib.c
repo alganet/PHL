@@ -11,69 +11,6 @@
  * (vm_builtin_reflection.c, which declares everything else from C).
  */
 /*
- * Chunk 6: the ReflectionEnum family. Nothing gates it any more -- the
- * ReflectionClass and ReflectionClassConstant it extends are both native, and
- * PH7_InstallNativeEnum() exists. It and chunk 9 are the last two callers of
- * __phl_rcinfo, the marshalled class descriptor.
- */
-static const char zReflectLib6[] =
-"class ReflectionEnum extends ReflectionClass {"
-" public function __construct($objectOrClass){"
-"  $info = __phl_rcinfo($objectOrClass);"
-"  if($info === null){"
-"   throw new ReflectionException('Class \"'.$objectOrClass.'\" does not exist');"
-"  }"
-"  if(!$info['enum']){"
-"   throw new ReflectionException('Class \"'.$info['name'].'\" is not an enum');"
-"  }"
-"  parent::__construct($objectOrClass);"
-" }"
-" public function hasCase($name){"
-"  $i = __phl_rcinfo($this->name);"
-"  return in_array($name, $i['cases'], true);"
-" }"
-" public function getCase($name){"
-"  if(!$this->hasCase($name)){"
-"   throw new ReflectionException('Case '.$this->name.'::'.$name.' does not exist');"
-"  }"
-"  if($this->isBacked()){ return new ReflectionEnumBackedCase($this->name, $name); }"
-"  return new ReflectionEnumUnitCase($this->name, $name);"
-" }"
-" public function getCases(){"
-"  $i = __phl_rcinfo($this->name);"
-"  $out = array();"
-"  foreach($i['cases'] as $c){"
-"   $out[] = $this->isBacked()"
-"    ? new ReflectionEnumBackedCase($this->name, $c)"
-"    : new ReflectionEnumUnitCase($this->name, $c);"
-"  }"
-"  return $out;"
-" }"
-" public function isBacked(){ $i = __phl_rcinfo($this->name); return $i['enumbacking'] !== ''; }"
-" public function getBackingType(){"
-"  $i = __phl_rcinfo($this->name);"
-"  if($i['enumbacking'] === ''){ return null; }"
-"  return __reflect_make_type($i['enumbacking']);"
-" }"
-"}"
-"class ReflectionEnumUnitCase extends ReflectionClassConstant {"
-" public function __construct($class, $constant){"
-"  parent::__construct($class, $constant);"
-"  $ci = __phl_rcinfo($class);"
-"  if(!$ci['enum']){"
-"   throw new ReflectionException('Class \"'.$this->class.'\" is not an enum');"
-"  }"
-"  if(!$this->isEnumCase()){"
-"   throw new ReflectionException('Constant '.$this->class.'::'.$constant.' is not a case');"
-"  }"
-" }"
-" public function getEnum(){ return new ReflectionEnum($this->class); }"
-"}"
-"class ReflectionEnumBackedCase extends ReflectionEnumUnitCase {"
-" public function getBackingValue(){ return $this->getValue()->value; }"
-"}"
-;
-/*
  * Chunk 9: PHP's Reflection export format (__toString on every Reflector).
  * Built entirely from the public reflection API of the target objects.
  */
@@ -130,8 +67,13 @@ static const char zReflectLib9[] =
 " else if(is_float($v)){ $t = 'float'; }"
 " else if(is_bool($v)){ $t = 'bool'; }"
 " else if(is_array($v)){ $t = 'array'; }"
+/* An OBJECT constant — an enum case, overwhelmingly — reports its CLASS as the
+ * type and the literal word Object as the value. The (string) cast below is a
+ * fatal for one, which is what `echo new ReflectionEnumUnitCase(...)` hit. */
+" else if(is_object($v)){ $t = get_class($v); }"
 " else{ $t = 'null'; }"
-" $vs = is_array($v) ? 'Array' : (is_bool($v) ? ($v ? '1' : '') : (string)$v);"
+" $vs = is_array($v) ? 'Array'"
+"  : (is_object($v) ? 'Object' : (is_bool($v) ? ($v ? '1' : '') : (string)$v));"
 " $vis = $c->isPrivate() ? 'private' : ($c->isProtected() ? 'protected' : 'public');"
 " return 'Constant [ '.$vis.' '.$t.' '.$c->name.' ] { '.$vs.' }'.chr(10);"
 "}"
@@ -287,7 +229,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionLib(ph7_vm *pVm)
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib6, sizeof(zReflectLib6)-1);
+	/* Where chunk 6 was: the three ReflectionEnum classes are native now, and
+	 * the class DESCRIPTOR they read (__phl_rcinfo) has no callers left. */
+	rc = PH7_VmInstallReflectionEnum(&(*pVm));
 	if( rc != SXRET_OK ){
 		return rc;
 	}

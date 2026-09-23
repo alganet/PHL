@@ -1852,15 +1852,6 @@ struct ph7_vm
 	sxu8 bSessWired;            /* the shutdown writer + cookie have been installed once */
 	SyHash hWeakCell;           /* instance pointer bytes -> VmWeakCell* (weak-reference registry;
 	                             * PH7_ClassInstanceRelease kills matching cells on free) */
-	SyHash hClassInfo;          /* ph7_class* bytes -> ph7_value* : the memoized Reflection class
-	                             * descriptor __phl_rcinfo() answers. Building one walks the whole
-	                             * inheritance chain, and the still-PHP Reflection classes rebuild
-	                             * the SAME class's descriptor once per member they construct — the
-	                             * memo used to be a `static $c` inside the prelude function and had
-	                             * to move here when that function became C. A mounted class never
-	                             * changes shape, so the entry is valid for the VM's lifetime; the
-	                             * value shares the descriptor's hashmap by reference count, exactly
-	                             * as the PHP array assignment did. */
 	SySet aAutoload;            /* Stack of spl_autoload callbacks */
 	SyHash hAutoloadActive;     /* Classes currently being autoloaded (reentrancy guard) */
 	SyHash hTypedSlot;          /* memobj nIdx -> VmClassAttr* for typed property enforcement */
@@ -2800,6 +2791,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionLib(ph7_vm *pVm); /* vm_builtin_reflect
 PH7_PRIVATE sxi32 PH7_VmInstallReflectionTypes(ph7_vm *pVm); /* vm_builtin_reflection.c */
 PH7_PRIVATE sxi32 PH7_VmInstallReflectionSmall(ph7_vm *pVm); /* vm_builtin_reflection.c */
 PH7_PRIVATE sxi32 PH7_VmInstallReflectionAttribute(ph7_vm *pVm); /* vm_builtin_reflection.c */
+PH7_PRIVATE sxi32 PH7_VmInstallReflectionEnum(ph7_vm *pVm); /* vm_builtin_reflection.c */
 PH7_PRIVATE sxi32 PH7_VmInstallReflectionClass(ph7_vm *pVm); /* vm_builtin_reflection.c */
 PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm);  /* vm_builtin_reflection.c */
 PH7_PRIVATE sxi32 PH7_VmInstallReflectionHookType(ph7_vm *pVm); /* vm_builtin_reflection.c */
