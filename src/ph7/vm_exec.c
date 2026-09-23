@@ -5247,6 +5247,101 @@ yf_propagate:
  *  function on the stack.
  */
 /*
+ * OP_CALL_INIT * P2 *
+ *  Screen the callee on TOS where it is WRITTEN — before this call's arguments run.
+ *
+ *  php resolves a call's target at INIT_FCALL / INIT_FCALL_BY_NAME / INIT_DYNAMIC_CALL
+ *  and raises there, so `undefinedFn(s(1))`, `$f(s(1))` over a misspelled name and
+ *  `$v(s(1))` over an int all refuse BEFORE `s(1)` runs. PHL only ever looked at the
+ *  callee inside OP_CALL, one instruction after the whole argument list, so every one
+ *  of those programs produced the argument's side effects (or its exception) first and
+ *  php's Error second. The messages were already identical; only the order was not.
+ *
+ *  The verdict is the FIRST-CLASS-CALLABLE creation screen, unchanged and shared: php
+ *  gives `f(...)` the direct call's taxonomy word for word, which makes VmFccValueError
+ *  the one builder for both. The value is left exactly as it is — OP_CALL still does its
+ *  own resolution — so this adds a refusal and changes nothing that succeeds. P2 == 1
+ *  when the compiler namespace-qualified the name, which is the one bit php's
+ *  global-function fallback needs (an unqualified `strlen(...)` inside a namespace).
+ *
+ *  Not emitted for a callee whose OP_MEMBER already screened it, for a first-class
+ *  callable (OP_LOAD_FCC screens it, with nothing running in between), or for a call
+ *  with no arguments at all — there the call IS the first thing that happens.
+ */
+case PH7_OP_CALL_INIT: {
+	if( (pTos->iFlags & (MEMOBJ_AUX_MEMBERCALL|MEMOBJ_AUX_MAGICCALL)) == 0
+	 && !VmValueIsClosure(pVm,pTos) ){
+		const char *zInitCls = 0,*zInitMeth = 0;
+		sxu32 nInitCls = 0,nInitMeth = 0;
+		char zInitMsg[192];
+		const char *zInitBad = 0;
+		SyString sInitName = { 0, 0 };
+		int bInitScoped = 0;
+		if( pTos->iFlags & MEMOBJ_STRING ){
+			SyStringInitFromBuf(&sInitName,SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
+			/* A leading backslash only anchors the name to the global namespace. */
+			if( sInitName.nByte > 0 && sInitName.zString[0] == '\\' ){
+				sInitName.zString++;
+				sInitName.nByte--;
+			}
+			bInitScoped = PH7_VmCallableStringParts(sInitName.zString,sInitName.nByte,
+				&zInitCls,&nInitCls,&zInitMeth,&nInitMeth);
+		}
+		if( bInitScoped ){
+			/* A `"Class::method"` string carries its whole taxonomy in one builder — the
+			 * class, the missing/abstract/inaccessible cases and the catch-all routing —
+			 * and answers 0 when the call WILL run. It is asked unconditionally because
+			 * the predicate below is not the same question: is_callable() accepts a
+			 * non-static method named through a class, which the direct call refuses. */
+			zInitBad = VmCallableClassMethodError(&(*pVm),
+				PH7_VmExtractClass(&(*pVm),zInitCls,nInitCls,FALSE,0),
+				zInitCls,nInitCls,zInitMeth,nInitMeth,TRUE,zInitMsg,sizeof(zInitMsg));
+		}else if( !PH7_VmIsCallable(&(*pVm),pTos,TRUE) ){
+			int bInitOk = 0;
+			if( pInstr->iP2 == 1 && (pTos->iFlags & MEMOBJ_STRING) ){
+				/* php's global fallback for an UNQUALIFIED name written inside a
+				 * namespace: the current namespace first, the global one after. OP_CALL
+				 * retries the same way from its argument map; this only has to agree
+				 * about whether the call WILL resolve, so the shortened name is tested
+				 * and thrown away. */
+				const char *zInitShort = sInitName.zString;
+				sxu32 iInitPos;
+				for( iInitPos = 0 ; iInitPos < sInitName.nByte ; ++iInitPos ){
+					if( sInitName.zString[iInitPos] == '\\' ){
+						zInitShort = &sInitName.zString[iInitPos + 1];
+					}
+				}
+				if( zInitShort != sInitName.zString ){
+					ph7_value sInitShort;
+					PH7_MemObjInit(pVm,&sInitShort);
+					PH7_MemObjStringAppend(&sInitShort,zInitShort,
+						(sxu32)(sInitName.nByte - (sxu32)(zInitShort - sInitName.zString)));
+					bInitOk = PH7_VmIsCallable(&(*pVm),&sInitShort,TRUE);
+					PH7_MemObjRelease(&sInitShort);
+				}
+			}
+			/* The FIRST-CLASS-CALLABLE creation screen's builder, unchanged and shared:
+			 * php gives `f(...)` the direct call's taxonomy word for word. It assumes the
+			 * predicate has already declined — a pair a class answers through __call is
+			 * callable and never arrives here — which is why it sits under that test. */
+			if( !bInitOk ){
+				zInitBad = VmFccValueError(&(*pVm),pTos,zInitMsg,sizeof(zInitMsg));
+			}
+		}
+		if( zInitBad ){
+			sxi32 rcInit;
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			rcInit = VmThrowFromVm(&(*pVm),"Error",zInitBad,(sxu32)SyStrlen(zInitBad));
+			if( rcInit == SXERR_ABORT ){ goto Abort; }
+			rc = rcInit;
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
+	}
+	break;
+}
+/*
  * OP_ROT_CALLEE P1 P2 *
  *  Turn a call's operand region over: [callee][arg0..argN] becomes [arg0..argN][callee],
  *  which is the layout OP_CALL's entire dispatch is written against.

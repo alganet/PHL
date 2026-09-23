@@ -2590,6 +2590,12 @@ enum ph7_vm_op {
                          * iP2 is in THIS array (a `goto` out of a try body) — just drain CROSS
                          * and jump. Emitted for break/continue/goto alike. */
   PH7_OP_UNSET_VAR,     /* unset($name): drop ONE name binding (p3 = name), never the shared slot */
+  PH7_OP_CALL_INIT,     /* Screen a call's callee where it is WRITTEN, before its arguments run:
+                         * php resolves one at INIT_FCALL / INIT_DYNAMIC_CALL and raises the
+                         * direct dispatch's own Error there. Emitted only for a callee the
+                         * following OP_CALL would be the first to look at — a member callee
+                         * was already screened by its OP_MEMBER. iP2 = 1 when the compiler
+                         * namespace-qualified the name, which the global fallback needs. */
   PH7_OP_ROT_CALLEE,    /* Rotate this call's CALLEE — which the codegen pushed BEFORE the
                          * arguments, because php resolves a callee where it is written — up
                          * to the top of the stack, so OP_CALL sees the [args…][callee] layout

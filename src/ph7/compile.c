@@ -1449,6 +1449,23 @@ static sxi32 GenStateEmitExprCode(
 					 * that shape pushes the target alone, so the op leaves one slot,
 					 * which is the same distinction vm_ops_oo.c makes before popping. */
 					&& pInstr->p3 == 0;
+				/* Screen the callee HERE, where php screens it: an undefined function, a
+				 * callable string/array naming nothing, a value that is not callable at
+				 * all. A METHOD callee needs none — its OP_MEMBER just did it, against
+				 * the entry it chose. An FCC needs none either: OP_LOAD_FCC runs the same
+				 * screen, and nothing runs before it. And with NO arguments the call
+				 * itself is already the first thing to happen, so there is nothing to
+				 * order and no reason to pay for a second resolution. */
+				{
+					ph7_expr_node **apCallArg = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
+					sxi32 nCallArg = (sxi32)SySetUsed(&pNode->aNodeArgs);
+					int bNodeFcc = nCallArg == 1 && apCallArg[0]
+						&& (apCallArg[0]->iFlags & EXPR_NODE_FCC);
+					if( nCallArg > 0 && !bTwoSlot && !bNodeFcc ){
+						PH7_VmEmitInstr(pGen->pVm,PH7_OP_CALL_INIT,0,
+							(p3 && ((VmCallArgMap *)p3)->bIsNamespaced) ? 1 : 0,0,0);
+					}
+				}
 				rc = GenStateEmitCallArgs(&(*pGen),pNode,iFlags,&sArgs);
 				if( rc != SXRET_OK ){
 					return rc;

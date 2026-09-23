@@ -5412,6 +5412,7 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_CVT_REAL:   zOp = "CVT_REAL   "; break;
 	case PH7_OP_CALL:       zOp = "CALL       "; break;
 	case PH7_OP_ROT_CALLEE: zOp = "ROT_CALLEE "; break;
+	case PH7_OP_CALL_INIT:  zOp = "CALL_INIT  "; break;
 	case PH7_OP_UMINUS:     zOp = "UMINUS     "; break;
 	case PH7_OP_UPLUS:      zOp = "UPLUS      "; break;
 	case PH7_OP_BITNOT:     zOp = "BITNOT     "; break;
