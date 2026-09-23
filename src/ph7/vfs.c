@@ -875,9 +875,22 @@ static int PH7_vfs_disk_free_space(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Point to the desired directory */
 	zPath = ph7_value_to_string(apArg[0],0);
 	/* Perform the requested operation */
+	errno = 0;
 	iSize = pVfs->xFreeSpace(zPath);
-	/* IO return value */
-	ph7_result_int64(pCtx,iSize);
+	if( iSize < 0 ){
+		/* php answers FALSE and warns with the C library's own reason
+		 * (`disk_free_space(): No such file or directory`). PHL answered int(-1) --
+		 * truthy, and a plausible-looking byte count for a caller that only tests
+		 * `if ($free)` or compares it against a threshold. */
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s",
+			ph7_function_name(pCtx),VfsStrerror(errno));
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* php's return type is FLOAT, not int: the value can exceed what an int holds
+	 * on a large volume, and a `===`/gettype()/json_encode() reader sees the
+	 * difference on every volume. */
+	ph7_result_double(pCtx,(double)iSize);
 	return PH7_OK;
 }
 /*
@@ -913,9 +926,22 @@ static int PH7_vfs_disk_total_space(ph7_context *pCtx,int nArg,ph7_value **apArg
 	/* Point to the desired directory */
 	zPath = ph7_value_to_string(apArg[0],0);
 	/* Perform the requested operation */
+	errno = 0;
 	iSize = pVfs->xTotalSpace(zPath);
-	/* IO return value */
-	ph7_result_int64(pCtx,iSize);
+	if( iSize < 0 ){
+		/* php answers FALSE and warns with the C library's own reason
+		 * (`disk_free_space(): No such file or directory`). PHL answered int(-1) --
+		 * truthy, and a plausible-looking byte count for a caller that only tests
+		 * `if ($free)` or compares it against a threshold. */
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s",
+			ph7_function_name(pCtx),VfsStrerror(errno));
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* php's return type is FLOAT, not int: the value can exceed what an int holds
+	 * on a large volume, and a `===`/gettype()/json_encode() reader sees the
+	 * difference on every volume. */
+	ph7_result_double(pCtx,(double)iSize);
 	return PH7_OK;
 }
 /*

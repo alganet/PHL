@@ -295,60 +295,64 @@ static int WinVfs_chmod(const char *zPath,int mode)
 static ph7_int64 WinVfs_DiskFreeSpace(const char *zPath)
 {
 #ifdef _WIN32_WCE
-	/* GetDiskFreeSpace is not supported under WINCE */
+	/* GetDiskFreeSpaceEx is not supported under WINCE */
 	SXUNUSED(zPath);
-	return 0;
+	return -1;
 #else
-	DWORD dwSectPerClust,dwBytesPerSect,dwFreeClusters,dwTotalClusters;
+	/* php's own call (win32/ioutil + php_disk_free_space): GetDiskFreeSpaceExW on
+	 * the DIRECTORY it was given, failing when that directory does not exist.
+	 * PH7 called the older GetDiskFreeSpaceW, which only accepts a volume ROOT, so
+	 * it first truncated the path at its first separator: every subpath answered
+	 * for the drive rather than for the volume actually mounted there, and a path
+	 * that does not exist at all answered the drive's numbers instead of failing.
+	 * The failure value is -1, the convention the unix VFS already uses and the
+	 * one disk_free_space() reads as php's FALSE. */
+	ULARGE_INTEGER uFreeToCaller,uTotal,uTotalFree;
 	void * pConverted;
-	WCHAR *p;
 	BOOL rc;
-	pConverted = convertUtf8Filename(zPath);
+	pConverted = convertUtf8Filename(WinVfsLocalPath(zPath));
 	if( pConverted == 0 ){
-		return 0;
+		return -1;
 	}
-	p = (WCHAR *)pConverted;
-	for(;*p;p++){
-		if( *p == '\\' || *p == '/'){
-			*p = '\0';
-			break;
-		}
-	}
-	rc = GetDiskFreeSpaceW((LPCWSTR)pConverted,&dwSectPerClust,&dwBytesPerSect,&dwFreeClusters,&dwTotalClusters);
+	rc = GetDiskFreeSpaceExW((LPCWSTR)pConverted,&uFreeToCaller,&uTotal,&uTotalFree);
+	if( !rc ){ WinVfsMapErrno(); }
+	HeapFree(GetProcessHeap(),0,pConverted);
 	if( !rc ){
-		return 0;
+		return -1;
 	}
-	return (ph7_int64)dwFreeClusters * dwSectPerClust * dwBytesPerSect;
+	return (ph7_int64)uFreeToCaller.QuadPart;
 #endif
 }
 /* ph7_int64 (*xTotalSpace)(const char *) */
 static ph7_int64 WinVfs_DiskTotalSpace(const char *zPath)
 {
 #ifdef _WIN32_WCE
-	/* GetDiskFreeSpace is not supported under WINCE */
+	/* GetDiskFreeSpaceEx is not supported under WINCE */
 	SXUNUSED(zPath);
-	return 0;
+	return -1;
 #else
-	DWORD dwSectPerClust,dwBytesPerSect,dwFreeClusters,dwTotalClusters;
+	/* php's own call (win32/ioutil + php_disk_free_space): GetDiskFreeSpaceExW on
+	 * the DIRECTORY it was given, failing when that directory does not exist.
+	 * PH7 called the older GetDiskFreeSpaceW, which only accepts a volume ROOT, so
+	 * it first truncated the path at its first separator: every subpath answered
+	 * for the drive rather than for the volume actually mounted there, and a path
+	 * that does not exist at all answered the drive's numbers instead of failing.
+	 * The failure value is -1, the convention the unix VFS already uses and the
+	 * one disk_free_space() reads as php's FALSE. */
+	ULARGE_INTEGER uFreeToCaller,uTotal,uTotalFree;
 	void * pConverted;
-	WCHAR *p;
 	BOOL rc;
-	pConverted = convertUtf8Filename(zPath);
+	pConverted = convertUtf8Filename(WinVfsLocalPath(zPath));
 	if( pConverted == 0 ){
-		return 0;
+		return -1;
 	}
-	p = (WCHAR *)pConverted;
-	for(;*p;p++){
-		if( *p == '\\' || *p == '/'){
-			*p = '\0';
-			break;
-		}
-	}
-	rc = GetDiskFreeSpaceW((LPCWSTR)pConverted,&dwSectPerClust,&dwBytesPerSect,&dwFreeClusters,&dwTotalClusters);
+	rc = GetDiskFreeSpaceExW((LPCWSTR)pConverted,&uFreeToCaller,&uTotal,&uTotalFree);
+	if( !rc ){ WinVfsMapErrno(); }
+	HeapFree(GetProcessHeap(),0,pConverted);
 	if( !rc ){
-		return 0;
+		return -1;
 	}
-	return (ph7_int64)dwTotalClusters * dwSectPerClust * dwBytesPerSect;
+	return (ph7_int64)uTotal.QuadPart;
 #endif
 }
 /* int (*xFileExists)(const char *) */
