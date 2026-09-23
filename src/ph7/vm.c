@@ -3485,7 +3485,7 @@ PH7_PRIVATE ph7_value * VmExtractMemObj(
 				/* Local variable */
 				sLocal.nIdx = nIdx;
 				SySetPut(&pFrame->sLocal,(const void *)&sLocal);
-			}else{
+			}else if( !PH7_VmVarNameIsInternal(pName->zString,pName->nByte) ){
 				/* Register in the $GLOBALS array */
 				VmHashmapRefInsert(pVm->pGlobal,pName->zString,pName->nByte,nIdx);
 			}
@@ -6252,6 +6252,20 @@ PH7_PRIVATE void VmDropFrameRefEntry(ph7_vm *pVm,sxu32 nIdx,SyHashEntry *pEntry)
  * it aliases did not count as referenced (no `&` in var_dump, and an array COPY quietly
  * stopped sharing it) and nothing kept its value alive when the array let go.
  */
+/*
+ * Is this the name of an ENGINE temporary rather than a variable the program wrote?
+ *
+ * The compiler parks a step's value in a synthetic local when a construct's target
+ * cannot be installed by name — foreach's list()/[...] destructuring and its
+ * non-name `as` targets. php has no such variable at all (its temporaries live in
+ * compiled slots), so these must not surface as locals: they were showing up in
+ * get_defined_vars() and, at file scope, in $GLOBALS. The bracketed spelling is
+ * what makes the name unwritable in source, so it is also what identifies it here.
+ */
+PH7_PRIVATE int PH7_VmVarNameIsInternal(const char *zName,sxu32 nByte)
+{
+	return nByte > 0 && zName[0] == '[';
+}
 PH7_PRIVATE void PH7_VmBindVarSlot(ph7_vm *pVm,VmFrame *pFrame,const char *zName,sxu32 nByte,
 	sxu32 nIdx)
 {
@@ -6263,7 +6277,7 @@ PH7_PRIVATE void PH7_VmBindVarSlot(ph7_vm *pVm,VmFrame *pFrame,const char *zName
 	if( SXRET_OK != SyHashInsert(&pFrame->hVar,(const void *)zName,nByte,SX_INT_TO_PTR(nIdx)) ){
 		return;
 	}
-	if( pFrame->pParent == 0 ){
+	if( pFrame->pParent == 0 && !PH7_VmVarNameIsInternal(zName,nByte) ){
 		/* A global is also an entry of the $GLOBALS view */
 		VmHashmapRefInsert(pVm->pGlobal,zName,nByte,nIdx);
 	}

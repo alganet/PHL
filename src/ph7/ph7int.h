@@ -3505,6 +3505,7 @@ PH7_PRIVATE void PH7_VmRebindVarSlot(ph7_vm *pVm,VmFrame *pFrame,SyHashEntry *pE
 	const char *zName,sxu32 nByte,sxu32 nIdx);
 PH7_PRIVATE void PH7_VmBindVarSlot(ph7_vm *pVm,VmFrame *pFrame,const char *zName,sxu32 nByte,
 	sxu32 nIdx);
+PH7_PRIVATE int PH7_VmVarNameIsInternal(const char *zName,sxu32 nByte);
 /* vm_builtin_var.c function prototypes (rows stay in vm.c's aVmFunc[]) */
 PH7_PRIVATE sxi32 VmUnsetVarByName(ph7_vm *pVm,VmFrame *pFrame,const char *zName,sxu32 nByte);
 PH7_PRIVATE sxi32 VmUnsetVarByNameEx(ph7_vm *pVm,VmFrame *pFrame,const char *zName,sxu32 nByte,int bNameGuard);

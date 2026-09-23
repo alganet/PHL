@@ -1241,21 +1241,146 @@ static int GenStateKeywordIsName(SyToken *pStart,SyToken *pCur)
 			&& SyMemcmp(pPrev->sData.zString,"?->",sizeof("?->")-1) == 0);
 }
 /* Expression tree validator callback used by the 'foreach' statement.
- * Note that only variable expression [i.e: $x; ${'My'.'Var'}; ${$a['key]};...]
- * are allowed.
+ *
+ * php's `as` target is any WRITABLE expression, not just a variable: a property
+ * ($o->p), a static property (C::$s), an array element ($a['k']) and an append
+ * ($a[]) are all accepted, on the key side as much as on the value side. The
+ * three shapes php rejects get php's own wording; everything else keeps PH7's.
  */
 static sxi32 GenStateForEachNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRoot)
 {
 	sxi32 rc = SXRET_OK; /* Assume a valid expression tree */
-	if( pRoot->xCode != PH7_CompileVariable ){
-		/* Unexpected expression */
-		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pRoot->pStart? pRoot->pStart->nLine : 0,
-			"foreach: Expecting a variable name");
-		if( rc != SXERR_ABORT ){
-			rc = SXERR_INVALID;
+	const char *zMsg = 0;
+	if( pRoot->pOp ){
+		switch( pRoot->pOp->iOp ){
+		case EXPR_OP_ARROW:     /* $o->p */
+		case EXPR_OP_DC:        /* C::$s */
+		case EXPR_OP_SUBSCRIPT: /* $a['k'], $a[] */
+			return SXRET_OK;
+		case EXPR_OP_NULLSAFE_ARROW:
+			zMsg = "Can't use nullsafe operator in write context";
+			break;
+		case EXPR_OP_FUNC_CALL:
+			zMsg = "Can't use function return value in write context";
+			break;
+		default:
+			break;
 		}
+	}else if( pRoot->xCode == PH7_CompileVariable ){
+		return SXRET_OK;
+	}
+	/* Unexpected expression */
+	rc = PH7_GenCompileError(&(*pGen),E_ERROR,pRoot->pStart? pRoot->pStart->nLine : 0,
+		zMsg ? zMsg : "foreach: Expecting a variable name");
+	if( rc != SXERR_ABORT ){
+		rc = SXERR_INVALID;
 	}
 	return rc;
+}
+/*
+ * Is this `as` target the plain `$name` shape?
+ *
+ * Only that shape can be installed by NAME the way ph7_foreach_info records it
+ * (the step writes straight into the frame's symbol table). Every other writable
+ * target — including a variable-variable, whose name php re-evaluates per step —
+ * goes through a synthetic temporary plus a real store (GenStateForeachStoreTarget).
+ */
+static int GenStateForeachTargetIsPlainVar(SyToken *pStart,SyToken *pEnd)
+{
+	return (pEnd == &pStart[2])
+		&& (pStart[0].nType & PH7_TK_DOLLAR)
+		&& (pStart[1].nType & PH7_TK_ID);
+}
+/*
+ * Reserve the synthetic temporary a complex `as` target's step value lands in.
+ * The bracketed name cannot collide with a user variable — the same trick the
+ * list()/[...] destructuring path uses.
+ */
+static sxi32 GenStateForeachTempName(ph7_gen_state *pGen,const char *zTag,SyString *pOut)
+{
+	static int iForeachTargetCnt = 0;
+	char zTmp[128];
+	sxu32 nLen;
+	char *zDup;
+	nLen = (sxu32)SyBufferFormat(zTmp,sizeof(zTmp),"[__foreach_%s_%d__]",zTag,iForeachTargetCnt++);
+	zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,zTmp,nLen);
+	if( zDup == 0 ){
+		return SXERR_ABORT;
+	}
+	SyStringInitFromBuf(pOut,zDup,nLen);
+	return SXRET_OK;
+}
+/*
+ * Emit `<target> = <temp>` (or `<target> =& <temp>` for a by-reference value) for
+ * one complex `as` target, at the top of the loop body — where php performs the
+ * assignment, once per step.
+ *
+ * The store is folded exactly as the assignment operator's own codegen folds it
+ * (compile.c, precedence-18 site): a member LHS keeps its OP_MEMBER, a subscript
+ * becomes STORE_IDX, and a plain name folds into the STORE's p3.
+ */
+static sxi32 GenStateForeachStoreTarget(
+	ph7_gen_state *pGen,
+	SyString *pTemp,   /* Synthetic variable holding this step's value/key */
+	SyToken *pStart,   /* Target expression token range */
+	SyToken *pEnd,
+	int bRef           /* True for a by-reference value target */
+	)
+{
+	SyToken *pSavedIn = pGen->pIn;
+	SyToken *pSavedEnd = pGen->pEnd;
+	sxi32 iVmOp = bRef ? PH7_OP_STORE_REF : PH7_OP_STORE;
+	VmInstr *pInstr;
+	sxi32 iP1 = 0;
+	sxi32 iP2 = 0;
+	void *p3 = 0;
+	sxi32 rc;
+	/* The value being stored, below the target — the operand order OP_STORE expects. */
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD,0,0,(void *)SyStringData(pTemp),0);
+	pGen->pIn = pStart;
+	pGen->pEnd = pEnd;
+	rc = PH7_CompileExpr(&(*pGen),EXPR_FLAG_LOAD_IDX_STORE|EXPR_FLAG_MEMBER_WRITE,
+		GenStateForEachNodeValidator);
+	pGen->pIn = pSavedIn;
+	pGen->pEnd = pSavedEnd;
+	if( rc == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}else if( rc != SXRET_OK ){
+		/* The validator already reported it; drop the pushed value and carry on. */
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
+		return SXRET_OK;
+	}
+	pInstr = PH7_VmPeekInstr(pGen->pVm);
+	if( pInstr && pInstr->iOp == PH7_OP_MEMBER ){
+		/* A member target resolves (and, for a reference, stashes) its own slot. */
+		if( bRef ){
+			pInstr->iP2 = PH7_MEMBER_REF_TARGET;
+		}
+		iP2 = 1;
+	}else if( pInstr ){
+		(void)PH7_VmPopInstr(pGen->pVm);
+		if( pInstr->iOp == PH7_OP_LOAD_IDX ){
+			iVmOp = bRef ? PH7_OP_STORE_IDX_REF : PH7_OP_STORE_IDX;
+			iP1 = pInstr->iP1;
+			if( bRef ){
+				iP2 = pInstr->iP2;
+				p3 = pInstr->p3;
+			}
+		}else{
+			p3 = pInstr->p3;
+		}
+	}
+	PH7_VmEmitInstr(pGen->pVm,iVmOp,iP1,iP2,p3,0);
+	/* Discard the stored value the store leaves behind */
+	PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
+	if( bRef ){
+		/* The target now holds the element; drop the temporary's own hold, or it
+		 * would keep the element a REFERENCE for the rest of the script — an extra
+		 * holder no `unset()` the program can write is able to reach. Dropping the
+		 * NAME never releases the slot the target still refers to. */
+		PH7_VmEmitInstr(pGen->pVm,PH7_OP_UNSET_VAR,0,0,(void *)pTemp,0);
+	}
+	return SXRET_OK;
 }
 /*
  * Compile the 'foreach' statement.
@@ -1287,6 +1412,11 @@ PH7_PRIVATE sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 {
 	SyToken *pCur,*pTmp,*pEnd = 0;
 	SyToken *pListStart = 0,*pListEnd = 0;
+	/* Token ranges of a KEY / VALUE target that is not a plain `$name`: it is
+	 * compiled as a real store at the top of the loop body (php assigns the value
+	 * first, then the key), against a synthetic temporary the step writes. */
+	SyToken *pKeyStart = 0,*pKeyEnd = 0;
+	SyToken *pValStart = 0,*pValEnd = 0;
 	GenBlock *pForeachBlock = 0;
 	ph7_foreach_info *pInfo;
 	sxu32 nFalseJump;
@@ -1398,6 +1528,16 @@ PH7_PRIVATE sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 				/* Don't worry about freeing memory, everything will be released shortly */
 				return SXERR_ABORT;
 			}
+		}else if( !GenStateForeachTargetIsPlainVar(pGen->pIn,pCur) ){
+			/* A writable but non-name key target ($o->k, C::$s, $a['k'], $$n): the
+			 * step lands in a temporary and the store runs in the loop body. */
+			pKeyStart = pGen->pIn;
+			pKeyEnd = pCur;
+			if( GenStateForeachTempName(&(*pGen),"key",&pInfo->sKey) != SXRET_OK ){
+				PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Fatal, PH7 engine is running out of memory");
+				return SXERR_ABORT;
+			}
+			pInfo->iFlags |= PH7_4EACH_STEP_KEY;
 		}else{
 			pGen->pEnd = pCur;
 			rc = PH7_CompileExpr(&(*pGen),0,GenStateForEachNodeValidator);
@@ -1501,6 +1641,14 @@ PH7_PRIVATE sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 		pGen->pIn = &pListEnd[1]; /* Past ']' */
 		pListEnd = pGen->pIn;
 		pInfo->iFlags |= PH7_4EACH_STEP_LIST;
+	}else if( !GenStateForeachTargetIsPlainVar(pGen->pIn,pEnd) ){
+		/* A writable but non-name value target — same treatment as the key above. */
+		pValStart = pGen->pIn;
+		pValEnd = pEnd;
+		if( GenStateForeachTempName(&(*pGen),"val",&pInfo->sValue) != SXRET_OK ){
+			PH7_GenCompileError(&(*pGen),E_ERROR,nLine,"Fatal, PH7 engine is running out of memory");
+			return SXERR_ABORT;
+		}
 	}else{
 		/* Compile the expression holding the value name */
 		rc = PH7_CompileExpr(&(*pGen),0,GenStateForEachNodeValidator);
@@ -1551,6 +1699,22 @@ PH7_PRIVATE sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 		}
 		/* Pop the list result (LOAD_LIST leaves the assigned values on stack) */
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
+	}
+	/* Store this step's value and key into their non-name targets. php performs the
+	 * VALUE assignment first — visible through a __set() pair, and the order the
+	 * symbol table records the two locals in for the plain-name shape. */
+	if( pValStart ){
+		rc = GenStateForeachStoreTarget(&(*pGen),&pInfo->sValue,pValStart,pValEnd,
+			(pInfo->iFlags & PH7_4EACH_STEP_REF) != 0);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+	}
+	if( pKeyStart ){
+		rc = GenStateForeachStoreTarget(&(*pGen),&pInfo->sKey,pKeyStart,pKeyEnd,0);
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
 	}
 	/* Compile the loop body */
 	pGen->pIn = &pEnd[1];

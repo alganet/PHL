@@ -262,6 +262,11 @@ static sxi32 VmHashVarWalker(SyHashEntry *pEntry,void *pUserData)
 	 && SyMemcmp(pEntry->pKey,"this",sizeof("this")-1) == 0 ){
 		return SXRET_OK;
 	}
+	/* Engine temporaries (a foreach destructuring/target slot) are not variables the
+	 * program declared — php compiles those into slots with no name at all. */
+	if( PH7_VmVarNameIsInternal((const char *)pEntry->pKey,pEntry->nKeyLen) ){
+		return SXRET_OK;
+	}
 	/* Extract the memory object */
 	nIdx = SX_PTR_TO_INT(pEntry->pUserData);
 	pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
