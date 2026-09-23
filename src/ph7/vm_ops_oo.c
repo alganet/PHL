@@ -1068,6 +1068,17 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								PH7_VmCreateDynamicAttr(&(*pVm),pThis,sName.zString,sName.nByte,&pObjAttr);
 							}
 						}
+						if( pObjAttr && VmMemberNextIsRmw(pNext) ){
+							/* A read-modify-write READS the property before it writes it,
+							 * so php warns that the name it just created was undefined and
+							 * then goes on with null — `$o->hits++` on a fresh object is
+							 * `Undefined property: C::$hits` and then int(1). PHL created
+							 * the slot in silence. Only the read-modify-write forms:
+							 * a subscript-write base (`$o->arr[] = 1`) and a `??=` read
+							 * nothing, and php says nothing for either. */
+							VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Undefined property: %z::$%z",
+								&pClass->sName,&sName);
+						}
 					}
 				}
 				if( pObjAttr == 0 && pInstr->iP2 == PH7_MEMBER_DEFPATH && pNos->nIdx != SXU32_HIGH ){

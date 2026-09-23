@@ -602,7 +602,9 @@ static sxi32 VmReDriveStep(ph7_vm *pVm,sxi32 iOp,sxu32 iP2,ph7_value *pBase,ph7_
  * slot, return the property value's slot index in *pnOut so the by-ref binder can alias it.
  * A present property binds directly; a missing one is created (recreate a declared+unset
  * property, or a dynamic property on a dynamic-allowing class); a magic __get/__set property
- * emits php's Notice and does NOT bind (*pbNoBind). Mirrors VmExecOpMember's write-create.
+ * emits php's Notice and does NOT bind (*pbNoBind), handing __get's value back through
+ * pValOut (optional) for the by-VALUE pass php makes instead. Mirrors VmExecOpMember's
+ * write-create.
  */
 static sxi32 VmBindPropByRef(ph7_vm *pVm,sxu32 nObjIdx,const SyString *pName,sxu32 *pnOut,int *pbNoBind,ph7_value *pValOut)
 {
