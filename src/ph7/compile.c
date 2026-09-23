@@ -953,6 +953,23 @@ PH7_PRIVATE sxi32 GenStateWriteTargetCheck(ph7_gen_state *pGen,ph7_expr_node *pT
 	return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_INVALID;
 }
 /*
+ * What emitting a call's ARGUMENT LIST decided, handed back to the CALL codegen.
+ * The arguments are emitted from their own routine because php evaluates them
+ * AFTER the callee has been resolved, so this runs between the callee's emission
+ * and the OP_CALL — see GenStateEmitCallArgs.
+ */
+typedef struct GenCallArgs GenCallArgs;
+struct GenCallArgs {
+	sxi32 iP1;      /* OP_CALL.iP1: the compile-time argument count */
+	sxu32 iP2;      /* OP_CALL.iP2: 1 if any argument unpacks (`...$a`) */
+	void *p3;       /* OP_CALL.p3: the VmCallArgMap, which may ALREADY carry the callee's
+	                 * namespace qualification — the callee is emitted first now */
+	int bFcc;       /* First-class callable `f(...)`: no arguments, OP_LOAD_FCC follows */
+	int bAnySpread; /* Any `...` argument (iP2 says the same; kept for the shape masks) */
+};
+static sxi32 GenStateEmitCallArgs(ph7_gen_state *pGen,ph7_expr_node *pNode,sxi32 iFlags,
+	GenCallArgs *pArgs);
+/*
  * Generate bytecode for a given expression tree.
  * If something goes wrong while generating bytecode
  * for the expression tree (A very unlikely scenario)
@@ -975,6 +992,10 @@ static sxi32 GenStateEmitExprCode(
 	int bIsChainOp = 0; /* Set below once we know pNode->pOp */
 	int bFcc = 0;       /* First-class callable `f(...)`: emit OP_LOAD_FCC, not OP_CALL */
 	sxu32 nRhsNsBase = 0;
+	/* Consumed here so it describes THIS node only — the direct operand of a `new` —
+	 * and never travels down into the operand's own sub-expressions. */
+	int bNewCallee = (iFlags & EXPR_FLAG_NEW_CALLEE) != 0;
+	iFlags &= ~EXPR_FLAG_NEW_CALLEE;
 	if( pNode->xCode ){
 		SyToken *pTmpIn,*pTmpEnd;
 		/* Compile node */
@@ -1169,282 +1190,26 @@ static sxi32 GenStateEmitExprCode(
 	/* Generate code for the left tree */
 	if( pNode->pLeft ){
 		sxu32 nLhsNsBase = SySetUsed(&pGen->aNullsafeJmp);
-		if( iVmOp == PH7_OP_CALL ){
-			ph7_expr_node **apNode;
-			int hasSpread = 0;
-			int hasNamed = 0;
-			int bAnySpread = 0;
-			sxu32 byRefMask = 0;
-			sxi32 nArgs;
-			sxi32 n;
-			/* Recurse and generate bytecodes for function arguments */
-			apNode = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
-			nArgs = (sxi32)SySetUsed(&pNode->aNodeArgs);
-			/* First-class callable `f(...)`: the sole argument is the lone-ellipsis marker.
-			 * Emit no arguments; the callee (pNode->pLeft) is still compiled below, then we
-			 * emit OP_LOAD_FCC instead of OP_CALL to wrap it in a Closure. */
-			if( nArgs == 1 && apNode[0] && (apNode[0]->iFlags & EXPR_NODE_FCC) ){
-				bFcc = 1;
-				nArgs = 0;
+		GenCallArgs sArgs;
+		int bArgsEmitted = 0;
+		SyZero(&sArgs,sizeof(sArgs));
+		if( iVmOp == PH7_OP_CALL && bNewCallee ){
+			/* `new C($a)` is ONE instruction: the NEW branch below builds it by popping
+			 * the trailing OP_CALL this node emits and re-reading the class-name literal
+			 * sitting behind it, so the constructor arguments keep the pre-reorder
+			 * position. The `new` half of php's resolve-the-callee-first rule is its own
+			 * piece of work: a class name is only PUSHED here, and the
+			 * not-found / abstract / interface / private-constructor refusals all happen
+			 * inside OP_NEW, so moving the literal alone would change nothing. */
+			rc = GenStateEmitCallArgs(&(*pGen),pNode,iFlags,&sArgs);
+			if( rc != SXRET_OK ){
+				return rc;
 			}
-			/* Validate argument order like php: no positional argument after a
-			 * named one OR after unpacking, and `name: ...$x` is a parse error. */
-			{
-				int seenNamed = 0;
-				int seenSpread = 0;
-				for( n = 0; n < nArgs; ++n ){
-					if( apNode[n]->iFlags & EXPR_NODE_SPREAD ){
-						bAnySpread = 1;
-						seenSpread = 1;
-						if( apNode[n]->iFlags & EXPR_NODE_NAMED_ARG ){
-							rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[n]->pStart->nLine,
-								"syntax error, unexpected token \"...\"");
-							return SXERR_SYNTAX;
-						}
-					}else if( apNode[n]->iFlags & EXPR_NODE_NAMED_ARG ){
-						seenNamed = 1;
-						hasNamed = 1;
-					}else if( seenNamed ){
-						rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[n]->pStart->nLine,
-							"Cannot use positional argument after named argument");
-						return SXERR_SYNTAX;
-					}else if( seenSpread ){
-						rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[n]->pStart->nLine,
-							"Cannot use positional argument after argument unpacking");
-						return SXERR_SYNTAX;
-					}
-				}
-			}
-			/* Read-only load */
-			iFlags |= EXPR_FLAG_RDONLY_LOAD;
-			/* Route subscript-argument LOAD_IDX through a special iP2 code
-			 * for the language constructs `isset` and `empty` so ArrayAccess
-			 * objects dispatch to the right method (offsetExists for both;
-			 * empty also needs offsetGet to evaluate emptiness on hits). */
-			if( pNode->pLeft && pNode->pLeft->pStart ){
-				SyString *pCallName = &pNode->pLeft->pStart->sData;
-				int bIsset = pCallName->nByte == 5
-					&& SyStrnicmp(pCallName->zString,"isset",5) == 0;
-				int bEmpty = pCallName->nByte == 5
-					&& SyStrnicmp(pCallName->zString,"empty",5) == 0;
-				/* isset()/empty() are language CONSTRUCTS, not functions: php parses
-				 * their argument list in the grammar and a missing operand is a parse
-				 * error on the ')'. They compile through this ordinary call loop, which
-				 * never checked arity, so `empty()` quietly evaluated to true and
-				 * `isset()` to false. (empty() also takes exactly one operand in php,
-				 * unlike isset(), which is variadic.) */
-				if( (bIsset || bEmpty) && nArgs < 1 ){
-					/* php names the ')' itself as the unexpected token, so point at the
-					 * node's last token rather than pGen->pIn (which has already moved
-					 * past the call to the statement's ';'). */
-					SyToken *pTok = pNode->pEnd;
-					if( pTok && pTok > pNode->pStart && (pTok->nType & PH7_TK_RPAREN) == 0 ){
-						pTok--;
-					}
-					PH7_GenSyntaxError(&(*pGen),pTok,0);
-					return SXERR_ABORT;
-				}
-				if( bIsset ){
-					iFlags |= EXPR_FLAG_LOAD_IDX_ISSET;
-				}else if( bEmpty ){
-					iFlags |= EXPR_FLAG_LOAD_IDX_EMPTY;
-				}
-				/* Auto-vivify by-reference out-params of known builtins so an
-				 * undefined variable argument (e.g. preg_match($p,$s,$m) with
-				 * $m never assigned) gets a real memobj slot for the builtin to
-				 * write back through. Skipped when spread/named args are present:
-				 * the compile-time positional index no longer maps to the
-				 * runtime apArg[] slot (and spread elements can't be by-ref). */
-				if( !bAnySpread && !hasNamed ){
-					SyString sBuiltin;
-					GenStateCallBuiltinName(pNode->pLeft, &sBuiltin);
-					byRefMask = GenStateByRefBuiltinMask(&sBuiltin);
-				}
-			}
-			for( n = 0 ; n < nArgs ; ++n ){
-				sxu32 nArgNsBase = SySetUsed(&pGen->aNullsafeJmp);
-				sxi32 iArgFlags = iFlags & ~(EXPR_FLAG_LOAD_IDX_STORE|EXPR_FLAG_MEMBER_WRITE);
-				/* For a by-ref argument position, drop the read-only flag so the
-				 * variable is created if absent (PH7_OP_LOAD iP1=0 => bCreate), and
-				 * set write-context so a subscript target (preg_match($p,$s,$a['k']))
-				 * auto-vivifies its element and exposes a writable memobj slot for the
-				 * builtin to write back through. A plain $var target is unaffected
-				 * (iP1=0 either way). */
-				if( n < 31 && (byRefMask & (1u<<n)) ){
-					iArgFlags &= ~EXPR_FLAG_RDONLY_LOAD;
-					iArgFlags |= EXPR_FLAG_LOAD_IDX_STORE;
-				}
-				/* D1: a plain `$var` argument may bind to a by-ref parameter whose signature
-				 * is unknown at compile time (forward reference, dynamic call, or method
-				 * dispatch — e.g. PHPUnit's `willReturnReference($undef)`). We used to clear
-				 * the read-only flag here so an undefined variable vivified a real slot the
-				 * by-ref write-back could reach — but that also invented the variable as NULL
-				 * in the caller when the parameter turned out by-VALUE, and suppressed php's
-				 * `Undefined variable $x` warning. Instead mark it DEFERRED: OP_LOAD leaves an
-				 * undefined variable uncreated and carries a lazy-lvalue marker, and OP_CALL
-				 * materializes it ONLY for a by-ref parameter once the callee is resolved
-				 * (VmResolveDeferredArgs). Excludes isset()/empty()/unset(), which compile
-				 * through this same call loop but must NEVER create their operand, and
-				 * named/spread args (positional-index and by-ref semantics don't apply).
-				 *
-				 * D1 commit 2: the same reasoning extends to an array-element ($a["k"]) or
-				 * property ($o->p) argument — a by-ref user-function parameter must vivify the
-				 * element/property, a by-value one must warn and NOT vivify. Those nodes carry a
-				 * subscript/arrow operator (pOp != 0). The DEFER flag rides down to the base LOAD
-				 * (undefined base auto-defers via commit 1) and to the LOAD_IDX/MEMBER, which
-				 * record the lvalue path on a lookup miss. Static `::` and nullsafe `?->` stay
-				 * eager. */
-				if( (iFlags & (EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_EMPTY|EXPR_FLAG_LOAD_IDX_UNSET
-				               |EXPR_FLAG_MEMBER_COALESCE)) == 0
-				 && (iArgFlags & EXPR_FLAG_RDONLY_LOAD) /* not a known builtin by-ref slot (kept eager above) */
-				 && (apNode[n]->iFlags & (EXPR_NODE_NAMED_ARG|EXPR_NODE_SPREAD)) == 0
-				 && ( (apNode[n]->pOp == 0 && apNode[n]->xCode == PH7_CompileVariable)
-				   || (apNode[n]->pOp != 0 && (apNode[n]->pOp->iOp == EXPR_OP_SUBSCRIPT
-				                            || apNode[n]->pOp->iOp == EXPR_OP_ARROW)) ) ){
-					iArgFlags |= EXPR_FLAG_DEFER_ARG;
-				}
-				rc = GenStateEmitExprCode(&(*pGen),apNode[n],iArgFlags);
-				if( rc != SXRET_OK ){
-					return rc;
-				}
-				/* Each argument is an independent nullsafe scope. */
-				GenStatePatchNullsafeJumps(pGen, nArgNsBase);
-				if( apNode[n]->iFlags & EXPR_NODE_SPREAD ){
-					/* Emit spread opcode to unpack this array argument. iP1 marks a
-					 * source php will unpack BY REFERENCE: only a plain `$var` (php
-					 * fetches every other shape — `$a[0]`, `$o->p`, `C::$s`, a cast, a
-					 * call — as an R-value, so a by-ref parameter binds its elements in
-					 * a temporary and the write-back is invisible). The expander needs
-					 * the distinction because it carries each element's slot for the
-					 * by-ref binder; without it `r(...$a[0])` wrote through to the real
-					 * element, which php leaves alone. */
-					PH7_VmEmitInstr(pGen->pVm, PH7_OP_SPREAD,
-						(apNode[n]->pOp == 0 && apNode[n]->xCode == PH7_CompileVariable) ? 1 : 0,
-						0, 0, 0);
-					hasSpread = 1;
-				}
-			}
-			/* Total number of given arguments */
-			iP1 = nArgs;
-			iP2 = hasSpread;
-			/* Build VmCallArgMap if named arguments are present.
-			 * Deep-copy name strings so they survive token stream cleanup. */
-			if( hasNamed ){
-				sxu32 nStrBytes = 0;
-				char *zBuf;
-				for( n = 0; n < nArgs; ++n ){
-					if( apNode[n]->iFlags & EXPR_NODE_NAMED_ARG ){
-						nStrBytes += (sxu32)apNode[n]->sArgName.nByte;
-					}
-				}
-				{
-				sxu32 mapSize = sizeof(VmCallArgMap) + nArgs * sizeof(SyString) + nStrBytes;
-				VmCallArgMap *pMap = (VmCallArgMap *)SyMemBackendAlloc(
-					&pGen->pVm->sAllocator, mapSize);
-				if( pMap ){
-					SyZero(pMap, mapSize);
-					pMap->bHasNamed = 1;
-					pMap->nTotal = (sxu32)nArgs;
-					pMap->aNames = (SyString *)&pMap[1];
-					zBuf = (char *)&pMap->aNames[nArgs]; /* string storage after SyString array */
-					for( n = 0; n < nArgs; ++n ){
-						if( apNode[n]->iFlags & EXPR_NODE_NAMED_ARG ){
-							sxu32 nb = (sxu32)apNode[n]->sArgName.nByte;
-							SyMemcpy(apNode[n]->sArgName.zString, zBuf, nb);
-							SyStringInitFromBuf(&pMap->aNames[n], zBuf, nb);
-							zBuf += nb;
-						}
-						/* else: aNames[n] remains {NULL, 0} for positional */
-					}
-					p3 = (void *)pMap;
-				}
-				}
-			}
-			/* assert(): php's compiler keeps a copy of the assertion's AST and a
-			 * failing assert reports its rendered SOURCE (`assert(1 == 2)`), not the
-			 * evaluated value. Render the first argument's token span
-			 * into the call map so vm_builtin_assert can echo it. Only a DIRECT
-			 * unqualified/absolute call qualifies — matching php, an indirect call
-			 * (call_user_func, a callable variable) has no source text and its
-			 * AssertionError carries an empty message. A spread first argument is
-			 * skipped (its span is the unpacked array, not the assertion). */
-			if( nArgs >= 1 && !bFcc
-			 && (apNode[0]->iFlags & EXPR_NODE_SPREAD) == 0 ){
-				SyString sCallee;
-				GenStateCallBuiltinName(pNode->pLeft,&sCallee);
-				if( sCallee.nByte == sizeof("assert")-1
-				 && SyStrnicmp(sCallee.zString,"assert",sizeof("assert")-1) == 0 ){
-					/* An operator root's pStart/pEnd name only the operator token
-					 * (`1 == 2` roots at `==`); the subtree walk recovers the whole
-					 * raw extent, re-adding parens the grouping pass consumed. */
-					SyToken *pSpanIn = 0;
-					SyToken *pSpanEnd = 0;
-					SyBlob sSrc;
-					PH7_ExprSubtreeSpan(apNode[0],&pSpanIn,&pSpanEnd);
-					SyBlobInit(&sSrc,&pGen->pVm->sAllocator);
-					if( pSpanIn && pSpanEnd && pSpanIn < pSpanEnd ){
-						if( apNode[0]->iFlags & EXPR_NODE_NAMED_ARG ){
-							/* php renders the name too: `assert(assertion: 1 == 2)`. */
-							SyBlobAppend(&sSrc,apNode[0]->sArgName.zString,apNode[0]->sArgName.nByte);
-							SyBlobAppend(&sSrc,": ",2);
-						}
-						PH7_GenRenderAssertSpan(pGen,pSpanIn,pSpanEnd,&sSrc);
-					}
-					if( SyBlobLength(&sSrc) > 0 ){
-						char *zDup = (char *)SyMemBackendDup(&pGen->pVm->sAllocator,
-							SyBlobData(&sSrc),SyBlobLength(&sSrc));
-						if( zDup ){
-							if( p3 == 0 ){
-								VmCallArgMap *pMap = (VmCallArgMap *)SyMemBackendAlloc(
-									&pGen->pVm->sAllocator,sizeof(VmCallArgMap));
-								if( pMap ){
-									SyZero(pMap,sizeof(VmCallArgMap));
-									p3 = (void *)pMap;
-								}
-							}
-							if( p3 ){
-								SyStringInitFromBuf(&((VmCallArgMap *)p3)->sAssertSrc,
-									zDup,SyBlobLength(&sSrc));
-							}
-						}
-					}
-					SyBlobRelease(&sSrc);
-				}
-			}
-			/* Record each argument's compile-time SHAPE so the by-ref binders can
-			 * refuse a non-variable where php refuses it — at the CALL, before the
-			 * callee's ZPP runs. Skipped when the call SPREADS (one compile-time
-			 * argument becomes N runtime slots, so the positions no longer line up)
-			 * or when it carries more arguments than the masks can hold; a call
-			 * without the flag keeps the old runtime nIdx test. Named arguments are
-			 * fine: they change which FORMAL a slot binds to, not the slot's index. */
-			if( !bAnySpread && nArgs > 0 && nArgs <= 31 && !bFcc ){
-				sxu32 nNonLval = 0;
-				sxu32 nTempCall = 0;
-				for( n = 0 ; n < nArgs ; ++n ){
-					int iShape = GenStateArgShape(apNode[n]);
-					if( iShape == GEN_ARG_NONE ){
-						nNonLval |= (1u << n);
-					}else if( iShape == GEN_ARG_TEMPCALL ){
-						nTempCall |= (1u << n);
-					}
-				}
-				if( p3 == 0 ){
-					VmCallArgMap *pMap = (VmCallArgMap *)SyMemBackendAlloc(
-						&pGen->pVm->sAllocator,sizeof(VmCallArgMap));
-					if( pMap ){
-						SyZero(pMap,sizeof(VmCallArgMap));
-						p3 = (void *)pMap;
-					}
-				}
-				if( p3 ){
-					((VmCallArgMap *)p3)->bArgShapes = 1;
-					((VmCallArgMap *)p3)->nNonLvalMask = nNonLval;
-					((VmCallArgMap *)p3)->nTempCallMask = nTempCall;
-				}
-			}
-			/* Remove stale flags now */
-			iFlags &= ~EXPR_FLAG_RDONLY_LOAD;
+			iP1 = sArgs.iP1;
+			iP2 = sArgs.iP2;
+			p3  = sArgs.p3;
+			bFcc = sArgs.bFcc;
+			bArgsEmitted = 1;
 		}
 		{
 			/* The unset() target is the OUTERMOST access. When the intermediate container — the left
@@ -1553,6 +1318,11 @@ static sxi32 GenStateEmitExprCode(
 				 * open the window here; the trailing emit below closes it (iP1 = 0). */
 				PH7_VmEmitInstr(pGen->pVm,PH7_OP_ERR_CTRL,1,0,0,0);
 			}
+			if( iVmOp == PH7_OP_NEW ){
+				/* Mark the direct operand so a call node under it (`new C($a)`) keeps the
+				 * emission order OP_NEW is assembled from — see the bNewCallee branch above. */
+				iLeftFlags |= EXPR_FLAG_NEW_CALLEE;
+			}
 			rc = GenStateEmitExprCode(&(*pGen),pNode->pLeft,iLeftFlags|EXPR_FLAG_RDONLY_LOAD);
 			if( rc == SXRET_OK && bNullcLhs ){
 				/* Mark EVERY subscript read in the `??` left chain quiet (iP2=8).
@@ -1651,6 +1421,45 @@ static sxi32 GenStateEmitExprCode(
 						PH7_VmEmitInstr(pGen->pVm,PH7_OP_LOAD,0,0,pDynName,0);
 						PH7_VmEmitInstr(pGen->pVm,PH7_OP_MEMBER,1,PH7_MEMBER_METHOD,0,0);
 					}
+				}
+			}
+			/* The callee is resolved; NOW emit the arguments. php's order — the callee
+			 * first, at its INIT_FCALL / INIT_METHOD_CALL, and the arguments only after
+			 * it — is what makes `(new C)->priv(boom())` report php's `Call to private
+			 * method` instead of whatever the argument threw, and what keeps `$o?->m(f())`
+			 * from running `f()` on a null receiver. It also puts the callee in reach of
+			 * the argument ops one opcode EARLIER than OP_CALL.
+			 *
+			 * The stack that leaves here is therefore [callee][args…] — the mirror of the
+			 * layout OP_CALL's whole dispatch is written against (the method-name pair
+			 * below the arguments, the spread runs counted down from the top, the
+			 * deferred-argument re-walk). OP_ROT_CALLEE turns the region back over just
+			 * before the call, so nothing downstream of it changes. */
+			if( !bArgsEmitted ){
+				int bTwoSlot;
+				sArgs.p3 = p3; /* the namespace map built just above, if any */
+				/* A METHOD callee leaves TWO slots — [receiver][method name] — which
+				 * OP_CALL reads as one callee (the receiver answers $this and the
+				 * late-static-binding class); anything else leaves one. The instruction
+				 * just emitted is what decides it. */
+				pInstr = PH7_VmPeekInstr(pGen->pVm);
+				bTwoSlot = pInstr && pInstr->iOp == PH7_OP_MEMBER
+					&& pInstr->iP2 == PH7_MEMBER_METHOD
+					/* …unless the member NAME was folded into p3 rather than pushed:
+					 * that shape pushes the target alone, so the op leaves one slot,
+					 * which is the same distinction vm_ops_oo.c makes before popping. */
+					&& pInstr->p3 == 0;
+				rc = GenStateEmitCallArgs(&(*pGen),pNode,iFlags,&sArgs);
+				if( rc != SXRET_OK ){
+					return rc;
+				}
+				iP1 = sArgs.iP1;
+				iP2 = sArgs.iP2;
+				p3  = sArgs.p3;
+				bFcc = sArgs.bFcc;
+				if( iP1 > 0 || iP2 ){
+					PH7_VmEmitInstr(pGen->pVm,PH7_OP_ROT_CALLEE,iP1,
+						(iP2 ? PH7_ROT_SPREAD : 0) | (bTwoSlot ? PH7_ROT_TWOSLOT : 0),0,0);
 				}
 			}
 		}else if( iVmOp == PH7_OP_LOAD_IDX ){
@@ -2077,6 +1886,311 @@ static sxi32 GenStateEmitExprCode(
 		}
 	}
 	return rc;
+}
+/*
+ * Emit a call's ARGUMENT LIST, and decide everything about it the OP_CALL then carries:
+ * the count, the unpack flag, the named-argument / assert-source / argument-shape map.
+ *
+ * Split out of GenStateEmitExprCode because php resolves a callee BEFORE it evaluates
+ * the arguments, so this now runs AFTER the callee sub-tree has been emitted (the one
+ * exception is a `new`'s constructor list — see EXPR_FLAG_NEW_CALLEE). It is otherwise
+ * the same code, and reads only the node: nothing here inspects the instructions the
+ * callee left behind.
+ *
+ * pArgs->p3 may arrive non-NULL — the callee's own namespace qualification builds the
+ * VmCallArgMap first now — and every allocation site below reuses it.
+ */
+static sxi32 GenStateEmitCallArgs(
+	ph7_gen_state *pGen,  /* Code generator state */
+	ph7_expr_node *pNode, /* The call node */
+	sxi32 iFlags,         /* Control flags of the call site */
+	GenCallArgs *pArgs    /* OUT: what the OP_CALL needs */
+	)
+{
+	void *p3 = pArgs->p3;
+	sxi32 iP1 = 0;
+	sxu32 iP2 = 0;
+	int bFcc = 0;
+	sxi32 rc;
+	ph7_expr_node **apNode;
+	int hasSpread = 0;
+	int hasNamed = 0;
+	sxu32 byRefMask = 0;
+	sxi32 nArgs;
+	sxi32 n;
+	int bAnySpread = 0;
+	/* Recurse and generate bytecodes for function arguments */
+	apNode = (ph7_expr_node **)SySetBasePtr(&pNode->aNodeArgs);
+	nArgs = (sxi32)SySetUsed(&pNode->aNodeArgs);
+	/* First-class callable `f(...)`: the sole argument is the lone-ellipsis marker.
+	 * Emit no arguments; the callee (pNode->pLeft) is still compiled below, then we
+	 * emit OP_LOAD_FCC instead of OP_CALL to wrap it in a Closure. */
+	if( nArgs == 1 && apNode[0] && (apNode[0]->iFlags & EXPR_NODE_FCC) ){
+		bFcc = 1;
+		nArgs = 0;
+	}
+	/* Validate argument order like php: no positional argument after a
+	 * named one OR after unpacking, and `name: ...$x` is a parse error. */
+	{
+		int seenNamed = 0;
+		int seenSpread = 0;
+		for( n = 0; n < nArgs; ++n ){
+			if( apNode[n]->iFlags & EXPR_NODE_SPREAD ){
+				bAnySpread = 1;
+				seenSpread = 1;
+				if( apNode[n]->iFlags & EXPR_NODE_NAMED_ARG ){
+					rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[n]->pStart->nLine,
+						"syntax error, unexpected token \"...\"");
+					return SXERR_SYNTAX;
+				}
+			}else if( apNode[n]->iFlags & EXPR_NODE_NAMED_ARG ){
+				seenNamed = 1;
+				hasNamed = 1;
+			}else if( seenNamed ){
+				rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[n]->pStart->nLine,
+					"Cannot use positional argument after named argument");
+				return SXERR_SYNTAX;
+			}else if( seenSpread ){
+				rc = PH7_GenCompileError(&(*pGen),E_ERROR,apNode[n]->pStart->nLine,
+					"Cannot use positional argument after argument unpacking");
+				return SXERR_SYNTAX;
+			}
+		}
+	}
+	/* Read-only load */
+	iFlags |= EXPR_FLAG_RDONLY_LOAD;
+	/* Route subscript-argument LOAD_IDX through a special iP2 code
+	 * for the language constructs `isset` and `empty` so ArrayAccess
+	 * objects dispatch to the right method (offsetExists for both;
+	 * empty also needs offsetGet to evaluate emptiness on hits). */
+	if( pNode->pLeft && pNode->pLeft->pStart ){
+		SyString *pCallName = &pNode->pLeft->pStart->sData;
+		int bIsset = pCallName->nByte == 5
+			&& SyStrnicmp(pCallName->zString,"isset",5) == 0;
+		int bEmpty = pCallName->nByte == 5
+			&& SyStrnicmp(pCallName->zString,"empty",5) == 0;
+		/* isset()/empty() are language CONSTRUCTS, not functions: php parses
+		 * their argument list in the grammar and a missing operand is a parse
+		 * error on the ')'. They compile through this ordinary call loop, which
+		 * never checked arity, so `empty()` quietly evaluated to true and
+		 * `isset()` to false. (empty() also takes exactly one operand in php,
+		 * unlike isset(), which is variadic.) */
+		if( (bIsset || bEmpty) && nArgs < 1 ){
+			/* php names the ')' itself as the unexpected token, so point at the
+			 * node's last token rather than pGen->pIn (which has already moved
+			 * past the call to the statement's ';'). */
+			SyToken *pTok = pNode->pEnd;
+			if( pTok && pTok > pNode->pStart && (pTok->nType & PH7_TK_RPAREN) == 0 ){
+				pTok--;
+			}
+			PH7_GenSyntaxError(&(*pGen),pTok,0);
+			return SXERR_ABORT;
+		}
+		if( bIsset ){
+			iFlags |= EXPR_FLAG_LOAD_IDX_ISSET;
+		}else if( bEmpty ){
+			iFlags |= EXPR_FLAG_LOAD_IDX_EMPTY;
+		}
+		/* Auto-vivify by-reference out-params of known builtins so an
+		 * undefined variable argument (e.g. preg_match($p,$s,$m) with
+		 * $m never assigned) gets a real memobj slot for the builtin to
+		 * write back through. Skipped when spread/named args are present:
+		 * the compile-time positional index no longer maps to the
+		 * runtime apArg[] slot (and spread elements can't be by-ref). */
+		if( !bAnySpread && !hasNamed ){
+			SyString sBuiltin;
+			GenStateCallBuiltinName(pNode->pLeft, &sBuiltin);
+			byRefMask = GenStateByRefBuiltinMask(&sBuiltin);
+		}
+	}
+	for( n = 0 ; n < nArgs ; ++n ){
+		sxu32 nArgNsBase = SySetUsed(&pGen->aNullsafeJmp);
+		sxi32 iArgFlags = iFlags & ~(EXPR_FLAG_LOAD_IDX_STORE|EXPR_FLAG_MEMBER_WRITE);
+		/* For a by-ref argument position, drop the read-only flag so the
+		 * variable is created if absent (PH7_OP_LOAD iP1=0 => bCreate), and
+		 * set write-context so a subscript target (preg_match($p,$s,$a['k']))
+		 * auto-vivifies its element and exposes a writable memobj slot for the
+		 * builtin to write back through. A plain $var target is unaffected
+		 * (iP1=0 either way). */
+		if( n < 31 && (byRefMask & (1u<<n)) ){
+			iArgFlags &= ~EXPR_FLAG_RDONLY_LOAD;
+			iArgFlags |= EXPR_FLAG_LOAD_IDX_STORE;
+		}
+		/* D1: a plain `$var` argument may bind to a by-ref parameter whose signature
+		 * is unknown at compile time (forward reference, dynamic call, or method
+		 * dispatch — e.g. PHPUnit's `willReturnReference($undef)`). We used to clear
+		 * the read-only flag here so an undefined variable vivified a real slot the
+		 * by-ref write-back could reach — but that also invented the variable as NULL
+		 * in the caller when the parameter turned out by-VALUE, and suppressed php's
+		 * `Undefined variable $x` warning. Instead mark it DEFERRED: OP_LOAD leaves an
+		 * undefined variable uncreated and carries a lazy-lvalue marker, and OP_CALL
+		 * materializes it ONLY for a by-ref parameter once the callee is resolved
+		 * (VmResolveDeferredArgs). Excludes isset()/empty()/unset(), which compile
+		 * through this same call loop but must NEVER create their operand, and
+		 * named/spread args (positional-index and by-ref semantics don't apply).
+		 *
+		 * D1 commit 2: the same reasoning extends to an array-element ($a["k"]) or
+		 * property ($o->p) argument — a by-ref user-function parameter must vivify the
+		 * element/property, a by-value one must warn and NOT vivify. Those nodes carry a
+		 * subscript/arrow operator (pOp != 0). The DEFER flag rides down to the base LOAD
+		 * (undefined base auto-defers via commit 1) and to the LOAD_IDX/MEMBER, which
+		 * record the lvalue path on a lookup miss. Static `::` and nullsafe `?->` stay
+		 * eager. */
+		if( (iFlags & (EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_EMPTY|EXPR_FLAG_LOAD_IDX_UNSET
+		               |EXPR_FLAG_MEMBER_COALESCE)) == 0
+		 && (iArgFlags & EXPR_FLAG_RDONLY_LOAD) /* not a known builtin by-ref slot (kept eager above) */
+		 && (apNode[n]->iFlags & (EXPR_NODE_NAMED_ARG|EXPR_NODE_SPREAD)) == 0
+		 && ( (apNode[n]->pOp == 0 && apNode[n]->xCode == PH7_CompileVariable)
+		   || (apNode[n]->pOp != 0 && (apNode[n]->pOp->iOp == EXPR_OP_SUBSCRIPT
+		                            || apNode[n]->pOp->iOp == EXPR_OP_ARROW)) ) ){
+			iArgFlags |= EXPR_FLAG_DEFER_ARG;
+		}
+		rc = GenStateEmitExprCode(&(*pGen),apNode[n],iArgFlags);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		/* Each argument is an independent nullsafe scope. */
+		GenStatePatchNullsafeJumps(pGen, nArgNsBase);
+		if( apNode[n]->iFlags & EXPR_NODE_SPREAD ){
+			/* Emit spread opcode to unpack this array argument. iP1 marks a
+			 * source php will unpack BY REFERENCE: only a plain `$var` (php
+			 * fetches every other shape — `$a[0]`, `$o->p`, `C::$s`, a cast, a
+			 * call — as an R-value, so a by-ref parameter binds its elements in
+			 * a temporary and the write-back is invisible). The expander needs
+			 * the distinction because it carries each element's slot for the
+			 * by-ref binder; without it `r(...$a[0])` wrote through to the real
+			 * element, which php leaves alone. */
+			PH7_VmEmitInstr(pGen->pVm, PH7_OP_SPREAD,
+				(apNode[n]->pOp == 0 && apNode[n]->xCode == PH7_CompileVariable) ? 1 : 0,
+				0, 0, 0);
+			hasSpread = 1;
+		}
+	}
+	/* Total number of given arguments */
+	iP1 = nArgs;
+	iP2 = hasSpread;
+	/* Build VmCallArgMap if named arguments are present.
+	 * Deep-copy name strings so they survive token stream cleanup. */
+	if( hasNamed ){
+		sxu32 nStrBytes = 0;
+		char *zBuf;
+		for( n = 0; n < nArgs; ++n ){
+			if( apNode[n]->iFlags & EXPR_NODE_NAMED_ARG ){
+				nStrBytes += (sxu32)apNode[n]->sArgName.nByte;
+			}
+		}
+		{
+		sxu32 mapSize = sizeof(VmCallArgMap) + nArgs * sizeof(SyString) + nStrBytes;
+		VmCallArgMap *pMap = (VmCallArgMap *)SyMemBackendAlloc(
+			&pGen->pVm->sAllocator, mapSize);
+		if( pMap ){
+			SyZero(pMap, mapSize);
+			pMap->bHasNamed = 1;
+			pMap->nTotal = (sxu32)nArgs;
+			pMap->aNames = (SyString *)&pMap[1];
+			zBuf = (char *)&pMap->aNames[nArgs]; /* string storage after SyString array */
+			for( n = 0; n < nArgs; ++n ){
+				if( apNode[n]->iFlags & EXPR_NODE_NAMED_ARG ){
+					sxu32 nb = (sxu32)apNode[n]->sArgName.nByte;
+					SyMemcpy(apNode[n]->sArgName.zString, zBuf, nb);
+					SyStringInitFromBuf(&pMap->aNames[n], zBuf, nb);
+					zBuf += nb;
+				}
+				/* else: aNames[n] remains {NULL, 0} for positional */
+			}
+			p3 = (void *)pMap;
+		}
+		}
+	}
+	/* assert(): php's compiler keeps a copy of the assertion's AST and a
+	 * failing assert reports its rendered SOURCE (`assert(1 == 2)`), not the
+	 * evaluated value. Render the first argument's token span
+	 * into the call map so vm_builtin_assert can echo it. Only a DIRECT
+	 * unqualified/absolute call qualifies — matching php, an indirect call
+	 * (call_user_func, a callable variable) has no source text and its
+	 * AssertionError carries an empty message. A spread first argument is
+	 * skipped (its span is the unpacked array, not the assertion). */
+	if( nArgs >= 1 && !bFcc
+	 && (apNode[0]->iFlags & EXPR_NODE_SPREAD) == 0 ){
+		SyString sCallee;
+		GenStateCallBuiltinName(pNode->pLeft,&sCallee);
+		if( sCallee.nByte == sizeof("assert")-1
+		 && SyStrnicmp(sCallee.zString,"assert",sizeof("assert")-1) == 0 ){
+			/* An operator root's pStart/pEnd name only the operator token
+			 * (`1 == 2` roots at `==`); the subtree walk recovers the whole
+			 * raw extent, re-adding parens the grouping pass consumed. */
+			SyToken *pSpanIn = 0;
+			SyToken *pSpanEnd = 0;
+			SyBlob sSrc;
+			PH7_ExprSubtreeSpan(apNode[0],&pSpanIn,&pSpanEnd);
+			SyBlobInit(&sSrc,&pGen->pVm->sAllocator);
+			if( pSpanIn && pSpanEnd && pSpanIn < pSpanEnd ){
+				if( apNode[0]->iFlags & EXPR_NODE_NAMED_ARG ){
+					/* php renders the name too: `assert(assertion: 1 == 2)`. */
+					SyBlobAppend(&sSrc,apNode[0]->sArgName.zString,apNode[0]->sArgName.nByte);
+					SyBlobAppend(&sSrc,": ",2);
+				}
+				PH7_GenRenderAssertSpan(pGen,pSpanIn,pSpanEnd,&sSrc);
+			}
+			if( SyBlobLength(&sSrc) > 0 ){
+				char *zDup = (char *)SyMemBackendDup(&pGen->pVm->sAllocator,
+					SyBlobData(&sSrc),SyBlobLength(&sSrc));
+				if( zDup ){
+					if( p3 == 0 ){
+						VmCallArgMap *pMap = (VmCallArgMap *)SyMemBackendAlloc(
+							&pGen->pVm->sAllocator,sizeof(VmCallArgMap));
+						if( pMap ){
+							SyZero(pMap,sizeof(VmCallArgMap));
+							p3 = (void *)pMap;
+						}
+					}
+					if( p3 ){
+						SyStringInitFromBuf(&((VmCallArgMap *)p3)->sAssertSrc,
+							zDup,SyBlobLength(&sSrc));
+					}
+				}
+			}
+			SyBlobRelease(&sSrc);
+		}
+	}
+	/* Record each argument's compile-time SHAPE so the by-ref binders can
+	 * refuse a non-variable where php refuses it — at the CALL, before the
+	 * callee's ZPP runs. Skipped when the call SPREADS (one compile-time
+	 * argument becomes N runtime slots, so the positions no longer line up)
+	 * or when it carries more arguments than the masks can hold; a call
+	 * without the flag keeps the old runtime nIdx test. Named arguments are
+	 * fine: they change which FORMAL a slot binds to, not the slot's index. */
+	if( !bAnySpread && nArgs > 0 && nArgs <= 31 && !bFcc ){
+		sxu32 nNonLval = 0;
+		sxu32 nTempCall = 0;
+		for( n = 0 ; n < nArgs ; ++n ){
+			int iShape = GenStateArgShape(apNode[n]);
+			if( iShape == GEN_ARG_NONE ){
+				nNonLval |= (1u << n);
+			}else if( iShape == GEN_ARG_TEMPCALL ){
+				nTempCall |= (1u << n);
+			}
+		}
+		if( p3 == 0 ){
+			VmCallArgMap *pMap = (VmCallArgMap *)SyMemBackendAlloc(
+				&pGen->pVm->sAllocator,sizeof(VmCallArgMap));
+			if( pMap ){
+				SyZero(pMap,sizeof(VmCallArgMap));
+				p3 = (void *)pMap;
+			}
+		}
+		if( p3 ){
+			((VmCallArgMap *)p3)->bArgShapes = 1;
+			((VmCallArgMap *)p3)->nNonLvalMask = nNonLval;
+			((VmCallArgMap *)p3)->nTempCallMask = nTempCall;
+		}
+	}
+	pArgs->iP1 = iP1;
+	pArgs->iP2 = iP2;
+	pArgs->p3  = p3;
+	pArgs->bFcc = bFcc;
+	pArgs->bAnySpread = bAnySpread;
+	return SXRET_OK;
 }
 /*
  * Compile a PHP expression.

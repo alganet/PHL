@@ -98,6 +98,24 @@ struct VmCoalStrOff
 	SyMemBackend *pAlloc;
 	ph7_value sKey;      /* the RAW offset, unresolved: the store re-resolves it LOUDLY */
 };
+/* The pending __call / __callStatic routing, owned by its MEMOBJ_AUX_MAGICCALL carrier
+ * slot. Carries its own allocator so PH7_MemObjRelease can free it without a VM pointer,
+ * exactly like VmCoalStrOff.
+ *
+ * It used to be three fields on the VM, set by OP_MEMBER and read by the OP_CALL that
+ * followed. That only held while the arguments were evaluated BEFORE the member op; once
+ * the callee is resolved first — php's order — an argument that is itself a routed call
+ * (`$o->outer($o->inner(1))`) runs in between and would overwrite the outer routing. The
+ * record rides the slot instead, so it nests, and an abandoned call cannot leak the
+ * receiver reference. */
+typedef struct VmMagicCall VmMagicCall;
+struct VmMagicCall
+{
+	SyMemBackend *pAlloc;
+	ph7_class_instance *pRecv; /* OWNED receiver reference; 0 for a static routing */
+	ph7_class *pClass;         /* the class whose handler answers */
+	SyBlob sName;              /* the method name as the CALL SITE spelled it */
+};
 /*
  * D1 commit 2: a captured lvalue path for a deferred by-ref/by-value call argument
  * ($a["k"], $o->p, and nested/undefined-base forms). Built on a lookup MISS by the
@@ -2572,6 +2590,13 @@ enum ph7_vm_op {
                          * iP2 is in THIS array (a `goto` out of a try body) — just drain CROSS
                          * and jump. Emitted for break/continue/goto alike. */
   PH7_OP_UNSET_VAR,     /* unset($name): drop ONE name binding (p3 = name), never the shared slot */
+  PH7_OP_ROT_CALLEE,    /* Rotate this call's CALLEE — which the codegen pushed BEFORE the
+                         * arguments, because php resolves a callee where it is written — up
+                         * to the top of the stack, so OP_CALL sees the [args…][callee] layout
+                         * its whole dispatch is written against. iP1 = compile-time argument
+                         * count, iP2 = PH7_ROT_* flags (SPREAD: re-derive the runtime count
+                         * from this call's unpack runs; TWOSLOT: the callee is an OP_MEMBER
+                         * method pair [receiver][name], not a single value). */
   PH7_OP_CLASS_DEFER    /* Deferred class declaration: p3 = VmDeferredClass. Compile-time
                          * resolution of a parent/interface/trait failed (autoloader not yet
                          * REGISTERED — the declaring file's own statements had not run), so the
@@ -2600,6 +2625,14 @@ enum ph7_vm_op {
                                  * resolves WITHOUT a global fallback: if that exact name is
                                  * undefined the read is an Error, even when a global constant
                                  * of the imported alias's short name exists. */
+/* ROT_CALLEE.iP2 — what the rotation has to know about the region it is turning over. */
+#define PH7_ROT_SPREAD  0x1 /* This call unpacks: the runtime argument count is iP1 plus the net
+                             * growth of its OWN captured spread runs (VmSpreadOwnExtra). */
+#define PH7_ROT_TWOSLOT 0x2 /* The callee is an OP_MEMBER method pair — [receiver][method name] —
+                             * which OP_CALL reads as two slots ($this / the late-static-binding
+                             * class from the receiver, the name from the top). A __call routing
+                             * collapses that pair to ONE marked carrier slot at run time, which
+                             * the handler detects rather than guessing. */
 /* MEMBER.iP2 — member-access context. 0=read is the default; the unset/isset/empty modes mirror the
  * array LOAD_IDX context modes so unset()/isset()/empty() on a property behave like on an array elem. */
 #define PH7_MEMBER_READ   0 /* attribute read */
@@ -3541,6 +3574,9 @@ PH7_PRIVATE sxi32 VmDeferPathPushProp(VmDeferredPath *pPath,const SyString *pNam
 PH7_PRIVATE void VmFreeDeferredPath(VmDeferredPath *pPath);
 PH7_PRIVATE VmCoalStrOff * VmCoalStrOffNew(ph7_vm *pVm,ph7_value *pKey);
 PH7_PRIVATE void VmFreeCoalStrOff(VmCoalStrOff *pCoal);
+PH7_PRIVATE VmMagicCall * VmMagicCallNew(ph7_vm *pVm,ph7_class_instance *pRecv,
+	ph7_class *pClass,const SyString *pName);
+PH7_PRIVATE void VmFreeMagicCall(VmMagicCall *pPend);
 PH7_PRIVATE void VmExpandUserConstant(ph7_value *pVal,void *pUserData);
 PH7_PRIVATE ph7_class * VmExtractEnumClass(ph7_vm *pVm,ph7_value *pName);
 PH7_PRIVATE int vm_builtin_compact(ph7_context *pCtx,int nArg,ph7_value **apArg);

@@ -1498,6 +1498,15 @@ PH7_PRIVATE sxi32 PH7_MemObjRelease(ph7_value *pObj)
 		pObj->x.pOther = 0;
 		pObj->iFlags &= ~MEMOBJ_AUX_COALSTROFF;
 	}
+	if( pObj->iFlags & MEMOBJ_AUX_MAGICCALL ){
+		/* A __call/__callStatic carrier OWNS the heap VmMagicCall holding its receiver
+		 * reference, class and original name. Freed HERE for the same reason as the two
+		 * carriers below: this is the universal release site, so a routed call whose
+		 * argument list threw never leaks the receiver it was holding. */
+		VmFreeMagicCall((VmMagicCall *)pObj->x.pOther);
+		pObj->x.pOther = 0;
+		pObj->iFlags &= ~MEMOBJ_AUX_MAGICCALL;
+	}
 	if( pObj->iFlags & MEMOBJ_AUX_DEFPATH ){
 		/* D1 commit 2: a deferred element/property lvalue carrier OWNS a heap VmDeferredPath
 		 * on a NULL-typed slot. Free it HERE, before the MEMOBJ_NULL short-circuit below —

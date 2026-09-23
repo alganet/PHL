@@ -543,6 +543,45 @@ PH7_PRIVATE void VmFreeCoalStrOff(VmCoalStrOff *pCoal)
 	PH7_MemObjRelease(&pCoal->sKey);
 	SyMemBackendFree(pAlloc,pCoal);
 }
+/*
+ * Build the pending __call/__callStatic routing OP_MEMBER hands to the OP_CALL that
+ * follows it, and hang it off the marked carrier slot. One record per routed call, so a
+ * routed call evaluated inside another routed call's ARGUMENT LIST — which is where they
+ * now sit, php's order — keeps its own {receiver, class, name}. Takes the receiver
+ * reference; the record owns it from here.
+ */
+PH7_PRIVATE VmMagicCall * VmMagicCallNew(ph7_vm *pVm,ph7_class_instance *pRecv,
+	ph7_class *pClass,const SyString *pName)
+{
+	VmMagicCall *pPend = (VmMagicCall *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmMagicCall));
+	if( pPend == 0 ){
+		return 0;
+	}
+	pPend->pAlloc = &pVm->sAllocator;
+	pPend->pRecv = pRecv;
+	pPend->pClass = pClass;
+	SyBlobInit(&pPend->sName,&pVm->sAllocator);
+	if( pName && pName->nByte > 0 ){
+		SyBlobAppend(&pPend->sName,(const void *)pName->zString,pName->nByte);
+	}
+	if( pRecv ){
+		pRecv->iRef++;
+	}
+	return pPend;
+}
+PH7_PRIVATE void VmFreeMagicCall(VmMagicCall *pPend)
+{
+	SyMemBackend *pAlloc;
+	if( pPend == 0 ){
+		return;
+	}
+	pAlloc = pPend->pAlloc;
+	if( pPend->pRecv ){
+		PH7_ClassInstanceUnref(pPend->pRecv);
+	}
+	SyBlobRelease(&pPend->sName);
+	SyMemBackendFree(pAlloc,pPend);
+}
 PH7_PRIVATE void VmFreeDeferredPath(VmDeferredPath *pPath)
 {
 	sxu32 i;
@@ -5207,6 +5246,81 @@ yf_propagate:
  *  Call a PHP or a foreign function and push the return value of the called
  *  function on the stack.
  */
+/*
+ * OP_ROT_CALLEE P1 P2 *
+ *  Turn a call's operand region over: [callee][arg0..argN] becomes [arg0..argN][callee],
+ *  which is the layout OP_CALL's entire dispatch is written against.
+ *
+ *  The codegen pushes the callee FIRST because php resolves it where it is written —
+ *  before a single argument runs — so an undefined or inaccessible method is refused
+ *  ahead of the argument list's side effects, and a `?->` on null skips the arguments
+ *  altogether. Everything downstream of this instruction still sees the historical
+ *  stack, so the reordering costs one memory move per call and nothing else.
+ *
+ *  P1 is the compile-time argument count; P2 carries PH7_ROT_SPREAD (this call unpacks,
+ *  so the runtime count is P1 plus its OWN runs' net growth) and PH7_ROT_TWOSLOT (the
+ *  callee is a method pair, [receiver][name]). A __call routing collapses that pair to
+ *  one marked carrier at run time, which is read off the slot rather than guessed.
+ */
+case PH7_OP_ROT_CALLEE: {
+	sxi32 nRotArgs = pInstr->iP1
+		+ ((pInstr->iP2 & PH7_ROT_SPREAD)
+			/* One past the last argument is one past the TOP here: the callee sits
+			 * BELOW the region, not above it as at OP_CALL. */
+			? VmSpreadOwnExtra(&(*pVm),pInstr->iP1,&pTos[1]) : 0);
+	if( nRotArgs < 0 ){
+		/* Unreachable: an empty unpack subtracts one per compile-time position, so the
+		 * net can reach 0 and no lower. Clamped rather than trusted — reading above the
+		 * top to find the callee is not a failure mode worth leaving open. */
+		nRotArgs = 0;
+	}
+	{
+		ph7_value aCallee[2];
+		ph7_value *pTopCallee = &pTos[-nRotArgs];
+		sxi32 nCallee = (pInstr->iP2 & PH7_ROT_TWOSLOT) ? 2 : 1;
+		ph7_value *pBase;
+		sxi32 i;
+		if( nCallee > 1 && (pTopCallee->iFlags & MEMOBJ_AUX_MAGICCALL) ){
+			/* OP_MEMBER routed a missing/inaccessible name to __call: it consumed the
+			 * receiver and left ONE carrier slot, so the pair the compiler counted on
+			 * is not there. */
+			nCallee = 1;
+		}
+		pBase = pTopCallee - (nCallee - 1);
+#ifdef UNTRUST
+		if( pBase < pStack ){
+			goto Abort;
+		}
+#endif
+		if( nRotArgs > 0 ){
+			for( i = 0 ; i < nCallee ; ++i ){
+				aCallee[i] = pBase[i];
+			}
+			for( i = 0 ; i < nRotArgs ; ++i ){
+				pBase[i] = pBase[i + nCallee];
+			}
+			for( i = 0 ; i < nCallee ; ++i ){
+				pBase[nRotArgs + i] = aCallee[i];
+			}
+		}
+		if( pInstr->iP2 & PH7_ROT_SPREAD ){
+			/* The argument region now ends nCallee slots lower than it did, so this
+			 * call's captured unpack runs — the suffix VmSpreadOwnExtra just assigned
+			 * to it, all of them anchored inside the region — move with it, and OP_CALL
+			 * re-derives the same count from them. Unconditional: an `f(...[])` unpack
+			 * moves NO argument (its run is zero-width) and still has to be re-anchored,
+			 * or the recount reads it as an ordinary slot and eats one slot too many.
+			 * An ENCLOSING call's runs sit below the callee and are left alone. */
+			sxu32 nRun = SySetUsed(&pVm->aSpreadRun);
+			VmSpreadRun *aRun = (VmSpreadRun *)SySetBasePtr(&pVm->aSpreadRun);
+			sxu32 r;
+			for( r = pVm->nSpreadCallBase ; r < nRun ; ++r ){
+				aRun[r].pStart -= nCallee;
+			}
+		}
+	}
+	break;
+}
 case PH7_OP_CALL: {
 	/* iP2 = hasSpread (compile-time). Count only THIS call's own unpack
 	 * expansion (VmSpreadOwnExtra, derived from the captured runs on top of the
@@ -5271,7 +5385,27 @@ case PH7_OP_CALL: {
 	 * Everything from `NativeCall` down is shared with an ordinary builtin call, which is
 	 * what this has always been from the executor's point of view. */
 	if( pTos->iFlags & MEMOBJ_AUX_MAGICCALL ){
+		/* Move the routing off the carrier and onto the VM, HERE — one instruction
+		 * before the packing body reads it, with nothing in between that could set
+		 * another. OP_MEMBER used to publish it directly, which only held while the
+		 * arguments ran before it; now they run after, and a routed call inside this
+		 * one's argument list has already come and gone. */
+		VmMagicCall *pPend = (VmMagicCall *)pTos->x.pOther;
 		pTos->iFlags &= ~MEMOBJ_AUX_MAGICCALL;
+		pTos->x.pOther = 0;
+		pVm->pMagicCallThis = pPend ? pPend->pRecv : 0;
+		pVm->pMagicCallClass = pPend ? pPend->pClass : 0;
+		SyBlobReset(&pVm->sMagicCallName);
+		if( pPend && SyBlobLength(&pPend->sName) > 0 ){
+			SyBlobAppend(&pVm->sMagicCallName,SyBlobData(&pPend->sName),
+				SyBlobLength(&pPend->sName));
+		}
+		if( pPend ){
+			/* The receiver reference the record held is now the VM's, which
+			 * VmMagicCallDispatch gives back — so drop the record without unref'ing. */
+			pPend->pRecv = 0;
+			VmFreeMagicCall(pPend);
+		}
 		pFunc = PH7_VmMagicCallFunc(&(*pVm));
 		if( pFunc == 0 ){
 			PH7_VmMemoryError(&(*pVm));

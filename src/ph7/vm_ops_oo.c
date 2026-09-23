@@ -559,13 +559,13 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						 * and the call site failed with "Invalid function name"). Stack:
 						 * pop the method name, then the receiver slot becomes the marked
 						 * carrier OP_CALL routes through the packing body. */
-						SyBlobReset(&pVm->sMagicCallName);
-						SyBlobAppend(&pVm->sMagicCallName,(const void *)sName.zString,sName.nByte);
-						pThis->iRef++;
-						pVm->pMagicCallThis = pThis;
-						pVm->pMagicCallClass = pClass;
+						VmMagicCall *pPend = VmMagicCallNew(&(*pVm),pThis,pClass,&sName);
+						if( pPend == 0 ){
+							VM_EXIT_ABORT;
+						}
 						VmPopOperand(&pTos,1);
 						PH7_MemObjRelease(pTos);
+						pTos->x.pOther = pPend;
 						pTos->iFlags = MEMOBJ_NULL|MEMOBJ_AUX_MAGICCALL;
 					}else{
 						{
@@ -665,13 +665,13 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						PH7_THROW_ROUTE_MIDEXPR(rc)
 					}
 					if( pDeniedCall ){
-						SyBlobReset(&pVm->sMagicCallName);
-						SyBlobAppend(&pVm->sMagicCallName,(const void *)sName.zString,sName.nByte);
-						pThis->iRef++;
-						pVm->pMagicCallThis = pThis;
-						pVm->pMagicCallClass = pClass;
+						VmMagicCall *pPend = VmMagicCallNew(&(*pVm),pThis,pClass,&sName);
+						if( pPend == 0 ){
+							VM_EXIT_ABORT;
+						}
 						VmPopOperand(&pTos,1);
 						PH7_MemObjRelease(pTos);
+						pTos->x.pOther = pPend;
 						pTos->iFlags = MEMOBJ_NULL|MEMOBJ_AUX_MAGICCALL;
 					}else{
 						/* Push method name on the stack, MARKED as already screened: the
@@ -1761,17 +1761,16 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								 * through the packing body (see the instance twin) — or
 								 * __call($name,$args) on the calling frame's own $this when
 								 * that receiver fits C (VmStaticCallMagicThis). */
-								SyBlobReset(&pVm->sMagicCallName);
-								SyBlobAppend(&pVm->sMagicCallName,(const void *)sName.zString,sName.nByte);
-								if( pMagicThis ){
-									pMagicThis->iRef++;
+								VmMagicCall *pPend = VmMagicCallNew(&(*pVm),pMagicThis,
+									pMagicThis ? pMagicThis->pClass : pClass,&sName);
+								if( pPend == 0 ){
+									VM_EXIT_ABORT;
 								}
-								pVm->pMagicCallThis = pMagicThis;
-								pVm->pMagicCallClass = pMagicThis ? pMagicThis->pClass : pClass;
 								if( !pInstr->p3 ){
 									VmPopOperand(&pTos,1);
 								}
 								PH7_MemObjRelease(pTos);
+								pTos->x.pOther = pPend;
 								pTos->iFlags = MEMOBJ_NULL|MEMOBJ_AUX_MAGICCALL;
 								pTos->nIdx = SXU32_HIGH;
 								VM_EXIT_BREAK;
@@ -1863,17 +1862,16 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							 * slot so the MARK lands on the receiver slot, exactly as the
 							 * missing-method twin above does (leaving the class name in place
 							 * would pack it as the first $args entry). */
-							SyBlobReset(&pVm->sMagicCallName);
-							SyBlobAppend(&pVm->sMagicCallName,(const void *)sName.zString,sName.nByte);
-							if( pDeniedThis ){
-								pDeniedThis->iRef++;
+							VmMagicCall *pPend = VmMagicCallNew(&(*pVm),pDeniedThis,
+								pDeniedThis ? pDeniedThis->pClass : pClass,&sName);
+							if( pPend == 0 ){
+								VM_EXIT_ABORT;
 							}
-							pVm->pMagicCallThis = pDeniedThis;
-							pVm->pMagicCallClass = pDeniedThis ? pDeniedThis->pClass : pClass;
 							if( !pInstr->p3 ){
 								VmPopOperand(&pTos,1);
 							}
 							PH7_MemObjRelease(pTos);
+							pTos->x.pOther = pPend;
 							pTos->iFlags = MEMOBJ_NULL|MEMOBJ_AUX_MAGICCALL;
 							pTos->nIdx = SXU32_HIGH;
 							VM_EXIT_BREAK;

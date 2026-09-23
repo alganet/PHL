@@ -175,6 +175,13 @@ struct LangConstruct
                                            * it carries a deferred-lvalue marker resolved at OP_CALL once
                                            * the callee's by-ref/by-value flags are known (D1). Mutually
                                            * exclusive with the isset/empty/unset LOAD_IDX flags. */
+#define EXPR_FLAG_NEW_CALLEE      0x1000 /* This sub-tree is the operand of `new`. A call node under it
+                                           * (`new C($a)` parses as NEW over the call `C($a)`) keeps the
+                                           * pre-reorder emission order — arguments, then the class-name
+                                           * literal — because OP_NEW is built by POPPING that trailing
+                                           * OP_CALL and re-reading the literal behind it. Set for the
+                                           * DIRECT operand only: GenStateEmitExprCode strips it on
+                                           * entry so it cannot reach a nested expression. */
 /* compile.c GenState substrate — shared with the other compile*.c units */
 PH7_PRIVATE sxi32 GenStateEnterBlock(ph7_gen_state *pGen,sxi32 iType,sxu32 nFirstInstr,void *pUserData,GenBlock **ppBlock);
 PH7_PRIVATE sxi32 GenStateLeaveBlock(ph7_gen_state *pGen,GenBlock **ppBlock);
