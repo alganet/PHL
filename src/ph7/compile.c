@@ -1880,7 +1880,14 @@ static sxi32 GenStateEmitExprCode(
 		 * [target, real-method-name] on the stack for OP_LOAD_FCC to bind (iP1=2). */
 		if( bFcc ){
 			iVmOp = PH7_OP_LOAD_FCC;
-			iP2 = 0;
+			/* php's global fallback applies to a first-class callable exactly as it does
+			 * to the call it stands for: inside a namespace, `strlen(...)` is the global
+			 * function when the current namespace has none. The callee's literal was
+			 * namespace-qualified above and the arg map that records it is dropped here
+			 * (an FCC has no arguments), so carry the one bit the resolution needs in the
+			 * instruction itself — without it `strlen(...)` in a namespaced file was
+			 * `Call to undefined function A\B\strlen()`, a fatal on ordinary php. */
+			iP2 = (p3 && ((VmCallArgMap *)p3)->bIsNamespaced) ? 1 : 0;
 			p3 = 0;
 			pInstr = PH7_VmPeekInstr(pGen->pVm);
 			if( pInstr && pInstr->iOp == PH7_OP_MEMBER && pInstr->iP2 == PH7_MEMBER_METHOD ){

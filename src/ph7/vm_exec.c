@@ -2470,6 +2470,34 @@ case PH7_OP_LOAD_FCC:{
 		if( VmValueIsClosure(pVm, pTos) ){
 			break;
 		}
+		/* php's global fallback for an UNQUALIFIED function name written inside a
+		 * namespace: the current namespace first, the global one after. The compiler
+		 * qualified this name and marks the instruction (iP2==1) when it did, so the
+		 * fallback happens here — the OP_CALL path does the same thing from its arg map,
+		 * which an FCC has none of. `strlen(...)` in a namespaced file was
+		 * `Call to undefined function A\B\strlen()`, a fatal on ordinary php. */
+		if( pInstr->iP2 == 1 && (pTos->iFlags & MEMOBJ_STRING)
+			&& !PH7_VmIsCallable(pVm,pTos,TRUE) ){
+			const char *zFccName = (const char *)SyBlobData(&pTos->sBlob);
+			sxu32 nFccName = SyBlobLength(&pTos->sBlob);
+			const char *zFccShort = zFccName;
+			sxu32 iFccPos;
+			for( iFccPos = 0 ; iFccPos < nFccName ; ++iFccPos ){
+				if( zFccName[iFccPos] == '\\' ){
+					zFccShort = &zFccName[iFccPos + 1];
+				}
+			}
+			if( zFccShort != zFccName ){
+				ph7_value sFccShort;
+				PH7_MemObjInit(pVm,&sFccShort);
+				PH7_MemObjStringAppend(&sFccShort,zFccShort,
+					(sxu32)(nFccName - (sxu32)(zFccShort - zFccName)));
+				if( PH7_VmIsCallable(pVm,&sFccShort,TRUE) ){
+					PH7_MemObjStore(&sFccShort,pTos);
+				}
+				PH7_MemObjRelease(&sFccShort);
+			}
+		}
 		/* The array shape's class lookup can run an autoloader that throws; php propagates
 		 * THAT exception and never reports the callable bad, exactly as at the OP_CALL sites. */
 		nFccBrc = pVm->nBoundaryRc;
