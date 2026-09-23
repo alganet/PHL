@@ -1115,3 +1115,215 @@ PH7_PRIVATE int ph7_hashmap_uksort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
+/*
+ * bool array_multisort(array &$array, mixed $array1_sort_order = SORT_ASC,
+ *                      mixed $array1_sort_flags = SORT_REGULAR, mixed &...$rest)
+ *  Sort multiple arrays at once: the argument list is a little language read
+ *  left to right — an ARRAY opens a column, and each column may be followed by
+ *  at most one sort ORDER (SORT_ASC/SORT_DESC) and at most one sort FLAGS
+ *  value, in either order. Rows are compared column by column, a tie in one
+ *  column falling through to the next; the resulting permutation is applied to
+ *  EVERY column. String keys are kept, numeric keys are renumbered, and the
+ *  sort is stable (php 8's own guarantee). php's error shapes, pinned by
+ *  probe: a non-int non-array is `Argument #N must be an array or a sort
+ *  flag`; a misplaced or repeated order/flags is the same text with
+ *  `... that has not already been specified`; an int that is no flag at all is
+ *  the ValueError `must be a valid sort flag`; mismatched lengths are
+ *  `Array sizes are inconsistent` with no function prefix; and only
+ *  Argument #1 carries its `($array)` name. php declares the whole list
+ *  prefer-ref (VmBuiltinPrefersRef), so a literal sorts a temporary silently.
+ */
+/* One column of the multisort: the caller's array plus its sort spec. */
+typedef struct MultisortCol MultisortCol;
+struct MultisortCol
+{
+	ph7_value *pArr;        /* The caller's argument slot */
+	ph7_hashmap *pMap;      /* Its hashmap */
+	ph7_hashmap_node **apNode; /* Nodes in ORIGINAL iteration order */
+	sxi32 iFlags;           /* SORT_* comparison flags */
+	int iDir;               /* +1 SORT_ASC, -1 SORT_DESC */
+	int bOrderSeen;         /* An order argument already attached */
+	int bFlagsSeen;         /* A flags argument already attached */
+};
+/* Compare two ROWS, column by column with each column's own direction/flags. */
+static sxi32 MultisortRowCmp(MultisortCol *aCol,sxu32 nCol,sxu32 iA,sxu32 iB)
+{
+	sxu32 c;
+	for( c = 0 ; c < nCol ; c++ ){
+		sxi32 rc = HashmapFlagValueCmp(aCol[c].apNode[iA],aCol[c].apNode[iB],aCol[c].iFlags);
+		if( rc != 0 ){
+			return aCol[c].iDir < 0 ? -rc : rc;
+		}
+	}
+	return 0;
+}
+/*
+ * Stable bottom-up merge sort over the row-index permutation. Iterative on
+ * purpose — the recursive shape would put O(log n) frames on the native stack
+ * (the §7 embedder C-stack family).
+ */
+static void MultisortSortIdx(MultisortCol *aCol,sxu32 nCol,sxu32 *aIdx,sxu32 *aTmp,sxu32 n)
+{
+	sxu32 nWidth,iLo;
+	for( nWidth = 1 ; nWidth < n ; nWidth *= 2 ){
+		for( iLo = 0 ; iLo < n ; iLo += 2 * nWidth ){
+			sxu32 iMid = iLo + nWidth;
+			sxu32 iHi = iLo + 2 * nWidth;
+			sxu32 i,j,k;
+			if( iMid > n ){ iMid = n; }
+			if( iHi > n ){ iHi = n; }
+			i = iLo; j = iMid; k = iLo;
+			while( i < iMid && j < iHi ){
+				/* <= keeps the run stable: on a full tie the left row wins */
+				if( MultisortRowCmp(aCol,nCol,aIdx[i],aIdx[j]) <= 0 ){
+					aTmp[k++] = aIdx[i++];
+				}else{
+					aTmp[k++] = aIdx[j++];
+				}
+			}
+			while( i < iMid ){ aTmp[k++] = aIdx[i++]; }
+			while( j < iHi ){ aTmp[k++] = aIdx[j++]; }
+		}
+		/* aTmp holds the merged runs for this width; swap roles by copying
+		 * back — n is bounded by the array count, one memcpy per doubling. */
+		SyMemcpy(aTmp,aIdx,(sxu32)(n * sizeof(sxu32)));
+	}
+}
+PH7_PRIVATE int ph7_hashmap_multisort(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	MultisortCol *aCol;
+	sxu32 *aIdx,*aTmp;
+	sxu32 nCol = 0,nRow,i;
+	sxi32 rcStatus;
+	int iArg;
+
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"array_multisort() expects at least 1 argument, %d given",
+			nArg
+			);
+	}
+	aCol = (MultisortCol *)ph7_context_alloc_chunk(pCtx,
+		(unsigned int)(sizeof(MultisortCol) * (sxu32)nArg),TRUE,TRUE);
+	if( aCol == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	/* Read the argument list's little language, php's own state machine. */
+	for( iArg = 0 ; iArg < nArg ; iArg++ ){
+		ph7_value *pArg = apArg[iArg];
+		/* Only Argument #1 carries its parameter name in php's messages. */
+		const char *zName = (iArg == 0) ? " ($array)" : "";
+		if( ph7_value_is_array(pArg) ){
+			MultisortCol *pCol = &aCol[nCol++];
+			pCol->pArr = pArg;
+			pCol->pMap = (ph7_hashmap *)pArg->x.pOther;
+			pCol->apNode = 0;
+			pCol->iFlags = 0; /* SORT_REGULAR */
+			pCol->iDir = 1;   /* SORT_ASC */
+			pCol->bOrderSeen = pCol->bFlagsSeen = 0;
+			continue;
+		}
+		if( ph7_value_is_float(pArg) || (pArg->iFlags & MEMOBJ_INT) == 0 ){
+			/* A REAL int only, float asked FIRST (ph7_type_name's rule: an
+			 * integer-valued real caches an int and would pass a bare flag
+			 * test). php coerces nothing here: "4", 4.0 and true are all
+			 * refused. */
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"array_multisort(): Argument #%d%s must be an array or a sort flag",
+				iArg + 1,zName);
+		}
+		{
+			sxi64 iVal = ph7_value_to_int64(pArg);
+			/* php masks SORT_FLAG_CASE off for the ORDER match too, but reads
+			 * the direction from the UNMASKED value — so SORT_DESC|SORT_FLAG_CASE
+			 * (11) consumes the order slot and quirkily sorts ASCENDING. */
+			if( (iVal & ~(sxi64)8) == 3 /* SORT_DESC */ || (iVal & ~(sxi64)8) == 4 /* SORT_ASC */ ){
+				if( nCol < 1 || aCol[nCol - 1].bOrderSeen ){
+					return PH7_VmThrowException(pCtx,"TypeError",
+						"array_multisort(): Argument #%d%s must be an array or a sort flag that has not already been specified",
+						iArg + 1,zName);
+				}
+				aCol[nCol - 1].iDir = (iVal == 3) ? -1 : 1;
+				aCol[nCol - 1].bOrderSeen = 1;
+			}else if( (iVal & ~(sxi64)8 /* SORT_FLAG_CASE */) == 0 /* SORT_REGULAR */
+			       || (iVal & ~(sxi64)8) == 1 /* SORT_NUMERIC */
+			       || (iVal & ~(sxi64)8) == 2 /* SORT_STRING */
+			       || (iVal & ~(sxi64)8) == 5 /* SORT_LOCALE_STRING */
+			       || (iVal & ~(sxi64)8) == 6 /* SORT_NATURAL */ ){
+				if( nCol < 1 || aCol[nCol - 1].bFlagsSeen ){
+					return PH7_VmThrowException(pCtx,"TypeError",
+						"array_multisort(): Argument #%d%s must be an array or a sort flag that has not already been specified",
+						iArg + 1,zName);
+				}
+				aCol[nCol - 1].iFlags = (sxi32)iVal;
+				aCol[nCol - 1].bFlagsSeen = 1;
+			}else{
+				return PH7_VmThrowException(pCtx,"ValueError",
+					"array_multisort(): Argument #%d%s must be a valid sort flag",
+					iArg + 1,zName);
+			}
+		}
+	}
+	/* Every column must hold the same number of rows; php's message carries no
+	 * function prefix. */
+	nRow = aCol[0].pMap->nEntry;
+	for( i = 1 ; i < nCol ; i++ ){
+		if( aCol[i].pMap->nEntry != nRow ){
+			return PH7_VmThrowException(pCtx,"ValueError","Array sizes are inconsistent");
+		}
+	}
+	if( nRow > 0 ){
+		/* Collect each column's nodes in original order. */
+		for( i = 0 ; i < nCol ; i++ ){
+			ph7_hashmap_node *pNode = aCol[i].pMap->pFirst;
+			sxu32 r;
+			aCol[i].apNode = (ph7_hashmap_node **)ph7_context_alloc_chunk(pCtx,
+				(unsigned int)(sizeof(ph7_hashmap_node *) * nRow),FALSE,TRUE);
+			if( aCol[i].apNode == 0 ){
+				return PH7_ContextMemoryError(pCtx);
+			}
+			for( r = 0 ; r < nRow && pNode ; r++ ){
+				aCol[i].apNode[r] = pNode;
+				pNode = pNode->pPrev; /* Reverse link */
+			}
+		}
+		aIdx = (sxu32 *)ph7_context_alloc_chunk(pCtx,
+			(unsigned int)(sizeof(sxu32) * nRow * 2),FALSE,TRUE);
+		if( aIdx == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		aTmp = &aIdx[nRow];
+		for( i = 0 ; i < nRow ; i++ ){
+			aIdx[i] = i;
+		}
+		/* The string flags coerce user-visibly and can only FLAG a throw
+		 * (iCmpCallbackExc); clear it, sort, and report after — the flag-sort
+		 * drivers' shared pattern. */
+		pCtx->pVm->iCmpCallbackExc = 0;
+		MultisortSortIdx(aCol,nCol,aIdx,aTmp,nRow);
+		/* Apply the permutation to every column: rebuild in sorted order,
+		 * keeping string keys and renumbering int keys, then hand the fresh
+		 * array back through the by-ref slot (a literal has none and the
+		 * result is silently dropped — php's prefer-ref). */
+		for( i = 0 ; i < nCol ; i++ ){
+			ph7_value *pNew = ph7_context_new_array(pCtx);
+			sxu32 r;
+			if( pNew == 0 ){
+				return PH7_ContextMemoryError(pCtx);
+			}
+			for( r = 0 ; r < nRow ; r++ ){
+				ph7_hashmap_node *pNode = aCol[i].apNode[aIdx[r]];
+				HashmapInsertNode((ph7_hashmap *)pNew->x.pOther,pNode,
+					pNode->iType == HASHMAP_BLOB_NODE ? TRUE : FALSE);
+			}
+			PH7_VmStoreArgByRef(pCtx->pVm,aCol[i].pArr,pNew);
+		}
+		rcStatus = HashmapFlagSortStatus(pCtx);
+		if( rcStatus != PH7_OK ){
+			return rcStatus;
+		}
+	}
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}

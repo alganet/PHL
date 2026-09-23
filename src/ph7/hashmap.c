@@ -2227,6 +2227,7 @@ static const ph7_builtin_func aHashmapFunc[] = {
 	{"array_uintersect_assoc", ph7_hashmap_uintersect_assoc},
 	{"array_uintersect_uassoc", ph7_hashmap_uintersect_uassoc},
 	{"array_intersect_key",   ph7_hashmap_intersect_key},
+	{"array_multisort",   ph7_hashmap_multisort },
 	{"array_intersect_ukey",  ph7_hashmap_intersect_ukey},
 	{"array_copy",        ph7_hashmap_copy    },
 	{"array_erase",       ph7_hashmap_erase   },

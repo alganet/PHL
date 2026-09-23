@@ -426,6 +426,7 @@ static const struct VmBuiltinSig {
 	{ "array_last", "array $array", "mixed" },
 	{ "array_map", "?callable $callback, array $array, array ...$arrays = ?", "array" },
 	{ "array_merge", "array ...$arrays = ?", "array" },
+	{ "array_multisort", "&$array, &...$rest = ?", "true" },
 	{ "array_merge_recursive", "array ...$arrays = ?", "array" },
 	{ "array_pad", "array $array, int $length, mixed $value", "array" },
 	{ "array_pop", "array &$array", "mixed" },
@@ -1950,7 +1951,7 @@ PH7_PRIVATE int PH7_VmSigParamName(const char *zSig,int nPos,SyString *pOut)
  * array_multisort() is listed with it because it is php's other prefer-ref builtin and
  * PHL will need this the day it gains one (it is a MISSING builtin today, §5).
  */
-static int VmBuiltinPrefersRef(SyString *pName)
+PH7_PRIVATE int VmBuiltinPrefersRef(SyString *pName)
 {
 	static const char *const azPreferRef[] = { "extract", "array_multisort" };
 	sxu32 i;
@@ -2039,6 +2040,8 @@ PH7_PRIVATE sxu32 VmDeriveByRefMaskFromSig(const char *zSig)
 	int n = 0;       /* current parameter index */
 	int bSeen = 0;   /* current parameter has non-space content */
 	int bRef = 0;    /* current parameter carries a by-ref `&` */
+	int bVar = 0;    /* current parameter is a `...` variadic */
+	int bTailRef = 0;/* the LAST parameter was a by-ref variadic */
 	const char *zCur = zSig;
 	for(;;){
 		if( zCur[0] == '\'' || zCur[0] == '"' ){
@@ -2054,12 +2057,13 @@ PH7_PRIVATE sxu32 VmDeriveByRefMaskFromSig(const char *zSig)
 				if( bRef && n < 31 ){
 					mask |= (1u << n);
 				}
+				bTailRef = (bRef && bVar);
 				n++;
 			}
 			if( zCur[0] == '\0' ){
 				break;
 			}
-			bSeen = bRef = 0;
+			bSeen = bRef = bVar = 0;
 			zCur++;
 			continue;
 		}
@@ -2069,7 +2073,18 @@ PH7_PRIVATE sxu32 VmDeriveByRefMaskFromSig(const char *zSig)
 		if( zCur[0] == '&' ){
 			bRef = 1;
 		}
+		if( zCur[0] == '.' && zCur[1] == '.' && zCur[2] == '.' ){
+			/* A `...` tail, not a numeric default's decimal point. */
+			bVar = 1;
+		}
 		zCur++;
+	}
+	if( bTailRef && n > 0 && n <= 31 ){
+		/* A by-ref `&...` tail absorbs every later actual (array_multisort's
+		 * `&...$rest`): without this, the deferred-argument resolver read the
+		 * tail positions as by-VALUE and warned `Undefined variable` on an
+		 * undefined actual php binds silently. */
+		mask |= ~((1u << (n - 1)) - 1u);
 	}
 	return mask;
 }

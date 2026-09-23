@@ -1673,6 +1673,11 @@ static void VmCufDropByRefBuiltinArgs(ph7_context *pCtx,ph7_value *pCallable,int
 	if( pHost->nByRefMask == 0 ){
 		return;
 	}
+	if( VmBuiltinPrefersRef(&pHost->sName) ){
+		/* php's ZEND_SEND_PREFER_REF (extract, array_multisort) takes a value
+		 * WITHOUT a word here — the warning belongs to the strict `&` rows only. */
+		return;
+	}
 	for( i = 0 ; i < nArg && i < 31 ; ++i ){
 		SyString sName;
 		if( (pHost->nByRefMask & (1u << i)) == 0 ){
@@ -1846,6 +1851,11 @@ PH7_PRIVATE void PH7_VmWarnByRefArgsGivenValue(ph7_vm *pVm,ph7_value *pCallable,
 			return;
 		}
 		pHost = (ph7_user_func *)pEntry->pUserData;
+		if( VmBuiltinPrefersRef(&pHost->sName) ){
+			/* php's ZEND_SEND_PREFER_REF (extract, array_multisort) binds a value
+			 * WITHOUT a word — the notice belongs to the strict `&` rows only. */
+			return;
+		}
 		for( i = 0 ; i < nArg && i < 31 ; ++i ){
 			SyString sName;
 			int idx = i;
