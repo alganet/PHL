@@ -1330,7 +1330,22 @@ static int vm_builtin_reflect_func_info(ph7_context *pCtx, int nArg, ph7_value *
 	}
 	ReflectFillFuncCommon(pCtx, pInfo, pFunc);
 	ReflectMapAddInt(pCtx, pInfo, "minarg", -1);
-	if( (pFunc->iFlags & VM_FUNC_INTERNAL) && SySetUsed(&pFunc->aArgs) == 0 && pMeth == 0 ){
+	if( (pFunc->iFlags & VM_FUNC_NATIVE) && pFunc->pNative ){
+		/* A C-bodied METHOD declares its parameters in the one place a native class
+		 * can: the spec's signature string, which already drives arity and the
+		 * by-ref mask. Without this it reached Reflection as a bytecode function
+		 * with an EMPTY parameter set, so every native method reported NO
+		 * parameters -- the method-side twin of the aBuiltinSig[] debt a converted
+		 * FUNCTION owes, and Fiber/Generator/XMLWriter/Closure had it too. */
+		if( pFunc->pNative->zSig ){
+			ReflectMapAddStr(pCtx, pInfo, "sig", pFunc->pNative->zSig,
+				(int)SyStrlen(pFunc->pNative->zSig));
+		}
+		if( pFunc->pNative->zRet && SyStringLength(&pFunc->sReturnTypeName) == 0 ){
+			ReflectMapAddStr(pCtx, pInfo, "ret2", pFunc->pNative->zRet,
+				(int)SyStrlen(pFunc->pNative->zRet));
+		}
+	}else if( (pFunc->iFlags & VM_FUNC_INTERNAL) && SySetUsed(&pFunc->aArgs) == 0 && pMeth == 0 ){
 		/* Embedded-PHP builtin (max/min...): declared argless, actual
 		 * signature comes from the static table */
 		const char *zRet = 0;

@@ -1657,6 +1657,32 @@ struct VmIniEntry
  * the global one. Both blobs live on the VM allocator, so they are freed with it --
  * no release hook, exactly as aIniCli needs none.
  */
+/*
+ * The diagnostics of the last date parse — DateTime::getLastErrors()'s whole answer.
+ *
+ * php keeps one such record per request and both date classes read it, so this is a
+ * VM field rather than the PHL-only `public static DateTime::$__dtLastErr` it used to
+ * be. Every message is a static literal owned by the parser, so nothing here owns
+ * memory and the record needs no release hook. The kept-vs-total split is php's:
+ * `error_count` counts every error the scan raised, while the `errors` map holds one
+ * entry per POSITION (a later error at a position php has already reported replaces
+ * the message rather than adding a row).
+ */
+#define PH7_DT_MAX_WARN 3
+#define PH7_DT_MAX_ERR  8
+typedef struct phl_dt_lasterr phl_dt_lasterr;
+struct phl_dt_lasterr
+{
+	sxu8 bSet;                        /* 0 -> getLastErrors() answers php's `false` */
+	int nWarn;                        /* warning_count (total) */
+	int nWarnKept;                    /* rows in the warnings map */
+	int aWarnPos[PH7_DT_MAX_WARN];
+	const char *azWarn[PH7_DT_MAX_WARN];
+	int nErr;                         /* error_count (total) */
+	int nErrKept;                     /* rows in the errors map */
+	int aErrPos[PH7_DT_MAX_ERR];
+	const char *azErr[PH7_DT_MAX_ERR];
+};
 typedef struct VmIniSlot VmIniSlot;
 struct VmIniSlot
 {
@@ -1724,6 +1750,9 @@ struct ph7_vm
 	char zDefTz[68];            /* date_default_timezone_set() identifier, stored verbatim like php
 	                             * (default "UTC"; only UTC/GMT are accepted — no tz database) */
 	sxu32 nDefTz;               /* zDefTz length in bytes */
+	phl_dt_lasterr sDtLastErr;  /* DateTime::getLastErrors()'s answer. Was a PHL-only
+	                             * `public static $__dtLastErr` on DateTime, a property php has
+	                             * no equivalent of; both date classes read this field now. */
 	SySet aShutdown;            /* Stack of shutdown user callbacks */
 	SySet aIniCli;              /* php.ini directives from the CLI (-d/-c): VmIniEntry copies,
 	                             * merged into aIniTab when the directive table is seeded */

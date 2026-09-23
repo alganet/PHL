@@ -598,11 +598,15 @@ PH7_PRIVATE sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pT
 			ph7_result_string(pCtx,zCur,-1);
 			break;
 		case 'T':{
-			/* Timezone abbreviation: "UTC" for offset 0, "GMT+0530" for a
-			 * fixed offset (php's shape). PHL has no tz database, so the
-			 * zone-name path only ever sees UTC/GMT, uppercased. */
+			/* Timezone abbreviation: "GMT+0530" for a fixed offset, the name
+			 * itself (uppercased) for a named zone. php decides on the zone's
+			 * TYPE, not on the offset's value, so a zone whose name is an offset
+			 * spelling — `new DateTime('@0')`, `new DateTimeZone('+00:00')` —
+			 * prints "GMT+0000" where PHL printed the name "+00:00". PHL has no
+			 * tz database, so the name path only ever sees UTC/GMT/Z. */
 			const char *z;
-			if( pTm->tm_gmtoff != 0 ){
+			if( pTm->tm_gmtoff != 0
+			 || (pTm->tm_zone && (pTm->tm_zone[0] == '+' || pTm->tm_zone[0] == '-')) ){
 				long a = pTm->tm_gmtoff < 0 ? -pTm->tm_gmtoff : pTm->tm_gmtoff;
 				ph7_result_string_format(pCtx,"GMT%c%02d%02d",
 					pTm->tm_gmtoff < 0 ? '-' : '+',(int)(a / 3600),(int)((a % 3600) / 60));

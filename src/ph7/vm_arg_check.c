@@ -799,6 +799,7 @@ static const struct VmBuiltinSig {
 	{ "strstr", "string $haystack, string $needle, bool $before_needle = false", "string|false" },
 	{ "strtok", "string $string, ?string $token = NULL", "string|false" },
 	{ "strtolower", "string $string", "string" },
+	{ "strtotime", "string $datetime, ?int $baseTimestamp = NULL", "int|false" },
 	{ "strtoupper", "string $string", "string" },
 	{ "strtr", "string $string, array|string $from, ?string $to = NULL", "string" },
 	{ "strval", "mixed $value", "string" },
@@ -1065,6 +1066,7 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 		const char *zType, *zName, *zStop;
 		int nType, nName;
 		ph7_value *pArg;
+		char zGivenBuf[64];
 		/* Parameter = "<type> $<name>[ = <default>]"; the type is whatever
 		 * precedes the '$', and an empty type means "untyped" (no screen). */
 		while( zCur < zEnd && zCur[0] == ' ' ){
@@ -1128,6 +1130,28 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 				 && !VmSigTypeHas(zType,nType,"null")
 				 && !VmSigTypeHas(zType,nType,"callable") ){
 					zGiven = "null";
+				}
+			}else if( (pArg->iFlags & (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL)) != 0
+			       && VmSigTypeHasClass(zType,nType) ){
+				/* A SCALAR against a class-typed parameter. Every other scalar
+				 * pairing is left to weak-mode coercion, which is why nothing
+				 * screened scalars here at all — but no coercion produces an
+				 * instance, so php rejects this one. Found converting DateTime:
+				 * `$d->diff('x')` and `new DateTime('now','UTC')` ran on with a
+				 * string where php raises. An arm a scalar CAN satisfy (a union
+				 * with string/int/float/bool, or callable, which a string is)
+				 * keeps the parameter unscreened. */
+				if( !VmSigTypeHas(zType,nType,"string")
+				 && !VmSigTypeHas(zType,nType,"int")
+				 && !VmSigTypeHas(zType,nType,"float")
+				 && !VmSigTypeHas(zType,nType,"bool")
+				 && !VmSigTypeHas(zType,nType,"true")
+				 && !VmSigTypeHas(zType,nType,"false")
+				 && !VmSigTypeHas(zType,nType,"callable") ){
+					/* php's VALUE name, not the type's: a bool is reported as
+					 * `true`/`false` (the rule Generator::throw()'s own check
+					 * already followed, and which this screen now runs first). */
+					zGiven = VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf));
 				}
 			}else if( (pArg->iFlags & MEMOBJ_RES) != 0 ){
 				/* A class-typed parameter also accepts a resource: several handles php 8
