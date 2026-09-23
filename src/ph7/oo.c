@@ -2159,6 +2159,47 @@ PH7_PRIVATE ph7_value * PH7_ClassInstanceFetchAttr(ph7_class_instance *pThis,con
 	return ExtractClassAttrValue(pThis->pVm,pAttr);
 }
 /*
+ * Does a WRITE through `$obj[k]` land on this class's storage? php answers with
+ * the class's read_dimension handler: an internal class whose own handler hands
+ * back the real element supports indirect modification, while everything routed
+ * through zend_std_read_dimension — every userland ArrayAccess, and the SPL
+ * classes that keep the standard handler (SplFixedArray, the SplDoublyLinkedList
+ * family, SplObjectStorage) — gets a TEMPORARY back, so the write is lost and php
+ * says so. The engine cannot tell those apart from the interface alone: both
+ * implement ArrayAccess.
+ *
+ * PHL's equivalent evidence is the offsetGet that ANSWERS: the native one on a
+ * class carrying PH7_CLASS_DIM_WRITABLE means the storage is reachable, and a
+ * userland OVERRIDE of it means it is not — which is php's own rule for an
+ * ArrayObject subclass (spl_array_read_dimension steps aside for a declared
+ * offsetGet). A `&offsetGet` return is php's other yes: it hands back a reference,
+ * so the write reaches whatever it aliases.
+ */
+PH7_PRIVATE int PH7_VmDimFetchWritable(ph7_class *pClass)
+{
+	ph7_class_method *pGet;
+	ph7_class *pCur;
+	if( pClass == 0 ){
+		return FALSE;
+	}
+	pGet = PH7_ClassExtractMethod(pClass,"offsetGet",sizeof("offsetGet")-1);
+	if( pGet == 0 ){
+		return FALSE;
+	}
+	if( pGet->sFunc.iFlags & VM_FUNC_REF_RETURN ){
+		return TRUE;
+	}
+	if( (pGet->sFunc.iFlags & VM_FUNC_NATIVE) == 0 ){
+		return FALSE;
+	}
+	for( pCur = pClass ; pCur ; pCur = pCur->pBase ){
+		if( pCur->iFlags & PH7_CLASS_DIM_WRITABLE ){
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+/*
  * The three accessors a VM_FUNC_NATIVE method body uses to reach its receiver.
  *
  * A native method is dispatched down the host-function path, so it is handed the

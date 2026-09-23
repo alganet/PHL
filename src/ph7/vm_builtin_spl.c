@@ -535,7 +535,9 @@ static sxi32 VmInstallWeak(ph7_vm *pVm)
 		{ "WeakReference", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aRefMethod, SX_ARRAYSIZE(aRefMethod), 0, 0, aRefProp, SX_ARRAYSIZE(aRefProp),
 		  WkRefRelease, 0, WkPresent },
-		{ "WeakMap", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE,
+		/* php's WeakMap read_dimension answers the stored zval itself, so an
+		 * indirect modification through it lands (PH7_CLASS_DIM_WRITABLE). */
+		{ "WeakMap", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE|PH7_CLASS_DIM_WRITABLE,
 		  aMapMethod, SX_ARRAYSIZE(aMapMethod), 0, 0, aMapProp, SX_ARRAYSIZE(aMapProp),
 		  0, &sWmIterVtab, 0 },
 	};
@@ -1525,10 +1527,14 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 		 * declaring class where php reports Iterator. */
 		{ "SeekableIterator", "Iterator", 0, PH7_CLASS_INTERFACE,
 		  aSeekMethod, SX_ARRAYSIZE(aSeekMethod), 0, 0, 0, 0, 0, 0, 0 },
-		{ "ArrayIterator", 0, "SeekableIterator,ArrayAccess,Countable", 0,
+		/* PH7_CLASS_DIM_WRITABLE: php's spl_array read_dimension hands back the
+		 * REAL element for a write fetch, so `$ao['k']['n'] = v` lands — unlike
+		 * SplFixedArray / SplDoublyLinkedList / SplObjectStorage, which keep the
+		 * standard handler and get php's indirect-modification notice. */
+		{ "ArrayIterator", 0, "SeekableIterator,ArrayAccess,Countable", PH7_CLASS_DIM_WRITABLE,
 		  aItMethod, SX_ARRAYSIZE(aItMethod), aConst, SX_ARRAYSIZE(aConst),
 		  aItProp, SX_ARRAYSIZE(aItProp), 0, 0, SplStorePresent },
-		{ "ArrayObject", 0, "IteratorAggregate,ArrayAccess,Countable", 0,
+		{ "ArrayObject", 0, "IteratorAggregate,ArrayAccess,Countable", PH7_CLASS_DIM_WRITABLE,
 		  aObjMethod, SX_ARRAYSIZE(aObjMethod), aConst, SX_ARRAYSIZE(aConst),
 		  aObjProp, SX_ARRAYSIZE(aObjProp), 0, 0, SplStorePresent },
 	};

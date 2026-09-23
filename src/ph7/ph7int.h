@@ -1237,6 +1237,18 @@ struct ph7_class
                                      * implemented in a subclass"). The DOM node classes are the
                                      * users; __wakeup() alone does NOT rescue them. Inherited the
                                      * same way as the hard flag. */
+#define PH7_CLASS_DIM_WRITABLE 0x4000 /* A write through `$obj[k]` LANDS on this class's storage.
+                                       * php's split is the read_dimension handler: an internal
+                                       * class whose own handler hands back the real element
+                                       * (ArrayObject, ArrayIterator, WeakMap) supports indirect
+                                       * modification, while everything routed through
+                                       * zend_std_read_dimension — every userland ArrayAccess, and
+                                       * the SPL classes that keep the standard handler — gets a
+                                       * TEMPORARY, so php notices and drops the write. Inherited
+                                       * by subclasses (the flag is looked up along pBase), but
+                                       * only while the native offsetGet is still the one that
+                                       * answers: an override takes the class off the fast handler
+                                       * in php too. See PH7_VmDimFetchWritable. */
 #define PH7_CLASS_NOINSTANTIATE 0x1000 /* `new C` is refused by the OBJECT-CREATION step, before the
                                      * constructor's visibility is ever consulted — php's
                                      * "Instantiation of class %s is not allowed", which its
@@ -4333,6 +4345,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmap(ph7_class_instance *pThis,ph7_hashm
 PH7_PRIVATE sxi32 PH7_ClassInstanceWalk(ph7_class_instance *pThis,
 	int (*xWalk)(const char *,ph7_value *,void *),void *pUserData);
 PH7_PRIVATE ph7_value * PH7_ClassInstanceFetchAttr(ph7_class_instance *pThis,const SyString *pName);
+PH7_PRIVATE int PH7_VmDimFetchWritable(ph7_class *pClass);
 PH7_PRIVATE ph7_class_instance * PH7_ContextThis(ph7_context *pCtx);
 PH7_PRIVATE ph7_class * PH7_ContextCalledClass(ph7_context *pCtx);
 PH7_PRIVATE ph7_value * PH7_ContextThisValue(ph7_context *pCtx);

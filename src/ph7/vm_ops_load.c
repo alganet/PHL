@@ -1127,6 +1127,67 @@ static void VmDimRmwArm(
 	SySetPut(&pVm->aHookRmw,(const void *)&sRmw);
 }
 /*
+ * Is this LOAD_IDX fetching the dimension for WRITING — php's BP_VAR_W / BP_VAR_RW
+ * / BP_VAR_UNSET fetch, the one that asks the container for a slot to MODIFY
+ * rather than a value to read?
+ *
+ * iP2 answers for most of it. The two shapes it cannot are the ones where the
+ * fetch is compiled as a plain read and the NEXT instruction is what makes it a
+ * write: binding a reference to the element (`$r = &$o[$k]`) and iterating it by
+ * reference (`foreach ($o[$k] as &$v)`). A compound assign is the reverse case —
+ * iP2 says write, but php compiles it to ASSIGN_DIM_OP, a read plus a write
+ * through the container's own handlers (VmDimRmwArm), not a write FETCH.
+ */
+static int VmIdxFetchForWrite(const VmInstr *pInstr,sxi32 iP2)
+{
+	const VmInstr *pNext = pInstr + 1;
+	if( iP2 == 1 ){
+		return !VmNextIsCompoundAssign(pNext);
+	}
+	if( iP2 == VM_IDX_CTX_UNSET_BASE ){
+		/* An INTERMEDIATE subscript of an unset chain: php fetches it for
+		 * writing so the removal one level down can land. */
+		return 1;
+	}
+	if( iP2 == 0 ){
+		if( pNext->iOp == PH7_OP_STORE_REF ){
+			return 1;
+		}
+		if( pNext->iOp == PH7_OP_FOREACH_INIT && pNext->p3 ){
+			return (((ph7_foreach_info *)pNext->p3)->iFlags & PH7_4EACH_STEP_REF) != 0;
+		}
+	}
+	return 0;
+}
+/*
+ * php's `Indirect modification of overloaded element of C has no effect`: the
+ * write-context fetch above landed on a container that answers with a COPY, so
+ * whatever the rest of the expression writes is thrown away. php says so and
+ * carries on.
+ *
+ * PHL had neither half. The notice was missing, and the copy was not a copy: a
+ * userland offsetGet returns the container's own nested hashmap by COW, and
+ * OP_STORE_IDX on a base with no slot index writes STRAIGHT INTO the shared map —
+ * so `$o['a']['b'] = 9`, `$o['a'][] = 5` and `foreach ($o['a'] as &$v)` all
+ * modified the object php leaves untouched, silently. Separating the value here
+ * is what makes the write land nowhere.
+ *
+ * php stays silent for an OBJECT, and so does this: an object is a handle, the
+ * write through it is not lost, and nothing about it is indirect.
+ */
+static void VmOverloadedElemNotice(ph7_vm *pVm,ph7_class *pClass,ph7_value *pVal)
+{
+	if( pVal->iFlags & MEMOBJ_OBJ ){
+		return;
+	}
+	VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,
+		"Indirect modification of overloaded element of %z has no effect",
+		&pClass->sName);
+	if( pVal->iFlags & MEMOBJ_HASHMAP ){
+		PH7_HashmapCowSeparate(&(*pVm),pVal);
+	}
+}
+/*
  * OP_LOAD_IDX: body moved verbatim from the OP_LOAD_IDX arm of
  * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
  */
@@ -1556,6 +1617,9 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 					 * its tail (PH7_HOOK_RMW_WRITEBACK) dispatches offsetSet. */
 					VmDimRmwArm(&(*pVm),pInst,pIdx,pTos,
 						(void *)pStack,(void *)aInstr,(sxu32)(pc + 1));
+				}else if( VmIdxFetchForWrite(pInstr,iP2)
+				       && !PH7_VmDimFetchWritable(pInst->pClass) ){
+					VmOverloadedElemNotice(&(*pVm),pInst->pClass,pTos);
 				}
 			}
 			PH7_MemObjRelease(&sResult);

@@ -1,3 +1,6 @@
+--CREDITS--
+SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
+SPDX-License-Identifier: BSD-3-Clause
 --TEST--
 A compound assign on an ArrayAccess element reads offsetGet and writes offsetSet
 --FILE--
