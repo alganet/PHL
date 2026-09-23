@@ -1255,6 +1255,30 @@ PH7_PRIVATE sxi32 VmCallClassMethodWithMap(
 	VmCallArgMap *pMap
 	)
 {
+	return VmCallClassMethodLsb(&(*pVm),0,pThis,pMethod,pResult,nArg,apArg,pMap);
+}
+/*
+ * The same dispatch, told which class the call was made THROUGH — php's "called scope",
+ * what `static::` and `new static` answer. An OBJECT receiver carries it (its own class),
+ * but a STATIC dispatch has only the resolved method, and the synthetic OP_CALL below then
+ * fell back to the method's DECLARING class: `call_user_func(['Kid','make'])` on a base
+ * `return new static()` built a BASE, and `__callStatic` reported the base for every
+ * spelling, the direct `Kid::missing()` included. Passing the class here writes its NAME
+ * into the target slot, which is exactly what the source spelling `Kid::m()` leaves for
+ * OP_CALL to resolve — so late static binding is decided by the one rule, in one place.
+ * pCalled == 0 keeps the old shape (an engine dispatch with no class context of its own).
+ */
+PH7_PRIVATE sxi32 VmCallClassMethodLsb(
+	ph7_vm *pVm,
+	ph7_class *pCalled,
+	ph7_class_instance *pThis,
+	ph7_class_method *pMethod,
+	ph7_value *pResult,
+	int nArg,
+	ph7_value **apArg,
+	VmCallArgMap *pMap
+	)
+{
 	ph7_value *aStack;
 	VmInstr aInstr[2];
 	int iCursor;
@@ -1275,6 +1299,13 @@ PH7_PRIVATE sxi32 VmCallClassMethodWithMap(
 		pThis->iRef++;
 		aStack[i].x.pOther = pThis;
 		aStack[i].iFlags = MEMOBJ_OBJ;
+	}else if( pCalled ){
+		/* The called class as a NAME string — the shape a `C::m()` call site leaves on the
+		 * stack, which OP_CALL resolves into the `pSelf` it pushes on aSelf (`static::`). */
+		SyBlobReset(&aStack[i].sBlob);
+		SyBlobAppend(&aStack[i].sBlob,(const void *)SyStringData(&pCalled->sName),
+			SyStringLength(&pCalled->sName));
+		aStack[i].iFlags = MEMOBJ_STRING;
 	}
 	aStack[i].nIdx = SXU32_HIGH;
 	i++;
@@ -1332,9 +1363,27 @@ PH7_PRIVATE sxi32 PH7_VmCallMagicMethod(
 	ph7_value **apArg
 	)
 {
+	return PH7_VmCallMagicMethodLsb(&(*pVm),0,pThis,pMethod,pResult,nArg,apArg);
+}
+/*
+ * The same engine dispatch, told the class the call was made THROUGH: `__callStatic` has
+ * no receiver to carry it, so without this `static::` inside the handler answered the class
+ * that DECLARED it. Keeping the latch in one function keeps the "set at the engine's own
+ * dispatch sites only" invariant the OP_CALL screen documents.
+ */
+PH7_PRIVATE sxi32 PH7_VmCallMagicMethodLsb(
+	ph7_vm *pVm,
+	ph7_class *pCalled,
+	ph7_class_instance *pThis,
+	ph7_class_method *pMethod,
+	ph7_value *pResult,
+	int nArg,
+	ph7_value **apArg
+	)
+{
 	sxi32 rc;
 	pVm->bMagicDispatch = 1;
-	rc = VmCallClassMethodWithMap(&(*pVm),pThis,pMethod,pResult,nArg,apArg,0);
+	rc = VmCallClassMethodLsb(&(*pVm),pCalled,pThis,pMethod,pResult,nArg,apArg,0);
 	pVm->bMagicDispatch = 0; /* OP_CALL consumes it; clear if it never ran */
 	return rc;
 }
@@ -1778,7 +1827,10 @@ PH7_PRIVATE sxi32 PH7_VmDispatchMagicCall(ph7_vm *pVm,ph7_class *pClass,ph7_clas
 	MemObjSetType(&sArgs,MEMOBJ_HASHMAP);
 	apMagic[0] = &sName;
 	apMagic[1] = &sArgs;
-	rc = PH7_VmCallMagicMethod(&(*pVm),pThis,pMagic,pResult,2,apMagic);
+	/* `static::` inside `__callStatic` is the class the call NAMED, not the one that
+	 * declared the handler — php's called scope, which an object receiver carries on its
+	 * own and a static one does not. */
+	rc = PH7_VmCallMagicMethodLsb(&(*pVm),pThis ? 0 : pClass,pThis,pMagic,pResult,2,apMagic);
 	PH7_MemObjRelease(&sName);
 	PH7_MemObjRelease(&sArgs); /* frees the packed argument map */
 	return rc;
@@ -1908,7 +1960,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 		}
 		/* Call the class method, forwarding the named-arg map (a `[obj,m]`/`[class,m]`
 		 * first-class-callable invoked as `$c(name: …)` must bind by name, like a direct call). */
-		rc = VmCallClassMethodWithMap(&(*pVm),pThis,pMethod,pResult,nArg,apArg,pArgMap);
+		rc = VmCallClassMethodLsb(&(*pVm),pThis ? 0 : pClass,pThis,pMethod,pResult,nArg,apArg,pArgMap);
 		return rc;
 	}
 	{
@@ -1946,7 +1998,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 				}
 				return SXRET_OK;
 			}
-			return VmCallClassMethodWithMap(&(*pVm),0,pCmMethod,pResult,nArg,apArg,pArgMap);
+			return VmCallClassMethodLsb(&(*pVm),pCmClass,0,pCmMethod,pResult,nArg,apArg,pArgMap);
 		}
 	}
 	/* Create a new operand stack */

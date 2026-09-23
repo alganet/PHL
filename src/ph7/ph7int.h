@@ -3919,6 +3919,8 @@ PH7_PRIVATE int vm_builtin_spl_autoload_unregister(ph7_context *pCtx,int nArg,ph
 PH7_PRIVATE ph7_class * PH7_VmResolveParentClass(ph7_vm *pVm);
 PH7_PRIVATE void VmBoundaryPark(ph7_vm *pVm,sxi32 rc);
 PH7_PRIVATE sxi32 VmIterCallMethod(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nLen,ph7_value *pResult);
+PH7_PRIVATE sxi32 VmCallClassMethodLsb(ph7_vm *pVm,ph7_class *pCalled,ph7_class_instance *pThis,
+	ph7_class_method *pMethod,ph7_value *pResult,int nArg,ph7_value **apArg,VmCallArgMap *pMap);
 PH7_PRIVATE sxi32 VmCallClassMethodWithMap(ph7_vm *pVm,ph7_class_instance *pThis,
 	ph7_class_method *pMethod,ph7_value *pResult,int nArg,
 	ph7_value **apArg,VmCallArgMap *pMap);
@@ -4269,6 +4271,8 @@ PH7_PRIVATE sxi32 PH7_ClassInstallAttr(ph7_class *pClass,ph7_class_attr *pAttr);
 PH7_PRIVATE sxi32 PH7_ClassInstallMethod(ph7_class *pClass,ph7_class_method *pMeth);
 PH7_PRIVATE int PH7_MagicMethodMustBePublic(const SyString *pName);
 PH7_PRIVATE sxi32 PH7_VmCallMagicMethod(ph7_vm *pVm,ph7_class_instance *pThis,
+	ph7_class_method *pMethod,ph7_value *pResult,int nArg,ph7_value **apArg);
+PH7_PRIVATE sxi32 PH7_VmCallMagicMethodLsb(ph7_vm *pVm,ph7_class *pCalled,ph7_class_instance *pThis,
 	ph7_class_method *pMethod,ph7_value *pResult,int nArg,ph7_value **apArg);
 PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class *pBase);
 PH7_PRIVATE sxi32 PH7_ClassUseTrait(ph7_gen_state *pGen,ph7_class *pClass,ph7_class *pTrait);
