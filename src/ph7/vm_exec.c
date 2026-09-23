@@ -6247,6 +6247,31 @@ case PH7_OP_CALL: {
 									rc = PH7_EXCEPTION;
 									goto SkipFuncBody;
 								}
+								if( aFormalArg[iVariadicIdx].iFlags & VM_FUNC_ARG_BY_REF ){
+									/* php screens a by-ref VARIADIC tail per collected element, in its
+									 * no-name wording: a variadic has no per-element parameter name, so
+									 * php says `Argument #N could not be passed by reference` and stops
+									 * there. Nothing screened this arm at all — the branch that collects
+									 * a variadic runs before the by-ref binder ever sees a formal. */
+									if( PH7_VmArgRefusedByRef(pCallMap3,i,&pArg[i]) ){
+										SyBlob sMsgV;
+										sxi32 rcV;
+										SyBlobInit(&sMsgV,&pVm->sAllocator);
+										SyBlobFormat(&sMsgV,"%z(): Argument #%u could not be passed by reference",
+											&pVmFunc->sName,(unsigned)(i + 1));
+										rcV = VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sMsgV);
+										if( rcV == PH7_ABORT ){
+											goto Abort;
+										}
+										SyMemBackendFree(&pVm->sAllocator, aSlot);
+										PH7_MemObjRelease(pTos);
+										pTos = &pTos[-nCallArgs];
+										pFrameStack = 0;
+										rc = PH7_EXCEPTION;
+										goto SkipFuncBody;
+									}
+									PH7_VmArgTempCallNotice(&(*pVm),pCallMap3,i,&pArg[i]);
+								}
 								if( bNamed ){
 									/* Named variadic entry: insert with string key */
 									ph7_value sKey;
@@ -6340,6 +6365,29 @@ case PH7_OP_CALL: {
 								pFrameStack = 0;
 								rc = PH7_EXCEPTION;
 								goto SkipFuncBody;
+							}
+							if( aFormalArg[n].iFlags & VM_FUNC_ARG_BY_REF ){
+								/* The positional twin of the named path's variadic screen above:
+								 * php refuses a non-variable collected into a by-ref variadic tail,
+								 * in its no-name wording. */
+								sxu32 nPosV = (sxu32)(pArg - pArgBase);
+								if( PH7_VmArgRefusedByRef(pCallMap3,nPosV,pArg) ){
+									SyBlob sMsgV;
+									sxi32 rcV;
+									SyBlobInit(&sMsgV,&pVm->sAllocator);
+									SyBlobFormat(&sMsgV,"%z(): Argument #%u could not be passed by reference",
+										&pVmFunc->sName,(unsigned)(nPosV + 1));
+									rcV = VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sMsgV);
+									if( rcV == PH7_ABORT ){
+										goto Abort;
+									}
+									PH7_MemObjRelease(pTos);
+									pTos = &pTos[-nCallArgs];
+									pFrameStack = 0;
+									rc = PH7_EXCEPTION;
+									goto SkipFuncBody;
+								}
+								PH7_VmArgTempCallNotice(&(*pVm),pCallMap3,nPosV,pArg);
 							}
 							PH7_HashmapInsert(pMap, 0, pArg);
 							pArg++;
