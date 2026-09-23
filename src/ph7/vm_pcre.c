@@ -195,11 +195,20 @@ static sxi32 PcreMapFlags(
 	return PH7_OK;
 }
 
-/* ===== Compile helper ===== */
-static pcre2_code *PcreCompile(
-	ph7_context *pCtx,
+/* ===== Compile helper =====
+ *
+ * PcreCompileQuiet is the whole of it; PcreCompile is that plus php's E_WARNING.
+ * The split exists because a caller may have to WORD the failure itself: php's
+ * SPL wraps the compile in zend_replace_error_handling(EH_THROW,
+ * InvalidArgumentException), so `new RegexIterator($it, 'nodelim')` raises an
+ * exception carrying this exact text instead of warning. Nothing else may
+ * reproduce these four messages -- they are php's, verbatim, in one place.
+ */
+static pcre2_code *PcreCompileQuiet(
+	ph7_vm *pVm,
 	const char *zFullPattern, int nLen,
-	sxu32 *pCaptureCount)
+	sxu32 *pCaptureCount,
+	char *zErr, sxu32 nErr)
 {
 	const char *zPat, *zFlags;
 	int nPatLen, nFlagLen;
@@ -212,6 +221,9 @@ static pcre2_code *PcreCompile(
 	char cDelim;
 	int bPaired;
 
+	if( nErr > 0 ){
+		zErr[0] = 0;
+	}
 	/* Check cache first */
 	pCode = PcreCache_Find(zFullPattern, (sxu32)nLen, pCaptureCount);
 	if( pCode ){
@@ -222,17 +234,17 @@ static pcre2_code *PcreCompile(
 		&cDelim, &bPaired);
 	if( parseRc != PCRE_PARSE_OK ){
 		if( parseRc == PCRE_PARSE_EMPTY ){
-			ph7_context_throw_error(pCtx, PH7_CTX_WARNING, "Empty regular expression");
+			SyBufferFormat(zErr, nErr, "Empty regular expression");
 		}else if( parseRc == PCRE_PARSE_BAD_DELIMITER ){
-			ph7_context_throw_error(pCtx, PH7_CTX_WARNING,
+			SyBufferFormat(zErr, nErr,
 				"Delimiter must not be alphanumeric, backslash, or NUL byte");
 		}else{
 			/* php names the delimiter, and distinguishes paired delimiters */
-			ph7_context_throw_error_format(pCtx, PH7_CTX_WARNING,
+			SyBufferFormat(zErr, nErr,
 				bPaired ? "No ending matching delimiter '%c' found"
 				        : "No ending delimiter '%c' found", cDelim);
 		}
-		pCtx->pVm->iPcreLastError = PHP_PREG_INTERNAL_ERROR;
+		pVm->iPcreLastError = PHP_PREG_INTERNAL_ERROR;
 		return 0;
 	}
 	/* Map flags */
@@ -244,9 +256,9 @@ static pcre2_code *PcreCompile(
 	if( pCode == 0 ){
 		PCRE2_UCHAR errbuf[256];
 		pcre2_get_error_message(errcode, errbuf, sizeof(errbuf));
-		ph7_context_throw_error_format(pCtx, PH7_CTX_WARNING,
+		SyBufferFormat(zErr, nErr,
 			"Compilation failed: %s at offset %d", (const char *)errbuf, (int)erroffset);
-		pCtx->pVm->iPcreLastError = PHP_PREG_INTERNAL_ERROR;
+		pVm->iPcreLastError = PHP_PREG_INTERNAL_ERROR;
 		return 0;
 	}
 	/* Get capture count */
@@ -257,8 +269,32 @@ static pcre2_code *PcreCompile(
 	}
 	/* Cache it */
 	PcreCache_Insert(zFullPattern, (sxu32)nLen, pCode, nCapture);
-	pCtx->pVm->iPcreLastError = PHP_PREG_NO_ERROR;
+	pVm->iPcreLastError = PHP_PREG_NO_ERROR;
 	return pCode;
+}
+static pcre2_code *PcreCompile(
+	ph7_context *pCtx,
+	const char *zFullPattern, int nLen,
+	sxu32 *pCaptureCount)
+{
+	char zErr[288];
+	pcre2_code *pCode = PcreCompileQuiet(pCtx->pVm, zFullPattern, nLen, pCaptureCount,
+		zErr, sizeof(zErr));
+	if( pCode == 0 && zErr[0] ){
+		ph7_context_throw_error(pCtx, PH7_CTX_WARNING, zErr);
+	}
+	return pCode;
+}
+/*
+ * Validate a pattern for a caller that raises its own diagnostic (php's SPL
+ * promotes the warning to an InvalidArgumentException). Answers TRUE when the
+ * pattern compiles; otherwise FALSE with php's text in zErr. The compiled code
+ * stays in the pattern cache, so a later match pays nothing for this.
+ */
+PH7_PRIVATE int PH7_PcrePatternCheck(ph7_vm *pVm, const char *zPattern, int nLen,
+	char *zErr, sxu32 nErr)
+{
+	return PcreCompileQuiet(&(*pVm), zPattern, nLen, 0, zErr, nErr) != 0;
 }
 
 /* ===== Map PCRE2 match error to PHP error code ===== */
@@ -1523,6 +1559,89 @@ static int PH7_builtin_preg_last_error_msg(ph7_context *pCtx, int nArg, ph7_valu
 	return PH7_OK;
 }
 
+/*
+ * The regex operation behind RegexIterator::accept(), in php's five REGIT modes.
+ *
+ * php reaches php_pcre_match_impl / php_pcre_split_impl / php_pcre_replace_impl
+ * from spl_iterators.c rather than re-deriving any of it, and this is that door:
+ * every mode is one of the builtins above, called with the arguments the PHP
+ * spelling would have passed. The builtins answer through pCtx->pRet, which is
+ * also accept()'s own return slot -- harmless because the caller writes its
+ * boolean after this returns, and the reason pOut is a separate parameter.
+ *
+ * *pbOk is php's per-mode "matched" test: a positive match count, more than one
+ * SPLIT piece, at least one REPLACE substitution. pOut receives the transformed
+ * value for every mode but MATCH, which leaves the cached current() alone.
+ */
+PH7_PRIVATE sxi32 PH7_PcreRegitApply(
+	ph7_context *pCtx,
+	int iMode,               /* PH7_REGIT_* */
+	ph7_value *pPattern,
+	ph7_value *pSubject,
+	int iPregFlags,
+	ph7_value *pRepl,        /* REPLACE only */
+	ph7_value *pOut,         /* transformed value (modes other than MATCH) */
+	int *pbOk
+	)
+{
+	ph7_value *apArg[5];
+	ph7_value sFlags, sLimit, sCount;
+	sxi32 rc = PH7_OK;
+	*pbOk = 0;
+	PH7_MemObjInitFromInt(pCtx->pVm,&sFlags,iPregFlags);
+	PH7_MemObjInitFromInt(pCtx->pVm,&sLimit,-1);
+	PH7_MemObjInitFromInt(pCtx->pVm,&sCount,0);
+	/* A by-ref out-parameter with no caller slot behind it: PH7_VmStoreArgByRef
+	 * writes through nIdx when it is not SXU32_HIGH, and a zeroed ph7_value's
+	 * nIdx is 0 -- a REAL slot index, which would corrupt aMemObj[0]. */
+	sCount.nIdx = SXU32_HIGH;
+	if( pOut ){
+		pOut->nIdx = SXU32_HIGH;
+	}
+	apArg[0] = pPattern;
+	switch( iMode ){
+		case PH7_REGIT_MATCH:
+			apArg[1] = pSubject;
+			rc = PH7_builtin_preg_match(pCtx,2,apArg);
+			*pbOk = ph7_value_to_int(pCtx->pRet) > 0;
+			break;
+		case PH7_REGIT_GET_MATCH:
+		case PH7_REGIT_ALL_MATCHES:
+			apArg[1] = pSubject;
+			apArg[2] = pOut;
+			apArg[3] = &sFlags;
+			rc = iMode == PH7_REGIT_GET_MATCH
+				? PH7_builtin_preg_match(pCtx,4,apArg)
+				: PH7_builtin_preg_match_all(pCtx,4,apArg);
+			*pbOk = ph7_value_to_int(pCtx->pRet) > 0;
+			break;
+		case PH7_REGIT_SPLIT:
+			apArg[1] = pSubject;
+			apArg[2] = &sLimit;
+			apArg[3] = &sFlags;
+			rc = PH7_builtin_preg_split(pCtx,4,apArg);
+			PH7_MemObjStore(pCtx->pRet,pOut);
+			if( pOut->iFlags & MEMOBJ_HASHMAP ){
+				*pbOk = ((ph7_hashmap *)pOut->x.pOther)->nEntry > 1;
+			}
+			break;
+		case PH7_REGIT_REPLACE:
+			apArg[1] = pRepl;
+			apArg[2] = pSubject;
+			apArg[3] = &sLimit;
+			apArg[4] = &sCount;
+			rc = PH7_builtin_preg_replace(pCtx,5,apArg);
+			PH7_MemObjStore(pCtx->pRet,pOut);
+			*pbOk = ph7_value_to_int(&sCount) > 0;
+			break;
+		default:
+			break;
+	}
+	PH7_MemObjRelease(&sFlags);
+	PH7_MemObjRelease(&sLimit);
+	PH7_MemObjRelease(&sCount);
+	return rc;
+}
 /* ===== Function registration table ===== */
 static const ph7_builtin_func aPcreFunc[] = {
 	{ "preg_match",              PH7_builtin_preg_match },

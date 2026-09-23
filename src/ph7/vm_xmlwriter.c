@@ -360,7 +360,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)
 	/* The libxml writer handle: storage the class owns, kept public because the
 	 * prelude declared it so. */
 	static const PH7_NativePropDef aProp[] = {
-		{ "__res", PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ "__res", PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeClassSpec sSpec = {
 		"XMLWriter", 0, 0, 0,

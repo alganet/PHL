@@ -376,6 +376,47 @@ static sxi32 NativeInstallConstant(ph7_vm *pVm,ph7_class *pClass,const PH7_Nativ
 	return PH7_ClassInstallAttr(pClass,pAttr);
 }
 /*
+ * Fill in a declared property TYPE from the text a spec row states, exactly as
+ * GenStateCopyTypeToAttr fills it from a parsed declaration: nType is the
+ * MEMOBJ_* the atom names (SXU32_HIGH plus sClass for a class name, which is
+ * also how the compiler carries `mixed` and `iterable`), the `?` becomes the
+ * NULLABLE flag rather than a type bit, and sTypeName keeps the text VERBATIM --
+ * both the TypeError and Reflection print what the declaration said.
+ *
+ * Single atoms only. A union needs the alternative SET the compiler builds, and
+ * nothing native declares one; a spec that tries reads as the class name it is
+ * spelled with, which is why the parse stays this literal.
+ */
+static void NativeAttrType(ph7_class_attr *pAttr,const char *zType)
+{
+	static const struct { const char *zName; sxu32 nType; } aScalar[] = {
+		{ "int",    MEMOBJ_INT },
+		{ "float",  MEMOBJ_REAL },
+		{ "string", MEMOBJ_STRING },
+		{ "bool",   MEMOBJ_BOOL },
+		{ "array",  MEMOBJ_HASHMAP },
+		{ "object", MEMOBJ_OBJ },
+	};
+	const char *zAtom = zType;
+	sxu32 nAtom, n;
+	if( zAtom[0] == '?' ){
+		pAttr->iFlags |= PH7_CLASS_ATTR_NULLABLE;
+		zAtom++;
+	}
+	nAtom = SyStrlen(zAtom);
+	pAttr->iFlags |= PH7_CLASS_ATTR_TYPED;
+	SyStringInitFromBuf(&pAttr->sTypeName,zType,SyStrlen(zType));
+	for( n = 0 ; n < SX_ARRAYSIZE(aScalar) ; ++n ){
+		if( nAtom == SyStrlen(aScalar[n].zName)
+		 && SyMemcmp(zAtom,aScalar[n].zName,(sxu32)nAtom) == 0 ){
+			pAttr->nType = aScalar[n].nType;
+			return;
+		}
+	}
+	pAttr->nType = SXU32_HIGH;
+	SyStringInitFromBuf(&pAttr->sClass,zAtom,nAtom);
+}
+/*
  * Install one declared property.
  *
  * The default is carried as a literal rather than compiled byte-code (see
@@ -401,6 +442,9 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallProperty(ph7_vm *pVm,ph7_class *pClass,
 	}
 	pAttr->pDeclClass = pClass;
 	pAttr->pNativeValue = &pDef->sDefault;
+	if( pDef->zType && pDef->zType[0] ){
+		NativeAttrType(pAttr,pDef->zType);
+	}
 	return PH7_ClassInstallAttr(pClass,pAttr);
 }
 /*
@@ -919,12 +963,12 @@ PH7_PRIVATE ph7_class_instance * PH7_NativeIteratorNew(ph7_vm *pVm,ph7_class_ins
 PH7_PRIVATE sxi32 PH7_VmInstallNativeIterator(ph7_vm *pVm)
 {
 	static const PH7_NativePropDef aProp[] = {
-		{ PH7_NATIVE_IT_SRC,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ PH7_NATIVE_IT_CUR,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ PH7_NATIVE_IT_KEY,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ PH7_NATIVE_IT_POS,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 } },
-		{ PH7_NATIVE_IT_AUX,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 } },
-		{ PH7_NATIVE_IT_DONE, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 } },
+		{ PH7_NATIVE_IT_SRC,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ PH7_NATIVE_IT_CUR,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ PH7_NATIVE_IT_KEY,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ PH7_NATIVE_IT_POS,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 }, 0 },
+		{ PH7_NATIVE_IT_AUX,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 }, 0 },
+		{ PH7_NATIVE_IT_DONE, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeMethodDef aMethod[] = {
 		{ "__construct", PH7_MOD_PRIVATE, "", "", vm_builtin_InternalIterator_construct },

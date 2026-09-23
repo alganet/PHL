@@ -472,7 +472,7 @@ static sxi32 VmInstallWeak(ph7_vm *pVm)
 	static const PH7_NativePropDef aRefProp[] = {
 		/* The shared cell, as a pointer. Private to a final class and never handed
 		 * to PHP -- what `__weak_create()` used to return into a userland slot. */
-		{ "__h", PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
+		{ "__h", PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeMethodDef aRefMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC, "", "", vm_builtin_WeakReference_construct },
@@ -481,8 +481,8 @@ static sxi32 VmInstallWeak(ph7_vm *pVm)
 		{ "get",         PH7_MOD_PUBLIC, "", "?object", vm_builtin_WeakReference_get },
 	};
 	static const PH7_NativePropDef aMapProp[] = {
-		{ WM_REFS, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ WM_VALS, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ WM_REFS, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ WM_VALS, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeMethodDef aMapMethod[] = {
 		/* php leaves the key parameter UNTYPED and screens it in the body, so that
@@ -1088,13 +1088,13 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 		{ "seek", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "int $offset", 0, 0 },
 	};
 	static const PH7_NativePropDef aItProp[] = {
-		{ SPL_D, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ SPL_F, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
+		{ SPL_D, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ SPL_F, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativePropDef aObjProp[] = {
-		{ SPL_D,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ SPL_F,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
-		{ SPL_IT, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "ArrayIterator", 0.0 } },
+		{ SPL_D,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ SPL_F,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+		{ SPL_IT, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "ArrayIterator", 0.0 }, 0 },
 	};
 	static const PH7_NativeConstDef aConst[] = {
 		{ "STD_PROP_LIST",  PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 1, 0, 0.0 },
@@ -2025,6 +2025,230 @@ static int vm_builtin_EmptyIterator_key(ph7_context *pCtx,int nArg,ph7_value **a
 		"Accessing the key of an EmptyIterator");
 }
 /*
+ * ---------------------------------------------------------------------------
+ * RegexIterator: a FilterIterator whose accept() runs a regex over the CACHE.
+ *
+ * Everything that matters here follows from the cache the decorators already
+ * keep. php's accept() reads `current.data` (or `current.key` under USE_KEY) and
+ * -- in every mode but MATCH -- WRITES THE RESULT BACK INTO THAT SAME SLOT, which
+ * is why the class declares no current() of its own: the inherited one already
+ * answers the transformed value. The PHP chunk kept a private `$__cur` and
+ * overrode current(), and that is where its two wrong answers came from: a
+ * REPLACE under USE_KEY must replace into the KEY (php leaves current() alone),
+ * and an ARRAY current() is refused outright rather than matched as the string
+ * "Array".
+ */
+#define IT_RE  "__re"   /* php's u.regex.regex: the pattern, as given */
+#define IT_RM  "__rm"   /* php's u.regex.mode */
+#define IT_RF  "__rf"   /* php's u.regex.flags (USE_KEY / INVERT_MATCH) */
+#define IT_RP  "__rp"   /* php's u.regex.preg_flags */
+#define REGIT_USE_KEY  1
+#define REGIT_INVERTED 2
+/* php's ValueError for a mode outside the five. The constructor and setMode()
+ * word it identically and differ only in the argument they name. */
+static int RegitBadMode(ph7_context *pCtx,const char *zWhere)
+{
+	return PH7_VmThrowException(pCtx,"ValueError",
+		"%s must be RegexIterator::MATCH, RegexIterator::GET_MATCH, "
+		"RegexIterator::ALL_MATCHES, RegexIterator::SPLIT, or RegexIterator::REPLACE",
+		zWhere);
+}
+static int vm_builtin_RegexIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zPat;
+	int nPat;
+	sxi64 iMode = PH7_REGIT_MATCH;
+	char zErr[288];
+	sxi32 rc;
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	if( PH7_NativeAttrObj(pThis,IT_IN) != 0 ){
+		/* php makes the "already built" refusal before it reads any argument, so
+		 * hand this straight to the shared constructor, which words it. */
+		return DualConstruct(pCtx,"RegexIterator",nArg,apArg);
+	}
+	if( nArg < 2 ){
+		return PH7_OK;   /* the arity screen already refused */
+	}
+	if( nArg > 2 ){
+		iMode = ph7_value_to_int(apArg[2]);
+	}
+	if( iMode < PH7_REGIT_MATCH || iMode > PH7_REGIT_REPLACE ){
+		return RegitBadMode(pCtx,"RegexIterator::__construct(): Argument #3 ($mode)");
+	}
+	/* php compiles the pattern HERE and promotes pcre's warning to an
+	 * InvalidArgumentException, so a bad pattern is refused by `new` rather than
+	 * warning once per element from accept(). */
+	zPat = ph7_value_to_string(apArg[1],&nPat);
+	if( !PH7_PcrePatternCheck(pVm,zPat,nPat,zErr,sizeof(zErr)) ){
+		return PH7_VmThrowException(pCtx,"InvalidArgumentException",
+			"RegexIterator::__construct(): %s",zErr);
+	}
+	rc = DualConstruct(pCtx,"RegexIterator",nArg,apArg);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	PH7_NativeSetAttrStr(pVm,pThis,IT_RE,zPat,(sxu32)nPat);
+	PH7_NativeSetAttrInt(pVm,pThis,IT_RM,iMode);
+	PH7_NativeSetAttrInt(pVm,pThis,IT_RF,nArg > 3 ? ph7_value_to_int(apArg[3]) : 0);
+	PH7_NativeSetAttrInt(pVm,pThis,IT_RP,nArg > 4 ? ph7_value_to_int(apArg[4]) : 0);
+	return PH7_OK;
+}
+static int vm_builtin_RegexIterator_accept(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value sSubject,sPattern,sRepl,sOut,*pSlot;
+	int iMode,iFlags,bUseKey,bOk = 0;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	if( !DualFilled(pThis) ){
+		/* Nothing has been fetched: php answers false without touching the regex. */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	iMode = (int)PH7_NativeAttrInt(pThis,IT_RM);
+	iFlags = (int)PH7_NativeAttrInt(pThis,IT_RF);
+	bUseKey = (iFlags & REGIT_USE_KEY) != 0;
+	pSlot = PH7_NativeAttr(pThis,bUseKey ? IT_CK : IT_CD);
+	if( pSlot == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( !bUseKey && (pSlot->iFlags & MEMOBJ_HASHMAP) ){
+		/* php's `Z_TYPE(current.data) == IS_ARRAY -> RETURN_FALSE`, ahead of every
+		 * mode. The chunk's (string)$subject matched the word "Array" instead. */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* Take the subject as a VALUE: the slot pointer does not survive a call into
+	 * user code, and an object subject reaches __toString() below. */
+	PH7_MemObjInit(pVm,&sSubject);
+	PH7_MemObjStore(pSlot,&sSubject);
+	rc = PH7_MemObjToStringUV(&sSubject);
+	if( rc != SXRET_OK ){
+		PH7_MemObjRelease(&sSubject);
+		return rc;
+	}
+	PH7_MemObjInit(pVm,&sPattern);
+	PH7_MemObjInit(pVm,&sRepl);
+	PH7_MemObjInit(pVm,&sOut);
+	{
+		ph7_value *pRe = PH7_NativeAttr(pThis,IT_RE);
+		if( pRe ){
+			PH7_MemObjStore(pRe,&sPattern);
+		}
+	}
+	if( iMode == PH7_REGIT_REPLACE ){
+		/* php reads the public $replacement property, whose declared ?string makes
+		 * the read total: a null answers the empty string. */
+		ph7_value *pRepl = PH7_NativeAttr(pThis,"replacement");
+		if( pRepl ){
+			PH7_MemObjStore(pRepl,&sRepl);
+		}
+		PH7_MemObjToString(&sRepl);
+	}
+	rc = PH7_PcreRegitApply(pCtx,iMode,&sPattern,&sSubject,
+		(int)PH7_NativeAttrInt(pThis,IT_RP),&sRepl,&sOut,&bOk);
+	if( rc == PH7_OK && iMode != PH7_REGIT_MATCH ){
+		/* php writes the transformed value over the cached pair -- into the KEY when
+		 * a REPLACE is keyed, into current() otherwise -- so the inherited current()
+		 * and key() present it. */
+		DualSetSlot(pVm,pThis,(iMode == PH7_REGIT_REPLACE && bUseKey) ? IT_CK : IT_CD,&sOut);
+	}
+	PH7_MemObjRelease(&sSubject);
+	PH7_MemObjRelease(&sPattern);
+	PH7_MemObjRelease(&sRepl);
+	PH7_MemObjRelease(&sOut);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	ph7_result_bool(pCtx,(iFlags & REGIT_INVERTED) ? !bOk : bOk);
+	return PH7_OK;
+}
+static int vm_builtin_RegexIterator_getRegex(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pRe;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	pRe = PH7_NativeAttr(pThis,IT_RE);
+	if( pRe ){
+		ph7_result_value(pCtx,pRe);
+	}
+	return PH7_OK;
+}
+/* The three getters and the three setters are one pair per slot; only setMode()
+ * screens its value, which is php's own asymmetry (setFlags/setPregFlags take
+ * any integer). */
+static int RegitGet(ph7_context *pCtx,const char *zSlot)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	ph7_result_int64(pCtx,PH7_NativeAttrInt(pThis,zSlot));
+	return PH7_OK;
+}
+static int RegitSet(ph7_context *pCtx,int nArg,ph7_value **apArg,const char *zSlot)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	if( nArg > 0 ){
+		PH7_NativeSetAttrInt(pCtx->pVm,pThis,zSlot,ph7_value_to_int64(apArg[0]));
+	}
+	return PH7_OK;
+}
+static int vm_builtin_RegexIterator_getMode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return RegitGet(pCtx,IT_RM);
+}
+static int vm_builtin_RegexIterator_setMode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	if( nArg > 0 ){
+		sxi64 iMode = ph7_value_to_int64(apArg[0]);
+		if( iMode < PH7_REGIT_MATCH || iMode > PH7_REGIT_REPLACE ){
+			/* php screens the VALUE before it even fetches the object. */
+			return RegitBadMode(pCtx,"RegexIterator::setMode(): Argument #1 ($mode)");
+		}
+	}
+	return RegitSet(pCtx,nArg,apArg,IT_RM);
+}
+static int vm_builtin_RegexIterator_getFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return RegitGet(pCtx,IT_RF);
+}
+static int vm_builtin_RegexIterator_setFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return RegitSet(pCtx,nArg,apArg,IT_RF);
+}
+static int vm_builtin_RegexIterator_getPregFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return RegitGet(pCtx,IT_RP);
+}
+static int vm_builtin_RegexIterator_setPregFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return RegitSet(pCtx,nArg,apArg,IT_RP);
+}
+/*
  * The declarations. php's method ORDER is the order Reflection reports, so each
  * table follows spl_iterators.stub.php line for line; the parameter types are the
  * stub's too, which is what makes `Iterator $iterator` refuse an IteratorAggregate
@@ -2043,19 +2267,19 @@ static int vm_builtin_EmptyIterator_key(ph7_context *pCtx,int nArg,ph7_value **a
 static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 {
 	static const PH7_NativePropDef aDualProp[] = {
-		{ IT_IN, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ IT_IT, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ IT_CD, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ IT_CK, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ IT_CF, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
-		{ IT_CP, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
+		{ IT_IN, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ IT_IT, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ IT_CD, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ IT_CK, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ IT_CF, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+		{ IT_CP, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativePropDef aLimitProp[] = {
-		{ IT_OFF, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
-		{ IT_LIM, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, -1, 0, 0.0 } },
+		{ IT_OFF, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+		{ IT_LIM, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, -1, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativePropDef aCbProp[] = {
-		{ IT_CB, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ IT_CB, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeMethodDef aOuterMethod[] = {
 		{ "getInnerIterator", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", 0, 0 },
@@ -2104,6 +2328,41 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 		{ "current",     PH7_MOD_PUBLIC, "", 0, vm_builtin_NoRewindIterator_current },
 		{ "next",        PH7_MOD_PUBLIC, "", 0, vm_builtin_NoRewindIterator_next },
 	};
+	static const PH7_NativePropDef aRegexProp[] = {
+		/* The one slot php PRESENTS, declared as php declares it: a ?string, so a
+		 * `$it->replacement = 5` coerces and an array is a TypeError. */
+		{ "replacement", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, "?string" },
+		{ IT_RE, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
+		{ IT_RM, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+		{ IT_RF, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+		{ IT_RP, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+	};
+	static const PH7_NativeConstDef aRegexConst[] = {
+		{ "USE_KEY",      PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, REGIT_USE_KEY,  0, 0.0 },
+		{ "INVERT_MATCH", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, REGIT_INVERTED, 0, 0.0 },
+		{ "MATCH",        PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, PH7_REGIT_MATCH,       0, 0.0 },
+		{ "GET_MATCH",    PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, PH7_REGIT_GET_MATCH,   0, 0.0 },
+		{ "ALL_MATCHES",  PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, PH7_REGIT_ALL_MATCHES, 0, 0.0 },
+		{ "SPLIT",        PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, PH7_REGIT_SPLIT,       0, 0.0 },
+		{ "REPLACE",      PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, PH7_REGIT_REPLACE,     0, 0.0 },
+	};
+	static const PH7_NativeMethodDef aRegexMethod[] = {
+		{ "__construct",  PH7_MOD_PUBLIC,
+		  /* php's stub spells this default `RegexIterator::MATCH`, and one zSig field
+		   * cannot say both the TEXT and the VALUE: the constant spelling prints php's
+		   * export line but makes getDefaultValue() a "Failed to retrieve" throw, so the
+		   * VALUE wins here, as it does in the aBuiltinSig rows with the same shape. */
+		  "Iterator $iterator, string $pattern, int $mode = 0, int $flags = 0, int $pregFlags = 0", 0,
+		  vm_builtin_RegexIterator_construct },
+		{ "accept",       PH7_MOD_PUBLIC, "", 0, vm_builtin_RegexIterator_accept },
+		{ "getMode",      PH7_MOD_PUBLIC, "", 0, vm_builtin_RegexIterator_getMode },
+		{ "setMode",      PH7_MOD_PUBLIC, "int $mode", 0, vm_builtin_RegexIterator_setMode },
+		{ "getFlags",     PH7_MOD_PUBLIC, "", 0, vm_builtin_RegexIterator_getFlags },
+		{ "setFlags",     PH7_MOD_PUBLIC, "int $flags", 0, vm_builtin_RegexIterator_setFlags },
+		{ "getRegex",     PH7_MOD_PUBLIC, "", 0, vm_builtin_RegexIterator_getRegex },
+		{ "getPregFlags", PH7_MOD_PUBLIC, "", 0, vm_builtin_RegexIterator_getPregFlags },
+		{ "setPregFlags", PH7_MOD_PUBLIC, "int $pregFlags", 0, vm_builtin_RegexIterator_setPregFlags },
+	};
 	static const PH7_NativeMethodDef aEmptyMethod[] = {
 		{ "current", PH7_MOD_PUBLIC, "", 0, vm_builtin_EmptyIterator_current },
 		{ "next",    PH7_MOD_PUBLIC, "", 0, vm_builtin_EmptyIterator_nop },
@@ -2135,73 +2394,16 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 		  aInfiniteMethod, SX_ARRAYSIZE(aInfiniteMethod), 0, 0, 0, 0, 0, 0 },
 		{ "NoRewindIterator", "IteratorIterator", 0, PH7_CLASS_NOCLONE,
 		  aNoRewindMethod, SX_ARRAYSIZE(aNoRewindMethod), 0, 0, 0, 0, 0, 0 },
+		{ "RegexIterator", "FilterIterator", 0, PH7_CLASS_NOCLONE,
+		  aRegexMethod, SX_ARRAYSIZE(aRegexMethod),
+		  aRegexConst, SX_ARRAYSIZE(aRegexConst),
+		  aRegexProp, SX_ARRAYSIZE(aRegexProp), 0, 0 },
 		{ "EmptyIterator", 0, "Iterator", 0,
 		  aEmptyMethod, SX_ARRAYSIZE(aEmptyMethod), 0, 0, 0, 0, 0, 0 },
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }
 static const char zSplLib[] =
-"class RegexIterator extends FilterIterator {"
-" const USE_KEY = 1;"
-" const INVERT_MATCH = 2;"
-" const MATCH = 0;"
-" const GET_MATCH = 1;"
-" const ALL_MATCHES = 2;"
-" const SPLIT = 3;"
-" const REPLACE = 4;"
-" public $replacement = null;"
-" private $__re = '';"
-" private $__mode = 0;"
-" private $__rflags = 0;"
-" private $__pflags = 0;"
-" private $__cur = null;"
-" public function __construct($iterator, $pattern, $mode = 0, $flags = 0, $pregFlags = 0){"
-"  parent::__construct($iterator);"
-"  $this->__re = (string)$pattern;"
-"  $this->__mode = (int)$mode;"
-"  $this->__rflags = (int)$flags;"
-"  $this->__pflags = (int)$pregFlags;"
-" }"
-" public function accept(){"
-"  $in = $this->getInnerIterator();"
-"  if( !$in->valid() ){ return false; }"
-"  $subject = ($this->__rflags & self::USE_KEY) ? $in->key() : $in->current();"
-"  $subject = (string)$subject;"
-"  $this->__cur = null;"
-"  $ok = false;"
-"  if( $this->__mode === self::MATCH ){"
-"   $ok = preg_match($this->__re, $subject) > 0;"
-"  }elseif( $this->__mode === self::GET_MATCH ){"
-"   $m = null;"
-"   $ok = preg_match($this->__re, $subject, $m, $this->__pflags) > 0;"
-"   $this->__cur = $m;"
-"  }elseif( $this->__mode === self::ALL_MATCHES ){"
-"   $m = null;"
-"   $ok = preg_match_all($this->__re, $subject, $m, $this->__pflags) > 0;"
-"   $this->__cur = $m;"
-"  }elseif( $this->__mode === self::SPLIT ){"
-"   $this->__cur = preg_split($this->__re, $subject, -1, $this->__pflags);"
-"   $ok = is_array($this->__cur) && count($this->__cur) > 1;"
-"  }elseif( $this->__mode === self::REPLACE ){"
-"   $n = 0;"
-"   $this->__cur = preg_replace($this->__re, (string)$this->replacement, $subject, -1, $n);"
-"   $ok = $n > 0;"
-"  }"
-"  if( $this->__rflags & self::INVERT_MATCH ){ $ok = !$ok; }"
-"  return $ok;"
-" }"
-" public function current(){"
-"  if( $this->__mode === self::MATCH ){ return $this->getInnerIterator()->current(); }"
-"  return $this->__cur;"
-" }"
-" public function getRegex(){ return $this->__re; }"
-" public function getMode(){ return $this->__mode; }"
-" public function setMode($mode){ $this->__mode = (int)$mode; }"
-" public function getFlags(){ return $this->__rflags; }"
-" public function setFlags($flags){ $this->__rflags = (int)$flags; }"
-" public function getPregFlags(){ return $this->__pflags; }"
-" public function setPregFlags($pregFlags){ $this->__pflags = (int)$pregFlags; }"
-"}"
 "class AppendIterator implements OuterIterator {"
 " private $__its = [];"
 " private $__idx = 0;"
@@ -2926,8 +3128,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	/* Also before the chunk: RegexIterator and AppendIterator are still PHP and name
-	 * FilterIterator / OuterIterator as they compile. */
+	/* Also before the chunk: AppendIterator is still PHP and names OuterIterator as
+	 * it compiles, as do the Recursive family and the datastructures. */
 	rc = VmInstallSplDualIterators(&(*pVm));
 	if( rc != SXRET_OK ){
 		return rc;

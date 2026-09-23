@@ -1070,8 +1070,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallFiberNative(ph7_vm *pVm)
 	/* The two private slots the methods above keep their state in: the execution
 	 * context (a resource) and the callable handed to the constructor. */
 	static const PH7_NativePropDef aProp[] = {
-		{ "__ctx",      PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
-		{ "__callable", PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ "__ctx",      PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ "__callable", PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeClassSpec sSpec = {
 		"Fiber", 0, 0, PH7_CLASS_NOSERIALIZE,
@@ -1105,7 +1105,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallGeneratorNative(ph7_vm *pVm)
 		{ "__destruct", PH7_MOD_PUBLIC, "",                 "",      vm_builtin_Generator_destruct },
 	};
 	static const PH7_NativePropDef aProp[] = {
-		{ "__ctx", PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ "__ctx", PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeClassSpec sSpec = {
 		"Generator", 0, 0, PH7_CLASS_NOSERIALIZE,

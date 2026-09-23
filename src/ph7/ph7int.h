@@ -1317,6 +1317,13 @@ struct PH7_NativePropDef
 	const char *zName;
 	sxi32 iMods;             /* PH7_MOD_* (STATIC supported; FINAL ignored) */
 	PH7_NativeConstDef sDefault; /* iType PH7_NATIVE_VAL_NULL = plain null default */
+	const char *zType;       /* Declared type as php writes it ("?string", "int", "DateInterval"),
+	                          * or 0 for an untyped slot. Enforced on every store and printed by
+	                          * Reflection exactly as a compiled `public ?string $p` would be —
+	                          * php declares a type on every property it presents, so a slot the
+	                          * class SHOWS wants one. Single atoms only (a leading `?` plus one
+	                          * scalar keyword or class name); a union needs the compiler's
+	                          * alternative set and is not expressible here. */
 };
 struct PH7_NativeClassSpec
 {
@@ -2929,6 +2936,17 @@ PH7_PRIVATE void PH7_RegisterPcreFunctions(ph7_vm *pVm);
 PH7_PRIVATE void PH7_RegisterPcreConstants(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_PcreMatchQuiet(ph7_context *pCtx,const char *zPat,int nPat,
 	const char *zSub,int nSub,int *pMatched);
+PH7_PRIVATE int PH7_PcrePatternCheck(ph7_vm *pVm,const char *zPattern,int nLen,
+	char *zErr,sxu32 nErr);
+/* RegexIterator's five operation modes, php's REGIT_MODE_* values — they are the
+ * class constants, so the numbers are php-visible and fixed. */
+#define PH7_REGIT_MATCH        0
+#define PH7_REGIT_GET_MATCH    1
+#define PH7_REGIT_ALL_MATCHES  2
+#define PH7_REGIT_SPLIT        3
+#define PH7_REGIT_REPLACE      4
+PH7_PRIVATE sxi32 PH7_PcreRegitApply(ph7_context *pCtx,int iMode,ph7_value *pPattern,
+	ph7_value *pSubject,int iPregFlags,ph7_value *pRepl,ph7_value *pOut,int *pbOk);
 #endif /* PH7_ENABLE_PCRE */
 /* One resource pointer's php-visible id. Allocated per distinct resource and
  * owned by ph7_vm.hResourceId, whose key is the `pRes` field itself (SyHash
