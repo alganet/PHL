@@ -143,34 +143,11 @@ PH7_PRIVATE int PH7_builtin_floor(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			nArg
 			);
 	}
-	/*
-	 * Validate argument type. Only int/float (and numeric strings) are accepted.
-	 * Other types (including non-numeric strings) raise a TypeError just like
-	 * ceil() and other math functions.
-	 */
-	if( ph7_value_is_int(apArg[0]) == 0 && ph7_value_is_float(apArg[0]) == 0 ){
-		if( ph7_value_is_string(apArg[0]) ){
-			int len;
-			sxu8 bReal = FALSE;
-			const char *zStr = ph7_value_to_string(apArg[0], &len);
-			sxi32 rcNum;
-			rcNum = SyStrIsNumeric(zStr, len, &bReal, 0);
-			if( rcNum != SXRET_OK ){
-				return PH7_VmThrowException(pCtx,
-					"TypeError",
-					"floor(): Argument #1 ($num) must be of type int|float, %s given",
-					ph7_type_name(apArg[0])
-					);
-			}
-		}else{
-			/* Disallow all other types (arrays, objects, resources, etc.) */
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"floor(): Argument #1 ($num) must be of type int|float, %s given",
-				ph7_type_name(apArg[0])
-				);
-		}
-	}
+	/* The `int|float $num` row in aBuiltinSig[] screens this argument before the
+	 * call: array, object, resource and non-numeric string are refused there,
+	 * with php's wording. The hand-rolled copy that used to sit here refused a
+	 * BOOL as well, which weak mode converts (php: ceil(true) is float(1)), and
+	 * one of its two branches had no ", %s given" tail at all. */
 
 	x = ph7_value_to_double(apArg[0]);
 	/* Perform the requested operation */
@@ -372,33 +349,7 @@ PH7_PRIVATE int PH7_builtin_ceil(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			nArg
 			);
 	}
-	/*
-	 * PHP only accepts ints, floats or numeric strings.  Any other types
-	 * (in particular non-numeric strings) should raise a TypeError.  We
-	 * mimic the approach used by abs() and perform an explicit numeric
-	 * check on strings before converting to double.
-	 */
-	if( !ph7_value_is_int(apArg[0]) && !ph7_value_is_float(apArg[0]) ){
-		if( ph7_value_is_string(apArg[0]) ){
-			int len;
-			sxu8 bReal = FALSE;
-			const char *zStr = ph7_value_to_string(apArg[0], &len);
-			sxi32 rcNum;
-			rcNum = SyStrIsNumeric(zStr, len, &bReal, 0);
-			if( rcNum != SXRET_OK ){
-				return PH7_VmThrowException(pCtx,
-					"TypeError",
-					"ceil(): Argument #1 ($num) must be of type int|float, string given"
-					);
-			}
-		}else{
-			/* Reject arrays, objects, resources, booleans, NULL, etc. */
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"ceil(): Argument #1 ($num) must be of type int|float"
-				);
-		}
-	}
+	/* Type screening is the aBuiltinSig[] row's -- see floor() above. */
 
 	x = ph7_value_to_double(apArg[0]);
 	/* Perform the requested operation */
@@ -983,30 +934,7 @@ PH7_PRIVATE int PH7_builtin_round(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			nArg
 			);
 	}
-	/*
-	 * Validate argument #1: only int/float (and numeric strings) are
-	 * accepted; every other type raises a TypeError (mirrors floor()/ceil()).
-	 */
-	if( ph7_value_is_int(apArg[0]) == 0 && ph7_value_is_float(apArg[0]) == 0 ){
-		if( ph7_value_is_string(apArg[0]) ){
-			int len;
-			sxu8 bReal = FALSE;
-			const char *zStr = ph7_value_to_string(apArg[0], &len);
-			if( SyStrIsNumeric(zStr, len, &bReal, 0) != SXRET_OK ){
-				return PH7_VmThrowException(pCtx,
-					"TypeError",
-					"round(): Argument #1 ($num) must be of type int|float, %s given",
-					ph7_type_name(apArg[0])
-					);
-			}
-		}else{
-			return PH7_VmThrowException(pCtx,
-				"TypeError",
-				"round(): Argument #1 ($num) must be of type int|float, %s given",
-				ph7_type_name(apArg[0])
-				);
-		}
-	}
+	/* Argument #1's type is the aBuiltinSig[] row's -- see floor() above. */
 	/* Precision (arg #2). Negative values are valid; clamp to int range. */
 	if( nArg > 1 ){
 		sxi64 prec = ph7_value_to_int64(apArg[1]);
