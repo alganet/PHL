@@ -84,8 +84,6 @@
 	"    $this->since = $since;"\
 	"  }"\
 	"}"\
-	"class stdClass{"\
-	"}"\
 	/* This one definition serves every spelling — function names are case-insensitive
 	   (hFunction, vm.c). The second, byte-identical `Dir()` copy that used to sit here
 	   was PH7's manual hack for that, the same one the keyword table had. */\
@@ -1184,30 +1182,38 @@ static sxi32 VmInstallCoreInterfaces(ph7_vm *pVm)
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }
+/*
+ * stdClass and Random\RandomException.
+ *
+ * stdClass is EMPTY in php too — it holds only dynamic properties — so the whole
+ * declaration is the row. `Random\RandomException` is the first NAMESPACED class
+ * declared from C: the engine keys its class table by the FULLY QUALIFIED name
+ * (the compiler resolves `namespace Random { class RandomException }` to exactly
+ * this string before installing), so a spec row spells the FQN and needs no
+ * namespace machinery at all. It also retires the chunk this file kept ALONE for
+ * it, whose comment explains why: a `namespace` declaration is not reset at its
+ * closing brace here, so anything following it in the same chunk would have
+ * leaked into the Random namespace.
+ */
+static sxi32 VmInstallStdClasses(ph7_vm *pVm)
+{
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "stdClass", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "Random\\RandomException", "Exception", 0, PH7_CLASS_NOCLONE,
+		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
+	};
+	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+}
 PH7_PRIVATE sxi32 PH7_VmInstallBuiltinLib(ph7_vm *pVm)
 {
 	SyString sBuiltin;
-	SyString sRandom;
 	/* The interfaces first: everything below implements one of them
 	 * (Exception implements Throwable). */
 	VmInstallCoreInterfaces(&(*pVm));
 	VmInstallExceptions(&(*pVm));
+	VmInstallStdClasses(&(*pVm));
 	SyStringInitFromBuf(&sBuiltin,PH7_BUILTIN_LIB,sizeof(PH7_BUILTIN_LIB)-1);
 	/* Compile the built-in library */
 	VmEvalChunk(&(*pVm),0,&sBuiltin,PH7_PHP_ONLY,FALSE);
-	/* Register the Random\RandomException namespaced class (PHP 8.2+).
-	 * Kept in its own VmEvalChunk (not appended to PH7_BUILTIN_LIB): a namespace
-	 * declaration is NOT reset at the block's closing brace in this engine, so
-	 * anything following it in the same chunk would leak into the Random
-	 * namespace. Isolation instead comes from the compile state being per CHUNK
-	 * (PH7_ResetCodeGenerator/PH7_CompilerSaveState clear the compiler namespace),
-	 * so this lands as Random\RandomException while later user code still compiles
-	 * in the global namespace. */
-	{
-		static const char zRandomLib[] =
-			"namespace Random { class RandomException extends \\Exception { } }";
-		SyStringInitFromBuf(&sRandom,zRandomLib,sizeof(zRandomLib)-1);
-		VmEvalChunk(&(*pVm),0,&sRandom,PH7_PHP_ONLY,FALSE);
-	}
 	return SXRET_OK;
 }
