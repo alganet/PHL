@@ -1712,6 +1712,23 @@ PH7_PRIVATE int PH7_UnmangleAttrName(const char *zKey,sxu32 nKey,SyString *pClas
 static void OoDumpPropKey(SyBlob *pOut,ph7_class_instance *pThis,ph7_class_attr *pAttr,int ShowType)
 {
 	const char *zQ = ShowType ? "\"" : "";
+	if( SyStringLength(&pAttr->sName) > 0 && SyStringData(&pAttr->sName)[0] == 0 ){
+		/* A MANGLED name stored raw — the __PHP_Incomplete_Class carrier's
+		 * private/protected payload keys. php's dump unmangles them exactly as
+		 * it does an (array) cast's: `["bp":"PB":private]` / `["pp":protected]`. */
+		SyString sUnmCls, sUnmName;
+		if( PH7_UnmangleAttrName(SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),
+			&sUnmCls,&sUnmName) ){
+			SyBlobFormat(&(*pOut),"[%s%z%s",zQ,&sUnmName,zQ);
+			if( sUnmCls.nByte == 1 && sUnmCls.zString[0] == '*' ){
+				SyBlobAppend(&(*pOut),":protected",sizeof(":protected")-1);
+			}else{
+				SyBlobFormat(&(*pOut),":%s%z%s:private",zQ,&sUnmCls,zQ);
+			}
+			SyBlobAppend(&(*pOut),ShowType ? "]=>" : "] => ",ShowType ? 3 : 5);
+			return;
+		}
+	}
 	SyBlobFormat(&(*pOut),"[%s%z%s",zQ,&pAttr->sName,zQ);
 	if( pAttr->iProtection == PH7_CLASS_PROT_PRIVATE ){
 		ph7_class *pDecl = OoAttrDeclaringClass(pThis->pClass,pAttr);

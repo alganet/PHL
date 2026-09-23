@@ -760,6 +760,19 @@ static sxi32 VmBindPropByRef(ph7_vm *pVm,ph7_value *pObj,const SyString *pName,s
 	}
 	pThis = (ph7_class_instance *)pObj->x.pOther;
 	pClass = pThis->pClass;
+	if( PH7_VmIsIncompleteClass(&(*pVm),pClass) ){
+		/* A by-reference argument asks the incomplete object for something to
+		 * MODIFY: php's catchable Error, the same one every direct write raises. */
+		SyBlob sIncErr;
+		sxi32 rcInc;
+		SyBlobInit(&sIncErr,&pVm->sAllocator);
+		PH7_VmIncompleteMsg(&(*pVm),pThis,"modify a property",&sIncErr);
+		rcInc = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sIncErr),
+			SyBlobLength(&sIncErr));
+		SyBlobRelease(&sIncErr);
+		*pbNoBind = 1;
+		return (rcInc == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+	}
 	pEntry = SyHashGet(&pThis->hAttr,(const void *)pName->zString,pName->nByte);
 	if( pEntry ){
 		pAttr = (VmClassAttr *)pEntry->pUserData;
@@ -2895,6 +2908,25 @@ case PH7_OP_LOAD_FCC:{
 		if( pTarget->iFlags & MEMOBJ_OBJ ){
 			pFccRecv = (ph7_class_instance *)pTarget->x.pOther;
 			pFccCls = pFccRecv->pClass;
+			if( PH7_VmIsIncompleteClass(&(*pVm),pFccCls) ){
+				/* `$inc->m(...)` resolves the method at CREATION, so php's
+				 * incomplete-object call Error is raised here, not at a later
+				 * invocation. */
+				SyBlob sIncErr;
+				sxi32 rcInc;
+				SyBlobInit(&sIncErr,&pVm->sAllocator);
+				PH7_VmIncompleteMsg(&(*pVm),pFccRecv,"call a method",&sIncErr);
+				VmPopOperand(&pTos,1);       /* the method name */
+				PH7_MemObjRelease(pTos);     /* the target slot becomes the NULL result */
+				MemObjSetType(pTos,MEMOBJ_NULL);
+				pTos->nIdx = SXU32_HIGH;
+				rcInc = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sIncErr),
+					SyBlobLength(&sIncErr));
+				SyBlobRelease(&sIncErr);
+				if( rcInc == SXERR_ABORT ){ goto Abort; }
+				rc = rcInc;
+				PH7_THROW_ROUTE_MIDEXPR(rc)
+			}
 		}else if( pTarget->iFlags & MEMOBJ_STRING ){
 			/* Static `T::m(...)`: resolve T (incl. self/static/parent) to the real class
 			 * now, so the closure binds the concrete scope (matching PHP). */

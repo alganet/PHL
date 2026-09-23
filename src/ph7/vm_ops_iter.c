@@ -225,11 +225,18 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 			SyString *pAttrName = &pVmAttr->pAttr->sName;
 			ph7_value *pAttrValue;
 			if( (pStep->iFlags & PH7_4EACH_STEP_KEY) && SyStringLength(&pInfo->sKey) > 0){
-				/* Fill with the current attribute name */
+				/* Fill with the current attribute name. A MANGLED name — only the
+				 * __PHP_Incomplete_Class carrier stores those — yields its plain
+				 * part: php's iterator unmangles the key it hands out. */
 				ph7_value *pKey = VmExtractMemObj(&(*pVm),&pInfo->sKey,FALSE,TRUE);
 				if( pKey ){
+					SyString sUnmCls, sUnmName;
+					SyStringInitFromBuf(&sUnmName,pAttrName->zString,pAttrName->nByte);
+					if( pAttrName->nByte > 0 && pAttrName->zString[0] == 0 ){
+						PH7_UnmangleAttrName(pAttrName->zString,pAttrName->nByte,&sUnmCls,&sUnmName);
+					}
 					SyBlobReset(&pKey->sBlob);
-					SyBlobAppend(&pKey->sBlob,pAttrName->zString,pAttrName->nByte);
+					SyBlobAppend(&pKey->sBlob,sUnmName.zString,sUnmName.nByte);
 					MemObjSetType(pKey,MEMOBJ_STRING);
 				}
 			}

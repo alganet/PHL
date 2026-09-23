@@ -68,6 +68,8 @@ static const struct {
 	{ "session.name",             "PHPSESSID",  VM_INI_ALL },
 	{ "session.save_path",        "",           VM_INI_ALL },
 	{ "short_open_tag",           "",           VM_INI_PERDIR|VM_INI_SYSTEM },
+	{ "unserialize_callback_func","",           VM_INI_ALL },
+	{ "unserialize_max_depth",    "4096",       VM_INI_ALL },
 	{ "upload_max_filesize",      "2M",         VM_INI_PERDIR|VM_INI_SYSTEM },
 	{ "zend.assertions",          "-1",         VM_INI_ALL },
 };

@@ -1769,6 +1769,78 @@ PH7_PRIVATE int VmClassHasAttributeNamed(ph7_class *pClass,const char *zName,sxu
 	return FALSE;
 }
 /*
+ * Is [pClass] the __PHP_Incomplete_Class carrier? Every script-level property
+ * access or method call on such an instance is php's incomplete-object
+ * diagnostic; only the engine's own surfaces (serialize, var_dump, foreach,
+ * (array), get_object_vars) read its attribute table freely.
+ */
+PH7_PRIVATE int PH7_VmIsIncompleteClass(ph7_vm *pVm,ph7_class *pClass)
+{
+	return pVm->pIncClass != 0 && pClass == pVm->pIncClass;
+}
+/*
+ * Build php's incomplete-object diagnostic body into pOut. zWhat is the verb
+ * phrase php varies — "access a property" (E_WARNING), "modify a property" /
+ * "call a method" (both Error) — and the class named is the ORIGINAL one the
+ * payload spelled, read from the magic member; a hand-built carrier that never
+ * had one says "unknown", like php.
+ */
+PH7_PRIVATE void PH7_VmIncompleteMsg(ph7_vm *pVm,ph7_class_instance *pThis,const char *zWhat,SyBlob *pOut)
+{
+	const char *zName = "unknown";
+	sxu32 nName = sizeof("unknown")-1;
+	SyHashEntry *pEntry = SyHashGet(&pThis->hAttr,
+		(const void *)PH7_INCOMPLETE_MAGIC_MEMBER,sizeof(PH7_INCOMPLETE_MAGIC_MEMBER)-1);
+	if( pEntry ){
+		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
+		ph7_value *pVal = pVmAttr ? (ph7_value *)SySetAt(&pVm->aMemObj,pVmAttr->nIdx) : 0;
+		if( pVal && (pVal->iFlags & MEMOBJ_STRING) && SyBlobLength(&pVal->sBlob) > 0 ){
+			zName = (const char *)SyBlobData(&pVal->sBlob);
+			nName = SyBlobLength(&pVal->sBlob);
+		}
+	}
+	SyBlobFormat(pOut,"The script tried to %s on an incomplete object. "
+		"Please ensure that the class definition \"%.*s\" of the object you are "
+		"trying to operate on was loaded _before_ unserialize() gets called or "
+		"provide an autoloader to load the class definition",zWhat,(int)nName,zName);
+}
+/*
+ * php's E_WARNING for READING (or isset()-probing) a property of an incomplete
+ * object. The message body carries php's `func(): ` docref qualifier: the
+ * CURRENT function for an engine-raised access (`main` at global scope,
+ * `C::m` inside a method), or the builtin's own name when one raises it
+ * (property_exists() passes its name in pFuncName).
+ */
+PH7_PRIVATE void PH7_VmIncompleteAccessWarn(ph7_vm *pVm,ph7_class_instance *pThis,SyString *pFuncName)
+{
+	SyBlob sMsg;
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	if( pFuncName ){
+		SyBlobAppend(&sMsg,pFuncName->zString,pFuncName->nByte);
+	}else{
+		VmFrame *pFrame = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
+		ph7_vm_func *pFunc = (pFrame && pFrame->pParent) ? (ph7_vm_func *)pFrame->pUserData : 0;
+		if( pFunc == 0 ){
+			SyBlobAppend(&sMsg,"main",sizeof("main")-1);
+		}else{
+			const char *zDisp = 0;
+			int nDisp;
+			if( (pFunc->iFlags & VM_FUNC_CLASS_METHOD) && pFunc->pUserData ){
+				SyString *pCls = &((ph7_class *)pFunc->pUserData)->sName;
+				SyBlobAppend(&sMsg,pCls->zString,pCls->nByte);
+				SyBlobAppend(&sMsg,"::",2);
+			}
+			nDisp = PH7_VmFuncDisplayName(pVm,pFunc,&zDisp);
+			SyBlobAppend(&sMsg,zDisp,(sxu32)nDisp);
+		}
+	}
+	SyBlobAppend(&sMsg,"(): ",sizeof("(): ")-1);
+	PH7_VmIncompleteMsg(pVm,pThis,"access a property",&sMsg);
+	VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"%.*s",
+		(int)SyBlobLength(&sMsg),(const char *)SyBlobData(&sMsg));
+	SyBlobRelease(&sMsg);
+}
+/*
  * Create a dynamic (runtime-added) property named [zName:nName] on a class
  * instance and return its freshly reserved value slot (the caller stores the
  * value via PH7_MemObjStore). If [ppAttr] is non-NULL it receives the new
@@ -2200,6 +2272,9 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->pClosureScope = 0; /* transient bound-scope slot, consumed per call */
 	/* Cache the stdClass pointer ((object) cast target + dynamic-property owner) */
 	pVm->pStdClass = PH7_VmExtractClass(pVm,"stdClass",sizeof("stdClass")-1,0,0);
+	/* ... and unserialize()'s incomplete-object carrier, declared beside it. */
+	pVm->pIncClass = PH7_VmExtractClass(pVm,"__PHP_Incomplete_Class",
+		sizeof("__PHP_Incomplete_Class")-1,0,0);
 	/* Declare Generator, THEN cache the pointer -- it no longer exists until the
 	 * native install creates it, and a NULL cache here segfaults the first `yield`.
 	 * Iterator must already be compiled: the install attaches `implements Iterator`

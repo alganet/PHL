@@ -916,6 +916,27 @@ PH7_PRIVATE int vm_builtin_is_callable(ph7_context *pCtx,int nArg,ph7_value **ap
 	}
 	/* Point to the target VM */
 	pVm = pCtx->pVm;
+	/* The ARRAY spelling over an incomplete object is php's incomplete-object
+	 * call Error — its full check consults the object's method resolution, which
+	 * is exactly what the carrier refuses (probe-verified: is_callable([$inc,'m'])
+	 * throws where is_callable($inc) and call_user_func([$inc,'m']) do not). The
+	 * syntax_only form never asks the class and stays silent. */
+	if( !(nArg > 1 && ph7_value_to_bool(apArg[1])) && (apArg[0]->iFlags & MEMOBJ_HASHMAP) ){
+		ph7_value *pIncTarget = 0, *pIncMethod = 0;
+		if( PH7_VmArrayCallableParts(pVm,(ph7_hashmap *)apArg[0]->x.pOther,&pIncTarget,&pIncMethod)
+		 && pIncTarget && (pIncTarget->iFlags & MEMOBJ_OBJ)
+		 && PH7_VmIsIncompleteClass(pVm,((ph7_class_instance *)pIncTarget->x.pOther)->pClass) ){
+			SyBlob sIncErr;
+			sxi32 rcInc;
+			SyBlobInit(&sIncErr,&pVm->sAllocator);
+			PH7_VmIncompleteMsg(pVm,(ph7_class_instance *)pIncTarget->x.pOther,
+				"call a method",&sIncErr);
+			rcInc = PH7_VmThrowException(pCtx,"Error","%.*s",
+				(int)SyBlobLength(&sIncErr),(const char *)SyBlobData(&sIncErr));
+			SyBlobRelease(&sIncErr);
+			return rcInc;
+		}
+	}
 	/* Perform the requested operation */
 	if( nArg > 1 && ph7_value_to_bool(apArg[1]) ){
 		res = VmIsCallableSyntaxOnly(pVm,apArg[0]);

@@ -2427,6 +2427,10 @@ struct ph7_vm
 	ph7_class *pClosureScope; /* Transient: bound $__scope class for the same bound PLAIN closure
 	                           * (private/protected visibility override); consumed alongside pClosureThis. */
 	ph7_class *pStdClass;      /* Cached stdClass pointer (target of (object) cast + dynamic props) */
+	ph7_class *pIncClass;      /* Cached __PHP_Incomplete_Class pointer: unserialize()'s carrier for a
+	                            * disallowed or unknown class. Every script-level property access or
+	                            * method call on an instance is php's incomplete-object diagnostic
+	                            * (PH7_VmIncompleteMsg); the engine itself reads hAttr freely. */
 	ph7_class *pArrayAccessClass; /* Cached ArrayAccess interface pointer */
 	ph7_class *pCountableClass;   /* Cached Countable interface pointer */
 	ph7_class *pStringableClass;  /* Cached Stringable interface pointer */
@@ -3879,6 +3883,13 @@ PH7_PRIVATE void VmForeachHashmapStepRelease(ph7_vm *pVm,ph7_foreach_info *pInfo
 PH7_PRIVATE void VmForeachStepAbandon(ph7_vm *pVm,ph7_foreach_info *pInfo,ph7_foreach_step *pStep,ph7_class_instance *pThis);
 PH7_PRIVATE int VmClassAllowsDynamicProps(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE int VmClassHasAttributeNamed(ph7_class *pClass,const char *zName,sxu32 nName);
+/* __PHP_Incomplete_Class: unserialize()'s carrier object (vm.c helpers).
+ * PH7_INCOMPLETE_MAGIC_MEMBER is php's MAGIC_MEMBER — the dynamic property that
+ * remembers the original class name; the serializer strips it back out. */
+#define PH7_INCOMPLETE_MAGIC_MEMBER "__PHP_Incomplete_Class_Name"
+PH7_PRIVATE int PH7_VmIsIncompleteClass(ph7_vm *pVm,ph7_class *pClass);
+PH7_PRIVATE void PH7_VmIncompleteMsg(ph7_vm *pVm,ph7_class_instance *pThis,const char *zWhat,SyBlob *pOut);
+PH7_PRIVATE void PH7_VmIncompleteAccessWarn(ph7_vm *pVm,ph7_class_instance *pThis,SyString *pFuncName);
 PH7_PRIVATE void VmRecreateDeclaredAttr(ph7_vm *pVm,ph7_class_instance *pThis,ph7_class_attr *pAttr,VmClassAttr **ppAttr);
 PH7_PRIVATE int VmMemberCtxIsLookup(sxi32 iP2);
 PH7_PRIVATE int VmMemberCtxWantsValue(sxi32 iP2);

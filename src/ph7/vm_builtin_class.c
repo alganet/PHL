@@ -152,6 +152,21 @@ PH7_PRIVATE int vm_builtin_property_exists(ph7_context *pCtx,int nArg,ph7_value 
 	int res = 0; /* Assume attribute does not exists */
 	if( nArg > 1 ){
 		ph7_class *pClass;
+		if( (apArg[0]->iFlags & MEMOBJ_OBJ)
+		 && PH7_VmIsIncompleteClass(pCtx->pVm,((ph7_class_instance *)apArg[0]->x.pOther)->pClass) ){
+			/* An incomplete OBJECT: php's has_property probe is the access warning
+			 * (qualified with this builtin's own name) answering false. The class
+			 * asked about by NAME stays an ordinary lookup. */
+			SyBlob sIncMsg;
+			SyBlobInit(&sIncMsg,&pCtx->pVm->sAllocator);
+			PH7_VmIncompleteMsg(pCtx->pVm,(ph7_class_instance *)apArg[0]->x.pOther,
+				"access a property",&sIncMsg);
+			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"%.*s",
+				(int)SyBlobLength(&sIncMsg),(const char *)SyBlobData(&sIncMsg));
+			SyBlobRelease(&sIncMsg);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
 		pClass = PH7_VmExtractClassFromValue(pCtx->pVm,apArg[0]);
 		if( pClass ){
 			const char *zName;
@@ -217,6 +232,21 @@ PH7_PRIVATE int vm_builtin_method_exists(ph7_context *pCtx,int nArg,ph7_value **
 	int res = 0; /* Assume method does not exists */
 	if( nArg > 1 ){
 		ph7_class *pClass;
+		if( (apArg[0]->iFlags & MEMOBJ_OBJ)
+		 && PH7_VmIsIncompleteClass(pCtx->pVm,((ph7_class_instance *)apArg[0]->x.pOther)->pClass) ){
+			/* An incomplete OBJECT consults its method resolution, which the
+			 * carrier refuses with php's catchable call Error (probe-verified;
+			 * the class asked about by NAME answers false the ordinary way). */
+			SyBlob sIncMsg;
+			sxi32 rcInc;
+			SyBlobInit(&sIncMsg,&pCtx->pVm->sAllocator);
+			PH7_VmIncompleteMsg(pCtx->pVm,(ph7_class_instance *)apArg[0]->x.pOther,
+				"call a method",&sIncMsg);
+			rcInc = PH7_VmThrowException(pCtx,"Error","%.*s",
+				(int)SyBlobLength(&sIncMsg),(const char *)SyBlobData(&sIncMsg));
+			SyBlobRelease(&sIncMsg);
+			return rcInc;
+		}
 		pClass = PH7_VmExtractClassFromValue(pCtx->pVm,apArg[0]);
 		if( pClass ){
 			const char *zName;

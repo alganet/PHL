@@ -696,6 +696,13 @@ static sxi32 VmJsonEncode(
 					 || pVmAttr->pAttr->iProtection != PH7_CLASS_PROT_PUBLIC ){
 						continue;
 					}
+					if( SyStringLength(&pVmAttr->pAttr->sName) > 0
+					 && SyStringData(&pVmAttr->pAttr->sName)[0] == 0 ){
+						/* A MANGLED key stored raw (the __PHP_Incomplete_Class
+						 * carrier): php's json encoder reads it as non-public
+						 * and skips it. */
+						continue;
+					}
 					if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_VIRTUAL))
 					 == PH7_CLASS_ATTR_HOOK_VIRTUAL ){
 						continue; /* virtual set-only property: no value to encode (php) */

@@ -21,8 +21,10 @@
  *     unserialize rejects r:/R:.
  *   - the Serializable C: tag is not honored (such a class serializes by the
  *     default O: path).
- *   - dynamic/undeclared properties are not materialized on unserialize (PHL has
- *     no dynamic properties); inherited private base props are not serialized.
+ *   - an ALLOWED class's undeclared payload property is skipped (php creates a
+ *     dynamic property behind a deprecation; PHL's §10 policy has no dynamic
+ *     properties outside stdClass and the __PHP_Incomplete_Class carrier, whose
+ *     properties are all dynamic and keep their RAW mangled keys).
  */
 #define SERIALIZE_MAX_DEPTH 4096
 
@@ -275,6 +277,56 @@ static sxi32 VmSerializeObject(ph7_value *pIn, serialize_data *pData)
 		SyBlobAppend(pData->pOut,"\";",2);
 		return SXRET_OK;
 	}
+	/* An INCOMPLETE object re-serializes as the ORIGINAL class, byte for byte:
+	 * the class name is the magic member's value (the carrier's own name when a
+	 * hand-built instance never had one), the magic member itself is dropped,
+	 * and no magic method is consulted — the carrier has none and php would not
+	 * ask. The declared COUNT is php's own arithmetic — the property total minus
+	 * one, floored at zero — and it is decided BEFORE the body, which produces
+	 * two quirks on a hand-built carrier that never had a name member: a count of
+	 * zero writes NO body however many properties are there, and any higher count
+	 * writes them ALL, one more than it declared. Both are php's output. */
+	if( PH7_VmIsIncompleteClass(pVm,pThis->pClass) ){
+		SyString sOutName = *pClassName;
+		SyHashEntry *pMagic = SyHashGet(&pThis->hAttr,
+			(const void *)PH7_INCOMPLETE_MAGIC_MEMBER,sizeof(PH7_INCOMPLETE_MAGIC_MEMBER)-1);
+		sxu32 nTotal = pThis->hAttr.nEntry;
+		sxu32 nEmit = nTotal > 0 ? nTotal - 1 : 0;
+		if( pMagic && pMagic->pUserData ){
+			ph7_value *pNameVal = (ph7_value *)SySetAt(&pVm->aMemObj,
+				((VmClassAttr *)pMagic->pUserData)->nIdx);
+			if( pNameVal && (pNameVal->iFlags & MEMOBJ_STRING) && SyBlobLength(&pNameVal->sBlob) > 0 ){
+				SyStringInitFromBuf(&sOutName,
+					(const char *)SyBlobData(&pNameVal->sBlob),SyBlobLength(&pNameVal->sBlob));
+			}
+		}
+		SyBlobInit(&sBody,&pVm->sAllocator);
+		pSave = pData->pOut;
+		pData->pOut = &sBody;
+		pData->depth++;
+		if( nEmit > 0 ){
+			SyHashResetLoopCursor(&pThis->hAttr);
+			while( (pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
+				ph7_value *pVal;
+				pVmAttr = (VmClassAttr *)pEntry->pUserData;
+				if( pEntry->nKeyLen == sizeof(PH7_INCOMPLETE_MAGIC_MEMBER)-1
+				 && SyMemcmp(pEntry->pKey,PH7_INCOMPLETE_MAGIC_MEMBER,pEntry->nKeyLen) == 0 ){
+					continue; /* the magic member is metadata, not a property */
+				}
+				/* The key is stored RAW (mangling bytes included): emit it as-is. */
+				VmSerializeRawString(&sBody,(const char *)pEntry->pKey,(int)pEntry->nKeyLen);
+				pVal = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
+				if( pVal ){ VmSerialize(pVal,pData); } else { SyBlobAppend(&sBody,"N;",2); }
+			}
+		}
+		pData->depth--;
+		pData->pOut = pSave;
+		if( !pData->exc && !pData->err ){
+			VmSerializeObjectHeader(pData->pOut,&sOutName,nEmit,&sBody);
+		}
+		SyBlobRelease(&sBody);
+		return pData->exc ? PH7_EXCEPTION : PH7_OK;
+	}
 	SyBlobInit(&sBody,&pVm->sAllocator);
 	pSave = pData->pOut;
 	pData->pOut = &sBody;     /* recursion appends to the body blob */
@@ -423,6 +475,8 @@ struct unserialize_data
 	const char *zErr; /* Start of the token that failed (php's reported offset) */
 	int shortErr;     /* A container's declared count outran its contents */
 	int exc;          /* A __wakeup()/__unserialize() threw -> propagate it */
+	int allowAll;     /* allowed_classes: TRUE unless the option said false or a list */
+	ph7_value *pAllowedList; /* ... the list, when one was given (else NULL) */
 };
 static ph7_value * VmUnserializeValue(unserialize_data *ud);
 /* Consume the single expected character; 0 on mismatch/EOF. */
@@ -571,15 +625,77 @@ static ph7_value * VmUnserializeArray(unserialize_data *ud)
 	if( !VmUnExpect(ud,'}') ){ return 0; }
 	return pArray;
 }
+/*
+ * Is the class this payload names allowed to instantiate? php's rule: no option
+ * or `true` allows everything; `false` allows nothing; a LIST is matched
+ * case-insensitively (php lowercases both sides; the fold is ASCII, like every
+ * other name fold here). A non-string list member was already refused by the
+ * option screen.
+ */
+typedef struct allowed_walk_ctx allowed_walk_ctx;
+struct allowed_walk_ctx
+{
+	const char *zClass;
+	sxu32 nClass;
+	int bFound;
+};
+static int VmUnserializeAllowedWalker(ph7_value *pKey, ph7_value *pData, void *pUserData)
+{
+	allowed_walk_ctx *pWalk = (allowed_walk_ctx *)pUserData;
+	int nEntry;
+	const char *zEntry = ph7_value_to_string(pData,&nEntry);
+	SXUNUSED(pKey);
+	if( (sxu32)nEntry == pWalk->nClass
+	 && SyStrnicmp(zEntry,pWalk->zClass,pWalk->nClass) == 0 ){
+		pWalk->bFound = 1;
+		return SXERR_ABORT; /* found: stop walking */
+	}
+	return PH7_OK;
+}
+static int VmUnserializeClassAllowed(unserialize_data *ud, const char *zClass, sxu32 nClass)
+{
+	allowed_walk_ctx sWalk;
+	if( ud->pAllowedList == 0 ){
+		return ud->allowAll;
+	}
+	sWalk.zClass = zClass;
+	sWalk.nClass = nClass;
+	sWalk.bFound = 0;
+	ph7_array_walk(ud->pAllowedList,VmUnserializeAllowedWalker,&sWalk);
+	return sWalk.bFound;
+}
+/*
+ * Materialize one parsed property on the __PHP_Incomplete_Class carrier: the key
+ * is stored RAW (mangling bytes and all — that is what php keeps, and what lets
+ * re-serialization emit the original payload byte for byte). A duplicate key
+ * overwrites, like any hash store.
+ */
+static void VmUnserializeIncompleteProp(unserialize_data *ud,ph7_class_instance *pThis,
+	const char *zKey,sxu32 nKey,ph7_value *pVal)
+{
+	SyHashEntry *pEntry = SyHashGet(&pThis->hAttr,(const void *)zKey,nKey);
+	ph7_value *pSlot;
+	if( pEntry ){
+		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
+		pSlot = pVmAttr ? (ph7_value *)SySetAt(&ud->pVm->aMemObj,pVmAttr->nIdx) : 0;
+	}else{
+		pSlot = PH7_VmCreateDynamicAttr(ud->pVm,pThis,zKey,nKey,0);
+	}
+	if( pSlot && pVal ){
+		PH7_MemObjStore(pVal,pSlot);
+	}
+}
 /* Parse O:<namelen>:"<Class>":<count>:{ ... } into a fresh object value. */
 static ph7_value * VmUnserializeObject(unserialize_data *ud)
 {
 	sxu32 nLen, count, i;
 	const char *zClass;
-	ph7_class *pClass;
+	ph7_class *pClass = 0;
 	ph7_class_instance *pThis;
 	ph7_class_method *pMethod;
 	ph7_value *pObjVal, *pArrVal = 0;
+	int bIncomplete = 0;   /* build the carrier instead of the named class */
+	int bStampName = 0;    /* ... and remember the payload's name on it */
 	if( !VmUnExpect(ud,'O') || !VmUnExpect(ud,':') ){ return 0; }
 	if( !VmUnParseUInt(ud,&nLen) ){ return 0; }
 	if( !VmUnExpect(ud,':') || !VmUnExpect(ud,'"') ){ return 0; }
@@ -588,8 +704,73 @@ static ph7_value * VmUnserializeObject(unserialize_data *ud)
 	if( !VmUnExpect(ud,'"') || !VmUnExpect(ud,':') ){ return 0; }
 	if( !VmUnParseUInt(ud,&count) ){ return 0; }
 	if( !VmUnExpect(ud,':') || !VmUnExpect(ud,'{') ){ return 0; }
-	pClass = PH7_VmExtractClass(ud->pVm,zClass,nLen,TRUE,0);
-	if( pClass == 0 ){ return 0; }
+	if( !VmUnserializeClassAllowed(ud,zClass,nLen) ){
+		/* A class the option refuses becomes __PHP_Incomplete_Class WITHOUT a
+		 * class lookup: php never autoloads a name it was told not to build. */
+		bIncomplete = bStampName = 1;
+	}else{
+		pClass = PH7_VmExtractClass(ud->pVm,zClass,nLen,TRUE,0);
+		if( pClass == 0 ){
+			/* Unknown even after autoload: php gives the unserialize_callback_func
+			 * ini one chance to declare it, then falls back to the carrier and
+			 * KEEPS PARSING — an unknown class is not a syntax error. */
+			SyBlob sCb;
+			SyBlobInit(&sCb,&ud->pVm->sAllocator);
+			PH7_VmIniGetStr(ud->pVm,"unserialize_callback_func",&sCb);
+			if( SyBlobLength(&sCb) > 0 ){
+				ph7_value sCbName, sCbArg, sCbRet;
+				sxi32 rcCb;
+				PH7_MemObjInit(ud->pVm,&sCbName);
+				PH7_MemObjInit(ud->pVm,&sCbArg);
+				PH7_MemObjInit(ud->pVm,&sCbRet);
+				PH7_MemObjStringAppend(&sCbName,(const char *)SyBlobData(&sCb),SyBlobLength(&sCb));
+				if( !PH7_VmIsCallable(ud->pVm,&sCbName,FALSE) ){
+					/* php throws (uncaught unless the caller catches): the ini named
+					 * a function that does not exist. */
+					PH7_VmThrowException(ud->pCtx,"Error",
+						"Invalid callback %.*s, function \"%.*s\" not found or invalid function name",
+						(int)SyBlobLength(&sCb),(const char *)SyBlobData(&sCb),
+						(int)SyBlobLength(&sCb),(const char *)SyBlobData(&sCb));
+					PH7_MemObjRelease(&sCbName);
+					SyBlobRelease(&sCb);
+					ud->exc = 1;
+					return 0;
+				}
+				PH7_MemObjStringAppend(&sCbArg,zClass,nLen);
+				{
+					ph7_value *apCbArg[1];
+					apCbArg[0] = &sCbArg;
+					rcCb = PH7_VmCallUserFunction(ud->pVm,&sCbName,1,apCbArg,&sCbRet);
+				}
+				PH7_MemObjRelease(&sCbRet);
+				PH7_MemObjRelease(&sCbArg);
+				PH7_MemObjRelease(&sCbName);
+				if( rcCb == PH7_EXCEPTION || ud->pVm->nBoundaryRc != 0 ){
+					ud->exc = 1;
+					SyBlobRelease(&sCb);
+					return 0;
+				}
+				pClass = PH7_VmExtractClass(ud->pVm,zClass,nLen,TRUE,0);
+				if( pClass == 0 ){
+					ph7_context_throw_error_format(ud->pCtx,PH7_CTX_WARNING,
+						"Function %.*s() hasn't defined the class it was called for",
+						(int)SyBlobLength(&sCb),(const char *)SyBlobData(&sCb));
+				}
+			}
+			SyBlobRelease(&sCb);
+			if( pClass == 0 ){
+				bIncomplete = bStampName = 1;
+			}
+		}else if( PH7_VmIsIncompleteClass(ud->pVm,pClass) ){
+			/* A payload naming the carrier ITSELF: carrier semantics (raw dynamic
+			 * properties), but php stamps no name member for it. */
+			bIncomplete = 1;
+		}
+	}
+	if( bIncomplete ){
+		pClass = ud->pVm->pIncClass;
+		if( pClass == 0 ){ return 0; } /* defensive: the carrier is always installed */
+	}
 	if( VmClassStaticDeferPending(pClass) ){
 		/* Instantiating materializes the class's static table, so a default that
 		 * threw at the declaration raises here — before any object exists —
@@ -604,8 +785,21 @@ static ph7_value * VmUnserializeObject(unserialize_data *ud)
 	if( pObjVal == 0 ){ PH7_ClassInstanceUnref(pThis); return 0; }
 	pObjVal->x.pOther = pThis;       /* take the instance's single reference */
 	MemObjSetType(pObjVal,MEMOBJ_OBJ);
-	/* Does the class define __unserialize()? Then collect the pairs into an array. */
-	pMethod = PH7_ClassExtractMethod(pClass,"__unserialize",sizeof("__unserialize")-1);
+	if( bStampName ){
+		/* The magic member comes first (php's property order), holding the name
+		 * the payload spelled — what get_class() lost and re-serialization needs. */
+		ph7_value sName;
+		PH7_MemObjInit(ud->pVm,&sName);
+		PH7_MemObjStringAppend(&sName,zClass,nLen);
+		VmUnserializeIncompleteProp(ud,pThis,
+			PH7_INCOMPLETE_MAGIC_MEMBER,sizeof(PH7_INCOMPLETE_MAGIC_MEMBER)-1,&sName);
+		PH7_MemObjRelease(&sName);
+	}
+	/* Does the class define __unserialize()? Then collect the pairs into an array.
+	 * The carrier consults NO magic method: php calls neither __unserialize() nor
+	 * __wakeup() for a class it refused to build — that is the option's point. */
+	pMethod = bIncomplete ? 0
+		: PH7_ClassExtractMethod(pClass,"__unserialize",sizeof("__unserialize")-1);
 	if( pMethod ){
 		pArrVal = ph7_context_new_array(ud->pCtx);
 		if( pArrVal == 0 ){ ph7_context_release_value(ud->pCtx,pObjVal); return 0; }
@@ -619,7 +813,11 @@ static ph7_value * VmUnserializeObject(unserialize_data *ud)
 		if( pKey == 0 ){ goto fail; }
 		pVal = VmUnserializeValue(ud);
 		if( pVal == 0 ){ ph7_context_release_value(ud->pCtx,pKey); goto fail; }
-		if( pArrVal ){
+		if( bIncomplete ){
+			/* The key stays RAW (mangling bytes included) on the carrier. */
+			int nKey; const char *zKey = ph7_value_to_string(pKey,&nKey);
+			VmUnserializeIncompleteProp(ud,pThis,zKey,(sxu32)nKey,pVal);
+		}else if( pArrVal ){
 			ph7_array_add_elem(pArrVal,pKey,pVal);
 		}else{
 			/* Set a declared property by its (demangled) name; skip unknowns. */
@@ -861,12 +1059,19 @@ static int VmUnserializeClassListWalker(ph7_value *pKey, ph7_value *pData, void 
  * a non-negative `int`. Any other key is ignored, with no diagnostic. PHL used to
  * ignore the whole array, so a mistyped option silently did nothing at all.
  *
- * On success *piMaxDepth carries the effective depth limit.
+ * On success *piMaxDepth carries the effective depth limit, and the allowed-class
+ * spec comes back through *pbAllowAll / *ppAllowedList. The list pointer aliases
+ * the $options ARGUMENT's own element rather than a copy: the argument slot holds
+ * its own reference for the whole builtin call and no userland name reaches that
+ * copy, so a __wakeup() that rewrites (or unsets) the caller's array mid-parse
+ * cannot move or free what this walks — php snapshots for the same reason.
  */
 static sxi32 VmUnserializeCheckOptions(
 	ph7_context *pCtx,      /* Call context (for the throw) */
 	ph7_value *pOptions,    /* The $options array */
-	int *piMaxDepth         /* OUT: effective max_depth */
+	int *piMaxDepth,        /* OUT: effective max_depth */
+	int *pbAllowAll,        /* OUT: allowed_classes was absent or true */
+	ph7_value **ppAllowedList /* OUT: the allowed_classes LIST, when one was given */
 	)
 {
 	char zGiven[64];
@@ -877,10 +1082,13 @@ static sxi32 VmUnserializeCheckOptions(
 			if( ph7_array_walk(pOpt,VmUnserializeClassListWalker,pCtx) != PH7_OK ){
 				return PH7_EXCEPTION; /* the walker already threw */
 			}
+			*ppAllowedList = pOpt;
 		}else if( !ph7_value_is_bool(pOpt) ){
 			return PH7_VmThrowException(pCtx,"TypeError",
 				"unserialize(): Option \"allowed_classes\" must be of type array|bool, "
 				"%s given",VmUnserializeOptionType(pOpt,zGiven,sizeof(zGiven)));
+		}else{
+			*pbAllowAll = ph7_value_to_bool(pOpt) != 0;
 		}
 	}
 	pOpt = ph7_array_fetch(pOptions,"max_depth",sizeof("max_depth")-1);
@@ -944,6 +1152,8 @@ PH7_PRIVATE sxi32 PH7_VmUnserializeOne(ph7_context *pCtx,const char *zIn,int nBy
 	ud.zErr = 0;
 	ud.shortErr = 0;
 	ud.exc = 0;
+	ud.allowAll = 1;
+	ud.pAllowedList = 0;
 	pVal = VmUnserializeValue(&ud);
 	if( ud.exc ){
 		return PH7_EXCEPTION;
@@ -970,15 +1180,26 @@ PH7_PRIVATE int vm_builtin_unserialize(ph7_context *pCtx, int nArg, ph7_value **
 	const char *zIn;
 	int nByte;
 	int iMaxDepth = SERIALIZE_MAX_DEPTH;
+	int bAllowAll = 1;
+	ph7_value *pAllowedList = 0;
 	ph7_value *pVal;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	/* No max_depth option: the unserialize_max_depth ini is php's default for it
+	 * (0 = unlimited, capped by the recursive parser's own guard either way). */
+	{
+		ph7_int64 iIniDepth = PH7_VmIniGetInt(pCtx->pVm,"unserialize_max_depth",
+			(sxi64)SERIALIZE_MAX_DEPTH);
+		if( iIniDepth > 0 && iIniDepth < (ph7_int64)SERIALIZE_MAX_DEPTH ){
+			iMaxDepth = (int)iIniDepth;
+		}
+	}
 	/* php validates $options before touching $data — so a bad option throws even
 	 * for input that would not have parsed anyway. */
 	if( nArg > 1 && ph7_value_is_array(apArg[1]) ){
-		sxi32 rc = VmUnserializeCheckOptions(pCtx,apArg[1],&iMaxDepth);
+		sxi32 rc = VmUnserializeCheckOptions(pCtx,apArg[1],&iMaxDepth,&bAllowAll,&pAllowedList);
 		if( rc != PH7_OK ){
 			return rc;
 		}
@@ -998,6 +1219,8 @@ PH7_PRIVATE int vm_builtin_unserialize(ph7_context *pCtx, int nArg, ph7_value **
 	ud.zErr = 0;
 	ud.shortErr = 0;
 	ud.exc = 0;
+	ud.allowAll = bAllowAll;
+	ud.pAllowedList = pAllowedList;
 	pVal = VmUnserializeValue(&ud);
 	if( ud.exc ){
 		/* A __wakeup()/__unserialize() threw: let the exception unwind. */

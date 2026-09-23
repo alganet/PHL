@@ -612,6 +612,79 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 			pClass = pThis->pClass;
 			/* Extract attribute name first */
 			SyStringInitFromBuf(&sName,(const char *)SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
+			if( PH7_VmIsIncompleteClass(&(*pVm),pClass) ){
+				/* __PHP_Incomplete_Class: every property access and method call is
+				 * php's incomplete-object diagnostic — the carrier's OWN entries are
+				 * for the engine's surfaces only. A READ (isset/empty/?? included)
+				 * is an E_WARNING answering NULL; every WRITE shape and unset() is
+				 * a catchable Error; a method call is its own Error, raised where
+				 * the undefined-method twin raises (before any argument runs). The
+				 * DEFPATH pre-pass defers like a MISSING property would — the slot
+				 * fast path must not hand out the carrier's storage — so the by-ref
+				 * resolve (VmBindPropByRef) raises the Error and the by-value
+				 * re-drive lands back here in READ context for the warning.
+				 * `??=` reads before it refuses, so it takes BOTH, php's order. */
+				VmInstr *pIncNext = pInstr + 1;
+				if( pInstr->iP2 == PH7_MEMBER_DEFPATH && pNos->nIdx != SXU32_HIGH ){
+					SyString sIncProp;
+					VmDeferredPath *pIncPath = VmDeferPathNew(&(*pVm),0,pNos->nIdx,0);
+					SyStringInitFromBuf(&sIncProp,sName.zString,sName.nByte);
+					if( pIncPath && VmDeferPathPushProp(pIncPath,&sIncProp) == SXRET_OK ){
+						VmPopOperand(&pTos,1);       /* drop the property name */
+						pThis->iRef++;
+						PH7_MemObjRelease(pTos);     /* collapse the object slot into the carrier */
+						pTos->x.pOther = pIncPath;
+						pTos->iFlags = MEMOBJ_NULL | MEMOBJ_AUX_DEFPATH;
+						pTos->nIdx = SXU32_HIGH;
+						PH7_ClassInstanceUnref(pThis);
+						VM_EXIT_BREAK;
+					}
+					if( pIncPath ){
+						VmFreeDeferredPath(pIncPath);
+					}
+					/* allocation failure (or a temporary base below): the read
+					 * verdict is all that is left — fall through to warn + NULL. */
+				}
+				int bIncCall = (pInstr->iP2 == PH7_MEMBER_METHOD);
+				int bIncCoalW = (pInstr->iP2 == PH7_MEMBER_WRITE && pIncNext->iOp == PH7_OP_NULLC_JMP);
+				int bIncModify = pInstr->iP2 != PH7_MEMBER_DEFPATH
+					&& (pInstr->iP2 == PH7_MEMBER_UNSET
+					 || pInstr->iP2 == PH7_MEMBER_WRITE
+					 || pInstr->iP2 == PH7_MEMBER_REF_TARGET
+					 || pInstr->iP2 == PH7_MEMBER_LIST_TARGET
+					 || VmMemberNextIsWrite(pIncNext)
+					 || VmMemberFetchForWrite(pInstr));
+				if( bIncCall ){
+					SyBlob sIncErr;
+					sxi32 rcInc;
+					SyBlobInit(&sIncErr,&pVm->sAllocator);
+					PH7_VmIncompleteMsg(&(*pVm),pThis,"call a method",&sIncErr);
+					VmPopOperand(&pTos,1);
+					PH7_MemObjRelease(pTos);
+					pTos->nIdx = SXU32_HIGH;
+					rcInc = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sIncErr),
+						SyBlobLength(&sIncErr));
+					SyBlobRelease(&sIncErr);
+					if( rcInc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+					rc = rcInc;
+					PH7_THROW_ROUTE_MIDEXPR(rc)
+				}
+				if( bIncCoalW ){
+					PH7_VmIncompleteAccessWarn(&(*pVm),pThis,0);
+				}
+				if( bIncModify ){
+					SyBlob sIncErr;
+					SyBlobInit(&sIncErr,&pVm->sAllocator);
+					PH7_VmIncompleteMsg(&(*pVm),pThis,"modify a property",&sIncErr);
+					VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sIncErr));
+				}else{
+					PH7_VmIncompleteAccessWarn(&(*pVm),pThis,0);
+				}
+				VmPopOperand(&pTos,1);   /* pop the attribute name */
+				PH7_MemObjRelease(pTos); /* the object slot becomes the NULL answer */
+				pTos->nIdx = SXU32_HIGH;
+				VM_EXIT_BREAK;
+			}
 			if( pInstr->iP2 == PH7_MEMBER_METHOD ){
 				/* Method call */
 				ph7_class_method *pMeth = 0;

@@ -1379,6 +1379,10 @@ static sxi32 VmInstallStdClasses(ph7_vm *pVm)
 {
 	static const PH7_NativeClassSpec aSpec[] = {
 		{ "stdClass", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		/* unserialize()'s carrier for a disallowed or unknown class: as empty as
+		 * stdClass (its properties are the payload's, created dynamically); what
+		 * makes it special is the pVm->pIncClass checks at the access sites. */
+		{ "__PHP_Incomplete_Class", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "Random\\RandomException", "Exception", 0, PH7_CLASS_NOCLONE,
 		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
 	};

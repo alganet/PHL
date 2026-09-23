@@ -831,7 +831,16 @@ static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 				if( pEntry == 0 ){ continue; } /* unset by an earlier hook */
 				pVmAttr = (VmClassAttr *)pEntry->pUserData;
 				VmExportIndent(pOut,nIndent+3); /* object property lines sit one deeper than arrays */
-				VmExportQuoted(pOut,pAName->zString,(int)pAName->nByte);
+				if( pAName->nByte > 0 && pAName->zString[0] == 0 ){
+					/* A MANGLED key stored raw (the __PHP_Incomplete_Class carrier):
+					 * php's var_export prints the PLAIN name ('bp' => 1). */
+					SyString sUnmCls, sUnmName;
+					SyStringInitFromBuf(&sUnmName,pAName->zString,pAName->nByte);
+					PH7_UnmangleAttrName(pAName->zString,pAName->nByte,&sUnmCls,&sUnmName);
+					VmExportQuoted(pOut,sUnmName.zString,(int)sUnmName.nByte);
+				}else{
+					VmExportQuoted(pOut,pAName->zString,(int)pAName->nByte);
+				}
 				/* PHP 8.4 property hooks: var_export() reads through the get hook
 				 * (every visibility — php exports private hooked values too). A
 				 * throwing hook parks on the boundary rail; the helper's boundary
