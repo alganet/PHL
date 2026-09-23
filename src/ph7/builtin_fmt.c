@@ -592,7 +592,23 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 				}
 			}
 			break;
-		case PH7_FMT_RADIX:
+		case PH7_FMT_RADIX: {
+			/* The digits are produced from an UNSIGNED accumulator. Two php rules
+			 * ride on that, and the inherited signed one got both wrong:
+			 *
+			 *  - only %d is SIGNED. %u/%x/%X/%o/%b REINTERPRET the same 64 bits as
+			 *    unsigned (php_sprintf_appenduint / php_sprintf_append2n cast to
+			 *    zend_ulong), so sprintf("%x",-1) is "ffffffffffffffff", not the
+			 *    magnitude "1" this used to print for every negative value;
+			 *  - the magnitude of PHP_INT_MIN has no signed representation, so
+			 *    `iVal = -iVal` was signed overflow — undefined, and the guard
+			 *    testing for it afterwards (`if( iVal < 0 )`) is exactly what a
+			 *    compiler may assume cannot happen. It did: the negative
+			 *    accumulator reached `cset[iVal%base]`, indexing BEFORE the digit
+			 *    table, so sprintf("%d",PHP_INT_MIN) printed whatever bytes sat
+			 *    there. Unsigned negation is well-defined for every input.
+			 */
+			sxu64 uVal;
 			pArg = NEXT_ARG;
 			if( pArg == 0 ){
 				iVal = 0;
@@ -603,36 +619,20 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 			if( precision>PH7_FMT_BUFSIZ-40 ){
 				precision = PH7_FMT_BUFSIZ-40;
 			}
-#if 1
-        /* For the format %#x, the value zero is printed "0" not "0x0".
-        ** I think this is stupid.*/
+        /* For the format %#x, the value zero is printed "0" not "0x0". */
         if( iVal==0 ) flag_alternateform = 0;
-#else
-        /* More sensible: turn off the prefix for octal (to prevent "00"),
-        ** but leave the prefix for hex.*/
-        if( iVal==0 && pInfo->base==8 ) flag_alternateform = 0;
-#endif
         if( pInfo->flags & PH7_FMT_FLAG_SIGNED ){
           if( iVal<0 ){
-            iVal = -iVal;
-			/* Ticket 1433-003 */
-			if( iVal < 0 ){
-				/* Overflow */
-				iVal= 0x7FFFFFFFFFFFFFFF;
-			}
+            uVal = (sxu64)0 - (sxu64)iVal;
             prefix = '-';
-          }else if( flag_plussign )  prefix = '+';
-          else if( flag_blanksign )  prefix = ' ';
-          else                       prefix = 0;
+          }else{
+            uVal = (sxu64)iVal;
+            if( flag_plussign )      prefix = '+';
+            else if( flag_blanksign )prefix = ' ';
+            else                     prefix = 0;
+          }
         }else{
-			if( iVal<0 ){
-				iVal = -iVal;
-				/* Ticket 1433-003 */
-				if( iVal < 0 ){
-					/* Overflow */
-					iVal= 0x7FFFFFFFFFFFFFFF;
-				}
-			}
+			uVal = (sxu64)iVal;
 			prefix = 0;
 		}
         if( flag_zeropad && precision<width-(prefix!=0) ){
@@ -640,14 +640,14 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
         }
         zBuf = &zWorker[PH7_FMT_BUFSIZ-1];
         {
-          register char *cset;      /* Use registers for speed */
-          register int base;
+          const char *cset;
+          sxu64 base;
           cset = pInfo->charset;
-          base = pInfo->base;
+          base = (sxu64)pInfo->base;
           do{                                           /* Convert to ascii */
-            *(--zBuf) = cset[iVal%base];
-            iVal = iVal/base;
-          }while( iVal>0 );
+            *(--zBuf) = cset[uVal%base];
+            uVal = uVal/base;
+          }while( uVal>0 );
         }
 		length = (int)(&zWorker[PH7_FMT_BUFSIZ-1]-zBuf);
         for(idx=precision-length; idx>0; idx--){
@@ -663,6 +663,7 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
         }
 		length = (int)(&zWorker[PH7_FMT_BUFSIZ-1]-zBuf);
 		break;
+		}
 		case PH7_FMT_FLOAT:
 		case PH7_FMT_EXP:
 		case PH7_FMT_GENERIC:{
