@@ -6087,12 +6087,17 @@ PH7_PRIVATE void PH7_VmReleaseUnheldSlot(ph7_vm *pVm,sxu32 nIdx)
 		return;
 	}
 	pRef = VmRefObjExtract(&(*pVm),nIdx);
-	if( pRef == 0 || (pRef->iFlags & VM_REF_IDX_KEEP) ){
-		return;
+	if( pRef ){
+		if( pRef->iFlags & VM_REF_IDX_KEEP ){
+			return; /* pinned past its frame — its holder is not in the table */
+		}
+		if( PH7_VmSlotHolderCount(&(*pVm),nIdx) > 0 ){
+			return; /* somebody still holds it */
+		}
 	}
-	if( PH7_VmSlotHolderCount(&(*pVm),nIdx) > 0 ){
-		return;
-	}
+	/* No record at all means nothing was ever registered against the slot, which is
+	 * the same answer as a count of zero — release it (this is what every caller did
+	 * unconditionally before the holder rule). */
 	PH7_VmUnsetMemObj(&(*pVm),nIdx,FALSE);
 	/* The slot is back in the free pool; drop its stale local-teardown entry so a
 	 * later reuse of the index is not double-freed (see VmDropFrameLocalSlot). */

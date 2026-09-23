@@ -199,6 +199,12 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 /* LOAD_IDX's own iP2 context codes (they do NOT line up with PH7_MEMBER_*). */
 #define VM_IDX_CTX_ISSET 4
 #define VM_IDX_CTX_UNSET 5
+/* An INTERMEDIATE subscript of an unset chain (`unset($a['k']['n'])`): every unset
+ * rule below applies to it — COW-separate the parent, never vivify a missing key,
+ * unset's own wording for a bad base — except the removal itself, which belongs to
+ * the OUTERMOST subscript alone. */
+#define VM_IDX_CTX_UNSET_BASE 10
+#define VM_IDX_IS_UNSET(iP2) ((iP2) == VM_IDX_CTX_UNSET || (iP2) == VM_IDX_CTX_UNSET_BASE)
 #define VM_IDX_CTX_EMPTY 6
 /*
  * php rejects an OBJECT or an ARRAY used as an array offset, naming the offending
@@ -236,7 +242,7 @@ static int VmOffsetTypeRejected(ph7_vm *pVm,ph7_value *pKey,int iCtx,SyBlob *pMs
 		return FALSE;
 	}
 	SyBlobInit(pMsg,&pVm->sAllocator);
-	if( iCtx == VM_IDX_CTX_UNSET ){
+	if( VM_IDX_IS_UNSET(iCtx) ){
 		SyBlobAppend(pMsg,"Cannot unset offset of type ",sizeof("Cannot unset offset of type ")-1);
 	}else{
 		SyBlobAppend(pMsg,"Cannot access offset of type ",sizeof("Cannot access offset of type ")-1);
@@ -1190,7 +1196,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 	}
 	if( pTos->iFlags & MEMOBJ_STRING ){
 		/* String access */
-		if( iP2 == VM_IDX_CTX_UNSET ){
+		if( VM_IDX_IS_UNSET(iP2) ){
 			/* php: a string offset cannot be unset AT ALL — `unset($s[0])` is the
 			 * catchable `Error: Cannot unset string offsets`, whatever the offset is
 			 * and whether or not it is in range. PHL read the character but left the
@@ -1218,7 +1224,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 			 * `??`/`??=` fetch still warns about the offset SHAPE and reads it
 			 * (VM_STROFF_COALESCE). The ??= peek is recognised by the NULLC_JMP
 			 * that follows it, since its iP2 does not distinguish the base type. */
-			int iOfftLevel = (iP2 == 4 || iP2 == 5 || iP2 == 6) ? VM_STROFF_ISSET
+			int iOfftLevel = (iP2 == 4 || VM_IDX_IS_UNSET(iP2) || iP2 == 6) ? VM_STROFF_ISSET
 				: ((iP2 == 8 || VmIdxFeedsCoalesce(pInstr)) ? VM_STROFF_COALESCE
 				: VM_STROFF_LOUD);
 			int bQuiet = iOfftLevel != VM_STROFF_LOUD;
@@ -1487,7 +1493,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 			PH7_THROW_ROUTE_MIDEXPR(rc)
 		}
 	}
-	if( (iP2 == 1 || iP2 == 3 || iP2 == 5) && (pTos->iFlags & MEMOBJ_HASHMAP) == 0 ){
+	if( (iP2 == 1 || iP2 == 3 || VM_IDX_IS_UNSET(iP2)) && (pTos->iFlags & MEMOBJ_HASHMAP) == 0 ){
 		if( pTos->nIdx != SXU32_HIGH ){
 			ph7_value *pObj;
 			if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
@@ -1504,7 +1510,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				if( (pObj->iFlags & (MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_RES|MEMOBJ_BOOL)) != 0 ){
 					/* unset() has its own wording for the same base: php's
 					 * "Cannot unset offset in a non-array variable". */
-					const char *zErr = (iP2 == VM_IDX_CTX_UNSET)
+					const char *zErr = VM_IDX_IS_UNSET(iP2)
 						? "Cannot unset offset in a non-array variable"
 						: "Cannot use a scalar value as an array";
 					SyBlob sErrMsg;
@@ -1524,7 +1530,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				 * in `unset($a["y"]["z"])`. Leaving the base alone, the lookup below
 				 * misses, the tail loads NULL with no slot index, and the trailing
 				 * unset() builtin is the no-op php's is. */
-				if( iP2 != VM_IDX_CTX_UNSET ){
+				if( !VM_IDX_IS_UNSET(iP2) ){
 					PH7_MemObjToHashmap(pObj);
 					PH7_MemObjLoad(pObj,pTos);
 				}
@@ -1566,7 +1572,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		 * (2/7). Emit it here so all of them get it, not just read/write; the
 		 * lookup/insert below casts NULL->"", and a plain read miss then warns
 		 * `Undefined array key ""` on the now-string pIdx (php's exact pair). */
-		if( (pIdx->iFlags & MEMOBJ_NULL) && iP2 != 5 ){
+		if( (pIdx->iFlags & MEMOBJ_NULL) && !VM_IDX_IS_UNSET(iP2) ){
 			VmNullOffsetDeprecate(&(*pVm),pIdx);
 		}
 		/* A lossy-FLOAT subscript stays a rejected TypeError on a READ or WRITE
@@ -1587,7 +1593,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		}
 	}
 	if( pTos->iFlags & MEMOBJ_HASHMAP ){
-		if( iP2 == 1 || iP2 == 5 ){
+		if( iP2 == 1 || VM_IDX_IS_UNSET(iP2) ){
 			/* Write-context access (iP2 = create-if-missing).  COW-separate
 			 * the parent so nested writes like $b[0][0] = 99 don't leak
 			 * through shared outer arrays.  Read-only loads (iP2 == 0) must
@@ -1691,6 +1697,53 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		 * on int") that yields NULL. PH7 yielded NULL in silence. */
 		VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Trying to access array offset on %s",
 			VmArithTypeName(pTos));
+	}
+	if( iP2 == VM_IDX_CTX_UNSET && rc == SXRET_OK && pNode != 0
+	 && (pTos->iFlags & MEMOBJ_HASHMAP) ){
+		/* php's `unset($a[k])` removes the ELEMENT. PH7 left the element's value slot
+		 * on the stack and let the trailing unset() builtin drop it — but dropping a
+		 * SLOT unlinks everything that holds it, so `$r = &$a['k']; unset($a['k']);`
+		 * destroyed $r too (`Undefined variable $r`) where php leaves it reading the
+		 * value it still refers to. Unlink the node itself, which releases the value
+		 * only when this element was its last holder, and leave the builtin nothing. */
+		ph7_hashmap *pTarget = (ph7_hashmap *)pTos->x.pOther;
+		int bDone = 0;
+		if( pTarget == pVm->pGlobal && pIdx ){
+			/* `$GLOBALS['x']` IS the global $x, so this is an unset of the NAME: it has
+			 * to drop the symbol-table entry as well as this node, and it must not
+			 * destroy the value another holder still refers to — exactly what
+			 * VmUnsetVarByName does for `unset($x)`. A superglobal has no entry in the
+			 * global frame and falls through to the plain node unlink below. */
+			VmFrame *pGlobalFrame = pVm->pFrame;
+			SyHashEntry *pNameEntry;
+			while( pGlobalFrame->pParent ){
+				pGlobalFrame = pGlobalFrame->pParent;
+			}
+			if( (pIdx->iFlags & MEMOBJ_STRING) == 0 ){
+				PH7_MemObjToString(pIdx);
+			}
+			pNameEntry = SyHashGet(&pGlobalFrame->hVar,
+				(const void *)SyBlobData(&pIdx->sBlob),SyBlobLength(&pIdx->sBlob));
+			if( pNameEntry ){
+				sxi32 rcUnset = VmUnsetVarByNameEx(&(*pVm),pGlobalFrame,
+					(const char *)SyBlobData(&pIdx->sBlob),SyBlobLength(&pIdx->sBlob),FALSE);
+				bDone = 1;
+				if( rcUnset == PH7_ABORT ){
+					PH7_MemObjRelease(pIdx);
+					VM_EXIT_ABORT;
+				}
+			}
+		}
+		if( !bDone ){
+			PH7_HashmapUnlinkNode(pNode,TRUE);
+		}
+		if( pIdx ){
+			PH7_MemObjRelease(pIdx);
+		}
+		PH7_MemObjRelease(pTos);
+		MemObjSetType(pTos,MEMOBJ_NULL);
+		pTos->nIdx = SXU32_HIGH;
+		VM_EXIT_BREAK;
 	}
 	if( pIdx ){
 		PH7_MemObjRelease(pIdx);

@@ -1361,6 +1361,15 @@ static sxi32 GenStateEmitExprCode(
 					|| pNode->pLeft->pOp->iOp == EXPR_OP_NULLSAFE_ARROW
 					|| pNode->pLeft->pOp->iOp == EXPR_OP_DC) ){
 				iLeftFlags &= ~EXPR_FLAG_LOAD_IDX_UNSET;
+			}else if( iLeftFlags & EXPR_FLAG_LOAD_IDX_UNSET ){
+				/* A SUBSCRIPT intermediate of an unset chain (`unset($a['k']['n'])`) keeps
+				 * the unset context — it must COW-separate the parent and must NOT vivify a
+				 * missing key — but it is a READ of the container, not an unset of it. The
+				 * UNSET_BASE context says exactly that: `$a['k']` is loaded, where the
+				 * plain unset context would have removed the ELEMENT (and, for an
+				 * ArrayAccess base, called offsetUnset() on the intermediate key). */
+				iLeftFlags &= ~EXPR_FLAG_LOAD_IDX_UNSET;
+				iLeftFlags |= EXPR_FLAG_LOAD_IDX_UNSET_BASE;
 			}
 			/* Write-lvalue propagation (mirrors the UNSET strip): EXPR_FLAG_MEMBER_WRITE marks the
 			 * write target of an assignment and flows through a SUBSCRIPT to its base member
@@ -1527,6 +1536,7 @@ static sxi32 GenStateEmitExprCode(
 			sxi32 n;
 			sxi32 iChildMask = ~(EXPR_FLAG_LOAD_IDX_STORE
 				|EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_UNSET
+				|EXPR_FLAG_LOAD_IDX_UNSET_BASE
 				|EXPR_FLAG_LOAD_IDX_EMPTY|EXPR_FLAG_MEMBER_WRITE
 				|EXPR_FLAG_MEMBER_COALESCE
 				|EXPR_FLAG_QUIET_VAR|EXPR_FLAG_RMW_LOAD|EXPR_FLAG_DEFER_ARG);
@@ -1548,9 +1558,12 @@ static sxi32 GenStateEmitExprCode(
 				/* offsetExists for ArrayAccess; peek-only for arrays */
 				iP2 = 4;
 			}else if( iFlags & EXPR_FLAG_LOAD_IDX_UNSET ){
-				/* offsetUnset for ArrayAccess; auto-vivify+load for arrays
-				 * so the trailing unset() builtin can drop the slot. */
+				/* offsetUnset for ArrayAccess; for an array, remove the ELEMENT. */
 				iP2 = 5;
+			}else if( iFlags & EXPR_FLAG_LOAD_IDX_UNSET_BASE ){
+				/* An unset chain's intermediate container: read it, but with the
+				 * unset context's COW-separate and no-vivify rules. */
+				iP2 = 10;
 			}else if( iFlags & EXPR_FLAG_LOAD_IDX_EMPTY ){
 				/* offsetExists+offsetGet for ArrayAccess so empty() can
 				 * short-circuit on missing keys without invoking offsetGet

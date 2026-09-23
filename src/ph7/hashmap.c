@@ -209,15 +209,12 @@ PH7_PRIVATE void PH7_HashmapUnlinkNode(ph7_hashmap_node *pNode,int bRestore)
 	if( bRestore ){
 		/* Remove the ph7_value associated with this node from the reference table */
 		PH7_VmRefObjRemove(pVm,pNode->nValIdx,0,pNode);
-		/* Restore to the freelist */
-		if( (pNode->iFlags & HASHMAP_NODE_FOREIGN_OBJ) == 0 ){
-			PH7_VmUnsetMemObj(pVm,pNode->nValIdx,FALSE);
-		}else{
-			/* A FOREIGN node holds someone else's slot — and may be the LAST thing
-			 * holding it, once the frame that owned the variable is gone (that frame
-			 * left the slot standing for this very node). Nobody would free it then. */
-			PH7_VmReleaseUnheldSlot(pVm,pNode->nValIdx);
-		}
+		/* Restore to the freelist — but only if this node was the LAST holder. A
+		 * node's own value can be held by a name too (`$r = &$a[0]; unset($a);`
+		 * must leave $r reading 7, not destroy it), and a FOREIGN node may be the
+		 * last thing holding a slot whose frame is already gone (that frame left it
+		 * standing for this very node), which nothing else would ever free. */
+		PH7_VmReleaseUnheldSlot(pVm,pNode->nValIdx);
 	}
 	if( pNode->iType == HASHMAP_BLOB_NODE ){
 		SyBlobRelease(&pNode->xKey.sKey);
@@ -2015,13 +2012,9 @@ PH7_PRIVATE sxi32 PH7_HashmapRelease(ph7_hashmap *pMap,int FreeDS)
 		pNext = pEntry->pPrev; /* Reverse link */
 		/* Remove the reference from the foreign table */
 		PH7_VmRefObjRemove(pVm,pEntry->nValIdx,0,pEntry);
-		if( (pEntry->iFlags & HASHMAP_NODE_FOREIGN_OBJ) == 0 ){
-			/* Restore the ph7_value to the free list */
-			PH7_VmUnsetMemObj(pVm,pEntry->nValIdx,FALSE);
-		}else{
-			/* Last holder of a slot whose owning frame is gone (PH7_HashmapUnlinkNode) */
-			PH7_VmReleaseUnheldSlot(pVm,pEntry->nValIdx);
-		}
+		/* Restore the ph7_value to the free list if this node was its last holder
+		 * (PH7_HashmapUnlinkNode explains both halves) */
+		PH7_VmReleaseUnheldSlot(pVm,pEntry->nValIdx);
 		/* Release the node */
 		if( pEntry->iType == HASHMAP_BLOB_NODE ){
 			SyBlobRelease(&pEntry->xKey.sKey);

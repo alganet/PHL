@@ -141,6 +141,11 @@ struct LangConstruct
 #define EXPR_FLAG_LOAD_IDX_ISSET    0x008 /* LOAD_IDX argument is the LHS of isset() — emit iP2=4 (offsetExists) */
 #define EXPR_FLAG_LOAD_IDX_UNSET    0x010 /* LOAD_IDX argument is the LHS of unset() — emit iP2=5 (offsetUnset) */
 #define EXPR_FLAG_LOAD_IDX_EMPTY    0x020 /* LOAD_IDX argument is the LHS of empty() — emit iP2=6 (offsetExists+offsetGet) */
+#define EXPR_FLAG_LOAD_IDX_UNSET_BASE 0x800 /* LOAD_IDX is an INTERMEDIATE subscript of an unset()
+                                           * chain (`unset($a['k']['n'])`) — emit iP2=10: the
+                                           * unset context's COW-separate and no-vivify rules,
+                                           * but a READ of the container (offsetGet for an
+                                           * ArrayAccess base), never a removal */
 #define EXPR_FLAG_MEMBER_WRITE      0x040 /* Sub-tree is the write lvalue of an assignment: tag a target
                                            * OP_MEMBER iP2=PH7_MEMBER_WRITE so the VM auto-creates a missing
                                            * property (e.g. `$o->arr[$k] = v`, `$o->p ??= v`). Propagated

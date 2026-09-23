@@ -72,14 +72,22 @@ PH7_PRIVATE int vm_builtin_isset(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * So: unlink this one name, forget it in the slot's reference record, and release the
  * slot only once no name and no array entry still holds it.
  */
-PH7_PRIVATE sxi32 VmUnsetVarByName(ph7_vm *pVm,VmFrame *pFrame,const char *zName,sxu32 nByte)
+/*
+ * bNameGuard says the NAME is the spelling the user unset — `unset($GLOBALS)` must be
+ * refused there. `unset($GLOBALS['GLOBALS'])` reaches the same body through the element
+ * path with the guard OFF: its target is the ordinary symbol-table entry that
+ * `$GLOBALS['GLOBALS'] = 5` creates, not the superglobal (which the slot test below
+ * still protects).
+ */
+PH7_PRIVATE sxi32 VmUnsetVarByNameEx(ph7_vm *pVm,VmFrame *pFrame,const char *zName,sxu32 nByte,
+	int bNameGuard)
 {
 	SyHashEntry *pEntry;
 	VmRefObj *pRef;
 	sxu32 nIdx;
 	/* php 8.1 forbids unset($GLOBALS) outright. Checked by NAME: the superglobal is not an
 	 * ordinary hVar binding, so the slot-index test below never sees it. */
-	if( nByte == sizeof("GLOBALS")-1 && SyMemcmp(zName,"GLOBALS",nByte) == 0 ){
+	if( bNameGuard && nByte == sizeof("GLOBALS")-1 && SyMemcmp(zName,"GLOBALS",nByte) == 0 ){
 		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
 			"$GLOBALS can only be modified using the $GLOBALS[$name] = $value syntax");
 		pVm->iExitStatus = 255;
@@ -181,6 +189,10 @@ PH7_PRIVATE sxi32 VmUnsetVarByName(ph7_vm *pVm,VmFrame *pFrame,const char *zName
 		}
 	}
 	return SXRET_OK;
+}
+PH7_PRIVATE sxi32 VmUnsetVarByName(ph7_vm *pVm,VmFrame *pFrame,const char *zName,sxu32 nByte)
+{
+	return VmUnsetVarByNameEx(&(*pVm),pFrame,zName,nByte,TRUE);
 }
 PH7_PRIVATE sxi32 PH7_VmUnsetMemObj(ph7_vm *pVm,sxu32 nObjIdx,int bForce)
 {
