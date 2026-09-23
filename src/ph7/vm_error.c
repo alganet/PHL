@@ -1863,6 +1863,11 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 	ph7_class_attr *pAttr;
 	ph7_class *pHintScope;
 	char zGivenBuf[128];
+	/* php decides a typed-property store by the strict_types mode of the file the
+	 * ASSIGNMENT sits in — not the class's — which is what the executing
+	 * instruction's own unit mode says (pVm->bCurStrict, published under the
+	 * nLine != 0 gate so an engine-dispatched write keeps the calling file's). */
+	int bStrict = pVm->bCurStrict ? 1 : 0;
 	pSlot = SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32));
 	if( pSlot == 0 ){
 		return SXRET_OK; /* Not a typed slot */
@@ -1920,13 +1925,14 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 			return VmThrowReadonlyError(pVm,pVmAttr->pOwner,pAttr,0);
 		}
 	}
-	/* Union type: dispatch to the shared coercion helper. Typed properties
-	 * are always evaluated in weak mode regardless of declare(strict_types),
-	 * matching PHP's documented behavior. */
+	/* Union type: dispatch to the shared coercion helper, under the mode of the
+	 * file the ASSIGNMENT is written in — php applies strict_types to a typed
+	 * property store exactly as to an argument (`$o->u = 1.5` on an `int|string`
+	 * is its TypeError there), which this used to deny outright. */
 	if( pAttr->iFlags & PH7_CLASS_ATTR_UNION ){
 		sxi32 rc = VmCoerceToUnion(pVm, pValue, &pAttr->aUnionAlts,
 			(pAttr->iFlags & PH7_CLASS_ATTR_NULLABLE) ? 1 : 0,
-			0 /* bStrict: properties never apply strict_types */,pHintScope);
+			bStrict,pHintScope);
 		if( rc == SXRET_OK ){
 			pVmAttr->iState &= ~(VM_CLASS_ATTR_UNINIT|VM_CLASS_ATTR_TYPE_DEFER);
 			return SXRET_OK;
@@ -1995,11 +2001,47 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 		pVmAttr->iState &= ~(VM_CLASS_ATTR_UNINIT|VM_CLASS_ATTR_TYPE_DEFER);
 		return SXRET_OK;
 	}
+	/* Scalar type, strict mode: no coercion at all, and the one widening is
+	 * int -> float. The flag test the weak path below uses cannot answer this on
+	 * its own — an integer-valued real carries MEMOBJ_INT as a cached
+	 * representation, so `$o->i = 5.0` would read as a match — hence the value's
+	 * own type is asked in ph7_type_name()'s order, float before int. */
+	if( bStrict ){
+		int bOk;
+		if( ph7_value_is_bool(pValue) ){
+			bOk = (pAttr->nType == MEMOBJ_BOOL);
+		}else if( ph7_value_is_float(pValue) ){
+			bOk = (pAttr->nType == MEMOBJ_REAL);
+		}else if( ph7_value_is_int(pValue) ){
+			bOk = (pAttr->nType == MEMOBJ_INT || pAttr->nType == MEMOBJ_REAL);
+		}else if( ph7_value_is_string(pValue) ){
+			bOk = (pAttr->nType == MEMOBJ_STRING);
+		}else{
+			/* array / resource / an object against a scalar type: no coercion in
+			 * either mode, so the flag test is the whole answer (an object never
+			 * carries the target's flag, and __toString is a coercion strict mode
+			 * does not perform). */
+			bOk = ((pValue->iFlags & pAttr->nType) != 0) && !(pValue->iFlags & MEMOBJ_OBJ);
+		}
+		if( !bOk ){
+			char zObjBuf[128];
+			return VmThrowPropertyTypeError(pVm,pVmAttr,
+				(pValue->iFlags & MEMOBJ_OBJ)
+					? VmFormatValueClassName(pValue,zObjBuf,sizeof(zObjBuf))
+					: VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
+		}
+		if( pAttr->nType == MEMOBJ_REAL && !ph7_value_is_float(pValue) ){
+			PH7_MemObjToReal(pValue); /* the int -> float widening */
+		}else{
+			VmMaterializeIntTyped(pValue,pAttr->nType);
+		}
+		pVmAttr->iState &= ~(VM_CLASS_ATTR_UNINIT|VM_CLASS_ATTR_TYPE_DEFER);
+		return SXRET_OK;
+	}
 	/* Scalar type. PHP 7.4 weak mode: attempt coercion using the same cast
 	 * helpers used by function-argument hints. Reject object→scalar, EXCEPT an
 	 * object with __toString() stored into a `string` property — php coerces it
-	 * via __toString (typed property stores are always weak mode), so fall
-	 * through to the string cast below. */
+	 * via __toString, so fall through to the string cast below. */
 	if( pValue->iFlags & MEMOBJ_OBJ ){
 		ph7_class_instance *pInst = (ph7_class_instance *)pValue->x.pOther;
 		if( !(pAttr->nType == MEMOBJ_STRING && pInst && pInst->pClass
