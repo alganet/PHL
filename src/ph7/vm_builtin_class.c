@@ -1703,7 +1703,15 @@ PH7_PRIVATE int vm_builtin_call_user_func(ph7_context *pCtx,int nArg,ph7_value *
 		sInner.aNames = sInner.nTotal > 0 ? &pOuter->aNames[1] : 0;
 		rc = PH7_VmCallUserFunctionWithMap(pCtx->pVm,apArg[0],nArg - 1,&apArg[1],&sResult,&sInner);
 	}else{
-		rc = PH7_VmCallUserFunction(pCtx->pVm,apArg[0],nArg - 1,&apArg[1],&sResult);
+		/* call_user_func is one of php's two FORWARDS: the callback binds under the
+		 * mode of the file that wrote the call_user_func, not weakly like every other
+		 * internal callback. Carry that one bit on a map of its own — the positional
+		 * wrapper would latch the call weak (which is right for array_map and every
+		 * other internal invocation, and wrong here). */
+		VmCallArgMap sFwd;
+		SyZero(&sFwd,sizeof(sFwd));
+		sFwd.bStrict = (pCtx->pArgMap && pCtx->pArgMap->bStrict) ? 1 : 0;
+		rc = PH7_VmCallUserFunctionWithMap(pCtx->pVm,apArg[0],nArg - 1,&apArg[1],&sResult,&sFwd);
 	}
 	if( rc == PH7_EXCEPTION ){
 		/* The callback raised: propagate so the OP_CALL dispatcher unwinds
@@ -1803,8 +1811,13 @@ PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_v
 			(ph7_value **)SySetBasePtr(&aArg),&sResult,&sMap);
 		SyMemBackendFree(&pCtx->pVm->sAllocator,aNames);
 	}else{
-		rc = PH7_VmCallUserFunction(pCtx->pVm,apArg[0],(int)nSlot,
-			(ph7_value **)SySetBasePtr(&aArg),&sResult);
+		/* The other FORWARD: same rule as call_user_func above — the caller's file
+		 * mode reaches the callback, where every other internal invocation is weak. */
+		VmCallArgMap sFwd;
+		SyZero(&sFwd,sizeof(sFwd));
+		sFwd.bStrict = (pCtx->pArgMap && pCtx->pArgMap->bStrict) ? 1 : 0;
+		rc = PH7_VmCallUserFunctionWithMap(pCtx->pVm,apArg[0],(int)nSlot,
+			(ph7_value **)SySetBasePtr(&aArg),&sResult,&sFwd);
 	}
 	if( rc == PH7_EXCEPTION ){
 		/* The callback raised: propagate so the OP_CALL dispatcher unwinds. */

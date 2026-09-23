@@ -2063,7 +2063,19 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunction(
 	ph7_value *pResult /* Store callback return value here. NULL otherwise */
 	)
 {
-	return PH7_VmCallUserFunctionWithMap(&(*pVm),pFunc,nArg,apArg,pResult,0);
+	sxi32 rc;
+	/* Every caller of this wrapper is an INTERNAL function reaching for a userland
+	 * callback — array_map, usort, preg_replace_callback, an autoloader, a shutdown
+	 * function, the error/exception handlers, Reflection's invoke, Closure::call, the
+	 * C API. php binds such a call's arguments WEAKLY however strict the file that
+	 * called the builtin is: there is no calling file at that boundary. The latch is
+	 * consumed at the head of the ONE OP_CALL it describes. php's two FORWARDS —
+	 * call_user_func and call_user_func_array — pass the caller's own mode on a map
+	 * and go through PH7_VmCallUserFunctionWithMap instead. */
+	pVm->bCallbackWeak = 1;
+	rc = PH7_VmCallUserFunctionWithMap(&(*pVm),pFunc,nArg,apArg,pResult,0);
+	pVm->bCallbackWeak = 0; /* clear if the dispatch never reached an OP_CALL */
+	return rc;
 }
 /*
  * Call a user defined or foreign function whith a varibale number

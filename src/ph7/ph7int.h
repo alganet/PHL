@@ -2057,6 +2057,14 @@ struct ph7_vm
 	int bReflectBypass;         /* Consume-once: the next method OP_CALL skips the visibility
 	                             * check (ReflectionMethod::invoke bypasses protection like PHP
 	                             * 8.1+). Cleared by the check site; never survives past one call. */
+	int bCallbackWeak;          /* Consume-once: the next OP_CALL is an INTERNAL function invoking a
+	                             * userland callback (array_map, usort, an autoloader, a shutdown
+	                             * function, Reflection's invoke, Closure::call), which php runs in
+	                             * WEAK mode however strict the file that reached the builtin is —
+	                             * there is no "calling file" at such a boundary. The two php
+	                             * FORWARDS, call_user_func and call_user_func_array, do not set it:
+	                             * they pass the caller's own mode on an argument map. Cleared at
+	                             * the head of OP_CALL like the latches below. */
 	int bMagicDispatch;         /* Consume-once: the next method OP_CALL is the ENGINE reaching for
 	                             * a magic method (PH7_VmCallMagicMethod), so the visibility check
 	                             * lets a non-public one through — php only WARNS at such a

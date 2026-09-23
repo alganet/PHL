@@ -5187,8 +5187,13 @@ case PH7_OP_CALL: {
 	 * visibility against the entry it chose, so the screen below must stand down. */
 	int bMemberScreened = (pTos->iFlags & MEMOBJ_AUX_MEMBERCALL) != 0
 		|| pVm->bClosureScreened;
+	/* ...and the internal-callback latch, for the same reason: it describes THIS call
+	 * (an internal function invoking a userland callback binds its arguments weakly),
+	 * and a call the callback body makes must not inherit it. */
+	int bCallbackWeak = pVm->bCallbackWeak;
 	pVm->bMagicDispatch = 0;
 	pVm->bClosureScreened = 0;
+	pVm->bCallbackWeak = 0;
 	pTos->iFlags &= ~MEMOBJ_AUX_MEMBERCALL;
 	pArg = &pTos[-nCallArgs];
 	/* PHP 8.1: an unpack whose elements carry string keys binds them as NAMED
@@ -6173,9 +6178,16 @@ case PH7_OP_CALL: {
 		 * compiled WEAK one — where bCurStrict is 0 for the same unit — or an
 		 * ENGINE-dispatched one, whose synthetic OP_CALL has no map to carry the
 		 * caller's mode. php scopes parameter coercion by the CALLING file either
-		 * way, and bCurStrict is that file's mode. */
+		 * way, and bCurStrict is that file's mode.
+		 *
+		 * Unless an INTERNAL function is what reached for this callback (bCallbackWeak):
+		 * php has no calling file at that boundary and binds weakly, so
+		 * `array_map('takesInt', ["5"])` from a strict file RUNS there — PHL raised a
+		 * TypeError on valid php, because the ambient bCurStrict was still the strict
+		 * caller's. call_user_func / call_user_func_array are php's two forwards and
+		 * carry the caller's mode on a map instead. */
 		int bCallIsStrict = pCallMap3 ? (pCallMap3->bStrict ? 1 : 0)
-		                              : (pVm->bCurStrict ? 1 : 0);
+		                   : (bCallbackWeak ? 0 : (pVm->bCurStrict ? 1 : 0));
 		if( pCallMap3 && pCallMap3->bHasNamed ){
 			/* ============================================================
 			 * Named-argument matching path (PHP 8.0)
