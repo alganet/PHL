@@ -713,13 +713,33 @@ static int vm_builtin_SplStore_offsetGet(ph7_context *pCtx,int nArg,ph7_value **
 	ph7_result_value(pCtx,(ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx));
 	return PH7_OK;
 }
+/*
+ * Insert into the store, keeping php's cursor rule.
+ *
+ * php's ArrayIterator position is an INTEGER index into the bucket array, so a
+ * cursor that ran off the end sits AT the element count: inserting a new key there
+ * makes it valid again and the iterator RESUMES on the element just added. PHL
+ * carries a node POINTER, which is null past the end and loses that. Re-point it
+ * here -- the only place the difference shows, since overwriting an EXISTING key
+ * inserts no node and php's dead cursor stays dead. AppendIterator depends on this:
+ * php's append() after exhaustion is what makes the walk continue.
+ */
+static void SplStoreInsert(ph7_hashmap *pMap,ph7_value *pKey,ph7_value *pVal)
+{
+	sxu32 nBefore = pMap->nEntry;
+	int bPastEnd = pMap->pCur == 0;
+	PH7_HashmapInsert(pMap,pKey,pVal);
+	if( bPastEnd && pMap->nEntry > nBefore ){
+		pMap->pCur = pMap->pLast;
+	}
+}
 static int vm_builtin_SplStore_offsetSet(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));
 	if( pMap && nArg > 1 ){
 		/* A NULL key is `$o[] = $v` — the append form, which is how php's offsetSet()
 		 * receives it. */
-		PH7_HashmapInsert(pMap,(apArg[0]->iFlags & MEMOBJ_NULL) ? 0 : apArg[0],apArg[1]);
+		SplStoreInsert(pMap,(apArg[0]->iFlags & MEMOBJ_NULL) ? 0 : apArg[0],apArg[1]);
 	}
 	return PH7_OK;
 }
@@ -736,7 +756,7 @@ static int vm_builtin_SplStore_append(ph7_context *pCtx,int nArg,ph7_value **apA
 {
 	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));
 	if( pMap && nArg > 0 ){
-		PH7_HashmapInsert(pMap,0,apArg[0]);
+		SplStoreInsert(pMap,0,apArg[0]);
 	}
 	return PH7_OK;
 }
@@ -1199,6 +1219,10 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 #define IT_OFF "__off"  /* LimitIterator's offset */
 #define IT_LIM "__lim"  /* LimitIterator's count, -1 for "all" */
 #define IT_CB  "__cb"   /* CallbackFilterIterator's callback */
+#define AP_LIST "__ai"  /* AppendIterator's php `u.append.zarrayit`: the real ArrayIterator
+                         * holding everything append()ed, whose OWN cursor is php's
+                         * `u.append.iterator` -- one position, which is why
+                         * getArrayIterator()->rewind() moves getIteratorIndex(). */
 
 /*
  * php's SPL_FETCH_AND_CHECK_DUAL_IT: a subclass whose constructor never called
@@ -1217,6 +1241,18 @@ static ph7_class_instance * DualDriver(ph7_class_instance *pThis)
 static int DualFilled(ph7_class_instance *pThis)
 {
 	return pThis && PH7_NativeAttrInt(pThis,IT_CF) != 0;
+}
+/*
+ * php's SPL_FETCH_AND_CHECK_DUAL_IT tests `dit_type`, which means "the constructor
+ * ran" -- and for every decorator but one that is the same thing as "an inner
+ * iterator exists". AppendIterator's constructor takes NO iterator: it builds an
+ * empty list and is immediately usable (valid() false, current()/key() null, no
+ * refusal), so its readiness lives in the list slot instead.
+ */
+static int DualReady(ph7_class_instance *pThis)
+{
+	return pThis && (PH7_NativeAttrObj(pThis,IT_IT) != 0
+		|| PH7_NativeAttrObj(pThis,AP_LIST) != 0);
 }
 /*
  * Assign one of the instance's own slots. The slot pointer is re-resolved here on
@@ -1336,7 +1372,7 @@ static int DualResultSlot(ph7_context *pCtx,const char *zName)
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	ph7_value *pSlot;
-	if( pThis == 0 || DualDriver(pThis) == 0 ){
+	if( !DualReady(pThis) ){
 		return DualNotReady(pCtx);
 	}
 	if( !DualFilled(pThis) ){
@@ -1496,7 +1532,7 @@ static int vm_builtin_Dual_getInnerIterator(ph7_context *pCtx,int nArg,ph7_value
 	ph7_class_instance *pIn;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	if( pThis == 0 || DualDriver(pThis) == 0 ){
+	if( !DualReady(pThis) ){
 		return DualNotReady(pCtx);
 	}
 	pIn = PH7_NativeAttrObj(pThis,IT_IN);
@@ -1512,7 +1548,7 @@ static int vm_builtin_Dual_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	if( pThis == 0 || DualDriver(pThis) == 0 ){
+	if( !DualReady(pThis) ){
 		return DualNotReady(pCtx);
 	}
 	ph7_result_bool(pCtx,DualFilled(pThis));
@@ -2249,6 +2285,298 @@ static int vm_builtin_RegexIterator_setPregFlags(ph7_context *pCtx,int nArg,ph7_
 	return RegitSet(pCtx,nArg,apArg,IT_RP);
 }
 /*
+ * ---------------------------------------------------------------------------
+ * AppendIterator: an IteratorIterator whose inner iterator is whatever entry a
+ * real ArrayIterator is currently pointing at.
+ *
+ * php keeps the appended iterators in an actual `ArrayIterator` INSTANCE
+ * (`u.append.zarrayit`, the object getArrayIterator() hands out) and walks it with
+ * a cursor over the SAME storage (`u.append.iterator`). Both halves are
+ * php-visible and the chunk had neither: it kept a private PHP array and answered
+ * getArrayIterator() with a fresh ArrayIterator over a COPY, so appending through
+ * the returned object iterated nothing and `$ai->rewind()` did not restart the
+ * walk. The list cursor here is that one ArrayIterator's own `pCur`, driven
+ * directly the way php drives its iterator funcs -- not through the class's
+ * methods, which php does not call either.
+ */
+static ph7_class_instance * ApList(ph7_class_instance *pThis)
+{
+	return pThis ? PH7_NativeAttrObj(pThis,AP_LIST) : 0;
+}
+static ph7_hashmap * ApMap(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	return SplStore(pVm,ApList(pThis));
+}
+/* The iterator the list cursor points at, or 0 past the end. */
+static ph7_class_instance * ApCurrent(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_hashmap *pMap = ApMap(pVm,pThis);
+	ph7_value *pVal = (pMap && pMap->pCur) ? HashmapExtractNodeValue(pMap->pCur) : 0;
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_OBJ) == 0 ){
+		return 0;
+	}
+	return (ph7_class_instance *)pVal->x.pOther;
+}
+static void ApListRewind(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_hashmap *pMap = ApMap(pVm,pThis);
+	if( pMap ){
+		pMap->pCur = pMap->pFirst;
+	}
+}
+static void ApListNext(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_hashmap *pMap = ApMap(pVm,pThis);
+	if( pMap && pMap->pCur ){
+		pMap->pCur = pMap->pCur->pPrev;   /* insertion order: pFirst, then the pPrev chain */
+	}
+}
+/*
+ * php's spl_append_it_next_iterator: drop the cache and the current inner, then
+ * adopt whatever the list cursor points at (rewound). *pbOk is php's SUCCESS --
+ * false means the list is exhausted and this iterator has nothing left.
+ */
+static sxi32 ApAdoptCurrent(ph7_vm *pVm,ph7_class_instance *pThis,int *pbOk)
+{
+	ph7_class_instance *pIt;
+	*pbOk = 0;
+	DualFree(pVm,pThis);
+	PH7_NativeSetAttrObj(pVm,pThis,IT_IN,0);
+	PH7_NativeSetAttrObj(pVm,pThis,IT_IT,0);
+	pIt = ApCurrent(pVm,pThis);
+	if( pIt == 0 ){
+		return SXRET_OK;
+	}
+	PH7_NativeSetAttrObj(pVm,pThis,IT_IN,pIt);
+	PH7_NativeSetAttrObj(pVm,pThis,IT_IT,pIt);
+	*pbOk = 1;
+	return DualRewindInner(pVm,pThis);
+}
+/*
+ * php's spl_append_it_fetch: step over every exhausted inner iterator, then fill
+ * the cache without re-asking valid() (php's check_more = 0 -- the loop above just
+ * established it).
+ */
+static sxi32 ApFetch(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	for(;;){
+		int bValid = 0, bOk = 0;
+		sxi32 rc = DualInnerValid(pVm,pThis,&bValid);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		if( bValid ){
+			break;
+		}
+		ApListNext(pVm,pThis);
+		rc = ApAdoptCurrent(pVm,pThis,&bOk);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		if( !bOk ){
+			return SXRET_OK;   /* nothing left: the cache stays empty and valid() is false */
+		}
+	}
+	return DualFetch(pVm,pThis,FALSE);
+}
+static int vm_builtin_AppendIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pList;
+	ph7_class *pClass;
+	ph7_class_method *pCons;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	if( ApList(pThis) != 0 ){
+		/* php's "already built" refusal, worded from the DECLARING class as everywhere
+		 * else in the family. */
+		return PH7_VmThrowException(pCtx,"BadMethodCallException",
+			"AppendIterator::getIterator() must be called exactly once per instance");
+	}
+	pClass = PH7_VmExtractClass(pVm,"ArrayIterator",sizeof("ArrayIterator")-1,FALSE,0);
+	if( pClass == 0 ){
+		return PH7_OK;
+	}
+	pList = PH7_NewClassInstance(pVm,pClass);
+	if( pList == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	pList->iRef++;
+	pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
+	if( pCons ){
+		PH7_VmCallClassMethod(pVm,pList,pCons,0,0,0);
+	}
+	PH7_NativeSetAttrObj(pVm,pThis,AP_LIST,pList);   /* the slot takes its own reference */
+	PH7_ClassInstanceUnref(pList);
+	return PH7_OK;
+}
+/*
+ * append(). php's own sequence, and every branch of it is observable:
+ *   - a list cursor sitting on a LIVE entry whose cache is empty means the walk has
+ *     consumed that entry, so the new iterator goes in behind it and the cursor steps
+ *     over;
+ *   - if nothing is being iterated yet (or the cache is empty), the cursor is walked
+ *     forward until it reaches the iterator just appended, and the fetch resumes there.
+ * That second half is what makes an AppendIterator RESUME after exhaustion, and it
+ * relies on ArrayIterator::append() reviving a cursor that ran off the end (see
+ * SplStoreInsert).
+ */
+static int vm_builtin_AppendIterator_append(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pIt;
+	ph7_hashmap *pMap;
+	int bListValid,bInnerValid = 0,nGuard;
+	sxi32 rc;
+	if( !DualReady(pThis) ){
+		return DualNotReady(pCtx);
+	}
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+		return PH7_OK;   /* the shared ZPP screen already refused a non-Iterator */
+	}
+	pIt = (ph7_class_instance *)apArg[0]->x.pOther;
+	pMap = ApMap(pVm,pThis);
+	bListValid = pMap && pMap->pCur;
+	/* php's spl_dual_it_valid, both times it appears below: the INNER iterator's
+	 * valid() (false when there is no inner at all), NOT the cache. */
+	rc = DualInnerValid(pVm,pThis,&bInnerValid);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	pMap = ApMap(pVm,pThis);   /* that call ran user code: re-resolve */
+	if( pMap ){
+		SplStoreInsert(pMap,0,apArg[0]);
+	}
+	if( bListValid && !bInnerValid ){
+		ApListNext(pVm,pThis);
+	}
+	if( PH7_NativeAttrObj(pThis,IT_IT) != 0 && bInnerValid ){
+		return PH7_OK;   /* mid-walk with a live element: the new tail waits its turn */
+	}
+	pMap = ApMap(pVm,pThis);
+	if( pMap && pMap->pCur == 0 ){
+		ApListRewind(pVm,pThis);
+	}
+	for( nGuard = 0 ; ; ++nGuard ){
+		int bOk = 0;
+		rc = ApAdoptCurrent(pVm,pThis,&bOk);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		if( !bOk || PH7_NativeAttrObj(pThis,IT_IN) == pIt ){
+			break;
+		}
+		ApListNext(pVm,pThis);
+		if( nGuard > 100000 ){
+			break;   /* php's loop has no bound; ours refuses to spin on a mutated list */
+		}
+	}
+	rc = ApFetch(pVm,pThis);
+	return rc == SXRET_OK ? PH7_OK : rc;
+}
+static int vm_builtin_AppendIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi32 rc;
+	int bOk = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !DualReady(pThis) ){
+		return DualNotReady(pCtx);
+	}
+	ApListRewind(pVm,pThis);
+	rc = ApAdoptCurrent(pVm,pThis,&bOk);
+	if( rc == SXRET_OK && bOk ){
+		rc = ApFetch(pVm,pThis);
+	}
+	return rc == SXRET_OK ? PH7_OK : rc;
+}
+static int vm_builtin_AppendIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi32 rc;
+	int bValid = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !DualReady(pThis) ){
+		return DualNotReady(pCtx);
+	}
+	rc = DualInnerValid(pVm,pThis,&bValid);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	if( bValid ){
+		rc = DualNextInner(pVm,pThis);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	rc = ApFetch(pVm,pThis);
+	return rc == SXRET_OK ? PH7_OK : rc;
+}
+/* php re-fetches here (spl_dual_it_fetch with check_more), which is why an
+ * AppendIterator FOLLOWS an inner iterator moved behind its back where every other
+ * decorator answers its cache. */
+static int vm_builtin_AppendIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !DualReady(pThis) ){
+		return DualNotReady(pCtx);
+	}
+	rc = DualFetch(pCtx->pVm,pThis,TRUE);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	return DualResultSlot(pCtx,IT_CD);
+}
+/* The list cursor's KEY, which is php's index into the appended iterators -- and
+ * NULL once the cursor has run off the end, where the chunk kept answering the last
+ * index it had seen. */
+static int vm_builtin_AppendIterator_getIteratorIndex(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pSlot,*apCall[1];
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !DualReady(pThis) ){
+		return DualNotReady(pCtx);
+	}
+	pSlot = SplStoreSlot(pCtx->pVm,ApList(pThis));
+	if( pSlot == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	apCall[0] = pSlot;
+	return ph7_hashmap_simple_key(pCtx,1,apCall);
+}
+static int vm_builtin_AppendIterator_getArrayIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pList;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !DualReady(pThis) ){
+		return DualNotReady(pCtx);
+	}
+	pList = ApList(pThis);
+	if( pList ){
+		SplResultBorrowed(pCtx,pList);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+/*
  * The declarations. php's method ORDER is the order Reflection reports, so each
  * table follows spl_iterators.stub.php line for line; the parameter types are the
  * stub's too, which is what makes `Iterator $iterator` refuse an IteratorAggregate
@@ -2363,6 +2691,22 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 		{ "getPregFlags", PH7_MOD_PUBLIC, "", 0, vm_builtin_RegexIterator_getPregFlags },
 		{ "setPregFlags", PH7_MOD_PUBLIC, "int $pregFlags", 0, vm_builtin_RegexIterator_setPregFlags },
 	};
+	static const PH7_NativePropDef aAppendProp[] = {
+		{ AP_LIST, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+	};
+	static const PH7_NativeMethodDef aAppendMethod[] = {
+		{ "__construct",      PH7_MOD_PUBLIC, "", 0, vm_builtin_AppendIterator_construct },
+		{ "append",           PH7_MOD_PUBLIC, "Iterator $iterator", 0,
+		  vm_builtin_AppendIterator_append },
+		{ "rewind",           PH7_MOD_PUBLIC, "", 0, vm_builtin_AppendIterator_rewind },
+		{ "valid",            PH7_MOD_PUBLIC, "", 0, vm_builtin_Dual_valid },
+		{ "current",          PH7_MOD_PUBLIC, "", 0, vm_builtin_AppendIterator_current },
+		{ "next",             PH7_MOD_PUBLIC, "", 0, vm_builtin_AppendIterator_next },
+		{ "getIteratorIndex", PH7_MOD_PUBLIC, "", 0,
+		  vm_builtin_AppendIterator_getIteratorIndex },
+		{ "getArrayIterator", PH7_MOD_PUBLIC, "", 0,
+		  vm_builtin_AppendIterator_getArrayIterator },
+	};
 	static const PH7_NativeMethodDef aEmptyMethod[] = {
 		{ "current", PH7_MOD_PUBLIC, "", 0, vm_builtin_EmptyIterator_current },
 		{ "next",    PH7_MOD_PUBLIC, "", 0, vm_builtin_EmptyIterator_nop },
@@ -2398,50 +2742,15 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 		  aRegexMethod, SX_ARRAYSIZE(aRegexMethod),
 		  aRegexConst, SX_ARRAYSIZE(aRegexConst),
 		  aRegexProp, SX_ARRAYSIZE(aRegexProp), 0, 0 },
+		{ "AppendIterator", "IteratorIterator", 0, PH7_CLASS_NOCLONE,
+		  aAppendMethod, SX_ARRAYSIZE(aAppendMethod), 0, 0,
+		  aAppendProp, SX_ARRAYSIZE(aAppendProp), 0, 0 },
 		{ "EmptyIterator", 0, "Iterator", 0,
 		  aEmptyMethod, SX_ARRAYSIZE(aEmptyMethod), 0, 0, 0, 0, 0, 0 },
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }
 static const char zSplLib[] =
-"class AppendIterator implements OuterIterator {"
-" private $__its = [];"
-" private $__idx = 0;"
-" public function __construct(){}"
-" public function append($iterator){"
-"  $this->__its[] = $iterator;"
-"  if( count($this->__its) === 1 ){ $iterator->rewind(); }"
-" }"
-" public function getInnerIterator(){ return $this->__its[$this->__idx] ?? null; }"
-" public function getIteratorIndex(){"
-"  return isset($this->__its[$this->__idx]) ? $this->__idx : null;"
-" }"
-" public function getArrayIterator(){ return new ArrayIterator($this->__its); }"
-" private function __apAdvance(){"
-"  while( isset($this->__its[$this->__idx])"
-"   && !$this->__its[$this->__idx]->valid()"
-"   && isset($this->__its[$this->__idx + 1]) ){"
-"   $this->__idx++;"
-"   $this->__its[$this->__idx]->rewind();"
-"  }"
-" }"
-" public function rewind(){"
-"  $this->__idx = 0;"
-"  if( isset($this->__its[0]) ){ $this->__its[0]->rewind(); }"
-"  $this->__apAdvance();"
-" }"
-" public function valid(){"
-"  $in = $this->getInnerIterator();"
-"  return $in !== null && $in->valid();"
-" }"
-" public function current(){ $in = $this->getInnerIterator(); return $in ? $in->current() : null; }"
-" public function key(){ $in = $this->getInnerIterator(); return $in ? $in->key() : null; }"
-" public function next(){"
-"  $in = $this->getInnerIterator();"
-"  if( $in ){ $in->next(); }"
-"  $this->__apAdvance();"
-" }"
-"}"
 "interface RecursiveIterator extends Iterator {"
 " public function hasChildren();"
 " public function getChildren();"
