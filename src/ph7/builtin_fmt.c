@@ -199,11 +199,43 @@ PH7_PRIVATE sxi32 PH7_FormatValidate(ph7_context *pCtx,const char *zFormat,int n
 	return PH7_OK;
 }
 /*
+ * Read a run of decimal digits, saturating at PH7_FMT_NUM_CAP rather than
+ * wrapping: `%99999999999999999999d` must be REPORTED, and a signed overflow on
+ * the way to reporting it is undefined behaviour (it used to make the width come
+ * out negative, or a positional index come out as an ordinary sequential one).
+ */
+#define PH7_FMT_NUM_CAP 2147483647
+static int FormatScanNumber(const char **pzIn,const char *zEnd)
+{
+	const char *zIn = *pzIn;
+	int v = 0;
+	while( zIn < zEnd && zIn[0]>='0' && zIn[0]<='9' ){
+		int d = zIn[0]-'0';
+		/* Tested BEFORE the multiply: a signed overflow is undefined, so a guard
+		 * that inspects the wrapped result is one an optimiser may delete — and
+		 * did, which is how `%2147483648d` slipped past the range check below. */
+		if( v > (PH7_FMT_NUM_CAP - d)/10 ){
+			v = PH7_FMT_NUM_CAP;
+		}else{
+			v = v*10 + d;
+		}
+		zIn++;
+	}
+	*pzIn = zIn;
+	return v;
+}
+/*
  * Count the number of VALUE arguments a format string needs: the greater of the
  * sequential (non-positional) conversion count and the highest positional index
  * (`%N$`). `%%` consumes nothing. Mirrors FormatUnknownSpec's specifier walk.
+ *
+ * php also bounds the three NUMBERS a specifier can carry, and raises a
+ * ValueError for each before it looks at how many values it was given. *pzBadNum
+ * receives the offending one's noun ("Argument number specifier", "Width",
+ * "Precision") when the format carries one; php's own wording differs between
+ * them, which is why this reports the noun rather than a flag.
  */
-static int FormatRequiredArgs(const char *zIn,int nByte)
+static int FormatRequiredArgs(const char *zIn,int nByte,const char **pzBadNum)
 {
 	const char *zEnd = &zIn[nByte];
 	int c,seq = 0,maxpos = 0;
@@ -222,12 +254,17 @@ static int FormatRequiredArgs(const char *zIn,int nByte)
 			break;
 		}
 		/* leading number: a positional index when a '$' follows, else the width */
-		while( zIn < zEnd && zIn[0]>='0' && zIn[0]<='9' ){
-			numVal = numVal*10 + (zIn[0]-'0');
-			zIn++;
-		}
+		numVal = FormatScanNumber(&zIn,zEnd);
 		if( zIn < zEnd && zIn[0]=='$' ){
 			pos = numVal;
+			/* php: `0 < N < 2147483647`, so `%0$s` and `%2147483647$s` are both the
+			 * ValueError — the second used to overflow the required-count report to
+			 * a NEGATIVE number, and anything past it fell back to sequential. */
+			if( pos < 1 || pos >= PH7_FMT_NUM_CAP ){
+				if( *pzBadNum == 0 ){
+					*pzBadNum = "Argument number specifier";
+				}
+			}
 			zIn++;
 			/* flags then width may follow the positional marker */
 			while( zIn < zEnd ){
@@ -236,12 +273,17 @@ static int FormatRequiredArgs(const char *zIn,int nByte)
 				if( c=='\'' ){ zIn++; if( zIn < zEnd ){ zIn++; } continue; }
 				break;
 			}
-			while( zIn < zEnd && zIn[0]>='0' && zIn[0]<='9' ){ zIn++; }
+			numVal = FormatScanNumber(&zIn,zEnd);
+		}
+		if( numVal >= PH7_FMT_NUM_CAP && *pzBadNum == 0 ){
+			*pzBadNum = "Width";
 		}
 		/* precision */
 		if( zIn < zEnd && zIn[0]=='.' ){
 			zIn++;
-			while( zIn < zEnd && zIn[0]>='0' && zIn[0]<='9' ){ zIn++; }
+			if( FormatScanNumber(&zIn,zEnd) >= PH7_FMT_NUM_CAP && *pzBadNum == 0 ){
+				*pzBadNum = "Precision";
+			}
 		}
 		/* a single 'l' length modifier (ignored, php compat) */
 		if( zIn < zEnd && zIn[0]=='l' ){ zIn++; }
@@ -281,7 +323,21 @@ static int FormatRequiredArgs(const char *zIn,int nByte)
  */
 PH7_PRIVATE sxi32 PH7_FormatCheckArgCount(ph7_context *pCtx,const char *zFormat,int nByte,int nValues,int nFixed,int bVararg)
 {
-	int required = FormatRequiredArgs(zFormat,nByte);
+	const char *zBadNum = 0;
+	int required = FormatRequiredArgs(zFormat,nByte,&zBadNum);
+	if( zBadNum ){
+		/* php checks a specifier's own numbers before it counts the values, so
+		 * `sprintf("%2$s%0$s","a")` is the ValueError and not the (also true)
+		 * ArgumentCountError. Its two wordings differ; the positional one names
+		 * the open interval, the other two the closed one. */
+		if( zBadNum[0] == 'A' ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"Argument number specifier must be greater than zero and less than %d",
+				PH7_FMT_NUM_CAP);
+		}
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s must be between 0 and %d",zBadNum,PH7_FMT_NUM_CAP);
+	}
 	if( nValues < required ){
 		if( bVararg ){
 			return PH7_VmThrowException(pCtx,"ValueError",
@@ -368,6 +424,7 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 	char cPad;
 	ph7_value *pArg;         /* Current processed argument (the scratch COPY below) */
 	ph7_value *pRawArg;      /* ...and the caller's own value it was copied from */
+	int nPos;                /* apArg index a `%N$` selected, or -1 for sequential */
 	/* Every conversion below extracts through ph7_value_to_int64 / _to_double /
 	 * PH7_ValueToStringUV, and all three convert the value they are handed IN
 	 * PLACE. Handed the caller's own slots that is a write the caller can see, and
@@ -397,8 +454,17 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 	PH7_MemObjInit(pCtx->pVm,&sScratch);
 	/* Take the next argument as a scratch COPY: nothing below may write to the
 	 * caller's value. Answers 0 exactly as the raw form did when the arguments run
-	 * out (a shortfall is refused by PH7_FormatCheckArgCount before we get here). */
-#define NEXT_ARG	( pRawArg = (n < nArg ? apArg[n++] : 0), \
+	 * out (a shortfall is refused by PH7_FormatCheckArgCount before we get here).
+	 *
+	 * A `%N$` specifier reads argument N and leaves the SEQUENTIAL cursor where it
+	 * was — php keeps the two apart (its `currarg` only ever advances for a
+	 * specifier that carries no number), and the counting pass above has always
+	 * modelled it that way. The format loop did not: a positional MOVED the one
+	 * cursor, so `sprintf('%1$s|%s','a','b')` answered "a|b" for php's "a|a" and
+	 * `sprintf('%3$s|%s','a','b','c')` ran off the end of the list it had just
+	 * been told was long enough. */
+#define NEXT_ARG	( pRawArg = (nPos >= 0 ? (nPos < nArg ? apArg[nPos] : 0) \
+		: (n < nArg ? apArg[n++] : 0)), \
 	pRawArg ? (PH7_MemObjRelease(&sScratch), \
 		PH7_MemObjLoad(pRawArg,&sScratch), &sScratch) : 0 )
 	/* An unknown conversion specifier is rejected up-front by PH7_FormatValidate()
@@ -429,6 +495,7 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 		 * not bleed into this one. php resets it for every specifier. */
 		cPad = ' ';
 		bDropDigits = 0;
+		nPos = -1;
 		zIn++; /* Jump the precent sign */
 		do{
 			c = zIn[0];
@@ -448,19 +515,12 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 			default:                                       break;
 			}
 		}while( c==0 && (zIn++ < zEnd) );
-		/* Get the field width */
-		width = 0;
-		while( zIn < zEnd && ( zIn[0] >='0' && zIn[0] <='9') ){
-			width = width*10 + (zIn[0] - '0');
-			zIn++;
-		}
+		/* Get the field width (saturating — see FormatScanNumber) */
+		width = FormatScanNumber(&zIn,zEnd);
 		if( zIn < zEnd && zIn[0] == '$' ){
 			/* Position specifer */
 			if( width > 0 ){
-				n = width;
-				if( vf && n > 0 ){
-					n--;
-				}
+				nPos = vf ? width - 1 : width;
 			}
 			zIn++;
 			width = 0;
@@ -484,10 +544,7 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 				default:                                       break;
 				}
 			}while( c==0 && (zIn++ < zEnd) );
-			while( zIn < zEnd && ( zIn[0] >='0' && zIn[0] <='9') ){
-				width = width*10 + (zIn[0] - '0');
-				zIn++;
-			}
+			width = FormatScanNumber(&zIn,zEnd);
 		}
 		if( width > PH7_FMT_BUFSIZ-10 ){
 			width = PH7_FMT_BUFSIZ-10;
@@ -495,12 +552,8 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 		/* Get the precision */
 		precision = -1;
 		if( zIn < zEnd && zIn[0] == '.' ){
-			precision = 0;
 			zIn++;
-			while( zIn < zEnd && ( zIn[0] >='0' && zIn[0] <='9') ){
-				precision = precision*10 + (zIn[0] - '0');
-				zIn++;
-			}
+			precision = FormatScanNumber(&zIn,zEnd);
 		}
 		/* Consume a single 'l' length modifier (a C-ism php accepts and ignores,
 		 * e.g. "%ld"); PH7_FormatValidate mirrors this. Exactly one is skipped:
@@ -643,10 +696,6 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 				iVal = 0;
 			}else{
 				iVal = ph7_value_to_int64(pArg);
-			}
-			/* Limit the precision to prevent overflowing buf[] during conversion */
-			if( precision>PH7_FMT_BUFSIZ-40 ){
-				precision = PH7_FMT_BUFSIZ-40;
 			}
 			/* An integer conversion has no PRECISION in php: the '.' part of the
 			 * specifier never reaches the digits. `%.5d` of 42 is "42", not the
