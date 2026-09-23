@@ -1399,13 +1399,13 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionTypes(ph7_vm *pVm)
 		{ "getTypes", PH7_MOD_PUBLIC, "", "array", vm_builtin_ReflectionType_getTypes },
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
-		{ "ReflectionType", 0, "Stringable", PH7_CLASS_ABSTRACT|PH7_CLASS_NOCLONE,
+		{ "ReflectionType", 0, "Stringable", PH7_CLASS_ABSTRACT|PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aBaseMethod, SX_ARRAYSIZE(aBaseMethod), 0, 0, aBaseProp, SX_ARRAYSIZE(aBaseProp), 0, 0 },
-		{ "ReflectionNamedType", "ReflectionType", 0, PH7_CLASS_NOCLONE,
+		{ "ReflectionNamedType", "ReflectionType", 0, PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aNamedMethod, SX_ARRAYSIZE(aNamedMethod), 0, 0, aNamedProp, SX_ARRAYSIZE(aNamedProp), 0, 0 },
-		{ "ReflectionUnionType", "ReflectionType", 0, PH7_CLASS_NOCLONE,
+		{ "ReflectionUnionType", "ReflectionType", 0, PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aCompMethod, SX_ARRAYSIZE(aCompMethod), 0, 0, aCompProp, SX_ARRAYSIZE(aCompProp), 0, 0 },
-		{ "ReflectionIntersectionType", "ReflectionType", 0, PH7_CLASS_NOCLONE,
+		{ "ReflectionIntersectionType", "ReflectionType", 0, PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aCompMethod, SX_ARRAYSIZE(aCompMethod), 0, 0, aCompProp, SX_ARRAYSIZE(aCompProp), 0, 0 },
 	};
 	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));
@@ -2006,7 +2006,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionAttribute(ph7_vm *pVm)
 		{ "__construct",  PH7_MOD_PRIVATE, "", 0,      vm_builtin_ReflectionAttribute_private },
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
-		{ "ReflectionAttribute", 0, "Reflector", PH7_CLASS_NOCLONE,
+		{ "ReflectionAttribute", 0, "Reflector", PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aMethod, SX_ARRAYSIZE(aMethod), aConst, SX_ARRAYSIZE(aConst),
 		  aProp, SX_ARRAYSIZE(aProp), 0, 0 },
 	};
@@ -2760,17 +2760,17 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionSmall(ph7_vm *pVm)
 		{ "getId",            PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionReference_getId },
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
-		{ "ReflectionGenerator", 0, 0, PH7_CLASS_FINAL,
+		{ "ReflectionGenerator", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aGenMethod, SX_ARRAYSIZE(aGenMethod), 0, 0, aGenProp, SX_ARRAYSIZE(aGenProp), 0, 0 },
-		{ "ReflectionFiber", 0, 0, PH7_CLASS_FINAL,
+		{ "ReflectionFiber", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aFiberMethod, SX_ARRAYSIZE(aFiberMethod), 0, 0, aFiberProp, SX_ARRAYSIZE(aFiberProp), 0, 0 },
-		{ "ReflectionConstant", 0, "Reflector", 0,
+		{ "ReflectionConstant", 0, "Reflector", PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aConstMethod, SX_ARRAYSIZE(aConstMethod), 0, 0, aNameProp, SX_ARRAYSIZE(aNameProp), 0, 0 },
-		{ "ReflectionExtension", 0, "Reflector", 0,
+		{ "ReflectionExtension", 0, "Reflector", PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aExtMethod, SX_ARRAYSIZE(aExtMethod), 0, 0, aNameProp, SX_ARRAYSIZE(aNameProp), 0, 0 },
-		{ "ReflectionZendExtension", 0, "Reflector", 0,
+		{ "ReflectionZendExtension", 0, "Reflector", PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aZendMethod, SX_ARRAYSIZE(aZendMethod), 0, 0, aNameProp, SX_ARRAYSIZE(aNameProp), 0, 0 },
-		{ "ReflectionReference", 0, 0, PH7_CLASS_FINAL,
+		{ "ReflectionReference", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aRefMethod, SX_ARRAYSIZE(aRefMethod), 0, 0, aRefProp, SX_ARRAYSIZE(aRefProp), 0, 0 },
 	};
 	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));
@@ -6481,17 +6481,17 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm)
 		  vm_builtin_ReflectionParameter_getAttributes },
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
-		{ "ReflectionFunctionAbstract", 0, "Reflector", PH7_CLASS_ABSTRACT|PH7_CLASS_NOCLONE,
+		{ "ReflectionFunctionAbstract", 0, "Reflector", PH7_CLASS_ABSTRACT|PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aAbstractMethod, SX_ARRAYSIZE(aAbstractMethod), 0, 0,
 		  aAbstractProp, SX_ARRAYSIZE(aAbstractProp), 0, 0 },
-		{ "ReflectionFunction", "ReflectionFunctionAbstract", 0, PH7_CLASS_NOCLONE,
+		{ "ReflectionFunction", "ReflectionFunctionAbstract", 0, PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aFunctionMethod, SX_ARRAYSIZE(aFunctionMethod),
 		  aFunctionConst, SX_ARRAYSIZE(aFunctionConst), 0, 0, 0, 0 },
-		{ "ReflectionMethod", "ReflectionFunctionAbstract", 0, PH7_CLASS_NOCLONE,
+		{ "ReflectionMethod", "ReflectionFunctionAbstract", 0, PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aMethodMethod, SX_ARRAYSIZE(aMethodMethod),
 		  aMethodConst, SX_ARRAYSIZE(aMethodConst),
 		  aMethodProp, SX_ARRAYSIZE(aMethodProp), 0, 0 },
-		{ "ReflectionParameter", 0, "Reflector", PH7_CLASS_NOCLONE,
+		{ "ReflectionParameter", 0, "Reflector", PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aParamMethod, SX_ARRAYSIZE(aParamMethod), 0, 0,
 		  aParamProp, SX_ARRAYSIZE(aParamProp), 0, 0 },
 	};
@@ -7545,11 +7545,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionMember(ph7_vm *pVm)
 		  vm_builtin_ReflectionClassConstant_getType },
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
-		{ "ReflectionProperty", 0, "Reflector", PH7_CLASS_NOCLONE,
+		{ "ReflectionProperty", 0, "Reflector", PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aPropMethod, SX_ARRAYSIZE(aPropMethod),
 		  aPropConst, SX_ARRAYSIZE(aPropConst),
 		  aPropProp, SX_ARRAYSIZE(aPropProp), 0, 0 },
-		{ "ReflectionClassConstant", 0, "Reflector", PH7_CLASS_NOCLONE,
+		{ "ReflectionClassConstant", 0, "Reflector", PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aConstMethod, SX_ARRAYSIZE(aConstMethod),
 		  aConstConst, SX_ARRAYSIZE(aConstConst),
 		  aMemberProp, SX_ARRAYSIZE(aMemberProp), 0, 0 },
