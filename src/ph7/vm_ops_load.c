@@ -96,9 +96,27 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 				VmPinMemObjSlotCounted(&(*pVm),nSrcIdx);
 			}
 		}else if( pStAttr ){
-			if( pStAttr->nIdx != nSrcIdx ){
+			sxu32 nOldIdx = pStAttr->nIdx;
+			if( nOldIdx != nSrcIdx ){
+				/* Give the previous target back, exactly as the instance arm above does.
+				 * A permanent pin was left on every slot the property had ever named, so
+				 * each of them stayed a REFERENCE for the rest of the script — which an
+				 * ordinary array COPY then shared (`$d = $a; $d[0] = 99;` wrote through
+				 * to `$a[0]`, silently), since "is this element a reference" is answered
+				 * by who still holds it. */
+				if( (pStAttr->iFlags & PH7_CLASS_ATTR_REFBOUND) == 0 ){
+					/* The static's own (unshared) slot. A reference-bound property bypasses
+					 * typed coercion in php, so drop any typed-slot enforcement entry too. */
+					if( pStAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+						SyHashDeleteEntry(&pVm->hTypedSlot,(const void *)&nOldIdx,sizeof(sxu32),0);
+					}
+					PH7_VmUnsetMemObj(&(*pVm),nOldIdx,TRUE);
+				}else{
+					VmUnpinMemObjSlot(&(*pVm),nOldIdx);
+				}
 				pStAttr->nIdx = nSrcIdx;
-				VmPinMemObjSlot(&(*pVm),nSrcIdx);
+				pStAttr->iFlags |= PH7_CLASS_ATTR_REFBOUND;
+				VmPinMemObjSlotCounted(&(*pVm),nSrcIdx);
 			}
 		}
 		if( pVm->pRefTargetThis ){

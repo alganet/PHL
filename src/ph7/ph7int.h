@@ -1323,6 +1323,13 @@ struct ph7_class_attr
                                             * has no get hook), no default allowed, reads without a
                                             * get hook are php's "is write-only" Error. PHL still
                                             * allocates the (null) backing slot; this flag hides it. */
+#define PH7_CLASS_ATTR_REFBOUND     0x80000 /* STATIC property currently bound to another slot by `=&`
+                                             * (`C::$s =& $x`). The instance side records this per
+                                             * INSTANCE (VM_CLASS_ATTR_REFBOUND); a static has one slot
+                                             * per declaration, so the bit lives here. It says the slot
+                                             * this attribute points at is held by a COUNTED pin, and a
+                                             * rebind must give that pin back rather than free a slot the
+                                             * attribute never owned. */
 #define PH7_CLASS_ATTR_HIDDEN       0x40000 /* A NATIVE class's engine slot: real storage that php keeps
                                             * in its own C struct and therefore never shows. Excluded
                                             * from every PRESENTATION surface — var_dump/print_r/
