@@ -2259,6 +2259,25 @@ PH7_PRIVATE void VmExpandConstantWithNotice(ph7_vm *pVm,ph7_constant *pCons,ph7_
 	pCons->xExpand(pOut,pCons->pUserData);
 }
 /*
+ * Query a GLOBAL constant by its exact (case-sensitive) name and expand its
+ * value into pOut, which the caller has initialized. Returns 1 when the
+ * constant exists. The ini scanner's NORMAL/TYPED value interpretation is the
+ * caller: php substitutes a defined constant's value for a bare identifier
+ * token inside an unquoted ini value.
+ */
+PH7_PRIVATE int PH7_VmQueryConstant(ph7_vm *pVm,const char *zName,sxu32 nName,ph7_value *pOut)
+{
+	SyHashEntry *pEntry;
+	ph7_constant *pCons;
+	pEntry = SyHashGet(&pVm->hConstant,(const void *)zName,nName);
+	if( pEntry == 0 ){
+		return 0;
+	}
+	pCons = (ph7_constant *)SyHashEntryGetUserData(pEntry);
+	VmExpandConstantWithNotice(pVm,pCons,pOut);
+	return 1;
+}
+/*
  * Scan a declared-attribute set for #[\Deprecated]; when found, evaluate its
  * message:/since: arguments (positional #0 = message, #1 = since) into the
  * caller's values and return TRUE. The base subject text ("Function f()",

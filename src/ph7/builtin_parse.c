@@ -1534,7 +1534,175 @@ PH7_PRIVATE int PH7_builtin_strip_tags(ph7_context *pCtx,int nArg,ph7_value **ap
 *    Semicolons (;) at the beginning of the line indicate a comment. Comment lines are ignored.
 * This function return an array holding parsed values on success.FALSE otherwise.
 */
-PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nByte,int bProcessSection)
+/*
+ * The ini scanner's ${NAME} expansion: php answers a known ini OPTION first and
+ * the process environment second (zend_ini_get_var), the empty string when
+ * neither knows the name — a defined CONSTANT deliberately does NOT answer
+ * here (that is the bare-identifier rule below). The VFS environment reader
+ * answers through the call context's RESULT slot (it was written for
+ * getenv()), so the read borrows pCtx->pRet around the call and empties it
+ * again; the parse's own result is not written until the very end.
+ */
+static void VmIniExpandDollarVar(ph7_context *pCtx,const char *zName,sxu32 nName,SyBlob *pOut)
+{
+	char zVar[128];
+	SyBlob sVal;
+	if( nName < 1 || nName >= sizeof(zVar) ){
+		return; /* php answers "" for an unknown name; an unreasonable one is unknown */
+	}
+	SyMemcpy(zName,zVar,nName);
+	zVar[nName] = 0;
+	SyBlobInit(&sVal,&pCtx->pVm->sAllocator);
+	PH7_VmIniGetStr(pCtx->pVm,zVar,&sVal);
+	if( SyBlobLength(&sVal) > 0 ){
+		SyBlobAppend(pOut,SyBlobData(&sVal),SyBlobLength(&sVal));
+		SyBlobRelease(&sVal);
+		return;
+	}
+	SyBlobRelease(&sVal);
+	{
+		const ph7_vfs *pVfs = pCtx->pVm->pEngine->pVfs;
+		ph7_value *pRet = pCtx->pRet;
+		sxu32 nBefore = SyBlobLength(&pRet->sBlob);
+		if( pVfs && pVfs->xGetenv ){
+			if( pVfs->xGetenv(zVar,pCtx) == PH7_OK && SyBlobLength(&pRet->sBlob) > nBefore ){
+				SyBlobAppend(pOut,(const char *)SyBlobData(&pRet->sBlob) + nBefore,
+					SyBlobLength(&pRet->sBlob) - nBefore);
+			}
+			ph7_value_reset_string_cursor(pRet);
+		}
+	}
+}
+/*
+ * Interpret one UNQUOTED ini value the way php's INI_SCANNER_NORMAL and
+ * INI_SCANNER_TYPED do (a QUOTED value is always its literal bytes, and RAW
+ * never reaches here):
+ *
+ *  - A whole-value word, case-insensitive: true/on/yes and false/off/no/none
+ *    and null. NORMAL renders them "1" / "" / ""; TYPED renders true / false /
+ *    NULL.
+ *  - TYPED only: -?[0-9]+ is an int — a value int64 cannot hold falls back to
+ *    the SOURCE text as a string — and [0-9]*\.[0-9]* with at least one digit
+ *    is a float. php's typed grammar attaches '-' only to the INTEGER shape
+ *    ("-1.5" stays a string); '+', hex, binary and exponents were never in it.
+ *  - Everything else expands: ${NAME} answers an ini option or the
+ *    environment, and a bare identifier token that names a DEFINED constant is
+ *    replaced by that constant's value ("MYC and more" -> "someval and more").
+ *
+ * pValue arrives as an empty string.
+ */
+static void VmIniInterpretValue(ph7_context *pCtx,const SyString *pRaw,int iMode,ph7_value *pValue)
+{
+	const char *zIn = pRaw->zString;
+	const char *zEnd = &zIn[pRaw->nByte];
+	sxu32 n = pRaw->nByte;
+	SyBlob sOut;
+	if( n == 0 ){
+		return; /* the empty string, both modes */
+	}
+	if( (n == 4 && SyStrnicmp(zIn,"true",4) == 0)
+	 || (n == 2 && SyStrnicmp(zIn,"on",2) == 0)
+	 || (n == 3 && SyStrnicmp(zIn,"yes",3) == 0) ){
+		if( iMode == PH7_INI_SCANNER_TYPED ){
+			ph7_value_bool(pValue,1);
+		}else{
+			ph7_value_string(pValue,"1",1);
+		}
+		return;
+	}
+	if( (n == 5 && SyStrnicmp(zIn,"false",5) == 0)
+	 || (n == 3 && SyStrnicmp(zIn,"off",3) == 0)
+	 || (n == 2 && SyStrnicmp(zIn,"no",2) == 0)
+	 || (n == 4 && SyStrnicmp(zIn,"none",4) == 0) ){
+		if( iMode == PH7_INI_SCANNER_TYPED ){
+			ph7_value_bool(pValue,0);
+		}
+		/* NORMAL: the empty string pValue already holds */
+		return;
+	}
+	if( n == 4 && SyStrnicmp(zIn,"null",4) == 0 ){
+		if( iMode == PH7_INI_SCANNER_TYPED ){
+			ph7_value_null(pValue);
+		}
+		return;
+	}
+	if( iMode == PH7_INI_SCANNER_TYPED ){
+		sxu32 i = 0;
+		sxu32 nDig = 0,nDot = 0;
+		int bNeg = 0,bNum = 1;
+		if( zIn[0] == '-' ){
+			bNeg = 1;
+			i = 1;
+		}
+		for( ; i < n ; i++ ){
+			if( zIn[i] >= '0' && zIn[i] <= '9' ){
+				nDig++;
+			}else if( zIn[i] == '.' ){
+				nDot++;
+			}else{
+				bNum = 0;
+				break;
+			}
+		}
+		if( bNum && nDig > 0 && nDot == 0 ){
+			sxi64 iVal = 0;
+			int iOverflow = 0;
+			SyStrToInt64Ex(zIn,n,(void *)&iVal,0,&iOverflow);
+			if( !iOverflow ){
+				ph7_value_int64(pValue,iVal);
+				return;
+			}
+			ph7_value_string(pValue,zIn,(int)n);
+			return;
+		}
+		if( bNum && nDig > 0 && nDot == 1 && !bNeg ){
+			double rVal = 0;
+			SyStrToReal(zIn,n,(void *)&rVal,0);
+			ph7_value_double(pValue,rVal);
+			return;
+		}
+	}
+	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+	while( zIn < zEnd ){
+		if( zIn[0] == '$' && &zIn[1] < zEnd && zIn[1] == '{' ){
+			const char *p = &zIn[2];
+			while( p < zEnd && p[0] != '}' ){
+				p++;
+			}
+			if( p < zEnd ){
+				VmIniExpandDollarVar(pCtx,&zIn[2],(sxu32)(p - &zIn[2]),&sOut);
+				zIn = &p[1];
+				continue;
+			}
+			/* No closing brace: the bytes stand as written */
+		}
+		if( ((unsigned char)zIn[0] < 0xc0 && SyisAlpha(zIn[0])) || zIn[0] == '_' ){
+			const char *pTok = zIn;
+			ph7_value sCons;
+			while( zIn < zEnd
+			 && (((unsigned char)zIn[0] < 0xc0 && SyisAlphaNum(zIn[0])) || zIn[0] == '_') ){
+				zIn++;
+			}
+			PH7_MemObjInit(pCtx->pVm,&sCons);
+			if( PH7_VmQueryConstant(pCtx->pVm,pTok,(sxu32)(zIn - pTok),&sCons) ){
+				int nCons;
+				const char *zCons = ph7_value_to_string(&sCons,&nCons);
+				SyBlobAppend(&sOut,zCons,(sxu32)nCons);
+			}else{
+				SyBlobAppend(&sOut,pTok,(sxu32)(zIn - pTok));
+			}
+			PH7_MemObjRelease(&sCons);
+			continue;
+		}
+		SyBlobAppend(&sOut,zIn,(sxu32)sizeof(char));
+		zIn++;
+	}
+	if( SyBlobLength(&sOut) > 0 ){
+		ph7_value_string(pValue,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	}
+	SyBlobRelease(&sOut);
+}
+PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nByte,int bProcessSection,int iScannerMode)
 {
 	ph7_value *pCur,*pArray,*pSection,*pWorker,*pValue;
 	const char *zCur,*zEnd = &zIn[nByte];
@@ -1650,16 +1818,27 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 					/* Save the key name */
 					ph7_value_string(pWorker,sEntry.zString,(int)sEntry.nByte);
 				}
-				/* extract key value */
+				/* extract key value. pValue must come back to an EMPTY STRING
+				 * whatever the last entry typed it as (INI_SCANNER_TYPED sets
+				 * bool/int/float/null): ph7_value_string() re-types it, the
+				 * cursor reset then empties it. */
+				ph7_value_string(pValue,"",0);
 				ph7_value_reset_string_cursor(pValue);
 				zIn++; /* '=' */
-				while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && SyisSpace(zIn[0]) ){
+				/* Skip the spaces BEFORE the value but never the newline that
+				 * ENDS it: `key =` at end of line is php's empty-string entry,
+				 * and the old skip ran onto the next line and swallowed it
+				 * whole — `e1 =` followed by `c1 = 10K` answered
+				 * ["e1" => "c1 = 10K"] with c1 GONE. */
+				while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && zIn[0] != '\n' && SyisSpace(zIn[0]) ){
 					zIn++;
 				}
-				if( zIn < zEnd ){
+				if( zIn < zEnd && zIn[0] != '\n' ){
+					int bQuoted;
 					zCur = zIn;
 					c = zIn[0];
-					if( c == '"' || c == '\'' ){
+					bQuoted = (c == '"' || c == '\'');
+					if( bQuoted ){
 						zIn++;
 						/* Delimit the value */
 						while( zIn < zEnd ){
@@ -1687,16 +1866,23 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
 					/* Trim the value */
 					SyStringInitFromBuf(&sEntry,zCur,(int)(zIn-zCur));
 					SyStringFullTrim(&sEntry);
-					if( c == '"' || c == '\'' ){
+					if( bQuoted ){
 						SyStringTrimLeadingChar(&sEntry,c);
 						SyStringTrimTrailingChar(&sEntry,c);
 					}
-					if( sEntry.nByte > 0 ){
-						ph7_value_string(pValue,sEntry.zString,(int)sEntry.nByte);
+					if( bQuoted || iScannerMode == PH7_INI_SCANNER_RAW ){
+						/* A quoted value is its literal bytes in EVERY mode
+						 * (php runs no expansion inside quotes), and RAW keeps
+						 * even a bare word uninterpreted. */
+						if( sEntry.nByte > 0 ){
+							ph7_value_string(pValue,sEntry.zString,(int)sEntry.nByte);
+						}
+					}else{
+						VmIniInterpretValue(pCtx,&sEntry,iScannerMode,pValue);
 					}
-					/* Insert the key and it's value */
-					ph7_array_add_elem(pCur,is_array ? 0 /*Automatic index assign */: pWorker,pValue);
 				}
+				/* Insert the key and it's value (an empty value included) */
+				ph7_array_add_elem(pCur,is_array ? 0 /*Automatic index assign */: pWorker,pValue);
 			}else{
 				while( zIn < zEnd && (unsigned char)zIn[0] < 0xc0 && ( SyisSpace(zIn[0]) || zIn[0] == '=' ) ){
 					zIn++;
@@ -1719,9 +1905,11 @@ PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nBy
  *  $process_sections
  *   By setting the process_sections parameter to TRUE, you get a multidimensional array, with the section names
  *   and settings included. The default for process_sections is FALSE.
- *  $scanner_mode (Not used)
- *   Can either be INI_SCANNER_NORMAL (default) or INI_SCANNER_RAW. If INI_SCANNER_RAW is supplied
- *   then option values will not be parsed.
+ *  $scanner_mode
+ *   INI_SCANNER_NORMAL (default: values interpreted — booleans, constants,
+ *   ${var}), INI_SCANNER_RAW (values kept verbatim) or INI_SCANNER_TYPED
+ *   (booleans, null and numbers come back as their own types). Any other
+ *   value is php's "Invalid scanner mode" warning and FALSE.
  * Return
  *  The settings are returned as an associative array on success, and FALSE on failure.
  */
@@ -1729,15 +1917,26 @@ PH7_PRIVATE int PH7_builtin_parse_ini_string(ph7_context *pCtx,int nArg,ph7_valu
 {
 	const char *zIni;
 	int nByte;
+	int iMode = PH7_INI_SCANNER_NORMAL;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE*/
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	if( nArg > 2 && ph7_value_is_int(apArg[2]) ){
+		iMode = ph7_value_to_int(apArg[2]);
+		if( iMode != PH7_INI_SCANNER_NORMAL && iMode != PH7_INI_SCANNER_RAW
+		 && iMode != PH7_INI_SCANNER_TYPED ){
+			/* php's bare message: no `func(): ` qualifier on this one */
+			PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,"Invalid scanner mode");
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+	}
 	/* Extract the raw INI buffer */
 	zIni = ph7_value_to_string(apArg[0],&nByte);
 	/* Process the INI buffer; propagate an OOM abort so the fatal actually halts */
-	return PH7_ParseIniString(pCtx,zIni,(sxu32)nByte,(nArg > 1) ? ph7_value_to_bool(apArg[1]) : 0);
+	return PH7_ParseIniString(pCtx,zIni,(sxu32)nByte,(nArg > 1) ? ph7_value_to_bool(apArg[1]) : 0,iMode);
 }
 #endif /* PH7_NEED_FMT_AND_INI */
 #ifdef PH7_NEED_BUILTIN_REG

@@ -3867,12 +3867,24 @@ PH7_PRIVATE int PH7_builtin_parse_ini_file(ph7_context *pCtx,int nArg,ph7_value 
 	SyBlob sContents;
 	void *pHandle;
 	int nLen;
+	int iMode = PH7_INI_SCANNER_NORMAL;
 	sxi32 rc = PH7_OK;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting a file path");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
+	}
+	if( nArg > 2 && ph7_value_is_int(apArg[2]) ){
+		iMode = ph7_value_to_int(apArg[2]);
+		if( iMode != PH7_INI_SCANNER_NORMAL && iMode != PH7_INI_SCANNER_RAW
+		 && iMode != PH7_INI_SCANNER_TYPED ){
+			/* php screens the mode BEFORE touching the file */
+			/* php's bare message: no `func(): ` qualifier on this one */
+			PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,"Invalid scanner mode");
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
 	}
 	/* Extract the file path */
 	zFile = ph7_value_to_string(apArg[0],&nLen);
@@ -3899,7 +3911,7 @@ PH7_PRIVATE int PH7_builtin_parse_ini_file(ph7_context *pCtx,int nArg,ph7_value 
 	}else{
 		/* Process the raw INI buffer; capture an OOM abort to propagate below */
 		rc = PH7_ParseIniString(pCtx,(const char *)SyBlobData(&sContents),SyBlobLength(&sContents),
-			nArg > 1 ? ph7_value_to_bool(apArg[1]) : 0);
+			nArg > 1 ? ph7_value_to_bool(apArg[1]) : 0,iMode);
 	}
 	/* Close the stream */
 	PH7_StreamCloseHandle(pStream,pHandle);

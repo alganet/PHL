@@ -1508,6 +1508,15 @@ static void PH7_INI_SCANNER_RAW_Const(ph7_value *pVal,void *pUserData)
 	ph7_value_int(pVal,PH7_INI_SCANNER_RAW);
 }
 /*
+ * INI_SCANNER_TYPED
+ *   Expand 2 (php's value)
+ */
+static void PH7_INI_SCANNER_TYPED_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,PH7_INI_SCANNER_TYPED);
+}
+/*
  * EXTR_OVERWRITE
  *   Expand 0 (php's enum value; see PH7_EXTR_* in ph7int.h)
  */
@@ -2148,6 +2157,7 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"stderr",               PH7_STDERR_Const       },
 	{"INI_SCANNER_NORMAL",   PH7_INI_SCANNER_NORMAL_Const },
 	{"INI_SCANNER_RAW",      PH7_INI_SCANNER_RAW_Const    },
+	{"INI_SCANNER_TYPED",    PH7_INI_SCANNER_TYPED_Const  },
 	{"EXTR_OVERWRITE",       PH7_EXTR_OVERWRITE_Const     },
 	{"EXTR_SKIP",            PH7_EXTR_SKIP_Const        },
 	{"EXTR_PREFIX_SAME",     PH7_EXTR_PREFIX_SAME_Const },

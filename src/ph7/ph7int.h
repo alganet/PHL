@@ -2995,6 +2995,7 @@ enum json_err_code{
 #define PH7_GLOB_ONLYDIR        0x40000000
 #define PH7_INI_SCANNER_NORMAL  0
 #define PH7_INI_SCANNER_RAW     1
+#define PH7_INI_SCANNER_TYPED   2
 /* php's INI_SCANNER_TYPED is 2 — not defined here because PHL does not register the
  * constant (nor honour any scanner mode yet); §5 tracks it with the missing JSON_*. */
 /*
@@ -4426,7 +4427,8 @@ PH7_PRIVATE sxi32 PH7_CsvCharArg(ph7_context *pCtx,ph7_value *pArg,int iArg,
 	const char *zName,int bAllowEmpty,int *pChar);
 PH7_PRIVATE sxi32 PH7_CsvConsumer(const char *zToken,int nTokenLen,void *pUserData);
 PH7_PRIVATE sxi32 PH7_StripTagsFromString(ph7_context *pCtx,const char *zIn,int nByte,const char *zTaglist,int nTaglen);
-PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nByte,int bProcessSection);
+PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nByte,int bProcessSection,int iScannerMode);
+PH7_PRIVATE int PH7_VmQueryConstant(ph7_vm *pVm,const char *zName,sxu32 nName,ph7_value *pOut);
 #endif /* PH7_DISABLE_BUILTIN_FUNC || PH7_DISABLE_DISK_IO */
 /* Natural-order compare: unguarded because hashmap.c's SORT_NATURAL path (always
  * compiled) uses it, even in the tiny build. [[tiny-build-disk-io-guard-fragility]] */
