@@ -589,38 +589,47 @@ PH7_PRIVATE sxi32 VmEnterFrame(
  */
 PH7_PRIVATE sxi32 VmFrameLink(ph7_vm *pVm,SyString *pName)
 {
-	VmFrame *pTarget,*pFrame;
-	SyHashEntry *pEntry = 0;
+	VmFrame *pTarget,*pGlobal;
+	SyHashEntry *pEntry;
 	sxi32 rc;
-	/* Point to the upper frame */
-	pFrame = pVm->pFrame;
-	pFrame = VmSkipExceptionFrames(pFrame);
-	pTarget = pFrame;
-	pFrame = pTarget->pParent;
-	while( pFrame ){
-		if( (pFrame->iFlags & VM_FRAME_EXCEPTION) == 0 ){
-			/* Query the current frame */
-			pEntry = SyHashGet(&pFrame->hVar,(const void *)pName->zString,pName->nByte);
-			if( pEntry ){
-				/* Variable found */
-				break;
-			}
-		}
-		/* Point to the upper frame */
-		pFrame = pFrame->pParent;
+	pTarget = VmSkipExceptionFrames(pVm->pFrame);
+	/* php's `global` names the GLOBAL scope and nothing else. PH7 walked the frame
+	 * chain and linked the FIRST frame that happened to hold the name — and that
+	 * chain is the CALL STACK, so `global $v` inside a callee bound the CALLER's
+	 * local `$v`: the function read a value that depended on who called it, and its
+	 * writes never reached the real global. */
+	pGlobal = pTarget;
+	while( pGlobal->pParent ){
+		pGlobal = pGlobal->pParent;
+	}
+	if( pGlobal == pTarget ){
+		/* Already the global scope: php's `global $x` is a no-op there. */
+		return SXRET_OK;
+	}
+	/* A superglobal is already global storage; link ITS slot rather than creating a
+	 * plain global that would shadow it. */
+	pEntry = SyHashGet(&pVm->hSuper,(const void *)pName->zString,pName->nByte);
+	if( pEntry == 0 ){
+		pEntry = SyHashGet(&pGlobal->hVar,(const void *)pName->zString,pName->nByte);
 	}
 	if( pEntry == 0 ){
-		/* Inexistant variable */
-		return SXERR_NOTFOUND;
+		/* php CREATES the global (NULL) at the declaration, which is what makes the
+		 * `global $out; $out = …;` initializer idiom work; PH7 left it unlinked and
+		 * the assignment went to a local nobody could read. */
+		rc = PH7_VmInstallGlobalVar(&(*pVm),pName->zString,pName->nByte,0,SXU32_HIGH);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		pEntry = SyHashGet(&pGlobal->hVar,(const void *)pName->zString,pName->nByte);
+		if( pEntry == 0 ){
+			return SXERR_NOTFOUND;
+		}
 	}
-	/* Link to the current frame */
-	rc = SyHashInsert(&pTarget->hVar,pEntry->pKey,pEntry->nKeyLen,pEntry->pUserData);
-	if( rc == SXRET_OK ){
-		sxu32 nIdx;
-		nIdx = SX_PTR_TO_INT(pEntry->pUserData);
-		PH7_VmRefObjInstall(&(*pVm),nIdx,SyHashLastEntry(&pTarget->hVar),0,0);
-	}
-	return rc;
+	/* Bind the name in the calling frame to that slot — a REBIND when the frame
+	 * already has a local of the same name, which php's `global` also replaces. */
+	PH7_VmBindVarSlot(&(*pVm),pTarget,pName->zString,pName->nByte,
+		(sxu32)SX_PTR_TO_INT(pEntry->pUserData));
+	return SXRET_OK;
 }
 /*
  * Invalidate a recorded in-place-catch resume target (ROOT B) that still points at
