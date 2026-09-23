@@ -1891,6 +1891,8 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetInit(&pVm->aSelf,&pVm->sAllocator,sizeof(ph7_class *));
 	SySetInit(&pVm->aShutdown,&pVm->sAllocator,sizeof(VmShutdownCB));
 	SySetInit(&pVm->aIniCli,&pVm->sAllocator,sizeof(VmIniEntry));
+	SySetInit(&pVm->aIniTab,&pVm->sAllocator,sizeof(VmIniSlot));
+	pVm->bIniSeeded = 0;
 	SySetInit(&pVm->aAutoload,&pVm->sAllocator,sizeof(VmAutoloadCB));
 	SyHashInit(&pVm->hAutoloadActive,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hWeakCell,&pVm->sAllocator,0,0);

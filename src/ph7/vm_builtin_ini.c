@@ -5,230 +5,569 @@
 #include "ph7int.h"
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 /*
- * php.ini subsystem + INI API (NEWPLAN band D): a lazily seeded directive
- * table (defaults merged with the CLI's -d/-c entries, drained from the VM's
- * aIniCli queue by the __ini_cli() thunk) behind ini_get / ini_set /
- * ini_restore / ini_get_all / get_cfg_var. Live-wired directives dispatch to
- * the real knobs (error_reporting(), the session state, the default
- * timezone) so the INI view and the engine agree.
+ * php.ini subsystem + INI API: a lazily seeded directive table (the static
+ * defaults merged with the CLI's -d/-c entries from pVm->aIniCli) behind
+ * ini_get / ini_set / ini_restore / ini_get_all / get_cfg_var. Live-wired
+ * directives dispatch to the real knobs (error_reporting(), the session state,
+ * the default timezone, the diagnostic gates) so the INI view and the engine
+ * agree.
+ *
+ * This was an embedded-PHP chunk over two `__ini_*` C thunks, with the table
+ * parked on a private `__IniS` class and five `__ini_*` PHP helpers alongside.
+ * All eight of those names are gone: the table is a SySet on the VM and the five
+ * functions ARE these C routines. The thunks did not become methods -- there is
+ * no class here, only php's global functions -- so, like libxml's, they collapse
+ * into the functions they were serving.
+ *
+ * One thing the move fixes on its own: a diagnostic raised by a prelude function
+ * reported the CHUNK's line, so every ini_set()/ini_get_all() warning said
+ * "on line 1" regardless of the caller. A C builtin reports the caller's line,
+ * which is what php prints.
  */
 
-/* array __ini_cli(void) — the queued -d/-c directives, in order */
-static int vm_builtin_ini_cli(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	ph7_value *pArr,*pV;
-	VmIniEntry *aEntry;
-	sxu32 n;
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	pArr = ph7_context_new_array(pCtx);
-	pV = ph7_context_new_scalar(pCtx);
-	if( pArr == 0 || pV == 0 ){
-		return PH7_ContextMemoryError(pCtx);
-	}
-	aEntry = (VmIniEntry *)SySetBasePtr(&pCtx->pVm->aIniCli);
-	for( n = 0 ; n < SySetUsed(&pCtx->pVm->aIniCli) ; n++ ){
-		ph7_value_string(pV,aEntry[n].sValue.zString,(int)aEntry[n].sValue.nByte);
-		ph7_array_add_strkey_elem(pArr,aEntry[n].sName.zString,pV);
-		ph7_value_reset_string_cursor(pV);
-	}
-	ph7_result_value(pCtx,pArr);
-	return PH7_OK;
-}
+/* Directive access levels, as php reports them in ini_get_all()['access']. */
+#define VM_INI_USER    1
+#define VM_INI_PERDIR  2
+#define VM_INI_SYSTEM  4
+#define VM_INI_ALL     (VM_INI_USER|VM_INI_PERDIR|VM_INI_SYSTEM)
 
-/* void __ini_apply_err(string $name, int $on) — mirror the display_errors /
- * log_errors gate into the C-side VM fields so an ini_set() at runtime reaches
- * the diagnostic emitter (VmEmitDiagnostic). The -d/-c path already applies
- * these in PH7_VM_CONFIG_INI_ENTRY; the caller (__ini_rt_set) passes an already
- * php-coerced 0/1. */
-static int vm_builtin_ini_apply_err(ph7_context *pCtx,int nArg,ph7_value **apArg)
+/*
+ * The defaults, in the order php's ini_get_all() reports them (sorted by name).
+ * Keeping this list sorted is what lets ini_get_all() skip a sort: the seed
+ * inserts any CLI-only directive in its sorted position.
+ */
+static const struct {
+	const char *zName;
+	const char *zValue;
+	sxi32 iAccess;
+} aIniDefault[] = {
+	{ "allow_url_fopen",          "1",          VM_INI_PERDIR|VM_INI_SYSTEM },
+	{ "arg_separator.output",     "&",          VM_INI_ALL },
+	{ "auto_detect_line_endings", "",           VM_INI_ALL },
+	{ "date.timezone",            "UTC",        VM_INI_ALL },
+	{ "default_charset",          "UTF-8",      VM_INI_ALL },
+	{ "default_mimetype",         "text/html",  VM_INI_ALL },
+	{ "display_errors",           "",           VM_INI_ALL },
+	{ "error_log",                "",           VM_INI_ALL },
+	{ "error_reporting",          "30719",      VM_INI_ALL },
+	{ "highlight.comment",        "#FF8000",    VM_INI_ALL },
+	{ "highlight.default",        "#0000BB",    VM_INI_ALL },
+	{ "highlight.html",           "#000000",    VM_INI_ALL },
+	{ "highlight.keyword",        "#007700",    VM_INI_ALL },
+	{ "highlight.string",         "#DD0000",    VM_INI_ALL },
+	{ "include_path",             ".",          VM_INI_ALL },
+	{ "log_errors",               "1",          VM_INI_ALL },
+	{ "max_execution_time",       "0",          VM_INI_ALL },
+	{ "memory_limit",             "-1",         VM_INI_ALL },
+	{ "post_max_size",            "8M",         VM_INI_PERDIR|VM_INI_SYSTEM },
+	{ "precision",                "14",         VM_INI_ALL },
+	{ "serialize_precision",      "-1",         VM_INI_ALL },
+	{ "session.name",             "PHPSESSID",  VM_INI_ALL },
+	{ "session.save_path",        "",           VM_INI_ALL },
+	{ "short_open_tag",           "",           VM_INI_PERDIR|VM_INI_SYSTEM },
+	{ "upload_max_filesize",      "2M",         VM_INI_PERDIR|VM_INI_SYSTEM },
+	{ "zend.assertions",          "-1",         VM_INI_ALL },
+};
+
+/*
+ * A static property of the session state class, or NULL when sessions are not
+ * compiled in (PH7_DISABLE_DISK_IO) -- the two session directives then behave as
+ * ordinary stored values, which is the right answer when there is no session
+ * subsystem to wire them to.
+ */
+static ph7_value * IniSessSlot(ph7_vm *pVm,const char *zProp,sxu32 nProp)
 {
+	ph7_class *pCls = PH7_VmExtractClass(&(*pVm),"__SessS",sizeof("__SessS")-1,0,0);
+	ph7_class_attr *pAttr;
+	if( pCls == 0 ){
+		return 0;
+	}
+	pAttr = PH7_ClassExtractAttribute(pCls,zProp,nProp);
+	if( pAttr == 0 || pAttr->nIdx == SXU32_HIGH ){
+		return 0;
+	}
+	return (ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx);
+}
+static int IniNameIs(const VmIniSlot *pSlot,const char *zName)
+{
+	sxu32 n = (sxu32)SyStrlen(zName);
+	return pSlot->sName.nByte == n && SyMemcmp(pSlot->sName.zString,zName,n) == 0;
+}
+/*
+ * zend_ini_parse_bool semantics, matching the C-side VmIniBool the -d/-c path
+ * uses: on/yes/true, else a non-zero integer parse.
+ */
+static int IniTruthy(const char *zVal,sxu32 nVal)
+{
+	while( nVal > 0 && (zVal[0] == ' ' || zVal[0] == '\t') ){ zVal++; nVal--; }
+	while( nVal > 0 && (zVal[nVal-1] == ' ' || zVal[nVal-1] == '\t') ){ nVal--; }
+	if( nVal == 2 && SyStrnicmp(zVal,"on",2) == 0 ){ return 1; }
+	if( nVal == 3 && SyStrnicmp(zVal,"yes",3) == 0 ){ return 1; }
+	if( nVal == 4 && SyStrnicmp(zVal,"true",4) == 0 ){ return 1; }
+	{
+		sxi32 iVal = 0;
+		if( nVal > 0 && SyStrToInt32(zVal,nVal,(void *)&iVal,0) == SXRET_OK ){
+			return iVal != 0;
+		}
+	}
+	return 0;
+}
+/*
+ * Build the table: the static defaults, then the CLI queue merged over them (an
+ * unknown CLI name is appended as a new INI_ALL directive, as the chunk did),
+ * then sorted by name so ini_get_all() can walk it in php's order without a sort.
+ */
+static sxi32 IniSeed(ph7_vm *pVm)
+{
+	sxu32 i,j;
+	VmIniEntry *aCli;
+	VmIniSlot *aSlot;
+	if( pVm->bIniSeeded ){
+		return SXRET_OK;
+	}
+	pVm->bIniSeeded = 1; /* set FIRST: the live-wired writes below re-enter nothing,
+	                      * but a future one must never recurse into the seed */
+	for( i = 0 ; i < SX_ARRAYSIZE(aIniDefault) ; i++ ){
+		VmIniSlot sSlot;
+		SyStringInitFromBuf(&sSlot.sName,aIniDefault[i].zName,SyStrlen(aIniDefault[i].zName));
+		sSlot.iAccess = aIniDefault[i].iAccess;
+		SyBlobInit(&sSlot.sGlobal,&pVm->sAllocator);
+		SyBlobInit(&sSlot.sLocal,&pVm->sAllocator);
+		SyBlobAppend(&sSlot.sGlobal,aIniDefault[i].zValue,(sxu32)SyStrlen(aIniDefault[i].zValue));
+		SyBlobAppend(&sSlot.sLocal,aIniDefault[i].zValue,(sxu32)SyStrlen(aIniDefault[i].zValue));
+		if( SySetPut(&pVm->aIniTab,(const void *)&sSlot) != SXRET_OK ){
+			return SXERR_MEM;
+		}
+	}
+	aCli = (VmIniEntry *)SySetBasePtr(&pVm->aIniCli);
+	for( i = 0 ; i < SySetUsed(&pVm->aIniCli) ; i++ ){
+		int bFound = 0;
+		aSlot = (VmIniSlot *)SySetBasePtr(&pVm->aIniTab);
+		for( j = 0 ; j < SySetUsed(&pVm->aIniTab) ; j++ ){
+			if( aSlot[j].sName.nByte == aCli[i].sName.nByte
+			 && SyMemcmp(aSlot[j].sName.zString,aCli[i].sName.zString,aCli[i].sName.nByte) == 0 ){
+				SyBlobReset(&aSlot[j].sGlobal);
+				SyBlobReset(&aSlot[j].sLocal);
+				SyBlobAppend(&aSlot[j].sGlobal,aCli[i].sValue.zString,aCli[i].sValue.nByte);
+				SyBlobAppend(&aSlot[j].sLocal,aCli[i].sValue.zString,aCli[i].sValue.nByte);
+				bFound = 1;
+				break;
+			}
+		}
+		if( !bFound ){
+			VmIniSlot sSlot;
+			/* aIniCli holds VM-lifetime copies already, so the name can be aliased. */
+			sSlot.sName = aCli[i].sName;
+			sSlot.iAccess = VM_INI_ALL;
+			SyBlobInit(&sSlot.sGlobal,&pVm->sAllocator);
+			SyBlobInit(&sSlot.sLocal,&pVm->sAllocator);
+			SyBlobAppend(&sSlot.sGlobal,aCli[i].sValue.zString,aCli[i].sValue.nByte);
+			SyBlobAppend(&sSlot.sLocal,aCli[i].sValue.zString,aCli[i].sValue.nByte);
+			if( SySetPut(&pVm->aIniTab,(const void *)&sSlot) != SXRET_OK ){
+				return SXERR_MEM;
+			}
+		}
+	}
+	/* Insertion sort by name (the table is ~30 entries and already nearly sorted:
+	 * only CLI-introduced directives are out of place). */
+	aSlot = (VmIniSlot *)SySetBasePtr(&pVm->aIniTab);
+	for( i = 1 ; i < SySetUsed(&pVm->aIniTab) ; i++ ){
+		VmIniSlot sTmp = aSlot[i];
+		j = i;
+		while( j > 0 ){
+			const VmIniSlot *pPrev = &aSlot[j-1];
+			sxu32 nMin = pPrev->sName.nByte < sTmp.sName.nByte ? pPrev->sName.nByte : sTmp.sName.nByte;
+			sxi32 iCmp = SyMemcmp(pPrev->sName.zString,sTmp.sName.zString,nMin);
+			if( iCmp == 0 ){
+				iCmp = (sxi32)pPrev->sName.nByte - (sxi32)sTmp.sName.nByte;
+			}
+			if( iCmp <= 0 ){
+				break;
+			}
+			aSlot[j] = aSlot[j-1];
+			j--;
+		}
+		aSlot[j] = sTmp;
+	}
+	/* Boot-apply the CLI values for the live-wired session knobs. The engine knobs
+	 * (error_reporting / date.timezone) were already applied C-side by
+	 * PH7_VM_CONFIG_INI_ENTRY. */
+	aSlot = (VmIniSlot *)SySetBasePtr(&pVm->aIniTab);
+	for( i = 0 ; i < SySetUsed(&pVm->aIniTab) ; i++ ){
+		ph7_value *pDst = 0;
+		if( IniNameIs(&aSlot[i],"session.name") ){
+			if( SyBlobLength(&aSlot[i].sGlobal) != sizeof("PHPSESSID")-1
+			 || SyMemcmp(SyBlobData(&aSlot[i].sGlobal),"PHPSESSID",sizeof("PHPSESSID")-1) != 0 ){
+				pDst = IniSessSlot(pVm,"name",sizeof("name")-1);
+			}
+		}else if( IniNameIs(&aSlot[i],"session.save_path") ){
+			if( SyBlobLength(&aSlot[i].sGlobal) > 0 ){
+				pDst = IniSessSlot(pVm,"path",sizeof("path")-1);
+			}
+		}
+		if( pDst ){
+			SyString sVal;
+			sxu32 nLen = SyBlobLength(&aSlot[i].sGlobal);
+			const char *zVal = (const char *)SyBlobData(&aSlot[i].sGlobal);
+			while( nLen > 0 && zVal[nLen-1] == '/' ){ nLen--; } /* rtrim('/') */
+			SyStringInitFromBuf(&sVal,zVal,nLen);
+			PH7_MemObjRelease(pDst);
+			PH7_MemObjInitFromString(pVm,pDst,&sVal);
+		}
+	}
+	return SXRET_OK;
+}
+static VmIniSlot * IniFind(ph7_vm *pVm,const char *zName,sxu32 nName)
+{
+	VmIniSlot *aSlot = (VmIniSlot *)SySetBasePtr(&pVm->aIniTab);
+	sxu32 n;
+	for( n = 0 ; n < SySetUsed(&pVm->aIniTab) ; n++ ){
+		if( aSlot[n].sName.nByte == nName
+		 && SyMemcmp(aSlot[n].sName.zString,zName,nName) == 0 ){
+			return &aSlot[n];
+		}
+	}
+	return 0;
+}
+/*
+ * The EFFECTIVE current value. For a live-wired directive the runtime knob is
+ * the truth, not the stored local value, so that ini_get() and the knob's own
+ * accessor can never disagree.
+ */
+static void IniLiveGet(ph7_vm *pVm,VmIniSlot *pSlot,SyBlob *pOut)
+{
+	SyBlobReset(pOut);
+	if( IniNameIs(pSlot,"error_reporting") ){
+		char zBuf[32];
+		int nBuf = SyBufferFormat(zBuf,sizeof(zBuf),"%d",
+			pVm->bErrReport ? (int)pVm->iErrMask : 0);
+		SyBlobAppend(pOut,zBuf,(sxu32)nBuf);
+		return;
+	}
+	if( IniNameIs(pSlot,"session.name") ){
+		ph7_value *pVal = IniSessSlot(pVm,"name",sizeof("name")-1);
+		if( pVal ){
+			SyBlobAppend(pOut,SyBlobData(&pVal->sBlob),SyBlobLength(&pVal->sBlob));
+			return;
+		}
+	}else if( IniNameIs(pSlot,"session.save_path") ){
+		ph7_value *pVal = IniSessSlot(pVm,"path",sizeof("path")-1);
+		if( pVal && SyBlobLength(&pVal->sBlob) > 0 ){
+			SyBlobAppend(pOut,SyBlobData(&pVal->sBlob),SyBlobLength(&pVal->sBlob));
+			return;
+		}
+	}
+	SyBlobAppend(pOut,SyBlobData(&pSlot->sLocal),SyBlobLength(&pSlot->sLocal));
+}
+/*
+ * Push a new value at the runtime knob behind a live-wired directive. The stored
+ * local value is updated by the caller either way.
+ */
+static void IniLiveSet(ph7_vm *pVm,VmIniSlot *pSlot,const char *zVal,sxu32 nVal)
+{
+	if( IniNameIs(pSlot,"error_reporting") ){
+		sxi32 iVal = 0;
+		if( nVal > 0 ){
+			SyStrToInt32(zVal,nVal,(void *)&iVal,0);
+		}
+		pVm->iErrMask = iVal;
+		pVm->bErrReport = iVal != 0;
+		return;
+	}
+	if( IniNameIs(pSlot,"display_errors") ){
+		pVm->bDisplayErrors = IniTruthy(zVal,nVal);
+		return;
+	}
+	if( IniNameIs(pSlot,"log_errors") ){
+		pVm->bLogErrors = IniTruthy(zVal,nVal);
+		return;
+	}
+	if( IniNameIs(pSlot,"session.name") || IniNameIs(pSlot,"session.save_path") ){
+		int bPath = IniNameIs(pSlot,"session.save_path");
+		ph7_value *pDst = IniSessSlot(pVm,bPath ? "path" : "name",bPath ? 4 : 4);
+		if( pDst ){
+			SyString sVal;
+			sxu32 nLen = nVal;
+			if( bPath ){
+				while( nLen > 0 && zVal[nLen-1] == '/' ){ nLen--; }
+			}
+			SyStringInitFromBuf(&sVal,zVal,nLen);
+			PH7_MemObjRelease(pDst);
+			PH7_MemObjInitFromString(pVm,pDst,&sVal);
+		}
+		return;
+	}
+	if( IniNameIs(pSlot,"date.timezone") ){
+		/* Only UTC/GMT exist here (no tz database), matching the engine's own
+		 * date_default_timezone_set(). */
+		if( nVal == 3 && (SyStrnicmp(zVal,"UTC",3) == 0 || SyStrnicmp(zVal,"GMT",3) == 0) ){
+			SyMemcpy(zVal,pVm->zDefTz,3);
+			pVm->zDefTz[3] = 0;
+			pVm->nDefTz = 3;
+		}
+		return;
+	}
+}
+/*
+ * The session directives are php.ini-settable only until headers go out.
+ * Answers TRUE (and has raised the warning) when the write must be refused.
+ */
+static int IniSessionLocked(ph7_context *pCtx,VmIniSlot *pSlot,const char *zFunc)
+{
+	char zMsg[160];
+	if( pSlot->sName.nByte < sizeof("session.")-1
+	 || SyMemcmp(pSlot->sName.zString,"session.",sizeof("session.")-1) != 0 ){
+		return 0;
+	}
+	if( !pCtx->pVm->bHeadersSent ){
+		return 0;
+	}
+	SyBufferFormat(zMsg,sizeof(zMsg),
+		"%s(): Session ini settings cannot be changed after headers have already been sent",
+		zFunc);
+	PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,zMsg);
+	return 1;
+}
+/* string|false ini_get(string $option) */
+static int vm_builtin_ini_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	VmIniSlot *pSlot;
 	const char *zName;
 	int nName = 0;
-	int bOn;
-	if( nArg < 2 ){
+	SyBlob sOut;
+	if( nArg < 1 || IniSeed(pVm) != SXRET_OK ){
+		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	zName = ph7_value_to_string(apArg[0],&nName);
-	bOn = ph7_value_to_int(apArg[1]) != 0;
-	if( nName == (int)sizeof("display_errors")-1 && SyMemcmp(zName,"display_errors",(sxu32)nName) == 0 ){
-		pCtx->pVm->bDisplayErrors = bOn;
-	}else if( nName == (int)sizeof("log_errors")-1 && SyMemcmp(zName,"log_errors",(sxu32)nName) == 0 ){
-		pCtx->pVm->bLogErrors = bOn;
+	pSlot = IniFind(pVm,zName,(sxu32)nName);
+	if( pSlot == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
 	}
+	SyBlobInit(&sOut,&pVm->sAllocator);
+	IniLiveGet(pVm,pSlot,&sOut);
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
 	return PH7_OK;
 }
-
-static const char zIniLib[] =
-"class __IniS {"
-" public static $t = null;"
-"}"
-"function __ini_seed(){"
-" if( __IniS::$t !== null ){ return; }"
-" $t = ["
-"  'allow_url_fopen' => ['1', 6],"
-"  'arg_separator.output' => ['&', 7],"
-"  'auto_detect_line_endings' => ['', 7],"
-"  'date.timezone' => ['UTC', 7],"
-"  'default_charset' => ['UTF-8', 7],"
-"  'default_mimetype' => ['text/html', 7],"
-"  'display_errors' => ['', 7],"
-"  'error_log' => ['', 7],"
-"  'error_reporting' => ['30719', 7],"
-"  'log_errors' => ['1', 7],"
-"  'highlight.comment' => ['#FF8000', 7],"
-"  'highlight.default' => ['#0000BB', 7],"
-"  'highlight.html' => ['#000000', 7],"
-"  'highlight.keyword' => ['#007700', 7],"
-"  'highlight.string' => ['#DD0000', 7],"
-"  'include_path' => ['.', 7],"
-"  'max_execution_time' => ['0', 7],"
-"  'memory_limit' => ['-1', 7],"
-"  'post_max_size' => ['8M', 6],"
-"  'precision' => ['14', 7],"
-"  'serialize_precision' => ['-1', 7],"
-"  'session.name' => ['PHPSESSID', 7],"
-"  'session.save_path' => ['', 7],"
-"  'short_open_tag' => ['', 6],"
-"  'upload_max_filesize' => ['2M', 6],"
-"  'zend.assertions' => ['-1', 7],"
-" ];"
-" foreach( __ini_cli() as $k => $v ){"
-"  if( isset($t[$k]) ){"
-"   $t[$k][0] = (string)$v;"
-"  }else{"
-"   $t[$k] = [(string)$v, 7];"
-"  }"
-" }"
-" $seeded = [];"
-" foreach( $t as $k => $pair ){"
-"  $seeded[$k] = ['g' => $pair[0], 'l' => $pair[0], 'a' => $pair[1]];"
-" }"
-" __IniS::$t = $seeded;"
-" /* boot-apply the CLI values for the live-wired knobs (the engine knobs"
-"  * error_reporting/date.timezone were already applied C-side) */"
-" if( $seeded['session.name']['g'] !== 'PHPSESSID' ){"
-"  __SessS::$name = $seeded['session.name']['g'];"
-" }"
-" if( $seeded['session.save_path']['g'] !== '' ){"
-"  __SessS::$path = rtrim($seeded['session.save_path']['g'], '/');"
-" }"
-"}"
-"function __ini_rt_get($name){"
-" /* live-wired reads: the runtime knob is the truth */"
-" if( $name === 'error_reporting' ){ return (string)error_reporting(); }"
-" if( $name === 'session.name' ){ return __SessS::$name; }"
-" if( $name === 'session.save_path' ){"
-"  return __SessS::$path === '' ? __IniS::$t[$name]['l'] : __SessS::$path;"
-" }"
-" return __IniS::$t[$name]['l'];"
-"}"
-"function __ini_truthy($v){"
-" /* zend_ini_parse_bool semantics, matching the C-side VmIniBool used by the"
-"  * -d/-c path: on/yes/true, else a non-zero integer parse. */"
-" $v = strtolower(trim((string)$v));"
-" if( $v === 'on' || $v === 'yes' || $v === 'true' ){ return true; }"
-" return (int)$v !== 0;"
-"}"
-"function __ini_rt_set($name, $value){"
-" if( $name === 'error_reporting' ){ error_reporting((int)$value); return; }"
-" if( $name === 'display_errors' || $name === 'log_errors' ){"
-"  __ini_apply_err($name, __ini_truthy($value) ? 1 : 0);"
-"  return;"
-" }"
-" if( $name === 'session.name' ){ __SessS::$name = $value; return; }"
-" if( $name === 'session.save_path' ){ __SessS::$path = rtrim($value, '/'); return; }"
-" if( $name === 'date.timezone' && preg_match('/^(UTC|GMT)$/i', $value) ){"
-"  date_default_timezone_set($value);"
-" }"
-"}"
-"function ini_get($option){"
-" __ini_seed();"
-" $option = (string)$option;"
-" if( !isset(__IniS::$t[$option]) ){ return false; }"
-" return __ini_rt_get($option);"
-"}"
-"function ini_set($option, $value){"
-" __ini_seed();"
-" $option = (string)$option;"
-" if( !isset(__IniS::$t[$option]) ){ return false; }"
-" if( (__IniS::$t[$option]['a'] & INI_USER) === 0 ){ return false; }"
-" if( strncmp($option, 'session.', 8) === 0 && headers_sent() ){"
-"  trigger_error('ini_set(): Session ini settings cannot be changed after"
-" headers have already been sent', E_USER_WARNING);"
-"  return false;"
-" }"
-" if( $option === 'zend.assertions' &&"
-"     (__IniS::$t[$option]['g'] === '-1' || (string)$value === '-1') ){"
-"  /* php: the -1 (compiled-out) state is a php.ini-only switch */"
-"  trigger_error('zend.assertions may be completely enabled or disabled only"
-" in php.ini', E_USER_WARNING);"
-"  return false;"
-" }"
-" $old = __ini_rt_get($option);"
-" $value = is_bool($value) ? ($value ? '1' : '') : (string)$value;"
-" __IniS::$t[$option]['l'] = $value;"
-" __ini_rt_set($option, $value);"
-" return $old;"
-"}"
-"function ini_restore($option){"
-" __ini_seed();"
-" $option = (string)$option;"
-" if( !isset(__IniS::$t[$option]) ){ return null; }"
-" if( strncmp($option, 'session.', 8) === 0 && headers_sent() ){"
-"  trigger_error('ini_restore(): Session ini settings cannot be changed after"
-" headers have already been sent', E_USER_WARNING);"
-"  return null;"
-" }"
-" $g = __IniS::$t[$option]['g'];"
-" __IniS::$t[$option]['l'] = $g;"
-" __ini_rt_set($option, $g);"
-" return null;"
-"}"
-"function ini_get_all($extension = null, $details = true){"
-" __ini_seed();"
-" $known = ['Core' => true, 'session' => true, 'date' => true, 'standard' => true];"
-" if( $extension !== null && !isset($known[(string)$extension]) ){"
-"  trigger_error('ini_get_all(): Extension \"' . $extension . '\" cannot be"
-" found', E_USER_WARNING);"
-"  return false;"
-" }"
-" $out = [];"
-" foreach( __IniS::$t as $name => $e ){"
-"  if( $extension !== null && $extension !== 'Core' && $extension !== 'standard' ){"
-"   if( strncmp($name, $extension . '.', strlen($extension) + 1) !== 0 ){ continue; }"
-"  }elseif( $extension !== null ){"
-"   if( strpos($name, 'session.') === 0 || strpos($name, 'date.') === 0 ){ continue; }"
-"  }"
-"  $cur = __ini_rt_get($name);"
-"  if( $details ){"
-"   $out[$name] = ['global_value' => $e['g'], 'local_value' => $cur,"
-"    'access' => $e['a']];"
-"  }else{"
-"   $out[$name] = $cur;"
-"  }"
-" }"
-" ksort($out);"
-" return $out;"
-"}"
-"function get_cfg_var($option){"
-" __ini_seed();"
-" $option = (string)$option;"
-" if( !isset(__IniS::$t[$option]) ){ return false; }"
-" return __IniS::$t[$option]['g'];"
-"}"
-;
-
+/* string|false ini_set(string $option, string|int|float|bool|null $value) */
+static int vm_builtin_ini_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	VmIniSlot *pSlot;
+	const char *zName;
+	const char *zVal;
+	int nName = 0, nVal = 0;
+	SyBlob sOld;
+	if( nArg < 2 || IniSeed(pVm) != SXRET_OK ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zName = ph7_value_to_string(apArg[0],&nName);
+	pSlot = IniFind(pVm,zName,(sxu32)nName);
+	if( pSlot == 0 || (pSlot->iAccess & VM_INI_USER) == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( IniSessionLocked(pCtx,pSlot,"ini_set") ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* php: the -1 (compiled-out) state of zend.assertions is a php.ini-only switch,
+	 * and so is moving INTO it. Unprefixed warning, exactly as php prints it. */
+	if( IniNameIs(pSlot,"zend.assertions") ){
+		int bGlobalOff = SyBlobLength(&pSlot->sGlobal) == 2
+			&& SyMemcmp(SyBlobData(&pSlot->sGlobal),"-1",2) == 0;
+		const char *zNew = ph7_value_to_string(apArg[1],&nVal);
+		int bNewOff = nVal == 2 && SyMemcmp(zNew,"-1",2) == 0;
+		if( bGlobalOff || bNewOff ){
+			PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
+				"zend.assertions may be completely enabled or disabled only in php.ini");
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+	}
+	/* The OLD value php answers is the effective one, read before the write. */
+	SyBlobInit(&sOld,&pVm->sAllocator);
+	IniLiveGet(pVm,pSlot,&sOld);
+	/* php stringifies the incoming value, with a bool becoming "1"/"" . */
+	if( ph7_value_is_bool(apArg[1]) ){
+		zVal = ph7_value_to_bool(apArg[1]) ? "1" : "";
+		nVal = (int)SyStrlen(zVal);
+	}else{
+		zVal = ph7_value_to_string(apArg[1],&nVal);
+	}
+	SyBlobReset(&pSlot->sLocal);
+	SyBlobAppend(&pSlot->sLocal,zVal,(sxu32)nVal);
+	IniLiveSet(pVm,pSlot,zVal,(sxu32)nVal);
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOld),(int)SyBlobLength(&sOld));
+	SyBlobRelease(&sOld);
+	return PH7_OK;
+}
+/* void ini_restore(string $option) */
+static int vm_builtin_ini_restore(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	VmIniSlot *pSlot;
+	const char *zName;
+	int nName = 0;
+	ph7_result_null(pCtx);
+	if( nArg < 1 || IniSeed(pVm) != SXRET_OK ){
+		return PH7_OK;
+	}
+	zName = ph7_value_to_string(apArg[0],&nName);
+	pSlot = IniFind(pVm,zName,(sxu32)nName);
+	if( pSlot == 0 || IniSessionLocked(pCtx,pSlot,"ini_restore") ){
+		return PH7_OK;
+	}
+	SyBlobReset(&pSlot->sLocal);
+	SyBlobAppend(&pSlot->sLocal,SyBlobData(&pSlot->sGlobal),SyBlobLength(&pSlot->sGlobal));
+	IniLiveSet(pVm,pSlot,(const char *)SyBlobData(&pSlot->sGlobal),SyBlobLength(&pSlot->sGlobal));
+	return PH7_OK;
+}
+/* array|false ini_get_all(?string $extension = null, bool $details = true) */
+static int vm_builtin_ini_get_all(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	VmIniSlot *aSlot;
+	ph7_value *pOut,*pCur;
+	const char *zExt = 0;
+	int nExt = 0, bDetails = 1;
+	sxu32 n;
+	SyBlob sVal;
+	if( IniSeed(pVm) != SXRET_OK ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( nArg > 0 && !ph7_value_is_null(apArg[0]) ){
+		zExt = ph7_value_to_string(apArg[0],&nExt);
+	}
+	if( nArg > 1 ){
+		bDetails = ph7_value_to_bool(apArg[1]);
+	}
+	if( zExt ){
+		/* php reports the extensions it knows; anything else is a warning + false. */
+		static const char *azKnown[] = { "Core", "session", "date", "standard" };
+		int bKnown = 0;
+		sxu32 k;
+		for( k = 0 ; k < SX_ARRAYSIZE(azKnown) ; k++ ){
+			if( (int)SyStrlen(azKnown[k]) == nExt && SyMemcmp(azKnown[k],zExt,(sxu32)nExt) == 0 ){
+				bKnown = 1;
+				break;
+			}
+		}
+		if( !bKnown ){
+			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+				"Extension \"%.*s\" cannot be found",nExt,zExt);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+	}
+	pOut = ph7_context_new_array(pCtx);
+	pCur = ph7_context_new_scalar(pCtx);
+	if( pOut == 0 || pCur == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	SyBlobInit(&sVal,&pVm->sAllocator);
+	aSlot = (VmIniSlot *)SySetBasePtr(&pVm->aIniTab);
+	/* The table is stored sorted, so this walk is already php's ksort order. */
+	for( n = 0 ; n < SySetUsed(&pVm->aIniTab) ; n++ ){
+		VmIniSlot *pSlot = &aSlot[n];
+		char zKey[128];
+		if( zExt ){
+			int bCore = (nExt == 4 && SyMemcmp(zExt,"Core",4) == 0)
+				|| (nExt == 8 && SyMemcmp(zExt,"standard",8) == 0);
+			if( !bCore ){
+				/* A named extension keeps only its own "<ext>." prefix. */
+				if( pSlot->sName.nByte <= (sxu32)nExt
+				 || SyMemcmp(pSlot->sName.zString,zExt,(sxu32)nExt) != 0
+				 || pSlot->sName.zString[nExt] != '.' ){
+					continue;
+				}
+			}else{
+				/* Core/standard exclude the directives owned by a named extension. */
+				if( (pSlot->sName.nByte > sizeof("session.")-1
+				  && SyMemcmp(pSlot->sName.zString,"session.",sizeof("session.")-1) == 0)
+				 || (pSlot->sName.nByte > sizeof("date.")-1
+				  && SyMemcmp(pSlot->sName.zString,"date.",sizeof("date.")-1) == 0) ){
+					continue;
+				}
+			}
+		}
+		if( pSlot->sName.nByte >= sizeof(zKey) ){
+			continue;
+		}
+		SyMemcpy(pSlot->sName.zString,zKey,pSlot->sName.nByte);
+		zKey[pSlot->sName.nByte] = 0;
+		IniLiveGet(pVm,pSlot,&sVal);
+		if( bDetails ){
+			ph7_value *pRow = ph7_context_new_array(pCtx);
+			if( pRow == 0 ){
+				break;
+			}
+			ph7_value_string(pCur,(const char *)SyBlobData(&pSlot->sGlobal),
+				(int)SyBlobLength(&pSlot->sGlobal));
+			ph7_array_add_strkey_elem(pRow,"global_value",pCur);
+			ph7_value_reset_string_cursor(pCur);
+			ph7_value_string(pCur,(const char *)SyBlobData(&sVal),(int)SyBlobLength(&sVal));
+			ph7_array_add_strkey_elem(pRow,"local_value",pCur);
+			ph7_value_reset_string_cursor(pCur);
+			ph7_value_int(pCur,pSlot->iAccess);
+			ph7_array_add_strkey_elem(pRow,"access",pCur);
+			ph7_value_reset_string_cursor(pCur);
+			ph7_array_add_strkey_elem(pOut,zKey,pRow);
+		}else{
+			ph7_value_reset_string_cursor(pCur);
+			ph7_value_string(pCur,(const char *)SyBlobData(&sVal),(int)SyBlobLength(&sVal));
+			ph7_array_add_strkey_elem(pOut,zKey,pCur);
+			ph7_value_reset_string_cursor(pCur);
+		}
+	}
+	SyBlobRelease(&sVal);
+	ph7_result_value(pCtx,pOut);
+	return PH7_OK;
+}
+/* string|false get_cfg_var(string $option) — php answers the GLOBAL value */
+static int vm_builtin_get_cfg_var(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	VmIniSlot *pSlot;
+	const char *zName;
+	int nName = 0;
+	if( nArg < 1 || IniSeed(pVm) != SXRET_OK ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zName = ph7_value_to_string(apArg[0],&nName);
+	pSlot = IniFind(pVm,zName,(sxu32)nName);
+	if( pSlot == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&pSlot->sGlobal),
+		(int)SyBlobLength(&pSlot->sGlobal));
+	return PH7_OK;
+}
 PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm)
 {
-	ph7_create_function(&(*pVm),"__ini_cli",vm_builtin_ini_cli,0);
-	ph7_create_function(&(*pVm),"__ini_apply_err",vm_builtin_ini_apply_err,0);
-	return PH7_VmEvalBuiltinChunk(&(*pVm),zIniLib,sizeof(zIniLib)-1);
+	static const struct {
+		const char *zName;
+		ProchHostFunction xFunc;
+	} aFunc[] = {
+		{ "ini_get",      vm_builtin_ini_get      },
+		{ "ini_set",      vm_builtin_ini_set      },
+		{ "ini_restore",  vm_builtin_ini_restore  },
+		{ "ini_get_all",  vm_builtin_ini_get_all  },
+		{ "get_cfg_var",  vm_builtin_get_cfg_var  },
+	};
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){
+		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);
+	}
+	return SXRET_OK;
 }
-
-#endif /* PH7_DISABLE_BUILTIN_FUNC */
-
-#ifdef PH7_DISABLE_BUILTIN_FUNC
-/* Tiny build: no INI API (builtin layer disabled) */
+#else
 PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm){ (void)pVm; return SXRET_OK; }
 #endif

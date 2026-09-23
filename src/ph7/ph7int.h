@@ -1647,6 +1647,24 @@ struct VmIniEntry
 	SyString sName;
 	SyString sValue;
 };
+/*
+ * One live php.ini directive. The table was an embedded-PHP array on a private
+ * `__IniS` class; it is C now, seeded lazily on the first INI call from the static
+ * defaults merged with the CLI's -d/-c queue (aIniCli).
+ *
+ * php exposes both a global_value and a local_value per directive: ini_set() moves
+ * the local one, ini_restore() puts the global one back, and get_cfg_var() answers
+ * the global one. Both blobs live on the VM allocator, so they are freed with it --
+ * no release hook, exactly as aIniCli needs none.
+ */
+typedef struct VmIniSlot VmIniSlot;
+struct VmIniSlot
+{
+	SyString sName;   /* static default name, or a VM-lifetime dup of a CLI name */
+	sxi32 iAccess;    /* INI_USER|INI_PERDIR|INI_SYSTEM bitmask php reports */
+	SyBlob sGlobal;   /* php's global_value */
+	SyBlob sLocal;    /* php's local_value (what ini_get answers, modulo live wiring) */
+};
 struct ph7_vm
 {
 	SyMemBackend sAllocator;	/* Memory backend */
@@ -1708,7 +1726,10 @@ struct ph7_vm
 	sxu32 nDefTz;               /* zDefTz length in bytes */
 	SySet aShutdown;            /* Stack of shutdown user callbacks */
 	SySet aIniCli;              /* php.ini directives from the CLI (-d/-c): VmIniEntry copies,
-	                             * drained lazily by the INI chunk's __ini_cli() thunk */
+	                             * merged into aIniTab when the directive table is seeded */
+	SySet aIniTab;              /* The live directive table (VmIniSlot), sorted by name so
+	                             * ini_get_all() needs no sort of its own */
+	sxu8 bIniSeeded;            /* aIniTab has been built (lazily, on the first INI call) */
 	SyHash hWeakCell;           /* instance pointer bytes -> VmWeakCell* (weak-reference registry;
 	                             * PH7_ClassInstanceRelease kills matching cells on free) */
 	SySet aAutoload;            /* Stack of spl_autoload callbacks */

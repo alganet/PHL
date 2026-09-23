@@ -255,11 +255,27 @@ PH7_PRIVATE sxi32 GenStateGuardFuncRedeclaration(ph7_gen_state *pGen,ph7_vm_func
 	if( pGen->pVm->bCompilingBuiltin ){
 		return SXRET_OK;
 	}
-	/* NOTE: a userland function shadowing a C builtin (e.g. `function strlen(){}`)
-	 * is NOT caught here — the C builtins register in PH7_VmMakeReady, after user
-	 * code has compiled, so hHostFunction is still empty at this point. Prelude
-	 * functions (ini_get, ...) and every builtin CLASS compile earlier and ARE
-	 * guarded. Redeclaring a C builtin function stays a known divergence. */
+	/* Host functions present AT COMPILE TIME are guarded here, and they have to be
+	 * for the migration of the builtin library into C to be behaviour-preserving: a
+	 * function moving from an embedded PHP chunk to a C routine moves from hFunction
+	 * to hHostFunction, and would otherwise silently LOSE the redeclaration guard it
+	 * had. `function ini_get(){}` really did win over the builtin for the rest of
+	 * the program once ini_get became C.
+	 *
+	 * Which builtins that covers depends on WHERE they register. The subsystems
+	 * installed inside PH7_VmInit's bCompilingBuiltin window (INI, libxml, ...) are
+	 * in hHostFunction before any user code compiles, so they are caught. The ~650
+	 * core builtins (strlen, ...) register later, in PH7_VmMakeReady, which runs
+	 * AFTER compilation — hHostFunction has no entry for them yet, so shadowing one
+	 * remains the known divergence it has always been (php fatals; §7.2). Nothing
+	 * about their behaviour changes here.
+	 *
+	 * The bCompilingBuiltin early-return above keeps the prelude itself exempt. */
+	if( SyHashGet(&pGen->pVm->hHostFunction,(const void *)pFunc->sName.zString,pFunc->sName.nByte) ){
+		PH7_GenCompileError(pGen,E_ERROR,pFunc->nLine,
+			"Cannot redeclare function %z()",&pFunc->sName);
+		return SXERR_ABORT;
+	}
 	pEntry = SyHashGet(&pGen->pVm->hFunction,(const void *)pFunc->sName.zString,pFunc->sName.nByte);
 	if( pEntry ){
 		ph7_vm_func *pPrev = (ph7_vm_func *)pEntry->pUserData;
