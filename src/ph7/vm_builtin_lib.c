@@ -835,58 +835,6 @@
 	" if( is_resource($v) ){ return 'resource'; }"\
 	" return 'mixed';"\
 	"}"\
-	"function max($value, ...$values){"\
-    "  $pArgs = func_get_args();"\
-    " if( sizeof($pArgs) < 2 ){"\
-    " $pArg = $pArgs[0];"\
-	" if( !is_array($pArg) ){"\
-	"   throw new TypeError('max(): Argument #1 ($value) must be of type array, ' . __php_zpp_type($pArg) . ' given');"\
-	" }"\
-	" if( sizeof($pArg) < 1 ){"\
-	"   throw new ValueError('max(): Argument #1 ($value) must contain at least one element');"\
-	" }"\
-	" $max = null; $first = true;"\
-	" foreach( $pArgs[0] as $val ){"\
-	"   if( $first ){ $max = $val; $first = false; }"\
-	"   else if( $val > $max ){ $max = $val; }"\
-	" }"\
-	" return $max;"\
-    " }"\
-    " $max = $pArgs[0];"\
-    " for( $i = 1; $i < sizeof($pArgs) ; ++$i ){"\
-    " $val = $pArgs[$i];"\
-	"if( $val > $max ){"\
-	" $max = $val;"\
-	"}"\
-    " }"\
-	" return $max;"\
-    "}"\
-	"function min($value, ...$values){"\
-    "  $pArgs = func_get_args();"\
-    " if( sizeof($pArgs) < 2 ){"\
-    " $pArg = $pArgs[0];"\
-	" if( !is_array($pArg) ){"\
-	"   throw new TypeError('min(): Argument #1 ($value) must be of type array, ' . __php_zpp_type($pArg) . ' given');"\
-	" }"\
-	" if( sizeof($pArg) < 1 ){"\
-	"   throw new ValueError('min(): Argument #1 ($value) must contain at least one element');"\
-	" }"\
-	" $min = null; $first = true;"\
-	" foreach( $pArgs[0] as $val ){"\
-	"   if( $first ){ $min = $val; $first = false; }"\
-	"   else if( $val < $min ){ $min = $val; }"\
-	" }"\
-	" return $min;"\
-    " }"\
-    " $min = $pArgs[0];"\
-    " for( $i = 1; $i < sizeof($pArgs) ; ++$i ){"\
-    " $val = $pArgs[$i];"\
-	"if( $val < $min ){"\
-	" $min = $val;"\
-	" }"\
-    " }"\
-	" return $min;"\
-	"}"\
 	"function fileowner(string $filename){"\
     " $a = stat($filename);"\
 	" if( !is_array($a) ){"\

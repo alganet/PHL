@@ -2257,6 +2257,8 @@ static const ph7_builtin_func aHashmapFunc[] = {
 	{"array_shift",       ph7_hashmap_shift   },
 	{"array_product",     ph7_hashmap_product },
 	{"array_sum",         ph7_hashmap_sum     },
+	{"max",               ph7_hashmap_max     },
+	{"min",               ph7_hashmap_min     },
 	{"array_keys",        ph7_hashmap_keys    },
 	{"array_values",      ph7_hashmap_values  },
 	{"array_same",        ph7_hashmap_same    },  /* Symisc eXtension */

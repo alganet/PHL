@@ -3943,6 +3943,194 @@ PH7_PRIVATE int ph7_hashmap_product(ph7_context *pCtx,int nArg,ph7_value **apArg
 	return PH7_OK;
 }
 /*
+ * The comparison max()/min() run is php's zend_compare, which PH7_MemObjCmp
+ * implements -- but that routine converts its operands IN PLACE, and max()
+ * hands back one of the values it was given, so it works on private copies.
+ */
+static sxi32 HashmapMinMaxCmp(ph7_vm *pVm,ph7_value *pA,ph7_value *pB)
+{
+	ph7_value sA,sB;
+	sxi32 rc;
+	PH7_MemObjInit(pVm,&sA);
+	PH7_MemObjInit(pVm,&sB);
+	PH7_MemObjStore(pA,&sA);
+	PH7_MemObjStore(pB,&sB);
+	rc = PH7_MemObjCmp(&sA,&sB,FALSE,0);
+	PH7_MemObjRelease(&sA);
+	PH7_MemObjRelease(&sB);
+	return rc;
+}
+/* A value that is an integer and nothing else: an integer-VALUED real caches its
+ * integer in MEMOBJ_INT (see ph7_value_is_int), and a string that has been read
+ * numerically keeps its own bytes, so both must be excluded here. */
+#define MINMAX_OTHER (MEMOBJ_STRING|MEMOBJ_BOOL|MEMOBJ_NULL|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)
+#define MINMAX_IS_INT(p)  ( ((p)->iFlags & (MEMOBJ_INT|MEMOBJ_REAL|MINMAX_OTHER)) == MEMOBJ_INT )
+#define MINMAX_IS_REAL(p) ( ((p)->iFlags & MEMOBJ_REAL) != 0 && ((p)->iFlags & MINMAX_OTHER) == 0 )
+#ifndef PH7_OMIT_FLOATING_POINT
+/*
+ * Does this integer survive the round trip through a double? php's two-argument
+ * max()/min() take their float branch only when it does (zend_dval_to_lval_silent)
+ * and fall back to the general comparison otherwise, so an integer past 2^53 is
+ * NOT silently compared as a float.
+ */
+static int HashmapMinMaxLongExact(sxi64 iVal)
+{
+	double r = (double)iVal;
+	if( r >= 9223372036854775808.0 || r < -9223372036854775808.0 ){
+		return 0;
+	}
+	return (sxi64)r == iVal;
+}
+#endif /* PH7_OMIT_FLOATING_POINT */
+/*
+ * TWO arguments, which php answers with a different routine from every other
+ * arity. php 8.4 compiles a direct `max($a,$b)` to a FRAMELESS call, and that
+ * handler is `lhs >= rhs ? lhs : rhs` for max and `lhs < rhs ? lhs : rhs` for
+ * min -- so min hands back the SECOND operand when the two compare equal (and
+ * when they do not compare at all, as two objects of different classes do not),
+ * where the general handler keeps whichever it saw first in both directions.
+ * `min(1, 1.0)` is float(1) written in source and int(1) through
+ * call_user_func(), in the same php build.
+ *
+ * PHL has no frameless call, so it applies this rule to every two-argument
+ * call: that is the form php's compiler specializes and the form source code
+ * actually contains. The dynamic-call divergence is recorded.
+ */
+static ph7_value * HashmapMinMaxPair(ph7_vm *pVm,ph7_value *pLhs,ph7_value *pRhs,int bMax)
+{
+	sxi32 rc;
+#ifndef PH7_OMIT_FLOATING_POINT
+	double rLhs = 0,rRhs = 0;
+	int bReal = 0;
+	if( MINMAX_IS_INT(pLhs) ){
+		if( MINMAX_IS_INT(pRhs) ){
+			return bMax ? (pLhs->x.iVal >= pRhs->x.iVal ? pLhs : pRhs)
+			            : (pLhs->x.iVal <  pRhs->x.iVal ? pLhs : pRhs);
+		}
+		if( MINMAX_IS_REAL(pRhs) && HashmapMinMaxLongExact(pLhs->x.iVal) ){
+			rLhs = (double)pLhs->x.iVal;
+			rRhs = (double)pRhs->rVal;
+			bReal = 1;
+		}
+	}else if( MINMAX_IS_REAL(pLhs) ){
+		rLhs = (double)pLhs->rVal;
+		if( MINMAX_IS_REAL(pRhs) ){
+			rRhs = (double)pRhs->rVal;
+			bReal = 1;
+		}else if( MINMAX_IS_INT(pRhs) && HashmapMinMaxLongExact(pRhs->x.iVal) ){
+			rRhs = (double)pRhs->x.iVal;
+			bReal = 1;
+		}
+	}
+	if( bReal ){
+		/* NaN compares false both ways here, which is why max(NAN,1) is 1 and
+		 * max(1,NAN) is NAN -- php's own answers. */
+		return bMax ? (rLhs >= rRhs ? pLhs : pRhs)
+		            : (rLhs <  rRhs ? pLhs : pRhs);
+	}
+#endif /* PH7_OMIT_FLOATING_POINT */
+	rc = HashmapMinMaxCmp(pVm,pLhs,pRhs);
+	return bMax ? (rc >= 0 ? pLhs : pRhs) : (rc < 0 ? pLhs : pRhs);
+}
+/*
+ * mixed max(mixed $value,mixed ...$values)
+ * mixed min(mixed $value,mixed ...$values)
+ *  The highest (lowest) value in an array, or the highest (lowest) of several
+ *  arguments.
+ * Parameters
+ *  $value
+ *   An array, when it is the only argument; otherwise the first of the values
+ *   to compare.
+ *  $values
+ *   Any further values to compare.
+ * Return
+ *  The value that compares highest (lowest). Values of EQUAL rank answer the
+ *  first one seen, except through the two-argument min() described above.
+ *  A single non-array argument is a TypeError and an empty array a ValueError.
+ */
+static int HashmapMinMax(ph7_context *pCtx,int nArg,ph7_value **apArg,int bMax)
+{
+	const char *zName = bMax ? "max" : "min";
+	ph7_value *pBest;
+	int i;
+	if( nArg < 1 ){
+		/* Arity is screened upstream; defensive. */
+		return PH7_VmThrowException(pCtx,
+			"ArgumentCountError",
+			"%s() expects at least 1 argument, %d given",
+			zName,nArg
+			);
+	}
+	if( nArg == 1 ){
+		/* The ARRAY form. php's general comparison walks it in insertion order and
+		 * keeps the first of an equal pair -- for max AND for min. */
+		ph7_hashmap_node *pEntry;
+		ph7_hashmap *pMap;
+		sxu32 n;
+		if( !ph7_value_is_array(apArg[0]) ){
+			char zBuf[64];
+			return PH7_VmThrowException(pCtx,
+				"TypeError",
+				"%s(): Argument #1 ($value) must be of type array, %s given",
+				zName,VmValueGivenName(apArg[0],zBuf,sizeof(zBuf))
+				);
+		}
+		pMap = (ph7_hashmap *)apArg[0]->x.pOther;
+		if( pMap->nEntry < 1 ){
+			return PH7_VmThrowException(pCtx,
+				"ValueError",
+				"%s(): Argument #1 ($value) must contain at least one element",
+				zName
+				);
+		}
+		pEntry = pMap->pFirst;
+		pBest = HashmapExtractNodeValue(pEntry);
+		for( n = 1, pEntry = pEntry->pPrev /* Reverse link */ ;
+		     n < pMap->nEntry ; n++, pEntry = pEntry->pPrev ){
+			ph7_value *pVal = HashmapExtractNodeValue(pEntry);
+			sxi32 rc;
+			if( pVal == 0 ){
+				continue;
+			}
+			if( pBest == 0 ){
+				pBest = pVal;
+				continue;
+			}
+			rc = HashmapMinMaxCmp(pCtx->pVm,pBest,pVal);
+			if( bMax ? (rc < 0) : (rc > 0) ){
+				pBest = pVal;
+			}
+		}
+		if( pBest ){
+			ph7_result_value(pCtx,pBest);
+		}
+		return PH7_OK;
+	}
+	if( nArg == 2 ){
+		ph7_result_value(pCtx,HashmapMinMaxPair(pCtx->pVm,apArg[0],apArg[1],bMax));
+		return PH7_OK;
+	}
+	pBest = apArg[0];
+	for( i = 1 ; i < nArg ; ++i ){
+		sxi32 rc = HashmapMinMaxCmp(pCtx->pVm,apArg[i],pBest);
+		if( bMax ? (rc > 0) : (rc < 0) ){
+			pBest = apArg[i];
+		}
+	}
+	ph7_result_value(pCtx,pBest);
+	return PH7_OK;
+}
+/* mixed max(mixed $value,mixed ...$values) (See block-comment above) */
+PH7_PRIVATE int ph7_hashmap_max(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return HashmapMinMax(pCtx,nArg,apArg,1);
+}
+/* mixed min(mixed $value,mixed ...$values) (See block-comment above) */
+PH7_PRIVATE int ph7_hashmap_min(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return HashmapMinMax(pCtx,nArg,apArg,0);
+}
+/*
  * value array_rand(array $input[,int $num_req = 1 ])
  *  Pick one or more random entries out of an array.
  * Parameters
