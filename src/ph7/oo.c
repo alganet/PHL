@@ -647,7 +647,17 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 		SyStringInitFromBuf(&sKey,(const char *)pEntry->pKey,pEntry->nKeyLen);
 		pName = &sKey;
 		if( (pOwn = SyHashGet(&pSub->hMethod,(const void *)pName->zString,pName->nByte)) != 0 ){
-			 if( pMeth->iFlags & PH7_CLASS_ATTR_FINAL ){
+			if( pMeth->iProtection == PH7_CLASS_PROT_PRIVATE ){
+				/* php: a base's PRIVATE method is never overridden — the child's
+				 * declaration is an independent member of the same name, so neither
+				 * the final rule nor the signature-compatibility rule applies to it
+				 * (zend's do_inherit_method skips both for a private parent). PHL
+				 * ran both: `class A { private function m($a){} } class B extends A
+				 * { private function m($a,$b,$c){} }` was a fatal php compiles, and
+				 * `final private` in the base fataled every child that reused the
+				 * name — php only WARNS at the final-private DECLARATION and lets
+				 * the child have the name. */
+			}else if( pMeth->iFlags & PH7_CLASS_ATTR_FINAL ){
 				/* php: "Cannot override final method A::test()" */
 				rc = PH7_GenCompileError(&(*pGen),E_ERROR,((ph7_class_method *)pOwn->pUserData)->nLine,
 					"Cannot override final method %z::%z()",
@@ -666,20 +676,25 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 			}
 			continue;
 		}
-		/* Install the method. php: a base class's private INSTANCE method is
-		 * dispatchable on child instances too — an inherited public method
-		 * calling $this->priv() must find it (the call-site visibility check
-		 * binds by DECLARING class, sFunc.pUserData, so child code and
-		 * outsiders still can't call it; a private ctor copied down also
-		 * blocks `new Child` from outside like php). Private STATICS stay
-		 * uncopied — base methods reach those through self:: against the
-		 * declaring class directly. */
-		if( pMeth->iProtection != PH7_CLASS_PROT_PRIVATE
-		 || (pMeth->iFlags & PH7_CLASS_ATTR_STATIC) == 0 ){
-			rc = SyHashInsert(&pSub->hMethod,(const void *)pName->zString,pName->nByte,pMeth);
-			if( rc != SXRET_OK ){
-				return rc;
-			}
+		/* Install the method. php: a base class's private method is in the child's
+		 * table too — an inherited public method calling $this->priv() must find it,
+		 * and the LOOKUP has to find it for php's answer to `B::p()` to be
+		 * "Call to private method A::p() from global scope" rather than
+		 * "Call to undefined method B::p()". The call-site visibility check binds by
+		 * DECLARING class (sFunc.pUserData), so child code and outsiders still cannot
+		 * reach it; a private ctor copied down blocks `new Child` from outside like
+		 * php's; and the surfaces that must NOT show an inherited private say so
+		 * themselves (method_exists, get_class_methods, ReflectionClass::getMethods).
+		 *
+		 * STATIC privates used to be skipped here, on the reasoning that base methods
+		 * reach them through self:: against the declaring class anyway. They do — but
+		 * nothing else could: every spelling of `B::p()` (the call, `['B','p']()`,
+		 * call_user_func, a first-class callable) reported the name as UNDEFINED, and
+		 * `static::p()` from the base with a subclass as the late-static-binding
+		 * target could not find its own method. */
+		rc = SyHashInsert(&pSub->hMethod,(const void *)pName->zString,pName->nByte,pMeth);
+		if( rc != SXRET_OK ){
+			return rc;
 		}
 	}
 	/* Mark as subclass */

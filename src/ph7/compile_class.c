@@ -1539,7 +1539,8 @@ static sxi32 GenStateCheckMagicMethod(
 	return 0;
 }
 /*
- * Raise the diagnostic GenStateCheckMagicMethod parked, once, and disarm it.
+ * Raise the declaration diagnostic parked above (GenStateCheckMagicMethod's magic-method
+ * rules, or the final-private one beside its call), once, and disarm it.
  * Suppressed when this declaration has already reported a fatal php decides
  * FIRST — a redeclaration, an abstract method in a non-abstract class, a parse
  * error in the body — since php stops at its own first fatal.
@@ -1704,6 +1705,19 @@ static sxi32 GenStateCompileClassMethod(
 	 * is php's own order (`static function __toString($a): int` reports the
 	 * arity). Reported at the end of this function; see zMagicErr there. */
 	nMagicSeverity = GenStateCheckMagicMethod(pClass,pName,pMeth,zMagicErr,(int)sizeof(zMagicErr));
+	if( nMagicSeverity == 0
+	 && (pMeth->iFlags & PH7_CLASS_ATTR_FINAL)
+	 && pMeth->iProtection == PH7_CLASS_PROT_PRIVATE ){
+		/* Not a magic rule, but the same KIND of rule and the same parking: php
+		 * checks a declaration php itself decides the meaning of. A private method
+		 * is never overridden, so `final` on one says nothing — php WARNS here (8.0+)
+		 * and compiles the class. PHL was silent at the declaration and then fataled
+		 * at the SUBCLASS that reused the name ("Cannot override final method"), a
+		 * class php accepts; the inheritance half is in PH7_ClassInherit. */
+		SyBufferFormat(zMagicErr,sizeof(zMagicErr),
+			"Private methods cannot be final as they are never overridden by other classes");
+		nMagicSeverity = E_WARNING;
+	}
 	if( nMagicSeverity == E_ERROR ){
 		/* Suppress the __toString rule below: php never reaches it on a
 		 * declaration the magic rules already rejected. */
