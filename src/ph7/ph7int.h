@@ -1305,6 +1305,9 @@ struct ph7_class_attr
 #define PH7_NATIVE_VAL_STRING 2
 #define PH7_NATIVE_VAL_BOOL   3
 #define PH7_NATIVE_VAL_DOUBLE 4
+#define PH7_NATIVE_VAL_ARRAY  6 /* The EMPTY array, php's `private array $trace = [];`. The
+                                 * only array literal a stub default needs — anything with
+                                 * elements would want the compiler's byte-code. */
 #define PH7_NATIVE_VAL_NONE   5 /* On a PROPERTY row only: the slot has NO default at all,
                                  * php's `public string $name;`. It needs a declared zType to
                                  * mean anything (an untyped slot without a default is null),

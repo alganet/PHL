@@ -12,176 +12,13 @@
  * so the chunk string and its sizeof stay in one translation unit (the
  * vm_builtin_reflection_lib.c pattern).
  */
-/* The eleven core INTERFACES are declared entirely from C by
- * VmInstallCoreInterfaces() below -- they have no presence in this chunk at all.
- * A chunk cannot express what php declares on them: a TENTATIVE return type
- * (php marks nearly every one), and Throwable's `extends Stringable`. */
+/* The eleven core INTERFACES and the whole Exception/Error family are declared
+ * entirely from C (VmInstallCoreInterfaces / VmInstallExceptions below) -- they
+ * have no presence in this chunk at all. A chunk cannot express what php declares
+ * on them: a TENTATIVE return type (php marks nearly every interface method),
+ * Throwable's `extends Stringable`, the exception family's FINAL getters and
+ * private __clone, or a typed slot with no default (Error::$line). */
 #define PH7_BUILTIN_LIB \
-	"class Exception implements Throwable { "\
-    "protected $message = '';"\
-    "protected $code = 0;"\
-    "protected $file;"\
-    "protected $line;"\
-    "private $trace;"\
-    "private $previous;"\
-	"public function __construct($message = null, $code = 0, ?Throwable $previous = null){"\
-	"   if( isset($message) ){"\
-	"	  $this->message = $message;"\
-	"   }"\
-	"   $this->code = $code;"\
-	"   if( isset($previous) ){"\
-	"     $this->previous = $previous;"\
-	"   }"\
-	"}"\
-	"public function getMessage(){"\
-	"   return $this->message;"\
-	"}"\
-	" public function getCode(){"\
-	"  return $this->code;"\
-	"}"\
-	"public function getFile(){"\
-	"  return $this->file;"\
-	"}"\
-	"public function getLine(){"\
-	"  return $this->line;"\
-	"}"\
-	"public function getTrace(){"\
-	"   return $this->trace;"\
-	"}"\
-	"public function getTraceAsString(){"\
-	"  $s = ''; $i = 0;"\
-	"  if( is_array($this->trace) ){"\
-	"    foreach( $this->trace as $f ){"\
-	"      $a = array();"\
-	"      if( isset($f['args']) && is_array($f['args']) ){"\
-	"        foreach( $f['args'] as $v ){"\
-	"          if( is_string($v) ){"\
-	"            $a[] = strlen($v) > 15 ? \"'\" . substr($v, 0, 15) . \"...'\" : \"'\" . $v . \"'\";"\
-	"          } elseif( is_array($v) ){ $a[] = 'Array'; }"\
-	"          elseif( is_object($v) ){ $a[] = 'Object(' . get_class($v) . ')'; }"\
-	"          elseif( is_null($v) ){ $a[] = 'NULL'; }"\
-	"          elseif( is_bool($v) ){ $a[] = $v ? 'true' : 'false'; }"\
-	"          else { $a[] = (string)$v; }"\
-	"        }"\
-	"      }"\
-	"      $s .= '#' . $i . ' ' . $f['file'] . '(' . $f['line'] . '): '"\
-	"         . (isset($f['class']) ? $f['class'] . $f['type'] : '') . $f['function']"\
-	"         . '(' . implode(', ', $a) . \")\\n\";"\
-	"      $i++;"\
-	"    }"\
-	"  }"\
-	"  return $s . '#' . $i . ' {main}';"\
-	"}"\
-	"public function getPrevious(){"\
-	"    return $this->previous;"\
-	"}"\
-	"public function __toString(){"\
-	"   return $this->file.' '.$this->line.' '.$this->code.' '.$this->message;"\
-    "}"\
-	"}"\
-	"class Error implements Throwable { "\
-    "protected $message = '';"\
-    "protected $code = 0;"\
-    "protected $file;"\
-    "protected $line;"\
-    "private $trace;"\
-    "private $previous;"\
-	"public function __construct($message = null, $code = 0, ?Throwable $previous = null){"\
-	"   if( isset($message) ){"\
-	"	  $this->message = $message;"\
-	"   }"\
-	"   $this->code = $code;"\
-	"   if( isset($previous) ){"\
-	"     $this->previous = $previous;"\
-	"   }"\
-	"}"\
-	"public function getMessage(){"\
-	"   return $this->message;"\
-	"}"\
-	"public function getCode(){"\
-	"  return $this->code;"\
-	"}"\
-	"public function getFile(){"\
-	"  return $this->file;"\
-	"}"\
-	"public function getLine(){"\
-	"  return $this->line;"\
-	"}"\
-	"public function getTrace(){"\
-	"   return $this->trace;"\
-	"}"\
-	"public function getTraceAsString(){"\
-	"  $s = ''; $i = 0;"\
-	"  if( is_array($this->trace) ){"\
-	"    foreach( $this->trace as $f ){"\
-	"      $a = array();"\
-	"      if( isset($f['args']) && is_array($f['args']) ){"\
-	"        foreach( $f['args'] as $v ){"\
-	"          if( is_string($v) ){"\
-	"            $a[] = strlen($v) > 15 ? \"'\" . substr($v, 0, 15) . \"...'\" : \"'\" . $v . \"'\";"\
-	"          } elseif( is_array($v) ){ $a[] = 'Array'; }"\
-	"          elseif( is_object($v) ){ $a[] = 'Object(' . get_class($v) . ')'; }"\
-	"          elseif( is_null($v) ){ $a[] = 'NULL'; }"\
-	"          elseif( is_bool($v) ){ $a[] = $v ? 'true' : 'false'; }"\
-	"          else { $a[] = (string)$v; }"\
-	"        }"\
-	"      }"\
-	"      $s .= '#' . $i . ' ' . $f['file'] . '(' . $f['line'] . '): '"\
-	"         . (isset($f['class']) ? $f['class'] . $f['type'] : '') . $f['function']"\
-	"         . '(' . implode(', ', $a) . \")\\n\";"\
-	"      $i++;"\
-	"    }"\
-	"  }"\
-	"  return $s . '#' . $i . ' {main}';"\
-	"}"\
-	"public function getPrevious(){"\
-	"    return $this->previous;"\
-	"}"\
-	"public function __toString(){"\
-	"   return $this->file.' '.$this->line.' '.$this->code.' '.$this->message;"\
-	"}"\
-	"}"\
-	"class TypeError extends Error { }"\
-	"class ArgumentCountError extends TypeError { }"\
-	"class ValueError extends Error { }"\
-	"class FiberError extends Error { }"\
-	"class AssertionError extends Error { }"\
-	"class ArithmeticError extends Error { }"\
-	"class DivisionByZeroError extends ArithmeticError { }"\
-	"class UnhandledMatchError extends Error { }"\
-	"class CompileError extends Error { }"\
-	"class ParseError extends CompileError { }"\
-	"class ErrorException extends Exception { "\
-	"protected $severity;"\
-	"public function __construct(?string $message = null,"\
-	"int $code = 0,int $severity = 1,string $filename = __FILE__ ,int $lineno = __LINE__ ,?Throwable $previous = null){"\
-	"   /* message/code/previous belong to Exception (trace/previous are private"\
-	"    * to it); delegate, then set our own severity plus the caller-supplied"\
-	"    * file/line, which are protected and stay writable here. */"\
-	"   parent::__construct($message, $code, $previous);"\
-	"   $this->severity = $severity;"\
-	"   $this->file = $filename;"\
-	"   $this->line = $lineno;"\
-	"}"\
-	"public function getSeverity(){"\
-	"   return $this->severity;"\
-    "}"\
-	"}"\
-	"/* SPL exceptions: thin tree, inherit Exception's ctor+getters. Roots first. */"\
-	"class LogicException extends Exception { }"\
-	"class RuntimeException extends Exception { }"\
-	"class BadFunctionCallException extends LogicException { }"\
-	"class BadMethodCallException extends BadFunctionCallException { }"\
-	"class DomainException extends LogicException { }"\
-	"class InvalidArgumentException extends LogicException { }"\
-	"class LengthException extends LogicException { }"\
-	"class OutOfRangeException extends LogicException { }"\
-	"class OutOfBoundsException extends RuntimeException { }"\
-	"class OverflowException extends RuntimeException { }"\
-	"class RangeException extends RuntimeException { }"\
-	"class UnderflowException extends RuntimeException { }"\
-	"class UnexpectedValueException extends RuntimeException { }"\
-	"class JsonException extends Exception { }"\
 	"/* Directory releated IO */"\
 	"class Directory {"\
 	"public $handle = null;"\
@@ -614,6 +451,637 @@
     "}"
 
 /*
+ * ---------------------------------------------------------------------------
+ * The Exception / Error family, declared from C.
+ *
+ * php's two roots are one implementation twice over (its stub says
+ * `@implementation-alias Exception::__construct` for every one of Error's
+ * methods), so the bodies below are shared by both spec tables and the
+ * ~20 subclasses are declaration-only rows.
+ *
+ * php's seven slots, in php's own declaration order. `string` is php's cache of
+ * the __toString rendering -- unused by the engine but PRESENT on every
+ * presentation surface, which is why it is declared here rather than skipped:
+ * var_dump/print_r/(array)/serialize all show it, and PHL was one property short
+ * of php on every exception ever printed.
+ * ---------------------------------------------------------------------------
+ */
+#define EXC_MESSAGE  "message"
+#define EXC_STRING   "string"
+#define EXC_CODE     "code"
+#define EXC_FILE     "file"
+#define EXC_LINE     "line"
+#define EXC_TRACE    "trace"
+#define EXC_PREVIOUS "previous"
+#define EXC_SEVERITY "severity"
+/*
+ * Answer a declared slot the way php's getter does. Three of the seven CONVERT
+ * rather than copy — getMessage()/getFile() answer a string and getLine() an int,
+ * whatever the slot holds — and that shows twice: a subclass assigning
+ * `$this->message = 5` reads back "5", and a slot __wakeup has DROPPED reads as
+ * "" rather than null. The other four are verbatim copies (getCode() of that same
+ * subclass really is the int).
+ */
+#define EXC_READ_RAW 0
+#define EXC_READ_STR 1
+#define EXC_READ_INT 2
+static int VmExcReadSlot(ph7_context *pCtx,const char *zSlot,int iAs)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pVal = pThis ? PH7_NativeAttr(pThis,zSlot) : 0;
+	ph7_value sTmp;
+	if( iAs == EXC_READ_RAW ){
+		if( pVal ){
+			ph7_result_value(pCtx,pVal);
+		}else{
+			ph7_result_null(pCtx);
+		}
+		return PH7_OK;
+	}
+	/* Through a COPY: converting the slot would rewrite the exception's state. */
+	PH7_MemObjInit(pCtx->pVm,&sTmp);
+	if( pVal ){
+		PH7_MemObjStore(pVal,&sTmp);
+	}
+	if( iAs == EXC_READ_INT ){
+		PH7_MemObjToInteger(&sTmp);
+	}else{
+		PH7_MemObjToString(&sTmp);
+	}
+	ph7_result_value(pCtx,&sTmp);
+	PH7_MemObjRelease(&sTmp);
+	return PH7_OK;
+}
+static int vm_builtin_Exception_getMessage(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return VmExcReadSlot(pCtx,EXC_MESSAGE,EXC_READ_STR);
+}
+static int vm_builtin_Exception_getCode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return VmExcReadSlot(pCtx,EXC_CODE,EXC_READ_RAW);
+}
+static int vm_builtin_Exception_getFile(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return VmExcReadSlot(pCtx,EXC_FILE,EXC_READ_STR);
+}
+static int vm_builtin_Exception_getLine(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return VmExcReadSlot(pCtx,EXC_LINE,EXC_READ_INT);
+}
+static int vm_builtin_Exception_getTrace(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return VmExcReadSlot(pCtx,EXC_TRACE,EXC_READ_RAW);
+}
+static int vm_builtin_Exception_getPrevious(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return VmExcReadSlot(pCtx,EXC_PREVIOUS,EXC_READ_RAW);
+}
+static int vm_builtin_ErrorException_getSeverity(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return VmExcReadSlot(pCtx,EXC_SEVERITY,EXC_READ_RAW);
+}
+/*
+ * php's zend_update_exception_properties: each of the three is written only when
+ * the caller actually supplied it — a message when the argument was PASSED (`""`
+ * included), a code when it is NON-ZERO, a previous when it is an object. That is
+ * not the same as writing the defaults: a subclass may redeclare
+ * `protected $message = 'default'`, and php keeps it for `new Sub()`.
+ */
+static void VmExcInitProps(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,
+	ph7_value **apArg,int iPrev)
+{
+	if( nArg > 0 ){
+		int nMsg = 0;
+		const char *zMsg = ph7_value_to_string(apArg[0],&nMsg);
+		PH7_NativeSetAttrStr(pCtx->pVm,pThis,EXC_MESSAGE,zMsg,nMsg);
+	}
+	if( nArg > 1 ){
+		ph7_value sCode;
+		PH7_MemObjInit(pCtx->pVm,&sCode);
+		PH7_MemObjStore(apArg[1],&sCode);
+		PH7_MemObjToInteger(&sCode);
+		if( sCode.x.iVal != 0 ){
+			PH7_NativeSetAttrInt(pCtx->pVm,pThis,EXC_CODE,sCode.x.iVal);
+		}
+		PH7_MemObjRelease(&sCode);
+	}
+	/* php's `previous` is the LAST parameter of each constructor, and
+	 * ErrorException's is #5 rather than #2. */
+	if( nArg > iPrev && (apArg[iPrev]->iFlags & MEMOBJ_OBJ) && apArg[iPrev]->x.pOther ){
+		PH7_NativeSetAttrObj(pCtx->pVm,pThis,EXC_PREVIOUS,
+			(ph7_class_instance *)apArg[iPrev]->x.pOther);
+	}
+}
+static int vm_builtin_Exception_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	if( pThis ){
+		VmExcInitProps(pCtx,pThis,nArg,apArg,2);
+	}
+	return PH7_OK;
+}
+/*
+ * ErrorException's own constructor: php's Exception three, then severity, then
+ * the OPTIONAL file/line overrides. php's `?string $filename = null` /
+ * `?int $line = null` mean "keep the creation site" — the chunk defaulted them to
+ * __FILE__/__LINE__, which resolved against the EMBEDDED chunk and reported
+ * `:MEMORY:` line 1 for every ErrorException that did not pass them. php's one
+ * asymmetry: a filename WITHOUT a line resets the line to 0.
+ */
+static int vm_builtin_ErrorException_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	VmExcInitProps(pCtx,pThis,nArg,apArg,5);
+	if( nArg > 2 ){
+		PH7_NativeSetAttrInt(pCtx->pVm,pThis,EXC_SEVERITY,ph7_value_to_int64(apArg[2]));
+	}
+	if( nArg > 3 && !ph7_value_is_null(apArg[3]) ){
+		int nFile = 0;
+		const char *zFile = ph7_value_to_string(apArg[3],&nFile);
+		PH7_NativeSetAttrStr(pCtx->pVm,pThis,EXC_FILE,zFile,nFile);
+		if( nArg < 5 || ph7_value_is_null(apArg[4]) ){
+			PH7_NativeSetAttrInt(pCtx->pVm,pThis,EXC_LINE,0);
+		}
+	}
+	if( nArg > 4 && !ph7_value_is_null(apArg[4]) ){
+		PH7_NativeSetAttrInt(pCtx->pVm,pThis,EXC_LINE,ph7_value_to_int64(apArg[4]));
+	}
+	return PH7_OK;
+}
+/*
+ * php's private __clone. It has an empty body and is never reached: the class
+ * carries php's own clone refusal (PH7_CLASS_NOCLONE, answered before any body
+ * runs), which is what `clone $e` reports — "Trying to clone an uncloneable
+ * object of class X", not a visibility error. Declaring it is still php-visible:
+ * Reflection lists it, and `$e->__clone()` from inside the class works.
+ */
+static int vm_builtin_Exception_clone(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+/*
+ * php's __wakeup: the two UNTYPED slots are the only ones a serialized payload
+ * can lie about (the other five are typed and the store enforces them), so php
+ * DROPS a message that is not a string and a code that is not an int rather than
+ * letting a method read one.
+ */
+static void VmExcDropSlot(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot)
+{
+	SyHashEntry *pEntry = SyHashGet(&pThis->hAttr,(const void *)zSlot,SyStrlen(zSlot));
+	if( pEntry ){
+		PH7_VmReleaseInstanceAttr(&(*pVm),(VmClassAttr *)pEntry->pUserData);
+		SyHashDeleteEntry2(pEntry);
+	}
+}
+static int vm_builtin_Exception_wakeup(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pVal;
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	pVal = PH7_NativeAttr(pThis,EXC_MESSAGE);
+	if( pVal && (pVal->iFlags & MEMOBJ_NULL) == 0 && (pVal->iFlags & MEMOBJ_STRING) == 0 ){
+		VmExcDropSlot(pCtx->pVm,pThis,EXC_MESSAGE);
+	}
+	pVal = PH7_NativeAttr(pThis,EXC_CODE);
+	if( pVal && (pVal->iFlags & MEMOBJ_NULL) == 0 && (pVal->iFlags & MEMOBJ_INT) == 0 ){
+		VmExcDropSlot(pCtx->pVm,pThis,EXC_CODE);
+	}
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+/*
+ * One argument of a trace frame, php's smart_str_append_scalar: a string is
+ * single-quoted, ESCAPED (`\n`, `\xNN` for anything non-printable) and truncated
+ * to 15 bytes with `...` inside the quotes; a float takes php's precision; an
+ * enum case prints `Enum::Case`; and anything else is a bare word.
+ */
+#define EXC_ARG_MAX 15
+static void VmExcTraceArg(ph7_vm *pVm,SyBlob *pOut,ph7_value *pArg)
+{
+	if( pArg == 0 || (pArg->iFlags & MEMOBJ_NULL) ){
+		SyBlobAppend(pOut,"NULL",sizeof("NULL")-1);
+		return;
+	}
+	if( pArg->iFlags & MEMOBJ_BOOL ){
+		if( pArg->x.iVal ){
+			SyBlobAppend(pOut,"true",sizeof("true")-1);
+		}else{
+			SyBlobAppend(pOut,"false",sizeof("false")-1);
+		}
+		return;
+	}
+	if( pArg->iFlags & MEMOBJ_HASHMAP ){
+		SyBlobAppend(pOut,"Array",sizeof("Array")-1);
+		return;
+	}
+	if( pArg->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pObj = (ph7_class_instance *)pArg->x.pOther;
+		if( pObj && pObj->pClass && (pObj->pClass->iFlags & PH7_CLASS_ENUM) ){
+			ph7_value *pName = PH7_NativeAttr(pObj,"name");
+			SyBlobFormat(pOut,"%z::",&pObj->pClass->sName);
+			if( pName ){
+				SyBlobAppend(pOut,SyBlobData(&pName->sBlob),SyBlobLength(&pName->sBlob));
+			}
+			return;
+		}
+		SyBlobAppend(pOut,"Object(",sizeof("Object(")-1);
+		if( pObj && pObj->pClass ){
+			SyBlobFormat(pOut,"%z",&pObj->pClass->sName);
+		}
+		SyBlobAppend(pOut,")",sizeof(")")-1);
+		return;
+	}
+	if( pArg->iFlags & MEMOBJ_STRING ){
+		const char *z = (const char *)SyBlobData(&pArg->sBlob);
+		sxu32 n = SyBlobLength(&pArg->sBlob);
+		sxu32 nKeep = n > EXC_ARG_MAX ? EXC_ARG_MAX : n;
+		sxu32 i;
+		SyBlobAppend(pOut,"'",sizeof("'")-1);
+		for( i = 0 ; i < nKeep ; i++ ){
+			unsigned char c = (unsigned char)z[i];
+			if( c >= 32 && c <= 126 && c != '\\' ){
+				SyBlobAppend(pOut,(const void *)&z[i],sizeof(char));
+				continue;
+			}
+			switch( c ){
+				case '\n': SyBlobAppend(pOut,"\\n",2); break;
+				case '\r': SyBlobAppend(pOut,"\\r",2); break;
+				case '\t': SyBlobAppend(pOut,"\\t",2); break;
+				case '\f': SyBlobAppend(pOut,"\\f",2); break;
+				case '\v': SyBlobAppend(pOut,"\\v",2); break;
+				case '\\': SyBlobAppend(pOut,"\\\\",2); break;
+				case 27:   SyBlobAppend(pOut,"\\e",2); break;
+				default:   SyBlobFormat(pOut,"\\x%02X",(int)c); break;
+			}
+		}
+		if( n > nKeep ){
+			SyBlobAppend(pOut,"...",sizeof("...")-1);
+		}
+		SyBlobAppend(pOut,"'",sizeof("'")-1);
+		return;
+	}
+	{
+		/* int / float / anything else: php prints the scalar itself. */
+		ph7_value sTmp;
+		PH7_MemObjInit(&(*pVm),&sTmp);
+		PH7_MemObjStore(pArg,&sTmp);
+		PH7_MemObjToString(&sTmp);
+		SyBlobAppend(pOut,SyBlobData(&sTmp.sBlob),SyBlobLength(&sTmp.sBlob));
+		PH7_MemObjRelease(&sTmp);
+	}
+}
+/* An element of a trace frame, or NULL when the frame does not carry it. */
+static ph7_value * VmExcFrameField(ph7_vm *pVm,ph7_hashmap *pFrame,const char *zField)
+{
+	ph7_hashmap_node *pNode = 0;
+	ph7_value sKey;
+	sxi32 rc;
+	SyString sName;
+	SyStringInitFromBuf(&sName,zField,SyStrlen(zField));
+	PH7_MemObjInitFromString(&(*pVm),&sKey,&sName);
+	rc = PH7_HashmapLookup(pFrame,&sKey,&pNode);
+	PH7_MemObjRelease(&sKey);
+	if( rc != SXRET_OK || pNode == 0 ){
+		return 0;
+	}
+	return (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
+}
+static void VmExcFrameStr(SyBlob *pOut,ph7_value *pVal)
+{
+	if( pVal && (pVal->iFlags & MEMOBJ_STRING) ){
+		SyBlobAppend(pOut,SyBlobData(&pVal->sBlob),SyBlobLength(&pVal->sBlob));
+	}
+}
+/* A slot's string form, taken through a COPY: converting the value in place
+ * would rewrite the exception's own state. */
+static void VmExcValueStr(ph7_vm *pVm,ph7_value *pVal,SyBlob *pOut)
+{
+	ph7_value sTmp;
+	if( pVal == 0 ){
+		return;
+	}
+	PH7_MemObjInit(&(*pVm),&sTmp);
+	PH7_MemObjStore(pVal,&sTmp);
+	PH7_MemObjToString(&sTmp);
+	SyBlobAppend(pOut,SyBlobData(&sTmp.sBlob),SyBlobLength(&sTmp.sBlob));
+	PH7_MemObjRelease(&sTmp);
+}
+/* Does the blob contain this literal? SyBlobSearch() is `#ifndef
+ * PH7_DISABLE_BUILTIN_FUNC`, and the exception family exists in the tiny build
+ * too, so the one search this file needs is spelled out. */
+static int VmExcBlobHas(SyBlob *pBlob,const char *zPat,sxu32 nPat)
+{
+	const char *z = (const char *)SyBlobData(pBlob);
+	sxu32 n = SyBlobLength(pBlob);
+	sxu32 i;
+	if( nPat == 0 || n < nPat ){
+		return 0;
+	}
+	for( i = 0 ; i + nPat <= n ; i++ ){
+		if( SyMemcmp((const void *)&z[i],(const void *)zPat,nPat) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/* php's `Z_OBJCE_P == zend_ce_type_error || == zend_ce_argument_count_error`:
+ * the two classes whose message __toString finishes with " and defined". */
+static int VmExcIsArgError(ph7_vm *pVm,ph7_class_instance *pExc)
+{
+	ph7_class *pClass = pExc ? pExc->pClass : 0;
+	ph7_class *pType;
+	if( pClass == 0 ){
+		return 0;
+	}
+	pType = PH7_VmExtractClass(&(*pVm),"TypeError",sizeof("TypeError")-1,FALSE,0);
+	if( pType && pClass == pType ){
+		return 1;
+	}
+	pType = PH7_VmExtractClass(&(*pVm),"ArgumentCountError",sizeof("ArgumentCountError")-1,FALSE,0);
+	return pType != 0 && pClass == pType;
+}
+/*
+ * php's zend_trace_to_string: one `#N file(line): Class->method(args)` line per
+ * frame, then `#N {main}` with NO trailing newline. A frame with no `file` is
+ * php's `[internal function]: `.
+ */
+static void VmExcTraceString(ph7_vm *pVm,ph7_value *pTrace,SyBlob *pOut)
+{
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pEntry;
+	sxu32 nFrame = 0;
+	if( pTrace && (pTrace->iFlags & MEMOBJ_HASHMAP) && pTrace->x.pOther ){
+		pMap = (ph7_hashmap *)pTrace->x.pOther;
+		/* Insertion order is pFirst then the pPrev chain (rule 12). */
+		for( pEntry = pMap->pFirst ; pEntry ; pEntry = pEntry->pPrev ){
+			ph7_value *pFrameVal = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nValIdx);
+			ph7_hashmap *pFrame;
+			ph7_value *pFile;
+			if( pFrameVal == 0 || (pFrameVal->iFlags & MEMOBJ_HASHMAP) == 0 ){
+				continue;
+			}
+			pFrame = (ph7_hashmap *)pFrameVal->x.pOther;
+			SyBlobFormat(pOut,"#%u ",nFrame);
+			pFile = VmExcFrameField(&(*pVm),pFrame,"file");
+			if( pFile && (pFile->iFlags & MEMOBJ_STRING) ){
+				ph7_value *pLine = VmExcFrameField(&(*pVm),pFrame,"line");
+				VmExcFrameStr(pOut,pFile);
+				SyBlobFormat(pOut,"(%qd): ",
+					(pLine && (pLine->iFlags & MEMOBJ_INT)) ? pLine->x.iVal : (sxi64)0);
+			}else{
+				SyBlobAppend(pOut,"[internal function]: ",sizeof("[internal function]: ")-1);
+			}
+			VmExcFrameStr(pOut,VmExcFrameField(&(*pVm),pFrame,"class"));
+			VmExcFrameStr(pOut,VmExcFrameField(&(*pVm),pFrame,"type"));
+			VmExcFrameStr(pOut,VmExcFrameField(&(*pVm),pFrame,"function"));
+			SyBlobAppend(pOut,"(",sizeof("(")-1);
+			{
+				ph7_value *pArgs = VmExcFrameField(&(*pVm),pFrame,"args");
+				if( pArgs && (pArgs->iFlags & MEMOBJ_HASHMAP) && pArgs->x.pOther ){
+					ph7_hashmap *pArgMap = (ph7_hashmap *)pArgs->x.pOther;
+					ph7_hashmap_node *pArg;
+					int bFirst = 1;
+					for( pArg = pArgMap->pFirst ; pArg ; pArg = pArg->pPrev ){
+						if( !bFirst ){
+							SyBlobAppend(pOut,", ",sizeof(", ")-1);
+						}
+						bFirst = 0;
+						VmExcTraceArg(&(*pVm),pOut,
+							(ph7_value *)SySetAt(&pVm->aMemObj,pArg->nValIdx));
+					}
+				}
+			}
+			SyBlobAppend(pOut,")\n",sizeof(")\n")-1);
+			nFrame++;
+		}
+	}
+	SyBlobFormat(pOut,"#%u {main}",nFrame);
+}
+static int vm_builtin_Exception_getTraceAsString(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SyBlob sOut;
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+	VmExcTraceString(pCtx->pVm,pThis ? PH7_NativeAttr(pThis,EXC_TRACE) : 0,&sOut);
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+	return PH7_OK;
+}
+/*
+ * php's Exception::__toString.
+ *
+ *    C: message in file:line
+ *    Stack trace:
+ *    <trace>
+ *
+ * The PREVIOUS chain is part of the format and the ORDER is inverted: php builds
+ * the string innermost-first and joins the shallower ones after `\n\nNext `, so
+ * the root cause is printed first. The chunk answered a four-field space-joined
+ * line instead — `file line code message` — which no php ever produced, and it is
+ * what an uncaught exception, `echo $e` and `(string)$e` all show.
+ *
+ * The walk carries its ancestors on the C stack (rule 31): php protects each
+ * object it visits and stops when it comes back round, and a `$a->previous = $b;
+ * $b->previous = $a` pair must not spin.
+ */
+#define EXC_CHAIN_MAX 256
+static int vm_builtin_Exception_toString(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *apChain[EXC_CHAIN_MAX];
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_vm *pVm = pCtx->pVm;
+	SyBlob sOut;
+	int nChain = 0;
+	int i,j;
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	while( pThis && nChain < EXC_CHAIN_MAX ){
+		ph7_class_instance *pPrev;
+		for( j = 0 ; j < nChain ; j++ ){
+			if( apChain[j] == pThis ){
+				pThis = 0;    /* already on the chain: php's recursion protection */
+				break;
+			}
+		}
+		if( pThis == 0 ){
+			break;
+		}
+		apChain[nChain++] = pThis;
+		pPrev = PH7_NativeAttrObj(pThis,EXC_PREVIOUS);
+		pThis = pPrev;
+	}
+	/* php formats the SHALLOWEST first and pushes each one it has already built
+	 * behind the next, so the printed order is inverted: the ROOT CAUSE leads and
+	 * every caller follows it after `\n\nNext `. */
+	SyBlobInit(&sOut,&pVm->sAllocator);
+	for( i = 0 ; i < nChain ; i++ ){
+		ph7_class_instance *pExc = apChain[i];
+		ph7_value *pLine = PH7_NativeAttr(pExc,EXC_LINE);
+		SyBlob sMsg;
+		SyBlob sThis;
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		SyBlobInit(&sThis,&pVm->sAllocator);
+		VmExcValueStr(pVm,PH7_NativeAttr(pExc,EXC_MESSAGE),&sMsg);
+		/* php's one message rewrite: a TypeError/ArgumentCountError raised at a
+		 * CALL SITE says "..., called in F on line N", and __toString finishes the
+		 * sentence with " and defined". */
+		if( VmExcIsArgError(pVm,pExc)
+		 && VmExcBlobHas(&sMsg,", called in ",sizeof(", called in ")-1) ){
+			SyBlobAppend(&sMsg," and defined",sizeof(" and defined")-1);
+		}
+		SyBlobFormat(&sThis,"%z",&pExc->pClass->sName);
+		if( SyBlobLength(&sMsg) > 0 ){
+			SyBlobAppend(&sThis,": ",sizeof(": ")-1);
+			SyBlobAppend(&sThis,SyBlobData(&sMsg),SyBlobLength(&sMsg));
+		}
+		SyBlobAppend(&sThis," in ",sizeof(" in ")-1);
+		VmExcFrameStr(&sThis,PH7_NativeAttr(pExc,EXC_FILE));
+		SyBlobFormat(&sThis,":%qd\nStack trace:\n",
+			(pLine && (pLine->iFlags & MEMOBJ_INT)) ? pLine->x.iVal : (sxi64)0);
+		VmExcTraceString(pVm,PH7_NativeAttr(pExc,EXC_TRACE),&sThis);
+		if( SyBlobLength(&sOut) > 0 ){
+			SyBlobAppend(&sThis,"\n\nNext ",sizeof("\n\nNext ")-1);
+			SyBlobAppend(&sThis,SyBlobData(&sOut),SyBlobLength(&sOut));
+		}
+		SyBlobReset(&sOut);
+		SyBlobAppend(&sOut,SyBlobData(&sThis),SyBlobLength(&sThis));
+		SyBlobRelease(&sMsg);
+		SyBlobRelease(&sThis);
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+	return PH7_OK;
+}
+/*
+ * The declaration. php's two roots carry the same eleven methods and the same
+ * seven slots; the only difference php's stub records is `Error::$line`, which
+ * has NO default where Exception's is 0.
+ *
+ * PH7_CLASS_NOCLONE on EVERY row: php refuses `clone $e` outright, and a native
+ * subclass does not inherit its parent's class flags (rule 29).
+ */
+#define EXC_METHODS(zCtor,xCtor) \
+	{ "__clone",          PH7_MOD_PRIVATE, "", "void", vm_builtin_Exception_clone }, \
+	{ "__construct",      PH7_MOD_PUBLIC, zCtor, 0, xCtor }, \
+	{ "__wakeup",         PH7_MOD_PUBLIC, "", "@void", vm_builtin_Exception_wakeup }, \
+	{ "getMessage",       PH7_MOD_PUBLIC|PH7_MOD_FINAL, "", "string", \
+	  vm_builtin_Exception_getMessage }, \
+	{ "getCode",          PH7_MOD_PUBLIC|PH7_MOD_FINAL, "", 0, \
+	  vm_builtin_Exception_getCode }, \
+	{ "getFile",          PH7_MOD_PUBLIC|PH7_MOD_FINAL, "", "string", \
+	  vm_builtin_Exception_getFile }, \
+	{ "getLine",          PH7_MOD_PUBLIC|PH7_MOD_FINAL, "", "int", \
+	  vm_builtin_Exception_getLine }, \
+	{ "getTrace",         PH7_MOD_PUBLIC|PH7_MOD_FINAL, "", "array", \
+	  vm_builtin_Exception_getTrace }, \
+	{ "getPrevious",      PH7_MOD_PUBLIC|PH7_MOD_FINAL, "", "?Throwable", \
+	  vm_builtin_Exception_getPrevious }, \
+	{ "getTraceAsString", PH7_MOD_PUBLIC|PH7_MOD_FINAL, "", "string", \
+	  vm_builtin_Exception_getTraceAsString }, \
+	{ "__toString",       PH7_MOD_PUBLIC, "", "string", vm_builtin_Exception_toString }
+#define EXC_CTOR_SIG "string $message = \"\", int $code = 0, ?Throwable $previous = null"
+/* php's seven slots, twice: the only difference between the two roots is
+ * `Error::$line`, which php's stub declares with NO default where Exception's is
+ * 0 (`PH7_NATIVE_VAL_NONE` — its hasDefaultValue() is false and the export
+ * prints `protected int $line` bare). `message` and `code` are the two php leaves
+ * UNTYPED, and its stub says why: BC, since a subclass may have assigned
+ * anything to them. */
+#define EXC_PROP_HEAD \
+	{ EXC_MESSAGE,  PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 }, \
+	{ EXC_STRING,   PH7_MOD_PRIVATE,   { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, "string" }, \
+	{ EXC_CODE,     PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 }, \
+	{ EXC_FILE,     PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, "string" }
+#define EXC_PROP_TAIL \
+	{ EXC_TRACE,    PH7_MOD_PRIVATE,   { 0, 0, PH7_NATIVE_VAL_ARRAY, 0, 0, 0.0 }, "array" }, \
+	{ EXC_PREVIOUS, PH7_MOD_PRIVATE,   { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, "?Throwable" }
+static sxi32 VmInstallExceptions(ph7_vm *pVm)
+{
+	static const PH7_NativeMethodDef aExcMethod[] = {
+		EXC_METHODS(EXC_CTOR_SIG,vm_builtin_Exception_construct)
+	};
+	static const PH7_NativePropDef aExcProp[] = {
+		EXC_PROP_HEAD,
+		{ EXC_LINE, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, "int" },
+		EXC_PROP_TAIL
+	};
+	static const PH7_NativePropDef aErrProp[] = {
+		EXC_PROP_HEAD,
+		{ EXC_LINE, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "int" },
+		EXC_PROP_TAIL
+	};
+	static const PH7_NativePropDef aErrExcProp[] = {
+		{ EXC_SEVERITY, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_INT, 1, 0, 0.0 }, "int" },
+	};
+	static const PH7_NativeMethodDef aErrExcMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC,
+		  "string $message = \"\", int $code = 0, int $severity = E_ERROR, "
+		  "?string $filename = null, ?int $line = null, ?Throwable $previous = null", 0,
+		  vm_builtin_ErrorException_construct },
+		{ "getSeverity", PH7_MOD_PUBLIC|PH7_MOD_FINAL, "", "int",
+		  vm_builtin_ErrorException_getSeverity },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "Exception", 0, "Throwable", PH7_CLASS_NOCLONE,
+		  aExcMethod, SX_ARRAYSIZE(aExcMethod), 0, 0, aExcProp, SX_ARRAYSIZE(aExcProp), 0, 0, 0 },
+		{ "Error", 0, "Throwable", PH7_CLASS_NOCLONE,
+		  aExcMethod, SX_ARRAYSIZE(aExcMethod), 0, 0, aErrProp, SX_ARRAYSIZE(aErrProp), 0, 0, 0 },
+		/* Zend's own subclasses, then ErrorException, then SPL's tree. Every row is
+		 * declaration-only in php too. */
+		{ "TypeError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "ArgumentCountError", "TypeError", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "ValueError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "FiberError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "AssertionError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "ArithmeticError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DivisionByZeroError", "ArithmeticError", 0, PH7_CLASS_NOCLONE,
+		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "UnhandledMatchError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "CompileError", "Error", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "ParseError", "CompileError", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "ErrorException", "Exception", 0, PH7_CLASS_NOCLONE,
+		  aErrExcMethod, SX_ARRAYSIZE(aErrExcMethod), 0, 0,
+		  aErrExcProp, SX_ARRAYSIZE(aErrExcProp), 0, 0, 0 },
+		{ "LogicException", "Exception", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "RuntimeException", "Exception", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "BadFunctionCallException", "LogicException", 0, PH7_CLASS_NOCLONE,
+		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "BadMethodCallException", "BadFunctionCallException", 0, PH7_CLASS_NOCLONE,
+		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DomainException", "LogicException", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "InvalidArgumentException", "LogicException", 0, PH7_CLASS_NOCLONE,
+		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "LengthException", "LogicException", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "OutOfRangeException", "LogicException", 0, PH7_CLASS_NOCLONE,
+		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "OutOfBoundsException", "RuntimeException", 0, PH7_CLASS_NOCLONE,
+		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "OverflowException", "RuntimeException", 0, PH7_CLASS_NOCLONE,
+		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "RangeException", "RuntimeException", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "UnderflowException", "RuntimeException", 0, PH7_CLASS_NOCLONE,
+		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "UnexpectedValueException", "RuntimeException", 0, PH7_CLASS_NOCLONE,
+		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "JsonException", "Exception", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+	};
+	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+}
+/*
  * The eleven core interfaces, declared from C.
  *
  * They are contracts -- no method here has a body, every row is
@@ -720,9 +1188,10 @@ PH7_PRIVATE sxi32 PH7_VmInstallBuiltinLib(ph7_vm *pVm)
 {
 	SyString sBuiltin;
 	SyString sRandom;
-	/* The interfaces first: the chunk below declares classes that implement
-	 * them (Exception implements Throwable). */
+	/* The interfaces first: everything below implements one of them
+	 * (Exception implements Throwable). */
 	VmInstallCoreInterfaces(&(*pVm));
+	VmInstallExceptions(&(*pVm));
 	SyStringInitFromBuf(&sBuiltin,PH7_BUILTIN_LIB,sizeof(PH7_BUILTIN_LIB)-1);
 	/* Compile the built-in library */
 	VmEvalChunk(&(*pVm),0,&sBuiltin,PH7_PHP_ONLY,FALSE);

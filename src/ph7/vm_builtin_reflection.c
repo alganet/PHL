@@ -246,19 +246,33 @@ static void ReflectMembers(ph7_vm *pVm, ph7_class *pClass, SySet *pOut, int bLoo
 	ph7_class *pWalk = pClass;
 	SyHashEntry *pEntry;
 	SySet aTmp;
-	sxu32 nChain = 0, iLevel, nT;
+	int bInternal = (pClass->iFlags & PH7_CLASS_INTERNAL) != 0;
+	int iPart;
+	sxu32 nChain = 0, iLevel, nLev, nT;
 	while( pWalk && nChain < (sxu32)(REFLECT_WALK_MAX_DEPTH + 1) ){
 		aChain[nChain++] = pWalk;
 		pWalk = pWalk->pBase;
 	}
 	SySetInit(&aTmp, &pVm->sAllocator, sizeof(SyHashEntry *));
-	for( iLevel = 0 ; iLevel < nChain ; iLevel++ ){
-		ph7_class *pLevel = aChain[iLevel];
-		int iTab;
-		/* --- Properties (hAttr) then constants/enum cases (hConst) — php's two
-		 * separate member namespaces. Each table is collected and emitted
-		 * independently; the CONSTANT flag still decides which kind comes out. --- */
-		for( iTab = 0 ; iTab < 2 ; iTab++ ){
+	/* PROPERTIES of an INTERNAL class come out base-first, and that is php's
+	 * registration order rather than a rule of its own: a user class declares its
+	 * own properties and THEN inherits (`class B extends A` reports B's before
+	 * A's), while an internal one is registered against its parent and declares
+	 * afterwards — so ErrorException reports Exception's five and then its own
+	 * $severity. Only the property table flips: php lists an internal class's
+	 * METHODS and CONSTANTS own-first like everything else, so the walk below
+	 * runs the two tables in opposite level orders. */
+	for( iPart = 0 ; iPart < 3 ; iPart++ ){
+	  for( nLev = 0 ; nLev < nChain ; nLev++ ){
+		ph7_class *pLevel;
+		int iTab = iPart;
+		iLevel = (iPart == 0 && bInternal) ? nChain - 1 - nLev : nLev;
+		pLevel = aChain[iLevel];
+		/* --- Properties (hAttr, iPart 0) and constants/enum cases (hConst,
+		 * iPart 1) — php's two separate member namespaces. Each table is
+		 * collected and emitted independently; the CONSTANT flag still decides
+		 * which kind comes out. --- */
+		if( iPart < 2 ){
 			SyHash *pSrcHash = iTab ? &pLevel->hConst : &pLevel->hAttr;
 			SyHash *pRefHash = iTab ? &pClass->hConst : &pClass->hAttr;
 			SySetReset(&aTmp);
@@ -307,6 +321,7 @@ static void ReflectMembers(ph7_vm *pVm, ph7_class *pClass, SySet *pOut, int bLoo
 				sMember.pMeth = 0;
 				SySetPut(pOut, (const void *)&sMember);
 			}
+			continue;
 		}
 		/* --- Methods. The reported name is the hash-entry KEY, not the
 		 * function's own name (see ReflectMember::sKey). --- */
@@ -357,6 +372,7 @@ static void ReflectMembers(ph7_vm *pVm, ph7_class *pClass, SySet *pOut, int bLoo
 			sMember.pAttr = 0;
 			SySetPut(pOut, (const void *)&sMember);
 		}
+	  }
 	}
 	SySetRelease(&aTmp);
 }
@@ -845,6 +861,46 @@ static int ReflectSigClassConst(ph7_context *pCtx, const char *z, int n, ph7_val
 	return 1;
 }
 /*
+ * A GLOBAL constant named by a declared default — php's stub writes
+ * `int $severity = E_ERROR` and both surfaces read it from here: the export
+ * prints the NAME (rule 28: the argument was never folded, so php still has the
+ * source) and getDefaultValue() answers what it expands to. Answers 0 for
+ * anything that is not a plain identifier naming a defined constant, which is
+ * what keeps `null`/`true`/a bare number out of this branch.
+ */
+static int ReflectSigIsIdent(const char *z, int n)
+{
+	int k;
+	if( n < 1 || (z[0] != '_' && !SyisAlpha(z[0])) ){
+		return 0;
+	}
+	for( k = 1 ; k < n ; ++k ){
+		if( z[k] != '_' && z[k] != '\\' && !SyisAlphaNum(z[k]) ){
+			return 0;
+		}
+	}
+	return 1;
+}
+static int ReflectSigGlobalConst(ph7_context *pCtx, const char *z, int n, ph7_value *pOut)
+{
+	SyHashEntry *pEntry;
+	ph7_constant *pCons;
+	ReflectSigTrim(&z, &n);
+	if( !ReflectSigIsIdent(z, n) ){
+		return 0;
+	}
+	pEntry = SyHashGet(&pCtx->pVm->hConstant, (const void *)z, (sxu32)n);
+	if( pEntry == 0 ){
+		return 0;
+	}
+	pCons = (ph7_constant *)pEntry->pUserData;
+	if( pCons == 0 || pCons->xExpand == 0 ){
+		return 0;
+	}
+	pCons->xExpand(pOut, pCons->pUserData);
+	return 1;
+}
+/*
  * A class-constant EXPRESSION: one term, or the `|` fold php's own stubs write
  * for a flags default (`KEY_AS_PATHNAME | CURRENT_AS_FILEINFO | SKIP_DOTS`).
  */
@@ -924,6 +980,9 @@ static int ReflectSigScalar(ph7_context *pCtx, const char *z, int n, ph7_value *
 		return 1;
 	}
 	if( ReflectSigConstExpr(pCtx,z,n,pOut) ){
+		return 1;
+	}
+	if( ReflectSigGlobalConst(pCtx,z,n,pOut) ){
 		return 1;
 	}
 	if( n > 0 && SyStrIsNumeric(z,(sxu32)n,&bReal,0) == SXRET_OK ){
@@ -7095,8 +7154,22 @@ static int vm_builtin_ReflectionProperty_getDefaultValue(ph7_context *pCtx, int 
 	ph7_value sValue;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) || sRef.pAttr == 0
-	 || SySetUsed(&sRef.pAttr->aByteCode) < 1 ){
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) ){
+		sRef.pAttr = 0;
+	}
+	if( sRef.pAttr && sRef.pAttr->pNativeValue && SySetUsed(&sRef.pAttr->aByteCode) < 1 ){
+		/* A NATIVE property's default is a LITERAL, not byte-code — the same
+		 * record `new` materializes (PH7_NativeLiteralValue). Reading only the
+		 * byte-code answered NULL for every declared native default and raised
+		 * php's no-default deprecation on a slot that hasDefaultValue() had just
+		 * reported true for. */
+		PH7_MemObjInit(pCtx->pVm, &sValue);
+		PH7_NativeLiteralValue(pCtx->pVm, sRef.pAttr->pNativeValue, &sValue);
+		ph7_result_value(pCtx, &sValue);
+		PH7_MemObjRelease(&sValue);
+		return PH7_OK;
+	}
+	if( sRef.pAttr == 0 || SySetUsed(&sRef.pAttr->aByteCode) < 1 ){
 		/* php 8.5 deprecates the question when there is no default — an
 		 * UNTYPED property still has one (null), a typed one without an
 		 * initializer does not. */
@@ -8120,6 +8193,11 @@ static void ReflectExportDefault(ph7_context *pCtx, SyBlob *pOut, ReflectParamDe
 			SyBlobAppend(pOut, zDef, (sxu32)nDef);
 			return;
 		}
+		if( pVal && ReflectSigGlobalConst(pCtx, zDef, nDef, pVal) ){
+			/* Same split for a GLOBAL constant: `= E_ERROR`, never `= 1`. */
+			SyBlobAppend(pOut, zDef, (sxu32)nDef);
+			return;
+		}
 		if( pVal && ReflectSigScalar(pCtx, zDef, nDef, pVal) ){
 			if( (pVal->iFlags & (MEMOBJ_STRING|MEMOBJ_NULL)) == MEMOBJ_STRING ){
 				ReflectExportStrQ(pOut, (const char *)SyBlobData(&pVal->sBlob),
@@ -8341,7 +8419,7 @@ static sxi32 ReflectExportFuncBlock(ph7_context *pCtx, SyBlob *pOut, ReflectFunc
 		ph7_class *pDecl = ReflectFuncDeclClass(pRef);
 		ph7_class *pProto;
 		SyString *pName = &pRef->pMeth->sFunc.sName;
-		int bInherits;
+		int bInherits, bCtor;
 		SyBlobAppend(&sBody, "Method [ <", sizeof("Method [ <")-1);
 		ReflectExportKind(&sBody, bInternal);
 		bInherits = (pOwner != 0 && pDecl != 0 && pDecl != pOwner);
@@ -8354,8 +8432,9 @@ static sxi32 ReflectExportFuncBlock(ph7_context *pCtx, SyBlob *pOut, ReflectFunc
 				SyBlobFormat(&sBody, ", overwrites %z", &pOver->sName);
 			}
 		}
-		if( SyStringLength(pName) == sizeof("__construct")-1
-		 && SyStrnicmp(SyStringData(pName), "__construct", sizeof("__construct")-1) == 0 ){
+		bCtor = SyStringLength(pName) == sizeof("__construct")-1
+			&& SyStrnicmp(SyStringData(pName), "__construct", sizeof("__construct")-1) == 0;
+		if( bCtor ){
 			SyBlobAppend(&sBody, ", ctor", sizeof(", ctor")-1);
 		}else if( SyStringLength(pName) == sizeof("__destruct")-1
 		 && SyStrnicmp(SyStringData(pName), "__destruct", sizeof("__destruct")-1) == 0 ){
@@ -8366,7 +8445,10 @@ static sxi32 ReflectExportFuncBlock(ph7_context *pCtx, SyBlob *pOut, ReflectFunc
 		 * exported class instead, a plainly INHERITED method would claim its
 		 * parent as a prototype, which php does not (it prints `inherits`
 		 * alone there, and both tags when the declarer really has one). */
-		pProto = ReflectPrototypeIn(pCtx, pDecl ? pDecl : pRef->pClass,
+		/* A CONSTRUCTOR never has one: zend excludes it from prototype
+		 * inheritance (there is nothing to satisfy — a parent's ctor is not a
+		 * contract), so php prints `overwrites A, ctor` and stops. */
+		pProto = bCtor ? 0 : ReflectPrototypeIn(pCtx, pDecl ? pDecl : pRef->pClass,
 			SyStringData(pName), (int)SyStringLength(pName), 1);
 		if( pProto ){
 			SyBlobFormat(&sBody, ", prototype %z", &pProto->sName);

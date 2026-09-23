@@ -61,6 +61,18 @@ PH7_PRIVATE void PH7_NativeLiteralValue(ph7_vm *pVm,const void *pLiteral,ph7_val
 			PH7_MemObjInitFromReal(&(*pVm),pOut,pLit->rValue);
 			break;
 #endif
+		case PH7_NATIVE_VAL_ARRAY: {
+			/* The empty array — php's `private array $trace = [];`. Each instance
+			 * needs its OWN map (the exception's trace is written per throw), so
+			 * this allocates rather than sharing one. */
+			ph7_hashmap *pMap = PH7_NewHashmap(&(*pVm),0,0);
+			if( pMap == 0 ){
+				PH7_MemObjInit(&(*pVm),pOut);
+			}else{
+				PH7_MemObjInitFromArray(&(*pVm),pOut,pMap);
+			}
+			break;
+		}
 		default:
 			PH7_MemObjInit(&(*pVm),pOut);
 			break;
@@ -539,7 +551,12 @@ static sxi32 NativeDeclareClass(ph7_vm *pVm,const PH7_NativeClassSpec *pSpec,ph7
 	if( pClass == 0 ){
 		return SXERR_MEM;
 	}
-	pClass->iFlags |= pSpec->iFlags;
+	/* PH7_CLASS_BOUND: an engine class is declared unconditionally, exactly once,
+	 * so `class DateTime {}` in user code is php's "Cannot redeclare class
+	 * DateTime". Only the compiler used to set the flag, so EVERY native class
+	 * was silently redeclarable — the chunk-declared ones (Exception, stdClass)
+	 * fataled and their C replacements did not. */
+	pClass->iFlags |= pSpec->iFlags | PH7_CLASS_BOUND;
 	pClass->xRelease = pSpec->xRelease;
 	pClass->pIterVtab = pSpec->pIterVtab;
 	pClass->xPresent = pSpec->xPresent;
