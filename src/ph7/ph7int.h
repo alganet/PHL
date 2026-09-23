@@ -1690,6 +1690,12 @@ struct VmRefObj
 	SySet aReference;  /* Table of references to this memory object */
 	SySet aArrEntries; /* Foreign hashmap entries [i.e: array(&$a) ] */
 	sxu32 nIdx;        /* Referenced object index */
+	sxu32 nPin;        /* Holders the table cannot name, COUNTED so the last one to go
+	                    * can release the slot: reference-bound properties (one per
+	                    * binding, dropped when the property is released or re-bound).
+	                    * A slot pinned by a site that never unpins (a use(&$x) capture,
+	                    * a static, an enum case) leaves this 0 and relies on the
+	                    * VM_REF_IDX_KEEP flag alone, which is a permanent pin. */
 	sxi32 iFlags;      /* Configuration flags */
 	VmRefObj *pNextCollide,*pPrevCollide; /* Collision link */
 	VmRefObj *pNext,*pPrev;               /* List of all referenced objects */
@@ -3744,6 +3750,8 @@ PH7_PRIVATE int VmMagicGuardHeld(ph7_vm *pVm,void *pThis,const SyString *pName,s
 PH7_PRIVATE void VmMagicGuardPush(ph7_vm *pVm,void *pThis,const SyString *pName,sxu8 cKind);
 PH7_PRIVATE void VmMagicGuardPop(ph7_vm *pVm);
 PH7_PRIVATE void VmPinMemObjSlot(ph7_vm *pVm,sxu32 nIdx);
+PH7_PRIVATE void VmPinMemObjSlotCounted(ph7_vm *pVm,sxu32 nIdx);
+PH7_PRIVATE void VmUnpinMemObjSlot(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE sxi32 VmSpreadMergeStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue, void *pUserData);
 PH7_PRIVATE int VmValueIsTraversable(ph7_vm *pVm, ph7_value *pVal);
 PH7_PRIVATE sxi32 VmHashmapRefInsert(ph7_hashmap *pMap, const char *zKey, sxu32 nByte, sxu32 nRefIdx);

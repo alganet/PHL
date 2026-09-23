@@ -6114,6 +6114,8 @@ case PH7_OP_CALL: {
 							VmLocalExec(&(*pVm),&pStatic->aByteCode,pObj,FALSE);
 						}
 						pObj->nIdx = pStatic->nIdx;
+						/* Permanent pin: the storage outlives every call */
+						VmPinMemObjSlot(&(*pVm),pStatic->nIdx);
 					}else{
 						continue;
 					}
@@ -6124,8 +6126,8 @@ case PH7_OP_CALL: {
 				 * recycle it. Poking hVar directly left the binding invisible to the
 				 * reference table, so an array element sharing the static (`[&$s]`)
 				 * did not count as a reference and `unset($s)` destroyed the storage —
-				 * the next call started over from the initializer. */
-				VmPinMemObjSlot(&(*pVm),pStatic->nIdx);
+				 * the next call started over from the initializer. The pin is taken ONCE,
+				 * where the slot is created (above). */
 				PH7_VmBindVarSlot(&(*pVm),pFrame,SyStringData(&pStatic->sName),
 					SyStringLength(&pStatic->sName),pStatic->nIdx);
 			}

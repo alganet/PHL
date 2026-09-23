@@ -85,11 +85,15 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 						SyHashDeleteEntry(&pVm->hTypedSlot,(const void *)&nOldIdx,sizeof(sxu32),0);
 					}
 					PH7_VmUnsetMemObj(&(*pVm),nOldIdx,TRUE);
+				}else{
+					/* Already bound elsewhere: give that slot its pin back, which
+					 * releases it when this property was its last holder. */
+					VmUnpinMemObjSlot(&(*pVm),nOldIdx);
 				}
 				pVmAttr->nIdx = nSrcIdx;
 				pVmAttr->iState |= VM_CLASS_ATTR_REFBOUND;
 				pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
-				VmPinMemObjSlot(&(*pVm),nSrcIdx);
+				VmPinMemObjSlotCounted(&(*pVm),nSrcIdx);
 			}
 		}else if( pStAttr ){
 			if( pStAttr->nIdx != nSrcIdx ){

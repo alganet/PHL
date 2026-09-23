@@ -740,6 +740,37 @@ PH7_PRIVATE void VmPinMemObjSlot(ph7_vm *pVm,sxu32 nIdx)
 	}
 }
 /*
+ * A pin that can be GIVEN BACK: a reference-bound property (`$o->p =& $x`) holds the slot
+ * only while the property does. The permanent pins (a `use (&$x)` capture, a static, an
+ * enum case) stay on VmPinMemObjSlot, which never counts down.
+ */
+PH7_PRIVATE void VmPinMemObjSlotCounted(ph7_vm *pVm,sxu32 nIdx)
+{
+	VmRefObj *pRef;
+	VmPinMemObjSlot(&(*pVm),nIdx);
+	pRef = VmRefObjExtract(&(*pVm),nIdx);
+	if( pRef ){
+		pRef->nPin++;
+	}
+}
+/*
+ * Give back a counted pin. The slot goes when it was the last holder — without this the
+ * value a released property was pinning stayed alive for the rest of the script (the pin
+ * used to be a flag, so nothing could tell one holder from two).
+ */
+PH7_PRIVATE void VmUnpinMemObjSlot(ph7_vm *pVm,sxu32 nIdx)
+{
+	VmRefObj *pRef = VmRefObjExtract(&(*pVm),nIdx);
+	if( pRef == 0 || pRef->nPin < 1 ){
+		return;
+	}
+	pRef->nPin--;
+	if( pRef->nPin < 1 ){
+		pRef->iFlags &= ~VM_REF_IDX_KEEP;
+		PH7_VmReleaseUnheldSlot(&(*pVm),nIdx);
+	}
+}
+/*
  * Skip exception frames to reach the nearest non-exception frame.
  * Exception frames are transparent wrappers pushed by try/catch and
  * should be skipped when looking for the real execution context.
@@ -6064,11 +6095,14 @@ PH7_PRIVATE sxu32 PH7_VmSlotHolderCount(ph7_vm *pVm,sxu32 nIdx)
 	if( pRef == 0 ){
 		return 0;
 	}
-	if( pRef->iFlags & VM_REF_IDX_KEEP ){
-		/* A holder the table cannot name: a `use (&$x)` capture, a reference-bound
-		 * property, a static's or a class constant's slot. It is the reason the slot is
-		 * pinned, so it counts — `$o->p = &$a[0]` leaves that element a reference for
-		 * as long as the property aliases it, exactly as php's refcount does. */
+	if( pRef->nPin > 0 ){
+		/* Holders the table cannot name, counted: reference-bound properties. */
+		nLive += pRef->nPin;
+	}else if( pRef->iFlags & VM_REF_IDX_KEEP ){
+		/* A permanent pin — a `use (&$x)` capture, a static, an enum case. It is the
+		 * reason the slot is alive, so it counts as a holder: `$o->p = &$a[0]` leaves
+		 * that element a reference for as long as the property aliases it, exactly as
+		 * php's refcount does. */
 		nLive++;
 	}
 	apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);
