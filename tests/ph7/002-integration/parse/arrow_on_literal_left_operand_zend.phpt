@@ -2,22 +2,15 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-php accepts "->" on a literal left operand and warns at runtime (zend half of the twin pair — PHL compile-fatals, see arrow_on_literal_left_operand.phpt)
+php reports a PARSE error for "->" on a number literal (zend half of the twin pair — PHL compile-fatals with its own wording, see arrow_on_literal_left_operand.phpt)
 --SKIPIF--
 <?php if (!function_exists('zend_version')) echo 'skip zend half of the twin pair; PHL half is arrow_on_literal_left_operand.phpt'; ?>
 --FILE--
 <?php
-// php's grammar takes any dereferenceable expression on the left of "->": a
-// string, array or parenthesised scalar literal parses and yields null with a
-// warning. PHL's parser demands a variable-ish term and rejects at compile time.
-var_dump("s"->x);
-var_dump([1]->x);
-var_dump((1)->x);
+// php's `dereferencable` covers a string, an array literal, a parenthesised
+// expression and a constant — all of which BOTH engines now run — but not a
+// number, which is a parse error here and a compile fatal in PHL.
+1->x;
 ?>
 --EXPECTF--
-%AAttempt to read property "x" on string%A
-NULL
-%AAttempt to read property "x" on array%A
-NULL
-%AAttempt to read property "x" on int%A
-NULL
+%Asyntax error, unexpected token "->"%A

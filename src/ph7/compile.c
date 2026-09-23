@@ -912,6 +912,26 @@ static sxi32 GenStateEmitExprCode(
 		 * EXPR_FLAG_LOAD_IDX_STORE so subscript LHS auto-vivifies and the
 		 * stack slot carries a writable nIdx. */
 		if( pNode->pRight ){
+			/* `$a[] ??= v` READS its target before deciding to write, so php refuses the
+			 * append form anywhere in that target's chain (`$a[][0] ??= v` too), even
+			 * though the same tag makes every other `[]` on this path a legal write
+			 * target. Only the container chain is walked — a `[]` inside an INDEX
+			 * expression is an ordinary read and the subscript codegen refuses it. */
+			ph7_expr_node *pTgt = pNode->pRight;
+			while( pTgt && pTgt->pOp && (pTgt->pOp->iOp == EXPR_OP_SUBSCRIPT
+			      || pTgt->pOp->iOp == EXPR_OP_ARROW || pTgt->pOp->iOp == EXPR_OP_DC) ){
+				if( pTgt->pOp->iOp == EXPR_OP_SUBSCRIPT && SySetUsed(&pTgt->aNodeArgs) < 1 ){
+					break;
+				}
+				pTgt = pTgt->pLeft;
+			}
+			if( pTgt && pTgt->pOp && pTgt->pOp->iOp == EXPR_OP_SUBSCRIPT
+			 && SySetUsed(&pTgt->aNodeArgs) < 1 ){
+				rc = PH7_GenCompileError(&(*pGen),E_ERROR,
+					pNode->pRight->pStart ? pNode->pRight->pStart->nLine : 0,
+					"Cannot use [] for reading");
+				return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
+			}
 			nNcNsBase = SySetUsed(&pGen->aNullsafeJmp);
 			rc = GenStateEmitExprCode(&(*pGen),pNode->pRight,iFlags|EXPR_FLAG_LOAD_IDX_STORE|EXPR_FLAG_MEMBER_WRITE);
 			if( rc != SXRET_OK ){
@@ -1553,6 +1573,28 @@ static sxi32 GenStateEmitExprCode(
 			}
 			if( SySetUsed(&pNode->aNodeArgs) > 0 ){
 				iP1 = 1; /* Node have an index associated with it */
+			}else{
+				/* `[]` names the element a WRITE is about to create, so php allows it
+				 * only where a write lands: an assignment target (plain, compound,
+				 * `=&`, a list()/foreach target) and a by-reference argument. Every
+				 * other placement is a COMPILE error there — PHL accepted them all and
+				 * answered NULL after a PH7-worded notice, so `$x = $a[];`,
+				 * `isset($a[])` and `unset($a[][0])` were silent no-ops on source php
+				 * refuses to run. A call ARGUMENT is the one shape php also leaves to
+				 * runtime (it cannot know the parameter's by-ref-ness at compile time),
+				 * which is what DEFER_ARG marks. */
+				if( iFlags & (EXPR_FLAG_LOAD_IDX_UNSET|EXPR_FLAG_LOAD_IDX_UNSET_BASE) ){
+					rc = PH7_GenCompileError(&(*pGen),E_ERROR,
+						pNode->pStart ? pNode->pStart->nLine : 0,
+						"Cannot use [] for unsetting");
+					return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
+				}
+				if( (iFlags & (EXPR_FLAG_LOAD_IDX_STORE|EXPR_FLAG_DEFER_ARG)) == 0 ){
+					rc = PH7_GenCompileError(&(*pGen),E_ERROR,
+						pNode->pStart ? pNode->pStart->nLine : 0,
+						"Cannot use [] for reading");
+					return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
+				}
 			}
 			if( iFlags & EXPR_FLAG_LOAD_IDX_ISSET ){
 				/* offsetExists for ArrayAccess; peek-only for arrays */

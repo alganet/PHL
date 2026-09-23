@@ -1228,7 +1228,45 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 	pIdx = 0;
 	if( pInstr->iP1 == 0 ){
 		if( !iP2){
-			/* No available index,load NULL */
+			/* `[]` with nothing to append INTO. Every placement php refuses is a compile
+			 * error now (compile.c), so the only shape that reaches here is the one php
+			 * also settles at runtime: a call ARGUMENT, whose parameter may turn out to be
+			 * by-reference (php appends and binds) or by-value (php's Error). Record the
+			 * append as a step of the deferred lvalue path and let OP_CALL decide. */
+			if( pInstr->iP2 == 9 ){
+				VmDeferredPath *pPath = 0;
+				if( pTos->iFlags & MEMOBJ_AUX_DEFPATH ){
+					pPath = (VmDeferredPath *)pTos->x.pOther;
+					if( VmDeferPathPushAppend(pPath) == SXRET_OK ){
+						VM_EXIT_BREAK; /* carrier already on pTos */
+					}
+				}else if( pTos->iFlags & MEMOBJ_AUX_DEFERRED ){
+					SyString sRootName;
+					SyStringInitFromBuf(&sRootName,(const char *)pTos->x.pOther,
+						pTos->x.pOther ? SyStrlen((const char *)pTos->x.pOther) : 0);
+					pPath = VmDeferPathNew(&(*pVm),1,SXU32_HIGH,&sRootName);
+					if( pPath && VmDeferPathPushAppend(pPath) == SXRET_OK ){
+						pTos->iFlags &= ~MEMOBJ_AUX_DEFERRED; /* borrowed name; don't free x.pOther */
+						pTos->x.pOther = pPath;
+						pTos->iFlags = MEMOBJ_NULL | MEMOBJ_AUX_DEFPATH;
+						pTos->nIdx = SXU32_HIGH;
+						VM_EXIT_BREAK;
+					}
+					VmFreeDeferredPath(pPath);
+				}else if( pTos->nIdx != SXU32_HIGH ){
+					pPath = VmDeferPathNew(&(*pVm),0,pTos->nIdx,0);
+					if( pPath && VmDeferPathPushAppend(pPath) == SXRET_OK ){
+						PH7_MemObjRelease(pTos);
+						pTos->x.pOther = pPath;
+						pTos->iFlags = MEMOBJ_NULL | MEMOBJ_AUX_DEFPATH;
+						pTos->nIdx = SXU32_HIGH;
+						VM_EXIT_BREAK;
+					}
+					VmFreeDeferredPath(pPath);
+				}
+			}
+			/* Not a deferrable argument (or out of memory recording it): php's own
+			 * Error, which replaced PH7's notice-and-NULL. */
 			if( pTos >= pStack ){
 				PH7_MemObjRelease(pTos);
 			}else{
@@ -1237,10 +1275,13 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				MemObjSetType(pTos,MEMOBJ_NULL);
 				pTos->nIdx = SXU32_HIGH;
 			}
-			/* Emit a notice */
-			PH7_VmThrowError(&(*pVm),0,PH7_CTX_NOTICE,
-				"Array: Attempt to access an undefined index,PH7 is loading NULL");
-			VM_EXIT_BREAK;
+			{
+			sxi32 rcRd = VmThrowFromVm(&(*pVm),"Error","Cannot use [] for reading",
+				sizeof("Cannot use [] for reading")-1);
+			if( rcRd == SXERR_ABORT ){ VM_EXIT_ABORT; }
+			rc = rcRd;
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+			}
 		}
 	}else{
 		pIdx = pTos;

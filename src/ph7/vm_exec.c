@@ -470,9 +470,26 @@ PH7_PRIVATE sxi32 VmDeferPathPushElem(VmDeferredPath *pPath,ph7_value *pKey)
 		return SXERR_MEM;
 	}
 	pStep->isProp = 0;
+	pStep->bAppend = 0;
 	pStep->sProp.zString = 0; pStep->sProp.nByte = 0; pStep->zProp = 0;
 	PH7_MemObjInit(pKey->pVm,&pStep->sKey);
 	PH7_MemObjStore(pKey,&pStep->sKey);
+	pPath->nStep++;
+	return SXRET_OK;
+}
+/* Append a KEYLESS element step — the `[]` of `f($a[])`. It carries no index at all,
+ * so the two resolvers differ on it: by reference it creates the next element (php
+ * binds the parameter to it), by value it is php's `Cannot use [] for reading`. */
+PH7_PRIVATE sxi32 VmDeferPathPushAppend(VmDeferredPath *pPath)
+{
+	VmDeferStep *pStep = VmDeferPathGrow(pPath);
+	if( pStep == 0 ){
+		return SXERR_MEM;
+	}
+	pStep->isProp = 0;
+	pStep->bAppend = 1;
+	pStep->sProp.zString = 0; pStep->sProp.nByte = 0; pStep->zProp = 0;
+	SyZero((void *)&pStep->sKey,sizeof(ph7_value));
 	pPath->nStep++;
 	return SXRET_OK;
 }
@@ -489,6 +506,7 @@ PH7_PRIVATE sxi32 VmDeferPathPushProp(VmDeferredPath *pPath,const SyString *pNam
 		return SXERR_MEM;
 	}
 	pStep->isProp = 1;
+	pStep->bAppend = 0;
 	pStep->zProp = zCopy;
 	SyStringInitFromBuf(&pStep->sProp,zCopy,pName->nByte);
 	pPath->nStep++;
@@ -537,7 +555,8 @@ PH7_PRIVATE void VmFreeDeferredPath(VmDeferredPath *pPath)
 			if( pStep->zProp ){
 				SyMemBackendFree(pPath->pAlloc,pStep->zProp);
 			}
-		}else{
+		}else if( !pStep->bAppend ){
+			/* An append step holds no key at all — its sKey was never initialized. */
 			PH7_MemObjRelease(&pStep->sKey);
 		}
 	}
@@ -572,17 +591,22 @@ static sxi32 VmReDriveStep(ph7_vm *pVm,sxi32 iOp,sxu32 iP2,ph7_value *pBase,ph7_
 	VmInstr aI[2];
 	VmExecState st;
 	VmOpRc rcOp;
+	/* A NULL key is the APPEND form (`$a[]`): LOAD_IDX takes no index operand, so the
+	 * base is the whole stack and iP1 says so. */
+	int bAppend = (pKey == 0);
 	PH7_MemObjInit(pVm,&mini[0]);
 	PH7_MemObjInit(pVm,&mini[1]);
 	PH7_MemObjLoad(pBase,&mini[0]);
 	mini[0].nIdx = pBase->nIdx;
-	PH7_MemObjStore(pKey,&mini[1]);
+	if( !bAppend ){
+		PH7_MemObjStore(pKey,&mini[1]);
+	}
 	SyZero((void *)aI,sizeof(aI));
 	/* LOAD_IDX: iP1=1 means "an index is present". MEMBER: iP1=0 means an INSTANCE member
 	 * (iP1=1 would be a static `::` access). */
-	aI[0].iOp = (sxu8)iOp; aI[0].iP1 = (iOp == PH7_OP_LOAD_IDX) ? 1 : 0; aI[0].iP2 = iP2;
+	aI[0].iOp = (sxu8)iOp; aI[0].iP1 = (iOp == PH7_OP_LOAD_IDX && !bAppend) ? 1 : 0; aI[0].iP2 = iP2;
 	SyZero((void *)&st,sizeof(st));
-	st.pStack = mini; st.pTos = &mini[1]; st.aInstr = aI; st.pc = 0;
+	st.pStack = mini; st.pTos = bAppend ? &mini[0] : &mini[1]; st.aInstr = aI; st.pc = 0;
 	if( iOp == PH7_OP_LOAD_IDX ){
 		rcOp = VmExecOpLoadIdx(&(*pVm),&st,&aI[0]);
 	}else{
@@ -754,7 +778,10 @@ static sxi32 VmResolvePathByRef(ph7_vm *pVm,VmDeferredPath *pPath,ph7_value *pSl
 				return SXRET_OK;
 			}
 			PH7_MemObjInit(&(*pVm),&out);
-			rc = VmReDriveStep(&(*pVm),PH7_OP_LOAD_IDX,1,pContainer,&pStep->sKey,&out);
+			/* `f($a[])` bound to a by-reference parameter: php CREATES the next element
+			 * and aliases the parameter to it. */
+			rc = VmReDriveStep(&(*pVm),PH7_OP_LOAD_IDX,1,pContainer,
+				pStep->bAppend ? 0 : &pStep->sKey,&out);
 			nCur = out.nIdx;
 			PH7_MemObjRelease(&out);
 			if( rc != SXRET_OK ){
@@ -801,6 +828,16 @@ static sxi32 VmResolvePathByValue(ph7_vm *pVm,VmDeferredPath *pPath,ph7_value *p
 			PH7_MemObjInitFromString(&(*pVm),&nameVal,&pStep->sProp);
 			rc = VmReDriveStep(&(*pVm),PH7_OP_MEMBER,PH7_MEMBER_READ,&cur,&nameVal,&out);
 			PH7_MemObjRelease(&nameVal);
+		}else if( pStep->bAppend ){
+			/* `f($a[])` bound BY VALUE: there is no element to read, and php says so at
+			 * runtime — it cannot know the parameter's by-ref-ness at compile time, which
+			 * is why this one `[]` placement is not a compile error like all the others. */
+			sxi32 rcAp;
+			PH7_MemObjRelease(&out);
+			PH7_MemObjRelease(&cur);
+			rcAp = VmThrowFromVm(&(*pVm),"Error","Cannot use [] for reading",
+				sizeof("Cannot use [] for reading")-1);
+			return (rcAp == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
 		}else{
 			rc = VmReDriveStep(&(*pVm),PH7_OP_LOAD_IDX,0,&cur,&pStep->sKey,&out);
 		}

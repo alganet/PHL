@@ -108,6 +108,9 @@ typedef struct VmDeferStep VmDeferStep;
 typedef struct VmDeferredPath VmDeferredPath;
 struct VmDeferStep {
 	int       isProp;    /* 0 = subscript element, 1 = object property */
+	int       bAppend;   /* element step with NO key: `f($a[])`, php's append. Only a by-REF
+	                      * parameter may take one — a by-value binding is php's runtime
+	                      * `Cannot use [] for reading` Error. */
 	ph7_value sKey;      /* element: deep-copied index value (copied before pIdx is released) */
 	SyString  sProp;     /* property: name, into pName below (owned by the path allocation) */
 	char     *zProp;     /* property: owned copy of the name bytes (freed with the path) */
@@ -3531,6 +3534,7 @@ PH7_PRIVATE ph7_value * VmExtractMemObj(ph7_vm *pVm,const SyString *pName,int bD
 /* D1 commit 2: deferred-lvalue-path capture (built by the LOAD_IDX/MEMBER record modes) */
 PH7_PRIVATE VmDeferredPath * VmDeferPathNew(ph7_vm *pVm,int eRoot,sxu32 nRootIdx,const SyString *pName);
 PH7_PRIVATE sxi32 VmDeferPathPushElem(VmDeferredPath *pPath,ph7_value *pKey);
+PH7_PRIVATE sxi32 VmDeferPathPushAppend(VmDeferredPath *pPath);
 PH7_PRIVATE sxi32 VmDeferPathPushProp(VmDeferredPath *pPath,const SyString *pName);
 PH7_PRIVATE void VmFreeDeferredPath(VmDeferredPath *pPath);
 PH7_PRIVATE VmCoalStrOff * VmCoalStrOffNew(ph7_vm *pVm,ph7_value *pKey);
