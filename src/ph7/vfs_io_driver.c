@@ -489,6 +489,7 @@ static FILE* WinPopen(const char *zCommand, const char *zMode, HANDLE *phProcess
 	FILE *pFile = NULL;
 	int fd;
 	BOOL bRead = (zMode[0] == 'r');
+	BOOL bBinary = (strchr(zMode,'b') != NULL);
 
 	/* Set up security attributes for pipe inheritance */
 	sa.nLength = sizeof(SECURITY_ATTRIBUTES);
@@ -566,16 +567,24 @@ static FILE* WinPopen(const char *zCommand, const char *zMode, HANDLE *phProcess
 	/* Store process handle for later waiting */
 	*phProcess = pi.hProcess;
 
-	/* Convert OS handle to C file descriptor, then to FILE* */
+	/* Convert OS handle to C file descriptor, then to FILE*. The TRANSLATION mode
+	 * is the caller's, not a constant: cmd.exe writes CRLF, and a descriptor
+	 * opened _O_TEXT eats every CR on the way in. php picks it per call —
+	 * "rb" for exec/system/passthru, so their output is byte-exact, "rt" for
+	 * shell_exec, and the script's own mode for popen() — and this used to
+	 * hardcode _O_TEXT for all of them, so `passthru('type file.bin')` lost every
+	 * 0x0D byte and system()'s output came back LF-only where php's is CRLF. */
 	fd = _open_osfhandle((intptr_t)(bRead ? hReadPipe : hWritePipe),
-	                     bRead ? _O_RDONLY | _O_TEXT : _O_WRONLY | _O_TEXT);
+	                     (bRead ? _O_RDONLY : _O_WRONLY)
+	                     | (bBinary ? _O_BINARY : _O_TEXT));
 	if( fd == -1 ){
 		CloseHandle(pi.hProcess);
 		*phProcess = NULL;
 		goto cleanup_all;
 	}
 
-	pFile = _fdopen(fd, zMode);
+	/* The stream's own translation has to agree with the descriptor's */
+	pFile = _fdopen(fd, bBinary ? (bRead ? "rb" : "wb") : (bRead ? "rt" : "wt"));
 	if( !pFile ){
 		_close(fd); /* This will also close the underlying handle */
 		CloseHandle(pi.hProcess);
@@ -703,6 +712,10 @@ static pipe_private * PipeOpen(ph7_vm *pVm, const char *zCommand, const char *zM
 		pPipe->iMode = zMode[0];
 	}
 #elif defined(__UNIXES__) /* Unix */
+	/* The mode goes to popen(3) VERBATIM, exactly as php hands it its own: a mode
+	 * popen(3) refuses (anything but "r"/"w" — 'b' is a Windows translation flag
+	 * with nothing to translate here) is an open FAILURE, which is php's answer
+	 * for it too. */
 	pFile = popen(zCommand, zMode);
 	if( pFile == 0 ){
 		return 0;
@@ -1125,6 +1138,16 @@ PH7_PRIVATE int PH7_builtin_escapeshellcmd(ph7_context *pCtx,int nArg,ph7_value 
 	return PH7_OK;
 }
 /*
+ * php refuses an EMPTY command in all four runners (exec/system/passthru/
+ * shell_exec) — the shell would answer success for one, so the refusal is the
+ * only way a script hears about a command string that came out empty.
+ */
+static sxi32 ShellEmptyCommandError(ph7_context *pCtx)
+{
+	return PH7_VmThrowException(pCtx,"ValueError",
+		"%s(): Argument #1 ($command) must not be empty",ph7_function_name(pCtx));
+}
+/*
  * string|false|null shell_exec(string $command)
  *  Execute a command via the shell and return the complete output as a string.
  * Returns NULL when the command produces no output, FALSE when the pipe cannot be
@@ -1144,11 +1167,15 @@ PH7_PRIVATE int PH7_builtin_shell_exec(ph7_context *pCtx,int nArg,ph7_value **ap
 	}
 	zCommand = ph7_value_to_string(apArg[0],&nCmdLen);
 	if( nCmdLen < 1 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		/* php refuses an empty command rather than running the shell on it */
+		return ShellEmptyCommandError(pCtx);
 	}
 	pPipe = PipeOpen(pCtx->pVm,zCommand,"r");
 	if( pPipe == 0 || pPipe->pFile == 0 ){
+		/* php's own wording for this one; the three runners below say "Unable to
+		 * fork [%s]" instead. Both used to be silent. */
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): Unable to execute '%s'",
+			ph7_function_name(pCtx),zCommand);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -1169,6 +1196,205 @@ PH7_PRIVATE int PH7_builtin_shell_exec(ph7_context *pCtx,int nArg,ph7_value **ap
 	}
 	SyBlobRelease(&sOut);
 	return PH7_OK;
+}
+/*
+ * php's three command RUNNERS are one routine (php_exec) with a mode, and the
+ * mode decides two things: what happens to each LINE of the command's output,
+ * and what the call answers.
+ *
+ *   exec($cmd)           keep nothing, answer the LAST line
+ *   exec($cmd, $output)  append every line to the array, answer the last line
+ *   system($cmd)         WRITE every line as it arrives, answer the last line
+ *   passthru($cmd)       write the raw bytes, answer NULL
+ *
+ * "The last line" is php's: its trailing WHITESPACE is stripped — spaces and
+ * tabs as much as the newline — and so is every element of $output's. A command
+ * that printed nothing answers "" rather than false, which is php's documented
+ * BC wart and not an error indication; the error indication is FALSE, and only
+ * a pipe that could not be opened produces it.
+ *
+ * All three share the exit status, which is the pipe's close status (php's
+ * $result_code out-param) and -1 when there was no process at all.
+ */
+#ifdef __WINNT__
+# define SHELL_RUN_PIPE_MODE "rb"
+#else
+# define SHELL_RUN_PIPE_MODE "r"
+#endif
+#define SHELL_RUN_LAST     0   /* exec() with no $output array */
+#define SHELL_RUN_ECHO     1   /* system() */
+#define SHELL_RUN_COLLECT  2   /* exec() with one */
+#define SHELL_RUN_RAW      3   /* passthru() */
+/*
+ * php's strip_trailing_whitespace(): answers the length that stays.
+ */
+static sxu32 ShellStripTrailing(const char *zLine,sxu32 nLine)
+{
+	while( nLine > 0 && SyisSpace((unsigned char)zLine[nLine - 1]) ){
+		nLine--;
+	}
+	return nLine;
+}
+/*
+ * One complete line of output, dealt with the mode's way. The line still carries
+ * its own newline: system() writes it (php hands the whole line to the output
+ * layer, so an output buffer catches it like any echo), and the collector strips
+ * it along with the rest of the trailing whitespace.
+ */
+static sxi32 ShellHandleLine(ph7_context *pCtx,int iType,ph7_value *pArray,
+	const char *zLine,sxu32 nLine)
+{
+	if( iType == SHELL_RUN_ECHO ){
+		return ph7_context_output(pCtx,zLine,(int)nLine);
+	}
+	if( iType == SHELL_RUN_COLLECT && pArray ){
+		ph7_value *pVal = ph7_context_new_scalar(pCtx);
+		if( pVal == 0 ){
+			return PH7_OK;
+		}
+		ph7_value_string(pVal,zLine,(int)ShellStripTrailing(zLine,nLine));
+		ph7_array_add_elem(pArray,0,pVal);
+		ph7_context_release_value(pCtx,pVal);
+	}
+	return PH7_OK;
+}
+/*
+ * Run $command through the shell in the given mode, fill the by-reference
+ * out-params and set the call's result. The three builtins below are this
+ * routine plus their own mode.
+ */
+static sxi32 ShellRunCommand(ph7_context *pCtx,int iType,int nArg,ph7_value **apArg)
+{
+	/* exec() carries $output before $result_code; the other two do not */
+	int iCodeArg = (iType == SHELL_RUN_LAST) ? 2 : 1;
+	ph7_value *pArray = 0, *pOwned = 0;
+	const char *zCommand;
+	pipe_private *pPipe;
+	SyBlob sLine, sLast;
+	char zBuf[4096];
+	size_t nRead;
+	int nCmdLen, iStatus = -1;
+	zCommand = ph7_value_to_string(apArg[0],&nCmdLen);
+	if( nCmdLen < 1 ){
+		return ShellEmptyCommandError(pCtx);
+	}
+	/* $output turns exec() into the collecting mode. php uses the array the
+	 * caller already holds — the manual's "will append to the end of the array" —
+	 * and replaces anything else with a fresh one, BEFORE running the command, so
+	 * even a failed run leaves the variable an array. */
+	if( iType == SHELL_RUN_LAST && nArg > 1 ){
+		iType = SHELL_RUN_COLLECT;
+		if( ph7_value_is_array(apArg[1]) ){
+			PH7_HashmapCowSeparate(pCtx->pVm,apArg[1]);
+			pArray = apArg[1];
+		}else{
+			pOwned = pArray = ph7_context_new_array(pCtx);
+		}
+	}
+	/* php_exec's own mode, per platform: the three runners hand back what the
+	 * command WROTE, so on Windows the CRs have to survive the pipe (where
+	 * shell_exec() takes php's "rt" and does translate them). popen(3) refuses a
+	 * 'b' it has nothing to translate, which is why this is not one string. */
+	pPipe = PipeOpen(pCtx->pVm,zCommand,SHELL_RUN_PIPE_MODE);
+	if( pPipe == 0 || pPipe->pFile == 0 ){
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): Unable to fork [%s]",
+			ph7_function_name(pCtx),zCommand);
+		ph7_result_bool(pCtx,0);
+	}else{
+		int bAbort = 0;   /* the output consumer asked to stop (PH7_ABORT) */
+		SyBlobInit(&sLine,&pCtx->pVm->sAllocator);
+		SyBlobInit(&sLast,&pCtx->pVm->sAllocator);
+		for(;;){
+			nRead = fread(zBuf,1,sizeof(zBuf),pPipe->pFile);
+			if( nRead < 1 ){
+				break;
+			}
+			if( iType == SHELL_RUN_RAW ){
+				/* passthru() never looks for a line: php writes what it read */
+				if( ph7_context_output(pCtx,zBuf,(int)nRead) == PH7_ABORT ){
+					break;
+				}
+				continue;
+			}
+			{
+				size_t iOfft = 0;
+				while( iOfft < nRead ){
+					const char *zNl = (const char *)memchr(&zBuf[iOfft],'\n',nRead - iOfft);
+					size_t nChunk = zNl ? (size_t)(zNl - &zBuf[iOfft]) + 1 : nRead - iOfft;
+					SyBlobAppend(&sLine,&zBuf[iOfft],(sxu32)nChunk);
+					iOfft += nChunk;
+					if( zNl == 0 ){
+						break;   /* the line continues in the next read */
+					}
+					if( ShellHandleLine(pCtx,iType,pArray,
+						(const char *)SyBlobData(&sLine),SyBlobLength(&sLine)) == PH7_ABORT ){
+						bAbort = 1;
+					}
+					/* Keep it: the call answers the last line it saw */
+					SyBlobReset(&sLast);
+					SyBlobAppend(&sLast,SyBlobData(&sLine),SyBlobLength(&sLine));
+					SyBlobReset(&sLine);
+					if( bAbort ){
+						break;
+					}
+				}
+			}
+			if( bAbort ){
+				break;
+			}
+		}
+		/* Output that ended without a newline is still a line */
+		if( !bAbort && SyBlobLength(&sLine) > 0 ){
+			ShellHandleLine(pCtx,iType,pArray,
+				(const char *)SyBlobData(&sLine),SyBlobLength(&sLine));
+			SyBlobReset(&sLast);
+			SyBlobAppend(&sLast,SyBlobData(&sLine),SyBlobLength(&sLine));
+		}
+		iStatus = PipeClose(pPipe);
+		if( iType == SHELL_RUN_RAW ){
+			ph7_result_null(pCtx);
+		}else{
+			ph7_result_string(pCtx,(const char *)SyBlobData(&sLast),
+				(int)ShellStripTrailing((const char *)SyBlobData(&sLast),SyBlobLength(&sLast)));
+		}
+		SyBlobRelease(&sLine);
+		SyBlobRelease(&sLast);
+	}
+	if( pOwned ){
+		PH7_VmStoreArgByRef(pCtx->pVm,apArg[1],pOwned);
+		ph7_context_release_value(pCtx,pOwned);
+	}
+	if( nArg > iCodeArg ){
+		ph7_value sVal;
+		PH7_MemObjInitFromInt(pCtx->pVm,&sVal,iStatus);
+		PH7_VmStoreArgByRef(pCtx->pVm,apArg[iCodeArg],&sVal);
+		PH7_MemObjRelease(&sVal);
+	}
+	return PH7_OK;
+}
+/*
+ * string|false exec(string $command, array &$output = null, int &$result_code = null)
+ *  Run a command and answer the last line of its output.
+ */
+PH7_PRIVATE int PH7_builtin_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return ShellRunCommand(pCtx,SHELL_RUN_LAST,nArg,apArg);
+}
+/*
+ * string|false system(string $command, int &$result_code = null)
+ *  Run a command, write its output as it arrives, answer the last line.
+ */
+PH7_PRIVATE int PH7_builtin_system(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return ShellRunCommand(pCtx,SHELL_RUN_ECHO,nArg,apArg);
+}
+/*
+ * ?false passthru(string $command, int &$result_code = null)
+ *  Run a command and write its output through, byte for byte.
+ */
+PH7_PRIVATE int PH7_builtin_passthru(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return ShellRunCommand(pCtx,SHELL_RUN_RAW,nArg,apArg);
 }
 PH7_PRIVATE int PH7_builtin_popen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {

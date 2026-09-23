@@ -552,6 +552,7 @@ static const struct VmBuiltinSig {
 	{ "error_reporting", "?int $error_level = NULL", "int" },
 	{ "escapeshellarg", "string $arg", "string" },
 	{ "escapeshellcmd", "string $command", "string" },
+	{ "exec", "string $command, &$output = NULL, &$result_code = NULL", "string|false" },
 	{ "exit", "string|int $status = 0", "never" },
 	{ "exp", "float $num", "float" },
 	{ "expm1", "float $num", "float" },
@@ -757,6 +758,7 @@ static const struct VmBuiltinSig {
 	{ "password_hash", "string $password, string|int|null $algo, array $options = ?", "string" },
 	{ "password_needs_rehash", "string $hash, string|int|null $algo, array $options = ?", "bool" },
 	{ "password_verify", "string $password, string $hash", "bool" },
+	{ "passthru", "string $command, &$result_code = NULL", "?false" },
 	{ "pathinfo", "string $path, int $flags = 15", "array|string" },
 	{ "pclose", "$handle", "int" },
 	{ "php_sapi_name", "", "string|false" },
@@ -907,6 +909,7 @@ static const struct VmBuiltinSig {
 	{ "substr_replace", "array|string $string, array|string $replace, array|int $offset, array|int|null $length = NULL", "array|string" },
 	{ "symlink", "string $target, string $link", "bool" },
 	{ "sys_get_temp_dir", "", "string" },
+	{ "system", "string $command, &$result_code = NULL", "string|false" },
 	{ "tan", "float $num", "float" },
 	{ "tanh", "float $num", "float" },
 	{ "time", "", "int" },
@@ -1360,6 +1363,9 @@ static sxu32 VmBuiltinPathMask(SyString *pName)
 		{ "popen",             5, 1u<<0 },
 		{ "escapeshellarg",   14, 1u<<0 },
 		{ "escapeshellcmd",   14, 1u<<0 },
+		{ "exec",              4, 1u<<0 },
+		{ "system",            6, 1u<<0 },
+		{ "passthru",          8, 1u<<0 },
 		/* The SPL path constructors, which php screens identically and reports
 		 * under their QUALIFIED name (`SplFileInfo::__construct(): Argument #1
 		 * ($filename) …`). They are native methods, so their signature reaches this

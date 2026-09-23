@@ -2999,6 +2999,9 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"proc_terminate", PH7_builtin_proc_terminate },
 		{"proc_get_status",PH7_builtin_proc_get_status},
 		{"shell_exec", PH7_builtin_shell_exec },
+		{"exec",       PH7_builtin_exec     },
+		{"system",     PH7_builtin_system   },
+		{"passthru",   PH7_builtin_passthru },
 		/* The shell-escaping pair lives with the command runners it exists to
 		 * feed: a build without process execution has nothing to escape for. */
 		{"escapeshellarg", PH7_builtin_escapeshellarg },

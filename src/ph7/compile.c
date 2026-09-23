@@ -754,6 +754,9 @@ static sxu32 GenStateByRefBuiltinMask(SyString *pName)
 		{ "pfsockopen",            10, (1u<<2)|(1u<<3) },  /* same */
 		{ "stream_socket_client",  20, (1u<<1)|(1u<<2) },  /* &$error_code, &$error_message */
 		{ "proc_open",              9, 1u<<2 },  /* &$pipes (apArg[2]) */
+		{ "exec",                   4, (1u<<1)|(1u<<2) },  /* &$output, &$result_code */
+		{ "system",                 6, 1u<<1 },  /* &$result_code (apArg[1]) */
+		{ "passthru",               8, 1u<<1 },  /* &$result_code (apArg[1]) */
 	};
 	sxu32 i;
 	if( pName == 0 || pName->zString == 0 || pName->nByte == 0 ){
