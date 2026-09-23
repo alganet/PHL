@@ -662,6 +662,13 @@ static void SplMembersLoad(ph7_class_instance *pThis,ph7_value *pMembers)
 #define SPL_F  "__f"  /* the flags word */
 #define SPL_IT "__it" /* ArrayObject's iterator class name */
 /*
+ * php's `~SPL_ARRAY_INT_MASK`: the flags word keeps only its low 16 bits, so
+ * `setFlags(-1)` then `getFlags()` answers 65535 rather than -1. php masks on the
+ * WRITE, which is why every reader — getFlags(), __serialize(), the ARRAY_AS_PROPS
+ * test — sees the same masked value without asking.
+ */
+#define SPL_FLAG_MASK 0xFFFF
+/*
  * The instance's storage slot, separated for writing (every caller may mutate it). Answers
  * the SLOT rather than the hashmap because that is what the array builtins below take.
  */
@@ -899,7 +906,8 @@ static int vm_builtin_SplStore_setFlags(ph7_context *pCtx,int nArg,ph7_value **a
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	if( pThis && nArg > 0 ){
-		PH7_NativeSetAttrInt(pCtx->pVm,pThis,SPL_F,ph7_value_to_int(apArg[0]));
+		PH7_NativeSetAttrInt(pCtx->pVm,pThis,SPL_F,
+			ph7_value_to_int64(apArg[0]) & SPL_FLAG_MASK);
 	}
 	return PH7_OK;
 }
@@ -1021,7 +1029,7 @@ static int vm_builtin_ArrayIterator_construct(ph7_context *pCtx,int nArg,ph7_val
 		return rc;
 	}
 	if( pThis && nArg > 1 ){
-		PH7_NativeSetAttrInt(pVm,pThis,SPL_F,ph7_value_to_int(apArg[1]));
+		PH7_NativeSetAttrInt(pVm,pThis,SPL_F,ph7_value_to_int64(apArg[1]) & SPL_FLAG_MASK);
 	}
 	pMap = SplStore(pVm,pThis);
 	if( pMap ){
@@ -1065,7 +1073,7 @@ static int vm_builtin_ArrayObject_construct(ph7_context *pCtx,int nArg,ph7_value
 		return rc;
 	}
 	if( pThis && nArg > 1 ){
-		PH7_NativeSetAttrInt(pVm,pThis,SPL_F,ph7_value_to_int(apArg[1]));
+		PH7_NativeSetAttrInt(pVm,pThis,SPL_F,ph7_value_to_int64(apArg[1]) & SPL_FLAG_MASK);
 	}
 	if( nArg > 2 ){
 		return vm_builtin_ArrayObject_setIteratorClass(pCtx,1,&apArg[2]);
@@ -1094,6 +1102,149 @@ static int vm_builtin_ArrayObject_getIteratorClass(ph7_context *pCtx,int nArg,ph
 		PH7_NativeAttrStr(pThis,SPL_IT,&zName,&nName);
 	}
 	ph7_result_string(pCtx,nName > 0 ? zName : "ArrayIterator",nName > 0 ? nName : -1);
+	return PH7_OK;
+}
+/*
+ * ---------------------------------------------------------------------------
+ * php's __serialize()/__unserialize() for the array store.
+ *
+ * php's payload is a four-element LIST -- [flags, storage, members, iterator class]
+ * -- and nothing else can express it: the state lives in ext/spl's own struct, so
+ * there are no properties to walk. PHL walked its HIDDEN slots instead and wrote
+ * `O:11:"ArrayObject":3:{s:16:"\0ArrayObject\0__d";…}`, which round-tripped inside
+ * PHL and could not read a byte string php produced (nor be read by php).
+ *
+ * Two details worth keeping. The last element is NULL when the class is the default
+ * ArrayIterator, and it is always NULL for an ArrayIterator payload -- php shares one
+ * C body between both classes, so ArrayIterator carries the slot it has no use for.
+ * And the iterator-class check here is LOOSER than setIteratorClass()'s: restoring
+ * accepts any `Iterator`, while the setter and the constructor demand a class derived
+ * from ArrayIterator. php words the refusal with `ArrayObject` either way, even when
+ * ArrayIterator is the receiver.
+ * ---------------------------------------------------------------------------
+ */
+static sxi32 SplStoreIllTyped(ph7_context *pCtx)
+{
+	return PH7_VmThrowException(pCtx,"UnexpectedValueException",
+		"Incomplete or ill-typed serialization data");
+}
+static int vm_builtin_SplStore_serializeMagic(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value sOut,sVal,*pStore;
+	const char *zIt = 0;
+	int nIt = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	PH7_MemObjInit(pVm,&sOut);
+	if( PH7_MemObjToHashmap(&sOut) != SXRET_OK ){
+		PH7_MemObjRelease(&sOut);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	/* [0] the flags word */
+	PH7_MemObjInitFromInt(pVm,&sVal,pThis ? PH7_NativeAttrInt(pThis,SPL_F) : 0);
+	ph7_array_add_elem(&sOut,0,&sVal);
+	PH7_MemObjRelease(&sVal);
+	/* [1] the storage */
+	pStore = SplStoreSlot(pVm,pThis);
+	if( pStore ){
+		ph7_array_add_elem(&sOut,0,pStore);
+	}
+	/* [2] the instance's own properties */
+	if( SplMembersOf(pVm,pThis,&sVal) != SXRET_OK ){
+		PH7_MemObjRelease(&sOut);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	ph7_array_add_elem(&sOut,0,&sVal);
+	PH7_MemObjRelease(&sVal);
+	/* [3] the iterator class, NULL for the default one and for ArrayIterator */
+	if( pThis ){
+		PH7_NativeAttrStr(pThis,SPL_IT,&zIt,&nIt);
+	}
+	PH7_MemObjInit(pVm,&sVal);
+	if( nIt > 0 && (nIt != (int)sizeof("ArrayIterator")-1
+	 || SyMemcmp(zIt,"ArrayIterator",sizeof("ArrayIterator")-1) != 0) ){
+		PH7_MemObjStringAppend(&sVal,zIt,(sxu32)nIt);
+	}
+	ph7_array_add_elem(&sOut,0,&sVal);
+	PH7_MemObjRelease(&sVal);
+	ph7_result_value(pCtx,&sOut);
+	PH7_MemObjRelease(&sOut);
+	return PH7_OK;
+}
+static int vm_builtin_SplStore_unserializeMagic(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_hashmap *pData;
+	ph7_hashmap_node *pNode = 0;
+	ph7_value *pFlags,*pStorage,*pMembers,*pIt = 0;
+	sxi32 rc;
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		char zBuf[64];
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #1 ($data) must be of type array, %s given",
+			ph7_function_name(pCtx),
+			nArg > 0 ? VmValueGivenName(apArg[0],zBuf,sizeof(zBuf)) : "none");
+	}
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	pData = (ph7_hashmap *)apArg[0]->x.pOther;
+	if( HashmapLookupIntKey(pData,0,&pNode) != SXRET_OK ){
+		return SplStoreIllTyped(pCtx);
+	}
+	pFlags = HashmapExtractNodeValue(pNode);
+	pNode = 0;
+	if( HashmapLookupIntKey(pData,1,&pNode) != SXRET_OK ){
+		return SplStoreIllTyped(pCtx);
+	}
+	pStorage = HashmapExtractNodeValue(pNode);
+	pNode = 0;
+	if( HashmapLookupIntKey(pData,2,&pNode) != SXRET_OK ){
+		return SplStoreIllTyped(pCtx);
+	}
+	pMembers = HashmapExtractNodeValue(pNode);
+	pNode = 0;
+	if( HashmapLookupIntKey(pData,3,&pNode) == SXRET_OK ){
+		pIt = HashmapExtractNodeValue(pNode);
+	}
+	if( pFlags == 0 || (pFlags->iFlags & MEMOBJ_INT) == 0
+	 || pMembers == 0 || (pMembers->iFlags & MEMOBJ_HASHMAP) == 0
+	 || (pIt != 0 && (pIt->iFlags & (MEMOBJ_NULL|MEMOBJ_STRING)) == 0) ){
+		return SplStoreIllTyped(pCtx);
+	}
+	/* php's own wording, and its own exception CLASS, for the storage slot. */
+	if( pStorage == 0 || (pStorage->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ)) == 0 ){
+		return PH7_VmThrowException(pCtx,"InvalidArgumentException",
+			"Passed variable is not an array or object");
+	}
+	if( pIt != 0 && (pIt->iFlags & MEMOBJ_STRING) != 0 && SyBlobLength(&pIt->sBlob) > 0 ){
+		const char *zIt = (const char *)SyBlobData(&pIt->sBlob);
+		int nIt = (int)SyBlobLength(&pIt->sBlob);
+		ph7_class *pClass = PH7_VmExtractClass(pVm,zIt,(sxu32)nIt,FALSE,0);
+		ph7_class *pIface = PH7_VmExtractClass(pVm,"Iterator",sizeof("Iterator")-1,FALSE,0);
+		if( pClass == 0 ){
+			return PH7_VmThrowException(pCtx,"UnexpectedValueException",
+				"Cannot deserialize ArrayObject with iterator class '%.*s'; "
+				"no such class exists",nIt,zIt);
+		}
+		if( pIface == 0 || !PH7_VmInstanceOf(pClass,pIface) ){
+			return PH7_VmThrowException(pCtx,"UnexpectedValueException",
+				"Cannot deserialize ArrayObject with iterator class '%.*s'; "
+				"this class does not implement the Iterator interface",nIt,zIt);
+		}
+		if( PH7_NativeAttr(pThis,SPL_IT) ){
+			PH7_NativeSetAttrStr(pVm,pThis,SPL_IT,zIt,nIt);
+		}
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,SPL_F,ph7_value_to_int64(pFlags) & SPL_FLAG_MASK);
+	rc = SplInitStore(pCtx,pThis,pStorage,"ArrayObject::__unserialize");
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	SplMembersLoad(pThis,pMembers);
 	return PH7_OK;
 }
 static int vm_builtin_ArrayObject_getIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -1254,6 +1405,9 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 		{ "rewind",       PH7_MOD_PUBLIC, "", "@void", vm_builtin_ArrayIterator_rewind },
 		{ "valid",        PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ArrayIterator_valid },
 		{ "seek",         PH7_MOD_PUBLIC, "int $offset", "@void", vm_builtin_ArrayIterator_seek },
+		{ "__serialize",  PH7_MOD_PUBLIC, "", "@array", vm_builtin_SplStore_serializeMagic },
+		{ "__unserialize", PH7_MOD_PUBLIC, "array $data", "@void",
+		  vm_builtin_SplStore_unserializeMagic },
 	};
 	static const PH7_NativeMethodDef aObjMethod[] = {
 		{ "__construct",      PH7_MOD_PUBLIC,
@@ -1282,6 +1436,9 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 		{ "__set",            PH7_MOD_PUBLIC, "$name, $value", 0, vm_builtin_ArrayObject_set },
 		{ "__isset",          PH7_MOD_PUBLIC, "$name", 0, vm_builtin_ArrayObject_isset },
 		{ "__unset",          PH7_MOD_PUBLIC, "$name", 0, vm_builtin_ArrayObject_unset },
+		{ "__serialize",      PH7_MOD_PUBLIC, "", "@array", vm_builtin_SplStore_serializeMagic },
+		{ "__unserialize",    PH7_MOD_PUBLIC, "array $data", "@void",
+		  vm_builtin_SplStore_unserializeMagic },
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		/* `interface X extends Iterator` is a PARENT, not an implemented interface:
