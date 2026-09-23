@@ -510,6 +510,177 @@ static int PH7_builtin_mb_str_split(ph7_context *pCtx,int nArg,ph7_value **apArg
 	ph7_result_value(pCtx,pArr);
 	return PH7_OK;
 }
+/* --- mb_trim / mb_ltrim / mb_rtrim (php 8.4) --------------------------- */
+
+#define MB_TRIM_LEFT  1
+#define MB_TRIM_RIGHT 2
+
+/*
+ * The character set a trim walks against. php builds a hash of code points;
+ * this splits it in two so the common case costs nothing: a 256-bit map for
+ * everything below U+0100 (which is where a hand-written trim set almost
+ * always lives) and a linear array for the rest, whose length is the number of
+ * DISTINCT high code points in $characters. php's own fast path is a linear
+ * scan of up to four, so the shape is not a departure.
+ */
+typedef struct mb_trim_set mb_trim_set;
+struct mb_trim_set {
+	unsigned char aLow[32];   /* bitmap of U+0000 .. U+00FF */
+	sxu32 *aHigh;             /* the rest, in encounter order */
+	sxu32 nHigh;
+	sxu32 nAlloc;
+};
+static int MbTrimSetAdd(ph7_context *pCtx,mb_trim_set *pSet,sxu32 cp)
+{
+	sxu32 i;
+	if( cp < 256 ){
+		pSet->aLow[cp >> 3] |= (unsigned char)(1 << (cp & 7));
+		return PH7_OK;
+	}
+	for( i = 0 ; i < pSet->nHigh ; ++i ){
+		if( pSet->aHigh[i] == cp ){
+			return PH7_OK;
+		}
+	}
+	if( pSet->nHigh >= pSet->nAlloc ){
+		sxu32 nNew = pSet->nAlloc ? pSet->nAlloc * 2 : 16;
+		sxu32 *aNew = (sxu32 *)ph7_context_alloc_chunk(pCtx,
+			(unsigned int)(nNew * sizeof(sxu32)),FALSE,TRUE);
+		if( aNew == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		if( pSet->nHigh > 0 ){
+			SyMemcpy(pSet->aHigh,aNew,pSet->nHigh * (sxu32)sizeof(sxu32));
+		}
+		pSet->aHigh = aNew;
+		pSet->nAlloc = nNew;
+	}
+	pSet->aHigh[pSet->nHigh++] = cp;
+	return PH7_OK;
+}
+static int MbTrimSetHas(const mb_trim_set *pSet,sxu32 cp)
+{
+	sxu32 i;
+	if( cp < 256 ){
+		return (pSet->aLow[cp >> 3] & (1 << (cp & 7))) != 0;
+	}
+	for( i = 0 ; i < pSet->nHigh ; ++i ){
+		if( pSet->aHigh[i] == cp ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
+ * string mb_trim(string $string, ?string $characters = null, ?string $encoding = null)
+ * string mb_ltrim(...) / string mb_rtrim(...)
+ *  Strip whole CHARACTERS -- there is no `a..z` range syntax here, unlike
+ *  trim() -- from one or both ends, defaulting to php's Unicode whitespace set.
+ *  Where a chunk implementation compared the encoded bytes, this decodes: an
+ *  ill-formed run is ONE character that compares equal to every other
+ *  ill-formed run, which is what makes mb_trim("\xff\xfeab\xff", "\xff")
+ *  answer "ab" rather than leaving the bytes it could not read in place.
+ */
+static int PH7_builtin_mb_trim(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	/* php's trim_default_chars[], in its own order (mb_trim_default_chars()) */
+	static const sxu32 aDefault[] = {
+		0x20, 0x0C, 0x0A, 0x0D, 0x09, 0x0B, 0x00, 0xA0, 0x1680,
+		0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007,
+		0x2008, 0x2009, 0x200A, 0x2028, 0x2029, 0x202F, 0x205F, 0x3000,
+		0x85, 0x180E
+	};
+	const char *zFunc = ph7_function_name(pCtx);
+	const char *zIn;
+	mb_trim_set sSet;
+	int nByte,iEnc,iMode;
+	sxu32 i,iLeft,iRight,nLen;
+	if( nArg < 1 ){
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	/* One body, three names: "mb_|l|trim" and "mb_|r|trim" against "mb_|t|rim". */
+	iMode = (zFunc[3] == 'l') ? MB_TRIM_LEFT
+		: ((zFunc[3] == 'r') ? MB_TRIM_RIGHT : (MB_TRIM_LEFT|MB_TRIM_RIGHT));
+	iEnc = MbEncodingArg(pCtx,nArg > 2 ? apArg[2] : 0,zFunc,3);
+	if( iEnc < 0 ){
+		return PH7_OK;
+	}
+	SyZero(&sSet,sizeof(sSet));
+	if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){
+		const char *zWhat = ph7_value_to_string(apArg[1],&nByte);
+		for( i = 0 ; i < (sxu32)nByte ; i += nLen ){
+			sxi32 cp = MbUtf8Decode((const unsigned char *)&zWhat[i],(sxu32)nByte - i,&nLen);
+			if( iEnc == 1 ){
+				cp = (unsigned char)zWhat[i];
+				nLen = 1;
+			}
+			/* Every ill-formed run decodes to the same member, php's error
+			 * marker, so one bad byte in $characters strips them all. */
+			if( MbTrimSetAdd(pCtx,&sSet,cp < 0 ? 0xFFFFFFFF : (sxu32)cp) != PH7_OK ){
+				return PH7_ContextMemoryError(pCtx);
+			}
+		}
+	}else{
+		for( i = 0 ; i < SX_ARRAYSIZE(aDefault) ; ++i ){
+			if( MbTrimSetAdd(pCtx,&sSet,aDefault[i]) != PH7_OK ){
+				return PH7_ContextMemoryError(pCtx);
+			}
+		}
+	}
+	zIn = ph7_value_to_string(apArg[0],&nByte);
+	iLeft = 0;
+	iRight = (sxu32)nByte;
+	if( iMode & MB_TRIM_LEFT ){
+		while( iLeft < iRight ){
+			sxi32 cp = MbUtf8Decode((const unsigned char *)&zIn[iLeft],iRight - iLeft,&nLen);
+			if( iEnc == 1 ){
+				cp = (unsigned char)zIn[iLeft];
+				nLen = 1;
+			}
+			if( !MbTrimSetHas(&sSet,cp < 0 ? 0xFFFFFFFF : (sxu32)cp) ){
+				break;
+			}
+			iLeft += nLen;
+		}
+	}
+	if( iMode & MB_TRIM_RIGHT ){
+		/* UTF-8 has no backwards reader here, so re-walk from the left edge and
+		 * keep the offset where the CURRENT run of trim characters began; the
+		 * last one still open when the walk ends is the trailing run. */
+		sxu32 iRun = iRight;
+		int bInRun = 0;
+		for( i = iLeft ; i < iRight ; i += nLen ){
+			sxi32 cp = MbUtf8Decode((const unsigned char *)&zIn[i],iRight - i,&nLen);
+			if( iEnc == 1 ){
+				cp = (unsigned char)zIn[i];
+				nLen = 1;
+			}
+			if( MbTrimSetHas(&sSet,cp < 0 ? 0xFFFFFFFF : (sxu32)cp) ){
+				if( !bInRun ){
+					iRun = i;
+					bInRun = 1;
+				}
+			}else{
+				bInRun = 0;
+			}
+		}
+		if( bInRun ){
+			iRight = iRun;
+		}
+	}
+	if( iEnc == 1 || (iLeft == 0 && iRight == (sxu32)nByte) ){
+		/* php hands the ORIGINAL string back when it trimmed nothing
+		 * (trim_each_wchar()'s zend_string_copy), so an ill-formed run survives
+		 * a no-op trim and is substituted only when something was sliced off. */
+		ph7_result_string(pCtx,&zIn[iLeft],(int)(iRight - iLeft));
+		return PH7_OK;
+	}
+	/* What it does keep is decoded and re-encoded, so an ill-formed run left in
+	 * the middle comes back as '?' -- the same rule mb_substr() follows. */
+	MbResultSubstituted(pCtx,&zIn[iLeft],iRight - iLeft);
+	return PH7_OK;
+}
 /* string|bool mb_internal_encoding(?string $encoding = null) */
 static int PH7_builtin_mb_internal_encoding(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -943,6 +1114,7 @@ PH7_PRIVATE int PH7_builtin_mb_case_f(ph7_context *pCtx,int nArg,ph7_value **apA
 PH7_PRIVATE int PH7_builtin_mb_convert_case_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_convert_case(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_strpos_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strpos(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_str_split_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_str_split(pCtx,nArg,apArg); }
+PH7_PRIVATE int PH7_builtin_mb_trim_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_trim(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_internal_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_internal_encoding(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_check_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_check_encoding(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_strwidth_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strwidth(pCtx,nArg,apArg); }
