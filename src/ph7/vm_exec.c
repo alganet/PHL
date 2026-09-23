@@ -604,7 +604,7 @@ static sxi32 VmReDriveStep(ph7_vm *pVm,sxi32 iOp,sxu32 iP2,ph7_value *pBase,ph7_
  * property, or a dynamic property on a dynamic-allowing class); a magic __get/__set property
  * emits php's Notice and does NOT bind (*pbNoBind). Mirrors VmExecOpMember's write-create.
  */
-static sxi32 VmBindPropByRef(ph7_vm *pVm,sxu32 nObjIdx,const SyString *pName,sxu32 *pnOut,int *pbNoBind)
+static sxi32 VmBindPropByRef(ph7_vm *pVm,sxu32 nObjIdx,const SyString *pName,sxu32 *pnOut,int *pbNoBind,ph7_value *pValOut)
 {
 	ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nObjIdx);
 	ph7_class_instance *pThis;
@@ -643,11 +643,20 @@ static sxi32 VmBindPropByRef(ph7_vm *pVm,sxu32 nObjIdx,const SyString *pName,sxu
 	if( PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1)
 	 || PH7_ClassExtractMethod(pClass,"__set",sizeof("__set")-1) ){
 		/* Overloaded (magic) property: php passes it by-value with a Notice and drops the
-		 * write-back — "has no effect". */
+		 * write-back — "has no effect". The value it passes is __get's, which the caller
+		 * takes through pValOut; leaving the argument NULL instead turned
+		 * `sort($o->magic)` — a statement php performs on a temporary — into
+		 * `sort(): Argument #1 ($array) must be of type array, null given`. */
 		VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,
 			"Indirect modification of overloaded property %z::$%z has no effect",
 			&pClass->sName,pName);
 		*pbNoBind = 1;
+		if( pValOut && PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1)
+		 && !VmMagicGuardHeld(pVm,(void *)pThis,pName,'g') ){
+			VmMagicGuardPush(pVm,(void *)pThis,pName,'g');
+			PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__get",sizeof("__get")-1,pName,pValOut);
+			VmMagicGuardPop(pVm);
+		}
 		return SXRET_OK;
 	}
 	{
@@ -714,13 +723,27 @@ static sxi32 VmResolvePathByRef(ph7_vm *pVm,VmDeferredPath *pPath,ph7_value *pSl
 		if( pStep->isProp ){
 			sxu32 nOut = SXU32_HIGH;
 			int bNoBind = 0;
-			rc = VmBindPropByRef(&(*pVm),nCur,&pStep->sProp,&nOut,&bNoBind);
+			ph7_value sMagicVal;
+			int bLastStep = (i + 1 == pPath->nStep);
+			PH7_MemObjInit(&(*pVm),&sMagicVal);
+			rc = VmBindPropByRef(&(*pVm),nCur,&pStep->sProp,&nOut,&bNoBind,
+				bLastStep ? &sMagicVal : 0);
 			if( rc != SXRET_OK ){
+				PH7_MemObjRelease(&sMagicVal);
 				return rc;
 			}
 			if( bNoBind ){
-				return SXRET_OK; /* magic/non-object: leave the slot a clean NULL, pass by value */
+				/* magic/non-object: nothing to alias, so the argument is passed BY
+				 * VALUE — which for an overloaded property is what __get answered,
+				 * not the NULL this used to leave behind. */
+				if( bLastStep ){
+					PH7_MemObjStore(&sMagicVal,pSlot);
+					pSlot->nIdx = SXU32_HIGH;
+				}
+				PH7_MemObjRelease(&sMagicVal);
+				return SXRET_OK;
 			}
+			PH7_MemObjRelease(&sMagicVal);
 			nCur = nOut;
 		}else{
 			ph7_value out;

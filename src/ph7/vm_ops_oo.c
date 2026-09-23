@@ -452,6 +452,68 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 }
 
 /*
+ * Is this OP_MEMBER fetching the property for WRITING — php's BP_VAR_W / BP_VAR_RW
+ * fetch, the one that asks the object for something to MODIFY? The compiler tags
+ * the base of a subscript-write / `??=` PH7_MEMBER_WRITE, so that answers most of
+ * it once the shapes that share the tag are excluded: a plain store and a `??=`
+ * write through their own paths, and a direct read-modify-write is the accessor
+ * pair (VmMagicRmwArm), not a write fetch. The two php compiles as plain READS —
+ * binding a reference (`$r = &$o->p`) and iterating by reference — are told apart
+ * by the instruction that follows. `$o->p =& $x` is NOT one of them: the member is
+ * the reference TARGET there and carries its own iP2.
+ */
+static int VmMemberFetchForWrite(const VmInstr *pInstr)
+{
+	const VmInstr *pNext = pInstr + 1;
+	if( pInstr->iP2 == PH7_MEMBER_WRITE ){
+		int bPlainStore = (pNext->iOp == PH7_OP_STORE && pNext->iP2 != 0);
+		int bCoalesceW = (pNext->iOp == PH7_OP_NULLC_JMP);
+		return !bPlainStore && !bCoalesceW && !VmMemberNextIsRmw(pNext);
+	}
+	if( pInstr->iP2 == PH7_MEMBER_READ ){
+		if( pNext->iOp == PH7_OP_STORE_REF ){
+			return 1;
+		}
+		if( pNext->iOp == PH7_OP_FOREACH_INIT && pNext->p3 ){
+			return (((ph7_foreach_info *)pNext->p3)->iFlags & PH7_4EACH_STEP_REF) != 0;
+		}
+	}
+	return 0;
+}
+/*
+ * php's `Indirect modification of overloaded property C::$p has no effect`: the
+ * write-context fetch above landed on a property only __get answers for, so what
+ * comes back is a VALUE and whatever the rest of the expression writes into it is
+ * thrown away. php says so and carries on.
+ *
+ * PHL had the notice at one site only (a by-reference ARGUMENT, VmBindPropByRef)
+ * and, worse, the value was not a copy: __get's return still shared the object's
+ * own nested hashmap by COW, so `$o->a['b'] = 9`, `$o->a[] = 5` and a by-reference
+ * foreach modified the object php leaves untouched. Separating it here is what
+ * makes the write land nowhere.
+ *
+ * An ENGINE __get is not this — php routes those through the class's own property
+ * handler, which hands back the real element (ArrayObject's ARRAY_AS_PROPS reads
+ * and writes through, in both engines). php stays silent for an OBJECT value too:
+ * a handle is shared, so nothing about the write is indirect.
+ */
+static void VmOverloadedPropNotice(ph7_vm *pVm,ph7_class *pClass,const SyString *pName,ph7_value *pVal)
+{
+	ph7_class_method *pGet = PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1);
+	if( pGet == 0 || (pGet->sFunc.iFlags & VM_FUNC_NATIVE) ){
+		return;
+	}
+	if( pVal->iFlags & MEMOBJ_OBJ ){
+		return;
+	}
+	VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,
+		"Indirect modification of overloaded property %z::$%z has no effect",
+		&pClass->sName,pName);
+	if( pVal->iFlags & MEMOBJ_HASHMAP ){
+		PH7_HashmapCowSeparate(&(*pVm),pVal);
+	}
+}
+/*
  * Does an OVERLOADED read-modify-write apply to this property access? php runs
  * one only when the class answers BOTH sides; the guard means we are already
  * inside this property's own __get, where php behaves as if the accessor were
@@ -1107,6 +1169,13 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						VmMagicGuardPush(pVm,(void *)pThis,&sName,'g');
 						PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__get",sizeof("__get")-1,&sName,&sMagicRet);
 						VmMagicGuardPop(pVm);
+						if( VmMemberFetchForWrite(pInstr) ){
+							/* php's indirect-modification notice, and the separation
+							 * that makes the write it describes land nowhere. Raised
+							 * BEFORE the pop below: sName still aliases the NAME
+							 * operand when the name is dynamic (`$o->$k[0] = v`). */
+							VmOverloadedPropNotice(&(*pVm),pClass,&sName,&sMagicRet);
+						}
 						/* Pop the attribute name, replace the object slot with the magic
 						 * result (a temp, not an lvalue — nIdx stays constant). A throw
 						 * from __get parked at the boundary; the fetch-point router lands
@@ -1425,8 +1494,15 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						 * __get here exactly like a missing property (band A #3a) before
 						 * erroring; the guard keeps a self-recursive read from looping. */
 						ph7_class_method *pGetMagic = 0;
-						if( pInstr->iP2 != PH7_MEMBER_WRITE && !VmMemberCtxIsLookup(pInstr->iP2)
-						 && !VmMemberNextIsWrite(pInstr + 1) ){
+						/* A WRITE-context fetch (the base of `$o->p[k] = v`) reads through
+						 * __get in php too — the write then lands on the value it answered
+						 * and is lost, with php's indirect-modification notice. PHL refused
+						 * the whole statement with `Cannot access private property` instead,
+						 * a fatal on a program php runs. A plain store and a `??=` keep
+						 * their own paths below. */
+						if( !VmMemberCtxIsLookup(pInstr->iP2)
+						 && (VmMemberFetchForWrite(pInstr)
+						  || (pInstr->iP2 != PH7_MEMBER_WRITE && !VmMemberNextIsWrite(pInstr + 1))) ){
 							pGetMagic = PH7_ClassExtractMethod(pClass,"__get",sizeof("__get")-1);
 						}
 						/* ++/--/compound-assign on a DECLARED but inaccessible property:
@@ -1455,6 +1531,9 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							VmMagicGuardPush(pVm,(void *)pThis,&sName,'g');
 							PH7_ClassInstanceCallMagicMethod(&(*pVm),pClass,pThis,"__get",sizeof("__get")-1,&sName,&sMagicRet);
 							VmMagicGuardPop(pVm);
+							if( VmMemberFetchForWrite(pInstr) ){
+								VmOverloadedPropNotice(&(*pVm),pClass,&sName,&sMagicRet);
+							}
 							/* The name was already popped and pTos released above; just
 							 * take the magic result as the expression value. */
 							PH7_MemObjStore(&sMagicRet,pTos);
