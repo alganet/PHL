@@ -32,7 +32,8 @@ PH7_PRIVATE sxi32 VmEvalChunk(
 	void *pErrData = 0;
 	ph7_gen_state sSavedGen;
 	int bNested;
-	sxi32 rcThrow = SXRET_OK; /* status of a ParseError raised for a failed eval() compile */
+	sxi32 rcThrow = SXRET_OK; /* a ParseError raised for a failed compile, or a throw the
+	                           * evaluated chunk raised — either way the caller must unwind */
 	/* Initialize bytecode container */
 	SySetInit(&aByteCode,&pVm->sAllocator,sizeof(VmInstr));
 	SySetAlloc(&aByteCode,0x20);
@@ -124,13 +125,28 @@ PH7_PRIVATE sxi32 VmEvalChunk(
 		 * (VmLocalExec -> VmByteCodeExec) — a native re-entry bounded by
 		 * nMaxNativeDepth in the wrapper, so a recursive include/eval hits the
 		 * native-nesting fatal instead of overflowing the C stack. The PHP
-		 * call-depth cap is OP_CALL-only (BYTECODE.md stage 5). */
-		VmLocalExec(pVm,&aByteCode,&sResult,FALSE);
-		if( pCtx ){
-			/* Set the execution result */
-			ph7_result_value(pCtx,&sResult);
+		 * call-depth cap is OP_CALL-only (BYTECODE.md stage 5).
+		 *
+		 * The nested exec shares the caller's VM frame, so a throw the CALLER's own
+		 * try catches runs that catch IN PLACE and comes back as a status — which was
+		 * dropped here, and the statement php abandons then carried on after the catch
+		 * had already run (`try { $r = eval('throw new E;'); echo "x"; } catch …`
+		 * printed the catch AND the echo). Same rule and same guard as the match-arm /
+		 * switch-case / property-default sites: compare the recorded-resume fields
+		 * against a pre-exec SNAPSHOT, never against 0. */
+		{
+			const void *pResumeBefore = (const void *)pVm->pResumeFrame;
+			const void *pInlineBefore = (const void *)pVm->pInlineInstr;
+			rc = VmLocalExec(pVm,&aByteCode,&sResult,FALSE);
+			if( pCtx ){
+				/* Set the execution result */
+				ph7_result_value(pCtx,&sResult);
+			}
+			PH7_MemObjRelease(&sResult);
+			if( rc != PH7_ABORT && VmLocalExecThrew(pVm,rc,pResumeBefore,pInlineBefore) ){
+				rcThrow = PH7_EXCEPTION;
+			}
 		}
-		PH7_MemObjRelease(&sResult);
 	}
 Cleanup:
 	/* Cleanup the mess left behind */
@@ -382,9 +398,16 @@ static sxi32 VmExecIncludedFile(
 		rc = PH7_StreamReadWholeFile(pHandle,pStream,&sContents);
 		if( rc == SXRET_OK ){
 			SyString sScript;
-			/* Compile and execute the script */
+			/* Compile and execute the script. A throw the included file raised — and the
+			 * INCLUDING statement's own try caught in place — comes back as PH7_EXCEPTION
+			 * and travels out to the include builtin's caller, which unwinds the rest of
+			 * the statement instead of resuming it. It is not an IO failure, so the
+			 * callers must tell the two apart before warning. */
 			SyStringInitFromBuf(&sScript,SyBlobData(&sContents),SyBlobLength(&sContents));
-			VmEvalChunk(pCtx->pVm,&(*pCtx),&sScript,0,TRUE);
+			rc = VmEvalChunk(pCtx->pVm,&(*pCtx),&sScript,0,TRUE);
+			if( rc != PH7_EXCEPTION ){
+				rc = SXRET_OK;
+			}
 		}
 	}
 	/* Pop from the set of included file */
@@ -595,6 +618,13 @@ PH7_PRIVATE int vm_builtin_include(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Open,compile and execute the desired script */
 	rc = VmExecIncludedFile(&(*pCtx),&sFile,FALSE);
+	if( rc == PH7_EXCEPTION && !pCtx->pVm->bHaltRequested ){
+		/* The included file THREW and the including statement's own try caught it in
+		 * place: unwind the rest of that statement instead of resuming it, and say
+		 * nothing — this is not an IO failure. A halt (exit/die in the file) still
+		 * wins, so it is tested first. */
+		return rc;
+	}
 	if( rc != SXRET_OK ){
 		/* Emit a warning and return false */
 		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"IO error while importing: '%z'",&sFile);
@@ -645,6 +675,13 @@ PH7_PRIVATE int vm_builtin_include_once(ph7_context *pCtx,int nArg,ph7_value **a
 		ph7_result_bool(pCtx,1);
 		return SXRET_OK;
 	}
+	if( rc == PH7_EXCEPTION && !pCtx->pVm->bHaltRequested ){
+		/* The included file THREW and the including statement's own try caught it in
+		 * place: unwind the rest of that statement instead of resuming it, and say
+		 * nothing — this is not an IO failure. A halt (exit/die in the file) still
+		 * wins, so it is tested first. */
+		return rc;
+	}
 	if( rc != SXRET_OK ){
 		/* Emit a warning and return false */
 		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"IO error while importing: '%z'",&sFile);
@@ -689,6 +726,13 @@ PH7_PRIVATE int vm_builtin_require(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Open,compile and execute the desired script */
 	rc = VmExecIncludedFile(&(*pCtx),&sFile,FALSE);
+	if( rc == PH7_EXCEPTION && !pCtx->pVm->bHaltRequested ){
+		/* The included file THREW and the including statement's own try caught it in
+		 * place: unwind the rest of that statement instead of resuming it, and say
+		 * nothing — this is not an IO failure. A halt (exit/die in the file) still
+		 * wins, so it is tested first. */
+		return rc;
+	}
 	if( rc != SXRET_OK ){
 		/* Fatal,abort VM execution immediately */
 		ph7_context_throw_error_format(pCtx,PH7_CTX_ERR,"Fatal IO error while importing: '%z'",&sFile);
@@ -738,6 +782,13 @@ PH7_PRIVATE int vm_builtin_require_once(ph7_context *pCtx,int nArg,ph7_value **a
 		/* File already included,return TRUE */
 		ph7_result_bool(pCtx,1);
 		return SXRET_OK;
+	}
+	if( rc == PH7_EXCEPTION && !pCtx->pVm->bHaltRequested ){
+		/* The included file THREW and the including statement's own try caught it in
+		 * place: unwind the rest of that statement instead of resuming it, and say
+		 * nothing — this is not an IO failure. A halt (exit/die in the file) still
+		 * wins, so it is tested first. */
+		return rc;
 	}
 	if( rc != SXRET_OK ){
 		/* Fatal,abort VM execution immediately */
@@ -989,10 +1040,11 @@ PH7_PRIVATE int vm_builtin_spl_autoload(ph7_context *pCtx,int nArg,ph7_value **a
 		/* Try to include the file */
 		SyStringInitFromBuf(&sFile,(const char *)SyBlobData(&sPath),SyBlobLength(&sPath));
 		rc = VmExecIncludedFile(pCtx,&sFile,FALSE);
-		if( rc == SXRET_OK ){
-			/* File included successfully */
+		if( rc == SXRET_OK || rc == PH7_EXCEPTION ){
+			/* Included — or it threw, which ends the search too: the remaining
+			 * extensions are not tried after a file has already run. */
 			SyBlobRelease(&sPath);
-			return SXRET_OK;
+			return rc == PH7_EXCEPTION ? rc : SXRET_OK;
 		}
 		/* Move past the comma */
 		zCur = zComma;
