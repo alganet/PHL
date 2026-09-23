@@ -316,6 +316,9 @@ typedef struct tok_state tok_state;
 struct tok_state {
 	ph7_context *pCtx;
 	ph7_value   *pArray;   /* output array being built */
+	ph7_class   *pTokClass;/* PhpToken::tokenize(): build INSTANCES of this class instead of
+	                        * php's [id,text,line] tuples (php's own add_token branch) */
+	int          iPos;     /* byte offset of the next token, php's `text - yy_start` */
 	ph7_value   *pS;       /* reusable scalar for plain single-char string tokens */
 	ph7_value   *pId;      /* reusable scalar: tuple field [0] */
 	ph7_value   *pText;    /* reusable scalar: tuple field [1] */
@@ -370,17 +373,63 @@ static void tok_bump_lines(tok_state *ts,const unsigned char *z,const unsigned c
 }
 
 /* Emit a plain-string token (single-char / operator returned as a bare string). */
+/*
+ * One PhpToken (php's add_token with a token_class): the four slots are written
+ * DIRECTLY, without running the constructor -- which php can do because the
+ * constructor is final, and which is why a subclass keeps its own declared
+ * defaults (the instance starts from the class's property table). The line is
+ * the scanner's, and the position is the running byte offset, php's
+ * `text - yy_start`.
+ */
+static void tok_object(tok_state *ts,int iId,const char *z,int n,int iLine)
+{
+	ph7_vm *pVm = ts->pCtx->pVm;
+	ph7_class_instance *pObj = PH7_NewClassInstance(pVm,ts->pTokClass);
+	ph7_value sVal;
+	if( pObj == 0 ){
+		ts->bOOM = 1;
+		return;
+	}
+	pObj->iRef++;
+	PH7_NativeSetAttrInt(pVm,pObj,"id",iId);
+	PH7_NativeSetAttrStr(pVm,pObj,"text",z,n);
+	PH7_NativeSetAttrInt(pVm,pObj,"line",iLine);
+	PH7_NativeSetAttrInt(pVm,pObj,"pos",ts->iPos);
+	PH7_MemObjInit(pVm,&sVal);
+	sVal.x.pOther = pObj;
+	MemObjSetType(&sVal,MEMOBJ_OBJ);
+	if( ph7_array_add_elem(ts->pArray,0,&sVal) != SXRET_OK ){   /* takes its OWN reference */
+		ts->bOOM = 1;
+	}
+	PH7_MemObjRelease(&sVal);
+	PH7_ClassInstanceUnref(pObj);   /* drop the creation reference (rule 16) */
+}
+/* Every emitted lexeme advances the byte offset; the stream covers the source
+ * contiguously, which is what makes the running count equal php's pointer
+ * arithmetic (asserted by the text-roundtrip probe). */
 static void tok_plain(tok_state *ts,const char *z,int n){
 	if( ts->bOOM ){ return; }
+	if( ts->pTokClass ){
+		tok_object(ts,(unsigned char)z[0],z,n,ts->iLine);
+		ts->iPos += n;
+		return;
+	}
 	ph7_value_string(ts->pS,z,n);
 	if( ph7_array_add_elem(ts->pArray,0,ts->pS) != SXRET_OK ){ ts->bOOM = 1; }
 	ph7_value_reset_string_cursor(ts->pS);
+	ts->iPos += n;
 }
 
 /* Emit a [id, text, line] token. */
 static void tok_tok(tok_state *ts,int iId,const char *z,int n,int iLine){
 	ph7_value *pInner;
 	if( ts->bOOM ){ return; }
+	if( ts->pTokClass ){
+		tok_object(ts,iId,z,n,iLine);
+		ts->iPos += n;
+		return;
+	}
+	ts->iPos += n;
 	pInner = ph7_context_new_array(ts->pCtx);
 	if( pInner == 0 ){ ts->bOOM = 1; return; }
 	ph7_value_int(ts->pId,iId);
@@ -1278,59 +1327,289 @@ static int PH7_builtin_token_name(ph7_context *pCtx,int nArg,ph7_value **apArg){
 }
 
 /*
- * The PhpToken class: a thin userland wrapper over token_get_all(), tracking
- * byte offset (->pos) and line for the plain single-char tokens.
+ * ---------------------------------------------------------------------------
+ * The PhpToken class, declared and bodied in C.
+ *
+ * php's is NOT final and `tokenize()` returns `static[]` -- subclassing is the
+ * documented way to attach behaviour to a token stream, and the embedded PHP
+ * declared it `final`, which made `class MyToken extends PhpToken` a fatal here
+ * and works in php. Its CONSTRUCTOR is what php marks final instead, which is
+ * why php can (and does) skip it: `tokenize()` builds each instance and writes
+ * the four slots directly, so a subclass's own declared properties keep their
+ * defaults.
+ *
+ * The four properties are php's typed-and-UNINITIALIZED shape
+ * (`public int $id;` -- no default at all), so a read before construction is
+ * php's "must not be accessed before initialization" Error, and the four
+ * methods that need a slot say so with php's own text rather than reading a
+ * zero.
+ * ---------------------------------------------------------------------------
  */
-static const char zPhpTokenClass[] = {
-	"final class PhpToken implements Stringable {"
-	" public int $id;"
-	" public string $text;"
-	" public int $line;"
-	" public int $pos;"
-	" public function __construct(int $id, string $text, int $line = -1, int $pos = -1){"
-	"  $this->id = $id; $this->text = $text; $this->line = $line; $this->pos = $pos;"
-	" }"
-	" public static function tokenize(string $code, int $flags = 0): array {"
-	"  $tokens = token_get_all($code, $flags);"
-	"  $result = array(); $pos = 0; $line = 1;"
-	"  foreach( $tokens as $tok ){"
-	"   if( is_array($tok) ){ $id = $tok[0]; $text = $tok[1]; $ln = $tok[2]; }"
-	"   else { $id = ord($tok); $text = $tok; $ln = $line; }"
-	"   $result[] = new static($id, $text, $ln, $pos);"
-	"   $pos += strlen($text);"
-	"   $line += substr_count($text, \"\\n\");"
-	"  }"
-	"  return $result;"
-	" }"
-	" public function is($kind): bool {"
-	"  if( is_array($kind) ){"
-	"   foreach( $kind as $k ){"
-	"    if( is_string($k) ){ if( $this->text === $k ){ return true; } }"
-	"    elseif( $this->id === $k ){ return true; }"
-	"   }"
-	"   return false;"
-	"  }"
-	"  if( is_string($kind) ){ return $this->text === $kind; }"
-	"  return $this->id === $kind;"
-	" }"
-	" public function isIgnorable(): bool {"
-	"  return $this->id === T_WHITESPACE || $this->id === T_COMMENT"
-	"   || $this->id === T_DOC_COMMENT || $this->id === T_OPEN_TAG;"
-	" }"
-	" public function getTokenName(): ?string {"
-	"  if( $this->id < 256 ){ return chr($this->id); }"
-	"  $name = token_name($this->id);"
-	"  if( $name === 'UNKNOWN' ){ return null; }"
-	"  return $name;"
-	" }"
-	" public function __toString(): string { return (string)$this->text; }"
-	"}"
-};
+/* php's php_token_get_id / php_token_get_text: the slot, or the Error php
+ * raises for an object that was never constructed. */
+static ph7_value * TokSlot(ph7_context *pCtx,const char *zName,sxi32 *pRc)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pVal = pThis ? PH7_NativeAttr(pThis,zName) : 0;
+	*pRc = PH7_OK;
+	if( pVal == 0 || PH7_NativeAttrIsUninit(pThis,zName) ){
+		*pRc = PH7_VmThrowException(pCtx,"Error",
+			"Typed property PhpToken::$%s must not be accessed before initialization",zName);
+		return 0;
+	}
+	return pVal;
+}
+/* PhpToken::__construct(int $id, string $text, int $line = -1, int $pos = -1) */
+static int vm_builtin_PhpToken_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zText;
+	int nText = 0;
+	if( pThis == 0 || nArg < 2 ){
+		return PH7_OK;
+	}
+	zText = ph7_value_to_string(apArg[1],&nText);
+	PH7_NativeSetAttrInt(pVm,pThis,"id",ph7_value_to_int64(apArg[0]));
+	PH7_NativeSetAttrStr(pVm,pThis,"text",zText,nText);
+	PH7_NativeSetAttrInt(pVm,pThis,"line",nArg > 2 ? ph7_value_to_int64(apArg[2]) : -1);
+	PH7_NativeSetAttrInt(pVm,pThis,"pos",nArg > 3 ? ph7_value_to_int64(apArg[3]) : -1);
+	return PH7_OK;
+}
+/*
+ * PhpToken::tokenize(string $code, int $flags = 0): static[]
+ *
+ * The scanner token_get_all() drives, told to emit INSTANCES of the CALLED
+ * class -- php's own `token_class` branch, and the reason the position and the
+ * line are the scanner's own rather than a running total recomputed in PHP.
+ */
+static int vm_builtin_PhpToken_tokenize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class *pClass = PH7_ContextCalledClass(pCtx);
+	tok_state ts;
+	const char *zSrc;
+	int nSrc = 0;
+	if( pClass == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( pClass->iFlags & PH7_CLASS_ABSTRACT ){
+		/* php checks the construction precondition ONCE, before scanning. */
+		return PH7_VmThrowException(pCtx,"Error","Cannot instantiate abstract class %z",
+			&pClass->sName);
+	}
+	zSrc = nArg > 0 ? ph7_value_to_string(apArg[0],&nSrc) : "";
+	SyZero(&ts,sizeof(ts));
+	ts.pCtx = pCtx;
+	ts.pArray = ph7_context_new_array(pCtx);
+	ts.pS    = ph7_context_new_scalar(pCtx);
+	ts.pId   = ph7_context_new_scalar(pCtx);
+	ts.pText = ph7_context_new_scalar(pCtx);
+	ts.pLine = ph7_context_new_scalar(pCtx);
+	if( ts.pArray == 0 || ts.pS == 0 || ts.pId == 0 || ts.pText == 0 || ts.pLine == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	ts.pTokClass = pClass;
+	ts.z    = (const unsigned char *)zSrc;
+	ts.zEnd = ts.z + (nSrc > 0 ? (sxu32)nSrc : 0);
+	ts.iLine = 1;
+	if( nArg > 1 && (ph7_value_to_int(apArg[1]) & TOK_TOKEN_PARSE) ){
+		ts.bParse = 1;
+	}
+	tok_run(&ts);
+	if( ts.bOOM ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	ph7_result_value(pCtx,ts.pArray);
+	return PH7_OK;
+}
+/* One arm of is(): an int matches the id, a string matches the text. */
+static int TokMatch(ph7_context *pCtx,ph7_value *pKind,int *pbYes,sxi32 *pRc)
+{
+	ph7_value *pSlot;
+	*pbYes = 0;
+	*pRc = PH7_OK;
+	if( pKind->iFlags & MEMOBJ_INT ){
+		pSlot = TokSlot(pCtx,"id",pRc);
+		if( pSlot == 0 ){
+			return 0;
+		}
+		*pbYes = ph7_value_to_int64(pSlot) == pKind->x.iVal;
+		return 1;
+	}
+	if( pKind->iFlags & MEMOBJ_STRING ){
+		int nText = 0,nKind = 0;
+		const char *zKind = ph7_value_to_string(pKind,&nKind);
+		const char *zText;
+		pSlot = TokSlot(pCtx,"text",pRc);
+		if( pSlot == 0 ){
+			return 0;
+		}
+		zText = ph7_value_to_string(pSlot,&nText);
+		*pbYes = nText == nKind && (nText < 1 || SyMemcmp(zText,zKind,(sxu32)nText) == 0);
+		return 1;
+	}
+	return -1;   /* neither: the caller words php's TypeError */
+}
+/*
+ * PhpToken::is(int|string|array $kind): bool
+ *
+ * php screens the argument ITSELF (the parameter is untyped, so the shared ZPP
+ * cannot), and words two different refusals: one for the argument, one for an
+ * ELEMENT of an array argument. The embedded PHP screened neither and answered
+ * false for a float, a null and a bad element alike.
+ */
+static int vm_builtin_PhpToken_is(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pKind = nArg > 0 ? apArg[0] : 0;
+	int bYes = 0;
+	sxi32 rc;
+	if( pKind == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( pKind->iFlags & MEMOBJ_HASHMAP ){
+		ph7_hashmap *pMap = (ph7_hashmap *)pKind->x.pOther;
+		ph7_hashmap_node *pNode;
+		sxu32 n;
+		/* Insertion order is pFirst then the pPrev chain (rule 12), walked
+		 * directly rather than through the shared loop cursor -- this is the
+		 * CALLER's array and php's iteration does not move its pointer. */
+		for( n = 0, pNode = pMap->pFirst ; pNode && n < pMap->nEntry ;
+			 ++n, pNode = pNode->pPrev ){
+			ph7_value sVal;
+			int iRc;
+			PH7_MemObjInit(pCtx->pVm,&sVal);
+			PH7_HashmapExtractNodeValue(pNode,&sVal,FALSE);
+			iRc = TokMatch(pCtx,&sVal,&bYes,&rc);
+			if( iRc < 0 ){
+				char zGiven[64];
+				sxi32 rcT = PH7_VmThrowException(pCtx,"TypeError",
+					"PhpToken::is(): Argument #1 ($kind) must only have elements of type "
+					"string|int, %s given",VmValueGivenName(&sVal,zGiven,sizeof(zGiven)));
+				PH7_MemObjRelease(&sVal);
+				return rcT;
+			}
+			PH7_MemObjRelease(&sVal);
+			if( iRc == 0 ){
+				return rc;
+			}
+			if( bYes ){
+				ph7_result_bool(pCtx,1);
+				return PH7_OK;
+			}
+		}
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	{
+		char zGiven[64];
+		int iRc = TokMatch(pCtx,pKind,&bYes,&rc);
+		if( iRc < 0 ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"PhpToken::is(): Argument #1 ($kind) must be of type string|int|array, %s given",
+				VmValueGivenName(pKind,zGiven,sizeof(zGiven)));
+		}
+		if( iRc == 0 ){
+			return rc;
+		}
+	}
+	ph7_result_bool(pCtx,bYes);
+	return PH7_OK;
+}
+/* PhpToken::isIgnorable(): bool — php's four "not part of the program" ids. */
+static int vm_builtin_PhpToken_isIgnorable(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	ph7_value *pSlot = TokSlot(pCtx,"id",&rc);
+	sxi64 iId;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pSlot == 0 ){
+		return rc;
+	}
+	iId = ph7_value_to_int64(pSlot);
+	ph7_result_bool(pCtx,iId == T_WHITESPACE || iId == T_COMMENT
+		|| iId == T_DOC_COMMENT || iId == T_OPEN_TAG);
+	return PH7_OK;
+}
+/* PhpToken::getTokenName(): ?string — the CHARACTER for a single-byte token,
+ * the T_* name for a known id, and null for anything else. */
+static int vm_builtin_PhpToken_getTokenName(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	ph7_value *pSlot = TokSlot(pCtx,"id",&rc);
+	const char *zName;
+	sxi64 iId;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pSlot == 0 ){
+		return rc;
+	}
+	iId = ph7_value_to_int64(pSlot);
+	if( iId < 256 ){
+		char c = (char)iId;
+		ph7_result_string(pCtx,&c,1);
+		return PH7_OK;
+	}
+	zName = TokConstName((int)iId);
+	if( zName == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	ph7_result_string(pCtx,zName,-1/*SyStrlen*/);
+	return PH7_OK;
+}
+static int vm_builtin_PhpToken_toString(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	ph7_value *pSlot = TokSlot(pCtx,"text",&rc);
+	const char *zText;
+	int nText = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pSlot == 0 ){
+		return rc;
+	}
+	zText = ph7_value_to_string(pSlot,&nText);
+	ph7_result_string(pCtx,zText,nText);
+	return PH7_OK;
+}
+/*
+ * The declaration. Method ORDER is tokenizer.stub.php's — tokenize() first,
+ * then the final constructor — and the four properties are declared with NO
+ * default, which is what makes them php's uninitialized typed slots.
+ */
+static sxi32 VmInstallPhpToken(ph7_vm *pVm)
+{
+	static const PH7_NativePropDef aTokProp[] = {
+		{ "id",   PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "int" },
+		{ "text", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
+		{ "line", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "int" },
+		{ "pos",  PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "int" },
+	};
+	static const PH7_NativeMethodDef aTokMethod[] = {
+		{ "tokenize",     PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $code, int $flags = 0", "array",
+		  vm_builtin_PhpToken_tokenize },
+		{ "__construct",  PH7_MOD_PUBLIC|PH7_MOD_FINAL,
+		  "int $id, string $text, int $line = -1, int $pos = -1", 0,
+		  vm_builtin_PhpToken_construct },
+		{ "is",           PH7_MOD_PUBLIC, "$kind", "bool", vm_builtin_PhpToken_is },
+		{ "isIgnorable",  PH7_MOD_PUBLIC, "", "bool", vm_builtin_PhpToken_isIgnorable },
+		{ "getTokenName", PH7_MOD_PUBLIC, "", "?string", vm_builtin_PhpToken_getTokenName },
+		{ "__toString",   PH7_MOD_PUBLIC, "", "string", vm_builtin_PhpToken_toString },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "PhpToken", 0, "Stringable", 0,
+		  aTokMethod, SX_ARRAYSIZE(aTokMethod), 0, 0,
+		  aTokProp, SX_ARRAYSIZE(aTokProp), 0, 0, 0 },
+	};
+	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+}
 
 PH7_PRIVATE sxi32 PH7_VmInstallTokenizer(ph7_vm *pVm){
 	ph7_create_function(&(*pVm),"token_get_all",PH7_builtin_token_get_all,0);
 	ph7_create_function(&(*pVm),"token_name",PH7_builtin_token_name,0);
-	return PH7_VmEvalBuiltinChunk(&(*pVm),zPhpTokenClass,sizeof(zPhpTokenClass)-1);
+	return VmInstallPhpToken(&(*pVm));
 }
 
 #else /* PH7_DISABLE_BUILTIN_FUNC */

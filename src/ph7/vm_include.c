@@ -195,17 +195,6 @@ PH7_PRIVATE sxi32 VmExecDeferredClass(ph7_vm *pVm,VmDeferredClass *pDefer,VmDefe
 	return SXRET_OK;
 }
 /*
- * Compile an embedded builtin PHP chunk into the VM. Thin exported wrapper
- * around the static VmEvalChunk for builtin libraries that live outside
- * this file (e.g. the Reflection classes in vm_builtin_reflection.c).
- */
-PH7_PRIVATE sxi32 PH7_VmEvalBuiltinChunk(ph7_vm *pVm,const char *zSrc,sxu32 nLen)
-{
-	SyString sChunk;
-	SyStringInitFromBuf(&sChunk,zSrc,nLen);
-	return VmEvalChunk(&(*pVm),0,&sChunk,PH7_PHP_ONLY,FALSE);
-}
-/*
  * value eval(string $code)
  *   Evaluate a string as PHP code.
  * Parameter

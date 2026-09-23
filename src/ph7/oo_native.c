@@ -111,6 +111,19 @@ PH7_PRIVATE ph7_value * PH7_NativeAttr(ph7_class_instance *pObj,const char *zNam
 	SyStringInitFromBuf(&sName,zName,SyStrlen(zName));
 	return PH7_ClassInstanceFetchAttr(pObj,&sName);
 }
+/*
+ * Has this declared slot never been written? A PH7_NATIVE_VAL_NONE property is
+ * php's `public int $id;` — typed, with no default — and reading one before the
+ * class has filled it is php's "must not be accessed before initialization".
+ * The property-read opcode raises that itself; a C body reading the slot
+ * directly has to ask.
+ */
+PH7_PRIVATE int PH7_NativeAttrIsUninit(ph7_class_instance *pObj,const char *zName)
+{
+	SyHashEntry *pEntry = pObj ? SyHashGet(&pObj->hAttr,(const void *)zName,SyStrlen(zName)) : 0;
+	return pEntry != 0
+		&& (((VmClassAttr *)pEntry->pUserData)->iState & VM_CLASS_ATTR_UNINIT) != 0;
+}
 /* Read an int slot WITHOUT converting it: ph7_value_to_int64() converts the
  * attribute in place, which would rewrite the object's own state. */
 PH7_PRIVATE sxi64 PH7_NativeAttrInt(ph7_class_instance *pObj,const char *zName)
