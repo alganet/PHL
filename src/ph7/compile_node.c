@@ -14,6 +14,73 @@
  *    Stable.
  */
 /*
+ * Build php's VISIBLE name for the closure whose 'function'/'fn' keyword sits on nLine,
+ * and hand it to GenStateCompileFunc (or to the arrow-function compiler) through
+ * pGen->sPendingClosureName.
+ *
+ * php 8.4 stopped naming every closure "{closure}" and now writes the SCOPE it was
+ * declared in — zend_begin_func_decl (Zend/zend_compile.c):
+ *
+ *     "{closure:%S%S%S%s:%u}"  <- class, separator, function, parens, start line
+ *
+ * where the function part is the ENCLOSING function's name and falls back to the
+ * FILE at top level. Two details the format string hides, both probed against the
+ * oracle: a method contributes `Class::name()` — the class being COMPILED, so a
+ * trait method names the TRAIT, not the class that uses it — while an enclosing
+ * CLOSURE contributes its own `{closure:...}` name verbatim, with no parens and no
+ * class, so nesting reads `{closure:{closure:/f.php:13}:13}`.
+ *
+ * The name is a compile-time fact (the enclosing scope is not knowable at run time),
+ * and it must be recorded BEFORE the body is compiled, since __FUNCTION__ inside the
+ * body resolves against it at compile time.
+ */
+static void GenStateClosureName(ph7_gen_state *pGen,sxu32 nLine)
+{
+	ph7_vm_func *pOuter = 0;
+	GenBlock *pBlock = pGen->pCurrent;
+	SyBlob sName;
+	char *zDup;
+	/* Innermost REAL function block: a synthetic one (a match() arm's throw-fixup
+	 * block) carries no ph7_vm_func and is not a scope. */
+	while( pBlock ){
+		if( (pBlock->iFlags & GEN_BLOCK_FUNC) && pBlock->pUserData ){
+			pOuter = (ph7_vm_func *)pBlock->pUserData;
+			break;
+		}
+		pBlock = pBlock->pParent;
+	}
+	SyStringInitFromBuf(&pGen->sPendingClosureName,0,0);
+	SyBlobInit(&sName,&pGen->pVm->sAllocator);
+	SyBlobAppend(&sName,"{closure:",sizeof("{closure:")-1);
+	if( pOuter == 0 ){
+		/* Top level: php writes the compiled file's path (empty when there is none —
+		 * an eval()/direct-API compile — which is php's "{closure::LINE}" there). */
+		SyString *pFile = (SyString *)SySetPeek(&pGen->pVm->aFiles);
+		if( pFile && SyStringLength(pFile) > 0 ){
+			SyBlobAppend(&sName,SyStringData(pFile),SyStringLength(pFile));
+		}
+	}else if( SyStringLength(&pOuter->sClosureName) > 0 ){
+		/* Enclosing closure: its whole name, no parens and no class. */
+		SyBlobAppend(&sName,SyStringData(&pOuter->sClosureName),
+			SyStringLength(&pOuter->sClosureName));
+	}else{
+		if( (pOuter->iFlags & VM_FUNC_CLASS_METHOD) && pOuter->pUserData ){
+			SyString *pCls = &((ph7_class *)pOuter->pUserData)->sName;
+			SyBlobAppend(&sName,SyStringData(pCls),SyStringLength(pCls));
+			SyBlobAppend(&sName,"::",2);
+		}
+		SyBlobAppend(&sName,SyStringData(&pOuter->sName),SyStringLength(&pOuter->sName));
+		SyBlobAppend(&sName,"()",2);
+	}
+	SyBlobFormat(&sName,":%u}",nLine);
+	zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
+		(const char *)SyBlobData(&sName),(sxu32)SyBlobLength(&sName));
+	if( zDup ){
+		SyStringInitFromBuf(&pGen->sPendingClosureName,zDup,(sxu32)SyBlobLength(&sName));
+	}
+	SyBlobRelease(&sName);
+}
+/*
  * Compile an annoynmous function or a closure.
  * According to the PHP language reference
  *  Anonymous functions, also known as closures, allow the creation of functions
@@ -67,6 +134,9 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		nLen = SyBufferFormat(zName,sizeof(zName),"[lambda_%d]",iCnt++);
 	}
 	SyStringInitFromBuf(&sName,zName,nLen);
+	/* php's visible name for this closure, built before the body compiles so a
+	 * __FUNCTION__ inside it resolves to the same text php reports. */
+	GenStateClosureName(&(*pGen),nKwLine);
 	/* Compile the lambda body */
 	rc = GenStateCompileFunc(&(*pGen),&sName,iFlags,TRUE,&pAnnonFunc);
 	if( rc == SXERR_ABORT ){
@@ -498,6 +568,11 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	PH7_VmInitFuncState(pGen->pVm,pFunc,zDup,nLen,iFlags,0);
 	/* Reflection getStartLine(): line of the ['static'] 'fn' keyword */
 	pFunc->nLine = nLine;
+	/* php's visible name — an arrow function is named exactly like a closure. This
+	 * compiler builds its own function state, so it consumes the pending name itself. */
+	GenStateClosureName(&(*pGen),nLine);
+	pFunc->sClosureName = pGen->sPendingClosureName;
+	SyStringInitFromBuf(&pGen->sPendingClosureName,0,0);
 	/* Expression-position attributes (`$f = #[A] fn () => …`) */
 	if( GenStateCollectParamAttrs(&(*pGen),pTokKw,&pFunc->aAttrs) == SXERR_ABORT ){
 		return SXERR_ABORT;
@@ -1389,6 +1464,13 @@ static sxi32 GenStateLoadLiteral(ph7_gen_state *pGen)
 					if( bHook ){
 						SyBlobFormat(&sQual,"$%z::%s",&sProp,zKind);
 						SyStringInitFromBuf(&sSelf,SyBlobData(&sQual),SyBlobLength(&sQual));
+					}else if( SyStringLength(&pFunc->sClosureName) > 0 ){
+						/* A closure answers php's `{closure:...}` name, never the
+						 * synthesized lookup key — and __METHOD__ answers the SAME text
+						 * (the name already carries the declaring class), so the
+						 * qualification below must not run for it. */
+						sSelf = pFunc->sClosureName;
+						bMethod = 0;
 					}else{
 						sSelf = pFunc->sName;
 					}

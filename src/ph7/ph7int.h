@@ -733,6 +733,12 @@ struct ph7_gen_state
 	SySet aPendingAttrs; /* Attribute-group trivia (ph7_trivia) bound to the statement being
 	                      * dispatched; unlike docs, PHP requires attributes to be adjacent,
 	                      * so this resets at every boundary */
+	SyString sPendingClosureName; /* php's `{closure:SCOPE:LINE}` name built for the closure
+	                      * whose body GenStateCompileFunc is about to compile. The caller
+	                      * knows the 'function' keyword's LINE and the ENCLOSING scope; the
+	                      * name must be on the ph7_vm_func before the body compiles, because
+	                      * __FUNCTION__ inside it resolves at compile time. Consumed (and
+	                      * cleared) the moment the function state is initialized. */
 };
 /* Forward references */
 typedef struct ph7_vm_func_closure_env ph7_vm_func_closure_env;
@@ -1054,6 +1060,13 @@ struct ph7_vm_func
 						  * Reflection getFileName() then reports false. */
 	sxu32 nLine;         /* Line of the 'function'/'fn' keyword (Reflection getStartLine) */
 	sxu32 nEndLine;      /* Line of the closing brace of the body (Reflection getEndLine) */
+	SyString sClosureName; /* A closure/arrow function's php-VISIBLE name, php 8.4's
+	                      * `{closure:SCOPE:LINE}` (Zend/zend_compile.c, zend_begin_func_decl).
+	                      * Built at COMPILE time — the scope part names the ENCLOSING
+	                      * function, which only the compiler knows — and duplicated into the
+	                      * VM allocator. sName stays the synthesized unique lookup key
+	                      * ("[lambda_3]"); this is what __FUNCTION__, a backtrace, Reflection
+	                      * and is_callable() report. nByte == 0 for anything but a closure. */
 	void *pUserData;     /* Upper layer private data associated with this instance */
 	void *pLsbClass;     /* For a closure: the late-static-binding class captured at its
 	                      * creation site (ph7_class*), so `static::` inside the body

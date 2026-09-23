@@ -875,6 +875,9 @@ PH7_PRIVATE VmOpRc VmExecOpLoadClosure(ph7_vm *pVm,VmExecState *pState,VmInstr *
 		pClosure->sFile = pFunc->sFile;
 		pClosure->nLine = pFunc->nLine;
 		pClosure->nEndLine = pFunc->nEndLine;
+		/* php's visible `{closure:...}` name is a property of the DECLARATION, so every
+		 * per-instantiation copy answers the same one (php has a single op_array here). */
+		pClosure->sClosureName = pFunc->sClosureName;
 		SyStringInitFromBuf(&pClosure->sName,zName,mLen);
 		/* Register the closure */
 		PH7_VmInstallUserFunction(pVm,pClosure,0);

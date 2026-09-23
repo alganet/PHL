@@ -3415,6 +3415,12 @@ PH7_PRIVATE int PH7_VmFuncDisplayName(ph7_vm *pVm,ph7_vm_func *pFunc,const char 
 	}
 	if( bClosure ){
 		int n;
+		if( pFunc->sClosureName.nByte > 0 ){
+			/* The compiler built php's name: it words the ENCLOSING scope, which a
+			 * file/line pair cannot reach (`{closure:Foo::bar():3}`). */
+			*pzOut = pFunc->sClosureName.zString;
+			return (int)pFunc->sClosureName.nByte;
+		}
 		if( pFunc->sFile.nByte > 0 ){
 			n = (int)SyBufferFormat(pVm->zDisplayName,sizeof(pVm->zDisplayName),
 				"{closure:%.*s:%u}",(int)pFunc->sFile.nByte,pFunc->sFile.zString,pFunc->nLine);

@@ -1654,6 +1654,16 @@ PH7_PRIVATE sxi32 GenStateCompileFunc(
 		}
 		GenStateRecordDeclaredName(pGen,1,&pFunc->sName);
 	}
+	/* Take php's `{closure:SCOPE:LINE}` name the caller built for this closure. It has to
+	 * land here, ahead of the body, because a __FUNCTION__ inside the body reads it at
+	 * compile time — and it must be cleared, since a NESTED declaration reaches this same
+	 * point and would otherwise inherit its parent's. */
+	if( SyStringLength(&pGen->sPendingClosureName) > 0 ){
+		if( bHandleClosure ){
+			pFunc->sClosureName = pGen->sPendingClosureName;
+		}
+		SyStringInitFromBuf(&pGen->sPendingClosureName,0,0);
+	}
 	/* Fallback start line (the '(' token); callers that know the line of the
 	 * 'function'/'fn' keyword overwrite this with the exact PHP getStartLine. */
 	pFunc->nLine = nLine;

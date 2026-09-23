@@ -5567,15 +5567,22 @@ static int vm_builtin_ReflectionFunction_construct(ph7_context *pCtx, int nArg, 
 			bAnon = 1;
 		}
 		if( bAnon ){
-			/* php 8.4 names an anonymous function `{closure:FILE:LINE}` */
+			/* php 8.4 names an anonymous function `{closure:SCOPE:LINE}`, where SCOPE is
+			 * the enclosing function and only the FILE at top level — the compiler
+			 * recorded it (sClosureName); the file form is the fallback for a closure
+			 * built without one. */
 			char zBuf[512];
-			const char *zFile = SyStringLength(&sRef.pFunc->sFile) > 0
-				? SyStringData(&sRef.pFunc->sFile) : "";
-			int nFile = SyStringLength(&sRef.pFunc->sFile) > 0
-				? (int)SyStringLength(&sRef.pFunc->sFile) : 0;
-			int nBuf = SyBufferFormat(zBuf, sizeof(zBuf), "{closure:%.*s:%u}",
-				nFile, zFile, sRef.pFunc->nLine);
-			PH7_NativeSetAttrStr(pVm, pThis, "name", zBuf, nBuf);
+			const char *zShow = SyStringData(&sRef.pFunc->sClosureName);
+			int nShow = (int)SyStringLength(&sRef.pFunc->sClosureName);
+			if( nShow < 1 ){
+				const char *zFile = SyStringLength(&sRef.pFunc->sFile) > 0
+					? SyStringData(&sRef.pFunc->sFile) : "";
+				int nFile = (int)SyStringLength(&sRef.pFunc->sFile);
+				nShow = SyBufferFormat(zBuf, sizeof(zBuf), "{closure:%.*s:%u}",
+					nFile, zFile, sRef.pFunc->nLine);
+				zShow = zBuf;
+			}
+			PH7_NativeSetAttrStr(pVm, pThis, "name", zShow, nShow);
 			if( pClo == 0 ){
 				/* Named by its lambda name: keep a Closure so the accessors can
 				 * still reach the captured scope. */
