@@ -3084,6 +3084,7 @@ PH7_PRIVATE int vm_builtin_json_validate(ph7_context *pCtx,int nArg,ph7_value **
 /* vm_serialize.c function prototypes */
 PH7_PRIVATE int vm_builtin_serialize(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_unserialize(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE sxi32 PH7_VmUnserializeOne(ph7_context *pCtx,const char *zIn,int nByte,int *pnRead,ph7_value *pOut);
 PH7_PRIVATE void PH7_AppendShortestReal(SyBlob *pOut,double d);
 /* memobj.c float-shape helper (php_gcvt/smart_str_append_double semantics);
  * shared by the float->string cast and builtin.c's printf float conversions */

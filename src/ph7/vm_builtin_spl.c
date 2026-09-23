@@ -4511,9 +4511,10 @@ static int vm_builtin_SplDll_unserializeMagic(ph7_context *pCtx,int nArg,ph7_val
  * One serialized value, appended to a blob. The RESET is the point: the engine's
  * serialize() writes through ph7_value_string, which APPENDS to the context's
  * return slot rather than replacing it, so a loop that calls it per element
- * accumulates every previous answer into the next one.
+ * accumulates every previous answer into the next one. Shared with
+ * SplObjectStorage's legacy format, which is built the same way.
  */
-static void DllSerializeInto(ph7_context *pCtx,ph7_value **apCall,SyBlob *pOut)
+static void SplSerializeInto(ph7_context *pCtx,ph7_value **apCall,SyBlob *pOut)
 {
 	int nLen = 0;
 	const char *zTxt;
@@ -4541,7 +4542,7 @@ static int vm_builtin_SplDll_serialize(ph7_context *pCtx,int nArg,ph7_value **ap
 	SyBlobInit(&sOut,&pVm->sAllocator);
 	PH7_MemObjInitFromInt(pVm,&sFlags,DllFlags(pThis));
 	apCall[0] = &sFlags;
-	DllSerializeInto(pCtx,apCall,&sOut);
+	SplSerializeInto(pCtx,apCall,&sOut);
 	PH7_MemObjRelease(&sFlags);
 	for( n = 0 ; n < nCount ; ++n ){
 		ph7_value *pVal;
@@ -4555,7 +4556,7 @@ static int vm_builtin_SplDll_serialize(ph7_context *pCtx,int nArg,ph7_value **ap
 		}
 		apCall[0] = pVal;
 		SyBlobAppend(&sOut,":",1);
-		DllSerializeInto(pCtx,apCall,&sOut);
+		SplSerializeInto(pCtx,apCall,&sOut);
 	}
 	/* ph7_result_string APPENDS too, and pRet still holds the LAST element's
 	 * serialization from the loop above — drop it before writing the answer. */
@@ -5992,76 +5993,1094 @@ static sxi32 VmInstallSplFixedArray(ph7_vm *pVm)
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }
+/*
+ * ---------------------------------------------------------------------------
+ * SplObjectStorage, SplObserver and SplSubject.
+ *
+ * php's `spl_SplObjectStorage` is a hashtable of {obj, inf} pairs keyed by the
+ * object HANDLE, plus TWO cursors that are not the same thing: `pos` walks the
+ * table and `index` is the integer `key()` reports. Every method that changes the
+ * membership resets one or both, and the chunk -- which kept a single integer
+ * offset -- had none of that: `detach()` mid-walk left the walk where it was
+ * (php restarts it), and `addAll()` left `key()` counting from wherever it stood.
+ *
+ * What the chunk did not have AT ALL, which is most of the class: `seek()` and the
+ * `SeekableIterator` interface it comes from, `Serializable` with its
+ * `serialize()`/`unserialize()` pair, the `__serialize()`/`__unserialize()` pair
+ * php actually uses, and `__debugInfo()`. Six methods and two interfaces missing
+ * from a 25-method class -- rule 53, and the reason a method-by-method reading is
+ * not a conversion.
+ *
+ * Two more the model hides. **`current()` on an invalid iterator RAISES**
+ * (`Called current() on invalid iterator`) where the chunk answered null, and
+ * **an overridden `getHash()` is what keys the table** -- php looks the method up
+ * once per instance (`fptr_get_hash`) and every attach/detach/contains goes
+ * through it, so a subclass that hashes two distinct objects the same stores ONE
+ * entry. The chunk called `spl_object_id()` directly and ignored its own
+ * `getHash()`, so overriding it did nothing.
+ *
+ * php DEPRECATES attach/detach/contains since 8.5 and PHL says nothing, which is
+ * the same non-deprecated-compatibility policy the chunk carried (the notice is
+ * the only difference and no valid php depends on it).
+ */
+#define SOS_S "__s"   /* php's storage: key -> ['obj' => object, 'inf' => info] */
+#define SOS_I "__i"   /* php's index: what key() reports, NOT a position */
+
+/* The storage slot, separated for writing (every caller may mutate it). */
+static ph7_value * SosSlot(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,SOS_S) : 0;
+	if( pSlot == 0 ){
+		return 0;
+	}
+	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){
+			return 0;
+		}
+	}
+	if( PH7_HashmapCowSeparate(pVm,pSlot) == 0 ){
+		return 0;
+	}
+	return pSlot;
+}
+static ph7_hashmap * SosMap(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_value *pSlot = SosSlot(pVm,pThis);
+	return pSlot ? (ph7_hashmap *)pSlot->x.pOther : 0;
+}
+/* One half of a stored pair: php's element->obj / element->inf. */
+static ph7_value * SosPart(ph7_value *pPair,const char *zKey)
+{
+	ph7_hashmap_node *pNode = 0;
+	if( pPair == 0 || (pPair->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return 0;
+	}
+	if( HashmapLookupBlobKey((ph7_hashmap *)pPair->x.pOther,zKey,
+		(sxu32)SyStrlen(zKey),&pNode) != SXRET_OK ){
+		return 0;
+	}
+	return HashmapExtractNodeValue(pNode);
+}
+/* Write one half of a pair; a NULL value is php's `ZVAL_NULL(&element->inf)`. */
+static void SosSetPart(ph7_vm *pVm,ph7_value *pPair,const char *zKey,ph7_value *pVal)
+{
+	ph7_value sKey,sNull;
+	PH7_MemObjInitFromString(pVm,&sKey,0);
+	PH7_MemObjStringAppend(&sKey,zKey,(sxu32)SyStrlen(zKey));
+	if( pVal ){
+		ph7_array_add_elem(pPair,&sKey,pVal);
+	}else{
+		PH7_MemObjInit(pVm,&sNull);
+		ph7_array_add_elem(pPair,&sKey,&sNull);
+		PH7_MemObjRelease(&sNull);
+	}
+	PH7_MemObjRelease(&sKey);
+}
+/* The pair a node holds, separated: php mutates `element->inf` in place, and here
+ * that is a NESTED array whose COW copy has to be broken first -- a pair handed
+ * out by __serialize()/__debugInfo() would otherwise change with it. */
+static ph7_value * SosPairForWrite(ph7_vm *pVm,ph7_hashmap_node *pNode)
+{
+	ph7_value *pPair = HashmapExtractNodeValue(pNode);
+	if( pPair == 0 || (pPair->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return 0;
+	}
+	return PH7_HashmapCowSeparate(pVm,pPair) ? pPair : 0;
+}
+/*
+ * php's `fptr_get_hash`: the class caches the method ONLY when a subclass declares
+ * its own, and every keyed operation then runs it. The one native body is this
+ * class's own, so a non-native getHash() IS the override.
+ */
+static ph7_class_method * SosUserHash(ph7_class_instance *pThis)
+{
+	ph7_class_method *pMethod;
+	if( pThis == 0 ){
+		return 0;
+	}
+	pMethod = PH7_ClassExtractMethod(pThis->pClass,"getHash",sizeof("getHash")-1);
+	if( pMethod == 0 || (pMethod->sFunc.iFlags & VM_FUNC_NATIVE) ){
+		return 0;
+	}
+	return pMethod;
+}
+/*
+ * php's spl_object_storage_get_hash: the object HANDLE, or the STRING an
+ * overridden getHash() answers. php checks the returned type itself (its own
+ * return declaration would coerce first, so this only fires for an untyped
+ * override) and names the RUNTIME class in the refusal.
+ */
+static sxi32 SosKey(ph7_context *pCtx,ph7_class_instance *pThis,ph7_value *pObj,ph7_value *pKey)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_method *pHash = SosUserHash(pThis);
+	ph7_value sRes,*apArg[1];
+	sxi32 rc;
+	if( pHash == 0 ){
+		ph7_class_instance *pInst = (ph7_class_instance *)pObj->x.pOther;
+		PH7_MemObjRelease(pKey);
+		PH7_MemObjInitFromInt(pVm,pKey,(sxi64)pInst->nObjId);
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pVm,&sRes);
+	apArg[0] = pObj;
+	rc = PH7_VmCallClassMethod(pVm,pThis,pHash,&sRes,1,apArg);
+	if( rc != SXRET_OK ){
+		PH7_MemObjRelease(&sRes);
+		return rc;
+	}
+	if( (sRes.iFlags & MEMOBJ_STRING) == 0 ){
+		char zGiven[64];
+		SyString *pName = &pThis->pClass->sName;
+		PH7_MemObjRelease(&sRes);
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"%z::getHash(): Return value must be of type string, %s returned",
+			pName,VmValueGivenName(&sRes,zGiven,sizeof(zGiven)));
+	}
+	PH7_MemObjRelease(pKey);
+	PH7_MemObjInit(pVm,pKey);
+	PH7_MemObjStore(&sRes,pKey);
+	PH7_MemObjRelease(&sRes);
+	return PH7_OK;
+}
+/*
+ * php's Z_PARAM_OBJ for the four ArrayAccess offsets: their stub leaves $object
+ * UNTYPED (a `@param object` docblock, which Reflection does not print) while the
+ * ZPP is an object, so the declared type says nothing and each body words the
+ * refusal here -- SplDoublyLinkedList's $index has the same shape one type over.
+ * The name is always this class's, even from a subclass (php's).
+ */
+static sxi32 SosObjectArg(ph7_context *pCtx,const char *zMethod,int nArg,ph7_value **apArg,
+	ph7_value **ppObj)
+{
+	char zGiven[64];
+	*ppObj = 0;
+	if( nArg > 0 && (apArg[0]->iFlags & MEMOBJ_OBJ) && apArg[0]->x.pOther ){
+		*ppObj = apArg[0];
+		return PH7_OK;
+	}
+	return PH7_VmThrowException(pCtx,"TypeError",
+		"SplObjectStorage::%s(): Argument #1 ($object) must be of type object, %s given",
+		zMethod,nArg < 1 ? "none" : VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
+}
+/* The other storage a set operation takes; php's ZPP already screened the class. */
+static ph7_class_instance * SosOther(int nArg,ph7_value **apArg)
+{
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+		return 0;
+	}
+	return (ph7_class_instance *)apArg[0]->x.pOther;
+}
+/*
+ * php's spl_object_storage_attach. The two values are COPIED first: computing the
+ * key can run an overridden getHash(), and any call into user code moves every
+ * ph7_value the caller is holding (rule 47).
+ */
+static sxi32 SosAttach(ph7_context *pCtx,ph7_class_instance *pThis,ph7_value *pObj,ph7_value *pInf)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pNode = 0;
+	ph7_value sObj,sInf,sKey,sPair;
+	sxi32 rc;
+	PH7_MemObjInit(pVm,&sObj);
+	PH7_MemObjInit(pVm,&sInf);
+	PH7_MemObjInit(pVm,&sKey);
+	PH7_MemObjStore(pObj,&sObj);
+	if( pInf ){
+		PH7_MemObjStore(pInf,&sInf);
+	}
+	rc = SosKey(pCtx,pThis,&sObj,&sKey);
+	if( rc != PH7_OK ){
+		goto done;
+	}
+	pMap = SosMap(pVm,pThis);
+	if( pMap == 0 ){
+		goto done;
+	}
+	if( PH7_HashmapLookup(pMap,&sKey,&pNode) == SXRET_OK ){
+		ph7_value *pPair = SosPairForWrite(pVm,pNode);
+		if( pPair ){
+			SosSetPart(pVm,pPair,"inf",&sInf);
+		}
+		goto done;
+	}
+	PH7_MemObjInit(pVm,&sPair);
+	if( PH7_MemObjToHashmap(&sPair) != SXRET_OK ){
+		PH7_MemObjRelease(&sPair);
+		rc = PH7_ContextMemoryError(pCtx);
+		goto done;
+	}
+	SosSetPart(pVm,&sPair,"obj",&sObj);
+	SosSetPart(pVm,&sPair,"inf",&sInf);
+	/* php's position is an INTEGER index into the bucket array, so a cursor that
+	 * ran off the end is revived by the insert and the walk resumes on the new
+	 * element -- what addAll() mid-iteration does there. */
+	SplStoreInsert(pMap,&sKey,&sPair);
+	PH7_MemObjRelease(&sPair);
+done:
+	PH7_MemObjRelease(&sObj);
+	PH7_MemObjRelease(&sInf);
+	PH7_MemObjRelease(&sKey);
+	return rc;
+}
+/* php's spl_object_storage_detach: drop the entry, saying whether there was one. */
+static sxi32 SosDetach(ph7_context *pCtx,ph7_class_instance *pThis,ph7_value *pObj,int *pbGone)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pNode = 0;
+	ph7_value sObj,sKey;
+	sxi32 rc;
+	if( pbGone ){
+		*pbGone = 0;
+	}
+	PH7_MemObjInit(pVm,&sObj);
+	PH7_MemObjInit(pVm,&sKey);
+	PH7_MemObjStore(pObj,&sObj);
+	rc = SosKey(pCtx,pThis,&sObj,&sKey);
+	if( rc == PH7_OK ){
+		pMap = SosMap(pVm,pThis);
+		if( pMap && PH7_HashmapLookup(pMap,&sKey,&pNode) == SXRET_OK ){
+			PH7_HashmapUnlinkNode(pNode,TRUE);
+			if( pbGone ){
+				*pbGone = 1;
+			}
+		}
+	}
+	PH7_MemObjRelease(&sObj);
+	PH7_MemObjRelease(&sKey);
+	return rc;
+}
+/* php's spl_object_storage_contains: an entry EXISTS, whatever its info holds. */
+static sxi32 SosContains(ph7_context *pCtx,ph7_class_instance *pThis,ph7_value *pObj,int *pbFound)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pNode = 0;
+	ph7_value sObj,sKey;
+	sxi32 rc;
+	*pbFound = 0;
+	PH7_MemObjInit(pVm,&sObj);
+	PH7_MemObjInit(pVm,&sKey);
+	PH7_MemObjStore(pObj,&sObj);
+	rc = SosKey(pCtx,pThis,&sObj,&sKey);
+	if( rc == PH7_OK ){
+		pMap = SosMap(pVm,pThis);
+		*pbFound = pMap && PH7_HashmapLookup(pMap,&sKey,&pNode) == SXRET_OK;
+	}
+	PH7_MemObjRelease(&sObj);
+	PH7_MemObjRelease(&sKey);
+	return rc;
+}
+/* php's `zend_hash_internal_pointer_reset_ex(&storage, &pos); index = 0`. */
+static void SosRewind(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_hashmap *pMap = SosMap(pVm,pThis);
+	if( pMap ){
+		pMap->pCur = pMap->pFirst;
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,SOS_I,0);
+}
+/* The pair the cursor is on, or 0 past the end. */
+static ph7_value * SosCurrentPair(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_hashmap *pMap = SosMap(pVm,pThis);
+	if( pMap == 0 || pMap->pCur == 0 ){
+		return 0;
+	}
+	return HashmapExtractNodeValue(pMap->pCur);
+}
+/*
+ * A SNAPSHOT of one storage's pairs as a plain list. Every set operation walks one
+ * storage while writing to another -- and either walk can run an overridden
+ * getHash(), which moves things (rule 47) and can even mutate the map being walked.
+ * php's own SPL_SAFE_HASH_FOREACH_PTR is the same precaution one layer down.
+ */
+static sxi32 SosSnapshot(ph7_vm *pVm,ph7_class_instance *pFrom,ph7_value *pOut)
+{
+	ph7_hashmap *pMap = SosMap(pVm,pFrom);
+	ph7_hashmap_node *pNode;
+	sxu32 n;
+	if( PH7_MemObjToHashmap(pOut) != SXRET_OK ){
+		return SXERR_MEM;
+	}
+	if( pMap == 0 ){
+		return SXRET_OK;
+	}
+	pNode = pMap->pFirst;
+	for( n = 0 ; n < pMap->nEntry && pNode ; ++n ){
+		ph7_value *pPair = HashmapExtractNodeValue(pNode);
+		if( pPair ){
+			ph7_array_add_elem(pOut,0,pPair);
+		}
+		pNode = pNode->pPrev;   /* insertion order: pFirst, then the pPrev chain */
+	}
+	return SXRET_OK;
+}
+/* One pair of a snapshot, re-resolved by index because a user call may have moved
+ * every value in the pool since the last one. */
+static ph7_value * SosSnapAt(ph7_value *pSnap,sxi64 i)
+{
+	ph7_hashmap_node *pNode = 0;
+	if( (pSnap->iFlags & MEMOBJ_HASHMAP) == 0
+	 || HashmapLookupIntKey((ph7_hashmap *)pSnap->x.pOther,i,&pNode) != SXRET_OK ){
+		return 0;
+	}
+	return HashmapExtractNodeValue(pNode);
+}
+static int vm_builtin_SplObjectStorage_attach(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pObj;
+	sxi32 rc = SosObjectArg(pCtx,"attach",nArg,apArg,&pObj);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	return SosAttach(pCtx,PH7_ContextThis(pCtx),pObj,nArg > 1 ? apArg[1] : 0);
+}
+/* php's offsetSet is an @implementation-alias of attach, and its refusal says so. */
+static int vm_builtin_SplObjectStorage_offsetSet(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pObj;
+	sxi32 rc = SosObjectArg(pCtx,"offsetSet",nArg,apArg,&pObj);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	return SosAttach(pCtx,PH7_ContextThis(pCtx),pObj,nArg > 1 ? apArg[1] : 0);
+}
+/* detach() RESTARTS the walk: php resets both the position and the index, whether
+ * or not anything was removed. */
+static sxi32 SosDetachMethod(ph7_context *pCtx,const char *zMethod,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pObj;
+	sxi32 rc = SosObjectArg(pCtx,zMethod,nArg,apArg,&pObj);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	rc = SosDetach(pCtx,pThis,pObj,0);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	SosRewind(pCtx->pVm,pThis);
+	return PH7_OK;
+}
+static int vm_builtin_SplObjectStorage_detach(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return SosDetachMethod(pCtx,"detach",nArg,apArg);
+}
+static int vm_builtin_SplObjectStorage_offsetUnset(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return SosDetachMethod(pCtx,"offsetUnset",nArg,apArg);
+}
+static sxi32 SosContainsMethod(ph7_context *pCtx,const char *zMethod,int nArg,ph7_value **apArg)
+{
+	ph7_value *pObj;
+	int bFound = 0;
+	sxi32 rc = SosObjectArg(pCtx,zMethod,nArg,apArg,&pObj);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	rc = SosContains(pCtx,PH7_ContextThis(pCtx),pObj,&bFound);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	ph7_result_bool(pCtx,bFound);
+	return PH7_OK;
+}
+static int vm_builtin_SplObjectStorage_contains(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return SosContainsMethod(pCtx,"contains",nArg,apArg);
+}
+static int vm_builtin_SplObjectStorage_offsetExists(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return SosContainsMethod(pCtx,"offsetExists",nArg,apArg);
+}
+/* php's offsetGet: the info, or `Object not found` -- NOT null, and not false. */
+static int vm_builtin_SplObjectStorage_offsetGet(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pNode = 0;
+	ph7_value sObj,sKey,*pObj,*pInf;
+	sxi32 rc = SosObjectArg(pCtx,"offsetGet",nArg,apArg,&pObj);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	PH7_MemObjInit(pVm,&sObj);
+	PH7_MemObjInit(pVm,&sKey);
+	PH7_MemObjStore(pObj,&sObj);
+	rc = SosKey(pCtx,pThis,&sObj,&sKey);
+	if( rc == PH7_OK ){
+		pMap = SosMap(pVm,pThis);
+		if( pMap == 0 || PH7_HashmapLookup(pMap,&sKey,&pNode) != SXRET_OK ){
+			rc = PH7_VmThrowException(pCtx,"UnexpectedValueException","Object not found");
+		}else{
+			pInf = SosPart(HashmapExtractNodeValue(pNode),"inf");
+			if( pInf ){
+				ph7_result_value(pCtx,pInf);
+			}else{
+				ph7_result_null(pCtx);
+			}
+		}
+	}
+	PH7_MemObjRelease(&sObj);
+	PH7_MemObjRelease(&sKey);
+	return rc;
+}
+/*
+ * php's addAll: attach every pair of the other storage, then reset the INDEX only
+ * -- the position is deliberately left where it stood, which is why an insert can
+ * revive a walk that had run out.
+ */
+static int vm_builtin_SplObjectStorage_addAll(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pOther = SosOther(nArg,apArg);
+	ph7_hashmap *pMap;
+	ph7_value sSnap;
+	sxi64 i,n;
+	sxi32 rc = PH7_OK;
+	if( pOther == 0 || pThis == 0 ){
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pVm,&sSnap);
+	if( SosSnapshot(pVm,pOther,&sSnap) != SXRET_OK ){
+		PH7_MemObjRelease(&sSnap);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	n = (sxi64)((ph7_hashmap *)sSnap.x.pOther)->nEntry;
+	for( i = 0 ; i < n && rc == PH7_OK ; ++i ){
+		ph7_value *pPair = SosSnapAt(&sSnap,i);
+		ph7_value *pObj = SosPart(pPair,"obj");
+		ph7_value *pInf = SosPart(pPair,"inf");
+		if( pObj ){
+			rc = SosAttach(pCtx,pThis,pObj,pInf);
+		}
+	}
+	PH7_MemObjRelease(&sSnap);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,SOS_I,0);
+	pMap = SosMap(pVm,pThis);
+	ph7_result_int64(pCtx,pMap ? (ph7_int64)pMap->nEntry : 0);
+	return PH7_OK;
+}
+/* php's removeAll: detach everything the other storage holds, then RESTART the walk. */
+static int vm_builtin_SplObjectStorage_removeAll(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pOther = SosOther(nArg,apArg);
+	ph7_hashmap *pMap;
+	ph7_value sSnap;
+	sxi64 i,n;
+	sxi32 rc = PH7_OK;
+	if( pOther == 0 || pThis == 0 ){
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pVm,&sSnap);
+	if( SosSnapshot(pVm,pOther,&sSnap) != SXRET_OK ){
+		PH7_MemObjRelease(&sSnap);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	n = (sxi64)((ph7_hashmap *)sSnap.x.pOther)->nEntry;
+	for( i = 0 ; i < n && rc == PH7_OK ; ++i ){
+		ph7_value *pObj = SosPart(SosSnapAt(&sSnap,i),"obj");
+		if( pObj ){
+			rc = SosDetach(pCtx,pThis,pObj,0);
+		}
+	}
+	PH7_MemObjRelease(&sSnap);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	SosRewind(pVm,pThis);
+	pMap = SosMap(pVm,pThis);
+	ph7_result_int64(pCtx,pMap ? (ph7_int64)pMap->nEntry : 0);
+	return PH7_OK;
+}
+/* php's removeAllExcept: the INTERSECTION, walked over this storage's own pairs. */
+static int vm_builtin_SplObjectStorage_removeAllExcept(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pOther = SosOther(nArg,apArg);
+	ph7_hashmap *pMap;
+	ph7_value sSnap;
+	sxi64 i,n;
+	sxi32 rc = PH7_OK;
+	if( pOther == 0 || pThis == 0 ){
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pVm,&sSnap);
+	if( SosSnapshot(pVm,pThis,&sSnap) != SXRET_OK ){
+		PH7_MemObjRelease(&sSnap);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	n = (sxi64)((ph7_hashmap *)sSnap.x.pOther)->nEntry;
+	for( i = 0 ; i < n && rc == PH7_OK ; ++i ){
+		ph7_value *pObj = SosPart(SosSnapAt(&sSnap,i),"obj");
+		int bFound = 0;
+		if( pObj == 0 ){
+			continue;
+		}
+		rc = SosContains(pCtx,pOther,pObj,&bFound);
+		if( rc == PH7_OK && !bFound ){
+			pObj = SosPart(SosSnapAt(&sSnap,i),"obj");   /* re-resolved: getHash may have run */
+			if( pObj ){
+				rc = SosDetach(pCtx,pThis,pObj,0);
+			}
+		}
+	}
+	PH7_MemObjRelease(&sSnap);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	SosRewind(pVm,pThis);
+	pMap = SosMap(pVm,pThis);
+	ph7_result_int64(pCtx,pMap ? (ph7_int64)pMap->nEntry : 0);
+	return PH7_OK;
+}
+/*
+ * php's count(): COUNT_RECURSIVE is accepted and changes nothing -- the storage
+ * holds C structs rather than zvals there, so nothing recurses.
+ */
+static int vm_builtin_SplObjectStorage_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_hashmap *pMap = SosMap(pCtx->pVm,PH7_ContextThis(pCtx));
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_int64(pCtx,pMap ? (ph7_int64)pMap->nEntry : 0);
+	return PH7_OK;
+}
+static int vm_builtin_SplObjectStorage_getHash(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pObj;
+	sxi32 rc = SosObjectArg(pCtx,"getHash",nArg,apArg,&pObj);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	/* php's getHash() IS php_spl_object_hash(), the same one the function answers. */
+	return vm_builtin_spl_object_hash(pCtx,nArg,apArg);
+}
+static int vm_builtin_SplObjectStorage_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	SosRewind(pCtx->pVm,PH7_ContextThis(pCtx));
+	return PH7_OK;
+}
+static int vm_builtin_SplObjectStorage_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_hashmap *pMap = SosMap(pCtx->pVm,PH7_ContextThis(pCtx));
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx,pMap && pMap->pCur ? 1 : 0);
+	return PH7_OK;
+}
+/* php's key() is the INDEX, a counter of its own: next() advances it past the end
+ * too, and only rewind()/detach()/addAll() and friends put it back to zero. */
+static int vm_builtin_SplObjectStorage_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_int64(pCtx,PH7_NativeAttrInt(PH7_ContextThis(pCtx),SOS_I));
+	return PH7_OK;
+}
+/* php RAISES here rather than answering null: the chunk's null was a wrong answer
+ * every `foreach` hid, because a foreach never asks past valid(). */
+static int vm_builtin_SplObjectStorage_current(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pObj = SosPart(SosCurrentPair(pCtx->pVm,PH7_ContextThis(pCtx)),"obj");
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pObj == 0 ){
+		return PH7_VmThrowException(pCtx,"RuntimeException",
+			"Called current() on invalid iterator");
+	}
+	ph7_result_value(pCtx,pObj);
+	return PH7_OK;
+}
+static int vm_builtin_SplObjectStorage_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_hashmap *pMap = SosMap(pVm,pThis);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pMap && pMap->pCur ){
+		pMap->pCur = pMap->pCur->pPrev;
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,SOS_I,PH7_NativeAttrInt(pThis,SOS_I) + 1);
+	return PH7_OK;
+}
+/* php's getInfo(): null past the end, where current() raises. */
+static int vm_builtin_SplObjectStorage_getInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pInf = SosPart(SosCurrentPair(pCtx->pVm,PH7_ContextThis(pCtx)),"inf");
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pInf ){
+		ph7_result_value(pCtx,pInf);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_SplObjectStorage_setInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_hashmap *pMap = SosMap(pVm,PH7_ContextThis(pCtx));
+	ph7_value *pPair;
+	if( pMap == 0 || pMap->pCur == 0 || nArg < 1 ){
+		return PH7_OK;   /* php returns without touching anything */
+	}
+	pPair = SosPairForWrite(pVm,pMap->pCur);
+	if( pPair ){
+		SosSetPart(pVm,pPair,"inf",apArg[0]);
+	}
+	return PH7_OK;
+}
+/*
+ * php's seek(): a position outside the storage is an OutOfBoundsException, and
+ * the index follows the position exactly (php walks its hash cursor either way
+ * and counts; the destination is the same).
+ */
+static int vm_builtin_SplObjectStorage_seek(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_hashmap *pMap = SosMap(pVm,pThis);
+	ph7_int64 iPos = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;
+	ph7_int64 i;
+	if( pMap == 0 ){
+		return PH7_OK;
+	}
+	if( iPos < 0 || iPos >= (ph7_int64)pMap->nEntry ){
+		return PH7_VmThrowException(pCtx,"OutOfBoundsException",
+			"Seek position %qd is out of range",iPos);
+	}
+	pMap->pCur = pMap->pFirst;
+	for( i = 0 ; i < iPos && pMap->pCur ; ++i ){
+		pMap->pCur = pMap->pCur->pPrev;
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,SOS_I,iPos);
+	return PH7_OK;
+}
+/*
+ * php's get_debug_info: ONE entry, the storage, under its own MANGLED private key
+ * -- `["storage":"SplObjectStorage":private]` on screen. The pairs are re-indexed
+ * from zero and shown as {obj, inf}, which is the shape stored here already.
+ * `__debugInfo()` is the same array, reachable by name because php declares it.
+ */
+static sxi32 SosFillDebug(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
+{
+	ph7_hashmap *pMap = SosMap(pVm,pThis);
+	ph7_hashmap_node *pNode;
+	ph7_value sKey,sList;
+	sxu32 n;
+	PH7_MemObjInit(pVm,&sList);
+	if( PH7_MemObjToHashmap(&sList) != SXRET_OK ){
+		PH7_MemObjRelease(&sList);
+		return SXERR_MEM;
+	}
+	if( pMap ){
+		pNode = pMap->pFirst;
+		for( n = 0 ; n < pMap->nEntry && pNode ; ++n ){
+			ph7_value *pPair = HashmapExtractNodeValue(pNode);
+			if( pPair ){
+				ph7_array_add_elem(&sList,0,pPair);
+			}
+			pNode = pNode->pPrev;
+		}
+	}
+	PH7_MemObjInitFromString(pVm,&sKey,0);
+	PH7_MemObjStringAppend(&sKey,"\0SplObjectStorage\0storage",
+		sizeof("\0SplObjectStorage\0storage")-1);
+	ph7_array_add_elem(pOut,&sKey,&sList);
+	PH7_MemObjRelease(&sKey);
+	PH7_MemObjRelease(&sList);
+	return PH7_OK;
+}
+static sxi32 SosPresent(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
+{
+	if( !bDebug ){
+		return PH7_OK;   /* php's (array) cast and var_export show nothing */
+	}
+	return SosFillDebug(pVm,pThis,pOut);
+}
+static int vm_builtin_SplObjectStorage_debugInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value sOut;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	PH7_MemObjInit(pVm,&sOut);
+	if( PH7_MemObjToHashmap(&sOut) != SXRET_OK ){
+		PH7_MemObjRelease(&sOut);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	SosFillDebug(pVm,PH7_ContextThis(pCtx),&sOut);
+	ph7_result_value(pCtx,&sOut);
+	PH7_MemObjRelease(&sOut);
+	return PH7_OK;
+}
+/*
+ * php's __serialize(): [[obj, inf, obj, inf, …], members]. This is what serialize()
+ * actually uses; the Serializable pair below is the legacy format nothing else in
+ * php reads or writes. A native class has no php-visible dynamic properties, so the
+ * members slot is always empty here.
+ */
+static int vm_builtin_SplObjectStorage_serializeMagic(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_hashmap *pMap = SosMap(pVm,PH7_ContextThis(pCtx));
+	ph7_hashmap_node *pNode;
+	ph7_value sOut,sFlat,sMembers;
+	sxu32 n;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	PH7_MemObjInit(pVm,&sOut);
+	PH7_MemObjInit(pVm,&sFlat);
+	PH7_MemObjInit(pVm,&sMembers);
+	if( PH7_MemObjToHashmap(&sOut) != SXRET_OK
+	 || PH7_MemObjToHashmap(&sFlat) != SXRET_OK
+	 || PH7_MemObjToHashmap(&sMembers) != SXRET_OK ){
+		PH7_MemObjRelease(&sOut);
+		PH7_MemObjRelease(&sFlat);
+		PH7_MemObjRelease(&sMembers);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( pMap ){
+		pNode = pMap->pFirst;
+		for( n = 0 ; n < pMap->nEntry && pNode ; ++n ){
+			ph7_value *pPair = HashmapExtractNodeValue(pNode);
+			ph7_value *pObj = SosPart(pPair,"obj");
+			ph7_value *pInf = SosPart(pPair,"inf");
+			if( pObj ){
+				ph7_array_add_elem(&sFlat,0,pObj);
+				if( pInf ){
+					ph7_array_add_elem(&sFlat,0,pInf);
+				}
+			}
+			pNode = pNode->pPrev;
+		}
+	}
+	ph7_array_add_elem(&sOut,0,&sFlat);
+	ph7_array_add_elem(&sOut,0,&sMembers);
+	ph7_result_value(pCtx,&sOut);
+	PH7_MemObjRelease(&sOut);
+	PH7_MemObjRelease(&sFlat);
+	PH7_MemObjRelease(&sMembers);
+	return PH7_OK;
+}
+static sxi32 SosIllTyped(ph7_context *pCtx)
+{
+	return PH7_VmThrowException(pCtx,"UnexpectedValueException",
+		"Incomplete or ill-typed serialization data");
+}
+static int vm_builtin_SplObjectStorage_unserializeMagic(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_hashmap *pFlat;
+	ph7_hashmap_node *pNode = 0;
+	ph7_value *pStorage,*pMembers;
+	sxi64 i,n;
+	sxi32 rc = PH7_OK;
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_HASHMAP) == 0 || pThis == 0 ){
+		return SosIllTyped(pCtx);
+	}
+	if( HashmapLookupIntKey((ph7_hashmap *)apArg[0]->x.pOther,0,&pNode) != SXRET_OK ){
+		return SosIllTyped(pCtx);
+	}
+	pStorage = HashmapExtractNodeValue(pNode);
+	pNode = 0;
+	if( HashmapLookupIntKey((ph7_hashmap *)apArg[0]->x.pOther,1,&pNode) != SXRET_OK ){
+		return SosIllTyped(pCtx);
+	}
+	pMembers = HashmapExtractNodeValue(pNode);
+	if( pStorage == 0 || (pStorage->iFlags & MEMOBJ_HASHMAP) == 0
+	 || pMembers == 0 || (pMembers->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return SosIllTyped(pCtx);
+	}
+	pFlat = (ph7_hashmap *)pStorage->x.pOther;
+	n = (sxi64)pFlat->nEntry;
+	if( n % 2 != 0 ){
+		return PH7_VmThrowException(pCtx,"UnexpectedValueException","Odd number of elements");
+	}
+	for( i = 0 ; i < n && rc == PH7_OK ; i += 2 ){
+		ph7_value *pObj,*pInf;
+		pNode = 0;
+		if( HashmapLookupIntKey(pFlat,i,&pNode) != SXRET_OK ){
+			return SosIllTyped(pCtx);
+		}
+		pObj = HashmapExtractNodeValue(pNode);
+		if( pObj == 0 || (pObj->iFlags & MEMOBJ_OBJ) == 0 ){
+			return PH7_VmThrowException(pCtx,"UnexpectedValueException","Non-object key");
+		}
+		pNode = 0;
+		pInf = HashmapLookupIntKey(pFlat,i+1,&pNode) == SXRET_OK
+			? HashmapExtractNodeValue(pNode) : 0;
+		rc = SosAttach(pCtx,pThis,pObj,pInf);
+	}
+	return rc;
+}
+/*
+ * php's Serializable pair, kept because the interface is still declared. The
+ * format is `x:` + the serialized COUNT, then one `<obj>,<inf>;` per element, then
+ * `m:` + the serialized members -- and php writes it through ONE serializer state,
+ * so an object that appears twice becomes an `r:` back-reference there and a
+ * second copy here (§10; the DLL's legacy pair has the same shape).
+ */
+static int vm_builtin_SplObjectStorage_serialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_hashmap *pMap = SosMap(pVm,PH7_ContextThis(pCtx));
+	ph7_hashmap_node *pNode;
+	SyBlob sOut;
+	ph7_value sVal,*apCall[1];
+	sxu32 n;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	SyBlobInit(&sOut,&pVm->sAllocator);
+	SyBlobAppend(&sOut,"x:",sizeof("x:")-1);
+	PH7_MemObjInitFromInt(pVm,&sVal,pMap ? (sxi64)pMap->nEntry : 0);
+	apCall[0] = &sVal;
+	SplSerializeInto(pCtx,apCall,&sOut);
+	PH7_MemObjRelease(&sVal);
+	if( pMap ){
+		pNode = pMap->pFirst;
+		for( n = 0 ; n < pMap->nEntry && pNode ; ++n ){
+			ph7_value *pPair = HashmapExtractNodeValue(pNode);
+			ph7_value *pObj = SosPart(pPair,"obj");
+			ph7_value *pInf = SosPart(pPair,"inf");
+			ph7_value sNull;
+			if( pObj ){
+				apCall[0] = pObj;
+				SplSerializeInto(pCtx,apCall,&sOut);
+				SyBlobAppend(&sOut,",",1);
+				PH7_MemObjInit(pVm,&sNull);
+				apCall[0] = pInf ? pInf : &sNull;
+				SplSerializeInto(pCtx,apCall,&sOut);
+				PH7_MemObjRelease(&sNull);
+				SyBlobAppend(&sOut,";",1);
+			}
+			pNode = pNode->pPrev;
+		}
+	}
+	SyBlobAppend(&sOut,"m:",sizeof("m:")-1);
+	PH7_MemObjInit(pVm,&sVal);
+	if( PH7_MemObjToHashmap(&sVal) == SXRET_OK ){
+		apCall[0] = &sVal;
+		SplSerializeInto(pCtx,apCall,&sOut);
+	}
+	PH7_MemObjRelease(&sVal);
+	/* ph7_result_string APPENDS too, and pRet still holds the last nested answer
+	 * (rule 54) -- drop it before writing this one. */
+	if( pCtx->pRet ){
+		PH7_MemObjRelease(pCtx->pRet);
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+	return PH7_OK;
+}
+/* php reports WHERE its parse gave up, in bytes, and every failure below is that
+ * one exception. */
+static sxi32 SosOffsetErr(ph7_context *pCtx,int nAt,int nTotal)
+{
+	return PH7_VmThrowException(pCtx,"UnexpectedValueException",
+		"Error at offset %d of %d bytes",nAt,nTotal);
+}
+static int vm_builtin_SplObjectStorage_unserialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zData;
+	int nData = 0,nAt = 0,nRead = 0;
+	ph7_value sVal;
+	sxi64 nCount,i;
+	sxi32 rc;
+	if( nArg < 1 || pThis == 0 ){
+		return PH7_OK;
+	}
+	zData = ph7_value_to_string(apArg[0],&nData);
+	if( nData < 1 ){
+		return PH7_OK;   /* php returns without touching the storage */
+	}
+	if( nData < 2 || zData[0] != 'x' || zData[1] != ':' ){
+		return SosOffsetErr(pCtx,zData[0] == 'x' ? 1 : 0,nData);
+	}
+	nAt = 2;
+	PH7_MemObjInit(pVm,&sVal);
+	rc = PH7_VmUnserializeOne(pCtx,&zData[nAt],nData - nAt,&nRead,&sVal);
+	if( rc == PH7_EXCEPTION ){
+		PH7_MemObjRelease(&sVal);
+		return rc;
+	}
+	if( rc != SXRET_OK || (sVal.iFlags & MEMOBJ_INT) == 0 ){
+		/* php reports where its parser STOPPED, which for a well-formed value of
+		 * the wrong type is the byte after it. */
+		PH7_MemObjRelease(&sVal);
+		return SosOffsetErr(pCtx,nAt + nRead,nData);
+	}
+	nCount = ph7_value_to_int64(&sVal);
+	PH7_MemObjRelease(&sVal);
+	nAt += nRead - 1;   /* php steps back onto the ';' that ends the count */
+	if( nCount < 0 ){
+		return SosOffsetErr(pCtx,nAt,nData);
+	}
+	for( i = 0 ; i < nCount ; ++i ){
+		ph7_value sObj,sInf;
+		if( nAt >= nData || zData[nAt] != ';' ){
+			return SosOffsetErr(pCtx,nAt,nData);
+		}
+		nAt++;
+		if( nAt >= nData || (zData[nAt] != 'O' && zData[nAt] != 'C' && zData[nAt] != 'r') ){
+			return SosOffsetErr(pCtx,nAt,nData);
+		}
+		PH7_MemObjInit(pVm,&sObj);
+		PH7_MemObjInit(pVm,&sInf);
+		rc = PH7_VmUnserializeOne(pCtx,&zData[nAt],nData - nAt,&nRead,&sObj);
+		if( rc == PH7_EXCEPTION ){
+			PH7_MemObjRelease(&sObj);
+			PH7_MemObjRelease(&sInf);
+			return rc;
+		}
+		if( rc != SXRET_OK || (sObj.iFlags & MEMOBJ_OBJ) == 0 ){
+			PH7_MemObjRelease(&sObj);
+			PH7_MemObjRelease(&sInf);
+			return SosOffsetErr(pCtx,nAt + nRead,nData);
+		}
+		nAt += nRead;
+		if( nAt < nData && zData[nAt] == ',' ){
+			nAt++;
+			rc = PH7_VmUnserializeOne(pCtx,&zData[nAt],nData - nAt,&nRead,&sInf);
+			if( rc == PH7_EXCEPTION ){
+				PH7_MemObjRelease(&sObj);
+				PH7_MemObjRelease(&sInf);
+				return rc;
+			}
+			if( rc != SXRET_OK ){
+				PH7_MemObjRelease(&sObj);
+				PH7_MemObjRelease(&sInf);
+				return SosOffsetErr(pCtx,nAt + nRead,nData);
+			}
+			nAt += nRead;
+		}
+		rc = SosAttach(pCtx,pThis,&sObj,&sInf);
+		PH7_MemObjRelease(&sObj);
+		PH7_MemObjRelease(&sInf);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+	}
+	if( nAt >= nData || zData[nAt] != ';' ){
+		return SosOffsetErr(pCtx,nAt,nData);
+	}
+	nAt++;
+	if( nAt + 1 >= nData || zData[nAt] != 'm' || zData[nAt+1] != ':' ){
+		return SosOffsetErr(pCtx,nAt < nData && zData[nAt] == 'm' ? nAt + 1 : nAt,nData);
+	}
+	nAt += 2;
+	PH7_MemObjInit(pVm,&sVal);
+	rc = PH7_VmUnserializeOne(pCtx,&zData[nAt],nData - nAt,&nRead,&sVal);
+	if( rc == PH7_EXCEPTION ){
+		PH7_MemObjRelease(&sVal);
+		return rc;
+	}
+	if( rc != SXRET_OK || (sVal.iFlags & MEMOBJ_HASHMAP) == 0 ){
+		PH7_MemObjRelease(&sVal);
+		return SosOffsetErr(pCtx,nAt + nRead,nData);
+	}
+	/* php loads the members onto the object here; a native class declares none
+	 * that a payload could name and PHL has no dynamic properties to create. */
+	PH7_MemObjRelease(&sVal);
+	return PH7_OK;
+}
+/*
+ * The declaration. Method ORDER is spl_observer.stub.php's, the two observer
+ * interfaces are methodless-but-typed contracts php declares beside it, and
+ * seek() is the ONE method php does not mark tentative.
+ */
+static sxi32 VmInstallSplObjectStorage(ph7_vm *pVm)
+{
+	static const PH7_NativeMethodDef aObserverMethod[] = {
+		{ "update", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "SplSubject $subject", "@void", 0 },
+	};
+	static const PH7_NativeMethodDef aSubjectMethod[] = {
+		{ "attach", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "SplObserver $observer", "@void", 0 },
+		{ "detach", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "SplObserver $observer", "@void", 0 },
+		{ "notify", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "@void", 0 },
+	};
+	static const PH7_NativePropDef aSosProp[] = {
+		{ SOS_S, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ SOS_I, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+	};
+	static const PH7_NativeMethodDef aSosMethod[] = {
+		{ "attach",          PH7_MOD_PUBLIC, "object $object, mixed $info = null", "@void",
+		  vm_builtin_SplObjectStorage_attach },
+		{ "detach",          PH7_MOD_PUBLIC, "object $object", "@void",
+		  vm_builtin_SplObjectStorage_detach },
+		{ "contains",        PH7_MOD_PUBLIC, "object $object", "@bool",
+		  vm_builtin_SplObjectStorage_contains },
+		{ "addAll",          PH7_MOD_PUBLIC, "SplObjectStorage $storage", "@int",
+		  vm_builtin_SplObjectStorage_addAll },
+		{ "removeAll",       PH7_MOD_PUBLIC, "SplObjectStorage $storage", "@int",
+		  vm_builtin_SplObjectStorage_removeAll },
+		{ "removeAllExcept", PH7_MOD_PUBLIC, "SplObjectStorage $storage", "@int",
+		  vm_builtin_SplObjectStorage_removeAllExcept },
+		{ "getInfo",         PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_SplObjectStorage_getInfo },
+		{ "setInfo",         PH7_MOD_PUBLIC, "mixed $info", "@void",
+		  vm_builtin_SplObjectStorage_setInfo },
+		{ "count",           PH7_MOD_PUBLIC, "int $mode = 0", "@int",
+		  vm_builtin_SplObjectStorage_count },
+		{ "rewind",          PH7_MOD_PUBLIC, "", "@void", vm_builtin_SplObjectStorage_rewind },
+		{ "valid",           PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplObjectStorage_valid },
+		{ "key",             PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplObjectStorage_key },
+		{ "current",         PH7_MOD_PUBLIC, "", "@object", vm_builtin_SplObjectStorage_current },
+		{ "next",            PH7_MOD_PUBLIC, "", "@void", vm_builtin_SplObjectStorage_next },
+		{ "seek",            PH7_MOD_PUBLIC, "int $offset", "void",
+		  vm_builtin_SplObjectStorage_seek },
+		{ "unserialize",     PH7_MOD_PUBLIC, "string $data", "@void",
+		  vm_builtin_SplObjectStorage_unserialize },
+		{ "serialize",       PH7_MOD_PUBLIC, "", "@string",
+		  vm_builtin_SplObjectStorage_serialize },
+		/* php's stub leaves these four offsets UNTYPED (a `@param object` docblock
+		 * Reflection does not print) while the ZPP takes an object -- so the
+		 * signature says nothing and each body words its own refusal. */
+		{ "offsetExists",    PH7_MOD_PUBLIC, "$object", "@bool",
+		  vm_builtin_SplObjectStorage_offsetExists },
+		{ "offsetGet",       PH7_MOD_PUBLIC, "$object", "@mixed",
+		  vm_builtin_SplObjectStorage_offsetGet },
+		{ "offsetSet",       PH7_MOD_PUBLIC, "$object, mixed $info = null", "@void",
+		  vm_builtin_SplObjectStorage_offsetSet },
+		{ "offsetUnset",     PH7_MOD_PUBLIC, "$object", "@void",
+		  vm_builtin_SplObjectStorage_offsetUnset },
+		{ "getHash",         PH7_MOD_PUBLIC, "object $object", "@string",
+		  vm_builtin_SplObjectStorage_getHash },
+		{ "__serialize",     PH7_MOD_PUBLIC, "", "@array",
+		  vm_builtin_SplObjectStorage_serializeMagic },
+		{ "__unserialize",   PH7_MOD_PUBLIC, "array $data", "@void",
+		  vm_builtin_SplObjectStorage_unserializeMagic },
+		{ "__debugInfo",     PH7_MOD_PUBLIC, "", "@array",
+		  vm_builtin_SplObjectStorage_debugInfo },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "SplObserver", 0, 0, PH7_CLASS_INTERFACE,
+		  aObserverMethod, SX_ARRAYSIZE(aObserverMethod), 0, 0, 0, 0, 0, 0, 0 },
+		{ "SplSubject", 0, 0, PH7_CLASS_INTERFACE,
+		  aSubjectMethod, SX_ARRAYSIZE(aSubjectMethod), 0, 0, 0, 0, 0, 0, 0 },
+		{ "SplObjectStorage", 0, "Countable,SeekableIterator,Serializable,ArrayAccess", 0,
+		  aSosMethod, SX_ARRAYSIZE(aSosMethod), 0, 0,
+		  aSosProp, SX_ARRAYSIZE(aSosProp), 0, 0, SosPresent },
+	};
+	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+}
 static const char zSplLib[] =
-"class SplObjectStorage implements Countable, Iterator, ArrayAccess {"
-" private $__o = [];"
-" private $__i = 0;"
-/* php DEPRECATES the next three since 8.5. PHL keeps them working and says
- * nothing: the notice is the only difference, and it is not one valid php
- * depends on. The `__spl_deprecated()` thunk that used to stand in these
- * bodies had been a no-op for exactly that reason, so it is gone. */
-" public function attach($object, $info = null){ $this->offsetSet($object, $info); }"
-" public function detach($object){ $this->offsetUnset($object); }"
-" public function contains($object){ return $this->offsetExists($object); }"
-" public function offsetSet($object, $info = null){"
-"  $this->__o[spl_object_id($object)] = [$object, $info];"
-" }"
-" public function offsetExists($object){"
-"  return isset($this->__o[spl_object_id($object)]);"
-" }"
-" public function offsetGet($object){"
-"  $id = spl_object_id($object);"
-"  if( !isset($this->__o[$id]) ){"
-"   throw new UnexpectedValueException('Object not found');"
-"  }"
-"  return $this->__o[$id][1];"
-" }"
-" public function offsetUnset($object){"
-"  unset($this->__o[spl_object_id($object)]);"
-" }"
-" public function addAll($storage){"
-"  foreach( $storage as $obj ){"
-"   $this->offsetSet($obj, $storage[$obj]);"
-"  }"
-"  return $this->count();"
-" }"
-" public function removeAll($storage){"
-"  foreach( $storage as $obj ){ $this->offsetUnset($obj); }"
-"  return $this->count();"
-" }"
-" public function removeAllExcept($storage){"
-"  foreach( $this->__o as $id => $pair ){"
-"   if( !$storage->offsetExists($pair[0]) ){ unset($this->__o[$id]); }"
-"  }"
-"  return $this->count();"
-" }"
-" public function getHash($object){ return spl_object_hash($object); }"
-" public function count($mode = 0){ return count($this->__o); }"
-" public function getInfo(){"
-"  $pair = array_values($this->__o)[$this->__i] ?? null;"
-"  return $pair === null ? null : $pair[1];"
-" }"
-" public function setInfo($info){"
-"  $keys = array_keys($this->__o);"
-"  if( isset($keys[$this->__i]) ){ $this->__o[$keys[$this->__i]][1] = $info; }"
-" }"
-" public function rewind(){ $this->__i = 0; }"
-" public function valid(){ return $this->__i < count($this->__o); }"
-" public function key(){ return $this->__i; }"
-" public function current(){"
-"  $pair = array_values($this->__o)[$this->__i] ?? null;"
-"  return $pair === null ? null : $pair[0];"
-" }"
-" public function next(){ $this->__i++; }"
-"}"
-"interface SplObserver {"
-" public function update(SplSubject $subject);"
-"}"
-"interface SplSubject {"
-" public function attach(SplObserver $observer);"
-" public function detach(SplObserver $observer);"
-" public function notify();"
-"}"
 "class SplFileInfo implements Stringable {"
 " protected $__pathName = '';"
 " protected $__fileName = '';"
@@ -6223,6 +7242,10 @@ PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)
 		return rc;
 	}
 	rc = VmInstallSplFixedArray(&(*pVm));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	rc = VmInstallSplObjectStorage(&(*pVm));
 	if( rc != SXRET_OK ){
 		return rc;
 	}

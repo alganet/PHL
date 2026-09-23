@@ -872,6 +872,57 @@ static sxi32 VmUnserializeCheckOptions(
 	return PH7_OK;
 }
 /*
+ * Unserialize ONE value from a buffer and report how many bytes it took --
+ * php's php_var_unserialize(&p, ...) with the cursor left where the value ended.
+ *
+ * A legacy Serializable payload is a SEQUENCE of serialized values with one-byte
+ * separators between them (SplObjectStorage writes `x:<count>;<obj>,<inf>;…m:<members>`),
+ * and only the parser knows where each value stops -- scanning for the next ';'
+ * works for a scalar and cuts an object payload in half. Nothing here writes to
+ * pCtx->pRet, so a caller can run it in a loop without rule 54's reset dance.
+ *
+ * Answers SXRET_OK with *pnRead set, SXERR_SYNTAX on a malformed value, or
+ * PH7_EXCEPTION when a __wakeup()/__unserialize() threw. Nothing is reported:
+ * the caller words php's own diagnostic. *pnRead is set EITHER WAY -- on failure
+ * it is where the parser gave up, which is the offset php's own message carries.
+ */
+PH7_PRIVATE sxi32 PH7_VmUnserializeOne(ph7_context *pCtx,const char *zIn,int nByte,int *pnRead,ph7_value *pOut)
+{
+	unserialize_data ud;
+	ph7_value *pVal;
+	if( pnRead ){
+		*pnRead = 0;
+	}
+	if( nByte < 1 ){
+		return SXERR_SYNTAX;
+	}
+	ud.pVm = pCtx->pVm;
+	ud.pCtx = pCtx;
+	ud.zCur = zIn;
+	ud.zEnd = &zIn[nByte];
+	ud.depth = 0;
+	ud.maxDepth = SERIALIZE_MAX_DEPTH;
+	ud.depthErr = 0;
+	ud.zErr = 0;
+	ud.shortErr = 0;
+	ud.exc = 0;
+	pVal = VmUnserializeValue(&ud);
+	if( ud.exc ){
+		return PH7_EXCEPTION;
+	}
+	if( pnRead ){
+		*pnRead = (int)((pVal == 0 && ud.zErr ? ud.zErr : ud.zCur) - zIn);
+	}
+	if( pVal == 0 ){
+		return SXERR_SYNTAX;
+	}
+	if( pOut ){
+		PH7_MemObjStore(pVal,pOut);
+	}
+	ph7_context_release_value(pCtx,pVal);
+	return SXRET_OK;
+}
+/*
  * mixed unserialize(string $str)
  *  Create a PHP value from a stored representation. Returns false on failure.
  */
