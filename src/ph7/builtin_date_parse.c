@@ -3245,6 +3245,91 @@ static int vm_builtin_timezone_offset_get(ph7_context *pCtx,int nArg,ph7_value *
 	{ "sub",             PH7_MOD_PUBLIC, "DateInterval $interval", "@" CLS, vm_builtin_DateTime_sub }, \
 	{ "getLastErrors",   PH7_MOD_PUBLIC|PH7_MOD_STATIC, "", "@array|false", \
 	  vm_builtin_DateTime_getLastErrors }
+/*
+ * php's presentation for the date classes (ph7_class::xPresent).
+ *
+ * php keeps a timelib struct and SHOWS date/timezone_type/timezone; PHL keeps a
+ * timestamp, an offset, a zone name and microseconds, all hidden. These build php's
+ * shape out of that state, so var_dump/print_r, var_export and the (array) cast
+ * agree with the oracle without changing what the C bodies read.
+ *
+ * timezone_type is php's own three-way tag: 1 = a fixed UTC OFFSET ("+02:00"),
+ * 2 = an ABBREVIATION ("GMT", "Z"), 3 = an IDENTIFIER ("UTC", "Europe/Paris").
+ * PHL accepts offsets, UTC, GMT and Z today; the identifier arm is written for the
+ * whole rule so a tz database can only add names, never change the tagging.
+ */
+static int DtZoneTypeOf(const char *zName,int nName)
+{
+	sxu32 nPos = 0;
+	if( nName > 0 && (zName[0] == '+' || zName[0] == '-') ){
+		return 1;
+	}
+	if( nName == 3 && SyStrnicmp(zName,"UTC",3) == 0 ){
+		return 3;
+	}
+	if( nName > 0 && SyByteFind(zName,(sxu32)nName,'/',&nPos) == SXRET_OK ){
+		return 3;
+	}
+	return 2;
+}
+static void DtPresentPut(ph7_vm *pVm,ph7_value *pOut,const char *zKey,ph7_value *pVal)
+{
+	ph7_value sKey;
+	PH7_MemObjInitFromString(&(*pVm),&sKey,0);
+	PH7_MemObjStringAppend(&sKey,zKey,(sxu32)SyStrlen(zKey));
+	ph7_array_add_elem(pOut,&sKey,pVal);
+	PH7_MemObjRelease(&sKey);
+}
+static void DtPresentZone(ph7_vm *pVm,ph7_value *pOut,const char *zName,int nName)
+{
+	ph7_value sVal;
+	PH7_MemObjInitFromInt(&(*pVm),&sVal,DtZoneTypeOf(zName,nName));
+	DtPresentPut(&(*pVm),pOut,"timezone_type",&sVal);
+	PH7_MemObjRelease(&sVal);
+	PH7_MemObjInitFromString(&(*pVm),&sVal,0);
+	PH7_MemObjStringAppend(&sVal,zName,(sxu32)nName);
+	DtPresentPut(&(*pVm),pOut,"timezone",&sVal);
+	PH7_MemObjRelease(&sVal);
+}
+static sxi32 DtPresentDateTime(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
+{
+	dt_state sState;
+	Sytm sTm;
+	char zZone[64];
+	char zDate[64];
+	ph7_value sVal;
+	int nName;
+	SXUNUSED(bDebug); /* php shows the same three keys to both handlers */
+	DtLoad(pThis,&sState);
+	nName = sState.nName;
+	if( nName >= (int)sizeof(zZone) ){
+		nName = (int)sizeof(zZone) - 1;
+	}
+	if( nName > 0 ){
+		SyMemcpy(sState.zName,zZone,(sxu32)nName);
+	}
+	zZone[nName] = 0;
+	DtFillSytm(sState.iTs,sState.iOff,zZone,&sTm);
+	/* php's fixed shape here, not a format string: "Y-m-d H:i:s.uuuuuu". */
+	SyBufferFormat(zDate,sizeof(zDate),"%04d-%02d-%02d %02d:%02d:%02d.%06d",
+		sTm.tm_year,sTm.tm_mon + 1,sTm.tm_mday,sTm.tm_hour,sTm.tm_min,sTm.tm_sec,
+		sState.uSec);
+	PH7_MemObjInitFromString(&(*pVm),&sVal,0);
+	PH7_MemObjStringAppend(&sVal,zDate,(sxu32)SyStrlen(zDate));
+	DtPresentPut(&(*pVm),pOut,"date",&sVal);
+	PH7_MemObjRelease(&sVal);
+	DtPresentZone(&(*pVm),pOut,zZone,nName);
+	return SXRET_OK;
+}
+static sxi32 DtPresentTimeZone(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
+{
+	const char *zName = 0;
+	int nName = 0;
+	SXUNUSED(bDebug);
+	PH7_NativeAttrStr(pThis,DTZ_NAME,&zName,&nName);
+	DtPresentZone(&(*pVm),pOut,zName ? zName : "",nName);
+	return SXRET_OK;
+}
 /* php's DateTimeInterface constants, the whole of that interface's surface here
  * (its abstract METHODS are deliberately not declared: PH7_ClassImplement installs
  * a stub for every interface method an implementor lacks, so declaring them would
@@ -3367,24 +3452,27 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		/* Exceptions first: the classes below throw them. */
-		{ "DateException", "Exception", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-		{ "DateMalformedStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-		{ "DateInvalidTimeZoneException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-		{ "DateMalformedIntervalStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-		{ "DateMalformedPeriodStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DateException", "Exception", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DateMalformedStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DateInvalidTimeZoneException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DateMalformedIntervalStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DateMalformedPeriodStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "DateTimeInterface", 0, 0, PH7_CLASS_INTERFACE,
-		  0, 0, aIfaceConst, SX_ARRAYSIZE(aIfaceConst), 0, 0, 0, 0 },
+		  0, 0, aIfaceConst, SX_ARRAYSIZE(aIfaceConst), 0, 0, 0, 0, 0 },
 		{ "DateTimeZone", 0, 0, 0,
-		  aZoneMethod, SX_ARRAYSIZE(aZoneMethod), 0, 0, aZoneProp, SX_ARRAYSIZE(aZoneProp), 0, 0 },
+		  aZoneMethod, SX_ARRAYSIZE(aZoneMethod), 0, 0, aZoneProp, SX_ARRAYSIZE(aZoneProp),
+		  0, 0, DtPresentTimeZone },
 		{ "DateTime", 0, "DateTimeInterface", 0,
-		  aDtMethod, SX_ARRAYSIZE(aDtMethod), 0, 0, aDtProp, SX_ARRAYSIZE(aDtProp), 0, 0 },
+		  aDtMethod, SX_ARRAYSIZE(aDtMethod), 0, 0, aDtProp, SX_ARRAYSIZE(aDtProp),
+		  0, 0, DtPresentDateTime },
 		{ "DateTimeImmutable", 0, "DateTimeInterface", 0,
-		  aImmMethod, SX_ARRAYSIZE(aImmMethod), 0, 0, aDtProp, SX_ARRAYSIZE(aDtProp), 0, 0 },
+		  aImmMethod, SX_ARRAYSIZE(aImmMethod), 0, 0, aDtProp, SX_ARRAYSIZE(aDtProp),
+		  0, 0, DtPresentDateTime },
 		{ "DateInterval", 0, 0, 0,
-		  aIvMethod, SX_ARRAYSIZE(aIvMethod), 0, 0, aIvProp, SX_ARRAYSIZE(aIvProp), 0, 0 },
+		  aIvMethod, SX_ARRAYSIZE(aIvMethod), 0, 0, aIvProp, SX_ARRAYSIZE(aIvProp), 0, 0, 0 },
 		{ "DatePeriod", 0, 0, 0,
 		  aDpMethod, SX_ARRAYSIZE(aDpMethod), aDpConst, SX_ARRAYSIZE(aDpConst),
-		  aDpProp, SX_ARRAYSIZE(aDpProp), 0, &sDpIterVtab },
+		  aDpProp, SX_ARRAYSIZE(aDpProp), 0, &sDpIterVtab, 0 },
 	};
 	/* php's procedural aliases. Each is a function in its own right, not a forward,
 	 * and each owes aBuiltinSig[] a row (vm_arg_check.c). */

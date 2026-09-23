@@ -1078,7 +1078,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallFiberNative(ph7_vm *pVm)
 		aMethod, SX_ARRAYSIZE(aMethod),
 		0, 0,
 		aProp, SX_ARRAYSIZE(aProp),
-		0, 0
+		0, 0, 0
 	};
 	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);
 }
@@ -1112,7 +1112,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallGeneratorNative(ph7_vm *pVm)
 		aMethod, SX_ARRAYSIZE(aMethod),
 		0, 0,
 		aProp, SX_ARRAYSIZE(aProp),
-		0, 0
+		0, 0, 0
 	};
 	ph7_class *pClass;
 	ph7_class *pIterator;
@@ -1239,7 +1239,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallClosureNative(ph7_vm *pVm)
 		aMethod, SX_ARRAYSIZE(aMethod),
 		0, 0,
 		aProp, SX_ARRAYSIZE(aProp),
-		0, 0
+		0, 0, 0
 	};
 	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);
 }

@@ -1769,31 +1769,31 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 	 * before touching a method, but PH7_ClassInherit still needs the parent to
 	 * exist when the child's row is declared. */
 	static const PH7_NativeClassSpec aSpec[] = {
-		{ "DOMException", "Exception", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DOMException", "Exception", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMNode", 0, 0, 0,
-		  aNodeMethod, SX_ARRAYSIZE(aNodeMethod), 0, 0, aNodeProp, SX_ARRAYSIZE(aNodeProp), 0, 0 },
+		  aNodeMethod, SX_ARRAYSIZE(aNodeMethod), 0, 0, aNodeProp, SX_ARRAYSIZE(aNodeProp), 0, 0, 0 },
 		{ "DOMDocument", "DOMNode", 0, 0,
-		  aDocMethod, SX_ARRAYSIZE(aDocMethod), 0, 0, aDocProp, SX_ARRAYSIZE(aDocProp), 0, 0 },
+		  aDocMethod, SX_ARRAYSIZE(aDocMethod), 0, 0, aDocProp, SX_ARRAYSIZE(aDocProp), 0, 0, 0 },
 		{ "DOMElement", "DOMNode", 0, 0,
-		  aElemMethod, SX_ARRAYSIZE(aElemMethod), 0, 0, 0, 0, 0, 0 },
+		  aElemMethod, SX_ARRAYSIZE(aElemMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMAttr", "DOMNode", 0, 0,
-		  aAttrMethod, SX_ARRAYSIZE(aAttrMethod), 0, 0, 0, 0, 0, 0 },
+		  aAttrMethod, SX_ARRAYSIZE(aAttrMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMCharacterData", "DOMNode", 0, 0,
-		  aCharMethod, SX_ARRAYSIZE(aCharMethod), 0, 0, 0, 0, 0, 0 },
+		  aCharMethod, SX_ARRAYSIZE(aCharMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMText", "DOMCharacterData", 0, 0,
-		  aTextMethod, SX_ARRAYSIZE(aTextMethod), 0, 0, 0, 0, 0, 0 },
-		{ "DOMComment", "DOMCharacterData", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-		{ "DOMCdataSection", "DOMText", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		  aTextMethod, SX_ARRAYSIZE(aTextMethod), 0, 0, 0, 0, 0, 0, 0 },
+		{ "DOMComment", "DOMCharacterData", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DOMCdataSection", "DOMText", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		/* php's own two: IteratorAggregate (NOT Iterator -- the chunk had the
 		 * list carry its own cursor) and Countable. */
 		{ "DOMNodeList", 0, "IteratorAggregate,Countable", 0,
 		  aListMethod, SX_ARRAYSIZE(aListMethod), 0, 0, aListProp, SX_ARRAYSIZE(aListProp),
-		  0, &sDomListIterVtab },
+		  0, &sDomListIterVtab, 0 },
 		{ "DOMNamedNodeMap", 0, "IteratorAggregate,Countable", 0,
 		  aMapMethod, SX_ARRAYSIZE(aMapMethod), 0, 0, aListProp, SX_ARRAYSIZE(aListProp),
-		  0, &sDomMapIterVtab },
+		  0, &sDomMapIterVtab, 0 },
 		{ "DOMXPath", 0, 0, 0,
-		  aXPathMethod, SX_ARRAYSIZE(aXPathMethod), 0, 0, aXPathProp, SX_ARRAYSIZE(aXPathProp), 0, 0 },
+		  aXPathMethod, SX_ARRAYSIZE(aXPathMethod), 0, 0, aXPathProp, SX_ARRAYSIZE(aXPathProp), 0, 0, 0 },
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }

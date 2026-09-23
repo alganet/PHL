@@ -477,6 +477,36 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallProperty(ph7_vm *pVm,ph7_class *pClass,
 	return PH7_ClassInstallAttr(pClass,pAttr);
 }
 /*
+ * php's get_properties / get_debug_info handlers: the SHAPE a class SHOWS.
+ *
+ * Several native classes present something that is not their storage. php shows a
+ * DateTime as date/timezone_type/timezone (the state is a timestamp, an offset and
+ * a zone name), a DateTimeZone as timezone_type/timezone, and a WeakReference as
+ * ["object"]. Those slots carry PH7_MOD_HIDDEN so no presentation surface sees the
+ * engine state; this fills an array with what php shows instead.
+ *
+ * Answers 1 when the class (or an ancestor) declared a hook and pOut was filled.
+ * bDebug distinguishes php's two handlers: 1 for var_dump/print_r (get_debug_info),
+ * 0 for var_export and the (array) cast (get_properties). They disagree — a
+ * WeakReference shows ["object"] to var_dump and nothing to (array) — so the
+ * callback is told which is asking rather than each caller guessing.
+ * get_object_vars() and foreach are NOT callers: php answers those from the real
+ * properties with the caller's scope applied, which for every class here is empty.
+ */
+PH7_PRIVATE int PH7_ClassInstancePresent(ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
+{
+	ph7_class *pClass;
+	if( pThis == 0 || pOut == 0 ){
+		return 0;
+	}
+	for( pClass = pThis->pClass ; pClass ; pClass = pClass->pBase ){
+		if( pClass->xPresent ){
+			return pClass->xPresent(pThis->pVm,pThis,pOut,bDebug) == SXRET_OK;
+		}
+	}
+	return 0;
+}
+/*
  * Create and install ONE class from its spec: constants and properties, but
  * neither methods nor its base chain.
  *
@@ -499,6 +529,7 @@ static sxi32 NativeDeclareClass(ph7_vm *pVm,const PH7_NativeClassSpec *pSpec,ph7
 	pClass->iFlags |= pSpec->iFlags;
 	pClass->xRelease = pSpec->xRelease;
 	pClass->pIterVtab = pSpec->pIterVtab;
+	pClass->xPresent = pSpec->xPresent;
 	for( n = 0 ; n < pSpec->nConst ; n++ ){
 		rc = NativeInstallConstant(&(*pVm),pClass,&pSpec->aConst[n]);
 		if( rc != SXRET_OK ){
@@ -1009,7 +1040,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallNativeIterator(ph7_vm *pVm)
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		{ "InternalIterator", 0, 0, PH7_CLASS_FINAL,
-		  aMethod, SX_ARRAYSIZE(aMethod), 0, 0, aProp, SX_ARRAYSIZE(aProp), 0, 0 },
+		  aMethod, SX_ARRAYSIZE(aMethod), 0, 0, aProp, SX_ARRAYSIZE(aProp), 0, 0, 0 },
 	};
 	ph7_class *pIt,*pIterator;
 	sxi32 rc;

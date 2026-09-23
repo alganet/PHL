@@ -1659,6 +1659,46 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 	}
 	rc = SXRET_OK;
 	{
+		/* A native class's PRESENTATION (php's get_debug_info): the shape it shows
+		 * is not its storage — a DateTime shows date/timezone_type/timezone, a
+		 * WeakReference shows ["object"] — and the slots underneath are hidden.
+		 * Rendered exactly like a __debugInfo() array, which is what php does with
+		 * it, and consulted first because php's handler wins over a userland
+		 * method a native class cannot declare anyway. */
+		ph7_value sPresent;
+		PH7_MemObjInit(pThis->pVm,&sPresent);
+		if( ph7_value_is_array(&sPresent) == 0 ){
+			ph7_hashmap *pPresent = PH7_NewHashmap(pThis->pVm,0,0);
+			if( pPresent ){
+				sPresent.x.pOther = pPresent;
+				MemObjSetType(&sPresent,MEMOBJ_HASHMAP);
+			}
+		}
+		if( (sPresent.iFlags & MEMOBJ_HASHMAP)
+		 && PH7_ClassInstancePresent(pThis,&sPresent,1) ){
+			ph7_hashmap *pMap = (ph7_hashmap *)sPresent.x.pOther;
+			DumpClassInstanceHeader(&(*pOut),pThis->pClass,pThis->nObjId,ShowType,pMap->nEntry);
+			if( !ShowType ){
+				for( i = 0 ; i < nTab ; i++ ){
+					SyBlobAppend(&(*pOut)," ",sizeof(char));
+				}
+				SyBlobAppend(&(*pOut),"(\n",sizeof("(\n")-1);
+			}
+			rc = PH7_HashmapDumpEntries(&(*pOut),pMap,ShowType,nTab,nDepth);
+			for( i = 0 ; i < nTab ; i++ ){
+				SyBlobAppend(&(*pOut)," ",sizeof(char));
+			}
+			if( ShowType ){
+				SyBlobAppend(&(*pOut),"}",sizeof(char));
+			}else{
+				SyBlobAppend(&(*pOut),")\n",sizeof(")\n")-1);
+			}
+			PH7_MemObjRelease(&sPresent);
+			return rc;
+		}
+		PH7_MemObjRelease(&sPresent);
+	}
+	{
 		/* Both var_dump and print_r consult __debugInfo() (PHP behavior);
 		 * var_export uses a separate renderer and never reaches here. When the
 		 * method is present and returns an array, render that array's entries as
@@ -1897,6 +1937,28 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmap(ph7_class_instance *pThis,ph7_hashm
 	VmClassAttr *pAttr;
 	ph7_value *pValue;
 	ph7_value sName;
+	{
+		/* php's get_properties handler, which is what the (array) cast reads: a
+		 * DateTime casts to date/timezone_type/timezone, not to the hidden slots
+		 * holding its timestamp. A class whose hook answers only the DEBUG surface
+		 * (WeakReference) fills nothing here, and the walk below finds nothing to
+		 * add either — which is php's empty array. */
+		ph7_value sPresent;
+		PH7_MemObjInit(pThis->pVm,&sPresent);
+		sPresent.x.pOther = pMap;
+		MemObjSetType(&sPresent,MEMOBJ_HASHMAP);
+		if( PH7_ClassInstancePresent(pThis,&sPresent,0) ){
+			/* The map IS the destination; do not release the carrier's hashmap. */
+			sPresent.x.pOther = 0;
+			sPresent.iFlags = MEMOBJ_NULL;
+			if( pMap->nEntry > 0 ){
+				return SXRET_OK;
+			}
+		}
+		sPresent.x.pOther = 0;
+		sPresent.iFlags = MEMOBJ_NULL;
+		PH7_MemObjRelease(&sPresent);
+	}
 	/* Reset the loop cursor */
 	SyHashResetLoopCursor(&pThis->hAttr);
 	PH7_MemObjInitFromString(pThis->pVm,&sName,0);

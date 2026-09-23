@@ -1130,6 +1130,20 @@ struct ph7_class
 	const PH7_NativeIterVtab *pIterVtab; /* How an InternalIterator walks an instance of this class
 	                       * (php's get_iterator handler). Set on native IteratorAggregates whose
 	                       * getIterator() answers PH7_NativeIteratorNew(); 0 everywhere else. */
+	sxi32 (*xPresent)(ph7_vm *,ph7_class_instance *,ph7_value *,int); /* php's get_properties /
+	                       * get_debug_info handlers, as one callback told which is asking:
+	                       * the SHAPE a class SHOWS, which for several native classes is nothing
+	                       * like the engine state it keeps. php presents a DateTime as
+	                       * date/timezone_type/timezone and a WeakReference as ["object"], while
+	                       * the slots underneath are a timestamp and a C-side cell — those slots
+	                       * carry PH7_MOD_HIDDEN, and this fills an ARRAY with what php shows.
+	                       * The last argument is 1 for the DEBUG surfaces (var_dump/print_r) and 0
+	                       * for the property ones (var_export, the (array) cast), because php's
+	                       * two handlers do not agree: a WeakReference shows ["object"] to
+	                       * var_dump and NOTHING to (array), while a DateTime shows the same three
+	                       * keys to both. Never consulted by get_object_vars()/foreach, which php
+	                       * answers from the real (scoped) properties, nor yet by serialize(),
+	                       * where php's answer is an __serialize/__unserialize pair. */
 };
 /* Class configuration flags */
 #define PH7_CLASS_FINAL       0x001 /* Class is final [cannot be extended] */
@@ -1354,6 +1368,7 @@ struct PH7_NativeClassSpec
 	const PH7_NativePropDef   *aProp;   sxu32 nProp;
 	void (*xRelease)(ph7_vm *,ph7_class_instance *); /* or 0; see ph7_class::xRelease */
 	const PH7_NativeIterVtab *pIterVtab; /* or 0; see ph7_class::pIterVtab */
+	sxi32 (*xPresent)(ph7_vm *,ph7_class_instance *,ph7_value *,int); /* or 0; see ph7_class::xPresent */
 };
 /*
  * One `case Name = <literal>;` of a native ENUM. The backing value is the same
@@ -1367,6 +1382,7 @@ struct PH7_NativeEnumCase
 	PH7_NativeConstDef sValue;   /* the backing literal; zName/iMods unused */
 };
 PH7_PRIVATE sxi32 PH7_InstallNativeClasses(ph7_vm *pVm,const PH7_NativeClassSpec *aSpec,sxu32 nSpec);
+PH7_PRIVATE int PH7_ClassInstancePresent(ph7_class_instance *pThis,ph7_value *pOut,int bDebug);
 PH7_PRIVATE sxi32 PH7_InstallEnumInterfaceMethods(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE sxi32 PH7_InstallNativeEnum(ph7_vm *pVm,const char *zName,sxu32 nBacking,
 	const PH7_NativeEnumCase *aCase,sxu32 nCase,

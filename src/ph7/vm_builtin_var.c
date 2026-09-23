@@ -803,6 +803,35 @@ static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 			SyBlobAppend(pOut,"\\",1);
 			SyBlobAppend(pOut,pClassName->zString,pClassName->nByte);
 			SyBlobAppend(pOut,"::__set_state(array(\n",21);
+			{
+				/* A native class's PRESENTATION (php's get_properties): var_export
+				 * shows a DateTime as date/timezone_type/timezone, the same shape
+				 * the (array) cast produces and NOT the hidden engine slots. A
+				 * debug-only hook (WeakReference) fills nothing, which is php's
+				 * empty export. */
+				ph7_value sPresent;
+				ph7_hashmap *pPresent = PH7_NewHashmap(pThis->pVm,0,0);
+				PH7_MemObjInit(pThis->pVm,&sPresent);
+				if( pPresent ){
+					sPresent.x.pOther = pPresent;
+					MemObjSetType(&sPresent,MEMOBJ_HASHMAP);
+					if( PH7_ClassInstancePresent(pThis,&sPresent,0) && pPresent->nEntry > 0 ){
+						/* Same line shape the attribute loop below produces: an
+						 * object body's entries sit one deeper than an array's. */
+						VmExportCtx sCtx;
+						sCtx.pOut = pOut;
+						sCtx.nIndent = nIndent + 1;
+						sCtx.depth = depth;
+						ph7_array_walk(&sPresent,VmExportArrayWalk,&sCtx);
+						PH7_MemObjRelease(&sPresent);
+						VmExportIndent(pOut,nIndent);
+						SyBlobAppend(pOut,"))",sizeof("))")-1);
+						pThis->iFlags &= ~VM_INSTANCE_DUMPING;
+						return;
+					}
+					PH7_MemObjRelease(&sPresent);
+				}
+			}
 			/* SNAPSHOT the attribute names first: a PHP 8.4 get hook dispatched
 			 * mid-walk may re-enter an hAttr walk on this instance (the hash has
 			 * a single embedded loop cursor) or unset()/create properties; names

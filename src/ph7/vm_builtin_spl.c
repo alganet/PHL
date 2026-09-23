@@ -155,6 +155,39 @@ static int vm_builtin_WeakReference_get(ph7_context *pCtx,int nArg,ph7_value **a
 	return PH7_OK;
 }
 /*
+ * php's DEBUG presentation for a WeakReference (ph7_class::xPresent).
+ *
+ * var_dump/print_r show ["object"] => the target, or NULL once it has died. The
+ * (array) cast and var_export show NOTHING — php's get_debug_info and
+ * get_properties disagree here, which is why the callback is told which is asking.
+ */
+static sxi32 WkPresent(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
+{
+	VmWeakCell *pCell;
+	ph7_value sKey, sVal;
+	if( !bDebug ){
+		return SXRET_OK; /* get_properties: php presents no property at all */
+	}
+	pCell = WkCellOf(pThis);
+	PH7_MemObjInitFromString(&(*pVm),&sKey,0);
+	PH7_MemObjStringAppend(&sKey,"object",sizeof("object")-1);
+	PH7_MemObjInit(&(*pVm),&sVal);
+	if( pCell && pCell->pObj ){
+		sVal.x.pOther = pCell->pObj;
+		MemObjSetType(&sVal,MEMOBJ_OBJ);
+	}
+	ph7_array_add_elem(pOut,&sKey,&sVal); /* takes its OWN reference */
+	PH7_MemObjRelease(&sKey);
+	/* Rule 16, the other half: this carrier never HELD a reference — the cell's
+	 * is the only one — so releasing it as a MEMOBJ_OBJ would unref the target a
+	 * second time and free a live object under its owner (a segfault two
+	 * statements later, not here). Blank the carrier before letting it go. */
+	sVal.x.pOther = 0;
+	sVal.iFlags = MEMOBJ_NULL;
+	PH7_MemObjRelease(&sVal);
+	return SXRET_OK;
+}
+/*
  * WeakReference::__construct()
  *
  * php declares it PUBLIC and refuses to run it: the class has no way to be built
@@ -500,10 +533,10 @@ static sxi32 VmInstallWeak(ph7_vm *pVm)
 		 * copy would drop it twice. */
 		{ "WeakReference", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aRefMethod, SX_ARRAYSIZE(aRefMethod), 0, 0, aRefProp, SX_ARRAYSIZE(aRefProp),
-		  WkRefRelease, 0 },
+		  WkRefRelease, 0, WkPresent },
 		{ "WeakMap", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE,
 		  aMapMethod, SX_ARRAYSIZE(aMapMethod), 0, 0, aMapProp, SX_ARRAYSIZE(aMapProp),
-		  0, &sWmIterVtab },
+		  0, &sWmIterVtab, 0 },
 	};
 	static const char *azMapIface[] = { "ArrayAccess", "Countable", "IteratorAggregate" };
 	ph7_class *pMap;
@@ -1181,13 +1214,13 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 		 * current()/key()/next()/rewind()/valid() report this interface as their
 		 * declaring class where php reports Iterator. */
 		{ "SeekableIterator", "Iterator", 0, PH7_CLASS_INTERFACE,
-		  aSeekMethod, SX_ARRAYSIZE(aSeekMethod), 0, 0, 0, 0, 0, 0 },
+		  aSeekMethod, SX_ARRAYSIZE(aSeekMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "ArrayIterator", 0, "SeekableIterator,ArrayAccess,Countable", 0,
 		  aItMethod, SX_ARRAYSIZE(aItMethod), aConst, SX_ARRAYSIZE(aConst),
-		  aItProp, SX_ARRAYSIZE(aItProp), 0, 0 },
+		  aItProp, SX_ARRAYSIZE(aItProp), 0, 0, 0 },
 		{ "ArrayObject", 0, "IteratorAggregate,ArrayAccess,Countable", 0,
 		  aObjMethod, SX_ARRAYSIZE(aObjMethod), aConst, SX_ARRAYSIZE(aConst),
-		  aObjProp, SX_ARRAYSIZE(aObjProp), 0, 0 },
+		  aObjProp, SX_ARRAYSIZE(aObjProp), 0, 0, 0 },
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }
@@ -2912,41 +2945,41 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 	 */
 	static const PH7_NativeClassSpec aSpec[] = {
 		{ "OuterIterator", "Iterator", 0, PH7_CLASS_INTERFACE,
-		  aOuterMethod, SX_ARRAYSIZE(aOuterMethod), 0, 0, 0, 0, 0, 0 },
+		  aOuterMethod, SX_ARRAYSIZE(aOuterMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "IteratorIterator", 0, "OuterIterator", PH7_CLASS_NOCLONE,
 		  aIterIterMethod, SX_ARRAYSIZE(aIterIterMethod), 0, 0,
-		  aDualProp, SX_ARRAYSIZE(aDualProp), 0, 0 },
+		  aDualProp, SX_ARRAYSIZE(aDualProp), 0, 0, 0 },
 		{ "FilterIterator", "IteratorIterator", 0, PH7_CLASS_ABSTRACT|PH7_CLASS_NOCLONE,
-		  aFilterMethod, SX_ARRAYSIZE(aFilterMethod), 0, 0, 0, 0, 0, 0 },
+		  aFilterMethod, SX_ARRAYSIZE(aFilterMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "CallbackFilterIterator", "FilterIterator", 0, PH7_CLASS_NOCLONE,
 		  aCbFilterMethod, SX_ARRAYSIZE(aCbFilterMethod), 0, 0,
-		  aCbProp, SX_ARRAYSIZE(aCbProp), 0, 0 },
+		  aCbProp, SX_ARRAYSIZE(aCbProp), 0, 0, 0 },
 		{ "LimitIterator", "IteratorIterator", 0, PH7_CLASS_NOCLONE,
 		  aLimitMethod, SX_ARRAYSIZE(aLimitMethod), 0, 0,
-		  aLimitProp, SX_ARRAYSIZE(aLimitProp), 0, 0 },
+		  aLimitProp, SX_ARRAYSIZE(aLimitProp), 0, 0, 0 },
 		{ "InfiniteIterator", "IteratorIterator", 0, PH7_CLASS_NOCLONE,
-		  aInfiniteMethod, SX_ARRAYSIZE(aInfiniteMethod), 0, 0, 0, 0, 0, 0 },
+		  aInfiniteMethod, SX_ARRAYSIZE(aInfiniteMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "NoRewindIterator", "IteratorIterator", 0, PH7_CLASS_NOCLONE,
-		  aNoRewindMethod, SX_ARRAYSIZE(aNoRewindMethod), 0, 0, 0, 0, 0, 0 },
+		  aNoRewindMethod, SX_ARRAYSIZE(aNoRewindMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "RegexIterator", "FilterIterator", 0, PH7_CLASS_NOCLONE,
 		  aRegexMethod, SX_ARRAYSIZE(aRegexMethod),
 		  aRegexConst, SX_ARRAYSIZE(aRegexConst),
-		  aRegexProp, SX_ARRAYSIZE(aRegexProp), 0, 0 },
+		  aRegexProp, SX_ARRAYSIZE(aRegexProp), 0, 0, 0 },
 		{ "AppendIterator", "IteratorIterator", 0, PH7_CLASS_NOCLONE,
 		  aAppendMethod, SX_ARRAYSIZE(aAppendMethod), 0, 0,
-		  aAppendProp, SX_ARRAYSIZE(aAppendProp), 0, 0 },
+		  aAppendProp, SX_ARRAYSIZE(aAppendProp), 0, 0, 0 },
 		{ "RecursiveIterator", "Iterator", 0, PH7_CLASS_INTERFACE,
-		  aRecursiveMethod, SX_ARRAYSIZE(aRecursiveMethod), 0, 0, 0, 0, 0, 0 },
+		  aRecursiveMethod, SX_ARRAYSIZE(aRecursiveMethod), 0, 0, 0, 0, 0, 0, 0 },
 		/* RecursiveArrayIterator is CLONEABLE (php clones an ArrayIterator happily) and
 		 * inherits every one of its parent's C bodies, storage slots included. */
 		{ "RecursiveArrayIterator", "ArrayIterator", "RecursiveIterator", 0,
 		  aRaiMethod, SX_ARRAYSIZE(aRaiMethod),
-		  aRaiConst, SX_ARRAYSIZE(aRaiConst), 0, 0, 0, 0 },
+		  aRaiConst, SX_ARRAYSIZE(aRaiConst), 0, 0, 0, 0, 0 },
 		{ "RecursiveFilterIterator", "FilterIterator", "RecursiveIterator",
 		  PH7_CLASS_ABSTRACT|PH7_CLASS_NOCLONE,
-		  aRfiMethod, SX_ARRAYSIZE(aRfiMethod), 0, 0, 0, 0, 0, 0 },
+		  aRfiMethod, SX_ARRAYSIZE(aRfiMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "EmptyIterator", 0, "Iterator", 0,
-		  aEmptyMethod, SX_ARRAYSIZE(aEmptyMethod), 0, 0, 0, 0, 0, 0 },
+		  aEmptyMethod, SX_ARRAYSIZE(aEmptyMethod), 0, 0, 0, 0, 0, 0, 0 },
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }
