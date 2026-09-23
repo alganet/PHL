@@ -1193,8 +1193,17 @@ static sxi32 GenStateEmitExprCode(
 				/* Each argument is an independent nullsafe scope. */
 				GenStatePatchNullsafeJumps(pGen, nArgNsBase);
 				if( apNode[n]->iFlags & EXPR_NODE_SPREAD ){
-					/* Emit spread opcode to unpack this array argument */
-					PH7_VmEmitInstr(pGen->pVm, PH7_OP_SPREAD, 0, 0, 0, 0);
+					/* Emit spread opcode to unpack this array argument. iP1 marks a
+					 * source php will unpack BY REFERENCE: only a plain `$var` (php
+					 * fetches every other shape — `$a[0]`, `$o->p`, `C::$s`, a cast, a
+					 * call — as an R-value, so a by-ref parameter binds its elements in
+					 * a temporary and the write-back is invisible). The expander needs
+					 * the distinction because it carries each element's slot for the
+					 * by-ref binder; without it `r(...$a[0])` wrote through to the real
+					 * element, which php leaves alone. */
+					PH7_VmEmitInstr(pGen->pVm, PH7_OP_SPREAD,
+						(apNode[n]->pOp == 0 && apNode[n]->xCode == PH7_CompileVariable) ? 1 : 0,
+						0, 0, 0);
 					hasSpread = 1;
 				}
 			}

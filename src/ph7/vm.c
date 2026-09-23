@@ -4348,7 +4348,7 @@ PH7_PRIVATE sxi32 VmSpreadOwnExtra(ph7_vm *pVm, sxi32 iP1, ph7_value *pTos)
 	pVm->nSpreadCallBase = (sxu32)(ri + 1);
 	return extra;
 }
-PH7_PRIVATE void VmSpreadExpandMap(ph7_vm *pVm, ph7_value **ppTos, ph7_hashmap *pMap)
+PH7_PRIVATE void VmSpreadExpandMap(ph7_vm *pVm, ph7_value **ppTos, ph7_hashmap *pMap, int bVarSource)
 {
 	ph7_value *pTos = *ppTos;
 	sxu32 nEntry = pMap->nEntry;
@@ -4361,6 +4361,24 @@ PH7_PRIVATE void VmSpreadExpandMap(ph7_vm *pVm, ph7_value **ppTos, ph7_hashmap *
 		ph7_value *pElem;
 		sxu32 i;
 		int bTemp;
+		/* An unpacked element can be BOUND by reference (see the nIdx assignment below),
+		 * so a source array that other variables share has to separate first — otherwise
+		 * the callee's write-back lands in the shared map and `$k = $j; f(...$j);` with
+		 * `function f(&$x)` changes `$k` too. Separating a SOLE owner is a no-op, so the
+		 * ordinary spread pays nothing for this. */
+		if( bVarSource
+		 && pMap != pVm->pGlobal
+		 && ((*ppTos)->iFlags & MEMOBJ_HASHMAP)
+		 && (ph7_hashmap *)(*ppTos)->x.pOther == pMap ){
+			/* Only when the stack slot IS this array: the Traversable path hands us a
+			 * temporary map materialized from an ITERATOR, and the slot still holds the
+			 * object. */
+			ph7_hashmap *pSep = PH7_HashmapCowSeparate(pVm,*ppTos);
+			if( pSep ){
+				pMap = pSep;
+				nEntry = pMap->nEntry;
+			}
+		}
 		pMap->iRef++;
 		bTemp = (pMap->iRef == 2); /* the stack slot held the only reference */
 		/* Record the run + element keys before any release (nodes still alive).
@@ -4377,7 +4395,18 @@ PH7_PRIVATE void VmSpreadExpandMap(ph7_vm *pVm, ph7_value **ppTos, ph7_hashmap *
 				PH7_MemObjLoad(pElem, pTos);
 			}
 		}
-		pTos->nIdx = SXU32_HIGH;
+		/* php binds an UNPACKED argument by reference when the callee asks for one: the
+		 * element itself is the lvalue, and `f(...$a)` with `function f(&$x)` writes back
+		 * into `$a[0]`. Carrying the element's memory-object index is what lets the
+		 * ordinary by-ref binder do that — without it every unpacked argument looked like
+		 * a literal and the whole call was refused. A TEMPORARY source array (`f(...[1])`)
+		 * is exempt: its elements die with it, so they stay unbound (php writes into a
+		 * temporary nothing can observe). The source array outlives the call — it is
+		 * pinned on the operand stack until the arguments are consumed. */
+		pTos->nIdx = (bVarSource && !bTemp) ? pNode->nValIdx : SXU32_HIGH;
+		if( !bVarSource || bTemp ){
+			pTos->iFlags |= MEMOBJ_AUX_CUFVAL;
+		}
 		/* Traverse in insertion order (pPrev is the forward link
 		 * in PHL's circular doubly-linked hashmap node list). */
 		pNode = pNode->pPrev;
@@ -4385,7 +4414,6 @@ PH7_PRIVATE void VmSpreadExpandMap(ph7_vm *pVm, ph7_value **ppTos, ph7_hashmap *
 		for( i = 1; i < nEntry; i++ ){
 			pTos++;
 			PH7_MemObjInit(pVm, pTos);
-			pTos->nIdx = SXU32_HIGH;
 			pElem = (ph7_value *)SySetAt(&pVm->aMemObj, pNode->nValIdx);
 			if( pElem ){
 				if( bTemp ){
@@ -4393,6 +4421,10 @@ PH7_PRIVATE void VmSpreadExpandMap(ph7_vm *pVm, ph7_value **ppTos, ph7_hashmap *
 				}else{
 					PH7_MemObjLoad(pElem, pTos);
 				}
+			}
+			pTos->nIdx = (bVarSource && !bTemp) ? pNode->nValIdx : SXU32_HIGH; /* see the first element */
+			if( !bVarSource || bTemp ){
+				pTos->iFlags |= MEMOBJ_AUX_CUFVAL;
 			}
 			pNode = pNode->pPrev;
 		}

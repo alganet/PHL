@@ -3891,7 +3891,7 @@ case PH7_OP_SPREAD: {
 				pTmpMap->nEntry);
 			break;
 		}
-		VmSpreadExpandMap(pVm, &pTos, pTmpMap);
+		VmSpreadExpandMap(pVm, &pTos, pTmpMap, 0/*a Traversable's values are not the caller's slots*/);
 		PH7_HashmapRelease(pTmpMap,TRUE);
 		break;
 	}
@@ -3904,7 +3904,7 @@ case PH7_OP_SPREAD: {
 				pMap->nEntry);
 			break;
 		}
-		VmSpreadExpandMap(pVm, &pTos, pMap);
+		VmSpreadExpandMap(pVm, &pTos, pMap, pInstr->iP1 != 0);
 	}
 	/* else: not an array — leave as-is (single arg) */
 	break;

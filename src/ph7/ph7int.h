@@ -136,10 +136,12 @@ struct VmDeferredPath {
 #define MEMOBJ_AUX_SPREAD 0x800 /* Stack-only marker: this value is a spread source for the next LOAD_MAP */
 #define MEMOBJ_NEVER     0x1000 /* Pseudo-type (return-only): never-returning function must not return at all */
 #define MEMOBJ_AUX_NOKEY 0x2000 /* Stack-only marker: absent array-literal key (see PH7_LOADC_NOKEY) */
-#define MEMOBJ_AUX_CUFVAL 0x4000 /* Stack-only marker: call_user_func() deliberately downgraded this
-                                  * by-ref argument to by-value (php warns and copies). The by-ref
-                                  * binder must NOT then raise its "could not be passed by
-                                  * reference" Error for it. */
+#define MEMOBJ_AUX_CUFVAL 0x4000 /* Stack-only marker: the ENGINE deliberately handed this by-ref
+                                  * argument a by-value copy, so the by-ref binder must NOT raise its
+                                  * "could not be passed by reference" Error for it. Two producers:
+                                  * call_user_func(), which php warns about and copies; and an
+                                  * argument UNPACKED out of a temporary array (`f(...[1])`), whose
+                                  * element php binds into a temporary nothing can observe. */
 #define MEMOBJ_AUX_DEFERRED 0x8000 /* Stack-only marker (D1): a deferred call argument whose target did
                                     * not exist at load time. The value is NULL; x.pOther carries the
                                     * lazy-lvalue descriptor (a plain-variable name pointer, or an
@@ -3737,7 +3739,7 @@ PH7_PRIVATE void VmOperandStackRecycle(ph7_vm *pVm, ph7_value *pStack, sxu32 nCa
 PH7_PRIVATE ph7_vm_func * VmOverload(ph7_vm *pVm, ph7_vm_func *pList, ph7_value *aArg, int nArg);
 PH7_PRIVATE void VmReleaseCallContext(ph7_context *pCtx);
 PH7_PRIVATE sxi32 VmResolveNamedArgs(ph7_vm *pVm, VmCallArgMap *pMap, ph7_vm_func_arg *aFormalArg, sxu32 nNonVariadic, sxi32 iVariadicIdx, sxu32 nActual, sxi32 *aSlot, sxu8 *aUsed);
-PH7_PRIVATE void VmSpreadExpandMap(ph7_vm *pVm, ph7_value **ppTos, ph7_hashmap *pMap);
+PH7_PRIVATE void VmSpreadExpandMap(ph7_vm *pVm, ph7_value **ppTos, ph7_hashmap *pMap, int bVarSource);
 PH7_PRIVATE sxi32 VmSpreadValuesStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue, void *pUserData);
 PH7_PRIVATE int VmStringWantsPerlIncr(ph7_value *pVal);
 PH7_PRIVATE sxi32 VmSuspendCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, sxi32 pc, sxi32 nTos);
