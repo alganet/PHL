@@ -1262,111 +1262,6 @@ static ph7_vm_func * ReflectResolveCallable(ph7_context *pCtx, ph7_value *pTarge
 	}
 	return 0;
 }
-/* Emit the shared descriptor fields of a compiled function. */
-static void ReflectFillFuncCommon(ph7_context *pCtx, ph7_value *pInfo, ph7_vm_func *pFunc)
-{
-	ph7_vm_func_arg *aArg;
-	ph7_value *pParams, *pStatics;
-	int bVariadic = 0;
-	int bAnon;
-	sxu32 n;
-	/* A capture-free `function(){}` compiles without the CLOSURE flag but
-	 * still carries the synthesized "[lambda_N]" / "[closure_N]" name. */
-	bAnon = (pFunc->iFlags & VM_FUNC_CLOSURE) != 0;
-	if( !bAnon && SyStringLength(&pFunc->sName) > 9
-	 && (SyMemcmp(SyStringData(&pFunc->sName), "[lambda_", 8) == 0
-	  || SyMemcmp(SyStringData(&pFunc->sName), "[closure_", 9) == 0) ){
-		bAnon = 1;
-	}
-	ReflectMapAddStr(pCtx, pInfo, "name", SyStringData(&pFunc->sName), (int)SyStringLength(&pFunc->sName));
-	ReflectMapAddBool(pCtx, pInfo, "internal", (pFunc->iFlags & VM_FUNC_INTERNAL) != 0);
-	ReflectMapAddBool(pCtx, pInfo, "closure", bAnon);
-	ReflectMapAddBool(pCtx, pInfo, "fstatic", (pFunc->iFlags & VM_FUNC_STATIC_CL) != 0);
-	ReflectMapAddBool(pCtx, pInfo, "byref", (pFunc->iFlags & VM_FUNC_REF_RETURN) != 0);
-	ReflectMapAddBool(pCtx, pInfo, "generator", (pFunc->iFlags & VM_FUNC_GENERATOR) != 0);
-	ReflectMapAddBool(pCtx, pInfo, "strict", pFunc->bStrictTypes != 0);
-	if( SyStringLength(&pFunc->sFile) > 0 ){
-		ReflectMapAddStr(pCtx, pInfo, "file", SyStringData(&pFunc->sFile), (int)SyStringLength(&pFunc->sFile));
-	}else{
-		ReflectMapAddBool(pCtx, pInfo, "file", 0);
-	}
-	ReflectMapAddInt(pCtx, pInfo, "line", (sxi64)pFunc->nLine);
-	ReflectMapAddInt(pCtx, pInfo, "endline", (sxi64)pFunc->nEndLine);
-	ReflectMapAddDoc(pCtx, pInfo, &pFunc->sDoc);
-	ReflectMapAddAttrs(pCtx, pInfo, &pFunc->aAttrs);
-	if( SyStringLength(&pFunc->sReturnTypeName) > 0 ){
-		ReflectMapAddStr(pCtx, pInfo, "rettext", SyStringData(&pFunc->sReturnTypeName),
-			(int)SyStringLength(&pFunc->sReturnTypeName));
-	}else if( pFunc->nReturnType == MEMOBJ_VOID ){
-		/* The type-text renderer omits void/never atoms (compile.c notes the
-		 * root fix belongs there); name them here for getReturnType(). */
-		ReflectMapAddStr(pCtx, pInfo, "rettext", "void", sizeof("void")-1);
-	}else if( pFunc->nReturnType == MEMOBJ_NEVER ){
-		ReflectMapAddStr(pCtx, pInfo, "rettext", "never", sizeof("never")-1);
-	}else{
-		ReflectMapAddNull(pCtx, pInfo, "rettext");
-	}
-	ReflectMapAddBool(pCtx, pInfo, "retnullable", (pFunc->iFlags & VM_FUNC_RETURN_NULLABLE) != 0);
-	/* Parameters */
-	pParams = ph7_context_new_array(pCtx);
-	aArg = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);
-	for( n = 0 ; pParams && n < SySetUsed(&pFunc->aArgs) ; n++ ){
-		ph7_value *pMeta = ph7_context_new_array(pCtx);
-		if( pMeta == 0 ){ break; }
-		ReflectMapAddStr(pCtx, pMeta, "name", SyStringData(&aArg[n].sName), (int)SyStringLength(&aArg[n].sName));
-		ReflectMapAddInt(pCtx, pMeta, "pos", (sxi64)n);
-		ReflectMapAddBool(pCtx, pMeta, "byref", (aArg[n].iFlags & VM_FUNC_ARG_BY_REF) != 0);
-		ReflectMapAddBool(pCtx, pMeta, "variadic", (aArg[n].iFlags & VM_FUNC_ARG_VARIADIC) != 0);
-		/* The compiler never sets ARG_HAS_DEF; a default = compiled bytecode
-		 * (same test the OP_CALL default-value path uses). */
-		ReflectMapAddBool(pCtx, pMeta, "hasdef", SySetUsed(&aArg[n].aByteCode) > 0);
-		ReflectMapAddBool(pCtx, pMeta, "nullable", (aArg[n].iFlags & VM_FUNC_ARG_NULLABLE) != 0);
-		ReflectMapAddBool(pCtx, pMeta, "promoted", (aArg[n].iFlags & VM_FUNC_ARG_PROMOTED) != 0);
-		if( SyStringLength(&aArg[n].sTypeName) > 0 ){
-			ReflectMapAddStr(pCtx, pMeta, "typetext", SyStringData(&aArg[n].sTypeName),
-				(int)SyStringLength(&aArg[n].sTypeName));
-		}else{
-			ReflectMapAddNull(pCtx, pMeta, "typetext");
-		}
-		ReflectMapAddAttrs(pCtx, pMeta, &aArg[n].aAttrs);
-		ph7_array_add_elem(pParams, 0, pMeta);
-		if( aArg[n].iFlags & VM_FUNC_ARG_VARIADIC ){
-			bVariadic = 1;
-		}
-	}
-	if( pParams ){
-		ph7_array_add_strkey_elem(pInfo, "params", pParams);
-	}
-	ReflectMapAddBool(pCtx, pInfo, "variadic", bVariadic);
-	/* Static variables: current value when the slot was initialized (first
-	 * call), otherwise the evaluated default — PHP's getStaticVariables
-	 * initializes on demand and reports the same values. */
-	pStatics = ph7_context_new_array(pCtx);
-	if( pStatics ){
-		ph7_vm_func_static_var *aStatic = (ph7_vm_func_static_var *)SySetBasePtr(&pFunc->aStatic);
-		for( n = 0 ; n < SySetUsed(&pFunc->aStatic) ; n++ ){
-			ph7_value *pVal = 0;
-			ph7_value sScratch;
-			int bScratch = 0;
-			if( aStatic[n].nIdx != SXU32_HIGH ){
-				pVal = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, aStatic[n].nIdx);
-			}
-			if( pVal == 0 ){
-				PH7_MemObjInit(pCtx->pVm, &sScratch);
-				if( SySetUsed(&aStatic[n].aByteCode) > 0 ){
-					VmLocalExec(pCtx->pVm, &aStatic[n].aByteCode, &sScratch, FALSE);
-				}
-				pVal = &sScratch;
-				bScratch = 1;
-			}
-			ReflectMapAddDyn(pCtx, pStatics, &aStatic[n].sName, pVal);
-			if( bScratch ){
-				PH7_MemObjRelease(&sScratch);
-			}
-		}
-		ph7_array_add_strkey_elem(pInfo, "statics", pStatics);
-	}
-}
 /*
  * ---------------------------------------------------------------------------
  * The signature parser.
@@ -1506,18 +1401,64 @@ static int ReflectSigScalar(ph7_context *pCtx, const char *z, int n, ph7_value *
 	}
 	return 0;
 }
-/* One `type &$name = default` part into the param-meta shape. */
-static void ReflectSigParam(ph7_context *pCtx, ph7_value *pParams,
-	const char *z, int n, int iPos, int *pbVariadic)
+/*
+ * One parameter, described uniformly.
+ *
+ * A reflected function's parameters come from one of TWO places — a compiled
+ * function's `ph7_vm_func_arg` list, or the php-style SIGNATURE STRING a C
+ * builtin / native method declares — and both the descriptor array
+ * (__reflect_func_info, for the chunks still in PHP) and the native
+ * ReflectionParameter have to read them the same way. This struct is what they
+ * agree on; `pArg` is set only on the compiled path, where a default is
+ * BYTE-CODE rather than text.
+ */
+typedef struct ReflectParamDesc ReflectParamDesc;
+struct ReflectParamDesc
 {
-	ph7_value *pMeta = ph7_context_new_array(pCtx);
-	const char *zDef = 0;
-	const char *zName;
-	int nDef = 0, nName;
-	int iEq, iDollar, iSpace, bVariadic, bTyped = 0, bOptional = 0;
-	if( pMeta == 0 ){
-		return;
+	SyString sName;
+	int iPos;
+	int bByRef, bVariadic, bHasDef, bOptional, bNullable, bPromoted;
+	SyString sType;            /* nByte == 0 -> untyped */
+	SyString sDefText;         /* signature-declared default TEXT (nByte == 0 -> none) */
+	ph7_vm_func_arg *pArg;     /* compiled parameter, or NULL for a declared one */
+};
+/*
+ * Split a signature string on its top-level commas (a quoted default may hold
+ * its own). Answers the parameter COUNT; when iWant is in range, hands back
+ * that part's bytes.
+ */
+static int ReflectSigPart(const char *zSig, int nSig, int iWant,
+	const char **pzPart, int *pnPart)
+{
+	int iPos = 0;
+	while( nSig > 0 ){
+		int iComma = ReflectSigFindUnquoted(zSig,nSig,',');
+		const char *zPart = zSig;
+		int nPart = iComma < 0 ? nSig : iComma;
+		ReflectSigTrim(&zPart,&nPart);
+		if( nPart > 0 ){
+			if( iPos == iWant && pzPart ){
+				*pzPart = zPart;
+				*pnPart = nPart;
+			}
+			iPos++;
+		}
+		if( iComma < 0 ){
+			break;
+		}
+		zSig += iComma + 1;
+		nSig -= iComma + 1;
 	}
+	return iPos;
+}
+/* One `type &$name = default` part into the uniform description. */
+static void ReflectSigDescribe(const char *z, int n, int iPos, ReflectParamDesc *pOut)
+{
+	const char *zDef = 0;
+	int nDef = 0;
+	int iEq, iDollar, iSpace;
+	SyZero(pOut,sizeof(*pOut));
+	pOut->iPos = iPos;
 	/* `= default` splits off first: everything after the first unquoted '='. */
 	iEq = ReflectSigFindUnquoted(z,n,'=');
 	if( iEq >= 0 ){
@@ -1533,12 +1474,12 @@ static void ReflectSigParam(ph7_context *pCtx, ph7_value *pParams,
 		 * $default: isOptional() true, isDefaultValueAvailable() FALSE, so
 		 * getDefaultValue() raises. Reporting it as a default (which is what
 		 * a bare `hasdef` did) made that call answer NULL instead. */
-		bOptional = 1;
+		pOut->bOptional = 1;
 		zDef = 0;
 		nDef = 0;
 	}
-	bVariadic = ReflectSigHas(z,n,"...",3);
-	if( bVariadic ){
+	pOut->bVariadic = ReflectSigHas(z,n,"...",3);
+	if( pOut->bVariadic ){
 		/* php: a variadic parameter never HAS a default -- it defaults to "no
 		 * further arguments", which is not a value. Several signature rows still
 		 * write `mixed ...$values = ?` (the table's "optional, unspecified"
@@ -1549,417 +1490,23 @@ static void ReflectSigParam(ph7_context *pCtx, ph7_value *pParams,
 	}
 	iDollar = ReflectSigFindUnquoted(z,n,'$');
 	iSpace = ReflectSigFindUnquoted(z,n,' ');
-	zName = iDollar < 0 ? z : &z[iDollar+1];
-	nName = iDollar < 0 ? n : n - iDollar - 1;
-	ReflectMapAddStr(pCtx,pMeta,"name",zName,nName);
-	ReflectMapAddInt(pCtx,pMeta,"pos",(sxi64)iPos);
-	ReflectMapAddBool(pCtx,pMeta,"byref",ReflectSigHas(z,n,"&",1));
-	ReflectMapAddBool(pCtx,pMeta,"variadic",bVariadic);
-	ReflectMapAddBool(pCtx,pMeta,"hasdef",zDef != 0);
-	ReflectMapAddBool(pCtx,pMeta,"optional",bOptional || bVariadic || zDef != 0);
+	{
+		const char *zName = iDollar < 0 ? z : &z[iDollar+1];
+		int nName = iDollar < 0 ? n : n - iDollar - 1;
+		SyStringInitFromBuf(&pOut->sName,zName,nName);
+	}
+	pOut->bByRef = ReflectSigHas(z,n,"&",1);
+	pOut->bHasDef = zDef != 0;
+	pOut->bOptional = pOut->bOptional || pOut->bVariadic || zDef != 0;
 	if( iSpace >= 0 && iDollar >= 0 && iSpace < iDollar ){
 		/* The type is whatever precedes the first space, so `?DOMNode $child`
 		 * types as `?DOMNode` and an untyped `$x` types as nothing. */
-		bTyped = 1;
-		ReflectMapAddBool(pCtx,pMeta,"nullable",
-			z[0] == '?' || ReflectSigHasNoCase(z,iSpace,"null",4));
-		ReflectMapAddStr(pCtx,pMeta,"typetext",z,iSpace);
-	}else{
-		ReflectMapAddBool(pCtx,pMeta,"nullable",0);
-		ReflectMapAddNull(pCtx,pMeta,"typetext");
-	}
-	SXUNUSED(bTyped);
-	ReflectMapAddBool(pCtx,pMeta,"promoted",0);
-	{
-		ph7_value *pEmpty = ph7_context_new_array(pCtx);
-		if( pEmpty ){
-			ph7_array_add_strkey_elem(pMeta,"attrs",pEmpty);
-		}
+		pOut->bNullable = (z[0] == '?' || ReflectSigHasNoCase(z,iSpace,"null",4));
+		SyStringInitFromBuf(&pOut->sType,z,iSpace);
 	}
 	if( zDef ){
-		ph7_value *pVal = ph7_context_new_scalar(pCtx);
-		ReflectMapAddStr(pCtx,pMeta,"deftext",zDef,nDef);
-		/* The VALUE too, so getDefaultValue() reads the meta instead of
-		 * re-parsing the text through a second prelude helper. */
-		if( pVal && ReflectSigScalar(pCtx,zDef,nDef,pVal) ){
-			ReflectMapAddBool(pCtx,pMeta,"defscalar",1);
-			ph7_array_add_strkey_elem(pMeta,"defval",pVal);
-		}else{
-			ReflectMapAddBool(pCtx,pMeta,"defscalar",0);
-			ReflectMapAddNull(pCtx,pMeta,"defval");
-		}
-	}else{
-		ReflectMapAddNull(pCtx,pMeta,"deftext");
-		ReflectMapAddBool(pCtx,pMeta,"defscalar",0);
-		ReflectMapAddNull(pCtx,pMeta,"defval");
+		SyStringInitFromBuf(&pOut->sDefText,zDef,nDef);
 	}
-	if( bVariadic ){
-		*pbVariadic = 1;
-	}
-	ph7_array_add_elem(pParams,0,pMeta);
-}
-/*
- * Rewrite a descriptor's params/variadic/minarg from its declared signature.
- * A no-op for a descriptor without one (a compiled function already carries the
- * real thing), so every exit of __reflect_func_info can run it unconditionally.
- */
-static void ReflectSigFixup(ph7_context *pCtx, ph7_value *pInfo)
-{
-	ph7_value *pSig, *pRet2, *pParams;
-	const char *zSig, *zPart;
-	int nSig, nPart, iPos = 0, bVariadic = 0;
-	/* A native method's declared RETURN type lives in its own slot, because the
-	 * compiled function it hangs off has none. */
-	pRet2 = ph7_array_fetch(pInfo,"ret2",-1);
-	if( pRet2 && (pRet2->iFlags & MEMOBJ_STRING) ){
-		ph7_array_add_strkey_elem(pInfo,"rettext",pRet2);
-	}
-	pSig = ph7_array_fetch(pInfo,"sig",-1);
-	if( pSig == 0 || (pSig->iFlags & MEMOBJ_STRING) == 0 ){
-		return;
-	}
-	zSig = (const char *)SyBlobData(&pSig->sBlob);
-	nSig = (int)SyBlobLength(&pSig->sBlob);
-	if( nSig < 1 ){
-		return;
-	}
-	pParams = ph7_context_new_array(pCtx);
-	if( pParams == 0 ){
-		return;
-	}
-	/* Split on the top-level commas; a quoted default may hold its own. */
-	while( nSig > 0 ){
-		int iComma = ReflectSigFindUnquoted(zSig,nSig,',');
-		zPart = zSig;
-		nPart = iComma < 0 ? nSig : iComma;
-		ReflectSigTrim(&zPart,&nPart);
-		if( nPart > 0 ){
-			ReflectSigParam(pCtx,pParams,zPart,nPart,iPos,&bVariadic);
-			iPos++;
-		}
-		if( iComma < 0 ){
-			break;
-		}
-		zSig += iComma + 1;
-		nSig -= iComma + 1;
-	}
-	ph7_array_add_strkey_elem(pInfo,"params",pParams);
-	ReflectMapAddInt(pCtx,pInfo,"minarg",-1);
-	ReflectMapAddBool(pCtx,pInfo,"variadic",bVariadic);
-}
-/*
- * array|null __reflect_func_info(string|Closure $target [, string $method])
- * Function/method/closure descriptor for the PHP layer.
- */
-static int vm_builtin_reflect_func_info(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	ph7_vm_func *pFunc;
-	ph7_class *pClass = 0;
-	ph7_class_method *pMeth = 0;
-	ph7_user_func *pHost = 0;
-	ph7_class_instance *pClosure = 0;
-	ph7_value *pInfo;
-	if( nArg < 1 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	pFunc = ReflectResolveCallable(pCtx, apArg[0], nArg > 1 ? apArg[1] : 0,
-		&pClass, &pMeth, &pHost, &pClosure);
-	if( pFunc == 0 && pHost == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	pInfo = ph7_context_new_array(pCtx);
-	if( pInfo == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	if( pFunc == 0 ){
-		/* Host (C builtin) function: no parameter metadata beyond arity */
-		ph7_value *pParams = ph7_context_new_array(pCtx);
-		ReflectMapAddStr(pCtx, pInfo, "name", SyStringData(&pHost->sName), (int)SyStringLength(&pHost->sName));
-		ReflectMapAddBool(pCtx, pInfo, "internal", 1);
-		ReflectMapAddBool(pCtx, pInfo, "closure", 0);
-		ReflectMapAddBool(pCtx, pInfo, "fstatic", 0);
-		ReflectMapAddBool(pCtx, pInfo, "byref", 0);
-		ReflectMapAddBool(pCtx, pInfo, "generator", 0);
-		ReflectMapAddBool(pCtx, pInfo, "strict", 0);
-		ReflectMapAddBool(pCtx, pInfo, "file", 0);
-		ReflectMapAddInt(pCtx, pInfo, "line", 0);
-		ReflectMapAddInt(pCtx, pInfo, "endline", 0);
-		ReflectMapAddBool(pCtx, pInfo, "doc", 0);
-		{
-			ph7_value *pEmpty = ph7_context_new_array(pCtx);
-			if( pEmpty ){
-				ph7_array_add_strkey_elem(pInfo, "attrs", pEmpty);
-			}
-		}
-		if( pHost->zRet ){
-			ReflectMapAddStr(pCtx, pInfo, "rettext", pHost->zRet, (int)SyStrlen(pHost->zRet));
-		}else{
-			ReflectMapAddNull(pCtx, pInfo, "rettext");
-		}
-		ReflectMapAddBool(pCtx, pInfo, "retnullable", 0);
-		if( pParams ){
-			ph7_array_add_strkey_elem(pInfo, "params", pParams);
-		}
-		ReflectMapAddBool(pCtx, pInfo, "variadic", 0);
-		ReflectMapAddInt(pCtx, pInfo, "minarg", (sxi64)pHost->nMinArg);
-		if( pHost->zSig ){
-			ReflectMapAddStr(pCtx, pInfo, "sig", pHost->zSig, (int)SyStrlen(pHost->zSig));
-		}else{
-			ReflectMapAddStr(pCtx, pInfo, "sig", "", 0);
-		}
-		ReflectSigFixup(pCtx, pInfo);
-		ph7_result_value(pCtx, pInfo);
-		return PH7_OK;
-	}
-	ReflectFillFuncCommon(pCtx, pInfo, pFunc);
-	ReflectMapAddInt(pCtx, pInfo, "minarg", -1);
-	if( (pFunc->iFlags & VM_FUNC_NATIVE) && pFunc->pNative ){
-		/* A C-bodied METHOD declares its parameters in the one place a native class
-		 * can: the spec's signature string, which already drives arity and the
-		 * by-ref mask. Without this it reached Reflection as a bytecode function
-		 * with an EMPTY parameter set, so every native method reported NO
-		 * parameters -- the method-side twin of the aBuiltinSig[] debt a converted
-		 * FUNCTION owes, and Fiber/Generator/XMLWriter/Closure had it too. */
-		if( pFunc->pNative->zSig ){
-			ReflectMapAddStr(pCtx, pInfo, "sig", pFunc->pNative->zSig,
-				(int)SyStrlen(pFunc->pNative->zSig));
-		}
-		if( pFunc->pNative->zRet && SyStringLength(&pFunc->sReturnTypeName) == 0 ){
-			ReflectMapAddStr(pCtx, pInfo, "ret2", pFunc->pNative->zRet,
-				(int)SyStrlen(pFunc->pNative->zRet));
-		}
-	}else if( (pFunc->iFlags & VM_FUNC_INTERNAL) && SySetUsed(&pFunc->aArgs) == 0 && pMeth == 0 ){
-		/* Embedded-PHP builtin (max/min...): declared argless, actual
-		 * signature comes from the static table */
-		const char *zRet = 0;
-		const char *zSig = PH7_VmBuiltinSigLookup(SyStringData(&pFunc->sName), SyStringLength(&pFunc->sName), &zRet);
-		if( zSig ){
-			ReflectMapAddStr(pCtx, pInfo, "sig", zSig, (int)SyStrlen(zSig));
-		}
-		if( zRet && SyStringLength(&pFunc->sReturnTypeName) == 0 ){
-			ReflectMapAddStr(pCtx, pInfo, "ret2", zRet, (int)SyStrlen(zRet));
-		}
-	}
-	if( pMeth && pClass ){
-		ph7_class *pDecl = ReflectMethodDeclClass(pClass, pMeth);
-		ReflectMapAddStr(pCtx, pInfo, "class", SyStringData(&pClass->sName), (int)SyStringLength(&pClass->sName));
-		ReflectMapAddStr(pCtx, pInfo, "decl", SyStringData(&pDecl->sName), (int)SyStringLength(&pDecl->sName));
-		ReflectMapAddInt(pCtx, pInfo, "vis", (sxi64)pMeth->iProtection);
-		ReflectMapAddBool(pCtx, pInfo, "mstatic", (pMeth->iFlags & PH7_CLASS_ATTR_STATIC) != 0);
-		ReflectMapAddBool(pCtx, pInfo, "abstract", (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) != 0);
-		ReflectMapAddBool(pCtx, pInfo, "final", (pMeth->iFlags & PH7_CLASS_ATTR_FINAL) != 0);
-	}
-	if( pClosure ){
-		SyString sAttr;
-		ph7_value *pAttr;
-		ph7_value *pUsed;
-		SyStringInitFromBuf(&sAttr, "__this", 6);
-		pAttr = PH7_ClassInstanceFetchAttr(pClosure, &sAttr);
-		if( pAttr && (pAttr->iFlags & MEMOBJ_OBJ) ){
-			ph7_value *pKey = ph7_context_new_scalar(pCtx);
-			if( pKey ){
-				ph7_value_string(pKey, "this", 4);
-				ph7_array_add_elem(pInfo, pKey, pAttr);
-			}
-		}else{
-			ReflectMapAddNull(pCtx, pInfo, "this");
-		}
-		SyStringInitFromBuf(&sAttr, "__scope", 7);
-		pAttr = PH7_ClassInstanceFetchAttr(pClosure, &sAttr);
-		if( pAttr && (pAttr->iFlags & MEMOBJ_STRING) && SyBlobLength(&pAttr->sBlob) > 0 ){
-			ReflectMapAddStr(pCtx, pInfo, "scope", (const char *)SyBlobData(&pAttr->sBlob),
-				(int)SyBlobLength(&pAttr->sBlob));
-		}else{
-			ReflectMapAddNull(pCtx, pInfo, "scope");
-		}
-		/* use(...) imports; the implicit auto-captured $this is flagged IGNORE */
-		pUsed = ph7_context_new_array(pCtx);
-		if( pUsed ){
-			ph7_vm_func_closure_env *aEnv = (ph7_vm_func_closure_env *)SySetBasePtr(&pFunc->aClosureEnv);
-			sxu32 n;
-			for( n = 0 ; n < SySetUsed(&pFunc->aClosureEnv) ; n++ ){
-				if( aEnv[n].iFlags & VM_FUNC_ARG_IGNORE ){
-					continue;
-				}
-				if( SyStringLength(&aEnv[n].sName) == sizeof("this")-1
-				 && SyMemcmp(SyStringData(&aEnv[n].sName), "this", sizeof("this")-1) == 0 ){
-					continue;
-				}
-				if( (aEnv[n].iFlags & VM_FUNC_ARG_BY_REF) && aEnv[n].nIdx != SXU32_HIGH ){
-					/* Captured by reference: report the slot's live value */
-					ph7_value *pLive = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, aEnv[n].nIdx);
-					ReflectMapAddDyn(pCtx, pUsed, &aEnv[n].sName, pLive ? pLive : &aEnv[n].sValue);
-					continue;
-				}
-				ReflectMapAddDyn(pCtx, pUsed, &aEnv[n].sName, &aEnv[n].sValue);
-			}
-			ph7_array_add_strkey_elem(pInfo, "used", pUsed);
-		}
-	}
-	ReflectSigFixup(pCtx, pInfo);
-	ph7_result_value(pCtx, pInfo);
-	return PH7_OK;
-}
-/*
- * mixed __reflect_param_default(string|Closure $target, ?string $method, int $idx)
- * Evaluate a parameter's compiled default expression.
- */
-static int vm_builtin_reflect_param_default(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	ph7_vm_func *pFunc;
-	ph7_vm_func_arg *pArg;
-	ph7_value sValue;
-	sxu32 nIdx;
-	if( nArg < 3 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	pFunc = ReflectResolveCallable(pCtx, apArg[0], apArg[1], 0, 0, 0, 0);
-	nIdx = (sxu32)ph7_value_to_int(apArg[2]);
-	if( pFunc == 0 || (pArg = (ph7_vm_func_arg *)SySetAt(&pFunc->aArgs, nIdx)) == 0
-	 || SySetUsed(&pArg->aByteCode) < 1 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	PH7_MemObjInit(pCtx->pVm, &sValue);
-	VmLocalExec(pCtx->pVm, &pArg->aByteCode, &sValue, FALSE);
-	ph7_result_value(pCtx, &sValue);
-	PH7_MemObjRelease(&sValue);
-	return PH7_OK;
-}
-/*
- * string|null __reflect_param_defconst(string|Closure $target, ?string $method, int $idx)
- * When a parameter's default is a plain global-constant reference, its
- * source name; null otherwise. A constant default compiles to exactly
- * [ OP_LOADC (EXPAND) , OP_DONE ] with the name in the literal table.
- */
-static int vm_builtin_reflect_param_defconst(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	ph7_vm_func *pFunc;
-	ph7_vm_func_arg *pArg;
-	VmInstr *aInstr;
-	ph7_value *pLit;
-	sxu32 nIdx;
-	if( nArg < 3 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	pFunc = ReflectResolveCallable(pCtx, apArg[0], apArg[1], 0, 0, 0, 0);
-	nIdx = (sxu32)ph7_value_to_int(apArg[2]);
-	if( pFunc == 0 || (pArg = (ph7_vm_func_arg *)SySetAt(&pFunc->aArgs, nIdx)) == 0
-	 || SySetUsed(&pArg->aByteCode) != 2 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	aInstr = (VmInstr *)SySetBasePtr(&pArg->aByteCode);
-	if( aInstr[0].iOp != PH7_OP_LOADC || (aInstr[0].iP1 & PH7_LOADC_EXPAND) == 0
-	 || aInstr[1].iOp != PH7_OP_DONE ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	pLit = (ph7_value *)SySetAt(&pCtx->pVm->aLitObj, aInstr[0].iP2);
-	if( pLit == 0 || SyBlobLength(&pLit->sBlob) < 1 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	ph7_result_string(pCtx, (const char *)SyBlobData(&pLit->sBlob), (int)SyBlobLength(&pLit->sBlob));
-	return PH7_OK;
-}
-/*
- * mixed __reflect_invoke(mixed $target, ?string $method, ?object $this, array $args)
- * Visibility-bypassing invocation (methods dispatch by VM name; functions
- * and closures ride PH7_VmCallUserFunction like call_user_func_array).
- */
-static int vm_builtin_reflect_invoke(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	ph7_vm *pVm = pCtx->pVm;
-	ph7_value sResult;
-	SySet aCallArg;
-	sxi32 rc;
-	if( nArg < 4 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	PH7_MemObjInit(pVm, &sResult);
-	sResult.nIdx = SXU32_HIGH;
-	SySetInit(&aCallArg, &pVm->sAllocator, sizeof(ph7_value *));
-	ReflectCollectArgs(pCtx, apArg[3], &aCallArg, 0);
-	if( (apArg[1]->iFlags & MEMOBJ_STRING) && SyBlobLength(&apArg[1]->sBlob) > 0 ){
-		ph7_class *pClass = 0;
-		ph7_class_method *pMeth = 0;
-		ph7_class_instance *pThis = 0;
-		ReflectResolveCallable(pCtx, apArg[0], apArg[1], &pClass, &pMeth, 0, 0);
-		if( pMeth == 0 ){
-			SySetRelease(&aCallArg);
-			PH7_MemObjRelease(&sResult);
-			ph7_result_null(pCtx);
-			return PH7_OK;
-		}
-		if( apArg[2]->iFlags & MEMOBJ_OBJ ){
-			pThis = (ph7_class_instance *)apArg[2]->x.pOther;
-		}
-		/* Reflection ignores method visibility (PHP 8.1+); the flag is
-		 * consumed by the first OP_CALL, i.e. this synthetic one. */
-		pVm->bReflectBypass = 1;
-		rc = PH7_VmCallClassMethod(pVm, pThis, pMeth, &sResult,
-			(int)SySetUsed(&aCallArg), (ph7_value **)SySetBasePtr(&aCallArg));
-		pVm->bReflectBypass = 0;
-	}else{
-		rc = PH7_VmCallUserFunction(pVm, apArg[0],
-			(int)SySetUsed(&aCallArg), (ph7_value **)SySetBasePtr(&aCallArg), &sResult);
-	}
-	SySetRelease(&aCallArg);
-	if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
-		PH7_MemObjRelease(&sResult);
-		return rc;
-	}
-	ph7_result_value(pCtx, &sResult);
-	PH7_MemObjRelease(&sResult);
-	return PH7_OK;
-}
-/*
- * Closure __reflect_closure(mixed $target, ?string $method, ?object $this)
- * Mint a Closure for a function or method, bound and scoped like the
- * first-class-callable path.
- */
-static int vm_builtin_reflect_closure(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	ph7_vm *pVm = pCtx->pVm;
-	ph7_class *pClass = 0;
-	ph7_class_method *pMeth = 0;
-	ph7_class_instance *pClosure = 0;
-	ph7_vm_func *pFunc;
-	if( nArg < 3 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	pFunc = ReflectResolveCallable(pCtx, apArg[0], apArg[1], &pClass, &pMeth, 0, &pClosure);
-	if( pClosure ){
-		/* Already a Closure: hand the same instance back */
-		return ReflectResultExistingObject(pCtx, pClosure);
-	}
-	if( pMeth && pClass ){
-		ph7_class_instance *pThis = 0;
-		if( apArg[2]->iFlags & MEMOBJ_OBJ ){
-			pThis = (ph7_class_instance *)apArg[2]->x.pOther;
-		}
-		return ReflectResultObject(pCtx,
-			PH7_VmNewClosure(pVm, &pMeth->sFunc.sName, pThis, &pClass->sName));
-	}
-	if( pFunc ){
-		return ReflectResultObject(pCtx, PH7_VmNewClosure(pVm, &pFunc->sName, 0, 0));
-	}
-	/* Host function by name */
-	if( apArg[0]->iFlags & MEMOBJ_STRING ){
-		SyString sName;
-		SyStringInitFromBuf(&sName, (const char *)SyBlobData(&apArg[0]->sBlob), SyBlobLength(&apArg[0]->sBlob));
-		return ReflectResultObject(pCtx, PH7_VmNewClosure(pVm, &sName, 0, 0));
-	}
-	ph7_result_null(pCtx);
-	return PH7_OK;
 }
 /*
  * Resolve a Generator object into its wrapper. Mirrors the static
@@ -2538,7 +2085,7 @@ static int ReflectResultBorrowed(ph7_context *pCtx, ph7_class_instance *pObj)
  * declares getAttributes() only has to say WHICH target it is.
  */
 static int ReflectBuildAttrs(ph7_context *pCtx, SySet *pAttrs, const char *zKind,
-	const char *zTarget, int nTarget, const char *zMember, int nMember,
+	ph7_value *pTarget, const char *zMember, int nMember,
 	int iParamIdx, int iTargetBit, int nArg, ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
@@ -2569,7 +2116,9 @@ static int ReflectBuildAttrs(ph7_context *pCtx, SySet *pAttrs, const char *zKind
 			}
 		}
 		ph7_value_string(pKind, zKind, -1);
-		ph7_value_string(pTgt, zTarget, nTarget);
+		/* The target rides as a VALUE, not a name: a closure's attributes are
+		 * reopened through the Closure object itself. */
+		PH7_MemObjStore(pTarget, pTgt);
 		if( zMember ){
 			ph7_value_string(pMem, zMember, nMember);
 		}else{
@@ -2976,9 +2525,17 @@ static int vm_builtin_ReflectionConstant_getAttributes(ph7_context *pCtx, int nA
 		return PH7_OK;
 	}
 	PH7_NativeAttrStr(pThis, "name", &zName, &nName);
-	/* 64 = Attribute::TARGET_CONSTANT */
-	return ReflectBuildAttrs(pCtx, &pCons->aAttrs, "const", zName, nName, 0, 0, 0, 64,
-		nArg, apArg);
+	{
+		ph7_value sTarget;
+		int rc;
+		PH7_MemObjInit(pCtx->pVm, &sTarget);
+		ph7_value_string(&sTarget, zName, nName);
+		/* 64 = Attribute::TARGET_CONSTANT */
+		rc = ReflectBuildAttrs(pCtx, &pCons->aAttrs, "const", &sTarget, 0, 0, 0, 64,
+			nArg, apArg);
+		PH7_MemObjRelease(&sTarget);
+		return rc;
+	}
 }
 static int vm_builtin_ReflectionConstant_toString(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
@@ -4667,9 +4224,17 @@ static int vm_builtin_ReflectionClass_getAttributes(ph7_context *pCtx, int nArg,
 		return PH7_OK;
 	}
 	ReflectClassName(pCtx, &zName, &nName);
-	/* 1 = Attribute::TARGET_CLASS */
-	return ReflectBuildAttrs(pCtx, &pClass->aAttrs, "class", zName, nName, 0, 0, 0, 1,
-		nArg, apArg);
+	{
+		ph7_value sTarget;
+		int rc;
+		PH7_MemObjInit(pCtx->pVm, &sTarget);
+		ph7_value_string(&sTarget, zName, nName);
+		/* 1 = Attribute::TARGET_CLASS */
+		rc = ReflectBuildAttrs(pCtx, &pClass->aAttrs, "class", &sTarget, 0, 0, 0, 1,
+			nArg, apArg);
+		PH7_MemObjRelease(&sTarget);
+		return rc;
+	}
 }
 static int vm_builtin_ReflectionClass_getExtensionName(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
@@ -4682,18 +4247,16 @@ static int vm_builtin_ReflectionClass_getExtensionName(ph7_context *pCtx, int nA
 	}
 	return PH7_OK;
 }
-static int vm_builtin_ReflectionClass_getExtension(ph7_context *pCtx, int nArg, ph7_value **apArg)
+/*
+ * The synthetic "Core" extension, which is the only one PHL has. Answered by
+ * every reflector's getExtension() for an INTERNAL target.
+ */
+static int ReflectCoreExtension(ph7_context *pCtx)
 {
 	ph7_value sName;
 	ph7_value *apCtor[1];
 	ph7_class_instance *pExt;
 	sxi32 rc;
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	if( !ReflectClassFlag(pCtx, PH7_CLASS_INTERNAL) ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
 	PH7_MemObjInit(pCtx->pVm, &sName);
 	ph7_value_string(&sName, "Core", sizeof("Core")-1);
 	apCtor[0] = &sName;
@@ -4708,35 +4271,57 @@ static int vm_builtin_ReflectionClass_getExtension(ph7_context *pCtx, int nArg, 
 	}
 	return ReflectResultObject(pCtx, pExt);
 }
-/* __toString(): php's export format, still chunk 9. */
-static int vm_builtin_ReflectionClass_toString(ph7_context *pCtx, int nArg, ph7_value **apArg)
+/*
+ * __toString(): php's export format, still chunk 9 — a PHP function written
+ * against the PUBLIC reflection API of its target, so it is called with `$this`.
+ * bIndentArg adds the export family's second "" indent argument.
+ */
+static int ReflectExportSelf(ph7_context *pCtx, const char *zFn, int bIndentArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
-	ph7_value sSelf, sRes, sFn;
-	ph7_value *apCall[1];
+	ph7_value sSelf, sIndent, sRes, sFn;
+	ph7_value *apCall[2];
 	SyString sStr;
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
 	if( pThis == 0 ){
 		ph7_result_string(pCtx, "", 0);
 		return PH7_OK;
 	}
 	PH7_MemObjInit(pVm, &sSelf);
+	PH7_MemObjInit(pVm, &sIndent);
 	PH7_MemObjInit(pVm, &sRes);
 	PH7_MemObjInit(pVm, &sFn);
 	sSelf.x.pOther = pThis;
 	sSelf.iFlags = MEMOBJ_OBJ;
-	SyStringInitFromBuf(&sStr, "__reflect_export_class", sizeof("__reflect_export_class")-1);
+	ph7_value_string(&sIndent, "", 0);
+	SyStringInitFromBuf(&sStr, zFn, SyStrlen(zFn));
 	PH7_MemObjInitFromString(pVm, &sFn, &sStr);
 	apCall[0] = &sSelf;
-	if( PH7_VmCallUserFunction(pVm, &sFn, 1, apCall, &sRes) == SXRET_OK ){
+	apCall[1] = &sIndent;
+	if( PH7_VmCallUserFunction(pVm, &sFn, bIndentArg ? 2 : 1, apCall, &sRes) == SXRET_OK ){
 		ph7_result_value(pCtx, &sRes);
 	}
 	PH7_MemObjRelease(&sFn);
+	PH7_MemObjRelease(&sIndent);
 	PH7_MemObjRelease(&sRes);
 	/* sSelf borrows the receiver and never took a reference: not released. */
 	return PH7_OK;
+}
+static int vm_builtin_ReflectionClass_getExtension(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectClassFlag(pCtx, PH7_CLASS_INTERNAL) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return ReflectCoreExtension(pCtx);
+}
+static int vm_builtin_ReflectionClass_toString(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return ReflectExportSelf(pCtx, "__reflect_export_class", 0);
 }
 /* ---- lazy objects: PHL has none (§7.4) ---- */
 static int ReflectNoLazy(ph7_context *pCtx, const char *zWho)
@@ -4955,6 +4540,1982 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionClass(ph7_vm *pVm)
 	};
 	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));
 }
+/*
+ * ---------------------------------------------------------------------------
+ * ReflectionFunctionAbstract, ReflectionFunction, ReflectionMethod,
+ * ReflectionParameter.
+ *
+ * Chunk 2. Its accessors funnelled through __reflect_func_info(), a descriptor
+ * ARRAY built per call from either a compiled ph7_vm_func or a declared
+ * SIGNATURE STRING; a native method reads whichever of the two the target
+ * actually has, through the one uniform description both already agreed on
+ * (ReflectParamDesc / ReflectSigDescribe).
+ *
+ * Five thunks retire with the chunk: __reflect_func_info, __reflect_invoke,
+ * __reflect_closure, __reflect_param_default and __reflect_param_defconst.
+ * ---------------------------------------------------------------------------
+ */
+#define RF_CL "__cl"     /* ReflectionFunctionAbstract: the reflected Closure  */
+#define RP_T  "__t"      /* ReflectionParameter: the function/class it belongs to */
+#define RP_M  "__m"      /* ReflectionParameter: the method name, or null      */
+#define RP_P  "__p"      /* ReflectionParameter: the position                  */
+
+/* Everything a reflected function IS, resolved once per call. */
+typedef struct ReflectFuncRef ReflectFuncRef;
+struct ReflectFuncRef
+{
+	ph7_vm_func *pFunc;           /* compiled body (NULL for a pure C builtin) */
+	ph7_user_func *pHost;         /* C builtin (NULL otherwise) */
+	ph7_class *pClass;            /* class a METHOD was reached through */
+	ph7_class_method *pMeth;      /* the method */
+	ph7_class_instance *pClosure; /* the Closure being reflected, if any */
+	const char *zSig;             /* declared parameter signature, or NULL */
+	const char *zRet;             /* declared return type, or NULL */
+};
+/*
+ * Resolve a callable into the reference, and work out WHICH of the two
+ * parameter sources describes it: a declared signature string (a C builtin, a
+ * native method, or an embedded-PHP builtin declared argless over
+ * func_get_args()) wins over the compiled argument list, exactly as
+ * ReflectSigFixup made it win in the descriptor.
+ */
+static int ReflectFuncFill(ph7_context *pCtx, ph7_value *pTarget, ph7_value *pMethodArg,
+	ReflectFuncRef *pOut)
+{
+	SyZero(pOut, sizeof(*pOut));
+	pOut->pFunc = ReflectResolveCallable(pCtx, pTarget, pMethodArg,
+		&pOut->pClass, &pOut->pMeth, &pOut->pHost, &pOut->pClosure);
+	if( pOut->pFunc == 0 && pOut->pHost == 0 ){
+		return 0;
+	}
+	if( pOut->pFunc == 0 ){
+		pOut->zSig = pOut->pHost->zSig;
+		pOut->zRet = pOut->pHost->zRet;
+		return 1;
+	}
+	if( (pOut->pFunc->iFlags & VM_FUNC_NATIVE) && pOut->pFunc->pNative ){
+		pOut->zSig = pOut->pFunc->pNative->zSig;
+		if( SyStringLength(&pOut->pFunc->sReturnTypeName) == 0 ){
+			pOut->zRet = pOut->pFunc->pNative->zRet;
+		}
+	}else if( (pOut->pFunc->iFlags & VM_FUNC_INTERNAL)
+	 && SySetUsed(&pOut->pFunc->aArgs) == 0 && pOut->pMeth == 0 ){
+		const char *zRet = 0;
+		pOut->zSig = PH7_VmBuiltinSigLookup(SyStringData(&pOut->pFunc->sName),
+			SyStringLength(&pOut->pFunc->sName), &zRet);
+		if( zRet && SyStringLength(&pOut->pFunc->sReturnTypeName) == 0 ){
+			pOut->zRet = zRet;
+		}
+	}
+	if( pOut->zSig && pOut->zSig[0] == '\0' ){
+		/* A declared-EMPTY signature really is "no parameters", not "undescribed". */
+		return 1;
+	}
+	return 1;
+}
+/* Is this receiver a ReflectionMethod (rather than a ReflectionFunction)? */
+static int ReflectIsMethodReflector(ph7_context *pCtx, ph7_class_instance *pThis)
+{
+	ph7_class *pRM;
+	if( pThis == 0 ){
+		return 0;
+	}
+	pRM = PH7_VmExtractClass(pCtx->pVm, "ReflectionMethod", sizeof("ReflectionMethod")-1, FALSE, 0);
+	return pRM != 0 && PH7_VmInstanceOf(pThis->pClass, pRM);
+}
+/*
+ * The function `$this` reflects. A ReflectionFunction built over a Closure keeps
+ * the object in `__cl` and resolves through it (its `$__fn` is a lambda name no
+ * function table holds); a ReflectionMethod resolves ($this->class, $this->name).
+ */
+static int ReflectFuncOfThis(ph7_context *pCtx, ReflectFuncRef *pOut)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pClo;
+	ph7_value sTarget, sMethod;
+	const char *zName, *zClass;
+	int nName, nClass, rc;
+	SyZero(pOut, sizeof(*pOut));
+	if( pThis == 0 ){
+		return 0;
+	}
+	PH7_MemObjInit(pCtx->pVm, &sTarget);
+	PH7_MemObjInit(pCtx->pVm, &sMethod);
+	pClo = PH7_NativeAttrObj(pThis, RF_CL);
+	PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	if( pClo ){
+		sTarget.x.pOther = pClo;
+		sTarget.iFlags = MEMOBJ_OBJ;
+	}else if( ReflectIsMethodReflector(pCtx, pThis) ){
+		PH7_NativeAttrStr(pThis, "class", &zClass, &nClass);
+		ph7_value_string(&sTarget, zClass, nClass);
+		ph7_value_string(&sMethod, zName, nName);
+	}else{
+		ph7_value_string(&sTarget, zName, nName);
+	}
+	rc = ReflectFuncFill(pCtx, &sTarget, (sMethod.iFlags & MEMOBJ_STRING) ? &sMethod : 0, pOut);
+	/* sTarget only ever BORROWS the closure; releasing it would unref twice. */
+	if( (sTarget.iFlags & MEMOBJ_OBJ) == 0 ){
+		PH7_MemObjRelease(&sTarget);
+	}
+	PH7_MemObjRelease(&sMethod);
+	return rc;
+}
+/* How many parameters the target declares. */
+static int ReflectParamCount(const ReflectFuncRef *pRef)
+{
+	if( pRef->zSig ){
+		return ReflectSigPart(pRef->zSig, (int)SyStrlen(pRef->zSig), -1, 0, 0);
+	}
+	return pRef->pFunc ? (int)SySetUsed(&pRef->pFunc->aArgs) : 0;
+}
+/* Describe the iPos-th parameter. Answers 0 when there is none. */
+static int ReflectParamAt(const ReflectFuncRef *pRef, int iPos, ReflectParamDesc *pOut)
+{
+	SyZero(pOut, sizeof(*pOut));
+	if( iPos < 0 ){
+		return 0;
+	}
+	if( pRef->zSig ){
+		const char *zPart = 0;
+		int nPart = 0, nTotal;
+		nTotal = ReflectSigPart(pRef->zSig, (int)SyStrlen(pRef->zSig), iPos, &zPart, &nPart);
+		if( iPos >= nTotal || zPart == 0 ){
+			return 0;
+		}
+		ReflectSigDescribe(zPart, nPart, iPos, pOut);
+		return 1;
+	}
+	if( pRef->pFunc == 0 ){
+		return 0;
+	}
+	{
+		ph7_vm_func_arg *pArg = (ph7_vm_func_arg *)SySetAt(&pRef->pFunc->aArgs, (sxu32)iPos);
+		if( pArg == 0 ){
+			return 0;
+		}
+		pOut->iPos = iPos;
+		pOut->sName = pArg->sName;
+		pOut->bByRef = (pArg->iFlags & VM_FUNC_ARG_BY_REF) != 0;
+		pOut->bVariadic = (pArg->iFlags & VM_FUNC_ARG_VARIADIC) != 0;
+		/* The compiler never sets ARG_HAS_DEF; a default IS compiled byte-code
+		 * (the same test the OP_CALL default-value path uses). */
+		pOut->bHasDef = SySetUsed(&pArg->aByteCode) > 0;
+		pOut->bNullable = (pArg->iFlags & VM_FUNC_ARG_NULLABLE) != 0;
+		pOut->bPromoted = (pArg->iFlags & VM_FUNC_ARG_PROMOTED) != 0;
+		pOut->bOptional = pOut->bVariadic || pOut->bHasDef;
+		pOut->sType = pArg->sTypeName;
+		pOut->pArg = pArg;
+		return 1;
+	}
+}
+/* The declaring class php reports for a reflected METHOD. */
+static ph7_class * ReflectFuncDeclClass(const ReflectFuncRef *pRef)
+{
+	if( pRef->pMeth == 0 || pRef->pClass == 0 ){
+		return 0;
+	}
+	return ReflectMethodDeclClass(pRef->pClass, pRef->pMeth);
+}
+/* The declared return type TEXT, or 0. */
+static int ReflectFuncRetText(const ReflectFuncRef *pRef, const char **pz, int *pn)
+{
+	if( pRef->zRet && pRef->zRet[0] ){
+		*pz = pRef->zRet;
+		*pn = (int)SyStrlen(pRef->zRet);
+		return 1;
+	}
+	if( pRef->pFunc == 0 ){
+		return 0;
+	}
+	if( SyStringLength(&pRef->pFunc->sReturnTypeName) > 0 ){
+		*pz = SyStringData(&pRef->pFunc->sReturnTypeName);
+		*pn = (int)SyStringLength(&pRef->pFunc->sReturnTypeName);
+		return 1;
+	}
+	/* The type-text renderer omits void/never atoms (compile.c notes the root fix
+	 * belongs there); name them here for getReturnType(). */
+	if( pRef->pFunc->nReturnType == MEMOBJ_VOID ){
+		*pz = "void";
+		*pn = sizeof("void")-1;
+		return 1;
+	}
+	if( pRef->pFunc->nReturnType == MEMOBJ_NEVER ){
+		*pz = "never";
+		*pn = sizeof("never")-1;
+		return 1;
+	}
+	return 0;
+}
+/* Is the reflected function internal (a C builtin or an embedded-chunk one)? */
+static int ReflectFuncIsInternal(const ReflectFuncRef *pRef)
+{
+	if( pRef->pHost ){
+		return 1;
+	}
+	return pRef->pFunc != 0 && (pRef->pFunc->iFlags & VM_FUNC_INTERNAL) != 0;
+}
+/* Does this target carry a #[\Deprecated] attribute? */
+static int ReflectHasDeprecated(SySet *pAttrs)
+{
+	ph7_attribute *aA = (ph7_attribute *)SySetBasePtr(pAttrs);
+	sxu32 n;
+	for( n = 0 ; n < SySetUsed(pAttrs) ; n++ ){
+		if( SyStringLength(&aA[n].sName) == sizeof("deprecated")-1
+		 && SyStrnicmp(SyStringData(&aA[n].sName), "deprecated", sizeof("deprecated")-1) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/* Resolve `$this`, or answer a default when the target has gone missing. */
+#define REFLECT_FUNC_OR(REF,STMT) \
+	if( !ReflectFuncOfThis(pCtx, &(REF)) ){ STMT; return PH7_OK; }
+
+/* ---- ReflectionFunctionAbstract ---- */
+static int vm_builtin_ReflectionFunc_clone(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunc_getName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName = "";
+	int nName = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	}
+	ph7_result_string(pCtx, zName, nName);
+	return PH7_OK;
+}
+/* The `name` slot's namespace split — the same three answers ReflectionClass gives. */
+static int ReflectFuncNamePart(ph7_context *pCtx, int iWhat)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName = "";
+	int nName = 0, iCut;
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	}
+	iCut = ReflectNsCut(zName, nName);
+	if( iWhat == 0 ){
+		ph7_result_bool(pCtx, iCut >= 0);
+	}else if( iWhat == 1 ){
+		ph7_result_string(pCtx, zName, iCut < 0 ? 0 : iCut);
+	}else if( iCut < 0 ){
+		ph7_result_string(pCtx, zName, nName);
+	}else{
+		ph7_result_string(pCtx, &zName[iCut+1], nName - iCut - 1);
+	}
+	return PH7_OK;
+}
+#define REFLECT_FUNC_NAMEPART(NAME,WHAT) \
+	static int NAME(ph7_context *pCtx, int nArg, ph7_value **apArg) \
+	{ \
+		SXUNUSED(nArg); \
+		SXUNUSED(apArg); \
+		return ReflectFuncNamePart(pCtx, WHAT); \
+	}
+REFLECT_FUNC_NAMEPART(vm_builtin_ReflectionFunc_inNamespace, 0)
+REFLECT_FUNC_NAMEPART(vm_builtin_ReflectionFunc_getNamespaceName, 1)
+REFLECT_FUNC_NAMEPART(vm_builtin_ReflectionFunc_getShortName, 2)
+
+static int vm_builtin_ReflectionFunc_isClosure(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	int bAnon = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	REFLECT_FUNC_OR(sRef, ph7_result_bool(pCtx, 0))
+	if( sRef.pFunc ){
+		/* A capture-free `function(){}` compiles without the CLOSURE flag but
+		 * still carries the synthesized "[lambda_N]" / "[closure_N]" name. */
+		bAnon = (sRef.pFunc->iFlags & VM_FUNC_CLOSURE) != 0;
+		if( !bAnon && SyStringLength(&sRef.pFunc->sName) > 9
+		 && (SyMemcmp(SyStringData(&sRef.pFunc->sName), "[lambda_", 8) == 0
+		  || SyMemcmp(SyStringData(&sRef.pFunc->sName), "[closure_", 9) == 0) ){
+			bAnon = 1;
+		}
+	}
+	ph7_result_bool(pCtx, bAnon);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunc_isDeprecated(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	REFLECT_FUNC_OR(sRef, ph7_result_bool(pCtx, 0))
+	ph7_result_bool(pCtx, sRef.pFunc != 0 && ReflectHasDeprecated(&sRef.pFunc->aAttrs));
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunc_isInternal(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	REFLECT_FUNC_OR(sRef, ph7_result_bool(pCtx, 0))
+	ph7_result_bool(pCtx, ReflectFuncIsInternal(&sRef));
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunc_isUserDefined(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	REFLECT_FUNC_OR(sRef, ph7_result_bool(pCtx, 0))
+	ph7_result_bool(pCtx, !ReflectFuncIsInternal(&sRef));
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunc_isGenerator(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	REFLECT_FUNC_OR(sRef, ph7_result_bool(pCtx, 0))
+	ph7_result_bool(pCtx, sRef.pFunc != 0 && (sRef.pFunc->iFlags & VM_FUNC_GENERATOR) != 0);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunc_isVariadic(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	ReflectParamDesc sDesc;
+	int n, nTotal, bVariadic = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	REFLECT_FUNC_OR(sRef, ph7_result_bool(pCtx, 0))
+	nTotal = ReflectParamCount(&sRef);
+	for( n = 0 ; n < nTotal ; n++ ){
+		if( ReflectParamAt(&sRef, n, &sDesc) && sDesc.bVariadic ){
+			bVariadic = 1;
+			break;
+		}
+	}
+	ph7_result_bool(pCtx, bVariadic);
+	return PH7_OK;
+}
+/* isStatic(): a METHOD's own staticness, a closure's `static function () {}`. */
+static int vm_builtin_ReflectionFunc_isStatic(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	REFLECT_FUNC_OR(sRef, ph7_result_bool(pCtx, 0))
+	if( sRef.pMeth ){
+		ph7_result_bool(pCtx, (sRef.pMeth->iFlags & PH7_CLASS_ATTR_STATIC) != 0);
+	}else{
+		ph7_result_bool(pCtx, sRef.pFunc != 0 && (sRef.pFunc->iFlags & VM_FUNC_STATIC_CL) != 0);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunc_returnsReference(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	REFLECT_FUNC_OR(sRef, ph7_result_bool(pCtx, 0))
+	ph7_result_bool(pCtx, sRef.pFunc != 0 && (sRef.pFunc->iFlags & VM_FUNC_REF_RETURN) != 0);
+	return PH7_OK;
+}
+/* The Closure instance whose captured state the three getClosure* read. */
+static ph7_value * ReflectClosureAttr(ReflectFuncRef *pRef, const char *zName)
+{
+	SyString sAttr;
+	if( pRef->pClosure == 0 ){
+		return 0;
+	}
+	SyStringInitFromBuf(&sAttr, zName, SyStrlen(zName));
+	return PH7_ClassInstanceFetchAttr(pRef->pClosure, &sAttr);
+}
+static int vm_builtin_ReflectionFunc_getClosureThis(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	ph7_value *pAttr;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	REFLECT_FUNC_OR(sRef, ph7_result_null(pCtx))
+	pAttr = ReflectClosureAttr(&sRef, "__this");
+	if( pAttr && (pAttr->iFlags & MEMOBJ_OBJ) ){
+		ph7_result_value(pCtx, pAttr);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunc_getClosureScopeClass(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	ph7_value *pAttr;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	REFLECT_FUNC_OR(sRef, ph7_result_null(pCtx))
+	pAttr = ReflectClosureAttr(&sRef, "__scope");
+	if( pAttr && (pAttr->iFlags & MEMOBJ_STRING) && SyBlobLength(&pAttr->sBlob) > 0 ){
+		return ReflectResultClassOf(pCtx, PH7_VmExtractClass(pCtx->pVm,
+			(const char *)SyBlobData(&pAttr->sBlob), SyBlobLength(&pAttr->sBlob), FALSE, 0));
+	}
+	pAttr = ReflectClosureAttr(&sRef, "__this");
+	if( pAttr && (pAttr->iFlags & MEMOBJ_OBJ) ){
+		return ReflectResultClassOf(pCtx, ((ph7_class_instance *)pAttr->x.pOther)->pClass);
+	}
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunc_getClosureUsedVariables(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	ph7_value *pOut = ph7_context_new_array(pCtx);
+	ph7_vm_func_closure_env *aEnv;
+	sxu32 n;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pOut == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( !ReflectFuncOfThis(pCtx, &sRef) || sRef.pClosure == 0 || sRef.pFunc == 0 ){
+		ph7_result_value(pCtx, pOut);
+		return PH7_OK;
+	}
+	/* use(...) imports; the implicit auto-captured $this is flagged IGNORE */
+	aEnv = (ph7_vm_func_closure_env *)SySetBasePtr(&sRef.pFunc->aClosureEnv);
+	for( n = 0 ; n < SySetUsed(&sRef.pFunc->aClosureEnv) ; n++ ){
+		if( aEnv[n].iFlags & VM_FUNC_ARG_IGNORE ){
+			continue;
+		}
+		if( SyStringLength(&aEnv[n].sName) == sizeof("this")-1
+		 && SyMemcmp(SyStringData(&aEnv[n].sName), "this", sizeof("this")-1) == 0 ){
+			continue;
+		}
+		if( (aEnv[n].iFlags & VM_FUNC_ARG_BY_REF) && aEnv[n].nIdx != SXU32_HIGH ){
+			/* Captured by reference: report the slot's live value */
+			ph7_value *pLive = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, aEnv[n].nIdx);
+			ReflectMapAddDyn(pCtx, pOut, &aEnv[n].sName, pLive ? pLive : &aEnv[n].sValue);
+			continue;
+		}
+		ReflectMapAddDyn(pCtx, pOut, &aEnv[n].sName, &aEnv[n].sValue);
+	}
+	ph7_result_value(pCtx, pOut);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunc_getDocComment(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	REFLECT_FUNC_OR(sRef, ph7_result_bool(pCtx, 0))
+	if( sRef.pFunc && SyStringLength(&sRef.pFunc->sDoc) > 0 ){
+		ph7_result_string(pCtx, SyStringData(&sRef.pFunc->sDoc), (int)SyStringLength(&sRef.pFunc->sDoc));
+	}else{
+		ph7_result_bool(pCtx, 0);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunc_getFileName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	REFLECT_FUNC_OR(sRef, ph7_result_bool(pCtx, 0))
+	if( sRef.pFunc && SyStringLength(&sRef.pFunc->sFile) > 0 ){
+		ph7_result_string(pCtx, SyStringData(&sRef.pFunc->sFile), (int)SyStringLength(&sRef.pFunc->sFile));
+	}else{
+		ph7_result_bool(pCtx, 0);
+	}
+	return PH7_OK;
+}
+static int ReflectFuncLine(ph7_context *pCtx, int bEnd)
+{
+	ReflectFuncRef sRef;
+	if( !ReflectFuncOfThis(pCtx, &sRef) || ReflectFuncIsInternal(&sRef) || sRef.pFunc == 0 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	ph7_result_int64(pCtx, (sxi64)(bEnd ? sRef.pFunc->nEndLine : sRef.pFunc->nLine));
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunc_getStartLine(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return ReflectFuncLine(pCtx, 0);
+}
+static int vm_builtin_ReflectionFunc_getEndLine(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return ReflectFuncLine(pCtx, 1);
+}
+static int vm_builtin_ReflectionFunc_hasReturnType(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	const char *z;
+	int n;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	REFLECT_FUNC_OR(sRef, ph7_result_bool(pCtx, 0))
+	ph7_result_bool(pCtx, ReflectFuncRetText(&sRef, &z, &n));
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunc_getReturnType(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	const char *z;
+	int n;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	REFLECT_FUNC_OR(sRef, ph7_result_null(pCtx))
+	if( !ReflectFuncRetText(&sRef, &z, &n) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return ReflectResultObject(pCtx, ReflectMakeType(pCtx, z, n));
+}
+/* php's TENTATIVE return types are an internal-stub concept PHL has no source
+ * of, so both answers are the "none" ones. */
+static int vm_builtin_ReflectionFunc_hasTentativeReturnType(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx, 0);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunc_getTentativeReturnType(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunc_getNumberOfParameters(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	REFLECT_FUNC_OR(sRef, ph7_result_int(pCtx, 0))
+	if( sRef.pHost && sRef.zSig == 0 ){
+		/* An UNDESCRIBED builtin: the arity table is all there is. */
+		ph7_result_int64(pCtx, (sxi64)sRef.pHost->nMinArg);
+		return PH7_OK;
+	}
+	ph7_result_int(pCtx, ReflectParamCount(&sRef));
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunc_getNumberOfRequiredParameters(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	ReflectParamDesc sDesc;
+	int n, nTotal, nReq = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	REFLECT_FUNC_OR(sRef, ph7_result_int(pCtx, 0))
+	if( sRef.pHost && sRef.zSig == 0 ){
+		ph7_result_int64(pCtx, (sxi64)sRef.pHost->nMinArg);
+		return PH7_OK;
+	}
+	nTotal = ReflectParamCount(&sRef);
+	for( n = nTotal ; n > 0 ; n-- ){
+		if( ReflectParamAt(&sRef, n - 1, &sDesc) && !sDesc.bVariadic && !sDesc.bOptional ){
+			nReq = n;
+			break;
+		}
+	}
+	ph7_result_int(pCtx, nReq);
+	return PH7_OK;
+}
+/* The (target, method) pair a ReflectionParameter is built over. */
+static void ReflectFuncParamSpec(ph7_context *pCtx, ph7_value *pSpec)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pClo;
+	const char *zName, *zClass;
+	int nName, nClass;
+	PH7_MemObjInit(pCtx->pVm, pSpec);
+	if( pThis == 0 ){
+		return;
+	}
+	pClo = PH7_NativeAttrObj(pThis, RF_CL);
+	if( pClo ){
+		pSpec->x.pOther = pClo;
+		pSpec->iFlags = MEMOBJ_OBJ;
+		return;
+	}
+	PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	if( ReflectIsMethodReflector(pCtx, pThis) ){
+		/* `[class, method]`, which ReflectionParameter's constructor accepts */
+		ph7_value *pList = ph7_context_new_array(pCtx);
+		ph7_value *pA = ph7_context_new_scalar(pCtx);
+		ph7_value *pB = ph7_context_new_scalar(pCtx);
+		if( pList == 0 || pA == 0 || pB == 0 ){
+			return;
+		}
+		PH7_NativeAttrStr(pThis, "class", &zClass, &nClass);
+		ph7_value_string(pA, zClass, nClass);
+		ph7_value_string(pB, zName, nName);
+		ph7_array_add_elem(pList, 0, pA);
+		ph7_array_add_elem(pList, 0, pB);
+		PH7_MemObjStore(pList, pSpec);
+		return;
+	}
+	ph7_value_string(pSpec, zName, nName);
+}
+static int vm_builtin_ReflectionFunc_getParameters(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	ph7_value *pOut = ph7_context_new_array(pCtx);
+	ph7_value sSpec;
+	int n, nTotal;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pOut == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( !ReflectFuncOfThis(pCtx, &sRef) ){
+		ph7_result_value(pCtx, pOut);
+		return PH7_OK;
+	}
+	nTotal = ReflectParamCount(&sRef);
+	ReflectFuncParamSpec(pCtx, &sSpec);
+	for( n = 0 ; n < nTotal ; n++ ){
+		ph7_value sPos, sVal;
+		ph7_value *apCtor[2];
+		ph7_class_instance *pParam;
+		sxi32 rc;
+		PH7_MemObjInit(pCtx->pVm, &sPos);
+		ph7_value_int(&sPos, n);
+		apCtor[0] = &sSpec;
+		apCtor[1] = &sPos;
+		pParam = ReflectConstruct(pCtx, "ReflectionParameter", 2, apCtor, &rc);
+		PH7_MemObjRelease(&sPos);
+		if( pParam == 0 ){
+			break;
+		}
+		PH7_MemObjInit(pCtx->pVm, &sVal);
+		sVal.x.pOther = pParam;
+		sVal.iFlags = MEMOBJ_OBJ;
+		ph7_array_add_elem(pOut, 0, &sVal);   /* takes its own reference */
+		PH7_ClassInstanceUnref(pParam);
+	}
+	if( (sSpec.iFlags & MEMOBJ_OBJ) == 0 ){
+		PH7_MemObjRelease(&sSpec);
+	}
+	ph7_result_value(pCtx, pOut);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunc_getStaticVariables(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	ph7_value *pOut = ph7_context_new_array(pCtx);
+	ph7_vm_func_static_var *aStatic;
+	sxu32 n;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pOut == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( !ReflectFuncOfThis(pCtx, &sRef) || sRef.pFunc == 0 ){
+		ph7_result_value(pCtx, pOut);
+		return PH7_OK;
+	}
+	/* Current value when the slot was initialized (first call), otherwise the
+	 * evaluated default — php's getStaticVariables initializes on demand and
+	 * reports the same values. */
+	aStatic = (ph7_vm_func_static_var *)SySetBasePtr(&sRef.pFunc->aStatic);
+	for( n = 0 ; n < SySetUsed(&sRef.pFunc->aStatic) ; n++ ){
+		ph7_value *pVal = 0;
+		ph7_value sScratch;
+		int bScratch = 0;
+		if( aStatic[n].nIdx != SXU32_HIGH ){
+			pVal = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, aStatic[n].nIdx);
+		}
+		if( pVal == 0 ){
+			PH7_MemObjInit(pCtx->pVm, &sScratch);
+			if( SySetUsed(&aStatic[n].aByteCode) > 0 ){
+				VmLocalExec(pCtx->pVm, &aStatic[n].aByteCode, &sScratch, FALSE);
+			}
+			pVal = &sScratch;
+			bScratch = 1;
+		}
+		ReflectMapAddDyn(pCtx, pOut, &aStatic[n].sName, pVal);
+		if( bScratch ){
+			PH7_MemObjRelease(&sScratch);
+		}
+	}
+	ph7_result_value(pCtx, pOut);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunc_getExtensionName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	REFLECT_FUNC_OR(sRef, ph7_result_bool(pCtx, 0))
+	if( ReflectFuncIsInternal(&sRef) ){
+		ph7_result_string(pCtx, "Core", sizeof("Core")-1);
+	}else{
+		ph7_result_bool(pCtx, 0);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunc_getExtension(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	REFLECT_FUNC_OR(sRef, ph7_result_null(pCtx))
+	if( !ReflectFuncIsInternal(&sRef) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return ReflectCoreExtension(pCtx);
+}
+static int vm_builtin_ReflectionFunc_getAttributes(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ReflectFuncRef sRef;
+	int rc;
+	if( pThis == 0 || !ReflectFuncOfThis(pCtx, &sRef) || sRef.pFunc == 0 ){
+		ph7_result_value(pCtx, ph7_context_new_array(pCtx));
+		return PH7_OK;
+	}
+	if( sRef.pMeth ){
+		/* 4 = Attribute::TARGET_METHOD */
+		ph7_value sTarget;
+		const char *zClass, *zName;
+		int nClass, nName;
+		PH7_NativeAttrStr(pThis, "class", &zClass, &nClass);
+		PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+		PH7_MemObjInit(pCtx->pVm, &sTarget);
+		ph7_value_string(&sTarget, zClass, nClass);
+		rc = ReflectBuildAttrs(pCtx, &sRef.pFunc->aAttrs, "method", &sTarget,
+			zName, nName, 0, 4, nArg, apArg);
+		PH7_MemObjRelease(&sTarget);
+		return rc;
+	}
+	{
+		/* 2 = Attribute::TARGET_FUNCTION */
+		ph7_value sTarget;
+		ReflectFuncParamSpec(pCtx, &sTarget);
+		rc = ReflectBuildAttrs(pCtx, &sRef.pFunc->aAttrs, "fn", &sTarget, 0, 0, 0, 2,
+			nArg, apArg);
+		if( (sTarget.iFlags & MEMOBJ_OBJ) == 0 ){
+			PH7_MemObjRelease(&sTarget);
+		}
+		return rc;
+	}
+}
+/* __toString(): php's export format, still chunk 9. */
+static int vm_builtin_ReflectionFunc_toString(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return ReflectExportSelf(pCtx, "__reflect_export_fnabs", 1);
+}
+/* ---- ReflectionFunction ---- */
+/* ReflectionFunction::__construct(Closure|string $function) */
+static int vm_builtin_ReflectionFunction_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ReflectFuncRef sRef;
+	ph7_class_instance *pClo;
+	if( pThis == 0 || nArg < 1 ){
+		return PH7_OK;
+	}
+	pClo = ReflectValueClosure(pVm, apArg[0]);
+	if( !ReflectFuncFill(pCtx, apArg[0], 0, &sRef) ){
+		const char *zName;
+		int nName;
+		if( pClo ){
+			/* A Closure whose body no table holds: still a valid reflection
+			 * target, so record it and let the accessors answer emptily. */
+			PH7_NativeSetAttrObj(pVm, pThis, RF_CL, pClo);
+			return PH7_OK;
+		}
+		zName = ph7_value_to_string(apArg[0], &nName);
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Function %.*s() does not exist", nName, zName);
+	}
+	if( pClo ){
+		PH7_NativeSetAttrObj(pVm, pThis, RF_CL, pClo);
+	}
+	if( sRef.pFunc ){
+		int bAnon = (sRef.pFunc->iFlags & VM_FUNC_CLOSURE) != 0;
+		if( !bAnon && SyStringLength(&sRef.pFunc->sName) > 9
+		 && (SyMemcmp(SyStringData(&sRef.pFunc->sName), "[lambda_", 8) == 0
+		  || SyMemcmp(SyStringData(&sRef.pFunc->sName), "[closure_", 9) == 0) ){
+			bAnon = 1;
+		}
+		if( bAnon ){
+			/* php 8.4 names an anonymous function `{closure:FILE:LINE}` */
+			char zBuf[512];
+			const char *zFile = SyStringLength(&sRef.pFunc->sFile) > 0
+				? SyStringData(&sRef.pFunc->sFile) : "";
+			int nFile = SyStringLength(&sRef.pFunc->sFile) > 0
+				? (int)SyStringLength(&sRef.pFunc->sFile) : 0;
+			int nBuf = SyBufferFormat(zBuf, sizeof(zBuf), "{closure:%.*s:%u}",
+				nFile, zFile, sRef.pFunc->nLine);
+			PH7_NativeSetAttrStr(pVm, pThis, "name", zBuf, nBuf);
+			if( pClo == 0 ){
+				/* Named by its lambda name: keep a Closure so the accessors can
+				 * still reach the captured scope. */
+				PH7_NativeSetAttrObj(pVm, pThis, RF_CL,
+					PH7_VmNewClosure(pVm, &sRef.pFunc->sName, 0, 0));
+			}
+			return PH7_OK;
+		}
+		PH7_NativeSetAttrStr(pVm, pThis, "name", SyStringData(&sRef.pFunc->sName),
+			(int)SyStringLength(&sRef.pFunc->sName));
+		return PH7_OK;
+	}
+	PH7_NativeSetAttrStr(pVm, pThis, "name", SyStringData(&sRef.pHost->sName),
+		(int)SyStringLength(&sRef.pHost->sName));
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunction_isAnonymous(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	return vm_builtin_ReflectionFunc_isClosure(pCtx, nArg, apArg);
+}
+static int vm_builtin_ReflectionFunction_isDisabled(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx, 0);
+	return PH7_OK;
+}
+/* The callable a ReflectionFunction invokes: the Closure it holds, or its name. */
+static void ReflectFunctionCallable(ph7_context *pCtx, ph7_value *pOut)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pClo;
+	const char *zName = "";
+	int nName = 0;
+	PH7_MemObjInit(pCtx->pVm, pOut);
+	if( pThis == 0 ){
+		return;
+	}
+	pClo = PH7_NativeAttrObj(pThis, RF_CL);
+	if( pClo ){
+		pOut->x.pOther = pClo;
+		pOut->iFlags = MEMOBJ_OBJ;
+		return;
+	}
+	PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	ph7_value_string(pOut, zName, nName);
+}
+static int ReflectFunctionInvoke(ph7_context *pCtx, int nCall, ph7_value **apCall)
+{
+	ph7_value sTarget, sResult;
+	sxi32 rc;
+	ReflectFunctionCallable(pCtx, &sTarget);
+	PH7_MemObjInit(pCtx->pVm, &sResult);
+	sResult.nIdx = SXU32_HIGH;
+	rc = PH7_VmCallUserFunction(pCtx->pVm, &sTarget, nCall, apCall, &sResult);
+	if( (sTarget.iFlags & MEMOBJ_OBJ) == 0 ){
+		PH7_MemObjRelease(&sTarget);
+	}
+	if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
+		PH7_MemObjRelease(&sResult);
+		return rc;
+	}
+	ph7_result_value(pCtx, &sResult);
+	PH7_MemObjRelease(&sResult);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFunction_invoke(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	return ReflectFunctionInvoke(pCtx, nArg, apArg);
+}
+static int vm_builtin_ReflectionFunction_invokeArgs(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SySet aCall;
+	int rc;
+	SySetInit(&aCall, &pCtx->pVm->sAllocator, sizeof(ph7_value *));
+	if( nArg > 0 ){
+		ReflectCollectArgs(pCtx, apArg[0], &aCall, 0);
+	}
+	rc = ReflectFunctionInvoke(pCtx, (int)SySetUsed(&aCall), (ph7_value **)SySetBasePtr(&aCall));
+	SySetRelease(&aCall);
+	return rc;
+}
+static int vm_builtin_ReflectionFunction_getClosure(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pClo;
+	const char *zName = "";
+	int nName = 0;
+	SyString sName;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pClo = PH7_NativeAttrObj(pThis, RF_CL);
+	if( pClo ){
+		/* Already a Closure: hand the same instance back */
+		return ReflectResultExistingObject(pCtx, pClo);
+	}
+	PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	SyStringInitFromBuf(&sName, zName, nName);
+	return ReflectResultObject(pCtx, PH7_VmNewClosure(pCtx->pVm, &sName, 0, 0));
+}
+/* ---- ReflectionMethod ---- */
+/* ReflectionMethod::__construct(object|string $objectOrMethod, ?string $method = null) */
+static int vm_builtin_ReflectionMethod_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class *pClass;
+	SyHashEntry *pEntry;
+	ph7_value sClass, sMethod;
+	const char *zMethod;
+	int nMethod, rc = PH7_OK;
+	if( pThis == 0 || nArg < 1 ){
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pVm, &sClass);
+	PH7_MemObjInit(pVm, &sMethod);
+	if( nArg < 2 || ph7_value_is_null(apArg[1]) ){
+		/* One-argument form: "Class::method" */
+		const char *zSpec;
+		int nSpec, iSep = -1, k;
+		if( (apArg[0]->iFlags & MEMOBJ_STRING) == 0 ){
+			PH7_MemObjRelease(&sClass);
+			PH7_MemObjRelease(&sMethod);
+			return PH7_VmThrowException(pCtx, "ReflectionException",
+				"The parameter class is expected to be either a string or an object");
+		}
+		zSpec = ph7_value_to_string(apArg[0], &nSpec);
+		for( k = 0 ; k + 1 < nSpec ; k++ ){
+			if( zSpec[k] == ':' && zSpec[k+1] == ':' ){
+				iSep = k;
+				break;
+			}
+		}
+		if( iSep < 0 ){
+			PH7_MemObjRelease(&sClass);
+			PH7_MemObjRelease(&sMethod);
+			return PH7_VmThrowException(pCtx, "ReflectionException",
+				"Invalid method name %.*s", nSpec, zSpec);
+		}
+		/* php 8.3 deprecated the one-argument spelling in favour of the static
+		 * factory. createFromMethodName() splits the name ITSELF and constructs
+		 * with two, so it does not trip this. */
+		PH7_VmThrowError(pVm, 0, E_DEPRECATED,
+			"Calling ReflectionMethod::__construct() with 1 argument is deprecated, "
+			"use ReflectionMethod::createFromMethodName() instead");
+		ph7_value_string(&sClass, zSpec, iSep);
+		ph7_value_string(&sMethod, &zSpec[iSep+2], nSpec - iSep - 2);
+	}else{
+		PH7_MemObjStore(apArg[0], &sClass);
+		PH7_MemObjStore(apArg[1], &sMethod);
+	}
+	pClass = ReflectResolveClass(pVm, &sClass);
+	if( pClass == 0 ){
+		const char *zName;
+		int nName;
+		zName = ph7_value_to_string(&sClass, &nName);
+		rc = PH7_VmThrowException(pCtx, "ReflectionException",
+			"Class \"%.*s\" does not exist", nName, zName);
+		goto Done;
+	}
+	zMethod = ph7_value_to_string(&sMethod, &nMethod);
+	pEntry = ReflectFindMethodEntry(pClass, zMethod, nMethod);
+	if( pEntry == 0 ){
+		rc = PH7_VmThrowException(pCtx, "ReflectionException",
+			"Method %z::%.*s() does not exist", &pClass->sName, nMethod, zMethod);
+		goto Done;
+	}
+	PH7_NativeSetAttrStr(pVm, pThis, "class", SyStringData(&pClass->sName),
+		(int)SyStringLength(&pClass->sName));
+	/* The DECLARED spelling, whatever case was asked for. */
+	PH7_NativeSetAttrStr(pVm, pThis, "name", (const char *)pEntry->pKey, (int)pEntry->nKeyLen);
+Done:
+	PH7_MemObjRelease(&sClass);
+	PH7_MemObjRelease(&sMethod);
+	return rc;
+}
+/* ReflectionMethod::createFromMethodName(string $method): static */
+static int vm_builtin_ReflectionMethod_createFromMethodName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pOut;
+	ph7_value sClass, sMethod;
+	ph7_value *apCtor[2];
+	const char *zSpec;
+	int nSpec, iSep = -1, k;
+	sxi32 rc;
+	if( nArg < 1 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	/* Split here rather than letting the constructor do it: the one-argument
+	 * constructor is the DEPRECATED spelling this factory exists to replace. */
+	zSpec = ph7_value_to_string(apArg[0], &nSpec);
+	for( k = 0 ; k + 1 < nSpec ; k++ ){
+		if( zSpec[k] == ':' && zSpec[k+1] == ':' ){
+			iSep = k;
+			break;
+		}
+	}
+	if( iSep < 0 ){
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Invalid method name %.*s", nSpec, zSpec);
+	}
+	PH7_MemObjInit(pCtx->pVm, &sClass);
+	PH7_MemObjInit(pCtx->pVm, &sMethod);
+	ph7_value_string(&sClass, zSpec, iSep);
+	ph7_value_string(&sMethod, &zSpec[iSep+2], nSpec - iSep - 2);
+	apCtor[0] = &sClass;
+	apCtor[1] = &sMethod;
+	pOut = ReflectConstruct(pCtx, "ReflectionMethod", 2, apCtor, &rc);
+	PH7_MemObjRelease(&sClass);
+	PH7_MemObjRelease(&sMethod);
+	if( pOut == 0 ){
+		if( rc != PH7_OK ){
+			return rc;
+		}
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return ReflectResultObject(pCtx, pOut);
+}
+/* The visibility/modifier predicates, all off the method record. */
+static int ReflectMethodFlag(ph7_context *pCtx, int iWhat)
+{
+	ReflectFuncRef sRef;
+	if( !ReflectFuncOfThis(pCtx, &sRef) || sRef.pMeth == 0 ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	switch( iWhat ){
+	case 0: ph7_result_bool(pCtx, sRef.pMeth->iProtection == PH7_CLASS_PROT_PUBLIC); break;
+	case 1: ph7_result_bool(pCtx, sRef.pMeth->iProtection == PH7_CLASS_PROT_PRIVATE); break;
+	case 2: ph7_result_bool(pCtx, sRef.pMeth->iProtection == PH7_CLASS_PROT_PROTECTED); break;
+	case 3: ph7_result_bool(pCtx, (sRef.pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) != 0); break;
+	default: ph7_result_bool(pCtx, (sRef.pMeth->iFlags & PH7_CLASS_ATTR_FINAL) != 0); break;
+	}
+	return PH7_OK;
+}
+#define REFLECT_METHOD_FLAG(NAME,WHAT) \
+	static int NAME(ph7_context *pCtx, int nArg, ph7_value **apArg) \
+	{ \
+		SXUNUSED(nArg); \
+		SXUNUSED(apArg); \
+		return ReflectMethodFlag(pCtx, WHAT); \
+	}
+REFLECT_METHOD_FLAG(vm_builtin_ReflectionMethod_isPublic, 0)
+REFLECT_METHOD_FLAG(vm_builtin_ReflectionMethod_isPrivate, 1)
+REFLECT_METHOD_FLAG(vm_builtin_ReflectionMethod_isProtected, 2)
+REFLECT_METHOD_FLAG(vm_builtin_ReflectionMethod_isAbstract, 3)
+REFLECT_METHOD_FLAG(vm_builtin_ReflectionMethod_isFinal, 4)
+
+/* isConstructor()/isDestructor() read the NAME, not the record: a trait
+ * `use T { m as __construct; }` alias is the constructor under that key. */
+static int ReflectMethodNameIs(ph7_context *pCtx, const char *zWant, int nWant)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName = "";
+	int nName = 0;
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	}
+	ph7_result_bool(pCtx, nName == nWant && SyStrnicmp(zName, zWant, (sxu32)nWant) == 0);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionMethod_isConstructor(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return ReflectMethodNameIs(pCtx, "__construct", sizeof("__construct")-1);
+}
+static int vm_builtin_ReflectionMethod_isDestructor(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return ReflectMethodNameIs(pCtx, "__destruct", sizeof("__destruct")-1);
+}
+static int vm_builtin_ReflectionMethod_getModifiers(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectFuncOfThis(pCtx, &sRef) || sRef.pMeth == 0 ){
+		ph7_result_int(pCtx, 0);
+		return PH7_OK;
+	}
+	ph7_result_int64(pCtx, ReflectMethodModifiers(sRef.pMeth));
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionMethod_getDeclaringClass(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectFuncOfThis(pCtx, &sRef) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return ReflectResultClassOf(pCtx, ReflectFuncDeclClass(&sRef));
+}
+/*
+ * The receiver check php runs before invoking or binding: a non-static method
+ * needs an instance OF ITS DECLARING CLASS; a static one ignores whatever was
+ * handed over. *ppThis is cleared for a static method.
+ */
+static sxi32 ReflectMethodReceiver(ph7_context *pCtx, ReflectFuncRef *pRef,
+	ph7_value *pObject, ph7_class_instance **ppThis, int bClosure)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zClass = "", *zName = "";
+	int nClass = 0, nName = 0;
+	ph7_class *pDecl = ReflectFuncDeclClass(pRef);
+	*ppThis = 0;
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, "class", &zClass, &nClass);
+		PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	}
+	if( pRef->pMeth && (pRef->pMeth->iFlags & PH7_CLASS_ATTR_STATIC) ){
+		return PH7_OK;
+	}
+	if( pObject == 0 || (pObject->iFlags & MEMOBJ_OBJ) == 0 ){
+		if( bClosure ){
+			return PH7_VmThrowException(pCtx, "ValueError",
+				"ReflectionMethod::getClosure(): Argument #1 ($object) cannot be null for non-static methods");
+		}
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Trying to invoke non static method %.*s::%.*s() without an object",
+			nClass, zClass, nName, zName);
+	}
+	*ppThis = (ph7_class_instance *)pObject->x.pOther;
+	if( pDecl && !PH7_VmInstanceOf((*ppThis)->pClass, pDecl) ){
+		*ppThis = 0;
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Given object is not an instance of the class this method was declared in");
+	}
+	return PH7_OK;
+}
+static int ReflectMethodInvoke(ph7_context *pCtx, ph7_value *pObject, int nCall, ph7_value **apCall)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ReflectFuncRef sRef;
+	ph7_class_instance *pRecv = 0;
+	ph7_value sResult;
+	sxi32 rc;
+	if( !ReflectFuncOfThis(pCtx, &sRef) || sRef.pMeth == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	rc = ReflectMethodReceiver(pCtx, &sRef, pObject, &pRecv, 0);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	PH7_MemObjInit(pVm, &sResult);
+	sResult.nIdx = SXU32_HIGH;
+	/* Reflection ignores method visibility (PHP 8.1+); the flag is consumed by
+	 * the first OP_CALL, i.e. this synthetic one. */
+	pVm->bReflectBypass = 1;
+	rc = PH7_VmCallClassMethod(pVm, pRecv, sRef.pMeth, &sResult, nCall, apCall);
+	pVm->bReflectBypass = 0;
+	if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
+		PH7_MemObjRelease(&sResult);
+		return rc;
+	}
+	ph7_result_value(pCtx, &sResult);
+	PH7_MemObjRelease(&sResult);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionMethod_invoke(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	return ReflectMethodInvoke(pCtx, nArg > 0 ? apArg[0] : 0,
+		nArg > 1 ? nArg - 1 : 0, nArg > 1 ? &apArg[1] : 0);
+}
+static int vm_builtin_ReflectionMethod_invokeArgs(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SySet aCall;
+	int rc;
+	SySetInit(&aCall, &pCtx->pVm->sAllocator, sizeof(ph7_value *));
+	if( nArg > 1 ){
+		ReflectCollectArgs(pCtx, apArg[1], &aCall, 0);
+	}
+	rc = ReflectMethodInvoke(pCtx, nArg > 0 ? apArg[0] : 0,
+		(int)SySetUsed(&aCall), (ph7_value **)SySetBasePtr(&aCall));
+	SySetRelease(&aCall);
+	return rc;
+}
+static int vm_builtin_ReflectionMethod_getClosure(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	ph7_class_instance *pRecv = 0;
+	sxi32 rc;
+	if( !ReflectFuncOfThis(pCtx, &sRef) || sRef.pMeth == 0 || sRef.pClass == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	rc = ReflectMethodReceiver(pCtx, &sRef, nArg > 0 ? apArg[0] : 0, &pRecv, 1);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	return ReflectResultObject(pCtx,
+		PH7_VmNewClosure(pCtx->pVm, &sRef.pMeth->sFunc.sName, pRecv, &sRef.pClass->sName));
+}
+/* php 8.1 made every reflected member accessible; the setter is a no-op it kept. */
+static int vm_builtin_ReflectionMethod_setAccessible(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return PH7_OK;
+}
+/*
+ * The class this method OVERRIDES it from: the nearest base declaring a
+ * same-named non-private method, else the first interface that declares one.
+ */
+static ph7_class * ReflectMethodPrototype(ph7_context *pCtx, ReflectFuncRef *pRef)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class *pWalk;
+	const char *zName = "";
+	int nName = 0, iDepth = 0;
+	if( pThis == 0 || pRef->pClass == 0 ){
+		return 0;
+	}
+	PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	for( pWalk = pRef->pClass->pBase ; pWalk && iDepth <= REFLECT_WALK_MAX_DEPTH ; pWalk = pWalk->pBase ){
+		SyHashEntry *pEntry = ReflectFindMethodEntry(pWalk, zName, nName);
+		if( pEntry ){
+			ph7_class_method *pMeth = (ph7_class_method *)pEntry->pUserData;
+			if( pMeth->iProtection != PH7_CLASS_PROT_PRIVATE ){
+				return ReflectMethodDeclClass(pWalk, pMeth);
+			}
+		}
+		iDepth++;
+	}
+	{
+		SySet aSet;
+		ph7_class **apIface;
+		ph7_class *pFound = 0;
+		sxu32 n;
+		SySetInit(&aSet, &pCtx->pVm->sAllocator, sizeof(ph7_class *));
+		ReflectInterfacesOf(pRef->pClass, &aSet);
+		apIface = (ph7_class **)SySetBasePtr(&aSet);
+		for( n = 0 ; n < SySetUsed(&aSet) ; n++ ){
+			if( ReflectFindMethodEntry(apIface[n], zName, nName) ){
+				pFound = apIface[n];
+				break;
+			}
+		}
+		SySetRelease(&aSet);
+		return pFound;
+	}
+}
+static int vm_builtin_ReflectionMethod_hasPrototype(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectFuncOfThis(pCtx, &sRef) ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	ph7_result_bool(pCtx, ReflectMethodPrototype(pCtx, &sRef) != 0);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionMethod_getPrototype(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ReflectFuncRef sRef;
+	ph7_class *pProto;
+	const char *zClass = "", *zName = "";
+	int nClass = 0, nName = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || !ReflectFuncOfThis(pCtx, &sRef) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_NativeAttrStr(pThis, "class", &zClass, &nClass);
+	PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	pProto = ReflectMethodPrototype(pCtx, &sRef);
+	if( pProto == 0 ){
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Method %.*s::%.*s does not have a prototype", nClass, zClass, nName, zName);
+	}
+	{
+		ph7_value sClass, sName;
+		ph7_value *apCtor[2];
+		ph7_class_instance *pOut;
+		sxi32 rc;
+		PH7_MemObjInit(pCtx->pVm, &sClass);
+		PH7_MemObjInit(pCtx->pVm, &sName);
+		ph7_value_string(&sClass, SyStringData(&pProto->sName), (int)SyStringLength(&pProto->sName));
+		ph7_value_string(&sName, zName, nName);
+		apCtor[0] = &sClass;
+		apCtor[1] = &sName;
+		pOut = ReflectConstruct(pCtx, "ReflectionMethod", 2, apCtor, &rc);
+		PH7_MemObjRelease(&sClass);
+		PH7_MemObjRelease(&sName);
+		if( pOut == 0 ){
+			if( rc != PH7_OK ){
+				return rc;
+			}
+			ph7_result_null(pCtx);
+			return PH7_OK;
+		}
+		return ReflectResultObject(pCtx, pOut);
+	}
+}
+/* ---- ReflectionParameter ---- */
+/*
+ * The function a ReflectionParameter belongs to, from its own `__t`/`__m`
+ * slots. `__t` holds a Closure, a class name or a function name; `__m` the
+ * method name, or null.
+ */
+static int ReflectParamOwner(ph7_context *pCtx, ReflectFuncRef *pRef, ReflectParamDesc *pDesc)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pT, *pM;
+	int rc;
+	SyZero(pRef, sizeof(*pRef));
+	if( pDesc ){
+		SyZero(pDesc, sizeof(*pDesc));
+	}
+	if( pThis == 0 ){
+		return 0;
+	}
+	pT = PH7_NativeAttr(pThis, RP_T);
+	pM = PH7_NativeAttr(pThis, RP_M);
+	if( pT == 0 ){
+		return 0;
+	}
+	rc = ReflectFuncFill(pCtx, pT, (pM && (pM->iFlags & MEMOBJ_STRING)) ? pM : 0, pRef);
+	if( rc == 0 || pDesc == 0 ){
+		return rc;
+	}
+	return ReflectParamAt(pRef, (int)PH7_NativeAttrInt(pThis, RP_P), pDesc);
+}
+/* ReflectionParameter::__construct($function, string|int $param) */
+static int vm_builtin_ReflectionParameter_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ReflectFuncRef sRef;
+	ReflectParamDesc sDesc;
+	ph7_value sTarget, sMethod;
+	int nTotal, iFound = -1, rc = PH7_OK;
+	if( pThis == 0 || nArg < 2 ){
+		return PH7_OK;
+	}
+	SyZero(&sDesc, sizeof(sDesc));
+	PH7_MemObjInit(pVm, &sTarget);
+	PH7_MemObjInit(pVm, &sMethod);
+	/* `[$objOrClass, $method]`, `"C::m"` and a plain function/Closure are the
+	 * three spellings php accepts. */
+	if( ph7_value_is_array(apArg[0]) ){
+		ph7_value *pA = ph7_array_fetch(apArg[0], "0", 1);
+		ph7_value *pB = ph7_array_fetch(apArg[0], "1", 1);
+		if( pA && (pA->iFlags & MEMOBJ_OBJ) ){
+			ph7_class_instance *pObj = (ph7_class_instance *)pA->x.pOther;
+			ph7_value_string(&sTarget, SyStringData(&pObj->pClass->sName),
+				(int)SyStringLength(&pObj->pClass->sName));
+		}else if( pA ){
+			PH7_MemObjStore(pA, &sTarget);
+		}
+		if( pB ){
+			PH7_MemObjStore(pB, &sMethod);
+		}
+	}else{
+		/* A STRING is a plain function name, `"C::m"` included: php does not
+		 * split one here (it reports `Function C::m() does not exist`), unlike
+		 * ReflectionMethod's own one-argument form. The prelude split it and
+		 * silently reflected the method. */
+		PH7_MemObjStore(apArg[0], &sTarget);
+	}
+	if( !ReflectFuncFill(pCtx, &sTarget, (sMethod.iFlags & MEMOBJ_STRING) ? &sMethod : 0, &sRef) ){
+		const char *zName;
+		int nName;
+		if( sMethod.iFlags & MEMOBJ_STRING ){
+			const char *zM;
+			int nM;
+			zName = ph7_value_to_string(&sTarget, &nName);
+			zM = ph7_value_to_string(&sMethod, &nM);
+			rc = PH7_VmThrowException(pCtx, "ReflectionException",
+				"Method %.*s::%.*s() does not exist", nName, zName, nM, zM);
+		}else{
+			zName = ph7_value_to_string(&sTarget, &nName);
+			rc = PH7_VmThrowException(pCtx, "ReflectionException",
+				"Function %.*s() does not exist", nName, zName);
+		}
+		goto Done;
+	}
+	nTotal = ReflectParamCount(&sRef);
+	if( apArg[1]->iFlags & (MEMOBJ_INT|MEMOBJ_BOOL) ){
+		int iWant = (int)ph7_value_to_int(apArg[1]);
+		if( iWant >= 0 && iWant < nTotal && ReflectParamAt(&sRef, iWant, &sDesc) ){
+			iFound = iWant;
+		}
+		if( iFound < 0 ){
+			rc = PH7_VmThrowException(pCtx, "ReflectionException",
+				"The parameter specified by its offset could not be found");
+			goto Done;
+		}
+	}else{
+		const char *zWant;
+		int nWant, n;
+		zWant = ph7_value_to_string(apArg[1], &nWant);
+		for( n = 0 ; n < nTotal ; n++ ){
+			if( ReflectParamAt(&sRef, n, &sDesc)
+			 && SyStringLength(&sDesc.sName) == (sxu32)nWant
+			 && SyMemcmp(SyStringData(&sDesc.sName), zWant, (sxu32)nWant) == 0 ){
+				iFound = n;
+				break;
+			}
+		}
+		if( iFound < 0 ){
+			rc = PH7_VmThrowException(pCtx, "ReflectionException",
+				"The parameter specified by its name could not be found");
+			goto Done;
+		}
+	}
+	PH7_NativeSetAttrStr(pVm, pThis, "name", SyStringData(&sDesc.sName),
+		(int)SyStringLength(&sDesc.sName));
+	/* Record the CANONICAL target: the class the method really came through and
+	 * its declared spelling, so a re-resolve cannot land somewhere else. */
+	if( sRef.pMeth && sRef.pClass ){
+		PH7_NativeSetAttrStr(pVm, pThis, RP_T, SyStringData(&sRef.pClass->sName),
+			(int)SyStringLength(&sRef.pClass->sName));
+		PH7_NativeSetAttrStr(pVm, pThis, RP_M, SyStringData(&sRef.pMeth->sFunc.sName),
+			(int)SyStringLength(&sRef.pMeth->sFunc.sName));
+	}else{
+		ph7_value *pSlot = PH7_NativeAttr(pThis, RP_T);
+		if( pSlot ){
+			PH7_MemObjStore(&sTarget, pSlot);
+		}
+	}
+	PH7_NativeSetAttrInt(pVm, pThis, RP_P, (sxi64)iFound);
+Done:
+	PH7_MemObjRelease(&sTarget);
+	PH7_MemObjRelease(&sMethod);
+	return rc;
+}
+static int vm_builtin_ReflectionParameter_getName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName = "";
+	int nName = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	}
+	ph7_result_string(pCtx, zName, nName);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionParameter_getPosition(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_int64(pCtx, pThis ? PH7_NativeAttrInt(pThis, RP_P) : 0);
+	return PH7_OK;
+}
+/* The boolean predicates that read one flag of the description. */
+static int ReflectParamFlag(ph7_context *pCtx, int iWhat)
+{
+	ReflectFuncRef sRef;
+	ReflectParamDesc sDesc;
+	int bYes = 0;
+	if( ReflectParamOwner(pCtx, &sRef, &sDesc) ){
+		switch( iWhat ){
+		case 0: bYes = sDesc.bByRef; break;
+		case 1: bYes = !sDesc.bByRef; break;
+		case 2: bYes = sDesc.bVariadic; break;
+		case 3: bYes = sDesc.bPromoted; break;
+		case 4: bYes = sDesc.bHasDef; break;
+		case 5: bYes = SyStringLength(&sDesc.sType) > 0; break;
+		default:
+			/* allowsNull(): untyped, nullable, or a type that INCLUDES null */
+			bYes = SyStringLength(&sDesc.sType) < 1 || sDesc.bNullable
+				|| ReflectTypeNameIs(SyStringData(&sDesc.sType), (int)SyStringLength(&sDesc.sType), "mixed")
+				|| ReflectTypeNameIs(SyStringData(&sDesc.sType), (int)SyStringLength(&sDesc.sType), "null");
+			break;
+		}
+	}else if( iWhat == 1 || iWhat == 6 ){
+		bYes = 1;
+	}
+	ph7_result_bool(pCtx, bYes);
+	return PH7_OK;
+}
+#define REFLECT_PARAM_FLAG(NAME,WHAT) \
+	static int NAME(ph7_context *pCtx, int nArg, ph7_value **apArg) \
+	{ \
+		SXUNUSED(nArg); \
+		SXUNUSED(apArg); \
+		return ReflectParamFlag(pCtx, WHAT); \
+	}
+REFLECT_PARAM_FLAG(vm_builtin_ReflectionParameter_isPassedByReference, 0)
+REFLECT_PARAM_FLAG(vm_builtin_ReflectionParameter_canBePassedByValue, 1)
+REFLECT_PARAM_FLAG(vm_builtin_ReflectionParameter_isVariadic, 2)
+REFLECT_PARAM_FLAG(vm_builtin_ReflectionParameter_isPromoted, 3)
+REFLECT_PARAM_FLAG(vm_builtin_ReflectionParameter_isDefaultValueAvailable, 4)
+REFLECT_PARAM_FLAG(vm_builtin_ReflectionParameter_hasType, 5)
+REFLECT_PARAM_FLAG(vm_builtin_ReflectionParameter_allowsNull, 6)
+
+/* isOptional(): every parameter from here on has to be omissible too. */
+static int vm_builtin_ReflectionParameter_isOptional(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ReflectFuncRef sRef;
+	ReflectParamDesc sDesc;
+	int n, nTotal, iPos;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || !ReflectParamOwner(pCtx, &sRef, 0) ){
+		ph7_result_bool(pCtx, 0);
+		return PH7_OK;
+	}
+	iPos = (int)PH7_NativeAttrInt(pThis, RP_P);
+	nTotal = ReflectParamCount(&sRef);
+	for( n = iPos ; n < nTotal ; n++ ){
+		if( ReflectParamAt(&sRef, n, &sDesc) && !sDesc.bVariadic && !sDesc.bOptional ){
+			ph7_result_bool(pCtx, 0);
+			return PH7_OK;
+		}
+	}
+	ph7_result_bool(pCtx, 1);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionParameter_getType(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	ReflectParamDesc sDesc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectParamOwner(pCtx, &sRef, &sDesc) || SyStringLength(&sDesc.sType) < 1 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return ReflectResultObject(pCtx, ReflectMakeType(pCtx,
+		SyStringData(&sDesc.sType), (int)SyStringLength(&sDesc.sType)));
+}
+/*
+ * getClass()/isArray()/isCallable() — php 8.0 deprecated these in favour of
+ * getType() but still declares them, still answers, and emits an E_DEPRECATED
+ * naming the replacement. PHL fatalled on the call; all three are here now,
+ * notice included.
+ */
+static void ReflectParamDeprecated(ph7_context *pCtx, const char *zWho)
+{
+	char zMsg[160];
+	SyBufferFormat(zMsg, sizeof(zMsg),
+		"Method ReflectionParameter::%s() is deprecated since 8.0, "
+		"use ReflectionParameter::getType() instead", zWho);
+	PH7_VmThrowError(pCtx->pVm, 0, E_DEPRECATED, zMsg);
+}
+static int vm_builtin_ReflectionParameter_getClass(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	ReflectParamDesc sDesc;
+	const char *zType;
+	int nType;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ReflectParamDeprecated(pCtx, "getClass");
+	if( !ReflectParamOwner(pCtx, &sRef, &sDesc) || SyStringLength(&sDesc.sType) < 1 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	zType = SyStringData(&sDesc.sType);
+	nType = (int)SyStringLength(&sDesc.sType);
+	if( nType > 0 && zType[0] == '?' ){
+		zType++;
+		nType--;
+	}
+	if( ReflectTypeIsBuiltin(zType, nType) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return ReflectResultClassOf(pCtx, PH7_VmExtractClass(pCtx->pVm, zType, (sxu32)nType, FALSE, 0));
+}
+static int ReflectParamTypeIs(ph7_context *pCtx, const char *zWant)
+{
+	ReflectFuncRef sRef;
+	ReflectParamDesc sDesc;
+	int bYes = 0;
+	if( ReflectParamOwner(pCtx, &sRef, &sDesc) && SyStringLength(&sDesc.sType) > 0 ){
+		const char *zType = SyStringData(&sDesc.sType);
+		int nType = (int)SyStringLength(&sDesc.sType);
+		/* php answers true for `?array` too: the deprecated pair asks about the
+		 * type ATOM, and nullability is a separate question. */
+		if( zType[0] == '?' ){
+			zType++;
+			nType--;
+		}
+		bYes = ReflectTypeNameIs(zType, nType, zWant);
+	}
+	ph7_result_bool(pCtx, bYes);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionParameter_isArray(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ReflectParamDeprecated(pCtx, "isArray");
+	return ReflectParamTypeIs(pCtx, "array");
+}
+static int vm_builtin_ReflectionParameter_isCallable(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ReflectParamDeprecated(pCtx, "isCallable");
+	return ReflectParamTypeIs(pCtx, "callable");
+}
+static int vm_builtin_ReflectionParameter_getDefaultValue(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	ReflectParamDesc sDesc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectParamOwner(pCtx, &sRef, &sDesc) || !sDesc.bHasDef ){
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Internal error: Failed to retrieve the default value");
+	}
+	if( sDesc.pArg ){
+		/* Compiled: the same evaluation path the VM uses for an omitted argument */
+		ph7_value sValue;
+		PH7_MemObjInit(pCtx->pVm, &sValue);
+		VmLocalExec(pCtx->pVm, &sDesc.pArg->aByteCode, &sValue, FALSE);
+		ph7_result_value(pCtx, &sValue);
+		PH7_MemObjRelease(&sValue);
+		return PH7_OK;
+	}
+	{
+		/* Declared: the signature's default TEXT, reduced. */
+		const char *zDef = SyStringData(&sDesc.sDefText);
+		int nDef = (int)SyStringLength(&sDesc.sDefText);
+		ph7_value *pVal = ph7_context_new_scalar(pCtx);
+		if( pVal && ReflectSigScalar(pCtx, zDef, nDef, pVal) ){
+			ph7_result_value(pCtx, pVal);
+			return PH7_OK;
+		}
+		if( (nDef >= 1 && zDef[0] == '[')
+		 || (nDef >= (int)sizeof("array (")-1
+		  && SyMemcmp(zDef, "array (", sizeof("array (")-1) == 0) ){
+			ph7_result_value(pCtx, ph7_context_new_array(pCtx));
+			return PH7_OK;
+		}
+	}
+	return PH7_VmThrowException(pCtx, "ReflectionException",
+		"Internal error: Failed to retrieve the default value");
+}
+/*
+ * A default that is a plain global-constant reference compiles to exactly
+ * [ OP_LOADC (EXPAND), OP_DONE ] with the name in the literal table; a
+ * DECLARED default is text and never a constant.
+ */
+static int ReflectParamDefConst(ph7_context *pCtx, ReflectParamDesc *pDesc,
+	const char **pz, int *pn)
+{
+	VmInstr *aInstr;
+	ph7_value *pLit;
+	if( pDesc->pArg == 0 || SySetUsed(&pDesc->pArg->aByteCode) != 2 ){
+		return 0;
+	}
+	aInstr = (VmInstr *)SySetBasePtr(&pDesc->pArg->aByteCode);
+	if( aInstr[0].iOp != PH7_OP_LOADC || (aInstr[0].iP1 & PH7_LOADC_EXPAND) == 0
+	 || aInstr[1].iOp != PH7_OP_DONE ){
+		return 0;
+	}
+	pLit = (ph7_value *)SySetAt(&pCtx->pVm->aLitObj, aInstr[0].iP2);
+	if( pLit == 0 || SyBlobLength(&pLit->sBlob) < 1 ){
+		return 0;
+	}
+	*pz = (const char *)SyBlobData(&pLit->sBlob);
+	*pn = (int)SyBlobLength(&pLit->sBlob);
+	return 1;
+}
+static int vm_builtin_ReflectionParameter_isDefaultValueConstant(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	ReflectParamDesc sDesc;
+	const char *z;
+	int n;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectParamOwner(pCtx, &sRef, &sDesc) || !sDesc.bHasDef ){
+		/* php raises here rather than answering false: asking whether a default
+		 * is a constant presupposes there IS one. The prelude answered false. */
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Internal error: Failed to retrieve the default value");
+	}
+	ph7_result_bool(pCtx, ReflectParamDefConst(pCtx, &sDesc, &z, &n) != 0);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionParameter_getDefaultValueConstantName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	ReflectParamDesc sDesc;
+	const char *z;
+	int n;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectParamOwner(pCtx, &sRef, &sDesc) || !sDesc.bHasDef ){
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Internal error: Failed to retrieve the default value");
+	}
+	if( ReflectParamDefConst(pCtx, &sDesc, &z, &n) ){
+		ph7_result_string(pCtx, z, n);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionParameter_getDeclaringFunction(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pT, *pM;
+	ph7_value *apCtor[2];
+	ph7_class_instance *pOut;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || (pT = PH7_NativeAttr(pThis, RP_T)) == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pM = PH7_NativeAttr(pThis, RP_M);
+	apCtor[0] = pT;
+	apCtor[1] = pM;
+	if( pM && (pM->iFlags & MEMOBJ_STRING) ){
+		pOut = ReflectConstruct(pCtx, "ReflectionMethod", 2, apCtor, &rc);
+	}else{
+		pOut = ReflectConstruct(pCtx, "ReflectionFunction", 1, apCtor, &rc);
+	}
+	if( pOut == 0 ){
+		if( rc != PH7_OK ){
+			return rc;
+		}
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return ReflectResultObject(pCtx, pOut);
+}
+static int vm_builtin_ReflectionParameter_getDeclaringClass(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !ReflectParamOwner(pCtx, &sRef, 0) || sRef.pMeth == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return ReflectResultClassOf(pCtx, ReflectFuncDeclClass(&sRef));
+}
+static int vm_builtin_ReflectionParameter_getAttributes(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ReflectFuncRef sRef;
+	ReflectParamDesc sDesc;
+	ph7_value *pT, *pM;
+	const char *zMember = 0;
+	int nMember = 0;
+	if( pThis == 0 || !ReflectParamOwner(pCtx, &sRef, &sDesc) || sDesc.pArg == 0 ){
+		ph7_result_value(pCtx, ph7_context_new_array(pCtx));
+		return PH7_OK;
+	}
+	pT = PH7_NativeAttr(pThis, RP_T);
+	pM = PH7_NativeAttr(pThis, RP_M);
+	if( pM && (pM->iFlags & MEMOBJ_STRING) ){
+		zMember = (const char *)SyBlobData(&pM->sBlob);
+		nMember = (int)SyBlobLength(&pM->sBlob);
+	}
+	/* 32 = Attribute::TARGET_PARAMETER */
+	return ReflectBuildAttrs(pCtx, &sDesc.pArg->aAttrs, "param", pT, zMember, nMember,
+		(int)PH7_NativeAttrInt(pThis, RP_P), 32, nArg, apArg);
+}
+static int vm_builtin_ReflectionParameter_toString(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return ReflectExportSelf(pCtx, "__reflect_export_param", 0);
+}
+/*
+ * Declare chunk 2. Called from PH7_VmInstallReflectionLib where it used to be
+ * compiled — after chunk 1, whose `Reflector` these implement and whose
+ * `ReflectionClass` they answer.
+ *
+ * The method tables are in php's own DECLARATION order.
+ */
+PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm)
+{
+	static const PH7_NativePropDef aAbstractProp[] = {
+		{ "name",  PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
+		/* PHL-only: the Closure being reflected. php reaches the same state from
+		 * the function record itself; PHL has no hidden-slot bit yet (§7.4 (e)). */
+		{ RF_CL,   PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+	};
+	static const PH7_NativeMethodDef aAbstractMethod[] = {
+		{ "__clone",       PH7_MOD_PRIVATE, "", "void", vm_builtin_ReflectionFunc_clone },
+		{ "inNamespace",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_inNamespace },
+		{ "isClosure",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_isClosure },
+		{ "isDeprecated",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_isDeprecated },
+		{ "isInternal",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_isInternal },
+		{ "isUserDefined", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_isUserDefined },
+		{ "isGenerator",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_isGenerator },
+		{ "isVariadic",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_isVariadic },
+		{ "isStatic",      PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_isStatic },
+		{ "getClosureThis", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getClosureThis },
+		{ "getClosureScopeClass", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionFunc_getClosureScopeClass },
+		/* php answers the same class for both; PHL has no separate called-scope. */
+		{ "getClosureCalledClass", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionFunc_getClosureScopeClass },
+		{ "getClosureUsedVariables", PH7_MOD_PUBLIC, "", "array",
+		  vm_builtin_ReflectionFunc_getClosureUsedVariables },
+		{ "getDocComment", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getDocComment },
+		{ "getEndLine",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getEndLine },
+		{ "getExtension",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getExtension },
+		{ "getExtensionName", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getExtensionName },
+		{ "getFileName",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getFileName },
+		{ "getName",       PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getName },
+		{ "getNamespaceName", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getNamespaceName },
+		{ "getNumberOfParameters", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionFunc_getNumberOfParameters },
+		{ "getNumberOfRequiredParameters", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionFunc_getNumberOfRequiredParameters },
+		{ "getParameters", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getParameters },
+		{ "getShortName",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getShortName },
+		{ "getStartLine",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getStartLine },
+		{ "getStaticVariables", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionFunc_getStaticVariables },
+		{ "returnsReference", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_returnsReference },
+		{ "hasReturnType", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_hasReturnType },
+		{ "getReturnType", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getReturnType },
+		{ "hasTentativeReturnType", PH7_MOD_PUBLIC, "", "bool",
+		  vm_builtin_ReflectionFunc_hasTentativeReturnType },
+		{ "getTentativeReturnType", PH7_MOD_PUBLIC, "", "?ReflectionType",
+		  vm_builtin_ReflectionFunc_getTentativeReturnType },
+		{ "getAttributes", PH7_MOD_PUBLIC, "?string $name = null, int $flags = 0", "array",
+		  vm_builtin_ReflectionFunc_getAttributes },
+	};
+	static const PH7_NativeConstDef aFunctionConst[] = {
+		{ "IS_DEPRECATED", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 2048, 0, 0.0 },
+	};
+	static const PH7_NativeMethodDef aFunctionMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "Closure|string $function", "",
+		  vm_builtin_ReflectionFunction_construct },
+		{ "__toString",  PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionFunc_toString },
+		{ "isAnonymous", PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionFunction_isAnonymous },
+		{ "isDisabled",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunction_isDisabled },
+		{ "invoke",      PH7_MOD_PUBLIC, "mixed ...$args", "",
+		  vm_builtin_ReflectionFunction_invoke },
+		{ "invokeArgs",  PH7_MOD_PUBLIC, "array $args", "",
+		  vm_builtin_ReflectionFunction_invokeArgs },
+		{ "getClosure",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunction_getClosure },
+	};
+	static const PH7_NativePropDef aMethodProp[] = {
+		{ "class", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
+	};
+	static const PH7_NativeConstDef aMethodConst[] = {
+		{ "IS_STATIC",    PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 16, 0, 0.0 },
+		{ "IS_PUBLIC",    PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 1,  0, 0.0 },
+		{ "IS_PROTECTED", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 2,  0, 0.0 },
+		{ "IS_PRIVATE",   PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 4,  0, 0.0 },
+		{ "IS_ABSTRACT",  PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 64, 0, 0.0 },
+		{ "IS_FINAL",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 32, 0, 0.0 },
+	};
+	static const PH7_NativeMethodDef aMethodMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "object|string $objectOrMethod, ?string $method = null", "",
+		  vm_builtin_ReflectionMethod_construct },
+		{ "createFromMethodName", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $method", "static",
+		  vm_builtin_ReflectionMethod_createFromMethodName },
+		{ "__toString",  PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionFunc_toString },
+		{ "isPublic",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionMethod_isPublic },
+		{ "isPrivate",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionMethod_isPrivate },
+		{ "isProtected", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionMethod_isProtected },
+		{ "isAbstract",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionMethod_isAbstract },
+		{ "isFinal",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionMethod_isFinal },
+		{ "isConstructor", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionMethod_isConstructor },
+		{ "isDestructor",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionMethod_isDestructor },
+		{ "getClosure",  PH7_MOD_PUBLIC, "?object $object = null", "",
+		  vm_builtin_ReflectionMethod_getClosure },
+		{ "getModifiers", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionMethod_getModifiers },
+		{ "invoke",      PH7_MOD_PUBLIC, "?object $object, mixed ...$args", "",
+		  vm_builtin_ReflectionMethod_invoke },
+		{ "invokeArgs",  PH7_MOD_PUBLIC, "?object $object, array $args", "",
+		  vm_builtin_ReflectionMethod_invokeArgs },
+		{ "getDeclaringClass", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionMethod_getDeclaringClass },
+		{ "getPrototype", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionMethod_getPrototype },
+		{ "hasPrototype", PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionMethod_hasPrototype },
+		{ "setAccessible", PH7_MOD_PUBLIC, "bool $accessible", "",
+		  vm_builtin_ReflectionMethod_setAccessible },
+	};
+	static const PH7_NativePropDef aParamProp[] = {
+		{ "name", PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
+		/* PHL-only, the three that identify the parameter (§7.4 (e)) */
+		{ RP_T,   PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ RP_M,   PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ RP_P,   PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_INT,  0, 0, 0.0 } },
+	};
+	static const PH7_NativeMethodDef aParamMethod[] = {
+		{ "__clone",     PH7_MOD_PRIVATE, "", "void", vm_builtin_ReflectionFunc_clone },
+		/* php leaves $function UNTYPED here: it takes a name, a Closure, a
+		 * `[$obj, 'm']` pair or "C::m", and no declarable union covers all four. */
+		{ "__construct", PH7_MOD_PUBLIC, "$function, string|int $param", "",
+		  vm_builtin_ReflectionParameter_construct },
+		{ "__toString",  PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionParameter_toString },
+		{ "getName",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionParameter_getName },
+		{ "isPassedByReference", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionParameter_isPassedByReference },
+		{ "canBePassedByValue",  PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionParameter_canBePassedByValue },
+		{ "getDeclaringFunction", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionParameter_getDeclaringFunction },
+		{ "getDeclaringClass",   PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionParameter_getDeclaringClass },
+		{ "getClass",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionParameter_getClass },
+		{ "hasType",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionParameter_hasType },
+		{ "getType",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionParameter_getType },
+		{ "isArray",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionParameter_isArray },
+		{ "isCallable",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionParameter_isCallable },
+		{ "allowsNull",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionParameter_allowsNull },
+		{ "getPosition", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionParameter_getPosition },
+		{ "isOptional",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionParameter_isOptional },
+		{ "isDefaultValueAvailable", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionParameter_isDefaultValueAvailable },
+		{ "getDefaultValue", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionParameter_getDefaultValue },
+		{ "isDefaultValueConstant", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionParameter_isDefaultValueConstant },
+		{ "getDefaultValueConstantName", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_ReflectionParameter_getDefaultValueConstantName },
+		{ "isVariadic",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionParameter_isVariadic },
+		{ "isPromoted",  PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionParameter_isPromoted },
+		{ "getAttributes", PH7_MOD_PUBLIC, "?string $name = null, int $flags = 0", "array",
+		  vm_builtin_ReflectionParameter_getAttributes },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "ReflectionFunctionAbstract", 0, "Reflector", PH7_CLASS_ABSTRACT|PH7_CLASS_NOCLONE,
+		  aAbstractMethod, SX_ARRAYSIZE(aAbstractMethod), 0, 0,
+		  aAbstractProp, SX_ARRAYSIZE(aAbstractProp), 0, 0 },
+		{ "ReflectionFunction", "ReflectionFunctionAbstract", 0, PH7_CLASS_NOCLONE,
+		  aFunctionMethod, SX_ARRAYSIZE(aFunctionMethod),
+		  aFunctionConst, SX_ARRAYSIZE(aFunctionConst), 0, 0, 0, 0 },
+		{ "ReflectionMethod", "ReflectionFunctionAbstract", 0, PH7_CLASS_NOCLONE,
+		  aMethodMethod, SX_ARRAYSIZE(aMethodMethod),
+		  aMethodConst, SX_ARRAYSIZE(aMethodConst),
+		  aMethodProp, SX_ARRAYSIZE(aMethodProp), 0, 0 },
+		{ "ReflectionParameter", 0, "Reflector", PH7_CLASS_NOCLONE,
+		  aParamMethod, SX_ARRAYSIZE(aParamMethod), 0, 0,
+		  aParamProp, SX_ARRAYSIZE(aParamProp), 0, 0 },
+	};
+	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));
+}
 PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 {
 	static const struct {
@@ -4968,11 +6529,6 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 		{ "__reflect_prop_default",   vm_builtin_reflect_prop_default },
 		{ "__reflect_new_instance",   vm_builtin_reflect_new_instance },
 		{ "__reflect_new_no_ctor",    vm_builtin_reflect_new_no_ctor },
-		{ "__reflect_func_info",      vm_builtin_reflect_func_info },
-		{ "__reflect_param_default",  vm_builtin_reflect_param_default },
-		{ "__reflect_param_defconst", vm_builtin_reflect_param_defconst },
-		{ "__reflect_invoke",         vm_builtin_reflect_invoke },
-		{ "__reflect_closure",        vm_builtin_reflect_closure },
 		{ "__reflect_prop_read",      vm_builtin_reflect_prop_read },
 		{ "__reflect_prop_write",     vm_builtin_reflect_prop_write },
 		{ "__reflect_prop_state",     vm_builtin_reflect_prop_state },
