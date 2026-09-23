@@ -3447,13 +3447,13 @@ static int vm_builtin_RecursiveIteratorIterator_construct(ph7_context *pCtx,int 
 			nArg < 1 ? "none" : VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
 	}
 	if( nArg > 1 ){
-		rc = PH7_IntArgResolve(pCtx,apArg[1],"RecursiveIteratorIterator::__construct",2,"mode","int",&iMode);
+		rc = PH7_IntArgResolve(pCtx,apArg[1],"RecursiveIteratorIterator::__construct",2,"$mode","int",&iMode);
 		if( rc != SXRET_OK ){
 			return rc;
 		}
 	}
 	if( nArg > 2 ){
-		rc = PH7_IntArgResolve(pCtx,apArg[2],"RecursiveIteratorIterator::__construct",3,"flags","int",&iFlags);
+		rc = PH7_IntArgResolve(pCtx,apArg[2],"RecursiveIteratorIterator::__construct",3,"$flags","int",&iFlags);
 		if( rc != SXRET_OK ){
 			return rc;
 		}
@@ -3648,7 +3648,7 @@ static int vm_builtin_RecursiveIteratorIterator_getSubIterator(ph7_context *pCtx
 	if( nArg > 0 && (apArg[0]->iFlags & MEMOBJ_NULL) == 0 ){
 		sxi64 iWant = 0;
 		sxi32 rc = PH7_IntArgResolve(pCtx,apArg[0],"RecursiveIteratorIterator::getSubIterator",
-			1,"level","?int",&iWant);
+			1,"$level","?int",&iWant);
 		if( rc != SXRET_OK ){
 			return rc;
 		}
@@ -3757,7 +3757,7 @@ static int vm_builtin_RecursiveIteratorIterator_setMaxDepth(ph7_context *pCtx,in
 	}
 	if( nArg > 0 ){
 		sxi32 rc = PH7_IntArgResolve(pCtx,apArg[0],"RecursiveIteratorIterator::setMaxDepth",
-			1,"maxDepth","int",&iMax);
+			1,"$maxDepth","int",&iMax);
 		if( rc != SXRET_OK ){
 			return rc;
 		}
@@ -3866,119 +3866,868 @@ static sxi32 VmInstallSplRecursiveIt(ph7_vm *pVm)
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }
+/*
+ * ---------------------------------------------------------------------------
+ * SplDoublyLinkedList, SplStack and SplQueue.
+ *
+ * php's `spl_dllist_object` is a linked list plus a FLAGS word, and the flags are
+ * where the family's shape lives: SPL_DLLIST_IT_LIFO (2) and IT_DELETE (1) are the
+ * iteration mode, and IT_FIX (4) is a bit no CONSTANT names and no user can set --
+ * the object handler stamps it at creation for SplStack and SplQueue, and it is
+ * both what freezes their LIFO/FIFO choice and why `(new SplStack)->getIteratorMode()`
+ * answers 6 rather than 2. The chunk had no notion of it, so both classes reported
+ * the wrong mode and `setIteratorMode()` reported the wrong result.
+ *
+ * Two rules follow from php's own code and neither is guessable from the methods:
+ *
+ *   - **every ArrayAccess offset is measured from the END of a LIFO list.**
+ *     php resolves them through `spl_ptr_llist_offset(llist, offset, flags & LIFO)`,
+ *     so `$stack[0]` is the element `top()` answers, not the one `bottom()` does.
+ *     The chunk indexed the backing array directly and had the whole SplStack
+ *     subscript surface reversed.
+ *   - **the traverse POSITION is the list index in both modes.** A LIFO rewind
+ *     seeds `count-1` and counts down, a FIFO rewind seeds 0 and counts up, so
+ *     `key()` and the element's own place in the list agree either way -- except
+ *     under IT_DELETE in FIFO order, where php consumes the head and deliberately
+ *     does NOT advance the position (every element reports key 0).
+ *
+ * `toArray()` was a PHL INVENTION -- php has no such method on any of the three --
+ * and it is gone. What php has instead, and the chunk had none of: `__debugInfo()`,
+ * the `Serializable` interface with its `serialize()`/`unserialize()` pair, and the
+ * `__serialize()`/`__unserialize()` pair that php actually uses (which is why the
+ * serialized form is `O:19:"SplDoublyLinkedList":3:{i:0;…}` and not a property dump).
+ *
+ * The store is a php array in a hidden slot, head->tail, so push/pop/shift/unshift
+ * are the engine's OWN array builtins called with the slot (rule 7, and rule 39's
+ * reference rule already lives inside them). php's element-POINTER cursor is not
+ * modelled: a manual walk that mutates the list under itself resolves by position
+ * here and by identity there. That is one probe line (§7.4) and the only one.
+ */
+#define DLL_Q  "__q"   /* php's llist, head -> tail */
+#define DLL_FL "__fl"  /* php's flags word, IT_FIX included */
+#define DLL_I  "__i"   /* php's traverse_position */
+
+#define DLL_IT_DELETE 1
+#define DLL_IT_LIFO   2
+#define DLL_IT_FIX    4   /* php's SPL_DLLIST_IT_FIX: stamped at creation, never by a user */
+#define DLL_IT_MASK   3
+
+static ph7_value * DllSlot(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,DLL_Q) : 0;
+	if( pSlot == 0 ){
+		return 0;
+	}
+	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){
+			return 0;
+		}
+	}
+	if( PH7_HashmapCowSeparate(pVm,pSlot) == 0 ){
+		return 0;
+	}
+	return pSlot;
+}
+static ph7_hashmap * DllMap(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_value *pSlot = DllSlot(pVm,pThis);
+	return pSlot ? (ph7_hashmap *)pSlot->x.pOther : 0;
+}
+static sxi64 DllCount(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_hashmap *pMap = DllMap(pVm,pThis);
+	return pMap ? (sxi64)pMap->nEntry : 0;
+}
+static int DllFlags(ph7_class_instance *pThis)
+{
+	return pThis ? (int)PH7_NativeAttrInt(pThis,DLL_FL) : 0;
+}
+/* The value at a LIST index (head = 0), or NULL. */
+static ph7_value * DllAt(ph7_vm *pVm,ph7_class_instance *pThis,sxi64 iIndex)
+{
+	ph7_hashmap *pMap = DllMap(pVm,pThis);
+	ph7_hashmap_node *pNode = 0;
+	if( pMap == 0 || HashmapLookupIntKey(pMap,iIndex,&pNode) != SXRET_OK ){
+		return 0;
+	}
+	return HashmapExtractNodeValue(pNode);
+}
+/*
+ * php's spl_ptr_llist_offset: an ArrayAccess offset counts from the TAIL when the
+ * list iterates LIFO. Every offsetGet/offsetSet/offsetUnset/add goes through here.
+ */
+static sxi64 DllOffsetToIndex(ph7_class_instance *pThis,sxi64 iOffset,sxi64 nCount)
+{
+	if( DllFlags(pThis) & DLL_IT_LIFO ){
+		return nCount - 1 - iOffset;
+	}
+	return iOffset;
+}
+/* Hand one of the engine's own array builtins this instance's storage slot. */
+static int DllArrayCall(ph7_context *pCtx,ProchHostFunction xFunc,ph7_value **apExtra,int nExtra)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *apCall[4];
+	ph7_value *pSlot = DllSlot(pCtx->pVm,pThis);
+	int i;
+	if( pSlot == 0 ){
+		return PH7_OK;
+	}
+	apCall[0] = pSlot;
+	for( i = 0 ; i < nExtra && i < 3 ; ++i ){
+		apCall[i+1] = apExtra[i];
+	}
+	return xFunc(pCtx,nExtra+1,apCall);
+}
+/* php's four "empty datastructure" refusals, which differ only in the verb. */
+static sxi32 DllEmpty(ph7_context *pCtx,const char *zVerb)
+{
+	return PH7_VmThrowException(pCtx,"RuntimeException",
+		"Can't %s an empty datastructure",zVerb);
+}
+/*
+ * php words every out-of-range offset from the DECLARING class, not the runtime
+ * one: `SplStack::add()` on an out-of-range index still says
+ * `SplDoublyLinkedList::add()`. The chunk used get_class($this) and reported the
+ * subclass.
+ */
+static sxi32 DllOutOfRange(ph7_context *pCtx,const char *zMethod)
+{
+	return PH7_VmThrowException(pCtx,"OutOfRangeException",
+		"SplDoublyLinkedList::%s(): Argument #1 ($index) is out of range",zMethod);
+}
+/*
+ * php's ZPP for the four ArrayAccess offsets and add(): the stub leaves `$index`
+ * UNTYPED (which is what Reflection prints) while the ZPP is Z_PARAM_LONG, whose
+ * TypeError says `must be of type int`. An untyped signature is not screened
+ * centrally, so the rule is applied here — rule 41's disagreement, resolved without
+ * an azSelfChecked[] row because the declared type is absent rather than different.
+ */
+static sxi32 DllIndexArg(ph7_context *pCtx,const char *zMethod,ph7_value *pArg,sxi64 *piOut)
+{
+	char zFunc[64];
+	SyBufferFormat(zFunc,sizeof(zFunc),"SplDoublyLinkedList::%s",zMethod);
+	return PH7_IntArgResolve(pCtx,pArg,zFunc,1,"$index","int",piOut);
+}
+static int vm_builtin_SplDll_push(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *apExtra[1];
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	apExtra[0] = apArg[0];
+	DllArrayCall(pCtx,ph7_hashmap_push,apExtra,1);
+	ph7_result_null(pCtx);   /* array_push answers the new count; php's push is void */
+	return PH7_OK;
+}
+static int vm_builtin_SplDll_unshift(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *apExtra[1];
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	apExtra[0] = apArg[0];
+	DllArrayCall(pCtx,ph7_hashmap_unshift,apExtra,1);
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+static int vm_builtin_SplDll_pop(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( DllCount(pCtx->pVm,PH7_ContextThis(pCtx)) == 0 ){
+		return DllEmpty(pCtx,"pop from");
+	}
+	return DllArrayCall(pCtx,ph7_hashmap_pop,0,0);
+}
+static int vm_builtin_SplDll_shift(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( DllCount(pCtx->pVm,PH7_ContextThis(pCtx)) == 0 ){
+		return DllEmpty(pCtx,"shift from");
+	}
+	return DllArrayCall(pCtx,ph7_hashmap_shift,0,0);
+}
+/* top() is the TAIL and bottom() the HEAD, whatever the iteration mode: php reads
+ * llist->tail/llist->head directly and never consults the flags here. */
+static int vm_builtin_SplDll_top(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 nCount = DllCount(pCtx->pVm,pThis);
+	ph7_value *pVal;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( nCount == 0 ){
+		return DllEmpty(pCtx,"peek at");
+	}
+	pVal = DllAt(pCtx->pVm,pThis,nCount-1);
+	if( pVal ){
+		ph7_result_value(pCtx,pVal);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_SplDll_bottom(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pVal;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( DllCount(pCtx->pVm,pThis) == 0 ){
+		return DllEmpty(pCtx,"peek at");
+	}
+	pVal = DllAt(pCtx->pVm,pThis,0);
+	if( pVal ){
+		ph7_result_value(pCtx,pVal);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_SplDll_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_int64(pCtx,DllCount(pCtx->pVm,PH7_ContextThis(pCtx)));
+	return PH7_OK;
+}
+static int vm_builtin_SplDll_isEmpty(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx,DllCount(pCtx->pVm,PH7_ContextThis(pCtx)) == 0);
+	return PH7_OK;
+}
+static int vm_builtin_SplDll_setIteratorMode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int iFlags = DllFlags(pThis);
+	sxi64 iMode = 0;
+	sxi32 rc;
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	if( nArg < 1 ){
+		return PH7_OK;   /* the arity screen already refused */
+	}
+	rc = PH7_IntArgResolve(pCtx,apArg[0],"SplDoublyLinkedList::setIteratorMode",1,"$mode","int",&iMode);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	if( (iFlags & DLL_IT_FIX) && (iFlags & DLL_IT_LIFO) != ((int)iMode & DLL_IT_LIFO) ){
+		return PH7_VmThrowException(pCtx,"RuntimeException",
+			"Iterators' LIFO/FIFO modes for SplStack/SplQueue objects are frozen");
+	}
+	/* php MASKS the value to the two mode bits and re-adds IT_FIX, so a nonsense
+	 * mode is silently reduced rather than refused — and the ANSWER is the stored
+	 * word, which is how a caller sees the fix bit at all. */
+	iFlags = ((int)iMode & DLL_IT_MASK) | (iFlags & DLL_IT_FIX);
+	PH7_NativeSetAttrInt(pVm,pThis,DLL_FL,iFlags);
+	ph7_result_int64(pCtx,(ph7_int64)iFlags);
+	return PH7_OK;
+}
+static int vm_builtin_SplDll_getIteratorMode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_int64(pCtx,(ph7_int64)DllFlags(PH7_ContextThis(pCtx)));
+	return PH7_OK;
+}
+static int vm_builtin_SplDll_add(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 nCount = DllCount(pVm,pThis);
+	sxi64 iIndex = 0;
+	ph7_value sOff,sLen,sRep,*apExtra[3];
+	ph7_hashmap *pRep;
+	sxi32 rc;
+	if( nArg < 2 ){
+		return PH7_OK;
+	}
+	rc = DllIndexArg(pCtx,"add",apArg[0],&iIndex);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	if( iIndex < 0 || iIndex > nCount ){
+		return DllOutOfRange(pCtx,"add");
+	}
+	if( iIndex == nCount ){
+		/* php: "the last entry + 1" is a push, because there is nothing to insert
+		 * before. Note this is the LIST tail in both modes. */
+		ph7_value *apOne[1];
+		apOne[0] = apArg[1];
+		DllArrayCall(pCtx,ph7_hashmap_push,apOne,1);
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pRep = PH7_NewHashmap(pVm,0,0);
+	if( pRep == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_MemObjInit(pVm,&sRep);
+	sRep.x.pOther = pRep;
+	MemObjSetType(&sRep,MEMOBJ_HASHMAP);
+	PH7_HashmapInsert(pRep,0,apArg[1]);
+	PH7_MemObjInitFromInt(pVm,&sOff,DllOffsetToIndex(pThis,iIndex,nCount));
+	PH7_MemObjInitFromInt(pVm,&sLen,0);
+	apExtra[0] = &sOff;
+	apExtra[1] = &sLen;
+	apExtra[2] = &sRep;
+	DllArrayCall(pCtx,ph7_hashmap_splice,apExtra,3);
+	PH7_MemObjRelease(&sOff);
+	PH7_MemObjRelease(&sLen);
+	PH7_MemObjRelease(&sRep);
+	ph7_result_null(pCtx);   /* array_splice answers what it removed; add() is void */
+	return PH7_OK;
+}
+static int vm_builtin_SplDll_offsetExists(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi64 iIndex = 0;
+	sxi32 rc;
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	rc = DllIndexArg(pCtx,"offsetExists",apArg[0],&iIndex);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	ph7_result_bool(pCtx,iIndex >= 0 && iIndex < DllCount(pCtx->pVm,PH7_ContextThis(pCtx)));
+	return PH7_OK;
+}
+static int vm_builtin_SplDll_offsetGet(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 nCount = DllCount(pCtx->pVm,pThis);
+	sxi64 iIndex = 0;
+	ph7_value *pVal;
+	sxi32 rc;
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	rc = DllIndexArg(pCtx,"offsetGet",apArg[0],&iIndex);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	if( iIndex < 0 || iIndex >= nCount ){
+		return DllOutOfRange(pCtx,"offsetGet");
+	}
+	pVal = DllAt(pCtx->pVm,pThis,DllOffsetToIndex(pThis,iIndex,nCount));
+	if( pVal ){
+		ph7_result_value(pCtx,pVal);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_SplDll_offsetSet(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 nCount = DllCount(pVm,pThis);
+	sxi64 iIndex = 0;
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pNode = 0;
+	ph7_value sKey;
+	sxi32 rc;
+	if( nArg < 2 ){
+		return PH7_OK;
+	}
+	if( apArg[0]->iFlags & MEMOBJ_NULL ){
+		/* php: a null offset is `$dll[] = v`, which pushes. */
+		ph7_value *apOne[1];
+		apOne[0] = apArg[1];
+		DllArrayCall(pCtx,ph7_hashmap_push,apOne,1);
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	rc = DllIndexArg(pCtx,"offsetSet",apArg[0],&iIndex);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	if( iIndex < 0 || iIndex >= nCount ){
+		return DllOutOfRange(pCtx,"offsetSet");
+	}
+	pMap = DllMap(pVm,pThis);
+	PH7_MemObjInitFromInt(pVm,&sKey,DllOffsetToIndex(pThis,iIndex,nCount));
+	if( pMap && PH7_HashmapLookup(pMap,&sKey,&pNode) == SXRET_OK ){
+		ph7_value *pDest = HashmapExtractNodeValue(pNode);
+		if( pDest ){
+			PH7_MemObjStore(apArg[1],pDest);
+		}
+	}
+	PH7_MemObjRelease(&sKey);
+	return PH7_OK;
+}
+static int vm_builtin_SplDll_offsetUnset(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 nCount = DllCount(pVm,pThis);
+	sxi64 iIndex = 0;
+	ph7_value sOff,sLen,*apExtra[2];
+	sxi32 rc;
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	rc = DllIndexArg(pCtx,"offsetUnset",apArg[0],&iIndex);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	if( iIndex < 0 || iIndex >= nCount ){
+		return DllOutOfRange(pCtx,"offsetUnset");
+	}
+	PH7_MemObjInitFromInt(pVm,&sOff,DllOffsetToIndex(pThis,iIndex,nCount));
+	PH7_MemObjInitFromInt(pVm,&sLen,1);
+	apExtra[0] = &sOff;
+	apExtra[1] = &sLen;
+	DllArrayCall(pCtx,ph7_hashmap_splice,apExtra,2);
+	PH7_MemObjRelease(&sOff);
+	PH7_MemObjRelease(&sLen);
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+/*
+ * The cursor. php's traverse_position IS the list index in both directions — a
+ * LIFO rewind seeds count-1 and counts down — so current() and key() need no mode
+ * test at all. IT_DELETE is the exception: in FIFO order php consumes the head and
+ * leaves the position alone, so every element of a consuming walk reports key 0.
+ */
+static int vm_builtin_SplDll_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,DLL_I,
+		(DllFlags(pThis) & DLL_IT_LIFO) ? DllCount(pVm,pThis)-1 : 0);
+	return PH7_OK;
+}
+static int vm_builtin_SplDll_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 iPos = pThis ? PH7_NativeAttrInt(pThis,DLL_I) : 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx,iPos >= 0 && iPos < DllCount(pCtx->pVm,pThis));
+	return PH7_OK;
+}
+static int vm_builtin_SplDll_current(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pVal = pThis ? DllAt(pCtx->pVm,pThis,PH7_NativeAttrInt(pThis,DLL_I)) : 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pVal ){
+		ph7_result_value(pCtx,pVal);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_SplDll_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_int64(pCtx,pThis ? PH7_NativeAttrInt(pThis,DLL_I) : 0);
+	return PH7_OK;
+}
+/* php's move_forward, with the direction flipped for prev() (its `flags ^ LIFO`). */
+static int DllStep(ph7_context *pCtx,int bFlip)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int iFlags;
+	sxi64 iPos;
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	iFlags = DllFlags(pThis);
+	if( bFlip ){
+		iFlags ^= DLL_IT_LIFO;
+	}
+	iPos = PH7_NativeAttrInt(pThis,DLL_I);
+	if( iPos < 0 || iPos >= DllCount(pVm,pThis) ){
+		/* php only steps a LIVE pointer; off the end nothing moves and nothing is
+		 * consumed. The position still has to move for a plain walk, though, or
+		 * prev() past the head could never come back. */
+		if( (iFlags & DLL_IT_DELETE) == 0 ){
+			PH7_NativeSetAttrInt(pVm,pThis,DLL_I,
+				iPos + ((iFlags & DLL_IT_LIFO) ? -1 : 1));
+		}
+		return PH7_OK;
+	}
+	if( iFlags & DLL_IT_DELETE ){
+		if( iFlags & DLL_IT_LIFO ){
+			DllArrayCall(pCtx,ph7_hashmap_pop,0,0);
+			PH7_NativeSetAttrInt(pVm,pThis,DLL_I,iPos-1);
+		}else{
+			/* php consumes the head and does NOT advance: the walk stays at 0. */
+			DllArrayCall(pCtx,ph7_hashmap_shift,0,0);
+		}
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,DLL_I,iPos + ((iFlags & DLL_IT_LIFO) ? -1 : 1));
+	return PH7_OK;
+}
+static int vm_builtin_SplDll_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return DllStep(pCtx,FALSE);
+}
+static int vm_builtin_SplDll_prev(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return DllStep(pCtx,TRUE);
+}
+/*
+ * php's get_debug_info: `flags` then `dllist`, and NOTHING for the (array) cast --
+ * the same var_dump/cast disagreement WeakReference has, which is why xPresent is
+ * told which surface is asking. `__debugInfo()` is the same array, reachable by
+ * name because php declares it.
+ */
+static sxi32 DllFillDebug(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
+{
+	ph7_value sKey,sVal,*pStore;
+	PH7_MemObjInitFromString(pVm,&sKey,0);
+	PH7_MemObjStringAppend(&sKey,"flags",sizeof("flags")-1);
+	PH7_MemObjInitFromInt(pVm,&sVal,DllFlags(pThis));
+	ph7_array_add_elem(pOut,&sKey,&sVal);
+	PH7_MemObjRelease(&sKey);
+	PH7_MemObjRelease(&sVal);
+	pStore = DllSlot(pVm,pThis);
+	PH7_MemObjInitFromString(pVm,&sKey,0);
+	PH7_MemObjStringAppend(&sKey,"dllist",sizeof("dllist")-1);
+	if( pStore ){
+		ph7_array_add_elem(pOut,&sKey,pStore);
+	}
+	PH7_MemObjRelease(&sKey);
+	return PH7_OK;
+}
+static sxi32 DllPresent(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
+{
+	if( !bDebug ){
+		return PH7_OK;   /* php's (array) cast and var_export show nothing */
+	}
+	return DllFillDebug(pVm,pThis,pOut);
+}
+static int vm_builtin_SplDll_debugInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value sOut;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	PH7_MemObjInit(pVm,&sOut);
+	if( PH7_MemObjToHashmap(&sOut) != SXRET_OK ){
+		PH7_MemObjRelease(&sOut);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	DllFillDebug(pVm,pThis,&sOut);
+	ph7_result_value(pCtx,&sOut);
+	PH7_MemObjRelease(&sOut);
+	return PH7_OK;
+}
+/*
+ * php's __serialize(): [flags, elements, dynamic members]. This is what
+ * serialize() actually uses -- the Serializable pair below exists because the
+ * interface is still declared, and php words its own legacy format there.
+ */
+static int vm_builtin_SplDll_serializeMagic(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value sOut,sVal,*pStore;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	PH7_MemObjInit(pVm,&sOut);
+	if( PH7_MemObjToHashmap(&sOut) != SXRET_OK ){
+		PH7_MemObjRelease(&sOut);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_MemObjInitFromInt(pVm,&sVal,DllFlags(pThis));
+	ph7_array_add_elem(&sOut,0,&sVal);
+	PH7_MemObjRelease(&sVal);
+	pStore = DllSlot(pVm,pThis);
+	if( pStore ){
+		ph7_array_add_elem(&sOut,0,pStore);
+	}
+	/* The members slot: php hands back the dynamic properties, and a native class
+	 * has none that are php-visible (every declared slot is hidden). */
+	PH7_MemObjInit(pVm,&sVal);
+	if( PH7_MemObjToHashmap(&sVal) == SXRET_OK ){
+		ph7_array_add_elem(&sOut,0,&sVal);
+	}
+	PH7_MemObjRelease(&sVal);
+	ph7_result_value(pCtx,&sOut);
+	PH7_MemObjRelease(&sOut);
+	return PH7_OK;
+}
+static int vm_builtin_SplDll_unserializeMagic(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_hashmap *pData;
+	ph7_hashmap_node *pNode = 0;
+	ph7_value *pFlags,*pStore,*pSlot;
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_HASHMAP) == 0 || pThis == 0 ){
+		return PH7_VmThrowException(pCtx,"UnexpectedValueException",
+			"Incomplete or ill-typed serialization data");
+	}
+	pData = (ph7_hashmap *)apArg[0]->x.pOther;
+	if( HashmapLookupIntKey(pData,0,&pNode) != SXRET_OK ){
+		return PH7_VmThrowException(pCtx,"UnexpectedValueException",
+			"Incomplete or ill-typed serialization data");
+	}
+	pFlags = HashmapExtractNodeValue(pNode);
+	if( pFlags == 0 || (pFlags->iFlags & MEMOBJ_INT) == 0
+	 || HashmapLookupIntKey(pData,1,&pNode) != SXRET_OK ){
+		return PH7_VmThrowException(pCtx,"UnexpectedValueException",
+			"Incomplete or ill-typed serialization data");
+	}
+	pStore = HashmapExtractNodeValue(pNode);
+	if( pStore == 0 || (pStore->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return PH7_VmThrowException(pCtx,"UnexpectedValueException",
+			"Incomplete or ill-typed serialization data");
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,DLL_FL,ph7_value_to_int64(pFlags));
+	pSlot = PH7_NativeAttr(pThis,DLL_Q);
+	if( pSlot ){
+		PH7_MemObjRelease(pSlot);
+		PH7_MemObjStore(pStore,pSlot);
+	}
+	return PH7_OK;
+}
+/*
+ * php's Serializable pair, kept because the interface is still declared: the
+ * format is the serialized FLAGS followed by one ':' + serialized value per
+ * element ("i:0;:i:1;:i:2;"), which nothing else in php produces or reads.
+ */
+/*
+ * One serialized value, appended to a blob. The RESET is the point: the engine's
+ * serialize() writes through ph7_value_string, which APPENDS to the context's
+ * return slot rather than replacing it, so a loop that calls it per element
+ * accumulates every previous answer into the next one.
+ */
+static void DllSerializeInto(ph7_context *pCtx,ph7_value **apCall,SyBlob *pOut)
+{
+	int nLen = 0;
+	const char *zTxt;
+	if( pCtx->pRet ){
+		PH7_MemObjRelease(pCtx->pRet);
+	}
+	vm_builtin_serialize(pCtx,1,apCall);
+	if( pCtx->pRet == 0 ){
+		return;
+	}
+	zTxt = ph7_value_to_string(pCtx->pRet,&nLen);
+	SyBlobAppend(pOut,zTxt,(sxu32)nLen);
+}
+static int vm_builtin_SplDll_serialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_hashmap *pMap = DllMap(pVm,pThis);
+	ph7_hashmap_node *pNode;
+	SyBlob sOut;
+	ph7_value sFlags,*apCall[1];
+	sxi64 n,nCount = pMap ? (sxi64)pMap->nEntry : 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	SyBlobInit(&sOut,&pVm->sAllocator);
+	PH7_MemObjInitFromInt(pVm,&sFlags,DllFlags(pThis));
+	apCall[0] = &sFlags;
+	DllSerializeInto(pCtx,apCall,&sOut);
+	PH7_MemObjRelease(&sFlags);
+	for( n = 0 ; n < nCount ; ++n ){
+		ph7_value *pVal;
+		pNode = 0;
+		if( HashmapLookupIntKey(pMap,n,&pNode) != SXRET_OK ){
+			continue;
+		}
+		pVal = HashmapExtractNodeValue(pNode);
+		if( pVal == 0 ){
+			continue;
+		}
+		apCall[0] = pVal;
+		SyBlobAppend(&sOut,":",1);
+		DllSerializeInto(pCtx,apCall,&sOut);
+	}
+	/* ph7_result_string APPENDS too, and pRet still holds the LAST element's
+	 * serialization from the loop above — drop it before writing the answer. */
+	if( pCtx->pRet ){
+		PH7_MemObjRelease(pCtx->pRet);
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+	return PH7_OK;
+}
+static int vm_builtin_SplDll_unserialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zData,*zCur,*zEnd;
+	int nData = 0;
+	int bFirst = 1;
+	ph7_value *pSlot;
+	ph7_hashmap *pMap;
+	if( nArg < 1 || pThis == 0 ){
+		return PH7_OK;
+	}
+	zData = ph7_value_to_string(apArg[0],&nData);
+	if( nData < 1 ){
+		return PH7_OK;   /* php returns without touching the list */
+	}
+	pSlot = DllSlot(pVm,pThis);
+	pMap = pSlot ? (ph7_hashmap *)pSlot->x.pOther : 0;
+	if( pMap == 0 ){
+		return PH7_OK;
+	}
+	/* php empties the list first, then reads the flags, then one ':'-prefixed
+	 * value per element. A malformed tail is an UnexpectedValueException naming
+	 * the byte offset — reproduced here from the same position arithmetic. */
+	while( pMap->pFirst ){
+		PH7_HashmapUnlinkNode(pMap->pFirst,TRUE);
+	}
+	zCur = zData;
+	zEnd = &zData[nData];
+	while( zCur < zEnd ){
+		ph7_value sPart,sRes,*apCall[1];
+		int nPart;
+		const char *zStop = zCur;
+		if( !bFirst ){
+			if( zCur[0] != ':' ){
+				break;
+			}
+			zCur++;
+		}
+		/* One serialized scalar reaches up to and including its ';'. */
+		while( zStop < zEnd && zStop[0] != ';' ){
+			zStop++;
+		}
+		if( zStop >= zEnd ){
+			zStop = zEnd;
+		}else{
+			zStop++;
+		}
+		nPart = (int)(zStop - zCur);
+		if( nPart <= 0 ){
+			break;
+		}
+		PH7_MemObjInitFromString(pVm,&sPart,0);
+		PH7_MemObjStringAppend(&sPart,zCur,(sxu32)nPart);
+		apCall[0] = &sPart;
+		PH7_MemObjInit(pVm,&sRes);
+		if( pCtx->pRet ){
+			PH7_MemObjRelease(pCtx->pRet);   /* see DllSerializeInto: pRet is appended to */
+		}
+		vm_builtin_unserialize(pCtx,1,apCall);
+		if( pCtx->pRet ){
+			PH7_MemObjStore(pCtx->pRet,&sRes);
+		}
+		if( bFirst ){
+			PH7_NativeSetAttrInt(pVm,pThis,DLL_FL,ph7_value_to_int64(&sRes));
+			bFirst = 0;
+		}else{
+			PH7_HashmapInsert(pMap,0,&sRes);
+		}
+		PH7_MemObjRelease(&sPart);
+		PH7_MemObjRelease(&sRes);
+		zCur = zStop;
+	}
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+/*
+ * The declaration. Method ORDER is spl_dllist.stub.php's, php declares NO
+ * constructor for any of the three, and the IT_FIX bit is a per-class DEFAULT on
+ * the flags slot -- which is exactly how php does it (the create handler stamps
+ * the flags; there is no constructor to run).
+ */
+static sxi32 VmInstallSplDllist(ph7_vm *pVm)
+{
+	static const PH7_NativeMethodDef aDllMethod[] = {
+		{ "add",             PH7_MOD_PUBLIC, "int $index, mixed $value", "@void",
+		  vm_builtin_SplDll_add },
+		{ "pop",             PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_SplDll_pop },
+		{ "shift",           PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_SplDll_shift },
+		{ "push",            PH7_MOD_PUBLIC, "mixed $value", "@void", vm_builtin_SplDll_push },
+		{ "unshift",         PH7_MOD_PUBLIC, "mixed $value", "@void", vm_builtin_SplDll_unshift },
+		{ "top",             PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_SplDll_top },
+		{ "bottom",          PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_SplDll_bottom },
+		{ "__debugInfo",     PH7_MOD_PUBLIC, "", "@array", vm_builtin_SplDll_debugInfo },
+		{ "count",           PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplDll_count },
+		{ "isEmpty",         PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplDll_isEmpty },
+		{ "setIteratorMode", PH7_MOD_PUBLIC, "int $mode", "@int",
+		  vm_builtin_SplDll_setIteratorMode },
+		{ "getIteratorMode", PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplDll_getIteratorMode },
+		/* php's stub leaves these four offsets UNTYPED (a `@param int` docblock, which
+		 * Reflection does not print) while the ZPP enforces int -- so the signature says
+		 * nothing and each body runs PH7_IntArgResolve itself. */
+		{ "offsetExists",    PH7_MOD_PUBLIC, "$index", "@bool", vm_builtin_SplDll_offsetExists },
+		{ "offsetGet",       PH7_MOD_PUBLIC, "$index", "@mixed", vm_builtin_SplDll_offsetGet },
+		{ "offsetSet",       PH7_MOD_PUBLIC, "$index, mixed $value", "@void",
+		  vm_builtin_SplDll_offsetSet },
+		{ "offsetUnset",     PH7_MOD_PUBLIC, "$index", "@void", vm_builtin_SplDll_offsetUnset },
+		{ "rewind",          PH7_MOD_PUBLIC, "", "@void", vm_builtin_SplDll_rewind },
+		{ "current",         PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_SplDll_current },
+		{ "key",             PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplDll_key },
+		{ "prev",            PH7_MOD_PUBLIC, "", "@void", vm_builtin_SplDll_prev },
+		{ "next",            PH7_MOD_PUBLIC, "", "@void", vm_builtin_SplDll_next },
+		{ "valid",           PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplDll_valid },
+		{ "unserialize",     PH7_MOD_PUBLIC, "string $data", "@void",
+		  vm_builtin_SplDll_unserialize },
+		{ "serialize",       PH7_MOD_PUBLIC, "", "@string", vm_builtin_SplDll_serialize },
+		{ "__serialize",     PH7_MOD_PUBLIC, "", "@array", vm_builtin_SplDll_serializeMagic },
+		{ "__unserialize",   PH7_MOD_PUBLIC, "array $data", "@void",
+		  vm_builtin_SplDll_unserializeMagic },
+	};
+	static const PH7_NativeMethodDef aQueueMethod[] = {
+		/* php's @implementation-alias: the same C bodies under the queue's names. */
+		{ "enqueue", PH7_MOD_PUBLIC, "mixed $value", "@void", vm_builtin_SplDll_push },
+		{ "dequeue", PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_SplDll_shift },
+	};
+	static const PH7_NativeConstDef aDllConst[] = {
+		{ "IT_MODE_LIFO",   PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, DLL_IT_LIFO, 0, 0.0 },
+		{ "IT_MODE_FIFO",   PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 0, 0, 0.0 },
+		{ "IT_MODE_DELETE", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, DLL_IT_DELETE, 0, 0.0 },
+		{ "IT_MODE_KEEP",   PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 0, 0, 0.0 },
+	};
+	static const PH7_NativePropDef aDllProp[] = {
+		{ DLL_Q,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ DLL_FL, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+		{ DLL_I,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+	};
+	/* php's object handler stamps IT_FIX (and LIFO for a stack) at CREATION, which
+	 * is why neither subclass declares a constructor and why the bit survives every
+	 * setIteratorMode(). A per-class default on the flags slot says the same thing. */
+	static const PH7_NativePropDef aQueueProp[] = {
+		{ DLL_FL, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN,
+		  { 0, 0, PH7_NATIVE_VAL_INT, DLL_IT_FIX, 0, 0.0 }, 0 },
+	};
+	static const PH7_NativePropDef aStackProp[] = {
+		{ DLL_FL, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN,
+		  { 0, 0, PH7_NATIVE_VAL_INT, DLL_IT_FIX|DLL_IT_LIFO, 0, 0.0 }, 0 },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "SplDoublyLinkedList", 0, "Iterator,Countable,ArrayAccess,Serializable", 0,
+		  aDllMethod, SX_ARRAYSIZE(aDllMethod),
+		  aDllConst, SX_ARRAYSIZE(aDllConst),
+		  aDllProp, SX_ARRAYSIZE(aDllProp), 0, 0, DllPresent },
+		{ "SplQueue", "SplDoublyLinkedList", 0, 0,
+		  aQueueMethod, SX_ARRAYSIZE(aQueueMethod), 0, 0,
+		  aQueueProp, SX_ARRAYSIZE(aQueueProp), 0, 0, DllPresent },
+		{ "SplStack", "SplDoublyLinkedList", 0, 0,
+		  0, 0, 0, 0,
+		  aStackProp, SX_ARRAYSIZE(aStackProp), 0, 0, DllPresent },
+	};
+	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+}
 static const char zSplLib[] =
-"class SplDoublyLinkedList implements Iterator, Countable, ArrayAccess {"
-" const IT_MODE_LIFO = 2;"
-" const IT_MODE_FIFO = 0;"
-" const IT_MODE_DELETE = 1;"
-" const IT_MODE_KEEP = 0;"
-" private $__q = [];"
-" private $__mode = 0;"
-" private $__i = 0;"
-" public function __construct(){"
-"  if( $this instanceof SplStack ){ $this->__mode = 2; }"
-" }"
-" public function setIteratorMode($mode){"
-"  $mode = (int)$mode;"
-"  if( ($this instanceof SplStack || $this instanceof SplQueue)"
-"   && ($mode & 2) !== ($this->__mode & 2) ){"
-"   throw new RuntimeException(\"Iterators' LIFO/FIFO modes for SplStack/SplQueue"
-" objects are frozen\");"
-"  }"
-"  $this->__mode = $mode;"
-" }"
-" public function getIteratorMode(){ return $this->__mode; }"
-" public function push($value){ $this->__q[] = $value; }"
-" public function pop(){"
-"  if( count($this->__q) === 0 ){"
-"   throw new RuntimeException(\"Can't pop from an empty datastructure\");"
-"  }"
-"  return array_pop($this->__q);"
-" }"
-" public function shift(){"
-"  if( count($this->__q) === 0 ){"
-"   throw new RuntimeException(\"Can't shift from an empty datastructure\");"
-"  }"
-"  return array_shift($this->__q);"
-" }"
-" public function unshift($value){ array_unshift($this->__q, $value); }"
-" public function top(){"
-"  if( count($this->__q) === 0 ){"
-"   throw new RuntimeException(\"Can't peek at an empty datastructure\");"
-"  }"
-"  return $this->__q[count($this->__q) - 1];"
-" }"
-" public function bottom(){"
-"  if( count($this->__q) === 0 ){"
-"   throw new RuntimeException(\"Can't peek at an empty datastructure\");"
-"  }"
-"  return $this->__q[0];"
-" }"
-" public function isEmpty(){ return count($this->__q) === 0; }"
-" public function count(){ return count($this->__q); }"
-" public function toArray(){ return $this->__q; }"
-" public function add($index, $value){"
-"  $index = (int)$index;"
-"  if( $index < 0 || $index > count($this->__q) ){"
-"   throw new OutOfRangeException(get_class($this) === 'SplDoublyLinkedList'"
-"    ? 'SplDoublyLinkedList::add(): Argument #1 ($index) is out of range'"
-"    : get_class($this) . '::add(): Argument #1 ($index) is out of range');"
-"  }"
-"  array_splice($this->__q, $index, 0, [$value]);"
-" }"
-" public function offsetExists($index){"
-"  return is_int($index) || ctype_digit((string)$index)"
-"   ? ((int)$index >= 0 && (int)$index < count($this->__q)) : false;"
-" }"
-" public function offsetGet($index){"
-"  $index = (int)$index;"
-"  if( $index < 0 || $index >= count($this->__q) ){"
-"   throw new OutOfRangeException('SplDoublyLinkedList::offsetGet(): Argument #1"
-" ($index) is out of range');"
-"  }"
-"  return $this->__q[$index];"
-" }"
-" public function offsetSet($index, $value){"
-"  if( $index === null ){ $this->__q[] = $value; return; }"
-"  $index = (int)$index;"
-"  if( $index < 0 || $index >= count($this->__q) ){"
-"   throw new OutOfRangeException('SplDoublyLinkedList::offsetSet(): Argument #1"
-" ($index) is out of range');"
-"  }"
-"  $this->__q[$index] = $value;"
-" }"
-" public function offsetUnset($index){"
-"  $index = (int)$index;"
-"  if( $index < 0 || $index >= count($this->__q) ){"
-"   throw new OutOfRangeException('SplDoublyLinkedList::offsetUnset(): Argument #1"
-" ($index) is out of range');"
-"  }"
-"  array_splice($this->__q, $index, 1);"
-" }"
-" public function rewind(){"
-"  $this->__i = ($this->__mode & 2) ? count($this->__q) - 1 : 0;"
-" }"
-" public function valid(){"
-"  return $this->__i >= 0 && $this->__i < count($this->__q);"
-" }"
-" public function current(){ return $this->__q[$this->__i] ?? null; }"
-" public function key(){ return $this->__i; }"
-" public function next(){"
-"  if( $this->__mode & 1 ){"
-"   /* IT_MODE_DELETE consumes the element just visited */"
-"   if( $this->__mode & 2 ){ array_pop($this->__q); $this->__i = count($this->__q) - 1; }"
-"   else { array_shift($this->__q); }"
-"  }else{"
-"   $this->__i += ($this->__mode & 2) ? -1 : 1;"
-"  }"
-" }"
-" public function prev(){ $this->__i += ($this->__mode & 2) ? 1 : -1; }"
-"}"
-"class SplStack extends SplDoublyLinkedList {}"
-"class SplQueue extends SplDoublyLinkedList {"
-" public function enqueue($value){ $this->push($value); }"
-" public function dequeue(){ return $this->shift(); }"
-"}"
 "abstract class SplHeap implements Iterator, Countable {"
 " private $__h = [];"
 " abstract protected function compare($value1, $value2);"
@@ -4401,6 +5150,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)
 	/* After the dual iterators: RecursiveIteratorIterator names OuterIterator and
 	 * RecursiveIterator, both declared by that table. */
 	rc = VmInstallSplRecursiveIt(&(*pVm));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* Also before the chunk: SplPriorityQueue and the heaps are still PHP and the
+	 * compiler reads them after these three are declared. */
+	rc = VmInstallSplDllist(&(*pVm));
 	if( rc != SXRET_OK ){
 		return rc;
 	}
