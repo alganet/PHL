@@ -651,6 +651,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "strcoll"    , PH7_builtin_strcmp     },
 	{ "strnatcmp"  , PH7_builtin_strnatcmp  },
 	{ "strnatcasecmp", PH7_builtin_strnatcmp },
+	{ "version_compare", PH7_builtin_version_compare },
 	{ "strncmp"    , PH7_builtin_strncmp    },
 	{ "strcasecmp" , PH7_builtin_strcasecmp },
 	{ "strncasecmp", PH7_builtin_strncasecmp},

@@ -1746,6 +1746,219 @@ PH7_PRIVATE int PH7_builtin_strnatcmp(ph7_context *pCtx,int nArg,ph7_value **apA
 	return PH7_OK;
 }
 /*
+ * php's special version forms and their ordering
+ * (compare_special_version_forms(), ext/standard/versioning.c). A form matches
+ * a component by PREFIX -- "alpha3" is an alpha, "RC1" an RC -- and "#" is the
+ * marker php compares a NUMERIC component as, spelled "#N#" at the call sites.
+ * An unrecognized component ranks -1, BELOW dev.
+ */
+static const struct VersionForm {
+	const char *zName;
+	int nLen;
+	int iOrder;
+} aVersionForm[] = {
+	{ "dev", 3, 0 }, { "alpha", 5, 1 }, { "a",  1, 1 }, { "beta", 4, 2 },
+	{ "b",   1, 2 }, { "RC",    2, 3 }, { "rc", 2, 3 }, { "#",    1, 4 },
+	{ "pl",  2, 5 }, { "p",     1, 5 },
+};
+static int VersionFormOrder(const char *zPart)
+{
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(aVersionForm) ; ++n ){
+		if( SyStrncmp(zPart,aVersionForm[n].zName,(sxu32)aVersionForm[n].nLen) == 0 ){
+			return aVersionForm[n].iOrder;
+		}
+	}
+	return -1;
+}
+static int VersionSpecialCmp(const char *zPart1,const char *zPart2)
+{
+	int iOrd1 = VersionFormOrder(zPart1);
+	int iOrd2 = VersionFormOrder(zPart2);
+	return iOrd1 < iOrd2 ? -1 : (iOrd1 > iOrd2 ? 1 : 0);
+}
+/*
+ * php_canonicalize_version(): '-', '_', '+' and every other non-alphanumeric
+ * byte become '.', and a '.' is inserted at each digit<->non-digit boundary.
+ * The FIRST byte is copied verbatim -- even a separator -- so "-1"
+ * canonicalizes to "-.1" and not to "1", and its leading "-" then compares as
+ * an unrecognized form. A trailing '.' is dropped rather than left as an empty
+ * last component. zOut must hold 2*nLen + 2 bytes.
+ */
+static void VersionCanonicalize(const char *zIn,sxu32 nLen,char *zOut)
+{
+	const char *p,*pEnd;
+	char *q = zOut;
+	int lp;
+	if( nLen < 1 ){
+		zOut[0] = 0;
+		return;
+	}
+	lp = (unsigned char)zIn[0];
+	*q++ = (char)lp;
+	pEnd = &zIn[nLen];
+	for( p = &zIn[1] ; p < pEnd ; lp = (unsigned char)*p++ ){
+		int c  = (unsigned char)p[0];
+		int lq = (unsigned char)q[-1];
+		if( c == '-' || c == '_' || c == '+' ){
+			if( lq != '.' ){ *q++ = '.'; }
+		}else if( (!SyisDigit(lp) && lp != '.' && SyisDigit(c)) ||
+		          (SyisDigit(lp) && !SyisDigit(c) && c != '.') ){
+			if( lq != '.' ){ *q++ = '.'; }
+			*q++ = (char)c;
+		}else if( !SyisAlphaNum(c) ){
+			if( lq != '.' ){ *q++ = '.'; }
+		}else{
+			*q++ = (char)c;
+		}
+	}
+	if( q[-1] == '.' ){
+		q[-1] = 0;
+	}else{
+		q[0] = 0;
+	}
+}
+/* strtol() over a canonical numeric component, saturating like the C library. */
+static sxi64 VersionPartToInt(const char *zPart)
+{
+	sxi64 iVal = 0;
+	while( SyisDigit((unsigned char)zPart[0]) ){
+		if( iVal > (SXI64_HIGH - 9) / 10 ){
+			return SXI64_HIGH;
+		}
+		iVal = iVal * 10 + (zPart[0] - '0');
+		zPart++;
+	}
+	return iVal;
+}
+static char * VersionNextDot(char *zPart)
+{
+	while( zPart[0] && zPart[0] != '.' ){ zPart++; }
+	return zPart[0] ? zPart : 0;
+}
+/*
+ * php_version_compare() over two CANONICAL buffers -- the caller has already
+ * applied php's empty-operand shortcut to the ORIGINAL strings. Both buffers
+ * are written in place (the walk NUL-terminates each component where php's
+ * strchr does), so they must be writable copies.
+ *
+ * Where php recurses on the leftover of the longer version, this loops: the
+ * recursion is a tail call, and its depth would otherwise grow with the
+ * component count of an attacker-supplied string.
+ */
+static int VersionCompareCanon(char *zV1,char *zV2)
+{
+	char zMark[] = "#N#";   /* php's "this component is a number" marker */
+	for(;;){
+		char *p1,*p2,*n1,*n2;
+		int cmp = 0;
+		p1 = n1 = zV1;
+		p2 = n2 = zV2;
+		while( p1[0] && p2[0] && n1 && n2 ){
+			if( (n1 = VersionNextDot(p1)) != 0 ){ n1[0] = 0; }
+			if( (n2 = VersionNextDot(p2)) != 0 ){ n2[0] = 0; }
+			if( SyisDigit((unsigned char)p1[0]) && SyisDigit((unsigned char)p2[0]) ){
+				sxi64 l1 = VersionPartToInt(p1);
+				sxi64 l2 = VersionPartToInt(p2);
+				cmp = l1 < l2 ? -1 : (l1 > l2 ? 1 : 0);
+			}else if( !SyisDigit((unsigned char)p1[0]) && !SyisDigit((unsigned char)p2[0]) ){
+				cmp = VersionSpecialCmp(p1,p2);
+			}else if( SyisDigit((unsigned char)p1[0]) ){
+				cmp = VersionSpecialCmp(zMark,p2);
+			}else{
+				cmp = VersionSpecialCmp(p1,zMark);
+			}
+			if( cmp != 0 ){ break; }
+			if( n1 ){ p1 = &n1[1]; }
+			if( n2 ){ p2 = &n2[1]; }
+		}
+		if( cmp != 0 ){
+			return cmp;
+		}
+		/*
+		 * Equal so far and one side has components left, so php asks whether the
+		 * next one outranks a plain number: "1.2.3" > "1.2" but "1.2.dev" < "1.2".
+		 * The leftover can still hold dots ("1" vs "1#2" leaves "#.2"), which is
+		 * why this is a whole comparison and not one special-form lookup.
+		 */
+		if( n1 ){
+			if( SyisDigit((unsigned char)p1[0]) ){ return 1; }
+			if( p1[0] == 0 ){ return -1; }   /* php's empty-operand shortcut */
+			zV1 = p1;
+			zV2 = zMark;
+		}else if( n2 ){
+			if( SyisDigit((unsigned char)p2[0]) ){ return -1; }
+			if( p2[0] == 0 ){ return 1; }
+			zV1 = zMark;
+			zV2 = p2;
+		}else{
+			return 0;
+		}
+	}
+}
+/*
+ * int|bool version_compare(string $version1,string $version2,?string $operator = null)
+ *  Compare two "PHP-standardized" version number strings: -1/0/1 without an
+ *  $operator, the operator's verdict with one. An operator php does not know
+ *  is a ValueError (php 8 stopped answering NULL for it).
+ */
+PH7_PRIVATE int PH7_builtin_version_compare(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	static const struct VersionOp {
+		const char *zName;
+		int nLen;
+		int bLt,bEq,bGt;   /* answer for cmp < 0, cmp == 0, cmp > 0 */
+	} aVersionOp[] = {
+		{ "<", 1, 1,0,0 }, { "lt", 2, 1,0,0 }, { "<=",2, 1,1,0 }, { "le",2, 1,1,0 },
+		{ ">", 1, 0,0,1 }, { "gt", 2, 0,0,1 }, { ">=",2, 0,1,1 }, { "ge",2, 0,1,1 },
+		{ "==",2, 0,1,0 }, { "=",  1, 0,1,0 }, { "eq",2, 0,1,0 },
+		{ "!=",2, 1,0,1 }, { "<>", 2, 1,0,1 }, { "ne",2, 1,0,1 },
+	};
+	const char *zV1,*zV2,*zOp;
+	sxu32 n1,n2,n;
+	int cmp,nOp;
+	if( nArg < 2 ){
+		/* Arity is enforced from aBuiltinSig[] before the call. */
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	/* php reads both operands as NUL-terminated C strings, so an embedded NUL
+	 * ends the version there. ph7_value_to_string() null-appends. */
+	zV1 = ph7_value_to_string(apArg[0],0);
+	zV2 = ph7_value_to_string(apArg[1],0);
+	n1 = SyStrlen(zV1);
+	n2 = SyStrlen(zV2);
+	if( n1 < 1 || n2 < 1 ){
+		cmp = (n1 == n2) ? 0 : (n1 > 0 ? 1 : -1);
+	}else{
+		char *zC1,*zC2;
+		zC1 = (char *)ph7_context_alloc_chunk(pCtx,(unsigned int)(2 * n1 + 2),FALSE,TRUE);
+		zC2 = (char *)ph7_context_alloc_chunk(pCtx,(unsigned int)(2 * n2 + 2),FALSE,TRUE);
+		if( zC1 == 0 || zC2 == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		/* A version already starting with '#' is php's own marker: it bypasses
+		 * canonicalization so that "#N#" survives as one component. */
+		if( zV1[0] == '#' ){ SyMemcpy(zV1,zC1,n1 + 1); }else{ VersionCanonicalize(zV1,n1,zC1); }
+		if( zV2[0] == '#' ){ SyMemcpy(zV2,zC2,n2 + 1); }else{ VersionCanonicalize(zV2,n2,zC2); }
+		cmp = VersionCompareCanon(zC1,zC2);
+	}
+	if( nArg < 3 || ph7_value_is_null(apArg[2]) ){
+		ph7_result_int(pCtx,cmp);
+		return PH7_OK;
+	}
+	zOp = ph7_value_to_string(apArg[2],&nOp);
+	for( n = 0 ; n < SX_ARRAYSIZE(aVersionOp) ; ++n ){
+		if( nOp == aVersionOp[n].nLen && SyMemcmp(zOp,aVersionOp[n].zName,(sxu32)nOp) == 0 ){
+			ph7_result_bool(pCtx,cmp < 0 ? aVersionOp[n].bLt
+				: (cmp > 0 ? aVersionOp[n].bGt : aVersionOp[n].bEq));
+			return PH7_OK;
+		}
+	}
+	return PH7_VmThrowException(pCtx,"ValueError",
+		"version_compare(): Argument #3 ($operator) must be a valid comparison operator");
+}
+/*
  * int strncmp(string $str1,string $str2,int n)
  *  Perform a binary safe string comparison of the first n characters.
  * Parameter

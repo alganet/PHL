@@ -854,6 +854,7 @@ static const struct VmBuiltinSig {
 	{ "usort", "array &$array, callable $callback", "true" },
 	{ "var_dump", "mixed $value, mixed ...$values = ?", "void" },
 	{ "var_export", "mixed $value, bool $return = false", "?string" },
+	{ "version_compare", "string $version1, string $version2, ?string $operator = null", "int|bool" },
 	{ "vfprintf", "$stream, string $format, array $values", "int" },
 	{ "vprintf", "string $format, array $values", "int" },
 	{ "vsprintf", "string $format, array $values", "string" },
