@@ -408,73 +408,6 @@
    "  $pHandle = fopen($zTempDir.DIRECTORY_SEPARATOR.'PH7'.rand_str(12),'w+');"\
    "  return $pHandle;"\
    "}"\
-   "/* php's number_format(): missing entirely from PH7."\
-   " * Signature: number_format(float $num, int $decimals = 0, ?string $decimal_separator = '.',"\
-   " * ?string $thousands_separator = ','): string. Being a PRELUDE function it is out of reach"\
-   " * of the aBuiltinSig[] ZPP screen (host builtins only), so the four rows are checked here in"\
-   " * the shape php's ZPP reports them (__php_zpp_type, the pattern the other"\
-   " * prelude builtins use)."\
-   " * Without them an array, a not-stringable object, a resource and a non-numeric string all"\
-   " * reached the (float) cast and ANSWERED -- number_format(new Bare()) warned and returned"\
-   " * '1', number_format('abc') returned '0'. A leading-numeric string ('12abc') is php's"\
-   " * TypeError too, not a silent 12. null and a lossy float stay PHL's TypeError rather than"\
-   " * php's deprecate-and-coerce (§10), matching what str_repeat() already answers for the"\
-   " * same two; the two SEPARATORS are declared ?string, so null is legal there. */"\
-   "function number_format($num, $decimals = 0, $decimal_separator = '.', $thousands_separator = ','){"\
-   "  if( is_array($num) || is_object($num) || is_resource($num) || $num === null"\
-   "   || (is_string($num) && !is_numeric($num)) ){"\
-   "    throw new TypeError('number_format(): Argument #1 ($num) must be of type int|float, '"\
-   "      . __php_zpp_type($num) . ' given');"\
-   "  }"\
-   "  if( is_array($decimals) || is_object($decimals) || is_resource($decimals) || $decimals === null"\
-   "   || (is_string($decimals) && !is_numeric($decimals)) ){"\
-   "    throw new TypeError('number_format(): Argument #2 ($decimals) must be of type int, '"\
-   "      . __php_zpp_type($decimals) . ' given');"\
-   "  }"\
-   "  if( is_float($decimals) && $decimals != (int)$decimals ){"\
-   "    throw new TypeError('number_format(): Argument #2 ($decimals) must be of type int, float given');"\
-   "  }"\
-   "  if( is_array($decimal_separator) || is_resource($decimal_separator)"\
-   "   || (is_object($decimal_separator) && !method_exists($decimal_separator, '__toString')) ){"\
-   "    throw new TypeError('number_format(): Argument #3 ($decimal_separator) must be of type ?string, '"\
-   "      . __php_zpp_type($decimal_separator) . ' given');"\
-   "  }"\
-   "  if( is_array($thousands_separator) || is_resource($thousands_separator)"\
-   "   || (is_object($thousands_separator) && !method_exists($thousands_separator, '__toString')) ){"\
-   "    throw new TypeError('number_format(): Argument #4 ($thousands_separator) must be of type ?string, '"\
-   "      . __php_zpp_type($thousands_separator) . ' given');"\
-   "  }"\
-   "  $num = (float)$num;"\
-   "  $decimals = (int)$decimals;"\
-   "  if( $decimal_separator === null ){ $decimal_separator = '.'; }"\
-   "  if( $thousands_separator === null ){ $thousands_separator = ','; }"\
-   "  $decimal_separator = (string)$decimal_separator;"\
-   "  $thousands_separator = (string)$thousands_separator;"\
-   "  /* round() first: sprintf uses banker's rounding, php's number_format rounds"\
-   "   * half AWAY FROM ZERO (number_format(0.5) is '1', not '0'). A NEGATIVE precision"\
-   "   * rounds to tens/hundreds (php 8: number_format(1.5,-1) is '0'); the displayed"\
-   "   * value never carries negative decimal places, so round with the real precision"\
-   "   * but format/append with max(0, $decimals). */"\
-   "  $num = round($num, $decimals);"\
-   "  $fdec = $decimals < 0 ? 0 : $decimals;"\
-   "  $s = sprintf('%.' . $fdec . 'f', $num);"\
-   "  $neg = false;"\
-   "  if( substr($s, 0, 1) === '-' ){ $neg = true; $s = substr($s, 1); }"\
-   "  $parts = explode('.', $s);"\
-   "  $int = $parts[0];"\
-   "  $frac = count($parts) > 1 ? $parts[1] : '';"\
-   "  $out = '';"\
-   "  $len = strlen($int);"\
-   "  $c = 0;"\
-   "  for( $i = $len - 1 ; $i >= 0 ; $i-- ){"\
-   "    $out = $int[$i] . $out;"\
-   "    $c++;"\
-   "    if( $c % 3 === 0 && $i > 0 ){ $out = $thousands_separator . $out; }"\
-   "  }"\
-   "  if( $fdec > 0 ){ $out = $out . $decimal_separator . $frac; }"\
-   "  if( $neg ){ $out = '-' . $out; }"\
-   "  return $out;"\
-   "}"\
    "function is_nan($num){ $num = (float)$num; return $num != $num; }"\
    "function is_infinite($num){ $num = (float)$num; return $num == INF || $num == -INF; }"\
    "function is_finite($num){ $num = (float)$num; return !is_nan($num) && !is_infinite($num); }"\
@@ -752,18 +685,6 @@
    "   }"\
    "   return false;"\
    "}"\
-	/* __php_zpp_type: php's ZPP value-name for TypeError messages */\
-	"function __php_zpp_type($v){"\
-	" if( is_object($v) ){ return get_class($v); }"\
-	" if( is_int($v) ){ return 'int'; }"\
-	" if( is_float($v) ){ return 'float'; }"\
-	" if( is_string($v) ){ return 'string'; }"\
-	" if( is_bool($v) ){ return $v ? 'true' : 'false'; }"\
-	" if( is_null($v) ){ return 'null'; }"\
-	" if( is_array($v) ){ return 'array'; }"\
-	" if( is_resource($v) ){ return 'resource'; }"\
-	" return 'mixed';"\
-	"}"\
 	"function fileowner(string $filename){"\
     " $a = stat($filename);"\
 	" if( !is_array($a) ){"\

@@ -614,6 +614,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 #endif /* PH7_ENABLE_MATH_FUNC */
 	{ "round",    PH7_builtin_round        },
 	{ "intdiv",   PH7_builtin_intdiv       },
+	{ "number_format", PH7_builtin_number_format },
 	{ "dechex", PH7_builtin_dechex         },
 	{ "decoct", PH7_builtin_decoct         },
 	{ "decbin", PH7_builtin_decbin         },

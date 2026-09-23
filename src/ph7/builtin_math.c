@@ -1013,6 +1013,259 @@ PH7_PRIVATE int PH7_builtin_round(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * Assemble php's formatted number: the integer digits grouped from the right by
+ * the thousands separator, then the decimal separator and exactly $decimals
+ * fraction digits (right-padded with '0', since the printf may produce fewer).
+ */
+static int NumberFormatEmit(ph7_context *pCtx,
+	const char *zDigits,int nDigits,int bNeg,
+	const char *zFrac,int nFrac,int nDec,
+	const char *zPoint,int nPoint,const char *zSep,int nSep)
+{
+	SyBlob sOut;
+	int i;
+	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+	if( bNeg ){
+		SyBlobAppend(&sOut,"-",sizeof(char));
+	}
+	for( i = 0 ; i < nDigits ; ++i ){
+		if( i > 0 && nSep > 0 && ((nDigits - i) % 3) == 0 ){
+			SyBlobAppend(&sOut,zSep,(sxu32)nSep);
+		}
+		SyBlobAppend(&sOut,&zDigits[i],sizeof(char));
+	}
+	if( nDec > 0 ){
+		if( nPoint > 0 ){
+			SyBlobAppend(&sOut,zPoint,(sxu32)nPoint);
+		}
+		if( nFrac > nDec ){
+			nFrac = nDec;
+		}
+		if( nFrac > 0 ){
+			SyBlobAppend(&sOut,zFrac,(sxu32)nFrac);
+		}
+		for( i = nFrac ; i < nDec ; ++i ){
+			SyBlobAppend(&sOut,"0",sizeof(char));
+		}
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+	return PH7_OK;
+}
+/*
+ * _php_math_number_format_long(): an INTEGER never goes through a double, so
+ * every digit of a value past 2^53 survives. A NEGATIVE $decimals rounds the
+ * integer itself, half away from zero.
+ */
+static int NumberFormatLong(ph7_context *pCtx,sxi64 iVal,int nDec,
+	const char *zPoint,int nPoint,const char *zSep,int nSep)
+{
+	char zBuf[32];
+	sxu64 uNum;
+	int bNeg = 0;
+	int n = 0;
+	if( iVal < 0 ){
+		bNeg = 1;
+		/* -PHP_INT_MIN does not fit; negate through the unsigned domain. */
+		uNum = ((sxu64)-(iVal + 1)) + 1;
+	}else{
+		uNum = (sxu64)iVal;
+	}
+	if( nDec < 0 ){
+		/* php keeps a table of the 20 powers of ten a 64-bit value can hold and
+		 * answers 0 past it; 10^19 is the last one that fits. */
+		if( nDec < -19 ){
+			uNum = 0;
+		}else{
+			sxu64 uPow = 1;
+			sxu64 uRest;
+			int k;
+			for( k = 0 ; k < -nDec ; ++k ){
+				uPow *= 10;
+			}
+			uRest = uNum % uPow;
+			uNum = uNum / uPow;
+			uNum = (uRest >= uPow / 2) ? uNum * uPow + uPow : uNum * uPow;
+		}
+		if( uNum == 0 ){
+			/* php never answers "-0". */
+			bNeg = 0;
+		}
+	}
+	/* Decimal digits, most significant first. */
+	if( uNum == 0 ){
+		zBuf[n++] = '0';
+	}else{
+		char zRev[32];
+		int nRev = 0;
+		while( uNum > 0 && nRev < (int)sizeof(zRev) ){
+			zRev[nRev++] = (char)('0' + (int)(uNum % 10));
+			uNum /= 10;
+		}
+		while( nRev > 0 ){
+			zBuf[n++] = zRev[--nRev];
+		}
+	}
+	return NumberFormatEmit(pCtx,zBuf,n,bNeg,0,0,nDec > 0 ? nDec : 0,
+		zPoint,nPoint,zSep,nSep);
+}
+/*
+ * string number_format(int|float $num,int $decimals = 0,
+ *                      ?string $decimal_separator = ".",
+ *                      ?string $thousands_separator = ",")
+ *  Format a number with grouped thousands.
+ */
+PH7_PRIVATE int PH7_builtin_number_format(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zPoint = ".", *zSep = ",";
+	int nPoint = 1, nSep = 1;
+	int nDec = 0;
+	ph7_value sNum;
+	double d;
+	int bNeg = 0;
+	int nLen,nInt;
+	char *zFmt;
+	const char *zDot;
+	if( nArg < 1 ){
+		/* Arity is enforced from aBuiltinSig[] before the call. */
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	/* Every refusal is worded here rather than by the shared screen: php's stub
+	 * declares `float $num` (which is what Reflection prints) but the ZPP macro
+	 * behind it is Z_PARAM_NUMBER, whose TypeError says `int|float`. An int stays
+	 * an INT, a numeric string takes the shape it looks like, and null is §10's
+	 * refusal of a deprecation. */
+	if( !PH7_MemObjIsNumeric(apArg[0]) ){
+		char zBuf[64];
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"number_format(): Argument #1 ($num) must be of type int|float, %s given",
+			ph7_value_is_string(apArg[0]) ? "string"
+				: VmValueGivenName(apArg[0],zBuf,sizeof(zBuf)));
+	}
+	if( nArg > 1 ){
+		/* php declares `int $decimals`; the string and float narrowings it only
+		 * DEPRECATES are rejected here (§10), as they are for count_chars(). */
+		if( ph7_value_is_array(apArg[1]) || ph7_value_is_object(apArg[1])
+		 || ph7_value_is_resource(apArg[1]) || ph7_value_is_null(apArg[1]) ){
+			char zBuf[64];
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"number_format(): Argument #2 ($decimals) must be of type int, %s given",
+				VmValueGivenName(apArg[1],zBuf,sizeof(zBuf)));
+		}
+		if( ph7_value_is_string(apArg[1]) ){
+			/* php wants the WHOLE string to be numeric ("2abc" is a TypeError,
+			 * not 2), and a float-shaped one that would LOSE something is §10's
+			 * refusal of a deprecation. */
+			double dMode;
+			if( !PH7_MemObjStringIsNumeric(apArg[1]) ){
+				return PH7_VmThrowException(pCtx,"TypeError",
+					"number_format(): Argument #2 ($decimals) must be of type int, string given");
+			}
+			dMode = ph7_value_to_double(apArg[1]);
+			if( dMode != (double)(sxi64)dMode ){
+				return PH7_VmThrowException(pCtx,"TypeError",
+					"number_format(): Argument #2 ($decimals) must be of type int, string given");
+			}
+		}else if( ph7_value_is_float(apArg[1]) ){
+			double dMode = ph7_value_to_double(apArg[1]);
+			if( dMode != (double)(sxi64)dMode ){
+				return PH7_VmThrowException(pCtx,"TypeError",
+					"number_format(): Argument #2 ($decimals) must be of type int, float given");
+			}
+		}
+		{
+			sxi64 iDec = ph7_value_to_int64(apArg[1]);
+			/* php clamps the declared long onto an int before it formats. */
+			nDec = iDec > 2147483647 ? 2147483647
+			     : (iDec < -2147483647 ? -2147483647 : (int)iDec);
+		}
+	}
+	/* Both separators are `?string`: null means php's default, not the empty
+	 * string. An empty string IS accepted and simply omits the separator, and an
+	 * object that can stringify is coerced. */
+	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){
+		if( !PH7_ArgSatisfiesString(apArg[2]) ){
+			char zBuf[64];
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"number_format(): Argument #3 ($decimal_separator) must be of type ?string, %s given",
+				VmValueGivenName(apArg[2],zBuf,sizeof(zBuf)));
+		}
+		zPoint = ph7_value_to_string(apArg[2],&nPoint);
+	}
+	if( nArg > 3 && !ph7_value_is_null(apArg[3]) ){
+		if( !PH7_ArgSatisfiesString(apArg[3]) ){
+			char zBuf[64];
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"number_format(): Argument #4 ($thousands_separator) must be of type ?string, %s given",
+				VmValueGivenName(apArg[3],zBuf,sizeof(zBuf)));
+		}
+		zSep = ph7_value_to_string(apArg[3],&nSep);
+	}
+	PH7_MemObjInit(pCtx->pVm,&sNum);
+	PH7_MemObjStore(apArg[0],&sNum);
+	PH7_MemObjToNumeric(&sNum);
+	if( (sNum.iFlags & MEMOBJ_REAL) == 0 ){
+		int rc = NumberFormatLong(pCtx,sNum.x.iVal,nDec,zPoint,nPoint,zSep,nSep);
+		PH7_MemObjRelease(&sNum);
+		return rc;
+	}
+	d = (double)sNum.rVal;
+	PH7_MemObjRelease(&sNum);
+	/* A double past 2^52 has no fractional digits left, so php formats it as an
+	 * INTEGER when it fits one — that is what keeps 4503599627370496.0 exact. */
+	if( (d >= 4503599627370496.0 || d <= -4503599627370496.0)
+	 && d >= -9223372036854775808.0 && d < 9223372036854775808.0 ){
+		return NumberFormatLong(pCtx,(sxi64)d,nDec,zPoint,nPoint,zSep,nSep);
+	}
+	if( d < 0 ){
+		bNeg = 1;
+		d = -d;
+	}
+	d = MathRound(d,nDec,PH7_ROUND_HALF_UP);
+	if( nDec < 0 ){
+		nDec = 0;
+	}
+	/* libc's %f, not the engine's formatter: php prints through its own
+	 * snprintf here, so INF answers "inf" and NAN "nan" — and the engine's
+	 * formatter caps the precision at 53 digits with a notice, where php
+	 * honours whatever $decimals asks for. */
+	nLen = snprintf(0,0,"%.*f",nDec,d);
+	if( nLen < 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	zFmt = (char *)ph7_context_alloc_chunk(pCtx,(unsigned int)nLen + 1,FALSE,TRUE);
+	if( zFmt == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	snprintf(zFmt,(size_t)nLen + 1,"%.*f",nDec,d);
+	if( zFmt[0] < '0' || zFmt[0] > '9' ){
+		/* Not a number at all (inf/nan): php hands its buffer straight back,
+		 * without a sign, a separator or any padding. */
+		ph7_result_string(pCtx,zFmt,nLen);
+		return PH7_OK;
+	}
+	if( bNeg && d == 0 ){
+		/* Rounded away to zero; php never answers "-0". */
+		bNeg = 0;
+	}
+	/* php looks for '.' OR ',' — the decimal point its formatter produced. */
+	zDot = 0;
+	if( nDec > 0 ){
+		int i;
+		for( i = 0 ; i < nLen ; ++i ){
+			if( zFmt[i] == '.' || zFmt[i] == ',' ){
+				zDot = &zFmt[i];
+				break;
+			}
+		}
+	}
+	nInt = zDot ? (int)(zDot - zFmt) : nLen;
+	return NumberFormatEmit(pCtx,zFmt,nInt,bNeg,
+		zDot ? zDot + 1 : 0,zDot ? nLen - nInt - 1 : 0,
+		nDec,zPoint,nPoint,zSep,nSep);
+}
+/*
  * int intdiv(int $a, int $b)
  *  Integer division.
  * Parameters

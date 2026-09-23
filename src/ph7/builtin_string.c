@@ -4333,19 +4333,18 @@ PH7_PRIVATE int PH7_builtin_count_chars(ph7_context *pCtx,int nArg,ph7_value **a
 		 * and float narrowing to the builtin -- both of which php only DEPRECATES
 		 * and PHL rejects (§10). */
 		if( ph7_value_is_string(apArg[1]) ){
-			sxu8 bReal = FALSE;
-			int nMode = 0;
-			const char *zMode = ph7_value_to_string(apArg[1],&nMode);
-			if( SyStrIsNumeric(zMode,nMode,&bReal,0) != SXRET_OK ){
+			/* php wants the WHOLE string to be numeric (surrounding whitespace
+			 * aside): "2abc" and "0x2" are TypeErrors, not 2. A float-shaped one
+			 * that would LOSE something is §10's refusal of a deprecation. */
+			double d;
+			if( !PH7_MemObjStringIsNumeric(apArg[1]) ){
 				return PH7_VmThrowException(pCtx,"TypeError",
 					"count_chars(): Argument #2 ($mode) must be of type int, string given");
 			}
-			if( bReal ){
-				double d = ph7_value_to_double(apArg[1]);
-				if( d != (double)(sxi64)d ){
-					return PH7_VmThrowException(pCtx,"TypeError",
-						"count_chars(): Argument #2 ($mode) must be of type int, string given");
-				}
+			d = ph7_value_to_double(apArg[1]);
+			if( d != (double)(sxi64)d ){
+				return PH7_VmThrowException(pCtx,"TypeError",
+					"count_chars(): Argument #2 ($mode) must be of type int, string given");
 			}
 		}else if( ph7_value_is_float(apArg[1]) ){
 			double d = ph7_value_to_double(apArg[1]);

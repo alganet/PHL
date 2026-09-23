@@ -697,6 +697,7 @@ static const struct VmBuiltinSig {
 	{ "natsort", "array &$array", "true" },
 	{ "next", "object|array &$array", "mixed" },
 	{ "nl2br", "string $string, bool $use_xhtml = true", "string" },
+	{ "number_format", "float $num, int $decimals = 0, ?string $decimal_separator = '.', ?string $thousands_separator = ','", "string" },
 	{ "ob_clean", "", "bool" },
 	{ "ob_end_clean", "", "bool" },
 	{ "ob_end_flush", "", "bool" },
@@ -1155,8 +1156,15 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 	 * invoked name (see PH7_builtin_implode's header for the value-for-value
 	 * table against 8.5.8). php's own asymmetry between a target and its alias,
 	 * reproduced rather than smoothed over — parity is binding (§10).
+	 *
+	 * number_format() is here because php's DECLARED type and its REFUSAL text
+	 * disagree: the stub says `float $num` (which is what Reflection prints) while
+	 * the ZPP macro behind it is Z_PARAM_NUMBER, whose TypeError says
+	 * `must be of type int|float`. One row cannot say both, so the row carries the
+	 * declared type for Reflection and the builtin words every refusal itself.
 	 */
-	static const char *azSelfChecked[] = { "get_class_vars", "strtr", "implode", "join" };
+	static const char *azSelfChecked[] = { "get_class_vars", "strtr", "implode", "join",
+		"number_format" };
 	const char *zSig = pFunc->zSig;
 	const char *zCur, *zEnd;
 	int iArg = 0;
