@@ -171,7 +171,15 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 			/* Query the local frame */
 			pEntry = SyHashGet(&pFrameLocal->hVar,(const void *)sName.zString,sName.nByte);
 			if( pEntry ){
-				VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Referenced variable name '%z' already exists",&sName);
+				/* php RE-BINDS a name that already exists (`$y = 2; $y = &$x;`, and the
+				 * `$r = &$a[$k]` idiom from the second loop step on) — the old binding
+				 * goes, its value with it if nothing else holds it. */
+				PH7_VmRebindVarSlot(&(*pVm),pFrameLocal,pEntry,sName.zString,sName.nByte,nIdx);
+				if( pInstr->p3 == 0 && sName.zString ){
+					/* The name was duplicated for a symbol-table key this rebind does
+					 * not need — the entry keeps the key it was created with. */
+					SyMemBackendFree(&pVm->sAllocator,(void *)sName.zString);
+				}
 			}else{
 				rc = SyHashInsert(&pFrameLocal->hVar,(const void *)sName.zString,sName.nByte,SX_INT_TO_PTR(nIdx));
 				if( pFrameLocal->pParent == 0 ){

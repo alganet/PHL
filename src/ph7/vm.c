@@ -3273,9 +3273,9 @@ PH7_PRIVATE sxi32 VmHashmapRefInsert(
  *     of pValue (NULL pValue nullifies), overwriting an existing global or
  *     superglobal in place.
  *   - reference mode (nRefIdx != SXU32_HIGH): the name is bound to that
- *     existing memobj slot ($GLOBALS['y'] =& $x). Rebinding an EXISTING
- *     name is rejected with the engine's usual "already exists" diagnostic
- *     (the same limitation OP_STORE_REF has for plain variables).
+ *     existing memobj slot ($GLOBALS['y'] =& $x). An EXISTING name is
+ *     RE-BOUND (PH7_VmRebindVarSlot), the same rule OP_STORE_REF applies to
+ *     a plain variable.
  */
 PH7_PRIVATE sxi32 PH7_VmInstallGlobalVar(ph7_vm *pVm,const char *zName,sxu32 nByte,ph7_value *pValue,sxu32 nRefIdx)
 {
@@ -3304,9 +3304,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallGlobalVar(ph7_vm *pVm,const char *zName,sxu32 nBy
 	}
 	if( pEntry ){
 		if( nRefIdx != SXU32_HIGH ){
-			SyString sName;
-			SyStringInitFromBuf(&sName,zName,nByte);
-			VmErrorFormat(&(*pVm),PH7_CTX_ERR,"Referenced variable name '%z' already exists",&sName);
+			/* `$GLOBALS['y'] =& $x` on an EXISTING global re-binds it, exactly as
+			 * `$y = &$x` in global scope does (PH7_VmRebindVarSlot). */
+			PH7_VmRebindVarSlot(&(*pVm),pFrame,pEntry,zName,nByte,nRefIdx);
 			return SXRET_OK;
 		}
 		pObj = (ph7_value *)SySetAt(&pVm->aMemObj,(sxu32)SX_PTR_TO_INT(pEntry->pUserData));
@@ -5927,12 +5927,48 @@ PH7_PRIVATE sxi32 PH7_VmRefObjInstall(
 		}
 	}
 	if( pEntry ){
-		/* Address of the hash-entry */
-		SySetPut(&pRef->aReference,(const void *)&pEntry);
+		/* Address of the hash-entry (into a row a dead holder left behind — a name can
+		 * be RE-BOUND to the same slot any number of times, and a set that only ever
+		 * grew made both the install and the holder count O(rows)) */
+		SyHashEntry **apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);
+		sxu32 n, nFree = SXU32_HIGH;
+		for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){
+			if( apEntry[n] == pEntry ){
+				nFree = SXU32_HIGH; /* already recorded: never file one holder twice */
+				break;
+			}
+			if( apEntry[n] == 0 && nFree == SXU32_HIGH ){
+				nFree = n;
+			}
+		}
+		if( n >= SySetUsed(&pRef->aReference) ){
+			if( nFree != SXU32_HIGH ){
+				apEntry[nFree] = pEntry;
+			}else{
+				SySetPut(&pRef->aReference,(const void *)&pEntry);
+			}
+		}
 	}
 	if( pMapEntry ){
-		/* Address of the hashmap node [i.e: Array entry] */
-		SySetPut(&pRef->aArrEntries,(const void *)&pMapEntry);
+		/* Address of the hashmap node [i.e: Array entry] — same row reuse */
+		ph7_hashmap_node **apNode = (ph7_hashmap_node **)SySetBasePtr(&pRef->aArrEntries);
+		sxu32 n, nFree = SXU32_HIGH;
+		for( n = 0 ; n < SySetUsed(&pRef->aArrEntries) ; ++n ){
+			if( apNode[n] == pMapEntry ){
+				nFree = SXU32_HIGH;
+				break;
+			}
+			if( apNode[n] == 0 && nFree == SXU32_HIGH ){
+				nFree = n;
+			}
+		}
+		if( n >= SySetUsed(&pRef->aArrEntries) ){
+			if( nFree != SXU32_HIGH ){
+				apNode[nFree] = pMapEntry;
+			}else{
+				SySetPut(&pRef->aArrEntries,(const void *)&pMapEntry);
+			}
+		}
 	}
 	return SXRET_OK;
 }
@@ -5987,6 +6023,132 @@ PH7_PRIVATE sxi32 PH7_VmRefObjRemove(
 		}
 	}
 	return SXRET_OK;
+}
+/*
+ * How many LIVE holders still refer to a memory-object slot: the symbol-table
+ * names bound to it plus the array nodes pointing at it. php refcounts a
+ * reference set and keeps the VALUE alive while any holder remains, so this is
+ * the count every "may I release this slot?" decision asks for.
+ *
+ * A row is only a holder while it is non-NULL (every holder's death nullifies
+ * its own row through PH7_VmRefObjRemove) and, for a node, while it still points
+ * HERE — a slot index travels through the free list, so a record can outlive the
+ * node that filed the row (the same filter VmUnsetVarByName applies).
+ */
+PH7_PRIVATE sxu32 PH7_VmSlotHolderCount(ph7_vm *pVm,sxu32 nIdx)
+{
+	ph7_hashmap_node **apNode;
+	SyHashEntry **apEntry;
+	VmRefObj *pRef;
+	sxu32 n, nLive = 0;
+	if( nIdx == SXU32_HIGH ){
+		return 0;
+	}
+	pRef = VmRefObjExtract(&(*pVm),nIdx);
+	if( pRef == 0 ){
+		return 0;
+	}
+	apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);
+	for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){
+		if( apEntry[n] ){
+			nLive++;
+		}
+	}
+	apNode = (ph7_hashmap_node **)SySetBasePtr(&pRef->aArrEntries);
+	for( n = 0 ; n < SySetUsed(&pRef->aArrEntries) ; ++n ){
+		if( apNode[n] && apNode[n]->nValIdx == nIdx ){
+			nLive++;
+		}
+	}
+	return nLive;
+}
+/*
+ * Release a slot whose last holder just went away. A no-op while anything still
+ * holds it (php frees the value with the last reference, not with the first one
+ * to die) and for a slot deliberately pinned past its frame (VM_REF_IDX_KEEP:
+ * `use (&$x)` captures, statics, reference-bound properties).
+ */
+PH7_PRIVATE void PH7_VmReleaseUnheldSlot(ph7_vm *pVm,sxu32 nIdx)
+{
+	VmRefObj *pRef;
+	if( nIdx == SXU32_HIGH ){
+		return;
+	}
+	pRef = VmRefObjExtract(&(*pVm),nIdx);
+	if( pRef == 0 || (pRef->iFlags & VM_REF_IDX_KEEP) ){
+		return;
+	}
+	if( PH7_VmSlotHolderCount(&(*pVm),nIdx) > 0 ){
+		return;
+	}
+	PH7_VmUnsetMemObj(&(*pVm),nIdx,FALSE);
+	/* The slot is back in the free pool; drop its stale local-teardown entry so a
+	 * later reuse of the index is not double-freed (see VmDropFrameLocalSlot). */
+	VmDropFrameLocalSlot(&(*pVm),nIdx);
+}
+/*
+ * Drop a frame's record of "this NAME refers to this slot" (sRef), used when the name
+ * stops referring to it. Without it a name re-bound in a loop files one row per step
+ * — the rows are only consumed at frame exit, so they are pure growth.
+ */
+static void VmDropFrameRefEntry(ph7_vm *pVm,sxu32 nIdx,SyHashEntry *pEntry)
+{
+	VmFrame *pFrame;
+	for( pFrame = pVm->pFrame ; pFrame ; pFrame = pFrame->pParent ){
+		VmSlot *aSlot = (VmSlot *)SySetBasePtr(&pFrame->sRef);
+		sxu32 n = 0;
+		while( n < SySetUsed(&pFrame->sRef) ){
+			if( aSlot[n].nIdx == nIdx && aSlot[n].pUserData == (void *)pEntry ){
+				/* Swap-remove: teardown order over sRef is immaterial. Re-test the
+				 * same index — it now holds the row swapped in from the tail. */
+				aSlot[n] = aSlot[SySetUsed(&pFrame->sRef)-1];
+				(void)SySetPop(&pFrame->sRef);
+				continue;
+			}
+			n++;
+		}
+	}
+}
+/*
+ * Point an EXISTING symbol-table entry at another slot — php's `=&` on a name that
+ * is already bound (`$y = 2; $y = &$x;`, `$r = &$a[$k]` a second time round a loop,
+ * a by-ref parameter re-bound inside the callee). php drops the name's old binding,
+ * releasing its value when nothing else holds it, and aliases the new slot; PH7
+ * refused the whole statement with `Referenced variable name '%z' already exists`
+ * and left the OLD binding standing, so every later write through the name went to
+ * the wrong variable.
+ *
+ * The entry's ADDRESS is deliberately reused rather than deleted and re-inserted:
+ * the frame's sRef teardown set records that pointer, and the reference table
+ * compares it by identity.
+ */
+PH7_PRIVATE void PH7_VmRebindVarSlot(
+	ph7_vm *pVm,          /* Target VM */
+	VmFrame *pFrame,      /* Frame owning the symbol-table entry */
+	SyHashEntry *pEntry,  /* The existing name binding */
+	const char *zName,    /* Variable name */
+	sxu32 nByte,          /* Name length */
+	sxu32 nIdx            /* Slot the name must alias from now on */
+	)
+{
+	sxu32 nOld = (sxu32)SX_PTR_TO_INT(pEntry->pUserData);
+	if( nOld == nIdx ){
+		/* Already this slot: `$r = &$x` twice over is a no-op, not a rebind */
+		return;
+	}
+	/* Forget this name in the old slot's reference record, and in the frame's own
+	 * "release this reference at exit" set */
+	PH7_VmRefObjRemove(&(*pVm),nOld,pEntry,0);
+	VmDropFrameRefEntry(&(*pVm),nOld,pEntry);
+	pEntry->pUserData = SX_INT_TO_PTR(nIdx);
+	if( pFrame->pParent == 0 ){
+		/* A global is ALSO a $GLOBALS entry pointing at the old slot; re-point that
+		 * node (the by-reference insert overwrites an existing key in place). */
+		VmHashmapRefInsert(pVm->pGlobal,zName,nByte,nIdx);
+	}
+	PH7_VmRefObjInstall(&(*pVm),nIdx,pEntry,0,0);
+	/* The old value dies with its last holder — and only then */
+	PH7_VmReleaseUnheldSlot(&(*pVm),nOld);
 }
 #if !defined(PH7_DISABLE_BUILTIN_FUNC) || !defined(PH7_DISABLE_DISK_IO)
 /*
