@@ -677,10 +677,29 @@ static sxi32 VmBindPropByRef(ph7_vm *pVm,sxu32 nObjIdx,const SyString *pName,sxu
 	SyHashEntry *pEntry;
 	VmClassAttr *pAttr = 0;
 	*pbNoBind = 0;
-	if( pObj == 0 || (pObj->iFlags & MEMOBJ_OBJ) == 0 ){
-		/* Base is not an object (e.g. a NULL intermediate): cannot bind a property by ref. */
+	if( pObj == 0 ){
+		/* The root slot is gone (a detached frame): nothing to bind and nothing to say. */
 		*pbNoBind = 1;
 		return SXRET_OK;
+	}
+	if( (pObj->iFlags & MEMOBJ_OBJ) == 0 ){
+		/* A non-object base has no property to alias, and php does not pass NULL and carry
+		 * on: asking one for something to MODIFY is its catchable Error, the same one every
+		 * other write shape through a null/int/string base raises. PHL warned about a READ
+		 * it never performed and handed the by-ref parameter a NULL, so `f($u->p)` with
+		 * `function f(&$x)` wrote into nothing on a statement php stops the script for. The
+		 * by-VALUE binding still takes the read warning — that half is php-exact — and is
+		 * what the value re-drive next door produces. */
+		SyBlob sErrM;
+		sxi32 rcErr;
+		SyBlobInit(&sErrM,&pVm->sAllocator);
+		SyBlobFormat(&sErrM,"Attempt to modify property \"%z\" on %s",
+			pName,VmArithValueName(pObj));
+		rcErr = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sErrM),
+			SyBlobLength(&sErrM));
+		SyBlobRelease(&sErrM);
+		*pbNoBind = 1;
+		return (rcErr == SXERR_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
 	}
 	pThis = (ph7_class_instance *)pObj->x.pOther;
 	pClass = pThis->pClass;

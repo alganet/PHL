@@ -1604,6 +1604,27 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 				SyString sMemb;
 				const char *zVerb = 0;
 				SyStringInitFromBuf(&sMemb,(const char *)SyBlobData(&pTos->sBlob),SyBlobLength(&pTos->sBlob));
+				if( pInstr->iP2 == PH7_MEMBER_DEFPATH && pNos->nIdx != SXU32_HIGH ){
+					/* A deferred call ARGUMENT (`f($u->p)`): which diagnostic php raises
+					 * depends on the parameter, and this op does not know it — a by-VALUE
+					 * binding is the read warning below, a by-REFERENCE one is php's
+					 * `Attempt to modify property` Error. Record the step rooted at the
+					 * base and let OP_CALL re-drive it in the mode the callee decides,
+					 * exactly as a property MISSING on a real object is recorded. */
+					VmDeferredPath *pPath = VmDeferPathNew(&(*pVm),0,pNos->nIdx,0);
+					if( pPath && VmDeferPathPushProp(pPath,&sMemb) == SXRET_OK ){
+						VmPopOperand(&pTos,1);   /* drop the property name */
+						PH7_MemObjRelease(pTos); /* collapse the base slot into the carrier */
+						pTos->x.pOther = pPath;
+						pTos->iFlags = MEMOBJ_NULL | MEMOBJ_AUX_DEFPATH;
+						pTos->nIdx = SXU32_HIGH;
+						VM_EXIT_BREAK;
+					}
+					if( pPath ){
+						VmFreeDeferredPath(pPath);
+					}
+					/* fall through to the immediate warning on allocation failure */
+				}
 				/* WRITING one is an Error too, and php picks its verb from what the
 				 * write actually is. PH7 warned about a READ it never performed and
 				 * then let the store fail into its own
