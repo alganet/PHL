@@ -6060,6 +6060,13 @@ PH7_PRIVATE sxu32 PH7_VmSlotHolderCount(ph7_vm *pVm,sxu32 nIdx)
 	if( pRef == 0 ){
 		return 0;
 	}
+	if( pRef->iFlags & VM_REF_IDX_KEEP ){
+		/* A holder the table cannot name: a `use (&$x)` capture, a reference-bound
+		 * property, a static's or a class constant's slot. It is the reason the slot is
+		 * pinned, so it counts — `$o->p = &$a[0]` leaves that element a reference for
+		 * as long as the property aliases it, exactly as php's refcount does. */
+		nLive++;
+	}
 	apEntry = (SyHashEntry **)SySetBasePtr(&pRef->aReference);
 	for( n = 0 ; n < SySetUsed(&pRef->aReference) ; ++n ){
 		if( apEntry[n] ){
