@@ -842,6 +842,48 @@ PH7_PRIVATE void PH7_VmArgTempCallNotice(ph7_vm *pVm,VmCallArgMap *pMap,sxu32 nP
 	VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,"Only variables should be passed by reference");
 }
 /*
+ * A GENERATOR's arguments are bound at the `g(...)` that BUILDS the Generator object,
+ * before any resume — php's rule, and where php also refuses a by-reference parameter
+ * handed a non-variable. That branch collects its actuals into a vector of its own (and
+ * reorders it for named arguments), so neither of the two OP_CALL binders ever sees them
+ * and `function g(&$x){ yield; } g(1 + 1);` built a Generator in silence.
+ *
+ * Answers PH7_EXCEPTION (or PH7_ABORT) for the first refused position, having raised the
+ * throw; SXRET_OK otherwise, with php's temp-call notice emitted along the way. Named
+ * arguments are resolved by NAME against the formals here rather than through the
+ * branch's own mapping, which is built later and freed inside its block.
+ */
+static sxi32 VmScreenGenByRefArgs(ph7_vm *pVm,ph7_vm_func *pFunc,VmCallArgMap *pMap,
+	ph7_value *pArg,sxu32 nActual,ph7_class *pSelfHint)
+{
+	ph7_vm_func_arg *aFormal = (ph7_vm_func_arg *)SySetBasePtr(&pFunc->aArgs);
+	sxu32 nFormal = SySetUsed(&pFunc->aArgs);
+	sxu32 i;
+	for( i = 0 ; i < nActual ; ++i ){
+		sxu32 n = i;
+		if( pMap && pMap->bHasNamed && i < pMap->nTotal && pMap->aNames[i].nByte > 0 ){
+			for( n = 0 ; n < nFormal ; ++n ){
+				if( pMap->aNames[i].nByte == SyStringLength(&aFormal[n].sName)
+				 && SyMemcmp(pMap->aNames[i].zString,SyStringData(&aFormal[n].sName),
+					pMap->aNames[i].nByte) == 0 ){
+					break;
+				}
+			}
+		}
+		if( n >= nFormal || (aFormal[n].iFlags & VM_FUNC_ARG_BY_REF) == 0 ){
+			continue;
+		}
+		if( PH7_VmArgRefusedByRef(pMap,i,&pArg[i]) ){
+			sxi32 rcT = VmThrowByRefRefusal(&(*pVm),
+				(pFunc->iFlags & VM_FUNC_CLASS_METHOD) ? pSelfHint : 0,
+				&pFunc->sName,n + 1,&aFormal[n].sName);
+			return (rcT == PH7_ABORT) ? PH7_ABORT : PH7_EXCEPTION;
+		}
+		PH7_VmArgTempCallNotice(&(*pVm),pMap,i,&pArg[i]);
+	}
+	return SXRET_OK;
+}
+/*
  * D1: resolve deferred call arguments in [pArg, pTos) before the callee consumes them.
  *
  * A plain `$var` call argument whose callee signature is unknown at compile time is
@@ -5608,6 +5650,29 @@ case PH7_OP_CALL: {
 			/* Collect arguments from the operand stack */
 			nGenArgs = (int)(pTos - pArg);
 			apCallArgs = 0;
+			if( nGenArgs > 0 ){
+				/* php refuses a non-variable in a by-ref position at the CALL, and for
+				 * a generator this IS the call. Routed like the branch's other
+				 * pre-frame throws below: no callee frame exists yet, so drop the
+				 * arguments plus the function-name slot and land the enclosing try. */
+				rc = VmScreenGenByRefArgs(&(*pVm),pVmFunc,pEffCallMap,pArg,
+					(sxu32)nGenArgs,pSelfHint);
+				if( rc != SXRET_OK ){
+					if( rc == PH7_ABORT ){
+						goto Abort;
+					}
+					PH7_INLINE_RESUME_BREAK()
+					VmPopOperand(&pTos,nCallArgs + 1);
+					{
+						sxi32 iRpB;
+						if( VmRecordedResume(pVm,&iRpB,sState.pEntryFrame,aInstr) ){
+							pc = iRpB;
+							break;
+						}
+					}
+					goto Exception;
+				}
+			}
 			if( nGenArgs > 0 ){
 				apCallArgs = (ph7_value **)SyMemBackendAlloc(&pVm->sAllocator,
 					nGenArgs * sizeof(ph7_value *));
