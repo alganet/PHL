@@ -694,46 +694,6 @@
    "  }"\
    "  return $out;"\
    "}"\
-   "/* php's parse_str() -- missing from PH7. Mangles the base name ('.'/' ' -> '_'),"\
-   " * parses [key] nesting and [] appends, urldecodes keys and values. */"\
-   "function __phl_parsestr_assign(&$arr, $segments, $i, $val){"\
-   "  $seg = $segments[$i];"\
-   "  $last = ($i === count($segments) - 1);"\
-   "  if( $seg === '' ){"\
-   "    if( $last ){ $arr[] = $val; return; }"\
-   "    $arr[] = array();"\
-   "    $k = array_key_last($arr);"\
-   "    __phl_parsestr_assign($arr[$k], $segments, $i + 1, $val);"\
-   "  } else {"\
-   "    if( $last ){ $arr[$seg] = $val; return; }"\
-   "    if( !isset($arr[$seg]) || !is_array($arr[$seg]) ){ $arr[$seg] = array(); }"\
-   "    __phl_parsestr_assign($arr[$seg], $segments, $i + 1, $val);"\
-   "  }"\
-   "}"\
-   "function parse_str($string, &$result){"\
-   "  $result = array();"\
-   "  $string = (string)$string;"\
-   "  if( $string === '' ){ return; }"\
-   "  foreach( explode('&', $string) as $pair ){"\
-   "    if( $pair === '' ){ continue; }"\
-   "    $eq = strpos($pair, '=');"\
-   "    if( $eq === false ){ $rawkey = $pair; $val = ''; }"\
-   "    else { $rawkey = substr($pair, 0, $eq); $val = urldecode(substr($pair, $eq + 1)); }"\
-   "    if( $rawkey === '' ){ continue; }"\
-   "    $bpos = strpos($rawkey, '[');"\
-   "    if( $bpos === false ){ $base = $rawkey; $subs = array(); }"\
-   "    else {"\
-   "      $base = substr($rawkey, 0, $bpos);"\
-   "      preg_match_all('/\\[([^\\]]*)\\]/', substr($rawkey, $bpos), $m);"\
-   "      $subs = $m[1];"\
-   "    }"\
-   "    $base = str_replace(array(' ', '.'), '_', urldecode($base));"\
-   "    if( $base === '' ){ continue; }"\
-   "    $segs = array($base);"\
-   "    foreach( $subs as $s ){ $segs[] = urldecode($s); }"\
-   "    __phl_parsestr_assign($result, $segs, 0, $val);"\
-   "  }"\
-   "}"\
    "/* php 8.3 str_increment(): Perl-style alphanumeric increment. */"\
    "function str_increment($string){"\
    "  $string = (string)$string;"\

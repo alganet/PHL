@@ -711,6 +711,7 @@ static const struct VmBuiltinSig {
 	{ "ord", "string $character", "int" },
 	{ "parse_ini_file", "string $filename, bool $process_sections = false, int $scanner_mode = 0", "array|false" },
 	{ "parse_ini_string", "string $ini_string, bool $process_sections = false, int $scanner_mode = 0", "array|false" },
+	{ "parse_str", "string $string, &$result", "void" },
 	{ "parse_url", "string $url, int $component = -1", "array|string|int|false|null" },
 	{ "password_get_info", "string $hash", "array" },
 	{ "password_hash", "string $password, string|int|null $algo, array $options = ?", "string" },

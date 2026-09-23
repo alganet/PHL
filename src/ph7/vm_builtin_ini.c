@@ -42,6 +42,7 @@ static const struct {
 	sxi32 iAccess;
 } aIniDefault[] = {
 	{ "allow_url_fopen",          "1",          VM_INI_PERDIR|VM_INI_SYSTEM },
+	{ "arg_separator.input",      "&",          VM_INI_ALL },
 	{ "arg_separator.output",     "&",          VM_INI_ALL },
 	{ "auto_detect_line_endings", "",           VM_INI_ALL },
 	{ "date.timezone",            "UTC",        VM_INI_ALL },
@@ -58,6 +59,8 @@ static const struct {
 	{ "include_path",             ".",          VM_INI_ALL },
 	{ "log_errors",               "1",          VM_INI_ALL },
 	{ "max_execution_time",       "0",          VM_INI_ALL },
+	{ "max_input_nesting_level",  "64",         VM_INI_PERDIR|VM_INI_SYSTEM },
+	{ "max_input_vars",           "1000",       VM_INI_PERDIR|VM_INI_SYSTEM },
 	{ "memory_limit",             "-1",         VM_INI_ALL },
 	{ "post_max_size",            "8M",         VM_INI_PERDIR|VM_INI_SYSTEM },
 	{ "precision",                "14",         VM_INI_ALL },
@@ -520,6 +523,43 @@ static int vm_builtin_get_cfg_var(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		(int)SyBlobLength(&pSlot->sGlobal));
 	return PH7_OK;
 }
+/*
+ * The effective value of a directive a C builtin needs to obey, as an integer.
+ * parse_str() reads max_input_vars and max_input_nesting_level through this;
+ * without it a builtin would have to duplicate php's default and could never
+ * see an `ini_set()`/`-d` override. Answers iDefault when the directive is
+ * absent or unparsable.
+ */
+PH7_PRIVATE sxi64 PH7_VmIniGetInt(ph7_vm *pVm,const char *zName,sxi64 iDefault)
+{
+	VmIniSlot *pSlot;
+	SyBlob sVal;
+	sxi64 iVal = iDefault;
+	IniSeed(pVm);
+	pSlot = IniFind(pVm,zName,(sxu32)SyStrlen(zName));
+	if( pSlot == 0 ){
+		return iDefault;
+	}
+	SyBlobInit(&sVal,&pVm->sAllocator);
+	IniLiveGet(pVm,pSlot,&sVal);
+	if( SyBlobLength(&sVal) > 0 ){
+		SyStrToInt64((const char *)SyBlobData(&sVal),SyBlobLength(&sVal),(void *)&iVal,0);
+	}
+	SyBlobRelease(&sVal);
+	return iVal;
+}
+/* The same, as a borrowed STRING (arg_separator.input). The bytes live in the
+ * caller's blob, which it owns. */
+PH7_PRIVATE void PH7_VmIniGetStr(ph7_vm *pVm,const char *zName,SyBlob *pOut)
+{
+	VmIniSlot *pSlot;
+	IniSeed(pVm);
+	SyBlobReset(pOut);
+	pSlot = IniFind(pVm,zName,(sxu32)SyStrlen(zName));
+	if( pSlot ){
+		IniLiveGet(pVm,pSlot,pOut);
+	}
+}
 PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm)
 {
 	static const struct {
@@ -540,4 +580,10 @@ PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm)
 }
 #else
 PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm){ (void)pVm; return SXRET_OK; }
+PH7_PRIVATE sxi64 PH7_VmIniGetInt(ph7_vm *pVm,const char *zName,sxi64 iDefault){
+	(void)pVm; (void)zName; return iDefault;
+}
+PH7_PRIVATE void PH7_VmIniGetStr(ph7_vm *pVm,const char *zName,SyBlob *pOut){
+	(void)pVm; (void)zName; SyBlobReset(pOut);
+}
 #endif

@@ -2666,6 +2666,244 @@ PH7_PRIVATE int PH7_builtin_rawurlencode(ph7_context *pCtx,int nArg,ph7_value **
 	SyUriEncodeRaw(zIn,(sxu32)nLen,Consumer,pCtx);
 	return PH7_OK;
 }
+/* SyUriEncode/SyUriDecode write through a consumer; both query-string builtins
+ * below want the bytes in a blob. */
+static int UriBlobConsumer(const void *pData,unsigned int nLen,void *pUserData)
+{
+	return (int)SyBlobAppend((SyBlob *)pUserData,pData,(sxu32)nLen);
+}
+/* --- parse_str (php's main/php_variables.c) ---------------------------- */
+
+/*
+ * php_register_variable_ex(): register ONE decoded "name[idx][idx]" against a
+ * target array. The name arrives ALREADY url-decoded, which is the rule the
+ * chunk did not have -- php decodes the whole key first and only then looks for
+ * brackets, so "a%5Bb%5D=1" is the NESTED a[b], not a flat key spelled "a[b]".
+ *
+ * The walk is destructive on its own copy of the name (php writes NULs over the
+ * brackets), so zVar must be a writable NUL-terminated buffer.
+ */
+static ph7_hashmap * ParseStrDescend(ph7_context *pCtx,ph7_hashmap *pMap,
+	const char *zKey,ph7_value *pKey)
+{
+	ph7_hashmap_node *pNode = 0;
+	ph7_value *pSlot,*pEmpty;
+	if( zKey ){
+		ph7_value_reset_string_cursor(pKey);
+		ph7_value_string(pKey,zKey,(int)SyStrlen(zKey));
+		if( PH7_HashmapLookup(pMap,pKey,&pNode) == SXRET_OK ){
+			pSlot = HashmapExtractNodeValue(pNode);
+			if( pSlot && (pSlot->iFlags & MEMOBJ_HASHMAP) ){
+				return (ph7_hashmap *)pSlot->x.pOther;
+			}
+		}
+	}
+	/* Nothing usable there: php OVERWRITES whatever scalar is in the way with a
+	 * fresh array ("a=1&a[b]=2" ends as a['b']). */
+	pEmpty = ph7_context_new_array(pCtx);
+	if( pEmpty == 0 || PH7_HashmapInsert(pMap,zKey ? pKey : 0,pEmpty) != SXRET_OK ){
+		return 0;
+	}
+	if( zKey ){
+		if( PH7_HashmapLookup(pMap,pKey,&pNode) != SXRET_OK ){
+			return 0;
+		}
+	}else{
+		pNode = pMap->pLast;   /* the append just made */
+	}
+	pSlot = pNode ? HashmapExtractNodeValue(pNode) : 0;
+	return (pSlot && (pSlot->iFlags & MEMOBJ_HASHMAP)) ? (ph7_hashmap *)pSlot->x.pOther : 0;
+}
+static void ParseStrRegister(ph7_context *pCtx,ph7_value *pTarget,char *zVar,
+	ph7_value *pVal,int nMaxNest)
+{
+	ph7_hashmap *pCur = (ph7_hashmap *)pTarget->x.pOther;
+	ph7_value *pIdxKey;
+	char *p,*ip = 0,*index;
+	int bIsArray = 0,nNest = 0;
+	/* php ignores leading SPACES in the name outright -- they are not mangled to
+	 * '_' the way an interior space is. */
+	while( zVar[0] == ' ' ){
+		zVar++;
+	}
+	/* Neither a space nor a dot may live in a php variable name; both become '_'.
+	 * The scan stops at the first '[', so only the BASE name is mangled. */
+	for( p = zVar ; p[0] ; p++ ){
+		if( p[0] == ' ' || p[0] == '.' ){
+			p[0] = '_';
+		}else if( p[0] == '[' ){
+			bIsArray = 1;
+			ip = p;
+			p[0] = 0;
+			break;
+		}
+	}
+	if( p == zVar ){
+		return; /* empty name (or a name that was nothing but a space) */
+	}
+	index = zVar;
+	pIdxKey = ph7_context_new_scalar(pCtx);
+	if( pIdxKey == 0 ){
+		return;
+	}
+	while( bIsArray ){
+		char *zSeg;
+		ph7_hashmap *pNext;
+		if( ++nNest > nMaxNest ){
+			/* php drops the whole top-level variable it was building and warns.
+			 * The message is deliberately vague about the input -- php calls
+			 * saying more "information disclosure". */
+			ph7_hashmap_node *pNode = 0;
+			ph7_hashmap *pRoot = (ph7_hashmap *)pTarget->x.pOther;
+			ph7_value_reset_string_cursor(pIdxKey);
+			ph7_value_string(pIdxKey,zVar,(int)SyStrlen(zVar));
+			if( PH7_HashmapLookup(pRoot,pIdxKey,&pNode) == SXRET_OK ){
+				PH7_HashmapUnlinkNode(pNode,TRUE);
+			}
+			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+				"Input variable nesting level exceeded %d. To increase the limit "
+				"change max_input_nesting_level in php.ini.",nMaxNest);
+			return;
+		}
+		ip++;
+		zSeg = ip;
+		if( ip[0] == ' ' || ip[0] == '\t' || ip[0] == '\n' || ip[0] == '\r' ){
+			ip++;   /* php skips ONE leading space before testing for ']' */
+		}
+		if( ip[0] == ']' ){
+			zSeg = 0;   /* "[]" (and "[ ]") appends */
+		}else{
+			while( ip[0] && ip[0] != ']' ){ ip++; }
+			if( ip[0] == 0 ){
+				/* An unterminated '[': php un-terminates the name -- the bracket
+				 * itself becomes '_' -- and the rest is mangled and used as a
+				 * PLAIN key, so "a[b=1" registers "a_b". */
+				zSeg[-1] = '_';
+				for( p = zSeg ; p[0] ; p++ ){
+					if( p[0] == ' ' || p[0] == '.' || p[0] == '[' ){
+						p[0] = '_';
+					}
+				}
+				break;
+			}
+			ip[0] = 0;
+		}
+		pNext = ParseStrDescend(pCtx,pCur,index,pIdxKey);
+		if( pNext == 0 ){
+			return;
+		}
+		pCur = pNext;
+		index = zSeg;
+		ip++;
+		if( ip[0] == '[' ){
+			ip[0] = 0;   /* another level follows */
+		}else{
+			break;       /* whatever trails the last ']' is ignored */
+		}
+	}
+	if( index == 0 ){
+		PH7_HashmapInsert(pCur,0,pVal);
+	}else{
+		ph7_value_reset_string_cursor(pIdxKey);
+		ph7_value_string(pIdxKey,index,(int)SyStrlen(index));
+		PH7_HashmapInsert(pCur,pIdxKey,pVal);
+	}
+}
+/*
+ * void parse_str(string $string, array &$result)
+ *  Parse a query string into $result the way php's own GET/POST parser does.
+ */
+PH7_PRIVATE int PH7_builtin_parse_str(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pArray,*pVal;
+	SyBlob sSep,sName,sValue;
+	const char *zIn,*zSep;
+	int nByte,nSep;
+	sxu32 i = 0;
+	sxi64 nCount = 0,nMaxVars,nMaxNest;
+	if( nArg < 2 ){
+		/* Arity is enforced from aBuiltinSig[] before the call. */
+		return PH7_OK;
+	}
+	pArray = ph7_context_new_array(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pVal == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	zIn = ph7_value_to_string(apArg[0],&nByte);
+	nMaxVars = PH7_VmIniGetInt(pCtx->pVm,"max_input_vars",1000);
+	nMaxNest = PH7_VmIniGetInt(pCtx->pVm,"max_input_nesting_level",64);
+	SyBlobInit(&sSep,&pCtx->pVm->sAllocator);
+	SyBlobInit(&sName,&pCtx->pVm->sAllocator);
+	SyBlobInit(&sValue,&pCtx->pVm->sAllocator);
+	PH7_VmIniGetStr(pCtx->pVm,"arg_separator.input",&sSep);
+	if( SyBlobLength(&sSep) < 1 ){
+		SyBlobAppend(&sSep,"&",sizeof(char));
+	}
+	zSep = (const char *)SyBlobData(&sSep);
+	nSep = (int)SyBlobLength(&sSep);
+	/* php tokenizes with strtok(), so the separator is a SET of bytes and a run
+	 * of them yields no empty field -- and an embedded NUL ends the input. */
+	while( i < (sxu32)nByte && zIn[i] ){
+		sxu32 iStart,iEq;
+		int bFound;
+		while( i < (sxu32)nByte && zIn[i] ){
+			int s;
+			for( s = 0 ; s < nSep ; ++s ){
+				if( zIn[i] == zSep[s] ){ break; }
+			}
+			if( s == nSep ){ break; }
+			i++;
+		}
+		if( i >= (sxu32)nByte || zIn[i] == 0 ){
+			break;
+		}
+		iStart = i;
+		iEq = 0;
+		bFound = 0;
+		while( i < (sxu32)nByte && zIn[i] ){
+			int s;
+			for( s = 0 ; s < nSep ; ++s ){
+				if( zIn[i] == zSep[s] ){ break; }
+			}
+			if( s < nSep ){ break; }
+			if( zIn[i] == '=' && !bFound ){
+				iEq = i;
+				bFound = 1;
+			}
+			i++;
+		}
+		if( ++nCount > nMaxVars ){
+			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+				"Input variables exceeded %qd. To increase the limit change "
+				"max_input_vars in php.ini.",nMaxVars);
+			break;
+		}
+		/* Both halves are url-decoded BEFORE the name is parsed for brackets. */
+		SyBlobReset(&sName);
+		SyBlobReset(&sValue);
+		if( bFound ){
+			if( iEq > iStart ){
+				SyUriDecode(&zIn[iStart],iEq - iStart,UriBlobConsumer,&sName,TRUE);
+			}
+			if( i > iEq + 1 ){
+				SyUriDecode(&zIn[iEq + 1],i - (iEq + 1),UriBlobConsumer,&sValue,TRUE);
+			}
+		}else{
+			SyUriDecode(&zIn[iStart],i - iStart,UriBlobConsumer,&sName,TRUE);
+		}
+		SyBlobAppend(&sName,"\0",sizeof(char));   /* the walk is C-string based */
+		ph7_value_string(pVal,(const char *)SyBlobData(&sValue),(int)SyBlobLength(&sValue));
+		ParseStrRegister(pCtx,pArray,(char *)SyBlobData(&sName),pVal,(int)nMaxNest);
+		ph7_value_reset_string_cursor(pVal);
+	}
+	SyBlobRelease(&sSep);
+	SyBlobRelease(&sName);
+	SyBlobRelease(&sValue);
+	/* $result is by REFERENCE and php REPLACES it, empty array included. */
+	PH7_VmStoreArgByRef(pCtx->pVm,apArg[1],pArray);
+	return PH7_OK;
+}
 /* --- http_build_query (php's ext/standard/http.c) ---------------------- */
 
 /*
@@ -2708,19 +2946,15 @@ static int HttpQueryIsAncestor(const http_query_frame *pFrame,const void *pWalke
 	}
 	return 0;
 }
-static int HttpQueryBlobConsumer(const void *pData,unsigned int nLen,void *pUserData)
-{
-	return (int)SyBlobAppend((SyBlob *)pUserData,pData,(sxu32)nLen);
-}
 static void HttpQueryEncodeTo(SyBlob *pOut,int bRaw,const char *zIn,sxu32 nByte)
 {
 	if( nByte < 1 ){
 		return;
 	}
 	if( bRaw ){
-		SyUriEncodeRaw(zIn,nByte,HttpQueryBlobConsumer,pOut);
+		SyUriEncodeRaw(zIn,nByte,UriBlobConsumer,pOut);
 	}else{
-		SyUriEncode(zIn,nByte,HttpQueryBlobConsumer,pOut);
+		SyUriEncode(zIn,nByte,UriBlobConsumer,pOut);
 	}
 }
 static int HttpQueryWalk(http_query_state *p,ph7_value *pData,

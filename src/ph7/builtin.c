@@ -791,6 +791,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "urldecode",    PH7_builtin_urldecode },
 	{ "rawurlencode", PH7_builtin_rawurlencode },
 	{ "http_build_query", PH7_builtin_http_build_query },
+	{ "parse_str",    PH7_builtin_parse_str  },
 	{ "rawurldecode", PH7_builtin_rawurldecode },
 #endif /* PH7_NEED_BUILTIN_REG */
 };

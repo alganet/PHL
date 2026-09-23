@@ -3103,6 +3103,8 @@ PH7_PRIVATE void PH7_RegisterTokenizerConstants(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm);
 /* vm_builtin_ini.c */
 PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm);
+PH7_PRIVATE sxi64 PH7_VmIniGetInt(ph7_vm *pVm,const char *zName,sxi64 iDefault);
+PH7_PRIVATE void PH7_VmIniGetStr(ph7_vm *pVm,const char *zName,SyBlob *pOut);
 /* vfs_win.c / vfs_unix.c exported structs */
 #ifdef __WINNT__
 extern const ph7_vfs sWinVfs;
@@ -3733,6 +3735,7 @@ PH7_PRIVATE int PH7_builtin_convert_uudecode(ph7_context *pCtx,int nArg,ph7_valu
 PH7_PRIVATE int PH7_builtin_urlencode(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_rawurlencode(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_http_build_query(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_parse_str(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_urldecode(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_rawurldecode(ph7_context *pCtx,int nArg,ph7_value **apArg);
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
