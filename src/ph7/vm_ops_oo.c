@@ -22,6 +22,34 @@
 #define sState (*pState)
 
 /*
+ * php's `get_static_method_fallback` (zend_object_handlers.c): a `C::m()` naming a method
+ * the class cannot answer directly — missing, or present but inaccessible from here —
+ * routes to __call, NOT __callStatic, when the CALLING frame has a `$this` that is an
+ * instance of C. `::` does not make the call static: `self::m()` inside an instance method
+ * is the dispatch `$this->m()` would have been, and php reaches for __callStatic only when
+ * there is no compatible receiver (or the class declares no __call at all — it does not
+ * fall back to __callStatic then, it raises "Call to undefined method").
+ *
+ * The handler comes from the OBJECT's class — php's comment calls it "the top-level defined
+ * __call" — so `parent::m()` from a child that overrides __call runs the CHILD's.
+ *
+ * Answers the receiver to dispatch on, or 0 for the __callStatic route.
+ */
+static ph7_class_instance * VmStaticCallMagicThis(ph7_vm *pVm,ph7_class *pClass)
+{
+	ph7_class_instance *pThis;
+	if( PH7_ClassExtractMethod(pClass,"__call",sizeof("__call")-1) == 0 ){
+		return 0;
+	}
+	pThis = PH7_VmCallerThisFor(&(*pVm),pClass);
+	if( pThis == 0
+	 || PH7_ClassExtractMethod(pThis->pClass,"__call",sizeof("__call")-1) == 0 ){
+		return 0;
+	}
+	return pThis;
+}
+
+/*
  * OP_CLONE_APPLY: body moved verbatim from the OP_CLONE_APPLY arm of
  * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
  */
@@ -1545,14 +1573,22 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							rc = rcErr;
 							PH7_THROW_ROUTE_MIDEXPR(rc)
 						}else{
-							ph7_class_method *pCallStaticMagic = PH7_ClassExtractMethod(pClass,"__callStatic",sizeof("__callStatic")-1);
+							ph7_class_instance *pMagicThis = VmStaticCallMagicThis(&(*pVm),pClass);
+							ph7_class_method *pCallStaticMagic = pMagicThis
+								? PH7_ClassExtractMethod(pMagicThis->pClass,"__call",sizeof("__call")-1)
+								: PH7_ClassExtractMethod(pClass,"__callStatic",sizeof("__callStatic")-1);
 							if( pCallStaticMagic ){
 								/* php: C::missing(...) dispatches __callStatic($name,$args)
-								 * through the packing body (see the instance twin). */
+								 * through the packing body (see the instance twin) — or
+								 * __call($name,$args) on the calling frame's own $this when
+								 * that receiver fits C (VmStaticCallMagicThis). */
 								SyBlobReset(&pVm->sMagicCallName);
 								SyBlobAppend(&pVm->sMagicCallName,(const void *)sName.zString,sName.nByte);
-								pVm->pMagicCallThis = 0;
-								pVm->pMagicCallClass = pClass;
+								if( pMagicThis ){
+									pMagicThis->iRef++;
+								}
+								pVm->pMagicCallThis = pMagicThis;
+								pVm->pMagicCallClass = pMagicThis ? pMagicThis->pClass : pClass;
 								if( !pInstr->p3 ){
 									VmPopOperand(&pTos,1);
 								}
@@ -1588,17 +1624,23 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						}
 						PH7_MemObjRelease(pTos);
 					}else{
-						/* Inaccessible from this scope: php routes through __callStatic when
-						 * declared — the same rule the instance twin applies with __call, and
-						 * the reason `C::privateStatic()` runs the catch-all instead of the
-						 * "Call to private method" Error OP_CALL would raise below. */
+						/* Inaccessible from this scope: php routes through the same fallback a
+						 * MISSING name takes — __call on a compatible `$this`, else
+						 * __callStatic — which is why `C::privateStatic()` runs a catch-all
+						 * instead of the "Call to private method" Error OP_CALL would raise
+						 * below. */
 						ph7_class_method *pDeniedStatic = 0;
+						ph7_class_instance *pDeniedThis = 0;
 						if( pMeth->iProtection != PH7_CLASS_PROT_PUBLIC ){
 							ph7_class *pDeclCls = pMeth->sFunc.pUserData
 								? (ph7_class *)pMeth->sFunc.pUserData : pClass;
 							if( !PH7_VmClassMemberAccess(&(*pVm),pDeclCls,&sName,pMeth->iProtection,FALSE) ){
-								pDeniedStatic = PH7_ClassExtractMethod(pClass,"__callStatic",
-									sizeof("__callStatic")-1);
+								pDeniedThis = VmStaticCallMagicThis(&(*pVm),pClass);
+								pDeniedStatic = pDeniedThis
+									? PH7_ClassExtractMethod(pDeniedThis->pClass,"__call",
+										sizeof("__call")-1)
+									: PH7_ClassExtractMethod(pClass,"__callStatic",
+										sizeof("__callStatic")-1);
 							}
 						}
 						if( pDeniedStatic ){
@@ -1608,8 +1650,11 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							 * would pack it as the first $args entry). */
 							SyBlobReset(&pVm->sMagicCallName);
 							SyBlobAppend(&pVm->sMagicCallName,(const void *)sName.zString,sName.nByte);
-							pVm->pMagicCallThis = 0;
-							pVm->pMagicCallClass = pClass;
+							if( pDeniedThis ){
+								pDeniedThis->iRef++;
+							}
+							pVm->pMagicCallThis = pDeniedThis;
+							pVm->pMagicCallClass = pDeniedThis ? pDeniedThis->pClass : pClass;
 							if( !pInstr->p3 ){
 								VmPopOperand(&pTos,1);
 							}

@@ -404,7 +404,10 @@ static ph7_class * VmCallbackTargetClass(ph7_vm *pVm,ph7_value *pTarget)
 		SyBlobLength(&pTarget->sBlob));
 }
 /*
- * Is the calling frame's `$this` an instance of pClass?
+ * The calling frame's `$this` when it is an instance of pClass, 0 otherwise (the boolean
+ * form is the predicate below). Two rules want it: the callability one described here, and
+ * php's `get_static_method_fallback` — a `C::m()` the class cannot answer directly routes
+ * to __call rather than __callStatic exactly when this answers non-NULL (vm_ops_oo.c).
  *
  * php's rule for a method named through a CLASS NAME (`'C::m'`, `['C','m']`): a static
  * method is callable, and a NON-static one is callable only when the caller has a
@@ -413,17 +416,43 @@ static ph7_class * VmCallbackTargetClass(ph7_vm *pVm,ph7_value *pTarget)
  * false from unrelated scopes. A host builtin does not push a frame of its own, so
  * pVm->pFrame is the caller's.
  */
-static int VmCallerThisIsA(ph7_vm *pVm,ph7_class *pClass)
+PH7_PRIVATE ph7_class_instance * PH7_VmCallerThisFor(ph7_vm *pVm,ph7_class *pClass)
 {
 	VmFrame *pFrame = pVm->pFrame;
+	ph7_class_instance *pThis = 0;
 	while( pFrame && pFrame->pParent && (pFrame->iFlags & (VM_FRAME_EXCEPTION|VM_FRAME_CATCH)) ){
 		/* Skip the exception bookkeeping frames, like PH7_VmClassMemberAccess does */
 		pFrame = pFrame->pParent;
 	}
-	if( pFrame == 0 || pFrame->pThis == 0 ){
-		return FALSE;
+	if( pFrame == 0 ){
+		return 0;
 	}
-	return PH7_VmInstanceOf(pFrame->pThis->pClass,pClass) ? TRUE : FALSE;
+	pThis = pFrame->pThis;
+	if( pThis == 0 ){
+		/* A CLOSURE body has a `$this` — php binds one automatically to any closure
+		 * created inside a method — but PHL carries it as a frame VARIABLE (the captured
+		 * environment) rather than on pFrame->pThis, which only a method call and an
+		 * explicitly bound closure set. Reading only the field made the whole rule
+		 * invisible inside a closure: `is_callable(['C','m'])` answered false there while
+		 * answering true one line outside, in the same method. Both are checked here, as
+		 * ReflectionGenerator::getThis() checks both for the coroutine twin. */
+		SyHashEntry *pVar = SyHashGet(&pFrame->hVar,"this",sizeof("this")-1);
+		if( pVar ){
+			ph7_value *pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,
+				(sxu32)SX_PTR_TO_INT(pVar->pUserData));
+			if( pSlot && (pSlot->iFlags & MEMOBJ_OBJ) ){
+				pThis = (ph7_class_instance *)pSlot->x.pOther;
+			}
+		}
+	}
+	if( pThis == 0 ){
+		return 0;
+	}
+	return PH7_VmInstanceOf(pThis->pClass,pClass) ? pThis : 0;
+}
+static int VmCallerThisIsA(ph7_vm *pVm,ph7_class *pClass)
+{
+	return PH7_VmCallerThisFor(&(*pVm),pClass) ? TRUE : FALSE;
 }
 /*
  * php's callability rule for one resolved class + method NAME, probed value-for-value
