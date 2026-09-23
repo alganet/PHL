@@ -466,6 +466,7 @@ static const struct VmBuiltinSig {
 	{ "class_alias", "string $class, string $alias, bool $autoload = true", "bool" },
 	{ "class_exists", "string $class, bool $autoload = true", "bool" },
 	{ "enum_exists", "string $enum, bool $autoload = true", "bool" },
+	{ "clone", "object $object, array $withProperties = []", "object" },
 	{ "closedir", "$dir_handle = NULL", "void" },
 	{ "compact", "$var_name, ...$var_names = ?", "array" },
 	{ "constant", "string $name", "mixed" },

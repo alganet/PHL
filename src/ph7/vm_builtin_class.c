@@ -1515,6 +1515,86 @@ PH7_PRIVATE int vm_builtin_spl_object_id(ph7_context *pCtx,int nArg,ph7_value **
 	return PH7_OK;
 }
 /*
+ * object clone(object $object, array $withProperties = [])
+ *  php 8.5's clone-with: `clone` is a real internal function there, so every
+ *  indirect spelling reaches it — `clone(...)` as a first-class callable,
+ *  `$f = 'clone'; $f($o)`, `call_user_func('clone', $o)` — and the arity/type
+ *  refusals are the ordinary runtime ones, not a compile error. The direct
+ *  `clone($o, [...])` source form compiles to a CALL of this function, and the
+ *  `clone $o` OPERATOR keeps its own opcode.
+ *
+ *  The property updates are applied AFTER __clone(), each as a scope-aware write
+ *  (visibility, readonly re-init, typed coercion) — VmCloneApplyUpdate, shared
+ *  with nothing else now. A host function runs on the CALLER's frame, so the
+ *  scope those writes are judged against is php's: the scope that called clone().
+ */
+PH7_PRIVATE int vm_builtin_clone(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pSrc,*pClone;
+	char zGiven[64];
+	/* Arity and the two parameter types are the aBuiltinSig[] row's; a value that
+	 * reaches here is an object (arg #1) and, if given, an array (arg #2). */
+	if( nArg < 1 || !ph7_value_is_object(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"clone(): Argument #1 ($object) must be of type object, %s given",
+			nArg > 0 ? VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)) : "no value");
+	}
+	pSrc = (ph7_class_instance *)apArg[0]->x.pOther;
+	/* The uncloneable classes, same rule and wording as the operator: an enum case
+	 * (the singleton identity would break), a class whose instances own a C-side
+	 * resource, and Generator/Fiber. */
+	if( (pSrc->pClass->iFlags & (PH7_CLASS_ENUM|PH7_CLASS_NOCLONE))
+		|| pSrc->pClass == pVm->pGeneratorClass || pSrc->pClass == pVm->pFiberClass ){
+		return PH7_VmThrowException(pCtx,"Error",
+			"Trying to clone an uncloneable object of class %z",&pSrc->pClass->sName);
+	}
+	pClone = PH7_CloneClassInstance(pSrc);
+	if( pClone == 0 ){
+		return PH7_VmMemoryError(pVm);
+	}
+	/* Hand the clone to the caller BEFORE the updates run: an update that throws
+	 * leaves the object owned by the return slot, which releases it. */
+	PH7_MemObjRelease(pCtx->pRet);
+	pCtx->pRet->x.pOther = pClone;
+	MemObjSetType(pCtx->pRet,MEMOBJ_OBJ);
+	if( nArg > 1 && ph7_value_is_array(apArg[1]) ){
+		ph7_hashmap *pMap = (ph7_hashmap *)apArg[1]->x.pOther;
+		ph7_hashmap_node *pNode = pMap->pFirst;
+		sxu32 n;
+		for( n = pMap->nEntry ; n > 0 && pNode ; --n ){
+			ph7_value *pVal,sVal;
+			const char *zName;
+			sxu32 nName;
+			char zKeyBuf[64];
+			sxi32 rc;
+			if( pNode->iType == HASHMAP_INT_NODE ){
+				/* An int key becomes the property name (php: `$5`). */
+				nName = SyBufferFormat(zKeyBuf,sizeof(zKeyBuf),"%qd",pNode->xKey.iKey);
+				zName = zKeyBuf;
+			}else{
+				zName = (const char *)SyBlobData(&pNode->xKey.sKey);
+				nName = SyBlobLength(&pNode->xKey.sKey);
+			}
+			pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
+			if( pVal ){
+				/* Snapshot the update value first: applying it may create a dynamic
+				 * property, whose slot reservation can reallocate pVm->aMemObj and
+				 * dangle pVal (a pointer into it). */
+				PH7_MemObjInit(pVm,&sVal);
+				PH7_MemObjLoad(pVal,&sVal);
+				rc = VmCloneApplyUpdate(pVm,pClone,zName,nName,&sVal);
+				PH7_MemObjRelease(&sVal);
+				if( rc != SXRET_OK ){
+					return rc;
+				}
+			}
+			pNode = pNode->pPrev; /* pFirst -> pPrev is the forward link */
+		}
+	}
+	return PH7_OK;
+}
+/*
  * string spl_object_hash(object $object)
  *  Return a 32-char hex identifier, unique and stable per live object.
  * PHL note: PHP derives this from the internal handle plus a per-process key, so

@@ -4817,28 +4817,6 @@ case PH7_OP_CLONE: {
 	break;
 					  }
 /*
- * OP_CLONE_APPLY * * *
- *  Apply the PHP 8.5 clone($obj, $withProperties) property updates. The updates
- *  array is on the stack top and the freshly-cloned object (from OP_CLONE) is
- *  directly below it. Each entry is applied as a scope-aware property write
- *  (AFTER __clone() has already run); the array is then popped, leaving the
- *  clone as the result.
- */
-case PH7_OP_CLONE_APPLY: {
-	VmOpRc rcOp;
-	sState.pTos = pTos;
-	sState.pc = pc;
-	rcOp = VmExecOpCloneApply(&(*pVm),&sState,pInstr);
-	pTos = sState.pTos;
-	pc = sState.pc;
-	if( rcOp == VM_OP_ABORT ){
-		goto Abort;
-	}else if( rcOp == VM_OP_EXCEPTION ){
-		goto Exception;
-	}
-	break;
-					  }
-/*
  * OP_SWITCH * * P3
  *  This is the bytecode implementation of the complex switch() PHP construct.
  */

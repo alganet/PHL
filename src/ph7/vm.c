@@ -5448,7 +5448,6 @@ static const char * VmInstrToString(sxi32 nOp)
 	case PH7_OP_DECR:       zOp = "DECR       "; break;
 	case PH7_OP_NEW:        zOp = "NEW        "; break;
 	case PH7_OP_CLONE:      zOp = "CLONE      "; break;
-	case PH7_OP_CLONE_APPLY: zOp = "CLONE_APPLY"; break;
 	case PH7_OP_ADD_STORE:  zOp = "ADD_STORE  "; break;
 	case PH7_OP_SUB_STORE:  zOp = "SUB_STORE  "; break;
 	case PH7_OP_MUL_STORE:  zOp = "MUL_STORE  "; break;
@@ -5556,6 +5555,8 @@ static const ph7_builtin_func aVmFunc[] = {
 	{ "get_object_vars",         vm_builtin_get_object_vars   },
 	{ "is_subclass_of",          vm_builtin_is_subclass_of    },
 	{ "is_a", vm_builtin_is_a },
+	   /* php 8.5: clone is a real internal function (the clone-with call form) */
+	{ "clone",           vm_builtin_clone             },
 	   /* SPL object identity */
 	{ "spl_object_id",   vm_builtin_spl_object_id   },
 	{ "spl_object_hash", vm_builtin_spl_object_hash },

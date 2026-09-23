@@ -1097,29 +1097,20 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 		&& &pCur[1] < pGen->pEnd && (pCur[1].nType & PH7_TK_LPAREN)
 		&& CloneCallFormFollows(pCur,pGen->pEnd) ){
 		/* PHP 8.5 clone(...) call form: clone($object [, $withProperties]).
-		 * `clone` is an alpha-stream operator, so `clone(` is NOT auto-marked
-		 * as a function call the way `foo(` is — collect the parenthesised
-		 * argument list here and let PH7_CompileCloneCall reparse it (mirrors
-		 * how array(...)/list(...) are handled). The bare operator/statement
-		 * form `clone $obj` (no immediately-following '(') keeps the
-		 * precedence-1 operator path below. Clear PH7_TK_OP on the 'clone'
-		 * token: this node is now a self-evaluating term (xCode set, pOp NULL),
-		 * so ExprVerifyNodes / ExprMakeTree must not treat its start token as an
-		 * operator (which would dereference the NULL pOp). */
+		 * `clone` is a real internal FUNCTION in php 8.5, so this spelling is an
+		 * ordinary call — and every property the call machinery owns comes with
+		 * it: named arguments, spread, the first-class-callable `clone(...)`, and
+		 * the runtime ArgumentCountError/TypeError php raises for a degenerate
+		 * argument list (PHL used to refuse `clone()` and a three-argument call at
+		 * COMPILE time, and had no FCC form at all). `clone` is an alpha-stream
+		 * operator token, so `clone(` is not auto-marked as a call the way `foo(`
+		 * is: clear PH7_TK_OP and leave a plain name TERM behind, and the postfix
+		 * pass then binds the '(' to it. The bare operator/statement form
+		 * `clone $obj` (no immediately-following '(') keeps the precedence-1
+		 * operator path below. */
 		pNode->pStart->nType &= ~PH7_TK_OP;
-		pCur += 2; /* skip 'clone' and the opening '(' */
-		PH7_DelimitNestedTokens(pCur,pGen->pEnd,PH7_TK_LPAREN,PH7_TK_RPAREN,&pCur);
-		if( pCur < pGen->pEnd ){
-			pCur++; /* skip the closing ')' */
-		}else{
-			rc = PH7_GenSyntaxError(pGen,pCur < pGen->pEnd ? pCur : 0,"\")\"");
-			if( rc != SXERR_ABORT ){
-				rc = SXERR_SYNTAX;
-			}
-			SyMemBackendPoolFree(&pGen->pVm->sAllocator,pNode);
-			return rc;
-		}
-		pNode->xCode = PH7_CompileCloneCall;
+		ExprAssembleLiteral(&pCur,pGen->pEnd);
+		pNode->xCode = PH7_CompileLiteral;
 	}else if( pCur->nType & PH7_TK_OP ){
 		/* Point to the instance that describe this operator */
 		pNode->pOp = (const ph7_expr_op *)pCur->pUserData;
@@ -1993,12 +1984,7 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 					  * them as "Expecting a variable as left operand", a compile fatal on
 					  * valid php, because a literal TERM carries no operator. Only a BARE
 					  * literal stays refused, which is php's own parse error for `1->x`. */
-					 (apNode[iLeft]->iFlags & EXPR_NODE_PARENS) == 0 &&
-					 /* A clone(...) call term (pOp==0, xCode set) produces an object,
-					  * so `(clone($o))->x` is a valid arrow left operand — like the
-					  * `clone $o` operator form (pOp!=0), which this guard already
-					  * accepts. */
-					 apNode[iLeft]->xCode != PH7_CompileCloneCall ){
+					 (apNode[iLeft]->iFlags & EXPR_NODE_PARENS) == 0 ){
 						 /* Syntax error */
 						 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
 							 "'%z': Expecting a variable as left operand",&pNode->pOp->sOp);
