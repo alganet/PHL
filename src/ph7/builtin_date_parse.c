@@ -3330,6 +3330,395 @@ static sxi32 DtPresentTimeZone(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *
 	DtPresentZone(&(*pVm),pOut,zName ? zName : "",nName);
 	return SXRET_OK;
 }
+/*
+ * ---------------------------------------------------------------------------
+ * php's serialization pair for the three date classes whose state is HIDDEN.
+ *
+ * serialize() had been walking the engine slots, so a DateTime round-tripped as
+ * `__dtTs`/`__dtOff`/`__dtName`/`__dtUs` and a payload php WROTE could not be read
+ * back at all -- `unserialize('O:8:"DateTime":3:{s:4:"date";…}')` found none of the
+ * names it wanted, silently kept the 1970 defaults and answered a valid object with
+ * the wrong instant. php's answer is not a hidden-slot rule but a pair of methods:
+ * __serialize() hands back the PRESENTED shape (date/timezone_type/timezone, the
+ * same hash date_object_get_properties_for builds) and __unserialize() re-parses it,
+ * so the payload is the class's public model rather than its storage.
+ *
+ * The four methods php declares are all here, because they are one contract:
+ * __serialize/__unserialize is what serialize() uses, __wakeup reads a LEGACY
+ * payload out of the object's own properties, and __set_state is what var_export's
+ * `\DateTime::__set_state(array(…))` text evaluates to. All four fail with the same
+ * plain `Error`, and php's sentence for it names the class.
+ * ---------------------------------------------------------------------------
+ */
+/*
+ * php's add_common_properties(): after the presented shape, the instance's own
+ * php-visible slots -- a SUBCLASS's declared properties, which php serializes
+ * alongside the internal state. A key the presented shape already wrote WINS
+ * (zend_hash_add, not update), and a hidden engine slot is never a candidate:
+ * this is the one walk in the date family that must skip them.
+ */
+static void DtAddCommonProps(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
+{
+	SyHashEntry *pEntry;
+	SyHashResetLoopCursor(&pThis->hAttr);
+	while( (pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
+		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
+		SyString *pName = &pVmAttr->pAttr->sName;
+		ph7_value *pVal;
+		ph7_value sKey;
+		if( pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT
+			|PH7_CLASS_ATTR_HIDDEN|PH7_CLASS_ATTR_HOOK_VIRTUAL) ){
+			continue;
+		}
+		if( ph7_array_fetch(pOut,pName->zString,(int)pName->nByte) != 0 ){
+			continue;
+		}
+		pVal = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
+		if( pVal == 0 ){
+			continue;
+		}
+		PH7_MemObjInitFromString(&(*pVm),&sKey,0);
+		PH7_MemObjStringAppend(&sKey,pName->zString,pName->nByte);
+		ph7_array_add_elem(pOut,&sKey,pVal);
+		PH7_MemObjRelease(&sKey);
+	}
+}
+/* Build a payload array: the class's presented shape, then its own visible slots. */
+static int DtSerializePayload(ph7_context *pCtx,ph7_class_instance *pThis,int bZoneOnly,
+	ph7_value *pOut)
+{
+	PH7_MemObjInit(pCtx->pVm,pOut);
+	if( PH7_MemObjToHashmap(pOut) != SXRET_OK ){
+		PH7_MemObjRelease(pOut);
+		return -1;
+	}
+	if( bZoneOnly ){
+		DtPresentTimeZone(pCtx->pVm,pThis,pOut,0);
+	}else{
+		DtPresentDateTime(pCtx->pVm,pThis,pOut,0);
+	}
+	DtAddCommonProps(pCtx->pVm,pThis,pOut);
+	return 0;
+}
+/* php's `Error: Invalid serialization data for <Class> object`, the one refusal all
+ * four methods share. Named for the DECLARING class, not the receiver's. */
+static int DtSerialError(ph7_context *pCtx,const char *zClass)
+{
+	return PH7_VmThrowException(pCtx,"Error",
+		"Invalid serialization data for %s object",zClass);
+}
+/* The `array $data` parameter's own screen: the shared ZPP does not judge a scalar
+ * against a bare `array` (rule 18's §2 gap), so each caller words php's TypeError. */
+static int DtCheckDataArg(ph7_context *pCtx,int nArg,ph7_value **apArg,const char *zClass)
+{
+	char zBuf[64];
+	if( nArg > 0 && (apArg[0]->iFlags & MEMOBJ_HASHMAP) != 0 ){
+		return 0;
+	}
+	PH7_VmThrowException(pCtx,"TypeError",
+		"%s::__unserialize(): Argument #1 ($data) must be of type array, %s given",
+		zClass,nArg > 0 ? VmValueGivenName(apArg[0],zBuf,sizeof(zBuf)) : "none");
+	return -1;
+}
+/*
+ * php's php_date_timezone_initialize_from_hash(): `timezone_type` must be an int in
+ * 1..3 and `timezone` a string, and then the NAME alone rebuilds the zone -- the tag
+ * is validated but never trusted, which is why a payload tagged 1 whose name is
+ * "UTC" restores a UTC zone rather than an offset one. Answers 0 on success.
+ */
+static int DtZoneRestore(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pData)
+{
+	ph7_value *pType,*pName;
+	const char *zTz,*zName;
+	int nTz,nName;
+	sxi32 iOff = 0;
+	sxi64 iType;
+	char zBuf[16];
+	pType = ph7_array_fetch(pData,"timezone_type",(int)sizeof("timezone_type")-1);
+	if( pType == 0 || (pType->iFlags & MEMOBJ_INT) == 0 ){
+		return -1;
+	}
+	iType = pType->x.iVal;
+	if( iType < 1 || iType > 3 ){
+		return -1;
+	}
+	pName = ph7_array_fetch(pData,"timezone",(int)sizeof("timezone")-1);
+	if( pName == 0 || (pName->iFlags & MEMOBJ_STRING) == 0 ){
+		return -1;
+	}
+	zTz = (const char *)SyBlobData(&pName->sBlob);
+	nTz = (int)SyBlobLength(&pName->sBlob);
+	if( DtZoneParse(zTz,nTz,&iOff,&zName,&nName,zBuf,sizeof(zBuf)) != 0 ){
+		return -1;
+	}
+	PH7_NativeSetAttrInt(&(*pVm),pThis,DTZ_OFF,iOff);
+	PH7_NativeSetAttrStr(&(*pVm),pThis,DTZ_NAME,zName,nName);
+	return 0;
+}
+/*
+ * php's php_date_initialize_from_hash(): `date`, `timezone_type` and `timezone` must
+ * all be present and well-typed, and the tag must be one php writes.
+ *
+ * php restores an OFFSET or ABBREVIATION payload by CONCATENATING the two and running
+ * its ordinary parser over "<date> <timezone>", and an IDENTIFIER one by resolving the
+ * name first. Resolving the name for all three is the same answer here and does not
+ * lean on the parser: `date` is always php's own `x-m-d H:i:s.u`, which carries no
+ * zone of its own, so nothing is left for the concatenated text to decide. It is also
+ * the only spelling that works today -- PHL's parser accepts an offset only when it is
+ * ATTACHED to the time ("…07+02:30", never "…07 +02:30") and accepts no trailing zone
+ * NAME at all, so php's own round-trip string does not parse here (a §10 gap of its
+ * own, recorded rather than worked around).
+ *
+ * Reading the NAME rather than the tag is also what php ends up doing: a payload
+ * tagged 1 whose timezone is "UTC" restores a UTC zone in both engines.
+ * Answers 0 on success.
+ */
+static int DtDateRestore(ph7_context *pCtx,ph7_class_instance *pThis,ph7_value *pData)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value *pDate,*pType,*pName;
+	const char *zDate,*zTz,*zZone,*zErr;
+	int nDate,nTz,nZone,iPos;
+	sxi32 iOff = 0;
+	sxi64 iType;
+	dt_state sState;
+	char zNameBuf[16],zZoneBuf[16],cAt;
+	pDate = ph7_array_fetch(pData,"date",(int)sizeof("date")-1);
+	if( pDate == 0 || (pDate->iFlags & MEMOBJ_STRING) == 0 ){
+		return -1;
+	}
+	pType = ph7_array_fetch(pData,"timezone_type",(int)sizeof("timezone_type")-1);
+	if( pType == 0 || (pType->iFlags & MEMOBJ_INT) == 0 ){
+		return -1;
+	}
+	pName = ph7_array_fetch(pData,"timezone",(int)sizeof("timezone")-1);
+	if( pName == 0 || (pName->iFlags & MEMOBJ_STRING) == 0 ){
+		return -1;
+	}
+	zDate = (const char *)SyBlobData(&pDate->sBlob);
+	nDate = (int)SyBlobLength(&pDate->sBlob);
+	zTz   = (const char *)SyBlobData(&pName->sBlob);
+	nTz   = (int)SyBlobLength(&pName->sBlob);
+	iType = pType->x.iVal;
+	if( iType < 1 || iType > 3 ){
+		return -1;
+	}
+	if( DtZoneParse(zTz,nTz,&iOff,&zZone,&nZone,zZoneBuf,sizeof(zZoneBuf)) != 0 ){
+		return -1;
+	}
+	if( DtInitState(pCtx,zDate,nDate,iOff,zZone,nZone,&sState,zNameBuf,sizeof(zNameBuf),
+		&zErr,&iPos,&cAt) != 0 ){
+		return -1;
+	}
+	DtStore(pVm,pThis,&sState);
+	return 0;
+}
+/*
+ * php's restore_custom_datetime_properties(): every payload key that is not part of
+ * the internal shape becomes a property of the object. A REFERENCE is skipped, which
+ * PHL cannot receive here (the pairs arrive already dereferenced).
+ */
+typedef struct dt_restore_ctx dt_restore_ctx;
+struct dt_restore_ctx
+{
+	ph7_class_instance *pThis;
+	int bZoneOnly;
+};
+static int DtRestoreWalk(ph7_value *pKey,ph7_value *pVal,void *pUserData)
+{
+	dt_restore_ctx *pRes = (dt_restore_ctx *)pUserData;
+	const char *zKey;
+	int nKey;
+	if( !ph7_value_is_string(pKey) ){
+		return PH7_OK;
+	}
+	zKey = ph7_value_to_string(pKey,&nKey);
+	if( (nKey == 13 && SyMemcmp(zKey,"timezone_type",13) == 0)
+	 || (nKey == 8  && SyMemcmp(zKey,"timezone",8) == 0)
+	 || (!pRes->bZoneOnly && nKey == 4 && SyMemcmp(zKey,"date",4) == 0) ){
+		return PH7_OK;
+	}
+	/* A name the class does not DECLARE is dropped, which is what the engine's own
+	 * unserialize does with one: PHL has no dynamic properties, where php creates
+	 * (and deprecates) them. */
+	PH7_NativeSetProp(pRes->pThis->pVm,pRes->pThis,zKey,(sxu32)nKey,pVal);
+	return PH7_OK;
+}
+static void DtRestoreCustomProps(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pData,
+	int bZoneOnly)
+{
+	dt_restore_ctx sRes;
+	SXUNUSED(pVm);
+	if( (pData->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return;
+	}
+	sRes.pThis = pThis;
+	sRes.bZoneOnly = bZoneOnly;
+	ph7_array_walk(pData,DtRestoreWalk,&sRes);
+}
+/* DateTimeZone::__serialize() / DateTime|DateTimeImmutable::__serialize() */
+static int DtSerializeMagic(ph7_context *pCtx,int bZoneOnly)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);
+	ph7_value sOut;
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	if( DtSerializePayload(pCtx,pThis,bZoneOnly,&sOut) != 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	ph7_result_value(pCtx,&sOut);
+	PH7_MemObjRelease(&sOut);
+	return PH7_OK;
+}
+static int vm_builtin_DateTimeZone_serialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return DtSerializeMagic(pCtx,1);
+}
+static int vm_builtin_DateTime_serialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return DtSerializeMagic(pCtx,0);
+}
+/* __unserialize(array $data): restore the state, then the subclass's own slots. */
+static int DtUnserializeMagic(ph7_context *pCtx,int nArg,ph7_value **apArg,int bZoneOnly,
+	const char *zClass)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);
+	int rc;
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	if( DtCheckDataArg(pCtx,nArg,apArg,zClass) != 0 ){
+		return PH7_EXCEPTION;
+	}
+	rc = bZoneOnly ? DtZoneRestore(pCtx->pVm,pThis,apArg[0])
+	               : DtDateRestore(pCtx,pThis,apArg[0]);
+	if( rc != 0 ){
+		return DtSerialError(pCtx,zClass);
+	}
+	DtRestoreCustomProps(pCtx->pVm,pThis,apArg[0],bZoneOnly);
+	return PH7_OK;
+}
+static int vm_builtin_DateTimeZone_unserialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtUnserializeMagic(pCtx,nArg,apArg,1,"DateTimeZone");
+}
+static int vm_builtin_DateTime_unserialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtUnserializeMagic(pCtx,nArg,apArg,0,"DateTime");
+}
+static int vm_builtin_DateTimeImmutable_unserialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtUnserializeMagic(pCtx,nArg,apArg,0,"DateTimeImmutable");
+}
+/*
+ * __wakeup(): the LEGACY payload, whose pairs the engine wrote into the object's own
+ * properties before calling this. php reads Z_OBJPROP and restores from it, so an
+ * object that has no such properties -- a plain `new DateTime` -- is exactly the
+ * failure case, and php raises the same Error there.
+ */
+static int DtWakeupMagic(ph7_context *pCtx,int bZoneOnly,const char *zClass)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);
+	ph7_value sProps;
+	int rc;
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pCtx->pVm,&sProps);
+	if( PH7_MemObjToHashmap(&sProps) != SXRET_OK ){
+		PH7_MemObjRelease(&sProps);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	DtAddCommonProps(pCtx->pVm,pThis,&sProps);
+	rc = bZoneOnly ? DtZoneRestore(pCtx->pVm,pThis,&sProps)
+	               : DtDateRestore(pCtx,pThis,&sProps);
+	PH7_MemObjRelease(&sProps);
+	if( rc != 0 ){
+		return DtSerialError(pCtx,zClass);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_DateTimeZone_wakeup(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return DtWakeupMagic(pCtx,1,"DateTimeZone");
+}
+static int vm_builtin_DateTime_wakeup(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return DtWakeupMagic(pCtx,0,"DateTime");
+}
+static int vm_builtin_DateTimeImmutable_wakeup(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return DtWakeupMagic(pCtx,0,"DateTimeImmutable");
+}
+/*
+ * __set_state(array $array): what var_export's `\DateTime::__set_state(array(…))`
+ * text evaluates to. php instantiates the class the method is DECLARED on and not
+ * the called one -- `MyDateTime::__set_state(…)` answers a plain DateTime there --
+ * so this deliberately does not go through DtFactoryClass().
+ */
+static int DtSetStateMagic(ph7_context *pCtx,int nArg,ph7_value **apArg,int bZoneOnly,
+	const char *zClass)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pClass = DtClass(pVm,zClass);
+	ph7_class_instance *pObj;
+	int rc;
+	if( pClass == 0 ){
+		return PH7_OK;
+	}
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		char zBuf[64];
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"%s::__set_state(): Argument #1 ($array) must be of type array, %s given",
+			zClass,nArg > 0 ? VmValueGivenName(apArg[0],zBuf,sizeof(zBuf)) : "none");
+	}
+	pObj = PH7_NewClassInstance(pVm,pClass);
+	if( pObj == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	rc = bZoneOnly ? DtZoneRestore(pVm,pObj,apArg[0])
+	               : DtDateRestore(pCtx,pObj,apArg[0]);
+	if( rc != 0 ){
+		PH7_ClassInstanceUnref(pObj);
+		return DtSerialError(pCtx,zClass);
+	}
+	DtRestoreCustomProps(pVm,pObj,apArg[0],bZoneOnly);
+	PH7_NativeResultObject(pCtx,pObj);
+	return PH7_OK;
+}
+static int vm_builtin_DateTimeZone_setState(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtSetStateMagic(pCtx,nArg,apArg,1,"DateTimeZone");
+}
+static int vm_builtin_DateTime_setState(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtSetStateMagic(pCtx,nArg,apArg,0,"DateTime");
+}
+static int vm_builtin_DateTimeImmutable_setState(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtSetStateMagic(pCtx,nArg,apArg,0,"DateTimeImmutable");
+}
+/* The four rows both date classes take. __serialize/__unserialize are php's only
+ * NON-tentative internal returns in this family; __wakeup and __set_state carry the
+ * `@`, and __set_state's return names the CONCRETE class php's stub writes. */
+#define DT_NATIVE_SERIAL_METHODS(CLS) \
+	{ "__serialize",   PH7_MOD_PUBLIC, "", "array", vm_builtin_DateTime_serialize }, \
+	{ "__unserialize", PH7_MOD_PUBLIC, "array $data", "void", \
+	  vm_builtin_##CLS##_unserialize }, \
+	{ "__wakeup",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_##CLS##_wakeup }, \
+	{ "__set_state",   PH7_MOD_PUBLIC|PH7_MOD_STATIC, "array $array", "@" #CLS, \
+	  vm_builtin_##CLS##_setState }
 /* php's DateTimeInterface constants, the whole of that interface's surface here
  * (its abstract METHODS are deliberately not declared: PH7_ClassImplement installs
  * a stub for every interface method an implementor lacks, so declaring them would
@@ -3375,6 +3764,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "getName",     PH7_MOD_PUBLIC, "", "@string", vm_builtin_DateTimeZone_getName },
 		{ "getOffset",   PH7_MOD_PUBLIC, "DateTimeInterface $datetime", "@int",
 		  vm_builtin_DateTimeZone_getOffset },
+		{ "__serialize",   PH7_MOD_PUBLIC, "", "array", vm_builtin_DateTimeZone_serialize },
+		{ "__unserialize", PH7_MOD_PUBLIC, "array $data", "void",
+		  vm_builtin_DateTimeZone_unserialize },
+		{ "__wakeup",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_DateTimeZone_wakeup },
+		{ "__set_state",   PH7_MOD_PUBLIC|PH7_MOD_STATIC, "array $array", "@DateTimeZone",
+		  vm_builtin_DateTimeZone_setState },
 	};
 	static const PH7_NativePropDef aDtProp[] = { DT_NATIVE_STATE_PROPS };
 	static const PH7_NativeMethodDef aDtMethod[] = {
@@ -3386,6 +3781,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		  vm_builtin_DateTime_copyOf },
 		{ "createFromInterface", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "DateTimeInterface $object", "DateTime",
 		  vm_builtin_DateTime_copyOf },
+		DT_NATIVE_SERIAL_METHODS(DateTime),
 	};
 	static const PH7_NativeMethodDef aImmMethod[] = {
 		DT_NATIVE_SHARED_METHODS("DateTimeImmutable"),
@@ -3396,6 +3792,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		  vm_builtin_DateTimeImmutable_copyOf },
 		{ "createFromInterface", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "DateTimeInterface $object", "DateTimeImmutable",
 		  vm_builtin_DateTimeImmutable_copyOf },
+		DT_NATIVE_SERIAL_METHODS(DateTimeImmutable),
 	};
 	static const PH7_NativePropDef aIvProp[] = {
 		{ "y",           PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },
