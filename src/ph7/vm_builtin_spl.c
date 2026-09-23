@@ -1175,7 +1175,12 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 		{ "__unset",          PH7_MOD_PUBLIC, "$name", 0, vm_builtin_ArrayObject_unset },
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
-		{ "SeekableIterator", 0, "Iterator", PH7_CLASS_INTERFACE,
+		/* `interface X extends Iterator` is a PARENT, not an implemented interface:
+		 * the compiler puts it in pBase and Reflection walks pBase to answer which
+		 * class DECLARED an inherited method. Naming it in zImplements instead made
+		 * current()/key()/next()/rewind()/valid() report this interface as their
+		 * declaring class where php reports Iterator. */
+		{ "SeekableIterator", "Iterator", 0, PH7_CLASS_INTERFACE,
 		  aSeekMethod, SX_ARRAYSIZE(aSeekMethod), 0, 0, 0, 0, 0, 0 },
 		{ "ArrayIterator", 0, "SeekableIterator,ArrayAccess,Countable", 0,
 		  aItMethod, SX_ARRAYSIZE(aItMethod), aConst, SX_ARRAYSIZE(aConst),
@@ -2559,6 +2564,170 @@ static int vm_builtin_AppendIterator_getIteratorIndex(ph7_context *pCtx,int nArg
 	apCall[0] = pSlot;
 	return ph7_hashmap_simple_key(pCtx,1,apCall);
 }
+/*
+ * ---------------------------------------------------------------------------
+ * The RECURSIVE pair: RecursiveArrayIterator (an ArrayIterator that descends into
+ * its own entries) and RecursiveFilterIterator (a FilterIterator that forwards the
+ * two recursion methods to its inner iterator).
+ *
+ * RecursiveArrayIterator is where php's CHILD_ARRAYS_ONLY flag lives, and the
+ * chunk's two-line `is_array($c) || is_object($c)` / `new $c($this->current())`
+ * ignored it in both directions: an OBJECT entry claimed children under a flag that
+ * exists to say it has none, and the child iterator was built WITHOUT the parent's
+ * flags, so the restriction lasted exactly one level. php also answers null rather
+ * than descending when there is no current element, and hands back an entry that is
+ * ALREADY an instance of the called class instead of wrapping it again.
+ */
+#define RAI_CHILD_ARRAYS_ONLY 4
+/* The entry the store cursor is on, or 0 past the end (php's
+ * zend_hash_get_current_data_ex, which every one of these four bodies starts with). */
+static ph7_value * RaiCurrentEntry(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_hashmap *pMap = SplStore(pVm,pThis);
+	return (pMap && pMap->pCur) ? HashmapExtractNodeValue(pMap->pCur) : 0;
+}
+static int vm_builtin_RecursiveArrayIterator_hasChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pEntry = RaiCurrentEntry(pCtx->pVm,pThis);
+	int bHas = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pEntry ){
+		if( pEntry->iFlags & MEMOBJ_HASHMAP ){
+			bHas = 1;
+		}else if( pEntry->iFlags & MEMOBJ_OBJ ){
+			/* php: an object is a child UNLESS the iterator was told arrays only. */
+			bHas = (PH7_NativeAttrInt(pThis,SPL_F) & RAI_CHILD_ARRAYS_ONLY) == 0;
+		}
+	}
+	ph7_result_bool(pCtx,bHas);
+	return PH7_OK;
+}
+static int vm_builtin_RecursiveArrayIterator_getChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pEntry = RaiCurrentEntry(pVm,pThis);
+	ph7_class_instance *pChild;
+	ph7_class_method *pCons;
+	ph7_value sEntry,sFlags,*apCtor[2];
+	sxi64 iFlags;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || pEntry == 0 ){
+		ph7_result_null(pCtx);   /* php descends into nothing when nothing is current */
+		return PH7_OK;
+	}
+	iFlags = PH7_NativeAttrInt(pThis,SPL_F);
+	if( pEntry->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pObj = (ph7_class_instance *)pEntry->x.pOther;
+		if( iFlags & RAI_CHILD_ARRAYS_ONLY ){
+			ph7_result_null(pCtx);
+			return PH7_OK;
+		}
+		if( pObj && PH7_VmInstanceOf(pObj->pClass,pThis->pClass) ){
+			/* Already one of us: php hands the entry back rather than wrapping it. */
+			SplResultBorrowed(pCtx,pObj);
+			return PH7_OK;
+		}
+	}
+	/* php's spl_instantiate_child_arg: the CALLED class, constructed with the entry
+	 * AND the parent's flags -- which is what carries CHILD_ARRAYS_ONLY down. */
+	pChild = PH7_NewClassInstance(pVm,pThis->pClass);
+	if( pChild == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	pChild->iRef++;
+	PH7_MemObjInit(pVm,&sEntry);
+	PH7_MemObjStore(pEntry,&sEntry);
+	PH7_MemObjInitFromInt(pVm,&sFlags,iFlags);
+	apCtor[0] = &sEntry;
+	apCtor[1] = &sFlags;
+	pCons = PH7_ClassExtractMethod(pThis->pClass,"__construct",sizeof("__construct")-1);
+	rc = pCons ? PH7_VmCallClassMethod(pVm,pChild,pCons,0,2,apCtor) : SXRET_OK;
+	PH7_MemObjRelease(&sEntry);
+	PH7_MemObjRelease(&sFlags);
+	if( rc != SXRET_OK ){
+		PH7_ClassInstanceUnref(pChild);
+		return rc;
+	}
+	PH7_NativeResultObject(pCtx,pChild);
+	PH7_ClassInstanceUnref(pChild);
+	return PH7_OK;
+}
+/* RecursiveFilterIterator forwards both methods to the object getInnerIterator()
+ * answers (php calls on inner.zobject), and wraps the children in ITS OWN class. */
+static int vm_builtin_RecursiveFilterIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DualConstruct(pCtx,"RecursiveFilterIterator",nArg,apArg);
+}
+static sxi32 RfiCallInner(ph7_context *pCtx,const char *zName,sxu32 nName,ph7_value *pOut)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pIn = pThis ? PH7_NativeAttrObj(pThis,IT_IN) : 0;
+	ph7_class_method *pMethod = pIn ? PH7_ClassExtractMethod(pIn->pClass,zName,nName) : 0;
+	if( pMethod == 0 ){
+		return SXRET_OK;
+	}
+	return PH7_VmCallClassMethod(pCtx->pVm,pIn,pMethod,pOut,0,0);
+}
+static int vm_builtin_RecursiveFilterIterator_hasChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value sRes;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !DualReady(pThis) ){
+		return DualNotReady(pCtx);
+	}
+	PH7_MemObjInit(pCtx->pVm,&sRes);
+	rc = RfiCallInner(pCtx,"hasChildren",sizeof("hasChildren")-1,&sRes);
+	if( rc == SXRET_OK ){
+		ph7_result_value(pCtx,&sRes);
+	}
+	PH7_MemObjRelease(&sRes);
+	return rc == SXRET_OK ? PH7_OK : rc;
+}
+static int vm_builtin_RecursiveFilterIterator_getChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pChild;
+	ph7_class_method *pCons;
+	ph7_value sInner,*apCtor[1];
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !DualReady(pThis) ){
+		return DualNotReady(pCtx);
+	}
+	PH7_MemObjInit(pVm,&sInner);
+	rc = RfiCallInner(pCtx,"getChildren",sizeof("getChildren")-1,&sInner);
+	if( rc != SXRET_OK ){
+		PH7_MemObjRelease(&sInner);
+		return rc;
+	}
+	pChild = PH7_NewClassInstance(pVm,pThis->pClass);
+	if( pChild == 0 ){
+		PH7_MemObjRelease(&sInner);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	pChild->iRef++;
+	apCtor[0] = &sInner;
+	pCons = PH7_ClassExtractMethod(pThis->pClass,"__construct",sizeof("__construct")-1);
+	rc = pCons ? PH7_VmCallClassMethod(pVm,pChild,pCons,0,1,apCtor) : SXRET_OK;
+	PH7_MemObjRelease(&sInner);
+	if( rc != SXRET_OK ){
+		PH7_ClassInstanceUnref(pChild);
+		return rc;
+	}
+	PH7_NativeResultObject(pCtx,pChild);
+	PH7_ClassInstanceUnref(pChild);
+	return PH7_OK;
+}
 static int vm_builtin_AppendIterator_getArrayIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
@@ -2691,6 +2860,27 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 		{ "getPregFlags", PH7_MOD_PUBLIC, "", 0, vm_builtin_RegexIterator_getPregFlags },
 		{ "setPregFlags", PH7_MOD_PUBLIC, "int $pregFlags", 0, vm_builtin_RegexIterator_setPregFlags },
 	};
+	static const PH7_NativeMethodDef aRecursiveMethod[] = {
+		{ "hasChildren", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", 0, 0 },
+		{ "getChildren", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", 0, 0 },
+	};
+	static const PH7_NativeConstDef aRaiConst[] = {
+		{ "CHILD_ARRAYS_ONLY", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, RAI_CHILD_ARRAYS_ONLY, 0, 0.0 },
+	};
+	static const PH7_NativeMethodDef aRaiMethod[] = {
+		{ "hasChildren", PH7_MOD_PUBLIC, "", 0,
+		  vm_builtin_RecursiveArrayIterator_hasChildren },
+		{ "getChildren", PH7_MOD_PUBLIC, "", 0,
+		  vm_builtin_RecursiveArrayIterator_getChildren },
+	};
+	static const PH7_NativeMethodDef aRfiMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "RecursiveIterator $iterator", 0,
+		  vm_builtin_RecursiveFilterIterator_construct },
+		{ "hasChildren", PH7_MOD_PUBLIC, "", 0,
+		  vm_builtin_RecursiveFilterIterator_hasChildren },
+		{ "getChildren", PH7_MOD_PUBLIC, "", 0,
+		  vm_builtin_RecursiveFilterIterator_getChildren },
+	};
 	static const PH7_NativePropDef aAppendProp[] = {
 		{ AP_LIST, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
@@ -2721,7 +2911,7 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 	 * has no state and php clones it happily.
 	 */
 	static const PH7_NativeClassSpec aSpec[] = {
-		{ "OuterIterator", 0, "Iterator", PH7_CLASS_INTERFACE,
+		{ "OuterIterator", "Iterator", 0, PH7_CLASS_INTERFACE,
 		  aOuterMethod, SX_ARRAYSIZE(aOuterMethod), 0, 0, 0, 0, 0, 0 },
 		{ "IteratorIterator", 0, "OuterIterator", PH7_CLASS_NOCLONE,
 		  aIterIterMethod, SX_ARRAYSIZE(aIterIterMethod), 0, 0,
@@ -2745,38 +2935,22 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 		{ "AppendIterator", "IteratorIterator", 0, PH7_CLASS_NOCLONE,
 		  aAppendMethod, SX_ARRAYSIZE(aAppendMethod), 0, 0,
 		  aAppendProp, SX_ARRAYSIZE(aAppendProp), 0, 0 },
+		{ "RecursiveIterator", "Iterator", 0, PH7_CLASS_INTERFACE,
+		  aRecursiveMethod, SX_ARRAYSIZE(aRecursiveMethod), 0, 0, 0, 0, 0, 0 },
+		/* RecursiveArrayIterator is CLONEABLE (php clones an ArrayIterator happily) and
+		 * inherits every one of its parent's C bodies, storage slots included. */
+		{ "RecursiveArrayIterator", "ArrayIterator", "RecursiveIterator", 0,
+		  aRaiMethod, SX_ARRAYSIZE(aRaiMethod),
+		  aRaiConst, SX_ARRAYSIZE(aRaiConst), 0, 0, 0, 0 },
+		{ "RecursiveFilterIterator", "FilterIterator", "RecursiveIterator",
+		  PH7_CLASS_ABSTRACT|PH7_CLASS_NOCLONE,
+		  aRfiMethod, SX_ARRAYSIZE(aRfiMethod), 0, 0, 0, 0, 0, 0 },
 		{ "EmptyIterator", 0, "Iterator", 0,
 		  aEmptyMethod, SX_ARRAYSIZE(aEmptyMethod), 0, 0, 0, 0, 0, 0 },
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }
 static const char zSplLib[] =
-"interface RecursiveIterator extends Iterator {"
-" public function hasChildren();"
-" public function getChildren();"
-"}"
-"class RecursiveArrayIterator extends ArrayIterator implements RecursiveIterator {"
-" const CHILD_ARRAYS_ONLY = 4;"
-" public function hasChildren(){"
-"  $c = $this->current();"
-"  return is_array($c) || is_object($c);"
-" }"
-" public function getChildren(){"
-"  $c = get_class($this);"
-"  return new $c($this->current());"
-" }"
-"}"
-"abstract class RecursiveFilterIterator extends FilterIterator implements RecursiveIterator {"
-" public function __construct(RecursiveIterator $iterator){"
-"  parent::__construct($iterator);"
-" }"
-" public function hasChildren(){"
-"  return $this->getInnerIterator()->hasChildren();"
-" }"
-" public function getChildren(){"
-"  return new static($this->getInnerIterator()->getChildren());"
-" }"
-"}"
 "class RecursiveIteratorIterator implements OuterIterator {"
 " const LEAVES_ONLY = 0;"
 " const SELF_FIRST = 1;"
