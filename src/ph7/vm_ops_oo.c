@@ -832,13 +832,66 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 				/* Attribute access. iP2: 0 = read, 2 = unset, 3 = isset, 4 = empty. */
 				VmClassAttr *pObjAttr = 0;
 				SyHashEntry *pEntry = 0;
-				/* Extract the target attribute */
+				if( sName.nByte > 0 && sName.zString[0] == 0
+				 && !PH7_VmIsIncompleteClass(&(*pVm),pClass) ){
+					/* php refuses a property name beginning with a NUL outright:
+					 * `Cannot access property starting with "\0"`. Those bytes are
+					 * the ENGINE's private mangling — "\0Cls\0p" is C1::$p and
+					 * "\0*\0p" is a protected slot — so a script that could write one
+					 * would forge a private member of any class it names, and every
+					 * display surface would then render the forgery as the real thing.
+					 * Two rules ride with it, both probe-verified: a MAGIC accessor
+					 * wins (php dispatches __get/__set/__isset/__unset with the raw
+					 * name and says nothing), and a LOOKUP context is silent — isset()
+					 * is false, empty() true, `??` takes the default — which is what
+					 * the existing miss handling below already answers. The refusal
+					 * does not depend on whether such a property exists: php raises it
+					 * on the NAME, before any lookup, and the one place a NUL-keyed
+					 * property legitimately lives is the __PHP_Incomplete_Class
+					 * carrier, whose own gate above has already answered for it.
+					 * A METHOD name is not covered — php lets `$o->{"\0m"}()` reach
+					 * the ordinary undefined-method Error — so this sits in the
+					 * attribute branch only. */
+					const char *zNulMagic;
+					if( pInstr->iP2 == PH7_MEMBER_UNSET ){
+						zNulMagic = "__unset";
+					}else if( pInstr->iP2 == PH7_MEMBER_LIST_TARGET
+					       || VmMemberNextIsWrite(pInstr + 1) ){
+						zNulMagic = "__set";
+					}else{
+						zNulMagic = "__get";
+					}
+					if( !VmMemberCtxIsLookup(pInstr->iP2)
+					 && PH7_ClassExtractMethod(pClass,zNulMagic,(sxu32)SyStrlen(zNulMagic)) == 0 ){
+						SyBlob sNulErr;
+						sxi32 rcNul;
+						SyBlobInit(&sNulErr,&pVm->sAllocator);
+						SyBlobAppend(&sNulErr,"Cannot access property starting with \"\\0\"",
+							sizeof("Cannot access property starting with \"\\0\"")-1);
+						VmPopOperand(&pTos,1);   /* pop the attribute name */
+						PH7_MemObjRelease(pTos); /* the object slot becomes the NULL answer */
+						pTos->nIdx = SXU32_HIGH;
+						rcNul = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sNulErr),
+							SyBlobLength(&sNulErr));
+						SyBlobRelease(&sNulErr);
+						if( rcNul == SXERR_ABORT ){ VM_EXIT_ABORT; }
+						rc = rcNul;
+						PH7_THROW_ROUTE_MIDEXPR(rc)
+					}
+				}
+				/* Extract the target attribute. The EMPTY name is a real property
+				 * name in php — `$o->{''} = 1` creates one and `$o->{''}` reads it
+				 * back — and it is the one name SyHashGet cannot answer for, so it
+				 * takes the list-walking lookup; every other name keeps the direct
+				 * hash probe this path has always made. */
 				if( sName.nByte > 0 ){
 					pEntry = SyHashGet(&pThis->hAttr,(const void *)sName.zString,sName.nByte);
-					if( pEntry ){
-						/* Point to the attribute value */
-						pObjAttr = (VmClassAttr *)pEntry->pUserData;
-					}
+				}else{
+					pEntry = PH7_ClassInstanceAttrEntry(pThis,sName.zString,0);
+				}
+				if( pEntry ){
+					/* Point to the attribute value */
+					pObjAttr = (VmClassAttr *)pEntry->pUserData;
 				}
 				if( pObjAttr
 				 && (pObjAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT))
@@ -927,7 +980,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					pTos->nIdx = SXU32_HIGH;  /* NULL constant */
 					VM_EXIT_BREAK;
 				}
-				if( pObjAttr == 0 && sName.nByte > 0 ){
+				if( pObjAttr == 0 ){
 					/* Member not present on the instance and the next instruction writes/modifies it
 					 * (store, array-append/keyed-write, `??=`, ++/--, or a compound-assign — see
 					 * VmMemberNextIsWrite; the compiler always emits a terminating PH7_OP_DONE so
