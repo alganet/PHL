@@ -82,14 +82,17 @@ static int VmJsonPathHolds(json_private_data *pData,void *pPtr)
  * Emit a float in php's json shape: PH7_AppendShortestReal (the shared
  * serialize/var_export shortest-round-trip formatter, php's
  * serialize_precision=-1) with the exponent marker lowercased (json prints
- * 1.0e+17 where serialize prints 1.0E+17).
+ * 1.0e+17 where serialize prints 1.0E+17). Under JSON_PRESERVE_ZERO_FRACTION a
+ * value whose shortest form carries no '.' or exponent gets ".0" appended, so
+ * 1.0 stays a FLOAT on the round trip ("1.0", "-0.0") the way php keeps it.
  */
-static sxi32 VmJsonEmitReal(ph7_context *pCtx,double rVal)
+static sxi32 VmJsonEmitReal(ph7_context *pCtx,double rVal,int iFlags)
 {
 	SyBlob sNum;
 	char *z;
 	sxu32 i,n;
 	sxi32 rc;
+	int bFrac = 0;
 	SyBlobInit(&sNum,&pCtx->pVm->sAllocator);
 	PH7_AppendShortestReal(&sNum,rVal);
 	z = (char *)SyBlobData(&sNum);
@@ -102,6 +105,17 @@ static sxi32 VmJsonEmitReal(ph7_context *pCtx,double rVal)
 		if( z[i] == 'E' ){
 			z[i] = 'e';
 		}
+		if( z[i] == 'e' || z[i] == '.' ){
+			bFrac = 1;
+		}
+	}
+	if( !bFrac && (iFlags & JSON_PRESERVE_ZERO_FRACTION) != 0 ){
+		if( SyBlobAppend(&sNum,".0",2) != SXRET_OK ){
+			SyBlobRelease(&sNum);
+			return SXERR_MEM;
+		}
+		z = (char *)SyBlobData(&sNum);
+		n = SyBlobLength(&sNum);
 	}
 	rc = ph7_result_string(pCtx,(const char *)z,(int)n);
 	SyBlobRelease(&sNum);
@@ -200,14 +214,42 @@ static sxi32 VmJsonEmitUnicodeEscape(ph7_context *pCtx,sxu32 cp)
  * defined but never read). Even with it set php still escapes U+2028/U+2029,
  * the two line terminators JavaScript's eval() chokes on, unless
  * JSON_UNESCAPED_LINE_TERMINATORS is set too.
+ *
+ * bKey selects JSON_PARTIAL_OUTPUT_ON_ERROR's substitute for an ill-formed
+ * string: php replaces a VALUE with null and a KEY (array key or property
+ * name) with "" — the verdict must land before anything is emitted, because
+ * the replacement covers the WHOLE string, not the tail after the bad byte.
  */
-static sxi32 VmJsonEncodeString(json_private_data *pData,const char *zIn,int nByte)
+static int VmJsonStrHasBadUtf8(const char *zIn,int nByte)
+{
+	const unsigned char *z = (const unsigned char *)zIn,*zEnd = (const unsigned char *)&zIn[nByte];
+	sxu32 nLen;
+	while( z < zEnd ){
+		if( z[0] < 0x80 ){
+			z++;
+			continue;
+		}
+		if( PH7_Utf8ReadStrict(z,(sxu32)(zEnd - z),&nLen) < 0 ){
+			return 1;
+		}
+		z += nLen;
+	}
+	return 0;
+}
+static sxi32 VmJsonEncodeString(json_private_data *pData,const char *zIn,int nByte,int bKey)
 {
 	ph7_context *pCtx = pData->pCtx;
 	int iFlags = pData->iFlags;
 	const char *zEnd = &zIn[nByte];
 	sxi32 rc;
 	char c;
+	if( (iFlags & JSON_PARTIAL_OUTPUT_ON_ERROR) != 0
+	 && (iFlags & (JSON_INVALID_UTF8_IGNORE|JSON_INVALID_UTF8_SUBSTITUTE)) == 0
+	 && VmJsonStrHasBadUtf8(zIn,nByte) ){
+		pCtx->pVm->json_rc = JSON_ERROR_UTF8;
+		return bKey ? ph7_result_string(pCtx,"\"\"",2)
+		            : ph7_result_string(pCtx,"null",(int)sizeof("null")-1);
+	}
 	rc = ph7_result_string(pCtx,"\"",(int)sizeof(char));
 	if( rc != SXRET_OK ){
 		return rc;
@@ -382,7 +424,14 @@ static sxi32 VmJsonEncode(
 		if( ph7_value_is_resource(pIn) ){
 			/* php: a resource has no JSON representation — the whole encode
 			 * fails with JSON_ERROR_UNSUPPORTED_TYPE (PHL used to emit "null"
-			 * in silence, an answer php never gives). */
+			 * in silence, an answer php never gives). Under
+			 * JSON_PARTIAL_OUTPUT_ON_ERROR the substitute IS null, with the
+			 * error recorded. */
+			if( iFlags & JSON_PARTIAL_OUTPUT_ON_ERROR ){
+				pCtx->pVm->json_rc = JSON_ERROR_UNSUPPORTED_TYPE;
+				JSON_EMIT(pData,ph7_result_string(pCtx,"null",(int)sizeof("null")-1));
+				return PH7_OK;
+			}
 			pData->fail = 1;
 			pData->failRc = JSON_ERROR_UNSUPPORTED_TYPE;
 			return PH7_OK;
@@ -402,6 +451,12 @@ static sxi32 VmJsonEncode(
 				 * json_last_error() == JSON_ERROR_INF_OR_NAN (they have no JSON
 				 * representation), instead of emitting the invalid bare token. */
 				if( PH7_IS_NAN(rVal) || PH7_IS_INF(rVal) ){
+					if( iFlags & JSON_PARTIAL_OUTPUT_ON_ERROR ){
+						/* php's substitute for an Inf/NaN member is 0 */
+						pCtx->pVm->json_rc = JSON_ERROR_INF_OR_NAN;
+						JSON_EMIT(pData,ph7_result_string(pCtx,"0",(int)sizeof(char)));
+						return PH7_OK;
+					}
 					pData->fail = 1;
 					pData->failRc = JSON_ERROR_INF_OR_NAN;
 					return PH7_OK;
@@ -411,7 +466,7 @@ static sxi32 VmJsonEncode(
 				 * echo/cast precision of 14 — with a lowercase exponent
 				 * marker: 1/3 -> 0.3333333333333333, 1e17 -> 1.0e+17,
 				 * 1.0 -> 1, -0.0 -> -0. */
-				JSON_EMIT(pData,VmJsonEmitReal(pCtx,rVal));
+				JSON_EMIT(pData,VmJsonEmitReal(pCtx,rVal,iFlags));
 			}else{
 				const char *zNum;
 				/* Get a string representation of the number */
@@ -422,12 +477,12 @@ static sxi32 VmJsonEncode(
 			if( (iFlags & JSON_NUMERIC_CHECK) &&  ph7_value_is_numeric(pIn) ){
 				/* Encodes numeric strings as numbers (same float shapes). */
 				PH7_MemObjToReal(pIn); /* Force a numeric cast */
-				JSON_EMIT(pData,VmJsonEmitReal(pCtx,ph7_value_to_double(pIn)));
+				JSON_EMIT(pData,VmJsonEmitReal(pCtx,ph7_value_to_double(pIn),iFlags));
 			}else{
 				const char *zIn;
 				/* Encode the string */
 				zIn = ph7_value_to_string(pIn,&nByte);
-				JSON_EMIT(pData,VmJsonEncodeString(pData,zIn,nByte));
+				JSON_EMIT(pData,VmJsonEncodeString(pData,zIn,nByte,0));
 			}
 		}else if( ph7_value_is_array(pIn) ){
 			/* An array encodes as a JSON array iff it is a "list" [consecutive
@@ -441,18 +496,35 @@ static sxi32 VmJsonEncode(
 			int d = isObject ? '}' : ']';
 			/* An array the encoder is already inside of (reached through a
 			 * reference cycle) is php's JSON_ERROR_RECURSION — PHL used to
-			 * descend into it and answer a TRUNCATED nesting in silence. */
+			 * descend into it and answer a TRUNCATED nesting in silence.
+			 * JSON_PARTIAL_OUTPUT_ON_ERROR substitutes null for the cycle. */
 			if( VmJsonPathHolds(pData,(void *)pMap) ){
+				if( iFlags & JSON_PARTIAL_OUTPUT_ON_ERROR ){
+					pCtx->pVm->json_rc = JSON_ERROR_RECURSION;
+					JSON_EMIT(pData,ph7_result_string(pCtx,"null",(int)sizeof("null")-1));
+					return PH7_OK;
+				}
 				pData->fail = 1;
 				pData->failRc = JSON_ERROR_RECURSION;
 				return PH7_OK;
 			}
 			/* php checks $depth where a container OPENS: one already enclosed
-			 * by $depth containers (scalars are exempt) is JSON_ERROR_DEPTH. */
+			 * by $depth containers (scalars are exempt) is JSON_ERROR_DEPTH.
+			 * Under JSON_PARTIAL_OUTPUT_ON_ERROR php records the error and
+			 * keeps ENCODING past the limit — PHL follows until the stack
+			 * ceiling, where a null stands in for what it will not recurse
+			 * into. */
 			if( (ph7_int64)pData->nRecCount >= pData->nMaxDepth ){
-				pData->fail = 1;
-				pData->failRc = JSON_ERROR_DEPTH;
-				return PH7_OK;
+				if( (iFlags & JSON_PARTIAL_OUTPUT_ON_ERROR) == 0 ){
+					pData->fail = 1;
+					pData->failRc = JSON_ERROR_DEPTH;
+					return PH7_OK;
+				}
+				pCtx->pVm->json_rc = JSON_ERROR_DEPTH;
+				if( pData->nRecCount >= PH7_JSON_DEPTH_CEILING ){
+					JSON_EMIT(pData,ph7_result_string(pCtx,"null",(int)sizeof("null")-1));
+					return PH7_OK;
+				}
 			}
 			if( SySetPut(&pData->aPath,(const void *)&pMap) != SXRET_OK ){
 				pData->oom = 1;
@@ -490,6 +562,11 @@ static sxi32 VmJsonEncode(
 			 * (PHL used to re-dispatch until the C stack ran out — a segfault
 			 * on `return $this;`). */
 			if( VmJsonPathHolds(pData,(void *)pThis) ){
+				if( iFlags & JSON_PARTIAL_OUTPUT_ON_ERROR ){
+					pCtx->pVm->json_rc = JSON_ERROR_RECURSION;
+					JSON_EMIT(pData,ph7_result_string(pCtx,"null",(int)sizeof("null")-1));
+					return PH7_OK;
+				}
 				pData->fail = 1;
 				pData->failRc = JSON_ERROR_RECURSION;
 				return PH7_OK;
@@ -510,6 +587,10 @@ static sxi32 VmJsonEncode(
 					pData->nRecCount++;
 					VmJsonEncode(pBacking,pData);
 					pData->nRecCount--;
+				}else if( iFlags & JSON_PARTIAL_OUTPUT_ON_ERROR ){
+					/* php's substitute for a non-backed case is 0 */
+					pCtx->pVm->json_rc = JSON_ERROR_NON_BACKED_ENUM;
+					JSON_EMIT(pData,ph7_result_string(pCtx,"0",(int)sizeof(char)));
 				}else{
 					pData->fail = 1;
 					pData->failRc = JSON_ERROR_NON_BACKED_ENUM;
@@ -561,11 +642,19 @@ static sxi32 VmJsonEncode(
 			/* php checks $depth where a container OPENS — the '{' of the
 			 * property view below; a SCALAR jsonSerialize() result and an enum
 			 * backing value are exempt, so the check sits here and not at the
-			 * arm's entry. */
+			 * arm's entry. The PARTIAL_OUTPUT rule mirrors the array arm's:
+			 * record the error, keep encoding, null at the stack ceiling. */
 			if( bProps && (ph7_int64)pData->nRecCount >= pData->nMaxDepth ){
-				pData->fail = 1;
-				pData->failRc = JSON_ERROR_DEPTH;
-				return PH7_OK;
+				if( (iFlags & JSON_PARTIAL_OUTPUT_ON_ERROR) == 0 ){
+					pData->fail = 1;
+					pData->failRc = JSON_ERROR_DEPTH;
+					return PH7_OK;
+				}
+				pCtx->pVm->json_rc = JSON_ERROR_DEPTH;
+				if( pData->nRecCount >= PH7_JSON_DEPTH_CEILING ){
+					JSON_EMIT(pData,ph7_result_string(pCtx,"null",(int)sizeof("null")-1));
+					return PH7_OK;
+				}
 			}
 			if( bProps && SySetPut(&pData->aPath,(const void *)&pThis) != SXRET_OK ){
 				pData->oom = 1;
@@ -707,7 +796,7 @@ static int VmJsonArrayEncode(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 		 * escaper as a string VALUE (php escapes both identically): emitting it
 		 * raw produced invalid JSON for any key holding '"', '\' or a control
 		 * character. */
-		JSON_EMIT(pJson,VmJsonEncodeString(pJson,zKey,nByte));
+		JSON_EMIT(pJson,VmJsonEncodeString(pJson,zKey,nByte,1));
 		JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,":",(int)sizeof(char)));
 		/* php puts a space after the colon in pretty mode */
 		if( pJson->iFlags & JSON_PRETTY_PRINT ){
@@ -743,7 +832,7 @@ static int VmJsonObjectEncode(const SyString *pAttr,ph7_value *pValue,void *pUse
 	JSON_EMIT(pJson,VmJsonPretty(pJson,pJson->nRecCount + 1));
 	/* Append the quoted attribute name and the colon — escaped like a string
 	 * value, same as the array-key path above. */
-	JSON_EMIT(pJson,VmJsonEncodeString(pJson,SyStringData(pAttr),(int)SyStringLength(pAttr)));
+	JSON_EMIT(pJson,VmJsonEncodeString(pJson,SyStringData(pAttr),(int)SyStringLength(pAttr),1));
 	JSON_EMIT(pJson,ph7_result_string(pJson->pCtx,":",(int)sizeof(char)));
 	/* php puts a space after the colon in pretty mode */
 	if( pJson->iFlags & JSON_PRETTY_PRINT ){

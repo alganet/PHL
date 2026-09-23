@@ -1643,6 +1643,24 @@ static void PH7_JSON_BIGINT_AS_STRING_Const(ph7_value *pVal,void *pUserData)
 	ph7_value_int(pVal,JSON_BIGINT_AS_STRING);
 }
 /*
+ * JSON_PARTIAL_OUTPUT_ON_ERROR.
+ *   Expand the value of JSON_PARTIAL_OUTPUT_ON_ERROR defined in ph7Int.h.
+ */
+static void PH7_JSON_PARTIAL_OUTPUT_ON_ERROR_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,JSON_PARTIAL_OUTPUT_ON_ERROR);
+}
+/*
+ * JSON_PRESERVE_ZERO_FRACTION.
+ *   Expand the value of JSON_PRESERVE_ZERO_FRACTION defined in ph7Int.h.
+ */
+static void PH7_JSON_PRESERVE_ZERO_FRACTION_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,JSON_PRESERVE_ZERO_FRACTION);
+}
+/*
  * JSON_OBJECT_AS_ARRAY.
  *   Expand the value of JSON_OBJECT_AS_ARRAY defined in ph7Int.h.
  */
@@ -2146,6 +2164,8 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"JSON_NUMERIC_CHECK",     PH7_JSON_NUMERIC_CHECK_Const},
 	{"JSON_BIGINT_AS_STRING",  PH7_JSON_BIGINT_AS_STRING_Const},
 	{"JSON_OBJECT_AS_ARRAY",   PH7_JSON_OBJECT_AS_ARRAY_Const},
+	{"JSON_PARTIAL_OUTPUT_ON_ERROR", PH7_JSON_PARTIAL_OUTPUT_ON_ERROR_Const},
+	{"JSON_PRESERVE_ZERO_FRACTION",  PH7_JSON_PRESERVE_ZERO_FRACTION_Const},
 	{"JSON_PRETTY_PRINT",      PH7_JSON_PRETTY_PRINT_Const},
 	{"JSON_UNESCAPED_SLASHES", PH7_JSON_UNESCAPED_SLASHES_Const},
 	{"JSON_UNESCAPED_UNICODE", PH7_JSON_UNESCAPED_UNICODE_Const},

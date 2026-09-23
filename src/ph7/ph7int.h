@@ -2933,6 +2933,10 @@ enum json_err_code{
 #define JSON_PRETTY_PRINT      0x80  /* Use whitespace in returned data to format it.*/
 #define JSON_UNESCAPED_SLASHES 0x40  /* Don't escape '/' */
 #define JSON_UNESCAPED_UNICODE 0x100 /* Emit multibyte UTF-8 raw instead of \uXXXX */
+#define JSON_PARTIAL_OUTPUT_ON_ERROR 0x200 /* Substitute (0 / null / "") for an unencodable
+                                            * piece and record the error instead of failing */
+#define JSON_PRESERVE_ZERO_FRACTION  0x400 /* A float with no fractional digits prints ".0"
+                                            * (1.0 encodes as "1.0", not "1") */
 #define JSON_UNESCAPED_LINE_TERMINATORS 0x800 /* ...U+2028/U+2029 included */
 #define JSON_INVALID_UTF8_IGNORE     0x100000 /* Drop ill-formed UTF-8 instead of failing */
 #define JSON_INVALID_UTF8_SUBSTITUTE 0x200000 /* ...replace it with U+FFFD */
