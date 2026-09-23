@@ -1263,6 +1263,275 @@ static void ReflectFillFuncCommon(ph7_context *pCtx, ph7_value *pInfo, ph7_vm_fu
 	}
 }
 /*
+ * ---------------------------------------------------------------------------
+ * The signature parser.
+ *
+ * A C builtin and a native method declare their parameters as ONE php-style
+ * string (`"string $name, ?int $len = null"`) — the aBuiltinSig[] row or the
+ * PH7_NativeClassSpec's zSig — because neither has a compiled parameter list to
+ * read. Reflection needs that string as the same param-meta shape a compiled
+ * function produces, so it is parsed here and the descriptor comes out of
+ * __reflect_func_info() already uniform.
+ *
+ * This was chunk 8 of the reflection prelude (__reflect_sig_split /
+ * __reflect_sig_scalar / __reflect_parse_sig / __reflect_sig_fixup), which every
+ * caller had to remember to wrap around __reflect_func_info() — six call sites,
+ * and the one that FORGOT is why every native method reported zero parameters
+ * until 31 Jul. Producing the parsed form at the source removes the wrapper and
+ * the possibility of forgetting it.
+ * ---------------------------------------------------------------------------
+ */
+/* Trim ASCII spaces off both ends of [z, z+n). */
+static void ReflectSigTrim(const char **pz, int *pn)
+{
+	const char *z = *pz;
+	int n = *pn;
+	while( n > 0 && (z[0] == ' ' || z[0] == '\t') ){
+		z++;
+		n--;
+	}
+	while( n > 0 && (z[n-1] == ' ' || z[n-1] == '\t') ){
+		n--;
+	}
+	*pz = z;
+	*pn = n;
+}
+/* Byte search that respects single-quoted runs (a default may be `'a,b'` or
+ * `'it\'s'`), which is the whole reason the split is not SyByteFind. Answers
+ * the offset of the first unquoted zWhat, or -1. */
+static int ReflectSigFindUnquoted(const char *z, int n, char cWhat)
+{
+	int k, bQuote = 0;
+	for( k = 0 ; k < n ; k++ ){
+		if( bQuote ){
+			if( z[k] == '\\' && k + 1 < n ){
+				k++;
+			}else if( z[k] == '\'' ){
+				bQuote = 0;
+			}
+		}else if( z[k] == '\'' ){
+			bQuote = 1;
+		}else if( z[k] == cWhat ){
+			return k;
+		}
+	}
+	return -1;
+}
+/* Does [z,n) contain zNeedle? (case-sensitive; nNeedle > 0) */
+static int ReflectSigHas(const char *z, int n, const char *zNeedle, int nNeedle)
+{
+	int k;
+	for( k = 0 ; k + nNeedle <= n ; k++ ){
+		if( SyMemcmp((const void *)&z[k], (const void *)zNeedle, (sxu32)nNeedle) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/* Case-insensitive twin, for the `null` arm of a union type text. */
+static int ReflectSigHasNoCase(const char *z, int n, const char *zNeedle, int nNeedle)
+{
+	int k, j;
+	for( k = 0 ; k + nNeedle <= n ; k++ ){
+		for( j = 0 ; j < nNeedle ; j++ ){
+			if( SyToLower(z[k+j]) != SyToLower(zNeedle[j]) ){
+				break;
+			}
+		}
+		if( j == nNeedle ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
+ * A default-value TEXT to a value, when the text denotes a scalar php can
+ * reproduce. Answers 1 and fills pOut, or 0 for anything else (`[]`,
+ * `array (`, a constant name) which the caller reports its own way.
+ */
+static int ReflectSigScalar(ph7_context *pCtx, const char *z, int n, ph7_value *pOut)
+{
+	sxu8 bReal = 0;
+	if( n == 1 && z[0] == '?' ){
+		return 0;
+	}
+	if( (n == 4 && (SyMemcmp(z,"NULL",4) == 0 || SyMemcmp(z,"null",4) == 0)) ){
+		ph7_value_null(pOut);
+		return 1;
+	}
+	if( n == 4 && SyMemcmp(z,"true",4) == 0 ){
+		ph7_value_bool(pOut,1);
+		return 1;
+	}
+	if( n == 5 && SyMemcmp(z,"false",5) == 0 ){
+		ph7_value_bool(pOut,0);
+		return 1;
+	}
+	if( n >= 2 && z[0] == '\'' && z[n-1] == '\'' ){
+		/* Unescape \' and \\ , the only two escapes the signature writer emits. */
+		SyBlob sOut;
+		int k;
+		SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+		for( k = 1 ; k < n - 1 ; k++ ){
+			if( z[k] == '\\' && k + 1 < n - 1 && (z[k+1] == '\'' || z[k+1] == '\\') ){
+				k++;
+			}
+			SyBlobAppend(&sOut,(const void *)&z[k],sizeof(char));
+		}
+		ph7_value_string(pOut,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+		SyBlobRelease(&sOut);
+		return 1;
+	}
+	if( n > 0 && SyStrIsNumeric(z,(sxu32)n,&bReal,0) == SXRET_OK ){
+		/* php's own rule for the text form: a '.', an exponent or a hex marker
+		 * makes it a float, everything else an int. */
+		if( bReal || ReflectSigHas(z,n,".",1)
+		 || ReflectSigHasNoCase(z,n,"e",1) || ReflectSigHasNoCase(z,n,"x",1) ){
+#ifndef PH7_OMIT_FLOATING_POINT
+			ph7_value_double(pOut,SyStrToReal(z,(sxu32)n,0,0));
+#else
+			ph7_value_int64(pOut,SyStrToInt64(z,(sxu32)n,0,0));
+#endif
+		}else{
+			sxi64 iVal = 0;
+			SyStrToInt64(z,(sxu32)n,(void *)&iVal,0);
+			ph7_value_int64(pOut,iVal);
+		}
+		return 1;
+	}
+	return 0;
+}
+/* One `type &$name = default` part into the param-meta shape. */
+static void ReflectSigParam(ph7_context *pCtx, ph7_value *pParams,
+	const char *z, int n, int iPos, int *pbVariadic)
+{
+	ph7_value *pMeta = ph7_context_new_array(pCtx);
+	const char *zDef = 0;
+	const char *zName;
+	int nDef = 0, nName;
+	int iEq, iDollar, iSpace, bVariadic, bTyped = 0;
+	if( pMeta == 0 ){
+		return;
+	}
+	/* `= default` splits off first: everything after the first unquoted '='. */
+	iEq = ReflectSigFindUnquoted(z,n,'=');
+	if( iEq >= 0 ){
+		zDef = &z[iEq+1];
+		nDef = n - iEq - 1;
+		ReflectSigTrim(&zDef,&nDef);
+		n = iEq;
+		ReflectSigTrim(&z,&n);
+	}
+	bVariadic = ReflectSigHas(z,n,"...",3);
+	if( bVariadic ){
+		/* php: a variadic parameter never HAS a default -- it defaults to "no
+		 * further arguments", which is not a value. Several signature rows still
+		 * write `mixed ...$values = ?` (the table's "optional, unspecified"
+		 * marker), and honouring it made isDefaultValueAvailable() true where php
+		 * says false, so getDefaultValue() then threw on printf/array_merge. */
+		zDef = 0;
+		nDef = 0;
+	}
+	iDollar = ReflectSigFindUnquoted(z,n,'$');
+	iSpace = ReflectSigFindUnquoted(z,n,' ');
+	zName = iDollar < 0 ? z : &z[iDollar+1];
+	nName = iDollar < 0 ? n : n - iDollar - 1;
+	ReflectMapAddStr(pCtx,pMeta,"name",zName,nName);
+	ReflectMapAddInt(pCtx,pMeta,"pos",(sxi64)iPos);
+	ReflectMapAddBool(pCtx,pMeta,"byref",ReflectSigHas(z,n,"&",1));
+	ReflectMapAddBool(pCtx,pMeta,"variadic",bVariadic);
+	ReflectMapAddBool(pCtx,pMeta,"hasdef",zDef != 0);
+	if( iSpace >= 0 && iDollar >= 0 && iSpace < iDollar ){
+		/* The type is whatever precedes the first space, so `?DOMNode $child`
+		 * types as `?DOMNode` and an untyped `$x` types as nothing. */
+		bTyped = 1;
+		ReflectMapAddBool(pCtx,pMeta,"nullable",
+			z[0] == '?' || ReflectSigHasNoCase(z,iSpace,"null",4));
+		ReflectMapAddStr(pCtx,pMeta,"typetext",z,iSpace);
+	}else{
+		ReflectMapAddBool(pCtx,pMeta,"nullable",0);
+		ReflectMapAddNull(pCtx,pMeta,"typetext");
+	}
+	SXUNUSED(bTyped);
+	ReflectMapAddBool(pCtx,pMeta,"promoted",0);
+	{
+		ph7_value *pEmpty = ph7_context_new_array(pCtx);
+		if( pEmpty ){
+			ph7_array_add_strkey_elem(pMeta,"attrs",pEmpty);
+		}
+	}
+	if( zDef ){
+		ph7_value *pVal = ph7_context_new_scalar(pCtx);
+		ReflectMapAddStr(pCtx,pMeta,"deftext",zDef,nDef);
+		/* The VALUE too, so getDefaultValue() reads the meta instead of
+		 * re-parsing the text through a second prelude helper. */
+		if( pVal && ReflectSigScalar(pCtx,zDef,nDef,pVal) ){
+			ReflectMapAddBool(pCtx,pMeta,"defscalar",1);
+			ph7_array_add_strkey_elem(pMeta,"defval",pVal);
+		}else{
+			ReflectMapAddBool(pCtx,pMeta,"defscalar",0);
+			ReflectMapAddNull(pCtx,pMeta,"defval");
+		}
+	}else{
+		ReflectMapAddNull(pCtx,pMeta,"deftext");
+		ReflectMapAddBool(pCtx,pMeta,"defscalar",0);
+		ReflectMapAddNull(pCtx,pMeta,"defval");
+	}
+	if( bVariadic ){
+		*pbVariadic = 1;
+	}
+	ph7_array_add_elem(pParams,0,pMeta);
+}
+/*
+ * Rewrite a descriptor's params/variadic/minarg from its declared signature.
+ * A no-op for a descriptor without one (a compiled function already carries the
+ * real thing), so every exit of __reflect_func_info can run it unconditionally.
+ */
+static void ReflectSigFixup(ph7_context *pCtx, ph7_value *pInfo)
+{
+	ph7_value *pSig, *pRet2, *pParams;
+	const char *zSig, *zPart;
+	int nSig, nPart, iPos = 0, bVariadic = 0;
+	/* A native method's declared RETURN type lives in its own slot, because the
+	 * compiled function it hangs off has none. */
+	pRet2 = ph7_array_fetch(pInfo,"ret2",-1);
+	if( pRet2 && (pRet2->iFlags & MEMOBJ_STRING) ){
+		ph7_array_add_strkey_elem(pInfo,"rettext",pRet2);
+	}
+	pSig = ph7_array_fetch(pInfo,"sig",-1);
+	if( pSig == 0 || (pSig->iFlags & MEMOBJ_STRING) == 0 ){
+		return;
+	}
+	zSig = (const char *)SyBlobData(&pSig->sBlob);
+	nSig = (int)SyBlobLength(&pSig->sBlob);
+	if( nSig < 1 ){
+		return;
+	}
+	pParams = ph7_context_new_array(pCtx);
+	if( pParams == 0 ){
+		return;
+	}
+	/* Split on the top-level commas; a quoted default may hold its own. */
+	while( nSig > 0 ){
+		int iComma = ReflectSigFindUnquoted(zSig,nSig,',');
+		zPart = zSig;
+		nPart = iComma < 0 ? nSig : iComma;
+		ReflectSigTrim(&zPart,&nPart);
+		if( nPart > 0 ){
+			ReflectSigParam(pCtx,pParams,zPart,nPart,iPos,&bVariadic);
+			iPos++;
+		}
+		if( iComma < 0 ){
+			break;
+		}
+		zSig += iComma + 1;
+		nSig -= iComma + 1;
+	}
+	ph7_array_add_strkey_elem(pInfo,"params",pParams);
+	ReflectMapAddInt(pCtx,pInfo,"minarg",-1);
+	ReflectMapAddBool(pCtx,pInfo,"variadic",bVariadic);
+}
+/*
  * array|null __reflect_func_info(string|Closure $target [, string $method])
  * Function/method/closure descriptor for the PHP layer.
  */
@@ -1325,6 +1594,7 @@ static int vm_builtin_reflect_func_info(ph7_context *pCtx, int nArg, ph7_value *
 		}else{
 			ReflectMapAddStr(pCtx, pInfo, "sig", "", 0);
 		}
+		ReflectSigFixup(pCtx, pInfo);
 		ph7_result_value(pCtx, pInfo);
 		return PH7_OK;
 	}
@@ -1413,6 +1683,7 @@ static int vm_builtin_reflect_func_info(ph7_context *pCtx, int nArg, ph7_value *
 			ph7_array_add_strkey_elem(pInfo, "used", pUsed);
 		}
 	}
+	ReflectSigFixup(pCtx, pInfo);
 	ph7_result_value(pCtx, pInfo);
 	return PH7_OK;
 }
@@ -1855,6 +2126,405 @@ static int vm_builtin_reflect_attr_args(ph7_context *pCtx, int nArg, ph7_value *
 	ph7_result_value(pCtx, pOut);
 	return PH7_OK;
 }
+/*
+ * ---------------------------------------------------------------------------
+ * The ReflectionType family.
+ *
+ * php's four type objects are pure VALUES: a text, a nullability flag, and for
+ * the composites a list of members. Nothing in userland can build one — php
+ * declares no constructor on any of them and refuses `clone` — so the prelude's
+ * public `__construct($name, $nullable, $text)` existed only because the factory
+ * that fills them was itself PHP. The factory is C now (ReflectMakeType), so the
+ * constructors are gone and the classes say what php's say.
+ * ---------------------------------------------------------------------------
+ */
+#define RT_TEXT     "__text"
+#define RT_NULLABLE "__nullable"
+#define RT_TNAME    "__tname"
+#define RT_TYPES    "__types"
+
+static int vm_builtin_ReflectionType_allowsNull(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx, pThis != 0 && PH7_NativeAttrTruthy(pThis, RT_NULLABLE));
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionType_toString(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zText = "";
+	int nText = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, RT_TEXT, &zText, &nText);
+	}
+	ph7_result_string(pCtx, zText, nText);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionNamedType_getName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName = "";
+	int nName = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, RT_TNAME, &zName, &nName);
+	}
+	ph7_result_string(pCtx, zName, nName);
+	return PH7_OK;
+}
+/* php's builtin-type set, case-insensitively. Anything else is a class name. */
+static int ReflectTypeIsBuiltin(const char *zName, int nName)
+{
+	static const char *azBuiltin[] = {
+		"int","float","string","bool","array","object","mixed",
+		"void","never","null","callable","iterable","true","false"
+	};
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(azBuiltin) ; n++ ){
+		int nWant = (int)SyStrlen(azBuiltin[n]);
+		int k;
+		if( nWant != nName ){
+			continue;
+		}
+		for( k = 0 ; k < nWant ; k++ ){
+			if( SyToLower(zName[k]) != azBuiltin[n][k] ){
+				break;
+			}
+		}
+		if( k == nWant ){
+			return 1;
+		}
+	}
+	return 0;
+}
+static int vm_builtin_ReflectionNamedType_isBuiltin(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName = "";
+	int nName = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, RT_TNAME, &zName, &nName);
+	}
+	ph7_result_bool(pCtx, ReflectTypeIsBuiltin(zName, nName));
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionType_getTypes(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pTypes = pThis ? PH7_NativeAttr(pThis, RT_TYPES) : 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pTypes && (pTypes->iFlags & MEMOBJ_HASHMAP) ){
+		ph7_result_value(pCtx, pTypes);
+	}else{
+		/* The declared default is a native NULL slot (a spec cannot carry an
+		 * array literal), but php's getTypes() always answers a list. */
+		ph7_value *pEmpty = ph7_context_new_array(pCtx);
+		if( pEmpty ){
+			ph7_result_value(pCtx, pEmpty);
+		}
+	}
+	return PH7_OK;
+}
+/* Build one of the three concrete types with its slots filled. The caller owns
+ * the reference (PH7_NativeResultObject / a list insert drops it). */
+static ph7_class_instance * ReflectNewType(ph7_context *pCtx, const char *zClass,
+	const char *zText, int nText, int bNullable)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pClass = PH7_VmExtractClass(pVm, zClass, (sxu32)SyStrlen(zClass), FALSE, 0);
+	ph7_class_instance *pObj = pClass ? PH7_NewClassInstance(pVm, pClass) : 0;
+	if( pObj == 0 ){
+		return 0;
+	}
+	PH7_NativeSetAttrStr(pVm, pObj, RT_TEXT, zText, nText);
+	PH7_NativeSetAttrBool(pVm, pObj, RT_NULLABLE, bNullable);
+	return pObj;
+}
+/*
+ * Append pType to a composite's member list, handing over the caller's reference.
+ *
+ * The carrier is a STACK value, deliberately: a ph7_context_new_scalar() is
+ * released with the call context, and releasing a MEMOBJ_OBJ carrier unrefs the
+ * instance a second time — which freed every member of a union or intersection
+ * the moment its factory returned, so the list came back holding dead objects.
+ * PH7_NativeResultObject hands an instance over the same way.
+ */
+static void ReflectTypeListAdd(ph7_context *pCtx, ph7_value *pList, ph7_class_instance *pType)
+{
+	ph7_value sVal;
+	if( pType == 0 ){
+		return;
+	}
+	PH7_MemObjInit(pCtx->pVm, &sVal);
+	sVal.x.pOther = pType;
+	sVal.iFlags = MEMOBJ_OBJ;
+	ph7_array_add_elem(pList, 0, &sVal);   /* takes its own reference */
+	PH7_ClassInstanceUnref(pType);
+}
+/* Exact, case-insensitive name test (php lower-cases before comparing). */
+static int ReflectTypeNameIs(const char *z, int n, const char *zWant)
+{
+	int nWant = (int)SyStrlen(zWant), k;
+	if( n != nWant ){
+		return 0;
+	}
+	for( k = 0 ; k < n ; k++ ){
+		if( SyToLower(z[k]) != zWant[k] ){
+			return 0;
+		}
+	}
+	return 1;
+}
+/*
+ * A ReflectionNamedType for one name.
+ *
+ * bQMark says the text carried a leading '?', which is the ONLY thing that puts
+ * one back on the rendered text — while `null` and `mixed` are nullable by their
+ * own meaning without ever rendering a '?'. Those two rules are independent, and
+ * conflating them is how `?array` came out as `array`.
+ */
+static ph7_class_instance * ReflectNewNamed(ph7_context *pCtx, const char *z, int n, int bQMark)
+{
+	ph7_class_instance *pObj;
+	char zBuf[256];
+	const char *zText = z;
+	int nText = n;
+	int bNullable = bQMark || ReflectTypeNameIs(z, n, "null") || ReflectTypeNameIs(z, n, "mixed");
+	if( bQMark && n + 1 < (int)sizeof(zBuf) ){
+		zBuf[0] = '?';
+		SyMemcpy(z, &zBuf[1], (sxu32)n);
+		zText = zBuf;
+		nText = n + 1;
+	}
+	pObj = ReflectNewType(pCtx, "ReflectionNamedType", zText, nText, bNullable);
+	if( pObj ){
+		PH7_NativeSetAttrStr(pCtx->pVm, pObj, RT_TNAME, z, n);
+	}
+	return pObj;
+}
+/*
+ * One ATOM of a type text: `?X`, `(A&B)` or a plain name. An intersection is
+ * the only composite an atom can be, because php only nests that way.
+ */
+static ph7_class_instance * ReflectMakeAtom(ph7_context *pCtx, const char *z, int n)
+{
+	int bQMark = 0;
+	if( n > 0 && z[0] == '?' ){
+		bQMark = 1;
+		z++;
+		n--;
+	}
+	if( n > 1 && z[0] == '(' && z[n-1] == ')' ){
+		z++;
+		n -= 2;
+	}
+	if( ReflectSigFindUnquoted(z, n, '&') >= 0 ){
+		ph7_class_instance *pObj = ReflectNewType(pCtx, "ReflectionIntersectionType", z, n, 0);
+		ph7_value *pList = ph7_context_new_array(pCtx);
+		const char *zCur = z;
+		int nCur = n;
+		if( pObj == 0 || pList == 0 ){
+			return pObj;
+		}
+		while( nCur > 0 ){
+			int iCut = ReflectSigFindUnquoted(zCur, nCur, '&');
+			ReflectTypeListAdd(pCtx, pList,
+				ReflectNewNamed(pCtx, zCur, iCut < 0 ? nCur : iCut, 0));
+			if( iCut < 0 ){
+				break;
+			}
+			zCur += iCut + 1;
+			nCur -= iCut + 1;
+		}
+		PH7_NativeSetProp(pCtx->pVm, pObj, RT_TYPES, sizeof(RT_TYPES)-1, pList);
+		return pObj;
+	}
+	return ReflectNewNamed(pCtx, z, n, bQMark);
+}
+/*
+ * A declared type TEXT to the object php answers for it: a named type, a union,
+ * or an intersection. NULL for an absent type. `X|null` collapses back to a
+ * NULLABLE named type, which is what php reports (`?X`), but only when exactly
+ * one non-null arm is left and it is not itself an intersection.
+ */
+static ph7_class_instance * ReflectMakeType(ph7_context *pCtx, const char *zText, int nText)
+{
+	const char *zBody = zText;
+	int nBody = nText;
+	int bNullable = 0, bHasNull = 0, nParts = 0, nNonNull = 0;
+	const char *zLastNonNull = 0;
+	int nLastNonNull = 0;
+	const char *zCur;
+	int nCur, iDepth, k, iStart;
+	if( nText < 1 ){
+		return 0;
+	}
+	if( zBody[0] == '?' ){
+		bNullable = 1;
+		zBody++;
+		nBody--;
+	}
+	/* Split on the TOP-LEVEL '|' only: `A|(B&C)` has one at depth 0 and none
+	 * inside the parentheses. */
+	iDepth = 0;
+	iStart = 0;
+	for( k = 0 ; k <= nBody ; k++ ){
+		if( k < nBody && zBody[k] == '(' ){
+			iDepth++;
+			continue;
+		}
+		if( k < nBody && zBody[k] == ')' ){
+			iDepth--;
+			continue;
+		}
+		if( k == nBody || (zBody[k] == '|' && iDepth == 0) ){
+			zCur = &zBody[iStart];
+			nCur = k - iStart;
+			nParts++;
+			if( nCur == 4 && ReflectSigHasNoCase(zCur, 4, "null", 4) ){
+				bHasNull = 1;
+			}else{
+				nNonNull++;
+				zLastNonNull = zCur;
+				nLastNonNull = nCur;
+			}
+			iStart = k + 1;
+		}
+	}
+	if( nParts > 1 ){
+		ph7_class_instance *pObj;
+		ph7_value *pList;
+		if( bHasNull && nNonNull == 1
+		 && ReflectSigFindUnquoted(zLastNonNull, nLastNonNull, '&') < 0 ){
+			/* `X|null` IS `?X` to php. */
+			char zBuf[256];
+			ph7_class_instance *pNamed;
+			const char *zRender = zLastNonNull;
+			int nRender = nLastNonNull;
+			if( nLastNonNull + 1 < (int)sizeof(zBuf) ){
+				zBuf[0] = '?';
+				SyMemcpy(zLastNonNull, &zBuf[1], (sxu32)nLastNonNull);
+				zRender = zBuf;
+				nRender = nLastNonNull + 1;
+			}
+			pNamed = ReflectNewType(pCtx, "ReflectionNamedType", zRender, nRender, 1);
+			if( pNamed ){
+				PH7_NativeSetAttrStr(pCtx->pVm, pNamed, RT_TNAME, zLastNonNull, nLastNonNull);
+			}
+			return pNamed;
+		}
+		pObj = ReflectNewType(pCtx, "ReflectionUnionType", zBody, nBody, bNullable || bHasNull);
+		pList = ph7_context_new_array(pCtx);
+		if( pObj == 0 || pList == 0 ){
+			return pObj;
+		}
+		iDepth = 0;
+		iStart = 0;
+		for( k = 0 ; k <= nBody ; k++ ){
+			if( k < nBody && zBody[k] == '(' ){
+				iDepth++;
+				continue;
+			}
+			if( k < nBody && zBody[k] == ')' ){
+				iDepth--;
+				continue;
+			}
+			if( k == nBody || (zBody[k] == '|' && iDepth == 0) ){
+				ReflectTypeListAdd(pCtx, pList,
+					ReflectMakeAtom(pCtx, &zBody[iStart], k - iStart));
+				iStart = k + 1;
+			}
+		}
+		PH7_NativeSetProp(pCtx->pVm, pObj, RT_TYPES, sizeof(RT_TYPES)-1, pList);
+		return pObj;
+	}
+	if( ReflectSigFindUnquoted(zBody, nBody, '&') >= 0 ){
+		return ReflectMakeAtom(pCtx, zBody, nBody);
+	}
+	if( bNullable ){
+		char zBuf[256];
+		if( nBody + 1 < (int)sizeof(zBuf) ){
+			zBuf[0] = '?';
+			SyMemcpy(zBody, &zBuf[1], (sxu32)nBody);
+			return ReflectMakeAtom(pCtx, zBuf, nBody + 1);
+		}
+	}
+	return ReflectMakeAtom(pCtx, zBody, nBody);
+}
+/*
+ * ?ReflectionType __reflect_make_type(?string $text)
+ *
+ * Still a global: the reflection classes that ANSWER a type (getType,
+ * getReturnType, ReflectionEnum::getBackingType) are prelude PHP for now, and
+ * this is their factory. It retires with them.
+ */
+static int vm_builtin_reflect_make_type(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	int nText = 0;
+	const char *zText;
+	ph7_class_instance *pType;
+	if( nArg < 1 || ph7_value_is_null(apArg[0]) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	zText = ph7_value_to_string(apArg[0], &nText);
+	pType = ReflectMakeType(pCtx, zText, nText);
+	if( pType == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_NativeResultObject(pCtx, pType);
+	return PH7_OK;
+}
+/*
+ * Declare the four type classes. Called from PH7_VmInstallReflectionLib where
+ * chunk 4 used to be compiled, so `Stringable` (a core interface) already
+ * exists. PH7_CLASS_NOCLONE is php's own rule for these: they are values the
+ * engine hands out, and `clone $type` is an Error, not a copy.
+ */
+PH7_PRIVATE sxi32 PH7_VmInstallReflectionTypes(ph7_vm *pVm)
+{
+	static const PH7_NativePropDef aBaseProp[] = {
+		{ RT_TEXT,     PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
+		{ RT_NULLABLE, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_BOOL,   0, 0, 0.0 } },
+	};
+	static const PH7_NativeMethodDef aBaseMethod[] = {
+		{ "allowsNull", PH7_MOD_PUBLIC, "", "",       vm_builtin_ReflectionType_allowsNull },
+		{ "__toString", PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionType_toString },
+	};
+	static const PH7_NativePropDef aNamedProp[] = {
+		{ RT_TNAME, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
+	};
+	static const PH7_NativeMethodDef aNamedMethod[] = {
+		{ "getName",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionNamedType_getName },
+		{ "isBuiltin", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionNamedType_isBuiltin },
+	};
+	static const PH7_NativePropDef aCompProp[] = {
+		{ RT_TYPES, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+	};
+	static const PH7_NativeMethodDef aCompMethod[] = {
+		{ "getTypes", PH7_MOD_PUBLIC, "", "array", vm_builtin_ReflectionType_getTypes },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "ReflectionType", 0, "Stringable", PH7_CLASS_ABSTRACT|PH7_CLASS_NOCLONE,
+		  aBaseMethod, SX_ARRAYSIZE(aBaseMethod), 0, 0, aBaseProp, SX_ARRAYSIZE(aBaseProp), 0, 0 },
+		{ "ReflectionNamedType", "ReflectionType", 0, PH7_CLASS_NOCLONE,
+		  aNamedMethod, SX_ARRAYSIZE(aNamedMethod), 0, 0, aNamedProp, SX_ARRAYSIZE(aNamedProp), 0, 0 },
+		{ "ReflectionUnionType", "ReflectionType", 0, PH7_CLASS_NOCLONE,
+		  aCompMethod, SX_ARRAYSIZE(aCompMethod), 0, 0, aCompProp, SX_ARRAYSIZE(aCompProp), 0, 0 },
+		{ "ReflectionIntersectionType", "ReflectionType", 0, PH7_CLASS_NOCLONE,
+		  aCompMethod, SX_ARRAYSIZE(aCompMethod), 0, 0, aCompProp, SX_ARRAYSIZE(aCompProp), 0, 0 },
+	};
+	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));
+}
 PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 {
 	static const struct {
@@ -1883,6 +2553,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 		{ "__reflect_const_info",     vm_builtin_reflect_const_info },
 		{ "__reflect_ref_id",         vm_builtin_reflect_ref_id },
 		{ "__reflect_attr_args",      vm_builtin_reflect_attr_args },
+		{ "__reflect_make_type",      vm_builtin_reflect_make_type },
 	};
 	sxu32 n;
 	for( n = 0 ; n < sizeof(aFunc)/sizeof(aFunc[0]) ; n++ ){

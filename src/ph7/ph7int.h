@@ -2774,6 +2774,7 @@ PH7_PRIVATE void PH7_VmThrowWarningFmt(ph7_vm *pVm,const char *zFmt,...);
 PH7_PRIVATE sxi32 PH7_CheckCallbackArg(ph7_context *pCtx,ph7_value *pCb,int iArg,const char *zParam,int bNullable);
 PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmInstallReflectionLib(ph7_vm *pVm); /* vm_builtin_reflection.c */
+PH7_PRIVATE sxi32 PH7_VmInstallReflectionTypes(ph7_vm *pVm); /* vm_builtin_reflection.c */
 PH7_PRIVATE sxi32 PH7_VmInstallBuiltinLib(ph7_vm *pVm); /* vm_builtin_lib.c */
 PH7_PRIVATE ph7_class_instance * PH7_VmNewClosure(ph7_vm *pVm,const SyString *pName,
 	ph7_class_instance *pBoundThis,const SyString *pScope);
