@@ -1397,7 +1397,10 @@ PH7_PRIVATE sxi32 GenStateCompileArrayEntry(
  */
 static sxi32 GenStateArrayNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRoot)
 {
-	sxi32 rc = SXRET_OK;
+	sxi32 rc = GenStateWriteTargetCheck(&(*pGen),pRoot,0);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
 	if( pRoot->pOp ){
 		if( pRoot->pOp->iOp != EXPR_OP_SUBSCRIPT /* $a[] */ &&
 			pRoot->pOp->iOp != EXPR_OP_FUNC_CALL /* function() [Symisc extension: i.e: array(&foo())] */
@@ -1713,7 +1716,10 @@ PH7_PRIVATE sxi32 PH7_CompileShortArray(ph7_gen_state *pGen,sxi32 iCompileFlag)
  */
 static sxi32 GenStateListNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRoot)
 {
-	sxi32 rc = SXRET_OK;
+	sxi32 rc = GenStateWriteTargetCheck(&(*pGen),pRoot,0);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
 	if( pRoot->pOp ){
 		if( pRoot->pOp->iOp != EXPR_OP_SUBSCRIPT /* $a[] */ && pRoot->pOp->iOp != EXPR_OP_ARROW /* -> */
 			&& pRoot->pOp->iOp != EXPR_OP_DC /* :: */ ){

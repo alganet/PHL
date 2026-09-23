@@ -862,6 +862,103 @@ static void GenStateCallBuiltinName(ph7_expr_node *pLeft, SyString *pOut)
  * this function takes care of generating the appropriate
  * error message.
  */
+/*
+ * Is this expression node the bare variable `$this`?
+ */
+PH7_PRIVATE int PH7_ExprNodeIsThis(ph7_expr_node *pNode)
+{
+	SyToken *pTok;
+	if( pNode == 0 || pNode->pOp != 0 || pNode->xCode != PH7_CompileVariable ){
+		return 0;
+	}
+	pTok = pNode->pStart;
+	if( pTok == 0 || pNode->pEnd == 0 || pNode->pEnd < &pTok[2] ){
+		return 0;
+	}
+	return (pTok[0].nType & PH7_TK_DOLLAR) != 0
+		&& (pTok[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) != 0
+		&& pTok[1].sData.nByte == sizeof("this")-1
+		&& SyMemcmp((const void *)pTok[1].sData.zString,(const void *)"this",sizeof("this")-1) == 0;
+}
+/*
+ * The two write-target rules php decides at COMPILE time, in one place because
+ * every write site has to make both of them.
+ *
+ * **`$this`** is not a variable a program may re-point: php refuses the
+ * assignment, the reference bind, a foreach/list target and `unset()` where they
+ * are WRITTEN. PHL performed all of them, so `$this = 5;` inside a method
+ * replaced the receiver with an int for the rest of the call and every later
+ * `$this->x` failed somewhere else entirely.
+ *
+ * **A temporary** cannot be written THROUGH: `(new A)->p = 1` and `"s"->p = 1`
+ * modify an object/value that no longer exists after the statement, so php
+ * refuses the whole chain — every write kind, including `+=`, `++`, `=&` and
+ * `unset()`. The base of the access chain decides: a variable and a userland
+ * CALL are writable (`f()->p = 1` is php-legal), a `new`, a literal and any
+ * other computed value are not, and an internal function's result gets php's own
+ * separate wording — which is what `(clone $o)->p = 1` is, `clone` being a
+ * function in php 8.5.
+ */
+PH7_PRIVATE sxi32 GenStateWriteTargetCheck(ph7_gen_state *pGen,ph7_expr_node *pTarget,int bUnset)
+{
+	ph7_expr_node *pBase = pTarget;
+	const char *zMsg = 0;
+	sxi32 rc;
+	if( pTarget == 0 ){
+		return SXRET_OK;
+	}
+	if( PH7_ExprNodeIsThis(pTarget) ){
+		zMsg = bUnset ? "Cannot unset $this" : "Cannot re-assign $this";
+	}else{
+		/* Walk to the base of the access chain; the links themselves are writable. */
+		while( pBase && pBase->pOp ){
+			if( pBase->pOp->iOp == EXPR_OP_DC ){
+				/* A `::` left operand is a CLASS reference, not a value — `C::$s = 1`
+				 * and even `(new C)::$s = 1` write class-level storage that outlives
+				 * any temporary, so the chain stops being about a base here. */
+				return SXRET_OK;
+			}
+			if( pBase->pOp->iOp != EXPR_OP_ARROW && pBase->pOp->iOp != EXPR_OP_NULLSAFE_ARROW
+			 && pBase->pOp->iOp != EXPR_OP_SUBSCRIPT ){
+				break;
+			}
+			pBase = pBase->pLeft;
+		}
+		if( pBase == 0 || pBase == pTarget ){
+			/* No chain: a non-variable target of its own is the caller's business
+			 * (php reports its parse error / "Assignments can only happen to
+			 * writable values" there, and so does PHL). */
+			return SXRET_OK;
+		}
+		if( pBase->pOp == 0 ){
+			if( pBase->xCode != PH7_CompileVariable ){
+				zMsg = "Cannot use temporary expression in write context";
+			}
+		}else if( pBase->pOp->iOp == EXPR_OP_FUNC_CALL ){
+			/* php: the result of an INTERNAL function is not writable through,
+			 * a userland one is. */
+			SyString sName;
+			GenStateCallBuiltinName(pBase,&sName);
+			if( sName.nByte > 0 && pGen->pVm
+			 && SyHashGet(&pGen->pVm->hHostFunction,(const void *)sName.zString,sName.nByte) ){
+				zMsg = "Cannot use result of built-in function in write context";
+			}
+		}else if( pBase->pOp->iOp == EXPR_OP_CLONE ){
+			/* php 8.5 implements `clone` AS a function, so a write through its result
+			 * takes the internal-function wording rather than the temporary one. */
+			zMsg = "Cannot use result of built-in function in write context";
+		}else{
+			/* `new`, and every other computed base. */
+			zMsg = "Cannot use temporary expression in write context";
+		}
+	}
+	if( zMsg == 0 ){
+		return SXRET_OK;
+	}
+	rc = PH7_GenCompileError(&(*pGen),E_ERROR,
+		pTarget->pStart ? pTarget->pStart->nLine : 0,"%s",zMsg);
+	return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_INVALID;
+}
 static sxi32 GenStateEmitExprCode(
 	ph7_gen_state *pGen,  /* Code generator state */
 	ph7_expr_node *pNode, /* Root of the expression tree */
@@ -1412,6 +1509,11 @@ static sxi32 GenStateEmitExprCode(
 			 * `++`/`--` are unary, their operand is pLeft. */
 			if( pNode->pOp
 				&& (pNode->pOp->iVmOp == PH7_OP_INCR || pNode->pOp->iVmOp == PH7_OP_DECR) ){
+				/* `(new A)->p++` writes through a temporary exactly as `= 1` does. */
+				rc = GenStateWriteTargetCheck(&(*pGen),pNode->pLeft,0);
+				if( rc != SXRET_OK ){
+					return rc;
+				}
 				iLeftFlags |= EXPR_FLAG_LOAD_IDX_STORE | EXPR_FLAG_MEMBER_WRITE
 					| EXPR_FLAG_RMW_LOAD /* php warns before seeding `$undef++` */;
 			}
@@ -1697,6 +1799,11 @@ static sxi32 GenStateEmitExprCode(
 			 * target so a missing base (the container of a subscript-write, or a bare
 			 * `$o->p`) is auto-created — PHP auto-vivifies on a plain write AND on a `=&`
 			 * bind (`$a[0] =& $x` creates $a as [0 => &$x], it does not warn). */
+			/* php's compile-time write-target rules first ($this, a temporary base). */
+			rc = GenStateWriteTargetCheck(&(*pGen),pNode->pRight,0);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
 			iFlags |= EXPR_FLAG_LOAD_IDX_STORE | EXPR_FLAG_MEMBER_WRITE;
 			if( iVmOp != PH7_OP_STORE && pNode->pOp->iOp != EXPR_OP_REF ){
 				/* COMPOUND assignment (`.=`, `+=`, ...) READS the target first, so
@@ -2157,6 +2264,10 @@ PH7_PRIVATE ProcNodeConstruct PH7_GetNodeHandler(sxu32 nNodeType)
 static sxi32 GenStateUnsetValidator(ph7_gen_state *pGen, ph7_expr_node *pNode)
 {
 	sxi32 rc;
+	rc = GenStateWriteTargetCheck(&(*pGen),pNode,1 /* unset wording for $this */);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
 	if( !PH7_ExprContainsNullsafe(pNode) ){
 		return SXRET_OK;
 	}
@@ -2216,6 +2327,15 @@ static sxi32 PH7_CompileUnset(ph7_gen_state *pGen)
 				&& (pGen->pIn[0].nType & PH7_TK_DOLLAR)
 				&& (pGen->pIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD)) ){
 				SyString *pVarName;
+				/* php refuses `unset($this)` where it is written. The tree validator
+				 * cannot see it — this fast path never builds a tree. */
+				if( pGen->pIn[1].sData.nByte == sizeof("this")-1
+				 && SyMemcmp((const void *)pGen->pIn[1].sData.zString,
+				             (const void *)"this",sizeof("this")-1) == 0 ){
+					rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
+						"Cannot unset $this");
+					return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
+				}
 				char *zDup = SyMemBackendStrDup(&pGen->pVm->sAllocator,
 					pGen->pIn[1].sData.zString,pGen->pIn[1].sData.nByte);
 				pVarName = (SyString *)SyMemBackendAlloc(&pGen->pVm->sAllocator,sizeof(SyString));

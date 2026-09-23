@@ -1251,6 +1251,12 @@ static sxi32 GenStateForEachNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRo
 {
 	sxi32 rc = SXRET_OK; /* Assume a valid expression tree */
 	const char *zMsg = 0;
+	/* A loop target is a write target: `as $this` and `as (new A)->p` are php's
+	 * own compile fatals. */
+	rc = GenStateWriteTargetCheck(&(*pGen),pRoot,0);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
 	if( pRoot->pOp ){
 		switch( pRoot->pOp->iOp ){
 		case EXPR_OP_ARROW:     /* $o->p */
@@ -1937,6 +1943,17 @@ PH7_PRIVATE sxi32 PH7_CompileGlobal(ph7_gen_state *pGen)
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
+			}else if( &pGen->pIn[1] < pGen->pEnd
+			 && (pGen->pIn[1].nType & (PH7_TK_ID|PH7_TK_KEYWORD))
+			 && pGen->pIn[1].sData.nByte == sizeof("this")-1
+			 && SyMemcmp((const void *)pGen->pIn[1].sData.zString,
+			             (const void *)"this",sizeof("this")-1) == 0 ){
+				/* php refuses `global $this;` at the declaration. */
+				rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
+					"Cannot use $this as global variable");
+				if( rc == SXERR_ABORT ){
+					return SXERR_ABORT;
+				}
 			}else{
 				pGen->pIn++;
 				if( pGen->pIn >= pGen->pEnd ){
@@ -2371,6 +2388,17 @@ PH7_PRIVATE sxi32 PH7_CompileStatic(ph7_gen_state *pGen)
 	pGen->pIn++;
 	/* Extract variable name */
 	pName = &pGen->pIn->sData;
+	/* php refuses `static $this;` at the declaration — the name is not a slot a
+	 * function may own. */
+	if( pName->nByte == sizeof("this")-1
+	 && SyMemcmp((const void *)pName->zString,(const void *)"this",sizeof("this")-1) == 0 ){
+		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
+			"Cannot use $this as static variable");
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		goto Synchronize;
+	}
 	pGen->pIn++; /* Jump the var name */
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & (PH7_TK_SEMI/*';'*/|PH7_TK_EQUAL/*'='*/)) == 0 ){
 		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,"static: Unexpected token '%z'",&pGen->pIn->sData);
