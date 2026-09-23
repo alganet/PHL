@@ -4730,6 +4730,361 @@ PH7_PRIVATE int PH7_builtin_soundex(ph7_context *pCtx,int nArg,ph7_value **apArg
 	return PH7_OK;
 }
 /*
+ * string str_rot13(string $string)
+ *  Perform the ROT13 transform: each ASCII letter is rotated 13 places through
+ *  its own alphabet, everything else (digits, punctuation, high bytes, NULs)
+ *  passes through untouched. ROT13 is its own inverse.
+ */
+PH7_PRIVATE int PH7_builtin_str_rot13(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zIn;
+	char *zOut;
+	int nLen,i;
+	if( nArg < 1 ){
+		/* Missing arguments,return the empty string */
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	zIn = ph7_value_to_string(apArg[0],&nLen);
+	if( nLen < 1 ){
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	zOut = (char *)ph7_context_alloc_chunk(pCtx,(unsigned int)nLen,FALSE,TRUE);
+	if( zOut == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	for( i = 0 ; i < nLen ; i++ ){
+		int c = (unsigned char)zIn[i];
+		if( (c >= 'a' && c <= 'm') || (c >= 'A' && c <= 'M') ){
+			c += 13;
+		}else if( (c >= 'n' && c <= 'z') || (c >= 'N' && c <= 'Z') ){
+			c -= 13;
+		}
+		zOut[i] = (char)c;
+	}
+	ph7_result_string(pCtx,zOut,nLen);
+	return PH7_OK;
+}
+/*
+ * Character-class table for metaphone(), php's _codes[] (ext/standard/
+ * metaphone.c, itself from CPAN Text-Metaphone), indexed by 'A'..'Z':
+ * bit 1 vowel (AEIOU) · bit 2 passes through unchanged (FJMNR) · bit 4 forms a
+ * diphthong before H (CGPST) · bit 8 makes C and G soft (EIY) · bit 16 keeps a
+ * GH from becoming F (BDH).
+ */
+static const char aMetaCode[26] = {
+	1,16,4,16,9,2,4,16,9,2,0,2,2,2,1,4,0,2,4,4,1,0,0,0,8,0
+};
+/* Classification is ASCII-only, php's own table (§7 locale-dependence family:
+ * libc's isalpha()/toupper() answer differently under a non-C LC_CTYPE). */
+#define META_IS_ALPHA(c) (((c) >= 'A' && (c) <= 'Z') || ((c) >= 'a' && (c) <= 'z'))
+#define META_UP(c)       (((c) >= 'a' && (c) <= 'z') ? (char)((c) - ('a' - 'A')) : (char)(c))
+#define META_ENCODE(c)   (((c) >= 'A' && (c) <= 'Z') ? aMetaCode[(c) - 'A'] : 0)
+#define META_ISVOWEL(c)  (META_ENCODE(c) & 1)  /* AEIOU */
+#define META_AFFECTH(c)  (META_ENCODE(c) & 4)  /* CGPST */
+#define META_MAKESOFT(c) (META_ENCODE(c) & 8)  /* EIY */
+#define META_NOGHTOF(c)  (META_ENCODE(c) & 16) /* BDH */
+/* php's special phoneme encodings: 'sh' and 'th' */
+#define META_SH '\x58' /* 'X' */
+#define META_TH '\x30' /* '0' */
+/*
+ * php's Lookahead(): step up to nHow bytes forward from iFrom, stopping early
+ * at a NUL, and answer the byte at the stop position. The php original walks a
+ * NUL-terminated buffer; this walks the same way over a bounded one, treating
+ * the end of the buffer as the NUL.
+ */
+static char MetaLookahead(const char *zIn,sxu32 nLen,sxu32 iFrom,sxu32 nHow)
+{
+	sxu32 idx;
+	for( idx = 0 ; idx < nHow ; idx++ ){
+		if( iFrom + idx >= nLen || zIn[iFrom + idx] == '\0' ){
+			break;
+		}
+	}
+	return (iFrom + idx < nLen) ? zIn[iFrom + idx] : '\0';
+}
+/*
+ * string metaphone(string $string, int $max_phonemes = 0)
+ *  Break an english phrase down into its phonemes. Faithful port of php-src
+ *  PHP-8.5 ext/standard/metaphone.c (the `traditional` flavour, which is the
+ *  only one php's own function invokes — the non-traditional Christ/School/
+ *  SCHW branches are compiled out there and are not ported). Like php's, the
+ *  scan stops at an embedded NUL: the original walks a NUL-terminated buffer.
+ * Return
+ *  The phonemes as a string of A-Z plus php's two special encodings
+ *  ('X' for "sh", '0' for "th"); "" when no letter is reached.
+ */
+PH7_PRIVATE int PH7_builtin_metaphone(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zIn;
+	char *zOut;
+	sxi64 iMaxPhonemes = 0;
+	sxu32 w_idx = 0,nLen;
+	int nOut = 0;
+	int nByte;
+	char cCurr;
+	/* Bounded reads standing in for the php original's NUL-terminated ones. */
+#define META_BYTE(i)   ((sxu32)(i) < nLen ? zIn[(i)] : '\0')
+#define META_NEXT      (META_UP(META_BYTE(w_idx + 1)))
+#define META_PREV      (w_idx >= 1 ? META_UP(META_BYTE(w_idx - 1)) : '\0')
+#define META_BACK(n)   (w_idx >= (sxu32)(n) ? META_UP(META_BYTE(w_idx - (sxu32)(n))) : '\0')
+#define META_AFTERNEXT (META_BYTE(w_idx + 1) != '\0' ? META_UP(META_BYTE(w_idx + 2)) : '\0')
+#define META_PHONIZE(c) do { zOut[nOut++] = (c); } while(0)
+	if( nArg < 1 ){
+		/* Missing arguments,return the empty string */
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	zIn = ph7_value_to_string(apArg[0],&nByte);
+	if( nArg > 1 ){
+		iMaxPhonemes = ph7_value_to_int64(apArg[1]);
+		if( iMaxPhonemes < 0 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"metaphone(): Argument #2 ($max_phonemes) must be greater than or equal to 0");
+		}
+	}
+	nLen = (sxu32)(nByte > 0 ? nByte : 0);
+	/* Two output bytes per input letter ('X' phonizes "KS") is the ceiling, so
+	 * one allocation covers the whole run — php grows its buffer instead. */
+	zOut = (char *)ph7_context_alloc_chunk(pCtx,(unsigned int)(2 * nLen + 4),FALSE,TRUE);
+	if( zOut == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	/* Find the first letter; nothing but non-letters answers "". */
+	for( ; !META_IS_ALPHA(cCurr = META_BYTE(w_idx)) ; w_idx++ ){
+		if( cCurr == '\0' ){
+			ph7_result_string(pCtx,"",0);
+			return PH7_OK;
+		}
+	}
+	/* The first phoneme is processed specially. A case that neither phonizes
+	 * nor advances leaves the letter for the main loop to read as an ordinary
+	 * one (php's own structure). */
+	cCurr = META_UP(cCurr);
+	switch( cCurr ){
+	case 'A':
+		/* AE becomes E; a vowel at the beginning is preserved */
+		if( META_NEXT == 'E' ){
+			META_PHONIZE('E');
+			w_idx += 2;
+		}else{
+			META_PHONIZE('A');
+			w_idx++;
+		}
+		break;
+	case 'G':
+	case 'K':
+	case 'P':
+		/* [GKP]N becomes N */
+		if( META_NEXT == 'N' ){
+			META_PHONIZE('N');
+			w_idx += 2;
+		}
+		break;
+	case 'W':{
+		/* WR becomes R; WH and W before a vowel keep the W; else dropped */
+		char cNext = META_NEXT;
+		if( cNext == 'R' ){
+			META_PHONIZE('R');
+			w_idx += 2;
+		}else if( cNext == 'H' || META_ISVOWEL(cNext) ){
+			META_PHONIZE('W');
+			w_idx += 2;
+		}
+		break;
+	}
+	case 'X':
+		/* X becomes S */
+		META_PHONIZE('S');
+		w_idx++;
+		break;
+	case 'E':
+	case 'I':
+	case 'O':
+	case 'U':
+		/* Vowels are kept (A handled above) */
+		META_PHONIZE(cCurr);
+		w_idx++;
+		break;
+	default:
+		break;
+	}
+	/* On to the metaphoning */
+	for( ; (cCurr = META_BYTE(w_idx)) != '\0' &&
+	       (iMaxPhonemes == 0 || (sxi64)nOut < iMaxPhonemes) ; w_idx++ ){
+		/* Letters an encoding below consumed along with this one */
+		sxu32 nSkip = 0;
+		char cPrev;
+		if( !META_IS_ALPHA(cCurr) ){
+			continue;
+		}
+		cCurr = META_UP(cCurr);
+		cPrev = META_PREV;
+		/* Drop duplicates, except CC */
+		if( cCurr == cPrev && cCurr != 'C' ){
+			continue;
+		}
+		switch( cCurr ){
+		case 'B':
+			/* B unless in MB */
+			if( cPrev != 'M' ){
+				META_PHONIZE('B');
+			}
+			break;
+		case 'C':{
+			/* 'sh' in -CIA- and -CH-; S in -CI-, -CE-, -CY-;
+			 * dropped in -SCI-, -SCE-, -SCY-; else K */
+			char cNext = META_NEXT;
+			if( META_MAKESOFT(cNext) ){ /* C[IEY] */
+				if( cNext == 'I' && META_AFTERNEXT == 'A' ){ /* CIA */
+					META_PHONIZE(META_SH);
+				}else if( cPrev == 'S' ){
+					/* dropped */
+				}else{
+					META_PHONIZE('S');
+				}
+			}else if( cNext == 'H' ){
+				META_PHONIZE(META_SH);
+				nSkip++;
+			}else{
+				META_PHONIZE('K');
+			}
+			break;
+		}
+		case 'D':
+			/* J in -DGE-, -DGI-, -DGY-; else T */
+			if( META_NEXT == 'G' && META_MAKESOFT(META_AFTERNEXT) ){
+				META_PHONIZE('J');
+				nSkip++;
+			}else{
+				META_PHONIZE('T');
+			}
+			break;
+		case 'G':{
+			/* F in -GH unless B--GH, D--GH, -H--GH, -H---GH (silent there);
+			 * dropped in -GN, -GNED (and -DG[EIY]-, handled in D);
+			 * J in -GE-, -GI-, -GY- when not GG; else K */
+			char cNext = META_NEXT;
+			if( cNext == 'H' ){
+				if( !(META_NOGHTOF(META_BACK(3)) || META_BACK(4) == 'H') ){
+					META_PHONIZE('F');
+					nSkip++;
+				}
+			}else if( cNext == 'N' ){
+				char cAfterNext = META_AFTERNEXT;
+				if( !META_IS_ALPHA(cAfterNext) ||
+				    (cAfterNext == 'E' && META_UP(MetaLookahead(zIn,nLen,w_idx,3)) == 'D') ){
+					/* dropped */
+				}else{
+					META_PHONIZE('K');
+				}
+			}else if( META_MAKESOFT(cNext) && cPrev != 'G' ){
+				META_PHONIZE('J');
+			}else{
+				META_PHONIZE('K');
+			}
+			break;
+		}
+		case 'H':
+			/* H before a vowel and not after C, G, P, S, T */
+			if( META_ISVOWEL(META_NEXT) && !META_AFFECTH(cPrev) ){
+				META_PHONIZE('H');
+			}
+			break;
+		case 'K':
+			/* dropped after C; else K */
+			if( cPrev != 'C' ){
+				META_PHONIZE('K');
+			}
+			break;
+		case 'P':
+			/* F before H; else P */
+			if( META_NEXT == 'H' ){
+				META_PHONIZE('F');
+			}else{
+				META_PHONIZE('P');
+			}
+			break;
+		case 'Q':
+			META_PHONIZE('K');
+			break;
+		case 'S':{
+			/* 'sh' in -SH-, -SIO-, -SIA-; else S */
+			char cNext = META_NEXT;
+			char cAfterNext;
+			if( cNext == 'I' &&
+			    ((cAfterNext = META_AFTERNEXT) == 'O' || cAfterNext == 'A') ){
+				META_PHONIZE(META_SH);
+			}else if( cNext == 'H' ){
+				META_PHONIZE(META_SH);
+				nSkip++;
+			}else{
+				META_PHONIZE('S');
+			}
+			break;
+		}
+		case 'T':{
+			/* 'sh' in -TIA-, -TIO-; 'th' before H; dropped in -TCH-; else T */
+			char cNext = META_NEXT;
+			char cAfterNext;
+			if( cNext == 'I' &&
+			    ((cAfterNext = META_AFTERNEXT) == 'O' || cAfterNext == 'A') ){
+				META_PHONIZE(META_SH);
+			}else if( cNext == 'H' ){
+				META_PHONIZE(META_TH);
+				nSkip++;
+			}else if( !(cNext == 'C' && META_AFTERNEXT == 'H') ){
+				META_PHONIZE('T');
+			}
+			break;
+		}
+		case 'V':
+			META_PHONIZE('F');
+			break;
+		case 'W':
+			/* W before a vowel, else dropped */
+			if( META_ISVOWEL(META_NEXT) ){
+				META_PHONIZE('W');
+			}
+			break;
+		case 'X':
+			META_PHONIZE('K');
+			META_PHONIZE('S');
+			break;
+		case 'Y':
+			/* Y before a vowel, else dropped */
+			if( META_ISVOWEL(META_NEXT) ){
+				META_PHONIZE('Y');
+			}
+			break;
+		case 'Z':
+			META_PHONIZE('S');
+			break;
+		case 'F':
+		case 'J':
+		case 'L':
+		case 'M':
+		case 'N':
+		case 'R':
+			/* passed through unchanged */
+			META_PHONIZE(cCurr);
+			break;
+		default:
+			break;
+		}
+		w_idx += nSkip;
+	}
+	ph7_result_string(pCtx,zOut,nOut);
+	return PH7_OK;
+#undef META_BYTE
+#undef META_NEXT
+#undef META_PREV
+#undef META_BACK
+#undef META_AFTERNEXT
+#undef META_PHONIZE
+}
+/*
  * string wordwrap(string $str[,int $width = 75[,string $break = "\n"]])
  *  Wraps a string to a given number of characters.
  * Parameters
