@@ -251,6 +251,17 @@ static sxi32 VmCallFinish(ph7_vm *pVm,VmExecState *pCaller,VmCallRecord *pCallee
 			}
 		}
 		pCaller->pTos->nIdx = pCallee->nLastRef;
+	}else{
+		/* A by-VALUE return is a TEMPORARY — php's IS_TMP_VAR — and must not look like
+		 * an lvalue. The result lands in the slot the call's first ARGUMENT occupied,
+		 * which still carried that argument's variable index, so the returned value
+		 * inherited it: `f(id($z))` with `function f(&$x)` aliased and overwrote `$z`,
+		 * a variable neither function was given by reference. Every call form was
+		 * affected (function, method, static, closure, nested) and every one of them
+		 * silently. Clearing it here also lets the call site see the temporary for what
+		 * it is, which is what php's "Only variables should be passed by reference"
+		 * notice is raised on. */
+		pCaller->pTos->nIdx = SXU32_HIGH;
 	}
 	if( rc != PH7_ABORT && ((pCallee->pFrame->iFlags & VM_FRAME_THROW) || rc == PH7_EXCEPTION) ){
 		/* The callee threw (or its finally threw past it). If an in-place catch
@@ -7013,6 +7024,12 @@ NativeCallDone:
 		}
 		/* Save foreign function return value into the (now top) function-name slot */
 		PH7_MemObjStore(&sRet,pTos);
+		/* ...and clear that slot's index. It is one of the call's own argument slots,
+		 * still carrying the variable index the argument was loaded with, and
+		 * PH7_MemObjStore does not touch nIdx — so a builtin's return value came back
+		 * looking like an lvalue for the caller's variable (`f(strtoupper($b))` with
+		 * `function f(&$x)` overwrote `$b`). No host function returns by reference. */
+		pTos->nIdx = SXU32_HIGH;
 		PH7_MemObjRelease(&sRet);
 	}
 	break;
