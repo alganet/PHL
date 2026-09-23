@@ -4727,144 +4727,789 @@ static sxi32 VmInstallSplDllist(ph7_vm *pVm)
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }
+/*
+ * ---------------------------------------------------------------------------
+ * SplHeap, SplMinHeap, SplMaxHeap and SplPriorityQueue.
+ *
+ * php's `spl_heap_object` is an array plus a FLAGS word, and the flags carry the
+ * thing the chunk could not express at all: **SPL_HEAP_CORRUPTED**. php sets it
+ * when an exception escapes the user's compare() mid-sift -- the heap invariant is
+ * then unknown -- and every operation that DEPENDS on the invariant refuses with
+ * "Heap is corrupted, heap properties are no longer ensured." until
+ * recoverFromCorruption() clears it. The chunk hardcoded `isCorrupted()` to false
+ * and `recoverFromCorruption()` to true, so a throwing comparator left a silently
+ * mis-ordered heap that kept answering.
+ *
+ * Which operations refuse is not guessable and was mapped against the oracle:
+ * insert, extract, top, next and __serialize/__unserialize refuse; count,
+ * isEmpty, rewind, valid, current, key, isCorrupted, recoverFromCorruption and
+ * __debugInfo all keep working. (A `foreach` refuses because it reaches next().)
+ *
+ * php's priority-queue node is exactly {data, priority} -- the chunk carried a
+ * third field, a descending `__serial` it never compared with, which leaked into
+ * serialize(), var_dump() and the (array) cast as a nonsense PHP_INT_MAX-relative
+ * integer. It is gone; equal priorities keep the order php's strictly-greater
+ * swap gives them.
+ *
+ * The other three the chunk lacked, the same three the SplDoublyLinkedList
+ * conversion lacked: `__debugInfo()` (flags / isCorrupted / heap, and for the queue
+ * the heap entries are rendered EXTR_BOTH-style whatever the extract flags say),
+ * and the `__serialize()`/`__unserialize()` pair, whose payload is
+ * [members, {flags, heap_elements}] and whose reader VALIDATES -- a plain heap
+ * refuses a non-zero flags word, the queue refuses a zero one.
+ */
+#define HP_H  "__h"   /* the heap array, in heap order */
+#define HP_FL "__fl"  /* php's intern->flags: the queue's EXTR bits, 0 for a heap */
+#define HP_CR "__cr"  /* php's SPL_HEAP_CORRUPTED */
+
+#define PQ_EXTR_DATA     1
+#define PQ_EXTR_PRIORITY 2
+#define PQ_EXTR_BOTH     3
+#define PQ_EXTR_MASK     3
+
+static ph7_value * HeapSlot(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,HP_H) : 0;
+	if( pSlot == 0 ){
+		return 0;
+	}
+	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){
+			return 0;
+		}
+	}
+	if( PH7_HashmapCowSeparate(pVm,pSlot) == 0 ){
+		return 0;
+	}
+	return pSlot;
+}
+static ph7_hashmap * HeapMap(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_value *pSlot = HeapSlot(pVm,pThis);
+	return pSlot ? (ph7_hashmap *)pSlot->x.pOther : 0;
+}
+static sxi64 HeapCount(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_hashmap *pMap = HeapMap(pVm,pThis);
+	return pMap ? (sxi64)pMap->nEntry : 0;
+}
+/* Re-resolved on every use: any call into the user's compare() may have moved
+ * pVm->aMemObj under us (rule 47). */
+static ph7_value * HeapAt(ph7_vm *pVm,ph7_class_instance *pThis,sxi64 i)
+{
+	ph7_hashmap *pMap = HeapMap(pVm,pThis);
+	ph7_hashmap_node *pNode = 0;
+	if( pMap == 0 || HashmapLookupIntKey(pMap,i,&pNode) != SXRET_OK ){
+		return 0;
+	}
+	return HashmapExtractNodeValue(pNode);
+}
+static void HeapPut(ph7_vm *pVm,ph7_class_instance *pThis,sxi64 i,ph7_value *pVal)
+{
+	ph7_hashmap *pMap = HeapMap(pVm,pThis);
+	ph7_value sKey;
+	if( pMap == 0 ){
+		return;
+	}
+	PH7_MemObjInitFromInt(pVm,&sKey,i);
+	PH7_HashmapInsert(pMap,&sKey,pVal);
+	PH7_MemObjRelease(&sKey);
+}
+static void HeapSwap(ph7_vm *pVm,ph7_class_instance *pThis,sxi64 i,sxi64 j)
+{
+	ph7_value sI,sJ,*pV;
+	PH7_MemObjInit(pVm,&sI);
+	PH7_MemObjInit(pVm,&sJ);
+	pV = HeapAt(pVm,pThis,i);
+	if( pV ){
+		PH7_MemObjStore(pV,&sI);
+	}
+	pV = HeapAt(pVm,pThis,j);
+	if( pV ){
+		PH7_MemObjStore(pV,&sJ);
+	}
+	HeapPut(pVm,pThis,i,&sJ);
+	HeapPut(pVm,pThis,j,&sI);
+	PH7_MemObjRelease(&sI);
+	PH7_MemObjRelease(&sJ);
+}
+static int HeapCorrupted(ph7_class_instance *pThis)
+{
+	return pThis ? (int)PH7_NativeAttrInt(pThis,HP_CR) : 0;
+}
+/*
+ * php's spl_heap_consistency_validations. Only the operations that DEPEND on the
+ * heap invariant call it -- count()/current()/key() answer from the array and are
+ * left alone, which is why a corrupted heap still reports its size.
+ */
+static sxi32 HeapCheck(ph7_context *pCtx)
+{
+	if( !HeapCorrupted(PH7_ContextThis(pCtx)) ){
+		return SXRET_OK;
+	}
+	return PH7_VmThrowException(pCtx,"RuntimeException",
+		"Heap is corrupted, heap properties are no longer ensured.");
+}
+/* A priority-queue node is php's {data, priority}: nothing else, and in that order. */
+static int HeapIsPq(ph7_class_instance *pThis)
+{
+	ph7_class *pPq;
+	if( pThis == 0 ){
+		return FALSE;
+	}
+	pPq = PH7_VmExtractClass(pThis->pVm,"SplPriorityQueue",sizeof("SplPriorityQueue")-1,FALSE,0);
+	return pPq && PH7_VmInstanceOf(pThis->pClass,pPq);
+}
+static ph7_value * HeapNodePart(ph7_value *pNode,const char *zKey)
+{
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pEnt = 0;
+	if( pNode == 0 || (pNode->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return 0;
+	}
+	pMap = (ph7_hashmap *)pNode->x.pOther;
+	if( HashmapLookupBlobKey(pMap,zKey,(sxu32)SyStrlen(zKey),&pEnt) != SXRET_OK ){
+		return 0;
+	}
+	return HashmapExtractNodeValue(pEnt);
+}
+static sxi32 HeapMakeNode(ph7_vm *pVm,ph7_value *pData,ph7_value *pPrio,ph7_value *pOut)
+{
+	ph7_value sKey;
+	if( PH7_MemObjToHashmap(pOut) != SXRET_OK ){
+		return SXERR_MEM;
+	}
+	PH7_MemObjInitFromString(pVm,&sKey,0);
+	PH7_MemObjStringAppend(&sKey,"data",sizeof("data")-1);
+	ph7_array_add_elem(pOut,&sKey,pData);
+	PH7_MemObjRelease(&sKey);
+	PH7_MemObjInitFromString(pVm,&sKey,0);
+	PH7_MemObjStringAppend(&sKey,"priority",sizeof("priority")-1);
+	ph7_array_add_elem(pOut,&sKey,pPrio);
+	PH7_MemObjRelease(&sKey);
+	return SXRET_OK;
+}
+/*
+ * Run the user's compare(). For a queue php compares the PRIORITIES, so the node's
+ * `priority` is what is handed over. A throw here is php's corruption trigger: the
+ * bit is set, and the throw still propagates.
+ */
+static sxi32 HeapCompare(ph7_context *pCtx,sxi64 iA,sxi64 iB,int *piCmp)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_method *pMethod;
+	ph7_value sA,sB,sRes,*apArg[2],*pV;
+	int bPq = HeapIsPq(pThis);
+	sxi32 rc;
+	*piCmp = 0;
+	pMethod = pThis ? PH7_ClassExtractMethod(pThis->pClass,"compare",sizeof("compare")-1) : 0;
+	if( pMethod == 0 ){
+		return SXRET_OK;
+	}
+	PH7_MemObjInit(pVm,&sA);
+	PH7_MemObjInit(pVm,&sB);
+	pV = HeapAt(pVm,pThis,iA);
+	if( bPq ){
+		pV = HeapNodePart(pV,"priority");
+	}
+	if( pV ){
+		PH7_MemObjStore(pV,&sA);
+	}
+	pV = HeapAt(pVm,pThis,iB);
+	if( bPq ){
+		pV = HeapNodePart(pV,"priority");
+	}
+	if( pV ){
+		PH7_MemObjStore(pV,&sB);
+	}
+	apArg[0] = &sA;
+	apArg[1] = &sB;
+	PH7_MemObjInit(pVm,&sRes);
+	/* php dispatches through its cached fptr_cmp and never consults visibility --
+	 * SplHeap::compare() is PROTECTED and is meant to be called by the heap. */
+	rc = PH7_VmCallMethodUnchecked(pVm,pThis,pMethod,&sRes,2,apArg);
+	if( rc == SXRET_OK ){
+		sxi64 iVal = ph7_value_to_int64(&sRes);
+		*piCmp = iVal < 0 ? -1 : (iVal > 0 ? 1 : 0);
+	}else{
+		/* php finishes the sift with the exception in flight and marks the heap
+		 * CORRUPTED afterwards; the element it was placing still lands. */
+		PH7_NativeSetAttrInt(pVm,pThis,HP_CR,1);
+	}
+	PH7_MemObjRelease(&sA);
+	PH7_MemObjRelease(&sB);
+	PH7_MemObjRelease(&sRes);
+	return rc;
+}
+static sxi32 HeapSiftUp(ph7_context *pCtx,sxi64 i)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	while( i > 0 ){
+		sxi64 p = (i - 1) / 2;
+		int iCmp = 0;
+		sxi32 rc = HeapCompare(pCtx,i,p,&iCmp);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		if( iCmp <= 0 ){
+			break;
+		}
+		HeapSwap(pVm,pThis,i,p);
+		i = p;
+	}
+	return SXRET_OK;
+}
+static sxi32 HeapSiftDown(ph7_context *pCtx,sxi64 i)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	for(;;){
+		sxi64 n = HeapCount(pVm,pThis);
+		sxi64 l = 2*i + 1, r = l + 1, b = i;
+		int iCmp = 0;
+		sxi32 rc;
+		if( l < n ){
+			rc = HeapCompare(pCtx,l,b,&iCmp);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+			if( iCmp > 0 ){
+				b = l;
+			}
+		}
+		if( r < n ){
+			rc = HeapCompare(pCtx,r,b,&iCmp);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+			if( iCmp > 0 ){
+				b = r;
+			}
+		}
+		if( b == i ){
+			break;
+		}
+		HeapSwap(pVm,pThis,i,b);
+		i = b;
+	}
+	return SXRET_OK;
+}
+/* php's spl_pqueue_extract_helper: BOTH wins over either single bit. */
+static void HeapPqShape(ph7_context *pCtx,ph7_value *pNode)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int iFlags = pThis ? (int)PH7_NativeAttrInt(pThis,HP_FL) : PQ_EXTR_DATA;
+	ph7_value *pPart;
+	if( (iFlags & PQ_EXTR_BOTH) == PQ_EXTR_BOTH ){
+		ph7_result_value(pCtx,pNode);
+		return;
+	}
+	pPart = HeapNodePart(pNode,(iFlags & PQ_EXTR_DATA) ? "data" : "priority");
+	if( pPart ){
+		ph7_result_value(pCtx,pPart);
+	}else{
+		ph7_result_null(pCtx);
+	}
+}
+/* Hand back element 0 the way this class presents it. */
+static void HeapResultTop(ph7_context *pCtx,ph7_value *pNode)
+{
+	if( HeapIsPq(PH7_ContextThis(pCtx)) ){
+		HeapPqShape(pCtx,pNode);
+	}else{
+		ph7_result_value(pCtx,pNode);
+	}
+}
+static int vm_builtin_SplHeap_insert(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_hashmap *pMap;
+	sxi32 rc = HeapCheck(pCtx);
+	if( rc != SXRET_OK || nArg < 1 ){
+		return rc;
+	}
+	pMap = HeapMap(pVm,pThis);
+	if( pMap == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( HeapIsPq(pThis) ){
+		ph7_value sNode;
+		if( nArg < 2 ){
+			return PH7_OK;
+		}
+		PH7_MemObjInit(pVm,&sNode);
+		if( HeapMakeNode(pVm,apArg[0],apArg[1],&sNode) != SXRET_OK ){
+			PH7_MemObjRelease(&sNode);
+			return PH7_ContextMemoryError(pCtx);
+		}
+		PH7_HashmapInsert(pMap,0,&sNode);
+		PH7_MemObjRelease(&sNode);
+	}else{
+		PH7_HashmapInsert(pMap,0,apArg[0]);
+	}
+	rc = HeapSiftUp(pCtx,HeapCount(pVm,pThis)-1);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	ph7_result_bool(pCtx,1);   /* php's `true` return type */
+	return PH7_OK;
+}
+static int vm_builtin_SplHeap_extract(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 n;
+	ph7_value sTop,*pV;
+	sxi32 rc = HeapCheck(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	n = HeapCount(pVm,pThis);
+	if( n == 0 ){
+		return PH7_VmThrowException(pCtx,"RuntimeException","Can't extract from an empty heap");
+	}
+	PH7_MemObjInit(pVm,&sTop);
+	pV = HeapAt(pVm,pThis,0);
+	if( pV ){
+		PH7_MemObjStore(pV,&sTop);
+	}
+	if( n > 1 ){
+		ph7_value sLast;
+		PH7_MemObjInit(pVm,&sLast);
+		pV = HeapAt(pVm,pThis,n-1);
+		if( pV ){
+			PH7_MemObjStore(pV,&sLast);
+		}
+		HeapPut(pVm,pThis,0,&sLast);
+		PH7_MemObjRelease(&sLast);
+	}
+	{
+		ph7_hashmap *pMap = HeapMap(pVm,pThis);
+		ph7_hashmap_node *pNode = 0;
+		if( pMap && HashmapLookupIntKey(pMap,n-1,&pNode) == SXRET_OK ){
+			PH7_HashmapUnlinkNode(pNode,TRUE);
+		}
+	}
+	if( n > 1 ){
+		rc = HeapSiftDown(pCtx,0);
+		if( rc != SXRET_OK ){
+			PH7_MemObjRelease(&sTop);
+			return rc;
+		}
+	}
+	HeapResultTop(pCtx,&sTop);
+	PH7_MemObjRelease(&sTop);
+	return PH7_OK;
+}
+static int vm_builtin_SplHeap_top(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pV;
+	sxi32 rc = HeapCheck(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	if( HeapCount(pCtx->pVm,pThis) == 0 ){
+		return PH7_VmThrowException(pCtx,"RuntimeException","Can't peek at an empty heap");
+	}
+	pV = HeapAt(pCtx->pVm,pThis,0);
+	if( pV ){
+		HeapResultTop(pCtx,pV);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_SplHeap_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_int64(pCtx,HeapCount(pCtx->pVm,PH7_ContextThis(pCtx)));
+	return PH7_OK;
+}
+static int vm_builtin_SplHeap_isEmpty(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx,HeapCount(pCtx->pVm,PH7_ContextThis(pCtx)) == 0);
+	return PH7_OK;
+}
+static int vm_builtin_SplHeap_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	SXUNUSED(pCtx);
+	return PH7_OK;   /* php's rewind is a no-op: a heap is walked by extraction */
+}
+static int vm_builtin_SplHeap_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx,HeapCount(pCtx->pVm,PH7_ContextThis(pCtx)) > 0);
+	return PH7_OK;
+}
+static int vm_builtin_SplHeap_current(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pV;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( HeapCount(pCtx->pVm,pThis) == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pV = HeapAt(pCtx->pVm,pThis,0);
+	if( pV ){
+		HeapResultTop(pCtx,pV);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_SplHeap_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_int64(pCtx,HeapCount(pCtx->pVm,PH7_ContextThis(pCtx))-1);
+	return PH7_OK;
+}
+static int vm_builtin_SplHeap_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc = HeapCheck(pCtx);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	if( HeapCount(pCtx->pVm,PH7_ContextThis(pCtx)) == 0 ){
+		return PH7_OK;
+	}
+	rc = vm_builtin_SplHeap_extract(pCtx,nArg,apArg);
+	ph7_result_null(pCtx);   /* php's next() is void; the extracted value is dropped */
+	return rc;
+}
+static int vm_builtin_SplHeap_isCorrupted(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx,HeapCorrupted(PH7_ContextThis(pCtx)));
+	return PH7_OK;
+}
+static int vm_builtin_SplHeap_recover(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	PH7_NativeSetAttrInt(pCtx->pVm,PH7_ContextThis(pCtx),HP_CR,0);
+	ph7_result_bool(pCtx,1);   /* php's `true` return type */
+	return PH7_OK;
+}
+static int vm_builtin_SplMinHeap_compare(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	/* php: $value2 <=> $value1 — the SMALLEST value sits on top. */
+	if( nArg < 2 ){
+		return PH7_OK;
+	}
+	ph7_result_int64(pCtx,(ph7_int64)PH7_MemObjCmp(apArg[1],apArg[0],FALSE,0));
+	return PH7_OK;
+}
+static int vm_builtin_SplMaxHeap_compare(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	if( nArg < 2 ){
+		return PH7_OK;
+	}
+	ph7_result_int64(pCtx,(ph7_int64)PH7_MemObjCmp(apArg[0],apArg[1],FALSE,0));
+	return PH7_OK;
+}
+static int vm_builtin_SplPq_compare(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	if( nArg < 2 ){
+		return PH7_OK;
+	}
+	ph7_result_int64(pCtx,(ph7_int64)PH7_MemObjCmp(apArg[0],apArg[1],FALSE,0));
+	return PH7_OK;
+}
+static int vm_builtin_SplPq_setExtractFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 iFlags = 0;
+	sxi32 rc;
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	rc = PH7_IntArgResolve(pCtx,apArg[0],"SplPriorityQueue::setExtractFlags",1,"$flags","int",&iFlags);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* php masks to the two bits and then REFUSES an empty selection — a nonsense
+	 * value is reduced, but asking for neither half is an error. */
+	iFlags &= PQ_EXTR_MASK;
+	if( iFlags == 0 ){
+		return PH7_VmThrowException(pCtx,"RuntimeException","Must specify at least one extract flag");
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,HP_FL,iFlags);
+	ph7_result_int64(pCtx,(ph7_int64)iFlags);
+	return PH7_OK;
+}
+static int vm_builtin_SplPq_getExtractFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_int64(pCtx,PH7_NativeAttrInt(PH7_ContextThis(pCtx),HP_FL));
+	return PH7_OK;
+}
+/*
+ * php's get_debug_info: flags, isCorrupted, heap. The QUEUE renders its entries
+ * EXTR_BOTH-style whatever the extract flags say, because the debug view is of the
+ * STORAGE rather than of what extract() would hand back.
+ */
+static sxi32 HeapFillDebug(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
+{
+	ph7_value sKey,sVal,*pStore;
+	PH7_MemObjInitFromString(pVm,&sKey,0);
+	PH7_MemObjStringAppend(&sKey,"flags",sizeof("flags")-1);
+	PH7_MemObjInitFromInt(pVm,&sVal,PH7_NativeAttrInt(pThis,HP_FL));
+	ph7_array_add_elem(pOut,&sKey,&sVal);
+	PH7_MemObjRelease(&sKey);
+	PH7_MemObjRelease(&sVal);
+	PH7_MemObjInitFromString(pVm,&sKey,0);
+	PH7_MemObjStringAppend(&sKey,"isCorrupted",sizeof("isCorrupted")-1);
+	PH7_MemObjInitFromBool(pVm,&sVal,HeapCorrupted(pThis));
+	ph7_array_add_elem(pOut,&sKey,&sVal);
+	PH7_MemObjRelease(&sKey);
+	PH7_MemObjRelease(&sVal);
+	PH7_MemObjInitFromString(pVm,&sKey,0);
+	PH7_MemObjStringAppend(&sKey,"heap",sizeof("heap")-1);
+	pStore = HeapSlot(pVm,pThis);
+	if( pStore ){
+		ph7_array_add_elem(pOut,&sKey,pStore);
+	}
+	PH7_MemObjRelease(&sKey);
+	return PH7_OK;
+}
+static sxi32 HeapPresent(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
+{
+	if( !bDebug ){
+		return PH7_OK;   /* php's (array) cast shows nothing */
+	}
+	return HeapFillDebug(pVm,pThis,pOut);
+}
+static int vm_builtin_SplHeap_debugInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value sOut;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	PH7_MemObjInit(pVm,&sOut);
+	if( PH7_MemObjToHashmap(&sOut) != SXRET_OK ){
+		PH7_MemObjRelease(&sOut);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	HeapFillDebug(pVm,PH7_ContextThis(pCtx),&sOut);
+	ph7_result_value(pCtx,&sOut);
+	PH7_MemObjRelease(&sOut);
+	return PH7_OK;
+}
+/*
+ * php's __serialize(): [members, {flags, heap_elements}]. Note the OUTER array is
+ * a two-element list whose first entry is the dynamic-property table — a native
+ * class has none that are php-visible, so it is always empty here.
+ */
+static int vm_builtin_SplHeap_serializeMagic(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value sOut,sMembers,sState,sKey,sVal,*pStore;
+	sxi32 rc = HeapCheck(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	PH7_MemObjInit(pVm,&sOut);
+	PH7_MemObjInit(pVm,&sMembers);
+	PH7_MemObjInit(pVm,&sState);
+	if( PH7_MemObjToHashmap(&sOut) != SXRET_OK
+	 || PH7_MemObjToHashmap(&sMembers) != SXRET_OK
+	 || PH7_MemObjToHashmap(&sState) != SXRET_OK ){
+		PH7_MemObjRelease(&sOut);
+		PH7_MemObjRelease(&sMembers);
+		PH7_MemObjRelease(&sState);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_MemObjInitFromString(pVm,&sKey,0);
+	PH7_MemObjStringAppend(&sKey,"flags",sizeof("flags")-1);
+	PH7_MemObjInitFromInt(pVm,&sVal,PH7_NativeAttrInt(pThis,HP_FL));
+	ph7_array_add_elem(&sState,&sKey,&sVal);
+	PH7_MemObjRelease(&sKey);
+	PH7_MemObjRelease(&sVal);
+	PH7_MemObjInitFromString(pVm,&sKey,0);
+	PH7_MemObjStringAppend(&sKey,"heap_elements",sizeof("heap_elements")-1);
+	pStore = HeapSlot(pVm,pThis);
+	if( pStore ){
+		ph7_array_add_elem(&sState,&sKey,pStore);
+	}
+	PH7_MemObjRelease(&sKey);
+	ph7_array_add_elem(&sOut,0,&sMembers);
+	ph7_array_add_elem(&sOut,0,&sState);
+	ph7_result_value(pCtx,&sOut);
+	PH7_MemObjRelease(&sOut);
+	PH7_MemObjRelease(&sMembers);
+	PH7_MemObjRelease(&sState);
+	return PH7_OK;
+}
+static sxi32 HeapUnserializeFail(ph7_context *pCtx)
+{
+	return PH7_VmThrowException(pCtx,"UnexpectedValueException",
+		"Unexpected data found in serialization payload");
+}
+static int vm_builtin_SplHeap_unserializeMagic(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_hashmap *pData;
+	ph7_hashmap_node *pNode = 0;
+	ph7_value *pState,*pFlags,*pElems,*pSlot;
+	sxi64 iFlags;
+	int bPq;
+	sxi32 rc = HeapCheck(pCtx);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_HASHMAP) == 0 || pThis == 0 ){
+		return HeapUnserializeFail(pCtx);
+	}
+	pData = (ph7_hashmap *)apArg[0]->x.pOther;
+	if( HashmapLookupIntKey(pData,1,&pNode) != SXRET_OK ){
+		return HeapUnserializeFail(pCtx);
+	}
+	pState = HashmapExtractNodeValue(pNode);
+	if( pState == 0 || (pState->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return HeapUnserializeFail(pCtx);
+	}
+	pFlags = HeapNodePart(pState,"flags");
+	pElems = HeapNodePart(pState,"heap_elements");
+	if( pFlags == 0 || (pFlags->iFlags & MEMOBJ_INT) == 0
+	 || pElems == 0 || (pElems->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return HeapUnserializeFail(pCtx);
+	}
+	/* php VALIDATES the flags against the class: a plain heap has no user-visible
+	 * flags at all, the queue must name at least one half to extract. */
+	iFlags = ph7_value_to_int64(pFlags);
+	bPq = HeapIsPq(pThis);
+	if( bPq ){
+		iFlags &= PQ_EXTR_MASK;
+		if( iFlags == 0 ){
+			return HeapUnserializeFail(pCtx);
+		}
+	}else if( iFlags != 0 ){
+		return HeapUnserializeFail(pCtx);
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,HP_FL,iFlags);
+	pSlot = PH7_NativeAttr(pThis,HP_H);
+	if( pSlot ){
+		PH7_MemObjRelease(pSlot);
+		PH7_MemObjStore(pElems,pSlot);
+	}
+	return PH7_OK;
+}
+/*
+ * The declaration. Method ORDER is spl_heap.stub.php's; php declares no
+ * constructor for any of the four, SplHeap::compare is ABSTRACT PROTECTED (so
+ * SplHeap itself cannot be instantiated) while the queue's is PUBLIC, and the
+ * queue's default extract mode is EXTR_DATA, stamped as a property default the
+ * way the DLL family's fix bit is.
+ */
+static sxi32 VmInstallSplHeap(ph7_vm *pVm)
+{
+	static const PH7_NativePropDef aHeapProp[] = {
+		{ HP_H,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ HP_FL, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+		{ HP_CR, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+	};
+	static const PH7_NativePropDef aPqProp[] = {
+		{ HP_H,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ HP_FL, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN,
+		  { 0, 0, PH7_NATIVE_VAL_INT, PQ_EXTR_DATA, 0, 0.0 }, 0 },
+		{ HP_CR, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+	};
+	static const PH7_NativeMethodDef aHeapMethod[] = {
+		{ "extract",               PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_SplHeap_extract },
+		{ "insert",                PH7_MOD_PUBLIC, "mixed $value", "@true",
+		  vm_builtin_SplHeap_insert },
+		{ "top",                   PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_SplHeap_top },
+		{ "count",                 PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplHeap_count },
+		{ "isEmpty",               PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplHeap_isEmpty },
+		{ "rewind",                PH7_MOD_PUBLIC, "", "@void", vm_builtin_SplHeap_rewind },
+		{ "current",               PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_SplHeap_current },
+		{ "key",                   PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplHeap_key },
+		{ "next",                  PH7_MOD_PUBLIC, "", "@void", vm_builtin_SplHeap_next },
+		{ "valid",                 PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplHeap_valid },
+		{ "recoverFromCorruption", PH7_MOD_PUBLIC, "", "@true", vm_builtin_SplHeap_recover },
+		{ "compare",               PH7_MOD_PROTECTED|PH7_MOD_ABSTRACT,
+		  "mixed $value1, mixed $value2", "@int", 0 },
+		{ "isCorrupted",           PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplHeap_isCorrupted },
+		{ "__debugInfo",           PH7_MOD_PUBLIC, "", "@array", vm_builtin_SplHeap_debugInfo },
+		{ "__serialize",           PH7_MOD_PUBLIC, "", "@array",
+		  vm_builtin_SplHeap_serializeMagic },
+		{ "__unserialize",         PH7_MOD_PUBLIC, "array $data", "@void",
+		  vm_builtin_SplHeap_unserializeMagic },
+	};
+	static const PH7_NativeMethodDef aMinMethod[] = {
+		{ "compare", PH7_MOD_PROTECTED, "mixed $value1, mixed $value2", "@int",
+		  vm_builtin_SplMinHeap_compare },
+	};
+	static const PH7_NativeMethodDef aMaxMethod[] = {
+		{ "compare", PH7_MOD_PROTECTED, "mixed $value1, mixed $value2", "@int",
+		  vm_builtin_SplMaxHeap_compare },
+	};
+	static const PH7_NativeConstDef aPqConst[] = {
+		{ "EXTR_BOTH",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, PQ_EXTR_BOTH, 0, 0.0 },
+		{ "EXTR_PRIORITY", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, PQ_EXTR_PRIORITY, 0, 0.0 },
+		{ "EXTR_DATA",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, PQ_EXTR_DATA, 0, 0.0 },
+	};
+	static const PH7_NativeMethodDef aPqMethod[] = {
+		{ "compare",               PH7_MOD_PUBLIC, "mixed $priority1, mixed $priority2", "@int",
+		  vm_builtin_SplPq_compare },
+		{ "insert",                PH7_MOD_PUBLIC, "mixed $value, mixed $priority", "@true",
+		  vm_builtin_SplHeap_insert },
+		{ "setExtractFlags",       PH7_MOD_PUBLIC, "int $flags", "@int",
+		  vm_builtin_SplPq_setExtractFlags },
+		{ "top",                   PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_SplHeap_top },
+		{ "extract",               PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_SplHeap_extract },
+		{ "count",                 PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplHeap_count },
+		{ "isEmpty",               PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplHeap_isEmpty },
+		{ "rewind",                PH7_MOD_PUBLIC, "", "@void", vm_builtin_SplHeap_rewind },
+		{ "current",               PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_SplHeap_current },
+		{ "key",                   PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplHeap_key },
+		{ "next",                  PH7_MOD_PUBLIC, "", "@void", vm_builtin_SplHeap_next },
+		{ "valid",                 PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplHeap_valid },
+		{ "recoverFromCorruption", PH7_MOD_PUBLIC, "", "@true", vm_builtin_SplHeap_recover },
+		{ "isCorrupted",           PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplHeap_isCorrupted },
+		{ "getExtractFlags",       PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplPq_getExtractFlags },
+		{ "__debugInfo",           PH7_MOD_PUBLIC, "", "@array", vm_builtin_SplHeap_debugInfo },
+		{ "__serialize",           PH7_MOD_PUBLIC, "", "@array",
+		  vm_builtin_SplHeap_serializeMagic },
+		{ "__unserialize",         PH7_MOD_PUBLIC, "array $data", "@void",
+		  vm_builtin_SplHeap_unserializeMagic },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "SplPriorityQueue", 0, "Iterator,Countable", 0,
+		  aPqMethod, SX_ARRAYSIZE(aPqMethod),
+		  aPqConst, SX_ARRAYSIZE(aPqConst),
+		  aPqProp, SX_ARRAYSIZE(aPqProp), 0, 0, HeapPresent },
+		{ "SplHeap", 0, "Iterator,Countable", PH7_CLASS_ABSTRACT,
+		  aHeapMethod, SX_ARRAYSIZE(aHeapMethod), 0, 0,
+		  aHeapProp, SX_ARRAYSIZE(aHeapProp), 0, 0, HeapPresent },
+		{ "SplMinHeap", "SplHeap", 0, 0,
+		  aMinMethod, SX_ARRAYSIZE(aMinMethod), 0, 0, 0, 0, 0, 0, HeapPresent },
+		{ "SplMaxHeap", "SplHeap", 0, 0,
+		  aMaxMethod, SX_ARRAYSIZE(aMaxMethod), 0, 0, 0, 0, 0, 0, HeapPresent },
+	};
+	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+}
 static const char zSplLib[] =
-"abstract class SplHeap implements Iterator, Countable {"
-" private $__h = [];"
-" abstract protected function compare($value1, $value2);"
-" private function __hSiftUp($i){"
-"  while( $i > 0 ){"
-"   $p = ($i - 1) >> 1;"
-"   if( $this->compare($this->__h[$i], $this->__h[$p]) <= 0 ){ break; }"
-"   $t = $this->__h[$p]; $this->__h[$p] = $this->__h[$i]; $this->__h[$i] = $t;"
-"   $i = $p;"
-"  }"
-" }"
-" private function __hSiftDown($i){"
-"  $n = count($this->__h);"
-"  for(;;){"
-"   $l = 2 * $i + 1; $r = $l + 1; $b = $i;"
-"   if( $l < $n && $this->compare($this->__h[$l], $this->__h[$b]) > 0 ){ $b = $l; }"
-"   if( $r < $n && $this->compare($this->__h[$r], $this->__h[$b]) > 0 ){ $b = $r; }"
-"   if( $b === $i ){ break; }"
-"   $t = $this->__h[$b]; $this->__h[$b] = $this->__h[$i]; $this->__h[$i] = $t;"
-"   $i = $b;"
-"  }"
-" }"
-" public function insert($value){"
-"  $this->__h[] = $value;"
-"  $this->__hSiftUp(count($this->__h) - 1);"
-"  return true;"
-" }"
-" public function extract(){"
-"  $n = count($this->__h);"
-"  if( $n === 0 ){"
-"   throw new RuntimeException(\"Can't extract from an empty heap\");"
-"  }"
-"  $top = $this->__h[0];"
-"  $last = array_pop($this->__h);"
-"  if( $n > 1 ){"
-"   $this->__h[0] = $last;"
-"   $this->__hSiftDown(0);"
-"  }"
-"  return $top;"
-" }"
-" public function top(){"
-"  if( count($this->__h) === 0 ){"
-"   throw new RuntimeException(\"Can't peek at an empty heap\");"
-"  }"
-"  return $this->__h[0];"
-" }"
-" public function isEmpty(){ return count($this->__h) === 0; }"
-" public function count(){ return count($this->__h); }"
-" public function isCorrupted(){ return false; }"
-" public function recoverFromCorruption(){ return true; }"
-" public function rewind(){}"
-" public function valid(){ return count($this->__h) > 0; }"
-" public function current(){ return count($this->__h) ? $this->__h[0] : null; }"
-" public function key(){ return count($this->__h) - 1; }"
-" public function next(){ if( count($this->__h) ){ $this->extract(); } }"
-"}"
-"class SplMinHeap extends SplHeap {"
-" protected function compare($value1, $value2){ return $value2 <=> $value1; }"
-"}"
-"class SplMaxHeap extends SplHeap {"
-" protected function compare($value1, $value2){ return $value1 <=> $value2; }"
-"}"
-"class SplPriorityQueue implements Iterator, Countable {"
-" const EXTR_DATA = 1;"
-" const EXTR_PRIORITY = 2;"
-" const EXTR_BOTH = 3;"
-" private $__h = [];"
-" private $__serial = PHP_INT_MAX;"
-" private $__flags = 1;"
-" public function compare($priority1, $priority2){ return $priority1 <=> $priority2; }"
-" private function __pqCmp($a, $b){"
-"  /* NO tie-break: php's heap swaps only on strictly-greater, which fixes"
-"   * the (documented-as-undefined) equal-priority order it exhibits */"
-"  return $this->compare($a[0], $b[0]);"
-" }"
-" private function __pqSiftUp($i){"
-"  while( $i > 0 ){"
-"   $p = ($i - 1) >> 1;"
-"   if( $this->__pqCmp($this->__h[$i], $this->__h[$p]) <= 0 ){ break; }"
-"   $t = $this->__h[$p]; $this->__h[$p] = $this->__h[$i]; $this->__h[$i] = $t;"
-"   $i = $p;"
-"  }"
-" }"
-" private function __pqSiftDown($i){"
-"  $n = count($this->__h);"
-"  for(;;){"
-"   $l = 2 * $i + 1; $r = $l + 1; $b = $i;"
-"   if( $l < $n && $this->__pqCmp($this->__h[$l], $this->__h[$b]) > 0 ){ $b = $l; }"
-"   if( $r < $n && $this->__pqCmp($this->__h[$r], $this->__h[$b]) > 0 ){ $b = $r; }"
-"   if( $b === $i ){ break; }"
-"   $t = $this->__h[$b]; $this->__h[$b] = $this->__h[$i]; $this->__h[$i] = $t;"
-"   $i = $b;"
-"  }"
-" }"
-" public function insert($value, $priority){"
-"  $this->__h[] = [$priority, $this->__serial--, $value];"
-"  $this->__pqSiftUp(count($this->__h) - 1);"
-"  return true;"
-" }"
-" private function __pqShape($node){"
-"  if( $this->__flags === self::EXTR_BOTH ){"
-"   return ['data' => $node[2], 'priority' => $node[0]];"
-"  }"
-"  if( $this->__flags === self::EXTR_PRIORITY ){ return $node[0]; }"
-"  return $node[2];"
-" }"
-" public function extract(){"
-"  $n = count($this->__h);"
-"  if( $n === 0 ){"
-"   throw new RuntimeException(\"Can't extract from an empty heap\");"
-"  }"
-"  $top = $this->__h[0];"
-"  $last = array_pop($this->__h);"
-"  if( $n > 1 ){"
-"   $this->__h[0] = $last;"
-"   $this->__pqSiftDown(0);"
-"  }"
-"  return $this->__pqShape($top);"
-" }"
-" public function top(){"
-"  if( count($this->__h) === 0 ){"
-"   throw new RuntimeException(\"Can't peek at an empty heap\");"
-"  }"
-"  return $this->__pqShape($this->__h[0]);"
-" }"
-" public function setExtractFlags($flags){ $this->__flags = (int)$flags; }"
-" public function getExtractFlags(){ return $this->__flags; }"
-" public function isEmpty(){ return count($this->__h) === 0; }"
-" public function count(){ return count($this->__h); }"
-" public function isCorrupted(){ return false; }"
-" public function recoverFromCorruption(){ return true; }"
-" public function rewind(){}"
-" public function valid(){ return count($this->__h) > 0; }"
-" public function current(){ return count($this->__h) ? $this->__pqShape($this->__h[0]) : null; }"
-" public function key(){ return count($this->__h) - 1; }"
-" public function next(){ if( count($this->__h) ){ $this->extract(); } }"
-"}"
 "class SplFixedArray implements ArrayAccess, Countable, IteratorAggregate, JsonSerializable {"
 " private $__a = [];"
 " private $__n = 0;"
@@ -5156,6 +5801,10 @@ PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)
 	/* Also before the chunk: SplPriorityQueue and the heaps are still PHP and the
 	 * compiler reads them after these three are declared. */
 	rc = VmInstallSplDllist(&(*pVm));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	rc = VmInstallSplHeap(&(*pVm));
 	if( rc != SXRET_OK ){
 		return rc;
 	}

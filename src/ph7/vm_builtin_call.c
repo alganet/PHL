@@ -1331,6 +1331,35 @@ PH7_PRIVATE sxi32 PH7_VmCallMagicMethod(
 	pVm->bMagicDispatch = 0; /* OP_CALL consumes it; clear if it never ran */
 	return rc;
 }
+/*
+ * Call a method the way php's ENGINE calls one it looked up itself: visibility is
+ * not consulted. php's SPL heap caches `fptr_cmp` and invokes the user's
+ * `protected function compare()` through it on every sift — the engine reaching
+ * for a method a class declared FOR it is not the outside world reaching for a
+ * protected member, exactly as with a magic method above.
+ *
+ * The latch is `bReflectBypass`, the same consume-once one
+ * ReflectionMethod::invoke() uses, so nested calls made by the invoked body are
+ * checked normally. Reach for this ONLY where php dispatches through a cached
+ * handler of its own; an ordinary native body calling a user method wants
+ * PH7_VmCallClassMethod and its visibility rules.
+ */
+PH7_PRIVATE sxi32 PH7_VmCallMethodUnchecked(
+	ph7_vm *pVm,
+	ph7_class_instance *pThis,
+	ph7_class_method *pMethod,
+	ph7_value *pResult,
+	int nArg,
+	ph7_value **apArg
+	)
+{
+	sxi32 rc;
+	int bSave = pVm->bReflectBypass;
+	pVm->bReflectBypass = 1;
+	rc = VmCallClassMethodWithMap(&(*pVm),pThis,pMethod,pResult,nArg,apArg,0);
+	pVm->bReflectBypass = bSave; /* OP_CALL consumes it; restore if it never ran */
+	return rc;
+}
 PH7_PRIVATE sxi32 PH7_VmCallClassMethod(
 	ph7_vm *pVm,               /* Target VM */
 	ph7_class_instance *pThis, /* Target class instance [i.e: Object in the PHP jargon]*/
