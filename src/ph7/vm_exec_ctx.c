@@ -1202,6 +1202,101 @@ PH7_PRIVATE int vm_builtin_Closure_construct(ph7_context *pCtx, int nArg, ph7_va
 		"Instantiation of class Closure is not allowed");
 }
 /*
+ * Clone a Closure for a rebind, carrying the marks that say WHAT it wraps. They live on the
+ * instance rather than in an attribute, so PH7_CloneClassInstance — which copies attributes —
+ * left them behind: the clone of a method callable forgot that its `$__fn` names a screened
+ * METHOD, and `$fcc->bindTo($other)` came back as a closure whose every dispatch re-resolved
+ * the name and re-decided its visibility (or, with no method of that name in reach, looked
+ * for a global FUNCTION).
+ */
+static ph7_class_instance * VmCloneClosureInstance(ph7_class_instance *pClosure)
+{
+	ph7_class_instance *pClone = PH7_CloneClassInstance(pClosure);
+	if( pClone ){
+		pClone->iFlags |= pClosure->iFlags
+			& (VM_INSTANCE_FCC_METHOD|VM_INSTANCE_FCC_SCREENED|VM_INSTANCE_FCC_INVOKE_OBJ);
+	}
+	return pClone;
+}
+/*
+ * Is this closure STATIC — one that can never take a `$this`? For a plain closure that is the
+ * `static function(){}` declaration flag; for a METHOD callable it is the method's own
+ * staticness, which the flag cannot see because `$__fn` names a method and not a function in
+ * hFunction. `Base::stat(...)` is exactly as static as `static fn()` to php.
+ */
+static int VmClosureIsStatic(ph7_vm *pVm, ph7_class_instance *pClosure)
+{
+	SyString sAttr;
+	ph7_value *pFn;
+	SyStringInitFromBuf(&sAttr, "__fn", 4);
+	pFn = PH7_ClassInstanceFetchAttr(pClosure, &sAttr);
+	if( pFn == 0 || (pFn->iFlags & MEMOBJ_STRING) == 0 || SyBlobLength(&pFn->sBlob) == 0 ){
+		return 0;
+	}
+	if( pClosure->iFlags & VM_INSTANCE_FCC_METHOD ){
+		ph7_class *pScope = PH7_VmClosureScopeClass(pVm, pClosure);
+		ph7_class_method *pMeth = pScope
+			? PH7_ClassExtractMethod(pScope, (const char *)SyBlobData(&pFn->sBlob),
+				SyBlobLength(&pFn->sBlob)) : 0;
+		return (pMeth && (pMeth->iFlags & PH7_CLASS_ATTR_STATIC)) ? 1 : 0;
+	}
+	{
+		SyHashEntry *pEntry = SyHashGet(&pVm->hFunction, SyBlobData(&pFn->sBlob),
+			SyBlobLength(&pFn->sBlob));
+		return (pEntry && (((ph7_vm_func *)pEntry->pUserData)->iFlags & VM_FUNC_STATIC_CL)) ? 1 : 0;
+	}
+}
+/*
+ * php's four refusals for a rebind (zend_valid_closure_binding), in php's order. A closure
+ * created from a METHOD is a "fake closure": it wraps a resolved function, so its `$this` may
+ * only move WITHIN the class that declared it and its scope may not move at all. PHL applied
+ * none of them beyond the static-closure one, so `$fcc->bindTo($unrelated)` handed back a
+ * closure that could only fail later, and `->bindTo(null)` one with no receiver for a method
+ * that needs one. Each refusal is php's E_WARNING plus a NULL result; returns 0 when it fired.
+ *
+ * pScope is the resolved $scope ARGUMENT (0 when omitted or `"static"`, which both mean keep);
+ * an empty one is an explicit `null`, which php counts as a rebind like any other.
+ */
+static int VmClosureBindAllowed(ph7_vm *pVm, ph7_class_instance *pClosure,
+	ph7_class_instance *pNewThis, const SyString *pScope)
+{
+	int bMethod = (pClosure->iFlags & VM_INSTANCE_FCC_METHOD) != 0;
+	ph7_class *pOwn = bMethod ? PH7_VmClosureScopeClass(pVm, pClosure) : 0;
+	if( pNewThis ){
+		if( VmClosureIsStatic(pVm, pClosure) ){
+			PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
+				"Cannot bind an instance to a static closure, this will be an error in PHP 9");
+			return 0;
+		}
+		if( pOwn && !PH7_VmInstanceOf(pNewThis->pClass, pOwn) ){
+			SyString sFn;
+			ph7_value *pFn;
+			SyStringInitFromBuf(&sFn, "__fn", 4);
+			pFn = PH7_ClassInstanceFetchAttr(pClosure, &sFn);
+			SyStringInitFromBuf(&sFn, pFn ? (const char *)SyBlobData(&pFn->sBlob) : "",
+				pFn ? SyBlobLength(&pFn->sBlob) : 0);
+			VmErrorFormat(pVm,PH7_CTX_WARNING,
+				"Cannot bind method %z::%z() to object of class %z, this will be an error in PHP 9",
+				&pOwn->sName,&sFn,&pNewThis->pClass->sName);
+			return 0;
+		}
+	}else if( pOwn && !VmClosureIsStatic(pVm, pClosure) ){
+		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
+			"Cannot unbind $this of method, this will be an error in PHP 9");
+		return 0;
+	}
+	if( pScope && bMethod ){
+		ph7_class *pWant = pScope->nByte
+			? PH7_VmResolveScopeName(pVm, pScope->zString, pScope->nByte) : 0;
+		if( pWant != pOwn ){
+			PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
+				"Cannot rebind scope of closure created from method, this will be an error in PHP 9");
+			return 0;
+		}
+	}
+	return 1;
+}
+/*
  * Closure::call(object $newThis, mixed ...$args) — bind and invoke in one step.
  *
  * This was the last PHP left in the class: `$bound = $this->bindTo($newThis,
@@ -1236,12 +1331,19 @@ PH7_PRIVATE int vm_builtin_Closure_call(ph7_context *pCtx, int nArg, ph7_value *
 	}
 	pClosure = (ph7_class_instance *)pRecv->x.pOther;
 	pNewThis = (ph7_class_instance *)apArg[0]->x.pOther;
-	pClone = PH7_CloneClassInstance(pClosure);
+	SyStringInitFromBuf(&sScope, pNewThis->pClass->sName.zString, pNewThis->pClass->sName.nByte);
+	/* call() BINDS before it invokes, so php's rebind refusals apply to it — and because the
+	 * scope it asks for is the new $this's class, a method callable handed an instance of
+	 * anything but its own declaring class is refused for the scope, not the receiver. */
+	if( !VmClosureBindAllowed(pVm, pClosure, pNewThis, &sScope) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pClone = VmCloneClosureInstance(pClosure);
 	if( pClone == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	SyStringInitFromBuf(&sScope, pNewThis->pClass->sName.zString, pNewThis->pClass->sName.nByte);
 	VmClosureRebind(pClone, pNewThis, &sScope);
 	/* The bound closure is handed to the dispatcher through a STACK carrier that
 	 * takes its own reference (rule 16): a context value would be released with the
@@ -1352,26 +1454,14 @@ PH7_PRIVATE int vm_builtin_Closure_bindTo(ph7_context *pCtx, int nArg, ph7_value
 		return PH7_VmThrowException(pCtx, "TypeError",
 			"Closure::bindTo(): Argument #1 ($newThis) must be of type ?object");
 	}
-	if( pNewThis ){
-		/* php refuses to bind an instance to a static closure: warning + null */
-		SyString sAttr;
-		ph7_value *pFn;
-		SyStringInitFromBuf(&sAttr, "__fn", 4);
-		pFn = PH7_ClassInstanceFetchAttr(pClosure, &sAttr);
-		if( pFn && (pFn->iFlags & MEMOBJ_STRING) && SyBlobLength(&pFn->sBlob) > 0 ){
-			SyHashEntry *pEntry = SyHashGet(&pVm->hFunction, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));
-			if( pEntry && (((ph7_vm_func *)pEntry->pUserData)->iFlags & VM_FUNC_STATIC_CL) ){
-				PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
-					"Cannot bind an instance to a static closure, this will be an error in PHP 9");
-				ph7_result_null(pCtx);
-				return PH7_OK;
-			}
-		}
-	}
 	if( VmClosureResolveScope((nArg > 1) ? apArg[1] : 0, &sScope) ){
 		pScopePtr = &sScope;
 	}
-	pClone = PH7_CloneClassInstance(pClosure);
+	if( !VmClosureBindAllowed(pVm, pClosure, pNewThis, pScopePtr) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pClone = VmCloneClosureInstance(pClosure);
 	if( pClone == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
