@@ -1982,9 +1982,20 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 					  * idioms are written — `(function(){ … })->bindTo($o)`,
 					  * `(fn() => …)->call($o)`, `(match($k){ … })->m()`. PHL refused all of
 					  * them as "Expecting a variable as left operand", a compile fatal on
-					  * valid php, because a literal TERM carries no operator. Only a BARE
-					  * literal stays refused, which is php's own parse error for `1->x`. */
-					 (apNode[iLeft]->iFlags & EXPR_NODE_PARENS) == 0 ){
+					  * valid php, because a literal TERM carries no operator. */
+					 (apNode[iLeft]->iFlags & EXPR_NODE_PARENS) == 0 &&
+					 /* php's `dereferencable` also covers the SCALAR forms — a quoted
+					  * string (interpolated or not) and an array literal — plus a
+					  * CONSTANT, and it runs them: `"s"->p` warns `Attempt to read
+					  * property "p" on string` and yields null, `"s"->m()` is the
+					  * member-function Error. Refusing them at COMPILE time killed the
+					  * whole file instead. A NUMBER literal and a heredoc stay refused
+					  * — those are php's own parse error for `1->x`. */
+					 apNode[iLeft]->xCode != PH7_CompileSimpleString &&
+					 apNode[iLeft]->xCode != PH7_CompileString &&
+					 apNode[iLeft]->xCode != PH7_CompileLiteral &&
+					 apNode[iLeft]->xCode != PH7_CompileArray &&
+					 apNode[iLeft]->xCode != PH7_CompileShortArray ){
 						 /* Syntax error */
 						 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
 							 "'%z': Expecting a variable as left operand",&pNode->pOp->sOp);
