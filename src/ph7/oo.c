@@ -2148,6 +2148,33 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceWalk(
 	return SXRET_OK;
 }
 /*
+ * The instance's attribute entry for a property name, INCLUDING the empty one.
+ *
+ * SyHashGet answers 0 for a zero-length key engine-wide, so a property named ""
+ * — php's own `s:0:""` payload builds one, and every surface that walks hAttr
+ * shows it — can only be found by walking the list. Used by the presentation
+ * surfaces that snapshot names and re-look-up each one before reading it (a PHP
+ * 8.4 get hook may unset a property mid-walk), where the plain hash probe would
+ * silently drop it from the output while var_dump, which walks directly, showed
+ * it. The walk uses the hash's embedded loop cursor, so it must not run inside
+ * another walk of the SAME table — the callers below re-enter only through the
+ * hook dispatch, which happens after this returns.
+ */
+PH7_PRIVATE SyHashEntry * PH7_ClassInstanceAttrEntry(ph7_class_instance *pThis,const char *zName,sxu32 nName)
+{
+	SyHashEntry *pEntry;
+	if( nName > 0 ){
+		return SyHashGet(&pThis->hAttr,(const void *)zName,nName);
+	}
+	SyHashResetLoopCursor(&pThis->hAttr);
+	while( (pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
+		if( pEntry->nKeyLen == 0 ){
+			return pEntry;
+		}
+	}
+	return 0;
+}
+/*
  * Extract a class atrribute value.
  * Return a pointer to the attribute value on success. Otherwise NULL.
  * Note:

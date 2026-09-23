@@ -716,7 +716,7 @@ static sxi32 VmJsonEncode(
 					ph7_value *pAttrVal = 0;
 					ph7_value sHookVal;
 					sxi32 rcHk;
-					pAttrEntry = SyHashGet(&pThis->hAttr,(const void *)aName[iName].zString,aName[iName].nByte);
+					pAttrEntry = PH7_ClassInstanceAttrEntry(pThis,aName[iName].zString,aName[iName].nByte);
 					if( pAttrEntry == 0 ){
 						continue; /* unset by an earlier hook */
 					}

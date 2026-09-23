@@ -665,25 +665,77 @@ static int VmUnserializeClassAllowed(unserialize_data *ud, const char *zClass, s
 	return sWalk.bFound;
 }
 /*
+ * The instance slot for a property the payload names, creating it as a DYNAMIC
+ * one when it is not there yet. A duplicate key overwrites, like any hash store.
+ *
+ * An EMPTY name is php's own (`s:0:""` gives a property `''` that `$o->{''}`
+ * reads), and PH7_ClassInstanceAttrEntry is what finds one — SyHashGet refuses a
+ * zero-length key engine-wide — so a payload repeating `s:0:""` overwrites
+ * instead of growing one ghost entry per occurrence. Everything that walks hAttr
+ * sees such a property normally; only a direct `$o->{''}` cannot, the same
+ * engine-wide empty-name limit the `${''}` lvalue residual records.
+ */
+static ph7_value * VmUnserializePropSlot(unserialize_data *ud,ph7_class_instance *pThis,
+	const char *zKey,sxu32 nKey)
+{
+	SyHashEntry *pEntry = PH7_ClassInstanceAttrEntry(pThis,zKey,nKey);
+	if( pEntry ){
+		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
+		return pVmAttr ? (ph7_value *)SySetAt(&ud->pVm->aMemObj,pVmAttr->nIdx) : 0;
+	}
+	return PH7_VmCreateDynamicAttr(ud->pVm,pThis,zKey,nKey,0);
+}
+/*
  * Materialize one parsed property on the __PHP_Incomplete_Class carrier: the key
  * is stored RAW (mangling bytes and all — that is what php keeps, and what lets
- * re-serialization emit the original payload byte for byte). A duplicate key
- * overwrites, like any hash store.
+ * re-serialization emit the original payload byte for byte).
  */
 static void VmUnserializeIncompleteProp(unserialize_data *ud,ph7_class_instance *pThis,
 	const char *zKey,sxu32 nKey,ph7_value *pVal)
 {
-	SyHashEntry *pEntry = SyHashGet(&pThis->hAttr,(const void *)zKey,nKey);
-	ph7_value *pSlot;
-	if( pEntry ){
-		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
-		pSlot = pVmAttr ? (ph7_value *)SySetAt(&ud->pVm->aMemObj,pVmAttr->nIdx) : 0;
-	}else{
-		pSlot = PH7_VmCreateDynamicAttr(ud->pVm,pThis,zKey,nKey,0);
-	}
+	ph7_value *pSlot = VmUnserializePropSlot(ud,pThis,zKey,nKey);
 	if( pSlot && pVal ){
 		PH7_MemObjStore(pVal,pSlot);
 	}
+}
+/*
+ * A payload property the class does not DECLARE. php creates it as a dynamic
+ * property — and PHL used to drop it in silence, which lost the whole body of
+ * the commonest payload there is: stdClass declares nothing, so
+ * `unserialize(serialize($obj))` on a `(object)['a'=>1]` or a json_decode()
+ * result came back EMPTY.
+ *
+ * Where php's own rule and PHL's differ, this is the engine's own dynamic-
+ * property decision (VmClassAllowsDynamicProps / #[AllowDynamicProperties]), the
+ * one the `$o->n = 1` write path makes: created on stdClass and on a class that
+ * opts in, refused with `Cannot create dynamic property C::$n` otherwise. php
+ * DEPRECATES that last case rather than refusing it (§10 rejects php's deprecated
+ * surface loudly) and raises this exact Error itself for a readonly class. Either
+ * way the value is no longer discarded without a word.
+ *
+ * The Error is a real throw, so it abandons the parse the way a throwing
+ * __wakeup() does.
+ */
+static sxi32 VmUnserializeDynamicProp(unserialize_data *ud,ph7_class_instance *pThis,
+	const char *zName,sxu32 nName,ph7_value *pVal)
+{
+	ph7_vm *pVm = ud->pVm;
+	ph7_class *pClass = pThis->pClass;
+	ph7_value *pSlot;
+	if( (pClass->iFlags & PH7_CLASS_READONLY) != 0
+	 || (!VmClassAllowsDynamicProps(pVm,pClass)
+	  && !VmClassHasAttributeNamed(pClass,"AllowDynamicProperties",
+			sizeof("AllowDynamicProperties")-1)) ){
+		PH7_VmThrowException(ud->pCtx,"Error",
+			"Cannot create dynamic property %z::$%.*s",&pClass->sName,(int)nName,zName);
+		ud->exc = 1;
+		return SXERR_ABORT;
+	}
+	pSlot = VmUnserializePropSlot(ud,pThis,zName,nName);
+	if( pSlot ){
+		PH7_MemObjStore(pVal,pSlot);
+	}
+	return SXRET_OK;
 }
 /* Parse O:<namelen>:"<Class>":<count>:{ ... } into a fresh object value. */
 static ph7_value * VmUnserializeObject(unserialize_data *ud)
@@ -820,7 +872,7 @@ static ph7_value * VmUnserializeObject(unserialize_data *ud)
 		}else if( pArrVal ){
 			ph7_array_add_elem(pArrVal,pKey,pVal);
 		}else{
-			/* Set a declared property by its (demangled) name; skip unknowns. */
+			/* Set a declared property by its (demangled) name. */
 			int nKey; const char *zKey = ph7_value_to_string(pKey,&nKey);
 			const char *zName; int nName; SyString sName; ph7_value *pSlot;
 			VmUnstripKey(zKey,nKey,&zName,&nName);
@@ -838,6 +890,11 @@ static ph7_value * VmUnserializeObject(unserialize_data *ud)
 				if( pAttrEntry && pAttrEntry->pUserData ){
 					((VmClassAttr *)pAttrEntry->pUserData)->iState &= ~VM_CLASS_ATTR_UNINIT;
 				}
+			}else if( VmUnserializeDynamicProp(ud,pThis,zKey,(sxu32)nKey,pVal) != SXRET_OK ){
+				/* No DECLARED property of that name: php creates the dynamic one
+				 * under the key as WRITTEN, mangling bytes included — only the
+				 * declared-property lookup demangles. */
+				goto fail;
 			}
 		}
 		/* Not released per node (bulk-reclaimed at context teardown) — see the

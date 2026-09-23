@@ -773,10 +773,19 @@ static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 			SySet sNames;
 			SyString *aName;
 			sxu32 iName,nName;
+			/* php exports a plain stdClass as a CAST — `(object) array(...)` — and
+			 * every other class through __set_state(); a SUBCLASS of stdClass takes
+			 * the __set_state form, so this is the exact class and not an
+			 * inheritance test. The two forms differ by one closing paren. */
+			int bStdObj = pThis->pClass == pThis->pVm->pStdClass;
 			pThis->iFlags |= VM_INSTANCE_DUMPING;
-			SyBlobAppend(pOut,"\\",1);
-			SyBlobAppend(pOut,pClassName->zString,pClassName->nByte);
-			SyBlobAppend(pOut,"::__set_state(array(\n",21);
+			if( bStdObj ){
+				SyBlobAppend(pOut,"(object) array(\n",sizeof("(object) array(\n")-1);
+			}else{
+				SyBlobAppend(pOut,"\\",1);
+				SyBlobAppend(pOut,pClassName->zString,pClassName->nByte);
+				SyBlobAppend(pOut,"::__set_state(array(\n",21);
+			}
 			{
 				/* A native class's PRESENTATION (php's get_properties): var_export
 				 * shows a DateTime as date/timezone_type/timezone, the same shape
@@ -799,7 +808,7 @@ static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 						ph7_array_walk(&sPresent,VmExportArrayWalk,&sCtx);
 						PH7_MemObjRelease(&sPresent);
 						VmExportIndent(pOut,nIndent);
-						SyBlobAppend(pOut,"))",sizeof("))")-1);
+						SyBlobAppend(pOut,bStdObj ? ")" : "))",bStdObj ? 1 : 2);
 						pThis->iFlags &= ~VM_INSTANCE_DUMPING;
 						return;
 					}
@@ -827,7 +836,7 @@ static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 				SyString *pAName = &aName[iName];
 				VmClassAttr *pVmAttr;
 				ph7_value *pAttrVal;
-				pEntry = SyHashGet(&pThis->hAttr,(const void *)pAName->zString,pAName->nByte);
+				pEntry = PH7_ClassInstanceAttrEntry(pThis,pAName->zString,pAName->nByte);
 				if( pEntry == 0 ){ continue; } /* unset by an earlier hook */
 				pVmAttr = (VmClassAttr *)pEntry->pUserData;
 				VmExportIndent(pOut,nIndent+3); /* object property lines sit one deeper than arrays */
@@ -870,7 +879,7 @@ static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 			}
 			SySetRelease(&sNames);
 			VmExportIndent(pOut,nIndent);
-			SyBlobAppend(pOut,"))",2);
+			SyBlobAppend(pOut,bStdObj ? ")" : "))",bStdObj ? 1 : 2);
 			pThis->iFlags &= ~VM_INSTANCE_DUMPING;
 		}
 	}else{
