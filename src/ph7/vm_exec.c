@@ -1097,6 +1097,30 @@ PH7_PRIVATE int PH7_VmArgRefusedByRef(VmCallArgMap *pMap,sxu32 nPos,ph7_value *p
  * php's E_NOTICE and the callee then operates on the temporary. Emitting it is all this
  * does — a temp-call argument is never refused.
  */
+/*
+ * A typed by-REFERENCE parameter's coercion belongs to the CALLER's variable. php
+ * converts the actual in weak mode and the REFERENCE then holds the conversion, so
+ * `$v = 1.0; f($v);` with `function f(int &$x)` leaves both views int(1). PHL ran the
+ * declared-type check on the operand-stack COPY while the binder aliases the caller's
+ * slot by index, so the conversion reached neither the callee (which reads through the
+ * alias) nor the caller: both stayed float, and every other pair did the same
+ * (`float &$y` given an int, `string &$s` given an int, `bool &$b` given an int).
+ *
+ * Writes back only when the check actually changed the value's TYPE — an untyped
+ * parameter, or one the actual already satisfies, copies nothing.
+ */
+PH7_PRIVATE void PH7_VmByRefArgWriteBack(ph7_vm *pVm,ph7_value *pArg,sxi32 iPreFlags)
+{
+	ph7_value *pSlot;
+	if( pArg->nIdx == SXU32_HIGH
+	 || (pArg->iFlags & MEMOBJ_ALL) == (iPreFlags & MEMOBJ_ALL) ){
+		return;
+	}
+	pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,pArg->nIdx);
+	if( pSlot && pSlot != pArg ){
+		PH7_MemObjStore(pArg,pSlot);
+	}
+}
 PH7_PRIVATE void PH7_VmArgTempCallNotice(ph7_vm *pVm,VmCallArgMap *pMap,sxu32 nPos,ph7_value *pVal)
 {
 	if( pMap == 0 || !pMap->bArgShapes || nPos >= 31 ){
@@ -6069,6 +6093,7 @@ case PH7_OP_CALL: {
 		ph7_value *pObj;
 		VmSlot sArg;
 		sxu32 n;
+		sxi32 iArgPreFlags = 0; /* the actual's type before its declared-type check */
 		int bClosureThis = 0;
 		ph7_class *pClosureScope = 0;
 		/* initialize fields */
@@ -6770,6 +6795,7 @@ case PH7_OP_CALL: {
 					 * coercion and whole-real materialization in place): the shared
 					 * per-argument helper — one implementation for both OP_CALL
 					 * paths and the generator/fiber binder (§7.1(f) fold). */
+					iArgPreFlags = pVal->iFlags; /* did the check COERCE it? (by-ref write-back) */
 					rc = VmEnforceArgType(&(*pVm),pVmFunc,&aFormalArg[n],n+1,pVal,bCallIsStrict,pSelfHint);
 					if( rc != SXRET_OK ){
 						if( rc == PH7_ABORT ) goto Abort;
@@ -6828,7 +6854,10 @@ case PH7_OP_CALL: {
 						if( pVal->nIdx == SXU32_HIGH ){
 							pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
 						}else{
-							SyHashEntry *pRefEntry = SyHashGet(&pFrame->hVar,
+							SyHashEntry *pRefEntry;
+							/* The declared type's conversion is what the reference holds. */
+							PH7_VmByRefArgWriteBack(&(*pVm),pVal,iArgPreFlags);
+							pRefEntry = SyHashGet(&pFrame->hVar,
 								SyStringData(&aFormalArg[n].sName),SyStringLength(&aFormalArg[n].sName));
 							if( pRefEntry == 0 ){
 								SyHashInsert(&pFrame->hVar,SyStringData(&aFormalArg[n].sName),
@@ -7137,6 +7166,7 @@ case PH7_OP_CALL: {
 				 * types (?type) let null through): the shared per-argument
 				 * helper, one implementation for both OP_CALL paths and the
 				 * generator/fiber binder (§7.1(f) fold). */
+				iArgPreFlags = pArg->iFlags; /* did the check COERCE it? (by-ref write-back) */
 				rc = VmEnforceArgType(&(*pVm),pVmFunc,&aFormalArg[n],n+1,pArg,bCallIsStrict,pSelfHint);
 				if( rc != SXRET_OK ){
 					if( rc == PH7_ABORT ){
@@ -7195,6 +7225,8 @@ case PH7_OP_CALL: {
 						pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
 					}else{
 						SyHashEntry *pRefEntry;
+						/* The declared type's conversion is what the reference holds. */
+						PH7_VmByRefArgWriteBack(&(*pVm),pArg,iArgPreFlags);
 						/* Install the referenced variable in the private function frame */
 						pRefEntry = SyHashGet(&pFrame->hVar,SyStringData(&aFormalArg[n].sName),SyStringLength(&aFormalArg[n].sName));
 						if( pRefEntry == 0 ){

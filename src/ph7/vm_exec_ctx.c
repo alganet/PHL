@@ -1940,10 +1940,14 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 				 * as OP_CALL's by-ref binder does, and never on a copy the alias
 				 * replaces. Fiber::start() and the embedder entry pass by VALUE (php's
 				 * own decision at those two boundaries), hence bAliasByRef. */
+				sxi32 iPreFlags = apArg[n]->iFlags;
 				rc = VmEnforceArgType(pVm,pFunc,&aFormalArg[n],n+1,apArg[n],bStrict,pSelfHint);
 				if( rc != SXRET_OK ){
 					return rc;
 				}
+				/* A declared type's conversion is what the reference holds (the ordinary
+				 * call's rule; the check ran on the operand-stack copy). */
+				PH7_VmByRefArgWriteBack(pVm,apArg[n],iPreFlags);
 				PH7_VmBindVarSlot(pVm,pExecCtx->pFrame,
 					SyStringData(&aFormalArg[n].sName),SyStringLength(&aFormalArg[n].sName),
 					apArg[n]->nIdx);
