@@ -1215,7 +1215,7 @@ static int VmDimFastFetchCtx(const VmInstr *pInstr,sxi32 iP2)
  * php stays silent for an OBJECT, and so does this: an object is a handle, the
  * write through it is not lost, and nothing about it is indirect.
  */
-static void VmOverloadedElemNotice(ph7_vm *pVm,ph7_class *pClass,ph7_value *pVal)
+PH7_PRIVATE void PH7_VmOverloadedElemNotice(ph7_vm *pVm,ph7_class *pClass,ph7_value *pVal)
 {
 	if( pVal->iFlags & MEMOBJ_OBJ ){
 		return;
@@ -1349,7 +1349,19 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				}
 				PH7_MemObjRelease(&idxProbe);
 			}else if( pTos->iFlags & MEMOBJ_OBJ ){
-				bDefer = 0; /* ArrayAccess: not a deferrable lvalue — read normally */
+				/* An ArrayAccess base splits the way php's read_dimension does. A WRITABLE
+				 * container answers out of its own storage with no accessor call, so the
+				 * fetch really can wait for the callee: deferring it is what lets a
+				 * by-reference argument take php's WRITE fetch, which CREATES a missing key
+				 * (`sort($ao['nokey'])`) instead of warning about a read and passing NULL.
+				 * Everything else answers through a METHOD, and php runs that method where
+				 * the subscript is WRITTEN — so the accessor runs below and its RESULT rides
+				 * a prefetch carrier built at the tail of the ArrayAccess branch. */
+				ph7_class_instance *pRecInst = (ph7_class_instance *)pTos->x.pOther;
+				eRoot = 0;
+				bDefer = (pRecInst && pVm->pArrayAccessClass
+				       && PH7_VmInstanceOf(pRecInst->pClass,pVm->pArrayAccessClass)
+				       && PH7_VmDimFetchWritable(pRecInst->pClass)) ? 1 : 0;
 			}else if( pTos->iFlags & MEMOBJ_STRING ){
 				eRoot = 2; bDefer = 1;
 			}else{
@@ -1708,7 +1720,16 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				if( pIdx ){ PH7_MemObjRelease(pIdx); }
 				VM_EXIT_BREAK;
 			}else{
-				/* offsetGet: replace pTos with the returned value. */
+				/* offsetGet: replace pTos with the returned value.
+				 *
+				 * The base slot may be the only thing holding this instance — a
+				 * TEMPORARY container (`f((new C)['a'])`, a getter's return) dies with
+				 * it — and everything below still speaks for the object: the writable
+				 * test, php's notice and the read-modify-write arming all read its
+				 * CLASS, and the deferred-argument carrier records it. Hold a reference
+				 * of our own across the release so none of them is left reading freed
+				 * memory. */
+				pInst->iRef++;
 				PH7_MemObjRelease(pTos);
 				PH7_MemObjStore(&sResult,pTos);
 				pTos->nIdx = SXU32_HIGH;
@@ -1725,8 +1746,28 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 						(void *)pStack,(void *)aInstr,(sxu32)(pc + 1));
 				}else if( VmIdxFetchForWrite(pInstr,iP2)
 				       && !PH7_VmDimFetchWritable(pInst->pClass) ){
-					VmOverloadedElemNotice(&(*pVm),pInst->pClass,pTos);
+					PH7_VmOverloadedElemNotice(&(*pVm),pInst->pClass,pTos);
+				}else if( pInstr->iP2 == 9 ){
+					/* A deferred call ARGUMENT. The accessor has just run — php runs it
+					 * where the subscript is written, whatever the parameter turns out to
+					 * be — but WHICH fetch php performed is the callee's to say, and only
+					 * OP_CALL knows: a by-reference parameter makes it a W fetch, which on
+					 * a container that can only answer with a VALUE is php's
+					 * `Indirect modification of overloaded element` notice and a write
+					 * thrown away. Carry the result plus the class that answered it, so the
+					 * verdict lands at the call without the accessor running twice or the
+					 * argument arriving as NULL. The value would otherwise reach the callee
+					 * still SHARING the container's own nested map by COW, and a by-ref
+					 * `f($o['a']['b'])` wrote straight into the object php leaves untouched. */
+					VmDeferredPath *pPre = VmDeferPathNewPrefetch(&(*pVm),pInst->pClass,pTos);
+					if( pPre ){
+						PH7_MemObjRelease(pTos);
+						pTos->x.pOther = pPre;
+						pTos->iFlags = MEMOBJ_NULL | MEMOBJ_AUX_DEFPATH;
+						pTos->nIdx = SXU32_HIGH;
+					}
 				}
+				PH7_ClassInstanceUnref(pInst);
 			}
 			PH7_MemObjRelease(&sResult);
 			if( pIdx ){

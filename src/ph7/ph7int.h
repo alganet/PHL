@@ -135,13 +135,25 @@ struct VmDeferStep {
 };
 struct VmDeferredPath {
 	SyMemBackend *pAlloc;    /* allocator, so PH7_MemObjRelease can self-free without a pVm */
-	int           eRoot;     /* 0 = real container nIdx, 1 = undefined-var name, 2 = string base */
+	int           eRoot;     /* 0 = real container nIdx, 1 = undefined-var name, 2 = string base,
+	                          * 3 = a value ALREADY FETCHED (VM_DEFER_ROOT_PREFETCH below) */
 	sxu32         nRootIdx;  /* eRoot==0: aMemObj slot of the root container ($a/$o) */
 	SyString      sRootName; /* eRoot==1: variable name (VM-lifetime bytecode string, borrowed) */
+	ph7_class    *pOverClass;/* eRoot==3: the overloaded container's class — php's notice names it */
+	ph7_value     sPrefetch; /* eRoot==3: what the accessor answered */
 	sxu32         nStep;     /* number of captured steps (outer-to-inner) */
 	sxu32         nAlloc;    /* capacity of aStep */
 	VmDeferStep  *aStep;     /* captured steps */
 };
+/*
+ * eRoot == 3. Some fetches cannot be DEFERRED at all: a userland `offsetGet` (or a
+ * subclass override of a native one) is a method call, and php runs it where the
+ * subscript is WRITTEN, whatever the parameter turns out to be. So the accessor runs
+ * at the fetch and the carrier holds its RESULT — the by-ref decision still arrives at
+ * OP_CALL, and all it decides is php's `Indirect modification of overloaded element`
+ * notice, since a value the container copied has no slot to alias either way.
+ */
+#define VM_DEFER_ROOT_PREFETCH 3
 /* Allowed value types.
  */
 #define MEMOBJ_STRING    0x001  /* Memory value is a UTF-8 string */
@@ -3578,6 +3590,7 @@ PH7_PRIVATE void VmTrackOutput(ph7_vm *pVm, sxu32 nLen);
 PH7_PRIVATE ph7_value * VmExtractMemObj(ph7_vm *pVm,const SyString *pName,int bDup,int bCreate);
 /* D1 commit 2: deferred-lvalue-path capture (built by the LOAD_IDX/MEMBER record modes) */
 PH7_PRIVATE VmDeferredPath * VmDeferPathNew(ph7_vm *pVm,int eRoot,sxu32 nRootIdx,const SyString *pName);
+PH7_PRIVATE VmDeferredPath * VmDeferPathNewPrefetch(ph7_vm *pVm,ph7_class *pClass,ph7_value *pVal);
 PH7_PRIVATE sxi32 VmDeferPathPushElem(VmDeferredPath *pPath,ph7_value *pKey);
 PH7_PRIVATE sxi32 VmDeferPathPushAppend(VmDeferredPath *pPath);
 PH7_PRIVATE sxi32 VmDeferPathPushProp(VmDeferredPath *pPath,const SyString *pName);
@@ -4416,6 +4429,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceWalk(ph7_class_instance *pThis,
 PH7_PRIVATE ph7_value * PH7_ClassInstanceFetchAttr(ph7_class_instance *pThis,const SyString *pName);
 PH7_PRIVATE int PH7_VmDimFetchWritable(ph7_class *pClass);
 PH7_PRIVATE sxu32 PH7_SplDimElemSlot(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pKey,int bCreate);
+PH7_PRIVATE void PH7_VmOverloadedElemNotice(ph7_vm *pVm,ph7_class *pClass,ph7_value *pVal);
 PH7_PRIVATE ph7_class_instance * PH7_ContextThis(ph7_context *pCtx);
 PH7_PRIVATE ph7_class * PH7_ContextCalledClass(ph7_context *pCtx);
 PH7_PRIVATE ph7_value * PH7_ContextThisValue(ph7_context *pCtx);
