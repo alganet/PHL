@@ -2274,9 +2274,12 @@ PH7_PRIVATE VmOpRc VmExecOpClone(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr
 	 * TypeError for a non-object operand — for both `clone $x` and clone($x). */
 	if( (pTos->iFlags & MEMOBJ_OBJ) == 0 ){
 		SyBlob sMsg;
+		char zGiven[64];
 		SyBlobInit(&sMsg,&pVm->sAllocator);
+		/* php names the VALUE for a bool ("true given", not "bool given"), which is
+		 * what every other argument diagnostic here already says — the shared helper. */
 		SyBlobFormat(&sMsg,"clone(): Argument #1 ($object) must be of type object, %s given",
-			ph7_type_name(pTos));
+			VmValueGivenName(pTos,zGiven,sizeof(zGiven)));
 		rc = VmThrowBuiltinError(pVm,"TypeError",sizeof("TypeError")-1,&sMsg);
 		PH7_MemObjRelease(pTos);
 		pTos->nIdx = SXU32_HIGH;

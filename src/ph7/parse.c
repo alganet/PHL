@@ -2015,8 +2015,13 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 		 }
 		 iLeft = iCur;
 	 }
-	 /* Handle left associative (new, clone) operators */
-	 for( iCur = 0 ; iCur < nToken ; ++iCur ){
+	 /* Handle the prefix (new, clone) operators. Walk RIGHT to LEFT: both take the
+	  * operand on their right, so a nested one has to be linked before the outer
+	  * sees it. Left-to-right, `clone new Q` reached the still-unlinked `new` node —
+	  * not a term yet — and answered php's own valid source with the compile fatal
+	  * "'clone': Expecting class constructor call". `clone new Q()` worked only
+	  * because the postfix pass folds a constructor CALL into its new-node early. */
+	 for( iCur = nToken - 1 ; iCur >= 0 ; --iCur ){
 		 if( apNode[iCur] == 0 ){
 			 continue;
 		 }
@@ -2037,30 +2042,16 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 				 }
 				 return rc;
 			 }
-			 /* Make sure the operand are of a valid type */
-			 if( pNode->pOp->iOp == EXPR_OP_CLONE ){
-				 /* Clone:
-				  * Symisc eXtension: 'clone' accepts now as it's left operand:
-				  *  ++ function call (including annonymous)
-				  *  ++ array member
-				  *  ++ 'new' operator
-				  * Example:
-				  *   clone $pObj;
-				  *   clone obj(); // function obj(){ return new Class(); }
-				  *   clone $a['object']; // $a = array('object' => new Class());
-				  */
-				 if( apNode[iLeft]->pOp == 0 ){
-					 if( apNode[iLeft]->xCode != PH7_CompileVariable  ){
-						 pToken = apNode[iLeft]->pStart;
-						 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"'%z': Unexpected token '%z'",
-							 &pNode->pOp->sOp,&pToken->sData);
-						 if( rc != SXERR_ABORT ){
-							 rc = SXERR_SYNTAX;
-						 }
-						 return rc;
-					 }
-				 }
-			 }else{
+			 /* Make sure the operand are of a valid type. CLONE takes ANY expression —
+			  * php's grammar is `clone expr`, and what that expression evaluates to is a
+			  * RUNTIME question: a non-object operand is php's catchable
+			  * `clone(): Argument #1 ($object) must be of type object, %s given`, which
+			  * OP_CLONE already raises. The whitelist that used to sit here (a variable,
+			  * or any operator node) refused `clone 5`, `clone []`, `clone null` and
+			  * `clone match(…){…}` at COMPILE time — the first three with a diagnostic php
+			  * never prints, the last on source php runs. NEW keeps its own, because its
+			  * operand is a class-name REFERENCE, not a value. */
+			 if( pNode->pOp->iOp != EXPR_OP_CLONE ){
 				 /* New */
 				 if( apNode[iLeft]->pOp && apNode[iLeft]->pOp->iOp == EXPR_OP_NEW
 					 && (apNode[iLeft]->iFlags & EXPR_NODE_PARENS) == 0 ){
