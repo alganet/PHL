@@ -1760,6 +1760,24 @@ static void PH7_JSON_ERROR_UTF8_Const(ph7_value *pVal,void *pUserData)
 	ph7_value_int(pVal,JSON_ERROR_UTF8);
 }
 /*
+ * JSON_ERROR_RECURSION.
+ *   Expand the value of JSON_ERROR_RECURSION defined in ph7Int.h.
+ */
+static void PH7_JSON_ERROR_RECURSION_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,JSON_ERROR_RECURSION);
+}
+/*
+ * JSON_ERROR_UNSUPPORTED_TYPE.
+ *   Expand the value of JSON_ERROR_UNSUPPORTED_TYPE defined in ph7Int.h.
+ */
+static void PH7_JSON_ERROR_UNSUPPORTED_TYPE_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,JSON_ERROR_UNSUPPORTED_TYPE);
+}
+/*
  * JSON_ERROR_UTF16.
  *   Expand the value of JSON_ERROR_UTF16 defined in ph7Int.h.
  */
@@ -2122,6 +2140,8 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"JSON_ERROR_CTRL_CHAR", PH7_JSON_ERROR_CTRL_CHAR_Const},
 	{"JSON_ERROR_SYNTAX",    PH7_JSON_ERROR_SYNTAX_Const},
 	{"JSON_ERROR_UTF8",      PH7_JSON_ERROR_UTF8_Const},
+	{"JSON_ERROR_RECURSION", PH7_JSON_ERROR_RECURSION_Const},
+	{"JSON_ERROR_UNSUPPORTED_TYPE", PH7_JSON_ERROR_UNSUPPORTED_TYPE_Const},
 	{"JSON_ERROR_UTF16",     PH7_JSON_ERROR_UTF16_Const},
 	{"JSON_ERROR_NON_BACKED_ENUM", PH7_JSON_ERROR_NON_BACKED_ENUM_Const},
 	{"JSON_ERROR_INF_OR_NAN", PH7_JSON_ERROR_INF_OR_NAN_Const},

@@ -31,7 +31,46 @@ struct json_private_data
 	                    * FALSE (or throws under JSON_THROW_ON_ERROR) */
 	int failRc;        /* json_rc to report for a ->fail (INF_OR_NAN vs
 	                    * NON_BACKED_ENUM) */
+	ph7_int64 nMaxDepth; /* json_encode's $depth: a container may only OPEN while
+	                      * fewer than this many containers enclose it. php runs no
+	                      * range screen here — 0 or a negative value simply makes
+	                      * every container JSON_ERROR_DEPTH. */
+	SySet aPath;       /* Containers on the current encode path (ph7_hashmap* /
+	                    * ph7_class_instance*), pushed on entry and popped on exit:
+	                    * meeting one again below itself is php's
+	                    * JSON_ERROR_RECURSION, not an infinite descent. */
 };
+/*
+ * Stack-safety ceiling on the EFFECTIVE json depth, both directions. php honors
+ * $depth up to INT_MAX and relies on a dynamic guard that asks the platform how
+ * much C stack is left; PHL's encoder and decoder recurse on the same C stack
+ * with no such probe, so a requested depth above this bound is clamped to it and
+ * a value/document nested deeper reports JSON_ERROR_DEPTH — loud, like the
+ * SERIALIZE_MAX_DEPTH and HTTP_QUERY_MAX_DEPTH bounds this follows. 4096 is
+ * eight times php's default of 512 and holds ~0.5MB of frames on MSVC's 1MB
+ * default stack (measured ~10x smaller on glibc's 8MB). Ports with small stacks
+ * (ESP32 task stacks are KBs) can override it at build time.
+ */
+#ifndef PH7_JSON_DEPTH_CEILING
+#define PH7_JSON_DEPTH_CEILING 4096
+#endif
+/*
+ * True if pPtr (a hashmap or class instance) is a container the encoder is
+ * currently INSIDE of. Only the active path is searched, so a value appearing
+ * twice as SIBLINGS ([$a,$a]) stays legal like php — recursion means
+ * self-containment, not sharing.
+ */
+static int VmJsonPathHolds(json_private_data *pData,void *pPtr)
+{
+	void **apEntry = (void **)SySetBasePtr(&pData->aPath);
+	sxu32 i,n = SySetUsed(&pData->aPath);
+	for( i = 0 ; i < n ; ++i ){
+		if( apEntry[i] == pPtr ){
+			return 1;
+		}
+	}
+	return 0;
+}
 /*
  * Emit into the JSON result, flagging OOM on the shared data and bailing out
  * of the current encode function (which returns PH7_OK; the top-level
@@ -340,7 +379,14 @@ static sxi32 VmJsonEncode(
 		ph7_context *pCtx = pData->pCtx;
 		int iFlags = pData->iFlags;
 		int nByte;
-		if( ph7_value_is_null(pIn) || ph7_value_is_resource(pIn)){
+		if( ph7_value_is_resource(pIn) ){
+			/* php: a resource has no JSON representation — the whole encode
+			 * fails with JSON_ERROR_UNSUPPORTED_TYPE (PHL used to emit "null"
+			 * in silence, an answer php never gives). */
+			pData->fail = 1;
+			pData->failRc = JSON_ERROR_UNSUPPORTED_TYPE;
+			return PH7_OK;
+		}else if( ph7_value_is_null(pIn) ){
 			/* null */
 			JSON_EMIT(pData,ph7_result_string(pCtx,"null",(int)sizeof("null")-1));
 		}else if( ph7_value_is_bool(pIn) ){
@@ -387,11 +433,31 @@ static sxi32 VmJsonEncode(
 			/* An array encodes as a JSON array iff it is a "list" [consecutive
 			 * 0-based int keys]; otherwise [or under JSON_FORCE_OBJECT] as an
 			 * object with stringified keys (PHP semantics). */
+			ph7_hashmap *pMap = (ph7_hashmap *)pIn->x.pOther;
 			int isObject = (iFlags & JSON_FORCE_OBJECT)
-				|| !PH7_HashmapIsList((ph7_hashmap *)pIn->x.pOther);
+				|| !PH7_HashmapIsList(pMap);
 			int savedObject = pData->isObject; /* restore for sibling entries after recursion */
 			int c = isObject ? '{' : '[';
 			int d = isObject ? '}' : ']';
+			/* An array the encoder is already inside of (reached through a
+			 * reference cycle) is php's JSON_ERROR_RECURSION — PHL used to
+			 * descend into it and answer a TRUNCATED nesting in silence. */
+			if( VmJsonPathHolds(pData,(void *)pMap) ){
+				pData->fail = 1;
+				pData->failRc = JSON_ERROR_RECURSION;
+				return PH7_OK;
+			}
+			/* php checks $depth where a container OPENS: one already enclosed
+			 * by $depth containers (scalars are exempt) is JSON_ERROR_DEPTH. */
+			if( (ph7_int64)pData->nRecCount >= pData->nMaxDepth ){
+				pData->fail = 1;
+				pData->failRc = JSON_ERROR_DEPTH;
+				return PH7_OK;
+			}
+			if( SySetPut(&pData->aPath,(const void *)&pMap) != SXRET_OK ){
+				pData->oom = 1;
+				return PH7_OK;
+			}
 			/* Encode the array */
 			pData->isObject = isObject;
 			pData->isFirst = 1;
@@ -399,6 +465,7 @@ static sxi32 VmJsonEncode(
 			JSON_EMIT(pData,ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char)));
 			/* Iterate throw array entries */
 			ph7_array_walk(pIn,VmJsonArrayEncode,pData);
+			(void)SySetPop(&pData->aPath);
 			/* Bail if a nested append ran out of memory before the closer */
 			if( pData->oom ){
 				return PH7_OK;
@@ -416,6 +483,17 @@ static sxi32 VmJsonEncode(
 			ph7_class_instance *pThis = (ph7_class_instance *)pIn->x.pOther;
 			ph7_vm *pVm = pIn->pVm;
 			ph7_class_method *pMethod = 0;
+			int bProps = 1; /* encode the property view below (cleared when a
+			                 * jsonSerialize() result replaces it) */
+			/* An object the encoder is already inside of is php's
+			 * JSON_ERROR_RECURSION, checked BEFORE the jsonSerialize dispatch
+			 * (PHL used to re-dispatch until the C stack ran out — a segfault
+			 * on `return $this;`). */
+			if( VmJsonPathHolds(pData,(void *)pThis) ){
+				pData->fail = 1;
+				pData->failRc = JSON_ERROR_RECURSION;
+				return PH7_OK;
+			}
 			/* If the object implements JsonSerializable, encode the value
 			 * returned by jsonSerialize() instead of its public properties.
 			 * An enum implementing it explicitly also takes this path (php). */
@@ -449,17 +527,52 @@ static sxi32 VmJsonEncode(
 					pData->exc = 1;
 					return PH7_EXCEPTION;
 				}
-				/* Encode the returned value [scalar/array/object] */
-				pData->nRecCount++;
-				VmJsonEncode(&sResult,pData);
-				pData->nRecCount--;
-				PH7_MemObjRelease(&sResult);
-				if( pData->exc ){
-					return PH7_EXCEPTION;
+				if( ph7_value_is_object(&sResult)
+				 && (ph7_class_instance *)sResult.x.pOther == pThis ){
+					/* php's one self-reference exception: jsonSerialize()
+					 * returning $this encodes the object's own property view —
+					 * no re-dispatch, no recursion error. */
+					PH7_MemObjRelease(&sResult);
+				}else{
+					bProps = 0;
+					/* Encode the returned value [scalar/array/object]. The
+					 * object stays ON the path while its replacement encodes
+					 * (`return [$this]` is php's recursion error), and the
+					 * result sits at the object's own nesting level — the old
+					 * nRecCount++ here indented a JSON_PRETTY_PRINT result one
+					 * level deeper than php and would have charged $depth for a
+					 * container php does not charge. */
+					if( SySetPut(&pData->aPath,(const void *)&pThis) != SXRET_OK ){
+						PH7_MemObjRelease(&sResult);
+						pData->oom = 1;
+						return PH7_OK;
+					}
+					VmJsonEncode(&sResult,pData);
+					(void)SySetPop(&pData->aPath);
+					PH7_MemObjRelease(&sResult);
+					if( pData->exc ){
+						return PH7_EXCEPTION;
+					}
+					if( pData->oom ){
+						return PH7_OK;
+					}
 				}
-				if( pData->oom ){
-					return PH7_OK;
-				}
+			}
+			/* php checks $depth where a container OPENS — the '{' of the
+			 * property view below; a SCALAR jsonSerialize() result and an enum
+			 * backing value are exempt, so the check sits here and not at the
+			 * arm's entry. */
+			if( bProps && (ph7_int64)pData->nRecCount >= pData->nMaxDepth ){
+				pData->fail = 1;
+				pData->failRc = JSON_ERROR_DEPTH;
+				return PH7_OK;
+			}
+			if( bProps && SySetPut(&pData->aPath,(const void *)&pThis) != SXRET_OK ){
+				pData->oom = 1;
+				return PH7_OK;
+			}
+			if( !bProps ){
+				/* jsonSerialize()'s result replaced the property view above */
 			}else if( VmJsonPresent(pThis,pData) ){
 				/* A native class with php's get_properties handler: json is one of
 				 * the purposes that handler serves (php's ZEND_PROP_PURPOSE_JSON),
@@ -553,6 +666,9 @@ static sxi32 VmJsonEncode(
 				/* Append the closing curly braces  */
 				JSON_EMIT(pData,ph7_result_string(pCtx,"}",(int)sizeof(char)));
 			}
+			if( bProps ){
+				(void)SySetPop(&pData->aPath);
+			}
 		}else{
 			/* Can't happen */
 			JSON_EMIT(pData,ph7_result_string(pCtx,"null",(int)sizeof("null")-1));
@@ -567,9 +683,11 @@ static sxi32 VmJsonEncode(
 static int VmJsonArrayEncode(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 {
 	json_private_data *pJson = (json_private_data *)pUserData;
-	if( pJson->nRecCount > 31 || pJson->exc || pJson->oom || pJson->fail ){
-		/* Recursion limit reached, a callback threw, OOM, or the value is
-		 * unencodable (the result is discarded) — return immediately */
+	if( pJson->exc || pJson->oom || pJson->fail ){
+		/* A callback threw, OOM, or the value is unencodable (the result is
+		 * discarded) — return immediately. Depth is no longer decided here:
+		 * the container arms enforce json_encode's $depth where a '['/'{'
+		 * opens (the old flat 31 cap TRUNCATED a deep value in silence). */
 		return PH7_OK;
 	}
 	if( !pJson->isFirst ){
@@ -610,9 +728,11 @@ static int VmJsonArrayEncode(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 static int VmJsonObjectEncode(const SyString *pAttr,ph7_value *pValue,void *pUserData)
 {
 	json_private_data *pJson = (json_private_data *)pUserData;
-	if( pJson->nRecCount > 31 || pJson->exc || pJson->oom || pJson->fail ){
-		/* Recursion limit reached, a callback threw, OOM, or the value is
-		 * unencodable (the result is discarded) — return immediately */
+	if( pJson->exc || pJson->oom || pJson->fail ){
+		/* A callback threw, OOM, or the value is unencodable (the result is
+		 * discarded) — return immediately. Depth is no longer decided here:
+		 * the container arms enforce json_encode's $depth where a '['/'{'
+		 * opens (the old flat 31 cap TRUNCATED a deep value in silence). */
 		return PH7_OK;
 	}
 	if( !pJson->isFirst ){
@@ -637,11 +757,12 @@ static int VmJsonObjectEncode(const SyString *pAttr,ph7_value *pValue,void *pUse
 	return PH7_OK;
 }
 /*
- * string json_encode(mixed $value [, int $options = 0 ])
+ * string json_encode(mixed $value [, int $flags = 0 [, int $depth = 512 ]])
  *  Returns a string containing the JSON representation of value.
  * Parameters
  *  $value
- *  The value being encoded. Can be any type except a resource.
+ *  The value being encoded. Can be any type except a resource
+ *  (a resource is JSON_ERROR_UNSUPPORTED_TYPE).
  * $options
  *  Bitmask consisting of:
  *  JSON_HEX_TAG   All < and > are converted to \u003C and \u003E.
@@ -676,13 +797,26 @@ PH7_PRIVATE int vm_builtin_json_encode(ph7_context *pCtx,int nArg,ph7_value **ap
 	sJson.oom = 0;
 	sJson.fail = 0;
 	sJson.failRc = JSON_ERROR_NON_BACKED_ENUM;
+	sJson.nMaxDepth = 512; /* php's default */
+	SySetInit(&sJson.aPath,&pCtx->pVm->sAllocator,sizeof(void *));
 	if( nArg > 1 && ph7_value_is_int(apArg[1]) ){
 		/* Extract option flags */
 		sJson.iFlags = ph7_value_to_int(apArg[1]);
 	}
+	if( nArg > 2 && ph7_value_is_int(apArg[2]) ){
+		/* $depth. Unlike json_decode's, php runs NO range screen here: 0 or a
+		 * negative value simply makes every container JSON_ERROR_DEPTH, and any
+		 * large int is accepted (the type screen has already run). */
+		sJson.nMaxDepth = ph7_value_to_int64(apArg[2]);
+		if( sJson.nMaxDepth > PH7_JSON_DEPTH_CEILING ){
+			/* Engine stack-safety bound (see PH7_JSON_DEPTH_CEILING). */
+			sJson.nMaxDepth = PH7_JSON_DEPTH_CEILING;
+		}
+	}
 	pCtx->pVm->json_rc = JSON_ERROR_NONE;
 	/* Perform the encoding operation */
 	rc = VmJsonEncode(apArg[0],&sJson);
+	SySetRelease(&sJson.aPath);
 	if( sJson.oom ){
 		/* A result append ran out of memory: raise a non-catchable fatal,
 		 * distinct from a JSON-encoding error (json_last_error untouched). */
@@ -754,7 +888,9 @@ static const char * JsonErrorMsg(int rc)
 	case JSON_ERROR_CTRL_CHAR:       return "Control character error, possibly incorrectly encoded";
 	case JSON_ERROR_SYNTAX:          return "Syntax error";
 	case JSON_ERROR_UTF8:            return "Malformed UTF-8 characters, possibly incorrectly encoded";
+	case JSON_ERROR_RECURSION:       return "Recursion detected";
 	case JSON_ERROR_INF_OR_NAN:     return "Inf and NaN cannot be JSON encoded";
+	case JSON_ERROR_UNSUPPORTED_TYPE: return "Type is not supported";
 	case JSON_ERROR_UTF16:           return "Single unpaired UTF-16 surrogate in unicode escape";
 	case JSON_ERROR_NON_BACKED_ENUM: return "Non-backed enums have no default serialization";
 	default:                         return "Unknown error";
@@ -1167,12 +1303,6 @@ static sxi32 VmJsonDecode(
 		*pDecoder->pErr = JSON_ERROR_SYNTAX;
 		return SXERR_ABORT;
 	}
-	/* Check if we do not nest to much */
-	if( pDecoder->rec_count >= pDecoder->rec_depth ){
-		/* Nesting limit reached,abort decoding immediately */
-		*pDecoder->pErr = JSON_ERROR_DEPTH;
-		return SXERR_ABORT;
-	}
 	if( pDecoder->pIn->nType & (JSON_TK_STR|JSON_TK_TRUE|JSON_TK_FALSE|JSON_TK_NULL|JSON_TK_NUM) ){
 		/* Scalar value */
 		pWorker = ph7_context_new_scalar(pDecoder->pCtx);
@@ -1216,6 +1346,14 @@ static sxi32 VmJsonDecode(
 	}else if( pDecoder->pIn->nType & JSON_TK_OSB /*'[' */) {
 		ProcJsonConsumer xOld;
 		void *pOld;
+		/* php's $depth counts CONTAINERS: a '[' opening at 1-based nesting
+		 * level L is JSON_ERROR_DEPTH when L >= $depth, an EMPTY container
+		 * included ("[]" at $depth 1 already fails), while a scalar never
+		 * consults $depth at all. rec_count holds L-1 here. */
+		if( pDecoder->rec_count + 1 >= pDecoder->rec_depth ){
+			*pDecoder->pErr = JSON_ERROR_DEPTH;
+			return SXERR_ABORT;
+		}
 		/* Array representation*/
 		pDecoder->pIn++;
 		/* Create a working array */
@@ -1274,6 +1412,11 @@ static sxi32 VmJsonDecode(
 		ProcJsonConsumer xOld;
 		ph7_value *pKey;
 		void *pOld;
+		/* Same container rule as '[' above. */
+		if( pDecoder->rec_count + 1 >= pDecoder->rec_depth ){
+			*pDecoder->pErr = JSON_ERROR_DEPTH;
+			return SXERR_ABORT;
+		}
 		/* Object representation*/
 		pDecoder->pIn++;
 		/* Decode into a working array first; unless the caller asked for
@@ -1383,7 +1526,7 @@ static int VmJsonDefaultDecoder(ph7_context *pCtx,ph7_value *pKey,ph7_value *pWo
 	return SXRET_OK;
 }
 /*
- * mixed json_decode(string $json[,bool $assoc = false[,int $depth = 32[,int $options = 0 ]]])
+ * mixed json_decode(string $json[,bool $assoc = false[,int $depth = 512[,int $options = 0 ]]])
  *  Takes a JSON encoded string and converts it into a PHP variable.
  * Parameters
  *  $json
@@ -1439,10 +1582,12 @@ static int VmJsonDecodeInput(ph7_context *pCtx,const char *zIn,int nByte,int iAs
 		sDecoder.iFlags |= JSON_DECODE_ASSOC;
 	}
 	sDecoder.iUserFlags = iUserFlags;
-	sDecoder.rec_depth = 32;
-	if( nDepth > 1 && nDepth < 32 ){
-		sDecoder.rec_depth = nDepth;
-	}
+	/* php's $depth (default 512; the callers' ValueError screens guarantee
+	 * 1..INT_MAX-1), bounded by the engine's stack-safety ceiling. The old code
+	 * CLAMPED it to an engine limit of 32, so a 40-deep document php decodes
+	 * answered NULL/JSON_ERROR_DEPTH. Recursion is bounded by the INPUT's
+	 * actual nesting, never by the requested ceiling. */
+	sDecoder.rec_depth = nDepth > PH7_JSON_DEPTH_CEILING ? PH7_JSON_DEPTH_CEILING : nDepth;
 	sDecoder.rec_count = 0;
 	/* Set a default consumer */
 	sDecoder.xConsumer = VmJsonDefaultDecoder;
@@ -1468,7 +1613,7 @@ PH7_PRIVATE int vm_builtin_json_decode(ph7_context *pCtx,int nArg,ph7_value **ap
 	const char *zIn;
 	int nByte;
 	int iAssoc = 0;
-	int nDepth = 32;
+	int nDepth = 512;
 	int iFlags = 0;
 	/* php coerces a scalar argument to string here (weak mode); the shared ZPP
 	 * screen in vm.c has already rejected the values that cannot coerce. */
@@ -1535,7 +1680,7 @@ PH7_PRIVATE int vm_builtin_json_decode(ph7_context *pCtx,int nArg,ph7_value **ap
  *  Validates whether a string is valid JSON without materializing a value.
  * Parameters
  *  $json   The string to validate.
- *  $depth  Maximum nesting depth (clamped to the engine limit of 32).
+ *  $depth  Maximum nesting depth (php's default of 512, honored verbatim).
  *  $flags  Bitmask of decode options (currently none are implemented; accepted/ignored).
  * Return
  *  TRUE if the string is valid JSON, FALSE otherwise. Updates json_last_error().
@@ -1545,7 +1690,7 @@ PH7_PRIVATE int vm_builtin_json_validate(ph7_context *pCtx,int nArg,ph7_value **
 	ph7_vm *pVm = pCtx->pVm;
 	const char *zIn;
 	int nByte;
-	int nDepth = 32;
+	int nDepth = 512;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid argument: not valid JSON */
 		pVm->json_rc = JSON_ERROR_SYNTAX;

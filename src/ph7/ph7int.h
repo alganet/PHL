@@ -2914,7 +2914,9 @@ enum json_err_code{
 	JSON_ERROR_CTRL_CHAR, /* Control character error, possibly incorrectly encoded.  */
 	JSON_ERROR_SYNTAX,    /* Syntax error. */
 	JSON_ERROR_UTF8,      /* Malformed UTF-8 characters */
+	JSON_ERROR_RECURSION, /* A container already being encoded shows up inside itself (php value 6) */
 	JSON_ERROR_INF_OR_NAN = 7, /* Inf or NaN given to json_encode (php value) */
+	JSON_ERROR_UNSUPPORTED_TYPE = 8, /* A resource given to json_encode (php value) */
 	JSON_ERROR_UTF16 = 10, /* Unpaired UTF-16 surrogate in a \uXXXX escape (php value) */
 	JSON_ERROR_NON_BACKED_ENUM = 11 /* Non-backed enum given to json_encode (php 8.1 value) */
 };
