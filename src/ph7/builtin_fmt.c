@@ -366,12 +366,27 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 	 * spaces, "%0'x5d" ignored the 'x', and "% d" printed C's space-for-a-positive
 	 * -sign ("% d" of 5 was " 5" where php answers "5") — php has no such flag. */
 	char cPad;
-	ph7_value *pArg;         /* Current processed argument */
+	ph7_value *pArg;         /* Current processed argument (the scratch COPY below) */
+	ph7_value *pRawArg;      /* ...and the caller's own value it was copied from */
+	/* Every conversion below extracts through ph7_value_to_int64 / _to_double /
+	 * PH7_ValueToStringUV, and all three convert the value they are handed IN
+	 * PLACE. Handed the caller's own slots that is a write the caller can see, and
+	 * both ways in were reachable: vsprintf()/vprintf()/vfprintf() pass the
+	 * ADDRESSES of the $values array's elements (PH7_HashmapValuesToSet), so
+	 * `vsprintf("%o %s %b", $a)` retyped $a's elements — int(0), string, int(0) —
+	 * where php leaves the array alone; and a POSITIONAL argument reused by a
+	 * second specifier was read back already converted, so
+	 * `sprintf('%1$d|%1$s', 3.9)` answered "3|3" for php's "3|3.9". One scratch
+	 * value per call, reloaded per conversion, keeps the formatter read-only.
+	 * PH7_MemObjLoad points the copy's blob at the source's bytes, so a %s of a
+	 * long string still costs no copy unless something writes to it. */
+	ph7_value sScratch;
 	int bDropDigits;         /* php's explicit-precision-empties-%x/%X/%o/%b rule */
 	ph7_int64 iVal;
 	int precision;           /* Precision of the current field */
 	/* zExtra (unused) removed to prevent compiler warning. */
 	int c,rc,n;
+	sxi32 rcRet = SXRET_OK;   /* Status to hand back through the single exit */
 	ph7_value *pThrowArg = 0; /* First not-stringable %s argument; throws at the end */
 	int length;              /* Length of the field */
 	int prefix;
@@ -379,7 +394,13 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 	int width;               /* Width of the current field */
 	int idx;
 	n = (vf == TRUE) ? 0 : 1;
-#define NEXT_ARG	( n < nArg ? apArg[n++] : 0 )
+	PH7_MemObjInit(pCtx->pVm,&sScratch);
+	/* Take the next argument as a scratch COPY: nothing below may write to the
+	 * caller's value. Answers 0 exactly as the raw form did when the arguments run
+	 * out (a shortfall is refused by PH7_FormatCheckArgCount before we get here). */
+#define NEXT_ARG	( pRawArg = (n < nArg ? apArg[n++] : 0), \
+	pRawArg ? (PH7_MemObjRelease(&sScratch), \
+		PH7_MemObjLoad(pRawArg,&sScratch), &sScratch) : 0 )
 	/* An unknown conversion specifier is rejected up-front by PH7_FormatValidate()
 	 * (called by every format builtin before this routine), so the specifier set
 	 * seen here is always valid. */
@@ -568,7 +589,9 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 				zBuf = "";
 				length = 0;
 				if( pThrowArg == 0 ){
-					pThrowArg = pArg;
+					/* The CALLER's value, not the scratch copy: this one is used after
+					 * the loop, once the scratch has been reloaded (and released). */
+					pThrowArg = pRawArg;
 				}
 			}else{
 				/* An ARRAY warns and renders as "Array"; a Stringable renders. */
@@ -583,7 +606,8 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 					 * calls user code (array_map, usort) stops the same way. php
 					 * keeps going and prints the tail; recorded divergence, and
 					 * both engines raise the same exception. */
-					return rcSv;
+					rcRet = rcSv;
+					goto Done;
 				}
 			}
 			if( length < 1 ){
@@ -817,14 +841,16 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
         while( nspace>=etSPACESIZE ){
 			rc = xConsumer(pCtx,spaces,etSPACESIZE,pUserData);
 			if( rc != SXRET_OK ){
-				return SXERR_ABORT; /* Consumer routine request an operation abort */
+				rcRet = SXERR_ABORT; /* Consumer routine request an operation abort */
+				goto Done;
 			}
 			nspace -= etSPACESIZE;
         }
         if( nspace>0 ){
 			rc = xConsumer(pCtx,spaces,(unsigned int)nspace,pUserData);
 			if( rc != SXRET_OK ){
-				return SXERR_ABORT; /* Consumer routine request an operation abort */
+				rcRet = SXERR_ABORT; /* Consumer routine request an operation abort */
+				goto Done;
 			}
 		}
       }
@@ -832,7 +858,8 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
     if( length>0 ){
 		rc = xConsumer(pCtx,zBuf,(unsigned int)length,pUserData);
 		if( rc != SXRET_OK ){
-		  return SXERR_ABORT; /* Consumer routine request an operation abort */
+		  rcRet = SXERR_ABORT; /* Consumer routine request an operation abort */
+		  goto Done;
 		}
     }
     if( flag_leftjustify ){
@@ -842,14 +869,16 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
         while( nspace>=etSPACESIZE ){
 			rc = xConsumer(pCtx,spaces,etSPACESIZE,pUserData);
 			if( rc != SXRET_OK ){
-				return SXERR_ABORT; /* Consumer routine request an operation abort */
+				rcRet = SXERR_ABORT; /* Consumer routine request an operation abort */
+				goto Done;
 			}
 			nspace -= etSPACESIZE;
         }
         if( nspace>0 ){
 			rc = xConsumer(pCtx,spaces,(unsigned int)nspace,pUserData);
 			if( rc != SXRET_OK ){
-				return SXERR_ABORT; /* Consumer routine request an operation abort */
+				rcRet = SXERR_ABORT; /* Consumer routine request an operation abort */
+				goto Done;
 			}
 		}
       }
@@ -859,9 +888,14 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 		/* The format ran to completion and its output is out; raise php's Error
 		 * now. `printf("A[%s]B", new P())` prints "A[]B" and THEN throws, while
 		 * sprintf()'s finished result is simply discarded by the unwind. */
+		PH7_MemObjRelease(&sScratch);
 		return PH7_MemObjToStringUV(pThrowArg);
 	}
-	return SXRET_OK;
+Done:
+	/* Single exit: the scratch copy holds a reference on an array/instance
+	 * argument it was loaded from, so every way out releases it. */
+	PH7_MemObjRelease(&sScratch);
+	return rcRet;
 }
 /*
  * Callback [i.e: Formatted input consumer] of the sprintf function.
