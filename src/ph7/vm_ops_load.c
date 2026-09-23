@@ -1178,6 +1178,28 @@ static int VmIdxFetchForWrite(const VmInstr *pInstr,sxi32 iP2)
 	return 0;
 }
 /*
+ * Which fetch contexts may answer out of a WRITABLE container's own storage
+ * (PH7_SplDimElemSlot, vm_builtin_spl.c) instead of through `offsetGet`?
+ *
+ * The ones that ask for a VALUE and may go on to MODIFY it: a plain read — whose
+ * result carries the element's slot exactly as an array element's does, which is
+ * what lets a by-reference ARGUMENT bind it — a write-context fetch, and the
+ * INTERMEDIATE step of an unset chain. isset()/empty()/`??`/`??=` must reach
+ * offsetExists, and the OUTERMOST unset must reach offsetUnset, so those keep the
+ * accessor. (iP2 is the NORMALIZED context here: the deferred-argument record mode
+ * has already become a plain read.)
+ *
+ * A COMPOUND assign is deliberately not one of them, which is why this asks
+ * VmIdxFetchForWrite rather than testing iP2 == 1 itself: `$ao[k] op= v` is php's
+ * ASSIGN_DIM_OP on an OBJECT, and that one reads and writes through the accessors
+ * whatever the read handler could have offered — a subclass overriding only
+ * offsetSet sees its own method called for `+=` and not for `++`.
+ */
+static int VmDimFastFetchCtx(const VmInstr *pInstr,sxi32 iP2)
+{
+	return iP2 == 0 || VmIdxFetchForWrite(pInstr,iP2);
+}
+/*
  * php's `Indirect modification of overloaded element of C has no effect`: the
  * write-context fetch above landed on a container that answers with a COPY, so
  * whatever the rest of the expression writes is thrown away. php says so and
@@ -1531,6 +1553,31 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 			ph7_value sResult;
 			ph7_value sNullIdx;
 			ph7_value *apArg[1];
+			if( pIdx && VmDimFastFetchCtx(pInstr,iP2) && PH7_VmDimFetchWritable(pInst->pClass)
+			 && pInst->iRef > 1 ){
+				/* php hands a writable container's element back BY SLOT, and that is what
+				 * makes an indirect modification through it land. The `iRef > 1` guard is
+				 * the object half of the array path's `pMap->iRef < 2` rule: releasing the
+				 * base below drops this stack slot's own reference, and a TEMPORARY
+				 * container (`(new ArrayObject([1]))[0]`) would be destroyed with its
+				 * storage while the result still views it. Such a base has nothing that
+				 * could observe the write anyway, so it takes the accessor's copy. */
+				sxu32 nElem = PH7_SplDimElemSlot(&(*pVm),pInst,pIdx,
+					/* php's write-context vivification, and only there: a W/RW fetch —
+					 * including the `$r = &$ao['k']` and by-ref-foreach shapes iP2 alone
+					 * cannot name — creates the missing element, while an unset chain's
+					 * intermediate step never does. */
+					VmIdxFetchForWrite(pInstr,iP2) && !VM_IDX_IS_UNSET(iP2));
+				ph7_value *pElem = (nElem == SXU32_HIGH) ? 0
+					: (ph7_value *)SySetAt(&pVm->aMemObj,nElem);
+				if( pElem ){
+					PH7_MemObjRelease(pTos);
+					PH7_MemObjLoad(pElem,pTos);
+					pTos->nIdx = nElem;
+					PH7_MemObjRelease(pIdx);
+					VM_EXIT_BREAK;
+				}
+			}
 			if( (iP2 == 0 || iP2 == 3 || iP2 == 8) && pIdx == 0 ){
 				/* `$obj[]` read — PHP rejects this. */
 				PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,

@@ -699,6 +699,62 @@ static ph7_hashmap * SplStore(ph7_vm *pVm,ph7_class_instance *pThis)
 	return pSlot ? (ph7_hashmap *)pSlot->x.pOther : 0;
 }
 /*
+ * php's `spl_array_read_dimension` / `zend_weakmap_read_dimension` FAST PATH: a fetch on
+ * one of these containers answers with the store's OWN element, not with a copy of it.
+ * That is the whole difference between a class that supports indirect modification and
+ * one that does not (PH7_VmDimFetchWritable, oo.c) — `$ao['a']` reached through
+ * `offsetGet` is a VALUE however native the method is, so `$r = &$ao['a']`,
+ * `sort($ao['a'])`, `unset($ao['a'][0])`, `foreach ($ao['a'] as &$v)` and `$ao['n']++`
+ * all wrote into a temporary and left the store as it was, in silence.
+ *
+ * Answers the element's aMemObj index, which the subscript op hands on as the result's
+ * slot exactly as an array element's `nValIdx` is handed on. SXU32_HIGH means "not
+ * available" and the caller falls back to the ordinary `offsetGet` dispatch, which is
+ * what keeps every diagnostic (WeakMap's not-contained Error, the store's own
+ * `Undefined array key`) in the one place that already words it.
+ *
+ * bCreate is php's write-context vivification: a missing ArrayObject/ArrayIterator key
+ * IS created by a W fetch (`$ao['new']['k'] = 1` works there), while a WeakMap never
+ * creates one — its missing key is an Error, raised by the accessor below.
+ */
+PH7_PRIVATE sxu32 PH7_SplDimElemSlot(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pKey,int bCreate)
+{
+	ph7_hashmap_node *pNode = 0;
+	if( pThis == 0 || pKey == 0 ){
+		return SXU32_HIGH;
+	}
+	if( pKey->iFlags & MEMOBJ_NULL ){
+		/* PH7_HashmapLookup folds a NULL key to "" IN PLACE, and a declined fast path
+		 * has to hand the accessor the key it was written with (php deprecates the null
+		 * offset there). Cheaper to stand down than to probe on a copy. */
+		return SXU32_HIGH;
+	}
+	if( PH7_NativeAttr(pThis,SPL_D) != 0 ){
+		ph7_value *pSlot = SplStoreSlot(pVm,pThis);
+		ph7_hashmap *pMap = pSlot ? (ph7_hashmap *)pSlot->x.pOther : 0;
+		if( pMap == 0 ){
+			return SXU32_HIGH;
+		}
+		if( PH7_HashmapLookup(pMap,pKey,&pNode) != SXRET_OK ){
+			if( !bCreate || PH7_HashmapInsert(pMap,pKey,0) != SXRET_OK ){
+				return SXU32_HIGH;
+			}
+			pNode = pMap->pLast;
+		}
+		return pNode ? pNode->nValIdx : SXU32_HIGH;
+	}
+	if( PH7_NativeAttr(pThis,WM_VALS) != 0 && (pKey->iFlags & MEMOBJ_OBJ) ){
+		ph7_class_instance *pObj = (ph7_class_instance *)pKey->x.pOther;
+		sxi64 iId = (sxi64)pObj->nObjId;
+		if( WmNodeTarget(WmFind(pVm,WmStore(pVm,pThis,WM_REFS),iId)) != pObj ){
+			return SXU32_HIGH; /* not contained: offsetGet raises php's Error */
+		}
+		pNode = WmFind(pVm,WmStore(pVm,pThis,WM_VALS),iId);
+		return pNode ? pNode->nValIdx : SXU32_HIGH;
+	}
+	return SXU32_HIGH;
+}
+/*
  * `$this->__d = $array` for the constructor and exchangeArray(), with php's refusal.
  *
  * php DECLARES `object|array $array` — which is what Reflection prints — and then words the
@@ -9184,4 +9240,13 @@ PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)
 #ifdef PH7_DISABLE_BUILTIN_FUNC
 /* Tiny build: no SPL (builtin layer disabled) */
 PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm){ (void)pVm; return SXRET_OK; }
+/* The writable-container fast path is called unconditionally by OP_LOAD_IDX, and its
+ * SXU32_HIGH answer already means "no slot available — take the ordinary offsetGet
+ * dispatch". With no SPL classes in this build that is the only answer there is, so the
+ * stub keeps the tiny target LINKING without a second #ifdef at the call site. */
+PH7_PRIVATE sxu32 PH7_SplDimElemSlot(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pKey,int bCreate)
+{
+	(void)pVm; (void)pThis; (void)pKey; (void)bCreate;
+	return SXU32_HIGH;
+}
 #endif
