@@ -1006,6 +1006,105 @@ static const char * VmCallableClassMethodError(
 	return 0;
 }
 /*
+ * php's visibility refusal for a method call, worded once: "Call to private A::m() from
+ * scope S" (or "from global scope"). Two sites raise it — OP_CALL's screen and the
+ * first-class-callable one below — and php names the DECLARING class, not the class the
+ * lookup went through.
+ */
+static const char * VmMethodVisibilityMsg(ph7_vm *pVm,ph7_class *pDecl,
+	const char *zMeth,sxu32 nMeth,sxi32 iProtection,char *zBuf,int nBuf)
+{
+	const char *zVis = iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected";
+	ph7_class *pScope = PH7_VmCallerScopeName(&(*pVm));
+	if( pScope ){
+		SyBufferFormat(zBuf,nBuf,"Call to %s method %z::%.*s() from scope %z",
+			zVis,&pDecl->sName,(int)nMeth,zMeth,&pScope->sName);
+	}else{
+		SyBufferFormat(zBuf,nBuf,"Call to %s method %z::%.*s() from global scope",
+			zVis,&pDecl->sName,(int)nMeth,zMeth);
+	}
+	return zBuf;
+}
+/*
+ * Resolve `$o->m(...)` / `C::m(...)` the way php resolves the CALL it stands for, and say
+ * why when it cannot. php builds a first-class callable through the same member lookup a
+ * real call goes through, so every refusal a call would raise happens HERE, at creation:
+ * an undefined method, an inaccessible one, an abstract one, and a non-static one named
+ * through a class with no receiver to run on. PHL created a Closure for all four and only
+ * discovered the problem when (and if) it was invoked — a closure that is built and dropped
+ * reported nothing at all.
+ *
+ * The receiver is the other half of the same lookup. php's ZEND_INIT_STATIC_METHOD_CALL
+ * binds the CALLING frame's `$this` when the resolved method is non-static and that object
+ * is an instance of the named class, which is what makes `self::m(...)` inside an instance
+ * method a working callable rather than a static one; PHL bound only the scope, so the
+ * closure could never run. *ppRecv is that object, or 0 for a genuinely static callable.
+ *
+ * Answers 0 when the callable is valid. Messages that quote a name are built into zBuf.
+ */
+static const char * VmFccMemberError(ph7_vm *pVm,ph7_class *pClass,
+	const char *zCls,sxu32 nCls,const char *zMeth,sxu32 nMeth,int bStaticForm,
+	ph7_class_instance **ppRecv,char *zBuf,int nBuf)
+{
+	ph7_class_method *pMethod;
+	ph7_class *pDecl;
+	SyString sDecl;
+	*ppRecv = 0;
+	if( pClass == 0 ){
+		SyBufferFormat(zBuf,nBuf,"Class \"%.*s\" not found",(int)nCls,zCls);
+		return zBuf;
+	}
+	pMethod = nMeth > 0 ? PH7_ClassExtractMethod(pClass,zMeth,nMeth) : 0;
+	if( pMethod == 0 ){
+		/* A name the class answers through the catch-all is callable, and the catch-all
+		 * the STATIC spelling reaches depends on the receiver, exactly as it does for a
+		 * call (PH7_VmStaticFallbackThis). */
+		if( bStaticForm ){
+			*ppRecv = PH7_VmStaticFallbackThis(&(*pVm),pClass);
+			if( *ppRecv
+			 || PH7_ClassExtractMethod(pClass,"__callStatic",sizeof("__callStatic")-1) ){
+				return 0;
+			}
+		}else if( PH7_ClassExtractMethod(pClass,"__call",sizeof("__call")-1) ){
+			return 0;
+		}
+		SyBufferFormat(zBuf,nBuf,"Call to undefined method %z::%.*s()",
+			&pClass->sName,(int)nMeth,zMeth);
+		return zBuf;
+	}
+	pDecl = pMethod->sFunc.pUserData ? (ph7_class *)pMethod->sFunc.pUserData : pClass;
+	SyStringInitFromBuf(&sDecl,SyStringData(&pMethod->sFunc.sName),
+		SyStringLength(&pMethod->sFunc.sName));
+	if( pMethod->iFlags & PH7_CLASS_ATTR_ABSTRACT ){
+		/* Named through the CLASS only: an instance of an abstract class cannot exist, so
+		 * the object spelling never reaches an abstract body. */
+		SyBufferFormat(zBuf,nBuf,"Cannot call abstract method %z::%.*s()",
+			&pClass->sName,(int)nMeth,zMeth);
+		return zBuf;
+	}
+	if( pMethod->iProtection != PH7_CLASS_PROT_PUBLIC
+	 && !PH7_VmClassMemberAccess(&(*pVm),pDecl,&sDecl,pMethod->iProtection,FALSE) ){
+		/* Inaccessible: the catch-all answers for it, on the same receiver a call would use. */
+		*ppRecv = bStaticForm ? PH7_VmStaticFallbackThis(&(*pVm),pClass) : 0;
+		if( *ppRecv ){
+			return 0;
+		}
+		if( !bStaticForm && PH7_ClassExtractMethod(pClass,"__call",sizeof("__call")-1) ){
+			return 0;
+		}
+		return VmMethodVisibilityMsg(&(*pVm),pDecl,zMeth,nMeth,pMethod->iProtection,zBuf,nBuf);
+	}
+	if( bStaticForm && (pMethod->iFlags & PH7_CLASS_ATTR_STATIC) == 0 ){
+		*ppRecv = PH7_VmCallerThisFor(&(*pVm),pClass);
+		if( *ppRecv == 0 ){
+			SyBufferFormat(zBuf,nBuf,"Non-static method %z::%z() cannot be called statically",
+				&pDecl->sName,&sDecl);
+			return zBuf;
+		}
+	}
+	return 0;
+}
+/*
  * The same check for the ARRAY form, whose two members carry php's own shape messages
  * before anything is resolved: the target must be an object or a class-name string, the
  * method must be a string. php probes them in that order (`[5,5]` names the FIRST member,
@@ -2144,17 +2243,50 @@ case PH7_OP_LOAD_FCC:{
 		ph7_value *pTarget = &pTos[-1];
 		SyString sName;
 		ph7_class_instance *pCloObj;
+		ph7_class *pFccCls = 0;
+		ph7_class_instance *pFccRecv = 0;
+		const char *zFccErr = 0;
+		char zFccMsg[192];
 		SyStringInitFromBuf(&sName, SyBlobData(&pTos->sBlob), SyBlobLength(&pTos->sBlob));
 		if( pTarget->iFlags & MEMOBJ_OBJ ){
-			ph7_class_instance *pBoundThis = (ph7_class_instance *)pTarget->x.pOther;
-			pCloObj = VmCreateClosure(pVm, &sName, pBoundThis, &pBoundThis->pClass->sName);
+			pFccRecv = (ph7_class_instance *)pTarget->x.pOther;
+			pFccCls = pFccRecv->pClass;
 		}else if( pTarget->iFlags & MEMOBJ_STRING ){
 			/* Static `T::m(...)`: resolve T (incl. self/static/parent) to the real class
 			 * now, so the closure binds the concrete scope (matching PHP). */
-			ph7_class *pScopeCls = VmFccResolveScope(pVm, pTarget);
-			pCloObj = pScopeCls ? VmCreateClosure(pVm, &sName, 0, &pScopeCls->sName) : 0;
-		}else{
+			pFccCls = VmFccResolveScope(pVm, pTarget);
+		}
+		if( pTarget->iFlags & (MEMOBJ_OBJ|MEMOBJ_STRING) ){
+			/* php resolves the member HERE, through the same lookup the call would use:
+			 * every refusal a call would raise is raised at CREATION, and a non-static
+			 * method named through a class binds the calling frame's own $this. */
+			ph7_class_instance *pRecvOut = 0;
+			zFccErr = VmFccMemberError(&(*pVm),pFccCls,
+				(const char *)SyBlobData(&pTarget->sBlob),SyBlobLength(&pTarget->sBlob),
+				SyStringData(&sName),SyStringLength(&sName),
+				(pTarget->iFlags & MEMOBJ_OBJ) ? FALSE : TRUE,
+				&pRecvOut,zFccMsg,sizeof(zFccMsg));
+			if( pRecvOut ){
+				pFccRecv = pRecvOut; /* the receiver php binds into a `C::m(...)` callable */
+			}
+		}
+		if( zFccErr ){
+			sxi32 rcFcc;
+			VmPopOperand(&pTos,1);       /* the method name */
+			PH7_MemObjRelease(pTos);     /* the target slot becomes the NULL result */
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			rcFcc = VmThrowFromVm(&(*pVm),"Error",zFccErr,(sxu32)SyStrlen(zFccErr));
+			if( rcFcc == SXERR_ABORT ){ goto Abort; }
+			rc = rcFcc;
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}
+		if( pFccCls == 0 ){
 			pCloObj = 0;
+		}else if( pFccRecv ){
+			pCloObj = VmCreateClosure(pVm, &sName, pFccRecv, &pFccRecv->pClass->sName);
+		}else{
+			pCloObj = VmCreateClosure(pVm, &sName, 0, &pFccCls->sName);
 		}
 		if( pCloObj ){
 			/* `$o->m(...)` / `C::m(...)` names a METHOD, whatever the class turns out to
@@ -5251,24 +5383,13 @@ case PH7_OP_CALL: {
 							 * catch (Error $e)` never caught it and the script died. */
 							char zMsg[256];
 							sxi32 rcVis;
-							const char *zVis = pMeth->iProtection == PH7_CLASS_PROT_PRIVATE ? "private" : "protected";
 							/* php NAMES the calling scope when there is one — "from scope C" —
-							 * and says "global scope" only outside every class. This was a
-							 * hardcoded string, so a refusal raised from inside a class
-							 * (`$cb = ['C','priv']; $cb()` in a method) reported the wrong
-							 * one. The property twin next door (VmThrowSetVisibilityError)
-							 * already worded it php's way. */
-							ph7_class *pVisScope = PH7_VmCallerScopeName(&(*pVm));
-							if( pVisScope ){
-								SyBufferFormat(zMsg,sizeof(zMsg),"Call to %s method %.*s::%.*s() from scope %z",
-									zVis,(int)pDeclClass->sName.nByte,pDeclClass->sName.zString,
-									(int)pVmFunc->sName.nByte,pVmFunc->sName.zString,
-									&pVisScope->sName);
-							}else{
-								SyBufferFormat(zMsg,sizeof(zMsg),"Call to %s method %.*s::%.*s() from global scope",
-									zVis,(int)pDeclClass->sName.nByte,pDeclClass->sName.zString,
-									(int)pVmFunc->sName.nByte,pVmFunc->sName.zString);
-							}
+							 * and says "global scope" only outside every class; the wording is
+							 * shared with the first-class-callable screen
+							 * (VmMethodVisibilityMsg). */
+							VmMethodVisibilityMsg(&(*pVm),pDeclClass,
+								pVmFunc->sName.zString,pVmFunc->sName.nByte,
+								pMeth->iProtection,zMsg,sizeof(zMsg));
 							/* Consume this call's captured spread runs — this visibility
 							 * error exits before the pVmFunc build below. */
 							if( pInstr->iP2 ){
