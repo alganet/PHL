@@ -151,6 +151,25 @@ PH7_PRIVATE int PH7_NativeAttrTruthy(ph7_class_instance *pObj,const char *zName)
 	}
 	return 0;
 }
+/*
+ * Clear the not-yet-initialized mark a TYPED slot without a default carries.
+ *
+ * There are two families of writer here: PH7_NativeSetProp, which looks the
+ * VmClassAttr up and clears the bit, and the four typed shortcuts below, which
+ * write the ph7_value through PH7_NativeAttr and used to leave it set. That was
+ * invisible while nothing native declared a default-less typed property; the
+ * moment `public string $name` arrived on the reflectors, every one of them
+ * threw "must not be accessed before initialization" from a constructor that HAD
+ * written the slot. Rule 44's family: the bookkeeping has to live with the write,
+ * not with one of the two ways of writing.
+ */
+static void NativeAttrMarkInit(ph7_class_instance *pObj,const char *zName)
+{
+	SyHashEntry *pEntry = SyHashGet(&pObj->hAttr,(const void *)zName,SyStrlen(zName));
+	if( pEntry ){
+		((VmClassAttr *)pEntry->pUserData)->iState &= ~VM_CLASS_ATTR_UNINIT;
+	}
+}
 PH7_PRIVATE void PH7_NativeSetAttrInt(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,sxi64 iVal)
 {
 	ph7_value *pSlot = PH7_NativeAttr(pObj,zName);
@@ -161,6 +180,7 @@ PH7_PRIVATE void PH7_NativeSetAttrInt(ph7_vm *pVm,ph7_class_instance *pObj,const
 	PH7_MemObjInitFromInt(&(*pVm),&sVal,iVal);
 	PH7_MemObjStore(&sVal,pSlot);
 	PH7_MemObjRelease(&sVal);
+	NativeAttrMarkInit(pObj,zName);
 }
 PH7_PRIVATE void PH7_NativeSetAttrStr(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,
 	const char *zVal,int nVal)
@@ -174,7 +194,7 @@ PH7_PRIVATE void PH7_NativeSetAttrStr(ph7_vm *pVm,ph7_class_instance *pObj,const
 	SyStringInitFromBuf(&sStr,zVal,nVal);
 	PH7_MemObjInitFromString(&(*pVm),&sVal,&sStr);
 	PH7_MemObjStore(&sVal,pSlot);
-	PH7_MemObjRelease(&sVal);
+	PH7_MemObjRelease(&sVal);	NativeAttrMarkInit(pObj,zName);
 }
 PH7_PRIVATE void PH7_NativeSetAttrBool(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,int bVal)
 {
@@ -185,7 +205,7 @@ PH7_PRIVATE void PH7_NativeSetAttrBool(ph7_vm *pVm,ph7_class_instance *pObj,cons
 	}
 	PH7_MemObjInitFromBool(&(*pVm),&sVal,bVal);
 	PH7_MemObjStore(&sVal,pSlot);
-	PH7_MemObjRelease(&sVal);
+	PH7_MemObjRelease(&sVal);	NativeAttrMarkInit(pObj,zName);
 }
 /* Store an object in a slot, or NULL to clear it. PH7_MemObjStore takes the
  * reference the slot needs, so the temp never holds one of its own. */
@@ -203,6 +223,7 @@ PH7_PRIVATE void PH7_NativeSetAttrObj(ph7_vm *pVm,ph7_class_instance *pObj,const
 		sVal.iFlags = MEMOBJ_OBJ;
 	}
 	PH7_MemObjStore(&sVal,pSlot);
+	NativeAttrMarkInit(pObj,zName);
 }
 /*
  * Hand an instance back as a native call's result, dropping the reference
@@ -441,7 +462,15 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallProperty(ph7_vm *pVm,ph7_class *pClass,
 		return SXERR_MEM;
 	}
 	pAttr->pDeclClass = pClass;
-	pAttr->pNativeValue = &pDef->sDefault;
+	/* NO default is not the same as a NULL one, and the difference is php-visible:
+	 * a typed slot without a default is UNINITIALIZED at `new` (reading it before
+	 * the class writes it is an Error, hasDefaultValue() is false), which is what
+	 * php declares for LibXMLError's six fields and every reflector's $name. The
+	 * machinery is already there for a compiled `public string $p;` — leaving
+	 * pNativeValue at 0 is what selects it. */
+	if( pDef->sDefault.iType != PH7_NATIVE_VAL_NONE ){
+		pAttr->pNativeValue = &pDef->sDefault;
+	}
 	if( pDef->zType && pDef->zType[0] ){
 		NativeAttrType(pAttr,pDef->zType);
 	}

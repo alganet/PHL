@@ -1291,6 +1291,14 @@ struct ph7_class_attr
 #define PH7_NATIVE_VAL_STRING 2
 #define PH7_NATIVE_VAL_BOOL   3
 #define PH7_NATIVE_VAL_DOUBLE 4
+#define PH7_NATIVE_VAL_NONE   5 /* On a PROPERTY row only: the slot has NO default at all,
+                                 * php's `public string $name;`. It needs a declared zType to
+                                 * mean anything (an untyped slot without a default is null),
+                                 * and it makes the property UNINITIALIZED at `new` — reading
+                                 * it before the class's own C body writes it is php's
+                                 * "must not be accessed before initialization" Error, and
+                                 * hasDefaultValue() answers false. PH7_NATIVE_VAL_NULL is the
+                                 * different thing it reads like: an explicit `= null`. */
 typedef struct PH7_NativeMethodDef PH7_NativeMethodDef;
 typedef struct PH7_NativeConstDef  PH7_NativeConstDef;
 typedef struct PH7_NativeClassSpec PH7_NativeClassSpec;
@@ -1325,7 +1333,8 @@ struct PH7_NativePropDef
 {
 	const char *zName;
 	sxi32 iMods;             /* PH7_MOD_* (STATIC supported; FINAL ignored) */
-	PH7_NativeConstDef sDefault; /* iType PH7_NATIVE_VAL_NULL = plain null default */
+	PH7_NativeConstDef sDefault; /* iType PH7_NATIVE_VAL_NULL = plain null default,
+	                              * PH7_NATIVE_VAL_NONE = no default at all (typed slots) */
 	const char *zType;       /* Declared type as php writes it ("?string", "int", "DateInterval"),
 	                          * or 0 for an untyped slot. Enforced on every store and printed by
 	                          * Reflection exactly as a compiled `public ?string $p` would be —

@@ -2027,7 +2027,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionAttribute(ph7_vm *pVm)
 		{ "IS_INSTANCEOF", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 2, 0, 0.0 },
 	};
 	static const PH7_NativePropDef aProp[] = {
-		{ RA_NAME,   PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
+		{ RA_NAME,   PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
 		/* PHL-only, and PROTECTED so php code cannot reach them: the spec that
 		 * reopens the target. php holds the same state on the C struct behind the
 		 * object, invisible; PHL has no hidden-slot bit yet (§7.4 (e)), so these
@@ -2748,7 +2748,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionSmall(ph7_vm *pVm)
 		{ "getTrace",         PH7_MOD_PUBLIC, "int $options = 1", "array", vm_builtin_ReflectionFiber_trace },
 	};
 	static const PH7_NativePropDef aNameProp[] = {
-		{ "name", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
+		{ "name", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
 	};
 	static const PH7_NativeMethodDef aConstMethod[] = {
 		{ "__construct",       PH7_MOD_PUBLIC, "string $name", "",
@@ -4396,7 +4396,7 @@ static int vm_builtin_Reflection_getModifierNames(ph7_context *pCtx, int nArg, p
 PH7_PRIVATE sxi32 PH7_VmInstallReflectionClass(ph7_vm *pVm)
 {
 	static const PH7_NativePropDef aClassProp[] = {
-		{ "name",  PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
+		{ "name",  PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
 		/* PHL-only: the instance a ReflectionObject was built over. php keeps it
 		 * out of sight; PHL has no hidden-slot bit yet (§7.4 (e)). */
 		{ RC_OBJ,  PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
@@ -6422,7 +6422,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionHookType(ph7_vm *pVm)
 PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm)
 {
 	static const PH7_NativePropDef aAbstractProp[] = {
-		{ "name",  PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
+		{ "name",  PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
 		/* PHL-only: the Closure being reflected. php reaches the same state from
 		 * the function record itself; PHL has no hidden-slot bit yet (§7.4 (e)). */
 		{ RF_CL,   PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
@@ -6487,7 +6487,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm)
 		{ "getClosure",  PH7_MOD_PUBLIC, "", "@Closure", vm_builtin_ReflectionFunction_getClosure },
 	};
 	static const PH7_NativePropDef aMethodProp[] = {
-		{ "class", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
+		{ "class", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
 	};
 	static const PH7_NativeConstDef aMethodConst[] = {
 		{ "IS_STATIC",    PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 16, 0, 0.0 },
@@ -6525,7 +6525,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm)
 		  vm_builtin_ReflectionMethod_setAccessible },
 	};
 	static const PH7_NativePropDef aParamProp[] = {
-		{ "name", PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
+		{ "name", PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
 		/* PHL-only, the three that identify the parameter (§7.4 (e)) */
 		{ RP_T,   PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 		{ RP_M,   PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
@@ -7508,12 +7508,12 @@ static int vm_builtin_ReflectionClassConstant_toString(ph7_context *pCtx, int nA
 PH7_PRIVATE sxi32 PH7_VmInstallReflectionMember(ph7_vm *pVm)
 {
 	static const PH7_NativePropDef aMemberProp[] = {
-		{ "name",  PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
-		{ "class", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
+		{ "name",  PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
+		{ "class", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
 	};
 	static const PH7_NativePropDef aPropProp[] = {
-		{ "name",  PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
-		{ "class", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
+		{ "name",  PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
+		{ "class", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
 		/* PHL-only: the instance a DYNAMIC property was reached through (§7.4 (e)) */
 		{ RP_DYNOBJ, PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
