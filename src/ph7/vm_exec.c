@@ -6878,6 +6878,7 @@ case PH7_OP_CALL: {
 						for( i = 0; i < nActual; i++ ){
 							if( aSlot[i] == -1 ){
 								int bNamed = (i < pCallMap3->nTotal && pCallMap3->aNames[i].nByte > 0);
+								int bRefElem = 0; /* alias this entry to the caller's slot? */
 								/* Same per-element type check + weak coercion as the
 								 * positional-only path (shared helper; no `($name)`). */
 								rc = VmVariadicElementTypeCheck(&(*pVm),pSelfHint,pVmFunc,
@@ -6919,6 +6920,10 @@ case PH7_OP_CALL: {
 									}
 									PH7_VmArgTempCallNotice(&(*pVm),pCallMap3,i,&pArg[i]);
 								}
+								/* A by-ref variadic tail ALIASES its actuals, named entries
+								 * included (the positional twin below this branch says why). */
+								bRefElem = (aFormalArg[iVariadicIdx].iFlags & VM_FUNC_ARG_BY_REF)
+									&& pArg[i].nIdx != SXU32_HIGH;
 								if( bNamed ){
 									/* Named variadic entry: insert with string key */
 									ph7_value sKey;
@@ -6926,8 +6931,15 @@ case PH7_OP_CALL: {
 									PH7_MemObjStringAppend(&sKey,
 										pCallMap3->aNames[i].zString,
 										(sxu32)pCallMap3->aNames[i].nByte);
-									PH7_HashmapInsert(pVarMap, &sKey, &pArg[i]);
+									if( bRefElem ){
+										PH7_HashmapInsertByRef(pVarMap, &sKey, pArg[i].nIdx);
+									}else{
+										PH7_HashmapInsert(pVarMap, &sKey, &pArg[i]);
+									}
 									PH7_MemObjRelease(&sKey);
+								}else if( bRefElem ){
+									/* Positional variadic entry, aliased */
+									PH7_HashmapInsertByRef(pVarMap, 0, pArg[i].nIdx);
 								}else{
 									/* Positional variadic entry */
 									PH7_HashmapInsert(pVarMap, 0, &pArg[i]);
@@ -7035,6 +7047,17 @@ case PH7_OP_CALL: {
 									goto SkipFuncBody;
 								}
 								PH7_VmArgTempCallNotice(&(*pVm),pCallMap3,nPosV,pArg);
+								if( pArg->nIdx != SXU32_HIGH ){
+									/* php ALIASES each collected element to the caller's slot:
+									 * `function f(&...$xs){ $xs[0] = 'A'; }` writes back, and
+									 * var_dump($xs) inside the callee shows `&int(1)`. Copying
+									 * them left every actual untouched. The node counts as a
+									 * holder of the caller's slot, so the frame teardown that
+									 * destroys the variadic array gives the hold back. */
+									PH7_HashmapInsertByRef(pMap, 0, pArg->nIdx);
+									pArg++;
+									continue;
+								}
 							}
 							PH7_HashmapInsert(pMap, 0, pArg);
 							pArg++;
