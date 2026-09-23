@@ -631,13 +631,25 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 	SySetRelease(&aInherited);
 	SyHashResetLoopCursor(&pBase->hMethod);
 	while((pEntry = SyHashGetNextEntry(&pBase->hMethod)) != 0 ){
-		/* Make sure the private/final methods are not redeclared in the subclass */
+		SyHashEntry *pOwn;
+		SyString sKey;
+		/* Make sure the private/final methods are not redeclared in the subclass.
+		 * The identity inherited is the base's HASH KEY, not sFunc.sName — the same
+		 * rule PH7_ClassUseTrait copies a trait by. A trait adaptation leaves the
+		 * composed class holding entries whose key is the name the class ANSWERS to
+		 * while the method struct keeps its original name: `B::m as mB` is the key
+		 * `mB` over a struct still called `m`, and `A::m insteadof B` is the key `m`
+		 * over A's struct. Keying the copy off sFunc.sName re-filed both under `m`,
+		 * so a subclass of the composing class lost the alias entirely and took
+		 * whichever of the two the hash walk reached last as its `m` — the insteadof
+		 * choice, silently reversed. */
 		pMeth = (ph7_class_method *)pEntry->pUserData;
-		pName = &pMeth->sFunc.sName;
-		if( (pEntry = SyHashGet(&pSub->hMethod,(const void *)pName->zString,pName->nByte)) != 0 ){
+		SyStringInitFromBuf(&sKey,(const char *)pEntry->pKey,pEntry->nKeyLen);
+		pName = &sKey;
+		if( (pOwn = SyHashGet(&pSub->hMethod,(const void *)pName->zString,pName->nByte)) != 0 ){
 			 if( pMeth->iFlags & PH7_CLASS_ATTR_FINAL ){
 				/* php: "Cannot override final method A::test()" */
-				rc = PH7_GenCompileError(&(*pGen),E_ERROR,((ph7_class_method *)pEntry->pUserData)->nLine,
+				rc = PH7_GenCompileError(&(*pGen),E_ERROR,((ph7_class_method *)pOwn->pUserData)->nLine,
 					"Cannot override final method %z::%z()",
 					&pBase->sName,pName);
 				(void)pSub;
@@ -647,7 +659,7 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 			}else{
 				/* Check the override's signature is compatible with the parent's. */
 				rc = OoCheckOverrideCompat(&(*pGen),pBase,pSub,pMeth,
-					(ph7_class_method *)pEntry->pUserData);
+					(ph7_class_method *)pOwn->pUserData);
 				if( rc == SXERR_ABORT ){
 					return SXERR_ABORT;
 				}
