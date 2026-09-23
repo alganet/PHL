@@ -5,17 +5,16 @@
  */
 #include "ph7int.h"
 /*
- * The embedded PHP source of the Reflection class library (chunks 1-9),
- * compiled at VM init by PH7_VmInstallReflectionLib() — the tail step of
- * PH7_VmInstallReflection() (vm_builtin_reflection.c, which keeps the C
- * host-function thunks the library calls).
+ * What is LEFT of the embedded PHP source of the Reflection class library --
+ * chunks 6 and 9 of the original nine, compiled at VM init by
+ * PH7_VmInstallReflectionLib(), the tail step of PH7_VmInstallReflection()
+ * (vm_builtin_reflection.c, which declares everything else from C).
  */
 /*
- * Chunk 6: the ReflectionEnum family. It is what is LEFT of the long tail --
- * ReflectionConstant, ReflectionExtension, ReflectionZendExtension and
- * ReflectionReference are native (PH7_VmInstallReflectionSmall). These three
- * stay because they extend ReflectionClass and ReflectionClassConstant, which
- * are still prelude PHP; they move when those do.
+ * Chunk 6: the ReflectionEnum family. Nothing gates it any more -- the
+ * ReflectionClass and ReflectionClassConstant it extends are both native, and
+ * PH7_InstallNativeEnum() exists. It and chunk 9 are the last two callers of
+ * __phl_rcinfo, the marshalled class descriptor.
  */
 static const char zReflectLib6[] =
 "class ReflectionEnum extends ReflectionClass {"
@@ -72,113 +71,6 @@ static const char zReflectLib6[] =
 "}"
 "class ReflectionEnumBackedCase extends ReflectionEnumUnitCase {"
 " public function getBackingValue(){ return $this->getValue()->value; }"
-"}"
-;
-/*
- * Chunk 7: ReflectionAttribute and the shared getAttributes() builder.
- * The spec array rides as [kind, target, member, paramIdx]; argument
- * values evaluate lazily through __reflect_attr_args (PHP semantics).
- */
-static const char zReflectLib7[] =
-"function __reflect_has_deprecated($meta){"
-" foreach($meta as $a){"
-"  if(strtolower($a['name']) === 'deprecated'){ return true; }"
-" }"
-" return false;"
-"}"
-"function __reflect_target_names($mask){"
-" $parts = array();"
-" foreach(array('class' => 1, 'function' => 2, 'method' => 4, 'property' => 8,"
-"  'class constant' => 16, 'parameter' => 32, 'constant' => 64) as $nm => $bit){"
-"  if($mask & $bit){ $parts[] = $nm; }"
-" }"
-" return implode(', ', $parts);"
-"}"
-"function __reflect_build_attrs($meta, $spec, $target, $name, $flags){"
-" $out = array();"
-" $counts = array();"
-" foreach($meta as $a){"
-"  $k = strtolower($a['name']);"
-"  $counts[$k] = isset($counts[$k]) ? $counts[$k] + 1 : 1;"
-" }"
-" $idx = 0;"
-" foreach($meta as $a){"
-"  $keep = true;"
-"  if($name !== null){"
-"   $keep = strtolower($a['name']) === strtolower($name);"
-"   if(!$keep && ($flags & 2)){"
-"    $keep = is_subclass_of($a['name'], $name);"
-"   }"
-"  }"
-"  if($keep){"
-"   $r = __reflect_new_no_ctor('ReflectionAttribute');"
-"   $r->__init($a['name'], $spec, $idx, $target, $counts[strtolower($a['name'])] > 1);"
-"   $out[] = $r;"
-"  }"
-"  $idx++;"
-" }"
-" return $out;"
-"}"
-"final class ReflectionAttribute {"
-" const IS_INSTANCEOF = 2;"
-" protected $__name = '';"
-" protected $__spec = null;"
-" protected $__idx = 0;"
-" protected $__target = 0;"
-" protected $__rep = false;"
-" public function __construct(){"
-"  throw new Error('Call to private ReflectionAttribute::__construct() from global scope');"
-" }"
-" public function __init($name, $spec, $idx, $target, $rep){"
-"  $this->__name = $name;"
-"  $this->__spec = $spec;"
-"  $this->__idx = $idx;"
-"  $this->__target = $target;"
-"  $this->__rep = $rep;"
-" }"
-" public function getName(){ return $this->__name; }"
-" public function getTarget(){ return $this->__target; }"
-" public function isRepeated(){ return $this->__rep; }"
-" public function getArguments(){"
-"  $a = __reflect_attr_args($this->__spec[0], $this->__spec[1], $this->__spec[2], $this->__spec[3], $this->__idx);"
-"  return $a === null ? array() : $a;"
-" }"
-" public function newInstance(){"
-"  $name = $this->__name;"
-"  $ci = __phl_rcinfo($name);"
-"  if($ci === null){"
-"   throw new Error('Attribute class \"'.$name.'\" not found');"
-"  }"
-"  $name = $ci['name'];"
-"  $decl = null;"
-"  $didx = 0;"
-"  foreach($ci['attrs'] as $a){"
-"   if(strtolower($a['name']) === 'attribute'){ $decl = $didx; break; }"
-"   $didx++;"
-"  }"
-"  if($decl === null){"
-"   throw new Error('Attempting to use non-attribute class \"'.$name.'\" as attribute');"
-"  }"
-"  $dargs = __reflect_attr_args('class', $name, null, 0, $decl);"
-"  $flags = 127;"
-"  if(is_array($dargs)){"
-"   if(isset($dargs[0])){ $flags = $dargs[0]; }"
-"   else if(isset($dargs['flags'])){ $flags = $dargs['flags']; }"
-"  }"
-"  if(($flags & $this->__target) === 0){"
-"   $tnames = array(1 => 'class', 2 => 'function', 4 => 'method', 8 => 'property',"
-"    16 => 'class constant', 32 => 'parameter', 64 => 'constant');"
-"   throw new Error('Attribute \"'.$name.'\" cannot target '.$tnames[$this->__target]"
-"    .' (allowed targets: '.__reflect_target_names($flags).')');"
-"  }"
-"  if($this->__rep && ($flags & 128) === 0){"
-"   throw new Error('Attribute \"'.$name.'\" must not be repeated');"
-"  }"
-"  return __reflect_new_instance($name, $this->getArguments());"
-" }"
-" public function __toString(){"
-"  return 'Attribute [ '.$this->__name.' ]';"
-" }"
 "}"
 ;
 /*
@@ -399,7 +291,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionLib(ph7_vm *pVm)
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	rc = PH7_VmEvalBuiltinChunk(&(*pVm), zReflectLib7, sizeof(zReflectLib7)-1);
+	/* Where chunk 7 was: ReflectionAttribute is native now, and with it the
+	 * builder (__reflect_build_attrs) and the two helpers it needed. */
+	rc = PH7_VmInstallReflectionAttribute(&(*pVm));
 	if( rc != SXRET_OK ){
 		return rc;
 	}

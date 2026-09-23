@@ -740,17 +740,23 @@ static sxi32 ReflectCollectArgs(ph7_context *pCtx, ph7_value *pArray, SySet *pOu
 	return SXRET_OK;
 }
 /*
- * object __reflect_new_instance(string $class, array $args)
- * Instantiate and run the constructor with positional arguments.
- * The PHP layer has already validated instantiability and ctor visibility.
+ * Instantiate pClassName and run its constructor over pArgs (a PHP array;
+ * string keys become NAMED arguments, which is how `#[Attr(x: 1)]` arrives).
+ * The object lands in the call's result slot.
+ *
+ * ReflectionAttribute::newInstance()'s back end. It is deliberately NOT the
+ * ReflectionClass one (ReflectNewInstance, below): php runs no instantiability
+ * or constructor-visibility screen here — the attribute's own #[Attribute]
+ * declaration is what was checked — so an abstract or private-ctor attribute
+ * class reaches the engine's own Error, not a ReflectionException.
  */
-static int vm_builtin_reflect_new_instance(ph7_context *pCtx, int nArg, ph7_value **apArg)
+static sxi32 ReflectAttrInstantiate(ph7_context *pCtx, ph7_value *pClassName, ph7_value *pArgs)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class *pClass;
 	ph7_class_instance *pThis;
 	ph7_class_method *pCons;
-	if( nArg < 1 || (pClass = ReflectResolveClass(pVm, apArg[0])) == 0 ){
+	if( (pClass = ReflectResolveClass(pVm, pClassName)) == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
@@ -773,8 +779,8 @@ static int vm_builtin_reflect_new_instance(ph7_context *pCtx, int nArg, ph7_valu
 		sxi32 rc;
 		SyString *aNames = 0;
 		SySetInit(&aArg, &pVm->sAllocator, sizeof(ph7_value *));
-		if( nArg > 1 ){
-			ReflectCollectArgs(pCtx, apArg[1], &aArg, &aNames);
+		if( pArgs ){
+			ReflectCollectArgs(pCtx, pArgs, &aArg, &aNames);
 		}
 		if( aNames ){
 			VmCallArgMap sMap;
@@ -799,28 +805,10 @@ static int vm_builtin_reflect_new_instance(ph7_context *pCtx, int nArg, ph7_valu
 	}
 	return ReflectResultObject(pCtx, pThis);
 }
-/*
- * object __reflect_new_no_ctor(string $class)
- * Instantiate without running the constructor (property defaults still
- * apply — PH7_NewClassInstance builds the attribute frame).
- */
-static int vm_builtin_reflect_new_no_ctor(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	ph7_class *pClass;
-	if( nArg < 1 || (pClass = ReflectResolveClass(pCtx->pVm, apArg[0])) == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	if( VmClassStaticDeferPending(pClass) ){
-		/* Same materialization the engine's own access sites run (see
-		 * PH7_VmMaterializeClassStatics). */
-		sxi32 rcMat = PH7_VmMaterializeClassStatics(pCtx->pVm, pClass);
-		if( rcMat != SXRET_OK ){
-			return rcMat;
-		}
-	}
-	return ReflectResultObject(pCtx, PH7_NewClassInstance(pCtx->pVm, pClass));
-}
+/* Where __reflect_new_no_ctor() was: the one caller was chunk 7's
+ * __reflect_build_attrs, which built a ReflectionAttribute and then filled it
+ * through a public __init() php does not have. C builds the instance itself
+ * (ReflectAttrNew), so both are gone. */
 /*
  * Typed/readonly store enforcement for reflection writes. Like the VM's
  * store path, except an UNINITIALIZED readonly property may be written from
@@ -1263,14 +1251,19 @@ static ph7_generator * ReflectGeneratorCtx(ph7_vm *pVm, ph7_value *pVal)
 	return (ph7_generator *)pAttr->x.pOther;
 }
 /*
- * array|null __reflect_attr_args(string $kind, mixed $target, ?string $member,
- *                                int $paramIdx, int $attrIdx)
- * Evaluate the recorded argument expressions of one declared attribute:
- * kind 'class' (target = class), 'attr' (class + property/constant name),
- * 'method' (class + method), 'fn' (function name or Closure), 'param'
- * (function spec + parameter index). Named arguments become string keys.
+ * Evaluate the recorded argument expressions of one declared attribute and
+ * answer them as a PHP array, or NULL when the target no longer resolves.
+ *
+ * apArg is the four-part SPEC a ReflectionAttribute carries — kind 'class'
+ * (target = class), 'attr' (class + property/constant name), 'method' (class +
+ * method), 'fn' (function name or Closure), 'param' (function spec + parameter
+ * index), 'const' (global constant name) — plus which attribute of that target.
+ * Named arguments become string keys.
+ *
+ * The values are evaluated HERE rather than when the reflector was built:
+ * `#[Attr(self::SOME)]` runs php code, and php runs it at getArguments() time.
  */
-static int vm_builtin_reflect_attr_args(ph7_context *pCtx, int nArg, ph7_value **apArg)
+static ph7_value * ReflectAttrArgs(ph7_context *pCtx, ph7_value **apArg, sxu32 nAttrIdx)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	SySet *pAttrs = 0;
@@ -1279,13 +1272,8 @@ static int vm_builtin_reflect_attr_args(ph7_context *pCtx, int nArg, ph7_value *
 	ph7_value *pOut;
 	const char *zKind;
 	int nKind;
-	sxu32 nAttrIdx, n;
-	if( nArg < 5 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
+	sxu32 n;
 	zKind = ph7_value_to_string(apArg[0], &nKind);
-	nAttrIdx = (sxu32)ph7_value_to_int(apArg[4]);
 	if( nKind == 5 && SyMemcmp(zKind, "class", 5) == 0 ){
 		ph7_class *pClass = ReflectResolveClass(pVm, apArg[1]);
 		if( pClass ){ pAttrs = &pClass->aAttrs; pDeclCls = pClass; }
@@ -1315,8 +1303,7 @@ static int vm_builtin_reflect_attr_args(ph7_context *pCtx, int nArg, ph7_value *
 	}
 	if( pAttrs == 0 || (pAttrRec = (ph7_attribute *)SySetAt(pAttrs, nAttrIdx)) == 0
 	 || (pOut = ph7_context_new_array(pCtx)) == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
+		return 0;
 	}
 	for( n = 0 ; n < SySetUsed(&pAttrRec->aArgs) ; n++ ){
 		ph7_attr_arg *pArgRec = (ph7_attr_arg *)SySetAt(&pAttrRec->aArgs, n);
@@ -1335,8 +1322,7 @@ static int vm_builtin_reflect_attr_args(ph7_context *pCtx, int nArg, ph7_value *
 		}
 		PH7_MemObjRelease(&sValue);
 	}
-	ph7_result_value(pCtx, pOut);
-	return PH7_OK;
+	return pOut;
 }
 /*
  * ---------------------------------------------------------------------------
@@ -1805,50 +1791,584 @@ static int ReflectResultBorrowed(ph7_context *pCtx, ph7_class_instance *pObj)
 	return PH7_OK;
 }
 /*
+ * ---------------------------------------------------------------------------
+ * ReflectionAttribute — chunk 7.
+ *
+ * php's own class, plus the shared getAttributes() body that produces it. The
+ * chunk it replaces also carried __reflect_target_names (folded into the
+ * "cannot target" diagnostic below) and __reflect_has_deprecated, which had
+ * already lost its last caller when isDeprecated() became C.
+ *
+ * An instance holds a SPEC, not the arguments: [kind, target, member,
+ * paramIdx] names something the engine can reopen, and getArguments()
+ * evaluates the recorded expressions on every call, because php does too --
+ * `#[A(self::X)]` is php code and it runs when it is asked for. That is also
+ * why the prelude needed a public __init(): PHP could not fill a fresh object
+ * any other way. C fills it directly, so __init() (and the
+ * __reflect_new_no_ctor that built the empty shell) are gone with it.
+ * ---------------------------------------------------------------------------
+ */
+#define RA_NAME   "name"      /* php declares this one PUBLIC: `$attr->name` */
+#define RA_SPEC   "__spec"    /* [kind, target, member, paramIdx] */
+#define RA_IDX    "__idx"     /* which of that target's attributes this is */
+#define RA_TARGET "__target"  /* the Attribute::TARGET_* bit it was found on */
+#define RA_REP    "__rep"     /* the target carries more than one of this name */
+
+/* Bound on the value exporter's own recursion. An attribute argument cannot be
+ * cyclic, but an OBJECT argument's property graph can be. */
+#define REFLECT_EXPORT_MAX_DEPTH 31
+
+/* php's Attribute::TARGET_* names, in bit order (TARGET_CLASS is bit 0). */
+static const char *const azReflectTarget[] = {
+	"class", "function", "method", "property", "class constant", "parameter", "constant"
+};
+
+static void ReflectExportValue(ph7_context *pCtx, SyBlob *pOut, ph7_value *pVal, int iDepth);
+
+/*
+ * A string the way php's reflection prints one: single-quoted, with the
+ * NON-PRINTABLE bytes escaped (php's smart_str_append_escaped). The quote
+ * itself is NOT escaped — php's own output for "q'q" is 'q'q'.
+ */
+static void ReflectExportStr(SyBlob *pOut, const char *zIn, sxu32 nIn)
+{
+	static const char zHexDigit[] = "0123456789ABCDEF";
+	sxu32 i;
+	SyBlobAppend(pOut, "'", sizeof(char));
+	for( i = 0 ; i < nIn ; i++ ){
+		unsigned char c = (unsigned char)zIn[i];
+		const char *zEsc = 0;
+		switch( c ){
+			case 0x09: zEsc = "\\t"; break;
+			case 0x0A: zEsc = "\\n"; break;
+			case 0x0B: zEsc = "\\v"; break;
+			case 0x0C: zEsc = "\\f"; break;
+			case 0x0D: zEsc = "\\r"; break;
+			case 0x1B: zEsc = "\\e"; break;
+			case '\\': zEsc = "\\\\"; break;
+			default:   break;
+		}
+		if( zEsc ){
+			SyBlobAppend(pOut, zEsc, sizeof("\\t")-1);
+		}else if( c < 0x20 || c > 0x7E ){
+			char zHex[4];
+			zHex[0] = '\\';
+			zHex[1] = 'x';
+			zHex[2] = zHexDigit[(c >> 4) & 0x0F];
+			zHex[3] = zHexDigit[c & 0x0F];
+			SyBlobAppend(pOut, zHex, sizeof(zHex));
+		}else{
+			SyBlobAppend(pOut, (const char *)&c, sizeof(char));
+		}
+	}
+	SyBlobAppend(pOut, "'", sizeof(char));
+}
+/*
+ * A float the way php's reflection prints one: the plain string cast (which
+ * PHL already renders php's way, 1.0E+15 and all), then php's `zero_frac` —
+ * a float that came out without a fraction gets ".0" so 1.0 does not print as
+ * 1. INF and NAN render as words and are left alone.
+ */
+static void ReflectExportReal(ph7_vm *pVm, SyBlob *pOut, ph7_real rVal)
+{
+	ph7_value sTmp;
+	const char *zText;
+	int nText, i, bPlain = 1;
+	PH7_MemObjInitFromReal(pVm, &sTmp, rVal);
+	zText = ph7_value_to_string(&sTmp, &nText);
+	if( nText > 0 ){
+		SyBlobAppend(pOut, zText, (sxu32)nText);
+	}
+	for( i = 0 ; i < nText ; i++ ){
+		if( (zText[i] < '0' || zText[i] > '9') && !(i == 0 && zText[i] == '-') ){
+			bPlain = 0;
+			break;
+		}
+	}
+	if( bPlain && nText > 0 ){
+		SyBlobAppend(pOut, ".0", sizeof(".0")-1);
+	}
+	PH7_MemObjRelease(&sTmp);
+}
+/*
+ * An array the way php's reflection prints one. The KEY is written only when
+ * it is not the next one a list would have produced, which is how php tells
+ * [1, 2] from [2 => 'x'] — php's format_default_value keeps a running
+ * expected index and prints nothing while the array tracks it.
+ */
+static void ReflectExportArray(ph7_context *pCtx, SyBlob *pOut, ph7_value *pVal, int iDepth)
+{
+	ph7_hashmap *pMap = (ph7_hashmap *)pVal->x.pOther;
+	ph7_hashmap_node *pEntry = pMap->pFirst;
+	sxi64 iExpect = 0;
+	sxu32 n;
+	SyBlobAppend(pOut, "[", sizeof(char));
+	for( n = 0 ; n < pMap->nEntry && pEntry ; n++ ){
+		ph7_value *pMember = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pEntry->nValIdx);
+		if( n > 0 ){
+			SyBlobAppend(pOut, ", ", sizeof(", ")-1);
+		}
+		if( pEntry->iType == HASHMAP_BLOB_NODE ){
+			ReflectExportStr(pOut, (const char *)SyBlobData(&pEntry->xKey.sKey),
+				SyBlobLength(&pEntry->xKey.sKey));
+			SyBlobAppend(pOut, " => ", sizeof(" => ")-1);
+		}else{
+			if( pEntry->xKey.iKey != iExpect ){
+				SyBlobFormat(pOut, "%qd => ", pEntry->xKey.iKey);
+			}
+			iExpect = pEntry->xKey.iKey + 1;
+		}
+		ReflectExportValue(pCtx, pOut, pMember, iDepth + 1);
+		pEntry = pEntry->pPrev; /* Reverse link: insertion order */
+	}
+	SyBlobAppend(pOut, "]", sizeof(char));
+}
+/*
+ * One value in php's reflection export syntax — the text after `= ` in a
+ * parameter default and inside `Argument #0 [ … ]` in an attribute dump.
+ *
+ * The type dispatch is PH7_MemObjDump's, including its REAL-before-INT order:
+ * an integer-valued float carries a cached int view too, and php prints 1.0.
+ *
+ * php renders an OBJECT argument by echoing the source expression it never
+ * folded (`new \A(x: 1)`), which needs the AST. PHL evaluates attribute
+ * arguments from byte-code and has only the resulting VALUE, so a non-enum
+ * object is rebuilt from its own properties: same shape, not always the same
+ * bytes. An enum case — the one object php's own value formatter handles —
+ * matches exactly.
+ */
+static void ReflectExportValue(ph7_context *pCtx, SyBlob *pOut, ph7_value *pVal, int iDepth)
+{
+	if( pVal == 0 || iDepth > REFLECT_EXPORT_MAX_DEPTH ){
+		SyBlobAppend(pOut, "NULL", sizeof("NULL")-1);
+		return;
+	}
+	if( (pVal->iFlags & (MEMOBJ_OBJ|MEMOBJ_NULL)) == MEMOBJ_OBJ ){
+		ph7_class_instance *pObj = (ph7_class_instance *)pVal->x.pOther;
+		if( pObj->pClass->iFlags & PH7_CLASS_ENUM ){
+			ph7_value *pName = PH7_EnumCaseNameValue(pObj);
+			/* php writes the case as the source did, so a namespaced enum comes
+			 * out fully qualified (\N\E::One) and a global one bare (E::One).
+			 * The separator is the only thing left of that distinction here. */
+			if( SyByteFind(SyStringData(&pObj->pClass->sName),
+				SyStringLength(&pObj->pClass->sName), '\\', 0) == SXRET_OK ){
+				SyBlobAppend(pOut, "\\", sizeof(char));
+			}
+			SyBlobFormat(pOut, "%z::", &pObj->pClass->sName);
+			if( pName && SyBlobLength(&pName->sBlob) > 0 ){
+				SyBlobAppend(pOut, SyBlobData(&pName->sBlob), SyBlobLength(&pName->sBlob));
+			}
+			return;
+		}
+		SyBlobFormat(pOut, "new \\%z(", &pObj->pClass->sName);
+		{
+			SyHashEntry *pEntry;
+			int nWritten = 0;
+			SyHashResetLoopCursor(&pObj->hAttr);
+			while((pEntry = SyHashGetNextEntry(&pObj->hAttr)) != 0 ){
+				VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
+				ph7_value *pSlot;
+				if( pVmAttr->pAttr->iFlags
+					& (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_HOOK_VIRTUAL) ){
+					continue; /* class-level members are not part of the object */
+				}
+				pSlot = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pVmAttr->nIdx);
+				if( nWritten++ ){
+					SyBlobAppend(pOut, ", ", sizeof(", ")-1);
+				}
+				ReflectExportValue(pCtx, pOut, pSlot, iDepth + 1);
+			}
+		}
+		SyBlobAppend(pOut, ")", sizeof(char));
+		return;
+	}
+	if( pVal->iFlags & MEMOBJ_NULL ){
+		SyBlobAppend(pOut, "NULL", sizeof("NULL")-1);
+		return;
+	}
+	if( pVal->iFlags & MEMOBJ_HASHMAP ){
+		ReflectExportArray(pCtx, pOut, pVal, iDepth);
+		return;
+	}
+	if( pVal->iFlags & MEMOBJ_BOOL ){
+		if( pVal->x.iVal != 0 ){
+			SyBlobAppend(pOut, "true", sizeof("true")-1);
+		}else{
+			SyBlobAppend(pOut, "false", sizeof("false")-1);
+		}
+		return;
+	}
+	if( pVal->iFlags & MEMOBJ_REAL ){
+		ReflectExportReal(pCtx->pVm, pOut, pVal->rVal);
+		return;
+	}
+	if( pVal->iFlags & MEMOBJ_INT ){
+		SyBlobFormat(pOut, "%qd", pVal->x.iVal);
+		return;
+	}
+	if( pVal->iFlags & MEMOBJ_STRING ){
+		ReflectExportStr(pOut, (const char *)SyBlobData(&pVal->sBlob), SyBlobLength(&pVal->sBlob));
+		return;
+	}
+	/* A resource, and anything else php has no export syntax for. */
+	SyBlobAppend(pOut, "NULL", sizeof("NULL")-1);
+}
+/*
+ * Build one ReflectionAttribute. pSpec is shared by every attribute of the
+ * same target — it says how to reopen it, not which one this is.
+ */
+static ph7_class_instance * ReflectAttrNew(ph7_context *pCtx, SyString *pName,
+	ph7_value *pSpec, sxu32 nIdx, int iTargetBit, int bRepeated)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pClass = PH7_VmExtractClass(pVm, "ReflectionAttribute",
+		sizeof("ReflectionAttribute")-1, FALSE, 0);
+	ph7_class_instance *pObj = pClass ? PH7_NewClassInstance(pVm, pClass) : 0;
+	if( pObj == 0 ){
+		return 0;
+	}
+	PH7_NativeSetAttrStr(pVm, pObj, RA_NAME, SyStringData(pName), (int)SyStringLength(pName));
+	PH7_NativeSetProp(pVm, pObj, RA_SPEC, sizeof(RA_SPEC)-1, pSpec);
+	PH7_NativeSetAttrInt(pVm, pObj, RA_IDX, (sxi64)nIdx);
+	PH7_NativeSetAttrInt(pVm, pObj, RA_TARGET, iTargetBit);
+	PH7_NativeSetAttrBool(pVm, pObj, RA_REP, bRepeated);
+	return pObj;
+}
+/*
+ * Unpack the receiver's spec into the four-value vector ReflectAttrArgs takes.
+ * Returns 0 when the object is not one this file built.
+ */
+static int ReflectAttrSpec(ph7_context *pCtx, ph7_class_instance *pThis, ph7_value **apOut)
+{
+	ph7_value *pSpec = pThis ? PH7_NativeAttr(pThis, RA_SPEC) : 0;
+	ph7_hashmap *pMap;
+	int i;
+	if( pSpec == 0 || (pSpec->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return 0;
+	}
+	pMap = (ph7_hashmap *)pSpec->x.pOther;
+	for( i = 0 ; i < 4 ; i++ ){
+		ph7_value sKey;
+		ph7_hashmap_node *pNode = 0;
+		sxi32 rc;
+		PH7_MemObjInitFromInt(pCtx->pVm, &sKey, i);
+		rc = PH7_HashmapLookup(pMap, &sKey, &pNode);
+		PH7_MemObjRelease(&sKey);
+		if( rc != SXRET_OK || pNode == 0 ){
+			return 0;
+		}
+		apOut[i] = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pNode->nValIdx);
+		if( apOut[i] == 0 ){
+			return 0;
+		}
+	}
+	return 1;
+}
+/* The receiver's evaluated arguments, or an empty array when the target no
+ * longer resolves (what the chunk's `$a === null ? array() : $a` said). */
+static ph7_value * ReflectAttrOwnArgs(ph7_context *pCtx, ph7_class_instance *pThis)
+{
+	ph7_value *apSpec[4];
+	ph7_value *pArgs = 0;
+	if( pThis && ReflectAttrSpec(pCtx, pThis, apSpec) ){
+		pArgs = ReflectAttrArgs(pCtx, apSpec, (sxu32)PH7_NativeAttrInt(pThis, RA_IDX));
+	}
+	return pArgs ? pArgs : ph7_context_new_array(pCtx);
+}
+static int vm_builtin_ReflectionAttribute_getName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName = "";
+	int nName = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, RA_NAME, &zName, &nName);
+	}
+	ph7_result_string(pCtx, zName, nName);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionAttribute_getTarget(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_int64(pCtx, pThis ? PH7_NativeAttrInt(pThis, RA_TARGET) : 0);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionAttribute_isRepeated(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx, pThis != 0 && PH7_NativeAttrTruthy(pThis, RA_REP));
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionAttribute_getArguments(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_value *pArgs = ReflectAttrOwnArgs(pCtx, PH7_ContextThis(pCtx));
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pArgs == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	ph7_result_value(pCtx, pArgs);
+	return PH7_OK;
+}
+/*
+ * newInstance(): the four screens php runs before it constructs anything —
+ * the attribute class exists, it is declared #[Attribute], that declaration
+ * allows the target this was found on, and it allows repetition if it was
+ * repeated. The messages are php's, byte for byte.
+ */
+static int vm_builtin_ReflectionAttribute_newInstance(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pNameVal = pThis ? PH7_NativeAttr(pThis, RA_NAME) : 0;
+	ph7_class *pClass;
+	ph7_attribute *aA;
+	ph7_value *pDeclArgs;
+	sxu32 n, nDecl = 0;
+	int bDecl = 0, iTarget, iBit;
+	sxi64 iFlags = 127; /* php's TARGET_ALL: #[Attribute] with no argument */
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pNameVal == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pClass = ReflectResolveClass(pVm, pNameVal);
+	if( pClass == 0 ){
+		SyString sName;
+		SyStringInitFromBuf(&sName, SyBlobData(&pNameVal->sBlob), SyBlobLength(&pNameVal->sBlob));
+		return PH7_VmThrowException(pCtx, "Error", "Attribute class \"%z\" not found", &sName);
+	}
+	/* Which #[...] on the attribute class is its own #[Attribute] declaration */
+	aA = (ph7_attribute *)SySetBasePtr(&pClass->aAttrs);
+	for( n = 0 ; n < SySetUsed(&pClass->aAttrs) ; n++ ){
+		if( SyStringLength(&aA[n].sName) == sizeof("Attribute")-1
+		 && SyStrnicmp(SyStringData(&aA[n].sName), "Attribute", sizeof("Attribute")-1) == 0 ){
+			nDecl = n;
+			bDecl = 1;
+			break;
+		}
+	}
+	if( !bDecl ){
+		return PH7_VmThrowException(pCtx, "Error",
+			"Attempting to use non-attribute class \"%z\" as attribute", &pClass->sName);
+	}
+	/* Its argument is the target mask: positional, or named `flags:`. */
+	{
+		ph7_value *apSpec[4];
+		ph7_value *pKind = ph7_context_new_scalar(pCtx);
+		ph7_value *pMem  = ph7_context_new_scalar(pCtx);
+		ph7_value *pIdx  = ph7_context_new_scalar(pCtx);
+		if( pKind == 0 || pMem == 0 || pIdx == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		ph7_value_string(pKind, "class", sizeof("class")-1);
+		ph7_value_null(pMem);
+		ph7_value_int(pIdx, 0);
+		apSpec[0] = pKind;
+		apSpec[1] = pNameVal;
+		apSpec[2] = pMem;
+		apSpec[3] = pIdx;
+		pDeclArgs = ReflectAttrArgs(pCtx, apSpec, nDecl);
+	}
+	if( pDeclArgs ){
+		ph7_value *pFlags = ph7_array_fetch(pDeclArgs, "0", -1);
+		if( pFlags == 0 ){
+			pFlags = ph7_array_fetch(pDeclArgs, "flags", -1);
+		}
+		if( pFlags ){
+			iFlags = ph7_value_to_int64(pFlags);
+		}
+	}
+	iTarget = (int)PH7_NativeAttrInt(pThis, RA_TARGET);
+	if( (iFlags & iTarget) == 0 ){
+		SyBlob sAllowed;
+		sxi32 rc;
+		SyBlobInit(&sAllowed, &pVm->sAllocator);
+		for( iBit = 0 ; iBit < (int)SX_ARRAYSIZE(azReflectTarget) ; iBit++ ){
+			if( (iFlags & ((sxi64)1 << iBit)) == 0 ){
+				continue;
+			}
+			if( SyBlobLength(&sAllowed) > 0 ){
+				SyBlobAppend(&sAllowed, ", ", sizeof(", ")-1);
+			}
+			SyBlobAppend(&sAllowed, azReflectTarget[iBit],
+				(sxu32)SyStrlen(azReflectTarget[iBit]));
+		}
+		SyBlobAppend(&sAllowed, "", sizeof(char)); /* NUL for the %s below */
+		for( iBit = 0 ; iBit < (int)SX_ARRAYSIZE(azReflectTarget) ; iBit++ ){
+			if( iTarget == (1 << iBit) ){
+				break;
+			}
+		}
+		rc = PH7_VmThrowException(pCtx, "Error",
+			"Attribute \"%z\" cannot target %s (allowed targets: %s)", &pClass->sName,
+			iBit < (int)SX_ARRAYSIZE(azReflectTarget) ? azReflectTarget[iBit] : "",
+			SyBlobData(&sAllowed));
+		SyBlobRelease(&sAllowed);
+		return rc;
+	}
+	if( PH7_NativeAttrTruthy(pThis, RA_REP) && (iFlags & 128) == 0 ){
+		return PH7_VmThrowException(pCtx, "Error",
+			"Attribute \"%z\" must not be repeated", &pClass->sName);
+	}
+	return ReflectAttrInstantiate(pCtx, pNameVal, ReflectAttrOwnArgs(pCtx, pThis));
+}
+/*
+ * php's export text. A bare `Attribute [ Name ]` when there are no arguments;
+ * otherwise the same head followed by the argument block, each argument
+ * rendered in php's value-export syntax and named ones as `name = value`.
+ */
+static int vm_builtin_ReflectionAttribute_toString(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pArgs = ReflectAttrOwnArgs(pCtx, pThis);
+	const char *zName = "";
+	int nName = 0;
+	SyBlob sOut;
+	sxu32 nCount = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, RA_NAME, &zName, &nName);
+	}
+	if( pArgs && (pArgs->iFlags & MEMOBJ_HASHMAP) ){
+		nCount = ((ph7_hashmap *)pArgs->x.pOther)->nEntry;
+	}
+	SyBlobInit(&sOut, &pVm->sAllocator);
+	SyBlobAppend(&sOut, "Attribute [ ", sizeof("Attribute [ ")-1);
+	if( nName > 0 ){
+		SyBlobAppend(&sOut, zName, (sxu32)nName);
+	}
+	SyBlobAppend(&sOut, " ]", sizeof(" ]")-1);
+	if( nCount < 1 ){
+		SyBlobAppend(&sOut, "\n", sizeof(char));
+	}else{
+		ph7_hashmap *pMap = (ph7_hashmap *)pArgs->x.pOther;
+		ph7_hashmap_node *pEntry = pMap->pFirst;
+		sxu32 n;
+		SyBlobFormat(&sOut, " {\n  - Arguments [%u] {\n", nCount);
+		for( n = 0 ; n < nCount && pEntry ; n++ ){
+			ph7_value *pMember = (ph7_value *)SySetAt(&pVm->aMemObj, pEntry->nValIdx);
+			SyBlobFormat(&sOut, "    Argument #%u [ ", n);
+			if( pEntry->iType == HASHMAP_BLOB_NODE ){
+				SyBlobAppend(&sOut, SyBlobData(&pEntry->xKey.sKey),
+					SyBlobLength(&pEntry->xKey.sKey));
+				SyBlobAppend(&sOut, " = ", sizeof(" = ")-1);
+			}
+			ReflectExportValue(pCtx, &sOut, pMember, 0);
+			SyBlobAppend(&sOut, " ]\n", sizeof(" ]\n")-1);
+			pEntry = pEntry->pPrev; /* Reverse link: insertion order */
+		}
+		SyBlobAppend(&sOut, "  }\n}\n", sizeof("  }\n}\n")-1);
+	}
+	ph7_result_string(pCtx, (const char *)SyBlobData(&sOut), (int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+	return PH7_OK;
+}
+/* The body of the two methods php declares PRIVATE and never calls. Neither is
+ * reachable from php code: `new ReflectionAttribute` is the engine's own "Call
+ * to private … from global scope" Error, and `clone` is refused by
+ * PH7_CLASS_NOCLONE before any body runs. They exist so the class REPORTS them,
+ * which is the only way php's own dump shows them too. */
+static int vm_builtin_ReflectionAttribute_private(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	SXUNUSED(pCtx);
+	return PH7_OK;
+}
+/*
+ * Declare ReflectionAttribute. Called from PH7_VmInstallReflectionLib where
+ * chunk 7 used to be compiled, so Reflector (chunk 1) already exists.
+ *
+ * PH7_CLASS_NOCLONE is php's rule for it (php declares __clone private AND
+ * refuses the copy), and the class is NOT final — php 8.5 unsealed it.
+ */
+PH7_PRIVATE sxi32 PH7_VmInstallReflectionAttribute(ph7_vm *pVm)
+{
+	static const PH7_NativeConstDef aConst[] = {
+		{ "IS_INSTANCEOF", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 2, 0, 0.0 },
+	};
+	static const PH7_NativePropDef aProp[] = {
+		{ RA_NAME,   PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
+		/* PHL-only, and PROTECTED so php code cannot reach them: the spec that
+		 * reopens the target. php holds the same state on the C struct behind the
+		 * object, invisible; PHL has no hidden-slot bit yet (§7.4 (e)), so these
+		 * four still show up in a var_dump where php shows only $name. */
+		{ RA_SPEC,   PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0,  0.0 } },
+		{ RA_IDX,    PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0,  0.0 } },
+		{ RA_TARGET, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0,  0.0 } },
+		{ RA_REP,    PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_BOOL,   0, 0,  0.0 } },
+	};
+	/* php's own listing order, which is what __toString() prints. */
+	static const PH7_NativeMethodDef aMethod[] = {
+		{ "getName",      PH7_MOD_PUBLIC,  "", "string", vm_builtin_ReflectionAttribute_getName },
+		{ "getTarget",    PH7_MOD_PUBLIC,  "", "int",    vm_builtin_ReflectionAttribute_getTarget },
+		{ "isRepeated",   PH7_MOD_PUBLIC,  "", "bool",   vm_builtin_ReflectionAttribute_isRepeated },
+		{ "getArguments", PH7_MOD_PUBLIC,  "", "array",  vm_builtin_ReflectionAttribute_getArguments },
+		{ "newInstance",  PH7_MOD_PUBLIC,  "", "object", vm_builtin_ReflectionAttribute_newInstance },
+		{ "__toString",   PH7_MOD_PUBLIC,  "", "string", vm_builtin_ReflectionAttribute_toString },
+		{ "__clone",      PH7_MOD_PRIVATE, "", "void", vm_builtin_ReflectionAttribute_private },
+		{ "__construct",  PH7_MOD_PRIVATE, "", 0,      vm_builtin_ReflectionAttribute_private },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "ReflectionAttribute", 0, "Reflector", PH7_CLASS_NOCLONE,
+		  aMethod, SX_ARRAYSIZE(aMethod), aConst, SX_ARRAYSIZE(aConst),
+		  aProp, SX_ARRAYSIZE(aProp), 0, 0 },
+	};
+	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));
+}
+/*
  * The shared getAttributes() body.
  *
- * Hands the target's #[...] SUMMARY list and the [kind, target, member,
- * paramIdx] spec to the prelude builder (__reflect_build_attrs, chunk 7),
- * which turns them into ReflectionAttribute objects and applies the
- * name / IS_INSTANCEOF filter. Argument VALUES stay lazy — the spec is what
- * reopens them later through __reflect_attr_args — so every reflector that
- * declares getAttributes() only has to say WHICH target it is.
+ * Turns the target's #[...] records into ReflectionAttribute objects, applying
+ * php's name / IS_INSTANCEOF filter. Argument VALUES stay lazy — what each
+ * object carries is the [kind, target, member, paramIdx] spec that reopens
+ * them — so a reflector declaring getAttributes() only has to say WHICH target
+ * it is.
  */
 static int ReflectBuildAttrs(ph7_context *pCtx, SySet *pAttrs, const char *zKind,
 	ph7_value *pTarget, const char *zMember, int nMember,
 	int iParamIdx, int iTargetBit, int nArg, ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
-	ph7_value sMeta, sSpec, sTarget, sName, sFlags, sRes;
-	ph7_value *apCall[5];
-	sxi32 rc;
-	PH7_MemObjInit(pVm, &sMeta);
-	PH7_MemObjInit(pVm, &sSpec);
-	PH7_MemObjInit(pVm, &sTarget);
-	PH7_MemObjInit(pVm, &sName);
-	PH7_MemObjInit(pVm, &sFlags);
-	PH7_MemObjInit(pVm, &sRes);
+	ph7_attribute *aA = (ph7_attribute *)SySetBasePtr(pAttrs);
+	ph7_class *pFilter = 0;
+	const char *zFilter = 0;
+	int nFilter = 0;
+	ph7_value *pSpec, *pOut;
+	sxu32 n, i;
+	pOut = ph7_context_new_array(pCtx);
+	pSpec = ph7_context_new_array(pCtx);
+	if( pOut == 0 || pSpec == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( nArg > 0 && !ph7_value_is_null(apArg[0]) ){
+		zFilter = ph7_value_to_string(apArg[0], &nFilter);
+		if( nFilter < 1 ){
+			zFilter = 0;
+		}
+		/* IS_INSTANCEOF: keep a SUBCLASS of the named attribute too. The exact
+		 * name still matches on its own, so this only has to answer for the rest. */
+		if( zFilter && nArg > 1 && (ph7_value_to_int(apArg[1]) & 2) ){
+			pFilter = ReflectResolveClass(pVm, apArg[0]);
+		}
+	}
 	{
-		ph7_value *pMeta = ph7_context_new_array(pCtx);
-		ph7_value *pSpec = ph7_context_new_array(pCtx);
 		ph7_value *pKind = ph7_context_new_scalar(pCtx);
-		ph7_value *pTgt  = ph7_context_new_scalar(pCtx);
 		ph7_value *pMem  = ph7_context_new_scalar(pCtx);
 		ph7_value *pIdx  = ph7_context_new_scalar(pCtx);
-		if( pMeta == 0 || pSpec == 0 || pKind == 0 || pTgt == 0 || pMem == 0 || pIdx == 0 ){
+		if( pKind == 0 || pMem == 0 || pIdx == 0 ){
 			return PH7_ContextMemoryError(pCtx);
 		}
-		ReflectMapAddAttrs(pCtx, pMeta, pAttrs);
-		{
-			ph7_value *pList = ph7_array_fetch(pMeta, "attrs", -1);
-			if( pList ){
-				PH7_MemObjStore(pList, &sMeta);
-			}
-		}
 		ph7_value_string(pKind, zKind, -1);
-		/* The target rides as a VALUE, not a name: a closure's attributes are
-		 * reopened through the Closure object itself. */
-		PH7_MemObjStore(pTarget, pTgt);
 		if( zMember ){
 			ph7_value_string(pMem, zMember, nMember);
 		}else{
@@ -1856,41 +2376,44 @@ static int ReflectBuildAttrs(ph7_context *pCtx, SySet *pAttrs, const char *zKind
 		}
 		ph7_value_int(pIdx, iParamIdx);
 		ph7_array_add_elem(pSpec, 0, pKind);
-		ph7_array_add_elem(pSpec, 0, pTgt);
+		/* The target rides as a VALUE, not a name: a closure's attributes are
+		 * reopened through the Closure object itself. */
+		ph7_array_add_elem(pSpec, 0, pTarget);
 		ph7_array_add_elem(pSpec, 0, pMem);
 		ph7_array_add_elem(pSpec, 0, pIdx);
-		PH7_MemObjStore(pSpec, &sSpec);
 	}
-	ph7_value_int(&sTarget, iTargetBit);
-	if( nArg > 0 ){
-		PH7_MemObjStore(apArg[0], &sName);
-	}else{
-		ph7_value_null(&sName);
+	for( n = 0 ; n < SySetUsed(pAttrs) ; n++ ){
+		int bRepeated = 0;
+		if( zFilter ){
+			int bKeep = ((int)SyStringLength(&aA[n].sName) == nFilter
+				&& SyStrnicmp(SyStringData(&aA[n].sName), zFilter, (sxu32)nFilter) == 0);
+			if( !bKeep && pFilter ){
+				ph7_class *pCand = PH7_VmExtractClass(pVm, SyStringData(&aA[n].sName),
+					SyStringLength(&aA[n].sName), FALSE, 0);
+				if( pCand == 0 ){
+					pCand = PH7_VmTriggerAutoload(pVm, SyStringData(&aA[n].sName),
+						SyStringLength(&aA[n].sName), FALSE);
+				}
+				bKeep = pCand != 0 && pCand != pFilter && PH7_VmInstanceOf(pCand, pFilter);
+			}
+			if( !bKeep ){
+				continue;
+			}
+		}
+		/* isRepeated() asks about the TARGET, not about the filtered result:
+		 * two #[A] make both of them repeated even when only one is asked for. */
+		for( i = 0 ; i < SySetUsed(pAttrs) ; i++ ){
+			if( i != n && SyStringLength(&aA[i].sName) == SyStringLength(&aA[n].sName)
+			 && SyStrnicmp(SyStringData(&aA[i].sName), SyStringData(&aA[n].sName),
+				SyStringLength(&aA[n].sName)) == 0 ){
+				bRepeated = 1;
+				break;
+			}
+		}
+		ReflectTypeListAdd(pCtx, pOut,
+			ReflectAttrNew(pCtx, &aA[n].sName, pSpec, n, iTargetBit, bRepeated));
 	}
-	ph7_value_int(&sFlags, nArg > 1 ? ph7_value_to_int(apArg[1]) : 0);
-	apCall[0] = &sMeta;
-	apCall[1] = &sSpec;
-	apCall[2] = &sTarget;
-	apCall[3] = &sName;
-	apCall[4] = &sFlags;
-	{
-		ph7_value sFn;
-		SyString sStr;
-		PH7_MemObjInit(pVm, &sFn);
-		SyStringInitFromBuf(&sStr, "__reflect_build_attrs", sizeof("__reflect_build_attrs")-1);
-		PH7_MemObjInitFromString(pVm, &sFn, &sStr);
-		rc = PH7_VmCallUserFunction(pVm, &sFn, 5, apCall, &sRes);
-		PH7_MemObjRelease(&sFn);
-	}
-	if( rc == SXRET_OK ){
-		ph7_result_value(pCtx, &sRes);
-	}
-	PH7_MemObjRelease(&sMeta);
-	PH7_MemObjRelease(&sSpec);
-	PH7_MemObjRelease(&sTarget);
-	PH7_MemObjRelease(&sName);
-	PH7_MemObjRelease(&sFlags);
-	PH7_MemObjRelease(&sRes);
+	ph7_result_value(pCtx, pOut);
 	return PH7_OK;
 }
 /*
@@ -7353,9 +7876,6 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 		ProchHostFunction xFunc;
 	} aFunc[] = {
 		{ "__phl_rcinfo",             vm_builtin_phl_rcinfo },
-		{ "__reflect_new_instance",   vm_builtin_reflect_new_instance },
-		{ "__reflect_new_no_ctor",    vm_builtin_reflect_new_no_ctor },
-		{ "__reflect_attr_args",      vm_builtin_reflect_attr_args },
 		{ "__reflect_make_type",      vm_builtin_reflect_make_type },
 	};
 	sxu32 n;
