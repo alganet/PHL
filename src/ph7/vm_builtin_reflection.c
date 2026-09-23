@@ -310,6 +310,15 @@ static void ReflectMembers(ph7_vm *pVm, ph7_class *pClass, SySet *pOut, int bLoo
 		while( (pEntry = SyHashGetNextEntry(&pLevel->hMethod)) != 0 ){
 			ph7_class_method *pMeth = (ph7_class_method *)pEntry->pUserData;
 			ph7_class *pDecl = ReflectMethodDeclClass(pClass, pMeth);
+			/* A property HOOK is compiled into a method (__phl_hook_get_NAME /
+			 * __phl_hook_set_NAME) so that inheritance and `parent::` work on
+			 * it, but php has no method there at all: it reports the hook on
+			 * the PROPERTY. Listing it would put a PHL-only name on a
+			 * php-visible surface. */
+			if( pEntry->nKeyLen > sizeof("__phl_hook_")-1
+			 && SyMemcmp(pEntry->pKey, "__phl_hook_", sizeof("__phl_hook_")-1) == 0 ){
+				continue;
+			}
 			if( iLevel == 0 ){
 				sxu32 j;
 				for( j = 1 ; j < nChain ; j++ ){
@@ -1370,7 +1379,7 @@ static ph7_class_instance * ReflectMakeType(ph7_context *pCtx, const char *zText
 	return ReflectMakeAtom(pCtx, zBody, nBody);
 }
 /*
- * Declare the four type classes. Called from PH7_VmInstallReflectionLib where
+ * Declare the four type classes. Called from PH7_VmInstallReflection() where
  * chunk 4 used to be compiled, so `Stringable` (a core interface) already
  * exists. PH7_CLASS_NOCLONE is php's own rule for these: they are values the
  * engine hands out, and `clone $type` is an Error, not a copy.
@@ -1578,32 +1587,40 @@ static void ReflectExportReal(ph7_vm *pVm, SyBlob *pOut, ph7_real rVal)
 	PH7_MemObjRelease(&sTmp);
 }
 /*
- * An array the way php's reflection prints one. The KEY is written only when
- * it is not the next one a list would have produced, which is how php tells
- * [1, 2] from [2 => 'x'] — php's format_default_value keeps a running
- * expected index and prints nothing while the array tracks it.
+ * An array the way php's reflection prints one: a LIST — every key an integer,
+ * in sequence from zero — prints no keys at all, and anything else prints one
+ * for EVERY entry. That is why `[1, 'k' => 2]` comes out as
+ * `[0 => 1, 'k' => 2]` while `[[1], [2 => 3]]` keeps its outer keys silent.
  */
 static void ReflectExportArray(ph7_context *pCtx, SyBlob *pOut, ph7_value *pVal, int iDepth)
 {
 	ph7_hashmap *pMap = (ph7_hashmap *)pVal->x.pOther;
-	ph7_hashmap_node *pEntry = pMap->pFirst;
+	ph7_hashmap_node *pEntry;
 	sxi64 iExpect = 0;
 	sxu32 n;
+	int bList = 1;
+	for( pEntry = pMap->pFirst, n = 0 ; n < pMap->nEntry && pEntry ; n++ ){
+		if( pEntry->iType == HASHMAP_BLOB_NODE || pEntry->xKey.iKey != iExpect ){
+			bList = 0;
+			break;
+		}
+		iExpect++;
+		pEntry = pEntry->pPrev; /* Reverse link: insertion order */
+	}
 	SyBlobAppend(pOut, "[", sizeof(char));
-	for( n = 0 ; n < pMap->nEntry && pEntry ; n++ ){
+	for( pEntry = pMap->pFirst, n = 0 ; n < pMap->nEntry && pEntry ; n++ ){
 		ph7_value *pMember = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pEntry->nValIdx);
 		if( n > 0 ){
 			SyBlobAppend(pOut, ", ", sizeof(", ")-1);
 		}
-		if( pEntry->iType == HASHMAP_BLOB_NODE ){
-			ReflectExportStr(pOut, (const char *)SyBlobData(&pEntry->xKey.sKey),
-				SyBlobLength(&pEntry->xKey.sKey));
-			SyBlobAppend(pOut, " => ", sizeof(" => ")-1);
-		}else{
-			if( pEntry->xKey.iKey != iExpect ){
-				SyBlobFormat(pOut, "%qd => ", pEntry->xKey.iKey);
+		if( !bList ){
+			if( pEntry->iType == HASHMAP_BLOB_NODE ){
+				ReflectExportStr(pOut, (const char *)SyBlobData(&pEntry->xKey.sKey),
+					SyBlobLength(&pEntry->xKey.sKey));
+			}else{
+				SyBlobFormat(pOut, "%qd", pEntry->xKey.iKey);
 			}
-			iExpect = pEntry->xKey.iKey + 1;
+			SyBlobAppend(pOut, " => ", sizeof(" => ")-1);
 		}
 		ReflectExportValue(pCtx, pOut, pMember, iDepth + 1);
 		pEntry = pEntry->pPrev; /* Reverse link: insertion order */
@@ -1972,7 +1989,7 @@ static int vm_builtin_ReflectionAttribute_private(ph7_context *pCtx, int nArg, p
 	return PH7_OK;
 }
 /*
- * Declare ReflectionAttribute. Called from PH7_VmInstallReflectionLib where
+ * Declare ReflectionAttribute. Called from PH7_VmInstallReflection() where
  * chunk 7 used to be compiled, so Reflector (chunk 1) already exists.
  *
  * PH7_CLASS_NOCLONE is php's rule for it (php declares __clone private AND
@@ -2671,7 +2688,7 @@ static int vm_builtin_ReflectionReference_construct(ph7_context *pCtx, int nArg,
 	return PH7_OK;
 }
 /*
- * Declare the six. Called from PH7_VmInstallReflectionLib where chunk 5 used to
+ * Declare the six. Called from PH7_VmInstallReflection() where chunk 5 used to
  * be compiled, so Reflector (chunk 1) already exists.
  */
 PH7_PRIVATE sxi32 PH7_VmInstallReflectionSmall(ph7_vm *pVm)
@@ -4223,42 +4240,19 @@ static int ReflectCoreExtension(ph7_context *pCtx)
 	}
 	return ReflectResultObject(pCtx, pExt);
 }
+/* php's export format (chunk 9) — defined at the END of this file, where the
+ * member walk, the function reference and the parameter description it reads
+ * are all in scope. */
+static int ReflectExportClassSelf(ph7_context *pCtx);
+static int ReflectExportFuncSelf(ph7_context *pCtx);
+static int ReflectExportParamSelf(ph7_context *pCtx);
+static int ReflectExportPropSelf(ph7_context *pCtx);
+static int ReflectExportConstSelf(ph7_context *pCtx);
 /*
  * __toString(): php's export format, still chunk 9 — a PHP function written
  * against the PUBLIC reflection API of its target, so it is called with `$this`.
  * bIndentArg adds the export family's second "" indent argument.
  */
-static int ReflectExportSelf(ph7_context *pCtx, const char *zFn, int bIndentArg)
-{
-	ph7_vm *pVm = pCtx->pVm;
-	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
-	ph7_value sSelf, sIndent, sRes, sFn;
-	ph7_value *apCall[2];
-	SyString sStr;
-	if( pThis == 0 ){
-		ph7_result_string(pCtx, "", 0);
-		return PH7_OK;
-	}
-	PH7_MemObjInit(pVm, &sSelf);
-	PH7_MemObjInit(pVm, &sIndent);
-	PH7_MemObjInit(pVm, &sRes);
-	PH7_MemObjInit(pVm, &sFn);
-	sSelf.x.pOther = pThis;
-	sSelf.iFlags = MEMOBJ_OBJ;
-	ph7_value_string(&sIndent, "", 0);
-	SyStringInitFromBuf(&sStr, zFn, SyStrlen(zFn));
-	PH7_MemObjInitFromString(pVm, &sFn, &sStr);
-	apCall[0] = &sSelf;
-	apCall[1] = &sIndent;
-	if( PH7_VmCallUserFunction(pVm, &sFn, bIndentArg ? 2 : 1, apCall, &sRes) == SXRET_OK ){
-		ph7_result_value(pCtx, &sRes);
-	}
-	PH7_MemObjRelease(&sFn);
-	PH7_MemObjRelease(&sIndent);
-	PH7_MemObjRelease(&sRes);
-	/* sSelf borrows the receiver and never took a reference: not released. */
-	return PH7_OK;
-}
 static int vm_builtin_ReflectionClass_getExtension(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
 	SXUNUSED(nArg);
@@ -4273,7 +4267,7 @@ static int vm_builtin_ReflectionClass_toString(ph7_context *pCtx, int nArg, ph7_
 {
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	return ReflectExportSelf(pCtx, "__reflect_export_class", 0);
+	return ReflectExportClassSelf(pCtx);
 }
 /* ---- lazy objects: PHL has none (§7.4) ---- */
 static int ReflectNoLazy(ph7_context *pCtx, const char *zWho)
@@ -4359,7 +4353,7 @@ static int vm_builtin_Reflection_getModifierNames(ph7_context *pCtx, int nArg, p
 	return PH7_OK;
 }
 /*
- * Declare chunk 1. Called from PH7_VmInstallReflectionLib where it used to be
+ * Declare chunk 1. Called from PH7_VmInstallReflection() where it used to be
  * compiled — before chunks 2 and 3, which name `Reflector` in their own
  * `implements` clauses.
  *
@@ -5275,7 +5269,7 @@ static int vm_builtin_ReflectionFunc_toString(ph7_context *pCtx, int nArg, ph7_v
 {
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	return ReflectExportSelf(pCtx, "__reflect_export_fnabs", 1);
+	return ReflectExportFuncSelf(pCtx);
 }
 /* ---- ReflectionFunction ---- */
 /* ReflectionFunction::__construct(Closure|string $function) */
@@ -5743,17 +5737,15 @@ static int vm_builtin_ReflectionMethod_setAccessible(ph7_context *pCtx, int nArg
  * The class this method OVERRIDES it from: the nearest base declaring a
  * same-named non-private method, else the first interface that declares one.
  */
-static ph7_class * ReflectMethodPrototype(ph7_context *pCtx, ReflectFuncRef *pRef)
+static ph7_class * ReflectPrototypeIn(ph7_context *pCtx, ph7_class *pClass,
+	const char *zName, int nName, int bIfaceToo)
 {
-	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	ph7_class *pWalk;
-	const char *zName = "";
-	int nName = 0, iDepth = 0;
-	if( pThis == 0 || pRef->pClass == 0 ){
+	int iDepth = 0;
+	if( pClass == 0 || nName < 1 ){
 		return 0;
 	}
-	PH7_NativeAttrStr(pThis, "name", &zName, &nName);
-	for( pWalk = pRef->pClass->pBase ; pWalk && iDepth <= REFLECT_WALK_MAX_DEPTH ; pWalk = pWalk->pBase ){
+	for( pWalk = pClass->pBase ; pWalk && iDepth <= REFLECT_WALK_MAX_DEPTH ; pWalk = pWalk->pBase ){
 		SyHashEntry *pEntry = ReflectFindMethodEntry(pWalk, zName, nName);
 		if( pEntry ){
 			ph7_class_method *pMeth = (ph7_class_method *)pEntry->pUserData;
@@ -5763,13 +5755,18 @@ static ph7_class * ReflectMethodPrototype(ph7_context *pCtx, ReflectFuncRef *pRe
 		}
 		iDepth++;
 	}
+	if( !bIfaceToo ){
+		/* php's `overwrites` tag asks only about the PARENT CHAIN: a method that
+		 * first appears in an interface is a `prototype`, never an overwrite. */
+		return 0;
+	}
 	{
 		SySet aSet;
 		ph7_class **apIface;
 		ph7_class *pFound = 0;
 		sxu32 n;
 		SySetInit(&aSet, &pCtx->pVm->sAllocator, sizeof(ph7_class *));
-		ReflectInterfacesOf(pRef->pClass, &aSet);
+		ReflectInterfacesOf(pClass, &aSet);
 		apIface = (ph7_class **)SySetBasePtr(&aSet);
 		for( n = 0 ; n < SySetUsed(&aSet) ; n++ ){
 			if( ReflectFindMethodEntry(apIface[n], zName, nName) ){
@@ -5780,6 +5777,19 @@ static ph7_class * ReflectMethodPrototype(ph7_context *pCtx, ReflectFuncRef *pRe
 		SySetRelease(&aSet);
 		return pFound;
 	}
+}
+/* The same question asked by a ReflectionMethod receiver, which carries the
+ * method name on `$this`. */
+static ph7_class * ReflectMethodPrototype(ph7_context *pCtx, ReflectFuncRef *pRef)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName = "";
+	int nName = 0;
+	if( pThis == 0 ){
+		return 0;
+	}
+	PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	return ReflectPrototypeIn(pCtx, pRef->pClass, zName, nName, 1);
 }
 static int vm_builtin_ReflectionMethod_hasPrototype(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
@@ -6309,10 +6319,10 @@ static int vm_builtin_ReflectionParameter_toString(ph7_context *pCtx, int nArg, 
 {
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	return ReflectExportSelf(pCtx, "__reflect_export_param", 0);
+	return ReflectExportParamSelf(pCtx);
 }
 /*
- * Declare chunk 2. Called from PH7_VmInstallReflectionLib where it used to be
+ * Declare chunk 2. Called from PH7_VmInstallReflection() where it used to be
  * compiled — after chunk 1, whose `Reflector` these implement and whose
  * `ReflectionClass` they answer.
  *
@@ -7229,7 +7239,7 @@ static int vm_builtin_ReflectionProperty_toString(ph7_context *pCtx, int nArg, p
 {
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	return ReflectExportSelf(pCtx, "__reflect_export_prop", 0);
+	return ReflectExportPropSelf(pCtx);
 }
 /* ---- ReflectionClassConstant ---- */
 /* ReflectionClassConstant::__construct(object|string $class, string $constant) */
@@ -7408,10 +7418,10 @@ static int vm_builtin_ReflectionClassConstant_toString(ph7_context *pCtx, int nA
 {
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	return ReflectExportSelf(pCtx, "__reflect_export_cconst", 0);
+	return ReflectExportConstSelf(pCtx);
 }
 /*
- * Declare chunk 3. Called from PH7_VmInstallReflectionLib where it used to be
+ * Declare chunk 3. Called from PH7_VmInstallReflection() where it used to be
  * compiled — after chunks 1 and 2, whose ReflectionClass and ReflectionMethod
  * these answer, and after PropertyHookType, which hasHook()/getHook() declare.
  *
@@ -7806,7 +7816,7 @@ static int vm_builtin_ReflectionEnumCase_getBackingValue(ph7_context *pCtx, int 
 	return PH7_OK;
 }
 /*
- * Declare the three. Called from PH7_VmInstallReflectionLib where chunk 6 used
+ * Declare the three. Called from PH7_VmInstallReflection() where chunk 6 used
  * to be compiled, so both parents are installed (PH7_ClassInherit COPIES a
  * base's methods down — a native subclass needs its parent declared first).
  *
@@ -7857,12 +7867,746 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionEnum(ph7_vm *pVm)
 	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));
 }
 /*
- * Install the Reflection API. There is nothing to register here any more: the
- * global `__reflect_*`/`__phl_rcinfo` thunk table this function existed for is
- * EMPTY — every one of them became a method of the class that always owned it,
- * so Reflection now adds no global name to the php namespace at all.
+ * ---------------------------------------------------------------------------
+ * php's Reflection EXPORT format — chunk 9, the last of the library's PHP.
+ *
+ * Every Reflector's __toString(). It is a byte-exact format with no API of its
+ * own, so the chunk was written against the PUBLIC reflection API of whatever
+ * it was printing — the only thing PHP could reach. All of those targets are C
+ * now, so this reads the engine directly: the member walk for order and
+ * visibility, ReflectParamAt for parameters, ReflectExportValue (built for the
+ * attribute-argument block) for every value.
+ *
+ * Defined at the END of the file because it needs all of that; the five entry
+ * points are forward-declared above their callers.
+ * ---------------------------------------------------------------------------
+ */
+
+/* "internal:Core" / "user" — the first tag of every function and class head. */
+static void ReflectExportKind(SyBlob *pOut, int bInternal)
+{
+	if( bInternal ){
+		SyBlobAppend(pOut, "internal:Core", sizeof("internal:Core")-1);
+	}else{
+		SyBlobAppend(pOut, "user", sizeof("user")-1);
+	}
+}
+/* A declared type followed by a space, or nothing at all. */
+static void ReflectExportTypeSp(SyBlob *pOut, const SyString *pType)
+{
+	if( pType && SyStringLength(pType) > 0 ){
+		SyBlobAppend(pOut, SyStringData(pType), SyStringLength(pType));
+		SyBlobAppend(pOut, " ", sizeof(char));
+	}
+}
+/* php's visibility word for a member. */
+static const char * ReflectExportVis(sxi32 iProtection)
+{
+	if( iProtection == PH7_CLASS_PROT_PRIVATE ){
+		return "private";
+	}
+	return iProtection == PH7_CLASS_PROT_PROTECTED ? "protected" : "public";
+}
+/*
+ * The text after `= ` in a parameter default.
+ *
+ * php prints a constant-reference default as the CONSTANT's name, not its value
+ * (`$f = M_PI`) — that argument was never folded, so php still has the source
+ * expression. `<default>` is what the chunk answered when the value could not
+ * be produced at all, which is a declared `= ?` row in aBuiltinSig[].
+ */
+static void ReflectExportDefault(ph7_context *pCtx, SyBlob *pOut, ReflectParamDesc *pDesc)
+{
+	const char *z = 0;
+	int n = 0;
+	if( ReflectParamDefConst(pCtx, pDesc, &z, &n) ){
+		SyBlobAppend(pOut, z, (sxu32)n);
+		return;
+	}
+	if( pDesc->pArg ){
+		ph7_value sValue;
+		PH7_MemObjInit(pCtx->pVm, &sValue);
+		VmLocalExec(pCtx->pVm, &pDesc->pArg->aByteCode, &sValue, FALSE);
+		ReflectExportValue(pCtx, pOut, &sValue, 0);
+		PH7_MemObjRelease(&sValue);
+		return;
+	}
+	{
+		/* A DECLARED default is signature TEXT: reduce it the way
+		 * getDefaultValue() does, and fall back to php's own placeholder. */
+		const char *zDef = SyStringData(&pDesc->sDefText);
+		int nDef = (int)SyStringLength(&pDesc->sDefText);
+		ph7_value *pVal = ph7_context_new_scalar(pCtx);
+		if( pVal && ReflectSigScalar(pCtx, zDef, nDef, pVal) ){
+			ReflectExportValue(pCtx, pOut, pVal, 0);
+			return;
+		}
+		if( (nDef >= 1 && zDef[0] == '[')
+		 || (nDef >= (int)sizeof("array (")-1
+		  && SyMemcmp(zDef, "array (", sizeof("array (")-1) == 0) ){
+			SyBlobAppend(pOut, "[]", sizeof("[]")-1);
+			return;
+		}
+	}
+	SyBlobAppend(pOut, "<default>", sizeof("<default>")-1);
+}
+/* `Parameter #0 [ <optional> int &...$name = 5 ]` */
+static void ReflectExportParamLine(ph7_context *pCtx, SyBlob *pOut, ReflectParamDesc *pDesc)
+{
+	SyBlobFormat(pOut, "Parameter #%d [ <%s> ", pDesc->iPos,
+		pDesc->bOptional ? "optional" : "required");
+	ReflectExportTypeSp(pOut, &pDesc->sType);
+	if( pDesc->bByRef ){
+		SyBlobAppend(pOut, "&", sizeof(char));
+	}
+	if( pDesc->bVariadic ){
+		SyBlobAppend(pOut, "...", sizeof("...")-1);
+	}
+	SyBlobAppend(pOut, "$", sizeof(char));
+	SyBlobAppend(pOut, SyStringData(&pDesc->sName), SyStringLength(&pDesc->sName));
+	if( pDesc->bHasDef ){
+		SyBlobAppend(pOut, " = ", sizeof(" = ")-1);
+		ReflectExportDefault(pCtx, pOut, pDesc);
+	}
+	SyBlobAppend(pOut, " ]", sizeof(" ]")-1);
+}
+/*
+ * `Property [ public protected(set) readonly int $x = 5 ]` + newline.
+ *
+ * The set-visibility is printed only when it DIFFERS from the get-visibility,
+ * which is why a `public readonly` property shows php's implied
+ * `protected(set)` and a `protected readonly` one shows nothing.
+ */
+static void ReflectExportPropLine(ph7_context *pCtx, SyBlob *pOut, ph7_class_attr *pAttr,
+	const SyString *pKey)
+{
+	sxi32 iSet = pAttr->iProtection;
+	SyBlobAppend(pOut, "Property [ ", sizeof("Property [ ")-1);
+	/* php's modifier MASK implies two bits the declaration never wrote:
+	 * private(set) implies final, and readonly implies protected(set). */
+	if( pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET ){
+		SyBlobAppend(pOut, "final ", sizeof("final ")-1);
+	}
+	SyBlobFormat(pOut, "%s ", ReflectExportVis(pAttr->iProtection));
+	if( pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET ){
+		iSet = PH7_CLASS_PROT_PRIVATE;
+	}else if( (pAttr->iFlags & PH7_CLASS_ATTR_PROTECTED_SET)
+	 || (pAttr->iFlags & PH7_CLASS_ATTR_READONLY) ){
+		iSet = PH7_CLASS_PROT_PROTECTED;
+	}
+	/* The set-visibility is printed only when it DIFFERS from the get one. */
+	if( iSet != pAttr->iProtection ){
+		SyBlobFormat(pOut, "%s(set) ", ReflectExportVis(iSet));
+	}
+	if( pAttr->iFlags & PH7_CLASS_ATTR_STATIC ){
+		SyBlobAppend(pOut, "static ", sizeof("static ")-1);
+	}
+	if( pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL ){
+		SyBlobAppend(pOut, "virtual ", sizeof("virtual ")-1);
+	}
+	if( pAttr->iFlags & PH7_CLASS_ATTR_READONLY ){
+		SyBlobAppend(pOut, "readonly ", sizeof("readonly ")-1);
+	}
+	if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+		ReflectExportTypeSp(pOut, &pAttr->sTypeName);
+	}
+	SyBlobAppend(pOut, "$", sizeof(char));
+	SyBlobAppend(pOut, SyStringData(pKey), SyStringLength(pKey));
+	if( SySetUsed(&pAttr->aByteCode) > 0 || pAttr->pNativeValue
+	 || (pAttr->iFlags & PH7_CLASS_ATTR_TYPED) == 0 ){
+		ph7_value sValue;
+		SyBlobAppend(pOut, " = ", sizeof(" = ")-1);
+		PH7_MemObjInit(pCtx->pVm, &sValue);
+		if( SySetUsed(&pAttr->aByteCode) > 0 ){
+			VmLocalExec(pCtx->pVm, &pAttr->aByteCode, &sValue, FALSE);
+		}else if( pAttr->pNativeValue ){
+			PH7_NativeLiteralValue(pCtx->pVm, pAttr->pNativeValue, &sValue);
+		}
+		ReflectExportValue(pCtx, pOut, &sValue, 0);
+		PH7_MemObjRelease(&sValue);
+	}
+	/* A hooked property names its hooks; php lists no method for them. */
+	if( pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_SET) ){
+		SyBlobAppend(pOut, " {", sizeof(" {")-1);
+		if( pAttr->iFlags & PH7_CLASS_ATTR_HOOK_GET ){
+			SyBlobAppend(pOut, " get;", sizeof(" get;")-1);
+		}
+		if( pAttr->iFlags & PH7_CLASS_ATTR_HOOK_SET ){
+			SyBlobAppend(pOut, " set;", sizeof(" set;")-1);
+		}
+		SyBlobAppend(pOut, " }", sizeof(" }")-1);
+	}
+	SyBlobAppend(pOut, " ]\n", sizeof(" ]\n")-1);
+}
+/*
+ * `Constant [ final public int NAME ] { value }` + newline. The TYPE is the
+ * value's, not a declared one, and an object (an enum case) prints as the word
+ * Object under its own class name.
+ */
+static sxi32 ReflectExportConstLine(ph7_context *pCtx, SyBlob *pOut, ph7_class *pClass,
+	ph7_class_attr *pAttr, const SyString *pKey)
+{
+	ph7_value *pVal = 0;
+	sxi32 rc = ReflectConstSlot(pCtx, pClass, pAttr, &pVal);
+	const char *zType = "null";
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	SyBlobAppend(pOut, "Constant [ ", sizeof("Constant [ ")-1);
+	if( pAttr->iFlags & PH7_CLASS_ATTR_FINAL ){
+		SyBlobAppend(pOut, "final ", sizeof("final ")-1);
+	}
+	SyBlobFormat(pOut, "%s ", ReflectExportVis(pAttr->iProtection));
+	if( pVal ){
+		if( (pVal->iFlags & (MEMOBJ_OBJ|MEMOBJ_NULL)) == MEMOBJ_OBJ ){
+			zType = 0; /* the object's own class */
+		}else if( pVal->iFlags & MEMOBJ_NULL ){
+			zType = "null";
+		}else if( pVal->iFlags & MEMOBJ_HASHMAP ){
+			zType = "array";
+		}else if( pVal->iFlags & MEMOBJ_BOOL ){
+			zType = "bool";
+		}else if( pVal->iFlags & MEMOBJ_REAL ){
+			zType = "float";
+		}else if( pVal->iFlags & MEMOBJ_INT ){
+			zType = "int";
+		}else if( pVal->iFlags & MEMOBJ_STRING ){
+			zType = "string";
+		}
+	}
+	if( zType ){
+		SyBlobFormat(pOut, "%s ", zType);
+	}else{
+		SyBlobFormat(pOut, "%z ", &((ph7_class_instance *)pVal->x.pOther)->pClass->sName);
+	}
+	SyBlobAppend(pOut, SyStringData(pKey), SyStringLength(pKey));
+	SyBlobAppend(pOut, " ] { ", sizeof(" ] { ")-1);
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_NULL) ){
+		/* php prints nothing at all for null */
+	}else if( pVal->iFlags & MEMOBJ_HASHMAP ){
+		SyBlobAppend(pOut, "Array", sizeof("Array")-1);
+	}else if( (pVal->iFlags & MEMOBJ_OBJ) ){
+		SyBlobAppend(pOut, "Object", sizeof("Object")-1);
+	}else if( pVal->iFlags & MEMOBJ_BOOL ){
+		if( pVal->x.iVal ){
+			SyBlobAppend(pOut, "1", sizeof(char));
+		}
+	}else{
+		ph7_value sTmp;
+		const char *zText;
+		int nText;
+		PH7_MemObjInit(pCtx->pVm, &sTmp);
+		PH7_MemObjStore(pVal, &sTmp);
+		zText = ph7_value_to_string(&sTmp, &nText);
+		if( nText > 0 ){
+			SyBlobAppend(pOut, zText, (sxu32)nText);
+		}
+		PH7_MemObjRelease(&sTmp);
+	}
+	SyBlobAppend(pOut, " }\n", sizeof(" }\n")-1);
+	return SXRET_OK;
+}
+/* A native class METHOD as a function reference (ReflectFuncFill's tail, for a
+ * method the member walk handed over rather than one a receiver names). */
+static void ReflectFuncFromMethod(ph7_class *pClass, ph7_class_method *pMeth,
+	ReflectFuncRef *pOut)
+{
+	SyZero(pOut, sizeof(*pOut));
+	pOut->pClass = pClass;
+	pOut->pMeth = pMeth;
+	pOut->pFunc = &pMeth->sFunc;
+	if( (pOut->pFunc->iFlags & VM_FUNC_NATIVE) && pOut->pFunc->pNative ){
+		pOut->zSig = pOut->pFunc->pNative->zSig;
+		if( SyStringLength(&pOut->pFunc->sReturnTypeName) == 0 ){
+			pOut->zRet = pOut->pFunc->pNative->zRet;
+		}
+	}
+}
+/*
+ * The Method / Function / Closure block.
+ *
+ * pOwner is the class being EXPORTED when there is one: php's tags are
+ * relative to it — a method it did not declare "inherits" from its declaring
+ * class — and the reflector alone cannot say that, because $class is the
+ * DECLARING class. `overwrites` is the other direction and needs no owner: the
+ * declaring class's own parent declares the same method.
+ */
+static sxi32 ReflectExportFuncBlock(ph7_context *pCtx, SyBlob *pOut, ReflectFuncRef *pRef,
+	const char *zIndent, ph7_class *pOwner)
+{
+	SyBlob sBody;
+	int bInternal = ReflectFuncIsInternal(pRef);
+	int nParam = ReflectParamCount(pRef);
+	const char *zRet = 0;
+	int nRet = 0, bHasRet;
+	sxi32 rc = SXRET_OK;
+	SyBlobInit(&sBody, &pCtx->pVm->sAllocator);
+	bHasRet = ReflectFuncRetText(pRef, &zRet, &nRet);
+	if( pRef->pMeth ){
+		ph7_class *pDecl = ReflectFuncDeclClass(pRef);
+		ph7_class *pProto;
+		SyString *pName = &pRef->pMeth->sFunc.sName;
+		int bInherits;
+		SyBlobAppend(&sBody, "Method [ <", sizeof("Method [ <")-1);
+		ReflectExportKind(&sBody, bInternal);
+		bInherits = (pOwner != 0 && pDecl != 0 && pDecl != pOwner);
+		if( bInherits ){
+			SyBlobFormat(&sBody, ", inherits %z", &pDecl->sName);
+		}else if( pDecl ){
+			ph7_class *pOver = ReflectPrototypeIn(pCtx, pDecl,
+				SyStringData(pName), (int)SyStringLength(pName), 0);
+			if( pOver ){
+				SyBlobFormat(&sBody, ", overwrites %z", &pOver->sName);
+			}
+		}
+		if( SyStringLength(pName) == sizeof("__construct")-1
+		 && SyStrnicmp(SyStringData(pName), "__construct", sizeof("__construct")-1) == 0 ){
+			SyBlobAppend(&sBody, ", ctor", sizeof(", ctor")-1);
+		}else if( SyStringLength(pName) == sizeof("__destruct")-1
+		 && SyStrnicmp(SyStringData(pName), "__destruct", sizeof("__destruct")-1) == 0 ){
+			SyBlobAppend(&sBody, ", dtor", sizeof(", dtor")-1);
+		}
+		/* The prototype belongs to the DECLARING class's own method — the
+		 * abstract or interface declaration IT satisfies. Asked from the
+		 * exported class instead, a plainly INHERITED method would claim its
+		 * parent as a prototype, which php does not (it prints `inherits`
+		 * alone there, and both tags when the declarer really has one). */
+		pProto = ReflectPrototypeIn(pCtx, pDecl ? pDecl : pRef->pClass,
+			SyStringData(pName), (int)SyStringLength(pName), 1);
+		if( pProto ){
+			SyBlobFormat(&sBody, ", prototype %z", &pProto->sName);
+		}
+		SyBlobAppend(&sBody, "> ", sizeof("> ")-1);
+		if( pRef->pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT ){
+			SyBlobAppend(&sBody, "abstract ", sizeof("abstract ")-1);
+		}
+		if( pRef->pMeth->iFlags & PH7_CLASS_ATTR_FINAL ){
+			SyBlobAppend(&sBody, "final ", sizeof("final ")-1);
+		}
+		if( pRef->pMeth->iFlags & PH7_CLASS_ATTR_STATIC ){
+			SyBlobAppend(&sBody, "static ", sizeof("static ")-1);
+		}
+		SyBlobFormat(&sBody, "%s method %z ]", ReflectExportVis(pRef->pMeth->iProtection), pName);
+	}else{
+		SyBlobAppend(&sBody, pRef->pClosure ? "Closure [ <" : "Function [ <",
+			pRef->pClosure ? sizeof("Closure [ <")-1 : sizeof("Function [ <")-1);
+		ReflectExportKind(&sBody, bInternal);
+		SyBlobAppend(&sBody, "> function ", sizeof("> function ")-1);
+		if( pRef->pFunc ){
+			SyBlobFormat(&sBody, "%z", &pRef->pFunc->sName);
+		}else if( pRef->pHost ){
+			SyBlobFormat(&sBody, "%z", &pRef->pHost->sName);
+		}
+		SyBlobAppend(&sBody, " ]", sizeof(" ]")-1);
+	}
+	SyBlobAppend(&sBody, " {\n", sizeof(" {\n")-1);
+	if( !bInternal && pRef->pFunc ){
+		SyBlobAppend(&sBody, "  @@ ", sizeof("  @@ ")-1);
+		if( SyStringLength(&pRef->pFunc->sFile) > 0 ){
+			SyBlobAppend(&sBody, SyStringData(&pRef->pFunc->sFile),
+				SyStringLength(&pRef->pFunc->sFile));
+		}
+		SyBlobFormat(&sBody, " %u - %u\n", pRef->pFunc->nLine, pRef->pFunc->nEndLine);
+	}
+	/* php prints the parameter block for every INTERNAL function, and for a
+	 * user one only when there is something to say. */
+	if( nParam > 0 || bHasRet || bInternal ){
+		int n;
+		SyBlobFormat(&sBody, "\n  - Parameters [%d] {\n", nParam);
+		for( n = 0 ; n < nParam ; n++ ){
+			ReflectParamDesc sDesc;
+			if( !ReflectParamAt(pRef, n, &sDesc) ){
+				continue;
+			}
+			SyBlobAppend(&sBody, "    ", sizeof("    ")-1);
+			ReflectExportParamLine(pCtx, &sBody, &sDesc);
+			SyBlobAppend(&sBody, "\n", sizeof(char));
+		}
+		SyBlobAppend(&sBody, "  }\n", sizeof("  }\n")-1);
+	}
+	if( bHasRet ){
+		SyBlobAppend(&sBody, "  - Return [ ", sizeof("  - Return [ ")-1);
+		SyBlobAppend(&sBody, zRet, (sxu32)nRet);
+		SyBlobAppend(&sBody, " ]\n", sizeof(" ]\n")-1);
+	}
+	SyBlobAppend(&sBody, "}\n", sizeof("}\n")-1);
+	/* Indent every non-empty line, the way the chunk's explode/implode did. */
+	if( zIndent == 0 || zIndent[0] == '\0' ){
+		SyBlobAppend(pOut, SyBlobData(&sBody), SyBlobLength(&sBody));
+	}else{
+		const char *z = (const char *)SyBlobData(&sBody);
+		sxu32 n = SyBlobLength(&sBody), i = 0, iStart = 0;
+		sxu32 nIndent = (sxu32)SyStrlen(zIndent);
+		for( i = 0 ; i < n ; i++ ){
+			if( z[i] != '\n' ){
+				continue;
+			}
+			if( i > iStart ){
+				SyBlobAppend(pOut, zIndent, nIndent);
+				SyBlobAppend(pOut, &z[iStart], i - iStart);
+			}
+			SyBlobAppend(pOut, "\n", sizeof(char));
+			iStart = i + 1;
+		}
+	}
+	SyBlobRelease(&sBody);
+	return rc;
+}
+/* The `- Enum cases [N]` block php prints where an enum's cases would otherwise
+ * be listed among its constants. A backed case shows its value UNQUOTED. */
+static sxi32 ReflectExportEnumCases(ph7_context *pCtx, SyBlob *pOut, ph7_class *pClass)
+{
+	ph7_class_attr **apCase = (ph7_class_attr **)SySetBasePtr(&pClass->aEnumCases);
+	sxu32 n;
+	SyBlobFormat(pOut, "\n  - Enum cases [%u] {\n", SySetUsed(&pClass->aEnumCases));
+	for( n = 0 ; n < SySetUsed(&pClass->aEnumCases) ; n++ ){
+		SyBlobAppend(pOut, "    Case ", sizeof("    Case ")-1);
+		SyBlobAppend(pOut, SyStringData(&apCase[n]->sName), SyStringLength(&apCase[n]->sName));
+		if( pClass->nEnumBacking ){
+			ph7_value *pVal = 0;
+			ph7_class_instance *pObj;
+			sxi32 rc = ReflectConstSlot(pCtx, pClass, apCase[n], &pVal);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+			pObj = (pVal && (pVal->iFlags & MEMOBJ_OBJ)) ? (ph7_class_instance *)pVal->x.pOther : 0;
+			if( pObj ){
+				ph7_value *pBacking = PH7_NativeAttr(pObj, "value");
+				if( pBacking ){
+					ph7_value sTmp;
+					const char *zText;
+					int nText;
+					PH7_MemObjInit(pCtx->pVm, &sTmp);
+					PH7_MemObjStore(pBacking, &sTmp);
+					zText = ph7_value_to_string(&sTmp, &nText);
+					SyBlobAppend(pOut, " = ", sizeof(" = ")-1);
+					if( nText > 0 ){
+						SyBlobAppend(pOut, zText, (sxu32)nText);
+					}
+					PH7_MemObjRelease(&sTmp);
+				}
+			}
+		}
+		SyBlobAppend(pOut, "\n", sizeof(char));
+	}
+	SyBlobAppend(pOut, "  }\n", sizeof("  }\n")-1);
+	return SXRET_OK;
+}
+/* The Class / Interface / Enum block. */
+static sxi32 ReflectExportClassBlock(ph7_context *pCtx, SyBlob *pOut, ph7_class *pClass)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	int bInternal = (pClass->iFlags & PH7_CLASS_INTERNAL) != 0;
+	int bEnum = (pClass->iFlags & PH7_CLASS_ENUM) != 0;
+	int bIface = (pClass->iFlags & PH7_CLASS_INTERFACE) != 0;
+	SySet aMembers, aIface;
+	sxu32 n, nConst = 0, nStaticProp = 0, nProp = 0, nStaticMeth = 0, nMeth = 0;
+	sxi32 rc = SXRET_OK;
+	int iPass;
+	SySetInit(&aMembers, &pVm->sAllocator, sizeof(ReflectMember));
+	SySetInit(&aIface, &pVm->sAllocator, sizeof(ph7_class *));
+	ReflectMembers(pVm, pClass, &aMembers, 0);
+	ReflectInterfacesOf(pClass, &aIface);
+	/* ---- head ---- */
+	if( bIface ){
+		SyBlobAppend(pOut, "Interface [ <", sizeof("Interface [ <")-1);
+	}else if( bEnum ){
+		SyBlobAppend(pOut, "Enum [ <", sizeof("Enum [ <")-1);
+	}else{
+		SyBlobAppend(pOut, "Class [ <", sizeof("Class [ <")-1);
+	}
+	ReflectExportKind(pOut, bInternal);
+	SyBlobAppend(pOut, "> ", sizeof("> ")-1);
+	/* php tags a class that has an iteration handler, which its Traversable
+	 * implementers have — and so does anything with a HOOKED property, because
+	 * that is how php 8.4 walks one. */
+	{
+		int bIterable = pVm->pTraversableClass != 0
+			&& PH7_VmInstanceOf(pClass, pVm->pTraversableClass);
+		for( n = 0 ; !bIterable && n < SySetUsed(&aMembers) ; n++ ){
+			ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);
+			if( pM->iKind == REFLECT_MEMBER_PROP && pM->pAttr
+			 && (pM->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_SET)) ){
+				bIterable = 1;
+			}
+		}
+		if( bIterable ){
+			SyBlobAppend(pOut, "<iterateable> ", sizeof("<iterateable> ")-1);
+		}
+	}
+	if( bIface ){
+		SyBlobFormat(pOut, "interface %z", &pClass->sName);
+	}else if( bEnum ){
+		SyBlobFormat(pOut, "enum %z", &pClass->sName);
+		if( pClass->nEnumBacking ){
+			SyBlobFormat(pOut, ": %s", (pClass->nEnumBacking & MEMOBJ_INT) ? "int" : "string");
+		}
+	}else{
+		if( pClass->iFlags & PH7_CLASS_ABSTRACT ){
+			SyBlobAppend(pOut, "abstract ", sizeof("abstract ")-1);
+		}
+		if( pClass->iFlags & PH7_CLASS_FINAL ){
+			SyBlobAppend(pOut, "final ", sizeof("final ")-1);
+		}
+		if( pClass->iFlags & PH7_CLASS_READONLY ){
+			SyBlobAppend(pOut, "readonly ", sizeof("readonly ")-1);
+		}
+		SyBlobFormat(pOut, "class %z", &pClass->sName);
+		if( pClass->pBase ){
+			SyBlobFormat(pOut, " extends %z", &pClass->pBase->sName);
+		}
+	}
+	if( SySetUsed(&aIface) > 0 ){
+		ph7_class **apIface = (ph7_class **)SySetBasePtr(&aIface);
+		/* An interface EXTENDS what a class implements. */
+		SyBlobAppend(pOut, bIface ? " extends " : " implements ",
+			bIface ? sizeof(" extends ")-1 : sizeof(" implements ")-1);
+		for( n = 0 ; n < SySetUsed(&aIface) ; n++ ){
+			if( n > 0 ){
+				SyBlobAppend(pOut, ", ", sizeof(", ")-1);
+			}
+			SyBlobFormat(pOut, "%z", &apIface[n]->sName);
+		}
+	}
+	SyBlobAppend(pOut, " ] {\n", sizeof(" ] {\n")-1);
+	if( !bInternal && SyStringLength(&pClass->sFile) > 0 ){
+		SyBlobAppend(pOut, "  @@ ", sizeof("  @@ ")-1);
+		SyBlobAppend(pOut, SyStringData(&pClass->sFile), SyStringLength(&pClass->sFile));
+		SyBlobFormat(pOut, " %u-%u\n", pClass->nLine, pClass->nEndLine);
+	}
+	/* ---- counts ---- */
+	for( n = 0 ; n < SySetUsed(&aMembers) ; n++ ){
+		ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);
+		if( pM->iKind == REFLECT_MEMBER_CONST ){
+			if( !(bEnum && (pM->pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE)) ){
+				nConst++;
+			}
+		}else if( pM->iKind == REFLECT_MEMBER_PROP ){
+			if( pM->pAttr->iFlags & PH7_CLASS_ATTR_STATIC ){ nStaticProp++; }else{ nProp++; }
+		}else{
+			if( pM->pMeth->iFlags & PH7_CLASS_ATTR_STATIC ){ nStaticMeth++; }else{ nMeth++; }
+		}
+	}
+	/* ---- enum cases, then constants ---- */
+	if( bEnum ){
+		rc = ReflectExportEnumCases(pCtx, pOut, pClass);
+		if( rc != SXRET_OK ){
+			goto done;
+		}
+	}
+	SyBlobFormat(pOut, "\n  - Constants [%u] {\n", nConst);
+	for( n = 0 ; n < SySetUsed(&aMembers) ; n++ ){
+		ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);
+		if( pM->iKind != REFLECT_MEMBER_CONST
+		 || (bEnum && (pM->pAttr->iFlags & PH7_CLASS_ATTR_ENUMCASE)) ){
+			continue;
+		}
+		SyBlobAppend(pOut, "    ", sizeof("    ")-1);
+		rc = ReflectExportConstLine(pCtx, pOut, pClass, pM->pAttr, &pM->sKey);
+		if( rc != SXRET_OK ){
+			goto done;
+		}
+	}
+	SyBlobAppend(pOut, "  }\n", sizeof("  }\n")-1);
+	/* ---- properties and methods, statics first ---- */
+	for( iPass = 0 ; iPass < 4 ; iPass++ ){
+		int bStatic = (iPass == 0 || iPass == 1);
+		int bMethods = (iPass == 1 || iPass == 3);
+		int bFirst = 1;
+		static const char *azTitle[] = {
+			"\n  - Static properties [%u] {\n", "\n  - Static methods [%u] {\n",
+			"\n  - Properties [%u] {\n", "\n  - Methods [%u] {\n"
+		};
+		sxu32 aCount[4];
+		aCount[0] = nStaticProp;
+		aCount[1] = nStaticMeth;
+		aCount[2] = nProp;
+		aCount[3] = nMeth;
+		SyBlobFormat(pOut, azTitle[iPass], aCount[iPass]);
+		for( n = 0 ; n < SySetUsed(&aMembers) ; n++ ){
+			ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);
+			int bIsStatic;
+			if( pM->iKind == REFLECT_MEMBER_CONST ){
+				continue;
+			}
+			if( bMethods != (pM->iKind == REFLECT_MEMBER_METHOD) ){
+				continue;
+			}
+			bIsStatic = bMethods ? (pM->pMeth->iFlags & PH7_CLASS_ATTR_STATIC) != 0
+				: (pM->pAttr->iFlags & PH7_CLASS_ATTR_STATIC) != 0;
+			if( bIsStatic != bStatic ){
+				continue;
+			}
+			if( bMethods ){
+				ReflectFuncRef sRef;
+				if( !bFirst ){
+					SyBlobAppend(pOut, "\n", sizeof(char));
+				}
+				bFirst = 0;
+				ReflectFuncFromMethod(pClass, pM->pMeth, &sRef);
+				rc = ReflectExportFuncBlock(pCtx, pOut, &sRef, "    ", pClass);
+				if( rc != SXRET_OK ){
+					goto done;
+				}
+			}else{
+				SyBlobAppend(pOut, "    ", sizeof("    ")-1);
+				ReflectExportPropLine(pCtx, pOut, pM->pAttr, &pM->sKey);
+			}
+		}
+		SyBlobAppend(pOut, "  }\n", sizeof("  }\n")-1);
+	}
+	SyBlobAppend(pOut, "}\n", sizeof("}\n")-1);
+done:
+	SySetRelease(&aMembers);
+	SySetRelease(&aIface);
+	return rc;
+}
+/* ---- the five __toString() entry points ---- */
+static int ReflectExportClassSelf(ph7_context *pCtx)
+{
+	ph7_class *pClass = ReflectClassOf(pCtx);
+	SyBlob sOut;
+	sxi32 rc;
+	if( pClass == 0 ){
+		ph7_result_string(pCtx, "", 0);
+		return PH7_OK;
+	}
+	SyBlobInit(&sOut, &pCtx->pVm->sAllocator);
+	rc = ReflectExportClassBlock(pCtx, &sOut, pClass);
+	if( rc == SXRET_OK ){
+		ph7_result_string(pCtx, (const char *)SyBlobData(&sOut), (int)SyBlobLength(&sOut));
+	}
+	SyBlobRelease(&sOut);
+	return rc == SXRET_OK ? PH7_OK : rc;
+}
+static int ReflectExportFuncSelf(ph7_context *pCtx)
+{
+	ReflectFuncRef sRef;
+	SyBlob sOut;
+	sxi32 rc;
+	if( !ReflectFuncOfThis(pCtx, &sRef) ){
+		ph7_result_string(pCtx, "", 0);
+		return PH7_OK;
+	}
+	SyBlobInit(&sOut, &pCtx->pVm->sAllocator);
+	rc = ReflectExportFuncBlock(pCtx, &sOut, &sRef, "", 0);
+	if( rc == SXRET_OK ){
+		ph7_result_string(pCtx, (const char *)SyBlobData(&sOut), (int)SyBlobLength(&sOut));
+	}
+	SyBlobRelease(&sOut);
+	return rc == SXRET_OK ? PH7_OK : rc;
+}
+static int ReflectExportParamSelf(ph7_context *pCtx)
+{
+	ReflectFuncRef sRef;
+	ReflectParamDesc sDesc;
+	SyBlob sOut;
+	if( !ReflectParamOwner(pCtx, &sRef, &sDesc) ){
+		ph7_result_string(pCtx, "", 0);
+		return PH7_OK;
+	}
+	SyBlobInit(&sOut, &pCtx->pVm->sAllocator);
+	ReflectExportParamLine(pCtx, &sOut, &sDesc);
+	ph7_result_string(pCtx, (const char *)SyBlobData(&sOut), (int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+	return PH7_OK;
+}
+static int ReflectExportPropSelf(ph7_context *pCtx)
+{
+	ReflectMemberRef sRef;
+	SyBlob sOut;
+	SyString sKey;
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) || sRef.pAttr == 0 ){
+		ph7_result_string(pCtx, "", 0);
+		return PH7_OK;
+	}
+	SyStringInitFromBuf(&sKey, sRef.zName, sRef.nName);
+	SyBlobInit(&sOut, &pCtx->pVm->sAllocator);
+	ReflectExportPropLine(pCtx, &sOut, sRef.pAttr, &sKey);
+	ph7_result_string(pCtx, (const char *)SyBlobData(&sOut), (int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+	return PH7_OK;
+}
+static int ReflectExportConstSelf(ph7_context *pCtx)
+{
+	ReflectMemberRef sRef;
+	SyBlob sOut;
+	SyString sKey;
+	sxi32 rc;
+	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_CONST) || sRef.pAttr == 0 ){
+		ph7_result_string(pCtx, "", 0);
+		return PH7_OK;
+	}
+	SyStringInitFromBuf(&sKey, sRef.zName, sRef.nName);
+	SyBlobInit(&sOut, &pCtx->pVm->sAllocator);
+	rc = ReflectExportConstLine(pCtx, &sOut, sRef.pClass, sRef.pAttr, &sKey);
+	if( rc == SXRET_OK ){
+		ph7_result_string(pCtx, (const char *)SyBlobData(&sOut), (int)SyBlobLength(&sOut));
+	}
+	SyBlobRelease(&sOut);
+	return rc == SXRET_OK ? PH7_OK : rc;
+}
+/*
+ * Install the Reflection API — ~25 classes, all of them declared from C.
+ *
+ * There is no global thunk table left to register: every `__reflect_*` and
+ * `__phl_rcinfo` became a method of the class that always owned it, so
+ * Reflection adds no name to php's global function namespace at all. Called
+ * from PH7_VmInit while pVm->bCompilingBuiltin is set, right after the core
+ * builtin chunks (Exception and friends have to exist already).
  */
 PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 {
-	return PH7_VmInstallReflectionLib(&(*pVm));
+	sxi32 rc;
+	/* Where chunk 1 was: Reflector, Reflection, ReflectionException,
+	 * ReflectionClass and ReflectionObject are native now. Chunks 2 and 3 name
+	 * `Reflector` in their own `implements` clauses, so this has to run first. */
+	rc = PH7_VmInstallReflectionClass(&(*pVm));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* Where chunk 2 was: ReflectionFunctionAbstract, ReflectionFunction,
+	 * ReflectionMethod and ReflectionParameter are native now. */
+	rc = PH7_VmInstallReflectionFunc(&(*pVm));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	rc = PH7_VmInstallReflectionHookType(&(*pVm));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* Where chunk 3 was: ReflectionProperty and ReflectionClassConstant are
+	 * native now, and PropertyHookType is a native ENUM. */
+	rc = PH7_VmInstallReflectionMember(&(*pVm));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* Where chunk 4 was: the four type classes are native now (see
+	 * PH7_VmInstallReflectionTypes). Stringable exists by this point. */
+	rc = PH7_VmInstallReflectionTypes(&(*pVm));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* Where chunk 5 was: ReflectionGenerator/Fiber and the four standalone
+	 * classes chunk 6 used to hold are native now. Reflector (chunk 1) exists. */
+	rc = PH7_VmInstallReflectionSmall(&(*pVm));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* Where chunk 6 was: the three ReflectionEnum classes are native now, and
+	 * the class DESCRIPTOR they read (__phl_rcinfo) has no callers left. */
+	rc = PH7_VmInstallReflectionEnum(&(*pVm));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* Where chunk 7 was: ReflectionAttribute is native now, and with it the
+	 * builder (__reflect_build_attrs) and the two helpers it needed. */
+	rc = PH7_VmInstallReflectionAttribute(&(*pVm));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* Where chunk 9 was: the export format is ReflectExportClassSelf() and its
+	 * four siblings above. Nothing of the Reflection library is PHP any more,
+	 * so vm_builtin_reflection_lib.c is gone and this IS the installer. */
+	return SXRET_OK;
 }
