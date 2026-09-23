@@ -1870,187 +1870,6 @@ static ph7_generator * ReflectGeneratorCtx(ph7_vm *pVm, ph7_value *pVal)
 	return (ph7_generator *)pAttr->x.pOther;
 }
 /*
- * array|null __reflect_gen_info(Generator $g)
- * {state, closed, executing, kind ('fn'|'method'), name, class?, this}
- */
-static int vm_builtin_reflect_gen_info(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	ph7_vm *pVm = pCtx->pVm;
-	ph7_generator *pGen;
-	ph7_exec_ctx *pExec;
-	ph7_value *pInfo;
-	if( nArg < 1 || (pGen = ReflectGeneratorCtx(pVm, apArg[0])) == 0 || pGen->pCtx == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	pExec = pGen->pCtx;
-	pInfo = ph7_context_new_array(pCtx);
-	if( pInfo == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	ReflectMapAddInt(pCtx, pInfo, "state", (sxi64)pExec->iState);
-	ReflectMapAddBool(pCtx, pInfo, "closed",
-		pExec->iState == PH7_CTX_STATE_COMPLETED || pExec->iState == PH7_CTX_STATE_CLOSED);
-	ReflectMapAddBool(pCtx, pInfo, "executing", pVm->pActiveCtx == pExec);
-	if( pExec->pFunc ){
-		ph7_vm_func *pFunc = pExec->pFunc;
-		if( (pFunc->iFlags & VM_FUNC_CLASS_METHOD) && pFunc->pUserData ){
-			ph7_class *pDecl = (ph7_class *)pFunc->pUserData;
-			ReflectMapAddStr(pCtx, pInfo, "kind", "method", sizeof("method")-1);
-			ReflectMapAddStr(pCtx, pInfo, "class", SyStringData(&pDecl->sName), (int)SyStringLength(&pDecl->sName));
-		}else{
-			ReflectMapAddStr(pCtx, pInfo, "kind", "fn", sizeof("fn")-1);
-		}
-		ReflectMapAddStr(pCtx, pInfo, "name", SyStringData(&pFunc->sName), (int)SyStringLength(&pFunc->sName));
-	}
-	{
-		/* The coroutine frame installs $this as a frame VARIABLE (see
-		 * VmFiberSetupFrame), not as pFrame->pThis — check both. */
-		ph7_value *pThisVal = 0;
-		if( pExec->pFrame ){
-			SyHashEntry *pVar = SyHashGet(&pExec->pFrame->hVar, "this", sizeof("this")-1);
-			if( pVar ){
-				ph7_value *pSlot = (ph7_value *)SySetAt(&pVm->aMemObj, (sxu32)SX_PTR_TO_INT(pVar->pUserData));
-				if( pSlot && (pSlot->iFlags & MEMOBJ_OBJ) ){
-					pThisVal = pSlot;
-				}
-			}
-			if( pThisVal == 0 && pExec->pFrame->pThis ){
-				ph7_value sThis;
-				ph7_value *pKey = ph7_context_new_scalar(pCtx);
-				PH7_MemObjInit(pVm, &sThis);
-				pExec->pFrame->pThis->iRef++;
-				sThis.x.pOther = pExec->pFrame->pThis;
-				MemObjSetType(&sThis, MEMOBJ_OBJ);
-				if( pKey ){
-					ph7_value_string(pKey, "this", 4);
-					ph7_array_add_elem(pInfo, pKey, &sThis); /* copies (takes its own ref) */
-				}
-				PH7_MemObjRelease(&sThis);
-				pThisVal = (ph7_value *)1; /* handled */
-			}
-		}
-		if( pThisVal == 0 ){
-			ReflectMapAddNull(pCtx, pInfo, "this");
-		}else if( pThisVal != (ph7_value *)1 ){
-			ph7_value *pKey = ph7_context_new_scalar(pCtx);
-			if( pKey ){
-				ph7_value_string(pKey, "this", 4);
-				ph7_array_add_elem(pInfo, pKey, pThisVal);
-			}
-		}
-	}
-	ph7_result_value(pCtx, pInfo);
-	return PH7_OK;
-}
-/*
- * Generator __reflect_gen_exec(Generator $g)
- * Follow `yield from` delegation to the innermost executing generator
- * (PHP's ReflectionGenerator::getExecutingGenerator).
- */
-static int vm_builtin_reflect_gen_exec(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	ph7_vm *pVm = pCtx->pVm;
-	ph7_generator *pGen;
-	ph7_value *pCur;
-	int iDepth = 0;
-	if( nArg < 1 || (pGen = ReflectGeneratorCtx(pVm, apArg[0])) == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	pCur = apArg[0];
-	while( pGen && pGen->pCtx && pGen->pCtx->iDelegateState == 3
-	 && iDepth <= REFLECT_WALK_MAX_DEPTH ){
-		ph7_generator *pInner = ReflectGeneratorCtx(pVm, &pGen->pCtx->sDelegate);
-		if( pInner == 0 ){
-			break;
-		}
-		pCur = &pGen->pCtx->sDelegate;
-		pGen = pInner;
-		iDepth++;
-	}
-	return ReflectResultExistingObject(pCtx, (ph7_class_instance *)pCur->x.pOther);
-}
-/*
- * array|null __reflect_const_info(string $name)
- * Global-constant descriptor: {value}. Null when undefined. File/origin
- * metadata arrives with the C5 constant-metadata work.
- */
-static int vm_builtin_reflect_const_info(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	ph7_vm *pVm = pCtx->pVm;
-	SyHashEntry *pEntry;
-	ph7_constant *pCons;
-	ph7_value *pInfo;
-	ph7_value sValue;
-	const char *zName;
-	int nLen;
-	if( nArg < 1 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	zName = ph7_value_to_string(apArg[0], &nLen);
-	pEntry = nLen > 0 ? SyHashGet(&pVm->hConstant, (const void *)zName, (sxu32)nLen) : 0;
-	if( pEntry == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	pCons = (ph7_constant *)pEntry->pUserData;
-	pInfo = ph7_context_new_array(pCtx);
-	if( pInfo == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	PH7_MemObjInit(pVm, &sValue);
-	if( pCons->xExpand ){
-		pCons->xExpand(&sValue, pCons->pUserData);
-	}
-	{
-		ph7_value *pKey = ph7_context_new_scalar(pCtx);
-		if( pKey ){
-			ph7_value_string(pKey, "value", 5);
-			ph7_array_add_elem(pInfo, pKey, &sValue);
-		}
-	}
-	PH7_MemObjRelease(&sValue);
-	ReflectMapAddBool(pCtx, pInfo, "internal", pCons->bUserDefined == 0);
-	if( SyStringLength(&pCons->sFile) > 0 ){
-		ReflectMapAddStr(pCtx, pInfo, "file", SyStringData(&pCons->sFile), (int)SyStringLength(&pCons->sFile));
-	}else{
-		ReflectMapAddBool(pCtx, pInfo, "file", 0);
-	}
-	ReflectMapAddInt(pCtx, pInfo, "line", (sxi64)pCons->nLine);
-	ReflectMapAddAttrs(pCtx, pInfo, &pCons->aAttrs);
-	ph7_result_value(pCtx, pInfo);
-	return PH7_OK;
-}
-/*
- * int|null __reflect_ref_id(array $arr, int|string $key)
- * The element's slot index when the element is a reference (its slot has
- * a reference-table record with at least two links), null otherwise.
- */
-static int vm_builtin_reflect_ref_id(ph7_context *pCtx, int nArg, ph7_value **apArg)
-{
-	ph7_hashmap *pMap;
-	ph7_hashmap_node *pNode = 0;
-	if( nArg < 2 || !ph7_value_is_array(apArg[0]) ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
-	if( PH7_HashmapLookup(pMap, apArg[1], &pNode) != SXRET_OK || pNode == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	if( PH7_VmSlotRefCount(pCtx->pVm, pNode->nValIdx) < 2 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	ph7_result_int64(pCtx, (sxi64)pNode->nValIdx);
-	return PH7_OK;
-}
-/*
  * array|null __reflect_attr_args(string $kind, mixed $target, ?string $member,
  *                                int $paramIdx, int $attrIdx)
  * Evaluate the recorded argument expressions of one declared attribute:
@@ -2525,6 +2344,804 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionTypes(ph7_vm *pVm)
 	};
 	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));
 }
+/*
+ * ---------------------------------------------------------------------------
+ * The six standalone reflection classes.
+ *
+ * ReflectionGenerator, ReflectionFiber, ReflectionConstant, ReflectionExtension,
+ * ReflectionZendExtension and ReflectionReference reflect ENGINE state rather
+ * than a class hierarchy, so each was a prelude class over one or two thunks
+ * whose only job was to hand that state to PHP. Their bodies are the C now, and
+ * the four thunks that existed for them (__reflect_gen_info, __reflect_gen_exec,
+ * __reflect_const_info, __reflect_ref_id) are gone with them.
+ *
+ * The ReflectionEnum family stays in the prelude: it extends ReflectionClass and
+ * ReflectionClassConstant, which are still PHP.
+ * ---------------------------------------------------------------------------
+ */
+#define RG_GEN   "__gen"
+#define RF_FIBER "__fiber"
+#define RR_ID    "__id"
+
+/* Build an instance of a class that may still be PRELUDE PHP, running its
+ * constructor. Answers 0 when the constructor threw (rc says which). */
+static ph7_class_instance * ReflectConstruct(ph7_context *pCtx, const char *zClass,
+	int nArg, ph7_value **apArg, sxi32 *pRc)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pClass = PH7_VmExtractClass(pVm, zClass, (sxu32)SyStrlen(zClass), FALSE, 0);
+	ph7_class_instance *pThis;
+	ph7_class_method *pCons;
+	*pRc = PH7_OK;
+	if( pClass == 0 ){
+		return 0;
+	}
+	pThis = PH7_NewClassInstance(pVm, pClass);
+	if( pThis == 0 ){
+		return 0;
+	}
+	pCons = PH7_ClassExtractMethod(pClass, "__construct", sizeof("__construct")-1);
+	if( pCons ){
+		sxi32 rc = PH7_VmCallClassMethod(pVm, pThis, pCons, 0, nArg, apArg);
+		if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
+			PH7_ClassInstanceUnref(pThis);
+			*pRc = rc;
+			return 0;
+		}
+	}
+	return pThis;
+}
+/* The instance a native reflector wraps ($this->__gen / $this->__fiber). */
+static ph7_class_instance * ReflectWrapped(ph7_context *pCtx, const char *zSlot)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	return pThis ? PH7_NativeAttrObj(pThis, zSlot) : 0;
+}
+/* Hand back a wrapped instance the receiver already owns (a borrowed reference). */
+static int ReflectResultBorrowed(ph7_context *pCtx, ph7_class_instance *pObj)
+{
+	ph7_value sVal;
+	if( pObj == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pCtx->pVm, &sVal);
+	sVal.x.pOther = pObj;
+	sVal.iFlags = MEMOBJ_OBJ;
+	ph7_result_value(pCtx, &sVal);   /* takes its own reference */
+	return PH7_OK;
+}
+/*
+ * The three "no runtime line tracking" methods. php answers a file/line/trace
+ * from the executing frame; PHL has no per-instruction line record (the same
+ * gap debug_backtrace() has), so it says so loudly rather than inventing one.
+ */
+static int ReflectUnsupported(ph7_context *pCtx, const char *zWho)
+{
+	return PH7_VmThrowException(pCtx, "Error",
+		"%s is not supported by PHL (no runtime line tracking)", zWho);
+}
+#define REFLECT_UNSUPPORTED(NAME,TEXT) \
+	static int NAME(ph7_context *pCtx, int nArg, ph7_value **apArg) \
+	{ \
+		SXUNUSED(nArg); \
+		SXUNUSED(apArg); \
+		return ReflectUnsupported(pCtx, TEXT); \
+	}
+REFLECT_UNSUPPORTED(vm_builtin_ReflectionGenerator_execLine,"ReflectionGenerator::getExecutingLine()")
+REFLECT_UNSUPPORTED(vm_builtin_ReflectionGenerator_execFile,"ReflectionGenerator::getExecutingFile()")
+REFLECT_UNSUPPORTED(vm_builtin_ReflectionGenerator_trace,"ReflectionGenerator::getTrace()")
+REFLECT_UNSUPPORTED(vm_builtin_ReflectionFiber_execLine,"ReflectionFiber::getExecutingLine()")
+REFLECT_UNSUPPORTED(vm_builtin_ReflectionFiber_execFile,"ReflectionFiber::getExecutingFile()")
+REFLECT_UNSUPPORTED(vm_builtin_ReflectionFiber_trace,"ReflectionFiber::getTrace()")
+
+/* ReflectionGenerator::__construct(Generator $generator) */
+static int vm_builtin_ReflectionGenerator_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	if( pThis == 0 || nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+		return PH7_OK;
+	}
+	PH7_NativeSetAttrObj(pCtx->pVm, pThis, RG_GEN, (ph7_class_instance *)apArg[0]->x.pOther);
+	return PH7_OK;
+}
+/* The coroutine context of the wrapped generator, or NULL. */
+static ph7_exec_ctx * ReflectGenExec(ph7_context *pCtx)
+{
+	ph7_class_instance *pGenObj = ReflectWrapped(pCtx, RG_GEN);
+	ph7_value sVal;
+	ph7_generator *pGen;
+	if( pGenObj == 0 ){
+		return 0;
+	}
+	PH7_MemObjInit(pCtx->pVm, &sVal);
+	sVal.x.pOther = pGenObj;
+	sVal.iFlags = MEMOBJ_OBJ;
+	pGen = ReflectGeneratorCtx(pCtx->pVm, &sVal);
+	return pGen ? pGen->pCtx : 0;
+}
+static int vm_builtin_ReflectionGenerator_isClosed(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_exec_ctx *pExec = ReflectGenExec(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx, pExec != 0
+		&& (pExec->iState == PH7_CTX_STATE_COMPLETED || pExec->iState == PH7_CTX_STATE_CLOSED));
+	return PH7_OK;
+}
+/* ReflectionGenerator::getThis(): ?object — the receiver the generator's body
+ * runs against. A coroutine frame installs it as a frame VARIABLE (see
+ * VmFiberSetupFrame), not as pFrame->pThis, so both are checked. */
+static int vm_builtin_ReflectionGenerator_getThis(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_exec_ctx *pExec = ReflectGenExec(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pExec && pExec->pFrame ){
+		SyHashEntry *pVar = SyHashGet(&pExec->pFrame->hVar, "this", sizeof("this")-1);
+		if( pVar ){
+			ph7_value *pSlot = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,
+				(sxu32)SX_PTR_TO_INT(pVar->pUserData));
+			if( pSlot && (pSlot->iFlags & MEMOBJ_OBJ) ){
+				ph7_result_value(pCtx, pSlot);
+				return PH7_OK;
+			}
+		}
+		if( pExec->pFrame->pThis ){
+			return ReflectResultBorrowed(pCtx, pExec->pFrame->pThis);
+		}
+	}
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+/* ReflectionGenerator::getFunction(): ReflectionFunctionAbstract — still a
+ * prelude class, so it is built through its own constructor. */
+static int vm_builtin_ReflectionGenerator_getFunction(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_exec_ctx *pExec = ReflectGenExec(pCtx);
+	ph7_vm_func *pFunc = pExec ? pExec->pFunc : 0;
+	ph7_class_instance *pOut;
+	ph7_value aArg[2];
+	int nCtorArg = 1;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pFunc == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pVm, &aArg[0]);
+	PH7_MemObjInit(pVm, &aArg[1]);
+	if( (pFunc->iFlags & VM_FUNC_CLASS_METHOD) && pFunc->pUserData ){
+		ph7_class *pDecl = (ph7_class *)pFunc->pUserData;
+		ph7_value_string(&aArg[0], SyStringData(&pDecl->sName), (int)SyStringLength(&pDecl->sName));
+		ph7_value_string(&aArg[1], SyStringData(&pFunc->sName), (int)SyStringLength(&pFunc->sName));
+		nCtorArg = 2;
+	}else{
+		ph7_value_string(&aArg[0], SyStringData(&pFunc->sName), (int)SyStringLength(&pFunc->sName));
+	}
+	{
+		ph7_value *apCtor[2];
+		apCtor[0] = &aArg[0];
+		apCtor[1] = &aArg[1];
+		pOut = ReflectConstruct(pCtx, nCtorArg == 2 ? "ReflectionMethod" : "ReflectionFunction",
+			nCtorArg, apCtor, &rc);
+	}
+	PH7_MemObjRelease(&aArg[0]);
+	PH7_MemObjRelease(&aArg[1]);
+	if( pOut == 0 ){
+		if( rc != PH7_OK ){
+			return rc;
+		}
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return ReflectResultObject(pCtx, pOut);
+}
+/* ReflectionGenerator::getExecutingGenerator(): Generator — follow `yield from`
+ * delegation to the innermost one that is actually running. */
+static int vm_builtin_ReflectionGenerator_getExecuting(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pGenObj = ReflectWrapped(pCtx, RG_GEN);
+	ph7_value sVal, *pCur;
+	ph7_generator *pGen;
+	int iDepth = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pGenObj == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pVm, &sVal);
+	sVal.x.pOther = pGenObj;
+	sVal.iFlags = MEMOBJ_OBJ;
+	pCur = &sVal;
+	pGen = ReflectGeneratorCtx(pVm, &sVal);
+	while( pGen && pGen->pCtx && pGen->pCtx->iDelegateState == 3
+	 && iDepth <= REFLECT_WALK_MAX_DEPTH ){
+		ph7_generator *pInner = ReflectGeneratorCtx(pVm, &pGen->pCtx->sDelegate);
+		if( pInner == 0 ){
+			break;
+		}
+		pCur = &pGen->pCtx->sDelegate;
+		pGen = pInner;
+		iDepth++;
+	}
+	return ReflectResultBorrowed(pCtx, (ph7_class_instance *)pCur->x.pOther);
+}
+/* ReflectionFiber::__construct(Fiber $fiber) / getFiber() / getCallable() */
+static int vm_builtin_ReflectionFiber_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	if( pThis == 0 || nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+		return PH7_OK;
+	}
+	PH7_NativeSetAttrObj(pCtx->pVm, pThis, RF_FIBER, (ph7_class_instance *)apArg[0]->x.pOther);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionFiber_getFiber(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return ReflectResultBorrowed(pCtx, ReflectWrapped(pCtx, RF_FIBER));
+}
+static int vm_builtin_ReflectionFiber_getCallable(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pFiber = ReflectWrapped(pCtx, RF_FIBER);
+	ph7_value *pVal = pFiber ? PH7_NativeAttr(pFiber, "__callable") : 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pVal ){
+		ph7_result_value(pCtx, pVal);
+	}
+	return PH7_OK;
+}
+/* ---- ReflectionConstant ---- */
+/* The engine's record for a global constant, or NULL when undefined. */
+static ph7_constant * ReflectConstEntry(ph7_vm *pVm, const char *zName, int nName)
+{
+	SyHashEntry *pEntry = nName > 0 ? SyHashGet(&pVm->hConstant, (const void *)zName, (sxu32)nName) : 0;
+	return pEntry ? (ph7_constant *)pEntry->pUserData : 0;
+}
+/* The receiver's constant record, resolved from its public $name. */
+static ph7_constant * ReflectConstOf(ph7_context *pCtx)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName = "";
+	int nName = 0;
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	}
+	return ReflectConstEntry(pCtx->pVm, zName, nName);
+}
+static int vm_builtin_ReflectionConstant_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int nName = 0;
+	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0], &nName) : "";
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	if( ReflectConstEntry(pCtx->pVm, zName, nName) == 0 ){
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Constant \"%.*s\" does not exist", nName, zName);
+	}
+	PH7_NativeSetAttrStr(pCtx->pVm, pThis, "name", zName, nName);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionConstant_getName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName = "";
+	int nName = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	}
+	ph7_result_string(pCtx, zName, nName);
+	return PH7_OK;
+}
+/* The namespace split php reports: everything before the last '\', and the rest. */
+static int ReflectConstNsCut(const char *zName, int nName)
+{
+	int k;
+	for( k = nName - 1 ; k >= 0 ; k-- ){
+		if( zName[k] == '\\' ){
+			return k;
+		}
+	}
+	return -1;
+}
+static int vm_builtin_ReflectionConstant_getNamespaceName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName = "";
+	int nName = 0, iCut;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	}
+	iCut = ReflectConstNsCut(zName, nName);
+	ph7_result_string(pCtx, zName, iCut < 0 ? 0 : iCut);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionConstant_getShortName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName = "";
+	int nName = 0, iCut;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	}
+	iCut = ReflectConstNsCut(zName, nName);
+	if( iCut < 0 ){
+		ph7_result_string(pCtx, zName, nName);
+	}else{
+		ph7_result_string(pCtx, &zName[iCut+1], nName - iCut - 1);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionConstant_getValue(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_constant *pCons = ReflectConstOf(pCtx);
+	ph7_value sValue;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	PH7_MemObjInit(pCtx->pVm, &sValue);
+	if( pCons && pCons->xExpand ){
+		pCons->xExpand(&sValue, pCons->pUserData);
+	}
+	ph7_result_value(pCtx, &sValue);
+	PH7_MemObjRelease(&sValue);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionConstant_isDeprecated(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx, 0);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionConstant_getFileName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_constant *pCons = ReflectConstOf(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pCons && SyStringLength(&pCons->sFile) > 0 ){
+		ph7_result_string(pCtx, SyStringData(&pCons->sFile), (int)SyStringLength(&pCons->sFile));
+	}else{
+		ph7_result_bool(pCtx, 0);
+	}
+	return PH7_OK;
+}
+/* An engine constant belongs to the synthetic "Core" extension; a userland
+ * define() belongs to none, which php reports as null / false. */
+static int vm_builtin_ReflectionConstant_getExtension(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_constant *pCons = ReflectConstOf(pCtx);
+	ph7_class_instance *pExt;
+	ph7_value sName, *apArgs[1];
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pCons == 0 || pCons->bUserDefined ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pCtx->pVm, &sName);
+	ph7_value_string(&sName, "Core", 4);
+	apArgs[0] = &sName;
+	pExt = ReflectConstruct(pCtx, "ReflectionExtension", 1, apArgs, &rc);
+	PH7_MemObjRelease(&sName);
+	if( pExt == 0 ){
+		if( rc != PH7_OK ){
+			return rc;
+		}
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return ReflectResultObject(pCtx, pExt);
+}
+static int vm_builtin_ReflectionConstant_getExtensionName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_constant *pCons = ReflectConstOf(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pCons && pCons->bUserDefined == 0 ){
+		ph7_result_string(pCtx, "Core", 4);
+	}else{
+		ph7_result_bool(pCtx, 0);
+	}
+	return PH7_OK;
+}
+/* getAttributes() still routes through the prelude builder: chunk 7 owns the
+ * ReflectionAttribute shape and the lazy argument evaluation. */
+static int vm_builtin_ReflectionConstant_getAttributes(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_constant *pCons = ReflectConstOf(pCtx);
+	ph7_value sMeta, sSpec, sTarget, sName, sFlags, sRes;
+	ph7_value *apCall[5];
+	const char *zName = "";
+	int nName = 0;
+	sxi32 rc;
+	if( pThis == 0 || pCons == 0 ){
+		ph7_result_value(pCtx, ph7_context_new_array(pCtx));
+		return PH7_OK;
+	}
+	PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	PH7_MemObjInit(pVm, &sMeta);
+	PH7_MemObjInit(pVm, &sSpec);
+	PH7_MemObjInit(pVm, &sTarget);
+	PH7_MemObjInit(pVm, &sName);
+	PH7_MemObjInit(pVm, &sFlags);
+	PH7_MemObjInit(pVm, &sRes);
+	{
+		/* The two arrays the builder expects: the attribute summary list, and
+		 * the [kind, target, member, paramIdx] spec that reopens it lazily. */
+		ph7_value *pMeta = ph7_context_new_array(pCtx);
+		ph7_value *pSpec = ph7_context_new_array(pCtx);
+		ph7_value *pKind = ph7_context_new_scalar(pCtx);
+		ph7_value *pTgt  = ph7_context_new_scalar(pCtx);
+		ph7_value *pNull = ph7_context_new_scalar(pCtx);
+		ph7_value *pIdx  = ph7_context_new_scalar(pCtx);
+		if( pMeta == 0 || pSpec == 0 || pKind == 0 || pTgt == 0 || pNull == 0 || pIdx == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		ReflectMapAddAttrs(pCtx, pMeta, &pCons->aAttrs);
+		{
+			ph7_value *pList = ph7_array_fetch(pMeta, "attrs", -1);
+			if( pList ){
+				PH7_MemObjStore(pList, &sMeta);
+			}
+		}
+		ph7_value_string(pKind, "const", 5);
+		ph7_value_string(pTgt, zName, nName);
+		ph7_value_null(pNull);
+		ph7_value_int(pIdx, 0);
+		ph7_array_add_elem(pSpec, 0, pKind);
+		ph7_array_add_elem(pSpec, 0, pTgt);
+		ph7_array_add_elem(pSpec, 0, pNull);
+		ph7_array_add_elem(pSpec, 0, pIdx);
+		PH7_MemObjStore(pSpec, &sSpec);
+	}
+	ph7_value_int(&sTarget, 64);   /* Attribute::TARGET_* bit for a constant */
+	if( nArg > 0 ){
+		PH7_MemObjStore(apArg[0], &sName);
+	}else{
+		ph7_value_null(&sName);
+	}
+	ph7_value_int(&sFlags, nArg > 1 ? ph7_value_to_int(apArg[1]) : 0);
+	apCall[0] = &sMeta;
+	apCall[1] = &sSpec;
+	apCall[2] = &sTarget;
+	apCall[3] = &sName;
+	apCall[4] = &sFlags;
+	{
+		ph7_value sFn;
+		SyString sStr;
+		PH7_MemObjInit(pVm, &sFn);
+		SyStringInitFromBuf(&sStr, "__reflect_build_attrs", sizeof("__reflect_build_attrs")-1);
+		PH7_MemObjInitFromString(pVm, &sFn, &sStr);
+		rc = PH7_VmCallUserFunction(pVm, &sFn, 5, apCall, &sRes);
+		PH7_MemObjRelease(&sFn);
+	}
+	if( rc == SXRET_OK ){
+		ph7_result_value(pCtx, &sRes);
+	}
+	PH7_MemObjRelease(&sMeta);
+	PH7_MemObjRelease(&sSpec);
+	PH7_MemObjRelease(&sTarget);
+	PH7_MemObjRelease(&sName);
+	PH7_MemObjRelease(&sFlags);
+	PH7_MemObjRelease(&sRes);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionConstant_toString(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName = "";
+	int nName = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	}
+	ph7_result_string_format(pCtx, "Constant [ %.*s ]\n", nName, zName);
+	return PH7_OK;
+}
+/* ---- ReflectionExtension: PHL has exactly one, the synthetic "Core" ---- */
+static int vm_builtin_ReflectionExtension_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int nName = 0;
+	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0], &nName) : "";
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	if( !(nName == 4 && SyToLower(zName[0]) == 'c' && SyToLower(zName[1]) == 'o'
+	   && SyToLower(zName[2]) == 'r' && SyToLower(zName[3]) == 'e') ){
+		return PH7_VmThrowException(pCtx, "ReflectionException",
+			"Extension \"%.*s\" does not exist", nName, zName);
+	}
+	PH7_NativeSetAttrStr(pCtx->pVm, pThis, "name", "Core", 4);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionExtension_getName(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName = "";
+	int nName = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	}
+	ph7_result_string(pCtx, zName, nName);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionExtension_getVersion(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_value sFn, sRes;
+	SyString sStr;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	PH7_MemObjInit(pCtx->pVm, &sFn);
+	PH7_MemObjInit(pCtx->pVm, &sRes);
+	SyStringInitFromBuf(&sStr, "phpversion", sizeof("phpversion")-1);
+	PH7_MemObjInitFromString(pCtx->pVm, &sFn, &sStr);
+	if( PH7_VmCallUserFunction(pCtx->pVm, &sFn, 0, 0, &sRes) == SXRET_OK ){
+		ph7_result_value(pCtx, &sRes);
+	}
+	PH7_MemObjRelease(&sFn);
+	PH7_MemObjRelease(&sRes);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionExtension_emptyArray(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_value *pList = ph7_context_new_array(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pList ){
+		ph7_result_value(pCtx, pList);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionExtension_isPersistent(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx, 1);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionExtension_isTemporary(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx, 0);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionExtension_info(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	SXUNUSED(pCtx);
+	return PH7_OK;
+}
+static int vm_builtin_ReflectionExtension_toString(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zName = "";
+	int nName = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, "name", &zName, &nName);
+	}
+	ph7_result_string_format(pCtx, "Extension [ extension #1 %.*s ]\n", nName, zName);
+	return PH7_OK;
+}
+/* ---- ReflectionZendExtension: none exist, so the constructor always refuses ---- */
+static int vm_builtin_ReflectionZendExtension_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	int nName = 0;
+	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0], &nName) : "";
+	return PH7_VmThrowException(pCtx, "ReflectionException",
+		"Zend Extension \"%.*s\" does not exist", nName, zName);
+}
+static int vm_builtin_ReflectionZendExtension_toString(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_string(pCtx, "", 0);
+	return PH7_OK;
+}
+/* ---- ReflectionReference ---- */
+/*
+ * ReflectionReference::fromArrayElement(array $array, string|int $key)
+ *
+ * Answers a reflector only when the element IS a reference — its slot carries a
+ * reference-table record with at least two links. The instance is built without
+ * running the (private) constructor, exactly as php's factory does.
+ */
+static int vm_builtin_ReflectionReference_fromArrayElement(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pNode = 0;
+	ph7_class *pClass;
+	ph7_class_instance *pObj;
+	char zId[64];
+	if( nArg < 1 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	if( !ph7_value_is_array(apArg[0]) ){
+		/* The shared ZPP screen leaves a SCALAR against a bare `array` parameter
+		 * unscreened (it only judges array/object/null/resource pairings and
+		 * scalars against class-typed ones), so the refusal php words from the
+		 * declared type is written here -- as the prelude's own is_array() check
+		 * did. Recorded in PLAN §2 with the rest of that gap. */
+		return PH7_VmThrowException(pCtx, "TypeError",
+			"ReflectionReference::fromArrayElement(): Argument #1 ($array) "
+			"must be of type array, %s given", ph7_type_name(apArg[0]));
+	}
+	if( nArg < 2 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
+	if( PH7_HashmapLookup(pMap, apArg[1], &pNode) != SXRET_OK || pNode == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	if( PH7_VmSlotRefCount(pVm, pNode->nValIdx) < 2 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pClass = PH7_VmExtractClass(pVm, "ReflectionReference", sizeof("ReflectionReference")-1, FALSE, 0);
+	pObj = pClass ? PH7_NewClassInstance(pVm, pClass) : 0;
+	if( pObj == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	/* php's ids are opaque strings; the slot index is the identity PHL has. */
+	SyBufferFormat(zId, sizeof(zId), "phlref%u", (unsigned)pNode->nValIdx);
+	PH7_NativeSetAttrStr(pVm, pObj, RR_ID, zId, (int)SyStrlen(zId));
+	return ReflectResultObject(pCtx, pObj);
+}
+static int vm_builtin_ReflectionReference_getId(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zId = "";
+	int nId = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		PH7_NativeAttrStr(pThis, RR_ID, &zId, &nId);
+	}
+	ph7_result_string(pCtx, zId, nId);
+	return PH7_OK;
+}
+/* php declares this private and never calls it; reaching it is the diagnostic. */
+static int vm_builtin_ReflectionReference_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	SXUNUSED(pCtx);
+	return PH7_OK;
+}
+/*
+ * Declare the six. Called from PH7_VmInstallReflectionLib where chunk 5 used to
+ * be compiled, so Reflector (chunk 1) already exists.
+ */
+PH7_PRIVATE sxi32 PH7_VmInstallReflectionSmall(ph7_vm *pVm)
+{
+	static const PH7_NativePropDef aGenProp[] = {
+		{ RG_GEN, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+	};
+	static const PH7_NativeMethodDef aGenMethod[] = {
+		{ "__construct",           PH7_MOD_PUBLIC, "Generator $generator", "",
+		  vm_builtin_ReflectionGenerator_construct },
+		{ "getFunction",           PH7_MOD_PUBLIC, "", "ReflectionFunctionAbstract",
+		  vm_builtin_ReflectionGenerator_getFunction },
+		{ "getThis",               PH7_MOD_PUBLIC, "", "?object", vm_builtin_ReflectionGenerator_getThis },
+		{ "getExecutingGenerator", PH7_MOD_PUBLIC, "", "Generator",
+		  vm_builtin_ReflectionGenerator_getExecuting },
+		{ "isClosed",              PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionGenerator_isClosed },
+		{ "getExecutingLine",      PH7_MOD_PUBLIC, "", "int", vm_builtin_ReflectionGenerator_execLine },
+		{ "getExecutingFile",      PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionGenerator_execFile },
+		{ "getTrace",              PH7_MOD_PUBLIC, "int $options = 1", "array",
+		  vm_builtin_ReflectionGenerator_trace },
+	};
+	static const PH7_NativePropDef aFiberProp[] = {
+		{ RF_FIBER, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+	};
+	static const PH7_NativeMethodDef aFiberMethod[] = {
+		{ "__construct",      PH7_MOD_PUBLIC, "Fiber $fiber", "", vm_builtin_ReflectionFiber_construct },
+		{ "getFiber",         PH7_MOD_PUBLIC, "", "Fiber",    vm_builtin_ReflectionFiber_getFiber },
+		{ "getCallable",      PH7_MOD_PUBLIC, "", "callable", vm_builtin_ReflectionFiber_getCallable },
+		{ "getExecutingLine", PH7_MOD_PUBLIC, "", "?int",     vm_builtin_ReflectionFiber_execLine },
+		{ "getExecutingFile", PH7_MOD_PUBLIC, "", "?string",  vm_builtin_ReflectionFiber_execFile },
+		{ "getTrace",         PH7_MOD_PUBLIC, "int $options = 1", "array", vm_builtin_ReflectionFiber_trace },
+	};
+	static const PH7_NativePropDef aNameProp[] = {
+		{ "name", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
+	};
+	static const PH7_NativeMethodDef aConstMethod[] = {
+		{ "__construct",       PH7_MOD_PUBLIC, "string $name", "",
+		  vm_builtin_ReflectionConstant_construct },
+		{ "getName",           PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionConstant_getName },
+		{ "getNamespaceName",  PH7_MOD_PUBLIC, "", "string",
+		  vm_builtin_ReflectionConstant_getNamespaceName },
+		{ "getShortName",      PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionConstant_getShortName },
+		{ "getValue",          PH7_MOD_PUBLIC, "", "mixed",  vm_builtin_ReflectionConstant_getValue },
+		{ "isDeprecated",      PH7_MOD_PUBLIC, "", "bool",   vm_builtin_ReflectionConstant_isDeprecated },
+		{ "getFileName",       PH7_MOD_PUBLIC, "", "string|false",
+		  vm_builtin_ReflectionConstant_getFileName },
+		{ "getExtension",      PH7_MOD_PUBLIC, "", "?ReflectionExtension",
+		  vm_builtin_ReflectionConstant_getExtension },
+		{ "getExtensionName",  PH7_MOD_PUBLIC, "", "string|false",
+		  vm_builtin_ReflectionConstant_getExtensionName },
+		{ "getAttributes",     PH7_MOD_PUBLIC, "?string $name = null, int $flags = 0", "array",
+		  vm_builtin_ReflectionConstant_getAttributes },
+		{ "__toString",        PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionConstant_toString },
+	};
+	static const PH7_NativeMethodDef aExtMethod[] = {
+		{ "__construct",     PH7_MOD_PUBLIC, "string $name", "", vm_builtin_ReflectionExtension_construct },
+		{ "getName",         PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_getName },
+		{ "getVersion",      PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_getVersion },
+		{ "getFunctions",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_emptyArray },
+		{ "getConstants",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_emptyArray },
+		{ "getINIEntries",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_emptyArray },
+		{ "getClasses",      PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_emptyArray },
+		{ "getClassNames",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_emptyArray },
+		{ "getDependencies", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_emptyArray },
+		{ "info",            PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_info },
+		{ "isPersistent",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_isPersistent },
+		{ "isTemporary",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_isTemporary },
+		{ "__toString",      PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionExtension_toString },
+	};
+	static const PH7_NativeMethodDef aZendMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "string $name", "",
+		  vm_builtin_ReflectionZendExtension_construct },
+		{ "getName",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_getName },
+		{ "__toString",  PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionZendExtension_toString },
+	};
+	static const PH7_NativePropDef aRefProp[] = {
+		{ RR_ID, PH7_MOD_PROTECTED, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 } },
+	};
+	static const PH7_NativeMethodDef aRefMethod[] = {
+		/* php declares the constructor PRIVATE, so `new ReflectionReference` is
+		 * the engine's own "Call to private ... from global scope" Error rather
+		 * than a throw the prelude had to write by hand. */
+		{ "__construct",      PH7_MOD_PRIVATE, "", "", vm_builtin_ReflectionReference_construct },
+		{ "fromArrayElement", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "array $array, string|int $key",
+		  "?ReflectionReference", vm_builtin_ReflectionReference_fromArrayElement },
+		{ "getId",            PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionReference_getId },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "ReflectionGenerator", 0, 0, PH7_CLASS_FINAL,
+		  aGenMethod, SX_ARRAYSIZE(aGenMethod), 0, 0, aGenProp, SX_ARRAYSIZE(aGenProp), 0, 0 },
+		{ "ReflectionFiber", 0, 0, PH7_CLASS_FINAL,
+		  aFiberMethod, SX_ARRAYSIZE(aFiberMethod), 0, 0, aFiberProp, SX_ARRAYSIZE(aFiberProp), 0, 0 },
+		{ "ReflectionConstant", 0, "Reflector", 0,
+		  aConstMethod, SX_ARRAYSIZE(aConstMethod), 0, 0, aNameProp, SX_ARRAYSIZE(aNameProp), 0, 0 },
+		{ "ReflectionExtension", 0, "Reflector", 0,
+		  aExtMethod, SX_ARRAYSIZE(aExtMethod), 0, 0, aNameProp, SX_ARRAYSIZE(aNameProp), 0, 0 },
+		{ "ReflectionZendExtension", 0, "Reflector", 0,
+		  aZendMethod, SX_ARRAYSIZE(aZendMethod), 0, 0, aNameProp, SX_ARRAYSIZE(aNameProp), 0, 0 },
+		{ "ReflectionReference", 0, 0, PH7_CLASS_FINAL,
+		  aRefMethod, SX_ARRAYSIZE(aRefMethod), 0, 0, aRefProp, SX_ARRAYSIZE(aRefProp), 0, 0 },
+	};
+	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));
+}
 PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 {
 	static const struct {
@@ -2548,10 +3165,6 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)
 		{ "__reflect_prop_write",     vm_builtin_reflect_prop_write },
 		{ "__reflect_prop_state",     vm_builtin_reflect_prop_state },
 		{ "__reflect_dyn_props",      vm_builtin_reflect_dyn_props },
-		{ "__reflect_gen_info",       vm_builtin_reflect_gen_info },
-		{ "__reflect_gen_exec",       vm_builtin_reflect_gen_exec },
-		{ "__reflect_const_info",     vm_builtin_reflect_const_info },
-		{ "__reflect_ref_id",         vm_builtin_reflect_ref_id },
 		{ "__reflect_attr_args",      vm_builtin_reflect_attr_args },
 		{ "__reflect_make_type",      vm_builtin_reflect_make_type },
 	};
