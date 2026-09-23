@@ -22,34 +22,6 @@
 #define sState (*pState)
 
 /*
- * php's `get_static_method_fallback` (zend_object_handlers.c): a `C::m()` naming a method
- * the class cannot answer directly — missing, or present but inaccessible from here —
- * routes to __call, NOT __callStatic, when the CALLING frame has a `$this` that is an
- * instance of C. `::` does not make the call static: `self::m()` inside an instance method
- * is the dispatch `$this->m()` would have been, and php reaches for __callStatic only when
- * there is no compatible receiver (or the class declares no __call at all — it does not
- * fall back to __callStatic then, it raises "Call to undefined method").
- *
- * The handler comes from the OBJECT's class — php's comment calls it "the top-level defined
- * __call" — so `parent::m()` from a child that overrides __call runs the CHILD's.
- *
- * Answers the receiver to dispatch on, or 0 for the __callStatic route.
- */
-static ph7_class_instance * VmStaticCallMagicThis(ph7_vm *pVm,ph7_class *pClass)
-{
-	ph7_class_instance *pThis;
-	if( PH7_ClassExtractMethod(pClass,"__call",sizeof("__call")-1) == 0 ){
-		return 0;
-	}
-	pThis = PH7_VmCallerThisFor(&(*pVm),pClass);
-	if( pThis == 0
-	 || PH7_ClassExtractMethod(pThis->pClass,"__call",sizeof("__call")-1) == 0 ){
-		return 0;
-	}
-	return pThis;
-}
-
-/*
  * OP_CLONE_APPLY: body moved verbatim from the OP_CLONE_APPLY arm of
  * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
  */
@@ -1573,7 +1545,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							rc = rcErr;
 							PH7_THROW_ROUTE_MIDEXPR(rc)
 						}else{
-							ph7_class_instance *pMagicThis = VmStaticCallMagicThis(&(*pVm),pClass);
+							ph7_class_instance *pMagicThis = PH7_VmStaticFallbackThis(&(*pVm),pClass);
 							ph7_class_method *pCallStaticMagic = pMagicThis
 								? PH7_ClassExtractMethod(pMagicThis->pClass,"__call",sizeof("__call")-1)
 								: PH7_ClassExtractMethod(pClass,"__callStatic",sizeof("__callStatic")-1);
@@ -1635,7 +1607,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							ph7_class *pDeclCls = pMeth->sFunc.pUserData
 								? (ph7_class *)pMeth->sFunc.pUserData : pClass;
 							if( !PH7_VmClassMemberAccess(&(*pVm),pDeclCls,&sName,pMeth->iProtection,FALSE) ){
-								pDeniedThis = VmStaticCallMagicThis(&(*pVm),pClass);
+								pDeniedThis = PH7_VmStaticFallbackThis(&(*pVm),pClass);
 								pDeniedStatic = pDeniedThis
 									? PH7_ClassExtractMethod(pDeniedThis->pClass,"__call",
 										sizeof("__call")-1)

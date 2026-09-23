@@ -940,12 +940,26 @@ static const char * VmCallableClassMethodError(
 	ph7_class_method *pMethod;
 	ph7_class *pDecl;
 	SyString sMeth;
+	/* php's fallback for a name this class cannot reach: when the CALLER holds a `$this`
+	 * that is an instance of it, the name resolves to the __call TRAMPOLINE rather than to
+	 * __callStatic — and a trampoline is a NON-STATIC function, so this dispatch, which
+	 * carries no object, refuses it exactly as it refuses any other non-static method named
+	 * through a class. The callback spellings bind that receiver and run (php's
+	 * direct-vs-callback asymmetry, one rule apart). The message names the class the
+	 * callable WROTE and the name as written, even when the name is a declared static
+	 * method: it is the trampoline being refused, not the method. */
+	int bFallback = bStaticForm && PH7_VmStaticFallbackThis(&(*pVm),pClass) != 0;
 	if( pClass == 0 ){
 		SyBufferFormat(zBuf,nBuf,"Class \"%.*s\" not found",(int)nCls,zCls);
 		return zBuf;
 	}
 	pMethod = PH7_ClassExtractMethod(pClass,zMeth,nMeth);
 	if( pMethod == 0 ){
+		if( bFallback ){
+			SyBufferFormat(zBuf,nBuf,"Non-static method %z::%.*s() cannot be called statically",
+				&pClass->sName,(int)nMeth,zMeth);
+			return zBuf;
+		}
 		/* A class that answers for unknown names through the catch-all has nothing to
 		 * report: php runs __callStatic (class-name target) / __call (object target) for
 		 * ANY method name, and the dispatcher below routes it. */
@@ -969,12 +983,21 @@ static const char * VmCallableClassMethodError(
 	 * when the CALLER has a compatible $this (unlike call_user_func, which binds it). The
 	 * message names the DECLARING class and the method's declared spelling. */
 	pDecl = pMethod->sFunc.pUserData ? (ph7_class *)pMethod->sFunc.pUserData : pClass;
-	if( bStaticForm && (pMethod->iFlags & PH7_CLASS_ATTR_STATIC) == 0 ){
+	{
 		SyString sDecl;
+		int bAccessible;
 		SyStringInitFromBuf(&sDecl,SyStringData(&pMethod->sFunc.sName),
 			SyStringLength(&pMethod->sFunc.sName));
-		if( pMethod->iProtection == PH7_CLASS_PROT_PUBLIC
-		 || PH7_VmClassMemberAccess(&(*pVm),pDecl,&sDecl,pMethod->iProtection,FALSE) ){
+		bAccessible = pMethod->iProtection == PH7_CLASS_PROT_PUBLIC
+			|| PH7_VmClassMemberAccess(&(*pVm),pDecl,&sDecl,pMethod->iProtection,FALSE);
+		if( !bAccessible && bFallback ){
+			/* Inaccessible goes the same way as missing: php never reports the visibility,
+			 * because the name resolved to the trampoline before visibility could matter. */
+			SyBufferFormat(zBuf,nBuf,"Non-static method %z::%.*s() cannot be called statically",
+				&pClass->sName,(int)nMeth,zMeth);
+			return zBuf;
+		}
+		if( bStaticForm && (pMethod->iFlags & PH7_CLASS_ATTR_STATIC) == 0 && bAccessible ){
 			SyBufferFormat(zBuf,nBuf,"Non-static method %z::%z() cannot be called statically",
 				&pDecl->sName,&sDecl);
 			return zBuf;

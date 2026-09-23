@@ -455,6 +455,36 @@ static int VmCallerThisIsA(ph7_vm *pVm,ph7_class *pClass)
 	return PH7_VmCallerThisFor(&(*pVm),pClass) ? TRUE : FALSE;
 }
 /*
+ * php's `get_static_method_fallback` (zend_object_handlers.c) and the `fcc->object` half of
+ * `zend_is_callable_check_func` (zend_API.c) are the same rule wearing two hats: a method
+ * named through a CLASS — `C::m()`, `['C','m']`, `"C::m"` — that the class cannot answer
+ * directly resolves to __call on the CALLER's own `$this`, not to __callStatic, whenever
+ * that receiver is an instance of C. `::` does not make the call static. php reaches for
+ * __callStatic only when there is no compatible receiver, or the class declares no __call at
+ * all — it does not then fall back to a __callStatic that is not there.
+ *
+ * The handler comes from the OBJECT's class — php's comment calls it "the top-level defined
+ * __call" — so `parent::m()` from a child that overrides __call runs the CHILD's.
+ *
+ * Answers the receiver to dispatch on, or 0 for the __callStatic route. The DIRECT `$cb()`
+ * spelling asks the same question for the opposite reason: the trampoline this resolves to
+ * is non-static, and a direct call carrying no object refuses it (vm_exec.c's
+ * VmCallableClassMethodError) where a callback binds the receiver and runs.
+ */
+PH7_PRIVATE ph7_class_instance * PH7_VmStaticFallbackThis(ph7_vm *pVm,ph7_class *pClass)
+{
+	ph7_class_instance *pThis;
+	if( pClass == 0 || PH7_ClassExtractMethod(pClass,"__call",sizeof("__call")-1) == 0 ){
+		return 0;
+	}
+	pThis = PH7_VmCallerThisFor(&(*pVm),pClass);
+	if( pThis == 0
+	 || PH7_ClassExtractMethod(pThis->pClass,"__call",sizeof("__call")-1) == 0 ){
+		return 0;
+	}
+	return pThis;
+}
+/*
  * php's callability rule for one resolved class + method NAME, probed value-for-value
  * against 8.5.8. `bStaticForm` distinguishes naming the method through a class name
  * (`'C::m'`, `['C','m']`) from naming it on an object (`[$obj,'m']`).
@@ -1711,9 +1741,14 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 		}
 		if( pMethod == 0 || !VmCallableMethodAccessible(&(*pVm),pClass,pMethod) ){
 			/* php answers for a name the class cannot reach directly through __call /
-			 * __callStatic, in a CALLABLE exactly as in the method-call syntax. */
+			 * __callStatic, in a CALLABLE exactly as in the method-call syntax — including
+			 * the receiver rule: a class-NAME pair still reaches __call, on the CALLER's own
+			 * $this, when that object is an instance of the class (php binds it into the
+			 * callable; PH7_VmStaticFallbackThis is the shared rule). Only a callback binds
+			 * it — the direct `$cb()` spelling is refused before it gets here. */
 			if( (pName->iFlags & MEMOBJ_STRING) && SyBlobLength(&pName->sBlob) > 0 ){
-				rc = PH7_VmDispatchMagicCall(&(*pVm),pClass,pThis,
+				rc = PH7_VmDispatchMagicCall(&(*pVm),pClass,
+					pThis ? pThis : PH7_VmStaticFallbackThis(&(*pVm),pClass),
 					(const char *)SyBlobData(&pName->sBlob),SyBlobLength(&pName->sBlob),
 					pResult,nArg,apArg,pArgMap);
 				if( rc != SXERR_NOTFOUND ){
@@ -1751,8 +1786,10 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 				? PH7_ClassExtractMethod(pCmClass,zCmMeth,nCmMeth) : 0;
 			if( pCmClass && (pCmMethod == 0
 				|| !VmCallableMethodAccessible(&(*pVm),pCmClass,pCmMethod)) ){
-				/* Same catch-all routing as the ['Class','method'] pair. */
-				sxi32 rcMagic = PH7_VmDispatchMagicCall(&(*pVm),pCmClass,0,zCmMeth,nCmMeth,
+				/* Same catch-all routing as the ['Class','method'] pair, receiver rule
+				 * included: `"C::m"` from inside an instance of C reaches __call. */
+				sxi32 rcMagic = PH7_VmDispatchMagicCall(&(*pVm),pCmClass,
+					PH7_VmStaticFallbackThis(&(*pVm),pCmClass),zCmMeth,nCmMeth,
 					pResult,nArg,apArg,pArgMap);
 				if( rcMagic != SXERR_NOTFOUND ){
 					return rcMagic;
