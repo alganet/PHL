@@ -2065,7 +2065,11 @@ static sxi32 GenStateEmitCallArgs(
 		 * materializes it ONLY for a by-ref parameter once the callee is resolved
 		 * (VmResolveDeferredArgs). Excludes isset()/empty()/unset(), which compile
 		 * through this same call loop but must NEVER create their operand, and
-		 * named/spread args (positional-index and by-ref semantics don't apply).
+		 * spread args (whose elements have no positional index of their own). A NAMED
+		 * arg defers too: it binds to the formal its NAME picks, which the resolver
+		 * looks up through the call's own argument map — excluding it left
+		 * `r(x: $a['new'])` warning `Undefined array key` and passing NULL where php
+		 * creates the element for the by-ref parameter `$x`.
 		 *
 		 * D1 commit 2: the same reasoning extends to an array-element ($a["k"]) or
 		 * property ($o->p) argument — a by-ref user-function parameter must vivify the
@@ -2077,7 +2081,7 @@ static sxi32 GenStateEmitCallArgs(
 		if( (iFlags & (EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_EMPTY|EXPR_FLAG_LOAD_IDX_UNSET
 		               |EXPR_FLAG_MEMBER_COALESCE)) == 0
 		 && (iArgFlags & EXPR_FLAG_RDONLY_LOAD) /* not a known builtin by-ref slot (kept eager above) */
-		 && (apNode[n]->iFlags & (EXPR_NODE_NAMED_ARG|EXPR_NODE_SPREAD)) == 0
+		 && (apNode[n]->iFlags & EXPR_NODE_SPREAD) == 0
 		 && ( (apNode[n]->pOp == 0 && apNode[n]->xCode == PH7_CompileVariable)
 		   || (apNode[n]->pOp != 0 && (apNode[n]->pOp->iOp == EXPR_OP_SUBSCRIPT
 		                            || apNode[n]->pOp->iOp == EXPR_OP_ARROW)) ) ){

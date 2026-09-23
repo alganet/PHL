@@ -1209,7 +1209,8 @@ PH7_PRIVATE sxi32 PH7_VmResolveDeferredArgs(
 	sxu32 nFormal,
 	sxu32 nByRefMask,
 	int bAllByRef,
-	int bAllByValue)
+	int bAllByValue,
+	VmCallArgMap *pCallMap)
 {
 	ph7_value *p;
 	sxu32 n = 0;
@@ -1235,7 +1236,24 @@ PH7_PRIVATE sxi32 PH7_VmResolveDeferredArgs(
 			bByRef = (p->iFlags & MEMOBJ_AUX_DEFPATH) ? 0 : 1;
 		}else if( pFormal ){
 			sxu32 idx = n;
-			if( idx >= nFormal ){
+			if( pCallMap && pCallMap->bHasNamed && n < pCallMap->nTotal
+			 && pCallMap->aNames[n].nByte > 0 ){
+				/* A NAMED actual binds to the formal its NAME picks, not to the one at its
+				 * stack position: `r(x: $a["k"])` is argument #1 on the stack and parameter
+				 * $x in the declaration. Reading the by-ref-ness positionally consulted the
+				 * wrong formal, so a by-reference named argument naming a missing element
+				 * warned `Undefined array key` and passed NULL where php creates it. */
+				sxu32 f;
+				idx = SXU32_HIGH;
+				for( f = 0 ; f < nFormal ; ++f ){
+					if( pCallMap->aNames[n].nByte == SyStringLength(&pFormal[f].sName)
+					 && SyMemcmp(pCallMap->aNames[n].zString,
+						SyStringData(&pFormal[f].sName),pCallMap->aNames[n].nByte) == 0 ){
+						idx = f;
+						break;
+					}
+				}
+			}else if( idx >= nFormal ){
 				/* Beyond the declared formals: a trailing variadic absorbs the tail
 				 * (and dictates its by-ref-ness); otherwise the extra arg is by-value. */
 				idx = (nFormal > 0 && (pFormal[nFormal-1].iFlags & VM_FUNC_ARG_VARIADIC))
@@ -1604,18 +1622,19 @@ static ph7_vm_func * VmIndirectCalleeFunc(ph7_vm *pVm,ph7_value *pCallable)
  * signature mask, a PHP one's from its compiled formals, and an unresolved callee binds
  * everything by value (php's answer for the magic route it is about to take).
  */
-static sxi32 VmResolveIndirectArgs(ph7_vm *pVm,ph7_value *pCallable,ph7_value *pArg,ph7_value *pTos)
+static sxi32 VmResolveIndirectArgs(ph7_vm *pVm,ph7_value *pCallable,ph7_value *pArg,ph7_value *pTos,
+	VmCallArgMap *pCallMap)
 {
 	ph7_vm_func *pFn = VmIndirectCalleeFunc(&(*pVm),pCallable);
 	if( pFn == 0 ){
-		return PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,0,0);
+		return PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,0,0,pCallMap);
 	}
 	if( pFn->iFlags & VM_FUNC_NATIVE ){
 		return PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,
-			pFn->pNative ? pFn->pNative->nByRefMask : 0,0,0);
+			pFn->pNative ? pFn->pNative->nByRefMask : 0,0,0,pCallMap);
 	}
 	return PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,
-		(ph7_vm_func_arg *)SySetBasePtr(&pFn->aArgs),SySetUsed(&pFn->aArgs),0,0,0);
+		(ph7_vm_func_arg *)SySetBasePtr(&pFn->aArgs),SySetUsed(&pFn->aArgs),0,0,0,pCallMap);
 }
 /*
  * Why a VALUE cannot be made into a first-class callable. php answers `($v)(...)` with
@@ -5763,7 +5782,7 @@ case PH7_OP_CALL: {
 		 * ARRAY), so every deferred argument materializes by value, exactly as it did
 		 * through the named trampoline's zero by-ref mask. */
 		{
-			sxi32 rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,0,0);
+			sxi32 rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,0,0,pEffCallMap);
 			PH7_DISPATCH_ENFORCE_RC(rcDA)
 		}
 		pEffCallMap = VmEffCallArgMap(pVm,pInstr,pArg,
@@ -5875,7 +5894,7 @@ case PH7_OP_CALL: {
 			/* Materialize the deferred arguments against the pair's own method (see
 			 * VmIndirectCalleeFunc), not against a blanket by-ref assumption. */
 			{
-				sxi32 rcDA = VmResolveIndirectArgs(&(*pVm),pTos,pArg,pTos);
+				sxi32 rcDA = VmResolveIndirectArgs(&(*pVm),pTos,pArg,pTos,pEffCallMap);
 				PH7_DISPATCH_ENFORCE_RC(rcDA)
 			}
 			SySetReset(&aArg);
@@ -5931,7 +5950,7 @@ case PH7_OP_CALL: {
 			/* Materialize the deferred arguments against this object's __invoke, the
 			 * array-callable path's rule one shape over. */
 			{
-				sxi32 rcDA = VmResolveIndirectArgs(&(*pVm),pTos,pArg,pTos);
+				sxi32 rcDA = VmResolveIndirectArgs(&(*pVm),pTos,pArg,pTos,pEffCallMap);
 				PH7_DISPATCH_ENFORCE_RC(rcDA)
 			}
 			SySetReset(&aArg);
@@ -6318,11 +6337,11 @@ case PH7_OP_CALL: {
 				 * site (rather than repeating it in the branch below) keeps the
 				 * throw routing identical for both kinds of callee. */
 				rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,
-					pVmFunc->pNative->nByRefMask,0,0);
+					pVmFunc->pNative->nByRefMask,0,0,pEffCallMap);
 			}else{
 				rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,
 					(ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs),SySetUsed(&pVmFunc->aArgs),
-					0,0,0);
+					0,0,0,pEffCallMap);
 			}
 			PH7_DISPATCH_ENFORCE_RC(rcDA)
 		}
@@ -7698,7 +7717,7 @@ SkipFuncBody:
 		 * compile-time mask no longer sees it. Every other (by-value) arg warns + passes
 		 * NULL, which is also what call_user_func & friends want. pVm->pFrame is the caller. */
 		{
-			sxi32 rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,pFunc->nByRefMask,0,0);
+			sxi32 rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,pFunc->nByRefMask,0,0,pEffCallMap);
 			PH7_DISPATCH_ENFORCE_RC(rcDA)
 		}
 		/* Host function (builtin): build the effective spread-key map so the

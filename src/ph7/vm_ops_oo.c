@@ -281,16 +281,16 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 			ph7_class_method *pCtorArgs = pCons;
 			sxi32 rcDA;
 			if( pCtorArgs == 0 ){
-				rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,0,0);
+				rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,0,0,pEffNewMap);
 			}else if( pCtorArgs->sFunc.iFlags & VM_FUNC_NATIVE ){
 				/* A native constructor has no compiled formals; its by-ref positions
 				 * come from the signature-derived mask, the builtin way. */
 				rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,
-					pCtorArgs->sFunc.pNative ? pCtorArgs->sFunc.pNative->nByRefMask : 0,0,0);
+					pCtorArgs->sFunc.pNative ? pCtorArgs->sFunc.pNative->nByRefMask : 0,0,0,pEffNewMap);
 			}else{
 				rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,
 					(ph7_vm_func_arg *)SySetBasePtr(&pCtorArgs->sFunc.aArgs),
-					SySetUsed(&pCtorArgs->sFunc.aArgs),0,0,0);
+					SySetUsed(&pCtorArgs->sFunc.aArgs),0,0,0,pEffNewMap);
 			}
 			if( rcDA == PH7_ABORT || rcDA == PH7_EXCEPTION ){
 				/* Reading an argument raised (a string-offset Error, a magic accessor's
