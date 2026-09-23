@@ -1129,44 +1129,119 @@ PH7_PRIVATE sxi32 PH7_VmInstallGeneratorNative(ph7_vm *pVm)
 	return PH7_ClassImplement(pClass,pIterator);
 }
 /*
- * Closure's C-bodied methods.
+ * Closure::__construct() — php declares it PRIVATE and still words the refusal as
+ * an instantiation error rather than a visibility one, so the body has to exist.
+ */
+PH7_PRIVATE int vm_builtin_Closure_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return PH7_VmThrowException(pCtx, "Error",
+		"Instantiation of class Closure is not allowed");
+}
+/*
+ * Closure::call(object $newThis, mixed ...$args) — bind and invoke in one step.
  *
- * These are the first methods in the engine whose body is a C routine rather than
- * bytecode (VM_FUNC_NATIVE). They were global `__closure_bindTo` /
- * `__closure_fromCallable` thunks that the prelude's one-line PHP methods forwarded
- * to — the shape every builtin class had to take before a method could BE C. The
- * class is still declared in the builtin chunk; only these three methods are
- * attached from here, after that chunk has compiled.
+ * This was the last PHP left in the class: `$bound = $this->bindTo($newThis,
+ * get_class($newThis)); return $bound(...$args);`. That spelling leaked its own
+ * internals — a non-object argument reported `get_class(): Argument #1 ($object)
+ * must be of type object, string given` where php names THIS method's parameter,
+ * which is what declaring `object $newThis` buys (the shared screen words it).
+ * The scope php binds is the new $this's class, exactly as the PHP did.
+ */
+PH7_PRIVATE int vm_builtin_Closure_call(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pClosure, *pNewThis, *pClone;
+	ph7_value *pRecv = PH7_ContextThisValue(pCtx);
+	ph7_value sBound;
+	SyString sScope;
+	sxi32 rc;
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx, "ArgumentCountError",
+			"Closure::call() expects at least 1 argument, 0 given");
+	}
+	if( pRecv == 0 || !VmValueIsClosure(pVm, pRecv) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	if( (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 || apArg[0]->x.pOther == 0 ){
+		/* Unreachable while the declared `object $newThis` is screened; kept because
+		 * rule 44's family says a screen written for one body shape has not
+		 * necessarily run for this one. */
+		return PH7_VmThrowException(pCtx, "TypeError",
+			"Closure::call(): Argument #1 ($newThis) must be of type object");
+	}
+	pClosure = (ph7_class_instance *)pRecv->x.pOther;
+	pNewThis = (ph7_class_instance *)apArg[0]->x.pOther;
+	pClone = PH7_CloneClassInstance(pClosure);
+	if( pClone == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	SyStringInitFromBuf(&sScope, pNewThis->pClass->sName.zString, pNewThis->pClass->sName.nByte);
+	VmClosureRebind(pClone, pNewThis, &sScope);
+	/* The bound closure is handed to the dispatcher through a STACK carrier that
+	 * takes its own reference (rule 16): a context value would be released with the
+	 * call context and unref the instance a second time. */
+	PH7_MemObjInit(pVm, &sBound);
+	sBound.x.pOther = pClone;
+	MemObjSetType(&sBound, MEMOBJ_OBJ);
+	pClone->iRef++;
+	rc = PH7_VmCallUserFunction(pVm, &sBound, nArg - 1, apArg + 1, pCtx->pRet);
+	PH7_MemObjRelease(&sBound);
+	return rc;
+}
+/*
+ * Closure — declared entirely from C.
+ *
+ * Its three methods were the first in the engine whose body is a C routine rather
+ * than bytecode (VM_FUNC_NATIVE), retiring the global `__closure_bindTo` /
+ * `__closure_fromCallable` thunks a prelude method used to forward to. The
+ * DECLARATION stayed in the builtin chunk until now, which cost three things: the
+ * engine slots `$__fn`/`$__this`/`$__scope` were on every presentation surface
+ * (php's Closure has NO properties), `__construct` was public where php's is
+ * private, and `call()` was PHP that leaked `get_class()`'s diagnostic.
  */
 PH7_PRIVATE sxi32 PH7_VmInstallClosureNative(ph7_vm *pVm)
 {
 	static const PH7_NativeMethodDef aMethod[] = {
 		/* Parameter names are php's own ($newScope, not $scope): this string is the
-		 * declaration of record for arity, by-ref positions and — once the reflection
-		 * chunk reads a native method's signature the way it already reads a
-		 * builtin's — the reported parameter list. */
+		 * declaration of record for arity, by-ref positions and the reported
+		 * parameter list. */
+		{ "__construct",  PH7_MOD_PRIVATE, "", 0,
+		  vm_builtin_Closure_construct },
 		{ "bindTo",       PH7_MOD_PUBLIC,
 		  "?object $newThis, object|string|null $newScope = \"static\"", "?Closure",
 		  vm_builtin_Closure_bindTo },
 		{ "bind",         PH7_MOD_PUBLIC|PH7_MOD_STATIC,
 		  "Closure $closure, ?object $newThis, object|string|null $newScope = \"static\"", "?Closure",
 		  vm_builtin_Closure_bindTo },
+		{ "call",         PH7_MOD_PUBLIC,
+		  "object $newThis, mixed ...$args", "mixed",
+		  vm_builtin_Closure_call },
 		{ "fromCallable", PH7_MOD_PUBLIC|PH7_MOD_STATIC,
 		  "callable $callback", "Closure",
 		  vm_builtin_Closure_fromCallable },
 	};
-	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"Closure",sizeof("Closure")-1,0,0);
-	sxu32 n;
-	if( pClass == 0 ){
-		return SXERR_NOTFOUND;
-	}
-	for( n = 0 ; n < SX_ARRAYSIZE(aMethod) ; n++ ){
-		sxi32 rc = PH7_NativeClassInstallMethod(&(*pVm),pClass,&aMethod[n],0);
-		if( rc != SXRET_OK ){
-			return rc;
-		}
-	}
-	return SXRET_OK;
+	/* The engine's own slots: the callable NAME, the bound receiver and the bound
+	 * scope. php presents no property at all for a Closure, so all three carry
+	 * PH7_MOD_HIDDEN — they keep working for `new`, `clone` and the C bodies (and
+	 * for serialize(), which this class refuses anyway) and disappear from
+	 * var_dump/print_r/(array)/get_object_vars/foreach/json_encode and Reflection. */
+	static const PH7_NativePropDef aProp[] = {
+		{ "__fn",    PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ "__this",  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ "__scope", PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+	};
+	static const PH7_NativeClassSpec sSpec = {
+		"Closure", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE|PH7_CLASS_NOINSTANTIATE,
+		aMethod, SX_ARRAYSIZE(aMethod),
+		0, 0,
+		aProp, SX_ARRAYSIZE(aProp),
+		0, 0
+	};
+	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);
 }
 /*
  * Closure::bindTo($newThis, $scope='static') / Closure::bind($closure, $newThis, $scope='static').

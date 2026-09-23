@@ -2060,17 +2060,15 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	 * segfaults the first `new Fiber`. */
 	PH7_VmInstallFiberNative(&(*pVm));
 	pVm->pFiberClass = PH7_VmExtractClass(pVm,"Fiber",5,0,0);
-	/* Cache the Closure class pointer (closures are instances of it). It is declared
-	 * in the chunk, so its no-serialize rule is stamped here rather than on a spec. */
+	/* Declare Closure -- class, the three hidden engine slots and all five methods
+	 * are C now, so it does not exist until this runs. Cache the pointer only AFTER
+	 * (rule 2): every closure created by the engine is an instance of it, and a NULL
+	 * cache is a segfault on the first one. Its no-serialize rule rides the spec
+	 * rather than being stamped on afterwards. */
+	PH7_VmInstallClosureNative(&(*pVm));
 	pVm->pClosureClass = PH7_VmExtractClass(pVm,"Closure",7,0,0);
-	if( pVm->pClosureClass ){
-		pVm->pClosureClass->iFlags |= PH7_CLASS_NOSERIALIZE;
-	}
 	pVm->pClosureThis = 0; /* transient bound-$this slot, consumed per call */
 	pVm->pClosureScope = 0; /* transient bound-scope slot, consumed per call */
-	/* Closure::bindTo/bind/fromCallable, as real C-bodied METHODS rather than the
-	 * global __closure_* thunks a prelude method used to forward to. */
-	PH7_VmInstallClosureNative(&(*pVm));
 	/* Cache the stdClass pointer ((object) cast target + dynamic-property owner) */
 	pVm->pStdClass = PH7_VmExtractClass(pVm,"stdClass",sizeof("stdClass")-1,0,0);
 	/* Declare Generator, THEN cache the pointer -- it no longer exists until the

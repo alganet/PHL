@@ -1166,6 +1166,15 @@ struct ph7_class
                                      * Without it the default object path emits the private slots —
                                      * for these classes a raw POINTER, which unserialize() would
                                      * hand straight back to a method. */
+#define PH7_CLASS_NOINSTANTIATE 0x1000 /* `new C` is refused by the OBJECT-CREATION step, before the
+                                     * constructor's visibility is ever consulted — php's
+                                     * "Instantiation of class %s is not allowed", which its
+                                     * create_object handler raises. The distinction is visible:
+                                     * Closure's __construct is PRIVATE (Reflection prints it that
+                                     * way), so without this flag `new Closure` reports a visibility
+                                     * refusal ("Call to private Closure::__construct() from global
+                                     * scope") where php reports the instantiation one. A class that
+                                     * merely wants a private ctor does NOT want this bit. */
 /* Class attribute/methods/constants protection levels */
 #define PH7_CLASS_PROT_PUBLIC     1 /* public */
 #define PH7_CLASS_PROT_PROTECTED  2 /* protected */
@@ -3698,6 +3707,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallClosureNative(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmInstallFiberNative(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmInstallGeneratorNative(ph7_vm *pVm);
 PH7_PRIVATE int vm_builtin_Closure_bindTo(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Closure_call(ph7_context *pCtx, int nArg, ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_Closure_construct(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Fiber_construct(ph7_context *pCtx, int nArg, ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_Fiber_destruct(ph7_context *pCtx, int nArg, ph7_value **apArg);

@@ -266,18 +266,10 @@
 	 * Generator's `implements Iterator` is attached there too, and has to be: it is
 	 * applied AFTER its methods exist, because PH7_ClassImplement installs an
 	 * ABSTRACT stub for every interface method a class does not already declare. */\
-	"final class Closure {"\
-	"  private $__fn;"\
-	"  private $__this;"\
-	"  private $__scope;"\
-	"  public function __construct(){ throw new \\Error('Instantiation of class Closure is not allowed'); }"\
-	/* bindTo()/bind()/fromCallable() are NATIVE methods installed by
-	 * PH7_VmInstallClosureNative() — they used to be one-line forwards to the
-	 * global __closure_bindTo/__closure_fromCallable thunks, which no longer
-	 * exist. call() stays here because its body is genuinely PHP: it rebinds and
-	 * then invokes with an argument unpack. */\
-	"  public function call($newThis, ...$args){ $bound = $this->bindTo($newThis, get_class($newThis)); return $bound(...$args); }"\
-	"}"\
+	/* Closure is declared ENTIRELY in C by PH7_VmInstallClosureNative() (vm_exec_ctx.c):
+	 * class, the three engine slots (hidden, as php presents no property) and all five
+	 * methods. It cannot live here — a chunk-declared property is on every presentation
+	 * surface, and `call()` in PHP leaked get_class()'s own TypeError text. */\
 	/* stdClass is empty (PHP-exact): holds only dynamic (runtime-added) properties. */\
 	"#[Attribute(Attribute::TARGET_CLASS)]"\
 	"final class Attribute {"\

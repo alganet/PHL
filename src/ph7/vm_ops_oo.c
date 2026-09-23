@@ -250,6 +250,21 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 		if( rcErr == SXERR_ABORT ){ VM_EXIT_ABORT; }
 		rc = rcErr;
 		PH7_THROW_ROUTE_MIDEXPR(rc)
+	}else if( pClass->iFlags & PH7_CLASS_NOINSTANTIATE ){
+		/* php refuses this one in the create_object handler, so the refusal names the
+		 * INSTANTIATION and never reaches the constructor — which matters because the
+		 * class may still declare a private __construct that Reflection prints. Same
+		 * shape as the enum reject below: no instance, no __destruct. */
+		SyBlob sErrMsg;
+		SyBlobInit(&sErrMsg,&pVm->sAllocator);
+		SyBlobFormat(&sErrMsg,"Instantiation of class %z is not allowed",&pClass->sName);
+		VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
+		if( nCtorArgs > 0 ){
+			VmPopOperand(&pTos,nCtorArgs);
+		}
+		PH7_MemObjRelease(pTos);
+		pTos->nIdx = SXU32_HIGH;
+		VM_EXIT_BREAK;
 	}else if( pClass->iFlags & PH7_CLASS_ENUM ){
 		/* php 8.1: enums cannot be instantiated — a catchable Error, raised
 		 * BEFORE any construction (no instance, no __destruct). */

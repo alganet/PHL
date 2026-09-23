@@ -811,13 +811,18 @@ static int ReflectSigScalar(ph7_context *pCtx, const char *z, int n, ph7_value *
 		ph7_value_bool(pOut,0);
 		return 1;
 	}
-	if( n >= 2 && z[0] == '\'' && z[n-1] == '\'' ){
-		/* Unescape \' and \\ , the only two escapes the signature writer emits. */
+	if( n >= 2 && (z[0] == '\'' || z[0] == '"') && z[n-1] == z[0] ){
+		/* Unescape the quote character and \\ , the only two escapes the signature
+		 * writer emits. BOTH quote spellings are accepted because both scanners in
+		 * vm_arg_check.c step over either one: a native method's zSig lives in C, so
+		 * `= \"static\"` is the natural way to write Closure::bindTo's default and it
+		 * used to reduce to php's `<default>` placeholder here. */
 		SyBlob sOut;
+		char cQuote = z[0];
 		int k;
 		SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
 		for( k = 1 ; k < n - 1 ; k++ ){
-			if( z[k] == '\\' && k + 1 < n - 1 && (z[k+1] == '\'' || z[k+1] == '\\') ){
+			if( z[k] == '\\' && k + 1 < n - 1 && (z[k+1] == cQuote || z[k+1] == '\\') ){
 				k++;
 			}
 			SyBlobAppend(&sOut,(const void *)&z[k],sizeof(char));
@@ -1527,17 +1532,27 @@ static const char *const azReflectTarget[] = {
 static void ReflectExportValue(ph7_context *pCtx, SyBlob *pOut, ph7_value *pVal, int iDepth);
 
 /*
- * A string the way php's reflection prints one: single-quoted, with the
- * NON-PRINTABLE bytes escaped (php's smart_str_append_escaped). The quote
- * itself is NOT escaped — php's own output for "q'q" is 'q'q'.
+ * A string the way php's reflection prints one, in either of php's TWO quotings.
+ *
+ * A USERLAND default prints single-quoted, with the NON-PRINTABLE bytes escaped
+ * (php's smart_str_append_escaped) and the quote itself NOT escaped — php's own
+ * output for "q'q" is 'q'q'. An INTERNAL one prints DOUBLE-quoted and escapes the
+ * quote: php answers `string $enclosure = "\""` for str_getcsv where PHL used to
+ * answer `'"'`. Every internal function with a string default was affected; the
+ * pair was found on Closure::bindTo's `= "static"` while making that class native.
  */
-static void ReflectExportStr(SyBlob *pOut, const char *zIn, sxu32 nIn)
+static void ReflectExportStrQ(SyBlob *pOut, const char *zIn, sxu32 nIn, char cQuote)
 {
 	static const char zHexDigit[] = "0123456789ABCDEF";
 	sxu32 i;
-	SyBlobAppend(pOut, "'", sizeof(char));
+	SyBlobAppend(pOut, &cQuote, sizeof(char));
 	for( i = 0 ; i < nIn ; i++ ){
 		unsigned char c = (unsigned char)zIn[i];
+		if( c == (unsigned char)cQuote && cQuote == '"' ){
+			SyBlobAppend(pOut, "\\\"", sizeof("\\\"")-1);
+			continue;
+		}
+		{
 		const char *zEsc = 0;
 		switch( c ){
 			case 0x09: zEsc = "\\t"; break;
@@ -1561,8 +1576,14 @@ static void ReflectExportStr(SyBlob *pOut, const char *zIn, sxu32 nIn)
 		}else{
 			SyBlobAppend(pOut, (const char *)&c, sizeof(char));
 		}
+		}
 	}
-	SyBlobAppend(pOut, "'", sizeof(char));
+	SyBlobAppend(pOut, &cQuote, sizeof(char));
+}
+/* php's userland quoting, which is what every existing caller means. */
+static void ReflectExportStr(SyBlob *pOut, const char *zIn, sxu32 nIn)
+{
+	ReflectExportStrQ(pOut, zIn, nIn, '\'');
 }
 /*
  * A float the way php's reflection prints one: the plain string cast (which
@@ -3357,6 +3378,13 @@ static sxi32 ReflectCheckInstantiable(ph7_context *pCtx, ph7_class *pClass)
 	}
 	if( pClass->iFlags & PH7_CLASS_ABSTRACT ){
 		return PH7_VmThrowException(pCtx, "Error", "Cannot instantiate abstract class %z", &pClass->sName);
+	}
+	if( pClass->iFlags & PH7_CLASS_NOINSTANTIATE ){
+		/* The `new` path's create_object refusal, which php raises here too —
+		 * ReflectionClass::newInstance() on a Closure is the same Error, not a
+		 * visibility one about its private constructor. */
+		return PH7_VmThrowException(pCtx, "Error",
+			"Instantiation of class %z is not allowed", &pClass->sName);
 	}
 	return PH7_OK;
 }
@@ -7938,11 +7966,18 @@ static void ReflectExportDefault(ph7_context *pCtx, SyBlob *pOut, ReflectParamDe
 	}
 	{
 		/* A DECLARED default is signature TEXT: reduce it the way
-		 * getDefaultValue() does, and fall back to php's own placeholder. */
+		 * getDefaultValue() does, and fall back to php's own placeholder.
+		 * Only an INTERNAL parameter reaches this branch (a compiled one carries
+		 * pArg above), which is exactly the case php prints DOUBLE-quoted. */
 		const char *zDef = SyStringData(&pDesc->sDefText);
 		int nDef = (int)SyStringLength(&pDesc->sDefText);
 		ph7_value *pVal = ph7_context_new_scalar(pCtx);
 		if( pVal && ReflectSigScalar(pCtx, zDef, nDef, pVal) ){
+			if( (pVal->iFlags & (MEMOBJ_STRING|MEMOBJ_NULL)) == MEMOBJ_STRING ){
+				ReflectExportStrQ(pOut, (const char *)SyBlobData(&pVal->sBlob),
+					SyBlobLength(&pVal->sBlob), '"');
+				return;
+			}
 			ReflectExportValue(pCtx, pOut, pVal, 0);
 			return;
 		}

@@ -1729,7 +1729,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ DOM_DOC,       PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0, 0.0 }, 0 },
 		{ DNL_OWNER,     PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0, 0.0 }, 0 },
 		{ DNL_NAME,      PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
-		{ DNL_SNAP_SLOT, PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0, 0.0 }, 0 },
+		/* The cached node snapshot, missed by the 2 Aug hidden-slot sweep exactly as
+		 * Closure's three were: php presents no property on either class this table
+		 * declares (DOMNodeList, DOMNamedNodeMap), and `__snap` was on var_dump,
+		 * (array), get_object_vars, foreach, json_encode and Reflection. */
+		{ DNL_SNAP_SLOT, PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeMethodDef aListMethod[] = {
 		{ "count",       PH7_MOD_PUBLIC, "", "int", vm_builtin_DOMNodeList_count },
