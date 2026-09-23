@@ -603,23 +603,7 @@ PH7_PRIVATE sxi32 VmThrowFixedError(ph7_vm *pVm, const char *zClass, const char 
 /* Write [pSrcVal] into the instance property [zProp] of [pObj], clearing the
  * readonly write-once latch so later user writes raise php's "Cannot modify
  * readonly property" through the normal store path. */
-static void VmEnumSetInstanceProp(ph7_vm *pVm,ph7_class_instance *pObj,
-	const char *zProp,sxu32 nProp,ph7_value *pSrcVal)
-{
-	SyHashEntry *pEntry = SyHashGet(&pObj->hAttr,(const void *)zProp,nProp);
-	VmClassAttr *pVmAttr;
-	ph7_value *pSlot;
-	if( pEntry == 0 ){
-		return;
-	}
-	pVmAttr = (VmClassAttr *)pEntry->pUserData;
-	pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,pVmAttr->nIdx);
-	if( pSlot == 0 ){
-		return;
-	}
-	PH7_MemObjStore(pSrcVal,pSlot);
-	pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
-}
+
 /* Return the backing value (the `value` property) of an already-materialized
  * enum case, or 0 when unavailable (pure enum / not yet materialized). */
 PH7_PRIVATE ph7_value * VmEnumCaseBackingValue(ph7_vm *pVm,ph7_class_attr *pCase)
@@ -777,10 +761,10 @@ PH7_PRIVATE sxi32 VmEnumMaterializeCase(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 		return PH7_ABORT;
 	}
 	PH7_MemObjInitFromString(pVm,&sPropVal,&pCase->sName);
-	VmEnumSetInstanceProp(&(*pVm),pObj,"name",sizeof("name")-1,&sPropVal);
+	PH7_NativeSetProp(&(*pVm),pObj,"name",sizeof("name")-1,&sPropVal);
 	PH7_MemObjRelease(&sPropVal);
 	if( pClass->nEnumBacking != 0 ){
-		VmEnumSetInstanceProp(&(*pVm),pObj,"value",sizeof("value")-1,&sBacking);
+		PH7_NativeSetProp(&(*pVm),pObj,"value",sizeof("value")-1,&sBacking);
 	}
 	PH7_MemObjRelease(&sBacking);
 	/* Park the singleton in the case's constant slot. The slot takes over

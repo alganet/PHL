@@ -1263,6 +1263,8 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallMethod(ph7_vm *pVm,ph7_class *pClass,
 PH7_PRIVATE sxi32 PH7_NativeClassInstallProperty(ph7_vm *pVm,ph7_class *pClass,
 	const PH7_NativePropDef *pDef);
 PH7_PRIVATE void PH7_NativeLiteralValue(ph7_vm *pVm,const void *pLiteral,ph7_value *pOut);
+PH7_PRIVATE void PH7_NativeSetProp(ph7_vm *pVm,ph7_class_instance *pObj,
+	const char *zProp,sxu32 nProp,ph7_value *pSrcVal);
 /*
  * Each class method is parsed out and stored in an instance of the following
  * structure.

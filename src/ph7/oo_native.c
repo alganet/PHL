@@ -60,6 +60,32 @@ PH7_PRIVATE void PH7_NativeLiteralValue(ph7_vm *pVm,const void *pLiteral,ph7_val
 	}
 }
 /*
+ * Write a declared property of an instance from C.
+ *
+ * Every native class that hands an OBJECT back to PHP has to fill one in, and the
+ * write has to go through the instance's own slot table (hAttr -> VmClassAttr ->
+ * pVm->aMemObj) rather than the class declaration, or the value lands nowhere.
+ * Silently does nothing for a name the class does not declare -- callers pass
+ * literals from their own spec table, so a miss is a build error, not input.
+ */
+PH7_PRIVATE void PH7_NativeSetProp(ph7_vm *pVm,ph7_class_instance *pObj,
+	const char *zProp,sxu32 nProp,ph7_value *pSrcVal)
+{
+	SyHashEntry *pEntry = SyHashGet(&pObj->hAttr,(const void *)zProp,nProp);
+	VmClassAttr *pVmAttr;
+	ph7_value *pSlot;
+	if( pEntry == 0 ){
+		return;
+	}
+	pVmAttr = (VmClassAttr *)pEntry->pUserData;
+	pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,pVmAttr->nIdx);
+	if( pSlot == 0 ){
+		return;
+	}
+	PH7_MemObjStore(pSrcVal,pSlot);
+	pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
+}
+/*
  * Resolve a class by name for the builder's own use (parents and interfaces).
  * Autoload is deliberately NOT triggered: these run at VM init, where the only
  * classes that can exist are the ones installed before this call, and a missing
