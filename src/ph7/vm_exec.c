@@ -6462,7 +6462,8 @@ case PH7_OP_CALL: {
 			rc = VmFiberSetupFrame(pVm, pExecCtx, pThis, nGenArgs, apCallArgs,
 				pEffCallMap ? (pEffCallMap->bStrict ? 1 : 0) : (pVm->bCurStrict ? 1 : 0),
 				pSelfHint,
-				TRUE/*generator: the g(...) call site is in the message*/);
+				TRUE/*generator: the g(...) call site is in the message*/,
+				TRUE/*a source-level call binds a by-ref parameter to the caller's slot*/);
 			pVm->pFrame = pExecCtx->pFrame->pParent;
 			pExecCtx->pFrame->pParent = 0;
 			if( apCallArgs ){

@@ -888,6 +888,12 @@ struct ph7_exec_ctx
 	SySet aSavedSelf;         /* Stage 4: this coroutine's own aSelf (self::/static::)
 	                           * entries, parked while suspended (ph7_class* pointers) */
 	sxu32 nSelfBase;          /* aSelf depth below this coroutine's own pushes */
+	SySet aByRefArg;          /* Caller slots (sxu32) this body's by-REFERENCE parameters
+	                           * alias. The body outlives its caller's frame, so whichever
+	                           * of the two dies last releases the slot: the caller's
+	                           * teardown counts this frame's name as a holder and skips it,
+	                           * and this ctx's teardown asks PH7_VmReleaseUnheldSlot once
+	                           * its own names are gone. */
 	void *pPrivate;           /* Generator wrapper (ph7_generator*) or NULL for fibers */
 	ph7_class_instance *pInjected; /* Generator::throw() inject-at-yield: exception to raise at
 	                                * the suspended yield on the next resume, or NULL. One-shot:
@@ -4032,7 +4038,7 @@ PH7_PRIVATE ph7_class * VmFccResolveScope(ph7_vm *pVm, ph7_value *pTarget);
 PH7_PRIVATE ph7_class * PH7_VmResolveScopeName(ph7_vm *pVm, const char *zCls, sxu32 nCls);
 PH7_PRIVATE int PH7_VmIsScopeKeyword(const char *zName,sxu32 nName);
 PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue);
-PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx, ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg, int bStrict, ph7_class *pSelfHint, int bCallSiteInMsg);
+PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx, ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg, int bStrict, ph7_class *pSelfHint, int bCallSiteInMsg, int bAliasByRef);
 PH7_PRIVATE ph7_generator * VmGeneratorExtractCtx(ph7_vm *pVm, ph7_value *pGenObj);
 PH7_PRIVATE ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc);
 PH7_PRIVATE ph7_generator * VmNewGenerator(ph7_vm *pVm, ph7_exec_ctx *pCtx);

@@ -46,6 +46,8 @@ PH7_PRIVATE ph7_exec_ctx * VmNewExecCtx(ph7_vm *pVm, ph7_vm_func *pFunc)
 	 * so they don't pollute the resumer's aSelf. Borrowed ph7_class* pointers. */
 	SySetInit(&pCtx->aSavedSelf, &pVm->sAllocator, sizeof(ph7_class *));
 	pCtx->nSelfBase = 0;
+	/* Caller slots this body's by-reference parameters alias (see the struct). */
+	SySetInit(&pCtx->aByRefArg, &pVm->sAllocator, sizeof(sxu32));
 	pCtx->pParkedSegment = 0;
 	pCtx->nBodyExecDepth = 0;
 	/* Allocate a private operand stack */
@@ -560,6 +562,19 @@ PH7_PRIVATE void VmReleaseExecCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx)
 	if( pCtx->pFrame ){
 		VmFreeDetachedFrame(pVm, pCtx->pFrame);
 		pCtx->pFrame = 0;
+	}
+	/* A by-reference parameter aliased a CALLER's slot; the frame teardown above just
+	 * dropped this body's name for it. Release it if nothing is left holding it — the
+	 * caller may already be gone (it skipped the slot precisely because this frame
+	 * held it), in which case this is its last holder. Runs after the frame so the
+	 * body's own row is out of the count. */
+	{
+		sxu32 n;
+		sxu32 *aIdx = (sxu32 *)SySetBasePtr(&pCtx->aByRefArg);
+		for( n = 0; n < SySetUsed(&pCtx->aByRefArg); n++ ){
+			PH7_VmReleaseUnheldSlot(pVm, aIdx[n]);
+		}
+		SySetRelease(&pCtx->aByRefArg);
 	}
 	/* Release individual operand stack entries (decrement refcounts,
 	 * free string buffers, etc.) before bulk-freeing the stack memory.
@@ -1793,9 +1808,28 @@ PH7_PRIVATE sxi32 VmEnforceArgType(ph7_vm *pVm, ph7_vm_func *pFunc, ph7_vm_func_
 	}
 	return SXRET_OK;
 }
+/*
+ * Record a caller slot this body's frame now ALIASES through a by-reference
+ * parameter. The body outlives its caller, so the two frames cannot each own the
+ * slot: the caller's teardown counts this frame's name binding as a holder and
+ * leaves the value standing, and VmReleaseExecCtx asks PH7_VmReleaseUnheldSlot for
+ * every row here once its own names are gone — whichever dies last frees it.
+ */
+static void VmCtxAliasByRefArg(ph7_exec_ctx *pExecCtx,sxu32 nIdx)
+{
+	sxu32 *aIdx = (sxu32 *)SySetBasePtr(&pExecCtx->aByRefArg);
+	sxu32 n;
+	for( n = 0 ; n < SySetUsed(&pExecCtx->aByRefArg) ; ++n ){
+		if( aIdx[n] == nIdx ){
+			/* Two parameters over one actual (`g($x,$x)`) is ONE slot to give back. */
+			return;
+		}
+	}
+	SySetPut(&pExecCtx->aByRefArg,(const void *)&nIdx);
+}
 PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 	ph7_class_instance *pClosureThis, int nArg, ph7_value **apArg,
-	int bStrict, ph7_class *pSelfHint, int bCallSiteInMsg)
+	int bStrict, ph7_class *pSelfHint, int bCallSiteInMsg, int bAliasByRef)
 {
 	ph7_vm_func *pFunc = pExecCtx->pFunc;
 	ph7_vm_func_arg *aFormalArg;
@@ -1873,7 +1907,15 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 							return rc;
 						}
 					}
-					PH7_HashmapInsert(pMap,0,apArg[k]);
+					if( bAliasByRef && (aFormalArg[n].iFlags & VM_FUNC_ARG_BY_REF)
+					 && apArg[k]->nIdx != SXU32_HIGH ){
+						/* A by-ref variadic tail aliases its actuals here too — the
+						 * ordinary call's rule, one container over. */
+						VmCtxAliasByRefArg(pExecCtx,apArg[k]->nIdx);
+						PH7_HashmapInsertByRef(pMap,0,apArg[k]->nIdx);
+					}else{
+						PH7_HashmapInsert(pMap,0,apArg[k]);
+					}
 				}
 				sSlot.nIdx = nVariadicIdx;
 				sSlot.pUserData = 0;
@@ -1889,6 +1931,28 @@ PH7_PRIVATE sxi32 VmFiberSetupFrame(ph7_vm *pVm, ph7_exec_ctx *pExecCtx,
 			 * VmEnforceArgType (TypeError on mismatch, weak coercion in
 			 * place otherwise) instead of the old silent xCast. A variadic
 			 * formal collects as-is (no per-element declared-type model). */
+			if( bAliasByRef && (aFormalArg[n].iFlags & VM_FUNC_ARG_BY_REF)
+			 && apArg[n]->nIdx != SXU32_HIGH ){
+				/* php binds a generator's by-REFERENCE parameter to the CALLER's slot at
+				 * the g(...) that builds the Generator, so the body's write reaches the
+				 * caller's variable whenever it eventually runs. Copying it left the
+				 * actual untouched for every resume. The type check runs on the actual,
+				 * as OP_CALL's by-ref binder does, and never on a copy the alias
+				 * replaces. Fiber::start() and the embedder entry pass by VALUE (php's
+				 * own decision at those two boundaries), hence bAliasByRef. */
+				rc = VmEnforceArgType(pVm,pFunc,&aFormalArg[n],n+1,apArg[n],bStrict,pSelfHint);
+				if( rc != SXRET_OK ){
+					return rc;
+				}
+				PH7_VmBindVarSlot(pVm,pExecCtx->pFrame,
+					SyStringData(&aFormalArg[n].sName),SyStringLength(&aFormalArg[n].sName),
+					apArg[n]->nIdx);
+				VmCtxAliasByRefArg(pExecCtx,apArg[n]->nIdx);
+				sSlot.nIdx = apArg[n]->nIdx;
+				sSlot.pUserData = 0;
+				SySetPut(&pExecCtx->pFrame->sArg, &sSlot);
+				continue;
+			}
 			pObj = VmExtractMemObj(pVm, &aFormalArg[n].sName, FALSE, TRUE);
 			if( pObj ){
 				PH7_MemObjStore(apArg[n], pObj);
@@ -2043,7 +2107,8 @@ PH7_PRIVATE int vm_builtin_Fiber_start(ph7_context *pCtx, int nArg, ph7_value **
 		int nActual = nArg;
 		rc = VmFiberSetupFrame(pVm, pExecCtx, pClosureThis, nActual, apValues,
 			0 /* weak-mode arg binding, like call_user_func */, 0,
-			FALSE/*Fiber::start(): php omits the call-site segment*/);
+			FALSE/*Fiber::start(): php omits the call-site segment*/,
+			FALSE/*php's Fiber::start() passes by VALUE and warns (§7.1)*/);
 		/* Nothing to free: apValues aliases the operand stack now, it is not a
 		 * buffer this function allocated. */
 	}
@@ -2289,7 +2354,8 @@ PH7_PRIVATE sxi32 PH7_VmFiberStart(ph7_vm *pVm, ph7_value *pFiber, int nArg, ph7
 	pVm->pFrame = pCtx->pFrame;
 	rc = VmFiberSetupFrame(pVm, pCtx, pClosureThis, nArg, apArg,
 		0 /* weak-mode arg binding (embedder entry) */, 0,
-		FALSE/*embedder entry: no userland call site*/);
+		FALSE/*embedder entry: no userland call site*/,
+		FALSE/*no source-level actuals to alias*/);
 	pVm->pFrame = pCtx->pFrame->pParent;
 	pCtx->pFrame->pParent = 0;
 	if( rc != SXRET_OK ){
