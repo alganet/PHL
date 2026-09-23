@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-Value alias taken INSIDE a by-ref foreach: PHL's COW hands the writer a fresh map, detaching the loop (php follows the variable live — a recorded divergence)
+Value alias taken INSIDE a by-ref foreach: PHL's COW hands the writer a fresh map, detaching the loop from the step after the copy (php follows the variable live — a recorded divergence)
 --SKIPIF--
 <?php
 if (function_exists('zend_version')) {
@@ -23,7 +23,7 @@ unset($v);
 echo implode(",", $a), " | ", implode(",", $b), "\n";
 ?>
 --EXPECT--
-1,2,3 | 100,200
+100,2,3 | 100,200
 --CLEAN--
 <?php
 unset($a, $b);

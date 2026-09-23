@@ -72,10 +72,10 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 		if( pNode == 0 ){
 			/* No more entry to process */
 			pc = pInstr->iP2 - 1; /* Jump to this destination */
-			if( pStep->iFlags & PH7_4EACH_STEP_REF ){
-				/* Break the reference with the last element */
-				SyHashDeleteEntry(&pFrameLocal->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue),0);
-			}
+			/* php does NOT break the binding: the value variable stays a reference to the
+			 * LAST element after the loop — that is what makes a second `foreach ($a as $v)`
+			 * write through it (the famous gotcha), and what the `unset($v)` idiom exists to
+			 * undo. Deleting the name here left $v undefined instead. */
 			/* Cleanup the mess left behind */
 			VmForeachHashmapStepRelease(&(*pVm),pInfo,pStep,TRUE);
 		}else{
@@ -86,15 +86,11 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 			 * lists the value ahead of the key (get_defined_vars() order). Only the
 			 * creation ORDER matters here; the stored values are independent. */
 			if( pStep->iFlags & PH7_4EACH_STEP_REF ){
-				SyHashEntry *pEntry;
-				/* Pass by reference */
-				pEntry = SyHashGet(&pFrameLocal->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue));
-				if( pEntry ){
-					pEntry->pUserData = SX_INT_TO_PTR(pNode->nValIdx);
-				}else{
-					SyHashInsert(&pFrameLocal->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue),
-						SX_INT_TO_PTR(pNode->nValIdx));
-				}
+				/* Pass by reference — a REGISTERED binding (PH7_VmBindVarSlot), so the element
+				 * counts the loop variable as a holder for as long as it is bound, exactly as
+				 * php's reference does. */
+				PH7_VmBindVarSlot(&(*pVm),pFrameLocal,SyStringData(&pInfo->sValue),
+					SyStringLength(&pInfo->sValue),pNode->nValIdx);
 			}else{
 				/* Make a copy of the entry value */
 				pValue = VmExtractMemObj(&(*pVm),&pInfo->sValue,FALSE,TRUE);
@@ -221,10 +217,7 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 		if( pEntry == 0 ){
 			/* Clean up the mess left behind */
 			pc = pInstr->iP2 - 1; /* Jump to this destination */
-			if( pStep->iFlags & PH7_4EACH_STEP_REF ){
-				/* Break the reference with the last element */
-				SyHashDeleteEntry(&pFrameLocal->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue),0);
-			}
+			/* The binding survives the loop (see the hashmap step) */
 			VmForeachStepUnlink(pInfo,pStep);
 			SyMemBackendPoolFree(&pVm->sAllocator,pStep);
 			PH7_ClassInstanceUnref(pThis);
@@ -296,14 +289,9 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 			pAttrValue = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
 			if( pAttrValue ){
 				if( pStep->iFlags & PH7_4EACH_STEP_REF ){
-					/* Pass by reference */
-					pEntry = SyHashGet(&pFrameLocal->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue));
-					if( pEntry ){
-						pEntry->pUserData = SX_INT_TO_PTR(pVmAttr->nIdx);
-					}else{
-						SyHashInsert(&pFrameLocal->hVar,SyStringData(&pInfo->sValue),SyStringLength(&pInfo->sValue),
-							SX_INT_TO_PTR(pVmAttr->nIdx));
-					}
+					/* Pass by reference (registered — see the hashmap step) */
+					PH7_VmBindVarSlot(&(*pVm),pFrameLocal,SyStringData(&pInfo->sValue),
+						SyStringLength(&pInfo->sValue),pVmAttr->nIdx);
 				}else{
 					/* Make a copy of the attribute value */
 					pValue = VmExtractMemObj(&(*pVm),&pInfo->sValue,FALSE,TRUE);

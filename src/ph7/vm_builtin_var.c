@@ -142,6 +142,11 @@ PH7_PRIVATE sxi32 VmUnsetVarByNameEx(ph7_vm *pVm,VmFrame *pFrame,const char *zNa
 		}
 	}
 
+	/* The frame's own "release this reference at exit" row for the binding about to go:
+	 * the entry is freed below, so the row would dangle (and a foreach value variable
+	 * unset once per loop filed one row per loop, which nothing consumed until the
+	 * function returned). */
+	VmDropFrameRefEntry(&(*pVm),nIdx,pEntry);
 	if( pRef == 0 ){
 		/* Unaliased variable: nobody else holds the slot, so the old path is right */
 		SyHashDeleteEntry2(pEntry);

@@ -6105,10 +6105,12 @@ PH7_PRIVATE void PH7_VmReleaseUnheldSlot(ph7_vm *pVm,sxu32 nIdx)
 }
 /*
  * Drop a frame's record of "this NAME refers to this slot" (sRef), used when the name
- * stops referring to it. Without it a name re-bound in a loop files one row per step
- * — the rows are only consumed at frame exit, so they are pure growth.
+ * stops referring to it — a rebind, or an unset of the name. The rows are otherwise only
+ * consumed at frame exit, so a name re-bound (or re-created) in a loop files one per step
+ * and the set is pure growth; they are also pointers to a symbol-table entry that unset()
+ * frees, which the teardown would later compare against a live entry at the same address.
  */
-static void VmDropFrameRefEntry(ph7_vm *pVm,sxu32 nIdx,SyHashEntry *pEntry)
+PH7_PRIVATE void VmDropFrameRefEntry(ph7_vm *pVm,sxu32 nIdx,SyHashEntry *pEntry)
 {
 	VmFrame *pFrame;
 	for( pFrame = pVm->pFrame ; pFrame ; pFrame = pFrame->pParent ){
@@ -6125,6 +6127,31 @@ static void VmDropFrameRefEntry(ph7_vm *pVm,sxu32 nIdx,SyHashEntry *pEntry)
 			n++;
 		}
 	}
+}
+/*
+ * Bind a NAME to an existing slot, creating the symbol-table entry when the name is
+ * new and RE-BINDING it when it is not. This is what a by-reference `foreach` does to
+ * its value variable on every step, and it goes through the reference table like any
+ * other alias: a binding that is not registered there is not a HOLDER, so the element
+ * it aliases did not count as referenced (no `&` in var_dump, and an array COPY quietly
+ * stopped sharing it) and nothing kept its value alive when the array let go.
+ */
+PH7_PRIVATE void PH7_VmBindVarSlot(ph7_vm *pVm,VmFrame *pFrame,const char *zName,sxu32 nByte,
+	sxu32 nIdx)
+{
+	SyHashEntry *pEntry = SyHashGet(&pFrame->hVar,(const void *)zName,nByte);
+	if( pEntry ){
+		PH7_VmRebindVarSlot(&(*pVm),pFrame,pEntry,zName,nByte,nIdx);
+		return;
+	}
+	if( SXRET_OK != SyHashInsert(&pFrame->hVar,(const void *)zName,nByte,SX_INT_TO_PTR(nIdx)) ){
+		return;
+	}
+	if( pFrame->pParent == 0 ){
+		/* A global is also an entry of the $GLOBALS view */
+		VmHashmapRefInsert(pVm->pGlobal,zName,nByte,nIdx);
+	}
+	PH7_VmRefObjInstall(&(*pVm),nIdx,SyHashLastEntry(&pFrame->hVar),0,0);
 }
 /*
  * Point an EXISTING symbol-table entry at another slot — php's `=&` on a name that
@@ -6159,9 +6186,22 @@ PH7_PRIVATE void PH7_VmRebindVarSlot(
 	VmDropFrameRefEntry(&(*pVm),nOld,pEntry);
 	pEntry->pUserData = SX_INT_TO_PTR(nIdx);
 	if( pFrame->pParent == 0 ){
-		/* A global is ALSO a $GLOBALS entry pointing at the old slot; re-point that
-		 * node (the by-reference insert overwrites an existing key in place). */
-		VmHashmapRefInsert(pVm->pGlobal,zName,nByte,nIdx);
+		/* A global is ALSO a $GLOBALS entry pointing at the old slot; re-point that node.
+		 * Done against the node directly rather than through VmHashmapRefInsert, whose
+		 * ph7_value key allocates a blob on every call — this runs once per step of a
+		 * global-scope `foreach ($a as &$v)`. */
+		ph7_hashmap_node *pGlobalNode = 0;
+		if( SXRET_OK == HashmapLookupBlobKey(pVm->pGlobal,(const void *)zName,nByte,&pGlobalNode)
+		 && pGlobalNode ){
+			if( pGlobalNode->nValIdx != nIdx ){
+				PH7_VmRefObjRemove(&(*pVm),pGlobalNode->nValIdx,0,pGlobalNode);
+				pGlobalNode->nValIdx = nIdx;
+				PH7_VmRefObjInstall(&(*pVm),nIdx,0,pGlobalNode,0);
+			}
+		}else{
+			/* No node under that exact blob key (a numeric name is filed as an INT key) */
+			VmHashmapRefInsert(pVm->pGlobal,zName,nByte,nIdx);
+		}
 	}
 	PH7_VmRefObjInstall(&(*pVm),nIdx,pEntry,0,0);
 	/* The old value dies with its last holder — and only then */
