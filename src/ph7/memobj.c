@@ -66,8 +66,13 @@ PH7_PRIVATE const char *ph7_type_name(ph7_value *pVal)
 {
 	if( ph7_value_is_null(pVal) ) return "null";
 	if( ph7_value_is_bool(pVal) ) return "bool";
-	if( ph7_value_is_int(pVal) ) return "int";
+	/* FLOAT before INT: ph7_value_is_int() is deliberately lenient — an
+	 * integer-valued real caches an int and answers TRUE — so asking it first named
+	 * a float "int" in every diagnostic that quotes a value's type
+	 * (`sort(1.0)` said `must be of type array, int given` where php says `float`).
+	 * A value that IS a float is a float whatever it has cached. */
 	if( ph7_value_is_float(pVal) ) return "float";
+	if( ph7_value_is_int(pVal) ) return "int";
 	if( ph7_value_is_string(pVal) ) return "string";
 	if( ph7_value_is_array(pVal) ) return "array";
 	if( ph7_value_is_object(pVal) ) return "object";

@@ -1190,6 +1190,56 @@ PH7_PRIVATE int PH7_ArgSatisfiesString(ph7_value *pArg)
 	return 1;
 }
 /*
+ * Does php's strict_types rule refuse this argument for the declared type?
+ *
+ * A `declare(strict_types=1)` file gets NO scalar coercion at an internal call
+ * either — php applies the same rule to a builtin, a native method and a userland
+ * function, and the single exception is the int -> float widening. So `trim(5)`,
+ * `sqrt("4")`, `str_repeat("a", 2.0)` and `in_array($n, $a, 1)` are all TypeErrors
+ * there, where the weak-mode screen below (which is the only one PHL had) coerces
+ * and computes.
+ *
+ * Only the arms a scalar could otherwise satisfy are decided here; an array, a
+ * resource, a null and a class-typed mismatch are the weak screen's, and its
+ * verdicts stand in both modes.
+ */
+static int VmStrictArgRefused(ph7_value *pArg,const char *zType,int nType)
+{
+	/* Tested in ph7_type_name()'s own order, so the branch taken and the name the
+	 * refusal reports can never disagree. FLOAT comes before INT on purpose:
+	 * ph7_value_is_int() is deliberately lenient — an integer-valued real caches an
+	 * int and answers TRUE — and `str_repeat("a", 2.0)` is php's TypeError, not an
+	 * accepted int. */
+	if( ph7_value_is_bool(pArg) ){
+		return !VmSigTypeHas(zType,nType,"bool")
+		    && !VmSigTypeHas(zType,nType,"true")
+		    && !VmSigTypeHas(zType,nType,"false");
+	}
+	if( ph7_value_is_float(pArg) ){
+		return !VmSigTypeHas(zType,nType,"float");
+	}
+	if( ph7_value_is_int(pArg) ){
+		/* int -> float is the one widening strict mode keeps. */
+		return !VmSigTypeHas(zType,nType,"int") && !VmSigTypeHas(zType,nType,"float");
+	}
+	if( ph7_value_is_string(pArg) ){
+		/* `callable` is not a coercion: a function-name string satisfies it in both
+		 * modes (array_map('strtoupper', …) under strict is php-legal). */
+		return !VmSigTypeHas(zType,nType,"string") && !VmSigTypeHas(zType,nType,"callable");
+	}
+	if( ph7_value_is_object(pArg) ){
+		/* An object reaches a `string` parameter only through __toString(), which is
+		 * a coercion strict mode does not perform. Every other arm is the weak
+		 * screen's decision. */
+		return VmSigTypeHas(zType,nType,"string")
+		    && !VmSigTypeHas(zType,nType,"object")
+		    && !VmSigTypeHas(zType,nType,"iterable")
+		    && !VmSigTypeHas(zType,nType,"callable")
+		    && !VmSigTypeHasClass(zType,nType);
+	}
+	return 0;
+}
+/*
  * PHP-8 ZPP type enforcement for host functions, driven by the aBuiltinSig[]
  * declaration (band A #7). Screens only the arguments that php can NEVER coerce
  * into a declared scalar parameter — arrays, resources, and objects without a
@@ -1255,6 +1305,10 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 	const char *zSig = pFunc->zSig;
 	const char *zCur, *zEnd;
 	int iArg = 0;
+	/* The CALL site's file mode, stamped by the compiler onto this call's argument
+	 * map (weak when there is no map — a call that carries no compile-time metadata
+	 * was written in a weak-mode file, since a strict one always attaches one). */
+	int bStrict = (pCtx->pArgMap && pCtx->pArgMap->bStrict) ? 1 : 0;
 	if( zSig == 0 ){
 		return SXRET_OK;
 	}
@@ -1335,7 +1389,10 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 		}
 		if( nType > 0 && !VmSigTypeHas(zType,nType,"mixed") ){
 			const char *zGiven = 0;
-			if( (pArg->iFlags & MEMOBJ_HASHMAP) != 0 ){
+			if( bStrict && VmStrictArgRefused(pArg,zType,nType) ){
+				/* php names the VALUE for a bool here too (`true given`). */
+				zGiven = VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf));
+			}else if( (pArg->iFlags & MEMOBJ_HASHMAP) != 0 ){
 				if( !VmSigTypeHas(zType,nType,"array")
 				 && !VmSigTypeHas(zType,nType,"iterable")
 				 && !VmSigTypeHas(zType,nType,"callable") ){
