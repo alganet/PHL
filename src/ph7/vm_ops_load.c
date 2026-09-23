@@ -1063,6 +1063,70 @@ static int VmIdxFeedsCoalesceAssign(const VmInstr *pInstr)
 	return (pInstr+1)->iOp == PH7_OP_NULLC_JMP;
 }
 /*
+ * Arm the write-back half of `$o[$k] op= v` on an ArrayAccess container. The
+ * value offsetGet just answered goes into a fresh SCRATCH memobj that pTos
+ * points at, so the compound-assign op computes IN that slot the way it would
+ * in an ordinary variable; the pending entry then makes the op's tail dispatch
+ * `offsetSet($k, computed)`. The KEY gets a reserved slot of its own (pIdx is
+ * released as soon as this opcode returns, and the write happens one opcode
+ * later); an ABSENT key — `$o[] op= v` — is carried as NULL, which is the value
+ * php hands both accessors for that shape.
+ *
+ * A failed reservation simply leaves the value unarmed: pTos keeps its
+ * no-slot temp and the op falls back to the pre-existing refusal.
+ */
+static void VmDimRmwArm(
+	ph7_vm *pVm,
+	ph7_class_instance *pInst,
+	ph7_value *pIdx,
+	ph7_value *pTos,
+	void *pOwnerStack,
+	void *pInstrs,
+	sxu32 nPc
+	)
+{
+	ph7_value *pSlot;
+	sxu32 nScratch;
+	sxu32 nKey;
+	VmHookRmw sRmw;
+	pSlot = PH7_ReserveMemObj(&(*pVm));
+	if( pSlot == 0 ){
+		return;
+	}
+	nScratch = pSlot->nIdx;
+	pSlot = PH7_ReserveMemObj(&(*pVm));
+	if( pSlot == 0 ){
+		VmHookRmwFreeScratch(&(*pVm),nScratch);
+		return;
+	}
+	nKey = pSlot->nIdx;
+	/* Reserving can GROW the aMemObj set, so address both slots by index from
+	 * here on — the pointer the first reservation handed back may be stale. */
+	if( pIdx ){
+		PH7_MemObjStore(pIdx,pSlot);
+	}
+	pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,nScratch);
+	if( pSlot == 0 ){
+		VmHookRmwFreeScratch(&(*pVm),nKey);
+		VmHookRmwFreeScratch(&(*pVm),nScratch);
+		return;
+	}
+	PH7_MemObjStore(pTos,pSlot);
+	sRmw.iKind = VM_HOOK_PEND_RMW_DIM;
+	sRmw.pThis = pInst;
+	sRmw.pAttr = 0;
+	sRmw.nBackIdx = nKey;
+	sRmw.nScratchIdx = nScratch;
+	SyBlobInit(&sRmw.sName,&pVm->sAllocator);
+	sRmw.pOwnerStack = pOwnerStack;
+	sRmw.pInstrs = pInstrs;
+	sRmw.nJmpPc = nPc;  /* the modify op ... */
+	sRmw.nPc = nPc;     /* ... is the whole window */
+	pInst->iRef++;
+	pTos->nIdx = nScratch;
+	SySetPut(&pVm->aHookRmw,(const void *)&sRmw);
+}
+/*
  * OP_LOAD_IDX: body moved verbatim from the OP_LOAD_IDX arm of
  * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
  */
@@ -1345,6 +1409,7 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		if( pArrayAccess && pInst && PH7_VmInstanceOf(pInst->pClass,pArrayAccess) ){
 			ph7_class_method *pMeth;
 			ph7_value sResult;
+			ph7_value sNullIdx;
 			ph7_value *apArg[1];
 			if( (iP2 == 0 || iP2 == 3 || iP2 == 8) && pIdx == 0 ){
 				/* `$obj[]` read — PHP rejects this. */
@@ -1373,6 +1438,15 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 			}else{
 				pMeth = PH7_ClassExtractMethod(pInst->pClass,
 					"offsetGet",sizeof("offsetGet")-1);
+				if( pIdx == 0 ){
+					/* `$o[] op= v` — the one read that reaches here without a key.
+					 * php hands the accessors NULL for the absent offset (its
+					 * read_dimension substitutes one), so passing NO argument
+					 * turned an assignment php performs into an
+					 * ArgumentCountError against the class's own offsetGet. */
+					PH7_MemObjInit(&(*pVm),&sNullIdx);
+					pIdx = &sNullIdx;
+				}
 				apArg[0] = pIdx;
 				if( pMeth ){
 					PH7_VmCallClassMethod(&(*pVm),pInst,pMeth,&sResult,pIdx ? 1 : 0,apArg);
@@ -1471,6 +1545,18 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				PH7_MemObjRelease(pTos);
 				PH7_MemObjStore(&sResult,pTos);
 				pTos->nIdx = SXU32_HIGH;
+				if( iP2 == 1 && VmNextIsCompoundAssign(pInstr + 1) ){
+					/* `$o[$k] op= v` is php's ASSIGN_DIM_OP: offsetGet gave the
+					 * current value, the op computes on it, and the result goes
+					 * back through offsetSet($k, …). PHL had no write-back at
+					 * all here — the fetched value carried no slot, so every
+					 * compound assign on an ArrayAccess element died on
+					 * "Cannot perform assignment on a constant class attribute"
+					 * and stored nothing. Arm the scratch slot the op mutates;
+					 * its tail (PH7_HOOK_RMW_WRITEBACK) dispatches offsetSet. */
+					VmDimRmwArm(&(*pVm),pInst,pIdx,pTos,
+						(void *)pStack,(void *)aInstr,(sxu32)(pc + 1));
+				}
 			}
 			PH7_MemObjRelease(&sResult);
 			if( pIdx ){

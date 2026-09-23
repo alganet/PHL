@@ -1874,6 +1874,11 @@ struct VmMagicGuard
  *                             rail as VM_HOOK_PEND_RMW, with __get having
  *                             provided the current value and __set(sName, value)
  *                             taking the computed one.
+ *   VM_HOOK_PEND_RMW_DIM    — `$o[$k] op= v` on an ArrayAccess element (php's
+ *                             ASSIGN_DIM_OP): offsetGet($k) provided the current
+ *                             value and offsetSet($k, value) takes the computed
+ *                             one. The KEY lives in its own reserved memobj,
+ *                             whose index this kind keeps in nBackIdx.
  * The armed window is [nJmpPc, nPc]: an owner fetch outside it means the
  * statement was abandoned (a routed throw) or the ??= short-circuit jump was
  * taken — the entry is dropped, no set dispatch (php: the throw/skip discards
@@ -1885,10 +1890,13 @@ struct VmMagicGuard
 #define VM_HOOK_PEND_COAL_HOOK   1
 #define VM_HOOK_PEND_COAL_MAGIC  2
 #define VM_HOOK_PEND_RMW_MAGIC   3
-/* The two SCRATCH-slot kinds: armed by OP_MEMBER, consumed by the modify op's
- * tail through VmHookRmwConsume (matched by scratch index). */
+#define VM_HOOK_PEND_RMW_DIM     4
+/* The SCRATCH-slot kinds: armed by the fetch (OP_MEMBER / OP_LOAD_IDX) and
+ * consumed by the modify op's tail through VmHookRmwConsume, matched by the
+ * scratch index the fetch left in pTos->nIdx. */
 #define VM_HOOK_PEND_IS_RMW(iKind) \
-	((iKind) == VM_HOOK_PEND_RMW || (iKind) == VM_HOOK_PEND_RMW_MAGIC)
+	((iKind) == VM_HOOK_PEND_RMW || (iKind) == VM_HOOK_PEND_RMW_MAGIC \
+	 || (iKind) == VM_HOOK_PEND_RMW_DIM)
 typedef struct VmHookRmw VmHookRmw;
 struct VmHookRmw
 {
@@ -3755,6 +3763,7 @@ PH7_PRIVATE int VmMemberCtxIsLookup(sxi32 iP2);
 PH7_PRIVATE int VmMemberCtxWantsValue(sxi32 iP2);
 PH7_PRIVATE int VmMemberNextIsWrite(const VmInstr *pNext);
 PH7_PRIVATE int VmMemberNextIsRmw(const VmInstr *pNext);
+PH7_PRIVATE int VmNextIsCompoundAssign(const VmInstr *pNext);
 PH7_PRIVATE sxi32 VmSpreadOwnExtra(ph7_vm *pVm, sxi32 iP1, ph7_value *pTos);
 PH7_PRIVATE VmCallArgMap *VmEffCallArgMap(ph7_vm *pVm, VmInstr *pInstr, ph7_value *pArg, sxu32 nActual, VmCallArgMap *pStorage);
 PH7_PRIVATE int VmMagicGuardHeld(ph7_vm *pVm,void *pThis,const SyString *pName,sxu8 cKind);
@@ -3768,6 +3777,7 @@ PH7_PRIVATE int VmValueIsTraversable(ph7_vm *pVm, ph7_value *pVal);
 PH7_PRIVATE sxi32 VmHashmapRefInsert(ph7_hashmap *pMap, const char *zKey, sxu32 nByte, sxu32 nRefIdx);
 PH7_PRIVATE void VmWarnCannotUseAsArray(ph7_vm *pVm,sxi32 iFlags);
 PH7_PRIVATE sxi32 VmHookRmwConsume(ph7_vm *pVm,sxu32 nIdx);
+PH7_PRIVATE void VmHookRmwFreeScratch(ph7_vm *pVm,sxu32 nIdx);
 PH7_PRIVATE sxi32 VmHookSetDispatch(ph7_vm *pVm,ph7_class_instance *pHThis,ph7_class_attr *pHAttr,sxu32 nBackIdx,ph7_value *pValue);
 PH7_PRIVATE void VmMagicSetDispatch(ph7_vm *pVm,ph7_class_instance *pSetThis,const SyString *pName,ph7_value *pValue);
 PH7_PRIVATE ph7_exception * VmExcActivate(ph7_vm *pVm,ph7_exception *pCompiled);

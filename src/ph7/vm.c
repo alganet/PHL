@@ -4744,12 +4744,24 @@ PH7_PRIVATE int VmMemberNextIsWrite(const VmInstr *pNext)
  */
 PH7_PRIVATE int VmMemberNextIsRmw(const VmInstr *pNext)
 {
+	return pNext->iOp == PH7_OP_INCR || pNext->iOp == PH7_OP_DECR
+	    || VmNextIsCompoundAssign(pNext);
+}
+/*
+ * The `op=` family alone — php's ASSIGN_OP, which on a CONTAINER compiles to
+ * ASSIGN_DIM_OP / ASSIGN_OBJ_OP: read the element, compute, write it back
+ * through the container's own handlers. `++`/`--` are deliberately NOT here:
+ * they are php's separate INC/DEC opcodes, and on an overloaded ELEMENT they
+ * fetch for WRITING instead — which is why `$o['n'] += 2` stores through
+ * offsetSet where `$o['n']++` only notices.
+ */
+PH7_PRIVATE int VmNextIsCompoundAssign(const VmInstr *pNext)
+{
 	switch( pNext->iOp ){
 		case PH7_OP_ADD_STORE: case PH7_OP_SUB_STORE: case PH7_OP_MUL_STORE:
 		case PH7_OP_DIV_STORE: case PH7_OP_MOD_STORE: case PH7_OP_POW_STORE:
 		case PH7_OP_CAT_STORE:
 		case PH7_OP_SHL_STORE: case PH7_OP_SHR_STORE:
-		case PH7_OP_INCR: case PH7_OP_DECR:
 		case PH7_OP_BAND_STORE: case PH7_OP_BOR_STORE: case PH7_OP_BXOR_STORE:
 			return 1;
 		default:
@@ -4883,7 +4895,7 @@ PH7_PRIVATE sxi32 PH7_VmHookGetAttrValue(ph7_class_instance *pThis,VmClassAttr *
  * the free pool. Scratch slots come from PH7_ReserveMemObj and are never
  * ref-linked, so this bypasses PH7_VmUnsetMemObj's VmRefObj bookkeeping.
  */
-static void VmHookRmwFreeScratch(ph7_vm *pVm,sxu32 nIdx)
+PH7_PRIVATE void VmHookRmwFreeScratch(ph7_vm *pVm,sxu32 nIdx)
 {
 	ph7_value *pScr = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
 	VmSlot sFree;
@@ -4910,6 +4922,11 @@ PH7_PRIVATE void VmHookRmwDropTop(ph7_vm *pVm)
 	if( pEnt->nScratchIdx != SXU32_HIGH ){
 		VmHookRmwFreeScratch(&(*pVm),pEnt->nScratchIdx);
 	}
+	if( pEnt->iKind == VM_HOOK_PEND_RMW_DIM && pEnt->nBackIdx != SXU32_HIGH ){
+		/* The DIM kind's nBackIdx is a reserved KEY slot of its own, not a
+		 * property's backing store — this entry owns it. */
+		VmHookRmwFreeScratch(&(*pVm),pEnt->nBackIdx);
+	}
 	SyBlobRelease(&pEnt->sName);
 	PH7_ClassInstanceUnref(pEnt->pThis);
 	(void)SySetPop(&pVm->aHookRmw);
@@ -4920,6 +4937,7 @@ PH7_PRIVATE sxi32 VmHookRmwConsume(ph7_vm *pVm,sxu32 nIdx)
 	VmHookRmw *pEnt;
 	ph7_value *pScr;
 	ph7_value sVal;
+	ph7_value sKey;
 	sxi32 rc = SXRET_OK;
 	pEnt = (VmHookRmw *)SySetPeek(&pVm->aHookRmw);
 	if( pEnt == 0 || !VM_HOOK_PEND_IS_RMW(pEnt->iKind) || pEnt->nScratchIdx != nIdx ){
@@ -4929,7 +4947,8 @@ PH7_PRIVATE sxi32 VmHookRmwConsume(ph7_vm *pVm,sxu32 nIdx)
 	(void)SySetPop(&pVm->aHookRmw);
 	/* Copy the computed value out of the scratch slot, then free the slot
 	 * (the set dispatch below may reserve slots — nothing may read the
-	 * scratch index past this point). */
+	 * scratch index past this point). The DIM kind's KEY slot goes the same
+	 * way, for the same reason: reserving relocates the aMemObj set. */
 	PH7_MemObjInit(pVm,&sVal);
 	pScr = (ph7_value *)SySetAt(&pVm->aMemObj,sEnt.nScratchIdx);
 	if( pScr ){
@@ -4937,6 +4956,15 @@ PH7_PRIVATE sxi32 VmHookRmwConsume(ph7_vm *pVm,sxu32 nIdx)
 	}
 	VmHookRmwFreeScratch(&(*pVm),sEnt.nScratchIdx);
 	sVal.nIdx = SXU32_HIGH;
+	PH7_MemObjInit(pVm,&sKey);
+	if( sEnt.iKind == VM_HOOK_PEND_RMW_DIM && sEnt.nBackIdx != SXU32_HIGH ){
+		ph7_value *pKeySlot = (ph7_value *)SySetAt(&pVm->aMemObj,sEnt.nBackIdx);
+		if( pKeySlot ){
+			PH7_MemObjStore(pKeySlot,&sKey);
+		}
+		VmHookRmwFreeScratch(&(*pVm),sEnt.nBackIdx);
+		sKey.nIdx = SXU32_HIGH;
+	}
 	if( pVm->nBoundaryRc == 0 ){
 		if( sEnt.iKind == VM_HOOK_PEND_RMW_MAGIC ){
 			/* Overloaded property: the write side is __set($name, $computed) —
@@ -4944,11 +4972,23 @@ PH7_PRIVATE sxi32 VmHookRmwConsume(ph7_vm *pVm,sxu32 nIdx)
 			SyString sPropName;
 			SyStringInitFromBuf(&sPropName,SyBlobData(&sEnt.sName),SyBlobLength(&sEnt.sName));
 			VmMagicSetDispatch(&(*pVm),sEnt.pThis,&sPropName,&sVal);
+		}else if( sEnt.iKind == VM_HOOK_PEND_RMW_DIM ){
+			/* ArrayAccess element: php's ASSIGN_DIM_OP writes the computed value
+			 * back through offsetSet($key, $value). */
+			ph7_class_method *pSet = PH7_ClassExtractMethod(sEnt.pThis->pClass,
+				"offsetSet",sizeof("offsetSet")-1);
+			if( pSet ){
+				ph7_value *apArg[2];
+				apArg[0] = &sKey;
+				apArg[1] = &sVal;
+				PH7_VmCallClassMethod(&(*pVm),sEnt.pThis,pSet,0,2,apArg);
+			}
 		}else{
 			rc = VmHookSetDispatch(&(*pVm),sEnt.pThis,sEnt.pAttr,sEnt.nBackIdx,&sVal);
 		}
 	}
 	SyBlobRelease(&sEnt.sName);
+	PH7_MemObjRelease(&sKey);
 	PH7_MemObjRelease(&sVal);
 	PH7_ClassInstanceUnref(sEnt.pThis);
 	return rc;
