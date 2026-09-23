@@ -1164,9 +1164,15 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 	 * the ZPP macro behind it is Z_PARAM_NUMBER, whose TypeError says
 	 * `must be of type int|float`. One row cannot say both, so the row carries the
 	 * declared type for Reflection and the builtin words every refusal itself.
+	 *
+	 * RecursiveIteratorIterator::__construct() is the first NATIVE METHOD here, and
+	 * it is the same disagreement one level up: php's stub declares
+	 * `Traversable $iterator` (what Reflection prints) while its ZPP is a bare "o",
+	 * whose TypeError says `must be of type object`. A native method's diagnostic
+	 * name is the QUALIFIED one, so the row below matches it and nothing else.
 	 */
 	static const char *azSelfChecked[] = { "get_class_vars", "strtr", "implode", "join",
-		"number_format" };
+		"number_format", "RecursiveIteratorIterator::__construct" };
 	const char *zSig = pFunc->zSig;
 	const char *zCur, *zEnd;
 	int iArg = 0;

@@ -2983,142 +2983,890 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }
+/*
+ * ---------------------------------------------------------------------------
+ * RecursiveIteratorIterator.
+ *
+ * php's `spl_recursive_it_object` is a STACK OF LEVELS plus a five-value state
+ * machine, and reading the struct before the methods (rule 43) is what this
+ * conversion turns on. Each level carries the sub-iterator AND its own
+ * RecursiveIteratorState; `move_forward` is one loop over that pair, and every
+ * method is a two-line reader of it. The chunk instead kept a stack of iterators
+ * with the state implied by two booleans (`__post`, `__live`), which is where all
+ * eight of its divergences came from:
+ *
+ *   - getDepth()/getSubIterator()/getInnerIterator() answered from an EMPTY stack
+ *     before the first rewind(), so they reported -1 and null where php reports 0
+ *     and the root -- php seeds level 0 in the CONSTRUCTOR and never unseeds it.
+ *   - valid() answered a `__live` flag that only rewind() sets; php ASKS the
+ *     levels (any valid sub-iterator, walking down), so a fresh instance over a
+ *     non-empty iterator is already valid().
+ *   - LEAVES_ONLY past max depth YIELDED the container; php skips it, which is
+ *     the whole point of the mode (`walk-leaves-maxdepth0` returned the `b`
+ *     array as if it were a leaf).
+ *   - the mode was `$mode | $flags` masked with & 3, so CATCH_GET_CHILD passed
+ *     as $mode descended like LEAVES_ONLY; php compares mode EXACTLY and an
+ *     unknown mode matches no arm at all, descending nowhere.
+ *   - hasChildren() was called on the sub-iterator DIRECTLY, so a subclass
+ *     overriding callHasChildren() -- php's documented hook -- was never asked.
+ *   - endChildren() ran AFTER the pop, reporting a depth one too low and firing
+ *     a spurious final call at depth -1; php calls it before the pop.
+ *   - a second rewind() fired beginIteration() again; php's in_iteration latch
+ *     makes it once per iteration.
+ *   - getChildren() returning a non-RecursiveIterator was silently treated as
+ *     "no children"; php throws UnexpectedValueException.
+ *
+ * The level stack lives in two parallel arrays indexed by level rather than in a
+ * C block behind a handle: php SERIALIZES this class (`O:25:"…":0:{}`), and a raw
+ * pointer in a hidden slot is exactly what rule 19 exists to keep out of
+ * serialize() output. Every slot is PH7_MOD_HIDDEN, so php's zero-property
+ * presentation holds for var_dump, print_r, var_export, (array) and Reflection.
+ */
+#define RIT_ST   "__st"   /* php's iterators[level].zobject */
+#define RIT_SS   "__ss"   /* php's iterators[level].state */
+#define RIT_LVL  "__lvl"  /* php's object->level */
+#define RIT_MD   "__md"   /* php's object->mode, stored UNMASKED */
+#define RIT_FL   "__fl"   /* php's object->flags */
+#define RIT_MX   "__mx"   /* php's object->max_depth, -1 = unlimited */
+#define RIT_II   "__ii"   /* php's object->in_iteration */
+#define RIT_RD   "__rd"   /* php's `object->iterators != NULL`: the parent ctor ran */
+
+/* php's RecursiveIteratorState */
+#define RS_NEXT  0
+#define RS_TEST  1
+#define RS_SELF  2
+#define RS_CHILD 3
+#define RS_START 4
+
+/* php's RecursiveIteratorMode + the one flag */
+#define RIT_LEAVES_ONLY     0
+#define RIT_SELF_FIRST      1
+#define RIT_CHILD_FIRST     2
+#define RIT_CATCH_GET_CHILD 16
+
+/*
+ * php's `object->iterators != NULL`. Its get_method handler refuses EVERY method
+ * on an instance whose parent constructor never ran -- not the individual bodies,
+ * which is why the refusal is an Error naming the RUNTIME class and why even
+ * getDepth() raises it.
+ */
+static int RitReady(ph7_class_instance *pThis)
+{
+	return pThis && PH7_NativeAttrInt(pThis,RIT_RD) != 0;
+}
+static sxi32 RitNotReady(ph7_context *pCtx)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SyString *pName = pThis ? &pThis->pClass->sName : 0;
+	return PH7_VmThrowException(pCtx,"Error",
+		"The %z instance wasn't initialized properly",pName);
+}
+static int RitInt(ph7_class_instance *pThis,const char *zSlot)
+{
+	return (int)PH7_NativeAttrInt(pThis,zSlot);
+}
+/* One of the two level-indexed arrays, materialized on first use. */
+static ph7_hashmap * RitMap(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot)
+{
+	ph7_value *pSlot = PH7_NativeAttr(pThis,zSlot);
+	if( pSlot == 0 ){
+		return 0;
+	}
+	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){
+			return 0;
+		}
+	}
+	return PH7_HashmapCowSeparate(pVm,pSlot);
+}
+static ph7_value * RitAt(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot,int iLevel)
+{
+	ph7_hashmap *pMap = RitMap(pVm,pThis,zSlot);
+	ph7_hashmap_node *pNode = 0;
+	if( pMap == 0 || HashmapLookupIntKey(pMap,(sxi64)iLevel,&pNode) != SXRET_OK ){
+		return 0;
+	}
+	return HashmapExtractNodeValue(pNode);
+}
+static void RitPut(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot,int iLevel,ph7_value *pVal)
+{
+	ph7_hashmap *pMap = RitMap(pVm,pThis,zSlot);
+	ph7_value sKey;
+	if( pMap == 0 ){
+		return;
+	}
+	PH7_MemObjInitFromInt(pVm,&sKey,(sxi64)iLevel);
+	PH7_HashmapInsert(pMap,&sKey,pVal);
+	PH7_MemObjRelease(&sKey);
+}
+static void RitErase(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot,int iLevel)
+{
+	ph7_hashmap *pMap = RitMap(pVm,pThis,zSlot);
+	ph7_hashmap_node *pNode = 0;
+	if( pMap && HashmapLookupIntKey(pMap,(sxi64)iLevel,&pNode) == SXRET_OK ){
+		PH7_HashmapUnlinkNode(pNode,TRUE);
+	}
+}
+/*
+ * The sub-iterator at a level. Re-resolved on every use on purpose: RitAt()
+ * hands back a pointer into pVm->aMemObj, which REALLOCATES as the VM reserves
+ * objects, and every call into a user iterator reserves some (rule 47).
+ */
+static ph7_class_instance * RitSub(ph7_vm *pVm,ph7_class_instance *pThis,int iLevel)
+{
+	ph7_value *pVal = RitAt(pVm,pThis,RIT_ST,iLevel);
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_OBJ) == 0 ){
+		return 0;
+	}
+	return (ph7_class_instance *)pVal->x.pOther;
+}
+static int RitState(ph7_vm *pVm,ph7_class_instance *pThis,int iLevel)
+{
+	ph7_value *pVal = RitAt(pVm,pThis,RIT_SS,iLevel);
+	return pVal ? (int)ph7_value_to_int64(pVal) : RS_START;
+}
+static void RitSetState(ph7_vm *pVm,ph7_class_instance *pThis,int iLevel,int iState)
+{
+	ph7_value sVal;
+	PH7_MemObjInitFromInt(pVm,&sVal,(sxi64)iState);
+	RitPut(pVm,pThis,RIT_SS,iLevel,&sVal);
+	PH7_MemObjRelease(&sVal);
+}
+/* php's `iterators = erealloc(…, ++level+1)` plus the two field writes. */
+static void RitPush(ph7_vm *pVm,ph7_class_instance *pThis,ph7_class_instance *pChild)
+{
+	int iLevel = RitInt(pThis,RIT_LVL) + 1;
+	ph7_value sObj;
+	PH7_MemObjInit(pVm,&sObj);
+	sObj.x.pOther = pChild;
+	MemObjSetType(&sObj,MEMOBJ_OBJ);
+	/* The map takes its OWN reference through the store; the carrier is blanked
+	 * rather than released, because releasing a MEMOBJ_OBJ carrier would unref an
+	 * instance this frame never referenced (rule 16). */
+	RitPut(pVm,pThis,RIT_ST,iLevel,&sObj);
+	sObj.x.pOther = 0;
+	MemObjSetType(&sObj,MEMOBJ_NULL);
+	PH7_MemObjRelease(&sObj);
+	RitSetState(pVm,pThis,iLevel,RS_START);
+	PH7_NativeSetAttrInt(pVm,pThis,RIT_LVL,iLevel);
+}
+static void RitPop(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	int iLevel = RitInt(pThis,RIT_LVL);
+	if( iLevel <= 0 ){
+		return;
+	}
+	RitErase(pVm,pThis,RIT_ST,iLevel);
+	RitErase(pVm,pThis,RIT_SS,iLevel);
+	PH7_NativeSetAttrInt(pVm,pThis,RIT_LVL,iLevel-1);
+}
+/* Drop every level: php's spl_RecursiveIteratorIterator_free_iterators. */
+static void RitClear(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	int iLevel = RitInt(pThis,RIT_LVL);
+	while( iLevel >= 0 ){
+		RitErase(pVm,pThis,RIT_ST,iLevel);
+		RitErase(pVm,pThis,RIT_SS,iLevel);
+		iLevel--;
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,RIT_LVL,0);
+}
+/*
+ * Call a method, optionally SWALLOWING what it throws -- php clears the exception
+ * at four sites when RIT_CATCH_GET_CHILD is set, and PH7_VmCallMethodSwallow is
+ * the only way to spell that here (a throw raised under a C call site is
+ * dispatched INLINE, so an enclosing user catch would run before this returns).
+ * *pbThrew reports a swallowed throw, which php reads back as "retval is UNDEF".
+ */
+static sxi32 RitCall(ph7_context *pCtx,ph7_class_instance *pObj,const char *zName,sxu32 nName,
+	ph7_value *pOut,int bCatch,int *pbThrew)
+{
+	ph7_class_method *pMethod = pObj ? PH7_ClassExtractMethod(pObj->pClass,zName,nName) : 0;
+	if( pbThrew ){
+		*pbThrew = FALSE;
+	}
+	if( pMethod == 0 ){
+		return SXRET_OK;
+	}
+	if( bCatch ){
+		return PH7_VmCallMethodSwallow(pCtx->pVm,pObj,pMethod,pOut,0,0,pbThrew);
+	}
+	return PH7_VmCallClassMethod(pCtx->pVm,pObj,pMethod,pOut,0,0);
+}
+/*
+ * A hook on $this. php caches which of the seven the SUBCLASS overrides and calls
+ * the sub-iterator directly when none does; dispatching through $this every time
+ * reaches the same body -- the base ones are the no-ops php would have skipped --
+ * with the override found automatically.
+ */
+static sxi32 RitHook(ph7_context *pCtx,const char *zName,sxu32 nName,ph7_value *pOut,
+	int bCatch,int *pbThrew)
+{
+	return RitCall(pCtx,PH7_ContextThis(pCtx),zName,nName,pOut,bCatch,pbThrew);
+}
+static int RitCatches(ph7_class_instance *pThis)
+{
+	return (RitInt(pThis,RIT_FL) & RIT_CATCH_GET_CHILD) != 0;
+}
+/*
+ * php's spl_recursive_it_move_forward_ex, transcribed. The switch's fallthroughs
+ * (RS_NEXT into RS_START into RS_TEST) are written as a sequential if-chain, and
+ * php's `goto next_step` is this loop's `continue`.
+ */
+static sxi32 RitMoveForward(ph7_context *pCtx)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int bCatch;
+	if( !RitReady(pThis) ){
+		return RitNotReady(pCtx);
+	}
+	bCatch = RitCatches(pThis);
+	for(;;){
+		ph7_class_instance *pSub;
+		int iLevel = RitInt(pThis,RIT_LVL);
+		int iState = RitState(pVm,pThis,iLevel);
+		int bThrew = 0;
+		int bExhausted = 0;
+		sxi32 rc;
+		pSub = RitSub(pVm,pThis,iLevel);
+		if( pSub == 0 ){
+			return PH7_OK;
+		}
+		if( iState == RS_NEXT ){
+			rc = RitCall(pCtx,pSub,"next",sizeof("next")-1,0,bCatch,&bThrew);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+			pSub = RitSub(pVm,pThis,iLevel);   /* the call may have moved aMemObj */
+			if( pSub == 0 ){
+				return PH7_OK;
+			}
+			iState = RS_START;                 /* php's fallthrough */
+		}
+		if( iState == RS_START ){
+			ph7_value sValid;
+			PH7_MemObjInit(pVm,&sValid);
+			rc = RitCall(pCtx,pSub,"valid",sizeof("valid")-1,&sValid,FALSE,0);
+			if( rc != SXRET_OK ){
+				PH7_MemObjRelease(&sValid);
+				return rc;
+			}
+			bExhausted = !ph7_value_to_bool(&sValid);
+			PH7_MemObjRelease(&sValid);
+			if( !bExhausted ){
+				/* php re-reads the level here and returns outright when the valid()
+				 * call RE-ENTERED this iterator (a sub-iterator that drove the
+				 * decorator behind its back); the stack it was walking is gone. */
+				if( RitInt(pThis,RIT_LVL) != iLevel || RitSub(pVm,pThis,iLevel) != pSub ){
+					return PH7_OK;
+				}
+				RitSetState(pVm,pThis,iLevel,RS_TEST);
+				iState = RS_TEST;
+			}
+		}
+		if( !bExhausted && iState == RS_TEST ){
+			ph7_value sHas;
+			int bDescend = 0;
+			PH7_MemObjInit(pVm,&sHas);
+			rc = RitHook(pCtx,"callHasChildren",sizeof("callHasChildren")-1,&sHas,bCatch,&bThrew);
+			if( rc != SXRET_OK ){
+				/* php leaves the level on RS_NEXT so a caught-and-resumed traversal
+				 * moves on rather than re-asking the same element. */
+				RitSetState(pVm,pThis,iLevel,RS_NEXT);
+				PH7_MemObjRelease(&sHas);
+				return rc;
+			}
+			/* A SWALLOWED throw leaves php's retval UNDEF, which skips the
+			 * has-children test entirely and yields the element. */
+			if( !bThrew && ph7_value_to_bool(&sHas) ){
+				int iMax = RitInt(pThis,RIT_MX);
+				int iMode = RitInt(pThis,RIT_MD);
+				if( iMax == -1 || iMax > iLevel ){
+					/* php compares the mode EXACTLY: an unrecognized mode matches no
+					 * arm, falls out of the switch and yields without descending. */
+					if( iMode == RIT_LEAVES_ONLY || iMode == RIT_CHILD_FIRST ){
+						RitSetState(pVm,pThis,iLevel,RS_CHILD);
+						bDescend = 1;
+					}else if( iMode == RIT_SELF_FIRST ){
+						RitSetState(pVm,pThis,iLevel,RS_SELF);
+						bDescend = 1;
+					}
+				}else if( iMode == RIT_LEAVES_ONLY ){
+					/* Too deep to recurse into and NOT a leaf, so php skips it —
+					 * the mode's defining rule, and the one the chunk dropped. */
+					RitSetState(pVm,pThis,iLevel,RS_NEXT);
+					bDescend = 1;
+				}
+			}
+			PH7_MemObjRelease(&sHas);
+			if( bDescend ){
+				continue;                      /* php's goto next_step */
+			}
+			rc = RitHook(pCtx,"nextElement",sizeof("nextElement")-1,0,bCatch,&bThrew);
+			RitSetState(pVm,pThis,iLevel,RS_NEXT);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+			return PH7_OK;                     /* yield this element */
+		}
+		if( !bExhausted && iState == RS_SELF ){
+			int iMode = RitInt(pThis,RIT_MD);
+			if( iMode == RIT_SELF_FIRST || iMode == RIT_CHILD_FIRST ){
+				rc = RitHook(pCtx,"nextElement",sizeof("nextElement")-1,0,bCatch,&bThrew);
+				if( rc != SXRET_OK ){
+					return rc;
+				}
+			}
+			RitSetState(pVm,pThis,iLevel,iMode == RIT_SELF_FIRST ? RS_CHILD : RS_NEXT);
+			return PH7_OK;                     /* yield this element */
+		}
+		if( !bExhausted && iState == RS_CHILD ){
+			ph7_class *pRecCls;
+			ph7_class_instance *pChild;
+			ph7_value sChild;
+			int iMode = RitInt(pThis,RIT_MD);
+			PH7_MemObjInit(pVm,&sChild);
+			rc = RitHook(pCtx,"callGetChildren",sizeof("callGetChildren")-1,&sChild,bCatch,&bThrew);
+			if( rc != SXRET_OK ){
+				PH7_MemObjRelease(&sChild);
+				return rc;
+			}
+			if( bThrew ){
+				/* Caught: php drops the element and moves to the next one. */
+				PH7_MemObjRelease(&sChild);
+				RitSetState(pVm,pThis,iLevel,RS_NEXT);
+				continue;
+			}
+			pRecCls = PH7_VmExtractClass(pVm,"RecursiveIterator",
+				sizeof("RecursiveIterator")-1,FALSE,0);
+			pChild = (sChild.iFlags & MEMOBJ_OBJ) != 0
+				? (ph7_class_instance *)sChild.x.pOther : 0;
+			if( pChild == 0 || (pRecCls && !PH7_VmInstanceOf(pChild->pClass,pRecCls)) ){
+				PH7_MemObjRelease(&sChild);
+				return PH7_VmThrowException(pCtx,"UnexpectedValueException",
+					"Objects returned by RecursiveIterator::getChildren() must implement RecursiveIterator");
+			}
+			pChild->iRef++;                    /* survive the release of the call result */
+			PH7_MemObjRelease(&sChild);
+			RitSetState(pVm,pThis,iLevel,iMode == RIT_CHILD_FIRST ? RS_SELF : RS_NEXT);
+			RitPush(pVm,pThis,pChild);
+			PH7_ClassInstanceUnref(pChild);    /* the level's slot holds it now */
+			rc = RitCall(pCtx,pChild,"rewind",sizeof("rewind")-1,0,FALSE,0);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+			rc = RitHook(pCtx,"beginChildren",sizeof("beginChildren")-1,0,bCatch,&bThrew);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+			continue;                          /* php's goto next_step */
+		}
+		/* No more elements at this level. */
+		if( iLevel <= 0 ){
+			return PH7_OK;                     /* done completely */
+		}
+		/* php calls endChildren BEFORE the pop, so the hook sees the depth it is
+		 * leaving rather than the one it lands on. */
+		rc = RitHook(pCtx,"endChildren",sizeof("endChildren")-1,0,bCatch,&bThrew);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		if( RitInt(pThis,RIT_LVL) > 0 && RitSub(pVm,pThis,RitInt(pThis,RIT_LVL)) == pSub ){
+			RitPop(pVm,pThis);
+		}
+	}
+}
+/*
+ * php's spl_recursive_it_valid_ex: ASK the levels, walking down from the current
+ * one, and fire endIteration the first time the answer is no.
+ */
+static sxi32 RitValidEx(ph7_context *pCtx,int *pbValid)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int iLevel = RitInt(pThis,RIT_LVL);
+	sxi32 rc;
+	*pbValid = FALSE;
+	while( iLevel >= 0 ){
+		ph7_class_instance *pSub = RitSub(pVm,pThis,iLevel);
+		ph7_value sValid;
+		int bOk;
+		if( pSub == 0 ){
+			iLevel--;
+			continue;
+		}
+		PH7_MemObjInit(pVm,&sValid);
+		rc = RitCall(pCtx,pSub,"valid",sizeof("valid")-1,&sValid,FALSE,0);
+		if( rc != SXRET_OK ){
+			PH7_MemObjRelease(&sValid);
+			return rc;
+		}
+		bOk = ph7_value_to_bool(&sValid);
+		PH7_MemObjRelease(&sValid);
+		if( bOk ){
+			*pbValid = TRUE;
+			return PH7_OK;
+		}
+		iLevel--;
+	}
+	if( RitInt(pThis,RIT_II) ){
+		rc = RitHook(pCtx,"endIteration",sizeof("endIteration")-1,0,FALSE,0);
+		PH7_NativeSetAttrInt(pVm,pThis,RIT_II,0);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,RIT_II,0);
+	return PH7_OK;
+}
+static int vm_builtin_RecursiveIteratorIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pObj;
+	ph7_class_instance *pHold = 0;
+	ph7_class *pAggCls,*pRecCls,*pTravCls;
+	sxi64 iMode = RIT_LEAVES_ONLY,iFlags = 0;
+	sxi32 rc;
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	/*
+	 * php's ZPP here is "o|ll" -- a bare OBJECT -- while the stub declares
+	 * `Traversable $iterator`, so the declared type and the refusal text disagree
+	 * (rule 41's neighbour). The spec row carries the declared type for Reflection
+	 * and this body words both refusals, which is why the method sits on
+	 * azSelfChecked[].
+	 */
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 || apArg[0]->x.pOther == 0 ){
+		char zGiven[64];
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"RecursiveIteratorIterator::__construct(): Argument #1 ($iterator) "
+			"must be of type object, %s given",
+			nArg < 1 ? "none" : VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
+	}
+	if( nArg > 1 ){
+		rc = PH7_IntArgResolve(pCtx,apArg[1],"RecursiveIteratorIterator::__construct",2,"mode","int",&iMode);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	if( nArg > 2 ){
+		rc = PH7_IntArgResolve(pCtx,apArg[2],"RecursiveIteratorIterator::__construct",3,"flags","int",&iFlags);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	pObj = (ph7_class_instance *)apArg[0]->x.pOther;
+	pAggCls = PH7_VmExtractClass(pVm,"IteratorAggregate",sizeof("IteratorAggregate")-1,FALSE,0);
+	pRecCls = PH7_VmExtractClass(pVm,"RecursiveIterator",sizeof("RecursiveIterator")-1,FALSE,0);
+	pTravCls = PH7_VmExtractClass(pVm,"Traversable",sizeof("Traversable")-1,FALSE,0);
+	/*
+	 * php's spl_get_iterator_from_aggregate: ONE getIterator() and no more. An
+	 * IteratorAggregate whose getIterator() answers another aggregate therefore
+	 * fails the RecursiveIterator test below rather than being unwrapped further.
+	 */
+	if( pAggCls && PH7_VmInstanceOf(pObj->pClass,pAggCls) ){
+		ph7_class_method *pMethod = PH7_ClassExtractMethod(pObj->pClass,"getIterator",
+			sizeof("getIterator")-1);
+		ph7_value sInner;
+		PH7_MemObjInit(pVm,&sInner);
+		rc = pMethod ? PH7_VmCallClassMethod(pVm,pObj,pMethod,&sInner,0,0) : SXRET_OK;
+		if( rc != SXRET_OK ){
+			PH7_MemObjRelease(&sInner);
+			return rc;
+		}
+		if( (sInner.iFlags & MEMOBJ_OBJ) == 0 || sInner.x.pOther == 0
+		 || (pTravCls && !PH7_VmInstanceOf(((ph7_class_instance *)sInner.x.pOther)->pClass,pTravCls)) ){
+			SyString *pName = &pObj->pClass->sName;
+			PH7_MemObjRelease(&sInner);
+			return PH7_VmThrowException(pCtx,"LogicException",
+				"%z::getIterator() must return an object that implements Traversable",pName);
+		}
+		pObj = (ph7_class_instance *)sInner.x.pOther;
+		pObj->iRef++;
+		PH7_MemObjRelease(&sInner);
+		pHold = pObj;
+	}
+	if( pRecCls == 0 || !PH7_VmInstanceOf(pObj->pClass,pRecCls) ){
+		if( pHold ){
+			PH7_ClassInstanceUnref(pHold);
+		}
+		/* php refuses here rather than from the declared type, so a plain Iterator
+		 * gets this sentence and not a TypeError. */
+		return PH7_VmThrowException(pCtx,"InvalidArgumentException",
+			"An instance of RecursiveIterator or IteratorAggregate creating it is required");
+	}
+	RitClear(pVm,pThis);
+	PH7_NativeSetAttrInt(pVm,pThis,RIT_LVL,0);
+	PH7_NativeSetAttrInt(pVm,pThis,RIT_MD,iMode);
+	PH7_NativeSetAttrInt(pVm,pThis,RIT_FL,iFlags);
+	PH7_NativeSetAttrInt(pVm,pThis,RIT_MX,-1);
+	PH7_NativeSetAttrInt(pVm,pThis,RIT_II,0);
+	{
+		ph7_value sObj;
+		PH7_MemObjInit(pVm,&sObj);
+		sObj.x.pOther = pObj;
+		MemObjSetType(&sObj,MEMOBJ_OBJ);
+		RitPut(pVm,pThis,RIT_ST,0,&sObj);
+		sObj.x.pOther = 0;
+		MemObjSetType(&sObj,MEMOBJ_NULL);
+		PH7_MemObjRelease(&sObj);
+	}
+	RitSetState(pVm,pThis,0,RS_START);
+	/* Level 0 exists from HERE, which is what makes getDepth() answer 0 and
+	 * getSubIterator() answer the root before any rewind(). */
+	PH7_NativeSetAttrInt(pVm,pThis,RIT_RD,1);
+	if( pHold ){
+		PH7_ClassInstanceUnref(pHold);
+	}
+	SXUNUSED(nArg);
+	return PH7_OK;
+}
+static int vm_builtin_RecursiveIteratorIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pRoot;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !RitReady(pThis) ){
+		return RitNotReady(pCtx);
+	}
+	/* php pops the level FIRST and calls endChildren after, so the hook reports the
+	 * depth it has landed on -- the opposite order from the traversal's own pop. */
+	while( RitInt(pThis,RIT_LVL) > 0 ){
+		RitPop(pVm,pThis);
+		rc = RitHook(pCtx,"endChildren",sizeof("endChildren")-1,0,FALSE,0);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	RitSetState(pVm,pThis,0,RS_START);
+	pRoot = RitSub(pVm,pThis,0);
+	rc = RitCall(pCtx,pRoot,"rewind",sizeof("rewind")-1,0,FALSE,0);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* php's in_iteration latch: a second rewind() does NOT re-announce the
+	 * iteration, which is the only reason the flag exists. */
+	if( !RitInt(pThis,RIT_II) ){
+		rc = RitHook(pCtx,"beginIteration",sizeof("beginIteration")-1,0,FALSE,0);
+		if( rc != SXRET_OK ){
+			PH7_NativeSetAttrInt(pVm,pThis,RIT_II,1);
+			return rc;
+		}
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,RIT_II,1);
+	return RitMoveForward(pCtx);
+}
+static int vm_builtin_RecursiveIteratorIterator_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	int bValid = FALSE;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !RitReady(PH7_ContextThis(pCtx)) ){
+		return RitNotReady(pCtx);
+	}
+	rc = RitValidEx(pCtx,&bValid);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	ph7_result_bool(pCtx,bValid);
+	return PH7_OK;
+}
+/* current() and key() read the CURRENT LEVEL live -- php keeps no cache here, the
+ * one place the recursive iterator differs from every dual iterator (rule 43). */
+static sxi32 RitCurrentLevelCall(ph7_context *pCtx,const char *zName,sxu32 nName)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pSub;
+	ph7_value sRes;
+	sxi32 rc;
+	if( !RitReady(pThis) ){
+		return RitNotReady(pCtx);
+	}
+	pSub = RitSub(pVm,pThis,RitInt(pThis,RIT_LVL));
+	if( pSub == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pVm,&sRes);
+	rc = RitCall(pCtx,pSub,zName,nName,&sRes,FALSE,0);
+	if( rc == SXRET_OK ){
+		ph7_result_value(pCtx,&sRes);
+	}
+	PH7_MemObjRelease(&sRes);
+	return rc == SXRET_OK ? PH7_OK : rc;
+}
+static int vm_builtin_RecursiveIteratorIterator_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return RitCurrentLevelCall(pCtx,"key",sizeof("key")-1);
+}
+static int vm_builtin_RecursiveIteratorIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return RitCurrentLevelCall(pCtx,"current",sizeof("current")-1);
+}
+static int vm_builtin_RecursiveIteratorIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !RitReady(PH7_ContextThis(pCtx)) ){
+		return RitNotReady(pCtx);
+	}
+	return RitMoveForward(pCtx);
+}
+static int vm_builtin_RecursiveIteratorIterator_getDepth(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !RitReady(pThis) ){
+		return RitNotReady(pCtx);
+	}
+	ph7_result_int64(pCtx,(ph7_int64)RitInt(pThis,RIT_LVL));
+	return PH7_OK;
+}
+static int vm_builtin_RecursiveIteratorIterator_getSubIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pSub;
+	int iLevel;
+	if( !RitReady(pThis) ){
+		return RitNotReady(pCtx);
+	}
+	iLevel = RitInt(pThis,RIT_LVL);
+	if( nArg > 0 && (apArg[0]->iFlags & MEMOBJ_NULL) == 0 ){
+		sxi64 iWant = 0;
+		sxi32 rc = PH7_IntArgResolve(pCtx,apArg[0],"RecursiveIteratorIterator::getSubIterator",
+			1,"level","?int",&iWant);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		if( iWant < 0 || iWant > (sxi64)iLevel ){
+			ph7_result_null(pCtx);
+			return PH7_OK;
+		}
+		iLevel = (int)iWant;
+	}
+	pSub = RitSub(pVm,pThis,iLevel);
+	if( pSub ){
+		SplResultBorrowed(pCtx,pSub);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_RecursiveIteratorIterator_getInnerIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pSub;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !RitReady(pThis) ){
+		return RitNotReady(pCtx);
+	}
+	pSub = RitSub(pVm,pThis,RitInt(pThis,RIT_LVL));
+	if( pSub ){
+		SplResultBorrowed(pCtx,pSub);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+/* The five hooks php declares with empty bodies. They exist to be OVERRIDDEN and
+ * to be reachable through parent:: from an override. */
+static int vm_builtin_RecursiveIteratorIterator_nop(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !RitReady(PH7_ContextThis(pCtx)) ){
+		return RitNotReady(pCtx);
+	}
+	return PH7_OK;
+}
+/* php's callHasChildren/callGetChildren ask the CURRENT LEVEL's iterator, which
+ * is what makes them the documented interception point for both. */
+static int vm_builtin_RecursiveIteratorIterator_callHasChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pSub;
+	ph7_value sRes;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !RitReady(pThis) ){
+		return RitNotReady(pCtx);
+	}
+	pSub = RitSub(pVm,pThis,RitInt(pThis,RIT_LVL));
+	if( pSub == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pVm,&sRes);
+	rc = RitCall(pCtx,pSub,"hasChildren",sizeof("hasChildren")-1,&sRes,FALSE,0);
+	if( rc == SXRET_OK ){
+		ph7_result_bool(pCtx,ph7_value_to_bool(&sRes));
+	}
+	PH7_MemObjRelease(&sRes);
+	return rc == SXRET_OK ? PH7_OK : rc;
+}
+static int vm_builtin_RecursiveIteratorIterator_callGetChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pSub;
+	ph7_value sRes;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !RitReady(pThis) ){
+		return RitNotReady(pCtx);
+	}
+	pSub = RitSub(pVm,pThis,RitInt(pThis,RIT_LVL));
+	if( pSub == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pVm,&sRes);
+	rc = RitCall(pCtx,pSub,"getChildren",sizeof("getChildren")-1,&sRes,FALSE,0);
+	if( rc == SXRET_OK ){
+		ph7_result_value(pCtx,&sRes);
+	}
+	PH7_MemObjRelease(&sRes);
+	return rc == SXRET_OK ? PH7_OK : rc;
+}
+static int vm_builtin_RecursiveIteratorIterator_setMaxDepth(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 iMax = -1;
+	if( !RitReady(pThis) ){
+		return RitNotReady(pCtx);
+	}
+	if( nArg > 0 ){
+		sxi32 rc = PH7_IntArgResolve(pCtx,apArg[0],"RecursiveIteratorIterator::setMaxDepth",
+			1,"maxDepth","int",&iMax);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	if( iMax < -1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"RecursiveIteratorIterator::setMaxDepth(): Argument #1 ($maxDepth) "
+			"must be greater than or equal to -1");
+	}
+	if( iMax > SXI32_HIGH ){
+		iMax = SXI32_HIGH;   /* php clamps to INT_MAX; max_depth is an int there */
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,RIT_MX,iMax);
+	return PH7_OK;
+}
+static int vm_builtin_RecursiveIteratorIterator_getMaxDepth(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int iMax;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !RitReady(pThis) ){
+		return RitNotReady(pCtx);
+	}
+	iMax = RitInt(pThis,RIT_MX);
+	if( iMax == -1 ){
+		ph7_result_bool(pCtx,0);   /* php's `int|false`: false means "any depth" */
+	}else{
+		ph7_result_int64(pCtx,(ph7_int64)iMax);
+	}
+	return PH7_OK;
+}
+/*
+ * The declaration. Method ORDER follows spl_iterators.stub.php line for line,
+ * because that is the order Reflection reports. Every return type is php's
+ * `@tentative-return-type` kind (rule 45).
+ */
+static sxi32 VmInstallSplRecursiveIt(ph7_vm *pVm)
+{
+	static const PH7_NativePropDef aRitProp[] = {
+		{ RIT_ST,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ RIT_SS,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ RIT_LVL, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+		{ RIT_MD,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+		{ RIT_FL,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+		{ RIT_MX,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, -1, 0, 0.0 }, 0 },
+		{ RIT_II,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+		{ RIT_RD,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+	};
+	static const PH7_NativeConstDef aRitConst[] = {
+		{ "LEAVES_ONLY",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, RIT_LEAVES_ONLY, 0, 0.0 },
+		{ "SELF_FIRST",      PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, RIT_SELF_FIRST, 0, 0.0 },
+		{ "CHILD_FIRST",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, RIT_CHILD_FIRST, 0, 0.0 },
+		{ "CATCH_GET_CHILD", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, RIT_CATCH_GET_CHILD, 0, 0.0 },
+	};
+	static const PH7_NativeMethodDef aRitMethod[] = {
+		{ "__construct",      PH7_MOD_PUBLIC,
+		  /* php's stub spells the default `RecursiveIteratorIterator::LEAVES_ONLY`;
+		   * one zSig field cannot carry both the TEXT and the VALUE, and the value
+		   * wins here for the same reason it does on RegexIterator's row. */
+		  "Traversable $iterator, int $mode = 0, int $flags = 0", 0,
+		  vm_builtin_RecursiveIteratorIterator_construct },
+		{ "rewind",           PH7_MOD_PUBLIC, "", "@void",
+		  vm_builtin_RecursiveIteratorIterator_rewind },
+		{ "valid",            PH7_MOD_PUBLIC, "", "@bool",
+		  vm_builtin_RecursiveIteratorIterator_valid },
+		{ "key",              PH7_MOD_PUBLIC, "", "@mixed",
+		  vm_builtin_RecursiveIteratorIterator_key },
+		{ "current",          PH7_MOD_PUBLIC, "", "@mixed",
+		  vm_builtin_RecursiveIteratorIterator_current },
+		{ "next",             PH7_MOD_PUBLIC, "", "@void",
+		  vm_builtin_RecursiveIteratorIterator_next },
+		{ "getDepth",         PH7_MOD_PUBLIC, "", "@int",
+		  vm_builtin_RecursiveIteratorIterator_getDepth },
+		{ "getSubIterator",   PH7_MOD_PUBLIC, "?int $level = null", "@?RecursiveIterator",
+		  vm_builtin_RecursiveIteratorIterator_getSubIterator },
+		{ "getInnerIterator", PH7_MOD_PUBLIC, "", "@RecursiveIterator",
+		  vm_builtin_RecursiveIteratorIterator_getInnerIterator },
+		{ "beginIteration",   PH7_MOD_PUBLIC, "", "@void",
+		  vm_builtin_RecursiveIteratorIterator_nop },
+		{ "endIteration",     PH7_MOD_PUBLIC, "", "@void",
+		  vm_builtin_RecursiveIteratorIterator_nop },
+		{ "callHasChildren",  PH7_MOD_PUBLIC, "", "@bool",
+		  vm_builtin_RecursiveIteratorIterator_callHasChildren },
+		{ "callGetChildren",  PH7_MOD_PUBLIC, "", "@?RecursiveIterator",
+		  vm_builtin_RecursiveIteratorIterator_callGetChildren },
+		{ "beginChildren",    PH7_MOD_PUBLIC, "", "@void",
+		  vm_builtin_RecursiveIteratorIterator_nop },
+		{ "endChildren",      PH7_MOD_PUBLIC, "", "@void",
+		  vm_builtin_RecursiveIteratorIterator_nop },
+		{ "nextElement",      PH7_MOD_PUBLIC, "", "@void",
+		  vm_builtin_RecursiveIteratorIterator_nop },
+		{ "setMaxDepth",      PH7_MOD_PUBLIC, "int $maxDepth = -1", "@void",
+		  vm_builtin_RecursiveIteratorIterator_setMaxDepth },
+		{ "getMaxDepth",      PH7_MOD_PUBLIC, "", "@int|false",
+		  vm_builtin_RecursiveIteratorIterator_getMaxDepth },
+	};
+	/* PH7_CLASS_NOCLONE: php refuses `clone` outright ("Trying to clone an
+	 * uncloneable object"), and a slot-by-slot copy would share one level stack --
+	 * and with it one cursor -- between two traversals. */
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "RecursiveIteratorIterator", 0, "OuterIterator", PH7_CLASS_NOCLONE,
+		  aRitMethod, SX_ARRAYSIZE(aRitMethod),
+		  aRitConst, SX_ARRAYSIZE(aRitConst),
+		  aRitProp, SX_ARRAYSIZE(aRitProp), 0, 0, 0 },
+	};
+	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+}
 static const char zSplLib[] =
-"class RecursiveIteratorIterator implements OuterIterator {"
-" const LEAVES_ONLY = 0;"
-" const SELF_FIRST = 1;"
-" const CHILD_FIRST = 2;"
-" const CATCH_GET_CHILD = 16;"
-" private $__root = null;"
-" private $__st = [];"
-" private $__mode = 0;"
-" private $__maxDepth = false;"
-" private $__post = false;"
-" private $__live = false;"
-" public function __construct($iterator, $mode = 0, $flags = 0){"
-"  while( $iterator instanceof IteratorAggregate ){ $iterator = $iterator->getIterator(); }"
-"  if( !($iterator instanceof RecursiveIterator) ){"
-"   throw new TypeError('RecursiveIteratorIterator::__construct(): Argument #1"
-" ($iterator) must be of type RecursiveIterator, ' . get_debug_type($iterator) . ' given');"
-"  }"
-"  $this->__root = $iterator;"
-"  $this->__mode = (int)$mode | (int)$flags;"
-" }"
-" public function getInnerIterator(){ return end($this->__st) ?: $this->__root; }"
-" public function getSubIterator($level = null){"
-"  if( $level === null ){ $level = count($this->__st) - 1; }"
-"  return $this->__st[$level] ?? null;"
-" }"
-" public function getDepth(){ return count($this->__st) - 1; }"
-" public function getMaxDepth(){ return $this->__maxDepth; }"
-" public function setMaxDepth($maxDepth = -1){"
-"  $maxDepth = (int)$maxDepth;"
-"  if( $maxDepth < -1 ){"
-"   throw new Exception('Parameter max_depth must be >= -1');"
-"  }"
-"  $this->__maxDepth = $maxDepth === -1 ? false : $maxDepth;"
-" }"
-" public function callHasChildren(){"
-"  $it = end($this->__st);"
-"  return $it ? $it->hasChildren() : false;"
-" }"
-" public function callGetChildren(){"
-"  $it = end($this->__st);"
-"  return $it ? $it->getChildren() : null;"
-" }"
-" public function beginIteration(){}"
-" public function endIteration(){}"
-" public function beginChildren(){}"
-" public function endChildren(){}"
-" public function nextElement(){}"
-" private function __riDepthOk(){"
-"  return $this->__maxDepth === false || (count($this->__st) - 1) < $this->__maxDepth;"
-" }"
-" private function __riDescend(){"
-"  /* push the current element's children, positioned at their start */"
-"  if( $this->__mode & self::CATCH_GET_CHILD ){"
-"   try { $child = $this->callGetChildren(); }"
-"   catch (Exception $e) { return false; }"
-"  }else{"
-"   $child = $this->callGetChildren();"
-"  }"
-"  if( !($child instanceof RecursiveIterator) ){ return false; }"
-"  $child->rewind();"
-"  $this->__st[] = $child;"
-"  $this->beginChildren();"
-"  return true;"
-" }"
-" private function __riFetch(){"
-"  $m = $this->__mode & 3;"
-"  for(;;){"
-"   if( count($this->__st) === 0 ){"
-"    $this->__live = false;"
-"    /* php keeps the root level addressable after exhaustion (getDepth 0,"
-"     * getSubIterator() returns the root) */"
-"    $this->__st = [$this->__root];"
-"    $this->endIteration();"
-"    return;"
-"   }"
-"   $it = end($this->__st);"
-"   if( !$it->valid() ){"
-"    array_pop($this->__st);"
-"    $this->endChildren();"
-"    if( count($this->__st) === 0 ){ continue; }"
-"    if( $m === self::CHILD_FIRST ){"
-"     /* the parent node yields now, after its subtree */"
-"     $this->__post = true;"
-"     $this->__live = true;"
-"     return;"
-"    }"
-"    end($this->__st)->next();"
-"    continue;"
-"   }"
-"   if( $m === self::LEAVES_ONLY && $it->hasChildren() && $this->__riDepthOk() ){"
-"    if( $this->__riDescend() ){ continue; }"
-"   }"
-"   if( $m === self::CHILD_FIRST && $it->hasChildren() && $this->__riDepthOk() ){"
-"    if( $this->__riDescend() ){ continue; }"
-"   }"
-"   $this->__post = false;"
-"   $this->__live = true;"
-"   $this->nextElement();"
-"   return;"
-"  }"
-" }"
-" public function rewind(){"
-"  $this->__st = [$this->__root];"
-"  $this->__root->rewind();"
-"  $this->__post = false;"
-"  $this->beginIteration();"
-"  $this->__riFetch();"
-" }"
-" public function valid(){ return $this->__live; }"
-" public function current(){"
-"  $it = end($this->__st);"
-"  return $it ? $it->current() : null;"
-" }"
-" public function key(){"
-"  $it = end($this->__st);"
-"  return $it ? $it->key() : null;"
-" }"
-" public function next(){"
-"  if( !$this->__live ){ return; }"
-"  $m = $this->__mode & 3;"
-"  $it = end($this->__st);"
-"  if( $this->__post ){"
-"   /* leaving a CHILD_FIRST post-visit: advance past the node */"
-"   $this->__post = false;"
-"   $it->next();"
-"   $this->__riFetch();"
-"   return;"
-"  }"
-"  if( $m === self::SELF_FIRST && $it->hasChildren() && $this->__riDepthOk() ){"
-"   if( $this->__riDescend() ){ $this->__riFetch(); return; }"
-"  }"
-"  $it->next();"
-"  $this->__riFetch();"
-" }"
-"}"
 "class SplDoublyLinkedList implements Iterator, Countable, ArrayAccess {"
 " const IT_MODE_LIFO = 2;"
 " const IT_MODE_FIFO = 0;"
@@ -3647,6 +4395,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)
 	/* Also before the chunk: AppendIterator is still PHP and names OuterIterator as
 	 * it compiles, as do the Recursive family and the datastructures. */
 	rc = VmInstallSplDualIterators(&(*pVm));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* After the dual iterators: RecursiveIteratorIterator names OuterIterator and
+	 * RecursiveIterator, both declared by that table. */
+	rc = VmInstallSplRecursiveIt(&(*pVm));
 	if( rc != SXRET_OK ){
 		return rc;
 	}

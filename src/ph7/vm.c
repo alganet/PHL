@@ -1154,6 +1154,118 @@ PH7_PRIVATE sxi32 VmLocalExecIntoObj(ph7_vm *pVm,SySet *pByteCode,ph7_value **pp
 	return rc;
 }
 /*
+ * The two halves of the THROW MUTING both callers below share. Hiding the live
+ * try activations is what makes a swallowed throw local: a callee's OWN tries
+ * push onto the emptied set and still catch normally, while nothing OUTSIDE the
+ * muted region can see the throw — which matters because PHL dispatches a throw
+ * raised under a C call site INLINE, running an enclosing user catch before the
+ * C caller ever regains control.
+ */
+typedef struct VmMuteState {
+	ph7_exception **apSaved;   /* try activations hidden for the duration */
+	sxu32 nSaved;
+	sxi32 iSaveStatus;
+	sxi32 iSaveBoundary;
+	VmFrame *pSaveResume;
+	ph7_class_attr *pSaveCycleAttr;
+	ph7_class *pSaveCycleClass;
+} VmMuteState;
+static void VmMuteEnter(ph7_vm *pVm,VmMuteState *pSave)
+{
+	pSave->apSaved = 0;
+	pSave->nSaved = SySetUsed(&pVm->aException);
+	pSave->iSaveStatus = pVm->iExitStatus;
+	pSave->iSaveBoundary = pVm->nBoundaryRc;
+	pSave->pSaveResume = pVm->pResumeFrame;
+	pSave->pSaveCycleAttr = pVm->pConstCycleAttr;
+	pSave->pSaveCycleClass = pVm->pConstCycleClass;
+	if( pSave->nSaved > 0 ){
+		pSave->apSaved = (ph7_exception **)SyMemBackendAlloc(&pVm->sAllocator,
+			pSave->nSaved * sizeof(ph7_exception *));
+		if( pSave->apSaved ){
+			SyMemcpy(SySetBasePtr(&pVm->aException),pSave->apSaved,
+				pSave->nSaved * sizeof(ph7_exception *));
+			SySetReset(&pVm->aException);
+		}
+	}
+	pVm->nMuteThrow++;
+}
+/*
+ * Undo everything a swallowed throw stamped: the frame flag an enclosing
+ * execution would read as "an unwind is in progress", the uncaught exit status,
+ * the C-boundary park and any recorded in-place-catch resume target. Returns
+ * TRUE when a throw was actually swallowed.
+ */
+static int VmMuteLeave(ph7_vm *pVm,VmMuteState *pSave,sxi32 rc)
+{
+	VmFrame *pFrame;
+	pVm->nMuteThrow--;
+	/* Nothing may be left on the hidden stack (the muted region has no try of its
+	 * own that survives it), but a muted throw unwinding out of one would leave an
+	 * activation behind: release whatever is there whether or not anything was
+	 * hidden. */
+	VmExcReleaseAll(&(*pVm),&pVm->aException);
+	SySetReset(&pVm->aException);
+	if( pSave->apSaved ){
+		sxu32 k;
+		for( k = 0 ; k < pSave->nSaved ; ++k ){
+			SySetPut(&pVm->aException,(const void *)&pSave->apSaved[k]);
+		}
+		SyMemBackendFree(&pVm->sAllocator,pSave->apSaved);
+		pSave->apSaved = 0;
+	}
+	if( rc != PH7_EXCEPTION && rc != PH7_ABORT ){
+		return FALSE;
+	}
+	pFrame = pVm->pFrame;
+	if( pFrame ){
+		pFrame = VmSkipExceptionFrames(pFrame);
+		pFrame->iFlags &= ~VM_FRAME_THROW;
+	}
+	pVm->iExitStatus = pSave->iSaveStatus;
+	pVm->nBoundaryRc = pSave->iSaveBoundary;
+	pVm->pResumeFrame = pSave->pSaveResume;
+	pVm->pConstCycleAttr = pSave->pSaveCycleAttr;
+	pVm->pConstCycleClass = pSave->pSaveCycleClass;
+	return TRUE;
+}
+/*
+ * Call a class method from C and SWALLOW any throw it raises — php's
+ * zend_clear_exception() at a C call site, which nothing else here can spell.
+ * *pbThrew (optional) reports whether one was swallowed; the return status is
+ * SXRET_OK either way, because to the caller a swallowed throw is not a failure.
+ *
+ * RecursiveIteratorIterator's RIT_CATCH_GET_CHILD is the first user: php clears
+ * the exception a hasChildren()/getChildren() raised and carries the traversal
+ * on to the next element. Reach for this ONLY where php itself clears — a
+ * swallowed throw is invisible, and every other C call site wants the status.
+ */
+PH7_PRIVATE sxi32 PH7_VmCallMethodSwallow(
+	ph7_vm *pVm,                 /* Target VM */
+	ph7_class_instance *pThis,   /* Receiver */
+	ph7_class_method *pMethod,   /* Method to run */
+	ph7_value *pResult,          /* OUT: return value, or 0 */
+	int nArg,                    /* Argument count */
+	ph7_value **apArg,           /* Arguments */
+	int *pbThrew                 /* OUT: TRUE if a throw was swallowed, or 0 */
+	)
+{
+	VmMuteState sSave;
+	sxi32 rc;
+	VmMuteEnter(&(*pVm),&sSave);
+	rc = PH7_VmCallClassMethod(&(*pVm),pThis,pMethod,pResult,nArg,apArg);
+	if( VmMuteLeave(&(*pVm),&sSave,rc) ){
+		if( pbThrew ){
+			*pbThrew = TRUE;
+		}
+		return SXRET_OK;
+	}
+	if( pbThrew ){
+		*pbThrew = FALSE;
+	}
+	return rc;
+}
+/*
  * Evaluate an initializer with the engine's THROW machinery muted: the live
  * try activations are hidden for the duration (so no user catch runs IN PLACE),
  * no exception handler is invoked, no uncaught report is printed, and the exit
@@ -1173,26 +1285,11 @@ PH7_PRIVATE sxi32 VmLocalExecIntoObj(ph7_vm *pVm,SySet *pByteCode,ph7_value **pp
  */
 static sxi32 VmEvalDefaultMuted(ph7_vm *pVm,SySet *pByteCode,ph7_value **ppMemObj)
 {
-	ph7_exception **apSaved = 0;             /* try activations hidden for the eval */
-	sxu32 nSaved = SySetUsed(&pVm->aException);
-	sxi32 iSaveStatus = pVm->iExitStatus;
-	sxi32 iSaveBoundary = pVm->nBoundaryRc;
-	VmFrame *pSaveResume = pVm->pResumeFrame;
-	ph7_class_attr *pSaveCycleAttr = pVm->pConstCycleAttr;
-	ph7_class *pSaveCycleClass = pVm->pConstCycleClass;
-	VmFrame *pFrame;
+	VmMuteState sSave;
 	sxi32 rc;
-	if( nSaved > 0 ){
-		apSaved = (ph7_exception **)SyMemBackendAlloc(&pVm->sAllocator,nSaved * sizeof(ph7_exception *));
-		if( apSaved ){
-			SyMemcpy(SySetBasePtr(&pVm->aException),apSaved,nSaved * sizeof(ph7_exception *));
-			SySetReset(&pVm->aException);
-		}
-	}
-	pVm->nMuteThrow++;
+	VmMuteEnter(&(*pVm),&sSave);
 	rc = VmLocalExecIntoObj(&(*pVm),pByteCode,ppMemObj,FALSE);
-	pVm->nMuteThrow--;
-	if( rc == SXRET_OK && pVm->pConstCycleAttr != pSaveCycleAttr ){
+	if( rc == SXRET_OK && pVm->pConstCycleAttr != sSave.pSaveCycleAttr ){
 		/* The initializer named a SELF-REFERENCING constant. That does not throw
 		 * where it is found — the innermost evaluation only records it for an
 		 * outer level to raise — but the value is unusable and php raises at the
@@ -1200,38 +1297,13 @@ static sxi32 VmEvalDefaultMuted(ph7_vm *pVm,SySet *pByteCode,ph7_value **ppMemOb
 		 * records the cycle again and raises it there. */
 		rc = PH7_EXCEPTION;
 	}
-	/* Nothing may push onto the hidden stack (an initializer has no try of its
-	 * own), but a muted throw unwinding out of one would leave an activation
-	 * behind: release whatever is there whether or not anything was hidden. */
-	VmExcReleaseAll(&(*pVm),&pVm->aException);
-	SySetReset(&pVm->aException);
-	if( apSaved ){
-		sxu32 k;
-		for( k = 0 ; k < nSaved ; ++k ){
-			SySetPut(&pVm->aException,(const void *)&apSaved[k]);
-		}
-		SyMemBackendFree(&pVm->sAllocator,apSaved);
-	}
-	if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
-		/* Roll the attempt back whole: the throw stamped the frame (which the
-		 * enclosing execution would read as an unwind in progress), the uncaught
-		 * exit status, and possibly a C-boundary park / resume target. */
-		pFrame = pVm->pFrame;
-		if( pFrame ){
-			pFrame = VmSkipExceptionFrames(pFrame);
-			pFrame->iFlags &= ~VM_FRAME_THROW;
-		}
-		pVm->iExitStatus = iSaveStatus;
-		pVm->nBoundaryRc = iSaveBoundary;
-		pVm->pResumeFrame = pSaveResume;
-		/* A self-referencing constant reached by the abandoned initializer only
-		 * RECORDS itself here (VmClassConstEvalOnDemand) for an outer level to
-		 * raise. Left standing it would be raised, unmuted, by the next attribute
-		 * whose default happens to succeed — at the declaration site, and blamed
-		 * on the wrong member. The deferred re-run detects the cycle again. */
-		pVm->pConstCycleAttr = pSaveCycleAttr;
-		pVm->pConstCycleClass = pSaveCycleClass;
-	}
+	/* VmMuteLeave rolls the attempt back whole — including pConstCycleAttr, which
+	 * a self-referencing constant reached by the abandoned initializer only
+	 * RECORDS for an outer level to raise. Left standing it would be raised,
+	 * unmuted, by the next attribute whose default happens to succeed — at the
+	 * declaration site, and blamed on the wrong member. The deferred re-run
+	 * detects the cycle again. */
+	VmMuteLeave(&(*pVm),&sSave,rc);
 	return rc;
 }
 /*
