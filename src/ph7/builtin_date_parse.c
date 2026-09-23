@@ -3212,30 +3212,38 @@ static int vm_builtin_timezone_offset_get(ph7_context *pCtx,int nArg,ph7_value *
  * chunk wrote by hand (`(string)$format`, `(int)$timestamp`) are declared types now
  * and the methods reject what php rejects.
  */
-#define DT_NATIVE_SHARED_METHODS \
+/* The methods DateTime and DateTimeImmutable share. CLS is the OWNING class name
+ * as a string literal, because php's stubs write the concrete class rather than
+ * `static` for the legacy mutators -- DateTime::add reports DateTime and
+ * DateTimeImmutable::add reports DateTimeImmutable. The two that php really does
+ * declare `static` (setMicrosecond) and the two it declares for real rather than
+ * tentatively (getMicrosecond, and setMicrosecond again) are written as they are:
+ * a leading `@` is php's @tentative-return-type, and nearly every method here has
+ * one. */
+#define DT_NATIVE_SHARED_METHODS(CLS) \
 	{ "__construct",     PH7_MOD_PUBLIC, "string $datetime = 'now', ?DateTimeZone $timezone = null", "", \
 	  vm_builtin_DateTime_construct }, \
-	{ "format",          PH7_MOD_PUBLIC, "string $format", "string", vm_builtin_DateTime_format }, \
-	{ "getTimestamp",    PH7_MOD_PUBLIC, "", "int", vm_builtin_DateTime_getTimestamp }, \
+	{ "format",          PH7_MOD_PUBLIC, "string $format", "@string", vm_builtin_DateTime_format }, \
+	{ "getTimestamp",    PH7_MOD_PUBLIC, "", "@int", vm_builtin_DateTime_getTimestamp }, \
 	{ "getMicrosecond",  PH7_MOD_PUBLIC, "", "int", vm_builtin_DateTime_getMicrosecond }, \
-	{ "getOffset",       PH7_MOD_PUBLIC, "", "int", vm_builtin_DateTime_getOffset }, \
-	{ "getTimezone",     PH7_MOD_PUBLIC, "", "DateTimeZone", vm_builtin_DateTime_getTimezone }, \
+	{ "getOffset",       PH7_MOD_PUBLIC, "", "@int", vm_builtin_DateTime_getOffset }, \
+	{ "getTimezone",     PH7_MOD_PUBLIC, "", "@DateTimeZone|false", vm_builtin_DateTime_getTimezone }, \
 	{ "diff",            PH7_MOD_PUBLIC, "DateTimeInterface $targetObject, bool $absolute = false", \
-	  "DateInterval", vm_builtin_DateTime_diff }, \
-	{ "modify",          PH7_MOD_PUBLIC, "string $modifier", "static", vm_builtin_DateTime_modify }, \
-	{ "setTimestamp",    PH7_MOD_PUBLIC, "int $timestamp", "static", vm_builtin_DateTime_setTimestamp }, \
+	  "@DateInterval", vm_builtin_DateTime_diff }, \
+	{ "modify",          PH7_MOD_PUBLIC, "string $modifier", "@" CLS, vm_builtin_DateTime_modify }, \
+	{ "setTimestamp",    PH7_MOD_PUBLIC, "int $timestamp", "@" CLS, vm_builtin_DateTime_setTimestamp }, \
 	{ "setMicrosecond",  PH7_MOD_PUBLIC, "int $microsecond", "static", vm_builtin_DateTime_setMicrosecond }, \
-	{ "setTimezone",     PH7_MOD_PUBLIC, "DateTimeZone $timezone", "static", vm_builtin_DateTime_setTimezone }, \
-	{ "setDate",         PH7_MOD_PUBLIC, "int $year, int $month, int $day", "static", \
+	{ "setTimezone",     PH7_MOD_PUBLIC, "DateTimeZone $timezone", "@" CLS, vm_builtin_DateTime_setTimezone }, \
+	{ "setDate",         PH7_MOD_PUBLIC, "int $year, int $month, int $day", "@" CLS, \
 	  vm_builtin_DateTime_setDate }, \
 	{ "setTime",         PH7_MOD_PUBLIC, \
-	  "int $hour, int $minute, int $second = 0, int $microsecond = 0", "static", \
+	  "int $hour, int $minute, int $second = 0, int $microsecond = 0", "@" CLS, \
 	  vm_builtin_DateTime_setTime }, \
-	{ "setISODate",      PH7_MOD_PUBLIC, "int $year, int $week, int $dayOfWeek = 1", "static", \
+	{ "setISODate",      PH7_MOD_PUBLIC, "int $year, int $week, int $dayOfWeek = 1", "@" CLS, \
 	  vm_builtin_DateTime_setISODate }, \
-	{ "add",             PH7_MOD_PUBLIC, "DateInterval $interval", "static", vm_builtin_DateTime_add }, \
-	{ "sub",             PH7_MOD_PUBLIC, "DateInterval $interval", "static", vm_builtin_DateTime_sub }, \
-	{ "getLastErrors",   PH7_MOD_PUBLIC|PH7_MOD_STATIC, "", "array|false", \
+	{ "add",             PH7_MOD_PUBLIC, "DateInterval $interval", "@" CLS, vm_builtin_DateTime_add }, \
+	{ "sub",             PH7_MOD_PUBLIC, "DateInterval $interval", "@" CLS, vm_builtin_DateTime_sub }, \
+	{ "getLastErrors",   PH7_MOD_PUBLIC|PH7_MOD_STATIC, "", "@array|false", \
 	  vm_builtin_DateTime_getLastErrors }
 /* php's DateTimeInterface constants, the whole of that interface's surface here
  * (its abstract METHODS are deliberately not declared: PH7_ClassImplement installs
@@ -3279,29 +3287,29 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 	};
 	static const PH7_NativeMethodDef aZoneMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC, "string $timezone", "", vm_builtin_DateTimeZone_construct },
-		{ "getName",     PH7_MOD_PUBLIC, "", "string", vm_builtin_DateTimeZone_getName },
-		{ "getOffset",   PH7_MOD_PUBLIC, "DateTimeInterface $datetime", "int",
+		{ "getName",     PH7_MOD_PUBLIC, "", "@string", vm_builtin_DateTimeZone_getName },
+		{ "getOffset",   PH7_MOD_PUBLIC, "DateTimeInterface $datetime", "@int",
 		  vm_builtin_DateTimeZone_getOffset },
 	};
 	static const PH7_NativePropDef aDtProp[] = { DT_NATIVE_STATE_PROPS };
 	static const PH7_NativeMethodDef aDtMethod[] = {
-		DT_NATIVE_SHARED_METHODS,
+		DT_NATIVE_SHARED_METHODS("DateTime"),
 		{ "createFromFormat",    PH7_MOD_PUBLIC|PH7_MOD_STATIC,
-		  "string $format, string $datetime, ?DateTimeZone $timezone = null", "static|false",
+		  "string $format, string $datetime, ?DateTimeZone $timezone = null", "@DateTime|false",
 		  vm_builtin_DateTime_createFromFormat },
-		{ "createFromImmutable", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "DateTimeImmutable $object", "static",
+		{ "createFromImmutable", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "DateTimeImmutable $object", "@static",
 		  vm_builtin_DateTime_copyOf },
-		{ "createFromInterface", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "DateTimeInterface $object", "static",
+		{ "createFromInterface", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "DateTimeInterface $object", "DateTime",
 		  vm_builtin_DateTime_copyOf },
 	};
 	static const PH7_NativeMethodDef aImmMethod[] = {
-		DT_NATIVE_SHARED_METHODS,
+		DT_NATIVE_SHARED_METHODS("DateTimeImmutable"),
 		{ "createFromFormat",    PH7_MOD_PUBLIC|PH7_MOD_STATIC,
-		  "string $format, string $datetime, ?DateTimeZone $timezone = null", "static|false",
+		  "string $format, string $datetime, ?DateTimeZone $timezone = null", "@DateTimeImmutable|false",
 		  vm_builtin_DateTimeImmutable_createFromFormat },
-		{ "createFromMutable",   PH7_MOD_PUBLIC|PH7_MOD_STATIC, "DateTime $object", "static",
+		{ "createFromMutable",   PH7_MOD_PUBLIC|PH7_MOD_STATIC, "DateTime $object", "@static",
 		  vm_builtin_DateTimeImmutable_copyOf },
-		{ "createFromInterface", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "DateTimeInterface $object", "static",
+		{ "createFromInterface", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "DateTimeInterface $object", "DateTimeImmutable",
 		  vm_builtin_DateTimeImmutable_copyOf },
 	};
 	static const PH7_NativePropDef aIvProp[] = {
@@ -3320,9 +3328,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 	static const PH7_NativeMethodDef aIvMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC, "string $duration", "",
 		  vm_builtin_DateInterval_construct },
-		{ "createFromDateString", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $datetime", "static|false",
+		{ "createFromDateString", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $datetime", "@DateInterval",
 		  vm_builtin_DateInterval_createFromDateString },
-		{ "format",      PH7_MOD_PUBLIC, "string $format", "string", vm_builtin_DateInterval_format },
+		{ "format",      PH7_MOD_PUBLIC, "string $format", "@string", vm_builtin_DateInterval_format },
 	};
 	static const PH7_NativePropDef aDpProp[] = {
 		{ "start",              PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
@@ -3344,13 +3352,13 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "createFromISO8601String", PH7_MOD_PUBLIC|PH7_MOD_STATIC,
 		  "string $specification, int $options = 0", "static",
 		  vm_builtin_DatePeriod_createFromISO8601String },
-		{ "getStartDate",    PH7_MOD_PUBLIC, "", "DateTimeInterface",
+		{ "getStartDate",    PH7_MOD_PUBLIC, "", "@DateTimeInterface",
 		  vm_builtin_DatePeriod_getStartDate },
-		{ "getEndDate",      PH7_MOD_PUBLIC, "", "?DateTimeInterface",
+		{ "getEndDate",      PH7_MOD_PUBLIC, "", "@?DateTimeInterface",
 		  vm_builtin_DatePeriod_getEndDate },
-		{ "getDateInterval", PH7_MOD_PUBLIC, "", "DateInterval",
+		{ "getDateInterval", PH7_MOD_PUBLIC, "", "@DateInterval",
 		  vm_builtin_DatePeriod_getDateInterval },
-		{ "getRecurrences",  PH7_MOD_PUBLIC, "", "?int", vm_builtin_DatePeriod_getRecurrences },
+		{ "getRecurrences",  PH7_MOD_PUBLIC, "", "@?int", vm_builtin_DatePeriod_getRecurrences },
 		{ "getIterator",     PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_DatePeriod_getIterator },
 	};
 	static const PH7_NativeClassSpec aSpec[] = {

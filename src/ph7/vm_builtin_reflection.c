@@ -1401,15 +1401,15 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionTypes(ph7_vm *pVm)
 		{ RT_NULLABLE, PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_BOOL,   0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeMethodDef aBaseMethod[] = {
-		{ "allowsNull", PH7_MOD_PUBLIC, "", "",       vm_builtin_ReflectionType_allowsNull },
+		{ "allowsNull", PH7_MOD_PUBLIC, "", "@bool",       vm_builtin_ReflectionType_allowsNull },
 		{ "__toString", PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionType_toString },
 	};
 	static const PH7_NativePropDef aNamedProp[] = {
 		{ RT_TNAME, PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
 	};
 	static const PH7_NativeMethodDef aNamedMethod[] = {
-		{ "getName",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionNamedType_getName },
-		{ "isBuiltin", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionNamedType_isBuiltin },
+		{ "getName",   PH7_MOD_PUBLIC, "", "@string", vm_builtin_ReflectionNamedType_getName },
+		{ "isBuiltin", PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionNamedType_isBuiltin },
 	};
 	static const PH7_NativePropDef aCompProp[] = {
 		{ RT_TYPES, PH7_MOD_PROTECTED|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
@@ -2771,23 +2771,23 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionSmall(ph7_vm *pVm)
 	};
 	static const PH7_NativeMethodDef aExtMethod[] = {
 		{ "__construct",     PH7_MOD_PUBLIC, "string $name", "", vm_builtin_ReflectionExtension_construct },
-		{ "getName",         PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_getName },
-		{ "getVersion",      PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_getVersion },
-		{ "getFunctions",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_emptyArray },
-		{ "getConstants",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_emptyArray },
-		{ "getINIEntries",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_emptyArray },
-		{ "getClasses",      PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_emptyArray },
-		{ "getClassNames",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_emptyArray },
-		{ "getDependencies", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_emptyArray },
-		{ "info",            PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_info },
-		{ "isPersistent",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_isPersistent },
-		{ "isTemporary",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_isTemporary },
+		{ "getName",         PH7_MOD_PUBLIC, "", "@string", vm_builtin_ReflectionExtension_getName },
+		{ "getVersion",      PH7_MOD_PUBLIC, "", "@?string", vm_builtin_ReflectionExtension_getVersion },
+		{ "getFunctions",    PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionExtension_emptyArray },
+		{ "getConstants",    PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionExtension_emptyArray },
+		{ "getINIEntries",   PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionExtension_emptyArray },
+		{ "getClasses",      PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionExtension_emptyArray },
+		{ "getClassNames",   PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionExtension_emptyArray },
+		{ "getDependencies", PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionExtension_emptyArray },
+		{ "info",            PH7_MOD_PUBLIC, "", "@void", vm_builtin_ReflectionExtension_info },
+		{ "isPersistent",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionExtension_isPersistent },
+		{ "isTemporary",     PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionExtension_isTemporary },
 		{ "__toString",      PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionExtension_toString },
 	};
 	static const PH7_NativeMethodDef aZendMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC, "string $name", "",
 		  vm_builtin_ReflectionZendExtension_construct },
-		{ "getName",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionExtension_getName },
+		{ "getName",     PH7_MOD_PUBLIC, "", "@string", vm_builtin_ReflectionExtension_getName },
 		{ "__toString",  PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionZendExtension_toString },
 	};
 	static const PH7_NativePropDef aRefProp[] = {
@@ -4406,52 +4406,52 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionClass(ph7_vm *pVm)
 		{ "__construct", PH7_MOD_PUBLIC, "object|string $objectOrClass", "",
 		  vm_builtin_ReflectionClass_construct },
 		{ "__toString",  PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionClass_toString },
-		{ "getName",       PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getName },
-		{ "isInternal",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isInternal },
-		{ "isUserDefined", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isUserDefined },
-		{ "isAnonymous",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isAnonymous },
-		{ "isInstantiable",PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isInstantiable },
-		{ "isCloneable",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isCloneable },
-		{ "getFileName",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getFileName },
-		{ "getStartLine",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getStartLine },
-		{ "getEndLine",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getEndLine },
-		{ "getDocComment", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getDocComment },
-		{ "getConstructor",PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getConstructor },
-		{ "hasMethod",     PH7_MOD_PUBLIC, "string $name", "", vm_builtin_ReflectionClass_hasMethod },
-		{ "getMethod",     PH7_MOD_PUBLIC, "string $name", "", vm_builtin_ReflectionClass_getMethod },
-		{ "getMethods",    PH7_MOD_PUBLIC, "?int $filter = null", "",
+		{ "getName",       PH7_MOD_PUBLIC, "", "@string", vm_builtin_ReflectionClass_getName },
+		{ "isInternal",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionClass_isInternal },
+		{ "isUserDefined", PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionClass_isUserDefined },
+		{ "isAnonymous",   PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionClass_isAnonymous },
+		{ "isInstantiable",PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionClass_isInstantiable },
+		{ "isCloneable",   PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionClass_isCloneable },
+		{ "getFileName",   PH7_MOD_PUBLIC, "", "@string|false", vm_builtin_ReflectionClass_getFileName },
+		{ "getStartLine",  PH7_MOD_PUBLIC, "", "@int|false", vm_builtin_ReflectionClass_getStartLine },
+		{ "getEndLine",    PH7_MOD_PUBLIC, "", "@int|false", vm_builtin_ReflectionClass_getEndLine },
+		{ "getDocComment", PH7_MOD_PUBLIC, "", "@string|false", vm_builtin_ReflectionClass_getDocComment },
+		{ "getConstructor",PH7_MOD_PUBLIC, "", "@?ReflectionMethod", vm_builtin_ReflectionClass_getConstructor },
+		{ "hasMethod",     PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_ReflectionClass_hasMethod },
+		{ "getMethod",     PH7_MOD_PUBLIC, "string $name", "@ReflectionMethod", vm_builtin_ReflectionClass_getMethod },
+		{ "getMethods",    PH7_MOD_PUBLIC, "?int $filter = null", "@array",
 		  vm_builtin_ReflectionClass_getMethods },
-		{ "hasProperty",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_ReflectionClass_hasProperty },
-		{ "getProperty",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_ReflectionClass_getProperty },
-		{ "getProperties", PH7_MOD_PUBLIC, "?int $filter = null", "",
+		{ "hasProperty",   PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_ReflectionClass_hasProperty },
+		{ "getProperty",   PH7_MOD_PUBLIC, "string $name", "@ReflectionProperty", vm_builtin_ReflectionClass_getProperty },
+		{ "getProperties", PH7_MOD_PUBLIC, "?int $filter = null", "@array",
 		  vm_builtin_ReflectionClass_getProperties },
-		{ "hasConstant",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_ReflectionClass_hasConstant },
-		{ "getConstants",  PH7_MOD_PUBLIC, "?int $filter = null", "",
+		{ "hasConstant",   PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_ReflectionClass_hasConstant },
+		{ "getConstants",  PH7_MOD_PUBLIC, "?int $filter = null", "@array",
 		  vm_builtin_ReflectionClass_getConstants },
-		{ "getReflectionConstants", PH7_MOD_PUBLIC, "?int $filter = null", "",
+		{ "getReflectionConstants", PH7_MOD_PUBLIC, "?int $filter = null", "@array",
 		  vm_builtin_ReflectionClass_getReflectionConstants },
-		{ "getConstant",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_ReflectionClass_getConstant },
-		{ "getReflectionConstant", PH7_MOD_PUBLIC, "string $name", "",
+		{ "getConstant",   PH7_MOD_PUBLIC, "string $name", "@mixed", vm_builtin_ReflectionClass_getConstant },
+		{ "getReflectionConstant", PH7_MOD_PUBLIC, "string $name", "@ReflectionClassConstant|false",
 		  vm_builtin_ReflectionClass_getReflectionConstant },
-		{ "getInterfaces",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getInterfaces },
-		{ "getInterfaceNames", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getInterfaceNames },
-		{ "isInterface",       PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isInterface },
-		{ "getTraits",         PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getTraits },
-		{ "getTraitNames",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getTraitNames },
-		{ "getTraitAliases",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getTraitAliases },
-		{ "isTrait",           PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isTrait },
+		{ "getInterfaces",     PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionClass_getInterfaces },
+		{ "getInterfaceNames", PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionClass_getInterfaceNames },
+		{ "isInterface",       PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionClass_isInterface },
+		{ "getTraits",         PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionClass_getTraits },
+		{ "getTraitNames",     PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionClass_getTraitNames },
+		{ "getTraitAliases",   PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionClass_getTraitAliases },
+		{ "isTrait",           PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionClass_isTrait },
 		{ "isEnum",            PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionClass_isEnum },
-		{ "isAbstract",        PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isAbstract },
-		{ "isFinal",           PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isFinal },
+		{ "isAbstract",        PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionClass_isAbstract },
+		{ "isFinal",           PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionClass_isFinal },
 		{ "isReadOnly",        PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionClass_isReadOnly },
-		{ "getModifiers",      PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getModifiers },
-		{ "isInstance",        PH7_MOD_PUBLIC, "object $object", "",
+		{ "getModifiers",      PH7_MOD_PUBLIC, "", "@int", vm_builtin_ReflectionClass_getModifiers },
+		{ "isInstance",        PH7_MOD_PUBLIC, "object $object", "@bool",
 		  vm_builtin_ReflectionClass_isInstance },
-		{ "newInstance",       PH7_MOD_PUBLIC, "mixed ...$args", "",
+		{ "newInstance",       PH7_MOD_PUBLIC, "mixed ...$args", "@object",
 		  vm_builtin_ReflectionClass_newInstance },
-		{ "newInstanceWithoutConstructor", PH7_MOD_PUBLIC, "", "",
+		{ "newInstanceWithoutConstructor", PH7_MOD_PUBLIC, "", "@object",
 		  vm_builtin_ReflectionClass_newInstanceWithoutConstructor },
-		{ "newInstanceArgs",   PH7_MOD_PUBLIC, "array $args = []", "",
+		{ "newInstanceArgs",   PH7_MOD_PUBLIC, "array $args = []", "@?object",
 		  vm_builtin_ReflectionClass_newInstanceArgs },
 		{ "newLazyGhost",      PH7_MOD_PUBLIC, "callable $initializer, int $options = 0", "object",
 		  vm_builtin_ReflectionClass_newLazyGhost },
@@ -4471,29 +4471,29 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionClass(ph7_vm *pVm)
 		  vm_builtin_ReflectionClass_passThroughObject },
 		{ "getLazyInitializer", PH7_MOD_PUBLIC, "object $object", "?callable",
 		  vm_builtin_ReflectionClass_getLazyInitializer },
-		{ "getParentClass",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getParentClass },
-		{ "isSubclassOf",      PH7_MOD_PUBLIC, "ReflectionClass|string $class", "",
+		{ "getParentClass",    PH7_MOD_PUBLIC, "", "@ReflectionClass|false", vm_builtin_ReflectionClass_getParentClass },
+		{ "isSubclassOf",      PH7_MOD_PUBLIC, "ReflectionClass|string $class", "@bool",
 		  vm_builtin_ReflectionClass_isSubclassOf },
-		{ "getStaticProperties", PH7_MOD_PUBLIC, "", "",
+		{ "getStaticProperties", PH7_MOD_PUBLIC, "", "@array",
 		  vm_builtin_ReflectionClass_getStaticProperties },
 		/* `mixed $default = ?` is the table's "optional, no default VALUE"
 		 * marker — php's own shape here: isOptional() true,
 		 * isDefaultValueAvailable() false. */
-		{ "getStaticPropertyValue", PH7_MOD_PUBLIC, "string $name, mixed $default = ?", "",
+		{ "getStaticPropertyValue", PH7_MOD_PUBLIC, "string $name, mixed $default = ?", "@mixed",
 		  vm_builtin_ReflectionClass_getStaticPropertyValue },
-		{ "setStaticPropertyValue", PH7_MOD_PUBLIC, "string $name, mixed $value", "",
+		{ "setStaticPropertyValue", PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",
 		  vm_builtin_ReflectionClass_setStaticPropertyValue },
-		{ "getDefaultProperties", PH7_MOD_PUBLIC, "", "",
+		{ "getDefaultProperties", PH7_MOD_PUBLIC, "", "@array",
 		  vm_builtin_ReflectionClass_getDefaultProperties },
-		{ "isIterable",        PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isIterable },
-		{ "isIterateable",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_isIterable },
-		{ "implementsInterface", PH7_MOD_PUBLIC, "ReflectionClass|string $interface", "",
+		{ "isIterable",        PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionClass_isIterable },
+		{ "isIterateable",     PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionClass_isIterable },
+		{ "implementsInterface", PH7_MOD_PUBLIC, "ReflectionClass|string $interface", "@bool",
 		  vm_builtin_ReflectionClass_implementsInterface },
-		{ "getExtension",      PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getExtension },
-		{ "getExtensionName",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getExtensionName },
-		{ "inNamespace",       PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_inNamespace },
-		{ "getNamespaceName",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getNamespaceName },
-		{ "getShortName",      PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClass_getShortName },
+		{ "getExtension",      PH7_MOD_PUBLIC, "", "@?ReflectionExtension", vm_builtin_ReflectionClass_getExtension },
+		{ "getExtensionName",  PH7_MOD_PUBLIC, "", "@string|false", vm_builtin_ReflectionClass_getExtensionName },
+		{ "inNamespace",       PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionClass_inNamespace },
+		{ "getNamespaceName",  PH7_MOD_PUBLIC, "", "@string", vm_builtin_ReflectionClass_getNamespaceName },
+		{ "getShortName",      PH7_MOD_PUBLIC, "", "@string", vm_builtin_ReflectionClass_getShortName },
 		{ "getAttributes",     PH7_MOD_PUBLIC, "?string $name = null, int $flags = 0", "array",
 		  vm_builtin_ReflectionClass_getAttributes },
 	};
@@ -4510,7 +4510,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionClass(ph7_vm *pVm)
 		  vm_builtin_ReflectionObject_construct },
 	};
 	static const PH7_NativeMethodDef aReflectionMethod[] = {
-		{ "getModifierNames", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "int $modifiers", "",
+		{ "getModifierNames", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "int $modifiers", "@array",
 		  vm_builtin_Reflection_getModifierNames },
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
@@ -4706,12 +4706,36 @@ static ph7_class * ReflectFuncDeclClass(const ReflectFuncRef *pRef)
 	}
 	return ReflectMethodDeclClass(pRef->pClass, pRef->pMeth);
 }
-/* The declared return type TEXT, or 0. */
-static int ReflectFuncRetText(const ReflectFuncRef *pRef, const char **pz, int *pn)
+/*
+ * The declared return type TEXT, or 0 — and whether php calls it TENTATIVE.
+ *
+ * php's stubs carry two kinds of internal return type and Reflection answers
+ * differently for each: a real one is reported by getReturnType()/hasReturnType()
+ * and printed `Return [ T ]`, while an `@tentative-return-type` answers NULL and
+ * false from those two, is reported by getTentativeReturnType()/
+ * hasTentativeReturnType(), and prints `Tentative return [ T ]`. Nearly every
+ * internal SPL, date and Reflection method is the tentative kind.
+ *
+ * PHL has one field for both, so a leading `@` on a `zRet` — the same character
+ * php's stub annotation uses — marks the tentative kind. It is stripped here, so
+ * nothing downstream of this function ever sees it.
+ */
+static int ReflectFuncRetTextEx(const ReflectFuncRef *pRef, const char **pz, int *pn,
+	int *pbTentative)
 {
+	if( pbTentative ){
+		*pbTentative = 0;
+	}
 	if( pRef->zRet && pRef->zRet[0] ){
-		*pz = pRef->zRet;
-		*pn = (int)SyStrlen(pRef->zRet);
+		const char *z = pRef->zRet;
+		if( z[0] == '@' ){
+			if( pbTentative ){
+				*pbTentative = 1;
+			}
+			z++;
+		}
+		*pz = z;
+		*pn = (int)SyStrlen(z);
 		return 1;
 	}
 	if( pRef->pFunc == 0 ){
@@ -4735,6 +4759,16 @@ static int ReflectFuncRetText(const ReflectFuncRef *pRef, const char **pz, int *
 		return 1;
 	}
 	return 0;
+}
+/* The declared return type php would report from getReturnType(): a TENTATIVE one
+ * is not reported there at all, which is the whole distinction. */
+static int ReflectFuncRetText(const ReflectFuncRef *pRef, const char **pz, int *pn)
+{
+	int bTentative = 0;
+	if( !ReflectFuncRetTextEx(pRef, pz, pn, &bTentative) ){
+		return 0;
+	}
+	return bTentative ? 0 : 1;
 }
 /* Is the reflected function internal (a C builtin or an embedded-chunk one)? */
 static int ReflectFuncIsInternal(const ReflectFuncRef *pRef)
@@ -5064,21 +5098,32 @@ static int vm_builtin_ReflectionFunc_getReturnType(ph7_context *pCtx, int nArg, 
 	}
 	return ReflectResultObject(pCtx, ReflectMakeType(pCtx, z, n));
 }
-/* php's TENTATIVE return types are an internal-stub concept PHL has no source
- * of, so both answers are the "none" ones. */
+/* A native method's `@`-marked zRet is php's `@tentative-return-type`: reported
+ * HERE and by nothing else, which is what separates it from a real one. */
 static int vm_builtin_ReflectionFunc_hasTentativeReturnType(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
+	ReflectFuncRef sRef;
+	const char *z;
+	int n, bTentative = 0;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	ph7_result_bool(pCtx, 0);
+	REFLECT_FUNC_OR(sRef, ph7_result_bool(pCtx, 0))
+	ph7_result_bool(pCtx, ReflectFuncRetTextEx(&sRef, &z, &n, &bTentative) && bTentative);
 	return PH7_OK;
 }
 static int vm_builtin_ReflectionFunc_getTentativeReturnType(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
+	ReflectFuncRef sRef;
+	const char *z;
+	int n, bTentative = 0;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	ph7_result_null(pCtx);
-	return PH7_OK;
+	REFLECT_FUNC_OR(sRef, ph7_result_null(pCtx))
+	if( !ReflectFuncRetTextEx(&sRef, &z, &n, &bTentative) || !bTentative ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return ReflectResultObject(pCtx, ReflectMakeType(pCtx, z, n));
 }
 static int vm_builtin_ReflectionFunc_getNumberOfParameters(ph7_context *pCtx, int nArg, ph7_value **apArg)
 {
@@ -6384,41 +6429,41 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm)
 	};
 	static const PH7_NativeMethodDef aAbstractMethod[] = {
 		{ "__clone",       PH7_MOD_PRIVATE, "", "void", vm_builtin_ReflectionFunc_clone },
-		{ "inNamespace",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_inNamespace },
-		{ "isClosure",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_isClosure },
-		{ "isDeprecated",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_isDeprecated },
-		{ "isInternal",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_isInternal },
-		{ "isUserDefined", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_isUserDefined },
-		{ "isGenerator",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_isGenerator },
-		{ "isVariadic",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_isVariadic },
-		{ "isStatic",      PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_isStatic },
-		{ "getClosureThis", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getClosureThis },
-		{ "getClosureScopeClass", PH7_MOD_PUBLIC, "", "",
+		{ "inNamespace",   PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionFunc_inNamespace },
+		{ "isClosure",     PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionFunc_isClosure },
+		{ "isDeprecated",  PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionFunc_isDeprecated },
+		{ "isInternal",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionFunc_isInternal },
+		{ "isUserDefined", PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionFunc_isUserDefined },
+		{ "isGenerator",   PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionFunc_isGenerator },
+		{ "isVariadic",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionFunc_isVariadic },
+		{ "isStatic",      PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionFunc_isStatic },
+		{ "getClosureThis", PH7_MOD_PUBLIC, "", "@?object", vm_builtin_ReflectionFunc_getClosureThis },
+		{ "getClosureScopeClass", PH7_MOD_PUBLIC, "", "@?ReflectionClass",
 		  vm_builtin_ReflectionFunc_getClosureScopeClass },
 		/* php answers the same class for both; PHL has no separate called-scope. */
-		{ "getClosureCalledClass", PH7_MOD_PUBLIC, "", "",
+		{ "getClosureCalledClass", PH7_MOD_PUBLIC, "", "@?ReflectionClass",
 		  vm_builtin_ReflectionFunc_getClosureScopeClass },
 		{ "getClosureUsedVariables", PH7_MOD_PUBLIC, "", "array",
 		  vm_builtin_ReflectionFunc_getClosureUsedVariables },
-		{ "getDocComment", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getDocComment },
-		{ "getEndLine",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getEndLine },
-		{ "getExtension",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getExtension },
-		{ "getExtensionName", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getExtensionName },
-		{ "getFileName",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getFileName },
-		{ "getName",       PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getName },
-		{ "getNamespaceName", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getNamespaceName },
-		{ "getNumberOfParameters", PH7_MOD_PUBLIC, "", "",
+		{ "getDocComment", PH7_MOD_PUBLIC, "", "@string|false", vm_builtin_ReflectionFunc_getDocComment },
+		{ "getEndLine",    PH7_MOD_PUBLIC, "", "@int|false", vm_builtin_ReflectionFunc_getEndLine },
+		{ "getExtension",  PH7_MOD_PUBLIC, "", "@?ReflectionExtension", vm_builtin_ReflectionFunc_getExtension },
+		{ "getExtensionName", PH7_MOD_PUBLIC, "", "@string|false", vm_builtin_ReflectionFunc_getExtensionName },
+		{ "getFileName",   PH7_MOD_PUBLIC, "", "@string|false", vm_builtin_ReflectionFunc_getFileName },
+		{ "getName",       PH7_MOD_PUBLIC, "", "@string", vm_builtin_ReflectionFunc_getName },
+		{ "getNamespaceName", PH7_MOD_PUBLIC, "", "@string", vm_builtin_ReflectionFunc_getNamespaceName },
+		{ "getNumberOfParameters", PH7_MOD_PUBLIC, "", "@int",
 		  vm_builtin_ReflectionFunc_getNumberOfParameters },
-		{ "getNumberOfRequiredParameters", PH7_MOD_PUBLIC, "", "",
+		{ "getNumberOfRequiredParameters", PH7_MOD_PUBLIC, "", "@int",
 		  vm_builtin_ReflectionFunc_getNumberOfRequiredParameters },
-		{ "getParameters", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getParameters },
-		{ "getShortName",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getShortName },
-		{ "getStartLine",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getStartLine },
-		{ "getStaticVariables", PH7_MOD_PUBLIC, "", "",
+		{ "getParameters", PH7_MOD_PUBLIC, "", "@array", vm_builtin_ReflectionFunc_getParameters },
+		{ "getShortName",  PH7_MOD_PUBLIC, "", "@string", vm_builtin_ReflectionFunc_getShortName },
+		{ "getStartLine",  PH7_MOD_PUBLIC, "", "@int|false", vm_builtin_ReflectionFunc_getStartLine },
+		{ "getStaticVariables", PH7_MOD_PUBLIC, "", "@array",
 		  vm_builtin_ReflectionFunc_getStaticVariables },
-		{ "returnsReference", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_returnsReference },
-		{ "hasReturnType", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_hasReturnType },
-		{ "getReturnType", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunc_getReturnType },
+		{ "returnsReference", PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionFunc_returnsReference },
+		{ "hasReturnType", PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionFunc_hasReturnType },
+		{ "getReturnType", PH7_MOD_PUBLIC, "", "@?ReflectionType", vm_builtin_ReflectionFunc_getReturnType },
 		{ "hasTentativeReturnType", PH7_MOD_PUBLIC, "", "bool",
 		  vm_builtin_ReflectionFunc_hasTentativeReturnType },
 		{ "getTentativeReturnType", PH7_MOD_PUBLIC, "", "?ReflectionType",
@@ -6434,12 +6479,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm)
 		  vm_builtin_ReflectionFunction_construct },
 		{ "__toString",  PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionFunc_toString },
 		{ "isAnonymous", PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionFunction_isAnonymous },
-		{ "isDisabled",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunction_isDisabled },
-		{ "invoke",      PH7_MOD_PUBLIC, "mixed ...$args", "",
+		{ "isDisabled",  PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionFunction_isDisabled },
+		{ "invoke",      PH7_MOD_PUBLIC, "mixed ...$args", "@mixed",
 		  vm_builtin_ReflectionFunction_invoke },
-		{ "invokeArgs",  PH7_MOD_PUBLIC, "array $args", "",
+		{ "invokeArgs",  PH7_MOD_PUBLIC, "array $args", "@mixed",
 		  vm_builtin_ReflectionFunction_invokeArgs },
-		{ "getClosure",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionFunction_getClosure },
+		{ "getClosure",  PH7_MOD_PUBLIC, "", "@Closure", vm_builtin_ReflectionFunction_getClosure },
 	};
 	static const PH7_NativePropDef aMethodProp[] = {
 		{ "class", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
@@ -6458,25 +6503,25 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm)
 		{ "createFromMethodName", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $method", "static",
 		  vm_builtin_ReflectionMethod_createFromMethodName },
 		{ "__toString",  PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionFunc_toString },
-		{ "isPublic",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionMethod_isPublic },
-		{ "isPrivate",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionMethod_isPrivate },
-		{ "isProtected", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionMethod_isProtected },
-		{ "isAbstract",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionMethod_isAbstract },
-		{ "isFinal",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionMethod_isFinal },
-		{ "isConstructor", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionMethod_isConstructor },
-		{ "isDestructor",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionMethod_isDestructor },
-		{ "getClosure",  PH7_MOD_PUBLIC, "?object $object = null", "",
+		{ "isPublic",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionMethod_isPublic },
+		{ "isPrivate",   PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionMethod_isPrivate },
+		{ "isProtected", PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionMethod_isProtected },
+		{ "isAbstract",  PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionMethod_isAbstract },
+		{ "isFinal",     PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionMethod_isFinal },
+		{ "isConstructor", PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionMethod_isConstructor },
+		{ "isDestructor",  PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionMethod_isDestructor },
+		{ "getClosure",  PH7_MOD_PUBLIC, "?object $object = null", "@Closure",
 		  vm_builtin_ReflectionMethod_getClosure },
-		{ "getModifiers", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionMethod_getModifiers },
-		{ "invoke",      PH7_MOD_PUBLIC, "?object $object, mixed ...$args", "",
+		{ "getModifiers", PH7_MOD_PUBLIC, "", "@int", vm_builtin_ReflectionMethod_getModifiers },
+		{ "invoke",      PH7_MOD_PUBLIC, "?object $object, mixed ...$args", "@mixed",
 		  vm_builtin_ReflectionMethod_invoke },
-		{ "invokeArgs",  PH7_MOD_PUBLIC, "?object $object, array $args", "",
+		{ "invokeArgs",  PH7_MOD_PUBLIC, "?object $object, array $args", "@mixed",
 		  vm_builtin_ReflectionMethod_invokeArgs },
-		{ "getDeclaringClass", PH7_MOD_PUBLIC, "", "",
+		{ "getDeclaringClass", PH7_MOD_PUBLIC, "", "@ReflectionClass",
 		  vm_builtin_ReflectionMethod_getDeclaringClass },
-		{ "getPrototype", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionMethod_getPrototype },
+		{ "getPrototype", PH7_MOD_PUBLIC, "", "@ReflectionMethod", vm_builtin_ReflectionMethod_getPrototype },
 		{ "hasPrototype", PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionMethod_hasPrototype },
-		{ "setAccessible", PH7_MOD_PUBLIC, "bool $accessible", "",
+		{ "setAccessible", PH7_MOD_PUBLIC, "bool $accessible", "@void",
 		  vm_builtin_ReflectionMethod_setAccessible },
 	};
 	static const PH7_NativePropDef aParamProp[] = {
@@ -6493,32 +6538,32 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm)
 		{ "__construct", PH7_MOD_PUBLIC, "$function, string|int $param", "",
 		  vm_builtin_ReflectionParameter_construct },
 		{ "__toString",  PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionParameter_toString },
-		{ "getName",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionParameter_getName },
-		{ "isPassedByReference", PH7_MOD_PUBLIC, "", "",
+		{ "getName",     PH7_MOD_PUBLIC, "", "@string", vm_builtin_ReflectionParameter_getName },
+		{ "isPassedByReference", PH7_MOD_PUBLIC, "", "@bool",
 		  vm_builtin_ReflectionParameter_isPassedByReference },
-		{ "canBePassedByValue",  PH7_MOD_PUBLIC, "", "",
+		{ "canBePassedByValue",  PH7_MOD_PUBLIC, "", "@bool",
 		  vm_builtin_ReflectionParameter_canBePassedByValue },
-		{ "getDeclaringFunction", PH7_MOD_PUBLIC, "", "",
+		{ "getDeclaringFunction", PH7_MOD_PUBLIC, "", "@ReflectionFunctionAbstract",
 		  vm_builtin_ReflectionParameter_getDeclaringFunction },
-		{ "getDeclaringClass",   PH7_MOD_PUBLIC, "", "",
+		{ "getDeclaringClass",   PH7_MOD_PUBLIC, "", "@?ReflectionClass",
 		  vm_builtin_ReflectionParameter_getDeclaringClass },
-		{ "getClass",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionParameter_getClass },
-		{ "hasType",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionParameter_hasType },
-		{ "getType",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionParameter_getType },
-		{ "isArray",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionParameter_isArray },
-		{ "isCallable",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionParameter_isCallable },
-		{ "allowsNull",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionParameter_allowsNull },
-		{ "getPosition", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionParameter_getPosition },
-		{ "isOptional",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionParameter_isOptional },
-		{ "isDefaultValueAvailable", PH7_MOD_PUBLIC, "", "",
+		{ "getClass",    PH7_MOD_PUBLIC, "", "@?ReflectionClass", vm_builtin_ReflectionParameter_getClass },
+		{ "hasType",     PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionParameter_hasType },
+		{ "getType",     PH7_MOD_PUBLIC, "", "@?ReflectionType", vm_builtin_ReflectionParameter_getType },
+		{ "isArray",     PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionParameter_isArray },
+		{ "isCallable",  PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionParameter_isCallable },
+		{ "allowsNull",  PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionParameter_allowsNull },
+		{ "getPosition", PH7_MOD_PUBLIC, "", "@int", vm_builtin_ReflectionParameter_getPosition },
+		{ "isOptional",  PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionParameter_isOptional },
+		{ "isDefaultValueAvailable", PH7_MOD_PUBLIC, "", "@bool",
 		  vm_builtin_ReflectionParameter_isDefaultValueAvailable },
-		{ "getDefaultValue", PH7_MOD_PUBLIC, "", "",
+		{ "getDefaultValue", PH7_MOD_PUBLIC, "", "@mixed",
 		  vm_builtin_ReflectionParameter_getDefaultValue },
-		{ "isDefaultValueConstant", PH7_MOD_PUBLIC, "", "",
+		{ "isDefaultValueConstant", PH7_MOD_PUBLIC, "", "@bool",
 		  vm_builtin_ReflectionParameter_isDefaultValueConstant },
-		{ "getDefaultValueConstantName", PH7_MOD_PUBLIC, "", "",
+		{ "getDefaultValueConstantName", PH7_MOD_PUBLIC, "", "@?string",
 		  vm_builtin_ReflectionParameter_getDefaultValueConstantName },
-		{ "isVariadic",  PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionParameter_isVariadic },
+		{ "isVariadic",  PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionParameter_isVariadic },
 		{ "isPromoted",  PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionParameter_isPromoted },
 		{ "getAttributes", PH7_MOD_PUBLIC, "?string $name = null, int $flags = 0", "array",
 		  vm_builtin_ReflectionParameter_getAttributes },
@@ -7489,12 +7534,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionMember(ph7_vm *pVm)
 		{ "__construct", PH7_MOD_PUBLIC, "object|string $class, string $property", "",
 		  vm_builtin_ReflectionProperty_construct },
 		{ "__toString",  PH7_MOD_PUBLIC, "", "string", vm_builtin_ReflectionProperty_toString },
-		{ "getName",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_getName },
+		{ "getName",     PH7_MOD_PUBLIC, "", "@string", vm_builtin_ReflectionProperty_getName },
 		{ "getMangledName", PH7_MOD_PUBLIC, "", "string",
 		  vm_builtin_ReflectionProperty_getMangledName },
-		{ "getValue",    PH7_MOD_PUBLIC, "?object $object = null", "",
+		{ "getValue",    PH7_MOD_PUBLIC, "?object $object = null", "@mixed",
 		  vm_builtin_ReflectionProperty_getValue },
-		{ "setValue",    PH7_MOD_PUBLIC, "mixed $objectOrValue, mixed $value = ?", "",
+		{ "setValue",    PH7_MOD_PUBLIC, "mixed $objectOrValue, mixed $value = ?", "@void",
 		  vm_builtin_ReflectionProperty_setValue },
 		{ "getRawValue", PH7_MOD_PUBLIC, "object $object", "mixed",
 		  vm_builtin_ReflectionProperty_getValue },
@@ -7508,39 +7553,39 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionMember(ph7_vm *pVm)
 		  vm_builtin_ReflectionProperty_noop },
 		{ "isLazy",      PH7_MOD_PUBLIC, "object $object", "bool",
 		  vm_builtin_ReflectionProperty_false },
-		{ "isInitialized", PH7_MOD_PUBLIC, "?object $object = null", "",
+		{ "isInitialized", PH7_MOD_PUBLIC, "?object $object = null", "@bool",
 		  vm_builtin_ReflectionProperty_isInitialized },
-		{ "isPublic",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_isPublic },
-		{ "isPrivate",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_isPrivate },
-		{ "isProtected", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_isProtected },
+		{ "isPublic",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionProperty_isPublic },
+		{ "isPrivate",   PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionProperty_isPrivate },
+		{ "isProtected", PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionProperty_isProtected },
 		{ "isPrivateSet", PH7_MOD_PUBLIC, "", "bool",
 		  vm_builtin_ReflectionProperty_isPrivateSet },
 		{ "isProtectedSet", PH7_MOD_PUBLIC, "", "bool",
 		  vm_builtin_ReflectionProperty_isProtectedSet },
-		{ "isStatic",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_isStatic },
+		{ "isStatic",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionProperty_isStatic },
 		{ "isReadOnly",  PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionProperty_isReadOnly },
-		{ "isDefault",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_isDefault },
+		{ "isDefault",   PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionProperty_isDefault },
 		{ "isDynamic",   PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionProperty_isDynamic },
 		/* PHL has no abstract properties: the modifier only exists on an
 		 * interface's hooked property stub, which PHL does not model. */
 		{ "isAbstract",  PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionProperty_false },
 		{ "isVirtual",   PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionProperty_isVirtual },
 		{ "isPromoted",  PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionProperty_isPromoted },
-		{ "getModifiers", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_getModifiers },
-		{ "getDeclaringClass", PH7_MOD_PUBLIC, "", "",
+		{ "getModifiers", PH7_MOD_PUBLIC, "", "@int", vm_builtin_ReflectionProperty_getModifiers },
+		{ "getDeclaringClass", PH7_MOD_PUBLIC, "", "@ReflectionClass",
 		  vm_builtin_ReflectionProperty_getDeclaringClass },
-		{ "getDocComment", PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_getDocComment },
-		{ "setAccessible", PH7_MOD_PUBLIC, "bool $accessible", "",
+		{ "getDocComment", PH7_MOD_PUBLIC, "", "@string|false", vm_builtin_ReflectionProperty_getDocComment },
+		{ "setAccessible", PH7_MOD_PUBLIC, "bool $accessible", "@void",
 		  vm_builtin_ReflectionProperty_setAccessible },
-		{ "getType",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_getType },
+		{ "getType",     PH7_MOD_PUBLIC, "", "@?ReflectionType", vm_builtin_ReflectionProperty_getType },
 		/* php's settable type differs from the declared one only for a hooked
 		 * property with a widening `set` — which PHL does not model. */
 		{ "getSettableType", PH7_MOD_PUBLIC, "", "?ReflectionType",
 		  vm_builtin_ReflectionProperty_getType },
-		{ "hasType",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_hasType },
+		{ "hasType",     PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionProperty_hasType },
 		{ "hasDefaultValue", PH7_MOD_PUBLIC, "", "bool",
 		  vm_builtin_ReflectionProperty_hasDefaultValue },
-		{ "getDefaultValue", PH7_MOD_PUBLIC, "", "",
+		{ "getDefaultValue", PH7_MOD_PUBLIC, "", "@mixed",
 		  vm_builtin_ReflectionProperty_getDefaultValue },
 		{ "getAttributes", PH7_MOD_PUBLIC, "?string $name = null, int $flags = 0", "array",
 		  vm_builtin_ReflectionProperty_getAttributes },
@@ -7564,18 +7609,18 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionMember(ph7_vm *pVm)
 		  vm_builtin_ReflectionClassConstant_construct },
 		{ "__toString",  PH7_MOD_PUBLIC, "", "string",
 		  vm_builtin_ReflectionClassConstant_toString },
-		{ "getName",     PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionProperty_getName },
-		{ "getValue",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClassConstant_getValue },
-		{ "isPublic",    PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClassConstant_isPublic },
-		{ "isPrivate",   PH7_MOD_PUBLIC, "", "", vm_builtin_ReflectionClassConstant_isPrivate },
-		{ "isProtected", PH7_MOD_PUBLIC, "", "",
+		{ "getName",     PH7_MOD_PUBLIC, "", "@string", vm_builtin_ReflectionProperty_getName },
+		{ "getValue",    PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_ReflectionClassConstant_getValue },
+		{ "isPublic",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionClassConstant_isPublic },
+		{ "isPrivate",   PH7_MOD_PUBLIC, "", "@bool", vm_builtin_ReflectionClassConstant_isPrivate },
+		{ "isProtected", PH7_MOD_PUBLIC, "", "@bool",
 		  vm_builtin_ReflectionClassConstant_isProtected },
 		{ "isFinal",     PH7_MOD_PUBLIC, "", "bool", vm_builtin_ReflectionClassConstant_isFinal },
-		{ "getModifiers", PH7_MOD_PUBLIC, "", "",
+		{ "getModifiers", PH7_MOD_PUBLIC, "", "@int",
 		  vm_builtin_ReflectionClassConstant_getModifiers },
-		{ "getDeclaringClass", PH7_MOD_PUBLIC, "", "",
+		{ "getDeclaringClass", PH7_MOD_PUBLIC, "", "@ReflectionClass",
 		  vm_builtin_ReflectionClassConstant_getDeclaringClass },
-		{ "getDocComment", PH7_MOD_PUBLIC, "", "",
+		{ "getDocComment", PH7_MOD_PUBLIC, "", "@string|false",
 		  vm_builtin_ReflectionClassConstant_getDocComment },
 		{ "getAttributes", PH7_MOD_PUBLIC, "?string $name = null, int $flags = 0", "array",
 		  vm_builtin_ReflectionClassConstant_getAttributes },
@@ -8178,10 +8223,10 @@ static sxi32 ReflectExportFuncBlock(ph7_context *pCtx, SyBlob *pOut, ReflectFunc
 	int bInternal = ReflectFuncIsInternal(pRef);
 	int nParam = ReflectParamCount(pRef);
 	const char *zRet = 0;
-	int nRet = 0, bHasRet;
+	int nRet = 0, bHasRet, bTentRet = 0;
 	sxi32 rc = SXRET_OK;
 	SyBlobInit(&sBody, &pCtx->pVm->sAllocator);
-	bHasRet = ReflectFuncRetText(pRef, &zRet, &nRet);
+	bHasRet = ReflectFuncRetTextEx(pRef, &zRet, &nRet, &bTentRet);
 	if( pRef->pMeth ){
 		ph7_class *pDecl = ReflectFuncDeclClass(pRef);
 		ph7_class *pProto;
@@ -8265,7 +8310,13 @@ static sxi32 ReflectExportFuncBlock(ph7_context *pCtx, SyBlob *pOut, ReflectFunc
 		SyBlobAppend(&sBody, "  }\n", sizeof("  }\n")-1);
 	}
 	if( bHasRet ){
-		SyBlobAppend(&sBody, "  - Return [ ", sizeof("  - Return [ ")-1);
+		/* php's two spellings: `Return [ T ]` for a declared type, `Tentative return
+		 * [ T ]` for a stub's @tentative-return-type. */
+		if( bTentRet ){
+			SyBlobAppend(&sBody, "  - Tentative return [ ", sizeof("  - Tentative return [ ")-1);
+		}else{
+			SyBlobAppend(&sBody, "  - Return [ ", sizeof("  - Return [ ")-1);
+		}
 		SyBlobAppend(&sBody, zRet, (sxu32)nRet);
 		SyBlobAppend(&sBody, " ]\n", sizeof(" ]\n")-1);
 	}
