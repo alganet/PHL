@@ -5160,12 +5160,42 @@ static int vm_builtin_ReflectionFunc_getClosureScopeClass(ph7_context *pCtx, int
 	REFLECT_FUNC_OR(sRef, ph7_result_null(pCtx))
 	pAttr = ReflectClosureAttr(&sRef, "__scope");
 	if( pAttr && (pAttr->iFlags & MEMOBJ_STRING) && SyBlobLength(&pAttr->sBlob) > 0 ){
-		return ReflectResultClassOf(pCtx, PH7_VmExtractClass(pCtx->pVm,
-			(const char *)SyBlobData(&pAttr->sBlob), SyBlobLength(&pAttr->sBlob), FALSE, 0));
+		/* php reports the class that DECLARED the callee, not the one the callable NAMED:
+		 * `$__scope` is the CALLED scope (what `static::` answers, reported by
+		 * getClosureCalledClass below), and for an inherited or trait-composed method the
+		 * two differ. PH7_VmClosureScopeClass is the one rule. */
+		return ReflectResultClassOf(pCtx,
+			PH7_VmClosureScopeClass(pCtx->pVm, sRef.pClosure));
 	}
 	pAttr = ReflectClosureAttr(&sRef, "__this");
 	if( pAttr && (pAttr->iFlags & MEMOBJ_OBJ) ){
 		return ReflectResultClassOf(pCtx, ((ph7_class_instance *)pAttr->x.pOther)->pClass);
+	}
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+/*
+ * ReflectionFunction::getClosureCalledClass() — php's CALLED scope, the other half of the
+ * pair above: the class the call goes THROUGH, which is what `static::` answers. A bound
+ * closure's is its `$this`'s class; a static callable's is the class the callable NAMED. It
+ * shared getClosureScopeClass()'s body while `$__scope` answered both questions; it cannot
+ * now, because that one narrows a method closure to its DECLARING class.
+ */
+static int vm_builtin_ReflectionFunc_getClosureCalledClass(ph7_context *pCtx, int nArg, ph7_value **apArg)
+{
+	ReflectFuncRef sRef;
+	ph7_value *pAttr;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	REFLECT_FUNC_OR(sRef, ph7_result_null(pCtx))
+	pAttr = ReflectClosureAttr(&sRef, "__this");
+	if( pAttr && (pAttr->iFlags & MEMOBJ_OBJ) ){
+		return ReflectResultClassOf(pCtx, ((ph7_class_instance *)pAttr->x.pOther)->pClass);
+	}
+	pAttr = ReflectClosureAttr(&sRef, "__scope");
+	if( pAttr && (pAttr->iFlags & MEMOBJ_STRING) && SyBlobLength(&pAttr->sBlob) > 0 ){
+		return ReflectResultClassOf(pCtx, PH7_VmExtractClass(pCtx->pVm,
+			(const char *)SyBlobData(&pAttr->sBlob), SyBlobLength(&pAttr->sBlob), FALSE, 0));
 	}
 	ph7_result_null(pCtx);
 	return PH7_OK;
@@ -6876,7 +6906,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm)
 		  vm_builtin_ReflectionFunc_getClosureScopeClass },
 		/* php answers the same class for both; PHL has no separate called-scope. */
 		{ "getClosureCalledClass", PH7_MOD_PUBLIC, "", "@?ReflectionClass",
-		  vm_builtin_ReflectionFunc_getClosureScopeClass },
+		  vm_builtin_ReflectionFunc_getClosureCalledClass },
 		{ "getClosureUsedVariables", PH7_MOD_PUBLIC, "", "array",
 		  vm_builtin_ReflectionFunc_getClosureUsedVariables },
 		{ "getDocComment", PH7_MOD_PUBLIC, "", "@string|false", vm_builtin_ReflectionFunc_getDocComment },

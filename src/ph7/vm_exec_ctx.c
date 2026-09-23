@@ -765,6 +765,45 @@ PH7_PRIVATE sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut)
 	return SXRET_OK;
 }
 /*
+ * php's SCOPE for a Closure — the class whose private members its body may reach, and the
+ * class Reflection reports. For a plain closure that is the class it was bound to; for a
+ * METHOD closure it is the class that DECLARED the method, which is not the class the
+ * callable NAMED: `(new Kid)->mk()` returning `$this->basePriv(...)` is scoped to Base in
+ * php, while `$__scope` records Kid — the class the call goes THROUGH, which is the CALLED
+ * scope (`static::`) and a different question. A trait method is composed into the using
+ * class, so PH7_VmMethodScopeName answers for it exactly as it does at every refusal site.
+ * Returns 0 when the closure carries no scope at all.
+ */
+PH7_PRIVATE ph7_class * PH7_VmClosureScopeClass(ph7_vm *pVm, ph7_class_instance *pClosure)
+{
+	SyString sAttr;
+	ph7_value *pScope, *pFn;
+	ph7_class *pClass;
+	if( pClosure == 0 ){
+		return 0;
+	}
+	SyStringInitFromBuf(&sAttr, "__scope", 7);
+	pScope = PH7_ClassInstanceFetchAttr(pClosure, &sAttr);
+	if( pScope == 0 || (pScope->iFlags & MEMOBJ_STRING) == 0 || SyBlobLength(&pScope->sBlob) == 0 ){
+		return 0;
+	}
+	pClass = PH7_VmExtractClass(pVm, (const char *)SyBlobData(&pScope->sBlob),
+		SyBlobLength(&pScope->sBlob), FALSE, 0);
+	if( pClass == 0 || (pClosure->iFlags & VM_INSTANCE_FCC_METHOD) == 0 ){
+		return pClass;
+	}
+	SyStringInitFromBuf(&sAttr, "__fn", 4);
+	pFn = PH7_ClassInstanceFetchAttr(pClosure, &sAttr);
+	if( pFn && (pFn->iFlags & MEMOBJ_STRING) && SyBlobLength(&pFn->sBlob) > 0 ){
+		ph7_class_method *pMeth = PH7_ClassExtractMethod(pClass,
+			(const char *)SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));
+		if( pMeth ){
+			return PH7_VmMethodScopeName(pVm, pClass, pMeth);
+		}
+	}
+	return pClass;
+}
+/*
  * Resolve the scope class for a STATIC first-class callable `T::m(...)`, where T is a
  * class-name STRING value: handles the self/static/parent keywords against the live class
  * context (so the actual class is bound at FCC-creation time, like PHP), and falls back to
