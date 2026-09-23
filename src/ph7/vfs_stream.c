@@ -2299,8 +2299,11 @@ PH7_PRIVATE int PH7_builtin_fpassthru(ph7_context *pCtx,int nArg,ph7_value **apA
 		}
 		/* Increment the read counter */
 		nRead += n;
-		/* Output data */
-		rc = ph7_context_output(pCtx,zBuf,(int)nRead /* FIXME: 64-bit issues */);
+		/* Output the bytes THIS read produced. Handing the running total to
+		 * ph7_context_output() instead read past the end of zBuf from the second
+		 * chunk on (an out-of-bounds read) and wrote the overrun to the output:
+		 * a 12000-byte file passed through as 20189 bytes of file-plus-garbage. */
+		rc = ph7_context_output(pCtx,zBuf,(int)n);
 		if( rc == PH7_ABORT ){
 			/* Consumer callback request an operation abort */
 			break;
