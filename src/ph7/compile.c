@@ -1192,25 +1192,8 @@ static sxi32 GenStateEmitExprCode(
 		sxu32 nLhsNsBase = SySetUsed(&pGen->aNullsafeJmp);
 		GenCallArgs sArgs;
 		int bArgsEmitted = 0;
+		sxu32 nNewClassInstr = 0; /* index+1 of a `new` operand's class-name push */
 		SyZero(&sArgs,sizeof(sArgs));
-		if( iVmOp == PH7_OP_CALL && bNewCallee ){
-			/* `new C($a)` is ONE instruction: the NEW branch below builds it by popping
-			 * the trailing OP_CALL this node emits and re-reading the class-name literal
-			 * sitting behind it, so the constructor arguments keep the pre-reorder
-			 * position. The `new` half of php's resolve-the-callee-first rule is its own
-			 * piece of work: a class name is only PUSHED here, and the
-			 * not-found / abstract / interface / private-constructor refusals all happen
-			 * inside OP_NEW, so moving the literal alone would change nothing. */
-			rc = GenStateEmitCallArgs(&(*pGen),pNode,iFlags,&sArgs);
-			if( rc != SXRET_OK ){
-				return rc;
-			}
-			iP1 = sArgs.iP1;
-			iP2 = sArgs.iP2;
-			p3  = sArgs.p3;
-			bFcc = sArgs.bFcc;
-			bArgsEmitted = 1;
-		}
 		{
 			/* The unset() target is the OUTERMOST access. When the intermediate container — the left
 			 * operand of `->`/`::`/`[]` — is itself a MEMBER access (`unset($o->a->b)` /
@@ -1461,7 +1444,18 @@ static sxi32 GenStateEmitExprCode(
 					sxi32 nCallArg = (sxi32)SySetUsed(&pNode->aNodeArgs);
 					int bNodeFcc = nCallArg == 1 && apCallArg[0]
 						&& (apCallArg[0]->iFlags & EXPR_NODE_FCC);
-					if( nCallArg > 0 && !bTwoSlot && !bNodeFcc ){
+					if( bNewCallee ){
+						/* A `new`'s operand: the screen is OP_NEW itself, run with no
+						 * arguments on the stack (iP1 = -1). It asks every refusal the
+						 * real pass asks and leaves the class name standing, so the two
+						 * cannot disagree. Record where that push is — the NEW codegen
+						 * used to find it one instruction behind the trailing OP_CALL,
+						 * and the argument list now sits in between. */
+						nNewClassInstr = PH7_VmInstrLength(pGen->pVm);
+						if( nCallArg > 0 ){
+							PH7_VmEmitInstr(pGen->pVm,PH7_OP_NEW,-1,0,0,0);
+						}
+					}else if( nCallArg > 0 && !bTwoSlot && !bNodeFcc ){
 						PH7_VmEmitInstr(pGen->pVm,PH7_OP_CALL_INIT,0,
 							(p3 && ((VmCallArgMap *)p3)->bIsNamespaced) ? 1 : 0,0,0);
 					}
@@ -1477,6 +1471,19 @@ static sxi32 GenStateEmitExprCode(
 				if( iP1 > 0 || iP2 ){
 					PH7_VmEmitInstr(pGen->pVm,PH7_OP_ROT_CALLEE,iP1,
 						(iP2 ? PH7_ROT_SPREAD : 0) | (bTwoSlot ? PH7_ROT_TWOSLOT : 0),0,0);
+				}
+				if( bNewCallee && nNewClassInstr > 0 ){
+					if( p3 == 0 ){
+						VmCallArgMap *pMap = (VmCallArgMap *)SyMemBackendAlloc(
+							&pGen->pVm->sAllocator,sizeof(VmCallArgMap));
+						if( pMap ){
+							SyZero(pMap,sizeof(VmCallArgMap));
+							p3 = (void *)pMap;
+						}
+					}
+					if( p3 ){
+						((VmCallArgMap *)p3)->nNewClassInstr = nNewClassInstr;
+					}
 				}
 			}
 		}else if( iVmOp == PH7_OP_LOAD_IDX ){
@@ -1717,8 +1724,15 @@ static sxi32 GenStateEmitExprCode(
 				VmInstr *pPeek = PH7_VmPeekInstr(pGen->pVm);
 				VmInstr *pCallInstr = 0;
 				if( pPeek && pPeek->iOp == PH7_OP_CALL ){
+					VmCallArgMap *pNewMap = (VmCallArgMap *)pPeek->p3;
 					pCallInstr = pPeek;
-					pPeek = PH7_VmPeekNextInstr(pGen->pVm);
+					/* The class-name push sits one instruction back only when this `new`
+					 * takes no arguments; with an argument list the reorder puts the whole
+					 * list (and its screen and rotation) in between, so the call node
+					 * recorded where the push is. */
+					pPeek = (pNewMap && pNewMap->nNewClassInstr > 0)
+						? PH7_VmGetInstr(pGen->pVm,pNewMap->nNewClassInstr - 1)
+						: PH7_VmPeekNextInstr(pGen->pVm);
 				}
 				if( pPeek && pPeek->iOp == PH7_OP_LOADC ){
 					int bAbsolute = (pPeek->iP1 & PH7_LOADC_ABSOLUTE) != 0;
@@ -1765,8 +1779,15 @@ static sxi32 GenStateEmitExprCode(
 			pInstr = PH7_VmPeekInstr(pGen->pVm);
 			if( pInstr && pInstr->iOp == PH7_OP_CALL ){
 				VmInstr *pPrev;
+				int bPrevMember;
 				pPrev = PH7_VmPeekNextInstr(pGen->pVm);
-				if( pPrev == 0 || pPrev->iOp != PH7_OP_MEMBER ){
+				/* "Was the callee a MEMBER access?" — which, once the reorder puts a
+				 * rotation between the callee and its call, is the question the rotation
+				 * already answers (a method callee is the two-slot one). */
+				bPrevMember = pPrev && (pPrev->iOp == PH7_OP_ROT_CALLEE
+					? (pPrev->iP2 & PH7_ROT_TWOSLOT) != 0
+					: pPrev->iOp == PH7_OP_MEMBER);
+				if( !bPrevMember ){
 					/* Pop the call instruction, preserve named-arg map and
 					 * the hasSpread flag (OP_NEW consumes the spread
 					 * accumulator exactly like OP_CALL would have). */

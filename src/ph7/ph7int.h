@@ -1633,6 +1633,10 @@ struct VmCallArgMap
 						  * a following NEW can re-qualify with CLASS imports.
 						  * 0 = unset. (Formerly abused OP_CALL's iP2, colliding
 						  * with the hasSpread flag: `new N\C(...$args)`.) */
+	sxu32 nNewClassInstr;/* Instruction index + 1 of the class-name push, for a call node
+	                      * that is a `new`'s operand. The reorder puts that push before
+	                      * the constructor arguments, so the NEW codegen can no longer
+	                      * find it by peeking one instruction back. 0 = unset. */
 	sxu8 bArgShapes;     /* 1 when the two masks below describe THIS call's argument
 						  * positions. The compiler sets it for every call whose actual
 						  * positions survive to the runtime stack unchanged — i.e. no

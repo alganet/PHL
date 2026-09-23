@@ -38,7 +38,17 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 	 * elements ABOVE the class-name slot and fataling "Class ' ' is not
 	 * defined"). VmSpreadOwnExtra counts only this new's own runs, so a nested
 	 * spread call in the ctor arg list stays scoped to itself. */
-	sxi32 nCtorArgs = pInstr->iP1 + (pInstr->iP2 ? VmSpreadOwnExtra(pVm,pInstr->iP1,pTos) : 0);
+	/* iP1 < 0 is the SCREEN pass: php's NEW resolves the class, refuses everything a
+	 * `new` can be refused for and allocates the object BEFORE the constructor arguments
+	 * are evaluated — only the constructor body runs after them. PHL evaluated the whole
+	 * argument list first, so `new NoSuchClass(s(1))`, `new AbstractC(s(1))` and
+	 * `new PrivateCtorC(s(1))` all ran `s(1)` on a `new` php never performs. The screen
+	 * is this same handler with no arguments on the stack, returning just before the
+	 * allocation and LEAVING the class name for the real pass that follows it — one code
+	 * path, so the two can never disagree about what a refusal is. */
+	int bScreenOnly = pInstr->iP1 < 0;
+	sxi32 nCtorArgs = bScreenOnly ? 0
+		: pInstr->iP1 + (pInstr->iP2 ? VmSpreadOwnExtra(pVm,pInstr->iP1,pTos) : 0);
 	ph7_value *pArg;
 	ph7_class *pClass = 0;
 	ph7_class_instance *pNew;
@@ -55,7 +65,9 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 	 * class-name slot at pTos (above the args), so pArg is already the correct base;
 	 * the build also truncates this call's captured runs. */
 	VmCallArgMap sEffNewMap;
-	VmCallArgMap *pEffNewMap = VmEffCallArgMap(pVm,pInstr,pArg,
+	/* The screen pass has no arguments and no runs of its own: building (and
+	 * truncating) an effective map there would speak for the enclosing call. */
+	VmCallArgMap *pEffNewMap = bScreenOnly ? 0 : VmEffCallArgMap(pVm,pInstr,pArg,
 		nCtorArgs > 0 ? (sxu32)nCtorArgs : 0,&sEffNewMap);
 	if( (pTos->iFlags & MEMOBJ_STRING) && SyBlobLength(&pTos->sBlob) > 0 ){
 		const char *zCls = (const char *)SyBlobData(&pTos->sBlob);
@@ -113,16 +125,26 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 		}
 		SyBlobInit(&sErrM,&pVm->sAllocator);
 		if( (pTos->iFlags & MEMOBJ_STRING) && SyBlobLength(&pTos->sBlob) > 0 ){
-			/* The extract above only accepts NEW-able classes, so an interface or an
-			 * abstract class comes back as 0 and used to be reported as "not found".
-			 * Look again without that filter so php's real message can be given. */
-			pNotNew = PH7_VmExtractClass(&(*pVm),(const char *)SyBlobData(&pTos->sBlob),
-				SyBlobLength(&pTos->sBlob),FALSE,0);
+			/* The extract above only accepts NEW-able classes, so an interface, an
+			 * abstract class or a trait comes back as 0 and used to be reported as
+			 * "not found". Look again without that filter so php's real message can be
+			 * given — but through the table DIRECTLY, never PH7_VmExtractClass: that
+			 * one fires the autoloader when the name is absent, so a genuinely missing
+			 * class ran every registered autoloader TWICE where php runs them once. */
+			const char *zNotNew = (const char *)SyBlobData(&pTos->sBlob);
+			sxu32 nNotNew = SyBlobLength(&pTos->sBlob);
+			SyHashEntry *pNotNewEntry;
+			PH7_VmClassNameAnchor(&zNotNew,&nNotNew);
+			pNotNewEntry = nNotNew > 0 ? SyHashGet(&pVm->hClass,(const void *)zNotNew,nNotNew) : 0;
+			pNotNew = pNotNewEntry ? (ph7_class *)pNotNewEntry->pUserData : 0;
 		}
-		if( pNotNew && (pNotNew->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_ABSTRACT)) ){
-			SyBlobFormat(&sErrM,"Cannot instantiate %s %z",
-				(pNotNew->iFlags & PH7_CLASS_INTERFACE) ? "interface" : "abstract class",
-				&pNotNew->sName);
+		if( pNotNew && (pNotNew->iFlags & (PH7_CLASS_INTERFACE|PH7_CLASS_ABSTRACT|PH7_CLASS_TRAIT)) ){
+			/* php names WHAT it will not instantiate; a trait is one of the three, and
+			 * PH7's loadable-only extract rejected it as "not found" — the one shape of
+			 * `new` whose refusal did not say why. */
+			const char *zKind = (pNotNew->iFlags & PH7_CLASS_INTERFACE) ? "interface"
+				: (pNotNew->iFlags & PH7_CLASS_TRAIT) ? "trait" : "abstract class";
+			SyBlobFormat(&sErrM,"Cannot instantiate %s %z",zKind,&pNotNew->sName);
 		}else{
 			SyBlobFormat(&sErrM,"Class \"%.*s\" not found",
 				SyBlobLength(&pTos->sBlob),(const char *)SyBlobData(&pTos->sBlob));
@@ -239,6 +261,11 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 				pTos->nIdx = SXU32_HIGH;
 				VM_EXIT_BREAK;
 			}
+		}
+		if( bScreenOnly ){
+			/* Every refusal above has been asked. Leave the class name standing for
+			 * the real pass and let the arguments run. */
+			VM_EXIT_BREAK;
 		}
 		/* Create a new class instance */
 		pNew = PH7_NewClassInstance(&(*pVm),pClass);
