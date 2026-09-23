@@ -1533,6 +1533,67 @@ static const char * VmDirectArrayCallableError(ph7_vm *pVm,ph7_value *pTarget,ph
 		zBuf,nBuf);
 }
 /*
+ * The by-reference SHAPE of the callee an INDIRECT dispatch is about to reach — an
+ * array callable VALUE (`$cb = [$o,'m']; $cb($a['k']);`) and an __invoke object.
+ * Both go through a shared helper that hides the target from OP_CALL, so the two
+ * sites used to materialize EVERY deferred plain-var argument by reference and every
+ * deferred element/property by value: a genuine by-ref out-param into an element was
+ * unsupported (`$cb($a['new'])` warned `Undefined array key` and handed the callee a
+ * NULL where php creates the element and writes it), and a by-VALUE parameter
+ * swallowed php's `Undefined variable` and CREATED the caller's variable.
+ *
+ * The target is knowable here: the pair resolves to a class and a method, an object to
+ * its __invoke. Answers 0 when nothing resolves — a name routed through
+ * __call/__callStatic (php packs those into an ARRAY, so they are by-value anyway) or
+ * a pair the screen above is about to refuse.
+ */
+static ph7_vm_func * VmIndirectCalleeFunc(ph7_vm *pVm,ph7_value *pCallable)
+{
+	ph7_class_method *pMeth = 0;
+	if( pCallable->iFlags & MEMOBJ_HASHMAP ){
+		ph7_hashmap *pMap = (ph7_hashmap *)pCallable->x.pOther;
+		ph7_value *pTarget = 0,*pName = 0;
+		ph7_class *pClass;
+		if( pMap == 0 || pMap->nEntry != 2
+		 || !PH7_VmArrayCallableParts(&(*pVm),pMap,&pTarget,&pName)
+		 || (pName->iFlags & MEMOBJ_STRING) == 0 ){
+			return 0;
+		}
+		pClass = PH7_VmExtractClassFromValue(&(*pVm),pTarget);
+		if( pClass == 0 ){
+			return 0;
+		}
+		pMeth = PH7_ClassExtractMethod(pClass,(const char *)SyBlobData(&pName->sBlob),
+			SyBlobLength(&pName->sBlob));
+	}else if( pCallable->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pThis = (ph7_class_instance *)pCallable->x.pOther;
+		if( pThis == 0 ){
+			return 0;
+		}
+		pMeth = PH7_ClassExtractMethod(pThis->pClass,"__invoke",sizeof("__invoke")-1);
+	}
+	return pMeth ? &pMeth->sFunc : 0;
+}
+/*
+ * Materialize an indirect dispatch's deferred arguments against that callee — the same
+ * split OP_CALL makes for a direct one: a native method's by-ref positions come from its
+ * signature mask, a PHP one's from its compiled formals, and an unresolved callee binds
+ * everything by value (php's answer for the magic route it is about to take).
+ */
+static sxi32 VmResolveIndirectArgs(ph7_vm *pVm,ph7_value *pCallable,ph7_value *pArg,ph7_value *pTos)
+{
+	ph7_vm_func *pFn = VmIndirectCalleeFunc(&(*pVm),pCallable);
+	if( pFn == 0 ){
+		return PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,0,0);
+	}
+	if( pFn->iFlags & VM_FUNC_NATIVE ){
+		return PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,
+			pFn->pNative ? pFn->pNative->nByRefMask : 0,0,0);
+	}
+	return PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,
+		(ph7_vm_func_arg *)SySetBasePtr(&pFn->aArgs),SySetUsed(&pFn->aArgs),0,0,0);
+}
+/*
  * Why a VALUE cannot be made into a first-class callable. php answers `($v)(...)` with
  * exactly what it answers `($v)()` — the taxonomy is the DIRECT dispatch's, word for word —
  * so this walks the same three shapes the OP_CALL sites do and reuses their builders. PHL
@@ -5787,13 +5848,10 @@ case PH7_OP_CALL: {
 			 * against this path's arg base (the array-callable slot isn't popped). */
 			pEffCallMap = VmEffCallArgMap(pVm,pInstr,pArg,
 				nCallArgs > 0 ? (sxu32)nCallArgs : 0,&sEffMap);
-			/* D1: an array callable dispatches through the shared helper below, which does not
-			 * expose the target's per-parameter by-ref flags here. This path over-vivified every
-			 * plain-var argument before D1 (so `[$o,'m'](&$x)` out-params worked); preserve that
-			 * by materializing every deferred arg as by-ref. Refining these to precise by-value
-			 * semantics is a later slice. */
+			/* Materialize the deferred arguments against the pair's own method (see
+			 * VmIndirectCalleeFunc), not against a blanket by-ref assumption. */
 			{
-				sxi32 rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,/*bAllByRef*/1,0);
+				sxi32 rcDA = VmResolveIndirectArgs(&(*pVm),pTos,pArg,pTos);
 				PH7_DISPATCH_ENFORCE_RC(rcDA)
 			}
 			SySetReset(&aArg);
@@ -5846,12 +5904,10 @@ case PH7_OP_CALL: {
 			 * already this call's arg base — build the map + consume the runs. */
 			pEffCallMap = VmEffCallArgMap(pVm,pInstr,pArg,
 				nCallArgs > 0 ? (sxu32)nCallArgs : 0,&sEffMap);
-			/* D1: like the array-callable path above, __invoke dispatches through a shared
-			 * helper that hides the target's by-ref flags here. Preserve the pre-D1
-			 * over-vivification (so `$o(&$x)` out-params keep working) by materializing
-			 * every deferred arg as by-ref. */
+			/* Materialize the deferred arguments against this object's __invoke, the
+			 * array-callable path's rule one shape over. */
 			{
-				sxi32 rcDA = PH7_VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,/*bAllByRef*/1,0);
+				sxi32 rcDA = VmResolveIndirectArgs(&(*pVm),pTos,pArg,pTos);
 				PH7_DISPATCH_ENFORCE_RC(rcDA)
 			}
 			SySetReset(&aArg);
