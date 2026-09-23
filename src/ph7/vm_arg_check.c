@@ -467,6 +467,7 @@ static const struct VmBuiltinSig {
 	{ "cos", "float $num", "float" },
 	{ "cosh", "float $num", "float" },
 	{ "count", "Countable|array $value, int $mode = 0", "int" },
+	{ "count_chars", "string $string, int $mode = 0", "array|string" },
 	{ "crc32", "string $string", "int" },
 	{ "ctype_alnum", "mixed $text", "bool" },
 	{ "ctype_alpha", "mixed $text", "bool" },

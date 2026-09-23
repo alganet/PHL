@@ -4298,6 +4298,107 @@ PH7_PRIVATE int PH7_builtin_str_split(ph7_context *pCtx,int nArg,ph7_value **apA
 	return PH7_OK;
 }
 /*
+ * array|string count_chars(string $string[,int $mode = 0 ])
+ *  How many times each byte value occurs in a string.
+ * Parameters
+ *  $string
+ *   The examined string.
+ *  $mode
+ *   0: an array of all 256 byte values -> frequency.
+ *   1: only the byte values that occur.
+ *   2: only the byte values that do not.
+ *   3: a string of the byte values that occur.
+ *   4: a string of the byte values that do not.
+ * Return
+ *  An array for modes 0-2, a string for modes 3-4.
+ */
+PH7_PRIVATE int PH7_builtin_count_chars(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxu32 aCount[256];
+	const unsigned char *zIn;
+	ph7_value *pArray,*pValue;
+	char zOut[256];
+	int nOut = 0;
+	int nLen = 0;
+	int iMode = 0;
+	int i;
+	if( nArg < 1 ){
+		/* Arity is enforced from aBuiltinSig[] before the call. */
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	if( nArg > 1 ){
+		/* php declares `int $mode`; the shared screen refuses the values no
+		 * coercion can reach (array, object, resource, null), leaving the string
+		 * and float narrowing to the builtin -- both of which php only DEPRECATES
+		 * and PHL rejects (§10). */
+		if( ph7_value_is_string(apArg[1]) ){
+			sxu8 bReal = FALSE;
+			int nMode = 0;
+			const char *zMode = ph7_value_to_string(apArg[1],&nMode);
+			if( SyStrIsNumeric(zMode,nMode,&bReal,0) != SXRET_OK ){
+				return PH7_VmThrowException(pCtx,"TypeError",
+					"count_chars(): Argument #2 ($mode) must be of type int, string given");
+			}
+			if( bReal ){
+				double d = ph7_value_to_double(apArg[1]);
+				if( d != (double)(sxi64)d ){
+					return PH7_VmThrowException(pCtx,"TypeError",
+						"count_chars(): Argument #2 ($mode) must be of type int, string given");
+				}
+			}
+		}else if( ph7_value_is_float(apArg[1]) ){
+			double d = ph7_value_to_double(apArg[1]);
+			if( d != (double)(sxi64)d ){
+				return PH7_VmThrowException(pCtx,"TypeError",
+					"count_chars(): Argument #2 ($mode) must be of type int, float given");
+			}
+		}
+		iMode = ph7_value_to_int(apArg[1]);
+		if( iMode < 0 || iMode > 4 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"count_chars(): Argument #2 ($mode) must be between 0 and 4 (inclusive)");
+		}
+	}
+	/* Binary safe: the string is counted by LENGTH, so an embedded NUL is a byte
+	 * value like any other. */
+	zIn = (const unsigned char *)ph7_value_to_string(apArg[0],&nLen);
+	for( i = 0 ; i < 256 ; ++i ){
+		aCount[i] = 0;
+	}
+	for( i = 0 ; i < nLen ; ++i ){
+		aCount[zIn[i]]++;
+	}
+	if( iMode >= 3 ){
+		/* 3 = the bytes that occur, 4 = the bytes that do not. */
+		for( i = 0 ; i < 256 ; ++i ){
+			if( (aCount[i] != 0) == (iMode == 3) ){
+				zOut[nOut++] = (char)i;
+			}
+		}
+		ph7_result_string(pCtx,zOut,nOut);
+		return PH7_OK;
+	}
+	pArray = ph7_context_new_array(pCtx);
+	pValue = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pValue == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	for( i = 0 ; i < 256 ; ++i ){
+		/* 0 = every byte value, 1 = the ones that occur, 2 = the ones that do not
+		 * (php stores their count, which is always 0). */
+		if( iMode != 0 && (aCount[i] != 0) != (iMode == 1) ){
+			continue;
+		}
+		ph7_value_int64(pValue,(ph7_int64)aCount[i]);
+		if( ph7_array_add_intkey_elem(pArray,i,pValue) != SXRET_OK ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+	}
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/*
  * Check if the given string contains only characters from the given mask.
  * return the longest match.
  * Refer to [strspn()].

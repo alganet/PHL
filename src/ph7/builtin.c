@@ -740,6 +740,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 
 	{ "str_shuffle",  PH7_builtin_str_shuffle},
 	{ "str_split",    PH7_builtin_str_split  },
+	{ "count_chars",  PH7_builtin_count_chars},
 	{ "strspn",       PH7_builtin_strspn     },
 	{ "strcspn",      PH7_builtin_strcspn    },
 	{ "strpbrk",      PH7_builtin_strpbrk    },
