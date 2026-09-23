@@ -77,7 +77,7 @@ static VmWeakCell * WkCellOf(ph7_class_instance *pRef)
 }
 /* Hand an instance back without owning a reference of our own (ph7_result_value's
  * MemObjStore takes the one the result needs). */
-static void WkResultBorrowed(ph7_context *pCtx,ph7_class_instance *pObj)
+static void SplResultBorrowed(ph7_context *pCtx,ph7_class_instance *pObj)
 {
 	ph7_value sObj;
 	PH7_MemObjInit(pCtx->pVm,&sObj);
@@ -136,7 +136,7 @@ static int vm_builtin_WeakReference_create(ph7_context *pCtx,int nArg,ph7_value 
 	if( bOwned ){
 		PH7_NativeResultObject(pCtx,pRef);
 	}else{
-		WkResultBorrowed(pCtx,pRef);
+		SplResultBorrowed(pCtx,pRef);
 	}
 	return PH7_OK;
 }
@@ -151,7 +151,7 @@ static int vm_builtin_WeakReference_get(ph7_context *pCtx,int nArg,ph7_value **a
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	WkResultBorrowed(pCtx,pCell->pObj);
+	SplResultBorrowed(pCtx,pCell->pObj);
 	return PH7_OK;
 }
 /*
@@ -1166,94 +1166,981 @@ static sxi32 VmInstallSplStore(ph7_vm *pVm)
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }
+/*
+ * ---------------------------------------------------------------------------
+ * The SPL DUAL ITERATORS: IteratorIterator and the decorators built on it.
+ *
+ * php's `spl_dual_it_object` is a CACHE, and that is the whole design. rewind()
+ * and next() move the INNER iterator and then COPY its current()/key() onto the
+ * decorator; valid(), current() and key() answer out of that copy and never reach
+ * the inner iterator again. The chunk forwarded all five live, which is three
+ * observable divergences at once: a fresh decorator was valid() BEFORE rewind()
+ * (php answers false — nothing has been fetched yet), current() followed an inner
+ * iterator that had been moved behind the decorator's back (php answers what it
+ * cached), and a decorator left past the end still answered the inner's stale
+ * key(). Everything below is written around the cache because the cache IS the
+ * class.
+ *
+ * Two slots hold what php holds in two fields: `__in` is `inner.zobject` — the
+ * object getInnerIterator() answers — and `__it` is `inner.iterator`, the Iterator
+ * actually driven. They differ for exactly one input: an IteratorAggregate whose
+ * getIterator() answers another IteratorAggregate. php unwraps ONE level in the
+ * constructor and lets the engine's get_iterator handler unwrap the rest at
+ * iteration time, so `new IteratorIterator($aggOfAgg)` answers the inner AGGREGATE
+ * from getInnerIterator() and still iterates. The chunk's `while` loop unwrapped
+ * to the bottom and answered the ArrayIterator instead.
+ */
+#define IT_IN  "__in"   /* php's inner.zobject: what getInnerIterator() answers */
+#define IT_IT  "__it"   /* php's inner.iterator: the Iterator actually driven */
+#define IT_CD  "__cd"   /* the cached current() */
+#define IT_CK  "__ck"   /* the cached key() */
+#define IT_CF  "__cf"   /* 1 while the cached pair is live (php's IS_UNDEF check) */
+#define IT_CP  "__cp"   /* php's current.pos */
+#define IT_OFF "__off"  /* LimitIterator's offset */
+#define IT_LIM "__lim"  /* LimitIterator's count, -1 for "all" */
+#define IT_CB  "__cb"   /* CallbackFilterIterator's callback */
+
+/*
+ * php's SPL_FETCH_AND_CHECK_DUAL_IT: a subclass whose constructor never called
+ * parent::__construct() has no inner iterator, and php refuses every method on it
+ * rather than answering a null-flavoured nothing.
+ */
+static sxi32 DualNotReady(ph7_context *pCtx)
+{
+	return PH7_VmThrowException(pCtx,"Error",
+		"The object is in an invalid state as the parent constructor was not called");
+}
+static ph7_class_instance * DualDriver(ph7_class_instance *pThis)
+{
+	return pThis ? PH7_NativeAttrObj(pThis,IT_IT) : 0;
+}
+static int DualFilled(ph7_class_instance *pThis)
+{
+	return pThis && PH7_NativeAttrInt(pThis,IT_CF) != 0;
+}
+/*
+ * Assign one of the instance's own slots. The slot pointer is re-resolved here on
+ * purpose: it lives inside pVm->aMemObj, a SySet that REALLOCATES as the VM
+ * reserves objects, so any pointer taken before a call into user code (and every
+ * inner->current() is one) may be stale by the time the call returns.
+ */
+static void DualSetSlot(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,ph7_value *pVal)
+{
+	ph7_value *pSlot = PH7_NativeAttr(pThis,zName);
+	SXUNUSED(pVm);
+	if( pSlot ){
+		PH7_MemObjStore(pVal,pSlot);
+	}
+}
+/* php's spl_dual_it_free: drop the cached pair. */
+static void DualFree(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_value *pSlot;
+	if( pThis == 0 ){
+		return;
+	}
+	pSlot = PH7_NativeAttr(pThis,IT_CD);
+	if( pSlot ){ PH7_MemObjRelease(pSlot); }
+	pSlot = PH7_NativeAttr(pThis,IT_CK);
+	if( pSlot ){ PH7_MemObjRelease(pSlot); }
+	PH7_NativeSetAttrInt(pVm,pThis,IT_CF,0);
+}
+/* Call a zero-argument method on the driven iterator, propagating a throw (rule:
+ * a native body that answers PH7_OK with an exception in flight lets the caller
+ * carry on). A missing method is the foreach opcode's leniency, not an error. */
+static sxi32 DualCall(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nLen,
+	ph7_value *pResult)
+{
+	ph7_class_instance *pIn = DualDriver(pThis);
+	if( pIn == 0 ){
+		return SXRET_OK;
+	}
+	return VmIterCallMethod(pVm,pIn,zName,nLen,pResult);
+}
+/* php's spl_dual_it_valid: the INNER's valid(), not the cache's. */
+static sxi32 DualInnerValid(ph7_vm *pVm,ph7_class_instance *pThis,int *pbValid)
+{
+	ph7_value sVal;
+	sxi32 rc;
+	*pbValid = 0;
+	PH7_MemObjInit(pVm,&sVal);
+	rc = DualCall(pVm,pThis,"valid",sizeof("valid")-1,&sVal);
+	if( rc == SXRET_OK ){
+		PH7_MemObjToBool(&sVal);          /* a STATUS, not the answer */
+		*pbValid = sVal.x.iVal != 0;
+	}
+	PH7_MemObjRelease(&sVal);
+	return rc;
+}
+/*
+ * php's spl_dual_it_fetch: refill the cache from the inner iterator. `bCheckMore`
+ * is php's check_more — false means "the caller already knows the inner is valid",
+ * which is how LimitIterator's seek and InfiniteIterator's wrap-around fetch.
+ */
+static sxi32 DualFetch(ph7_vm *pVm,ph7_class_instance *pThis,int bCheckMore)
+{
+	ph7_value sVal;
+	sxi32 rc;
+	int bValid = 1;
+	DualFree(pVm,pThis);
+	if( DualDriver(pThis) == 0 ){
+		return SXRET_OK;
+	}
+	if( bCheckMore ){
+		rc = DualInnerValid(pVm,pThis,&bValid);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	if( !bValid ){
+		return SXRET_OK;
+	}
+	PH7_MemObjInit(pVm,&sVal);
+	rc = DualCall(pVm,pThis,"current",sizeof("current")-1,&sVal);
+	if( rc != SXRET_OK ){
+		PH7_MemObjRelease(&sVal);
+		return rc;
+	}
+	DualSetSlot(pVm,pThis,IT_CD,&sVal);
+	PH7_MemObjRelease(&sVal);
+	PH7_MemObjInit(pVm,&sVal);
+	rc = DualCall(pVm,pThis,"key",sizeof("key")-1,&sVal);
+	if( rc != SXRET_OK ){
+		PH7_MemObjRelease(&sVal);
+		DualFree(pVm,pThis);   /* php drops the half-filled pair when key() throws */
+		return rc;
+	}
+	DualSetSlot(pVm,pThis,IT_CK,&sVal);
+	PH7_MemObjRelease(&sVal);
+	PH7_NativeSetAttrInt(pVm,pThis,IT_CF,1);
+	return SXRET_OK;
+}
+/* php's spl_dual_it_rewind: free, position back to zero, rewind the inner. */
+static sxi32 DualRewindInner(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	DualFree(pVm,pThis);
+	PH7_NativeSetAttrInt(pVm,pThis,IT_CP,0);
+	return DualCall(pVm,pThis,"rewind",sizeof("rewind")-1,0);
+}
+/* php's spl_dual_it_next: free, advance the inner, count the step. */
+static sxi32 DualNextInner(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	sxi32 rc;
+	DualFree(pVm,pThis);
+	rc = DualCall(pVm,pThis,"next",sizeof("next")-1,0);
+	PH7_NativeSetAttrInt(pVm,pThis,IT_CP,PH7_NativeAttrInt(pThis,IT_CP)+1);
+	return rc;
+}
+/* Hand back a cached slot, or php's null for an empty cache. */
+static int DualResultSlot(ph7_context *pCtx,const char *zName)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pSlot;
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	if( !DualFilled(pThis) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pSlot = PH7_NativeAttr(pThis,zName);
+	if( pSlot ){
+		ph7_result_value(pCtx,pSlot);
+	}
+	return PH7_OK;
+}
+/*
+ * The constructor every dual iterator shares. php words the "already built" refusal
+ * with the DECLARING class's name and with getIterator() rather than __construct(),
+ * so each class hands its own name in.
+ */
+static sxi32 DualConstruct(ph7_context *pCtx,const char *zOwner,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pObj;
+	ph7_class *pIterCls, *pAggCls, *pTravCls;
+	ph7_class *pCast = 0;
+	ph7_class_instance *pHold = 0;   /* the unwrapped iterator, kept alive across levels */
+	int nLevel;
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	if( PH7_NativeAttrObj(pThis,IT_IN) != 0 ){
+		return PH7_VmThrowException(pCtx,"BadMethodCallException",
+			"%s::getIterator() must be called exactly once per instance",zOwner);
+	}
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+		return PH7_OK;   /* the shared ZPP screen already refused a non-object */
+	}
+	pObj = (ph7_class_instance *)apArg[0]->x.pOther;
+	pIterCls = PH7_VmExtractClass(pVm,"Iterator",sizeof("Iterator")-1,FALSE,0);
+	pAggCls = PH7_VmExtractClass(pVm,"IteratorAggregate",sizeof("IteratorAggregate")-1,FALSE,0);
+	pTravCls = PH7_VmExtractClass(pVm,"Traversable",sizeof("Traversable")-1,FALSE,0);
+	if( pIterCls && PH7_VmInstanceOf(pObj->pClass,pIterCls) ){
+		/* Already an Iterator: php ignores $class entirely on this path. */
+		PH7_NativeSetAttrObj(pVm,pThis,IT_IN,pObj);
+		PH7_NativeSetAttrObj(pVm,pThis,IT_IT,pObj);
+		return PH7_OK;
+	}
+	if( nArg > 1 && (apArg[1]->iFlags & MEMOBJ_NULL) == 0 ){
+		/* php's DOWNCAST: $class names the class whose getIterator() to run, which is
+		 * how a subclass asks for its parent's traversal. It must be a base of the
+		 * argument AND traversable itself. */
+		int nName;
+		const char *zName = ph7_value_to_string(apArg[1],&nName);
+		pCast = nName > 0 ? PH7_VmExtractClass(pVm,zName,(sxu32)nName,FALSE,0) : 0;
+		if( pCast == 0 || !PH7_VmInstanceOf(pObj->pClass,pCast)
+		 || (pTravCls && !PH7_VmInstanceOf(pCast,pTravCls)) ){
+			return PH7_VmThrowException(pCtx,"LogicException",
+				"Class to downcast to not found or not base class or does not implement Traversable");
+		}
+	}
+	/*
+	 * An IteratorAggregate: run getIterator() — the DOWNCAST class's when one was
+	 * named — and keep its answer as the inner object. php stops after one level
+	 * here; the loop below is the engine's get_iterator handler, which resolves the
+	 * rest lazily, done eagerly because PHL drives the inner through the METHOD
+	 * protocol and nothing else would unwrap it.
+	 */
+	for( nLevel = 0 ; nLevel < 16 ; ++nLevel ){
+		ph7_class *pFrom = pCast ? pCast : pObj->pClass;
+		ph7_class_method *pMethod;
+		ph7_value sInner;
+		sxi32 rc;
+		if( pAggCls == 0 || !PH7_VmInstanceOf(pObj->pClass,pAggCls) ){
+			break;
+		}
+		pMethod = PH7_ClassExtractMethod(pFrom,"getIterator",sizeof("getIterator")-1);
+		if( pMethod == 0 ){
+			break;
+		}
+		PH7_MemObjInit(pVm,&sInner);
+		rc = PH7_VmCallClassMethod(pVm,pObj,pMethod,&sInner,0,0);
+		if( rc != SXRET_OK ){
+			PH7_MemObjRelease(&sInner);
+			return rc;
+		}
+		if( (sInner.iFlags & MEMOBJ_OBJ) == 0 || sInner.x.pOther == 0
+		 || (pTravCls && !PH7_VmInstanceOf(((ph7_class_instance *)sInner.x.pOther)->pClass,pTravCls)) ){
+			SyString *pName = &pFrom->sName;
+			PH7_MemObjRelease(&sInner);
+			return PH7_VmThrowException(pCtx,"LogicException",
+				"%z::getIterator() must return an object that implements Traversable",pName);
+		}
+		pObj = (ph7_class_instance *)sInner.x.pOther;
+		pObj->iRef++;                 /* survive the release of the call result */
+		PH7_MemObjRelease(&sInner);
+		if( pHold ){
+			PH7_ClassInstanceUnref(pHold);
+		}
+		pHold = pObj;                 /* this function owns exactly one reference */
+		if( nLevel == 0 ){
+			/* php's inner.zobject is the FIRST unwrap and nothing deeper. */
+			PH7_NativeSetAttrObj(pVm,pThis,IT_IN,pObj);
+		}
+		pCast = 0;
+		if( pIterCls && PH7_VmInstanceOf(pObj->pClass,pIterCls) ){
+			break;
+		}
+	}
+	if( PH7_NativeAttrObj(pThis,IT_IN) == 0 ){
+		PH7_NativeSetAttrObj(pVm,pThis,IT_IN,pObj);
+	}
+	PH7_NativeSetAttrObj(pVm,pThis,IT_IT,pObj);
+	if( pHold ){
+		PH7_ClassInstanceUnref(pHold);   /* both slots hold their own now */
+	}
+	return PH7_OK;
+}
+static int vm_builtin_IteratorIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DualConstruct(pCtx,"IteratorIterator",nArg,apArg);
+}
+static int vm_builtin_FilterIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DualConstruct(pCtx,"FilterIterator",nArg,apArg);
+}
+static int vm_builtin_CallbackFilterIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis;
+	sxi32 rc;
+	if( nArg > 1 ){
+		/* The shared ZPP screen leaves `callable` to the builtin's own check (a string
+		 * satisfies the declared type; whether it NAMES a function does not), so php's
+		 * "must be a valid callback, function "x" not found" only appears if the body
+		 * asks for it — as every callback-taking builtin already does. */
+		rc = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",FALSE);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+	}
+	rc = DualConstruct(pCtx,"CallbackFilterIterator",nArg,apArg);
+	pThis = PH7_ContextThis(pCtx);
+	if( rc == PH7_OK && pThis && nArg > 1 ){
+		DualSetSlot(pCtx->pVm,pThis,IT_CB,apArg[1]);
+	}
+	return rc;
+}
+static int vm_builtin_InfiniteIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DualConstruct(pCtx,"InfiniteIterator",nArg,apArg);
+}
+static int vm_builtin_NoRewindIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DualConstruct(pCtx,"NoRewindIterator",nArg,apArg);
+}
+static int vm_builtin_Dual_getInnerIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pIn;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	pIn = PH7_NativeAttrObj(pThis,IT_IN);
+	if( pIn ){
+		SplResultBorrowed(pCtx,pIn);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_Dual_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	ph7_result_bool(pCtx,DualFilled(pThis));
+	return PH7_OK;
+}
+static int vm_builtin_Dual_current(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return DualResultSlot(pCtx,IT_CD);
+}
+static int vm_builtin_Dual_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return DualResultSlot(pCtx,IT_CK);
+}
+static int vm_builtin_IteratorIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	rc = DualRewindInner(pVm,pThis);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	return DualFetch(pVm,pThis,TRUE);
+}
+static int vm_builtin_IteratorIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	rc = DualNextInner(pVm,pThis);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	return DualFetch(pVm,pThis,TRUE);
+}
+/*
+ * FilterIterator. php's spl_filter_it_fetch: fetch, ask accept(), and on a refusal
+ * step the INNER on directly — without counting the step, which is why a filtered
+ * element does not move current.pos. accept() is called on $this, so a user
+ * subclass's body is what decides.
+ */
+static sxi32 DualAccept(ph7_vm *pVm,ph7_class_instance *pThis,int *pbAccept)
+{
+	ph7_class_method *pMethod = PH7_ClassExtractMethod(pThis->pClass,"accept",sizeof("accept")-1);
+	ph7_value sRes;
+	sxi32 rc;
+	*pbAccept = 0;
+	if( pMethod == 0 ){
+		return SXRET_OK;
+	}
+	PH7_MemObjInit(pVm,&sRes);
+	rc = PH7_VmCallClassMethod(pVm,pThis,pMethod,&sRes,0,0);
+	if( rc == SXRET_OK ){
+		PH7_MemObjToBool(&sRes);
+		*pbAccept = sRes.x.iVal != 0;
+	}
+	PH7_MemObjRelease(&sRes);
+	return rc;
+}
+static sxi32 DualFilterFetch(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	for(;;){
+		int bAccept = 0;
+		sxi32 rc = DualFetch(pVm,pThis,TRUE);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		if( !DualFilled(pThis) ){
+			break;
+		}
+		rc = DualAccept(pVm,pThis,&bAccept);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		if( bAccept ){
+			return SXRET_OK;
+		}
+		rc = DualCall(pVm,pThis,"next",sizeof("next")-1,0);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	DualFree(pVm,pThis);
+	return SXRET_OK;
+}
+static int vm_builtin_FilterIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	rc = DualRewindInner(pVm,pThis);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	return DualFilterFetch(pVm,pThis);
+}
+static int vm_builtin_FilterIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	rc = DualNextInner(pVm,pThis);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	return DualFilterFetch(pVm,pThis);
+}
+/* CallbackFilterIterator::accept(): the callback sees the CACHED pair and the inner
+ * iterator, and an empty cache is refused without calling it at all. */
+static int vm_builtin_CallbackFilterIterator_accept(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *apCall[3];
+	ph7_value sInner,sRes,*pCb;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	if( !DualFilled(pThis) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pCb = PH7_NativeAttr(pThis,IT_CB);
+	if( pCb == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pVm,&sInner);
+	sInner.x.pOther = PH7_NativeAttrObj(pThis,IT_IN);
+	if( sInner.x.pOther ){
+		MemObjSetType(&sInner,MEMOBJ_OBJ);
+		((ph7_class_instance *)sInner.x.pOther)->iRef++;
+	}
+	apCall[0] = PH7_NativeAttr(pThis,IT_CD);
+	apCall[1] = PH7_NativeAttr(pThis,IT_CK);
+	apCall[2] = &sInner;
+	PH7_MemObjInit(pVm,&sRes);
+	rc = PH7_VmCallUserFunction(pVm,pCb,3,apCall,&sRes);
+	PH7_MemObjRelease(&sInner);
+	if( rc == SXRET_OK ){
+		ph7_result_value(pCtx,&sRes);
+	}
+	PH7_MemObjRelease(&sRes);
+	return rc == SXRET_OK ? PH7_OK : rc;
+}
+/*
+ * LimitIterator. The window is (offset, count) over the inner iterator's own
+ * positions, and `__cp` counts them: php's valid() is "inside the window AND the
+ * cache is filled", and next() only refills while the window still has room.
+ */
+static sxi32 DualLimitSeek(ph7_context *pCtx,ph7_class_instance *pThis,sxi64 iPos)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	sxi64 iOff = PH7_NativeAttrInt(pThis,IT_OFF);
+	sxi64 iLim = PH7_NativeAttrInt(pThis,IT_LIM);
+	ph7_class_instance *pIn = DualDriver(pThis);
+	ph7_class *pSeekCls;
+	sxi32 rc;
+	int bValid;
+	DualFree(pVm,pThis);
+	if( iPos < iOff ){
+		return PH7_VmThrowException(pCtx,"OutOfBoundsException",
+			"Cannot seek to %qd which is below the offset %qd",iPos,iOff);
+	}
+	if( iLim != -1 && (iPos - iOff) >= iLim ){
+		return PH7_VmThrowException(pCtx,"OutOfBoundsException",
+			"Cannot seek to %qd which is behind offset %qd plus count %qd",iPos,iOff,iLim);
+	}
+	pSeekCls = PH7_VmExtractClass(pVm,"SeekableIterator",sizeof("SeekableIterator")-1,FALSE,0);
+	if( iPos != PH7_NativeAttrInt(pThis,IT_CP) && pIn && pSeekCls
+	 && PH7_VmInstanceOf(pIn->pClass,pSeekCls) ){
+		/* The inner knows how to jump: hand it the ABSOLUTE position and let its own
+		 * refusal (ArrayIterator's "Seek position N is out of range") surface. */
+		ph7_class_method *pMethod = PH7_ClassExtractMethod(pIn->pClass,"seek",sizeof("seek")-1);
+		ph7_value sPos,*apArg[1];
+		PH7_MemObjInitFromInt(pVm,&sPos,iPos);
+		apArg[0] = &sPos;
+		rc = pMethod ? PH7_VmCallClassMethod(pVm,pIn,pMethod,0,1,apArg) : SXRET_OK;
+		PH7_MemObjRelease(&sPos);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		PH7_NativeSetAttrInt(pVm,pThis,IT_CP,iPos);
+		rc = DualInnerValid(pVm,pThis,&bValid);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		if( bValid ){
+			return DualFetch(pVm,pThis,FALSE);
+		}
+		return SXRET_OK;
+	}
+	/* Otherwise emulate: a backward seek is a rewind followed by next() calls. */
+	if( iPos < PH7_NativeAttrInt(pThis,IT_CP) ){
+		rc = DualRewindInner(pVm,pThis);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	for(;;){
+		if( iPos <= PH7_NativeAttrInt(pThis,IT_CP) ){
+			break;
+		}
+		rc = DualInnerValid(pVm,pThis,&bValid);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		if( !bValid ){
+			break;
+		}
+		rc = DualNextInner(pVm,pThis);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	rc = DualInnerValid(pVm,pThis,&bValid);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	if( bValid ){
+		return DualFetch(pVm,pThis,TRUE);
+	}
+	return SXRET_OK;
+}
+static int vm_builtin_LimitIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis;
+	sxi64 iOff = 0,iLim = -1;
+	sxi32 rc;
+	/* php screens the two bounds BEFORE it remembers the iterator, so a refused
+	 * LimitIterator can still be constructed again. PH7_IntArgResolve is the shared
+	 * `int` ZPP: the central signature screen does not cover a non-numeric STRING
+	 * against an int parameter, and every builtin that takes one calls this. */
+	if( nArg > 1 ){
+		rc = PH7_IntArgResolve(pCtx,apArg[1],ph7_function_name(pCtx),2,"$offset","int",&iOff);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+		if( iOff < 0 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"%s(): Argument #2 ($offset) must be greater than or equal to 0",
+				ph7_function_name(pCtx));
+		}
+	}
+	if( nArg > 2 ){
+		rc = PH7_IntArgResolve(pCtx,apArg[2],ph7_function_name(pCtx),3,"$limit","int",&iLim);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+		if( iLim < -1 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"%s(): Argument #3 ($limit) must be greater than or equal to -1",
+				ph7_function_name(pCtx));
+		}
+	}
+	rc = DualConstruct(pCtx,"LimitIterator",nArg,apArg);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	pThis = PH7_ContextThis(pCtx);
+	if( pThis ){
+		PH7_NativeSetAttrInt(pVm,pThis,IT_OFF,iOff);
+		PH7_NativeSetAttrInt(pVm,pThis,IT_LIM,iLim);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_LimitIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	rc = DualRewindInner(pVm,pThis);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	return DualLimitSeek(pCtx,pThis,PH7_NativeAttrInt(pThis,IT_OFF));
+}
+static int vm_builtin_LimitIterator_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 iLim;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	iLim = PH7_NativeAttrInt(pThis,IT_LIM);
+	ph7_result_bool(pCtx,
+		(iLim == -1
+		 || (PH7_NativeAttrInt(pThis,IT_CP) - PH7_NativeAttrInt(pThis,IT_OFF)) < iLim)
+		&& DualFilled(pThis));
+	return PH7_OK;
+}
+static int vm_builtin_LimitIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 iLim;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	rc = DualNextInner(pVm,pThis);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	iLim = PH7_NativeAttrInt(pThis,IT_LIM);
+	if( iLim == -1
+	 || (PH7_NativeAttrInt(pThis,IT_CP) - PH7_NativeAttrInt(pThis,IT_OFF)) < iLim ){
+		return DualFetch(pVm,pThis,TRUE);
+	}
+	return PH7_OK;   /* past the window: the cache stays empty, so current() is null */
+}
+static int vm_builtin_LimitIterator_seek(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 iPos = 0;
+	sxi32 rc;
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	if( nArg > 0 ){
+		rc = PH7_IntArgResolve(pCtx,apArg[0],ph7_function_name(pCtx),1,"$offset","int",&iPos);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+	}
+	rc = DualLimitSeek(pCtx,pThis,iPos);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	ph7_result_int64(pCtx,PH7_NativeAttrInt(pThis,IT_CP));
+	return PH7_OK;
+}
+static int vm_builtin_LimitIterator_getPosition(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	ph7_result_int64(pCtx,PH7_NativeAttrInt(pThis,IT_CP));
+	return PH7_OK;
+}
+/* InfiniteIterator::next(): step, and on exhaustion rewind and step into the head
+ * again. Both refills are php's check_more=0 form — the validity was just tested. */
+static int vm_builtin_InfiniteIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi32 rc;
+	int bValid;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	rc = DualNextInner(pVm,pThis);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	rc = DualInnerValid(pVm,pThis,&bValid);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	if( !bValid ){
+		rc = DualRewindInner(pVm,pThis);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		rc = DualInnerValid(pVm,pThis,&bValid);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	if( bValid ){
+		return DualFetch(pVm,pThis,FALSE);
+	}
+	return PH7_OK;
+}
+/*
+ * NoRewindIterator. Its rewind() does nothing at all — and because the four
+ * accessors read the INNER live rather than the cache, an instance is usable
+ * without ever being rewound, which is the entire point of the class.
+ */
+static int vm_builtin_NoRewindIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( PH7_ContextThis(pCtx) == 0 || DualDriver(PH7_ContextThis(pCtx)) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_NoRewindIterator_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi32 rc;
+	int bValid;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	rc = DualInnerValid(pCtx->pVm,pThis,&bValid);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	ph7_result_bool(pCtx,bValid);
+	return PH7_OK;
+}
+static int DualForwardLive(ph7_context *pCtx,const char *zName,sxu32 nLen,int bResult)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value sVal;
+	sxi32 rc;
+	if( pThis == 0 || DualDriver(pThis) == 0 ){
+		return DualNotReady(pCtx);
+	}
+	PH7_MemObjInit(pCtx->pVm,&sVal);
+	rc = DualCall(pCtx->pVm,pThis,zName,nLen,bResult ? &sVal : 0);
+	if( rc == SXRET_OK && bResult ){
+		ph7_result_value(pCtx,&sVal);
+	}
+	PH7_MemObjRelease(&sVal);
+	return rc == SXRET_OK ? PH7_OK : rc;
+}
+static int vm_builtin_NoRewindIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return DualForwardLive(pCtx,"current",sizeof("current")-1,TRUE);
+}
+static int vm_builtin_NoRewindIterator_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return DualForwardLive(pCtx,"key",sizeof("key")-1,TRUE);
+}
+static int vm_builtin_NoRewindIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return DualForwardLive(pCtx,"next",sizeof("next")-1,FALSE);
+}
+/* EmptyIterator: valid() is false forever, and asking for a value or a key is a
+ * BadMethodCallException rather than a null. */
+static int vm_builtin_EmptyIterator_nop(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+static int vm_builtin_EmptyIterator_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx,0);
+	return PH7_OK;
+}
+static int vm_builtin_EmptyIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return PH7_VmThrowException(pCtx,"BadMethodCallException",
+		"Accessing the value of an EmptyIterator");
+}
+static int vm_builtin_EmptyIterator_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return PH7_VmThrowException(pCtx,"BadMethodCallException",
+		"Accessing the key of an EmptyIterator");
+}
+/*
+ * The declarations. php's method ORDER is the order Reflection reports, so each
+ * table follows spl_iterators.stub.php line for line; the parameter types are the
+ * stub's too, which is what makes `Iterator $iterator` refuse an IteratorAggregate
+ * everywhere except IteratorIterator (the one class that declares Traversable and
+ * unwraps).
+ *
+ * No RETURN type is declared, on purpose: php marks every one of these
+ * `@tentative-return-type`, and a tentative type answers NULL from getReturnType()
+ * and false from hasReturnType() — which is exactly what an undeclared zRet answers
+ * here. Declaring them would print `Return [ bool ]` where php prints
+ * `Tentative return [ bool ]` AND make getReturnType() disagree; leaving them off
+ * costs only getTentativeReturnType(). PHL has no tentative-return concept at all
+ * (§7.4) — DateTime and the reflectors already report a plain return type where php
+ * reports a tentative one.
+ */
+static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
+{
+	static const PH7_NativePropDef aDualProp[] = {
+		{ IT_IN, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ IT_IT, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ IT_CD, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ IT_CK, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+		{ IT_CF, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
+		{ IT_CP, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
+	};
+	static const PH7_NativePropDef aLimitProp[] = {
+		{ IT_OFF, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 } },
+		{ IT_LIM, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_INT, -1, 0, 0.0 } },
+	};
+	static const PH7_NativePropDef aCbProp[] = {
+		{ IT_CB, PH7_MOD_PRIVATE, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 } },
+	};
+	static const PH7_NativeMethodDef aOuterMethod[] = {
+		{ "getInnerIterator", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", 0, 0 },
+	};
+	static const PH7_NativeMethodDef aIterIterMethod[] = {
+		{ "__construct",      PH7_MOD_PUBLIC, "Traversable $iterator, ?string $class = null", 0,
+		  vm_builtin_IteratorIterator_construct },
+		{ "getInnerIterator", PH7_MOD_PUBLIC, "", 0, vm_builtin_Dual_getInnerIterator },
+		{ "rewind",           PH7_MOD_PUBLIC, "", 0, vm_builtin_IteratorIterator_rewind },
+		{ "valid",            PH7_MOD_PUBLIC, "", 0, vm_builtin_Dual_valid },
+		{ "key",              PH7_MOD_PUBLIC, "", 0, vm_builtin_Dual_key },
+		{ "current",          PH7_MOD_PUBLIC, "", 0, vm_builtin_Dual_current },
+		{ "next",             PH7_MOD_PUBLIC, "", 0, vm_builtin_IteratorIterator_next },
+	};
+	static const PH7_NativeMethodDef aFilterMethod[] = {
+		{ "accept",      PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", 0, 0 },
+		{ "__construct", PH7_MOD_PUBLIC, "Iterator $iterator", 0, vm_builtin_FilterIterator_construct },
+		{ "rewind",      PH7_MOD_PUBLIC, "", 0, vm_builtin_FilterIterator_rewind },
+		{ "next",        PH7_MOD_PUBLIC, "", 0, vm_builtin_FilterIterator_next },
+	};
+	static const PH7_NativeMethodDef aCbFilterMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "Iterator $iterator, callable $callback", 0,
+		  vm_builtin_CallbackFilterIterator_construct },
+		{ "accept",      PH7_MOD_PUBLIC, "", 0, vm_builtin_CallbackFilterIterator_accept },
+	};
+	static const PH7_NativeMethodDef aLimitMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "Iterator $iterator, int $offset = 0, int $limit = -1", 0,
+		  vm_builtin_LimitIterator_construct },
+		{ "rewind",      PH7_MOD_PUBLIC, "", 0, vm_builtin_LimitIterator_rewind },
+		{ "valid",       PH7_MOD_PUBLIC, "", 0, vm_builtin_LimitIterator_valid },
+		{ "next",        PH7_MOD_PUBLIC, "", 0, vm_builtin_LimitIterator_next },
+		{ "seek",        PH7_MOD_PUBLIC, "int $offset", 0, vm_builtin_LimitIterator_seek },
+		{ "getPosition", PH7_MOD_PUBLIC, "", 0, vm_builtin_LimitIterator_getPosition },
+	};
+	static const PH7_NativeMethodDef aInfiniteMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "Iterator $iterator", 0,
+		  vm_builtin_InfiniteIterator_construct },
+		{ "next",        PH7_MOD_PUBLIC, "", 0, vm_builtin_InfiniteIterator_next },
+	};
+	static const PH7_NativeMethodDef aNoRewindMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "Iterator $iterator", 0,
+		  vm_builtin_NoRewindIterator_construct },
+		{ "rewind",      PH7_MOD_PUBLIC, "", 0, vm_builtin_NoRewindIterator_rewind },
+		{ "valid",       PH7_MOD_PUBLIC, "", 0, vm_builtin_NoRewindIterator_valid },
+		{ "key",         PH7_MOD_PUBLIC, "", 0, vm_builtin_NoRewindIterator_key },
+		{ "current",     PH7_MOD_PUBLIC, "", 0, vm_builtin_NoRewindIterator_current },
+		{ "next",        PH7_MOD_PUBLIC, "", 0, vm_builtin_NoRewindIterator_next },
+	};
+	static const PH7_NativeMethodDef aEmptyMethod[] = {
+		{ "current", PH7_MOD_PUBLIC, "", 0, vm_builtin_EmptyIterator_current },
+		{ "next",    PH7_MOD_PUBLIC, "", 0, vm_builtin_EmptyIterator_nop },
+		{ "key",     PH7_MOD_PUBLIC, "", 0, vm_builtin_EmptyIterator_key },
+		{ "valid",   PH7_MOD_PUBLIC, "", 0, vm_builtin_EmptyIterator_valid },
+		{ "rewind",  PH7_MOD_PUBLIC, "", 0, vm_builtin_EmptyIterator_nop },
+	};
+	/*
+	 * PH7_CLASS_NOCLONE on every dual iterator: php refuses `clone` for all of them
+	 * (its inner iterator handle cannot be duplicated), and a slot-by-slot copy here
+	 * would share the inner iterator's cursor between two decorators. EmptyIterator
+	 * has no state and php clones it happily.
+	 */
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "OuterIterator", 0, "Iterator", PH7_CLASS_INTERFACE,
+		  aOuterMethod, SX_ARRAYSIZE(aOuterMethod), 0, 0, 0, 0, 0, 0 },
+		{ "IteratorIterator", 0, "OuterIterator", PH7_CLASS_NOCLONE,
+		  aIterIterMethod, SX_ARRAYSIZE(aIterIterMethod), 0, 0,
+		  aDualProp, SX_ARRAYSIZE(aDualProp), 0, 0 },
+		{ "FilterIterator", "IteratorIterator", 0, PH7_CLASS_ABSTRACT|PH7_CLASS_NOCLONE,
+		  aFilterMethod, SX_ARRAYSIZE(aFilterMethod), 0, 0, 0, 0, 0, 0 },
+		{ "CallbackFilterIterator", "FilterIterator", 0, PH7_CLASS_NOCLONE,
+		  aCbFilterMethod, SX_ARRAYSIZE(aCbFilterMethod), 0, 0,
+		  aCbProp, SX_ARRAYSIZE(aCbProp), 0, 0 },
+		{ "LimitIterator", "IteratorIterator", 0, PH7_CLASS_NOCLONE,
+		  aLimitMethod, SX_ARRAYSIZE(aLimitMethod), 0, 0,
+		  aLimitProp, SX_ARRAYSIZE(aLimitProp), 0, 0 },
+		{ "InfiniteIterator", "IteratorIterator", 0, PH7_CLASS_NOCLONE,
+		  aInfiniteMethod, SX_ARRAYSIZE(aInfiniteMethod), 0, 0, 0, 0, 0, 0 },
+		{ "NoRewindIterator", "IteratorIterator", 0, PH7_CLASS_NOCLONE,
+		  aNoRewindMethod, SX_ARRAYSIZE(aNoRewindMethod), 0, 0, 0, 0, 0, 0 },
+		{ "EmptyIterator", 0, "Iterator", 0,
+		  aEmptyMethod, SX_ARRAYSIZE(aEmptyMethod), 0, 0, 0, 0, 0, 0 },
+	};
+	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+}
 static const char zSplLib[] =
-"interface OuterIterator extends Iterator {"
-" public function getInnerIterator();"
-"}"
-"class IteratorIterator implements OuterIterator {"
-" private $__in = null;"
-" public function __construct($iterator, $class = null){"
-"  while( $iterator instanceof IteratorAggregate ){ $iterator = $iterator->getIterator(); }"
-"  if( !($iterator instanceof Iterator) ){"
-"   throw new TypeError(get_class($this) . '::__construct(): Argument #1 ($iterator)"
-" must be of type Traversable, ' . get_debug_type($iterator) . ' given');"
-"  }"
-"  $this->__in = $iterator;"
-" }"
-" public function getInnerIterator(){ return $this->__in; }"
-" public function current(){ return $this->__in->current(); }"
-" public function key(){ return $this->__in->key(); }"
-" public function next(){ $this->__in->next(); }"
-" public function rewind(){ $this->__in->rewind(); }"
-" public function valid(){ return $this->__in->valid(); }"
-"}"
-"class LimitIterator extends IteratorIterator {"
-" private $__off = 0;"
-" private $__lim = -1;"
-" private $__pos = 0;"
-" public function __construct($iterator, $offset = 0, $limit = -1){"
-"  $offset = (int)$offset; $limit = (int)$limit;"
-"  if( $offset < 0 ){"
-"   throw new ValueError('LimitIterator::__construct(): Argument #2 ($offset) must be"
-" greater than or equal to 0');"
-"  }"
-"  if( $limit < -1 ){"
-"   throw new ValueError('LimitIterator::__construct(): Argument #3 ($limit) must be"
-" greater than or equal to -1');"
-"  }"
-"  parent::__construct($iterator);"
-"  $this->__off = $offset;"
-"  $this->__lim = $limit;"
-" }"
-" public function rewind(){"
-"  $in = $this->getInnerIterator();"
-"  $in->rewind();"
-"  for( $i = 0; $i < $this->__off && $in->valid(); $i++ ){ $in->next(); }"
-"  $this->__pos = $this->__off;"
-" }"
-" public function valid(){"
-"  if( $this->__lim != -1 && $this->__pos >= $this->__off + $this->__lim ){ return false; }"
-"  return $this->getInnerIterator()->valid();"
-" }"
-" public function next(){ $this->__pos++; $this->getInnerIterator()->next(); }"
-" public function getPosition(){ return $this->__pos; }"
-" public function seek($offset){"
-"  $offset = (int)$offset;"
-"  if( $offset < $this->__off ){"
-"   throw new OutOfBoundsException('Cannot seek to ' . $offset . ' which is below the"
-" offset ' . $this->__off);"
-"  }"
-"  if( $this->__lim != -1 && $offset >= $this->__off + $this->__lim ){"
-"   throw new OutOfBoundsException('Cannot seek to ' . $offset . ' which is behind or"
-" equal to the limit ' . $this->__lim . ' plus the offset ' . $this->__off);"
-"  }"
-"  $in = $this->getInnerIterator();"
-"  $in->rewind();"
-"  for( $i = 0; $i < $offset && $in->valid(); $i++ ){ $in->next(); }"
-"  $this->__pos = $offset;"
-"  return $this->__pos;"
-" }"
-"}"
-"abstract class FilterIterator extends IteratorIterator {"
-" abstract public function accept();"
-" private function __fiFetch(){"
-"  $in = $this->getInnerIterator();"
-"  while( $in->valid() && !$this->accept() ){ $in->next(); }"
-" }"
-" public function rewind(){ $this->getInnerIterator()->rewind(); $this->__fiFetch(); }"
-" public function next(){ $this->getInnerIterator()->next(); $this->__fiFetch(); }"
-"}"
-"class CallbackFilterIterator extends FilterIterator {"
-" private $__cb = null;"
-" public function __construct($iterator, $callback){"
-"  parent::__construct($iterator);"
-"  $this->__cb = $callback;"
-" }"
-" public function accept(){"
-"  $in = $this->getInnerIterator();"
-"  return (bool)call_user_func($this->__cb, $in->current(), $in->key(), $in);"
-" }"
-"}"
 "class RegexIterator extends FilterIterator {"
 " const USE_KEY = 1;"
 " const INVERT_MATCH = 2;"
@@ -1352,16 +2239,6 @@ static const char zSplLib[] =
 "  if( $in ){ $in->next(); }"
 "  $this->__apAdvance();"
 " }"
-"}"
-"class InfiniteIterator extends IteratorIterator {"
-" public function next(){"
-"  $in = $this->getInnerIterator();"
-"  $in->next();"
-"  if( !$in->valid() ){ $in->rewind(); }"
-" }"
-"}"
-"class NoRewindIterator extends IteratorIterator {"
-" public function rewind(){}"
 "}"
 "interface RecursiveIterator extends Iterator {"
 " public function hasChildren();"
@@ -1523,17 +2400,6 @@ static const char zSplLib[] =
 "  $it->next();"
 "  $this->__riFetch();"
 " }"
-"}"
-"class EmptyIterator implements Iterator {"
-" public function current(){"
-"  throw new BadMethodCallException('Accessing the value of an EmptyIterator');"
-" }"
-" public function key(){"
-"  throw new BadMethodCallException('Accessing the key of an EmptyIterator');"
-" }"
-" public function next(){}"
-" public function rewind(){}"
-" public function valid(){ return false; }"
 "}"
 "class SplDoublyLinkedList implements Iterator, Countable, ArrayAccess {"
 " const IT_MODE_LIFO = 2;"
@@ -2057,6 +2923,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)
 	/* Before the chunk, not after: `RecursiveArrayIterator extends ArrayIterator` is
 	 * still PHP, and the compiler has to find the native class it extends. */
 	rc = VmInstallSplStore(&(*pVm));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* Also before the chunk: RegexIterator and AppendIterator are still PHP and name
+	 * FilterIterator / OuterIterator as they compile. */
+	rc = VmInstallSplDualIterators(&(*pVm));
 	if( rc != SXRET_OK ){
 		return rc;
 	}
