@@ -2348,8 +2348,14 @@ PH7_PRIVATE void PH7_RegisterHashmapFunctions(ph7_vm *pVm)
  * PH7_HashmapDump so the var_dump object renderer can reuse it for a
  * __debugInfo() array body (which carries an object header, not "array(N)").
  * Returns SXERR_LIMIT if a nested value hit the depth cap.
+ *
+ * bProp says the entries are an object's PROPERTIES: php then reads each key
+ * through zend_unmangle_property_name, so "\0C\0p" prints as `["p":"C":private]`
+ * and "\0*\0p" as `["p":protected]`. That is how a get_debug_info handler (and a
+ * userland __debugInfo()) labels a non-public slot, and it is the ONLY place the
+ * decode happens — `var_dump((array)$obj)` shows the mangled key raw.
  */
-PH7_PRIVATE sxi32 PH7_HashmapDumpEntries(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,int nTab,int nDepth)
+PH7_PRIVATE sxi32 PH7_HashmapDumpEntries(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,int nTab,int nDepth,int bProp)
 {
 	ph7_hashmap_node *pEntry = pMap->pFirst;
 	ph7_value *pObj;
@@ -2375,8 +2381,22 @@ PH7_PRIVATE sxi32 PH7_HashmapDumpEntries(SyBlob *pOut,ph7_hashmap *pMap,int Show
 			if( pEntry->iType == HASHMAP_INT_NODE){
 				SyBlobFormat(&(*pOut),"[%qd]=>",pEntry->xKey.iKey);
 			}else{
-				SyBlobFormat(&(*pOut),"[\"%.*s\"]=>",
-					SyBlobLength(&pEntry->xKey.sKey),SyBlobData(&pEntry->xKey.sKey));
+				SyString sCls,sNm;
+				if( bProp && PH7_UnmangleAttrName((const char *)SyBlobData(&pEntry->xKey.sKey),
+					SyBlobLength(&pEntry->xKey.sKey),&sCls,&sNm) ){
+					SyBlobFormat(&(*pOut),"[\"%z\"",&sNm);
+					if( sCls.nByte > 0 ){
+						if( sCls.zString[0] == '*' ){
+							SyBlobAppend(&(*pOut),":protected",sizeof(":protected")-1);
+						}else{
+							SyBlobFormat(&(*pOut),":\"%z\":private",&sCls);
+						}
+					}
+					SyBlobAppend(&(*pOut),"]=>",sizeof("]=>")-1);
+				}else{
+					SyBlobFormat(&(*pOut),"[\"%.*s\"]=>",
+						SyBlobLength(&pEntry->xKey.sKey),SyBlobData(&pEntry->xKey.sKey));
+				}
 			}
 			SyBlobAppend(&(*pOut),"\n",sizeof(char));
 			if( pObj ){
@@ -2395,8 +2415,22 @@ PH7_PRIVATE sxi32 PH7_HashmapDumpEntries(SyBlob *pOut,ph7_hashmap *pMap,int Show
 			if( pEntry->iType == HASHMAP_INT_NODE){
 				SyBlobFormat(&(*pOut),"[%qd] => ",pEntry->xKey.iKey);
 			}else{
-				SyBlobFormat(&(*pOut),"[%.*s] => ",
-					SyBlobLength(&pEntry->xKey.sKey),SyBlobData(&pEntry->xKey.sKey));
+				SyString sCls,sNm;
+				if( bProp && PH7_UnmangleAttrName((const char *)SyBlobData(&pEntry->xKey.sKey),
+					SyBlobLength(&pEntry->xKey.sKey),&sCls,&sNm) ){
+					SyBlobFormat(&(*pOut),"[%z",&sNm);
+					if( sCls.nByte > 0 ){
+						if( sCls.zString[0] == '*' ){
+							SyBlobAppend(&(*pOut),":protected",sizeof(":protected")-1);
+						}else{
+							SyBlobFormat(&(*pOut),":%z:private",&sCls);
+						}
+					}
+					SyBlobAppend(&(*pOut),"] => ",sizeof("] => ")-1);
+				}else{
+					SyBlobFormat(&(*pOut),"[%.*s] => ",
+						SyBlobLength(&pEntry->xKey.sKey),SyBlobData(&pEntry->xKey.sKey));
+				}
 			}
 			if( pObj && (pObj->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ))
 			 && (pObj->iFlags & MEMOBJ_NULL) == 0 ){
@@ -2433,7 +2467,7 @@ PH7_PRIVATE sxi32 PH7_HashmapDump(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,in
 		 * newline (a nested array is itself an entry value line). */
 		SyBlobFormat(&(*pOut),"array(%u) {",pMap->nEntry);
 		SyBlobAppend(&(*pOut),"\n",sizeof(char));
-		rc = PH7_HashmapDumpEntries(&(*pOut),pMap,TRUE,nTab,nDepth);
+		rc = PH7_HashmapDumpEntries(&(*pOut),pMap,TRUE,nTab,nDepth,0);
 		for( i = 0 ; i < nTab ; i++ ){
 			SyBlobAppend(&(*pOut)," ",sizeof(char));
 		}
@@ -2446,7 +2480,7 @@ PH7_PRIVATE sxi32 PH7_HashmapDump(SyBlob *pOut,ph7_hashmap *pMap,int ShowType,in
 		SyBlobAppend(&(*pOut)," ",sizeof(char));
 	}
 	SyBlobAppend(&(*pOut),"(\n",sizeof("(\n")-1);
-	rc = PH7_HashmapDumpEntries(&(*pOut),pMap,FALSE,nTab,nDepth);
+	rc = PH7_HashmapDumpEntries(&(*pOut),pMap,FALSE,nTab,nDepth,0);
 	for( i = 0 ; i < nTab ; i++ ){
 		SyBlobAppend(&(*pOut)," ",sizeof(char));
 	}

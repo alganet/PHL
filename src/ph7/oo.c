@@ -1629,6 +1629,51 @@ static ph7_class * OoAttrDeclaringClass(ph7_class *pClass,ph7_class_attr *pAttr)
 	return pAttr->pDeclClass ? pAttr->pDeclClass : pClass;
 }
 /*
+ * php's zend_unmangle_property_name_ex: a property key carries its own
+ * visibility when it is MANGLED — "\0*\0name" is protected and "\0Class\0name"
+ * is private to Class, which is how the (array) cast, __debugInfo() and every
+ * get_debug_info handler say what a plain array key cannot. A key that does not
+ * begin with a NUL is a public name and comes back unchanged.
+ *
+ * Answers 0 for a key that begins with a NUL and is NOT a well-formed mangled
+ * name — php's "Illegal member variable name" (nothing after the NUL, or an
+ * empty class part) and "Corrupt member variable name" (no second NUL, or
+ * nothing after it). php renders those raw, notice aside, and so does the caller.
+ */
+PH7_PRIVATE int PH7_UnmangleAttrName(const char *zKey,sxu32 nKey,SyString *pClass,SyString *pName)
+{
+	sxu32 nCls,nSrc;
+	SyStringInitFromBuf(pClass,0,0);
+	SyStringInitFromBuf(pName,zKey,nKey);
+	if( nKey < 1 || zKey[0] != 0 ){
+		return 1;   /* a plain public name */
+	}
+	if( nKey < 3 || zKey[1] == 0 ){
+		return 0;   /* php: "Illegal member variable name" */
+	}
+	nCls = 0;
+	while( nCls < nKey - 2 && zKey[1+nCls] != 0 ){
+		nCls++;
+	}
+	if( nCls >= nKey - 2 ){
+		return 0;   /* php: "Corrupt member variable name" */
+	}
+	/* An ANONYMOUS class mangles its source location in as a SECOND NUL-separated
+	 * part, so the property name is what follows the LAST NUL rather than the
+	 * second one (php's anonclass_src_len step). The class STRING php shows is
+	 * still only the first part — it prints that one as a C string. */
+	nSrc = 0;
+	while( nCls + 2 + nSrc < nKey && zKey[nCls+2+nSrc] != 0 ){
+		nSrc++;
+	}
+	SyStringInitFromBuf(pClass,&zKey[1],nCls);
+	if( nCls + nSrc + 2 != nKey ){
+		nCls += nSrc + 1;
+	}
+	SyStringInitFromBuf(pName,&zKey[nCls+2],nKey - nCls - 2);
+	return 1;
+}
+/*
  * Emit a property's dump key: var_dump `["x"]=>` / `["p":"C":private]=>` /
  * `["q":protected]=>`; print_r `[x] => ` / `[p:C:private] => ` /
  * `[q:protected] => ` (php's exact annotations).
@@ -1684,7 +1729,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 				}
 				SyBlobAppend(&(*pOut),"(\n",sizeof("(\n")-1);
 			}
-			rc = PH7_HashmapDumpEntries(&(*pOut),pMap,ShowType,nTab,nDepth);
+			rc = PH7_HashmapDumpEntries(&(*pOut),pMap,ShowType,nTab,nDepth,1);
 			for( i = 0 ; i < nTab ; i++ ){
 				SyBlobAppend(&(*pOut)," ",sizeof(char));
 			}
@@ -1720,7 +1765,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 					}
 					SyBlobAppend(&(*pOut),"(\n",sizeof("(\n")-1);
 				}
-				rc = PH7_HashmapDumpEntries(&(*pOut),pMap,ShowType,nTab,nDepth);
+				rc = PH7_HashmapDumpEntries(&(*pOut),pMap,ShowType,nTab,nDepth,1);
 				for( i = 0 ; i < nTab ; i++ ){
 					SyBlobAppend(&(*pOut)," ",sizeof(char));
 				}
