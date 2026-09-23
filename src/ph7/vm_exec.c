@@ -798,7 +798,7 @@ static sxi32 VmResolvePathByValue(ph7_vm *pVm,VmDeferredPath *pPath,ph7_value *p
  * always passed by value instead. That test cannot tell a literal from a call RESULT —
  * php accepts the latter — which is exactly why the mask exists.
  */
-static int VmArgRefusedByRef(VmCallArgMap *pMap,sxu32 nPos,ph7_value *pVal)
+PH7_PRIVATE int PH7_VmArgRefusedByRef(VmCallArgMap *pMap,sxu32 nPos,ph7_value *pVal)
 {
 	if( pMap && pMap->bArgShapes && nPos < 31 ){
 		return (pMap->nNonLvalMask & (1u << nPos)) != 0;
@@ -808,6 +808,27 @@ static int VmArgRefusedByRef(VmCallArgMap *pMap,sxu32 nPos,ph7_value *pVal)
 	}
 	return (pVal->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES|MEMOBJ_NULL)) == 0
 	    && (pVal->iFlags & MEMOBJ_AUX_CUFVAL) == 0;
+}
+/*
+ * The same call site's OTHER answer: the argument is the RESULT of a call or of `new`.
+ *
+ * php cannot know at compile time whether the callee returns a reference, so it defers
+ * to the value: one that arrived WITH a reference binds silently, and one without gets
+ * php's E_NOTICE and the callee then operates on the temporary. Emitting it is all this
+ * does — a temp-call argument is never refused.
+ */
+PH7_PRIVATE void PH7_VmArgTempCallNotice(ph7_vm *pVm,VmCallArgMap *pMap,sxu32 nPos,ph7_value *pVal)
+{
+	if( pMap == 0 || !pMap->bArgShapes || nPos >= 31 ){
+		return;
+	}
+	if( (pMap->nTempCallMask & (1u << nPos)) == 0 ){
+		return;
+	}
+	if( pVal->nIdx != SXU32_HIGH ){
+		return; /* a by-reference RETURN: php is silent and binds it */
+	}
+	VmErrorFormat(&(*pVm),PH7_CTX_NOTICE,"Only variables should be passed by reference");
 }
 /*
  * D1: resolve deferred call arguments in [pArg, pTos) before the callee consumes them.
@@ -5998,7 +6019,7 @@ case PH7_OP_CALL: {
 							rc = PH7_EXCEPTION;
 							goto SkipFuncBody;
 						}
-						if( VmArgRefusedByRef(pCallMap3,(sxu32)iSrc,pVal) ){
+						if( PH7_VmArgRefusedByRef(pCallMap3,(sxu32)iSrc,pVal) ){
 							/* php refuses a by-ref argument whose EXPRESSION is not a variable, at
 							 * the call and before the callee runs. Deciding it from the VALUE that
 							 * arrived was wrong both ways: an operator result carries its LEFT
@@ -6023,6 +6044,7 @@ case PH7_OP_CALL: {
 							rc = PH7_EXCEPTION;
 							goto SkipFuncBody;
 						}
+						PH7_VmArgTempCallNotice(&(*pVm),pCallMap3,(sxu32)iSrc,pVal);
 						if( pVal->nIdx == SXU32_HIGH ){
 							pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
 						}else{
@@ -6295,7 +6317,7 @@ case PH7_OP_CALL: {
 						rc = PH7_EXCEPTION;
 						goto SkipFuncBody;
 					}
-					if( VmArgRefusedByRef(pCallMap3,(sxu32)n,pArg) ){
+					if( PH7_VmArgRefusedByRef(pCallMap3,(sxu32)n,pArg) ){
 						/* php's refusal, decided from the argument's compile-time SHAPE (the
 						 * companion of the named-argument binder above; see VmArgRefusedByRef). */
 						sxi32 rcRef;
@@ -6316,6 +6338,7 @@ case PH7_OP_CALL: {
 						rc = PH7_EXCEPTION;
 						goto SkipFuncBody;
 					}
+					PH7_VmArgTempCallNotice(&(*pVm),pCallMap3,(sxu32)n,pArg);
 					if( pArg->nIdx == SXU32_HIGH ){
 						/* Nothing to alias: pass by value. */
 						pObj = VmExtractMemObj(&(*pVm),&aFormalArg[n].sName,FALSE,TRUE);
@@ -6853,7 +6876,8 @@ NativeCall:
 		 * Error in php, not an ArgumentCountError). With no argument at all there is
 		 * nothing to refuse, which is why the too-FEW check below still speaks first
 		 * for `array_pop()`. */
-		rc = PH7_VmScreenByRefArgShapes(&sCtx,pFunc,pEffCallMap,nGiven);
+		rc = PH7_VmScreenByRefArgShapes(&sCtx,pFunc,pEffCallMap,nGiven,
+			(ph7_value **)SySetBasePtr(&aArg));
 		if( rc != SXRET_OK ){
 			goto NativeCallDone;
 		}

@@ -93,6 +93,14 @@ static sxi32 VmInvokeErrorHandler(ph7_vm *pVm, sxi32 iErr, const char *zMessage,
 		ph7_value *apArgPtr[4];
 		ph7_value sResult;
 		SyString sErr;
+		/* PH7_CTX_NOTICE is the engine's own severity token, 3 — a number php has no
+		 * E_* constant for. The reporting mask and the "Notice: " label already read
+		 * it as E_NOTICE; the handler was the one place it leaked, so a userland
+		 * `set_error_handler` saw `$errno === 3` where php passes 8 and an
+		 * `if ($errno & E_NOTICE)` test simply never fired. */
+		if( iErr == PH7_CTX_NOTICE ){
+			iErr = 8; /* E_NOTICE */
+		}
 		/* Prepare arguments */
 		PH7_MemObjInitFromInt(pVm,&apArg[0],iErr);
 			/* use explicit message length to avoid reading past buffer */

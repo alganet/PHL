@@ -1313,14 +1313,21 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 			nName++;
 		}
 		pArg = apArg[iArg];
-		if( bByRef && pArg->nIdx == SXU32_HIGH ){
+		if( bByRef && pArg->nIdx == SXU32_HIGH
+		 && !(pCtx->pArgMap && pCtx->pArgMap->bArgShapes && !pCtx->pArgMap->bHasNamed) ){
 			/* A by-reference parameter handed something with no slot to write back
 			 * through -- a literal, a constant, the result of a call. php settles
 			 * that at the CALL, before the callee's ZPP runs, so the type screen
 			 * must not speak first: `array_pop('foo')` is
 			 * "could not be passed by reference" and not "must be of type array,
-			 * string given". Five builtins raise it from their own bodies on this
-			 * same nIdx test; the rest of the family raises nothing yet (§2). */
+			 * string given".
+			 *
+			 * Only when this call site carries no argument SHAPES, though. When it
+			 * does, PH7_VmScreenByRefArgShapes has already had its say — it refused
+			 * the literal and let the call RESULT through with php's notice — and
+			 * standing aside here would swallow the type error php still reports for
+			 * the latter (`sort(new stdClass)` is "must be of type array, stdClass
+			 * given", not a silent false). */
 			zCur = (zStop < zEnd) ? zStop + 1 : zEnd;
 			iArg++;
 			continue;
@@ -1803,7 +1810,8 @@ PH7_PRIVATE sxi32 PH7_VmScreenByRefArgShapes(
 	ph7_context *pCtx,     /* Call context (for the throw) */
 	ph7_user_func *pFunc,  /* Callee: its zSig names and marks the parameters */
 	VmCallArgMap *pMap,    /* Call-site map, or 0 */
-	int nGiven             /* Argument count */
+	int nGiven,            /* Argument count */
+	ph7_value **apArg      /* Arguments */
 	)
 {
 	VmSigParam aParam[VM_SIG_MAX_PARAM];
@@ -1813,7 +1821,10 @@ PH7_PRIVATE sxi32 PH7_VmScreenByRefArgShapes(
 	if( pFunc == 0 || pFunc->nByRefMask == 0 || pFunc->zSig == 0 || nGiven < 1 ){
 		return SXRET_OK;
 	}
-	if( pMap == 0 || !pMap->bArgShapes || pMap->bHasNamed || pMap->nNonLvalMask == 0 ){
+	if( pMap == 0 || !pMap->bArgShapes || pMap->bHasNamed ){
+		return SXRET_OK;
+	}
+	if( (pMap->nNonLvalMask | pMap->nTempCallMask) == 0 ){
 		return SXRET_OK;
 	}
 	if( VmBuiltinPrefersRef(&pFunc->sName) ){
@@ -1821,8 +1832,13 @@ PH7_PRIVATE sxi32 PH7_VmScreenByRefArgShapes(
 	}
 	nParam = VmSigParams(pFunc->zSig,aParam,VM_SIG_MAX_PARAM);
 	for( n = 0 ; n < nGiven && n < 31 ; ++n ){
-		if( (pFunc->nByRefMask & (1u << n)) == 0
-		 || (pMap->nNonLvalMask & (1u << n)) == 0 ){
+		if( (pFunc->nByRefMask & (1u << n)) == 0 ){
+			continue;
+		}
+		if( (pMap->nNonLvalMask & (1u << n)) == 0 ){
+			/* Not a refusal — but a CALL result in this position is php's notice,
+			 * and then the builtin operates on the temporary. */
+			PH7_VmArgTempCallNotice(pCtx->pVm,pMap,(sxu32)n,apArg[n]);
 			continue;
 		}
 		if( n < nParam && aParam[n].nName > 0 ){
