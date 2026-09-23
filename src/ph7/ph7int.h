@@ -166,6 +166,17 @@ struct VmDeferredPath {
                                        * cannot leak it, and it nests (one carrier per pending
                                        * ??= on the operand stack) where a single VM-wide slot
                                        * could not. */
+#define MEMOBJ_AUX_MAGICCALL 0x80000 /* Stack-only marker: this callee slot is the engine's own
+                                      * __call/__callStatic dispatch, not a callable at all. OP_MEMBER
+                                      * sets it (with the receiver/class/original name latched on the
+                                      * VM) where a missing or inaccessible method must route through
+                                      * the magic handler; OP_CALL sees the mark BEFORE any callable
+                                      * decode and runs the packing body directly. It is what replaced
+                                      * the "__phl_magic_call" NAME the four OP_MEMBER sites used to
+                                      * write into this slot -- a hidden global function that
+                                      * function_exists() and get_defined_functions() both reported.
+                                      * The slot itself stays NULL-typed. Part of MEMOBJ_AUX, so a
+                                      * copy can never carry it. */
 #define MEMOBJ_AUX_STROFFSET 0x20000 /* Stack-only marker: this value was READ OUT of a string by a
                                       * subscript ($s[1]). It carries the BASE's slot index like any
                                       * other element read, but a string offset is not a slot: php
@@ -183,7 +194,7 @@ struct VmDeferredPath {
  *  Types array, object and resource are not scalar.
  */
 #define MEMOBJ_SCALAR (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL)
-#define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_CUFVAL|MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH|MEMOBJ_AUX_STROFFSET|MEMOBJ_AUX_COALSTROFF)
+#define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_CUFVAL|MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH|MEMOBJ_AUX_STROFFSET|MEMOBJ_AUX_COALSTROFF|MEMOBJ_AUX_MAGICCALL)
 /*
  * The following macro clear the current ph7_value type and replace
  * it with the given one.
@@ -1911,10 +1922,11 @@ struct ph7_vm
 	SySet aHookRmw;             /* Pending property-hook read-modify-write write-backs (LIFO;
 	                             * VmHookRmw entries — see the struct above ph7_vm). */
 	ph7_class_instance *pMagicCallThis; /* Pending __call receiver (band A #3b): OP_MEMBER hit a
-	                             * missing method on a class declaring __call/__callStatic and
-	                             * redirected the callee to the hidden packing trampoline
-	                             * (vm_builtin_magic_call), which consumes this + the class +
-	                             * the original name. Holds a reference; NULL for __callStatic. */
+	                             * missing (or inaccessible) method on a class declaring
+	                             * __call/__callStatic and marked the callee slot
+	                             * MEMOBJ_AUX_MAGICCALL; the packing body OP_CALL then runs
+	                             * (VmMagicCallDispatch) consumes this + the class + the original
+	                             * name. Holds a reference; NULL for __callStatic. */
 	ph7_class *pMagicCallClass; /* Pending __call/__callStatic declaring class */
 	ph7_class *pConstEvalClass; /* Transient: class whose constant/property initializer bytecode is
 	                             * being evaluated (VmLocalExec has no method frame, so self::/parent::
@@ -1935,6 +1947,10 @@ struct ph7_vm
 	ph7_class_attr *pConstCycleAttr;  /* Self-referencing constant detected during evaluation */
 	ph7_class *pConstCycleClass;      /* ...and the class it belongs to (for the Error message) */
 	SyBlob sMagicCallName;      /* Pending original method name (stable copy) */
+	ph7_user_func *pMagicCallFunc; /* The __call/__callStatic packing body's function record, built on
+	                             * first use (PH7_VmMagicCallFunc) and NOT registered in
+	                             * hHostFunction: OP_CALL points straight at it, so the dispatch has
+	                             * no PHP-visible name to reach it by. */
 	sxi32 nBoundaryRc;          /* C-boundary parked throw status (0 / PH7_EXCEPTION / PH7_ABORT).
 	                             * Set by VmBoundaryPark when a PHP callee invoked from a C site
 	                             * (magic method, cast hook, __destruct, user callback) raised and
@@ -3652,12 +3668,12 @@ PH7_PRIVATE sxi32 VmResumeCtx(ph7_vm *pVm, ph7_exec_ctx *pCtx, ph7_value *pResum
 PH7_PRIVATE sxi32 VmMountUserClass(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE sxi32 VmEvalChunk(ph7_vm *pVm,ph7_context *pCtx,SyString *pChunk,int iFlags,int bTrueReturn);
 PH7_PRIVATE sxi32 VmExecDeferredClass(ph7_vm *pVm,VmDeferredClass *pDefer,VmDeferredReq **ppMissing);
+PH7_PRIVATE ph7_user_func * PH7_VmMagicCallFunc(ph7_vm *pVm);
 PH7_PRIVATE int vm_builtin_eval(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_get_included_files(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_get_include_path(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_include(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_include_once(ph7_context *pCtx,int nArg,ph7_value **apArg);
-PH7_PRIVATE int vm_builtin_magic_call(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_require(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_require_once(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_set_include_path(ph7_context *pCtx,int nArg,ph7_value **apArg);

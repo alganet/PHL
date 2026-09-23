@@ -490,11 +490,11 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					if( pCallMagic ){
 						/* php: a missing method dispatches __call($name, $args) — the
 						 * args are only collected by the following OP_CALL, so stash the
-						 * receiver + class + original name and redirect the callee to
-						 * the hidden packing trampoline (band A #3b; pre-fix the name-
-						 * only call discarded everything and the call site failed with
-						 * "Invalid function name"). Stack: pop the method name, then
-						 * the receiver slot becomes the trampoline's callee name. */
+						 * receiver + class + original name and MARK the callee slot
+						 * (band A #3b; pre-fix the name-only call discarded everything
+						 * and the call site failed with "Invalid function name"). Stack:
+						 * pop the method name, then the receiver slot becomes the marked
+						 * carrier OP_CALL routes through the packing body. */
 						SyBlobReset(&pVm->sMagicCallName);
 						SyBlobAppend(&pVm->sMagicCallName,(const void *)sName.zString,sName.nByte);
 						pThis->iRef++;
@@ -502,8 +502,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						pVm->pMagicCallClass = pClass;
 						VmPopOperand(&pTos,1);
 						PH7_MemObjRelease(pTos);
-						SyBlobAppend(&pTos->sBlob,"__phl_magic_call",sizeof("__phl_magic_call")-1);
-						MemObjSetType(pTos,MEMOBJ_STRING);
+						pTos->iFlags = MEMOBJ_NULL|MEMOBJ_AUX_MAGICCALL;
 					}else{
 						{
 							/* php raises a catchable Error here; PH7 printed a notice and CARRIED ON
@@ -563,8 +562,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 						pVm->pMagicCallClass = pClass;
 						VmPopOperand(&pTos,1);
 						PH7_MemObjRelease(pTos);
-						SyBlobAppend(&pTos->sBlob,"__phl_magic_call",sizeof("__phl_magic_call")-1);
-						MemObjSetType(pTos,MEMOBJ_STRING);
+						pTos->iFlags = MEMOBJ_NULL|MEMOBJ_AUX_MAGICCALL;
 					}else{
 						/* Push method name on the stack */
 						PH7_MemObjRelease(pTos);
@@ -1550,7 +1548,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							ph7_class_method *pCallStaticMagic = PH7_ClassExtractMethod(pClass,"__callStatic",sizeof("__callStatic")-1);
 							if( pCallStaticMagic ){
 								/* php: C::missing(...) dispatches __callStatic($name,$args)
-								 * via the packing trampoline (see the instance twin). */
+								 * through the packing body (see the instance twin). */
 								SyBlobReset(&pVm->sMagicCallName);
 								SyBlobAppend(&pVm->sMagicCallName,(const void *)sName.zString,sName.nByte);
 								pVm->pMagicCallThis = 0;
@@ -1559,8 +1557,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 									VmPopOperand(&pTos,1);
 								}
 								PH7_MemObjRelease(pTos);
-								SyBlobAppend(&pTos->sBlob,"__phl_magic_call",sizeof("__phl_magic_call")-1);
-								MemObjSetType(pTos,MEMOBJ_STRING);
+								pTos->iFlags = MEMOBJ_NULL|MEMOBJ_AUX_MAGICCALL;
 								pTos->nIdx = SXU32_HIGH;
 								VM_EXIT_BREAK;
 							}
@@ -1605,8 +1602,8 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							}
 						}
 						if( pDeniedStatic ){
-							/* The trampoline is a plain function: drop the method-name slot so
-							 * its name lands on the RECEIVER slot, exactly as the
+							/* The packing body takes no receiver slot: drop the method-name
+							 * slot so the MARK lands on the receiver slot, exactly as the
 							 * missing-method twin above does (leaving the class name in place
 							 * would pack it as the first $args entry). */
 							SyBlobReset(&pVm->sMagicCallName);
@@ -1617,8 +1614,7 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								VmPopOperand(&pTos,1);
 							}
 							PH7_MemObjRelease(pTos);
-							SyBlobAppend(&pTos->sBlob,"__phl_magic_call",sizeof("__phl_magic_call")-1);
-							MemObjSetType(pTos,MEMOBJ_STRING);
+							pTos->iFlags = MEMOBJ_NULL|MEMOBJ_AUX_MAGICCALL;
 							pTos->nIdx = SXU32_HIGH;
 							VM_EXIT_BREAK;
 						}

@@ -4771,6 +4771,33 @@ case PH7_OP_CALL: {
 	ph7_class_instance *pNativeOwned = 0;
 	ph7_class_instance *pNativeRecv = 0;
 	ph7_class *pNativeClass = 0;
+	/* The engine's own __call/__callStatic routing: the OP_MEMBER immediately below this
+	 * call found a missing (or inaccessible) method on a class declaring the magic handler
+	 * and MARKED this callee slot, latching {receiver, class, original name} on the VM.
+	 * There is no callable here at all — the mark selects the packing body directly, ahead
+	 * of every callable decode below, and the record it dispatches carries no PHP name (it
+	 * is not in hHostFunction). This is what replaced writing the string
+	 * "__phl_magic_call" into the slot and letting the name lookup find a hidden global.
+	 * Everything from `NativeCall` down is shared with an ordinary builtin call, which is
+	 * what this has always been from the executor's point of view. */
+	if( pTos->iFlags & MEMOBJ_AUX_MAGICCALL ){
+		pTos->iFlags &= ~MEMOBJ_AUX_MAGICCALL;
+		pFunc = PH7_VmMagicCallFunc(&(*pVm));
+		if( pFunc == 0 ){
+			PH7_VmMemoryError(&(*pVm));
+			goto Abort;
+		}
+		/* D1: the packing body declares no by-ref parameter (php hands __call a packed
+		 * ARRAY), so every deferred argument materializes by value, exactly as it did
+		 * through the named trampoline's zero by-ref mask. */
+		{
+			sxi32 rcDA = VmResolveDeferredArgs(&(*pVm),pArg,pTos,0,0,0,0,0);
+			PH7_DISPATCH_ENFORCE_RC(rcDA)
+		}
+		pEffCallMap = VmEffCallArgMap(pVm,pInstr,pArg,
+			nCallArgs > 0 ? (sxu32)nCallArgs : 0,&sEffMap);
+		goto NativeCall;
+	}
 	/* A Closure object is callable: unwrap it to its underlying string callable so the
 	 * dispatch below handles it (rather than treating it as a generic object and looking
 	 * for __invoke). pTos here is a stack copy of the call target. Gated on VmValueIsClosure

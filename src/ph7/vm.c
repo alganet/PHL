@@ -5293,7 +5293,6 @@ PH7_PRIVATE void PH7_VmExpandConstantValue(ph7_value *pVal,void *pUserData)
  */
 /* call_user_func and call_user_func_array moved to vm_builtin_class.c */
 static const ph7_builtin_func aVmFunc[] = {
-	{ "__phl_magic_call", vm_builtin_magic_call },
 	{ "enum_exists",        vm_builtin_enum_exists },
 	{ "func_num_args"  , vm_builtin_func_num_args },
 	{ "func_get_arg"   , vm_builtin_func_get_arg  },

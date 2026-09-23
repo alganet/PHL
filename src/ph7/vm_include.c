@@ -9,7 +9,7 @@
  * Section:
  *    Dynamic code loading: VmEvalChunk, eval(), the include path
  *    machinery, VmExecIncludedFile and the include/require family, the
- *    spl_autoload group and the __phl_magic_call trampoline.
+ *    spl_autoload group and the __call/__callStatic packing body.
  *    Registration rows stay in vm.c's aVmFunc[].
  * Status:
  *    Stable.
@@ -1016,19 +1016,24 @@ PH7_PRIVATE int vm_builtin_spl_autoload(ph7_context *pCtx,int nArg,ph7_value **a
 }
 /* Table of built-in VM functions. */
 /*
- * Hidden packing trampoline for __call / __callStatic (band A #3b).
- * OP_MEMBER, on a missing method whose class declares the magic handler,
- * stashes {receiver, class, original name} on the VM and redirects the
- * callee name to this host function; the normal OP_CALL machinery then
- * collects the ORIGINAL argument list (incl. spreads) and hands it here,
- * which packs it into a php array and invokes
+ * Packing body for __call / __callStatic (band A #3b).
+ * OP_MEMBER, on a missing or inaccessible method whose class declares the magic
+ * handler, stashes {receiver, class, original name} on the VM and marks the callee
+ * slot MEMOBJ_AUX_MAGICCALL; the normal OP_CALL machinery then collects the
+ * ORIGINAL argument list (incl. spreads) and hands it here, which packs it into a
+ * php array and invokes
  *   $recv->__call($name, $args)   /   Class::__callStatic($name, $args)
- * returning the handler's value as the call's result. A throw propagates
- * via the returned status (and the boundary rail). Like the __gen_* /
- * __reflect_* thunks, this is a PHL-internal global — calling it directly
- * yields NULL (documented engine-specific surface).
+ * returning the handler's value as the call's result. A throw propagates via the
+ * returned status (and the boundary rail).
+ *
+ * This used to be a REGISTERED host function named `__phl_magic_call` whose name
+ * the four OP_MEMBER sites wrote into the callee slot — so the engine's own
+ * dispatch was spelled as a global PHP function that function_exists() and
+ * get_defined_functions() both reported, and that any script could call. It is
+ * reached through the VM's own function record now (PH7_VmMagicCallFunc); the
+ * mark on the slot is the only thing that selects it, and there is no name.
  */
-PH7_PRIVATE int vm_builtin_magic_call(ph7_context *pCtx,int nArg,ph7_value **apArg)
+static int VmMagicCallDispatch(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pRecv = pVm->pMagicCallThis;
@@ -1044,7 +1049,10 @@ PH7_PRIVATE int vm_builtin_magic_call(ph7_context *pCtx,int nArg,ph7_value **apA
 	pVm->pMagicCallThis = 0;
 	pVm->pMagicCallClass = 0;
 	if( pClass == 0 ){
-		/* Not a magic dispatch (direct user invocation): no-op */
+		/* Defensive: the mark and the latch are set together by OP_MEMBER, so a
+		 * classless arrival is unreachable. It was reachable while this body wore a
+		 * function NAME — anyone could call `__phl_magic_call()` — which is exactly
+		 * what the mark retired. */
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
@@ -1090,4 +1098,28 @@ PH7_PRIVATE int vm_builtin_magic_call(ph7_context *pCtx,int nArg,ph7_value **apA
 	}
 	SyBlobReset(&pVm->sMagicCallName);
 	return (rc == PH7_EXCEPTION || rc == PH7_ABORT) ? rc : PH7_OK;
+}
+/*
+ * The function record OP_CALL dispatches a MEMOBJ_AUX_MAGICCALL callee slot through,
+ * built on first use and owned by the VM (the allocator frees it with everything else).
+ *
+ * It is deliberately NOT installed in pVm->hHostFunction: the same property that makes
+ * a native class method unreachable except by dispatching the method (see
+ * PH7_NativeClassInstallMethod) makes this body unreachable except by the engine's own
+ * __call routing. It carries no signature and no arity bounds, so the OP_CALL choke
+ * point's ZPP and ArgumentCountError screens are inert for it — the handler's OWN
+ * declared parameters are what php enforces, and it is a PHP method with a frame of its
+ * own. sName is a diagnostic label only; nothing that reads it can be reached from here.
+ */
+PH7_PRIVATE ph7_user_func * PH7_VmMagicCallFunc(ph7_vm *pVm)
+{
+	SyString sName;
+	if( pVm->pMagicCallFunc == 0 ){
+		SyStringInitFromBuf(&sName,"__call",sizeof("__call")-1);
+		if( PH7_NewForeignFunction(&(*pVm),&sName,VmMagicCallDispatch,0,
+			&pVm->pMagicCallFunc) != SXRET_OK ){
+			pVm->pMagicCallFunc = 0;
+		}
+	}
+	return pVm->pMagicCallFunc;
 }
