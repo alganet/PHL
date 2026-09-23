@@ -1562,6 +1562,15 @@ static void PH7_EXTR_IF_EXISTS_Const(ph7_value *pVal,void *pUserData)
 	ph7_value_int(pVal,PH7_EXTR_IF_EXISTS);
 }
 /*
+ * EXTR_REFS
+ *   Expand 256 (the bit that rides above the mode: bind by REFERENCE)
+ */
+static void PH7_EXTR_REFS_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,PH7_EXTR_REFS);
+}
+/*
  * EXTR_PREFIX_IF_EXISTS
  *   Expand 5
  */
@@ -2092,6 +2101,7 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"EXTR_PREFIX_INVALID",  PH7_EXTR_PREFIX_INVALID_Const },
 	{"EXTR_IF_EXISTS",       PH7_EXTR_IF_EXISTS_Const   },
 	{"EXTR_PREFIX_IF_EXISTS",PH7_EXTR_PREFIX_IF_EXISTS_Const},
+	{"EXTR_REFS",            PH7_EXTR_REFS_Const        },
 	{"JSON_HEX_TAG",           PH7_JSON_HEX_TAG_Const},
 	{"JSON_HEX_AMP",           PH7_JSON_HEX_AMP_Const},
 	{"JSON_HEX_APOS",          PH7_JSON_HEX_APOS_Const},

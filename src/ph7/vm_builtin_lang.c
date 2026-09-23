@@ -2317,6 +2317,29 @@ static int VmExtractVarExists(ph7_vm *pVm,const char *zName,sxu32 nByte)
  * Create-or-overwrite a variable of the calling frame with a copy of pValue.
  * Returns TRUE when the variable was written (php counts exactly those).
  */
+/*
+ * EXTR_REFS: bind the imported NAME to the array element's own slot instead of copying
+ * the value, so a later write through the variable reaches the caller's array — php's
+ * by-reference extraction. The binding is registered (PH7_VmBindVarSlot), which is what
+ * makes the element count the new name as a holder and read as a reference.
+ *
+ * The name is DUPLICATED: the symbol table keeps the pointer it is given, and the caller's
+ * is a scratch blob the next entry reuses.
+ */
+static int VmExtractBindVar(ph7_vm *pVm,const char *zName,sxu32 nByte,sxu32 nIdx)
+{
+	VmFrame *pFrame = VmSkipExceptionFrames(pVm->pFrame);
+	char *zDup;
+	if( nIdx == SXU32_HIGH ){
+		return FALSE;
+	}
+	zDup = SyMemBackendStrDup(&pVm->sAllocator,zName,nByte);
+	if( zDup == 0 ){
+		return FALSE;
+	}
+	PH7_VmBindVarSlot(&(*pVm),pFrame,zDup,nByte,nIdx);
+	return TRUE;
+}
 static int VmExtractStoreVar(ph7_vm *pVm,const char *zName,sxu32 nByte,ph7_value *pValue)
 {
 	ph7_value *pObj;
@@ -2421,14 +2444,6 @@ PH7_PRIVATE int vm_builtin_extract(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			return PH7_VmThrowException(pCtx,"ValueError",
 				"extract(): Argument #3 ($prefix) must be a valid identifier");
 		}
-	}
-	if( iFlags & PH7_EXTR_REFS ){
-		/* php binds each extracted name BY REFERENCE to its array slot. PHL has
-		 * no by-ref extraction; importing by VALUE instead would be a divergence
-		 * the caller cannot see (writes stop propagating), so it is loud (§10).
-		 * The EXTR_REFS constant itself stays undefined. */
-		return PH7_VmThrowException(pCtx,"ValueError",
-			"extract(): Argument #2 ($flags) EXTR_REFS is not supported");
 	}
 	/* Point to the target hashmap */
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
@@ -2556,7 +2571,12 @@ PH7_PRIVATE int vm_builtin_extract(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			zFinal = zKey;
 			nFinal = nKey;
 		}
-		if( VmExtractStoreVar(pVm,zFinal,nFinal,&sValue) ){
+		if( iFlags & PH7_EXTR_REFS ){
+			/* Bind to the element's own slot (php's EXTR_REFS) rather than copying */
+			if( VmExtractBindVar(pVm,zFinal,nFinal,pEntry->nValIdx) ){
+				iCount++;
+			}
+		}else if( VmExtractStoreVar(pVm,zFinal,nFinal,&sValue) ){
 			iCount++;
 		}
 		continue;

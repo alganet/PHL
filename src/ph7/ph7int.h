@@ -2828,7 +2828,7 @@ enum json_err_code{
 #define PH7_EXTR_PREFIX_INVALID   4
 #define PH7_EXTR_PREFIX_IF_EXISTS 5
 #define PH7_EXTR_IF_EXISTS        6
-#define PH7_EXTR_REFS             0x100 /* php's by-reference extraction: unsupported, loud */
+#define PH7_EXTR_REFS             0x100 /* php's by-reference extraction (rides above the mode) */
 /*
  * pathinfo() $flags, glob() $flags and parse_ini_*() $scanner_mode — php's VALUES.
  *
