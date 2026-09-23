@@ -597,16 +597,8 @@ static ph7_exec_ctx * VmFiberExtractCtx(ph7_vm *pVm, ph7_value *pFiberObj)
 	}
 	return (ph7_exec_ctx *)pAttr->x.pOther;
 }
-/* ph7_class_instance.iFlags bit: this Closure is a bound/static first-class callable and
- * carries $__this/$__scope. Lets the hot plain-closure unwrap skip those attribute lookups.
- * (Distinct from CLASS_INSTANCE_DESTROYED 0x001 and VM_INSTANCE_DUMPING 0x002.) */
-#define VM_INSTANCE_FCC_BOUND 0x004
-/* ph7_class_instance.iFlags bit: this Closure wraps an __invoke OBJECT, and the engine —
- * not the source — is what named `__invoke` (Closure::fromCallable($obj)). php resolves it
- * the way it resolves `$obj()`, so a non-public __invoke is dispatched rather than denied;
- * `$obj->__invoke(...)` and `[$obj,'__invoke']`, which the SOURCE names, stay denied and
- * never carry this bit. Read by VmClosureUnwrap, which arms the engine's magic latch. */
-#define VM_INSTANCE_FCC_INVOKE_OBJ 0x010
+/* The three VM_INSTANCE_FCC_* Closure flags live in ph7int.h: vm_exec.c's OP_LOAD_FCC
+ * stamps VM_INSTANCE_FCC_METHOD and this file reads all three. */
 /*
  * A PHP closure (and a first-class callable `f(...)`) is a real object: an instance of
  * the built-in final `Closure` class carrying its underlying callable in a private
@@ -684,7 +676,8 @@ PH7_PRIVATE sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut)
 				 * method resolution. Stash the bound object (own a ref) so the OP_CALL user-function
 				 * frame setup injects it as $this, and return the plain $__fn string for a normal
 				 * function dispatch. */
-				if( PH7_ClassExtractMethod(pBoundObj->pClass,
+				if( (pThis->iFlags & VM_INSTANCE_FCC_METHOD) == 0
+				 && PH7_ClassExtractMethod(pBoundObj->pClass,
 						(const char *)SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob)) == 0 ){
 					/* Only a USER function (anonymous closure / named fn in hFunction) reads $this and
 					 * reaches the OP_CALL user-function frame-setup that consumes pClosureThis. A HOST
@@ -716,8 +709,9 @@ PH7_PRIVATE sxi32 VmClosureUnwrap(ph7_vm *pVm, ph7_value *pVal, ph7_value *pOut)
 				ph7_class *pScopeClass = PH7_VmExtractClass(pVm,
 					(const char *)SyBlobData(&pScope->sBlob), SyBlobLength(&pScope->sBlob), FALSE, 0);
 				if( pScopeClass == 0
-				 || PH7_ClassExtractMethod(pScopeClass,
-						(const char *)SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob)) == 0 ){
+				 || ((pThis->iFlags & VM_INSTANCE_FCC_METHOD) == 0
+				  && PH7_ClassExtractMethod(pScopeClass,
+						(const char *)SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob)) == 0) ){
 					if( pScopeClass
 					 && SyHashGet(&pVm->hFunction, (const void *)SyBlobData(&pFn->sBlob),
 							SyBlobLength(&pFn->sBlob)) != 0 ){
@@ -919,14 +913,24 @@ PH7_PRIVATE ph7_class_instance * VmFccWrapValue(ph7_vm *pVm, ph7_value *pValue)
 		SyStringInitFromBuf(&sName, SyBlobData(&pMeth->sBlob), SyBlobLength(&pMeth->sBlob));
 		if( pTarget->iFlags & MEMOBJ_OBJ ){
 			ph7_class_instance *pBoundThis = (ph7_class_instance *)pTarget->x.pOther;
-			return VmCreateClosure(pVm, &sName, pBoundThis, &pBoundThis->pClass->sName);
+			ph7_class_instance *pFccObj = VmCreateClosure(pVm, &sName, pBoundThis,
+				&pBoundThis->pClass->sName);
+			if( pFccObj ){
+				pFccObj->iFlags |= VM_INSTANCE_FCC_METHOD; /* $__fn is a METHOD name */
+			}
+			return pFccObj;
 		}else{
 			/* [class-name, method] static callable -> bind the resolved scope. A runtime array
 			 * callable carries a concrete class name (never self/static/parent), so a plain class
 			 * lookup is correct — unlike the syntactic `C::m(...)` path, which must resolve
 			 * self/static/parent via VmFccResolveScope. Matches PH7_VmIsCallable's own decode. */
 			ph7_class *pScopeCls = PH7_VmExtractClassFromValue(pVm, pTarget);
-			return pScopeCls ? VmCreateClosure(pVm, &sName, 0, &pScopeCls->sName) : 0;
+			ph7_class_instance *pFccObj = pScopeCls
+				? VmCreateClosure(pVm, &sName, 0, &pScopeCls->sName) : 0;
+			if( pFccObj ){
+				pFccObj->iFlags |= VM_INSTANCE_FCC_METHOD; /* $__fn is a METHOD name */
+			}
+			return pFccObj;
 		}
 	}
 	if( pValue->iFlags & MEMOBJ_OBJ ){
@@ -1255,8 +1259,21 @@ PH7_PRIVATE int vm_builtin_Closure_fromCallable(ph7_context *pCtx, int nArg, ph7
 	}
 	pClosure = VmFccWrapValue(pVm, apArg[0]);
 	if( pClosure == 0 ){
+		/* php says WHY, with the same reason taxonomy every callback argument uses —
+		 * `Failed to create closure from callable: class P does not have a method "zz"`.
+		 * PHL answered one flat "is not a valid callback" for all eight causes, so a typo
+		 * in a method name, a private one, a missing class and a bad array shape were
+		 * indistinguishable. PH7_VmCallableReason is the shared builder (its tails are
+		 * already byte-exact for call_user_func & friends); the fallback covers the OOM
+		 * path, where the value IS callable and the reason is 0. */
+		char zWhy[192];
+		const char *zReason = PH7_VmCallableReason(pVm, apArg[0], zWhy, sizeof(zWhy));
+		if( zReason ){
+			return PH7_VmThrowException(pCtx, "TypeError",
+				"Failed to create closure from callable: %s", zReason);
+		}
 		return PH7_VmThrowException(pCtx, "TypeError",
-			"Closure::fromCallable(): Argument #1 ($callback) is not a valid callback");
+			"Failed to create closure from callable");
 	}
 	return VmClosureResult(pCtx, pClosure);
 }

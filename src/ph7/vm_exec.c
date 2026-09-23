@@ -2156,6 +2156,12 @@ case PH7_OP_LOAD_FCC:{
 		}else{
 			pCloObj = 0;
 		}
+		if( pCloObj ){
+			/* `$o->m(...)` / `C::m(...)` names a METHOD, whatever the class turns out to
+			 * declare: the unwrap must not go looking for a FUNCTION of that name, and a
+			 * name the class answers only through __call is still a method call. */
+			pCloObj->iFlags |= VM_INSTANCE_FCC_METHOD;
+		}
 		/* Pop the method name and the target, push the Closure. */
 		PH7_MemObjRelease(pTos);
 		pTos--;

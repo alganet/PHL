@@ -195,6 +195,28 @@ struct VmDeferredPath {
  */
 #define MEMOBJ_SCALAR (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL)
 #define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_CUFVAL|MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH|MEMOBJ_AUX_STROFFSET|MEMOBJ_AUX_COALSTROFF|MEMOBJ_AUX_MAGICCALL)
+/* Closure-instance flags (ph7_class_instance.iFlags), shared by vm_exec.c's OP_LOAD_FCC
+ * and vm_exec_ctx.c's closure machinery. Distinct from CLASS_INSTANCE_DESTROYED 0x001
+ * (oo.c) and VM_INSTANCE_DUMPING 0x002 (vm_builtin_var.c), which share the same word. */
+/* ph7_class_instance.iFlags bit: this Closure is a bound/static first-class callable and
+ * carries $__this/$__scope. Lets the hot plain-closure unwrap skip those attribute lookups.
+ * (Distinct from CLASS_INSTANCE_DESTROYED 0x001 and VM_INSTANCE_DUMPING 0x002.) */
+#define VM_INSTANCE_FCC_BOUND 0x004
+/* ph7_class_instance.iFlags bit: this Closure wraps an __invoke OBJECT, and the engine —
+ * not the source — is what named `__invoke` (Closure::fromCallable($obj)). php resolves it
+ * the way it resolves `$obj()`, so a non-public __invoke is dispatched rather than denied;
+ * `$obj->__invoke(...)` and `[$obj,'__invoke']`, which the SOURCE names, stay denied and
+ * never carry this bit. Read by VmClosureUnwrap, which arms the engine's magic latch. */
+#define VM_INSTANCE_FCC_INVOKE_OBJ 0x010
+/* ph7_class_instance.iFlags bit: this Closure's $__fn names a METHOD of $__this's class (or
+ * of $__scope) — `$o->m(...)`, `C::m(...)`, `Closure::fromCallable([$o,'m'])`. Without it the
+ * unwrap had to GUESS, by asking whether the class declares a method of that name, and it
+ * guessed wrong in both directions: a name the class answers only through __call fell through
+ * to the plain-function route and failed with "Call to undefined function m()", and a name
+ * that happened to match a global function ran the FUNCTION. A bound plain closure
+ * (`function(){…}->bindTo($o)`) never carries this bit, which is what the guess was really
+ * trying to detect. */
+#define VM_INSTANCE_FCC_METHOD 0x020
 /*
  * The following macro clear the current ph7_value type and replace
  * it with the given one.
