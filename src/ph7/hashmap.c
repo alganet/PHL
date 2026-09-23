@@ -212,6 +212,11 @@ PH7_PRIVATE void PH7_HashmapUnlinkNode(ph7_hashmap_node *pNode,int bRestore)
 		/* Restore to the freelist */
 		if( (pNode->iFlags & HASHMAP_NODE_FOREIGN_OBJ) == 0 ){
 			PH7_VmUnsetMemObj(pVm,pNode->nValIdx,FALSE);
+		}else{
+			/* A FOREIGN node holds someone else's slot — and may be the LAST thing
+			 * holding it, once the frame that owned the variable is gone (that frame
+			 * left the slot standing for this very node). Nobody would free it then. */
+			PH7_VmReleaseUnheldSlot(pVm,pNode->nValIdx);
 		}
 	}
 	if( pNode->iType == HASHMAP_BLOB_NODE ){
@@ -2013,6 +2018,9 @@ PH7_PRIVATE sxi32 PH7_HashmapRelease(ph7_hashmap *pMap,int FreeDS)
 		if( (pEntry->iFlags & HASHMAP_NODE_FOREIGN_OBJ) == 0 ){
 			/* Restore the ph7_value to the free list */
 			PH7_VmUnsetMemObj(pVm,pEntry->nValIdx,FALSE);
+		}else{
+			/* Last holder of a slot whose owning frame is gone (PH7_HashmapUnlinkNode) */
+			PH7_VmReleaseUnheldSlot(pVm,pEntry->nValIdx);
 		}
 		/* Release the node */
 		if( pEntry->iType == HASHMAP_BLOB_NODE ){

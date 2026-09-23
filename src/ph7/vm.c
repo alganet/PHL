@@ -649,16 +649,28 @@ PH7_PRIVATE void VmLeaveFrame(ph7_vm *pVm)
 		if( pCurFrame->pParent && (pCurFrame->iFlags & VM_FRAME_EXCEPTION) == 0 ){
 			VmSlot  *aSlot;
 			sxu32 n;
-			/* Restore local variable to the free pool so that they can be reused again */
-			aSlot = (VmSlot *)SySetBasePtr(&pCurFrame->sLocal);
-			for(n = 0 ; n < SySetUsed(&pCurFrame->sLocal) ; ++n ){
-				/* Unset the local variable */
-				PH7_VmUnsetMemObj(&(*pVm),aSlot[n].nIdx,FALSE);
-			}
-			/* Remove local reference */
+			/* Remove this frame's NAME bindings from the reference table FIRST: a local
+			 * is a holder of its own slot, and the release decision below counts holders
+			 * (it also stops the record keeping pointers to hash entries this teardown
+			 * is about to free). */
 			aSlot = (VmSlot *)SySetBasePtr(&pCurFrame->sRef);
 			for(n = 0 ; n < SySetUsed(&pCurFrame->sRef) ; ++n ){
 				PH7_VmRefObjRemove(&(*pVm),aSlot[n].nIdx,(SyHashEntry *)aSlot[n].pUserData,0);
+			}
+			/* Restore local variable to the free pool so that they can be reused again */
+			aSlot = (VmSlot *)SySetBasePtr(&pCurFrame->sLocal);
+			for(n = 0 ; n < SySetUsed(&pCurFrame->sLocal) ; ++n ){
+				if( PH7_VmSlotHolderCount(&(*pVm),aSlot[n].nIdx) > 0 ){
+					/* Something OUTSIDE this frame refers to the local: an array element
+					 * bound to it (`function f(){ $v = 9; return [1, &$v]; }`) or another
+					 * name. php keeps the VALUE for whoever is left holding it — PH7 tore
+					 * down the slot and the reference table took the holders with it, so
+					 * the returned array came back one element SHORT. The last holder to
+					 * die releases the slot (PH7_VmReleaseUnheldSlot). */
+					continue;
+				}
+				/* Unset the local variable */
+				PH7_VmUnsetMemObj(&(*pVm),aSlot[n].nIdx,FALSE);
 			}
 		}
 		/* Release internal containers */

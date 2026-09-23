@@ -445,15 +445,19 @@ static void VmFreeDetachedFrame(ph7_vm *pVm, VmFrame *pFrame)
 	if( pFrame == 0 ){
 		return;
 	}
-	/* Free local variables */
-	aSlot = (VmSlot *)SySetBasePtr(&pFrame->sLocal);
-	for( n = 0; n < SySetUsed(&pFrame->sLocal); ++n ){
-		PH7_VmUnsetMemObj(pVm, aSlot[n].nIdx, FALSE);
-	}
-	/* Remove local references */
+	/* Remove local references FIRST, then free the locals nothing else holds — the
+	 * order and the holder test VmLeaveFrame explains. */
 	aSlot = (VmSlot *)SySetBasePtr(&pFrame->sRef);
 	for( n = 0; n < SySetUsed(&pFrame->sRef); ++n ){
 		PH7_VmRefObjRemove(pVm, aSlot[n].nIdx, (SyHashEntry *)aSlot[n].pUserData, 0);
+	}
+	/* Free local variables */
+	aSlot = (VmSlot *)SySetBasePtr(&pFrame->sLocal);
+	for( n = 0; n < SySetUsed(&pFrame->sLocal); ++n ){
+		if( PH7_VmSlotHolderCount(pVm, aSlot[n].nIdx) > 0 ){
+			continue;
+		}
+		PH7_VmUnsetMemObj(pVm, aSlot[n].nIdx, FALSE);
 	}
 	SyHashRelease(&pFrame->hVar);
 	SySetRelease(&pFrame->sArg);
