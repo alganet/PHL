@@ -2190,8 +2190,15 @@ PH7_PRIVATE VmOpRc VmExecOpClone(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr
 	pSrc = (ph7_class_instance *)pTos->x.pOther;
 	/* Enum cases are not cloneable — php's catchable Error (the singleton
 	 * identity would break) — and neither is a class whose instances own a
-	 * C-side resource a slot-by-slot copy would double-free (PH7_CLASS_NOCLONE). */
-	if( pSrc->pClass->iFlags & (PH7_CLASS_ENUM|PH7_CLASS_NOCLONE) ){
+	 * C-side resource a slot-by-slot copy would double-free (PH7_CLASS_NOCLONE),
+	 * nor a Generator or a Fiber (their suspended C state is not copyable). php
+	 * words all of them the same way and throws the same catchable Error; the
+	 * Generator/Fiber pair used to take an older warn-only path here, so
+	 * `clone $gen` PRINTED an uncatchable diagnostic and then carried on with the
+	 * ORIGINAL object standing in for the copy — the one shape of `clone` that
+	 * answered a value php never lets the program reach. */
+	if( (pSrc->pClass->iFlags & (PH7_CLASS_ENUM|PH7_CLASS_NOCLONE))
+		|| pSrc->pClass == pVm->pGeneratorClass || pSrc->pClass == pVm->pFiberClass ){
 		SyBlob sMsg;
 		SyBlobInit(&sMsg,&pVm->sAllocator);
 		SyBlobFormat(&sMsg,"Trying to clone an uncloneable object of class %z",
@@ -2210,14 +2217,6 @@ PH7_PRIVATE VmOpRc VmExecOpClone(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr
 			}
 		}
 		VM_EXIT_EXCEPTION;
-	}
-	/* Generator and Fiber objects are not cloneable (matches PHP) */
-	if( pSrc->pClass == pVm->pGeneratorClass || pSrc->pClass == pVm->pFiberClass ){
-		VmErrorFormat(&(*pVm),PH7_CTX_ERR,
-			"Trying to clone an uncloneable object of class '%z'",
-			&pSrc->pClass->sName);
-		PH7_MemObjRelease(pTos);
-		VM_EXIT_BREAK;
 	}
 	/* Perform the clone operation */
 	pClone = PH7_CloneClassInstance(pSrc);

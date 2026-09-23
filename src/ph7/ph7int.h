@@ -1218,8 +1218,8 @@ struct ph7_class
                                      * instances own a C-side resource keyed by a private slot cannot be
                                      * copied slot-by-slot (WeakReference's shared cell would be dropped
                                      * twice), which is exactly why php makes those classes uncloneable.
-                                     * Enum cases carry the same rule through PH7_CLASS_ENUM; Generator
-                                     * and Fiber still take an older warn-only path in OP_CLONE. */
+                                     * Enum cases carry the same rule through PH7_CLASS_ENUM, and
+                                     * Generator/Fiber are named directly at the OP_CLONE test. */
 #define PH7_CLASS_NOSERIALIZE 0x800 /* serialize() of an instance is a catchable Exception naming the
                                      * class, php's answer for every class holding engine state.
                                      * Without it the default object path emits the private slots —
