@@ -356,6 +356,47 @@ PH7_PRIVATE sxi32 PH7_VmInitFuncState(
 	return SXRET_OK;
 }
 /*
+ * Look a name up in the compiled-function table AS A SCRIPT SPELLS IT.
+ *
+ * hFunction is the ENGINE's table, not the script's. Besides the functions a program
+ * declared it holds every mounted class METHOD -- VmMountUserClassMethods installs each
+ * one under the engine name `[__Class@meth_xxxxxxxxxx]` that compile_class.c mints -- and
+ * every compiled CLOSURE, under `[closure_N]`. Neither is a php function name (no php
+ * label may hold a `[`, an `@` or a `]`), and php has no table in which a script can find
+ * one.
+ *
+ * A plain SyHashGet therefore answered a name that does not exist to every surface that
+ * asks whether a function does: function_exists(), is_callable() and the whole callback
+ * screen behind it, ReflectionFunction, `new Fiber(name)` -- and the dispatch itself.
+ * Reaching a METHOD that way really did run it: the body assumes the receiver frame the
+ * plain-function path never builds, so `$n = '[__Foo@bar_...]'; $n();` popped past the
+ * bottom of the operand stack (SIGSEGV in the release build, an ASan heap-buffer-overflow
+ * READ in VmByteCodeExecBody).
+ *
+ * bEngineName is for the engine's OWN dispatch of those same entries, which is by name
+ * too: OP_MEMBER pushes a resolved method's `sVmName` onto the callee slot, the closure
+ * machinery unwraps a Closure to its `[closure_N]`, and the two synthetic call builders
+ * do both without an OP_MEMBER ahead of them. Each of those marks its own call site
+ * (MEMOBJ_AUX_MEMBERCALL / MEMOBJ_AUX_ENGINEFN / the OP_CALL local); nothing a program
+ * wrote ever passes 1.
+ */
+PH7_PRIVATE SyHashEntry * PH7_VmGetUserFunction(
+	ph7_vm *pVm,        /* Target VM */
+	const void *pName,  /* Function name */
+	sxu32 nByte,        /* Name length */
+	int bEngineName     /* TRUE when the engine, not the script, spelled it */
+	)
+{
+	SyHashEntry *pEntry = SyHashGet(&pVm->hFunction,pName,nByte);
+	if( pEntry && !bEngineName ){
+		ph7_vm_func *pFunc = (ph7_vm_func *)pEntry->pUserData;
+		if( pFunc == 0 || (pFunc->iFlags & (VM_FUNC_CLASS_METHOD|VM_FUNC_CLOSURE)) ){
+			return 0;
+		}
+	}
+	return pEntry;
+}
+/*
  * Namespace-aware function lookup.
  * Resolution order: exact name -> use imports -> current NS\name -> global fallback.
  * For functions (unlike classes), PHP falls back to global if not found in current NS.

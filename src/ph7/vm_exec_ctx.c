@@ -1639,7 +1639,7 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
 		SyHashEntry *pEntry;
 		ph7_vm_func *pFunc;
 		SyStringInitFromBuf(&sName, SyBlobData(&pCallable->sBlob), SyBlobLength(&pCallable->sBlob));
-		pEntry = SyHashGet(&pVm->hFunction, sName.zString, sName.nByte);
+		pEntry = PH7_VmGetUserFunction(pVm, sName.zString, sName.nByte, FALSE);
 		if( pEntry == 0 ){
 			PH7_VmThrowException(pCtx, "FiberError",
 				"Fiber callable '%.*s' not found", (int)sName.nByte, sName.zString);
@@ -2337,7 +2337,7 @@ PH7_PRIVATE sxi32 PH7_VmFiberStart(ph7_vm *pVm, ph7_value *pFiber, int nArg, ph7
 		SyString sName;
 		SyHashEntry *pEntry;
 		SyStringInitFromBuf(&sName, SyBlobData(&pCallable->sBlob), SyBlobLength(&pCallable->sBlob));
-		pEntry = SyHashGet(&pVm->hFunction, sName.zString, sName.nByte);
+		pEntry = PH7_VmGetUserFunction(pVm, sName.zString, sName.nByte, FALSE);
 		if( pEntry == 0 ){
 			return SXERR_NOTFOUND;
 		}

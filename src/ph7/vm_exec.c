@@ -5747,6 +5747,13 @@ case PH7_OP_CALL: {
 	 * visibility against the entry it chose, so the screen below must stand down. */
 	int bMemberScreened = (pTos->iFlags & MEMOBJ_AUX_MEMBERCALL) != 0
 		|| pVm->bClosureScreened;
+	/* ...and whether the NAME in that slot is one of the engine's own function-table
+	 * keys rather than something the program spelled: an OP_MEMBER method resolution
+	 * pushes the method's `sVmName` (`[__Class@meth_xxxxxxxxxx]`), and so do the two
+	 * synthetic call builders. Read here because the member mark is cleared just
+	 * below; the closure branch adds its own case further down. It is what lets
+	 * PH7_VmGetUserFunction refuse those keys to a SCRIPT that spells one. */
+	int bEngineCallee = (pTos->iFlags & (MEMOBJ_AUX_MEMBERCALL|MEMOBJ_AUX_ENGINEFN)) != 0;
 	/* ...and the internal-callback latch, for the same reason: it describes THIS call
 	 * (an internal function invoking a userland callback binds its arguments weakly),
 	 * and a call the callback body makes must not inherit it. */
@@ -5841,6 +5848,9 @@ case PH7_OP_CALL: {
 		if( VmClosureUnwrap(pVm,pTos,&sCallable) == SXRET_OK ){
 			PH7_MemObjRelease(pTos);
 			PH7_MemObjStore(&sCallable,pTos);
+			/* The plain-closure shape of the unwrap is the engine's own `[closure_N]`
+			 * name, which the lookup below refuses to a name a SCRIPT spelled. */
+			bEngineCallee = 1;
 		}
 		PH7_MemObjRelease(&sCallable);
 	}
@@ -6113,7 +6123,7 @@ case PH7_OP_CALL: {
 	/* Check for a compiled function first.
 	 * Static names are already namespace-qualified by the compiler.
 	 * Dynamic names (from variables) use exact match only, matching PHP behavior. */
-	pEntry = SyHashGet(&pVm->hFunction,(const void *)sName.zString,sName.nByte);
+	pEntry = PH7_VmGetUserFunction(pVm,(const void *)sName.zString,sName.nByte,bEngineCallee);
 	/* If the compiler qualified this call with a namespace, and the namespaced
 	 * function is not found, retry with the global name (strip the namespace
 	 * prefix up to the last backslash) before falling back to host functions.
@@ -6139,7 +6149,7 @@ case PH7_OP_CALL: {
 		if( z > zFunc && z < zEnd ){
 			/* Retry lookup using the unqualified/global function name */
 			SyStringInitFromBuf(&sGlobal,z,(sxu32)(zEnd - z));
-			pEntry = SyHashGet(&pVm->hFunction,(const void *)sGlobal.zString,sGlobal.nByte);
+			pEntry = PH7_VmGetUserFunction(pVm,(const void *)sGlobal.zString,sGlobal.nByte,bEngineCallee);
 		}
 	}
 	} /* end VmCallArgMap namespace scope */

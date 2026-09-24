@@ -333,7 +333,7 @@ PH7_PRIVATE int vm_builtin_func_exists(ph7_context *pCtx,int nArg,ph7_value **ap
 	/* Assume the function is not defined */
 	res = 0;
 	/* Perform the lookup */
-	if( SyHashGet(&pVm->hFunction,(const void *)zName,(sxu32)nLen) != 0 ||
+	if( PH7_VmGetUserFunction(pVm,(const void *)zName,(sxu32)nLen,FALSE) != 0 ||
 		SyHashGet(&pVm->hHostFunction,(const void *)zName,(sxu32)nLen) != 0 ){
 			/* Function is defined */
 			res = 1;
@@ -724,7 +724,7 @@ PH7_PRIVATE int PH7_VmIsCallable(ph7_vm *pVm,ph7_value *pValue,int CallInvoke)
 		nFn = (sxu32)nLen;
 		PH7_VmClassNameAnchor(&zFn,&nFn);
 		/* Perform the lookup */
-		if( SyHashGet(&pVm->hFunction,(const void *)zFn,nFn) != 0 ||
+		if( PH7_VmGetUserFunction(&(*pVm),(const void *)zFn,nFn,FALSE) != 0 ||
 			SyHashGet(&pVm->hHostFunction,(const void *)zFn,nFn) != 0 ){
 				/* Function is callable */
 				res = 1;
@@ -1389,7 +1389,9 @@ PH7_PRIVATE sxi32 VmCallClassMethodLsb(
 	i++;
 	SyBlobReset(&aStack[i].sBlob);
 	SyBlobAppend(&aStack[i].sBlob,(const void *)SyStringData(&pMethod->sVmName),SyStringLength(&pMethod->sVmName));
-	aStack[i].iFlags = MEMOBJ_STRING;
+	/* The engine's own table key, not a name the program spelled -- the mark the
+	 * OP_MEMBER twin carries, so PH7_VmGetUserFunction resolves it here too. */
+	aStack[i].iFlags = MEMOBJ_STRING|MEMOBJ_AUX_ENGINEFN;
 	aStack[i].nIdx = SXU32_HIGH;
 	aInstr[0].iOp = PH7_OP_CALL;
 	aInstr[0].iP1 = nArg;
@@ -2334,6 +2336,11 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 		sxi32 rcClo;
 		PH7_MemObjInit(pVm,&sCallable);
 		if( VmClosureUnwrap(pVm,pFunc,&sCallable) == SXRET_OK ){
+			/* The plain-closure shape of the unwrap is the engine's own `[closure_N]`
+			 * name, which the name lookup refuses to a script. Mark it as the ENGINE's
+			 * so the synthetic OP_CALL below resolves it (the sibling hand-off is the
+			 * OP_CALL closure branch in vm_exec.c). */
+			sCallable.iFlags |= MEMOBJ_AUX_ENGINEFN;
 			rcClo = PH7_VmCallUserFunctionWithMap(pVm,&sCallable,nArg,apArg,pResult,pArgMap);
 			/* A bound PLAIN closure parks its $this in pVm->pClosureThis for the (synthetic) OP_CALL
 			 * frame setup to consume. If that dispatch failed before the consume (e.g. operand-stack
@@ -2503,6 +2510,9 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 	/* Push the function name */
 	PH7_MemObjLoad(pFunc,&aStack[i]);
 	aStack[i].nIdx = SXU32_HIGH; /* Mark as constant */
+	/* ...carrying the "the ENGINE spelled this" mark across the copy, which strips
+	 * MEMOBJ_AUX like every other one. Only the unwrap above ever sets it. */
+	aStack[i].iFlags |= (pFunc->iFlags & MEMOBJ_AUX_ENGINEFN);
 	/* Emit the CALL istruction */
 	aInstr[0].iOp = PH7_OP_CALL;
 	aInstr[0].iP1 = nArg; /* Total number of given arguments */

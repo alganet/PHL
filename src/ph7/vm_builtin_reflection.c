@@ -710,7 +710,7 @@ static ph7_vm_func * ReflectResolveCallable(ph7_vm *pVm, ph7_value *pTarget,
 		if( SyBlobLength(&pTarget->sBlob) < 1 ){
 			return 0;
 		}
-		pEntry = SyHashGet(&pVm->hFunction, SyBlobData(&pTarget->sBlob), SyBlobLength(&pTarget->sBlob));
+		pEntry = PH7_VmGetUserFunction(pVm, SyBlobData(&pTarget->sBlob), SyBlobLength(&pTarget->sBlob), FALSE);
 		if( pEntry ){
 			return (ph7_vm_func *)pEntry->pUserData;
 		}

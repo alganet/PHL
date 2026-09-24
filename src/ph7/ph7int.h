@@ -234,6 +234,22 @@ struct VmDeferredPath {
                                        * stack slot the call consumes (like MEMOBJ_AUX_MAGICCALL),
                                        * so it cannot leak to another call the way a VM-wide latch
                                        * could. Part of MEMOBJ_AUX, so a copy can never carry it. */
+#define MEMOBJ_AUX_ENGINEFN 0x200000 /* Stack-only marker: this callee STRING is one of the engine's
+                                      * own function-table names (`[closure_N]`, and the
+                                      * `[__Class@meth_xxxxxxxxxx]` a mounted method is keyed under),
+                                      * put there by the ENGINE rather than written by the program.
+                                      * It is what lets PH7_VmGetUserFunction refuse those names to a
+                                      * script -- function_exists() reported them, and calling a
+                                      * method's one underflowed the operand stack -- while the
+                                      * engine's own by-name dispatch of the same entries resolves.
+                                      * Set by the two SYNTHETIC call builders, which have no OP_MEMBER
+                                      * ahead of them to leave a mark: VmCallClassMethodLsb (a method's
+                                      * sVmName) and PH7_VmCallUserFunctionWithMap (a Closure unwrapped
+                                      * to its `[closure_N]`). The in-line OP_CALL cases carry the same
+                                      * verdict in a local instead -- MEMOBJ_AUX_MEMBERCALL for a
+                                      * resolved method, the unwrap branch for a closure -- because the
+                                      * member mark is consumed before the lookup. Part of MEMOBJ_AUX,
+                                      * so a copy can never carry it. */
 #define MEMOBJ_AUX_STROFFSET 0x20000 /* Stack-only marker: this value was READ OUT of a string by a
                                       * subscript ($s[1]). It carries the BASE's slot index like any
                                       * other element read, but a string offset is not a slot: php
@@ -251,7 +267,7 @@ struct VmDeferredPath {
  *  Types array, object and resource are not scalar.
  */
 #define MEMOBJ_SCALAR (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL)
-#define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_CUFVAL|MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH|MEMOBJ_AUX_STROFFSET|MEMOBJ_AUX_COALSTROFF|MEMOBJ_AUX_MAGICCALL|MEMOBJ_AUX_MEMBERCALL)
+#define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_CUFVAL|MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH|MEMOBJ_AUX_STROFFSET|MEMOBJ_AUX_COALSTROFF|MEMOBJ_AUX_MAGICCALL|MEMOBJ_AUX_MEMBERCALL|MEMOBJ_AUX_ENGINEFN)
 /* Closure-instance flags (ph7_class_instance.iFlags), shared by vm_exec.c's OP_LOAD_FCC
  * and vm_exec_ctx.c's closure machinery. Distinct from CLASS_INSTANCE_DESTROYED 0x001
  * (oo.c) and VM_INSTANCE_DUMPING 0x002 (vm_builtin_var.c), which share the same word. */
@@ -3240,6 +3256,7 @@ PH7_PRIVATE void PH7_VmReleaseContextValue(ph7_context *pCtx,ph7_value *pValue);
 PH7_PRIVATE sxi32 PH7_VmInitFuncState(ph7_vm *pVm,ph7_vm_func *pFunc,const char *zName,sxu32 nByte,
 	sxi32 iFlags,void *pUserData);
 PH7_PRIVATE sxi32 PH7_VmInstallUserFunction(ph7_vm *pVm,ph7_vm_func *pFunc,SyString *pName);
+PH7_PRIVATE SyHashEntry * PH7_VmGetUserFunction(ph7_vm *pVm,const void *pName,sxu32 nByte,int bEngineName);
 PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(ph7_vm *pVm,ph7_class_instance *pObj);
 PH7_PRIVATE ph7_value * PH7_VmCreateDynamicAttr(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nName,VmClassAttr **ppAttr);
 PH7_PRIVATE sxi32 PH7_VmRefObjRemove(ph7_vm *pVm,sxu32 nIdx,SyHashEntry *pEntry,ph7_hashmap_node *pMapEntry);
