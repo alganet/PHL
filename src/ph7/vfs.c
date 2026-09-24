@@ -485,6 +485,104 @@ static int PH7_vfs_is_dir(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Return
  *  TRUE on success or FALSE on failure.
  */
+/*
+ * A prefix the recursive mkdir must not try to CREATE: it names a volume rather
+ * than a directory. POSIX has none of these (the leading "/" is never a prefix
+ * here, since the walk starts one byte in).
+ */
+static int VfsMkdirVolumePrefix(const char *z,int n)
+{
+#ifdef __WINNT__
+	int i,nSep = 0;
+	if( n < 1 ){
+		return 1;
+	}
+	if( n == 2 && z[1] == ':' ){
+		return 1; /* a bare drive, "C:" */
+	}
+	if( n > 1 && (z[0] == '/' || z[0] == '\\') && (z[1] == '/' || z[1] == '\\') ){
+		for( i = 2 ; i < n ; i++ ){
+			if( z[i] == '/' || z[i] == '\\' ){
+				nSep++;
+			}
+		}
+		return nSep < 2; /* still inside \\server\share */
+	}
+	return 0;
+#else
+	SXUNUSED(z);
+	return n < 1;
+#endif
+}
+#ifdef __WINNT__
+#define VFS_MKDIR_SLASH(c) ((c) == '/' || (c) == '\\')
+#else
+#define VFS_MKDIR_SLASH(c) ((c) == '/')
+#endif
+/*
+ * php's $recursive: create every missing ancestor, then the directory itself.
+ * The flag reached the VFS and both back ends dropped it (`SXUNUSED(recursive)`),
+ * so `mkdir("$d/a/b", 0777, true)` -- the everyday way a script prepares an
+ * output tree -- warned "No such file or directory" and answered false whenever
+ * more than one level was missing.
+ *
+ * php does the walk in the WRAPPER too, not in the syscall, and the rules the
+ * oracle shows are: the mode is applied to every level it creates; an ancestor
+ * that already exists is skipped in silence; the LEAF is always attempted, so an
+ * existing one is "File exists" exactly as without the flag; a trailing
+ * separator names the same directory; and the empty path is refused up front
+ * with a message of its own.
+ */
+static int VfsMkdirRecursive(ph7_context *pCtx,ph7_vfs *pVfs,const char *zPath,int iMode)
+{
+	SyBlob sWorker;
+	int i,nPath,rc = PH7_OK;
+	/* The strip first: the component walk must not cut a "file://" scheme up. */
+	zPath = PH7_VmFileUrlLocalPath(zPath);
+	nPath = (int)SyStrlen(zPath);
+	/* A trailing separator names the same directory; php's own expand_filepath
+	 * drops it before it starts. */
+	while( nPath > 1 && VFS_MKDIR_SLASH(zPath[nPath-1]) ){
+		nPath--;
+	}
+	if( nPath < 1 ){
+		/* php: expand_filepath() refuses it, with this wording and no path. */
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): Invalid path",ph7_function_name(pCtx));
+		return -1;
+	}
+	SyBlobInit(&sWorker,&pCtx->pVm->sAllocator);
+	for( i = 1 ; i <= nPath ; i++ ){
+		int bLeaf = (i == nPath);
+		if( !bLeaf ){
+			/* Only at a separator that ENDS a component: a run of them names
+			 * the same ancestor once. */
+			if( !VFS_MKDIR_SLASH(zPath[i]) || VFS_MKDIR_SLASH(zPath[i-1]) ){
+				continue;
+			}
+			if( VfsMkdirVolumePrefix(zPath,i) ){
+				continue;
+			}
+		}
+		SyBlobReset(&sWorker);
+		if( SyBlobAppend(&sWorker,zPath,(sxu32)i) != SXRET_OK
+		 || SyBlobNullAppend(&sWorker) != SXRET_OK ){
+			rc = -1;
+			break;
+		}
+		if( !bLeaf && VfsPathStatable(pVfs,(const char *)SyBlobData(&sWorker)) ){
+			continue; /* an ancestor that is already there */
+		}
+		errno = 0;
+		rc = pVfs->xMkdir((const char *)SyBlobData(&sWorker),iMode,0);
+		if( rc != PH7_OK ){
+			PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s",
+				ph7_function_name(pCtx),VfsStrerror(errno));
+			break;
+		}
+	}
+	SyBlobRelease(&sWorker);
+	return rc;
+}
 static int PH7_vfs_mkdir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	int iRecursive = 0;
@@ -531,12 +629,16 @@ static int PH7_vfs_mkdir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 	}
 	/* Perform the requested operation */
-	errno = 0;
-	rc = pVfs->xMkdir(zPath,iMode,iRecursive);
-	if( rc != PH7_OK ){
-		/* php does NOT name the path for mkdir: "mkdir(): File exists" */
-		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s",
-			ph7_function_name(pCtx),VfsStrerror(errno));
+	if( iRecursive ){
+		rc = VfsMkdirRecursive(pCtx,pVfs,zPath,iMode);
+	}else{
+		errno = 0;
+		rc = pVfs->xMkdir(zPath,iMode,0);
+		if( rc != PH7_OK ){
+			/* php does NOT name the path for mkdir: "mkdir(): File exists" */
+			PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s",
+				ph7_function_name(pCtx),VfsStrerror(errno));
+		}
 	}
 	/* IO return value */
 	ph7_result_bool(pCtx,rc == PH7_OK);

@@ -142,13 +142,16 @@ static int WinVfs_getcwd(ph7_context *pCtx)
 	HeapFree(GetProcessHeap(),0,zConverted);
 	return PH7_OK;
 }
-/* int (*xMkdir)(const char *,int,int) */
+/* int (*xMkdir)(const char *,int,int)
+ * ONE level. php builds a tree in the WRAPPER rather than in the syscall, and so
+ * does PHL now (VfsMkdirRecursive in vfs.c), so `recursive` never arrives set. */
 static int WinVfs_mkdir(const char *zPath,int mode,int recursive)
 {
 	void * pConverted;
 	BOOL rc;
 	pConverted = convertUtf8Filename(zPath);
 	if( pConverted == 0 ){
+		errno = ENOMEM;
 		return -1;
 	}
 	mode= 0; /* MSVC warning */

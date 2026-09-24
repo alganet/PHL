@@ -64,7 +64,9 @@ static int UnixVfs_getcwd(ph7_context *pCtx)
 	ph7_result_string(pCtx,zDir,-1/*Compute length automatically*/);
 	return PH7_OK;
 }
-/* int (*xMkdir)(const char *,int,int) */
+/* int (*xMkdir)(const char *,int,int)
+ * ONE level. php builds a tree in the WRAPPER rather than in the syscall, and so
+ * does PHL now (VfsMkdirRecursive in vfs.c), so `recursive` never arrives set. */
 static int UnixVfs_mkdir(const char *zPath,int mode,int recursive)
 {
 	zPath = UnixVfsLocalPath(zPath);
