@@ -3362,8 +3362,12 @@ PH7_PRIVATE const char * PH7_VmCallableReason(ph7_vm *pVm,ph7_value *pValue,char
 PH7_PRIVATE void PH7_VmCallableName(ph7_vm *pVm,ph7_value *pValue,SyBlob *pOut);
 PH7_PRIVATE ph7_value * PH7_VmExtractSuper(ph7_vm *pVm,const char *zName,sxu32 nByte);
 PH7_PRIVATE sxi32 PH7_VmHashmapInsert(ph7_hashmap *pMap,const char *zKey,int nKeylen,const char *zData,int nLen);
+/* The file:// strip is pure string work and the VFS layer needs it in every
+ * build, disk IO enabled or not. */
+PH7_PRIVATE const char * PH7_VmFileUrlLocalPath(const char *zPath);
 #ifndef PH7_DISABLE_DISK_IO
 PH7_PRIVATE const ph7_io_stream * PH7_VmGetStreamDevice(ph7_vm *pVm,const char **pzDevice,int nByte);
+PH7_PRIVATE int PH7_VmStreamDeviceIsRemoteHost(const char *zUri,int nByte,int *pnScheme);
 #endif /* PH7_DISABLE_BUILTIN_FUNC || PH7_DISABLE_DISK_IO */
 /* vm_http.c function prototypes */
 PH7_PRIVATE sxi32 PH7_VmHttpSplitURI(SyhttpUri *pOut,const char *zUri,sxu32 nLen);
@@ -3955,6 +3959,7 @@ PH7_PRIVATE void MarkIOPrivateClosed(io_private *pDev);
 /* "Failed to open stream" warning helper (vfs.c, errno-based); used by the
  * fopen/opendir/file_* family in vfs_stream.c. */
 PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile);
+PH7_PRIVATE void VfsThrowNoDeviceWarning(ph7_context *pCtx,const char *zUri,int bDir);
 PH7_PRIVATE int PH7_VfsStatDoubleUp(ph7_value *pIn,ph7_value *pOut);
 PH7_PRIVATE const char * VfsStrerror(int iErr);
 /* Stream-device predicates (vfs_io_driver.c) */

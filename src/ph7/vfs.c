@@ -147,6 +147,40 @@ PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile)
 		ph7_function_name(pCtx),zFile ? zFile : "",VfsStrerror(errno));
 }
 /*
+ * php's answer when NO wrapper will take a name is a reason of its own, raised
+ * before the operation's own failure and naming the scheme the script wrote:
+ *
+ *   file_get_contents(): Unable to find the wrapper "zzz" - did you forget to
+ *   enable it when you configured PHP?
+ *
+ * PHL raised one PH7-specific sentence -- "No such stream device,PH7 is
+ * returning FALSE" -- which names neither the function's argument nor what was
+ * wrong with it, and two more call sites had a third wording of their own.
+ */
+PH7_PRIVATE void VfsThrowNoDeviceWarning(ph7_context *pCtx,const char *zUri,int bDir)
+{
+	const char *zFunc = ph7_function_name(pCtx);
+	const char *zWhat = bDir ? "directory" : "stream";
+	int nScheme = 0;
+	if( zUri == 0 ){
+		zUri = "";
+	}
+	if( PH7_VmStreamDeviceIsRemoteHost(zUri,-1,&nScheme) ){
+		/* A wrapper WAS found for the scheme and refused the name, which php
+		 * words differently from a scheme nothing is registered under. */
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): Remote host file access not supported, %s",
+			zFunc,zUri);
+		PH7_VmThrowWarningFmt(pCtx->pVm,
+			"%s(%s): Failed to open %s: no suitable wrapper could be found",zFunc,zUri,zWhat);
+		return;
+	}
+	PH7_VmThrowWarningFmt(pCtx->pVm,
+		"%s(): Unable to find the wrapper \"%.*s\" - did you forget to enable it when you configured PHP?",
+		zFunc,nScheme,zUri);
+	PH7_VmThrowWarningFmt(pCtx->pVm,
+		"%s(%s): Failed to open %s: No such file or directory",zFunc,zUri,zWhat);
+}
+/*
  * php's stat-failure warning: `filemtime(): stat failed for /nope`, and
  * `filetype(): Lstat failed for /nope` for the two members that LSTAT. php raises
  * it from php_stat() for the whole family and answers FALSE; PHL answered the

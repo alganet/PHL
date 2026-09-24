@@ -39,20 +39,10 @@
  */
 static const char * UnixVfsLocalPath(const char *zPath)
 {
-	const char *zRest;
-	if( zPath == 0 || SyStrnicmp(zPath,"file://",sizeof("file://")-1) != 0 ){
-		return zPath;
-	}
-	zRest = &zPath[sizeof("file://")-1];
-	if( zRest[0] == '/' ){
-		/* file:///abs -> /abs (empty authority) */
-		return zRest;
-	}
-	if( SyStrnicmp(zRest,"localhost/",sizeof("localhost/")-1) == 0 ){
-		/* file://localhost/abs -> /abs (keep the leading slash) */
-		return &zRest[sizeof("localhost")-1];
-	}
-	return zPath;
+	/* One rule for the whole engine: PH7_VmFileUrlLocalPath() is the same strip
+	 * the stream lookup applies, so a `file://` URL means the same file whether
+	 * it is opened or stat'ed. This used to be a second, shorter copy. */
+	return PH7_VmFileUrlLocalPath(zPath);
 }
 /* int (*xchdir)(const char *) */
 static int UnixVfs_chdir(const char *zPath)

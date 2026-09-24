@@ -1799,8 +1799,7 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 	/* Try to extract a stream */
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zPath,iLen);
 	if( pStream == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"No stream device is associated with the given path(%s)",zPath);
+		VfsThrowNoDeviceWarning(pCtx,zPath,TRUE);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -1939,7 +1938,7 @@ PH7_PRIVATE int PH7_builtin_readfile(ph7_context *pCtx,int nArg,ph7_value **apAr
 	/* Point to the target IO stream device */
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
 	if( pStream == 0 ){
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"No such stream device,PH7 is returning FALSE");
+		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -2036,7 +2035,7 @@ PH7_PRIVATE int PH7_builtin_file_get_contents(ph7_context *pCtx,int nArg,ph7_val
 	/* Point to the target IO stream device */
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
 	if( pStream == 0 ){
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"No such stream device,PH7 is returning FALSE");
+		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -2189,7 +2188,7 @@ PH7_PRIVATE int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_val
 	/* Point to the target IO stream device */
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
 	if( pStream == 0 ){
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"No such stream device,PH7 is returning FALSE");
+		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -2334,7 +2333,7 @@ PH7_PRIVATE int PH7_builtin_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Point to the target IO stream device */
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
 	if( pStream == 0 ){
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"No such stream device,PH7 is returning FALSE");
+		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -2453,7 +2452,7 @@ PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Point to the target IO stream device */
 	pSin = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
 	if( pSin == 0 ){
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"No such stream device,PH7 is returning FALSE");
+		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -2477,7 +2476,7 @@ PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Point to the target IO stream device */
 	pSout = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
 	if( pSout == 0 ){
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"No such stream device,PH7 is returning FALSE");
+		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		ph7_result_bool(pCtx,0);
 		PH7_StreamCloseHandle(pSin,pIn);
 		return PH7_OK;
@@ -6873,8 +6872,7 @@ PH7_PRIVATE int PH7_builtin_fopen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Try to extract a stream */
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zUri,iLen);
 	if( pStream == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"No stream device is associated with the given URI(%s)",zUri);
+		VfsThrowNoDeviceWarning(pCtx,zUri,FALSE);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -7046,7 +7044,7 @@ PH7_PRIVATE int PH7_builtin_md5_file(ph7_context *pCtx,int nArg,ph7_value **apAr
 	/* Point to the target IO stream device */
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
 	if( pStream == 0 ){
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"No such stream device,PH7 is returning FALSE");
+		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -7117,7 +7115,7 @@ PH7_PRIVATE int PH7_builtin_sha1_file(ph7_context *pCtx,int nArg,ph7_value **apA
 	/* Point to the target IO stream device */
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
 	if( pStream == 0 ){
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"No such stream device,PH7 is returning FALSE");
+		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -7204,7 +7202,7 @@ PH7_PRIVATE int PH7_builtin_parse_ini_file(ph7_context *pCtx,int nArg,ph7_value 
 	/* Point to the target IO stream device */
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nLen);
 	if( pStream == 0 ){
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"No such stream device,PH7 is returning FALSE");
+		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}

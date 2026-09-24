@@ -1215,8 +1215,7 @@ static void * HashOpenRead(ph7_context *pCtx,const char *zFile,int nFile,
 	*ppStream = 0;
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nFile);
 	if( pStream == 0 ){
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,
-			"No such stream device,PH7 is returning FALSE");
+		VfsThrowNoDeviceWarning(pCtx,zFile,FALSE);
 		return 0;
 	}
 	/* Armed HERE and not at the caller: the context describes exactly the open

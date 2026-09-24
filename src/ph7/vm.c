@@ -6444,6 +6444,101 @@ PH7_PRIVATE void PH7_VmRebindVarSlot(
 	/* The old value dies with its last holder — and only then */
 	PH7_VmReleaseUnheldSlot(&(*pVm),nOld);
 }
+/*
+ * Is there a SCHEME at the front of this name, and how long is it?
+ *
+ * php reads one only at the START, and only as a URL scheme: a run of
+ * [A-Za-z0-9+.-] at least TWO characters long, followed immediately by "://".
+ * PHL used to hunt for the first "://" ANYWHERE in the name and then trim
+ * whitespace off whatever preceded it, which made four ordinary FILENAMES into
+ * URLs: " php://memory" and "php ://memory" opened the memory stream php opens
+ * a file called that, "./sub://z" and "a b://c" were looked up as schemes
+ * "./sub" and "a b". The two-character minimum is php's, and it is what keeps a
+ * Windows drive letter ("C://tmp") a path rather than a "C" scheme.
+ */
+static int VmUrlScheme(const char *zIn,int nByte,int *pnScheme)
+{
+	int i = 0;
+	while( i < nByte ){
+		int c = zIn[i];
+		if( (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+		 || c == '+' || c == '-' || c == '.' ){
+			i++;
+			continue;
+		}
+		break;
+	}
+	/* php also accepts a scheme with NOTHING after it ("zzz://" is an unknown
+	 * wrapper, not a file called "zzz://"), which the old scan refused. */
+	if( i > 1 && i + 2 < nByte && zIn[i] == ':' && zIn[i+1] == '/' && zIn[i+2] == '/' ){
+		*pnScheme = i;
+		return 1;
+	}
+	return 0;
+}
+/*
+ * The bytes the FILE wrapper is handed for a file:// URL.
+ *
+ * A file:// URL has an AUTHORITY, and php only accepts two of them: an empty
+ * one and `localhost` (case-insensitively, and only with its slash). Anything
+ * else is a remote host it refuses to reach -- where PHL stripped exactly
+ * "file://" and opened whatever was left, so `file://tmp/passwd` silently read
+ * the RELATIVE path tmp/passwd. What survives the strip is the LAST slash of
+ * the leading run, so `file:////x` is /x, `file://localhost//x` is /x, and
+ * `file://` on its own is the root directory.
+ *
+ * Returns 0 for an authority php will not reach; the caller answers "no
+ * wrapper", as php does.
+ */
+static int VmFileUrlPath(const char *zIn,int nByte,int nScheme,const char **pzPath)
+{
+	static const char zLocal[] = "file://localhost/";
+	const char *zPath = &zIn[nScheme+1]; /* the first slash of "://" */
+	const char *zEnd = &zIn[nByte];
+	if( nScheme + 3 < nByte && zIn[nScheme+3] != '/'
+#ifdef __WINNT__
+	 /* php's own Windows allowance: `file://C:/x` is a DRIVE, not a host. */
+	 && !(nScheme + 4 < nByte && zIn[nScheme+4] == ':')
+#endif
+	){
+		if( nByte < (int)sizeof(zLocal)-1
+		 || SyStrnicmp(zIn,zLocal,(sxu32)sizeof(zLocal)-1) != 0 ){
+			return 0; /* a host this build (and php) will not fetch from */
+		}
+		zPath = &zIn[nScheme+3+sizeof("localhost")-1];
+	}
+	while( &zPath[1] < zEnd && zPath[1] == '/' ){
+		zPath++;
+	}
+	*pzPath = zPath;
+	return 1;
+}
+/*
+ * The same rule for the VFS side, which stats and unlinks a name without ever
+ * going through a stream device. It carried a second, shorter copy of the
+ * strip -- no slash-run collapse and nothing for a bare `file://` -- so
+ * `is_dir('file://')` was false where php names the root. A host this build
+ * will not reach is handed back UNCHANGED: the syscall then fails on a name
+ * that is not a path, which is the FALSE php answers for it.
+ */
+PH7_PRIVATE const char * PH7_VmFileUrlLocalPath(const char *zPath)
+{
+	const char *zOut;
+	int nByte,nScheme = 0;
+	if( zPath == 0 ){
+		return zPath;
+	}
+	nByte = (int)SyStrlen(zPath);
+	if( !VmUrlScheme(zPath,nByte,&nScheme)
+	 || nScheme != (int)sizeof("file")-1
+	 || SyStrnicmp(zPath,"file",sizeof("file")-1) != 0 ){
+		return zPath;
+	}
+	if( !VmFileUrlPath(zPath,nByte,nScheme,&zOut) ){
+		return zPath;
+	}
+	return zOut;
+}
 #if !defined(PH7_DISABLE_BUILTIN_FUNC) || !defined(PH7_DISABLE_DISK_IO)
 /*
  * Extract the IO stream device associated with a given scheme.
@@ -6459,30 +6554,28 @@ PH7_PRIVATE const ph7_io_stream * PH7_VmGetStreamDevice(
 	int nByte              /* *pzDevice length*/
 	)
 {
-	const char *zIn,*zEnd,*zCur,*zNext;
+	const char *zIn,*zNext;
 	ph7_io_stream **apStream,*pStream;
 	SyString sDev,sCur;
 	sxu32 n,nEntry;
+	int nScheme = 0;
 	int rc;
 	/* Check if a scheme [i.e: file://,http://,zip://...] is available */
-	zNext = zCur = zIn = *pzDevice;
-	zEnd = &zIn[nByte];
-	while( zIn < zEnd ){
-		if( zIn < &zEnd[-3]/*://*/ && zIn[0] == ':' && zIn[1] == '/' && zIn[2] == '/' ){
-			/* Got one */
-			zNext = &zIn[sizeof("://")-1];
-			break;
-		}
-		/* Advance the cursor */
-		zIn++;
-	}
-	if( zIn >= zEnd ){
+	zIn = *pzDevice;
+	if( !VmUrlScheme(zIn,nByte,&nScheme) ){
 		/* No such scheme,return the default stream */
 		return pVm->pDefStream;
 	}
-	SyStringInitFromBuf(&sDev,zCur,zIn-zCur);
-	/* Remove leading and trailing white spaces */
-	SyStringFullTrim(&sDev);
+	zNext = &zIn[nScheme+sizeof("://")-1];
+	/* php applies the file:// authority rules by the SCHEME NAME, before it
+	 * cares who is registered under it -- a userland wrapper that replaced
+	 * file:// is handed the stripped path too. */
+	if( nScheme == (int)sizeof("file")-1 && SyStrnicmp(zIn,"file",sizeof("file")-1) == 0 ){
+		if( !VmFileUrlPath(zIn,nByte,nScheme,&zNext) ){
+			return 0;
+		}
+	}
+	SyStringInitFromBuf(&sDev,zIn,(sxu32)nScheme);
 	/* Perform a linear lookup on the installed stream devices */
 	apStream = (ph7_io_stream **)SySetBasePtr(&pVm->aIOstream);
 	nEntry = SySetUsed(&pVm->aIOstream);
@@ -6499,6 +6592,31 @@ PH7_PRIVATE const ph7_io_stream * PH7_VmGetStreamDevice(
 	}
 	/* No such stream,return NULL */
 	return 0;
+}
+/*
+ * Why did PH7_VmGetStreamDevice() answer nothing for this name? php raises a
+ * REASON of its own before the operation's own failure, and the two a caller
+ * can hit here are different sentences. Re-derived from the name rather than
+ * threaded out of the lookup, so every call site stays one line.
+ *
+ * Answers TRUE for the file:// authority php will not reach; otherwise FALSE
+ * with *pnScheme set to the length of the scheme that has no wrapper.
+ */
+PH7_PRIVATE int PH7_VmStreamDeviceIsRemoteHost(const char *zUri,int nByte,int *pnScheme)
+{
+	const char *zPath;
+	int nScheme = 0;
+	if( nByte < 0 ){
+		nByte = (int)SyStrlen(zUri);
+	}
+	if( !VmUrlScheme(zUri,nByte,&nScheme) ){
+		*pnScheme = 0;
+		return 0;
+	}
+	*pnScheme = nScheme;
+	return nScheme == (int)sizeof("file")-1
+		&& SyStrnicmp(zUri,"file",sizeof("file")-1) == 0
+		&& !VmFileUrlPath(zUri,nByte,nScheme,&zPath);
 }
 #endif /* PH7_DISABLE_BUILTIN_FUNC || PH7_DISABLE_DISK_IO */
 /* HTTP/URI routines moved to vm_http.c */

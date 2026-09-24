@@ -106,15 +106,11 @@ static void WinVfsMapErrno(void)
  * intact so the call fails exactly as php does. */
 static const char * WinVfsLocalPath(const char *zPath)
 {
-	const char *zRest;
-	if( zPath == 0 || SyStrnicmp(zPath,"file://",sizeof("file://")-1) != 0 ){
-		return zPath;
-	}
-	zRest = &zPath[sizeof("file://")-1];
-	if( SyStrnicmp(zRest,"localhost/",sizeof("localhost/")-1) == 0 ){
-		zRest = &zRest[sizeof("localhost")-1]; /* keep the leading slash */
-	}
-	if( zRest[0] == '/' && zRest[1] != 0 && zRest[2] == ':' ){
+	/* The engine's one file:// strip (PH7_VmFileUrlLocalPath), plus the piece
+	 * that is only true here: the leading slash php's own strip leaves in front
+	 * of a DRIVE is not part of a Windows path. */
+	const char *zRest = PH7_VmFileUrlLocalPath(zPath);
+	if( zRest != zPath && zRest[0] == '/' && zRest[1] != 0 && zRest[2] == ':' ){
 		/* file:///C:/path or file://localhost/C:/path -> C:/path */
 		return &zRest[1];
 	}
