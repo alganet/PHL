@@ -116,83 +116,100 @@ static int FvValidateInt(const char *z,int n,int flags,ph7_int64 *pOut){
 	}
 	return 1;
 }
-/* FILTER_VALIDATE_FLOAT. Returns 1 and sets *pOut on success, 0 on failure. */
-static int FvValidateFloat(const char *z,int n,int flags,double *pOut){
-	char zBuf[512];
-	int i, m = 0, seenDigit = 0;
-	const char *zv; int nv; double d = 0;
-	FvTrim(&z,&n);
-	/* Bound the input: zBuf[512] holds the thousand-separator-stripped copy, and
-	 * the cap also rejects the pathological 500+ digit floats PHP refuses. */
-	if( n==0 || n>500 ){ return 0; }
-	if( flags & FV_FLAG_ALLOW_THOUSAND ){
-		/* Commas are optional, but when present they must group the integer part
-		 * into a leading run of 1..3 digits followed by groups of exactly 3
-		 * ("1,000" ok, "1,5"/"1234,567" rejected). Strip them into zBuf and reject
-		 * a comma anywhere in the fractional/exponent tail. */
-		int s = 0, intEnd, segStart, segIdx, hasComma = 0;
-		if( s<n && (z[s]=='+'||z[s]=='-') ){ zBuf[m++] = z[s]; s++; }
-		intEnd = s;
-		while( intEnd<n && z[intEnd]!='.' && z[intEnd]!='e' && z[intEnd]!='E' ){
-			if( z[intEnd]==',' ){ hasComma = 1; }
-			intEnd++;
-		}
-		if( hasComma ){
-			segStart = s; segIdx = 0;
-			for( i=s; i<=intEnd; i++ ){
-				if( i==intEnd || z[i]==',' ){
-					int segLen = i - segStart, k;
-					if( segIdx==0 ){ if( segLen<1 || segLen>3 ){ return 0; } }
-					else if( segLen!=3 ){ return 0; }
-					for( k=segStart; k<i; k++ ){
-						if( !SyisDigit((unsigned char)z[k]) ){ return 0; }
-						zBuf[m++] = z[k];
-					}
-					segStart = i+1; segIdx++;
-				}
-			}
-		}else{
-			for( i=s; i<intEnd; i++ ){ zBuf[m++] = z[i]; }
-		}
-		for( i=intEnd; i<n; i++ ){
-			if( z[i]==',' ){ return 0; }
-			zBuf[m++] = z[i];
-		}
-		zv = zBuf; nv = m;
-	}else{
-		zv = z; nv = n;
+/* Is byte c one of the nSep thousand separators in zSep? */
+static int FvIsThousandSep(const char *zSep,int nSep,int c){
+	int i;
+	for( i=0; i<nSep; i++ ){
+		if( (unsigned char)zSep[i] == (unsigned char)c ){ return 1; }
 	}
-	i = 0;
-	if( i<nv && (zv[i]=='+'||zv[i]=='-') ){ i++; }
-	while( i<nv && SyisDigit((unsigned char)zv[i]) ){ i++; seenDigit = 1; }
-	if( i<nv && zv[i]=='.' ){
+	return 0;
+}
+/*
+ * FILTER_VALIDATE_FLOAT. Returns 1 and sets *pOut on success, 0 on failure.
+ *
+ * decSep is the byte that separates the fractional part (php's "decimal" option,
+ * '.' by default) and zSep[0..nSep) the set that may group the INTEGER part when
+ * FILTER_FLAG_ALLOW_THOUSAND is set (php's "thousand" option, "',." by default).
+ * The two sets overlap by default, and php tests the decimal separator FIRST —
+ * which is why `decimal => ','` leaves '.' working as a group separator.
+ *
+ * The number is normalized into zBuf as a plain C double literal (separators
+ * dropped, decSep rewritten to '.') and handed to strtod.
+ */
+static int FvValidateFloat(const char *z,int n,int flags,int decSep,
+                           const char *zSep,int nSep,double *pOut){
+	/* decSep is a BYTE value (0..255): a separator above 127 — php takes any
+	 * single byte, including one out of a UTF-8 sequence — must not be compared
+	 * against a sign-extended char. */
+	char zBuf[512];
+	int i = 0, m = 0, seenDigit = 0, grouped = 0, nGroup = 0, runLen;
+	int hasExp = 0, expNonZero = 0, hasDot = 0;
+	double d = 0;
+	FvTrim(&z,&n);
+	/* Bound the input: zBuf[512] holds the separator-stripped copy, and the cap
+	 * also rejects the pathological 500+ digit floats PHP refuses. */
+	if( n==0 || n>500 ){ return 0; }
+	if( i<n && (z[i]=='+'||z[i]=='-') ){ zBuf[m++] = z[i]; i++; }
+	/* The integer part: digit runs, optionally separated by a thousand separator.
+	 * A separator anywhere means the runs must GROUP — a leading run of 1..3
+	 * digits then runs of exactly 3 ("1,000" and "1'234,567" ok, "1,5" and
+	 * "1234,567" rejected); with no separator the run is any length at all
+	 * (including zero, which is how ".5" parses). */
+	for(;;){
+		runLen = 0;
+		while( i<n && SyisDigit((unsigned char)z[i]) ){ zBuf[m++] = z[i]; i++; runLen++; }
+		if( runLen>0 ){ seenDigit = 1; }
+		if( i<n && (unsigned char)z[i]!=decSep && (flags & FV_FLAG_ALLOW_THOUSAND)
+		 && FvIsThousandSep(zSep,nSep,z[i]) ){
+			if( nGroup==0 ){ if( runLen<1 || runLen>3 ){ return 0; } }
+			else if( runLen!=3 ){ return 0; }
+			grouped = 1; nGroup++;
+			i++;                       /* drop the separator itself */
+			continue;
+		}
+		if( grouped && runLen!=3 ){ return 0; } /* the run that closes a grouped number */
+		break;
+	}
+	if( i<n && (unsigned char)z[i]==decSep ){
+		zBuf[m++] = '.';
+		hasDot = 1;
 		i++;
-		while( i<nv && SyisDigit((unsigned char)zv[i]) ){ i++; seenDigit = 1; }
+		while( i<n && SyisDigit((unsigned char)z[i]) ){ zBuf[m++] = z[i]; i++; seenDigit = 1; }
 	}
 	if( !seenDigit ){ return 0; }
-	if( i<nv && (zv[i]=='e'||zv[i]=='E') ){
+	if( i<n && (z[i]=='e'||z[i]=='E') ){
+		zBuf[m++] = z[i];
 		i++;
-		if( i<nv && (zv[i]=='+'||zv[i]=='-') ){ i++; }
-		if( i>=nv || !SyisDigit((unsigned char)zv[i]) ){ return 0; }
-		while( i<nv && SyisDigit((unsigned char)zv[i]) ){ i++; }
+		if( i<n && (z[i]=='+'||z[i]=='-') ){ zBuf[m++] = z[i]; i++; }
+		if( i>=n || !SyisDigit((unsigned char)z[i]) ){ return 0; }
+		while( i<n && SyisDigit((unsigned char)z[i]) ){
+			if( z[i]!='0' ){ expNonZero = 1; }
+			zBuf[m++] = z[i]; i++;
+		}
+		hasExp = 1;
 	}
-	if( i!=nv ){ return 0; } /* trailing junk */
-	/* The grammar above guarantees zv[0..nv) is a clean ASCII decimal float (no hex /
+	if( i!=n ){ return 0; } /* trailing junk */
+	/* The grammar above guarantees zBuf[0..m) is a clean ASCII decimal float (no hex /
 	 * inf / nan / trailing junk), so it is safe to hand to libc strtod, which — unlike
 	 * SyStrToReal (15 sig-digits + exponent clamped to 308, so it silently saturates
 	 * overflowing magnitudes to a finite value) — is overflow/underflow-aware and
-	 * correctly rounded. strtod needs a NUL-terminated string: the ALLOW_THOUSAND path
-	 * already built the span in zBuf (zv==zBuf); the plain path must copy it there (z is
-	 * const + not NUL-terminated). nv <= n <= 500 < sizeof(zBuf) by the cap above.
+	 * correctly rounded. Every byte written to zBuf consumed one input byte, so
+	 * m <= n <= 500 < sizeof(zBuf) and the NUL below is in range.
 	 * Matches PHP 8.5 byte-for-byte: reject overflow (-> +/-INF) and total underflow
 	 * (-> 0.0), keep subnormals (nonzero, errno==ERANGE) and a genuine "0" (errno==0). */
-	if( zv != zBuf ){ SyMemcpy(zv,zBuf,(sxu32)nv); }
-	zBuf[nv] = 0;
+	zBuf[m] = 0;
 	errno = 0;
 	d = strtod(zBuf,0);
 	if( errno == ERANGE && (d == HUGE_VAL || d == -HUGE_VAL || d == 0.0) ){
 		return 0;
 	}
+	/* php's own strtod reports a zero answer carrying a non-zero EXPONENT as an
+	 * underflow, where glibc's leaves errno alone: "0e1", "0.e5" and ".0e5" are
+	 * refused while "0", "0.0" and "0e0" are the float zero. */
+	if( d == 0.0 && hasExp && expNonZero ){ return 0; }
+	/* An INTEGER-shaped literal is answered through php's long path, which has no
+	 * signed zero: "-0" is the float +0.0 where "-0.0" and "-0e0" stay negative. */
+	if( d == 0.0 && !hasDot && !hasExp ){ d = 0.0; }
 	*pOut = d;
 	return 1;
 }
@@ -1029,7 +1046,7 @@ static void FvSanitizeChars(ph7_context *pCtx,const char *z,int n,int isUrl){
  */
 static int FvApplyFilter(ph7_context *pCtx,ph7_value *pInput,
                          int iFilter,int iFlags,ph7_value *pOpts,
-                         ph7_value *pDefault)
+                         ph7_value *pDefault,const char *zFunc)
 {
 	int bNull = (iFlags & FV_NULL_ON_FAILURE) ? 1 : 0;
 	const char *zVal; int nVal;
@@ -1053,7 +1070,40 @@ static int FvApplyFilter(ph7_context *pCtx,ph7_value *pInput,
 	}
 	case FV_VALIDATE_FLOAT: {
 		double d;
-		if( !FvValidateFloat(zVal,nVal,iFlags,&d) ){ goto fail; }
+		int decSep = '.';
+		const char *zSep = "',."; int nSep = 3;
+		/* php reads "decimal"/"thousand" only when the option IS a string — an int,
+		 * a bool, null or an array leaves the defaults in place rather than being
+		 * cast — and rejects a decimal that is not exactly one byte, or an empty
+		 * separator set, with a ValueError naming the calling function. */
+		if( pOpts ){
+			ph7_value *pDec = ph7_array_fetch(pOpts,"decimal",(int)sizeof("decimal")-1);
+			ph7_value *pSep = ph7_array_fetch(pOpts,"thousand",(int)sizeof("thousand")-1);
+			if( pDec && ph7_value_is_string(pDec) ){
+				int nDec; const char *zDec = ph7_value_to_string(pDec,&nDec); /* already a string: no conversion */
+				if( nDec!=1 ){
+					return PH7_VmThrowException(pCtx,"ValueError",
+						"%s(): \"decimal\" option must be one character long",zFunc);
+				}
+				decSep = (unsigned char)zDec[0];
+			}
+			if( pSep && ph7_value_is_string(pSep) ){
+				zSep = ph7_value_to_string(pSep,&nSep);
+				if( nSep<1 ){
+					return PH7_VmThrowException(pCtx,"ValueError",
+						"%s(): \"thousand\" option must not be empty",zFunc);
+				}
+			}
+		}
+		if( !FvValidateFloat(zVal,nVal,iFlags,decSep,zSep,nSep,&d) ){ goto fail; }
+		/* php's range check is the same one the int filter carries, read as a
+		 * double (a non-numeric option casts to 0.0, php's own zval_get_double). */
+		if( pOpts ){
+			ph7_value *pMin = ph7_array_fetch(pOpts,"min_range",(int)sizeof("min_range")-1);
+			ph7_value *pMax = ph7_array_fetch(pOpts,"max_range",(int)sizeof("max_range")-1);
+			if( pMin && d<PH7_ValuePeekReal(pMin) ){ goto fail; }
+			if( pMax && d>PH7_ValuePeekReal(pMax) ){ goto fail; }
+		}
 		ph7_result_double(pCtx,d);
 		return PH7_OK;
 	}
@@ -1074,7 +1124,7 @@ static int FvApplyFilter(ph7_context *pCtx,ph7_value *pInput,
 		const char *zRe; int nRe, matched = 0;
 		if( pRe==0 ){
 			return PH7_VmThrowException(pCtx,"ValueError",
-				"filter_var(): \"regexp\" option is missing");
+				"%s(): \"regexp\" option is missing",zFunc);
 		}
 		zRe = ph7_value_to_string(pRe,&nRe);
 		if( PH7_PcreMatchQuiet(pCtx,zRe,nRe,zVal,nVal,&matched)!=SXRET_OK || !matched ){ goto fail; }
@@ -1145,7 +1195,7 @@ PH7_PRIVATE int PH7_builtin_filter_var(ph7_context *pCtx,int nArg,ph7_value **ap
 	ph7_value *pOpts = 0, *pDefault = 0;
 	if( nArg<1 ){ ph7_result_null(pCtx); return PH7_OK; }
 	FvParseFilterArgs(nArg,apArg,1,&iFilter,&iFlags,&pOpts,&pDefault);
-	return FvApplyFilter(pCtx,apArg[0],iFilter,iFlags,pOpts,pDefault);
+	return FvApplyFilter(pCtx,apArg[0],iFilter,iFlags,pOpts,pDefault,"filter_var");
 }
 /*
  * filter_input($type, $var_name, $filter = FILTER_DEFAULT, $options = 0)
@@ -1196,7 +1246,7 @@ PH7_PRIVATE int PH7_builtin_filter_input(ph7_context *pCtx,int nArg,ph7_value **
 		else { ph7_result_null(pCtx); }
 		return PH7_OK;
 	}
-	return FvApplyFilter(pCtx,pElem,iFilter,iFlags,pOpts,pDefault);
+	return FvApplyFilter(pCtx,pElem,iFilter,iFlags,pOpts,pDefault,"filter_input");
 }
 #endif /* PH7_NEED_BUILTIN_REG */
 #ifdef PH7_NEED_FMT_AND_INI
