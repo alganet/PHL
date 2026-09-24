@@ -94,6 +94,20 @@ PH7_PRIVATE void PH7_FilterBrigadeRelease(ph7_vm *pVm,phl_brigade *pBrig)
 		PH7_FilterBucketFree(pVm,pBucket);
 	}
 }
+/* The stream_filter_register() registry, defined with the userland half at the
+ * bottom of this file; the chain, the lookup and the create are needed by the
+ * attach path above it. */
+typedef struct phl_ufilter_reg phl_ufilter_reg;
+struct phl_ufilter_reg
+{
+	SyBlob sName;              /* the filter name, wildcards included */
+	SyBlob sClass;             /* the class that serves it */
+	phl_ufilter_reg *pNext;
+};
+
+static phl_ufilter_reg * UserFilterFind(ph7_vm *pVm,const char *zName,int nName);
+static phl_stream_filter * UserFilterCreate(ph7_vm *pVm,phl_ufilter_reg *pReg,
+	const char *zName,int nName,ph7_value *pParams,ph7_value *pStream);
 /* --------------------------------------------------------------------------
  * The built-in filters.
  * -------------------------------------------------------------------------- */
@@ -850,6 +864,17 @@ static const phl_filter_ops aBuiltinFilters[] = {
  * The comparison is case SENSITIVE: php answers `Unable to locate filter` for
  * `STRING.ROT13`.
  */
+static const phl_filter_ops * FilterFindOpsExact(const char *zName,int nName)
+{
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(aBuiltinFilters) ; ++n ){
+		const char *zCur = aBuiltinFilters[n].zName;
+		if( (int)SyStrlen(zCur) == nName && SyMemcmp(zCur,zName,(sxu32)nName) == 0 ){
+			return &aBuiltinFilters[n];
+		}
+	}
+	return 0;
+}
 static const phl_filter_ops * FilterFindOps(const char *zName,int nName)
 {
 	char zWild[128];
@@ -984,7 +1009,7 @@ static int FilterInvoke(phl_stream_filter *pFilter,phl_brigade *pIn,phl_brigade 
  * mid-group.
  */
 PH7_PRIVATE int PH7_FilterChainProcess(phl_stream_filter *pHead,
-	const void *pData,sxu32 nLen,int iFlags,int iRestFlags,SyBlob *pOut)
+	const void *pData,sxu32 nLen,int iFlags,int iRestFlags,SyBlob *pOut,int *pbUnread)
 {
 	ph7_vm *pVm = pHead->pVm;
 	phl_brigade sA,sB;
@@ -1016,6 +1041,16 @@ PH7_PRIVATE int PH7_FilterChainProcess(phl_stream_filter *pHead,
 		pSwap = pIn;
 		pIn = pOutBrig;
 		pOutBrig = pSwap;
+	}
+	if( iStatus != PHL_PSFS_PASS_ON && pIn->pHead != 0 ){
+		/* A filter that gave up on its input without taking it: php says so and
+		 * the READ answers FALSE rather than an end of file. A filter that
+		 * consumed everything and then refused is the quiet shape. */
+		if( pbUnread ){
+			*pbUnread = 1;
+		}
+		PH7_VmThrowError(pVm,pVm->pCalleeName,PH7_CTX_WARNING,
+			"Unprocessed filter buckets remaining on input brigade");
 	}
 	if( iStatus == PHL_PSFS_PASS_ON && pOut ){
 		while( (pBucket = FilterBucketPop(pIn)) != 0 ){
@@ -1083,7 +1118,7 @@ static void FilterFlushTail(phl_stream_filter *pFilter,int iRestFlags)
 		}
 	}
 	SyBlobInit(&sOut,&pFilter->pVm->sAllocator);
-	if( PH7_FilterChainProcess(pFilter,0,0,PHL_PSFS_FLAG_FLUSH_CLOSE,iRestFlags,&sOut)
+	if( PH7_FilterChainProcess(pFilter,0,0,PHL_PSFS_FLAG_FLUSH_CLOSE,iRestFlags,&sOut,0)
 	    == PHL_PSFS_PASS_ON && SyBlobLength(&sOut) > 0 ){
 		if( pFilter->iChain == PHL_STREAM_FILTER_WRITE ){
 			if( pDev->pStream && pDev->pStream->xWrite ){
@@ -1161,6 +1196,18 @@ PH7_PRIVATE void PH7_StreamFilterVmReset(ph7_vm *pVm)
 		pFilter = pNext;
 	}
 	pVm->pStreamFilter = 0;
+	{
+		phl_ufilter_reg *pReg = (phl_ufilter_reg *)pVm->pUserFilters;
+		while( pReg ){
+			phl_ufilter_reg *pNext = pReg->pNext;
+			SyBlobRelease(&pReg->sName);
+			SyBlobRelease(&pReg->sClass);
+			SyMemBackendFree(&pVm->sAllocator,pReg);
+			pReg = pNext;
+		}
+		pVm->pUserFilters = 0;
+	}
+	pVm->pFilterCall = 0;
 }
 /* php's own two diagnostics, worded from the builtin that is running — which is
  * `stream_filter_append` on one path and the READER (file_get_contents, fopen)
@@ -1172,14 +1219,26 @@ static void FilterWarn(ph7_vm *pVm,const char *zFmt,int nName,const char *zName)
 	PH7_VmThrowError(pVm,pVm->pCalleeName,PH7_CTX_WARNING,zMsg);
 }
 PH7_PRIVATE phl_stream_filter * PH7_StreamFilterAttach(ph7_vm *pVm,io_private *pDev,
-	const char *zName,int nName,int iChain,int bPrepend,ph7_value *pParams)
+	const char *zName,int nName,int iChain,int bPrepend,ph7_value *pParams,
+	ph7_value *pStreamVal)
 {
 	const phl_filter_ops *pOps;
+	phl_ufilter_reg *pReg = 0;
 	phl_stream_filter *pFilter;
 	pOps = FilterFindOps(zName,nName);
 	if( pOps == 0 ){
-		FilterWarn(pVm,"Unable to locate filter \"%.*s\"",nName,zName);
-		return 0;
+		/* Nothing built in answers to it; a script may have registered one. */
+		pReg = UserFilterFind(pVm,zName,nName);
+		if( pReg == 0 ){
+			FilterWarn(pVm,"Unable to locate filter \"%.*s\"",nName,zName);
+			return 0;
+		}
+		pFilter = UserFilterCreate(pVm,pReg,zName,nName,pParams,pStreamVal);
+		if( pFilter == 0 ){
+			FilterWarn(pVm,"Unable to create or locate filter \"%.*s\"",nName,zName);
+			return 0;
+		}
+		goto attach;
 	}
 	pFilter = FilterNew(pVm,pOps,zName,nName);
 	if( pFilter == 0 ){
@@ -1191,6 +1250,7 @@ PH7_PRIVATE phl_stream_filter * PH7_StreamFilterAttach(ph7_vm *pVm,io_private *p
 		FilterWarn(pVm,"Unable to create or locate filter \"%.*s\"",nName,zName);
 		return 0;
 	}
+attach:
 	pFilter->pDev = pDev;
 	pFilter->iChain = iChain;
 	if( bPrepend ){
@@ -1261,7 +1321,7 @@ static int StreamFilterAddCommon(ph7_context *pCtx,int nArg,ph7_value **apArg,in
 	}
 	if( iChain & PHL_STREAM_FILTER_READ ){
 		pFilter = PH7_StreamFilterAttach(pCtx->pVm,pDev,zName,nName,PHL_STREAM_FILTER_READ,
-			bPrepend,pParams);
+			bPrepend,pParams,apArg[0]);
 		if( pFilter == 0 ){
 			ph7_result_bool(pCtx,0);
 			return PH7_OK;
@@ -1269,7 +1329,7 @@ static int StreamFilterAddCommon(ph7_context *pCtx,int nArg,ph7_value **apArg,in
 	}
 	if( iChain & PHL_STREAM_FILTER_WRITE ){
 		pFilter = PH7_StreamFilterAttach(pCtx->pVm,pDev,zName,nName,PHL_STREAM_FILTER_WRITE,
-			bPrepend,pParams);
+			bPrepend,pParams,apArg[0]);
 		if( pFilter == 0 ){
 			ph7_result_bool(pCtx,0);
 			return PH7_OK;
@@ -1345,6 +1405,25 @@ PH7_PRIVATE int PH7_builtin_stream_get_filters(ph7_context *pCtx,int nArg,ph7_va
 		ph7_array_add_elem(pArray,0,pValue);
 		ph7_value_reset_string_cursor(pValue);
 	}
+	{
+		/* And whatever the script registered, newest last — php lists them
+		 * beside its own. */
+		phl_ufilter_reg *pReg;
+		SySet aName;
+		sxu32 i;
+		SySetInit(&aName,&pCtx->pVm->sAllocator,sizeof(phl_ufilter_reg *));
+		for( pReg = (phl_ufilter_reg *)pCtx->pVm->pUserFilters ; pReg ; pReg = pReg->pNext ){
+			SySetPut(&aName,(const void *)&pReg);
+		}
+		for( i = SySetUsed(&aName) ; i > 0 ; --i ){
+			phl_ufilter_reg **ppReg = (phl_ufilter_reg **)SySetAt(&aName,i-1);
+			ph7_value_string(pValue,(const char *)SyBlobData(&(*ppReg)->sName),
+				(int)SyBlobLength(&(*ppReg)->sName));
+			ph7_array_add_elem(pArray,0,pValue);
+			ph7_value_reset_string_cursor(pValue);
+		}
+		SySetRelease(&aName);
+	}
 	ph7_result_value(pCtx,pArray);
 	return PH7_OK;
 }
@@ -1375,11 +1454,11 @@ static void FilterUrlOne(ph7_vm *pVm,io_private *pDev,const char *zList,int nLis
 			int bOk = 1;
 			if( iChains & PHL_STREAM_FILTER_READ ){
 				bOk = PH7_StreamFilterAttach(pVm,pDev,&zList[i],j-i,
-					PHL_STREAM_FILTER_READ,0,0) != 0;
+					PHL_STREAM_FILTER_READ,0,0,0) != 0;
 			}
 			if( bOk && (iChains & PHL_STREAM_FILTER_WRITE) ){
 				bOk = PH7_StreamFilterAttach(pVm,pDev,&zList[i],j-i,
-					PHL_STREAM_FILTER_WRITE,0,0) != 0;
+					PHL_STREAM_FILTER_WRITE,0,0,0) != 0;
 			}
 			if( !bOk ){
 				/* The URL form says it TWICE: once about the name and once about
@@ -1422,5 +1501,542 @@ PH7_PRIVATE int PH7_StreamFilterParseUrl(ph7_vm *pVm,const char *zSpec,int nSpec
 		i = j + 1;
 	}
 	return PH7_OK;
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * Userland filters: stream_filter_register(), php_user_filter and the buckets.
+ *
+ * A userland filter is a CLASS, not a function: php instantiates it once per
+ * attachment, tells it what name it was created under and what params it was
+ * given, and then calls filter($in,$out,&$consumed,$closing) with two BRIGADE
+ * handles. The script walks `$in` with stream_bucket_make_writeable(), which
+ * hands over one bucket at a time as a StreamBucket object, and appends what it
+ * made to `$out`. What it RETURNS is the chain's answer: PSFS_PASS_ON,
+ * PSFS_FEED_ME or PSFS_ERR_FATAL.
+ *
+ * The bucket the script sees is a VALUE — its bytes live in the object's `data`
+ * property, which the script may replace outright — so the C bucket ends at
+ * make_writeable and stream_bucket_append() builds a new one from whatever the
+ * object holds when it is appended. `$bucket->bucket` is the handle php shows
+ * there; it is a token owned by the call, and it goes back with it.
+ * ---------------------------------------------------------------------------
+ */
+/* The `bucket` handle a StreamBucket carries. It names nothing the engine reads
+ * back — the bytes are in the object — and exists because php shows one. */
+typedef struct phl_bucket_tok phl_bucket_tok;
+struct phl_bucket_tok
+{
+	io_private base;           /* resource header (base.iMagic == STREAM_BUCKET_MAGIC) */
+	phl_bucket_tok *pNext;
+};
+/* The registration behind a name, php's own lookup: the exact name, then
+ * progressively shorter `prefix.*` wildcards. */
+static phl_ufilter_reg * UserFilterFind(ph7_vm *pVm,const char *zName,int nName)
+{
+	phl_ufilter_reg *pReg;
+	char zWild[128];
+	int nTry;
+	for( pReg = (phl_ufilter_reg *)pVm->pUserFilters ; pReg ; pReg = pReg->pNext ){
+		if( (int)SyBlobLength(&pReg->sName) == nName
+		 && SyMemcmp(SyBlobData(&pReg->sName),zName,(sxu32)nName) == 0 ){
+			return pReg;
+		}
+	}
+	nTry = nName;
+	for(;;){
+		while( nTry > 0 && zName[nTry-1] != '.' ){
+			nTry--;
+		}
+		if( nTry < 1 ){
+			break;
+		}
+		if( nTry + 1 < (int)sizeof(zWild) ){
+			SyMemcpy(zName,zWild,(sxu32)nTry);
+			zWild[nTry] = '*';
+			for( pReg = (phl_ufilter_reg *)pVm->pUserFilters ; pReg ; pReg = pReg->pNext ){
+				if( (int)SyBlobLength(&pReg->sName) == nTry + 1
+				 && SyMemcmp(SyBlobData(&pReg->sName),zWild,(sxu32)(nTry+1)) == 0 ){
+					return pReg;
+				}
+			}
+		}
+		nTry--;
+	}
+	return 0;
+}
+/* Call one of the three methods on the filter's instance. */
+static int UserFilterCall(phl_stream_filter *pFilter,const char *zMethod,int nArg,
+	ph7_value **apArg,ph7_value *pResult)
+{
+	ph7_class_instance *pObj = (ph7_class_instance *)pFilter->pObj;
+	ph7_class_method *pMeth;
+	if( pObj == 0 ){
+		return -1;
+	}
+	pMeth = PH7_ClassExtractMethod(pObj->pClass,zMethod,(sxu32)SyStrlen(zMethod));
+	if( pMeth == 0 ){
+		/* php requires nothing of the class but the name: a class that does not
+		 * extend php_user_filter and declares none of the three is registered
+		 * and attached without complaint, and only the missing filter() is ever
+		 * noticed — at the READ. */
+		return 1;
+	}
+	if( PH7_VmCallClassMethod(pFilter->pVm,pObj,pMeth,pResult,nArg,apArg) != SXRET_OK ){
+		return -1;
+	}
+	return 0;
+}
+static void UserFilterClose(phl_stream_filter *pFilter)
+{
+	ph7_value sRet;
+	if( pFilter->pObj ){
+		PH7_MemObjInit(pFilter->pVm,&sRet);
+		UserFilterCall(pFilter,"onClose",0,0,&sRet);
+		PH7_MemObjRelease(&sRet);
+		/* The instance was created here and is held by nothing else. */
+		PH7_ClassInstanceUnref((ph7_class_instance *)pFilter->pObj);
+		pFilter->pObj = 0;
+	}
+	if( pFilter->pStreamRes ){
+		ph7_release_value(pFilter->pVm,pFilter->pStreamRes);
+		pFilter->pStreamRes = 0;
+	}
+	pFilter->sIn.pBrig = 0;
+	pFilter->sOut.pBrig = 0;
+}
+/* Build a brigade handle for one filter() call. */
+static void UserBrigadeInit(phl_brigade_res *pRes,ph7_vm *pVm,phl_brigade *pBrig)
+{
+	pRes->base.iMagic = STREAM_BRIGADE_MAGIC;
+	pRes->pVm = pVm;
+	pRes->pBrig = pBrig;
+}
+/* The brigade behind the handle goes away with the call; the handle itself
+ * stays in bounds, so a script that kept one simply finds it empty. */
+static void UserBrigadeDetach(phl_brigade_res *pRes)
+{
+	pRes->pBrig = 0;
+}
+static phl_brigade_res * UserBrigadeFromValue(ph7_value *pVal)
+{
+	phl_brigade_res *pRes;
+	if( pVal == 0 || !ph7_value_is_resource(pVal) ){
+		return 0;
+	}
+	pRes = (phl_brigade_res *)ph7_value_to_resource(pVal);
+	if( pRes == 0 || pRes->base.iMagic != STREAM_BRIGADE_MAGIC ){
+		return 0;
+	}
+	return pRes;
+}
+/* One StreamBucket object around a run of bytes, with the token php shows. */
+static ph7_class_instance * UserBucketObject(ph7_vm *pVm,const char *zData,int nData)
+{
+	ph7_class *pClass;
+	ph7_class_instance *pObj;
+	phl_bucket_tok *pTok;
+	ph7_value *pSlot;
+	pClass = PH7_VmExtractClass(pVm,"StreamBucket",sizeof("StreamBucket")-1,FALSE,0);
+	pObj = pClass ? PH7_NewClassInstance(pVm,pClass) : 0;
+	if( pObj == 0 ){
+		return 0;
+	}
+	pTok = (phl_bucket_tok *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_bucket_tok));
+	if( pTok ){
+		SyZero(pTok,sizeof(*pTok));
+		pTok->base.iMagic = STREAM_BUCKET_MAGIC;
+		pSlot = PH7_NativeAttr(pObj,"bucket");
+		if( pSlot ){
+			PH7_MemObjRelease(pSlot);
+			pSlot->x.pOther = (void *)pTok;
+			pSlot->iFlags = MEMOBJ_RES;
+		}
+	}
+	PH7_NativeSetAttrStr(pVm,pObj,"data",zData,nData);
+	PH7_NativeSetAttrInt(pVm,pObj,"datalen",(sxi64)nData);
+	PH7_NativeSetAttrInt(pVm,pObj,"dataLength",(sxi64)nData);
+	return pObj;
+}
+/* The token goes back with the object that owns it — which is what keeps
+ * `$bucket->bucket` in bounds for as long as the script holds the bucket. */
+static void UserBucketRelease(ph7_vm *pVm,ph7_class_instance *pObj)
+{
+	ph7_value *pSlot = PH7_NativeAttr(pObj,"bucket");
+	if( pSlot && (pSlot->iFlags & MEMOBJ_RES) && pSlot->x.pOther ){
+		phl_bucket_tok *pTok = (phl_bucket_tok *)pSlot->x.pOther;
+		if( pTok->base.iMagic == STREAM_BUCKET_MAGIC ){
+			pTok->base.iMagic = 0;
+			SyMemBackendFree(&pVm->sAllocator,pTok);
+		}
+		pSlot->x.pOther = 0;
+		pSlot->iFlags = MEMOBJ_NULL;
+	}
+}
+/*
+ * The filter() call itself. php hands over four arguments — the two brigades,
+ * a by-reference $consumed that arrives as NULL, and whether this is the last
+ * call — and reads the answer as one of the PSFS_* codes.
+ */
+static int UserFilterRun(phl_stream_filter *pFilter,phl_brigade *pIn,phl_brigade *pOut,int iFlags)
+{
+	ph7_vm *pVm = pFilter->pVm;
+	ph7_value *apArg[4];
+	ph7_value sRet;
+	void *pSavedCall;
+	sxu32 nConsumedIdx = SXU32_HIGH;
+	int i,rc,iStatus;
+	if( pFilter->pObj == 0 ){
+		return PHL_PSFS_ERR_FATAL;
+	}
+	UserBrigadeInit(&pFilter->sIn,pVm,pIn);
+	UserBrigadeInit(&pFilter->sOut,pVm,pOut);
+	for( i = 0 ; i < 4 ; i++ ){
+		apArg[i] = ph7_new_scalar(pVm);
+	}
+	if( apArg[0] == 0 || apArg[1] == 0 || apArg[2] == 0 || apArg[3] == 0 ){
+		for( i = 0 ; i < 4 ; i++ ){
+			if( apArg[i] ){
+				ph7_release_value(pVm,apArg[i]);
+			}
+		}
+		UserBrigadeDetach(&pFilter->sIn);
+		UserBrigadeDetach(&pFilter->sOut);
+		return PHL_PSFS_ERR_FATAL;
+	}
+	ph7_value_resource(apArg[0],(void *)&pFilter->sIn);
+	ph7_value_resource(apArg[1],(void *)&pFilter->sOut);
+	/* php's $consumed is BY REFERENCE and arrives NULL, not 0. A by-ref
+	 * parameter binds to a caller SLOT, and the engine building the argument
+	 * has none to offer — so one is reserved here, exactly as a variable would
+	 * have, and the filter writes into it for real. */
+	{
+		ph7_value *pSlot = VmReserveMemObj(pVm,&nConsumedIdx);
+		if( pSlot == 0 ){
+			for( i = 0 ; i < 4 ; i++ ){
+				ph7_release_value(pVm,apArg[i]);
+			}
+			UserBrigadeDetach(&pFilter->sIn);
+			UserBrigadeDetach(&pFilter->sOut);
+			return PHL_PSFS_ERR_FATAL;
+		}
+		PH7_MemObjInit(pVm,pSlot);
+		pSlot->nIdx = nConsumedIdx;
+		ph7_value_null(apArg[2]);
+		apArg[2]->nIdx = nConsumedIdx;
+	}
+	ph7_value_bool(apArg[3],(iFlags & PHL_PSFS_FLAG_FLUSH_CLOSE) != 0);
+	/* php sets `$this->stream` for the duration of the call and for no longer:
+	 * onCreate() sees nothing there. */
+	if( pFilter->pStreamRes ){
+		ph7_value *pSlot = PH7_NativeAttr((ph7_class_instance *)pFilter->pObj,"stream");
+		if( pSlot ){
+			PH7_MemObjStore(pFilter->pStreamRes,pSlot);
+		}
+	}
+	pSavedCall = pVm->pFilterCall;
+	pVm->pFilterCall = (void *)&pFilter->sOut;
+	PH7_MemObjInit(pVm,&sRet);
+	rc = UserFilterCall(pFilter,"filter",4,apArg,&sRet);
+	pVm->pFilterCall = pSavedCall;
+	iStatus = rc == 0 ? (int)ph7_value_to_int(&sRet) : PHL_PSFS_ERR_FATAL;
+	PH7_MemObjRelease(&sRet);
+	for( i = 0 ; i < 4 ; i++ ){
+		ph7_release_value(pVm,apArg[i]);
+	}
+	if( nConsumedIdx != SXU32_HIGH ){
+		PH7_VmReleaseUnheldSlot(pVm,nConsumedIdx);
+	}
+	/* `stream` is set for the DURATION of the call, so onClose() finds nothing
+	 * there — which is what php shows. */
+	{
+		ph7_value *pSlot = PH7_NativeAttr((ph7_class_instance *)pFilter->pObj,"stream");
+		if( pSlot ){
+			PH7_MemObjRelease(pSlot);
+		}
+	}
+	UserBrigadeDetach(&pFilter->sIn);
+	UserBrigadeDetach(&pFilter->sOut);
+	if( iStatus != PHL_PSFS_PASS_ON && iStatus != PHL_PSFS_FEED_ME ){
+		return PHL_PSFS_ERR_FATAL;
+	}
+	return iStatus;
+}
+static const phl_filter_ops sUserFilterOps = { "", 0, UserFilterRun, UserFilterClose };
+/*
+ * Create the instance behind one attachment. php refuses when the class is not
+ * defined and when onCreate() answers FALSE, and says so twice on the second
+ * one — once about the class, once about the filter.
+ */
+static phl_stream_filter * UserFilterCreate(ph7_vm *pVm,phl_ufilter_reg *pReg,
+	const char *zName,int nName,ph7_value *pParams,ph7_value *pStream)
+{
+	phl_stream_filter *pFilter;
+	ph7_class *pClass;
+	ph7_class_instance *pObj;
+	ph7_value sRet;
+	int nClass = (int)SyBlobLength(&pReg->sClass);
+	const char *zClass = (const char *)SyBlobData(&pReg->sClass);
+	pClass = PH7_VmExtractClass(pVm,zClass,(sxu32)nClass,FALSE,0);
+	if( pClass == 0 ){
+		char zMsg[192];
+		SyBufferFormat(zMsg,sizeof(zMsg),
+			"User-filter \"%.*s\" requires class \"%.*s\", but that class is not defined",
+			nName,zName,nClass,zClass);
+		PH7_VmThrowError(pVm,pVm->pCalleeName,PH7_CTX_WARNING,zMsg);
+		return 0;
+	}
+	pObj = PH7_NewClassInstance(pVm,pClass);
+	if( pObj == 0 ){
+		return 0;
+	}
+	pFilter = FilterNew(pVm,&sUserFilterOps,zName,nName);
+	if( pFilter == 0 ){
+		PH7_ClassInstanceUnref(pObj);
+		return 0;
+	}
+	pFilter->pObj = (void *)pObj;
+	/* The name it was created UNDER, which a wildcard registration needs: a
+	 * `my.*` filter asked for as `my.thing` is told `my.thing`. */
+	PH7_NativeSetAttrStr(pVm,pObj,"filtername",zName,nName);
+	{
+		ph7_value *pSlot = PH7_NativeAttr(pObj,"params");
+		if( pSlot ){
+			if( pParams ){
+				PH7_MemObjStore(pParams,pSlot);
+			}else{
+				PH7_MemObjRelease(pSlot);
+			}
+		}
+	}
+	if( pStream ){
+		pFilter->pStreamRes = ph7_new_scalar(pVm);
+		if( pFilter->pStreamRes ){
+			PH7_MemObjStore(pStream,pFilter->pStreamRes);
+		}
+	}
+	PH7_MemObjInit(pVm,&sRet);
+	/* A class with no onCreate() of its own simply has nothing to refuse with. */
+	if( UserFilterCall(pFilter,"onCreate",0,0,&sRet) == 0 && !ph7_value_to_bool(&sRet) ){
+		PH7_MemObjRelease(&sRet);
+		/* php does not call onClose() for a filter onCreate() refused, so the
+		 * instance goes back here rather than through the close path. */
+		PH7_ClassInstanceUnref(pObj);
+		pFilter->pObj = 0;
+		FilterDispose(pFilter);
+		return 0;
+	}
+	PH7_MemObjRelease(&sRet);
+	return pFilter;
+}
+/*
+ * bool stream_filter_register(string $filter_name, string $class)
+ *  php refuses an empty name or class outright, and answers FALSE for a name
+ *  that is already taken rather than replacing it.
+ */
+PH7_PRIVATE int PH7_builtin_stream_filter_register(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	phl_ufilter_reg *pReg;
+	const char *zName,*zClass;
+	int nName,nClass;
+	SXUNUSED(nArg);
+	zName = ph7_value_to_string(apArg[0],&nName);
+	zClass = ph7_value_to_string(apArg[1],&nClass);
+	if( nName < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #1 ($filter_name) must be a non-empty string",
+			ph7_function_name(pCtx));
+	}
+	if( nClass < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #2 ($class) must be a non-empty string",
+			ph7_function_name(pCtx));
+	}
+	if( FilterFindOpsExact(zName,nName) != 0 ){
+		/* A name one of the built-ins answers to is taken. */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	for( pReg = (phl_ufilter_reg *)pVm->pUserFilters ; pReg ; pReg = pReg->pNext ){
+		if( (int)SyBlobLength(&pReg->sName) == nName
+		 && SyMemcmp(SyBlobData(&pReg->sName),zName,(sxu32)nName) == 0 ){
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+	}
+	pReg = (phl_ufilter_reg *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_ufilter_reg));
+	if( pReg == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	SyZero(pReg,sizeof(*pReg));
+	SyBlobInit(&pReg->sName,&pVm->sAllocator);
+	SyBlobInit(&pReg->sClass,&pVm->sAllocator);
+	SyBlobAppend(&pReg->sName,zName,(sxu32)nName);
+	SyBlobAppend(&pReg->sClass,zClass,(sxu32)nClass);
+	pReg->pNext = (phl_ufilter_reg *)pVm->pUserFilters;
+	pVm->pUserFilters = (void *)pReg;
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/*
+ * ?StreamBucket stream_bucket_make_writeable(resource $brigade)
+ *  Take the next bucket off the brigade, as an object the script owns.
+ */
+PH7_PRIVATE int PH7_builtin_stream_bucket_make_writeable(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_brigade_res *pRes;
+	phl_bucket *pBucket;
+	ph7_class_instance *pObj;
+	SXUNUSED(nArg);
+	pRes = UserBrigadeFromValue(apArg[0]);
+	if( pRes == 0 ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #1 ($brigade) must be of type resource, %s given",
+			ph7_function_name(pCtx),ph7_type_name(apArg[0]));
+	}
+	pBucket = pRes->pBrig ? FilterBucketPop(pRes->pBrig) : 0;
+	if( pBucket == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pObj = UserBucketObject(pRes->pVm,(const char *)SyBlobData(&pBucket->sData),
+		(int)SyBlobLength(&pBucket->sData));
+	PH7_FilterBucketFree(pRes->pVm,pBucket);
+	if( pObj == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_NativeResultObject(pCtx,pObj);
+	return PH7_OK;
+}
+/* The two that put one back, differing only in WHICH end. */
+static int UserBucketPut(ph7_context *pCtx,ph7_value **apArg,int bPrepend)
+{
+	phl_brigade_res *pRes;
+	ph7_class_instance *pObj;
+	phl_bucket *pBucket;
+	const char *zData = "";
+	int nData = 0;
+	pRes = UserBrigadeFromValue(apArg[0]);
+	if( pRes == 0 ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #1 ($brigade) must be of type resource, %s given",
+			ph7_function_name(pCtx),ph7_type_name(apArg[0]));
+	}
+	if( !ph7_value_is_object(apArg[1]) ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #2 ($bucket) must be of type object, %s given",
+			ph7_function_name(pCtx),ph7_type_name(apArg[1]));
+	}
+	pObj = (ph7_class_instance *)apArg[1]->x.pOther;
+	/* The bytes are whatever the object holds NOW: a filter that replaced
+	 * `$bucket->data` outright is the ordinary way to write one. */
+	PH7_NativeAttrStr(pObj,"data",&zData,&nData);
+	if( pRes->pBrig == 0 ){
+		/* A handle kept past the call it belonged to: there is nothing to put
+		 * it back into. */
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pBucket = PH7_FilterBucketNew(pRes->pVm,zData,(sxu32)nData);
+	if( pBucket == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( bPrepend ){
+		pBucket->pNext = pRes->pBrig->pHead;
+		pRes->pBrig->pHead = pBucket;
+		if( pRes->pBrig->pTail == 0 ){
+			pRes->pBrig->pTail = pBucket;
+		}
+	}else{
+		PH7_FilterBucketAppend(pRes->pBrig,pBucket);
+	}
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+PH7_PRIVATE int PH7_builtin_stream_bucket_append(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	return UserBucketPut(pCtx,apArg,0);
+}
+PH7_PRIVATE int PH7_builtin_stream_bucket_prepend(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	return UserBucketPut(pCtx,apArg,1);
+}
+/*
+ * StreamBucket stream_bucket_new(resource $stream, string $buffer)
+ *  A bucket of the filter's own making — the only way to emit a TAIL, since the
+ *  closing call arrives with an empty brigade.
+ */
+PH7_PRIVATE int PH7_builtin_stream_bucket_new(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pObj;
+	const char *zData;
+	int nData;
+	SXUNUSED(nArg);
+	zData = ph7_value_to_string(apArg[1],&nData);
+	pObj = UserBucketObject(pCtx->pVm,zData,nData);
+	if( pObj == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_NativeResultObject(pCtx,pObj);
+	return PH7_OK;
+}
+/*
+ * php_user_filter and StreamBucket. The three methods are the ones a filter
+ * OVERRIDES; their bodies here are php's own do-nothing defaults, and a class
+ * that overrides none of them is a filter that refuses every read — which is
+ * what php answers too.
+ */
+static int vm_builtin_user_filter_filter(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_int(pCtx,PHL_PSFS_ERR_FATAL);
+	return PH7_OK;
+}
+static int vm_builtin_user_filter_onCreate(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+static int vm_builtin_user_filter_onClose(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+PH7_PRIVATE sxi32 PH7_VmInstallStreamFilter(ph7_vm *pVm)
+{
+	static const PH7_NativeMethodDef aFilterMethod[] = {
+		{ "filter", PH7_MOD_PUBLIC, "$in, $out, &$consumed, bool $closing", "int",
+		  vm_builtin_user_filter_filter },
+		{ "onCreate", PH7_MOD_PUBLIC, "", "bool", vm_builtin_user_filter_onCreate },
+		{ "onClose", PH7_MOD_PUBLIC, "", "void", vm_builtin_user_filter_onClose },
+	};
+	static const PH7_NativePropDef aFilterProp[] = {
+		{ "filtername", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, "string" },
+		{ "params", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
+		{ "stream", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+	};
+	static const PH7_NativePropDef aBucketProp[] = {
+		{ "bucket", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ "data", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, "string" },
+		{ "datalen", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, "int" },
+		{ "dataLength", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, "int" },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "php_user_filter", 0, 0, 0,
+		  aFilterMethod, SX_ARRAYSIZE(aFilterMethod), 0, 0,
+		  aFilterProp, SX_ARRAYSIZE(aFilterProp), 0, 0, 0 },
+		{ "StreamBucket", 0, 0, PH7_CLASS_FINAL,
+		  0, 0, 0, 0,
+		  aBucketProp, SX_ARRAYSIZE(aBucketProp), UserBucketRelease, 0, 0 },
+	};
+	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }
 #endif /* PH7_DISABLE_DISK_IO */

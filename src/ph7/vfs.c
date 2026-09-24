@@ -3098,6 +3098,11 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"stream_filter_prepend", PH7_builtin_stream_filter_prepend },
 		{"stream_filter_remove",  PH7_builtin_stream_filter_remove },
 		{"stream_get_filters",    PH7_builtin_stream_get_filters },
+		{"stream_filter_register",PH7_builtin_stream_filter_register },
+		{"stream_bucket_make_writeable", PH7_builtin_stream_bucket_make_writeable },
+		{"stream_bucket_append",  PH7_builtin_stream_bucket_append },
+		{"stream_bucket_prepend", PH7_builtin_stream_bucket_prepend },
+		{"stream_bucket_new",     PH7_builtin_stream_bucket_new },
 #ifdef PH7_ENABLE_NET
 		{"fsockopen",  PH7_builtin_fsockopen },
 		{"pfsockopen", PH7_builtin_fsockopen },

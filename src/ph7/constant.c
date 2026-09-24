@@ -539,6 +539,40 @@ static void PH7_STREAM_IS_URL_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData);
 }
 /*
+ * A userland filter's ANSWER, and which kind of call it is answering. FEED_ME
+ * says "I produced nothing, ask me again with more"; ERR_FATAL ends the stream.
+ */
+static void PH7_PSFS_PASS_ON_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_PSFS_PASS_ON);
+	SXUNUSED(pUserData);
+}
+static void PH7_PSFS_FEED_ME_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_PSFS_FEED_ME);
+	SXUNUSED(pUserData);
+}
+static void PH7_PSFS_ERR_FATAL_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_PSFS_ERR_FATAL);
+	SXUNUSED(pUserData);
+}
+static void PH7_PSFS_FLAG_NORMAL_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_PSFS_FLAG_NORMAL);
+	SXUNUSED(pUserData);
+}
+static void PH7_PSFS_FLAG_FLUSH_INC_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_PSFS_FLAG_FLUSH_INC);
+	SXUNUSED(pUserData);
+}
+static void PH7_PSFS_FLAG_FLUSH_CLOSE_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_PSFS_FLAG_FLUSH_CLOSE);
+	SXUNUSED(pUserData);
+}
+/*
  * stream_filter_append()'s $mode — WHICH chain the filter joins. php's 0 is not
  * "neither": it means "whichever chains the handle's own mode makes sense for".
  */
@@ -2395,6 +2429,12 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"STREAM_CLIENT_CONNECT",        PH7_STREAM_CLIENT_CONNECT_Const },
 	{"STREAM_CLIENT_ASYNC_CONNECT",  PH7_STREAM_CLIENT_ASYNC_CONNECT_Const },
 	{"STREAM_CLIENT_PERSISTENT",     PH7_STREAM_CLIENT_PERSISTENT_Const },
+	{"PSFS_PASS_ON",                 PH7_PSFS_PASS_ON_Const },
+	{"PSFS_FEED_ME",                 PH7_PSFS_FEED_ME_Const },
+	{"PSFS_ERR_FATAL",               PH7_PSFS_ERR_FATAL_Const },
+	{"PSFS_FLAG_NORMAL",             PH7_PSFS_FLAG_NORMAL_Const },
+	{"PSFS_FLAG_FLUSH_INC",          PH7_PSFS_FLAG_FLUSH_INC_Const },
+	{"PSFS_FLAG_FLUSH_CLOSE",        PH7_PSFS_FLAG_FLUSH_CLOSE_Const },
 	{"STREAM_FILTER_READ",           PH7_STREAM_FILTER_READ_Const },
 	{"STREAM_FILTER_WRITE",          PH7_STREAM_FILTER_WRITE_Const },
 	{"STREAM_FILTER_ALL",            PH7_STREAM_FILTER_ALL_Const },

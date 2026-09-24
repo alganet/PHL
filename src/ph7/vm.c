@@ -2299,6 +2299,11 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 #ifndef PH7_DISABLE_HASH_FUNC
 	PH7_VmInstallHashContext(&(*pVm));
 #endif
+#ifndef PH7_DISABLE_DISK_IO
+	/* php_user_filter and StreamBucket: the classes stream_filter_register()
+	 * builds its filters out of. */
+	PH7_VmInstallStreamFilter(&(*pVm));
+#endif
 	PH7_VmInstallTokenizer(&(*pVm));
 	PH7_VmInstallSession(&(*pVm));
 	PH7_VmInstallIni(&(*pVm));

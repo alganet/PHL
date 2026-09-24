@@ -2599,6 +2599,10 @@ struct ph7_vm
 	 * chain owns every filter INSTANCE the script created, so one that is never
 	 * removed still goes back at reset. */
 	void *pStreamFilter;       /* phl_stream_filter registry chain; freed on reset */
+	void *pUserFilters;        /* stream_filter_register() name => class chain */
+	void *pFilterCall;         /* phl_brigade_res* — the `$out` of the filter() call
+	                            * in flight, which is what stream_bucket_new()
+	                            * hangs its token on */
 	SyString *pCalleeName;     /* the builtin currently running, for diagnostics
 	                            * raised where no ph7_context reaches (see vm_exec.c) */
 	ph7_vm *pNext,*pPrev;      /* List of active VM's */
@@ -3762,6 +3766,7 @@ struct io_private
 	SyBlob sFilt;         /* filtered bytes not yet handed to a reader */
 	sxu32 nFiltOfft;      /* read offset inside sFilt */
 	sxu8 bFiltDone;       /* the read chain already had its CLOSING call */
+	sxu8 bFiltErr;        /* a filter REFUSED: the next read answers false, once */
 	ph7_int64 iFiltPos;   /* bytes the read CHAIN has delivered: php's position
 	                       * for a filtered stream counts what came OUT, which
 	                       * has nothing to do with the device's own offset */
@@ -3847,6 +3852,10 @@ typedef struct phl_bucket phl_bucket;
 typedef struct phl_brigade phl_brigade;
 typedef struct phl_stream_filter phl_stream_filter;
 typedef struct phl_filter_ops phl_filter_ops;
+/* stream_filter_register()'s two script-visible handles. php names them
+ * `userfilter.bucket brigade` and `userfilter.bucket`. */
+#define STREAM_BRIGADE_MAGIC 0xB817AD
+#define STREAM_BUCKET_MAGIC  0xB0C4E7
 /* One bucket: a run of bytes travelling through a chain. */
 struct phl_bucket
 {
@@ -3856,6 +3865,18 @@ struct phl_bucket
 struct phl_brigade
 {
 	phl_bucket *pHead,*pTail;
+};
+/* The brigade a userland filter() is handed. Both `$in` and `$out` are one of
+ * these. They belong to the FILTER rather than to the call, so a script that
+ * held one past the call it was handed in still has something in bounds to look
+ * at — what it loses is the brigade behind it, which is cleared on the way out
+ * and makes a stale handle answer "empty". */
+typedef struct phl_brigade_res phl_brigade_res;
+struct phl_brigade_res
+{
+	io_private base;      /* resource header (base.iMagic == STREAM_BRIGADE_MAGIC) */
+	ph7_vm *pVm;
+	phl_brigade *pBrig;   /* the brigade it stands for, 0 between calls */
 };
 /* What a built-in filter IS. A userland filter has no ops and runs its class. */
 struct phl_filter_ops
@@ -3882,6 +3903,7 @@ struct phl_stream_filter
 	phl_stream_filter *pNext;   /* next filter in that chain */
 	phl_stream_filter *pRegNext;/* VM registry chain (pVm->pStreamFilter) */
 	void *pPriv;                /* per-filter private state, freed by xClose */
+	phl_brigade_res sIn,sOut;   /* the two handles filter() is given */
 	void *pObj;                 /* userland filter instance (ph7_class_instance*) */
 	ph7_value *pStreamRes;      /* the $stream the userland filter's property answers */
 };
@@ -3893,7 +3915,7 @@ PH7_PRIVATE void PH7_FilterBrigadeRelease(ph7_vm *pVm,phl_brigade *pBrig);
 /* Run one chain over nLen bytes, appending what came out to pOut. Answers a
  * PHL_PSFS_* code; ERR_FATAL means the stream is finished. */
 PH7_PRIVATE int PH7_FilterChainProcess(phl_stream_filter *pHead,
-	const void *pData,sxu32 nLen,int iFlags,int iRestFlags,SyBlob *pOut);
+	const void *pData,sxu32 nLen,int iFlags,int iRestFlags,SyBlob *pOut,int *pbUnread);
 /* A seek moved the device: a chain that had already been CLOSED at the old end
  * of file has to be able to run again. */
 PH7_PRIVATE void PH7_StreamFilterRewound(io_private *pDev);
@@ -3903,11 +3925,19 @@ PH7_PRIVATE void PH7_StreamFilterReleaseChains(io_private *pDev);
 /* Attach a filter by NAME, php's own failure diagnostics raised from pCtx.
  * Answers the filter, or 0 when there is no such name. */
 PH7_PRIVATE phl_stream_filter * PH7_StreamFilterAttach(ph7_vm *pVm,io_private *pDev,
-	const char *zName,int nName,int iChain,int bPrepend,ph7_value *pParams);
+	const char *zName,int nName,int iChain,int bPrepend,ph7_value *pParams,
+	ph7_value *pStreamVal);
 /* The filter behind a ph7_value, or 0 when the value is not a live one. */
 PH7_PRIVATE phl_stream_filter * PH7_StreamFilterFromValue(ph7_value *pVal);
 /* Drop every filter this VM created (called from PH7_VmReset). */
 PH7_PRIVATE void PH7_StreamFilterVmReset(ph7_vm *pVm);
+/* The stream_filter_register()/php_user_filter half. */
+PH7_PRIVATE int PH7_builtin_stream_filter_register(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_bucket_make_writeable(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_bucket_append(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_bucket_prepend(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_bucket_new(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE sxi32 PH7_VmInstallStreamFilter(ph7_vm *pVm);
 /* Attach the filters a php://filter URL names to the handle it wrapped. */
 PH7_PRIVATE int PH7_StreamFilterParseUrl(ph7_vm *pVm,const char *zSpec,int nSpec,
 	io_private *pDev,int iChains);

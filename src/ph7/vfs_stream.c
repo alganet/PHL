@@ -164,6 +164,14 @@ PH7_PRIVATE const char * PH7_VfsResourceType(void *pResource)
 		/* stream_context_create()'s handle, and the name php gives it. */
 		return "stream-context";
 	}
+	if( pDev && pDev->iMagic == STREAM_BUCKET_MAGIC ){
+		/* The handle a StreamBucket carries; php shows one there. */
+		return "userfilter.bucket";
+	}
+	if( pDev && pDev->iMagic == STREAM_BRIGADE_MAGIC ){
+		/* The `$in` and `$out` a userland filter() is handed. */
+		return "userfilter.bucket brigade";
+	}
 	if( pDev && pDev->iMagic == STREAM_FILTER_MAGIC ){
 		/* stream_filter_append()'s handle. Note the SPACE: php names the context
 		 * `stream-context` and the filter `stream filter`. */
@@ -615,6 +623,7 @@ static ph7_int64 IoPrivateFilteredRead(io_private *pDev,void *pBuf,ph7_int64 nLe
 	phl_stream_filter *pChain = (phl_stream_filter *)pDev->pReadFilters;
 	sxu32 nAvail;
 	ph7_int64 n;
+
 	while( pChain != 0 && !pDev->bFiltDone
 	    && (ph7_int64)(SyBlobLength(&pDev->sFilt) - pDev->nFiltOfft) < nLen ){
 		char zRaw[8192];
@@ -636,7 +645,7 @@ static ph7_int64 IoPrivateFilteredRead(io_private *pDev,void *pBuf,ph7_int64 nLe
 			int iF = nRaw > 0 ? PHL_PSFS_FLAG_NORMAL : PHL_PSFS_FLAG_FLUSH_CLOSE;
 			/* The device's end closes EVERY filter on the stream, not just the
 			 * head: each one's tail has to travel through the rest. */
-			iStatus = PH7_FilterChainProcess(pChain,zRaw,(sxu32)nRaw,iF,iF,&pDev->sFilt);
+			iStatus = PH7_FilterChainProcess(pChain,zRaw,(sxu32)nRaw,iF,iF,&pDev->sFilt,0);
 		}
 		if( nRaw == 0 ){
 			/* The device is spent, and the call above was the chain's CLOSING
@@ -646,11 +655,12 @@ static ph7_int64 IoPrivateFilteredRead(io_private *pDev,void *pBuf,ph7_int64 nLe
 			break;
 		}
 		if( iStatus == PHL_PSFS_ERR_FATAL ){
-			/* A filter saying the stream is FINISHED ends the reading, but what
-			 * earlier calls already produced still belongs to the reader: php
-			 * hands back what it had buffered and then reports the end. Only the
-			 * failing call's own output is lost. */
+			/* A refusal ends the reading. php reports it to the reader as a
+			 * FAILURE — `fread()` answers false, once — and only then as an end
+			 * of file; what earlier calls already produced is still the
+			 * reader's, so the failure waits behind it. */
 			pDev->bFiltDone = 1;
+			pDev->bFiltErr = 1;
 			break;
 		}
 	}
@@ -658,6 +668,10 @@ static ph7_int64 IoPrivateFilteredRead(io_private *pDev,void *pBuf,ph7_int64 nLe
 	if( nAvail < 1 ){
 		SyBlobReset(&pDev->sFilt);
 		pDev->nFiltOfft = 0;
+		if( pDev->bFiltErr ){
+			pDev->bFiltErr = 0;   /* reported once; the read after it is an end */
+			return -1;
+		}
 		return pChain != 0 ? 0 : IoPrivateRawRead(pDev,pBuf,nLen);
 	}
 	n = (ph7_int64)nAvail;
@@ -755,7 +769,7 @@ PH7_PRIVATE ph7_int64 PH7_StreamWrite(io_private *pDev,const void *pData,ph7_int
 	}
 	SyBlobInit(&sOut,pDev->sBuffer.pAllocator);
 	iStatus = PH7_FilterChainProcess(pChain,pData,(sxu32)nLen,
-		PHL_PSFS_FLAG_NORMAL,PHL_PSFS_FLAG_NORMAL,&sOut);
+		PHL_PSFS_FLAG_NORMAL,PHL_PSFS_FLAG_NORMAL,&sOut,0);
 	if( iStatus == PHL_PSFS_ERR_FATAL ){
 		SyBlobRelease(&sOut);
 		return -1;
@@ -3374,6 +3388,7 @@ PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_priva
 	pOut->pReadFilters = 0;
 	pOut->pWriteFilters = 0;
 	pOut->bFiltDone = 0;
+	pOut->bFiltErr = 0;
 	pOut->iFiltPos = 0;
 	pOut->pCtxRes = 0;
 	SyBlobInit(&pOut->sFilt,&pVm->sAllocator);
@@ -3452,6 +3467,7 @@ static void ResetIOPrivate(io_private *pDev)
 	SyBlobReset(&pDev->sFilt);
 	pDev->nFiltOfft = 0;
 	pDev->bFiltDone = 0;
+	pDev->bFiltErr = 0;
 	PH7_StreamFilterRewound(pDev);
 	/* Every caller of this has just MOVED the device (a seek, a rewind, a
 	 * truncate), and php clears the end-of-file flag on exactly those. */
