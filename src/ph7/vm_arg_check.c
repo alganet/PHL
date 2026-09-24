@@ -790,6 +790,7 @@ static const struct VmBuiltinSig {
 	{ "parse_str", "string $string, &$result", "void" },
 	{ "parse_url", "string $url, int $component = -1", "array|string|int|false|null" },
 	{ "crypt", "string $string, string $salt", "string" },
+	{ "password_algos", "", "array" },
 	{ "password_get_info", "string $hash", "array" },
 	{ "password_hash", "string $password, string|int|null $algo, array $options = ?", "string" },
 	{ "password_needs_rehash", "string $hash, string|int|null $algo, array $options = ?", "bool" },

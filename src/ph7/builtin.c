@@ -900,6 +900,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "password_verify",       PH7_builtin_password_verify },
 	{ "password_get_info",     PH7_builtin_password_get_info },
 	{ "password_needs_rehash", PH7_builtin_password_needs_rehash },
+	{ "password_algos",        PH7_builtin_password_algos },
 	{ "filter_var",            PH7_builtin_filter_var },
 	{ "filter_input",          PH7_builtin_filter_input },
 	{ "filter_list",           PH7_builtin_filter_list },

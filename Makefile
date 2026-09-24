@@ -34,6 +34,7 @@ OBJECTS = \
 	$(BUILD_DIR)/src/sx/sxhash$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxblowfish$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/sx/sxcrypt$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/sx/sxargon2$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/api$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/builtin$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/builtin_date$(OBJ_SUFFIX) \

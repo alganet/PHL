@@ -31,6 +31,7 @@ PH7_PRIVATE const char *ph7_type_name(ph7_value *pVal);
 #include "sxdigest.h"     /* MD5Context, SHA1Context, digest functions */
 #include "sxblowfish.h"   /* bcrypt (Blowfish) password hashing */
 #include "sxcrypt.h"      /* Unix crypt(3): DES/MD5/SHA-crypt behind crypt() */
+#include "sxargon2.h"     /* Argon2i/id (RFC 9106) behind password_hash() */
 
 #ifndef PH7_PI
 /* Value of PI */
@@ -4686,6 +4687,7 @@ PH7_PRIVATE int PH7_builtin_hash_equals(ph7_context *pCtx,int nArg,ph7_value **a
 PH7_PRIVATE int PH7_builtin_hash_algos(ph7_context *pCtx,int nArg,ph7_value **apArg);
 #endif /* PH7_DISABLE_HASH_FUNC */
 PH7_PRIVATE int PH7_builtin_crypt(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_password_algos(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_password_hash(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_password_verify(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_password_get_info(ph7_context *pCtx,int nArg,ph7_value **apArg);

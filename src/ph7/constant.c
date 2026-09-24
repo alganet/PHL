@@ -2272,6 +2272,35 @@ static void PH7_PASSWORD_COST_Const(ph7_value *pVal,void *pUnused)
 	ph7_value_int(pVal,12);
 }
 /*
+ * PASSWORD_ARGON2I / PASSWORD_ARGON2ID and the three argon2 option defaults
+ * password_hash() reads when $options omits them.
+ */
+static void PH7_PASSWORD_ARGON2I_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_string(pVal,"argon2i",(int)sizeof("argon2i")-1);
+}
+static void PH7_PASSWORD_ARGON2ID_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_string(pVal,"argon2id",(int)sizeof("argon2id")-1);
+}
+static void PH7_ARGON2_MEM_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,65536);
+}
+static void PH7_ARGON2_TIME_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,4);
+}
+static void PH7_ARGON2_THREADS_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,1);
+}
+/*
  * CRYPT_* — the crypt() capability flags. Every scheme is compiled in, so all
  * six are 1, and CRYPT_SALT_LENGTH is php's 123 (the longest setting string a
  * SHA-512-crypt with an explicit rounds count can need).
@@ -2381,6 +2410,11 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"PASSWORD_BCRYPT",      PH7_PASSWORD_BCRYPT_Const },
 	{"PASSWORD_DEFAULT",     PH7_PASSWORD_BCRYPT_Const },
 	{"PASSWORD_BCRYPT_DEFAULT_COST", PH7_PASSWORD_COST_Const },
+	{"PASSWORD_ARGON2I",     PH7_PASSWORD_ARGON2I_Const },
+	{"PASSWORD_ARGON2ID",    PH7_PASSWORD_ARGON2ID_Const },
+	{"PASSWORD_ARGON2_DEFAULT_MEMORY_COST", PH7_ARGON2_MEM_Const },
+	{"PASSWORD_ARGON2_DEFAULT_TIME_COST",   PH7_ARGON2_TIME_Const },
+	{"PASSWORD_ARGON2_DEFAULT_THREADS",     PH7_ARGON2_THREADS_Const },
 	{"FILTER_DEFAULT",              PH7_FILTER_DEFAULT_Const },
 	{"FILTER_UNSAFE_RAW",           PH7_FILTER_UNSAFE_RAW_Const },
 	{"FILTER_VALIDATE_INT",         PH7_FILTER_VALIDATE_INT_Const },

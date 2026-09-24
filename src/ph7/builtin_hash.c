@@ -1549,16 +1549,19 @@ static int BcryptParseHash(const char *zHash,int nHash,int *piCost)
 }
 /*
  * Resolve password_hash()'s $algo the way php's registry lookup does. NULL and
- * the pre-7.4 INT ids 0 (PASSWORD_DEFAULT) and 1 (PASSWORD_BCRYPT) select
- * bcrypt — a bool arrives on the int path, php's ZPP shape for string|int|null
- * — and a STRING names an algo directly ("2y" is the only registered one). The
- * string form is a name, not a number: '1' and '0' resolve to nothing, exactly
- * as in php. Returns PW_ALGO_NONE for a value that names no algorithm; the two
- * callers disagree on what that means (password_hash() throws the ValueError,
- * password_needs_rehash() answers FALSE).
+ * the pre-7.4 INT ids 0 (PASSWORD_DEFAULT), 1 (PASSWORD_BCRYPT), 2 (ARGON2I)
+ * and 3 (ARGON2ID) select their algorithm — a bool arrives on the int path,
+ * php's ZPP shape for string|int|null — and a STRING names an algo directly
+ * ("2y", "argon2i", "argon2id"). The string form is a name, not a number: '1'
+ * and '0' resolve to nothing, exactly as in php. Returns PW_ALGO_NONE for a
+ * value that names no algorithm; the two callers disagree on what that means
+ * (password_hash() throws the ValueError, password_needs_rehash() answers
+ * FALSE).
  */
-#define PW_ALGO_NONE   0
-#define PW_ALGO_BCRYPT 1
+#define PW_ALGO_NONE     0
+#define PW_ALGO_BCRYPT   1
+#define PW_ALGO_ARGON2I  2
+#define PW_ALGO_ARGON2ID 3
 static int PasswordResolveAlgo(ph7_value *pAlgo)
 {
 	if( ph7_value_is_null(pAlgo) ){
@@ -1568,7 +1571,10 @@ static int PasswordResolveAlgo(ph7_value *pAlgo)
 		/* int, bool, and the integral float ZPP folds to int (1.0 → 1) — but
 		 * NOT a numeric string: '1' is a NAME lookup in php, and finds nothing. */
 		sxi64 iAlgo = PH7_ValuePeekInt64(pAlgo);
-		return ( iAlgo == 0 || iAlgo == 1 ) ? PW_ALGO_BCRYPT : PW_ALGO_NONE;
+		if( iAlgo == 0 || iAlgo == 1 ){ return PW_ALGO_BCRYPT; }
+		if( iAlgo == 2 ){ return PW_ALGO_ARGON2I; }
+		if( iAlgo == 3 ){ return PW_ALGO_ARGON2ID; }
+		return PW_ALGO_NONE;
 	}
 	if( ph7_value_is_string(pAlgo) ){
 		int nAlgo;
@@ -1576,8 +1582,242 @@ static int PasswordResolveAlgo(ph7_value *pAlgo)
 		if( nAlgo == 2 && zAlgo[0] == '2' && zAlgo[1] == 'y' ){
 			return PW_ALGO_BCRYPT;
 		}
+		if( nAlgo == 7 && SyMemcmp(zAlgo,"argon2i",7) == 0 ){
+			return PW_ALGO_ARGON2I;
+		}
+		if( nAlgo == 8 && SyMemcmp(zAlgo,"argon2id",8) == 0 ){
+			return PW_ALGO_ARGON2ID;
+		}
 	}
 	return PW_ALGO_NONE;
+}
+/*
+ * The Argon2 half of the password_* surface. php's defaults, error shapes and
+ * hash-string grammar, oracle-verified; the compute core is sxargon2.c.
+ */
+#define PW_ARGON2_DEF_MEM     65536   /* PASSWORD_ARGON2_DEFAULT_MEMORY_COST */
+#define PW_ARGON2_DEF_TIME    4       /* PASSWORD_ARGON2_DEFAULT_TIME_COST */
+#define PW_ARGON2_DEF_THREADS 1       /* PASSWORD_ARGON2_DEFAULT_THREADS */
+/* Unpadded standard base64, the argon2 hash-string encoding. Emit returns the
+ * character count; decode answers the byte count or -1 on a foreign char. */
+static const char zStdB64[] =
+	"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+static int Argon2B64Encode(char *zOut,const unsigned char *pIn,sxu32 nIn)
+{
+	sxu32 i;
+	int n = 0;
+	for( i = 0; i + 2 < nIn; i += 3 ){
+		sxu32 w = ((sxu32)pIn[i] << 16) | ((sxu32)pIn[i+1] << 8) | pIn[i+2];
+		zOut[n++] = zStdB64[(w >> 18) & 0x3f]; zOut[n++] = zStdB64[(w >> 12) & 0x3f];
+		zOut[n++] = zStdB64[(w >> 6) & 0x3f];  zOut[n++] = zStdB64[w & 0x3f];
+	}
+	if( i + 1 == nIn ){
+		sxu32 w = (sxu32)pIn[i] << 16;
+		zOut[n++] = zStdB64[(w >> 18) & 0x3f]; zOut[n++] = zStdB64[(w >> 12) & 0x3f];
+	}else if( i + 2 == nIn ){
+		sxu32 w = ((sxu32)pIn[i] << 16) | ((sxu32)pIn[i+1] << 8);
+		zOut[n++] = zStdB64[(w >> 18) & 0x3f]; zOut[n++] = zStdB64[(w >> 12) & 0x3f];
+		zOut[n++] = zStdB64[(w >> 6) & 0x3f];
+	}
+	return n;
+}
+static int Argon2B64Decode(const char *zIn,sxu32 nIn,unsigned char *pOut,sxu32 nOutMax)
+{
+	sxu32 nBits = 0, nAcc = 0, i;
+	int n = 0;
+	if( (nIn & 3) == 1 ){
+		return -1;    /* no 6-bit remainder can encode fewer than 8 bits */
+	}
+	for( i = 0; i < nIn; i++ ){
+		int v = -1;
+		char c = zIn[i];
+		if( c >= 'A' && c <= 'Z' ){ v = c - 'A'; }
+		else if( c >= 'a' && c <= 'z' ){ v = c - 'a' + 26; }
+		else if( c >= '0' && c <= '9' ){ v = c - '0' + 52; }
+		else if( c == '+' ){ v = 62; }
+		else if( c == '/' ){ v = 63; }
+		if( v < 0 ){
+			return -1;
+		}
+		nAcc = (nAcc << 6) | (sxu32)v;
+		nBits += 6;
+		if( nBits >= 8 ){
+			nBits -= 8;
+			if( (sxu32)n >= nOutMax ){
+				return -1;
+			}
+			pOut[n++] = (unsigned char)((nAcc >> nBits) & 0xff);
+		}
+	}
+	return n;
+}
+/* Strict parse of "$argon2i[d]$v=V$m=M,t=T,p=P$<b64 salt>$<b64 tag>". Fills
+ * every out-parameter; answers FALSE on any deviation — the shape
+ * password_verify() and password_needs_rehash() refuse. */
+static int Argon2ParseHash(const char *zHash,int nHash,int *piType,sxu32 *pnVersion,
+	sxu32 *pnMem,sxu32 *pnTime,sxu32 *pnLanes,
+	unsigned char *pSalt,sxu32 nSaltMax,sxu32 *pnSalt,
+	unsigned char *pTag,sxu32 nTagMax,sxu32 *pnTag)
+{
+	const char *zCur = zHash, *zEnd = &zHash[nHash];
+	const char *zField;
+	sxu64 aNum[4];
+	static const char aSep[4] = { '$', ',', ',', '$' };
+	static const char *azKey[4] = { "v=", "m=", "t=", "p=" };
+	int i, nOut;
+	if( nHash < 10 || zCur[0] != '$' ){
+		return FALSE;
+	}
+	if( SyMemcmp(zCur,"$argon2id$",10) == 0 ){
+		*piType = SY_ARGON2_ID;
+		zCur += 10;
+	}else if( nHash >= 9 && SyMemcmp(zCur,"$argon2i$",9) == 0 ){
+		*piType = SY_ARGON2_I;
+		zCur += 9;
+	}else{
+		return FALSE;
+	}
+	/* v=NN$m=NN,t=NN,p=NN$ — plain decimal runs, each closed by its own
+	 * separator ('$' after v and p, ',' after m and t). */
+	for( i = 0; i < 4; i++ ){
+		sxu64 nVal = 0;
+		int nDigit = 0;
+		if( zEnd - zCur < 3 || SyMemcmp(zCur,azKey[i],2) != 0 ){
+			return FALSE;
+		}
+		zCur += 2;
+		while( zCur < zEnd && zCur[0] >= '0' && zCur[0] <= '9' ){
+			if( nVal < (sxu64)0x200000000ULL ){
+				nVal = nVal * 10 + (sxu64)(zCur[0] - '0');
+			}
+			nDigit++;
+			zCur++;
+		}
+		if( nDigit == 0 || zCur >= zEnd || zCur[0] != aSep[i] || nVal > 0xFFFFFFFFULL ){
+			return FALSE;
+		}
+		aNum[i] = nVal;
+		zCur++;
+	}
+	*pnVersion = (sxu32)aNum[0];
+	*pnMem = (sxu32)aNum[1];
+	*pnTime = (sxu32)aNum[2];
+	*pnLanes = (sxu32)aNum[3];
+	/* base64 salt, then '$', then the base64 tag closing the string. */
+	zField = zCur;
+	while( zCur < zEnd && zCur[0] != '$' ){ zCur++; }
+	if( zCur >= zEnd ){
+		return FALSE;
+	}
+	nOut = Argon2B64Decode(zField,(sxu32)(zCur - zField),pSalt,nSaltMax);
+	if( nOut < 0 ){
+		return FALSE;
+	}
+	*pnSalt = (sxu32)nOut;
+	zCur++;
+	nOut = Argon2B64Decode(zCur,(sxu32)(zEnd - zCur),pTag,nTagMax);
+	if( nOut < 0 ){
+		return FALSE;
+	}
+	*pnTag = (sxu32)nOut;
+	return TRUE;
+}
+/* Run the argon2 core over an engine-allocated block arena. Answers SXRET_OK,
+ * or SXERR_MEM when the arena cannot be had — the callers map that to php's
+ * "Memory allocation error" ValueError (hash) or FALSE (verify). */
+static sxi32 Argon2Compute(ph7_context *pCtx,int iType,sxu32 nVersion,
+	sxu32 nMem,sxu32 nTime,sxu32 nLanes,
+	const char *zPwd,sxu32 nPwd,const unsigned char *pSalt,sxu32 nSalt,
+	unsigned char *pTag,sxu32 nTag)
+{
+	sxu32 nBlocks = 4 * nLanes * (nMem / (4 * nLanes));
+	sxu64 nBytes = (sxu64)nBlocks * 1024;
+	void *pArena;
+	sxi32 rc;
+	if( nBytes == 0 || nBytes > 0x7FFFFFFFULL ){
+		return SXERR_MEM;
+	}
+	pArena = ph7_context_alloc_chunk(pCtx,(unsigned int)nBytes,FALSE,FALSE);
+	if( pArena == 0 ){
+		return SXERR_MEM;
+	}
+	rc = SyArgon2Hash(iType,nVersion,nMem,nTime,nLanes,
+		(const unsigned char *)zPwd,nPwd,pSalt,nSalt,pTag,nTag,pArena,nBlocks);
+	ph7_context_free_chunk(pCtx,pArena);
+	return rc == SXRET_OK ? SXRET_OK : SXERR_MEM;
+}
+/* Read php's three argon2 options (defaults when absent), each through a copy
+ * — $options is the caller's array. Throws php's ValueErrors in php's order;
+ * answers FALSE after throwing. */
+static int Argon2ReadOptions(ph7_context *pCtx,ph7_value *pOptions,
+	sxu32 *pnMem,sxu32 *pnTime,sxu32 *pnLanes)
+{
+	sxi64 iMem = PW_ARGON2_DEF_MEM, iTime = PW_ARGON2_DEF_TIME, iLanes = PW_ARGON2_DEF_THREADS;
+	if( pOptions && ph7_value_is_array(pOptions) ){
+		ph7_value *pVal;
+		pVal = ph7_array_fetch(pOptions,"memory_cost",(int)sizeof("memory_cost")-1);
+		if( pVal ){ iMem = PH7_ValuePeekInt64(pVal); }
+		pVal = ph7_array_fetch(pOptions,"time_cost",(int)sizeof("time_cost")-1);
+		if( pVal ){ iTime = PH7_ValuePeekInt64(pVal); }
+		pVal = ph7_array_fetch(pOptions,"threads",(int)sizeof("threads")-1);
+		if( pVal ){ iLanes = PH7_ValuePeekInt64(pVal); }
+	}
+	if( iMem < 8 || iMem > (sxi64)0xFFFFFFFF ){
+		PH7_VmThrowException(pCtx,"ValueError","Memory cost is outside of allowed memory range");
+		return FALSE;
+	}
+	if( iTime < 1 || iTime > (sxi64)0xFFFFFFFF ){
+		PH7_VmThrowException(pCtx,"ValueError","Time cost is outside of allowed time range");
+		return FALSE;
+	}
+	if( iLanes < 1 || iLanes > (sxi64)0xFFFFFF ){
+		PH7_VmThrowException(pCtx,"ValueError","Invalid number of threads");
+		return FALSE;
+	}
+	if( iMem < 8 * iLanes ){
+		PH7_VmThrowException(pCtx,"ValueError","Memory cost is too small");
+		return FALSE;
+	}
+	/* No thread-count ceiling beyond ARGON2_MAX_LANES: php's "Threading
+	 * failure" is its pthread layer failing to SPAWN, an environmental answer
+	 * a sequential computation does not have. Lanes compute identically. */
+	*pnMem = (sxu32)iMem;
+	*pnTime = (sxu32)iTime;
+	*pnLanes = (sxu32)iLanes;
+	return TRUE;
+}
+/* Hash for password_hash()'s argon2 arm: a fresh 16-character salt from php's
+ * itoa64 alphabet, v=19, a 32-byte tag, and php's exact string shape. */
+static int PasswordArgon2Hash(ph7_context *pCtx,int iType,const char *zPwd,int nPwd,
+	ph7_value *pOptions)
+{
+	static const char zItoa64[] =
+		"./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+	sxu32 nMem, nTime, nLanes;
+	unsigned char aSalt[16], aTag[32];
+	char zHash[120];
+	int n, i;
+	if( !Argon2ReadOptions(pCtx,pOptions,&nMem,&nTime,&nLanes) ){
+		return PH7_OK;    /* the ValueError is already thrown */
+	}
+	if( SyOSCSPRNG(aSalt,sizeof(aSalt)) != SXRET_OK ){
+		return PH7_VmThrowException(pCtx,"Exception",
+			"password_hash(): unable to gather sufficient entropy for the salt");
+	}
+	for( i = 0; i < (int)sizeof(aSalt); i++ ){
+		aSalt[i] = (unsigned char)zItoa64[aSalt[i] & 0x3f];
+	}
+	if( Argon2Compute(pCtx,iType,0x13,nMem,nTime,nLanes,zPwd,(sxu32)nPwd,
+			aSalt,(sxu32)sizeof(aSalt),aTag,(sxu32)sizeof(aTag)) != SXRET_OK ){
+		return PH7_VmThrowException(pCtx,"ValueError","Memory allocation error");
+	}
+	n = (int)SyBufferFormat(zHash,sizeof(zHash),"$argon2i%s$v=19$m=%u,t=%u,p=%u$",
+		iType == SY_ARGON2_ID ? "d" : "",nMem,nTime,nLanes);
+	n += Argon2B64Encode(&zHash[n],aSalt,(sxu32)sizeof(aSalt));
+	zHash[n++] = '$';
+	n += Argon2B64Encode(&zHash[n],aTag,(sxu32)sizeof(aTag));
+	ph7_result_string(pCtx,zHash,n);
+	return PH7_OK;
 }
 /*
  * bool|string password_hash(string $password,string|int|null $algo[,array $options])
@@ -1586,26 +1826,35 @@ static int PasswordResolveAlgo(ph7_value *pAlgo)
 PH7_PRIVATE int PH7_builtin_password_hash(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zPwd;
-	int nPwd,iCost = 12;
+	int nPwd,iCost = 12,iAlgo;
 	unsigned char aSalt[16];
 	char zHash[60];
 	if( nArg < 2 ){
 		return PH7_VmThrowException(pCtx,"ArgumentCountError",
 			"password_hash() expects at least 2 arguments, %d given",nArg);
 	}
-	if( PasswordResolveAlgo(apArg[1]) != PW_ALGO_BCRYPT ){
+	iAlgo = PasswordResolveAlgo(apArg[1]);
+	if( iAlgo == PW_ALGO_NONE ){
 		return PH7_VmThrowException(pCtx,"ValueError",
 			"password_hash(): Argument #2 ($algo) must be a valid password hashing algorithm");
 	}
+	if( nArg > 2 && ph7_value_is_array(apArg[2])
+		&& ph7_array_fetch(apArg[2],"salt",(int)sizeof("salt")-1) ){
+		/* The php 5/7 "salt" option php 8 removed: IGNORED with a warning for
+		 * every algorithm, raised before the algo's own option errors. */
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,
+			"The \"salt\" option has been ignored, since providing a custom salt is no longer supported");
+	}
+	if( iAlgo == PW_ALGO_ARGON2I || iAlgo == PW_ALGO_ARGON2ID ){
+		zPwd = ph7_value_to_string(apArg[0],&nPwd);
+		return PasswordArgon2Hash(pCtx,
+			iAlgo == PW_ALGO_ARGON2ID ? SY_ARGON2_ID : SY_ARGON2_I,
+			zPwd,nPwd,nArg > 2 ? apArg[2] : 0);
+	}
 	if( nArg > 2 && ph7_value_is_array(apArg[2]) ){
-		/* cost from $options['cost'] (default 12). A "salt" entry is a php 5/7
-		 * option php 8 removed: it is IGNORED with a warning, never read. */
+		/* cost from $options['cost'] (default 12). */
 		ph7_value *pCost = ph7_array_fetch(apArg[2],"cost",(int)sizeof("cost")-1);
 		if( pCost ){ iCost = (int)PH7_ValuePeekInt64(pCost); } /* through a copy: $options is the caller's */
-		if( ph7_array_fetch(apArg[2],"salt",(int)sizeof("salt")-1) ){
-			ph7_context_throw_error(pCtx,PH7_CTX_WARNING,
-				"The \"salt\" option has been ignored, since providing a custom salt is no longer supported");
-		}
 	}
 	zPwd = ph7_value_to_string(apArg[0],&nPwd);
 	if( SyByteFind(zPwd,(sxu32)nPwd,0,0) == SXRET_OK ){
@@ -1675,10 +1924,36 @@ PH7_PRIVATE int PH7_builtin_password_verify(ph7_context *pCtx,int nArg,ph7_value
 	zPwd = ph7_value_to_string(apArg[0],&nPwd);
 	zHash = ph7_value_to_string(apArg[1],&nHash);
 	if( !BcryptParseHash(zHash,nHash,&iCost) ){
+		if( nHash >= 9 && zHash[0] == '$' && SyMemcmp(zHash,"$argon2i",8) == 0 ){
+			/* The argon2 arm: strict-parse the stored hash, recompute with its
+			 * own salt/params/version, compare tags. Anything malformed — and
+			 * an arena the engine cannot allocate — answers false. */
+			int iType;
+			sxu32 nVersion,nMem,nTime,nLanes,nSalt,nTag;
+			unsigned char aA2Salt[64],aA2Tag[64],aComputed[64];
+			if( Argon2ParseHash(zHash,nHash,&iType,&nVersion,&nMem,&nTime,&nLanes,
+					aA2Salt,(sxu32)sizeof(aA2Salt),&nSalt,aA2Tag,(sxu32)sizeof(aA2Tag),&nTag)
+				&& (nVersion == 0x13 || nVersion == 0x10)
+				&& nSalt >= 8 && nTag >= 4
+				&& nLanes >= 1 && nLanes <= 0xFFFFFF
+				&& nMem >= 8 * nLanes && nTime >= 1
+				&& Argon2Compute(pCtx,iType,nVersion,nMem,nTime,nLanes,
+					zPwd,(sxu32)nPwd,aA2Salt,nSalt,aComputed,nTag) == SXRET_OK ){
+				sxu32 iByte;
+				for( iByte = 0; iByte < nTag; iByte++ ){
+					vDiff |= (unsigned char)(aComputed[iByte] ^ aA2Tag[iByte]);
+				}
+				ph7_result_bool(pCtx,vDiff == 0);
+				return PH7_OK;
+			}
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
 #ifndef PH7_DISABLE_HASH_FUNC
 		/* php's fallback: crypt(password, hash) must reproduce the hash. The
 		 * 13-byte floor is php's own (no crypt output is shorter, and it
 		 * screens the "*0" token comparing equal to itself). */
+		{
 		char zCrypt[SY_CRYPT_OUTPUT_MAX];
 		sxu32 nCrypt = 0;
 		if( nHash >= 13 ){
@@ -1690,6 +1965,7 @@ PH7_PRIVATE int PH7_builtin_password_verify(ph7_context *pCtx,int nArg,ph7_value
 				ph7_result_bool(pCtx,vDiff == 0);
 				return PH7_OK;
 			}
+		}
 		}
 #endif /* PH7_DISABLE_HASH_FUNC */
 		ph7_result_bool(pCtx,0);
@@ -1719,7 +1995,7 @@ PH7_PRIVATE int PH7_builtin_password_verify(ph7_context *pCtx,int nArg,ph7_value
 PH7_PRIVATE int PH7_builtin_password_get_info(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zHash = "";
-	int nHash,iCost = 0,bBcrypt = 0;
+	int nHash = 0,iCost = 0,bBcrypt = 0;
 	ph7_value *pArray,*pOptions,*pVal;
 	if( nArg > 0 ){
 		zHash = ph7_value_to_string(apArg[0],&nHash);
@@ -1740,6 +2016,31 @@ PH7_PRIVATE int PH7_builtin_password_get_info(ph7_context *pCtx,int nArg,ph7_val
 		ph7_array_add_strkey_elem(pArray,"algoName",pVal);
 		ph7_value_int(pVal,iCost);
 		ph7_array_add_strkey_elem(pOptions,"cost",pVal);
+	}else if( (nHash >= 10 && SyMemcmp(zHash,"$argon2id$",10) == 0)
+		|| (nHash >= 9 && SyMemcmp(zHash,"$argon2i$",9) == 0) ){
+		/* Identification is by PREFIX; the parameters are parsed leniently and
+		 * fall back to php's defaults when the string does not parse — php's
+		 * get_info answers m=65536,t=4,p=1 even for "$argon2id$garbage". */
+		int bId = ( zHash[8] == 'd' );
+		int iType;
+		sxu32 nVersion,nMem = PW_ARGON2_DEF_MEM,nTime = PW_ARGON2_DEF_TIME;
+		sxu32 nLanes = PW_ARGON2_DEF_THREADS,nSalt,nTag;
+		unsigned char aSalt[64],aTag[64];
+		if( !Argon2ParseHash(zHash,nHash,&iType,&nVersion,&nMem,&nTime,&nLanes,
+				aSalt,(sxu32)sizeof(aSalt),&nSalt,aTag,(sxu32)sizeof(aTag),&nTag) ){
+			nMem = PW_ARGON2_DEF_MEM;
+			nTime = PW_ARGON2_DEF_TIME;
+			nLanes = PW_ARGON2_DEF_THREADS;
+		}
+		ph7_value_string(pVal,bId ? "argon2id" : "argon2i",bId ? 8 : 7);
+		ph7_array_add_strkey_elem(pArray,"algo",pVal);
+		ph7_array_add_strkey_elem(pArray,"algoName",pVal);
+		ph7_value_int(pVal,(sxi64)nMem);
+		ph7_array_add_strkey_elem(pOptions,"memory_cost",pVal);
+		ph7_value_int(pVal,(sxi64)nTime);
+		ph7_array_add_strkey_elem(pOptions,"time_cost",pVal);
+		ph7_value_int(pVal,(sxi64)nLanes);
+		ph7_array_add_strkey_elem(pOptions,"threads",pVal);
 	}else{
 		ph7_value_null(pVal);                          /* algo => null */
 		ph7_array_add_strkey_elem(pArray,"algo",pVal);
@@ -1757,12 +2058,13 @@ PH7_PRIVATE int PH7_builtin_password_get_info(ph7_context *pCtx,int nArg,ph7_val
 PH7_PRIVATE int PH7_builtin_password_needs_rehash(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zHash;
-	int nHash,iCost = 0,iWantCost = 12;
+	int nHash,iCost = 0,iWantCost = 12,iAlgo;
 	if( nArg < 2 ){
 		return PH7_VmThrowException(pCtx,"ArgumentCountError",
 			"password_needs_rehash() expects at least 2 arguments, %d given",nArg);
 	}
-	if( PasswordResolveAlgo(apArg[1]) != PW_ALGO_BCRYPT ){
+	iAlgo = PasswordResolveAlgo(apArg[1]);
+	if( iAlgo == PW_ALGO_NONE ){
 		/* php's answer for an algo that names NOTHING is false, not true — the
 		 * registry lookup fails before the hash is ever looked at, so
 		 * password_needs_rehash('anything', 'nope') is not a rehash request. */
@@ -1770,6 +2072,62 @@ PH7_PRIVATE int PH7_builtin_password_needs_rehash(ph7_context *pCtx,int nArg,ph7
 		return PH7_OK;
 	}
 	zHash = ph7_value_to_string(apArg[0],&nHash);
+	if( iAlgo == PW_ALGO_ARGON2I || iAlgo == PW_ALGO_ARGON2ID ){
+		/* An argon2 request: the hash must carry the SAME variant's prefix,
+		 * and its m/t/p — read with php's sscanf leniency, so a hash cut off
+		 * after "p=1" still parses and an unreadable field stays 0 — must
+		 * equal the requested options (php's defaults where not given). */
+		const char *zCur, *zEnd = &zHash[nHash];
+		sxu64 aParam[4] = { 0, 0, 0, 0 };    /* v, m, t, p */
+		static const char *azLead[4] = { "v=", "$m=", ",t=", ",p=" };
+		sxi64 iWantMem = PW_ARGON2_DEF_MEM,iWantTime = PW_ARGON2_DEF_TIME;
+		sxi64 iWantLanes = PW_ARGON2_DEF_THREADS;
+		int iField;
+		if( iAlgo == PW_ALGO_ARGON2ID ){
+			if( nHash < 10 || SyMemcmp(zHash,"$argon2id$",10) != 0 ){
+				ph7_result_bool(pCtx,1);
+				return PH7_OK;
+			}
+			zCur = &zHash[10];
+		}else{
+			if( nHash < 9 || SyMemcmp(zHash,"$argon2i$",9) != 0 ){
+				ph7_result_bool(pCtx,1);
+				return PH7_OK;
+			}
+			zCur = &zHash[9];
+		}
+		for( iField = 0; iField < 4; iField++ ){
+			int nLead = iField == 0 ? 2 : 3;
+			int nDigit = 0;
+			if( zEnd - zCur < nLead || SyMemcmp(zCur,azLead[iField],(sxu32)nLead) != 0 ){
+				break;
+			}
+			zCur += nLead;
+			while( zCur < zEnd && zCur[0] >= '0' && zCur[0] <= '9' ){
+				if( aParam[iField] < (sxu64)0x200000000ULL ){
+					aParam[iField] = aParam[iField] * 10 + (sxu64)(zCur[0] - '0');
+				}
+				nDigit++;
+				zCur++;
+			}
+			if( nDigit == 0 ){
+				break;
+			}
+		}
+		if( nArg > 2 && ph7_value_is_array(apArg[2]) ){
+			ph7_value *pVal;
+			pVal = ph7_array_fetch(apArg[2],"memory_cost",(int)sizeof("memory_cost")-1);
+			if( pVal ){ iWantMem = PH7_ValuePeekInt64(pVal); }
+			pVal = ph7_array_fetch(apArg[2],"time_cost",(int)sizeof("time_cost")-1);
+			if( pVal ){ iWantTime = PH7_ValuePeekInt64(pVal); }
+			pVal = ph7_array_fetch(apArg[2],"threads",(int)sizeof("threads")-1);
+			if( pVal ){ iWantLanes = PH7_ValuePeekInt64(pVal); }
+		}
+		ph7_result_bool(pCtx,
+			(sxi64)aParam[1] != iWantMem || (sxi64)aParam[2] != iWantTime
+			|| (sxi64)aParam[3] != iWantLanes);
+		return PH7_OK;
+	}
 	if( !BcryptParseHash(zHash,nHash,&iCost) ){
 		/* A hash made by a different (or no) algorithm → needs rehash. */
 		ph7_result_bool(pCtx,1);
@@ -1780,6 +2138,31 @@ PH7_PRIVATE int PH7_builtin_password_needs_rehash(ph7_context *pCtx,int nArg,ph7
 		if( pCost ){ iWantCost = (int)PH7_ValuePeekInt64(pCost); } /* through a copy, as above */
 	}
 	ph7_result_bool(pCtx,iCost != iWantCost);
+	return PH7_OK;
+}
+/*
+ * array password_algos(void)
+ *  The registered password hashing algorithm ids, php's list and order.
+ */
+PH7_PRIVATE int PH7_builtin_password_algos(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pArray = ph7_context_new_array(pCtx);
+	ph7_value *pVal = ph7_context_new_scalar(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pArray == 0 || pVal == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	ph7_value_string(pVal,"2y",2);
+	ph7_array_add_elem(pArray,0,pVal);
+	ph7_value_reset_string_cursor(pVal);
+	ph7_value_string(pVal,"argon2i",7);
+	ph7_array_add_elem(pArray,0,pVal);
+	ph7_value_reset_string_cursor(pVal);
+	ph7_value_string(pVal,"argon2id",8);
+	ph7_array_add_elem(pArray,0,pVal);
+	ph7_result_value(pCtx,pArray);
 	return PH7_OK;
 }
 #endif /* PH7_NEED_BUILTIN_REG */
