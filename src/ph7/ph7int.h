@@ -3385,6 +3385,10 @@ PH7_PRIVATE sxi32 PH7_VmHttpProcessRequest(ph7_vm *pVm,const char *zRequest,int 
 /* vm_http_response.c function prototypes */
 PH7_PRIVATE void PH7_RegisterHttpResponseFunctions(ph7_vm *pVm);
 PH7_PRIVATE void PH7_VmReleaseResponseHeaders(ph7_vm *pVm);
+PH7_PRIVATE void PH7_VmEmitCookie(ph7_vm *pVm,const char *zName,sxu32 nName,
+	const char *zValue,sxu32 nValue,int bEncode,sxi64 iExpires,
+	const char *zPath,sxu32 nPath,const char *zDomain,sxu32 nDomain,
+	int bSecure,int bHttpOnly,const char *zSame,sxu32 nSame,int bPartitioned);
 /* vm_pcre.c function prototypes */
 #ifdef PH7_ENABLE_PCRE
 PH7_PRIVATE void PH7_RegisterPcreFunctions(ph7_vm *pVm);

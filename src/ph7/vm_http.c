@@ -500,8 +500,11 @@ static sxi32 VmGetNextLine(SyString *pCursor,SyString *pCurrent)
 		 while( zPtr < zDelimiter && zPtr[0] != '=' ){
 			 zPtr++;
 		 }
-		 /* Decode the cookie */
-		 SyUriDecode(zIn,(sxu32)(zPtr-zIn),PH7_VmBlobConsumer,pWorker,TRUE);
+		 /* Decode the cookie. RAW url-decoding, php's: a `+` in a cookie value is a
+		  * PLUS, not a space — the browser hands back what setcookie() wrote with
+		  * rawurlencode(), and reading it as a query string turns every literal
+		  * `+` in a token or a base64 payload into a space. */
+		 SyUriDecode(zIn,(sxu32)(zPtr-zIn),PH7_VmBlobConsumer,pWorker,FALSE);
 		 sName.nByte = SyBlobLength(pWorker);
 		 zPtr++;
 		 sValue.zString = 0;
@@ -509,7 +512,7 @@ static sxi32 VmGetNextLine(SyString *pCursor,SyString *pCurrent)
 		 if( zPtr < zDelimiter ){
 			 /* Got a Cookie value */
 			 nOfft = SyBlobLength(pWorker);
-			 SyUriDecode(zPtr,(sxu32)(zDelimiter-zPtr),PH7_VmBlobConsumer,pWorker,TRUE);
+			 SyUriDecode(zPtr,(sxu32)(zDelimiter-zPtr),PH7_VmBlobConsumer,pWorker,FALSE);
 			 SyStringInitFromBuf(&sValue,SyBlobDataAt(pWorker,nOfft),SyBlobLength(pWorker)-nOfft);
 		 }
 		 /* Synchronize pointers */
