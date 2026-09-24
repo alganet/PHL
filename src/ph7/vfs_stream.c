@@ -1057,12 +1057,25 @@ PH7_PRIVATE int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Perform the requested operation */
+	errno = 0;
 	nRead = PH7_StreamRead(pDev,pBuf,(ph7_int64)nLen);
-	if( nRead < 0 && pDev->bNonBlock == 0 ){
-		/* An IO ERROR, which is php's only false here. On a handle
-		 * stream_set_blocking() put in NON-blocking mode the failed read means
-		 * only that nothing had arrived yet, and php answers "" for that — the
-		 * whole point of the mode is to come back empty instead of waiting. */
+	if( nRead < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) ){
+		/* Nothing had ARRIVED yet, which is not a failure: php answers "" for a
+		 * read that could not proceed and reserves `false` for one that broke.
+		 * The question is answered by errno rather than by a per-handle flag —
+		 * two handles can share one descriptor (every php://stdin is fd 0), so
+		 * a flag on the handle that set the mode answers wrongly for its
+		 * siblings, and a genuine EBADF on a non-blocking write-only handle
+		 * would come back as "" rather than false. When a TIMEOUT is what
+		 * expired, php reports false and sets the metadata's `timed_out`. */
+		if( pDev->bHasTimeout ){
+			pDev->bTimedOut = 1;
+			ph7_result_bool(pCtx,0);
+		}else{
+			ph7_result_string(pCtx,"",0);
+		}
+	}else if( nRead < 0 ){
+		/* A real IO error, which is php's other false here. */
 		ph7_result_bool(pCtx,0);
 	}else{
 		/* Make a copy of the data just read. Zero bytes is EOF, not a failure:
@@ -2979,6 +2992,8 @@ PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_priva
 	pOut->bDir = 0;
 	pOut->nChunk = 8192; /* php's own default, and what stream_set_chunk_size() reports first */
 	pOut->bNonBlock = 0;
+	pOut->bHasTimeout = 0;
+	pOut->bTimedOut = 0;
 	/* Set the magic number */
 	pOut->iMagic = IO_PRIVATE_MAGIC;
 }
@@ -3331,7 +3346,7 @@ PH7_PRIVATE int PH7_builtin_stream_get_meta_data(ph7_context *pCtx,int nArg,ph7_
 	       && SyStrncmp(zStream,"TEMP",sizeof("TEMP")) == 0 ){
 		/* php://temp: same rule, no keys of its own. */
 	}else{
-		ph7_value_bool(pV,0);
+		ph7_value_bool(pV,pDev->bTimedOut != 0);
 		ph7_array_add_strkey_elem(pArr,"timed_out",pV);
 		/* A stream php cannot put in non-blocking mode always reports blocked;
 		 * bNonBlock is only ever set for one that CAN. */
@@ -3376,12 +3391,15 @@ PH7_PRIVATE int PH7_builtin_stream_get_meta_data(ph7_context *pCtx,int nArg,ph7_
 		 * descriptor first and the device second; a USERLAND wrapper is php's
 		 * one exception — its ops always carry a seek, so php always says yes. */
 		int bSeekable = pDev->pStream != 0 && pDev->pStream->xSeek != 0;
-		if( bSeekable && !IoPrivateIsUwrap(pDev->pStream) ){
-			int fd = PH7_StreamPosixFd(pDev);
-			if( fd >= 0 ){
-#ifndef __WINNT__
-				bSeekable = lseek(fd,0,SEEK_CUR) != (off_t)-1;
-#endif
+		if( pDev->bDir ){
+			/* php's directory ops carry a rewind, so a dir handle is seekable —
+			 * and asking the FILE device where it is would hand lseek() the
+			 * DIR* this handle stores where a file stores its descriptor. */
+			bSeekable = 1;
+		}else if( bSeekable && !IoPrivateIsUwrap(pDev->pStream) ){
+			int rcSeek = PH7_StreamHandleCanSeek(pDev);
+			if( rcSeek >= 0 ){
+				bSeekable = rcSeek;
 			}else if( pDev->pStream->xTell != 0 ){
 				bSeekable = pDev->pStream->xTell(pDev->pHandle) >= 0;
 			}
@@ -3439,9 +3457,18 @@ static ph7_int64 SockStreamData_Read(void *pHandle,void *pBuffer,ph7_int64 nRead
 		return 0;
 	}
 	n = PH7_NetRecv(pSock->sock,pBuffer,(int)nRead,0);
-	if( n <= 0 ){
+	if( n == 0 ){
+		/* The peer closed: THIS is the end of the stream. */
 		pSock->bEof = 1;
 		return 0;
+	}
+	if( n < 0 ){
+		/* An error, and since stream_set_blocking()/stream_set_timeout() exist
+		 * the ordinary one is EAGAIN — nothing had arrived YET. Latching EOF
+		 * here (as this did for every n <= 0, safe only while every socket was
+		 * blocking and untimed) made the first empty read close the connection
+		 * for good and threw away everything the peer sent afterwards. */
+		return -1;
 	}
 	return (ph7_int64)n;
 }
@@ -4253,6 +4280,11 @@ PH7_PRIVATE int PH7_builtin_stream_set_timeout(ph7_context *pCtx,int nArg,ph7_va
 			iUsec = 0;
 		}
 		PH7_NetSetRwTimeout(*pSock,iSec,iUsec);
+		/* An expired read answers FALSE and says so through the metadata;
+		 * without the armed flag it is indistinguishable from a non-blocking
+		 * one, which answers "". */
+		pDev->bHasTimeout = 1;
+		pDev->bTimedOut = 0;
 	}
 #endif
 	ph7_result_bool(pCtx,1);
@@ -4282,8 +4314,14 @@ PH7_PRIVATE int PH7_builtin_stream_set_chunk_size(ph7_context *pCtx,int nArg,ph7
 		return PH7_VmThrowException(pCtx,"ValueError",
 			"stream_set_chunk_size(): Argument #2 ($size) must be greater than 0");
 	}
+	if( nSize > (ph7_int64)SXI32_HIGH ){
+		/* php's own ceiling: the size is an int on its side, and storing a
+		 * larger one made the NEXT call report a size no caller ever set. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"stream_set_chunk_size(): Argument #2 ($size) is too large");
+	}
 	ph7_result_int64(pCtx,(ph7_int64)pDev->nChunk);
-	pDev->nChunk = nSize > (ph7_int64)SXU32_HIGH ? SXU32_HIGH : (sxu32)nSize;
+	pDev->nChunk = (sxu32)nSize;
 	return PH7_OK;
 }
 /*
@@ -4474,8 +4512,9 @@ PH7_PRIVATE int PH7_builtin_stream_supports_lock(ph7_context *pCtx,int nArg,ph7_
 	 * when the device exposes no lock operation of its own (php://stdout, a
 	 * pipe); a memory buffer and a data:// payload have neither and are the
 	 * false answers. */
-	ph7_result_bool(pCtx,(pDev->pStream != 0 && pDev->pStream->xLock != 0)
-		|| PH7_StreamPosixFd(pDev) >= 0);
+	ph7_result_bool(pCtx,pDev->bDir == 0
+		&& ((pDev->pStream != 0 && pDev->pStream->xLock != 0)
+		    || PH7_StreamPosixFd(pDev) >= 0));
 	return PH7_OK;
 }
 /*
@@ -4497,6 +4536,15 @@ PH7_PRIVATE int PH7_builtin_stream_is_local(ph7_context *pCtx,int nArg,ph7_value
 		static const char * const azUrlScheme[] = { "http://", "https://", "ftp://", "ftps://" };
 		int nLen,i;
 		const char *zPath = ph7_value_to_string(apArg[0],&nLen);
+		if( nLen > (int)sizeof("file://")-1
+		 && SyStrnicmp(zPath,"file://",sizeof("file://")-1) == 0
+		 && zPath[sizeof("file://")-1] != '/'
+		 && SyStrnicmp(zPath,"file://localhost/",sizeof("file://localhost/")-1) != 0 ){
+			/* `file://host/path` names a REMOTE host, which php refuses rather
+			 * than reading as a local path — so the answer is not local. */
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
 		for( i = 0 ; i < (int)(sizeof(azUrlScheme)/sizeof(azUrlScheme[0])) ; i++ ){
 			int nScheme = (int)SyStrlen(azUrlScheme[i]);
 			if( nLen >= nScheme && SyStrnicmp(zPath,azUrlScheme[i],(sxu32)nScheme) == 0 ){

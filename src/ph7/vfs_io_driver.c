@@ -1998,7 +1998,11 @@ PH7_PRIVATE int PH7_StreamIsPlainDevice(io_private *pDev)
 PH7_PRIVATE int PH7_StreamPosixFd(io_private *pDev)
 {
 #if !defined(__WINNT__) && !defined(PH7_DISABLE_DISK_IO)
-	if( pDev == 0 || pDev->pHandle == 0 || pDev->pStream == 0 ){
+	if( pDev == 0 || pDev->pHandle == 0 || pDev->pStream == 0 || pDev->bDir ){
+		/* A DIRECTORY handle rides the same ops table as a file and stores a
+		 * DIR* where a file stores its descriptor, so reading one as the other
+		 * hands fcntl()/lseek() a truncated heap pointer — an arbitrary fd
+		 * number belonging to something else in this process. */
 		return -1;
 	}
 	if( pDev->pStream == &sUnixFileStream ){
@@ -2020,6 +2024,41 @@ PH7_PRIVATE int PH7_StreamPosixFd(io_private *pDev)
 	SXUNUSED(pDev); /* cc warning */
 	return -1;
 #endif
+}
+/*
+ * Can this handle report a POSITION? php's `seekable` is a fact about what the
+ * handle sits on, not about what the device could do — php://stdout is seekable
+ * into a file and not down a pipe — and the descriptor is the only thing that
+ * knows. Answers 1 (yes), 0 (no) or -1 (nothing here can tell; the caller falls
+ * back on the device's own xTell).
+ */
+PH7_PRIVATE int PH7_StreamHandleCanSeek(io_private *pDev)
+{
+#ifndef PH7_DISABLE_DISK_IO
+#ifdef __WINNT__
+	/* The file devices carry a HANDLE rather than a descriptor here, and only
+	 * the php:// standard streams hold one this can ask. */
+	if( pDev && pDev->pHandle && is_php_stream(pDev->pStream) ){
+		ph7_stream_data *pData = (ph7_stream_data *)pDev->pHandle;
+		if( pData->iType == PH7_IO_STREAM_STDIN || pData->iType == PH7_IO_STREAM_STDOUT
+		 || pData->iType == PH7_IO_STREAM_STDERR ){
+			LARGE_INTEGER zero,pos;
+			zero.QuadPart = 0;
+			return SetFilePointerEx((HANDLE)pData->x.pHandle,zero,&pos,FILE_CURRENT) ? 1 : 0;
+		}
+	}
+	return -1;
+#else
+	int fd = PH7_StreamPosixFd(pDev);
+	if( fd < 0 ){
+		return -1;
+	}
+	return lseek(fd,0,SEEK_CUR) == (off_t)-1 ? 0 : 1;
+#endif
+#else
+	SXUNUSED(pDev); /* cc warning */
+	return -1;
+#endif /* PH7_DISABLE_DISK_IO */
 }
 /*
  * Which php:// sub-stream a handle opened. stream_get_meta_data() has to tell

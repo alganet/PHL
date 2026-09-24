@@ -226,16 +226,40 @@ PH7_PRIVATE void PH7_NetSetTimeout(ph7_socket sock, int iMilliseconds)
  */
 PH7_PRIVATE void PH7_NetSetRwTimeout(ph7_socket sock, ph7_int64 iSeconds, ph7_int64 iMicroseconds)
 {
+	/* Carry the microseconds over: the OS rejects a tv_usec of 1000000 or more
+	 * outright (EINVAL), so `stream_set_timeout($s, 0, 1500000)` used to set
+	 * NOTHING and leave the read unbounded while answering true. */
+	if( iMicroseconds >= 1000000 ){
+		iSeconds += iMicroseconds / 1000000;
+		iMicroseconds %= 1000000;
+	}
+	if( iSeconds == 0 && iMicroseconds == 0 ){
+		/* php's zero timeout means "do not wait", where a zero timeval means
+		 * "wait forever" to the OS: the smallest one it can express is what
+		 * carries that intent. */
+		iMicroseconds = 1;
+	}
+	if( iSeconds > 4000000 ){
+		/* Beyond any real deadline, and past what a millisecond DWORD holds. */
+		iSeconds = 4000000;
+	}
 #ifdef __WINNT__
-	DWORD tv = (DWORD)(iSeconds * 1000 + iMicroseconds / 1000);
-	setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof(tv));
-	setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const char *)&tv, sizeof(tv));
+	{
+		DWORD tv = (DWORD)(iSeconds * 1000 + iMicroseconds / 1000);
+		if( tv == 0 ){
+			tv = 1; /* a Windows zero is "block forever" too */
+		}
+		setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof(tv));
+		setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const char *)&tv, sizeof(tv));
+	}
 #else
-	struct timeval tv;
-	tv.tv_sec = (time_t)iSeconds;
-	tv.tv_usec = (suseconds_t)iMicroseconds;
-	setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const void *)&tv, sizeof(tv));
-	setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const void *)&tv, sizeof(tv));
+	{
+		struct timeval tv;
+		tv.tv_sec = (time_t)iSeconds;
+		tv.tv_usec = (suseconds_t)iMicroseconds;
+		setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const void *)&tv, sizeof(tv));
+		setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const void *)&tv, sizeof(tv));
+	}
 #endif
 }
 /*

@@ -3640,6 +3640,8 @@ struct io_private
 	/* Per-handle settings the stream_set_* family writes. */
 	sxu32 nChunk;    /* stream_set_chunk_size(), php's 8192 by default */
 	sxu8 bNonBlock;  /* stream_set_blocking(false) took effect at the descriptor */
+	sxu8 bHasTimeout;/* stream_set_timeout() armed one, so an EAGAIN read EXPIRED */
+	sxu8 bTimedOut;  /* the last read expired; php's meta `timed_out`, cleared by the next */
 	sxu8 bEof;       /* a read on this handle has already come back empty */
 	sxu8 bDir;       /* opendir()/dir() handle rather than a byte stream */
 	sxu32 iMagic;   /* Sanity check to avoid misuse */
@@ -3675,6 +3677,9 @@ PH7_PRIVATE int PH7_StreamPosixFd(io_private *pDev);
 /* Is this a handle php's plain-files device would own: a file, a pipe, a
  * standard stream? */
 PH7_PRIVATE int PH7_StreamIsPlainDevice(io_private *pDev);
+/* 1 / 0 / -1 ("ask the device instead"): can this handle report a position?
+ * php's stream_get_meta_data() `seekable` is exactly this question. */
+PH7_PRIVATE int PH7_StreamHandleCanSeek(io_private *pDev);
 /* The php:// sub-streams, as PH7_PhpStreamKind() reports them. */
 #define PH7_IO_STREAM_STDIN  1 /* php://stdin */
 #define PH7_IO_STREAM_STDOUT 2 /* php://stdout */
