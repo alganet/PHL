@@ -3814,6 +3814,15 @@ PH7_PRIVATE int PH7_builtin_strrchr(ph7_context *pCtx,int nArg,ph7_value **apArg
 			ph7_result_bool(pCtx,0);
 			return PH7_OK;
 		}
+		/* php 8.3's $before_needle: TRUE answers everything in FRONT of the last
+		 * occurrence instead of the occurrence and everything after it. It was
+		 * declared in aBuiltinSig[], screened as a bool and then never read, so
+		 * `strrchr($path, '/', true)` -- the ordinary way to take a dirname off a
+		 * delimiter -- answered the BASENAME, with the delimiter still on it. */
+		if( nArg > 2 && ph7_value_to_bool(apArg[2]) ){
+			ph7_result_string(pCtx,zBlob,(int)nOfft);
+			return PH7_OK;
+		}
 		/* Return the string portion */
 		ph7_result_string(pCtx,&zBlob[nOfft],(int)(&zBlob[nLen]-&zBlob[nOfft]));
 	}else{
