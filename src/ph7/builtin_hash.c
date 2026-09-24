@@ -1219,7 +1219,7 @@ static void * HashOpenRead(ph7_context *pCtx,const char *zFile,int nFile,
 			"No such stream device,PH7 is returning FALSE");
 		return 0;
 	}
-	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0);
+	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0,ph7_function_name(pCtx));
 	if( pHandle == 0 ){
 		VfsThrowOpenWarning(pCtx,zFile);
 		return 0;

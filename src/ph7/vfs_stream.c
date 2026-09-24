@@ -567,7 +567,7 @@ static ph7_int64 StreamReadLine(io_private *pDev,const char **pzData,ph7_int64 n
  * This function return a handle on success. Otherwise null.
  */
 PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream,const char *zFile,
-	int iFlags,int use_include,ph7_value *pResource,int bPushInclude,int *pNew)
+	int iFlags,int use_include,ph7_value *pResource,int bPushInclude,int *pNew,const char *zCaller)
 {
 	void *pHandle = 0; /* cc warning */
 	SyString sFile;
@@ -576,6 +576,30 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 	if( pStream == 0 ){
 		/* No such stream device */
 		return 0;
+	}
+	/* A wrapper registered with STREAM_IS_URL speaks to the network, and php lets
+	 * the configuration turn that off: allow_url_fopen for an ordinary open,
+	 * allow_url_include for the one that EXECUTES what comes back — which is off
+	 * by default, because including a remote file is the classic RFI. */
+	if( PH7_StreamIsUrlWrapper(pStream) ){
+		/* php tests BOTH, in this order: a URL wrapper is unusable at all without
+		 * allow_url_fopen, and an INCLUDE needs allow_url_include on top of it. */
+		const char *zIni = 0;
+		if( !PH7_VmIniGetBool(pVm,"allow_url_fopen",1) ){
+			zIni = "allow_url_fopen";
+		}else if( bPushInclude && !PH7_VmIniGetBool(pVm,"allow_url_include",0) ){
+			zIni = "allow_url_include";
+		}
+		if( zIni ){
+			SyString sCaller;
+			char zMsg[160];
+			SyStringInitFromBuf(&sCaller,zCaller ? zCaller : "",zCaller ? SyStrlen(zCaller) : 0);
+			SyBufferFormat(zMsg,sizeof(zMsg),
+				"%s:// wrapper is disabled in the server configuration by %s=0",
+				pStream->zName,zIni);
+			PH7_VmThrowError(pVm,zCaller ? &sCaller : 0,PH7_CTX_WARNING,zMsg);
+			return 0;
+		}
 	}
 	if( pResource == 0 ){
 		/* VM-dependent devices (php://, data://, tcp://, userland wrappers)
@@ -1511,7 +1535,7 @@ PH7_PRIVATE int PH7_builtin_readfile(ph7_context *pCtx,int nArg,ph7_value **apAr
 	}
 	/* Try to open the file in read-only mode */
 	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,
-		use_include,nArg > 2 ? apArg[2] : 0,FALSE,0);
+		use_include,nArg > 2 ? apArg[2] : 0,FALSE,0,ph7_function_name(pCtx));
 	if( pHandle == 0 ){
 		VfsThrowOpenWarning(pCtx,zFile);
 		ph7_result_bool(pCtx,0);
@@ -1599,7 +1623,7 @@ PH7_PRIVATE int PH7_builtin_file_get_contents(ph7_context *pCtx,int nArg,ph7_val
 		use_include = ph7_value_to_bool(apArg[1]);
 	}
 	/* Try to open the file in read-only mode */
-	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,use_include,nArg > 2 ? apArg[2] : 0,FALSE,0);
+	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,use_include,nArg > 2 ? apArg[2] : 0,FALSE,0,ph7_function_name(pCtx));
 	if( pHandle == 0 ){
 		VfsThrowOpenWarning(pCtx,zFile);
 		ph7_result_bool(pCtx,0);
@@ -1700,7 +1724,7 @@ PH7_PRIVATE int PH7_VfsAppendFile(ph7_context *pCtx,const char *zFile,const void
 		return -1;
 	}
 	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,
-		PH7_IO_OPEN_CREATE|PH7_IO_OPEN_RDWR|PH7_IO_OPEN_APPEND,FALSE,0,FALSE,0);
+		PH7_IO_OPEN_CREATE|PH7_IO_OPEN_RDWR|PH7_IO_OPEN_APPEND,FALSE,0,FALSE,0,ph7_function_name(pCtx));
 	if( pHandle == 0 ){
 		VfsThrowOpenWarning(pCtx,zFile);
 		return -1;
@@ -1759,7 +1783,7 @@ PH7_PRIVATE int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_val
 		}
 	}
 	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,iOpenFlags,use_include,
-		nArg > 3 ? apArg[3] : 0,FALSE,FALSE);
+		nArg > 3 ? apArg[3] : 0,FALSE,FALSE,ph7_function_name(pCtx));
 	if( pHandle == 0 ){
 		VfsThrowOpenWarning(pCtx,zFile);
 		ph7_result_bool(pCtx,0);
@@ -1886,7 +1910,7 @@ PH7_PRIVATE int PH7_builtin_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Try to open the file in read-only mode */
-	pDev->pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,use_include,nArg > 2 ? apArg[2] : 0,FALSE,0);
+	pDev->pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,use_include,nArg > 2 ? apArg[2] : 0,FALSE,0,ph7_function_name(pCtx));
 	if( pDev->pHandle == 0 ){
 		VfsThrowOpenWarning(pCtx,zFile);
 		ph7_result_bool(pCtx,0);
@@ -1983,7 +2007,7 @@ PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Try to open the source file in a read-only mode */
-	pIn = PH7_StreamOpenHandle(pCtx->pVm,pSin,zFile,PH7_IO_OPEN_RDONLY,FALSE,nArg > 2 ? apArg[2] : 0,FALSE,0);
+	pIn = PH7_StreamOpenHandle(pCtx->pVm,pSin,zFile,PH7_IO_OPEN_RDONLY,FALSE,nArg > 2 ? apArg[2] : 0,FALSE,0,ph7_function_name(pCtx));
 	if( pIn == 0 ){
 		VfsThrowOpenWarning(pCtx,zFile);
 		ph7_result_bool(pCtx,0);
@@ -2010,7 +2034,7 @@ PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Try to open the destination file in a read-write mode */
 	pOut = PH7_StreamOpenHandle(pCtx->pVm,pSout,zFile,
-		PH7_IO_OPEN_CREATE|PH7_IO_OPEN_TRUNC|PH7_IO_OPEN_RDWR,FALSE,nArg > 2 ? apArg[2] : 0,FALSE,0);
+		PH7_IO_OPEN_CREATE|PH7_IO_OPEN_TRUNC|PH7_IO_OPEN_RDWR,FALSE,nArg > 2 ? apArg[2] : 0,FALSE,0,ph7_function_name(pCtx));
 	if( pOut == 0 ){
 		VfsThrowOpenWarning(pCtx,zFile);
 		ph7_result_bool(pCtx,0);
@@ -3238,6 +3262,9 @@ struct uwrap_slot
 	ph7_vm *pVm;              /* owning VM (0 = free slot) */
 	char zScheme[32];         /* protocol name */
 	char zClass[128];         /* userland wrapper class */
+	int bIsUrl;               /* registered with STREAM_IS_URL: opening it is gated
+	                           * by allow_url_fopen, INCLUDING it by
+	                           * allow_url_include */
 	ph7_io_stream sStream;    /* the device handed to the VM */
 };
 typedef struct uwrap_handle uwrap_handle;
@@ -3249,6 +3276,28 @@ struct uwrap_handle
 	int bEof;
 };
 static uwrap_slot g_aUwrap[PHL_UWRAP_MAX];
+/*
+ * Was this device registered with STREAM_IS_URL? Only a userland wrapper can
+ * carry the flag, so the answer is a scan of the registration slots.
+ */
+PH7_PRIVATE int PH7_StreamIsUrlWrapper(const ph7_io_stream *pStream)
+{
+	int i;
+	/* php marks its own data:// wrapper a URL, and that is the one that matters
+	 * here: `include 'data://text/plain;base64,…'` executes bytes from the URI
+	 * itself, which is why php refuses it unless allow_url_include says
+	 * otherwise. php:// is NOT a URL wrapper in php and stays open. */
+	if( pStream && pStream->zName
+	 && SyStrlen(pStream->zName) == 4 && SyStrnicmp(pStream->zName,"data",4) == 0 ){
+		return 1;
+	}
+	for( i = 0 ; i < PHL_UWRAP_MAX ; i++ ){
+		if( g_aUwrap[i].pVm && &g_aUwrap[i].sStream == pStream ){
+			return g_aUwrap[i].bIsUrl;
+		}
+	}
+	return 0;
+}
 /* Call $obj->$zMethod(...) and copy the result into pResult (may be 0) */
 static int UwrapCall(uwrap_handle *pH,const char *zMethod,int nArg,ph7_value **apArg,
 	ph7_value *pResult)
@@ -3530,6 +3579,13 @@ PH7_PRIVATE int PH7_builtin_stream_wrapper_register(ph7_context *pCtx,int nArg,p
 		SyMemcpy(zClass,pSlot->zClass,(sxu32)nClass);
 		pSlot->zClass[nClass] = 0;
 		pSlot->pVm = pCtx->pVm;
+		/* $flags: php defines exactly one bit for it, STREAM_IS_URL, and it is the
+		 * whole reason the argument exists — a wrapper that says it speaks to the
+		 * NETWORK is the one allow_url_fopen and allow_url_include turn off. It was
+		 * declared in the signature and read by nothing, so a wrapper registered as
+		 * a URL was opened and INCLUDED like a local file whatever the
+		 * configuration said. */
+		pSlot->bIsUrl = (nArg > 2 && (ph7_value_to_int64(apArg[2]) & PH7_STREAM_IS_URL) != 0);
 		SyZero(&pSlot->sStream,sizeof(ph7_io_stream));
 		pSlot->sStream.zName = pSlot->zScheme;
 		pSlot->sStream.iVersion = PH7_IO_STREAM_VERSION;
@@ -3754,7 +3810,7 @@ PH7_PRIVATE int PH7_builtin_fopen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	iOpenFlags = StrModeToFlags(pCtx,zMode,imLen);
 	/* Try to get a handle */
 	pDev->pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zUri,iOpenFlags,
-		nArg > 2 ? ph7_value_to_bool(apArg[2]) : FALSE,pResource,FALSE,0);
+		nArg > 2 ? ph7_value_to_bool(apArg[2]) : FALSE,pResource,FALSE,0,ph7_function_name(pCtx));
 	if( pDev->pHandle == 0 ){
 		VfsThrowOpenWarning(pCtx,zUri);
 		ph7_result_bool(pCtx,0);
@@ -3873,7 +3929,7 @@ PH7_PRIVATE int PH7_builtin_md5_file(ph7_context *pCtx,int nArg,ph7_value **apAr
 		raw_output = ph7_value_to_bool(apArg[1]);
 	}
 	/* Try to open the file in read-only mode */
-	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0);
+	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0,ph7_function_name(pCtx));
 	if( pHandle == 0 ){
 		VfsThrowOpenWarning(pCtx,zFile);
 		ph7_result_bool(pCtx,0);
@@ -3944,7 +4000,7 @@ PH7_PRIVATE int PH7_builtin_sha1_file(ph7_context *pCtx,int nArg,ph7_value **apA
 		raw_output = ph7_value_to_bool(apArg[1]);
 	}
 	/* Try to open the file in read-only mode */
-	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0);
+	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0,ph7_function_name(pCtx));
 	if( pHandle == 0 ){
 		VfsThrowOpenWarning(pCtx,zFile);
 		ph7_result_bool(pCtx,0);
@@ -4028,7 +4084,7 @@ PH7_PRIVATE int PH7_builtin_parse_ini_file(ph7_context *pCtx,int nArg,ph7_value 
 		return PH7_OK;
 	}
 	/* Try to open the file in read-only mode */
-	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0);
+	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0,ph7_function_name(pCtx));
 	if( pHandle == 0 ){
 		VfsThrowOpenWarning(pCtx,zFile);
 		ph7_result_bool(pCtx,0);

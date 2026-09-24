@@ -42,6 +42,10 @@ static const struct {
 	sxi32 iAccess;
 } aIniDefault[] = {
 	{ "allow_url_fopen",          "1",          VM_INI_PERDIR|VM_INI_SYSTEM },
+	/* php's default is OFF, and it spells that default as the EMPTY string — which
+	 * is what ini_get() answers. Including a remote file is the classic RFI, and
+	 * this is what a STREAM_IS_URL wrapper's include is gated on. */
+	{ "allow_url_include",        "",           VM_INI_SYSTEM },
 	{ "arg_separator.input",      "&",          VM_INI_ALL },
 	{ "arg_separator.output",     "&",          VM_INI_ALL },
 	{ "auto_detect_line_endings", "",           VM_INI_ALL },
@@ -562,6 +566,28 @@ PH7_PRIVATE void PH7_VmIniGetStr(ph7_vm *pVm,const char *zName,SyBlob *pOut)
 		IniLiveGet(pVm,pSlot,pOut);
 	}
 }
+/*
+ * Read a BOOLEAN directive the way zend_ini does — "on"/"yes"/"true" as well as
+ * a non-zero number. Reading one through the integer parser answers 0 for
+ * `On`, which is the spelling php.ini-production ships, so a directive written
+ * that way reads as OFF.
+ */
+PH7_PRIVATE int PH7_VmIniGetBool(ph7_vm *pVm,const char *zName,int bDefault)
+{
+	VmIniSlot *pSlot;
+	SyBlob sVal;
+	int bRes;
+	IniSeed(pVm);
+	pSlot = IniFind(pVm,zName,(sxu32)SyStrlen(zName));
+	if( pSlot == 0 ){
+		return bDefault;
+	}
+	SyBlobInit(&sVal,&pVm->sAllocator);
+	IniLiveGet(pVm,pSlot,&sVal);
+	bRes = IniTruthy((const char *)SyBlobData(&sVal),SyBlobLength(&sVal));
+	SyBlobRelease(&sVal);
+	return bRes;
+}
 PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm)
 {
 	static const struct {
@@ -584,6 +610,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm)
 PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm){ (void)pVm; return SXRET_OK; }
 PH7_PRIVATE sxi64 PH7_VmIniGetInt(ph7_vm *pVm,const char *zName,sxi64 iDefault){
 	(void)pVm; (void)zName; return iDefault;
+}
+PH7_PRIVATE int PH7_VmIniGetBool(ph7_vm *pVm,const char *zName,int bDefault){
+	(void)pVm; (void)zName; return bDefault;
 }
 PH7_PRIVATE void PH7_VmIniGetStr(ph7_vm *pVm,const char *zName,SyBlob *pOut){
 	(void)pVm; (void)zName; SyBlobReset(pOut);

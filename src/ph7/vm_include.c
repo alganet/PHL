@@ -385,7 +385,7 @@ static sxi32 VmExecIncludedFile(
 	 * Open the file or the URL [i.e: http://ph7.symisc.net/example/hello.php"]
 	 * in a read-only mode.
 	 */
-	pHandle = PH7_StreamOpenHandle(pVm,pStream,pPath->zString,PH7_IO_OPEN_RDONLY,TRUE,0,TRUE,&isNew);
+	pHandle = PH7_StreamOpenHandle(pVm,pStream,pPath->zString,PH7_IO_OPEN_RDONLY,TRUE,0,TRUE,&isNew,ph7_function_name(pCtx));
 	if( pHandle == 0 ){
 		return SXERR_IO;
 	}

@@ -529,6 +529,16 @@ static void PH7_STR_PAD_BOTH_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData);
 }
 /*
+ * stream_wrapper_register()'s $flags. php defines exactly this one bit: the
+ * wrapper speaks to the network, so allow_url_fopen gates opening it and
+ * allow_url_include gates INCLUDING it.
+ */
+static void PH7_STREAM_IS_URL_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_IS_URL);
+	SXUNUSED(pUserData);
+}
+/*
  * mt_srand()'s $mode: which GENERATOR to seed. MT_RAND_PHP is php's pre-7.1
  * Mersenne Twister, whose twist reads the low bit of the wrong word — a
  * different sequence, which is the only reason to ask for it.
@@ -2222,6 +2232,7 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"STR_PAD_LEFT",         PH7_STR_PAD_LEFT_Const },
 	{"STR_PAD_RIGHT",        PH7_STR_PAD_RIGHT_Const},
 	{"STR_PAD_BOTH",         PH7_STR_PAD_BOTH_Const },
+	{"STREAM_IS_URL",                PH7_STREAM_IS_URL_Const },
 	{"MT_RAND_MT19937",              PH7_MT_RAND_MT19937_Const },
 	{"MT_RAND_PHP",                  PH7_MT_RAND_PHP_Const  },
 	{"PHP_OUTPUT_HANDLER_WRITE",     PH7_OB_WRITE_Const     },

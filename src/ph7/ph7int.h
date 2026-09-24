@@ -1000,6 +1000,9 @@ struct VmObEntry
  * EQUALITY, so every other value — including an out-of-range one — selects the
  * standard generator.
  */
+/* stream_wrapper_register()'s $flags: php defines this one bit. A wrapper that
+ * declares itself a URL is the one allow_url_fopen and allow_url_include gate. */
+#define PH7_STREAM_IS_URL 1
 #define PH7_MT_RAND_MT19937 0
 #define PH7_MT_RAND_PHP     1
 /*
@@ -3596,6 +3599,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm);
 PH7_PRIVATE sxi64 PH7_VmIniGetInt(ph7_vm *pVm,const char *zName,sxi64 iDefault);
 PH7_PRIVATE void PH7_VmIniGetStr(ph7_vm *pVm,const char *zName,SyBlob *pOut);
+PH7_PRIVATE int PH7_VmIniGetBool(ph7_vm *pVm,const char *zName,int bDefault);
 /* vfs_win.c / vfs_unix.c exported structs */
 #ifdef __WINNT__
 extern const ph7_vfs sWinVfs;
@@ -4648,8 +4652,9 @@ PH7_PRIVATE ph7_class * PH7_ContextCalledClass(ph7_context *pCtx);
 PH7_PRIVATE ph7_value * PH7_ContextThisValue(ph7_context *pCtx);
 /* vfs.c */
 #ifndef PH7_DISABLE_BUILTIN_FUNC
+PH7_PRIVATE int PH7_StreamIsUrlWrapper(const ph7_io_stream *pStream);
 PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream,const char *zFile,
-	int iFlags,int use_include,ph7_value *pResource,int bPushInclude,int *pNew);
+	int iFlags,int use_include,ph7_value *pResource,int bPushInclude,int *pNew,const char *zCaller);
 PH7_PRIVATE sxi32 PH7_StreamReadWholeFile(void *pHandle,const ph7_io_stream *pStream,SyBlob *pOut);
 PH7_PRIVATE int PH7_VfsAppendFile(ph7_context *pCtx,const char *zFile,const void *pData,int nLen);
 PH7_PRIVATE void PH7_StreamCloseHandle(const ph7_io_stream *pStream,void *pHandle);
