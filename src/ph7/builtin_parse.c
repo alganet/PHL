@@ -1228,7 +1228,10 @@ PH7_PRIVATE sxi32 PH7_CsvCharArg(ph7_context *pCtx,ph7_value *pArg,int iArg,
 	int n;
 	zPtr = ph7_value_to_string(pArg,&n);
 	if( n == 1 ){
-		*pChar = zPtr[0];
+		/* UNSIGNED: every comparison downstream is against a byte read out of a
+		 * field, so a separator of "\xE9" stored as a negative char would match
+		 * nothing at all and the field would go out unquoted. */
+		*pChar = (unsigned char)zPtr[0];
 		return PH7_OK;
 	}
 	if( n < 1 && bAllowEmpty ){

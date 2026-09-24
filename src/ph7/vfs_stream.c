@@ -2323,84 +2323,114 @@ PH7_PRIVATE int PH7_builtin_fpassthru(ph7_context *pCtx,int nArg,ph7_value **apA
 	ph7_result_int64(pCtx,nRead);
 	return PH7_OK;
 }
-/* CSV reader/writer private data */
+/* CSV writer private data */
 struct csv_data
 {
-	int delimiter;    /* Delimiter. Default ',' */
-	int enclosure;    /* Enclosure. Default '"'*/
-	io_private *pDev; /* Open stream handle */
-	int iCount;       /* Counter */
+	int delimiter;     /* Delimiter. Default ',' */
+	int enclosure;     /* Enclosure. Default '"' */
+	int escape;        /* Escape, or PH7_CSV_NO_ESCAPE when "" disabled it */
+	SyBlob *pLine;     /* The line being built */
+	sxu32 nCount;      /* Fields still to write after this one */
 };
 /*
- * The following callback is used by the fputcsv() function inorder to iterate
- * throw array entries and output CSV data based on the current key and it's
- * associated data.
+ * The following callback is used by fputcsv() to walk the $fields array and
+ * append each entry to the line under construction. It is a port of php's own
+ * php_fputcsv (ext/standard/file.c), and the parts a re-derivation gets wrong
+ * are all here:
+ *  - WHICH fields are enclosed. php quotes a field containing the delimiter,
+ *    the enclosure, the escape (when one is enabled) or any of \n, \r, \t and
+ *    SPACE. PH7 tested the first two only, so a field with an embedded newline
+ *    was written raw and became two CSV ROWS on the way back in.
+ *  - HOW an embedded enclosure is written: doubled, unless the escape character
+ *    came immediately before it (then the pair is passed through as-is and the
+ *    escape does NOT arm again for the byte after).
+ *  - that an EMPTY field is still a field. PH7 returned early for a zero-length
+ *    value and skipped its delimiter with it, so `['', 'a']` wrote "a" -- one
+ *    column where the caller wrote two, silently shifting every later column.
+ * The delimiter goes BETWEEN fields, so it is written from the remaining count
+ * rather than from a "not the first" flag: php appends it after every field but
+ * the last, and an empty first field must still be followed by one.
  */
 static int csv_write_callback(ph7_value *pKey,ph7_value *pValue,void *pUserData)
 {
 	struct csv_data *pData = (struct csv_data *)pUserData;
 	const char *zData;
-	int nLen,c2;
-	sxu32 n;
-	/* Point to the raw data */
+	int nLen,i;
+	int bEnclose = 0;
+	SXUNUSED(pKey); /* cc warning */
 	zData = ph7_value_to_string(pValue,&nLen);
-	if( nLen < 1 ){
-		/* Nothing to write */
-		return PH7_OK;
-	}
-	if( pData->iCount > 0 ){
-		/* Write the delimiter */
-		pData->pDev->pStream->xWrite(pData->pDev->pHandle,(const void *)&pData->delimiter,sizeof(char));
-	}
-	n = 1;
-	c2 = 0;
-	if( SyByteFind(zData,(sxu32)nLen,pData->delimiter,0) == SXRET_OK ||
-		SyByteFind(zData,(sxu32)nLen,pData->enclosure,&n) == SXRET_OK ){
-			c2 = 1;
-			if( n == 0 ){
-				c2 = 2;
-			}
-			/* Write the enclosure */
-			pData->pDev->pStream->xWrite(pData->pDev->pHandle,(const void *)&pData->enclosure,sizeof(char));
-			if( c2 > 1 ){
-				pData->pDev->pStream->xWrite(pData->pDev->pHandle,(const void *)&pData->enclosure,sizeof(char));
-			}
-	}
-	/* Write the data */
-	if( pData->pDev->pStream->xWrite(pData->pDev->pHandle,(const void *)zData,(ph7_int64)nLen) < 1 ){
-		SXUNUSED(pKey); /* cc warning */
-		return PH7_ABORT;
-	}
-	if( c2 > 0 ){
-		/* Write the enclosure */
-		pData->pDev->pStream->xWrite(pData->pDev->pHandle,(const void *)&pData->enclosure,sizeof(char));
-		if( c2 > 1 ){
-			pData->pDev->pStream->xWrite(pData->pDev->pHandle,(const void *)&pData->enclosure,sizeof(char));
+	for( i = 0 ; i < nLen ; ++i ){
+		int c = (unsigned char)zData[i];
+		if( c == pData->delimiter || c == pData->enclosure
+		 || (pData->escape != PH7_CSV_NO_ESCAPE && c == pData->escape)
+		 || c == '\n' || c == '\r' || c == '\t' || c == ' ' ){
+			bEnclose = 1;
+			break;
 		}
 	}
-	pData->iCount++;
+	if( bEnclose ){
+		char cEnc = (char)pData->enclosure;
+		int bEscaped = 0;
+		SyBlobAppend(pData->pLine,(const void *)&cEnc,sizeof(char));
+		for( i = 0 ; i < nLen ; ++i ){
+			char c = zData[i];
+			if( pData->escape != PH7_CSV_NO_ESCAPE && (unsigned char)c == pData->escape ){
+				bEscaped = 1;
+			}else if( !bEscaped && (unsigned char)c == pData->enclosure ){
+				SyBlobAppend(pData->pLine,(const void *)&cEnc,sizeof(char));
+			}else{
+				bEscaped = 0;
+			}
+			SyBlobAppend(pData->pLine,(const void *)&c,sizeof(char));
+		}
+		SyBlobAppend(pData->pLine,(const void *)&cEnc,sizeof(char));
+	}else if( nLen > 0 ){
+		SyBlobAppend(pData->pLine,(const void *)zData,(sxu32)nLen);
+	}
+	if( pData->nCount > 0 ){
+		pData->nCount--;
+	}
+	if( pData->nCount > 0 ){
+		char cDel = (char)pData->delimiter;
+		SyBlobAppend(pData->pLine,(const void *)&cDel,sizeof(char));
+	}
 	return PH7_OK;
 }
 /*
- * int fputcsv(resource $handle,array $fields[,string $delimiter = ','[,string $enclosure = '"' ]])
+ * int|false fputcsv(resource $stream, array $fields, string $separator = ',',
+ *                   string $enclosure = '"', string $escape = '\\',
+ *                   string $eol = "\n")
  *  Format line as CSV and write to file pointer.
  * Parameters
- *  $handle
+ *  $stream
  *   Open file handle.
- * $fields
+ *  $fields
  *   An array of values.
- * $delimiter
- *   The optional delimiter parameter sets the field delimiter (one character only).
- * $enclosure
- *  The optional enclosure parameter sets the field enclosure (one character only).
+ *  $separator
+ *   The optional separator parameter sets the field delimiter (one character only).
+ *  $enclosure
+ *   The optional enclosure parameter sets the field enclosure (one character only).
+ *  $escape
+ *   The escape character (one character), or "" to disable escaping entirely.
+ *  $eol
+ *   php 8.1's line ending. It is "\n" on EVERY platform -- php does not follow
+ *   the host's convention here, and PHL used to write CRLF on Windows, so the
+ *   same program produced a different FILE depending on where it ran.
+ * Return
+ *  The number of bytes written, or FALSE when the write fails. The count was
+ *  missing entirely (the call answered NULL), so the documented
+ *  `if (fputcsv(...) === false)` check never fired and a caller totalling the
+ *  bytes it wrote added nothing.
  */
 PH7_PRIVATE int PH7_builtin_fputcsv(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const ph7_io_stream *pStream;
 	struct csv_data sCsv;
 	io_private *pDev;
-	char *zEol;
-	int eolen;
+	SyBlob sLine;
+	const char *zEol = "\n";
+	int nEol = 1;
+	ph7_int64 nWr;
 	if( nArg < 2 || !ph7_value_is_resource(apArg[0]) || !ph7_value_is_array(apArg[1]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Missing/Invalid arguments");
@@ -2429,8 +2459,7 @@ PH7_PRIVATE int PH7_builtin_fputcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 	/* Set default csv separator */
 	sCsv.delimiter = ',';
 	sCsv.enclosure = '"';
-	sCsv.pDev = pDev;
-	sCsv.iCount = 0;
+	sCsv.escape = '\\';
 	if( nArg > 2 ){
 		sxi32 rc = PH7_CsvCharArg(pCtx,apArg[2],3,"separator",0,&sCsv.delimiter);
 		if( rc != PH7_OK ){
@@ -2442,28 +2471,43 @@ PH7_PRIVATE int PH7_builtin_fputcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 				return rc;
 			}
 			if( nArg > 4 ){
-				/* The writer does not model $escape (the CSV-writer slice);
-				 * validate it like php so the loud path matches. */
-				int iEscape;
-				rc = PH7_CsvCharArg(pCtx,apArg[4],5,"escape",1,&iEscape);
+				rc = PH7_CsvCharArg(pCtx,apArg[4],5,"escape",1,&sCsv.escape);
 				if( rc != PH7_OK ){
 					return rc;
+				}
+				if( nArg > 5 ){
+					/* $eol takes ANY string, the empty one included -- it is not
+					 * a single-character argument like the three above. */
+					zEol = ph7_value_to_string(apArg[5],&nEol);
 				}
 			}
 		}
 	}
-	/* Iterate throw array entries and write csv data */
+	/* php builds the whole line first and writes it ONCE, which is what makes the
+	 * byte count meaningful and keeps a partly-written row off the stream. */
+	SyBlobInit(&sLine,&pCtx->pVm->sAllocator);
+	sCsv.pLine = &sLine;
+	sCsv.nCount = (sxu32)ph7_array_count(apArg[1]);
 	ph7_array_walk(apArg[1],csv_write_callback,&sCsv);
-	/* Write a line ending */
-#ifdef __WINNT__
-	zEol = "\r\n";
-	eolen = (int)sizeof("\r\n")-1;
-#else
-	/* Assume UNIX LF */
-	zEol = "\n";
-	eolen = (int)sizeof(char);
-#endif
-	pDev->pStream->xWrite(pDev->pHandle,(const void *)zEol,eolen);
+	if( nEol > 0 ){
+		SyBlobAppend(&sLine,(const void *)zEol,(sxu32)nEol);
+	}
+	if( pDev->nOfft < SyBlobLength(&pDev->sBuffer) && pStream->xSeek ){
+		/* Write at the LOGICAL position, not the device one -- the same rule
+		 * PH7_builtin_fwrite applies after a buffered read (fgets() then
+		 * fputcsv() overwrites what fgets left unread). */
+		pStream->xSeek(pDev->pHandle,
+			-(ph7_int64)(SyBlobLength(&pDev->sBuffer) - pDev->nOfft),1/*SEEK_CUR*/);
+		ResetIOPrivate(pDev);
+	}
+	nWr = pStream->xWrite(pDev->pHandle,(const void *)SyBlobData(&sLine),
+		(ph7_int64)SyBlobLength(&sLine));
+	SyBlobRelease(&sLine);
+	if( nWr < 0 ){
+		ph7_result_bool(pCtx,0);
+	}else{
+		ph7_result_int64(pCtx,nWr);
+	}
 	return PH7_OK;
 }
 /*
