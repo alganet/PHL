@@ -901,6 +901,11 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "password_needs_rehash", PH7_builtin_password_needs_rehash },
 	{ "filter_var",            PH7_builtin_filter_var },
 	{ "filter_input",          PH7_builtin_filter_input },
+	{ "filter_list",           PH7_builtin_filter_list },
+	{ "filter_id",             PH7_builtin_filter_id },
+	{ "filter_has_var",        PH7_builtin_filter_has_var },
+	{ "filter_var_array",      PH7_builtin_filter_var_array },
+	{ "filter_input_array",    PH7_builtin_filter_input_array },
 #endif /* PH7_NEED_BUILTIN_REG */
 #ifdef PH7_NEED_FMT_AND_INI
 	{ "str_getcsv",   PH7_builtin_str_getcsv },
