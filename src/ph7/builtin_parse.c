@@ -39,6 +39,8 @@
 #define FV_VALIDATE_IP      275
 #define FV_VALIDATE_MAC     276
 #define FV_VALIDATE_DOMAIN  277
+#define FV_SANITIZE_STRING             513
+#define FV_SANITIZE_ENCODED            514
 #define FV_SANITIZE_SPECIAL_CHARS      515
 #define FV_DEFAULT          516 /* == FILTER_UNSAFE_RAW: pass the value through */
 #define FV_SANITIZE_EMAIL   517
@@ -46,6 +48,7 @@
 #define FV_SANITIZE_NUMBER_INT   519
 #define FV_SANITIZE_NUMBER_FLOAT 520
 #define FV_SANITIZE_FULL_SPECIAL_CHARS 522
+#define FV_SANITIZE_ADD_SLASHES        523
 #define FV_FLAG_ALLOW_OCTAL  1
 #define FV_FLAG_ALLOW_HEX    2
 #define FV_FLAG_STRIP_LOW    4
@@ -54,6 +57,7 @@
 #define FV_FLAG_ENCODE_HIGH  32
 #define FV_FLAG_ENCODE_AMP   64
 #define FV_FLAG_NO_ENCODE_QUOTES 128
+#define FV_FLAG_EMPTY_STRING_NULL 256
 #define FV_FLAG_STRIP_BACKTICK   512
 #define FV_FLAG_ALLOW_FRACTION   4096
 #define FV_FLAG_ALLOW_THOUSAND   8192
@@ -699,6 +703,85 @@ static void FvSanitizeString(ph7_context *pCtx,const char *z,int n,int flags){
 		       || (c>=127 && (flags & FV_FLAG_ENCODE_HIGH)) ){
 			if( i>runStart ){ ph7_result_string(pCtx,z+runStart,i-runStart); }
 			ph7_result_string_format(pCtx,"&#%d;",(int)c);
+			runStart = i+1;
+		}
+	}
+	if( n>runStart ){ ph7_result_string(pCtx,z+runStart,n-runStart); }
+}
+/*
+ * The strip-then-encode pass php runs before SANITIZE_STRING's strip_tags, into
+ * a blob rather than the call context because there is a second transform after
+ * it. bQuotes carries the NO_ENCODE_QUOTES decision; the rest is the same
+ * strip/encode precedence FvSanitizeString() applies.
+ */
+static void FvStripEncodeBlob(SyBlob *pOut,const char *z,int n,int flags,int bQuotes){
+	int i;
+	for( i=0; i<n; i++ ){
+		unsigned char c = (unsigned char)z[i];
+		if( FvStripByte(c,flags) ){ continue; }
+		if( (bQuotes && (c=='\'' || c=='"'))
+		 || (c=='&' && (flags & FV_FLAG_ENCODE_AMP))
+		 || (c<32 && (flags & FV_FLAG_ENCODE_LOW))
+		 || (c>=127 && (flags & FV_FLAG_ENCODE_HIGH)) ){
+			char zBuf[16];
+			int nBuf = SyBufferFormat(zBuf,sizeof(zBuf),"&#%u;",(unsigned int)c);
+			SyBlobAppend(pOut,zBuf,(sxu32)nBuf);
+		}else{
+			SyBlobAppend(pOut,&z[i],1);
+		}
+	}
+}
+/*
+ * FILTER_SANITIZE_STRING (php's filter id 513, whose two CONSTANT names php
+ * deprecated in 8.1 and §10 therefore does not define): strip, encode the
+ * quotes unless NO_ENCODE_QUOTES, then strip_tags -- and answer NULL rather
+ * than "" for an empty result under FILTER_FLAG_EMPTY_STRING_NULL.
+ */
+static void FvSanitizeStripString(ph7_context *pCtx,const char *z,int n,int flags){
+	SyBlob sEnc;
+	SyBlobInit(&sEnc,&pCtx->pVm->sAllocator);
+	FvStripEncodeBlob(&sEnc,z,n,flags,(flags & FV_FLAG_NO_ENCODE_QUOTES) ? 0 : 1);
+	/* php's filter passes allow_tag_spaces: inside SANITIZE_STRING a `<` followed
+	 * by whitespace DOES open a tag, where strip_tags() itself leaves it as text. */
+	PH7_StripTagsFromString(pCtx,(const char *)SyBlobData(&sEnc),(int)SyBlobLength(&sEnc),0,0,1);
+	SyBlobRelease(&sEnc);
+	if( ph7_context_result_buf_length(pCtx)==0 ){
+		if( flags & FV_FLAG_EMPTY_STRING_NULL ){ ph7_result_null(pCtx); }
+		else{ ph7_result_string(pCtx,"",0); }
+	}
+}
+/*
+ * FILTER_SANITIZE_ENCODED: strip, then percent-encode every byte outside
+ * [A-Za-z0-9-._] with php's UPPERCASE hex.
+ */
+static void FvSanitizeEncoded(ph7_context *pCtx,const char *z,int n,int flags){
+	static const char zHex[] = "0123456789ABCDEF";
+	int i;
+	ph7_result_string(pCtx,"",0);
+	for( i=0; i<n; i++ ){
+		unsigned char c = (unsigned char)z[i];
+		if( FvStripByte(c,flags) ){ continue; }
+		if( FvIsAlnum(c) || c=='-' || c=='.' || c=='_' ){
+			ph7_result_string(pCtx,&z[i],1);
+		}else{
+			char zBuf[3];
+			zBuf[0] = '%'; zBuf[1] = zHex[c>>4]; zBuf[2] = zHex[c & 15];
+			ph7_result_string(pCtx,zBuf,3);
+		}
+	}
+}
+/*
+ * FILTER_SANITIZE_ADD_SLASHES: php's addslashes(), flags and all ignored.
+ */
+static void FvSanitizeAddSlashes(ph7_context *pCtx,const char *z,int n){
+	int i, runStart = 0;
+	ph7_result_string(pCtx,"",0);
+	for( i=0; i<n; i++ ){
+		char c = z[i];
+		if( c=='\'' || c=='"' || c=='\\' || c==0 ){
+			if( i>runStart ){ ph7_result_string(pCtx,z+runStart,i-runStart); }
+			if( c==0 ){ ph7_result_string(pCtx,"\\0",2); }
+			else{ ph7_result_string_format(pCtx,"\\%c",c); }
 			runStart = i+1;
 		}
 	}
@@ -1400,6 +1483,9 @@ static int FvApplyFilter(ph7_context *pCtx,ph7_value *pInput,
 		goto fail;
 #endif
 	}
+	case FV_SANITIZE_STRING:       FvSanitizeStripString(pCtx,zVal,nVal,iFlags); return PH7_OK;
+	case FV_SANITIZE_ENCODED:      FvSanitizeEncoded(pCtx,zVal,nVal,iFlags);     return PH7_OK;
+	case FV_SANITIZE_ADD_SLASHES:  FvSanitizeAddSlashes(pCtx,zVal,nVal);         return PH7_OK;
 	case FV_SANITIZE_NUMBER_INT:   FvSanitizeNumber(pCtx,zVal,nVal,0,0);      return PH7_OK;
 	case FV_SANITIZE_NUMBER_FLOAT: FvSanitizeNumber(pCtx,zVal,nVal,1,iFlags); return PH7_OK;
 	case FV_SANITIZE_SPECIAL_CHARS:      FvSanitizeSpecial(pCtx,zVal,nVal,iFlags); return PH7_OK;
@@ -1408,9 +1494,15 @@ static int FvApplyFilter(ph7_context *pCtx,ph7_value *pInput,
 	case FV_SANITIZE_URL:   FvSanitizeChars(pCtx,zVal,nVal,1); return PH7_OK;
 	case FV_DEFAULT:
 		/* FILTER_UNSAFE_RAW / FILTER_DEFAULT: pass through unchanged unless a
-		 * STRIP/ENCODE flag is set, in which case apply the string filter. */
-		if( iFlags & FV_FLAG_STRING_MASK ){
+		 * STRIP/ENCODE flag is set, in which case apply the string filter. php
+		 * takes that branch only for a NON-empty value, so an empty one falls to
+		 * the EMPTY_STRING_NULL rule either way. */
+		if( nVal>0 && (iFlags & FV_FLAG_STRING_MASK) ){
 			FvSanitizeString(pCtx,zVal,nVal,iFlags);
+			return PH7_OK;
+		}
+		if( nVal==0 && (iFlags & FV_FLAG_EMPTY_STRING_NULL) ){
+			ph7_result_null(pCtx);
 			return PH7_OK;
 		}
 		goto pass;
@@ -1911,7 +2003,7 @@ static int FvTagAllowed(const char *zTag,int nTag,const char *zAllow,int nAllow)
  * `<!DOCTYPE ...>` each have their own exit rule; and an unterminated tag eats
  * the rest of the input instead of reappearing as text.
  */
-PH7_PRIVATE sxi32 PH7_StripTagsFromString(ph7_context *pCtx,const char *zIn,int nByte,const char *zTaglist,int nTaglen)
+PH7_PRIVATE sxi32 PH7_StripTagsFromString(ph7_context *pCtx,const char *zIn,int nByte,const char *zTaglist,int nTaglen,int bTagSpaces)
 {
 	SyBlob sOut, sTag;
 	int i = 0, state = 0, depth = 0, in_q = 0, br = 0, is_xml = 0;
@@ -1928,7 +2020,7 @@ PH7_PRIVATE sxi32 PH7_StripTagsFromString(ph7_context *pCtx,const char *zIn,int 
 			if( c==0 ){
 				break;
 			}else if( c=='<' && !in_q ){
-				if( SyisSpace(nx) ){
+				if( SyisSpace(nx) && !bTagSpaces ){
 					SyBlobAppend(&sOut,&zIn[i],1);
 					break;
 				}
@@ -1949,7 +2041,7 @@ PH7_PRIVATE sxi32 PH7_StripTagsFromString(ph7_context *pCtx,const char *zIn,int 
 			if( c==0 ){
 				break;
 			}else if( c=='<' && !in_q ){
-				if( SyisSpace(nx) ){
+				if( SyisSpace(nx) && !bTagSpaces ){
 					if( bAllow ){ SyBlobAppend(&sTag,&zIn[i],1); }
 					break;
 				}
@@ -2120,7 +2212,7 @@ PH7_PRIVATE int PH7_builtin_strip_tags(ph7_context *pCtx,int nArg,ph7_value **ap
 		nTaglen = (int)SyBlobLength(&sTags);
 	}
 	/* Process input */
-	PH7_StripTagsFromString(pCtx,zString,nLen,zTaglist,nTaglen);
+	PH7_StripTagsFromString(pCtx,zString,nLen,zTaglist,nTaglen,0);
 	SyBlobRelease(&sTags);
 	return PH7_OK;
 }

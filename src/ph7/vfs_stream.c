@@ -1642,7 +1642,7 @@ PH7_PRIVATE int PH7_builtin_fgetss(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			zTaglist = ph7_value_to_string(apArg[2],&nTaglen);
 		}
 		/* Process data just read */
-		PH7_StripTagsFromString(pCtx,zLine,(int)n,zTaglist,nTaglen);
+		PH7_StripTagsFromString(pCtx,zLine,(int)n,zTaglist,nTaglen,0);
 	}
 	return PH7_OK;
 }
