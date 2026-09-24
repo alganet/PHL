@@ -48,6 +48,54 @@ struct SHA512Context {
 	int nDigestLen;          /* 64 (sha512) or 48 (sha384) — set by Init */
 };
 
+/* MD4 context (MD5's predecessor; same 64-byte block and little-endian output,
+ * three rounds instead of four). */
+typedef struct MD4Context MD4Context;
+struct MD4Context {
+	sxu32 state[4];
+	sxu64 nLen;
+	unsigned char buffer[64];
+	sxu32 nIndex;
+};
+
+/* MD2 context. Its block is 16 bytes, its state is a 48-byte permutation
+ * buffer, and its CHECKSUM is chained across blocks through nL -- which is why
+ * a streaming implementation has to keep it. */
+typedef struct MD2Context MD2Context;
+struct MD2Context {
+	unsigned char X[48];
+	unsigned char C[16];
+	unsigned char buffer[16];
+	sxu32 nIndex;
+	unsigned char nL;
+};
+
+/* SHA-3 (Keccak-f[1600]) context. The four digest lengths differ only in the
+ * RATE they absorb at: 200 - 2*digest bytes, i.e. 144/136/104/72. */
+typedef struct KeccakContext KeccakContext;
+struct KeccakContext {
+	sxu64 A[25];             /* the 1600-bit state, as little-endian lanes */
+	sxu32 nRate;             /* bytes absorbed per permutation */
+	sxu32 nIndex;            /* bytes absorbed into the current block */
+	int nDigestLen;
+};
+
+/* RIPEMD-128/160/256/320 context. All four run two parallel lines over the
+ * same 64-byte block; the 256/320 pair keeps both lines' state as the digest
+ * instead of combining them, so ten words cover every variant. */
+#define RMD_128 0
+#define RMD_160 1
+#define RMD_256 2
+#define RMD_320 3
+typedef struct RipemdContext RipemdContext;
+struct RipemdContext {
+	sxu32 state[10];
+	sxu64 nLen;
+	unsigned char buffer[64];
+	sxu32 nIndex;
+	int nKind;
+};
+
 /*
  * The checksum/short-hash family (crc32, crc32b, crc32c, adler32, the four FNV
  * variants and joaat). Every one of them is a single accumulator fed one byte
@@ -118,6 +166,10 @@ typedef union HashCtx {
 	SumContext sum;
 	MurmurContext murmur;
 	XxhContext xxh;
+	MD4Context md4;
+	MD2Context md2;
+	KeccakContext keccak;
+	RipemdContext ripemd;
 } HashCtx;
 
 /* Digest function prototypes */
@@ -144,6 +196,25 @@ PH7_PRIVATE void SHA512Final(SHA512Context *pCtx,unsigned char *digest);
 PH7_PRIVATE sxi32 SySha512Compute(const void *pIn,sxu32 nLen,unsigned char zDigest[64]);
 
 PH7_PRIVATE sxu32 SyCrc32(const void *pSrc,sxu32 nLen);
+
+PH7_PRIVATE void SHA512_224Init(SHA512Context *pCtx); /* SHA-512/224 (28-byte digest) */
+PH7_PRIVATE void SHA512_256Init(SHA512Context *pCtx); /* SHA-512/256 (32-byte digest) */
+
+PH7_PRIVATE void MD4Init(MD4Context *pCtx);
+PH7_PRIVATE void MD4Update(MD4Context *pCtx,const unsigned char *data,unsigned int len);
+PH7_PRIVATE void MD4Final(MD4Context *pCtx,unsigned char *digest);
+
+PH7_PRIVATE void MD2Init(MD2Context *pCtx);
+PH7_PRIVATE void MD2Update(MD2Context *pCtx,const unsigned char *data,unsigned int len);
+PH7_PRIVATE void MD2Final(MD2Context *pCtx,unsigned char *digest);
+
+PH7_PRIVATE void KeccakInit(KeccakContext *pCtx,int nDigestLen);
+PH7_PRIVATE void KeccakUpdate(KeccakContext *pCtx,const unsigned char *data,unsigned int len);
+PH7_PRIVATE void KeccakFinal(KeccakContext *pCtx,unsigned char *digest);
+
+PH7_PRIVATE void RipemdInit(RipemdContext *pCtx,int nKind);
+PH7_PRIVATE void RipemdUpdate(RipemdContext *pCtx,const unsigned char *data,unsigned int len);
+PH7_PRIVATE void RipemdFinal(RipemdContext *pCtx,unsigned char *digest);
 
 PH7_PRIVATE void SumInit(SumContext *pCtx,int nKind);
 PH7_PRIVATE void SumUpdate(SumContext *pCtx,const unsigned char *data,unsigned int len);

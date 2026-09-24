@@ -148,6 +148,28 @@ static void HashSha384Init(HashCtx *c,sxu64 nSeed){ SXUNUSED(nSeed); SHA384Init(
 static void HashSha512Init(HashCtx *c,sxu64 nSeed){ SXUNUSED(nSeed); SHA512Init(&c->sha512); }
 static void HashSha512Update(HashCtx *c,const unsigned char *d,unsigned int n){ SHA512Update(&c->sha512,d,n); }
 static void HashSha512Final(HashCtx *c,unsigned char *o){ SHA512Final(&c->sha512,o); }
+static void HashSha512_224Init(HashCtx *c,sxu64 nSeed){ SXUNUSED(nSeed); SHA512_224Init(&c->sha512); }
+static void HashSha512_256Init(HashCtx *c,sxu64 nSeed){ SXUNUSED(nSeed); SHA512_256Init(&c->sha512); }
+/* The rest of php's cryptographic set: MD4, MD2, SHA-3 at four rates and the
+ * RIPEMD quartet. */
+static void HashMd4Init(HashCtx *c,sxu64 nSeed){ SXUNUSED(nSeed); MD4Init(&c->md4); }
+static void HashMd4Update(HashCtx *c,const unsigned char *d,unsigned int n){ MD4Update(&c->md4,d,n); }
+static void HashMd4Final(HashCtx *c,unsigned char *o){ MD4Final(&c->md4,o); }
+static void HashMd2Init(HashCtx *c,sxu64 nSeed){ SXUNUSED(nSeed); MD2Init(&c->md2); }
+static void HashMd2Update(HashCtx *c,const unsigned char *d,unsigned int n){ MD2Update(&c->md2,d,n); }
+static void HashMd2Final(HashCtx *c,unsigned char *o){ MD2Final(&c->md2,o); }
+static void HashSha3_224Init(HashCtx *c,sxu64 nSeed){ SXUNUSED(nSeed); KeccakInit(&c->keccak,28); }
+static void HashSha3_256Init(HashCtx *c,sxu64 nSeed){ SXUNUSED(nSeed); KeccakInit(&c->keccak,32); }
+static void HashSha3_384Init(HashCtx *c,sxu64 nSeed){ SXUNUSED(nSeed); KeccakInit(&c->keccak,48); }
+static void HashSha3_512Init(HashCtx *c,sxu64 nSeed){ SXUNUSED(nSeed); KeccakInit(&c->keccak,64); }
+static void HashSha3Update(HashCtx *c,const unsigned char *d,unsigned int n){ KeccakUpdate(&c->keccak,d,n); }
+static void HashSha3Final(HashCtx *c,unsigned char *o){ KeccakFinal(&c->keccak,o); }
+static void HashRmd128Init(HashCtx *c,sxu64 nSeed){ SXUNUSED(nSeed); RipemdInit(&c->ripemd,RMD_128); }
+static void HashRmd160Init(HashCtx *c,sxu64 nSeed){ SXUNUSED(nSeed); RipemdInit(&c->ripemd,RMD_160); }
+static void HashRmd256Init(HashCtx *c,sxu64 nSeed){ SXUNUSED(nSeed); RipemdInit(&c->ripemd,RMD_256); }
+static void HashRmd320Init(HashCtx *c,sxu64 nSeed){ SXUNUSED(nSeed); RipemdInit(&c->ripemd,RMD_320); }
+static void HashRmdUpdate(HashCtx *c,const unsigned char *d,unsigned int n){ RipemdUpdate(&c->ripemd,d,n); }
+static void HashRmdFinal(HashCtx *c,unsigned char *o){ RipemdFinal(&c->ripemd,o); }
 /* The checksum family shares one context and one Update; only the kind differs. */
 static void HashCrc32Init(HashCtx *c,sxu64 nSeed){ SXUNUSED(nSeed); SumInit(&c->sum,SUM_CRC32); }
 static void HashCrc32bInit(HashCtx *c,sxu64 nSeed){ SXUNUSED(nSeed); SumInit(&c->sum,SUM_CRC32B); }
@@ -170,6 +192,14 @@ static void HashXxh32Init(HashCtx *c,sxu64 nSeed){ XxhInit(&c->xxh,XXH_32,nSeed)
 static void HashXxh64Init(HashCtx *c,sxu64 nSeed){ XxhInit(&c->xxh,XXH_64,nSeed); }
 static void HashXxhUpdate(HashCtx *c,const unsigned char *d,unsigned int n){ XxhUpdate(&c->xxh,d,n); }
 static void HashXxhFinal(HashCtx *c,unsigned char *o){ XxhFinal(&c->xxh,o); }
+/* Every fixed buffer in this file is one of these two, so a row added to the
+ * table below cannot silently overrun one. HASH_MAX_BLOCK is the width of a
+ * whole Keccak state rather than the widest rate in use (144, sha3-224's):
+ * that is a STRUCTURAL ceiling -- no sponge can absorb more than its state,
+ * and every Merkle-Damgard block php registers is 128 or less -- where the
+ * tighter number would have to be re-checked by hand on every new row. */
+#define HASH_MAX_BLOCK  200
+#define HASH_MAX_DIGEST 64
 typedef struct HashAlgo HashAlgo;
 struct HashAlgo {
 	const char *zName;   /* lowercase canonical name */
@@ -190,26 +220,38 @@ struct HashAlgo {
  * table does not is a loud ValueError rather than a wrong digest.
  */
 static const HashAlgo aHashAlgo[] = {
-	{ "md5",      16,  64, 0, HashMd5Init,     HashMd5Update,    HashMd5Final     },
-	{ "sha1",     20,  64, 0, HashSha1Init,    HashSha1Update,   HashSha1Final    },
-	{ "sha224",   28,  64, 0, HashSha224Init,  HashSha256Update, HashSha256Final  },
-	{ "sha256",   32,  64, 0, HashSha256Init,  HashSha256Update, HashSha256Final  },
-	{ "sha384",   48, 128, 0, HashSha384Init,  HashSha512Update, HashSha512Final  },
-	{ "sha512",   64, 128, 0, HashSha512Init,  HashSha512Update, HashSha512Final  },
-	{ "adler32",   4,   0, 0, HashAdler32Init, HashSumUpdate,    HashSumFinal     },
-	{ "crc32",     4,   0, 0, HashCrc32Init,   HashSumUpdate,    HashSumFinal     },
-	{ "crc32b",    4,   0, 0, HashCrc32bInit,  HashSumUpdate,    HashSumFinal     },
-	{ "crc32c",    4,   0, 0, HashCrc32cInit,  HashSumUpdate,    HashSumFinal     },
-	{ "fnv132",    4,   0, 0, HashFnv132Init,  HashSumUpdate,    HashSumFinal     },
-	{ "fnv1a32",   4,   0, 0, HashFnv1a32Init, HashSumUpdate,    HashSumFinal     },
-	{ "fnv164",    8,   0, 0, HashFnv164Init,  HashSumUpdate,    HashSumFinal     },
-	{ "fnv1a64",   8,   0, 0, HashFnv1a64Init, HashSumUpdate,    HashSumFinal     },
-	{ "joaat",     4,   0, 0, HashJoaatInit,   HashSumUpdate,    HashSumFinal     },
-	{ "murmur3a",  4,   0, 1, HashMur3aInit,   HashMurUpdate,    HashMurFinal     },
-	{ "murmur3c", 16,   0, 1, HashMur3cInit,   HashMurUpdate,    HashMurFinal     },
-	{ "murmur3f", 16,   0, 1, HashMur3fInit,   HashMurUpdate,    HashMurFinal     },
-	{ "xxh32",     4,   0, 1, HashXxh32Init,   HashXxhUpdate,    HashXxhFinal     },
-	{ "xxh64",     8,   0, 1, HashXxh64Init,   HashXxhUpdate,    HashXxhFinal     },
+	{ "md2",        16,  16, 0, HashMd2Init,        HashMd2Update,     HashMd2Final      },
+	{ "md4",        16,  64, 0, HashMd4Init,        HashMd4Update,     HashMd4Final      },
+	{ "md5",        16,  64, 0, HashMd5Init,        HashMd5Update,     HashMd5Final      },
+	{ "sha1",       20,  64, 0, HashSha1Init,       HashSha1Update,    HashSha1Final     },
+	{ "sha224",     28,  64, 0, HashSha224Init,     HashSha256Update,  HashSha256Final   },
+	{ "sha256",     32,  64, 0, HashSha256Init,     HashSha256Update,  HashSha256Final   },
+	{ "sha384",     48, 128, 0, HashSha384Init,     HashSha512Update,  HashSha512Final   },
+	{ "sha512/224", 28, 128, 0, HashSha512_224Init, HashSha512Update,  HashSha512Final   },
+	{ "sha512/256", 32, 128, 0, HashSha512_256Init, HashSha512Update,  HashSha512Final   },
+	{ "sha512",     64, 128, 0, HashSha512Init,     HashSha512Update,  HashSha512Final   },
+	{ "sha3-224",   28, 144, 0, HashSha3_224Init,   HashSha3Update,    HashSha3Final     },
+	{ "sha3-256",   32, 136, 0, HashSha3_256Init,   HashSha3Update,    HashSha3Final     },
+	{ "sha3-384",   48, 104, 0, HashSha3_384Init,   HashSha3Update,    HashSha3Final     },
+	{ "sha3-512",   64,  72, 0, HashSha3_512Init,   HashSha3Update,    HashSha3Final     },
+	{ "ripemd128",  16,  64, 0, HashRmd128Init,     HashRmdUpdate,     HashRmdFinal      },
+	{ "ripemd160",  20,  64, 0, HashRmd160Init,     HashRmdUpdate,     HashRmdFinal      },
+	{ "ripemd256",  32,  64, 0, HashRmd256Init,     HashRmdUpdate,     HashRmdFinal      },
+	{ "ripemd320",  40,  64, 0, HashRmd320Init,     HashRmdUpdate,     HashRmdFinal      },
+	{ "adler32",     4,   0, 0, HashAdler32Init,    HashSumUpdate,     HashSumFinal      },
+	{ "crc32",       4,   0, 0, HashCrc32Init,      HashSumUpdate,     HashSumFinal      },
+	{ "crc32b",      4,   0, 0, HashCrc32bInit,     HashSumUpdate,     HashSumFinal      },
+	{ "crc32c",      4,   0, 0, HashCrc32cInit,     HashSumUpdate,     HashSumFinal      },
+	{ "fnv132",      4,   0, 0, HashFnv132Init,     HashSumUpdate,     HashSumFinal      },
+	{ "fnv1a32",     4,   0, 0, HashFnv1a32Init,    HashSumUpdate,     HashSumFinal      },
+	{ "fnv164",      8,   0, 0, HashFnv164Init,     HashSumUpdate,     HashSumFinal      },
+	{ "fnv1a64",     8,   0, 0, HashFnv1a64Init,    HashSumUpdate,     HashSumFinal      },
+	{ "joaat",       4,   0, 0, HashJoaatInit,      HashSumUpdate,     HashSumFinal      },
+	{ "murmur3a",    4,   0, 1, HashMur3aInit,      HashMurUpdate,     HashMurFinal      },
+	{ "murmur3c",   16,   0, 1, HashMur3cInit,      HashMurUpdate,     HashMurFinal      },
+	{ "murmur3f",   16,   0, 1, HashMur3fInit,      HashMurUpdate,     HashMurFinal      },
+	{ "xxh32",       4,   0, 1, HashXxh32Init,      HashXxhUpdate,     HashXxhFinal      },
+	{ "xxh64",       8,   0, 1, HashXxh64Init,      HashXxhUpdate,     HashXxhFinal      },
 };
 /*
  * hash()'s $options argument, which only the seeded rows above read. php looks
@@ -266,7 +308,7 @@ PH7_PRIVATE int PH7_builtin_hash(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	int nAlgoLen,nDataLen,raw_output = FALSE;
 	sxu64 nSeed = 0;
 	HashCtx sCtx;
-	unsigned char zDigest[64];
+	unsigned char zDigest[HASH_MAX_DIGEST];
 	if( nArg < 2 ){
 		return PH7_VmThrowException(pCtx,"ArgumentCountError",
 			"hash() expects at least 2 arguments, %d given",nArg);
@@ -307,7 +349,8 @@ PH7_PRIVATE int PH7_builtin_hash_hmac(ph7_context *pCtx,int nArg,ph7_value **apA
 	const char *zAlgo,*zData,*zKey;
 	int nAlgoLen,nDataLen,nKeyLen,raw_output = FALSE;
 	HashCtx sCtx;
-	unsigned char zKeyBlock[128],zIpad[128],zOpad[128],zInner[64],zDigest[64];
+	unsigned char zKeyBlock[HASH_MAX_BLOCK],zIpad[HASH_MAX_BLOCK],zOpad[HASH_MAX_BLOCK];
+	unsigned char zInner[HASH_MAX_DIGEST],zDigest[HASH_MAX_DIGEST];
 	int i,nBlock,nDigest;
 	if( nArg < 3 ){
 		return PH7_VmThrowException(pCtx,"ArgumentCountError",

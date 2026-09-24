@@ -1342,6 +1342,535 @@ PH7_PRIVATE void XxhFinal(XxhContext *pCtx,unsigned char *digest)
 		SxPut64Be(digest,h);
 	}
 }
+/*
+ * The cryptographic digests php registers that the SHA-2 four and md5/sha1 do
+ * not cover: MD4, MD2, the two TRUNCATED SHA-512 variants, SHA-3 and the
+ * RIPEMD quartet. Every one of them is a block algorithm with its own block
+ * size, so each keeps the partial block a chunked feed leaves behind.
+ */
+/* SHA-512/224 and SHA-512/256 are SHA-512 with a different initial hash value
+ * and a truncated output -- FIPS 180-4 gives them their own IVs precisely so
+ * that a truncated SHA-512 is not a prefix of the full one. */
+PH7_PRIVATE void SHA512_224Init(SHA512Context *pCtx)
+{
+	pCtx->state[0] = 0x8c3d37c819544da2ULL;
+	pCtx->state[1] = 0x73e1996689dcd4d6ULL;
+	pCtx->state[2] = 0x1dfab7ae32ff9c82ULL;
+	pCtx->state[3] = 0x679dd514582f9fcfULL;
+	pCtx->state[4] = 0x0f6d2b697bd44da8ULL;
+	pCtx->state[5] = 0x77e36f7304c48942ULL;
+	pCtx->state[6] = 0x3f9d85a86a1d36c8ULL;
+	pCtx->state[7] = 0x1112e6ad91d692a1ULL;
+	pCtx->nLen = 0;
+	pCtx->nIndex = 0;
+	pCtx->nDigestLen = 28;
+}
+PH7_PRIVATE void SHA512_256Init(SHA512Context *pCtx)
+{
+	pCtx->state[0] = 0x22312194fc2bf72cULL;
+	pCtx->state[1] = 0x9f555fa3c84c64c2ULL;
+	pCtx->state[2] = 0x2393b86b6f53b151ULL;
+	pCtx->state[3] = 0x963877195940eabdULL;
+	pCtx->state[4] = 0x96283ee2a88effe3ULL;
+	pCtx->state[5] = 0xbe5e1e2553863992ULL;
+	pCtx->state[6] = 0x2b0199fc2c85b8aaULL;
+	pCtx->state[7] = 0x0eb72ddc81c52ca2ULL;
+	pCtx->nLen = 0;
+	pCtx->nIndex = 0;
+	pCtx->nDigestLen = 32;
+}
+/*
+ * MD4 (RFC 1320). Three rounds over a 64-byte little-endian block.
+ */
+#define MD4_F(x,y,z) (((x) & (y)) | (~(x) & (z)))
+#define MD4_G(x,y,z) (((x) & (y)) | ((x) & (z)) | ((y) & (z)))
+#define MD4_H(x,y,z) ((x) ^ (y) ^ (z))
+static void MD4Transform(sxu32 state[4],const unsigned char block[64])
+{
+	static const int aOrd2[16] = { 0,4,8,12,1,5,9,13,2,6,10,14,3,7,11,15 };
+	static const int aOrd3[16] = { 0,8,4,12,2,10,6,14,1,9,5,13,3,11,7,15 };
+	static const int aRot1[4] = { 3,7,11,19 };
+	static const int aRot2[4] = { 3,5,9,13 };
+	static const int aRot3[4] = { 3,9,11,15 };
+	sxu32 X[16],a,b,c,d,t;
+	int i;
+	for( i = 0 ; i < 16 ; ++i ){
+		X[i] = SxGet32Le(&block[i*4]);
+	}
+	a = state[0]; b = state[1]; c = state[2]; d = state[3];
+	for( i = 0 ; i < 16 ; ++i ){
+		t = a + MD4_F(b,c,d) + X[i];
+		a = d; d = c; c = b;
+		b = SX_ROTL32(t,aRot1[i & 3]);
+	}
+	for( i = 0 ; i < 16 ; ++i ){
+		t = a + MD4_G(b,c,d) + X[aOrd2[i]] + 0x5a827999u;
+		a = d; d = c; c = b;
+		b = SX_ROTL32(t,aRot2[i & 3]);
+	}
+	for( i = 0 ; i < 16 ; ++i ){
+		t = a + MD4_H(b,c,d) + X[aOrd3[i]] + 0x6ed9eba1u;
+		a = d; d = c; c = b;
+		b = SX_ROTL32(t,aRot3[i & 3]);
+	}
+	state[0] += a; state[1] += b; state[2] += c; state[3] += d;
+}
+PH7_PRIVATE void MD4Init(MD4Context *pCtx)
+{
+	pCtx->state[0] = 0x67452301u;
+	pCtx->state[1] = 0xefcdab89u;
+	pCtx->state[2] = 0x98badcfeu;
+	pCtx->state[3] = 0x10325476u;
+	pCtx->nLen = 0;
+	pCtx->nIndex = 0;
+	SyZero(pCtx->buffer,sizeof(pCtx->buffer));
+}
+PH7_PRIVATE void MD4Update(MD4Context *pCtx,const unsigned char *data,unsigned int len)
+{
+	pCtx->nLen += len;
+	if( pCtx->nIndex > 0 ){
+		sxu32 n = 64 - pCtx->nIndex;
+		if( len < n ){
+			SyMemcpy(data,&pCtx->buffer[pCtx->nIndex],len);
+			pCtx->nIndex += len;
+			return;
+		}
+		SyMemcpy(data,&pCtx->buffer[pCtx->nIndex],n);
+		MD4Transform(pCtx->state,pCtx->buffer);
+		pCtx->nIndex = 0;
+		data += n;
+		len -= n;
+	}
+	while( len >= 64 ){
+		MD4Transform(pCtx->state,data);
+		data += 64;
+		len -= 64;
+	}
+	if( len > 0 ){
+		SyMemcpy(data,pCtx->buffer,len);
+		pCtx->nIndex = len;
+	}
+}
+PH7_PRIVATE void MD4Final(MD4Context *pCtx,unsigned char *digest)
+{
+	unsigned char zPad[72];
+	sxu64 nBits = pCtx->nLen * 8;
+	sxu32 nPad;
+	int i;
+	SyZero(zPad,sizeof(zPad));
+	zPad[0] = 0x80;
+	nPad = (pCtx->nIndex < 56) ? (56 - pCtx->nIndex) : (120 - pCtx->nIndex);
+	for( i = 0 ; i < 8 ; ++i ){
+		zPad[nPad+i] = (unsigned char)((nBits >> (i*8)) & 0xff);
+	}
+	MD4Update(pCtx,zPad,nPad+8);
+	for( i = 0 ; i < 4 ; ++i ){
+		digest[i*4]   = (unsigned char)(pCtx->state[i] & 0xff);
+		digest[i*4+1] = (unsigned char)((pCtx->state[i] >> 8) & 0xff);
+		digest[i*4+2] = (unsigned char)((pCtx->state[i] >> 16) & 0xff);
+		digest[i*4+3] = (unsigned char)((pCtx->state[i] >> 24) & 0xff);
+	}
+}
+/*
+ * MD2 (RFC 1319). A 16-byte block, a 48-byte permutation buffer and a checksum
+ * chained through one byte (nL) across every block -- Final appends that
+ * checksum as a final block, and it must not check-sum itself.
+ */
+static const unsigned char aMd2S[256] = {
+	 41,  46,  67, 201, 162, 216, 124,   1,  61,  54,  84, 161, 236, 240,   6,  19,
+	 98, 167,   5, 243, 192, 199, 115, 140, 152, 147,  43, 217, 188,  76, 130, 202,
+	 30, 155,  87,  60, 253, 212, 224,  22, 103,  66, 111,  24, 138,  23, 229,  18,
+	190,  78, 196, 214, 218, 158, 222,  73, 160, 251, 245, 142, 187,  47, 238, 122,
+	169, 104, 121, 145,  21, 178,   7,  63, 148, 194,  16, 137,  11,  34,  95,  33,
+	128, 127,  93, 154,  90, 144,  50,  39,  53,  62, 204, 231, 191, 247, 151,   3,
+	255,  25,  48, 179,  72, 165, 181, 209, 215,  94, 146,  42, 172,  86, 170, 198,
+	 79, 184,  56, 210, 150, 164, 125, 182, 118, 252, 107, 226, 156, 116,   4, 241,
+	 69, 157, 112,  89, 100, 113, 135,  32, 134,  91, 207, 101, 230,  45, 168,   2,
+	 27,  96,  37, 173, 174, 176, 185, 246,  28,  70,  97, 105,  52,  64, 126,  15,
+	 85,  71, 163,  35, 221,  81, 175,  58, 195,  92, 249, 206, 186, 197, 234,  38,
+	 44,  83,  13, 110, 133,  40, 132,   9, 211, 223, 205, 244,  65, 129,  77,  82,
+	106, 220,  55, 200, 108, 193, 171, 250,  36, 225, 123,   8,  12, 189, 177,  74,
+	120, 136, 149, 139, 227,  99, 232, 109, 233, 203, 213, 254,  59,   0,  29,  57,
+	242, 239, 183,  14, 102,  88, 208, 228, 166, 119, 114, 248, 235, 117,  75,  10,
+	 49,  68,  80, 180, 143, 237,  31,  26, 219, 153, 141,  51, 159,  17, 131,  20,
+};
+static void MD2Transform(MD2Context *pCtx,const unsigned char block[16],int bChecksum)
+{
+	unsigned char t;
+	int j,k;
+	if( bChecksum ){
+		for( j = 0 ; j < 16 ; ++j ){
+			pCtx->C[j] ^= aMd2S[block[j] ^ pCtx->nL];
+			pCtx->nL = pCtx->C[j];
+		}
+	}
+	for( j = 0 ; j < 16 ; ++j ){
+		pCtx->X[16+j] = block[j];
+		pCtx->X[32+j] = (unsigned char)(pCtx->X[16+j] ^ pCtx->X[j]);
+	}
+	t = 0;
+	for( j = 0 ; j < 18 ; ++j ){
+		for( k = 0 ; k < 48 ; ++k ){
+			pCtx->X[k] ^= aMd2S[t];
+			t = pCtx->X[k];
+		}
+		t = (unsigned char)((t + j) & 0xff);
+	}
+}
+PH7_PRIVATE void MD2Init(MD2Context *pCtx)
+{
+	SyZero(pCtx->X,sizeof(pCtx->X));
+	SyZero(pCtx->C,sizeof(pCtx->C));
+	SyZero(pCtx->buffer,sizeof(pCtx->buffer));
+	pCtx->nIndex = 0;
+	pCtx->nL = 0;
+}
+PH7_PRIVATE void MD2Update(MD2Context *pCtx,const unsigned char *data,unsigned int len)
+{
+	if( pCtx->nIndex > 0 ){
+		sxu32 n = 16 - pCtx->nIndex;
+		if( len < n ){
+			SyMemcpy(data,&pCtx->buffer[pCtx->nIndex],len);
+			pCtx->nIndex += len;
+			return;
+		}
+		SyMemcpy(data,&pCtx->buffer[pCtx->nIndex],n);
+		MD2Transform(pCtx,pCtx->buffer,TRUE);
+		pCtx->nIndex = 0;
+		data += n;
+		len -= n;
+	}
+	while( len >= 16 ){
+		MD2Transform(pCtx,data,TRUE);
+		data += 16;
+		len -= 16;
+	}
+	if( len > 0 ){
+		SyMemcpy(data,pCtx->buffer,len);
+		pCtx->nIndex = len;
+	}
+}
+PH7_PRIVATE void MD2Final(MD2Context *pCtx,unsigned char *digest)
+{
+	unsigned char zPad[16];
+	unsigned char nRem = (unsigned char)(16 - pCtx->nIndex);
+	int i;
+	/* php's own padding: (16 - used) bytes each holding that count, which is
+	 * a whole extra block when the message already ends on a boundary. */
+	for( i = 0 ; i < (int)nRem ; ++i ){
+		zPad[i] = nRem;
+	}
+	MD2Update(pCtx,zPad,nRem);
+	/* the checksum is the last block, and is NOT itself check-summed */
+	MD2Transform(pCtx,pCtx->C,FALSE);
+	SyMemcpy(pCtx->X,digest,16);
+}
+/*
+ * SHA-3, i.e. Keccak-f[1600] with the SHA-3 domain separator (0x06). The four
+ * digest lengths are one algorithm at four RATES.
+ */
+static const sxu64 aKeccakRc[24] = {
+	0x0000000000000001ULL, 0x0000000000008082ULL, 0x800000000000808aULL,
+	0x8000000080008000ULL, 0x000000000000808bULL, 0x0000000080000001ULL,
+	0x8000000080008081ULL, 0x8000000000008009ULL, 0x000000000000008aULL,
+	0x0000000000000088ULL, 0x0000000080008009ULL, 0x000000008000000aULL,
+	0x000000008000808bULL, 0x800000000000008bULL, 0x8000000000008089ULL,
+	0x8000000000008003ULL, 0x8000000000008002ULL, 0x8000000000000080ULL,
+	0x000000000000800aULL, 0x800000008000000aULL, 0x8000000080008081ULL,
+	0x8000000000008080ULL, 0x0000000080000001ULL, 0x8000000080008008ULL,
+};
+static const int aKeccakRot[25] = {
+	 0,  1, 62, 28, 27,
+	36, 44,  6, 55, 20,
+	 3, 10, 43, 25, 39,
+	41, 45, 15, 21,  8,
+	18,  2, 61, 56, 14,
+};
+static void KeccakF1600(sxu64 A[25])
+{
+	sxu64 C[5],D[5],B[25];
+	int x,y,i;
+	for( i = 0 ; i < 24 ; ++i ){
+		for( x = 0 ; x < 5 ; ++x ){
+			C[x] = A[x] ^ A[x+5] ^ A[x+10] ^ A[x+15] ^ A[x+20];
+		}
+		for( x = 0 ; x < 5 ; ++x ){
+			D[x] = C[(x+4)%5] ^ SX_ROTL64(C[(x+1)%5],1);
+		}
+		for( x = 0 ; x < 5 ; ++x ){
+			for( y = 0 ; y < 5 ; ++y ){
+				A[x+5*y] ^= D[x];
+			}
+		}
+		/* rho + pi: lane (x,y) moves to (y, 2x+3y) */
+		for( x = 0 ; x < 5 ; ++x ){
+			for( y = 0 ; y < 5 ; ++y ){
+				int r = aKeccakRot[x+5*y];
+				sxu64 v = A[x+5*y];
+				B[y + 5*((2*x+3*y)%5)] = r ? SX_ROTL64(v,r) : v;
+			}
+		}
+		for( y = 0 ; y < 5 ; ++y ){
+			for( x = 0 ; x < 5 ; ++x ){
+				A[x+5*y] = B[x+5*y] ^ ((~B[(x+1)%5+5*y]) & B[(x+2)%5+5*y]);
+			}
+		}
+		A[0] ^= aKeccakRc[i];
+	}
+}
+PH7_PRIVATE void KeccakInit(KeccakContext *pCtx,int nDigestLen)
+{
+	int i;
+	for( i = 0 ; i < 25 ; ++i ){
+		pCtx->A[i] = 0;
+	}
+	pCtx->nDigestLen = nDigestLen;
+	pCtx->nRate = (sxu32)(200 - 2*nDigestLen);
+	pCtx->nIndex = 0;
+}
+PH7_PRIVATE void KeccakUpdate(KeccakContext *pCtx,const unsigned char *data,unsigned int len)
+{
+	unsigned int i;
+	while( len > 0 ){
+		/* A whole block starting on a block boundary is absorbed LANE by lane:
+		 * the byte-at-a-time path below is a read-modify-write per byte, which
+		 * is what a large hash_file() would otherwise pay for every byte. */
+		if( pCtx->nIndex == 0 && len >= pCtx->nRate ){
+			for( i = 0 ; i < pCtx->nRate ; i += 8 ){
+				pCtx->A[i >> 3] ^= SxGet64Le(&data[i]);
+			}
+			KeccakF1600(pCtx->A);
+			data += pCtx->nRate;
+			len -= pCtx->nRate;
+			continue;
+		}
+		pCtx->A[pCtx->nIndex >> 3] ^= (sxu64)data[0] << ((pCtx->nIndex & 7) * 8);
+		pCtx->nIndex++;
+		data++;
+		len--;
+		if( pCtx->nIndex == pCtx->nRate ){
+			KeccakF1600(pCtx->A);
+			pCtx->nIndex = 0;
+		}
+	}
+}
+PH7_PRIVATE void KeccakFinal(KeccakContext *pCtx,unsigned char *digest)
+{
+	int i;
+	/* SHA-3's domain separation (0x06) and the rate's last bit; the two can
+	 * land on the same byte when only one byte of the block is free. */
+	pCtx->A[pCtx->nIndex >> 3] ^= (sxu64)0x06 << ((pCtx->nIndex & 7) * 8);
+	pCtx->A[(pCtx->nRate-1) >> 3] ^= (sxu64)0x80 << (((pCtx->nRate-1) & 7) * 8);
+	KeccakF1600(pCtx->A);
+	for( i = 0 ; i < pCtx->nDigestLen ; ++i ){
+		digest[i] = (unsigned char)((pCtx->A[i >> 3] >> ((i & 7) * 8)) & 0xff);
+	}
+}
+/*
+ * RIPEMD-128/160/256/320. Two parallel lines over the same 64-byte block: the
+ * 128/160 pair COMBINES them into one chaining value, the 256/320 pair keeps
+ * both and swaps one word between them after each round, which is why their
+ * digests are twice as wide without being twice as strong.
+ */
+static const unsigned char aRmdRL[80] = {
+	0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,
+	7,4,13,1,10,6,15,3,12,0,9,5,2,14,11,8,
+	3,10,14,4,9,15,8,1,2,7,0,6,13,11,5,12,
+	1,9,11,10,0,8,12,4,13,3,7,15,14,5,6,2,
+	4,0,5,9,7,12,2,10,14,1,3,8,11,6,15,13,
+};
+static const unsigned char aRmdRR[80] = {
+	5,14,7,0,9,2,11,4,13,6,15,8,1,10,3,12,
+	6,11,3,7,0,13,5,10,14,15,8,12,4,9,1,2,
+	15,5,1,3,7,14,6,9,11,8,12,2,10,0,4,13,
+	8,6,4,1,3,11,15,0,5,12,2,13,9,7,10,14,
+	12,15,10,4,1,5,8,7,6,2,13,14,0,3,9,11,
+};
+static const unsigned char aRmdSL[80] = {
+	11,14,15,12,5,8,7,9,11,13,14,15,6,7,9,8,
+	7,6,8,13,11,9,7,15,7,12,15,9,11,7,13,12,
+	11,13,6,7,14,9,13,15,14,8,13,6,5,12,7,5,
+	11,12,14,15,14,15,9,8,9,14,5,6,8,6,5,12,
+	9,15,5,11,6,8,13,12,5,12,13,14,11,8,5,6,
+};
+static const unsigned char aRmdSR[80] = {
+	8,9,9,11,13,15,15,5,7,7,8,11,14,14,12,6,
+	9,13,15,7,12,8,9,11,7,7,12,7,6,15,13,11,
+	9,7,15,11,8,6,6,14,12,13,5,14,13,13,7,5,
+	15,5,8,11,14,14,6,14,6,9,12,9,12,5,15,8,
+	8,5,12,9,12,5,14,6,8,13,6,5,15,13,11,11,
+};
+static const sxu32 aRmdKL[5] = { 0x00000000u,0x5a827999u,0x6ed9eba1u,0x8f1bbcdcu,0xa953fd4eu };
+/* the right line's constants, and its LAST round is the unkeyed one */
+static const sxu32 aRmdKR160[5] = { 0x50a28be6u,0x5c4dd124u,0x6d703ef3u,0x7a6d76e9u,0x00000000u };
+static const sxu32 aRmdKR128[5] = { 0x50a28be6u,0x5c4dd124u,0x6d703ef3u,0x00000000u,0x00000000u };
+static sxu32 RmdF(int j,sxu32 x,sxu32 y,sxu32 z)
+{
+	switch( j ){
+		case 0:  return x ^ y ^ z;
+		case 1:  return (x & y) | (~x & z);
+		case 2:  return (x | ~y) ^ z;
+		case 3:  return (x & z) | (y & ~z);
+		default: return x ^ (y | ~z);
+	}
+}
+static void RipemdTransform(RipemdContext *pCtx,const unsigned char block[64])
+{
+	sxu32 X[16];
+	sxu32 al,bl,cl,dl,el,ar,br,cr,dr,er,t;
+	int j,nRound,bWide,i;
+	for( i = 0 ; i < 16 ; ++i ){
+		X[i] = SxGet32Le(&block[i*4]);
+	}
+	nRound = (pCtx->nKind == RMD_128 || pCtx->nKind == RMD_256) ? 64 : 80;
+	bWide = (pCtx->nKind == RMD_256 || pCtx->nKind == RMD_320);
+	al = pCtx->state[0]; bl = pCtx->state[1]; cl = pCtx->state[2];
+	dl = pCtx->state[3]; el = pCtx->state[4];
+	if( bWide ){
+		ar = pCtx->state[5]; br = pCtx->state[6]; cr = pCtx->state[7];
+		dr = pCtx->state[8]; er = pCtx->state[9];
+	}else{
+		ar = al; br = bl; cr = cl; dr = dl; er = el;
+	}
+	for( j = 0 ; j < nRound ; ++j ){
+		int r = j / 16;
+		int nLeftF = r;
+		int nRightF = (nRound == 80 ? 4 - r : 3 - r);
+		sxu32 kl = aRmdKL[r];
+		sxu32 kr = (nRound == 80 ? aRmdKR160[r] : aRmdKR128[r]);
+		/* left line */
+		t = al + RmdF(nLeftF,bl,cl,dl) + X[aRmdRL[j]] + kl;
+		t = SX_ROTL32(t,aRmdSL[j]);
+		if( nRound == 80 ){
+			t += el;
+			al = el; el = dl; dl = SX_ROTL32(cl,10); cl = bl; bl = t;
+		}else{
+			al = dl; dl = cl; cl = bl; bl = t;
+		}
+		/* right line */
+		t = ar + RmdF(nRightF,br,cr,dr) + X[aRmdRR[j]] + kr;
+		t = SX_ROTL32(t,aRmdSR[j]);
+		if( nRound == 80 ){
+			t += er;
+			ar = er; er = dr; dr = SX_ROTL32(cr,10); cr = br; br = t;
+		}else{
+			ar = dr; dr = cr; cr = br; br = t;
+		}
+		/* the wide variants exchange one word between the lines per round */
+		if( bWide && (j % 16) == 15 ){
+			if( nRound == 80 ){
+				switch( r ){
+					case 0: t = bl; bl = br; br = t; break;
+					case 1: t = dl; dl = dr; dr = t; break;
+					case 2: t = al; al = ar; ar = t; break;
+					case 3: t = cl; cl = cr; cr = t; break;
+					default: t = el; el = er; er = t; break;
+				}
+			}else{
+				switch( r ){
+					case 0: t = al; al = ar; ar = t; break;
+					case 1: t = bl; bl = br; br = t; break;
+					case 2: t = cl; cl = cr; cr = t; break;
+					default: t = dl; dl = dr; dr = t; break;
+				}
+			}
+		}
+	}
+	if( bWide ){
+		pCtx->state[0] += al; pCtx->state[1] += bl; pCtx->state[2] += cl;
+		pCtx->state[3] += dl; pCtx->state[4] += el;
+		pCtx->state[5] += ar; pCtx->state[6] += br; pCtx->state[7] += cr;
+		pCtx->state[8] += dr; pCtx->state[9] += er;
+	}else if( nRound == 80 ){
+		t = pCtx->state[1] + cl + dr;
+		pCtx->state[1] = pCtx->state[2] + dl + er;
+		pCtx->state[2] = pCtx->state[3] + el + ar;
+		pCtx->state[3] = pCtx->state[4] + al + br;
+		pCtx->state[4] = pCtx->state[0] + bl + cr;
+		pCtx->state[0] = t;
+	}else{
+		t = pCtx->state[1] + cl + dr;
+		pCtx->state[1] = pCtx->state[2] + dl + ar;
+		pCtx->state[2] = pCtx->state[3] + al + br;
+		pCtx->state[3] = pCtx->state[0] + bl + cr;
+		pCtx->state[0] = t;
+	}
+}
+PH7_PRIVATE void RipemdInit(RipemdContext *pCtx,int nKind)
+{
+	pCtx->nKind = nKind;
+	pCtx->nLen = 0;
+	pCtx->nIndex = 0;
+	SyZero(pCtx->buffer,sizeof(pCtx->buffer));
+	pCtx->state[0] = 0x67452301u;
+	pCtx->state[1] = 0xefcdab89u;
+	pCtx->state[2] = 0x98badcfeu;
+	pCtx->state[3] = 0x10325476u;
+	pCtx->state[4] = 0xc3d2e1f0u;
+	/* the wide variants' second line starts from the nibble-reversed constants */
+	pCtx->state[5] = 0x76543210u;
+	pCtx->state[6] = 0xfedcba98u;
+	pCtx->state[7] = 0x89abcdefu;
+	pCtx->state[8] = 0x01234567u;
+	pCtx->state[9] = 0x3c2d1e0fu;
+}
+PH7_PRIVATE void RipemdUpdate(RipemdContext *pCtx,const unsigned char *data,unsigned int len)
+{
+	pCtx->nLen += len;
+	if( pCtx->nIndex > 0 ){
+		sxu32 n = 64 - pCtx->nIndex;
+		if( len < n ){
+			SyMemcpy(data,&pCtx->buffer[pCtx->nIndex],len);
+			pCtx->nIndex += len;
+			return;
+		}
+		SyMemcpy(data,&pCtx->buffer[pCtx->nIndex],n);
+		RipemdTransform(pCtx,pCtx->buffer);
+		pCtx->nIndex = 0;
+		data += n;
+		len -= n;
+	}
+	while( len >= 64 ){
+		RipemdTransform(pCtx,data);
+		data += 64;
+		len -= 64;
+	}
+	if( len > 0 ){
+		SyMemcpy(data,pCtx->buffer,len);
+		pCtx->nIndex = len;
+	}
+}
+PH7_PRIVATE void RipemdFinal(RipemdContext *pCtx,unsigned char *digest)
+{
+	unsigned char zPad[72];
+	sxu64 nBits = pCtx->nLen * 8;
+	sxu32 nPad;
+	int i,nWord;
+	SyZero(zPad,sizeof(zPad));
+	zPad[0] = 0x80;
+	nPad = (pCtx->nIndex < 56) ? (56 - pCtx->nIndex) : (120 - pCtx->nIndex);
+	for( i = 0 ; i < 8 ; ++i ){
+		zPad[nPad+i] = (unsigned char)((nBits >> (i*8)) & 0xff);
+	}
+	RipemdUpdate(pCtx,zPad,nPad+8);
+	switch( pCtx->nKind ){
+		case RMD_128: nWord = 4; break;
+		case RMD_160: nWord = 5; break;
+		case RMD_256: nWord = 8; break;
+		default:      nWord = 10; break;
+	}
+	/* RIPEMD-256 keeps the four words of each line, not the first eight */
+	for( i = 0 ; i < nWord ; ++i ){
+		int k = i;
+		if( pCtx->nKind == RMD_256 && i >= 4 ){
+			k = i + 1;   /* skip the unused fifth word of the left line */
+		}
+		digest[i*4]   = (unsigned char)(pCtx->state[k] & 0xff);
+		digest[i*4+1] = (unsigned char)((pCtx->state[k] >> 8) & 0xff);
+		digest[i*4+2] = (unsigned char)((pCtx->state[k] >> 16) & 0xff);
+		digest[i*4+3] = (unsigned char)((pCtx->state[k] >> 24) & 0xff);
+	}
+}
 #endif /* PH7_DISABLE_HASH_FUNC */
 PH7_PRIVATE sxi32 SyBinToHexConsumer(const void *pIn,sxu32 nLen,ProcConsumer xConsumer,void *pConsumerData)
 {
