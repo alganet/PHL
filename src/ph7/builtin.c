@@ -894,6 +894,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "hash_copy",    PH7_builtin_hash_copy },
 	{ "hash_pbkdf2",  PH7_builtin_hash_pbkdf2 },
 	{ "hash_hkdf",    PH7_builtin_hash_hkdf },
+	{ "crypt",        PH7_builtin_crypt     },
 #endif /* PH7_DISABLE_HASH_FUNC */
 	{ "password_hash",         PH7_builtin_password_hash },
 	{ "password_verify",       PH7_builtin_password_verify },

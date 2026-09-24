@@ -337,17 +337,34 @@ static sxu32 Blowfish_stream2word(const unsigned char *data,sxu32 databytes,sxu3
 	*pCur = j;
 	return temp;
 }
+/* The "$2x$" variant of the reader: the original crypt_blowfish sign-extension
+ * bug, kept reproducible because crypt() must answer for hashes made by it. A
+ * byte >= 0x80 ORs 0xFFFFFF into the accumulated word's high bits. Applied to
+ * KEY bytes only — salt bytes were never read through the buggy path. */
+static sxu32 Blowfish_stream2word_signed(const unsigned char *data,sxu32 databytes,sxu32 *pCur){
+	int i;
+	sxu32 temp = 0,j = *pCur;
+	for( i = 0; i < 4; i++,j++ ){
+		if( j >= databytes ){ j = 0; }
+		temp = (temp << 8) | (sxu32)(sxi32)(signed char)data[j];
+	}
+	*pCur = j;
+	return temp;
+}
 static void Blowfish_initstate(blf_ctx *c){
 	SyMemcpy((const void *)ORIG_S,(void *)c->S,sizeof(c->S));
 	SyMemcpy((const void *)ORIG_P,(void *)c->P,sizeof(c->P));
 }
-/* Standard (unsalted) key expansion. */
-static void Blowfish_expand0state(blf_ctx *c,const unsigned char *key,sxu32 keybytes){
+/* Standard (unsalted) key expansion. bSignedKey selects the "$2x$" buggy
+ * key-byte reader; every other minor reads unsigned. */
+static void Blowfish_expand0state(blf_ctx *c,const unsigned char *key,sxu32 keybytes,
+	int bSignedKey){
 	int i,k;
 	sxu32 j,datal,datar,temp;
 	j = 0;
 	for( i = 0; i < BLF_N + 2; i++ ){
-		temp = Blowfish_stream2word(key,keybytes,&j);
+		temp = bSignedKey ? Blowfish_stream2word_signed(key,keybytes,&j)
+			: Blowfish_stream2word(key,keybytes,&j);
 		c->P[i] = c->P[i] ^ temp;
 	}
 	datal = datar = 0;
@@ -362,14 +379,16 @@ static void Blowfish_expand0state(blf_ctx *c,const unsigned char *key,sxu32 keyb
 		}
 	}
 }
-/* Salted "expensive" key expansion (the bcrypt ExpandKey). */
+/* Salted "expensive" key expansion (the bcrypt ExpandKey). bSignedKey as in
+ * Blowfish_expand0state — key bytes only, never the salt. */
 static void Blowfish_expandstate(blf_ctx *c,const unsigned char *data,sxu32 databytes,
-	const unsigned char *key,sxu32 keybytes){
+	const unsigned char *key,sxu32 keybytes,int bSignedKey){
 	int i,k;
 	sxu32 j,datal,datar,temp;
 	j = 0;
 	for( i = 0; i < BLF_N + 2; i++ ){
-		temp = Blowfish_stream2word(key,keybytes,&j);
+		temp = bSignedKey ? Blowfish_stream2word_signed(key,keybytes,&j)
+			: Blowfish_stream2word(key,keybytes,&j);
 		c->P[i] = c->P[i] ^ temp;
 	}
 	datal = datar = 0;
@@ -446,9 +465,10 @@ PH7_PRIVATE sxi32 SyBcryptB64Decode(const char *zIn,sxu32 nIn,unsigned char *pOu
 	return SXRET_OK;
 }
 
-PH7_PRIVATE sxi32 SyBcryptHash(const unsigned char *pPwd,sxu32 nPwd,sxu32 nCost,
-	const unsigned char aSalt[16],char zOut[60]){
+PH7_PRIVATE sxi32 SyBcryptHashEx(const unsigned char *pPwd,sxu32 nPwd,sxu32 nCost,
+	const unsigned char aSalt[16],int cMinor,char zOut[60]){
 	blf_ctx state;
+	int bSignedKey = (cMinor == 'x');
 	/* "OrpheanBeholderScryDoubt" = 24 bytes = 6 big-endian words. */
 	static const unsigned char zMagic[24] = {
 		'O','r','p','h','e','a','n','B','e','h','o','l','d','e','r',
@@ -473,11 +493,11 @@ PH7_PRIVATE sxi32 SyBcryptHash(const unsigned char *pPwd,sxu32 nPwd,sxu32 nCost,
 	}
 	/* EksBlowfishSetup */
 	Blowfish_initstate(&state);
-	Blowfish_expandstate(&state,aSalt,16,zKey,keylen);
+	Blowfish_expandstate(&state,aSalt,16,zKey,keylen,bSignedKey);
 	rounds = (sxu32)((sxu64)1 << nCost);
 	for( k = 0; k < rounds; k++ ){
-		Blowfish_expand0state(&state,zKey,keylen);
-		Blowfish_expand0state(&state,aSalt,16);
+		Blowfish_expand0state(&state,zKey,keylen,bSignedKey);
+		Blowfish_expand0state(&state,aSalt,16,0);
 	}
 	/* Encrypt the magic string 64 times (3 blocks each). */
 	j = 0;
@@ -493,13 +513,18 @@ PH7_PRIVATE sxi32 SyBcryptHash(const unsigned char *pPwd,sxu32 nPwd,sxu32 nCost,
 		zCipher[i*4+2] = (unsigned char)((cdata[i] >> 8) & 0xff);
 		zCipher[i*4+3] = (unsigned char)(cdata[i] & 0xff);
 	}
-	/* Assemble "$2y$CC$" + base64(salt,16)=22 + base64(cipher,23)=31 = 60. */
+	/* Assemble "$2m$CC$" + base64(salt,16)=22 + base64(cipher,23)=31 = 60. */
 	n = 0;
-	zOut[n++] = '$'; zOut[n++] = '2'; zOut[n++] = 'y'; zOut[n++] = '$';
+	zOut[n++] = '$'; zOut[n++] = '2'; zOut[n++] = (char)cMinor; zOut[n++] = '$';
 	zOut[n++] = (char)('0' + (nCost / 10));
 	zOut[n++] = (char)('0' + (nCost % 10));
 	zOut[n++] = '$';
 	n += BcryptB64Encode(&zOut[n],aSalt,16);          /* 22 chars → n = 29 */
 	BcryptB64Encode(&zOut[n],zCipher,23);             /* 31 chars (drop the 24th byte) */
 	return SXRET_OK;
+}
+/* The password_hash() entry point: always the corrected "$2y" variant. */
+PH7_PRIVATE sxi32 SyBcryptHash(const unsigned char *pPwd,sxu32 nPwd,sxu32 nCost,
+	const unsigned char aSalt[16],char zOut[60]){
+	return SyBcryptHashEx(pPwd,nPwd,nCost,aSalt,'y',zOut);
 }

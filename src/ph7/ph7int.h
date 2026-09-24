@@ -30,6 +30,7 @@ PH7_PRIVATE const char *ph7_type_name(ph7_value *pVal);
 #include "sxtime.h"       /* Time utilities */
 #include "sxdigest.h"     /* MD5Context, SHA1Context, digest functions */
 #include "sxblowfish.h"   /* bcrypt (Blowfish) password hashing */
+#include "sxcrypt.h"      /* Unix crypt(3): DES/MD5/SHA-crypt behind crypt() */
 
 #ifndef PH7_PI
 /* Value of PI */
@@ -4684,6 +4685,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallHashContext(ph7_vm *pVm);
 PH7_PRIVATE int PH7_builtin_hash_equals(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_hash_algos(ph7_context *pCtx,int nArg,ph7_value **apArg);
 #endif /* PH7_DISABLE_HASH_FUNC */
+PH7_PRIVATE int PH7_builtin_crypt(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_password_hash(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_password_verify(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_password_get_info(ph7_context *pCtx,int nArg,ph7_value **apArg);

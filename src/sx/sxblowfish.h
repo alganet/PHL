@@ -17,6 +17,12 @@
 PH7_PRIVATE sxi32 SyBcryptHash(const unsigned char *pPwd,sxu32 nPwd,sxu32 nCost,
 	const unsigned char aSalt[16],char zOut[60]);
 
+/* As SyBcryptHash, but for crypt(): cMinor selects the output variant tag
+ * ('a', 'b', 'x' or 'y'); 'x' also reproduces the historical crypt_blowfish
+ * sign-extension bug when reading key bytes >= 0x80. */
+PH7_PRIVATE sxi32 SyBcryptHashEx(const unsigned char *pPwd,sxu32 nPwd,sxu32 nCost,
+	const unsigned char aSalt[16],int cMinor,char zOut[60]);
+
 /* Decode nIn bcrypt-base64 characters into pOut (nOut raw bytes). Returns
  * SXRET_OK, or SXERR_INVALID if the input is too short or contains a character
  * outside the bcrypt alphabet. */

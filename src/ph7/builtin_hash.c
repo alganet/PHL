@@ -1631,8 +1631,35 @@ PH7_PRIVATE int PH7_builtin_password_hash(ph7_context *pCtx,int nArg,ph7_value *
 	return PH7_OK;
 }
 /*
+ * string crypt(string $string,string $salt)
+ *  Unix crypt(3): the salt string selects the scheme (DES, ext-DES, "$1$",
+ *  "$2a/b/x/y$", "$5$", "$6$"). A malformed salt answers the "*0" failure
+ *  token, never an error — the shape every /etc/shadow reader relies on.
+ */
+#ifndef PH7_DISABLE_HASH_FUNC
+PH7_PRIVATE int PH7_builtin_crypt(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zPwd,*zSalt;
+	int nPwd,nSalt;
+	char zHash[SY_CRYPT_OUTPUT_MAX];
+	sxu32 nHash = 0;
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"crypt() expects exactly 2 arguments, %d given",nArg);
+	}
+	zPwd = ph7_value_to_string(apArg[0],&nPwd);
+	zSalt = ph7_value_to_string(apArg[1],&nSalt);
+	SyCrypt(zPwd,(sxu32)nPwd,zSalt,(sxu32)nSalt,zHash,&nHash);
+	ph7_result_string(pCtx,zHash,(int)nHash);
+	return PH7_OK;
+}
+#endif /* PH7_DISABLE_HASH_FUNC */
+/*
  * bool password_verify(string $password,string $hash)
- *  Verify a password against a bcrypt hash. Never throws on a malformed hash.
+ *  Verify a password against a bcrypt hash — or, exactly as in php, against
+ *  ANY crypt(3) hash: an unrecognised hash shape is re-hashed through crypt()
+ *  with the hash itself as the setting string, so a stored MD5-crypt or
+ *  SHA-crypt entry verifies here too. Never throws on a malformed hash.
  */
 PH7_PRIVATE int PH7_builtin_password_verify(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -1648,6 +1675,23 @@ PH7_PRIVATE int PH7_builtin_password_verify(ph7_context *pCtx,int nArg,ph7_value
 	zPwd = ph7_value_to_string(apArg[0],&nPwd);
 	zHash = ph7_value_to_string(apArg[1],&nHash);
 	if( !BcryptParseHash(zHash,nHash,&iCost) ){
+#ifndef PH7_DISABLE_HASH_FUNC
+		/* php's fallback: crypt(password, hash) must reproduce the hash. The
+		 * 13-byte floor is php's own (no crypt output is shorter, and it
+		 * screens the "*0" token comparing equal to itself). */
+		char zCrypt[SY_CRYPT_OUTPUT_MAX];
+		sxu32 nCrypt = 0;
+		if( nHash >= 13 ){
+			SyCrypt(zPwd,(sxu32)nPwd,zHash,(sxu32)nHash,zCrypt,&nCrypt);
+			if( nCrypt == (sxu32)nHash ){
+				for( i = 0; i < nHash; i++ ){
+					vDiff |= (unsigned char)(zCrypt[i] ^ zHash[i]);
+				}
+				ph7_result_bool(pCtx,vDiff == 0);
+				return PH7_OK;
+			}
+		}
+#endif /* PH7_DISABLE_HASH_FUNC */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
