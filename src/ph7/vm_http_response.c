@@ -342,6 +342,43 @@ static int VmCookieOptionWalker(ph7_value *pKey,ph7_value *pVal,void *pUserData)
 	return PH7_OK;
 }
 /*
+ * An HTTP-date: "Thu, 19 Nov 1981 08:52:00 GMT", with the three-letter day and
+ * month names an HTTP-date is defined in (locale-independent, from sxlib's own
+ * tables). Answers the byte count, or 0 for a time the C library will not break
+ * down.
+ */
+PH7_PRIVATE int PH7_VmHttpDate(sxi64 iWhen,char *zBuf,int nBuf)
+{
+#ifdef PH7_DISABLE_BUILTIN_FUNC
+	/* The day/month name tables live behind the same switch: a build without the
+	 * builtins has no date to print. */
+	(void)iWhen; (void)zBuf; (void)nBuf;
+	return 0;
+#else
+	time_t t = (time_t)iWhen;
+	struct tm tm_buf;
+	int tm_ok;
+#ifdef __WINNT__
+	tm_ok = (gmtime_s(&tm_buf,&t) == 0);
+#else
+	tm_ok = (gmtime_r(&t,&tm_buf) != 0);
+#endif
+	if( !tm_ok ){
+		return 0;
+	}
+	return SyBufferFormat(zBuf,(sxu32)nBuf,"%.3s, %02d %.3s %04d %02d:%02d:%02d GMT",
+		SyTimeGetDay(tm_buf.tm_wday),tm_buf.tm_mday,
+		SyTimeGetMonth(tm_buf.tm_mon),1900 + tm_buf.tm_year,
+		tm_buf.tm_hour,tm_buf.tm_min,tm_buf.tm_sec);
+#endif
+}
+/* Queue a response header, replacing any of the same name. */
+PH7_PRIVATE void PH7_VmSetResponseHeader(ph7_vm *pVm,const char *zName,const char *zValue,
+	sxu32 nValue)
+{
+	VmAddResponseHeader(pVm,zName,(sxu32)SyStrlen(zName),zValue,nValue,1);
+}
+/*
  * Drop any Set-Cookie already queued for this cookie NAME. php does this before it
  * sends the session cookie (php_session_remove_cookie): a request that regenerates
  * its id must not leave the OLD id in the reply beside the new one, and only the
@@ -412,26 +449,16 @@ PH7_PRIVATE void PH7_VmEmitCookie(ph7_vm *pVm,const char *zName,sxu32 nName,
 	}
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 	if( iExpires > 0 ){
-		time_t t = (time_t)iExpires;
-		struct tm tm_buf;
 		char zDate[80];
-		int tm_ok;
-#ifdef __WINNT__
-		tm_ok = (gmtime_s(&tm_buf,&t) == 0);
-#else
-		tm_ok = (gmtime_r(&t,&tm_buf) != 0);
-#endif
-		if( tm_ok ){
+		int nDate = PH7_VmHttpDate(iExpires,zDate,(int)sizeof(zDate));
+		if( nDate > 0 ){
 			sxi64 iMaxAge = iExpires - (sxi64)time(0);
-			int nDate;
-			/* Locale-independent day/month names. */
-			nDate = SyBufferFormat(zDate,sizeof(zDate),
-				"; expires=%.3s, %02d %.3s %04d %02d:%02d:%02d GMT; Max-Age=%qd",
-				SyTimeGetDay(tm_buf.tm_wday),tm_buf.tm_mday,
-				SyTimeGetMonth(tm_buf.tm_mon),1900 + tm_buf.tm_year,
-				tm_buf.tm_hour,tm_buf.tm_min,tm_buf.tm_sec,
-				iMaxAge < 0 ? (sxi64)0 : iMaxAge);
+			char zTail[64];
+			SyBlobAppend(&sWorker,"; expires=",sizeof("; expires=")-1);
 			SyBlobAppend(&sWorker,zDate,(sxu32)nDate);
+			nDate = SyBufferFormat(zTail,sizeof(zTail),"; Max-Age=%qd",
+				iMaxAge < 0 ? (sxi64)0 : iMaxAge);
+			SyBlobAppend(&sWorker,zTail,(sxu32)nDate);
 		}
 	}
 #else

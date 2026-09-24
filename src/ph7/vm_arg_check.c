@@ -381,6 +381,8 @@ static const struct VmBuiltinSig {
 	{ "libxml_get_last_error", "", "LibXMLError|false" },
 	{ "libxml_use_internal_errors", "?bool $use_errors = null", "bool" },
 	{ "session_abort", "", "bool" },
+	{ "session_cache_expire", "?int $value = null", "int|false" },
+	{ "session_cache_limiter", "?string $value = null", "string|false" },
 	{ "session_commit", "", "bool" },
 	{ "session_create_id", "string $prefix = \"\"", "string|false" },
 	{ "session_decode", "string $data", "bool" },

@@ -3384,6 +3384,8 @@ PH7_PRIVATE sxi32 PH7_VmHttpProcessRequest(ph7_vm *pVm,const char *zRequest,int 
 /* vm_http_response.c function prototypes */
 PH7_PRIVATE void PH7_RegisterHttpResponseFunctions(ph7_vm *pVm);
 PH7_PRIVATE void PH7_VmReleaseResponseHeaders(ph7_vm *pVm);
+PH7_PRIVATE int PH7_VmHttpDate(sxi64 iWhen,char *zBuf,int nBuf);
+PH7_PRIVATE void PH7_VmSetResponseHeader(ph7_vm *pVm,const char *zName,const char *zValue,sxu32 nValue);
 PH7_PRIVATE void PH7_VmRemoveCookieByName(ph7_vm *pVm,const char *zName,sxu32 nName);
 PH7_PRIVATE void PH7_VmEmitCookie(ph7_vm *pVm,const char *zName,sxu32 nName,
 	const char *zValue,sxu32 nValue,int bEncode,sxi64 iExpires,

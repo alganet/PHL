@@ -770,6 +770,7 @@ static int vm_builtin_session_save_path(ph7_context *pCtx,int nArg,ph7_value **a
  * scalar, is a hard error before anything is opened.
  */
 static void VmSessWrite(ph7_vm *pVm,const char *zWho);
+static void VmSessSendCacheHeaders(ph7_vm *pVm);
 struct VmSessStartOpts {
 	ph7_vm *pVm;
 	int bReadClose;
@@ -991,6 +992,7 @@ static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 	}
 	pVm->iSessStatus = VM_SESSION_ACTIVE;
 	VmSessSendCookie(pVm);
+	VmSessSendCacheHeaders(pVm);
 	if( sOpt.bReadClose ){
 		/* php's `read_and_close`: the store is read and released again before the
 		 * script runs, so a request that only READS the session does not hold its
@@ -1368,7 +1370,132 @@ static int vm_builtin_session_set_cookie_params(ph7_context *pCtx,int nArg,ph7_v
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
+/*
+ * php's four cache limiters, and the headers each one puts on a reply that
+ * carries a session. A session is per-visitor state, so the default (`nocache`)
+ * tells every cache in the path not to keep the page at all; `public` is the
+ * opt-out, and the two `private` forms let the BROWSER keep it while no shared
+ * cache may. A limiter php does not know (including the empty one, which is how a
+ * program turns this off) sends nothing -- php validates nothing here.
+ *
+ * `Expires: Thu, 19 Nov 1981 08:52:00 GMT` is php's own already-expired constant,
+ * and Last-Modified is the mtime of the script that started the session.
+ */
+static void VmSessSendCacheHeaders(ph7_vm *pVm)
+{
+	SyBlob sLimiter;
+	const char *zLim;
+	sxu32 nLim;
+	sxi64 iExpire;
+	char zBuf[128];
+	int nBuf;
+	if( !pVm->bHttpContext ){
+		return;
+	}
+	SyBlobInit(&sLimiter,&pVm->sAllocator);
+	PH7_VmIniGetStr(pVm,"session.cache_limiter",&sLimiter);
+	zLim = (const char *)SyBlobData(&sLimiter);
+	nLim = SyBlobLength(&sLimiter);
+	iExpire = PH7_VmIniGetInt(pVm,"session.cache_expire",180) * 60;
+	if( nLim == sizeof("nocache")-1 && SyMemcmp(zLim,"nocache",nLim) == 0 ){
+		PH7_VmSetResponseHeader(pVm,"Expires","Thu, 19 Nov 1981 08:52:00 GMT",
+			sizeof("Thu, 19 Nov 1981 08:52:00 GMT")-1);
+		PH7_VmSetResponseHeader(pVm,"Cache-Control","no-store, no-cache, must-revalidate",
+			sizeof("no-store, no-cache, must-revalidate")-1);
+		PH7_VmSetResponseHeader(pVm,"Pragma","no-cache",sizeof("no-cache")-1);
+	}else if( (nLim == sizeof("public")-1 && SyMemcmp(zLim,"public",nLim) == 0)
+	       || (nLim == sizeof("private")-1 && SyMemcmp(zLim,"private",nLim) == 0)
+	       || (nLim == sizeof("private_no_expire")-1
+	        && SyMemcmp(zLim,"private_no_expire",nLim) == 0) ){
+		int bPublic = nLim == sizeof("public")-1;
+		int bNoExpire = nLim == sizeof("private_no_expire")-1;
+		if( bPublic ){
+			nBuf = PH7_VmHttpDate((sxi64)time(0) + iExpire,zBuf,(int)sizeof(zBuf));
+			if( nBuf > 0 ){
+				PH7_VmSetResponseHeader(pVm,"Expires",zBuf,(sxu32)nBuf);
+			}
+		}else if( !bNoExpire ){
+			PH7_VmSetResponseHeader(pVm,"Expires","Thu, 19 Nov 1981 08:52:00 GMT",
+				sizeof("Thu, 19 Nov 1981 08:52:00 GMT")-1);
+		}
+		nBuf = SyBufferFormat(zBuf,sizeof(zBuf),"%s, max-age=%qd",
+			bPublic ? "public" : "private",iExpire);
+		PH7_VmSetResponseHeader(pVm,"Cache-Control",zBuf,(sxu32)nBuf);
+		{
+			/* The document's own age: the script that is running. */
+			SyString *pFile = (SyString *)SySetPeek(&pVm->aFiles);
+			if( pFile && pFile->nByte > 0 ){
+				ph7_value sPath,sTime;
+				ph7_value *apA[1];
+				VmSessStrArg(pVm,&sPath,pFile->zString,pFile->nByte);
+				PH7_MemObjInit(pVm,&sTime);
+				apA[0] = &sPath;
+				VmSessCallQuiet(pVm,"filemtime",1,apA,&sTime);
+				if( sTime.iFlags & MEMOBJ_INT ){
+					nBuf = PH7_VmHttpDate(sTime.x.iVal,zBuf,(int)sizeof(zBuf));
+					if( nBuf > 0 ){
+						PH7_VmSetResponseHeader(pVm,"Last-Modified",zBuf,(sxu32)nBuf);
+					}
+				}
+				PH7_MemObjRelease(&sTime);
+				PH7_MemObjRelease(&sPath);
+			}
+		}
+	}
+	SyBlobRelease(&sLimiter);
+}
+/* string|false session_cache_limiter(?string $value = null) */
+static int vm_builtin_session_cache_limiter(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SyBlob sOld;
+	SyBlobInit(&sOld,&pVm->sAllocator);
+	PH7_VmIniGetStr(pVm,"session.cache_limiter",&sOld);
+	if( nArg > 0 && !ph7_value_is_null(apArg[0]) ){
+		int nVal = 0;
+		const char *zVal;
+		if( pVm->iSessStatus == VM_SESSION_ACTIVE ){
+			/* The headers went out with the session; there is nothing left to
+			 * decide. */
+			PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
+				"session_cache_limiter(): Session cache limiter cannot be changed"
+				" when a session is active");
+			SyBlobRelease(&sOld);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		zVal = ph7_value_to_string(apArg[0],&nVal);
+		PH7_VmIniSet(pVm,"session.cache_limiter",sizeof("session.cache_limiter")-1,
+			zVal,(sxu32)nVal,"session_cache_limiter()");
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOld),(int)SyBlobLength(&sOld));
+	SyBlobRelease(&sOld);
+	return PH7_OK;
+}
+/* int|false session_cache_expire(?int $value = null) */
+static int vm_builtin_session_cache_expire(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	sxi64 iOld = PH7_VmIniGetInt(pVm,"session.cache_expire",180);
+	if( nArg > 0 && !ph7_value_is_null(apArg[0]) ){
+		if( pVm->iSessStatus == VM_SESSION_ACTIVE ){
+			/* php answers the CURRENT value here rather than false, unlike its
+			 * neighbour. */
+			PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
+				"session_cache_expire(): Session cache expiration cannot be changed"
+				" when a session is active");
+		}else{
+			char zVal[32];
+			int nVal = SyBufferFormat(zVal,sizeof(zVal),"%qd",ph7_value_to_int64(apArg[0]));
+			PH7_VmIniSet(pVm,"session.cache_expire",sizeof("session.cache_expire")-1,
+				zVal,(sxu32)nVal,"session_cache_expire()");
+		}
+	}
+	ph7_result_int64(pCtx,iOld);
+	return PH7_OK;
+}
 /* int|false session_gc() */
+
 static int vm_builtin_session_gc(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
@@ -1519,6 +1646,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm)
 		{ "session_decode",        vm_builtin_session_decode        },
 		{ "session_create_id",     vm_builtin_session_create_id     },
 		{ "session_gc",            vm_builtin_session_gc            },
+		{ "session_cache_limiter", vm_builtin_session_cache_limiter },
+		{ "session_cache_expire",  vm_builtin_session_cache_expire  },
 		{ "session_register_shutdown", vm_builtin_session_register_shutdown },
 		{ "session_get_cookie_params", vm_builtin_session_get_cookie_params },
 		{ "session_set_cookie_params", vm_builtin_session_set_cookie_params },
