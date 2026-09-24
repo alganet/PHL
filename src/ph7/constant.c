@@ -529,6 +529,22 @@ static void PH7_STR_PAD_BOTH_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData);
 }
 /*
+ * array_filter()'s $mode selector. The VALUES are php's and are a public ABI --
+ * ARRAY_FILTER_USE_BOTH is 1 and ARRAY_FILTER_USE_KEY is 2, NOT the other way
+ * round, and they are a selector rather than a bit mask (php reads the argument
+ * with ==, so any other number is the default value mode).
+ */
+static void PH7_ARRAY_FILTER_USE_KEY_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,2);
+	SXUNUSED(pUserData);
+}
+static void PH7_ARRAY_FILTER_USE_BOTH_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,1);
+	SXUNUSED(pUserData);
+}
+/*
  * COUNT_NORMAL
  *  Expands 0
  */
@@ -2080,6 +2096,8 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"STR_PAD_LEFT",         PH7_STR_PAD_LEFT_Const },
 	{"STR_PAD_RIGHT",        PH7_STR_PAD_RIGHT_Const},
 	{"STR_PAD_BOTH",         PH7_STR_PAD_BOTH_Const },
+	{"ARRAY_FILTER_USE_KEY", PH7_ARRAY_FILTER_USE_KEY_Const },
+	{"ARRAY_FILTER_USE_BOTH",PH7_ARRAY_FILTER_USE_BOTH_Const},
 	{"COUNT_NORMAL",         PH7_COUNT_NORMAL_Const },
 	{"COUNT_RECURSIVE",      PH7_COUNT_RECURSIVE_Const },
 	{"SORT_ASC",             PH7_SORT_ASC_Const     },

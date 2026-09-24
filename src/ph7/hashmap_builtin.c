@@ -4904,15 +4904,22 @@ PH7_PRIVATE int ph7_hashmap_replace(ph7_context *pCtx,int nArg,ph7_value **apArg
 	return PH7_OK;
 }
 /*
- * array array_filter(array $input [,callback $callback ])
+ * array array_filter(array $array [, ?callable $callback = null [, int $mode = 0 ]])
  *  Filters elements of an array using a callback function.
  * Parameters
- *  $input
+ *  $array
  *    The array to iterate over
  * $callback
  *    The callback function to use
  *    If no callback is supplied, all entries of input equal to FALSE (see converting to boolean)
  *    will be removed.
+ * $mode
+ *    What the callback is HANDED: ARRAY_FILTER_USE_KEY (2) passes the key alone,
+ *    ARRAY_FILTER_USE_BOTH (1) passes the value and then the key, and anything
+ *    else -- php compares the argument for equality rather than masking it, so
+ *    3, -1 and 99 all land here -- passes the value alone. The selector is dead
+ *    when no callback was supplied: php's default "drop the falsy entries" arm
+ *    never looks at a key.
  * Return
  *  The filtered array.
  */
@@ -4922,7 +4929,11 @@ PH7_PRIVATE int ph7_hashmap_filter(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_hashmap *pMap;
 	ph7_value *pArray;
 	ph7_value sResult;   /* Callback result */
+	ph7_value sKey;      /* Entry key handed to the callback (USE_KEY/USE_BOTH) */
 	ph7_value *pValue;
+	ph7_value *apCbArg[2];
+	int nCbArg;
+	ph7_int64 iMode;
 	sxi32 rc;
 	int keep;
 	sxu32 n;
@@ -4948,6 +4959,11 @@ PH7_PRIVATE int ph7_hashmap_filter(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			return rcCb;
 		}
 	}
+	/* What the callback is handed. The aBuiltinSig[] row screens the argument's
+	 * TYPE, not its width, so the selector is read at full 64 bits: narrowing it
+	 * would make 2^32+1 -- a number php answers the default value mode for --
+	 * select ARRAY_FILTER_USE_BOTH. */
+	iMode = nArg > 2 ? ph7_value_to_int64(apArg[2]) : 0;
 	/* Create a new array */
 	pArray = ph7_context_new_array(pCtx);
 	if( pArray == 0 ){
@@ -4959,6 +4975,8 @@ PH7_PRIVATE int ph7_hashmap_filter(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	pEntry = pMap->pFirst;
 	PH7_MemObjInit(pMap->pVm,&sResult);
 	sResult.nIdx = SXU32_HIGH; /* Mark as constant */
+	PH7_MemObjInit(pMap->pVm,&sKey);
+	sKey.nIdx = SXU32_HIGH; /* Mark as constant */
 	/* Perform the requested operation */
 	for( n = 0 ; n < pMap->nEntry ; n++ ){
 		/* Extract node value (may be NULL if allocation failed) */
@@ -4969,7 +4987,21 @@ PH7_PRIVATE int ph7_hashmap_filter(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}else if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){
 			/* Callback supplied (not NULL) and already validated above. */
 			keep = FALSE;
-			rc = PH7_VmCallUserFunction(pMap->pVm,apArg[1],1,&pValue,&sResult);
+			if( iMode == 2 /* ARRAY_FILTER_USE_KEY */ ){
+				PH7_HashmapExtractNodeKey(pEntry,&sKey);
+				apCbArg[0] = &sKey;
+				nCbArg = 1;
+			}else if( iMode == 1 /* ARRAY_FILTER_USE_BOTH */ ){
+				PH7_HashmapExtractNodeKey(pEntry,&sKey);
+				apCbArg[0] = pValue;
+				apCbArg[1] = &sKey;
+				nCbArg = 2;
+			}else{
+				apCbArg[0] = pValue;
+				nCbArg = 1;
+			}
+			rc = PH7_VmCallUserFunction(pMap->pVm,apArg[1],nCbArg,apCbArg,&sResult);
+			PH7_MemObjRelease(&sKey);
 			if( rc == PH7_EXCEPTION ){
 				/* The callback raised: propagate so the dispatcher unwinds. */
 				PH7_MemObjRelease(&sResult);
