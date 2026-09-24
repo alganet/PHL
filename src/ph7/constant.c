@@ -539,6 +539,26 @@ static void PH7_STREAM_IS_URL_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData);
 }
 /*
+ * stream_socket_client()'s $flags. CONNECT is the default it documents;
+ * PERSISTENT is what pfsockopen() means and the only one that changes what a
+ * second call to the same address ANSWERS.
+ */
+static void PH7_STREAM_CLIENT_CONNECT_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_CLIENT_CONNECT);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_CLIENT_ASYNC_CONNECT_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_CLIENT_ASYNC_CONNECT);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_CLIENT_PERSISTENT_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_CLIENT_PERSISTENT);
+	SXUNUSED(pUserData);
+}
+/*
  * The socket-family constants. Their VALUES are the platform's own — AF_INET6 is
  * 10 on Linux, 23 on Windows and 30 on the BSDs — so they are asked for by id
  * rather than written down here, and a program handing one to
@@ -2352,6 +2372,9 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"STREAM_IS_URL",                PH7_STREAM_IS_URL_Const },
 	{"STREAM_SERVER_BIND",           PH7_STREAM_SERVER_BIND_Const },
 	{"STREAM_SERVER_LISTEN",         PH7_STREAM_SERVER_LISTEN_Const },
+	{"STREAM_CLIENT_CONNECT",        PH7_STREAM_CLIENT_CONNECT_Const },
+	{"STREAM_CLIENT_ASYNC_CONNECT",  PH7_STREAM_CLIENT_ASYNC_CONNECT_Const },
+	{"STREAM_CLIENT_PERSISTENT",     PH7_STREAM_CLIENT_PERSISTENT_Const },
 	{"STREAM_SHUT_RD",               PH7_STREAM_SHUT_RD_Const },
 	{"STREAM_SHUT_WR",               PH7_STREAM_SHUT_WR_Const },
 	{"STREAM_SHUT_RDWR",             PH7_STREAM_SHUT_RDWR_Const },

@@ -47,7 +47,9 @@ PH7_PRIVATE const char * PH7_VfsResourceType(void *pResource)
 {
 	io_private *pDev = (io_private *)pResource;
 	if( !IO_PRIVATE_INVALID(pDev) ){
-		return "stream";
+		/* php names a persistent stream apart, and that name is the only way a
+		 * script can see that its handle is one. */
+		return pDev->bPersist ? "persistent stream" : "stream";
 	}
 	return "Unknown";
 }
@@ -437,6 +439,28 @@ PH7_PRIVATE int PH7_builtin_feof(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * the device is. Anything reading from a caller's handle has to use this and
  * not the device's own xRead.
  */
+/*
+ * One read from the device, with the timeout bookkeeping php does for EVERY
+ * reader: `timed_out` describes the last read, so it is cleared on the way in
+ * and set only by a wait that expired. Without the clear, one quiet period marks
+ * a handle timed out for the rest of its life — and now that every socket
+ * carries default_socket_timeout, that is every socket that ever waited. And
+ * without the set being here, only fread() would ever report one: fgets(),
+ * fgetc(), stream_get_line(), stream_get_contents() and fpassthru() all read
+ * through their own loops.
+ */
+static ph7_int64 IoPrivateDeviceRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
+{
+	ph7_int64 n;
+	pDev->bTimedOut = 0;
+	errno = 0;
+	n = pDev->pStream->xRead(pDev->pHandle,pBuf,nLen);
+	if( n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)
+	 && pDev->bHasTimeout && !pDev->bNonBlock ){
+		pDev->bTimedOut = 1;
+	}
+	return n;
+}
 PH7_PRIVATE ph7_int64 PH7_StreamRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
 {
 	const ph7_io_stream *pStream = pDev->pStream;
@@ -465,7 +489,7 @@ PH7_PRIVATE ph7_int64 PH7_StreamRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
 		zBuf += n;
 	}
 	/* Read without buffering */
-	nRead = pStream->xRead(pDev->pHandle,zBuf,nLen);
+	nRead = IoPrivateDeviceRead(pDev,zBuf,nLen);
 	if( nRead == 0
 	 || (nRead > 0 && nRead < nLen && pStream->xSeek != 0 && pStream->xTell != 0
 	     && pStream->xTell(pDev->pHandle) >= 0) ){
@@ -515,7 +539,6 @@ static sxi32 GetLine(io_private *pDev,ph7_int64 *pLen,const char **pzLine)
  */
 static ph7_int64 StreamReadLine(io_private *pDev,const char **pzData,ph7_int64 nMaxLen)
 {
-	const ph7_io_stream *pStream = pDev->pStream;
 	char zBuf[8192];
 	ph7_int64 n;
 	sxi32 rc;
@@ -552,7 +575,7 @@ static ph7_int64 StreamReadLine(io_private *pDev,const char **pzData,ph7_int64 n
 			if( nMaxLen > 0 && nMaxLen < nAsk ){
 				nAsk = nMaxLen;
 			}
-			n = pStream->xRead(pDev->pHandle,zBuf,nAsk);
+			n = IoPrivateDeviceRead(pDev,zBuf,nAsk);
 		}
 		if( n == 0 ){
 			pDev->bEof = 1;
@@ -987,7 +1010,7 @@ PH7_PRIVATE int PH7_builtin_stream_get_line(ph7_context *pCtx,int nArg,ph7_value
 			}
 			return PH7_OK;
 		}
-		n = pStream->xRead(pDev->pHandle,zBuf,(ph7_int64)sizeof(zBuf));
+		n = IoPrivateDeviceRead(pDev,zBuf,(ph7_int64)sizeof(zBuf));
 		if( n < 1 ){
 			bEof = 1;
 			if( n == 0 ){
@@ -1081,7 +1104,10 @@ PH7_PRIVATE int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		 * siblings, and a genuine EBADF on a non-blocking write-only handle
 		 * would come back as "" rather than false. When a TIMEOUT is what
 		 * expired, php reports false and sets the metadata's `timed_out`. */
-		if( pDev->bHasTimeout ){
+		if( pDev->bHasTimeout && !pDev->bNonBlock ){
+			/* A handle in NON-BLOCKING mode is the other case: it answers "" for
+			 * a read that found nothing whether or not a timeout is armed, and
+			 * every socket now carries `default_socket_timeout`. */
 			pDev->bTimedOut = 1;
 			ph7_result_bool(pCtx,0);
 		}else{
@@ -3012,6 +3038,7 @@ PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_priva
 	pOut->zMode[0] = 0;
 	pOut->bEof = 0;
 	pOut->bDir = 0;
+	pOut->bPersist = 0;
 	pOut->nChunk = 8192; /* php's own default, and what stream_set_chunk_size() reports first */
 	pOut->bNonBlock = 0;
 	pOut->bHasTimeout = 0;
@@ -3153,7 +3180,7 @@ PH7_PRIVATE int PH7_builtin_stream_get_contents(ph7_context *pCtx,int nArg,ph7_v
 		if( nMax > 0 && nMax < nAsk ){
 			nAsk = nMax;
 		}
-		nRead = pStream->xRead(pDev->pHandle,zBuf,nAsk);
+		nRead = IoPrivateDeviceRead(pDev,zBuf,nAsk);
 		if( nRead < 1 ){
 			if( nRead == 0 ){
 				pDev->bEof = 1;
@@ -3493,7 +3520,13 @@ static ph7_int64 SockStreamData_Read(void *pHandle,void *pBuffer,ph7_int64 nRead
 		 * the ordinary one is EAGAIN — nothing had arrived YET. Latching EOF
 		 * here (as this did for every n <= 0, safe only while every socket was
 		 * blocking and untimed) made the first empty read close the connection
-		 * for good and threw away everything the peer sent afterwards. */
+		 * for good and threw away everything the peer sent afterwards.
+		 *
+		 * The reader above tells "nothing yet" from "broken" by ERRNO, which a
+		 * Winsock call never touches: without this the `""` a non-blocking read
+		 * answers and the `timed_out` an expired one reports were both lost on
+		 * Windows, and every such read came back as a plain failure. */
+		errno = PH7_NetWouldBlock() ? EAGAIN : (errno != 0 ? errno : EIO);
 		return -1;
 	}
 	return (ph7_int64)n;
@@ -3678,6 +3711,79 @@ static void SockCloseWrapped(ph7_context *pCtx,io_private *pDev)
 		pDev->pHandle = 0;
 	}
 	ReleaseIOPrivate(pCtx,pDev);
+}
+/*
+ * php's PERSISTENT sockets, which pfsockopen() and STREAM_CLIENT_PERSISTENT ask
+ * for: a second open of the SAME address hands back the very same resource
+ * rather than a second connection — `$a === $b` — and fclose() is what ends it,
+ * after which the next open dials again. The key is the address as the opener
+ * spelled it, so "localhost:80" and "127.0.0.1:80" are two of them.
+ */
+static void SockPersistKey(char *zBuf,int nBuf,int bClientForm,const char *zAddr,int nAddr)
+{
+	/* php prefixes the key with the FUNCTION that asked, so a pfsockopen() and a
+	 * persistent stream_socket_client() of one address are two connections. */
+	SyBufferFormat(zBuf,(sxu32)nBuf,"%s__%.*s",
+		bClientForm ? "stream_socket_client" : "pfsockopen",nAddr,zAddr);
+}
+static io_private * SockPersistFind(ph7_vm *pVm,const char *zKey)
+{
+	VmPersistSock *aSlot = (VmPersistSock *)SySetBasePtr(&pVm->aPersistSock);
+	sxu32 i;
+	for( i = 0 ; i < SySetUsed(&pVm->aPersistSock) ; i++ ){
+		if( aSlot[i].zKey[0] && SyStrncmp(aSlot[i].zKey,zKey,(sxu32)SyStrlen(zKey) + 1) == 0 ){
+			if( !IO_PRIVATE_INVALID(aSlot[i].pDev) ){
+				return aSlot[i].pDev;
+			}
+			/* fclose()'d since: the slot is free for the next connection. */
+			aSlot[i].zKey[0] = 0;
+			aSlot[i].pDev = 0;
+		}
+	}
+	return 0;
+}
+static void SockPersistKeep(ph7_vm *pVm,const char *zKey,io_private *pDev)
+{
+	VmPersistSock *aSlot = (VmPersistSock *)SySetBasePtr(&pVm->aPersistSock);
+	VmPersistSock sSlot;
+	sxu32 i;
+	for( i = 0 ; i < SySetUsed(&pVm->aPersistSock) ; i++ ){
+		if( aSlot[i].zKey[0] == 0 || IO_PRIVATE_INVALID(aSlot[i].pDev) ){
+			SyZero(&aSlot[i],sizeof(VmPersistSock));
+			Systrcpy(aSlot[i].zKey,(sxu32)sizeof(aSlot[i].zKey),zKey,0);
+			aSlot[i].pDev = pDev;
+			return;
+		}
+	}
+	SyZero(&sSlot,sizeof(sSlot));
+	Systrcpy(sSlot.zKey,(sxu32)sizeof(sSlot.zKey),zKey,0);
+	sSlot.pDev = pDev;
+	SySetPut(&pVm->aPersistSock,(const void *)&sSlot);
+}
+/*
+ * php bounds every CONNECTED socket's reads by `default_socket_timeout` from the
+ * moment it is opened — a read from a peer that has gone quiet answers FALSE
+ * after it, with `timed_out` set — where this engine armed nothing and waited
+ * forever. That is the difference between a program that reports a dead peer and
+ * one that hangs.
+ *
+ * A LISTENING socket is deliberately left alone: php's accept timeout is its own
+ * argument and its own select(), so arming the OS receive timeout here would
+ * bound `stream_socket_accept($srv, -1)` — the wait a server asks to be
+ * unbounded — at sixty seconds.
+ */
+static void SockArmDefaultTimeout(ph7_context *pCtx,io_private *pDev)
+{
+	ph7_int64 iSec;
+	ph7_socket *pSock = pDev ? IoPrivateSocket(pDev) : 0;
+	if( pSock == 0 || *pSock == PH7_NET_INVALID_SOCKET ){
+		return;
+	}
+	iSec = PH7_VmIniGetInt(pCtx->pVm,"default_socket_timeout",60);
+	if( iSec > 0 ){
+		PH7_NetSetRwTimeout(*pSock,iSec,0);
+		pDev->bHasTimeout = 1;
+	}
 }
 /*
  * The out-params every address-taking opener carries, on the path that WORKED:
@@ -4283,6 +4389,7 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 	char zHost[256],zAddrBuf[352],zShowBuf[384],zMsg[512];
 	const char *zShow;
 	int nRaw,nAddr,nShow,nTransport,nRest,iPortArg = -1,iPort = 0,iErrno = 0,iTimeoutMs = 0,rc;
+	int iFlags = PH7_STREAM_CLIENT_CONNECT,bPersist,bConnect;
 	ph7_socket sock;
 	io_private *pDev;
 	int iArgErrno = bClientForm ? 1 : 2;
@@ -4296,6 +4403,19 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 	if( !bClientForm && nArg > 1 && !ph7_value_is_null(apArg[1]) ){
 		iPortArg = ph7_value_to_int(apArg[1]);
 	}
+	if( bClientForm && nArg > 4 ){
+		/* Declared in the signature and read by nothing until now, so the
+		 * documented spellings did nothing and their constants were undefined
+		 * fatals. */
+		iFlags = (int)ph7_value_to_int64(apArg[4]);
+	}
+	/* pfsockopen() IS fsockopen() with this flag; php has no other difference
+	 * between them. ASYNC_CONNECT is accepted and changes nothing here, because
+	 * the connect() is blocking either way (§7.4 slice-2 (b)) — php reverts a
+	 * socket it connected asynchronously to blocking mode too. */
+	bPersist = bClientForm ? (iFlags & PH7_STREAM_CLIENT_PERSISTENT) != 0
+		: (zFunc[0] == 'p');
+	bConnect = bClientForm ? (iFlags & PH7_STREAM_CLIENT_CONNECT) != 0 : 1;
 	/* php builds ONE address out of fsockopen()'s two arguments — and only when
 	 * the port is a usable one, which is why `fsockopen($h)` reports the address
 	 * it could not parse rather than connecting to port 0. The address it SHOWS
@@ -4338,6 +4458,32 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 			iTimeoutMs = (int)(rTimeout * 1000);
 		}
 	}
+	if( bPersist ){
+		/* A live one for this address IS the answer: php hands the same resource
+		 * back rather than opening a second connection to the same peer. */
+		char zKey[320];
+		io_private *pKept;
+		SockPersistKey(zKey,sizeof(zKey),bClientForm,zAddr,nAddr);
+		pKept = SockPersistFind(pCtx->pVm,zKey);
+		if( pKept ){
+			SockAddressSuccess(pCtx,apArg,nArg,iArgErrno,iArgErrstr);
+			ph7_result_resource(pCtx,pKept);
+			return PH7_OK;
+		}
+	}
+	if( !bConnect ){
+		/* php creates the socket while CONNECTING it, so a $flags without
+		 * STREAM_CLIENT_CONNECT answers a stream with no socket behind it: no
+		 * name at either end, reads false, writes 0, already at end of file. */
+		SockAddressSuccess(pCtx,apArg,nArg,iArgErrno,iArgErrstr);
+		pDev = SockWrapSocket(pCtx,PH7_NET_INVALID_SOCKET,zAddr,nAddr);
+		if( pDev == 0 ){
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		ph7_result_resource(pCtx,pDev);
+		return PH7_OK;
+	}
 	sock = PH7_NetConnect(zHost,iPort,iTimeoutMs,&iErrno,&zErr);
 	if( sock == PH7_NET_INVALID_SOCKET ){
 		if( iErrno == PH7_NET_ERR_RESOLVE ){
@@ -4357,6 +4503,15 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 	if( pDev == 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
+	}
+	SockArmDefaultTimeout(pCtx,pDev);
+	if( bPersist ){
+		char zKey[320];
+		SockPersistKey(zKey,sizeof(zKey),bClientForm,zAddr,nAddr);
+		SockPersistKeep(pCtx->pVm,zKey,pDev);
+		/* get_resource_type() names it apart, which is how a script can tell it
+		 * asked for one at all. */
+		pDev->bPersist = 1;
 	}
 	ph7_result_resource(pCtx,pDev);
 	return PH7_OK;
@@ -4525,6 +4680,7 @@ PH7_PRIVATE int PH7_builtin_stream_socket_accept(ph7_context *pCtx,int nArg,ph7_
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	SockArmDefaultTimeout(pCtx,pOut);
 	ph7_result_resource(pCtx,pOut);
 	return PH7_OK;
 }
@@ -4795,6 +4951,7 @@ PH7_PRIVATE int PH7_builtin_stream_socket_pair(ph7_context *pCtx,int nArg,ph7_va
 		/* A pair has no transport of its own, and php labels it apart from a
 		 * tcp:// stream for exactly that reason. */
 		((sock_private *)apDev[i]->pHandle)->bGeneric = 1;
+		SockArmDefaultTimeout(pCtx,apDev[i]);
 	}
 	for( i = 0 ; i < 2 ; i++ ){
 		ph7_value_resource(pVal,apDev[i]);

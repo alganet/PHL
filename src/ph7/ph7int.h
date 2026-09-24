@@ -1003,6 +1003,22 @@ struct VmObEntry
 /* stream_wrapper_register()'s $flags: php defines this one bit. A wrapper that
  * declares itself a URL is the one allow_url_fopen and allow_url_include gate. */
 #define PH7_STREAM_IS_URL 1
+/* stream_socket_client()'s $flags. CONNECT is its default; without it php
+ * creates no socket at all. PERSISTENT is what pfsockopen() means, and is the
+ * only one that changes what a second call ANSWERS. */
+#define PH7_STREAM_CLIENT_PERSISTENT    1
+#define PH7_STREAM_CLIENT_ASYNC_CONNECT 2
+#define PH7_STREAM_CLIENT_CONNECT       4
+/* One live persistent socket: php's registry key is the address the opener was
+ * given, spelling included ("localhost:80" and "127.0.0.1:80" are two). The
+ * handle itself is the VFS's io_private, declared with the rest of that layer. */
+typedef struct io_private io_private;
+typedef struct VmPersistSock VmPersistSock;
+struct VmPersistSock
+{
+	char zKey[320];
+	io_private *pDev;
+};
 /* stream_socket_server()'s $flags. php keeps the two apart because a DATAGRAM
  * server is bound and never listens; LISTEN is what makes a bound socket a
  * stream server, and dropping it leaves a socket nothing can connect to. */
@@ -2224,6 +2240,9 @@ struct ph7_vm
 	                             * merged into aIniTab when the directive table is seeded */
 	SySet aIniTab;              /* The live directive table (VmIniSlot), sorted by name so
 	                             * ini_get_all() needs no sort of its own */
+	SySet aPersistSock;         /* PERSISTENT socket handles (VmPersistSock), keyed by the
+	                             * address as the opener spelled it: php hands the SAME
+	                             * resource back for a second pfsockopen() of one address */
 	sxu8 bIniSeeded;            /* aIniTab has been built (lazily, on the first INI call) */
 	/* Session state. Was a private `__SessS` class with five static properties, which
 	 * the INI subsystem had to reach into to live-wire session.name/session.save_path;
@@ -3671,7 +3690,6 @@ extern const ph7_io_stream sPHP_Stream;
 /* IO private state carried by every open stream handle (fopen/opendir/popen
  * resources and the exported std streams). Shared between vfs.c,
  * vfs_stream.c and vfs_io_driver.c. */
-typedef struct io_private io_private;
 struct io_private
 {
 	const ph7_io_stream *pStream; /* Underlying IO device */
@@ -3693,6 +3711,7 @@ struct io_private
 	sxu8 bTimedOut;  /* the last read expired; php's meta `timed_out`, cleared by the next */
 	sxu8 bEof;       /* a read on this handle has already come back empty */
 	sxu8 bDir;       /* opendir()/dir() handle rather than a byte stream */
+	sxu8 bPersist;   /* opened PERSISTENTLY: get_resource_type() names it apart */
 	sxu32 iMagic;   /* Sanity check to avoid misuse */
 };
 #define IO_PRIVATE_MAGIC 0xFEAC14
