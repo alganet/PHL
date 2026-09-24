@@ -1401,6 +1401,12 @@ static sxi32 VmInstallStdClasses(ph7_vm *pVm)
 		{ "__PHP_Incomplete_Class", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "Random\\RandomException", "Exception", 0, PH7_CLASS_NOCLONE,
 		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		/* php 8.5's filter exceptions: FILTER_THROW_ON_FAILURE raises the second,
+		 * and the first is the base a caller catches to mean "any filter error". */
+		{ "Filter\\FilterException", "Exception", 0, 0,
+		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "Filter\\FilterFailedException", "Filter\\FilterException", 0, 0,
+		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }

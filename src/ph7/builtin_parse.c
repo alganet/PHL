@@ -49,6 +49,7 @@
 #define FV_SANITIZE_NUMBER_FLOAT 520
 #define FV_SANITIZE_FULL_SPECIAL_CHARS 522
 #define FV_SANITIZE_ADD_SLASHES        523
+#define FV_CALLBACK                    1024
 #define FV_FLAG_ALLOW_OCTAL  1
 #define FV_FLAG_ALLOW_HEX    2
 #define FV_FLAG_STRIP_LOW    4
@@ -76,6 +77,7 @@
 #define FV_REQUIRE_SCALAR  33554432
 #define FV_FORCE_ARRAY     67108864
 #define FV_NULL_ON_FAILURE 134217728
+#define FV_THROW_ON_FAILURE 268435456
 /* The subset of flags the UNSAFE_RAW/DEFAULT string filter (FvSanitizeString)
  * acts on: when none are set the filter is a verbatim pass-through, so FV_DEFAULT
  * can shortcut. Keep this in sync with FvSanitizeString's flag handling. */
@@ -1390,6 +1392,65 @@ static void FvSanitizeChars(ph7_context *pCtx,const char *z,int n,int isUrl){
 	if( n>runStart ){ ph7_result_string(pCtx,z+runStart,n-runStart); }
 }
 /*
+ * php's filter NAME table, in php's own order: what filter_list() answers and
+ * what filter_id() looks names up in. Two names share id 513 ("string" and
+ * "stripped"), which is why filter_id() is a name->id map and not a bijection.
+ */
+static const struct FvFilterName {
+	const char *zName;
+	int iId;
+} aFvFilterName[] = {
+	{ "int",                257 }, { "boolean",            258 },
+	{ "float",              259 }, { "validate_regexp",    272 },
+	{ "validate_domain",    277 }, { "validate_url",       273 },
+	{ "validate_email",     274 }, { "validate_ip",        275 },
+	{ "validate_mac",       276 }, { "string",             513 },
+	{ "stripped",           513 }, { "encoded",            514 },
+	{ "special_chars",      515 }, { "full_special_chars", 522 },
+	{ "unsafe_raw",         516 }, { "email",              517 },
+	{ "url",                518 }, { "number_int",         519 },
+	{ "number_float",       520 }, { "add_slashes",        523 },
+	{ "callback",          1024 }
+};
+/* The NAME php words a filter's failure with. The first row wins for the two
+ * ids that have two names, which is the one php's own table answers. */
+static const char * FvFilterIdName(int iFilter)
+{
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(aFvFilterName) ; ++n ){
+		if( aFvFilterName[n].iId == iFilter ){ return aFvFilterName[n].zName; }
+	}
+	return "unsafe_raw";
+}
+/* Is this a filter id php has? php answers a filter_var() with an unknown one
+ * with a warning and false, and an unknown one INSIDE an array definition with
+ * the warning and then the DEFAULT filter. */
+static int FvFilterIdExists(int iFilter)
+{
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(aFvFilterName) ; ++n ){
+		if( aFvFilterName[n].iId == iFilter ){ return 1; }
+	}
+	return 0;
+}
+/*
+ * The superglobal an INPUT_* constant names. Answers 0 for a constant php does
+ * not have, where the caller raises php's ValueError under its own name.
+ */
+static const char * FvInputSuper(int iType,sxu32 *pnLen)
+{
+	switch( iType ){
+	case 0: *pnLen = (sxu32)sizeof("_POST")-1;   return "_POST";
+	case 1: *pnLen = (sxu32)sizeof("_GET")-1;    return "_GET";
+	case 2: *pnLen = (sxu32)sizeof("_COOKIE")-1; return "_COOKIE";
+	case 4: *pnLen = (sxu32)sizeof("_ENV")-1;    return "_ENV";
+	case 5: *pnLen = (sxu32)sizeof("_SERVER")-1; return "_SERVER";
+	default: break;
+	}
+	*pnLen = 0;
+	return 0;
+}
+/*
  * Apply the selected filter to one already-resolved input value and write the
  * result into pCtx. Shared by filter_var() and filter_input(): the caller has
  * already parsed $filter/$flags/$options. On validation failure the 'default'
@@ -1402,9 +1463,33 @@ static int FvApplyFilterRaw(ph7_context *pCtx,ph7_value *pInput,
                             ph7_value *pDefault,const char *zFunc)
 {
 	int bNull = (iFlags & FV_NULL_ON_FAILURE) ? 1 : 0;
-	const char *zVal; int nVal;
+	const char *zVal; int nVal, rc;
 	/* An array/object input fails every scalar filter. */
 	if( ph7_value_is_array(pInput) ){ goto fail; }
+	if( iFilter == FV_CALLBACK ){
+		/* php's callback filter: `options` IS the callable (not an array of
+		 * options), it is handed the value, and whatever it answers is the
+		 * result. A missing or unusable one is a TypeError, and the value
+		 * becomes null. */
+		ph7_value *pRes;
+		char zReason[256];
+		/* the callable SCREEN, not the screen's own message: php words this one
+		 * itself ("Option must be a valid callback") */
+		if( pOpts==0 || PH7_VmCallableReason(pCtx->pVm,pOpts,zReason,sizeof(zReason))!=0 ){
+			ph7_result_null(pCtx);
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"%s(): Option must be a valid callback",zFunc);
+		}
+		pRes = ph7_context_new_scalar(pCtx);
+		if( pRes==0 ){ ph7_result_null(pCtx); return PH7_OK; }
+		if( PH7_VmCallUserFunction(pCtx->pVm,pOpts,1,&pInput,pRes)==SXRET_OK ){
+			ph7_result_value(pCtx,pRes);
+		}else{
+			ph7_result_null(pCtx);
+		}
+		ph7_context_release_value(pCtx,pRes);
+		return PH7_OK;
+	}
 	zVal = ph7_value_to_string(pInput,&nVal);
 	switch( iFilter ){
 	case FV_VALIDATE_INT: {
@@ -1516,6 +1601,20 @@ static int FvApplyFilterRaw(ph7_context *pCtx,ph7_value *pInput,
 		goto pass;
 	}
 fail:
+	if( iFlags & FV_THROW_ON_FAILURE ){
+		/* php's message names the FILTER and the value it was given, and the
+		 * `default` option does not suppress it. */
+		ph7_value sTmp;
+		int nGiven; const char *zGiven;
+		PH7_MemObjInit(pCtx->pVm,&sTmp);
+		zGiven = ph7_value_to_string(PH7_ValuePeek(pInput,&sTmp),&nGiven);
+		ph7_result_null(pCtx);
+		rc = PH7_VmThrowException(pCtx,"Filter\\FilterFailedException",
+			"filter validation failed: filter %s not satisfied by '%.*s'",
+			FvFilterIdName(iFilter),nGiven,zGiven);
+		PH7_MemObjRelease(&sTmp);
+		return rc;
+	}
 	if( pDefault ){ ph7_result_value(pCtx,pDefault); }
 	else if( bNull ){ ph7_result_null(pCtx); }
 	else { ph7_result_bool(pCtx,0); }
@@ -1651,13 +1750,54 @@ static void FvParseFilterArgs(int nArg,ph7_value **apArg,int iBase,
 				if( (*piFlags & (FV_REQUIRE_ARRAY|FV_FORCE_ARRAY))==0 ){ *piFlags |= FV_REQUIRE_SCALAR; }
 			}
 			*ppOpts = ph7_array_fetch(apArg[iBase+1],"options",(int)sizeof("options")-1);
-			if( *ppOpts && !ph7_value_is_array(*ppOpts) ){ *ppOpts = 0; }
-			if( *ppOpts ){ *ppDefault = ph7_array_fetch(*ppOpts,"default",(int)sizeof("default")-1); }
+			if( *ppOpts && *piFilter == FV_CALLBACK ){
+				/* the CALLBACK filter's "options" IS the callable, and php clears
+				 * the shape flags for it */
+				*piFlags = 0;
+			}else{
+				if( *ppOpts && !ph7_value_is_array(*ppOpts) ){ *ppOpts = 0; }
+				if( *ppOpts ){ *ppDefault = ph7_array_fetch(*ppOpts,"default",(int)sizeof("default")-1); }
+			}
 		}else{
 			*piFlags = (int)PH7_ValuePeekInt64(apArg[iBase+1]);
 			if( (*piFlags & (FV_REQUIRE_ARRAY|FV_FORCE_ARRAY))==0 ){ *piFlags |= FV_REQUIRE_SCALAR; }
 		}
 	}
+}
+/*
+ * php refuses the two failure modes together, and words it against the argument
+ * that carried them.
+ */
+static int FvCheckFailureFlags(ph7_context *pCtx,int iFlags,const char *zFunc,int iArgNo,
+                               const char *zArgName)
+{
+	if( (iFlags & FV_NULL_ON_FAILURE) && (iFlags & FV_THROW_ON_FAILURE) ){
+		ph7_result_null(pCtx);
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #%d ($%s) cannot use both FILTER_NULL_ON_FAILURE and FILTER_THROW_ON_FAILURE",
+			zFunc,iArgNo,zArgName);
+	}
+	return PH7_OK;
+}
+/*
+ * php's `array|int $options`: an array or an int, and nothing else. The shared
+ * type screen leaves a union with an `array` arm alone (php words those from
+ * the builtin's own check), so this is that check.
+ */
+static int FvCheckOptionsArg(ph7_context *pCtx,ph7_value *pArg,const char *zFunc,int iArgNo,
+                             const char *zArgName)
+{
+	if( pArg==0 || ph7_value_is_array(pArg) || ph7_value_is_int(pArg)
+	 || ph7_value_is_bool(pArg) || ph7_value_is_null(pArg) ){
+		return PH7_OK;
+	}
+	if( ph7_value_is_float(pArg) || PH7_MemObjStringIsNumeric(pArg) ){
+		return PH7_OK; /* weak mode coerces a number the way php's ZPP does */
+	}
+	ph7_result_null(pCtx);
+	return PH7_VmThrowException(pCtx,"TypeError",
+		"%s(): Argument #%d ($%s) must be of type array|int, %s given",
+		zFunc,iArgNo,zArgName,ph7_type_name(pArg));
 }
 /*
  * php's php_filter_call: what the ARRAY shape flags decide before any filter
@@ -1706,55 +1846,6 @@ static int FvFilterCall(ph7_context *pCtx,ph7_value *pInput,
 	return FvApplyFilter(pCtx,pInput,iFilter,iFlags,pOpts,pDefault,zFunc);
 }
 /*
- * php's filter NAME table, in php's own order: what filter_list() answers and
- * what filter_id() looks names up in. Two names share id 513 ("string" and
- * "stripped"), which is why filter_id() is a name->id map and not a bijection.
- */
-static const struct FvFilterName {
-	const char *zName;
-	int iId;
-} aFvFilterName[] = {
-	{ "int",                257 }, { "boolean",            258 },
-	{ "float",              259 }, { "validate_regexp",    272 },
-	{ "validate_domain",    277 }, { "validate_url",       273 },
-	{ "validate_email",     274 }, { "validate_ip",        275 },
-	{ "validate_mac",       276 }, { "string",             513 },
-	{ "stripped",           513 }, { "encoded",            514 },
-	{ "special_chars",      515 }, { "full_special_chars", 522 },
-	{ "unsafe_raw",         516 }, { "email",              517 },
-	{ "url",                518 }, { "number_int",         519 },
-	{ "number_float",       520 }, { "add_slashes",        523 },
-	{ "callback",          1024 }
-};
-/* Is this a filter id php has? php answers a filter_var() with an unknown one
- * with a warning and false, and an unknown one INSIDE an array definition with
- * the warning and then the DEFAULT filter. */
-static int FvFilterIdExists(int iFilter)
-{
-	sxu32 n;
-	for( n = 0 ; n < SX_ARRAYSIZE(aFvFilterName) ; ++n ){
-		if( aFvFilterName[n].iId == iFilter ){ return 1; }
-	}
-	return 0;
-}
-/*
- * The superglobal an INPUT_* constant names. Answers 0 for a constant php does
- * not have, where the caller raises php's ValueError under its own name.
- */
-static const char * FvInputSuper(int iType,sxu32 *pnLen)
-{
-	switch( iType ){
-	case 0: *pnLen = (sxu32)sizeof("_POST")-1;   return "_POST";
-	case 1: *pnLen = (sxu32)sizeof("_GET")-1;    return "_GET";
-	case 2: *pnLen = (sxu32)sizeof("_COOKIE")-1; return "_COOKIE";
-	case 4: *pnLen = (sxu32)sizeof("_ENV")-1;    return "_ENV";
-	case 5: *pnLen = (sxu32)sizeof("_SERVER")-1; return "_SERVER";
-	default: break;
-	}
-	*pnLen = 0;
-	return 0;
-}
-/*
  * filter_var($value, $filter = FILTER_DEFAULT, $options = 0)
  *  Validate or sanitize a value; see FvApplyFilter for the failure semantics.
  */
@@ -1763,7 +1854,13 @@ PH7_PRIVATE int PH7_builtin_filter_var(ph7_context *pCtx,int nArg,ph7_value **ap
 	int iFilter = FV_DEFAULT, iFlags = FV_REQUIRE_SCALAR;
 	ph7_value *pOpts = 0, *pDefault = 0;
 	if( nArg<1 ){ ph7_result_null(pCtx); return PH7_OK; }
+	if( nArg>2 && FvCheckOptionsArg(pCtx,apArg[2],"filter_var",3,"options")!=PH7_OK ){
+		return PH7_EXCEPTION;
+	}
 	FvParseFilterArgs(nArg,apArg,1,&iFilter,&iFlags,&pOpts,&pDefault);
+	if( FvCheckFailureFlags(pCtx,iFlags,"filter_var",3,"options")!=PH7_OK ){
+		return PH7_EXCEPTION;
+	}
 	if( !FvFilterIdExists(iFilter) ){
 		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"Unknown filter with ID %d",iFilter);
 		ph7_result_bool(pCtx,0);
@@ -1807,7 +1904,13 @@ PH7_PRIVATE int PH7_builtin_filter_input(ph7_context *pCtx,int nArg,ph7_value **
 			"filter_input(): Argument #1 ($type) must be an INPUT_* constant");
 	}
 	zVar = ph7_value_to_string(apArg[1],&nVar);
+	if( nArg>3 && FvCheckOptionsArg(pCtx,apArg[3],"filter_input",4,"options")!=PH7_OK ){
+		return PH7_EXCEPTION;
+	}
 	FvParseFilterArgs(nArg,apArg,2,&iFilter,&iFlags,&pOpts,&pDefault);
+	if( FvCheckFailureFlags(pCtx,iFlags,"filter_input",4,"options")!=PH7_OK ){
+		return PH7_EXCEPTION;
+	}
 	if( !FvFilterIdExists(iFilter) ){
 		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"Unknown filter with ID %d",iFilter);
 		ph7_result_bool(pCtx,0);
@@ -1913,6 +2016,9 @@ static int FvArrayHandler(ph7_context *pCtx,ph7_value *pInput,int nArg,ph7_value
 {
 	int bAddEmpty = 1;
 	ph7_value *pSpec = (nArg>iSpecArg) ? apArg[iSpecArg] : 0;
+	if( pSpec && FvCheckOptionsArg(pCtx,pSpec,zFunc,iSpecArg+1,"options")!=PH7_OK ){
+		return PH7_EXCEPTION;
+	}
 	if( nArg>iSpecArg+1 ){ bAddEmpty = PH7_ValuePeekBool(apArg[iSpecArg+1]); }
 	if( pSpec==0 || !ph7_value_is_array(pSpec) ){
 		/* one filter over the whole array */
@@ -1964,8 +2070,12 @@ static int FvArrayHandler(ph7_context *pCtx,ph7_value *pInput,int nArg,ph7_value
 					if( (iFlags & (FV_REQUIRE_ARRAY|FV_FORCE_ARRAY))==0 ){ iFlags |= FV_REQUIRE_SCALAR; }
 				}
 				pOpts = ph7_array_fetch(&sElem,"options",(int)sizeof("options")-1);
-				if( pOpts && !ph7_value_is_array(pOpts) ){ pOpts = 0; }
-				if( pOpts ){ pDefault = ph7_array_fetch(pOpts,"default",(int)sizeof("default")-1); }
+				if( pOpts && iFilter == FV_CALLBACK ){
+					iFlags = 0; /* the callable is the option; php clears the shape flags */
+				}else{
+					if( pOpts && !ph7_value_is_array(pOpts) ){ pOpts = 0; }
+					if( pOpts ){ pDefault = ph7_array_fetch(pOpts,"default",(int)sizeof("default")-1); }
+				}
 			}else{
 				iFilter = (int)PH7_ValuePeekInt64(&sElem);
 				if( !FvFilterIdExists(iFilter) ){
@@ -2032,6 +2142,10 @@ PH7_PRIVATE int PH7_builtin_filter_input_array(ph7_context *pCtx,int nArg,ph7_va
 	if( nArg<1 ){
 		return PH7_VmThrowException(pCtx,"ArgumentCountError",
 			"filter_input_array() expects at least 1 argument, %d given",nArg);
+	}
+	/* php's ZPP screens the arguments before it looks at the source at all. */
+	if( nArg>1 && FvCheckOptionsArg(pCtx,apArg[1],"filter_input_array",2,"options")!=PH7_OK ){
+		return PH7_EXCEPTION;
 	}
 	zSuper = FvInputSuper(ph7_value_to_int(apArg[0]),&nSuper);
 	if( zSuper==0 ){
