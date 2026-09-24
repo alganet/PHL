@@ -21,6 +21,13 @@ var_dump(intval('0b0b1x', 2), intval('0b-0b1', 2), intval('0b 0b1', 2), intval('
 // A base that narrows to 0 past the full-width "0b" strip test gets no strip at
 // all, so the conversion's own prefix is the only one read.
 var_dump(intval('0b101', 4294967296));
+
+// The "0b" STRIP reads the base at full width, one step before that cast, so a
+// base of 2^32+2 converts in base 2 without stripping -- leaving only the
+// prefix the conversion itself reads, which needs a binary digit behind it.
+var_dump(intval('0b101', 4294967298), intval('0b-1', 4294967298), intval('0b-1', 2));
+var_dump(intval('0b0b1', 4294967298), intval('0b 1', 4294967296), intval('0b 1', 0));
+var_dump(intval('0b101', PHP_INT_MIN), intval('-0b1', 4294967296), intval('+0b11', 8589934592));
 ?>
 --EXPECT--
 int(1)
@@ -40,3 +47,12 @@ int(-1)
 int(1)
 int(0)
 int(5)
+int(5)
+int(0)
+int(-1)
+int(0)
+int(0)
+int(1)
+int(5)
+int(-1)
+int(3)

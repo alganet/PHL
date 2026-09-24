@@ -378,13 +378,16 @@ static sxi64 IntvalStrtol(int iPreSign,const char *zIn,int nLen,int iBase)
 	 && zIn[i] == '0' && (zIn[i+1] == 'x' || zIn[i+1] == 'X') ){
 		i += 2;
 		iBase = 16;
-	}else if( iBase == 2 && i + 2 < nLen
+	}else if( (iBase == 0 || iBase == 2) && i + 2 < nLen
 	 && zIn[i] == '0' && (zIn[i+1] == 'b' || zIn[i+1] == 'B')
 	 && (zIn[i+2] == '0' || zIn[i+2] == '1') ){
 		/* The conversion accepts a binary prefix of its own, on TOP of the one
 		 * IntvalStrToInt64 strips -- which is why intval("0b0b1",2) is 1 and a
-		 * THIRD prefix stops the scan: intval("0b0b0b1",2) is 0. */
+		 * THIRD prefix stops the scan: intval("0b0b0b1",2) is 0. It is also the
+		 * only prefix reader a base that NARROWED to 0 or 2 gets, since the
+		 * strip upstream reads the base at full width. */
 		i += 2;
+		iBase = 2;
 	}else if( iBase == 0 ){
 		iBase = (i < nLen && zIn[i] == '0') ? 8 : 10;
 	}
@@ -440,7 +443,7 @@ static sxi64 IntvalStrtol(int iPreSign,const char *zIn,int nLen,int iBase)
  * `intval("-0b-1",2)` is 0. php hands strtol() the C string, so an embedded NUL
  * truncates: intval("12\0 34",16) is 0x12. That truncation is copied too.
  */
-static sxi64 IntvalStrToInt64(const char *zIn,int nLen,int iBase)
+static sxi64 IntvalStrToInt64(const char *zIn,int nLen,sxi64 iBase64,int iBase)
 {
 	int i = 0;
 	/* An embedded NUL ends the string for strtol(). */
@@ -452,8 +455,11 @@ static sxi64 IntvalStrToInt64(const char *zIn,int nLen,int iBase)
 	while( i < nLen && SyisSpace((unsigned char)zIn[i]) ){
 		i++;
 	}
-	/* Only when something FOLLOWS the prefix -- "0b" alone stays a base-2 zero. */
-	if( (iBase == 0 || iBase == 2) && nLen - i > 2 ){
+	/* php's own strip reads the base at FULL width, one step before the narrowing
+	 * cast the conversion below gets -- so base 2^32+2 does not strip here even
+	 * though it converts in base 2. Only when something FOLLOWS the prefix, too:
+	 * "0b" alone stays a base-2 zero. */
+	if( (iBase64 == 0 || iBase64 == 2) && nLen - i > 2 ){
 		int off = (zIn[i] == '-' || zIn[i] == '+') ? 1 : 0;
 		if( zIn[i+off] == '0' && (zIn[i+off+1] == 'b' || zIn[i+off+1] == 'B') ){
 			int iPreSign = off ? (unsigned char)zIn[i] : 0;
@@ -498,7 +504,7 @@ static int PH7_builtin_intval(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			sxu32 uB = (sxu32)((sxu64)iBase & 0xFFFFFFFF);
 			int iB = (uB <= (sxu32)SXI32_HIGH)
 				? (int)uB : -(int)(SXU32_HIGH - uB) - 1;
-			iVal = IntvalStrToInt64(zVal,nLen,iB);
+			iVal = IntvalStrToInt64(zVal,nLen,iBase,iB);
 		}else{
 			/* Perform the cast */
 			iVal = ph7_value_to_int64(apArg[0]);
