@@ -1359,20 +1359,33 @@ PH7_PRIVATE int vm_builtin_ph7_version(ph7_context *pCtx,int nArg,ph7_value **ap
 	return PH7_OK;
 }
 /*
- * string phpversion([ string $extension ])
+ * string|false phpversion([ ?string $extension = null ])
  *  Returns the PHP-compatibility version PHL advertises (see PHP_COMPAT_VERSION).
  * Parameters
- *  $extension (optional): an extension name. PHL has no extension registry, so any
- *  argument yields NULL (PHP returns FALSE for an unknown extension).
+ *  $extension (optional): an extension name, matched case-insensitively against
+ *  the ones this engine reports as loaded.
  * Return
- *  The PHP-compat version string, or NULL when called with an extension argument.
+ *  The version string — for the engine with no argument (or an explicit NULL),
+ *  and for a loaded extension, whose version IS the engine's since every one of
+ *  them is part of it — or FALSE for a name it does not report.
  */
+static int VmExtensionIsLoaded(ph7_context *pCtx,ph7_value *pName);
 PH7_PRIVATE int vm_builtin_phpversion(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	SXUNUSED(apArg); /* cc warning */
-	if( nArg > 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
+	/* $extension was declared in the signature and answered NULL for everything:
+	 * an unknown one where php answers FALSE (so the documented
+	 * `if (phpversion($e) === false)` check never fired and a version comparison
+	 * ran against NULL), a KNOWN one where php answers the version string, and
+	 * even the explicit NULL that means "no extension" at all.
+	 *
+	 * Every extension this engine reports as loaded is part of the engine, so its
+	 * version IS the engine's — which is also what php answers for its own
+	 * bundled ones — and a name it does not report is php's false. */
+	if( nArg > 0 && (apArg[0]->iFlags & MEMOBJ_NULL) == 0 ){
+		if( !VmExtensionIsLoaded(pCtx,apArg[0]) ){
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
 	}
 	ph7_result_string(pCtx,PHP_COMPAT_VERSION,(int)sizeof(PHP_COMPAT_VERSION) - 1);
 	return PH7_OK;
@@ -1432,30 +1445,37 @@ static int VmStubExtMatch(const char *zName,int nName,void *pData)
 	return nName == p->nName && SyStrnicmp(zName,p->zName,(sxu32)nName) == 0;
 }
 /*
- * bool extension_loaded(string $extension)
- *  php matches the name case-insensitively.
+ * Is this name one of the extensions this engine reports as loaded? Shared by
+ * extension_loaded() and phpversion(), which php answers from the same list.
  */
-PH7_PRIVATE int vm_builtin_extension_loaded(ph7_context *pCtx,int nArg,ph7_value **apArg)
+static int VmExtensionIsLoaded(ph7_context *pCtx,ph7_value *pName)
 {
 	vm_ext_match sMatch;
 	const char *zName;
 	int nName;
 	sxu32 n;
-	if( nArg < 1 ){
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
-	zName = ph7_value_to_string(apArg[0],&nName);
+	zName = ph7_value_to_string(pName,&nName);
 	for( n = 0 ; n < SX_ARRAYSIZE(azExtension) ; ++n ){
 		if( nName == (int)SyStrlen(azExtension[n])
 		 && SyStrnicmp(zName,azExtension[n],(sxu32)nName) == 0 ){
-			ph7_result_bool(pCtx,1);
-			return PH7_OK;
+			return 1;
 		}
 	}
 	sMatch.zName = zName;
 	sMatch.nName = nName;
-	ph7_result_bool(pCtx,VmStubExtWalk(pCtx->pVm,VmStubExtMatch,&sMatch));
+	return VmStubExtWalk(pCtx->pVm,VmStubExtMatch,&sMatch);
+}
+/*
+ * bool extension_loaded(string $extension)
+ *  php matches the name case-insensitively.
+ */
+PH7_PRIVATE int vm_builtin_extension_loaded(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_bool(pCtx,VmExtensionIsLoaded(pCtx,apArg[0]));
 	return PH7_OK;
 }
 static int VmStubExtCollect(const char *zName,int nName,void *pData)
