@@ -1379,19 +1379,35 @@ static ph7_int64 WinFile_Tell(void *pUserData)
 	}
 	return (ph7_int64)dwNew;
 }
-/* int (*xTrunc)(void *,ph7_int64) */
+/* int (*xTrunc)(void *,ph7_int64)
+ *
+ * SetEndOfFile() truncates at the CURRENT file pointer, so the size has to be
+ * seeked to first — and the pointer is then left there. POSIX ftruncate() does
+ * not move it, and neither does php on either platform, so the caller's
+ * position is saved across the pair: without this, `ftruncate($h,6)` after an
+ * fgets() moved the handle to 6 on Windows and left it where it was everywhere
+ * else, and every position-shaped answer after it (ftell, the next read, a
+ * write's landing point) diverged by platform.
+ */
 static int WinFile_Trunc(void *pUserData,ph7_int64 nOfft)
 {
 	HANDLE pHandle = (HANDLE)pUserData;
-	LONG HighOfft;
-	DWORD dwNew;
+	LONG HighOfft,HighCur;
+	DWORD dwNew,dwCur;
 	BOOL rc;
+	HighCur = 0;
+	dwCur = SetFilePointer(pHandle,0,&HighCur,FILE_CURRENT);
+	if( dwCur == INVALID_SET_FILE_POINTER && GetLastError() != NO_ERROR ){
+		return -1;
+	}
 	HighOfft = (LONG)(nOfft >> 32);
 	dwNew = SetFilePointer(pHandle,(LONG)nOfft,&HighOfft,FILE_BEGIN);
-	if( dwNew == INVALID_SET_FILE_POINTER ){
+	if( dwNew == INVALID_SET_FILE_POINTER && GetLastError() != NO_ERROR ){
 		return -1;
 	}
 	rc = SetEndOfFile(pHandle);
+	/* Put the caller back where it was, whether the truncation worked or not. */
+	SetFilePointer(pHandle,(LONG)dwCur,&HighCur,FILE_BEGIN);
 	return rc ? PH7_OK : -1;
 }
 /* int (*xSync)(void *); */

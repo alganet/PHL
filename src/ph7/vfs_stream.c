@@ -29,6 +29,22 @@ static void ResetIOPrivate(io_private *pDev);
  * yet. Both are past the position a script observes, so ftell(), a SEEK_CUR
  * seek and stream_get_meta_data()'s `unread_bytes` all have to discount them.
  */
+static void ResetIOPrivate(io_private *pDev);
+static sxu32 StreamAheadBytes(io_private *pDev);
+/*
+ * A write lands where the SCRIPT is, not where the device is. Everything the
+ * readers pulled ahead — the line buffer and the filter chain's output alike —
+ * sits between the two, so it is stepped over and dropped before the write.
+ * php does the same by seeking to the logical position it tracks.
+ */
+static void StreamSeekBackForWrite(io_private *pDev)
+{
+	sxu32 nAhead = StreamAheadBytes(pDev);
+	if( nAhead > 0 && pDev->pStream && pDev->pStream->xSeek ){
+		pDev->pStream->xSeek(pDev->pHandle,-(ph7_int64)nAhead,1/*SEEK_CUR*/);
+		ResetIOPrivate(pDev);
+	}
+}
 static sxu32 StreamAheadBytes(io_private *pDev)
 {
 	sxu32 n = 0;
@@ -153,10 +169,12 @@ PH7_PRIVATE int PH7_builtin_ftruncate(ph7_context *pCtx,int nArg,ph7_value **apA
 	}
 	/* Perform the requested operation */
 	rc = pStream->xTrunc(pDev->pHandle,nSize);
-	if( rc == PH7_OK ){
-		/* Discard buffered data */
-		ResetIOPrivate(pDev);
-	}
+	/* php does NOT touch the read buffer here: truncating is not a seek, the
+	 * position does not move, and what the readers already pulled ahead is
+	 * still what the next read answers. Dropping it made ftell() jump to the
+	 * device's own offset and the next read start there — past the new end
+	 * (`""` where php answers the buffered line) or, after a truncation that
+	 * GREW the file, over the NUL padding no php ever hands back. */
 	/* IO result */
 	ph7_result_bool(pCtx,rc == PH7_OK);
 	return PH7_OK;
@@ -2515,15 +2533,10 @@ PH7_PRIVATE int PH7_builtin_fwrite(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_int(pCtx,0);
 		return PH7_OK;
 	}
-	if( pDev->nOfft < SyBlobLength(&pDev->sBuffer) && pStream->xSeek ){
-		/* The device sits PAST the line readers' read-ahead: php writes at the
-		 * LOGICAL position (fgets() then fwrite() overwrites what fgets left
-		 * unread), so step the device back by the unconsumed remainder and
-		 * drop the buffer — the ftell()/SEEK_CUR rule, applied to the write. */
-		pStream->xSeek(pDev->pHandle,
-			-(ph7_int64)(SyBlobLength(&pDev->sBuffer) - pDev->nOfft),1/*SEEK_CUR*/);
-		ResetIOPrivate(pDev);
-	}
+	/* The device sits PAST what the readers pulled ahead: php writes at the
+	 * LOGICAL position (fgets() then fwrite() overwrites what fgets left
+	 * unread) — the ftell()/SEEK_CUR rule, applied to the write. */
+	StreamSeekBackForWrite(pDev);
 	/* Perform the requested operation */
 	n = (int)PH7_StreamWrite(pDev,(const void *)zString,nLen);
 	if( n <  0 ){
@@ -2867,14 +2880,10 @@ PH7_PRIVATE int PH7_builtin_fputcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 	if( nEol > 0 ){
 		SyBlobAppend(&sLine,(const void *)zEol,(sxu32)nEol);
 	}
-	if( pDev->nOfft < SyBlobLength(&pDev->sBuffer) && pStream->xSeek ){
-		/* Write at the LOGICAL position, not the device one -- the same rule
-		 * PH7_builtin_fwrite applies after a buffered read (fgets() then
-		 * fputcsv() overwrites what fgets left unread). */
-		pStream->xSeek(pDev->pHandle,
-			-(ph7_int64)(SyBlobLength(&pDev->sBuffer) - pDev->nOfft),1/*SEEK_CUR*/);
-		ResetIOPrivate(pDev);
-	}
+	/* Write at the LOGICAL position, not the device one -- the same rule
+	 * PH7_builtin_fwrite applies after a buffered read (fgets() then
+	 * fputcsv() overwrites what fgets left unread). */
+	StreamSeekBackForWrite(pDev);
 	nWr = PH7_StreamWrite(pDev,(const void *)SyBlobData(&sLine),
 		(ph7_int64)SyBlobLength(&sLine));
 	SyBlobRelease(&sLine);
@@ -6201,13 +6210,9 @@ PH7_PRIVATE int PH7_builtin_stream_copy_to_stream(ph7_context *pCtx,int nArg,ph7
 		return PH7_OK;
 	}
 #endif
-	/* The destination may be sitting past its own line readers' read-ahead;
-	 * the write has to land where the SCRIPT is, the rule fwrite() follows. */
-	if( pTo->nOfft < SyBlobLength(&pTo->sBuffer) && pTo->pStream->xSeek ){
-		pTo->pStream->xSeek(pTo->pHandle,
-			-(ph7_int64)(SyBlobLength(&pTo->sBuffer) - pTo->nOfft),1/*SEEK_CUR*/);
-		ResetIOPrivate(pTo);
-	}
+	/* The destination may be sitting past its own read-ahead; the write has to
+	 * land where the SCRIPT is, the rule fwrite() follows. */
+	StreamSeekBackForWrite(pTo);
 	for(;;){
 		ph7_int64 nAsk = (ph7_int64)sizeof(zBuf);
 		ph7_int64 nRead,nWr;
