@@ -1509,6 +1509,14 @@ static int VmHintNameChar(int c)
  * are only ever available as source: unions/intersections, and the property /
  * class-constant messages, which print the declared type whatever its shape.
  * An unresolvable keyword is left as written (there is no class to name).
+ *
+ * `iterable` is the one name php SPELLS DIFFERENTLY in a message than in the
+ * canonical text: Reflection prints `iterable`/`?iterable` (which is what the
+ * compiler stores, and what a COMPOUND type already has expanded in place —
+ * `iterable|int` is stored `Traversable|array|int`), while every diagnostic
+ * names the two types it stands for. Only the standalone spellings can still
+ * reach here, so the substitution is over the whole text rather than per token —
+ * `?iterable` is `Traversable|array|null`, not `?Traversable|array`.
  */
 PH7_PRIVATE const char *VmHintTextResolved(ph7_vm *pVm,const SyString *pDeclared,ph7_class *pScope,
 	char *zBuf,sxu32 nBuf)
@@ -1520,6 +1528,23 @@ PH7_PRIVATE const char *VmHintTextResolved(ph7_vm *pVm,const SyString *pDeclared
 	}
 	z = pDeclared ? pDeclared->zString : 0;
 	n = z ? pDeclared->nByte : 0;
+	if( z ){
+		const char *zIter = 0;
+		if( n == 8 && SyStrnicmp(z,"iterable",8) == 0 ){
+			zIter = "Traversable|array";
+		}else if( n == 9 && z[0] == '?' && SyStrnicmp(&z[1],"iterable",8) == 0 ){
+			zIter = "Traversable|array|null";
+		}
+		if( zIter ){
+			sxu32 nIter = SyStrlen(zIter);
+			if( nIter > nBuf - 1 ){
+				nIter = nBuf - 1;
+			}
+			SyMemcpy(zIter,zBuf,nIter);
+			zBuf[nIter] = 0;
+			return zBuf;
+		}
+	}
 	while( i < n && nAt + 1 < nBuf ){
 		sxu32 nStart, nCopy;
 		SyString sTok;
