@@ -1548,20 +1548,36 @@ static int BcryptParseHash(const char *zHash,int nHash,int *piCost)
 	return TRUE;
 }
 /*
- * TRUE if the $algo argument selects bcrypt: null (PASSWORD_DEFAULT) or the
- * "2y" id (PASSWORD_BCRYPT/PASSWORD_DEFAULT). bcrypt is the only supported algo.
+ * Resolve password_hash()'s $algo the way php's registry lookup does. NULL and
+ * the pre-7.4 INT ids 0 (PASSWORD_DEFAULT) and 1 (PASSWORD_BCRYPT) select
+ * bcrypt — a bool arrives on the int path, php's ZPP shape for string|int|null
+ * — and a STRING names an algo directly ("2y" is the only registered one). The
+ * string form is a name, not a number: '1' and '0' resolve to nothing, exactly
+ * as in php. Returns PW_ALGO_NONE for a value that names no algorithm; the two
+ * callers disagree on what that means (password_hash() throws the ValueError,
+ * password_needs_rehash() answers FALSE).
  */
-static int BcryptIsBcryptAlgo(ph7_value *pAlgo)
+#define PW_ALGO_NONE   0
+#define PW_ALGO_BCRYPT 1
+static int PasswordResolveAlgo(ph7_value *pAlgo)
 {
 	if( ph7_value_is_null(pAlgo) ){
-		return TRUE;
+		return PW_ALGO_BCRYPT;
+	}
+	if( ph7_value_is_int(pAlgo) || ph7_value_is_float(pAlgo) || ph7_value_is_bool(pAlgo) ){
+		/* int, bool, and the integral float ZPP folds to int (1.0 → 1) — but
+		 * NOT a numeric string: '1' is a NAME lookup in php, and finds nothing. */
+		sxi64 iAlgo = PH7_ValuePeekInt64(pAlgo);
+		return ( iAlgo == 0 || iAlgo == 1 ) ? PW_ALGO_BCRYPT : PW_ALGO_NONE;
 	}
 	if( ph7_value_is_string(pAlgo) ){
 		int nAlgo;
 		const char *zAlgo = ph7_value_to_string(pAlgo,&nAlgo);
-		return ( nAlgo == 2 && zAlgo[0] == '2' && zAlgo[1] == 'y' );
+		if( nAlgo == 2 && zAlgo[0] == '2' && zAlgo[1] == 'y' ){
+			return PW_ALGO_BCRYPT;
+		}
 	}
-	return FALSE;
+	return PW_ALGO_NONE;
 }
 /*
  * bool|string password_hash(string $password,string|int|null $algo[,array $options])
@@ -1577,20 +1593,32 @@ PH7_PRIVATE int PH7_builtin_password_hash(ph7_context *pCtx,int nArg,ph7_value *
 		return PH7_VmThrowException(pCtx,"ArgumentCountError",
 			"password_hash() expects at least 2 arguments, %d given",nArg);
 	}
-	if( !BcryptIsBcryptAlgo(apArg[1]) ){
+	if( PasswordResolveAlgo(apArg[1]) != PW_ALGO_BCRYPT ){
 		return PH7_VmThrowException(pCtx,"ValueError",
 			"password_hash(): Argument #2 ($algo) must be a valid password hashing algorithm");
 	}
-	/* cost from $options['cost'] (default 12). */
 	if( nArg > 2 && ph7_value_is_array(apArg[2]) ){
+		/* cost from $options['cost'] (default 12). A "salt" entry is a php 5/7
+		 * option php 8 removed: it is IGNORED with a warning, never read. */
 		ph7_value *pCost = ph7_array_fetch(apArg[2],"cost",(int)sizeof("cost")-1);
 		if( pCost ){ iCost = (int)PH7_ValuePeekInt64(pCost); } /* through a copy: $options is the caller's */
+		if( ph7_array_fetch(apArg[2],"salt",(int)sizeof("salt")-1) ){
+			ph7_context_throw_error(pCtx,PH7_CTX_WARNING,
+				"The \"salt\" option has been ignored, since providing a custom salt is no longer supported");
+		}
+	}
+	zPwd = ph7_value_to_string(apArg[0],&nPwd);
+	if( SyByteFind(zPwd,(sxu32)nPwd,0,0) == SXRET_OK ){
+		/* php refuses a NUL byte anywhere in a bcrypt password: the C crypt under
+		 * it is NUL-terminated, so "a\0b" would silently hash as "a". Raised
+		 * BEFORE the cost range check, php's order inside the bcrypt handler. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"Bcrypt password must not contain null character");
 	}
 	if( iCost < 4 || iCost > 31 ){
 		return PH7_VmThrowException(pCtx,"ValueError",
 			"Invalid bcrypt cost parameter specified: %d",iCost);
 	}
-	zPwd = ph7_value_to_string(apArg[0],&nPwd);
 	if( SyOSCSPRNG(aSalt,sizeof(aSalt)) != SXRET_OK ){
 		return PH7_VmThrowException(pCtx,"Exception",
 			"password_hash(): unable to gather sufficient entropy for the salt");
@@ -1690,9 +1718,16 @@ PH7_PRIVATE int PH7_builtin_password_needs_rehash(ph7_context *pCtx,int nArg,ph7
 		return PH7_VmThrowException(pCtx,"ArgumentCountError",
 			"password_needs_rehash() expects at least 2 arguments, %d given",nArg);
 	}
+	if( PasswordResolveAlgo(apArg[1]) != PW_ALGO_BCRYPT ){
+		/* php's answer for an algo that names NOTHING is false, not true — the
+		 * registry lookup fails before the hash is ever looked at, so
+		 * password_needs_rehash('anything', 'nope') is not a rehash request. */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
 	zHash = ph7_value_to_string(apArg[0],&nHash);
-	if( !BcryptParseHash(zHash,nHash,&iCost) || !BcryptIsBcryptAlgo(apArg[1]) ){
-		/* A non-bcrypt hash, or a request for a different algo → needs rehash. */
+	if( !BcryptParseHash(zHash,nHash,&iCost) ){
+		/* A hash made by a different (or no) algorithm → needs rehash. */
 		ph7_result_bool(pCtx,1);
 		return PH7_OK;
 	}
