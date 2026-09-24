@@ -76,6 +76,38 @@ struct SumContext {
 	sxu32 nPend;    /* bytes hashed since the last adler32 reduction */
 };
 
+/*
+ * The seeded fast-hash family: MurmurHash3 in its three shapes and xxHash in
+ * two. Unlike the checksums these consume fixed-size BLOCKS, so the context
+ * carries the partial block a chunked feed leaves behind; and unlike every
+ * other algorithm here they take a SEED, which is what hash()'s $options
+ * argument carries. The seed is 32-bit for murmur3a/murmur3c/xxh32 and 64-bit
+ * for murmur3f/xxh64 -- php truncates rather than rejecting the difference.
+ */
+#define MUR_3A  0   /* MurmurHash3 x86_32  -> 4 bytes  */
+#define MUR_3C  1   /* MurmurHash3 x86_128 -> 16 bytes */
+#define MUR_3F  2   /* MurmurHash3 x64_128 -> 16 bytes */
+typedef struct MurmurContext MurmurContext;
+struct MurmurContext {
+	int nKind;               /* one of MUR_* */
+	sxu32 h32[4];            /* the x86 lanes (murmur3a uses h32[0] alone) */
+	sxu64 h64[2];            /* the x64 lanes */
+	sxu64 nLen;              /* total bytes fed */
+	unsigned char zBlock[16];/* the partial block */
+	sxu32 nBlock;            /* bytes in zBlock */
+};
+#define XXH_32  0
+#define XXH_64  1
+typedef struct XxhContext XxhContext;
+struct XxhContext {
+	int nKind;               /* XXH_32 or XXH_64 */
+	sxu64 v[4];              /* the four accumulators (32-bit ones in the low half) */
+	sxu64 nSeed;
+	sxu64 nLen;
+	unsigned char zBlock[32];
+	sxu32 nBlock;
+};
+
 /* A union over every digest context so a single fixed-size, correctly-aligned
  * buffer can back any algorithm (used by the hash() descriptor dispatch). */
 typedef union HashCtx {
@@ -84,6 +116,8 @@ typedef union HashCtx {
 	SHA256Context sha256;
 	SHA512Context sha512;
 	SumContext sum;
+	MurmurContext murmur;
+	XxhContext xxh;
 } HashCtx;
 
 /* Digest function prototypes */
@@ -114,6 +148,13 @@ PH7_PRIVATE sxu32 SyCrc32(const void *pSrc,sxu32 nLen);
 PH7_PRIVATE void SumInit(SumContext *pCtx,int nKind);
 PH7_PRIVATE void SumUpdate(SumContext *pCtx,const unsigned char *data,unsigned int len);
 PH7_PRIVATE void SumFinal(SumContext *pCtx,unsigned char *digest);
+PH7_PRIVATE void MurmurInit(MurmurContext *pCtx,int nKind,sxu64 nSeed);
+PH7_PRIVATE void MurmurUpdate(MurmurContext *pCtx,const unsigned char *data,unsigned int len);
+PH7_PRIVATE void MurmurFinal(MurmurContext *pCtx,unsigned char *digest);
+
+PH7_PRIVATE void XxhInit(XxhContext *pCtx,int nKind,sxu64 nSeed);
+PH7_PRIVATE void XxhUpdate(XxhContext *pCtx,const unsigned char *data,unsigned int len);
+PH7_PRIVATE void XxhFinal(XxhContext *pCtx,unsigned char *digest);
 #endif /* PH7_DISABLE_HASH_FUNC */
 
 /* SyBinToHexConsumer is a general helper (used by bin2hex, md5_file, etc.)

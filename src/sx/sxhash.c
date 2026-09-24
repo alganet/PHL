@@ -947,6 +947,401 @@ PH7_PRIVATE void SumFinal(SumContext *pCtx,unsigned char *digest)
 			break;
 	}
 }
+/*
+ * MurmurHash3 and xxHash: the two SEEDED families. Both read their input as
+ * little-endian words and both emit each finished word BIG-endian, which is
+ * php's rendering rather than the algorithms' own.
+ *
+ * Both are block algorithms, so the context keeps whatever a chunked feed
+ * leaves over -- a digest may not depend on how the bytes were split, and
+ * hash_update() exists precisely to split them.
+ */
+#define SX_ROTL32(x,r) (((sxu32)(x) << (r)) | ((sxu32)(x) >> (32 - (r))))
+#define SX_ROTL64(x,r) (((sxu64)(x) << (r)) | ((sxu64)(x) >> (64 - (r))))
+static sxu32 SxGet32Le(const unsigned char *z)
+{
+	return (sxu32)z[0] | ((sxu32)z[1] << 8) | ((sxu32)z[2] << 16) | ((sxu32)z[3] << 24);
+}
+static sxu64 SxGet64Le(const unsigned char *z)
+{
+	return (sxu64)SxGet32Le(z) | ((sxu64)SxGet32Le(&z[4]) << 32);
+}
+static void SxPut32Be(unsigned char *z,sxu32 v)
+{
+	z[0] = (unsigned char)((v >> 24) & 0xff);
+	z[1] = (unsigned char)((v >> 16) & 0xff);
+	z[2] = (unsigned char)((v >> 8) & 0xff);
+	z[3] = (unsigned char)(v & 0xff);
+}
+static void SxPut64Be(unsigned char *z,sxu64 v)
+{
+	SxPut32Be(z,(sxu32)(v >> 32));
+	SxPut32Be(&z[4],(sxu32)(v & 0xffffffffu));
+}
+static sxu32 SxFmix32(sxu32 h)
+{
+	h ^= h >> 16;
+	h *= 0x85ebca6bu;
+	h ^= h >> 13;
+	h *= 0xc2b2ae35u;
+	h ^= h >> 16;
+	return h;
+}
+static sxu64 SxFmix64(sxu64 k)
+{
+	k ^= k >> 33;
+	k *= 0xff51afd7ed558ccdULL;
+	k ^= k >> 33;
+	k *= 0xc4ceb9fe1a85ec53ULL;
+	k ^= k >> 33;
+	return k;
+}
+#define MUR_C1 0xcc9e2d51u
+#define MUR_C2 0x1b873593u
+/* Mix one complete block into the lanes. */
+static void MurmurBlock(MurmurContext *pCtx,const unsigned char *z)
+{
+	sxu32 k1,k2,k3,k4;
+	sxu64 j1,j2;
+	switch( pCtx->nKind ){
+		case MUR_3A:
+			k1 = SxGet32Le(z);
+			k1 *= MUR_C1; k1 = SX_ROTL32(k1,15); k1 *= MUR_C2;
+			pCtx->h32[0] ^= k1;
+			pCtx->h32[0] = SX_ROTL32(pCtx->h32[0],13);
+			pCtx->h32[0] = pCtx->h32[0] * 5 + 0xe6546b64u;
+			break;
+		case MUR_3C:
+			k1 = SxGet32Le(z);      k2 = SxGet32Le(&z[4]);
+			k3 = SxGet32Le(&z[8]);  k4 = SxGet32Le(&z[12]);
+			k1 *= 0x239b961bu; k1 = SX_ROTL32(k1,15); k1 *= 0xab0e9789u; pCtx->h32[0] ^= k1;
+			pCtx->h32[0] = SX_ROTL32(pCtx->h32[0],19); pCtx->h32[0] += pCtx->h32[1];
+			pCtx->h32[0] = pCtx->h32[0] * 5 + 0x561ccd1bu;
+			k2 *= 0xab0e9789u; k2 = SX_ROTL32(k2,16); k2 *= 0x38b34ae5u; pCtx->h32[1] ^= k2;
+			pCtx->h32[1] = SX_ROTL32(pCtx->h32[1],17); pCtx->h32[1] += pCtx->h32[2];
+			pCtx->h32[1] = pCtx->h32[1] * 5 + 0x0bcaa747u;
+			k3 *= 0x38b34ae5u; k3 = SX_ROTL32(k3,17); k3 *= 0xa1e38b93u; pCtx->h32[2] ^= k3;
+			pCtx->h32[2] = SX_ROTL32(pCtx->h32[2],15); pCtx->h32[2] += pCtx->h32[3];
+			pCtx->h32[2] = pCtx->h32[2] * 5 + 0x96cd1c35u;
+			k4 *= 0xa1e38b93u; k4 = SX_ROTL32(k4,18); k4 *= 0x239b961bu; pCtx->h32[3] ^= k4;
+			pCtx->h32[3] = SX_ROTL32(pCtx->h32[3],13); pCtx->h32[3] += pCtx->h32[0];
+			pCtx->h32[3] = pCtx->h32[3] * 5 + 0x32ac3b17u;
+			break;
+		default: /* MUR_3F */
+			j1 = SxGet64Le(z); j2 = SxGet64Le(&z[8]);
+			j1 *= 0x87c37b91114253d5ULL; j1 = SX_ROTL64(j1,31); j1 *= 0x4cf5ad432745937fULL;
+			pCtx->h64[0] ^= j1;
+			pCtx->h64[0] = SX_ROTL64(pCtx->h64[0],27); pCtx->h64[0] += pCtx->h64[1];
+			pCtx->h64[0] = pCtx->h64[0] * 5 + 0x52dce729ULL;
+			j2 *= 0x4cf5ad432745937fULL; j2 = SX_ROTL64(j2,33); j2 *= 0x87c37b91114253d5ULL;
+			pCtx->h64[1] ^= j2;
+			pCtx->h64[1] = SX_ROTL64(pCtx->h64[1],31); pCtx->h64[1] += pCtx->h64[0];
+			pCtx->h64[1] = pCtx->h64[1] * 5 + 0x38495ab5ULL;
+			break;
+	}
+}
+static sxu32 MurmurBlockLen(int nKind)
+{
+	return nKind == MUR_3A ? 4 : 16;
+}
+PH7_PRIVATE void MurmurInit(MurmurContext *pCtx,int nKind,sxu64 nSeed)
+{
+	int i;
+	pCtx->nKind = nKind;
+	pCtx->nLen = 0;
+	pCtx->nBlock = 0;
+	/* php seeds murmur3a/murmur3c from the low 32 bits and murmur3f from all
+	 * 64, so the same $options['seed'] means two different things. */
+	for( i = 0 ; i < 4 ; ++i ){
+		pCtx->h32[i] = (sxu32)nSeed;
+	}
+	pCtx->h64[0] = pCtx->h64[1] = nSeed;
+	SyZero(pCtx->zBlock,sizeof(pCtx->zBlock));
+}
+PH7_PRIVATE void MurmurUpdate(MurmurContext *pCtx,const unsigned char *data,unsigned int len)
+{
+	sxu32 nBlk = MurmurBlockLen(pCtx->nKind);
+	pCtx->nLen += len;
+	if( pCtx->nBlock > 0 ){
+		sxu32 n = nBlk - pCtx->nBlock;
+		if( len < n ){
+			SyMemcpy(data,&pCtx->zBlock[pCtx->nBlock],len);
+			pCtx->nBlock += len;
+			return;
+		}
+		SyMemcpy(data,&pCtx->zBlock[pCtx->nBlock],n);
+		MurmurBlock(pCtx,pCtx->zBlock);
+		pCtx->nBlock = 0;
+		data += n;
+		len -= n;
+	}
+	while( len >= nBlk ){
+		MurmurBlock(pCtx,data);
+		data += nBlk;
+		len -= nBlk;
+	}
+	if( len > 0 ){
+		SyMemcpy(data,pCtx->zBlock,len);
+		pCtx->nBlock = len;
+	}
+}
+PH7_PRIVATE void MurmurFinal(MurmurContext *pCtx,unsigned char *digest)
+{
+	const unsigned char *t = pCtx->zBlock;
+	sxu32 n = pCtx->nBlock;
+	sxu32 k1 = 0,k2 = 0,k3 = 0,k4 = 0;
+	sxu64 j1 = 0,j2 = 0;
+	sxu32 h1,h2,h3,h4;
+	sxu64 g1,g2;
+	switch( pCtx->nKind ){
+		case MUR_3A:
+			if( n > 2 ){ k1 ^= (sxu32)t[2] << 16; }
+			if( n > 1 ){ k1 ^= (sxu32)t[1] << 8; }
+			if( n > 0 ){
+				k1 ^= (sxu32)t[0];
+				k1 *= MUR_C1; k1 = SX_ROTL32(k1,15); k1 *= MUR_C2;
+				pCtx->h32[0] ^= k1;
+			}
+			h1 = pCtx->h32[0] ^ (sxu32)pCtx->nLen;
+			SxPut32Be(digest,SxFmix32(h1));
+			break;
+		case MUR_3C:
+			if( n > 14 ){ k4 ^= (sxu32)t[14] << 16; }
+			if( n > 13 ){ k4 ^= (sxu32)t[13] << 8; }
+			if( n > 12 ){
+				k4 ^= (sxu32)t[12];
+				k4 *= 0xa1e38b93u; k4 = SX_ROTL32(k4,18); k4 *= 0x239b961bu; pCtx->h32[3] ^= k4;
+			}
+			if( n > 11 ){ k3 ^= (sxu32)t[11] << 24; }
+			if( n > 10 ){ k3 ^= (sxu32)t[10] << 16; }
+			if( n > 9 ){ k3 ^= (sxu32)t[9] << 8; }
+			if( n > 8 ){
+				k3 ^= (sxu32)t[8];
+				k3 *= 0x38b34ae5u; k3 = SX_ROTL32(k3,17); k3 *= 0xa1e38b93u; pCtx->h32[2] ^= k3;
+			}
+			if( n > 7 ){ k2 ^= (sxu32)t[7] << 24; }
+			if( n > 6 ){ k2 ^= (sxu32)t[6] << 16; }
+			if( n > 5 ){ k2 ^= (sxu32)t[5] << 8; }
+			if( n > 4 ){
+				k2 ^= (sxu32)t[4];
+				k2 *= 0xab0e9789u; k2 = SX_ROTL32(k2,16); k2 *= 0x38b34ae5u; pCtx->h32[1] ^= k2;
+			}
+			if( n > 3 ){ k1 ^= (sxu32)t[3] << 24; }
+			if( n > 2 ){ k1 ^= (sxu32)t[2] << 16; }
+			if( n > 1 ){ k1 ^= (sxu32)t[1] << 8; }
+			if( n > 0 ){
+				k1 ^= (sxu32)t[0];
+				k1 *= 0x239b961bu; k1 = SX_ROTL32(k1,15); k1 *= 0xab0e9789u; pCtx->h32[0] ^= k1;
+			}
+			h1 = pCtx->h32[0] ^ (sxu32)pCtx->nLen;
+			h2 = pCtx->h32[1] ^ (sxu32)pCtx->nLen;
+			h3 = pCtx->h32[2] ^ (sxu32)pCtx->nLen;
+			h4 = pCtx->h32[3] ^ (sxu32)pCtx->nLen;
+			h1 += h2; h1 += h3; h1 += h4;
+			h2 += h1; h3 += h1; h4 += h1;
+			h1 = SxFmix32(h1); h2 = SxFmix32(h2); h3 = SxFmix32(h3); h4 = SxFmix32(h4);
+			h1 += h2; h1 += h3; h1 += h4;
+			h2 += h1; h3 += h1; h4 += h1;
+			SxPut32Be(digest,h1);
+			SxPut32Be(&digest[4],h2);
+			SxPut32Be(&digest[8],h3);
+			SxPut32Be(&digest[12],h4);
+			break;
+		default: /* MUR_3F */
+			if( n > 14 ){ j2 ^= (sxu64)t[14] << 48; }
+			if( n > 13 ){ j2 ^= (sxu64)t[13] << 40; }
+			if( n > 12 ){ j2 ^= (sxu64)t[12] << 32; }
+			if( n > 11 ){ j2 ^= (sxu64)t[11] << 24; }
+			if( n > 10 ){ j2 ^= (sxu64)t[10] << 16; }
+			if( n > 9 ){ j2 ^= (sxu64)t[9] << 8; }
+			if( n > 8 ){
+				j2 ^= (sxu64)t[8];
+				j2 *= 0x4cf5ad432745937fULL; j2 = SX_ROTL64(j2,33);
+				j2 *= 0x87c37b91114253d5ULL; pCtx->h64[1] ^= j2;
+			}
+			if( n > 7 ){ j1 ^= (sxu64)t[7] << 56; }
+			if( n > 6 ){ j1 ^= (sxu64)t[6] << 48; }
+			if( n > 5 ){ j1 ^= (sxu64)t[5] << 40; }
+			if( n > 4 ){ j1 ^= (sxu64)t[4] << 32; }
+			if( n > 3 ){ j1 ^= (sxu64)t[3] << 24; }
+			if( n > 2 ){ j1 ^= (sxu64)t[2] << 16; }
+			if( n > 1 ){ j1 ^= (sxu64)t[1] << 8; }
+			if( n > 0 ){
+				j1 ^= (sxu64)t[0];
+				j1 *= 0x87c37b91114253d5ULL; j1 = SX_ROTL64(j1,31);
+				j1 *= 0x4cf5ad432745937fULL; pCtx->h64[0] ^= j1;
+			}
+			g1 = pCtx->h64[0] ^ pCtx->nLen;
+			g2 = pCtx->h64[1] ^ pCtx->nLen;
+			g1 += g2; g2 += g1;
+			g1 = SxFmix64(g1); g2 = SxFmix64(g2);
+			g1 += g2; g2 += g1;
+			SxPut64Be(digest,g1);
+			SxPut64Be(&digest[8],g2);
+			break;
+	}
+}
+#define XXH32_P1 0x9e3779b1u
+#define XXH32_P2 0x85ebca77u
+#define XXH32_P3 0xc2b2ae3du
+#define XXH32_P4 0x27d4eb2fu
+#define XXH32_P5 0x165667b1u
+#define XXH64_P1 0x9e3779b185ebca87ULL
+#define XXH64_P2 0xc2b2ae3d27d4eb4fULL
+#define XXH64_P3 0x165667b19e3779f9ULL
+#define XXH64_P4 0x85ebca77c2b2ae63ULL
+#define XXH64_P5 0x27d4eb2f165667c5ULL
+static sxu32 Xxh32Round(sxu32 acc,sxu32 in)
+{
+	acc += in * XXH32_P2;
+	acc = SX_ROTL32(acc,13);
+	acc *= XXH32_P1;
+	return acc;
+}
+static sxu64 Xxh64Round(sxu64 acc,sxu64 in)
+{
+	acc += in * XXH64_P2;
+	acc = SX_ROTL64(acc,31);
+	acc *= XXH64_P1;
+	return acc;
+}
+static sxu32 XxhBlockLen(int nKind)
+{
+	return nKind == XXH_32 ? 16 : 32;
+}
+PH7_PRIVATE void XxhInit(XxhContext *pCtx,int nKind,sxu64 nSeed)
+{
+	pCtx->nKind = nKind;
+	pCtx->nSeed = nKind == XXH_32 ? (sxu64)(sxu32)nSeed : nSeed;
+	pCtx->nLen = 0;
+	pCtx->nBlock = 0;
+	if( nKind == XXH_32 ){
+		sxu32 s = (sxu32)pCtx->nSeed;
+		pCtx->v[0] = (sxu32)(s + XXH32_P1 + XXH32_P2);
+		pCtx->v[1] = (sxu32)(s + XXH32_P2);
+		pCtx->v[2] = s;
+		pCtx->v[3] = (sxu32)(s - XXH32_P1);
+	}else{
+		pCtx->v[0] = nSeed + XXH64_P1 + XXH64_P2;
+		pCtx->v[1] = nSeed + XXH64_P2;
+		pCtx->v[2] = nSeed;
+		pCtx->v[3] = nSeed - XXH64_P1;
+	}
+	SyZero(pCtx->zBlock,sizeof(pCtx->zBlock));
+}
+static void XxhBlock(XxhContext *pCtx,const unsigned char *z)
+{
+	int i;
+	if( pCtx->nKind == XXH_32 ){
+		for( i = 0 ; i < 4 ; ++i ){
+			pCtx->v[i] = Xxh32Round((sxu32)pCtx->v[i],SxGet32Le(&z[i*4]));
+		}
+	}else{
+		for( i = 0 ; i < 4 ; ++i ){
+			pCtx->v[i] = Xxh64Round(pCtx->v[i],SxGet64Le(&z[i*8]));
+		}
+	}
+}
+PH7_PRIVATE void XxhUpdate(XxhContext *pCtx,const unsigned char *data,unsigned int len)
+{
+	sxu32 nBlk = XxhBlockLen(pCtx->nKind);
+	pCtx->nLen += len;
+	if( pCtx->nBlock > 0 ){
+		sxu32 n = nBlk - pCtx->nBlock;
+		if( len < n ){
+			SyMemcpy(data,&pCtx->zBlock[pCtx->nBlock],len);
+			pCtx->nBlock += len;
+			return;
+		}
+		SyMemcpy(data,&pCtx->zBlock[pCtx->nBlock],n);
+		XxhBlock(pCtx,pCtx->zBlock);
+		pCtx->nBlock = 0;
+		data += n;
+		len -= n;
+	}
+	while( len >= nBlk ){
+		XxhBlock(pCtx,data);
+		data += nBlk;
+		len -= nBlk;
+	}
+	if( len > 0 ){
+		SyMemcpy(data,pCtx->zBlock,len);
+		pCtx->nBlock = len;
+	}
+}
+PH7_PRIVATE void XxhFinal(XxhContext *pCtx,unsigned char *digest)
+{
+	const unsigned char *t = pCtx->zBlock;
+	sxu32 n = pCtx->nBlock;
+	if( pCtx->nKind == XXH_32 ){
+		sxu32 h;
+		/* Below one whole block the accumulators were never fed, so the seed
+		 * itself opens the tail. */
+		if( pCtx->nLen >= 16 ){
+			h = SX_ROTL32((sxu32)pCtx->v[0],1) + SX_ROTL32((sxu32)pCtx->v[1],7)
+				+ SX_ROTL32((sxu32)pCtx->v[2],12) + SX_ROTL32((sxu32)pCtx->v[3],18);
+		}else{
+			h = (sxu32)pCtx->nSeed + XXH32_P5;
+		}
+		h += (sxu32)pCtx->nLen;
+		while( n >= 4 ){
+			h += SxGet32Le(t) * XXH32_P3;
+			h = SX_ROTL32(h,17) * XXH32_P4;
+			t += 4;
+			n -= 4;
+		}
+		while( n > 0 ){
+			h += (sxu32)t[0] * XXH32_P5;
+			h = SX_ROTL32(h,11) * XXH32_P1;
+			t++;
+			n--;
+		}
+		h ^= h >> 15;
+		h *= XXH32_P2;
+		h ^= h >> 13;
+		h *= XXH32_P3;
+		h ^= h >> 16;
+		SxPut32Be(digest,h);
+	}else{
+		sxu64 h;
+		int i;
+		if( pCtx->nLen >= 32 ){
+			h = SX_ROTL64(pCtx->v[0],1) + SX_ROTL64(pCtx->v[1],7)
+				+ SX_ROTL64(pCtx->v[2],12) + SX_ROTL64(pCtx->v[3],18);
+			for( i = 0 ; i < 4 ; ++i ){
+				h ^= Xxh64Round(0,pCtx->v[i]);
+				h = h * XXH64_P1 + XXH64_P4;
+			}
+		}else{
+			h = pCtx->nSeed + XXH64_P5;
+		}
+		h += pCtx->nLen;
+		while( n >= 8 ){
+			h ^= Xxh64Round(0,SxGet64Le(t));
+			h = SX_ROTL64(h,27) * XXH64_P1 + XXH64_P4;
+			t += 8;
+			n -= 8;
+		}
+		if( n >= 4 ){
+			h ^= (sxu64)SxGet32Le(t) * XXH64_P1;
+			h = SX_ROTL64(h,23) * XXH64_P2 + XXH64_P3;
+			t += 4;
+			n -= 4;
+		}
+		while( n > 0 ){
+			h ^= (sxu64)t[0] * XXH64_P5;
+			h = SX_ROTL64(h,11) * XXH64_P1;
+			t++;
+			n--;
+		}
+		h ^= h >> 33;
+		h *= XXH64_P2;
+		h ^= h >> 29;
+		h *= XXH64_P3;
+		h ^= h >> 32;
+		SxPut64Be(digest,h);
+	}
+}
 #endif /* PH7_DISABLE_HASH_FUNC */
 PH7_PRIVATE sxi32 SyBinToHexConsumer(const void *pIn,sxu32 nLen,ProcConsumer xConsumer,void *pConsumerData)
 {

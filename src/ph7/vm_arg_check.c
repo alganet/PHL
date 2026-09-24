@@ -641,7 +641,7 @@ static const struct VmBuiltinSig {
 	{ "get_debug_type", "mixed $value", "string" },
 	{ "gmdate", "string $format, ?int $timestamp = NULL", "string" },
 	{ "gmmktime", "int $hour, ?int $minute = NULL, ?int $second = NULL, ?int $month = NULL, ?int $day = NULL, ?int $year = NULL", "int|false" },
-	{ "hash", "string $algo, string $data, bool $binary = false, array $options = ?", "string" },
+	{ "hash", "string $algo, string $data, bool $binary = false, array $options = []", "string" },
 	{ "hash_algos", "", "array" },
 	{ "hash_equals", "string $known_string, string $user_string", "bool" },
 	{ "hash_hmac", "string $algo, string $data, string $key, bool $binary = false", "string" },
