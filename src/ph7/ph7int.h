@@ -3723,6 +3723,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallTokenizer(ph7_vm *pVm);
 PH7_PRIVATE void PH7_RegisterTokenizerConstants(ph7_vm *pVm);
 /* vm_builtin_session.c */
 PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm);
+PH7_PRIVATE void PH7_VmSessionShutdown(ph7_vm *pVm);
 /* vm_builtin_ini.c */
 PH7_PRIVATE sxi32 PH7_VmInstallIni(ph7_vm *pVm);
 PH7_PRIVATE sxi64 PH7_VmIniGetInt(ph7_vm *pVm,const char *zName,sxi64 iDefault);

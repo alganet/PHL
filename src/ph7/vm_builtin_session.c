@@ -456,13 +456,9 @@ static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 	SyBlobRelease(&sFile);
 	pVm->iSessStatus = VM_SESSION_ACTIVE;
 	if( !pVm->bSessWired ){
-		ph7_value sCb,sName,sId;
+		ph7_value sName,sId;
 		ph7_value *apA[2];
 		pVm->bSessWired = 1;
-		VmSessStrArg(pVm,&sCb,"session_write_close",sizeof("session_write_close")-1);
-		apA[0] = &sCb;
-		VmSessCall(pVm,"register_shutdown_function",1,apA,0);
-		PH7_MemObjRelease(&sCb);
 		VmSessStrArg(pVm,&sName,(const char *)SyBlobData(&pVm->sSessName),
 			SyBlobLength(&pVm->sSessName));
 		VmSessStrArg(pVm,&sId,(const char *)SyBlobData(&pVm->sSessId),
@@ -476,19 +472,16 @@ static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
-/* bool session_write_close() / session_commit() */
-static int vm_builtin_session_write_close(ph7_context *pCtx,int nArg,ph7_value **apArg)
+/*
+ * Write the open session back to its file and close it. Shared by the builtin and
+ * by the request-shutdown writer, which is why it takes only the VM: at shutdown
+ * there is no calling frame to report against.
+ */
+static void VmSessWrite(ph7_vm *pVm)
 {
-	ph7_vm *pVm = pCtx->pVm;
 	SyBlob sFile,sData;
 	ph7_value sPath,sPayload;
 	ph7_value *apA[2];
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	if( pVm->iSessStatus != VM_SESSION_ACTIVE ){
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
 	SyBlobInit(&sFile,&pVm->sAllocator);
 	SyBlobInit(&sData,&pVm->sAllocator);
 	VmSessFile(pVm,&sFile);
@@ -503,8 +496,34 @@ static int vm_builtin_session_write_close(ph7_context *pCtx,int nArg,ph7_value *
 	SyBlobRelease(&sFile);
 	SyBlobRelease(&sData);
 	pVm->iSessStatus = VM_SESSION_NONE;
+}
+/* bool session_write_close() / session_commit() */
+static int vm_builtin_session_write_close(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pVm->iSessStatus != VM_SESSION_ACTIVE ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	VmSessWrite(pVm);
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
+}
+/*
+ * php writes an open session back at REQUEST SHUTDOWN — from the session module's
+ * own RSHUTDOWN, which runs after the script's register_shutdown_function()
+ * callbacks and after the output buffers are flushed. Registering the writer as a
+ * shutdown callback (what this did) put it FIRST in that list, so a `$_SESSION`
+ * entry written from inside a shutdown callback — the flash-message / last-seen
+ * idiom — was silently dropped.
+ */
+PH7_PRIVATE void PH7_VmSessionShutdown(ph7_vm *pVm)
+{
+	if( pVm->iSessStatus == VM_SESSION_ACTIVE ){
+		VmSessWrite(pVm);
+	}
 }
 /* bool session_abort() — drop the in-memory session without writing it back */
 static int vm_builtin_session_abort(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -650,4 +669,5 @@ PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm)
 #if defined(PH7_DISABLE_BUILTIN_FUNC) || defined(PH7_DISABLE_DISK_IO)
 /* Tiny build: no sessions (builtin funcs / disk IO disabled) */
 PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm){ (void)pVm; return SXRET_OK; }
+PH7_PRIVATE void PH7_VmSessionShutdown(ph7_vm *pVm){ (void)pVm; }
 #endif

@@ -5419,6 +5419,11 @@ PH7_PRIVATE sxi32 PH7_VmByteCodeExec(ph7_vm *pVm)
 	/* php flushes every still-open output buffer on shutdown — after the
 	 * shutdown callbacks, which may still write into them. */
 	VmFlushOutputBuffers(&(*pVm));
+	/* An open session is written back LAST, from php's own module shutdown: after
+	 * the script's shutdown callbacks (which may still write to $_SESSION) and
+	 * after the buffers are flushed (which is why its diagnostics land outside
+	 * them). */
+	PH7_VmSessionShutdown(&(*pVm));
 	/*
 	 * TICKET 1433-100: Do not remove the PH7_VM_EXEC magic number
 	 * so that any following call to [ph7_vm_exec()] without calling
