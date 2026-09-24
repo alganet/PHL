@@ -2349,6 +2349,11 @@ struct ph7_vm
 	                             * redirect), so a swallowed throw outlives at most the C remainder
 	                             * of one opcode instead of silently resuming execution. */
 	SySet aIOstream;            /* Installed IO stream container */
+	/* Devices a script has taken OUT of service with stream_wrapper_unregister().
+	 * Held as DEVICE pointers rather than names, so a userland wrapper registered
+	 * over an unregistered built-in coexists with it in the list above and is the
+	 * one the lookup finds. */
+	SySet aSuppressedIo;
 	const ph7_io_stream *pDefStream; /* Default IO stream [i.e: typically this is the 'file://' stream] */
 	ph7_value sExec;           /* Compiled script return value [Can be extracted via the PH7_VM_CONFIG_EXEC_VALUE directive]*/
 	ph7_value sExceptionCB;    /* ACTIVE set_exception_handler() handler */
@@ -3369,6 +3374,9 @@ PH7_PRIVATE const char * PH7_VmFileUrlLocalPath(const char *zPath);
 PH7_PRIVATE int PH7_VmUrlSchemeLen(const char *zIn,int nByte);
 #ifndef PH7_DISABLE_DISK_IO
 PH7_PRIVATE const ph7_io_stream * PH7_VmGetStreamDevice(ph7_vm *pVm,const char **pzDevice,int nByte);
+PH7_PRIVATE int PH7_VmStreamDeviceSuppressed(ph7_vm *pVm,const ph7_io_stream *pStream);
+PH7_PRIVATE ph7_io_stream * PH7_VmFindStreamDevice(ph7_vm *pVm,const char *zName,int nName);
+PH7_PRIVATE int PH7_VmStreamSchemeDisabled(ph7_vm *pVm,const char *zName,int nName);
 PH7_PRIVATE int PH7_VmStreamDeviceIsRemoteHost(const char *zUri,int nByte,int *pnScheme);
 #endif /* PH7_DISABLE_BUILTIN_FUNC || PH7_DISABLE_DISK_IO */
 /* vm_http.c function prototypes */
@@ -5097,6 +5105,7 @@ PH7_PRIVATE int PH7_builtin_stream_get_wrappers(ph7_context *pCtx,int nArg,ph7_v
 PH7_PRIVATE int PH7_builtin_stream_isatty(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_wrapper_register(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_wrapper_unregister(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_wrapper_restore(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_filter_append(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_filter_prepend(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_filter_remove(ph7_context *pCtx,int nArg,ph7_value **apArg);

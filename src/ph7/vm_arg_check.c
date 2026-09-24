@@ -952,6 +952,7 @@ static const struct VmBuiltinSig {
 	{ "stream_register_wrapper", "string $protocol, string $class, int $flags = 0", "bool" },
 	{ "stream_wrapper_register", "string $protocol, string $class, int $flags = 0", "bool" },
 	{ "stream_wrapper_unregister", "string $protocol", "bool" },
+	{ "stream_wrapper_restore", "string $protocol", "bool" },
 	{ "strip_tags", "string $string, array|string|null $allowed_tags = NULL", "string" },
 	{ "stripos", "string $haystack, string $needle, int $offset = 0", "int|false" },
 	{ "stripslashes", "string $string", "string" },

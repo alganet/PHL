@@ -3621,6 +3621,12 @@ PH7_PRIVATE int PH7_builtin_stream_get_wrappers(ph7_context *pCtx,int nArg,ph7_v
 	}
 	apDev = (ph7_io_stream **)SySetBasePtr(&pCtx->pVm->aIOstream);
 	for( n = 0 ; n < SySetUsed(&pCtx->pVm->aIOstream) ; n++ ){
+		/* A device a script has unregistered is GONE from php's list -- both a
+		 * built-in it switched off and a userland wrapper it withdrew, which
+		 * PHL used to keep naming here after neutering the slot behind it. */
+		if( PH7_VmStreamDeviceSuppressed(pCtx->pVm,apDev[n]) ){
+			continue;
+		}
 		ph7_value_string(pV,apDev[n]->zName,-1);
 		ph7_array_add_elem(pArr,0,pV);
 		ph7_value_reset_string_cursor(pV);
@@ -4912,6 +4918,22 @@ static int IoPrivateIsUwrap(const ph7_io_stream *pStream)
 	}
 	return 0;
 }
+/*
+ * Is this device one of the registration slots at all? Unlike IoPrivateIsUwrap()
+ * this does NOT ask whether the slot is still live -- restore() has to tell a
+ * withdrawn userland wrapper from a built-in, and a withdrawn slot has already
+ * had its pVm cleared.
+ */
+static int UwrapIsSlotDevice(const ph7_io_stream *pStream)
+{
+	int i;
+	for( i = 0 ; i < PHL_UWRAP_MAX ; i++ ){
+		if( &g_aUwrap[i].sStream == pStream ){
+			return 1;
+		}
+	}
+	return 0;
+}
 /* Forward: the protocol dispatcher is defined just below. */
 static int UwrapCall(uwrap_handle *pH,const char *zMethod,int nArg,ph7_value **apArg,
 	ph7_value *pResult);
@@ -5155,7 +5177,14 @@ static int UwrapOpenSlot(int iSlot,const char *zName,int iMode,ph7_value *pResou
 		PH7_MemObjInit(pVm,&sOpened);
 		sOpened.nIdx = pRefSlot->nIdx;
 	}
-	{
+	if( SyStrlen(pSlot->zScheme) == sizeof("file")-1
+	 && SyStrnicmp(pSlot->zScheme,"file",sizeof("file")-1) == 0 ){
+		/* The one scheme php does NOT hand back whole. Its locate_url_wrapper
+		 * strips "file://" for whoever owns the name, built-in or not, so a
+		 * wrapper that replaced file:// sees the plain path -- the same bytes a
+		 * bare path would have given it. */
+		ph7_value_string(&sPath,zName,-1);
+	}else{
 		SyBlob sUrl;
 		SyBlobInit(&sUrl,&pVm->sAllocator);
 		SyBlobFormat(&sUrl,"%s://%s",pSlot->zScheme,zName);
@@ -5202,6 +5231,31 @@ static int (* const g_aUwrapOpen[PHL_UWRAP_MAX])(const char *,int,ph7_value *,vo
 	UwrapOpen0,UwrapOpen1,UwrapOpen2,UwrapOpen3,
 	UwrapOpen4,UwrapOpen5,UwrapOpen6,UwrapOpen7
 };
+/* Is this device already in the VM's list? (A slot survives its wrapper.) */
+static int UwrapDeviceInstalled(ph7_vm *pVm,const ph7_io_stream *pStream)
+{
+	ph7_io_stream **apDev = (ph7_io_stream **)SySetBasePtr(&pVm->aIOstream);
+	sxu32 n;
+	for( n = 0 ; n < SySetUsed(&pVm->aIOstream) ; n++ ){
+		if( apDev[n] == pStream ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/* Put a device back in service. */
+static void UwrapUnsuppressDevice(ph7_vm *pVm,const ph7_io_stream *pStream)
+{
+	const ph7_io_stream **apOff = (const ph7_io_stream **)SySetBasePtr(&pVm->aSuppressedIo);
+	sxu32 n,nKeep = 0;
+	for( n = 0 ; n < SySetUsed(&pVm->aSuppressedIo) ; n++ ){
+		if( apOff[n] == pStream ){
+			continue;
+		}
+		apOff[nKeep++] = apOff[n];
+	}
+	SySetTruncate(&pVm->aSuppressedIo,nKeep);
+}
 /*
  * bool stream_wrapper_register(string $protocol, string $class, int $flags = 0)
  * bool stream_wrapper_unregister(string $protocol)
@@ -5228,6 +5282,10 @@ PH7_PRIVATE int PH7_builtin_stream_wrapper_register(ph7_context *pCtx,int nArg,p
 		ph7_io_stream **apDev = (ph7_io_stream **)SySetBasePtr(&pCtx->pVm->aIOstream);
 		sxu32 n;
 		for( n = 0 ; n < SySetUsed(&pCtx->pVm->aIOstream) ; n++ ){
+			if( PH7_VmStreamDeviceSuppressed(pCtx->pVm,apDev[n]) ){
+				continue; /* unregistered: the name is free again, which is the
+				           * whole point of "replace file:// with my own" */
+			}
 			if( (int)SyStrlen(apDev[n]->zName) == nScheme
 			 && SyStrnicmp(apDev[n]->zName,zScheme,(sxu32)nScheme) == 0 ){
 				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
@@ -5272,33 +5330,165 @@ PH7_PRIVATE int PH7_builtin_stream_wrapper_register(ph7_context *pCtx,int nArg,p
 		pSlot->sStream.xWrite = UwrapWrite;
 		pSlot->sStream.xSeek = UwrapSeek;
 		pSlot->sStream.xTell = UwrapTell;
-		ph7_vm_config(pCtx->pVm,PH7_VM_CONFIG_IO_STREAM,&pSlot->sStream);
+		/* A slot is REUSED once its wrapper has been unregistered, and both the
+		 * suppression set and the VM's device list still name it -- so lift the
+		 * suppression and install the device only if it is not already there,
+		 * or the freshly registered protocol would be born switched off (and
+		 * listed twice). */
+		UwrapUnsuppressDevice(pCtx->pVm,&pSlot->sStream);
+		if( !UwrapDeviceInstalled(pCtx->pVm,&pSlot->sStream) ){
+			ph7_vm_config(pCtx->pVm,PH7_VM_CONFIG_IO_STREAM,&pSlot->sStream);
+		}
 	}
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
+/*
+ * Suppress a live device and, when it is a userland slot, retire the slot with
+ * it. Answers 0 when nothing by that name was in service.
+ *
+ * The match is EXACT and case-SENSITIVE, which php's is too: opening a stream
+ * folds the scheme ("FILE://x" reads a file), but unregister() and restore()
+ * delete from the wrapper hash by the bytes the script wrote, so
+ * stream_wrapper_unregister('FILE') fails where 'file' succeeds.
+ */
+static int UwrapSuppressDevice(ph7_vm *pVm,const char *zScheme,int nScheme)
+{
+	ph7_io_stream **apDev = (ph7_io_stream **)SySetBasePtr(&pVm->aIOstream);
+	ph7_io_stream *pHit = 0;
+	sxu32 n;
+	int i;
+	for( n = 0 ; n < SySetUsed(&pVm->aIOstream) ; n++ ){
+		if( (int)SyStrlen(apDev[n]->zName) == nScheme
+		 && SyMemcmp(apDev[n]->zName,zScheme,(sxu32)nScheme) == 0
+		 && !PH7_VmStreamDeviceSuppressed(pVm,apDev[n]) ){
+			pHit = apDev[n]; /* the LIVE one is the last match */
+		}
+	}
+	if( pHit == 0 ){
+		return 0;
+	}
+	if( SySetPut(&pVm->aSuppressedIo,(const void *)&pHit) != SXRET_OK ){
+		return 0;
+	}
+	for( i = 0 ; i < PHL_UWRAP_MAX ; i++ ){
+		if( g_aUwrap[i].pVm == pVm && &g_aUwrap[i].sStream == pHit ){
+			g_aUwrap[i].pVm = 0;
+			break;
+		}
+	}
+	return 1;
+}
+/*
+ * bool stream_wrapper_unregister(string $protocol)
+ *  Take a protocol out of service. It used to handle USERLAND slots only and
+ *  answer FALSE for file/php/data/tcp, so the documented "replace file:// with
+ *  my own wrapper" idiom failed loudly at the first step. A built-in is now
+ *  suppressed per VM: PH7_VmGetStreamDevice() steps over it (including on the
+ *  no-scheme default path, which is the same slot), stream_get_wrappers() stops
+ *  naming it, and the name becomes free to register again.
+ */
 PH7_PRIVATE int PH7_builtin_stream_wrapper_unregister(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zScheme;
-	int nScheme,i;
+	int nScheme;
 	if( nArg < 1 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	zScheme = ph7_value_to_string(apArg[0],&nScheme);
-	for( i = 0 ; i < PHL_UWRAP_MAX ; i++ ){
-		if( g_aUwrap[i].pVm == pCtx->pVm
-		 && (int)SyStrlen(g_aUwrap[i].zScheme) == nScheme
-		 && SyMemcmp(g_aUwrap[i].zScheme,zScheme,(sxu32)nScheme) == 0 ){
-			/* The device stays in the VM's list (the engine has no removal
-			 * API); neutering the slot makes every later open fail, which is
-			 * what unregister means to a script — recorded. */
-			g_aUwrap[i].pVm = 0;
-			ph7_result_bool(pCtx,1);
-			return PH7_OK;
+	if( nScheme > 0 && UwrapSuppressDevice(pCtx->pVm,zScheme,nScheme) ){
+		ph7_result_bool(pCtx,1);
+		return PH7_OK;
+	}
+	ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+		"Unable to unregister protocol %.*s://",nScheme,zScheme);
+	ph7_result_bool(pCtx,0);
+	return PH7_OK;
+}
+/*
+ * bool stream_wrapper_restore(string $protocol)
+ *  Put a BUILT-IN protocol back, whether it was unregistered or replaced. The
+ *  other half of the override pair, and useless without it -- which is why the
+ *  two ship together.
+ *
+ *  php's three answers: a protocol that was never built in is a warning and
+ *  FALSE; one that is built in and was never touched is an E_NOTICE and TRUE
+ *  (it is already what it should be); anything else is restored and TRUE.
+ */
+PH7_PRIVATE int PH7_builtin_stream_wrapper_restore(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const ph7_io_stream **apOff;
+	ph7_io_stream **apDev;
+	const char *zScheme;
+	int nScheme,bBuiltin = 0,bChanged = 0,i;
+	sxu32 n,nKeep;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zScheme = ph7_value_to_string(apArg[0],&nScheme);
+	apDev = (ph7_io_stream **)SySetBasePtr(&pVm->aIOstream);
+	for( n = 0 ; n < SySetUsed(&pVm->aIOstream) ; n++ ){
+		ph7_io_stream *pDev = apDev[n];
+		if( (int)SyStrlen(pDev->zName) != nScheme
+		 || SyMemcmp(pDev->zName,zScheme,(sxu32)nScheme) != 0 ){
+			continue;
+		}
+		if( UwrapIsSlotDevice(pDev) ){
+			/* A userland wrapper standing in its place -- or one already
+			 * withdrawn, which is still not a built-in. */
+			if( !PH7_VmStreamDeviceSuppressed(pVm,pDev) ){
+				bChanged = 1;
+			}
+			continue;
+		}
+		bBuiltin = 1;
+		if( PH7_VmStreamDeviceSuppressed(pVm,pDev) ){
+			bChanged = 1;
 		}
 	}
-	ph7_result_bool(pCtx,0);
+	if( !bBuiltin ){
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+			"%.*s:// never existed, nothing to restore",nScheme,zScheme);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( !bChanged ){
+		/* php answers TRUE here and says so at NOTICE level: the protocol is
+		 * already the one it would restore. */
+		ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,
+			"%.*s:// was never changed, nothing to restore",nScheme,zScheme);
+		ph7_result_bool(pCtx,1);
+		return PH7_OK;
+	}
+	/* Lift the suppression off the BUILT-IN first, by compacting the set... */
+	apOff = (const ph7_io_stream **)SySetBasePtr(&pVm->aSuppressedIo);
+	nKeep = 0;
+	for( n = 0 ; n < SySetUsed(&pVm->aSuppressedIo) ; n++ ){
+		const ph7_io_stream *pDev = apOff[n];
+		if( (int)SyStrlen(pDev->zName) == nScheme
+		 && SyMemcmp(pDev->zName,zScheme,(sxu32)nScheme) == 0
+		 && !UwrapIsSlotDevice(pDev) ){
+			continue; /* the built-in comes back */
+		}
+		apOff[nKeep++] = pDev;
+	}
+	SySetTruncate(&pVm->aSuppressedIo,nKeep);
+	/* ...then retire every userland wrapper standing in for the name. */
+	for( i = 0 ; i < PHL_UWRAP_MAX ; i++ ){
+		if( g_aUwrap[i].pVm == pVm
+		 && (int)SyStrlen(g_aUwrap[i].zScheme) == nScheme
+		 && SyMemcmp(g_aUwrap[i].zScheme,zScheme,(sxu32)nScheme) == 0 ){
+			const ph7_io_stream *pDead = &g_aUwrap[i].sStream;
+			g_aUwrap[i].pVm = 0;
+			if( !PH7_VmStreamDeviceSuppressed(pVm,pDead) ){
+				SySetPut(&pVm->aSuppressedIo,(const void *)&pDead);
+			}
+		}
+	}
+	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
 #ifdef PH7_ENABLE_NET

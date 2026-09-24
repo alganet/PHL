@@ -2166,6 +2166,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->iResponseStatus = 200;
 	pVm->bHeadersSent = 0;
 	SySetInit(&pVm->aIOstream,&pVm->sAllocator,sizeof(ph7_io_stream *));
+	SySetInit(&pVm->aSuppressedIo,&pVm->sAllocator,sizeof(ph7_io_stream *));
 	/* Error callbacks containers */
 	PH7_MemObjInit(&(*pVm),&pVm->sExceptionCB);
 	PH7_MemObjInit(&(*pVm),&pVm->sErrCB);
@@ -6565,6 +6566,73 @@ PH7_PRIVATE const char * PH7_VmFileUrlLocalPath(const char *zPath)
 }
 #if !defined(PH7_DISABLE_BUILTIN_FUNC) || !defined(PH7_DISABLE_DISK_IO)
 /*
+ * Has a script taken this device out of service with stream_wrapper_unregister()?
+ */
+PH7_PRIVATE int PH7_VmStreamDeviceSuppressed(ph7_vm *pVm,const ph7_io_stream *pStream)
+{
+	const ph7_io_stream **apOff = (const ph7_io_stream **)SySetBasePtr(&pVm->aSuppressedIo);
+	sxu32 n;
+	for( n = 0 ; n < SySetUsed(&pVm->aSuppressedIo) ; n++ ){
+		if( apOff[n] == pStream ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
+ * The device currently answering to a scheme name, or NULL. The scan runs to
+ * the END rather than stopping at the first hit: once a built-in has been
+ * unregistered a userland wrapper can be registered under the same name, both
+ * sit in the list, and the LIVE one is the later of the two.
+ */
+PH7_PRIVATE ph7_io_stream * PH7_VmFindStreamDevice(ph7_vm *pVm,const char *zName,int nName)
+{
+	ph7_io_stream **apStream = (ph7_io_stream **)SySetBasePtr(&pVm->aIOstream);
+	ph7_io_stream *pHit = 0;
+	sxu32 n,nEntry = SySetUsed(&pVm->aIOstream);
+	if( nName < 0 ){
+		nName = (int)SyStrlen(zName);
+	}
+	for( n = 0 ; n < nEntry ; n++ ){
+		ph7_io_stream *pStream = apStream[n];
+		if( (int)SyStrlen(pStream->zName) != nName
+		 || SyStrnicmp(pStream->zName,zName,(sxu32)nName) != 0 ){
+			continue;
+		}
+		if( PH7_VmStreamDeviceSuppressed(pVm,pStream) ){
+			continue;
+		}
+		pHit = pStream;
+	}
+	return pHit;
+}
+/*
+ * Is this scheme one the build HAS but the script has switched off? php words
+ * that differently from a scheme nothing was ever registered under -- but only
+ * for file://, whose plain-files fallback is the branch that reports it.
+ */
+PH7_PRIVATE int PH7_VmStreamSchemeDisabled(ph7_vm *pVm,const char *zName,int nName)
+{
+	ph7_io_stream **apStream = (ph7_io_stream **)SySetBasePtr(&pVm->aIOstream);
+	sxu32 n,nEntry = SySetUsed(&pVm->aIOstream);
+	int bSeen = 0;
+	if( nName < 0 ){
+		nName = (int)SyStrlen(zName);
+	}
+	for( n = 0 ; n < nEntry ; n++ ){
+		ph7_io_stream *pStream = apStream[n];
+		if( (int)SyStrlen(pStream->zName) != nName
+		 || SyStrnicmp(pStream->zName,zName,(sxu32)nName) != 0 ){
+			continue;
+		}
+		if( !PH7_VmStreamDeviceSuppressed(pVm,pStream) ){
+			return 0; /* it is live */
+		}
+		bSeen = 1;
+	}
+	return bSeen;
+}
+/*
  * Extract the IO stream device associated with a given scheme.
  * Return a pointer to an instance of ph7_io_stream when the scheme
  * have an associated IO stream registered with it. NULL otherwise.
@@ -6579,16 +6647,17 @@ PH7_PRIVATE const ph7_io_stream * PH7_VmGetStreamDevice(
 	)
 {
 	const char *zIn,*zNext;
-	ph7_io_stream **apStream,*pStream;
-	SyString sDev,sCur;
-	sxu32 n,nEntry;
+	ph7_io_stream *pStream;
 	int nScheme = 0;
-	int rc;
 	/* Check if a scheme [i.e: file://,http://,zip://...] is available */
 	zIn = *pzDevice;
 	if( !VmUrlScheme(zIn,nByte,&nScheme) ){
-		/* No such scheme,return the default stream */
-		return pVm->pDefStream;
+		/* No scheme: php's default is the plain-files wrapper, and it is the
+		 * SAME slot file:// names -- so a script that unregisters file:// loses
+		 * the bare-path open too, and one that registers its own wrapper over
+		 * file:// gets bare paths routed through it. Looking the name up rather
+		 * than answering pDefStream is what makes both true. */
+		return PH7_VmFindStreamDevice(pVm,"file",(int)sizeof("file")-1);
 	}
 	zNext = &zIn[nScheme+sizeof("://")-1];
 	/* php applies the file:// authority rules by the SCHEME NAME, before it
@@ -6599,23 +6668,13 @@ PH7_PRIVATE const ph7_io_stream * PH7_VmGetStreamDevice(
 			return 0;
 		}
 	}
-	SyStringInitFromBuf(&sDev,zIn,(sxu32)nScheme);
-	/* Perform a linear lookup on the installed stream devices */
-	apStream = (ph7_io_stream **)SySetBasePtr(&pVm->aIOstream);
-	nEntry = SySetUsed(&pVm->aIOstream);
-	for( n = 0 ; n < nEntry ; n++ ){
-		pStream = apStream[n];
-		SyStringInitFromBuf(&sCur,pStream->zName,SyStrlen(pStream->zName));
-		/* Perfrom a case-insensitive comparison */
-		rc = SyStringCmp(&sDev,&sCur,SyStrnicmp);
-		if( rc == 0 ){
-			/* Stream device found */
-			*pzDevice = zNext;
-			return pStream;
-		}
+	pStream = PH7_VmFindStreamDevice(pVm,zIn,nScheme);
+	if( pStream == 0 ){
+		/* No such stream -- or one a script has taken out of service. */
+		return 0;
 	}
-	/* No such stream,return NULL */
-	return 0;
+	*pzDevice = zNext;
+	return pStream;
 }
 /*
  * Why did PH7_VmGetStreamDevice() answer nothing for this name? php raises a

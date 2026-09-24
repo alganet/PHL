@@ -174,9 +174,25 @@ PH7_PRIVATE void VfsThrowNoDeviceWarning(ph7_context *pCtx,const char *zUri,int 
 			"%s(%s): Failed to open %s: no suitable wrapper could be found",zFunc,zUri,zWhat);
 		return;
 	}
-	PH7_VmThrowWarningFmt(pCtx->pVm,
-		"%s(): Unable to find the wrapper \"%.*s\" - did you forget to enable it when you configured PHP?",
-		zFunc,nScheme,zUri);
+	if( nScheme > 0 ){
+		PH7_VmThrowWarningFmt(pCtx->pVm,
+			"%s(): Unable to find the wrapper \"%.*s\" - did you forget to enable it when you configured PHP?",
+			zFunc,nScheme,zUri);
+	}
+	/* A name with no scheme is the plain-files wrapper's, and that is the ONE
+	 * php reports as switched off rather than missing: its fallback branch runs
+	 * after the hash lookup, so an explicit `file://` gets both sentences and a
+	 * bare path only the second. Every other unregistered wrapper is
+	 * indistinguishable from one that never existed, and php words it that way. */
+	if( (nScheme == 0
+	  || (nScheme == (int)sizeof("file")-1 && SyStrnicmp(zUri,"file",sizeof("file")-1) == 0))
+	 && PH7_VmStreamSchemeDisabled(pCtx->pVm,"file",(int)sizeof("file")-1) ){
+		PH7_VmThrowWarningFmt(pCtx->pVm,
+			"%s(): file:// wrapper is disabled in the server configuration",zFunc);
+		PH7_VmThrowWarningFmt(pCtx->pVm,
+			"%s(%s): Failed to open %s: no suitable wrapper could be found",zFunc,zUri,zWhat);
+		return;
+	}
 	PH7_VmThrowWarningFmt(pCtx->pVm,
 		"%s(%s): Failed to open %s: No such file or directory",zFunc,zUri,zWhat);
 }
@@ -3362,6 +3378,7 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"stream_wrapper_register",   PH7_builtin_stream_wrapper_register },
 		{"stream_register_wrapper",   PH7_builtin_stream_wrapper_register },
 		{"stream_wrapper_unregister", PH7_builtin_stream_wrapper_unregister },
+		{"stream_wrapper_restore",    PH7_builtin_stream_wrapper_restore },
 		{"stream_filter_append",  PH7_builtin_stream_filter_append },
 		{"stream_filter_prepend", PH7_builtin_stream_filter_prepend },
 		{"stream_filter_remove",  PH7_builtin_stream_filter_remove },
