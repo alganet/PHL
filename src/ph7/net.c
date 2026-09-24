@@ -220,6 +220,47 @@ PH7_PRIVATE void PH7_NetSetTimeout(ph7_socket sock, int iMilliseconds)
 #endif
 }
 /*
+ * Set BOTH the receive and the send timeout, which is what php's
+ * stream_set_timeout() means by "the timeout of this stream". A zero pair
+ * means "no timeout" to the OS, and that is php's answer for it too.
+ */
+PH7_PRIVATE void PH7_NetSetRwTimeout(ph7_socket sock, ph7_int64 iSeconds, ph7_int64 iMicroseconds)
+{
+#ifdef __WINNT__
+	DWORD tv = (DWORD)(iSeconds * 1000 + iMicroseconds / 1000);
+	setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof(tv));
+	setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const char *)&tv, sizeof(tv));
+#else
+	struct timeval tv;
+	tv.tv_sec = (time_t)iSeconds;
+	tv.tv_usec = (suseconds_t)iMicroseconds;
+	setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const void *)&tv, sizeof(tv));
+	setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, (const void *)&tv, sizeof(tv));
+#endif
+}
+/*
+ * Turn a socket's blocking mode on or off. On Windows a socket is not an fd,
+ * so the fcntl() route the rest of the stream family takes cannot reach it.
+ */
+PH7_PRIVATE void PH7_NetSetBlocking(ph7_socket sock, int bBlocking)
+{
+#ifdef __WINNT__
+	u_long iMode = bBlocking ? 0 : 1;
+	ioctlsocket(sock, FIONBIO, &iMode);
+#else
+	int iFlags = fcntl(sock, F_GETFL, 0);
+	if( iFlags < 0 ){
+		return;
+	}
+	if( bBlocking ){
+		iFlags &= ~O_NONBLOCK;
+	}else{
+		iFlags |= O_NONBLOCK;
+	}
+	fcntl(sock, F_SETFL, iFlags);
+#endif
+}
+/*
  * Extract a human-readable IP address string from a sockaddr.
  * Writes at most nBufLen bytes (including NUL) to zBuf.
  */

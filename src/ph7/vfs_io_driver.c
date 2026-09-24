@@ -199,9 +199,12 @@ static ph7_int64 PHPStreamData_Read(void *pHandle,void *pBuffer,ph7_int64 nDatat
 		int fd;
 		fd = SX_PTR_TO_INT(pData->x.pHandle);
 		nRd = read(fd,pBuffer,(size_t)nDatatoRead);
-		if( nRd < 1 ){
+		if( nRd < 0 ){
 			return -1;
 		}
+		/* ZERO is end of file, not an error — the contract every other device
+		 * here keeps. Collapsing the two meant nothing could ever latch EOF on
+		 * php://stdin, so `while (!feof(STDIN))` never ended. */
 		return (ph7_int64)nRd;
 	}
 #else
@@ -1950,6 +1953,73 @@ PH7_PRIVATE int is_php_stream(const ph7_io_stream *pStream)
 	SXUNUSED(pStream); /* cc warning */
 	return 0;
 #endif /* PH7_DISABLE_DISK_IO */
+}
+/*
+ * Is this a handle php's plain-files device would own -- a file, a pipe, a
+ * standard stream? php sets the blocking mode on those with O_NONBLOCK, which
+ * Windows does not have, so there stream_set_blocking() answers FALSE for them.
+ */
+PH7_PRIVATE int PH7_StreamIsPlainDevice(io_private *pDev)
+{
+#ifndef PH7_DISABLE_DISK_IO
+	if( pDev == 0 || pDev->pHandle == 0 || pDev->pStream == 0 || pDev->bDir ){
+		return 0;
+	}
+#ifdef __WINNT__
+	if( pDev->pStream == &sWinFileStream ){
+		return 1;
+	}
+#elif defined(__UNIXES__)
+	if( pDev->pStream == &sUnixFileStream ){
+		return 1;
+	}
+#endif
+	if( pDev->pStream == &sPipe_Stream ){
+		return 1;
+	}
+	if( is_php_stream(pDev->pStream) ){
+		ph7_stream_data *pData = (ph7_stream_data *)pDev->pHandle;
+		return pData->iType == PH7_IO_STREAM_STDIN || pData->iType == PH7_IO_STREAM_STDOUT
+		 || pData->iType == PH7_IO_STREAM_STDERR;
+	}
+	return 0;
+#else
+	SXUNUSED(pDev); /* cc warning */
+	return 0;
+#endif
+}
+/*
+ * The POSIX descriptor behind an open handle, or -1 when there is none.
+ * php applies blocking mode and timeouts AT the descriptor, so a stream that
+ * has no fd — a memory buffer, a data:// payload, a userland wrapper, and
+ * every file on Windows, where the device carries a HANDLE — is exactly the
+ * set php answers "unsupported" for.
+ */
+PH7_PRIVATE int PH7_StreamPosixFd(io_private *pDev)
+{
+#if !defined(__WINNT__) && !defined(PH7_DISABLE_DISK_IO)
+	if( pDev == 0 || pDev->pHandle == 0 || pDev->pStream == 0 ){
+		return -1;
+	}
+	if( pDev->pStream == &sUnixFileStream ){
+		return SX_PTR_TO_INT(pDev->pHandle);
+	}
+	if( pDev->pStream == &sPipe_Stream ){
+		pipe_private *pPipe = (pipe_private *)pDev->pHandle;
+		return pPipe->pFile ? fileno(pPipe->pFile) : -1;
+	}
+	if( is_php_stream(pDev->pStream) ){
+		ph7_stream_data *pData = (ph7_stream_data *)pDev->pHandle;
+		if( pData->iType == PH7_IO_STREAM_STDIN || pData->iType == PH7_IO_STREAM_STDOUT
+		 || pData->iType == PH7_IO_STREAM_STDERR ){
+			return SX_PTR_TO_INT(pData->x.pHandle);
+		}
+	}
+	return -1;
+#else
+	SXUNUSED(pDev); /* cc warning */
+	return -1;
+#endif
 }
 /*
  * Which php:// sub-stream a handle opened. stream_get_meta_data() has to tell

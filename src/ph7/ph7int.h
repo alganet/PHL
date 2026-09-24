@@ -3425,6 +3425,8 @@ PH7_PRIVATE int PH7_NetSend(ph7_socket sock,const void *pBuf,int nLen,int flags)
 PH7_PRIVATE int PH7_NetSendAll(ph7_socket sock,const void *pBuf,int nLen);
 PH7_PRIVATE void PH7_NetClose(ph7_socket sock);
 PH7_PRIVATE void PH7_NetSetTimeout(ph7_socket sock,int iMilliseconds);
+PH7_PRIVATE void PH7_NetSetRwTimeout(ph7_socket sock,ph7_int64 iSeconds,ph7_int64 iMicroseconds);
+PH7_PRIVATE void PH7_NetSetBlocking(ph7_socket sock,int bBlocking);
 PH7_PRIVATE void PH7_NetAddrToString(const struct sockaddr *pAddr,char *zBuf,int nBufLen);
 PH7_PRIVATE int PH7_NetAddrPort(const struct sockaddr *pAddr);
 #endif /* PH7_ENABLE_NET */
@@ -3632,6 +3634,9 @@ struct io_private
 	 * when php omits the key. */
 	SyBlob sUri;     /* the path/URI as the opener received it */
 	char zMode[16];  /* the mode string, php's own field width */
+	/* Per-handle settings the stream_set_* family writes. */
+	sxu32 nChunk;    /* stream_set_chunk_size(), php's 8192 by default */
+	sxu8 bNonBlock;  /* stream_set_blocking(false) took effect at the descriptor */
 	sxu8 bEof;       /* a read on this handle has already come back empty */
 	sxu8 bDir;       /* opendir()/dir() handle rather than a byte stream */
 	sxu32 iMagic;   /* Sanity check to avoid misuse */
@@ -3659,6 +3664,14 @@ PH7_PRIVATE int is_data_stream(const ph7_io_stream *pStream);
  * stream_get_meta_data() names MEMORY, TEMP and STDIO apart, and the device
  * itself is the only place that knows. */
 PH7_PRIVATE int PH7_PhpStreamKind(void *pHandle);
+/* The POSIX descriptor behind an open handle, or -1 for a device that has none
+ * (a memory buffer, a data:// payload, a userland wrapper) and on Windows,
+ * where the file devices carry a HANDLE instead. Only the settings php applies
+ * AT the descriptor need it. */
+PH7_PRIVATE int PH7_StreamPosixFd(io_private *pDev);
+/* Is this a handle php's plain-files device would own: a file, a pipe, a
+ * standard stream? */
+PH7_PRIVATE int PH7_StreamIsPlainDevice(io_private *pDev);
 /* The php:// sub-streams, as PH7_PhpStreamKind() reports them. */
 #define PH7_IO_STREAM_STDIN  1 /* php://stdin */
 #define PH7_IO_STREAM_STDOUT 2 /* php://stdout */
@@ -4736,6 +4749,13 @@ PH7_PRIVATE int PH7_builtin_system(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int PH7_builtin_stream_context_create(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_get_contents(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_get_meta_data(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_set_blocking(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_set_timeout(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_set_chunk_size(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_set_read_buffer(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_set_write_buffer(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_supports_lock(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_is_local(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_get_wrappers(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_isatty(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_wrapper_register(ph7_context *pCtx,int nArg,ph7_value **apArg);

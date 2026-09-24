@@ -52,6 +52,18 @@ $sgmd_show('data plain', fopen('data://text/html,hi', 'r'));
  * media type has NO mediatype key at all rather than the RFC's default. */
 $sgmd_show('data params', fopen('data://text/plain;charset=utf-8;foo=bar;base64,aGk=', 'r'));
 $sgmd_show('data untyped', fopen('data://,plain', 'r'));
+/* A parameter NAME has no length limit in the URI, and a clamped key files the
+ * value where no script can look it up. */
+$sgmd_long = str_repeat('n', 70);
+$sgmd_lm = stream_get_meta_data(fopen("data://text/plain;{$sgmd_long}=v,hi", 'r'));
+echo 'data long key: ', var_export($sgmd_lm[$sgmd_long] ?? null, true), "\n";
+
+/* php://output is its own ops, not the STDIO the other php:// members share,
+ * and it has one mode whatever it was asked for. */
+$sgmd_o = fopen('php://output', 'w');
+$sgmd_om = stream_get_meta_data($sgmd_o);
+echo 'output: ', $sgmd_om['wrapper_type'], '/', $sgmd_om['stream_type'], ' mode=', $sgmd_om['mode'],
+     ' seekable=', var_export($sgmd_om['seekable'], true), "\n";
 
 /* eof is real: it was hardcoded FALSE, so a `while (!$m['eof'])` never ended. */
 $sgmd_e = fopen($sgmd_path, 'r');
@@ -91,6 +103,8 @@ data b64: mediatype=text/plain base64=true wrapper_type=RFC2397 stream_type=RFC2
 data plain: mediatype=text/html base64=false wrapper_type=RFC2397 stream_type=RFC2397 mode=r unread_bytes=0 seekable=true uri=data://text/html,hi
 data params: mediatype=text/plain charset=utf-8 foo=bar base64=true wrapper_type=RFC2397 stream_type=RFC2397 mode=r unread_bytes=0 seekable=true uri=data://text/plain;charset=utf-8;foo=bar;base64,aGk=
 data untyped: base64=false wrapper_type=RFC2397 stream_type=RFC2397 mode=r unread_bytes=0 seekable=true uri=data://,plain
+data long key: 'v'
+output: PHP/Output mode=wb seekable=false
 eof-at-start: false
 eof-after-read: true
 unread: 6

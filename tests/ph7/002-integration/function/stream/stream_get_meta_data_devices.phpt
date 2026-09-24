@@ -42,19 +42,14 @@ stream_wrapper_register('sgmdd', 'SgmddWrapper');
 sgmdd_line('userland', fopen('sgmdd://x', 'r'));
 
 /* The exported std streams name themselves the way php's do. `seekable` is
- * left out: php answers it from what fd 1 actually POINTS AT (false down a
- * pipe, true into a file), so it is a property of the harness rather than of
- * the engine — PHL always answers true (§7.4). */
-foreach (['STDOUT' => STDOUT, 'STDERR' => STDERR] as $label => $h) {
-    $m = stream_get_meta_data($h);
-    unset($m['seekable']);
-    $out = [];
-    foreach ($m as $k => $v) { $out[] = $k . '=' . (is_bool($v) ? ($v ? 'true' : 'false') : $v); }
-    echo $label, ': ', implode(' ', $out), "\n";
-}
+ * whatever fd 1 actually SITS ON — false down a pipe, true into a file — so
+ * both engines have to ask the descriptor and agree whichever way the harness
+ * runs this. */
+sgmdd_line('STDOUT', STDOUT);
+sgmdd_line('STDERR', STDERR);
 ?>
 --EXPECT--
 pipe: timed_out=false blocked=true stream_type=STDIO mode=r unread_bytes=0 seekable=false
 userland: timed_out=false blocked=true eof=true wrapper_data=SgmddWrapper wrapper_type=user-space stream_type=user-space mode=r unread_bytes=0 seekable=true uri=sgmdd://x
-STDOUT: timed_out=false blocked=true eof=false wrapper_type=PHP stream_type=STDIO mode=wb unread_bytes=0 uri=php://stdout
-STDERR: timed_out=false blocked=true eof=false wrapper_type=PHP stream_type=STDIO mode=wb unread_bytes=0 uri=php://stderr
+STDOUT: timed_out=false blocked=true eof=false wrapper_type=PHP stream_type=STDIO mode=wb unread_bytes=0 seekable=false uri=php://stdout
+STDERR: timed_out=false blocked=true eof=false wrapper_type=PHP stream_type=STDIO mode=wb unread_bytes=0 seekable=false uri=php://stderr

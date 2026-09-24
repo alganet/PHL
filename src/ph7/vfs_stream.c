@@ -453,13 +453,18 @@ PH7_PRIVATE ph7_int64 PH7_StreamRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
 	}
 	/* Read without buffering */
 	nRead = pStream->xRead(pDev->pHandle,zBuf,nLen);
-	if( nRead == 0 || (nRead < nLen && pStream->xSeek != 0) ){
+	if( nRead == 0
+	 || (nRead > 0 && nRead < nLen && pStream->xSeek != 0 && pStream->xTell != 0
+	     && pStream->xTell(pDev->pHandle) >= 0) ){
 		/* A read that came back with nothing IS php's end-of-file event, and
-		 * so is a SHORT one on a seekable device: php fills its buffer in a
-		 * loop, so `fread($f, 100)` on a 12-byte file performs the second read
-		 * that finds the end. A short read on a PIPE or a socket means only
-		 * that less had arrived, and a NEGATIVE answer is an IO error; neither
-		 * latches. */
+		 * so is a SHORT one on a device that can say where it IS: php fills
+		 * its buffer in a loop, so `fread($f, 100)` on a 12-byte file performs
+		 * the second read that finds the end. The position query is what tells
+		 * a regular file from a FIFO — both arrive here through the same file
+		 * device, and a short read from a fifo, a pipe or a socket means only
+		 * that less had arrived, so latching there would end
+		 * `while (!feof($p)) $s .= fread($p, 8192);` with data still coming. A
+		 * NEGATIVE answer is an IO error and never latches. */
 		pDev->bEof = 1;
 	}
 	if( nRead > 0 ){
@@ -524,7 +529,18 @@ static ph7_int64 StreamReadLine(io_private *pDev,const char **pzData,ph7_int64 n
 	 * limit is reached.
 	 */
 	for(;;){
-		n = pStream->xRead(pDev->pHandle,zBuf, (nMaxLen > 0 && nMaxLen < (ph7_int64)sizeof(zBuf)) ? nMaxLen : (ph7_int64)sizeof(zBuf));
+		{
+			/* php fills its read buffer one CHUNK at a time, and
+			 * stream_set_chunk_size() is how a script asks for a smaller one. */
+			ph7_int64 nAsk = (ph7_int64)sizeof(zBuf);
+			if( pDev->nChunk > 0 && (ph7_int64)pDev->nChunk < nAsk ){
+				nAsk = (ph7_int64)pDev->nChunk;
+			}
+			if( nMaxLen > 0 && nMaxLen < nAsk ){
+				nAsk = nMaxLen;
+			}
+			n = pStream->xRead(pDev->pHandle,zBuf,nAsk);
+		}
 		if( n == 0 ){
 			pDev->bEof = 1;
 		}
@@ -1042,8 +1058,11 @@ PH7_PRIVATE int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Perform the requested operation */
 	nRead = PH7_StreamRead(pDev,pBuf,(ph7_int64)nLen);
-	if( nRead < 0 ){
-		/* An IO ERROR, which is php's only false here */
+	if( nRead < 0 && pDev->bNonBlock == 0 ){
+		/* An IO ERROR, which is php's only false here. On a handle
+		 * stream_set_blocking() put in NON-blocking mode the failed read means
+		 * only that nothing had arrived yet, and php answers "" for that — the
+		 * whole point of the mode is to come back empty instead of waiting. */
 		ph7_result_bool(pCtx,0);
 	}else{
 		/* Make a copy of the data just read. Zero bytes is EOF, not a failure:
@@ -1051,7 +1070,7 @@ PH7_PRIVATE int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		 * rides through), where PHL answered FALSE — so the ordinary
 		 * `while (!feof($f)) $buf .= fread($f, 8192);` loop ended on a value
 		 * that means "the read failed" and a `=== false` guard fired at EOF. */
-		ph7_result_string(pCtx,(const char *)pBuf,(int)nRead);
+		ph7_result_string(pCtx,(const char *)pBuf,nRead > 0 ? (int)nRead : 0);
 	}
 	/* Release the buffer */
 	ph7_context_free_chunk(pCtx,pBuf);
@@ -2958,6 +2977,8 @@ PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_priva
 	pOut->zMode[0] = 0;
 	pOut->bEof = 0;
 	pOut->bDir = 0;
+	pOut->nChunk = 8192; /* php's own default, and what stream_set_chunk_size() reports first */
+	pOut->bNonBlock = 0;
 	/* Set the magic number */
 	pOut->iMagic = IO_PRIVATE_MAGIC;
 }
@@ -3160,6 +3181,11 @@ static void IoPrivateStreamLabels(io_private *pDev,const char **pzWrapper,const 
 	}
 	if( is_php_stream(pS) ){
 		*pzWrapper = "PHP";
+		if( PH7_PhpStreamKind(pDev->pHandle) == PH7_IO_STREAM_OUTPUT ){
+			/* php://output is the VM's output consumer, not a descriptor. */
+			*pzStream = "Output";
+			return;
+		}
 		if( PH7_PhpStreamKind(pDev->pHandle) == PH7_IO_STREAM_MEMORY ){
 			/* php://memory and php://temp are ONE device here and two in php,
 			 * which labels them apart; the URI is what separates them. */
@@ -3199,7 +3225,7 @@ static void IoPrivateStreamLabels(io_private *pDev,const char **pzWrapper,const 
  * URI naming no media type has no `mediatype` key at all — php does not
  * substitute the RFC's default — and a repeated parameter keeps its last value.
  */
-static void IoPrivateDataMeta(io_private *pDev,ph7_value *pArr,ph7_value *pV)
+static void IoPrivateDataMeta(ph7_context *pCtx,io_private *pDev,ph7_value *pArr,ph7_value *pV)
 {
 	const char *zUri = (const char *)SyBlobData(&pDev->sUri);
 	sxu32 nUri = SyBlobLength(&pDev->sUri);
@@ -3234,16 +3260,17 @@ static void IoPrivateDataMeta(io_private *pDev,ph7_value *pArr,ph7_value *pV)
 			/* `name=value`; php keys the array by the name, so a repeat wins. */
 			for( i = nSeg ; i < nEnd && zUri[i] != '=' ; i++ ){}
 			if( i < nEnd && i > nSeg ){
-				char zKey[64];
-				sxu32 nKey = i - nSeg;
-				if( nKey > sizeof(zKey)-1 ){
-					nKey = sizeof(zKey)-1;
+				/* The name is keyed WHOLE — it has no length limit in the URI,
+				 * and a clamped one files the value under a key no script can
+				 * look up. */
+				ph7_value *pKey = ph7_context_new_scalar(pCtx);
+				if( pKey ){
+					ph7_value_string(pKey,&zUri[nSeg],(int)(i - nSeg));
+					ph7_value_string(pV,&zUri[i+1],(int)(nEnd - i - 1));
+					ph7_array_add_elem(pArr,pKey,pV);
+					ph7_value_reset_string_cursor(pV);
+					ph7_context_release_value(pCtx,pKey);
 				}
-				SyMemcpy(&zUri[nSeg],zKey,nKey);
-				zKey[nKey] = 0;
-				ph7_value_string(pV,&zUri[i+1],(int)(nEnd - i - 1));
-				ph7_array_add_strkey_elem(pArr,zKey,pV);
-				ph7_value_reset_string_cursor(pV);
 			}
 		}
 		if( nEnd >= nComma ){
@@ -3297,7 +3324,7 @@ PH7_PRIVATE int PH7_builtin_stream_get_meta_data(ph7_context *pCtx,int nArg,ph7_
 		/* A device that answers metadata of its OWN replaces php's three
 		 * defaults rather than adding to them: data:// (and php://temp, which
 		 * simply has none) report no timed_out/blocked/eof at all. */
-		IoPrivateDataMeta(pDev,pArr,pV);
+		IoPrivateDataMeta(pCtx,pDev,pArr,pV);
 		ph7_value_reset_string_cursor(pV);
 	}else if( is_php_stream(pDev->pStream)
 	       && PH7_PhpStreamKind(pDev->pHandle) == PH7_IO_STREAM_MEMORY
@@ -3306,7 +3333,9 @@ PH7_PRIVATE int PH7_builtin_stream_get_meta_data(ph7_context *pCtx,int nArg,ph7_
 	}else{
 		ph7_value_bool(pV,0);
 		ph7_array_add_strkey_elem(pArr,"timed_out",pV);
-		ph7_value_bool(pV,1);
+		/* A stream php cannot put in non-blocking mode always reports blocked;
+		 * bNonBlock is only ever set for one that CAN. */
+		ph7_value_bool(pV,pDev->bNonBlock == 0);
 		ph7_array_add_strkey_elem(pArr,"blocked",pV);
 		/* The read-ahead this performs is feof()'s own, so a script that asks
 		 * for the metadata and then reads sees every byte. */
@@ -3340,7 +3369,25 @@ PH7_PRIVATE int PH7_builtin_stream_get_meta_data(ph7_context *pCtx,int nArg,ph7_
 	 * php's own writepos-minus-readpos, which was hardcoded 0. */
 	ph7_value_int64(pV,(ph7_int64)nUnread);
 	ph7_array_add_strkey_elem(pArr,"unread_bytes",pV);
-	ph7_value_bool(pV,pDev->pStream && pDev->pStream->xSeek != 0);
+	{
+		/* php answers this from what the handle actually SITS ON, not from what
+		 * the device could do: php://stdout is seekable into a file and not
+		 * down a pipe, php://output never is, and a pipe is not. Ask the
+		 * descriptor first and the device second; a USERLAND wrapper is php's
+		 * one exception — its ops always carry a seek, so php always says yes. */
+		int bSeekable = pDev->pStream != 0 && pDev->pStream->xSeek != 0;
+		if( bSeekable && !IoPrivateIsUwrap(pDev->pStream) ){
+			int fd = PH7_StreamPosixFd(pDev);
+			if( fd >= 0 ){
+#ifndef __WINNT__
+				bSeekable = lseek(fd,0,SEEK_CUR) != (off_t)-1;
+#endif
+			}else if( pDev->pStream->xTell != 0 ){
+				bSeekable = pDev->pStream->xTell(pDev->pHandle) >= 0;
+			}
+		}
+		ph7_value_bool(pV,bSeekable);
+	}
 	ph7_array_add_strkey_elem(pArr,"seekable",pV);
 	if( SyBlobLength(&pDev->sUri) > 0 ){
 		/* php keeps the path exactly as the opener received it — a relative
@@ -4045,15 +4092,307 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 	pSock->bEof = 0;
 	InitIOPrivate(pCtx->pVm,&sTCP_Stream,pDev);
 	{
-		int nUri;
+		/* php reports the ADDRESS it connected to. fsockopen() takes the port
+		 * as a separate argument, so an argument naming only a host would
+		 * otherwise record a uri that names no port at all. */
+		int nUri,i,bHasPort = 0;
 		const char *zOrig = ph7_value_to_string(apArg[0],&nUri);
-		SetIOPrivateOpenedAs(pDev,zOrig,nUri,"r+",2);
+		for( i = nUri - 1 ; i >= 0 ; i-- ){
+			if( zOrig[i] == ':' ){
+				bHasPort = (i + 3 >= nUri) || zOrig[i+1] != '/' || zOrig[i+2] != '/';
+				break;
+			}
+		}
+		if( bHasPort ){
+			SetIOPrivateOpenedAs(pDev,zOrig,nUri,"r+",2);
+		}else{
+			char zAddr[320];
+			sxu32 n = SyBufferFormat(zAddr,sizeof(zAddr),"%.*s:%d",nUri,zOrig,iPort);
+			SetIOPrivateOpenedAs(pDev,zAddr,(int)n,"r+",2);
+		}
 	}
 	pDev->pHandle = (void *)pSock;
 	ph7_result_resource(pCtx,pDev);
 	return PH7_OK;
 }
-#endif /* PH7_ENABLE_NET */
+#endif /*
+ * The stream SETTINGS family. Every one of these was a loud
+ * `Call to undefined function` — so a program that puts a socket in
+ * non-blocking mode, bounds a read with a timeout, or asks whether a stream
+ * can be locked before calling flock() did not run at all.
+ *
+ * The shared preamble: php refuses a non-resource with a TypeError naming the
+ * parameter, and an already-closed handle the same way.
+ */
+static io_private * StreamSettingArg(ph7_context *pCtx,ph7_value *pArg,int *pRc)
+{
+	io_private *pDev;
+	*pRc = PH7_OK;
+	if( !ph7_value_is_resource(pArg) ){
+		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #1 ($stream) must be of type resource, %s given",
+			ph7_function_name(pCtx),ph7_type_name(pArg));
+		return 0;
+	}
+	pDev = (io_private *)ph7_value_to_resource(pArg);
+	if( IO_PRIVATE_INVALID(pDev) ){
+		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #1 ($stream) must be an open stream resource",
+			ph7_function_name(pCtx));
+		return 0;
+	}
+	return pDev;
+}
+/* The tcp:// socket behind a handle, or 0 for any other device. */
+static ph7_socket * IoPrivateSocket(io_private *pDev)
+{
+#ifdef PH7_ENABLE_NET
+	if( pDev->pStream == &sTCP_Stream && pDev->pHandle ){
+		return &((sock_private *)pDev->pHandle)->sock;
+	}
+#endif
+	SXUNUSED(pDev); /* cc warning when NET is off */
+	return 0;
+}
+/*
+ * bool stream_set_blocking(resource $stream, bool $enable)
+ *
+ * php sets the mode AT the descriptor and answers TRUE either way; a stream
+ * with no descriptor — a memory buffer, a data:// payload — keeps reporting
+ * itself blocked, which is why the flag is only recorded when it took. On
+ * Windows php's plain-files device has no O_NONBLOCK to set, so every such
+ * stream (a file, a pipe, php://stdin) answers FALSE there.
+ */
+PH7_PRIVATE int PH7_builtin_stream_set_blocking(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	io_private *pDev;
+	int rc,bEnable,fd;
+	ph7_socket *pSock;
+	if( nArg < 2 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pDev = StreamSettingArg(pCtx,apArg[0],&rc);
+	if( pDev == 0 ){
+		return rc;
+	}
+	bEnable = ph7_value_to_bool(apArg[1]);
+	pSock = IoPrivateSocket(pDev);
+	if( pSock ){
+#ifdef PH7_ENABLE_NET
+		PH7_NetSetBlocking(*pSock,bEnable);
+#endif
+		pDev->bNonBlock = (sxu8)(bEnable ? 0 : 1);
+	}else{
+#ifdef __WINNT__
+		if( PH7_StreamIsPlainDevice(pDev) ){
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+#endif
+		fd = PH7_StreamPosixFd(pDev);
+		if( fd >= 0 ){
+#ifndef __WINNT__
+			int iFlags = fcntl(fd,F_GETFL,0);
+			if( iFlags >= 0 ){
+				if( bEnable ){
+					iFlags &= ~O_NONBLOCK;
+				}else{
+					iFlags |= O_NONBLOCK;
+				}
+				if( fcntl(fd,F_SETFL,iFlags) == 0 ){
+					pDev->bNonBlock = (sxu8)(bEnable ? 0 : 1);
+				}
+			}
+#endif
+		}
+	}
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/*
+ * bool stream_set_timeout(resource $stream, int $seconds, int $microseconds = 0)
+ *
+ * php answers TRUE only for a stream whose transport HAS a timeout — a socket —
+ * and FALSE for every file, pipe and memory buffer, because there is nothing
+ * to wait on. Silently accepting it for a file would tell a caller its read is
+ * bounded when it is not.
+ */
+PH7_PRIVATE int PH7_builtin_stream_set_timeout(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	io_private *pDev;
+	ph7_socket *pSock;
+	int rc;
+	if( nArg < 2 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pDev = StreamSettingArg(pCtx,apArg[0],&rc);
+	if( pDev == 0 ){
+		return rc;
+	}
+	pSock = IoPrivateSocket(pDev);
+	if( pSock == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+#ifdef PH7_ENABLE_NET
+	{
+		ph7_int64 iSec = ph7_value_to_int64(apArg[1]);
+		ph7_int64 iUsec = nArg > 2 ? ph7_value_to_int64(apArg[2]) : 0;
+		if( iSec < 0 ){
+			iSec = 0;
+		}
+		if( iUsec < 0 ){
+			iUsec = 0;
+		}
+		PH7_NetSetRwTimeout(*pSock,iSec,iUsec);
+	}
+#endif
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/*
+ * int stream_set_chunk_size(resource $stream, int $size)
+ *
+ * Answers the PREVIOUS size, which is what makes the setting restorable, and
+ * refuses a non-positive one the way php does.
+ */
+PH7_PRIVATE int PH7_builtin_stream_set_chunk_size(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	io_private *pDev;
+	ph7_int64 nSize;
+	int rc;
+	if( nArg < 2 ){
+		ph7_result_int(pCtx,-1);
+		return PH7_OK;
+	}
+	pDev = StreamSettingArg(pCtx,apArg[0],&rc);
+	if( pDev == 0 ){
+		return rc;
+	}
+	nSize = ph7_value_to_int64(apArg[1]);
+	if( nSize < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"stream_set_chunk_size(): Argument #2 ($size) must be greater than 0");
+	}
+	ph7_result_int64(pCtx,(ph7_int64)pDev->nChunk);
+	pDev->nChunk = nSize > (ph7_int64)SXU32_HIGH ? SXU32_HIGH : (sxu32)nSize;
+	return PH7_OK;
+}
+/*
+ * int stream_set_read_buffer(resource $stream, int $size)
+ * int stream_set_write_buffer(resource $stream, int $size)  [set_file_buffer]
+ *
+ * php's stream layer has no stdio buffer left to hand these to: the read side
+ * answers 0 (accepted) and the write side -1 (unsupported), for every stream
+ * and every size. Both are still validated arguments, so a bad handle is the
+ * same TypeError the rest of the family raises.
+ */
+PH7_PRIVATE int PH7_builtin_stream_set_read_buffer(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	int rc = PH7_OK;
+	if( nArg < 2 ){
+		ph7_result_int(pCtx,-1);
+		return PH7_OK;
+	}
+	if( StreamSettingArg(pCtx,apArg[0],&rc) == 0 ){
+		return rc;
+	}
+	ph7_result_int(pCtx,0);
+	return PH7_OK;
+}
+PH7_PRIVATE int PH7_builtin_stream_set_write_buffer(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	int rc = PH7_OK;
+	if( nArg < 2 ){
+		ph7_result_int(pCtx,-1);
+		return PH7_OK;
+	}
+	if( StreamSettingArg(pCtx,apArg[0],&rc) == 0 ){
+		return rc;
+	}
+	ph7_result_int(pCtx,-1);
+	return PH7_OK;
+}
+/*
+ * bool stream_supports_lock(resource $stream)
+ *
+ * The question flock() answers with a warning if you get it wrong: only a
+ * device with a real lock operation can be locked, so a memory buffer and a
+ * data:// payload are false.
+ */
+PH7_PRIVATE int PH7_builtin_stream_supports_lock(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	io_private *pDev;
+	int rc;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pDev = StreamSettingArg(pCtx,apArg[0],&rc);
+	if( pDev == 0 ){
+		return rc;
+	}
+	/* php locks at the DESCRIPTOR, so anything with one can be locked even
+	 * when the device exposes no lock operation of its own (php://stdout, a
+	 * pipe); a memory buffer and a data:// payload have neither and are the
+	 * false answers. */
+	ph7_result_bool(pCtx,(pDev->pStream != 0 && pDev->pStream->xLock != 0)
+		|| PH7_StreamPosixFd(pDev) >= 0);
+	return PH7_OK;
+}
+/*
+ * bool stream_is_local(resource|string $stream)
+ *
+ * php answers from the WRAPPER, not from the path: a stream opened by a URL
+ * wrapper is not local, one opened by no wrapper at all (a pipe) is not local
+ * either, and everything else — including php:// and a path naming a scheme
+ * nobody registered — is.
+ */
+PH7_PRIVATE int PH7_builtin_stream_is_local(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const ph7_io_stream *pStream;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( ph7_value_is_string(apArg[0]) ){
+		static const char * const azUrlScheme[] = { "http://", "https://", "ftp://", "ftps://" };
+		int nLen,i;
+		const char *zPath = ph7_value_to_string(apArg[0],&nLen);
+		for( i = 0 ; i < (int)(sizeof(azUrlScheme)/sizeof(azUrlScheme[0])) ; i++ ){
+			int nScheme = (int)SyStrlen(azUrlScheme[i]);
+			if( nLen >= nScheme && SyStrnicmp(zPath,azUrlScheme[i],(sxu32)nScheme) == 0 ){
+				/* php registers these as URL wrappers whether or not this
+				 * engine can OPEN them (http:// is a recorded gap, §7.4), and
+				 * "is this path local?" has to answer for the scheme rather
+				 * than for what happens to be implemented — the unsafe
+				 * direction is answering TRUE about a remote URL. */
+				ph7_result_bool(pCtx,0);
+				return PH7_OK;
+			}
+		}
+		pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zPath,nLen);
+		/* An unregistered scheme has no wrapper to ask, and php answers TRUE
+		 * for it — the path is taken at face value. */
+		ph7_result_bool(pCtx,pStream == 0 || !PH7_StreamIsUrlWrapper(pStream));
+		return PH7_OK;
+	}
+	{
+		int rc;
+		io_private *pDev = StreamSettingArg(pCtx,apArg[0],&rc);
+		const char *zWrapper,*zLabel;
+		if( pDev == 0 ){
+			return rc;
+		}
+		IoPrivateStreamLabels(pDev,&zWrapper,&zLabel);
+		/* No wrapper (a popen() pipe, a socket) is php's other "not local". */
+		ph7_result_bool(pCtx,zWrapper != 0 && !PH7_StreamIsUrlWrapper(pDev->pStream));
+	}
+	return PH7_OK;
+}
+/* PH7_ENABLE_NET */
 PH7_PRIVATE int PH7_builtin_fopen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const ph7_io_stream *pStream;
@@ -4123,6 +4462,11 @@ PH7_PRIVATE int PH7_builtin_fopen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		const char *zMeta = zMode;
 		int nMeta = imLen;
 		if( is_php_stream(pStream)
+		 && PH7_PhpStreamKind(pDev->pHandle) == PH7_IO_STREAM_OUTPUT ){
+			/* php://output has one mode whatever it was asked for. */
+			zMeta = "wb";
+			nMeta = 2;
+		}else if( is_php_stream(pStream)
 		 && PH7_PhpStreamKind(pDev->pHandle) == PH7_IO_STREAM_MEMORY ){
 			/* php's memory streams do not keep the mode they were opened with:
 			 * a buffer is readable and writable either way, so php reports the
