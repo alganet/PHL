@@ -2599,6 +2599,8 @@ struct ph7_vm
 	 * chain owns every filter INSTANCE the script created, so one that is never
 	 * removed still goes back at reset. */
 	void *pStreamFilter;       /* phl_stream_filter registry chain; freed on reset */
+	SyString *pCalleeName;     /* the builtin currently running, for diagnostics
+	                            * raised where no ph7_context reaches (see vm_exec.c) */
 	ph7_vm *pNext,*pPrev;      /* List of active VM's */
 	sxu32 nMagic;              /* Sanity check against misuse */
 };
@@ -3870,10 +3872,13 @@ struct phl_stream_filter
 	SyBlob sName;               /* the name it was CREATED under (a wildcard match keeps the request) */
 	SyBlob sCarry;              /* bytes the filter could not encode yet (base64/qp/dechunk) */
 	int iState;                 /* per-filter scalar state */
+	sxu8 bClosed;               /* the FLUSH_CLOSE call has already been made */
+	sxu8 bDead;                 /* it answered ERR_FATAL: the chain is finished */
 	int iChain;                 /* PHL_STREAM_FILTER_READ or _WRITE */
 	io_private *pDev;           /* the handle it is attached to; 0 once removed */
 	phl_stream_filter *pNext;   /* next filter in that chain */
 	phl_stream_filter *pRegNext;/* VM registry chain (pVm->pStreamFilter) */
+	void *pPriv;                /* per-filter private state, freed by xClose */
 	void *pObj;                 /* userland filter instance (ph7_class_instance*) */
 	ph7_value *pStreamRes;      /* the $stream the userland filter's property answers */
 };
@@ -3885,7 +3890,10 @@ PH7_PRIVATE void PH7_FilterBrigadeRelease(ph7_vm *pVm,phl_brigade *pBrig);
 /* Run one chain over nLen bytes, appending what came out to pOut. Answers a
  * PHL_PSFS_* code; ERR_FATAL means the stream is finished. */
 PH7_PRIVATE int PH7_FilterChainProcess(phl_stream_filter *pHead,
-	const void *pData,sxu32 nLen,int iFlags,SyBlob *pOut);
+	const void *pData,sxu32 nLen,int iFlags,int iRestFlags,SyBlob *pOut);
+/* A seek moved the device: a chain that had already been CLOSED at the old end
+ * of file has to be able to run again. */
+PH7_PRIVATE void PH7_StreamFilterRewound(io_private *pDev);
 /* Drop both chains of a handle, flushing the write one while the device is
  * still open (every close path and the io_private reset paths). */
 PH7_PRIVATE void PH7_StreamFilterReleaseChains(io_private *pDev);

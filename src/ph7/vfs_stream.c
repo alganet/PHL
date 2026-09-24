@@ -545,8 +545,12 @@ static ph7_int64 IoPrivateFilteredRead(io_private *pDev,void *pBuf,ph7_int64 nLe
 			}
 			break;
 		}
-		iStatus = PH7_FilterChainProcess(pChain,zRaw,(sxu32)nRaw,
-			nRaw > 0 ? PHL_PSFS_FLAG_NORMAL : PHL_PSFS_FLAG_FLUSH_CLOSE,&pDev->sFilt);
+		{
+			int iF = nRaw > 0 ? PHL_PSFS_FLAG_NORMAL : PHL_PSFS_FLAG_FLUSH_CLOSE;
+			/* The device's end closes EVERY filter on the stream, not just the
+			 * head: each one's tail has to travel through the rest. */
+			iStatus = PH7_FilterChainProcess(pChain,zRaw,(sxu32)nRaw,iF,iF,&pDev->sFilt);
+		}
 		if( nRaw == 0 ){
 			/* The device is spent, and the call above was the chain's CLOSING
 			 * one: running it again would make a buffering filter emit its tail
@@ -555,9 +559,12 @@ static ph7_int64 IoPrivateFilteredRead(io_private *pDev,void *pBuf,ph7_int64 nLe
 			break;
 		}
 		if( iStatus == PHL_PSFS_ERR_FATAL ){
-			/* php answers the read itself as a failure once a filter says the
-			 * stream is finished. */
-			return -1;
+			/* A filter saying the stream is FINISHED ends the reading, but what
+			 * earlier calls already produced still belongs to the reader: php
+			 * hands back what it had buffered and then reports the end. Only the
+			 * failing call's own output is lost. */
+			pDev->bFiltDone = 1;
+			break;
 		}
 	}
 	nAvail = SyBlobLength(&pDev->sFilt) - pDev->nFiltOfft;
@@ -659,7 +666,8 @@ PH7_PRIVATE ph7_int64 PH7_StreamWrite(io_private *pDev,const void *pData,ph7_int
 		return pDev->pStream->xWrite(pDev->pHandle,pData,nLen);
 	}
 	SyBlobInit(&sOut,pDev->sBuffer.pAllocator);
-	iStatus = PH7_FilterChainProcess(pChain,pData,(sxu32)nLen,PHL_PSFS_FLAG_NORMAL,&sOut);
+	iStatus = PH7_FilterChainProcess(pChain,pData,(sxu32)nLen,
+		PHL_PSFS_FLAG_NORMAL,PHL_PSFS_FLAG_NORMAL,&sOut);
 	if( iStatus == PHL_PSFS_ERR_FATAL ){
 		SyBlobRelease(&sOut);
 		return -1;
@@ -3344,6 +3352,7 @@ static void ResetIOPrivate(io_private *pDev)
 	SyBlobReset(&pDev->sFilt);
 	pDev->nFiltOfft = 0;
 	pDev->bFiltDone = 0;
+	PH7_StreamFilterRewound(pDev);
 	/* Every caller of this has just MOVED the device (a seek, a rewind, a
 	 * truncate), and php clears the end-of-file flag on exactly those. */
 	pDev->bEof = 0;

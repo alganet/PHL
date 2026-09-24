@@ -7846,8 +7846,16 @@ NativeCall:
 			(ph7_value **)SySetBasePtr(&aArg))) ){
 			/* TypeError thrown: rc carries the caught/uncaught status */
 		}else{
+			/* The name of the builtin that is RUNNING, for the few diagnostics
+			 * raised so deep inside the engine that no ph7_context reaches them
+			 * (a stream filter's, from inside a device read) and which php still
+			 * prefixes with the caller. Saved and restored: a builtin can call
+			 * back into php and reach this line again. */
+			SyString *pSavedCallee = pVm->pCalleeName;
+			pVm->pCalleeName = &pFunc->sName;
 			/* Call the foreign function */
 			rc = pFunc->xFunc(&sCtx,nGiven,(ph7_value **)SySetBasePtr(&aArg));
+			pVm->pCalleeName = pSavedCallee;
 			/* A host function that RAISED a catchable throw (PH7_VmThrowException)
 			 * and still returned PH7_OK reports it here — the throw's catch has
 			 * already run in place, so treating the call as a normal return would
