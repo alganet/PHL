@@ -966,22 +966,62 @@ PH7_PRIVATE int vm_builtin_is_callable(ph7_context *pCtx,int nArg,ph7_value **ap
 	ph7_result_bool(pCtx,res);
 	return SXRET_OK;
 }
+/* One list of a get_defined_functions() answer, being built. */
+struct VmDefinedFuncList {
+	ph7_value *pArray;   /* The list being built */
+	int bInternal;       /* Wanted bucket: 1 = "internal", 0 = "user" */
+};
 /*
- * Hash walker callback used by the [get_defined_functions()] function
- * defined below.
+ * One row of that list.
+ *
+ * php reports both lists FOLDED — its function table is keyed by the lower-cased
+ * name, so `function myFunc(){}` is reported as `myfunc` and a namespaced one as
+ * `my\space\helper`. PHL keeps the declared spelling in the key, so the fold is
+ * applied here (ASCII-only, like every other name fold in this engine).
  */
 static int VmHashFuncStep(SyHashEntry *pEntry,void *pUserData)
 {
-	ph7_value *pArray = (ph7_value *)pUserData;
+	struct VmDefinedFuncList *pList = (struct VmDefinedFuncList *)pUserData;
+	ph7_value *pArray = pList->pArray;
 	ph7_value sName;
+	sxu32 n;
 	sxi32 rc;
 	/* Prepare the function name for insertion */
 	PH7_MemObjInitFromString(pArray->pVm,&sName,0);
-	PH7_MemObjStringAppend(&sName,(const char *)pEntry->pKey,pEntry->nKeyLen);
+	for( n = 0 ; n < pEntry->nKeyLen ; ++n ){
+		char c = (char)SyToLower(((const char *)pEntry->pKey)[n]);
+		PH7_MemObjStringAppend(&sName,&c,1);
+	}
 	/* Perform the insertion */
 	rc = ph7_array_add_elem(pArray,0/* Automatic index assign */,&sName); /* Will make it's own copy */
 	PH7_MemObjRelease(&sName);
 	return rc;
+}
+/*
+ * Same, for the compiled-function table -- which is the ENGINE's, not the script's.
+ *
+ * Besides the functions a script declared, hFunction holds every mounted class METHOD
+ * (VmMountUserClassMethods keys each one under the engine name `[__Class@meth_xxxxxxxxxx]`
+ * that compile_class.c mints) and every compiled CLOSURE (`[closure_N]`). php has neither
+ * in any table a script can see: `class Foo { function bar(){} }` alone put 763 of these
+ * into the "user" list here, and a `function(){}` literal one more apiece.
+ *
+ * The rest of the table splits by ORIGIN rather than by container: a builtin written as
+ * embedded PHP in the prelude (VM_FUNC_INTERNAL -- scandir, glob, checkdate, hex2bin and
+ * ~24 more) is an INTERNAL function to php, which has no notion of where this engine
+ * chose to implement it.
+ */
+static int VmHashUserFuncStep(SyHashEntry *pEntry,void *pUserData)
+{
+	struct VmDefinedFuncList *pList = (struct VmDefinedFuncList *)pUserData;
+	ph7_vm_func *pFunc = (ph7_vm_func *)pEntry->pUserData;
+	if( pFunc == 0 || (pFunc->iFlags & (VM_FUNC_CLASS_METHOD|VM_FUNC_CLOSURE)) ){
+		return SXRET_OK;
+	}
+	if( ((pFunc->iFlags & VM_FUNC_INTERNAL) != 0) != (pList->bInternal != 0) ){
+		return SXRET_OK;
+	}
+	return VmHashFuncStep(pEntry,pUserData);
 }
 /*
  * array get_defined_functions(void)
@@ -998,6 +1038,7 @@ static int VmHashFuncStep(SyHashEntry *pEntry,void *pUserData)
  */
 PH7_PRIVATE int vm_builtin_get_defined_func(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	struct VmDefinedFuncList sList;
 	ph7_value *pArray,*pEntry;
 	/* NOTE:
 	 * Don't worry about freeing memory here,every allocated resource will be released
@@ -1017,8 +1058,16 @@ PH7_PRIVATE int vm_builtin_get_defined_func(ph7_context *pCtx,int nArg,ph7_value
 		ph7_result_null(pCtx);
 		return SXRET_OK;
 	}
-	/* Fill with the appropriate information */
-	SyHashForEach(&pCtx->pVm->hHostFunction,VmHashFuncStep,pEntry);
+	/* Fill with the appropriate information.
+	 * Both hashes are head-pushed, so their forward order is reverse-insertion; php
+	 * reports the internal list in REGISTRATION order and the user list in DECLARATION
+	 * order, which is what the backward walk yields (the get_declared_classes() rule,
+	 * vm_builtin_class.c). The prelude's own functions come after the C ones because
+	 * that is when they are compiled. */
+	sList.pArray = pEntry;
+	sList.bInternal = 1;
+	SyHashForEachReverse(&pCtx->pVm->hHostFunction,VmHashFuncStep,(void *)&sList);
+	SyHashForEachReverse(&pCtx->pVm->hFunction,VmHashUserFuncStep,(void *)&sList);
 	/* Create the 'internal' index */
 	ph7_array_add_strkey_elem(pArray,"internal",pEntry); /* Will make it's own copy */
 	/* Create the user-func array */
@@ -1029,7 +1078,9 @@ PH7_PRIVATE int vm_builtin_get_defined_func(ph7_context *pCtx,int nArg,ph7_value
 		return SXRET_OK;
 	}
 	/* Fill with the appropriate information */
-	SyHashForEach(&pCtx->pVm->hFunction,VmHashFuncStep,pEntry);
+	sList.pArray = pEntry;
+	sList.bInternal = 0;
+	SyHashForEachReverse(&pCtx->pVm->hFunction,VmHashUserFuncStep,(void *)&sList);
 	/* Create the 'user' index */
 	ph7_array_add_strkey_elem(pArray,"user",pEntry); /* Will make it's own copy */
 	/* Return the multi-dimensional array */
