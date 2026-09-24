@@ -6477,6 +6477,22 @@ static int VmUrlScheme(const char *zIn,int nByte,int *pnScheme)
 	return 0;
 }
 /*
+ * The same question from outside vm.c: how long is the scheme, or 0 for a name
+ * that has none. stream_resolve_include_path() asks it to decide whether a name
+ * is walkable at all.
+ */
+PH7_PRIVATE int PH7_VmUrlSchemeLen(const char *zIn,int nByte)
+{
+	int nScheme = 0;
+	if( zIn == 0 ){
+		return 0;
+	}
+	if( nByte < 0 ){
+		nByte = (int)SyStrlen(zIn);
+	}
+	return VmUrlScheme(zIn,nByte,&nScheme) ? nScheme : 0;
+}
+/*
  * The bytes the FILE wrapper is handed for a file:// URL.
  *
  * A file:// URL has an AUTHORITY, and php only accepts two of them: an empty
@@ -6537,6 +6553,14 @@ PH7_PRIVATE const char * PH7_VmFileUrlLocalPath(const char *zPath)
 	if( !VmFileUrlPath(zPath,nByte,nScheme,&zOut) ){
 		return zPath;
 	}
+#ifdef __WINNT__
+	/* The one piece that is only true here: the leading slash php's own strip
+	 * leaves in front of a DRIVE is not part of a Windows path, so
+	 * file:///C:/x and file://localhost/C:/x both name C:/x. */
+	if( zOut[0] == '/' && zOut[1] != 0 && zOut[2] == ':' ){
+		zOut++;
+	}
+#endif
 	return zOut;
 }
 #if !defined(PH7_DISABLE_BUILTIN_FUNC) || !defined(PH7_DISABLE_DISK_IO)

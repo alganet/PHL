@@ -484,6 +484,49 @@ PH7_PRIVATE void PH7_VmSetIncludePath(ph7_vm *pVm,const char *zPath,sxu32 nByte)
 	}
 }
 /*
+ * php's LAST RESORT for a relative name the include_path did not answer: the
+ * directory of the file that is EXECUTING, not the process's cwd. It is why
+ * `include 'helper.php'` next to the script keeps working when the script was
+ * started from somewhere else, and why a library's own relative includes
+ * resolve at all. PHL had nothing of the kind, so
+ *
+ *   cd / && phl /srv/app/main.php   with   include 'lib.php'   next to main.php
+ *
+ * failed on this engine and ran on php. aFiles is the include-nesting stack,
+ * so its top is the innermost executing file -- which is what php uses too.
+ *
+ * Answers 0 when that name has no directory part at all (`-r`'s "Command line
+ * code"). php's own arithmetic degenerates to the bare, cwd-relative name
+ * there, which the default include_path's "." entry already tries.
+ */
+PH7_PRIVATE int PH7_VmExecutingDir(ph7_vm *pVm,SyString *pOut)
+{
+	SyString *pFile = (SyString *)SySetPeek(&pVm->aFiles);
+	sxu32 n;
+	if( pFile == 0 || pFile->nByte < 2 ){
+		return 0;
+	}
+	n = pFile->nByte;
+	while( n > 0 ){
+		int c = pFile->zString[n-1];
+		if( c == '/'
+#ifdef __WINNT__
+		 || c == '\\'
+#endif
+		){
+			break;
+		}
+		n--;
+	}
+	if( n < 2 ){
+		/* No separator, or one sitting at index 0 -- php skips the fallback for
+		 * a root-level script exactly the same way. */
+		return 0;
+	}
+	SyStringInitFromBuf(pOut,pFile->zString,n-1); /* without the separator */
+	return 1;
+}
+/*
  * Join the set back into php's one string. Splitting on the separator and
  * joining with it round-trips exactly, which is what ini_get() promises.
  */

@@ -638,6 +638,134 @@ static int PH7_vfs_realpath(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * Does this candidate name something, and if so what is its canonical path?
+ * The existence question is asked separately because xRealpath() writes STRAIGHT
+ * into the call's result, so it may only be run on the winner.
+ */
+static int VfsResolveTry(ph7_vfs *pVfs,ph7_context *pCtx,const char *zCand)
+{
+	if( pVfs->xFileExists(zCand) != PH7_OK ){
+		return 0;
+	}
+	/* The VFS APPENDS into the call's result, so make it an empty string first
+	 * -- the realpath() builtin beside this one seeds the same way. */
+	ph7_result_string(pCtx,"",0);
+	if( pVfs->xRealpath(zCand,pCtx) == PH7_OK ){
+		return 1;
+	}
+	ph7_result_bool(pCtx,0);
+	return 0;
+}
+/*
+ * Is this an ABSOLUTE path, by php's rule for this platform? A lone leading
+ * slash is NOT absolute on Windows -- php walks the include_path for it.
+ */
+static int VfsPathIsAbsolute(const char *z,int n)
+{
+#ifdef __WINNT__
+	if( n >= 2 && ((z[0] >= 'A' && z[0] <= 'Z') || (z[0] >= 'a' && z[0] <= 'z')) && z[1] == ':' ){
+		return 1;
+	}
+	return n >= 2 && (z[0] == '/' || z[0] == '\\') && (z[1] == '/' || z[1] == '\\');
+#else
+	return n >= 1 && z[0] == '/';
+#endif
+}
+/* "./x" and "../x": php reads these against the CWD and never walks the path. */
+static int VfsPathIsDotRelative(const char *z,int n)
+{
+#ifdef __WINNT__
+#define VFS_RESOLVE_SLASH(c) ((c) == '/' || (c) == '\\')
+#else
+#define VFS_RESOLVE_SLASH(c) ((c) == '/')
+#endif
+	if( n < 2 || z[0] != '.' ){
+		return 0;
+	}
+	if( VFS_RESOLVE_SLASH(z[1]) ){
+		return 1;
+	}
+	return n > 2 && z[1] == '.' && VFS_RESOLVE_SLASH(z[2]);
+}
+/*
+ * string|false stream_resolve_include_path(string $filename)
+ *  Where would include/require find this name? php's own php_resolve_path,
+ *  which is the ONLY way a script can ask that question without opening
+ *  anything -- and the way an autoloader decides whether a class file exists
+ *  before requiring it.
+ * Return
+ *  The canonical path on success, FALSE when nothing answers.
+ */
+static int PH7_vfs_stream_resolve_include_path(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_vfs *pVfs;
+	const char *zPath;
+	SyString *aEntry;
+	SyString sDir;
+	SyBlob sWorker;
+	int nPath = 0, nScheme, c;
+	sxu32 n;
+	/* FALSE until something resolves: xRealpath() overwrites it on the winner. */
+	ph7_result_bool(pCtx,0);
+	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
+	if( nArg < 1 || pVfs == 0 || pVfs->xRealpath == 0 || pVfs->xFileExists == 0 ){
+		return PH7_OK;
+	}
+	zPath = ph7_value_to_string(apArg[0],&nPath);
+	if( nPath < 0 ){
+		nPath = 0;
+	}
+	nScheme = PH7_VmUrlSchemeLen(zPath,nPath);
+	if( nScheme > 0 ){
+		/* A name that carries a scheme is never walked. php resolves exactly one
+		 * of them -- file://, which it realpaths where it stands -- and answers
+		 * false for every other wrapper. An unreachable authority (and any other
+		 * scheme) comes back unchanged from the strip, and is false. */
+		const char *zLocal = PH7_VmFileUrlLocalPath(zPath);
+		if( zLocal != zPath ){
+			VfsResolveTry(pVfs,pCtx,zLocal);
+		}
+		return PH7_OK;
+	}
+	if( VfsPathIsDotRelative(zPath,nPath) || VfsPathIsAbsolute(zPath,nPath)
+	 || SySetUsed(&pVm->aPaths) < 1 ){
+		VfsResolveTry(pVfs,pCtx,zPath);
+		return PH7_OK;
+	}
+	c = '/';
+#ifdef __WINNT__
+	c = '\\';
+#endif
+	SyBlobInit(&sWorker,&pVm->sAllocator);
+	aEntry = (SyString *)SySetBasePtr(&pVm->aPaths);
+	for( n = 0 ; n < SySetUsed(&pVm->aPaths) ; n++ ){
+		SyString sFile;
+		SyStringInitFromBuf(&sFile,zPath,(sxu32)nPath);
+		SyBlobReset(&sWorker);
+		SyBlobFormat(&sWorker,"%z%c%z",&aEntry[n],c,&sFile);
+		if( SXRET_OK != SyBlobNullAppend(&sWorker) ){
+			continue;
+		}
+		if( VfsResolveTry(pVfs,pCtx,(const char *)SyBlobData(&sWorker)) ){
+			SyBlobRelease(&sWorker);
+			return PH7_OK;
+		}
+	}
+	/* The same last resort the opener uses: the executing file's directory. */
+	if( PH7_VmExecutingDir(pVm,&sDir) ){
+		SyString sFile;
+		SyStringInitFromBuf(&sFile,zPath,(sxu32)nPath);
+		SyBlobReset(&sWorker);
+		SyBlobFormat(&sWorker,"%z%c%z",&sDir,c,&sFile);
+		if( SXRET_OK == SyBlobNullAppend(&sWorker) ){
+			VfsResolveTry(pVfs,pCtx,(const char *)SyBlobData(&sWorker));
+		}
+	}
+	SyBlobRelease(&sWorker);
+	return PH7_OK;
+}
+/*
  * int sleep(int $seconds)
  *  Delays the program execution for the given number of seconds.
  * Parameters
@@ -3015,6 +3143,10 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"mkdir",   PH7_vfs_mkdir   },
 		{"rename",  PH7_vfs_rename  },
 		{"realpath",PH7_vfs_realpath},
+		/* php's own resolver, and the question include/require answer silently:
+		 * it walks the same include_path in the same order, so it belongs beside
+		 * realpath() rather than with the stream builtins. */
+		{"stream_resolve_include_path",PH7_vfs_stream_resolve_include_path},
 		{"sleep",   PH7_vfs_sleep   },
 		{"usleep",  PH7_vfs_usleep  },
 		{"unlink",  PH7_vfs_unlink  },

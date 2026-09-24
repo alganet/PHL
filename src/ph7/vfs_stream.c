@@ -1016,6 +1016,25 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 				SyBlobReset(&sWorker);
 				/* Check the next path */
 			}
+			if( rc != PH7_OK ){
+				/* php's LAST RESORT, and the one PHL never had: the directory of
+				 * the file that is EXECUTING. `include 'lib.php'` next to the
+				 * script has to work whatever directory the script was started
+				 * from -- see PH7_VmExecutingDir(). Tried after the include_path
+				 * entries, as php tries it. */
+				SyString sDir;
+				if( PH7_VmExecutingDir(pVm,&sDir) ){
+					SyBlobReset(&sWorker);
+					SyBlobFormat(&sWorker,"%z%c%z",&sDir,c,&sFile);
+					if( SXRET_OK == SyBlobNullAppend(&sWorker) ){
+						rc = pStream->xOpen((const char *)SyBlobData(&sWorker),iFlags,pResource,&pHandle);
+						if( rc == PH7_OK && bPushInclude ){
+							PH7_VmPushFilePath(pVm,(const char *)SyBlobData(&sWorker),
+								SyBlobLength(&sWorker),FALSE,pNew);
+						}
+					}
+				}
+			}
 			SyBlobRelease(&sWorker);
 		}
 	}else{

@@ -3238,6 +3238,7 @@ PH7_PRIVATE sxi32 PH7_VmPushFilePath(ph7_vm *pVm,const char *zPath,int nLen,sxu8
 PH7_PRIVATE int PH7_VmIncludePathSep(void);
 PH7_PRIVATE void PH7_VmSetIncludePath(ph7_vm *pVm,const char *zPath,sxu32 nByte);
 PH7_PRIVATE void PH7_VmGetIncludePath(ph7_vm *pVm,SyBlob *pOut);
+PH7_PRIVATE int PH7_VmExecutingDir(ph7_vm *pVm,SyString *pOut);
 PH7_PRIVATE ph7_class * PH7_VmExtractClass(ph7_vm *pVm,const char *zName,sxu32 nByte,sxi32 iLoadable,sxi32 iNest);
 PH7_PRIVATE void PH7_VmClassNameAnchor(const char **pzName,sxu32 *pnByte);
 PH7_PRIVATE sxi32 PH7_VmMaterializeClassConst(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr);
@@ -3365,6 +3366,7 @@ PH7_PRIVATE sxi32 PH7_VmHashmapInsert(ph7_hashmap *pMap,const char *zKey,int nKe
 /* The file:// strip is pure string work and the VFS layer needs it in every
  * build, disk IO enabled or not. */
 PH7_PRIVATE const char * PH7_VmFileUrlLocalPath(const char *zPath);
+PH7_PRIVATE int PH7_VmUrlSchemeLen(const char *zIn,int nByte);
 #ifndef PH7_DISABLE_DISK_IO
 PH7_PRIVATE const ph7_io_stream * PH7_VmGetStreamDevice(ph7_vm *pVm,const char **pzDevice,int nByte);
 PH7_PRIVATE int PH7_VmStreamDeviceIsRemoteHost(const char *zUri,int nByte,int *pnScheme);

@@ -257,6 +257,7 @@ static const struct VmBuiltinArity {
 	{ "pclose",                    1, 0 },
 	{ "readlink",                  1, 0 },
 	{ "realpath",                  1, 0 },
+	{ "stream_resolve_include_path",1, 0 },
 	{ "rewind",                    1, 0 },
 	{ "sha1_file",                 1, 1 },
 	{ "stat",                      1, 0 },
@@ -820,6 +821,7 @@ static const struct VmBuiltinSig {
 	{ "readfile", "string $filename, bool $use_include_path = false, $context = NULL", "int|false" },
 	{ "readlink", "string $path", "string|false" },
 	{ "realpath", "string $path", "string|false" },
+	{ "stream_resolve_include_path", "string $filename", "string|false" },
 	{ "register_shutdown_function", "callable $callback, mixed ...$args = ?", "void" },
 	{ "rename", "string $from, string $to, $context = NULL", "bool" },
 	{ "reset", "object|array &$array", "mixed" },
@@ -1409,6 +1411,7 @@ static sxu32 VmBuiltinPathMask(SyString *pName)
 		{ "symlink",           7, (1u<<0)|(1u<<1) },
 		{ "readlink",          8, 1u<<0 },
 		{ "realpath",          8, 1u<<0 },
+		{ "stream_resolve_include_path", 27, 1u<<0 },
 		/* Directories */
 		{ "mkdir",             5, 1u<<0 },
 		{ "rmdir",             5, 1u<<0 },

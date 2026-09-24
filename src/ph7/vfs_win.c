@@ -106,15 +106,8 @@ static void WinVfsMapErrno(void)
  * intact so the call fails exactly as php does. */
 static const char * WinVfsLocalPath(const char *zPath)
 {
-	/* The engine's one file:// strip (PH7_VmFileUrlLocalPath), plus the piece
-	 * that is only true here: the leading slash php's own strip leaves in front
-	 * of a DRIVE is not part of a Windows path. */
-	const char *zRest = PH7_VmFileUrlLocalPath(zPath);
-	if( zRest != zPath && zRest[0] == '/' && zRest[1] != 0 && zRest[2] == ':' ){
-		/* file:///C:/path or file://localhost/C:/path -> C:/path */
-		return &zRest[1];
-	}
-	return zRest;
+	/* The engine's one file:// strip, drive rule included. */
+	return PH7_VmFileUrlLocalPath(zPath);
 }
 /* int (*xchdir)(const char *) */
 static int WinVfs_chdir(const char *zPath)
@@ -247,7 +240,16 @@ static int WinVfs_Realpath(const char *zPath,ph7_context *pCtx)
 	if( zReal == 0 ){
 		return -1;
 	}
-	ph7_result_string(pCtx,zReal,-1); /* Will make it's own copy */
+	{
+		/* GetFullPathNameW KEEPS a trailing separator where php's realpath()
+		 * drops it everywhere but a drive root -- and so must this, because
+		 * realpath($d . '/') has to name the same string as realpath($d). */
+		sxu32 nReal = SyStrlen(zReal);
+		while( nReal > 3 && (zReal[nReal-1] == '\\' || zReal[nReal-1] == '/') ){
+			nReal--;
+		}
+		ph7_result_string(pCtx,zReal,(int)nReal); /* Will make it's own copy */
+	}
 	HeapFree(GetProcessHeap(),0,zReal);
 	return PH7_OK;
 }
