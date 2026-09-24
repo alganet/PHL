@@ -71,7 +71,16 @@ PH7_PRIVATE const char * PH7_NetStrError(int iErr)
 		{ WSAEOPNOTSUPP,      "Operation not supported" },
 		{ WSAEPROTONOSUPPORT, "Protocol not supported" },
 		{ WSAETIMEDOUT,       "Connection timed out" },
-		{ WSAEWOULDBLOCK,     "Resource temporarily unavailable" }
+		{ WSAEWOULDBLOCK,     "Resource temporarily unavailable" },
+		{ WSAEDESTADDRREQ,    "Destination address required" },
+		{ WSAEISCONN,         "Transport endpoint is already connected" },
+		{ WSAEMSGSIZE,        "Message too long" },
+		{ WSAENOBUFS,         "No buffer space available" },
+		{ WSAENOPROTOOPT,     "Protocol not available" },
+		/* A send on a socket whose write side is shut is POSIX's EPIPE, and it
+		 * is the same condition — the wording follows the errno rather than the
+		 * Winsock name so a script reading it reads one answer. */
+		{ WSAESHUTDOWN,       "Broken pipe" }
 	};
 	int i;
 	for( i = 0 ; i < (int)(sizeof(aWsa)/sizeof(aWsa[0])) ; i++ ){
@@ -577,6 +586,225 @@ PH7_PRIVATE int PH7_NetAddrPort(const struct sockaddr *pAddr)
 		return 0;
 	}
 	return (int)ntohs(pIn->sin_port);
+}
+
+/*
+ * The PLATFORM numbers php's socket constants carry, which is why they cannot
+ * be written down in a header: `STREAM_PF_INET6` is 10 on Linux, 23 on Windows
+ * and 30 on the BSDs, and a program that hands one of them to
+ * stream_socket_pair() is handing the OS its own value.
+ */
+PH7_PRIVATE ph7_int64 PH7_NetSocketConst(int iWhich)
+{
+	switch( iWhich ){
+	case PH7_NETC_PF_INET:      return AF_INET;
+	case PH7_NETC_PF_INET6:     return AF_INET6;
+	case PH7_NETC_PF_UNIX:      return AF_UNIX;
+	case PH7_NETC_SOCK_STREAM:  return SOCK_STREAM;
+	case PH7_NETC_SOCK_DGRAM:   return SOCK_DGRAM;
+	case PH7_NETC_SOCK_RAW:     return SOCK_RAW;
+	case PH7_NETC_SOCK_SEQPACKET: return SOCK_SEQPACKET;
+	case PH7_NETC_SOCK_RDM:     return SOCK_RDM;
+	case PH7_NETC_IPPROTO_IP:   return IPPROTO_IP;
+	case PH7_NETC_IPPROTO_TCP:  return IPPROTO_TCP;
+	case PH7_NETC_IPPROTO_UDP:  return IPPROTO_UDP;
+	case PH7_NETC_IPPROTO_ICMP: return IPPROTO_ICMP;
+	case PH7_NETC_IPPROTO_RAW:  return IPPROTO_RAW;
+	default: break;
+	}
+	return 0;
+}
+/*
+ * shutdown(), which is how a program says "I am done SENDING" without closing
+ * the handle it still wants to read — the half-close every line protocol ends
+ * with. php's three modes are 0/1/2 in its own numbering.
+ */
+PH7_PRIVATE int PH7_NetShutdown(ph7_socket sock,int iHow)
+{
+	int iSys;
+	/* Winsock spells the three SD_RECEIVE/SD_SEND/SD_BOTH, with the same
+	 * numbers; POSIX spells them SHUT_*. */
+#ifdef __WINNT__
+	switch( iHow ){
+	case 0:  iSys = SD_RECEIVE; break;
+	case 1:  iSys = SD_SEND; break;
+	default: iSys = SD_BOTH; break;
+	}
+#else
+	switch( iHow ){
+	case 0:  iSys = SHUT_RD; break;
+	case 1:  iSys = SHUT_WR; break;
+	default: iSys = SHUT_RDWR; break;
+	}
+#endif
+	return shutdown(sock,iSys) == 0 ? PH7_OK : -1;
+}
+/*
+ * Is there anything left on this socket to hand over? Asked of a socket whose
+ * READ side has just been shut down, where a recv() cannot block: php answers
+ * feof() for a socket by probing it, so a half-close with bytes still queued is
+ * NOT an end of file and one with nothing queued is.
+ */
+PH7_PRIVATE int PH7_NetAtEnd(ph7_socket sock)
+{
+	char c;
+	return recv(sock,&c,1,MSG_PEEK) <= 0 ? 1 : 0;
+}
+/* php's STREAM_OOB/STREAM_PEEK are php's own bits, not the OS's. */
+static int NetMsgFlags(int iFlags)
+{
+	int iOut = 0;
+	if( iFlags & PH7_STREAM_OOB ){
+		iOut |= MSG_OOB;
+	}
+	if( iFlags & PH7_STREAM_PEEK ){
+		iOut |= MSG_PEEK;
+	}
+	return iOut;
+}
+/*
+ * Receive straight from the socket, with the sender's address when the datagram
+ * carries one. This deliberately does NOT go through the handle's read buffer:
+ * php's own recvfrom() asks the SOCKET, which is why it blocks on a handle whose
+ * buffer still holds bytes.
+ */
+PH7_PRIVATE int PH7_NetRecvFrom(ph7_socket sock,void *pBuf,int nLen,int iFlags,char *zAddr,int nAddr)
+{
+	struct sockaddr_in sFrom;
+	ph7_socklen nFrom = (ph7_socklen)sizeof(sFrom);
+	int n;
+	if( zAddr && nAddr > 0 ){
+		zAddr[0] = 0;
+	}
+	memset(&sFrom,0,sizeof(sFrom));
+	n = (int)recvfrom(sock,(char *)pBuf,nLen,NetMsgFlags(iFlags),(struct sockaddr *)&sFrom,&nFrom);
+	if( n >= 0 && zAddr && nAddr > 0 && sFrom.sin_family == AF_INET ){
+		char zIp[64];
+		PH7_NetAddrToString((struct sockaddr *)&sFrom,zIp,(int)sizeof(zIp));
+		if( zIp[0] ){
+			snprintf(zAddr,(size_t)nAddr,"%s:%d",zIp,PH7_NetAddrPort((struct sockaddr *)&sFrom));
+		}
+	}
+	return n;
+}
+/*
+ * Send straight to the socket, to a named address when one is given. A
+ * connected socket takes the address too — php passes it to sendto() and lets
+ * the OS decide, which for a connected TCP socket means it is simply sent.
+ */
+PH7_PRIVATE int PH7_NetSendTo(ph7_socket sock,const void *pBuf,int nLen,int iFlags,
+	const char *zHost,int iPort,int *pErrno)
+{
+	struct sockaddr_in sTo;
+	if( pErrno ){ *pErrno = 0; }
+	if( zHost == 0 || zHost[0] == 0 ){
+		return (int)send(sock,(const char *)pBuf,nLen,NetMsgFlags(iFlags));
+	}
+	memset(&sTo,0,sizeof(sTo));
+	sTo.sin_family = AF_INET;
+	sTo.sin_port = htons((unsigned short)iPort);
+	if( strcmp(zHost,"localhost") == 0 || strcmp(zHost,"127.0.0.1") == 0 ){
+		sTo.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+	}else{
+		struct addrinfo hints,*res;
+		memset(&hints,0,sizeof(hints));
+		hints.ai_family = AF_INET;
+		hints.ai_socktype = SOCK_DGRAM;
+		if( getaddrinfo(zHost,0,&hints,&res) != 0 || res == 0 ){
+			/* Nothing was sent, and the caller says so in php's own three
+			 * voices — which is a different answer from a send that failed. */
+			if( pErrno ){ *pErrno = PH7_NET_ERR_RESOLVE; }
+			return -1;
+		}
+		sTo.sin_addr = ((struct sockaddr_in *)res->ai_addr)->sin_addr;
+		freeaddrinfo(res);
+	}
+	return (int)sendto(sock,(const char *)pBuf,nLen,NetMsgFlags(iFlags),
+		(struct sockaddr *)&sTo,(ph7_socklen)sizeof(sTo));
+}
+/*
+ * A connected PAIR of sockets, which is what a program hands a child process (or
+ * a test double) as a two-way pipe. POSIX has the call; Windows does not, and
+ * php builds the pair over the loopback there — a listener nobody else can
+ * reach, one connect, one accept, and a check that the socket that arrived is
+ * the one that was dialled.
+ */
+PH7_PRIVATE int PH7_NetSocketPair(int iDomain,int iType,int iProtocol,ph7_socket *aOut,int *pErrno)
+{
+	if( pErrno ){ *pErrno = 0; }
+	aOut[0] = aOut[1] = PH7_NET_INVALID_SOCKET;
+	if( PH7_NetEnsureInit() != PH7_OK ){
+		return -1;
+	}
+#ifndef __WINNT__
+	{
+		int aFd[2];
+		if( socketpair(iDomain,iType,iProtocol,aFd) != 0 ){
+			if( pErrno ){ *pErrno = PH7_NetLastError(); }
+			return -1;
+		}
+		aOut[0] = aFd[0];
+		aOut[1] = aFd[1];
+		return PH7_OK;
+	}
+#else
+	{
+		ph7_socket listener,client,server;
+		struct sockaddr_in addr,peer,self;
+		ph7_socklen nAddr;
+		SXUNUSED(iProtocol);
+		if( iDomain != AF_INET || iType != SOCK_STREAM ){
+			/* php's own Windows emulation covers exactly this pair, and answers
+			 * "protocol not available" for anything else — the mirror image of
+			 * POSIX, where AF_UNIX is the one that works. */
+			if( pErrno ){ *pErrno = WSAENOPROTOOPT; }
+			return -1;
+		}
+		listener = PH7_NetBind("127.0.0.1",0,0,1,1,pErrno,0);
+		if( listener == PH7_NET_INVALID_SOCKET ){
+			return -1;
+		}
+		nAddr = (ph7_socklen)sizeof(addr);
+		memset(&addr,0,sizeof(addr));
+		if( getsockname(listener,(struct sockaddr *)&addr,&nAddr) != 0 ){
+			if( pErrno ){ *pErrno = PH7_NetLastError(); }
+			PH7_NetClose(listener);
+			return -1;
+		}
+		client = socket(AF_INET,SOCK_STREAM,0);
+		if( client == PH7_NET_INVALID_SOCKET
+		 || connect(client,(struct sockaddr *)&addr,(ph7_socklen)sizeof(addr)) != 0 ){
+			if( pErrno ){ *pErrno = PH7_NetLastError(); }
+			PH7_NetClose(client);
+			PH7_NetClose(listener);
+			return -1;
+		}
+		nAddr = (ph7_socklen)sizeof(peer);
+		memset(&peer,0,sizeof(peer));
+		server = accept(listener,(struct sockaddr *)&peer,&nAddr);
+		PH7_NetClose(listener);
+		if( server == PH7_NET_INVALID_SOCKET ){
+			if( pErrno ){ *pErrno = PH7_NetLastError(); }
+			PH7_NetClose(client);
+			return -1;
+		}
+		/* The connection that arrived must be the one that was made: another
+		 * process could have reached the same listener first. */
+		nAddr = (ph7_socklen)sizeof(self);
+		memset(&self,0,sizeof(self));
+		if( getsockname(client,(struct sockaddr *)&self,&nAddr) != 0
+		 || self.sin_port != peer.sin_port
+		 || self.sin_addr.s_addr != peer.sin_addr.s_addr ){
+			if( pErrno ){ *pErrno = WSAECONNABORTED; }
+			PH7_NetClose(client);
+			PH7_NetClose(server);
+			return -1;
+		}
+		aOut[0] = client;
+		aOut[1] = server;
+		return PH7_OK;
+	}
+#endif
 }
 
 #endif /* PH7_ENABLE_NET */

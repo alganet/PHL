@@ -756,6 +756,7 @@ static sxu32 GenStateByRefBuiltinMask(SyString *pName)
 		{ "stream_socket_server",  20, (1u<<1)|(1u<<2) },  /* same pair */
 		{ "stream_socket_accept",  20, 1u<<2 },            /* &$peer_name (apArg[2]) */
 		{ "stream_select",         13, (1u<<0)|(1u<<1)|(1u<<2) }, /* &$read, &$write, &$except */
+		{ "stream_socket_recvfrom",22, 1u<<3 },            /* &$address (apArg[3]) */
 		{ "proc_open",              9, 1u<<2 },  /* &$pipes (apArg[2]) */
 		{ "exec",                   4, (1u<<1)|(1u<<2) },  /* &$output, &$result_code */
 		{ "system",                 6, 1u<<1 },  /* &$result_code (apArg[1]) */

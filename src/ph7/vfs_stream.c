@@ -23,6 +23,19 @@
  */
 /* Forward declaration */
 static void ResetIOPrivate(io_private *pDev);
+#ifdef PH7_ENABLE_NET
+/* The socket handle, declared here because stream_get_meta_data()'s labels ask
+ * whether a socket has a transport under it. */
+typedef struct sock_private sock_private;
+struct sock_private
+{
+	ph7_vm *pVm;
+	ph7_socket sock;
+	int bEof;
+	int iLastErr; /* the OS code a failed send left, for php's own notice */
+	int bGeneric; /* a socketpair: no transport, and php labels it apart */
+};
+#endif
 /*
  * Return the PHP resource-type name for a raw resource handle.
  * Every IO handle this VFS hands out (fopen/tmpfile/popen/opendir and the
@@ -3230,8 +3243,14 @@ static void IoPrivateStreamLabels(io_private *pDev,const char **pzWrapper,const 
 		return;
 	}
 	if( pS->zName && SyStrncmp(pS->zName,"tcp",sizeof("tcp")) == 0 ){
-		/* php names the socket ops and reports no wrapper for them. */
+		/* php names the socket ops and reports no wrapper for them — and names
+		 * a socket with no transport under it (a pair) differently again. */
+#ifdef PH7_ENABLE_NET
+		*pzStream = (pDev->pHandle && ((sock_private *)pDev->pHandle)->bGeneric)
+			? "generic_socket" : "tcp_socket/ssl";
+#else
 		*pzStream = "tcp_socket/ssl";
+#endif
 		return;
 	}
 	if( SyBlobLength(&pDev->sUri) < 1 ){
@@ -3451,14 +3470,6 @@ PH7_PRIVATE int PH7_builtin_stream_context_create(ph7_context *pCtx,int nArg,ph7
  * small struct carrying the OS socket plus an EOF latch, so feof() works.
  */
 #ifdef PH7_ENABLE_NET
-typedef struct sock_private sock_private;
-struct sock_private
-{
-	ph7_vm *pVm;
-	ph7_socket sock;
-	int bEof;
-	int iLastErr; /* the OS code a failed send left, for php's own notice */
-};
 static ph7_int64 SockStreamData_Read(void *pHandle,void *pBuffer,ph7_int64 nRead)
 {
 	sock_private *pSock = (sock_private *)pHandle;
@@ -3578,6 +3589,7 @@ static int SockStreamData_Open(const char *zName,int iMode,ph7_value *pResource,
 	pSock->sock = sock;
 	pSock->bEof = 0;
 	pSock->iLastErr = 0;
+	pSock->bGeneric = 0;
 	*ppHandle = (void *)pSock;
 	return PH7_OK;
 }
@@ -3642,12 +3654,30 @@ static io_private * SockWrapSocket(ph7_context *pCtx,ph7_socket sock,const char 
 	pSock->sock = sock;
 	pSock->bEof = 0;
 	pSock->iLastErr = 0;
+	pSock->bGeneric = 0;
 	InitIOPrivate(pCtx->pVm,&sTCP_Stream,pDev);
 	/* php's feof() answers TRUE for a stream whose socket was never created. */
 	pDev->bEof = (sxu8)(sock == PH7_NET_INVALID_SOCKET ? 1 : 0);
 	SetIOPrivateOpenedAs(pDev,zUri,nUri,"r+",2);
 	pDev->pHandle = (void *)pSock;
 	return pDev;
+}
+/*
+ * Undo a SockWrapSocket() whose partner could not be wrapped: the device's own
+ * close hook frees the socket handle, and the io_private chunk goes with it.
+ * Nothing has handed this out as a resource yet, so there is no ph7_value that
+ * could observe it afterwards.
+ */
+static void SockCloseWrapped(ph7_context *pCtx,io_private *pDev)
+{
+	if( pDev == 0 ){
+		return;
+	}
+	if( pDev->pStream && pDev->pStream->xClose && pDev->pHandle ){
+		pDev->pStream->xClose(pDev->pHandle);
+		pDev->pHandle = 0;
+	}
+	ReleaseIOPrivate(pCtx,pDev);
 }
 /*
  * The out-params every address-taking opener carries, on the path that WORKED:
@@ -4496,6 +4526,281 @@ PH7_PRIVATE int PH7_builtin_stream_socket_accept(ph7_context *pCtx,int nArg,ph7_
 		return PH7_OK;
 	}
 	ph7_result_resource(pCtx,pOut);
+	return PH7_OK;
+}
+/*
+ * recvfrom()'s `&$address`: the sender for a datagram, empty for a connected
+ * stream that has none, and NULL for a read that did not happen — php writes it
+ * on every call rather than leaving the caller's previous value in place.
+ */
+static void SockStoreAddress(ph7_context *pCtx,ph7_value **apArg,int nArg,int iArg,const char *zAddr)
+{
+	ph7_value *pTmp;
+	if( iArg >= nArg ){
+		return;
+	}
+	pTmp = ph7_context_new_scalar(pCtx);
+	if( pTmp == 0 ){
+		return;
+	}
+	if( zAddr ){
+		ph7_value_string(pTmp,zAddr,-1);
+	}else{
+		ph7_value_null(pTmp);
+	}
+	PH7_VmStoreArgByRef(pCtx->pVm,apArg[iArg],pTmp);
+}
+/*
+ * bool stream_socket_shutdown(resource $stream, int $mode)
+ *
+ * The half-close: "I am done SENDING" without closing a handle the program
+ * still wants to read from, which is how every request/response protocol tells
+ * its peer the request is over. Nothing else can say it — fclose() takes the
+ * read side with it.
+ */
+PH7_PRIVATE int PH7_builtin_stream_socket_shutdown(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	io_private *pDev;
+	ph7_socket *pSock;
+	ph7_int64 iHow;
+	int rc;
+	if( nArg < 2 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pDev = StreamSettingArgNamed(pCtx,apArg[0],1,"stream",&rc);
+	if( pDev == 0 ){
+		return rc;
+	}
+	iHow = ph7_value_to_int64(apArg[1]);
+	if( iHow != PH7_STREAM_SHUT_RD && iHow != PH7_STREAM_SHUT_WR && iHow != PH7_STREAM_SHUT_RDWR ){
+		/* php names the three constants rather than the numbers behind them. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #2 ($mode) must be one of STREAM_SHUT_RD, STREAM_SHUT_WR, or STREAM_SHUT_RDWR",
+			ph7_function_name(pCtx));
+	}
+	pSock = IoPrivateSocket(pDev);
+	if( pSock == 0 || *pSock == PH7_NET_INVALID_SOCKET ){
+		/* Not a socket: php answers false in silence, since there is no
+		 * direction to shut down. */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	rc = PH7_NetShutdown(*pSock,(int)iHow) == PH7_OK;
+	if( rc && iHow != PH7_STREAM_SHUT_WR && PH7_NetAtEnd(*pSock) ){
+		/* The read side is gone AND nothing is queued behind it, so this handle
+		 * is at its end: php answers feof() for a socket by probing it, and a
+		 * `while (!feof($s))` drain loop after a half-close would otherwise spin
+		 * on a stream that can never answer again. Bytes that HAD arrived are
+		 * still handed over — which is why the answer is probed rather than
+		 * assumed, and why the device's own latch stays clear. */
+		pDev->bEof = 1;
+	}
+	ph7_result_bool(pCtx,rc);
+	return PH7_OK;
+}
+/*
+ * string|false stream_socket_recvfrom(resource $socket, int $length, int $flags = 0,
+ *                                    string &$address = null)
+ * int|false stream_socket_sendto(resource $socket, string $data, int $flags = 0,
+ *                               string $address = "")
+ *
+ * The pair that reaches the socket UNDERNEATH the stream: php's own asks the
+ * socket rather than the handle's read buffer, which is why `STREAM_PEEK` can
+ * look at bytes without consuming them (nothing else in the family can) and why
+ * a recvfrom() on a handle a line read has already buffered WAITS for more.
+ * The `$address` is what a datagram carries and a connected stream does not.
+ */
+PH7_PRIVATE int PH7_builtin_stream_socket_recvfrom(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	io_private *pDev;
+	ph7_socket *pSock;
+	ph7_int64 nLen;
+	char zAddr[128],*zBuf;
+	int rc,iFlags = 0,n;
+	if( nArg < 2 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pDev = StreamSettingArgNamed(pCtx,apArg[0],1,"socket",&rc);
+	if( pDev == 0 ){
+		return rc;
+	}
+	nLen = ph7_value_to_int64(apArg[1]);
+	if( nLen < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #2 ($length) must be greater than 0",ph7_function_name(pCtx));
+	}
+	if( nArg > 2 ){
+		iFlags = (int)ph7_value_to_int64(apArg[2]);
+	}
+	pSock = IoPrivateSocket(pDev);
+	if( pSock == 0 || *pSock == PH7_NET_INVALID_SOCKET ){
+		SockStoreAddress(pCtx,apArg,nArg,3,0);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( nLen > 0x7FFFFFF0 ){
+		nLen = 0x7FFFFFF0;
+	}
+	zBuf = (char *)ph7_context_alloc_chunk(pCtx,(unsigned int)nLen,FALSE,TRUE);
+	if( zBuf == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	zAddr[0] = 0;
+	n = PH7_NetRecvFrom(*pSock,zBuf,(int)nLen,iFlags,zAddr,(int)sizeof(zAddr));
+	/* php writes the out-param on every call: the sender's address for a read
+	 * that happened (empty for a connected stream, which has none to report) and
+	 * NULL for one that did not — never the caller's previous value. */
+	SockStoreAddress(pCtx,apArg,nArg,3,n < 0 ? 0 : zAddr);
+	if( n < 0 ){
+		ph7_result_bool(pCtx,0);
+	}else{
+		ph7_result_string(pCtx,zBuf,n);
+	}
+	ph7_context_free_chunk(pCtx,zBuf);
+	return PH7_OK;
+}
+PH7_PRIVATE int PH7_builtin_stream_socket_sendto(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	io_private *pDev;
+	ph7_socket *pSock;
+	const char *zData,*zSentTo = "";
+	char zHost[256];
+	int rc,iFlags = 0,nData,n,iPort = 0,nSentTo = 0,iErr = 0;
+	if( nArg < 2 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pDev = StreamSettingArgNamed(pCtx,apArg[0],1,"socket",&rc);
+	if( pDev == 0 ){
+		return rc;
+	}
+	zData = ph7_value_to_string(apArg[1],&nData);
+	if( nArg > 2 ){
+		iFlags = (int)ph7_value_to_int64(apArg[2]);
+	}
+	zHost[0] = 0;
+	if( nArg > 3 && ph7_value_is_string(apArg[3]) ){
+		int nAddr,i,nHost = -1;
+		const char *zAddr = ph7_value_to_string(apArg[3],&nAddr);
+		if( nAddr > 0 ){
+			/* php parses THIS address without looking for a transport at all —
+			 * the first colon is the separator, so `udp://1.2.3.4:53` names the
+			 * host "udp" — and an address it cannot turn into a sockaddr is a
+			 * refusal rather than a send to the connected peer, which is where
+			 * the bytes would otherwise silently go. */
+			for( i = 0 ; i + 1 < nAddr ; i++ ){
+				if( zAddr[i] == ':' ){
+					iPort = SockParsePort(&zAddr[i+1],nAddr - i - 1);
+					nHost = i;
+					break;
+				}
+			}
+			if( nHost < 0 ){
+				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+					"Failed to parse `%.*s' into a valid network address",nAddr,zAddr);
+				ph7_result_bool(pCtx,0);
+				return PH7_OK;
+			}
+			if( nHost >= (int)sizeof(zHost) ){
+				nHost = (int)sizeof(zHost) - 1;
+			}
+			if( nHost > 0 ){
+				SyMemcpy(zAddr,zHost,(sxu32)nHost);
+			}
+			zHost[nHost] = 0;
+			zSentTo = zAddr;
+			nSentTo = nAddr;
+		}
+	}
+	pSock = IoPrivateSocket(pDev);
+	if( pSock == 0 || *pSock == PH7_NET_INVALID_SOCKET ){
+		/* php answers -1 here rather than false: this one reports the send()
+		 * result, and it never made a call. */
+		ph7_result_int(pCtx,-1);
+		return PH7_OK;
+	}
+	n = PH7_NetSendTo(*pSock,(const void *)zData,nData,iFlags,zHost,iPort,&iErr);
+	if( iErr == PH7_NET_ERR_RESOLVE ){
+		/* php says it three times for one failure — the resolver's own text, the
+		 * name it could not resolve, and the address it therefore could not
+		 * parse — and answers FALSE rather than the -1 a failed send gives. */
+		char zMsg[512];
+		SockResolveFailure(pCtx,zHost,zMsg,(int)sizeof(zMsg));
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"Failed to resolve `%s': %s",zHost,zMsg);
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+			"Failed to parse `%.*s' into a valid network address",nSentTo,zSentTo);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( n < 0 ){
+		/* php reports the OS text and hands back the -1 send() answered — this
+		 * one never answers false, which is why a caller compares it against 0
+		 * rather than testing it for truth. The trailing newline is php's own. */
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"%s\n",
+			PH7_NetStrError(PH7_NetLastError()));
+	}
+	ph7_result_int(pCtx,n);
+	return PH7_OK;
+}
+/*
+ * array|false stream_socket_pair(int $domain, int $type, int $protocol)
+ *
+ * Two connected sockets with no address between them — the two-way pipe a
+ * program hands a child, or a test double hands the code under test. Which
+ * $domain works is the OS's answer and not php's: POSIX has AF_UNIX and refuses
+ * AF_INET, and Windows is the other way round (php emulates the pair over the
+ * loopback there, and so does this).
+ */
+PH7_PRIVATE int PH7_builtin_stream_socket_pair(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_socket aSock[2];
+	io_private *apDev[2];
+	ph7_value *pArr,*pVal;
+	int iErrno = 0,i;
+	if( nArg < 3 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( PH7_NetSocketPair((int)ph7_value_to_int64(apArg[0]),(int)ph7_value_to_int64(apArg[1]),
+		(int)ph7_value_to_int64(apArg[2]),aSock,&iErrno) != PH7_OK ){
+		/* php reports the OS code and its text, in that order and in brackets. */
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"Failed to create sockets: [%d]: %s",
+			iErrno,PH7_NetStrError(iErrno));
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pArr = ph7_context_new_array(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	apDev[0] = apDev[1] = 0;
+	if( pArr == 0 || pVal == 0 ){
+		PH7_NetClose(aSock[0]);
+		PH7_NetClose(aSock[1]);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	for( i = 0 ; i < 2 ; i++ ){
+		/* No uri: nothing opened these by name, which is what php reports. */
+		apDev[i] = SockWrapSocket(pCtx,aSock[i],0,0);
+		if( apDev[i] == 0 ){
+			/* SockWrapSocket closed the one it could not wrap; the OTHER end is
+			 * still ours to close, wrapped or not. */
+			if( i == 0 ){
+				PH7_NetClose(aSock[1]);
+			}else{
+				SockCloseWrapped(pCtx,apDev[0]);
+			}
+			return PH7_ContextMemoryError(pCtx);
+		}
+		/* A pair has no transport of its own, and php labels it apart from a
+		 * tcp:// stream for exactly that reason. */
+		((sock_private *)apDev[i]->pHandle)->bGeneric = 1;
+	}
+	for( i = 0 ; i < 2 ; i++ ){
+		ph7_value_resource(pVal,apDev[i]);
+		ph7_array_add_elem(pArr,0,pVal);
+	}
+	ph7_result_value(pCtx,pArr);
 	return PH7_OK;
 }
 /*

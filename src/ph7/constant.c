@@ -539,6 +539,109 @@ static void PH7_STREAM_IS_URL_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData);
 }
 /*
+ * The socket-family constants. Their VALUES are the platform's own — AF_INET6 is
+ * 10 on Linux, 23 on Windows and 30 on the BSDs — so they are asked for by id
+ * rather than written down here, and a program handing one to
+ * stream_socket_pair() is handing the OS its own number.
+ */
+#ifdef PH7_ENABLE_NET
+static void PH7_STREAM_PF_INET_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int64(pVal,PH7_NetSocketConst(PH7_NETC_PF_INET));
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_PF_INET6_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int64(pVal,PH7_NetSocketConst(PH7_NETC_PF_INET6));
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_PF_UNIX_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int64(pVal,PH7_NetSocketConst(PH7_NETC_PF_UNIX));
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_SOCK_STREAM_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int64(pVal,PH7_NetSocketConst(PH7_NETC_SOCK_STREAM));
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_SOCK_DGRAM_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int64(pVal,PH7_NetSocketConst(PH7_NETC_SOCK_DGRAM));
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_SOCK_RAW_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int64(pVal,PH7_NetSocketConst(PH7_NETC_SOCK_RAW));
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_SOCK_SEQPACKET_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int64(pVal,PH7_NetSocketConst(PH7_NETC_SOCK_SEQPACKET));
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_SOCK_RDM_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int64(pVal,PH7_NetSocketConst(PH7_NETC_SOCK_RDM));
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_IPPROTO_IP_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int64(pVal,PH7_NetSocketConst(PH7_NETC_IPPROTO_IP));
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_IPPROTO_TCP_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int64(pVal,PH7_NetSocketConst(PH7_NETC_IPPROTO_TCP));
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_IPPROTO_UDP_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int64(pVal,PH7_NetSocketConst(PH7_NETC_IPPROTO_UDP));
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_IPPROTO_ICMP_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int64(pVal,PH7_NetSocketConst(PH7_NETC_IPPROTO_ICMP));
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_IPPROTO_RAW_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int64(pVal,PH7_NetSocketConst(PH7_NETC_IPPROTO_RAW));
+	SXUNUSED(pUserData);
+}
+#endif /* PH7_ENABLE_NET */
+/*
+ * stream_socket_shutdown()'s $mode, and the two recvfrom/sendto flags. These
+ * three ARE php's own numbers rather than the OS's: php maps STREAM_OOB and
+ * STREAM_PEEK onto MSG_OOB/MSG_PEEK itself.
+ */
+static void PH7_STREAM_SHUT_RD_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_SHUT_RD);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_SHUT_WR_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_SHUT_WR);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_SHUT_RDWR_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_SHUT_RDWR);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_OOB_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_OOB);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_PEEK_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_PEEK);
+	SXUNUSED(pUserData);
+}
+/*
  * stream_socket_server()'s $flags. Its default is BIND|LISTEN, and the two are
  * separate because binding is all a datagram server does.
  */
@@ -2249,6 +2352,26 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"STREAM_IS_URL",                PH7_STREAM_IS_URL_Const },
 	{"STREAM_SERVER_BIND",           PH7_STREAM_SERVER_BIND_Const },
 	{"STREAM_SERVER_LISTEN",         PH7_STREAM_SERVER_LISTEN_Const },
+	{"STREAM_SHUT_RD",               PH7_STREAM_SHUT_RD_Const },
+	{"STREAM_SHUT_WR",               PH7_STREAM_SHUT_WR_Const },
+	{"STREAM_SHUT_RDWR",             PH7_STREAM_SHUT_RDWR_Const },
+	{"STREAM_OOB",                   PH7_STREAM_OOB_Const },
+	{"STREAM_PEEK",                  PH7_STREAM_PEEK_Const },
+#ifdef PH7_ENABLE_NET
+	{"STREAM_PF_INET",               PH7_STREAM_PF_INET_Const },
+	{"STREAM_PF_INET6",              PH7_STREAM_PF_INET6_Const },
+	{"STREAM_PF_UNIX",               PH7_STREAM_PF_UNIX_Const },
+	{"STREAM_SOCK_STREAM",           PH7_STREAM_SOCK_STREAM_Const },
+	{"STREAM_SOCK_DGRAM",            PH7_STREAM_SOCK_DGRAM_Const },
+	{"STREAM_SOCK_RAW",              PH7_STREAM_SOCK_RAW_Const },
+	{"STREAM_SOCK_SEQPACKET",        PH7_STREAM_SOCK_SEQPACKET_Const },
+	{"STREAM_SOCK_RDM",              PH7_STREAM_SOCK_RDM_Const },
+	{"STREAM_IPPROTO_IP",            PH7_STREAM_IPPROTO_IP_Const },
+	{"STREAM_IPPROTO_TCP",           PH7_STREAM_IPPROTO_TCP_Const },
+	{"STREAM_IPPROTO_UDP",           PH7_STREAM_IPPROTO_UDP_Const },
+	{"STREAM_IPPROTO_ICMP",          PH7_STREAM_IPPROTO_ICMP_Const },
+	{"STREAM_IPPROTO_RAW",           PH7_STREAM_IPPROTO_RAW_Const },
+#endif
 	{"MT_RAND_MT19937",              PH7_MT_RAND_MT19937_Const },
 	{"MT_RAND_PHP",                  PH7_MT_RAND_PHP_Const  },
 	{"PHP_OUTPUT_HANDLER_WRITE",     PH7_OB_WRITE_Const     },

@@ -3058,6 +3058,10 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"stream_socket_server", PH7_builtin_stream_socket_server },
 		{"stream_socket_accept", PH7_builtin_stream_socket_accept },
 		{"stream_socket_get_name", PH7_builtin_stream_socket_get_name },
+		{"stream_socket_pair",   PH7_builtin_stream_socket_pair },
+		{"stream_socket_shutdown", PH7_builtin_stream_socket_shutdown },
+		{"stream_socket_recvfrom", PH7_builtin_stream_socket_recvfrom },
+		{"stream_socket_sendto",   PH7_builtin_stream_socket_sendto },
 #endif
 		{"popen",     PH7_builtin_popen  },
 		{"proc_open",      PH7_builtin_proc_open      },

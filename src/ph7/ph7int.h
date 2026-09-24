@@ -1008,6 +1008,13 @@ struct VmObEntry
  * stream server, and dropping it leaves a socket nothing can connect to. */
 #define PH7_STREAM_SERVER_BIND   4
 #define PH7_STREAM_SERVER_LISTEN 8
+/* stream_socket_shutdown()'s $mode and the recvfrom/sendto flags: php's own
+ * numbering, which is NOT the OS's (MSG_OOB and MSG_PEEK are mapped in net.c). */
+#define PH7_STREAM_SHUT_RD   0
+#define PH7_STREAM_SHUT_WR   1
+#define PH7_STREAM_SHUT_RDWR 2
+#define PH7_STREAM_OOB       1
+#define PH7_STREAM_PEEK      2
 #define PH7_MT_RAND_MT19937 0
 #define PH7_MT_RAND_PHP     1
 /*
@@ -3437,6 +3444,28 @@ PH7_PRIVATE ph7_socket PH7_NetAcceptTimed(ph7_socket listenSock,int iTimeoutMs,i
 	char *zPeer,int nPeer);
 PH7_PRIVATE int PH7_NetSockName(ph7_socket sock,int bPeer,char *zBuf,int nBuf);
 PH7_PRIVATE int PH7_NetWait(ph7_socket sock,int bWrite,int iTimeoutMs);
+/* The platform-numbered socket constants, asked for by id because their VALUES
+ * differ per OS (AF_INET6 is 10, 23 and 30 on three of them). */
+#define PH7_NETC_PF_INET        1
+#define PH7_NETC_PF_INET6       2
+#define PH7_NETC_PF_UNIX        3
+#define PH7_NETC_SOCK_STREAM    4
+#define PH7_NETC_SOCK_DGRAM     5
+#define PH7_NETC_SOCK_RAW       6
+#define PH7_NETC_SOCK_SEQPACKET 7
+#define PH7_NETC_SOCK_RDM       8
+#define PH7_NETC_IPPROTO_IP     9
+#define PH7_NETC_IPPROTO_TCP   10
+#define PH7_NETC_IPPROTO_UDP   11
+#define PH7_NETC_IPPROTO_ICMP  12
+#define PH7_NETC_IPPROTO_RAW   13
+PH7_PRIVATE ph7_int64 PH7_NetSocketConst(int iWhich);
+PH7_PRIVATE int PH7_NetShutdown(ph7_socket sock,int iHow);
+PH7_PRIVATE int PH7_NetAtEnd(ph7_socket sock);
+PH7_PRIVATE int PH7_NetRecvFrom(ph7_socket sock,void *pBuf,int nLen,int iFlags,char *zAddr,int nAddr);
+PH7_PRIVATE int PH7_NetSendTo(ph7_socket sock,const void *pBuf,int nLen,int iFlags,
+	const char *zHost,int iPort,int *pErrno);
+PH7_PRIVATE int PH7_NetSocketPair(int iDomain,int iType,int iProtocol,ph7_socket *aOut,int *pErrno);
 PH7_PRIVATE int PH7_NetLastError(void);
 PH7_PRIVATE int PH7_NetWouldBlock(void);
 PH7_PRIVATE const char * PH7_NetStrError(int iErr);
@@ -4755,6 +4784,10 @@ PH7_PRIVATE int PH7_builtin_stream_socket_server(ph7_context *pCtx,int nArg,ph7_
 PH7_PRIVATE int PH7_builtin_stream_socket_accept(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_socket_get_name(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_select(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_socket_pair(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_socket_shutdown(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_socket_recvfrom(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_socket_sendto(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_fstat(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_ftell(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_ftruncate(ph7_context *pCtx,int nArg,ph7_value **apArg);
