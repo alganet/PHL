@@ -618,6 +618,7 @@ static const struct VmBuiltinSig {
 	{ "get_current_user", "", "string" },
 	{ "get_declared_classes", "", "array" },
 	{ "get_declared_interfaces", "", "array" },
+	{ "get_declared_traits", "", "array" },
 	{ "get_defined_constants", "bool $categorize = false", "array" },
 	{ "get_defined_functions", "bool $exclude_disabled = true", "array" },
 	{ "get_defined_vars", "", "array" },

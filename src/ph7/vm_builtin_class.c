@@ -518,6 +518,91 @@ PH7_PRIVATE int vm_builtin_class_alias(ph7_context *pCtx,int nArg,ph7_value **ap
 	return PH7_OK;
 }
 /*
+ * The three KINDS hClass holds. php keeps classes, interfaces, traits and enums in one
+ * table too and each of its three list builtins filters that table down to its own kind:
+ * an ENUM is a class (`get_declared_classes()` reports it), an interface and a trait are
+ * not.
+ */
+#define VM_DECLARED_CLASS      0
+#define VM_DECLARED_INTERFACE  1
+#define VM_DECLARED_TRAIT      2
+
+static int VmDeclaredEntryKind(ph7_class *pClass)
+{
+	if( pClass->iFlags & PH7_CLASS_INTERFACE ){
+		return VM_DECLARED_INTERFACE;
+	}
+	if( pClass->iFlags & PH7_CLASS_TRAIT ){
+		return VM_DECLARED_TRAIT;
+	}
+	return VM_DECLARED_CLASS;
+}
+struct VmDeclaredList {
+	int iKind;           /* Which VM_DECLARED_* kind this list wants */
+	ph7_value *pArray;   /* The array being built */
+	ph7_value *pName;    /* Scratch name */
+};
+/*
+ * One row of a get_declared_*() answer.
+ *
+ * The NAME reported is the table KEY, not the class struct's own name — a distinction
+ * only `class_alias()` makes visible, since it puts a second key over the same class.
+ * php reports the class's declared spelling for the key that IS its name and the ALIAS
+ * for the other, so `class_alias('C1','C1Alias')` answers both `C1` and `c1alias`,
+ * lower-cased because that is the spelling php's own alias key is stored under. PHL
+ * keeps the declared spelling in every key, so the fold is applied here.
+ */
+static sxi32 VmDeclaredNameStep(SyHashEntry *pEntry,void *pUserData)
+{
+	struct VmDeclaredList *pList = (struct VmDeclaredList *)pUserData;
+	ph7_class *pClass = (ph7_class *)pEntry->pUserData;
+	SyString *pDecl = &pClass->sName;
+	if( VmDeclaredEntryKind(pClass) != pList->iKind ){
+		return SXRET_OK;
+	}
+	if( pEntry->nKeyLen == pDecl->nByte
+		&& SyStrnmicmp((const char *)pEntry->pKey,pDecl->zString,pEntry->nKeyLen) == 0 ){
+		/* The key this class was DECLARED under */
+		ph7_value_string(pList->pName,pDecl->zString,(int)pDecl->nByte);
+	}else{
+		/* A class_alias() key: php reports it folded */
+		const char *zKey = (const char *)pEntry->pKey;
+		sxu32 n;
+		for( n = 0 ; n < pEntry->nKeyLen ; ++n ){
+			char c = (char)SyToLower(zKey[n]);
+			ph7_value_string(pList->pName,&c,1);
+		}
+	}
+	ph7_array_add_elem(pList->pArray,0/*Automatic index assign*/,pList->pName); /* Will make it's own copy */
+	ph7_value_reset_string_cursor(pList->pName);
+	return SXRET_OK;
+}
+
+/*
+ * Build php's get_declared_classes()/get_declared_interfaces()/get_declared_traits()
+ * answer for one kind.
+ */
+static int VmDeclaredNameList(ph7_context *pCtx,int iKind)
+{
+	struct VmDeclaredList sList;
+	/* Create a new array first */
+	sList.iKind = iKind;
+	sList.pArray = ph7_context_new_array(pCtx);
+	sList.pName = ph7_context_new_scalar(pCtx);
+	if( sList.pArray == 0 || sList.pName == 0 ){
+		/* Out of memory,return NULL */
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	/* hClass is head-pushed, so its forward order is reverse-insertion; php reports
+	 * these lists in DECLARATION order (its own class table is append-ordered), which
+	 * is what the backward walk yields. */
+	SyHashForEachReverse(&pCtx->pVm->hClass,VmDeclaredNameStep,(void *)&sList);
+	/* Return the created array */
+	ph7_result_value(pCtx,sList.pArray);
+	return PH7_OK;
+}
+/*
  * array get_declared_classes(void)
  *   Returns an array with the name of the defined classes
  * Parameters
@@ -530,34 +615,9 @@ PH7_PRIVATE int vm_builtin_class_alias(ph7_context *pCtx,int nArg,ph7_value **ap
  */
 PH7_PRIVATE int vm_builtin_get_declared_classes(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_value *pName,*pArray;
-	SyHashEntry *pEntry;
-	/* Create a new array first */
-	pArray = ph7_context_new_array(pCtx);
-	pName = ph7_context_new_scalar(pCtx);
-	if( pArray == 0 || pName == 0){
-		SXUNUSED(nArg); /* cc warning */
-		SXUNUSED(apArg);
-		/* Out of memory,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	/* Fill the array with the defined classes */
-	SyHashResetLoopCursor(&pCtx->pVm->hClass);
-	while((pEntry = SyHashGetNextEntry(&pCtx->pVm->hClass)) != 0 ){
-		ph7_class *pClass = (ph7_class *)pEntry->pUserData;
-		/* Do not register classes defined as interfaces */
-		if( (pClass->iFlags & PH7_CLASS_INTERFACE) == 0 ){
-			ph7_value_string(pName,SyStringData(&pClass->sName),(int)SyStringLength(&pClass->sName));
-			/* insert class name */
-			ph7_array_add_elem(pArray,0/*Automatic index assign*/,pName); /* Will make it's own copy */
-			/* Reset the cursor */
-			ph7_value_reset_string_cursor(pName);
-		}
-	}
-	/* Return the created array */
-	ph7_result_value(pCtx,pArray);
-	return PH7_OK;
+	SXUNUSED(nArg); /* cc warning */
+	SXUNUSED(apArg);
+	return VmDeclaredNameList(pCtx,VM_DECLARED_CLASS);
 }
 /*
  * array get_declared_interfaces(void)
@@ -572,34 +632,19 @@ PH7_PRIVATE int vm_builtin_get_declared_classes(ph7_context *pCtx,int nArg,ph7_v
  */
 PH7_PRIVATE int vm_builtin_get_declared_interfaces(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_value *pName,*pArray;
-	SyHashEntry *pEntry;
-	/* Create a new array first */
-	pArray = ph7_context_new_array(pCtx);
-	pName = ph7_context_new_scalar(pCtx);
-	if( pArray == 0 || pName == 0 ){
-		SXUNUSED(nArg); /* cc warning */
-		SXUNUSED(apArg);
-		/* Out of memory,return NULL */
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	/* Fill the array with the defined classes */
-	SyHashResetLoopCursor(&pCtx->pVm->hClass);
-	while((pEntry = SyHashGetNextEntry(&pCtx->pVm->hClass)) != 0 ){
-		ph7_class *pClass = (ph7_class *)pEntry->pUserData;
-		/* Register classes defined as interfaces only */
-		if( pClass->iFlags & PH7_CLASS_INTERFACE ){
-			ph7_value_string(pName,SyStringData(&pClass->sName),(int)SyStringLength(&pClass->sName));
-			/* insert interface name */
-			ph7_array_add_elem(pArray,0/*Automatic index assign*/,pName); /* Will make it's own copy */
-			/* Reset the cursor */
-			ph7_value_reset_string_cursor(pName);
-		}
-	}
-	/* Return the created array */
-	ph7_result_value(pCtx,pArray);
-	return PH7_OK;
+	SXUNUSED(nArg); /* cc warning */
+	SXUNUSED(apArg);
+	return VmDeclaredNameList(pCtx,VM_DECLARED_INTERFACE);
+}
+/*
+ * array get_declared_traits(void)
+ *   Returns an array with the name of the defined traits.
+ */
+PH7_PRIVATE int vm_builtin_get_declared_traits(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); /* cc warning */
+	SXUNUSED(apArg);
+	return VmDeclaredNameList(pCtx,VM_DECLARED_TRAIT);
 }
 /*
  * Does this method-table entry answer to the method's OWN name (rather than to an
