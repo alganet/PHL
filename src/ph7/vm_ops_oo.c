@@ -1989,8 +1989,10 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 				if( pInstr->iP2 == PH7_MEMBER_METHOD ){
 					/* Method call */
 					ph7_class_method *pMeth = 0;
-					if( sName.nByte > 0 && (pClass->iFlags & PH7_CLASS_INTERFACE) == 0){
-						/* Extract the target method */
+					if( sName.nByte > 0 ){
+						/* An INTERFACE's methods are looked up too: they are all abstract,
+						 * so the arm below reports php's "Cannot call abstract method
+						 * I::m()" rather than claiming the name does not exist. */
 						pMeth = PH7_ClassExtractMethod(pClass,sName.zString,sName.nByte);
 					}
 					if( pMeth == 0 || (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) ){
@@ -2005,6 +2007,13 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							}
 							PH7_MemObjRelease(pTos);
 							pTos->nIdx = SXU32_HIGH;
+							/* The `$obj::m()` form took a reference on the receiver at the
+							 * top of this branch; every exit has to give it back, and only
+							 * the fall-through at the end of the arm used to. */
+							if( pThis ){
+								PH7_ClassInstanceUnref(pThis);
+								pThis = 0;
+							}
 							rcErr = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sErrM),
 								SyBlobLength(&sErrM));
 							SyBlobRelease(&sErrM);
@@ -2030,6 +2039,10 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 									VmPopOperand(&pTos,1);
 								}
 								PH7_MemObjRelease(pTos);
+								if( pThis ){
+									PH7_ClassInstanceUnref(pThis);
+									pThis = 0;
+								}
 								pTos->x.pOther = pPend;
 								pTos->iFlags = MEMOBJ_NULL|MEMOBJ_AUX_MAGICCALL;
 								pTos->nIdx = SXU32_HIGH;
@@ -2048,6 +2061,10 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								}
 								PH7_MemObjRelease(pTos);
 								pTos->nIdx = SXU32_HIGH;
+								if( pThis ){
+									PH7_ClassInstanceUnref(pThis);
+									pThis = 0;
+								}
 								rcErr = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sErrM),
 									SyBlobLength(&sErrM));
 								SyBlobRelease(&sErrM);
@@ -2110,6 +2127,10 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 							}
 							PH7_MemObjRelease(pTos);
 							pTos->nIdx = SXU32_HIGH;
+							if( pThis ){
+								PH7_ClassInstanceUnref(pThis);
+								pThis = 0;
+							}
 							rcErr = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sErrM),
 								SyBlobLength(&sErrM));
 							SyBlobRelease(&sErrM);
@@ -2131,10 +2152,61 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								VmPopOperand(&pTos,1);
 							}
 							PH7_MemObjRelease(pTos);
+							if( pThis ){
+								PH7_ClassInstanceUnref(pThis);
+								pThis = 0;
+							}
 							pTos->x.pOther = pPend;
 							pTos->iFlags = MEMOBJ_NULL|MEMOBJ_AUX_MAGICCALL;
 							pTos->nIdx = SXU32_HIGH;
 							VM_EXIT_BREAK;
+						}
+						/* php refuses a NON-STATIC method named through `::` unless the
+						 * CALLING frame holds a `$this` the class accepts: that is what
+						 * makes `self::`/`parent::`/`static::` and `C::m()` from inside a
+						 * C method work, and every other spelling — from global scope,
+						 * from a static method, from an unrelated class, and `$obj::m()`
+						 * — an Error. PHL ran the body instead, with `$this` unset or
+						 * (for the object form) bound to the object the `::` was written
+						 * on, which php never uses: it takes the CALLER's. The message
+						 * names the DECLARING class, so `D::m()` reports B::m(). */
+						if( (pMeth->iFlags & PH7_CLASS_ATTR_STATIC) == 0 ){
+							ph7_class_instance *pCallerThis = PH7_VmCallerThisFor(&(*pVm),pClass);
+							if( pCallerThis == 0 ){
+								SyBlob sErrM;
+								sxi32 rcErr;
+								ph7_class *pOwner = PH7_VmMethodScopeName(&(*pVm),pClass,pMeth);
+								SyBlobInit(&sErrM,&pVm->sAllocator);
+								SyBlobFormat(&sErrM,"Non-static method %z::%z() cannot be called statically",
+									&pOwner->sName,&pMeth->sFunc.sName);
+								if( !pInstr->p3 ){
+									VmPopOperand(&pTos,1);
+								}
+								PH7_MemObjRelease(pTos);
+								pTos->nIdx = SXU32_HIGH;
+								if( pThis ){
+									PH7_ClassInstanceUnref(pThis);
+									pThis = 0;
+								}
+								rcErr = VmThrowFromVm(&(*pVm),"Error",(const char *)SyBlobData(&sErrM),
+									SyBlobLength(&sErrM));
+								SyBlobRelease(&sErrM);
+								if( rcErr == SXERR_ABORT ){ VM_EXIT_ABORT; }
+								rc = rcErr;
+								PH7_THROW_ROUTE_MIDEXPR(rc)
+							}
+							/* The receiver is that `$this` — never the object the `::`
+							 * was written on, and never nothing. Naming it here is also
+							 * what makes the call work inside a CLOSURE declared in a
+							 * method: php gives such a closure a `$this`, PHL carries it
+							 * as a frame variable rather than on the frame itself, and
+							 * OP_CALL reads only the frame, so `self::m()` in a closure
+							 * used to run with no receiver at all. */
+							PH7_MemObjRelease(pNos);
+							pNos->x.pOther = pCallerThis;
+							MemObjSetType(pNos,MEMOBJ_OBJ);
+							pCallerThis->iRef++;
+							pNos->nIdx = SXU32_HIGH;
 						}
 						/* Push method name on the stack, MARKED as already screened (see the
 						 * instance twin: OP_CALL cannot re-derive a composed protection). */
