@@ -4190,7 +4190,7 @@ static int SockStreamData_Open(const char *zName,int iMode,ph7_value *pResource,
 		SyStrToInt32(&zColon[1],(sxu32)SyStrlen(&zColon[1]),(void *)&iTmp,0);
 		iPort = (int)iTmp;
 	}
-	sock = PH7_NetConnect(zHost,iPort,0,&iErrno,&zErr);
+	sock = PH7_NetConnect(zHost,iPort,0,0,&iErrno,&zErr);
 	if( sock == PH7_NET_INVALID_SOCKET ){
 		return -1;
 	}
@@ -4292,6 +4292,69 @@ static void SockCloseWrapped(ph7_context *pCtx,io_private *pDev)
 		pDev->pHandle = 0;
 	}
 	ReleaseIOPrivate(pCtx,pDev);
+}
+/* Forward: php's port rule, defined with the address parser further down. */
+static int SockParsePort(const char *z,int n);
+/*
+ * php's `socket` context options, read into the shape net.c applies. Only the
+ * ones a tcp-only, IPv4-only transport can honour are read: `bindto`, which is
+ * the LOCAL address a client connects out from, `backlog`, `so_reuseport` and
+ * `tcp_nodelay`. `so_broadcast` describes a datagram socket and `ipv6_v6only`
+ * an address family this build has not got, so they stay on the context
+ * unapplied (§7.4 slice-2 (a)).
+ *
+ * `bindto` is "host:port", split at the FIRST colon with an atoi() port — the
+ * same address rule the server half already uses — and a spelling with no colon
+ * at all is not an address, so php performs no bind and says nothing. A value
+ * that is not a STRING is php's one hard failure here; everything else is a
+ * warning and a connection made from wherever routing would have sent it.
+ * Returns 0, or -1 with *pzErr set to php's refusal.
+ */
+static int SockCtxOptions(phl_stream_ctx *pCtxRes,ph7_sockopts *pOut,char *zHostBuf,int nHostBuf,
+	const char **pzErr)
+{
+	ph7_value *pVal;
+	SyZero(pOut,sizeof(*pOut));
+	if( pCtxRes == 0 ){
+		return 0;
+	}
+	pVal = PH7_StreamCtxOption(pCtxRes,"socket","backlog");
+	if( pVal ){
+		pOut->iBacklog = (int)ph7_value_to_int64(pVal);
+	}
+	pVal = PH7_StreamCtxOption(pCtxRes,"socket","so_reuseport");
+	pOut->bReusePort = pVal != 0 && ph7_value_to_bool(pVal);
+	pVal = PH7_StreamCtxOption(pCtxRes,"socket","tcp_nodelay");
+	pOut->bNoDelay = pVal != 0 && ph7_value_to_bool(pVal);
+	pVal = PH7_StreamCtxOption(pCtxRes,"socket","bindto");
+	if( pVal ){
+		const char *zSpec;
+		int nSpec = 0,i,nHost = -1;
+		if( (pVal->iFlags & MEMOBJ_STRING) == 0 ){
+			*pzErr = "local_addr context option is not a string.";
+			return -1;
+		}
+		zSpec = (const char *)SyBlobData(&pVal->sBlob);
+		nSpec = (int)SyBlobLength(&pVal->sBlob);
+		for( i = 0 ; i + 1 < nSpec ; i++ ){
+			if( zSpec[i] == ':' ){
+				nHost = i;
+				pOut->iBindPort = SockParsePort(&zSpec[i+1],nSpec - i - 1);
+				break;
+			}
+		}
+		if( nHost >= 0 ){
+			if( nHost >= nHostBuf ){
+				nHost = nHostBuf - 1;
+			}
+			if( nHost > 0 ){
+				SyMemcpy(zSpec,zHostBuf,(sxu32)nHost);
+			}
+			zHostBuf[nHost] = 0;
+			pOut->zBindHost = zHostBuf;
+		}
+	}
+	return 0;
 }
 /*
  * php's PERSISTENT sockets, which pfsockopen() and STREAM_CLIENT_PERSISTENT ask
@@ -4997,6 +5060,8 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 	int iArgErrstr = bClientForm ? 2 : 3;
 	int iArgTimeout = bClientForm ? 3 : 4;
 	phl_stream_ctx *pCtxRes = 0;
+	ph7_sockopts sOpt;
+	char zBindHost[256];
 	int bThrew = 0;
 	if( nArg < 1 ){
 		ph7_result_bool(pCtx,0);
@@ -5096,7 +5161,26 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 		ph7_result_resource(pCtx,pDev);
 		return PH7_OK;
 	}
-	sock = PH7_NetConnect(zHost,iPort,iTimeoutMs,&iErrno,&zErr);
+	{
+		/* php reads the `socket` options at the moment it creates the socket:
+		 * so_reuseport and tcp_nodelay are a setsockopt on the fresh one, and
+		 * bindto is the LOCAL address it takes before connecting. */
+		const char *zOptErr = 0;
+		if( SockCtxOptions(pCtxRes,&sOpt,zBindHost,(int)sizeof(zBindHost),&zOptErr) != 0 ){
+			/* The one option failure php treats as a failed CONNECT rather than
+			 * as a warning it can carry on past. */
+			SockAddressFailure(pCtx,apArg,nArg,iArgErrno,iArgErrstr,zShow,nShow,zOptErr,0);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+	}
+	sock = PH7_NetConnect(zHost,iPort,iTimeoutMs,&sOpt,&iErrno,&zErr);
+	if( sOpt.bBindFailed ){
+		/* php's own wording, and it does NOT stop the connection: the socket
+		 * goes out from wherever the routing table would have sent it. */
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"Invalid IP Address: %s",
+			sOpt.zBindHost ? sOpt.zBindHost : "");
+	}
 	if( sock == PH7_NET_INVALID_SOCKET ){
 		if( iErrno == PH7_NET_ERR_RESOLVE ){
 			zErr = SockResolveFailure(pCtx,zHost,zMsg,(int)sizeof(zMsg));
@@ -5155,6 +5239,8 @@ PH7_PRIVATE int PH7_builtin_stream_socket_server(ph7_context *pCtx,int nArg,ph7_
 	ph7_socket sock;
 	io_private *pDev;
 	phl_stream_ctx *pCtxRes;
+	ph7_sockopts sOpt;
+	char zBindHost[256];
 	int bThrew = 0;
 	if( nArg < 1 ){
 		ph7_result_bool(pCtx,0);
@@ -5215,8 +5301,20 @@ PH7_PRIVATE int PH7_builtin_stream_socket_server(ph7_context *pCtx,int nArg,ph7_
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	{
+		/* The server half reads `backlog`, `so_reuseport` and `tcp_nodelay`;
+		 * `bindto` is not one of its options, because the address argument IS
+		 * where a server binds (php ignores it here too). */
+		const char *zOptErr = 0;
+		if( SockCtxOptions(pCtxRes,&sOpt,zBindHost,(int)sizeof(zBindHost),&zOptErr) != 0 ){
+			SockAddressFailure(pCtx,apArg,nArg,1,2,zAddr,nAddr,zOptErr,0);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		sOpt.zBindHost = 0;
+	}
 	sock = PH7_NetBind(zHost,iPort,0,(iFlags & PH7_STREAM_SERVER_LISTEN) != 0,
-		SOCK_LISTEN_BACKLOG,&iErrno,&zErr);
+		SOCK_LISTEN_BACKLOG,&sOpt,&iErrno,&zErr);
 	if( sock == PH7_NET_INVALID_SOCKET ){
 		char zMsg[512];
 		if( iErrno == PH7_NET_ERR_RESOLVE ){

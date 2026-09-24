@@ -27,8 +27,66 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <netinet/tcp.h>
 #endif
 
+/*
+ * The `socket` context options that are a setsockopt() on a fresh socket. php
+ * applies them to both halves — the one it binds and the one it connects — and
+ * ignores what the platform has no name for (SO_REUSEPORT is absent on Windows,
+ * where php's own code is #ifdef'd out the same way).
+ */
+static void NetApplySockOpts(ph7_socket sock,const ph7_sockopts *pOpt)
+{
+	int on = 1;
+	if( pOpt == 0 ){
+		return;
+	}
+	if( pOpt->bReusePort ){
+#ifdef SO_REUSEPORT
+		setsockopt(sock,SOL_SOCKET,SO_REUSEPORT,(const char *)&on,sizeof(on));
+#endif
+	}
+	if( pOpt->bNoDelay ){
+#ifdef TCP_NODELAY
+		setsockopt(sock,IPPROTO_TCP,TCP_NODELAY,(const char *)&on,sizeof(on));
+#endif
+	}
+}
+/*
+ * `bindto`: the LOCAL address a client socket takes before it connects, which
+ * is how a program picks the interface (or the source port) its connection goes
+ * out on. php resolves the host half and, when it cannot, warns and connects
+ * from wherever the routing table would have sent it — so a failure here is
+ * reported and never fatal.
+ */
+static int NetBindLocal(ph7_socket sock,int iFamily,const char *zHost,int iPort)
+{
+	struct sockaddr_in addr;
+	struct addrinfo hints,*res = 0;
+	char zPort[16];
+	if( iFamily != AF_INET ){
+		/* net.c speaks AF_INET (§7.4 slice-2 (a)); binding an IPv6 socket to an
+		 * IPv4 local address would fail at the OS anyway. */
+		return -1;
+	}
+	memset(&addr,0,sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons((unsigned short)iPort);
+	snprintf(zPort,sizeof(zPort),"%d",iPort);
+	memset(&hints,0,sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	if( getaddrinfo(zHost,zPort,&hints,&res) != 0 || res == 0 ){
+		return -1;
+	}
+	addr.sin_addr = ((struct sockaddr_in *)res->ai_addr)->sin_addr;
+	freeaddrinfo(res);
+	if( bind(sock,(struct sockaddr *)&addr,sizeof(addr)) != 0 ){
+		return -1;
+	}
+	return PH7_OK;
+}
 /*
  * The OS error the last socket call reported. A Windows socket does not touch
  * errno at all, so a caller reading errno there reads whatever the last
@@ -221,7 +279,7 @@ PH7_PRIVATE void PH7_NetCleanup(void)
  * Returns the socket, or PH7_NET_INVALID_SOCKET.
  */
 PH7_PRIVATE ph7_socket PH7_NetBind(const char *zHost, int iPort, int bDgram, int bListen,
-	int iBacklog, int *pErrno, const char **pzErr)
+	int iBacklog, const ph7_sockopts *pOpt, int *pErrno, const char **pzErr)
 {
 	struct sockaddr_in addr;
 	ph7_socket sock;
@@ -261,6 +319,12 @@ PH7_PRIVATE ph7_socket PH7_NetBind(const char *zHost, int iPort, int bDgram, int
 		return PH7_NET_INVALID_SOCKET;
 	}
 	setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char *)&on, sizeof(on));
+	NetApplySockOpts(sock, pOpt);
+	if( pOpt && pOpt->iBacklog > 0 ){
+		/* php's `backlog` context option: how many completed connections the OS
+		 * may queue before the accept loop gets to them. */
+		iBacklog = pOpt->iBacklog;
+	}
 	if( bind(sock, (struct sockaddr *)&addr, sizeof(addr)) != 0
 	 || (bListen && !bDgram && listen(sock, iBacklog) != 0) ){
 		/* Read the error BEFORE closing the socket: close() is a call of its
@@ -279,7 +343,7 @@ PH7_PRIVATE ph7_socket PH7_NetBind(const char *zHost, int iPort, int bDgram, int
  */
 PH7_PRIVATE ph7_socket PH7_NetListen(const char *zHost, int iPort, int iBacklog)
 {
-	return PH7_NetBind(zHost, iPort, 0, 1, iBacklog, 0, 0);
+	return PH7_NetBind(zHost, iPort, 0, 1, iBacklog, 0, 0, 0);
 }
 /*
  * The local (bPeer == 0) or the peer address of a socket, formatted the way
@@ -360,7 +424,7 @@ PH7_PRIVATE ph7_socket PH7_NetAcceptTimed(ph7_socket listenSock, int iTimeoutMs,
  * Returns the connected socket, or PH7_NET_INVALID_SOCKET on error.
  */
 PH7_PRIVATE ph7_socket PH7_NetConnect(const char *zHost, int iPort, int iTimeoutMs,
-	int *pErrno, const char **pzErr)
+	ph7_sockopts *pOpt, int *pErrno, const char **pzErr)
 {
 	struct addrinfo hints, *res = 0, *rp;
 	char zPort[16];
@@ -392,6 +456,14 @@ PH7_PRIVATE ph7_socket PH7_NetConnect(const char *zHost, int iPort, int iTimeout
 		sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
 		if( sock == PH7_NET_INVALID_SOCKET ){
 			continue;
+		}
+		NetApplySockOpts(sock, pOpt);
+		if( pOpt && pOpt->zBindHost ){
+			/* php connects anyway when the local bind cannot be made; the caller
+			 * words the warning, since only it knows the function name. */
+			if( NetBindLocal(sock, rp->ai_family, pOpt->zBindHost, pOpt->iBindPort) != PH7_OK ){
+				pOpt->bBindFailed = 1;
+			}
 		}
 		if( iTimeoutMs > 0 ){
 			/* the connect() itself stays blocking; the timeout bounds the
@@ -760,7 +832,7 @@ PH7_PRIVATE int PH7_NetSocketPair(int iDomain,int iType,int iProtocol,ph7_socket
 			if( pErrno ){ *pErrno = WSAENOPROTOOPT; }
 			return -1;
 		}
-		listener = PH7_NetBind("127.0.0.1",0,0,1,1,pErrno,0);
+		listener = PH7_NetBind("127.0.0.1",0,0,1,1,0,pErrno,0);
 		if( listener == PH7_NET_INVALID_SOCKET ){
 			return -1;
 		}

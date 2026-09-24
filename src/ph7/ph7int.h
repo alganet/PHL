@@ -3461,9 +3461,27 @@ PH7_PRIVATE int PH7_NetInit(void);
 PH7_PRIVATE int PH7_NetEnsureInit(void);
 PH7_PRIVATE void PH7_NetCleanup(void);
 PH7_PRIVATE ph7_socket PH7_NetListen(const char *zHost,int iPort,int iBacklog);
+/*
+ * The `socket` context options net.c can apply, php's own option names. A NULL
+ * pointer means "none of them", which is what every internal opener passes.
+ * so_broadcast and ipv6_v6only describe a datagram socket and an address family
+ * this build has not got (§7.4 slice-2 (a)), so they are stored on the context
+ * and never reach a socket.
+ */
+typedef struct ph7_sockopts ph7_sockopts;
+struct ph7_sockopts
+{
+	const char *zBindHost; /* `bindto`'s host half, already parsed (0 = no bind) */
+	int iBindPort;         /* `bindto`'s port half */
+	int bReusePort;        /* `so_reuseport` */
+	int bNoDelay;          /* `tcp_nodelay` */
+	int iBacklog;          /* `backlog`; <= 0 keeps the transport's default */
+	int bBindFailed;       /* OUT: the local bind could not be made (php warns) */
+};
 PH7_PRIVATE ph7_socket PH7_NetBind(const char *zHost,int iPort,int bDgram,int bListen,
-	int iBacklog,int *pErrno,const char **pzErr);
-PH7_PRIVATE ph7_socket PH7_NetConnect(const char *zHost,int iPort,int iTimeoutMs,int *pErrno,const char **pzErr);
+	int iBacklog,const ph7_sockopts *pOpt,int *pErrno,const char **pzErr);
+PH7_PRIVATE ph7_socket PH7_NetConnect(const char *zHost,int iPort,int iTimeoutMs,
+	ph7_sockopts *pOpt,int *pErrno,const char **pzErr);
 PH7_PRIVATE ph7_socket PH7_NetAccept(ph7_socket listenSock,struct sockaddr *pAddr,ph7_socklen *pAddrLen);
 PH7_PRIVATE ph7_socket PH7_NetAcceptTimed(ph7_socket listenSock,int iTimeoutMs,int *pbTimedOut,
 	char *zPeer,int nPeer);
