@@ -1849,158 +1849,223 @@ PH7_PRIVATE int PH7_builtin_str_getcsv(ph7_context *pCtx,int nArg,ph7_value **ap
 	return PH7_OK;
 }
 /*
- * Extract a tag name from a raw HTML input and insert it in the given
- * container.
- * Refer to [strip_tags()].
+ * Is the collected tag (`<a href=...>`, `</a>`) one of the allowed ones?
+ *
+ * php normalizes what it collected — lowercased, leading/trailing whitespace
+ * dropped, everything after the tag NAME dropped, a closing `</x>` read as
+ * `<x>` — and then looks for that `<name>` as a SUBSTRING of the allow string,
+ * which is why the allow list is written as `"<a><b>"` and why a tag name that
+ * is a prefix of an allowed one is refused.
  */
-static sxi32 AddTag(SySet *pSet,const char *zTag,int nByte)
+static int FvTagAllowed(const char *zTag,int nTag,const char *zAllow,int nAllow)
 {
-	const char *zEnd = &zTag[nByte];
-	const char *zPtr;
-	SyString sEntry;
-	/* Strip tags */
-	for(;;){
-		while( zTag < zEnd && (zTag[0] == '<' || zTag[0] == '/' || zTag[0] == '?'
-			|| zTag[0] == '!' || zTag[0] == '-' || ((unsigned char)zTag[0] < 0xc0 && SyisSpace(zTag[0]))) ){
-				zTag++;
-		}
-		if( zTag >= zEnd ){
+	char zNorm[128];
+	int n = 0, i = 0, state = 0, done = 0;
+	if( nTag<1 || nAllow<1 ){ return 0; }
+	while( !done && i<=nTag && n<(int)sizeof(zNorm)-2 ){
+		/* php walks past the collected span into its NUL terminator */
+		int c = (i<nTag) ? SyToLower((unsigned char)zTag[i]) : 0;
+		switch( c ){
+		case '<':
+			zNorm[n++] = (char)c;
+			break;
+		case '>':
+			done = 1;
+			break;
+		default:
+			if( c && !SyisSpace((unsigned char)c) ){
+				if( state==0 ){ state = 1; }
+				if( c!='/' || (i>0 && zTag[i-1]!='<' && !(i+1<nTag && zTag[i+1]=='>')) ){
+					zNorm[n++] = (char)c;
+				}
+			}else{
+				if( state==1 ){ done = 1; }
+				if( c==0 ){ done = 1; }
+			}
 			break;
 		}
-		zPtr = zTag;
-		/* Delimit the tag */
-		while(zTag < zEnd ){
-			if( (unsigned char)zTag[0] >= 0xc0 ){
-				/* UTF-8 stream */
-				zTag++;
-				SX_JMP_UTF8(zTag,zEnd);
-			}else if( !SyisAlphaNum(zTag[0]) ){
-				break;
-			}else{
-				zTag++;
-			}
-		}
-		if( zTag > zPtr ){
-			/* Perform the insertion */
-			SyStringInitFromBuf(&sEntry,zPtr,(int)(zTag-zPtr));
-			SyStringFullTrim(&sEntry);
-			SySetPut(pSet,(const void *)&sEntry);
-		}
-		/* Jump the trailing '>' */
-		zTag++;
+		i++;
 	}
-	return SXRET_OK;
+	zNorm[n++] = '>';
+	zNorm[n] = 0;
+	/* the allow list is matched case-insensitively as a substring */
+	for( i=0; i+n<=nAllow; i++ ){
+		int j;
+		for( j=0; j<n; j++ ){
+			if( SyToLower((unsigned char)zAllow[i+j]) != (unsigned char)zNorm[j] ){ break; }
+		}
+		if( j==n ){ return 1; }
+	}
+	return 0;
 }
 /*
- * Check if the given HTML tag name is present in the given container.
- * Return SXRET_OK if present.SXERR_NOTFOUND otherwise.
- * Refer to [strip_tags()].
- */
-static sxi32 FindTag(SySet *pSet,const char *zTag,int nByte)
-{
-	if( SySetUsed(pSet) > 0 ){
-		const char *zCur,*zEnd = &zTag[nByte];
-		SyString sTag;
-		while( zTag < zEnd &&  (zTag[0] == '<' || zTag[0] == '/' || zTag[0] == '?' ||
-			((unsigned char)zTag[0] < 0xc0 && SyisSpace(zTag[0]))) ){
-			zTag++;
-		}
-		/* Delimit the tag */
-		zCur = zTag;
-		while(zTag < zEnd ){
-			if( (unsigned char)zTag[0] >= 0xc0 ){
-				/* UTF-8 stream */
-				zTag++;
-				SX_JMP_UTF8(zTag,zEnd);
-			}else if( !SyisAlphaNum(zTag[0]) ){
-				break;
-			}else{
-				zTag++;
-			}
-		}
-		SyStringInitFromBuf(&sTag,zCur,zTag-zCur);
-		/* Trim leading white spaces and null bytes */
-		SyStringLeftTrimSafe(&sTag);
-		if( sTag.nByte > 0 ){
-			SyString *aEntry,*pEntry;
-			sxi32 rc;
-			sxu32 n;
-			/* Perform the lookup */
-			aEntry = (SyString *)SySetBasePtr(pSet);
-			for( n = 0 ; n < SySetUsed(pSet) ; ++n ){
-				pEntry = &aEntry[n];
-				/* Do the comparison */
-				rc = SyStringCmp(pEntry,&sTag,SyStrnicmp);
-				if( !rc ){
-					return SXRET_OK;
-				}
-			}
-		}
-	}
-	/* No such tag */
-	return SXERR_NOTFOUND;
-}
-/*
- * This function tries to return a string [i.e: in the call context result buffer]
- * with all NUL bytes,HTML and PHP tags stripped from a given string.
- * Refer to [strip_tags()].
+ * strip_tags(), a port of php's own state machine.
+ *
+ * State 0 is the output, state 1 an html tag, state 2 a php tag, state 3 an
+ * `<!` construct and state 4 a comment. What the previous hand-rolled scan (find
+ * a '<', drop through to the next '>') got wrong is everything the machine
+ * tracks beside the two brackets: a '<' followed by WHITESPACE is text and not a
+ * tag opener; a quoted attribute may hold a '>' without closing the tag; a
+ * nested '<' inside a tag raises a depth that the matching '>' lowers; a NUL is
+ * dropped rather than ending the scan; `<?php ... ?>`, `<!-- ... -->` and
+ * `<!DOCTYPE ...>` each have their own exit rule; and an unterminated tag eats
+ * the rest of the input instead of reappearing as text.
  */
 PH7_PRIVATE sxi32 PH7_StripTagsFromString(ph7_context *pCtx,const char *zIn,int nByte,const char *zTaglist,int nTaglen)
 {
-	const char *zEnd = &zIn[nByte];
-	const char *zPtr,*zTag;
-	SySet sSet;
-	/* initialize the set of allowed tags */
-	SySetInit(&sSet,&pCtx->pVm->sAllocator,sizeof(SyString));
-	if( nTaglen > 0 ){
-		/* Set of allowed tags */
-		AddTag(&sSet,zTaglist,nTaglen);
-	}
-	/* Set the empty string */
-	ph7_result_string(pCtx,"",0);
-	/* Start processing */
-	for(;;){
-		if(zIn >= zEnd){
-			/* No more input to process */
+	SyBlob sOut, sTag;
+	int i = 0, state = 0, depth = 0, in_q = 0, br = 0, is_xml = 0;
+	int lc = 0;
+	int bAllow = (zTaglist && nTaglen>0);
+	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+	SyBlobInit(&sTag,&pCtx->pVm->sAllocator);
+	while( i<nByte ){
+		unsigned char c = (unsigned char)zIn[i];
+		/* php reads one byte past the current one; its buffer is NUL-terminated */
+		unsigned char nx = (i+1<nByte) ? (unsigned char)zIn[i+1] : 0;
+		switch( state ){
+		case 0:
+			if( c==0 ){
+				break;
+			}else if( c=='<' && !in_q ){
+				if( SyisSpace(nx) ){
+					SyBlobAppend(&sOut,&zIn[i],1);
+					break;
+				}
+				lc = '<';
+				state = 1;
+				if( bAllow ){ SyBlobAppend(&sTag,"<",1); }
+				i++;
+				continue;
+			}else if( c=='>' ){
+				if( depth ){ depth--; break; }
+				if( in_q ){ break; }
+				SyBlobAppend(&sOut,&zIn[i],1);
+			}else{
+				SyBlobAppend(&sOut,&zIn[i],1);
+			}
+			break;
+		case 1:
+			if( c==0 ){
+				break;
+			}else if( c=='<' && !in_q ){
+				if( SyisSpace(nx) ){
+					if( bAllow ){ SyBlobAppend(&sTag,&zIn[i],1); }
+					break;
+				}
+				depth++;
+				break;
+			}else if( c=='>' ){
+				if( depth ){ depth--; break; }
+				if( in_q ){ break; }
+				lc = '>';
+				if( is_xml && i>=1 && zIn[i-1]=='-' ){ break; }
+				in_q = state = is_xml = 0;
+				if( bAllow ){
+					SyBlobAppend(&sTag,">",1);
+					if( FvTagAllowed((const char *)SyBlobData(&sTag),(int)SyBlobLength(&sTag),
+					                 zTaglist,nTaglen) ){
+						SyBlobAppend(&sOut,SyBlobData(&sTag),SyBlobLength(&sTag));
+					}
+					SyBlobReset(&sTag);
+				}
+				i++;
+				continue;
+			}else if( c=='"' || c=='\'' ){
+				if( i!=0 && (!in_q || (int)c==in_q) ){
+					in_q = in_q ? 0 : (int)c;
+				}
+				if( bAllow ){ SyBlobAppend(&sTag,&zIn[i],1); }
+			}else if( c=='!' && i>=1 && zIn[i-1]=='<' ){
+				state = 3;
+				lc = c;
+				i++;
+				continue;
+			}else if( c=='?' && i>=1 && zIn[i-1]=='<' ){
+				br = 0;
+				state = 2;
+				i++;
+				continue;
+			}else{
+				if( bAllow ){ SyBlobAppend(&sTag,&zIn[i],1); }
+			}
+			break;
+		case 2:
+			if( c=='(' ){
+				if( lc!='"' && lc!='\'' ){ lc = '('; br++; }
+			}else if( c==')' ){
+				if( lc!='"' && lc!='\'' ){ lc = ')'; br--; }
+			}else if( c=='>' ){
+				if( depth ){ depth--; break; }
+				if( in_q ){ break; }
+				if( !br && i>=1 && lc!='"' && zIn[i-1]=='?' ){
+					in_q = state = 0;
+					SyBlobReset(&sTag);
+					i++;
+					continue;
+				}
+			}else if( c=='"' || c=='\'' ){
+				if( i>=1 && zIn[i-1]!='\\' ){
+					if( lc==(int)c ){ lc = 0; }
+					else if( lc!='\\' ){ lc = (int)c; }
+					if( i!=0 && (!in_q || (int)c==in_q) ){
+						in_q = in_q ? 0 : (int)c;
+					}
+				}
+			}else if( c=='l' || c=='L' ){
+				/* `<?xml` is not php: back to the html state */
+				if( state==2 && i>4
+				 && (zIn[i-1]=='m' || zIn[i-1]=='M')
+				 && (zIn[i-2]=='x' || zIn[i-2]=='X')
+				 && zIn[i-3]=='?' && zIn[i-4]=='<' ){
+					state = 1; is_xml = 1;
+					i++;
+					continue;
+				}
+			}
+			break;
+		case 3:
+			if( c=='>' ){
+				if( depth ){ depth--; break; }
+				if( in_q ){ break; }
+				in_q = state = 0;
+				SyBlobReset(&sTag);
+				i++;
+				continue;
+			}else if( c=='"' || c=='\'' ){
+				if( i!=0 && zIn[i-1]!='\\' && (!in_q || (int)c==in_q) ){
+					in_q = in_q ? 0 : (int)c;
+				}
+			}else if( c=='-' ){
+				if( i>=2 && zIn[i-1]=='-' && zIn[i-2]=='!' ){
+					state = 4;
+					i++;
+					continue;
+				}
+			}else if( c=='E' || c=='e' ){
+				/* the !DOCTYPE exception */
+				if( i>6
+				 && (zIn[i-1]=='p'||zIn[i-1]=='P') && (zIn[i-2]=='y'||zIn[i-2]=='Y')
+				 && (zIn[i-3]=='t'||zIn[i-3]=='T') && (zIn[i-4]=='c'||zIn[i-4]=='C')
+				 && (zIn[i-5]=='o'||zIn[i-5]=='O') && (zIn[i-6]=='d'||zIn[i-6]=='D') ){
+					state = 1;
+					i++;
+					continue;
+				}
+			}
+			break;
+		default: /* state 4: inside a comment */
+			if( c=='>' && !in_q && i>=2 && zIn[i-1]=='-' && zIn[i-2]=='-' ){
+				in_q = state = 0;
+				SyBlobReset(&sTag);
+			}
 			break;
 		}
-		zPtr = zIn;
-		/* Find a tag */
-		while( zIn < zEnd && zIn[0] != '<' && zIn[0] != 0 /* NUL byte */ ){
-			zIn++;
-		}
-		if( zIn > zPtr ){
-			/* Consume raw input */
-			ph7_result_string(pCtx,zPtr,(int)(zIn-zPtr));
-		}
-		/* Ignore trailing null bytes */
-		while( zIn < zEnd && zIn[0] == 0 ){
-			zIn++;
-		}
-		if(zIn >= zEnd){
-			/* No more input to process */
-			break;
-		}
-		if( zIn[0] == '<' ){
-			sxi32 rc;
-			zTag = zIn++;
-			/* Delimit the tag */
-			while( zIn < zEnd && zIn[0] != '>' ){
-				zIn++;
-			}
-			if( zIn < zEnd ){
-				zIn++; /* Ignore the trailing closing tag */
-			}
-			/* Query the set */
-			rc = FindTag(&sSet,zTag,(int)(zIn-zTag));
-			if( rc == SXRET_OK ){
-				/* Keep the tag */
-				ph7_result_string(pCtx,zTag,(int)(zIn-zTag));
-			}
-		}
+		i++;
 	}
-	/* Cleanup */
-	SySetRelease(&sSet);
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+	SyBlobRelease(&sTag);
 	return SXRET_OK;
 }
 /*
@@ -2014,10 +2079,26 @@ PH7_PRIVATE sxi32 PH7_StripTagsFromString(ph7_context *pCtx,const char *zIn,int 
  * Return
  *  Returns the stripped string.
  */
+static int VmStripTagsListWalk(ph7_value *pKey,ph7_value *pData,void *pUserData)
+{
+	SyBlob *pOut = (SyBlob *)pUserData;
+	ph7_value sTmp;
+	const char *zTag; int nTag;
+	SXUNUSED(pKey);
+	/* through a COPY: the array is the caller's */
+	PH7_MemObjInit(pData->pVm,&sTmp);
+	zTag = ph7_value_to_string(PH7_ValuePeek(pData,&sTmp),&nTag);
+	SyBlobAppend(pOut,"<",1);
+	if( nTag>0 ){ SyBlobAppend(pOut,zTag,(sxu32)nTag); }
+	SyBlobAppend(pOut,">",1);
+	PH7_MemObjRelease(&sTmp);
+	return PH7_OK;
+}
 PH7_PRIVATE int PH7_builtin_strip_tags(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zTaglist = 0;
 	const char *zString;
+	SyBlob sTags;
 	int nTaglen = 0;
 	int nLen;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
@@ -2027,12 +2108,20 @@ PH7_PRIVATE int PH7_builtin_strip_tags(ph7_context *pCtx,int nArg,ph7_value **ap
 	}
 	/* Point to the raw string */
 	zString = ph7_value_to_string(apArg[0],&nLen);
+	SyBlobInit(&sTags,&pCtx->pVm->sAllocator);
 	if( nArg > 1 && ph7_value_is_string(apArg[1]) ){
 		/* Allowed tag */
 		zTaglist = ph7_value_to_string(apArg[1],&nTaglen);
+	}else if( nArg > 1 && ph7_value_is_array(apArg[1]) ){
+		/* php 7.4's ARRAY spelling of the same list: each entry is a bare tag
+		 * NAME, and php builds the `<a><b>` string out of them. */
+		ph7_array_walk(apArg[1],VmStripTagsListWalk,&sTags);
+		zTaglist = (const char *)SyBlobData(&sTags);
+		nTaglen = (int)SyBlobLength(&sTags);
 	}
 	/* Process input */
 	PH7_StripTagsFromString(pCtx,zString,nLen,zTaglist,nTaglen);
+	SyBlobRelease(&sTags);
 	return PH7_OK;
 }
 #endif /* PH7_NEED_FMT_AND_INI */
