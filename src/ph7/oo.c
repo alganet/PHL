@@ -2025,11 +2025,6 @@ PH7_PRIVATE ph7_value * PH7_ClassInstanceExtractAttrValue(ph7_class_instance *pT
  */
 PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmap(ph7_class_instance *pThis,ph7_hashmap *pMap)
 {
-	SyHashEntry *pEntry;
-	SyString *pAttrName;
-	VmClassAttr *pAttr;
-	ph7_value *pValue;
-	ph7_value sName;
 	{
 		/* php's get_properties handler, which is what the (array) cast reads: a
 		 * DateTime casts to date/timezone_type/timezone, not to the hidden slots
@@ -2054,6 +2049,26 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmap(ph7_class_instance *pThis,ph7_hashm
 		sPresent.iFlags = MEMOBJ_NULL;
 		PH7_MemObjRelease(&sPresent);
 	}
+	return PH7_ClassInstanceToHashmapRaw(pThis,pMap);
+}
+/*
+ * The SLOT walk under the cast above, with php's get_properties handler left out:
+ * the instance's own property table, mangled, and nothing else.
+ *
+ * This is what `get_mangled_object_vars()` answers — php asks the same handler with a
+ * different PURPOSE there, and every class here that has a handler answers the raw
+ * table for it: `get_mangled_object_vars(new ArrayObject([1,2]))` is the EMPTY array
+ * where the cast is `[1,2]`, and a DateTime's is empty where the cast has three keys.
+ * Since PHL's engine slots are hidden (and php's equivalents live outside the property
+ * table entirely), dropping the handler is the whole difference.
+ */
+PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmapRaw(ph7_class_instance *pThis,ph7_hashmap *pMap)
+{
+	SyHashEntry *pEntry;
+	SyString *pAttrName;
+	VmClassAttr *pAttr;
+	ph7_value *pValue;
+	ph7_value sName;
 	/* Reset the loop cursor */
 	SyHashResetLoopCursor(&pThis->hAttr);
 	PH7_MemObjInitFromString(pThis->pVm,&sName,0);

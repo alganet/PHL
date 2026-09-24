@@ -5662,6 +5662,7 @@ static const ph7_builtin_func aVmFunc[] = {
 	{ "get_class_methods",       vm_builtin_get_class_methods },
 	{ "get_class_vars",          vm_builtin_get_class_vars    },
 	{ "get_object_vars",         vm_builtin_get_object_vars   },
+	{ "get_mangled_object_vars", vm_builtin_get_mangled_object_vars },
 	{ "is_subclass_of",          vm_builtin_is_subclass_of    },
 	{ "is_a", vm_builtin_is_a },
 	   /* php 8.5: clone is a real internal function (the clone-with call form) */

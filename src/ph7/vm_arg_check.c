@@ -626,6 +626,7 @@ static const struct VmBuiltinSig {
 	{ "get_include_path", "", "string|false" },
 	{ "get_included_files", "", "array" },
 	{ "get_loaded_extensions", "bool $zend_extensions = false", "array" },
+	{ "get_mangled_object_vars", "object $object", "array" },
 	{ "get_object_vars", "object $object", "array" },
 	{ "get_parent_class", "object|string $object_or_class = ?", "string|false" },
 	{ "get_resource_id", "$resource", "int" },

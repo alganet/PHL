@@ -1404,6 +1404,41 @@ PH7_PRIVATE int vm_builtin_get_object_vars(ph7_context *pCtx,int nArg,ph7_value 
 	 */
 	return PH7_OK;
 }
+/*
+ * array get_mangled_object_vars(object $object)
+ *  The object's own property table, with php's visibility MANGLING left on the keys:
+ *  a protected `p` is "\0*\0p" and a private one "\0Declaring\0p".
+ *
+ *  It is get_object_vars()'s opposite in both of that function's decisions — no
+ *  visibility screen (every property is reported, from every level of the chain) and
+ *  no property HOOK (a `get` is not dispatched; the backing slot is what is reported,
+ *  and a VIRTUAL hooked property, having no slot, is not reported at all). It is not
+ *  the (array) cast either: the cast asks a native class's own handler, so
+ *  `(array) new ArrayObject([1,2])` is `[1,2]` where this answers the EMPTY table.
+ */
+PH7_PRIVATE int vm_builtin_get_mangled_object_vars(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = 0;
+	ph7_value *pArray;
+	if( nArg > 0 && (apArg[0]->iFlags & MEMOBJ_OBJ) ){
+		/* Extract the target instance */
+		pThis = (ph7_class_instance *)apArg[0]->x.pOther;
+	}
+	if( pThis == 0 ){
+		/* The `object $object` signature row refuses everything else before we run */
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pArray = ph7_context_new_array(pCtx);
+	if( pArray == 0 ){
+		/* Out of memory,return NULL */
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_ClassInstanceToHashmapRaw(pThis,(ph7_hashmap *)pArray->x.pOther);
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
 /* Bound on `extends` chain depth — matches PH7_THROWABLE_WALK_MAX_DEPTH in
  * compile.c. Defends against compiler cycles even though interface cycle
  * detection should reject them up front. */
