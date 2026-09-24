@@ -1260,14 +1260,23 @@ static void VmSessSave(ph7_vm *pVm,const char *zWho)
 		ph7_value *apA[2];
 		int iOp = VM_SESS_OP_WRITE;
 		if( PH7_VmIniGetBool(pVm,"session.lazy_write",1)
+		 && SyBlobLength(&pVm->sSessData) > 0
 		 && SyBlobLength(&sData) == SyBlobLength(&pVm->sSessData)
-		 && (SyBlobLength(&sData) == 0
-		  || SyMemcmp(SyBlobData(&sData),SyBlobData(&pVm->sSessData),
-			SyBlobLength(&sData)) == 0) ){
+		 && SyMemcmp(SyBlobData(&sData),SyBlobData(&pVm->sSessData),
+			SyBlobLength(&sData)) == 0 ){
 			/* session.lazy_write, php's default: a session whose data did not
 			 * change is not written again — the store is only told the session was
 			 * USED, so its expiry moves without the payload going over the wire.
-			 * A handler that does not implement the interface still gets write(). */
+			 * A handler that does not implement the interface still gets write().
+			 *
+			 * "Did not change" is a comparison against what the READ returned, so
+			 * there has to have BEEN one: php keeps the read's value and skips this
+			 * branch entirely when the store had nothing (its read reports failure
+			 * for an absent session). Comparing lengths alone made a BRAND-NEW id
+			 * whose $_SESSION stayed empty look unchanged — both payloads empty — so
+			 * the one call that would have created the store never happened, and a
+			 * handler that implements write() but not the optional updateTimestamp()
+			 * was never told about the session at all. */
 			iOp = VM_SESS_OP_UPDATE;
 		}
 		VmSessStrArg(pVm,&sId,(const char *)SyBlobData(&pVm->sSessId),
