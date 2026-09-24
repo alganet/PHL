@@ -975,6 +975,44 @@ static void PH7_DATE_W3C_Const(ph7_value *pVal,void *pUserData)
 	ph7_value_string(pVal,"Y-m-d\\TH:i:sP",-1/*Compute length automatically*/);
 }
 /*
+ * The three format constants php added after the original set. Each is a plain
+ * format STRING, so the whole of its behaviour is what date()/DateTime::format()
+ * already do with those characters -- but each was a loud undefined-constant
+ * fatal, which is a program that does not run rather than one that runs wrong.
+ *
+ * DATE_RFC7231 is the HTTP date (always GMT, so the zone letters are ESCAPED
+ * rather than formatted -- php's own definition, and the reason it is not
+ * DATE_RFC1123 with a T on the end). DATE_RFC3339_EXTENDED carries
+ * milliseconds. DATE_ISO8601_EXPANDED uses `X`, the expanded-year field, where
+ * the plain DATE_ISO8601 uses `Y`.
+ */
+static void PH7_DATE_RFC7231_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_string(pVal,"D, d M Y H:i:s \\G\\M\\T",-1/*Compute length automatically*/);
+}
+static void PH7_DATE_RFC3339_EXTENDED_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_string(pVal,"Y-m-d\\TH:i:s.vP",-1/*Compute length automatically*/);
+}
+static void PH7_DATE_ISO8601_EXPANDED_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_string(pVal,"X-m-d\\TH:i:sP",-1/*Compute length automatically*/);
+}
+/*
+ * FILE_TEXT / FILE_BINARY
+ *  Both expand 0. php declares them for file()/file_put_contents()'s $flags and
+ *  ignores them (the CLI has no text mode to select), but a program that names
+ *  one still has to COMPILE, and an undefined constant is a fatal.
+ */
+static void PH7_FILE_TEXT_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,0);
+	SXUNUSED(pUserData);
+}
+/*
  * The ENT_* values are PHP-exact (php 8.5.7). The low two bits are the quote
  * bits (1 = single, 2 = double), so ENT_QUOTES = ENT_COMPAT|1 and
  * ENT_NOQUOTES = 0. Bits 16|32 select the doctype (0 = HTML401, 16 = XML1,
@@ -2144,8 +2182,13 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"DATE_RFC1123",         PH7_DATE_RFC1123_Const },
 	{"DATE_RFC2822",         PH7_DATE_RFC2822_Const },
 	{"DATE_RFC3339",         PH7_DATE_ATOM_Const    },
+	{"DATE_RFC3339_EXTENDED",PH7_DATE_RFC3339_EXTENDED_Const },
+	{"DATE_RFC7231",         PH7_DATE_RFC7231_Const },
+	{"DATE_ISO8601_EXPANDED",PH7_DATE_ISO8601_EXPANDED_Const },
 	{"DATE_RSS",             PH7_DATE_RSS_Const     },
 	{"DATE_W3C",             PH7_DATE_W3C_Const     },
+	{"FILE_TEXT",            PH7_FILE_TEXT_Const    },
+	{"FILE_BINARY",          PH7_FILE_TEXT_Const    },
 	{"ENT_COMPAT",           PH7_ENT_COMPAT_Const   },
 	{"ENT_QUOTES",           PH7_ENT_QUOTES_Const   },
 	{"ENT_NOQUOTES",         PH7_ENT_NOQUOTES_Const },

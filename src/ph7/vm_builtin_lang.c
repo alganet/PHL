@@ -562,45 +562,110 @@ PH7_PRIVATE int vm_builtin_constant(ph7_context *pCtx,int nArg,ph7_value **apArg
 	return SXRET_OK;
 }
 /*
- * Hash walker callback used by the [get_defined_constants()] function
- * defined below.
+ * Hash walker callback used by the [get_defined_constants()] function defined
+ * below. php's answer is a MAP -- the constant's name is the KEY and its VALUE
+ * is the element -- which is what makes `get_defined_constants()['PHP_EOL']`
+ * the documented way to read one. PHL used to answer a LIST of names, so every
+ * such lookup was an `Undefined array key` and NULL, and `in_array($n, $c)`
+ * answered where php wants `isset($c[$n])`: the array had the right length and
+ * the wrong shape.
  */
 static int VmHashConstStep(SyHashEntry *pEntry,void *pUserData)
 {
-	ph7_value *pArray = (ph7_value *)pUserData;
-	ph7_value sName;
-	sxi32 rc;
-	/* Prepare the constant name for insertion */
-	PH7_MemObjInitFromString(pArray->pVm,&sName,0);
-	PH7_MemObjStringAppend(&sName,(const char *)pEntry->pKey,pEntry->nKeyLen);
-	/* Perform the insertion */
-	rc = ph7_array_add_elem(pArray,0,&sName); /* Will make it's own copy */
-	PH7_MemObjRelease(&sName);
-	return rc;
+	/* SNAPSHOT ONLY -- nothing is expanded during the walk. A `const` whose
+	 * initializer is a bytecode program runs USER CODE when it expands, and user
+	 * code can `define()`: that grows hConstant while SyHashForEach is holding a
+	 * fixed entry count, and the walk then runs off the end of the bucket chain
+	 * (a segfault, reproducible from a const initializer that constructs an
+	 * object whose __construct defines a constant). Collect first, expand after. */
+	SySet *pOut = (SySet *)pUserData;
+	if( pEntry == 0 || pEntry->pUserData == 0 ){
+		return SXRET_OK;
+	}
+	SySetPut(pOut,(const void *)&pEntry);
+	return SXRET_OK;
 }
 /*
- * array get_defined_constants(void)
- *  Returns an associative array with the names of all defined
+ * Add one snapshotted constant to the answer, under its name.
+ */
+static void VmConstDumpEntry(ph7_value *pTarget,SyHashEntry *pEntry)
+{
+	ph7_constant *pCons = (ph7_constant *)pEntry->pUserData;
+	ph7_value sName,sVal;
+	/* Prepare the constant name for insertion */
+	PH7_MemObjInitFromString(pTarget->pVm,&sName,0);
+	PH7_MemObjStringAppend(&sName,(const char *)pEntry->pKey,pEntry->nKeyLen);
+	/* ...and its VALUE. The expansion callback is called DIRECTLY rather than
+	 * through VmExpandConstantWithNotice: describing a constant is not reading
+	 * one, so a `#[\Deprecated]` constant must not raise its notice here (php
+	 * does not either, and a corpus that merely dumps the table would otherwise
+	 * emit one notice per deprecated name). */
+	PH7_MemObjInit(pTarget->pVm,&sVal);
+	pCons->xExpand(&sVal,pCons->pUserData);
+	ph7_array_add_elem(pTarget,&sName,&sVal); /* Will make its own copy */
+	PH7_MemObjRelease(&sVal);
+	PH7_MemObjRelease(&sName);
+}
+/*
+ * array get_defined_constants(bool $categorize = false)
+ *  Returns an associative array with the names AND VALUES of all defined
  *  constants.
  * Parameters
- *  NONE.
+ *  $categorize
+ *   TRUE groups the map one level deeper, by the extension each constant
+ *   belongs to. This engine has no extension partition (the same limitation
+ *   ReflectionFunction::getExtensionName() records), so it answers php's two
+ *   buckets it CAN tell apart: `user` for everything a script defined with
+ *   define()/const, and `Core` for the engine's own -- where php would spread
+ *   the latter over standard/date/pcre/json/… as well.
  * Returns
- *  Returns the names of all the constants currently defined.
+ *  The constants currently defined, name => value.
  */
 PH7_PRIVATE int vm_builtin_get_defined_constants(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_value *pArray;
+	ph7_value *pArray,*pAll,*pUser = 0;
+	SySet aSnap;
+	SyHashEntry **apEntry;
+	sxu32 n,nSnap;
+	int bCategorize = nArg > 0 && ph7_value_to_bool(apArg[0]);
 	/* Create the array first*/
 	pArray = ph7_context_new_array(pCtx);
 	if( pArray == 0 ){
-		SXUNUSED(nArg); /* cc warning */
-		SXUNUSED(apArg);
 		/* Return NULL */
 		ph7_result_null(pCtx);
 		return SXRET_OK;
 	}
-	/* Fill the array with the defined constants */
-	SyHashForEach(&pCtx->pVm->hConstant,VmHashConstStep,pArray);
+	pAll = pArray;
+	if( bCategorize ){
+		pAll = ph7_context_new_array(pCtx);
+		pUser = ph7_context_new_array(pCtx);
+		if( pAll == 0 || pUser == 0 ){
+			ph7_result_null(pCtx);
+			return SXRET_OK;
+		}
+	}
+	/* Snapshot the table, then expand: expanding runs user code, which may
+	 * define() and grow the table under the walk (see VmHashConstStep). */
+	SySetInit(&aSnap,&pCtx->pVm->sAllocator,sizeof(SyHashEntry *));
+	SyHashForEach(&pCtx->pVm->hConstant,VmHashConstStep,&aSnap);
+	apEntry = (SyHashEntry **)SySetBasePtr(&aSnap);
+	nSnap = SySetUsed(&aSnap);
+	for( n = 0 ; n < nSnap ; ++n ){
+		ph7_constant *pCons = (ph7_constant *)apEntry[n]->pUserData;
+		VmConstDumpEntry(pUser && pCons->bUserDefined ? pUser : pAll,apEntry[n]);
+	}
+	SySetRelease(&aSnap);
+	if( bCategorize ){
+		/* php's own order: the engine's buckets first, `user` last -- and php
+		 * omits a category with nothing in it, so a script that defined no
+		 * constant of its own has no `user` key at all rather than an empty one. */
+		ph7_array_add_strkey_elem(pArray,"Core",pAll);
+		if( ph7_array_count(pUser) > 0 ){
+			ph7_array_add_strkey_elem(pArray,"user",pUser);
+		}
+		ph7_context_release_value(pCtx,pAll);
+		ph7_context_release_value(pCtx,pUser);
+	}
 	/* Return the created array */
 	ph7_result_value(pCtx,pArray);
 	return SXRET_OK;
