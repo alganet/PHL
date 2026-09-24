@@ -757,6 +757,7 @@ static const struct VmBuiltinSig {
 	{ "ob_get_flush", "", "string|false" },
 	{ "ob_get_length", "", "int|false" },
 	{ "ob_get_level", "", "int" },
+	{ "ob_get_status", "bool $full_status = false", "array" },
 	{ "ob_implicit_flush", "bool $enable = true", "void" },
 	{ "ob_list_handlers", "", "array" },
 	{ "ob_start", "$callback = NULL, int $chunk_size = 0, int $flags = 112", "bool" },

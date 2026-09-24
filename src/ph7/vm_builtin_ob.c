@@ -22,6 +22,8 @@
 static void VmObRestore(ph7_vm *pVm,VmObEntry *pEntry);
 static sxi32 VmObDeliver(ph7_vm *pVm,sxu32 nIdx,const void *pData,sxu32 nLen);
 static sxi32 VmObSink(ph7_vm *pVm,sxi32 iIdx,const void *pData,sxu32 nLen);
+static ph7_int64 VmObInitSize(VmObEntry *pEntry);
+static void VmObGrow(VmObEntry *pEntry,sxu32 nIncoming);
 /*
  * TRUE while an output handler's own body is running.
  *
@@ -113,6 +115,12 @@ static sxi32 VmObPerform(ph7_vm *pVm,sxu32 nIdx,int iOp,SyBlob *pRaw)
 		}
 	}
 	nRawLen = SyBlobLength(&sData);
+	if( !ph7_value_is_callable(&pEntry->sCallback) ){
+		/* No handler: php's internal one, which "runs" for every operation and is
+		 * always taken to have produced its output. ob_get_status() reports both
+		 * bits from the first operation on, empty buffer included. */
+		pEntry->iFlags |= PH7_OB_STARTED | PH7_OB_PROCESSED;
+	}
 	if( ph7_value_is_callable(&pEntry->sCallback)
 		&& (pEntry->iFlags & PH7_OB_DISABLED) == 0 ){
 		ph7_value sArg,sPhase,sResult,*apArg[2];
@@ -123,7 +131,6 @@ static sxi32 VmObPerform(ph7_vm *pVm,sxu32 nIdx,int iOp,SyBlob *pRaw)
 		/* The callback is copied out for the same reason the bytes are. */
 		PH7_MemObjInit(pVm,&sCallback);
 		PH7_MemObjStore(&pEntry->sCallback,&sCallback);
-		pEntry->iFlags |= PH7_OB_STARTED;
 		/* Marked failed for the DURATION of the call, and cleared again when it comes
 		 * back with an answer. A disabled buffer is transparent, and that is exactly
 		 * what this buffer is while its handler runs: whatever the in-place catch for
@@ -161,6 +168,11 @@ static sxi32 VmObPerform(ph7_vm *pVm,sxu32 nIdx,int iOp,SyBlob *pRaw)
 		}
 		/* php code ran: the slot may have moved, or gone. */
 		pEntry = (VmObEntry *)SySetAt(&pVm->aOB,nIdx);
+		if( pEntry ){
+			/* Set AFTER the call: php's own STARTED is not visible to the first
+			 * invocation, only to the ones that follow it. */
+			pEntry->iFlags |= PH7_OB_STARTED;
+		}
 		if( PH7_CALLBACK_UNWOUND(rcCall)
 			|| (ph7_value_is_bool(&sResult) && !ph7_value_to_bool(&sResult)) ){
 			/* php's two FAILURE shapes — the handler answered FALSE, or it threw
@@ -170,9 +182,11 @@ static sxi32 VmObPerform(ph7_vm *pVm,sxu32 nIdx,int iOp,SyBlob *pRaw)
 			 * handler from throwing a second time out of the shutdown flush) and the
 			 * buffer stops buffering. */
 		}else if( ph7_value_is_bool(&sResult) ){
-			/* TRUE: "no data" — the operation produces nothing at all. */
+			/* TRUE: "no data" — the operation produces nothing at all, and php
+			 * counts that as the handler having processed the buffer. */
 			if( pEntry ){
 				pEntry->iFlags &= ~PH7_OB_DISABLED;
+				pEntry->iFlags |= PH7_OB_PROCESSED;
 			}
 			SyBlobReset(&sData);
 		}else{
@@ -254,6 +268,7 @@ static sxi32 VmObSink(ph7_vm *pVm,sxi32 iIdx,const void *pData,sxu32 nLen)
 			break; /* the buffer went away underneath: fall through to the output */
 		}
 		if( (pEntry->iFlags & PH7_OB_DISABLED) == 0 ){
+			VmObGrow(pEntry,nLen);
 			SyBlobAppend(&pEntry->sOB,pData,nLen);
 			/* A buffer with a chunk size writes out as soon as it holds one. */
 			if( pEntry->nChunk > 0 && SyBlobLength(&pEntry->sOB) >= pEntry->nChunk ){
@@ -365,6 +380,65 @@ static int VmObRefuseInHandler(ph7_context *pCtx)
 	return 1;
 }
 /*
+ * php's name for one buffer's handler: the callable's own display name (a plain
+ * function name, `Class::method`, `{closure:file:line}`) or, with no handler at
+ * all, the literal "default output handler". It reaches ob_list_handlers(),
+ * ob_get_status() and the refusal notices below — where PHL used to answer
+ * "Class Method" for every array callback and "default output handler" for every
+ * CLOSURE, so a closure handler was indistinguishable from none.
+ */
+static void VmObHandlerName(ph7_vm *pVm,VmObEntry *pEntry,SyBlob *pOut)
+{
+	if( ph7_value_is_callable(&pEntry->sCallback) ){
+		PH7_VmCallableName(pVm,&pEntry->sCallback,pOut);
+		if( SyBlobLength(pOut) > 0 ){
+			return;
+		}
+	}
+	SyBlobAppend(pOut,"default output handler",sizeof("default output handler")-1);
+}
+/*
+ * Copy one buffer's bytes out. Anything that can run php code — a notice reaching
+ * a user error handler included — may realloc the buffer stack, so nothing holds
+ * a VmObEntry pointer across it.
+ */
+static void VmObSnapshot(ph7_vm *pVm,sxu32 nIdx,SyBlob *pOut)
+{
+	VmObEntry *pEntry = (VmObEntry *)SySetAt(&pVm->aOB,nIdx);
+	if( pEntry && SyBlobLength(&pEntry->sOB) > 0 ){
+		SyBlobAppend(pOut,SyBlobData(&pEntry->sOB),SyBlobLength(&pEntry->sOB));
+	}
+}
+/*
+ * ob_start()'s $flags decide what may be done to the buffer afterwards, and every
+ * member tests its own bit before it touches anything: CLEANABLE for ob_clean(),
+ * FLUSHABLE for ob_flush(), REMOVABLE for the four that take the buffer away. A
+ * refused operation does NOT run the handler and leaves the buffer exactly as it
+ * was. The argument was declared in `aBuiltinSig[]` and read by nothing, so a
+ * buffer opened as un-removable — the standard way a framework pins its own
+ * output layer in place — could be torn out by any library that called
+ * ob_end_clean().
+ *
+ * `zWhat` is php's verb for this member ("delete"/"flush"/"discard"/"send").
+ * Returns TRUE when the operation may proceed.
+ */
+static int VmObAllows(ph7_context *pCtx,sxu32 nIdx,int iNeed,const char *zWhat)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	VmObEntry *pEntry = (VmObEntry *)SySetAt(&pVm->aOB,nIdx);
+	SyBlob sName;
+	if( pEntry == 0 || (pEntry->iFlags & iNeed) != 0 ){
+		return 1;
+	}
+	SyBlobInit(&sName,&pVm->sAllocator);
+	VmObHandlerName(pVm,pEntry,&sName);
+	ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,
+		"Failed to %s buffer of %.*s (%u)",zWhat,
+		(int)SyBlobLength(&sName),(const char *)SyBlobData(&sName),nIdx);
+	SyBlobRelease(&sName);
+	return 0;
+}
+/*
  * bool ob_clean(void)
  *  This function discards the contents of the output buffer.
  *  This function does not destroy the output buffer like ob_end_clean() does.
@@ -387,6 +461,10 @@ PH7_PRIVATE int vm_builtin_ob_clean(ph7_context *pCtx,int nArg,ph7_value **apArg
 	if( nUsed < 1 ){
 		ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,
 			"Failed to delete buffer. No buffer to delete");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( !VmObAllows(pCtx,nUsed - 1,PH7_OB_CLEANABLE,"delete") ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -422,6 +500,10 @@ PH7_PRIVATE int vm_builtin_ob_end_clean(ph7_context *pCtx,int nArg,ph7_value **a
 		/* No such OB,return FALSE */
 		ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,
 			"Failed to delete buffer. No buffer to delete");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( !VmObAllows(pCtx,nUsed - 1,PH7_OB_REMOVABLE,"discard") ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -482,6 +564,20 @@ PH7_PRIVATE int vm_builtin_ob_get_clean(ph7_context *pCtx,int nArg,ph7_value **a
 		return PH7_OK;
 	}
 	SyBlobInit(&sRaw,&pVm->sAllocator);
+	/* Snapshot BEFORE the refusal is even tested: the notices below reach a user
+	 * error handler, which is php code that may print into this very buffer, and
+	 * php answers the contents as they were when the call was made. */
+	VmObSnapshot(pVm,nUsed - 1,&sRaw);
+	if( !VmObAllows(pCtx,nUsed - 1,PH7_OB_REMOVABLE,"discard") ){
+		/* php reports the CLEAN and the REMOVAL separately, and still answers the
+		 * contents it could not take away — as they were BEFORE those reports,
+		 * which may run a user error handler that writes into this very buffer. */
+		VmObAllows(pCtx,nUsed - 1,0,"delete");
+		ph7_result_string(pCtx,(const char *)SyBlobData(&sRaw),(int)SyBlobLength(&sRaw));
+		SyBlobRelease(&sRaw);
+		return PH7_OK;
+	}
+	SyBlobReset(&sRaw);
 	rc = VmObPerform(pVm,nUsed - 1,PH7_OB_CLEAN|PH7_OB_FINAL,&sRaw);
 	VmObPop(pVm);
 	ph7_result_string(pCtx,(const char *)SyBlobData(&sRaw),(int)SyBlobLength(&sRaw)); /* Will make it's own copy */
@@ -519,6 +615,17 @@ PH7_PRIVATE int vm_builtin_ob_get_flush(ph7_context *pCtx,int nArg,ph7_value **a
 		return PH7_OK;
 	}
 	SyBlobInit(&sRaw,&pVm->sAllocator);
+	/* Snapshot BEFORE the refusal is even tested: the notices below reach a user
+	 * error handler, which is php code that may print into this very buffer, and
+	 * php answers the contents as they were when the call was made. */
+	VmObSnapshot(pVm,nUsed - 1,&sRaw);
+	if( !VmObAllows(pCtx,nUsed - 1,PH7_OB_REMOVABLE,"send") ){
+		VmObAllows(pCtx,nUsed - 1,0,"delete");
+		ph7_result_string(pCtx,(const char *)SyBlobData(&sRaw),(int)SyBlobLength(&sRaw));
+		SyBlobRelease(&sRaw);
+		return PH7_OK;
+	}
+	SyBlobReset(&sRaw);
 	rc = VmObPerform(pVm,nUsed - 1,PH7_OB_FINAL,&sRaw);
 	VmObPop(pVm);
 	/* The answer is the RAW buffer, not what the handler made of it */
@@ -616,8 +723,12 @@ PH7_PRIVATE int vm_builtin_ob_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 	/* Initialize the OB entry */
 	PH7_MemObjInit(pCtx->pVm,&sOb.sCallback);
 	SyBlobInit(&sOb.sOB,&pVm->sAllocator);
-	sOb.iFlags = PH7_OB_STDFLAGS;
+	/* php keeps whatever it is given except the two nibbles it reserves for
+	 * itself — the phase bits and the STARTED/DISABLED/PROCESSED state — and
+	 * reports the rest back verbatim, sign included. */
+	sOb.iFlags = nArg > 2 ? (ph7_value_to_int64(apArg[2]) & PH7_OB_FLAGMASK) : PH7_OB_STDFLAGS;
 	sOb.nChunk = 0;
+	sOb.nSize = 0;
 	if( nArg > 0 && (apArg[0]->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP|MEMOBJ_OBJ)) ){
 		/* Save the callback name for later invocation (MEMOBJ_OBJ = a Closure callback). */
 		PH7_MemObjStore(apArg[0],&sOb.sCallback);
@@ -625,10 +736,13 @@ PH7_PRIVATE int vm_builtin_ob_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 	}
 	if( nArg > 1 ){
 		ph7_int64 nChunk = ph7_value_to_int64(apArg[1]);
+		/* A negative chunk size is no chunk size at all, which is what php
+		 * reports back for one. */
 		if( nChunk > 0 ){
-			sOb.nChunk = (nChunk > (ph7_int64)SXU32_HIGH) ? SXU32_HIGH : (sxu32)nChunk;
+			sOb.nChunk = nChunk;
 		}
 	}
+	sOb.nSize = VmObInitSize(&sOb);
 	/* Push in the stack */
 	rc = SySetPut(&pVm->aOB,(const void *)&sOb);
 	if( rc != SXRET_OK ){
@@ -668,6 +782,10 @@ PH7_PRIVATE int vm_builtin_ob_flush(ph7_context *pCtx,int nArg,ph7_value **apArg
 	if( nUsed < 1 ){
 		ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,
 			"Failed to flush buffer. No buffer to flush");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( !VmObAllows(pCtx,nUsed - 1,PH7_OB_FLUSHABLE,"flush") ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -724,6 +842,10 @@ PH7_PRIVATE int vm_builtin_ob_end_flush(ph7_context *pCtx,int nArg,ph7_value **a
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	if( !VmObAllows(pCtx,nUsed - 1,PH7_OB_REMOVABLE,"send") ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
 	rc = VmObPerform(pVm,nUsed - 1,PH7_OB_FINAL,0);
 	VmObPop(pVm);
 	/* Return true */
@@ -749,6 +871,108 @@ PH7_PRIVATE int vm_builtin_ob_implicit_flush(ph7_context *pCtx,int nArg,ph7_valu
 	SXUNUSED(pCtx);
 	SXUNUSED(nArg); /* cc warning */
 	SXUNUSED(apArg);
+	return PH7_OK;
+}
+/*
+ * php's buffer SIZE bookkeeping, reproduced so ob_get_status() answers php's
+ * number rather than this engine's blob capacity. The initial allocation is
+ * 16 KB, or the chunk size rounded up to a 4 KB boundary when one was asked for;
+ * a write that would not fit grows it by whichever is larger of that initial size
+ * and the shortfall rounded the same way.
+ */
+#define PH7_OB_ALIGN(n)   ((((ph7_int64)(n)) + 0xFFF) & ~(ph7_int64)0xFFF)
+#define PH7_OB_DEFSIZE    0x4000
+static ph7_int64 VmObInitSize(VmObEntry *pEntry)
+{
+	return pEntry->nChunk > 0 ? PH7_OB_ALIGN(pEntry->nChunk) : PH7_OB_DEFSIZE;
+}
+static void VmObGrow(VmObEntry *pEntry,sxu32 nIncoming)
+{
+	ph7_int64 nUsed = (ph7_int64)SyBlobLength(&pEntry->sOB);
+	ph7_int64 nFree = pEntry->nSize > nUsed ? pEntry->nSize - nUsed : 0;
+	if( nFree <= (ph7_int64)nIncoming ){
+		ph7_int64 nInit = VmObInitSize(pEntry);
+		ph7_int64 nGrow = PH7_OB_ALIGN((ph7_int64)nIncoming - nFree);
+		pEntry->nSize += nGrow > nInit ? nGrow : nInit;
+	}
+}
+/*
+ * Describe one buffer the way ob_get_status() does.
+ */
+static void VmObStatusEntry(ph7_context *pCtx,VmObEntry *pEntry,sxu32 nIdx,ph7_value *pOut)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value *pVal = ph7_context_new_scalar(pCtx);
+	ph7_int64 iFlags = pEntry->iFlags;
+	SyBlob sName;
+	if( pVal == 0 ){
+		return;
+	}
+	if( VmObInHandler(pVm) && pVm->nObActive == nIdx + 1 ){
+		/* Asking from inside this buffer's own handler: the DISABLED mark it wears
+		 * for the duration of the call is bookkeeping, not an answer. */
+		iFlags &= ~PH7_OB_DISABLED;
+	}
+	SyBlobInit(&sName,&pVm->sAllocator);
+	VmObHandlerName(pVm,pEntry,&sName);
+	ph7_value_string_format(pVal,"%.*s",(int)SyBlobLength(&sName),(const char *)SyBlobData(&sName));
+	ph7_array_add_strkey_elem(pOut,"name",pVal);
+	SyBlobRelease(&sName);
+	ph7_value_int(pVal,(iFlags & PH7_OB_USER) ? 1 : 0);
+	ph7_array_add_strkey_elem(pOut,"type",pVal);
+	ph7_value_int64(pVal,iFlags);
+	ph7_array_add_strkey_elem(pOut,"flags",pVal);
+	ph7_value_int64(pVal,(ph7_int64)nIdx);
+	ph7_array_add_strkey_elem(pOut,"level",pVal);
+	ph7_value_int64(pVal,pEntry->nChunk);
+	ph7_array_add_strkey_elem(pOut,"chunk_size",pVal);
+	/* A buffer whose handler failed is not buffering at all, and php reports the
+	 * allocation it dropped: 0. */
+	ph7_value_int64(pVal,(iFlags & PH7_OB_DISABLED) ? 0 : pEntry->nSize);
+	ph7_array_add_strkey_elem(pOut,"buffer_size",pVal);
+	ph7_value_int64(pVal,(ph7_int64)SyBlobLength(&pEntry->sOB));
+	ph7_array_add_strkey_elem(pOut,"buffer_used",pVal);
+	ph7_context_release_value(pCtx,pVal);
+}
+/*
+ * array ob_get_status([bool $full_status = false])
+ *  Describe the active output buffers: the TOPMOST one by default (an empty array
+ *  when nothing is buffering), or every one of them, outermost first, when asked
+ *  for the full status.
+ * Note
+ *  This function did not exist here at all, so the standard way to ask what an
+ *  output handler is and what it may do — `ob_get_status()['flags']` — was an
+ *  undefined-function fatal, and so was every framework probe that guards on it.
+ */
+PH7_PRIVATE int vm_builtin_ob_get_status(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	sxu32 nSeen = VmObVisible(pVm);
+	int bFull = nArg > 0 && ph7_value_to_bool(apArg[0]);
+	ph7_value *pArray = ph7_context_new_array(pCtx);
+	if( pArray == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	if( bFull ){
+		sxu32 n;
+		for( n = 0 ; n < nSeen ; ++n ){
+			VmObEntry *pEntry = (VmObEntry *)SySetAt(&pVm->aOB,n);
+			ph7_value *pOne = ph7_context_new_array(pCtx);
+			if( pEntry == 0 || pOne == 0 ){
+				continue;
+			}
+			VmObStatusEntry(pCtx,pEntry,n,pOne);
+			ph7_array_add_elem(pArray,0,pOne);
+			ph7_context_release_value(pCtx,pOne);
+		}
+	}else if( nSeen > 0 ){
+		VmObEntry *pEntry = (VmObEntry *)SySetAt(&pVm->aOB,nSeen - 1);
+		if( pEntry ){
+			VmObStatusEntry(pCtx,pEntry,nSeen - 1,pArray);
+		}
+	}
+	ph7_result_value(pCtx,pArray);
 	return PH7_OK;
 }
 /*
@@ -785,14 +1009,7 @@ PH7_PRIVATE int vm_builtin_ob_list_handlers(ph7_context *pCtx,int nArg,ph7_value
 		VmObEntry *pEntry = &aEntry[n];
 		/* Extract handler name */
 		SyBlobReset(&sVal.sBlob);
-		if( pEntry->sCallback.iFlags & MEMOBJ_STRING ){
-			/* Callback,dup it's name */
-			SyBlobDup(&pEntry->sCallback.sBlob,&sVal.sBlob);
-		}else if( pEntry->sCallback.iFlags & MEMOBJ_HASHMAP ){
-			SyBlobAppend(&sVal.sBlob,"Class Method",sizeof("Class Method")-1);
-		}else{
-			SyBlobAppend(&sVal.sBlob,"default output handler",sizeof("default output handler")-1);
-		}
+		VmObHandlerName(pVm,pEntry,&sVal.sBlob);
 		sVal.iFlags = MEMOBJ_STRING;
 		/* Perform the insertion */
 		ph7_array_add_elem(pArray,0/* Automatic index assign */,&sVal /* Will make it's own copy */);

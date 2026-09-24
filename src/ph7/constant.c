@@ -529,6 +529,73 @@ static void PH7_STR_PAD_BOTH_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData);
 }
 /*
+ * Output-handler flags and phases (ob_start()'s $flags, and the $phase an output
+ * handler is called with). The values are php's and are a public ABI: the phase
+ * bits are OR'd together (a first FLUSH arrives as FLUSH|START = 5), and the
+ * three capability flags are the ones ob_clean()/ob_flush()/ob_end_*() test
+ * before they will touch the buffer.
+ */
+static void PH7_OB_WRITE_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_OB_WRITE);
+	SXUNUSED(pUserData);
+}
+static void PH7_OB_START_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_OB_START);
+	SXUNUSED(pUserData);
+}
+static void PH7_OB_CLEAN_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_OB_CLEAN);
+	SXUNUSED(pUserData);
+}
+static void PH7_OB_FLUSH_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_OB_FLUSH);
+	SXUNUSED(pUserData);
+}
+static void PH7_OB_FINAL_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_OB_FINAL);
+	SXUNUSED(pUserData);
+}
+static void PH7_OB_CLEANABLE_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_OB_CLEANABLE);
+	SXUNUSED(pUserData);
+}
+static void PH7_OB_FLUSHABLE_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_OB_FLUSHABLE);
+	SXUNUSED(pUserData);
+}
+static void PH7_OB_REMOVABLE_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_OB_REMOVABLE);
+	SXUNUSED(pUserData);
+}
+static void PH7_OB_STDFLAGS_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_OB_STDFLAGS);
+	SXUNUSED(pUserData);
+}
+static void PH7_OB_STARTED_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_OB_STARTED);
+	SXUNUSED(pUserData);
+}
+static void PH7_OB_DISABLED_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_OB_DISABLED);
+	SXUNUSED(pUserData);
+}
+static void PH7_OB_PROCESSED_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_OB_PROCESSED);
+	SXUNUSED(pUserData);
+}
+/*
  * array_filter()'s $mode selector. The VALUES are php's and are a public ABI --
  * ARRAY_FILTER_USE_BOTH is 1 and ARRAY_FILTER_USE_KEY is 2, NOT the other way
  * round, and they are a selector rather than a bit mask (php reads the argument
@@ -2134,6 +2201,20 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"STR_PAD_LEFT",         PH7_STR_PAD_LEFT_Const },
 	{"STR_PAD_RIGHT",        PH7_STR_PAD_RIGHT_Const},
 	{"STR_PAD_BOTH",         PH7_STR_PAD_BOTH_Const },
+	{"PHP_OUTPUT_HANDLER_WRITE",     PH7_OB_WRITE_Const     },
+	{"PHP_OUTPUT_HANDLER_CONT",      PH7_OB_WRITE_Const     },
+	{"PHP_OUTPUT_HANDLER_START",     PH7_OB_START_Const     },
+	{"PHP_OUTPUT_HANDLER_CLEAN",     PH7_OB_CLEAN_Const     },
+	{"PHP_OUTPUT_HANDLER_FLUSH",     PH7_OB_FLUSH_Const     },
+	{"PHP_OUTPUT_HANDLER_FINAL",     PH7_OB_FINAL_Const     },
+	{"PHP_OUTPUT_HANDLER_END",       PH7_OB_FINAL_Const     },
+	{"PHP_OUTPUT_HANDLER_CLEANABLE", PH7_OB_CLEANABLE_Const },
+	{"PHP_OUTPUT_HANDLER_FLUSHABLE", PH7_OB_FLUSHABLE_Const },
+	{"PHP_OUTPUT_HANDLER_REMOVABLE", PH7_OB_REMOVABLE_Const },
+	{"PHP_OUTPUT_HANDLER_STDFLAGS",  PH7_OB_STDFLAGS_Const  },
+	{"PHP_OUTPUT_HANDLER_STARTED",   PH7_OB_STARTED_Const   },
+	{"PHP_OUTPUT_HANDLER_DISABLED",  PH7_OB_DISABLED_Const  },
+	{"PHP_OUTPUT_HANDLER_PROCESSED", PH7_OB_PROCESSED_Const },
 	{"ARRAY_FILTER_USE_KEY", PH7_ARRAY_FILTER_USE_KEY_Const },
 	{"ARRAY_FILTER_USE_BOTH",PH7_ARRAY_FILTER_USE_BOTH_Const},
 	{"COUNT_NORMAL",         PH7_COUNT_NORMAL_Const },

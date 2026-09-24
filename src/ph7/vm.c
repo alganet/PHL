@@ -5693,7 +5693,7 @@ static const ph7_builtin_func aVmFunc[] = {
 	{ "ob_get_length",   vm_builtin_ob_get_length  },
 	{ "ob_get_level",    vm_builtin_ob_get_level   },
 	{ "ob_implicit_flush", vm_builtin_ob_implicit_flush},
-	{ "ob_get_level",      vm_builtin_ob_get_level },
+	{ "ob_get_status",     vm_builtin_ob_get_status },
 	{ "ob_list_handlers",  vm_builtin_ob_list_handlers },
 	{ "ob_start",          vm_builtin_ob_start     },
 	  /* Assertion functions */

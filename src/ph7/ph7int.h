@@ -960,8 +960,18 @@ struct VmObEntry
 	ph7_value sCallback; /* User defined callback */
 	SyBlob sOB;          /* Output buffer consumer (RAW bytes: php runs the
 	                      * handler on the way OUT, not on the way in) */
-	sxi32 iFlags;        /* PH7_OB_* below, php's own numeric values */
-	sxu32 nChunk;        /* ob_start()'s $chunk_size (0: buffer everything) */
+	ph7_int64 iFlags;    /* PH7_OB_* below, php's own numeric values. 64 bits wide
+	                      * because php stores whatever it was given (minus the two
+	                      * nibbles it reserves) and reports it back verbatim. */
+	ph7_int64 nChunk;    /* ob_start()'s $chunk_size (0 or negative: buffer
+	                      * everything). 64 bits: php accepts a chunk larger than a
+	                      * 32-bit count and reports it back. */
+	ph7_int64 nSize;     /* php's ALLOCATION for this buffer, which ob_get_status()
+	                      * reports: 16 KB, or the chunk size rounded up to 4 KB, and
+	                      * grown by php's own rule on each write. Tracked rather than
+	                      * derived because the answer depends on how the bytes
+	                      * ARRIVED — 40 writes of 1000 give 49152 where one write of
+	                      * 40000 gives 40960. */
 };
 /*
  * Output-handler flags and phases. These are php's own values: the first group is
@@ -976,6 +986,9 @@ struct VmObEntry
 #define PH7_OB_STARTED   0x1000 /* Handler has been invoked at least once */
 #define PH7_OB_DISABLED  0x2000 /* Handler answered FALSE: never called again */
 #define PH7_OB_PROCESSED 0x4000 /* Handler has produced output */
+/* What ob_start() keeps of the $flags it is given: everything except the phase
+ * nibble and the state nibble, which are the engine's own to set. */
+#define PH7_OB_FLAGMASK  (~(ph7_int64)0xF00F)
 /* Phases (an op, plus PH7_OB_START until the handler has run once) */
 #define PH7_OB_WRITE 0
 #define PH7_OB_START 1
@@ -3282,6 +3295,7 @@ PH7_PRIVATE int PH7_VmCallableStringParts(const char *zName,sxu32 nName,
 	const char **pzCls,sxu32 *pnCls,const char **pzMeth,sxu32 *pnMeth);
 PH7_PRIVATE int PH7_VmClassLookupRaised(ph7_vm *pVm,sxi32 nBrcBefore,const void *pResumeBefore);
 PH7_PRIVATE const char * PH7_VmCallableReason(ph7_vm *pVm,ph7_value *pValue,char *zBuf,int nBuf);
+PH7_PRIVATE void PH7_VmCallableName(ph7_vm *pVm,ph7_value *pValue,SyBlob *pOut);
 PH7_PRIVATE ph7_value * PH7_VmExtractSuper(ph7_vm *pVm,const char *zName,sxu32 nByte);
 PH7_PRIVATE sxi32 PH7_VmHashmapInsert(ph7_hashmap *pMap,const char *zKey,int nKeylen,const char *zData,int nLen);
 #ifndef PH7_DISABLE_DISK_IO
@@ -3465,6 +3479,7 @@ PH7_PRIVATE int vm_builtin_ob_get_contents(ph7_context *pCtx,int nArg,ph7_value 
 PH7_PRIVATE int vm_builtin_ob_get_clean(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_flush(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_ob_get_flush(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int vm_builtin_ob_get_status(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_ob_get_length(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_ob_get_level(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_ob_start(ph7_context *pCtx,int nArg,ph7_value **apArg);

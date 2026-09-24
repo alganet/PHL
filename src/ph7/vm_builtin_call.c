@@ -830,7 +830,7 @@ static ph7_value * VmClosureAttrString(ph7_class_instance *pThis,const char *zAt
  *   - anything else (including an array of the wrong shape, which casts to
  *     "Array") names its plain string cast.
  */
-static void VmCallableName(ph7_vm *pVm,ph7_value *pValue,SyBlob *pOut)
+PH7_PRIVATE void PH7_VmCallableName(ph7_vm *pVm,ph7_value *pValue,SyBlob *pOut)
 {
 	if( pValue->iFlags & MEMOBJ_OBJ ){
 		ph7_class_instance *pThis = (ph7_class_instance *)pValue->x.pOther;
@@ -954,7 +954,7 @@ PH7_PRIVATE int vm_builtin_is_callable(ph7_context *pCtx,int nArg,ph7_value **ap
 		ph7_value sName;
 		SyBlob sBuf;
 		SyBlobInit(&sBuf,&pVm->sAllocator);
-		VmCallableName(pVm,apArg[0],&sBuf);
+		PH7_VmCallableName(pVm,apArg[0],&sBuf);
 		PH7_MemObjInitFromString(pVm,&sName,0);
 		if( SyBlobLength(&sBuf) > 0 ){
 			PH7_MemObjStringAppend(&sName,(const char *)SyBlobData(&sBuf),SyBlobLength(&sBuf));
