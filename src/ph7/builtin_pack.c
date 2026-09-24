@@ -70,7 +70,26 @@ static void PackPutInt(char *zOut,sxu64 uVal,int nSize,int iOrder)
 	}
 }
 /*
- * A float and a double travel as their IEEE-754 bit pattern, so both are the
+ * Read nSize bytes back out of zIn as an unsigned value in the given order --
+ * PackPutInt's inverse, and the only reader unpack() uses. Nothing wider than a
+ * byte is ever dereferenced, so an unaligned field (which is the ordinary case:
+ * `unpack('Ca/Nb', ...)` puts the 32-bit one at offset 1) is not a misaligned
+ * load.
+ */
+static sxu64 PackGetInt(const char *zIn,int nSize,int iOrder)
+{
+	int bLittle = (iOrder == PACK_LITTLE) ||
+		(iOrder == PACK_MACHINE && PackHostIsLittle());
+	sxu64 uVal = 0;
+	int i;
+	for( i = 0 ; i < nSize ; ++i ){
+		int nShift = bLittle ? i : (nSize - 1 - i);
+		uVal |= ((sxu64)(unsigned char)zIn[i]) << (8 * nShift);
+	}
+	return uVal;
+}
+/*
+ * A float and a double travel as their IEEE-754 bit pattern, so all four are the
  * integer routines above applied to the value's own storage. `f`/`d` are the
  * host's order; `g`/`e` little-endian, `G`/`E` big.
  */
@@ -85,6 +104,20 @@ static void PackPutDouble(char *zOut,double dVal,int iOrder)
 	sxu64 uBits = 0;
 	SyMemcpy((const void *)&dVal,(void *)&uBits,(sxu32)sizeof(uBits));
 	PackPutInt(zOut,uBits,(int)sizeof(uBits),iOrder);
+}
+static float PackGetFloat(const char *zIn,int iOrder)
+{
+	sxu32 uBits = (sxu32)PackGetInt(zIn,(int)sizeof(uBits),iOrder);
+	float fVal = 0.0f;
+	SyMemcpy((const void *)&uBits,(void *)&fVal,(sxu32)sizeof(fVal));
+	return fVal;
+}
+static double PackGetDouble(const char *zIn,int iOrder)
+{
+	sxu64 uBits = PackGetInt(zIn,(int)sizeof(uBits),iOrder);
+	double dVal = 0.0;
+	SyMemcpy((const void *)&uBits,(void *)&dVal,(sxu32)sizeof(dVal));
+	return dVal;
 }
 /*
  * Width in bytes of one repetition of a fixed-width code, and the order it is
@@ -544,5 +577,329 @@ Done:
 		}
 	}
 	return rc;
+}
+/*
+ * php truncates an unpack() element NAME at 200 bytes. The name is whatever
+ * follows the repeater up to the next '/', so it is the format's own text and
+ * nothing bounds it otherwise.
+ */
+#define UNPACK_MAX_NAME 200
+/*
+ * Store one unpacked value under the name this entry gives it. php's three
+ * naming rules, in its own order: an entry with NO name is keyed by its
+ * 1-based POSITION within that entry (`unpack('C*', $s)` answers 1,2,3...), a
+ * single repetition takes the name as written, and a repeated one has the
+ * 1-based index appended (`unpack('C3n', $s)` answers n1, n2, n3).
+ *
+ * The key goes in as a php key, so a name that spells an integer becomes an
+ * integer key exactly as `zend_symtable_update` makes it one.
+ */
+static sxi32 UnpackStore(
+	ph7_context *pCtx,
+	ph7_value *pArray,
+	ph7_value *pKey,
+	ph7_value *pVal,
+	const char *zName,
+	int nName,
+	sxi64 iIndex,
+	int bIndexed
+){
+	if( nName < 1 ){
+		ph7_value_int64(pKey,iIndex);
+	}else if( !bIndexed ){
+		ph7_value_string(pKey,zName,nName);
+	}else{
+		char zNum[32];
+		int nNum;
+		ph7_value_string(pKey,zName,nName);
+		nNum = SyBufferFormat(zNum,sizeof(zNum),"%qd",iIndex);
+		ph7_value_string(pKey,zNum,nNum);
+	}
+	if( ph7_array_add_elem(pArray,pKey,pVal) != SXRET_OK ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	ph7_value_reset_string_cursor(pKey);
+	return PH7_OK;
+}
+/*
+ * array|false unpack(string $format, string $string, int $offset = 0)
+ *  Read a binary string back into an array according to $format.
+ *
+ * The mirror of pack(), with two differences that are php's and not
+ * symmetries: the format is a '/'-separated list of NAMED entries rather than a
+ * bare run of codes, and a repeater means something slightly different for the
+ * string codes -- `a5` is one FIVE-BYTE field here as it is there, but `C3` is
+ * three separate elements rather than three bytes of one.
+ *
+ * Answers FALSE (after a warning) for input that runs out mid-field, which is
+ * why the whole array is discarded rather than returned half-filled.
+ */
+PH7_PRIVATE int PH7_builtin_unpack(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zFmt,*zCur,*zFmtEnd,*zIn;
+	ph7_value *pArray,*pVal,*pKey;
+	int nFmt = 0, nIn = 0;
+	sxi64 iOffset = 0, iPos = 0;
+	sxi32 rc = PH7_OK;
+	if( nArg < 2 ){
+		/* Arity is enforced from aBuiltinSig[] before the call. */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zFmt = ph7_value_to_string(apArg[0],&nFmt);
+	zIn = ph7_value_to_string(apArg[1],&nIn);
+	if( nArg > 2 ){
+		iOffset = ph7_value_to_int64(apArg[2]);
+	}
+	if( iOffset < 0 || iOffset > nIn ){
+		/* php names argument #2 as `$data` here and `$string` in the signature;
+		 * the message is its own, verbatim. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"unpack(): Argument #3 ($offset) must be contained in argument #2 ($data)");
+	}
+	zIn += iOffset;
+	nIn -= (int)iOffset;
+	pArray = ph7_context_new_array(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	pKey = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pVal == 0 || pKey == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	zCur = zFmt;
+	zFmtEnd = &zFmt[nFmt];
+	while( zCur < zFmtEnd ){
+		int code = (unsigned char)zCur[0];
+		const char *zName;
+		int nName, iOrder = PACK_MACHINE;
+		sxi64 iRepeat, iDeclared, iSize = 0, i;
+		zCur++;
+		if( PackReadRepeat(&zCur,zFmtEnd,&iRepeat) != SXRET_OK ){
+			/* Unlike pack()'s atoi, php range-checks this one and answers with a
+			 * warning and FALSE rather than a wrapped count. */
+			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+				"Type %c: integer overflow",code);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		/* The NAME is everything up to the next '/' -- including spaces, digits
+		 * and anything else, since only the separator ends it. */
+		zName = zCur;
+		while( zCur < zFmtEnd && zCur[0] != '/' ){
+			zCur++;
+		}
+		nName = (int)(zCur - zName);
+		if( nName > UNPACK_MAX_NAME ){
+			nName = UNPACK_MAX_NAME;
+		}
+		iDeclared = iRepeat;
+		switch( code ){
+			case 'X':
+				/* Consumes nothing and moves the cursor BACK one byte per
+				 * repetition; the negative size is what does the moving. */
+				iSize = -1;
+				if( iRepeat < 0 ){
+					ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+						"Type %c: '*' ignored",code);
+					iRepeat = 1;
+				}
+				break;
+			case '@':
+				iSize = 0;
+				break;
+			case 'a': case 'A': case 'Z':
+				/* One field of that many bytes, not that many fields. */
+				iSize = iRepeat;
+				iRepeat = 1;
+				break;
+			case 'h': case 'H':
+				/* The repeater counts NIBBLES, so the field is half as many
+				 * bytes, rounded up. */
+				iSize = iRepeat > 0 ? (iRepeat + 1) / 2 : iRepeat;
+				iRepeat = 1;
+				break;
+			case 'x':
+				iSize = 1;
+				break;
+			default:
+				iSize = PackFixedWidth(code,&iOrder);
+				if( iSize < 1 ){
+					rc = PH7_VmThrowException(pCtx,"ValueError",
+						"Invalid format type %c",code);
+					return rc;
+				}
+				break;
+		}
+		for( i = 0 ; i != iRepeat ; ++i ){
+			int bIndexed = (iRepeat != 1);
+			/* The value slot is reused across repetitions and a string goes in by
+			 * APPEND, so the previous element has to be let go of first. */
+			ph7_value_reset_string_cursor(pVal);
+			if( iSize > 0 && (sxi64)PACK_INT_MAX - iSize + 1 < iPos ){
+				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+					"Type %c: integer overflow",code);
+				ph7_result_bool(pCtx,0);
+				return PH7_OK;
+			}
+			if( iPos + iSize > nIn ){
+				if( iRepeat < 0 ){
+					/* A `*` run simply stops when the input does. */
+					break;
+				}
+				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+					"Type %c: not enough input values, need %d values but only "
+					"%qd %s provided",
+					code,(int)iSize,(sxi64)(nIn - iPos),
+					(nIn - iPos) == 1 ? "was" : "were");
+				ph7_result_bool(pCtx,0);
+				return PH7_OK;
+			}
+			switch( code ){
+				case 'a': case 'A': case 'Z': {
+					/* All three read the same run of bytes and differ only in
+					 * what they keep: `a` everything, `A` minus its trailing
+					 * whitespace and NULs, `Z` up to the first NUL. */
+					sxi64 iLen = nIn - iPos;
+					if( iSize >= 0 && iLen > iSize ){
+						iLen = iSize;
+					}
+					iSize = iLen;
+					if( code == 'A' ){
+						while( --iLen >= 0 ){
+							int c = (unsigned char)zIn[iPos + iLen];
+							if( c != '\0' && c != ' ' && c != '\t'
+							 && c != '\r' && c != '\n' ){
+								break;
+							}
+						}
+						iLen++;
+					}else if( code == 'Z' ){
+						sxi64 s;
+						for( s = 0 ; s < iLen ; ++s ){
+							if( zIn[iPos + s] == '\0' ){
+								break;
+							}
+						}
+						iLen = s;
+					}
+					ph7_value_string(pVal,&zIn[iPos],(int)iLen);
+					break;
+				}
+				case 'h': case 'H': {
+					/* One hex digit per nibble, in the order that code fills
+					 * them. An ODD declared count drops the last digit. */
+					sxi64 iLen = ((sxi64)nIn - iPos) * 2;
+					int nShift = (code == 'h') ? 0 : 4;
+					int bFirst = 1;
+					sxi64 iIn = 0, iOut;
+					char *zHex;
+					if( iSize > PACK_INT_MAX / 2 ){
+						/* Asked HERE, where php asks it: a repeater this large has
+						 * already failed the input-length check above unless the
+						 * input is enormous. */
+						return PH7_VmThrowException(pCtx,"ValueError",
+							"unpack(): Argument #1 ($format) repeater must be less than "
+							"or equal to %d",PACK_INT_MAX / 2);
+					}
+					if( iSize >= 0 && iLen > iSize * 2 ){
+						iLen = iSize * 2;
+					}
+					if( iLen > 0 && iDeclared > 0 ){
+						iLen -= iDeclared % 2;
+					}
+					zHex = (char *)ph7_context_alloc_chunk(pCtx,
+						(unsigned int)(iLen > 0 ? iLen : 1),FALSE,TRUE);
+					if( zHex == 0 ){
+						return PH7_ContextMemoryError(pCtx);
+					}
+					for( iOut = 0 ; iOut < iLen ; ++iOut ){
+						int c = (((unsigned char)zIn[iPos + iIn]) >> nShift) & 0x0F;
+						zHex[iOut] = (char)(c < 10 ? c + '0' : c + ('a' - 10));
+						nShift = (nShift + 4) & 7;
+						if( bFirst ){
+							bFirst = 0;
+						}else{
+							iIn++;
+							bFirst = 1;
+						}
+					}
+					ph7_value_string(pVal,zHex,(int)(iLen > 0 ? iLen : 0));
+					break;
+				}
+				case 'c': case 'C': {
+					int c = (unsigned char)zIn[iPos];
+					ph7_value_int64(pVal,code == 'c' ? (sxi64)(signed char)c : (sxi64)c);
+					break;
+				}
+				case 'x':
+					/* Skipped, not stored. */
+					goto NoOutput;
+				case 'X':
+					if( iPos < iSize ){
+						iPos = -iSize;
+						i = iRepeat - 1;
+						if( iRepeat >= 0 ){
+							ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+								"Type %c: outside of string",code);
+						}
+					}
+					goto NoOutput;
+				case '@':
+					if( iRepeat <= nIn ){
+						iPos = iRepeat;
+					}else{
+						ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+							"Type %c: outside of string",code);
+					}
+					i = iRepeat - 1;   /* php: one @ per entry, whatever it said */
+					goto NoOutput;
+				default: {
+					int nWidth = (int)iSize;
+					if( code == 'f' || code == 'g' || code == 'G' ){
+						ph7_value_double(pVal,(double)PackGetFloat(&zIn[iPos],iOrder));
+					}else if( code == 'd' || code == 'e' || code == 'E' ){
+						ph7_value_double(pVal,PackGetDouble(&zIn[iPos],iOrder));
+					}else{
+						sxu64 uRaw = PackGetInt(&zIn[iPos],nWidth,iOrder);
+						sxi64 iOut;
+						/* Only the three SIGNED codes sign-extend; every other
+						 * width answers the unsigned value it read, which is why
+						 * `Q`/`J`/`P` of 0xFF... is -1 and `N` of the same four
+						 * bytes is 4294967295. */
+						if( code == 's' ){
+							iOut = (sxi64)(sxi16)(sxu16)uRaw;
+						}else if( code == 'i' ){
+							iOut = (sxi64)(int)(unsigned int)uRaw;
+						}else if( code == 'l' ){
+							iOut = (sxi64)(sxi32)(sxu32)uRaw;
+						}else{
+							iOut = (sxi64)uRaw;
+						}
+						ph7_value_int64(pVal,iOut);
+					}
+					break;
+				}
+			}
+			rc = UnpackStore(pCtx,pArray,pKey,pVal,zName,nName,i + 1,bIndexed);
+			if( rc != PH7_OK ){
+				return rc;
+			}
+NoOutput:
+			iPos += iSize;
+			if( iPos < 0 ){
+				if( iSize != -1 ){
+					/* An `X` says so through its own branch above; this is the
+					 * cursor landing before the start any other way. */
+					ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+						"Type %c: outside of string",code);
+				}
+				iPos = 0;
+			}
+		}
+		if( zCur < zFmtEnd ){
+			zCur++;   /* step over the '/' separator */
+		}
+	}
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
 }
 #endif /* PH7_NEED_BUILTIN_REG */

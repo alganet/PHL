@@ -749,6 +749,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "str_rot13",    PH7_builtin_str_rot13  },
 	{ "metaphone",    PH7_builtin_metaphone  },
 	{ "pack",         PH7_builtin_pack       },
+	{ "unpack",       PH7_builtin_unpack     },
 	{ "wordwrap",     PH7_builtin_wordwrap   },
 	{ "strtok",       PH7_builtin_strtok     },
 	{ "str_pad",      PH7_builtin_str_pad    },
