@@ -2166,11 +2166,11 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	pVm->bHeadersSent = 0;
 	SySetInit(&pVm->aIOstream,&pVm->sAllocator,sizeof(ph7_io_stream *));
 	/* Error callbacks containers */
-	PH7_MemObjInit(&(*pVm),&pVm->aExceptionCB[0]);
-	PH7_MemObjInit(&(*pVm),&pVm->aExceptionCB[1]);
-	PH7_MemObjInit(&(*pVm),&pVm->aErrCB[0]);
-	PH7_MemObjInit(&(*pVm),&pVm->aErrCB[1]);
-	pVm->aErrCBLevels[0] = pVm->aErrCBLevels[1] = PH7_E_ALL_MASK;
+	PH7_MemObjInit(&(*pVm),&pVm->sExceptionCB);
+	PH7_MemObjInit(&(*pVm),&pVm->sErrCB);
+	pVm->iErrCBLevels = PH7_E_ALL_MASK;
+	SySetInit(&pVm->aExceptionCBSaved,&pVm->sAllocator,sizeof(VmHandlerSlot));
+	SySetInit(&pVm->aErrCBSaved,&pVm->sAllocator,sizeof(VmHandlerSlot));
 	PH7_MemObjInit(&(*pVm),&pVm->sAssertCallback);
 	/* Recursion policy (BYTECODE.md stage 5). PHP call depth is heap-bound since
 	 * the iterative executor, so the host default is UNBOUNDED (0) — real PHP runs
@@ -2820,6 +2820,20 @@ static void VmReinitMemObj(ph7_vm *pVm,ph7_value *pObj)
 	PH7_MemObjInit(&(*pVm),pObj);
 }
 /*
+ * Empty a set_error_handler()/set_exception_handler() stack, releasing every
+ * saved handler. The SySet itself keeps its buffer for the next request; the
+ * whole thing dies with the VM allocator either way.
+ */
+static void VmReleaseHandlerStack(SySet *pStack)
+{
+	VmHandlerSlot *aSlot = (VmHandlerSlot *)SySetBasePtr(pStack);
+	sxu32 n;
+	for( n = 0 ; n < SySetUsed(pStack) ; ++n ){
+		PH7_MemObjRelease(&aSlot[n].sCb);
+	}
+	SySetReset(pStack);
+}
+/*
  * Reset a function's static-variable sentinels to SXU32_HIGH so the next call
  * re-reserves their slots and re-runs the initializers (PHP's per-request reset
  * of statics).
@@ -3181,11 +3195,11 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	pVm->iResponseStatus = 200;
 	pVm->bHeadersSent = 0;
 	pVm->bHttpContext = 0;
-	VmReinitMemObj(&(*pVm),&pVm->aExceptionCB[0]);
-	VmReinitMemObj(&(*pVm),&pVm->aExceptionCB[1]);
-	VmReinitMemObj(&(*pVm),&pVm->aErrCB[0]);
-	VmReinitMemObj(&(*pVm),&pVm->aErrCB[1]);
-	pVm->aErrCBLevels[0] = pVm->aErrCBLevels[1] = PH7_E_ALL_MASK;
+	VmReinitMemObj(&(*pVm),&pVm->sExceptionCB);
+	VmReinitMemObj(&(*pVm),&pVm->sErrCB);
+	pVm->iErrCBLevels = PH7_E_ALL_MASK;
+	VmReleaseHandlerStack(&pVm->aExceptionCBSaved);
+	VmReleaseHandlerStack(&pVm->aErrCBSaved);
 	VmReinitMemObj(&(*pVm),&pVm->sAssertCallback);
 	pVm->json_rc = JSON_ERROR_NONE;
 #ifdef PH7_ENABLE_PCRE

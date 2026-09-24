@@ -155,7 +155,7 @@ PH7_PRIVATE int vm_builtin_trigger_error(ph7_context *pCtx,int nArg,ph7_value **
 		/* Report error (consults an installed error handler, then displays) */
 		PH7_VmThrowError(pCtx->pVm, NULL, nErr, zErr);
 		if( nErr == 256 /* E_USER_ERROR */
-		 && !ph7_value_is_callable(&pCtx->pVm->aErrCB[1]) ){
+		 && !ph7_value_is_callable(&pCtx->pVm->sErrCB) ){
 			/* php: an unhandled user fatal halts with exit 255 (pre-fix the
 			 * PH7_ABORT here was overwritten by the throw's status, so
 			 * E_USER_ERROR silently CONTINUED). With a handler installed the
@@ -320,6 +320,55 @@ PH7_PRIVATE int vm_builtin_error_log(ph7_context *pCtx,int nArg,ph7_value **apAr
 	return PH7_OK;
 }
 /*
+ * php's set_error_handler()/set_exception_handler() stack, both directions.
+ *
+ * PH7 kept ONE saved slot per handler, so a third `set` overwrote the first
+ * one's save and the matching `restore` could not find it again; and a NULL
+ * argument was treated as a failure instead of the ordinary stack entry php
+ * pushes for it. Both routines below are shared by the error and the exception
+ * handler because php implements them the same way.
+ */
+static sxi32 VmHandlerPush(
+	ph7_vm *pVm,
+	ph7_value *pActive,   /* the currently installed handler */
+	sxi64 *piLevels,      /* its $error_levels (unused by the exception handler) */
+	SySet *pStack,        /* the saved entries underneath it */
+	ph7_value *pNewCb,    /* the replacement, or 0 for the `null` reset */
+	sxi64 iLevels
+	)
+{
+	VmHandlerSlot sSlot;
+	sxi32 rc;
+	PH7_MemObjInit(pVm,&sSlot.sCb);
+	PH7_MemObjStore(pActive,&sSlot.sCb);
+	sSlot.iLevels = *piLevels;
+	rc = SySetPut(pStack,(const void *)&sSlot);
+	if( rc != SXRET_OK ){
+		PH7_MemObjRelease(&sSlot.sCb);
+		return rc;
+	}
+	PH7_MemObjRelease(pActive);
+	MemObjSetType(pActive,MEMOBJ_NULL);
+	if( pNewCb ){
+		PH7_MemObjStore(pNewCb,pActive);
+	}
+	*piLevels = iLevels;
+	return SXRET_OK;
+}
+static void VmHandlerPop(ph7_vm *pVm,ph7_value *pActive,sxi64 *piLevels,SySet *pStack)
+{
+	VmHandlerSlot *pSlot = (VmHandlerSlot *)SySetPop(pStack);
+	PH7_MemObjRelease(pActive);
+	MemObjSetType(pActive,MEMOBJ_NULL);
+	*piLevels = PH7_E_ALL_MASK;
+	if( pSlot ){
+		PH7_MemObjStore(&pSlot->sCb,pActive);
+		*piLevels = pSlot->iLevels;
+		PH7_MemObjRelease(&pSlot->sCb);
+	}
+	SXUNUSED(pVm);
+}
+/*
  * bool restore_exception_handler(void)
  *  Restores the previously defined exception handler function.
  * Parameter
@@ -330,28 +379,12 @@ PH7_PRIVATE int vm_builtin_error_log(ph7_context *pCtx,int nArg,ph7_value **apAr
 PH7_PRIVATE int vm_builtin_restore_exception_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
-	ph7_value *pOld,*pNew;
-	/* Point to the old and the new handler */
-	pOld = &pVm->aExceptionCB[0];
-	pNew = &pVm->aExceptionCB[1];
+	sxi64 iLevels = PH7_E_ALL_MASK;
 	SXUNUSED(nArg); /* cc warning */
 	SXUNUSED(apArg);
-	if( pOld->iFlags & MEMOBJ_NULL ){
-		/* Nothing SAVED underneath — but php pops the handler stack regardless, so the
-		 * ACTIVE handler must still go (reporting reverts to the engine's own). Returning
-		 * early here left it installed, making restore_error_handler() a no-op after a
-		 * single set_error_handler().
-		 * php answers TRUE either way: the return value says "the call is valid", not
-		 * "a handler was in place". */
-		PH7_MemObjRelease(pNew);
-		MemObjSetType(pNew,MEMOBJ_NULL);
-		ph7_result_bool(pCtx,1);
-		return PH7_OK;
-	}
-	/* Copy the old handler */
-	PH7_MemObjStore(pOld,pNew);
-	PH7_MemObjRelease(pOld);
-	/* Return TRUE */
+	/* An empty stack pops to NO handler: php answers TRUE either way, because the
+	 * return value says "the call is valid", not "a handler was in place". */
+	VmHandlerPop(pVm,&pVm->sExceptionCB,&iLevels,&pVm->aExceptionCBSaved);
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
@@ -377,22 +410,31 @@ PH7_PRIVATE int vm_builtin_restore_exception_handler(ph7_context *pCtx,int nArg,
 PH7_PRIVATE int vm_builtin_set_exception_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
-	ph7_value *pOld,*pNew;
-	/* Point to the old and the new handler */
-	pOld = &pVm->aExceptionCB[0];
-	pNew = &pVm->aExceptionCB[1];
-	/* Return the old handler */
-	ph7_result_value(pCtx,pOld); /* Will make it's own copy */
-	if( nArg > 0 ){
-		if( !ph7_value_is_callable(apArg[0])) {
-			/* Not callable,return TRUE (As requested by the PHP specification) */
-			PH7_MemObjRelease(pNew);
-			ph7_result_bool(pCtx,1);
-		}else{
-			PH7_MemObjStore(pNew,pOld);
-			/* Install the new handler */
-			PH7_MemObjStore(apArg[0],pNew);
+	sxi64 iLevels = PH7_E_ALL_MASK;
+	/* php answers the handler this call REPLACES -- the active one, not the entry
+	 * saved under it. */
+	if( ph7_value_is_callable(&pVm->sExceptionCB) ){
+		ph7_result_value(pCtx,&pVm->sExceptionCB); /* Will make it's own copy */
+	}else{
+		ph7_result_null(pCtx);
+	}
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	if( !ph7_value_is_null(apArg[0]) ){
+		/* php REFUSES anything else that cannot be called, naming why. PH7
+		 * answered TRUE and kept the old handler. */
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[0],1,"callback",1);
+		if( rcCb != PH7_OK ){
+			return rcCb;
 		}
+	}
+	if( SXRET_OK != VmHandlerPush(pVm,&pVm->sExceptionCB,&iLevels,&pVm->aExceptionCBSaved,
+			ph7_value_is_null(apArg[0]) ? 0 : apArg[0],PH7_E_ALL_MASK) ){
+		/* Out of memory. Nothing was installed and nothing was saved, so answering
+		 * the previous handler would claim a replacement that did not happen. */
+		return PH7_VmThrowException(pCtx,"Error",
+			"%s(): out of memory installing the handler",ph7_function_name(pCtx));
 	}
 	return PH7_OK;
 }
@@ -407,31 +449,12 @@ PH7_PRIVATE int vm_builtin_set_exception_handler(ph7_context *pCtx,int nArg,ph7_
 PH7_PRIVATE int vm_builtin_restore_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
-	ph7_value *pOld,*pNew;
-	/* Point to the old and the new handler */
-	pOld = &pVm->aErrCB[0];
-	pNew = &pVm->aErrCB[1];
 	SXUNUSED(nArg); /* cc warning */
 	SXUNUSED(apArg);
-	/* The popped handler's $error_levels goes with it, in both arms below. */
-	pVm->aErrCBLevels[1] = pVm->aErrCBLevels[0];
-	pVm->aErrCBLevels[0] = PH7_E_ALL_MASK;
-	if( pOld->iFlags & MEMOBJ_NULL ){
-		/* Nothing SAVED underneath — but php pops the handler stack regardless, so the
-		 * ACTIVE handler must still go (reporting reverts to the engine's own). Returning
-		 * early here left it installed, making restore_error_handler() a no-op after a
-		 * single set_error_handler().
-		 * php answers TRUE either way: the return value says "the call is valid", not
-		 * "a handler was in place". */
-		PH7_MemObjRelease(pNew);
-		MemObjSetType(pNew,MEMOBJ_NULL);
-		ph7_result_bool(pCtx,1);
-		return PH7_OK;
-	}
-	/* Copy the old callback */
-	PH7_MemObjStore(pOld,pNew);
-	PH7_MemObjRelease(pOld);
-	/* Return TRUE */
+	/* The popped handler's $error_levels comes back with it. An empty stack pops
+	 * to NO handler; php answers TRUE either way, because the return value says
+	 * "the call is valid", not "a handler was in place". */
+	VmHandlerPop(pVm,&pVm->sErrCB,&pVm->iErrCBLevels,&pVm->aErrCBSaved);
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
@@ -471,17 +494,13 @@ PH7_PRIVATE int vm_builtin_restore_error_handler(ph7_context *pCtx,int nArg,ph7_
 PH7_PRIVATE int vm_builtin_set_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
-	ph7_value *pOld,*pNew;
 	sxi64 iLevels;
-	/* Point to the old and the new handler */
-	pOld = &pVm->aErrCB[0];
-	pNew = &pVm->aErrCB[1];
-	/* php answers the handler this call REPLACES -- the active slot, not the one
-	 * saved under it. Returning the saved slot answered the handler from one
+	/* php answers the handler this call REPLACES -- the active one, not the entry
+	 * saved under it. Returning the saved entry answered the handler from one
 	 * level further down (and NULL for the very first replacement of a handler
 	 * that was really there). */
-	if( ph7_value_is_callable(pNew) ){
-		ph7_result_value(pCtx,pNew); /* Will make it's own copy */
+	if( ph7_value_is_callable(&pVm->sErrCB) ){
+		ph7_result_value(pCtx,&pVm->sErrCB); /* Will make it's own copy */
 	}else{
 		ph7_result_null(pCtx);
 	}
@@ -489,8 +508,8 @@ PH7_PRIVATE int vm_builtin_set_error_handler(ph7_context *pCtx,int nArg,ph7_valu
 		return PH7_OK;
 	}
 	/* $error_levels rides WITH the handler: it is read at full width (php ANDs
-	 * a zend_long, so 2^32+1024 still selects E_USER_NOTICE) and pushed onto
-	 * the same two-deep stack, so restore_error_handler() pops both. */
+	 * a zend_long, so 2^32+1024 still selects E_USER_NOTICE) and is pushed and
+	 * popped with it. */
 	iLevels = nArg > 1 ? ph7_value_to_int64(apArg[1]) : PH7_E_ALL_MASK;
 	if( !ph7_value_is_null(apArg[0]) ){
 		/* php REFUSES anything else that cannot be called, naming why. PH7
@@ -501,19 +520,16 @@ PH7_PRIVATE int vm_builtin_set_error_handler(ph7_context *pCtx,int nArg,ph7_valu
 			return rcCb;
 		}
 	}
-	/* Push. A `null` argument is a real stack entry: it silences the handler
-	 * until a restore_error_handler() pops it and brings the previous one --
-	 * with ITS levels -- back. */
-	PH7_MemObjStore(pNew,pOld);
-	pVm->aErrCBLevels[0] = pVm->aErrCBLevels[1];
-	if( ph7_value_is_null(apArg[0]) ){
-		PH7_MemObjRelease(pNew);
-		MemObjSetType(pNew,MEMOBJ_NULL);
-	}else{
-		/* Install the new handler */
-		PH7_MemObjStore(apArg[0],pNew);
+	/* A `null` argument is a real stack entry: it silences the handler until a
+	 * restore_error_handler() pops it and brings the previous one -- with ITS
+	 * levels -- back. */
+	if( SXRET_OK != VmHandlerPush(pVm,&pVm->sErrCB,&pVm->iErrCBLevels,&pVm->aErrCBSaved,
+			ph7_value_is_null(apArg[0]) ? 0 : apArg[0],iLevels) ){
+		/* Out of memory. Nothing was installed and nothing was saved, so answering
+		 * the previous handler would claim a replacement that did not happen. */
+		return PH7_VmThrowException(pCtx,"Error",
+			"%s(): out of memory installing the handler",ph7_function_name(pCtx));
 	}
-	pVm->aErrCBLevels[1] = iLevels;
 	return PH7_OK;
 }
 /*
@@ -527,8 +543,8 @@ PH7_PRIVATE int vm_builtin_get_error_handler(ph7_context *pCtx,int nArg,ph7_valu
 	ph7_vm *pVm = pCtx->pVm;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	if( ph7_value_is_callable(&pVm->aErrCB[1]) ){
-		ph7_result_value(pCtx,&pVm->aErrCB[1]);
+	if( ph7_value_is_callable(&pVm->sErrCB) ){
+		ph7_result_value(pCtx,&pVm->sErrCB);
 	}else{
 		ph7_result_null(pCtx);
 	}
@@ -539,8 +555,8 @@ PH7_PRIVATE int vm_builtin_get_exception_handler(ph7_context *pCtx,int nArg,ph7_
 	ph7_vm *pVm = pCtx->pVm;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	if( ph7_value_is_callable(&pVm->aExceptionCB[1]) ){
-		ph7_result_value(pCtx,&pVm->aExceptionCB[1]);
+	if( ph7_value_is_callable(&pVm->sExceptionCB) ){
+		ph7_result_value(pCtx,&pVm->sExceptionCB);
 	}else{
 		ph7_result_null(pCtx);
 	}

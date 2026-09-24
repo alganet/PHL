@@ -847,6 +847,17 @@ struct VmFrame
 #define VM_FRAME_THROW      0x02 /* An exception was thrown */
 #define VM_FRAME_CATCH      0x04 /* Catch frame */
 /*
+ * One entry of a userland handler STACK (set_error_handler /
+ * set_exception_handler). php's stack has no depth limit and every entry is a
+ * real one -- the `null` a reset pushes included -- so each restore brings back
+ * exactly what the matching set replaced, and nothing under it is lost.
+ */
+typedef struct VmHandlerSlot VmHandlerSlot;
+struct VmHandlerSlot {
+	ph7_value sCb;   /* the saved handler, MEMOBJ_NULL for a reset entry */
+	sxi64 iLevels;   /* its set_error_handler() $error_levels (E_ALL elsewhere) */
+};
+/*
  * php 8's E_ALL. The default of error_reporting() AND of set_error_handler()'s
  * $error_levels, so both read it from here (E_STRICT/2048 left the set in php 8).
  */
@@ -2264,13 +2275,15 @@ struct ph7_vm
 	SySet aIOstream;            /* Installed IO stream container */
 	const ph7_io_stream *pDefStream; /* Default IO stream [i.e: typically this is the 'file://' stream] */
 	ph7_value sExec;           /* Compiled script return value [Can be extracted via the PH7_VM_CONFIG_EXEC_VALUE directive]*/
-	ph7_value aExceptionCB[2]; /* Installed exception handler callbacks via [set_exception_handler()] */
-	ph7_value aErrCB[2];       /* Installed error handler callback via [set_error_handler()] */
-	sxi64 aErrCBLevels[2];     /* $error_levels mask of each aErrCB[] slot: a handler is only
-	                            * called for the levels it was REGISTERED for, and every other
-	                            * one falls through to the engine's own reporting. Read at full
-	                            * width -- php ANDs a zend_long, so 2^32+1024 still selects
+	ph7_value sExceptionCB;    /* ACTIVE set_exception_handler() handler */
+	ph7_value sErrCB;          /* ACTIVE set_error_handler() handler */
+	sxi64 iErrCBLevels;        /* sErrCB's $error_levels mask: a handler is only called for the
+	                            * levels it was REGISTERED for, and every other one falls
+	                            * through to the engine's own reporting. Read at full width --
+	                            * php ANDs a zend_long, so 2^32+1024 still selects
 	                            * E_USER_NOTICE. */
+	SySet aExceptionCBSaved;   /* VmHandlerSlot stack underneath sExceptionCB */
+	SySet aErrCBSaved;         /* VmHandlerSlot stack underneath sErrCB */
 	void *pStdin;              /* STDIN IO stream */
 	void *pStdout;             /* STDOUT IO stream */
 	void *pStderr;             /* STDERR IO stream */

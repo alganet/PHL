@@ -93,11 +93,12 @@ static sxi32 VmInvokeErrorHandler(ph7_vm *pVm, sxi32 iErr, const char *zMessage,
 	 * it misses, does NOT walk down to an outer handler -- the diagnostic falls
 	 * straight through to the engine's own reporting, which is what returning
 	 * TRUE below means. */
-	if( ph7_value_is_callable(&pVm->aErrCB[1])
-	 && (pVm->aErrCBLevels[1] & (sxi64)PH7_VmErrPhpBit(iErr)) != 0 ){
+	if( ph7_value_is_callable(&pVm->sErrCB)
+	 && (pVm->iErrCBLevels & (sxi64)PH7_VmErrPhpBit(iErr)) != 0 ){
 		ph7_value apArg[4];
 		ph7_value *apArgPtr[4];
 		ph7_value sResult;
+		ph7_value sRunning;
 		SyString sErr;
 		/* PH7_CTX_NOTICE is the engine's own severity token, 3 — a number php has no
 		 * E_* constant for. The reporting mask and the "Notice: " label already read
@@ -125,9 +126,24 @@ static sxi32 VmInvokeErrorHandler(ph7_vm *pVm, sxi32 iErr, const char *zMessage,
 		apArgPtr[1] = &apArg[1];
 		apArgPtr[2] = &apArg[2];
 		apArgPtr[3] = &apArg[3];
+		/* php HIDES the handler for the duration of its own call: a diagnostic the
+		 * handler itself raises reaches the engine's reporting instead of
+		 * re-entering (PHL recursed until the stack ran out and printed nothing at
+		 * all), and `set_error_handler()` called from inside one therefore replaces
+		 * an EMPTY entry. What the handler leaves behind decides who is installed
+		 * when it returns: an untouched slot gets the original back, and anything
+		 * the handler installed itself STAYS. */
+		PH7_MemObjInit(pVm,&sRunning);
+		PH7_MemObjStore(&pVm->sErrCB,&sRunning);
+		PH7_MemObjRelease(&pVm->sErrCB);
+		MemObjSetType(&pVm->sErrCB,MEMOBJ_NULL);
 		/* Call the handler */
 		{
-			sxi32 rcCb = PH7_VmCallUserFunction(pVm,&pVm->aErrCB[1],4,apArgPtr,&sResult);
+			sxi32 rcCb = PH7_VmCallUserFunction(pVm,&sRunning,4,apArgPtr,&sResult);
+			if( !ph7_value_is_callable(&pVm->sErrCB) ){
+				PH7_MemObjStore(&sRunning,&pVm->sErrCB);
+			}
+			PH7_MemObjRelease(&sRunning);
 			if( rcCb == PH7_EXCEPTION || rcCb == PH7_ABORT ){
 				/* The handler threw (or aborted) instead of returning: php never
 				 * reports the original diagnostic then — the exception supersedes
@@ -4618,7 +4634,21 @@ PH7_PRIVATE sxi32 VmUncaughtException(
 	apArg[0] = &sArg;
 	/* Call the exception handler if available */
 	pVm->nExceptDepth++;
-	rc = PH7_VmCallUserFunction(&(*pVm),&pVm->aExceptionCB[1],nArg,apArg,0);
+	{
+		/* Hidden for the duration of its own call, exactly like the error handler
+		 * above: an exception escaping the handler is not handed back to it, and a
+		 * set_exception_handler() from inside replaces an EMPTY entry. */
+		ph7_value sRunning;
+		PH7_MemObjInit(pVm,&sRunning);
+		PH7_MemObjStore(&pVm->sExceptionCB,&sRunning);
+		PH7_MemObjRelease(&pVm->sExceptionCB);
+		MemObjSetType(&pVm->sExceptionCB,MEMOBJ_NULL);
+		rc = PH7_VmCallUserFunction(&(*pVm),&sRunning,nArg,apArg,0);
+		if( !ph7_value_is_callable(&pVm->sExceptionCB) ){
+			PH7_MemObjStore(&sRunning,&pVm->sExceptionCB);
+		}
+		PH7_MemObjRelease(&sRunning);
+	}
 	pVm->nExceptDepth--;
 	if( rc != SXRET_OK ){
 		const char *zFuncName;
