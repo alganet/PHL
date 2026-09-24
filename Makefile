@@ -41,6 +41,7 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/builtin_hash$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/builtin_math$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/builtin_mb$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/builtin_pack$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/builtin_parse$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/builtin_string$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/compile$(OBJ_SUFFIX) \

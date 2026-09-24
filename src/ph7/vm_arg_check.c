@@ -750,6 +750,7 @@ static const struct VmBuiltinSig {
 	{ "octdec", "string $octal_string", "int|float" },
 	{ "opendir", "string $directory, $context = NULL", "" },
 	{ "ord", "string $character", "int" },
+	{ "pack", "string $format, mixed ...$values = ?", "string" },
 	{ "parse_ini_file", "string $filename, bool $process_sections = false, int $scanner_mode = 0", "array|false" },
 	{ "parse_ini_string", "string $ini_string, bool $process_sections = false, int $scanner_mode = 0", "array|false" },
 	{ "parse_str", "string $string, &$result", "void" },
