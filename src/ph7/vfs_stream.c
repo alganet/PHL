@@ -345,6 +345,31 @@ PH7_PRIVATE int PH7_builtin_fflush(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * php's end-of-file flag is set AFTER THE FACT: a stream is at EOF once one of
+ * its OWN reads has come back empty, and asking the question never reads. PHL
+ * used to probe the device instead — a read-ahead of up to 4 KB from inside
+ * feof() — which answered TRUE on a handle nothing had read yet (an empty file,
+ * a fresh php://memory), answered TRUE on a WRITE-only handle because the
+ * refused read looked like an end, and BLOCKED on `feof(STDIN)` with no input
+ * waiting: a question about a stream is not a read of it. bEof is that flag,
+ * set wherever a read here comes back with nothing and cleared by every seek.
+ */
+static int IoPrivateUwrapEof(io_private *pDev,int *pAnswer);
+static int IoPrivateAtEof(io_private *pDev)
+{
+	int bEof;
+	if( SyBlobLength(&pDev->sBuffer) > pDev->nOfft ){
+		/* Buffered bytes are not an end. */
+		return 0;
+	}
+	if( IoPrivateUwrapEof(pDev,&bEof) ){
+		/* A userland wrapper answers the question itself — php calls its
+		 * streamWrapper::stream_eof() rather than inferring anything. */
+		return bEof;
+	}
+	return pDev->bEof != 0;
+}
+/*
  * bool feof(resource $handle)
  *  Tests for end-of-file on a file pointer.
  * Parameters
@@ -383,24 +408,9 @@ PH7_PRIVATE int PH7_builtin_feof(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,1);
 		return PH7_OK;
 	}
-	rc = SXERR_EOF;
-	/* Perform the requested operation */
-	if( SyBlobLength(&pDev->sBuffer) > pDev->nOfft ){
-		/* Data is available */
-		rc = PH7_OK;
-	}else{
-		char zBuf[4096];
-		ph7_int64 n;
-		/* Perform a buffered read */
-		n = pStream->xRead(pDev->pHandle,zBuf,sizeof(zBuf));
-		if( n > 0 ){
-			/* Copy buffered data */
-			SyBlobAppend(&pDev->sBuffer,zBuf,(sxu32)n);
-			rc = PH7_OK;
-		}
-	}
+	rc = IoPrivateAtEof(pDev);
 	/* EOF or not */
-	ph7_result_bool(pCtx,rc == SXERR_EOF);
+	ph7_result_bool(pCtx,rc != 0);
 	return PH7_OK;
 }
 /*
@@ -443,6 +453,15 @@ PH7_PRIVATE ph7_int64 PH7_StreamRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
 	}
 	/* Read without buffering */
 	nRead = pStream->xRead(pDev->pHandle,zBuf,nLen);
+	if( nRead == 0 || (nRead < nLen && pStream->xSeek != 0) ){
+		/* A read that came back with nothing IS php's end-of-file event, and
+		 * so is a SHORT one on a seekable device: php fills its buffer in a
+		 * loop, so `fread($f, 100)` on a 12-byte file performs the second read
+		 * that finds the end. A short read on a PIPE or a socket means only
+		 * that less had arrived, and a NEGATIVE answer is an IO error; neither
+		 * latches. */
+		pDev->bEof = 1;
+	}
 	if( nRead > 0 ){
 		n += nRead;
 	}else if( n < 1 ){
@@ -506,6 +525,9 @@ static ph7_int64 StreamReadLine(io_private *pDev,const char **pzData,ph7_int64 n
 	 */
 	for(;;){
 		n = pStream->xRead(pDev->pHandle,zBuf, (nMaxLen > 0 && nMaxLen < (ph7_int64)sizeof(zBuf)) ? nMaxLen : (ph7_int64)sizeof(zBuf));
+		if( n == 0 ){
+			pDev->bEof = 1;
+		}
 		if( n < 1 ){
 			/* EOF or IO error */
 			break;
@@ -939,6 +961,9 @@ PH7_PRIVATE int PH7_builtin_stream_get_line(ph7_context *pCtx,int nArg,ph7_value
 		n = pStream->xRead(pDev->pHandle,zBuf,(ph7_int64)sizeof(zBuf));
 		if( n < 1 ){
 			bEof = 1;
+			if( n == 0 ){
+				pDev->bEof = 1;
+			}
 			continue;
 		}
 		if( SXRET_OK != SyBlobAppend(&pDev->sBuffer,zBuf,(sxu32)n) ){
@@ -1439,6 +1464,10 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ReleaseIOPrivate(pCtx,pDev);
 		ph7_result_bool(pCtx,0);
 	}else{
+		/* php's directory handles carry a mode and NO uri, and name their own
+		 * ops `dir` rather than the byte-stream STDIO. */
+		SetIOPrivateOpenedAs(pDev,0,0,"r",1);
+		pDev->bDir = 1;
 		/* Return the handle as a resource */
 		ph7_result_resource(pCtx,pDev);
 	}
@@ -2925,8 +2954,37 @@ PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_priva
 	pOut->pStream = pStream;
 	SyBlobInit(&pOut->sBuffer,&pVm->sAllocator);
 	pOut->nOfft = 0;
+	SyBlobInit(&pOut->sUri,&pVm->sAllocator);
+	pOut->zMode[0] = 0;
+	pOut->bEof = 0;
+	pOut->bDir = 0;
 	/* Set the magic number */
 	pOut->iMagic = IO_PRIVATE_MAGIC;
+}
+/*
+ * Record what the opener was asked for, for stream_get_meta_data()'s `uri` and
+ * `mode` keys. php keeps the URI exactly as written (a relative path stays
+ * relative) and the mode in a 16-byte field; passing a NULL/empty zUri leaves
+ * the key out, which is how a popen() pipe reports no wrapper and no uri.
+ */
+PH7_PRIVATE void SetIOPrivateOpenedAs(io_private *pDev,const char *zUri,int nUriLen,const char *zMode,int nModeLen)
+{
+	if( pDev == 0 ){
+		return;
+	}
+	SyBlobReset(&pDev->sUri);
+	if( zUri && nUriLen > 0 ){
+		SyBlobAppend(&pDev->sUri,zUri,(sxu32)nUriLen);
+	}
+	if( zMode && nModeLen > 0 ){
+		if( nModeLen > (int)sizeof(pDev->zMode) - 1 ){
+			nModeLen = (int)sizeof(pDev->zMode) - 1;
+		}
+		SyMemcpy(zMode,pDev->zMode,(sxu32)nModeLen);
+		pDev->zMode[nModeLen] = 0;
+	}else{
+		pDev->zMode[0] = 0;
+	}
 }
 /*
  * Release the IO private structure.
@@ -2934,6 +2992,7 @@ PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_priva
 static void ReleaseIOPrivate(ph7_context *pCtx,io_private *pDev)
 {
 	SyBlobRelease(&pDev->sBuffer);
+	SyBlobRelease(&pDev->sUri);
 	pDev->iMagic = 0x2126; /* Invalid magic number so we can detetct misuse */
 	/* Release the whole structure */
 	ph7_context_free_chunk(pCtx,pDev);
@@ -2950,6 +3009,7 @@ static void ReleaseIOPrivate(ph7_context *pCtx,io_private *pDev)
 PH7_PRIVATE void MarkIOPrivateClosed(io_private *pDev)
 {
 	SyBlobRelease(&pDev->sBuffer);
+	SyBlobRelease(&pDev->sUri);
 	pDev->pHandle = 0;
 	pDev->iMagic = IO_PRIVATE_CLOSED_MAGIC;
 }
@@ -2960,6 +3020,9 @@ static void ResetIOPrivate(io_private *pDev)
 {
 	SyBlobReset(&pDev->sBuffer);
 	pDev->nOfft = 0;
+	/* Every caller of this has just MOVED the device (a seek, a rewind, a
+	 * truncate), and php clears the end-of-file flag on exactly those. */
+	pDev->bEof = 0;
 }
 /* Forward declaration */
 
@@ -3034,6 +3097,9 @@ PH7_PRIVATE int PH7_builtin_stream_get_contents(ph7_context *pCtx,int nArg,ph7_v
 		}
 		nRead = pStream->xRead(pDev->pHandle,zBuf,nAsk);
 		if( nRead < 1 ){
+			if( nRead == 0 ){
+				pDev->bEof = 1;
+			}
 			break;
 		}
 		ph7_result_string(pCtx,zBuf,(int)nRead); /* appends */
@@ -3068,14 +3134,142 @@ PH7_PRIVATE int PH7_builtin_stream_get_wrappers(ph7_context *pCtx,int nArg,ph7_v
 	ph7_result_value(pCtx,pArr);
 	return PH7_OK;
 }
+/* The userland-wrapper pool is declared further down this file. */
+static int IoPrivateIsUwrap(const ph7_io_stream *pStream);
+static ph7_class_instance * IoPrivateUwrapObject(io_private *pDev);
 /*
- * array stream_get_meta_data(resource $stream) — best-effort php shape over
- * the io_private state (uri/wrapper_type/seekable/eof; recorded approximation).
+ * php names TWO things in a stream's metadata: the WRAPPER that opened it
+ * (`wrapper_type`) and the ops that drive it (`stream_type`). They differ for
+ * nearly every device — an ordinary file is opened by `plainfile` and driven by
+ * `STDIO` — and PHL answered its own single device name for both, so neither
+ * key ever matched php. A stream php opens with NO wrapper (a popen()/proc_open()
+ * pipe, a socket) reports no `wrapper_type` at all; *pzWrapper stays 0 for those.
+ */
+static void IoPrivateStreamLabels(io_private *pDev,const char **pzWrapper,const char **pzStream)
+{
+	const ph7_io_stream *pS = pDev->pStream;
+	*pzWrapper = 0;
+	*pzStream  = "STDIO";
+	if( pS == 0 ){
+		return;
+	}
+	if( pDev->bDir ){
+		*pzWrapper = "plainfile";
+		*pzStream  = "dir";
+		return;
+	}
+	if( is_php_stream(pS) ){
+		*pzWrapper = "PHP";
+		if( PH7_PhpStreamKind(pDev->pHandle) == PH7_IO_STREAM_MEMORY ){
+			/* php://memory and php://temp are ONE device here and two in php,
+			 * which labels them apart; the URI is what separates them. */
+			const char *zUri = (const char *)SyBlobData(&pDev->sUri);
+			sxu32 nUri = SyBlobLength(&pDev->sUri);
+			*pzStream = ( nUri >= sizeof("php://temp")-1
+			           && SyStrnicmp(zUri,"php://temp",sizeof("php://temp")-1) == 0 )
+				? "TEMP" : "MEMORY";
+		}
+		return;
+	}
+	if( is_data_stream(pS) ){
+		*pzWrapper = *pzStream = "RFC2397";
+		return;
+	}
+	if( IoPrivateIsUwrap(pS) ){
+		*pzWrapper = *pzStream = "user-space";
+		return;
+	}
+	if( pS->zName && SyStrncmp(pS->zName,"tcp",sizeof("tcp")) == 0 ){
+		/* php names the socket ops and reports no wrapper for them. */
+		*pzStream = "tcp_socket/ssl";
+		return;
+	}
+	if( SyBlobLength(&pDev->sUri) < 1 ){
+		/* Opened from a DESCRIPTOR rather than through a wrapper — a popen()
+		 * or proc_open() pipe end — which is precisely when php reports
+		 * neither a `wrapper_type` nor a `uri`. */
+		return;
+	}
+	*pzWrapper = "plainfile";
+}
+/*
+ * data:// carries its own metadata in php, and all of it comes back out of the
+ * URI the wrapper parsed: `data://<mediatype>[;name=value]*[;base64],<payload>`
+ * answers the media type, ONE KEY PER PARAMETER, and the base64 flag last. A
+ * URI naming no media type has no `mediatype` key at all — php does not
+ * substitute the RFC's default — and a repeated parameter keeps its last value.
+ */
+static void IoPrivateDataMeta(io_private *pDev,ph7_value *pArr,ph7_value *pV)
+{
+	const char *zUri = (const char *)SyBlobData(&pDev->sUri);
+	sxu32 nUri = SyBlobLength(&pDev->sUri);
+	sxu32 nStart = 0,nComma,nSeg,i;
+	int bBase64 = 0,bFirst = 1;
+	if( nUri >= sizeof("data://")-1 && SyStrnicmp(zUri,"data://",sizeof("data://")-1) == 0 ){
+		nStart = sizeof("data://")-1;
+	}else if( nUri >= sizeof("data:")-1 && SyStrnicmp(zUri,"data:",sizeof("data:")-1) == 0 ){
+		nStart = sizeof("data:")-1;
+	}
+	nComma = nStart;
+	while( nComma < nUri && zUri[nComma] != ',' ){
+		nComma++;
+	}
+	/* Walk the ';'-separated segments in front of the payload. */
+	for( nSeg = nStart ; nSeg <= nComma ; ){
+		sxu32 nEnd = nSeg;
+		while( nEnd < nComma && zUri[nEnd] != ';' ){
+			nEnd++;
+		}
+		if( bFirst ){
+			if( nEnd > nSeg ){
+				ph7_value_string(pV,&zUri[nSeg],(int)(nEnd - nSeg));
+				ph7_array_add_strkey_elem(pArr,"mediatype",pV);
+				ph7_value_reset_string_cursor(pV);
+			}
+			bFirst = 0;
+		}else if( nEnd - nSeg == sizeof("base64")-1
+		       && SyStrnicmp(&zUri[nSeg],"base64",sizeof("base64")-1) == 0 ){
+			bBase64 = 1;
+		}else{
+			/* `name=value`; php keys the array by the name, so a repeat wins. */
+			for( i = nSeg ; i < nEnd && zUri[i] != '=' ; i++ ){}
+			if( i < nEnd && i > nSeg ){
+				char zKey[64];
+				sxu32 nKey = i - nSeg;
+				if( nKey > sizeof(zKey)-1 ){
+					nKey = sizeof(zKey)-1;
+				}
+				SyMemcpy(&zUri[nSeg],zKey,nKey);
+				zKey[nKey] = 0;
+				ph7_value_string(pV,&zUri[i+1],(int)(nEnd - i - 1));
+				ph7_array_add_strkey_elem(pArr,zKey,pV);
+				ph7_value_reset_string_cursor(pV);
+			}
+		}
+		if( nEnd >= nComma ){
+			break;
+		}
+		nSeg = nEnd + 1;
+	}
+	ph7_value_bool(pV,bBase64);
+	ph7_array_add_strkey_elem(pArr,"base64",pV);
+}
+/*
+ * array stream_get_meta_data(resource $stream)
+ *
+ * php's own key set, in php's own order. What used to be here answered a
+ * best-effort shape: `mode` and `uri` did not exist at all (so the documented
+ * way to ask a handle what FILE it is on was an `Undefined array key` and
+ * NULL), `eof` was hardcoded FALSE (a `while (!$m['eof'])` loop never ended),
+ * `unread_bytes` was hardcoded 0, and `wrapper_type`/`stream_type` were both
+ * PHL's internal device name rather than php's two different labels.
  */
 PH7_PRIVATE int PH7_builtin_stream_get_meta_data(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	const char *zWrapper,*zStream;
 	io_private *pDev;
 	ph7_value *pArr,*pV;
+	sxu32 nUnread;
 	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
 		ph7_result_bool(pCtx,0);
@@ -3093,24 +3287,68 @@ PH7_PRIVATE int PH7_builtin_stream_get_meta_data(ph7_context *pCtx,int nArg,ph7_
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	ph7_value_bool(pV,0);
-	ph7_array_add_strkey_elem(pArr,"timed_out",pV);
-	ph7_value_bool(pV,1);
-	ph7_array_add_strkey_elem(pArr,"blocked",pV);
-	/* eof is best-effort: a read probe would consume state on unseekable
-	 * devices, so report FALSE and let feof() answer properly */
-	ph7_value_bool(pV,0);
-	ph7_array_add_strkey_elem(pArr,"eof",pV);
-	ph7_value_int(pV,0);
-	ph7_array_add_strkey_elem(pArr,"unread_bytes",pV);
-	ph7_value_string(pV,pDev->pStream ? pDev->pStream->zName : "",-1);
-	ph7_array_add_strkey_elem(pArr,"wrapper_type",pV);
-	ph7_value_reset_string_cursor(pV);
-	ph7_value_string(pV,pDev->pStream ? pDev->pStream->zName : "",-1);
+	IoPrivateStreamLabels(pDev,&zWrapper,&zStream);
+	/* Sample this BEFORE the eof probe below: php answers eof from state it
+	 * already has and never reads ahead for it, so its `unread_bytes` counts
+	 * only what the SCRIPT's own reads left buffered. */
+	nUnread = SyBlobLength(&pDev->sBuffer) > pDev->nOfft
+		? SyBlobLength(&pDev->sBuffer) - pDev->nOfft : 0;
+	if( is_data_stream(pDev->pStream) ){
+		/* A device that answers metadata of its OWN replaces php's three
+		 * defaults rather than adding to them: data:// (and php://temp, which
+		 * simply has none) report no timed_out/blocked/eof at all. */
+		IoPrivateDataMeta(pDev,pArr,pV);
+		ph7_value_reset_string_cursor(pV);
+	}else if( is_php_stream(pDev->pStream)
+	       && PH7_PhpStreamKind(pDev->pHandle) == PH7_IO_STREAM_MEMORY
+	       && SyStrncmp(zStream,"TEMP",sizeof("TEMP")) == 0 ){
+		/* php://temp: same rule, no keys of its own. */
+	}else{
+		ph7_value_bool(pV,0);
+		ph7_array_add_strkey_elem(pArr,"timed_out",pV);
+		ph7_value_bool(pV,1);
+		ph7_array_add_strkey_elem(pArr,"blocked",pV);
+		/* The read-ahead this performs is feof()'s own, so a script that asks
+		 * for the metadata and then reads sees every byte. */
+		ph7_value_bool(pV,IoPrivateAtEof(pDev) != 0);
+		ph7_array_add_strkey_elem(pArr,"eof",pV);
+	}
+	{
+		ph7_class_instance *pObj = IoPrivateUwrapObject(pDev);
+		if( pObj ){
+			/* php hands the wrapper INSTANCE back, which is the only way a
+			 * script can reach the object serving an open userland stream. */
+			ph7_value sObj;
+			PH7_MemObjInit(pCtx->pVm,&sObj);
+			sObj.x.pOther = pObj;
+			sObj.iFlags = MEMOBJ_OBJ;
+			ph7_array_add_strkey_elem(pArr,"wrapper_data",&sObj);
+		}
+	}
+	if( zWrapper ){
+		ph7_value_string(pV,zWrapper,-1);
+		ph7_array_add_strkey_elem(pArr,"wrapper_type",pV);
+		ph7_value_reset_string_cursor(pV);
+	}
+	ph7_value_string(pV,zStream,-1);
 	ph7_array_add_strkey_elem(pArr,"stream_type",pV);
 	ph7_value_reset_string_cursor(pV);
+	ph7_value_string(pV,pDev->zMode,-1);
+	ph7_array_add_strkey_elem(pArr,"mode",pV);
+	ph7_value_reset_string_cursor(pV);
+	/* Bytes already pulled off the device and not yet handed to the script —
+	 * php's own writepos-minus-readpos, which was hardcoded 0. */
+	ph7_value_int64(pV,(ph7_int64)nUnread);
+	ph7_array_add_strkey_elem(pArr,"unread_bytes",pV);
 	ph7_value_bool(pV,pDev->pStream && pDev->pStream->xSeek != 0);
 	ph7_array_add_strkey_elem(pArr,"seekable",pV);
+	if( SyBlobLength(&pDev->sUri) > 0 ){
+		/* php keeps the path exactly as the opener received it — a relative
+		 * one stays relative — and omits the key for a stream that has none. */
+		ph7_value_string(pV,(const char *)SyBlobData(&pDev->sUri),(int)SyBlobLength(&pDev->sUri));
+		ph7_array_add_strkey_elem(pArr,"uri",pV);
+		ph7_value_reset_string_cursor(pV);
+	}
 	ph7_result_value(pCtx,pArr);
 	return PH7_OK;
 }
@@ -3297,6 +3535,60 @@ PH7_PRIVATE int PH7_StreamIsUrlWrapper(const ph7_io_stream *pStream)
 		}
 	}
 	return 0;
+}
+/*
+ * Is this device one of the userland wrapper slots? php labels every such
+ * stream `user-space` rather than by its protocol.
+ */
+static int IoPrivateIsUwrap(const ph7_io_stream *pStream)
+{
+	int i;
+	for( i = 0 ; i < PHL_UWRAP_MAX ; i++ ){
+		if( g_aUwrap[i].pVm && &g_aUwrap[i].sStream == pStream ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/* Forward: the protocol dispatcher is defined just below. */
+static int UwrapCall(uwrap_handle *pH,const char *zMethod,int nArg,ph7_value **apArg,
+	ph7_value *pResult);
+/*
+ * Ask a userland wrapper whether it is at end of file — php's own
+ * streamWrapper::stream_eof(), which PHL used to leave undispatched, inferring
+ * the answer from a zero-length read instead. Returns 0 when the handle is not
+ * a userland stream (nothing written to *pAnswer).
+ */
+static int IoPrivateUwrapEof(io_private *pDev,int *pAnswer)
+{
+	uwrap_handle *pH;
+	ph7_value sRet;
+	if( pDev == 0 || pDev->pHandle == 0 || !IoPrivateIsUwrap(pDev->pStream) ){
+		return 0;
+	}
+	pH = (uwrap_handle *)pDev->pHandle;
+	PH7_MemObjInit(pH->pVm,&sRet);
+	if( UwrapCall(pH,"stream_eof",0,0,&sRet) != 0 ){
+		/* php's streamWrapper requires the method; a class without one keeps
+		 * the read-derived answer rather than being called into. */
+		PH7_MemObjRelease(&sRet);
+		*pAnswer = pH->bEof;
+		return 1;
+	}
+	*pAnswer = ph7_value_to_bool(&sRet) ? 1 : 0;
+	PH7_MemObjRelease(&sRet);
+	return 1;
+}
+/*
+ * The wrapper INSTANCE serving an open userland stream (php's `wrapper_data`),
+ * or 0 for any other device.
+ */
+static ph7_class_instance * IoPrivateUwrapObject(io_private *pDev)
+{
+	if( pDev == 0 || pDev->pHandle == 0 || !IoPrivateIsUwrap(pDev->pStream) ){
+		return 0;
+	}
+	return ((uwrap_handle *)pDev->pHandle)->pObj;
 }
 /* Call $obj->$zMethod(...) and copy the result into pResult (may be 0) */
 static int UwrapCall(uwrap_handle *pH,const char *zMethod,int nArg,ph7_value **apArg,
@@ -3752,6 +4044,11 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 	pSock->sock = sock;
 	pSock->bEof = 0;
 	InitIOPrivate(pCtx->pVm,&sTCP_Stream,pDev);
+	{
+		int nUri;
+		const char *zOrig = ph7_value_to_string(apArg[0],&nUri);
+		SetIOPrivateOpenedAs(pDev,zOrig,nUri,"r+",2);
+	}
 	pDev->pHandle = (void *)pSock;
 	ph7_result_resource(pCtx,pDev);
 	return PH7_OK;
@@ -3814,8 +4111,33 @@ PH7_PRIVATE int PH7_builtin_fopen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	if( pDev->pHandle == 0 ){
 		VfsThrowOpenWarning(pCtx,zUri);
 		ph7_result_bool(pCtx,0);
-		ph7_context_free_chunk(pCtx,pDev);
+		ReleaseIOPrivate(pCtx,pDev);
 		return PH7_OK;
+	}
+	/* Remember what we were asked for: stream_get_meta_data() reports both.
+	 * The URI is the ORIGINAL argument, not the scheme-stripped remainder
+	 * PH7_VmGetStreamDevice() advanced zUri past. */
+	{
+		int nUri;
+		const char *zOrig = ph7_value_to_string(apArg[0],&nUri);
+		const char *zMeta = zMode;
+		int nMeta = imLen;
+		if( is_php_stream(pStream)
+		 && PH7_PhpStreamKind(pDev->pHandle) == PH7_IO_STREAM_MEMORY ){
+			/* php's memory streams do not keep the mode they were opened with:
+			 * a buffer is readable and writable either way, so php reports the
+			 * one it actually built. */
+			int i,bWrite = 0,bAppend = imLen > 0 && (zMode[0] == 'a' || zMode[0] == 'A');
+			for( i = 0 ; i < imLen ; i++ ){
+				if( zMode[i] == 'w' || zMode[i] == 'W' || zMode[i] == 'a'
+				 || zMode[i] == 'A' || zMode[i] == '+' ){
+					bWrite = 1;
+				}
+			}
+			zMeta = bWrite ? (bAppend ? "a+b" : "w+b") : "rb";
+			nMeta = (int)SyStrlen(zMeta);
+		}
+		SetIOPrivateOpenedAs(pDev,zOrig,nUri,zMeta,nMeta);
 	}
 	/* All done,return the io_private instance as a resource */
 	ph7_result_resource(pCtx,pDev);

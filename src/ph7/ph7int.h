@@ -3625,6 +3625,15 @@ struct io_private
 	/* Unbuffered IO */
 	SyBlob sBuffer; /* Working buffer */
 	sxu32 nOfft;    /* Current read offset */
+	/* What the opener was ASKED for. php reports both back from
+	 * stream_get_meta_data() and neither was retained here, so the `uri` and
+	 * `mode` keys of that array simply did not exist. sUri stays EMPTY for a
+	 * stream php opens without a wrapper (a popen() pipe), which is exactly
+	 * when php omits the key. */
+	SyBlob sUri;     /* the path/URI as the opener received it */
+	char zMode[16];  /* the mode string, php's own field width */
+	sxu8 bEof;       /* a read on this handle has already come back empty */
+	sxu8 bDir;       /* opendir()/dir() handle rather than a byte stream */
 	sxu32 iMagic;   /* Sanity check to avoid misuse */
 };
 #define IO_PRIVATE_MAGIC 0xFEAC14
@@ -3636,6 +3645,7 @@ struct io_private
 /* Make sure we are dealing with a valid io_private instance */
 #define IO_PRIVATE_INVALID(IO) ( IO == 0 || IO->iMagic != IO_PRIVATE_MAGIC )
 PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_private *pOut);
+PH7_PRIVATE void SetIOPrivateOpenedAs(io_private *pDev,const char *zUri,int nUriLen,const char *zMode,int nModeLen);
 PH7_PRIVATE void MarkIOPrivateClosed(io_private *pDev);
 /* "Failed to open stream" warning helper (vfs.c, errno-based); used by the
  * fopen/opendir/file_* family in vfs_stream.c. */
@@ -3645,6 +3655,16 @@ PH7_PRIVATE const char * VfsStrerror(int iErr);
 /* Stream-device predicates (vfs_io_driver.c) */
 PH7_PRIVATE int is_php_stream(const ph7_io_stream *pStream);
 PH7_PRIVATE int is_data_stream(const ph7_io_stream *pStream);
+/* Which php:// sub-stream a handle opened (PH7_IO_STREAM_*, 0 when unknown).
+ * stream_get_meta_data() names MEMORY, TEMP and STDIO apart, and the device
+ * itself is the only place that knows. */
+PH7_PRIVATE int PH7_PhpStreamKind(void *pHandle);
+/* The php:// sub-streams, as PH7_PhpStreamKind() reports them. */
+#define PH7_IO_STREAM_STDIN  1 /* php://stdin */
+#define PH7_IO_STREAM_STDOUT 2 /* php://stdout */
+#define PH7_IO_STREAM_STDERR 3 /* php://stderr */
+#define PH7_IO_STREAM_OUTPUT 4 /* php://output */
+#define PH7_IO_STREAM_MEMORY 5 /* php://memory, php://temp, and data:// payloads */
 PH7_PRIVATE int PH7_Utf8Read(
   const unsigned char *z,         /* First byte of UTF-8 character */
   const unsigned char *zTerm,     /* Pretend this byte is 0x00 */

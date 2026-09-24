@@ -160,7 +160,11 @@
    "    $zTempDir = '.';"\
    "  }"\
    "  /* Create the file */"\
-   "  $pHandle = fopen($zTempDir.DIRECTORY_SEPARATOR.'PH7'.rand_str(12),'w+');"\
+   "  $zPath = $zTempDir.DIRECTORY_SEPARATOR.'PH7'.rand_str(12);"\
+   "  /* php CREATES the file and then opens it r+b, which is the mode"\
+   "   * stream_get_meta_data() reports back for it. */"\
+   "  fclose(fopen($zPath,'w'));"\
+   "  $pHandle = fopen($zPath,'r+b');"\
    "  return $pHandle;"\
    "}"\
    "function is_nan($num){ $num = (float)$num; return $num != $num; }"\

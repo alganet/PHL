@@ -52,12 +52,6 @@
  *  mechanism in the same way as print and echo.
  */
 typedef struct ph7_stream_data ph7_stream_data;
-/* Supported IO streams */
-#define PH7_IO_STREAM_STDIN  1 /* php://stdin */
-#define PH7_IO_STREAM_STDOUT 2 /* php://stdout */
-#define PH7_IO_STREAM_STDERR 3 /* php://stderr */
-#define PH7_IO_STREAM_OUTPUT 4 /* php://output */
-#define PH7_IO_STREAM_MEMORY 5 /* php://memory, php://temp, and data:// payloads */
  /* The following structure is the private data associated with the php:// stream */
 struct ph7_stream_data
 {
@@ -1516,6 +1510,9 @@ PH7_PRIVATE int PH7_builtin_popen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Initialize the io_private structure */
 	InitIOPrivate(pCtx->pVm, &sPipe_Stream, pDev);
+	/* A pipe has no wrapper and no path, so php's meta reports the MODE and
+	 * neither `wrapper_type` nor `uri`: an empty URI is what leaves them out. */
+	SetIOPrivateOpenedAs(pDev,0,0,zPosix,nPosix);
 	pDev->pHandle = pPipe;
 	/* Return the io_private instance as a resource */
 	ph7_result_resource(pCtx, pDev);
@@ -1587,13 +1584,16 @@ struct proc_private
 	int exit_code;     /* cached exit status once reaped */
 };
 /* Wrap a raw fd as an fopen-style stream resource (a php pipe end). */
-static io_private * ProcWrapFd(ph7_vm *pVm,int fd)
+static io_private * ProcWrapFd(ph7_vm *pVm,int fd,int bParentReads)
 {
 	io_private *pDev = (io_private *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(io_private));
 	if( pDev == 0 ){
 		return 0;
 	}
 	InitIOPrivate(pVm,&sUnixFileStream,pDev);
+	/* Same shape as popen()'s end: a proc_open() pipe carries no path, and its
+	 * mode is the direction the PARENT holds — the opposite of the child's. */
+	SetIOPrivateOpenedAs(pDev,0,0,bParentReads ? "r" : "w",1);
 	pDev->pHandle = SX_INT_TO_PTR(fd);
 	return pDev;
 }
@@ -1605,6 +1605,7 @@ struct proc_desc
 	/* pipe */
 	int child_end;     /* fd the child must have at child_fd */
 	int parent_end;    /* fd the parent keeps (wrapped into $pipes), -1 if none */
+	int parent_reads;  /* the parent's end is the READ end (the child writes) */
 	/* file */
 	int file_fd;       /* opened fd for a ['file',path,mode] spec */
 	/* redirect */
@@ -1695,7 +1696,7 @@ PH7_PRIVATE int PH7_builtin_proc_open(ph7_context *pCtx,int nArg,ph7_value **apA
 		PH7_MemObjInit(pVm,&sKey);
 		PH7_HashmapExtractNodeKey(pNode,&sKey);
 		pD->child_fd = ph7_value_to_int(&sKey);
-		pD->parent_end = -1; pD->file_fd = -1; pD->redirect_to = -1;
+		pD->parent_end = -1; pD->file_fd = -1; pD->redirect_to = -1; pD->parent_reads = 0;
 		PH7_MemObjRelease(&sKey);
 		pEntry = (ph7_value *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(ph7_value));
 		PH7_MemObjInit(pVm,pEntry);
@@ -1714,9 +1715,11 @@ PH7_PRIVATE int PH7_builtin_proc_open(ph7_context *pCtx,int nArg,ph7_value **apA
 						if( zMode[0] == 'w' || zMode[0] == 'a' ){
 							/* child writes -> parent reads: child gets write end */
 							pD->child_end = fds[1]; pD->parent_end = fds[0];
+						pD->parent_reads = 1;
 						}else{
 							/* child reads -> parent writes: child gets read end */
 							pD->child_end = fds[0]; pD->parent_end = fds[1];
+						pD->parent_reads = 0;
 						}
 						nDesc++;
 					}
@@ -1785,7 +1788,7 @@ PH7_PRIVATE int PH7_builtin_proc_open(ph7_context *pCtx,int nArg,ph7_value **apA
 			io_private *pEnd;
 			ph7_value *pRes;
 			close(pD->child_end);
-			pEnd = ProcWrapFd(pVm,pD->parent_end);
+			pEnd = ProcWrapFd(pVm,pD->parent_end,pD->parent_reads);
 			pRes = ph7_context_new_scalar(pCtx);
 			if( pEnd && pRes && pPipes ){
 				ph7_value_resource(pRes,pEnd);
@@ -1949,6 +1952,21 @@ PH7_PRIVATE int is_php_stream(const ph7_io_stream *pStream)
 #endif /* PH7_DISABLE_DISK_IO */
 }
 /*
+ * Which php:// sub-stream a handle opened. stream_get_meta_data() has to tell
+ * MEMORY, TEMP and STDIO apart and only the device's own private state knows;
+ * everything else answers 0.
+ */
+PH7_PRIVATE int PH7_PhpStreamKind(void *pHandle)
+{
+#ifndef PH7_DISABLE_DISK_IO
+	ph7_stream_data *pData = (ph7_stream_data *)pHandle;
+	return pData ? pData->iType : 0;
+#else
+	SXUNUSED(pHandle); /* cc warning */
+	return 0;
+#endif /* PH7_DISABLE_DISK_IO */
+}
+/*
  * Return TRUE if we are dealing with the data:// stream.
  */
 PH7_PRIVATE int is_data_stream(const ph7_io_stream *pStream)
@@ -2010,6 +2028,7 @@ PH7_PRIVATE void * PH7_ExportStdin(ph7_vm *pVm)
 			return 0;
 		}
 		InitIOPrivate(pVm,&sPHP_Stream,pIn);
+		SetIOPrivateOpenedAs(pIn,"php://stdin",(int)sizeof("php://stdin")-1,"rb",2);
 		/* Initialize the handle */
 		pIn->pHandle = PHPStreamDataInit(pVm,PH7_IO_STREAM_STDIN);
 		/* Install the STDIN stream */
@@ -2038,6 +2057,7 @@ PH7_PRIVATE void * PH7_ExportStdout(ph7_vm *pVm)
 			return 0;
 		}
 		InitIOPrivate(pVm,&sPHP_Stream,pOut);
+		SetIOPrivateOpenedAs(pOut,"php://stdout",(int)sizeof("php://stdout")-1,"wb",2);
 		/* Initialize the handle */
 		pOut->pHandle = PHPStreamDataInit(pVm,PH7_IO_STREAM_STDOUT);
 		/* Install the STDOUT stream */
@@ -2066,6 +2086,7 @@ PH7_PRIVATE void * PH7_ExportStderr(ph7_vm *pVm)
 			return 0;
 		}
 		InitIOPrivate(pVm,&sPHP_Stream,pErr);
+		SetIOPrivateOpenedAs(pErr,"php://stderr",(int)sizeof("php://stderr")-1,"wb",2);
 		/* Initialize the handle */
 		pErr->pHandle = PHPStreamDataInit(pVm,PH7_IO_STREAM_STDERR);
 		/* Install the STDERR stream */

@@ -3031,6 +3031,8 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"stream_get_contents",  PH7_builtin_stream_get_contents },
 		{"stream_get_wrappers",  PH7_builtin_stream_get_wrappers },
 		{"stream_get_meta_data", PH7_builtin_stream_get_meta_data },
+		/* php's own alias, kept from the days sockets had a separate API. */
+		{"socket_get_status",    PH7_builtin_stream_get_meta_data },
 		{"stream_context_create",PH7_builtin_stream_context_create },
 		{"stream_wrapper_register",   PH7_builtin_stream_wrapper_register },
 		{"stream_register_wrapper",   PH7_builtin_stream_wrapper_register },
