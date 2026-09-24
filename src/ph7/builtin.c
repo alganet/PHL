@@ -738,6 +738,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "hash_hmac",    PH7_builtin_hash_hmac },
 	{ "hash_equals",  PH7_builtin_hash_equals },
 	{ "hash_algos",   PH7_builtin_hash_algos },
+	{ "hash_hmac_algos", PH7_builtin_hash_hmac_algos },
 #endif /* PH7_DISABLE_HASH_FUNC */
 	{ "password_hash",         PH7_builtin_password_hash },
 	{ "password_verify",       PH7_builtin_password_verify },

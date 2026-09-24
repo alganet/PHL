@@ -645,6 +645,7 @@ static const struct VmBuiltinSig {
 	{ "hash_algos", "", "array" },
 	{ "hash_equals", "string $known_string, string $user_string", "bool" },
 	{ "hash_hmac", "string $algo, string $data, string $key, bool $binary = false", "string" },
+	{ "hash_hmac_algos", "", "array" },
 	{ "header", "string $header, bool $replace = true, int $response_code = 0", "void" },
 	{ "header_remove", "?string $name = NULL", "void" },
 	{ "headers_list", "", "array" },

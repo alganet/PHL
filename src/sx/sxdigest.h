@@ -48,6 +48,34 @@ struct SHA512Context {
 	int nDigestLen;          /* 64 (sha512) or 48 (sha384) — set by Init */
 };
 
+/*
+ * The checksum/short-hash family (crc32, crc32b, crc32c, adler32, the four FNV
+ * variants and joaat). Every one of them is a single accumulator fed one byte
+ * at a time, so they share a context and one Update: the KIND chosen by Init
+ * says which recurrence to run and how many bytes Final emits. They are not
+ * cryptographic hashes and php refuses them wherever a key is involved.
+ *
+ * A kind added here must be named in ALL THREE of SumInit/SumUpdate/SumFinal:
+ * they are three switches over the same set, and a kind that reaches only two
+ * of them is an accumulator no Final knows the width of.
+ */
+#define SUM_CRC32    0   /* CRC-32/BZIP2: MSB-first, digest emitted REVERSED */
+#define SUM_CRC32B   1   /* the ordinary reflected CRC-32 crc32() answers */
+#define SUM_CRC32C   2   /* Castagnoli */
+#define SUM_ADLER32  3
+#define SUM_FNV132   4
+#define SUM_FNV1A32  5
+#define SUM_FNV164   6
+#define SUM_FNV1A64  7
+#define SUM_JOAAT    8
+typedef struct SumContext SumContext;
+struct SumContext {
+	int nKind;      /* one of SUM_* */
+	sxu64 nS0;      /* the accumulator (crc / hash / adler's low half) */
+	sxu64 nS1;      /* adler32's high half; unused elsewhere */
+	sxu32 nPend;    /* bytes hashed since the last adler32 reduction */
+};
+
 /* A union over every digest context so a single fixed-size, correctly-aligned
  * buffer can back any algorithm (used by the hash() descriptor dispatch). */
 typedef union HashCtx {
@@ -55,6 +83,7 @@ typedef union HashCtx {
 	SHA1Context sha1;
 	SHA256Context sha256;
 	SHA512Context sha512;
+	SumContext sum;
 } HashCtx;
 
 /* Digest function prototypes */
@@ -81,6 +110,10 @@ PH7_PRIVATE void SHA512Final(SHA512Context *pCtx,unsigned char *digest);
 PH7_PRIVATE sxi32 SySha512Compute(const void *pIn,sxu32 nLen,unsigned char zDigest[64]);
 
 PH7_PRIVATE sxu32 SyCrc32(const void *pSrc,sxu32 nLen);
+
+PH7_PRIVATE void SumInit(SumContext *pCtx,int nKind);
+PH7_PRIVATE void SumUpdate(SumContext *pCtx,const unsigned char *data,unsigned int len);
+PH7_PRIVATE void SumFinal(SumContext *pCtx,unsigned char *digest);
 #endif /* PH7_DISABLE_HASH_FUNC */
 
 /* SyBinToHexConsumer is a general helper (used by bin2hex, md5_file, etc.)

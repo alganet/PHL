@@ -744,6 +744,210 @@ PH7_PRIVATE sxu32 SyCrc32(const void *pSrc,sxu32 nLen)
 {
 	return SyCrc32Update(SXU32_HIGH,pSrc,nLen);
 }
+#ifndef PH7_DISABLE_HASH_FUNC
+/*
+ * The checksum/short-hash family: crc32, crc32b, crc32c, adler32, the four FNV
+ * variants and joaat. One accumulator each, one byte at a time, so a single
+ * Update over a KIND serves them all.
+ *
+ * Two of the three CRCs run off a 16-entry NIBBLE table rather than the usual
+ * 256-entry one: this engine already carries the reflected 256-entry table for
+ * crc32b (SyCrc32 above, and crc32()), and two more of those would be 2 KB of
+ * constants for algorithms a program reaches for on short strings. Two lookups
+ * per byte instead of one is the trade.
+ */
+/* CRC-32/BZIP2 -- php's "crc32". MSB-first over the same polynomial crc32b
+ * uses, no input/output reflection. Nibble table: the high nibble of the
+ * register selects. */
+static const sxu32 aCrc32Be[16] = {
+	0x00000000, 0x04c11db7, 0x09823b6e, 0x0d4326d9,
+	0x130476dc, 0x17c56b6b, 0x1a864db2, 0x1e475005,
+	0x2608edb8, 0x22c9f00f, 0x2f8ad6d6, 0x2b4bcb61,
+	0x350c9b64, 0x31cd86d3, 0x3c8ea00a, 0x384fbdbd,
+};
+/* CRC-32C (Castagnoli), reflected polynomial 0x82f63b78. */
+static const sxu32 aCrc32c[16] = {
+	0x00000000, 0x105ec76f, 0x20bd8ede, 0x30e349b1,
+	0x417b1dbc, 0x5125dad3, 0x61c69362, 0x7198540d,
+	0x82f63b78, 0x92a8fc17, 0xa24bb5a6, 0xb21572c9,
+	0xc38d26c4, 0xd3d3e1ab, 0xe330a81a, 0xf36e6f75,
+};
+PH7_PRIVATE void SumInit(SumContext *pCtx,int nKind)
+{
+	pCtx->nKind = nKind;
+	pCtx->nS1 = 0;
+	pCtx->nPend = 0;
+	switch( nKind ){
+		case SUM_CRC32:
+		case SUM_CRC32B:
+		case SUM_CRC32C:
+			pCtx->nS0 = 0xffffffff;
+			break;
+		case SUM_ADLER32:
+			pCtx->nS0 = 1;  /* a */
+			pCtx->nS1 = 0;  /* b */
+			break;
+		case SUM_FNV132:
+		case SUM_FNV1A32:
+			pCtx->nS0 = 0x811c9dc5;
+			break;
+		case SUM_FNV164:
+		case SUM_FNV1A64:
+			pCtx->nS0 = 0xcbf29ce484222325ULL;
+			break;
+		case SUM_JOAAT:
+		default:
+			pCtx->nS0 = 0;
+			break;
+	}
+}
+PH7_PRIVATE void SumUpdate(SumContext *pCtx,const unsigned char *data,unsigned int len)
+{
+	unsigned int i;
+	sxu32 crc;
+	sxu64 h;
+	switch( pCtx->nKind ){
+		case SUM_CRC32:
+			crc = (sxu32)pCtx->nS0;
+			for( i = 0 ; i < len ; ++i ){
+				crc ^= (sxu32)data[i] << 24;
+				crc = (crc << 4) ^ aCrc32Be[(crc >> 28) & 0x0f];
+				crc = (crc << 4) ^ aCrc32Be[(crc >> 28) & 0x0f];
+			}
+			pCtx->nS0 = crc;
+			break;
+		case SUM_CRC32B:
+			crc = (sxu32)pCtx->nS0;
+			for( i = 0 ; i < len ; ++i ){
+				crc = crc32_table[(crc ^ data[i]) & 0xff] ^ (crc >> 8);
+			}
+			pCtx->nS0 = crc;
+			break;
+		case SUM_CRC32C:
+			crc = (sxu32)pCtx->nS0;
+			for( i = 0 ; i < len ; ++i ){
+				crc ^= data[i];
+				crc = (crc >> 4) ^ aCrc32c[crc & 0x0f];
+				crc = (crc >> 4) ^ aCrc32c[crc & 0x0f];
+			}
+			pCtx->nS0 = crc;
+			break;
+		case SUM_ADLER32:
+			/* Reduce every 5552 bytes -- the largest run that cannot overflow
+			 * the 32-bit sums, so the modulo stays off the per-byte path. */
+			for( i = 0 ; i < len ; ++i ){
+				pCtx->nS0 += data[i];
+				pCtx->nS1 += pCtx->nS0;
+				if( ++pCtx->nPend >= 5552 ){
+					pCtx->nS0 %= 65521;
+					pCtx->nS1 %= 65521;
+					pCtx->nPend = 0;
+				}
+			}
+			break;
+		case SUM_FNV132:
+			crc = (sxu32)pCtx->nS0;
+			for( i = 0 ; i < len ; ++i ){
+				crc = (sxu32)(crc * 0x01000193u);
+				crc ^= data[i];
+			}
+			pCtx->nS0 = crc;
+			break;
+		case SUM_FNV1A32:
+			crc = (sxu32)pCtx->nS0;
+			for( i = 0 ; i < len ; ++i ){
+				crc ^= data[i];
+				crc = (sxu32)(crc * 0x01000193u);
+			}
+			pCtx->nS0 = crc;
+			break;
+		case SUM_FNV164:
+			h = pCtx->nS0;
+			for( i = 0 ; i < len ; ++i ){
+				h *= 0x100000001b3ULL;
+				h ^= data[i];
+			}
+			pCtx->nS0 = h;
+			break;
+		case SUM_FNV1A64:
+			h = pCtx->nS0;
+			for( i = 0 ; i < len ; ++i ){
+				h ^= data[i];
+				h *= 0x100000001b3ULL;
+			}
+			pCtx->nS0 = h;
+			break;
+		case SUM_JOAAT:
+		default:
+			crc = (sxu32)pCtx->nS0;
+			for( i = 0 ; i < len ; ++i ){
+				crc += data[i];
+				crc += crc << 10;
+				crc ^= crc >> 6;
+			}
+			pCtx->nS0 = crc;
+			break;
+	}
+}
+PH7_PRIVATE void SumFinal(SumContext *pCtx,unsigned char *digest)
+{
+	sxu32 v;
+	sxu64 h;
+	int i;
+	switch( pCtx->nKind ){
+		case SUM_CRC32:
+			/* php emits this one's register in the reverse byte order of every
+			 * other checksum here: hash('crc32','123456789') is "181989fc"
+			 * where the CRC-32/BZIP2 value is 0xfc891918. */
+			v = (sxu32)(pCtx->nS0 ^ 0xffffffff);
+			digest[0] = (unsigned char)(v & 0xff);
+			digest[1] = (unsigned char)((v >> 8) & 0xff);
+			digest[2] = (unsigned char)((v >> 16) & 0xff);
+			digest[3] = (unsigned char)((v >> 24) & 0xff);
+			break;
+		case SUM_CRC32B:
+		case SUM_CRC32C:
+			v = (sxu32)(pCtx->nS0 ^ 0xffffffff);
+			for( i = 0 ; i < 4 ; ++i ){
+				digest[i] = (unsigned char)((v >> ((3-i)*8)) & 0xff);
+			}
+			break;
+		case SUM_ADLER32:
+			v = (sxu32)(((pCtx->nS1 % 65521) << 16) | (pCtx->nS0 % 65521));
+			for( i = 0 ; i < 4 ; ++i ){
+				digest[i] = (unsigned char)((v >> ((3-i)*8)) & 0xff);
+			}
+			break;
+		case SUM_FNV164:
+		case SUM_FNV1A64:
+			h = pCtx->nS0;
+			for( i = 0 ; i < 8 ; ++i ){
+				digest[i] = (unsigned char)((h >> ((7-i)*8)) & 0xff);
+			}
+			break;
+		case SUM_JOAAT:
+			/* The avalanche belongs to the FINAL, not to the per-byte step. */
+			v = (sxu32)pCtx->nS0;
+			v += v << 3;
+			v ^= v >> 11;
+			v += v << 15;
+			for( i = 0 ; i < 4 ; ++i ){
+				digest[i] = (unsigned char)((v >> ((3-i)*8)) & 0xff);
+			}
+			break;
+		case SUM_FNV132:
+		case SUM_FNV1A32:
+		default:
+			/* the 32-bit FNV pair -- and the width every other 4-byte kind
+			 * above has already been handled at */
+			v = (sxu32)pCtx->nS0;
+			for( i = 0 ; i < 4 ; ++i ){
+				digest[i] = (unsigned char)((v >> ((3-i)*8)) & 0xff);
+			}
+			break;
+	}
+}
+#endif /* PH7_DISABLE_HASH_FUNC */
 PH7_PRIVATE sxi32 SyBinToHexConsumer(const void *pIn,sxu32 nLen,ProcConsumer xConsumer,void *pConsumerData)
 {
 	static const unsigned char zHexTab[] = "0123456789abcdef";

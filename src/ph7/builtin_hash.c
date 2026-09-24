@@ -148,24 +148,51 @@ static void HashSha384Init(HashCtx *c){ SHA384Init(&c->sha512); }
 static void HashSha512Init(HashCtx *c){ SHA512Init(&c->sha512); }
 static void HashSha512Update(HashCtx *c,const unsigned char *d,unsigned int n){ SHA512Update(&c->sha512,d,n); }
 static void HashSha512Final(HashCtx *c,unsigned char *o){ SHA512Final(&c->sha512,o); }
+/* The checksum family shares one context and one Update; only the kind differs. */
+static void HashCrc32Init(HashCtx *c){ SumInit(&c->sum,SUM_CRC32); }
+static void HashCrc32bInit(HashCtx *c){ SumInit(&c->sum,SUM_CRC32B); }
+static void HashCrc32cInit(HashCtx *c){ SumInit(&c->sum,SUM_CRC32C); }
+static void HashAdler32Init(HashCtx *c){ SumInit(&c->sum,SUM_ADLER32); }
+static void HashFnv132Init(HashCtx *c){ SumInit(&c->sum,SUM_FNV132); }
+static void HashFnv1a32Init(HashCtx *c){ SumInit(&c->sum,SUM_FNV1A32); }
+static void HashFnv164Init(HashCtx *c){ SumInit(&c->sum,SUM_FNV164); }
+static void HashFnv1a64Init(HashCtx *c){ SumInit(&c->sum,SUM_FNV1A64); }
+static void HashJoaatInit(HashCtx *c){ SumInit(&c->sum,SUM_JOAAT); }
+static void HashSumUpdate(HashCtx *c,const unsigned char *d,unsigned int n){ SumUpdate(&c->sum,d,n); }
+static void HashSumFinal(HashCtx *c,unsigned char *o){ SumFinal(&c->sum,o); }
 typedef struct HashAlgo HashAlgo;
 struct HashAlgo {
 	const char *zName;   /* lowercase canonical name */
-	int nDigestLen;      /* output bytes: 16/20/28/32/48/64 */
-	int nBlockLen;       /* internal block bytes (for HMAC): 64 or 128 */
+	int nDigestLen;      /* output bytes: 4/8/16/20/28/32/48/64 */
+	int nBlockLen;       /* HMAC block bytes (64 or 128), or 0 for an algorithm
+	                      * php does not consider CRYPTOGRAPHIC -- the checksums
+	                      * below, which hash_hmac() and the KDFs refuse */
 	void (*xInit)(HashCtx *);
 	void (*xUpdate)(HashCtx *,const unsigned char *,unsigned int);
 	void (*xFinal)(HashCtx *,unsigned char *);
 };
+/*
+ * In php's own registration ORDER, because hash_algos() answers it: the
+ * cryptographic digests first, then the checksums. A name php has and this
+ * table does not is a loud ValueError rather than a wrong digest.
+ */
 static const HashAlgo aHashAlgo[] = {
-	{ "md5",    16, 64,  HashMd5Init,    HashMd5Update,    HashMd5Final    },
-	{ "sha1",   20, 64,  HashSha1Init,   HashSha1Update,   HashSha1Final   },
-	{ "sha224", 28, 64,  HashSha224Init, HashSha256Update, HashSha256Final },
-	{ "sha256", 32, 64,  HashSha256Init, HashSha256Update, HashSha256Final },
-	{ "sha384", 48, 128, HashSha384Init, HashSha512Update, HashSha512Final },
-	{ "sha512", 64, 128, HashSha512Init, HashSha512Update, HashSha512Final },
+	{ "md5",     16, 64,  HashMd5Init,     HashMd5Update,    HashMd5Final    },
+	{ "sha1",    20, 64,  HashSha1Init,    HashSha1Update,   HashSha1Final   },
+	{ "sha224",  28, 64,  HashSha224Init,  HashSha256Update, HashSha256Final },
+	{ "sha256",  32, 64,  HashSha256Init,  HashSha256Update, HashSha256Final },
+	{ "sha384",  48, 128, HashSha384Init,  HashSha512Update, HashSha512Final },
+	{ "sha512",  64, 128, HashSha512Init,  HashSha512Update, HashSha512Final },
+	{ "adler32",  4, 0,   HashAdler32Init, HashSumUpdate,    HashSumFinal    },
+	{ "crc32",    4, 0,   HashCrc32Init,   HashSumUpdate,    HashSumFinal    },
+	{ "crc32b",   4, 0,   HashCrc32bInit,  HashSumUpdate,    HashSumFinal    },
+	{ "crc32c",   4, 0,   HashCrc32cInit,  HashSumUpdate,    HashSumFinal    },
+	{ "fnv132",   4, 0,   HashFnv132Init,  HashSumUpdate,    HashSumFinal    },
+	{ "fnv1a32",  4, 0,   HashFnv1a32Init, HashSumUpdate,    HashSumFinal    },
+	{ "fnv164",   8, 0,   HashFnv164Init,  HashSumUpdate,    HashSumFinal    },
+	{ "fnv1a64",  8, 0,   HashFnv1a64Init, HashSumUpdate,    HashSumFinal    },
+	{ "joaat",    4, 0,   HashJoaatInit,   HashSumUpdate,    HashSumFinal    },
 };
-/* Case-insensitive algorithm lookup (PHP accepts 'SHA256' etc.). */
 static const HashAlgo * HashFindAlgo(const char *zName,int nLen){
 	sxu32 i;
 	for( i = 0; i < SX_ARRAYSIZE(aHashAlgo); i++ ){
@@ -229,7 +256,9 @@ PH7_PRIVATE int PH7_builtin_hash_hmac(ph7_context *pCtx,int nArg,ph7_value **apA
 	}
 	zAlgo = ph7_value_to_string(apArg[0],&nAlgoLen);
 	pAlgo = HashFindAlgo(zAlgo,nAlgoLen);
-	if( pAlgo == 0 ){
+	/* A checksum is a hashing algorithm php will not KEY: one message for the
+	 * name it does not know and for the one it will not use here. */
+	if( pAlgo == 0 || pAlgo->nBlockLen < 1 ){
 		return PH7_VmThrowException(pCtx,"ValueError",
 			"hash_hmac(): Argument #1 ($algo) must be a valid cryptographic hashing algorithm");
 	}
@@ -308,15 +337,14 @@ PH7_PRIVATE int PH7_builtin_hash_equals(ph7_context *pCtx,int nArg,ph7_value **a
 	return PH7_OK;
 }
 /*
- * array hash_algos(void)
- *   Return a list of the registered hashing algorithms.
+ * The body of hash_algos()/hash_hmac_algos(): the same table, filtered by
+ * whether the algorithm may key a MAC (php's two lists differ by exactly the
+ * non-cryptographic rows).
  */
-PH7_PRIVATE int PH7_builtin_hash_algos(ph7_context *pCtx,int nArg,ph7_value **apArg)
+static int HashAlgoList(ph7_context *pCtx,int bHmacOnly)
 {
 	ph7_value *pArray,*pValue;
 	sxu32 i;
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
 	pArray = ph7_context_new_array(pCtx);
 	pValue = ph7_context_new_scalar(pCtx);
 	if( pArray == 0 || pValue == 0 ){
@@ -324,12 +352,35 @@ PH7_PRIVATE int PH7_builtin_hash_algos(ph7_context *pCtx,int nArg,ph7_value **ap
 		return PH7_OK;
 	}
 	for( i = 0; i < SX_ARRAYSIZE(aHashAlgo); i++ ){
+		if( bHmacOnly && aHashAlgo[i].nBlockLen < 1 ){
+			continue;
+		}
 		ph7_value_string(pValue,aHashAlgo[i].zName,-1);
 		ph7_array_add_elem(pArray,0 /* Automatic 0-based index */,pValue);
 		ph7_value_reset_string_cursor(pValue);
 	}
 	ph7_result_value(pCtx,pArray);
 	return PH7_OK;
+}
+/*
+ * array hash_algos(void)
+ *   Return a list of the registered hashing algorithms.
+ */
+PH7_PRIVATE int PH7_builtin_hash_algos(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return HashAlgoList(pCtx,FALSE);
+}
+/*
+ * array hash_hmac_algos(void)
+ *   Return the algorithms that may be used to key a MAC.
+ */
+PH7_PRIVATE int PH7_builtin_hash_hmac_algos(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return HashAlgoList(pCtx,TRUE);
 }
 #endif /* PH7_DISABLE_HASH_FUNC */
 /*
