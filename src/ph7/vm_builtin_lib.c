@@ -380,17 +380,10 @@
     * whose line is this chunk's rather than the caller's. */\
    "/* PH7 keeps no stat cache, so this is a no-op like php on a clean cache. */"\
    "function clearstatcache($clear_realpath_cache = false, $filename = ''){}"\
-   "/* php 8.4 mb_ucfirst/mb_lcfirst: case-map only the first multibyte char. */"\
-   "function mb_ucfirst($string, $encoding = null){"\
-   "  $string = (string)$string;"\
-   "  if( $string === '' ){ return ''; }"\
-   "  return mb_strtoupper(mb_substr($string, 0, 1)) . mb_substr($string, 1);"\
-   "}"\
-   "function mb_lcfirst($string, $encoding = null){"\
-   "  $string = (string)$string;"\
-   "  if( $string === '' ){ return ''; }"\
-   "  return mb_strtolower(mb_substr($string, 0, 1)) . mb_substr($string, 1);"\
-   "}"\
+   /* mb_ucfirst/mb_lcfirst moved to C (builtin_mb.c): as prelude wrappers they
+    * dropped $encoding, UPPER-cased where php title-cases ('ß' -> 'SS' for php's
+    * 'Ss') and lowered a leading Σ with nothing after it, which is php's FINAL
+    * sigma and not what a first character gets. */\
    "/* Creates a temporary file and returns its name */"\
    "function tempnam(string $directory,string $prefix)"\
    "{"\
