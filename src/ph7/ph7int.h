@@ -3473,8 +3473,6 @@ struct ph7_sockopts
 {
 	const char *zBindHost; /* `bindto`'s host half, already parsed (0 = no bind) */
 	int iBindPort;         /* `bindto`'s port half */
-	const char *zBindSpec; /* `bindto` as the script SPELLED it (php quotes it) */
-	int nBindSpec;
 	int bReusePort;        /* `so_reuseport` */
 	int bNoDelay;          /* `tcp_nodelay` */
 	int iBacklog;          /* `backlog`; <= 0 keeps the transport's default */

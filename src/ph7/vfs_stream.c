@@ -4342,8 +4342,6 @@ static int SockCtxOptions(phl_stream_ctx *pCtxRes,ph7_sockopts *pOut,char *zHost
 		}
 		zSpec = (const char *)SyBlobData(&pVal->sBlob);
 		nSpec = (int)SyBlobLength(&pVal->sBlob);
-		pOut->zBindSpec = zSpec;
-		pOut->nBindSpec = nSpec;
 		for( i = 0 ; i + 1 < nSpec ; i++ ){
 			if( zSpec[i] == ':' ){
 				nHost = i;
@@ -5195,9 +5193,12 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"Invalid IP Address: %s",
 				sOpt.zBindHost ? sOpt.zBindHost : "");
 		}else{
+			/* php RE-COMPOSES the address it tried from the parts it parsed, so
+			 * the quoted spelling is canonical: a `bindto` of "192.0.2.1:007"
+			 * is reported as '192.0.2.1:7'. */
 			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-				"Failed to bind to '%.*s', system said: %s",
-				sOpt.nBindSpec,sOpt.zBindSpec ? sOpt.zBindSpec : "",
+				"Failed to bind to '%s:%d', system said: %s",
+				sOpt.zBindHost ? sOpt.zBindHost : "",sOpt.iBindPort,
 				PH7_NetStrError(sOpt.iBindErrno));
 		}
 	}

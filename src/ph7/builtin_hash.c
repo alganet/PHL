@@ -1221,8 +1221,9 @@ static void * HashOpenRead(ph7_context *pCtx,const char *zFile,int nFile,
 	}
 	/* Armed HERE and not at the caller: the context describes exactly the open
 	 * below, and a device lookup that fails above must not leave one behind.
-	 * hash_file()/hash_hmac_file() have no $context argument at all, so they arm
-	 * NOTHING and a userland wrapper sees php's null. */
+	 * hash_file()/hash_hmac_file() declare no $context argument yet still open
+	 * through the DEFAULT context — measured, not assumed: php hands a userland
+	 * wrapper a resource for those two and NULL for md5_file()/sha1_file(). */
 	PH7_StreamCtxArm(pCtx->pVm,pCtxRes);
 	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0,ph7_function_name(pCtx));
 	if( pHandle == 0 ){
@@ -1312,7 +1313,7 @@ PH7_PRIVATE int PH7_builtin_hash_file(ph7_context *pCtx,int nArg,ph7_value **apA
 			return rc;
 		}
 	}
-	pHandle = HashOpenRead(pCtx,zFile,nFileLen,0,&pStream);
+	pHandle = HashOpenRead(pCtx,zFile,nFileLen,PH7_StreamCtxDefault(pCtx->pVm),&pStream);
 	if( pHandle == 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -1361,7 +1362,7 @@ PH7_PRIVATE int PH7_builtin_hash_hmac_file(ph7_context *pCtx,int nArg,ph7_value 
 	if( nArg > 3 ){
 		raw_output = ph7_value_to_bool(apArg[3]);
 	}
-	pHandle = HashOpenRead(pCtx,zFile,nFileLen,0,&pStream);
+	pHandle = HashOpenRead(pCtx,zFile,nFileLen,PH7_StreamCtxDefault(pCtx->pVm),&pStream);
 	if( pHandle == 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;

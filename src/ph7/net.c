@@ -62,26 +62,43 @@ static void NetApplySockOpts(ph7_socket sock,const ph7_sockopts *pOpt)
  */
 static int NetBindLocal(ph7_socket sock,int iFamily,const char *zHost,int iPort,int *pErrno)
 {
-	struct addrinfo hints,*res = 0;
-	char zPort[16];
+	struct sockaddr_in sin;
+	struct sockaddr_in6 sin6;
+	struct sockaddr *pAddr;
+	ph7_socklen nAddr;
 	int rc;
 	*pErrno = 0;
-	/* The local address is resolved in the family of the socket that will
-	 * carry it — an IPv6 candidate wants an IPv6 local address — so the answer
-	 * is about THIS socket and not about the address family net.c prefers. */
-	snprintf(zPort,sizeof(zPort),"%d",iPort);
-	memset(&hints,0,sizeof(hints));
-	hints.ai_family = iFamily;
-	hints.ai_socktype = SOCK_STREAM;
-	if( getaddrinfo(zHost,zPort,&hints,&res) != 0 || res == 0 ){
-		return PH7_SOCKOPT_BIND_RESOLVE;
+	/* php reads a local address as a NUMERIC literal and nothing else — it is
+	 * inet_pton(), not the resolver — so `bindto => 'localhost:0'` is an
+	 * Invalid IP Address there and binds nothing. It is parsed in the family of
+	 * the socket that will carry it, so the answer describes THIS candidate and
+	 * not the address family net.c prefers. (php's bracketed IPv6 spelling is
+	 * the recorded gap §7.4 slice-2 (a) names; it does not parse here either.) */
+	if( iFamily == AF_INET6 ){
+		memset(&sin6,0,sizeof(sin6));
+		sin6.sin6_family = AF_INET6;
+		sin6.sin6_port = htons((unsigned short)iPort);
+		if( inet_pton(AF_INET6,zHost,&sin6.sin6_addr) != 1 ){
+			return PH7_SOCKOPT_BIND_RESOLVE;
+		}
+		pAddr = (struct sockaddr *)&sin6;
+		nAddr = (ph7_socklen)sizeof(sin6);
+	}else{
+		memset(&sin,0,sizeof(sin));
+		sin.sin_family = AF_INET;
+		sin.sin_port = htons((unsigned short)iPort);
+		if( inet_pton(AF_INET,zHost,&sin.sin_addr) != 1 ){
+			return PH7_SOCKOPT_BIND_RESOLVE;
+		}
+		pAddr = (struct sockaddr *)&sin;
+		nAddr = (ph7_socklen)sizeof(sin);
 	}
-	rc = bind(sock,res->ai_addr,(ph7_socklen)res->ai_addrlen);
+	rc = bind(sock,pAddr,nAddr);
 	if( rc != 0 ){
 		*pErrno = PH7_NetLastError();
+		return PH7_SOCKOPT_BIND_REFUSED;
 	}
-	freeaddrinfo(res);
-	return rc == 0 ? 0 : PH7_SOCKOPT_BIND_REFUSED;
+	return 0;
 }
 /*
  * The OS error the last socket call reported. A Windows socket does not touch

@@ -54,6 +54,16 @@ echo 'unresolvable still connects: ', var_export($ok, true),
 [$ok, $msg] = $sockBind('192.0.2.1:0');
 echo 'unbindable still connects: ', var_export($ok, true),
      ' named: ', var_export(str_contains($msg, "Failed to bind to '192.0.2.1:0', system said: "), true), "\n";
+/* php RE-COMPOSES the address from the parts it parsed, so what it quotes is
+ * canonical rather than what the script spelled. */
+[$ok, $msg] = $sockBind('192.0.2.1:007');
+echo 'quoted canonically: ',
+     var_export(str_contains($msg, "Failed to bind to '192.0.2.1:7', system said: "), true), "\n";
+/* And a local address is a NUMERIC literal: php never asks the resolver about
+ * one, so a host NAME is refused where it would plainly have resolved. */
+[$ok, $msg] = $sockBind('localhost:0');
+echo 'a name is not an address: ',
+     var_export(str_contains($msg, 'Invalid IP Address: localhost'), true), "\n";
 
 /* A value that is not a STRING is the one option failure php reports as a
  * failed CONNECT rather than as a warning it carries on past. */
@@ -87,6 +97,8 @@ bindto took: true
 no colon connects: true
 unresolvable still connects: true named: true
 unbindable still connects: true named: true
+quoted canonically: true
+a name is not an address: true
 non-string bindto: false 'local_addr context option is not a string.'
 reuseport second bind: true
 contrast holds: true

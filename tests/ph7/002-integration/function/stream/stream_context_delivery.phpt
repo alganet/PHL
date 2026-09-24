@@ -58,6 +58,12 @@ echo "-- an opener with no \$context argument at all\n";
 @md5_file('ctxd://x');
 @include 'ctxd://x';
 
+/* Except the two that declare none and open through the default anyway, which
+ * is php's own asymmetry and not a rule that can be derived. */
+echo "-- hash_file and hash_hmac_file open through the default\n";
+@hash_file('md5', 'ctxd://x');
+@hash_hmac_file('md5', 'ctxd://x', 'k');
+
 /* And an open that FAILED before it began must not leave its context armed for
  * whatever opens next. */
 echo "-- nothing left armed by a failed open\n";
@@ -95,6 +101,9 @@ open is_resource=false type=- opts=null
 -- an opener with no $context argument at all
 open is_resource=false type=- opts=null
 open is_resource=false type=- opts=null
+-- hash_file and hash_hmac_file open through the default
+open is_resource=true type=stream-context opts={"ctxd":{"d":1}}
+open is_resource=true type=stream-context opts={"ctxd":{"d":1}}
 -- nothing left armed by a failed open
 open is_resource=false type=- opts=null
 -- transport
