@@ -910,6 +910,17 @@ static const struct VmBuiltinSig {
 	{ "strcoll", "string $string1, string $string2", "int" },
 	{ "strcspn", "string $string, string $characters, int $offset = 0, ?int $length = NULL", "int" },
 	{ "stream_context_create", "?array $options = NULL, ?array $params = NULL", "" },
+	{ "stream_context_get_options", "$stream_or_context", "array" },
+	/* php's argument #2 is `array|string $wrapper_or_options` and the array form
+	 * — the two-argument spelling — is DEPRECATED in 8.3; §10 refuses what php
+	 * deprecates, so this row declares the string and the whole-array form is
+	 * spelled stream_context_set_options(). */
+	{ "stream_context_set_option", "$context, string $wrapper_name, string $option_name, mixed $value", "bool" },
+	{ "stream_context_set_options", "$context, array $options", "bool" },
+	{ "stream_context_get_params", "$stream_or_context", "array" },
+	{ "stream_context_set_params", "$context, array $params", "bool" },
+	{ "stream_context_get_default", "?array $options = NULL", "" },
+	{ "stream_context_set_default", "array $options", "" },
 	{ "stream_get_contents", "$stream, ?int $length = NULL, int $offset = -1", "string|false" },
 	{ "stream_get_line", "$stream, int $length, string $ending = ''", "string|false" },
 	{ "socket_get_status", "$stream", "array" },

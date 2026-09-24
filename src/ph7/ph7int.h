@@ -2589,6 +2589,11 @@ struct ph7_vm
 	 * Freed with the VM (ids are never recycled, as php's may be). */
 	SyHash hResourceId;        /* void* -> phl_res_id* */
 	sxu32 nResourceIdNext;     /* Next id to hand out (php's start at 1) */
+	/* Stream contexts (stream_context_create). The chain owns every context the
+	 * script made; pDefaultCtx is the one stream_context_get_default() hands
+	 * back and every opener falls back to. */
+	void *pStreamCtx;          /* phl_stream_ctx registry chain; freed on reset */
+	void *pDefaultCtx;         /* phl_stream_ctx* — the default context, or 0 */
 	ph7_vm *pNext,*pPrev;      /* List of active VM's */
 	sxu32 nMagic;              /* Sanity check against misuse */
 };
@@ -3712,6 +3717,11 @@ struct io_private
 	sxu8 bEof;       /* a read on this handle has already come back empty */
 	sxu8 bDir;       /* opendir()/dir() handle rather than a byte stream */
 	sxu8 bPersist;   /* opened PERSISTENTLY: get_resource_type() names it apart */
+	/* The stream CONTEXT this handle carries (phl_stream_ctx*), owned by the VM
+	 * registry. php attaches the opener's context to a TRANSPORT stream and to
+	 * nothing else, and creates one on demand for a
+	 * stream_context_set_option($stream,…). */
+	void *pCtxRes;
 	sxu32 iMagic;   /* Sanity check to avoid misuse */
 };
 #define IO_PRIVATE_MAGIC 0xFEAC14
@@ -3723,8 +3733,38 @@ struct io_private
  * ph7_value that still references it observes a closed resource
  * (gettype()=='resource (closed)', is_resource()==false), matching php. */
 #define IO_PRIVATE_CLOSED_MAGIC 0xC105ED
+/* stream_context_create()'s handle carries this magic in the same field, for the
+ * same reason proc_open()'s does: php makes a context a RESOURCE, and the only
+ * thing a resource probe can look at here is that word. */
+#define STREAM_CTX_MAGIC 0xC07E47
 /* Make sure we are dealing with a valid io_private instance */
 #define IO_PRIVATE_INVALID(IO) ( IO == 0 || IO->iMagic != IO_PRIVATE_MAGIC )
+/*
+ * One php stream CONTEXT: the wrapper => option => value map a script hands an
+ * opener, plus the `notification` parameter. php's is a `stream-context`
+ * resource, and a PHL resource is a bare void*, so the struct opens with an
+ * io_private-compatible header (proc_open()'s handle does the same) — every
+ * resource probe reads that magic and stays in bounds. The VM owns the chain
+ * and drops it at reset, so a reused VM does not carry one request's default
+ * context into the next.
+ */
+typedef struct phl_stream_ctx phl_stream_ctx;
+struct phl_stream_ctx
+{
+	io_private base;        /* io_private-compatible header (base.iMagic == STREAM_CTX_MAGIC) */
+	ph7_vm *pVm;            /* owning VM */
+	ph7_value *pOptions;    /* the wrapper => (option => value) map; never 0 */
+	ph7_value *pNotify;     /* the `notification` param, or 0 when none was set */
+	phl_stream_ctx *pNext;  /* registry chain (pVm->pStreamCtx) */
+};
+/* The context behind a ph7_value, or 0 when the value is not one. */
+PH7_PRIVATE phl_stream_ctx * PH7_StreamCtxFromValue(ph7_value *pVal);
+/* The per-VM DEFAULT context (stream_context_get_default), created on demand. */
+PH7_PRIVATE phl_stream_ctx * PH7_StreamCtxDefault(ph7_vm *pVm);
+/* One wrapper option, or 0 when the context does not carry it. */
+PH7_PRIVATE ph7_value * PH7_StreamCtxOption(phl_stream_ctx *pCtxRes,const char *zWrapper,const char *zOption);
+/* Drop every context this VM created (called from PH7_VmReset). */
+PH7_PRIVATE void PH7_StreamCtxVmReset(ph7_vm *pVm);
 PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_private *pOut);
 PH7_PRIVATE void SetIOPrivateOpenedAs(io_private *pDev,const char *zUri,int nUriLen,const char *zMode,int nModeLen);
 PH7_PRIVATE void MarkIOPrivateClosed(io_private *pDev);
@@ -4834,6 +4874,13 @@ PH7_PRIVATE int PH7_builtin_sha1_file(ph7_context *pCtx,int nArg,ph7_value **apA
 PH7_PRIVATE int PH7_builtin_shell_exec(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_system(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_context_create(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_context_get_options(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_context_set_option(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_context_set_options(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_context_get_params(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_context_set_params(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_context_get_default(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_context_set_default(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_get_contents(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_get_meta_data(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_set_blocking(ph7_context *pCtx,int nArg,ph7_value **apArg);

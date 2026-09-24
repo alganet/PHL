@@ -3048,6 +3048,13 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		 * build with no networking at all. */
 		{"stream_select",        PH7_builtin_stream_select },
 		{"stream_context_create",PH7_builtin_stream_context_create },
+		{"stream_context_get_options",PH7_builtin_stream_context_get_options },
+		{"stream_context_set_option", PH7_builtin_stream_context_set_option },
+		{"stream_context_set_options",PH7_builtin_stream_context_set_options },
+		{"stream_context_get_params", PH7_builtin_stream_context_get_params },
+		{"stream_context_set_params", PH7_builtin_stream_context_set_params },
+		{"stream_context_get_default",PH7_builtin_stream_context_get_default },
+		{"stream_context_set_default",PH7_builtin_stream_context_set_default },
 		{"stream_wrapper_register",   PH7_builtin_stream_wrapper_register },
 		{"stream_register_wrapper",   PH7_builtin_stream_wrapper_register },
 		{"stream_wrapper_unregister", PH7_builtin_stream_wrapper_unregister },

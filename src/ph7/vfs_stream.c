@@ -59,6 +59,10 @@ PH7_PRIVATE const char * PH7_VfsResourceType(void *pResource)
 		 * what one probe can tell them apart by. */
 		return "process";
 	}
+	if( pDev && pDev->iMagic == STREAM_CTX_MAGIC ){
+		/* stream_context_create()'s handle, and the name php gives it. */
+		return "stream-context";
+	}
 	return "Unknown";
 }
 /*
@@ -3481,24 +3485,484 @@ PH7_PRIVATE int PH7_builtin_stream_get_meta_data(ph7_context *pCtx,int nArg,ph7_
 	return PH7_OK;
 }
 /*
- * stream_context_create([array $options[, array $params]]) — INERT: PHL has
- * no context plumbing yet; the options array itself is returned so code that
- * creates and passes contexts keeps working (recorded divergence: not a
- * resource, options unconsumed).
+ * ---------------------------------------------------------------------------
+ * Stream contexts (stream_context_create and the accessor family).
+ *
+ * php's context is a `stream-context` RESOURCE holding two things: a
+ * wrapper => option => value map, and the `notification` parameter. Both
+ * levels keep INSERTION order, which is the order stream_context_get_options()
+ * answers in, so the store is a real nested array rather than a flat table.
+ *
+ * A PHL resource is a bare void*, so the struct opens with an io_private
+ * header carrying its own magic (the shape proc_open()'s handle already uses)
+ * and the VM owns every one it hands out.
+ * ---------------------------------------------------------------------------
+ */
+/* Allocate one context, chained on the VM registry. */
+static phl_stream_ctx * StreamCtxNew(ph7_vm *pVm)
+{
+	phl_stream_ctx *pRes;
+	if( pVm == 0 ){
+		return 0;
+	}
+	pRes = (phl_stream_ctx *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_stream_ctx));
+	if( pRes == 0 ){
+		return 0;
+	}
+	SyZero(pRes,sizeof(phl_stream_ctx));
+	pRes->base.iMagic = STREAM_CTX_MAGIC;
+	pRes->pVm = pVm;
+	pRes->pOptions = ph7_new_array(pVm);
+	if( pRes->pOptions == 0 ){
+		SyMemBackendFree(&pVm->sAllocator,pRes);
+		return 0;
+	}
+	pRes->pNext = (phl_stream_ctx *)pVm->pStreamCtx;
+	pVm->pStreamCtx = (void *)pRes;
+	return pRes;
+}
+/*
+ * The context behind a ph7_value, or 0 when the value is not one. The magic
+ * probe is the same in-bounds one every resource here answers to.
+ */
+PH7_PRIVATE phl_stream_ctx * PH7_StreamCtxFromValue(ph7_value *pVal)
+{
+	phl_stream_ctx *pRes;
+	if( pVal == 0 || !ph7_value_is_resource(pVal) ){
+		return 0;
+	}
+	pRes = (phl_stream_ctx *)pVal->x.pOther;
+	if( pRes == 0 || pRes->base.iMagic != STREAM_CTX_MAGIC ){
+		return 0;
+	}
+	return pRes;
+}
+/*
+ * The per-VM DEFAULT context. php creates it on demand — the first
+ * stream_context_get_default()/set_default() call — and every opener that was
+ * handed no context of its own falls back to it.
+ */
+PH7_PRIVATE phl_stream_ctx * PH7_StreamCtxDefault(ph7_vm *pVm)
+{
+	if( pVm == 0 ){
+		return 0;
+	}
+	if( pVm->pDefaultCtx == 0 ){
+		pVm->pDefaultCtx = (void *)StreamCtxNew(pVm);
+	}
+	return (phl_stream_ctx *)pVm->pDefaultCtx;
+}
+/*
+ * Drop every context this VM created. Called from PH7_VmReset, so a reused VM
+ * (the -S server's) does not carry one request's default context into the next.
+ */
+PH7_PRIVATE void PH7_StreamCtxVmReset(ph7_vm *pVm)
+{
+	phl_stream_ctx *pRes;
+	if( pVm == 0 ){
+		return;
+	}
+	pRes = (phl_stream_ctx *)pVm->pStreamCtx;
+	while( pRes ){
+		phl_stream_ctx *pNext = pRes->pNext;
+		if( pRes->pOptions ){
+			ph7_release_value(pVm,pRes->pOptions);
+		}
+		if( pRes->pNotify ){
+			ph7_release_value(pVm,pRes->pNotify);
+		}
+		/* Any ph7_value still naming this pointer must stop reporting a live
+		 * context, so clear the magic before the memory goes back. */
+		pRes->base.iMagic = 0;
+		SyMemBackendFree(&pVm->sAllocator,pRes);
+		pRes = pNext;
+	}
+	pVm->pStreamCtx = 0;
+	pVm->pDefaultCtx = 0;
+}
+/* The live element of pArray under pKey, or 0 when there is none. */
+static ph7_value * StreamCtxFetch(ph7_value *pArray,ph7_value *pKey)
+{
+	ph7_hashmap_node *pNode;
+	if( pArray == 0 || (pArray->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return 0;
+	}
+	if( PH7_HashmapLookup((ph7_hashmap *)pArray->x.pOther,pKey,&pNode) != SXRET_OK ){
+		return 0;
+	}
+	return (ph7_value *)SySetAt(&pArray->pVm->aMemObj,pNode->nValIdx);
+}
+/*
+ * Store one option. The wrapper's sub-array is created on first use; an
+ * existing one may be SHARED with the script array it was stored from, so it
+ * is separated first — otherwise setting an option would write through into
+ * the caller's own array.
+ */
+static int StreamCtxSetOption(phl_stream_ctx *pRes,ph7_value *pWrapper,ph7_value *pName,ph7_value *pValue)
+{
+	ph7_value sKey,sName,sVal;
+	ph7_value *pSub;
+	ph7_hashmap *pMap;
+	if( pRes == 0 || pRes->pOptions == 0 || pWrapper == 0 || pName == 0 || pValue == 0 ){
+		return -1;
+	}
+	/* Every insertion below can reserve a memory object, which GROWS (and
+	 * therefore moves) pVm->aMemObj — and all three arguments may point into
+	 * it. Snapshot the structs first: a shallow copy is a safe insertion
+	 * source, since the referent and the heap-resident blob survive the move. */
+	sKey = *pWrapper; pWrapper = &sKey;
+	sName = *pName;   pName = &sName;
+	sVal = *pValue;   pValue = &sVal;
+	pSub = StreamCtxFetch(pRes->pOptions,pWrapper);
+	if( pSub == 0 || (pSub->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		ph7_value *pFresh = ph7_new_array(pRes->pVm);
+		if( pFresh == 0 ){
+			return -1;
+		}
+		if( PH7_HashmapInsert((ph7_hashmap *)pRes->pOptions->x.pOther,pWrapper,pFresh) != SXRET_OK ){
+			ph7_release_value(pRes->pVm,pFresh);
+			return -1;
+		}
+		ph7_release_value(pRes->pVm,pFresh);
+		pSub = StreamCtxFetch(pRes->pOptions,pWrapper);
+		if( pSub == 0 || (pSub->iFlags & MEMOBJ_HASHMAP) == 0 ){
+			return -1;
+		}
+	}
+	pMap = PH7_HashmapCowSeparate(pRes->pVm,pSub);
+	if( pMap == 0 ){
+		return -1;
+	}
+	return PH7_HashmapInsert(pMap,pName,pValue) == SXRET_OK ? 0 : -1;
+}
+/*
+ * One wrapper option by name, or 0 when the context does not carry it. This is
+ * the read side every consumer (the socket transports) asks through.
+ */
+PH7_PRIVATE ph7_value * PH7_StreamCtxOption(phl_stream_ctx *pRes,const char *zWrapper,const char *zOption)
+{
+	ph7_value *pSub;
+	if( pRes == 0 || pRes->pOptions == 0 ){
+		return 0;
+	}
+	pSub = ph7_array_fetch(pRes->pOptions,zWrapper,-1);
+	if( pSub == 0 || (pSub->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return 0;
+	}
+	return ph7_array_fetch(pSub,zOption,-1);
+}
+/*
+ * php's parse_context_options: every entry must be wrappername => array, and a
+ * non-array value — or an INTEGER key, which has no wrapper name at all — is
+ * the ValueError below. An integer key one level DOWN has no option name, and
+ * php drops that entry in silence rather than refusing the call.
+ * Returns 0, or -1 once the exception has been raised.
+ */
+static int StreamCtxParseOptions(ph7_context *pCtx,phl_stream_ctx *pRes,ph7_value *pOptions)
+{
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pEntry;
+	if( pOptions == 0 || (pOptions->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return 0;
+	}
+	pMap = (ph7_hashmap *)pOptions->x.pOther;
+	pMap->pCur = pMap->pFirst;
+	while( (pEntry = PH7_HashmapGetNextEntry(pMap)) != 0 ){
+		ph7_value sKey;
+		ph7_value *pVal;
+		int bBad;
+		PH7_MemObjInit(pRes->pVm,&sKey);
+		PH7_HashmapExtractNodeKey(pEntry,&sKey);
+		pVal = HashmapExtractNodeValue(pEntry);
+		bBad = ( (sKey.iFlags & MEMOBJ_STRING) == 0 || pVal == 0
+		      || (pVal->iFlags & MEMOBJ_HASHMAP) == 0 );
+		if( bBad ){
+			PH7_MemObjRelease(&sKey);
+			PH7_VmThrowException(pCtx,"ValueError",
+				"Options should have the form [\"wrappername\"][\"optionname\"] = $value");
+			return -1;
+		}
+		{
+			ph7_hashmap *pSub = (ph7_hashmap *)pVal->x.pOther;
+			ph7_hashmap_node *pOpt;
+			pSub->pCur = pSub->pFirst;
+			while( (pOpt = PH7_HashmapGetNextEntry(pSub)) != 0 ){
+				ph7_value sName;
+				ph7_value *pOptVal;
+				PH7_MemObjInit(pRes->pVm,&sName);
+				PH7_HashmapExtractNodeKey(pOpt,&sName);
+				pOptVal = HashmapExtractNodeValue(pOpt);
+				if( (sName.iFlags & MEMOBJ_STRING) && pOptVal ){
+					StreamCtxSetOption(pRes,&sKey,&sName,pOptVal);
+				}
+				PH7_MemObjRelease(&sName);
+			}
+		}
+		PH7_MemObjRelease(&sKey);
+	}
+	return 0;
+}
+/*
+ * php's parse_context_params: only `notification` and `options` are read, and
+ * anything else in the array is ignored rather than refused. The notification
+ * must be callable — php reports the same "must be an array with valid
+ * callbacks as values" TypeError the callback taxonomy produces, naming
+ * argument #1 whichever function was called.
+ * Returns 0, or -1 once a diagnostic has been raised.
+ */
+static int StreamCtxParseParams(ph7_context *pCtx,phl_stream_ctx *pRes,ph7_value *pParams,const char *zArgName)
+{
+	ph7_value *pVal;
+	if( pParams == 0 || (pParams->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return 0;
+	}
+	pVal = ph7_array_fetch(pParams,"notification",-1);
+	if( pVal ){
+		char zBuf[128];
+		const char *zReason = PH7_VmCallableReason(pCtx->pVm,pVal,zBuf,(int)sizeof(zBuf));
+		if( zReason ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"%s(): Argument #1 (%s) must be an array with valid callbacks as values, %s",
+				ph7_function_name(pCtx),zArgName,zReason) == PH7_OK ? -1 : -1;
+		}
+		if( pRes->pNotify == 0 ){
+			pRes->pNotify = ph7_new_scalar(pRes->pVm);
+		}
+		if( pRes->pNotify ){
+			PH7_MemObjStore(pVal,pRes->pNotify);
+		}
+	}
+	pVal = ph7_array_fetch(pParams,"options",-1);
+	if( pVal ){
+		if( (pVal->iFlags & MEMOBJ_HASHMAP) == 0 ){
+			/* php's own wording for a params entry it cannot use. */
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"Invalid stream/context parameter") == PH7_OK ? -1 : -1;
+		}
+		if( StreamCtxParseOptions(pCtx,pRes,pVal) != 0 ){
+			return -1;
+		}
+	}
+	return 0;
+}
+/*
+ * Resolve the `$stream_or_context` first argument every accessor takes: a
+ * context resource answers itself, and a STREAM answers the context it
+ * carries — created on demand for the setters, the way php's does, since a
+ * stream opened without one still accepts stream_context_set_option().
+ * Raises php's TypeError and returns 0 for anything else.
+ */
+static phl_stream_ctx * StreamCtxArg(ph7_context *pCtx,ph7_value *pVal,int bCreate,
+	const char *zArgName,int *pbThrew)
+{
+	phl_stream_ctx *pRes;
+	io_private *pDev;
+	*pbThrew = 1;
+	if( !ph7_value_is_resource(pVal) ){
+		PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #1 (%s) must be of type resource, %s given",
+			ph7_function_name(pCtx),zArgName,ph7_type_name(pVal));
+		return 0;
+	}
+	pRes = PH7_StreamCtxFromValue(pVal);
+	if( pRes ){
+		*pbThrew = 0;
+		return pRes;
+	}
+	pDev = (io_private *)ph7_value_to_resource(pVal);
+	if( IO_PRIVATE_INVALID(pDev) ){
+		/* A closed handle, a process handle, anything that is neither: php
+		 * refuses the call rather than answering an empty option set. */
+		PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #1 (%s) must be a valid stream/context",
+			ph7_function_name(pCtx),zArgName);
+		return 0;
+	}
+	*pbThrew = 0;
+	if( pDev->pCtxRes == 0 && bCreate ){
+		pDev->pCtxRes = (void *)StreamCtxNew(pCtx->pVm);
+	}
+	return (phl_stream_ctx *)pDev->pCtxRes;
+}
+/*
+ * resource stream_context_create(?array $options = null, ?array $params = null)
  */
 PH7_PRIVATE int PH7_builtin_stream_context_create(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	phl_stream_ctx *pRes = StreamCtxNew(pCtx->pVm);
+	if( pRes == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
 	if( nArg > 0 && ph7_value_is_array(apArg[0]) ){
-		ph7_result_value(pCtx,apArg[0]);
-	}else{
+		if( StreamCtxParseOptions(pCtx,pRes,apArg[0]) != 0 ){
+			return PH7_OK;
+		}
+	}
+	if( nArg > 1 && ph7_value_is_array(apArg[1]) ){
+		/* php names argument #1 ($options) even for a bad `notification` that
+		 * arrived through $params — the error is raised against a hardcoded
+		 * position, and a test that asserts the message would see it. */
+		if( StreamCtxParseParams(pCtx,pRes,apArg[1],"$options") != 0 ){
+			return PH7_OK;
+		}
+	}
+	ph7_result_resource(pCtx,pRes);
+	return PH7_OK;
+}
+/*
+ * array stream_context_get_options(resource $stream_or_context)
+ */
+PH7_PRIVATE int PH7_builtin_stream_context_get_options(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_stream_ctx *pRes;
+	int bThrew;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* A live stream that was never given a context answers the EMPTY option set
+	 * rather than refusing the call, so nothing is created here. */
+	pRes = StreamCtxArg(pCtx,apArg[0],FALSE,"$stream_or_context",&bThrew);
+	if( bThrew ){
+		return PH7_OK;
+	}
+	if( pRes == 0 ){
 		ph7_value *pArr = ph7_context_new_array(pCtx);
 		if( pArr == 0 ){
-			ph7_result_null(pCtx);
+			ph7_result_bool(pCtx,0);
 			return PH7_OK;
 		}
 		ph7_result_value(pCtx,pArr);
+		return PH7_OK;
 	}
+	ph7_result_value(pCtx,pRes->pOptions);
 	return PH7_OK;
+}
+/*
+ * bool stream_context_set_option(resource $context, string $wrapper, string $option_name, mixed $value)
+ *
+ * php also accepts the two-argument (context, options-array) spelling and
+ * DEPRECATES it in 8.3 — §10 refuses what php deprecates, so an array in
+ * argument #2 is the ordinary string TypeError here and the whole-array form
+ * is spelled stream_context_set_options().
+ */
+PH7_PRIVATE int PH7_builtin_stream_context_set_option(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_stream_ctx *pRes;
+	int bThrew;
+	if( nArg < 4 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pRes = StreamCtxArg(pCtx,apArg[0],TRUE,"$context",&bThrew);
+	if( pRes == 0 ){
+		return PH7_OK;
+	}
+	ph7_result_bool(pCtx,StreamCtxSetOption(pRes,apArg[1],apArg[2],apArg[3]) == 0);
+	return PH7_OK;
+}
+/*
+ * bool stream_context_set_options(resource $context, array $options)
+ */
+PH7_PRIVATE int PH7_builtin_stream_context_set_options(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_stream_ctx *pRes;
+	int bThrew;
+	if( nArg < 2 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pRes = StreamCtxArg(pCtx,apArg[0],TRUE,"$context",&bThrew);
+	if( pRes == 0 ){
+		return PH7_OK;
+	}
+	if( StreamCtxParseOptions(pCtx,pRes,apArg[1]) != 0 ){
+		return PH7_OK;
+	}
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/*
+ * array stream_context_get_params(resource $stream_or_context)
+ *  php answers `notification` (only when one is set) and `options`, in that
+ *  order.
+ */
+PH7_PRIVATE int PH7_builtin_stream_context_get_params(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_stream_ctx *pRes;
+	ph7_value *pArr;
+	int bThrew;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pRes = StreamCtxArg(pCtx,apArg[0],TRUE,"$stream_or_context",&bThrew);
+	if( pRes == 0 ){
+		return PH7_OK;
+	}
+	pArr = ph7_context_new_array(pCtx);
+	if( pArr == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( pRes->pNotify ){
+		ph7_array_add_strkey_elem(pArr,"notification",pRes->pNotify);
+	}
+	ph7_array_add_strkey_elem(pArr,"options",pRes->pOptions);
+	ph7_result_value(pCtx,pArr);
+	return PH7_OK;
+}
+/*
+ * bool stream_context_set_params(resource $context, array $params)
+ */
+PH7_PRIVATE int PH7_builtin_stream_context_set_params(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_stream_ctx *pRes;
+	int bThrew;
+	if( nArg < 2 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pRes = StreamCtxArg(pCtx,apArg[0],TRUE,"$context",&bThrew);
+	if( pRes == 0 ){
+		return PH7_OK;
+	}
+	if( StreamCtxParseParams(pCtx,pRes,apArg[1],"$context") != 0 ){
+		return PH7_OK;
+	}
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/*
+ * resource stream_context_get_default(?array $options = null)
+ * resource stream_context_set_default(array $options)
+ *  Both answer the ONE default context and both MERGE their options into it —
+ *  set_default is not a replacement, which is why a second call adds to what
+ *  the first left.
+ */
+static int StreamCtxDefaultCommon(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_stream_ctx *pRes = PH7_StreamCtxDefault(pCtx->pVm);
+	if( pRes == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( nArg > 0 && ph7_value_is_array(apArg[0]) ){
+		if( StreamCtxParseOptions(pCtx,pRes,apArg[0]) != 0 ){
+			return PH7_OK;
+		}
+	}
+	ph7_result_resource(pCtx,pRes);
+	return PH7_OK;
+}
+PH7_PRIVATE int PH7_builtin_stream_context_get_default(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return StreamCtxDefaultCommon(pCtx,nArg,apArg);
+}
+PH7_PRIVATE int PH7_builtin_stream_context_set_default(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return StreamCtxDefaultCommon(pCtx,nArg,apArg);
 }
 /*
  * tcp:// socket stream (fsockopen / stream_socket_client). The handle is a
@@ -6185,5 +6649,10 @@ PH7_PRIVATE int PH7_VfsResourceIsClosed(void *pResource)
 {
 	SXUNUSED(pResource);
 	return 0;
+}
+/* No streams means no stream contexts either, but PH7_VmReset still calls this. */
+PH7_PRIVATE void PH7_StreamCtxVmReset(ph7_vm *pVm)
+{
+	SXUNUSED(pVm);
 }
 #endif /* PH7_DISABLE_DISK_IO */

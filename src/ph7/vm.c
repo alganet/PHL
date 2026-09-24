@@ -3210,6 +3210,10 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	/* Drop the libxml error queue and the previous request's documents */
 	PH7_LibxmlVmReset(&(*pVm));
 #endif
+	/* Drop the stream contexts this run created, the default one included: a
+	 * reused VM (the -S server's) must not answer the next request from the
+	 * previous one's stream_context_set_default(). */
+	PH7_StreamCtxVmReset(&(*pVm));
 	pVm->iCmpCallbackExc = 0;
 	pVm->bHaltRequested = 0;
 	pVm->iExitStatus = 0;
