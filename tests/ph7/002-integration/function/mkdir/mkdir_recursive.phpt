@@ -50,6 +50,23 @@ if (DIRECTORY_SEPARATOR === '/') {
     echo "m=0700 inner=0700\n";
 }
 
+/* A file:// URL is stripped BEFORE the name is cut into components, so a
+ * reachable one builds the tree it names — and an AUTHORITY this build will not
+ * reach creates nothing at all, rather than a directory called "file:". */
+/* Three slashes: an EMPTY authority. Two would make the first path component
+ * the host, which is the refusal on the next line. */
+/* (php's mkdir() on Windows keeps the slash in front of the drive, so the URL
+ * form of a drive path does not reach it there: asserted on POSIX only.) */
+if (DIRECTORY_SEPARATOR === '/') {
+    $mk_url = 'file:///' . ltrim($mk_base, '/') . '/u/deep';
+    var_dump(mkdir($mk_url, 0777, true), is_dir($mk_base . '/u/deep'));
+} else {
+    echo "bool(true)\nbool(true)\n";
+}
+var_dump(@mkdir('file://phl_no_such_host/a/b', 0777, true), is_dir('file:'));
+@rmdir($mk_base . '/u/deep');
+@rmdir($mk_base . '/u');
+
 foreach (['/m/inner', '/m', '/q/r', '/q', '/s1/s2', '/s1', '/t1/t2', '/t1',
           '/x/y/w', '/x/y/z', '/x/y', '/x'] as $mk_d) {
     @rmdir($mk_base . $mk_d);
@@ -79,6 +96,10 @@ bool(false)
   ERR[2] mkdir(): File exists
 bool(false)
 m=0700 inner=0700
+bool(true)
+bool(true)
+bool(false)
+bool(false)
 --CLEAN--
 <?php
-unset($mk_base, $mk_d);
+unset($mk_base, $mk_d, $mk_url);

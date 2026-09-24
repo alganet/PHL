@@ -552,9 +552,22 @@ static int VfsMkdirVolumePrefix(const char *z,int n)
 static int VfsMkdirRecursive(ph7_context *pCtx,ph7_vfs *pVfs,const char *zPath,int iMode)
 {
 	SyBlob sWorker;
-	int i,nPath,rc = PH7_OK;
+	const char *zLocal;
+	int i,nPath,nScheme,rc = PH7_OK;
 	/* The strip first: the component walk must not cut a "file://" scheme up. */
-	zPath = PH7_VmFileUrlLocalPath(zPath);
+	zLocal = PH7_VmFileUrlLocalPath(zPath);
+	nScheme = PH7_VmUrlSchemeLen(zPath,-1);
+	if( zLocal == zPath && nScheme == (int)sizeof("file")-1
+	 && SyStrnicmp(zPath,"file",sizeof("file")-1) == 0 ){
+		/* A file:// AUTHORITY this build will not reach: the strip handed the
+		 * URL straight back. php answers false and creates NOTHING, where the
+		 * walk below would cut the URL into components and make a directory
+		 * literally called "file:". (A name under any OTHER scheme really does
+		 * become a directory of that name on php too -- measured: `zzz://a/b`
+		 * leaves a `zzz:` behind there as well -- so only this one is refused.) */
+		return -1;
+	}
+	zPath = zLocal;
 	nPath = (int)SyStrlen(zPath);
 	/* A trailing separator names the same directory; php's own expand_filepath
 	 * drops it before it starts. */
