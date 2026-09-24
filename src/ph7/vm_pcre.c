@@ -338,10 +338,25 @@ static void PcrePopulateMatches(
 	ph7_value *pSub = 0;
 	uint32_t namecount = 0, nameentrysize = 0;
 	PCRE2_SPTR nametable = 0;
+	int nMatched = nGroups;
 	int i;
 
 	if( iFlags & PHP_PREG_OFFSET_CAPTURE ){
 		pSub = ph7_context_new_array(pCtx);
+	}
+	if( iFlags & PHP_PREG_UNMATCHED_AS_NULL ){
+		/* pcre2 answers only as many pairs as the LAST group that participated, so
+		 * a pattern's trailing optional groups are simply absent -- which is php's
+		 * default shape too. PREG_UNMATCHED_AS_NULL is the flag that says "report
+		 * every group", so the tail is filled out to the pattern's own capture
+		 * count and each missing one answers NULL. Reading the flag only INSIDE the
+		 * loop meant `preg_match('/(a)(x)?/','a',$m,PREG_UNMATCHED_AS_NULL)` still
+		 * answered two entries where php answers three. */
+		uint32_t nCapture = 0;
+		pcre2_pattern_info(pCode, PCRE2_INFO_CAPTURECOUNT, &nCapture);
+		if( (int)nCapture + 1 > nGroups ){
+			nGroups = (int)nCapture + 1;
+		}
 	}
 	/* Read the name table up front so each group's named key can be emitted
 	 * INTERLEAVED with its numbered key, in group order — php stores
@@ -354,8 +369,8 @@ static void PcrePopulateMatches(
 		pcre2_pattern_info(pCode, PCRE2_INFO_NAMEENTRYSIZE, &nameentrysize);
 	}
 	for( i = 0; i < nGroups; i++ ){
-		PCRE2_SIZE start = ovector[2 * i];
-		PCRE2_SIZE end   = ovector[2 * i + 1];
+		PCRE2_SIZE start = i < nMatched ? ovector[2 * i]     : PCRE2_UNSET;
+		PCRE2_SIZE end   = i < nMatched ? ovector[2 * i + 1] : PCRE2_UNSET;
 		const char *zName = 0;
 		/* Does group i carry a (?<name>...) label? namecount is tiny in practice. */
 		if( namecount > 0 ){
@@ -373,6 +388,14 @@ static void PcrePopulateMatches(
 				ph7_value_null(pVal);
 			}else{
 				ph7_value_string(pVal, "", 0);
+			}
+			/* Duplicate group names -- `(?J)` -- give two numbered groups one key,
+			 * and only one of them can have participated. php writes a name key
+			 * from a group that did NOT participate only when nothing is there
+			 * yet, so `/(?J)(?<d>a)|(?<d>b)/` on "a" keeps `d => "a"` instead of
+			 * having the other alternative's NULL land on top of it. */
+			if( zName && ph7_array_fetch(pArray, zName, -1) != 0 ){
+				zName = 0;
 			}
 		}else{
 			ph7_value_string(pVal, &zSubject[start], (int)(end - start));
@@ -636,8 +659,30 @@ static int PH7_builtin_preg_match_all(ph7_context *pCtx, int nArg, ph7_value **a
 								ph7_value_string(pVal, &zSubject[s], (int)(e - s));
 								ph7_array_add_elem(apGroupArrays[g], 0, pVal);
 							}
+						}else if( iFlags & PHP_PREG_OFFSET_CAPTURE ){
+							/* php reports an unmatched group as the pair ("", -1) --
+							 * or (NULL, -1) under PREG_UNMATCHED_AS_NULL. Both flags
+							 * were read only on the MATCHED arm, so an unmatched
+							 * group answered a bare "" whatever was asked for. */
+							ph7_value *pSub = ph7_context_new_array(pCtx);
+							ph7_value *pOff = ph7_context_new_scalar(pCtx);
+							if( iFlags & PHP_PREG_UNMATCHED_AS_NULL ){
+								ph7_value_null(pVal);
+							}else{
+								ph7_value_string(pVal, "", 0);
+							}
+							ph7_array_add_intkey_elem(pSub, 0, pVal);
+							ph7_value_int(pOff, -1);
+							ph7_array_add_intkey_elem(pSub, 1, pOff);
+							ph7_array_add_elem(apGroupArrays[g], 0, pSub);
+							ph7_context_release_value(pCtx, pSub);
+							ph7_context_release_value(pCtx, pOff);
 						}else{
-							ph7_value_string(pVal, "", 0);
+							if( iFlags & PHP_PREG_UNMATCHED_AS_NULL ){
+								ph7_value_null(pVal);
+							}else{
+								ph7_value_string(pVal, "", 0);
+							}
 							ph7_array_add_elem(apGroupArrays[g], 0, pVal);
 						}
 						ph7_value_reset_string_cursor(pVal);
