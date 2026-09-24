@@ -2098,6 +2098,8 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SySetInit(&pVm->aPersistSock,&pVm->sAllocator,sizeof(VmPersistSock));
 	pVm->bIniSeeded = 0;
 	pVm->iSessStatus = 1; /* PHP_SESSION_NONE */
+	PH7_MemObjInit(&(*pVm),&pVm->sSessHandler);
+	SyBlobInit(&pVm->sSessData,&pVm->sAllocator);
 	SyBlobInit(&pVm->sSessId,&pVm->sAllocator);
 	SyBlobInit(&pVm->sSessName,&pVm->sAllocator);
 	SyBlobInit(&pVm->sSessPath,&pVm->sAllocator);
@@ -3207,6 +3209,12 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	VmReleaseHandlerStack(&pVm->aExceptionCBSaved);
 	VmReleaseHandlerStack(&pVm->aErrCBSaved);
 	VmReinitMemObj(&(*pVm),&pVm->sAssertCallback);
+	/* The session's userland save handler belongs to the request that installed
+	 * it; a reused VM (the -S server's) must not route the next request's store
+	 * through the previous script's object. */
+	VmReinitMemObj(&(*pVm),&pVm->sSessHandler);
+	pVm->bSessOpened = 0;
+	SyBlobReset(&pVm->sSessData);
 	pVm->json_rc = JSON_ERROR_NONE;
 #ifdef PH7_ENABLE_PCRE
 	pVm->iPcreLastError = 0;

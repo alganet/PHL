@@ -2251,6 +2251,12 @@ struct ph7_vm
 	SyBlob sSessId;             /* current session id ("" = none yet) */
 	SyBlob sSessName;           /* cookie/session name (default "PHPSESSID") */
 	SyBlob sSessPath;           /* save path ("" = not resolved yet -> sys_get_temp_dir()) */
+	ph7_value sSessHandler;     /* session_set_save_handler(): the handler OBJECT, or the array
+	                             * of callables the procedural form passes. NULL = the built-in
+	                             * `files` store. */
+	sxu8 bSessOpened;           /* a userland handler's open() has run for this session */
+	SyBlob sSessData;           /* the payload the store last handed back or was handed: what
+	                             * session.lazy_write compares the next write against */
 	SyHash hWeakCell;           /* instance pointer bytes -> VmWeakCell* (weak-reference registry;
 	                             * PH7_ClassInstanceRelease kills matching cells on free) */
 	SyHash hDirHandle;          /* instance pointer bytes -> VmDirHandle* (the open DIR* behind a

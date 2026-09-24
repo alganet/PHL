@@ -462,6 +462,123 @@ static int VmSessDecodeInto(ph7_context *pCtx,const char *zSrc,sxu32 nLen,ph7_va
 	return 1;
 }
 /*
+ * session_set_save_handler(): the store a program brings of its own.
+ *
+ * php reaches a store through six operations -- open, close, read, write,
+ * destroy, gc -- plus three optional ones: create_sid, validateId and
+ * updateTimestamp. The built-in `files` store implements them in C above; a
+ * userland handler replaces it wholesale, which is how a session lands in a
+ * database, in redis, or anywhere the process can reach.
+ *
+ * The handler is kept as the INSTANCE and each operation is dispatched as the
+ * array callable `[$handler, 'read']`, so the engine's own dispatcher resolves it
+ * like any other method call — visibility, inheritance and `parent::` included.
+ */
+#define VM_SESS_OP_OPEN     0
+#define VM_SESS_OP_CLOSE    1
+#define VM_SESS_OP_READ     2
+#define VM_SESS_OP_WRITE    3
+#define VM_SESS_OP_DESTROY  4
+#define VM_SESS_OP_GC       5
+#define VM_SESS_OP_CREATE   6
+#define VM_SESS_OP_VALIDATE 7
+#define VM_SESS_OP_UPDATE   8
+
+static const char * const azSessOp[] = {
+	"open","close","read","write","destroy","gc","create_sid","validateId","updateTimestamp"
+};
+/* TRUE when a userland handler is installed. */
+static int VmSessHasUser(ph7_vm *pVm)
+{
+	return (pVm->sSessHandler.iFlags & MEMOBJ_OBJ) != 0;
+}
+/*
+ * Call one store operation. Answers 0 when the handler does not offer it (php
+ * treats the three optional ones as absent then), 1 when it ran, -1 on a throw.
+ */
+static int VmSessUserCall(ph7_vm *pVm,int iOp,int nArg,ph7_value **apArg,ph7_value *pResult)
+{
+	ph7_value sCallable;
+	sxi32 rc;
+	int iRet = 1;
+	ph7_class_instance *pThis = (ph7_class_instance *)pVm->sSessHandler.x.pOther;
+	ph7_value sName;
+	PH7_MemObjInit(pVm,&sCallable);
+	if( (pVm->sSessHandler.iFlags & MEMOBJ_OBJ) == 0 || pThis == 0
+	 || PH7_ClassExtractMethod(pThis->pClass,azSessOp[iOp],
+		(sxu32)SyStrlen(azSessOp[iOp])) == 0 ){
+		/* The three optional operations are simply absent when the handler does
+		 * not implement their interface. */
+		PH7_MemObjRelease(&sCallable);
+		return 0;
+	}
+	sCallable.x.pOther = PH7_NewHashmap(pVm,0,0);
+	if( sCallable.x.pOther == 0 ){
+		PH7_MemObjRelease(&sCallable);
+		return 0;
+	}
+	MemObjSetType(&sCallable,MEMOBJ_HASHMAP);
+	PH7_HashmapInsert((ph7_hashmap *)sCallable.x.pOther,0,&pVm->sSessHandler);
+	VmSessStrArg(pVm,&sName,azSessOp[iOp],(sxu32)SyStrlen(azSessOp[iOp]));
+	PH7_HashmapInsert((ph7_hashmap *)sCallable.x.pOther,0,&sName);
+	PH7_MemObjRelease(&sName);
+	rc = PH7_VmCallUserFunction(pVm,&sCallable,nArg,apArg,pResult);
+	if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){
+		iRet = -1;
+	}else if( rc != SXRET_OK ){
+		iRet = 0;
+	}
+	PH7_MemObjRelease(&sCallable);
+	return iRet;
+}
+/* open($path, $name) — php calls it once, before the first read. */
+static void VmSessUserOpen(ph7_vm *pVm)
+{
+	ph7_value sPath,sName,sRes;
+	ph7_value *apA[2];
+	if( pVm->bSessOpened || !VmSessHasUser(pVm) ){
+		return;
+	}
+	pVm->bSessOpened = 1;
+	VmSessResolvePath(pVm);
+	VmSessStrArg(pVm,&sPath,(const char *)SyBlobData(&pVm->sSessPath),
+		SyBlobLength(&pVm->sSessPath));
+	VmSessStrArg(pVm,&sName,(const char *)SyBlobData(&pVm->sSessName),
+		SyBlobLength(&pVm->sSessName));
+	PH7_MemObjInit(pVm,&sRes);
+	apA[0] = &sPath;
+	apA[1] = &sName;
+	VmSessUserCall(pVm,VM_SESS_OP_OPEN,2,apA,&sRes);
+	PH7_MemObjRelease(&sRes);
+	PH7_MemObjRelease(&sName);
+	PH7_MemObjRelease(&sPath);
+}
+/* Release the store: a userland handler's close(), once per open(). */
+static void VmSessCloseStore(ph7_vm *pVm)
+{
+	ph7_value sRes;
+	if( !VmSessHasUser(pVm) || !pVm->bSessOpened ){
+		return;
+	}
+	pVm->bSessOpened = 0;
+	PH7_MemObjInit(pVm,&sRes);
+	VmSessUserCall(pVm,VM_SESS_OP_CLOSE,0,0,&sRes);
+	PH7_MemObjRelease(&sRes);
+}
+/* One id-shaped call: read($id) / destroy($id). */
+static int VmSessUserId(ph7_vm *pVm,int iOp,ph7_value *pResult)
+{
+	ph7_value sId;
+	ph7_value *apA[1];
+	int iRet;
+	VmSessStrArg(pVm,&sId,(const char *)SyBlobData(&pVm->sSessId),
+		SyBlobLength(&pVm->sSessId));
+	apA[0] = &sId;
+	iRet = VmSessUserCall(pVm,iOp,1,apA,pResult);
+	PH7_MemObjRelease(&sId);
+	return iRet;
+}
+/*
  * php's answer to a store it cannot read: the whole session goes — file, id and
  * variables — rather than the script running on half of one. A corrupt payload and
  * an attacker-supplied one look the same from here, which is why it is not a
@@ -580,6 +697,20 @@ static sxi64 VmSessGc(ph7_vm *pVm)
 	sxi64 iCut = (sxi64)time(0) - iMaxLife;
 	sxi64 nGone = 0;
 	sxu32 n;
+	if( VmSessHasUser(pVm) ){
+		ph7_value sLife,sRes;
+		PH7_MemObjInit(pVm,&sLife);
+		PH7_MemObjInitFromInt(pVm,&sLife,iMaxLife);
+		PH7_MemObjInit(pVm,&sRes);
+		apA[0] = &sLife;
+		if( VmSessUserCall(pVm,VM_SESS_OP_GC,1,apA,&sRes) > 0 ){
+			PH7_MemObjToInteger(&sRes);
+			nGone = sRes.x.iVal;
+		}
+		PH7_MemObjRelease(&sRes);
+		PH7_MemObjRelease(&sLife);
+		return nGone;
+	}
 	VmSessResolvePath(pVm);
 	VmSessStrArg(pVm,&sDir,(const char *)SyBlobData(&pVm->sSessPath),
 		SyBlobLength(&pVm->sSessPath));
@@ -658,8 +789,22 @@ static int VmSessLoad(ph7_context *pCtx,SyBlob *pFile,const char *zFunc)
 	int iDec = 1;
 	PH7_MemObjInit(pVm,&sRes);
 	if( pSess ){
+		int bRead;
 		VmSessEmptyArray(pVm,pSess);
-		if( VmSessReadFile(pVm,pFile,&sRes) ){
+		if( VmSessHasUser(pVm) ){
+			VmSessUserOpen(pVm);
+			bRead = VmSessUserId(pVm,VM_SESS_OP_READ,&sRes) > 0
+				&& (sRes.iFlags & MEMOBJ_STRING) && SyBlobLength(&sRes.sBlob) > 0;
+		}else{
+			bRead = VmSessReadFile(pVm,pFile,&sRes);
+		}
+		/* What the store handed back is what session.lazy_write compares the
+		 * eventual write against. */
+		SyBlobReset(&pVm->sSessData);
+		if( bRead ){
+			SyBlobAppend(&pVm->sSessData,SyBlobData(&sRes.sBlob),SyBlobLength(&sRes.sBlob));
+		}
+		if( bRead ){
 			iDec = VmSessDecodeInto(pCtx,(const char *)SyBlobData(&sRes.sBlob),
 				SyBlobLength(&sRes.sBlob),pSess);
 		}
@@ -969,13 +1114,58 @@ static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	if( SyBlobLength(&pVm->sSessId) > 0
+	 && PH7_VmIniGetBool(pVm,"session.use_strict_mode",0) ){
+		/* session.use_strict_mode: php refuses an id no STORE has ever seen and
+		 * makes a new one, so a visitor cannot choose their own session id and
+		 * hand the link to somebody else (session fixation). A userland handler
+		 * answers through validateId(); the files store answers by whether the
+		 * store is there. */
+		int bKnown;
+		if( VmSessHasUser(pVm) ){
+			ph7_value sRes;
+			VmSessUserOpen(pVm);
+			PH7_MemObjInit(pVm,&sRes);
+			if( VmSessUserId(pVm,VM_SESS_OP_VALIDATE,&sRes) > 0 ){
+				PH7_MemObjToBool(&sRes);
+				bKnown = sRes.x.iVal != 0;
+			}else{
+				bKnown = 1;   /* no validateId(): php has nothing to refuse with */
+			}
+			PH7_MemObjRelease(&sRes);
+		}else{
+			SyBlob sProbe;
+			SyBlobInit(&sProbe,&pVm->sAllocator);
+			VmSessFile(pVm,&sProbe);
+			bKnown = VmSessPathIs(pVm,"file_exists",&sProbe);
+			SyBlobRelease(&sProbe);
+		}
+		if( !bKnown ){
+			SyBlobReset(&pVm->sSessId);
+		}
+	}
+	if( SyBlobLength(&pVm->sSessId) == 0 && VmSessHasUser(pVm) ){
+		/* A handler implementing SessionIdInterface makes the id: a store that
+		 * knows how to key itself is the one that should choose the key. */
+		ph7_value sRes;
+		VmSessUserOpen(pVm);
+		PH7_MemObjInit(pVm,&sRes);
+		if( VmSessUserCall(pVm,VM_SESS_OP_CREATE,0,0,&sRes) > 0 ){
+			PH7_MemObjToString(&sRes);
+			if( SyBlobLength(&sRes.sBlob) > 0 ){
+				SyBlobReset(&pVm->sSessId);
+				SyBlobAppend(&pVm->sSessId,SyBlobData(&sRes.sBlob),SyBlobLength(&sRes.sBlob));
+			}
+		}
+		PH7_MemObjRelease(&sRes);
+	}
 	if( SyBlobLength(&pVm->sSessId) == 0 ){
 		VmSessGenId(pVm,&pVm->sSessId);
 	}
 	SyBlobInit(&sFile,&pVm->sAllocator);
 	VmSessMaybeGc(pVm);
 	VmSessFile(pVm,&sFile);
-	if( !VmSessOpenStore(pVm,&sFile,"session_start") ){
+	if( !VmSessHasUser(pVm) && !VmSessOpenStore(pVm,&sFile,"session_start") ){
 		SyBlobRelease(&sFile);
 		SyBlobReset(&pVm->sSessId);
 		ph7_result_bool(pCtx,0);
@@ -1039,13 +1229,44 @@ static void VmSessSave(ph7_vm *pVm,const char *zWho)
 	 * what its store is handed when the serializer answers nothing. The stale copy
 	 * does not survive either way. */
 	VmSessEncode(pVm,&sData,zWho);
-	VmSessPutFile(pVm,&sFile,(const char *)SyBlobData(&sData),SyBlobLength(&sData));
+	if( VmSessHasUser(pVm) ){
+		ph7_value sId,sPayload,sRes;
+		ph7_value *apA[2];
+		int iOp = VM_SESS_OP_WRITE;
+		if( PH7_VmIniGetBool(pVm,"session.lazy_write",1)
+		 && SyBlobLength(&sData) == SyBlobLength(&pVm->sSessData)
+		 && (SyBlobLength(&sData) == 0
+		  || SyMemcmp(SyBlobData(&sData),SyBlobData(&pVm->sSessData),
+			SyBlobLength(&sData)) == 0) ){
+			/* session.lazy_write, php's default: a session whose data did not
+			 * change is not written again — the store is only told the session was
+			 * USED, so its expiry moves without the payload going over the wire.
+			 * A handler that does not implement the interface still gets write(). */
+			iOp = VM_SESS_OP_UPDATE;
+		}
+		VmSessStrArg(pVm,&sId,(const char *)SyBlobData(&pVm->sSessId),
+			SyBlobLength(&pVm->sSessId));
+		VmSessStrArg(pVm,&sPayload,(const char *)SyBlobData(&sData),SyBlobLength(&sData));
+		PH7_MemObjInit(pVm,&sRes);
+		apA[0] = &sId;
+		apA[1] = &sPayload;
+		if( iOp == VM_SESS_OP_WRITE
+		 || VmSessUserCall(pVm,VM_SESS_OP_UPDATE,2,apA,&sRes) == 0 ){
+			VmSessUserCall(pVm,VM_SESS_OP_WRITE,2,apA,&sRes);
+		}
+		PH7_MemObjRelease(&sRes);
+		PH7_MemObjRelease(&sPayload);
+		PH7_MemObjRelease(&sId);
+	}else{
+		VmSessPutFile(pVm,&sFile,(const char *)SyBlobData(&sData),SyBlobLength(&sData));
+	}
 	SyBlobRelease(&sFile);
 	SyBlobRelease(&sData);
 }
 static void VmSessWrite(ph7_vm *pVm,const char *zWho)
 {
 	VmSessSave(pVm,zWho);
+	VmSessCloseStore(pVm);
 	pVm->iSessStatus = VM_SESSION_NONE;
 }
 /* bool session_write_close() / session_commit() */
@@ -1087,6 +1308,9 @@ static int vm_builtin_session_abort(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	/* Nothing is written, but the store is still RELEASED: abandoning the session
+	 * is the end of this request's use of it. */
+	VmSessCloseStore(pCtx->pVm);
 	pCtx->pVm->iSessStatus = VM_SESSION_NONE;
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
@@ -1150,10 +1374,20 @@ static int vm_builtin_session_destroy(ph7_context *pCtx,int nArg,ph7_value **apA
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	SyBlobInit(&sFile,&pVm->sAllocator);
-	VmSessFile(pVm,&sFile);
-	VmSessUnlinkIfExists(pVm,&sFile);
-	SyBlobRelease(&sFile);
+	if( VmSessHasUser(pVm) ){
+		ph7_value sRes;
+		PH7_MemObjInit(pVm,&sRes);
+		VmSessUserId(pVm,VM_SESS_OP_DESTROY,&sRes);
+		PH7_MemObjRelease(&sRes);
+		/* The store is released as well: destroying is the end of this session's
+		 * use of it, exactly as closing is. */
+		VmSessCloseStore(pVm);
+	}else{
+		SyBlobInit(&sFile,&pVm->sAllocator);
+		VmSessFile(pVm,&sFile);
+		VmSessUnlinkIfExists(pVm,&sFile);
+		SyBlobRelease(&sFile);
+	}
 	pVm->iSessStatus = VM_SESSION_NONE;
 	SyBlobReset(&pVm->sSessId);
 	ph7_result_bool(pCtx,1);
@@ -1494,6 +1728,217 @@ static int vm_builtin_session_cache_expire(ph7_context *pCtx,int nArg,ph7_value 
 	ph7_result_int64(pCtx,iOld);
 	return PH7_OK;
 }
+/*
+ * SessionHandler: php's built-in `files` store, exposed as a class so a program
+ * can DECORATE it -- `class Locking extends SessionHandler { public function
+ * read($id) { …; return parent::read($id); } }`. Its methods are the same C
+ * routines the engine's own store uses, so the two cannot drift.
+ */
+static int vm_builtin_SessionHandler_open(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	if( nArg > 0 ){
+		int nPath = 0;
+		const char *zPath = ph7_value_to_string(apArg[0],&nPath);
+		if( nPath > 0 ){
+			while( nPath > 0 && zPath[nPath-1] == '/' ){ nPath--; }
+			SyBlobReset(&pVm->sSessPath);
+			SyBlobAppend(&pVm->sSessPath,zPath,(sxu32)nPath);
+		}
+	}
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+static int vm_builtin_SessionHandler_close(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/* Build "<save_path>/sess_<id>" for an id the CALLER named. */
+static void VmSessFileFor(ph7_vm *pVm,ph7_value *pId,SyBlob *pOut)
+{
+	int nId = 0;
+	const char *zId = pId ? ph7_value_to_string(pId,&nId) : "";
+	VmSessResolvePath(pVm);
+	SyBlobReset(pOut);
+	SyBlobAppend(pOut,SyBlobData(&pVm->sSessPath),SyBlobLength(&pVm->sSessPath));
+	SyBlobAppend(pOut,VM_SESS_FILE_PREFIX,sizeof(VM_SESS_FILE_PREFIX)-1);
+	SyBlobAppend(pOut,zId,(sxu32)nId);
+}
+static int vm_builtin_SessionHandler_read(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SyBlob sFile;
+	ph7_value sData;
+	if( nArg < 1 ){
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	SyBlobInit(&sFile,&pVm->sAllocator);
+	VmSessFileFor(pVm,apArg[0],&sFile);
+	PH7_MemObjInit(pVm,&sData);
+	if( VmSessReadFile(pVm,&sFile,&sData) ){
+		ph7_result_string(pCtx,(const char *)SyBlobData(&sData.sBlob),
+			(int)SyBlobLength(&sData.sBlob));
+	}else{
+		/* php's files handler answers the EMPTY string for a store that is not
+		 * there; false is reserved for a read that failed. */
+		ph7_result_string(pCtx,"",0);
+	}
+	PH7_MemObjRelease(&sData);
+	SyBlobRelease(&sFile);
+	return PH7_OK;
+}
+static int vm_builtin_SessionHandler_write(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SyBlob sFile;
+	int nData = 0;
+	const char *zData = "";
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( nArg > 1 ){
+		zData = ph7_value_to_string(apArg[1],&nData);
+	}
+	SyBlobInit(&sFile,&pVm->sAllocator);
+	VmSessFileFor(pVm,apArg[0],&sFile);
+	VmSessPutFile(pVm,&sFile,zData,(sxu32)nData);
+	SyBlobRelease(&sFile);
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+static int vm_builtin_SessionHandler_destroy(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SyBlob sFile;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	SyBlobInit(&sFile,&pVm->sAllocator);
+	VmSessFileFor(pVm,apArg[0],&sFile);
+	VmSessUnlinkIfExists(pVm,&sFile);
+	SyBlobRelease(&sFile);
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+static int vm_builtin_SessionHandler_gc(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	/* The collector reads session.gc_maxlifetime itself, which is where php's
+	 * files handler takes its own argument from too. */
+	ph7_result_int64(pCtx,VmSessGc(pCtx->pVm));
+	return PH7_OK;
+}
+static int vm_builtin_SessionHandler_create_sid(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SyBlob sId;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	SyBlobInit(&sId,&pCtx->pVm->sAllocator);
+	VmSessGenId(pCtx->pVm,&sId);
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sId),(int)SyBlobLength(&sId));
+	SyBlobRelease(&sId);
+	return PH7_OK;
+}
+/*
+ * bool session_set_save_handler(SessionHandlerInterface $handler,
+ *     bool $register_shutdown = true)
+ * bool session_set_save_handler(callable $open, callable $close, callable $read,
+ *     callable $write, callable $destroy, callable $gc,
+ *     callable $create_sid = ?, callable $validate_sid = ?,
+ *     callable $update_timestamp = ?)
+ */
+static int vm_builtin_session_set_save_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pIface;
+	ph7_class_instance *pThis;
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"session_set_save_handler() expects at least 1 argument, 0 given");
+	}
+	/* The handler decides what the store IS, so php will not take one once a
+	 * session is open or a header has gone out. */
+	if( VmSessLocked(pCtx,"session_set_save_handler","Session save handler",1) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pIface = PH7_VmExtractClass(pVm,"SessionHandlerInterface",
+		sizeof("SessionHandlerInterface")-1,0,0);
+	pThis = (apArg[0]->iFlags & MEMOBJ_OBJ)
+		? (ph7_class_instance *)apArg[0]->x.pOther : 0;
+	if( pThis == 0 || pIface == 0 || !PH7_VmInstanceOf(pThis->pClass,pIface) ){
+		/* php ALSO takes six-to-nine callables here and DEPRECATES that spelling
+		 * (8.4: "Providing individual callbacks instead of an object implementing
+		 * SessionHandlerInterface is deprecated"). §10 targets php's
+		 * non-deprecated surface, so the callables form is refused rather than
+		 * carried — with php's own message for a first argument that is not a
+		 * handler, which is what each of those callables is. */
+		const char *zGiven = "";
+		if( pThis && pThis->pClass ){
+			zGiven = pThis->pClass->sName.zString;
+		}else{
+			zGiven = ph7_type_name(apArg[0]);
+		}
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"session_set_save_handler(): Argument #1 ($open) must be of type"
+			" SessionHandlerInterface, %s given",zGiven);
+	}
+	PH7_MemObjRelease(&pVm->sSessHandler);
+	PH7_MemObjStore(apArg[0],&pVm->sSessHandler);
+	pVm->bSessOpened = 0;
+	PH7_VmIniSet(pVm,"session.save_handler",sizeof("session.save_handler")-1,
+		"user",sizeof("user")-1,"session_set_save_handler()");
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/* string|false session_module_name(?string $module = null) */
+static int vm_builtin_session_module_name(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SyBlob sOld;
+	SyBlobInit(&sOld,&pVm->sAllocator);
+	PH7_VmIniGetStr(pVm,"session.save_handler",&sOld);
+	if( nArg > 0 && !ph7_value_is_null(apArg[0]) ){
+		int nVal = 0;
+		const char *zVal = ph7_value_to_string(apArg[0],&nVal);
+		if( VmSessLocked(pCtx,"session_module_name","Session save handler module",1) ){
+			SyBlobRelease(&sOld);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		if( !(nVal == 5 && SyMemcmp(zVal,"files",5) == 0)
+		 && !(nVal == 4 && SyMemcmp(zVal,"user",4) == 0) ){
+			/* php looks the module up in its registered list; this build registers
+			 * the `files` store and the `user` one session_set_save_handler()
+			 * installs, which is every module a CLI-plus-`-S` engine has. */
+			char zMsg[160];
+			SyBufferFormat(zMsg,sizeof(zMsg),
+				"session_module_name(): Argument #1 ($module) must be a valid"
+				" session handler");
+			PH7_VmThrowError(pVm,0,PH7_CTX_ERR,zMsg);
+			SyBlobRelease(&sOld);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		if( nVal == 5 ){
+			/* Back to the built-in store: the userland handler is dropped. */
+			PH7_MemObjRelease(&pVm->sSessHandler);
+			pVm->bSessOpened = 0;
+		}
+		PH7_VmIniSet(pVm,"session.save_handler",sizeof("session.save_handler")-1,
+			zVal,(sxu32)nVal,"session_module_name()");
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOld),(int)SyBlobLength(&sOld));
+	SyBlobRelease(&sOld);
+	return PH7_OK;
+}
 /* int|false session_gc() */
 
 static int vm_builtin_session_gc(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -1624,6 +2069,52 @@ static int vm_builtin_session_decode(ph7_context *pCtx,int nArg,ph7_value **apAr
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
+/*
+ * php's three save-handler interfaces, and the class that implements the first
+ * two over the built-in `files` store. The interfaces declare no return types:
+ * php's own stubs do not, so a handler written against them may answer whatever
+ * its store answers.
+ */
+static sxi32 VmSessInstallClasses(ph7_vm *pVm)
+{
+	static const PH7_NativeMethodDef aIface[] = {
+		{ "open",    PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $path, string $name", 0, 0 },
+		{ "close",   PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", 0, 0 },
+		{ "read",    PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $id", 0, 0 },
+		{ "write",   PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $id, string $data", 0, 0 },
+		{ "destroy", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $id", 0, 0 },
+		{ "gc",      PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "int $max_lifetime", 0, 0 },
+	};
+	static const PH7_NativeMethodDef aIdIface[] = {
+		{ "create_sid", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", 0, 0 },
+	};
+	static const PH7_NativeMethodDef aStampIface[] = {
+		{ "validateId",      PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $id", 0, 0 },
+		{ "updateTimestamp", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "string $id, string $data", 0, 0 },
+	};
+	static const PH7_NativeMethodDef aHandler[] = {
+		{ "open",    PH7_MOD_PUBLIC, "string $path, string $name", 0,
+		  vm_builtin_SessionHandler_open },
+		{ "close",   PH7_MOD_PUBLIC, "", 0, vm_builtin_SessionHandler_close },
+		{ "read",    PH7_MOD_PUBLIC, "string $id", 0, vm_builtin_SessionHandler_read },
+		{ "write",   PH7_MOD_PUBLIC, "string $id, string $data", 0,
+		  vm_builtin_SessionHandler_write },
+		{ "destroy", PH7_MOD_PUBLIC, "string $id", 0, vm_builtin_SessionHandler_destroy },
+		{ "gc",      PH7_MOD_PUBLIC, "int $max_lifetime", 0, vm_builtin_SessionHandler_gc },
+		{ "create_sid", PH7_MOD_PUBLIC, "", 0, vm_builtin_SessionHandler_create_sid },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "SessionHandlerInterface", 0, 0, PH7_CLASS_INTERFACE,
+		  aIface, SX_ARRAYSIZE(aIface), 0, 0, 0, 0, 0, 0, 0 },
+		{ "SessionIdInterface", 0, 0, PH7_CLASS_INTERFACE,
+		  aIdIface, SX_ARRAYSIZE(aIdIface), 0, 0, 0, 0, 0, 0, 0 },
+		{ "SessionUpdateTimestampHandlerInterface", 0, 0, PH7_CLASS_INTERFACE,
+		  aStampIface, SX_ARRAYSIZE(aStampIface), 0, 0, 0, 0, 0, 0, 0 },
+		{ "SessionHandler", 0, "SessionHandlerInterface,SessionIdInterface", 0,
+		  aHandler, SX_ARRAYSIZE(aHandler), 0, 0, 0, 0, 0, 0, 0 },
+	};
+	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+}
 PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm)
 {
 	static const struct {
@@ -1646,6 +2137,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm)
 		{ "session_decode",        vm_builtin_session_decode        },
 		{ "session_create_id",     vm_builtin_session_create_id     },
 		{ "session_gc",            vm_builtin_session_gc            },
+		{ "session_module_name",   vm_builtin_session_module_name   },
+		{ "session_set_save_handler", vm_builtin_session_set_save_handler },
 		{ "session_cache_limiter", vm_builtin_session_cache_limiter },
 		{ "session_cache_expire",  vm_builtin_session_cache_expire  },
 		{ "session_register_shutdown", vm_builtin_session_register_shutdown },
@@ -1656,7 +2149,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm)
 	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){
 		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);
 	}
-	return SXRET_OK;
+	return VmSessInstallClasses(pVm);
 }
 
 #endif /* PH7_DISABLE_DISK_IO */
