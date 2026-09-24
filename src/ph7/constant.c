@@ -529,6 +529,27 @@ static void PH7_STR_PAD_BOTH_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData);
 }
 /*
+ * mt_srand()'s $mode: which GENERATOR to seed. MT_RAND_PHP is php's pre-7.1
+ * Mersenne Twister, whose twist reads the low bit of the wrong word — a
+ * different sequence, which is the only reason to ask for it.
+ */
+static void PH7_MT_RAND_MT19937_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_MT_RAND_MT19937);
+	SXUNUSED(pUserData);
+}
+static void PH7_MT_RAND_PHP_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_vm *pVm = (ph7_vm *)pUserData;
+	/* php 8.3 deprecated the SYMBOL as well as the mode, and says why — when a
+	 * program NAMES it. Listing the constant table is not naming it. */
+	if( pVm && !pVm->bConstEnum ){
+		PH7_VmThrowError(pVm,0,8192 /* E_DEPRECATED */,
+			"Constant MT_RAND_PHP is deprecated since 8.3, as it uses a biased non-standard variant of Mt19937");
+	}
+	ph7_value_int(pVal,PH7_MT_RAND_PHP);
+}
+/*
  * Output-handler flags and phases (ob_start()'s $flags, and the $phase an output
  * handler is called with). The values are php's and are a public ABI: the phase
  * bits are OR'd together (a first FLUSH arrives as FLUSH|START = 5), and the
@@ -2201,6 +2222,8 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"STR_PAD_LEFT",         PH7_STR_PAD_LEFT_Const },
 	{"STR_PAD_RIGHT",        PH7_STR_PAD_RIGHT_Const},
 	{"STR_PAD_BOTH",         PH7_STR_PAD_BOTH_Const },
+	{"MT_RAND_MT19937",              PH7_MT_RAND_MT19937_Const },
+	{"MT_RAND_PHP",                  PH7_MT_RAND_PHP_Const  },
 	{"PHP_OUTPUT_HANDLER_WRITE",     PH7_OB_WRITE_Const     },
 	{"PHP_OUTPUT_HANDLER_CONT",      PH7_OB_WRITE_Const     },
 	{"PHP_OUTPUT_HANDLER_START",     PH7_OB_START_Const     },

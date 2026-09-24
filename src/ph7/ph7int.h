@@ -996,6 +996,13 @@ struct VmObEntry
 #define PH7_OB_FLUSH 4
 #define PH7_OB_FINAL 8
 /*
+ * mt_srand()/srand()'s $mode. php compares the argument against MT_RAND_PHP for
+ * EQUALITY, so every other value — including an out-of-range one — selects the
+ * standard generator.
+ */
+#define PH7_MT_RAND_MT19937 0
+#define PH7_MT_RAND_PHP     1
+/*
  * HTTP response header entry.
  * Stored in ph7_vm.aResponseHeaders (a SySet of VmResponseHeader).
  */
@@ -2374,6 +2381,10 @@ struct ph7_vm
 	                            * buffer for the duration: ob_get_level()/contents()/
 	                            * length()/list_handlers() answer for IT, not for
 	                            * whatever is stacked above it. */
+	int bConstEnum;            /* Expanding constants to DESCRIBE them
+	                            * (get_defined_constants): php reports a deprecated
+	                            * constant when it is READ, and listing the table is
+	                            * not a read. */
 	int bObRefused;            /* An ob call refused from inside a handler ended the
 	                            * request: that operation delivers nothing more. */
 	VmFrame *pObFrame;         /* Frame that CALLED the running output handler. The
@@ -3258,7 +3269,7 @@ PH7_PRIVATE SySet * PH7_VmGetByteCodeContainer(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmSetByteCodeContainer(ph7_vm *pVm,SySet *pContainer);
 PH7_PRIVATE sxi32 PH7_VmEmitInstr(ph7_vm *pVm,sxi32 iOp,sxi32 iP1,sxu32 iP2,void *p3,sxu32 *pIndex);
 PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm);
-PH7_PRIVATE void PH7_VmMtSrand(ph7_vm *pVm,sxu32 nSeed);
+PH7_PRIVATE void PH7_VmMtSrand(ph7_vm *pVm,sxu32 nSeed,int bLegacyTwist);
 PH7_PRIVATE sxu32 PH7_VmMtRand(ph7_vm *pVm);
 PH7_PRIVATE sxi64 PH7_VmMtRandRange(ph7_vm *pVm,sxi64 iMin,sxi64 iMax);
 PH7_PRIVATE void PH7_VmReleaseInstanceAttr(ph7_vm *pVm,VmClassAttr *pVmAttr);

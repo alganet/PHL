@@ -180,25 +180,38 @@ static sxu32 mtTwist(sxu32 m,sxu32 u,sxu32 v)
 {
 	return m ^ (MT_MIX(u,v) >> 1) ^ ((sxu32)(-(sxi32)(MT_LO(v))) & 0x9908b0dfU);
 }
+/*
+ * PHP's own broken variant, kept because php keeps it: MT_RAND_PHP asks for the
+ * generator php shipped before 7.1, whose twist takes the low bit of `u` — the
+ * PREVIOUS word — where MT19937 takes it from `v`. It is one character of
+ * difference and a completely different sequence, which is the whole reason a
+ * program passes MT_RAND_PHP: to reproduce numbers it recorded years ago.
+ */
+static sxu32 mtTwistLegacy(sxu32 m,sxu32 u,sxu32 v)
+{
+	return m ^ (MT_MIX(u,v) >> 1) ^ ((sxu32)(-(sxi32)(MT_LO(u))) & 0x9908b0dfU);
+}
 /* Regenerate the whole state vector in place, then rewind the read index. */
 static void mtReload(SyMT19937Ctx *pCtx)
 {
+	sxu32 (*xTwist)(sxu32,sxu32,sxu32) = pCtx->bLegacyTwist ? mtTwistLegacy : mtTwist;
 	sxu32 *s = pCtx->aState;
 	sxu32 *p = s;
 	int i;
 	for( i = SX_MT19937_N - MT_M ; i-- ; ++p ){
-		*p = mtTwist(p[MT_M],p[0],p[1]);
+		*p = xTwist(p[MT_M],p[0],p[1]);
 	}
 	for( i = MT_M ; --i ; ++p ){
-		*p = mtTwist(p[MT_M - SX_MT19937_N],p[0],p[1]);
+		*p = xTwist(p[MT_M - SX_MT19937_N],p[0],p[1]);
 	}
-	*p = mtTwist(p[MT_M - SX_MT19937_N],p[0],s[0]);
+	*p = xTwist(p[MT_M - SX_MT19937_N],p[0],s[0]);
 	pCtx->nIndex = 0;
 }
-PH7_PRIVATE void SyMT19937Seed(SyMT19937Ctx *pCtx,sxu32 nSeed)
+PH7_PRIVATE void SyMT19937Seed(SyMT19937Ctx *pCtx,sxu32 nSeed,int bLegacyTwist)
 {
 	sxu32 *s = pCtx->aState;
 	sxu32 i;
+	pCtx->bLegacyTwist = bLegacyTwist;
 	/* Knuth TAOCP Vol.2 initializer, as used by PHP's php_mt_initialize(). */
 	s[0] = nSeed;
 	for( i = 1 ; i < SX_MT19937_N ; ++i ){

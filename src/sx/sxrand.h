@@ -51,9 +51,15 @@ struct SyMT19937Ctx
 {
     sxu32 aState[SX_MT19937_N]; /* Generator state vector */
     sxu32 nIndex;               /* Index of the next word (0..N; N triggers a reload) */
+    int bLegacyTwist;           /* Reproduce PHP's BROKEN twist (MT_RAND_PHP) */
 };
-/* Seed the generator from a 32-bit value (PHP truncates its int seed to 32 bits). */
-PH7_PRIVATE void SyMT19937Seed(SyMT19937Ctx *pCtx,sxu32 nSeed);
+/*
+ * Seed the generator from a 32-bit value (PHP truncates its int seed to 32 bits).
+ * bLegacyTwist selects php's MT_RAND_PHP generator: one line of its twist reads
+ * the low bit of the WRONG word, which is a different (and weaker) sequence, and
+ * the one a program that seeded with MT_RAND_PHP expects to reproduce.
+ */
+PH7_PRIVATE void SyMT19937Seed(SyMT19937Ctx *pCtx,sxu32 nSeed,int bLegacyTwist);
 /* Draw the next full 32-bit tempered word. */
 PH7_PRIVATE sxu32 SyMT19937Next(SyMT19937Ctx *pCtx);
 

@@ -654,6 +654,10 @@ PH7_PRIVATE int vm_builtin_get_defined_constants(ph7_context *pCtx,int nArg,ph7_
 	SyHashForEach(&pCtx->pVm->hConstant,VmHashConstStep,&aSnap);
 	apEntry = (SyHashEntry **)SySetBasePtr(&aSnap);
 	nSnap = SySetUsed(&aSnap);
+	/* Describing the table is not READING its entries: php's deprecated constants
+	 * report when a program names one, and get_defined_constants() lists them in
+	 * silence. */
+	pCtx->pVm->bConstEnum++;
 	for( n = 0 ; n < nSnap ; ++n ){
 		ph7_constant *pCons = (ph7_constant *)apEntry[n]->pUserData;
 		sxi32 rcExp = VmConstDumpEntry(pUser && pCons->bUserDefined ? pUser : pAll,apEntry[n]);
@@ -662,6 +666,7 @@ PH7_PRIVATE int vm_builtin_get_defined_constants(ph7_context *pCtx,int nArg,ph7_
 			 * other builtin does when the php it invoked did not return.
 			 * Carrying on would run every LATER initializer past a throw that has
 			 * already been landed. */
+			pCtx->pVm->bConstEnum--;
 			SySetRelease(&aSnap);
 			if( bCategorize ){
 				ph7_context_release_value(pCtx,pAll);
@@ -670,6 +675,7 @@ PH7_PRIVATE int vm_builtin_get_defined_constants(ph7_context *pCtx,int nArg,ph7_
 			return rcExp;
 		}
 	}
+	pCtx->pVm->bConstEnum--;
 	SySetRelease(&aSnap);
 	if( bCategorize ){
 		/* php's own order: the engine's buckets first, `user` last -- and php
@@ -714,9 +720,9 @@ PH7_PRIVATE sxu32 PH7_VmRandomNum(ph7_vm *pVm)
 /*
  * Reset the MT19937 state to a 32-bit seed (PHP truncates its int seed likewise).
  */
-PH7_PRIVATE void PH7_VmMtSrand(ph7_vm *pVm,sxu32 nSeed)
+PH7_PRIVATE void PH7_VmMtSrand(ph7_vm *pVm,sxu32 nSeed,int bLegacyTwist)
 {
-	SyMT19937Seed(&pVm->sMt,nSeed);
+	SyMT19937Seed(&pVm->sMt,nSeed,bLegacyTwist);
 	pVm->mtSeeded = TRUE;
 }
 /*
@@ -731,7 +737,8 @@ PH7_PRIVATE sxu32 PH7_VmMtRand(ph7_vm *pVm)
 			/* No OS entropy source: fall back to the RC4 generator's output. */
 			nSeed = PH7_VmRandomNum(pVm);
 		}
-		SyMT19937Seed(&pVm->sMt,nSeed);
+		/* An un-seeded generator is php's default one, never MT_RAND_PHP. */
+		SyMT19937Seed(&pVm->sMt,nSeed,FALSE);
 		pVm->mtSeeded = TRUE;
 	}
 	return SyMT19937Next(&pVm->sMt);
@@ -867,6 +874,22 @@ PH7_PRIVATE int vm_builtin_rand(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			/* rand() swaps the bounds for backward compatibility (php keeps
 			 * this quirk; only mt_rand() rejects a reversed range). */
 			{ sxi64 iTmp = iMin; iMin = iMax; iMax = iTmp; }
+		}
+		if( pCtx->pVm->sMt.bLegacyTwist ){
+			/* MT_RAND_PHP is a whole generator, mapping included: php keeps its old
+			 * RAND_RANGE_BADSCALING here — a 31-bit draw scaled through a double,
+			 * which is biased and is exactly what the recorded sequence a caller
+			 * asked for was produced with. */
+			double rNum = (double)(PH7_VmMtRand(pCtx->pVm) >> 1);
+			double rSpan = (double)iMax - (double)iMin + 1.0;
+			/* php's own arithmetic, types included: the product lands in an
+			 * unsigned 64-bit result, so a span wider than the SIGNED range keeps
+			 * its value and wraps around the minimum rather than saturating. The
+			 * product is never negative (the span is at least 1, the fraction at
+			 * least 0), so the unsigned conversion is total. */
+			sxu64 uOut = (sxu64)iMin + (sxu64)(rSpan * (rNum / (2147483647.0 + 1.0)));
+			ph7_result_int64(pCtx,(sxi64)uOut);
+			return SXRET_OK;
 		}
 		/* MT19937-backed uniform draw over [iMin,iMax], bit-for-bit as php. */
 		ph7_result_int64(pCtx,PH7_VmMtRandRange(pCtx->pVm,iMin,iMax));

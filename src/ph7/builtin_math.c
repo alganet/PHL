@@ -1566,16 +1566,31 @@ PH7_PRIVATE int PH7_builtin_octdec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int PH7_builtin_srand(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	sxu32 nSeed;
-	if( nArg > 0 ){
+	int bLegacy = nArg > 1 && ph7_value_to_int64(apArg[1]) == PH7_MT_RAND_PHP;
+	if( bLegacy ){
+		/* php 8.3 deprecated the legacy generator; the message carries no
+		 * function prefix there. */
+		PH7_VmThrowError(pCtx->pVm,0,8192 /* E_DEPRECATED */,
+			"The MT_RAND_PHP variant of Mt19937 is deprecated");
+	}
+	if( nArg > 0 && (apArg[0]->iFlags & MEMOBJ_NULL) == 0 ){
 		/* php truncates the (weakly int-coerced) seed to 32 bits. */
 		nSeed = (sxu32)ph7_value_to_int64(apArg[0]);
 	}else{
+		/* NULL is the declared default and means "no seed given": php reseeds
+		 * from entropy for it, where this read it as the integer 0 — so
+		 * `mt_srand($cfg['seed'] ?? null)` pinned every run to one sequence. */
 		/* No seed: reseed from OS entropy, like php's GENERATE_SEED(). */
 		if( SyOSCSPRNG((void *)&nSeed,sizeof(nSeed)) != SXRET_OK ){
 			nSeed = PH7_VmRandomNum(pCtx->pVm);
 		}
 	}
-	PH7_VmMtSrand(pCtx->pVm,nSeed);
+	/* $mode picks the GENERATOR, and php reads it as an equality test against
+	 * MT_RAND_PHP alone: every other value, valid or not, is MT19937. It was
+	 * declared in the signature and read by nothing, so a program that seeded
+	 * with MT_RAND_PHP to reproduce a recorded sequence silently got a different
+	 * one — and the constant naming it was undefined, so the call was a fatal. */
+	PH7_VmMtSrand(pCtx->pVm,nSeed,bLegacy);
 	ph7_result_null(pCtx);
 	return PH7_OK;
 }
