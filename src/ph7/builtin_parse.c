@@ -58,6 +58,8 @@
 #define FV_FLAG_ALLOW_FRACTION   4096
 #define FV_FLAG_ALLOW_THOUSAND   8192
 #define FV_FLAG_ALLOW_SCIENTIFIC 16384
+#define FV_FLAG_PATH_REQUIRED  262144
+#define FV_FLAG_QUERY_REQUIRED 524288
 #define FV_FLAG_IPV4  1048576
 /* php gives one bit three names, one per filter it belongs to. */
 #define FV_FLAG_HOSTNAME      1048576
@@ -562,14 +564,83 @@ static int FvValidateDomain(const char *z,int n,int flags){
 	}
 	return 1;
 }
-/* FILTER_VALIDATE_URL: require a scheme and a host (PHP's filter is itself
- * parse_url-based, so PH7_VmHttpSplitURI tracks it closely). */
-static int FvValidateUrl(const char *z,int n){
-	SyhttpUri sUri;
+/* The bytes php's SANITIZE_URL map keeps: every printable ASCII byte. Shared
+ * with the URL VALIDATION below, which php runs that map over first. */
+static int FvUrlAllowed(unsigned char c){
+	return c>=33 && c<=126;
+}
+/*
+ * php's userinfo rule: the bytes it lets stand in a URL's user and password.
+ * A percent escape is `%` + a DIGIT + a hex digit, which is php's own asymmetry
+ * and not a transcription slip.
+ */
+static int FvUserinfoValid(const char *z,int n){
+	int i = 0;
+	while( i<n ){
+		unsigned char c = (unsigned char)z[i];
+		if( FvIsAlnum(c) || c=='-' || c=='.' || c=='_' || c=='~' || c=='!' || c=='$'
+		 || c=='&' || c=='\'' || c=='(' || c==')' || c=='*' || c=='+' || c==','
+		 || c==';' || c=='=' || c==':' ){
+			i++;
+		}else if( c=='%' && i+2<n && SyisDigit((unsigned char)z[i+1])
+		       && SyHexToint((unsigned char)z[i+2])>=0 ){
+			i += 3;
+		}else{
+			return 0;
+		}
+	}
+	return 1;
+}
+static int FvSyStrEqNoCase(const SyString *pStr,const char *zLit){
+	sxu32 n = SyStrlen(zLit);
+	return pStr->nByte==n && SyStrnicmp(pStr->zString,zLit,n)==0;
+}
+static int FvSyStrEq(const SyString *pStr,const char *zLit){
+	sxu32 n = SyStrlen(zLit);
+	return pStr->nByte==n && SyMemcmp(pStr->zString,zLit,n)==0;
+}
+/*
+ * FILTER_VALIDATE_URL, php's own sequence.
+ *
+ * php runs the SANITIZE_URL map over the value FIRST and fails the validation
+ * when a byte was dropped -- which is what refuses a space, a newline or a
+ * non-ASCII byte anywhere in the name. Then parse_url must succeed and answer a
+ * SCHEME; a host is required for every scheme except the three php names
+ * (`mailto:`, `news:`, `file:`), and for http/https the host must be either a
+ * bracketed IPv6 literal or a name that passes the HOSTNAME domain rule -- so
+ * `http://x_y.com/` is not a URL while `x-y://x_y.com/` is. PATH_REQUIRED and
+ * QUERY_REQUIRED test the presence of those two components, and a user or
+ * password that is present has to be spellable.
+ */
+static int FvValidateUrl(const char *z,int n,int flags){
+	VmUrlParts sUrl;
+	int i;
 	if( n==0 ){ return 0; }
-	SyZero(&sUri,(sxu32)sizeof(sUri));
-	if( PH7_VmHttpSplitURI(&sUri,z,(sxu32)n)!=SXRET_OK ){ return 0; }
-	return sUri.sScheme.nByte!=0 && sUri.sHost.nByte!=0;
+	for( i=0; i<n; i++ ){
+		if( !FvUrlAllowed((unsigned char)z[i]) ){ return 0; }
+	}
+	SyZero(&sUrl,(sxu32)sizeof(sUrl));
+	if( !PH7_VmUrlSplit(z,n,&sUrl) ){ return 0; }
+	if( !sUrl.bScheme ){ return 0; }
+	if( FvSyStrEqNoCase(&sUrl.sScheme,"http") || FvSyStrEqNoCase(&sUrl.sScheme,"https") ){
+		int bIp6;
+		if( !sUrl.bHost ){ return 0; }
+		bIp6 = sUrl.sHost.nByte>2 && sUrl.sHost.zString[0]=='['
+		    && sUrl.sHost.zString[sUrl.sHost.nByte-1]==']'
+		    && FvValidateIp6(sUrl.sHost.zString+1,(int)sUrl.sHost.nByte-2,0);
+		if( !bIp6 && !FvValidateDomain(sUrl.sHost.zString,(int)sUrl.sHost.nByte,FV_FLAG_HOSTNAME) ){
+			return 0;
+		}
+	}
+	if( !sUrl.bHost && !FvSyStrEq(&sUrl.sScheme,"mailto")
+	 && !FvSyStrEq(&sUrl.sScheme,"news") && !FvSyStrEq(&sUrl.sScheme,"file") ){
+		return 0;
+	}
+	if( (flags & FV_FLAG_PATH_REQUIRED) && !sUrl.bPath ){ return 0; }
+	if( (flags & FV_FLAG_QUERY_REQUIRED) && !sUrl.bQuery ){ return 0; }
+	if( sUrl.bUser && !FvUserinfoValid(sUrl.sUser.zString,(int)sUrl.sUser.nByte) ){ return 0; }
+	if( sUrl.bPass && !FvUserinfoValid(sUrl.sPass.zString,(int)sUrl.sPass.nByte) ){ return 0; }
+	return 1;
 }
 /* The Fv sanitizers build their result by appending directly to the call
  * context (ph7_result_string accumulates, like htmlspecialchars), emitting each
@@ -1219,9 +1290,6 @@ static int FvEmailAllowed(unsigned char c){
 	    || c=='-'||c=='='||c=='?'||c=='^'||c=='_'||c=='`'||c=='{'||c=='|'
 	    || c=='}'||c=='~'||c=='@'||c=='.'||c=='['||c==']';
 }
-static int FvUrlAllowed(unsigned char c){
-	return c>=33 && c<=126; /* PHP keeps every printable ASCII byte except space */
-}
 /* SANITIZE_EMAIL (isUrl=0) / SANITIZE_URL (isUrl=1): strip disallowed bytes. */
 static void FvSanitizeChars(ph7_context *pCtx,const char *z,int n,int isUrl){
 	int i, runStart = 0;
@@ -1316,7 +1384,7 @@ static int FvApplyFilter(ph7_context *pCtx,ph7_value *pInput,
 	case FV_VALIDATE_MAC:    if( !FvValidateMac(zVal,nVal) ){ goto fail; }       goto pass;
 	case FV_VALIDATE_EMAIL:  if( !FvValidateEmail(pCtx,zVal,nVal,iFlags) ){ goto fail; } goto pass;
 	case FV_VALIDATE_DOMAIN: if( !FvValidateDomain(zVal,nVal,iFlags) ){ goto fail; } goto pass;
-	case FV_VALIDATE_URL:    if( !FvValidateUrl(zVal,nVal) ){ goto fail; }       goto pass;
+	case FV_VALIDATE_URL:    if( !FvValidateUrl(zVal,nVal,iFlags) ){ goto fail; } goto pass;
 	case FV_VALIDATE_REGEXP: {
 #ifdef PH7_ENABLE_PCRE
 		ph7_value *pRe = pOpts ? ph7_array_fetch(pOpts,"regexp",(int)sizeof("regexp")-1) : 0;

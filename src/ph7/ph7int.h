@@ -3228,6 +3228,20 @@ PH7_PRIVATE sxi32 PH7_MemObjStringAppend(ph7_value *pObj,const char *zData,sxu32
 PH7_PRIVATE sxi32 PH7_MemObjStringFormat(ph7_value *pObj,const char *zFormat,va_list ap);
 #endif
 PH7_PRIVATE sxi32 PH7_MemObjStore(ph7_value *pSrc,ph7_value *pDest);
+/*
+ * The components php's parse_url() answers, and the split that produces them.
+ * Shared with filter_var()'s FILTER_VALIDATE_URL, which php builds on the same
+ * parse (a component that is ABSENT is what its b* flag reports; an empty one
+ * is present-and-empty).
+ */
+typedef struct VmUrlParts VmUrlParts;
+struct VmUrlParts
+{
+	SyString sScheme,sUser,sPass,sHost,sPath,sQuery,sFragment;
+	int iPort;     /* Resolved port, meaningful only when bPort is set */
+	sxu8 bScheme,bUser,bPass,bHost,bPort,bPath,bQuery,bFragment;
+};
+PH7_PRIVATE int PH7_VmUrlSplit(const char *z,int n,VmUrlParts *pOut);
 PH7_PRIVATE sxi32 PH7_MemObjLoad(ph7_value *pSrc,ph7_value *pDest);
 PH7_PRIVATE ph7_value * PH7_ValuePeek(ph7_value *pVal,ph7_value *pScratch);
 PH7_PRIVATE sxi64 PH7_ValuePeekInt64(ph7_value *pVal);

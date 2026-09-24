@@ -1742,13 +1742,6 @@ PH7_PRIVATE int vm_builtin_ph7_credits(ph7_context *pCtx,int nArg,ph7_value **ap
  * parse_url("") is ['path'=>''] and parse_url("?") is ['query'=>''], both
  * distinct from the component being absent. So presence is tracked separately.
  */
-typedef struct VmUrlParts VmUrlParts;
-struct VmUrlParts
-{
-	SyString sScheme,sUser,sPass,sHost,sPath,sQuery,sFragment;
-	int iPort;     /* Resolved port, meaningful only when bPort is set */
-	sxu8 bScheme,bUser,bPass,bHost,bPort,bPath,bQuery,bFragment;
-};
 static int VmUrlIsAlnum(int c)
 {
 	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
@@ -1946,7 +1939,7 @@ static int VmUrlPreparePort(const char *z,int k,int nEnd,VmUrlParts *pOut)
  * user:pass@host. php instead decides authority-vs-path up front: only a "//",
  * with or without a scheme before it, introduces an authority.
  */
-static int VmUrlSplit(const char *z,int n,VmUrlParts *pOut)
+PH7_PRIVATE int PH7_VmUrlSplit(const char *z,int n,VmUrlParts *pOut)
 {
 	int i,k = -1,bScheme,bPortForm = 0,nPortEnd = 0;
 	SyZero(pOut,sizeof(VmUrlParts));
@@ -2097,7 +2090,7 @@ PH7_PRIVATE int vm_builtin_parse_url(ph7_context *pCtx,int nArg,ph7_value **apAr
 	if( nLen < 0 ){
 		nLen = 0;
 	}
-	if( !VmUrlSplit(zStr,nLen,&sUrl) ){
+	if( !PH7_VmUrlSplit(zStr,nLen,&sUrl) ){
 		/* Malformed input,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
