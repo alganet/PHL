@@ -682,35 +682,30 @@ static int VmSessOpenStore(ph7_vm *pVm,SyBlob *pFile,const char *zFunc)
 	return 0;
 }
 /*
- * php's garbage collection: every store in the save path whose last change is
- * older than session.gc_maxlifetime goes, and the count is the answer. Only the
+ * php's garbage collection, the FILES half: every store in the save path whose last
+ * change is older than the given lifetime goes, and the count is the answer. Only the
  * `sess_` prefix is touched -- the save path is an ordinary directory and may hold
  * anything else.
+ *
+ * Split from the dispatcher below because SessionHandler::gc() -- php's built-in
+ * files store, exposed as a class precisely so a program can put itself in front of
+ * it -- must reach THIS and not the dispatcher. It used to call the dispatcher, which
+ * saw the user handler installed and called that handler's gc()... whose parent::gc()
+ * is SessionHandler::gc(). `session_set_save_handler(new SessionHandler())` plus any
+ * collection at all was an unbounded recursion, and the collection did not have to be
+ * asked for: php's DEFAULT gc_probability runs it from one session_start() in a
+ * hundred, so the documented decorator idiom had a 1%-per-request fatal in it. Every
+ * other SessionHandler method already called the file-level primitive directly.
  */
-static sxi64 VmSessGc(ph7_vm *pVm)
+static sxi64 VmSessGcFiles(ph7_vm *pVm,sxi64 iMaxLife)
 {
 	ph7_value sDir,sList;
 	ph7_value *apA[1];
 	ph7_hashmap *pMap;
 	ph7_hashmap_node *pNode;
-	sxi64 iMaxLife = PH7_VmIniGetInt(pVm,"session.gc_maxlifetime",1440);
 	sxi64 iCut = (sxi64)time(0) - iMaxLife;
 	sxi64 nGone = 0;
 	sxu32 n;
-	if( VmSessHasUser(pVm) ){
-		ph7_value sLife,sRes;
-		PH7_MemObjInit(pVm,&sLife);
-		PH7_MemObjInitFromInt(pVm,&sLife,iMaxLife);
-		PH7_MemObjInit(pVm,&sRes);
-		apA[0] = &sLife;
-		if( VmSessUserCall(pVm,VM_SESS_OP_GC,1,apA,&sRes) > 0 ){
-			PH7_MemObjToInteger(&sRes);
-			nGone = sRes.x.iVal;
-		}
-		PH7_MemObjRelease(&sRes);
-		PH7_MemObjRelease(&sLife);
-		return nGone;
-	}
 	VmSessResolvePath(pVm);
 	VmSessStrArg(pVm,&sDir,(const char *)SyBlobData(&pVm->sSessPath),
 		SyBlobLength(&pVm->sSessPath));
@@ -757,6 +752,32 @@ static sxi64 VmSessGc(ph7_vm *pVm)
 	}
 	PH7_MemObjRelease(&sList);
 	return nGone;
+}
+/*
+ * Run the collector the SESSION is configured with: the user handler's gc() when one
+ * is installed, the files sweep otherwise. session_gc() and the probabilistic sweep
+ * come through here.
+ */
+static sxi64 VmSessGc(ph7_vm *pVm)
+{
+	sxi64 iMaxLife = PH7_VmIniGetInt(pVm,"session.gc_maxlifetime",1440);
+	if( VmSessHasUser(pVm) ){
+		ph7_value sLife,sRes;
+		ph7_value *apA[1];
+		sxi64 nGone = 0;
+		PH7_MemObjInit(pVm,&sLife);
+		PH7_MemObjInitFromInt(pVm,&sLife,iMaxLife);
+		PH7_MemObjInit(pVm,&sRes);
+		apA[0] = &sLife;
+		if( VmSessUserCall(pVm,VM_SESS_OP_GC,1,apA,&sRes) > 0 ){
+			PH7_MemObjToInteger(&sRes);
+			nGone = sRes.x.iVal;
+		}
+		PH7_MemObjRelease(&sRes);
+		PH7_MemObjRelease(&sLife);
+		return nGone;
+	}
+	return VmSessGcFiles(pVm,iMaxLife);
 }
 /*
  * php runs the collector on a session_start() with probability
@@ -1828,11 +1849,13 @@ static int vm_builtin_SessionHandler_destroy(ph7_context *pCtx,int nArg,ph7_valu
 }
 static int vm_builtin_SessionHandler_gc(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	/* The collector reads session.gc_maxlifetime itself, which is where php's
-	 * files handler takes its own argument from too. */
-	ph7_result_int64(pCtx,VmSessGc(pCtx->pVm));
+	/* The FILES sweep, never the dispatcher: this IS the files handler, and a
+	 * program that decorates it is the user handler the dispatcher would call.
+	 * php's signature takes the lifetime, so an explicit one wins over the ini. */
+	sxi64 iMaxLife = nArg > 0
+		? ph7_value_to_int64(apArg[0])
+		: PH7_VmIniGetInt(pCtx->pVm,"session.gc_maxlifetime",1440);
+	ph7_result_int64(pCtx,VmSessGcFiles(pCtx->pVm,iMaxLife));
 	return PH7_OK;
 }
 static int vm_builtin_SessionHandler_create_sid(ph7_context *pCtx,int nArg,ph7_value **apArg)
