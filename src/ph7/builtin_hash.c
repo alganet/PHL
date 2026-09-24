@@ -44,7 +44,11 @@ PH7_PRIVATE int PH7_builtin_md5(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Extract the input string (the empty string hashes to a well-defined
 	 * digest in PHP — d41d8cd9… — so it must NOT short-circuit). */
 	pIn = (const void *)ph7_value_to_string(apArg[0],&nLen);
-	if( nArg > 1 && ph7_value_is_bool(apArg[1])){
+	if( nArg > 1 ){
+		/* php's weak mode COERCES the flag, so `md5($s, 1)` and `md5($s, "1")`
+		 * ask for raw output exactly as `true` does. Reading it only when it
+		 * already IS a bool answered the HEX digest for all of them -- a
+		 * different string, of a different length, in silence. */
 		raw_output = ph7_value_to_bool(apArg[1]);
 	}
 	/* Compute the MD5 digest */
@@ -84,7 +88,11 @@ PH7_PRIVATE int PH7_builtin_sha1(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Extract the input string (the empty string hashes to a well-defined
 	 * digest in PHP — da39a3ee… — so it must NOT short-circuit). */
 	pIn = (const void *)ph7_value_to_string(apArg[0],&nLen);
-	if( nArg > 1 && ph7_value_is_bool(apArg[1])){
+	if( nArg > 1 ){
+		/* php's weak mode COERCES the flag, so `md5($s, 1)` and `md5($s, "1")`
+		 * ask for raw output exactly as `true` does. Reading it only when it
+		 * already IS a bool answered the HEX digest for all of them -- a
+		 * different string, of a different length, in silence. */
 		raw_output = ph7_value_to_bool(apArg[1]);
 	}
 	/* Compute the SHA1 digest */
