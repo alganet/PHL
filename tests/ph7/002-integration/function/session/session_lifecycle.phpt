@@ -13,7 +13,7 @@ $log[] = session_status() . "|" . PHP_SESSION_NONE . PHP_SESSION_ACTIVE . PHP_SE
 $log[] = session_name() . "|" . session_id() . "|";
 $log[] = var_export(session_start(), true);
 $log[] = session_status();
-$log[] = strlen(session_id()) . (preg_match("/^[0-9a-v]+$/", session_id()) ? "ok" : "?");
+$log[] = strlen(session_id()) . (preg_match("/^[0-9a-f]{32}$/", session_id()) ? "ok" : "?");
 $_SESSION["user"] = "alice";
 $_SESSION["n"] = 42;
 $_SESSION["arr"] = [1, "b" => 2];

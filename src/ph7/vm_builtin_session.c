@@ -73,30 +73,78 @@ static void VmSessResolvePath(ph7_vm *pVm)
 	}
 	PH7_MemObjRelease(&sRes);
 }
+/* php joins the save path and the file name with PHP_DIR_SEPARATOR, which a
+ * warning naming the file shows: a backslash on Windows. */
+#ifdef __WINNT__
+#define VM_SESS_FILE_PREFIX "\\sess_"
+#else
+#define VM_SESS_FILE_PREFIX "/sess_"
+#endif
 /* "<save_path>/sess_<id>" */
 static void VmSessFile(ph7_vm *pVm,SyBlob *pOut)
 {
 	VmSessResolvePath(pVm);
 	SyBlobReset(pOut);
 	SyBlobAppend(pOut,SyBlobData(&pVm->sSessPath),SyBlobLength(&pVm->sSessPath));
-	SyBlobAppend(pOut,"/sess_",sizeof("/sess_")-1);
+	SyBlobAppend(pOut,VM_SESS_FILE_PREFIX,sizeof(VM_SESS_FILE_PREFIX)-1);
 	SyBlobAppend(pOut,SyBlobData(&pVm->sSessId),SyBlobLength(&pVm->sSessId));
 }
+/* php's PS_MAX_SID_LENGTH: the longest id it will read or make. */
+#define VM_SESS_MAX_ID 256
+
 /*
- * A fresh 32-char id over php's session-id alphabet (32 symbols, so 5 bits per
- * character taken from random bytes).
+ * A fresh id: 32 characters over php's 4-bits-per-character alphabet, which is
+ * lowercase hex. The two directives that would widen either number,
+ * session.sid_length and session.sid_bits_per_character, are DEPRECATED in php 8.4
+ * — §10 does not carry php's deprecated surface, so php's defaults are the only
+ * shape here and an id made by either engine reads the same way to the other.
  */
 static void VmSessGenId(ph7_vm *pVm,SyBlob *pOut)
 {
-	static const char zAlpha[] = "0123456789abcdefghijklmnopqrstuv";
+	static const char zAlpha[] = "0123456789abcdef";
 	unsigned char zRaw[32];
 	int i;
 	SyBlobReset(pOut);
 	SyRandomness(&pVm->sPrng,zRaw,sizeof(zRaw));
 	for( i = 0 ; i < 32 ; i++ ){
-		char c = zAlpha[zRaw[i] & 31];
+		char c = zAlpha[zRaw[i] & 15];
 		SyBlobAppend(pOut,&c,1);
 	}
+}
+/*
+ * php's php_session_valid_key(): an id is 1..256 bytes of A-Z, a-z, 0-9, "-", ",".
+ * The id names a FILE in the save path, which is why the set is this small.
+ */
+static int VmSessIdValid(const char *z,sxu32 n)
+{
+	sxu32 i;
+	if( n < 1 || n > VM_SESS_MAX_ID ){
+		return 0;
+	}
+	for( i = 0 ; i < n ; i++ ){
+		char c = z[i];
+		if( !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z')
+		   || (c >= 'A' && c <= 'Z') || c == ',' || c == '-') ){
+			return 0;
+		}
+	}
+	return 1;
+}
+/*
+ * The bytes php drops an id for WITHOUT a word, before it ever validates it: the
+ * ones that would break the Set-Cookie header or a log line it lands in. An id
+ * carrying one is thrown away and a fresh one made, where any other invalid
+ * character is reported and refuses the start outright.
+ */
+static int VmSessIdDangerous(const char *z,sxu32 n)
+{
+	sxu32 i;
+	for( i = 0 ; i < n ; i++ ){
+		if( SyByteFind("\r\n\t <>'\"\\",sizeof("\r\n\t <>'\"\\")-1,z[i],0) == SXRET_OK ){
+			return 1;
+		}
+	}
+	return 0;
 }
 /*
  * Read the session file into pOut, answering FALSE when there is none.
@@ -580,10 +628,17 @@ static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	if( SyBlobLength(&pVm->sSessId) > 0
+	 && VmSessIdDangerous((const char *)SyBlobData(&pVm->sSessId),SyBlobLength(&pVm->sSessId)) ){
+		/* A byte that would break the header this id is about to be written into:
+		 * php throws the id away without a word and makes a fresh one. */
+		SyBlobReset(&pVm->sSessId);
+	}
 	if( SyBlobLength(&pVm->sSessId) == 0 ){
-		/* Adopt the id the client sent, when it is one php would accept. */
+		/* Adopt the id the client sent, when it is one php would accept. An id a
+		 * REQUEST supplied is simply not adopted when it is not — the visitor does
+		 * not get to end the request — where the one a script SET is reported below. */
 		ph7_value *pCookie = PH7_VmExtractSuper(pVm,"_COOKIE",sizeof("_COOKIE")-1);
-		int bAdopted = 0;
 		if( pCookie && (pCookie->iFlags & MEMOBJ_HASHMAP) ){
 			ph7_value sKey,sVal;
 			ph7_hashmap_node *pNode = 0;
@@ -594,30 +649,35 @@ static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 			 && pNode ){
 				PH7_HashmapExtractNodeValue(pNode,&sVal,FALSE);
 			}
-			if( sVal.iFlags & MEMOBJ_STRING ){
-				const char *z = (const char *)SyBlobData(&sVal.sBlob);
-				sxu32 n = SyBlobLength(&sVal.sBlob);
-				sxu32 i;
-				int bOk = n >= 1 && n <= 128;
-				for( i = 0 ; bOk && i < n ; i++ ){
-					char c = z[i];
-					if( !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z')
-					   || (c >= 'A' && c <= 'Z') || c == ',' || c == '-') ){
-						bOk = 0;
-					}
-				}
-				if( bOk ){
-					SyBlobReset(&pVm->sSessId);
-					SyBlobAppend(&pVm->sSessId,z,n);
-					bAdopted = 1;
-				}
+			if( (sVal.iFlags & MEMOBJ_STRING)
+			 && VmSessIdValid((const char *)SyBlobData(&sVal.sBlob),SyBlobLength(&sVal.sBlob)) ){
+				SyBlobReset(&pVm->sSessId);
+				SyBlobAppend(&pVm->sSessId,SyBlobData(&sVal.sBlob),SyBlobLength(&sVal.sBlob));
 			}
 			PH7_MemObjRelease(&sVal);
 			PH7_MemObjRelease(&sKey);
 		}
-		if( !bAdopted ){
-			VmSessGenId(pVm,&pVm->sSessId);
-		}
+	}
+	if( SyBlobLength(&pVm->sSessId) > 0
+	 && !VmSessIdValid((const char *)SyBlobData(&pVm->sSessId),SyBlobLength(&pVm->sSessId)) ){
+		/* The id names a FILE under the save path, so php refuses to open anything at
+		 * all for one outside its alphabet — and reports the store's own failure with
+		 * it, since that is the read that never happened. */
+		char zMsg[224];
+		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
+			"session_start(): Session ID is too long or contains illegal characters."
+			" Only the A-Z, a-z, 0-9, \"-\", and \",\" characters are allowed");
+		VmSessResolvePath(pVm);
+		SyBufferFormat(zMsg,sizeof(zMsg),
+			"session_start(): Failed to read session data: files (path: %.*s)",
+			(int)SyBlobLength(&pVm->sSessPath),(const char *)SyBlobData(&pVm->sSessPath));
+		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,zMsg);
+		SyBlobReset(&pVm->sSessId);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( SyBlobLength(&pVm->sSessId) == 0 ){
+		VmSessGenId(pVm,&pVm->sSessId);
 	}
 	SyBlobInit(&sFile,&pVm->sAllocator);
 	VmSessFile(pVm,&sFile);
@@ -653,27 +713,36 @@ static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg
  * by the request-shutdown writer, which is why it takes only the VM: at shutdown
  * there is no calling frame to report against.
  */
-static void VmSessWrite(ph7_vm *pVm,const char *zWho)
+static void VmSessPutFile(ph7_vm *pVm,SyBlob *pFile,const char *zData,sxu32 nData)
 {
-	SyBlob sFile,sData;
 	ph7_value sPath,sPayload;
 	ph7_value *apA[2];
-	SyBlobInit(&sFile,&pVm->sAllocator);
-	SyBlobInit(&sData,&pVm->sAllocator);
-	VmSessFile(pVm,&sFile);
-	/* An encode php refused still gets written — as the EMPTY payload, which is
-	 * what its store is handed when the serializer answers nothing. The session
-	 * closes either way and the stale copy does not survive. */
-	VmSessEncode(pVm,&sData,zWho);
-	VmSessStrArg(pVm,&sPath,(const char *)SyBlobData(&sFile),SyBlobLength(&sFile));
-	VmSessStrArg(pVm,&sPayload,(const char *)SyBlobData(&sData),SyBlobLength(&sData));
+	VmSessStrArg(pVm,&sPath,(const char *)SyBlobData(pFile),SyBlobLength(pFile));
+	VmSessStrArg(pVm,&sPayload,zData,nData);
 	apA[0] = &sPath;
 	apA[1] = &sPayload;
 	VmSessCall(pVm,"file_put_contents",2,apA,0);
 	PH7_MemObjRelease(&sPath);
 	PH7_MemObjRelease(&sPayload);
+}
+/* Encode the open session and write it to the file the CURRENT id names. */
+static void VmSessSave(ph7_vm *pVm,const char *zWho)
+{
+	SyBlob sFile,sData;
+	SyBlobInit(&sFile,&pVm->sAllocator);
+	SyBlobInit(&sData,&pVm->sAllocator);
+	VmSessFile(pVm,&sFile);
+	/* An encode php refused still gets written — as the EMPTY payload, which is
+	 * what its store is handed when the serializer answers nothing. The stale copy
+	 * does not survive either way. */
+	VmSessEncode(pVm,&sData,zWho);
+	VmSessPutFile(pVm,&sFile,(const char *)SyBlobData(&sData),SyBlobLength(&sData));
 	SyBlobRelease(&sFile);
 	SyBlobRelease(&sData);
+}
+static void VmSessWrite(ph7_vm *pVm,const char *zWho)
+{
+	VmSessSave(pVm,zWho);
 	pVm->iSessStatus = VM_SESSION_NONE;
 }
 /* bool session_write_close() / session_commit() */
@@ -799,13 +868,54 @@ static int vm_builtin_session_regenerate_id(ph7_context *pCtx,int nArg,ph7_value
 		return PH7_OK;
 	}
 	SyBlobInit(&sFile,&pVm->sAllocator);
-	VmSessFile(pVm,&sFile);
 	if( nArg > 0 && ph7_value_to_bool(apArg[0]) ){
+		VmSessFile(pVm,&sFile);
 		VmSessUnlinkIfExists(pVm,&sFile);
+	}else{
+		/* The old id keeps what the session holds NOW. A regenerating request is the
+		 * one whose reply may not arrive, so php leaves the previous id readable
+		 * rather than a session that exists under neither id. */
+		VmSessSave(pVm,"session_regenerate_id()");
 	}
-	SyBlobRelease(&sFile);
 	VmSessGenId(pVm,&pVm->sSessId);
+	/* The new id's store is OPENED, which for the files handler means it exists and
+	 * is empty until the session closes over it. */
+	VmSessFile(pVm,&sFile);
+	VmSessPutFile(pVm,&sFile,"",0);
+	SyBlobRelease(&sFile);
 	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/* string|false session_create_id(string $prefix = "") */
+static int vm_builtin_session_create_id(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const char *zPfx = "";
+	int nPfx = 0;
+	SyBlob sId;
+	if( nArg > 0 && !ph7_value_is_null(apArg[0]) ){
+		zPfx = ph7_value_to_string(apArg[0],&nPfx);
+	}
+	if( nPfx > VM_SESS_MAX_ID ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"session_create_id(): Argument #1 ($prefix) cannot be longer than %d characters",
+			VM_SESS_MAX_ID);
+	}
+	if( nPfx > 0 && !VmSessIdValid(zPfx,(sxu32)nPfx) ){
+		/* The prefix becomes the front of an id, so it lives under the id's own
+		 * alphabet — php reports it and answers false rather than making one it
+		 * would then refuse to start. */
+		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
+			"session_create_id(): Prefix cannot contain special characters."
+			" Only the A-Z, a-z, 0-9, \"-\", and \",\" characters are allowed");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	SyBlobInit(&sId,&pVm->sAllocator);
+	VmSessGenId(pVm,&sId);
+	ph7_result_string(pCtx,zPfx,nPfx);
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sId),(int)SyBlobLength(&sId));
+	SyBlobRelease(&sId);
 	return PH7_OK;
 }
 /* string|false session_encode() */
@@ -892,6 +1002,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm)
 		{ "session_regenerate_id", vm_builtin_session_regenerate_id },
 		{ "session_encode",        vm_builtin_session_encode        },
 		{ "session_decode",        vm_builtin_session_decode        },
+		{ "session_create_id",     vm_builtin_session_create_id     },
 	};
 	sxu32 n;
 	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){
