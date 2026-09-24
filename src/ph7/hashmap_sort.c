@@ -140,16 +140,38 @@ PH7_PRIVATE sxi32 HashmapMergeSort(ph7_hashmap *pMap,ProcNodeCmp xCmp,void *pCmp
 static void HashmapFlagStringify(ph7_value *pVal)
 {
 	ph7_vm *pVm = pVal->pVm;
+	sxi32 rc = PH7_EXCEPTION;
+	if( (pVal->iFlags & MEMOBJ_OBJ) && pVm
+	 && (pVm->iCmpCallbackExc != 0 || PH7_CALLBACK_UNWOUND(pVm->nBoundaryRc)) ){
+		/* This sort already coerced an object once and it did not succeed: php
+		 * raises the refusal Error once, and it enters no PHP function at all
+		 * while an exception is pending (zend_call_function bails on
+		 * EG(exception)), so neither arm runs again -- the operand just renders
+		 * as the empty string a refused cast gives. The raise-once guard used to
+		 * cover only the NOT-STRINGABLE arm, so a throwing __toString() body went
+		 * round again on the next pair; uncaught, it reported the fatal once per
+		 * comparison, and after a catch had run in place the second throw was
+		 * uncaught and killed a script php merely says "caught" in.
+		 * OBJECTS only: blanking an int or a string here would re-order the rest
+		 * of the array. */
+		PH7_MemObjRelease(pVal);
+		MemObjSetType(pVal,MEMOBJ_STRING);
+		return;
+	}
 	if( !PH7_MemObjIsNotStringable(pVal) ){
-		if( PH7_MemObjToStringUV(pVal) == SXRET_OK ){
+		rc = PH7_MemObjToStringUV(pVal);
+		if( rc == SXRET_OK ){
 			return;
 		}
 		/* A __toString() that THREW. Same shape as a refused cast from here on. */
-	}else if( pVm == 0 || pVm->iCmpCallbackExc == 0 ){
-		PH7_MemObjToStringUV(pVal); /* raises php's Error */
+	}else{
+		rc = PH7_MemObjToStringUV(pVal); /* raises php's Error */
 	}
 	if( pVm ){
-		pVm->iCmpCallbackExc = 1;
+		/* Latch the STATUS the coercion answered, so an UNCAUGHT throw (or an
+		 * exit()) out of __toString() leaves the sort with PH7_ABORT rather than
+		 * a downgraded PH7_EXCEPTION. */
+		pVm->iCmpCallbackExc = PH7_CALLBACK_UNWOUND(rc) ? rc : PH7_EXCEPTION;
 	}
 	PH7_MemObjRelease(pVal);
 	MemObjSetType(pVal,MEMOBJ_STRING);
@@ -263,13 +285,44 @@ static sxi32 HashmapFlagValueCmp(ph7_hashmap_node *pA,ph7_hashmap_node *pB,sxi32
 	PH7_MemObjRelease(&sB);
 	return rc;
 }
+/*
+ * A sort comparison can run USER code with no way to report what it did: an
+ * object operand's `__toString()` is reached by SORT_REGULAR's value comparison
+ * as well as by the string flags' coercion, and that body can throw or exit().
+ * PH7_MemObjCmp only ever answers an ORDERING, so the status is read off the VM
+ * instead — every C->PHP dispatch parks an unwind in nBoundaryRc (VmBoundaryPark)
+ * and nothing inside a builtin consumes it, so it is still there when the
+ * comparison returns.
+ *
+ * Two things follow, and both were missing: the merge sort must STAND DOWN (a
+ * throwing `__toString()` ran again on the next pair -- and since the enclosing
+ * catch had already run in place, the second throw was UNCAUGHT and killed a
+ * script php merely reports "caught" in), and the driver must answer with that
+ * status rather than `true`.
+ *
+ * Deliberately NOT triggered by a not-stringable object's own coercion Error:
+ * that one parks nothing and is flagged by HashmapFlagStringify, and php goes on
+ * comparing after it (its array comes out fully sorted, the object first).
+ */
+static void HashmapCmpLatch(ph7_vm *pVm)
+{
+	if( PH7_CALLBACK_UNWOUND(pVm->nBoundaryRc)
+	 && (pVm->iCmpCallbackExc == 0 || pVm->nBoundaryRc == PH7_ABORT) ){
+		pVm->iCmpCallbackExc = pVm->nBoundaryRc;
+	}
+}
 static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)
 {
+	ph7_vm *pVm = pA->pMap->pVm;
+	sxi32 rc;
 	if( pCmpData == 0 ){
 		/* SORT_REGULAR fast path */
-		return HashmapNodeCmp(pA,pB,FALSE);
+		rc = HashmapNodeCmp(pA,pB,FALSE);
+	}else{
+		rc = HashmapFlagValueCmp(pA,pB,SX_PTR_TO_INT(pCmpData));
 	}
-	return HashmapFlagValueCmp(pA,pB,SX_PTR_TO_INT(pCmpData));
+	HashmapCmpLatch(pVm);
+	return rc;
 }
 /*
  * Materialise a node's KEY as a scalar ph7_value (int key -> integer, string key
@@ -338,10 +391,15 @@ static sxi32 HashmapFlagKeyCmp(ph7_hashmap_node *pA,ph7_hashmap_node *pB,sxi32 i
  */
 static sxi32 HashmapCmpCallback2(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)
 {
+	ph7_vm *pVm = pA->pMap->pVm;
+	sxi32 rc;
 	if( pCmpData == 0 ){
-		return HashmapKeyNodeCmp(pA,pB);
+		rc = HashmapKeyNodeCmp(pA,pB);
+	}else{
+		rc = HashmapFlagKeyCmp(pA,pB,SX_PTR_TO_INT(pCmpData));
 	}
-	return HashmapFlagKeyCmp(pA,pB,SX_PTR_TO_INT(pCmpData));
+	HashmapCmpLatch(pVm);
+	return rc;
 }
 /*
  * Node comparison callback.
@@ -349,11 +407,16 @@ static sxi32 HashmapCmpCallback2(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
  */
 static sxi32 HashmapCmpCallback3(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)
 {
+	ph7_vm *pVm = pA->pMap->pVm;
+	sxi32 rc;
 	if( pCmpData == 0 ){
 		/* SORT_REGULAR fast path, reversed */
-		return -HashmapNodeCmp(pA,pB,FALSE);
+		rc = -HashmapNodeCmp(pA,pB,FALSE);
+	}else{
+		rc = -HashmapFlagValueCmp(pA,pB,SX_PTR_TO_INT(pCmpData));
 	}
-	return -HashmapFlagValueCmp(pA,pB,SX_PTR_TO_INT(pCmpData));
+	HashmapCmpLatch(pVm);
+	return rc;
 }
 /*
  * Node comparison callback: Invoke an user-defined callback for the purpose of node comparison.
@@ -381,10 +444,13 @@ static sxi32 HashmapCmpCallback4(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
 	apArg[1] = pV2;
 	/* Invoke the callback */
 	rc = PH7_VmCallUserFunction(pA->pMap->pVm,pCallback,2,apArg,&sResult);
-	if( rc == PH7_EXCEPTION ){
-		/* The comparator raised: flag it so the sort driver aborts and
-		 * propagates, and order this pair arbitrarily for the rest of the run. */
-		pA->pMap->pVm->iCmpCallbackExc = 1;
+	if( PH7_CALLBACK_UNWOUND(rc) ){
+		/* The comparator did not RETURN: latch the STATUS so the sort driver
+		 * aborts and propagates exactly it (an UNCAUGHT throw is PH7_ABORT, and
+		 * testing only PH7_EXCEPTION left the sort running -- re-entering the
+		 * comparator, and the fatal report, for every remaining pair), and order
+		 * this pair arbitrarily for the rest of the run. */
+		pA->pMap->pVm->iCmpCallbackExc = rc;
 		rc = 0;
 	}else if( rc != SXRET_OK ){
 		/* An error occured while calling user defined function [i.e: not defined] */
@@ -443,10 +509,13 @@ static sxi32 HashmapCmpCallback6(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
 	sK2.nIdx = SXU32_HIGH;
 	/* Invoke the callback */
 	rc = PH7_VmCallUserFunction(pA->pMap->pVm,pCallback,2,apArg,&sResult);
-	if( rc == PH7_EXCEPTION ){
-		/* The comparator raised: flag it so the sort driver aborts and
-		 * propagates, and order this pair arbitrarily for the rest of the run. */
-		pA->pMap->pVm->iCmpCallbackExc = 1;
+	if( PH7_CALLBACK_UNWOUND(rc) ){
+		/* The comparator did not RETURN: latch the STATUS so the sort driver
+		 * aborts and propagates exactly it (an UNCAUGHT throw is PH7_ABORT, and
+		 * testing only PH7_EXCEPTION left the sort running -- re-entering the
+		 * comparator, and the fatal report, for every remaining pair), and order
+		 * this pair arbitrarily for the rest of the run. */
+		pA->pMap->pVm->iCmpCallbackExc = rc;
 		rc = 0;
 	}else if( rc != SXRET_OK ){
 		/* An error occured while calling user defined function [i.e: not defined] */
@@ -531,9 +600,10 @@ PH7_PRIVATE void HashmapSortRehash(ph7_hashmap *pMap)
 static sxi32 HashmapFlagSortStatus(ph7_context *pCtx)
 {
 	if( pCtx->pVm->iCmpCallbackExc ){
+		sxi32 rcExc = pCtx->pVm->iCmpCallbackExc;
 		pCtx->pVm->iCmpCallbackExc = 0;
-		pCtx->nThrowRc = PH7_EXCEPTION;
-		return PH7_EXCEPTION;
+		pCtx->nThrowRc = rcExc;
+		return rcExc;
 	}
 	return PH7_OK;
 }
@@ -975,9 +1045,11 @@ PH7_PRIVATE int ph7_hashmap_usort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Rehash [Do not maintain index association as requested by the PHP specification] */
 		HashmapSortRehash(pMap);
 		if( pCtx->pVm->iCmpCallbackExc ){
-			/* The comparison callback raised: propagate so the dispatcher unwinds. */
+			/* The comparison callback did not return: propagate its status so the
+			 * dispatcher unwinds. */
+			sxi32 rcExc = pCtx->pVm->iCmpCallbackExc;
 			pCtx->pVm->iCmpCallbackExc = 0;
-			return PH7_EXCEPTION;
+			return rcExc;
 		}
 	}else if( pMap->nEntry == 1 ){
 		/* php reindexes even a single-element array: a string key becomes 0 */
@@ -1042,9 +1114,11 @@ PH7_PRIVATE int ph7_hashmap_uasort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			pMap->pLast = pMap->pLast->pPrev;
 		}
 		if( pCtx->pVm->iCmpCallbackExc ){
-			/* The comparison callback raised: propagate so the dispatcher unwinds. */
+			/* The comparison callback did not return: propagate its status so the
+			 * dispatcher unwinds. */
+			sxi32 rcExc = pCtx->pVm->iCmpCallbackExc;
 			pCtx->pVm->iCmpCallbackExc = 0;
-			return PH7_EXCEPTION;
+			return rcExc;
 		}
 	}
 	/* All done,return TRUE */
@@ -1106,9 +1180,11 @@ PH7_PRIVATE int ph7_hashmap_uksort(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			pMap->pLast = pMap->pLast->pPrev;
 		}
 		if( pCtx->pVm->iCmpCallbackExc ){
-			/* The comparison callback raised: propagate so the dispatcher unwinds. */
+			/* The comparison callback did not return: propagate its status so the
+			 * dispatcher unwinds. */
+			sxi32 rcExc = pCtx->pVm->iCmpCallbackExc;
 			pCtx->pVm->iCmpCallbackExc = 0;
-			return PH7_EXCEPTION;
+			return rcExc;
 		}
 	}
 	/* All done,return TRUE */
@@ -1148,9 +1224,11 @@ struct MultisortCol
 /* Compare two ROWS, column by column with each column's own direction/flags. */
 static sxi32 MultisortRowCmp(MultisortCol *aCol,sxu32 nCol,sxu32 iA,sxu32 iB)
 {
+	ph7_vm *pVm = aCol[0].pMap->pVm;
 	sxu32 c;
 	for( c = 0 ; c < nCol ; c++ ){
 		sxi32 rc = HashmapFlagValueCmp(aCol[c].apNode[iA],aCol[c].apNode[iB],aCol[c].iFlags);
+		HashmapCmpLatch(pVm);
 		if( rc != 0 ){
 			return aCol[c].iDir < 0 ? -rc : rc;
 		}
@@ -1302,6 +1380,13 @@ PH7_PRIVATE int ph7_hashmap_multisort(ph7_context *pCtx,int nArg,ph7_value **apA
 		 * drivers' shared pattern. */
 		pCtx->pVm->iCmpCallbackExc = 0;
 		MultisortSortIdx(aCol,nCol,aIdx,aTmp,nRow);
+		if( pCtx->pVm->iCmpCallbackExc ){
+			/* A comparison raised. php's array_multisort leaves EVERY column as
+			 * it found it in that case -- unlike sort(), which still writes back
+			 * the order it reached -- so the permutation is dropped rather than
+			 * applied. */
+			return HashmapFlagSortStatus(pCtx);
+		}
 		/* Apply the permutation to every column: rebuild in sorted order,
 		 * keeping string keys and renumbering int keys, then hand the fresh
 		 * array back through the by-ref slot (a literal has none and the

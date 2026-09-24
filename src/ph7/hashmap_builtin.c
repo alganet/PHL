@@ -2482,9 +2482,10 @@ PH7_PRIVATE int ph7_hashmap_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)
 #define HASHMAP_UVAR_VAL_USER   2 /* values equal when the user value callback answers 0 */
 /*
  * Invoke a user comparison callback over two operands and reduce its result to
- * an int, the usort() convention. Returns PH7_EXCEPTION verbatim when the
- * callback throws — the caller must abandon the whole builtin so the enclosing
- * catch runs with no spurious insertion performed (the builtin-throw rail).
+ * an int, the usort() convention. Returns the dispatch status verbatim when the
+ * callback did not return (PH7_CALLBACK_UNWOUND) — the caller must abandon the
+ * whole builtin so the enclosing catch runs with no spurious insertion
+ * performed (the builtin-throw rail).
  */
 static sxi32 HashmapUserCmpCall(ph7_context *pCtx,ph7_value *pCallback,ph7_value *pA,ph7_value *pB,int *pCmp)
 {
@@ -2495,9 +2496,9 @@ static sxi32 HashmapUserCmpCall(ph7_context *pCtx,ph7_value *pCallback,ph7_value
 	apCbArg[0] = pA;
 	apCbArg[1] = pB;
 	rc = PH7_VmCallUserFunction(pCtx->pVm,pCallback,2,apCbArg,&sResult);
-	if( rc == PH7_EXCEPTION ){
+	if( PH7_CALLBACK_UNWOUND(rc) ){
 		PH7_MemObjRelease(&sResult);
-		return PH7_EXCEPTION;
+		return rc;
 	}
 	*pCmp = -1; /* a failed dispatch compares unequal */
 	if( rc == SXRET_OK ){
@@ -3864,10 +3865,11 @@ PH7_PRIVATE int ph7_hashmap_unique(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		pEntry = pEntry->pPrev; /* Reverse link */
 	}
 	if( pCtx->pVm->iCmpCallbackExc ){
-		/* A comparison raised the coercion Error: answer the throw, not an array. */
+		/* A comparison did not return: answer its status, not an array. */
+		sxi32 rcExc = pCtx->pVm->iCmpCallbackExc;
 		pCtx->pVm->iCmpCallbackExc = 0;
-		pCtx->nThrowRc = PH7_EXCEPTION;
-		return PH7_EXCEPTION;
+		pCtx->nThrowRc = rcExc;
+		return rcExc;
 	}
 	/* Return the freshly created array */
 	ph7_result_value(pCtx,pArray);
@@ -5002,10 +5004,10 @@ PH7_PRIVATE int ph7_hashmap_filter(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			}
 			rc = PH7_VmCallUserFunction(pMap->pVm,apArg[1],nCbArg,apCbArg,&sResult);
 			PH7_MemObjRelease(&sKey);
-			if( rc == PH7_EXCEPTION ){
-				/* The callback raised: propagate so the dispatcher unwinds. */
+			if( PH7_CALLBACK_UNWOUND(rc) ){
+				/* The callback did not return: propagate so the dispatcher unwinds. */
 				PH7_MemObjRelease(&sResult);
-				return PH7_EXCEPTION;
+				return rc;
 			}
 			if( rc == SXRET_OK ){
 				/* Perform a boolean cast */
@@ -5114,12 +5116,12 @@ PH7_PRIVATE int ph7_hashmap_map(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				}else{
 					/* Invoke the supplied callback */
 					rc = PH7_VmCallUserFunction(pVm,apArg[0],1,&pValue,&sResult);
-					if( rc == PH7_EXCEPTION ){
-						/* Callback raised: abort and let the foreign-function
+					if( PH7_CALLBACK_UNWOUND(rc) ){
+						/* Callback did not return: abort and let the foreign-function
 						 * dispatcher unwind through the nearest try/catch. */
 						PH7_MemObjRelease(&sKey);
 						PH7_MemObjRelease(&sResult);
-						return PH7_EXCEPTION;
+						return rc;
 					}
 					/* Insert the callback return value */
 					ph7_array_add_elem(pArray,&sKey,&sResult);
@@ -5186,13 +5188,13 @@ PH7_PRIVATE int ph7_hashmap_map(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				}
 			}else{
 				rc = PH7_VmCallUserFunction(pVm,apArg[0],nArrays,apCallArg,&sResult);
-				if( rc == PH7_EXCEPTION ){
+				if( PH7_CALLBACK_UNWOUND(rc) ){
 					SyMemBackendFree(&pVm->sAllocator,apCur);
 					SyMemBackendFree(&pVm->sAllocator,apCallArg);
 					PH7_MemObjRelease(&sNull);
 					PH7_MemObjRelease(&sKey);
 					PH7_MemObjRelease(&sResult);
-					return PH7_EXCEPTION;
+					return rc;
 				}
 				ph7_array_add_elem(pArray,0,&sResult);
 				PH7_MemObjRelease(&sResult);
@@ -5271,10 +5273,10 @@ PH7_PRIVATE int ph7_hashmap_reduce(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		pValue = HashmapExtractNodeValue(pEntry);
 		/* Invoke the supplied callback */
 		rc = PH7_VmCallUserFunctionAp(pMap->pVm,apArg[1],&sResult,&sResult,pValue,0);
-		if( rc == PH7_EXCEPTION ){
-			/* The callback raised: propagate so the dispatcher unwinds. */
+		if( PH7_CALLBACK_UNWOUND(rc) ){
+			/* The callback did not return: propagate so the dispatcher unwinds. */
 			PH7_MemObjRelease(&sResult);
-			return PH7_EXCEPTION;
+			return rc;
 		}
 		/* Point to the next entry */
 		pEntry = pEntry->pPrev; /* Reverse link */
@@ -5351,9 +5353,9 @@ PH7_PRIVATE int ph7_hashmap_walk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			/* Invoke the supplied callback */
 			rcW = PH7_VmCallUserFunctionAp(pMap->pVm,apArg[1],0,pValue,&sKey,pUserData,0);
 			PH7_MemObjRelease(&sKey);
-			if( rcW == PH7_EXCEPTION ){
-				/* The callback raised: propagate so the dispatcher unwinds. */
-				return PH7_EXCEPTION;
+			if( PH7_CALLBACK_UNWOUND(rcW) ){
+				/* The callback did not return: propagate so the dispatcher unwinds. */
+				return rcW;
 			}
 		}
 		/* Point to the next entry */
@@ -5392,8 +5394,8 @@ static sxi32 HashmapWalkRecursive(
 					iNest++;
 					rc = HashmapWalkRecursive((ph7_hashmap *)pValue->x.pOther,pCallback,pUserData,iNest);
 					iNest--;
-					if( rc == PH7_EXCEPTION ){
-						return PH7_EXCEPTION;
+					if( PH7_CALLBACK_UNWOUND(rc) ){
+						return rc;
 					}
 				}
 			}else{
@@ -5402,9 +5404,9 @@ static sxi32 HashmapWalkRecursive(
 				/* Invoke the supplied callback */
 				rc = PH7_VmCallUserFunctionAp(pMap->pVm,pCallback,0,pValue,&sKey,pUserData,0);
 				PH7_MemObjRelease(&sKey);
-				if( rc == PH7_EXCEPTION ){
-					/* The callback raised: propagate so the dispatcher unwinds. */
-					return PH7_EXCEPTION;
+				if( PH7_CALLBACK_UNWOUND(rc) ){
+					/* The callback did not return: propagate so the dispatcher unwinds. */
+					return rc;
 				}
 			}
 		}
@@ -5464,9 +5466,12 @@ PH7_PRIVATE int ph7_hashmap_walk_recursive(ph7_context *pCtx,int nArg,ph7_value 
 	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	/* Perform the desired operation */
-	if( HashmapWalkRecursive(pMap,apArg[1],nArg > 2 ? apArg[2] : 0,0) == PH7_EXCEPTION ){
-		/* A callback raised: propagate so the dispatcher unwinds. */
-		return PH7_EXCEPTION;
+	{
+		sxi32 rcW = HashmapWalkRecursive(pMap,apArg[1],nArg > 2 ? apArg[2] : 0,0);
+		if( PH7_CALLBACK_UNWOUND(rcW) ){
+			/* The callback did not return: propagate so the dispatcher unwinds. */
+			return rcW;
+		}
 	}
 	/* All done, return TRUE */
 	ph7_result_bool(pCtx,1);
@@ -5764,11 +5769,11 @@ static sxi32 HashmapCallbackSearch(
 			apCbArg[0] = pValue;
 			apCbArg[1] = &sKey;
 			rc = PH7_VmCallUserFunction(pMap->pVm,apArg[1],2,apCbArg,&sResult);
-			if( rc == PH7_EXCEPTION ){
-				/* The callback raised: propagate so the dispatcher unwinds. */
+			if( PH7_CALLBACK_UNWOUND(rc) ){
+				/* The callback did not return: propagate so the dispatcher unwinds. */
 				PH7_MemObjRelease(&sKey);
 				PH7_MemObjRelease(&sResult);
-				return PH7_EXCEPTION;
+				return rc;
 			}
 			if( rc == SXRET_OK && (ph7_value_to_bool(&sResult) ? 1 : 0) == bWant ){
 				*ppMatch = pEntry;

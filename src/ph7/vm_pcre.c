@@ -997,7 +997,7 @@ static void PcreDoReplace(
  * every pattern) or, only when pPattern is an array, an array taken by ORDER
  * (missing element -> ""). Array patterns are applied sequentially, each to the
  * result of the previous (PHP semantics), ping-ponging two blobs. The final
- * text is appended to pOut. Returns SXRET_OK, or SXERR_ABORT on a bad pattern
+ * text is appended to pOut. Returns SXRET_OK, or SXERR_SYNTAX on a bad pattern
  * (the caller then yields NULL, matching the scalar path). */
 static sxi32 PcreReplaceSubject(
 	ph7_context *pCtx,
@@ -1018,7 +1018,7 @@ static sxi32 PcreReplaceSubject(
 		zRepl = ph7_value_to_string(pRepl, &nReplLen);
 		pCode = PcreCompile(pCtx, zPattern, nPatLen, &nCapture);
 		if( pCode == 0 ){
-			return SXERR_ABORT;
+			return SXERR_SYNTAX; /* NOT SXERR_ABORT: that is a real unwind status */
 		}
 		PcreDoReplace(pCtx, pCode, zSubject, nSubLen, zRepl, nReplLen, limit, pCount, pOut);
 		return SXRET_OK;
@@ -1066,7 +1066,7 @@ static sxi32 PcreReplaceSubject(
 			}
 			pCode = PcreCompile(pCtx, zPattern, nPatLen, &nCapture);
 			if( pCode == 0 ){
-				rc = SXERR_ABORT;
+				rc = SXERR_SYNTAX; /* NOT SXERR_ABORT: that is a real unwind status */
 				PH7_MemObjRelease(&sPat);
 				if( pRepMap && pRepNode ){ PH7_MemObjRelease(&sRep); }
 				break;
@@ -1194,8 +1194,9 @@ set_count:
  * The mirror of PcreDoReplace() for preg_replace_callback: the replacement text
  * comes from a user callback fed the match array (shaped by $flags) instead of
  * from a template. Appends the whole replaced subject to pOut and adds its own
- * replacement count to *pCount. Returns SXRET_OK, or PH7_EXCEPTION when the
- * callback threw — the caller then unwinds without producing a result. */
+ * replacement count to *pCount. Returns SXRET_OK, or the dispatch status when
+ * the callback did not return (PH7_CALLBACK_UNWOUND) — the caller then unwinds
+ * without producing a result. */
 static sxi32 PcreDoCallbackReplace(
 	ph7_context *pCtx,
 	pcre2_code *pCode,
@@ -1222,6 +1223,7 @@ static sxi32 PcreDoCallbackReplace(
 		ph7_value sResult;
 		const char *zReplacement;
 		int nReplLen;
+		sxi32 rcCb;
 
 		if( limit >= 0 && nReplacements >= limit ) break;
 		rc = pcre2_match(pCode, (PCRE2_SPTR)zSubject, (PCRE2_SIZE)nSubLen,
@@ -1243,13 +1245,17 @@ static sxi32 PcreDoCallbackReplace(
 		/* Call the callback */
 		PH7_MemObjInit(pCtx->pVm, &sResult);
 		apCbArg[0] = pMatchArr;
-		if( PH7_VmCallUserFunction(pCtx->pVm, pCallback, 1, apCbArg, &sResult) == PH7_EXCEPTION ){
-			/* The callback raised: propagate so the dispatcher unwinds. */
+		rcCb = PH7_VmCallUserFunction(pCtx->pVm, pCallback, 1, apCbArg, &sResult);
+		if( PH7_CALLBACK_UNWOUND(rcCb) ){
+			/* The callback did not return: propagate so the dispatcher unwinds.
+			 * An UNCAUGHT throw comes back as PH7_ABORT, and testing only
+			 * PH7_EXCEPTION kept the scan going -- re-running the callback, and
+			 * re-reporting the fatal, once per remaining match. */
 			PH7_MemObjRelease(&sResult);
 			ph7_context_release_value(pCtx, pMatchArr);
 			pcre2_match_data_free(pMatchData);
 			*pCount += nReplacements;
-			return PH7_EXCEPTION;
+			return rcCb;
 		}
 		/* Get replacement string from callback result */
 		zReplacement = ph7_value_to_string(&sResult, &nReplLen);
@@ -1284,9 +1290,12 @@ static sxi32 PcreDoCallbackReplace(
 /* ===== Helper: apply pattern(s)+callback to ONE subject string =====
  * The callback twin of PcreReplaceSubject(): pPattern is a string or an ARRAY of
  * patterns applied sequentially, each to the result of the previous (php
- * semantics), ping-ponging two blobs. Returns SXRET_OK, SXERR_ABORT on a bad
+ * semantics), ping-ponging two blobs. Returns SXRET_OK, SXERR_SYNTAX on a bad
  * pattern (the caller then yields NULL / an empty array like the template path),
- * or PH7_EXCEPTION when the callback threw. */
+ * or the dispatch status when the callback did not return. The bad-pattern
+ * sentinel must NOT be SXERR_ABORT: that IS the status an exiting or uncaught
+ * callback comes back with, and one code for both made a bad pattern kill the
+ * script. */
 static sxi32 PcreCallbackReplaceSubject(
 	ph7_context *pCtx,
 	ph7_value *pPattern,
@@ -1305,7 +1314,7 @@ static sxi32 PcreCallbackReplaceSubject(
 		zPattern = ph7_value_to_string(pPattern, &nPatLen);
 		pCode = PcreCompile(pCtx, zPattern, nPatLen, &nCapture);
 		if( pCode == 0 ){
-			return SXERR_ABORT;
+			return SXERR_SYNTAX; /* bad pattern, NOT a callback unwind */
 		}
 		return PcreDoCallbackReplace(pCtx, pCode, zSubject, nSubLen, pCallback,
 			limit, iFlags, pCount, pOut);
@@ -1332,7 +1341,7 @@ static sxi32 PcreCallbackReplaceSubject(
 			zPattern = ph7_value_to_string(&sPat, &nPatLen);
 			pCode = PcreCompile(pCtx, zPattern, nPatLen, &nCapture);
 			if( pCode == 0 ){
-				rc = SXERR_ABORT;
+				rc = SXERR_SYNTAX; /* bad pattern, NOT a callback unwind */
 				PH7_MemObjRelease(&sPat);
 				break;
 			}
@@ -1343,7 +1352,7 @@ static sxi32 PcreCallbackReplaceSubject(
 			/* The freshly-produced text becomes the subject for the next pattern */
 			pSwap = pSrc; pSrc = pDst; pDst = pSwap;
 			PH7_MemObjRelease(&sPat);
-			if( rc == PH7_EXCEPTION ){
+			if( PH7_CALLBACK_UNWOUND(rc) ){
 				break;
 			}
 			pPatNode = pPatNode->pPrev; /* insertion-order walk (reverse link) */
@@ -1426,8 +1435,8 @@ static int PH7_builtin_preg_replace_callback(ph7_context *pCtx, int nArg, ph7_va
 				SyBlobRelease(&sOut);
 				PH7_MemObjRelease(&sKey);
 				PH7_MemObjRelease(&sVal);
-				if( rc == PH7_EXCEPTION ){
-					return PH7_EXCEPTION;
+				if( PH7_CALLBACK_UNWOUND(rc) ){
+					return rc;
 				}
 				ph7_result_value(pCtx, pResult);
 				goto set_count;
@@ -1453,8 +1462,8 @@ static int PH7_builtin_preg_replace_callback(ph7_context *pCtx, int nArg, ph7_va
 			limit, iFlags, &count, &sOut);
 		if( rc != SXRET_OK ){
 			SyBlobRelease(&sOut);
-			if( rc == PH7_EXCEPTION ){
-				return PH7_EXCEPTION;
+			if( PH7_CALLBACK_UNWOUND(rc) ){
+				return rc;
 			}
 			/* Scalar subject: a bad pattern returns NULL (php). */
 			ph7_result_null(pCtx);

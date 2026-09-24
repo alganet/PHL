@@ -2389,10 +2389,12 @@ struct ph7_vm
 	SySet aSpreadKey;          /* VmSpreadKey: one (off,len) per expanded element, in order */
 	SyBlob sSpreadKeyBlob;     /* Backing bytes for the string keys referenced by aSpreadKey */
 	SySet aEffArgName;         /* SyString: effective per-actual-slot arg names built at CALL */
-	sxi32 iCmpCallbackExc;     /* Set when a comparison callback raised an exception so the
+	sxi32 iCmpCallbackExc;     /* The dispatch STATUS a comparison callback did not return with
+								* (PH7_EXCEPTION, or PH7_ABORT for an UNCAUGHT throw), so the
 								* driver (usort/uasort/uksort and the array_udiff/
-								* array_uintersect families) can abort and propagate
-								* PH7_EXCEPTION. */
+								* array_uintersect families) can abort and propagate exactly
+								* it. Zero when no comparison raised; a comparator has no
+								* status channel, so this latch is the only way out. */
 	int iMbEncoding;           /* mbstring's internal encoding, an MB_ENC_* id from
 								* builtin_mb.c; 0 is UTF-8, which is why zeroing the
 								* VM leaves php's default in place. */
@@ -4112,6 +4114,18 @@ PH7_PRIVATE int vm_builtin_spl_autoload_unregister(ph7_context *pCtx,int nArg,ph
 /* vm_builtin_call.c — callable machinery shared with vm.c's interpreter */
 PH7_PRIVATE ph7_class * PH7_VmResolveParentClass(ph7_vm *pVm);
 PH7_PRIVATE void VmBoundaryPark(ph7_vm *pVm,sxi32 rc);
+/*
+ * The status a C->PHP dispatch answers when the callee did NOT return: the
+ * builtin driving the loop must abandon it and hand the status straight out.
+ * Both members matter and testing only the first is a silent wrong answer —
+ * php stops an internal function the moment its callback throws, and an
+ * UNCAUGHT throw comes back as PH7_ABORT (VmUncaughtException reports the
+ * fatal and answers SXERR_ABORT), not as PH7_EXCEPTION. A loop that tested
+ * only PH7_EXCEPTION therefore ran the callback again for every remaining
+ * element — repeating its side effects and re-reporting the fatal once per
+ * element. Same set VmBoundaryPark parks; see its comment.
+ */
+#define PH7_CALLBACK_UNWOUND(rc) ((rc) == PH7_EXCEPTION || (rc) == PH7_ABORT)
 PH7_PRIVATE sxi32 VmIterCallMethod(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nLen,ph7_value *pResult);
 PH7_PRIVATE sxi32 VmCallClassMethodLsb(ph7_vm *pVm,ph7_class *pCalled,ph7_class_instance *pThis,
 	ph7_class_method *pMethod,ph7_value *pResult,int nArg,ph7_value **apArg,VmCallArgMap *pMap);

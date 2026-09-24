@@ -1615,7 +1615,15 @@ static int MemObjCmpCastObject(ph7_value *pSelf,ph7_value *pOther,ph7_value *pOu
 	ph7_class_instance *pInst = (ph7_class_instance *)pSelf->x.pOther;
 	PH7_MemObjInit(pSelf->pVm,pOut);
 	if( pOther->iFlags & MEMOBJ_STRING ){
-		if( PH7_MemObjIsNotStringable(pSelf) ){
+		if( PH7_MemObjIsNotStringable(pSelf)
+		 || (pSelf->pVm && PH7_CALLBACK_UNWOUND(pSelf->pVm->nBoundaryRc)) ){
+			/* php enters no PHP function while an exception is pending
+			 * (zend_call_function bails on EG(exception)), so a __toString()
+			 * that already threw -- or exited -- is NOT run again: every later
+			 * comparison orders this operand the way a refused cast does. A sort
+			 * used to re-enter the body once per remaining pair, and where the
+			 * enclosing catch had already run in place the second throw was
+			 * UNCAUGHT and killed the script. */
 			return FALSE;
 		}
 		PH7_MemObjLoad(pSelf,pOut);
