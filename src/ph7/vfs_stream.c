@@ -23,6 +23,23 @@
  */
 /* Forward declaration */
 static void ResetIOPrivate(io_private *pDev);
+/*
+ * How many bytes sit AHEAD of where the script is: the line readers' read-ahead
+ * plus whatever the read filter chain has already produced and nobody has taken
+ * yet. Both are past the position a script observes, so ftell(), a SEEK_CUR
+ * seek and stream_get_meta_data()'s `unread_bytes` all have to discount them.
+ */
+static sxu32 StreamAheadBytes(io_private *pDev)
+{
+	sxu32 n = 0;
+	if( SyBlobLength(&pDev->sBuffer) > pDev->nOfft ){
+		n += SyBlobLength(&pDev->sBuffer) - pDev->nOfft;
+	}
+	if( SyBlobLength(&pDev->sFilt) > pDev->nFiltOfft ){
+		n += SyBlobLength(&pDev->sFilt) - pDev->nFiltOfft;
+	}
+	return n;
+}
 #ifdef PH7_ENABLE_NET
 /* The socket handle, declared here because stream_get_meta_data()'s labels ask
  * whether a socket has a transport under it. */
@@ -62,6 +79,11 @@ PH7_PRIVATE const char * PH7_VfsResourceType(void *pResource)
 	if( pDev && pDev->iMagic == STREAM_CTX_MAGIC ){
 		/* stream_context_create()'s handle, and the name php gives it. */
 		return "stream-context";
+	}
+	if( pDev && pDev->iMagic == STREAM_FILTER_MAGIC ){
+		/* stream_filter_append()'s handle. Note the SPACE: php names the context
+		 * `stream-context` and the filter `stream filter`. */
+		return "stream filter";
 	}
 	return "Unknown";
 }
@@ -214,7 +236,7 @@ PH7_PRIVATE int PH7_builtin_fseek(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		 * SCRIPT is, not where the device is (StreamLogicalAdjust). Without
 		 * this, fseek($f,2,SEEK_CUR) after an fgets() that buffered ahead
 		 * skipped everything still sitting in the buffer. */
-		iOfft -= (ph7_int64)(SyBlobLength(&pDev->sBuffer) - pDev->nOfft);
+		iOfft -= (ph7_int64)StreamAheadBytes(pDev);
 	}
 	/* Perform the requested operation */
 	rc = pStream->xSeek(pDev->pHandle,iOfft,whence);
@@ -272,7 +294,7 @@ PH7_PRIVATE int PH7_builtin_ftell(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	 * less the unconsumed remainder — ftell() after fgets("abcdefghij\nrest")
 	 * is php's 11, not the 15 the device already read. */
 	iOfft = pStream->xTell(pDev->pHandle);
-	iOfft -= (ph7_int64)(SyBlobLength(&pDev->sBuffer) - pDev->nOfft);
+	iOfft -= (ph7_int64)StreamAheadBytes(pDev);
 	/* IO result */
 	ph7_result_int64(pCtx,iOfft);
 	return PH7_OK;
@@ -461,7 +483,7 @@ PH7_PRIVATE int PH7_builtin_feof(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * fgetc(), stream_get_line(), stream_get_contents() and fpassthru() all read
  * through their own loops.
  */
-static ph7_int64 IoPrivateDeviceRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
+static ph7_int64 IoPrivateRawRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
 {
 	ph7_int64 n;
 	pDev->bTimedOut = 0;
@@ -472,6 +494,81 @@ static ph7_int64 IoPrivateDeviceRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
 		pDev->bTimedOut = 1;
 	}
 	return n;
+}
+/*
+ * Serve a read from the FILTERED side of a handle. A filter changes the byte
+ * count — base64 makes four out of three, dechunk throws whole runs away — so
+ * what the chain produced cannot go straight into the caller's buffer: it waits
+ * in sFilt and is handed out from there.
+ *
+ * The fill loop runs until sFilt holds what was asked for or the device is
+ * spent, which is what keeps the caller's invariant intact: a SHORT answer here
+ * still means end of file, exactly as it does for an unfiltered read.
+ */
+static ph7_int64 IoPrivateFilteredRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
+{
+	phl_stream_filter *pChain = (phl_stream_filter *)pDev->pReadFilters;
+	sxu32 nAvail;
+	ph7_int64 n;
+	while( pChain != 0 && !pDev->bFiltDone
+	    && (ph7_int64)(SyBlobLength(&pDev->sFilt) - pDev->nFiltOfft) < nLen ){
+		char zRaw[8192];
+		ph7_int64 nAsk = (ph7_int64)sizeof(zRaw);
+		ph7_int64 nRaw;
+		int iStatus;
+		if( pDev->nChunk > 0 && (ph7_int64)pDev->nChunk < nAsk ){
+			nAsk = (ph7_int64)pDev->nChunk;
+		}
+		nRaw = IoPrivateRawRead(pDev,zRaw,nAsk);
+		if( nRaw < 0 ){
+			if( SyBlobLength(&pDev->sFilt) <= pDev->nFiltOfft ){
+				/* Nothing was ever produced: the IO error is the answer. */
+				return nRaw;
+			}
+			break;
+		}
+		iStatus = PH7_FilterChainProcess(pChain,zRaw,(sxu32)nRaw,
+			nRaw > 0 ? PHL_PSFS_FLAG_NORMAL : PHL_PSFS_FLAG_FLUSH_CLOSE,&pDev->sFilt);
+		if( nRaw == 0 ){
+			/* The device is spent, and the call above was the chain's CLOSING
+			 * one: running it again would make a buffering filter emit its tail
+			 * twice, so the chain is finished for good. */
+			pDev->bFiltDone = 1;
+			break;
+		}
+		if( iStatus == PHL_PSFS_ERR_FATAL ){
+			/* php answers the read itself as a failure once a filter says the
+			 * stream is finished. */
+			return -1;
+		}
+	}
+	nAvail = SyBlobLength(&pDev->sFilt) - pDev->nFiltOfft;
+	if( nAvail < 1 ){
+		SyBlobReset(&pDev->sFilt);
+		pDev->nFiltOfft = 0;
+		return pChain != 0 ? 0 : IoPrivateRawRead(pDev,pBuf,nLen);
+	}
+	n = (ph7_int64)nAvail;
+	if( n > nLen ){
+		n = nLen;
+	}
+	SyMemcpy(SyBlobDataAt(&pDev->sFilt,pDev->nFiltOfft),pBuf,(sxu32)n);
+	pDev->nFiltOfft += (sxu32)n;
+	if( pDev->nFiltOfft >= SyBlobLength(&pDev->sFilt) ){
+		SyBlobReset(&pDev->sFilt);
+		pDev->nFiltOfft = 0;
+	}
+	return n;
+}
+static ph7_int64 IoPrivateDeviceRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
+{
+	if( pDev->pReadFilters != 0 || SyBlobLength(&pDev->sFilt) > pDev->nFiltOfft ){
+		/* Bytes can still be waiting after the last read filter was REMOVED:
+		 * php flushes a filter on its way out and what it emitted belongs to
+		 * the reader that comes next. */
+		return IoPrivateFilteredRead(pDev,pBuf,nLen);
+	}
+	return IoPrivateRawRead(pDev,pBuf,nLen);
 }
 PH7_PRIVATE ph7_int64 PH7_StreamRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
 {
@@ -523,6 +620,44 @@ PH7_PRIVATE ph7_int64 PH7_StreamRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
 		return nRead;
 	}
 	return n;
+}
+/*
+ * Every SCRIPT-level write goes through here, because a handle can carry a
+ * WRITE chain: php runs what the script wrote through the filters before the
+ * device sees any of it, and a filter changes the byte count — so what reaches
+ * the device is not what was handed in, while what fwrite() ANSWERS still is
+ * (php reports the bytes it CONSUMED, not the bytes it emitted).
+ */
+PH7_PRIVATE ph7_int64 PH7_StreamWrite(io_private *pDev,const void *pData,ph7_int64 nLen)
+{
+	phl_stream_filter *pChain = (phl_stream_filter *)pDev->pWriteFilters;
+	SyBlob sOut;
+	ph7_int64 nWr;
+	int iStatus;
+	if( pDev->pStream == 0 || pDev->pStream->xWrite == 0 ){
+		return -1;
+	}
+	if( pChain == 0 ){
+		return pDev->pStream->xWrite(pDev->pHandle,pData,nLen);
+	}
+	SyBlobInit(&sOut,pDev->sBuffer.pAllocator);
+	iStatus = PH7_FilterChainProcess(pChain,pData,(sxu32)nLen,PHL_PSFS_FLAG_NORMAL,&sOut);
+	if( iStatus == PHL_PSFS_ERR_FATAL ){
+		SyBlobRelease(&sOut);
+		return -1;
+	}
+	nWr = 0;
+	if( SyBlobLength(&sOut) > 0 ){
+		nWr = pDev->pStream->xWrite(pDev->pHandle,SyBlobData(&sOut),
+			(ph7_int64)SyBlobLength(&sOut));
+	}
+	SyBlobRelease(&sOut);
+	if( nWr < 0 ){
+		return -1;
+	}
+	/* A filter that held its input back (FEED_ME) still consumed it: php's
+	 * fwrite() answers the length it was given. */
+	return nLen;
 }
 /*
  * Extract a single line from the buffered input.
@@ -1489,6 +1624,7 @@ PH7_PRIVATE int PH7_builtin_closedir(ph7_context *pCtx,int nArg,ph7_value **apAr
 		return PH7_OK;
 	}
 	/* Perform the requested operation */
+	PH7_StreamFilterReleaseChains(pDev);
 	pStream->xCloseDir(pDev->pHandle);
 	/* Keep the handle alive but flag it closed (php: gettype()=='resource (closed)') */
 	MarkIOPrivateClosed(pDev);
@@ -2389,7 +2525,7 @@ PH7_PRIVATE int PH7_builtin_fwrite(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ResetIOPrivate(pDev);
 	}
 	/* Perform the requested operation */
-	n = (int)pStream->xWrite(pDev->pHandle,(const void *)zString,nLen);
+	n = (int)PH7_StreamWrite(pDev,(const void *)zString,nLen);
 	if( n <  0 ){
 		/* IO error,return FALSE */
 		SockReportWriteFailure(pCtx,pDev,nLen);
@@ -2739,7 +2875,7 @@ PH7_PRIVATE int PH7_builtin_fputcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 			-(ph7_int64)(SyBlobLength(&pDev->sBuffer) - pDev->nOfft),1/*SEEK_CUR*/);
 		ResetIOPrivate(pDev);
 	}
-	nWr = pStream->xWrite(pDev->pHandle,(const void *)SyBlobData(&sLine),
+	nWr = PH7_StreamWrite(pDev,(const void *)SyBlobData(&sLine),
 		(ph7_int64)SyBlobLength(&sLine));
 	SyBlobRelease(&sLine);
 	if( nWr < 0 ){
@@ -2768,7 +2904,7 @@ static int fprintfConsumer(ph7_context *pCtx,const char *zInput,int nLen,void *p
 	fprintf_data *pFdata = (fprintf_data *)pUserData;
 	ph7_int64 n;
 	/* Write the formatted data */
-	n = pFdata->pIO->pStream->xWrite(pFdata->pIO->pHandle,(const void *)zInput,nLen);
+	n = PH7_StreamWrite(pFdata->pIO,(const void *)zInput,nLen);
 	if( n < 1 ){
 		SXUNUSED(pCtx); /* cc warning */
 		/* IO error,abort immediately */
@@ -3120,6 +3256,11 @@ PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_priva
 	pOut->bNonBlock = 0;
 	pOut->bHasTimeout = 0;
 	pOut->bTimedOut = 0;
+	pOut->pReadFilters = 0;
+	pOut->pWriteFilters = 0;
+	pOut->bFiltDone = 0;
+	SyBlobInit(&pOut->sFilt,&pVm->sAllocator);
+	pOut->nFiltOfft = 0;
 	/* Set the magic number */
 	pOut->iMagic = IO_PRIVATE_MAGIC;
 }
@@ -3153,7 +3294,9 @@ PH7_PRIVATE void SetIOPrivateOpenedAs(io_private *pDev,const char *zUri,int nUri
  */
 static void ReleaseIOPrivate(ph7_context *pCtx,io_private *pDev)
 {
+	PH7_StreamFilterReleaseChains(pDev);
 	SyBlobRelease(&pDev->sBuffer);
+	SyBlobRelease(&pDev->sFilt);
 	SyBlobRelease(&pDev->sUri);
 	pDev->iMagic = 0x2126; /* Invalid magic number so we can detetct misuse */
 	/* Release the whole structure */
@@ -3170,7 +3313,12 @@ static void ReleaseIOPrivate(ph7_context *pCtx,io_private *pDev)
  */
 PH7_PRIVATE void MarkIOPrivateClosed(io_private *pDev)
 {
+	/* A filter outliving its handle would keep answering is_resource() and hold
+	 * a pointer to a closed device; every close path releases the chains before
+	 * the device goes, and this is the backstop for one that forgets. */
+	PH7_StreamFilterReleaseChains(pDev);
 	SyBlobRelease(&pDev->sBuffer);
+	SyBlobRelease(&pDev->sFilt);
 	SyBlobRelease(&pDev->sUri);
 	pDev->pHandle = 0;
 	pDev->iMagic = IO_PRIVATE_CLOSED_MAGIC;
@@ -3182,6 +3330,11 @@ static void ResetIOPrivate(io_private *pDev)
 {
 	SyBlobReset(&pDev->sBuffer);
 	pDev->nOfft = 0;
+	/* A seek moves the DEVICE, so whatever the read chain had already produced
+	 * from the old position is not what the new one answers. */
+	SyBlobReset(&pDev->sFilt);
+	pDev->nFiltOfft = 0;
+	pDev->bFiltDone = 0;
 	/* Every caller of this has just MOVED the device (a seek, a rewind, a
 	 * truncate), and php clears the end-of-file flag on exactly those. */
 	pDev->bEof = 0;
@@ -3465,8 +3618,7 @@ PH7_PRIVATE int PH7_builtin_stream_get_meta_data(ph7_context *pCtx,int nArg,ph7_
 	/* Sample this BEFORE the eof probe below: php answers eof from state it
 	 * already has and never reads ahead for it, so its `unread_bytes` counts
 	 * only what the SCRIPT's own reads left buffered. */
-	nUnread = SyBlobLength(&pDev->sBuffer) > pDev->nOfft
-		? SyBlobLength(&pDev->sBuffer) - pDev->nOfft : 0;
+	nUnread = StreamAheadBytes(pDev);
 	if( is_data_stream(pDev->pStream) ){
 		/* A device that answers metadata of its OWN replaces php's three
 		 * defaults rather than adding to them: data:// (and php://temp, which
@@ -5769,6 +5921,12 @@ static io_private * StreamSettingArg(ph7_context *pCtx,ph7_value *pArg,int *pRc)
 {
 	return StreamSettingArgNamed(pCtx,pArg,1,"stream",pRc);
 }
+/* The same screen, for the filter family in vfs_filter.c. */
+PH7_PRIVATE io_private * PH7_StreamHandleArg(ph7_context *pCtx,ph7_value *pArg,int iPos,
+	const char *zName,int *pRc)
+{
+	return StreamSettingArgNamed(pCtx,pArg,iPos,zName,pRc);
+}
 /* The tcp:// socket behind a handle, or 0 for any other device. */
 static ph7_socket * IoPrivateSocket(io_private *pDev)
 {
@@ -6020,9 +6178,10 @@ PH7_PRIVATE int PH7_builtin_stream_copy_to_stream(ph7_context *pCtx,int nArg,ph7
 		return PH7_OK;
 	}
 #ifdef __WINNT__
-	/* A plain-file source goes through php's memory-mapped copy, whose Windows
-	 * view at the end of the file is a failure: see PH7_WinFileMapsEmptyView(). */
-	if( pFrom->pStream == &sWinFileStream
+	/* An unfiltered plain-file source goes through php's memory-mapped copy,
+	 * whose Windows view at the end of the file is a failure: see
+	 * PH7_WinFileMapsEmptyView(). */
+	if( pFrom->pStream == &sWinFileStream && pFrom->pReadFilters == 0 && pFrom->pWriteFilters == 0
 	 && PH7_WinFileMapsEmptyView(pFrom->pHandle,SyBlobLength(&pFrom->sBuffer) > pFrom->nOfft
 			? (ph7_int64)(SyBlobLength(&pFrom->sBuffer) - pFrom->nOfft) : 0) ){
 		ph7_result_bool(pCtx,0);
@@ -6049,7 +6208,7 @@ PH7_PRIVATE int PH7_builtin_stream_copy_to_stream(ph7_context *pCtx,int nArg,ph7
 		if( nRead < 1 ){
 			break;
 		}
-		nWr = pTo->pStream->xWrite(pTo->pHandle,(const void *)zBuf,nRead);
+		nWr = PH7_StreamWrite(pTo,(const void *)zBuf,nRead);
 		if( nWr < 0 ){
 			break;
 		}
@@ -6135,8 +6294,7 @@ static ph7_int64 IoPrivateSelectHandle(io_private *pDev)
 /* Bytes this handle has already pulled off the device and not yet handed over. */
 static sxu32 IoPrivateUnread(io_private *pDev)
 {
-	return SyBlobLength(&pDev->sBuffer) > pDev->nOfft
-		? SyBlobLength(&pDev->sBuffer) - pDev->nOfft : 0;
+	return StreamAheadBytes(pDev);
 }
 static void StreamSelectAdd(stream_select_ctx *pSel,ph7_int64 h)
 {
@@ -6674,6 +6832,10 @@ PH7_PRIVATE int PH7_builtin_fclose(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	pVm = pCtx->pVm;
 	/* TICKET 1433-62: Keep the STDIN/STDOUT/STDERR handles open */
 	if( pDev != pVm->pStdin && pDev != pVm->pStdout && pDev != pVm->pStderr ){
+		/* The WRITE chain gets its closing call while the device is still open:
+		 * a filter that buffers has nowhere else to put its tail, and php's own
+		 * close flushes before it closes. */
+		PH7_StreamFilterReleaseChains(pDev);
 		/* Perform the requested operation */
 		PH7_StreamCloseHandle(pStream,pDev->pHandle);
 		/* Keep the handle alive but flag it closed so shared copies see it */
@@ -6934,6 +7096,11 @@ PH7_PRIVATE int PH7_VfsResourceIsClosed(void *pResource)
 }
 /* No streams means no stream contexts either, but PH7_VmReset still calls this. */
 PH7_PRIVATE void PH7_StreamCtxVmReset(ph7_vm *pVm)
+{
+	SXUNUSED(pVm);
+}
+/* Same for the filter registry. */
+PH7_PRIVATE void PH7_StreamFilterVmReset(ph7_vm *pVm)
 {
 	SXUNUSED(pVm);
 }

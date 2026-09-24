@@ -2595,6 +2595,10 @@ struct ph7_vm
 	void *pStreamCtx;          /* phl_stream_ctx registry chain; freed on reset */
 	void *pDefaultCtx;         /* phl_stream_ctx* — the default context, or 0 */
 	void *pOpenCtx;            /* the context the open in flight runs under */
+	/* Stream filters (stream_filter_append and the php://filter wrapper). The
+	 * chain owns every filter INSTANCE the script created, so one that is never
+	 * removed still goes back at reset. */
+	void *pStreamFilter;       /* phl_stream_filter registry chain; freed on reset */
 	ph7_vm *pNext,*pPrev;      /* List of active VM's */
 	sxu32 nMagic;              /* Sanity check against misuse */
 };
@@ -3746,6 +3750,16 @@ struct io_private
 	 * nothing else, and creates one on demand for a
 	 * stream_context_set_option($stream,…). */
 	void *pCtxRes;
+	/* The two FILTER chains this handle carries (phl_stream_filter*, head first).
+	 * php runs the read chain on what came off the device before the script sees
+	 * it and the write chain on what the script wrote before the device does, so
+	 * a filtered read cannot be served straight into the caller's buffer: a
+	 * filter changes the byte COUNT. sFilt is where the chain's output waits. */
+	void *pReadFilters;   /* phl_stream_filter* — read chain head, or 0 */
+	void *pWriteFilters;  /* phl_stream_filter* — write chain head, or 0 */
+	SyBlob sFilt;         /* filtered bytes not yet handed to a reader */
+	sxu32 nFiltOfft;      /* read offset inside sFilt */
+	sxu8 bFiltDone;       /* the read chain already had its CLOSING call */
 	sxu32 iMagic;   /* Sanity check to avoid misuse */
 };
 #define IO_PRIVATE_MAGIC 0xFEAC14
@@ -3794,6 +3808,98 @@ PH7_PRIVATE phl_stream_ctx * PH7_StreamCtxFromArg(ph7_context *pCtx,int nArg,ph7
 	int iArg,const char *zArgName,int bNoDefault,int *pbThrew);
 /* Arm the context PH7_StreamOpenHandle's next open runs under. */
 PH7_PRIVATE void PH7_StreamCtxArm(ph7_vm *pVm,phl_stream_ctx *pRes);
+/*
+ * ---------------------------------------------------------------------------
+ * Stream filters.
+ *
+ * php runs a stream's bytes through a CHAIN on the way in and another on the
+ * way out. A filter is handed a BRIGADE — the buckets that came off the device,
+ * or that the script wrote — and appends what it made to a second one; what it
+ * ANSWERS says whether that output may go on (PASS_ON), whether it needs more
+ * input before it can produce any (FEED_ME), or whether the stream is finished
+ * (ERR_FATAL). The brigade rather than one string is what lets a filter split
+ * or merge its input, and what a userland filter walks with
+ * stream_bucket_make_writeable().
+ * ---------------------------------------------------------------------------
+ */
+/* php's PSFS_* filter results. */
+#define PHL_PSFS_ERR_FATAL 0
+#define PHL_PSFS_FEED_ME   1
+#define PHL_PSFS_PASS_ON   2
+/* php's PSFS_FLAG_* — which kind of call this is. FLUSH_CLOSE is the last one a
+ * filter ever gets and the only chance a buffering filter has to emit its tail. */
+#define PHL_PSFS_FLAG_NORMAL      0
+#define PHL_PSFS_FLAG_FLUSH_INC   1
+#define PHL_PSFS_FLAG_FLUSH_CLOSE 2
+/* php's STREAM_FILTER_* chain selectors. */
+#define PHL_STREAM_FILTER_READ  1
+#define PHL_STREAM_FILTER_WRITE 2
+#define PHL_STREAM_FILTER_ALL   3
+/* stream_filter_append()'s handle carries this magic in the io_private-compatible
+ * header every PHL resource opens with; php names the resource "stream filter". */
+#define STREAM_FILTER_MAGIC 0xF117E4
+typedef struct phl_bucket phl_bucket;
+typedef struct phl_brigade phl_brigade;
+typedef struct phl_stream_filter phl_stream_filter;
+typedef struct phl_filter_ops phl_filter_ops;
+/* One bucket: a run of bytes travelling through a chain. */
+struct phl_bucket
+{
+	SyBlob sData;      /* the bytes */
+	phl_bucket *pNext; /* next bucket in the brigade */
+};
+struct phl_brigade
+{
+	phl_bucket *pHead,*pTail;
+};
+/* What a built-in filter IS. A userland filter has no ops and runs its class. */
+struct phl_filter_ops
+{
+	const char *zName;  /* php's own registered name */
+	/* Read the $params argument, once, when the filter is created. A non-zero
+	 * answer is php's "filter refused to be created". */
+	int (*xCreate)(phl_stream_filter *pFilter,ph7_value *pParams);
+	int (*xFilter)(phl_stream_filter *pFilter,phl_brigade *pIn,phl_brigade *pOut,int iFlags);
+	void (*xClose)(phl_stream_filter *pFilter);
+};
+struct phl_stream_filter
+{
+	io_private base;            /* resource header (base.iMagic == STREAM_FILTER_MAGIC) */
+	ph7_vm *pVm;                /* owning VM */
+	const phl_filter_ops *pOps; /* built-in behaviour, or 0 for a userland filter */
+	SyBlob sName;               /* the name it was CREATED under (a wildcard match keeps the request) */
+	SyBlob sCarry;              /* bytes the filter could not encode yet (base64/qp/dechunk) */
+	int iState;                 /* per-filter scalar state */
+	int iChain;                 /* PHL_STREAM_FILTER_READ or _WRITE */
+	io_private *pDev;           /* the handle it is attached to; 0 once removed */
+	phl_stream_filter *pNext;   /* next filter in that chain */
+	phl_stream_filter *pRegNext;/* VM registry chain (pVm->pStreamFilter) */
+	void *pObj;                 /* userland filter instance (ph7_class_instance*) */
+	ph7_value *pStreamRes;      /* the $stream the userland filter's property answers */
+};
+/* Brigade plumbing, shared with the userland-filter half. */
+PH7_PRIVATE phl_bucket * PH7_FilterBucketNew(ph7_vm *pVm,const void *pData,sxu32 nLen);
+PH7_PRIVATE void PH7_FilterBucketAppend(phl_brigade *pBrig,phl_bucket *pBucket);
+PH7_PRIVATE void PH7_FilterBucketFree(ph7_vm *pVm,phl_bucket *pBucket);
+PH7_PRIVATE void PH7_FilterBrigadeRelease(ph7_vm *pVm,phl_brigade *pBrig);
+/* Run one chain over nLen bytes, appending what came out to pOut. Answers a
+ * PHL_PSFS_* code; ERR_FATAL means the stream is finished. */
+PH7_PRIVATE int PH7_FilterChainProcess(phl_stream_filter *pHead,
+	const void *pData,sxu32 nLen,int iFlags,SyBlob *pOut);
+/* Drop both chains of a handle, flushing the write one while the device is
+ * still open (every close path and the io_private reset paths). */
+PH7_PRIVATE void PH7_StreamFilterReleaseChains(io_private *pDev);
+/* Attach a filter by NAME, php's own failure diagnostics raised from pCtx.
+ * Answers the filter, or 0 when there is no such name. */
+PH7_PRIVATE phl_stream_filter * PH7_StreamFilterAttach(ph7_context *pCtx,io_private *pDev,
+	const char *zName,int nName,int iChain,int bPrepend,ph7_value *pParams);
+/* The filter behind a ph7_value, or 0 when the value is not a live one. */
+PH7_PRIVATE phl_stream_filter * PH7_StreamFilterFromValue(ph7_value *pVal);
+/* Drop every filter this VM created (called from PH7_VmReset). */
+PH7_PRIVATE void PH7_StreamFilterVmReset(ph7_vm *pVm);
+/* php's `$stream` screen: a TypeError for a non-resource and for a closed one. */
+PH7_PRIVATE io_private * PH7_StreamHandleArg(ph7_context *pCtx,ph7_value *pArg,int iPos,
+	const char *zName,int *pRc);
 PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_private *pOut);
 PH7_PRIVATE void SetIOPrivateOpenedAs(io_private *pDev,const char *zUri,int nUriLen,const char *zMode,int nModeLen);
 PH7_PRIVATE void MarkIOPrivateClosed(io_private *pDev);
@@ -4840,6 +4946,7 @@ PH7_PRIVATE sxi32 PH7_StreamReadWholeFile(void *pHandle,const ph7_io_stream *pSt
 PH7_PRIVATE int PH7_VfsAppendFile(ph7_context *pCtx,const char *zFile,const void *pData,int nLen);
 PH7_PRIVATE void PH7_StreamCloseHandle(const ph7_io_stream *pStream,void *pHandle);
 PH7_PRIVATE ph7_int64 PH7_StreamRead(io_private *pDev,void *pBuf,ph7_int64 nLen);
+PH7_PRIVATE ph7_int64 PH7_StreamWrite(io_private *pDev,const void *pData,ph7_int64 nLen);
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
 PH7_PRIVATE const char * PH7_ExtractDirName(const char *zPath,int nByte,int *pLen);
 PH7_PRIVATE const char * PH7_ExtractBaseName(const char *zPath,int nByte,int *pLen);
@@ -4925,6 +5032,10 @@ PH7_PRIVATE int PH7_builtin_stream_get_wrappers(ph7_context *pCtx,int nArg,ph7_v
 PH7_PRIVATE int PH7_builtin_stream_isatty(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_wrapper_register(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_stream_wrapper_unregister(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_filter_append(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_filter_prepend(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_filter_remove(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_get_filters(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_vfprintf(ph7_context *pCtx,int nArg,ph7_value **apArg);
 #endif /* PH7_DISABLE_DISK_IO */
 PH7_PRIVATE const ph7_vfs * PH7_ExportBuiltinVfs(void);

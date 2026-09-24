@@ -3094,6 +3094,10 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"stream_wrapper_register",   PH7_builtin_stream_wrapper_register },
 		{"stream_register_wrapper",   PH7_builtin_stream_wrapper_register },
 		{"stream_wrapper_unregister", PH7_builtin_stream_wrapper_unregister },
+		{"stream_filter_append",  PH7_builtin_stream_filter_append },
+		{"stream_filter_prepend", PH7_builtin_stream_filter_prepend },
+		{"stream_filter_remove",  PH7_builtin_stream_filter_remove },
+		{"stream_get_filters",    PH7_builtin_stream_get_filters },
 #ifdef PH7_ENABLE_NET
 		{"fsockopen",  PH7_builtin_fsockopen },
 		{"pfsockopen", PH7_builtin_fsockopen },

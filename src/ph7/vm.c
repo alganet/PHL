@@ -3214,6 +3214,9 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	 * reused VM (the -S server's) must not answer the next request from the
 	 * previous one's stream_context_set_default(). */
 	PH7_StreamCtxVmReset(&(*pVm));
+	/* And every filter INSTANCE it created: a chain that was never removed
+	 * still owns memory the next request must not inherit. */
+	PH7_StreamFilterVmReset(&(*pVm));
 	pVm->iCmpCallbackExc = 0;
 	pVm->bHaltRequested = 0;
 	pVm->iExitStatus = 0;

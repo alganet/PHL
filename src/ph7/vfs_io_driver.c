@@ -1559,6 +1559,8 @@ PH7_PRIVATE int PH7_builtin_pclose(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	/* Get the pipe handle */
 	pPipe = (pipe_private *)pDev->pHandle;
+	/* A write chain gets its closing call while the pipe is still open. */
+	PH7_StreamFilterReleaseChains(pDev);
 	/* Close the pipe and get exit status */
 	status = PipeClose(pPipe);
 	/* Keep the handle alive but flag it closed so shared copies see it */

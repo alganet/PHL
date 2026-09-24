@@ -539,6 +539,25 @@ static void PH7_STREAM_IS_URL_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData);
 }
 /*
+ * stream_filter_append()'s $mode — WHICH chain the filter joins. php's 0 is not
+ * "neither": it means "whichever chains the handle's own mode makes sense for".
+ */
+static void PH7_STREAM_FILTER_READ_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_STREAM_FILTER_READ);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_FILTER_WRITE_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_STREAM_FILTER_WRITE);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_FILTER_ALL_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PHL_STREAM_FILTER_ALL);
+	SXUNUSED(pUserData);
+}
+/*
  * stream_socket_client()'s $flags. CONNECT is the default it documents;
  * PERSISTENT is what pfsockopen() means and the only one that changes what a
  * second call to the same address ANSWERS.
@@ -2376,6 +2395,9 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"STREAM_CLIENT_CONNECT",        PH7_STREAM_CLIENT_CONNECT_Const },
 	{"STREAM_CLIENT_ASYNC_CONNECT",  PH7_STREAM_CLIENT_ASYNC_CONNECT_Const },
 	{"STREAM_CLIENT_PERSISTENT",     PH7_STREAM_CLIENT_PERSISTENT_Const },
+	{"STREAM_FILTER_READ",           PH7_STREAM_FILTER_READ_Const },
+	{"STREAM_FILTER_WRITE",          PH7_STREAM_FILTER_WRITE_Const },
+	{"STREAM_FILTER_ALL",            PH7_STREAM_FILTER_ALL_Const },
 	{"STREAM_SHUT_RD",               PH7_STREAM_SHUT_RD_Const },
 	{"STREAM_SHUT_WR",               PH7_STREAM_SHUT_WR_Const },
 	{"STREAM_SHUT_RDWR",             PH7_STREAM_SHUT_RDWR_Const },
