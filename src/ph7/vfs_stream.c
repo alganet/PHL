@@ -51,6 +51,14 @@ PH7_PRIVATE const char * PH7_VfsResourceType(void *pResource)
 		 * script can see that its handle is one. */
 		return pDev->bPersist ? "persistent stream" : "stream";
 	}
+	if( pDev && pDev->iMagic == PROC_PRIVATE_MAGIC ){
+		/* proc_open()'s handle is not a stream and php does not call it one: it
+		 * answered "Unknown" here, so `get_resource_type($proc) === 'process'`
+		 * — the documented way to tell a process handle from a pipe — was
+		 * false. Its header IS an io_private, magic field included, which is
+		 * what one probe can tell them apart by. */
+		return "process";
+	}
 	return "Unknown";
 }
 /*

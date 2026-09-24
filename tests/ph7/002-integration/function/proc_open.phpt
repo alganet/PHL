@@ -7,6 +7,19 @@ proc_open(): pipe stdin/stdout/stderr to a child interpreter, redirect stderr, c
 <?php if (PHP_OS == 'WINNT') { echo "skip POSIX-only behavior; not applicable on Windows"; } ?>
 --FILE--
 <?php
+/* php names the process handle's TYPE `process`, and it is not a stream: this
+ * answered "Unknown" for both get_resource_type() and get_debug_type(), so the
+ * documented way to tell a process handle from one of its own pipes was false.
+ * (The handle IS an io_private underneath, which is why one probe can tell.) */
+function pox_types() {
+    $spec = [1 => ['pipe', 'w']];
+    $p = proc_open([PHP_BINARY, '-r', 'exit(0);'], $spec, $pipes);
+    echo get_resource_type($p), '|', get_debug_type($p), '|', gettype($p), "\n";
+    echo get_resource_type($pipes[1]), '|', get_debug_type($pipes[1]), "\n";
+    fclose($pipes[1]);
+    proc_close($p);
+}
+pox_types();
 function pox_run($code, $redirect = false) {
     $spec = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
     if ($redirect) { $spec[2] = ['redirect', 1]; }
@@ -28,6 +41,8 @@ pox_run('<?php fwrite(STDERR, "red");', true);
 pox_run('<?php exit(3);');
 ?>
 --EXPECT--
+process|resource (process)|resource
+stream|resource (stream)
 out=[hello] err=[] exit=0
 out=[] err=[oops] exit=0
 out=[a] err=[b] exit=0

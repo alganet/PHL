@@ -3715,6 +3715,9 @@ struct io_private
 	sxu32 iMagic;   /* Sanity check to avoid misuse */
 };
 #define IO_PRIVATE_MAGIC 0xFEAC14
+/* proc_open()'s handle is an io_private with this magic in the same field, which
+ * is what lets one probe tell the two apart — and what php names `process`. */
+#define PROC_PRIVATE_MAGIC 0x9C0DE5
 /* A user-facing handle (fopen/opendir/popen) that has been fclose()'d/closedir()'d/
  * pclose()'d keeps its io_private alive but stamped with this magic, so every
  * ph7_value that still references it observes a closed resource

@@ -1576,7 +1576,6 @@ PH7_PRIVATE int PH7_builtin_pclose(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *   bounds and report it as a live, non-stream resource.
  */
 #ifdef __UNIXES__
-#define PROC_PRIVATE_MAGIC 0x9C0DE5
 #define PROC_MAX_DESC 16
 typedef struct proc_private proc_private;
 struct proc_private

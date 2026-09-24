@@ -369,9 +369,19 @@ PH7_PRIVATE int vm_builtin_get_debug_type(ph7_context *pCtx,int nArg,ph7_value *
 		}else if( pVal->iFlags & MEMOBJ_HASHMAP ){
 			zType = "array";
 		}else if( pVal->iFlags & MEMOBJ_RES ){
-			/* php names the stream kind here; PHL reports what gettype() does,
-			 * which is the same gap gettype() already has (§7.4). */
-			zType = PH7_VfsResourceIsClosed(pVal->x.pOther) ? "resource (closed)" : "resource";
+			/* php names the resource's TYPE here, and this used to answer the
+			 * bare "resource" gettype() answers — so the function whose whole
+			 * job is to NAME a value's type had a different answer from php for
+			 * every open handle, in exactly the diagnostics it exists for.
+			 * (The note this replaced said the kind was unavailable; it is what
+			 * get_resource_type() has been answering all along.) */
+			if( PH7_VfsResourceIsClosed(pVal->x.pOther) ){
+				zType = "resource (closed)";
+			}else{
+				ph7_result_string_format(pCtx,"resource (%s)",
+					PH7_VfsResourceType(pVal->x.pOther));
+				return SXRET_OK;
+			}
 		}
 	}
 	ph7_result_string(pCtx,zType,-1/*Compute length automatically*/);
