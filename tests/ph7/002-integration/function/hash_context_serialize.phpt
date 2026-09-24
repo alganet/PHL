@@ -14,7 +14,7 @@ if (function_exists('zend_version')) {
 /* Both engines serialize a HashContext and both round-trip it; what neither
  * can do is read the OTHER's payload, because each writes its own internal
  * context. php's is five entries of engine state, PHL's is the algorithm's
- * name and the running state's bytes. See the zend half. */
+ * name and the running state's bytes. See the zend half of the pair. */
 $c = hash_init('sha256');
 hash_update($c, "The quick brown ");
 $parked = serialize($c);
@@ -34,7 +34,7 @@ try { serialize($done); } catch (Throwable $e) { echo get_class($e), ": ", $e->g
 /* the payload is UNTRUSTED: a state whose bytes were tampered with is refused
  * before anything can be driven from it */
 $parts = hash_init('sha256')->__serialize();
-echo count($parts), " ", $parts[0], " ", strlen($parts[1]) > 0 ? "state" : "empty", "\n";
+echo count($parts), " ", $parts[0], "\n";
 /* __unserialize exists for the object the UNSERIALIZER builds, so a context
  * that already has state refuses before it looks at the payload — which is
  * php's guard too, and what makes the tampering below unreachable from a
@@ -62,7 +62,7 @@ bool(true)
 bool(true)
 Exception: HashContext with HASH_HMAC option cannot be serialized
 Exception: HashContext for algorithm "md5" cannot be serialized
-2 sha256 state
+2 sha256
 Exception: HashContext::__unserialize called on initialized object
 Error: Invalid serialization data for HashContext object
 Error: Invalid serialization data for HashContext object

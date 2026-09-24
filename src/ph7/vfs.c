@@ -3036,6 +3036,12 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 #if !defined(PH7_DISABLE_HASH_FUNC)
 		{"md5_file",  PH7_builtin_md5_file},
 		{"sha1_file", PH7_builtin_sha1_file},
+		/* The hash extension's file readers live with the disk table for the
+		 * same reason md5_file does: without disk IO there is nothing to read. */
+		{"hash_file",          PH7_builtin_hash_file },
+		{"hash_hmac_file",     PH7_builtin_hash_hmac_file },
+		{"hash_update_file",   PH7_builtin_hash_update_file },
+		{"hash_update_stream", PH7_builtin_hash_update_stream },
 #endif /* PH7_DISABLE_HASH_FUNC */
 		{"parse_ini_file", PH7_builtin_parse_ini_file},
 		{"vfprintf",  PH7_builtin_vfprintf}

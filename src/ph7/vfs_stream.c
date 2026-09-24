@@ -407,8 +407,14 @@ PH7_PRIVATE int PH7_builtin_feof(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * Read n bytes from the underlying IO stream device.
  * Return total numbers of bytes readen on success. A number < 1 on failure
  * [i.e: IO error ] or EOF.
+ *
+ * This is the read every SCRIPT-level reader goes through, because it drains
+ * the line readers' read-ahead buffer first: a stream that fgets() has already
+ * pulled a block out of is positioned where the SCRIPT thinks it is, not where
+ * the device is. Anything reading from a caller's handle has to use this and
+ * not the device's own xRead.
  */
-static ph7_int64 StreamRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
+PH7_PRIVATE ph7_int64 PH7_StreamRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
 {
 	const ph7_io_stream *pStream = pDev->pStream;
 	char *zBuf = (char *)pBuf;
@@ -717,7 +723,7 @@ PH7_PRIVATE int PH7_builtin_fgetc(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Perform the requested operation */
-	n = (int)StreamRead(pDev,(void *)&c,sizeof(char));
+	n = (int)PH7_StreamRead(pDev,(void *)&c,sizeof(char));
 	/* IO result */
 	if( n < 1 ){
 		/* EOF or error,return FALSE */
@@ -986,7 +992,7 @@ PH7_PRIVATE int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Perform the requested operation */
-	nRead = StreamRead(pDev,pBuf,(ph7_int64)nLen);
+	nRead = PH7_StreamRead(pDev,pBuf,(ph7_int64)nLen);
 	if( nRead < 0 ){
 		/* An IO ERROR, which is php's only false here */
 		ph7_result_bool(pCtx,0);
@@ -2296,7 +2302,7 @@ PH7_PRIVATE int PH7_builtin_fpassthru(ph7_context *pCtx,int nArg,ph7_value **apA
 	/* Perform the requested operation */
 	nRead = 0;
 	for(;;){
-		n = StreamRead(pDev,zBuf,sizeof(zBuf));
+		n = PH7_StreamRead(pDev,zBuf,sizeof(zBuf));
 		if( n < 1 ){
 			/* Error or EOF */
 			break;

@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "ph7int.h"
+/* errno: the hash extension's file readers report a failed READ the way php
+ * does, by number and by text. */
+#include <errno.h>
 /*
  * Section:
  *    Hash (md5/sha1/crc32/hash family) and password_* (bcrypt) functions.
@@ -925,6 +928,281 @@ PH7_PRIVATE sxi32 PH7_VmInstallHashContext(ph7_vm *pVm)
 	};
 	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);
 }
+#if !defined(PH7_DISABLE_DISK_IO)
+/*
+ * ---------------------------------------------------------------------------
+ * Where the bytes come FROM: a file, or a stream the caller already holds.
+ *
+ * This is the half the incremental API exists for. Every reader below walks
+ * the file in 8 KB chunks and never holds more than that, which is the whole
+ * difference from `hash($algo, file_get_contents($f))` -- the workaround a
+ * program reaches for when hash_file() is missing, and the one that reads a
+ * 4 GB file into memory to answer 32 characters.
+ * ---------------------------------------------------------------------------
+ */
+#define HASH_IO_CHUNK 8192
+/*
+ * Open a URI for reading, raising php's own warning when it cannot be opened.
+ * Answers 0 with *ppStream cleared when the caller should answer FALSE.
+ */
+static void * HashOpenRead(ph7_context *pCtx,const char *zFile,int nFile,
+	const ph7_io_stream **ppStream)
+{
+	const ph7_io_stream *pStream;
+	void *pHandle;
+	*ppStream = 0;
+	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zFile,nFile);
+	if( pStream == 0 ){
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,
+			"No such stream device,PH7 is returning FALSE");
+		return 0;
+	}
+	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0);
+	if( pHandle == 0 ){
+		VfsThrowOpenWarning(pCtx,zFile);
+		return 0;
+	}
+	*ppStream = pStream;
+	return pHandle;
+}
+/*
+ * Feed an open stream to a running context until it ends. A read that FAILS is
+ * not the end of the file, and php says so: an E_NOTICE naming the chunk size
+ * and the errno, then FALSE -- which is how `hash_file($a, $dir)` tells a
+ * directory apart from an empty file, where md5_file() (php's own included)
+ * answers the empty digest instead.
+ */
+static int HashFeedStream(ph7_context *pCtx,const ph7_io_stream *pStream,void *pHandle,
+	io_private *pDev,const HashAlgo *pAlgo,HashCtx *pHash,ph7_int64 nWant,ph7_int64 *pnRead)
+{
+	char zBuf[HASH_IO_CHUNK];
+	ph7_int64 nTotal = 0;
+	for(;;){
+		ph7_int64 n;
+		ph7_int64 nChunk = (ph7_int64)sizeof(zBuf);
+		if( nWant >= 0 ){
+			if( nTotal >= nWant ){
+				break;
+			}
+			if( nWant - nTotal < nChunk ){
+				nChunk = nWant - nTotal;
+			}
+		}
+		/* A caller's HANDLE is read through the script-level reader, which
+		 * drains the line readers' read-ahead first: a stream fgets() has
+		 * already pulled a block out of is positioned where the SCRIPT thinks
+		 * it is, and hashing from the DEVICE position would skip that block. */
+		n = pDev ? PH7_StreamRead(pDev,zBuf,(ph7_int64)nChunk)
+		         : pStream->xRead(pHandle,zBuf,(ph7_int64)nChunk);
+		if( n < 0 ){
+			/* The context prefixes "name(): " itself. */
+			ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,
+				"Read of %d bytes failed with errno=%d %s",
+				(int)nChunk,errno,VfsStrerror(errno));
+			return -1;
+		}
+		if( n < 1 ){
+			break;
+		}
+		pAlgo->xUpdate(pHash,(const unsigned char *)zBuf,(unsigned int)n);
+		nTotal += n;
+	}
+	if( pnRead ){
+		*pnRead = nTotal;
+	}
+	return 0;
+}
+/*
+ * string|false hash_file(string $algo,string $filename[,bool $binary = false[,array $options = []]])
+ */
+PH7_PRIVATE int PH7_builtin_hash_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const HashAlgo *pAlgo;
+	const ph7_io_stream *pStream;
+	const char *zAlgo,*zFile;
+	int nAlgoLen,nFileLen,raw_output = FALSE,rc;
+	void *pHandle;
+	HashCtx sCtx;
+	unsigned char zDigest[HASH_MAX_DIGEST];
+	sxu64 nSeed = 0;
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"hash_file() expects at least 2 arguments, %d given",nArg);
+	}
+	zAlgo = ph7_value_to_string(apArg[0],&nAlgoLen);
+	pAlgo = HashFindAlgo(zAlgo,nAlgoLen);
+	if( pAlgo == 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"hash_file(): Argument #1 ($algo) must be a valid hashing algorithm");
+	}
+	zFile = ph7_value_to_string(apArg[1],&nFileLen);
+	if( nArg > 2 ){
+		raw_output = ph7_value_to_bool(apArg[2]);
+	}
+	if( nArg > 3 ){
+		rc = HashSeedOption(pCtx,pAlgo,apArg[3],&nSeed);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+	}
+	pHandle = HashOpenRead(pCtx,zFile,nFileLen,&pStream);
+	if( pHandle == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pAlgo->xInit(&sCtx,nSeed);
+	rc = HashFeedStream(pCtx,pStream,pHandle,0,pAlgo,&sCtx,-1,0);
+	PH7_StreamCloseHandle(pStream,pHandle);
+	if( rc != 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	SyZero(zDigest,sizeof(zDigest));
+	pAlgo->xFinal(&sCtx,zDigest);
+	if( raw_output ){
+		ph7_result_string(pCtx,(const char *)zDigest,pAlgo->nDigestLen);
+	}else{
+		SyBinToHexConsumer((const void *)zDigest,(sxu32)pAlgo->nDigestLen,HashConsumer,pCtx);
+	}
+	return PH7_OK;
+}
+/*
+ * string|false hash_hmac_file(string $algo,string $filename,string $key[,bool $binary = false])
+ */
+PH7_PRIVATE int PH7_builtin_hash_hmac_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const HashAlgo *pAlgo;
+	const ph7_io_stream *pStream;
+	const char *zAlgo,*zFile,*zKey;
+	int nAlgoLen,nFileLen,nKeyLen,raw_output = FALSE,rc;
+	void *pHandle;
+	HashCtx sCtx;
+	unsigned char zKeyBlock[HASH_MAX_BLOCK];
+	unsigned char zInner[HASH_MAX_DIGEST],zDigest[HASH_MAX_DIGEST];
+	if( nArg < 3 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"hash_hmac_file() expects at least 3 arguments, %d given",nArg);
+	}
+	zAlgo = ph7_value_to_string(apArg[0],&nAlgoLen);
+	pAlgo = HashFindAlgo(zAlgo,nAlgoLen);
+	if( pAlgo == 0 || pAlgo->nBlockLen < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"hash_hmac_file(): Argument #1 ($algo) must be a valid cryptographic hashing algorithm");
+	}
+	zFile = ph7_value_to_string(apArg[1],&nFileLen);
+	zKey = ph7_value_to_string(apArg[2],&nKeyLen);
+	if( nArg > 3 ){
+		raw_output = ph7_value_to_bool(apArg[3]);
+	}
+	pHandle = HashOpenRead(pCtx,zFile,nFileLen,&pStream);
+	if( pHandle == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	HashHmacKeyBlock(pAlgo,zKey,nKeyLen,zKeyBlock);
+	HashHmacInner(pAlgo,&sCtx,zKeyBlock);
+	rc = HashFeedStream(pCtx,pStream,pHandle,0,pAlgo,&sCtx,-1,0);
+	PH7_StreamCloseHandle(pStream,pHandle);
+	if( rc != 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	SyZero(zInner,sizeof(zInner));
+	pAlgo->xFinal(&sCtx,zInner);
+	HashHmacOuter(pAlgo,zKeyBlock,zInner,zDigest);
+	if( raw_output ){
+		ph7_result_string(pCtx,(const char *)zDigest,pAlgo->nDigestLen);
+	}else{
+		SyBinToHexConsumer((const void *)zDigest,(sxu32)pAlgo->nDigestLen,HashConsumer,pCtx);
+	}
+	return PH7_OK;
+}
+/*
+ * bool hash_update_file(HashContext $context,string $filename[,?resource $stream_context = null])
+ *
+ * The $stream_context argument is php's per-call context for the wrapper it
+ * opens through; PHL has no context plumbing, so it is accepted
+ * and unused -- the same treatment file_get_contents() gives it.
+ */
+PH7_PRIVATE int PH7_builtin_hash_update_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const ph7_io_stream *pStream;
+	ph7_class_instance *pThis;
+	const HashAlgo *pAlgo;
+	HashState sState;
+	const char *zFile;
+	int nFileLen,rc;
+	void *pHandle;
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"hash_update_file() expects at least 2 arguments, %d given",nArg);
+	}
+	pThis = HashContextArg(pCtx,apArg[0],&sState,&rc);
+	if( pThis == 0 ){
+		return rc;
+	}
+	zFile = ph7_value_to_string(apArg[1],&nFileLen);
+	pHandle = HashOpenRead(pCtx,zFile,nFileLen,&pStream);
+	if( pHandle == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pAlgo = &aHashAlgo[sState.nAlgo];
+	rc = HashFeedStream(pCtx,pStream,pHandle,0,pAlgo,&sState.sCtx,-1,0);
+	PH7_StreamCloseHandle(pStream,pHandle);
+	if( rc != 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* Only a complete read reaches the context: a half-read file would leave a
+	 * digest of a prefix nobody asked for. */
+	HashStateWrite(pCtx->pVm,pThis,&sState);
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/*
+ * int hash_update_stream(HashContext $context,resource $stream[,int $length = -1])
+ *   Feed at most $length bytes of an OPEN stream, and answer how many arrived.
+ *   A negative length is "the rest of it"; zero reads nothing.
+ */
+PH7_PRIVATE int PH7_builtin_hash_update_stream(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis;
+	const HashAlgo *pAlgo;
+	HashState sState;
+	io_private *pDev;
+	ph7_int64 nWant = -1,nRead = 0;
+	int rc;
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"hash_update_stream() expects at least 2 arguments, %d given",nArg);
+	}
+	pThis = HashContextArg(pCtx,apArg[0],&sState,&rc);
+	if( pThis == 0 ){
+		return rc;
+	}
+	if( !ph7_value_is_resource(apArg[1]) ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"hash_update_stream(): Argument #2 ($stream) must be of type resource, %s given",
+			ph7_type_name(apArg[1]));
+	}
+	pDev = (io_private *)ph7_value_to_resource(apArg[1]);
+	if( IO_PRIVATE_INVALID(pDev) || pDev->iMagic == IO_PRIVATE_CLOSED_MAGIC
+	 || pDev->pStream == 0 || pDev->pStream->xRead == 0 ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"hash_update_stream(): Argument #2 ($stream) must be an open stream resource");
+	}
+	if( nArg > 2 ){
+		nWant = ph7_value_to_int64(apArg[2]);
+	}
+	pAlgo = &aHashAlgo[sState.nAlgo];
+	if( HashFeedStream(pCtx,pDev->pStream,pDev->pHandle,pDev,pAlgo,&sState.sCtx,nWant,&nRead) == 0 ){
+		HashStateWrite(pCtx->pVm,pThis,&sState);
+	}
+	ph7_result_int64(pCtx,nRead);
+	return PH7_OK;
+}
+#endif /* PH7_DISABLE_DISK_IO */
 /*
  * The body of hash_algos()/hash_hmac_algos(): the same table, filtered by
  * whether the algorithm may key a MAC (php's two lists differ by exactly the
