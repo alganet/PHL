@@ -482,6 +482,170 @@ static void VmSessDestroyBadStore(ph7_vm *pVm,SyBlob *pFile,const char *zFunc)
 	PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,zMsg);
 }
 /*
+ * Call a builtin with the engine's diagnostics SUPPRESSED, php's `@`. The store
+ * layer reports its own failures in php's words ("open(%s, O_RDWR) failed: ..."),
+ * so the wrapper's "Failed to open stream" underneath it must not leak out.
+ */
+static sxi32 VmSessCallQuiet(ph7_vm *pVm,const char *zFunc,int nArg,ph7_value **apArg,
+	ph7_value *pResult)
+{
+	sxi32 rc;
+	pVm->nErrSuppress++;
+	rc = VmSessCall(pVm,zFunc,nArg,apArg,pResult);
+	if( pVm->nErrSuppress > 0 ){
+		pVm->nErrSuppress--;
+	}
+	return rc;
+}
+/* TRUE when calling zFunc(zPath) answers true. */
+static int VmSessPathIs(ph7_vm *pVm,const char *zFunc,SyBlob *pPath)
+{
+	ph7_value sPath,sRes;
+	ph7_value *apA[1];
+	int bOk;
+	VmSessStrArg(pVm,&sPath,(const char *)SyBlobData(pPath),SyBlobLength(pPath));
+	PH7_MemObjInit(pVm,&sRes);
+	apA[0] = &sPath;
+	VmSessCallQuiet(pVm,zFunc,1,apA,&sRes);
+	PH7_MemObjToBool(&sRes);
+	bOk = sRes.x.iVal != 0;
+	PH7_MemObjRelease(&sRes);
+	PH7_MemObjRelease(&sPath);
+	return bOk;
+}
+/*
+ * php OPENS the store at session_start(), O_CREAT|O_RDWR 0600 -- so the file
+ * exists, empty, from the moment the session starts rather than from the first
+ * write, and a save path it cannot open is a REFUSED start. PHL created nothing
+ * and read a missing file as an empty session, so a mistyped session.save_path
+ * silently handed every request a blank session and threw its writes away.
+ *
+ * Answers 1 when the store is usable; 0 when php would have refused, having
+ * raised both of its diagnostics under zFunc.
+ */
+static void VmSessPutFileQuiet(ph7_vm *pVm,SyBlob *pFile,const char *zData,sxu32 nData,
+	int bQuiet);
+static int VmSessOpenStore(ph7_vm *pVm,SyBlob *pFile,const char *zFunc)
+{
+	char zMsg[512];
+	int iErr;
+	const char *zWhy;
+	if( VmSessPathIs(pVm,"file_exists",pFile) ){
+		return 1;
+	}
+	VmSessPutFileQuiet(pVm,pFile,"",0,1);
+	if( VmSessPathIs(pVm,"file_exists",pFile) ){
+		/* php's store is readable by its own user and nobody else. */
+		ph7_value sPath,sMode;
+		ph7_value *apA[2];
+		VmSessStrArg(pVm,&sPath,(const char *)SyBlobData(pFile),SyBlobLength(pFile));
+		PH7_MemObjInit(pVm,&sMode);
+		PH7_MemObjInitFromInt(pVm,&sMode,0600);
+		apA[0] = &sPath;
+		apA[1] = &sMode;
+		VmSessCallQuiet(pVm,"chmod",2,apA,0);
+		PH7_MemObjRelease(&sMode);
+		PH7_MemObjRelease(&sPath);
+		return 1;
+	}
+	VmSessResolvePath(pVm);
+	if( !VmSessPathIs(pVm,"is_dir",&pVm->sSessPath) ){
+		iErr = 2;   /* ENOENT */
+	}else{
+		iErr = 13;  /* EACCES: the directory is there and will not take the file */
+	}
+	zWhy = VfsStrerror(iErr);
+	SyBufferFormat(zMsg,sizeof(zMsg),"%s(): open(%.*s, O_RDWR) failed: %s (%d)",
+		zFunc,(int)SyBlobLength(pFile),(const char *)SyBlobData(pFile),zWhy,iErr);
+	PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,zMsg);
+	SyBufferFormat(zMsg,sizeof(zMsg),
+		"%s(): Failed to read session data: files (path: %.*s)",zFunc,
+		(int)SyBlobLength(&pVm->sSessPath),(const char *)SyBlobData(&pVm->sSessPath));
+	PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,zMsg);
+	return 0;
+}
+/*
+ * php's garbage collection: every store in the save path whose last change is
+ * older than session.gc_maxlifetime goes, and the count is the answer. Only the
+ * `sess_` prefix is touched -- the save path is an ordinary directory and may hold
+ * anything else.
+ */
+static sxi64 VmSessGc(ph7_vm *pVm)
+{
+	ph7_value sDir,sList;
+	ph7_value *apA[1];
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pNode;
+	sxi64 iMaxLife = PH7_VmIniGetInt(pVm,"session.gc_maxlifetime",1440);
+	sxi64 iCut = (sxi64)time(0) - iMaxLife;
+	sxi64 nGone = 0;
+	sxu32 n;
+	VmSessResolvePath(pVm);
+	VmSessStrArg(pVm,&sDir,(const char *)SyBlobData(&pVm->sSessPath),
+		SyBlobLength(&pVm->sSessPath));
+	PH7_MemObjInit(pVm,&sList);
+	apA[0] = &sDir;
+	VmSessCallQuiet(pVm,"scandir",1,apA,&sList);
+	PH7_MemObjRelease(&sDir);
+	if( (sList.iFlags & MEMOBJ_HASHMAP) == 0 ){
+		PH7_MemObjRelease(&sList);
+		return 0;
+	}
+	pMap = (ph7_hashmap *)sList.x.pOther;
+	pNode = pMap->pFirst;
+	for( n = 0 ; n < pMap->nEntry && pNode ; n++, pNode = pNode->pPrev ){
+		ph7_value *pName = (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
+		SyBlob sPath;
+		ph7_value sArg,sTime;
+		ph7_value *apB[1];
+		const char *zName;
+		sxu32 nName;
+		if( pName == 0 || (pName->iFlags & MEMOBJ_STRING) == 0 ){
+			continue;
+		}
+		zName = (const char *)SyBlobData(&pName->sBlob);
+		nName = SyBlobLength(&pName->sBlob);
+		if( nName <= sizeof("sess_")-1 || SyMemcmp(zName,"sess_",sizeof("sess_")-1) != 0 ){
+			continue;
+		}
+		SyBlobInit(&sPath,&pVm->sAllocator);
+		SyBlobAppend(&sPath,SyBlobData(&pVm->sSessPath),SyBlobLength(&pVm->sSessPath));
+		SyBlobAppend(&sPath,"/",1);
+		SyBlobAppend(&sPath,zName,nName);
+		VmSessStrArg(pVm,&sArg,(const char *)SyBlobData(&sPath),SyBlobLength(&sPath));
+		PH7_MemObjInit(pVm,&sTime);
+		apB[0] = &sArg;
+		VmSessCallQuiet(pVm,"filemtime",1,apB,&sTime);
+		if( (sTime.iFlags & MEMOBJ_INT) && sTime.x.iVal < iCut ){
+			VmSessCallQuiet(pVm,"unlink",1,apB,0);
+			nGone++;
+		}
+		PH7_MemObjRelease(&sTime);
+		PH7_MemObjRelease(&sArg);
+		SyBlobRelease(&sPath);
+	}
+	PH7_MemObjRelease(&sList);
+	return nGone;
+}
+/*
+ * php runs the collector on a session_start() with probability
+ * gc_probability/gc_divisor: one request in a hundred pays for everybody by
+ * default, and gc_probability of 0 turns it off.
+ */
+static void VmSessMaybeGc(ph7_vm *pVm)
+{
+	sxi64 iProb = PH7_VmIniGetInt(pVm,"session.gc_probability",1);
+	sxi64 iDiv = PH7_VmIniGetInt(pVm,"session.gc_divisor",100);
+	sxu32 nRand = 0;
+	if( iProb <= 0 || iDiv <= 0 ){
+		return;
+	}
+	SyRandomness(&pVm->sPrng,&nRand,sizeof(nRand));
+	if( (sxi64)((double)iDiv * ((double)nRand / 4294967296.0)) < iProb ){
+		VmSessGc(pVm);
+	}
+}
+/*
  * Load the stored copy into $_SESSION, which php always starts EMPTY here — only
  * session_decode() overlays what is already there. Answers 1 when the session is
  * loaded, 0 when the store was destroyed instead, and -1 for a pending exception.
@@ -808,7 +972,14 @@ static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 		VmSessGenId(pVm,&pVm->sSessId);
 	}
 	SyBlobInit(&sFile,&pVm->sAllocator);
+	VmSessMaybeGc(pVm);
 	VmSessFile(pVm,&sFile);
+	if( !VmSessOpenStore(pVm,&sFile,"session_start") ){
+		SyBlobRelease(&sFile);
+		SyBlobReset(&pVm->sSessId);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
 	iLoad = VmSessLoad(pCtx,&sFile,"session_start");
 	SyBlobRelease(&sFile);
 	if( iLoad < 0 ){
@@ -834,7 +1005,8 @@ static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg
  * by the request-shutdown writer, which is why it takes only the VM: at shutdown
  * there is no calling frame to report against.
  */
-static void VmSessPutFile(ph7_vm *pVm,SyBlob *pFile,const char *zData,sxu32 nData)
+static void VmSessPutFileQuiet(ph7_vm *pVm,SyBlob *pFile,const char *zData,sxu32 nData,
+	int bQuiet)
 {
 	ph7_value sPath,sPayload;
 	ph7_value *apA[2];
@@ -842,9 +1014,17 @@ static void VmSessPutFile(ph7_vm *pVm,SyBlob *pFile,const char *zData,sxu32 nDat
 	VmSessStrArg(pVm,&sPayload,zData,nData);
 	apA[0] = &sPath;
 	apA[1] = &sPayload;
-	VmSessCall(pVm,"file_put_contents",2,apA,0);
+	if( bQuiet ){
+		VmSessCallQuiet(pVm,"file_put_contents",2,apA,0);
+	}else{
+		VmSessCall(pVm,"file_put_contents",2,apA,0);
+	}
 	PH7_MemObjRelease(&sPath);
 	PH7_MemObjRelease(&sPayload);
+}
+static void VmSessPutFile(ph7_vm *pVm,SyBlob *pFile,const char *zData,sxu32 nData)
+{
+	VmSessPutFileQuiet(pVm,pFile,zData,nData,0);
 }
 /* Encode the open session and write it to the file the CURRENT id names. */
 static void VmSessSave(ph7_vm *pVm,const char *zWho)
@@ -1188,6 +1368,39 @@ static int vm_builtin_session_set_cookie_params(ph7_context *pCtx,int nArg,ph7_v
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
+/* int|false session_gc() */
+static int vm_builtin_session_gc(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pVm->iSessStatus != VM_SESSION_ACTIVE ){
+		/* The collector is the STORE's, and php only reaches a store through an
+		 * open session. */
+		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
+			"session_gc(): Session cannot be garbage collected when there is no active session");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_int64(pCtx,VmSessGc(pVm));
+	return PH7_OK;
+}
+/*
+ * void session_register_shutdown()
+ *
+ * php's own escape hatch for a script that installs a shutdown function which
+ * calls exit(): the remaining callbacks are skipped, so php re-registers the
+ * session writer as a callback of its OWN to make sure the session is still
+ * written. The writer here runs from the VM's request shutdown, past every
+ * callback and past a halt, so there is nothing left for this to arrange.
+ */
+static int vm_builtin_session_register_shutdown(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
 /* string|false session_create_id(string $prefix = "") */
 static int vm_builtin_session_create_id(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -1305,6 +1518,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm)
 		{ "session_encode",        vm_builtin_session_encode        },
 		{ "session_decode",        vm_builtin_session_decode        },
 		{ "session_create_id",     vm_builtin_session_create_id     },
+		{ "session_gc",            vm_builtin_session_gc            },
+		{ "session_register_shutdown", vm_builtin_session_register_shutdown },
 		{ "session_get_cookie_params", vm_builtin_session_get_cookie_params },
 		{ "session_set_cookie_params", vm_builtin_session_set_cookie_params },
 	};
