@@ -3401,7 +3401,13 @@ PH7_PRIVATE int PH7_builtin_stream_get_contents(ph7_context *pCtx,int nArg,ph7_v
 	if( nArg > 2 ){
 		ph7_int64 iOfft = ph7_value_to_int64(apArg[2]);
 		if( iOfft >= 0 && pStream->xSeek ){
-			pStream->xSeek(pDev->pHandle,iOfft,0/*SEEK_SET*/);
+			if( pStream->xSeek(pDev->pHandle,iOfft,0/*SEEK_SET*/) == PH7_OK ){
+				/* A seek DISCARDS what was buffered ahead — the bytes belong to
+				 * the position we just left. Without this the read below served
+				 * the old position's leftovers and then continued from the new
+				 * one. */
+				ResetIOPrivate(pDev);
+			}
 		}
 	}
 	ph7_result_string(pCtx,"",0); /* seed an empty string result */
@@ -3410,7 +3416,14 @@ PH7_PRIVATE int PH7_builtin_stream_get_contents(ph7_context *pCtx,int nArg,ph7_v
 		if( nMax > 0 && nMax < nAsk ){
 			nAsk = nMax;
 		}
-		nRead = IoPrivateDeviceRead(pDev,zBuf,nAsk);
+		/* Through PH7_StreamRead, not the device: this is a SCRIPT-level read,
+		 * and the line readers buffer AHEAD. Reading the device directly meant
+		 * `stream_get_contents()` after any fgets()/fgetc()/stream_get_line()
+		 * skipped everything still sitting in that buffer — on a file the
+		 * line reader had already drained to its end, that is the WHOLE
+		 * remainder, so the everyday "read the first line, then take the rest"
+		 * idiom answered "" and the position it left behind was wrong too. */
+		nRead = PH7_StreamRead(pDev,zBuf,nAsk);
 		if( nRead < 1 ){
 			if( nRead == 0 ){
 				pDev->bEof = 1;
