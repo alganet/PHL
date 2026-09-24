@@ -1791,7 +1791,6 @@ static void VmCufDropByRefBuiltinArgs(ph7_context *pCtx,ph7_value *pCallable,int
  * scope cannot reach never enters it, so its formals are not the ones the arguments
  * will bind to -- reading them made a by-ref diagnostic name a method php never calls.
  */
-static int VmCallableMethodAccessible(ph7_vm *pVm,ph7_class *pClass,ph7_class_method *pMethod);
 static ph7_vm_func * VmCallableCalleeFunc(ph7_vm *pVm,ph7_value *pCallable,ph7_class **ppOwner)
 {
 	ph7_class *pClass = 0;
@@ -1835,7 +1834,7 @@ static ph7_vm_func * VmCallableCalleeFunc(ph7_vm *pVm,ph7_value *pCallable,ph7_c
 				pEntry = SyHashGet(&pVm->hFunction,(const void *)zName,nName);
 				return pEntry ? (ph7_vm_func *)pEntry->pUserData : 0;
 			}
-			if( !pVm->bClosureScreened && !VmCallableMethodAccessible(&(*pVm),pClass,pMeth) ){
+			if( !pVm->bClosureScreened && !PH7_VmCallableMethodAccessible(&(*pVm),pClass,pMeth) ){
 				return 0; /* routes to __call: not this method's signature */
 			}
 			*ppOwner = pClass;
@@ -1892,7 +1891,7 @@ static ph7_vm_func * VmCallableCalleeFunc(ph7_vm *pVm,ph7_value *pCallable,ph7_c
 	if( pMeth == 0 ){
 		return 0;
 	}
-	if( !pVm->bClosureScreened && !VmCallableMethodAccessible(&(*pVm),pClass,pMeth) ){
+	if( !pVm->bClosureScreened && !PH7_VmCallableMethodAccessible(&(*pVm),pClass,pMeth) ){
 		return 0; /* routes to __call: not this method's signature */
 	}
 	*ppOwner = pClass;
@@ -2238,7 +2237,7 @@ PH7_PRIVATE void PH7_VmCufDropByRefArgs(ph7_context *pCtx,ph7_value *pCallable,i
  * DECLARING class as the argument (a child may not reach a base private it merely
  * inherited) — the rule PH7_VmIsCallable already answers with.
  */
-static int VmCallableMethodAccessible(ph7_vm *pVm,ph7_class *pClass,ph7_class_method *pMethod)
+PH7_PRIVATE int PH7_VmCallableMethodAccessible(ph7_vm *pVm,ph7_class *pClass,ph7_class_method *pMethod)
 {
 	SyString sName;
 	if( pMethod->iProtection == PH7_CLASS_PROT_PUBLIC ){
@@ -2420,7 +2419,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 				SyBlobLength(&pName->sBlob));
 		}
 		if( pMethod == 0
-		 || (!pVm->bClosureScreened && !VmCallableMethodAccessible(&(*pVm),pClass,pMethod)) ){
+		 || (!pVm->bClosureScreened && !PH7_VmCallableMethodAccessible(&(*pVm),pClass,pMethod)) ){
 			/* php answers for a name the class cannot reach directly through __call /
 			 * __callStatic, in a CALLABLE exactly as in the method-call syntax — including
 			 * the receiver rule: a class-NAME pair still reaches __call, on the CALLER's own
@@ -2466,7 +2465,7 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 			ph7_class_method *pCmMethod = pCmClass
 				? PH7_ClassExtractMethod(pCmClass,zCmMeth,nCmMeth) : 0;
 			if( pCmClass && (pCmMethod == 0
-				|| !VmCallableMethodAccessible(&(*pVm),pCmClass,pCmMethod)) ){
+				|| !PH7_VmCallableMethodAccessible(&(*pVm),pCmClass,pCmMethod)) ){
 				/* Same catch-all routing as the ['Class','method'] pair, receiver rule
 				 * included: `"C::m"` from inside an instance of C reaches __call. */
 				sxi32 rcMagic = PH7_VmDispatchMagicCall(&(*pVm),pCmClass,

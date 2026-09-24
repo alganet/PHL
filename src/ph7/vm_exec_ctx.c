@@ -1601,10 +1601,17 @@ PH7_PRIVATE int vm_builtin_Fiber_construct(ph7_context *pCtx, int nArg, ph7_valu
 		return PH7_VmThrowException(pCtx, "FiberError",
 			"Fiber::__construct(): $this is not a Fiber instance");
 	}
-	/* Basic validation: callable must be a string or closure (object) */
-	if( (apArg[0]->iFlags & (MEMOBJ_STRING|MEMOBJ_OBJ)) == 0 ){
-		return PH7_VmThrowException(pCtx, "FiberError",
-			"Fiber::__construct() expects a callable (string or closure)");
+	/* php validates `callable $callback` HERE, with the ordinary callback-argument
+	 * screen and its whole reason taxonomy -- `new Fiber('nosuch')` is a TypeError at
+	 * CONSTRUCTION, naming the function it could not find. PHL had a hand-rolled shape
+	 * check that only asked "string or object", with a FiberError of its own wording,
+	 * and left an unresolvable NAME to fail at start() instead: the fiber constructed
+	 * fine and the program learned about its typo one call later. */
+	{
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx, apArg[0], 1, "callback", FALSE);
+		if( rcCb != PH7_OK ){
+			return rcCb;
+		}
 	}
 	/* Store callable in $this->__callable for deferred resolution at start() */
 	SyStringInitFromBuf(&sAttrName, "__callable", 10);
@@ -1613,6 +1620,84 @@ PH7_PRIVATE int vm_builtin_Fiber_construct(ph7_context *pCtx, int nArg, ph7_valu
 		PH7_MemObjStore(apArg[0], pAttr);
 	}
 	return PH7_OK;
+}
+/*
+ * Resolve a fiber's stored callable to the BODY it runs and the receiver that body
+ * needs -- for every shape php's `callable` covers, not just the two PHL used to take.
+ *
+ * The constructor screens the argument with php's own callback rules now
+ * (PH7_CheckCallbackArg), so what arrives here is a callable; this decides which body
+ * it names. `[$obj,'m']`, `['Class','stat']` and `"Class::stat"` are the everyday way
+ * to run an object's method as a coroutine, and all three were refused outright --
+ * the first two by the constructor's "string or closure" shape check, the third by a
+ * plain-function lookup that could never find a method.
+ *
+ * Answers 0 for a callable this engine has no BYTECODE body for: a host builtin
+ * (`new Fiber('strtoupper')`) and a name php routes through __call/__callStatic --
+ * which is where the visibility rule lives, and why this asks for it. php does not
+ * reach a private method through a callable, it reaches __call INSTEAD, so running
+ * the private body would be a hole rather than a shortcut. Both shapes run on php,
+ * whose fiber switches a real stack; here they are a loud refusal (§10 divergence,
+ * twin-paired). *pzWhy names the reason for the caller to report.
+ */
+static ph7_vm_func * VmFiberCallableBody(ph7_vm *pVm, ph7_value *pCallable,
+	ph7_class_instance **ppThis, const char **pzWhy)
+{
+	ph7_class_method *pMethod = 0;
+	ph7_class *pClass = 0;
+	*ppThis = 0;
+	*pzWhy = 0;
+	if( pCallable->iFlags & MEMOBJ_HASHMAP ){
+		/* php's `[target, method]` pair, decoded by the one shared reader so a fiber
+		 * agrees with is_callable() and with every dispatch site about what it is. */
+		ph7_value *pTarget = 0, *pName = 0;
+		if( !PH7_VmArrayCallableParts(pVm, (ph7_hashmap *)pCallable->x.pOther, &pTarget, &pName)
+		 || (pName->iFlags & MEMOBJ_STRING) == 0 ){
+			*pzWhy = "callable is not a valid [target, method] pair";
+			return 0;
+		}
+		pClass = PH7_VmExtractClassFromValue(pVm, pTarget);
+		if( pClass ){
+			pMethod = PH7_ClassExtractMethod(pClass, (const char *)SyBlobData(&pName->sBlob),
+				SyBlobLength(&pName->sBlob));
+		}
+		if( pMethod == 0 || !PH7_VmCallableMethodAccessible(pVm, pClass, pMethod) ){
+			*pzWhy = "callable routes through __call(), which cannot be a fiber body here";
+			return 0;
+		}
+		if( (pTarget->iFlags & MEMOBJ_OBJ) && (pMethod->iFlags & PH7_CLASS_ATTR_STATIC) == 0 ){
+			*ppThis = (ph7_class_instance *)pTarget->x.pOther;
+		}
+		return &pMethod->sFunc;
+	}
+	if( pCallable->iFlags & MEMOBJ_STRING ){
+		const char *zCls, *zMeth;
+		sxu32 nCls, nMeth;
+		SyString sName;
+		SyHashEntry *pEntry;
+		SyStringInitFromBuf(&sName, SyBlobData(&pCallable->sBlob), SyBlobLength(&pCallable->sBlob));
+		/* php's `"Class::method"` static-callable string is the same callee as the pair. */
+		if( PH7_VmCallableStringParts(sName.zString, sName.nByte, &zCls, &nCls, &zMeth, &nMeth) ){
+			pClass = PH7_VmResolveScopeName(pVm, zCls, nCls);
+			pMethod = pClass ? PH7_ClassExtractMethod(pClass, zMeth, nMeth) : 0;
+			if( pMethod == 0 || !PH7_VmCallableMethodAccessible(pVm, pClass, pMethod) ){
+				*pzWhy = "callable routes through __callStatic(), which cannot be a fiber body here";
+				return 0;
+			}
+			return &pMethod->sFunc;
+		}
+		pEntry = PH7_VmGetUserFunction(pVm, sName.zString, sName.nByte,
+			(pCallable->iFlags & MEMOBJ_AUX_ENGINEFN) != 0);
+		if( pEntry == 0 ){
+			*pzWhy = SyHashGet(&pVm->hHostFunction, sName.zString, sName.nByte)
+				? "callable is an internal function, which cannot be a fiber body here"
+				: "callable names no such function";
+			return 0;
+		}
+		return (ph7_vm_func *)pEntry->pUserData;
+	}
+	*pzWhy = "callable is not a string, array or object";
+	return 0;
 }
 /*
  * Resolve the callable stored in a Fiber's $__callable attribute.
@@ -1629,23 +1714,16 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
 	*ppThis = 0;
 	SyStringInitFromBuf(&sAttrName, "__callable", 10);
 	pCallable = PH7_ClassInstanceFetchAttr(pFiberObj, &sAttrName);
-	if( pCallable == 0 || (pCallable->iFlags & (MEMOBJ_STRING|MEMOBJ_OBJ)) == 0 ){
+	if( pCallable == 0 || (pCallable->iFlags & (MEMOBJ_STRING|MEMOBJ_OBJ|MEMOBJ_HASHMAP)) == 0 ){
 		PH7_VmThrowException(pCtx, "FiberError", "Fiber has no valid callable");
 		return 0;
 	}
-	if( pCallable->iFlags & MEMOBJ_STRING ){
-		/* String callable — look up in user functions with overload support */
-		SyString sName;
-		SyHashEntry *pEntry;
-		ph7_vm_func *pFunc;
-		SyStringInitFromBuf(&sName, SyBlobData(&pCallable->sBlob), SyBlobLength(&pCallable->sBlob));
-		pEntry = PH7_VmGetUserFunction(pVm, sName.zString, sName.nByte, FALSE);
-		if( pEntry == 0 ){
-			PH7_VmThrowException(pCtx, "FiberError",
-				"Fiber callable '%.*s' not found", (int)sName.nByte, sName.zString);
-			return 0;
+	if( pCallable->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP) ){
+		const char *zWhy = 0;
+		ph7_vm_func *pFunc = VmFiberCallableBody(pVm, pCallable, ppThis, &zWhy);
+		if( pFunc == 0 ){
+			PH7_VmThrowException(pCtx, "FiberError", "Fiber %s", zWhy);
 		}
-		pFunc = (ph7_vm_func *)pEntry->pUserData;
 		return pFunc;
 	}else{
 		ph7_class_instance *pClosure = (ph7_class_instance *)pCallable->x.pOther;
@@ -1656,13 +1734,21 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
 			 * environment (including any `$this`) rides along in the named function's
 			 * aClosureEnv, installed by VmFiberSetupFrame, so *ppThis stays 0. */
 			ph7_value sName;
-			SyHashEntry *pEntry = 0;
+			ph7_vm_func *pUnwrapped = 0;
+			const char *zWhyClo = 0;
 			PH7_MemObjInit(pVm, &sName);
 			if( VmClosureUnwrap(pVm, pCallable, &sName) == SXRET_OK ){
-				pEntry = SyHashGet(&pVm->hFunction, SyBlobData(&sName.sBlob), SyBlobLength(&sName.sBlob));
+				/* The engine's own `[closure_N]` key, which only this mark gets past the
+				 * script-facing name screen (PH7_VmGetUserFunction). */
+				sName.iFlags |= MEMOBJ_AUX_ENGINEFN;
+				/* The unwrap answers a NAME for a plain closure and a `[target, method]`
+				 * pair for a first-class callable taken from a method -- so it goes through
+				 * the same body-finder as a callable the program wrote. Without it a
+				 * `$o->stat(...)` fiber could not be resolved at all. */
+				pUnwrapped = VmFiberCallableBody(pVm, &sName, ppThis, &zWhyClo);
 			}
 			PH7_MemObjRelease(&sName);
-			if( pEntry ){
+			if( pUnwrapped ){
 				/* A BOUND closure parked its $this in the pClosureThis transient
 				 * (VmClosureUnwrap): consume it as the fiber's $this — it wins over
 				 * the creation-time env capture (VmFiberSetupFrame's skip). *ppThis
@@ -1678,7 +1764,7 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
 				}
 				pVm->pClosureScope = 0;
 				pVm->bClosureScreened = 0;
-				return (ph7_vm_func *)pEntry->pUserData;
+				return pUnwrapped;
 			}
 			if( pVm->pClosureThis ){
 				/* Failed resolution: drop the parked transient so it neither leaks
@@ -1688,7 +1774,8 @@ static ph7_vm_func * VmFiberResolveCallable(ph7_context *pCtx, ph7_class_instanc
 			}
 			pVm->pClosureScope = 0;
 			pVm->bClosureScreened = 0;
-			PH7_VmThrowException(pCtx, "FiberError", "Fiber callable closure could not be resolved");
+			PH7_VmThrowException(pCtx, "FiberError", zWhyClo
+				? "Fiber %s" : "Fiber callable closure could not be resolved", zWhyClo);
 			return 0;
 		}
 		/* Object callable — resolve __invoke method */
@@ -2332,16 +2419,16 @@ PH7_PRIVATE sxi32 PH7_VmFiberStart(ph7_vm *pVm, ph7_value *pFiber, int nArg, ph7
 	if( pCallable == 0 ){
 		return SXERR_INVALID;
 	}
-	/* Resolve callable */
-	if( pCallable->iFlags & MEMOBJ_STRING ){
-		SyString sName;
-		SyHashEntry *pEntry;
-		SyStringInitFromBuf(&sName, SyBlobData(&pCallable->sBlob), SyBlobLength(&pCallable->sBlob));
-		pEntry = PH7_VmGetUserFunction(pVm, sName.zString, sName.nByte, FALSE);
-		if( pEntry == 0 ){
+	/* Resolve callable, through the same body-finder the PHP-level start() uses --
+	 * these were two copies of one decision, and only the other one grew php's array
+	 * and "Class::method" shapes. An embedder has no context to throw through, so the
+	 * reason comes back as this entry point's own status. */
+	if( pCallable->iFlags & (MEMOBJ_STRING|MEMOBJ_HASHMAP) ){
+		const char *zWhy = 0;
+		pFunc = VmFiberCallableBody(pVm, pCallable, &pClosureThis, &zWhy);
+		if( pFunc == 0 ){
 			return SXERR_NOTFOUND;
 		}
-		pFunc = (ph7_vm_func *)pEntry->pUserData;
 	}else if( pCallable->iFlags & MEMOBJ_OBJ ){
 		ph7_class_instance *pClosure = (ph7_class_instance *)pCallable->x.pOther;
 		ph7_class_method *pMethod = PH7_ClassExtractMethod(pClosure->pClass, "__invoke",
