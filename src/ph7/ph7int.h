@@ -3762,6 +3762,9 @@ struct io_private
 	SyBlob sFilt;         /* filtered bytes not yet handed to a reader */
 	sxu32 nFiltOfft;      /* read offset inside sFilt */
 	sxu8 bFiltDone;       /* the read chain already had its CLOSING call */
+	ph7_int64 iFiltPos;   /* bytes the read CHAIN has delivered: php's position
+	                       * for a filtered stream counts what came OUT, which
+	                       * has nothing to do with the device's own offset */
 	sxu32 iMagic;   /* Sanity check to avoid misuse */
 };
 #define IO_PRIVATE_MAGIC 0xFEAC14
@@ -3899,12 +3902,15 @@ PH7_PRIVATE void PH7_StreamFilterRewound(io_private *pDev);
 PH7_PRIVATE void PH7_StreamFilterReleaseChains(io_private *pDev);
 /* Attach a filter by NAME, php's own failure diagnostics raised from pCtx.
  * Answers the filter, or 0 when there is no such name. */
-PH7_PRIVATE phl_stream_filter * PH7_StreamFilterAttach(ph7_context *pCtx,io_private *pDev,
+PH7_PRIVATE phl_stream_filter * PH7_StreamFilterAttach(ph7_vm *pVm,io_private *pDev,
 	const char *zName,int nName,int iChain,int bPrepend,ph7_value *pParams);
 /* The filter behind a ph7_value, or 0 when the value is not a live one. */
 PH7_PRIVATE phl_stream_filter * PH7_StreamFilterFromValue(ph7_value *pVal);
 /* Drop every filter this VM created (called from PH7_VmReset). */
 PH7_PRIVATE void PH7_StreamFilterVmReset(ph7_vm *pVm);
+/* Attach the filters a php://filter URL names to the handle it wrapped. */
+PH7_PRIVATE int PH7_StreamFilterParseUrl(ph7_vm *pVm,const char *zSpec,int nSpec,
+	io_private *pDev,int iChains);
 /* php's `$stream` screen: a TypeError for a non-resource and for a closed one. */
 PH7_PRIVATE io_private * PH7_StreamHandleArg(ph7_context *pCtx,ph7_value *pArg,int iPos,
 	const char *zName,int *pRc);
@@ -3923,6 +3929,14 @@ PH7_PRIVATE int is_data_stream(const ph7_io_stream *pStream);
  * stream_get_meta_data() names MEMORY, TEMP and STDIO apart, and the device
  * itself is the only place that knows. */
 PH7_PRIVATE int PH7_PhpStreamKind(void *pHandle);
+/* The handle a php://filter proxy wraps, or 0 for any other php:// stream. */
+PH7_PRIVATE io_private * PH7_PhpStreamInner(void *pHandle);
+/* That handle, or pDev itself when it is not a proxy. */
+PH7_PRIVATE io_private * PH7_StreamUnwrap(io_private *pDev);
+/* Where the SCRIPT is on a handle: the device position less what was read ahead. */
+PH7_PRIVATE ph7_int64 PH7_StreamLogicalTell(io_private *pDev);
+/* Seek the stream a php://filter proxy wraps, in the same model. */
+PH7_PRIVATE int PH7_StreamSeekWrapped(io_private *pDev,ph7_int64 iOfft,int whence);
 /* The POSIX descriptor behind an open handle, or -1 for a device that has none
  * (a memory buffer, a data:// payload, a userland wrapper) and on Windows,
  * where the file devices carry a HANDLE instead. Only the settings php applies
@@ -3940,6 +3954,7 @@ PH7_PRIVATE int PH7_StreamHandleCanSeek(io_private *pDev);
 #define PH7_IO_STREAM_STDERR 3 /* php://stderr */
 #define PH7_IO_STREAM_OUTPUT 4 /* php://output */
 #define PH7_IO_STREAM_MEMORY 5 /* php://memory, php://temp, and data:// payloads */
+#define PH7_IO_STREAM_FILTER 6 /* php://filter/…/resource=… — a stream wrapped around another */
 PH7_PRIVATE int PH7_Utf8Read(
   const unsigned char *z,         /* First byte of UTF-8 character */
   const unsigned char *zTerm,     /* Pretend this byte is 0x00 */

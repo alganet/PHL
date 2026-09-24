@@ -1162,26 +1162,33 @@ PH7_PRIVATE void PH7_StreamFilterVmReset(ph7_vm *pVm)
 	}
 	pVm->pStreamFilter = 0;
 }
-PH7_PRIVATE phl_stream_filter * PH7_StreamFilterAttach(ph7_context *pCtx,io_private *pDev,
+/* php's own two diagnostics, worded from the builtin that is running — which is
+ * `stream_filter_append` on one path and the READER (file_get_contents, fopen)
+ * on the php://filter one. */
+static void FilterWarn(ph7_vm *pVm,const char *zFmt,int nName,const char *zName)
+{
+	char zMsg[160];
+	SyBufferFormat(zMsg,sizeof(zMsg),zFmt,nName,zName);
+	PH7_VmThrowError(pVm,pVm->pCalleeName,PH7_CTX_WARNING,zMsg);
+}
+PH7_PRIVATE phl_stream_filter * PH7_StreamFilterAttach(ph7_vm *pVm,io_private *pDev,
 	const char *zName,int nName,int iChain,int bPrepend,ph7_value *pParams)
 {
 	const phl_filter_ops *pOps;
 	phl_stream_filter *pFilter;
 	pOps = FilterFindOps(zName,nName);
 	if( pOps == 0 ){
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"Unable to locate filter \"%.*s\"",nName,zName);
+		FilterWarn(pVm,"Unable to locate filter \"%.*s\"",nName,zName);
 		return 0;
 	}
-	pFilter = FilterNew(pCtx->pVm,pOps,zName,nName);
+	pFilter = FilterNew(pVm,pOps,zName,nName);
 	if( pFilter == 0 ){
-		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");
+		PH7_VmThrowError(pVm,pVm->pCalleeName,PH7_CTX_ERR,"PH7 is running out of memory");
 		return 0;
 	}
 	if( pOps->xCreate && pOps->xCreate(pFilter,pParams) != PH7_OK ){
 		FilterDispose(pFilter);
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"Unable to create or locate filter \"%.*s\"",nName,zName);
+		FilterWarn(pVm,"Unable to create or locate filter \"%.*s\"",nName,zName);
 		return 0;
 	}
 	pFilter->pDev = pDev;
@@ -1253,7 +1260,7 @@ static int StreamFilterAddCommon(ph7_context *pCtx,int nArg,ph7_value **apArg,in
 		}
 	}
 	if( iChain & PHL_STREAM_FILTER_READ ){
-		pFilter = PH7_StreamFilterAttach(pCtx,pDev,zName,nName,PHL_STREAM_FILTER_READ,
+		pFilter = PH7_StreamFilterAttach(pCtx->pVm,pDev,zName,nName,PHL_STREAM_FILTER_READ,
 			bPrepend,pParams);
 		if( pFilter == 0 ){
 			ph7_result_bool(pCtx,0);
@@ -1261,7 +1268,7 @@ static int StreamFilterAddCommon(ph7_context *pCtx,int nArg,ph7_value **apArg,in
 		}
 	}
 	if( iChain & PHL_STREAM_FILTER_WRITE ){
-		pFilter = PH7_StreamFilterAttach(pCtx,pDev,zName,nName,PHL_STREAM_FILTER_WRITE,
+		pFilter = PH7_StreamFilterAttach(pCtx->pVm,pDev,zName,nName,PHL_STREAM_FILTER_WRITE,
 			bPrepend,pParams);
 		if( pFilter == 0 ){
 			ph7_result_bool(pCtx,0);
@@ -1339,6 +1346,81 @@ PH7_PRIVATE int PH7_builtin_stream_get_filters(ph7_context *pCtx,int nArg,ph7_va
 		ph7_value_reset_string_cursor(pValue);
 	}
 	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/*
+ * ---------------------------------------------------------------------------
+ * php://filter/…/resource=… — the URL form of the same chain.
+ *
+ * The path after `filter/` is a list of `/`-separated segments: `read=a|b` and
+ * `write=a|b` name one chain each, and a bare `a|b` names both (as far as the
+ * OPEN MODE allows — a read filter on a write-only handle is dropped). What php
+ * does with the RESOURCE is worth spelling out, because it is not a clean split:
+ * it looks for `/resource=` and truncates the list there, and when the path
+ * BEGINS with `resource=` — no slash before it — it takes the resource and
+ * leaves the list alone, so every segment of the resource path is then tried as
+ * a filter name too. `php://filter/resource=/tmp/x` really does warn about
+ * `resource=`, `tmp` and `x` and then open the file.
+ * ---------------------------------------------------------------------------
+ */
+static void FilterUrlOne(ph7_vm *pVm,io_private *pDev,const char *zList,int nList,int iChains)
+{
+	int i = 0;
+	while( i < nList ){
+		int j = i;
+		while( j < nList && zList[j] != '|' ){
+			j++;
+		}
+		if( j > i ){
+			int bOk = 1;
+			if( iChains & PHL_STREAM_FILTER_READ ){
+				bOk = PH7_StreamFilterAttach(pVm,pDev,&zList[i],j-i,
+					PHL_STREAM_FILTER_READ,0,0) != 0;
+			}
+			if( bOk && (iChains & PHL_STREAM_FILTER_WRITE) ){
+				bOk = PH7_StreamFilterAttach(pVm,pDev,&zList[i],j-i,
+					PHL_STREAM_FILTER_WRITE,0,0) != 0;
+			}
+			if( !bOk ){
+				/* The URL form says it TWICE: once about the name and once about
+				 * the chain it could not be put on. The open still succeeds —
+				 * php opens the resource with the filters it could make. */
+				char zMsg[160];
+				SyBufferFormat(zMsg,sizeof(zMsg),"Unable to create filter (%.*s)",
+					j-i,&zList[i]);
+				PH7_VmThrowError(pVm,pVm->pCalleeName,PH7_CTX_WARNING,zMsg);
+			}
+		}
+		i = j + 1;
+	}
+}
+PH7_PRIVATE int PH7_StreamFilterParseUrl(ph7_vm *pVm,const char *zSpec,int nSpec,
+	io_private *pDev,int iChains)
+{
+	int i = 0;
+	while( i < nSpec ){
+		int j = i,iWant = iChains;
+		const char *zList;
+		int nName;
+		while( j < nSpec && zSpec[j] != '/' ){
+			j++;
+		}
+		zList = &zSpec[i];
+		nName = j - i;
+		if( nName >= 5 && SyMemcmp(zList,"read=",5) == 0 ){
+			iWant = iChains & PHL_STREAM_FILTER_READ;
+			zList += 5;
+			nName -= 5;
+		}else if( nName >= 6 && SyMemcmp(zList,"write=",6) == 0 ){
+			iWant = iChains & PHL_STREAM_FILTER_WRITE;
+			zList += 6;
+			nName -= 6;
+		}
+		if( nName > 0 && iWant != 0 ){
+			FilterUrlOne(pVm,pDev,zList,nName,iWant);
+		}
+		i = j + 1;
+	}
 	return PH7_OK;
 }
 #endif /* PH7_DISABLE_DISK_IO */

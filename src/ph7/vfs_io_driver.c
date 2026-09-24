@@ -64,6 +64,11 @@ struct ph7_stream_data
 	SyBlob sMem;     /* MEMORY type: backing buffer */
 	sxu32 nCur;      /* MEMORY type: read/write cursor */
 	int bReadOnly;   /* MEMORY type: TRUE for data:// payloads */
+	/* FILTER type: php://filter/…/resource=… is not a stream of its own — it is
+	 * the stream named by `resource=` with a chain wrapped around it. The chain
+	 * lives on this io_private, so every read and write below goes through
+	 * PH7_StreamRead/PH7_StreamWrite and is filtered on the way. */
+	io_private *pInner;
 };
 /*
  * Allocate a new instance of the ph7_stream_data structure.
@@ -122,11 +127,114 @@ static ph7_stream_data * PHPStreamDataInit(ph7_vm *pVm,int iType)
  * Status:
  *   Stable.
  */
+/*
+ * php://filter/<spec>/resource=<uri>. The resource is opened through the
+ * ordinary device dispatch and the spec's filters are attached to it; what this
+ * device hands back is a PROXY whose reads and writes go through that handle,
+ * which is what makes the chain apply to file_get_contents(), include and every
+ * other opener without one of them knowing about filters at all.
+ */
+static void PHPStreamData_Close(void *pHandle);
+static int PHPStreamFilterOpen(const char *zSpec,int nSpec,int iMode,ph7_vm *pVm,
+	ph7_stream_data **ppData)
+{
+	const ph7_io_stream *pInnerStream;
+	const char *zRes = 0;
+	ph7_stream_data *pData;
+	io_private *pInner;
+	SyBlob sRes;
+	int nRes = 0,i,iChains = 0;
+	/* php looks for `/resource=` and cuts the filter list there. When the path
+	 * BEGINS with `resource=` it takes the resource and leaves the list alone —
+	 * so the resource's own path segments are then tried as filter names, which
+	 * is exactly what php warns about. */
+	for( i = 0 ; i + 10 <= nSpec ; i++ ){
+		if( zSpec[i] == '/' && SyMemcmp(&zSpec[i+1],"resource=",9) == 0 ){
+			zRes = &zSpec[i+10];
+			nRes = nSpec - (i + 10);
+			nSpec = i;
+			break;
+		}
+	}
+	if( zRes == 0 ){
+		if( nSpec >= 9 && SyMemcmp(zSpec,"resource=",9) == 0 ){
+			zRes = &zSpec[9];
+			nRes = nSpec - 9;
+		}else{
+			PH7_VmThrowError(pVm,pVm->pCalleeName,PH7_CTX_WARNING,"No URL resource specified");
+			return -1;
+		}
+	}
+	if( iMode & (PH7_IO_OPEN_RDONLY|PH7_IO_OPEN_RDWR) ){
+		iChains |= PHL_STREAM_FILTER_READ;
+	}
+	if( iMode & (PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_RDWR|PH7_IO_OPEN_APPEND) ){
+		iChains |= PHL_STREAM_FILTER_WRITE;
+	}
+	pData = PHPStreamDataInit(pVm,PH7_IO_STREAM_FILTER);
+	if( pData == 0 ){
+		return -1;
+	}
+	pInner = (io_private *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(io_private));
+	if( pInner ){
+		SyZero(pInner,sizeof(io_private));
+	}
+	if( pInner == 0 ){
+		PHPStreamData_Close((void *)pData);
+		return -1;
+	}
+	/* The dispatch wants a NUL-terminated URI and mutates the pointer it is
+	 * handed, so the resource is copied out of the path first. */
+	SyBlobInit(&sRes,&pVm->sAllocator);
+	SyBlobAppend(&sRes,zRes,(sxu32)nRes);
+	SyBlobNullAppend(&sRes);
+	{
+		const char *zPath = (const char *)SyBlobData(&sRes);
+		pInnerStream = PH7_VmGetStreamDevice(pVm,&zPath,nRes);
+		InitIOPrivate(pVm,pInnerStream,pInner);
+		pInner->pHandle = pInnerStream
+			? PH7_StreamOpenHandle(pVm,pInnerStream,zPath,iMode,FALSE,0,FALSE,0,0)
+			: 0;
+		if( pInner->pHandle == 0 ){
+			SyBlobRelease(&sRes);
+			SyMemBackendFree(&pVm->sAllocator,pInner);
+			PHPStreamData_Close((void *)pData);
+			return -1;
+		}
+		SetIOPrivateOpenedAs(pInner,zRes,nRes,"r",1);
+	}
+	SyBlobRelease(&sRes);
+	pData->pInner = pInner;
+	PH7_StreamFilterParseUrl(pVm,zSpec,nSpec,pInner,iChains);
+	*ppData = pData;
+	return PH7_OK;
+}
 /* int (*xOpen)(const char *,int,ph7_value *,void **) */
 static int PHPStreamData_Open(const char *zName,int iMode,ph7_value *pResource,void ** ppHandle)
 {
 	ph7_stream_data *pData;
 	SyString sStream;
+	if( SyStrnicmp(zName,"filter",sizeof("filter")-1) == 0
+	 && (zName[6] == '/' || zName[6] == 0) ){
+		int rc;
+		if( zName[6] == 0 ){
+			/* php://filter with nothing behind it is not a stream at all. */
+			if( pResource && pResource->pVm ){
+				PH7_VmThrowError(pResource->pVm,pResource->pVm->pCalleeName,
+					PH7_CTX_WARNING,"Invalid php:// URL specified");
+			}
+			return -1;
+		}
+		if( pResource == 0 || pResource->pVm == 0 ){
+			return -1;
+		}
+		rc = PHPStreamFilterOpen(&zName[7],(int)SyStrlen(&zName[7]),iMode,pResource->pVm,&pData);
+		if( rc != PH7_OK ){
+			return -1;
+		}
+		*ppHandle = (void *)pData;
+		return PH7_OK;
+	}
 	SyStringInitFromBuf(&sStream,zName,SyStrlen(zName));
 	/* Trim leading and trailing white spaces */
 	SyStringFullTrim(&sStream);
@@ -163,6 +271,10 @@ static ph7_int64 PHPStreamData_Read(void *pHandle,void *pBuffer,ph7_int64 nDatat
 	ph7_stream_data *pData = (ph7_stream_data *)pHandle;
 	if( pData == 0 ){
 		return -1;
+	}
+	if( pData->iType == PH7_IO_STREAM_FILTER ){
+		/* Through the shared reader, which is where the chain runs. */
+		return PH7_StreamRead(pData->pInner,pBuffer,nDatatoRead);
 	}
 	if( pData->iType == PH7_IO_STREAM_MEMORY ){
 		sxu32 nAvail = SyBlobLength(&pData->sMem);
@@ -217,6 +329,9 @@ static ph7_int64 PHPStreamData_Write(void *pHandle,const void *pBuf,ph7_int64 nW
 	ph7_stream_data *pData = (ph7_stream_data *)pHandle;
 	if( pData == 0 ){
 		return -1;
+	}
+	if( pData->iType == PH7_IO_STREAM_FILTER ){
+		return PH7_StreamWrite(pData->pInner,pBuf,nWrite);
 	}
 	if( pData->iType == PH7_IO_STREAM_STDIN ){
 		/* Forbidden */
@@ -302,6 +417,18 @@ static void PHPStreamData_Close(void *pHandle)
 		return;
 	}
 	pVm = pData->pVm;
+	if( pData->iType == PH7_IO_STREAM_FILTER && pData->pInner ){
+		/* The write chain closes while the device below is still open. */
+		PH7_StreamFilterReleaseChains(pData->pInner);
+		if( pData->pInner->pStream ){
+			PH7_StreamCloseHandle(pData->pInner->pStream,pData->pInner->pHandle);
+		}
+		SyBlobRelease(&pData->pInner->sBuffer);
+		SyBlobRelease(&pData->pInner->sFilt);
+		SyBlobRelease(&pData->pInner->sUri);
+		SyMemBackendFree(&pVm->sAllocator,pData->pInner);
+		pData->pInner = 0;
+	}
 	SyBlobRelease(&pData->sMem);
 	/* Free the instance */
 	SyMemBackendFree(&pVm->sAllocator,pData);
@@ -311,7 +438,13 @@ static int PHPStreamData_Seek(void *pHandle,ph7_int64 iOfft,int whence)
 {
 	ph7_stream_data *pData = (ph7_stream_data *)pHandle;
 	ph7_int64 iNew;
-	if( pData == 0 || pData->iType != PH7_IO_STREAM_MEMORY ){
+	if( pData == 0 ){
+		return -1;
+	}
+	if( pData->iType == PH7_IO_STREAM_FILTER ){
+		return PH7_StreamSeekWrapped(pData->pInner,iOfft,whence);
+	}
+	if( pData->iType != PH7_IO_STREAM_MEMORY ){
 		return -1;
 	}
 	switch(whence){
@@ -329,6 +462,11 @@ static int PHPStreamData_Seek(void *pHandle,ph7_int64 iOfft,int whence)
 static ph7_int64 PHPStreamData_Tell(void *pHandle)
 {
 	ph7_stream_data *pData = (ph7_stream_data *)pHandle;
+	if( pData && pData->iType == PH7_IO_STREAM_FILTER ){
+		/* Where the SCRIPT is on the wrapped stream: the device sits past
+		 * whatever the chain has already produced and nobody has taken. */
+		return PH7_StreamLogicalTell(pData->pInner);
+	}
 	if( pData == 0 || pData->iType != PH7_IO_STREAM_MEMORY ){
 		return -1;
 	}
@@ -338,6 +476,13 @@ static ph7_int64 PHPStreamData_Tell(void *pHandle)
 static int PHPStreamData_Trunc(void *pHandle,ph7_int64 nLen)
 {
 	ph7_stream_data *pData = (ph7_stream_data *)pHandle;
+	if( pData && pData->iType == PH7_IO_STREAM_FILTER ){
+		io_private *pIn = pData->pInner;
+		if( pIn == 0 || pIn->pStream == 0 || pIn->pStream->xTrunc == 0 ){
+			return -1;
+		}
+		return pIn->pStream->xTrunc(pIn->pHandle,nLen);
+	}
 	if( pData == 0 || pData->iType != PH7_IO_STREAM_MEMORY || pData->bReadOnly ){
 		return -1;
 	}
@@ -1946,6 +2091,24 @@ PH7_PRIVATE const ph7_io_stream sPHP_Stream = {
  * Return TRUE if we are dealing with the php:// stream.
  * FALSE otherwise.
  */
+/*
+ * The handle a php://filter proxy WRAPS, or 0 for any other php:// stream. The
+ * proxy is not a stream of its own — the position, the descriptor, the stat and
+ * the lock all belong to the stream underneath — so everything that asks the
+ * device such a question has to go through here first.
+ */
+PH7_PRIVATE io_private * PH7_PhpStreamInner(void *pHandle)
+{
+#ifndef PH7_DISABLE_DISK_IO
+	ph7_stream_data *pData = (ph7_stream_data *)pHandle;
+	if( pData && pData->iType == PH7_IO_STREAM_FILTER ){
+		return pData->pInner;
+	}
+#else
+	SXUNUSED(pHandle);
+#endif
+	return 0;
+}
 PH7_PRIVATE int is_php_stream(const ph7_io_stream *pStream)
 {
 #ifndef PH7_DISABLE_DISK_IO
@@ -1999,6 +2162,9 @@ PH7_PRIVATE int PH7_StreamIsPlainDevice(io_private *pDev)
 PH7_PRIVATE int PH7_StreamPosixFd(io_private *pDev)
 {
 #if !defined(__WINNT__) && !defined(PH7_DISABLE_DISK_IO)
+	/* A php://filter handle has no descriptor of its own; the stream it wraps
+	 * does, and that is the one blocking mode and locking apply to. */
+	pDev = PH7_StreamUnwrap(pDev);
 	if( pDev == 0 || pDev->pHandle == 0 || pDev->pStream == 0 || pDev->bDir ){
 		/* A DIRECTORY handle rides the same ops table as a file and stores a
 		 * DIR* where a file stores its descriptor, so reading one as the other

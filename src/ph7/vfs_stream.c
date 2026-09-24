@@ -45,6 +45,74 @@ static void StreamSeekBackForWrite(io_private *pDev)
 		ResetIOPrivate(pDev);
 	}
 }
+PH7_PRIVATE ph7_int64 PH7_StreamLogicalTell(io_private *pDev)
+{
+	ph7_int64 iOfft;
+	if( pDev == 0 ){
+		return -1;
+	}
+	if( pDev->pReadFilters ){
+		/* A read filter breaks the tie between the device's offset and the
+		 * script's: four base64 characters come out of three bytes, so the two
+		 * numbers are not even the same magnitude. php counts what it
+		 * DELIVERED, and so does this — less whatever a line reader is still
+		 * holding on the script's behalf. */
+		iOfft = pDev->iFiltPos;
+		if( SyBlobLength(&pDev->sBuffer) > pDev->nOfft ){
+			iOfft -= (ph7_int64)(SyBlobLength(&pDev->sBuffer) - pDev->nOfft);
+		}
+		return iOfft;
+	}
+	if( pDev->pStream == 0 || pDev->pStream->xTell == 0 ){
+		return -1;
+	}
+	iOfft = pDev->pStream->xTell(pDev->pHandle);
+	if( iOfft < 0 ){
+		return iOfft;
+	}
+	return iOfft - (ph7_int64)StreamAheadBytes(pDev);
+}
+/*
+ * Seek the stream a php://filter proxy wraps. Same model as fseek() on a
+ * filtered handle: a relative move is resolved against the position the SCRIPT
+ * sees, because the device's own offset is not comparable to it.
+ */
+PH7_PRIVATE int PH7_StreamSeekWrapped(io_private *pDev,ph7_int64 iOfft,int whence)
+{
+	int rc;
+	if( pDev == 0 || pDev->pStream == 0 || pDev->pStream->xSeek == 0 ){
+		return -1;
+	}
+	if( pDev->pReadFilters && whence != 2 /* SEEK_END */ ){
+		if( whence == 1 /* SEEK_CUR */ ){
+			iOfft += PH7_StreamLogicalTell(pDev);
+		}
+		whence = 0; /* SEEK_SET */
+	}
+	rc = pDev->pStream->xSeek(pDev->pHandle,iOfft,whence);
+	if( rc == PH7_OK ){
+		SyBlobReset(&pDev->sBuffer);
+		pDev->nOfft = 0;
+		SyBlobReset(&pDev->sFilt);
+		pDev->nFiltOfft = 0;
+		pDev->bFiltDone = 0;
+		pDev->bEof = 0;
+		PH7_StreamFilterRewound(pDev);
+		pDev->iFiltPos = whence == 0 ? iOfft
+			: (pDev->pStream->xTell ? pDev->pStream->xTell(pDev->pHandle) : 0);
+	}
+	return rc;
+}
+PH7_PRIVATE io_private * PH7_StreamUnwrap(io_private *pDev)
+{
+	if( pDev && pDev->pStream && is_php_stream(pDev->pStream) ){
+		io_private *pInner = PH7_PhpStreamInner(pDev->pHandle);
+		if( pInner ){
+			return pInner;
+		}
+	}
+	return pDev;
+}
 static sxu32 StreamAheadBytes(io_private *pDev)
 {
 	sxu32 n = 0;
@@ -248,6 +316,22 @@ PH7_PRIVATE int PH7_builtin_fseek(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_int(pCtx,-1);
 		return PH7_OK;
 	}
+	if( pDev->pReadFilters && whence != 2 /* SEEK_END */ ){
+		/* On a FILTERED stream the two positions are unrelated, so a relative
+		 * seek is resolved against the one the script sees and the device is
+		 * then placed at the result — php's own model, and the only one under
+		 * which `fseek($f,0,SEEK_CUR)` is the no-op it looks like. */
+		if( whence == 1 /* SEEK_CUR */ ){
+			iOfft += PH7_StreamLogicalTell(pDev);
+		}
+		rc = pStream->xSeek(pDev->pHandle,iOfft,0/*SEEK_SET*/);
+		if( rc == PH7_OK ){
+			ResetIOPrivate(pDev);
+			pDev->iFiltPos = iOfft;
+		}
+		ph7_result_int(pCtx,rc == PH7_OK ? 0 : - 1);
+		return PH7_OK;
+	}
 	if( whence == 1 /* SEEK_CUR */ ){
 		/* The CURRENT position is the LOGICAL one: the device sits past the
 		 * read-ahead the line readers buffer, so seek relative to where the
@@ -261,6 +345,9 @@ PH7_PRIVATE int PH7_builtin_fseek(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	if( rc == PH7_OK ){
 		/* Ignore buffered data */
 		ResetIOPrivate(pDev);
+		if( pDev->pReadFilters ){
+			pDev->iFiltPos = pStream->xTell ? pStream->xTell(pDev->pHandle) : 0;
+		}
 	}
 	/* IO result */
 	ph7_result_int(pCtx,rc == PH7_OK ? 0 : - 1);
@@ -311,8 +398,7 @@ PH7_PRIVATE int PH7_builtin_ftell(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	 * readers buffered ahead, so the SCRIPT's position is the device position
 	 * less the unconsumed remainder — ftell() after fgets("abcdefghij\nrest")
 	 * is php's 11, not the 15 the device already read. */
-	iOfft = pStream->xTell(pDev->pHandle);
-	iOfft -= (ph7_int64)StreamAheadBytes(pDev);
+	iOfft = PH7_StreamLogicalTell(pDev);
 	/* IO result */
 	ph7_result_int64(pCtx,iOfft);
 	return PH7_OK;
@@ -396,6 +482,7 @@ PH7_PRIVATE int PH7_builtin_fflush(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	/* Point to the target IO stream device */
+	pDev = PH7_StreamUnwrap(pDev);
 	pStream = pDev->pStream;
 	if( pStream == 0 || pStream->xSync == 0){
 		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
@@ -579,6 +666,7 @@ static ph7_int64 IoPrivateFilteredRead(io_private *pDev,void *pBuf,ph7_int64 nLe
 	}
 	SyMemcpy(SyBlobDataAt(&pDev->sFilt,pDev->nFiltOfft),pBuf,(sxu32)n);
 	pDev->nFiltOfft += (sxu32)n;
+	pDev->iFiltPos += n;
 	if( pDev->nFiltOfft >= SyBlobLength(&pDev->sFilt) ){
 		SyBlobReset(&pDev->sFilt);
 		pDev->nFiltOfft = 0;
@@ -863,7 +951,13 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 	}
 	SyStringInitFromBuf(&sFile,zFile,SyStrlen(zFile));
 	if( use_include ){
-		if(	sFile.zString[0] == '/' ||
+		if(	/* include_path names DIRECTORIES, so it has nothing to say about a
+			 * URL: walking it for a `php://filter/…` one built `<dir>/filter/…`
+			 * and reported the whole open as an IO error. The direct arm is the
+			 * one that also marks the file as included, which is what
+			 * include_once needs. */
+			pStream != pVm->pDefStream ||
+			sFile.zString[0] == '/' ||
 #ifdef __WINNT__
 			(sFile.nByte > 2 && sFile.zString[1] == ':' && (sFile.zString[2] == '\\' || sFile.zString[2] == '/') ) ||
 #endif
@@ -2431,6 +2525,9 @@ PH7_PRIVATE int PH7_builtin_fstat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	/* A php://filter handle is the stream underneath it, and that is the one
+	 * with a stat to answer. */
+	pDev = PH7_StreamUnwrap(pDev);
 	/* Point to the target IO stream device */
 	pStream = pDev->pStream;
 	if( pStream == 0  || pStream->xStat == 0){
@@ -2620,6 +2717,7 @@ PH7_PRIVATE int PH7_builtin_flock(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_VmThrowException(pCtx,"ValueError",
 			"flock(): Argument #2 ($operation) must be one of LOCK_SH, LOCK_EX, or LOCK_UN");
 	}
+	pDev = PH7_StreamUnwrap(pDev);
 	/* Point to the target IO stream device */
 	pStream = pDev->pStream;
 	if( pStream == 0  || pStream->xLock == 0){
@@ -3276,6 +3374,8 @@ PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_priva
 	pOut->pReadFilters = 0;
 	pOut->pWriteFilters = 0;
 	pOut->bFiltDone = 0;
+	pOut->iFiltPos = 0;
+	pOut->pCtxRes = 0;
 	SyBlobInit(&pOut->sFilt,&pVm->sAllocator);
 	pOut->nFiltOfft = 0;
 	/* Set the magic number */
@@ -6642,6 +6742,7 @@ PH7_PRIVATE int PH7_builtin_stream_supports_lock(ph7_context *pCtx,int nArg,ph7_
 	 * when the device exposes no lock operation of its own (php://stdout, a
 	 * pipe); a memory buffer and a data:// payload have neither and are the
 	 * false answers. */
+	pDev = PH7_StreamUnwrap(pDev);
 	ph7_result_bool(pCtx,pDev->bDir == 0
 		&& ((pDev->pStream != 0 && pDev->pStream->xLock != 0)
 		    || PH7_StreamPosixFd(pDev) >= 0));
