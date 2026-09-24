@@ -377,22 +377,88 @@ PH7_PRIVATE sxi32 PH7_ContextMemoryError(ph7_context *pCtx)
  * (Builtin int PARAMETERS need the same treatment — they coerce through each
  * function's own ph7_value_to_int call, so they ride the recorded ZPP sweep.)
  */
-/* php only DEPRECATES a lossy float->int operand (`5 % 2.7`, `3 | 1.5`); PHL targets
- * php's non-deprecated surface and rejects it with a TypeError. An INTEGRAL float
- * (`4.0 % 3`) loses nothing and is accepted. Returns SXRET_OK to continue, or the
- * throw status for the caller to route via PH7_DISPATCH_ENFORCE_RC. */
+/*
+ * TRUE when reading pVal as an `int` would lose what it holds -- the event php
+ * 8.1 only DEPRECATES (`Implicit conversion from float 1.9 / float-string "1.9"
+ * to int loses precision`) and §10 refuses outright.
+ *
+ * Two kinds of value can lose something, and php treats them as one: a FLOAT,
+ * and a numeric STRING whose bytes spell a double. Which strings those are is
+ * not just the ones carrying a '.' or an exponent — an integer-shaped run too
+ * long for an int64 is a double in php too ("99999999999999999999"), and it
+ * loses digits exactly the same way. So the question is asked of the NUMBER the
+ * value converts to, whatever spelling it arrived in.
+ *
+ * A value is lossy when that number is not an exact int64: outside the range at
+ * all (NaN and the infinities included), or carrying a fraction. An integral
+ * float in range (`4.0 % 3`, `$o->i = 5.0`) loses nothing and is not lossy.
+ */
+PH7_PRIVATE int VmValueIsLossyToInt(ph7_value *pVal)
+{
+	ph7_real r;
+	if( pVal == 0 ){
+		return FALSE;
+	}
+	if( pVal->iFlags & MEMOBJ_REAL ){
+		r = pVal->rVal;
+	}else if( (pVal->iFlags & MEMOBJ_STRING) && pVal->pVm ){
+		/* Asked of a COPY: the operand is still needed intact when the answer is
+		 * no, and a numeric conversion would replace it. */
+		ph7_value sProbe;
+		SyString sStr;
+		int bReal;
+		const char *z = (const char *)SyBlobData(&pVal->sBlob);
+		sxu32 n = SyBlobLength(&pVal->sBlob), i;
+		/* A string with no '.', no exponent and fewer bytes than the shortest
+		 * out-of-range integer cannot spell a double, so the ordinary `$s % 2`
+		 * answers without building anything. Conservative on purpose: it may
+		 * still probe a string that turns out to be an int, never the reverse. */
+		if( n < 19 ){
+			for( i = 0 ; i < n ; ++i ){
+				if( z[i] == '.' || z[i] == 'e' || z[i] == 'E' ){
+					break;
+				}
+			}
+			if( i >= n ){
+				return FALSE;
+			}
+		}
+		SyStringInitFromBuf(&sStr,SyBlobData(&pVal->sBlob),SyBlobLength(&pVal->sBlob));
+		PH7_MemObjInitFromString(pVal->pVm,&sProbe,&sStr);
+		PH7_MemObjToNumeric(&sProbe);
+		bReal = (sProbe.iFlags & MEMOBJ_REAL) != 0;
+		r = sProbe.rVal;
+		PH7_MemObjRelease(&sProbe);
+		if( !bReal ){
+			return FALSE;
+		}
+	}else{
+		return FALSE;
+	}
+	/* The bounds are tested in DOUBLE space, BEFORE the cast: (sxi64)r is
+	 * undefined outside them, and a test of an undefined cast's result is one an
+	 * optimiser is entitled to delete -- which is exactly how the printf family's
+	 * PHP_INT_MIN guard disappeared (§2). NaN fails both comparisons and either
+	 * infinity fails one, so all three are lossy without a libm predicate. */
+	if( !(r >= -9223372036854775808.0 && r < 9223372036854775808.0) ){
+		return TRUE;
+	}
+	return r != (ph7_real)(sxi64)r;
+}
+/* php only DEPRECATES a lossy float(-string) -> int operand (`5 % 2.7`,
+ * `3 | 1.5`, `"1.9" % 2`); PHL targets php's non-deprecated surface and rejects
+ * it with a TypeError. An INTEGRAL float (`4.0 % 3`) loses nothing and is
+ * accepted. Returns SXRET_OK to continue, or the throw status for the caller to
+ * route via PH7_DISPATCH_ENFORCE_RC. */
 PH7_PRIVATE sxi32 VmRejectFloatOperand(ph7_vm *pVm,ph7_value *pVal)
 {
-	double r;
-	if( pVal == 0 || (pVal->iFlags & MEMOBJ_REAL) == 0 ){
-		return SXRET_OK;
-	}
-	r = (double)pVal->rVal;
-	if( r == (double)(sxi64)r ){
+	if( !VmValueIsLossyToInt(pVal) ){
 		return SXRET_OK;
 	}
 	return VmThrowFixedError(pVm,"TypeError",
-		"Implicit conversion from float to int loses precision");
+		(pVal->iFlags & MEMOBJ_REAL)
+			? "Implicit conversion from float to int loses precision"
+			: "Implicit conversion from float-string to int loses precision");
 }
 /*
  * Single source of truth for the PHP call-depth cap policy (BYTECODE.md stage
@@ -1738,30 +1804,15 @@ PH7_PRIVATE sxi32 VmEnforceScalarType(ph7_value *pVal, sxu32 nType, int bStrict)
 		&& !PH7_MemObjStringIsNumeric(pVal) ){
 		return SXERR_INVALID;
 	}
-	if( nType == MEMOBJ_INT && pVal->pVm ){
-		/* php 8.1 only DEPRECATES a lossy float(-string) -> int weak coercion
-		 * (typed params, returns, typed property stores all funnel through here);
-		 * PHL rejects it. SXERR_INVALID routes to the caller's TypeError, exactly
-		 * like the null / non-numeric-string cases above. An INTEGRAL float loses
-		 * nothing and coerces normally. */
-		if( pVal->iFlags & MEMOBJ_REAL ){
-			ph7_real r = pVal->rVal;
-			if( r != (ph7_real)(sxi64)r ){
-				return SXERR_INVALID;
-			}
-		}else if( pVal->iFlags & MEMOBJ_STRING ){
-			SyString sStr;
-			ph7_value sProbe;
-			int bLossy;
-			SyStringInitFromBuf(&sStr,SyBlobData(&pVal->sBlob),SyBlobLength(&pVal->sBlob));
-			PH7_MemObjInitFromString(pVal->pVm,&sProbe,&sStr);
-			PH7_MemObjToNumeric(&sProbe);
-			bLossy = (sProbe.iFlags & MEMOBJ_REAL) && sProbe.rVal != (ph7_real)(sxi64)sProbe.rVal;
-			PH7_MemObjRelease(&sProbe);
-			if( bLossy ){
-				return SXERR_INVALID;
-			}
-		}
+	if( nType == MEMOBJ_INT && VmValueIsLossyToInt(pVal) ){
+		/* php 8.1 only DEPRECATES a lossy float(-string) -> int weak coercion;
+		 * PHL rejects it (§10). SXERR_INVALID routes to the caller's TypeError,
+		 * exactly like the null / non-numeric-string cases above. An INTEGRAL
+		 * float loses nothing and coerces normally. One predicate answers this
+		 * for the typed parameters and returns that reach here, for the typed
+		 * PROPERTY store (which has its own weak path below) and for the
+		 * integer-only operators. */
+		return SXERR_INVALID;
 	}
 	{
 		ProcMemObjCast xCast = PH7_MemObjCastMethod(nType);
@@ -2050,6 +2101,19 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 			return VmThrowPropertyTypeError(pVm,pVmAttr,
 				VmFormatValueClassName(pValue,zBuf,sizeof(zBuf)));
 		}
+	}
+	/* An `int` slot takes the same lossy refusal a typed PARAMETER and a return
+	 * take (VmCoerceScalarWeak's own rule, §10) -- and it had none of it, so this
+	 * one weak path was storing a number the script never wrote: `$o->i = 1.9`
+	 * stored 1 in silence, `$o->i = 1e20` stored PHP_INT_MIN, and
+	 * `$o->i = "99999999999999999999"` stored PHP_INT_MAX. php refuses the last
+	 * two outright (`Cannot assign float to property C::$i of type int`) and
+	 * deprecates the first; PHL refuses all three, with the message the other two
+	 * write-sites already use. Asked before the cast branches below, so a value
+	 * that arrives carrying a cached int representation is asked too. */
+	if( pAttr->nType == MEMOBJ_INT && VmValueIsLossyToInt(pValue) ){
+		return VmThrowPropertyTypeError(pVm,pVmAttr,
+			VmValueGivenName(pValue,zGivenBuf,sizeof(zGivenBuf)));
 	}
 	if( (pValue->iFlags & pAttr->nType) == 0 ){
 		ProcMemObjCast xCast = PH7_MemObjCastMethod(pAttr->nType);

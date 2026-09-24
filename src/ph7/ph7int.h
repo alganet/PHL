@@ -4002,6 +4002,7 @@ PH7_PRIVATE sxi32 VmEnumMaterializeCase(ph7_vm *pVm,ph7_class *pClass,ph7_class_
 PH7_PRIVATE int VmFinallyAdvance(ph7_vm *pVm, VmInstr *aInstr, int *pnCross, sxu32 *pPc);
 PH7_PRIVATE int VmRecursionExceeded(ph7_vm *pVm);
 PH7_PRIVATE sxi32 VmRecursionFatal(ph7_vm *pVm);
+PH7_PRIVATE int VmValueIsLossyToInt(ph7_value *pVal);
 PH7_PRIVATE sxi32 VmRejectFloatOperand(ph7_vm *pVm,ph7_value *pVal);
 PH7_PRIVATE sxi32 VmThrowArgNotPassed(ph7_vm *pVm,ph7_class *pOwnerClass,SyString *pFuncName, sxu32 nArg,SyString *pArgName);
 PH7_PRIVATE sxi32 VmThrowBuiltinError(ph7_vm *pVm,const char *zClass,sxu32 nClass,SyBlob *pMsg);
