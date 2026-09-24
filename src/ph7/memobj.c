@@ -176,6 +176,51 @@ PH7_PRIVATE sxi64 PH7_TokenValueToInt64(SyString *pVal)
 	return iVal;
 }
 /*
+ * TRUE when the numeric PREFIX that ends at zTail is float-SHAPED -- it carries
+ * a '.' or a complete exponent. This is php's is_numeric_string answering
+ * IS_DOUBLE, and it decides which of two entirely different readings the bytes
+ * get: an integer-shaped run is read from its DIGITS, a float-shaped one from
+ * the double they spell.
+ */
+static int MemObjNumericPrefixIsFloat(ph7_value *pObj,const char *zTail)
+{
+	const char *z = (const char *)SyBlobData(&pObj->sBlob);
+	while( z < zTail ){
+		if( z[0] == '.' || z[0] == 'e' || z[0] == 'E' ){
+			return TRUE;
+		}
+		z++;
+	}
+	return FALSE;
+}
+#ifndef PH7_OMIT_FLOATING_POINT
+/*
+ * php's zend_dval_to_lval_cap: the double->int conversion a NUMERIC STRING
+ * takes, which is not the one a real float takes. This one SATURATES at the
+ * int64 bounds and answers 0 for a value that is not finite, where the cast of
+ * an actual float answers PHP_INT_MIN for every out-of-range case
+ * (MemObjRealToInt -- a recorded divergence). PHL has always
+ * saturated the integer-shaped overflow, so `(int)"99999999999999999999"` is
+ * PHP_INT_MAX in both engines; this is the same rule for the shapes that reach
+ * it through a double.
+ */
+static sxi64 MemObjRealToIntCap(ph7_real r)
+{
+	/* NaN fails both comparisons and either infinity fails one of them, so this
+	 * screens all three without a libm predicate. */
+	if( !(r >= -1.7976931348623157e308 && r <= 1.7976931348623157e308) ){
+		return 0;
+	}
+	if( r >= 9223372036854775808.0 ){    /* +2^63, exact in double space */
+		return LARGEST_INT64;
+	}
+	if( r < -9223372036854775808.0 ){
+		return SMALLEST_INT64;
+	}
+	return (sxi64)r;
+}
+#endif /* PH7_OMIT_FLOATING_POINT */
+/*
  * Return some kind of 64-bit integer value which is the best we can
  * do at representing the value that pObj describes as a string
  * representation.
@@ -183,6 +228,27 @@ PH7_PRIVATE sxi64 PH7_TokenValueToInt64(SyString *pVal)
 static sxi64 MemObjStringToInt(ph7_value *pObj,int *pOverflow)
 {
 	sxi64 iVal = 0;
+#ifndef PH7_OMIT_FLOATING_POINT
+	const char *zTail = 0;
+	if( PH7_MemObjStringNumericPrefix(pObj,&zTail)
+	 && MemObjNumericPrefixIsFloat(pObj,zTail) ){
+		/* A float-shaped string is a DOUBLE first and an int second, which is the
+		 * only reading that makes `(int)"1e3"` the 1000 it says: reading its
+		 * digits stops at the 'e' and answers the mantissa's integer part, so
+		 * "1e3" was 1, "1.5e2" was 1 and "-2e2" was -2. The '.' forms were wrong
+		 * the same way wherever the double rounds away from the digits --
+		 * `(int)"0.9999999999999999999"` is 1, not 0. */
+		ph7_real rVal = 0.0;
+		SyStrToReal((const char *)SyBlobData(&pObj->sBlob),SyBlobLength(&pObj->sBlob),
+			(void *)&rVal,0);
+		if( pOverflow ){
+			/* php reports no overflow for a float-shaped string however large it
+			 * is: it was always going to be a double, so no digits were lost. */
+			*pOverflow = 0;
+		}
+		return MemObjRealToIntCap(rVal);
+	}
+#endif /* PH7_OMIT_FLOATING_POINT */
 	/* A *string* is always read in base 10 by php: "012" is 12, "0x1A" and "0b11"
 	 * are 0. Only a source *literal* carries a base prefix, and that is decoded by
 	 * the compiler (PH7_TokenValueToInt64) -- not here. */
@@ -996,7 +1062,7 @@ PH7_PRIVATE int PH7_MemObjStringIsNumeric(ph7_value *pValue)
  */
 static int MemObjStringIntShape(ph7_value *pObj,int *piOverflow,ph7_real *prVal)
 {
-	const char *z, *zTail = 0;
+	const char *zTail = 0;
 	int iOverflow = 0;
 	*piOverflow = 0;
 	if( (pObj->iFlags & MEMOBJ_STRING) == 0 || !PH7_MemObjStringIsNumeric(pObj) ){
@@ -1007,12 +1073,8 @@ static int MemObjStringIntShape(ph7_value *pObj,int *piOverflow,ph7_real *prVal)
 	}
 	/* Integer-shaped only: a '.' or a complete exponent inside the prefix makes
 	 * it a float, exactly as PH7_MemObjToNumeric decides the type. */
-	z = (const char *)SyBlobData(&pObj->sBlob);
-	while( z < zTail ){
-		if( z[0] == '.' || z[0] == 'e' || z[0] == 'E' ){
-			return FALSE;
-		}
-		z++;
+	if( MemObjNumericPrefixIsFloat(pObj,zTail) ){
+		return FALSE;
 	}
 	MemObjStringToInt(pObj,&iOverflow);
 	*piOverflow = iOverflow;
