@@ -689,6 +689,8 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "mb_ltrim",     PH7_builtin_mb_trim_f  },
 	{ "mb_rtrim",     PH7_builtin_mb_trim_f  },
 	{ "mb_internal_encoding", PH7_builtin_mb_internal_encoding_f },
+	{ "mb_substitute_character", PH7_builtin_mb_substitute_character_f },
+	{ "mb_scrub",     PH7_builtin_mb_scrub_f },
 	{ "mb_check_encoding",    PH7_builtin_mb_check_encoding_f },
 	{ "mb_strwidth",  PH7_builtin_mb_strwidth_f },
 	{ "mb_chr",       PH7_builtin_mb_chr_f   },

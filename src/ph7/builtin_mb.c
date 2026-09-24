@@ -713,24 +713,109 @@ static int MbCodeWidth(sxu32 cp)
  * undecodable needle, which is what folding through '?' used to make it. */
 #define MB_BAD_CODE  0xFFFFFFFFu
 
-/* Resolve an encoding name to an MB_ENC_* id, or -1 when it is outside PHL's
- * modelled set. Surrounding ASCII whitespace is trimmed (php accepts " UTF-8"). */
-static int MbConvEncId(const char *z,int n)
+/* php canonicalises every alias it accepts to one of four NAMES, and two of
+ * them — "8bit" and "ISO-8859-1" — ask for the same behaviour here, which is
+ * why the name and the behaviour are two different ids: mb_internal_encoding()
+ * has to answer with the name it was given, canonicalised. */
+static const struct MbEncName {
+	const char *zName;
+	int iEnc;
+} aMbEncName[] = {
+	{ "UTF-8", MB_ENC_UTF8 },
+	{ "8bit", MB_ENC_LATIN1 },
+	{ "ISO-8859-1", MB_ENC_LATIN1 },
+	{ "ASCII", MB_ENC_ASCII }
+};
+/* Resolve an encoding name to an aMbEncName[] index, or -1 when it is outside
+ * PHL's modelled set. Surrounding ASCII whitespace is trimmed (php accepts
+ * " UTF-8"). */
+static int MbEncodingNameId(const char *z,int n)
 {
 	while( n > 0 && (z[0]==' '||z[0]=='\t'||z[0]=='\n'||z[0]=='\r') ){ z++; n--; }
 	while( n > 0 && (z[n-1]==' '||z[n-1]=='\t'||z[n-1]=='\n'||z[n-1]=='\r') ){ n--; }
 	if( (n==5 && SyStrnicmp(z,"UTF-8",5)==0) || (n==4 && SyStrnicmp(z,"UTF8",4)==0) ){
-		return MB_ENC_UTF8;
+		return 0;
+	}
+	if( (n==4 && SyStrnicmp(z,"8bit",4)==0) || (n==6 && SyStrnicmp(z,"binary",6)==0) ){
+		return 1;
 	}
 	if( (n==10 && SyStrnicmp(z,"ISO-8859-1",10)==0) || (n==9 && SyStrnicmp(z,"ISO8859-1",9)==0)
-	 || (n==6 && SyStrnicmp(z,"latin1",6)==0) || (n==4 && SyStrnicmp(z,"8bit",4)==0)
-	 || (n==6 && SyStrnicmp(z,"binary",6)==0) ){
-		return MB_ENC_LATIN1;
+	 || (n==6 && SyStrnicmp(z,"latin1",6)==0) ){
+		return 2;
 	}
 	if( (n==5 && SyStrnicmp(z,"ASCII",5)==0) || (n==8 && SyStrnicmp(z,"US-ASCII",8)==0) ){
-		return MB_ENC_ASCII;
+		return 3;
 	}
 	return -1;
+}
+static const char * MbEncodingName(int iNameId)
+{
+	if( iNameId < 0 || iNameId >= (int)SX_ARRAYSIZE(aMbEncName) ){
+		iNameId = 0;
+	}
+	return aMbEncName[iNameId].zName;
+}
+/* Resolve an encoding name to an MB_ENC_* id, or -1 when it is outside PHL's
+ * modelled set. */
+static int MbConvEncId(const char *z,int n)
+{
+	int iName = MbEncodingNameId(z,n);
+	return iName < 0 ? -1 : aMbEncName[iName].iEnc;
+}
+/* How a substitution is written. The code point it uses is a separate value,
+ * which is php's own split: mb_substitute_character("long") leaves the code
+ * point where it was, and an ERROR character still takes that code point
+ * because "long" has nothing to spell out for it. */
+#define MB_SUBST_CHAR    0
+#define MB_SUBST_NONE    1
+#define MB_SUBST_LONG    2
+#define MB_SUBST_ENTITY  3
+/* Write one code point in iEnc, with no substitution of its own: a code the
+ * encoding cannot hold becomes '?', which is where the fallback stops. */
+static void MbEncodeRaw(SyBlob *pOut,sxu32 cp,int iEnc)
+{
+	unsigned char zEnc[4];
+	if( iEnc == MB_ENC_UTF8 ){
+		SyBlobAppend(pOut,zEnc,MbUtf8Encode(cp,zEnc));
+		return;
+	}
+	zEnc[0] = (unsigned char)((cp <= (iEnc == MB_ENC_ASCII ? 0x7Fu : 0xFFu)) ? cp : '?');
+	SyBlobAppend(pOut,zEnc,1);
+}
+/*
+ * Write what takes the place of a character that could not be written.
+ * iCpOrig is the code point the target encoding had no room for, or -1 for an
+ * ERROR character, which has no code point of its own — and that is the whole
+ * difference between php's four substitutes: "long" and "entity" spell the code
+ * point out (`U+178`, `&#xE1;`) and so have nothing to say about an error
+ * character, which falls back to the substitute code point instead.
+ */
+static void MbSubstAppend(ph7_context *pCtx,SyBlob *pOut,int iEnc,sxi64 iCpOrig)
+{
+	sxi32 iSub = pCtx->pVm->iMbSubstitute;
+	int iMode = pCtx->pVm->iMbSubstMode;
+	if( iMode == MB_SUBST_NONE ){
+		return;
+	}
+	if( iMode == MB_SUBST_LONG || iMode == MB_SUBST_ENTITY ){
+		char zBuf[32];
+		int n;
+		if( iCpOrig < 0 ){
+			/* An error character has no code point to spell out, so these two
+			 * modes fall back to the substitute code point — and, unlike the
+			 * plain one, write NOTHING when the encoding cannot hold it. */
+			if( iEnc != MB_ENC_UTF8 && (sxu32)iSub > (sxu32)(iEnc == MB_ENC_ASCII ? 0x7F : 0xFF) ){
+				return;
+			}
+			MbEncodeRaw(pOut,(sxu32)iSub,iEnc);
+			return;
+		}
+		n = (int)SyBufferFormat(zBuf,sizeof(zBuf),
+			iMode == MB_SUBST_LONG ? "U+%X" : "&#x%X;",(unsigned int)iCpOrig);
+		SyBlobAppend(pOut,zBuf,(sxu32)n);
+		return;
+	}
+	MbEncodeRaw(pOut,(sxu32)iSub,iEnc);
 }
 /* Validate the optional $encoding argument: an MB_ENC_* id, or -1 after raising
  * php's ValueError. A missing/null argument is php's internal encoding, which
@@ -740,7 +825,8 @@ static int MbEncodingArg(ph7_context *pCtx,ph7_value *pArg,const char *zFunc,int
 	const char *zEnc;
 	int nEnc,iEnc;
 	if( pArg == 0 || ph7_value_is_null(pArg) ){
-		return MB_ENC_UTF8;
+		/* php's internal encoding, which mb_internal_encoding() sets */
+		return aMbEncName[pCtx->pVm->iMbEncoding].iEnc;
 	}
 	zEnc = ph7_value_to_string(pArg,&nEnc);
 	iEnc = MbConvEncId(zEnc,nEnc);
@@ -884,13 +970,13 @@ static int PH7_builtin_mb_strlen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 }
 /* Set the call result to zIn[0..nByte-1] with every ill-formed run replaced by
  * '?', php's substitution character. A well-formed buffer copies verbatim. */
-static void MbBlobSubstituted(SyBlob *pOut,const char *zIn,sxu32 nByte)
+static void MbBlobSubstituted(ph7_context *pCtx,SyBlob *pOut,const char *zIn,sxu32 nByte)
 {
 	const unsigned char *z = (const unsigned char *)zIn;
 	sxu32 i = 0,nLen;
 	while( i < nByte ){
 		if( MbUtf8Decode(&z[i],nByte - i,&nLen) < 0 ){
-			SyBlobAppend(pOut,"?",1);
+			MbSubstAppend(pCtx,pOut,MB_ENC_UTF8,-1);
 		}else{
 			SyBlobAppend(pOut,&z[i],nLen);
 		}
@@ -912,7 +998,7 @@ static void MbResultSubstituted(ph7_context *pCtx,const char *zIn,sxu32 nByte)
 		return;
 	}
 	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
-	MbBlobSubstituted(&sOut,zIn,nByte);
+	MbBlobSubstituted(pCtx,&sOut,zIn,nByte);
 	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
 	SyBlobRelease(&sOut);
 }
@@ -976,15 +1062,14 @@ static int PH7_builtin_mb_substr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 /* Append one code in iEnc's encoding. A code the target cannot hold — U+0178,
  * which is what upper-casing 0xFF produces, in a one-byte encoding — is php's
  * substitute character, the same '?' an error character gets. */
-static void MbAppendCode(SyBlob *pOut,sxu32 cp,int iEnc)
+static void MbAppendCode(ph7_context *pCtx,SyBlob *pOut,sxu32 cp,int iEnc)
 {
-	unsigned char zEnc[4];
-	if( iEnc == MB_ENC_UTF8 ){
-		SyBlobAppend(pOut,zEnc,MbUtf8Encode(cp,zEnc));
+	if( iEnc != MB_ENC_UTF8 && cp > (sxu32)(iEnc == MB_ENC_ASCII ? 0x7F : 0xFF) ){
+		/* Upper-casing 0xFF is U+0178, which no one-byte encoding can hold */
+		MbSubstAppend(pCtx,pOut,iEnc,(sxi64)cp);
 		return;
 	}
-	zEnc[0] = (unsigned char)((cp <= (iEnc == MB_ENC_ASCII ? 0x7Fu : 0xFFu)) ? cp : '?');
-	SyBlobAppend(pOut,zEnc,1);
+	MbEncodeRaw(pOut,cp,iEnc);
 }
 /* Is there a cased character after byte i, reading past the case-ignorable ones?
  * Unicode's Final_Sigma condition asks that of both sides of a Σ. */
@@ -1005,11 +1090,11 @@ static int MbCasedFollows(const unsigned char *z,sxu32 i,sxu32 nByte,int iEnc)
 }
 /* Case-map one character into pOut. iMode 0 = lower, 1 = upper, 2 = title;
  * bFinalSigma picks ς over σ for a Σ that ends a word. */
-static void MbMapOne(SyBlob *pOut,sxu32 cp,int iMode,int iEnc,int bFinalSigma)
+static void MbMapOne(ph7_context *pCtx,SyBlob *pOut,sxu32 cp,int iMode,int iEnc,int bFinalSigma)
 {
 	const sxu32 *aFull;
 	if( bFinalSigma && cp == 0x03A3 ){
-		MbAppendCode(pOut,0x03C2,iEnc);
+		MbAppendCode(pCtx,pOut,0x03C2,iEnc);
 		return;
 	}
 	aFull = (iMode == 1) ? MbMapFull(aMbUpperFull,SX_ARRAYSIZE(aMbUpperFull),cp)
@@ -1019,11 +1104,11 @@ static void MbMapOne(SyBlob *pOut,sxu32 cp,int iMode,int iEnc,int bFinalSigma)
 		/* php's full mapping: ß upper-cases to SS and title-cases to Ss */
 		int k;
 		for( k = 0 ; k < 3 && aFull[k] ; ++k ){
-			MbAppendCode(pOut,aFull[k],iEnc);
+			MbAppendCode(pCtx,pOut,aFull[k],iEnc);
 		}
 		return;
 	}
-	MbAppendCode(pOut,(iMode == 1) ? MbToUpper(cp) : ((iMode == 0) ? MbToLower(cp) : MbToTitle(cp)),iEnc);
+	MbAppendCode(pCtx,pOut,(iMode == 1) ? MbToUpper(cp) : ((iMode == 0) ? MbToLower(cp) : MbToTitle(cp)),iEnc);
 }
 /*
  * Shared case transform: iMode 0 = lower, 1 = upper, 2 = title.
@@ -1058,14 +1143,14 @@ static int MbCaseTransform(ph7_context *pCtx,const char *zIn,sxu32 nByte,int iMo
 			 * mid-word). Reading FORWARD it is not ignorable — it ends the scan
 			 * for a following cased character, so `ΑΣ\xffΑ` still lowers its
 			 * sigma to the final form. */
-			SyBlobAppend(&sOut,"?",1);
+			MbSubstAppend(pCtx,&sOut,iEnc,-1);
 			continue;
 		}
 		/* Every character is mapped — an uncased one simply has no mapping to
 		 * apply, and a case-ignorable one that HAS a mapping still takes it
 		 * (U+0345 title-cases to iota); what ignorable means is that the word
 		 * boundary is left exactly as it was found. */
-		MbMapOne(&sOut,cp,(iMode == 2) ? (bWordStart ? 2 : 0) : iMode,iEnc,
+		MbMapOne(pCtx,&sOut,cp,(iMode == 2) ? (bWordStart ? 2 : 0) : iMode,iEnc,
 			(iMode != 1) && bPrevCased && !MbCasedFollows(z,i,nByte,iEnc));
 		if( !MbIsCaseIgnorable(cp) ){
 			bPrevCased = MbIsCased(cp);
@@ -1108,12 +1193,12 @@ static int PH7_builtin_mb_ucfirst(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
 	if( cp == MB_BAD_CODE ){
-		SyBlobAppend(&sOut,"?",1);
+		MbSubstAppend(pCtx,&sOut,iEnc,-1);
 	}else{
 		/* mb_Ucfirst TITLE-cases (php: 'ß' becomes 'Ss', where upper-casing it is
 		 * 'SS'); mb_lcfirst lowers, and a leading Σ is never a FINAL sigma
 		 * because nothing precedes it. */
-		MbMapOne(&sOut,cp,zFunc[3] == 'u' ? 2 : 0,iEnc,0);
+		MbMapOne(pCtx,&sOut,cp,zFunc[3] == 'u' ? 2 : 0,iEnc,0);
 	}
 	if( SyBlobLength(&sOut) == nLen
 	 && SyMemcmp(SyBlobData(&sOut),zIn,nLen) == 0 ){
@@ -1129,7 +1214,7 @@ static int PH7_builtin_mb_ucfirst(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		 * ill-formed run in it becomes '?' — mb_ucfirst("a\xffb") is "A?b". */
 		SyBlob sTail;
 		SyBlobInit(&sTail,&pCtx->pVm->sAllocator);
-		MbBlobSubstituted(&sTail,&zIn[nLen],(sxu32)nByte - nLen);
+		MbBlobSubstituted(pCtx,&sTail,&zIn[nLen],(sxu32)nByte - nLen);
 		SyBlobAppend(&sOut,SyBlobData(&sTail),SyBlobLength(&sTail));
 		SyBlobRelease(&sTail);
 	}else{
@@ -1657,7 +1742,7 @@ static int PH7_builtin_mb_strimwidth(ph7_context *pCtx,int nArg,ph7_value **apAr
 	 * caller's own bytes and goes out as it came in. */
 	for( i = (sxu32)iStart ; i < iEnd ; ++i ){
 		if( sIn.aCode[i] == MB_BAD_CODE ){
-			SyBlobAppend(&sOut,"?",1);
+			MbSubstAppend(pCtx,&sOut,iEnc,-1);
 		}else{
 			SyBlobAppend(&sOut,&sIn.zIn[sIn.aOfft[i]],sIn.aOfft[i+1] - sIn.aOfft[i]);
 		}
@@ -1875,18 +1960,136 @@ static int PH7_builtin_mb_trim(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	MbResultSubstituted(pCtx,&zIn[iLeft],iRight - iLeft);
 	return PH7_OK;
 }
-/* string|bool mb_internal_encoding(?string $encoding = null) */
+/*
+ * string|bool mb_internal_encoding(?string $encoding = null)
+ *
+ * Reading it answers the name it was SET with (php canonicalises "utf8" to
+ * "UTF-8" and "latin1" to "ISO-8859-1", but keeps "8bit" and "ASCII" as their
+ * own names, so the three ids each carry one). Setting it changes the default
+ * every mb_ function here takes when its own $encoding argument is absent —
+ * which is what makes it a setting rather than a validated no-op.
+ */
 static int PH7_builtin_mb_internal_encoding(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	int iEnc;
 	if( nArg < 1 || ph7_value_is_null(apArg[0]) ){
-		ph7_result_string(pCtx,"UTF-8",sizeof("UTF-8")-1);
+		const char *zName = MbEncodingName(pCtx->pVm->iMbEncoding);
+		ph7_result_string(pCtx,zName,-1);
 		return PH7_OK;
 	}
-	if( MbEncodingArg(pCtx,apArg[0],"mb_internal_encoding",1) < 0 ){
+	iEnc = MbEncodingArg(pCtx,apArg[0],"mb_internal_encoding",1);
+	if( iEnc < 0 ){
 		return PH7_OK;
 	}
-	/* Only the UTF-8 family is accepted, and it is already the default */
+	{
+		int nName;
+		const char *zName = ph7_value_to_string(apArg[0],&nName);
+		/* the NAME id, not the behaviour id: "8bit" and "ISO-8859-1" behave
+		 * alike and read back differently */
+		pCtx->pVm->iMbEncoding = MbEncodingNameId(zName,nName);
+	}
 	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/*
+ * string|int|bool mb_substitute_character(string|int|null $substitute_character = null)
+ *
+ * What takes the place of a character that cannot be written: an error
+ * character in the input, or one the target encoding has no room for. php's
+ * four kinds, and the difference between the last three matters at exactly one
+ * site — a CONVERSION knows which code point it could not write, an error
+ * character has none:
+ *
+ *   a code point   written as itself, or as '?' when the target cannot hold it
+ *   "none"         nothing is written at all
+ *   "long"         "U+00E1" for a conversion; '?' for an error character
+ *   "entity"       "&#xE1;" for a conversion; '?' for an error character
+ */
+static int PH7_builtin_mb_substitute_character(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	if( nArg < 1 || ph7_value_is_null(apArg[0]) ){
+		int iMode = pCtx->pVm->iMbSubstMode;
+		sxi32 iCur = pCtx->pVm->iMbSubstitute;
+		if( iMode == MB_SUBST_NONE ){
+			ph7_result_string(pCtx,"none",sizeof("none")-1);
+		}else if( iMode == MB_SUBST_LONG ){
+			ph7_result_string(pCtx,"long",sizeof("long")-1);
+		}else if( iMode == MB_SUBST_ENTITY ){
+			ph7_result_string(pCtx,"entity",sizeof("entity")-1);
+		}else{
+			ph7_result_int64(pCtx,iCur);
+		}
+		return PH7_OK;
+	}
+	if( ph7_value_is_string(apArg[0]) ){
+		/* php's string|int union takes a STRING as one of its three names, and
+		 * only those three: "63" is a ValueError, not the code point 63. */
+		const char *zVal;
+		int nVal;
+		zVal = ph7_value_to_string(apArg[0],&nVal);
+		if( nVal == 4 && SyStrnicmp(zVal,"none",4) == 0 ){
+			pCtx->pVm->iMbSubstMode = MB_SUBST_NONE;
+		}else if( nVal == 4 && SyStrnicmp(zVal,"long",4) == 0 ){
+			pCtx->pVm->iMbSubstMode = MB_SUBST_LONG;
+		}else if( nVal == 6 && SyStrnicmp(zVal,"entity",6) == 0 ){
+			pCtx->pVm->iMbSubstMode = MB_SUBST_ENTITY;
+		}else{
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"mb_substitute_character(): Argument #1 ($substitute_character) must be \"none\", \"long\", \"entity\" or a valid codepoint");
+		}
+		ph7_result_bool(pCtx,1);
+		return PH7_OK;
+	}
+	{
+		sxi64 iCp = ph7_value_to_int64(apArg[0]);
+		if( iCp < 0 || iCp > 0x10FFFF || (iCp >= 0xD800 && iCp <= 0xDFFF) ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"mb_substitute_character(): Argument #1 ($substitute_character) is not a valid codepoint");
+		}
+		pCtx->pVm->iMbSubstitute = (sxi32)iCp;
+		pCtx->pVm->iMbSubstMode = MB_SUBST_CHAR;
+	}
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/*
+ * string mb_scrub(string $string, ?string $encoding = null)
+ *
+ * Every error character replaced by the substitute character, and nothing else
+ * touched. Under a one-byte encoding whose code point IS the byte there are no
+ * error characters at all, so the string comes back as it went in.
+ */
+static int PH7_builtin_mb_scrub(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zIn;
+	int nByte,iEnc;
+	if( nArg < 1 ){
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	iEnc = MbEncodingArg(pCtx,nArg > 1 ? apArg[1] : 0,"mb_scrub",2);
+	if( iEnc < 0 ){
+		return PH7_OK;
+	}
+	zIn = ph7_value_to_string(apArg[0],&nByte);
+	if( iEnc != MB_ENC_UTF8 ){
+		SyBlob sOut;
+		const unsigned char *z = (const unsigned char *)zIn;
+		sxu32 i,nLen;
+		SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+		for( i = 0 ; i < (sxu32)nByte ; i += nLen ){
+			sxu32 cp = MbNextCode(&z[i],(sxu32)nByte - i,iEnc,&nLen);
+			if( cp == MB_BAD_CODE ){
+				MbSubstAppend(pCtx,&sOut,iEnc,-1);
+			}else{
+				SyBlobAppend(&sOut,&z[i],nLen);
+			}
+		}
+		ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+		SyBlobRelease(&sOut);
+		return PH7_OK;
+	}
+	MbResultSubstituted(pCtx,zIn,(sxu32)nByte);
 	return PH7_OK;
 }
 /* Is every character of zIn[0..nByte-1] a character of iEnc? LATIN1 answers yes
@@ -2244,28 +2447,26 @@ static int PH7_builtin_mb_detect_encoding(ph7_context *pCtx,int nArg,ph7_value *
  */
 /* Transcode one byte buffer from idFrom to idTo, appending to pOut. Input that
  * cannot be represented in the target substitutes '?' (0x3F), php's default. */
-static void MbConvertBuffer(SyBlob *pOut,const char *zIn,sxu32 nByte,int idFrom,int idTo)
+static void MbConvertBuffer(ph7_context *pCtx,SyBlob *pOut,const char *zIn,sxu32 nByte,
+	int idFrom,int idTo)
 {
 	const unsigned char *z = (const unsigned char *)zIn;
 	sxu32 i = 0,nLen,cp;
-	unsigned char zEnc[4];
 	while( i < nByte ){
-		if( idFrom == MB_ENC_UTF8 ){
-			sxi32 iCp = MbUtf8Decode(&z[i],nByte - i,&nLen);
-			cp = (iCp < 0) ? (sxu32)'?' : (sxu32)iCp; /* invalid sequence */
-			i += nLen;
-		}else{
-			cp = z[i];
-			i++;
-			if( idFrom == MB_ENC_ASCII && cp > 0x7F ){ cp = '?'; }
+		cp = MbNextCode(&z[i],nByte - i,idFrom,&nLen);
+		i += nLen;
+		if( cp == MB_BAD_CODE ){
+			/* an error character in the SOURCE: no code point to spell out */
+			MbSubstAppend(pCtx,pOut,idTo,-1);
+			continue;
 		}
-		if( idTo == MB_ENC_UTF8 ){
-			SyBlobAppend(pOut,zEnc,MbUtf8Encode(cp,zEnc));
-		}else{
-			sxu32 iMax = (idTo == MB_ENC_ASCII) ? 0x7F : 0xFF;
-			zEnc[0] = (unsigned char)((cp <= iMax) ? cp : '?');
-			SyBlobAppend(pOut,zEnc,1);
+		if( idTo != MB_ENC_UTF8 && cp > (sxu32)(idTo == MB_ENC_ASCII ? 0x7F : 0xFF) ){
+			/* a code point the TARGET cannot hold, which is the one substitution
+			 * that knows what it lost — php's "long" and "entity" spell it out */
+			MbSubstAppend(pCtx,pOut,idTo,(sxi64)cp);
+			continue;
 		}
+		MbEncodeRaw(pOut,cp,idTo);
 	}
 }
 /* Build a converted copy of pIn as a fresh context value: a string is
@@ -2307,7 +2508,7 @@ static ph7_value * MbConvertNew(ph7_context *pCtx,ph7_value *pIn,int idFrom,int 
 		}
 		zIn = ph7_value_to_string(pIn,&nByte);
 		SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
-		MbConvertBuffer(&sOut,zIn,(sxu32)nByte,idFrom,idTo);
+		MbConvertBuffer(pCtx,&sOut,zIn,(sxu32)nByte,idFrom,idTo);
 		ph7_value_string(pVal,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
 		SyBlobRelease(&sOut);
 		return pVal;
@@ -2342,8 +2543,8 @@ static int PH7_builtin_mb_convert_encoding(ph7_context *pCtx,int nArg,ph7_value 
 				nFrom,zFrom);
 		}
 	}else{
-		/* php falls back to the internal encoding, which PHL fixes at UTF-8 */
-		idFrom = MB_ENC_UTF8;
+		/* php falls back to the internal encoding, which is a setting now */
+		idFrom = aMbEncName[pCtx->pVm->iMbEncoding].iEnc;
 	}
 	pResult = MbConvertNew(pCtx,apArg[0],idFrom,idTo);
 	if( pResult == 0 ){
@@ -2370,6 +2571,8 @@ PH7_PRIVATE int PH7_builtin_mb_strimwidth_f(ph7_context *pCtx,int nArg,ph7_value
 PH7_PRIVATE int PH7_builtin_mb_str_split_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_str_split(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_trim_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_trim(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_internal_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_internal_encoding(pCtx,nArg,apArg); }
+PH7_PRIVATE int PH7_builtin_mb_substitute_character_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_substitute_character(pCtx,nArg,apArg); }
+PH7_PRIVATE int PH7_builtin_mb_scrub_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_scrub(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_check_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_check_encoding(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_strwidth_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strwidth(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_chr_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_chr(pCtx,nArg,apArg); }

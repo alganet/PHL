@@ -822,6 +822,8 @@ static const struct VmBuiltinSig {
 	{ "mb_convert_case", "string $string, int $mode, ?string $encoding = NULL", "string" },
 	{ "mb_detect_encoding", "string $string, array|string|null $encodings = NULL, bool $strict = false", "string|false" },
 	{ "mb_internal_encoding", "?string $encoding = NULL", "string|bool" },
+	{ "mb_scrub", "string $string, ?string $encoding = null", "string" },
+	{ "mb_substitute_character", "string|int|null $substitute_character = null", "string|int|bool" },
 	{ "mb_str_split", "string $string, int $length = 1, ?string $encoding = NULL", "array" },
 	{ "mb_stripos", "string $haystack, string $needle, int $offset = 0, ?string $encoding = NULL", "int|false" },
 	{ "mb_strlen", "string $string, ?string $encoding = NULL", "int" },

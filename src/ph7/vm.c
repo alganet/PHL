@@ -2053,6 +2053,9 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	 * override these; bErrReport is the separate master gate installed by the CLI. */
 	pVm->bDisplayErrors = 0;
 	pVm->bLogErrors = 1;
+	/* mbstring's substitute character, php's default (the internal encoding
+	 * beside it is UTF-8, which is the zero the struct already holds) */
+	pVm->iMbSubstitute = '?';
 	SyMemBackendInitFromParent(&pVm->sAllocator,&pEngine->sAllocator);
 	/* Instructions containers */
 	SySetInit(&pVm->aByteCode,&pVm->sAllocator,sizeof(VmInstr));

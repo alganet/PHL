@@ -2393,6 +2393,16 @@ struct ph7_vm
 								* driver (usort/uasort/uksort and the array_udiff/
 								* array_uintersect families) can abort and propagate
 								* PH7_EXCEPTION. */
+	int iMbEncoding;           /* mbstring's internal encoding, an MB_ENC_* id from
+								* builtin_mb.c; 0 is UTF-8, which is why zeroing the
+								* VM leaves php's default in place. */
+	sxi32 iMbSubstitute;       /* mbstring's substitute code point ('?' at VM init;
+								* 0 is a code point a script may really ask for). */
+	sxu8 iMbSubstMode;         /* how it is written: builtin_mb.c's MB_SUBST_* — the
+								* code point itself, nothing at all, or the U+/entity
+								* spelling of what could not be represented. php keeps
+								* the two apart, so setting "long" does not forget the
+								* code point an error character still takes. */
 	sxi32 iExitStatus;         /* Script exit status */
 	sxu8 bHaltRequested;       /* Set by exit/die (OP_HALT or the builtin) so the halt
 								* cascades out of nested execution units (include/require/
@@ -3472,6 +3482,8 @@ PH7_PRIVATE int PH7_builtin_mb_strpos_f(ph7_context *pCtx,int nArg,ph7_value **a
 PH7_PRIVATE int PH7_builtin_mb_str_split_f(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_mb_trim_f(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_mb_internal_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_mb_substitute_character_f(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_mb_scrub_f(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_mb_check_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_mb_strwidth_f(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_mb_chr_f(ph7_context *pCtx,int nArg,ph7_value **apArg);
