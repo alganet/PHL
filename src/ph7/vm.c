@@ -5303,46 +5303,19 @@ PH7_PRIVATE sxi32 PH7_VmExecAttrArg(ph7_vm *pVm,SySet *pByteCode,ph7_class *pDec
 	return rc;
 }
 /*
- * Invoke any installed shutdown callbacks.
- * Flush every still-open output buffer to the real output consumer at the end
- * of execution. php implicitly ends+flushes all ob_start() levels on shutdown
- * (normal end, exit()/die(), or fatal); PHL used to DISCARD them, so a script
- * that never called ob_end_flush() — e.g. PHPUnit, which buffers its result
- * summary and then exit()s with a non-zero status — lost that output entirely.
+ * Flush every still-open output buffer at the end of execution. php implicitly
+ * ends+flushes all ob_start() levels on shutdown (normal end, exit()/die(), or
+ * fatal); PHL used to DISCARD them, so a script that never called ob_end_flush()
+ * — e.g. PHPUnit, which buffers its result summary and then exit()s with a
+ * non-zero status — lost that output entirely.
  *
- * Buffer content is already callback-transformed (VmObConsumer applies handlers
- * at write time), and new output always lands in the topmost buffer, so the
- * stack holds finished text with aOB[0] the earliest/outermost. Concatenate in
- * that order to the default consumer (sVmConsumer.xDef), then tear the stack
- * down and restore the default consumer.
+ * PH7_VmObFlushAll() does it the way php does: one FINAL operation per buffer,
+ * innermost first, so each handler's answer is what the buffer under it is
+ * handed.
  */
 static void VmFlushOutputBuffers(ph7_vm *pVm)
 {
-	ph7_output_consumer *pCons = &pVm->sVmConsumer;
-	sxu32 n,nUsed;
-	nUsed = SySetUsed(&pVm->aOB);
-	if( nUsed < 1 ){
-		return;
-	}
-	for( n = 0 ; n < nUsed ; ++n ){
-		VmObEntry *pOb = (VmObEntry *)SySetAt(&pVm->aOB,n);
-		if( pOb && SyBlobLength(&pOb->sOB) > 0 && pCons->xDef ){
-			pCons->xDef(SyBlobData(&pOb->sOB),SyBlobLength(&pOb->sOB),pCons->pDefData);
-			pVm->nOutputLen += SyBlobLength(&pOb->sOB);
-		}
-	}
-	/* Restore the default consumer and release the buffers. */
-	pCons->xConsumer = pCons->xDef;
-	pCons->pUserData = pCons->pDefData;
-	for( n = 0 ; n < nUsed ; ++n ){
-		VmObEntry *pOb = (VmObEntry *)SySetAt(&pVm->aOB,n);
-		if( pOb ){
-			PH7_MemObjRelease(&pOb->sCallback);
-			SyBlobRelease(&pOb->sOB);
-		}
-	}
-	SySetReset(&pVm->aOB);
-	pVm->nObDepth = 0;
+	PH7_VmObFlushAll(&(*pVm));
 }
 /*
  * Shutdown callbacks are kept in a stack and are registered using one

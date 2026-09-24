@@ -958,8 +958,30 @@ typedef struct VmObEntry VmObEntry;
 struct VmObEntry
 {
 	ph7_value sCallback; /* User defined callback */
-	SyBlob sOB;          /* Output buffer consumer */
+	SyBlob sOB;          /* Output buffer consumer (RAW bytes: php runs the
+	                      * handler on the way OUT, not on the way in) */
+	sxi32 iFlags;        /* PH7_OB_* below, php's own numeric values */
+	sxu32 nChunk;        /* ob_start()'s $chunk_size (0: buffer everything) */
 };
+/*
+ * Output-handler flags and phases. These are php's own values: the first group is
+ * what ob_get_status() reports in its `flags` entry, the second what the handler
+ * receives as its `$phase` argument.
+ */
+#define PH7_OB_USER      0x0001 /* Handler is a userland callback */
+#define PH7_OB_CLEANABLE 0x0010
+#define PH7_OB_FLUSHABLE 0x0020
+#define PH7_OB_REMOVABLE 0x0040
+#define PH7_OB_STDFLAGS  0x0070
+#define PH7_OB_STARTED   0x1000 /* Handler has been invoked at least once */
+#define PH7_OB_DISABLED  0x2000 /* Handler answered FALSE: never called again */
+#define PH7_OB_PROCESSED 0x4000 /* Handler has produced output */
+/* Phases (an op, plus PH7_OB_START until the handler has run once) */
+#define PH7_OB_WRITE 0
+#define PH7_OB_START 1
+#define PH7_OB_CLEAN 2
+#define PH7_OB_FLUSH 4
+#define PH7_OB_FINAL 8
 /*
  * HTTP response header entry.
  * Stored in ph7_vm.aResponseHeaders (a SySet of VmResponseHeader).
@@ -2333,7 +2355,20 @@ struct ph7_vm
 	                            * reused across recycle/reuse cycles so a parked buffer's
 	                            * wrapper node isn't pool-alloc/freed per call (mirrors
 	                            * pIdleCallFrames). Allocator-owned; freed wholesale. */
-	int nObDepth;              /* OB depth */
+	int nObDepth;              /* Output handlers currently running (0 outside one) */
+	sxu32 nObActive;           /* 1-based index of the buffer whose handler is running
+	                            * (0 outside one). php truncates the ob stack at that
+	                            * buffer for the duration: ob_get_level()/contents()/
+	                            * length()/list_handlers() answer for IT, not for
+	                            * whatever is stacked above it. */
+	int bObRefused;            /* An ob call refused from inside a handler ended the
+	                            * request: that operation delivers nothing more. */
+	VmFrame *pObFrame;         /* Frame that CALLED the running output handler. The
+	                            * handler's own body runs in a deeper frame, so
+	                            * `nObDepth > 0 && pFrame != pObFrame` is "we are
+	                            * inside the handler" — and it stays false for the
+	                            * in-place catch PHL runs, in the caller's frame,
+	                            * when the handler throws. */
 	int nExceptDepth;          /* Exception depth */
 	int nExcCtorDepth;         /* Engine-raised throws whose exception __construct is running
 	                            * (VmExcCtorEnter): caps the self-feeding case where building
@@ -3423,6 +3458,7 @@ PH7_PRIVATE int vm_builtin_call_user_func(ph7_context *pCtx,int nArg,ph7_value *
 PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_value **apArg);
 /* vm_builtin_ob.c function prototypes */
 PH7_PRIVATE int VmObConsumer(const void *pData,unsigned int nDataLen,void *pUserData);
+PH7_PRIVATE void PH7_VmObFlushAll(ph7_vm *pVm);
 PH7_PRIVATE int vm_builtin_ob_clean(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_ob_end_clean(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int vm_builtin_ob_get_contents(ph7_context *pCtx,int nArg,ph7_value **apArg);
