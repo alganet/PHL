@@ -1448,6 +1448,29 @@ static int WinFile_Stat(void *pUserData,ph7_value *pArray,ph7_value *pWorker)
 	return PH7_OK;
 }
 /* Export the file:// stream */
+/*
+ * php copies a plain file with MapViewOfFile(), and a view has to START on an
+ * allocation granule, so it maps from the granule the position sits in. At the
+ * end of the file that is a view of zero requested bytes -- which php's copy
+ * loop reads as a failure -- unless the end sits ON a granule (an empty file
+ * included), where php refuses the zero-length view and its read loop answers
+ * 0. Linux's mmap() refuses every zero-length map, so there it is always 0.
+ * nAhead is what the handle has read ahead of the script's position.
+ */
+PH7_PRIVATE int PH7_WinFileMapsEmptyView(void *pHandle,ph7_int64 nAhead)
+{
+	LARGE_INTEGER iSize,iZero,iPos;
+	SYSTEM_INFO sInfo;
+	iZero.QuadPart = 0;
+	if( !GetFileSizeEx((HANDLE)pHandle,&iSize)
+	 || !SetFilePointerEx((HANDLE)pHandle,iZero,&iPos,FILE_CURRENT)
+	 || iPos.QuadPart - nAhead < iSize.QuadPart ){
+		return 0;
+	}
+	GetSystemInfo(&sInfo);
+	return sInfo.dwAllocationGranularity != 0
+		&& (iSize.QuadPart % (ph7_int64)sInfo.dwAllocationGranularity) != 0;
+}
 PH7_PRIVATE const ph7_io_stream sWinFileStream = {
 	"file", /* Stream name */
 	PH7_IO_STREAM_VERSION,

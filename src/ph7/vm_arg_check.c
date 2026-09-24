@@ -907,6 +907,8 @@ static const struct VmBuiltinSig {
 	{ "stream_get_line", "$stream, int $length, string $ending = ''", "string|false" },
 	{ "socket_get_status", "$stream", "array" },
 	{ "stream_get_meta_data", "$stream", "array" },
+	{ "stream_copy_to_stream", "$from, $to, ?int $length = NULL, int $offset = 0", "int|false" },
+	{ "stream_get_transports", "", "array" },
 	{ "stream_is_local", "$stream", "bool" },
 	{ "stream_set_blocking", "$stream, bool $enable", "bool" },
 	{ "socket_set_blocking", "$stream, bool $enable", "bool" },

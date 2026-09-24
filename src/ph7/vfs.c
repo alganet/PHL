@@ -3042,6 +3042,8 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"set_file_buffer",         PH7_builtin_stream_set_write_buffer },
 		{"stream_supports_lock", PH7_builtin_stream_supports_lock },
 		{"stream_is_local",      PH7_builtin_stream_is_local },
+		{"stream_copy_to_stream",PH7_builtin_stream_copy_to_stream },
+		{"stream_get_transports",PH7_builtin_stream_get_transports },
 		{"stream_context_create",PH7_builtin_stream_context_create },
 		{"stream_wrapper_register",   PH7_builtin_stream_wrapper_register },
 		{"stream_register_wrapper",   PH7_builtin_stream_wrapper_register },

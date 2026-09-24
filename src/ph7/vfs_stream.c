@@ -4124,24 +4124,30 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
  * The shared preamble: php refuses a non-resource with a TypeError naming the
  * parameter, and an already-closed handle the same way.
  */
-static io_private * StreamSettingArg(ph7_context *pCtx,ph7_value *pArg,int *pRc)
+static io_private * StreamSettingArgNamed(ph7_context *pCtx,ph7_value *pArg,int iPos,
+	const char *zName,int *pRc)
 {
 	io_private *pDev;
 	*pRc = PH7_OK;
 	if( !ph7_value_is_resource(pArg) ){
 		*pRc = PH7_VmThrowException(pCtx,"TypeError",
-			"%s(): Argument #1 ($stream) must be of type resource, %s given",
-			ph7_function_name(pCtx),ph7_type_name(pArg));
+			"%s(): Argument #%d ($%s) must be of type resource, %s given",
+			ph7_function_name(pCtx),iPos,zName,ph7_type_name(pArg));
 		return 0;
 	}
 	pDev = (io_private *)ph7_value_to_resource(pArg);
 	if( IO_PRIVATE_INVALID(pDev) ){
 		*pRc = PH7_VmThrowException(pCtx,"TypeError",
-			"%s(): Argument #1 ($stream) must be an open stream resource",
-			ph7_function_name(pCtx));
+			"%s(): Argument #%d ($%s) must be an open stream resource",
+			ph7_function_name(pCtx),iPos,zName);
 		return 0;
 	}
 	return pDev;
+}
+/* The whole settings family names its one handle `$stream`; the copy names two. */
+static io_private * StreamSettingArg(ph7_context *pCtx,ph7_value *pArg,int *pRc)
+{
+	return StreamSettingArgNamed(pCtx,pArg,1,"stream",pRc);
 }
 /* The tcp:// socket behind a handle, or 0 for any other device. */
 static ph7_socket * IoPrivateSocket(io_private *pDev)
@@ -4313,6 +4319,136 @@ PH7_PRIVATE int PH7_builtin_stream_set_write_buffer(ph7_context *pCtx,int nArg,p
 		return rc;
 	}
 	ph7_result_int(pCtx,-1);
+	return PH7_OK;
+}
+/*
+ * int|false stream_copy_to_stream(resource $from, resource $to,
+ *                                 ?int $length = null, int $offset = 0)
+ *
+ * The everyday way to move bytes between two open streams, and a loud
+ * `Call to undefined function` here until now — so the workaround was
+ * `fwrite($to, stream_get_contents($from))`, which reads the WHOLE source into
+ * memory first. A NULL or negative $length is "the rest"; a POSITIVE $offset
+ * seeks the source first and is php's only failure shape short of a broken
+ * write.
+ */
+PH7_PRIVATE int PH7_builtin_stream_copy_to_stream(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	io_private *pFrom,*pTo;
+	ph7_int64 nWant = -1,nOfft = 0,nTotal = 0;
+	char zBuf[8192];
+	int rc;
+	if( nArg < 2 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pFrom = StreamSettingArgNamed(pCtx,apArg[0],1,"from",&rc);
+	if( pFrom == 0 ){
+		return rc;
+	}
+	pTo = StreamSettingArgNamed(pCtx,apArg[1],2,"to",&rc);
+	if( pTo == 0 ){
+		return rc;
+	}
+	if( pFrom->pStream == 0 || pFrom->pStream->xRead == 0
+	 || pTo->pStream == 0 || pTo->pStream->xWrite == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){
+		nWant = ph7_value_to_int64(apArg[2]);
+	}
+	if( nArg > 3 ){
+		nOfft = ph7_value_to_int64(apArg[3]);
+	}
+	if( nOfft > 0 ){
+		/* php seeks the SOURCE and gives up loudly when it cannot: a pipe has
+		 * no position to move to, and silently copying from wherever it
+		 * happens to be would answer for a different slice of the stream. */
+		if( pFrom->pStream->xSeek == 0
+		 || pFrom->pStream->xSeek(pFrom->pHandle,nOfft,0/*SEEK_SET*/) != PH7_OK ){
+			if( pFrom->pStream->xSeek == 0 ){
+				ph7_context_throw_error(pCtx,PH7_CTX_WARNING,
+					"stream_copy_to_stream(): Stream does not support seeking");
+			}
+			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+				"stream_copy_to_stream(): Failed to seek to position %qd in the stream",nOfft);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		ResetIOPrivate(pFrom);
+	}
+	if( nWant == 0 ){
+		ph7_result_int(pCtx,0);
+		return PH7_OK;
+	}
+#ifdef __WINNT__
+	/* A plain-file source goes through php's memory-mapped copy, whose Windows
+	 * view at the end of the file is a failure: see PH7_WinFileMapsEmptyView(). */
+	if( pFrom->pStream == &sWinFileStream
+	 && PH7_WinFileMapsEmptyView(pFrom->pHandle,SyBlobLength(&pFrom->sBuffer) > pFrom->nOfft
+			? (ph7_int64)(SyBlobLength(&pFrom->sBuffer) - pFrom->nOfft) : 0) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+#endif
+	/* The destination may be sitting past its own line readers' read-ahead;
+	 * the write has to land where the SCRIPT is, the rule fwrite() follows. */
+	if( pTo->nOfft < SyBlobLength(&pTo->sBuffer) && pTo->pStream->xSeek ){
+		pTo->pStream->xSeek(pTo->pHandle,
+			-(ph7_int64)(SyBlobLength(&pTo->sBuffer) - pTo->nOfft),1/*SEEK_CUR*/);
+		ResetIOPrivate(pTo);
+	}
+	for(;;){
+		ph7_int64 nAsk = (ph7_int64)sizeof(zBuf);
+		ph7_int64 nRead,nWr;
+		if( nWant > 0 && nWant - nTotal < nAsk ){
+			nAsk = nWant - nTotal;
+		}
+		if( nAsk < 1 ){
+			break;
+		}
+		nRead = PH7_StreamRead(pFrom,zBuf,nAsk);
+		if( nRead < 1 ){
+			break;
+		}
+		nWr = pTo->pStream->xWrite(pTo->pHandle,(const void *)zBuf,nRead);
+		if( nWr < 0 ){
+			break;
+		}
+		nTotal += nWr;
+		if( nWr < nRead ){
+			break;
+		}
+	}
+	ph7_result_int64(pCtx,nTotal);
+	return PH7_OK;
+}
+/*
+ * array stream_get_transports(void)
+ *
+ * The transports a stream_socket_client()/fsockopen() address may name. php's
+ * own list is what its build registered, so this is what THIS engine can open:
+ * the ssl/tls/udp/unix set is a recorded scope gap (§7.4), and answering for
+ * transports that are not there would tell a script a connection will work
+ * when it cannot.
+ */
+PH7_PRIVATE int PH7_builtin_stream_get_transports(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pArr,*pV;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	pArr = ph7_context_new_array(pCtx);
+	pV = ph7_context_new_scalar(pCtx);
+	if( pArr == 0 || pV == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+#ifdef PH7_ENABLE_NET
+	ph7_value_string(pV,"tcp",-1);
+	ph7_array_add_elem(pArr,0,pV);
+#endif
+	ph7_result_value(pCtx,pArr);
 	return PH7_OK;
 }
 /*
