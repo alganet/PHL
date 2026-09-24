@@ -59,6 +59,9 @@
 #define FV_FLAG_ALLOW_THOUSAND   8192
 #define FV_FLAG_ALLOW_SCIENTIFIC 16384
 #define FV_FLAG_IPV4  1048576
+/* php gives one bit three names, one per filter it belongs to. */
+#define FV_FLAG_HOSTNAME      1048576
+#define FV_FLAG_EMAIL_UNICODE 1048576
 #define FV_FLAG_IPV6  2097152
 #define FV_FLAG_NO_RES_RANGE  4194304
 #define FV_FLAG_NO_PRIV_RANGE 8388608
@@ -397,16 +400,27 @@ static int FvValidateIp(const char *z,int n,int flags){
 }
 /* FILTER_VALIDATE_MAC: 17-char colon- or dash-separated hex (XX:XX:..:XX). */
 static int FvValidateMac(const char *z,int n){
-	char sep;
 	int i;
-	if( n!=17 ){ return 0; }
-	sep = z[2];
-	if( sep!=':' && sep!='-' ){ return 0; }
-	for( i=0; i<17; i++ ){
-		if( (i%3)==2 ){ if( z[i]!=sep ){ return 0; } }
-		else if( SyHexToint((unsigned char)z[i])<0 ){ return 0; }
+	if( n==17 ){
+		/* the two byte-per-group spellings: XX:XX:XX:XX:XX:XX and XX-XX-...-XX,
+		 * with the SAME separator throughout */
+		char sep = z[2];
+		if( sep!=':' && sep!='-' ){ return 0; }
+		for( i=0; i<17; i++ ){
+			if( (i%3)==2 ){ if( z[i]!=sep ){ return 0; } }
+			else if( SyHexToint((unsigned char)z[i])<0 ){ return 0; }
+		}
+		return 1;
 	}
-	return 1;
+	if( n==14 ){
+		/* php's third spelling, the dotted one Cisco writes: XXXX.XXXX.XXXX */
+		for( i=0; i<14; i++ ){
+			if( i==4 || i==9 ){ if( z[i]!='.' ){ return 0; } }
+			else if( SyHexToint((unsigned char)z[i])<0 ){ return 0; }
+		}
+		return 1;
+	}
+	return 0;
 }
 /* FILTER_VALIDATE_EMAIL (best-effort: covers the common cases, not quoted local
  * parts or IP-literal domains). */
@@ -445,13 +459,46 @@ static int FvValidateEmail(const char *z,int n){
 	return 1;
 }
 /* FILTER_VALIDATE_DOMAIN (lenient, matching PHP without FILTER_FLAG_HOSTNAME). */
-static int FvValidateDomain(const char *z,int n){
-	int i;
-	if( n<1 || n>253 || z[0]=='.' ){ return 0; }
-	for( i=0; i<n; i++ ){
+static int FvIsAlnum(unsigned char c){
+	return (c>='a'&&c<='z') || (c>='A'&&c<='Z') || (c>='0'&&c<='9');
+}
+/*
+ * FILTER_VALIDATE_DOMAIN, a byte-for-byte port of php's own walk.
+ *
+ * Without FILTER_FLAG_HOSTNAME php checks LENGTHS and nothing else — one
+ * trailing dot is ignored, the rest is at most 253 bytes and splits into labels
+ * of at most 63 with no empty one — so `" spaced "`, `"a b"`, `"ex@mple.com"`
+ * and the empty string are all domains there. The flag adds the host-NAME rule:
+ * a label carries only alphanumerics and hyphens and does not start or end with
+ * one of the hyphens.
+ *
+ * Two edges follow from php walking the ORIGINAL string rather than a trimmed
+ * copy: a lone "." fails on the first-character test (the trailing-dot rule
+ * moved the END, not the start), and a hyphen is refused only when the byte
+ * after it is the string's NUL — so `"0-"` is not a hostname and `"0-."` is.
+ */
+static int FvValidateDomain(const char *z,int n,int flags){
+	int hostname = (flags & FV_FLAG_HOSTNAME) != 0;
+	int i, iEnd = n, nLen = n, nLabel = 1;
+	if( n>0 && z[n-1]=='.' ){ iEnd = n-1; nLen = n-1; } /* the final dot is not part of the name */
+	if( nLen>253 ){ return 0; }
+	/* php reads the first byte even for the empty string, where it is the NUL
+	 * terminator: "" is a domain, and is not a hostname. */
+	if( n>0 && z[0]=='.' ){ return 0; }
+	if( hostname && !(n>0 && FvIsAlnum((unsigned char)z[0])) ){ return 0; }
+	for( i=0; i<iEnd; i++ ){
 		unsigned char c = (unsigned char)z[i];
-		if( c<=' ' ){ return 0; }
-		if( c=='.' && i+1<n && z[i+1]=='.' ){ return 0; }
+		unsigned char nx = (i+1<n) ? (unsigned char)z[i+1] : 0; /* php's NUL byte */
+		if( c=='.' ){
+			/* i>0 here: a leading dot was refused above */
+			if( nx=='.' || (hostname && (!FvIsAlnum((unsigned char)z[i-1]) || !FvIsAlnum(nx))) ){
+				return 0;
+			}
+			nLabel = 1;
+		}else{
+			if( nLabel>63 || (hostname && (c!='-' || nx==0) && !FvIsAlnum(c)) ){ return 0; }
+			nLabel++;
+		}
 	}
 	return 1;
 }
@@ -1208,7 +1255,7 @@ static int FvApplyFilter(ph7_context *pCtx,ph7_value *pInput,
 	case FV_VALIDATE_IP:     if( !FvValidateIp(zVal,nVal,iFlags) ){ goto fail; } goto pass;
 	case FV_VALIDATE_MAC:    if( !FvValidateMac(zVal,nVal) ){ goto fail; }       goto pass;
 	case FV_VALIDATE_EMAIL:  if( !FvValidateEmail(zVal,nVal) ){ goto fail; }     goto pass;
-	case FV_VALIDATE_DOMAIN: if( !FvValidateDomain(zVal,nVal) ){ goto fail; }    goto pass;
+	case FV_VALIDATE_DOMAIN: if( !FvValidateDomain(zVal,nVal,iFlags) ){ goto fail; } goto pass;
 	case FV_VALIDATE_URL:    if( !FvValidateUrl(zVal,nVal) ){ goto fail; }       goto pass;
 	case FV_VALIDATE_REGEXP: {
 #ifdef PH7_ENABLE_PCRE
