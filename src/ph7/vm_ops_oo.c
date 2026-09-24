@@ -1321,10 +1321,42 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					if( !VmMemberCtxIsLookup(pInstr->iP2) && pInstr->iP2 != PH7_MEMBER_LIST_TARGET
 					 && pVm->pMagicSetThis == 0
 					 && pVm->nBoundaryRc == 0 ){
-						/* A destructuring target is also silent: php either created the
-						 * property above or dispatched __set — neither warns. */
-						VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Undefined property: %z::$%z",
-							&pClass->sName,&sName);
+						/* A property missing from the INSTANCE may still be DECLARED by the
+						 * class — that is what `unset($o->p)` leaves behind, and php keeps
+						 * answering for the declaration rather than calling the name
+						 * undefined: the visibility screen still applies, and a TYPED slot
+						 * is back to uninitialized (the same Error a never-written one
+						 * raises). Only a name the class does not declare at all is the
+						 * "Undefined property" warning. A destructuring target is silent
+						 * either way: php created the property above or dispatched __set. */
+						ph7_class_attr *pDeclAttr = PH7_ClassExtractAttribute(pClass,
+							SyStringData(&sName),SyStringLength(&sName));
+						/* A static property, a class constant and a native engine slot are
+						 * not instance properties; a dynamic one is gone for good once it
+						 * is unset, since nothing declares it. */
+						if( pDeclAttr
+						 && (pDeclAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT
+						                          |PH7_CLASS_ATTR_HIDDEN|PH7_CLASS_ATTR_DYNAMIC)) ){
+							pDeclAttr = 0;
+						}
+						if( pDeclAttr
+						 && !PH7_VmClassMemberAccess(&(*pVm),pClass,&pDeclAttr->sName,
+							pDeclAttr->iProtection,FALSE) ){
+							SyBlob sErrMsg;
+							const char *zVis = pDeclAttr->iProtection == PH7_CLASS_PROT_PRIVATE
+								? "private" : "protected";
+							SyBlobInit(&sErrMsg,&pVm->sAllocator);
+							SyBlobFormat(&sErrMsg,"Cannot access %s property %z::$%z",
+								zVis,&pClass->sName,&sName);
+							VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",
+								sizeof("Error")-1,&sErrMsg));
+						}else if( pDeclAttr && (pDeclAttr->iFlags & PH7_CLASS_ATTR_TYPED) ){
+							VmBoundaryPark(&(*pVm),
+								VmThrowUninitializedPropertyError(&(*pVm),pClass,pDeclAttr));
+						}else{
+							VmErrorFormat(&(*pVm),PH7_CTX_WARNING,"Undefined property: %z::$%z",
+								&pClass->sName,&sName);
+						}
 					}
 				}
 				VmPopOperand(&pTos,1);
