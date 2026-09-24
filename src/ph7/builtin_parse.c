@@ -60,6 +60,9 @@
 #define FV_FLAG_ALLOW_SCIENTIFIC 16384
 #define FV_FLAG_IPV4  1048576
 #define FV_FLAG_IPV6  2097152
+#define FV_FLAG_NO_RES_RANGE  4194304
+#define FV_FLAG_NO_PRIV_RANGE 8388608
+#define FV_FLAG_GLOBAL_RANGE  536870912
 #define FV_NULL_ON_FAILURE 134217728
 /* The subset of flags the UNSAFE_RAW/DEFAULT string filter (FvSanitizeString)
  * acts on: when none are set the filter is a verbatim pass-through, so FV_DEFAULT
@@ -228,8 +231,9 @@ static int FvValidateBool(const char *z,int n,int *pBool){
 	}
 	return 0;
 }
-/* IPv4 dotted-quad: exactly 4 octets 0..255, no leading zeros. */
-static int FvValidateIp4(const char *z,int n){
+/* IPv4 dotted-quad: exactly 4 octets 0..255, no leading zeros. The four octets
+ * land in aOut[] (which the range flags below read); pass 0 to only validate. */
+static int FvValidateIp4(const char *z,int n,unsigned char *aOut){
 	int i = 0, parts = 0;
 	while( i<n ){
 		int val = 0, digits = 0, start = i;
@@ -240,8 +244,9 @@ static int FvValidateIp4(const char *z,int n){
 		}
 		if( digits==0 || digits>3 ){ return 0; }
 		if( digits>1 && z[start]=='0' ){ return 0; } /* leading zero */
+		if( parts>3 ){ return 0; }
+		if( aOut ){ aOut[parts] = (unsigned char)val; }
 		parts++;
-		if( parts>4 ){ return 0; }
 		if( i<n ){
 			if( z[i]!='.' ){ return 0; }
 			i++;
@@ -251,8 +256,9 @@ static int FvValidateIp4(const char *z,int n){
 	return parts==4;
 }
 /* A colon-separated run of IPv6 hextets with no "::" (n may be 0 -> 0 groups),
- * allowing a trailing embedded IPv4. Returns the 16-bit group count or -1. */
-static int FvIp6Hextets(const char *z,int n){
+ * allowing a trailing embedded IPv4. Returns the 16-bit group count or -1, and
+ * writes the bytes it read at aOut (which must have room for 16). */
+static int FvIp6Hextets(const char *z,int n,unsigned char *aOut){
 	int i = 0, segStart = 0, groups = 0;
 	if( n==0 ){ return 0; }
 	while( i<=n ){
@@ -262,11 +268,22 @@ static int FvIp6Hextets(const char *z,int n){
 			for( j=segStart; j<i; j++ ){ if( z[j]=='.' ){ isV4 = 1; break; } }
 			if( isV4 ){
 				if( i!=n ){ return -1; } /* IPv4 only as the final token */
-				if( !FvValidateIp4(z+segStart,segLen) ){ return -1; }
+				if( groups>6 ){ return -1; }
+				if( !FvValidateIp4(z+segStart,segLen,aOut ? &aOut[groups*2] : 0) ){ return -1; }
 				groups += 2;
 			}else{
+				int val = 0;
 				if( segLen>4 ){ return -1; }
-				for( j=segStart; j<i; j++ ){ if( SyHexToint((unsigned char)z[j])<0 ){ return -1; } }
+				if( groups>7 ){ return -1; }
+				for( j=segStart; j<i; j++ ){
+					int h = SyHexToint((unsigned char)z[j]);
+					if( h<0 ){ return -1; }
+					val = val*16 + h;
+				}
+				if( aOut ){
+					aOut[groups*2]   = (unsigned char)(val>>8);
+					aOut[groups*2+1] = (unsigned char)(val & 0xFF);
+				}
 				groups++;
 			}
 			segStart = i+1;
@@ -275,32 +292,107 @@ static int FvIp6Hextets(const char *z,int n){
 	}
 	return groups;
 }
-/* IPv6: at most one "::" zero-run; 8 groups exactly, or fewer when "::" present. */
-static int FvValidateIp6(const char *z,int n){
+/* IPv6: at most one "::" zero-run; 8 groups exactly, or fewer when "::" present.
+ * The 16 address bytes land in aOut[] when it is not NULL. */
+static int FvValidateIp6(const char *z,int n,unsigned char *aOut){
 	const char *zDbl = 0;
 	int i, ga, gb;
+	unsigned char aHead[16], aTail[16];
 	for( i=0; i+1<n; i++ ){
 		if( z[i]==':' && z[i+1]==':' ){
 			if( zDbl ){ return 0; } /* a second "::" is invalid */
 			zDbl = z+i;
 		}
 	}
+	SyZero(aHead,(sxu32)sizeof(aHead));
+	SyZero(aTail,(sxu32)sizeof(aTail));
 	if( zDbl==0 ){
-		return FvIp6Hextets(z,n)==8;
+		if( FvIp6Hextets(z,n,aHead)!=8 ){ return 0; }
+		if( aOut ){ SyMemcpy(aHead,aOut,16); }
+		return 1;
 	}else{
 		int lenA = (int)(zDbl - z);
 		int lenB = n - lenA - 2;
-		ga = (lenA==0) ? 0 : FvIp6Hextets(z,lenA);
-		gb = (lenB==0) ? 0 : FvIp6Hextets(zDbl+2,lenB);
+		ga = (lenA==0) ? 0 : FvIp6Hextets(z,lenA,aHead);
+		gb = (lenB==0) ? 0 : FvIp6Hextets(zDbl+2,lenB,aTail);
 		if( ga<0 || gb<0 ){ return 0; }
-		return (ga+gb)<=7; /* "::" stands for at least one zero group */
+		if( (ga+gb)>7 ){ return 0; } /* "::" stands for at least one zero group */
+		if( aOut ){
+			/* the head groups, then the elided zeros, then the tail groups */
+			SyZero(aOut,16);
+			if( ga>0 ){ SyMemcpy(aHead,aOut,(sxu32)(ga*2)); }
+			if( gb>0 ){ SyMemcpy(aTail,&aOut[16-gb*2],(sxu32)(gb*2)); }
+		}
+		return 1;
 	}
+}
+/*
+ * php's three IP RANGE flags, which describe what an address is FOR rather than
+ * how it is spelled. Every boundary below was derived by sweeping php 8.5 across
+ * the whole IPv4 space and across the IPv6 first/second hextet space.
+ *
+ *   NO_PRIV_RANGE   RFC1918: 10/8, 172.16/12, 192.168/16 -- and fc00::/7.
+ *   NO_RES_RANGE    0/8, 127/8, 169.254/16, 240/4 -- and ::, ::1,
+ *                   ::ffff:0:0/96, ::ffff:0:0:0/96, fe80::/10.
+ *   GLOBAL_RANGE    "not globally reachable": both sets above, plus the
+ *                   shared / benchmarking / documentation blocks.
+ */
+static int FvIpRangeOk4(const unsigned char *ip,int flags){
+	int priv, res;
+	if( (flags & (FV_FLAG_NO_PRIV_RANGE|FV_FLAG_NO_RES_RANGE|FV_FLAG_GLOBAL_RANGE))==0 ){
+		return 1;
+	}
+	priv = (ip[0]==10)
+	    || (ip[0]==172 && ip[1]>=16 && ip[1]<=31)
+	    || (ip[0]==192 && ip[1]==168);
+	res  = (ip[0]==0) || (ip[0]==127)
+	    || (ip[0]==169 && ip[1]==254)
+	    || (ip[0]>=240);
+	if( (flags & FV_FLAG_NO_PRIV_RANGE) && priv ){ return 0; }
+	if( (flags & FV_FLAG_NO_RES_RANGE) && res ){ return 0; }
+	if( flags & FV_FLAG_GLOBAL_RANGE ){
+		if( priv || res ){ return 0; }
+		if( ip[0]==100 && ip[1]>=64 && ip[1]<=127 ){ return 0; }            /* 100.64/10 shared */
+		if( ip[0]==192 && ip[1]==0 && (ip[2]==0 || ip[2]==2) ){ return 0; } /* 192.0.0/24, TEST-NET-1 */
+		if( ip[0]==198 && (ip[1]==18 || ip[1]==19) ){ return 0; }           /* 198.18/15 benchmarking */
+		if( ip[0]==198 && ip[1]==51 && ip[2]==100 ){ return 0; }            /* TEST-NET-2 */
+		if( ip[0]==203 && ip[1]==0 && ip[2]==113 ){ return 0; }             /* TEST-NET-3 */
+	}
+	return 1;
+}
+static int FvIp6BytesZero(const unsigned char *ip,int iFrom,int iTo){
+	int i;
+	for( i=iFrom; i<iTo; i++ ){ if( ip[i] ){ return 0; } }
+	return 1;
+}
+static int FvIpRangeOk6(const unsigned char *ip,int flags){
+	int priv, res;
+	if( (flags & (FV_FLAG_NO_PRIV_RANGE|FV_FLAG_NO_RES_RANGE|FV_FLAG_GLOBAL_RANGE))==0 ){
+		return 1;
+	}
+	priv = (ip[0] & 0xFE) == 0xFC;                                          /* fc00::/7 */
+	res  = (FvIp6BytesZero(ip,0,15) && (ip[15]==0 || ip[15]==1))            /* ::, ::1 */
+	    || (FvIp6BytesZero(ip,0,10) && ip[10]==0xFF && ip[11]==0xFF)        /* ::ffff:0:0/96 */
+	    || (FvIp6BytesZero(ip,0,8) && ip[8]==0xFF && ip[9]==0xFF
+	        && ip[10]==0 && ip[11]==0)                                      /* ::ffff:0:0:0/96 */
+	    || (ip[0]==0xFE && (ip[1] & 0xC0)==0x80);                           /* fe80::/10 */
+	if( (flags & FV_FLAG_NO_PRIV_RANGE) && priv ){ return 0; }
+	if( (flags & FV_FLAG_NO_RES_RANGE) && res ){ return 0; }
+	if( flags & FV_FLAG_GLOBAL_RANGE ){
+		if( priv || res ){ return 0; }
+		if( ip[0]==0x20 && ip[1]==0x01 && (ip[2] & 0xFE)==0 ){ return 0; }  /* 2001::/23 protocol assignments */
+		if( ip[0]==0x20 && ip[1]==0x01 && ip[2]==0x0D && ip[3]==0xB8 ){ return 0; } /* 2001:db8::/32 documentation */
+		if( ip[0]==0x20 && ip[1]==0x02 ){ return 0; }                       /* 2002::/16 6to4 */
+		if( ip[0]==0x01 && ip[1]==0x00 && FvIp6BytesZero(ip,2,8) ){ return 0; } /* 100::/64 discard */
+	}
+	return 1;
 }
 static int FvValidateIp(const char *z,int n,int flags){
 	int v4 = (flags & FV_FLAG_IPV4), v6 = (flags & FV_FLAG_IPV6);
+	unsigned char aIp[16];
 	if( !v4 && !v6 ){ v4 = v6 = 1; } /* default accepts either family */
-	if( v4 && FvValidateIp4(z,n) ){ return 1; }
-	if( v6 && FvValidateIp6(z,n) ){ return 1; }
+	if( v4 && FvValidateIp4(z,n,aIp) ){ return FvIpRangeOk4(aIp,flags); }
+	if( v6 && FvValidateIp6(z,n,aIp) ){ return FvIpRangeOk6(aIp,flags); }
 	return 0;
 }
 /* FILTER_VALIDATE_MAC: 17-char colon- or dash-separated hex (XX:XX:..:XX). */
