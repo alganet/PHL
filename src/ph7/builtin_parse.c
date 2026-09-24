@@ -1148,67 +1148,242 @@ PH7_PRIVATE int PH7_builtin_filter_input(ph7_context *pCtx,int nArg,ph7_value **
 #endif /* PH7_NEED_BUILTIN_REG */
 #ifdef PH7_NEED_FMT_AND_INI
 /*
- * Parse a CSV string and invoke the supplied callback for each processed xhunk.
-
+ * The incremental half of the parser below: walk a partially-read record and
+ * answer whether it ends INSIDE an enclosure, which is how fgetcsv() knows the
+ * value contains the newline and the record continues on the next line.
+ *
+ * It carries its position and state across appended chunks on purpose. Deciding
+ * it by re-parsing the whole accumulated record after every line is quadratic,
+ * and one stray quote in a large file is exactly the input that triggers it.
+ * The trailing line ending PH7_ProcessCsv strips cannot close an enclosure, so
+ * this scan ignores it and both agree on every record.
+ */
+PH7_PRIVATE void PH7_CsvScanInit(PH7_CsvScan *pScan)
+{
+	pScan->iState = 0;
+	pScan->nPos = 0;
+}
+PH7_PRIVATE int PH7_CsvScanOpen(PH7_CsvScan *pScan,const char *zIn,sxu32 nByte,
+	int delim,int encl,int escape)
+{
+	sxu32 i = pScan->nPos;
+	while( i < nByte ){
+		int c = (unsigned char)zIn[i];
+		switch( pScan->iState ){
+		case 0: /* at a field start: whitespace only counts as padding when an
+		         * enclosure is what it leads to */
+			if( c != delim && SyisSpace(c) ){
+				i++;
+				continue;
+			}
+			if( c == encl ){
+				pScan->iState = 2;
+				i++;
+				continue;
+			}
+			if( c == delim ){
+				i++;
+				continue;
+			}
+			pScan->iState = 1;
+			continue;
+		case 1: /* unquoted field: an enclosure here is ordinary content */
+			if( c == delim ){
+				pScan->iState = 0;
+			}
+			i++;
+			continue;
+		case 2: /* inside the enclosure */
+			if( c == encl ){
+				if( i + 1 < nByte && (unsigned char)zIn[i+1] == encl ){
+					i += 2;   /* doubled: a literal enclosure */
+					continue;
+				}
+				pScan->iState = 3;
+				i++;
+				continue;
+			}
+			if( escape != PH7_CSV_NO_ESCAPE && c == escape ){
+				i += (i + 1 < nByte) ? 2 : 1;
+				continue;
+			}
+			i++;
+			continue;
+		default: /* past the closing enclosure, up to the delimiter */
+			if( c == delim ){
+				pScan->iState = 0;
+			}
+			i++;
+			continue;
+		}
+	}
+	pScan->nPos = i;
+	return pScan->iState == 2;
+}
+/*
+ * Strip ONE trailing line ending -- "\r\n", "\n" or "\r" -- and answer the
+ * length left. php applies it to the whole line before parsing, and again to
+ * each UNQUOTED field's own content (which is how a lone "\n" reads back as the
+ * empty string while "a\r\rb" keeps both of its carriage returns).
+ */
+static int CsvStripEol(const char *zIn,int nByte)
+{
+	if( nByte > 0 && zIn[nByte-1] == '\n' ){
+		nByte--;
+		if( nByte > 0 && zIn[nByte-1] == '\r' ){
+			nByte--;
+		}
+	}else if( nByte > 0 && zIn[nByte-1] == '\r' ){
+		nByte--;
+	}
+	return nByte;
+}
+/*
+ * Parse one CSV record and append each field to pArray.
+ *
+ * A port of php's php_fgetcsv rules, derived from the oracle field by field.
+ * PH7's tokenizer answered a different record for most inputs that were not
+ * already trivial:
+ *  - an EMPTY field was dropped along with its delimiter, so `,a` read as one
+ *    column and `a,b,` as two -- every later column shifted;
+ *  - a doubled enclosure was not undoubled, and the closing one was located by
+ *    a parity toggle, so `"a""b"` came back with its quoting intact;
+ *  - the field content was TRIMMED of whitespace and NUL bytes by the consumer,
+ *    so `" a "` -- quoted precisely to keep those spaces -- lost them;
+ *  - the escape character consumed the byte after it even OUTSIDE an enclosure,
+ *    where php gives it no meaning at all.
+ * The rules that are not guessable are the ones php's own parser reaches by
+ * accident and programs depend on: whitespace before an opening enclosure is
+ * skipped (but kept when no enclosure follows), whatever trails a CLOSING
+ * enclosure up to the delimiter is APPENDED to the field (`"a"b` is `ab`), an
+ * escape keeps BOTH bytes rather than the escaped one alone, and a record whose
+ * whole text is empty is a single NULL field rather than an empty string.
+ *
+ * *pbOpen (optional) reports that the text ran out inside an enclosure, which is
+ * how fgetcsv() knows a quoted newline means the record continues on the next
+ * line.
  */
 PH7_PRIVATE sxi32 PH7_ProcessCsv(
+	ph7_value *pArray, /* Fields are appended here */
 	const char *zInput, /* Raw input */
 	int nByte,  /* Input length */
 	int delim,  /* Delimiter */
 	int encl,   /* Enclosure */
-	int escape,  /* Escape character */
-	sxi32 (*xConsumer)(const char *,int,void *), /* User callback */
-	void *pUserData /* Last argument to xConsumer() */
+	int escape, /* Escape character, or PH7_CSV_NO_ESCAPE */
+	int *pbOpen /* OUT: the text ended inside an enclosure */
 	)
 {
-	const char *zEnd = &zInput[nByte];
-	const char *zIn = zInput;
-	const char *zPtr;
-	int isEnc;
-	/* Start processing */
+	ph7_vm *pVm = pArray->pVm;
+	SyBlob sField;
+	ph7_value sEntry;
+	int nLimit = CsvStripEol(zInput,nByte);
+	int i = 0;
+	int bFirst = 1;
+	if( pbOpen ){
+		*pbOpen = 0;
+	}
+	SyBlobInit(&sField,&pVm->sAllocator);
 	for(;;){
-		if( zIn >= zEnd ){
-			/* No more input to process */
+		int bQuoted;
+		SyBlobReset(&sField);
+		/* Whitespace in front of an OPENING enclosure is not part of the field --
+		 * but only when an enclosure is what it leads to. */
+		if( i < nLimit ){
+			int t = i;
+			while( t < nLimit && (unsigned char)zInput[t] != delim
+			 && SyisSpace((unsigned char)zInput[t]) ){
+				t++;
+			}
+			if( t < nLimit && (unsigned char)zInput[t] == encl ){
+				i = t;
+			}
+		}
+		if( bFirst && i >= nLimit ){
+			/* A record with no text at all is ONE null field, not an empty one. */
+			PH7_MemObjInit(pVm,&sEntry);
+			ph7_array_add_elem(pArray,0,&sEntry);
+			PH7_MemObjRelease(&sEntry);
 			break;
 		}
-		isEnc = 0;
-		zPtr = zIn;
-		/* Find the first delimiter */
-		while( zIn < zEnd ){
-			if( zIn[0] == delim && !isEnc){
-				/* Delimiter found,break imediately */
-				break;
-			}else if( zIn[0] == encl ){
-				/* Inside enclosure? */
-				isEnc = !isEnc;
-			}else if( zIn[0] == escape ){
-				/* Escape sequence */
-				zIn++;
-			}
-			/* Advance the cursor */
-			zIn++;
-		}
-		if( zIn > zPtr ){
-			int nByteChunk = (int)(zIn-zPtr);
-			sxi32 rc;
-			/* Invoke the supllied callback */
-			if( zPtr[0] == encl ){
-				zPtr++;
-				nByteChunk-=2;
-			}
-			if( nByteChunk > 0 ){
-				rc = xConsumer(zPtr,nByteChunk,pUserData);
-				if( rc == SXERR_ABORT ){
-					/* User callback request an operation abort */
+		bFirst = 0;
+		bQuoted = (i < nLimit && (unsigned char)zInput[i] == encl);
+		if( bQuoted ){
+			int bClosed = 0;
+			i++;
+			while( i < nLimit ){
+				int c = (unsigned char)zInput[i];
+				/* The ENCLOSURE is tested first, which only shows when the two
+				 * are the same character: `str_getcsv('"aa"b', ',', '"', '"')`
+				 * closes on the second quote rather than escaping past it. (The
+				 * WRITER's order is the other way round -- php's is too.) */
+				if( c == encl ){
+					if( i + 1 < nLimit && (unsigned char)zInput[i+1] == encl ){
+						/* Doubled: one literal enclosure. */
+						SyBlobAppend(&sField,(const void *)&zInput[i],sizeof(char));
+						i += 2;
+						continue;
+					}
+					i++;
+					bClosed = 1;
 					break;
 				}
+				if( escape != PH7_CSV_NO_ESCAPE && c == escape ){
+					/* php keeps the escape AND the byte it protects. */
+					SyBlobAppend(&sField,(const void *)&zInput[i],sizeof(char));
+					i++;
+					if( i < nLimit ){
+						SyBlobAppend(&sField,(const void *)&zInput[i],sizeof(char));
+						i++;
+					}
+					continue;
+				}
+				SyBlobAppend(&sField,(const void *)&zInput[i],sizeof(char));
+				i++;
+			}
+			if( !bClosed ){
+				/* The text ran out with the enclosure still open, so the line
+				 * ending stripped off the top is INSIDE the value: php puts it
+				 * back (which is also how a record that continues on the next
+				 * line keeps its embedded newline). */
+				if( nByte > nLimit ){
+					SyBlobAppend(&sField,(const void *)&zInput[nLimit],
+						(sxu32)(nByte - nLimit));
+				}
+				if( pbOpen ){
+					*pbOpen = 1;
+				}
+			}
+			/* Whatever trails the closing enclosure belongs to the field too. */
+			while( i < nLimit && (unsigned char)zInput[i] != delim ){
+				SyBlobAppend(&sField,(const void *)&zInput[i],sizeof(char));
+				i++;
+			}
+		}else{
+			int iStart = i;
+			int nRaw;
+			while( i < nLimit && (unsigned char)zInput[i] != delim ){
+				i++;
+			}
+			nRaw = CsvStripEol(&zInput[iStart],i - iStart);
+			if( nRaw > 0 ){
+				SyBlobAppend(&sField,(const void *)&zInput[iStart],(sxu32)nRaw);
 			}
 		}
-		/* Ignore trailing delimiter */
-		while( zIn < zEnd && zIn[0] == delim ){
-			zIn++;
+		PH7_MemObjInitFromString(pVm,&sEntry,0);
+		if( SyBlobLength(&sField) > 0 ){
+			ph7_value_string(&sEntry,(const char *)SyBlobData(&sField),
+				(int)SyBlobLength(&sField));
 		}
+		ph7_array_add_elem(pArray,0,&sEntry);
+		PH7_MemObjRelease(&sEntry);
+		if( i < nLimit && (unsigned char)zInput[i] == delim ){
+			/* A trailing delimiter still opens one more (empty) field. */
+			i++;
+			continue;
+		}
+		break;
 	}
+	SyBlobRelease(&sField);
 	return SXRET_OK;
 }
 /*
@@ -1242,28 +1417,6 @@ PH7_PRIVATE sxi32 PH7_CsvCharArg(ph7_context *pCtx,ph7_value *pArg,int iArg,
 		"%s(): Argument #%d ($%s) must be %sa single character",
 		ph7_function_name(pCtx),iArg,zName,bAllowEmpty ? "empty or " : ""
 		);
-}
-/*
- * Default consumer callback for the CSV parsing routine defined above.
- * All the processed input is insereted into an array passed as the last
- * argument to this callback.
- */
-PH7_PRIVATE sxi32 PH7_CsvConsumer(const char *zToken,int nTokenLen,void *pUserData)
-{
-	ph7_value *pArray = (ph7_value *)pUserData;
-	ph7_value sEntry;
-	SyString sToken;
-	/* Insert the token in the given array */
-	SyStringInitFromBuf(&sToken,zToken,nTokenLen);
-	/* Remove trailing and leading white spcaces and null bytes */
-	SyStringFullTrimSafe(&sToken);
-	if( sToken.nByte < 1){
-		return SXRET_OK;
-	}
-	PH7_MemObjInitFromString(pArray->pVm,&sEntry,&sToken);
-	ph7_array_add_elem(pArray,0,&sEntry);
-	PH7_MemObjRelease(&sEntry);
-	return SXRET_OK;
 }
 /*
  * array str_getcsv(string $input[,string $delimiter = ','[,string $enclosure = '"' [,string $escape='\\']]])
@@ -1320,7 +1473,7 @@ PH7_PRIVATE int PH7_builtin_str_getcsv(ph7_context *pCtx,int nArg,ph7_value **ap
 		return PH7_ContextMemoryError(pCtx);
 	}
 	/* Parse the raw input */
-	PH7_ProcessCsv(zInput,nLen,delim,encl,escape,PH7_CsvConsumer,pArray);
+	PH7_ProcessCsv(pArray,zInput,nLen,delim,encl,escape,0);
 	/* Return the freshly created array */
 	ph7_result_value(pCtx,pArray);
 	return PH7_OK;

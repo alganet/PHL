@@ -4507,14 +4507,23 @@ PH7_PRIVATE sxi32 PH7_FormatValidate(ph7_context *pCtx,const char *zFormat,int n
 PH7_PRIVATE sxi32 PH7_FormatCheckArgCount(ph7_context *pCtx,const char *zFormat,int nByte,int nValues,int nFixed,int bVararg);
 PH7_PRIVATE sxi32 PH7_FormatCheckFormatArg(ph7_context *pCtx,ph7_value *pArg,int iArg);
 PH7_PRIVATE sxi32 PH7_CheckStreamArg(ph7_context *pCtx,ph7_value *pArg,int iArg,const char *zName);
-PH7_PRIVATE sxi32 PH7_ProcessCsv(const char *zInput,int nByte,int delim,int encl,
-	int escape,sxi32 (*xConsumer)(const char *,int,void *),void *pUserData);
-/* $escape sentinel for the CSV routines: no input byte ever compares equal
- * to it, so an empty $escape disables escape processing (php 7.4 rules). */
+/* $escape = "" disables escape processing: a sentinel outside 0..255 so no byte
+ * of a field can ever compare equal to it. */
 #define PH7_CSV_NO_ESCAPE 256
+/* Cursor of the incremental "is this record still open?" scan (see
+ * PH7_CsvScanOpen); fgetcsv() keeps one per record it is assembling. */
+typedef struct PH7_CsvScan PH7_CsvScan;
+struct PH7_CsvScan {
+	int iState;   /* 0 field start, 1 unquoted, 2 inside the enclosure, 3 past it */
+	sxu32 nPos;   /* how much of the record has been scanned */
+};
+PH7_PRIVATE void PH7_CsvScanInit(PH7_CsvScan *pScan);
+PH7_PRIVATE int PH7_CsvScanOpen(PH7_CsvScan *pScan,const char *zIn,sxu32 nByte,
+	int delim,int encl,int escape);
+PH7_PRIVATE sxi32 PH7_ProcessCsv(ph7_value *pArray,const char *zInput,int nByte,
+	int delim,int encl,int escape,int *pbOpen);
 PH7_PRIVATE sxi32 PH7_CsvCharArg(ph7_context *pCtx,ph7_value *pArg,int iArg,
 	const char *zName,int bAllowEmpty,int *pChar);
-PH7_PRIVATE sxi32 PH7_CsvConsumer(const char *zToken,int nTokenLen,void *pUserData);
 PH7_PRIVATE sxi32 PH7_StripTagsFromString(ph7_context *pCtx,const char *zIn,int nByte,const char *zTaglist,int nTaglen);
 PH7_PRIVATE sxi32 PH7_ParseIniString(ph7_context *pCtx,const char *zIn,sxu32 nByte,int bProcessSection,int iScannerMode);
 PH7_PRIVATE int PH7_VmQueryConstant(ph7_vm *pVm,const char *zName,sxu32 nName,ph7_value *pOut);

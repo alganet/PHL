@@ -1104,6 +1104,8 @@ PH7_PRIVATE int PH7_builtin_fgetcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ph7_result_bool(pCtx,0);
 	}else{
 		ph7_value *pArray;
+		SyBlob sRec;
+		PH7_CsvScan sScan;
 		/* Create our array */
 		pArray = ph7_context_new_array(pCtx);
 		if( pArray == 0 ){
@@ -1111,8 +1113,35 @@ PH7_PRIVATE int PH7_builtin_fgetcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 			ph7_result_null(pCtx);
 			return PH7_OK;
 		}
-		/* Parse the raw input */
-		PH7_ProcessCsv(zLine,(int)n,delim,encl,escape,PH7_CsvConsumer,pArray);
+		/* A RECORD is not a line: an enclosure that is still open when the line
+		 * ends means the value contains the newline and the record continues on
+		 * the next one. Parsing a single line and stopping split such a value
+		 * across two rows, with the halves quoted wrong. The whole record is
+		 * gathered FIRST and parsed once -- the scan below carries its position
+		 * across the appends, so a stray quote costs one pass over the file
+		 * rather than one per line. */
+		SyBlobInit(&sRec,&pCtx->pVm->sAllocator);
+		SyBlobAppend(&sRec,(const void *)zLine,(sxu32)n);
+		PH7_CsvScanInit(&sScan);
+		while( PH7_CsvScanOpen(&sScan,(const char *)SyBlobData(&sRec),
+				SyBlobLength(&sRec),delim,encl,escape) ){
+			if( SyBlobLength(&sRec) >= (sxu32)SXI32_HIGH ){
+				/* The parser measures in int; stop rather than wrap negative. */
+				break;
+			}
+			/* Continuation reads are NOT capped by $length: php's limit applies
+			 * to the first read of the record, and reusing it here ended the
+			 * record on a chunk boundary in the middle of a quoted value. */
+			n = StreamReadLine(pDev,&zLine,0);
+			if( n < 1 ){
+				/* EOF inside the enclosure: php answers what it has. */
+				break;
+			}
+			SyBlobAppend(&sRec,(const void *)zLine,(sxu32)n);
+		}
+		PH7_ProcessCsv(pArray,(const char *)SyBlobData(&sRec),
+			(int)SyBlobLength(&sRec),delim,encl,escape,0);
+		SyBlobRelease(&sRec);
 		/* Return the freshly created array  */
 		ph7_result_value(pCtx,pArray);
 	}
