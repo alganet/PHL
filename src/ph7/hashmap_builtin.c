@@ -40,12 +40,16 @@ PH7_PRIVATE int ph7_hashmap_shuffle(ph7_context *pCtx,int nArg,ph7_value **apArg
 	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);
 	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
 	if( pMap->nEntry > 1 ){
-		/* Do the merge sort */
-		HashmapMergeSort(pMap,HashmapCmpCallback7,0);
-		/* Fix the last link broken by the merge */
-		while(pMap->pLast->pPrev){
-			pMap->pLast = pMap->pLast->pPrev;
+		/* php's Fisher-Yates over the buckets, drawn from the same generator in
+		 * the same order, so a seeded shuffle answers php's permutation. */
+		if( PH7_HashmapShuffle(pMap) != SXRET_OK ){
+			return PH7_VmMemoryError(pCtx->pVm);
 		}
+	}
+	if( pMap->nEntry > 0 ){
+		/* php REINDEXES: the values keep their new order under the keys 0..n-1,
+		 * and a string key does not survive a shuffle. */
+		HashmapSortRehash(pMap);
 	}
 	/* All done,return TRUE */
 	ph7_result_bool(pCtx,1);
@@ -4451,36 +4455,30 @@ PH7_PRIVATE int ph7_hashmap_rand(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	if( nItem < 2 ){
 		sxu32 nEntry;
-		/* Pick a random slot through the MT19937 generator so array_rand()
-		 * responds to srand()/mt_srand() (reproducible), like php. The exact
-		 * index php lands on differs (php samples its internal hashtable
-		 * buckets), so this is deterministic-under-seed but not value-parity. */
+		/* Pick a random POSITION through the MT19937 generator, which is php's own
+		 * draw for an array with no gaps — the answer is its key, value-identical
+		 * to php's for every seed. php samples its internal BUCKET array instead,
+		 * so an array that has had entries unset() out of it (buckets php keeps as
+		 * holes and re-draws past) lands elsewhere; this engine's map has no holes
+		 * to reproduce, and the difference is recorded. */
 		nEntry = (sxu32)PH7_VmMtRandRange(pMap->pVm,0,(sxi64)pMap->nEntry - 1);
-		/* Extract the desired entry.
-		 * Note that we perform a linear lookup here (later version must change this)
-		 */
+		/* Walk to that position. From the FAR end when it is past the middle —
+		 * position nEntry is (nEntry - 1 - nEntry) steps back from the last one.
+		 * The old arithmetic here took one step too many and answered the key
+		 * BEFORE the one it drew, for every draw in the upper half of the array. */
 		if( nEntry > pMap->nEntry / 2 ){
+			sxu32 nBack = pMap->nEntry - 1 - nEntry;
 			pNode = pMap->pLast;
-			nEntry = pMap->nEntry - nEntry;
-			if( nEntry > 1 ){
-				for(;;){
-					if( nEntry == 0 ){
-						break;
-					}
-					/* Point to the previous entry */
-					pNode = pNode->pNext; /* Reverse link */
-					nEntry--;
-				}
+			while( nBack > 0 ){
+				pNode = pNode->pNext; /* Reverse link */
+				nBack--;
 			}
 		}else{
+			sxu32 nFwd = nEntry;
 			pNode = pMap->pFirst;
-			for(;;){
-				if( nEntry == 0 ){
-					break;
-				}
-				/* Point to the next entry */
+			while( nFwd > 0 ){
 				pNode = pNode->pPrev; /* Reverse link */
-				nEntry--;
+				nFwd--;
 			}
 		}
 		if( pNode->iType == HASHMAP_INT_NODE ){
@@ -4493,32 +4491,53 @@ PH7_PRIVATE int ph7_hashmap_rand(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}else{
 		ph7_value sKey,*pArray;
 		ph7_hashmap *pDest;
+		unsigned char *aPick;
+		sxu32 nAvail = pMap->nEntry;
+		sxu32 nWant = (sxu32)nItem;
+		int bNegate = 0;
+		sxu32 n;
 		/* Create a new array */
 		pArray = ph7_context_new_array(pCtx);
 		if( pArray == 0 ){
 			ph7_result_null(pCtx);
 			return PH7_OK;
 		}
+		/* php picks POSITIONS with a bitset and then walks the array once, so the
+		 * keys come back in the array's own order and every position is reachable.
+		 * This used to copy the FIRST $num keys and shuffle them — no sampling at
+		 * all: `array_rand($rows, 3)` over a hundred rows answered rows 0, 1 and 2
+		 * in every run, so a "random sample" was the head of the array. */
+		aPick = (unsigned char *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,nAvail);
+		if( aPick == 0 ){
+			ph7_context_release_value(pCtx,pArray);
+			return PH7_VmMemoryError(pCtx->pVm);
+		}
+		SyZero(aPick,nAvail);
+		/* Asking for more than half of them is cheaper the other way round: php
+		 * draws the ones to LEAVE OUT and inverts the test. */
+		if( nWant > (nAvail >> 1) ){
+			bNegate = 1;
+			nWant = nAvail - nWant;
+		}
+		for( n = nWant ; n > 0 ; ){
+			sxu32 nPick = (sxu32)PH7_VmMtRandRange(pMap->pVm,0,(sxi64)nAvail - 1);
+			if( !aPick[nPick] ){
+				aPick[nPick] = 1;
+				--n;
+			}
+		}
 		/* Point to the internal representation of the hashmap */
 		pDest = (ph7_hashmap *)pArray->x.pOther;
 		PH7_MemObjInit(pDest->pVm,&sKey);
-		/* Copy the first n items */
-		pNode = pMap->pFirst;
-		if( nItem > (int)pMap->nEntry ){
-			nItem = (int)pMap->nEntry;
+		n = 0;
+		for( pNode = pMap->pFirst ; pNode ; pNode = pNode->pPrev, ++n ){
+			if( (aPick[n] != 0) == !bNegate ){
+				PH7_HashmapExtractNodeKey(pNode,&sKey);
+				PH7_HashmapInsert(pDest,0/* Automatic index assign*/,&sKey);
+				PH7_MemObjRelease(&sKey);
+			}
 		}
-		while( nItem > 0){
-			PH7_HashmapExtractNodeKey(pNode,&sKey);
-			PH7_HashmapInsert(pDest,0/* Automatic index assign*/,&sKey);
-			PH7_MemObjRelease(&sKey);
-			/* Point to the next entry */
-			pNode = pNode->pPrev; /* Reverse link */
-			nItem--;
-		}
-		/* Shuffle the array */
-		HashmapMergeSort(pDest,HashmapCmpCallback7,0);
-		/* Rehash node */
-		HashmapSortRehash(pDest);
+		SyMemBackendFree(&pCtx->pVm->sAllocator,aPick);
 		/* Return the random array */
 		ph7_result_value(pCtx,pArray);
 	}

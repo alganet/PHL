@@ -4429,9 +4429,9 @@ PH7_PRIVATE sxi32 HashmapLookupBlobKey(ph7_hashmap *pMap,const void *pKey,sxu32 
  * Shared with hashmap.c (shuffle/array_unique/array_rand) and referenced from
  * the aHashmapFunc[] registration table; compiled in every mode. */
 typedef sxi32 (*ProcNodeCmp)(ph7_hashmap_node *,ph7_hashmap_node *,void *);
+PH7_PRIVATE sxi32 PH7_HashmapShuffle(ph7_hashmap *pMap);
 PH7_PRIVATE sxi32 HashmapMergeSort(ph7_hashmap *pMap,ProcNodeCmp xCmp,void *pCmpData);
 PH7_PRIVATE void HashmapSortRehash(ph7_hashmap *pMap);
-PH7_PRIVATE sxi32 HashmapCmpCallback7(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData);
 PH7_PRIVATE int HashmapValueFlagEqual(ph7_vm *pVm,ph7_value *pA,ph7_value *pB,int base,int bFold);
 PH7_PRIVATE int ph7_hashmap_sort(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int ph7_hashmap_asort(ph7_context *pCtx,int nArg,ph7_value **apArg);

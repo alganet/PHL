@@ -4194,16 +4194,30 @@ PH7_PRIVATE int PH7_builtin_str_shuffle(ph7_context *pCtx,int nArg,ph7_value **a
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
-	/* Shuffle the string. Draw through the MT19937 generator so str_shuffle()
-	 * responds to srand()/mt_srand() (reproducible under a seed), like php; the
-	 * sampling differs from php's Fisher-Yates so it is not value-parity. */
-	for( i = 0 ; i < nLen ; ++i ){
-		/* Generate a random number first */
-		iR = PH7_VmMtRand(pCtx->pVm);
-		/* Extract a random offset */
-		c = zString[iR % nLen];
-		/* Append it */
-		ph7_result_string(pCtx,(const char *)&c,(int)sizeof(char));
+	/* php's Fisher-Yates, drawn from the same generator in the same order, so a
+	 * seeded shuffle answers php's string.
+	 *
+	 * What was here picked each output byte independently — WITH replacement — so
+	 * the answer was not a permutation of the input at all: `str_shuffle($alpha)`
+	 * came back with letters repeated and letters missing, which is the one thing
+	 * the documented "randomly shuffles a string" cannot do. The idiom it breaks
+	 * is the common one: shuffling an alphabet and slicing a token out of it. */
+	{
+		char *zOut = (char *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,(sxu32)nLen);
+		if( zOut == 0 ){
+			return PH7_VmMemoryError(pCtx->pVm);
+		}
+		SyMemcpy(zString,zOut,(sxu32)nLen);
+		for( i = nLen - 1 ; i > 0 ; --i ){
+			iR = (sxu32)PH7_VmMtRandRange(pCtx->pVm,0,(sxi64)i);
+			if( (int)iR != i ){
+				c = zOut[i];
+				zOut[i] = zOut[iR];
+				zOut[iR] = (char)c;
+			}
+		}
+		ph7_result_string(pCtx,zOut,nLen);
+		SyMemBackendFree(&pCtx->pVm->sAllocator,zOut);
 	}
 	return PH7_OK;
 }

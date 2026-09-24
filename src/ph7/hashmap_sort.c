@@ -535,23 +535,54 @@ static sxi32 HashmapCmpCallback6(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
 	return rc;
 }
 /*
- * Node comparison callback: Random node comparison.
- * used-by: [shuffle()]
+ * Permute a hashmap's entries the way php's shuffle() does: Fisher-Yates over
+ * the buckets, drawing each index from the MT19937 generator through
+ * php_mt_rand_range(). The caller rehashes afterwards (php reindexes the array
+ * 0..n-1 and drops string keys).
+ *
+ * This used to be a merge sort with a coin-flip comparator, which is a permuting
+ * shuffle but not a UNIFORM one — the distribution a random comparator produces
+ * is skewed and depends on the sort's internals — and it consumed the generator
+ * in a different order, so a seeded run answered a different permutation from
+ * php's for every seed.
  */
-PH7_PRIVATE sxi32 HashmapCmpCallback7(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)
+PH7_PRIVATE sxi32 PH7_HashmapShuffle(ph7_hashmap *pMap)
 {
-	sxu32 n;
-	SXUNUSED(pB); /* cc warning */
-	SXUNUSED(pCmpData);
-	/* Grab a random number from the MT19937 generator so shuffle()/array_rand()
-	 * respond to srand()/mt_srand() (reproducible under a seed), like php. This
-	 * is a random-comparator merge sort, not php's Fisher-Yates, so the ordering
-	 * is deterministic-under-seed but not value-parity with php. */
-	n = PH7_VmMtRand(pA->pMap->pVm);
-	/* if the random number is odd then the first node 'pA' is greater then
-	 * the second node 'pB'. Otherwise the reverse is assumed.
-	 */
-	return n&1 ? 1 : -1;
+	ph7_hashmap_node **apNode,*pNode;
+	sxu32 n,nLeft;
+	SySet aNode;
+	if( pMap->nEntry < 2 ){
+		return SXRET_OK;
+	}
+	SySetInit(&aNode,&pMap->pVm->sAllocator,sizeof(ph7_hashmap_node *));
+	for( pNode = pMap->pFirst ; pNode ; pNode = pNode->pPrev ){
+		if( SySetPut(&aNode,(const void *)&pNode) != SXRET_OK ){
+			SySetRelease(&aNode);
+			return SXERR_MEM;
+		}
+	}
+	apNode = (ph7_hashmap_node **)SySetBasePtr(&aNode);
+	n = SySetUsed(&aNode);
+	/* php walks DOWN from the last index, swapping with a draw in [0,n_left]. */
+	for( nLeft = n - 1 ; nLeft > 0 ; --nLeft ){
+		sxu32 nPick = (sxu32)PH7_VmMtRandRange(pMap->pVm,0,(sxi64)nLeft);
+		if( nPick != nLeft ){
+			ph7_hashmap_node *pTmp = apNode[nLeft];
+			apNode[nLeft] = apNode[nPick];
+			apNode[nPick] = pTmp;
+		}
+	}
+	/* Relink in the new order. pPrev is the forward link and pNext the back one
+	 * (the whole map is built that way); the rehash after this fixes pLast. */
+	for( n = 0 ; n < SySetUsed(&aNode) ; ++n ){
+		apNode[n]->pPrev = (n + 1 < SySetUsed(&aNode)) ? apNode[n+1] : 0;
+		apNode[n]->pNext = (n > 0) ? apNode[n-1] : 0;
+	}
+	pMap->pFirst = apNode[0];
+	pMap->pLast = apNode[SySetUsed(&aNode) - 1];
+	pMap->pCur = pMap->pFirst;
+	SySetRelease(&aNode);
+	return SXRET_OK;
 }
 /*
  * Rehash all nodes keys after a merge-sort have been applied.
@@ -561,6 +592,11 @@ PH7_PRIVATE void HashmapSortRehash(ph7_hashmap *pMap)
 {
 	ph7_hashmap_node *p,*pLast;
 	sxu32 i;
+	/* php's sorts rewind the array's internal pointer. The reordering paths reset
+	 * it themselves, but a ONE-element array is reindexed without being reordered
+	 * — and `$a = ['x'=>1]; next($a); sort($a);` then left current() past the end,
+	 * answering false where php answers the element. */
+	pMap->pCur = pMap->pFirst;
 	/* Rehash all entries */
 	pLast = p = pMap->pFirst;
 	pMap->iNextIdx = 0;
