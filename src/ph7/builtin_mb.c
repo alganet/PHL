@@ -651,6 +651,42 @@ static sxu32 MbFoldCode(sxu32 c)
 	}
 	return MbToLower(MbToUpper(c));
 }
+/* php's East Asian WIDE and FULLWIDTH set: two columns each, one for
+ * everything else. Derived from php 8.5 by asking mb_strwidth() for every
+ * code point, which is the only way to keep up with it — php 8.4 replaced the
+ * old wcwidth-shaped ranges with Unicode's East Asian Width property, and that
+ * is where the emoji blocks (U+1F300.., two columns) came from. */
+static const sxu32 aMbWide[][2] = {
+	{0x1100,0x115F}, {0x231A,0x231B}, {0x2329,0x232A}, {0x23E9,0x23EC}, {0x23F0,0x23F0},
+	{0x23F3,0x23F3}, {0x25FD,0x25FE}, {0x2614,0x2615}, {0x2630,0x2637}, {0x2648,0x2653},
+	{0x267F,0x267F}, {0x268A,0x268F}, {0x2693,0x2693}, {0x26A1,0x26A1}, {0x26AA,0x26AB},
+	{0x26BD,0x26BE}, {0x26C4,0x26C5}, {0x26CE,0x26CE}, {0x26D4,0x26D4}, {0x26EA,0x26EA},
+	{0x26F2,0x26F3}, {0x26F5,0x26F5}, {0x26FA,0x26FA}, {0x26FD,0x26FD}, {0x2705,0x2705},
+	{0x270A,0x270B}, {0x2728,0x2728}, {0x274C,0x274C}, {0x274E,0x274E}, {0x2753,0x2755},
+	{0x2757,0x2757}, {0x2795,0x2797}, {0x27B0,0x27B0}, {0x27BF,0x27BF}, {0x2B1B,0x2B1C},
+	{0x2B50,0x2B50}, {0x2B55,0x2B55}, {0x2E80,0x2E99}, {0x2E9B,0x2EF3}, {0x2F00,0x2FD5},
+	{0x2FF0,0x303E}, {0x3041,0x3096}, {0x3099,0x30FF}, {0x3105,0x312F}, {0x3131,0x318E},
+	{0x3190,0x31E5}, {0x31EF,0x321E}, {0x3220,0x3247}, {0x3250,0xA48C}, {0xA490,0xA4C6},
+	{0xA960,0xA97C}, {0xAC00,0xD7A3}, {0xF900,0xFAFF}, {0xFE10,0xFE19}, {0xFE30,0xFE52},
+	{0xFE54,0xFE66}, {0xFE68,0xFE6B}, {0xFF01,0xFF60}, {0xFFE0,0xFFE6}, {0x16FE0,0x16FE4},
+	{0x16FF0,0x16FF6}, {0x17000,0x18CD5}, {0x18CFF,0x18D1E}, {0x18D80,0x18DF2}, {0x1AFF0,0x1AFF3},
+	{0x1AFF5,0x1AFFB}, {0x1AFFD,0x1AFFE}, {0x1B000,0x1B122}, {0x1B132,0x1B132}, {0x1B150,0x1B152},
+	{0x1B155,0x1B155}, {0x1B164,0x1B167}, {0x1B170,0x1B2FB}, {0x1D300,0x1D356}, {0x1D360,0x1D376},
+	{0x1F004,0x1F004}, {0x1F0CF,0x1F0CF}, {0x1F18E,0x1F18E}, {0x1F191,0x1F19A}, {0x1F200,0x1F202},
+	{0x1F210,0x1F23B}, {0x1F240,0x1F248}, {0x1F250,0x1F251}, {0x1F260,0x1F265}, {0x1F300,0x1F320},
+	{0x1F32D,0x1F335}, {0x1F337,0x1F37C}, {0x1F37E,0x1F393}, {0x1F3A0,0x1F3CA}, {0x1F3CF,0x1F3D3},
+	{0x1F3E0,0x1F3F0}, {0x1F3F4,0x1F3F4}, {0x1F3F8,0x1F43E}, {0x1F440,0x1F440}, {0x1F442,0x1F4FC},
+	{0x1F4FF,0x1F53D}, {0x1F54B,0x1F54E}, {0x1F550,0x1F567}, {0x1F57A,0x1F57A}, {0x1F595,0x1F596},
+	{0x1F5A4,0x1F5A4}, {0x1F5FB,0x1F64F}, {0x1F680,0x1F6C5}, {0x1F6CC,0x1F6CC}, {0x1F6D0,0x1F6D2},
+	{0x1F6D5,0x1F6D8}, {0x1F6DC,0x1F6DF}, {0x1F6EB,0x1F6EC}, {0x1F6F4,0x1F6FC}, {0x1F7E0,0x1F7EB},
+	{0x1F7F0,0x1F7F0}, {0x1F90C,0x1F93A}, {0x1F93C,0x1F945}, {0x1F947,0x1F9FF}, {0x1FA70,0x1FA7C},
+	{0x1FA80,0x1FA8A}, {0x1FA8E,0x1FAC6}, {0x1FAC8,0x1FAC8}, {0x1FACD,0x1FADC}, {0x1FADF,0x1FAEA},
+	{0x1FAEF,0x1FAF8}, {0x20000,0x2FFFD}, {0x30000,0x3FFFD},
+};
+static int MbCodeWidth(sxu32 cp)
+{
+	return MbInPairs(aMbWide,SX_ARRAYSIZE(aMbWide),cp) ? 2 : 1;
+}
 
 /* --- Encodings and the character walk ---------------------------------- */
 
@@ -1376,6 +1412,263 @@ static int PH7_builtin_mb_substr_count(ph7_context *pCtx,int nArg,ph7_value **ap
 	ph7_result_int64(pCtx,nCount);
 	return PH7_OK;
 }
+/*
+ * string mb_str_pad(string $string, int $length, string $pad_string = " ",
+ *                   int $pad_type = STR_PAD_RIGHT, ?string $encoding = null)
+ *
+ * php 8.3's multibyte str_pad: $length is a count of CHARACTERS, not of bytes
+ * and not of columns — mb_str_pad("日",4,"ab") is 日 plus three characters, not
+ * two. STR_PAD_BOTH splits the shortfall with the smaller half on the LEFT, the
+ * rule str_pad() has had all along.
+ */
+static int PH7_builtin_mb_str_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zIn,*zPad = " ";
+	mb_text sIn,sPad;
+	int nByte,nPad = 1,iEnc,rc,iType = 1;
+	sxi64 iLen;
+	sxu32 nLeft,nRight,nMissing,i;
+	SyBlob sOut;
+	if( nArg < 2 ){
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	iEnc = MbEncodingArg(pCtx,nArg > 4 ? apArg[4] : 0,"mb_str_pad",5);
+	if( iEnc < 0 ){
+		return PH7_OK;
+	}
+	iLen = ph7_value_to_int64(apArg[1]);
+	if( nArg > 2 ){
+		zPad = ph7_value_to_string(apArg[2],&nPad);
+	}
+	if( nPad < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"mb_str_pad(): Argument #3 ($pad_string) must not be empty");
+	}
+	if( nArg > 3 ){
+		iType = ph7_value_to_int(apArg[3]);
+	}
+	if( iType < 0 || iType > 2 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"mb_str_pad(): Argument #4 ($pad_type) must be STR_PAD_LEFT, STR_PAD_RIGHT, or STR_PAD_BOTH");
+	}
+	zIn = ph7_value_to_string(apArg[0],&nByte);
+	SyZero(&sIn,sizeof(sIn));
+	SyZero(&sPad,sizeof(sPad));
+	rc = MbTextDecode(pCtx,&sIn,zIn,(sxu32)nByte,iEnc,0);
+	if( rc == PH7_OK ){
+		rc = MbTextDecode(pCtx,&sPad,zPad,(sxu32)nPad,iEnc,0);
+	}
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( iLen <= (sxi64)sIn.nChar || sPad.nChar == 0 ){
+		/* php hands the original back when there is nothing to add */
+		ph7_result_string(pCtx,zIn,nByte);
+		return PH7_OK;
+	}
+	nMissing = (sxu32)(iLen - (sxi64)sIn.nChar);
+	nLeft = (iType == 0) ? nMissing : ((iType == 2) ? nMissing / 2 : 0);
+	nRight = nMissing - nLeft;
+	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+	for( i = 0 ; i < nLeft ; ++i ){
+		sxu32 k = i % sPad.nChar;
+		SyBlobAppend(&sOut,&sPad.zIn[sPad.aOfft[k]],sPad.aOfft[k+1] - sPad.aOfft[k]);
+	}
+	SyBlobAppend(&sOut,zIn,(sxu32)nByte);
+	for( i = 0 ; i < nRight ; ++i ){
+		sxu32 k = i % sPad.nChar;
+		SyBlobAppend(&sOut,&sPad.zIn[sPad.aOfft[k]],sPad.aOfft[k+1] - sPad.aOfft[k]);
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+	return PH7_OK;
+}
+/* The byte offset of the character containing byte i — the boundary at or
+ * BEFORE it, which is the direction mb_strcut rounds in on both ends. */
+static sxu32 MbCutBoundary(const mb_text *pText,sxu32 iByte)
+{
+	sxu32 iLo = 0,iHi = pText->nChar;
+	if( iByte >= pText->nByte ){
+		return pText->nByte;
+	}
+	while( iLo < iHi ){
+		sxu32 iMid = iLo + (iHi - iLo) / 2;
+		if( pText->aOfft[iMid] <= iByte ){
+			iLo = iMid + 1;
+		}else{
+			iHi = iMid;
+		}
+	}
+	return pText->aOfft[iLo - 1];
+}
+/*
+ * string mb_strcut(string $string, int $start, ?int $length = null,
+ *                  ?string $encoding = null)
+ *
+ * mb_substr's byte-counting cousin: $start and $length are BYTES, and an offset
+ * that lands inside a character rounds BACK to where that character began —
+ * which is the whole point of the function, since the answer is always a
+ * sequence of whole characters. A negative $length is a count of bytes to leave
+ * off the end, measured from the $start php was GIVEN rather than from the
+ * rounded one (mb_strcut("áéí",1,-2) is "á", not "áé").
+ */
+static int PH7_builtin_mb_strcut(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zIn;
+	mb_text sIn;
+	int nByte,iEnc,rc;
+	sxi64 iStart,iLen;
+	sxu32 iFrom,iTo;
+	if( nArg < 2 ){
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	iEnc = MbEncodingArg(pCtx,nArg > 3 ? apArg[3] : 0,"mb_strcut",4);
+	if( iEnc < 0 ){
+		return PH7_OK;
+	}
+	zIn = ph7_value_to_string(apArg[0],&nByte);
+	iStart = ph7_value_to_int64(apArg[1]);
+	if( iStart < 0 ){
+		iStart += nByte;
+		if( iStart < 0 ){
+			iStart = 0;
+		}
+	}
+	if( iStart > nByte ){
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){
+		iLen = ph7_value_to_int64(apArg[2]);
+		if( iLen < 0 ){
+			iLen += (sxi64)nByte - iStart;
+		}
+	}else{
+		iLen = (sxi64)nByte;   /* to the end, from wherever the start rounds to */
+	}
+	if( iLen < 0 ){
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	SyZero(&sIn,sizeof(sIn));
+	rc = MbTextDecode(pCtx,&sIn,zIn,(sxu32)nByte,iEnc,0);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	iFrom = MbCutBoundary(&sIn,(sxu32)iStart);
+	iTo = ((sxi64)iFrom + iLen >= (sxi64)nByte) ? (sxu32)nByte
+		: MbCutBoundary(&sIn,iFrom + (sxu32)iLen);
+	if( iTo < iFrom ){
+		iTo = iFrom;
+	}
+	/* Whole characters by construction, so the bytes go out as they are */
+	ph7_result_string(pCtx,&zIn[iFrom],(int)(iTo - iFrom));
+	return PH7_OK;
+}
+/*
+ * string mb_strimwidth(string $string, int $start, int $width,
+ *                      string $trim_marker = "", ?string $encoding = null)
+ *
+ * Trim to a COLUMN count rather than a character count, appending $trim_marker
+ * when something was cut — and the marker's own width comes out of the budget,
+ * so a marker wider than the whole width is all that is left. $start counts
+ * characters and is php's ValueError when it names no position at all; a
+ * negative $width is measured back from the width the string has FROM $start.
+ */
+static int PH7_builtin_mb_strimwidth(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zIn,*zMark = "";
+	mb_text sIn;
+	int nByte,nMark = 0,iEnc,rc,bTrim;
+	sxi64 iStart,iWidth,nHave = 0,nBudget,nSoFar = 0,nMarkW = 0;
+	sxu32 i,iEnd;
+	SyBlob sOut;
+	if( nArg < 3 ){
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	iEnc = MbEncodingArg(pCtx,nArg > 4 ? apArg[4] : 0,"mb_strimwidth",5);
+	if( iEnc < 0 ){
+		return PH7_OK;
+	}
+	zIn = ph7_value_to_string(apArg[0],&nByte);
+	iStart = ph7_value_to_int64(apArg[1]);
+	iWidth = ph7_value_to_int64(apArg[2]);
+	if( nArg > 3 ){
+		zMark = ph7_value_to_string(apArg[3],&nMark);
+	}
+	SyZero(&sIn,sizeof(sIn));
+	rc = MbTextDecode(pCtx,&sIn,zIn,(sxu32)nByte,iEnc,0);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( iStart < 0 ){
+		iStart += (sxi64)sIn.nChar;
+	}
+	if( iStart < 0 || iStart > (sxi64)sIn.nChar ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"mb_strimwidth(): Argument #2 ($start) is out of range");
+	}
+	for( i = (sxu32)iStart ; i < sIn.nChar ; ++i ){
+		nHave += MbCodeWidth(sIn.aCode[i] == MB_BAD_CODE ? (sxu32)'?' : sIn.aCode[i]);
+	}
+	if( iWidth < 0 ){
+		/* php measures a negative width back from what is there to trim */
+		iWidth += nHave;
+		if( iWidth < 0 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"mb_strimwidth(): Argument #3 ($width) is out of range");
+		}
+	}
+	bTrim = (nHave > iWidth);
+	iEnd = sIn.nChar;
+	if( bTrim ){
+		mb_text sMark;
+		SyZero(&sMark,sizeof(sMark));
+		rc = MbTextDecode(pCtx,&sMark,zMark,(sxu32)nMark,iEnc,0);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+		for( i = 0 ; i < sMark.nChar ; ++i ){
+			nMarkW += MbCodeWidth(sMark.aCode[i] == MB_BAD_CODE ? (sxu32)'?' : sMark.aCode[i]);
+		}
+		/* The marker's own width comes out of the budget, so a marker wider than
+		 * the whole width leaves nothing of the string at all. */
+		nBudget = iWidth - nMarkW;
+		if( nBudget < 0 ){
+			nBudget = 0;
+		}
+		iEnd = (sxu32)iStart;
+		for( i = (sxu32)iStart ; i < sIn.nChar ; ++i ){
+			sxi64 w = MbCodeWidth(sIn.aCode[i] == MB_BAD_CODE ? (sxu32)'?' : sIn.aCode[i]);
+			if( nSoFar + w > nBudget ){
+				break;
+			}
+			nSoFar += w;
+			iEnd = i + 1;
+		}
+	}
+	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+	/* Unlike a slice, this one is written a CHARACTER at a time in every
+	 * encoding — which is why an error character comes out as '?' even under
+	 * ASCII, where mb_substr() hands the raw byte back. The marker is the
+	 * caller's own bytes and goes out as it came in. */
+	for( i = (sxu32)iStart ; i < iEnd ; ++i ){
+		if( sIn.aCode[i] == MB_BAD_CODE ){
+			SyBlobAppend(&sOut,"?",1);
+		}else{
+			SyBlobAppend(&sOut,&sIn.zIn[sIn.aOfft[i]],sIn.aOfft[i+1] - sIn.aOfft[i]);
+		}
+	}
+	if( bTrim ){
+		SyBlobAppend(&sOut,zMark,(sxu32)nMark);
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+	return PH7_OK;
+}
 /* array mb_str_split(string $string, int $length = 1, ?string $encoding) */
 static int PH7_builtin_mb_str_split(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -1658,17 +1951,6 @@ static int PH7_builtin_mb_check_encoding(ph7_context *pCtx,int nArg,ph7_value **
 	zIn = ph7_value_to_string(apArg[0],&nByte);
 	ph7_result_bool(pCtx,MbBufferIsValid(zIn,(sxu32)nByte,iEnc));
 	return PH7_OK;
-}
-/* php's East Asian wide/fullwidth set: two columns, everything else one. */
-static int MbCodeWidth(sxu32 cp)
-{
-	if( (cp >= 0x1100 && cp <= 0x115F) || (cp >= 0x2E80 && cp <= 0xA4CF)
-	 || (cp >= 0xAC00 && cp <= 0xD7A3) || (cp >= 0xF900 && cp <= 0xFAFF)
-	 || (cp >= 0xFE30 && cp <= 0xFE4F) || (cp >= 0xFF00 && cp <= 0xFF60)
-	 || (cp >= 0xFFE0 && cp <= 0xFFE6) || cp >= 0x20000 ){
-		return 2;
-	}
-	return 1;
 }
 /* int mb_strwidth(string $string, ?string $encoding = null) */
 static int PH7_builtin_mb_strwidth(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -2082,6 +2364,9 @@ PH7_PRIVATE int PH7_builtin_mb_ucfirst_f(ph7_context *pCtx,int nArg,ph7_value **
 PH7_PRIVATE int PH7_builtin_mb_strpos_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strpos(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_strstr_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strstr(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_substr_count_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_substr_count(pCtx,nArg,apArg); }
+PH7_PRIVATE int PH7_builtin_mb_str_pad_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_str_pad(pCtx,nArg,apArg); }
+PH7_PRIVATE int PH7_builtin_mb_strcut_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strcut(pCtx,nArg,apArg); }
+PH7_PRIVATE int PH7_builtin_mb_strimwidth_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strimwidth(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_str_split_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_str_split(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_trim_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_trim(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_internal_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_internal_encoding(pCtx,nArg,apArg); }
