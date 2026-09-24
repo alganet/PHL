@@ -671,41 +671,45 @@ static void VmExcTraceArg(ph7_vm *pVm,SyBlob *pOut,ph7_value *pArg)
 		return;
 	}
 	if( pArg->iFlags & MEMOBJ_STRING ){
-		const char *z = (const char *)SyBlobData(&pArg->sBlob);
-		sxu32 n = SyBlobLength(&pArg->sBlob);
-		sxu32 nKeep = n > EXC_ARG_MAX ? EXC_ARG_MAX : n;
-		sxu32 i;
-		SyBlobAppend(pOut,"'",sizeof("'")-1);
-		for( i = 0 ; i < nKeep ; i++ ){
-			unsigned char c = (unsigned char)z[i];
-			if( c >= 32 && c <= 126 && c != '\\' ){
-				SyBlobAppend(pOut,(const void *)&z[i],sizeof(char));
-				continue;
-			}
-			switch( c ){
-				case '\n': SyBlobAppend(pOut,"\\n",2); break;
-				case '\r': SyBlobAppend(pOut,"\\r",2); break;
-				case '\t': SyBlobAppend(pOut,"\\t",2); break;
-				case '\f': SyBlobAppend(pOut,"\\f",2); break;
-				case '\v': SyBlobAppend(pOut,"\\v",2); break;
-				case '\\': SyBlobAppend(pOut,"\\\\",2); break;
-				case 27:   SyBlobAppend(pOut,"\\e",2); break;
-				default:   SyBlobFormat(pOut,"\\x%02X",(int)c); break;
-			}
+		/* php 8.5 does not put string CONTENT in a trace at all: every non-empty
+		 * one renders as '...' (the empty one still shows as ''), so a password
+		 * or a token passed to the function that threw cannot reach a log through
+		 * the trace. The truncate-at-15-and-escape shape here was php 8.4's. */
+		if( SyBlobLength(&pArg->sBlob) < 1 ){
+			SyBlobAppend(pOut,"''",sizeof("''")-1);
+		}else{
+			SyBlobAppend(pOut,"'...'",sizeof("'...'")-1);
 		}
-		if( n > nKeep ){
-			SyBlobAppend(pOut,"...",sizeof("...")-1);
-		}
-		SyBlobAppend(pOut,"'",sizeof("'")-1);
 		return;
 	}
 	{
-		/* int / float / anything else: php prints the scalar itself. */
+		/* int / float / anything else: php prints the scalar itself -- but a
+		 * trace FLOAT always shows its fraction (1.0, not the "1" the ordinary
+		 * string cast produces), which is what tells a float argument apart from
+		 * an int one. INF/NAN and the exponent forms already carry a marker. */
 		ph7_value sTmp;
+		const char *z;
+		sxu32 n,i;
+		int bMarked = 0;
 		PH7_MemObjInit(&(*pVm),&sTmp);
 		PH7_MemObjStore(pArg,&sTmp);
 		PH7_MemObjToString(&sTmp);
-		SyBlobAppend(pOut,SyBlobData(&sTmp.sBlob),SyBlobLength(&sTmp.sBlob));
+		z = (const char *)SyBlobData(&sTmp.sBlob);
+		n = SyBlobLength(&sTmp.sBlob);
+		SyBlobAppend(pOut,z,n);
+		if( pArg->iFlags & MEMOBJ_REAL ){
+			for( i = 0 ; i < n ; ++i ){
+				if( z[i] < '0' || z[i] > '9' ){
+					if( z[i] != '-' && z[i] != '+' ){
+						bMarked = 1;
+						break;
+					}
+				}
+			}
+			if( !bMarked ){
+				SyBlobAppend(pOut,".0",sizeof(".0")-1);
+			}
+		}
 		PH7_MemObjRelease(&sTmp);
 	}
 }
@@ -784,7 +788,7 @@ static int VmExcIsArgError(ph7_vm *pVm,ph7_class_instance *pExc)
  * frame, then `#N {main}` with NO trailing newline. A frame with no `file` is
  * php's `[internal function]: `.
  */
-static void VmExcTraceString(ph7_vm *pVm,ph7_value *pTrace,SyBlob *pOut)
+PH7_PRIVATE void PH7_VmTraceToString(ph7_vm *pVm,ph7_value *pTrace,int bMainMarker,SyBlob *pOut)
 {
 	ph7_hashmap *pMap;
 	ph7_hashmap_node *pEntry;
@@ -834,7 +838,11 @@ static void VmExcTraceString(ph7_vm *pVm,ph7_value *pTrace,SyBlob *pOut)
 			nFrame++;
 		}
 	}
-	SyBlobFormat(pOut,"#%u {main}",nFrame);
+	if( bMainMarker ){
+		/* getTraceAsString() ends on the bottom marker; debug_print_backtrace()
+		 * does not print one -- it stops after the last real frame. */
+		SyBlobFormat(pOut,"#%u {main}",nFrame);
+	}
 }
 static int vm_builtin_Exception_getTraceAsString(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -842,7 +850,7 @@ static int vm_builtin_Exception_getTraceAsString(ph7_context *pCtx,int nArg,ph7_
 	SyBlob sOut;
 	SXUNUSED(nArg); SXUNUSED(apArg);
 	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
-	VmExcTraceString(pCtx->pVm,pThis ? PH7_NativeAttr(pThis,EXC_TRACE) : 0,&sOut);
+	PH7_VmTraceToString(pCtx->pVm,pThis ? PH7_NativeAttr(pThis,EXC_TRACE) : 0,TRUE,&sOut);
 	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
 	SyBlobRelease(&sOut);
 	return PH7_OK;
@@ -917,7 +925,7 @@ static int vm_builtin_Exception_toString(ph7_context *pCtx,int nArg,ph7_value **
 		VmExcFrameStr(&sThis,PH7_NativeAttr(pExc,EXC_FILE));
 		SyBlobFormat(&sThis,":%qd\nStack trace:\n",
 			(pLine && (pLine->iFlags & MEMOBJ_INT)) ? pLine->x.iVal : (sxi64)0);
-		VmExcTraceString(pVm,PH7_NativeAttr(pExc,EXC_TRACE),&sThis);
+		PH7_VmTraceToString(pVm,PH7_NativeAttr(pExc,EXC_TRACE),TRUE,&sThis);
 		if( SyBlobLength(&sOut) > 0 ){
 			SyBlobAppend(&sThis,"\n\nNext ",sizeof("\n\nNext ")-1);
 			SyBlobAppend(&sThis,SyBlobData(&sOut),SyBlobLength(&sOut));

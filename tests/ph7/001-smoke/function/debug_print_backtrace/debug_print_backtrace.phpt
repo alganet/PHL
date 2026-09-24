@@ -2,27 +2,21 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-debug_print_backtrace prints called function
---SKIPIF--
-<?php
-if (function_exists('zend_version')) { echo 'skip: PHP debug_print_backtrace output differs'; }
-?>
+debug_print_backtrace prints php's own trace frames
 --FILE--
 <?php
-function foo() {
+// This used to assert PH7's `[Called function: foo]` line and was skipped under
+// php for exactly that reason; the format is php's now, so both engines answer
+// the same thing and the skip is gone.
+function dpb_foo() {
     ob_start();
     debug_print_backtrace();
-    $out = ob_get_clean();
-    if (strpos($out, "Called function") !== false) {
-        echo "printed_called\n";
-    } else {
-        echo "missing_called\n";
-    }
+    $dpb_lines = explode("\n", trim(str_replace(__FILE__, 'FILE', ob_get_clean())));
+    // Only this file's own frame is asserted: whatever ran the file sits under it.
+    return implode("\n", array_values(array_filter($dpb_lines,
+        static fn($dpb_l) => strpos($dpb_l, ': dpb_foo(') !== false))) . "\n";
 }
-foo();
+echo dpb_foo();
 ?>
 --EXPECT--
-printed_called
---CLEAN--
-<?php
-unset($out);
+#0 FILE(13): dpb_foo()

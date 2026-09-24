@@ -4058,11 +4058,12 @@ PH7_PRIVATE sxi32 VmThrowFromVm(
  * frame shape is file/line/function[/class/type], matching the default
  * zend.exception_ignore_args=On.
  */
-PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,ph7_value *pList)
+PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,sxi32 iLimit,ph7_value *pList)
 {
 	SyString *pFile;
 	VmFrame *pFrame;
 	ph7_value *pValue;
+	sxi32 nDone = 0;
 	pValue = ph7_new_scalar(&(*pVm));
 	if( pValue == 0 ){
 		return;
@@ -4070,6 +4071,14 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,ph7_value *pList)
 	pFile = (SyString *)SySetPeek(&pVm->aFiles);
 	pFrame = pVm->pFrame ? VmSkipExceptionFrames(pVm->pFrame) : 0;
 	while( pFrame ){
+		/* $limit stops the walk after that many frames, 0 meaning "no limit".
+		 * The test is php's own, on the NARROWED value: a limit that wraps
+		 * negative reports NOTHING (frame 0 is already >= it), which is why
+		 * debug_backtrace(0, PHP_INT_MAX) answers an empty array. */
+		if( iLimit != 0 && nDone >= iLimit ){
+			break;
+		}
+		nDone++;
 		ph7_vm_func *pFunc = (ph7_vm_func *)pFrame->pUserData;
 		ph7_value *pEntry;
 		if( pFrame->pParent == 0 || pFunc == 0 ){
@@ -4118,9 +4127,17 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,ph7_value *pList)
 			 * for a bound closure (has $this but is not VM_FUNC_CLASS_METHOD). */
 			SyString *pClsName = 0;
 			const char *zType = "->";
+			int bStatic = 0;
 			if( (pFunc->iFlags & VM_FUNC_CLASS_METHOD) && pFunc->pUserData ){
+				/* php's separator says what the CALLEE is, not how the caller
+				 * happened to reach it: a static method is `::` even when the
+				 * calling frame has a $this bound (`self::s()` from inside an
+				 * instance method), which the pThis test reported as `->`.
+				 * ph7_class_method embeds its ph7_vm_func FIRST, so the method's
+				 * own flags are one cast away. */
+				bStatic = (((ph7_class_method *)pFunc)->iFlags & PH7_CLASS_ATTR_STATIC) != 0;
 				pClsName = &((ph7_class *)pFunc->pUserData)->sName;
-				zType = pFrame->pThis ? "->" : "::";
+				zType = bStatic ? "::" : "->";
 			}else if( pFrame->pThis && pFrame->pThis->pClass ){
 				pClsName = &pFrame->pThis->pClass->sName;
 			}
@@ -4131,7 +4148,8 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,ph7_value *pList)
 				ph7_value_string(pValue,zType,(int)SyStrlen(zType));
 				ph7_array_add_strkey_elem(pEntry,"type",pValue);
 				ph7_value_reset_string_cursor(pValue);
-				if( (iOptions & 1 /*DEBUG_BACKTRACE_PROVIDE_OBJECT*/) && pFrame->pThis ){
+				if( (iOptions & 1 /*DEBUG_BACKTRACE_PROVIDE_OBJECT*/) && pFrame->pThis
+				 && !bStatic ){
 					ph7_value *pObjVal = ph7_new_scalar(&(*pVm));
 					if( pObjVal ){
 						pFrame->pThis->iRef++;
@@ -4146,14 +4164,10 @@ PH7_PRIVATE void VmBuildBacktrace(ph7_vm *pVm,sxi32 iOptions,ph7_value *pList)
 		if( (iOptions & 2 /*DEBUG_BACKTRACE_IGNORE_ARGS*/) == 0 ){
 			ph7_value *pArg = ph7_new_array(&(*pVm));
 			if( pArg ){
-				VmSlot *aSlot = (VmSlot *)SySetBasePtr(&pFrame->sArg);
-				sxu32 n;
-				for( n = 0 ; n < SySetUsed(&pFrame->sArg) ; ++n ){
-					ph7_value *pObj = (ph7_value *)SySetAt(&pVm->aMemObj,aSlot[n].nIdx);
-					if( pObj ){
-						ph7_array_add_elem(pArg,0/* Automatic index assign*/,pObj);
-					}
-				}
+				/* The arguments the caller actually PASSED, which is not the same
+				 * list as the frame's installed slots -- see PH7_VmFrameActualArgs
+				 * (shared with func_get_args()). */
+				PH7_VmFrameActualArgs(&(*pVm),pFrame,pArg);
 				ph7_array_add_strkey_elem(pEntry,"args",pArg);
 				ph7_release_value(&(*pVm),pArg);
 			}
@@ -4245,7 +4259,7 @@ PH7_PRIVATE void PH7_VmStampThrowableSite(ph7_vm *pVm,ph7_class_instance *pThis)
 			if( pList == 0 ){
 				continue;
 			}
-			VmBuildBacktrace(&(*pVm),2 /*DEBUG_BACKTRACE_IGNORE_ARGS*/,pList);
+			VmBuildBacktrace(&(*pVm),2 /*DEBUG_BACKTRACE_IGNORE_ARGS*/,0,pList);
 			/* Building the trace reserves new memobjs, which may realloc
 			 * pVm->aMemObj and INVALIDATE pAttrValue (a pointer INTO that set,
 			 * from PH7_ClassInstanceExtractAttrValue above). Re-fetch the slot

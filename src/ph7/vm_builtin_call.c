@@ -192,6 +192,83 @@ PH7_PRIVATE int vm_builtin_func_get_args_byref(ph7_context *pCtx,int nArg,ph7_va
 	return SXRET_OK;
 }
 /*
+ * Fill pArray with the arguments the CALLER actually passed to pFrame, in php's
+ * flat order: the first min(actual, non-variadic-formal) installed slots, then
+ * the elements of the variadic packed array (sArg's last entry) -- never a
+ * DEFAULTED parameter, and never the packed array itself.
+ *
+ * Both func_get_args() and debug_backtrace()'s per-frame 'args' need exactly
+ * this list, and the backtrace used the raw sArg slots instead: it reported
+ * `g(NULL, 2)` for a `g($x = null, $y = 2)` called as `g()`, and a variadic
+ * callee's packed array once per slot (`v(Array, Array)` for `v(1, 2)`).
+ */
+PH7_PRIVATE void PH7_VmFrameActualArgs(ph7_vm *pVm,VmFrame *pFrame,ph7_value *pArray)
+{
+	VmSlot *aSlot = (VmSlot *)SySetBasePtr(&pFrame->sArg);
+	ph7_vm_func *pVmFunc = (ph7_vm_func *)pFrame->pUserData;
+	ph7_value *pObj;
+	sxu32 n;
+	int nActual = pFrame->nActualArgs;
+	if( nActual >= 0 && pVmFunc ){
+		sxu32 nFormal = SySetUsed(&pVmFunc->aArgs);
+		ph7_vm_func_arg *aFormal = (ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs);
+		sxu32 nHead = nFormal;
+		if( nFormal > 0 && (aFormal[nFormal-1].iFlags & VM_FUNC_ARG_VARIADIC) ){
+			nHead = nFormal - 1;
+		}
+		for( n = 0; n < (sxu32)nActual && n < nHead && n < SySetUsed(&pFrame->sArg); n++ ){
+			pObj = (ph7_value *)SySetAt(&pVm->aMemObj,aSlot[n].nIdx);
+			if( pObj ){
+				ph7_array_add_elem(pArray,0,pObj);
+			}
+		}
+		if( (sxu32)nActual > nHead && nHead < SySetUsed(&pFrame->sArg) ){
+			if( nHead < nFormal ){
+				/* A variadic formal exists: the extras live, in order, inside
+				 * its packed array */
+				pObj = (ph7_value *)SySetAt(&pVm->aMemObj,aSlot[nHead].nIdx);
+				if( pObj && (pObj->iFlags & MEMOBJ_HASHMAP) ){
+					ph7_hashmap *pMap = (ph7_hashmap *)pObj->x.pOther;
+					ph7_hashmap_node *pNode = pMap->pFirst;
+					sxu32 i;
+					for( i = 0; i < pMap->nEntry && pNode; ++i ){
+						/* php excludes NAMED arguments absorbed into the variadic
+						 * (string-keyed elements) -- only the POSITIONAL ones. */
+						if( pNode->iType == HASHMAP_BLOB_NODE ){
+							pNode = pNode->pPrev;
+							continue;
+						}
+						{
+							ph7_value *pElem = (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
+							if( pElem ){
+								ph7_array_add_elem(pArray,0,pElem);
+							}
+						}
+						pNode = pNode->pPrev;
+					}
+				}
+			}else{
+				/* No variadic formal: extra positional args are plain sArg
+				 * entries beyond the formals (e.g. Fiber::start()'s own
+				 * zero-formal func_get_args() relay). */
+				for( n = nHead; n < SySetUsed(&pFrame->sArg) && n < (sxu32)nActual; n++ ){
+					pObj = (ph7_value *)SySetAt(&pVm->aMemObj,aSlot[n].nIdx);
+					if( pObj ){
+						ph7_array_add_elem(pArray,0,pObj);
+					}
+				}
+			}
+		}
+		return;
+	}
+	for( n = 0;  n < SySetUsed(&pFrame->sArg) ; n++ ){
+		pObj = (ph7_value *)SySetAt(&pVm->aMemObj,aSlot[n].nIdx);
+		if( pObj ){
+			ph7_array_add_elem(pArray,0/* Automatic index assign*/,pObj);
+		}
+	}
+}
+/*
  * array func_get_args(void)
  *   Returns an array comprising a copy of function's argument list.
  * Parameters
@@ -203,11 +280,8 @@ PH7_PRIVATE int vm_builtin_func_get_args_byref(ph7_context *pCtx,int nArg,ph7_va
  */
 PH7_PRIVATE int vm_builtin_func_get_args(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_value *pObj = 0;
 	ph7_value *pArray;
 	VmFrame *pFrame;
-	VmSlot *aSlot;
-	sxu32 n;
 	/* Point to the current frame */
 	pFrame = pCtx->pVm->pFrame;
 	pFrame = VmSkipExceptionFrames(pFrame);
@@ -226,75 +300,7 @@ PH7_PRIVATE int vm_builtin_func_get_args(ph7_context *pCtx,int nArg,ph7_value **
 		ph7_result_bool(pCtx,0);
 		return SXRET_OK;
 	}
-	/* Start filling the array with the given arguments. With a stamped actual
-	 * arity (band A #4) reconstruct php's flat ACTUAL list: the first
-	 * min(actual, non-variadic-formal) installed slots, then the elements of
-	 * the variadic packed array (sArg's last entry) — never defaulted params,
-	 * and never the packed array itself (the pre-fix behavior listed defaults
-	 * AND the array, once even twice). */
-	aSlot = (VmSlot *)SySetBasePtr(&pFrame->sArg);
-	{
-		ph7_vm_func *pVmFunc = (ph7_vm_func *)pFrame->pUserData;
-		int nActual = pFrame->nActualArgs;
-		if( nActual >= 0 && pVmFunc ){
-			sxu32 nFormal = SySetUsed(&pVmFunc->aArgs);
-			ph7_vm_func_arg *aFormal = (ph7_vm_func_arg *)SySetBasePtr(&pVmFunc->aArgs);
-			sxu32 nHead = nFormal;
-			if( nFormal > 0 && (aFormal[nFormal-1].iFlags & VM_FUNC_ARG_VARIADIC) ){
-				nHead = nFormal - 1;
-			}
-			for( n = 0; n < (sxu32)nActual && n < nHead && n < SySetUsed(&pFrame->sArg); n++ ){
-				pObj = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,aSlot[n].nIdx);
-				if( pObj ){
-					ph7_array_add_elem(pArray,0,pObj);
-				}
-			}
-			if( (sxu32)nActual > nHead && nHead < SySetUsed(&pFrame->sArg) ){
-				if( nHead < nFormal ){
-					/* A variadic formal exists: the extras live, in order,
-					 * inside its packed array */
-					pObj = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,aSlot[nHead].nIdx);
-					if( pObj && (pObj->iFlags & MEMOBJ_HASHMAP) ){
-						ph7_hashmap *pMap = (ph7_hashmap *)pObj->x.pOther;
-						ph7_hashmap_node *pNode = pMap->pFirst;
-						sxu32 i;
-						for( i = 0; i < pMap->nEntry && pNode; ++i ){
-							/* php excludes NAMED arguments absorbed into the variadic
-							 * (string-keyed elements) from func_get_args() — only the
-							 * POSITIONAL (int-keyed) elements are reported. */
-							if( pNode->iType == HASHMAP_BLOB_NODE ){
-								pNode = pNode->pPrev;
-								continue;
-							}
-							ph7_value *pElem = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pNode->nValIdx);
-							if( pElem ){
-								ph7_array_add_elem(pArray,0,pElem);
-							}
-							pNode = pNode->pPrev;
-						}
-					}
-				}else{
-					/* No variadic formal: extra positional args are plain sArg
-					 * entries beyond the formals (e.g. Fiber::start()'s own
-					 * zero-formal func_get_args() relay). */
-					for( n = nHead; n < SySetUsed(&pFrame->sArg) && n < (sxu32)nActual; n++ ){
-						pObj = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,aSlot[n].nIdx);
-						if( pObj ){
-							ph7_array_add_elem(pArray,0,pObj);
-						}
-					}
-				}
-			}
-			ph7_result_value(pCtx,pArray);
-			return SXRET_OK;
-		}
-	}
-	for( n = 0;  n < SySetUsed(&pFrame->sArg) ; n++ ){
-		pObj = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,aSlot[n].nIdx);
-		if( pObj ){
-			ph7_array_add_elem(pArray,0/* Automatic index assign*/,pObj);
-		}
-	}
+	PH7_VmFrameActualArgs(pCtx->pVm,pFrame,pArray);
 	/* Return the freshly created array */
 	ph7_result_value(pCtx,pArray);
 	return SXRET_OK;

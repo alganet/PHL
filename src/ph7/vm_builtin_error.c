@@ -640,6 +640,22 @@ PH7_PRIVATE int vm_builtin_error_clear_last(ph7_context *pCtx,int nArg,ph7_value
 	SyBlobReset(&pVm->sLastErrFile);
 	return PH7_OK;
 }
+/*
+ * php's $limit reaches the walk through zend_fetch_debug_backtrace's `int`
+ * parameter, a plain narrowing cast -- so PHP_INT_MAX arrives as -1 and reports
+ * NO frames at all, while 2^32 arrives as 0 and reports every one. Spelled
+ * through unsigned arithmetic because the two's-complement wrap of an
+ * out-of-range signed conversion is implementation-defined.
+ */
+static sxi32 VmBacktraceLimit(int nArg,ph7_value **apArg)
+{
+	sxu32 uL;
+	if( nArg < 2 || apArg[1] == 0 ){
+		return 0;
+	}
+	uL = (sxu32)((sxu64)ph7_value_to_int64(apArg[1]) & 0xFFFFFFFF);
+	return (uL <= (sxu32)SXI32_HIGH) ? (sxi32)uL : -(sxi32)(SXU32_HIGH - uL) - 1;
+}
 PH7_PRIVATE int vm_builtin_debug_backtrace(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
@@ -647,6 +663,11 @@ PH7_PRIVATE int vm_builtin_debug_backtrace(ph7_context *pCtx,int nArg,ph7_value 
 	/* $options (php default DEBUG_BACKTRACE_PROVIDE_OBJECT): bit 1 attaches the
 	 * frame's $this as 'object', bit 2 (IGNORE_ARGS) suppresses the 'args' list. */
 	sxi32 iOptions = (nArg > 0 && apArg[0]) ? ph7_value_to_int(apArg[0]) : 1 /*PROVIDE_OBJECT*/;
+	/* $limit: how many frames to report, 0 meaning all of them. It was declared
+	 * in aBuiltinSig[], screened as an int and then never read, so asking for the
+	 * caller alone answered the WHOLE stack -- and a program that logs
+	 * debug_backtrace(0, 1) per request logged the entire chain every time. */
+	sxi32 iLimit = VmBacktraceLimit(nArg,apArg);
 	/* php returns a LIST of frames, innermost first -- one entry per ACTIVE call, each
 	 * describing the callee (function/class) and the position of the CALL SITE.
 	 * VmBuildBacktrace walks the full frame chain (shared with the Throwable trace
@@ -659,7 +680,7 @@ PH7_PRIVATE int vm_builtin_debug_backtrace(ph7_context *pCtx,int nArg,ph7_value 
 		SXUNUSED(apArg);
 		return PH7_OK;
 	}
-	VmBuildBacktrace(&(*pVm),iOptions,pList);
+	VmBuildBacktrace(&(*pVm),iOptions,iLimit,pList);
 	/* Return the freshly created list */
 	ph7_result_value(pCtx,pList);
 	/*
@@ -713,26 +734,36 @@ static int VmMiniBacktrace(
 	return SXRET_OK;
 }
 /*
- * void debug_print_backtrace()
- *  Prints a backtrace
- * Parameters
- * None
- * Return
- * NULL
+ * void debug_print_backtrace(int $options = 0, int $limit = 0)
+ *  Prints a backtrace.
+ *
+ *  Both arguments were declared in aBuiltinSig[] and read by nothing, and what
+ *  the function PRINTED was not a backtrace at all: PH7's own
+ *  `[Called function: f][Processed file: x]` line, describing ONE frame in a
+ *  shape no php ever produced. php prints the same `#N file(line): func(args)`
+ *  body getTraceAsString() renders -- without the `#N {main}` marker, which is
+ *  the bottom of an exception's trace and not a frame -- and honours the same
+ *  $options bits and $limit as debug_backtrace().
  */
 PH7_PRIVATE int vm_builtin_debug_print_backtrace(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	SyBlob sDump;
+	ph7_value *pList;
+	sxi32 iOptions = (nArg > 0 && apArg[0]) ? ph7_value_to_int(apArg[0]) : 0;
+	sxi32 iLimit = VmBacktraceLimit(nArg,apArg);
+	pList = ph7_context_new_array(pCtx);
+	if( pList == 0 ){
+		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");
+		return PH7_OK;
+	}
+	VmBuildBacktrace(&(*pVm),iOptions,iLimit,pList);
 	SyBlobInit(&sDump,&pVm->sAllocator);
-	/* Generate the backtrace */
-	VmMiniBacktrace(pVm,&sDump);
+	PH7_VmTraceToString(pVm,pList,FALSE,&sDump);
 	/* Output backtrace */
 	ph7_context_output(pCtx,(const char *)SyBlobData(&sDump),(int)SyBlobLength(&sDump));
 	/* All done,cleanup */
 	SyBlobRelease(&sDump);
-	SXUNUSED(nArg); /* cc warning */
-	SXUNUSED(apArg);
 	return PH7_OK;
 }
 /*
