@@ -2294,6 +2294,9 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	PH7_VmInstallReflection(&(*pVm));
 	PH7_VmInstallDateTime(&(*pVm));
 	PH7_VmInstallSpl(&(*pVm));
+#ifndef PH7_DISABLE_HASH_FUNC
+	PH7_VmInstallHashContext(&(*pVm));
+#endif
 	PH7_VmInstallTokenizer(&(*pVm));
 	PH7_VmInstallSession(&(*pVm));
 	PH7_VmInstallIni(&(*pVm));

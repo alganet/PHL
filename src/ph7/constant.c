@@ -1612,6 +1612,18 @@ static void PH7_EXTR_PREFIX_IF_EXISTS_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData); /* cc warning */
 	ph7_value_int(pVal,PH7_EXTR_PREFIX_IF_EXISTS);
 }
+#ifndef PH7_DISABLE_HASH_FUNC
+/*
+ * HASH_HMAC.
+ *   php's one hash_init() flag. Declared with the hash extension it belongs
+ *   to, so a build without that extension has no constant either.
+ */
+static void PH7_HASH_HMAC_Const(ph7_value *pVal,void *pUserData)
+{
+	SXUNUSED(pUserData); /* cc warning */
+	ph7_value_int(pVal,PH7_HASH_HMAC);
+}
+#endif /* PH7_DISABLE_HASH_FUNC */
 /*
  * JSON_HEX_TAG.
  *   Expand the value of JSON_HEX_TAG defined in ph7Int.h.
@@ -2192,6 +2204,9 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"EXTR_IF_EXISTS",       PH7_EXTR_IF_EXISTS_Const   },
 	{"EXTR_PREFIX_IF_EXISTS",PH7_EXTR_PREFIX_IF_EXISTS_Const},
 	{"EXTR_REFS",            PH7_EXTR_REFS_Const        },
+#ifndef PH7_DISABLE_HASH_FUNC
+	{"HASH_HMAC",              PH7_HASH_HMAC_Const},
+#endif
 	{"JSON_HEX_TAG",           PH7_JSON_HEX_TAG_Const},
 	{"JSON_HEX_AMP",           PH7_JSON_HEX_AMP_Const},
 	{"JSON_HEX_APOS",          PH7_JSON_HEX_APOS_Const},

@@ -200,6 +200,18 @@ static void HashXxhFinal(HashCtx *c,unsigned char *o){ XxhFinal(&c->xxh,o); }
  * tighter number would have to be re-checked by hand on every new row. */
 #define HASH_MAX_BLOCK  200
 #define HASH_MAX_DIGEST 64
+/* The HashCtx arm each row drives (see PH7_NativePropDef nCtxKind). */
+#define HCTX_MD5     0
+#define HCTX_SHA1    1
+#define HCTX_SHA256  2
+#define HCTX_SHA512  3
+#define HCTX_SUM     4
+#define HCTX_MUR     5
+#define HCTX_XXH     6
+#define HCTX_MD4     7
+#define HCTX_MD2     8
+#define HCTX_KECCAK  9
+#define HCTX_RMD    10
 typedef struct HashAlgo HashAlgo;
 struct HashAlgo {
 	const char *zName;   /* lowercase canonical name */
@@ -210,6 +222,11 @@ struct HashAlgo {
 	int bSeeded;         /* reads $options['seed']; the rest never look at
 	                      * $options at all, which is why a bad seed is only
 	                      * refused HERE */
+	int nCtxKind;        /* which member of the HashCtx union the three
+	                      * functions below drive. Only HashStateValid() asks:
+	                      * an incremental context can arrive from unserialize()
+	                      * as arbitrary BYTES, and a cursor out of its buffer's
+	                      * range would be a write past that buffer. */
 	void (*xInit)(HashCtx *,sxu64 nSeed);
 	void (*xUpdate)(HashCtx *,const unsigned char *,unsigned int);
 	void (*xFinal)(HashCtx *,unsigned char *);
@@ -220,38 +237,38 @@ struct HashAlgo {
  * table does not is a loud ValueError rather than a wrong digest.
  */
 static const HashAlgo aHashAlgo[] = {
-	{ "md2",        16,  16, 0, HashMd2Init,        HashMd2Update,     HashMd2Final      },
-	{ "md4",        16,  64, 0, HashMd4Init,        HashMd4Update,     HashMd4Final      },
-	{ "md5",        16,  64, 0, HashMd5Init,        HashMd5Update,     HashMd5Final      },
-	{ "sha1",       20,  64, 0, HashSha1Init,       HashSha1Update,    HashSha1Final     },
-	{ "sha224",     28,  64, 0, HashSha224Init,     HashSha256Update,  HashSha256Final   },
-	{ "sha256",     32,  64, 0, HashSha256Init,     HashSha256Update,  HashSha256Final   },
-	{ "sha384",     48, 128, 0, HashSha384Init,     HashSha512Update,  HashSha512Final   },
-	{ "sha512/224", 28, 128, 0, HashSha512_224Init, HashSha512Update,  HashSha512Final   },
-	{ "sha512/256", 32, 128, 0, HashSha512_256Init, HashSha512Update,  HashSha512Final   },
-	{ "sha512",     64, 128, 0, HashSha512Init,     HashSha512Update,  HashSha512Final   },
-	{ "sha3-224",   28, 144, 0, HashSha3_224Init,   HashSha3Update,    HashSha3Final     },
-	{ "sha3-256",   32, 136, 0, HashSha3_256Init,   HashSha3Update,    HashSha3Final     },
-	{ "sha3-384",   48, 104, 0, HashSha3_384Init,   HashSha3Update,    HashSha3Final     },
-	{ "sha3-512",   64,  72, 0, HashSha3_512Init,   HashSha3Update,    HashSha3Final     },
-	{ "ripemd128",  16,  64, 0, HashRmd128Init,     HashRmdUpdate,     HashRmdFinal      },
-	{ "ripemd160",  20,  64, 0, HashRmd160Init,     HashRmdUpdate,     HashRmdFinal      },
-	{ "ripemd256",  32,  64, 0, HashRmd256Init,     HashRmdUpdate,     HashRmdFinal      },
-	{ "ripemd320",  40,  64, 0, HashRmd320Init,     HashRmdUpdate,     HashRmdFinal      },
-	{ "adler32",     4,   0, 0, HashAdler32Init,    HashSumUpdate,     HashSumFinal      },
-	{ "crc32",       4,   0, 0, HashCrc32Init,      HashSumUpdate,     HashSumFinal      },
-	{ "crc32b",      4,   0, 0, HashCrc32bInit,     HashSumUpdate,     HashSumFinal      },
-	{ "crc32c",      4,   0, 0, HashCrc32cInit,     HashSumUpdate,     HashSumFinal      },
-	{ "fnv132",      4,   0, 0, HashFnv132Init,     HashSumUpdate,     HashSumFinal      },
-	{ "fnv1a32",     4,   0, 0, HashFnv1a32Init,    HashSumUpdate,     HashSumFinal      },
-	{ "fnv164",      8,   0, 0, HashFnv164Init,     HashSumUpdate,     HashSumFinal      },
-	{ "fnv1a64",     8,   0, 0, HashFnv1a64Init,    HashSumUpdate,     HashSumFinal      },
-	{ "joaat",       4,   0, 0, HashJoaatInit,      HashSumUpdate,     HashSumFinal      },
-	{ "murmur3a",    4,   0, 1, HashMur3aInit,      HashMurUpdate,     HashMurFinal      },
-	{ "murmur3c",   16,   0, 1, HashMur3cInit,      HashMurUpdate,     HashMurFinal      },
-	{ "murmur3f",   16,   0, 1, HashMur3fInit,      HashMurUpdate,     HashMurFinal      },
-	{ "xxh32",       4,   0, 1, HashXxh32Init,      HashXxhUpdate,     HashXxhFinal      },
-	{ "xxh64",       8,   0, 1, HashXxh64Init,      HashXxhUpdate,     HashXxhFinal      },
+	{ "md2",        16,  16, 0, HCTX_MD2,    HashMd2Init,        HashMd2Update,     HashMd2Final      },
+	{ "md4",        16,  64, 0, HCTX_MD4,    HashMd4Init,        HashMd4Update,     HashMd4Final      },
+	{ "md5",        16,  64, 0, HCTX_MD5,    HashMd5Init,        HashMd5Update,     HashMd5Final      },
+	{ "sha1",       20,  64, 0, HCTX_SHA1,   HashSha1Init,       HashSha1Update,    HashSha1Final     },
+	{ "sha224",     28,  64, 0, HCTX_SHA256, HashSha224Init,     HashSha256Update,  HashSha256Final   },
+	{ "sha256",     32,  64, 0, HCTX_SHA256, HashSha256Init,     HashSha256Update,  HashSha256Final   },
+	{ "sha384",     48, 128, 0, HCTX_SHA512, HashSha384Init,     HashSha512Update,  HashSha512Final   },
+	{ "sha512/224", 28, 128, 0, HCTX_SHA512, HashSha512_224Init, HashSha512Update,  HashSha512Final   },
+	{ "sha512/256", 32, 128, 0, HCTX_SHA512, HashSha512_256Init, HashSha512Update,  HashSha512Final   },
+	{ "sha512",     64, 128, 0, HCTX_SHA512, HashSha512Init,     HashSha512Update,  HashSha512Final   },
+	{ "sha3-224",   28, 144, 0, HCTX_KECCAK, HashSha3_224Init,   HashSha3Update,    HashSha3Final     },
+	{ "sha3-256",   32, 136, 0, HCTX_KECCAK, HashSha3_256Init,   HashSha3Update,    HashSha3Final     },
+	{ "sha3-384",   48, 104, 0, HCTX_KECCAK, HashSha3_384Init,   HashSha3Update,    HashSha3Final     },
+	{ "sha3-512",   64,  72, 0, HCTX_KECCAK, HashSha3_512Init,   HashSha3Update,    HashSha3Final     },
+	{ "ripemd128",  16,  64, 0, HCTX_RMD,    HashRmd128Init,     HashRmdUpdate,     HashRmdFinal      },
+	{ "ripemd160",  20,  64, 0, HCTX_RMD,    HashRmd160Init,     HashRmdUpdate,     HashRmdFinal      },
+	{ "ripemd256",  32,  64, 0, HCTX_RMD,    HashRmd256Init,     HashRmdUpdate,     HashRmdFinal      },
+	{ "ripemd320",  40,  64, 0, HCTX_RMD,    HashRmd320Init,     HashRmdUpdate,     HashRmdFinal      },
+	{ "adler32",     4,   0, 0, HCTX_SUM,    HashAdler32Init,    HashSumUpdate,     HashSumFinal      },
+	{ "crc32",       4,   0, 0, HCTX_SUM,    HashCrc32Init,      HashSumUpdate,     HashSumFinal      },
+	{ "crc32b",      4,   0, 0, HCTX_SUM,    HashCrc32bInit,     HashSumUpdate,     HashSumFinal      },
+	{ "crc32c",      4,   0, 0, HCTX_SUM,    HashCrc32cInit,     HashSumUpdate,     HashSumFinal      },
+	{ "fnv132",      4,   0, 0, HCTX_SUM,    HashFnv132Init,     HashSumUpdate,     HashSumFinal      },
+	{ "fnv1a32",     4,   0, 0, HCTX_SUM,    HashFnv1a32Init,    HashSumUpdate,     HashSumFinal      },
+	{ "fnv164",      8,   0, 0, HCTX_SUM,    HashFnv164Init,     HashSumUpdate,     HashSumFinal      },
+	{ "fnv1a64",     8,   0, 0, HCTX_SUM,    HashFnv1a64Init,    HashSumUpdate,     HashSumFinal      },
+	{ "joaat",       4,   0, 0, HCTX_SUM,    HashJoaatInit,      HashSumUpdate,     HashSumFinal      },
+	{ "murmur3a",    4,   0, 1, HCTX_MUR,    HashMur3aInit,      HashMurUpdate,     HashMurFinal      },
+	{ "murmur3c",   16,   0, 1, HCTX_MUR,    HashMur3cInit,      HashMurUpdate,     HashMurFinal      },
+	{ "murmur3f",   16,   0, 1, HCTX_MUR,    HashMur3fInit,      HashMurUpdate,     HashMurFinal      },
+	{ "xxh32",       4,   0, 1, HCTX_XXH,    HashXxh32Init,      HashXxhUpdate,     HashXxhFinal      },
+	{ "xxh64",       8,   0, 1, HCTX_XXH,    HashXxh64Init,      HashXxhUpdate,     HashXxhFinal      },
 };
 /*
  * hash()'s $options argument, which only the seeded rows above read. php looks
@@ -295,6 +312,47 @@ static const HashAlgo * HashFindAlgo(const char *zName,int nLen){
 		}
 	}
 	return 0;
+}
+/* Prepare HMAC's single-block key: the key itself when it fits, its DIGEST when
+ * it does not, zero-padded either way. Shared by hash_hmac() and hash_init(). */
+static void HashHmacKeyBlock(const HashAlgo *pAlgo,const char *zKey,int nKeyLen,
+	unsigned char *zKeyBlock)
+{
+	HashCtx sCtx;
+	SyZero(zKeyBlock,(sxu32)HASH_MAX_BLOCK);
+	if( nKeyLen > pAlgo->nBlockLen ){
+		pAlgo->xInit(&sCtx,0);
+		pAlgo->xUpdate(&sCtx,(const unsigned char *)zKey,(unsigned int)nKeyLen);
+		pAlgo->xFinal(&sCtx,zKeyBlock);
+	}else if( nKeyLen > 0 ){
+		SyMemcpy(zKey,zKeyBlock,(sxu32)nKeyLen);
+	}
+}
+/* Feed the inner pad, which is what makes an HMAC context an HMAC context. */
+static void HashHmacInner(const HashAlgo *pAlgo,HashCtx *pCtx,const unsigned char *zKeyBlock)
+{
+	unsigned char zPad[HASH_MAX_BLOCK];
+	int i;
+	for( i = 0 ; i < pAlgo->nBlockLen ; ++i ){
+		zPad[i] = (unsigned char)(zKeyBlock[i] ^ 0x36);
+	}
+	pAlgo->xInit(pCtx,0);
+	pAlgo->xUpdate(pCtx,zPad,(unsigned int)pAlgo->nBlockLen);
+}
+/* …and the outer one, which turns the inner digest into the answer. */
+static void HashHmacOuter(const HashAlgo *pAlgo,const unsigned char *zKeyBlock,
+	const unsigned char *zInner,unsigned char *zOut)
+{
+	unsigned char zPad[HASH_MAX_BLOCK];
+	HashCtx sCtx;
+	int i;
+	for( i = 0 ; i < pAlgo->nBlockLen ; ++i ){
+		zPad[i] = (unsigned char)(zKeyBlock[i] ^ 0x5c);
+	}
+	pAlgo->xInit(&sCtx,0);
+	pAlgo->xUpdate(&sCtx,zPad,(unsigned int)pAlgo->nBlockLen);
+	pAlgo->xUpdate(&sCtx,zInner,(unsigned int)pAlgo->nDigestLen);
+	pAlgo->xFinal(&sCtx,zOut);
 }
 /*
  * string hash(string $algo,string $data[,bool $binary = false[,array $options = []]])
@@ -349,9 +407,9 @@ PH7_PRIVATE int PH7_builtin_hash_hmac(ph7_context *pCtx,int nArg,ph7_value **apA
 	const char *zAlgo,*zData,*zKey;
 	int nAlgoLen,nDataLen,nKeyLen,raw_output = FALSE;
 	HashCtx sCtx;
-	unsigned char zKeyBlock[HASH_MAX_BLOCK],zIpad[HASH_MAX_BLOCK],zOpad[HASH_MAX_BLOCK];
+	unsigned char zKeyBlock[HASH_MAX_BLOCK];
 	unsigned char zInner[HASH_MAX_DIGEST],zDigest[HASH_MAX_DIGEST];
-	int i,nBlock,nDigest;
+	int nDigest;
 	if( nArg < 3 ){
 		return PH7_VmThrowException(pCtx,"ArgumentCountError",
 			"hash_hmac() expects at least 3 arguments, %d given",nArg);
@@ -369,32 +427,15 @@ PH7_PRIVATE int PH7_builtin_hash_hmac(ph7_context *pCtx,int nArg,ph7_value **apA
 	if( nArg > 3 ){
 		raw_output = ph7_value_to_bool(apArg[3]);
 	}
-	nBlock = pAlgo->nBlockLen;
 	nDigest = pAlgo->nDigestLen;
-	/* Reduce the key to a single block: hash it if longer than the block, then
-	 * zero-pad (a short or empty key is just zero-padded). */
-	SyZero(zKeyBlock,sizeof(zKeyBlock));
-	if( nKeyLen > nBlock ){
-		pAlgo->xInit(&sCtx,0);
-		pAlgo->xUpdate(&sCtx,(const unsigned char *)zKey,(unsigned int)nKeyLen);
-		pAlgo->xFinal(&sCtx,zKeyBlock);
-	}else if( nKeyLen > 0 ){
-		SyMemcpy(zKey,zKeyBlock,(sxu32)nKeyLen);
-	}
-	for( i = 0; i < nBlock; i++ ){
-		zIpad[i] = (unsigned char)(zKeyBlock[i] ^ 0x36);
-		zOpad[i] = (unsigned char)(zKeyBlock[i] ^ 0x5c);
-	}
-	/* inner = H((key ^ ipad) || data) */
-	pAlgo->xInit(&sCtx,0);
-	pAlgo->xUpdate(&sCtx,zIpad,(unsigned int)nBlock);
+	/* The same three steps hash_init(HASH_HMAC) takes, in one call each: reduce
+	 * the key to a block, hash the inner pad with the data, then the outer pad
+	 * with that digest. */
+	HashHmacKeyBlock(pAlgo,zKey,nKeyLen,zKeyBlock);
+	HashHmacInner(pAlgo,&sCtx,zKeyBlock);
 	pAlgo->xUpdate(&sCtx,(const unsigned char *)zData,(unsigned int)nDataLen);
 	pAlgo->xFinal(&sCtx,zInner);
-	/* out = H((key ^ opad) || inner) */
-	pAlgo->xInit(&sCtx,0);
-	pAlgo->xUpdate(&sCtx,zOpad,(unsigned int)nBlock);
-	pAlgo->xUpdate(&sCtx,zInner,(unsigned int)nDigest);
-	pAlgo->xFinal(&sCtx,zDigest);
+	HashHmacOuter(pAlgo,zKeyBlock,zInner,zDigest);
 	if( raw_output ){
 		ph7_result_string(pCtx,(const char *)zDigest,nDigest);
 	}else{
@@ -437,6 +478,452 @@ PH7_PRIVATE int PH7_builtin_hash_equals(ph7_context *pCtx,int nArg,ph7_value **a
 	}
 	ph7_result_bool(pCtx,vDiff == 0);
 	return PH7_OK;
+}
+/*
+ * ---------------------------------------------------------------------------
+ * The INCREMENTAL half: HashContext and hash_init/update/final/copy.
+ *
+ * A digest whose data does not arrive all at once is the reason every
+ * algorithm above is written as Init/Update/Final rather than as one call.
+ * What php exposes over that is an OBJECT, and the object is where the
+ * questions are: what may be done to it, what a COPY of it is, and what
+ * happens to it once the digest has been taken.
+ *
+ * The state lives in one HIDDEN property holding the raw bytes of a HashState.
+ * That is what makes `clone $ctx` and `serialize($ctx)` work at all -- a
+ * registry keyed by the instance (the VmDirHandle pattern) would leave a clone
+ * with no state and nothing to rebuild it from, because a half-consumed digest
+ * cannot be re-derived the way a directory stream can be re-opened. Being a
+ * slot rather than a pointer also means the copy is exactly what php's clone
+ * handler does: duplicate the context.
+ *
+ * php FREES the context in hash_final(), so everything afterwards is
+ * "must be a valid, non-finalized HashContext" -- a TypeError, not a
+ * ValueError, because php is describing the ARGUMENT. bDone says so here.
+ * ---------------------------------------------------------------------------
+ */
+#define HASH_CTX_SLOT "__s"
+typedef struct HashState HashState;
+struct HashState {
+	sxu32 nAlgo;                       /* index into aHashAlgo[] */
+	sxu32 bHmac;                       /* HASH_HMAC was requested */
+	sxu32 bDone;                       /* hash_final() has taken the digest */
+	HashCtx sCtx;                      /* the running digest */
+	unsigned char zKey[HASH_MAX_BLOCK];/* the reduced key block, for the outer pass */
+};
+/*
+ * Is this state one the algorithms can be driven from? A HashContext's bytes
+ * can arrive from unserialize(), where they are ATTACKER data rather than
+ * something this file wrote, and every context here carries a CURSOR into a
+ * fixed buffer -- an out-of-range one would have the next hash_update() write
+ * past that buffer. Each arm bounds exactly the fields its Update trusts.
+ */
+static int HashStateValid(const HashState *pState)
+{
+	static const int aSumLen[9] = { 4,4,4,4,4,4,8,8,4 };
+	static const int aMurLen[3] = { 4,16,16 };
+	static const int aRmdLen[4] = { 16,20,32,40 };
+	const HashCtx *p = &pState->sCtx;
+	const HashAlgo *pAlgo;
+	if( pState->nAlgo >= SX_ARRAYSIZE(aHashAlgo) ){
+		return 0;
+	}
+	pAlgo = &aHashAlgo[pState->nAlgo];
+	switch( pAlgo->nCtxKind ){
+		case HCTX_MD5:    return 1; /* its cursor is derived and masked to 0..63 */
+		case HCTX_SHA1:   return 1; /* likewise, from count[0] */
+		case HCTX_MD4:    return p->md4.nIndex < 64;
+		case HCTX_MD2:    return p->md2.nIndex < 16;
+		case HCTX_SHA256: return p->sha256.nIndex < 64
+			&& p->sha256.nDigestLen == pAlgo->nDigestLen;
+		case HCTX_SHA512: return p->sha512.nIndex < 128
+			&& p->sha512.nDigestLen == pAlgo->nDigestLen;
+		case HCTX_SUM:    return p->sum.nKind >= SUM_CRC32 && p->sum.nKind <= SUM_JOAAT
+			&& aSumLen[p->sum.nKind] == pAlgo->nDigestLen;
+		case HCTX_MUR:    return p->murmur.nKind >= MUR_3A && p->murmur.nKind <= MUR_3F
+			&& aMurLen[p->murmur.nKind] == pAlgo->nDigestLen
+			&& p->murmur.nBlock < (p->murmur.nKind == MUR_3A ? 4u : 16u);
+		case HCTX_XXH:    return (p->xxh.nKind == XXH_32 || p->xxh.nKind == XXH_64)
+			&& (p->xxh.nKind == XXH_32 ? 4 : 8) == pAlgo->nDigestLen
+			&& p->xxh.nBlock < (p->xxh.nKind == XXH_32 ? 16u : 32u);
+		case HCTX_KECCAK: return p->keccak.nDigestLen == pAlgo->nDigestLen
+			&& p->keccak.nRate == (sxu32)(200 - 2*pAlgo->nDigestLen)
+			&& p->keccak.nIndex < p->keccak.nRate;
+		case HCTX_RMD:    return p->ripemd.nIndex < 64
+			&& p->ripemd.nKind >= RMD_128 && p->ripemd.nKind <= RMD_320
+			&& aRmdLen[p->ripemd.nKind] == pAlgo->nDigestLen;
+		default:          return 0;
+	}
+}
+/* Read the state out of the slot. The slot's bytes are not aligned for a
+ * struct holding 64-bit lanes, so it is COPIED rather than pointed at. */
+static int HashStateRead(ph7_class_instance *pThis,HashState *pOut)
+{
+	const char *zRaw = 0;
+	int nRaw = 0;
+	if( pThis == 0 ){
+		return 0;
+	}
+	PH7_NativeAttrStr(pThis,HASH_CTX_SLOT,&zRaw,&nRaw);
+	if( zRaw == 0 || nRaw != (int)sizeof(HashState) ){
+		return 0;
+	}
+	SyMemcpy(zRaw,pOut,(sxu32)sizeof(HashState));
+	return HashStateValid(pOut);
+}
+static void HashStateWrite(ph7_vm *pVm,ph7_class_instance *pThis,const HashState *pIn)
+{
+	PH7_NativeSetAttrStr(pVm,pThis,HASH_CTX_SLOT,(const char *)pIn,(int)sizeof(HashState));
+}
+/* Build a HashContext around a state. Never through `new`: the constructor
+ * exists only to be private, which is php's own arrangement. */
+static ph7_class_instance * HashContextNew(ph7_vm *pVm,const HashState *pState)
+{
+	ph7_class *pClass;
+	ph7_class_instance *pThis;
+	pClass = PH7_VmExtractClass(pVm,"HashContext",sizeof("HashContext")-1,FALSE,0);
+	pThis = pClass ? PH7_NewClassInstance(pVm,pClass) : 0;
+	if( pThis == 0 ){
+		return 0;
+	}
+	HashStateWrite(pVm,pThis,pState);
+	return pThis;
+}
+/*
+ * The $context argument of hash_update/hash_final/hash_copy. The declared type
+ * has already refused a non-HashContext (php's "must be of type HashContext");
+ * what is left is php's SECOND refusal, for a context whose digest has been
+ * taken. Answers 0 and leaves *pRc set when it refuses.
+ */
+static ph7_class_instance * HashContextArg(ph7_context *pCtx,ph7_value *pArg,
+	HashState *pState,int *pRc)
+{
+	ph7_class_instance *pThis;
+	*pRc = PH7_OK;
+	pThis = (pArg->iFlags & MEMOBJ_OBJ) ? (ph7_class_instance *)pArg->x.pOther : 0;
+	if( !HashStateRead(pThis,pState) || pState->bDone ){
+		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #1 ($context) must be a valid, non-finalized HashContext",
+			ph7_function_name(pCtx));
+		return 0;
+	}
+	return pThis;
+}
+/*
+ * HashContext hash_init(string $algo[,int $flags = 0[,string $key = ""[,array $options = []]]])
+ *   Initialize an incremental hashing context.
+ */
+PH7_PRIVATE int PH7_builtin_hash_init(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const HashAlgo *pAlgo;
+	const char *zAlgo,*zKey = "";
+	int nAlgoLen,nKeyLen = 0,rc;
+	ph7_int64 iFlags = 0;
+	ph7_class_instance *pThis;
+	HashState sState;
+	sxu64 nSeed = 0;
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"hash_init() expects at least 1 argument, %d given",nArg);
+	}
+	zAlgo = ph7_value_to_string(apArg[0],&nAlgoLen);
+	pAlgo = HashFindAlgo(zAlgo,nAlgoLen);
+	if( pAlgo == 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"hash_init(): Argument #1 ($algo) must be a valid hashing algorithm");
+	}
+	if( nArg > 1 ){
+		iFlags = ph7_value_to_int64(apArg[1]);
+	}
+	if( nArg > 2 ){
+		zKey = ph7_value_to_string(apArg[2],&nKeyLen);
+	}
+	SyZero(&sState,sizeof(sState));
+	sState.nAlgo = (sxu32)(pAlgo - aHashAlgo);
+	/* php looks at ONE bit of $flags and ignores the rest, so hash_init($a,99)
+	 * is an HMAC request rather than an error. */
+	sState.bHmac = (iFlags & PH7_HASH_HMAC) ? 1 : 0;
+	if( sState.bHmac ){
+		if( pAlgo->nBlockLen < 1 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"hash_init(): Argument #1 ($algo) must be a cryptographic hashing algorithm if HMAC is requested");
+		}
+		if( nKeyLen < 1 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"hash_init(): Argument #3 ($key) must not be empty when HMAC is requested");
+		}
+	}
+	if( nArg > 3 ){
+		rc = HashSeedOption(pCtx,pAlgo,apArg[3],&nSeed);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+	}
+	if( sState.bHmac ){
+		HashHmacKeyBlock(pAlgo,zKey,nKeyLen,sState.zKey);
+		HashHmacInner(pAlgo,&sState.sCtx,sState.zKey);
+	}else{
+		/* A $key without the flag is simply not read -- php ignores it too. */
+		pAlgo->xInit(&sState.sCtx,nSeed);
+	}
+	pThis = HashContextNew(pCtx->pVm,&sState);
+	if( pThis == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_NativeResultObject(pCtx,pThis);
+	return PH7_OK;
+}
+/*
+ * bool hash_update(HashContext $context,string $data)
+ *   Feed the context. Always true -- php has no failure to report here.
+ */
+PH7_PRIVATE int PH7_builtin_hash_update(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis;
+	HashState sState;
+	const char *zData;
+	int nData,rc;
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"hash_update() expects exactly 2 arguments, %d given",nArg);
+	}
+	pThis = HashContextArg(pCtx,apArg[0],&sState,&rc);
+	if( pThis == 0 ){
+		return rc;
+	}
+	zData = ph7_value_to_string(apArg[1],&nData);
+	aHashAlgo[sState.nAlgo].xUpdate(&sState.sCtx,(const unsigned char *)zData,(unsigned int)nData);
+	HashStateWrite(pCtx->pVm,pThis,&sState);
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/*
+ * string hash_final(HashContext $context[,bool $binary = false])
+ *   Take the digest, and leave the context unusable.
+ */
+PH7_PRIVATE int PH7_builtin_hash_final(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis;
+	const HashAlgo *pAlgo;
+	HashState sState;
+	unsigned char zDigest[HASH_MAX_DIGEST];
+	int raw_output = FALSE,rc;
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"hash_final() expects at least 1 argument, %d given",nArg);
+	}
+	pThis = HashContextArg(pCtx,apArg[0],&sState,&rc);
+	if( pThis == 0 ){
+		return rc;
+	}
+	if( nArg > 1 ){
+		raw_output = ph7_value_to_bool(apArg[1]);
+	}
+	pAlgo = &aHashAlgo[sState.nAlgo];
+	/* The validation above ties the context's own variant to this row, so
+	 * xFinal writes exactly nDigestLen bytes; zeroing is what keeps a future
+	 * row that disagrees from publishing stack instead. */
+	SyZero(zDigest,sizeof(zDigest));
+	pAlgo->xFinal(&sState.sCtx,zDigest);
+	if( sState.bHmac ){
+		unsigned char zInner[HASH_MAX_DIGEST];
+		SyMemcpy(zDigest,zInner,(sxu32)pAlgo->nDigestLen);
+		HashHmacOuter(pAlgo,sState.zKey,zInner,zDigest);
+	}
+	/* php frees the context here; the state stays so the refusal can name it. */
+	sState.bDone = 1;
+	HashStateWrite(pCtx->pVm,pThis,&sState);
+	if( raw_output ){
+		ph7_result_string(pCtx,(const char *)zDigest,pAlgo->nDigestLen);
+	}else{
+		SyBinToHexConsumer((const void *)zDigest,(sxu32)pAlgo->nDigestLen,HashConsumer,pCtx);
+	}
+	return PH7_OK;
+}
+/*
+ * HashContext hash_copy(HashContext $context)
+ *   A second context at the same point, which is the whole reason the state is
+ *   a VALUE rather than a handle.
+ */
+PH7_PRIVATE int PH7_builtin_hash_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis,*pCopy;
+	HashState sState;
+	int rc;
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"hash_copy() expects exactly 1 argument, %d given",nArg);
+	}
+	pThis = HashContextArg(pCtx,apArg[0],&sState,&rc);
+	if( pThis == 0 ){
+		return rc;
+	}
+	pCopy = HashContextNew(pCtx->pVm,&sState);
+	if( pCopy == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_NativeResultObject(pCtx,pCopy);
+	return PH7_OK;
+}
+/* HashContext::__construct() -- php declares it PRIVATE, so this body is
+ * reached only from inside the class, which nothing is. */
+static int vm_builtin_HashContext_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return PH7_VmThrowException(pCtx,"Error",
+		"Cannot instantiate HashContext directly, use hash_init() instead");
+}
+/*
+ * HashContext::__serialize(): the algorithm's NAME and the running state's
+ * bytes. php serializes its own internal context here too, in its own layout;
+ * neither engine can read the other's payload, and that is recorded.
+ * What matters is that the round trip works: a long-running hash of a file can
+ * be parked and resumed.
+ */
+static int vm_builtin_HashContext_serialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pArray,*pVal;
+	HashState sState;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !HashStateRead(pThis,&sState) ){
+		return PH7_VmThrowException(pCtx,"Exception",
+			"HashContext for algorithm \"\" cannot be serialized");
+	}
+	if( sState.bDone ){
+		/* php frees the context in hash_final(), so a finalized one has nothing
+		 * left to write and says so by NAME. */
+		return PH7_VmThrowException(pCtx,"Exception",
+			"HashContext for algorithm \"%s\" cannot be serialized",
+			aHashAlgo[sState.nAlgo].zName);
+	}
+	if( sState.bHmac ){
+		/* php refuses this one outright, and the reason is the point: the state
+		 * carries the KEY, and a serialized context would carry it in clear. */
+		return PH7_VmThrowException(pCtx,"Exception",
+			"HashContext with HASH_HMAC option cannot be serialized");
+	}
+	pArray = ph7_context_new_array(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pVal == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	ph7_value_string(pVal,aHashAlgo[sState.nAlgo].zName,-1);
+	ph7_array_add_elem(pArray,0,pVal);
+	ph7_value_reset_string_cursor(pVal);
+	ph7_value_string(pVal,(const char *)&sState,(int)sizeof(sState));
+	ph7_array_add_elem(pArray,0,pVal);
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/*
+ * HashContext::__unserialize(array $data): the payload is UNTRUSTED, so the
+ * state is checked before anything can be driven from it -- the algorithm has
+ * to be one this engine has, under the name the payload claims, and every
+ * cursor has to be inside its own buffer.
+ */
+static int vm_builtin_HashContext_unserialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pName,*pRaw;
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pNode = 0;
+	const char *zName,*zRaw;
+	int nName,nRaw;
+	HashState sState;
+	if( pThis == 0 ){
+		return PH7_VmThrowException(pCtx,"Error",
+			"HashContext::__unserialize() cannot be called statically");
+	}
+	/* php's own guard, and the only reason this method is reachable at all:
+	 * it exists for the object the UNSERIALIZER builds, which has no state
+	 * yet. Anything else -- including a context handed its own payload back --
+	 * is refused before the bytes are looked at. */
+	if( HashStateRead(pThis,&sState) ){
+		return PH7_VmThrowException(pCtx,"Exception",
+			"HashContext::__unserialize called on initialized object");
+	}
+	if( nArg < 1 || !ph7_value_is_array(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,"Error","Invalid serialization data for HashContext object");
+	}
+	pMap = (ph7_hashmap *)apArg[0]->x.pOther;
+	if( HashmapLookupIntKey(pMap,0,&pNode) != SXRET_OK ){
+		return PH7_VmThrowException(pCtx,"Error","Invalid serialization data for HashContext object");
+	}
+	pName = HashmapExtractNodeValue(pNode);
+	pNode = 0;
+	if( HashmapLookupIntKey(pMap,1,&pNode) != SXRET_OK ){
+		return PH7_VmThrowException(pCtx,"Error","Invalid serialization data for HashContext object");
+	}
+	pRaw = HashmapExtractNodeValue(pNode);
+	if( pName == 0 || pRaw == 0 || !ph7_value_is_string(pName) || !ph7_value_is_string(pRaw) ){
+		return PH7_VmThrowException(pCtx,"Error","Invalid serialization data for HashContext object");
+	}
+	zName = ph7_value_to_string(pName,&nName);
+	zRaw = ph7_value_to_string(pRaw,&nRaw);
+	if( nRaw != (int)sizeof(HashState) ){
+		return PH7_VmThrowException(pCtx,"Error","Invalid serialization data for HashContext object");
+	}
+	SyMemcpy(zRaw,&sState,(sxu32)sizeof(HashState));
+	if( !HashStateValid(&sState) || HashFindAlgo(zName,nName) != &aHashAlgo[sState.nAlgo] ){
+		return PH7_VmThrowException(pCtx,"Exception","Unknown hash algorithm");
+	}
+	HashStateWrite(pCtx->pVm,pThis,&sState);
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+/* HashContext::__debugInfo(): what var_dump and print_r show -- the algorithm
+ * name and nothing else. The state slot is hidden, so the (array) cast and
+ * var_export show nothing at all, which is php. */
+static int vm_builtin_HashContext_debugInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pArray,*pVal;
+	HashState sState;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	pArray = ph7_context_new_array(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pVal == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( HashStateRead(pThis,&sState) ){
+		ph7_value_string(pVal,aHashAlgo[sState.nAlgo].zName,-1);
+		ph7_array_add_strkey_elem(pArray,"algo",pVal);
+	}
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/*
+ * HashContext: php's incremental-hash object. Final, with a PRIVATE
+ * constructor -- hash_init() is the only way to one, and `new HashContext()`
+ * is a visibility Error rather than a "cannot instantiate", which is what php
+ * answers because the constructor really is declared private there.
+ *
+ * The single slot is HIDDEN: php presents no property at all (the (array) cast
+ * and var_export show nothing), and __debugInfo supplies the one key var_dump
+ * and print_r do show.
+ */
+PH7_PRIVATE sxi32 PH7_VmInstallHashContext(ph7_vm *pVm)
+{
+	static const PH7_NativeMethodDef aMethod[] = {
+		{ "__construct", PH7_MOD_PRIVATE, "", 0, vm_builtin_HashContext_construct },
+		{ "__serialize", PH7_MOD_PUBLIC, "", "array", vm_builtin_HashContext_serialize },
+		{ "__unserialize", PH7_MOD_PUBLIC, "array $data", "void", vm_builtin_HashContext_unserialize },
+		{ "__debugInfo", PH7_MOD_PUBLIC, "", "array", vm_builtin_HashContext_debugInfo },
+	};
+	static const PH7_NativePropDef aProp[] = {
+		{ HASH_CTX_SLOT, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN,
+		  { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
+	};
+	static const PH7_NativeClassSpec sSpec = {
+		"HashContext", 0, 0, PH7_CLASS_FINAL,
+		aMethod, SX_ARRAYSIZE(aMethod), 0, 0,
+		aProp, SX_ARRAYSIZE(aProp), 0, 0, 0
+	};
+	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);
 }
 /*
  * The body of hash_algos()/hash_hmac_algos(): the same table, filtered by
