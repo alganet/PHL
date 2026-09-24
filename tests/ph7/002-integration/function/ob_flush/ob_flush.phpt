@@ -2,11 +2,7 @@
 SPDX-FileCopyrightText: 2025 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-ob_flush: nested buffer flush test
---SKIPIF--
-<?php
-if (function_exists('zend_version')) { echo "skip: not PH7\n"; }
-?>
+ob_flush: a nested flush lands in the buffer BELOW, not on stdout
 --FILE--
 <?php
 ob_start();
@@ -21,9 +17,9 @@ echo "inner=".$inner."\n";
 echo "parent=".$parent."\n";
 ?>
 --EXPECT--
-c
 inner=
-parent=p
+parent=pc
+
 --CLEAN--
 <?php
 unset($inner, $parent);

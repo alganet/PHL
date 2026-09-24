@@ -5,14 +5,17 @@
  */
 #include "ph7int.h"
 static void VmObRestore(ph7_vm *pVm,VmObEntry *pEntry);
+static void VmObWrite(ph7_vm *pVm,sxu32 nIdx,const void *pData,unsigned int nDataLen);
+static sxi32 VmObFlush(ph7_vm *pVm,VmObEntry *pEntry,int bRelease);
 /*
- * void ob_clean(void)
+ * bool ob_clean(void)
  *  This function discards the contents of the output buffer.
  *  This function does not destroy the output buffer like ob_end_clean() does.
  * Parameter
  *  None
  * Return
- *  No value is returned.
+ *  TRUE on success, FALSE (with a notice) when no buffer is active. This used to
+ *  return NOTHING, so `if (!ob_clean())` fired on the successful call.
  */
 PH7_PRIVATE int vm_builtin_ob_clean(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -22,9 +25,14 @@ PH7_PRIVATE int vm_builtin_ob_clean(ph7_context *pCtx,int nArg,ph7_value **apArg
 	SXUNUSED(apArg);
 	/* Peek the top most OB */
 	pOb = (VmObEntry *)SySetPeek(&pVm->aOB);
-	if( pOb ){
-		SyBlobRelease(&pOb->sOB);
+	if( pOb == 0 ){
+		ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,
+			"Failed to delete buffer. No buffer to delete");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
 	}
+	SyBlobRelease(&pOb->sOB);
+	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
 /*
@@ -49,6 +57,8 @@ PH7_PRIVATE int vm_builtin_ob_end_clean(ph7_context *pCtx,int nArg,ph7_value **a
 	pOb = (VmObEntry *)SySetPop(&pVm->aOB);
 	if( pOb == 0){
 		/* No such OB,return FALSE */
+		ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,
+			"Failed to delete buffer. No buffer to delete");
 		ph7_result_bool(pCtx,0);
 		SXUNUSED(nArg); /* cc warning */
 		SXUNUSED(apArg);
@@ -87,7 +97,6 @@ PH7_PRIVATE int vm_builtin_ob_get_contents(ph7_context *pCtx,int nArg,ph7_value 
 }
 /*
  * string ob_get_clean(void)
- * string ob_get_flush(void)
  *  Get current buffer contents and delete current output buffer.
  * Parameter
  *  None
@@ -112,6 +121,40 @@ PH7_PRIVATE int vm_builtin_ob_get_clean(ph7_context *pCtx,int nArg,ph7_value **a
 		VmObRestore(pVm,pOb);
 	}
 	return PH7_OK;
+}
+/*
+ * string ob_get_flush(void)
+ *  Flush the output buffer, return it as a string and turn off output buffering.
+ * Parameter
+ *  None
+ * Return
+ *  The contents of the output buffer, or FALSE if output buffering isn't active.
+ * Note
+ *  This used to be registered as ob_get_clean(), which DISCARDS the buffer: the
+ *  string came back correctly and the output it names never reached the terminal.
+ */
+PH7_PRIVATE int vm_builtin_ob_get_flush(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	VmObEntry *pOb;
+	sxi32 rc;
+	/* Pop the top most OB */
+	pOb = (VmObEntry *)SySetPop(&pVm->aOB);
+	if( pOb == 0 ){
+		/* No active OB,return FALSE. php's silent member here is ob_get_CLEAN;
+		 * this one reports, and the two wordings are php's own. */
+		ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,
+			"Failed to delete and flush buffer. No buffer to delete or flush");
+		ph7_result_bool(pCtx,0);
+		SXUNUSED(nArg); /* cc warning */
+		SXUNUSED(apArg);
+		return PH7_OK;
+	}
+	/* Return contents (copied out before the flush releases the blob) */
+	ph7_result_string(pCtx,(const char *)SyBlobData(&pOb->sOB),(int)SyBlobLength(&pOb->sOB));
+	/* Send them on and turn this buffer off */
+	rc = VmObFlush(pVm,pOb,TRUE);
+	return rc;
 }
 /*
  * int ob_get_length(void)
@@ -166,13 +209,35 @@ PH7_PRIVATE int vm_builtin_ob_get_level(ph7_context *pCtx,int nArg,ph7_value **a
 PH7_PRIVATE int VmObConsumer(const void *pData,unsigned int nDataLen,void *pUserData)
 {
 	ph7_vm *pVm = (ph7_vm *)pUserData;
-	VmObEntry *pEntry;
-	ph7_value sResult;
-	/* Peek the top most entry */
-	pEntry = (VmObEntry *)SySetPeek(&pVm->aOB);
-	if( pEntry == 0 ){
+	sxu32 nUsed = SySetUsed(&pVm->aOB);
+	if( nUsed < 1 ){
 		/* CAN'T HAPPEN */
 		return PH7_OK;
+	}
+	VmObWrite(pVm,nUsed - 1,pData,nDataLen);
+	return PH7_OK;
+}
+/*
+ * Write output INTO one specific buffer, running that buffer's own handler over it.
+ *
+ * The top-of-stack case is the VM consumer above; the other one is a FLUSH, which
+ * php delivers to the buffer BELOW the flushing one rather than to the real output
+ * (`ob_start(); ob_start(); echo "x"; ob_end_flush();` leaves "x" in the outer
+ * buffer, where PHL used to write it straight to stdout — so buffered output
+ * escaped its buffer and printed out of order, ahead of everything the outer
+ * buffer was still holding).
+ *
+ * The buffer is named by its INDEX, never by a pointer: the handler is php code
+ * and may ob_start() (which reallocs the stack out from under every pointer into
+ * it) or close buffers, so the slot is re-resolved after the call and the write
+ * is dropped if the handler took it away.
+ */
+static void VmObWrite(ph7_vm *pVm,sxu32 nIdx,const void *pData,unsigned int nDataLen)
+{
+	VmObEntry *pEntry = (VmObEntry *)SySetAt(&pVm->aOB,nIdx);
+	ph7_value sResult;
+	if( pEntry == 0 ){
+		return;
 	}
 	PH7_MemObjInit(pVm,&sResult);
 	if( ph7_value_is_callable(&pEntry->sCallback) && pVm->nObDepth < 15 ){
@@ -198,14 +263,15 @@ PH7_PRIVATE int VmObConsumer(const void *pData,unsigned int nDataLen,void *pUser
 		}
 		PH7_MemObjRelease(&sArg);
 		PH7_MemObjRelease(&sPhase);
+		/* The handler ran php code: the slot may have moved, or gone. */
+		pEntry = (VmObEntry *)SySetAt(&pVm->aOB,nIdx);
 	}
-	if( nDataLen > 0 ){
+	if( nDataLen > 0 && pEntry ){
 		/* Redirect the VM output to the internal buffer */
 		SyBlobAppend(&pEntry->sOB,pData,nDataLen);
 	}
 	/* Release */
 	PH7_MemObjRelease(&sResult);
-	return PH7_OK;
 }
 /*
  * Restore the default consumer.
@@ -252,6 +318,22 @@ PH7_PRIVATE int vm_builtin_ob_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 	ph7_vm *pVm = pCtx->pVm;
 	VmObEntry sOb;
 	sxi32 rc;
+	/* php screens the handler BEFORE it opens the buffer, and a handler it cannot
+	 * call is a refusal rather than a silent downgrade to the default one: the
+	 * warning names why (zend's own callable reason) and the notice says no buffer
+	 * was created. This used to answer TRUE with a buffer whose handler never ran,
+	 * so `if (!ob_start('my_filter'))` never fired on a misspelled name and the
+	 * output came out unfiltered. */
+	if( nArg > 0 && (apArg[0]->iFlags & MEMOBJ_NULL) == 0 ){
+		if( !PH7_VmIsCallable(pVm,apArg[0],TRUE) ){
+			char zBuf[256];
+			const char *zReason = PH7_VmCallableReason(pVm,apArg[0],zBuf,(int)sizeof(zBuf));
+			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"%s",zReason);
+			ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,"Failed to create buffer");
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+	}
 	/* Initialize the OB entry */
 	PH7_MemObjInit(pCtx->pVm,&sOb.sCallback);
 	SyBlobInit(&sOb.sOB,&pVm->sAllocator);
@@ -284,35 +366,54 @@ PH7_PRIVATE int vm_builtin_ob_start(ph7_context *pCtx,int nArg,ph7_value **apArg
  */
 static sxi32 VmObFlush(ph7_vm *pVm,VmObEntry *pEntry,int bRelease)
 {
-	SyBlob *pBlob = &pEntry->sOB;
-	sxi32 rc;
-	/* Flush contents */
-	rc = PH7_OK;
-	if( SyBlobLength(pBlob) > 0 ){
-		/* Call the VM output consumer */
-		rc = pVm->sVmConsumer.xDef(SyBlobData(pBlob),SyBlobLength(pBlob),pVm->sVmConsumer.pDefData);
-		/* Increment VM output counter */
-		pVm->nOutputLen += SyBlobLength(pBlob);
-		if( rc != PH7_ABORT ){
-			rc = PH7_OK;
-		}
+	SyBlob sPayload;
+	sxu32 nBelow;
+	sxi32 rc = PH7_OK;
+	/* php delivers a flush to the buffer BELOW this one, not to the real output.
+	 * `bRelease` is set by the ob_end_* callers, which have already POPPED the
+	 * entry — so the enclosing buffer is the new top there, and the one under the
+	 * top otherwise. */
+	{
+		sxu32 nUsed = SySetUsed(&pVm->aOB);
+		nBelow = bRelease ? nUsed : (nUsed >= 1 ? nUsed - 1 : 0);
 	}
+	/* Take the payload OUT of the entry before anything below can run php: a
+	 * handler down there may ob_start(), and that reallocs the buffer stack —
+	 * every pointer into it, this entry's own blob included, dies with it. */
+	SyBlobInit(&sPayload,&pVm->sAllocator);
+	if( SyBlobLength(&pEntry->sOB) > 0 ){
+		SyBlobDup(&pEntry->sOB,&sPayload);
+	}
+	/* Retire this buffer first, for the same reason. */
 	if( bRelease ){
 		VmObRestore(&(*pVm),pEntry);
 	}else{
 		/* Reset the blob */
-		SyBlobReset(pBlob);
+		SyBlobReset(&pEntry->sOB);
 	}
+	if( SyBlobLength(&sPayload) > 0 ){
+		if( nBelow > 0 ){
+			VmObWrite(pVm,nBelow - 1,SyBlobData(&sPayload),SyBlobLength(&sPayload));
+		}else{
+			/* Call the VM output consumer */
+			rc = pVm->sVmConsumer.xDef(SyBlobData(&sPayload),SyBlobLength(&sPayload),pVm->sVmConsumer.pDefData);
+			/* Increment VM output counter */
+			pVm->nOutputLen += SyBlobLength(&sPayload);
+			if( rc != PH7_ABORT ){
+				rc = PH7_OK;
+			}
+		}
+	}
+	SyBlobRelease(&sPayload);
 	return rc;
 }
 /*
- * void ob_flush(void)
- * void flush(void)
+ * bool ob_flush(void)
  *  Flush (send) the output buffer.
  * Parameter
  *  None
  * Return
- *  No return value.
+ *  TRUE on success, FALSE (with a notice) when no buffer is active.
  */
 PH7_PRIVATE int vm_builtin_ob_flush(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -322,14 +423,39 @@ PH7_PRIVATE int vm_builtin_ob_flush(ph7_context *pCtx,int nArg,ph7_value **apArg
 	/* Peek the top most OB entry */
 	pOb = (VmObEntry *)SySetPeek(&pVm->aOB);
 	if( pOb == 0 ){
-		/* Empty stack,return immediately */
 		SXUNUSED(nArg); /* cc warning */
 		SXUNUSED(apArg);
+		ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,
+			"Failed to flush buffer. No buffer to flush");
+		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	/* Flush contents */
 	rc = VmObFlush(pVm,pOb,FALSE);
+	ph7_result_bool(pCtx,1);
 	return rc;
+}
+/*
+ * void flush(void)
+ *  Flush the output layer to the SAPI. It does NOT touch the userland output
+ *  buffers: `ob_start(); echo "a"; flush();` leaves "a" in the buffer under php,
+ *  where this used to be registered as ob_flush() and SENT it — so a progress-bar
+ *  idiom (echo, flush(), keep working) emptied a buffer the script meant to read
+ *  back later, and ob_get_contents() answered "".
+ *  This engine's own consumer writes with an unbuffered write(2)/WriteFile(), so
+ *  there is nothing left to push and the call is a no-op that answers nothing,
+ *  which is php's `void` return.
+ * Parameter
+ *  None
+ * Return
+ *  No value is returned.
+ */
+PH7_PRIVATE int vm_builtin_flush(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(pCtx);
+	SXUNUSED(nArg); /* cc warning */
+	SXUNUSED(apArg);
+	return PH7_OK;
 }
 /*
  * bool ob_end_flush(void)
@@ -350,6 +476,8 @@ PH7_PRIVATE int vm_builtin_ob_end_flush(ph7_context *pCtx,int nArg,ph7_value **a
 	pOb = (VmObEntry *)SySetPop(&pVm->aOB);
 	if( pOb == 0 ){
 		/* Empty stack,return FALSE */
+		ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,
+			"Failed to delete and flush buffer. No buffer to delete or flush");
 		ph7_result_bool(pCtx,0);
 		SXUNUSED(nArg); /* cc warning */
 		SXUNUSED(apArg);
@@ -397,12 +525,9 @@ PH7_PRIVATE int vm_builtin_ob_list_handlers(ph7_context *pCtx,int nArg,ph7_value
 	VmObEntry *aEntry;
 	ph7_value sVal;
 	sxu32 n;
-	if( SySetUsed(&pVm->aOB) < 1 ){
-		/* Empty stack,return null */
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	/* Create a new array */
+	/* Create a new array. php answers an EMPTY array when nothing is buffering
+	 * (`foreach (ob_list_handlers() as ...)` over the NULL this used to answer is
+	 * a TypeError), so the array is built before the stack is looked at. */
 	pArray = ph7_context_new_array(pCtx);
 	if( pArray == 0 ){
 		/* Out of memory,return NULL */
