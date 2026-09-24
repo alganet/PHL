@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "ph7int.h"
+#include <time.h>
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 #ifndef PH7_DISABLE_DISK_IO
 /*
@@ -11,7 +12,7 @@
  * This was an embedded-PHP chunk holding its state on a private `__SessS` class
  * with five static properties, plus five `__sess_*` PHP helpers. All six names
  * are gone: the state is on the VM (pVm->iSessStatus / sSessId / sSessName /
- * sSessPath / bSessWired) and the functions are these C routines. Moving the
+ * sSessPath) and the functions are these C routines. Moving the
  * state off a PHP class also decoupled the INI subsystem, which used to reach
  * into `__SessS::$name` / `$path` to live-wire session.name / session.save_path
  * and now reads the same VM fields.
@@ -592,6 +593,61 @@ static int vm_builtin_session_save_path(ph7_context *pCtx,int nArg,ph7_value **a
 	return VmSessAccessor(pCtx,nArg,apArg,&pCtx->pVm->sSessPath,
 		"session_save_path","Session save path",1);
 }
+/*
+ * session_start()'s $options array -- declared in aBuiltinSig[] and read by
+ * NOTHING, so `session_start(['name' => 'MYSID', 'cookie_lifetime' => 3600])`,
+ * php's documented way to configure a session at the one point it can still be
+ * configured, was accepted and dropped in silence.
+ *
+ * Each key is a session.<key> directive applied for this request; the one that is
+ * not is `read_and_close`, which asks for the session to be closed again the
+ * moment it has been read. A key the directive table refuses is reported and the
+ * session still starts; a key that is not a STRING, or a value that is not a
+ * scalar, is a hard error before anything is opened.
+ */
+/*
+ * The Set-Cookie that carries the id, built out of the seven session.cookie_*
+ * directives rather than the name and the id alone -- which is what this used to
+ * send, so every session cookie went out with no path, no expiry and no
+ * HttpOnly/SameSite whatever the configuration said, and a program that had set
+ * `session.cookie_secure` was still handing its id to a plaintext request.
+ *
+ * php sends it on every start and again whenever the id changes; it is a plain
+ * response header, so the CLI has nowhere to put it and simply does not.
+ */
+static void VmSessSendCookie(ph7_vm *pVm)
+{
+	SyBlob sPath,sDomain,sSame;
+	sxi64 iLife;
+	if( !PH7_VmIniGetBool(pVm,"session.use_cookies",1) ){
+		return;
+	}
+	/* Replace, never accumulate: the reply carries ONE id. */
+	PH7_VmRemoveCookieByName(pVm,(const char *)SyBlobData(&pVm->sSessName),
+		SyBlobLength(&pVm->sSessName));
+	SyBlobInit(&sPath,&pVm->sAllocator);
+	SyBlobInit(&sDomain,&pVm->sAllocator);
+	SyBlobInit(&sSame,&pVm->sAllocator);
+	PH7_VmIniGetStr(pVm,"session.cookie_path",&sPath);
+	PH7_VmIniGetStr(pVm,"session.cookie_domain",&sDomain);
+	PH7_VmIniGetStr(pVm,"session.cookie_samesite",&sSame);
+	iLife = PH7_VmIniGetInt(pVm,"session.cookie_lifetime",0);
+	PH7_VmEmitCookie(pVm,
+		(const char *)SyBlobData(&pVm->sSessName),SyBlobLength(&pVm->sSessName),
+		(const char *)SyBlobData(&pVm->sSessId),SyBlobLength(&pVm->sSessId),1,
+		/* A lifetime is a DURATION here and an absolute time on the wire; 0 is
+		 * php's "until the browser closes", which sends no expiry at all. */
+		iLife > 0 ? (sxi64)time(0) + iLife : 0,
+		(const char *)SyBlobData(&sPath),SyBlobLength(&sPath),
+		(const char *)SyBlobData(&sDomain),SyBlobLength(&sDomain),
+		PH7_VmIniGetBool(pVm,"session.cookie_secure",0),
+		PH7_VmIniGetBool(pVm,"session.cookie_httponly",0),
+		(const char *)SyBlobData(&sSame),SyBlobLength(&sSame),
+		PH7_VmIniGetBool(pVm,"session.cookie_partitioned",0));
+	SyBlobRelease(&sPath);
+	SyBlobRelease(&sDomain);
+	SyBlobRelease(&sSame);
+}
 /* bool session_start(array $options = []) */
 static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -691,20 +747,7 @@ static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 		return PH7_OK;
 	}
 	pVm->iSessStatus = VM_SESSION_ACTIVE;
-	if( !pVm->bSessWired ){
-		ph7_value sName,sId;
-		ph7_value *apA[2];
-		pVm->bSessWired = 1;
-		VmSessStrArg(pVm,&sName,(const char *)SyBlobData(&pVm->sSessName),
-			SyBlobLength(&pVm->sSessName));
-		VmSessStrArg(pVm,&sId,(const char *)SyBlobData(&pVm->sSessId),
-			SyBlobLength(&pVm->sSessId));
-		apA[0] = &sName;
-		apA[1] = &sId;
-		VmSessCall(pVm,"setcookie",2,apA,0);
-		PH7_MemObjRelease(&sName);
-		PH7_MemObjRelease(&sId);
-	}
+	VmSessSendCookie(pVm);
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
@@ -883,6 +926,187 @@ static int vm_builtin_session_regenerate_id(ph7_context *pCtx,int nArg,ph7_value
 	VmSessFile(pVm,&sFile);
 	VmSessPutFile(pVm,&sFile,"",0);
 	SyBlobRelease(&sFile);
+	/* The client is told the new id here; without this the browser keeps sending
+	 * the old one and the regenerated session is unreachable. */
+	VmSessSendCookie(pVm);
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/*
+ * The seven cookie directives, in the order php's session_get_cookie_params()
+ * reports them and with the TYPE each one is reported as: an int lifetime, three
+ * bools, three strings.
+ */
+static const struct {
+	const char *zKey;
+	const char *zIni;
+	int iKind;    /* 0 = string, 1 = int, 2 = bool */
+} aSessCookieParam[] = {
+	{ "lifetime",    "session.cookie_lifetime",    1 },
+	{ "path",        "session.cookie_path",        0 },
+	{ "domain",      "session.cookie_domain",      0 },
+	{ "secure",      "session.cookie_secure",      2 },
+	{ "partitioned", "session.cookie_partitioned", 2 },
+	{ "httponly",    "session.cookie_httponly",    2 },
+	{ "samesite",    "session.cookie_samesite",    0 },
+};
+/* array session_get_cookie_params() */
+static int vm_builtin_session_get_cookie_params(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value *pArray,*pVal;
+	sxu32 n;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	pArray = ph7_context_new_array(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pVal == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	for( n = 0 ; n < SX_ARRAYSIZE(aSessCookieParam) ; n++ ){
+		if( aSessCookieParam[n].iKind == 1 ){
+			ph7_value_int64(pVal,PH7_VmIniGetInt(pVm,aSessCookieParam[n].zIni,0));
+		}else if( aSessCookieParam[n].iKind == 2 ){
+			ph7_value_bool(pVal,PH7_VmIniGetBool(pVm,aSessCookieParam[n].zIni,0));
+		}else{
+			SyBlob sVal;
+			SyBlobInit(&sVal,&pVm->sAllocator);
+			PH7_VmIniGetStr(pVm,aSessCookieParam[n].zIni,&sVal);
+			ph7_value_string_format(pVal,"%.*s",(int)SyBlobLength(&sVal),
+				(const char *)SyBlobData(&sVal));
+			SyBlobRelease(&sVal);
+		}
+		ph7_array_add_strkey_elem(pArray,aSessCookieParam[n].zKey,pVal);
+		ph7_value_reset_string_cursor(pVal);
+	}
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/* Push one cookie parameter through the ini table, which is its only store. */
+static void VmSessSetCookieIni(ph7_vm *pVm,const char *zIni,const char *zVal,int nVal)
+{
+	ph7_value sName,sVal;
+	ph7_value *apA[2];
+	VmSessStrArg(pVm,&sName,zIni,(sxu32)SyStrlen(zIni));
+	VmSessStrArg(pVm,&sVal,zVal,(sxu32)nVal);
+	apA[0] = &sName;
+	apA[1] = &sVal;
+	VmSessCall(pVm,"ini_set",2,apA,0);
+	PH7_MemObjRelease(&sName);
+	PH7_MemObjRelease(&sVal);
+}
+static void VmSessSetCookieBool(ph7_vm *pVm,const char *zIni,int bVal)
+{
+	VmSessSetCookieIni(pVm,zIni,bVal ? "1" : "0",1);
+}
+struct VmSessCookieArgs {
+	ph7_vm *pVm;
+	int nApplied;
+	char zBadKey[64];
+};
+static int VmSessCookieOptWalker(ph7_value *pKey,ph7_value *pVal,void *pUserData)
+{
+	struct VmSessCookieArgs *pArgs = (struct VmSessCookieArgs *)pUserData;
+	const char *zKey;
+	int nKey = 0;
+	sxu32 n;
+	zKey = ph7_value_to_string(pKey,&nKey);
+	for( n = 0 ; n < SX_ARRAYSIZE(aSessCookieParam) ; n++ ){
+		if( nKey == (int)SyStrlen(aSessCookieParam[n].zKey)
+		 && SyStrnicmp(zKey,aSessCookieParam[n].zKey,(sxu32)nKey) == 0 ){
+			if( aSessCookieParam[n].iKind == 2 ){
+				VmSessSetCookieBool(pArgs->pVm,aSessCookieParam[n].zIni,
+					ph7_value_to_bool(pVal));
+			}else{
+				int nVal = 0;
+				const char *zVal = ph7_value_to_string(pVal,&nVal);
+				VmSessSetCookieIni(pArgs->pVm,aSessCookieParam[n].zIni,zVal,nVal);
+			}
+			pArgs->nApplied++;
+			return PH7_OK;
+		}
+	}
+	/* php reports the key and carries on; it is only an error when NONE of the
+	 * keys were ones it knows. */
+	if( pArgs->zBadKey[0] == 0 ){
+		sxu32 nCopy = (sxu32)nKey;
+		if( nCopy > sizeof(pArgs->zBadKey)-1 ){
+			nCopy = sizeof(pArgs->zBadKey)-1;
+		}
+		SyMemcpy(zKey,pArgs->zBadKey,nCopy);
+		pArgs->zBadKey[nCopy] = 0;
+	}
+	{
+		char zMsg[160];
+		SyBufferFormat(zMsg,sizeof(zMsg),
+			"session_set_cookie_params(): Argument #1 ($lifetime_or_options)"
+			" contains an unrecognized key \"%.*s\"",nKey,zKey);
+		PH7_VmThrowError(pArgs->pVm,0,PH7_CTX_WARNING,zMsg);
+	}
+	return PH7_OK;
+}
+/*
+ * bool session_set_cookie_params(array|int $lifetime_or_options, ?string $path = null,
+ *     ?string $domain = null, ?bool $secure = null, ?bool $httponly = null)
+ */
+static int vm_builtin_session_set_cookie_params(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	if( nArg < 1 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"session_set_cookie_params() expects at least 1 argument, 0 given");
+	}
+	if( !ph7_value_is_array(apArg[0]) && !ph7_value_is_int(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"session_set_cookie_params(): Argument #1 ($lifetime_or_options) must be"
+			" of type array|int, %s given",PH7_MemObjTypeDump(apArg[0]));
+	}
+	/* Both refusals are about the header the parameters would have gone into: one
+	 * already written, or one this session already sent. */
+	if( VmSessLocked(pCtx,"session_set_cookie_params","Session cookie parameters",1) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( ph7_value_is_array(apArg[0]) ){
+		struct VmSessCookieArgs sArgs;
+		SyZero(&sArgs,sizeof(sArgs));
+		sArgs.pVm = pVm;
+		ph7_array_walk(apArg[0],VmSessCookieOptWalker,&sArgs);
+		if( sArgs.nApplied < 1 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"session_set_cookie_params(): Argument #1 ($lifetime_or_options) must"
+				" contain at least 1 valid key");
+		}
+	}else{
+		sxi64 iLife = ph7_value_to_int64(apArg[0]);
+		char zLife[32];
+		int nLife;
+		if( iLife < 0 ){
+			PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
+				"session_set_cookie_params(): CookieLifetime cannot be negative");
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		nLife = SyBufferFormat(zLife,sizeof(zLife),"%qd",iLife);
+		VmSessSetCookieIni(pVm,"session.cookie_lifetime",zLife,nLife);
+		if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){
+			int nVal = 0;
+			const char *zVal = ph7_value_to_string(apArg[1],&nVal);
+			VmSessSetCookieIni(pVm,"session.cookie_path",zVal,nVal);
+		}
+		if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){
+			int nVal = 0;
+			const char *zVal = ph7_value_to_string(apArg[2],&nVal);
+			VmSessSetCookieIni(pVm,"session.cookie_domain",zVal,nVal);
+		}
+		if( nArg > 3 && !ph7_value_is_null(apArg[3]) ){
+			VmSessSetCookieBool(pVm,"session.cookie_secure",ph7_value_to_bool(apArg[3]));
+		}
+		if( nArg > 4 && !ph7_value_is_null(apArg[4]) ){
+			VmSessSetCookieBool(pVm,"session.cookie_httponly",ph7_value_to_bool(apArg[4]));
+		}
+	}
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
@@ -1003,6 +1227,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm)
 		{ "session_encode",        vm_builtin_session_encode        },
 		{ "session_decode",        vm_builtin_session_decode        },
 		{ "session_create_id",     vm_builtin_session_create_id     },
+		{ "session_get_cookie_params", vm_builtin_session_get_cookie_params },
+		{ "session_set_cookie_params", vm_builtin_session_set_cookie_params },
 	};
 	sxu32 n;
 	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){

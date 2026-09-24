@@ -72,12 +72,24 @@ static const struct {
 	{ "post_max_size",            "8M",         VM_INI_PERDIR|VM_INI_SYSTEM },
 	{ "precision",                "14",         VM_INI_ALL },
 	{ "serialize_precision",      "-1",         VM_INI_ALL },
+	/* The Set-Cookie the session sends is built out of these seven. */
+	{ "session.cookie_domain",    "",           VM_INI_ALL },
+	{ "session.cookie_httponly",  "0",          VM_INI_ALL },
+	{ "session.cookie_lifetime",  "0",          VM_INI_ALL },
+	{ "session.cookie_partitioned","0",         VM_INI_ALL },
+	{ "session.cookie_path",      "/",          VM_INI_ALL },
+	{ "session.cookie_samesite",  "",           VM_INI_ALL },
+	{ "session.cookie_secure",    "0",          VM_INI_ALL },
 	{ "session.name",             "PHPSESSID",  VM_INI_ALL },
 	{ "session.save_path",        "",           VM_INI_ALL },
 	/* Which of php's three session serializers writes the store: `php` (the
 	 * `name|<serialized>` runs a stock php install reads), `php_binary` or
 	 * `php_serialize`. */
 	{ "session.serialize_handler","php",        VM_INI_ALL },
+	/* Whether the session sends and reads its id as a cookie at all. PHL has never
+	 * read an id from anywhere ELSE, which is what use_only_cookies means. */
+	{ "session.use_cookies",      "1",          VM_INI_ALL },
+	{ "session.use_only_cookies", "1",          VM_INI_ALL },
 	{ "short_open_tag",           "",           VM_INI_PERDIR|VM_INI_SYSTEM },
 	{ "unserialize_callback_func","",           VM_INI_ALL },
 	{ "unserialize_max_depth",    "4096",       VM_INI_ALL },

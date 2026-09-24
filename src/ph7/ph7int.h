@@ -2251,7 +2251,6 @@ struct ph7_vm
 	SyBlob sSessId;             /* current session id ("" = none yet) */
 	SyBlob sSessName;           /* cookie/session name (default "PHPSESSID") */
 	SyBlob sSessPath;           /* save path ("" = not resolved yet -> sys_get_temp_dir()) */
-	sxu8 bSessWired;            /* the shutdown writer + cookie have been installed once */
 	SyHash hWeakCell;           /* instance pointer bytes -> VmWeakCell* (weak-reference registry;
 	                             * PH7_ClassInstanceRelease kills matching cells on free) */
 	SyHash hDirHandle;          /* instance pointer bytes -> VmDirHandle* (the open DIR* behind a
@@ -3385,6 +3384,7 @@ PH7_PRIVATE sxi32 PH7_VmHttpProcessRequest(ph7_vm *pVm,const char *zRequest,int 
 /* vm_http_response.c function prototypes */
 PH7_PRIVATE void PH7_RegisterHttpResponseFunctions(ph7_vm *pVm);
 PH7_PRIVATE void PH7_VmReleaseResponseHeaders(ph7_vm *pVm);
+PH7_PRIVATE void PH7_VmRemoveCookieByName(ph7_vm *pVm,const char *zName,sxu32 nName);
 PH7_PRIVATE void PH7_VmEmitCookie(ph7_vm *pVm,const char *zName,sxu32 nName,
 	const char *zValue,sxu32 nValue,int bEncode,sxi64 iExpires,
 	const char *zPath,sxu32 nPath,const char *zDomain,sxu32 nDomain,

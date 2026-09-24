@@ -342,6 +342,35 @@ static int VmCookieOptionWalker(ph7_value *pKey,ph7_value *pVal,void *pUserData)
 	return PH7_OK;
 }
 /*
+ * Drop any Set-Cookie already queued for this cookie NAME. php does this before it
+ * sends the session cookie (php_session_remove_cookie): a request that regenerates
+ * its id must not leave the OLD id in the reply beside the new one, and only the
+ * cookie of that name goes -- the header name is shared with every other cookie.
+ */
+PH7_PRIVATE void PH7_VmRemoveCookieByName(ph7_vm *pVm,const char *zName,sxu32 nName)
+{
+	VmResponseHeader *aHdr = (VmResponseHeader *)SySetBasePtr(&pVm->aResponseHeaders);
+	sxu32 i,n = SySetUsed(&pVm->aResponseHeaders);
+	for( i = 0 ; i < n ; ){
+		const SyString *pVal = &aHdr[i].sValue;
+		if( aHdr[i].sName.nByte == sizeof("Set-Cookie")-1
+		 && SyStrnicmp(aHdr[i].sName.zString,"Set-Cookie",sizeof("Set-Cookie")-1) == 0
+		 && pVal->nByte > nName
+		 && SyMemcmp(pVal->zString,zName,nName) == 0
+		 && pVal->zString[nName] == '=' ){
+			SyMemBackendFree(&pVm->sAllocator,(void *)aHdr[i].sName.zString);
+			SyMemBackendFree(&pVm->sAllocator,(void *)aHdr[i].sValue.zString);
+			if( i < n - 1 ){
+				aHdr[i] = aHdr[n - 1];
+			}
+			SySetPop(&pVm->aResponseHeaders);
+			n--;
+		}else{
+			i++;
+		}
+	}
+}
+/*
  * Build the Set-Cookie value php builds, and append it (never replace).
  * PH7_PRIVATE because the session's own cookie is this same header with the
  * session's parameters, not a second spelling of it.

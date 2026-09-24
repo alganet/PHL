@@ -2102,7 +2102,6 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	SyBlobInit(&pVm->sSessName,&pVm->sAllocator);
 	SyBlobInit(&pVm->sSessPath,&pVm->sAllocator);
 	SyBlobAppend(&pVm->sSessName,"PHPSESSID",sizeof("PHPSESSID")-1);
-	pVm->bSessWired = 0;
 	SySetInit(&pVm->aAutoload,&pVm->sAllocator,sizeof(VmAutoloadCB));
 	SyHashInit(&pVm->hAutoloadActive,&pVm->sAllocator,0,0);
 	SyHashInit(&pVm->hWeakCell,&pVm->sAllocator,0,0);
