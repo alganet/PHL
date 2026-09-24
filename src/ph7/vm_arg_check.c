@@ -913,6 +913,7 @@ static const struct VmBuiltinSig {
 	{ "stream_copy_to_stream", "$from, $to, ?int $length = NULL, int $offset = 0", "int|false" },
 	{ "stream_get_transports", "", "array" },
 	{ "stream_is_local", "$stream", "bool" },
+	{ "stream_select", "?array &$read, ?array &$write, ?array &$except, ?int $seconds, ?int $microseconds = NULL", "int|false" },
 	{ "stream_set_blocking", "$stream, bool $enable", "bool" },
 	{ "socket_set_blocking", "$stream, bool $enable", "bool" },
 	{ "stream_set_chunk_size", "$stream, int $size", "int" },

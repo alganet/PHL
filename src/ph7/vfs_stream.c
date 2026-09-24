@@ -4856,6 +4856,352 @@ PH7_PRIVATE int PH7_builtin_stream_copy_to_stream(ph7_context *pCtx,int nArg,ph7
 	return PH7_OK;
 }
 /*
+ * int|false stream_select(?array &$read, ?array &$write, ?array &$except,
+ *                         ?int $seconds, ?int $microseconds = null)
+ *
+ * The name that makes a program WAIT on several streams at once, and the reason
+ * the settings family that shipped beside it had nothing to wait with: a
+ * non-blocking read tells you a stream is not ready, and only this tells you
+ * WHEN it becomes ready. It is what a proc_open() pipe pump, a socket server
+ * loop and every event loop written in php is built on, and it was a loud
+ * `Call to undefined function`.
+ *
+ * php's own shape, and the parts of it a re-derivation misses: the arrays are
+ * REWRITTEN in place to hold only the ready entries, under their original keys;
+ * a stream that cannot be represented as a descriptor is a warning naming its
+ * TYPE, not a failure; nothing selectable at all is an Error rather than 0; and
+ * a stream whose own read buffer still holds bytes is answered READY without
+ * asking the OS at all — which is the difference between a loop that drains a
+ * buffered handle and one that waits forever for data it has already read.
+ */
+#if !defined(__WINNT__) || defined(PH7_ENABLE_NET)
+#define STREAM_SELECT_OK 1
+#ifdef __UNIXES__
+#include <sys/select.h>
+#include <sys/time.h>
+#endif
+#endif
+#define SEL_READ   0
+#define SEL_WRITE  1
+#define SEL_EXCEPT 2
+/* What one walk over an argument is for. The order matters: php COUNTS the
+ * already-buffered readable handles before it waits, and only rewrites the
+ * arrays once it knows which answer it is giving. */
+#define SELM_COLLECT  0 /* put every representable handle in its fd_set */
+#define SELM_BUFFERED 1 /* keep the handles whose own buffer still holds bytes */
+#define SELM_READY    2 /* keep the handles select() reported */
+#define SELM_CLEAR    3 /* keep nothing: php empties the sets it is not answering */
+typedef struct stream_select_ctx stream_select_ctx;
+struct stream_select_ctx
+{
+	ph7_context *pCtx;
+#ifdef STREAM_SELECT_OK
+	fd_set aSet[3];    /* read / write / except, as select() takes them */
+#endif
+	int iMaxFd;
+	int nSelectable;   /* entries that could be represented at all */
+	int iWhich;        /* the set being walked (SEL_*) */
+	int iMode;         /* SELM_*: what this walk is FOR */
+	int nReady;
+	int bBadEntry;     /* an entry that is not a stream at all */
+	int bBadClosed;    /* ... and whether it was a CLOSED one (php words the two apart) */
+	ph7_value *pOut;   /* the rebuilt array, while harvesting */
+};
+/*
+ * What a select can WAIT on for this handle: the POSIX descriptor, or the
+ * SOCKET, which is the only waitable thing a stream carries on Windows (the
+ * file devices hold a HANDLE there, and select() cannot take one — a recorded
+ * platform difference, §7.4). Answers -1 for a device with neither: a memory
+ * buffer, a data:// payload, a userland wrapper.
+ */
+static ph7_int64 IoPrivateSelectHandle(io_private *pDev)
+{
+	int fd;
+#ifdef PH7_ENABLE_NET
+	ph7_socket *pSock = IoPrivateSocket(pDev);
+	if( pSock ){
+		return *pSock == PH7_NET_INVALID_SOCKET ? -1 : (ph7_int64)*pSock;
+	}
+#endif
+	fd = PH7_StreamPosixFd(pDev);
+	return fd < 0 ? -1 : (ph7_int64)fd;
+}
+/* Bytes this handle has already pulled off the device and not yet handed over. */
+static sxu32 IoPrivateUnread(io_private *pDev)
+{
+	return SyBlobLength(&pDev->sBuffer) > pDev->nOfft
+		? SyBlobLength(&pDev->sBuffer) - pDev->nOfft : 0;
+}
+static void StreamSelectAdd(stream_select_ctx *pSel,ph7_int64 h)
+{
+#ifdef STREAM_SELECT_OK
+#ifdef __WINNT__
+	/* A Windows fd_set is an ARRAY of sockets, so what bounds it is how many
+	 * are in it already rather than the value of this one. */
+	if( pSel->aSet[pSel->iWhich].fd_count >= FD_SETSIZE ){
+		return;
+	}
+	FD_SET((SOCKET)h,&pSel->aSet[pSel->iWhich]);
+#else
+	if( h < 0 || h >= (ph7_int64)FD_SETSIZE ){
+		/* php ignores a descriptor an fd_set cannot hold (its own
+		 * PHP_SAFE_FD_SET); writing past one corrupts the stack. */
+		return;
+	}
+	FD_SET((int)h,&pSel->aSet[pSel->iWhich]);
+#endif
+	if( h > (ph7_int64)pSel->iMaxFd ){
+		pSel->iMaxFd = (int)h;
+	}
+#else
+	SXUNUSED(pSel);
+	SXUNUSED(h);
+#endif
+}
+static int StreamSelectIsSet(stream_select_ctx *pSel,ph7_int64 h)
+{
+#ifdef STREAM_SELECT_OK
+#ifdef __WINNT__
+	return FD_ISSET((SOCKET)h,&pSel->aSet[pSel->iWhich]) ? 1 : 0;
+#else
+	if( h < 0 || h >= (ph7_int64)FD_SETSIZE ){
+		return 0;
+	}
+	return FD_ISSET((int)h,&pSel->aSet[pSel->iWhich]) ? 1 : 0;
+#endif
+#else
+	SXUNUSED(pSel);
+	SXUNUSED(h);
+	return 0;
+#endif
+}
+/*
+ * One entry of one array: collected on the way in, harvested on the way out.
+ * php never stops for an entry it cannot use — the diagnostics are remembered
+ * and raised once the whole set is known, because whether the array held
+ * ANYTHING selectable decides which of them php raises.
+ */
+static int StreamSelectWalk(ph7_value *pKey,ph7_value *pValue,void *pUserData)
+{
+	stream_select_ctx *pSel = (stream_select_ctx *)pUserData;
+	io_private *pDev;
+	ph7_int64 h;
+	if( !ph7_value_is_resource(pValue) ){
+		pSel->bBadEntry = 1;
+		/* php words a value that is not a resource apart from a resource that is
+		 * no longer open, and raises one per bad entry — so the LAST one seen is
+		 * the message that reaches the caller. */
+		pSel->bBadClosed = 0;
+		return PH7_OK;
+	}
+	pDev = (io_private *)ph7_value_to_resource(pValue);
+	if( IO_PRIVATE_INVALID(pDev) ){
+		pSel->bBadEntry = pSel->bBadClosed = 1;
+		return PH7_OK;
+	}
+	if( pSel->iMode == SELM_BUFFERED ){
+		/* Deliberately BEFORE the descriptor lookup: php's shortcut lets a
+		 * readable stream with no descriptor at all take part (a userland
+		 * wrapper a line read has filled the buffer of), and answering 0 for one
+		 * would sleep out the whole timeout over bytes the script already has. */
+		if( IoPrivateUnread(pDev) > 0 ){
+			if( pSel->pOut ){
+				ph7_array_add_elem(pSel->pOut,pKey,pValue);
+			}
+			pSel->nReady++;
+		}
+		return PH7_OK;
+	}
+	h = IoPrivateSelectHandle(pDev);
+	if( h < 0 ){
+		if( pSel->iMode == SELM_COLLECT ){
+			const char *zWrapper,*zLabel;
+			IoPrivateStreamLabels(pDev,&zWrapper,&zLabel);
+			ph7_context_throw_error_format(pSel->pCtx,PH7_CTX_WARNING,
+				"Cannot represent a stream of type %s as a select()able descriptor",zLabel);
+		}
+		return PH7_OK;
+	}
+	if( pSel->iMode == SELM_COLLECT ){
+		pSel->nSelectable++;
+		StreamSelectAdd(pSel,h);
+		return PH7_OK;
+	}
+	if( pSel->iMode == SELM_READY && StreamSelectIsSet(pSel,h) ){
+		if( pSel->pOut ){
+			ph7_array_add_elem(pSel->pOut,pKey,pValue);
+		}
+		pSel->nReady++;
+	}
+	return PH7_OK;
+}
+/* The wait itself, over the pair the caller's numbers were normalised into. */
+static int StreamSelectWait(stream_select_ctx *pSel,ph7_int64 iSec,ph7_int64 iUsec,int bBlock,
+	int *pErrno)
+{
+#ifdef STREAM_SELECT_OK
+	struct timeval tv,*pTv = 0;
+	int rc;
+	if( !bBlock ){
+		tv.tv_sec = (long)iSec;
+		tv.tv_usec = (long)iUsec;
+		pTv = &tv;
+	}
+	rc = select(pSel->iMaxFd + 1,&pSel->aSet[SEL_READ],&pSel->aSet[SEL_WRITE],
+		&pSel->aSet[SEL_EXCEPT],pTv);
+	if( rc < 0 && pErrno ){
+#ifdef __WINNT__
+		*pErrno = WSAGetLastError();
+#else
+		*pErrno = errno;
+#endif
+	}
+	return rc;
+#else
+	/* No select() to call: a Windows build with no socket layer. */
+	SXUNUSED(pSel);
+	SXUNUSED(iSec);
+	SXUNUSED(iUsec);
+	SXUNUSED(bBlock);
+	if( pErrno ){ *pErrno = 0; }
+	return -1;
+#endif
+}
+/* Walk one of the three arguments, if it IS one. */
+static void StreamSelectEach(stream_select_ctx *pSel,ph7_value **apArg,int nArg,int iArg,int iWhich,
+	int iMode)
+{
+	if( iArg >= nArg || apArg[iArg] == 0 || !ph7_value_is_array(apArg[iArg]) ){
+		return;
+	}
+	pSel->iWhich = iWhich;
+	pSel->iMode = iMode;
+	ph7_array_walk(apArg[iArg],StreamSelectWalk,pSel);
+}
+/* Rebuild one argument from the entries that came back ready. php REPLACES the
+ * array either way, so a set with nothing ready comes back empty. */
+static int StreamSelectStore(stream_select_ctx *pSel,ph7_value **apArg,int nArg,int iArg,int iWhich,
+	int iMode)
+{
+	if( iArg >= nArg || apArg[iArg] == 0 || !ph7_value_is_array(apArg[iArg]) ){
+		return PH7_OK;
+	}
+	pSel->pOut = ph7_context_new_array(pSel->pCtx);
+	if( pSel->pOut == 0 ){
+		/* Leaving the caller's array alone would answer that every entry is
+		 * ready, which is the one wrong answer this function must not give. */
+		return PH7_ContextMemoryError(pSel->pCtx);
+	}
+	StreamSelectEach(pSel,apArg,nArg,iArg,iWhich,iMode);
+	PH7_VmStoreArgByRef(pSel->pCtx->pVm,apArg[iArg],pSel->pOut);
+	pSel->pOut = 0;
+	return PH7_OK;
+}
+PH7_PRIVATE int PH7_builtin_stream_select(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	stream_select_ctx sSel;
+	ph7_int64 iSec = 0,iUsec = 0;
+	int bBlock = 1,iErrno = 0,rc,i;
+	SyZero(&sSel,sizeof(sSel));
+	sSel.pCtx = pCtx;
+	sSel.iMaxFd = -1;
+#ifdef STREAM_SELECT_OK
+	for( i = 0 ; i < 3 ; i++ ){
+		FD_ZERO(&sSel.aSet[i]);
+	}
+#endif
+	StreamSelectEach(&sSel,apArg,nArg,0,SEL_READ,SELM_COLLECT);
+	StreamSelectEach(&sSel,apArg,nArg,1,SEL_WRITE,SELM_COLLECT);
+	StreamSelectEach(&sSel,apArg,nArg,2,SEL_EXCEPT,SELM_COLLECT);
+	if( sSel.nSelectable < 1 ){
+		/* php's own wording, and it carries no function name. It is the answer
+		 * for three NULLs, for empty arrays, and for arrays holding nothing
+		 * this engine can wait on — the caller asked to wait for nothing. */
+		return PH7_VmThrowException(pCtx,"ValueError","No stream arrays were passed");
+	}
+	if( sSel.bBadEntry ){
+		/* Raised only once the arrays are known to hold something to wait on —
+		 * the empty-arrays Error wins over it — and BEFORE the timeout is
+		 * looked at, which is the order php's own pending-exception check
+		 * produces. */
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): supplied %s is not a valid stream resource",
+			ph7_function_name(pCtx),sSel.bBadClosed ? "resource" : "argument");
+	}
+	if( nArg > 3 && !ph7_value_is_null(apArg[3]) ){
+		iSec = ph7_value_to_int64(apArg[3]);
+		bBlock = 0;
+		if( iSec < 0 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"%s(): Argument #4 ($seconds) must be greater than or equal to 0",
+				ph7_function_name(pCtx));
+		}
+	}
+	if( nArg > 4 && !ph7_value_is_null(apArg[4]) ){
+		iUsec = ph7_value_to_int64(apArg[4]);
+		if( bBlock ){
+			/* php refuses the pair rather than guessing which one meant it: a
+			 * NULL $seconds is "wait forever", and there is no such thing as
+			 * waiting forever for five microseconds. */
+			if( iUsec != 0 ){
+				return PH7_VmThrowException(pCtx,"ValueError",
+					"%s(): Argument #5 ($microseconds) must be null when argument #4 ($seconds) is null",
+					ph7_function_name(pCtx));
+			}
+		}else if( iUsec < 0 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"%s(): Argument #5 ($microseconds) must be greater than or equal to 0",
+				ph7_function_name(pCtx));
+		}
+	}
+	if( iUsec > 999999 ){
+		/* php carries the overflow into the seconds, because a tv_usec of a
+		 * million or more is what Solaris and the BSDs refuse outright — so
+		 * `stream_select($r, $w, $x, 0, 1500000)` waits a second and a half
+		 * rather than failing. */
+		iSec += iUsec / 1000000;
+		iUsec %= 1000000;
+	}
+	/* php's own shortcut, and it comes BEFORE the wait: a handle whose buffer
+	 * still holds bytes the script has not taken is ready NOW, whatever the OS
+	 * would say about its descriptor — the device has nothing left to report.
+	 * COUNTED first and stored second, because the count is what decides
+	 * whether the arrays are rewritten from the buffers or from the wait. */
+	StreamSelectEach(&sSel,apArg,nArg,0,SEL_READ,SELM_BUFFERED);
+	if( sSel.nReady > 0 ){
+		sSel.nReady = 0;
+		if( StreamSelectStore(&sSel,apArg,nArg,0,SEL_READ,SELM_BUFFERED) != PH7_OK
+		/* php answers only the readable ones then, and empties the other two. */
+		 || StreamSelectStore(&sSel,apArg,nArg,1,SEL_WRITE,SELM_CLEAR) != PH7_OK
+		 || StreamSelectStore(&sSel,apArg,nArg,2,SEL_EXCEPT,SELM_CLEAR) != PH7_OK ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		ph7_result_int(pCtx,sSel.nReady);
+		return PH7_OK;
+	}
+	rc = StreamSelectWait(&sSel,iSec,iUsec,bBlock,&iErrno);
+	if( rc < 0 ){
+#if defined(__WINNT__) && defined(PH7_ENABLE_NET)
+		const char *zErr = PH7_NetStrError(iErrno);
+#else
+		const char *zErr = VfsStrerror(iErrno);
+#endif
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"Unable to select [%d]: %s (max_fd=%d)",
+			iErrno,zErr,sSel.iMaxFd);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( StreamSelectStore(&sSel,apArg,nArg,0,SEL_READ,SELM_READY) != PH7_OK
+	 || StreamSelectStore(&sSel,apArg,nArg,1,SEL_WRITE,SELM_READY) != PH7_OK
+	 || StreamSelectStore(&sSel,apArg,nArg,2,SEL_EXCEPT,SELM_READY) != PH7_OK ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	/* The COUNT is select()'s own, not the entries kept: two array members can
+	 * name one descriptor, and php answers what the OS said. */
+	ph7_result_int(pCtx,rc);
+	return PH7_OK;
+}
+/*
  * array stream_get_transports(void)
  *
  * The transports a stream_socket_client()/fsockopen() address may name. php's

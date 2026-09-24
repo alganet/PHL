@@ -109,16 +109,16 @@ PH7_PRIVATE int PH7_NetWouldBlock(void)
  */
 PH7_PRIVATE int PH7_NetWait(ph7_socket sock,int bWrite,int iTimeoutMs)
 {
+#ifdef __WINNT__
+	fd_set sSet;
+	struct timeval tv,*pTv = 0;
+	int rc;
 	if( sock == PH7_NET_INVALID_SOCKET ){
 		/* Nothing to wait on: php's own select() over a stream whose socket was
 		 * never created reports it not-ready, which is an expiry and not an
 		 * error. poll() would answer POLLNVAL and look like readiness. */
 		return 0;
 	}
-#ifdef __WINNT__
-	fd_set sSet;
-	struct timeval tv,*pTv = 0;
-	int rc;
 	FD_ZERO(&sSet);
 	FD_SET(sock,&sSet);
 	if( iTimeoutMs >= 0 ){
@@ -131,6 +131,11 @@ PH7_PRIVATE int PH7_NetWait(ph7_socket sock,int bWrite,int iTimeoutMs)
 #else
 	struct pollfd sPoll;
 	int rc;
+	if( sock == PH7_NET_INVALID_SOCKET ){
+		/* See above: nothing to wait on is an expiry, and poll() would answer
+		 * POLLNVAL for it, which looks like readiness. */
+		return 0;
+	}
 	sPoll.fd = sock;
 	sPoll.events = (short)(bWrite ? POLLOUT : POLLIN);
 	sPoll.revents = 0;

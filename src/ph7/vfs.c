@@ -3044,6 +3044,9 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"stream_is_local",      PH7_builtin_stream_is_local },
 		{"stream_copy_to_stream",PH7_builtin_stream_copy_to_stream },
 		{"stream_get_transports",PH7_builtin_stream_get_transports },
+		/* Not under PH7_ENABLE_NET: a script selects over FILES and pipes in a
+		 * build with no networking at all. */
+		{"stream_select",        PH7_builtin_stream_select },
 		{"stream_context_create",PH7_builtin_stream_context_create },
 		{"stream_wrapper_register",   PH7_builtin_stream_wrapper_register },
 		{"stream_register_wrapper",   PH7_builtin_stream_wrapper_register },
