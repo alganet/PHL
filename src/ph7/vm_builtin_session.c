@@ -1184,7 +1184,6 @@ static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 		VmSessGenId(pVm,&pVm->sSessId);
 	}
 	SyBlobInit(&sFile,&pVm->sAllocator);
-	VmSessMaybeGc(pVm);
 	VmSessFile(pVm,&sFile);
 	if( !VmSessHasUser(pVm) && !VmSessOpenStore(pVm,&sFile,"session_start") ){
 		SyBlobRelease(&sFile);
@@ -1201,6 +1200,12 @@ static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	/* php collects HERE -- after the store is open and this session has been read,
+	 * which is the only order in which a handler's gc() can use the connection its
+	 * own open() made. PHL swept before either, so a user handler was asked to
+	 * collect a store it had not been told to open yet: its log read gc,open,read
+	 * where php's reads open,read,gc. */
+	VmSessMaybeGc(pVm);
 	pVm->iSessStatus = VM_SESSION_ACTIVE;
 	VmSessSendCookie(pVm);
 	VmSessSendCacheHeaders(pVm);
