@@ -2594,6 +2594,7 @@ struct ph7_vm
 	 * back and every opener falls back to. */
 	void *pStreamCtx;          /* phl_stream_ctx registry chain; freed on reset */
 	void *pDefaultCtx;         /* phl_stream_ctx* — the default context, or 0 */
+	void *pOpenCtx;            /* the context the open in flight runs under */
 	ph7_vm *pNext,*pPrev;      /* List of active VM's */
 	sxu32 nMagic;              /* Sanity check against misuse */
 };
@@ -3765,6 +3766,11 @@ PH7_PRIVATE phl_stream_ctx * PH7_StreamCtxDefault(ph7_vm *pVm);
 PH7_PRIVATE ph7_value * PH7_StreamCtxOption(phl_stream_ctx *pCtxRes,const char *zWrapper,const char *zOption);
 /* Drop every context this VM created (called from PH7_VmReset). */
 PH7_PRIVATE void PH7_StreamCtxVmReset(ph7_vm *pVm);
+/* The `$context` argument of an opener, php's rules applied (see the body). */
+PH7_PRIVATE phl_stream_ctx * PH7_StreamCtxFromArg(ph7_context *pCtx,int nArg,ph7_value **apArg,
+	int iArg,const char *zArgName,int bNoDefault,int *pbThrew);
+/* Arm the context PH7_StreamOpenHandle's next open runs under. */
+PH7_PRIVATE void PH7_StreamCtxArm(ph7_vm *pVm,phl_stream_ctx *pRes);
 PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_private *pOut);
 PH7_PRIVATE void SetIOPrivateOpenedAs(io_private *pDev,const char *zUri,int nUriLen,const char *zMode,int nModeLen);
 PH7_PRIVATE void MarkIOPrivateClosed(io_private *pDev);

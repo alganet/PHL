@@ -356,10 +356,19 @@ static int PH7_vfs_rmdir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zPath;
 	ph7_vfs *pVfs;
-	int rc;
+	int rc,bThrew = 0;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* php's `?resource $context`, refused when it is a resource of another kind.
+	 * Nothing here CONSUMES it — this operation never opens a stream, and the
+	 * userland wrapper's unlink/rename/mkdir/rmdir methods are not dispatched
+	 * (§7.4 slice-2 (e)) — but the refusal is the argument's contract, and it
+	 * was accepted in silence. */
+	PH7_StreamCtxFromArg(pCtx,nArg,apArg,1,"$context",0,&bThrew);
+	if( bThrew ){
 		return PH7_OK;
 	}
 	/* Point to the underlying vfs */
@@ -447,10 +456,19 @@ static int PH7_vfs_mkdir(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	int iRecursive = 0;
 	const char *zPath;
 	ph7_vfs *pVfs;
-	int iMode,rc;
+	int iMode,rc,bThrew = 0;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* php's `?resource $context`, refused when it is a resource of another kind.
+	 * Nothing here CONSUMES it — this operation never opens a stream, and the
+	 * userland wrapper's unlink/rename/mkdir/rmdir methods are not dispatched
+	 * (§7.4 slice-2 (e)) — but the refusal is the argument's contract, and it
+	 * was accepted in silence. */
+	PH7_StreamCtxFromArg(pCtx,nArg,apArg,3,"$context",0,&bThrew);
+	if( bThrew ){
 		return PH7_OK;
 	}
 	/* Point to the underlying vfs */
@@ -505,10 +523,19 @@ static int PH7_vfs_rename(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zOld,*zNew;
 	ph7_vfs *pVfs;
-	int rc;
+	int rc,bThrew = 0;
 	if( nArg < 2 || !ph7_value_is_string(apArg[0]) || !ph7_value_is_string(apArg[1]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* php's `?resource $context`, refused when it is a resource of another kind.
+	 * Nothing here CONSUMES it — this operation never opens a stream, and the
+	 * userland wrapper's unlink/rename/mkdir/rmdir methods are not dispatched
+	 * (§7.4 slice-2 (e)) — but the refusal is the argument's contract, and it
+	 * was accepted in silence. */
+	PH7_StreamCtxFromArg(pCtx,nArg,apArg,2,"$context",0,&bThrew);
+	if( bThrew ){
 		return PH7_OK;
 	}
 	/* Point to the underlying vfs */
@@ -674,10 +701,19 @@ static int PH7_vfs_unlink(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zPath;
 	ph7_vfs *pVfs;
-	int rc;
+	int rc,bThrew = 0;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid argument,return FALSE */
 		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* php's `?resource $context`, refused when it is a resource of another kind.
+	 * Nothing here CONSUMES it — this operation never opens a stream, and the
+	 * userland wrapper's unlink/rename/mkdir/rmdir methods are not dispatched
+	 * (§7.4 slice-2 (e)) — but the refusal is the argument's contract, and it
+	 * was accepted in silence. */
+	PH7_StreamCtxFromArg(pCtx,nArg,apArg,1,"$context",0,&bThrew);
+	if( bThrew ){
 		return PH7_OK;
 	}
 	/* Point to the underlying vfs */

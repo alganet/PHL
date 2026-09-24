@@ -1657,10 +1657,11 @@ static void PH7_FILE_APPEND_Const(ph7_value *pVal,void *pUserData)
 }
 /*
  * FILE_NO_DEFAULT_CONTEXT
- *  Expand php's 0x10. PHL has no stream_context_set_default(), so "do not use
- *  the default context" is already how every call behaves — the flag is
- *  accepted (file()'s validator counts it a valid bit) and changes nothing,
- *  which is php's own behaviour when no default context was ever set.
+ *  Expand php's 0x10. file()/file_put_contents() read it: it is what stops the
+ *  `$context = null` argument from resolving to stream_context_get_default()'s
+ *  context. What a device then does with an open carrying no context is its own
+ *  business — a userland wrapper's $this->context is a resource either way, in
+ *  php as here — so the flag is only observable where an option is consumed.
  */
 static void PH7_FILE_NO_DEFAULT_CONTEXT_Const(ph7_value *pVal,void *pUserData)
 {

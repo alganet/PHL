@@ -1382,9 +1382,9 @@ PH7_PRIVATE int PH7_builtin_hash_hmac_file(ph7_context *pCtx,int nArg,ph7_value 
 /*
  * bool hash_update_file(HashContext $context,string $filename[,?resource $stream_context = null])
  *
- * The $stream_context argument is php's per-call context for the wrapper it
- * opens through; PHL has no context plumbing, so it is accepted
- * and unused -- the same treatment file_get_contents() gives it.
+ * $stream_context is php's per-call context for the wrapper it opens through;
+ * it reaches the open the way every other opener's does, and a resource of any
+ * other kind is refused rather than accepted in silence.
  */
 PH7_PRIVATE int PH7_builtin_hash_update_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -1392,18 +1392,24 @@ PH7_PRIVATE int PH7_builtin_hash_update_file(ph7_context *pCtx,int nArg,ph7_valu
 	ph7_class_instance *pThis;
 	const HashAlgo *pAlgo;
 	HashState sState;
+	phl_stream_ctx *pCtxRes;
 	const char *zFile;
-	int nFileLen,rc;
+	int nFileLen,rc,bThrew = 0;
 	void *pHandle;
 	if( nArg < 2 ){
 		return PH7_VmThrowException(pCtx,"ArgumentCountError",
 			"hash_update_file() expects at least 2 arguments, %d given",nArg);
+	}
+	pCtxRes = PH7_StreamCtxFromArg(pCtx,nArg,apArg,2,"$stream_context",0,&bThrew);
+	if( bThrew ){
+		return PH7_OK;
 	}
 	pThis = HashContextArg(pCtx,apArg[0],&sState,&rc);
 	if( pThis == 0 ){
 		return rc;
 	}
 	zFile = ph7_value_to_string(apArg[1],&nFileLen);
+	PH7_StreamCtxArm(pCtx->pVm,pCtxRes);
 	pHandle = HashOpenRead(pCtx,zFile,nFileLen,&pStream);
 	if( pHandle == 0 ){
 		ph7_result_bool(pCtx,0);

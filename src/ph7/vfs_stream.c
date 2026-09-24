@@ -749,6 +749,11 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 		/* Open the URI direcly */
 		rc = pStream->xOpen(zFile,iFlags,pResource,&pHandle);
 	}
+	/* The armed context describes exactly ONE open — every attempt of the
+	 * include-path walk above included — so it is dropped here whether the open
+	 * worked or not. A device that wanted it (a userland wrapper) read it while
+	 * its xOpen was running. */
+	pVm->pOpenCtx = 0;
 	if( rc != PH7_OK ){
 		/* IO error */
 		return 0;
@@ -1501,11 +1506,18 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 	const ph7_io_stream *pStream;
 	const char *zPath;
 	io_private *pDev;
-	int iLen,rc;
+	int iLen,rc,bThrew = 0;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting a directory path");
 		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* php refuses a resource that is not a stream-context. Nothing CONSUMES it
+	 * here — dir_opendir() over a userland wrapper is not dispatched (§7.4
+	 * slice-2 (e)) — but the refusal is the argument's contract. */
+	PH7_StreamCtxFromArg(pCtx,nArg,apArg,1,"$context",0,&bThrew);
+	if( bThrew ){
 		return PH7_OK;
 	}
 	/* Extract the target path */
@@ -1626,7 +1638,8 @@ PH7_PRIVATE int PH7_builtin_readfile(ph7_context *pCtx,int nArg,ph7_value **apAr
 	const char *zFile;
 	char zBuf[8192];
 	void *pHandle;
-	int rc,nLen;
+	phl_stream_ctx *pCtxRes;
+	int rc,nLen,bThrew = 0;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting a file path");
@@ -1645,6 +1658,14 @@ PH7_PRIVATE int PH7_builtin_readfile(ph7_context *pCtx,int nArg,ph7_value **apAr
 	if( nArg > 1 ){
 		use_include = ph7_value_to_bool(apArg[1]);
 	}
+	/* php's `?resource $context`: a resource that is not a stream-context is
+	 * refused, and NULL means the DEFAULT context — never "no context at all".
+	 * The armed one describes exactly this open. */
+	pCtxRes = PH7_StreamCtxFromArg(pCtx,nArg,apArg,2,"$context",0,&bThrew);
+	if( bThrew ){
+		return PH7_OK;
+	}
+	PH7_StreamCtxArm(pCtx->pVm,pCtxRes);
 	/* Try to open the file in read-only mode */
 	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,
 		use_include,nArg > 2 ? apArg[2] : 0,FALSE,0,ph7_function_name(pCtx));
@@ -1703,7 +1724,8 @@ PH7_PRIVATE int PH7_builtin_file_get_contents(ph7_context *pCtx,int nArg,ph7_val
 	const char *zFile;
 	char zBuf[8192];
 	void *pHandle;
-	int nLen;
+	phl_stream_ctx *pCtxRes;
+	int nLen,bThrew = 0;
 
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
@@ -1734,6 +1756,14 @@ PH7_PRIVATE int PH7_builtin_file_get_contents(ph7_context *pCtx,int nArg,ph7_val
 	if( nArg > 1 ){
 		use_include = ph7_value_to_bool(apArg[1]);
 	}
+	/* php's `?resource $context`: a resource that is not a stream-context is
+	 * refused, and NULL means the DEFAULT context — never "no context at all".
+	 * The armed one describes exactly this open. */
+	pCtxRes = PH7_StreamCtxFromArg(pCtx,nArg,apArg,2,"$context",0,&bThrew);
+	if( bThrew ){
+		return PH7_OK;
+	}
+	PH7_StreamCtxArm(pCtx->pVm,pCtxRes);
 	/* Try to open the file in read-only mode */
 	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,use_include,nArg > 2 ? apArg[2] : 0,FALSE,0,ph7_function_name(pCtx));
 	if( pHandle == 0 ){
@@ -1856,8 +1886,9 @@ PH7_PRIVATE int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_val
 	const char *zData;
 	int iOpenFlags;
 	void *pHandle;
+	phl_stream_ctx *pCtxRes;
 	int iFlags;
-	int nLen;
+	int nLen,bThrew = 0;
 
 	if( nArg < 2 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
@@ -1894,6 +1925,14 @@ PH7_PRIVATE int PH7_builtin_file_put_contents(ph7_context *pCtx,int nArg,ph7_val
 			iOpenFlags |= PH7_IO_OPEN_APPEND;
 		}
 	}
+	/* FILE_NO_DEFAULT_CONTEXT is the flag that means exactly "and do NOT fall
+	 * back to the default context" — which is why it needed one to exist. */
+	pCtxRes = PH7_StreamCtxFromArg(pCtx,nArg,apArg,3,"$context",
+		(iFlags & 0x10) != 0,&bThrew);
+	if( bThrew ){
+		return PH7_OK;
+	}
+	PH7_StreamCtxArm(pCtx->pVm,pCtxRes);
 	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,iOpenFlags,use_include,
 		nArg > 3 ? apArg[3] : 0,FALSE,FALSE,ph7_function_name(pCtx));
 	if( pHandle == 0 ){
@@ -1963,9 +2002,10 @@ PH7_PRIVATE int PH7_builtin_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const ph7_io_stream *pStream;
 	int use_include = 0;
 	io_private *pDev;
+	phl_stream_ctx *pCtxRes;
 	ph7_int64 n;
 	int iFlags;
-	int nLen;
+	int nLen,bThrew = 0;
 
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
@@ -1991,6 +2031,15 @@ PH7_PRIVATE int PH7_builtin_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				"file(): Argument #2 ($flags) must be a valid flag value");
 		}
 		iFlags = (int)nFlags;
+	}
+	/* Resolved here for the same reason the flag mask is: a refused $context
+	 * must not strand the io_private chunk allocated below.
+	 * FILE_NO_DEFAULT_CONTEXT is the flag that means exactly "and do NOT fall
+	 * back to the default context" — which is why it needed one to exist. */
+	pCtxRes = PH7_StreamCtxFromArg(pCtx,nArg,apArg,2,"$context",
+		(iFlags & 0x10) != 0,&bThrew);
+	if( bThrew ){
+		return PH7_OK;
 	}
 	/* Extract the file path */
 	zFile = ph7_value_to_string(apArg[0],&nLen);
@@ -2021,6 +2070,7 @@ PH7_PRIVATE int PH7_builtin_file(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	PH7_StreamCtxArm(pCtx->pVm,pCtxRes);
 	/* Try to open the file in read-only mode */
 	pDev->pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,use_include,nArg > 2 ? apArg[2] : 0,FALSE,0,ph7_function_name(pCtx));
 	if( pDev->pHandle == 0 ){
@@ -2101,8 +2151,9 @@ PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zFile;
 	char zBuf[8192];
 	void *pIn,*pOut;
+	phl_stream_ctx *pCtxRes;
 	ph7_int64 n;
-	int nLen;
+	int nLen,bThrew = 0;
 	if( nArg < 2 || !ph7_value_is_string(apArg[0]) || !ph7_value_is_string(apArg[1])){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting a source and a destination path");
@@ -2118,6 +2169,14 @@ PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	/* php's `?resource $context`: a resource that is not a stream-context is
+	 * refused, and NULL means the DEFAULT context — never "no context at all".
+	 * The armed one describes exactly this open. */
+	pCtxRes = PH7_StreamCtxFromArg(pCtx,nArg,apArg,2,"$context",0,&bThrew);
+	if( bThrew ){
+		return PH7_OK;
+	}
+	PH7_StreamCtxArm(pCtx->pVm,pCtxRes);
 	/* Try to open the source file in a read-only mode */
 	pIn = PH7_StreamOpenHandle(pCtx->pVm,pSin,zFile,PH7_IO_OPEN_RDONLY,FALSE,nArg > 2 ? apArg[2] : 0,FALSE,0,ph7_function_name(pCtx));
 	if( pIn == 0 ){
@@ -2144,6 +2203,8 @@ PH7_PRIVATE int PH7_builtin_copy(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		PH7_StreamCloseHandle(pSin,pIn);
 		return PH7_OK;
 	}
+	/* php hands the ONE context to both halves of the copy. */
+	PH7_StreamCtxArm(pCtx->pVm,pCtxRes);
 	/* Try to open the destination file in a read-write mode */
 	pOut = PH7_StreamOpenHandle(pCtx->pVm,pSout,zFile,
 		PH7_IO_OPEN_CREATE|PH7_IO_OPEN_TRUNC|PH7_IO_OPEN_RDWR,FALSE,nArg > 2 ? apArg[2] : 0,FALSE,0,ph7_function_name(pCtx));
@@ -3785,6 +3846,54 @@ static phl_stream_ctx * StreamCtxArg(ph7_context *pCtx,ph7_value *pVal,int bCrea
 	return (phl_stream_ctx *)pDev->pCtxRes;
 }
 /*
+ * The `$context` argument sixteen rows of aBuiltinSig[] declare and no C body
+ * used to read. php's parameter is `?resource $context = null` and its rules
+ * are: a resource that is NOT a stream-context is refused outright, anything
+ * else non-null is the ordinary type refusal, and NULL means the DEFAULT
+ * context — which php creates on demand, so an opener never runs without one.
+ *
+ * bNoDefault is FILE_NO_DEFAULT_CONTEXT, the flag file()/file_get_contents()/
+ * file_put_contents() carry to mean exactly "and do not fall back to it".
+ * Returns 0 with *pbThrew set once a diagnostic has been raised.
+ */
+PH7_PRIVATE phl_stream_ctx * PH7_StreamCtxFromArg(ph7_context *pCtx,int nArg,ph7_value **apArg,
+	int iArg,const char *zArgName,int bNoDefault,int *pbThrew)
+{
+	phl_stream_ctx *pRes;
+	*pbThrew = 0;
+	if( iArg < nArg && apArg[iArg] && !ph7_value_is_null(apArg[iArg]) ){
+		if( !ph7_value_is_resource(apArg[iArg]) ){
+			*pbThrew = 1;
+			PH7_VmThrowException(pCtx,"TypeError",
+				"%s(): Argument #%d (%s) must be of type resource or null, %s given",
+				ph7_function_name(pCtx),iArg + 1,zArgName,ph7_type_name(apArg[iArg]));
+			return 0;
+		}
+		pRes = PH7_StreamCtxFromValue(apArg[iArg]);
+		if( pRes == 0 ){
+			/* php names the RESOURCE it wanted rather than the argument here. */
+			*pbThrew = 1;
+			PH7_VmThrowException(pCtx,"TypeError",
+				"%s(): supplied resource is not a valid Stream-Context resource",
+				ph7_function_name(pCtx));
+			return 0;
+		}
+		return pRes;
+	}
+	return bNoDefault ? 0 : PH7_StreamCtxDefault(pCtx->pVm);
+}
+/*
+ * Arm the context the NEXT open is to run under. PH7_StreamOpenHandle consumes
+ * and clears it, so the slot describes exactly one open and a caller that never
+ * set it finds nothing armed.
+ */
+PH7_PRIVATE void PH7_StreamCtxArm(ph7_vm *pVm,phl_stream_ctx *pRes)
+{
+	if( pVm ){
+		pVm->pOpenCtx = (void *)pRes;
+	}
+}
+/*
  * resource stream_context_create(?array $options = null, ?array $params = null)
  */
 PH7_PRIVATE int PH7_builtin_stream_context_create(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -4605,6 +4714,26 @@ static int UwrapOpenSlot(int iSlot,const char *zName,int iMode,ph7_value *pResou
 		SyMemBackendFree(&pVm->sAllocator,pH);
 		return -1;
 	}
+	{
+		/* php's streamWrapper::$context, set on the serving instance BEFORE
+		 * stream_open() runs — which is the whole reason a userland wrapper can
+		 * be configured per open. It is always a RESOURCE: an open that named no
+		 * context gets the DEFAULT one, so `stream_context_get_options($this->
+		 * context)` answers the empty set rather than fataling on a null.
+		 * The class need not declare the slot; php adds it either way. */
+		phl_stream_ctx *pOpenCtx = (phl_stream_ctx *)pVm->pOpenCtx;
+		ph7_value *pCtxSlot;
+		if( pOpenCtx == 0 ){
+			pOpenCtx = PH7_StreamCtxDefault(pVm);
+		}
+		pCtxSlot = PH7_NativeAttr(pH->pObj,"context");
+		if( pCtxSlot == 0 ){
+			pCtxSlot = PH7_VmCreateDynamicAttr(pVm,pH->pObj,"context",sizeof("context")-1,0);
+		}
+		if( pCtxSlot && pOpenCtx ){
+			ph7_value_resource(pCtxSlot,(void *)pOpenCtx);
+		}
+	}
 	/* php hands stream_open the FULL url, scheme included */
 	PH7_MemObjInit(pVm,&sPath);
 	PH7_MemObjInit(pVm,&sMode);
@@ -4867,9 +4996,19 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 	int iArgErrno = bClientForm ? 1 : 2;
 	int iArgErrstr = bClientForm ? 2 : 3;
 	int iArgTimeout = bClientForm ? 3 : 4;
+	phl_stream_ctx *pCtxRes = 0;
+	int bThrew = 0;
 	if( nArg < 1 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
+	}
+	if( bClientForm ){
+		/* php's `?resource $context` — fsockopen()/pfsockopen() have no such
+		 * argument, so only the stream_socket_client() spelling takes one. */
+		pCtxRes = PH7_StreamCtxFromArg(pCtx,nArg,apArg,5,"$context",0,&bThrew);
+		if( bThrew ){
+			return PH7_OK;
+		}
 	}
 	zRaw = ph7_value_to_string(apArg[0],&nRaw);
 	if( !bClientForm && nArg > 1 && !ph7_value_is_null(apArg[1]) ){
@@ -4953,6 +5092,7 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 			ph7_result_bool(pCtx,0);
 			return PH7_OK;
 		}
+		pDev->pCtxRes = (void *)pCtxRes;
 		ph7_result_resource(pCtx,pDev);
 		return PH7_OK;
 	}
@@ -4976,6 +5116,10 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	/* php attaches the opener's context to a TRANSPORT stream and to nothing
+	 * else — which is why stream_context_get_options() answers for a socket and
+	 * answers the empty set for a file opened through the very same call. */
+	pDev->pCtxRes = (void *)pCtxRes;
 	SockArmDefaultTimeout(pCtx,pDev);
 	if( bPersist ){
 		char zKey[320];
@@ -5010,8 +5154,14 @@ PH7_PRIVATE int PH7_builtin_stream_socket_server(ph7_context *pCtx,int nArg,ph7_
 	int nAddr,nTransport,nRest,iPort = -1,iErrno = 0,iFlags,rc;
 	ph7_socket sock;
 	io_private *pDev;
+	phl_stream_ctx *pCtxRes;
+	int bThrew = 0;
 	if( nArg < 1 ){
 		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pCtxRes = PH7_StreamCtxFromArg(pCtx,nArg,apArg,4,"$context",0,&bThrew);
+	if( bThrew ){
 		return PH7_OK;
 	}
 	/* The signature row declares `string $address`, so whatever arrives has
@@ -5049,6 +5199,7 @@ PH7_PRIVATE int PH7_builtin_stream_socket_server(ph7_context *pCtx,int nArg,ph7_
 			ph7_result_bool(pCtx,0);
 			return PH7_OK;
 		}
+		pDev->pCtxRes = (void *)pCtxRes;
 		SockAddressSuccess(pCtx,apArg,nArg,1,2);
 		ph7_result_resource(pCtx,pDev);
 		return PH7_OK;
@@ -5083,6 +5234,7 @@ PH7_PRIVATE int PH7_builtin_stream_socket_server(ph7_context *pCtx,int nArg,ph7_
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	pDev->pCtxRes = (void *)pCtxRes;
 	ph7_result_resource(pCtx,pDev);
 	return PH7_OK;
 }
@@ -6256,7 +6408,8 @@ PH7_PRIVATE int PH7_builtin_fopen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	const char *zUri,*zMode;
 	ph7_value *pResource;
 	io_private *pDev;
-	int iLen,imLen;
+	phl_stream_ctx *pCtxRes;
+	int iLen,imLen,bThrew = 0;
 	int iOpenFlags;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
@@ -6272,6 +6425,14 @@ PH7_PRIVATE int PH7_builtin_fopen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Set a default read-only mode */
 		zMode = "r";
 		imLen = (int)sizeof(char);
+	}
+	/* php's `?resource $context`: a resource that is not a stream-context is
+	 * refused, and NULL means the DEFAULT context — never "no context at all".
+	 * Resolved before the io_private chunk below, which a throw could not
+	 * release. */
+	pCtxRes = PH7_StreamCtxFromArg(pCtx,nArg,apArg,3,"$context",0,&bThrew);
+	if( bThrew ){
+		return PH7_OK;
 	}
 	/* Try to extract a stream */
 	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zUri,iLen);
@@ -6301,6 +6462,7 @@ PH7_PRIVATE int PH7_builtin_fopen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	InitIOPrivate(pCtx->pVm,pStream,pDev);
 	/* Convert open mode to PH7 flags */
 	iOpenFlags = StrModeToFlags(pCtx,zMode,imLen);
+	PH7_StreamCtxArm(pCtx->pVm,pCtxRes);
 	/* Try to get a handle */
 	pDev->pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zUri,iOpenFlags,
 		nArg > 2 ? ph7_value_to_bool(apArg[2]) : FALSE,pResource,FALSE,0,ph7_function_name(pCtx));

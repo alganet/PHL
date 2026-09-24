@@ -38,8 +38,22 @@
 	"  if( strpos($directory, chr(0)) !== false ){"\
 	"    throw new ValueError('scandir(): Argument #1 ($directory) must not contain any null bytes');"\
 	"  }"\
+	"  /* php's `?resource $context` refusal, spelled here for the same reason the"\
+	"     NUL check above is: forwarding an invalid one to opendir() would name"\
+	"     opendir() in a message php raises against scandir(). */"\
+	"  if( $context !== null ){"\
+	"    if( !is_resource($context) ){"\
+	"      throw new TypeError('scandir(): Argument #3 ($context) must be of type resource or null, '"\
+	"        . get_debug_type($context) . ' given');"\
+	"    }"\
+	"    if( get_resource_type($context) !== 'stream-context' ){"\
+	"      throw new TypeError('scandir(): supplied resource is not a valid Stream-Context resource');"\
+	"    }"\
+	"  }"\
 	"  $aDir = array();"\
-	"  $pHandle = opendir($directory);"\
+	"  /* php hands the context straight to the open it performs; dropping it here"\
+	"     was the same unread argument every C opener had. */"\
+	"  $pHandle = opendir($directory, $context);"\
 	"  if( $pHandle == FALSE ){ return FALSE; }"\
 	"  while(FALSE !== ($pEntry = readdir($pHandle)) ){"\
 	"      $aDir[] = $pEntry;"\
