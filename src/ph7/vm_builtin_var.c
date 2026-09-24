@@ -920,6 +920,17 @@ PH7_PRIVATE int vm_builtin_var_export(ph7_context *pCtx,int nArg,ph7_value **apA
 	}
 	/* Generate the PHP-exact evaluable representation */
 	VmExportValue(&sDump,apArg[0],0,0);
+	if( PH7_CALLBACK_UNWOUND(pCtx->pVm->nBoundaryRc) ){
+		/* A php 8.4 `get` hook threw (or exited) part-way through: php's var_export
+		 * builds its string before it prints anything, so a throw from inside it
+		 * reaches the caller with NOTHING written. The `$return = true` form was
+		 * already right — the parked throw discards the RESULT — but the printing
+		 * form had already handed the half-built text to the output layer, so a
+		 * caught throw was followed by an export naming properties as NULL. */
+		SyBlobRelease(&sDump);
+		ph7_result_null(pCtx);
+		return SXRET_OK;
+	}
 	if( !ret_string ){
 		/* Output dump */
 		ph7_context_output(pCtx,(const char *)SyBlobData(&sDump),(int)SyBlobLength(&sDump));
