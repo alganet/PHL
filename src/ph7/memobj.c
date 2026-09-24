@@ -1546,6 +1546,62 @@ PH7_PRIVATE sxi32 PH7_MemObjLoad(ph7_value *pSrc,ph7_value *pDest)
 	return SXRET_OK;
 }
 /*
+ * Read a value WITHOUT converting the caller's copy of it.
+ *
+ * Every ph7_value_to_xxx()/PH7_MemObjToXxx() is destructive: it rewrites the
+ * object it is handed and throws the prior representation away. That is right
+ * for a VM operand, and wrong for an entry a builtin FETCHED out of an array
+ * the script still holds — an $options member, a stream-filter parameter, a
+ * proc_open descriptor — where converting in place rewrites the script's own
+ * array (php's zval_get_long()/zval_get_string() family never touch theirs).
+ *
+ * PH7_ValuePeek loads an aliasing copy into pScratch (which the caller must
+ * have PH7_MemObjInit'd and must PH7_MemObjRelease afterwards) and answers it,
+ * so the destructive conversion lands on the copy. A string read through it
+ * stays valid until the scratch value is released. The three scalar wrappers
+ * carry their own scratch for the common case.
+ */
+PH7_PRIVATE ph7_value * PH7_ValuePeek(ph7_value *pVal,ph7_value *pScratch)
+{
+	PH7_MemObjLoad(pVal,pScratch);
+	return pScratch;
+}
+PH7_PRIVATE sxi64 PH7_ValuePeekInt64(ph7_value *pVal)
+{
+	ph7_value sTmp;
+	sxi64 iVal;
+	PH7_MemObjInit(pVal->pVm,&sTmp);
+	PH7_MemObjLoad(pVal,&sTmp);
+	PH7_MemObjToInteger(&sTmp);
+	iVal = sTmp.x.iVal;
+	PH7_MemObjRelease(&sTmp);
+	return iVal;
+}
+#ifndef PH7_OMIT_FLOATING_POINT
+PH7_PRIVATE ph7_real PH7_ValuePeekReal(ph7_value *pVal)
+{
+	ph7_value sTmp;
+	ph7_real rVal;
+	PH7_MemObjInit(pVal->pVm,&sTmp);
+	PH7_MemObjLoad(pVal,&sTmp);
+	PH7_MemObjToReal(&sTmp);
+	rVal = sTmp.rVal;
+	PH7_MemObjRelease(&sTmp);
+	return rVal;
+}
+#endif /* PH7_OMIT_FLOATING_POINT */
+PH7_PRIVATE int PH7_ValuePeekBool(ph7_value *pVal)
+{
+	ph7_value sTmp;
+	int bVal;
+	PH7_MemObjInit(pVal->pVm,&sTmp);
+	PH7_MemObjLoad(pVal,&sTmp);
+	PH7_MemObjToBool(&sTmp);
+	bVal = sTmp.x.iVal != 0;
+	PH7_MemObjRelease(&sTmp);
+	return bVal;
+}
+/*
  * Invalidate any prior representation of a given ph7_value.
  */
 PH7_PRIVATE sxi32 PH7_MemObjRelease(ph7_value *pObj)

@@ -230,22 +230,28 @@ static int ConvFilterCreate(phl_stream_filter *pFilter,ph7_value *pParams)
 	SyBlobAppend(&pState->sBreak,"\r\n",2); /* php's default */
 	if( pParams ){
 		ph7_value *pVal;
+		/* $params is the script's own array: every read goes through a COPY, since
+		 * ph7_value_to_xxx() would convert the entry in place and rewrite it. */
 		pVal = ph7_array_fetch(pParams,"line-length",-1);
 		if( pVal ){
-			pState->iLineLen = (int)ph7_value_to_int(pVal);
+			pState->iLineLen = (int)PH7_ValuePeekInt64(pVal);
 		}
 		pVal = ph7_array_fetch(pParams,"line-break-chars",-1);
 		if( pVal ){
+			ph7_value sTmp;
 			int nLb;
-			const char *zLb = ph7_value_to_string(pVal,&nLb);
+			const char *zLb;
+			PH7_MemObjInit(pFilter->pVm,&sTmp);
+			zLb = ph7_value_to_string(PH7_ValuePeek(pVal,&sTmp),&nLb);
 			SyBlobReset(&pState->sBreak);
 			if( nLb > 0 ){
 				SyBlobAppend(&pState->sBreak,zLb,(sxu32)nLb);
 			}
+			PH7_MemObjRelease(&sTmp);
 		}
 		pVal = ph7_array_fetch(pParams,"binary",-1);
 		if( pVal ){
-			pState->bBinary = ph7_value_to_bool(pVal) != 0;
+			pState->bBinary = PH7_ValuePeekBool(pVal);
 		}
 	}
 	/* php's wrapping thresholds, which are not the same on the two encoders:

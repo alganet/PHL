@@ -1852,14 +1852,23 @@ PH7_PRIVATE int PH7_builtin_proc_open(ph7_context *pCtx,int nArg,ph7_value **apA
 		PH7_HashmapExtractNodeValue(pNode,pEntry,FALSE);
 		if( ph7_value_is_array(pEntry) ){
 			int nLen; const char *zType;
+			/* pEntry aliases the descriptor array the SCRIPT still holds, so every
+			 * member is read through a scratch copy — ph7_value_to_string() would
+			 * convert the entry in place and rewrite the script's own $descriptors
+			 * (`[0 => ['pipe', 114]]` came back as `'114'`). */
+			ph7_value sPeek;
+			PH7_MemObjInit(pVm,&sPeek);
 			pType = ph7_array_fetch(pEntry,"0",1);
-			zType = pType ? ph7_value_to_string(pType,&nLen) : "";
+			zType = pType ? ph7_value_to_string(PH7_ValuePeek(pType,&sPeek),&nLen) : "";
 			if( SyStrncmp(zType,"pipe",4) == 0 ){
 				int fds[2];
 				if( pipe(fds) == 0 ){
 					pParam = ph7_array_fetch(pEntry,"1",1);
 					{
-						int nMode; const char *zMode = pParam ? ph7_value_to_string(pParam,&nMode) : "r";
+						ph7_value sMode;
+						int nMode; const char *zMode;
+						PH7_MemObjInit(pVm,&sMode);
+						zMode = pParam ? ph7_value_to_string(PH7_ValuePeek(pParam,&sMode),&nMode) : "r";
 						pD->kind = 0;
 						if( zMode[0] == 'w' || zMode[0] == 'a' ){
 							/* child writes -> parent reads: child gets write end */
@@ -1871,25 +1880,32 @@ PH7_PRIVATE int PH7_builtin_proc_open(ph7_context *pCtx,int nArg,ph7_value **apA
 						pD->parent_reads = 0;
 						}
 						nDesc++;
+						PH7_MemObjRelease(&sMode);
 					}
 				}
 			}else if( SyStrncmp(zType,"file",4) == 0 ){
+				ph7_value sPath, sMode;
 				int nLen2, nLen3; const char *zPath, *zMode; int oflag = O_RDONLY;
 				ph7_value *pPath = ph7_array_fetch(pEntry,"1",1);
 				ph7_value *pMode = ph7_array_fetch(pEntry,"2",1);
-				zPath = pPath ? ph7_value_to_string(pPath,&nLen2) : "";
-				zMode = pMode ? ph7_value_to_string(pMode,&nLen3) : "r";
+				PH7_MemObjInit(pVm,&sPath);
+				PH7_MemObjInit(pVm,&sMode);
+				zPath = pPath ? ph7_value_to_string(PH7_ValuePeek(pPath,&sPath),&nLen2) : "";
+				zMode = pMode ? ph7_value_to_string(PH7_ValuePeek(pMode,&sMode),&nLen3) : "r";
 				if( zMode[0] == 'w' ){ oflag = O_WRONLY|O_CREAT|O_TRUNC; }
 				else if( zMode[0] == 'a' ){ oflag = O_WRONLY|O_CREAT|O_APPEND; }
 				pD->kind = 1;
 				pD->file_fd = open(zPath,oflag,0644);
 				nDesc++;
+				PH7_MemObjRelease(&sPath);
+				PH7_MemObjRelease(&sMode);
 			}else if( SyStrncmp(zType,"redirect",8) == 0 ){
 				pParam = ph7_array_fetch(pEntry,"1",1);
 				pD->kind = 2;
-				pD->redirect_to = pParam ? ph7_value_to_int(pParam) : 1;
+				pD->redirect_to = pParam ? (int)PH7_ValuePeekInt64(pParam) : 1;
 				nDesc++;
 			}
+			PH7_MemObjRelease(&sPeek);
 		}
 		PH7_MemObjRelease(pEntry);
 		SyMemBackendFree(&pVm->sAllocator,pEntry);

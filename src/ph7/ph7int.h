@@ -3229,6 +3229,12 @@ PH7_PRIVATE sxi32 PH7_MemObjStringFormat(ph7_value *pObj,const char *zFormat,va_
 #endif
 PH7_PRIVATE sxi32 PH7_MemObjStore(ph7_value *pSrc,ph7_value *pDest);
 PH7_PRIVATE sxi32 PH7_MemObjLoad(ph7_value *pSrc,ph7_value *pDest);
+PH7_PRIVATE ph7_value * PH7_ValuePeek(ph7_value *pVal,ph7_value *pScratch);
+PH7_PRIVATE sxi64 PH7_ValuePeekInt64(ph7_value *pVal);
+#ifndef PH7_OMIT_FLOATING_POINT
+PH7_PRIVATE ph7_real PH7_ValuePeekReal(ph7_value *pVal);
+#endif
+PH7_PRIVATE int PH7_ValuePeekBool(ph7_value *pVal);
 PH7_PRIVATE sxi32 PH7_MemObjRelease(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjToNumeric(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjStringIncrement(ph7_value *pObj);

@@ -1043,8 +1043,10 @@ static int FvApplyFilter(ph7_context *pCtx,ph7_value *pInput,
 		if( pOpts ){
 			ph7_value *pMin = ph7_array_fetch(pOpts,"min_range",(int)sizeof("min_range")-1);
 			ph7_value *pMax = ph7_array_fetch(pOpts,"max_range",(int)sizeof("max_range")-1);
-			if( pMin && v<ph7_value_to_int64(pMin) ){ goto fail; }
-			if( pMax && v>ph7_value_to_int64(pMax) ){ goto fail; }
+			/* Read through a COPY: ph7_value_to_int64() would rewrite the entry in
+			 * the caller's own $options array (php's zval_get_long() does not). */
+			if( pMin && v<PH7_ValuePeekInt64(pMin) ){ goto fail; }
+			if( pMax && v>PH7_ValuePeekInt64(pMax) ){ goto fail; }
 		}
 		ph7_result_int64(pCtx,v);
 		return PH7_OK;
@@ -1124,7 +1126,7 @@ static void FvParseFilterArgs(int nArg,ph7_value **apArg,int iBase,
 	if( nArg>iBase+1 ){
 		if( ph7_value_is_array(apArg[iBase+1]) ){
 			ph7_value *pF = ph7_array_fetch(apArg[iBase+1],"flags",(int)sizeof("flags")-1);
-			if( pF ){ *piFlags = ph7_value_to_int(pF); }
+			if( pF ){ *piFlags = (int)PH7_ValuePeekInt64(pF); }
 			*ppOpts = ph7_array_fetch(apArg[iBase+1],"options",(int)sizeof("options")-1);
 			if( *ppOpts && !ph7_value_is_array(*ppOpts) ){ *ppOpts = 0; }
 			if( *ppOpts ){ *ppDefault = ph7_array_fetch(*ppOpts,"default",(int)sizeof("default")-1); }

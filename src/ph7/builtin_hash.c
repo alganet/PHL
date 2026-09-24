@@ -1584,7 +1584,7 @@ PH7_PRIVATE int PH7_builtin_password_hash(ph7_context *pCtx,int nArg,ph7_value *
 	/* cost from $options['cost'] (default 12). */
 	if( nArg > 2 && ph7_value_is_array(apArg[2]) ){
 		ph7_value *pCost = ph7_array_fetch(apArg[2],"cost",(int)sizeof("cost")-1);
-		if( pCost ){ iCost = ph7_value_to_int(pCost); }
+		if( pCost ){ iCost = (int)PH7_ValuePeekInt64(pCost); } /* through a copy: $options is the caller's */
 	}
 	if( iCost < 4 || iCost > 31 ){
 		return PH7_VmThrowException(pCtx,"ValueError",
@@ -1698,7 +1698,7 @@ PH7_PRIVATE int PH7_builtin_password_needs_rehash(ph7_context *pCtx,int nArg,ph7
 	}
 	if( nArg > 2 && ph7_value_is_array(apArg[2]) ){
 		ph7_value *pCost = ph7_array_fetch(apArg[2],"cost",(int)sizeof("cost")-1);
-		if( pCost ){ iWantCost = ph7_value_to_int(pCost); }
+		if( pCost ){ iWantCost = (int)PH7_ValuePeekInt64(pCost); } /* through a copy, as above */
 	}
 	ph7_result_bool(pCtx,iCost != iWantCost);
 	return PH7_OK;
