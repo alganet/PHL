@@ -2023,6 +2023,35 @@ PH7_PRIVATE sxi32 PH7_HashmapInsert(
 	return rc;
 }
 /*
+ * Insert (or overwrite) an entry under a RAW string key: php's zend_hash_update()
+ * as opposed to the zend_symtable_update() every array subscript goes through, so
+ * a numeric-looking NAME is kept as a string key instead of folding to the integer
+ * one. php reaches for this where a name comes from OUTSIDE the language — the
+ * session store's `7|i:1;` really does become a string key "7" that no `$_SESSION[7]`
+ * or `$_SESSION["7"]` can then reach. Only such a name-carrying reader should use it.
+ */
+PH7_PRIVATE sxi32 PH7_HashmapInsertRawKey(
+	ph7_hashmap *pMap,   /* Target hashmap */
+	const char *zKey,    /* Raw key bytes */
+	sxu32 nKey,          /* Key length */
+	ph7_value *pVal      /* Node value */
+	)
+{
+	ph7_hashmap_node *pNode = 0;
+	if( SXRET_OK == HashmapLookupBlobKey(&(*pMap),zKey,nKey,&pNode) && pNode ){
+		ph7_value *pElem = (ph7_value *)SySetAt(&pMap->pVm->aMemObj,pNode->nValIdx);
+		if( pElem ){
+			if( pVal ){
+				PH7_MemObjStore(pVal,pElem);
+			}else{
+				PH7_MemObjToNull(pElem);
+			}
+		}
+		return SXRET_OK;
+	}
+	return HashmapInsertBlobKey(&(*pMap),zKey,nKey,&(*pVal),0,FALSE);
+}
+/*
  * Merge entries of pSrc into pDest using PHP merge semantics:
  *   - String keys overwrite same-key entries in pDest.
  *   - Integer keys are renumbered with the destination's auto-index.

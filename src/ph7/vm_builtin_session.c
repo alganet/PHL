@@ -99,70 +99,6 @@ static void VmSessGenId(ph7_vm *pVm,SyBlob *pOut)
 	}
 }
 /*
- * Position just past ONE serialized value starting at nPos -- enough of php's
- * serialize grammar for a session payload, and the reason the decoder can find
- * the `key|value` boundaries at all: a value may contain '|' and braces.
- */
-static sxu32 VmSessScanFragment(const char *zSrc,sxu32 nLen,sxu32 nPos)
-{
-	char c;
-	if( nPos >= nLen ){
-		return nLen;
-	}
-	c = zSrc[nPos];
-	if( c == 'N' ){
-		return nPos + 2 <= nLen ? nPos + 2 : nLen;
-	}
-	if( c == 'i' || c == 'd' || c == 'b' ){
-		sxu32 i = nPos;
-		while( i < nLen && zSrc[i] != ';' ){ i++; }
-		return i < nLen ? i + 1 : nLen;
-	}
-	if( c == 's' ){
-		/* s:<len>:"<len bytes>"; -- the byte count is authoritative, so embedded
-		 * quotes and semicolons cannot confuse the scan. */
-		sxu32 i = nPos + 2;
-		sxi32 nStr = 0;
-		sxu32 nStart = i;
-		while( i < nLen && zSrc[i] != ':' ){ i++; }
-		if( i > nStart ){
-			SyStrToInt32(&zSrc[nStart],i - nStart,(void *)&nStr,0);
-		}
-		i += 2; /* ':' then the opening '"' */
-		i += (sxu32)(nStr < 0 ? 0 : nStr);
-		i += 2; /* closing '"' then ';' */
-		return i > nLen ? nLen : i;
-	}
-	if( c == 'a' || c == 'O' ){
-		sxu32 i = nPos;
-		int iDepth = 1;
-		while( i < nLen && zSrc[i] != '{' ){ i++; }
-		if( i >= nLen ){
-			return nLen;
-		}
-		i++;
-		while( i < nLen && iDepth > 0 ){
-			if( zSrc[i] == 's' && i + 1 < nLen && zSrc[i+1] == ':' ){
-				/* skip a string wholesale so braces inside it do not count */
-				i = VmSessScanFragment(zSrc,nLen,i);
-				continue;
-			}
-			if( zSrc[i] == '{' ){
-				iDepth++;
-			}else if( zSrc[i] == '}' ){
-				iDepth--;
-			}
-			i++;
-		}
-		return i;
-	}
-	{
-		sxu32 i = nPos;
-		while( i < nLen && zSrc[i] != ';' ){ i++; }
-		return i < nLen ? i + 1 : nLen;
-	}
-}
-/*
  * Read the session file into pOut, answering FALSE when there is none.
  *
  * The existence check is not an optimization: file_get_contents() warns on a
@@ -217,84 +153,319 @@ static ph7_value * VmSessArray(ph7_vm *pVm)
 	return PH7_VmExtractSuper(&(*pVm),"_SESSION",sizeof("_SESSION")-1);
 }
 /*
- * Replace $_SESSION with the decoded contents of a payload in php's "php"
- * handler format: a run of `key|<serialized value>` with no separators.
+ * php's three session serialize handlers (session.serialize_handler).
+ *
+ * `php` is a run of `key|<serialized value>`, `php_binary` the same with a
+ * one-byte key LENGTH in place of the delimiter, and `php_serialize` one
+ * serialize() of the whole array. The first two therefore cannot spell every
+ * $_SESSION key, and php drops what they cannot spell rather than writing a
+ * payload it could not read back.
  */
-static void VmSessDecodeInto(ph7_vm *pVm,const char *zSrc,sxu32 nLen,ph7_value *pDest)
+#define VM_SESS_SER_PHP       0
+#define VM_SESS_SER_BINARY    1
+#define VM_SESS_SER_SERIALIZE 2
+/* php's PS_BIN_MAX: php_binary holds the key length in ONE byte with 0x80 taken
+ * as its PS_BIN_UNDEF marker, so 127 bytes is the longest key it can name. */
+#define VM_SESS_BIN_MAX       127
+
+/*
+ * Which serializer is configured, or -1 for a name php has no handler for.
+ * ini_set() refuses an unknown one, so only the php.ini/-d path can arm it -- and
+ * session_start() is where php reports it and refuses to start.
+ */
+static int VmSessSerializerOrErr(ph7_vm *pVm)
 {
-	sxu32 nPos = 0;
-	ph7_hashmap *pMap;
-	PH7_MemObjRelease(pDest);
-	pDest->x.pOther = PH7_NewHashmap(&(*pVm),0,0);
-	if( pDest->x.pOther == 0 ){
-		return;
+	SyBlob sVal;
+	const char *zVal;
+	sxu32 nVal;
+	int iRet = -1;
+	SyBlobInit(&sVal,&pVm->sAllocator);
+	PH7_VmIniGetStr(pVm,"session.serialize_handler",&sVal);
+	zVal = (const char *)SyBlobData(&sVal);
+	nVal = SyBlobLength(&sVal);
+	if( nVal == sizeof("php")-1 && SyMemcmp(zVal,"php",nVal) == 0 ){
+		iRet = VM_SESS_SER_PHP;
+	}else if( nVal == sizeof("php_binary")-1 && SyMemcmp(zVal,"php_binary",nVal) == 0 ){
+		iRet = VM_SESS_SER_BINARY;
+	}else if( nVal == sizeof("php_serialize")-1 && SyMemcmp(zVal,"php_serialize",nVal) == 0 ){
+		iRet = VM_SESS_SER_SERIALIZE;
 	}
-	MemObjSetType(pDest,MEMOBJ_HASHMAP);
-	pMap = (ph7_hashmap *)pDest->x.pOther;
-	while( nPos < nLen ){
-		sxu32 nBar = nPos;
-		sxu32 nEnd;
-		ph7_value sKey,sFrag,sVal;
-		while( nBar < nLen && zSrc[nBar] != '|' ){ nBar++; }
-		if( nBar >= nLen ){
-			break;
-		}
-		nEnd = VmSessScanFragment(zSrc,nLen,nBar + 1);
-		VmSessStrArg(pVm,&sKey,&zSrc[nPos],nBar - nPos);
-		VmSessStrArg(pVm,&sFrag,&zSrc[nBar + 1],nEnd - (nBar + 1));
-		PH7_MemObjInit(pVm,&sVal);
-		{
-			ph7_value *apArg[1];
-			apArg[0] = &sFrag;
-			VmSessCall(pVm,"unserialize",1,apArg,&sVal);
-		}
-		PH7_HashmapInsert(pMap,&sKey,&sVal);
-		PH7_MemObjRelease(&sKey);
-		PH7_MemObjRelease(&sFrag);
-		PH7_MemObjRelease(&sVal);
-		nPos = nEnd;
-	}
+	SyBlobRelease(&sVal);
+	return iRet;
 }
-/* The inverse: every $_SESSION entry as `key|<serialized value>`. */
-static void VmSessEncode(ph7_vm *pVm,SyBlob *pOut)
+static int VmSessSerializer(ph7_vm *pVm)
+{
+	int iRet = VmSessSerializerOrErr(pVm);
+	return iRet < 0 ? VM_SESS_SER_PHP : iRet;
+}
+/* serialize() one value through the engine's own builtin. */
+static void VmSessSerializeValue(ph7_vm *pVm,ph7_value *pVal,SyBlob *pOut)
+{
+	ph7_value sSer;
+	ph7_value *apArg[1];
+	PH7_MemObjInit(pVm,&sSer);
+	apArg[0] = pVal;
+	VmSessCall(pVm,"serialize",1,apArg,&sSer);
+	SyBlobAppend(pOut,SyBlobData(&sSer.sBlob),SyBlobLength(&sSer.sBlob));
+	PH7_MemObjRelease(&sSer);
+}
+/*
+ * Serialize $_SESSION into pOut with the configured handler. Answers 0 when php
+ * refuses the payload outright -- the `php` handler's key carrying its own
+ * delimiter -- having raised the diagnostic under zWho, which is the whole prefix
+ * php puts on it: "session_encode()", "session_write_close()" or, from the
+ * request-shutdown writer, "PHP Request Shutdown".
+ */
+static int VmSessEncode(ph7_vm *pVm,SyBlob *pOut,const char *zWho)
+{
+	ph7_value *pSess = VmSessArray(pVm);
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pNode;
+	int iSer = VmSessSerializer(pVm);
+	sxu32 n;
+	SyBlobReset(pOut);
+	if( pSess == 0 || (pSess->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return 1;
+	}
+	if( iSer == VM_SESS_SER_SERIALIZE ){
+		/* One serialize() of the array itself, so a numeric key and a key holding
+		 * a '|' both simply round-trip. */
+		VmSessSerializeValue(pVm,pSess,pOut);
+		return 1;
+	}
+	pMap = (ph7_hashmap *)pSess->x.pOther;
+	pNode = pMap->pFirst;
+	for( n = 0 ; n < pMap->nEntry && pNode ; n++, pNode = pNode->pPrev ){
+		ph7_value *pVal;
+		const char *zKey;
+		sxu32 nKey;
+		char zMsg[256];
+		if( pNode->iType == HASHMAP_INT_NODE ){
+			/* Both formats key by NAME; an integer key has no spelling in either. */
+			SyBufferFormat(zMsg,sizeof(zMsg),"%s: Skipping numeric key %qd",zWho,pNode->xKey.iKey);
+			PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,zMsg);
+			continue;
+		}
+		zKey = (const char *)SyBlobData(&pNode->xKey.sKey);
+		nKey = SyBlobLength(&pNode->xKey.sKey);
+		if( iSer == VM_SESS_SER_BINARY ){
+			if( nKey > VM_SESS_BIN_MAX ){
+				continue;   /* no length byte can name it; php drops it in silence */
+			}
+		}else if( SyByteFind(zKey,nKey,'|',0) == SXRET_OK ){
+			/* The delimiter inside a key would make the payload unreadable, so php
+			 * writes NOTHING rather than a file it cannot parse back. */
+			SyBufferFormat(zMsg,sizeof(zMsg),
+				"%s: Failed to write session data. Data contains invalid key \"%.*s\"",
+				zWho,(int)nKey,zKey);
+			PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,zMsg);
+			SyBlobReset(pOut);
+			return 0;
+		}
+		pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
+		if( pVal == 0 ){
+			continue;
+		}
+		if( iSer == VM_SESS_SER_BINARY ){
+			char c = (char)nKey;
+			SyBlobAppend(pOut,&c,1);
+			SyBlobAppend(pOut,zKey,nKey);
+		}else{
+			SyBlobAppend(pOut,zKey,nKey);
+			SyBlobAppend(pOut,"|",1);
+		}
+		VmSessSerializeValue(pVm,pVal,pOut);
+	}
+	return 1;
+}
+/*
+ * php's php_session_normalize_vars(): a walk of the session variables that reports
+ * the ones its store cannot NAME and touches nothing else. It is not the encoder —
+ * a value the serializer would refuse is not looked at here, and neither is a key
+ * carrying the delimiter — and it is why session_decode() reports a numeric key
+ * before it has written anything.
+ */
+static void VmSessNormalizeVars(ph7_vm *pVm,const char *zWho)
 {
 	ph7_value *pSess = VmSessArray(pVm);
 	ph7_hashmap *pMap;
 	ph7_hashmap_node *pNode;
 	sxu32 n;
-	SyBlobReset(pOut);
-	if( pSess == 0 || (pSess->iFlags & MEMOBJ_HASHMAP) == 0 ){
+	if( pSess == 0 || (pSess->iFlags & MEMOBJ_HASHMAP) == 0
+	 || VmSessSerializer(pVm) == VM_SESS_SER_SERIALIZE ){
 		return;
 	}
 	pMap = (ph7_hashmap *)pSess->x.pOther;
 	pNode = pMap->pFirst;
-	for( n = 0 ; n < pMap->nEntry && pNode ; n++ ){
-		ph7_value sKey,sSer;
-		ph7_value *pVal;
-		PH7_MemObjInit(pVm,&sKey);
-		PH7_HashmapExtractNodeKey(pNode,&sKey);
-		PH7_MemObjToString(&sKey);
-		SyBlobAppend(pOut,SyBlobData(&sKey.sBlob),SyBlobLength(&sKey.sBlob));
-		SyBlobAppend(pOut,"|",1);
-		PH7_MemObjInit(pVm,&sSer);
-		pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx);
-		if( pVal ){
-			ph7_value *apArg[1];
-			apArg[0] = pVal;
-			VmSessCall(pVm,"serialize",1,apArg,&sSer);
-			SyBlobAppend(pOut,SyBlobData(&sSer.sBlob),SyBlobLength(&sSer.sBlob));
+	for( n = 0 ; n < pMap->nEntry && pNode ; n++, pNode = pNode->pPrev ){
+		char zMsg[128];
+		if( pNode->iType != HASHMAP_INT_NODE ){
+			continue;
 		}
-		PH7_MemObjRelease(&sKey);
-		PH7_MemObjRelease(&sSer);
-		pNode = pNode->pPrev;
+		SyBufferFormat(zMsg,sizeof(zMsg),"%s: Skipping numeric key %qd",zWho,pNode->xKey.iKey);
+		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,zMsg);
 	}
+}
+/*
+ * Store one decoded `name => value` pair into the session array. The name goes in
+ * RAW, which is php's php_set_session_var(): a store holding `7|i:1;` comes back
+ * as the string key "7" in both engines, not the integer key an array subscript
+ * would have folded it to.
+ */
+static void VmSessPut(ph7_vm *pVm,ph7_value *pDest,const char *zKey,sxu32 nKey,ph7_value *pVal)
+{
+	(void)pVm;
+	PH7_HashmapInsertRawKey((ph7_hashmap *)pDest->x.pOther,zKey,nKey,pVal);
+}
+/* Give pDest a fresh empty array. */
+static void VmSessEmptyArray(ph7_vm *pVm,ph7_value *pDest)
+{
+	PH7_MemObjRelease(pDest);
+	pDest->x.pOther = PH7_NewHashmap(pVm,0,0);
+	if( pDest->x.pOther ){
+		MemObjSetType(pDest,MEMOBJ_HASHMAP);
+	}
+}
+/*
+ * Read a payload back into pDest. The `php` and `php_binary` handlers MERGE their
+ * names into whatever is already there (which is what makes session_decode() an
+ * overlay), while `php_serialize` REPLACES the whole variable -- so php really
+ * does leave $_SESSION an int for `session_decode('i:5;')`.
+ *
+ * Answers 1 when php reports the payload decoded, 0 when it does not, and -1 when
+ * a __wakeup()/__unserialize() threw: the exception is the diagnostic then, and
+ * the caller propagates it instead of reporting a decode failure.
+ */
+static int VmSessDecodeInto(ph7_context *pCtx,const char *zSrc,sxu32 nLen,ph7_value *pDest)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	int iSer = VmSessSerializer(pVm);
+	sxu32 nPos = 0;
+	if( iSer == VM_SESS_SER_SERIALIZE ){
+		ph7_value sVal;
+		int nRead = 0;
+		sxi32 rc;
+		PH7_MemObjInit(pVm,&sVal);
+		rc = nLen > 0
+			? PH7_VmUnserializeOne(pCtx,zSrc,(int)nLen,&nRead,&sVal)
+			: SXERR_SYNTAX;
+		if( rc == PH7_EXCEPTION ){
+			PH7_MemObjRelease(&sVal);
+			return -1;
+		}
+		if( rc == SXRET_OK && (sVal.iFlags & MEMOBJ_NULL) == 0 ){
+			PH7_MemObjRelease(pDest);
+			PH7_MemObjStore(&sVal,pDest);
+		}else{
+			/* A payload that did not decode, and php's serialized NULL, both leave
+			 * the variable an empty array; only the EMPTY payload is still a
+			 * success, php's `result || !vallen`. */
+			VmSessEmptyArray(pVm,pDest);
+		}
+		PH7_MemObjRelease(&sVal);
+		return rc == SXRET_OK || nLen == 0;
+	}
+	if( (pDest->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		VmSessEmptyArray(pVm,pDest);
+		if( (pDest->iFlags & MEMOBJ_HASHMAP) == 0 ){
+			return 0;
+		}
+	}
+	while( nPos < nLen ){
+		const char *zKey;
+		sxu32 nKey;
+		ph7_value sVal;
+		int nRead = 0;
+		sxi32 rc;
+		if( iSer == VM_SESS_SER_BINARY ){
+			/* The length byte, with php's PS_BIN_UNDEF bit masked off. */
+			nKey = (sxu32)(((const unsigned char *)zSrc)[nPos] & 0x7f);
+			if( nPos + 1 + nKey > nLen ){
+				return 0;
+			}
+			zKey = &zSrc[nPos + 1];
+			nPos += 1 + nKey;
+		}else{
+			sxu32 nBar = nPos;
+			while( nBar < nLen && zSrc[nBar] != '|' ){ nBar++; }
+			if( nBar >= nLen ){
+				return 0;   /* a trailing run with no delimiter is a failed decode */
+			}
+			zKey = &zSrc[nPos];
+			nKey = nBar - nPos;
+			nPos = nBar + 1;
+		}
+		PH7_MemObjInit(pVm,&sVal);
+		rc = nPos < nLen
+			? PH7_VmUnserializeOne(pCtx,&zSrc[nPos],(int)(nLen - nPos),&nRead,&sVal)
+			: SXERR_SYNTAX;
+		if( rc != SXRET_OK || nRead <= 0 ){
+			/* nRead cannot be 0 for a value that parsed, but the loop's only
+			 * guarantee of progress is this step -- and the bytes are a STORE, i.e.
+			 * whatever was last written to the save path. */
+			PH7_MemObjRelease(&sVal);
+			return rc == PH7_EXCEPTION ? -1 : 0;
+		}
+		VmSessPut(pVm,pDest,zKey,nKey,&sVal);
+		PH7_MemObjRelease(&sVal);
+		nPos += (sxu32)nRead;
+	}
+	return 1;
+}
+/*
+ * php's answer to a store it cannot read: the whole session goes — file, id and
+ * variables — rather than the script running on half of one. A corrupt payload and
+ * an attacker-supplied one look the same from here, which is why it is not a
+ * partial load. zFunc names the caller php blames.
+ */
+static void VmSessDestroyBadStore(ph7_vm *pVm,SyBlob *pFile,const char *zFunc)
+{
+	ph7_value *pSess = VmSessArray(pVm);
+	char zMsg[128];
+	VmSessUnlinkIfExists(pVm,pFile);
+	pVm->iSessStatus = VM_SESSION_NONE;
+	SyBlobReset(&pVm->sSessId);
+	if( pSess ){
+		VmSessEmptyArray(pVm,pSess);
+	}
+	SyBufferFormat(zMsg,sizeof(zMsg),
+		"%s(): Failed to decode session object. Session has been destroyed",zFunc);
+	PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,zMsg);
+}
+/*
+ * Load the stored copy into $_SESSION, which php always starts EMPTY here — only
+ * session_decode() overlays what is already there. Answers 1 when the session is
+ * loaded, 0 when the store was destroyed instead, and -1 for a pending exception.
+ */
+static int VmSessLoad(ph7_context *pCtx,SyBlob *pFile,const char *zFunc)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value *pSess = VmSessArray(pVm);
+	ph7_value sRes;
+	int iDec = 1;
+	PH7_MemObjInit(pVm,&sRes);
+	if( pSess ){
+		VmSessEmptyArray(pVm,pSess);
+		if( VmSessReadFile(pVm,pFile,&sRes) ){
+			iDec = VmSessDecodeInto(pCtx,(const char *)SyBlobData(&sRes.sBlob),
+				SyBlobLength(&sRes.sBlob),pSess);
+		}
+	}
+	PH7_MemObjRelease(&sRes);
+	if( iDec == 0 ){
+		VmSessDestroyBadStore(pVm,pFile,zFunc);
+	}
+	return iDec;
 }
 /* int session_status() */
 static int vm_builtin_session_status(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	ph7_vm *pVm = pCtx->pVm;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	ph7_result_int(pCtx,pCtx->pVm->iSessStatus);
+	/* A serializer name with no handler behind it leaves php's session module
+	 * DISABLED — reported from the start, before anything tries to open one. */
+	ph7_result_int(pCtx,VmSessSerializerOrErr(pVm) < 0 ? 0 : pVm->iSessStatus);
 	return PH7_OK;
 }
 /*
@@ -378,7 +549,7 @@ static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 {
 	ph7_vm *pVm = pCtx->pVm;
 	SyBlob sFile;
-	ph7_value sRes;
+	int iLoad;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	if( pVm->iSessStatus == VM_SESSION_ACTIVE ){
@@ -390,6 +561,22 @@ static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 	if( pVm->bHeadersSent ){
 		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
 			"session_start(): Session cannot be started after headers have already been sent");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( VmSessSerializerOrErr(pVm) < 0 ){
+		/* Only php.ini / -d can arm a handler that does not exist; php reports it
+		 * here and starts nothing at all. */
+		SyBlob sVal;
+		char zMsg[192];
+		SyBlobInit(&sVal,&pVm->sAllocator);
+		PH7_VmIniGetStr(pVm,"session.serialize_handler",&sVal);
+		SyBufferFormat(zMsg,sizeof(zMsg),
+			"session_start(): Cannot find session serialization handler \"%.*s\""
+			" - session startup failed",
+			(int)SyBlobLength(&sVal),(const char *)SyBlobData(&sVal));
+		SyBlobRelease(&sVal);
+		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,zMsg);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -434,26 +621,15 @@ static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 	}
 	SyBlobInit(&sFile,&pVm->sAllocator);
 	VmSessFile(pVm,&sFile);
-	PH7_MemObjInit(pVm,&sRes);
-	{
-		ph7_value *pSess = VmSessArray(pVm);
-		int bRead = VmSessReadFile(pVm,&sFile,&sRes);
-		if( pSess ){
-			if( bRead ){
-				VmSessDecodeInto(pVm,(const char *)SyBlobData(&sRes.sBlob),
-					SyBlobLength(&sRes.sBlob),pSess);
-			}else{
-				/* No file yet: php starts with an empty session. */
-				PH7_MemObjRelease(pSess);
-				pSess->x.pOther = PH7_NewHashmap(pVm,0,0);
-				if( pSess->x.pOther ){
-					MemObjSetType(pSess,MEMOBJ_HASHMAP);
-				}
-			}
-		}
-	}
-	PH7_MemObjRelease(&sRes);
+	iLoad = VmSessLoad(pCtx,&sFile,"session_start");
 	SyBlobRelease(&sFile);
+	if( iLoad < 0 ){
+		return PH7_EXCEPTION;
+	}
+	if( iLoad == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
 	pVm->iSessStatus = VM_SESSION_ACTIVE;
 	if( !pVm->bSessWired ){
 		ph7_value sName,sId;
@@ -477,7 +653,7 @@ static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg
  * by the request-shutdown writer, which is why it takes only the VM: at shutdown
  * there is no calling frame to report against.
  */
-static void VmSessWrite(ph7_vm *pVm)
+static void VmSessWrite(ph7_vm *pVm,const char *zWho)
 {
 	SyBlob sFile,sData;
 	ph7_value sPath,sPayload;
@@ -485,7 +661,10 @@ static void VmSessWrite(ph7_vm *pVm)
 	SyBlobInit(&sFile,&pVm->sAllocator);
 	SyBlobInit(&sData,&pVm->sAllocator);
 	VmSessFile(pVm,&sFile);
-	VmSessEncode(pVm,&sData);
+	/* An encode php refused still gets written — as the EMPTY payload, which is
+	 * what its store is handed when the serializer answers nothing. The session
+	 * closes either way and the stale copy does not survive. */
+	VmSessEncode(pVm,&sData,zWho);
 	VmSessStrArg(pVm,&sPath,(const char *)SyBlobData(&sFile),SyBlobLength(&sFile));
 	VmSessStrArg(pVm,&sPayload,(const char *)SyBlobData(&sData),SyBlobLength(&sData));
 	apA[0] = &sPath;
@@ -507,7 +686,7 @@ static int vm_builtin_session_write_close(ph7_context *pCtx,int nArg,ph7_value *
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	VmSessWrite(pVm);
+	VmSessWrite(pVm,"session_write_close()");
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
@@ -522,7 +701,9 @@ static int vm_builtin_session_write_close(ph7_context *pCtx,int nArg,ph7_value *
 PH7_PRIVATE void PH7_VmSessionShutdown(ph7_vm *pVm)
 {
 	if( pVm->iSessStatus == VM_SESSION_ACTIVE ){
-		VmSessWrite(pVm);
+		/* php names this caller "PHP Request Shutdown" — there is no frame to
+		 * report against, so a serializer diagnostic raised here says so. */
+		VmSessWrite(pVm,"PHP Request Shutdown");
 	}
 }
 /* bool session_abort() — drop the in-memory session without writing it back */
@@ -543,8 +724,7 @@ static int vm_builtin_session_reset(ph7_context *pCtx,int nArg,ph7_value **apArg
 {
 	ph7_vm *pVm = pCtx->pVm;
 	SyBlob sFile;
-	ph7_value sRes;
-	ph7_value *pSess;
+	int iLoad;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	if( pVm->iSessStatus != VM_SESSION_ACTIVE ){
@@ -553,22 +733,13 @@ static int vm_builtin_session_reset(ph7_context *pCtx,int nArg,ph7_value **apArg
 	}
 	SyBlobInit(&sFile,&pVm->sAllocator);
 	VmSessFile(pVm,&sFile);
-	PH7_MemObjInit(pVm,&sRes);
-	pSess = VmSessArray(pVm);
-	if( pSess ){
-		if( VmSessReadFile(pVm,&sFile,&sRes) ){
-			VmSessDecodeInto(pVm,(const char *)SyBlobData(&sRes.sBlob),
-				SyBlobLength(&sRes.sBlob),pSess);
-		}else{
-			PH7_MemObjRelease(pSess);
-			pSess->x.pOther = PH7_NewHashmap(pVm,0,0);
-			if( pSess->x.pOther ){
-				MemObjSetType(pSess,MEMOBJ_HASHMAP);
-			}
-		}
-	}
-	PH7_MemObjRelease(&sRes);
+	iLoad = VmSessLoad(pCtx,&sFile,"session_reset");
 	SyBlobRelease(&sFile);
+	if( iLoad < 0 ){
+		return PH7_EXCEPTION;
+	}
+	/* php answers TRUE even when the store it just read was the one it had to
+	 * destroy: the reset itself did happen. */
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
@@ -637,6 +808,70 @@ static int vm_builtin_session_regenerate_id(ph7_context *pCtx,int nArg,ph7_value
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
+/* string|false session_encode() */
+static int vm_builtin_session_encode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SyBlob sData;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pVm->iSessStatus != VM_SESSION_ACTIVE ){
+		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
+			"session_encode(): Cannot encode non-existent session");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	SyBlobInit(&sData,&pVm->sAllocator);
+	if( VmSessEncode(pVm,&sData,"session_encode()") ){
+		ph7_result_string(pCtx,(const char *)SyBlobData(&sData),(int)SyBlobLength(&sData));
+	}else{
+		ph7_result_bool(pCtx,0);
+	}
+	SyBlobRelease(&sData);
+	return PH7_OK;
+}
+/* bool session_decode(string $data) */
+static int vm_builtin_session_decode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value *pSess;
+	const char *zData;
+	int nData = 0,iDec;
+	if( pVm->iSessStatus != VM_SESSION_ACTIVE ){
+		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,
+			"session_decode(): Session data cannot be decoded when there is no active session");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pSess = VmSessArray(pVm);
+	if( pSess == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zData = ph7_value_to_string(apArg[0],&nData);
+	VmSessNormalizeVars(pVm,"session_decode()");
+	/* Unlike session_start(), this one decodes OVER whatever $_SESSION already
+	 * holds — for the two keyed handlers; php_serialize replaces the variable. */
+	iDec = VmSessDecodeInto(pCtx,zData,(sxu32)nData,pSess);
+	if( iDec < 0 ){
+		return PH7_EXCEPTION;
+	}
+	if( iDec == 0 ){
+		SyBlob sFile;
+		SyBlobInit(&sFile,&pVm->sAllocator);
+		VmSessFile(pVm,&sFile);
+		VmSessDestroyBadStore(pVm,&sFile,"session_decode");
+		SyBlobRelease(&sFile);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
 PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm)
 {
 	static const struct {
@@ -655,6 +890,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallSession(ph7_vm *pVm)
 		{ "session_unset",         vm_builtin_session_unset         },
 		{ "session_destroy",       vm_builtin_session_destroy       },
 		{ "session_regenerate_id", vm_builtin_session_regenerate_id },
+		{ "session_encode",        vm_builtin_session_encode        },
+		{ "session_decode",        vm_builtin_session_decode        },
 	};
 	sxu32 n;
 	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){

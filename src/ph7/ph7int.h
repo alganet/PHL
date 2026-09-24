@@ -4797,6 +4797,7 @@ PH7_PRIVATE sxi32 HashmapMerge(ph7_hashmap *pSrc,ph7_hashmap *pDest);
 PH7_PRIVATE sxi32 HashmapInsert(ph7_hashmap *pMap,ph7_value *pKey,ph7_value *pVal);
 PH7_PRIVATE sxi32 HashmapLookupIntKey(ph7_hashmap *pMap,sxi64 iKey,ph7_hashmap_node **ppNode);
 PH7_PRIVATE sxi32 HashmapLookupBlobKey(ph7_hashmap *pMap,const void *pKey,sxu32 nKeyLen,ph7_hashmap_node **ppNode);
+PH7_PRIVATE sxi32 PH7_HashmapInsertRawKey(ph7_hashmap *pMap,const char *zKey,sxu32 nKey,ph7_value *pVal);
 /* hashmap_sort.c: the SQLite-derived merge sort and the sort builtin family.
  * Shared with hashmap.c (shuffle/array_unique/array_rand) and referenced from
  * the aHashmapFunc[] registration table; compiled in every mode. */

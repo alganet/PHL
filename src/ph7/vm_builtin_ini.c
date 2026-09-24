@@ -74,6 +74,10 @@ static const struct {
 	{ "serialize_precision",      "-1",         VM_INI_ALL },
 	{ "session.name",             "PHPSESSID",  VM_INI_ALL },
 	{ "session.save_path",        "",           VM_INI_ALL },
+	/* Which of php's three session serializers writes the store: `php` (the
+	 * `name|<serialized>` runs a stock php install reads), `php_binary` or
+	 * `php_serialize`. */
+	{ "session.serialize_handler","php",        VM_INI_ALL },
 	{ "short_open_tag",           "",           VM_INI_PERDIR|VM_INI_SYSTEM },
 	{ "unserialize_callback_func","",           VM_INI_ALL },
 	{ "unserialize_max_depth",    "4096",       VM_INI_ALL },
@@ -393,6 +397,20 @@ static int vm_builtin_ini_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		nVal = (int)SyStrlen(zVal);
 	}else{
 		zVal = ph7_value_to_string(apArg[1],&nVal);
+	}
+	if( IniNameIs(pSlot,"session.serialize_handler")
+	 && !(nVal == 3 && SyMemcmp(zVal,"php",3) == 0)
+	 && !(nVal == 10 && SyMemcmp(zVal,"php_binary",10) == 0)
+	 && !(nVal == 13 && SyMemcmp(zVal,"php_serialize",13) == 0) ){
+		/* php looks the name up in its registered serializer list and refuses what
+		 * it cannot find, keeping the directive where it was. */
+		char zMsg[160];
+		SyBufferFormat(zMsg,sizeof(zMsg),
+			"ini_set(): Serialization handler \"%.*s\" cannot be found",nVal,zVal);
+		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,zMsg);
+		SyBlobRelease(&sOld);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
 	}
 	if( nVal < 1 && IniNameIs(pSlot,"include_path") ){
 		/* php registers include_path with OnUpdateStringUnempty: the EMPTY value
