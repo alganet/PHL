@@ -2453,13 +2453,62 @@ static void VmDeprecatedAttrNoticeSubject(ph7_vm *pVm,SySet *pAttrs,
  * since 1.2` — every access re-warns). Engine constants php merely deprecates are
  * not mimicked: PHL removes them outright (see the scope policy), so there is no
  * engine-side E_DEPRECATED list here.
+ *
+ * A `const NAME = <expr>;` statement compiles its initializer to a bytecode
+ * program and PH7_VmExpandConstantValue RUNS it — so the value was re-computed
+ * on EVERY read. For anything with an identity or a side effect that is a wrong
+ * answer, not a slow one: `const C = new Foo();` gave a DIFFERENT object each
+ * time (`C === C` was false, and `Foo::$count` counted one construction per
+ * read) where php evaluates the initializer once and hands the same value out
+ * for ever. The first successful expansion is kept, and the constant becomes an
+ * ordinary value-backed one — exactly the shape define() registers, so
+ * redefinition frees it through the path that already existed.
+ *
+ * Not cached when the initializer did not complete: a throw, an exit(), or a
+ * MUTED evaluation (php has not reached this code, so nothing may be observable)
+ * must all be retried rather than frozen into a half-built value.
  */
+PH7_PRIVATE sxi32 VmExpandConstantOnce(ph7_vm *pVm,ph7_constant *pCons,ph7_value *pOut)
+{
+	const void *pResumeBefore,*pInlineBefore;
+	sxi32 rc;
+	if( pCons->xExpand != PH7_VmExpandConstantValue ){
+		pCons->xExpand(pOut,pCons->pUserData);
+		return SXRET_OK;
+	}
+	/* The initializer's own status. PH7_VmExpandConstantValue drops VmLocalExec's
+	 * return code (ProcConstant answers void), so the program is driven from here
+	 * instead — a caller with no way to see a throw would otherwise cache a
+	 * half-built value and keep running past it. */
+	pResumeBefore = (const void *)pVm->pResumeFrame;
+	pInlineBefore = (const void *)pVm->pInlineInstr;
+	rc = VmLocalExec(pVm,(SySet *)pCons->pUserData,pOut,FALSE);
+	if( pVm->nMuteThrow > 0 || rc == PH7_ABORT
+	 || VmLocalExecThrew(pVm,rc,pResumeBefore,pInlineBefore) ){
+		/* Did not complete — a throw, an exit(), or a MUTED evaluation (php has
+		 * not reached this code, so nothing may be observable). Retry it next
+		 * time rather than freezing a value the initializer never produced:
+		 * `const A = LATER; …; define('LATER',5);` must still answer 5. */
+		return rc == SXRET_OK ? PH7_EXCEPTION : rc;
+	}
+	{
+		ph7_value *pKeep = (ph7_value *)SyMemBackendPoolAlloc(&pVm->sAllocator,sizeof(ph7_value));
+		if( pKeep == 0 ){
+			return SXRET_OK; /* out of memory: stay lazy rather than fail the read */
+		}
+		PH7_MemObjInit(pVm,pKeep);
+		PH7_MemObjStore(pOut,pKeep);
+		pCons->xExpand = VmExpandUserConstant;
+		pCons->pUserData = pKeep;
+	}
+	return SXRET_OK;
+}
 PH7_PRIVATE void VmExpandConstantWithNotice(ph7_vm *pVm,ph7_constant *pCons,ph7_value *pOut)
 {
 	if( SySetUsed(&pCons->aAttrs) > 0 ){
 		VmDeprecatedAttrNoticeSubject(pVm,&pCons->aAttrs,"Constant",0,&pCons->sName);
 	}
-	pCons->xExpand(pOut,pCons->pUserData);
+	VmExpandConstantOnce(pVm,pCons,pOut);
 }
 /*
  * Query a GLOBAL constant by its exact (case-sensitive) name and expand its

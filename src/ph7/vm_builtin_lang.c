@@ -588,23 +588,27 @@ static int VmHashConstStep(SyHashEntry *pEntry,void *pUserData)
 /*
  * Add one snapshotted constant to the answer, under its name.
  */
-static void VmConstDumpEntry(ph7_value *pTarget,SyHashEntry *pEntry)
+static sxi32 VmConstDumpEntry(ph7_value *pTarget,SyHashEntry *pEntry)
 {
 	ph7_constant *pCons = (ph7_constant *)pEntry->pUserData;
 	ph7_value sName,sVal;
+	sxi32 rc;
 	/* Prepare the constant name for insertion */
 	PH7_MemObjInitFromString(pTarget->pVm,&sName,0);
 	PH7_MemObjStringAppend(&sName,(const char *)pEntry->pKey,pEntry->nKeyLen);
-	/* ...and its VALUE. The expansion callback is called DIRECTLY rather than
-	 * through VmExpandConstantWithNotice: describing a constant is not reading
-	 * one, so a `#[\Deprecated]` constant must not raise its notice here (php
-	 * does not either, and a corpus that merely dumps the table would otherwise
-	 * emit one notice per deprecated name). */
+	/* ...and its VALUE, through the SAME evaluate-once path an ordinary read
+	 * takes -- so a `const C = new Foo();` reported here is the object the
+	 * program itself sees, not a second one. The `#[\Deprecated]` NOTICE is what
+	 * is skipped (VmExpandConstantOnce rather than …WithNotice): describing a
+	 * constant is not reading one, and php raises nothing here either. */
 	PH7_MemObjInit(pTarget->pVm,&sVal);
-	pCons->xExpand(&sVal,pCons->pUserData);
-	ph7_array_add_elem(pTarget,&sName,&sVal); /* Will make its own copy */
+	rc = VmExpandConstantOnce(pTarget->pVm,pCons,&sVal);
+	if( rc == SXRET_OK ){
+		ph7_array_add_elem(pTarget,&sName,&sVal); /* Will make its own copy */
+	}
 	PH7_MemObjRelease(&sVal);
 	PH7_MemObjRelease(&sName);
+	return rc;
 }
 /*
  * array get_defined_constants(bool $categorize = false)
@@ -652,7 +656,19 @@ PH7_PRIVATE int vm_builtin_get_defined_constants(ph7_context *pCtx,int nArg,ph7_
 	nSnap = SySetUsed(&aSnap);
 	for( n = 0 ; n < nSnap ; ++n ){
 		ph7_constant *pCons = (ph7_constant *)apEntry[n]->pUserData;
-		VmConstDumpEntry(pUser && pCons->bUserDefined ? pUser : pAll,apEntry[n]);
+		sxi32 rcExp = VmConstDumpEntry(pUser && pCons->bUserDefined ? pUser : pAll,apEntry[n]);
+		if( rcExp != SXRET_OK ){
+			/* An initializer raised while being described: stop, exactly as any
+			 * other builtin does when the php it invoked did not return.
+			 * Carrying on would run every LATER initializer past a throw that has
+			 * already been landed. */
+			SySetRelease(&aSnap);
+			if( bCategorize ){
+				ph7_context_release_value(pCtx,pAll);
+				ph7_context_release_value(pCtx,pUser);
+			}
+			return rcExp;
+		}
 	}
 	SySetRelease(&aSnap);
 	if( bCategorize ){
