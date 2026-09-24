@@ -56,9 +56,9 @@ static void NetApplySockOpts(ph7_socket sock,const ph7_sockopts *pOpt)
 /*
  * `bindto`: the LOCAL address a client socket takes before it connects, which
  * is how a program picks the interface (or the source port) its connection goes
- * out on. php resolves the host half and, when it cannot, warns and connects
- * from wherever the routing table would have sent it — so a failure here is
- * reported and never fatal.
+ * out on. It is a NUMERIC literal and never a name (see the body), and when it
+ * cannot be used php warns and connects from wherever the routing table would
+ * have sent it — so a failure here is reported and never fatal.
  */
 static int NetBindLocal(ph7_socket sock,int iFamily,const char *zHost,int iPort,int *pErrno)
 {

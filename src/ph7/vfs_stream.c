@@ -5187,8 +5187,9 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 	if( sOpt.iBindErr ){
 		/* php's own wording, and NEITHER shape stops the connection: the socket
 		 * goes out from wherever the routing table would have sent it. It tells
-		 * the two apart — a local address it could not RESOLVE names the host,
-		 * one the OS refused to BIND names the whole spelling and the reason. */
+		 * the two apart — a local address that is not a numeric literal at all
+		 * names the host, one the OS refused to BIND names the address it tried
+		 * and the reason. */
 		if( sOpt.iBindErr == PH7_SOCKOPT_BIND_RESOLVE ){
 			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"Invalid IP Address: %s",
 				sOpt.zBindHost ? sOpt.zBindHost : "");

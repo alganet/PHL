@@ -3481,7 +3481,7 @@ struct ph7_sockopts
 	int iBindErr;          /* PH7_SOCKOPT_BIND_* (0 = it worked, or none asked) */
 	int iBindErrno;        /* the OS code behind PH7_SOCKOPT_BIND_REFUSED */
 };
-#define PH7_SOCKOPT_BIND_RESOLVE 1 /* the local host name resolved to nothing */
+#define PH7_SOCKOPT_BIND_RESOLVE 1 /* not a numeric address (php never resolves one) */
 #define PH7_SOCKOPT_BIND_REFUSED 2 /* bind() itself said no */
 PH7_PRIVATE ph7_socket PH7_NetBind(const char *zHost,int iPort,int bDgram,int bListen,
 	int iBacklog,const ph7_sockopts *pOpt,int *pErrno,const char **pzErr);
