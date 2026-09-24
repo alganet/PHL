@@ -3473,11 +3473,18 @@ struct ph7_sockopts
 {
 	const char *zBindHost; /* `bindto`'s host half, already parsed (0 = no bind) */
 	int iBindPort;         /* `bindto`'s port half */
+	const char *zBindSpec; /* `bindto` as the script SPELLED it (php quotes it) */
+	int nBindSpec;
 	int bReusePort;        /* `so_reuseport` */
 	int bNoDelay;          /* `tcp_nodelay` */
 	int iBacklog;          /* `backlog`; <= 0 keeps the transport's default */
-	int bBindFailed;       /* OUT: the local bind could not be made (php warns) */
+	/* OUT: how the local bind failed on the socket that was USED, which php
+	 * warns about in two different wordings and never treats as fatal. */
+	int iBindErr;          /* PH7_SOCKOPT_BIND_* (0 = it worked, or none asked) */
+	int iBindErrno;        /* the OS code behind PH7_SOCKOPT_BIND_REFUSED */
 };
+#define PH7_SOCKOPT_BIND_RESOLVE 1 /* the local host name resolved to nothing */
+#define PH7_SOCKOPT_BIND_REFUSED 2 /* bind() itself said no */
 PH7_PRIVATE ph7_socket PH7_NetBind(const char *zHost,int iPort,int bDgram,int bListen,
 	int iBacklog,const ph7_sockopts *pOpt,int *pErrno,const char **pzErr);
 PH7_PRIVATE ph7_socket PH7_NetConnect(const char *zHost,int iPort,int iTimeoutMs,

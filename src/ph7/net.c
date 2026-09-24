@@ -60,32 +60,28 @@ static void NetApplySockOpts(ph7_socket sock,const ph7_sockopts *pOpt)
  * from wherever the routing table would have sent it — so a failure here is
  * reported and never fatal.
  */
-static int NetBindLocal(ph7_socket sock,int iFamily,const char *zHost,int iPort)
+static int NetBindLocal(ph7_socket sock,int iFamily,const char *zHost,int iPort,int *pErrno)
 {
-	struct sockaddr_in addr;
 	struct addrinfo hints,*res = 0;
 	char zPort[16];
-	if( iFamily != AF_INET ){
-		/* net.c speaks AF_INET (§7.4 slice-2 (a)); binding an IPv6 socket to an
-		 * IPv4 local address would fail at the OS anyway. */
-		return -1;
-	}
-	memset(&addr,0,sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons((unsigned short)iPort);
+	int rc;
+	*pErrno = 0;
+	/* The local address is resolved in the family of the socket that will
+	 * carry it — an IPv6 candidate wants an IPv6 local address — so the answer
+	 * is about THIS socket and not about the address family net.c prefers. */
 	snprintf(zPort,sizeof(zPort),"%d",iPort);
 	memset(&hints,0,sizeof(hints));
-	hints.ai_family = AF_INET;
+	hints.ai_family = iFamily;
 	hints.ai_socktype = SOCK_STREAM;
 	if( getaddrinfo(zHost,zPort,&hints,&res) != 0 || res == 0 ){
-		return -1;
+		return PH7_SOCKOPT_BIND_RESOLVE;
 	}
-	addr.sin_addr = ((struct sockaddr_in *)res->ai_addr)->sin_addr;
+	rc = bind(sock,res->ai_addr,(ph7_socklen)res->ai_addrlen);
+	if( rc != 0 ){
+		*pErrno = PH7_NetLastError();
+	}
 	freeaddrinfo(res);
-	if( bind(sock,(struct sockaddr *)&addr,sizeof(addr)) != 0 ){
-		return -1;
-	}
-	return PH7_OK;
+	return rc == 0 ? 0 : PH7_SOCKOPT_BIND_REFUSED;
 }
 /*
  * The OS error the last socket call reported. A Windows socket does not touch
@@ -458,11 +454,16 @@ PH7_PRIVATE ph7_socket PH7_NetConnect(const char *zHost, int iPort, int iTimeout
 			continue;
 		}
 		NetApplySockOpts(sock, pOpt);
-		if( pOpt && pOpt->zBindHost ){
-			/* php connects anyway when the local bind cannot be made; the caller
+		if( pOpt ){
+			/* Per CANDIDATE: the failure that gets reported belongs to the socket
+			 * that ends up carrying the connection, not to one abandoned earlier.
+			 * php connects anyway when the local bind cannot be made; the caller
 			 * words the warning, since only it knows the function name. */
-			if( NetBindLocal(sock, rp->ai_family, pOpt->zBindHost, pOpt->iBindPort) != PH7_OK ){
-				pOpt->bBindFailed = 1;
+			pOpt->iBindErr = 0;
+			pOpt->iBindErrno = 0;
+			if( pOpt->zBindHost ){
+				pOpt->iBindErr = NetBindLocal(sock, rp->ai_family, pOpt->zBindHost,
+					pOpt->iBindPort, &pOpt->iBindErrno);
 			}
 		}
 		if( iTimeoutMs > 0 ){

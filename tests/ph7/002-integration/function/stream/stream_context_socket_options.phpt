@@ -34,12 +34,26 @@ $cl = stream_socket_client("tcp://$peer", $e, $es, 2, STREAM_CLIENT_CONNECT, $c)
 echo 'no colon connects: ', var_export(is_resource($cl), true), "\n";
 fclose($cl);
 
-/* A host that does not resolve warns and connects anyway, from wherever the
- * routing table would have sent it. */
-$c = stream_context_create(['socket' => ['bindto' => 'no.such.host.invalid:1']]);
-$cl = @stream_socket_client("tcp://$peer", $e, $es, 2, STREAM_CLIENT_CONNECT, $c);
-echo 'bad host still connects: ', var_export(is_resource($cl), true), "\n";
-if (is_resource($cl)) { fclose($cl); }
+/* Neither failure shape stops the connection, and php tells them APART: a local
+ * address it could not RESOLVE names the host, one the OS refused to BIND names
+ * the whole spelling and the reason (192.0.2.1 is RFC 5737's never-assigned
+ * TEST-NET-1, so no machine holds it). The reason TEXT is the OS's, so only the
+ * part php composes is asserted. */
+$sockBind = function ($spec) use ($peer) {
+    $msg = '';
+    set_error_handler(function ($n, $s) use (&$msg) { $msg = $s; return true; });
+    $c  = stream_context_create(['socket' => ['bindto' => $spec]]);
+    $cl = stream_socket_client("tcp://$peer", $e, $es, 2, STREAM_CLIENT_CONNECT, $c);
+    restore_error_handler();
+    if (is_resource($cl)) { fclose($cl); }
+    return [$cl !== false, $msg];
+};
+[$ok, $msg] = $sockBind('no.such.host.invalid:1');
+echo 'unresolvable still connects: ', var_export($ok, true),
+     ' named: ', var_export(str_contains($msg, 'Invalid IP Address: no.such.host.invalid'), true), "\n";
+[$ok, $msg] = $sockBind('192.0.2.1:0');
+echo 'unbindable still connects: ', var_export($ok, true),
+     ' named: ', var_export(str_contains($msg, "Failed to bind to '192.0.2.1:0', system said: "), true), "\n";
 
 /* A value that is not a STRING is the one option failure php reports as a
  * failed CONNECT rather than as a warning it carries on past. */
@@ -71,7 +85,8 @@ fclose($srv);
 --EXPECT--
 bindto took: true
 no colon connects: true
-bad host still connects: true
+unresolvable still connects: true named: true
+unbindable still connects: true named: true
 non-string bindto: false 'local_addr context option is not a string.'
 reuseport second bind: true
 contrast holds: true

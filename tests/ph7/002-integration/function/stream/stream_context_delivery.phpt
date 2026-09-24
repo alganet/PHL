@@ -18,6 +18,7 @@ class CtxDelivery
         $GLOBALS['ctx_seen'] = $c;
         return true;
     }
+    public function stream_write($d) { return strlen($d); }
     public function stream_read($n) { return ''; }
     public function stream_eof() { return true; }
     public function stream_stat() { return []; }
@@ -46,8 +47,22 @@ echo "-- the default context reaches an open that named none\n";
 stream_context_set_default(['ctxd' => ['d' => 1]]);
 fclose(fopen('ctxd://x', 'r'));
 
+/* $this->context is exactly what the OPENER resolved. NULL only reaches it two
+ * ways: FILE_NO_DEFAULT_CONTEXT — which is what makes that flag mean anything —
+ * and an opener that has no $context argument at all. */
 echo "-- FILE_NO_DEFAULT_CONTEXT says do not\n";
-file_get_contents('ctxd://x', FILE_NO_DEFAULT_CONTEXT);
+file('ctxd://x', FILE_NO_DEFAULT_CONTEXT);
+@file_put_contents('ctxd://x', 'q', FILE_NO_DEFAULT_CONTEXT);
+
+echo "-- an opener with no \$context argument at all\n";
+@md5_file('ctxd://x');
+@include 'ctxd://x';
+
+/* And an open that FAILED before it began must not leave its context armed for
+ * whatever opens next. */
+echo "-- nothing left armed by a failed open\n";
+@hash_update_file(hash_init('md5'), 'nosuchscheme://x', $c);
+@md5_file('ctxd://x');
 
 /* php attaches the opener's context to a TRANSPORT stream and to nothing else,
  * which is what stream_context_get_options() answers from. */
@@ -75,7 +90,13 @@ open is_resource=true type=stream-context opts={"ctxd":{"k":"v","late":1},"other
 -- the default context reaches an open that named none
 open is_resource=true type=stream-context opts={"ctxd":{"d":1}}
 -- FILE_NO_DEFAULT_CONTEXT says do not
-open is_resource=true type=stream-context opts={"ctxd":{"d":1}}
+open is_resource=false type=- opts=null
+open is_resource=false type=- opts=null
+-- an opener with no $context argument at all
+open is_resource=false type=- opts=null
+open is_resource=false type=- opts=null
+-- nothing left armed by a failed open
+open is_resource=false type=- opts=null
 -- transport
 socket: {"socket":{"tcp_nodelay":true}}
 file:   []

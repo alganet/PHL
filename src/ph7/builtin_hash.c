@@ -1208,7 +1208,7 @@ PH7_PRIVATE int PH7_builtin_hash_hkdf(ph7_context *pCtx,int nArg,ph7_value **apA
  * Answers 0 with *ppStream cleared when the caller should answer FALSE.
  */
 static void * HashOpenRead(ph7_context *pCtx,const char *zFile,int nFile,
-	const ph7_io_stream **ppStream)
+	phl_stream_ctx *pCtxRes,const ph7_io_stream **ppStream)
 {
 	const ph7_io_stream *pStream;
 	void *pHandle;
@@ -1219,6 +1219,11 @@ static void * HashOpenRead(ph7_context *pCtx,const char *zFile,int nFile,
 			"No such stream device,PH7 is returning FALSE");
 		return 0;
 	}
+	/* Armed HERE and not at the caller: the context describes exactly the open
+	 * below, and a device lookup that fails above must not leave one behind.
+	 * hash_file()/hash_hmac_file() have no $context argument at all, so they arm
+	 * NOTHING and a userland wrapper sees php's null. */
+	PH7_StreamCtxArm(pCtx->pVm,pCtxRes);
 	pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zFile,PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0,ph7_function_name(pCtx));
 	if( pHandle == 0 ){
 		VfsThrowOpenWarning(pCtx,zFile);
@@ -1307,7 +1312,7 @@ PH7_PRIVATE int PH7_builtin_hash_file(ph7_context *pCtx,int nArg,ph7_value **apA
 			return rc;
 		}
 	}
-	pHandle = HashOpenRead(pCtx,zFile,nFileLen,&pStream);
+	pHandle = HashOpenRead(pCtx,zFile,nFileLen,0,&pStream);
 	if( pHandle == 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -1356,7 +1361,7 @@ PH7_PRIVATE int PH7_builtin_hash_hmac_file(ph7_context *pCtx,int nArg,ph7_value 
 	if( nArg > 3 ){
 		raw_output = ph7_value_to_bool(apArg[3]);
 	}
-	pHandle = HashOpenRead(pCtx,zFile,nFileLen,&pStream);
+	pHandle = HashOpenRead(pCtx,zFile,nFileLen,0,&pStream);
 	if( pHandle == 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -1409,8 +1414,7 @@ PH7_PRIVATE int PH7_builtin_hash_update_file(ph7_context *pCtx,int nArg,ph7_valu
 		return rc;
 	}
 	zFile = ph7_value_to_string(apArg[1],&nFileLen);
-	PH7_StreamCtxArm(pCtx->pVm,pCtxRes);
-	pHandle = HashOpenRead(pCtx,zFile,nFileLen,&pStream);
+	pHandle = HashOpenRead(pCtx,zFile,nFileLen,pCtxRes,&pStream);
 	if( pHandle == 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;

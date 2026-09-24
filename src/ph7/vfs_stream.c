@@ -660,7 +660,10 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 	ph7_value sDummy;
 	int rc;
 	if( pStream == 0 ){
-		/* No such stream device */
+		/* No such stream device. The armed context describes THIS open and
+		 * nothing else, so it is dropped on every exit — a caller that armed one
+		 * and returned early must not leave it for the next open to pick up. */
+		pVm->pOpenCtx = 0;
 		return 0;
 	}
 	/* A wrapper registered with STREAM_IS_URL speaks to the network, and php lets
@@ -679,6 +682,7 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 		if( zIni ){
 			SyString sCaller;
 			char zMsg[160];
+			pVm->pOpenCtx = 0;
 			SyStringInitFromBuf(&sCaller,zCaller ? zCaller : "",zCaller ? SyStrlen(zCaller) : 0);
 			SyBufferFormat(zMsg,sizeof(zMsg),
 				"%s:// wrapper is disabled in the server configuration by %s=0",
@@ -3640,6 +3644,8 @@ PH7_PRIVATE void PH7_StreamCtxVmReset(ph7_vm *pVm)
 	}
 	pVm->pStreamCtx = 0;
 	pVm->pDefaultCtx = 0;
+	/* Whatever an interrupted open left armed named one of those. */
+	pVm->pOpenCtx = 0;
 }
 /* The live element of pArray under pKey, or 0 when there is none. */
 static ph7_value * StreamCtxFetch(ph7_value *pArray,ph7_value *pKey)
@@ -4336,6 +4342,8 @@ static int SockCtxOptions(phl_stream_ctx *pCtxRes,ph7_sockopts *pOut,char *zHost
 		}
 		zSpec = (const char *)SyBlobData(&pVal->sBlob);
 		nSpec = (int)SyBlobLength(&pVal->sBlob);
+		pOut->zBindSpec = zSpec;
+		pOut->nBindSpec = nSpec;
 		for( i = 0 ; i + 1 < nSpec ; i++ ){
 			if( zSpec[i] == ':' ){
 				nHost = i;
@@ -4780,21 +4788,24 @@ static int UwrapOpenSlot(int iSlot,const char *zName,int iMode,ph7_value *pResou
 	{
 		/* php's streamWrapper::$context, set on the serving instance BEFORE
 		 * stream_open() runs — which is the whole reason a userland wrapper can
-		 * be configured per open. It is always a RESOURCE: an open that named no
-		 * context gets the DEFAULT one, so `stream_context_get_options($this->
-		 * context)` answers the empty set rather than fataling on a null.
+		 * be configured per open. It is exactly what the OPENER resolved: the
+		 * default context substitutes for a NULL `$context` argument, so an
+		 * ordinary fopen() hands a resource over; but an opener with no such
+		 * argument at all (md5_file(), include) and one that carried
+		 * FILE_NO_DEFAULT_CONTEXT hand over php's NULL. Substituting the default
+		 * here would make that flag mean nothing.
 		 * The class need not declare the slot; php adds it either way. */
 		phl_stream_ctx *pOpenCtx = (phl_stream_ctx *)pVm->pOpenCtx;
-		ph7_value *pCtxSlot;
-		if( pOpenCtx == 0 ){
-			pOpenCtx = PH7_StreamCtxDefault(pVm);
-		}
-		pCtxSlot = PH7_NativeAttr(pH->pObj,"context");
+		ph7_value *pCtxSlot = PH7_NativeAttr(pH->pObj,"context");
 		if( pCtxSlot == 0 ){
 			pCtxSlot = PH7_VmCreateDynamicAttr(pVm,pH->pObj,"context",sizeof("context")-1,0);
 		}
-		if( pCtxSlot && pOpenCtx ){
-			ph7_value_resource(pCtxSlot,(void *)pOpenCtx);
+		if( pCtxSlot ){
+			if( pOpenCtx ){
+				ph7_value_resource(pCtxSlot,(void *)pOpenCtx);
+			}else{
+				ph7_value_null(pCtxSlot);
+			}
 		}
 	}
 	/* php hands stream_open the FULL url, scheme included */
@@ -5175,11 +5186,20 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 		}
 	}
 	sock = PH7_NetConnect(zHost,iPort,iTimeoutMs,&sOpt,&iErrno,&zErr);
-	if( sOpt.bBindFailed ){
-		/* php's own wording, and it does NOT stop the connection: the socket
-		 * goes out from wherever the routing table would have sent it. */
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"Invalid IP Address: %s",
-			sOpt.zBindHost ? sOpt.zBindHost : "");
+	if( sOpt.iBindErr ){
+		/* php's own wording, and NEITHER shape stops the connection: the socket
+		 * goes out from wherever the routing table would have sent it. It tells
+		 * the two apart — a local address it could not RESOLVE names the host,
+		 * one the OS refused to BIND names the whole spelling and the reason. */
+		if( sOpt.iBindErr == PH7_SOCKOPT_BIND_RESOLVE ){
+			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"Invalid IP Address: %s",
+				sOpt.zBindHost ? sOpt.zBindHost : "");
+		}else{
+			ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+				"Failed to bind to '%.*s', system said: %s",
+				sOpt.nBindSpec,sOpt.zBindSpec ? sOpt.zBindSpec : "",
+				PH7_NetStrError(sOpt.iBindErrno));
+		}
 	}
 	if( sock == PH7_NET_INVALID_SOCKET ){
 		if( iErrno == PH7_NET_ERR_RESOLVE ){
