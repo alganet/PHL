@@ -1641,27 +1641,39 @@ static int PH7_vfs_file_perms(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return VfsStatField(pCtx,nArg,apArg,"mode");
 }
 /*
- * string getenv(string $varname)
+ * array|string|false getenv(?string $name = null, bool $local_only = false)
  *  Gets the value of an environment variable.
  * Parameters
- *  $varname
- *   The variable name.
+ *  $name
+ *   The variable name -- or NOTHING, which is the documented way to ask for the
+ *   WHOLE environment as a name => value array. That form answered FALSE here,
+ *   so `foreach (getenv() as $k => $v)` iterated over a bool.
+ *  $local_only
+ *   Ask only the process's own environment rather than the SAPI's. On the CLI
+ *   they are the same environment, so the argument selects the same answer --
+ *   but it must still be ACCEPTED, and asking for the whole map with it set
+ *   answered false too.
  * Return
- *  Returns the value of the environment variable varname, or FALSE if the environment
- * variable varname does not exist.
+ *  The value of the environment variable, or FALSE when it does not exist, or
+ *  the whole environment when no name is given.
  */
 static int PH7_vfs_getenv(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zEnv;
 	ph7_vfs *pVfs;
 	int iLen;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
-		/* Missing/Invalid argument,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
 	/* Point to the underlying vfs */
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
+	if( nArg < 1 || ph7_value_is_null(apArg[0]) ){
+		/* The whole environment. xEnviron was APPENDED to ph7_vfs, so an
+		 * embedder VFS built against version 2 does not have the field at all --
+		 * reading it would run off the end of their struct. */
+		if( pVfs == 0 || pVfs->iVersion < 3 || pVfs->xEnviron == 0
+		 || pVfs->xEnviron(pCtx) != PH7_OK ){
+			ph7_result_bool(pCtx,0);
+		}
+		return PH7_OK;
+	}
 	if( pVfs == 0 || pVfs->xGetenv == 0 ){
 		/* IO routine not implemented,return NULL */
 		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
@@ -1698,23 +1710,28 @@ static int PH7_vfs_putenv(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	char *zSettings,*zEnd;
 	ph7_vfs *pVfs;
 	int iLen,rc;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
-		/* Missing/Invalid argument,return FALSE */
+	if( nArg < 1 ){
+		/* Missing argument,return FALSE */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract the setting variable */
+	/* Extract the setting variable. It is NOT required to already BE a string:
+	 * the declared parameter is `string $assignment`, so php coerces an int or a
+	 * __toString() object first, where PH7 answered false and did nothing. */
 	zSettings = (char *)ph7_value_to_string(apArg[0],&iLen);
-	if( iLen < 1 ){
-		/* Empty string,return FALSE */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	if( iLen < 1 || zSettings[0] == '=' ){
+		/* php's whole validity rule: an empty assignment, or one with no name in
+		 * front of the '='. Everything else is accepted. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"putenv(): Argument #1 ($assignment) must have a valid syntax");
 	}
-	/* Parse the setting */
+	/* Parse the setting. php looks for the '=' with strchr(), so an embedded NUL
+	 * ENDS the search: putenv("FO\0O=BAR") finds no '=' at all and removes the
+	 * variable named "FO" instead of setting one. */
 	zEnd = &zSettings[iLen];
 	zValue = 0;
 	zName = zSettings;
-	while( zSettings < zEnd ){
+	while( zSettings < zEnd && zSettings[0] != 0 ){
 		if( zSettings[0] == '=' ){
 			/* Null terminate the name */
 			zSettings[0] = 0;
@@ -1723,16 +1740,14 @@ static int PH7_vfs_putenv(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 		zSettings++;
 	}
-	/* Install the environment variable in the $_Env array */
-	if( zValue == 0 || zName[0] == 0 || zValue >= zEnd || zName >= zValue ){
-		/* Invalid settings,retun FALSE */
-		ph7_result_bool(pCtx,0);
-		if( zSettings  < zEnd ){
-			zSettings[0] = '=';
-		}
-		return PH7_OK;
-	}
-	ph7_vm_config(pCtx->pVm,PH7_VM_CONFIG_ENV_ATTR,zName,zValue,(int)(zEnd-zValue));
+	/* A missing '=' is not invalid syntax: `putenv("NAME")` REMOVES the variable,
+	 * which is the documented way to unset one, and PH7 read it as a failure and
+	 * left the old value in place. An empty VALUE is a value too
+	 * (`putenv("NAME=")`), which the old `zValue >= zEnd` test rejected.
+	 * php does NOT touch $_ENV here: that array is the SAPI's startup snapshot,
+	 * and a putenv() after it changes the process environment alone. PH7 wrote
+	 * the pair into $_ENV as well, so a script could read back through $_ENV a
+	 * variable php only exposes through getenv(). */
 	/* Point to the underlying vfs */
 	pVfs = (ph7_vfs *)ph7_context_user_data(pCtx);
 	if( pVfs == 0 || pVfs->xSetenv == 0 ){
@@ -1742,13 +1757,22 @@ static int PH7_vfs_putenv(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			ph7_function_name(pCtx)
 			);
 		ph7_result_bool(pCtx,0);
-		zSettings[0] = '=';
+		if( zValue ){
+			zSettings[0] = '=';
+		}
 		return PH7_OK;
 	}
-	/* Perform the requested operation */
+	/* Perform the requested operation. A NULL value means REMOVE, and php reports
+	 * TRUE for that whether or not the variable was there (or nameable) at all --
+	 * only a failed SET is false. */
 	rc = pVfs->xSetenv(zName,zValue);
-	ph7_result_bool(pCtx,rc == PH7_OK );
-	zSettings[0] = '=';
+	ph7_result_bool(pCtx,zValue == 0 || rc == PH7_OK );
+	if( zValue ){
+		/* Put back the '=' the name was terminated on. Without one, zSettings
+		 * stopped on the terminator or on an embedded NUL, neither of which this
+		 * routine wrote. */
+		zSettings[0] = '=';
+	}
 	return PH7_OK;
 }
 /*
@@ -2856,7 +2880,8 @@ static const ph7_vfs null_vfs __attribute__((unused)) = {
 	0, /* int (*xGid)(void) */
 	0, /* void (*xUsername)(ph7_context *) */
 	0, /* int (*xExec)(const char *,ph7_context *) */
-	0  /* int (*xReadlink)(const char *,ph7_context *) */
+	0, /* int (*xReadlink)(const char *,ph7_context *) */
+	0  /* int (*xEnviron)(ph7_context *) */
 };
 /* Windows VFS implementation moved to vfs_win.c */
 /* Unix VFS implementation moved to vfs_unix.c */

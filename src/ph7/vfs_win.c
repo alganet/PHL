@@ -814,31 +814,87 @@ static int WinVfs_Readlink(const char *zPath,ph7_context *pCtx)
 static int WinVfs_Getenv(const char *zVar,ph7_context *pCtx)
 {
 	char zValue[1024];
+	char *zBuf = zValue;
 	DWORD n;
 	/*
-	 * According to MSDN
-	 * If lpBuffer is not large enough to hold the data, the return
-	 * value is the buffer size, in characters, required to hold the
-	 * string and its terminating null character and the contents
-	 * of lpBuffer are undefined.
+	 * According to MSDN, when lpBuffer is not large enough to hold the data the
+	 * return value is the size REQUIRED (terminator included) and the buffer's
+	 * contents are UNDEFINED. Handing that length back was a stack over-read of
+	 * everything past the buffer for any value longer than it -- and on Windows
+	 * PATH alone routinely is.
 	 */
-	n = sizeof(zValue);
-	SyMemcpy("Undefined",zValue,sizeof("Undefined")-1);
-	/* Extract the environment value */
+	SetLastError(0);
 	n = GetEnvironmentVariableA(zVar,zValue,sizeof(zValue));
 	if( !n ){
-		/* No such variable*/
-		return -1;
+		/* 0 is both "absent" and "empty": only the error code tells them apart,
+		 * and php reports an empty variable as "" the way POSIX does. */
+		if( GetLastError() == ERROR_ENVVAR_NOT_FOUND ){
+			return -1;
+		}
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
 	}
-	ph7_result_string(pCtx,zValue,(int)n);
+	if( n >= sizeof(zValue) ){
+		DWORD nWant = n;
+		zBuf = (char *)ph7_context_alloc_chunk(pCtx,(unsigned int)nWant,0,TRUE);
+		if( zBuf == 0 ){
+			return -1;
+		}
+		n = GetEnvironmentVariableA(zVar,zBuf,nWant);
+		if( !n || n >= nWant ){
+			/* It changed underneath us; report it as absent rather than guess. */
+			return -1;
+		}
+	}
+	ph7_result_string(pCtx,zBuf,(int)n);
 	return PH7_OK;
 }
 /* int (*xSetenv)(const char *,const char *) */
 static int WinVfs_Setenv(const char *zName,const char *zValue)
 {
 	BOOL rc;
+	/* A NULL value REMOVES the variable, which is php's putenv("NAME") with no
+	 * '='. An EMPTY value is a variable of its own, on Windows as elsewhere. */
 	rc = SetEnvironmentVariableA(zName,zValue);
 	return rc ? PH7_OK : -1;
+}
+/* int (*xEnviron)(ph7_context *) */
+static int WinVfs_Environ(ph7_context *pCtx)
+{
+	ph7_value *pArray,*pKey,*pVal;
+	LPCH zBlock,zEntry;
+	pArray = ph7_context_new_array(pCtx);
+	pKey = ph7_context_new_scalar(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pKey == 0 || pVal == 0 ){
+		return -1;
+	}
+	zBlock = GetEnvironmentStringsA();
+	if( zBlock == 0 ){
+		return -1;
+	}
+	for( zEntry = zBlock ; *zEntry ; zEntry += lstrlenA(zEntry) + 1 ){
+		const char *zEq = zEntry;
+		/* The block leads with the "=C:=C:\dir" drive-cursor entries, whose name
+		 * is empty: php does not report them and neither does this. */
+		if( *zEq == '=' ){
+			continue;
+		}
+		while( *zEq && *zEq != '=' ){
+			zEq++;
+		}
+		if( *zEq != '=' ){
+			continue;
+		}
+		ph7_value_string(pKey,zEntry,(int)(zEq - zEntry));
+		ph7_value_string(pVal,zEq+1,-1);
+		ph7_array_add_elem(pArray,pKey,pVal);
+		ph7_value_reset_string_cursor(pKey);
+		ph7_value_reset_string_cursor(pVal);
+	}
+	FreeEnvironmentStringsA(zBlock);
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
 }
 /* int (*xMmap)(const char *,void **,ph7_int64 *) */
 static int WinVfs_Mmap(const char *zPath,void **ppMap,ph7_int64 *pSize)
@@ -1034,7 +1090,8 @@ PH7_PRIVATE const ph7_vfs sWinVfs = {
 	WinVfs_Gid, /* int (*xGid)(void) */
 	WinVfs_Username,    /* void (*xUsername)(ph7_context *) */
 	0, /* int (*xExec)(const char *,ph7_context *) */
-	WinVfs_Readlink /* int (*xReadlink)(const char *,ph7_context *) */
+	WinVfs_Readlink, /* int (*xReadlink)(const char *,ph7_context *) */
+	WinVfs_Environ  /* int (*xEnviron)(ph7_context *) */
 };
 /* Windows file IO */
 #ifndef INVALID_SET_FILE_POINTER

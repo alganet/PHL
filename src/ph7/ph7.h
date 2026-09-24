@@ -282,7 +282,7 @@ typedef int (*ph7_clock)(void *pUserData, ph7_int64 *pSec, ph7_int64 *pUsec);
 #define PH7_CTX_WARNING  2 /* Call context Warning */
 #define PH7_CTX_NOTICE   3 /* Call context Notice */
 /* Current VFS structure version*/
-#define PH7_VFS_VERSION 2
+#define PH7_VFS_VERSION 3
 /*
  * PH7 Virtual File System (VFS).
  *
@@ -290,7 +290,7 @@ typedef int (*ph7_clock)(void *pUserData, ph7_int64 *pSec, ph7_int64 *pUsec);
  * and the underlying operating system. The "vfs" in the name of the object stands
  * for "virtual file system". The vfs is used to implement PHP system functions
  * such as mkdir(), chdir(), stat(), get_user_name() and many more.
- * The value of the iVersion field is initially 2 but may be larger in future versions
+ * The value of the iVersion field is initially 3 but may be larger in future versions
  * of PH7.
  * Additional fields may be appended to this object when the iVersion value is increased.
  * Only a single vfs can be registered within the PH7 core. Vfs registration is done
@@ -309,7 +309,7 @@ typedef int (*ph7_clock)(void *pUserData, ph7_int64 *pSec, ph7_int64 *pUsec);
 struct ph7_vfs
 {
 	const char *zName;  /* Underlying VFS name [i.e: FreeBSD/Linux/Windows...] */
-	int iVersion;       /* Current VFS structure version [default 2] */
+	int iVersion;       /* Current VFS structure version [default 3] */
 	/* Directory functions */
 	int (*xChdir)(const char *);                     /* Change directory */
 	int (*xChroot)(const char *);                    /* Change the root directory */
@@ -354,6 +354,7 @@ struct ph7_vfs
 	void (*xUsername)(ph7_context *);                /* Running username */
 	int (*xExec)(const char *,ph7_context *);        /* Execute an external program */
 	int (*xReadlink)(const char *,ph7_context *);    /* Read the target of a symbolic link */
+	int (*xEnviron)(ph7_context *);                  /* Whole environment as a name => value array */
 };
 /* Current PH7 IO stream structure version. */
 #define PH7_IO_STREAM_VERSION 1

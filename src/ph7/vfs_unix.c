@@ -529,8 +529,43 @@ static int UnixVfs_Getenv(const char *zVar,ph7_context *pCtx)
 static int UnixVfs_Setenv(const char *zName,const char *zValue)
 {
    int rc;
+   if( zValue == 0 ){
+     /* php's putenv("NAME") with no '=' REMOVES the variable. */
+     rc = unsetenv(zName);
+     return rc == 0 ? PH7_OK : -1;
+   }
    rc = setenv(zName,zValue,1);
    return rc == 0 ? PH7_OK : -1;
+}
+/* int (*xEnviron)(ph7_context *) */
+static int UnixVfs_Environ(ph7_context *pCtx)
+{
+	extern char **environ;
+	ph7_value *pArray,*pKey,*pVal;
+	char **pp;
+	pArray = ph7_context_new_array(pCtx);
+	pKey = ph7_context_new_scalar(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pKey == 0 || pVal == 0 ){
+		return -1;
+	}
+	for( pp = environ ; pp && *pp ; ++pp ){
+		const char *zEq = *pp;
+		while( *zEq && *zEq != '=' ){
+			zEq++;
+		}
+		if( *zEq != '=' ){
+			/* No '=' at all: not an assignment, skip it like php's own loop. */
+			continue;
+		}
+		ph7_value_string(pKey,*pp,(int)(zEq - *pp));
+		ph7_value_string(pVal,zEq+1,-1);
+		ph7_array_add_elem(pArray,pKey,pVal);
+		ph7_value_reset_string_cursor(pKey);
+		ph7_value_reset_string_cursor(pVal);
+	}
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
 }
 /* int (*xMmap)(const char *,void **,ph7_int64 *) */
 static int UnixVfs_Mmap(const char *zPath,void **ppMap,ph7_int64 *pSize)
@@ -693,7 +728,8 @@ PH7_PRIVATE const ph7_vfs sUnixVfs = {
 	UnixVfs_gid, /* int (*xGid)(void) */
 	UnixVfs_Username,    /* void (*xUsername)(ph7_context *) */
 	0, /* int (*xExec)(const char *,ph7_context *) */
-	UnixVfs_Readlink /* int (*xReadlink)(const char *,ph7_context *) */
+	UnixVfs_Readlink, /* int (*xReadlink)(const char *,ph7_context *) */
+	UnixVfs_Environ  /* int (*xEnviron)(ph7_context *) */
 };
 /* UNIX File IO */
 #define PH7_UNIX_OPEN_MODE	0640 /* Default open mode */
