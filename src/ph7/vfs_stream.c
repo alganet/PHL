@@ -1828,6 +1828,20 @@ PH7_PRIVATE int PH7_builtin_opendir(ph7_context *pCtx,int nArg,ph7_value **apArg
 		 * such file or directory` — and PHL returned FALSE in silence. The message
 		 * names the ACTIVE function, which is how dir() gets php's `dir(...)`
 		 * wording out of the same call. */
+#ifdef __WINNT__
+		if( pStream == &sWinFileStream ){
+			/* php's plain-files opener on Windows warns with the system's own
+			 * reason first, and only then fails the way every platform does. */
+			char zSys[256];
+			int iSaved = errno;
+			unsigned long nCode = PH7_WinOpenDirReason(zSys,(int)sizeof(zSys));
+			if( nCode ){
+				PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s): %s (code: %lu)",
+					ph7_function_name(pCtx),zPath,zSys,nCode);
+			}
+			errno = iSaved;
+		}
+#endif
 		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s): Failed to open directory: %s",
 			ph7_function_name(pCtx),zPath,VfsStrerror(errno));
 		ReleaseIOPrivate(pCtx,pDev);

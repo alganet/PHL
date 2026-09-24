@@ -1108,6 +1108,7 @@ static int WinFile_Open(const char *zPath,int iOpenMode,ph7_value *pResource,voi
 
 	pConverted = convertUtf8Filename(zPath);
 	if( pConverted == 0 ){
+		errno = ENOMEM;
 		return -1;
 	}
 	/* Set the desired flags according to the open mode */
@@ -1149,11 +1150,18 @@ static int WinFile_Open(const char *zPath,int iOpenMode,ph7_value *pResource,voi
 	}
 	dwShare = FILE_SHARE_READ | FILE_SHARE_WRITE;
 	pHandle = CreateFileW((LPCWSTR)pConverted,dwAccess,dwShare,0,dwCreate,dwType,0);
-	HeapFree(GetProcessHeap(),0,pConverted);
 	if( pHandle == INVALID_HANDLE_VALUE){
+		/* Mapped BEFORE the HeapFree: the caller's warning is worded
+		 * "Failed to open stream: %s" from strerror(errno), and CreateFileW
+		 * reports through GetLastError() only -- so every failed open on
+		 * Windows read "No error" (or, worse, whatever errno an unrelated
+		 * earlier call had left behind) where php names the real reason. */
+		WinVfsMapErrno();
+		HeapFree(GetProcessHeap(),0,pConverted);
 		SXUNUSED(pResource); /* MSVC warning */
 		return -1;
 	}
+	HeapFree(GetProcessHeap(),0,pConverted);
 	/* Make the handle accessible to the upper layer */
 	*ppHandle = (void *)pHandle;
 	return PH7_OK;
@@ -1169,6 +1177,44 @@ struct WinDir_Info
 	WIN32_FIND_DATAW sInfo;
 	int rc;
 };
+/* The Win32 code the last failed opendir() stopped on, for the warning php
+ * raises from it ahead of its own "Failed to open directory". */
+static DWORD dwOpenDirErr = 0;
+/*
+ * php_win32_docref1_from_error()'s text for the last failed opendir(): the
+ * system message with its trailing line breaks and periods stripped, and then
+ * two MORE characters cut -- php's own bug, which is why a missing directory is
+ * "The system cannot find the file specifi". 0 when there is nothing to say.
+ */
+PH7_PRIVATE unsigned long PH7_WinOpenDirReason(char *zBuf,int nBuf)
+{
+	WCHAR *zMsg = 0;
+	DWORD n;
+	int nOut;
+	if( dwOpenDirErr == 0 || nBuf < 1 ){
+		return 0;
+	}
+	n = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER|FORMAT_MESSAGE_FROM_SYSTEM|FORMAT_MESSAGE_IGNORE_INSERTS,
+		0,dwOpenDirErr,MAKELANGID(LANG_NEUTRAL,SUBLANG_NEUTRAL),(LPWSTR)&zMsg,0,0);
+	zBuf[0] = 0;
+	if( n > 0 && zMsg ){
+		while( n > 0 && (zMsg[n-1] == L'\r' || zMsg[n-1] == L'\n' || zMsg[n-1] == L'.') ){
+			n--;
+		}
+		nOut = WideCharToMultiByte(CP_UTF8,0,zMsg,(int)n,zBuf,nBuf-1,0,0);
+		if( nOut < 0 ){
+			nOut = 0;
+		}
+		zBuf[nOut] = 0;
+		if( nOut >= 2 ){
+			zBuf[nOut-2] = 0;
+		}
+	}
+	if( zMsg ){
+		LocalFree(zMsg);
+	}
+	return (unsigned long)dwOpenDirErr;
+}
 /* int (*xOpenDir)(const char *,ph7_value *,void **) */
 static int WinDir_Open(const char *zPath,ph7_value *pResource,void **ppHandle)
 {
@@ -1176,10 +1222,50 @@ static int WinDir_Open(const char *zPath,ph7_value *pResource,void **ppHandle)
 	void *pConverted;
 	char *zPrep;
 	sxu32 n;
+	dwOpenDirErr = 0;
 	/* Prepare the path */
 	n = SyStrlen(zPath);
+	{
+		/* php resolves the path BEFORE it lists it, and a name that does not
+		 * resolve fails there, with that lookup's code: 2 for a missing leaf, 3
+		 * for a missing parent, 267 for a file in the way. Look the path itself
+		 * up the same way (a drive root cannot be, and needs no asking). */
+		sxu32 nProbe = n;
+		while( nProbe > 0 && (zPath[nProbe-1] == '/' || zPath[nProbe-1] == '\\') ){
+			nProbe--;
+		}
+		if( nProbe > 0 && zPath[nProbe-1] != ':' ){
+			WIN32_FIND_DATAW sProbe;
+			HANDLE hProbe;
+			zPrep = (char *)HeapAlloc(GetProcessHeap(),0,nProbe+1);
+			if( zPrep == 0 ){
+				errno = ENOMEM;
+				return -1;
+			}
+			SyMemcpy((const void *)zPath,zPrep,nProbe);
+			zPrep[nProbe] = 0;
+			pConverted = convertUtf8Filename(zPrep);
+			HeapFree(GetProcessHeap(),0,zPrep);
+			if( pConverted == 0 ){
+				errno = ENOMEM;
+				return -1;
+			}
+			hProbe = FindFirstFileW((LPCWSTR)pConverted,&sProbe);
+			if( hProbe == INVALID_HANDLE_VALUE ){
+				dwOpenDirErr = GetLastError();
+			}else{
+				FindClose(hProbe);
+			}
+			HeapFree(GetProcessHeap(),0,pConverted);
+			if( dwOpenDirErr != 0 ){
+				errno = ENOENT;
+				return -1;
+			}
+		}
+	}
 	zPrep = (char *)HeapAlloc(GetProcessHeap(),0,n+sizeof("\\*")+4);
 	if( zPrep == 0 ){
+		errno = ENOMEM;
 		return -1;
 	}
 	SyMemcpy((const void *)zPath,zPrep,n);
@@ -1189,18 +1275,27 @@ static int WinDir_Open(const char *zPath,ph7_value *pResource,void **ppHandle)
 	pConverted = convertUtf8Filename(zPrep);
 	HeapFree(GetProcessHeap(),0,zPrep);
 	if( pConverted == 0 ){
+		errno = ENOMEM;
 		return -1;
 	}
 	/* Allocate a new instance */
 	pDirInfo = (WinDir_Info *)HeapAlloc(GetProcessHeap(),0,sizeof(WinDir_Info));
 	if( pDirInfo == 0 ){
+		errno = ENOMEM;
+		HeapFree(GetProcessHeap(),0,pConverted);
 		pResource = 0; /* Compiler warning */
 		return -1;
 	}
 	pDirInfo->rc = SXRET_OK;
 	pDirInfo->pDirHandle = FindFirstFileW((LPCWSTR)pConverted,&pDirInfo->sInfo);
 	if( pDirInfo->pDirHandle == INVALID_HANDLE_VALUE ){
-		/* Cannot open directory */
+		/* Cannot open directory -- same reason as WinFile_Open above. A path that
+		 * resolved but is not a directory is 267, which php reports as ENOENT. */
+		dwOpenDirErr = GetLastError();
+		WinVfsMapErrno();
+		if( dwOpenDirErr == ERROR_DIRECTORY ){
+			errno = ENOENT;
+		}
 		HeapFree(GetProcessHeap(),0,pConverted);
 		HeapFree(GetProcessHeap(),0,pDirInfo);
 		return -1;

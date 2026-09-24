@@ -3719,6 +3719,8 @@ extern const ph7_io_stream sWinFileStream;
 /* Would php's MapViewOfFile() copy of this plain file map a view of zero
  * requested bytes? stream_copy_to_stream() answers false then. */
 PH7_PRIVATE int PH7_WinFileMapsEmptyView(void *pHandle,ph7_int64 nAhead);
+/* The Win32 code (0: none) and php's text for the last failed opendir(). */
+PH7_PRIVATE unsigned long PH7_WinOpenDirReason(char *zBuf,int nBuf);
 #elif defined(__UNIXES__)
 extern const ph7_vfs sUnixVfs;
 extern const ph7_io_stream sUnixFileStream;
