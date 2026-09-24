@@ -115,8 +115,11 @@ PH7_PRIVATE sxi32 VmEvalChunk(
 			goto Cleanup;
 		}
 		if( bTrueReturn ){
-			/* Assume a boolean true return value */
-			PH7_MemObjInitFromBool(pVm,&sResult,1);
+			/* php's include/require answer INT 1 when the file returned nothing
+			 * of its own — not `true`. It is the value a script tests, stores
+			 * and compares, and `include $f === true` was false on php and true
+			 * here. */
+			PH7_MemObjInitFromInt(pVm,&sResult,1);
 		}else{
 			/* Assume a null return value */
 			PH7_MemObjInit(pVm,&sResult);

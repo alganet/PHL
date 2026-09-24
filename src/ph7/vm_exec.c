@@ -2119,13 +2119,23 @@ case PH7_OP_DONE:
 			PH7_MemObjStore(pTos,sState.pResult);
 		}
 		VmPopOperand(&pTos,1);
-	}else if( sState.pLastRef ){
+	}else{
+		if( pInstr->iP1 == 0 && pInstr->iP2 && sState.pResult ){
+			/* An EXPLICIT `return;` with no value answers NULL. It reads as a
+			 * no-op for a function (whose result slot starts out null anyway)
+			 * and matters for an included CHUNK, whose slot is seeded with the 1
+			 * a file that returns nothing answers: `<?php return;` is php's
+			 * NULL, not that 1. */
+			PH7_MemObjRelease(sState.pResult);
+		}
 		/* Nothing referenced — also the throw-unwind path: the compiler routes
 		 * an uncaught exception to this terminal OP_DONE with iP1 set but an
 		 * empty operand stack (pTos == pStack-1), so there is no return value to
-		 * store. Guarding on pTos >= pStack (matching the two sibling branches
-		 * above) avoids the below-base read that crashed under glibc/ASan. */
-		*sState.pLastRef = SXU32_HIGH;
+		 * store. Guarding on pTos >= pStack (matching the sibling branch above)
+		 * avoids the below-base read that crashed under glibc/ASan. */
+		if( sState.pLastRef ){
+			*sState.pLastRef = SXU32_HIGH;
+		}
 	}
 	/* Execute pending finally blocks for any try/catch contexts pushed during
 	 * this execution. When 'return' is used inside a try block,
