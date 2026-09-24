@@ -928,6 +928,260 @@ PH7_PRIVATE sxi32 PH7_VmInstallHashContext(ph7_vm *pVm)
 	};
 	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);
 }
+/*
+ * ---------------------------------------------------------------------------
+ * The two KEY DERIVATIONS: hash_pbkdf2() and hash_hkdf().
+ *
+ * Both are HMAC run in a particular shape, and both exist because a password
+ * or a shared secret is not a key: PBKDF2 makes one SLOW to guess (that is
+ * what $iterations buys) and HKDF makes one out of material that is already
+ * high-entropy but the wrong length or shape. Neither can be spelled in php
+ * without them -- writing the loop by hand is a rewrite of the construction
+ * per call site, and getting the counter's width or the XOR wrong produces a
+ * key that looks fine and is not the one the other end derived.
+ *
+ * Both refuse a non-cryptographic algorithm, for the same reason hash_hmac()
+ * does: there is a key involved.
+ * ---------------------------------------------------------------------------
+ */
+/* One HMAC under a key block prepared once: the inner and outer passes the
+ * incremental context takes, with the message supplied in two pieces (either
+ * may be empty) because every caller below has exactly two. */
+static void HashHmacOnce(const HashAlgo *pAlgo,const unsigned char *zKeyBlock,
+	const unsigned char *zA,unsigned int nA,const unsigned char *zB,unsigned int nB,
+	unsigned char *zOut)
+{
+	unsigned char zInner[HASH_MAX_DIGEST];
+	HashCtx sCtx;
+	HashHmacInner(pAlgo,&sCtx,zKeyBlock);
+	if( nA > 0 ){
+		pAlgo->xUpdate(&sCtx,zA,nA);
+	}
+	if( nB > 0 ){
+		pAlgo->xUpdate(&sCtx,zB,nB);
+	}
+	SyZero(zInner,sizeof(zInner));
+	pAlgo->xFinal(&sCtx,zInner);
+	HashHmacOuter(pAlgo,zKeyBlock,zInner,zOut);
+}
+/*
+ * Emit derived bytes as php's $length asks for them: RAW is a count of bytes,
+ * hex a count of CHARACTERS, so an odd hex length cuts a byte in half and the
+ * last digit is emitted alone.
+ */
+static void HashResultDerived(ph7_context *pCtx,const unsigned char *zRaw,
+	sxi64 nWant,int bRaw)
+{
+	static const char zHexTab[] = "0123456789abcdef";
+	sxi64 nFull;
+	if( bRaw ){
+		ph7_result_string(pCtx,(const char *)zRaw,(int)nWant);
+		return;
+	}
+	nFull = nWant / 2;
+	SyBinToHexConsumer((const void *)zRaw,(sxu32)nFull,HashConsumer,pCtx);
+	if( (nWant & 1) != 0 ){
+		/* An odd hex length cuts a byte in half, and it is the HIGH nibble
+		 * that survives -- hash_pbkdf2($a,$p,$s,1,1) is one character. */
+		char c = zHexTab[(zRaw[nFull] >> 4) & 0x0f];
+		ph7_result_string(pCtx,&c,1);
+	}
+}
+/*
+ * string hash_pbkdf2(string $algo,string $password,string $salt,int $iterations
+ *                    [,int $length = 0[,bool $binary = false]])
+ */
+PH7_PRIVATE int PH7_builtin_hash_pbkdf2(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const HashAlgo *pAlgo;
+	const char *zAlgo,*zPass,*zSalt;
+	int nAlgoLen,nPassLen,nSaltLen,raw_output = FALSE;
+	sxi64 nIter,nWant;
+	sxu64 nNeed,nBlock,i;
+	unsigned char zKeyBlock[HASH_MAX_BLOCK];
+	unsigned char zU[HASH_MAX_DIGEST],zT[HASH_MAX_DIGEST];
+	unsigned char zCount[4];
+	unsigned char *zOut;
+	sxu64 nTotal;
+	int nDigest;
+	if( nArg < 4 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"hash_pbkdf2() expects at least 4 arguments, %d given",nArg);
+	}
+	zAlgo = ph7_value_to_string(apArg[0],&nAlgoLen);
+	pAlgo = HashFindAlgo(zAlgo,nAlgoLen);
+	if( pAlgo == 0 || pAlgo->nBlockLen < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"hash_pbkdf2(): Argument #1 ($algo) must be a valid cryptographic hashing algorithm");
+	}
+	zPass = ph7_value_to_string(apArg[1],&nPassLen);
+	zSalt = ph7_value_to_string(apArg[2],&nSaltLen);
+	nIter = ph7_value_to_int64(apArg[3]);
+	if( nIter < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"hash_pbkdf2(): Argument #4 ($iterations) must be greater than 0");
+	}
+	nWant = nArg > 4 ? ph7_value_to_int64(apArg[4]) : 0;
+	if( nWant < 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"hash_pbkdf2(): Argument #5 ($length) must be greater than or equal to 0");
+	}
+	if( nArg > 5 ){
+		raw_output = ph7_value_to_bool(apArg[5]);
+	}
+	/* php declares a 7th $options parameter here for symmetry with hash(); no
+	 * algorithm that can key a MAC reads a seed, so it can only ever be inert
+	 * -- but the SIGNATURE has to carry it, or a call that passes one is an
+	 * ArgumentCountError on a program php runs. */
+	nDigest = pAlgo->nDigestLen;
+	if( nWant == 0 ){
+		/* php's default is the algorithm's own width, counted the way the
+		 * output is: bytes raw, hex characters otherwise. */
+		nWant = raw_output ? nDigest : nDigest * 2;
+	}
+	/* Raw bytes needed to fill that: a hex character is half a byte. */
+	nNeed = raw_output ? (sxu64)nWant : ((sxu64)nWant + 1) / 2;
+	nBlock = (nNeed + (sxu64)nDigest - 1) / (sxu64)nDigest;
+	nTotal = nBlock * (sxu64)nDigest;
+	/* The whole answer is built before any of it is emitted, so the size is
+	 * decided HERE rather than one block at a time: php allocates it up front
+	 * too and fails immediately, where a per-block loop over a $length near
+	 * PHP_INT_MAX would run essentially forever before running out. */
+	if( nTotal > (sxu64)SXI32_HIGH || (sxu64)nWant > (sxu64)SXI32_HIGH ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	zOut = (unsigned char *)ph7_context_alloc_chunk(pCtx,(unsigned int)nTotal,FALSE,FALSE);
+	if( zOut == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	HashHmacKeyBlock(pAlgo,zPass,nPassLen,zKeyBlock);
+	for( i = 1 ; i <= nBlock ; ++i ){
+		sxi64 j;
+		int k;
+		/* U1 = HMAC(password, salt || INT_32_BE(i)) -- the counter is four
+		 * BIG-endian bytes, and it is what makes each block different. */
+		zCount[0] = (unsigned char)((i >> 24) & 0xff);
+		zCount[1] = (unsigned char)((i >> 16) & 0xff);
+		zCount[2] = (unsigned char)((i >> 8) & 0xff);
+		zCount[3] = (unsigned char)(i & 0xff);
+		HashHmacOnce(pAlgo,zKeyBlock,(const unsigned char *)zSalt,(unsigned int)nSaltLen,
+			zCount,4,zU);
+		SyMemcpy(zU,zT,(sxu32)nDigest);
+		/* T = U1 ^ U2 ^ ... ^ Uc, each U the HMAC of the one before it. */
+		for( j = 1 ; j < nIter ; ++j ){
+			HashHmacOnce(pAlgo,zKeyBlock,zU,(unsigned int)nDigest,0,0,zU);
+			for( k = 0 ; k < nDigest ; ++k ){
+				zT[k] = (unsigned char)(zT[k] ^ zU[k]);
+			}
+		}
+		SyMemcpy(zT,&zOut[(i - 1) * (sxu64)nDigest],(sxu32)nDigest);
+	}
+	HashResultDerived(pCtx,zOut,nWant,raw_output);
+	ph7_context_free_chunk(pCtx,zOut);
+	return PH7_OK;
+}
+/*
+ * string hash_hkdf(string $algo,string $key[,int $length = 0[,string $info = ""
+ *                  [,string $salt = ""]]])
+ *
+ * RFC 5869's extract-then-expand, and the one derivation php answers in RAW
+ * bytes whatever else is asked -- there is no $binary parameter.
+ */
+PH7_PRIVATE int PH7_builtin_hash_hkdf(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const HashAlgo *pAlgo;
+	const char *zAlgo,*zKey,*zInfo = "",*zSalt = "";
+	int nAlgoLen,nKeyLen,nInfoLen = 0,nSaltLen = 0;
+	sxi64 nWant;
+	sxu64 nBlock,i;
+	unsigned char zSaltBlock[HASH_MAX_BLOCK],zPrkBlock[HASH_MAX_BLOCK];
+	unsigned char zPrk[HASH_MAX_DIGEST],zT[HASH_MAX_DIGEST];
+	unsigned char zCount;
+	SyBlob sOut;
+	int nDigest;
+	if( nArg < 2 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"hash_hkdf() expects at least 2 arguments, %d given",nArg);
+	}
+	zAlgo = ph7_value_to_string(apArg[0],&nAlgoLen);
+	pAlgo = HashFindAlgo(zAlgo,nAlgoLen);
+	if( pAlgo == 0 || pAlgo->nBlockLen < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"hash_hkdf(): Argument #1 ($algo) must be a valid cryptographic hashing algorithm");
+	}
+	zKey = ph7_value_to_string(apArg[1],&nKeyLen);
+	if( nKeyLen < 1 ){
+		/* There is no key to derive FROM: php refuses rather than deriving
+		 * from the empty string, which every caller would share. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"hash_hkdf(): Argument #2 ($key) must not be empty");
+	}
+	nDigest = pAlgo->nDigestLen;
+	nWant = nArg > 2 ? ph7_value_to_int64(apArg[2]) : 0;
+	if( nWant < 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"hash_hkdf(): Argument #3 ($length) must be greater than or equal to 0");
+	}
+	if( nWant > (sxi64)255 * nDigest ){
+		/* The counter is ONE byte, so 255 blocks is all the construction has. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"hash_hkdf(): Argument #3 ($length) must be less than or equal to %d",
+			255 * nDigest);
+	}
+	if( nArg > 3 ){
+		zInfo = ph7_value_to_string(apArg[3],&nInfoLen);
+	}
+	if( nArg > 4 ){
+		zSalt = ph7_value_to_string(apArg[4],&nSaltLen);
+	}
+	if( nWant == 0 ){
+		nWant = nDigest;
+	}
+	/* Extract: PRK = HMAC(salt, key). An absent salt is HMAC's own zero
+	 * padding, which is RFC 5869's "a string of HashLen zeros". */
+	HashHmacKeyBlock(pAlgo,zSalt,nSaltLen,zSaltBlock);
+	HashHmacOnce(pAlgo,zSaltBlock,(const unsigned char *)zKey,(unsigned int)nKeyLen,0,0,zPrk);
+	/* Expand: T(i) = HMAC(PRK, T(i-1) || info || i). */
+	HashHmacKeyBlock(pAlgo,(const char *)zPrk,nDigest,zPrkBlock);
+	nBlock = ((sxu64)nWant + (sxu64)nDigest - 1) / (sxu64)nDigest;
+	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+	for( i = 1 ; i <= nBlock ; ++i ){
+		unsigned char zPrev[HASH_MAX_DIGEST];
+		SyBlob sMsg;
+		sxu32 nPrev = 0;
+		sxi32 rc;
+		if( i > 1 ){
+			SyMemcpy(zT,zPrev,(sxu32)nDigest);
+			nPrev = (sxu32)nDigest;
+		}
+		zCount = (unsigned char)i;
+		/* HashHmacOnce takes the message in two pieces; the counter has to
+		 * ride with the info, so they are joined into one. */
+		SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
+		rc = SXRET_OK;
+		if( nInfoLen > 0 ){
+			rc = SyBlobAppend(&sMsg,zInfo,(sxu32)nInfoLen);
+		}
+		if( rc == SXRET_OK ){
+			rc = SyBlobAppend(&sMsg,&zCount,1);
+		}
+		if( rc != SXRET_OK ){
+			SyBlobRelease(&sMsg);
+			SyBlobRelease(&sOut);
+			return PH7_ContextMemoryError(pCtx);
+		}
+		HashHmacOnce(pAlgo,zPrkBlock,zPrev,nPrev,
+			(const unsigned char *)SyBlobData(&sMsg),SyBlobLength(&sMsg),zT);
+		SyBlobRelease(&sMsg);
+		if( SyBlobAppend(&sOut,zT,(sxu32)nDigest) != SXRET_OK ){
+			SyBlobRelease(&sOut);
+			return PH7_ContextMemoryError(pCtx);
+		}
+	}
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)nWant);
+	SyBlobRelease(&sOut);
+	return PH7_OK;
+}
 #if !defined(PH7_DISABLE_DISK_IO)
 /*
  * ---------------------------------------------------------------------------

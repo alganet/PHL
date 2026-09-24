@@ -651,6 +651,8 @@ static const struct VmBuiltinSig {
 	{ "hash_final", "HashContext $context, bool $binary = false", "string" },
 	{ "hash_copy", "HashContext $context", "HashContext" },
 	{ "hash_file", "string $algo, string $filename, bool $binary = false, array $options = []", "string|false" },
+	{ "hash_hkdf", "string $algo, string $key, int $length = 0, string $info = \'\', string $salt = \'\'", "string" },
+	{ "hash_pbkdf2", "string $algo, string $password, string $salt, int $iterations, int $length = 0, bool $binary = false, array $options = []", "string" },
 	{ "hash_hmac_file", "string $algo, string $filename, string $key, bool $binary = false", "string|false" },
 	{ "hash_update_file", "HashContext $context, string $filename, $stream_context = null", "bool" },
 	{ "hash_update_stream", "HashContext $context, $stream, int $length = -1", "int" },
