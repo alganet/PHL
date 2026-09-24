@@ -605,6 +605,64 @@ static int vm_builtin_session_save_path(ph7_context *pCtx,int nArg,ph7_value **a
  * session still starts; a key that is not a STRING, or a value that is not a
  * scalar, is a hard error before anything is opened.
  */
+static void VmSessWrite(ph7_vm *pVm,const char *zWho);
+struct VmSessStartOpts {
+	ph7_vm *pVm;
+	int bReadClose;
+	int iFail;          /* 1 = non-string key, 2 = non-scalar value */
+	char zBadKey[64];
+	char zBadType[32];
+};
+static int VmSessStartOptWalker(ph7_value *pKey,ph7_value *pVal,void *pUserData)
+{
+	struct VmSessStartOpts *pOpt = (struct VmSessStartOpts *)pUserData;
+	char zName[128];
+	const char *zKey;
+	int nKey = 0, nVal = 0;
+	const char *zVal;
+	if( !ph7_value_is_string(pKey) ){
+		pOpt->iFail = 1;
+		return SXERR_ABORT;
+	}
+	zKey = ph7_value_to_string(pKey,&nKey);
+	if( nKey > (int)sizeof(pOpt->zBadKey)-1 ){
+		nKey = (int)sizeof(pOpt->zBadKey)-1;
+	}
+	SyMemcpy(zKey,pOpt->zBadKey,(sxu32)nKey);
+	pOpt->zBadKey[nKey] = 0;
+	if( !ph7_value_is_string(pVal) && !ph7_value_is_int(pVal) && !ph7_value_is_bool(pVal) ){
+		const char *zType = PH7_MemObjTypeDump(pVal);
+		sxu32 nType = (sxu32)SyStrlen(zType);
+		if( nType > sizeof(pOpt->zBadType)-1 ){
+			nType = sizeof(pOpt->zBadType)-1;
+		}
+		SyMemcpy(zType,pOpt->zBadType,nType);
+		pOpt->zBadType[nType] = 0;
+		pOpt->iFail = 2;
+		return SXERR_ABORT;
+	}
+	if( nKey == (int)sizeof("read_and_close")-1
+	 && SyMemcmp(pOpt->zBadKey,"read_and_close",(sxu32)nKey) == 0 ){
+		pOpt->bReadClose = ph7_value_to_bool(pVal);
+		return PH7_OK;
+	}
+	/* php stringifies the value the way ini_set() does, a bool becoming "1"/"". */
+	if( ph7_value_is_bool(pVal) ){
+		zVal = ph7_value_to_bool(pVal) ? "1" : "";
+		nVal = (int)SyStrlen(zVal);
+	}else{
+		zVal = ph7_value_to_string(pVal,&nVal);
+	}
+	SyBufferFormat(zName,sizeof(zName),"session.%s",pOpt->zBadKey);
+	if( !PH7_VmIniSet(pOpt->pVm,zName,(sxu32)SyStrlen(zName),zVal,(sxu32)nVal,
+		"session_start()") ){
+		char zMsg[160];
+		SyBufferFormat(zMsg,sizeof(zMsg),
+			"session_start(): Setting option \"%s\" failed",pOpt->zBadKey);
+		PH7_VmThrowError(pOpt->pVm,0,PH7_CTX_WARNING,zMsg);
+	}
+	return PH7_OK;
+}
 /*
  * The Set-Cookie that carries the id, built out of the seven session.cookie_*
  * directives rather than the name and the id alone -- which is what this used to
@@ -652,10 +710,24 @@ static void VmSessSendCookie(ph7_vm *pVm)
 static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
+	struct VmSessStartOpts sOpt;
 	SyBlob sFile;
 	int iLoad;
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
+	SyZero(&sOpt,sizeof(sOpt));
+	sOpt.pVm = pVm;
+	if( nArg > 0 && ph7_value_is_array(apArg[0]) ){
+		ph7_array_walk(apArg[0],VmSessStartOptWalker,&sOpt);
+		if( sOpt.iFail == 1 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"session_start(): Argument #1 ($options) must be of type array with"
+				" keys as string");
+		}
+		if( sOpt.iFail == 2 ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"session_start(): Option \"%s\" must be of type string|int|bool, %s given",
+				sOpt.zBadKey,sOpt.zBadType);
+		}
+	}
 	if( pVm->iSessStatus == VM_SESSION_ACTIVE ){
 		PH7_VmThrowError(pVm,0,PH7_CTX_NOTICE,
 			"session_start(): Ignoring session_start() because a session is already active");
@@ -748,6 +820,12 @@ static int vm_builtin_session_start(ph7_context *pCtx,int nArg,ph7_value **apArg
 	}
 	pVm->iSessStatus = VM_SESSION_ACTIVE;
 	VmSessSendCookie(pVm);
+	if( sOpt.bReadClose ){
+		/* php's `read_and_close`: the store is read and released again before the
+		 * script runs, so a request that only READS the session does not hold its
+		 * lock for the rest of its life. */
+		VmSessWrite(pVm,"session_start()");
+	}
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }

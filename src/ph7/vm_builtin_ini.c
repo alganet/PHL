@@ -72,6 +72,17 @@ static const struct {
 	{ "post_max_size",            "8M",         VM_INI_PERDIR|VM_INI_SYSTEM },
 	{ "precision",                "14",         VM_INI_ALL },
 	{ "serialize_precision",      "-1",         VM_INI_ALL },
+	/* php's session directives, the whole non-deprecated set: session_start()'s
+	 * $options array applies its keys THROUGH this table, so a directive missing
+	 * here is an option php accepts and PHL reports as failed.
+	 * Six are absent on purpose: php 8.4 DEPRECATES session.sid_length,
+	 * session.sid_bits_per_character, session.referer_check, session.use_trans_sid,
+	 * session.trans_sid_tags and session.trans_sid_hosts, and §10 does not carry
+	 * php's deprecated surface. The session.upload_progress.* family goes with the
+	 * file uploads §10 excludes from a CLI-plus-`-S` engine. */
+	{ "session.auto_start",       "0",          VM_INI_PERDIR|VM_INI_SYSTEM },
+	{ "session.cache_expire",     "180",        VM_INI_ALL },
+	{ "session.cache_limiter",    "nocache",    VM_INI_ALL },
 	/* The Set-Cookie the session sends is built out of these seven. */
 	{ "session.cookie_domain",    "",           VM_INI_ALL },
 	{ "session.cookie_httponly",  "0",          VM_INI_ALL },
@@ -80,7 +91,12 @@ static const struct {
 	{ "session.cookie_path",      "/",          VM_INI_ALL },
 	{ "session.cookie_samesite",  "",           VM_INI_ALL },
 	{ "session.cookie_secure",    "0",          VM_INI_ALL },
+	{ "session.gc_divisor",       "100",        VM_INI_ALL },
+	{ "session.gc_maxlifetime",   "1440",       VM_INI_ALL },
+	{ "session.gc_probability",   "1",          VM_INI_ALL },
+	{ "session.lazy_write",       "1",          VM_INI_ALL },
 	{ "session.name",             "PHPSESSID",  VM_INI_ALL },
+	{ "session.save_handler",     "files",      VM_INI_ALL },
 	{ "session.save_path",        "",           VM_INI_ALL },
 	/* Which of php's three session serializers writes the store: `php` (the
 	 * `name|<serialized>` runs a stock php install reads), `php_binary` or
@@ -90,6 +106,7 @@ static const struct {
 	 * read an id from anywhere ELSE, which is what use_only_cookies means. */
 	{ "session.use_cookies",      "1",          VM_INI_ALL },
 	{ "session.use_only_cookies", "1",          VM_INI_ALL },
+	{ "session.use_strict_mode",  "0",          VM_INI_ALL },
 	{ "short_open_tag",           "",           VM_INI_PERDIR|VM_INI_SYSTEM },
 	{ "unserialize_callback_func","",           VM_INI_ALL },
 	{ "unserialize_max_depth",    "4096",       VM_INI_ALL },
@@ -320,23 +337,108 @@ static void IniLiveSet(ph7_vm *pVm,VmIniSlot *pSlot,const char *zVal,sxu32 nVal)
 	}
 }
 /*
- * The session directives are php.ini-settable only until headers go out.
- * Answers TRUE (and has raised the warning) when the write must be refused.
+ * A session directive is settable only while there is no session to disturb: not
+ * once one is ACTIVE (the store is open and the cookie decided), and not once
+ * headers have gone out. Answers TRUE (having raised the warning) when the write
+ * must be refused.
  */
 static int IniSessionLocked(ph7_context *pCtx,VmIniSlot *pSlot,const char *zFunc)
 {
+	ph7_vm *pVm = pCtx->pVm;
 	char zMsg[160];
+	const char *zWhy;
 	if( pSlot->sName.nByte < sizeof("session.")-1
 	 || SyMemcmp(pSlot->sName.zString,"session.",sizeof("session.")-1) != 0 ){
 		return 0;
 	}
-	if( !pCtx->pVm->bHeadersSent ){
+	if( pVm->iSessStatus == 2 /* PHP_SESSION_ACTIVE */ ){
+		zWhy = "when a session is active";
+	}else if( pVm->bHeadersSent ){
+		zWhy = "after headers have already been sent";
+	}else{
 		return 0;
 	}
 	SyBufferFormat(zMsg,sizeof(zMsg),
-		"%s(): Session ini settings cannot be changed after headers have already been sent",
-		zFunc);
-	PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,zMsg);
+		"%s(): Session ini settings cannot be changed %s",zFunc,zWhy);
+	PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,zMsg);
+	return 1;
+}
+/*
+ * The per-directive value rules php enforces on every write, and the diagnostic
+ * each one raises. zWho is the whole prefix php puts on it -- "ini_set()" or, when
+ * session_start() is applying its $options array, "session_start()" -- because php
+ * blames the call that made the write, not the API underneath it.
+ */
+static int IniValueAccepted(ph7_vm *pVm,VmIniSlot *pSlot,const char *zVal,sxu32 nVal,
+	const char *zWho)
+{
+	char zMsg[256];
+	if( IniNameIs(pSlot,"include_path") && nVal < 1 ){
+		/* php registers include_path with OnUpdateStringUnempty: the EMPTY value
+		 * is refused in silence and the directive keeps what it had. */
+		return 0;
+	}
+	if( IniNameIs(pSlot,"session.serialize_handler")
+	 && !(nVal == 3 && SyMemcmp(zVal,"php",3) == 0)
+	 && !(nVal == 10 && SyMemcmp(zVal,"php_binary",10) == 0)
+	 && !(nVal == 13 && SyMemcmp(zVal,"php_serialize",13) == 0) ){
+		/* php looks the name up in its registered serializer list and refuses what
+		 * it cannot find, keeping the directive where it was. */
+		SyBufferFormat(zMsg,sizeof(zMsg),
+			"%s: Serialization handler \"%.*s\" cannot be found",zWho,(int)nVal,zVal);
+		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,zMsg);
+		return 0;
+	}
+	if( IniNameIs(pSlot,"session.name") ){
+		/* The name goes out as a COOKIE name and comes back as one, so php holds it
+		 * to the cookie alphabet -- and refuses a numeric one, which a browser would
+		 * hand back as an integer array key. */
+		static const char zBad[] = "=,;.[ \t\r\n\013\014";
+		sxu32 i;
+		int bBad = nVal < 1;
+		for( i = 0 ; !bBad && i < nVal ; i++ ){
+			if( zVal[i] == 0 || SyByteFind(zBad,sizeof(zBad)-1,zVal[i],0) == SXRET_OK ){
+				bBad = 1;
+			}
+		}
+		if( !bBad ){
+			sxi64 iDummy = 0;
+			bBad = SyStrToInt64(zVal,nVal,(void *)&iDummy,0) == SXRET_OK;
+		}
+		if( bBad ){
+			SyBufferFormat(zMsg,sizeof(zMsg),
+				"%s: session.name \"%.*s\" must not be numeric, empty, contain null bytes"
+				" or any of the following characters \"=,;.[ \\t\\r\\n\\013\\014\"",
+				zWho,(int)nVal,zVal);
+			PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,zMsg);
+			return 0;
+		}
+	}
+	return 1;
+}
+/*
+ * Write a directive from C, the way ini_set() writes it. Answers 0 when the write
+ * was refused (unknown name, not user-settable, or a value the directive's own
+ * rule rejects) -- which is exactly what session_start()'s $options reports as
+ * `Setting option "%s" failed`.
+ */
+PH7_PRIVATE int PH7_VmIniSet(ph7_vm *pVm,const char *zName,sxu32 nName,
+	const char *zVal,sxu32 nVal,const char *zWho)
+{
+	VmIniSlot *pSlot;
+	if( IniSeed(pVm) != SXRET_OK ){
+		return 0;
+	}
+	pSlot = IniFind(pVm,zName,nName);
+	if( pSlot == 0 || (pSlot->iAccess & VM_INI_USER) == 0 ){
+		return 0;
+	}
+	if( !IniValueAccepted(pVm,pSlot,zVal,nVal,zWho) ){
+		return 0;
+	}
+	SyBlobReset(&pSlot->sLocal);
+	SyBlobAppend(&pSlot->sLocal,zVal,nVal);
+	IniLiveSet(pVm,pSlot,zVal,nVal);
 	return 1;
 }
 /* string|false ini_get(string $option) */
@@ -410,23 +512,7 @@ static int vm_builtin_ini_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}else{
 		zVal = ph7_value_to_string(apArg[1],&nVal);
 	}
-	if( IniNameIs(pSlot,"session.serialize_handler")
-	 && !(nVal == 3 && SyMemcmp(zVal,"php",3) == 0)
-	 && !(nVal == 10 && SyMemcmp(zVal,"php_binary",10) == 0)
-	 && !(nVal == 13 && SyMemcmp(zVal,"php_serialize",13) == 0) ){
-		/* php looks the name up in its registered serializer list and refuses what
-		 * it cannot find, keeping the directive where it was. */
-		char zMsg[160];
-		SyBufferFormat(zMsg,sizeof(zMsg),
-			"ini_set(): Serialization handler \"%.*s\" cannot be found",nVal,zVal);
-		PH7_VmThrowError(pVm,0,PH7_CTX_WARNING,zMsg);
-		SyBlobRelease(&sOld);
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
-	if( nVal < 1 && IniNameIs(pSlot,"include_path") ){
-		/* php registers include_path with OnUpdateStringUnempty: the EMPTY value
-		 * is refused, the directive keeps what it had, and the call is FALSE. */
+	if( !IniValueAccepted(pVm,pSlot,zVal,(sxu32)nVal,"ini_set()") ){
 		SyBlobRelease(&sOld);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -669,5 +755,9 @@ PH7_PRIVATE int PH7_VmIniGetBool(ph7_vm *pVm,const char *zName,int bDefault){
 }
 PH7_PRIVATE void PH7_VmIniGetStr(ph7_vm *pVm,const char *zName,SyBlob *pOut){
 	(void)pVm; (void)zName; SyBlobReset(pOut);
+}
+PH7_PRIVATE int PH7_VmIniSet(ph7_vm *pVm,const char *zName,sxu32 nName,
+	const char *zVal,sxu32 nVal,const char *zWho){
+	(void)pVm; (void)zName; (void)nName; (void)zVal; (void)nVal; (void)zWho; return 0;
 }
 #endif
