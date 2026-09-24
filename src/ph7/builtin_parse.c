@@ -578,7 +578,9 @@ static int FvUtf8Next(const unsigned char *p,const unsigned char *zEnd,sxu32 *pC
  * delegates to the shared encoder. Byte-exact vs php 8.5.7. */
 static void FvSanitizeFull(ph7_context *pCtx,const char *z,int n,int flags){
 	int iEntFlags = (flags & FV_FLAG_NO_ENCODE_QUOTES) ? 0 : PH7_ENT_QUOTES;
-	HtmlEscape(pCtx,z,n,iEntFlags,1/*bAll*/,0/*bDoubleEncode*/);
+	/* filter_var's FULL_SPECIAL_CHARS has no charset argument: php runs it in the
+	 * default charset. */
+	HtmlEscape(pCtx,z,n,iEntFlags,1/*bAll*/,0/*bDoubleEncode*/,PH7_HTML_CS_UTF8);
 }
 /* ---------------------------------------------------------------------------
  * UTF-8-aware HTML entity core (htmlspecialchars/htmlentities family).
@@ -774,15 +776,20 @@ static int HtmlParseEntity(const unsigned char *z,const unsigned char *zEnd,
  * result is "" (pre-validated in a first pass: the accumulating result API
  * cannot roll back — same reason FvSanitizeFull is two-pass). */
 PH7_PRIVATE void HtmlEscape(ph7_context *pCtx,const char *zIn,int nIn,
-                       int iFlags,int bAll,int bDoubleEncode){
+                       int iFlags,int bAll,int bDoubleEncode,int iCs){
 	const unsigned char *zEnd = (const unsigned char *)(zIn + nIn);
 	const unsigned char *p = (const unsigned char *)zIn;
 	const unsigned char *runStart;
 	int iDoc = iFlags & PH7_ENT_DOC_MASK;
+	/* ENT_DISALLOWED replaces a character the doctype forbids with U+FFFD — as a
+	 * CHARACTER where the charset can hold one, and as the numeric REFERENCE for
+	 * it where it cannot, which is every single-byte charset. */
+	const char *zRepl = (iCs == PH7_HTML_CS_LATIN1) ? "&#xFFFD;" : "\xEF\xBF\xBD";
 	sxu32 cp;
-	if( (iFlags & (PH7_ENT_IGNORE|PH7_ENT_SUBSTITUTE)) == 0 ){
+	if( iCs == PH7_HTML_CS_UTF8 && (iFlags & (PH7_ENT_IGNORE|PH7_ENT_SUBSTITUTE)) == 0 ){
 		/* Pass 1: any malformed sequence rejects the entire input. ASCII
-		 * bytes cannot be malformed, so skip them without the decoder. */
+		 * bytes cannot be malformed, so skip them without the decoder.
+		 * A single-byte charset has no malformed sequences to find. */
 		while( p < zEnd ){
 			int len;
 			if( *p < 0x80 ){ p++; continue; }
@@ -823,9 +830,19 @@ PH7_PRIVATE void HtmlEscape(ph7_context *pCtx,const char *zIn,int nIn,
 				break;
 			default:
 				if( (iFlags & PH7_ENT_DISALLOWED) && !HtmlCpAllowedEncode((sxu32)*p,iFlags) ){
-					zEnt = "\xEF\xBF\xBD";
+					zEnt = zRepl;
 				}
 				break;
+			}
+		}else if( iCs == PH7_HTML_CS_LATIN1 ){
+			/* Every byte is a character and its value IS the code point. */
+			len = 1;
+			cp = *p;
+			if( bAll && HtmlDocHasNamedTable(iDoc) ){
+				zEnt = FvHtml401Lookup(cp);
+			}
+			if( zEnt == 0 && (iFlags & PH7_ENT_DISALLOWED) && !HtmlCpAllowedEncode(cp,iFlags) ){
+				zEnt = zRepl;
 			}
 		}else{
 			len = FvUtf8Next(p,zEnd,&cp);
@@ -843,7 +860,7 @@ PH7_PRIVATE void HtmlEscape(ph7_context *pCtx,const char *zIn,int nIn,
 				zEnt = FvHtml401Lookup(cp);
 			}
 			if( zEnt == 0 && (iFlags & PH7_ENT_DISALLOWED) && !HtmlCpAllowedEncode(cp,iFlags) ){
-				zEnt = "\xEF\xBF\xBD";
+				zEnt = zRepl;
 			}
 		}
 		if( zEnt ){
@@ -861,7 +878,7 @@ PH7_PRIVATE void HtmlEscape(ph7_context *pCtx,const char *zIn,int nIn,
  * verbatim and rescans right after it, which also yields PHP's no-double-
  * decode behavior ("&amp;lt;" -> "&lt;"). */
 PH7_PRIVATE void HtmlUnescape(ph7_context *pCtx,const char *zIn,int nIn,
-                         int iFlags,int bFull){
+                         int iFlags,int bFull,int iCs){
 	const unsigned char *zEnd = (const unsigned char *)(zIn + nIn);
 	const unsigned char *p = (const unsigned char *)zIn;
 	const unsigned char *runStart = p;
@@ -877,8 +894,17 @@ PH7_PRIVATE void HtmlUnescape(ph7_context *pCtx,const char *zIn,int nIn,
 			p += nEat;
 			continue;
 		}
+		if( iCs == PH7_HTML_CS_LATIN1 && cp > 0xFF ){
+			/* The charset cannot hold it, so php leaves the entity SOURCE alone —
+			 * `&hearts;` stays `&hearts;` in a Latin-1 document. */
+			p += nEat;
+			continue;
+		}
 		if( p > runStart ){ ph7_result_string(pCtx,(const char *)runStart,(int)(p-runStart)); }
-		{
+		if( iCs == PH7_HTML_CS_LATIN1 ){
+			char zByte = (char)cp;
+			ph7_result_string(pCtx,&zByte,1);
+		}else{
 			char zBuf[4];
 			int n = HtmlCpUtf8(cp,zBuf);
 			ph7_result_string(pCtx,zBuf,n);
@@ -888,22 +914,35 @@ PH7_PRIVATE void HtmlUnescape(ph7_context *pCtx,const char *zIn,int nIn,
 	}
 	if( zEnd > runStart ){ ph7_result_string(pCtx,(const char *)runStart,(int)(zEnd-runStart)); }
 }
-/* Validate the optional charset argument at apArg[idx]: UTF-8 aliases (and
- * ""/NULL meaning the default) are accepted; anything else — including
- * php-supported single-byte charsets like ISO-8859-1, PHL is UTF-8-only by
- * policy — raises PHP's unsupported-charset warning and is treated as
- * UTF-8 (ph7_context_throw_error_format prepends the function name). */
-PH7_PRIVATE void HtmlCheckCharset(ph7_context *pCtx,int nArg,ph7_value **apArg,int idx){
+/* Resolve the optional charset argument at apArg[idx] to a PH7_HTML_CS_* code.
+ *
+ * The argument was SCREENED and then dropped: every charset but UTF-8 warned and
+ * was answered in UTF-8, so `htmlentities($s, ENT_QUOTES, 'ISO-8859-1')` — the
+ * ordinary call for a Latin-1 page — answered a table of 253 rows where php
+ * answers 101, encoded a Latin-1 byte as a broken UTF-8 sequence, and decoded
+ * `&eacute;` to two bytes where php writes one.
+ *
+ * ISO-8859-1 is a real charset here now (one byte per character, and its VALUE is
+ * the code point). php also supports several other single-byte charsets and the
+ * Asian multibyte ones; those stay behind the same UTF-8/Latin-1/ASCII scope cut
+ * the mb_ and iconv work draws, and keep php's own unsupported-charset warning. */
+PH7_PRIVATE int HtmlCheckCharset(ph7_context *pCtx,int nArg,ph7_value **apArg,int idx){
 	const char *zCs;
 	int nCs;
-	if( nArg <= idx || ph7_value_is_null(apArg[idx]) ){ return; }
+	if( nArg <= idx || ph7_value_is_null(apArg[idx]) ){ return PH7_HTML_CS_UTF8; }
 	zCs = ph7_value_to_string(apArg[idx],&nCs);
-	if( nCs == 0 ){ return; } /* "" selects the default charset (UTF-8) */
+	if( nCs == 0 ){ return PH7_HTML_CS_UTF8; } /* "" selects the default charset */
 	if( nCs == 5 && SyStrnicmp(zCs,"UTF-8",5) == 0 ){
-		return; /* php accepts only "UTF-8" (any case) silently — "UTF8" warns */
+		return PH7_HTML_CS_UTF8; /* php accepts only "UTF-8" (any case) silently — "UTF8" warns */
+	}
+	/* php's own alias set for Latin-1, matched the way php matches it. */
+	if( (nCs == 10 && SyStrnicmp(zCs,"ISO-8859-1",10) == 0)
+	 || (nCs == 9  && SyStrnicmp(zCs,"ISO8859-1",9) == 0) ){
+		return PH7_HTML_CS_LATIN1;
 	}
 	ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
 		"Charset \"%.*s\" is not supported, assuming UTF-8",nCs,zCs);
+	return PH7_HTML_CS_UTF8;
 }
 /* get_html_translation_table() worker: character (UTF-8 bytes) => entity.
  * The five specials come first in byte order, then — for HTML_ENTITIES with a
@@ -914,7 +953,7 @@ static void HtmlTableAdd(ph7_value *pArray,ph7_value *pValue,const char *zKey,co
 	ph7_array_add_strkey_elem(pArray,zKey,pValue);
 	ph7_value_reset_string_cursor(pValue);
 }
-PH7_PRIVATE void HtmlTranslationTable(ph7_context *pCtx,int iTable,int iFlags){
+PH7_PRIVATE void HtmlTranslationTable(ph7_context *pCtx,int iTable,int iFlags,int iCs){
 	ph7_value *pArray,*pValue;
 	int iDoc = iFlags & PH7_ENT_DOC_MASK;
 	sxu32 n;
@@ -939,7 +978,19 @@ PH7_PRIVATE void HtmlTranslationTable(ph7_context *pCtx,int iTable,int iFlags){
 	if( iTable != 0 /*php: any non-HTML_SPECIALCHARS table => entities*/ && HtmlDocHasNamedTable(iDoc) ){
 		char zKey[8];
 		for( n = 0 ; n < SX_ARRAYSIZE(aHtml401Ent) ; n++ ){
-			int nK = HtmlCpUtf8(aHtml401Ent[n].cp,zKey);
+			int nK;
+			if( iCs == PH7_HTML_CS_LATIN1 ){
+				/* One byte per character, and only the characters the charset HAS:
+				 * php's Latin-1 table is the 96 rows below U+0100 plus the
+				 * specials, 101 in all. */
+				if( aHtml401Ent[n].cp > 0xFF ){
+					continue;
+				}
+				zKey[0] = (char)aHtml401Ent[n].cp;
+				nK = 1;
+			}else{
+				nK = HtmlCpUtf8(aHtml401Ent[n].cp,zKey);
+			}
 			zKey[nK] = 0;
 			HtmlTableAdd(pArray,pValue,zKey,aHtml401Ent[n].zEnt);
 		}

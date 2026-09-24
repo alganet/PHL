@@ -4283,10 +4283,15 @@ PH7_PRIVATE int PH7_builtin_vsprintf(ph7_context *pCtx,int nArg,ph7_value **apAr
 #ifndef PH7_DISABLE_BUILTIN_FUNC
 /* HTML entity escape engine: shared by the htmlspecialchars/htmlentities
  * family (builtin.c) and filter_var's SANITIZE filters (builtin_parse.c). */
-PH7_PRIVATE void HtmlEscape(ph7_context *pCtx,const char *zIn,int nIn,int iFlags,int bAll,int bDoubleEncode);
-PH7_PRIVATE void HtmlUnescape(ph7_context *pCtx,const char *zIn,int nIn,int iFlags,int bFull);
-PH7_PRIVATE void HtmlCheckCharset(ph7_context *pCtx,int nArg,ph7_value **apArg,int idx);
-PH7_PRIVATE void HtmlTranslationTable(ph7_context *pCtx,int iTable,int iFlags);
+/* The charsets the HTML entity family models: php's own UTF-8 and ISO-8859-1
+ * (one byte per character, its VALUE the code point). Everything else keeps
+ * php's unsupported-charset warning. */
+#define PH7_HTML_CS_UTF8   0
+#define PH7_HTML_CS_LATIN1 1
+PH7_PRIVATE void HtmlEscape(ph7_context *pCtx,const char *zIn,int nIn,int iFlags,int bAll,int bDoubleEncode,int iCs);
+PH7_PRIVATE void HtmlUnescape(ph7_context *pCtx,const char *zIn,int nIn,int iFlags,int bFull,int iCs);
+PH7_PRIVATE int HtmlCheckCharset(ph7_context *pCtx,int nArg,ph7_value **apArg,int idx);
+PH7_PRIVATE void HtmlTranslationTable(ph7_context *pCtx,int iTable,int iFlags,int iCs);
 PH7_PRIVATE int PH7_builtin_filter_var(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_filter_input(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_ctype_alnum(ph7_context *pCtx,int nArg,ph7_value **apArg);

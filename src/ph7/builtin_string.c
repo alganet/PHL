@@ -1473,7 +1473,7 @@ PH7_PRIVATE int PH7_builtin_htmlspecialchars(ph7_context *pCtx,int nArg,ph7_valu
 {
 	int iFlags = PH7_ENT_DEFAULT; /* ENT_QUOTES|ENT_SUBSTITUTE|ENT_HTML401 */
 	const char *zIn;
-	int nLen,bDouble = 1;
+	int nLen,bDouble = 1,iCs;
 	/* php coerces a scalar argument to string here (weak mode); the shared ZPP
 	 * screen in vm.c has already rejected the values that cannot coerce. */
 	if( nArg < 1 ){
@@ -1486,11 +1486,11 @@ PH7_PRIVATE int PH7_builtin_htmlspecialchars(ph7_context *pCtx,int nArg,ph7_valu
 	if( nArg > 1 ){
 		iFlags = ph7_value_to_int(apArg[1]);
 	}
-	HtmlCheckCharset(pCtx,nArg,apArg,2);
+	iCs = HtmlCheckCharset(pCtx,nArg,apArg,2);
 	if( nArg > 3 ){
 		bDouble = ph7_value_to_bool(apArg[3]);
 	}
-	HtmlEscape(pCtx,zIn,nLen,iFlags,0,bDouble);
+	HtmlEscape(pCtx,zIn,nLen,iFlags,0,bDouble,iCs);
 	return PH7_OK;
 }
 /*
@@ -1517,7 +1517,9 @@ PH7_PRIVATE int PH7_builtin_htmlspecialchars_decode(ph7_context *pCtx,int nArg,p
 	if( nArg > 1 ){
 		iFlags = ph7_value_to_int(apArg[1]);
 	}
-	HtmlUnescape(pCtx,zIn,nLen,iFlags,0);
+	/* htmlspecialchars_decode() takes no charset: the five specials are ASCII in
+	 * every charset php models here. */
+	HtmlUnescape(pCtx,zIn,nLen,iFlags,0,PH7_HTML_CS_UTF8);
 	return PH7_OK;
 }
 /*
@@ -1538,8 +1540,7 @@ PH7_PRIVATE int PH7_builtin_get_html_translation_table(ph7_context *pCtx,int nAr
 	if( nArg > 1 ){
 		iFlags = ph7_value_to_int(apArg[1]);
 	}
-	HtmlCheckCharset(pCtx,nArg,apArg,2);
-	HtmlTranslationTable(pCtx,iTable,iFlags);
+	HtmlTranslationTable(pCtx,iTable,iFlags,HtmlCheckCharset(pCtx,nArg,apArg,2));
 	return PH7_OK;
 }
 /*
@@ -1554,7 +1555,7 @@ PH7_PRIVATE int PH7_builtin_htmlentities(ph7_context *pCtx,int nArg,ph7_value **
 {
 	int iFlags = PH7_ENT_DEFAULT; /* ENT_QUOTES|ENT_SUBSTITUTE|ENT_HTML401 */
 	const char *zIn;
-	int nLen,bDouble = 1;
+	int nLen,bDouble = 1,iCs;
 	/* php coerces a scalar argument to string here (weak mode); the shared ZPP
 	 * screen in vm.c has already rejected the values that cannot coerce. */
 	if( nArg < 1 ){
@@ -1567,11 +1568,11 @@ PH7_PRIVATE int PH7_builtin_htmlentities(ph7_context *pCtx,int nArg,ph7_value **
 	if( nArg > 1 ){
 		iFlags = ph7_value_to_int(apArg[1]);
 	}
-	HtmlCheckCharset(pCtx,nArg,apArg,2);
+	iCs = HtmlCheckCharset(pCtx,nArg,apArg,2);
 	if( nArg > 3 ){
 		bDouble = ph7_value_to_bool(apArg[3]);
 	}
-	HtmlEscape(pCtx,zIn,nLen,iFlags,1,bDouble);
+	HtmlEscape(pCtx,zIn,nLen,iFlags,1,bDouble,iCs);
 	return PH7_OK;
 }
 /*
@@ -1599,8 +1600,7 @@ PH7_PRIVATE int PH7_builtin_html_entity_decode(ph7_context *pCtx,int nArg,ph7_va
 	if( nArg > 1 ){
 		iFlags = ph7_value_to_int(apArg[1]);
 	}
-	HtmlCheckCharset(pCtx,nArg,apArg,2);
-	HtmlUnescape(pCtx,zIn,nLen,iFlags,1);
+	HtmlUnescape(pCtx,zIn,nLen,iFlags,1,HtmlCheckCharset(pCtx,nArg,apArg,2));
 	return PH7_OK;
 }
 /*
