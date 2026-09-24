@@ -4077,6 +4077,15 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 			}else if( nName == sizeof("log_errors")-1
 			 && SyMemcmp(zName,"log_errors",nName) == 0 ){
 				pVm->bLogErrors = VmIniBool(zValue,nValue);
+			}else if( nName == sizeof("include_path")-1
+			 && SyMemcmp(zName,"include_path",nName) == 0
+			 && nValue > 0 ){
+				/* The path SET is the store this directive names, and the INI
+				 * chunk's seed is lazy -- so `-d include_path=…` has to reach it
+				 * here or a script that never touches the INI API keeps looking
+				 * in the default directory. Empty is refused, as php's
+				 * OnUpdateStringUnempty refuses it. */
+				PH7_VmSetIncludePath(pVm,zValue,nValue);
 			}
 		}
 		break;

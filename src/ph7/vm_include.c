@@ -428,6 +428,78 @@ static sxi32 VmExecIncludedFile(
 	return rc;
 }
 /*
+ * php keeps include_path in ONE place -- the INI table -- and get_include_path(),
+ * ini_get('include_path'), ini_get_all() and the resolver all read that one string.
+ * PHL had TWO: pVm->aPaths, which is what the include walk actually uses and which
+ * only set_include_path() ever wrote, and the `include_path` INI slot, which is what
+ * ini_get() answers and which only ini_set()/-d ever wrote. Neither told the other,
+ * so `ini_set('include_path', $dir)` -- the ordinary way a bootstrap file points the
+ * engine at a library -- moved NOTHING, and `set_include_path($dir)` left ini_get()
+ * naming the value that was no longer in force. The set below is the single store;
+ * the INI slot is a view of it (vm_builtin_ini.c).
+ */
+PH7_PRIVATE int PH7_VmIncludePathSep(void)
+{
+#ifdef __WINNT__
+	return ';';
+#else
+	/* Assume UNIX path separator */
+	return ':';
+#endif
+}
+/*
+ * Split an include_path STRING into its segments and make them the VM's set.
+ *
+ * Segments are kept VERBATIM. php hands back the string it was given, so a
+ * trailing slash, a leading space and an EMPTY segment all survive the round trip
+ * -- and the walk means something for each of them: php builds "<segment>/<file>"
+ * from every entry, which is how an empty segment comes to try "/file".
+ */
+PH7_PRIVATE void PH7_VmSetIncludePath(ph7_vm *pVm,const char *zPath,sxu32 nByte)
+{
+	const char *z,*zEnd,*zDup;
+	int dir_sep = PH7_VmIncludePathSep();
+	SySetReset(&pVm->aPaths);
+	if( nByte < 1 ){
+		return;
+	}
+	/* ONE VM-lifetime copy backs every segment (the SyString entries alias it),
+	 * where the old splitter duped each segment separately on every call. */
+	zDup = (const char *)SyMemBackendDup(&pVm->sAllocator,zPath,nByte);
+	if( zDup == 0 ){
+		return;
+	}
+	z = zDup;
+	zEnd = &zDup[nByte];
+	for(;;){
+		const char *zStart = z;
+		SyString sPath;
+		while( z < zEnd && (int)z[0] != dir_sep ){ z++; }
+		SyStringInitFromBuf(&sPath,zStart,(sxu32)(z-zStart));
+		SySetPut(&pVm->aPaths,(const void *)&sPath);
+		if( z >= zEnd ){
+			break;
+		}
+		z++; /* skip the separator */
+	}
+}
+/*
+ * Join the set back into php's one string. Splitting on the separator and
+ * joining with it round-trips exactly, which is what ini_get() promises.
+ */
+PH7_PRIVATE void PH7_VmGetIncludePath(ph7_vm *pVm,SyBlob *pOut)
+{
+	SyString *aEntry = (SyString *)SySetBasePtr(&pVm->aPaths);
+	char cSep = (char)PH7_VmIncludePathSep();
+	sxu32 n;
+	for( n = 0 ; n < SySetUsed(&pVm->aPaths) ; n++ ){
+		if( n > 0 ){
+			SyBlobAppend(pOut,(const void *)&cSep,sizeof(char));
+		}
+		SyBlobAppend(pOut,aEntry[n].zString,aEntry[n].nByte);
+	}
+}
+/*
  * string get_include_path(void)
  *  Gets the current include_path configuration option.
  * Parameter
@@ -437,29 +509,19 @@ static sxi32 VmExecIncludedFile(
  */
 PH7_PRIVATE int vm_builtin_get_include_path(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_vm *pVm = pCtx->pVm;
-	SyString *aEntry;
-	int dir_sep;
-	sxu32 n;
-#ifdef __WINNT__
-	dir_sep = ';';
-#else
-	/* Assume UNIX path separator */
-	dir_sep = ':';
-#endif
+	SyBlob sOut;
 	SXUNUSED(nArg); /* cc warning */
 	SXUNUSED(apArg);
-	/* Point to the list of import paths */
-	aEntry = (SyString *)SySetBasePtr(&pVm->aPaths);
-	for( n = 0 ; n < SySetUsed(&pVm->aPaths) ; n++ ){
-		SyString *pEntry = &aEntry[n];
-		if( n > 0 ){
-			/* Append dir seprator */
-			ph7_result_string(pCtx,(const char *)&dir_sep,sizeof(char));
-		}
-		/* Append path */
-		ph7_result_string(pCtx,pEntry->zString,(int)pEntry->nByte);
+	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+	PH7_VmGetIncludePath(pCtx->pVm,&sOut);
+	/* php's answer is always a STRING: an empty set is "", never NULL, which is
+	 * what this used to leave behind when nothing had ever been appended. */
+	if( SyBlobLength(&sOut) < 1 ){
+		ph7_result_string(pCtx,"",0);
+	}else{
+		ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
 	}
+	SyBlobRelease(&sOut);
 	return PH7_OK;
 }
 /*
@@ -470,50 +532,32 @@ PH7_PRIVATE int vm_builtin_get_include_path(ph7_context *pCtx,int nArg,ph7_value
 PH7_PRIVATE int vm_builtin_set_include_path(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
-	SyString *aEntry;
-	const char *zNew, *z, *zEnd;
-	int dir_sep, nLen;
-	sxu32 n;
-#ifdef __WINNT__
-	dir_sep = ';';
-#else
-	dir_sep = ':';
-#endif
-	/* Build the OLD include_path first: it is this call's return value */
-	aEntry = (SyString *)SySetBasePtr(&pVm->aPaths);
-	for( n = 0 ; n < SySetUsed(&pVm->aPaths) ; n++ ){
-		if( n > 0 ){ ph7_result_string(pCtx,(const char *)&dir_sep,sizeof(char)); }
-		ph7_result_string(pCtx,aEntry[n].zString,(int)aEntry[n].nByte);
-	}
+	const char *zNew;
+	int nLen = 0;
+	SyBlob sOld;
 	if( nArg < 1 ){
 		return PH7_OK;
 	}
-	/* Replace the path set with the separated segments of the new value.
-	 * Segments are duped into the VM allocator (reclaimed at VM teardown) so
-	 * the SyString entries stay valid, mirroring the config-time literals. */
+	/* The OLD value php answers is the effective one, read before the write. */
+	SyBlobInit(&sOld,&pVm->sAllocator);
+	PH7_VmGetIncludePath(pVm,&sOld);
 	zNew = ph7_value_to_string(apArg[0],&nLen);
-	SySetReset(&pVm->aPaths);
-	z = zNew; zEnd = &zNew[nLen];
-	while( z < zEnd ){
-		const char *zStart = z;
-		SyString sPath;
-		while( z < zEnd && (int)z[0] != dir_sep ){ z++; }
-		if( z > zStart ){
-			char *zDup = (char *)SyMemBackendDup(&pVm->sAllocator,zStart,(sxu32)(z-zStart));
-			if( zDup ){
-				SyStringInitFromBuf(&sPath,zDup,(sxu32)(z-zStart));
-#ifdef __WINNT__
-				SyStringTrimTrailingChar(&sPath,'\\');
-#endif
-				SyStringTrimTrailingChar(&sPath,'/');
-				SyStringFullTrim(&sPath);
-				if( sPath.nByte > 0 ){
-					SySetPut(&pVm->aPaths,(const void *)&sPath);
-				}
-			}
-		}
-		if( z < zEnd ){ z++; } /* skip the separator */
+	if( nLen < 1 ){
+		/* php registers include_path with OnUpdateStringUnempty, so the EMPTY
+		 * string is refused outright: the directive keeps the value it had and
+		 * the call answers FALSE. PHL used to accept it, wiping the set and
+		 * leaving get_include_path() with nothing to answer. */
+		SyBlobRelease(&sOld);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
 	}
+	PH7_VmSetIncludePath(pVm,zNew,(sxu32)nLen);
+	if( SyBlobLength(&sOld) < 1 ){
+		ph7_result_string(pCtx,"",0);
+	}else{
+		ph7_result_string(pCtx,(const char *)SyBlobData(&sOld),(int)SyBlobLength(&sOld));
+	}
+	SyBlobRelease(&sOld);
 	return PH7_OK;
 }
 /*

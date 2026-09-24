@@ -243,6 +243,12 @@ static void IniLiveGet(ph7_vm *pVm,VmIniSlot *pSlot,SyBlob *pOut)
 		SyBlobAppend(pOut,SyBlobData(&pVm->sSessPath),SyBlobLength(&pVm->sSessPath));
 		return;
 	}
+	if( IniNameIs(pSlot,"include_path") ){
+		/* The VM's path SET is the store; this directive is a view of it, so
+		 * ini_get() and get_include_path() can never name different paths. */
+		PH7_VmGetIncludePath(pVm,pOut);
+		return;
+	}
 	SyBlobAppend(pOut,SyBlobData(&pSlot->sLocal),SyBlobLength(&pSlot->sLocal));
 }
 /*
@@ -277,6 +283,13 @@ static void IniLiveSet(ph7_vm *pVm,VmIniSlot *pSlot,const char *zVal,sxu32 nVal)
 		}
 		SyBlobReset(pDst);
 		SyBlobAppend(pDst,zVal,nLen);
+		return;
+	}
+	if( IniNameIs(pSlot,"include_path") ){
+		/* The one write that moves the include walk. Refused empty by the caller
+		 * (php's OnUpdateStringUnempty), so nVal is never 0 on the ini_set() path;
+		 * the boot/-d and ini_restore() paths carry a real value too. */
+		PH7_VmSetIncludePath(pVm,zVal,nVal);
 		return;
 	}
 	if( IniNameIs(pSlot,"date.timezone") ){
@@ -380,6 +393,13 @@ static int vm_builtin_ini_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		nVal = (int)SyStrlen(zVal);
 	}else{
 		zVal = ph7_value_to_string(apArg[1],&nVal);
+	}
+	if( nVal < 1 && IniNameIs(pSlot,"include_path") ){
+		/* php registers include_path with OnUpdateStringUnempty: the EMPTY value
+		 * is refused, the directive keeps what it had, and the call is FALSE. */
+		SyBlobRelease(&sOld);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
 	}
 	SyBlobReset(&pSlot->sLocal);
 	SyBlobAppend(&pSlot->sLocal,zVal,(sxu32)nVal);
