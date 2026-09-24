@@ -413,6 +413,9 @@ PH7_PRIVATE int vm_builtin_restore_error_handler(ph7_context *pCtx,int nArg,ph7_
 	pNew = &pVm->aErrCB[1];
 	SXUNUSED(nArg); /* cc warning */
 	SXUNUSED(apArg);
+	/* The popped handler's $error_levels goes with it, in both arms below. */
+	pVm->aErrCBLevels[1] = pVm->aErrCBLevels[0];
+	pVm->aErrCBLevels[0] = PH7_E_ALL_MASK;
 	if( pOld->iFlags & MEMOBJ_NULL ){
 		/* Nothing SAVED underneath — but php pops the handler stack regardless, so the
 		 * ACTIVE handler must still go (reporting reverts to the engine's own). Returning
@@ -461,30 +464,56 @@ PH7_PRIVATE int vm_builtin_restore_error_handler(ph7_context *pCtx,int nArg,ph7_
  *  Note:
  *   NULL may be passed instead, to reset this handler to its default state.
  * Return
- *  Returns the name of the previously defined error handler, or NULL on error.
- *  If no previous handler was defined, NULL is also returned. If NULL is passed
- *  resetting the handler to its default state, TRUE is returned.
+ *  The handler that was ACTIVE before this call, or NULL when there was none --
+ *  including for the `null` reset, which php pushes onto the handler stack like
+ *  any other value rather than treating as a failure.
  */
 PH7_PRIVATE int vm_builtin_set_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_value *pOld,*pNew;
+	sxi64 iLevels;
 	/* Point to the old and the new handler */
 	pOld = &pVm->aErrCB[0];
 	pNew = &pVm->aErrCB[1];
-	/* Return the old handler */
-	ph7_result_value(pCtx,pOld); /* Will make it's own copy */
-	if( nArg > 0 ){
-		if( !ph7_value_is_callable(apArg[0])) {
-			/* Not callable,return TRUE (As requested by the PHP specification) */
-			PH7_MemObjRelease(pNew);
-			ph7_result_bool(pCtx,1);
-		}else{
-			PH7_MemObjStore(pNew,pOld);
-			/* Install the new handler */
-			PH7_MemObjStore(apArg[0],pNew);
+	/* php answers the handler this call REPLACES -- the active slot, not the one
+	 * saved under it. Returning the saved slot answered the handler from one
+	 * level further down (and NULL for the very first replacement of a handler
+	 * that was really there). */
+	if( ph7_value_is_callable(pNew) ){
+		ph7_result_value(pCtx,pNew); /* Will make it's own copy */
+	}else{
+		ph7_result_null(pCtx);
+	}
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	/* $error_levels rides WITH the handler: it is read at full width (php ANDs
+	 * a zend_long, so 2^32+1024 still selects E_USER_NOTICE) and pushed onto
+	 * the same two-deep stack, so restore_error_handler() pops both. */
+	iLevels = nArg > 1 ? ph7_value_to_int64(apArg[1]) : PH7_E_ALL_MASK;
+	if( !ph7_value_is_null(apArg[0]) ){
+		/* php REFUSES anything else that cannot be called, naming why. PH7
+		 * answered TRUE and kept the old handler, so a misspelled handler name
+		 * left the program reporting through the engine's own path in silence. */
+		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[0],1,"callback",1);
+		if( rcCb != PH7_OK ){
+			return rcCb;
 		}
 	}
+	/* Push. A `null` argument is a real stack entry: it silences the handler
+	 * until a restore_error_handler() pops it and brings the previous one --
+	 * with ITS levels -- back. */
+	PH7_MemObjStore(pNew,pOld);
+	pVm->aErrCBLevels[0] = pVm->aErrCBLevels[1];
+	if( ph7_value_is_null(apArg[0]) ){
+		PH7_MemObjRelease(pNew);
+		MemObjSetType(pNew,MEMOBJ_NULL);
+	}else{
+		/* Install the new handler */
+		PH7_MemObjStore(apArg[0],pNew);
+	}
+	pVm->aErrCBLevels[1] = iLevels;
 	return PH7_OK;
 }
 /*

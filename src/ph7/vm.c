@@ -2170,6 +2170,7 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	PH7_MemObjInit(&(*pVm),&pVm->aExceptionCB[1]);
 	PH7_MemObjInit(&(*pVm),&pVm->aErrCB[0]);
 	PH7_MemObjInit(&(*pVm),&pVm->aErrCB[1]);
+	pVm->aErrCBLevels[0] = pVm->aErrCBLevels[1] = PH7_E_ALL_MASK;
 	PH7_MemObjInit(&(*pVm),&pVm->sAssertCallback);
 	/* Recursion policy (BYTECODE.md stage 5). PHP call depth is heap-bound since
 	 * the iterative executor, so the host default is UNBOUNDED (0) — real PHP runs
@@ -3184,6 +3185,7 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	VmReinitMemObj(&(*pVm),&pVm->aExceptionCB[1]);
 	VmReinitMemObj(&(*pVm),&pVm->aErrCB[0]);
 	VmReinitMemObj(&(*pVm),&pVm->aErrCB[1]);
+	pVm->aErrCBLevels[0] = pVm->aErrCBLevels[1] = PH7_E_ALL_MASK;
 	VmReinitMemObj(&(*pVm),&pVm->sAssertCallback);
 	pVm->json_rc = JSON_ERROR_NONE;
 #ifdef PH7_ENABLE_PCRE
@@ -3764,7 +3766,7 @@ PH7_PRIVATE sxi32 PH7_VmConfigure(
 	case PH7_VM_CONFIG_ERR_REPORT:
 		/* Run-Time Error report */
 		pVm->bErrReport = 1;
-		pVm->iErrMask = 30719; /* E_ALL (php 8: E_STRICT/2048 is no longer part of E_ALL) */
+		pVm->iErrMask = PH7_E_ALL_MASK; /* E_ALL (php 8: E_STRICT/2048 is no longer part of E_ALL) */
 		break;
 	case PH7_VM_CONFIG_RECURSION_DEPTH:{
 		/* PHP call-depth cap (OP_CALL frames). The host default is UNBOUNDED

@@ -88,7 +88,13 @@ static sxi32 VmCallErrorHandler(ph7_vm *pVm,SyBlob *pMsg)
  */
 static sxi32 VmInvokeErrorHandler(ph7_vm *pVm, sxi32 iErr, const char *zMessage, sxi32 nLen, SyString *pFile, sxi32 iLine)
 {
-	if( ph7_value_is_callable(&pVm->aErrCB[1]) ){
+	/* A handler is only called for the levels it was REGISTERED for. php ANDs
+	 * set_error_handler()'s $error_levels against the error's own bit and, when
+	 * it misses, does NOT walk down to an outer handler -- the diagnostic falls
+	 * straight through to the engine's own reporting, which is what returning
+	 * TRUE below means. */
+	if( ph7_value_is_callable(&pVm->aErrCB[1])
+	 && (pVm->aErrCBLevels[1] & (sxi64)PH7_VmErrPhpBit(iErr)) != 0 ){
 		ph7_value apArg[4];
 		ph7_value *apArgPtr[4];
 		ph7_value sResult;
@@ -170,33 +176,34 @@ static sxi32 VmInvokeErrorHandler(ph7_vm *pVm, sxi32 iErr, const char *zMessage,
  * level reported everything and `error_reporting(E_ALL & ~E_DEPRECATED)` still printed
  * every deprecation.
  */
+PH7_PRIVATE sxi32 PH7_VmErrPhpBit(sxi32 iErr)
+{
+	switch( iErr ){
+	case PH7_CTX_WARNING:            /* == 2 == E_WARNING */
+		return 2;
+	case 512  /* E_USER_WARNING */:
+		return 512;
+	case PH7_CTX_NOTICE:             /* 3 */
+	case 8    /* E_NOTICE */:
+		return 8;
+	case 1024 /* E_USER_NOTICE */:
+		return 1024;
+	case 8192 /* E_DEPRECATED */:
+		return 8192;
+	case 16384 /* E_USER_DEPRECATED */:
+		return 16384;
+	case 256  /* E_USER_ERROR */:
+		return 256;
+	default:
+		return 1; /* E_ERROR and everything else fatal-ish */
+	}
+}
 static int VmErrReportWants(ph7_vm *pVm,sxi32 iErr)
 {
-	sxi32 iBit;
 	if( !pVm->bErrReport ){
 		return 0;
 	}
-	switch( iErr ){
-	case PH7_CTX_WARNING:            /* == 2 == E_WARNING */
-		iBit = 2; break;
-	case 512  /* E_USER_WARNING */:
-		iBit = 512; break;
-	case PH7_CTX_NOTICE:             /* 3 */
-	case 8    /* E_NOTICE */:
-		iBit = 8; break;
-	case 1024 /* E_USER_NOTICE */:
-		iBit = 1024; break;
-	case 8192 /* E_DEPRECATED */:
-		iBit = 8192; break;
-	case 16384 /* E_USER_DEPRECATED */:
-		iBit = 16384; break;
-	case 256  /* E_USER_ERROR */:
-		iBit = 256; break;
-	default:
-		iBit = 1; /* E_ERROR and everything else fatal-ish */
-		break;
-	}
-	return (pVm->iErrMask & iBit) != 0;
+	return (pVm->iErrMask & PH7_VmErrPhpBit(iErr)) != 0;
 }
 static const char * VmDiagnosticLabel(sxi32 iErr)
 {

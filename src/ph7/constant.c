@@ -480,7 +480,7 @@ static void PH7_E_USER_DEPRECATED_Const(ph7_value *pVal,void *pUserData)
  */
 static void PH7_E_ALL_Const(ph7_value *pVal,void *pUserData)
 {
-	ph7_value_int(pVal,30719);
+	ph7_value_int(pVal,PH7_E_ALL_MASK);
 	SXUNUSED(pUserData);
 }
 /*

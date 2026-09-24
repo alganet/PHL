@@ -847,6 +847,11 @@ struct VmFrame
 #define VM_FRAME_THROW      0x02 /* An exception was thrown */
 #define VM_FRAME_CATCH      0x04 /* Catch frame */
 /*
+ * php 8's E_ALL. The default of error_reporting() AND of set_error_handler()'s
+ * $error_levels, so both read it from here (E_STRICT/2048 left the set in php 8).
+ */
+#define PH7_E_ALL_MASK 30719
+/*
  * Suspendable execution context.
  * Used by Fiber and Generator to save/restore execution state.
  */
@@ -2261,6 +2266,11 @@ struct ph7_vm
 	ph7_value sExec;           /* Compiled script return value [Can be extracted via the PH7_VM_CONFIG_EXEC_VALUE directive]*/
 	ph7_value aExceptionCB[2]; /* Installed exception handler callbacks via [set_exception_handler()] */
 	ph7_value aErrCB[2];       /* Installed error handler callback via [set_error_handler()] */
+	sxi64 aErrCBLevels[2];     /* $error_levels mask of each aErrCB[] slot: a handler is only
+	                            * called for the levels it was REGISTERED for, and every other
+	                            * one falls through to the engine's own reporting. Read at full
+	                            * width -- php ANDs a zend_long, so 2^32+1024 still selects
+	                            * E_USER_NOTICE. */
 	void *pStdin;              /* STDIN IO stream */
 	void *pStdout;             /* STDOUT IO stream */
 	void *pStderr;             /* STDERR IO stream */
@@ -3991,6 +4001,7 @@ PH7_PRIVATE VmOpRc VmExecOpNew(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr);
 PH7_PRIVATE VmOpRc VmExecOpForeachInit(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr);
 PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr);
 /* vm_error.c — error/diagnostics/type-enforcement machinery shared with vm.c */
+PH7_PRIVATE sxi32 PH7_VmErrPhpBit(sxi32 iErr);
 PH7_PRIVATE void VmGetFrameContext(ph7_vm *pVm,const char **pzFuncName,int *pnFuncLen);
 PH7_PRIVATE sxi32 VmEnterFrame(ph7_vm *pVm,void *pUserData,ph7_class_instance *pThis,VmFrame **ppFrame);
 PH7_PRIVATE void VmExcRelease(ph7_vm *pVm,ph7_exception *pExc);
