@@ -1500,19 +1500,33 @@ PH7_PRIVATE sxi32 PH7_CompileForeach(ph7_gen_state *pGen)
 		}
 		return SXRET_OK;
 	}
-	/* Compile the array expression */
+	/* Compile the array expression.
+	 *
+	 * The separator is the first TOP-LEVEL `as`: one nested inside brackets, parens
+	 * or braces belongs to something else the iterated expression contains — a
+	 * closure with a `foreach` of its own is the shape that finds this, and cutting
+	 * at its inner `as` left the outer expression with an unclosed bracket and made
+	 * `foreach ([function(){ foreach ([1] as $k) … }] as $f)` a compile fatal on
+	 * source php runs. An `as` that is part of a NAME ($as, $o->as, A::as) is not a
+	 * separator either. */
 	pCur = pGen->pIn;
-	while( pCur < pEnd ){
-		if( pCur->nType & PH7_TK_KEYWORD ){
-			sxi32 nKeywrd = SX_PTR_TO_INT(pCur->pUserData);
-			if( nKeywrd == PH7_TKWRD_AS && !GenStateKeywordIsName(pGen->pIn,pCur) ){
-				/* Break with the first 'as' that is the SEPARATOR — one that is
-				 * part of a name ($as, $o->as, A::as) is not one. */
-				break;
+	{
+		sxi32 iNest = 0;
+		while( pCur < pEnd ){
+			if( pCur->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+				iNest++;
+			}else if( pCur->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+				/* A mismatch here is the expression parser's to report. */
+				iNest--;
+			}else if( iNest <= 0 && (pCur->nType & PH7_TK_KEYWORD) ){
+				sxi32 nKeywrd = SX_PTR_TO_INT(pCur->pUserData);
+				if( nKeywrd == PH7_TKWRD_AS && !GenStateKeywordIsName(pGen->pIn,pCur) ){
+					break;
+				}
 			}
+			/* Advance the stream cursor */
+			pCur++;
 		}
-		/* Advance the stream cursor */
-		pCur++;
 	}
 	if( pCur <= pGen->pIn ){
 		rc = PH7_GenCompileError(&(*pGen),E_ERROR,pGen->pIn->nLine,
