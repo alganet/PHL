@@ -32,8 +32,11 @@ ini_set("session.gc_maxlifetime", "1");
 session_id($tag);
 session_start();
 $f = $dir . "/sess_" . $tag;
+// The 0600 is a POSIX mode; Windows has no such bits to read back, so only the
+// platform that has them is asked.
 $log[] = "created: " . var_export(file_exists($f), true) . " size=" . filesize($f)
-    . " perm=" . substr(sprintf("%o", fileperms($f)), -4);
+    . " perm=" . (DIRECTORY_SEPARATOR === "/"
+        ? substr(sprintf("%o", fileperms($f)), -4) : "<no posix mode>");
 
 // The collector is the STORE's, so php only reaches it through an open session —
 // and only the sess_ prefix is its business.
