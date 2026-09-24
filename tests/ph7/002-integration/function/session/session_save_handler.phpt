@@ -8,6 +8,13 @@ PH7 / PHP: session_set_save_handler() — a store a program brings of its own, a
 $dir = rtrim(sys_get_temp_dir(), "/") . "/phlsesssh_" . getmypid();
 @mkdir($dir);
 $out = [];
+// Every gc() below must be one this test ASKED for. php's own collector fires from
+// session_start() with probability gc_probability/gc_divisor -- 1/100 by default --
+// and both handlers log their calls, so a spontaneous sweep adds a log line: the
+// second half's create_sid() answers "custom" . count($log), so one extra entry
+// renames the session and this test failed roughly one run in fifty. Pinning the
+// probability is what makes the log a record of what the SCRIPT did.
+ini_set("session.gc_probability", "0");
 
 // Six operations reach the handler: open, read, gc, write, close, destroy.
 class Mem implements SessionHandlerInterface
