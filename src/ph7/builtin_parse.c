@@ -72,6 +72,9 @@
 #define FV_FLAG_NO_RES_RANGE  4194304
 #define FV_FLAG_NO_PRIV_RANGE 8388608
 #define FV_FLAG_GLOBAL_RANGE  536870912
+#define FV_REQUIRE_ARRAY   16777216
+#define FV_REQUIRE_SCALAR  33554432
+#define FV_FORCE_ARRAY     67108864
 #define FV_NULL_ON_FAILURE 134217728
 /* The subset of flags the UNSAFE_RAW/DEFAULT string filter (FvSanitizeString)
  * acts on: when none are set the filter is a verbatim pass-through, so FV_DEFAULT
@@ -1394,9 +1397,9 @@ static void FvSanitizeChars(ph7_context *pCtx,const char *z,int n,int isUrl){
  * else false. A validating filter that passes returns the (string) input
  * unchanged; a sanitizer writes its transformed output directly.
  */
-static int FvApplyFilter(ph7_context *pCtx,ph7_value *pInput,
-                         int iFilter,int iFlags,ph7_value *pOpts,
-                         ph7_value *pDefault,const char *zFunc)
+static int FvApplyFilterRaw(ph7_context *pCtx,ph7_value *pInput,
+                            int iFilter,int iFlags,ph7_value *pOpts,
+                            ph7_value *pDefault,const char *zFunc)
 {
 	int bNull = (iFlags & FV_NULL_ON_FAILURE) ? 1 : 0;
 	const char *zVal; int nVal;
@@ -1521,11 +1524,116 @@ pass: /* validation passed: return the (string) input unchanged */
 	return PH7_OK;
 }
 /*
+ * php applies the "default" option by looking at what the filter ANSWERED, not
+ * at whether it failed: any false (or, under NULL_ON_FAILURE, any null) is
+ * replaced. So `['default' => 'D']` replaces the boolean filter's legitimate
+ * FALSE too, which is the one place the two readings differ.
+ */
+static int FvApplyFilter(ph7_context *pCtx,ph7_value *pInput,
+                         int iFilter,int iFlags,ph7_value *pOpts,
+                         ph7_value *pDefault,const char *zFunc)
+{
+	int rc = FvApplyFilterRaw(pCtx,pInput,iFilter,iFlags,pOpts,pDefault,zFunc);
+	if( rc==PH7_OK && pDefault && pCtx->pRet ){
+		int bNull = (iFlags & FV_NULL_ON_FAILURE) ? 1 : 0;
+		ph7_value *pRet = pCtx->pRet;
+		if( bNull ? ph7_value_is_null(pRet)
+		          : (ph7_value_is_bool(pRet) && pRet->x.iVal==0) ){
+			ph7_result_value(pCtx,pDefault);
+		}
+	}
+	return rc;
+}
+/*
+ * Filter one value into pOut instead of into the call's own result slot. The
+ * filters write through ph7_result_xxx(), so the target is switched by pointing
+ * the context's return slot at pOut for the duration.
+ */
+static int FvApplyFilterInto(ph7_context *pCtx,ph7_value *pIn,ph7_value *pOut,
+                             int iFilter,int iFlags,ph7_value *pOpts,
+                             ph7_value *pDefault,const char *zFunc)
+{
+	ph7_value *pSaved = pCtx->pRet;
+	int rc;
+	pCtx->pRet = pOut;
+	rc = FvApplyFilter(pCtx,pIn,iFilter,iFlags,pOpts,pDefault,zFunc);
+	pCtx->pRet = pSaved;
+	return rc;
+}
+/*
+ * php's recursive walk for an ARRAY input: every element is filtered under the
+ * same filter and flags, KEYS are kept, and a nested array is walked rather
+ * than failed. (php stops at a self-referencing node; the depth cap here is
+ * what stands in for its recursion mark.)
+ */
+typedef struct FvArrayWalk FvArrayWalk;
+struct FvArrayWalk {
+	ph7_context *pCtx;
+	ph7_value *pOut;
+	int iFilter, iFlags, iDepth;
+	ph7_value *pOpts, *pDefault;
+	const char *zFunc;
+	int rc;
+};
+static int FvArrayWalker(ph7_value *pKey,ph7_value *pData,void *pUserData);
+static int FvFilterArrayInto(ph7_context *pCtx,ph7_value *pIn,ph7_value *pOut,
+                             int iFilter,int iFlags,ph7_value *pOpts,
+                             ph7_value *pDefault,const char *zFunc,int iDepth)
+{
+	FvArrayWalk sWalk;
+	sWalk.pCtx = pCtx; sWalk.pOut = pOut;
+	sWalk.iFilter = iFilter; sWalk.iFlags = iFlags; sWalk.iDepth = iDepth;
+	sWalk.pOpts = pOpts; sWalk.pDefault = pDefault; sWalk.zFunc = zFunc;
+	sWalk.rc = PH7_OK;
+	ph7_array_walk(pIn,FvArrayWalker,&sWalk);
+	return sWalk.rc;
+}
+/* The walk is C-recursive, as php's is. php stops at a node it has already
+ * entered (its recursion mark); this cap is the same idea with a number on it,
+ * set to the engine's usual nesting bound so no realistic input reaches it —
+ * and a node AT the cap is copied through unfiltered rather than dropped, which
+ * is what php does with the node its mark stops at. */
+#define FV_MAX_ARRAY_DEPTH 512
+static int FvArrayWalker(ph7_value *pKey,ph7_value *pData,void *pUserData)
+{
+	FvArrayWalk *pWalk = (FvArrayWalk *)pUserData;
+	ph7_context *pCtx = pWalk->pCtx;
+	ph7_value *pElem;
+	int rc;
+	if( ph7_value_is_array(pData) ){
+		if( pWalk->iDepth >= FV_MAX_ARRAY_DEPTH ){
+			ph7_array_add_elem(pWalk->pOut,pKey,pData);
+			return PH7_OK;
+		}
+		pElem = ph7_context_new_array(pCtx);
+		if( pElem == 0 ){ return PH7_OK; }
+		rc = FvFilterArrayInto(pCtx,pData,pElem,pWalk->iFilter,pWalk->iFlags,
+		                       pWalk->pOpts,pWalk->pDefault,pWalk->zFunc,pWalk->iDepth+1);
+	}else{
+		pElem = ph7_context_new_scalar(pCtx);
+		if( pElem == 0 ){ return PH7_OK; }
+		rc = FvApplyFilterInto(pCtx,pData,pElem,pWalk->iFilter,pWalk->iFlags,
+		                       pWalk->pOpts,pWalk->pDefault,pWalk->zFunc);
+	}
+	ph7_array_add_elem(pWalk->pOut,pKey,pElem);
+	ph7_context_release_value(pCtx,pElem);
+	if( rc != PH7_OK ){
+		pWalk->rc = rc;
+		return SXERR_ABORT; /* a filter threw: stop the walk */
+	}
+	return PH7_OK;
+}
+/*
  * Parse the ($filter, $options) pair shared by filter_var()/filter_input() out
  * of apArg[iBase] ($filter) and apArg[iBase+1] ($options): $options is either a
  * plain flags int, or an array with 'flags' and an 'options' sub-array (whose
  * 'default' entry is the fallback value). Fills the four output pointers;
  * unset outputs keep the caller-provided defaults.
+ *
+ * php's own rule for the flags: whichever spelling carries them, a set that
+ * names neither REQUIRE_ARRAY nor FORCE_ARRAY gets REQUIRE_SCALAR added -- so
+ * "no flags at all" means "an array input is a failure", and asking for one of
+ * the array shapes is what turns that off.
  */
 static void FvParseFilterArgs(int nArg,ph7_value **apArg,int iBase,
                               int *piFilter,int *piFlags,
@@ -1534,15 +1642,67 @@ static void FvParseFilterArgs(int nArg,ph7_value **apArg,int iBase,
 	if( nArg>iBase ){ *piFilter = ph7_value_to_int(apArg[iBase]); }
 	if( nArg>iBase+1 ){
 		if( ph7_value_is_array(apArg[iBase+1]) ){
-			ph7_value *pF = ph7_array_fetch(apArg[iBase+1],"flags",(int)sizeof("flags")-1);
-			if( pF ){ *piFlags = (int)PH7_ValuePeekInt64(pF); }
+			ph7_value *pF = ph7_array_fetch(apArg[iBase+1],"filter",(int)sizeof("filter")-1);
+			if( pF ){ *piFilter = (int)PH7_ValuePeekInt64(pF); }
+			pF = ph7_array_fetch(apArg[iBase+1],"flags",(int)sizeof("flags")-1);
+			if( pF ){
+				*piFlags = (int)PH7_ValuePeekInt64(pF);
+				if( (*piFlags & (FV_REQUIRE_ARRAY|FV_FORCE_ARRAY))==0 ){ *piFlags |= FV_REQUIRE_SCALAR; }
+			}
 			*ppOpts = ph7_array_fetch(apArg[iBase+1],"options",(int)sizeof("options")-1);
 			if( *ppOpts && !ph7_value_is_array(*ppOpts) ){ *ppOpts = 0; }
 			if( *ppOpts ){ *ppDefault = ph7_array_fetch(*ppOpts,"default",(int)sizeof("default")-1); }
 		}else{
-			*piFlags = ph7_value_to_int(apArg[iBase+1]);
+			*piFlags = (int)PH7_ValuePeekInt64(apArg[iBase+1]);
+			if( (*piFlags & (FV_REQUIRE_ARRAY|FV_FORCE_ARRAY))==0 ){ *piFlags |= FV_REQUIRE_SCALAR; }
 		}
 	}
+}
+/*
+ * php's php_filter_call: what the ARRAY shape flags decide before any filter
+ * runs. An array input is refused under REQUIRE_SCALAR and walked otherwise; a
+ * scalar input is refused under REQUIRE_ARRAY; and FORCE_ARRAY wraps whatever
+ * the filter answered in a one-element list.
+ */
+static int FvFilterCall(ph7_context *pCtx,ph7_value *pInput,
+                        int iFilter,int iFlags,ph7_value *pOpts,
+                        ph7_value *pDefault,const char *zFunc)
+{
+	if( ph7_value_is_array(pInput) ){
+		ph7_value *pOut;
+		int rc;
+		if( iFlags & FV_REQUIRE_SCALAR ){
+			if( iFlags & FV_NULL_ON_FAILURE ){ ph7_result_null(pCtx); }
+			else{ ph7_result_bool(pCtx,0); }
+			return PH7_OK;
+		}
+		pOut = ph7_context_new_array(pCtx);
+		if( pOut == 0 ){ ph7_result_bool(pCtx,0); return PH7_OK; }
+		rc = FvFilterArrayInto(pCtx,pInput,pOut,iFilter,iFlags,pOpts,pDefault,zFunc,0);
+		if( rc == PH7_OK ){ ph7_result_value(pCtx,pOut); }
+		ph7_context_release_value(pCtx,pOut);
+		return rc;
+	}
+	if( iFlags & FV_REQUIRE_ARRAY ){
+		if( iFlags & FV_NULL_ON_FAILURE ){ ph7_result_null(pCtx); }
+		else{ ph7_result_bool(pCtx,0); }
+		return PH7_OK;
+	}
+	if( iFlags & FV_FORCE_ARRAY ){
+		ph7_value *pOut = ph7_context_new_array(pCtx);
+		ph7_value *pElem = ph7_context_new_scalar(pCtx);
+		int rc;
+		if( pOut == 0 || pElem == 0 ){ ph7_result_bool(pCtx,0); return PH7_OK; }
+		rc = FvApplyFilterInto(pCtx,pInput,pElem,iFilter,iFlags,pOpts,pDefault,zFunc);
+		if( rc == PH7_OK ){
+			ph7_array_add_elem(pOut,0,pElem);
+			ph7_result_value(pCtx,pOut);
+		}
+		ph7_context_release_value(pCtx,pElem);
+		ph7_context_release_value(pCtx,pOut);
+		return rc;
+	}
+	return FvApplyFilter(pCtx,pInput,iFilter,iFlags,pOpts,pDefault,zFunc);
 }
 /*
  * filter_var($value, $filter = FILTER_DEFAULT, $options = 0)
@@ -1550,11 +1710,11 @@ static void FvParseFilterArgs(int nArg,ph7_value **apArg,int iBase,
  */
 PH7_PRIVATE int PH7_builtin_filter_var(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	int iFilter = FV_DEFAULT, iFlags = 0;
+	int iFilter = FV_DEFAULT, iFlags = FV_REQUIRE_SCALAR;
 	ph7_value *pOpts = 0, *pDefault = 0;
 	if( nArg<1 ){ ph7_result_null(pCtx); return PH7_OK; }
 	FvParseFilterArgs(nArg,apArg,1,&iFilter,&iFlags,&pOpts,&pDefault);
-	return FvApplyFilter(pCtx,apArg[0],iFilter,iFlags,pOpts,pDefault,"filter_var");
+	return FvFilterCall(pCtx,apArg[0],iFilter,iFlags,pOpts,pDefault,"filter_var");
 }
 /*
  * filter_input($type, $var_name, $filter = FILTER_DEFAULT, $options = 0)
@@ -1573,7 +1733,7 @@ PH7_PRIVATE int PH7_builtin_filter_var(ph7_context *pCtx,int nArg,ph7_value **ap
  */
 PH7_PRIVATE int PH7_builtin_filter_input(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	int iType, iFilter = FV_DEFAULT, iFlags = 0;
+	int iType, iFilter = FV_DEFAULT, iFlags = FV_REQUIRE_SCALAR;
 	ph7_value *pOpts = 0, *pDefault = 0, *pSuper, *pElem;
 	const char *zVar, *zSuper; int nVar; sxu32 nSuper;
 	if( nArg<2 ){
@@ -1605,7 +1765,7 @@ PH7_PRIVATE int PH7_builtin_filter_input(ph7_context *pCtx,int nArg,ph7_value **
 		else { ph7_result_null(pCtx); }
 		return PH7_OK;
 	}
-	return FvApplyFilter(pCtx,pElem,iFilter,iFlags,pOpts,pDefault,"filter_input");
+	return FvFilterCall(pCtx,pElem,iFilter,iFlags,pOpts,pDefault,"filter_input");
 }
 #endif /* PH7_NEED_BUILTIN_REG */
 #ifdef PH7_NEED_FMT_AND_INI

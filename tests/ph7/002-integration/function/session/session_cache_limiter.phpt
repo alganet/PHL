@@ -31,7 +31,10 @@ $t(fn() => session_cache_expire(-1));
 $t(fn() => session_cache_expire());
 
 $dir = rtrim(sys_get_temp_dir(), "/") . "/phlsesscl_" . getmypid();
-@mkdir($dir);
+/* The handler above is collecting warnings, and a pid can repeat between runs
+ * (it does on the Windows VM), so a leftover directory would put an
+ * `mkdir(): File exists` into the expected output. Ask first. */
+if (!is_dir($dir)) { mkdir($dir); }
 session_save_path($dir);
 session_id("cl" . getmypid());
 session_start();
