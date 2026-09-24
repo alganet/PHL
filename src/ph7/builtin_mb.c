@@ -1237,6 +1237,8 @@ static int PH7_builtin_mb_strpos(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_int64(pCtx,iPos);
 		return PH7_OK;
 	}
+	SyZero(&sH,sizeof(sH));
+	SyZero(&sN,sizeof(sN));
 	rc = MbTextDecode(pCtx,&sH,zH,(sxu32)nH,iEnc,bFold);
 	if( rc == PH7_OK ){
 		rc = MbTextDecode(pCtx,&sN,zN,(sxu32)nN,iEnc,bFold);
@@ -1250,6 +1252,128 @@ static int PH7_builtin_mb_strpos(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}else{
 		ph7_result_int64(pCtx,iPos);
 	}
+	return PH7_OK;
+}
+/* Hand back pText's characters [iFrom,iTo) as the call result: the byte range
+ * they occupy, decoded and re-encoded under UTF-8 (so an ill-formed run inside
+ * it becomes '?', the rule every UTF-8 slice here follows) and copied verbatim
+ * under a one-byte encoding, where a slice is a byte range and nothing else. */
+static void MbResultSlice(ph7_context *pCtx,const mb_text *pText,sxu32 iFrom,sxu32 iTo,int iEnc)
+{
+	sxu32 iOfft = pText->aOfft[iFrom],iEnd = pText->aOfft[iTo];
+	if( iEnc != MB_ENC_UTF8 ){
+		ph7_result_string(pCtx,&pText->zIn[iOfft],(int)(iEnd - iOfft));
+		return;
+	}
+	MbResultSubstituted(pCtx,&pText->zIn[iOfft],iEnd - iOfft);
+}
+/*
+ * string|false mb_strstr / mb_stristr / mb_strrchr / mb_strrichr(
+ *     string $haystack, string $needle, bool $before_needle = false,
+ *     ?string $encoding = null)
+ *
+ * The four are one routine over two flags, as php has them: fold the case or
+ * not, take the FIRST match or the LAST. php's mb_strrchr is not the 8-bit
+ * strrchr — it searches for the whole needle, not for its first character —
+ * and an EMPTY needle matches at the position the direction starts from, so
+ * mb_strstr("abc","") is "abc" and mb_strrchr("abc","") is "".
+ */
+static int PH7_builtin_mb_strstr(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zH,*zN,*zFunc;
+	mb_text sH,sN;
+	int nH,nN,iEnc,rc,bBefore = 0,bFold,bRev;
+	sxi64 iPos;
+	if( nArg < 2 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zFunc = ph7_function_name(pCtx);
+	/* "mb_str" + "str" / "istr" / "rchr" / "richr" */
+	bRev  = zFunc[sizeof("mb_str")-1] == 'r';
+	bFold = zFunc[sizeof("mb_str")-1+(bRev?1:0)] == 'i';
+	iEnc = MbEncodingArg(pCtx,nArg > 3 ? apArg[3] : 0,zFunc,4);
+	if( iEnc < 0 ){
+		return PH7_OK;
+	}
+	if( nArg > 2 ){
+		bBefore = ph7_value_to_bool(apArg[2]);
+	}
+	zH = ph7_value_to_string(apArg[0],&nH);
+	zN = ph7_value_to_string(apArg[1],&nN);
+	SyZero(&sH,sizeof(sH));
+	SyZero(&sN,sizeof(sN));
+	rc = MbTextDecode(pCtx,&sH,zH,(sxu32)nH,iEnc,bFold);
+	if( rc == PH7_OK ){
+		rc = MbTextDecode(pCtx,&sN,zN,(sxu32)nN,iEnc,bFold);
+	}
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( sN.nChar == 0 ){
+		iPos = bRev ? (sxi64)sH.nChar : 0;
+	}else{
+		iPos = MbTextSearch(&sH,&sN,0,-1,iEnc == MB_ENC_UTF8 && !bFold,bRev);
+	}
+	if( iPos < 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( bBefore ){
+		MbResultSlice(pCtx,&sH,0,(sxu32)iPos,iEnc);
+	}else{
+		MbResultSlice(pCtx,&sH,(sxu32)iPos,sH.nChar,iEnc);
+	}
+	return PH7_OK;
+}
+/*
+ * int mb_substr_count(string $haystack, string $needle, ?string $encoding = null)
+ *
+ * Non-overlapping, like the 8-bit substr_count: a match consumes its own
+ * characters, so "aaa" contains ONE "aa". An empty needle is php's ValueError
+ * rather than an infinite answer. Error characters compare equal to each other
+ * here whatever the encoding — this is the one search php does not tell two
+ * ill-formed runs apart in.
+ */
+static int PH7_builtin_mb_substr_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zH,*zN;
+	mb_text sH,sN;
+	int nH,nN,iEnc,rc;
+	sxu32 i;
+	ph7_int64 nCount = 0;
+	if( nArg < 2 ){
+		ph7_result_int(pCtx,0);
+		return PH7_OK;
+	}
+	iEnc = MbEncodingArg(pCtx,nArg > 2 ? apArg[2] : 0,"mb_substr_count",3);
+	if( iEnc < 0 ){
+		return PH7_OK;
+	}
+	zH = ph7_value_to_string(apArg[0],&nH);
+	zN = ph7_value_to_string(apArg[1],&nN);
+	if( nN < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"mb_substr_count(): Argument #2 ($needle) must not be empty");
+	}
+	SyZero(&sH,sizeof(sH));
+	SyZero(&sN,sizeof(sN));
+	rc = MbTextDecode(pCtx,&sH,zH,(sxu32)nH,iEnc,0);
+	if( rc == PH7_OK ){
+		rc = MbTextDecode(pCtx,&sN,zN,(sxu32)nN,iEnc,0);
+	}
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	for( i = 0 ; sN.nChar > 0 && i + sN.nChar <= sH.nChar ; ){
+		if( MbTextMatchAt(&sH,i,&sN,0) ){
+			nCount++;
+			i += sN.nChar;
+		}else{
+			i++;
+		}
+	}
+	ph7_result_int64(pCtx,nCount);
 	return PH7_OK;
 }
 /* array mb_str_split(string $string, int $length = 1, ?string $encoding) */
@@ -1956,6 +2080,8 @@ PH7_PRIVATE int PH7_builtin_mb_case_f(ph7_context *pCtx,int nArg,ph7_value **apA
 PH7_PRIVATE int PH7_builtin_mb_convert_case_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_convert_case(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_ucfirst_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_ucfirst(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_strpos_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strpos(pCtx,nArg,apArg); }
+PH7_PRIVATE int PH7_builtin_mb_strstr_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_strstr(pCtx,nArg,apArg); }
+PH7_PRIVATE int PH7_builtin_mb_substr_count_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_substr_count(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_str_split_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_str_split(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_trim_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_trim(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_mb_internal_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_mb_internal_encoding(pCtx,nArg,apArg); }
