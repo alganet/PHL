@@ -32,11 +32,11 @@ ini_set("session.gc_maxlifetime", "1");
 session_id($tag);
 session_start();
 $f = $dir . "/sess_" . $tag;
-// The 0600 is a POSIX mode; Windows has no such bits to read back, so only the
-// platform that has them is asked.
+// The 0600 is a POSIX mode; Windows has no such bits to read back, so the
+// assertion is made where they exist and simply holds where they do not.
 $log[] = "created: " . var_export(file_exists($f), true) . " size=" . filesize($f)
-    . " perm=" . (DIRECTORY_SEPARATOR === "/"
-        ? substr(sprintf("%o", fileperms($f)), -4) : "<no posix mode>");
+    . " private=" . var_export(DIRECTORY_SEPARATOR !== "/"
+        || substr(sprintf("%o", fileperms($f)), -4) === "0600", true);
 
 // The collector is the STORE's, so php only reaches it through an open session —
 // and only the sess_ prefix is its business.
@@ -62,7 +62,7 @@ restore_error_handler();
 echo implode("\n", $log), "\n== warnings ==\n", implode("\n", $warn), "\n";
 ?>
 --EXPECT--
-created: true size=0 perm=0600
+created: true size=0 private=true
 gc active: 2
 left: keepme.txt,sess_<id>
 gc closed: false
