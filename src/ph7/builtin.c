@@ -344,10 +344,133 @@ static int PH7_builtin_floatval(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
- * int intval($var)
+ * One C strtol() run, which is what php's intval() calls (ZEND_STRTOL in
+ * ext/standard/type.c). The rules are strtol's, not php's own numeric-string
+ * ones, and every one of them is observable:
+ *  - leading whitespace, then at most ONE sign;
+ *  - base 16 skips an optional "0x"/"0X"; base 0 PICKS the base from the same
+ *    prefix ("0x" -> 16, a leading "0" -> 8, otherwise 10);
+ *  - the scan stops at the first byte the base cannot spell, so "12ag" in base
+ *    16 is 0x12a and "0x0x1" is 0;
+ *  - a base outside 2..36 makes strtol answer 0 -- php raises nothing for it;
+ *  - the result SATURATES at PHP_INT_MAX/PHP_INT_MIN instead of wrapping.
+ * `iPreSign` is the sign php pastes in FRONT of the string it hands over (see
+ * IntvalStrToInt64): a sign already consumed, so neither whitespace nor a
+ * second sign may follow it.
+ */
+static sxi64 IntvalStrtol(int iPreSign,const char *zIn,int nLen,int iBase)
+{
+	sxu64 uLimit,uCutoff,uAcc = 0;
+	int iCutlim,iSign = 1,bAny = 0,bOvf = 0;
+	int i = 0;
+	if( iPreSign ){
+		iSign = (iPreSign == '-') ? -1 : 1;
+	}else{
+		while( i < nLen && SyisSpace((unsigned char)zIn[i]) ){
+			i++;
+		}
+		if( i < nLen && (zIn[i] == '-' || zIn[i] == '+') ){
+			iSign = (zIn[i] == '-') ? -1 : 1;
+			i++;
+		}
+	}
+	if( (iBase == 0 || iBase == 16) && i + 1 < nLen
+	 && zIn[i] == '0' && (zIn[i+1] == 'x' || zIn[i+1] == 'X') ){
+		i += 2;
+		iBase = 16;
+	}else if( iBase == 2 && i + 2 < nLen
+	 && zIn[i] == '0' && (zIn[i+1] == 'b' || zIn[i+1] == 'B')
+	 && (zIn[i+2] == '0' || zIn[i+2] == '1') ){
+		/* The conversion accepts a binary prefix of its own, on TOP of the one
+		 * IntvalStrToInt64 strips -- which is why intval("0b0b1",2) is 1 and a
+		 * THIRD prefix stops the scan: intval("0b0b0b1",2) is 0. */
+		i += 2;
+	}else if( iBase == 0 ){
+		iBase = (i < nLen && zIn[i] == '0') ? 8 : 10;
+	}
+	if( iBase < 2 || iBase > 36 ){
+		return 0;
+	}
+	/* strtol's own overflow test: the magnitude a negative result may reach is
+	 * one larger than a positive one, so the cutoff is computed per sign. */
+	uLimit  = (iSign < 0) ? (sxu64)SXI64_HIGH + 1 : (sxu64)SXI64_HIGH;
+	uCutoff = uLimit / (sxu64)iBase;
+	iCutlim = (int)(uLimit % (sxu64)iBase);
+	for( ; i < nLen ; ++i ){
+		int c = (unsigned char)zIn[i];
+		if( c >= '0' && c <= '9' ){
+			c -= '0';
+		}else if( c >= 'A' && c <= 'Z' ){
+			c -= 'A' - 10;
+		}else if( c >= 'a' && c <= 'z' ){
+			c -= 'a' - 10;
+		}else{
+			break;
+		}
+		if( c >= iBase ){
+			break;
+		}
+		bAny = 1;
+		if( bOvf || uAcc > uCutoff || (uAcc == uCutoff && c > iCutlim) ){
+			bOvf = 1;   /* keep consuming digits, the answer is pinned */
+			continue;
+		}
+		uAcc = uAcc * (sxu64)iBase + (sxu64)c;
+	}
+	if( bOvf ){
+		return (iSign < 0) ? (-(sxi64)SXI64_HIGH - 1) : (sxi64)SXI64_HIGH;
+	}
+	if( !bAny ){
+		return 0;
+	}
+	if( iSign < 0 ){
+		/* uAcc may be exactly 2^63 here, which no sxi64 holds: PHP_INT_MIN is
+		 * its negation and negating the SIGNED value would be undefined. */
+		return (uAcc == (sxu64)SXI64_HIGH + 1) ? (-(sxi64)SXI64_HIGH - 1) : -(sxi64)uAcc;
+	}
+	return (sxi64)uAcc;
+}
+/*
+ * php's intval() string path. strtol() knows "0x" but not "0b", so php strips a
+ * binary prefix ITSELF -- for base 2 and for base 0 -- by building a fresh
+ * string out of the sign it found and the bytes past the "0b", and running
+ * strtol over THAT. The rebuild is observable, because strtol then runs its
+ * whole prelude again over the remainder: `intval("0b-1",2)` is -1 and
+ * `intval("0b 1",0)` is 1, while a sign BEFORE the prefix is already spent, so
+ * `intval("-0b-1",2)` is 0. php hands strtol() the C string, so an embedded NUL
+ * truncates: intval("12\0 34",16) is 0x12. That truncation is copied too.
+ */
+static sxi64 IntvalStrToInt64(const char *zIn,int nLen,int iBase)
+{
+	int i = 0;
+	/* An embedded NUL ends the string for strtol(). */
+	while( i < nLen && zIn[i] != 0 ){
+		i++;
+	}
+	nLen = i;
+	i = 0;
+	while( i < nLen && SyisSpace((unsigned char)zIn[i]) ){
+		i++;
+	}
+	/* Only when something FOLLOWS the prefix -- "0b" alone stays a base-2 zero. */
+	if( (iBase == 0 || iBase == 2) && nLen - i > 2 ){
+		int off = (zIn[i] == '-' || zIn[i] == '+') ? 1 : 0;
+		if( zIn[i+off] == '0' && (zIn[i+off+1] == 'b' || zIn[i+off+1] == 'B') ){
+			int iPreSign = off ? (unsigned char)zIn[i] : 0;
+			i += off + 2;
+			return IntvalStrtol(iPreSign,&zIn[i],nLen - i,2);
+		}
+	}
+	return IntvalStrtol(0,zIn,nLen,iBase);
+}
+/*
+ * int intval(mixed $value, int $base = 10)
  *  Get integer value of a variable.
- * Parameter
- *  $var: The variable being processed.
+ * Parameters
+ *  $value: The variable being processed.
+ *  $base: The base $value is written in -- read ONLY when $value is a string
+ *   and the base is not 10. Every other value takes the ordinary int cast and
+ *   ignores $base entirely, an out-of-range one included.
  * Return
  *  the int value of a variable.
  */
@@ -358,8 +481,28 @@ static int PH7_builtin_intval(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_int(pCtx,0);
 	}else{
 		sxi64 iVal;
-		/* Perform the cast */
-		iVal = ph7_value_to_int64(apArg[0]);
+		sxi64 iBase = 10;
+		if( nArg > 1 ){
+			iBase = ph7_value_to_int64(apArg[1]);
+		}
+		if( iBase != 10 && ph7_value_is_string(apArg[0]) ){
+			/* The only path php reads $base on -- and the "is it 10?" test above is
+			 * the LAST thing to see the argument at full width. Everything past it
+			 * is strtol's `int base` parameter, which php reaches through a plain
+			 * narrowing cast, so a base of 2^32+16 really does read as 16 and
+			 * PHP_INT_MIN really does read as 0 (auto-detect). Spelled through
+			 * unsigned arithmetic because the two's-complement wrap of an
+			 * out-of-range signed conversion is implementation-defined. */
+			int nLen;
+			const char *zVal = ph7_value_to_string(apArg[0],&nLen);
+			sxu32 uB = (sxu32)((sxu64)iBase & 0xFFFFFFFF);
+			int iB = (uB <= (sxu32)SXI32_HIGH)
+				? (int)uB : -(int)(SXU32_HIGH - uB) - 1;
+			iVal = IntvalStrToInt64(zVal,nLen,iB);
+		}else{
+			/* Perform the cast */
+			iVal = ph7_value_to_int64(apArg[0]);
+		}
 		ph7_result_int64(pCtx,iVal);
 	}
 	return PH7_OK;
