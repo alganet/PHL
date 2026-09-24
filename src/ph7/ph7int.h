@@ -5003,6 +5003,8 @@ PH7_PRIVATE ph7_value * PH7_EnumCaseNameValue(ph7_class_instance *pThis);
 PH7_PRIVATE ph7_value * PH7_EnumCaseBackingValueOf(ph7_class_instance *pThis);
 PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmap(ph7_class_instance *pThis,ph7_hashmap *pMap);
 PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmapRaw(ph7_class_instance *pThis,ph7_hashmap *pMap);
+PH7_PRIVATE int PH7_ClassAttrUninitialized(VmClassAttr *pVmAttr);
+PH7_PRIVATE int PH7_ClassAttrUninitializedForRead(VmClassAttr *pVmAttr);
 PH7_PRIVATE sxi32 PH7_ClassInstanceWalk(ph7_class_instance *pThis,
 	int (*xWalk)(const char *,ph7_value *,void *),void *pUserData);
 PH7_PRIVATE ph7_value * PH7_ClassInstanceFetchAttr(ph7_class_instance *pThis,const SyString *pName);

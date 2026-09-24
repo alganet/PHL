@@ -1831,13 +1831,18 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 	}
 	{
 		/* var_dump's header needs the property count up front, so pre-count the
-		 * non-static/non-constant attributes (matching the dump loop below). */
+		 * non-static/non-constant attributes (matching the dump loop below).
+		 * An UNINITIALIZED typed property is still LISTED by var_dump — with php's
+		 * `uninitialized(T)` marker in place of a value — but it does not COUNT,
+		 * which is how php's `object(C)#1 (0) { ["a"]=> uninitialized(int) }`
+		 * reads. */
 		sxu32 nProp = 0;
 		if( ShowType ){
 			SyHashResetLoopCursor(&pThis->hAttr);
 			while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0){
 				VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
-				if((pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_HOOK_VIRTUAL|PH7_CLASS_ATTR_HIDDEN)) == 0 ){
+				if((pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_HOOK_VIRTUAL|PH7_CLASS_ATTR_HIDDEN)) == 0
+				 && !PH7_ClassAttrUninitialized(pVmAttr) ){
 					nProp++;
 				}
 			}
@@ -1857,6 +1862,27 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 	while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0){
 		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
 		if((pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_HOOK_VIRTUAL|PH7_CLASS_ATTR_HIDDEN)) == 0 ){
+			if( PH7_ClassAttrUninitialized(pVmAttr) ){
+				/* var_dump names the property and prints php's marker in place of
+				 * the value it has not got; print_r has no such marker and leaves
+				 * the property out entirely. */
+				if( ShowType ){
+					char zType[192];
+					const char *zText = VmHintTextResolved(pThis->pVm,&pVmAttr->pAttr->sTypeName,
+						VmHintScopeClass(pThis->pVm,pVmAttr->pAttr->pDeclClass,pVmAttr->pOwner),
+						zType,sizeof(zType));
+					for( i = 0 ; i < nTab + 2 ; i++ ){
+						SyBlobAppend(&(*pOut)," ",sizeof(char));
+					}
+					OoDumpPropKey(&(*pOut),pThis,pVmAttr->pAttr,TRUE);
+					SyBlobAppend(&(*pOut),"\n",sizeof(char));
+					for( i = 0 ; i < nTab + 2 ; i++ ){
+						SyBlobAppend(&(*pOut)," ",sizeof(char));
+					}
+					SyBlobFormat(&(*pOut),"uninitialized(%s)\n",zText);
+				}
+				continue;
+			}
 			/* Dump non-static/constant attribute only */
 			pValue = ExtractClassAttrValue(pThis->pVm,pVmAttr);
 			if( pValue == 0 ){
@@ -2052,6 +2078,42 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmap(ph7_class_instance *pThis,ph7_hashm
 	return PH7_ClassInstanceToHashmapRaw(pThis,pMap);
 }
 /*
+ * Is this property NOT THERE YET?
+ *
+ * php 7.4's typed properties have a third state beside "holds a value" and "does not
+ * exist": a typed property with no default is UNINITIALIZED at `new`, reading it is an
+ * Error rather than a null, and every surface that presents an object's properties
+ * leaves it out — get_object_vars(), get_mangled_object_vars(), the (array) cast,
+ * foreach, json_encode(), serialize(), print_r() and var_export(). var_dump() is the one
+ * exception and only half of one: it NAMES the property and prints `uninitialized(T)`
+ * where the value would be, and does not count it in the header.
+ *
+ * The state is already tracked (it is what makes the read throw); this asks it by name
+ * so the eight surfaces agree. VM_CLASS_ATTR_UNINIT doubles as the readonly write-once
+ * latch, which wants the same answer: a readonly property must be typed and cannot have
+ * a default, so before its first write php calls it uninitialized too.
+ */
+PH7_PRIVATE int PH7_ClassAttrUninitialized(VmClassAttr *pVmAttr)
+{
+	return pVmAttr != 0 && (pVmAttr->iState & VM_CLASS_ATTR_UNINIT) != 0;
+}
+/*
+ * The same question asked by the four surfaces that read through a php 8.4 `get` HOOK —
+ * get_object_vars(), json_encode(), foreach and var_export().
+ *
+ * A hooked property's value is whatever its hook answers, so an empty backing slot is
+ * not an absence there: a VIRTUAL property has no slot at all and still has a value
+ * (php lists `virt` in all four), and a BACKED one whose hook reads its own slot raises
+ * the uninitialized Error from inside the hook — which is php's answer for these four
+ * and not something to pre-empt by skipping the property. Only a property with no `get`
+ * at all is absent.
+ */
+PH7_PRIVATE int PH7_ClassAttrUninitializedForRead(VmClassAttr *pVmAttr)
+{
+	return PH7_ClassAttrUninitialized(pVmAttr)
+		&& (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_GET) == 0;
+}
+/*
  * The SLOT walk under the cast above, with php's get_properties handler left out:
  * the instance's own property table, mangled, and nothing else.
  *
@@ -2079,6 +2141,9 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceToHashmapRaw(ph7_class_instance *pThis,ph7_ha
 			/* A static property is the CLASS's, not the object's: php's cast
 			 * yields only the instance's own properties. */
 			continue;
+		}
+		if( PH7_ClassAttrUninitialized(pAttr) ){
+			continue; /* typed, never written: not there yet (php) */
 		}
 		if( pAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL ){
 			/* php 8.4: a VIRTUAL hooked property has no backing store — the
@@ -2145,6 +2210,9 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceWalk(
 		if( pAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HIDDEN) ){
 			/* Class-level members are not part of the object (php) */
 			continue;
+		}
+		if( PH7_ClassAttrUninitialized(pAttr) ){
+			continue; /* typed, never written: not there yet (php) */
 		}
 		/* Extract attribute value */
 		pValue = ExtractClassAttrValue(pThis->pVm,pAttr);

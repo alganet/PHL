@@ -1346,6 +1346,9 @@ PH7_PRIVATE int vm_builtin_get_object_vars(ph7_context *pCtx,int nArg,ph7_value 
 				/* Only non-static/constant attributes are extracted */
 				continue;
 			}
+			if( PH7_ClassAttrUninitializedForRead(pVmAttr) ){
+				continue; /* typed, never written: not there yet (php) */
+			}
 			if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_VIRTUAL))
 			 == PH7_CLASS_ATTR_HOOK_VIRTUAL ){
 				continue; /* virtual set-only property: no value to expose (php) */

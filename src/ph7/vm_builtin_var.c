@@ -834,6 +834,9 @@ static void VmExportValue(SyBlob *pOut, ph7_value *pVal, int nIndent, int depth)
 			while( (pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
 				VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
 				if( pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HIDDEN) ){ continue; }
+				if( PH7_ClassAttrUninitializedForRead(pVmAttr) ){
+					continue; /* typed, never written: not there yet (php) */
+				}
 				if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_VIRTUAL))
 				 == PH7_CLASS_ATTR_HOOK_VIRTUAL ){
 					continue; /* virtual set-only property: no value to export (php) */

@@ -155,6 +155,11 @@ static void VmSerializePropKey(SyBlob *pOut, ph7_class_attr *pAttr)
 /* True if an attribute is a serializable instance property (not static/const). */
 static int VmAttrIsProperty(VmClassAttr *pVmAttr)
 {
+	if( PH7_ClassAttrUninitialized(pVmAttr) ){
+		/* A typed property never written is not there yet: php's payload has no
+		 * entry for it and its count is one lower. */
+		return 0;
+	}
 	/* php 8.4: VIRTUAL hooked properties have no backing store — serialize()
 	 * excludes them (raw surface; the get hook is NOT consulted).
 	 *

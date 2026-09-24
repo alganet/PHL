@@ -208,6 +208,9 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 			 == PH7_CLASS_ATTR_HOOK_VIRTUAL ){
 				continue; /* virtual set-only property: iteration skips it (php) */
 			}
+			if( PH7_ClassAttrUninitializedForRead(pVmAttr) ){
+				continue; /* typed, never written: not there yet (php) */
+			}
 			/* Check access permission */
 			if( PH7_VmClassMemberAccess(&(*pVm),pThis->pClass,&pVmAttr->pAttr->sName,
 				pVmAttr->pAttr->iProtection,FALSE) ){

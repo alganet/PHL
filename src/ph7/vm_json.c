@@ -696,6 +696,9 @@ static sxi32 VmJsonEncode(
 					 || pVmAttr->pAttr->iProtection != PH7_CLASS_PROT_PUBLIC ){
 						continue;
 					}
+					if( PH7_ClassAttrUninitializedForRead(pVmAttr) ){
+						continue; /* typed, never written: not there yet (php) */
+					}
 					if( SyStringLength(&pVmAttr->pAttr->sName) > 0
 					 && SyStringData(&pVmAttr->pAttr->sName)[0] == 0 ){
 						/* A MANGLED key stored raw (the __PHP_Incomplete_Class
