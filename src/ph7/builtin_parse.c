@@ -422,43 +422,103 @@ static int FvValidateMac(const char *z,int n){
 	}
 	return 0;
 }
-/* FILTER_VALIDATE_EMAIL (best-effort: covers the common cases, not quoted local
- * parts or IP-literal domains). */
-static int FvValidateEmail(const char *z,int n){
-	int at = -1, i, localLen, domLen, labelStart, dotCount = 0;
-	const char *zDom;
-	if( n==0 || n>320 ){ return 0; }
-	for( i=0; i<n; i++ ){
-		if( z[i]=='@' ){ if( at>=0 ){ return 0; } at = i; }
-	}
-	if( at<=0 || at==n-1 ){ return 0; } /* one '@', non-empty local and domain */
-	localLen = at;
-	zDom = z + at + 1;
-	domLen = n - at - 1;
-	if( z[0]=='.' || z[at-1]=='.' ){ return 0; }
-	for( i=0; i<localLen; i++ ){
-		unsigned char c = (unsigned char)z[i];
-		if( c<=' ' ){ return 0; }
-		if( c=='.' && i+1<localLen && z[i+1]=='.' ){ return 0; }
-	}
-	if( zDom[0]=='.' || zDom[domLen-1]=='.' ){ return 0; }
-	labelStart = 0;
-	for( i=0; i<=domLen; i++ ){
-		if( i==domLen || zDom[i]=='.' ){
-			int ll = i - labelStart;
-			if( ll==0 ){ return 0; } /* consecutive dots */
-			if( zDom[labelStart]=='-' || zDom[i-1]=='-' ){ return 0; }
-			if( i<domLen ){ dotCount++; }
-			labelStart = i+1;
-		}else{
-			unsigned char c = (unsigned char)zDom[i];
-			if( !((c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='-') ){ return 0; }
+#ifdef PH7_ENABLE_PCRE
+/*
+ * FILTER_VALIDATE_EMAIL is a REGEX in php — one built on Michael Rushton's, cut
+ * down to routable addresses — and the two spellings below are php 8.5's own,
+ * byte for byte: the second is the one FILTER_FLAG_EMAIL_UNICODE selects, and
+ * differs only by \pL\pN in the local-part classes (with /u, so a non-ASCII
+ * local part is a letter rather than a stray byte).
+ *
+ * What the hand-rolled screen this replaces could not say: a quoted local part
+ * (`"a@b"@c.com`), an address literal domain (`a@[127.0.0.1]`, `a@[IPv6:::1]`),
+ * the 64-byte local-part and 254-byte total limits, the rule that a bare IPv4
+ * domain is not an address (`a@1.2.3.4`), and the one that the last label must
+ * start with a letter. It accepted a non-ASCII local part unconditionally,
+ * which is the EMAIL_UNICODE answer for a program that did not ask for it.
+ */
+static const char zFvEmailRe[] =
+	"/^(?!(?:(?:\\x22?\\x5C[\\x00-\\x7E]\\x22?)|(?:\\x22?[^\\x5C\\x22]\\x22?)){255,})(?!(?:(?:\\x22?\\x5C"
+	"[\\x00-\\x7E]\\x22?)|(?:\\x22?[^\\x5C\\x22]\\x22?)){65,}@)(?:(?:[\\x21\\x23-\\x27\\x2A\\x2B\\x2D\\x2F"
+	"-\\x39\\x3D\\x3F\\x5E-\\x7E]+)|(?:\\x22(?:[\\x01-\\x08\\x0B\\x0C\\x0E-\\x1F\\x21\\x23-\\x5B\\x5D-\\x"
+	"7F]|(?:\\x5C[\\x00-\\x7F]))*\\x22))(?:\\.(?:(?:[\\x21\\x23-\\x27\\x2A\\x2B\\x2D\\x2F-\\x39\\x3D\\x3F"
+	"\\x5E-\\x7E]+)|(?:\\x22(?:[\\x01-\\x08\\x0B\\x0C\\x0E-\\x1F\\x21\\x23-\\x5B\\x5D-\\x7F]|(?:\\x5C[\\x"
+	"00-\\x7F]))*\\x22)))*@(?:(?:(?!.*[^.]{64,})(?:(?:(?:xn--)?[a-z0-9]+(?:-+[a-z0-9]+)*\\.){1,126}){1,}("
+	"?:(?:[a-z][a-z0-9]*)|(?:(?:xn--)[a-z0-9]+))(?:-+[a-z0-9]+)*)|(?:\\[(?:(?:IPv6:(?:(?:[a-f0-9]{1,4}(?:"
+	":[a-f0-9]{1,4}){7})|(?:(?!(?:.*[a-f0-9][:\\]]){7,})(?:[a-f0-9]{1,4}(?::[a-f0-9]{1,4}){0,5})?::(?:[a-"
+	"f0-9]{1,4}(?::[a-f0-9]{1,4}){0,5})?)))|(?:(?:IPv6:(?:(?:[a-f0-9]{1,4}(?::[a-f0-9]{1,4}){5}:)|(?:(?!("
+	"?:.*[a-f0-9]:){5,})(?:[a-f0-9]{1,4}(?::[a-f0-9]{1,4}){0,3})?::(?:[a-f0-9]{1,4}(?::[a-f0-9]{1,4}){0,3"
+	"}:)?)))?(?:(?:25[0-5])|(?:2[0-4][0-9])|(?:1[0-9]{2})|(?:[1-9]?[0-9]))(?:\\.(?:(?:25[0-5])|(?:2[0-4]["
+	"0-9])|(?:1[0-9]{2})|(?:[1-9]?[0-9]))){3}))\\]))$/iD";
+static const char zFvEmailReUni[] =
+	"/^(?!(?:(?:\\x22?\\x5C[\\x00-\\x7E]\\x22?)|(?:\\x22?[^\\x5C\\x22]\\x22?)){255,})(?!(?:(?:\\x22?\\x5C"
+	"[\\x00-\\x7E]\\x22?)|(?:\\x22?[^\\x5C\\x22]\\x22?)){65,}@)(?:(?:[\\x21\\x23-\\x27\\x2A\\x2B\\x2D\\x2F"
+	"-\\x39\\x3D\\x3F\\x5E-\\x7E\\pL\\pN]+)|(?:\\x22(?:[\\x01-\\x08\\x0B\\x0C\\x0E-\\x1F\\x21\\x23-\\x5B\\x"
+	"5D-\\x7F\\pL\\pN]|(?:\\x5C[\\x00-\\x7F]))*\\x22))(?:\\.(?:(?:[\\x21\\x23-\\x27\\x2A\\x2B\\x2D\\x2F-\\x"
+	"39\\x3D\\x3F\\x5E-\\x7E\\pL\\pN]+)|(?:\\x22(?:[\\x01-\\x08\\x0B\\x0C\\x0E-\\x1F\\x21\\x23-\\x5B\\x5D"
+	"-\\x7F\\pL\\pN]|(?:\\x5C[\\x00-\\x7F]))*\\x22)))*@(?:(?:(?!.*[^.]{64,})(?:(?:(?:xn--)?[a-z0-9]+(?:-+"
+	"[a-z0-9]+)*\\.){1,126}){1,}(?:(?:[a-z][a-z0-9]*)|(?:(?:xn--)[a-z0-9]+))(?:-+[a-z0-9]+)*)|(?:\\[(?:(?"
+	":IPv6:(?:(?:[a-f0-9]{1,4}(?::[a-f0-9]{1,4}){7})|(?:(?!(?:.*[a-f0-9][:\\]]){7,})(?:[a-f0-9]{1,4}(?::["
+	"a-f0-9]{1,4}){0,5})?::(?:[a-f0-9]{1,4}(?::[a-f0-9]{1,4}){0,5})?)))|(?:(?:IPv6:(?:(?:[a-f0-9]{1,4}(?:"
+	":[a-f0-9]{1,4}){5}:)|(?:(?!(?:.*[a-f0-9]:){5,})(?:[a-f0-9]{1,4}(?::[a-f0-9]{1,4}){0,3})?::(?:[a-f0-9"
+	"]{1,4}(?::[a-f0-9]{1,4}){0,3}:)?)))?(?:(?:25[0-5])|(?:2[0-4][0-9])|(?:1[0-9]{2})|(?:[1-9]?[0-9]))(?:"
+	"\\.(?:(?:25[0-5])|(?:2[0-4][0-9])|(?:1[0-9]{2})|(?:[1-9]?[0-9]))){3}))\\]))$/iDu";
+#endif /* PH7_ENABLE_PCRE */
+/*
+ * FILTER_VALIDATE_EMAIL. The regex above is the whole rule wherever PCRE is
+ * built in; a PCRE-less build (the tiny target) keeps the approximation this
+ * engine has always had, which is the same trade the REGEXP filter makes.
+ */
+static int FvValidateEmail(ph7_context *pCtx,const char *z,int n,int flags){
+	/* The maximum length of an e-mail address is 320 octets, per RFC 2821. */
+	if( n>320 ){ return 0; }
+#ifdef PH7_ENABLE_PCRE
+	{
+		const char *zRe = (flags & FV_FLAG_EMAIL_UNICODE) ? zFvEmailReUni : zFvEmailRe;
+		int matched = 0;
+		if( PH7_PcreMatchQuiet(pCtx,zRe,(int)SyStrlen(zRe),z,n,&matched)!=SXRET_OK ){
+			return 0;
 		}
+		return matched;
 	}
-	if( dotCount<1 ){ return 0; } /* PHP requires a dot in the domain (any TLD length) */
-	return 1;
+#else
+	{
+		int at = -1, i, localLen, domLen, labelStart, dotCount = 0;
+		const char *zDom;
+		SXUNUSED(pCtx); SXUNUSED(flags);
+		if( n==0 ){ return 0; }
+		for( i=0; i<n; i++ ){
+			if( z[i]=='@' ){ if( at>=0 ){ return 0; } at = i; }
+		}
+		if( at<=0 || at==n-1 ){ return 0; } /* one '@', non-empty local and domain */
+		localLen = at;
+		zDom = z + at + 1;
+		domLen = n - at - 1;
+		if( z[0]=='.' || z[at-1]=='.' ){ return 0; }
+		for( i=0; i<localLen; i++ ){
+			unsigned char c = (unsigned char)z[i];
+			if( c<=' ' ){ return 0; }
+			if( c=='.' && i+1<localLen && z[i+1]=='.' ){ return 0; }
+		}
+		if( zDom[0]=='.' || zDom[domLen-1]=='.' ){ return 0; }
+		labelStart = 0;
+		for( i=0; i<=domLen; i++ ){
+			if( i==domLen || zDom[i]=='.' ){
+				int ll = i - labelStart;
+				if( ll==0 ){ return 0; } /* consecutive dots */
+				if( zDom[labelStart]=='-' || zDom[i-1]=='-' ){ return 0; }
+				if( i<domLen ){ dotCount++; }
+				labelStart = i+1;
+			}else{
+				unsigned char c = (unsigned char)zDom[i];
+				if( !((c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='-') ){ return 0; }
+			}
+		}
+		if( dotCount<1 ){ return 0; } /* PHP requires a dot in the domain (any TLD length) */
+		return 1;
+	}
+#endif /* PH7_ENABLE_PCRE */
 }
-/* FILTER_VALIDATE_DOMAIN (lenient, matching PHP without FILTER_FLAG_HOSTNAME). */
 static int FvIsAlnum(unsigned char c){
 	return (c>='a'&&c<='z') || (c>='A'&&c<='Z') || (c>='0'&&c<='9');
 }
@@ -1254,7 +1314,7 @@ static int FvApplyFilter(ph7_context *pCtx,ph7_value *pInput,
 	}
 	case FV_VALIDATE_IP:     if( !FvValidateIp(zVal,nVal,iFlags) ){ goto fail; } goto pass;
 	case FV_VALIDATE_MAC:    if( !FvValidateMac(zVal,nVal) ){ goto fail; }       goto pass;
-	case FV_VALIDATE_EMAIL:  if( !FvValidateEmail(zVal,nVal) ){ goto fail; }     goto pass;
+	case FV_VALIDATE_EMAIL:  if( !FvValidateEmail(pCtx,zVal,nVal,iFlags) ){ goto fail; } goto pass;
 	case FV_VALIDATE_DOMAIN: if( !FvValidateDomain(zVal,nVal,iFlags) ){ goto fail; } goto pass;
 	case FV_VALIDATE_URL:    if( !FvValidateUrl(zVal,nVal) ){ goto fail; }       goto pass;
 	case FV_VALIDATE_REGEXP: {
