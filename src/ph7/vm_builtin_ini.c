@@ -51,6 +51,9 @@ static const struct {
 	{ "auto_detect_line_endings", "",           VM_INI_ALL },
 	{ "date.timezone",            "UTC",        VM_INI_ALL },
 	{ "default_charset",          "UTF-8",      VM_INI_ALL },
+	/* php bounds a socket wait by this rather than waiting forever, and it is
+	 * where stream_socket_accept() takes its default timeout from. */
+	{ "default_socket_timeout",   "60",         VM_INI_ALL },
 	{ "default_mimetype",         "text/html",  VM_INI_ALL },
 	{ "display_errors",           "",           VM_INI_ALL },
 	{ "error_log",                "",           VM_INI_ALL },

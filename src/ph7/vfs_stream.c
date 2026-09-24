@@ -2191,6 +2191,14 @@ PH7_PRIVATE int PH7_builtin_fstat(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * php's socket ops report a failed send THEMSELVES, as an E_NOTICE naming the
+ * count, the errno and its text, before the caller ever sees the false — so a
+ * write to a peer that has gone is diagnosed rather than silent. Defined with
+ * the socket device further down; the write paths that can reach a socket call
+ * it where php's own do.
+ */
+static void SockReportWriteFailure(ph7_context *pCtx,io_private *pDev,int nLen);
+/*
  * int fwrite(resource $handle,string $string[,int $length])
  *  Writes the contents of string to the file stream pointed to by handle.
  * Parameters
@@ -2268,6 +2276,7 @@ PH7_PRIVATE int PH7_builtin_fwrite(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	n = (int)pStream->xWrite(pDev->pHandle,(const void *)zString,nLen);
 	if( n <  0 ){
 		/* IO error,return FALSE */
+		SockReportWriteFailure(pCtx,pDev,nLen);
 		ph7_result_bool(pCtx,0);
 	}else{
 		/* #Bytes written */
@@ -3448,12 +3457,18 @@ struct sock_private
 	ph7_vm *pVm;
 	ph7_socket sock;
 	int bEof;
+	int iLastErr; /* the OS code a failed send left, for php's own notice */
 };
 static ph7_int64 SockStreamData_Read(void *pHandle,void *pBuffer,ph7_int64 nRead)
 {
 	sock_private *pSock = (sock_private *)pHandle;
 	int n;
-	if( pSock == 0 || pSock->bEof ){
+	if( pSock == 0 || pSock->sock == PH7_NET_INVALID_SOCKET ){
+		/* A server asked for neither BIND nor LISTEN has no socket at all, and
+		 * php answers false for a read on it — the shape an ERROR takes. */
+		return -1;
+	}
+	if( pSock->bEof ){
 		return 0;
 	}
 	n = PH7_NetRecv(pSock->sock,pBuffer,(int)nRead,0);
@@ -3475,12 +3490,37 @@ static ph7_int64 SockStreamData_Read(void *pHandle,void *pBuffer,ph7_int64 nRead
 static ph7_int64 SockStreamData_Write(void *pHandle,const void *pBuf,ph7_int64 nWrite)
 {
 	sock_private *pSock = (sock_private *)pHandle;
-	int n;
+	const char *zBuf = (const char *)pBuf;
+	ph7_int64 nSent = 0;
 	if( pSock == 0 ){
 		return -1;
 	}
-	n = PH7_NetSendAll(pSock->sock,pBuf,(int)nWrite);
-	return n < 0 ? -1 : (ph7_int64)n;
+	if( pSock->sock == PH7_NET_INVALID_SOCKET ){
+		/* Nothing to send on, and php answers 0 rather than false for it. */
+		return 0;
+	}
+	/* php answers the number of bytes it MOVED. This used to hand back
+	 * PH7_NetSendAll()'s STATUS — which is 0 on success — so every successful
+	 * `fwrite($sock,$s)` answered 0 bytes written: the `=== strlen($s)` check
+	 * failed on a write that worked, a partial-write retry loop never advanced,
+	 * and stream_copy_to_stream() stopped after its first chunk. */
+	while( nSent < nWrite ){
+		int n = PH7_NetSend(pSock->sock,&zBuf[nSent],(int)(nWrite - nSent),0);
+		if( n > 0 ){
+			nSent += n;
+			continue;
+		}
+		/* Nothing more can go right now. On a non-blocking or timed-out handle
+		 * that is php's 0 (or the partial count), and only a write that moved
+		 * NO bytes at all for a real error is php's false — which is why the
+		 * count is answered here rather than the status. */
+		if( PH7_NetWouldBlock() ){
+			return nSent;
+		}
+		pSock->iLastErr = PH7_NetLastError();
+		return nSent > 0 ? nSent : -1;
+	}
+	return nSent;
 }
 static void SockStreamData_Close(void *pHandle)
 {
@@ -3537,8 +3577,139 @@ static int SockStreamData_Open(const char *zName,int iMode,ph7_value *pResource,
 	pSock->pVm = pVm;
 	pSock->sock = sock;
 	pSock->bEof = 0;
+	pSock->iLastErr = 0;
 	*ppHandle = (void *)pSock;
 	return PH7_OK;
+}
+/* php's own listen backlog for a stream server. */
+#define SOCK_LISTEN_BACKLOG 128
+/*
+ * php's `fwrite(): Send of 4 bytes failed with errno=32 Broken pipe` — the
+ * NOTICE its socket ops raise for a send that failed, which is the only
+ * diagnostic a write to a departed peer produces (the return value is the same
+ * false a closed handle answers). Silent for every other device: nothing else
+ * here has an OS error of its own to report.
+ */
+static void SockReportWriteFailure(ph7_context *pCtx,io_private *pDev,int nLen)
+{
+#ifdef PH7_ENABLE_NET
+	if( pDev && pDev->pStream == &sTCP_Stream && pDev->pHandle ){
+		sock_private *pSock = (sock_private *)pDev->pHandle;
+		if( pSock->iLastErr != 0 ){
+			ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,
+				"Send of %d bytes failed with errno=%d %s",
+				nLen,pSock->iLastErr,PH7_NetStrError(pSock->iLastErr));
+			pSock->iLastErr = 0;
+		}
+	}
+#else
+	SXUNUSED(pCtx);
+	SXUNUSED(pDev);
+	SXUNUSED(nLen);
+#endif
+}
+/* The settings family below owns both of these; the socket openers here are
+ * declared ahead of it so one handle-wrapping routine can serve both halves. */
+static io_private * StreamSettingArgNamed(ph7_context *pCtx,ph7_value *pArg,int iPos,
+	const char *zName,int *pRc);
+static ph7_socket * IoPrivateSocket(io_private *pDev);
+/*
+ * Wrap an open socket in the io_private every f* builtin drives, so a socket a
+ * server accepted reads and writes exactly like one a client connected. A NULL
+ * zUri is php's "opened by no name at all" — an accepted connection, which
+ * reports no `uri` at all from stream_get_meta_data().
+ * Answers 0 (and closes the socket) when there is no memory for the handle.
+ */
+static io_private * SockWrapSocket(ph7_context *pCtx,ph7_socket sock,const char *zUri,int nUri)
+{
+	io_private *pDev;
+	sock_private *pSock;
+	pDev = (io_private *)ph7_context_alloc_chunk(pCtx,sizeof(io_private),TRUE,FALSE);
+	pSock = (sock_private *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,sizeof(sock_private));
+	if( pDev == 0 || pSock == 0 ){
+		if( pSock ){
+			SyMemBackendFree(&pCtx->pVm->sAllocator,pSock);
+		}
+		if( pDev ){
+			/* Allocated with AutoRelease = FALSE, so nothing else will reclaim
+			 * this chunk — it is not an io_private yet and has no buffers. */
+			ph7_context_free_chunk(pCtx,pDev);
+		}
+		PH7_NetClose(sock);
+		return 0;
+	}
+	pSock->pVm = pCtx->pVm;
+	pSock->sock = sock;
+	pSock->bEof = 0;
+	pSock->iLastErr = 0;
+	InitIOPrivate(pCtx->pVm,&sTCP_Stream,pDev);
+	/* php's feof() answers TRUE for a stream whose socket was never created. */
+	pDev->bEof = (sxu8)(sock == PH7_NET_INVALID_SOCKET ? 1 : 0);
+	SetIOPrivateOpenedAs(pDev,zUri,nUri,"r+",2);
+	pDev->pHandle = (void *)pSock;
+	return pDev;
+}
+/*
+ * The out-params every address-taking opener carries, on the path that WORKED:
+ * php writes 0 and "" into them rather than leaving whatever the caller's
+ * variables already held.
+ */
+static void SockAddressSuccess(ph7_context *pCtx,ph7_value **apArg,int nArg,int iArgErrno,int iArgErrstr)
+{
+	ph7_value *pTmp = ph7_context_new_scalar(pCtx);
+	if( pTmp == 0 ){
+		return;
+	}
+	if( iArgErrno >= 0 && nArg > iArgErrno ){
+		ph7_value_int(pTmp,0);
+		PH7_VmStoreArgByRef(pCtx->pVm,apArg[iArgErrno],pTmp);
+	}
+	if( iArgErrstr >= 0 && nArg > iArgErrstr ){
+		ph7_value_string(pTmp,"",0);
+		PH7_VmStoreArgByRef(pCtx->pVm,apArg[iArgErrstr],pTmp);
+	}
+}
+/*
+ * The failure shape the whole address-taking family shares: php words the
+ * reason into BOTH the by-ref out-params and a warning naming the address as
+ * the script wrote it. The `$errno` out-param stays 0 for everything the
+ * ADDRESS itself is refused for — php only ever reports an OS code for a
+ * connect() that reached the network.
+ */
+static void SockAddressFailure(ph7_context *pCtx,ph7_value **apArg,int nArg,int iArgErrno,int iArgErrstr,
+	const char *zAddr,int nAddr,const char *zErr,int iErrno)
+{
+	ph7_value *pTmp;
+	if( zErr == 0 ){
+		zErr = "";
+	}
+	pTmp = ph7_context_new_scalar(pCtx);
+	if( pTmp ){
+		if( iArgErrno >= 0 && nArg > iArgErrno ){
+			ph7_value_int(pTmp,iErrno);
+			PH7_VmStoreArgByRef(pCtx->pVm,apArg[iArgErrno],pTmp);
+		}
+		if( iArgErrstr >= 0 && nArg > iArgErrstr ){
+			ph7_value_string(pTmp,zErr,-1);
+			PH7_VmStoreArgByRef(pCtx->pVm,apArg[iArgErrstr],pTmp);
+		}
+	}
+	/* NOTE: ph7_context_throw_error_format already prepends "fname(): " */
+	ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"Unable to connect to %.*s (%s)",
+		nAddr,zAddr,zErr);
+}
+/*
+ * The one failure whose message names the HOST, and the one php reports TWICE:
+ * its transport raises the text on its own before the opener that asked repeats
+ * it inside "Unable to connect to". Composed here because net.c hands back a
+ * static string and only the caller has the name to word in.
+ */
+static const char * SockResolveFailure(ph7_context *pCtx,const char *zHost,char *zBuf,int nBuf)
+{
+	SyBufferFormat(zBuf,(sxu32)nBuf,
+		"php_network_getaddresses: getaddrinfo for %s failed: Name or service not known",zHost);
+	ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"%s",zBuf);
+	return zBuf;
 }
 PH7_PRIVATE const ph7_io_stream sTCP_Stream = {
 	"tcp",
@@ -3992,6 +4163,82 @@ PH7_PRIVATE int PH7_builtin_stream_wrapper_unregister(ph7_context *pCtx,int nArg
 }
 #ifdef PH7_ENABLE_NET
 /*
+ * php's socket address: `[transport://]host:port`. What a re-derivation gets
+ * wrong here is that BOTH halves have a diagnostic of their own, and neither is
+ * the other: a transport this build does not carry is not a malformed address,
+ * and an address with no port is not an unknown transport.
+ */
+#define SOCK_ADDR_OK        0
+#define SOCK_ADDR_TRANSPORT 1 /* named a transport this build has not got */
+#define SOCK_ADDR_PARSE     2 /* no port separator at all */
+/*
+ * php's port half is `atoi()` of whatever follows the FIRST colon, and the
+ * colon is looked for in every position but the LAST — which is the whole
+ * difference between `127.0.0.1:` (php's "Failed to parse address") and
+ * `127.0.0.1:abc` (a port of 0, i.e. one the OS picks). A re-derivation that
+ * reads digits strictly refuses three addresses php accepts, and one that takes
+ * the last colon reads `a:b:c` differently than php does.
+ */
+static int SockParsePort(const char *z,int n)
+{
+	int i = 0,iSign = 1,iVal = 0;
+	while( i < n && (z[i] == ' ' || z[i] == '\t' || z[i] == '\n' || z[i] == '\r'
+	              || z[i] == '\v' || z[i] == '\f') ){
+		i++;
+	}
+	if( i < n && (z[i] == '+' || z[i] == '-') ){
+		iSign = z[i] == '-' ? -1 : 1;
+		i++;
+	}
+	for( ; i < n && z[i] >= '0' && z[i] <= '9' ; i++ ){
+		if( iVal < 1000000000 ){
+			iVal = iVal * 10 + (z[i] - '0');
+		}
+	}
+	return iSign * iVal;
+}
+static int SockParseAddress(const char *zAddr,int nAddr,char *zHost,int nHostBuf,int *pPort,
+	const char **pzTransport,int *pnTransport,const char **pzRest,int *pnRest)
+{
+	const char *zRest = zAddr;
+	int nRest = nAddr,i,nHost = -1;
+	*pPort = 0;
+	*pzTransport = "tcp";
+	*pnTransport = 3;
+	for( i = 0 ; i + 2 < nAddr ; i++ ){
+		if( zAddr[i] == ':' && zAddr[i+1] == '/' && zAddr[i+2] == '/' ){
+			*pzTransport = zAddr;
+			*pnTransport = i;
+			zRest = &zAddr[i+3];
+			nRest = nAddr - i - 3;
+			break;
+		}
+	}
+	*pzRest = zRest;
+	*pnRest = nRest;
+	if( *pnTransport != 3 || SyStrnicmp(*pzTransport,"tcp",3) != 0 ){
+		return SOCK_ADDR_TRANSPORT;
+	}
+	for( i = 0 ; i + 1 < nRest ; i++ ){
+		if( zRest[i] == ':' ){
+			*pPort = SockParsePort(&zRest[i+1],nRest - i - 1);
+			nHost = i;
+			break;
+		}
+	}
+	if( nHost < 0 ){
+		return SOCK_ADDR_PARSE;
+	}
+	if( nHost >= nHostBuf ){
+		nHost = nHostBuf - 1;
+	}
+	if( nHost > 0 ){
+		SyMemcpy(zRest,zHost,(sxu32)nHost);
+	}
+	zHost[nHost] = 0;
+	return SOCK_ADDR_OK;
+}
+/*
  * resource|false fsockopen(string $hostname, int $port = -1, int &$error_code,
  *                          string &$error_message, ?float $timeout = null)
  * resource|false stream_socket_client(string $address, int &$error_code,
@@ -4002,64 +4249,58 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 {
 	const char *zFunc = ph7_function_name(pCtx);
 	int bClientForm = (zFunc[0] == 's'); /* stream_socket_client */
-	const char *zTarget,*zErr = "";
-	char zHost[256];
-	int nTarget,iPort = -1,iErrno = 0,iTimeoutMs = 0;
+	const char *zRaw,*zAddr,*zTransport,*zRest,*zErr = "";
+	char zHost[256],zAddrBuf[352],zShowBuf[384],zMsg[512];
+	const char *zShow;
+	int nRaw,nAddr,nShow,nTransport,nRest,iPortArg = -1,iPort = 0,iErrno = 0,iTimeoutMs = 0,rc;
 	ph7_socket sock;
 	io_private *pDev;
-	sock_private *pSock;
 	int iArgErrno = bClientForm ? 1 : 2;
 	int iArgErrstr = bClientForm ? 2 : 3;
 	int iArgTimeout = bClientForm ? 3 : 4;
-	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
+	if( nArg < 1 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	zTarget = ph7_value_to_string(apArg[0],&nTarget);
-	/* Strip a scheme; only tcp:// (and the bare form) are supported */
-	{
-		const char *z = zTarget,*zEnd = &zTarget[nTarget];
-		const char *zSep = 0;
-		while( z < zEnd - 2 ){
-			if( z[0] == ':' && z[1] == '/' && z[2] == '/' ){
-				zSep = z;
-				break;
-			}
-			z++;
-		}
-		if( zSep ){
-			if( !((zSep - zTarget) == 3 && SyStrnicmp(zTarget,"tcp",3) == 0) ){
-				ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-					"Unable to connect to %.*s (unsupported transport; PHL supports tcp:// only)",
-					nTarget,zTarget);
-				ph7_result_bool(pCtx,0);
-				return PH7_OK;
-			}
-			nTarget -= (int)(zSep + 3 - zTarget);
-			zTarget = zSep + 3;
-		}
-	}
-	/* host[:port] */
-	{
-		int i = nTarget - 1;
-		int nHost = nTarget;
-		while( i > 0 && zTarget[i] != ':' ){
-			i--;
-		}
-		if( i > 0 && zTarget[i] == ':' ){
-			sxi32 iTmp = 0;
-			SyStrToInt32(&zTarget[i+1],(sxu32)(nTarget - i - 1),(void *)&iTmp,0);
-			iPort = (int)iTmp;
-			nHost = i;
-		}
-		if( nHost >= (int)sizeof(zHost) ){
-			nHost = (int)sizeof(zHost) - 1;
-		}
-		SyMemcpy(zTarget,zHost,(sxu32)nHost);
-		zHost[nHost] = 0;
-	}
+	zRaw = ph7_value_to_string(apArg[0],&nRaw);
 	if( !bClientForm && nArg > 1 && !ph7_value_is_null(apArg[1]) ){
-		iPort = ph7_value_to_int(apArg[1]);
+		iPortArg = ph7_value_to_int(apArg[1]);
+	}
+	/* php builds ONE address out of fsockopen()'s two arguments — and only when
+	 * the port is a usable one, which is why `fsockopen($h)` reports the address
+	 * it could not parse rather than connecting to port 0. The address it SHOWS
+	 * keeps the port either way. */
+	if( bClientForm || iPortArg <= 0 ){
+		zAddr = zRaw;
+		nAddr = nRaw;
+	}else{
+		nAddr = (int)SyBufferFormat(zAddrBuf,sizeof(zAddrBuf),"%.*s:%d",nRaw,zRaw,iPortArg);
+		zAddr = zAddrBuf;
+	}
+	if( bClientForm ){
+		zShow = zRaw;
+		nShow = nRaw;
+	}else{
+		nShow = (int)SyBufferFormat(zShowBuf,sizeof(zShowBuf),"%.*s:%d",nRaw,zRaw,iPortArg);
+		zShow = zShowBuf;
+	}
+	rc = SockParseAddress(zAddr,nAddr,zHost,(int)sizeof(zHost),&iPort,&zTransport,&nTransport,
+		&zRest,&nRest);
+	if( rc != SOCK_ADDR_OK ){
+		if( rc == SOCK_ADDR_TRANSPORT ){
+			/* php's own wording for a transport its build does not carry —
+			 * which is what this engine's missing ones ARE (§7.4), and what a
+			 * script reading $errstr is written against. This used to spell a
+			 * message of PHL's own that no php ever answers. */
+			SyBufferFormat(zMsg,sizeof(zMsg),
+				"Unable to find the socket transport \"%.*s\" - did you forget to enable it when you configured PHP?",
+				nTransport,zTransport);
+		}else{
+			SyBufferFormat(zMsg,sizeof(zMsg),"Failed to parse address \"%.*s\"",nRest,zRest);
+		}
+		SockAddressFailure(pCtx,apArg,nArg,iArgErrno,iArgErrstr,zShow,nShow,zMsg,0);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
 	}
 	if( nArg > iArgTimeout && !ph7_value_is_null(apArg[iArgTimeout]) ){
 		double rTimeout = ph7_value_to_double(apArg[iArgTimeout]);
@@ -4067,79 +4308,225 @@ PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apA
 			iTimeoutMs = (int)(rTimeout * 1000);
 		}
 	}
-	if( iPort < 0 ){
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
 	sock = PH7_NetConnect(zHost,iPort,iTimeoutMs,&iErrno,&zErr);
 	if( sock == PH7_NET_INVALID_SOCKET ){
-		/* php reports the failure through the by-ref out-params + a warning */
-		{
-			ph7_value *pTmp = ph7_context_new_scalar(pCtx);
-			if( pTmp ){
-				if( nArg > iArgErrno ){
-					ph7_value_int(pTmp,iErrno);
-					PH7_VmStoreArgByRef(pCtx->pVm,apArg[iArgErrno],pTmp);
-				}
-				if( nArg > iArgErrstr ){
-					ph7_value_string(pTmp,zErr,-1);
-					PH7_VmStoreArgByRef(pCtx->pVm,apArg[iArgErrstr],pTmp);
-				}
-			}
+		if( iErrno == PH7_NET_ERR_RESOLVE ){
+			zErr = SockResolveFailure(pCtx,zHost,zMsg,(int)sizeof(zMsg));
+			iErrno = 0;
 		}
-		/* NOTE: ph7_context_throw_error_format already prepends "fname(): " */
-		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
-			"Unable to connect to %s:%d (%s)",zHost,iPort,zErr);
+		SockAddressFailure(pCtx,apArg,nArg,iArgErrno,iArgErrstr,zShow,nShow,zErr,iErrno);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	{
+	SockAddressSuccess(pCtx,apArg,nArg,iArgErrno,iArgErrstr);
+	/* Wrap the socket in an io_private so the whole f* family works on it. php
+	 * reports the ADDRESS it opened as the handle's `uri`, which is the same
+	 * one-address-out-of-two-arguments composition it connected through — so an
+	 * argument naming only a host still records the port beside it. */
+	pDev = SockWrapSocket(pCtx,sock,zAddr,nAddr);
+	if( pDev == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_resource(pCtx,pDev);
+	return PH7_OK;
+}
+/*
+ * resource|false stream_socket_server(string $address, int &$error_code,
+ *                    string &$error_message, int $flags = STREAM_SERVER_BIND|STREAM_SERVER_LISTEN,
+ *                    ?resource $context = null)
+ *
+ * The name a php program becomes a SERVER through, and a loud
+ * `Call to undefined function` until now — so a script that listens on a port
+ * (a test double, a job runner, a line protocol) could not be spelled at all,
+ * even though net.c had bind() and listen() all along.
+ *
+ * php's two flags are separate for a reason: BIND alone is what a datagram
+ * socket wants (there is nothing to listen for), so LISTEN is what makes the
+ * socket a stream server. Dropping LISTEN from a tcp:// address is therefore
+ * a bound socket nothing can connect to, which is exactly what php answers.
+ */
+PH7_PRIVATE int PH7_builtin_stream_socket_server(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zAddr,*zTransport,*zRest,*zErr = "";
+	char zHost[256];
+	int nAddr,nTransport,nRest,iPort = -1,iErrno = 0,iFlags,rc;
+	ph7_socket sock;
+	io_private *pDev;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* The signature row declares `string $address`, so whatever arrives has
+	 * already been screened; php's own ZPP then CASTS it, and refusing an int
+	 * here would answer false in silence for `stream_socket_server(8080)`
+	 * where php reports the address it could not parse. */
+	zAddr = ph7_value_to_string(apArg[0],&nAddr);
+	iFlags = nArg > 3 ? (int)ph7_value_to_int64(apArg[3])
+		: (PH7_STREAM_SERVER_BIND|PH7_STREAM_SERVER_LISTEN);
+	rc = SockParseAddress(zAddr,nAddr,zHost,(int)sizeof(zHost),&iPort,&zTransport,&nTransport,
+		&zRest,&nRest);
+	if( rc != SOCK_ADDR_OK ){
+		char zMsg[512];
+		if( rc == SOCK_ADDR_TRANSPORT ){
+			/* php's own wording for a transport its build has not got, which is
+			 * what udp://, unix:// and ssl:// are here (§7.4). */
+			SyBufferFormat(zMsg,sizeof(zMsg),
+				"Unable to find the socket transport \"%.*s\" - did you forget to enable it when you configured PHP?",
+				nTransport,zTransport);
+		}else{
+			SyBufferFormat(zMsg,sizeof(zMsg),"Failed to parse address \"%.*s\"",nRest,zRest);
+		}
+		SockAddressFailure(pCtx,apArg,nArg,1,2,zAddr,nAddr,zMsg,0);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( (iFlags & PH7_STREAM_SERVER_BIND) == 0 ){
+		/* php creates the socket while BINDING it, so a $flags without
+		 * STREAM_SERVER_BIND answers a socket stream with no socket behind it:
+		 * it has no name, reads false, writes 0 and is already at end of file.
+		 * It does not even resolve the host — `stream_socket_server(':1', $e,
+		 * $es, 0)` is a resource in php. */
+		pDev = SockWrapSocket(pCtx,PH7_NET_INVALID_SOCKET,zAddr,nAddr);
+		if( pDev == 0 ){
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		SockAddressSuccess(pCtx,apArg,nArg,1,2);
+		ph7_result_resource(pCtx,pDev);
+		return PH7_OK;
+	}
+	if( zHost[0] == 0 ){
+		/* An address with no host at all (`:8080`) is a name php asks the
+		 * resolver about and is refused for — NOT a wildcard bind. Answering
+		 * 0.0.0.0 for it would put a listener on every interface of the
+		 * machine, which is the unsafe direction. */
+		char zMsg[512];
+		SockAddressFailure(pCtx,apArg,nArg,1,2,zAddr,nAddr,
+			SockResolveFailure(pCtx,zHost,zMsg,(int)sizeof(zMsg)),0);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	sock = PH7_NetBind(zHost,iPort,0,(iFlags & PH7_STREAM_SERVER_LISTEN) != 0,
+		SOCK_LISTEN_BACKLOG,&iErrno,&zErr);
+	if( sock == PH7_NET_INVALID_SOCKET ){
+		char zMsg[512];
+		if( iErrno == PH7_NET_ERR_RESOLVE ){
+			zErr = SockResolveFailure(pCtx,zHost,zMsg,(int)sizeof(zMsg));
+		}
+		/* php reports no OS code for a refused ADDRESS — only a connect() that
+		 * reached the network carries one — so this stays 0 for every arm. */
+		SockAddressFailure(pCtx,apArg,nArg,1,2,zAddr,nAddr,zErr,0);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	SockAddressSuccess(pCtx,apArg,nArg,1,2);
+	pDev = SockWrapSocket(pCtx,sock,zAddr,nAddr);
+	if( pDev == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_resource(pCtx,pDev);
+	return PH7_OK;
+}
+/*
+ * resource|false stream_socket_accept(resource $socket, ?float $timeout = null,
+ *                                    string &$peer_name = null)
+ *
+ * The other half of a server, and the one with the timing in it. php waits at
+ * most `default_socket_timeout` seconds by default — NOT forever — and reports
+ * an expired wait as a warning plus false, which is what lets a single-threaded
+ * server do something else between connections. A negative timeout blocks.
+ */
+PH7_PRIVATE int PH7_builtin_stream_socket_accept(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	io_private *pDev,*pOut;
+	ph7_socket *pSock,sock;
+	char zPeer[128];
+	int rc,bTimedOut = 0,iTimeoutMs;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pDev = StreamSettingArgNamed(pCtx,apArg[0],1,"socket",&rc);
+	if( pDev == 0 ){
+		return rc;
+	}
+	pSock = IoPrivateSocket(pDev);
+	if( pSock == 0 ){
+		/* Not a socket at all. php's own answer for it reads oddly and is what
+		 * a script sees: the accept never reaches the network, so there is no
+		 * OS error to report and php asks its error table for code 0. */
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Accept failed: Unknown error");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){
+		double rTimeout = ph7_value_to_double(apArg[1]);
+		iTimeoutMs = rTimeout < 0 ? -1 : (int)(rTimeout * 1000);
+	}else{
+		iTimeoutMs = (int)(PH7_VmIniGetInt(pCtx->pVm,"default_socket_timeout",60) * 1000);
+		if( iTimeoutMs < 0 ){
+			iTimeoutMs = -1;
+		}
+	}
+	sock = PH7_NetAcceptTimed(*pSock,iTimeoutMs,&bTimedOut,zPeer,(int)sizeof(zPeer));
+	if( *pSock == PH7_NET_INVALID_SOCKET ){
+		/* php waits and then reports the expiry; there is nothing to wait on. */
+		bTimedOut = 1;
+	}
+	if( sock == PH7_NET_INVALID_SOCKET ){
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,"Accept failed: %s",
+			bTimedOut ? "Connection timed out" : PH7_NetStrError(PH7_NetLastError()));
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( nArg > 2 ){
 		ph7_value *pTmp = ph7_context_new_scalar(pCtx);
 		if( pTmp ){
-			if( nArg > iArgErrno ){
-				ph7_value_int(pTmp,0);
-				PH7_VmStoreArgByRef(pCtx->pVm,apArg[iArgErrno],pTmp);
-			}
-			if( nArg > iArgErrstr ){
-				ph7_value_string(pTmp,"",0);
-				PH7_VmStoreArgByRef(pCtx->pVm,apArg[iArgErrstr],pTmp);
-			}
+			ph7_value_string(pTmp,zPeer,-1);
+			PH7_VmStoreArgByRef(pCtx->pVm,apArg[2],pTmp);
 		}
 	}
-	/* Wrap the socket in an io_private so the whole f* family works on it */
-	pDev = (io_private *)ph7_context_alloc_chunk(pCtx,sizeof(io_private),TRUE,FALSE);
-	pSock = (sock_private *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,sizeof(sock_private));
-	if( pDev == 0 || pSock == 0 ){
-		PH7_NetClose(sock);
+	/* php reports no `uri` for an ACCEPTED connection: nothing opened it by
+	 * name, so stream_get_meta_data() has no address to answer with. */
+	pOut = SockWrapSocket(pCtx,sock,0,0);
+	if( pOut == 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	pSock->pVm = pCtx->pVm;
-	pSock->sock = sock;
-	pSock->bEof = 0;
-	InitIOPrivate(pCtx->pVm,&sTCP_Stream,pDev);
-	{
-		/* php reports the ADDRESS it connected to. fsockopen() takes the port
-		 * as a separate argument, so an argument naming only a host would
-		 * otherwise record a uri that names no port at all. */
-		int nUri,i,bHasPort = 0;
-		const char *zOrig = ph7_value_to_string(apArg[0],&nUri);
-		for( i = nUri - 1 ; i >= 0 ; i-- ){
-			if( zOrig[i] == ':' ){
-				bHasPort = (i + 3 >= nUri) || zOrig[i+1] != '/' || zOrig[i+2] != '/';
-				break;
-			}
-		}
-		if( bHasPort ){
-			SetIOPrivateOpenedAs(pDev,zOrig,nUri,"r+",2);
-		}else{
-			char zAddr[320];
-			sxu32 n = SyBufferFormat(zAddr,sizeof(zAddr),"%.*s:%d",nUri,zOrig,iPort);
-			SetIOPrivateOpenedAs(pDev,zAddr,(int)n,"r+",2);
-		}
+	ph7_result_resource(pCtx,pOut);
+	return PH7_OK;
+}
+/*
+ * string|false stream_socket_get_name(resource $socket, bool $remote)
+ *
+ * Which address this socket sits on (`$remote` false) or is talking to (true).
+ * It is the only way to learn the port a server bound with `:0` actually got,
+ * so a test that needs a free port had to guess one without it.
+ */
+PH7_PRIVATE int PH7_builtin_stream_socket_get_name(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	io_private *pDev;
+	ph7_socket *pSock;
+	char zName[128];
+	int rc;
+	if( nArg < 2 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
 	}
-	pDev->pHandle = (void *)pSock;
-	ph7_result_resource(pCtx,pDev);
+	pDev = StreamSettingArgNamed(pCtx,apArg[0],1,"socket",&rc);
+	if( pDev == 0 ){
+		return rc;
+	}
+	pSock = IoPrivateSocket(pDev);
+	if( pSock == 0 || PH7_NetSockName(*pSock,ph7_value_to_bool(apArg[1]),zName,(int)sizeof(zName)) != PH7_OK ){
+		/* php answers false for a stream that is not a socket, and for the peer
+		 * of a socket that is not connected — an unaccepted server. */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_string(pCtx,zName,-1);
 	return PH7_OK;
 }
 #endif /*
@@ -4213,6 +4600,12 @@ PH7_PRIVATE int PH7_builtin_stream_set_blocking(ph7_context *pCtx,int nArg,ph7_v
 	pSock = IoPrivateSocket(pDev);
 	if( pSock ){
 #ifdef PH7_ENABLE_NET
+		if( *pSock == PH7_NET_INVALID_SOCKET ){
+			/* No socket to set the mode on: php's own answer is FALSE, which is
+			 * the one place this family reports a setting that did not take. */
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
 		PH7_NetSetBlocking(*pSock,bEnable);
 #endif
 		pDev->bNonBlock = (sxu8)(bEnable ? 0 : 1);

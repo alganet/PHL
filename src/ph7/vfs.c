@@ -3052,6 +3052,9 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"fsockopen",  PH7_builtin_fsockopen },
 		{"pfsockopen", PH7_builtin_fsockopen },
 		{"stream_socket_client", PH7_builtin_fsockopen },
+		{"stream_socket_server", PH7_builtin_stream_socket_server },
+		{"stream_socket_accept", PH7_builtin_stream_socket_accept },
+		{"stream_socket_get_name", PH7_builtin_stream_socket_get_name },
 #endif
 		{"popen",     PH7_builtin_popen  },
 		{"proc_open",      PH7_builtin_proc_open      },

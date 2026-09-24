@@ -753,6 +753,8 @@ static sxu32 GenStateByRefBuiltinMask(SyString *pName)
 		{ "fsockopen",              9, (1u<<2)|(1u<<3) },  /* &$error_code, &$error_message */
 		{ "pfsockopen",            10, (1u<<2)|(1u<<3) },  /* same */
 		{ "stream_socket_client",  20, (1u<<1)|(1u<<2) },  /* &$error_code, &$error_message */
+		{ "stream_socket_server",  20, (1u<<1)|(1u<<2) },  /* same pair */
+		{ "stream_socket_accept",  20, 1u<<2 },            /* &$peer_name (apArg[2]) */
 		{ "proc_open",              9, 1u<<2 },  /* &$pipes (apArg[2]) */
 		{ "exec",                   4, (1u<<1)|(1u<<2) },  /* &$output, &$result_code */
 		{ "system",                 6, 1u<<1 },  /* &$result_code (apArg[1]) */

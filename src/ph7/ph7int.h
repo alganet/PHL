@@ -1003,6 +1003,11 @@ struct VmObEntry
 /* stream_wrapper_register()'s $flags: php defines this one bit. A wrapper that
  * declares itself a URL is the one allow_url_fopen and allow_url_include gate. */
 #define PH7_STREAM_IS_URL 1
+/* stream_socket_server()'s $flags. php keeps the two apart because a DATAGRAM
+ * server is bound and never listens; LISTEN is what makes a bound socket a
+ * stream server, and dropping it leaves a socket nothing can connect to. */
+#define PH7_STREAM_SERVER_BIND   4
+#define PH7_STREAM_SERVER_LISTEN 8
 #define PH7_MT_RAND_MT19937 0
 #define PH7_MT_RAND_PHP     1
 /*
@@ -3415,11 +3420,26 @@ typedef unsigned int ph7_socklen;
 #define PH7_NET_INVALID_SOCKET (-1)
 #endif
 struct sockaddr; /* Forward declaration */
+/* The one failure whose MESSAGE only the caller can word: php answers
+ * `php_network_getaddresses: getaddrinfo for <host> failed: ...` with the host
+ * in it, reports no OS code beside it, and raises it TWICE — once from the
+ * transport and once from the opener that asked. */
+#define PH7_NET_ERR_RESOLVE (-3)
 PH7_PRIVATE int PH7_NetInit(void);
+PH7_PRIVATE int PH7_NetEnsureInit(void);
 PH7_PRIVATE void PH7_NetCleanup(void);
 PH7_PRIVATE ph7_socket PH7_NetListen(const char *zHost,int iPort,int iBacklog);
+PH7_PRIVATE ph7_socket PH7_NetBind(const char *zHost,int iPort,int bDgram,int bListen,
+	int iBacklog,int *pErrno,const char **pzErr);
 PH7_PRIVATE ph7_socket PH7_NetConnect(const char *zHost,int iPort,int iTimeoutMs,int *pErrno,const char **pzErr);
 PH7_PRIVATE ph7_socket PH7_NetAccept(ph7_socket listenSock,struct sockaddr *pAddr,ph7_socklen *pAddrLen);
+PH7_PRIVATE ph7_socket PH7_NetAcceptTimed(ph7_socket listenSock,int iTimeoutMs,int *pbTimedOut,
+	char *zPeer,int nPeer);
+PH7_PRIVATE int PH7_NetSockName(ph7_socket sock,int bPeer,char *zBuf,int nBuf);
+PH7_PRIVATE int PH7_NetWait(ph7_socket sock,int bWrite,int iTimeoutMs);
+PH7_PRIVATE int PH7_NetLastError(void);
+PH7_PRIVATE int PH7_NetWouldBlock(void);
+PH7_PRIVATE const char * PH7_NetStrError(int iErr);
 PH7_PRIVATE int PH7_NetRecv(ph7_socket sock,void *pBuf,int nLen,int flags);
 PH7_PRIVATE int PH7_NetSend(ph7_socket sock,const void *pBuf,int nLen,int flags);
 PH7_PRIVATE int PH7_NetSendAll(ph7_socket sock,const void *pBuf,int nLen);
@@ -4731,6 +4751,9 @@ PH7_PRIVATE int PH7_builtin_fputcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 PH7_PRIVATE int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_fseek(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_fsockopen(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_socket_server(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_socket_accept(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE int PH7_builtin_stream_socket_get_name(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_fstat(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_ftell(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_ftruncate(ph7_context *pCtx,int nArg,ph7_value **apArg);

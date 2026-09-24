@@ -539,6 +539,20 @@ static void PH7_STREAM_IS_URL_Const(ph7_value *pVal,void *pUserData)
 	SXUNUSED(pUserData);
 }
 /*
+ * stream_socket_server()'s $flags. Its default is BIND|LISTEN, and the two are
+ * separate because binding is all a datagram server does.
+ */
+static void PH7_STREAM_SERVER_BIND_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_SERVER_BIND);
+	SXUNUSED(pUserData);
+}
+static void PH7_STREAM_SERVER_LISTEN_Const(ph7_value *pVal,void *pUserData)
+{
+	ph7_value_int(pVal,PH7_STREAM_SERVER_LISTEN);
+	SXUNUSED(pUserData);
+}
+/*
  * mt_srand()'s $mode: which GENERATOR to seed. MT_RAND_PHP is php's pre-7.1
  * Mersenne Twister, whose twist reads the low bit of the wrong word — a
  * different sequence, which is the only reason to ask for it.
@@ -2233,6 +2247,8 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"STR_PAD_RIGHT",        PH7_STR_PAD_RIGHT_Const},
 	{"STR_PAD_BOTH",         PH7_STR_PAD_BOTH_Const },
 	{"STREAM_IS_URL",                PH7_STREAM_IS_URL_Const },
+	{"STREAM_SERVER_BIND",           PH7_STREAM_SERVER_BIND_Const },
+	{"STREAM_SERVER_LISTEN",         PH7_STREAM_SERVER_LISTEN_Const },
 	{"MT_RAND_MT19937",              PH7_MT_RAND_MT19937_Const },
 	{"MT_RAND_PHP",                  PH7_MT_RAND_PHP_Const  },
 	{"PHP_OUTPUT_HANDLER_WRITE",     PH7_OB_WRITE_Const     },
