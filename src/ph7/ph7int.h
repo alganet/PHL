@@ -4126,6 +4126,8 @@ PH7_PRIVATE void VmBoundaryPark(ph7_vm *pVm,sxi32 rc);
  * element. Same set VmBoundaryPark parks; see its comment.
  */
 #define PH7_CALLBACK_UNWOUND(rc) ((rc) == PH7_EXCEPTION || (rc) == PH7_ABORT)
+PH7_PRIVATE sxi32 PH7_VmCallCallbackByValue(ph7_vm *pVm,ph7_value *pFunc,int nArg,
+	ph7_value **apArg,ph7_value *pResult,sxu32 nRefOkMask);
 PH7_PRIVATE sxi32 VmIterCallMethod(ph7_vm *pVm,ph7_class_instance *pThis,const char *zName,sxu32 nLen,ph7_value *pResult);
 PH7_PRIVATE sxi32 VmCallClassMethodLsb(ph7_vm *pVm,ph7_class *pCalled,ph7_class_instance *pThis,
 	ph7_class_method *pMethod,ph7_value *pResult,int nArg,ph7_value **apArg,VmCallArgMap *pMap);

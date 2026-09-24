@@ -1245,7 +1245,7 @@ static sxi32 PcreDoCallbackReplace(
 		/* Call the callback */
 		PH7_MemObjInit(pCtx->pVm, &sResult);
 		apCbArg[0] = pMatchArr;
-		rcCb = PH7_VmCallUserFunction(pCtx->pVm, pCallback, 1, apCbArg, &sResult);
+		rcCb = PH7_VmCallCallbackByValue(pCtx->pVm, pCallback, 1, apCbArg, &sResult, 0);
 		if( PH7_CALLBACK_UNWOUND(rcCb) ){
 			/* The callback did not return: propagate so the dispatcher unwinds.
 			 * An UNCAUGHT throw comes back as PH7_ABORT, and testing only

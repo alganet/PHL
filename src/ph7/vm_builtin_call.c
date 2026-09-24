@@ -1727,8 +1727,12 @@ static void VmCufDropByRefBuiltinArgs(ph7_context *pCtx,ph7_value *pCallable,int
  * $this reference the real call then consumes, so asking it twice would leak one).
  *
  * Answers 0 for a host builtin (whose by-ref positions come from its signature instead),
- * for a name routed through __call/__callStatic, and for a malformed callable.
+ * for a name routed through __call/__callStatic, and for a malformed callable. The
+ * __call rule is a real SCREEN, not a comment: a callable naming a method the calling
+ * scope cannot reach never enters it, so its formals are not the ones the arguments
+ * will bind to -- reading them made a by-ref diagnostic name a method php never calls.
  */
+static int VmCallableMethodAccessible(ph7_vm *pVm,ph7_class *pClass,ph7_class_method *pMethod);
 static ph7_vm_func * VmCallableCalleeFunc(ph7_vm *pVm,ph7_value *pCallable,ph7_class **ppOwner)
 {
 	ph7_class *pClass = 0;
@@ -1771,6 +1775,9 @@ static ph7_vm_func * VmCallableCalleeFunc(ph7_vm *pVm,ph7_value *pCallable,ph7_c
 				/* A plain closure: `$__fn` is its own entry in the function table. */
 				pEntry = SyHashGet(&pVm->hFunction,(const void *)zName,nName);
 				return pEntry ? (ph7_vm_func *)pEntry->pUserData : 0;
+			}
+			if( !pVm->bClosureScreened && !VmCallableMethodAccessible(&(*pVm),pClass,pMeth) ){
+				return 0; /* routes to __call: not this method's signature */
 			}
 			*ppOwner = pClass;
 			return &pMeth->sFunc;
@@ -1825,6 +1832,9 @@ static ph7_vm_func * VmCallableCalleeFunc(ph7_vm *pVm,ph7_value *pCallable,ph7_c
 	pMeth = PH7_ClassExtractMethod(pClass,zName,nName);
 	if( pMeth == 0 ){
 		return 0;
+	}
+	if( !pVm->bClosureScreened && !VmCallableMethodAccessible(&(*pVm),pClass,pMeth) ){
+		return 0; /* routes to __call: not this method's signature */
 	}
 	*ppOwner = pClass;
 	return &pMeth->sFunc;
@@ -1957,6 +1967,153 @@ PH7_PRIVATE void PH7_VmWarnByRefArgsGivenValue(ph7_vm *pVm,ph7_value *pCallable,
 		PH7_VmWarnByRefValueGiven(&(*pVm),pOwner,pFunc,(sxu32)((bNamed ? idx : i) + 1),
 			(aFormal[idx].iFlags & VM_FUNC_ARG_VARIADIC) ? 0 : &aFormal[idx].sName);
 	}
+}
+/*
+ * php hands an internal function's CALLBACK its arguments BY VALUE. array_filter,
+ * array_map, array_reduce, the u* sort/diff/intersect comparators,
+ * preg_replace_callback and iterator_apply build each argument themselves and
+ * pass it as a value, so a callback that declares a by-REFERENCE parameter gets
+ * php's `f(): Argument #N ($p) must be passed by reference, value given` warning
+ * and a COPY -- it never reaches what the builtin is walking.
+ *
+ * PHL had it wrong in BOTH directions, and silently in the dangerous one. An
+ * argument that is a live array ELEMENT (array_filter's value, a comparator's
+ * operands) carries the caller's slot index, so the callee ALIASED it:
+ * `usort($a, function(&$x,$y){ $x = 99; ... })` rewrote the array php leaves
+ * alone, and `array_map(function(&$v){ $v = 9; ... }, $a)` rewrote $a. And an
+ * argument the ENGINE built for the call (the key, array_reduce's carry, preg's
+ * matches array) has no slot to alias at all, so the by-ref binder raised
+ * `could not be passed by reference` -- an uncatchable-looking fatal on a
+ * program php runs with a warning.
+ *
+ * One rule for both: the by-ref positions are handed a COPY marked "the engine
+ * did this on purpose" (SXU32_HIGH + MEMOBJ_AUX_CUFVAL, call_user_func's own
+ * shape, which is what turns the binder's Error into a silent copy). The
+ * original values are never touched, so nothing outlives the dispatch and a
+ * callee that reallocates the value pool cannot strand a restore.
+ *
+ * nRefOkMask names the positions php really DOES pass by reference:
+ * array_walk/array_walk_recursive's element (bit 0) and nothing else in the
+ * family. Positions past 31 are left alone -- the by-ref masks this engine
+ * carries are 31 bits wide throughout -- but they are still PASSED: an argument
+ * list longer than the mask must not come out shorter than it went in.
+ */
+#define VM_CB_BYVAL_MAX 31
+PH7_PRIVATE sxi32 PH7_VmCallCallbackByValue(ph7_vm *pVm,ph7_value *pFunc,int nArg,
+	ph7_value **apArg,ph7_value *pResult,sxu32 nRefOkMask)
+{
+	ph7_value aCopy[VM_CB_BYVAL_MAX];
+	ph7_value *apEffBuf[VM_CB_BYVAL_MAX];
+	ph7_value **apEff = apArg;
+	ph7_value **apEffHeap = 0;
+	ph7_class *pOwner = 0;
+	ph7_vm_func *pCallee;
+	sxi32 nBrcIn = pVm->nBoundaryRc;
+	int nCopy = 0;
+	int i,nScan;
+	sxi32 rc;
+	nScan = nArg < VM_CB_BYVAL_MAX ? nArg : VM_CB_BYVAL_MAX;
+	pCallee = VmCallableCalleeFunc(&(*pVm),pFunc,&pOwner);
+	for( i = 0 ; i < nScan ; ++i ){
+		SyString *pName = 0;
+		SyString sHostName;
+		int bByRef = 0;
+		if( apArg[i] == 0 || (nRefOkMask & (1u << i)) != 0 ){
+			continue;
+		}
+		if( pCallee ){
+			ph7_vm_func_arg *aFormal = (ph7_vm_func_arg *)SySetBasePtr(&pCallee->aArgs);
+			int nFormal = (int)SySetUsed(&pCallee->aArgs);
+			int idx = i;
+			if( idx >= nFormal ){
+				/* Past the declared formals: only a variadic tail absorbs them,
+				 * and it dictates their by-ref-ness (the binder's own reading). */
+				if( nFormal < 1 || (aFormal[nFormal-1].iFlags & VM_FUNC_ARG_VARIADIC) == 0 ){
+					break;
+				}
+				idx = nFormal - 1;
+			}
+			if( aFormal[idx].iFlags & VM_FUNC_ARG_BY_REF ){
+				bByRef = 1;
+				/* A variadic tail has many actuals and one name, so php omits the
+				 * ` ($name)` clause for it -- PH7_VmWarnByRefValueGiven's rule. */
+				pName = (aFormal[idx].iFlags & VM_FUNC_ARG_VARIADIC) ? 0 : &aFormal[idx].sName;
+			}
+		}else if( pFunc->iFlags & MEMOBJ_STRING ){
+			/* A HOST builtin named as the callback (`array_map('settype', …)`):
+			 * its by-ref positions come from the declared signature. */
+			SyHashEntry *pEntry = SyHashGet(&pVm->hHostFunction,SyBlobData(&pFunc->sBlob),
+				SyBlobLength(&pFunc->sBlob));
+			ph7_user_func *pHost = pEntry ? (ph7_user_func *)pEntry->pUserData : 0;
+			if( pHost == 0 || (pHost->nByRefMask & (1u << i)) == 0
+			 || VmBuiltinPrefersRef(&pHost->sName) ){
+				/* php's ZEND_SEND_PREFER_REF rows (extract, array_multisort) take a
+				 * value without a word; the notice belongs to the strict `&` rows. */
+				continue;
+			}
+			bByRef = 1;
+			if( PH7_VmSigParamName(pHost->zSig,i,&sHostName) ){
+				pName = &sHostName;
+			}
+			VmErrorFormat(&(*pVm),PH7_CTX_WARNING,
+				pName ? "%z(): Argument #%d ($%z) must be passed by reference, value given"
+				      : "%z(): Argument #%d must be passed by reference, value given",
+				&pHost->sName,i + 1,pName);
+		}
+		if( !bByRef ){
+			continue;
+		}
+		if( pCallee ){
+			PH7_VmWarnByRefValueGiven(&(*pVm),pOwner,pCallee,(sxu32)(i + 1),pName);
+		}
+		if( pVm->nBoundaryRc != nBrcIn && PH7_CALLBACK_UNWOUND(pVm->nBoundaryRc) ){
+			/* A set_error_handler() that threw or exited on the warning above: php
+			 * runs nothing after it, so the callback is not entered either. */
+			while( nCopy-- > 0 ){
+				PH7_MemObjRelease(&aCopy[nCopy]);
+			}
+			return pVm->nBoundaryRc;
+		}
+		if( nCopy == 0 ){
+			int k;
+			if( nArg > VM_CB_BYVAL_MAX ){
+				apEffHeap = (ph7_value **)SyMemBackendAlloc(&pVm->sAllocator,
+					(sxu32)(sizeof(ph7_value *) * nArg));
+				if( apEffHeap == 0 ){
+					/* No room to re-point the list: pass it through untouched
+					 * rather than truncate it. */
+					return PH7_VmCallUserFunction(&(*pVm),pFunc,nArg,apArg,pResult);
+				}
+				apEff = apEffHeap;
+			}else{
+				apEff = apEffBuf;
+			}
+			for( k = 0 ; k < nArg ; ++k ){
+				apEff[k] = apArg[k];
+			}
+		}
+		PH7_MemObjInit(&(*pVm),&aCopy[nCopy]);
+		PH7_MemObjLoad(apArg[i],&aCopy[nCopy]);
+		aCopy[nCopy].nIdx = SXU32_HIGH;      /* no slot: the binder can only copy */
+		aCopy[nCopy].iFlags |= MEMOBJ_AUX_CUFVAL; /* ...and that copy is INTENTIONAL */
+		apEff[i] = &aCopy[nCopy];
+		nCopy++;
+	}
+	if( nCopy < 1 ){
+		/* The common case: no by-ref formal, nothing copied, nothing to undo. */
+		if( pVm->nBoundaryRc != nBrcIn && PH7_CALLBACK_UNWOUND(pVm->nBoundaryRc) ){
+			return pVm->nBoundaryRc;
+		}
+		return PH7_VmCallUserFunction(&(*pVm),pFunc,nArg,apArg,pResult);
+	}
+	rc = PH7_VmCallUserFunction(&(*pVm),pFunc,nArg,apEff,pResult);
+	while( nCopy-- > 0 ){
+		PH7_MemObjRelease(&aCopy[nCopy]);
+	}
+	if( apEffHeap ){
+		SyMemBackendFree(&pVm->sAllocator,apEffHeap);
+	}
+	return rc;
 }
 /*
  * Call a user defined or foreign function where the name of the function

@@ -443,7 +443,7 @@ static sxi32 HashmapCmpCallback4(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
 	apArg[0] = pV1;
 	apArg[1] = pV2;
 	/* Invoke the callback */
-	rc = PH7_VmCallUserFunction(pA->pMap->pVm,pCallback,2,apArg,&sResult);
+	rc = PH7_VmCallCallbackByValue(pA->pMap->pVm,pCallback,2,apArg,&sResult,0);
 	if( PH7_CALLBACK_UNWOUND(rc) ){
 		/* The comparator did not RETURN: latch the STATUS so the sort driver
 		 * aborts and propagates exactly it (an UNCAUGHT throw is PH7_ABORT, and
@@ -508,7 +508,7 @@ static sxi32 HashmapCmpCallback6(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void 
 	sK1.nIdx = SXU32_HIGH;
 	sK2.nIdx = SXU32_HIGH;
 	/* Invoke the callback */
-	rc = PH7_VmCallUserFunction(pA->pMap->pVm,pCallback,2,apArg,&sResult);
+	rc = PH7_VmCallCallbackByValue(pA->pMap->pVm,pCallback,2,apArg,&sResult,0);
 	if( PH7_CALLBACK_UNWOUND(rc) ){
 		/* The comparator did not RETURN: latch the STATUS so the sort driver
 		 * aborts and propagates exactly it (an UNCAUGHT throw is PH7_ABORT, and

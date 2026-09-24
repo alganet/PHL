@@ -2495,7 +2495,7 @@ static sxi32 HashmapUserCmpCall(ph7_context *pCtx,ph7_value *pCallback,ph7_value
 	PH7_MemObjInit(pCtx->pVm,&sResult);
 	apCbArg[0] = pA;
 	apCbArg[1] = pB;
-	rc = PH7_VmCallUserFunction(pCtx->pVm,pCallback,2,apCbArg,&sResult);
+	rc = PH7_VmCallCallbackByValue(pCtx->pVm,pCallback,2,apCbArg,&sResult,0);
 	if( PH7_CALLBACK_UNWOUND(rc) ){
 		PH7_MemObjRelease(&sResult);
 		return rc;
@@ -5002,7 +5002,7 @@ PH7_PRIVATE int ph7_hashmap_filter(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				apCbArg[0] = pValue;
 				nCbArg = 1;
 			}
-			rc = PH7_VmCallUserFunction(pMap->pVm,apArg[1],nCbArg,apCbArg,&sResult);
+			rc = PH7_VmCallCallbackByValue(pMap->pVm,apArg[1],nCbArg,apCbArg,&sResult,0);
 			PH7_MemObjRelease(&sKey);
 			if( PH7_CALLBACK_UNWOUND(rc) ){
 				/* The callback did not return: propagate so the dispatcher unwinds. */
@@ -5115,7 +5115,7 @@ PH7_PRIVATE int ph7_hashmap_map(ph7_context *pCtx,int nArg,ph7_value **apArg)
 					ph7_array_add_elem(pArray,&sKey,pValue);
 				}else{
 					/* Invoke the supplied callback */
-					rc = PH7_VmCallUserFunction(pVm,apArg[0],1,&pValue,&sResult);
+					rc = PH7_VmCallCallbackByValue(pVm,apArg[0],1,&pValue,&sResult,0);
 					if( PH7_CALLBACK_UNWOUND(rc) ){
 						/* Callback did not return: abort and let the foreign-function
 						 * dispatcher unwind through the nearest try/catch. */
@@ -5187,7 +5187,7 @@ PH7_PRIVATE int ph7_hashmap_map(ph7_context *pCtx,int nArg,ph7_value **apArg)
 					ph7_array_add_elem(pArray,0,pZip);
 				}
 			}else{
-				rc = PH7_VmCallUserFunction(pVm,apArg[0],nArrays,apCallArg,&sResult);
+				rc = PH7_VmCallCallbackByValue(pVm,apArg[0],nArrays,apCallArg,&sResult,0);
 				if( PH7_CALLBACK_UNWOUND(rc) ){
 					SyMemBackendFree(&pVm->sAllocator,apCur);
 					SyMemBackendFree(&pVm->sAllocator,apCallArg);
@@ -5226,6 +5226,7 @@ PH7_PRIVATE int ph7_hashmap_map(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_reduce(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	ph7_value *apCbArg[2];
 	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pMap;
 	ph7_value *pValue;
@@ -5272,7 +5273,9 @@ PH7_PRIVATE int ph7_hashmap_reduce(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		/* Extract the node value */
 		pValue = HashmapExtractNodeValue(pEntry);
 		/* Invoke the supplied callback */
-		rc = PH7_VmCallUserFunctionAp(pMap->pVm,apArg[1],&sResult,&sResult,pValue,0);
+		apCbArg[0] = &sResult;
+		apCbArg[1] = pValue;
+		rc = PH7_VmCallCallbackByValue(pMap->pVm,apArg[1],2,apCbArg,&sResult,0);
 		if( PH7_CALLBACK_UNWOUND(rc) ){
 			/* The callback did not return: propagate so the dispatcher unwinds. */
 			PH7_MemObjRelease(&sResult);
@@ -5306,6 +5309,7 @@ PH7_PRIVATE int ph7_hashmap_reduce(ph7_context *pCtx,int nArg,ph7_value **apArg)
  */
 PH7_PRIVATE int ph7_hashmap_walk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	ph7_value *apCbArg[3];
 	ph7_value *pValue,*pUserData,sKey;
 	ph7_hashmap_node *pEntry;
 	ph7_hashmap *pMap;
@@ -5351,7 +5355,11 @@ PH7_PRIVATE int ph7_hashmap_walk(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			/* Extract the entry key */
 			PH7_HashmapExtractNodeKey(pEntry,&sKey);
 			/* Invoke the supplied callback */
-			rcW = PH7_VmCallUserFunctionAp(pMap->pVm,apArg[1],0,pValue,&sKey,pUserData,0);
+			apCbArg[0] = pValue;
+			apCbArg[1] = &sKey;
+			apCbArg[2] = pUserData;
+			rcW = PH7_VmCallCallbackByValue(pMap->pVm,apArg[1],pUserData ? 3 : 2,
+				apCbArg,0,1u /* the ELEMENT really is by reference */);
 			PH7_MemObjRelease(&sKey);
 			if( PH7_CALLBACK_UNWOUND(rcW) ){
 				/* The callback did not return: propagate so the dispatcher unwinds. */
@@ -5377,6 +5385,7 @@ static sxi32 HashmapWalkRecursive(
 	)
 {
 	ph7_hashmap_node *pEntry;
+	ph7_value *apCbArg[3];
 	ph7_value *pValue,sKey;
 	sxi32 rc;
 	sxu32 n;
@@ -5402,7 +5411,11 @@ static sxi32 HashmapWalkRecursive(
 				/* Extract the node key */
 				PH7_HashmapExtractNodeKey(pEntry,&sKey);
 				/* Invoke the supplied callback */
-				rc = PH7_VmCallUserFunctionAp(pMap->pVm,pCallback,0,pValue,&sKey,pUserData,0);
+				apCbArg[0] = pValue;
+				apCbArg[1] = &sKey;
+				apCbArg[2] = pUserData;
+				rc = PH7_VmCallCallbackByValue(pMap->pVm,pCallback,pUserData ? 3 : 2,
+					apCbArg,0,1u /* the ELEMENT really is by reference */);
 				PH7_MemObjRelease(&sKey);
 				if( PH7_CALLBACK_UNWOUND(rc) ){
 					/* The callback did not return: propagate so the dispatcher unwinds. */
@@ -5768,7 +5781,7 @@ static sxi32 HashmapCallbackSearch(
 			PH7_HashmapExtractNodeKey(pEntry,&sKey);
 			apCbArg[0] = pValue;
 			apCbArg[1] = &sKey;
-			rc = PH7_VmCallUserFunction(pMap->pVm,apArg[1],2,apCbArg,&sResult);
+			rc = PH7_VmCallCallbackByValue(pMap->pVm,apArg[1],2,apCbArg,&sResult,0);
 			if( PH7_CALLBACK_UNWOUND(rc) ){
 				/* The callback did not return: propagate so the dispatcher unwinds. */
 				PH7_MemObjRelease(&sKey);
@@ -5969,8 +5982,8 @@ static sxi32 IterApplyStep(ph7_vm *pVm, ph7_value *pKey, ph7_value *pValue, void
 		}
 	}
 	PH7_MemObjInit(pVm,&sResult);
-	rc = PH7_VmCallUserFunction(pVm, p->pCallback, (int)SySetUsed(&aArg),
-		(ph7_value **)SySetBasePtr(&aArg), &sResult);
+	rc = PH7_VmCallCallbackByValue(pVm, p->pCallback, (int)SySetUsed(&aArg),
+		(ph7_value **)SySetBasePtr(&aArg), &sResult, 0);
 	SySetRelease(&aArg);
 	if( rc == PH7_EXCEPTION || rc == PH7_ABORT ){ PH7_MemObjRelease(&sResult); return rc; }
 	p->nCount++;
