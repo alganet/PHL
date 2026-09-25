@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 168/170 lines (98.82%)
+Coverage: 185/187 lines (98.93%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -304,213 +304,238 @@ Coverage: 168/170 lines (98.82%)
 |         - |  294 | `};` |
 |         - |  295 |  |
 |         - |  296 | `/* The Blowfish F function: 4-byte split, two S-box adds with one xor. */` |
-| 214277345 |  297 | `static sxu32 Blowfish_F(blf_ctx *c,sxu32 x){` |
-| 214277345 |  298 | `	sxu32 a = (x >> 24) & 0xff;` |
-| 214277345 |  299 | `	sxu32 b = (x >> 16) & 0xff;` |
-| 214277345 |  300 | `	sxu32 cc = (x >> 8) & 0xff;` |
-| 214277345 |  301 | `	sxu32 d = x & 0xff;` |
-| 214277345 |  302 | `	sxu32 y = c->S[0][a] + c->S[1][b];` |
-| 214277345 |  303 | `	y = y ^ c->S[2][cc];` |
-| 214277345 |  304 | `	y = y + c->S[3][d];` |
-| 214277345 |  305 | `	return y;` |
+| 292000481 |  297 | `static sxu32 Blowfish_F(blf_ctx *c,sxu32 x){` |
+| 292000481 |  298 | `	sxu32 a = (x >> 24) & 0xff;` |
+| 292000481 |  299 | `	sxu32 b = (x >> 16) & 0xff;` |
+| 292000481 |  300 | `	sxu32 cc = (x >> 8) & 0xff;` |
+| 292000481 |  301 | `	sxu32 d = x & 0xff;` |
+| 292000481 |  302 | `	sxu32 y = c->S[0][a] + c->S[1][b];` |
+| 292000481 |  303 | `	y = y ^ c->S[2][cc];` |
+| 292000481 |  304 | `	y = y + c->S[3][d];` |
+| 292000481 |  305 | `	return y;` |
 |         1 |  306 | `}` |
 |         - |  307 | `/* Encrypt one 64-bit block (xl\|\|xr) in place. */` |
-|  13392335 |  308 | `static void Blowfish_encipher(blf_ctx *c,sxu32 *xl,sxu32 *xr){` |
-|  13392335 |  309 | `	sxu32 Xl = *xl,Xr = *xr,temp;` |
+|  18250031 |  308 | `static void Blowfish_encipher(blf_ctx *c,sxu32 *xl,sxu32 *xr){` |
+|  18250031 |  309 | `	sxu32 Xl = *xl,Xr = *xr,temp;` |
 |         - |  310 | `	int i;` |
-| 227669679 |  311 | `	for( i = 0; i < BLF_N; i++ ){` |
-| 214277345 |  312 | `		Xl = Xl ^ c->P[i];` |
-| 214277345 |  313 | `		Xr = Blowfish_F(c,Xl) ^ Xr;` |
-| 214277345 |  314 | `		temp = Xl; Xl = Xr; Xr = temp;   /* swap */` |
-| 107138673 |  315 | `	}` |
-|  13392335 |  316 | `	temp = Xl; Xl = Xr; Xr = temp;       /* undo the final swap */` |
-|  13392335 |  317 | `	Xr = Xr ^ c->P[BLF_N];` |
-|  13392335 |  318 | `	Xl = Xl ^ c->P[BLF_N + 1];` |
-|  13392335 |  319 | `	*xl = Xl; *xr = Xr;` |
-|  13392335 |  320 | `}` |
+| 310250511 |  311 | `	for( i = 0; i < BLF_N; i++ ){` |
+| 292000481 |  312 | `		Xl = Xl ^ c->P[i];` |
+| 292000481 |  313 | `		Xr = Blowfish_F(c,Xl) ^ Xr;` |
+| 292000481 |  314 | `		temp = Xl; Xl = Xr; Xr = temp;   /* swap */` |
+| 146000241 |  315 | `	}` |
+|  18250031 |  316 | `	temp = Xl; Xl = Xr; Xr = temp;       /* undo the final swap */` |
+|  18250031 |  317 | `	Xr = Xr ^ c->P[BLF_N];` |
+|  18250031 |  318 | `	Xl = Xl ^ c->P[BLF_N + 1];` |
+|  18250031 |  319 | `	*xl = Xl; *xr = Xr;` |
+|  18250031 |  320 | `}` |
 |         - |  321 | `/* Encrypt nBlocks consecutive 64-bit blocks (ECB). */` |
-|      1921 |  322 | `static void Blowfish_encrypt(blf_ctx *c,sxu32 *data,int nBlocks){` |
+|      3969 |  322 | `static void Blowfish_encrypt(blf_ctx *c,sxu32 *data,int nBlocks){` |
 |         - |  323 | `	int i;` |
-|      7681 |  324 | `	for( i = 0; i < nBlocks; i++ ){` |
-|      5761 |  325 | `		Blowfish_encipher(c,&data[i*2],&data[i*2+1]);` |
-|      2881 |  326 | `	}` |
-|      1921 |  327 | `}` |
+|     15873 |  324 | `	for( i = 0; i < nBlocks; i++ ){` |
+|     11905 |  325 | `		Blowfish_encipher(c,&data[i*2],&data[i*2+1]);` |
+|      5953 |  326 | `	}` |
+|      3969 |  327 | `}` |
 |         - |  328 | `/* Read 4 bytes (big-endian) from data, cycling at databytes; advance *pCur.` |
 |         - |  329 | ` * Bytes are unsigned (the corrected "$2y" behaviour — no sign extension). */` |
-|    493933 |  330 | `static sxu32 Blowfish_stream2word(const unsigned char *data,sxu32 databytes,sxu32 *pCur){` |
+|    694473 |  330 | `static sxu32 Blowfish_stream2word(const unsigned char *data,sxu32 databytes,sxu32 *pCur){` |
 |         - |  331 | `	int i;` |
-|    493933 |  332 | `	sxu32 temp = 0,j = *pCur;` |
-|   2469661 |  333 | `	for( i = 0; i < 4; i++,j++ ){` |
-|   1975729 |  334 | `		if( j >= databytes ){ j = 0; }` |
-|   1975729 |  335 | `		temp = (temp << 8) \| (sxu32)data[j];` |
-|    987865 |  336 | `	}` |
-|    493933 |  337 | `	*pCur = j;` |
-|    493933 |  338 | `	return temp;` |
+|    694473 |  332 | `	sxu32 temp = 0,j = *pCur;` |
+|   3472361 |  333 | `	for( i = 0; i < 4; i++,j++ ){` |
+|   2777889 |  334 | `		if( j >= databytes ){ j = 0; }` |
+|   2777889 |  335 | `		temp = (temp << 8) \| (sxu32)data[j];` |
+|   1388945 |  336 | `	}` |
+|    694473 |  337 | `	*pCur = j;` |
+|    694473 |  338 | `	return temp;` |
 |         1 |  339 | `}` |
-|        31 |  340 | `static void Blowfish_initstate(blf_ctx *c){` |
-|        31 |  341 | `	SyMemcpy((const void *)ORIG_S,(void *)c->S,sizeof(c->S));` |
-|        31 |  342 | `	SyMemcpy((const void *)ORIG_P,(void *)c->P,sizeof(c->P));` |
-|        31 |  343 | `}` |
-|         - |  344 | `/* Standard (unsalted) key expansion. */` |
-|     25665 |  345 | `static void Blowfish_expand0state(blf_ctx *c,const unsigned char *key,sxu32 keybytes){` |
-|         - |  346 | `	int i,k;` |
-|         - |  347 | `	sxu32 j,datal,datar,temp;` |
-|     25665 |  348 | `	j = 0;` |
-|    487617 |  349 | `	for( i = 0; i < BLF_N + 2; i++ ){` |
-|    461953 |  350 | `		temp = Blowfish_stream2word(key,keybytes,&j);` |
-|    461953 |  351 | `		c->P[i] = c->P[i] ^ temp;` |
-|    230977 |  352 | `	}` |
-|     25665 |  353 | `	datal = datar = 0;` |
-|    256641 |  354 | `	for( i = 0; i < BLF_N + 2; i += 2 ){` |
-|    230977 |  355 | `		Blowfish_encipher(c,&datal,&datar);` |
-|    230977 |  356 | `		c->P[i] = datal; c->P[i+1] = datar;` |
-|    115489 |  357 | `	}` |
-|    128321 |  358 | `	for( i = 0; i < 4; i++ ){` |
-|  13242625 |  359 | `		for( k = 0; k < 256; k += 2 ){` |
-|  13139969 |  360 | `			Blowfish_encipher(c,&datal,&datar);` |
-|  13139969 |  361 | `			c->S[i][k] = datal; c->S[i][k+1] = datar;` |
-|   6569985 |  362 | `		}` |
-|     51329 |  363 | `	}` |
-|     25665 |  364 | `}` |
-|         - |  365 | `/* Salted "expensive" key expansion (the bcrypt ExpandKey). */` |
-|        30 |  366 | `static void Blowfish_expandstate(blf_ctx *c,const unsigned char *data,sxu32 databytes,` |
-|         1 |  367 | `	const unsigned char *key,sxu32 keybytes){` |
-|         - |  368 | `	int i,k;` |
-|         - |  369 | `	sxu32 j,datal,datar,temp;` |
-|        31 |  370 | `	j = 0;` |
-|       571 |  371 | `	for( i = 0; i < BLF_N + 2; i++ ){` |
-|       541 |  372 | `		temp = Blowfish_stream2word(key,keybytes,&j);` |
-|       541 |  373 | `		c->P[i] = c->P[i] ^ temp;` |
-|       271 |  374 | `	}` |
-|        31 |  375 | `	datal = datar = 0;` |
-|        31 |  376 | `	j = 0;` |
-|       301 |  377 | `	for( i = 0; i < BLF_N + 2; i += 2 ){` |
-|       271 |  378 | `		datal ^= Blowfish_stream2word(data,databytes,&j);` |
-|       271 |  379 | `		datar ^= Blowfish_stream2word(data,databytes,&j);` |
-|       271 |  380 | `		Blowfish_encipher(c,&datal,&datar);` |
-|       271 |  381 | `		c->P[i] = datal; c->P[i+1] = datar;` |
-|       136 |  382 | `	}` |
-|       151 |  383 | `	for( i = 0; i < 4; i++ ){` |
-|     15481 |  384 | `		for( k = 0; k < 256; k += 2 ){` |
-|     15361 |  385 | `			datal ^= Blowfish_stream2word(data,databytes,&j);` |
-|     15361 |  386 | `			datar ^= Blowfish_stream2word(data,databytes,&j);` |
-|     15361 |  387 | `			Blowfish_encipher(c,&datal,&datar);` |
-|     15361 |  388 | `			c->S[i][k] = datal; c->S[i][k+1] = datar;` |
-|      7681 |  389 | `		}` |
-|        61 |  390 | `	}` |
-|        31 |  391 | `}` |
-|         - |  392 |  |
-|         - |  393 | `/* bcrypt-base64 alphabet: '.','/', then A-Z, a-z, 0-9. */` |
-|         - |  394 | `static const char zB64[] = "./ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";` |
-|         - |  395 | `/* Map a bcrypt-base64 character to its 0..63 value, or 255 if invalid. */` |
-|       397 |  396 | `static int BcryptB64Value(int c){` |
-|       397 |  397 | `	const char *p = zB64;` |
-|       397 |  398 | `	int i = 0;` |
-|      9789 |  399 | `	for(; i < 64; i++ ){` |
-|      9789 |  400 | `		if( p[i] == c ){ return i; }` |
-|      5011 |  401 | `	}` |
-|       ! 0 |  402 | `	return 255;` |
-|       199 |  403 | `}` |
-|         - |  404 | `/* Encode nIn bytes as bcrypt-base64 into zOut (no padding); returns char count. */` |
-|        61 |  405 | `static int BcryptB64Encode(char *zOut,const unsigned char *pIn,sxu32 nIn){` |
-|        61 |  406 | `	sxu32 i = 0;` |
-|        61 |  407 | `	int n = 0;` |
-|         - |  408 | `	unsigned int c1,c2;` |
-|       421 |  409 | `	while( i < nIn ){` |
-|       421 |  410 | `		c1 = pIn[i++];` |
-|       421 |  411 | `		zOut[n++] = zB64[(c1 >> 2) & 0x3f];` |
-|       421 |  412 | `		c1 = (c1 & 0x03) << 4;` |
-|       421 |  413 | `		if( i >= nIn ){ zOut[n++] = zB64[c1 & 0x3f]; break; }` |
-|       391 |  414 | `		c2 = pIn[i++];` |
-|       391 |  415 | `		c1 \|= (c2 >> 4) & 0x0f;` |
-|       391 |  416 | `		zOut[n++] = zB64[c1 & 0x3f];` |
-|       391 |  417 | `		c1 = (c2 & 0x0f) << 2;` |
-|       391 |  418 | `		if( i >= nIn ){ zOut[n++] = zB64[c1 & 0x3f]; break; }` |
-|       361 |  419 | `		c2 = pIn[i++];` |
-|       361 |  420 | `		c1 \|= (c2 >> 6) & 0x03;` |
-|       361 |  421 | `		zOut[n++] = zB64[c1 & 0x3f];` |
-|       361 |  422 | `		zOut[n++] = zB64[c2 & 0x3f];` |
-|         1 |  423 | `	}` |
-|        61 |  424 | `	return n;` |
-|         1 |  425 | `}` |
-|        19 |  426 | `PH7_PRIVATE sxi32 SyBcryptB64Decode(const char *zIn,sxu32 nIn,unsigned char *pOut,sxu32 nOut){` |
-|        19 |  427 | `	sxu32 i = 0,o = 0;` |
-|         - |  428 | `	int c1,c2,c3,c4;` |
-|       109 |  429 | `	while( o < nOut ){` |
-|       109 |  430 | `		if( i + 1 >= nIn ){ return SXERR_INVALID; }` |
-|       109 |  431 | `		c1 = BcryptB64Value(zIn[i]); c2 = BcryptB64Value(zIn[i+1]);` |
-|       109 |  432 | `		if( c1 == 255 \|\| c2 == 255 ){ return SXERR_INVALID; }` |
-|       109 |  433 | `		pOut[o++] = (unsigned char)((c1 << 2) \| ((c2 & 0x30) >> 4));` |
-|       109 |  434 | `		if( o >= nOut ){ break; }` |
-|        91 |  435 | `		if( i + 2 >= nIn ){ return SXERR_INVALID; }` |
-|        91 |  436 | `		c3 = BcryptB64Value(zIn[i+2]);` |
-|        91 |  437 | `		if( c3 == 255 ){ return SXERR_INVALID; }` |
-|        91 |  438 | `		pOut[o++] = (unsigned char)(((c2 & 0x0f) << 4) \| ((c3 & 0x3c) >> 2));` |
-|        91 |  439 | `		if( o >= nOut ){ break; }` |
-|        91 |  440 | `		if( i + 3 >= nIn ){ return SXERR_INVALID; }` |
-|        91 |  441 | `		c4 = BcryptB64Value(zIn[i+3]);` |
-|        91 |  442 | `		if( c4 == 255 ){ return SXERR_INVALID; }` |
-|        91 |  443 | `		pOut[o++] = (unsigned char)(((c3 & 0x03) << 6) \| c4);` |
-|        91 |  444 | `		i += 4;` |
-|         1 |  445 | `	}` |
-|        19 |  446 | `	return SXRET_OK;` |
-|        10 |  447 | `}` |
-|         - |  448 |  |
-|        30 |  449 | `PH7_PRIVATE sxi32 SyBcryptHash(const unsigned char *pPwd,sxu32 nPwd,sxu32 nCost,` |
-|         1 |  450 | `	const unsigned char aSalt[16],char zOut[60]){` |
-|         - |  451 | `	blf_ctx state;` |
-|         - |  452 | `	/* "OrpheanBeholderScryDoubt" = 24 bytes = 6 big-endian words. */` |
-|         - |  453 | `	static const unsigned char zMagic[24] = {` |
-|         - |  454 | `		'O','r','p','h','e','a','n','B','e','h','o','l','d','e','r',` |
-|         - |  455 | `		'S','c','r','y','D','o','u','b','t'` |
-|         - |  456 | `	};` |
-|         - |  457 | `	sxu32 cdata[6];` |
-|         - |  458 | `	unsigned char zCipher[24];` |
-|         - |  459 | `	unsigned char zKey[73];` |
-|         - |  460 | `	sxu32 keylen,j,rounds,k;` |
-|         - |  461 | `	int i,n;` |
-|        31 |  462 | `	if( nCost < 4 \|\| nCost > 31 ){` |
-|       ! 0 |  463 | `		return SXERR_INVALID;` |
-|         - |  464 | `	}` |
-|         - |  465 | `	/* Key = password bytes + a trailing NUL, capped at 72 bytes total. The whole` |
-|         - |  466 | `	 * buffer is zeroed first: only [0,keylen) is ever read (cyclically), but a` |
-|         - |  467 | `	 * full init keeps -Wmaybe-uninitialized quiet when the loop is inlined. */` |
-|        31 |  468 | `	SyZero(zKey,(sxu32)sizeof(zKey));` |
-|        31 |  469 | `	keylen = nPwd + 1;` |
-|        31 |  470 | `	if( keylen > 72 ){ keylen = 72; }` |
-|       455 |  471 | `	for( j = 0; j < keylen; j++ ){` |
-|       425 |  472 | `		zKey[j] = (j < nPwd) ? pPwd[j] : 0;` |
-|       213 |  473 | `	}` |
-|         - |  474 | `	/* EksBlowfishSetup */` |
-|        31 |  475 | `	Blowfish_initstate(&state);` |
-|        31 |  476 | `	Blowfish_expandstate(&state,aSalt,16,zKey,keylen);` |
-|        31 |  477 | `	rounds = (sxu32)((sxu64)1 << nCost);` |
-|     12863 |  478 | `	for( k = 0; k < rounds; k++ ){` |
-|     12833 |  479 | `		Blowfish_expand0state(&state,zKey,keylen);` |
-|     12833 |  480 | `		Blowfish_expand0state(&state,aSalt,16);` |
-|      6417 |  481 | `	}` |
-|         - |  482 | `	/* Encrypt the magic string 64 times (3 blocks each). */` |
-|        31 |  483 | `	j = 0;` |
-|       211 |  484 | `	for( i = 0; i < 6; i++ ){` |
-|       181 |  485 | `		cdata[i] = Blowfish_stream2word(zMagic,24,&j);` |
-|        91 |  486 | `	}` |
-|      1951 |  487 | `	for( k = 0; k < 64; k++ ){` |
-|      1921 |  488 | `		Blowfish_encrypt(&state,cdata,3);` |
-|       961 |  489 | `	}` |
-|       211 |  490 | `	for( i = 0; i < 6; i++ ){` |
-|       181 |  491 | `		zCipher[i*4]   = (unsigned char)((cdata[i] >> 24) & 0xff);` |
-|       181 |  492 | `		zCipher[i*4+1] = (unsigned char)((cdata[i] >> 16) & 0xff);` |
-|       181 |  493 | `		zCipher[i*4+2] = (unsigned char)((cdata[i] >> 8) & 0xff);` |
-|       181 |  494 | `		zCipher[i*4+3] = (unsigned char)(cdata[i] & 0xff);` |
-|        91 |  495 | `	}` |
-|         - |  496 | `	/* Assemble "$2y$CC$" + base64(salt,16)=22 + base64(cipher,23)=31 = 60. */` |
-|        31 |  497 | `	n = 0;` |
-|        31 |  498 | `	zOut[n++] = '$'; zOut[n++] = '2'; zOut[n++] = 'y'; zOut[n++] = '$';` |
-|        31 |  499 | `	zOut[n++] = (char)('0' + (nCost / 10));` |
-|        31 |  500 | `	zOut[n++] = (char)('0' + (nCost % 10));` |
-|        31 |  501 | `	zOut[n++] = '$';` |
-|        31 |  502 | `	n += BcryptB64Encode(&zOut[n],aSalt,16);          /* 22 chars → n = 29 */` |
-|        31 |  503 | `	BcryptB64Encode(&zOut[n],zCipher,23);             /* 31 chars (drop the 24th byte) */` |
-|        31 |  504 | `	return SXRET_OK;` |
-|        16 |  505 | `}` |
-|         - |  506 |  |
+|         - |  340 | `/* The "$2x$" variant of the reader: the original crypt_blowfish sign-extension` |
+|         - |  341 | ` * bug, kept reproducible because crypt() must answer for hashes made by it. A` |
+|         - |  342 | ` * byte >= 0x80 ORs 0xFFFFFF into the accumulated word's high bits. Applied to` |
+|         - |  343 | ` * KEY bytes only — salt bytes were never read through the buggy path. */` |
+|       613 |  344 | `static sxu32 Blowfish_stream2word_signed(const unsigned char *data,sxu32 databytes,sxu32 *pCur){` |
+|         - |  345 | `	int i;` |
+|       613 |  346 | `	sxu32 temp = 0,j = *pCur;` |
+|      3061 |  347 | `	for( i = 0; i < 4; i++,j++ ){` |
+|      2449 |  348 | `		if( j >= databytes ){ j = 0; }` |
+|      2449 |  349 | `		temp = (temp << 8) \| (sxu32)(sxi32)(signed char)data[j];` |
+|      1225 |  350 | `	}` |
+|       613 |  351 | `	*pCur = j;` |
+|       613 |  352 | `	return temp;` |
+|         1 |  353 | `}` |
+|        63 |  354 | `static void Blowfish_initstate(blf_ctx *c){` |
+|        63 |  355 | `	SyMemcpy((const void *)ORIG_S,(void *)c->S,sizeof(c->S));` |
+|        63 |  356 | `	SyMemcpy((const void *)ORIG_P,(void *)c->P,sizeof(c->P));` |
+|        63 |  357 | `}` |
+|         - |  358 | `/* Standard (unsalted) key expansion. bSignedKey selects the "$2x$" buggy` |
+|         - |  359 | ` * key-byte reader; every other minor reads unsigned. */` |
+|     34944 |  360 | `static void Blowfish_expand0state(blf_ctx *c,const unsigned char *key,sxu32 keybytes,` |
+|         1 |  361 | `	int bSignedKey){` |
+|         - |  362 | `	int i,k;` |
+|         - |  363 | `	sxu32 j,datal,datar,temp;` |
+|     34945 |  364 | `	j = 0;` |
+|    663937 |  365 | `	for( i = 0; i < BLF_N + 2; i++ ){` |
+|    314785 |  366 | `		temp = bSignedKey ? Blowfish_stream2word_signed(key,keybytes,&j)` |
+|    628704 |  367 | `			: Blowfish_stream2word(key,keybytes,&j);` |
+|    628993 |  368 | `		c->P[i] = c->P[i] ^ temp;` |
+|    314497 |  369 | `	}` |
+|     34945 |  370 | `	datal = datar = 0;` |
+|    349441 |  371 | `	for( i = 0; i < BLF_N + 2; i += 2 ){` |
+|    314497 |  372 | `		Blowfish_encipher(c,&datal,&datar);` |
+|    314497 |  373 | `		c->P[i] = datal; c->P[i+1] = datar;` |
+|    157249 |  374 | `	}` |
+|    174721 |  375 | `	for( i = 0; i < 4; i++ ){` |
+|  18031105 |  376 | `		for( k = 0; k < 256; k += 2 ){` |
+|  17891329 |  377 | `			Blowfish_encipher(c,&datal,&datar);` |
+|  17891329 |  378 | `			c->S[i][k] = datal; c->S[i][k+1] = datar;` |
+|   8945665 |  379 | `		}` |
+|     69889 |  380 | `	}` |
+|     34945 |  381 | `}` |
+|         - |  382 | `/* Salted "expensive" key expansion (the bcrypt ExpandKey). bSignedKey as in` |
+|         - |  383 | ` * Blowfish_expand0state — key bytes only, never the salt. */` |
+|        62 |  384 | `static void Blowfish_expandstate(blf_ctx *c,const unsigned char *data,sxu32 databytes,` |
+|         1 |  385 | `	const unsigned char *key,sxu32 keybytes,int bSignedKey){` |
+|         - |  386 | `	int i,k;` |
+|         - |  387 | `	sxu32 j,datal,datar,temp;` |
+|        63 |  388 | `	j = 0;` |
+|      1179 |  389 | `	for( i = 0; i < BLF_N + 2; i++ ){` |
+|       577 |  390 | `		temp = bSignedKey ? Blowfish_stream2word_signed(key,keybytes,&j)` |
+|      1098 |  391 | `			: Blowfish_stream2word(key,keybytes,&j);` |
+|      1117 |  392 | `		c->P[i] = c->P[i] ^ temp;` |
+|       559 |  393 | `	}` |
+|        63 |  394 | `	datal = datar = 0;` |
+|        63 |  395 | `	j = 0;` |
+|       621 |  396 | `	for( i = 0; i < BLF_N + 2; i += 2 ){` |
+|       559 |  397 | `		datal ^= Blowfish_stream2word(data,databytes,&j);` |
+|       559 |  398 | `		datar ^= Blowfish_stream2word(data,databytes,&j);` |
+|       559 |  399 | `		Blowfish_encipher(c,&datal,&datar);` |
+|       559 |  400 | `		c->P[i] = datal; c->P[i+1] = datar;` |
+|       280 |  401 | `	}` |
+|       311 |  402 | `	for( i = 0; i < 4; i++ ){` |
+|     31993 |  403 | `		for( k = 0; k < 256; k += 2 ){` |
+|     31745 |  404 | `			datal ^= Blowfish_stream2word(data,databytes,&j);` |
+|     31745 |  405 | `			datar ^= Blowfish_stream2word(data,databytes,&j);` |
+|     31745 |  406 | `			Blowfish_encipher(c,&datal,&datar);` |
+|     31745 |  407 | `			c->S[i][k] = datal; c->S[i][k+1] = datar;` |
+|     15873 |  408 | `		}` |
+|       125 |  409 | `	}` |
+|        63 |  410 | `}` |
+|         - |  411 |  |
+|         - |  412 | `/* bcrypt-base64 alphabet: '.','/', then A-Z, a-z, 0-9. */` |
+|         - |  413 | `static const char zB64[] = "./ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";` |
+|         - |  414 | `/* Map a bcrypt-base64 character to its 0..63 value, or 255 if invalid. */` |
+|       705 |  415 | `static int BcryptB64Value(int c){` |
+|       705 |  416 | `	const char *p = zB64;` |
+|       705 |  417 | `	int i = 0;` |
+|     25074 |  418 | `	for(; i < 64; i++ ){` |
+|     25074 |  419 | `		if( p[i] == c ){ return i; }` |
+|     11938 |  420 | `	}` |
+|       ! 0 |  421 | `	return 255;` |
+|       353 |  422 | `}` |
+|         - |  423 | `/* Encode nIn bytes as bcrypt-base64 into zOut (no padding); returns char count. */` |
+|       125 |  424 | `static int BcryptB64Encode(char *zOut,const unsigned char *pIn,sxu32 nIn){` |
+|       125 |  425 | `	sxu32 i = 0;` |
+|       125 |  426 | `	int n = 0;` |
+|         - |  427 | `	unsigned int c1,c2;` |
+|       869 |  428 | `	while( i < nIn ){` |
+|       869 |  429 | `		c1 = pIn[i++];` |
+|       869 |  430 | `		zOut[n++] = zB64[(c1 >> 2) & 0x3f];` |
+|       869 |  431 | `		c1 = (c1 & 0x03) << 4;` |
+|       869 |  432 | `		if( i >= nIn ){ zOut[n++] = zB64[c1 & 0x3f]; break; }` |
+|       807 |  433 | `		c2 = pIn[i++];` |
+|       807 |  434 | `		c1 \|= (c2 >> 4) & 0x0f;` |
+|       807 |  435 | `		zOut[n++] = zB64[c1 & 0x3f];` |
+|       807 |  436 | `		c1 = (c2 & 0x0f) << 2;` |
+|       807 |  437 | `		if( i >= nIn ){ zOut[n++] = zB64[c1 & 0x3f]; break; }` |
+|       745 |  438 | `		c2 = pIn[i++];` |
+|       745 |  439 | `		c1 \|= (c2 >> 6) & 0x03;` |
+|       745 |  440 | `		zOut[n++] = zB64[c1 & 0x3f];` |
+|       745 |  441 | `		zOut[n++] = zB64[c2 & 0x3f];` |
+|         1 |  442 | `	}` |
+|       125 |  443 | `	return n;` |
+|         1 |  444 | `}` |
+|        33 |  445 | `PH7_PRIVATE sxi32 SyBcryptB64Decode(const char *zIn,sxu32 nIn,unsigned char *pOut,sxu32 nOut){` |
+|        33 |  446 | `	sxu32 i = 0,o = 0;` |
+|         - |  447 | `	int c1,c2,c3,c4;` |
+|       193 |  448 | `	while( o < nOut ){` |
+|       193 |  449 | `		if( i + 1 >= nIn ){ return SXERR_INVALID; }` |
+|       193 |  450 | `		c1 = BcryptB64Value(zIn[i]); c2 = BcryptB64Value(zIn[i+1]);` |
+|       193 |  451 | `		if( c1 == 255 \|\| c2 == 255 ){ return SXERR_INVALID; }` |
+|       193 |  452 | `		pOut[o++] = (unsigned char)((c1 << 2) \| ((c2 & 0x30) >> 4));` |
+|       193 |  453 | `		if( o >= nOut ){ break; }` |
+|       161 |  454 | `		if( i + 2 >= nIn ){ return SXERR_INVALID; }` |
+|       161 |  455 | `		c3 = BcryptB64Value(zIn[i+2]);` |
+|       161 |  456 | `		if( c3 == 255 ){ return SXERR_INVALID; }` |
+|       161 |  457 | `		pOut[o++] = (unsigned char)(((c2 & 0x0f) << 4) \| ((c3 & 0x3c) >> 2));` |
+|       161 |  458 | `		if( o >= nOut ){ break; }` |
+|       161 |  459 | `		if( i + 3 >= nIn ){ return SXERR_INVALID; }` |
+|       161 |  460 | `		c4 = BcryptB64Value(zIn[i+3]);` |
+|       161 |  461 | `		if( c4 == 255 ){ return SXERR_INVALID; }` |
+|       161 |  462 | `		pOut[o++] = (unsigned char)(((c3 & 0x03) << 6) \| c4);` |
+|       161 |  463 | `		i += 4;` |
+|         1 |  464 | `	}` |
+|        33 |  465 | `	return SXRET_OK;` |
+|        17 |  466 | `}` |
+|         - |  467 |  |
+|        62 |  468 | `PH7_PRIVATE sxi32 SyBcryptHashEx(const unsigned char *pPwd,sxu32 nPwd,sxu32 nCost,` |
+|         1 |  469 | `	const unsigned char aSalt[16],int cMinor,char zOut[60]){` |
+|         - |  470 | `	blf_ctx state;` |
+|        63 |  471 | `	int bSignedKey = (cMinor == 'x');` |
+|         - |  472 | `	/* "OrpheanBeholderScryDoubt" = 24 bytes = 6 big-endian words. */` |
+|         - |  473 | `	static const unsigned char zMagic[24] = {` |
+|         - |  474 | `		'O','r','p','h','e','a','n','B','e','h','o','l','d','e','r',` |
+|         - |  475 | `		'S','c','r','y','D','o','u','b','t'` |
+|         - |  476 | `	};` |
+|         - |  477 | `	sxu32 cdata[6];` |
+|         - |  478 | `	unsigned char zCipher[24];` |
+|         - |  479 | `	unsigned char zKey[73];` |
+|         - |  480 | `	sxu32 keylen,j,rounds,k;` |
+|         - |  481 | `	int i,n;` |
+|        63 |  482 | `	if( nCost < 4 \|\| nCost > 31 ){` |
+|       ! 0 |  483 | `		return SXERR_INVALID;` |
+|         - |  484 | `	}` |
+|         - |  485 | `	/* Key = password bytes + a trailing NUL, capped at 72 bytes total. The whole` |
+|         - |  486 | `	 * buffer is zeroed first: only [0,keylen) is ever read (cyclically), but a` |
+|         - |  487 | `	 * full init keeps -Wmaybe-uninitialized quiet when the loop is inlined. */` |
+|        63 |  488 | `	SyZero(zKey,(sxu32)sizeof(zKey));` |
+|        63 |  489 | `	keylen = nPwd + 1;` |
+|        63 |  490 | `	if( keylen > 72 ){ keylen = 72; }` |
+|       635 |  491 | `	for( j = 0; j < keylen; j++ ){` |
+|       573 |  492 | `		zKey[j] = (j < nPwd) ? pPwd[j] : 0;` |
+|       287 |  493 | `	}` |
+|         - |  494 | `	/* EksBlowfishSetup */` |
+|        63 |  495 | `	Blowfish_initstate(&state);` |
+|        63 |  496 | `	Blowfish_expandstate(&state,aSalt,16,zKey,keylen,bSignedKey);` |
+|        63 |  497 | `	rounds = (sxu32)((sxu64)1 << nCost);` |
+|     17535 |  498 | `	for( k = 0; k < rounds; k++ ){` |
+|     17473 |  499 | `		Blowfish_expand0state(&state,zKey,keylen,bSignedKey);` |
+|     17473 |  500 | `		Blowfish_expand0state(&state,aSalt,16,0);` |
+|      8737 |  501 | `	}` |
+|         - |  502 | `	/* Encrypt the magic string 64 times (3 blocks each). */` |
+|        63 |  503 | `	j = 0;` |
+|       435 |  504 | `	for( i = 0; i < 6; i++ ){` |
+|       373 |  505 | `		cdata[i] = Blowfish_stream2word(zMagic,24,&j);` |
+|       187 |  506 | `	}` |
+|      4031 |  507 | `	for( k = 0; k < 64; k++ ){` |
+|      3969 |  508 | `		Blowfish_encrypt(&state,cdata,3);` |
+|      1985 |  509 | `	}` |
+|       435 |  510 | `	for( i = 0; i < 6; i++ ){` |
+|       373 |  511 | `		zCipher[i*4]   = (unsigned char)((cdata[i] >> 24) & 0xff);` |
+|       373 |  512 | `		zCipher[i*4+1] = (unsigned char)((cdata[i] >> 16) & 0xff);` |
+|       373 |  513 | `		zCipher[i*4+2] = (unsigned char)((cdata[i] >> 8) & 0xff);` |
+|       373 |  514 | `		zCipher[i*4+3] = (unsigned char)(cdata[i] & 0xff);` |
+|       187 |  515 | `	}` |
+|         - |  516 | `	/* Assemble "$2m$CC$" + base64(salt,16)=22 + base64(cipher,23)=31 = 60. */` |
+|        63 |  517 | `	n = 0;` |
+|        63 |  518 | `	zOut[n++] = '$'; zOut[n++] = '2'; zOut[n++] = (char)cMinor; zOut[n++] = '$';` |
+|        63 |  519 | `	zOut[n++] = (char)('0' + (nCost / 10));` |
+|        63 |  520 | `	zOut[n++] = (char)('0' + (nCost % 10));` |
+|        63 |  521 | `	zOut[n++] = '$';` |
+|        63 |  522 | `	n += BcryptB64Encode(&zOut[n],aSalt,16);          /* 22 chars → n = 29 */` |
+|        63 |  523 | `	BcryptB64Encode(&zOut[n],zCipher,23);             /* 31 chars (drop the 24th byte) */` |
+|        63 |  524 | `	return SXRET_OK;` |
+|        32 |  525 | `}` |
+|         - |  526 | `/* The password_hash() entry point: always the corrected "$2y" variant. */` |
+|        50 |  527 | `PH7_PRIVATE sxi32 SyBcryptHash(const unsigned char *pPwd,sxu32 nPwd,sxu32 nCost,` |
+|         1 |  528 | `	const unsigned char aSalt[16],char zOut[60]){` |
+|        51 |  529 | `	return SyBcryptHashEx(pPwd,nPwd,nCost,aSalt,'y',zOut);` |
+|         1 |  530 | `}` |
+|         - |  531 |  |

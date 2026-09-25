@@ -1648,7 +1648,7 @@ Coverage: 1028/1188 lines (86.53%)
 |    - | 1638 | ` * bCompilingBuiltin window, after PH7_VmInstallLibxml (the capture plumbing must` |
 |    - | 1639 | ` * exist) and after the Reflection install (DOMException needs Exception).` |
 |    - | 1640 | ` */` |
-| 4670 | 1641 | `PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)` |
+| 5146 | 1641 | `PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)` |
 |    5 | 1642 | `{` |
 |    - | 1643 | `	/* The two slots every wrapper carries. They were public in the chunk and stay` |
 |    - | 1644 | `	 * public: hiding them is the per-class debug-info hook's job (§7.4 (e)), which` |
@@ -1814,7 +1814,7 @@ Coverage: 1028/1188 lines (86.53%)
 |    - | 1804 | `		{ "DOMXPath", 0, 0, PH7_CLASS_NOSERIALIZE,` |
 |    - | 1805 | `		  aXPathMethod, SX_ARRAYSIZE(aXPathMethod), 0, 0, aXPathProp, SX_ARRAYSIZE(aXPathProp), 0, 0, 0 },` |
 |    - | 1806 | `	};` |
-| 4675 | 1807 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+| 5151 | 1807 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |    5 | 1808 | `}` |
 |    - | 1809 |  |
 |    - | 1810 | `#else` |

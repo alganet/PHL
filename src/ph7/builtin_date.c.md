@@ -89,9 +89,9 @@ Coverage: 643/723 lines (88.93%)
 |    - |   79 | ` * Centralising this here gives microtime()/gettimeofday() a single sub-second` |
 |    - |   80 | `` * source instead of the old nonsensical `tt % SX_USEC_PER_SEC` off-Unix path.`` |
 |    - |   81 | ` */` |
-|   38 |   82 | `static void DateNow(ph7_vm *pVm,sytime *pOut)` |
-|    1 |   83 | `{` |
-|   39 |   84 | `	if( pVm && pVm->pEngine->xConf.xClock ){` |
+|   70 |   82 | `static void DateNow(ph7_vm *pVm,sytime *pOut)` |
+|    2 |   83 | `{` |
+|   72 |   84 | `	if( pVm && pVm->pEngine->xConf.xClock ){` |
 |  ! 0 |   85 | `		ph7_int64 sec = 0,usec = 0;` |
 |  ! 0 |   86 | `		if( pVm->pEngine->xConf.xClock(pVm->pEngine->xConf.pClockData,&sec,&usec) == PH7_OK ){` |
 |  ! 0 |   87 | `			pOut->tm_sec  = (long)sec;` |
@@ -102,9 +102,9 @@ Coverage: 643/723 lines (88.93%)
 |    - |   92 | `#if defined(__UNIXES__)` |
 |    - |   93 | `	{` |
 |    - |   94 | `		struct timeval tv;` |
-|   38 |   95 | `		gettimeofday(&tv,0);` |
-|   38 |   96 | `		pOut->tm_sec  = (long)tv.tv_sec;` |
-|   38 |   97 | `		pOut->tm_usec = (long)tv.tv_usec;` |
+|   70 |   95 | `		gettimeofday(&tv,0);` |
+|   70 |   96 | `		pOut->tm_sec  = (long)tv.tv_sec;` |
+|   70 |   97 | `		pOut->tm_usec = (long)tv.tv_usec;` |
 |    - |   98 | `	}` |
 |    - |   99 | `#elif defined(__WINNT__)` |
 |    - |  100 | `	{` |
@@ -113,12 +113,12 @@ Coverage: 643/723 lines (88.93%)
 |    - |  103 | `		 * milliseconds, and time() has no sub-second part at all). */` |
 |    - |  104 | `		FILETIME ft;` |
 |    - |  105 | `		ph7_int64 t;` |
-|    1 |  106 | `		GetSystemTimeAsFileTime(&ft);` |
-|    1 |  107 | `		t  = (ph7_int64)ft.dwHighDateTime << 32;` |
-|    1 |  108 | `		t += ft.dwLowDateTime;` |
-|    1 |  109 | `		t -= 116444736000000000LL; /* 100-ns ticks between 1601 and 1970 */` |
-|    1 |  110 | `		pOut->tm_sec  = (long)(t / 10000000);` |
-|    1 |  111 | `		pOut->tm_usec = (long)((t % 10000000) / 10);` |
+|    2 |  106 | `		GetSystemTimeAsFileTime(&ft);` |
+|    2 |  107 | `		t  = (ph7_int64)ft.dwHighDateTime << 32;` |
+|    2 |  108 | `		t += ft.dwLowDateTime;` |
+|    2 |  109 | `		t -= 116444736000000000LL; /* 100-ns ticks between 1601 and 1970 */` |
+|    2 |  110 | `		pOut->tm_sec  = (long)(t / 10000000);` |
+|    2 |  111 | `		pOut->tm_usec = (long)((t % 10000000) / 10);` |
 |    - |  112 | `	}` |
 |    - |  113 | `#else` |
 |    - |  114 | `	{` |
@@ -128,7 +128,7 @@ Coverage: 643/723 lines (88.93%)
 |    - |  118 | `		pOut->tm_usec = 0; /* no sub-second source; embedders supply one via PH7_CONFIG_CLOCK */` |
 |    - |  119 | `	}` |
 |    - |  120 | `#endif /* __UNIXES__ */` |
-|   20 |  121 | `}` |
+|   37 |  121 | `}` |
 |    - |  122 | ` /*` |
 |    - |  123 | `  * int64 time(void)` |
 |    - |  124 | `  *  Current Unix timestamp` |
@@ -138,17 +138,17 @@ Coverage: 643/723 lines (88.93%)
 |    - |  128 | `  *  Returns the current time measured in the number of seconds` |
 |    - |  129 | `  *  since the Unix Epoch (January 1 1970 00:00:00 GMT).` |
 |    - |  130 | `  */` |
-|    8 |  131 | `PH7_PRIVATE int PH7_builtin_time(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  132 | `{` |
+|   16 |  131 | `PH7_PRIVATE int PH7_builtin_time(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    3 |  132 | `{` |
 |    - |  133 | `	time_t tt;` |
-|    4 |  134 | `	SXUNUSED(nArg); /* cc warning */` |
-|    4 |  135 | `	SXUNUSED(apArg);` |
+|    8 |  134 | `	SXUNUSED(nArg); /* cc warning */` |
+|    8 |  135 | `	SXUNUSED(apArg);` |
 |    - |  136 | `	/* Extract the current time */` |
-|    9 |  137 | `	time(&tt);` |
+|   19 |  137 | `	time(&tt);` |
 |    - |  138 | `	/* Return as 64-bit integer */` |
-|    9 |  139 | `	ph7_result_int64(pCtx,(ph7_int64)tt);` |
-|    9 |  140 | `	return  PH7_OK;` |
-|    1 |  141 | `}` |
+|   19 |  139 | `	ph7_result_int64(pCtx,(ph7_int64)tt);` |
+|   19 |  140 | `	return  PH7_OK;` |
+|    3 |  141 | `}` |
 |    - |  142 | `/*` |
 |    - |  143 | `  * string/float microtime([ bool $get_as_float = false ])` |
 |    - |  144 | `  *  microtime() returns the current Unix timestamp with microseconds.` |
@@ -164,26 +164,26 @@ Coverage: 643/723 lines (88.93%)
 |    - |  154 | `  *  If get_as_float is set to TRUE, then microtime() returns a float, which represents` |
 |    - |  155 | `  *  the current time in seconds since the Unix epoch accurate to the nearest microsecond.` |
 |    - |  156 | `  */` |
-|   30 |  157 | `PH7_PRIVATE int PH7_builtin_microtime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|    1 |  158 | `{` |
-|   31 |  159 | `	int bFloat = 0;` |
+|   62 |  157 | `PH7_PRIVATE int PH7_builtin_microtime(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    2 |  158 | `{` |
+|   64 |  159 | `	int bFloat = 0;` |
 |    - |  160 | `	sytime sTime;` |
-|   31 |  161 | `	DateNow(pCtx->pVm,&sTime);` |
-|   31 |  162 | `	if( nArg > 0 ){` |
-|   25 |  163 | `		bFloat = ph7_value_to_bool(apArg[0]);` |
-|   12 |  164 | `	}` |
-|   31 |  165 | `	if( bFloat ){` |
+|   64 |  161 | `	DateNow(pCtx->pVm,&sTime);` |
+|   64 |  162 | `	if( nArg > 0 ){` |
+|   58 |  163 | `		bFloat = ph7_value_to_bool(apArg[0]);` |
+|   28 |  164 | `	}` |
+|   64 |  165 | `	if( bFloat ){` |
 |    - |  166 | `		/* Return as float: seconds accurate to the nearest microsecond */` |
-|   25 |  167 | `		ph7_result_double(pCtx,(double)sTime.tm_sec + (double)sTime.tm_usec/(double)SX_USEC_PER_SEC);` |
-|   13 |  168 | `	}else{` |
+|   58 |  167 | `		ph7_result_double(pCtx,(double)sTime.tm_sec + (double)sTime.tm_usec/(double)SX_USEC_PER_SEC);` |
+|   30 |  168 | `	}else{` |
 |    - |  169 | `		/* Return PHP's "msec sec" form: the sub-second part as fractional` |
 |    - |  170 | `		 * seconds to 8 decimals, e.g. "0.50667100 1700000000". tm_usec is in` |
 |    - |  171 | `		 * microseconds (0..999999), so scaling by 100 yields the 8-digit` |
 |    - |  172 | `		 * fraction — matching PHP's "%.8F" output exactly. */` |
 |    7 |  173 | `		ph7_result_string_format(pCtx,"0.%08ld %ld",sTime.tm_usec*100,sTime.tm_sec);` |
 |    - |  174 | `	}` |
-|   31 |  175 | `	return PH7_OK;` |
-|    1 |  176 | `}` |
+|   64 |  175 | `	return PH7_OK;` |
+|    2 |  176 | `}` |
 |    - |  177 | `/*` |
 |    - |  178 | ` * array\|int hrtime(bool $as_number = false)` |
 |    - |  179 | ` *  The system's high-resolution time, counted from an arbitrary monotonic` |

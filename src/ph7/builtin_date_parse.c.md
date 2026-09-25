@@ -1446,9 +1446,9 @@ Coverage: 2244/2604 lines (86.18%)
 |      2 | 1436 | `{` |
 |    952 | 1437 | `	return PH7_ContextThis(pCtx);` |
 |      2 | 1438 | `}` |
-|   9558 | 1439 | `static ph7_class * DtClass(ph7_vm *pVm,const char *zName)` |
+|  10510 | 1439 | `static ph7_class * DtClass(ph7_vm *pVm,const char *zName)` |
 |      5 | 1440 | `{` |
-|   9563 | 1441 | `	return PH7_VmExtractClass(&(*pVm),zName,(sxu32)SyStrlen(zName),FALSE,0);` |
+|  10515 | 1441 | `	return PH7_VmExtractClass(&(*pVm),zName,(sxu32)SyStrlen(zName),FALSE,0);` |
 |      5 | 1442 | `}` |
 |      - | 1443 | `/* An immutable receiver mutates a COPY; a mutable one mutates itself. That is the` |
 |      - | 1444 | ` * only difference between the two classes' method tables, so both share one body. */` |
@@ -1505,10 +1505,10 @@ Coverage: 2244/2604 lines (86.18%)
 |      - | 1495 | `` * parse answers `false` again — and a failing constructor publishes its reason as a`` |
 |      - | 1496 | ` * one-entry error map before it throws.` |
 |      - | 1497 | ` */` |
-|   4912 | 1498 | `static void DtLastErrClear(ph7_vm *pVm)` |
+|   5388 | 1498 | `static void DtLastErrClear(ph7_vm *pVm)` |
 |      5 | 1499 | `{` |
-|   4917 | 1500 | `	SyZero(&pVm->sDtLastErr,sizeof(pVm->sDtLastErr));` |
-|   4917 | 1501 | `}` |
+|   5393 | 1500 | `	SyZero(&pVm->sDtLastErr,sizeof(pVm->sDtLastErr));` |
+|   5393 | 1501 | `}` |
 |     30 | 1502 | `static void DtLastErrOne(ph7_vm *pVm,int iPos,const char *zMsg)` |
 |      1 | 1503 | `{` |
 |     31 | 1504 | `	DtLastErrClear(&(*pVm));` |
@@ -3747,7 +3747,7 @@ Coverage: 2244/2604 lines (86.18%)
 |      - | 3737 | ` * methods exist, for the abstract-stub reason above; DateTimeInterface declares no` |
 |      - | 3738 | ` * method, so it can ride the spec table.` |
 |      - | 3739 | ` */` |
-|   4670 | 3740 | `PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)` |
+|   5146 | 3740 | `PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)` |
 |      5 | 3741 | `{` |
 |      - | 3742 | `	static const PH7_NativeConstDef aIfaceConst[] = {` |
 |      - | 3743 | `		DT_IFACE_CONST("ATOM","Y-m-d\\TH:i:sP"),` |
@@ -3915,29 +3915,29 @@ Coverage: 2244/2604 lines (86.18%)
 |      - | 3905 | `	sxu32 n;` |
 |      - | 3906 | `	sxi32 rc;` |
 |      - | 3907 | `	/* php's date.timezone default */` |
-|   4675 | 3908 | `	SyMemcpy("UTC",pVm->zDefTz,sizeof("UTC"));` |
-|   4675 | 3909 | `	pVm->nDefTz = sizeof("UTC") - 1;` |
-|   4675 | 3910 | `	DtLastErrClear(&(*pVm));` |
-| 116755 | 3911 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){` |
-| 112085 | 3912 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-|  56045 | 3913 | `	}` |
-|   4675 | 3914 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|   4675 | 3915 | `	if( rc != SXRET_OK ){` |
+|   5151 | 3908 | `	SyMemcpy("UTC",pVm->zDefTz,sizeof("UTC"));` |
+|   5151 | 3909 | `	pVm->nDefTz = sizeof("UTC") - 1;` |
+|   5151 | 3910 | `	DtLastErrClear(&(*pVm));` |
+| 128655 | 3911 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){` |
+| 123509 | 3912 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+|  61757 | 3913 | `	}` |
+|   5151 | 3914 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|   5151 | 3915 | `	if( rc != SXRET_OK ){` |
 |    ! 0 | 3916 | `		return rc;` |
 |      - | 3917 | `	}` |
 |      - | 3918 | `	/* IteratorAggregate declares a METHOD, so it is attached now that DatePeriod has` |
 |      - | 3919 | `	 * its own: PH7_ClassImplement stubs a missing one as ABSTRACT, which would have` |
 |      - | 3920 | `	 * made the class uninstantiable. */` |
 |      - | 3921 | `	{` |
-|   4675 | 3922 | `		ph7_class *pPeriod = DtClass(&(*pVm),"DatePeriod");` |
-|   4675 | 3923 | `		ph7_class *pAggregate = DtClass(&(*pVm),"IteratorAggregate");` |
-|   4675 | 3924 | `		if( pPeriod == 0 \|\| pAggregate == 0 ){` |
+|   5151 | 3922 | `		ph7_class *pPeriod = DtClass(&(*pVm),"DatePeriod");` |
+|   5151 | 3923 | `		ph7_class *pAggregate = DtClass(&(*pVm),"IteratorAggregate");` |
+|   5151 | 3924 | `		if( pPeriod == 0 \|\| pAggregate == 0 ){` |
 |    ! 0 | 3925 | `			return SXERR_NOTFOUND;` |
 |      - | 3926 | `		}` |
-|   4675 | 3927 | `		rc = PH7_ClassImplement(pPeriod,pAggregate);` |
+|   5151 | 3927 | `		rc = PH7_ClassImplement(pPeriod,pAggregate);` |
 |      - | 3928 | `	}` |
-|   4675 | 3929 | `	return rc;` |
-|   2340 | 3930 | `}` |
+|   5151 | 3929 | `	return rc;` |
+|   2578 | 3930 | `}` |
 |      - | 3931 |  |
 |      - | 3932 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
 |      - | 3933 |  |

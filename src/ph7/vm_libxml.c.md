@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 240/334 lines (71.86%)
+Coverage: 286/334 lines (85.63%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -45,14 +45,14 @@ Coverage: 240/334 lines (71.86%)
 |      - |   35 | ` * equivalent note in vm_pcre.c); xmlCleanupParser() is deliberately never` |
 |      - |   36 | ` * called -- it is unsafe with threads and process exit reclaims everything.` |
 |      - |   37 | ` */` |
-|   4670 |   38 | `static void LibxmlGlobalInit(void)` |
+|   5146 |   38 | `static void LibxmlGlobalInit(void)` |
 |      5 |   39 | `{` |
 |      - |   40 | `	static int bInit = 0;` |
-|   4675 |   41 | `	if( !bInit ){` |
-|   4675 |   42 | `		xmlInitParser();` |
-|   4675 |   43 | `		bInit = 1;` |
-|   2335 |   44 | `	}` |
-|   4675 |   45 | `}` |
+|   5151 |   41 | `	if( !bInit ){` |
+|   5151 |   42 | `		xmlInitParser();` |
+|   5151 |   43 | `		bInit = 1;` |
+|   2573 |   44 | `	}` |
+|   5151 |   45 | `}` |
 |      - |   46 | `/*` |
 |      - |   47 | ` * Free one registered document: its orphaned subtrees first, then the tree` |
 |      - |   48 | ` * itself.  Registry links and the phl_xmldoc shell live in SyMemBackend and` |
@@ -78,31 +78,31 @@ Coverage: 240/334 lines (71.86%)
 |      - |   68 | ` * from PH7_VmMakeReady() (which runs once per exec, including on VM reuse` |
 |      - |   69 | ` * by the -S server) alongside the other per-exec field resets.` |
 |      - |   70 | ` */` |
-|   4080 |   71 | `PH7_PRIVATE void PH7_LibxmlVmReset(ph7_vm *pVm)` |
+|   4564 |   71 | `PH7_PRIVATE void PH7_LibxmlVmReset(ph7_vm *pVm)` |
 |      5 |   72 | `{` |
 |      - |   73 | `	phl_xmldoc *pDoc,*pNext;` |
-|   4085 |   74 | `	PH7_LibxmlClearErrors(pVm);` |
-|   4085 |   75 | `	pVm->bLibxmlInternalErr = 0;` |
-|   4085 |   76 | `	pDoc = (phl_xmldoc *)pVm->pXmlDocs;` |
-|   4197 |   77 | `	while( pDoc ){` |
+|   4569 |   74 | `	PH7_LibxmlClearErrors(pVm);` |
+|   4569 |   75 | `	pVm->bLibxmlInternalErr = 0;` |
+|   4569 |   76 | `	pDoc = (phl_xmldoc *)pVm->pXmlDocs;` |
+|   4681 |   77 | `	while( pDoc ){` |
 |    113 |   78 | `		pNext = pDoc->pNext;` |
 |    113 |   79 | `		LibxmlFreeDoc(pDoc);` |
 |    113 |   80 | `		SyMemBackendFree(&pVm->sAllocator,pDoc);` |
 |    113 |   81 | `		pDoc = pNext;` |
 |      1 |   82 | `	}` |
-|   4085 |   83 | `	pVm->pXmlDocs = 0;` |
+|   4569 |   83 | `	pVm->pXmlDocs = 0;` |
 |      - |   84 | `	/* XMLWriter buffers live outside SyMemBackend too (see vm_xmlwriter.c) */` |
-|   4085 |   85 | `	PH7_XmlWriterVmSweep(pVm);` |
-|   4085 |   86 | `}` |
+|   4569 |   85 | `	PH7_XmlWriterVmSweep(pVm);` |
+|   4569 |   86 | `}` |
 |      - |   87 | `/*` |
 |      - |   88 | ` * Final teardown on VM release.  Must run before SyMemBackendRelease()` |
 |      - |   89 | ` * wipes the allocator that holds the registry shells.` |
 |      - |   90 | ` */` |
-|   4072 |   91 | `PH7_PRIVATE void PH7_LibxmlVmRelease(ph7_vm *pVm)` |
+|   4548 |   91 | `PH7_PRIVATE void PH7_LibxmlVmRelease(ph7_vm *pVm)` |
 |      5 |   92 | `{` |
-|   4077 |   93 | `	PH7_LibxmlVmReset(pVm);` |
-|   4077 |   94 | `	SySetRelease(&pVm->aLibxmlErr);` |
-|   4077 |   95 | `}` |
+|   4553 |   93 | `	PH7_LibxmlVmReset(pVm);` |
+|   4553 |   94 | `	SySetRelease(&pVm->aLibxmlErr);` |
+|   4553 |   95 | `}` |
 |      - |   96 | `/*` |
 |      - |   97 | ` * Release the copied message/file strings of one queue entry.` |
 |      - |   98 | ` */` |
@@ -122,27 +122,27 @@ Coverage: 240/334 lines (71.86%)
 |      - |  112 | ` * last-error slot is kept (php parity: use_internal_errors(false) drops` |
 |      - |  113 | ` * the buffer but libxml_get_last_error still reports).` |
 |      - |  114 | ` */` |
-|   4130 |  115 | `static void LibxmlClearQueue(ph7_vm *pVm)` |
+|   4614 |  115 | `static void LibxmlClearQueue(ph7_vm *pVm)` |
 |      5 |  116 | `{` |
-|   4135 |  117 | `	phl_libxml_err *aErr = (phl_libxml_err *)SySetBasePtr(&pVm->aLibxmlErr);` |
+|   4619 |  117 | `	phl_libxml_err *aErr = (phl_libxml_err *)SySetBasePtr(&pVm->aLibxmlErr);` |
 |      - |  118 | `	sxu32 n;` |
-|   4149 |  119 | `	for( n = 0 ; n < SySetUsed(&pVm->aLibxmlErr) ; ++n ){` |
+|   4633 |  119 | `	for( n = 0 ; n < SySetUsed(&pVm->aLibxmlErr) ; ++n ){` |
 |     15 |  120 | `		LibxmlFreeErr(pVm,&aErr[n]);` |
 |      8 |  121 | `	}` |
-|   4135 |  122 | `	SySetReset(&pVm->aLibxmlErr);` |
-|   4135 |  123 | `}` |
+|   4619 |  122 | `	SySetReset(&pVm->aLibxmlErr);` |
+|   4619 |  123 | `}` |
 |      - |  124 | `/*` |
 |      - |  125 | ` * libxml_clear_errors(): drop the queue AND the last-error slot.` |
 |      - |  126 | ` */` |
-|   4104 |  127 | `PH7_PRIVATE void PH7_LibxmlClearErrors(ph7_vm *pVm)` |
+|   4588 |  127 | `PH7_PRIVATE void PH7_LibxmlClearErrors(ph7_vm *pVm)` |
 |      5 |  128 | `{` |
-|   4109 |  129 | `	LibxmlClearQueue(pVm);` |
-|   4109 |  130 | `	if( pVm->pLibxmlLastErr ){` |
+|   4593 |  129 | `	LibxmlClearQueue(pVm);` |
+|   4593 |  130 | `	if( pVm->pLibxmlLastErr ){` |
 |     11 |  131 | `		LibxmlFreeErr(pVm,(phl_libxml_err *)pVm->pLibxmlLastErr);` |
 |     11 |  132 | `		SyMemBackendFree(&pVm->sAllocator,pVm->pLibxmlLastErr);` |
 |     11 |  133 | `		pVm->pLibxmlLastErr = 0;` |
 |      5 |  134 | `	}` |
-|   4109 |  135 | `}` |
+|   4593 |  135 | `}` |
 |      - |  136 | `/*` |
 |      - |  137 | ` * Push one error onto the per-VM queue and last-error slot, copying the` |
 |      - |  138 | ` * message/file strings.  The typed structured-error callback below and the` |
@@ -307,58 +307,58 @@ Coverage: 240/334 lines (71.86%)
 |      - |  297 | `		SXUNUSED(pUnused); \` |
 |      - |  298 | `		ph7_value_int64(pVal,(ph7_int64)(VALUE)); \` |
 |      - |  299 | `	}` |
-|    ! 0 |  300 | `LIBXML_INT_CONST(LibxmlConst_VERSION,        LIBXML_VERSION)` |
-|    ! 0 |  301 | `LIBXML_INT_CONST(LibxmlConst_NOENT,          XML_PARSE_NOENT)` |
-|    ! 0 |  302 | `LIBXML_INT_CONST(LibxmlConst_DTDLOAD,        XML_PARSE_DTDLOAD)` |
-|    ! 0 |  303 | `LIBXML_INT_CONST(LibxmlConst_DTDATTR,        XML_PARSE_DTDATTR)` |
-|    ! 0 |  304 | `LIBXML_INT_CONST(LibxmlConst_DTDVALID,       XML_PARSE_DTDVALID)` |
-|    ! 0 |  305 | `LIBXML_INT_CONST(LibxmlConst_NOERROR,        XML_PARSE_NOERROR)` |
-|    ! 0 |  306 | `LIBXML_INT_CONST(LibxmlConst_NOWARNING,      XML_PARSE_NOWARNING)` |
-|    ! 0 |  307 | `LIBXML_INT_CONST(LibxmlConst_NOBLANKS,       XML_PARSE_NOBLANKS)` |
-|    ! 0 |  308 | `LIBXML_INT_CONST(LibxmlConst_XINCLUDE,       XML_PARSE_XINCLUDE)` |
-|    ! 0 |  309 | `LIBXML_INT_CONST(LibxmlConst_NSCLEAN,        XML_PARSE_NSCLEAN)` |
-|    ! 0 |  310 | `LIBXML_INT_CONST(LibxmlConst_NOCDATA,        XML_PARSE_NOCDATA)` |
-|    ! 0 |  311 | `LIBXML_INT_CONST(LibxmlConst_NONET,          XML_PARSE_NONET)` |
-|    ! 0 |  312 | `LIBXML_INT_CONST(LibxmlConst_PEDANTIC,       XML_PARSE_PEDANTIC)` |
-|    ! 0 |  313 | `LIBXML_INT_CONST(LibxmlConst_COMPACT,        XML_PARSE_COMPACT)` |
-|    ! 0 |  314 | `LIBXML_INT_CONST(LibxmlConst_PARSEHUGE,      XML_PARSE_HUGE)` |
-|    ! 0 |  315 | `LIBXML_INT_CONST(LibxmlConst_BIGLINES,       XML_PARSE_BIG_LINES)` |
-|    ! 0 |  316 | `LIBXML_INT_CONST(LibxmlConst_NOXMLDECL,      2)      /* XML_SAVE_NO_DECL */` |
-|    ! 0 |  317 | `LIBXML_INT_CONST(LibxmlConst_NOEMPTYTAG,     4)      /* XML_SAVE_NO_EMPTY */` |
-|    ! 0 |  318 | `LIBXML_INT_CONST(LibxmlConst_SCHEMA_CREATE,  1)      /* XML_SCHEMA_VAL_VC_I_CREATE */` |
-|    ! 0 |  319 | `LIBXML_INT_CONST(LibxmlConst_ERR_NONE,       XML_ERR_NONE)` |
-|    ! 0 |  320 | `LIBXML_INT_CONST(LibxmlConst_ERR_WARNING,    XML_ERR_WARNING)` |
-|    ! 0 |  321 | `LIBXML_INT_CONST(LibxmlConst_ERR_ERROR,      XML_ERR_ERROR)` |
-|      3 |  322 | `LIBXML_INT_CONST(LibxmlConst_ERR_FATAL,      XML_ERR_FATAL)` |
+|     65 |  300 | `LIBXML_INT_CONST(LibxmlConst_VERSION,        LIBXML_VERSION)` |
+|     65 |  301 | `LIBXML_INT_CONST(LibxmlConst_NOENT,          XML_PARSE_NOENT)` |
+|     65 |  302 | `LIBXML_INT_CONST(LibxmlConst_DTDLOAD,        XML_PARSE_DTDLOAD)` |
+|     65 |  303 | `LIBXML_INT_CONST(LibxmlConst_DTDATTR,        XML_PARSE_DTDATTR)` |
+|     65 |  304 | `LIBXML_INT_CONST(LibxmlConst_DTDVALID,       XML_PARSE_DTDVALID)` |
+|     65 |  305 | `LIBXML_INT_CONST(LibxmlConst_NOERROR,        XML_PARSE_NOERROR)` |
+|     65 |  306 | `LIBXML_INT_CONST(LibxmlConst_NOWARNING,      XML_PARSE_NOWARNING)` |
+|     65 |  307 | `LIBXML_INT_CONST(LibxmlConst_NOBLANKS,       XML_PARSE_NOBLANKS)` |
+|     65 |  308 | `LIBXML_INT_CONST(LibxmlConst_XINCLUDE,       XML_PARSE_XINCLUDE)` |
+|     65 |  309 | `LIBXML_INT_CONST(LibxmlConst_NSCLEAN,        XML_PARSE_NSCLEAN)` |
+|     65 |  310 | `LIBXML_INT_CONST(LibxmlConst_NOCDATA,        XML_PARSE_NOCDATA)` |
+|     65 |  311 | `LIBXML_INT_CONST(LibxmlConst_NONET,          XML_PARSE_NONET)` |
+|     65 |  312 | `LIBXML_INT_CONST(LibxmlConst_PEDANTIC,       XML_PARSE_PEDANTIC)` |
+|     65 |  313 | `LIBXML_INT_CONST(LibxmlConst_COMPACT,        XML_PARSE_COMPACT)` |
+|     65 |  314 | `LIBXML_INT_CONST(LibxmlConst_PARSEHUGE,      XML_PARSE_HUGE)` |
+|     65 |  315 | `LIBXML_INT_CONST(LibxmlConst_BIGLINES,       XML_PARSE_BIG_LINES)` |
+|     65 |  316 | `LIBXML_INT_CONST(LibxmlConst_NOXMLDECL,      2)      /* XML_SAVE_NO_DECL */` |
+|     65 |  317 | `LIBXML_INT_CONST(LibxmlConst_NOEMPTYTAG,     4)      /* XML_SAVE_NO_EMPTY */` |
+|     65 |  318 | `LIBXML_INT_CONST(LibxmlConst_SCHEMA_CREATE,  1)      /* XML_SCHEMA_VAL_VC_I_CREATE */` |
+|     65 |  319 | `LIBXML_INT_CONST(LibxmlConst_ERR_NONE,       XML_ERR_NONE)` |
+|     65 |  320 | `LIBXML_INT_CONST(LibxmlConst_ERR_WARNING,    XML_ERR_WARNING)` |
+|     65 |  321 | `LIBXML_INT_CONST(LibxmlConst_ERR_ERROR,      XML_ERR_ERROR)` |
+|     67 |  322 | `LIBXML_INT_CONST(LibxmlConst_ERR_FATAL,      XML_ERR_FATAL)` |
 |      - |  323 | `/* ext/dom node-type constants (values fixed by the DOM spec / libxml enums) */` |
-|    ! 0 |  324 | `LIBXML_INT_CONST(LibxmlConst_ELEMENT_NODE,        XML_ELEMENT_NODE)` |
-|    ! 0 |  325 | `LIBXML_INT_CONST(LibxmlConst_ATTRIBUTE_NODE,      XML_ATTRIBUTE_NODE)` |
-|    ! 0 |  326 | `LIBXML_INT_CONST(LibxmlConst_TEXT_NODE,           XML_TEXT_NODE)` |
-|    ! 0 |  327 | `LIBXML_INT_CONST(LibxmlConst_CDATA_SECTION_NODE,  XML_CDATA_SECTION_NODE)` |
-|    ! 0 |  328 | `LIBXML_INT_CONST(LibxmlConst_ENTITY_REF_NODE,     XML_ENTITY_REF_NODE)` |
-|    ! 0 |  329 | `LIBXML_INT_CONST(LibxmlConst_ENTITY_NODE,         XML_ENTITY_NODE)` |
-|    ! 0 |  330 | `LIBXML_INT_CONST(LibxmlConst_PI_NODE,             XML_PI_NODE)` |
-|    ! 0 |  331 | `LIBXML_INT_CONST(LibxmlConst_COMMENT_NODE,        XML_COMMENT_NODE)` |
-|    ! 0 |  332 | `LIBXML_INT_CONST(LibxmlConst_DOCUMENT_NODE,       XML_DOCUMENT_NODE)` |
-|    ! 0 |  333 | `LIBXML_INT_CONST(LibxmlConst_DOCUMENT_TYPE_NODE,  XML_DOCUMENT_TYPE_NODE)` |
-|    ! 0 |  334 | `LIBXML_INT_CONST(LibxmlConst_DOCUMENT_FRAG_NODE,  XML_DOCUMENT_FRAG_NODE)` |
-|    ! 0 |  335 | `LIBXML_INT_CONST(LibxmlConst_NOTATION_NODE,       XML_NOTATION_NODE)` |
-|    ! 0 |  336 | `LIBXML_INT_CONST(LibxmlConst_HTML_DOCUMENT_NODE,  XML_HTML_DOCUMENT_NODE)` |
-|    ! 0 |  337 | `LIBXML_INT_CONST(LibxmlConst_DTD_NODE,            XML_DTD_NODE)` |
+|     65 |  324 | `LIBXML_INT_CONST(LibxmlConst_ELEMENT_NODE,        XML_ELEMENT_NODE)` |
+|     65 |  325 | `LIBXML_INT_CONST(LibxmlConst_ATTRIBUTE_NODE,      XML_ATTRIBUTE_NODE)` |
+|     65 |  326 | `LIBXML_INT_CONST(LibxmlConst_TEXT_NODE,           XML_TEXT_NODE)` |
+|     65 |  327 | `LIBXML_INT_CONST(LibxmlConst_CDATA_SECTION_NODE,  XML_CDATA_SECTION_NODE)` |
+|     65 |  328 | `LIBXML_INT_CONST(LibxmlConst_ENTITY_REF_NODE,     XML_ENTITY_REF_NODE)` |
+|     65 |  329 | `LIBXML_INT_CONST(LibxmlConst_ENTITY_NODE,         XML_ENTITY_NODE)` |
+|     65 |  330 | `LIBXML_INT_CONST(LibxmlConst_PI_NODE,             XML_PI_NODE)` |
+|     65 |  331 | `LIBXML_INT_CONST(LibxmlConst_COMMENT_NODE,        XML_COMMENT_NODE)` |
+|     65 |  332 | `LIBXML_INT_CONST(LibxmlConst_DOCUMENT_NODE,       XML_DOCUMENT_NODE)` |
+|     65 |  333 | `LIBXML_INT_CONST(LibxmlConst_DOCUMENT_TYPE_NODE,  XML_DOCUMENT_TYPE_NODE)` |
+|     65 |  334 | `LIBXML_INT_CONST(LibxmlConst_DOCUMENT_FRAG_NODE,  XML_DOCUMENT_FRAG_NODE)` |
+|     65 |  335 | `LIBXML_INT_CONST(LibxmlConst_NOTATION_NODE,       XML_NOTATION_NODE)` |
+|     65 |  336 | `LIBXML_INT_CONST(LibxmlConst_HTML_DOCUMENT_NODE,  XML_HTML_DOCUMENT_NODE)` |
+|     65 |  337 | `LIBXML_INT_CONST(LibxmlConst_DTD_NODE,            XML_DTD_NODE)` |
 |      - |  338 |  |
-|    ! 0 |  339 | `static void LibxmlConst_DOTTED_VERSION(ph7_value *pVal,void *pUnused)` |
-|    ! 0 |  340 | `{` |
-|    ! 0 |  341 | `	SXUNUSED(pUnused);` |
-|    ! 0 |  342 | `	ph7_value_string(pVal,LIBXML_DOTTED_VERSION,-1);` |
-|    ! 0 |  343 | `}` |
-|    ! 0 |  344 | `static void LibxmlConst_LOADED_VERSION(ph7_value *pVal,void *pUnused)` |
-|    ! 0 |  345 | `{` |
-|    ! 0 |  346 | `	SXUNUSED(pUnused);` |
+|     62 |  339 | `static void LibxmlConst_DOTTED_VERSION(ph7_value *pVal,void *pUnused)` |
+|      3 |  340 | `{` |
+|     31 |  341 | `	SXUNUSED(pUnused);` |
+|     65 |  342 | `	ph7_value_string(pVal,LIBXML_DOTTED_VERSION,-1);` |
+|     65 |  343 | `}` |
+|     62 |  344 | `static void LibxmlConst_LOADED_VERSION(ph7_value *pVal,void *pUnused)` |
+|      3 |  345 | `{` |
+|     31 |  346 | `	SXUNUSED(pUnused);` |
 |      - |  347 | `	/* php exposes the runtime-loaded version string here */` |
-|    ! 0 |  348 | `	ph7_value_string(pVal,(const char *)xmlParserVersion,-1);` |
-|    ! 0 |  349 | `}` |
+|     65 |  348 | `	ph7_value_string(pVal,(const char *)xmlParserVersion,-1);` |
+|     65 |  349 | `}` |
 |      - |  350 |  |
-|   4076 |  351 | `PH7_PRIVATE void PH7_RegisterLibxmlConstants(ph7_vm *pVm)` |
+|   4552 |  351 | `PH7_PRIVATE void PH7_RegisterLibxmlConstants(ph7_vm *pVm)` |
 |      5 |  352 | `{` |
 |      - |  353 | `	static const struct {` |
 |      - |  354 | `		const char *zName;` |
@@ -405,10 +405,10 @@ Coverage: 240/334 lines (71.86%)
 |      - |  395 | `		{ "XML_DTD_NODE",           LibxmlConst_DTD_NODE           },` |
 |      - |  396 | `	};` |
 |      - |  397 | `	sxu32 n;` |
-| 163045 |  398 | `	for( n = 0 ; n < sizeof(aConst)/sizeof(aConst[0]) ; n++ ){` |
-| 158969 |  399 | `		ph7_create_constant(&(*pVm),aConst[n].zName,aConst[n].xExpand,0);` |
-|  79487 |  400 | `	}` |
-|   4081 |  401 | `}` |
+| 182085 |  398 | `	for( n = 0 ; n < sizeof(aConst)/sizeof(aConst[0]) ; n++ ){` |
+| 177533 |  399 | `		ph7_create_constant(&(*pVm),aConst[n].zName,aConst[n].xExpand,0);` |
+|  88769 |  400 | `	}` |
+|   4557 |  401 | `}` |
 |      - |  402 | `/* ===== libxml_* native thunks ===== */` |
 |      - |  403 |  |
 |      - |  404 | `/*` |
@@ -561,7 +561,7 @@ Coverage: 240/334 lines (71.86%)
 |      - |  551 | ` * PHP-visible libxml_* functions + LibXMLError class.  Called from` |
 |      - |  552 | ` * PH7_VmInit inside the bCompilingBuiltin window.` |
 |      - |  553 | ` */` |
-|   4670 |  554 | `PH7_PRIVATE sxi32 PH7_VmInstallLibxml(ph7_vm *pVm)` |
+|   5146 |  554 | `PH7_PRIVATE sxi32 PH7_VmInstallLibxml(ph7_vm *pVm)` |
 |      5 |  555 | `{` |
 |      - |  556 | `	/* Registered under the names php exposes. There is no thunk and no PHP` |
 |      - |  557 | `	 * wrapper any more: these are the functions, so they are internal for` |
@@ -588,17 +588,17 @@ Coverage: 240/334 lines (71.86%)
 |      - |  578 | `		"LibXMLError", 0, 0, 0, 0, 0, 0, 0, aProp, SX_ARRAYSIZE(aProp), 0, 0, 0` |
 |      - |  579 | `	};` |
 |      - |  580 | `	sxu32 n;` |
-|   4675 |  581 | `	LibxmlGlobalInit();` |
-|   4675 |  582 | `	SySetInit(&pVm->aLibxmlErr,&pVm->sAllocator,sizeof(phl_libxml_err));` |
-|   4675 |  583 | `	pVm->bLibxmlInternalErr = 0;` |
-|   4675 |  584 | `	pVm->pLibxmlLastErr = 0;` |
-|   4675 |  585 | `	pVm->pXmlDocs = 0;` |
-|   4675 |  586 | `	pVm->pXmlWriters = 0;` |
-|  23355 |  587 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){` |
-|  18685 |  588 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
-|   9345 |  589 | `	}` |
+|   5151 |  581 | `	LibxmlGlobalInit();` |
+|   5151 |  582 | `	SySetInit(&pVm->aLibxmlErr,&pVm->sAllocator,sizeof(phl_libxml_err));` |
+|   5151 |  583 | `	pVm->bLibxmlInternalErr = 0;` |
+|   5151 |  584 | `	pVm->pLibxmlLastErr = 0;` |
+|   5151 |  585 | `	pVm->pXmlDocs = 0;` |
+|   5151 |  586 | `	pVm->pXmlWriters = 0;` |
+|  25735 |  587 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){` |
+|  20589 |  588 | `		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);` |
+|  10297 |  589 | `	}` |
 |      - |  590 | `	/* The class must exist before the accessors can build one. */` |
-|   4675 |  591 | `	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
+|   5151 |  591 | `	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
 |      5 |  592 | `}` |
 |      - |  593 |  |
 |      - |  594 | `#else` |

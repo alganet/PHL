@@ -43,52 +43,52 @@ Coverage: 546/630 lines (86.67%)
 |       - |   33 | ` * (ph7_class_attr::pNativeValue) and both of those sites call this instead --` |
 |       - |   34 | ` * which is what a literal initializer's byte-code would have produced anyway.` |
 |       - |   35 | ` */` |
-| 9772940 |   36 | `PH7_PRIVATE void PH7_NativeLiteralValue(ph7_vm *pVm,const void *pLiteral,ph7_value *pOut)` |
+| 9782234 |   36 | `PH7_PRIVATE void PH7_NativeLiteralValue(ph7_vm *pVm,const void *pLiteral,ph7_value *pOut)` |
 |       5 |   37 | `{` |
-| 9772945 |   38 | `	const PH7_NativeConstDef *pLit = (const PH7_NativeConstDef *)pLiteral;` |
+| 9782239 |   38 | `	const PH7_NativeConstDef *pLit = (const PH7_NativeConstDef *)pLiteral;` |
 |       - |   39 | `	/* Every PH7_MemObjInitFrom* below SyZeros the whole value, nIdx included — and` |
 |       - |   40 | `	 * a CONSTANT's or STATIC's slot is addressed by that index afterwards` |
 |       - |   41 | ``	 * (`pAttr->nIdx = pMemObj->nIdx`). Losing it pointed every native class`` |
 |       - |   42 | `	 * constant at slot 0, which reads as $GLOBALS. The instance-property path was` |
 |       - |   43 | `	 * unaffected (it records the index before calling this), which is why nothing` |
 |       - |   44 | `	 * saw it until the date family declared the first native constants. */` |
-| 9772945 |   45 | `	sxu32 nSlot = pOut->nIdx;` |
-| 9772945 |   46 | `	switch( pLit->iType ){` |
-| 1231630 |   47 | `		case PH7_NATIVE_VAL_INT:` |
-| 2463265 |   48 | `			PH7_MemObjInitFromInt(&(*pVm),pOut,pLit->iValue);` |
-| 2463265 |   49 | `			break;` |
-|     599 |   50 | `		case PH7_NATIVE_VAL_BOOL:` |
-|    1202 |   51 | `			PH7_MemObjInitFromBool(&(*pVm),pOut,(sxi32)pLit->iValue);` |
-|    1202 |   52 | `			break;` |
-| 2184480 |   53 | `		case PH7_NATIVE_VAL_STRING: {` |
+| 9782239 |   45 | `	sxu32 nSlot = pOut->nIdx;` |
+| 9782239 |   46 | `	switch( pLit->iType ){` |
+| 1232026 |   47 | `		case PH7_NATIVE_VAL_INT:` |
+| 2464057 |   48 | `			PH7_MemObjInitFromInt(&(*pVm),pOut,pLit->iValue);` |
+| 2464057 |   49 | `			break;` |
+|     605 |   50 | `		case PH7_NATIVE_VAL_BOOL:` |
+|    1214 |   51 | `			PH7_MemObjInitFromBool(&(*pVm),pOut,(sxi32)pLit->iValue);` |
+|    1214 |   52 | `			break;` |
+| 2185542 |   53 | `		case PH7_NATIVE_VAL_STRING: {` |
 |       - |   54 | `			SyString sLit;` |
-| 4368965 |   55 | `			SyStringInitFromBuf(&sLit,pLit->zValue,SyStrlen(pLit->zValue));` |
-| 4368965 |   56 | `			PH7_MemObjInitFromString(&(*pVm),pOut,&sLit);` |
-| 4368965 |   57 | `			break;` |
+| 4371089 |   55 | `			SyStringInitFromBuf(&sLit,pLit->zValue,SyStrlen(pLit->zValue));` |
+| 4371089 |   56 | `			PH7_MemObjInitFromString(&(*pVm),pOut,&sLit);` |
+| 4371089 |   57 | `			break;` |
 |       - |   58 | `		}` |
 |       - |   59 | `#ifndef PH7_OMIT_FLOATING_POINT` |
 |      48 |   60 | `		case PH7_NATIVE_VAL_DOUBLE:` |
 |      97 |   61 | `			PH7_MemObjInitFromReal(&(*pVm),pOut,pLit->rValue);` |
 |      97 |   62 | `			break;` |
 |       - |   63 | `#endif` |
-|  727695 |   64 | `		case PH7_NATIVE_VAL_ARRAY: {` |
+|  728015 |   64 | `		case PH7_NATIVE_VAL_ARRAY: {` |
 |       - |   65 | ``			/* The empty array — php's `private array $trace = [];`. Each instance`` |
 |       - |   66 | `			 * needs its OWN map (the exception's trace is written per throw), so` |
 |       - |   67 | `			 * this allocates rather than sharing one. */` |
-| 1455395 |   68 | `			ph7_hashmap *pMap = PH7_NewHashmap(&(*pVm),0,0);` |
-| 1455395 |   69 | `			if( pMap == 0 ){` |
+| 1456035 |   68 | `			ph7_hashmap *pMap = PH7_NewHashmap(&(*pVm),0,0);` |
+| 1456035 |   69 | `			if( pMap == 0 ){` |
 |     ! 0 |   70 | `				PH7_MemObjInit(&(*pVm),pOut);` |
 |     ! 0 |   71 | `			}else{` |
-| 1455395 |   72 | `				PH7_MemObjInitFromArray(&(*pVm),pOut,pMap);` |
+| 1456035 |   72 | `				PH7_MemObjInitFromArray(&(*pVm),pOut,pMap);` |
 |       - |   73 | `			}` |
-| 1455395 |   74 | `			break;` |
+| 1456035 |   74 | `			break;` |
 |       - |   75 | `		}` |
-|  742018 |   76 | `		default:` |
-| 1484041 |   77 | `			PH7_MemObjInit(&(*pVm),pOut);` |
-| 1484036 |   78 | `			break;` |
+|  744881 |   76 | `		default:` |
+| 1489767 |   77 | `			PH7_MemObjInit(&(*pVm),pOut);` |
+| 1489762 |   78 | `			break;` |
 |       - |   79 | `	}` |
-| 9772945 |   80 | `	pOut->nIdx = nSlot;` |
-| 9772945 |   81 | `}` |
+| 9782239 |   80 | `	pOut->nIdx = nSlot;` |
+| 9782239 |   81 | `}` |
 |       - |   82 | `/*` |
 |       - |   83 | ` * Write a declared property of an instance from C.` |
 |       - |   84 | ` *` |
@@ -98,23 +98,23 @@ Coverage: 546/630 lines (86.67%)
 |       - |   88 | ` * Silently does nothing for a name the class does not declare -- callers pass` |
 |       - |   89 | ` * literals from their own spec table, so a miss is a build error, not input.` |
 |       - |   90 | ` */` |
-|     800 |   91 | `PH7_PRIVATE void PH7_NativeSetProp(ph7_vm *pVm,ph7_class_instance *pObj,` |
+|     806 |   91 | `PH7_PRIVATE void PH7_NativeSetProp(ph7_vm *pVm,ph7_class_instance *pObj,` |
 |       - |   92 | `	const char *zProp,sxu32 nProp,ph7_value *pSrcVal)` |
 |       5 |   93 | `{` |
-|     805 |   94 | `	SyHashEntry *pEntry = SyHashGet(&pObj->hAttr,(const void *)zProp,nProp);` |
+|     811 |   94 | `	SyHashEntry *pEntry = SyHashGet(&pObj->hAttr,(const void *)zProp,nProp);` |
 |       - |   95 | `	VmClassAttr *pVmAttr;` |
 |       - |   96 | `	ph7_value *pSlot;` |
-|     805 |   97 | `	if( pEntry == 0 ){` |
+|     811 |   97 | `	if( pEntry == 0 ){` |
 |     ! 0 |   98 | `		return;` |
 |       - |   99 | `	}` |
-|     805 |  100 | `	pVmAttr = (VmClassAttr *)pEntry->pUserData;` |
-|     805 |  101 | `	pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,pVmAttr->nIdx);` |
-|     805 |  102 | `	if( pSlot == 0 ){` |
+|     811 |  100 | `	pVmAttr = (VmClassAttr *)pEntry->pUserData;` |
+|     811 |  101 | `	pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,pVmAttr->nIdx);` |
+|     811 |  102 | `	if( pSlot == 0 ){` |
 |     ! 0 |  103 | `		return;` |
 |       - |  104 | `	}` |
-|     805 |  105 | `	PH7_MemObjStore(pSrcVal,pSlot);` |
-|     805 |  106 | `	pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;` |
-|     405 |  107 | `}` |
+|     811 |  105 | `	PH7_MemObjStore(pSrcVal,pSlot);` |
+|     811 |  106 | `	pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;` |
+|     408 |  107 | `}` |
 |       - |  108 | `/*` |
 |       - |  109 | ` * ---------------------------------------------------------------------------` |
 |       - |  110 | ` * Reading and writing a native instance's own declared slots.` |
@@ -127,11 +127,11 @@ Coverage: 546/630 lines (86.67%)
 |       - |  117 | ` * ---------------------------------------------------------------------------` |
 |       - |  118 | ` */` |
 |       - |  119 | `/* Fetch a declared INSTANCE slot by name (never a static or a constant). */` |
-| 1531392 |  120 | `PH7_PRIVATE ph7_value * PH7_NativeAttr(ph7_class_instance *pObj,const char *zName)` |
+| 1535278 |  120 | `PH7_PRIVATE ph7_value * PH7_NativeAttr(ph7_class_instance *pObj,const char *zName)` |
 |       5 |  121 | `{` |
 |       - |  122 | `	SyString sName;` |
-| 1531397 |  123 | `	SyStringInitFromBuf(&sName,zName,SyStrlen(zName));` |
-| 1531397 |  124 | `	return PH7_ClassInstanceFetchAttr(pObj,&sName);` |
+| 1535283 |  123 | `	SyStringInitFromBuf(&sName,zName,SyStrlen(zName));` |
+| 1535283 |  124 | `	return PH7_ClassInstanceFetchAttr(pObj,&sName);` |
 |       5 |  125 | `}` |
 |       - |  126 | `/*` |
 |       - |  127 | ` * Has this declared slot never been written? A PH7_NATIVE_VAL_NONE property is` |
@@ -148,35 +148,35 @@ Coverage: 546/630 lines (86.67%)
 |       1 |  138 | `}` |
 |       - |  139 | `/* Read an int slot WITHOUT converting it: ph7_value_to_int64() converts the` |
 |       - |  140 | ` * attribute in place, which would rewrite the object's own state. */` |
-|   12848 |  141 | `PH7_PRIVATE sxi64 PH7_NativeAttrInt(ph7_class_instance *pObj,const char *zName)` |
-|       3 |  142 | `{` |
-|   12851 |  143 | `	ph7_value *pVal = PH7_NativeAttr(pObj,zName);` |
-|   12851 |  144 | `	if( pVal && (pVal->iFlags & MEMOBJ_INT) ){` |
-|   12851 |  145 | `		return pVal->x.iVal;` |
+|   12850 |  141 | `PH7_PRIVATE sxi64 PH7_NativeAttrInt(ph7_class_instance *pObj,const char *zName)` |
+|       4 |  142 | `{` |
+|   12854 |  143 | `	ph7_value *pVal = PH7_NativeAttr(pObj,zName);` |
+|   12854 |  144 | `	if( pVal && (pVal->iFlags & MEMOBJ_INT) ){` |
+|   12854 |  145 | `		return pVal->x.iVal;` |
 |       - |  146 | `	}` |
 |     ! 0 |  147 | `	return 0;` |
-|    6428 |  148 | `}` |
+|    6430 |  148 | `}` |
 |       - |  149 | `/* Borrow a string slot's bytes (empty when it holds anything else). */` |
-|    6626 |  150 | `PH7_PRIVATE void PH7_NativeAttrStr(ph7_class_instance *pObj,const char *zName,` |
+|    7740 |  150 | `PH7_PRIVATE void PH7_NativeAttrStr(ph7_class_instance *pObj,const char *zName,` |
 |       - |  151 | `	const char **pzOut,int *pnOut)` |
 |       5 |  152 | `{` |
-|    6631 |  153 | `	ph7_value *pVal = PH7_NativeAttr(pObj,zName);` |
-|    6631 |  154 | `	*pzOut = "";` |
-|    6631 |  155 | `	*pnOut = 0;` |
-|    6631 |  156 | `	if( pVal && (pVal->iFlags & MEMOBJ_STRING) ){` |
-|    6621 |  157 | `		*pzOut = (const char *)SyBlobData(&pVal->sBlob);` |
-|    6621 |  158 | `		*pnOut = (int)SyBlobLength(&pVal->sBlob);` |
-|    3308 |  159 | `	}` |
-|    6631 |  160 | `}` |
+|    7745 |  153 | `	ph7_value *pVal = PH7_NativeAttr(pObj,zName);` |
+|    7745 |  154 | `	*pzOut = "";` |
+|    7745 |  155 | `	*pnOut = 0;` |
+|    7745 |  156 | `	if( pVal && (pVal->iFlags & MEMOBJ_STRING) ){` |
+|    7735 |  157 | `		*pzOut = (const char *)SyBlobData(&pVal->sBlob);` |
+|    7735 |  158 | `		*pnOut = (int)SyBlobLength(&pVal->sBlob);` |
+|    3865 |  159 | `	}` |
+|    7745 |  160 | `}` |
 |       - |  161 | `/* The object stored in a slot, or NULL when it holds anything else. */` |
-|    9300 |  162 | `PH7_PRIVATE ph7_class_instance * PH7_NativeAttrObj(ph7_class_instance *pObj,const char *zName)` |
+|    9308 |  162 | `PH7_PRIVATE ph7_class_instance * PH7_NativeAttrObj(ph7_class_instance *pObj,const char *zName)` |
 |       5 |  163 | `{` |
-|    9305 |  164 | `	ph7_value *pVal = PH7_NativeAttr(pObj,zName);` |
-|    9305 |  165 | `	if( pVal == 0 \|\| (pVal->iFlags & MEMOBJ_OBJ) == 0 ){` |
-|    2577 |  166 | `		return 0;` |
+|    9313 |  164 | `	ph7_value *pVal = PH7_NativeAttr(pObj,zName);` |
+|    9313 |  165 | `	if( pVal == 0 \|\| (pVal->iFlags & MEMOBJ_OBJ) == 0 ){` |
+|    2583 |  166 | `		return 0;` |
 |       - |  167 | `	}` |
-|    6731 |  168 | `	return (ph7_class_instance *)pVal->x.pOther;` |
-|    4655 |  169 | `}` |
+|    6734 |  168 | `	return (ph7_class_instance *)pVal->x.pOther;` |
+|    4659 |  169 | `}` |
 |       - |  170 | `/* Truth of a bool/int slot, again without converting it. */` |
 |    1252 |  171 | `PH7_PRIVATE int PH7_NativeAttrTruthy(ph7_class_instance *pObj,const char *zName)` |
 |       3 |  172 | `{` |
@@ -198,105 +198,105 @@ Coverage: 546/630 lines (86.67%)
 |       - |  188 | ` * written the slot. Rule 44's family: the bookkeeping has to live with the write,` |
 |       - |  189 | ` * not with one of the two ways of writing.` |
 |       - |  190 | ` */` |
-| 1471627 |  191 | `static void NativeAttrMarkInit(ph7_class_instance *pObj,const char *zName)` |
+| 1473525 |  191 | `static void NativeAttrMarkInit(ph7_class_instance *pObj,const char *zName)` |
 |       5 |  192 | `{` |
-| 1471632 |  193 | `	SyHashEntry *pEntry = SyHashGet(&pObj->hAttr,(const void *)zName,SyStrlen(zName));` |
-| 1471632 |  194 | `	if( pEntry ){` |
-| 1471632 |  195 | `		((VmClassAttr *)pEntry->pUserData)->iState &= ~VM_CLASS_ATTR_UNINIT;` |
-|  735816 |  196 | `	}` |
-| 1471632 |  197 | `}` |
-|    7543 |  198 | `PH7_PRIVATE void PH7_NativeSetAttrInt(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,sxi64 iVal)` |
-|       3 |  199 | `{` |
-|    7546 |  200 | `	ph7_value *pSlot = PH7_NativeAttr(pObj,zName);` |
+| 1473530 |  193 | `	SyHashEntry *pEntry = SyHashGet(&pObj->hAttr,(const void *)zName,SyStrlen(zName));` |
+| 1473530 |  194 | `	if( pEntry ){` |
+| 1473530 |  195 | `		((VmClassAttr *)pEntry->pUserData)->iState &= ~VM_CLASS_ATTR_UNINIT;` |
+|  736765 |  196 | `	}` |
+| 1473530 |  197 | `}` |
+|    7591 |  198 | `PH7_PRIVATE void PH7_NativeSetAttrInt(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,sxi64 iVal)` |
+|       4 |  199 | `{` |
+|    7595 |  200 | `	ph7_value *pSlot = PH7_NativeAttr(pObj,zName);` |
 |       - |  201 | `	ph7_value sVal;` |
-|    7546 |  202 | `	if( pSlot == 0 ){` |
+|    7595 |  202 | `	if( pSlot == 0 ){` |
 |     ! 0 |  203 | `		return;` |
 |       - |  204 | `	}` |
-|    7546 |  205 | `	PH7_MemObjInitFromInt(&(*pVm),&sVal,iVal);` |
-|    7546 |  206 | `	PH7_MemObjStore(&sVal,pSlot);` |
-|    7546 |  207 | `	PH7_MemObjRelease(&sVal);` |
-|    7546 |  208 | `	NativeAttrMarkInit(pObj,zName);` |
-|    3775 |  209 | `}` |
-| 1461186 |  210 | `PH7_PRIVATE void PH7_NativeSetAttrStr(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,` |
+|    7595 |  205 | `	PH7_MemObjInitFromInt(&(*pVm),&sVal,iVal);` |
+|    7595 |  206 | `	PH7_MemObjStore(&sVal,pSlot);` |
+|    7595 |  207 | `	PH7_MemObjRelease(&sVal);` |
+|    7595 |  208 | `	NativeAttrMarkInit(pObj,zName);` |
+|    3800 |  209 | `}` |
+| 1463022 |  210 | `PH7_PRIVATE void PH7_NativeSetAttrStr(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,` |
 |       - |  211 | `	const char *zVal,int nVal)` |
 |       5 |  212 | `{` |
-| 1461191 |  213 | `	ph7_value *pSlot = PH7_NativeAttr(pObj,zName);` |
+| 1463027 |  213 | `	ph7_value *pSlot = PH7_NativeAttr(pObj,zName);` |
 |       - |  214 | `	ph7_value sVal;` |
 |       - |  215 | `	SyString sStr;` |
-| 1461191 |  216 | `	if( pSlot == 0 ){` |
+| 1463027 |  216 | `	if( pSlot == 0 ){` |
 |     ! 0 |  217 | `		return;` |
 |       - |  218 | `	}` |
-| 1461191 |  219 | `	SyStringInitFromBuf(&sStr,zVal,nVal);` |
-| 1461191 |  220 | `	PH7_MemObjInitFromString(&(*pVm),&sVal,&sStr);` |
-| 1461191 |  221 | `	PH7_MemObjStore(&sVal,pSlot);` |
-| 1461191 |  222 | `	PH7_MemObjRelease(&sVal);	NativeAttrMarkInit(pObj,zName);` |
-|  730600 |  223 | `}` |
-|    1234 |  224 | `PH7_PRIVATE void PH7_NativeSetAttrBool(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,int bVal)` |
+| 1463027 |  219 | `	SyStringInitFromBuf(&sStr,zVal,nVal);` |
+| 1463027 |  220 | `	PH7_MemObjInitFromString(&(*pVm),&sVal,&sStr);` |
+| 1463027 |  221 | `	PH7_MemObjStore(&sVal,pSlot);` |
+| 1463027 |  222 | `	PH7_MemObjRelease(&sVal);	NativeAttrMarkInit(pObj,zName);` |
+|  731518 |  223 | `}` |
+|    1246 |  224 | `PH7_PRIVATE void PH7_NativeSetAttrBool(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,int bVal)` |
 |       4 |  225 | `{` |
-|    1238 |  226 | `	ph7_value *pSlot = PH7_NativeAttr(pObj,zName);` |
+|    1250 |  226 | `	ph7_value *pSlot = PH7_NativeAttr(pObj,zName);` |
 |       - |  227 | `	ph7_value sVal;` |
-|    1238 |  228 | `	if( pSlot == 0 ){` |
+|    1250 |  228 | `	if( pSlot == 0 ){` |
 |     ! 0 |  229 | `		return;` |
 |       - |  230 | `	}` |
-|    1238 |  231 | `	PH7_MemObjInitFromBool(&(*pVm),&sVal,bVal);` |
-|    1238 |  232 | `	PH7_MemObjStore(&sVal,pSlot);` |
-|    1238 |  233 | `	PH7_MemObjRelease(&sVal);	NativeAttrMarkInit(pObj,zName);` |
-|     621 |  234 | `}` |
+|    1250 |  231 | `	PH7_MemObjInitFromBool(&(*pVm),&sVal,bVal);` |
+|    1250 |  232 | `	PH7_MemObjStore(&sVal,pSlot);` |
+|    1250 |  233 | `	PH7_MemObjRelease(&sVal);	NativeAttrMarkInit(pObj,zName);` |
+|     627 |  234 | `}` |
 |       - |  235 | `/* Store an object in a slot, or NULL to clear it. PH7_MemObjStore takes the` |
 |       - |  236 | ` * reference the slot needs, so the temp never holds one of its own. */` |
-|    1664 |  237 | `PH7_PRIVATE void PH7_NativeSetAttrObj(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,` |
+|    1666 |  237 | `PH7_PRIVATE void PH7_NativeSetAttrObj(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,` |
 |       - |  238 | `	ph7_class_instance *pVal)` |
 |       4 |  239 | `{` |
-|    1668 |  240 | `	ph7_value *pSlot = PH7_NativeAttr(pObj,zName);` |
+|    1670 |  240 | `	ph7_value *pSlot = PH7_NativeAttr(pObj,zName);` |
 |       - |  241 | `	ph7_value sVal;` |
-|    1668 |  242 | `	if( pSlot == 0 ){` |
+|    1670 |  242 | `	if( pSlot == 0 ){` |
 |     ! 0 |  243 | `		return;` |
 |       - |  244 | `	}` |
-|    1668 |  245 | `	PH7_MemObjInit(&(*pVm),&sVal);` |
-|    1668 |  246 | `	if( pVal ){` |
-|    1432 |  247 | `		sVal.x.pOther = pVal;` |
-|    1432 |  248 | `		sVal.iFlags = MEMOBJ_OBJ;` |
-|     714 |  249 | `	}` |
-|    1668 |  250 | `	PH7_MemObjStore(&sVal,pSlot);` |
-|    1668 |  251 | `	NativeAttrMarkInit(pObj,zName);` |
-|     836 |  252 | `}` |
+|    1670 |  245 | `	PH7_MemObjInit(&(*pVm),&sVal);` |
+|    1670 |  246 | `	if( pVal ){` |
+|    1434 |  247 | `		sVal.x.pOther = pVal;` |
+|    1434 |  248 | `		sVal.iFlags = MEMOBJ_OBJ;` |
+|     715 |  249 | `	}` |
+|    1670 |  250 | `	PH7_MemObjStore(&sVal,pSlot);` |
+|    1670 |  251 | `	NativeAttrMarkInit(pObj,zName);` |
+|     837 |  252 | `}` |
 |       - |  253 | `/*` |
 |       - |  254 | ` * Hand an instance back as a native call's result, dropping the reference` |
 |       - |  255 | ` * PH7_NewClassInstance/PH7_CloneClassInstance handed the caller.` |
 |       - |  256 | ` */` |
-|     786 |  257 | `PH7_PRIVATE void PH7_NativeResultObject(ph7_context *pCtx,ph7_class_instance *pObj)` |
+|     902 |  257 | `PH7_PRIVATE void PH7_NativeResultObject(ph7_context *pCtx,ph7_class_instance *pObj)` |
 |       5 |  258 | `{` |
 |       - |  259 | `	ph7_value sRes;` |
-|     791 |  260 | `	PH7_MemObjInit(pCtx->pVm,&sRes);` |
-|     791 |  261 | `	sRes.x.pOther = pObj;` |
-|     791 |  262 | `	sRes.iFlags = MEMOBJ_OBJ;` |
-|     791 |  263 | `	ph7_result_value(pCtx,&sRes);   /* takes its own reference */` |
-|     791 |  264 | `	PH7_ClassInstanceUnref(pObj);` |
-|     791 |  265 | `}` |
+|     907 |  260 | `	PH7_MemObjInit(pCtx->pVm,&sRes);` |
+|     907 |  261 | `	sRes.x.pOther = pObj;` |
+|     907 |  262 | `	sRes.iFlags = MEMOBJ_OBJ;` |
+|     907 |  263 | `	ph7_result_value(pCtx,&sRes);   /* takes its own reference */` |
+|     907 |  264 | `	PH7_ClassInstanceUnref(pObj);` |
+|     907 |  265 | `}` |
 |       - |  266 | `/*` |
 |       - |  267 | ` * Resolve a class by name for the builder's own use (parents and interfaces).` |
 |       - |  268 | ` * Autoload is deliberately NOT triggered: these run at VM init, where the only` |
 |       - |  269 | ` * classes that can exist are the ones installed before this call, and a missing` |
 |       - |  270 | ` * name is a build-order bug in the engine, not a userland lookup.` |
 |       - |  271 | ` */` |
-|  588420 |  272 | `static ph7_class * NativeLookupClass(ph7_vm *pVm,const char *zName)` |
+|  668980 |  272 | `static ph7_class * NativeLookupClass(ph7_vm *pVm,const char *zName)` |
 |       5 |  273 | `{` |
-|  588425 |  274 | `	return PH7_VmExtractClass(&(*pVm),zName,(sxu32)SyStrlen(zName),FALSE,0);` |
+|  668985 |  274 | `	return PH7_VmExtractClass(&(*pVm),zName,(sxu32)SyStrlen(zName),FALSE,0);` |
 |       5 |  275 | `}` |
 |       - |  276 | `/*` |
 |       - |  277 | ` * Translate the builder's PH7_MOD_* modifier bits into the protection level and` |
 |       - |  278 | ` * the attribute/method flag word the class structures actually store.` |
 |       - |  279 | ` */` |
-| 4861658 |  280 | `static sxi32 NativeProtection(sxi32 iMods)` |
+| 5516712 |  280 | `static sxi32 NativeProtection(sxi32 iMods)` |
 |       5 |  281 | `{` |
-| 4861663 |  282 | `	if( iMods & PH7_MOD_PRIVATE ){` |
-|  429645 |  283 | `		return PH7_CLASS_PROT_PRIVATE;` |
+| 5516717 |  282 | `	if( iMods & PH7_MOD_PRIVATE ){` |
+|  483729 |  283 | `		return PH7_CLASS_PROT_PRIVATE;` |
 |       - |  284 | `	}` |
-| 4432023 |  285 | `	if( iMods & PH7_MOD_PROTECTED ){` |
-|  140105 |  286 | `		return PH7_CLASS_PROT_PROTECTED;` |
+| 5032993 |  285 | `	if( iMods & PH7_MOD_PROTECTED ){` |
+|  154385 |  286 | `		return PH7_CLASS_PROT_PROTECTED;` |
 |       - |  287 | `	}` |
-| 4291923 |  288 | `	return PH7_CLASS_PROT_PUBLIC;` |
-| 2430834 |  289 | `}` |
+| 4878613 |  288 | `	return PH7_CLASS_PROT_PUBLIC;` |
+| 2758361 |  289 | `}` |
 |       - |  290 | `/*` |
 |       - |  291 | ` * Attach one C-bodied method to an already-created class.` |
 |       - |  292 | ` *` |
@@ -306,7 +306,7 @@ Coverage: 546/630 lines (86.67%)
 |       - |  296 | `` * `Class::method`, so an ArgumentCountError raised at the OP_CALL choke point`` |
 |       - |  297 | ` * names what a php user would recognise.` |
 |       - |  298 | ` */` |
-| 3661468 |  299 | `PH7_PRIVATE sxi32 PH7_NativeClassInstallMethod(` |
+| 4153022 |  299 | `PH7_PRIVATE sxi32 PH7_NativeClassInstallMethod(` |
 |       - |  300 | `	ph7_vm *pVm,` |
 |       - |  301 | `	ph7_class *pClass,` |
 |       - |  302 | `	const PH7_NativeMethodDef *pDef,` |
@@ -320,53 +320,53 @@ Coverage: 546/630 lines (86.67%)
 |       - |  310 | `	char zQual[128];` |
 |       - |  311 | `	sxi32 iFuncFlags;` |
 |       - |  312 | `	sxi32 rc;` |
-| 3661473 |  313 | `	SyStringInitFromBuf(&sName,pDef->zName,SyStrlen(pDef->zName));` |
-| 3661473 |  314 | `	iFuncFlags = VM_FUNC_NATIVE;` |
-| 3661473 |  315 | `	if( pVm->bCompilingBuiltin ){` |
+| 4153027 |  313 | `	SyStringInitFromBuf(&sName,pDef->zName,SyStrlen(pDef->zName));` |
+| 4153027 |  314 | `	iFuncFlags = VM_FUNC_NATIVE;` |
+| 4153027 |  315 | `	if( pVm->bCompilingBuiltin ){` |
 |       - |  316 | `		/* Same stamp the embedded chunks got, so Reflection keeps reporting these` |
 |       - |  317 | `		 * as internal: isInternal() true, getFileName() false. */` |
-| 3661285 |  318 | `		iFuncFlags \|= VM_FUNC_INTERNAL;` |
-| 1830640 |  319 | `	}` |
-| 5492207 |  320 | `	pMeth = PH7_NewClassMethod(&(*pVm),pClass,&sName,0,` |
-| 3661468 |  321 | `		NativeProtection(pDef->iMods),` |
-| 3661468 |  322 | `		((pDef->iMods & PH7_MOD_FINAL) ? PH7_CLASS_ATTR_FINAL : 0)` |
-| 3661468 |  323 | `		\| ((pDef->iMods & PH7_MOD_ABSTRACT) ? PH7_CLASS_ATTR_ABSTRACT : 0),` |
-| 1830734 |  324 | `		iFuncFlags);` |
-| 3661473 |  325 | `	if( pMeth == 0 ){` |
+| 4152827 |  318 | `		iFuncFlags \|= VM_FUNC_INTERNAL;` |
+| 2076411 |  319 | `	}` |
+| 6229538 |  320 | `	pMeth = PH7_NewClassMethod(&(*pVm),pClass,&sName,0,` |
+| 4153022 |  321 | `		NativeProtection(pDef->iMods),` |
+| 4153022 |  322 | `		((pDef->iMods & PH7_MOD_FINAL) ? PH7_CLASS_ATTR_FINAL : 0)` |
+| 4153022 |  323 | `		\| ((pDef->iMods & PH7_MOD_ABSTRACT) ? PH7_CLASS_ATTR_ABSTRACT : 0),` |
+| 2076511 |  324 | `		iFuncFlags);` |
+| 4153027 |  325 | `	if( pMeth == 0 ){` |
 |     ! 0 |  326 | `		return SXERR_MEM;` |
 |       - |  327 | `	}` |
 |       - |  328 | `	/* Staticness has to be recorded in BOTH places: on the method (where the class` |
 |       - |  329 | `	 * machinery and Reflection read it) and on the function (where the OP_CALL` |
 |       - |  330 | `	 * dispatcher reads it, to keep the caller's $this from leaking in as a receiver` |
 |       - |  331 | `	 * — see VM_FUNC_NATIVE_STATIC). */` |
-| 3661473 |  332 | `	if( pDef->iMods & PH7_MOD_STATIC ){` |
-|  130953 |  333 | `		pMeth->iFlags \|= PH7_CLASS_ATTR_STATIC;` |
-|  130953 |  334 | `		pMeth->sFunc.iFlags \|= VM_FUNC_NATIVE_STATIC;` |
-|   65474 |  335 | `	}` |
+| 4153027 |  332 | `	if( pDef->iMods & PH7_MOD_STATIC ){` |
+|  144293 |  333 | `		pMeth->iFlags \|= PH7_CLASS_ATTR_STATIC;` |
+|  144293 |  334 | `		pMeth->sFunc.iFlags \|= VM_FUNC_NATIVE_STATIC;` |
+|   72144 |  335 | `	}` |
 |       - |  336 | `	/* An ABSTRACT method has no body to install — an INTERFACE's methods are the` |
 |       - |  337 | ``	 * reason the builder needs the case at all (`SeekableIterator::seek()`), and`` |
 |       - |  338 | `	 * php reports them with their declared signature like any other. The dispatch` |
 |       - |  339 | `	 * never reaches one: OP_CALL and OP_MEMBER both refuse an abstract method` |
 |       - |  340 | `	 * ("Cannot call abstract method C::m()") before they look at a body. */` |
-| 3661473 |  341 | `	if( pDef->iMods & PH7_MOD_ABSTRACT ){` |
-|  163455 |  342 | `		if( pDef->zSig ){` |
-|  163455 |  343 | `			rc = PH7_NewForeignFunction(&(*pVm),&sName,pDef->xFunc,pUserData,&pNative);` |
-|  163455 |  344 | `			if( rc != SXRET_OK ){` |
+| 4153027 |  341 | `	if( pDef->iMods & PH7_MOD_ABSTRACT ){` |
+|  226429 |  342 | `		if( pDef->zSig ){` |
+|  226429 |  343 | `			rc = PH7_NewForeignFunction(&(*pVm),&sName,pDef->xFunc,pUserData,&pNative);` |
+|  226429 |  344 | `			if( rc != SXRET_OK ){` |
 |     ! 0 |  345 | `				return rc;` |
 |       - |  346 | `			}` |
-|  163455 |  347 | `			pNative->zSig = pDef->zSig;` |
-|  163455 |  348 | `			if( pDef->zRet && pDef->zRet[0] ){` |
-|  130765 |  349 | `				pNative->zRet = pDef->zRet;` |
-|   65380 |  350 | `			}` |
-|  163455 |  351 | `			pMeth->sFunc.pNative = pNative;` |
-|   81725 |  352 | `		}` |
-|  163455 |  353 | `		return PH7_ClassInstallMethod(pClass,pMeth);` |
+|  226429 |  347 | `			pNative->zSig = pDef->zSig;` |
+|  226429 |  348 | `			if( pDef->zRet && pDef->zRet[0] ){` |
+|  144093 |  349 | `				pNative->zRet = pDef->zRet;` |
+|   72044 |  350 | `			}` |
+|  226429 |  351 | `			pMeth->sFunc.pNative = pNative;` |
+|  113212 |  352 | `		}` |
+|  226429 |  353 | `		return PH7_ClassInstallMethod(pClass,pMeth);` |
 |       - |  354 | `	}` |
 |       - |  355 | `	/* The C body. The diagnostic name is the qualified one php would print. */` |
-| 3498023 |  356 | `	SyBufferFormat(zQual,sizeof(zQual),"%z::%s",&pClass->sName,pDef->zName);` |
-| 3498023 |  357 | `	SyStringInitFromBuf(&sVmName,zQual,SyStrlen(zQual));` |
-| 3498023 |  358 | `	rc = PH7_NewForeignFunction(&(*pVm),&sVmName,pDef->xFunc,pUserData,&pNative);` |
-| 3498023 |  359 | `	if( rc != SXRET_OK ){` |
+| 3926603 |  356 | `	SyBufferFormat(zQual,sizeof(zQual),"%z::%s",&pClass->sName,pDef->zName);` |
+| 3926603 |  357 | `	SyStringInitFromBuf(&sVmName,zQual,SyStrlen(zQual));` |
+| 3926603 |  358 | `	rc = PH7_NewForeignFunction(&(*pVm),&sVmName,pDef->xFunc,pUserData,&pNative);` |
+| 3926603 |  359 | `	if( rc != SXRET_OK ){` |
 |     ! 0 |  360 | `		return rc;` |
 |       - |  361 | `	}` |
 |       - |  362 | `	/* Arity bounds and by-ref positions come from the declared signature, exactly` |
@@ -382,32 +382,32 @@ Coverage: 546/630 lines (86.67%)
 |       - |  372 | ``	 * `$fiber->isStarted(1)` are swallowed where php raises "expects exactly 0`` |
 |       - |  373 | `	 * arguments, 1 given". VmDeriveArityFromSig("") already answers min 0 / max 0 /` |
 |       - |  374 | `	 * enforced; only NULL opts out. */` |
-| 3498023 |  375 | `	if( pDef->zSig ){` |
-| 3493353 |  376 | `		sxi16 nMin = 0, nMax = 0;` |
-| 3493353 |  377 | `		sxu8 bAtLeast = 0, bHasMax = 0;` |
-| 3493353 |  378 | `		pNative->zSig = pDef->zSig;` |
-| 3493353 |  379 | `		pNative->nByRefMask = VmDeriveByRefMaskFromSig(pDef->zSig);` |
-| 3493353 |  380 | `		VmDeriveArityFromSig(pDef->zSig,&nMin,&bAtLeast,&nMax,&bHasMax);` |
-| 3493353 |  381 | `		pNative->nMinArg = nMin;` |
-| 3493353 |  382 | `		pNative->bAtLeast = bAtLeast;` |
-| 3493353 |  383 | `		pNative->nMaxArg = nMax;` |
-| 3493353 |  384 | `		pNative->bHasMaxArg = bHasMax;` |
-| 1746674 |  385 | `	}` |
-| 3498023 |  386 | `	if( pDef->zRet && pDef->zRet[0] ){` |
-| 3147773 |  387 | `		pNative->zRet = pDef->zRet;` |
-| 1573884 |  388 | `	}` |
-| 3498023 |  389 | `	pMeth->sFunc.pNative = pNative;` |
-| 3498023 |  390 | `	rc = PH7_ClassInstallMethod(pClass,pMeth);` |
-| 3498023 |  391 | `	if( rc != SXRET_OK ){` |
+| 3926603 |  375 | `	if( pDef->zSig ){` |
+| 3921457 |  376 | `		sxi16 nMin = 0, nMax = 0;` |
+| 3921457 |  377 | `		sxu8 bAtLeast = 0, bHasMax = 0;` |
+| 3921457 |  378 | `		pNative->zSig = pDef->zSig;` |
+| 3921457 |  379 | `		pNative->nByRefMask = VmDeriveByRefMaskFromSig(pDef->zSig);` |
+| 3921457 |  380 | `		VmDeriveArityFromSig(pDef->zSig,&nMin,&bAtLeast,&nMax,&bHasMax);` |
+| 3921457 |  381 | `		pNative->nMinArg = nMin;` |
+| 3921457 |  382 | `		pNative->bAtLeast = bAtLeast;` |
+| 3921457 |  383 | `		pNative->nMaxArg = nMax;` |
+| 3921457 |  384 | `		pNative->bHasMaxArg = bHasMax;` |
+| 1960726 |  385 | `	}` |
+| 3926603 |  386 | `	if( pDef->zRet && pDef->zRet[0] ){` |
+| 3499485 |  387 | `		pNative->zRet = pDef->zRet;` |
+| 1749740 |  388 | `	}` |
+| 3926603 |  389 | `	pMeth->sFunc.pNative = pNative;` |
+| 3926603 |  390 | `	rc = PH7_ClassInstallMethod(pClass,pMeth);` |
+| 3926603 |  391 | `	if( rc != SXRET_OK ){` |
 |     ! 0 |  392 | `		return rc;` |
 |       - |  393 | `	}` |
-| 3498023 |  394 | `	if( pClass->bMounted ){` |
+| 3926603 |  394 | `	if( pClass->bMounted ){` |
 |       - |  395 | `		/* The class is already live (a method attached after installation): mount` |
 |       - |  396 | `		 * this one method now, since VmMountUserClass will not run again. */` |
 |     ! 0 |  397 | `		return PH7_VmInstallUserFunction(&(*pVm),&pMeth->sFunc,&pMeth->sVmName);` |
 |       - |  398 | `	}` |
-| 3498023 |  399 | `	return SXRET_OK;` |
-| 1830739 |  400 | `}` |
+| 3926603 |  399 | `	return SXRET_OK;` |
+| 2076516 |  400 | `}` |
 |       - |  401 | `/*` |
 |       - |  402 | ` * Install one class constant carrying a scalar value.` |
 |       - |  403 | ` *` |
@@ -416,21 +416,21 @@ Coverage: 546/630 lines (86.67%)
 |       - |  406 | ` * value NOW into the constant's reserved slot and leaves the byte-code empty --` |
 |       - |  407 | ` * which is what a literal initializer would have produced anyway.` |
 |       - |  408 | ` */` |
-|  410960 |  409 | `static sxi32 NativeInstallConstant(ph7_vm *pVm,ph7_class *pClass,const PH7_NativeConstDef *pDef)` |
+|  452848 |  409 | `static sxi32 NativeInstallConstant(ph7_vm *pVm,ph7_class *pClass,const PH7_NativeConstDef *pDef)` |
 |       5 |  410 | `{` |
 |       - |  411 | `	ph7_class_attr *pAttr;` |
 |       - |  412 | `	SyString sName;` |
-|  410965 |  413 | `	SyStringInitFromBuf(&sName,pDef->zName,SyStrlen(pDef->zName));` |
-|  410965 |  414 | `	pAttr = PH7_NewClassAttr(&(*pVm),&sName,0,NativeProtection(pDef->iMods),` |
+|  452853 |  413 | `	SyStringInitFromBuf(&sName,pDef->zName,SyStrlen(pDef->zName));` |
+|  452853 |  414 | `	pAttr = PH7_NewClassAttr(&(*pVm),&sName,0,NativeProtection(pDef->iMods),` |
 |       - |  415 | `		PH7_CLASS_ATTR_CONSTANT);` |
-|  410965 |  416 | `	if( pAttr == 0 ){` |
+|  452853 |  416 | `	if( pAttr == 0 ){` |
 |     ! 0 |  417 | `		return SXERR_MEM;` |
 |       - |  418 | `	}` |
-|  410965 |  419 | `	pAttr->pDeclClass = pClass;` |
+|  452853 |  419 | `	pAttr->pDeclClass = pClass;` |
 |       - |  420 | `	/* Stash the literal; VmMountUserClassAttrs materializes it into the slot. */` |
-|  410965 |  421 | `	pAttr->pNativeValue = pDef;` |
-|  410965 |  422 | `	return PH7_ClassInstallAttr(pClass,pAttr);` |
-|  205485 |  423 | `}` |
+|  452853 |  421 | `	pAttr->pNativeValue = pDef;` |
+|  452853 |  422 | `	return PH7_ClassInstallAttr(pClass,pAttr);` |
+|  226429 |  423 | `}` |
 |       - |  424 | `/*` |
 |       - |  425 | ` * Fill in a declared property TYPE from the text a spec row states, exactly as` |
 |       - |  426 | ` * GenStateCopyTypeToAttr fills it from a parsed declaration: nType is the` |
@@ -443,7 +443,7 @@ Coverage: 546/630 lines (86.67%)
 |       - |  433 | ` * nothing native declares one; a spec that tries reads as the class name it is` |
 |       - |  434 | ` * spelled with, which is why the parse stays this literal.` |
 |       - |  435 | ` */` |
-|  228830 |  436 | `static void NativeAttrType(ph7_class_attr *pAttr,const char *zType)` |
+|  272738 |  436 | `static void NativeAttrType(ph7_class_attr *pAttr,const char *zType)` |
 |       5 |  437 | `{` |
 |       - |  438 | `	static const struct { const char *zName; sxu32 nType; } aScalar[] = {` |
 |       - |  439 | `		{ "int",    MEMOBJ_INT },` |
@@ -453,25 +453,25 @@ Coverage: 546/630 lines (86.67%)
 |       - |  443 | `		{ "array",  MEMOBJ_HASHMAP },` |
 |       - |  444 | `		{ "object", MEMOBJ_OBJ },` |
 |       - |  445 | `	};` |
-|  228835 |  446 | `	const char *zAtom = zType;` |
+|  272743 |  446 | `	const char *zAtom = zType;` |
 |       - |  447 | `	sxu32 nAtom, n;` |
-|  228835 |  448 | `	if( zAtom[0] == '?' ){` |
-|   42035 |  449 | `		pAttr->iFlags \|= PH7_CLASS_ATTR_NULLABLE;` |
-|   42035 |  450 | `		zAtom++;` |
-|   21015 |  451 | `	}` |
-|  228835 |  452 | `	nAtom = SyStrlen(zAtom);` |
-|  228835 |  453 | `	pAttr->iFlags \|= PH7_CLASS_ATTR_TYPED;` |
-|  228835 |  454 | `	SyStringInitFromBuf(&pAttr->sTypeName,zType,SyStrlen(zType));` |
-|  761215 |  455 | `	for( n = 0 ; n < SX_ARRAYSIZE(aScalar) ; ++n ){` |
-|  723850 |  456 | `		if( nAtom == SyStrlen(aScalar[n].zName)` |
-|  467005 |  457 | `		 && SyMemcmp(zAtom,aScalar[n].zName,(sxu32)nAtom) == 0 ){` |
-|  191475 |  458 | `			pAttr->nType = aScalar[n].nType;` |
-|  191475 |  459 | `			return;` |
+|  272743 |  448 | `	if( zAtom[0] == '?' ){` |
+|   46319 |  449 | `		pAttr->iFlags \|= PH7_CLASS_ATTR_NULLABLE;` |
+|   46319 |  450 | `		zAtom++;` |
+|   23157 |  451 | `	}` |
+|  272743 |  452 | `	nAtom = SyStrlen(zAtom);` |
+|  272743 |  453 | `	pAttr->iFlags \|= PH7_CLASS_ATTR_TYPED;` |
+|  272743 |  454 | `	SyStringInitFromBuf(&pAttr->sTypeName,zType,SyStrlen(zType));` |
+|  879971 |  455 | `	for( n = 0 ; n < SX_ARRAYSIZE(aScalar) ; ++n ){` |
+|  838798 |  456 | `		if( nAtom == SyStrlen(aScalar[n].zName)` |
+|  545481 |  457 | `		 && SyMemcmp(zAtom,aScalar[n].zName,(sxu32)nAtom) == 0 ){` |
+|  231575 |  458 | `			pAttr->nType = aScalar[n].nType;` |
+|  231575 |  459 | `			return;` |
 |       - |  460 | `		}` |
-|  266195 |  461 | `	}` |
-|   37365 |  462 | `	pAttr->nType = SXU32_HIGH;` |
-|   37365 |  463 | `	SyStringInitFromBuf(&pAttr->sClass,zAtom,nAtom);` |
-|  114420 |  464 | `}` |
+|  303619 |  461 | `	}` |
+|   41173 |  462 | `	pAttr->nType = SXU32_HIGH;` |
+|   41173 |  463 | `	SyStringInitFromBuf(&pAttr->sClass,zAtom,nAtom);` |
+|  136374 |  464 | `}` |
 |       - |  465 | `/*` |
 |       - |  466 | ` * Install one declared property.` |
 |       - |  467 | ` *` |
@@ -479,50 +479,50 @@ Coverage: 546/630 lines (86.67%)
 |       - |  469 | `` * PH7_NativeLiteralValue); an instance property materializes it at `new`, a static`` |
 |       - |  470 | `` * one at mount. A PH7_NATIVE_VAL_NULL default is the plain `public $p;` case.`` |
 |       - |  471 | ` */` |
-|  789230 |  472 | `PH7_PRIVATE sxi32 PH7_NativeClassInstallProperty(ph7_vm *pVm,ph7_class *pClass,` |
+|  910842 |  472 | `PH7_PRIVATE sxi32 PH7_NativeClassInstallProperty(ph7_vm *pVm,ph7_class *pClass,` |
 |       - |  473 | `	const PH7_NativePropDef *pDef)` |
 |       5 |  474 | `{` |
 |       - |  475 | `	ph7_class_attr *pAttr;` |
 |       - |  476 | `	SyString sName;` |
-|  789235 |  477 | `	sxi32 iFlags = 0;` |
-|  789235 |  478 | `	SyStringInitFromBuf(&sName,pDef->zName,SyStrlen(pDef->zName));` |
-|  789235 |  479 | `	if( pDef->iMods & PH7_MOD_STATIC ){` |
+|  910847 |  477 | `	sxi32 iFlags = 0;` |
+|  910847 |  478 | `	SyStringInitFromBuf(&sName,pDef->zName,SyStrlen(pDef->zName));` |
+|  910847 |  479 | `	if( pDef->iMods & PH7_MOD_STATIC ){` |
 |     ! 0 |  480 | `		iFlags \|= PH7_CLASS_ATTR_STATIC;` |
 |     ! 0 |  481 | `	}` |
-|  789235 |  482 | `	if( pDef->iMods & PH7_MOD_HIDDEN ){` |
-|  495025 |  483 | `		iFlags \|= PH7_CLASS_ATTR_HIDDEN;` |
-|  247510 |  484 | `	}` |
+|  910847 |  482 | `	if( pDef->iMods & PH7_MOD_HIDDEN ){` |
+|  550627 |  483 | `		iFlags \|= PH7_CLASS_ATTR_HIDDEN;` |
+|  275311 |  484 | `	}` |
 |       - |  485 | `	/* php declares several native slots readonly and asymmetrically visible` |
 |       - |  486 | ``	 * (`public protected(set) readonly string $path` on Directory), and both are`` |
 |       - |  487 | `	 * php-visible twice over: the write refusal and Reflection's modifier list. */` |
-|  789235 |  488 | `	if( pDef->iMods & PH7_MOD_READONLY ){` |
-|   18685 |  489 | `		iFlags \|= PH7_CLASS_ATTR_READONLY;` |
-|    9340 |  490 | `	}` |
-|  789235 |  491 | `	if( pDef->iMods & PH7_MOD_PROT_SET ){` |
-|   18685 |  492 | `		iFlags \|= PH7_CLASS_ATTR_PROTECTED_SET;` |
-|    9340 |  493 | `	}` |
-|  789235 |  494 | `	if( pDef->iMods & PH7_MOD_PRIV_SET ){` |
+|  910847 |  488 | `	if( pDef->iMods & PH7_MOD_READONLY ){` |
+|   20589 |  489 | `		iFlags \|= PH7_CLASS_ATTR_READONLY;` |
+|   10292 |  490 | `	}` |
+|  910847 |  491 | `	if( pDef->iMods & PH7_MOD_PROT_SET ){` |
+|   20589 |  492 | `		iFlags \|= PH7_CLASS_ATTR_PROTECTED_SET;` |
+|   10292 |  493 | `	}` |
+|  910847 |  494 | `	if( pDef->iMods & PH7_MOD_PRIV_SET ){` |
 |     ! 0 |  495 | `		iFlags \|= PH7_CLASS_ATTR_PRIVATE_SET;` |
 |     ! 0 |  496 | `	}` |
-|  789235 |  497 | `	pAttr = PH7_NewClassAttr(&(*pVm),&sName,0,NativeProtection(pDef->iMods),iFlags);` |
-|  789235 |  498 | `	if( pAttr == 0 ){` |
+|  910847 |  497 | `	pAttr = PH7_NewClassAttr(&(*pVm),&sName,0,NativeProtection(pDef->iMods),iFlags);` |
+|  910847 |  498 | `	if( pAttr == 0 ){` |
 |     ! 0 |  499 | `		return SXERR_MEM;` |
 |       - |  500 | `	}` |
-|  789235 |  501 | `	pAttr->pDeclClass = pClass;` |
+|  910847 |  501 | `	pAttr->pDeclClass = pClass;` |
 |       - |  502 | `	/* NO default is not the same as a NULL one, and the difference is php-visible:` |
 |       - |  503 | ``	 * a typed slot without a default is UNINITIALIZED at `new` (reading it before`` |
 |       - |  504 | `	 * the class writes it is an Error, hasDefaultValue() is false), which is what` |
 |       - |  505 | `	 * php declares for LibXMLError's six fields and every reflector's $name. The` |
 |       - |  506 | ``	 * machinery is already there for a compiled `public string $p;` — leaving`` |
 |       - |  507 | `	 * pNativeValue at 0 is what selects it. */` |
-|  789235 |  508 | `	if( pDef->sDefault.iType != PH7_NATIVE_VAL_NONE ){` |
-|  653805 |  509 | `		pAttr->pNativeValue = &pDef->sDefault;` |
-|  326900 |  510 | `	}` |
-|  789235 |  511 | `	if( pDef->zType && pDef->zType[0] ){` |
-|  228835 |  512 | `		NativeAttrType(pAttr,pDef->zType);` |
-|  114415 |  513 | `	}` |
-|  789235 |  514 | `	return PH7_ClassInstallAttr(pClass,pAttr);` |
-|  394620 |  515 | `}` |
+|  910847 |  508 | `	if( pDef->sDefault.iType != PH7_NATIVE_VAL_NONE ){` |
+|  761613 |  509 | `		pAttr->pNativeValue = &pDef->sDefault;` |
+|  380804 |  510 | `	}` |
+|  910847 |  511 | `	if( pDef->zType && pDef->zType[0] ){` |
+|  272743 |  512 | `		NativeAttrType(pAttr,pDef->zType);` |
+|  136369 |  513 | `	}` |
+|  910847 |  514 | `	return PH7_ClassInstallAttr(pClass,pAttr);` |
+|  455426 |  515 | `}` |
 |       - |  516 | `/*` |
 |       - |  517 | `` * Attach an `#[Attr(...)]` to a class declared from C.`` |
 |       - |  518 | ` *` |
@@ -534,37 +534,37 @@ Coverage: 546/630 lines (86.67%)
 |       - |  524 | ` * literal record a native constant or property default uses and every reader` |
 |       - |  525 | ` * takes that branch when the byte-code is empty.` |
 |       - |  526 | ` */` |
-|    9340 |  527 | `PH7_PRIVATE sxi32 PH7_NativeClassAddAttribute(ph7_vm *pVm,ph7_class *pClass,` |
+|   10292 |  527 | `PH7_PRIVATE sxi32 PH7_NativeClassAddAttribute(ph7_vm *pVm,ph7_class *pClass,` |
 |       - |  528 | `	const char *zAttr,const PH7_NativeAttrArg *aArg,sxu32 nArg)` |
 |       5 |  529 | `{` |
 |       - |  530 | `	ph7_attribute sAttr;` |
 |       - |  531 | `	char *zDup;` |
 |       - |  532 | `	sxu32 n;` |
-|    9345 |  533 | `	if( pClass == 0 ){` |
+|   10297 |  533 | `	if( pClass == 0 ){` |
 |     ! 0 |  534 | `		return SXERR_NOTFOUND;` |
 |       - |  535 | `	}` |
-|    9345 |  536 | `	SyZero(&sAttr,sizeof(sAttr));` |
-|    9345 |  537 | `	zDup = SyMemBackendStrDup(&pVm->sAllocator,zAttr,SyStrlen(zAttr));` |
-|    9345 |  538 | `	if( zDup == 0 ){` |
+|   10297 |  536 | `	SyZero(&sAttr,sizeof(sAttr));` |
+|   10297 |  537 | `	zDup = SyMemBackendStrDup(&pVm->sAllocator,zAttr,SyStrlen(zAttr));` |
+|   10297 |  538 | `	if( zDup == 0 ){` |
 |     ! 0 |  539 | `		return SXERR_MEM;` |
 |       - |  540 | `	}` |
-|    9345 |  541 | `	SyStringInitFromBuf(&sAttr.sName,zDup,SyStrlen(zAttr));` |
-|    9345 |  542 | `	SySetInit(&sAttr.aArgs,&pVm->sAllocator,sizeof(ph7_attr_arg));` |
-|   18685 |  543 | `	for( n = 0 ; n < nArg ; n++ ){` |
+|   10297 |  541 | `	SyStringInitFromBuf(&sAttr.sName,zDup,SyStrlen(zAttr));` |
+|   10297 |  542 | `	SySetInit(&sAttr.aArgs,&pVm->sAllocator,sizeof(ph7_attr_arg));` |
+|   20589 |  543 | `	for( n = 0 ; n < nArg ; n++ ){` |
 |       - |  544 | `		ph7_attr_arg sArgRec;` |
-|    9345 |  545 | `		SyZero(&sArgRec,sizeof(sArgRec));` |
-|    9345 |  546 | `		SySetInit(&sArgRec.aByteCode,&pVm->sAllocator,sizeof(VmInstr));` |
-|    9345 |  547 | `		if( aArg[n].zName ){` |
+|   10297 |  545 | `		SyZero(&sArgRec,sizeof(sArgRec));` |
+|   10297 |  546 | `		SySetInit(&sArgRec.aByteCode,&pVm->sAllocator,sizeof(VmInstr));` |
+|   10297 |  547 | `		if( aArg[n].zName ){` |
 |     ! 0 |  548 | `			char *zN = SyMemBackendStrDup(&pVm->sAllocator,aArg[n].zName,SyStrlen(aArg[n].zName));` |
 |     ! 0 |  549 | `			if( zN ){` |
 |     ! 0 |  550 | `				SyStringInitFromBuf(&sArgRec.sName,zN,SyStrlen(aArg[n].zName));` |
 |     ! 0 |  551 | `			}` |
 |     ! 0 |  552 | `		}` |
-|    9345 |  553 | `		sArgRec.pNativeValue = (const void *)&aArg[n].sValue;` |
-|    9345 |  554 | `		SySetPut(&sAttr.aArgs,(const void *)&sArgRec);` |
-|    4675 |  555 | `	}` |
-|    9345 |  556 | `	return SySetPut(&pClass->aAttrs,(const void *)&sAttr);` |
-|    4675 |  557 | `}` |
+|   10297 |  553 | `		sArgRec.pNativeValue = (const void *)&aArg[n].sValue;` |
+|   10297 |  554 | `		SySetPut(&sAttr.aArgs,(const void *)&sArgRec);` |
+|    5151 |  555 | `	}` |
+|   10297 |  556 | `	return SySetPut(&pClass->aAttrs,(const void *)&sAttr);` |
+|    5151 |  557 | `}` |
 |       - |  558 | `/*` |
 |       - |  559 | ` * php's get_properties / get_debug_info handlers: the SHAPE a class SHOWS.` |
 |       - |  560 | ` *` |
@@ -582,19 +582,19 @@ Coverage: 546/630 lines (86.67%)
 |       - |  572 | ` * get_object_vars() and foreach are NOT callers: php answers those from the real` |
 |       - |  573 | ` * properties with the caller's scope applied, which for every class here is empty.` |
 |       - |  574 | ` */` |
-|     522 |  575 | `PH7_PRIVATE int PH7_ClassInstancePresent(ph7_class_instance *pThis,ph7_value *pOut,int bDebug)` |
+|     556 |  575 | `PH7_PRIVATE int PH7_ClassInstancePresent(ph7_class_instance *pThis,ph7_value *pOut,int bDebug)` |
 |       5 |  576 | `{` |
 |       - |  577 | `	ph7_class *pClass;` |
-|     527 |  578 | `	if( pThis == 0 \|\| pOut == 0 ){` |
+|     561 |  578 | `	if( pThis == 0 \|\| pOut == 0 ){` |
 |     ! 0 |  579 | `		return 0;` |
 |       - |  580 | `	}` |
-|     923 |  581 | `	for( pClass = pThis->pClass ; pClass ; pClass = pClass->pBase ){` |
-|     555 |  582 | `		if( pClass->xPresent ){` |
-|     156 |  583 | `			return pClass->xPresent(pThis->pVm,pThis,pOut,bDebug) == SXRET_OK;` |
+|     989 |  581 | `	for( pClass = pThis->pClass ; pClass ; pClass = pClass->pBase ){` |
+|     589 |  582 | `		if( pClass->xPresent ){` |
+|     159 |  583 | `			return pClass->xPresent(pThis->pVm,pThis,pOut,bDebug) == SXRET_OK;` |
 |       - |  584 | `		}` |
-|     203 |  585 | `	}` |
-|     373 |  586 | `	return 0;` |
-|     266 |  587 | `}` |
+|     219 |  585 | `	}` |
+|     405 |  586 | `	return 0;` |
+|     283 |  587 | `}` |
 |       - |  588 | `/*` |
 |       - |  589 | ` * Create and install ONE class from its spec: constants and properties, but` |
 |       - |  590 | ` * neither methods nor its base chain.` |
@@ -604,15 +604,15 @@ Coverage: 546/630 lines (86.67%)
 |       - |  594 | ` * exist -- and to already CARRY ITS METHODS, since inheriting is what copies` |
 |       - |  595 | ` * them down.` |
 |       - |  596 | ` */` |
-|  621110 |  597 | `static sxi32 NativeDeclareClass(ph7_vm *pVm,const PH7_NativeClassSpec *pSpec,ph7_class **ppOut)` |
+|  730732 |  597 | `static sxi32 NativeDeclareClass(ph7_vm *pVm,const PH7_NativeClassSpec *pSpec,ph7_class **ppOut)` |
 |       5 |  598 | `{` |
 |       - |  599 | `	ph7_class *pClass;` |
 |       - |  600 | `	SyString sName;` |
 |       - |  601 | `	sxu32 n;` |
 |       - |  602 | `	sxi32 rc;` |
-|  621115 |  603 | `	SyStringInitFromBuf(&sName,pSpec->zName,SyStrlen(pSpec->zName));` |
-|  621115 |  604 | `	pClass = PH7_NewRawClass(&(*pVm),&sName,0);` |
-|  621115 |  605 | `	if( pClass == 0 ){` |
+|  730737 |  603 | `	SyStringInitFromBuf(&sName,pSpec->zName,SyStrlen(pSpec->zName));` |
+|  730737 |  604 | `	pClass = PH7_NewRawClass(&(*pVm),&sName,0);` |
+|  730737 |  605 | `	if( pClass == 0 ){` |
 |     ! 0 |  606 | `		return SXERR_MEM;` |
 |       - |  607 | `	}` |
 |       - |  608 | `	/* PH7_CLASS_BOUND: an engine class is declared unconditionally, exactly once,` |
@@ -620,25 +620,25 @@ Coverage: 546/630 lines (86.67%)
 |       - |  610 | `	 * DateTime". Only the compiler used to set the flag, so EVERY native class` |
 |       - |  611 | `	 * was silently redeclarable — the chunk-declared ones (Exception, stdClass)` |
 |       - |  612 | `	 * fataled and their C replacements did not. */` |
-|  621115 |  613 | `	pClass->iFlags \|= pSpec->iFlags \| PH7_CLASS_BOUND;` |
-|  621115 |  614 | `	pClass->xRelease = pSpec->xRelease;` |
-|  621115 |  615 | `	pClass->pIterVtab = pSpec->pIterVtab;` |
-|  621115 |  616 | `	pClass->xPresent = pSpec->xPresent;` |
-| 1032075 |  617 | `	for( n = 0 ; n < pSpec->nConst ; n++ ){` |
-|  410965 |  618 | `		rc = NativeInstallConstant(&(*pVm),pClass,&pSpec->aConst[n]);` |
-|  410965 |  619 | `		if( rc != SXRET_OK ){` |
+|  730737 |  613 | `	pClass->iFlags \|= pSpec->iFlags \| PH7_CLASS_BOUND;` |
+|  730737 |  614 | `	pClass->xRelease = pSpec->xRelease;` |
+|  730737 |  615 | `	pClass->pIterVtab = pSpec->pIterVtab;` |
+|  730737 |  616 | `	pClass->xPresent = pSpec->xPresent;` |
+| 1183585 |  617 | `	for( n = 0 ; n < pSpec->nConst ; n++ ){` |
+|  452853 |  618 | `		rc = NativeInstallConstant(&(*pVm),pClass,&pSpec->aConst[n]);` |
+|  452853 |  619 | `		if( rc != SXRET_OK ){` |
 |     ! 0 |  620 | `			return rc;` |
 |       - |  621 | `		}` |
-|  205485 |  622 | `	}` |
-| 1410345 |  623 | `	for( n = 0 ; n < pSpec->nProp ; n++ ){` |
-|  789235 |  624 | `		rc = PH7_NativeClassInstallProperty(&(*pVm),pClass,&pSpec->aProp[n]);` |
-|  789235 |  625 | `		if( rc != SXRET_OK ){` |
+|  226429 |  622 | `	}` |
+| 1641579 |  623 | `	for( n = 0 ; n < pSpec->nProp ; n++ ){` |
+|  910847 |  624 | `		rc = PH7_NativeClassInstallProperty(&(*pVm),pClass,&pSpec->aProp[n]);` |
+|  910847 |  625 | `		if( rc != SXRET_OK ){` |
 |     ! 0 |  626 | `			return rc;` |
 |       - |  627 | `		}` |
-|  394620 |  628 | `	}` |
-|  621115 |  629 | `	*ppOut = pClass;` |
-|  621115 |  630 | `	return PH7_VmInstallClass(&(*pVm),pClass);` |
-|  310560 |  631 | `}` |
+|  455426 |  628 | `	}` |
+|  730737 |  629 | `	*ppOut = pClass;` |
+|  730737 |  630 | `	return PH7_VmInstallClass(&(*pVm),pClass);` |
+|  365371 |  631 | `}` |
 |       - |  632 | `/*` |
 |       - |  633 | ` * Wire ONE class's base chain and interfaces.` |
 |       - |  634 | ` *` |
@@ -652,61 +652,61 @@ Coverage: 546/630 lines (86.67%)
 |       - |  642 | ` * every interface method the class lacks as ABSTRACT, so a spec may now name an` |
 |       - |  643 | ` * interface it implements itself rather than attaching it by hand afterwards.` |
 |       - |  644 | ` */` |
-|  621110 |  645 | `static sxi32 NativeLinkClass(ph7_vm *pVm,const PH7_NativeClassSpec *pSpec,ph7_class *pClass)` |
+|  730732 |  645 | `static sxi32 NativeLinkClass(ph7_vm *pVm,const PH7_NativeClassSpec *pSpec,ph7_class *pClass)` |
 |       5 |  646 | `{` |
 |       - |  647 | `	sxi32 rc;` |
-|  621115 |  648 | `	if( pSpec->zParent ){` |
-|  340915 |  649 | `		ph7_class *pBase = NativeLookupClass(&(*pVm),pSpec->zParent);` |
-|  340915 |  650 | `		if( pBase == 0 ){` |
+|  730737 |  648 | `	if( pSpec->zParent ){` |
+|  385955 |  649 | `		ph7_class *pBase = NativeLookupClass(&(*pVm),pSpec->zParent);` |
+|  385955 |  650 | `		if( pBase == 0 ){` |
 |     ! 0 |  651 | `			return SXERR_NOTFOUND;` |
 |       - |  652 | `		}` |
 |       - |  653 | `		/* The VM's OWN generator state, not a NULL one: PH7_ClassInherit takes its` |
 |       - |  654 | `		 * scratch allocator from pGen->pVm and reports every inheritance rule it` |
 |       - |  655 | `		 * enforces through PH7_GenCompileError(pGen, ...). Passing 0 crashed the` |
 |       - |  656 | `		 * moment a native spec first named a parent (the date exceptions). */` |
-|  511370 |  657 | `		rc = (pClass->iFlags & PH7_CLASS_INTERFACE)` |
-|   37360 |  658 | `			? PH7_ClassInterfaceInherit(pClass,pBase)` |
-|  322230 |  659 | `			: PH7_ClassInherit(&pVm->sCodeGen,pClass,pBase);` |
-|  340915 |  660 | `		if( rc != SXRET_OK ){` |
+|  578930 |  657 | `		rc = (pClass->iFlags & PH7_CLASS_INTERFACE)` |
+|   41168 |  658 | `			? PH7_ClassInterfaceInherit(pClass,pBase)` |
+|  365366 |  659 | `			: PH7_ClassInherit(&pVm->sCodeGen,pClass,pBase);` |
+|  385955 |  660 | `		if( rc != SXRET_OK ){` |
 |     ! 0 |  661 | `			return rc;` |
 |       - |  662 | `		}` |
-|  170455 |  663 | `	}` |
-|  621115 |  664 | `	if( pSpec->zImplements ){` |
+|  192975 |  663 | `	}` |
+|  730737 |  664 | `	if( pSpec->zImplements ){` |
 |       - |  665 | `		/* Comma-separated list, so one spec row can name several interfaces. */` |
-|  149445 |  666 | `		const char *zCur = pSpec->zImplements;` |
-|  378275 |  667 | `		while( zCur[0] != '\0' ){` |
+|  169823 |  666 | `		const char *zCur = pSpec->zImplements;` |
+|  432269 |  667 | `		while( zCur[0] != '\0' ){` |
 |       - |  668 | `			const char *zStart;` |
 |       - |  669 | `			char zIface[64];` |
 |       - |  670 | `			sxu32 nLen;` |
 |       - |  671 | `			ph7_class *pIface;` |
-|  308225 |  672 | `			while( zCur[0] == ' ' \|\| zCur[0] == ',' ){` |
-|   79395 |  673 | `				zCur++;` |
+|  355079 |  672 | `			while( zCur[0] == ' ' \|\| zCur[0] == ',' ){` |
+|   92633 |  673 | `				zCur++;` |
 |       5 |  674 | `			}` |
-|  228835 |  675 | `			if( zCur[0] == '\0' ){` |
+|  262451 |  675 | `			if( zCur[0] == '\0' ){` |
 |     ! 0 |  676 | `				break;` |
 |       - |  677 | `			}` |
-|  228835 |  678 | `			zStart = zCur;` |
-| 2862715 |  679 | `			while( zCur[0] != '\0' && zCur[0] != ',' && zCur[0] != ' ' ){` |
-| 2633885 |  680 | `				zCur++;` |
+|  262451 |  678 | `			zStart = zCur;` |
+| 3375781 |  679 | `			while( zCur[0] != '\0' && zCur[0] != ',' && zCur[0] != ' ' ){` |
+| 3113335 |  680 | `				zCur++;` |
 |       5 |  681 | `			}` |
-|  228835 |  682 | `			nLen = (sxu32)(zCur - zStart);` |
-|  228835 |  683 | `			if( nLen >= sizeof(zIface) ){` |
+|  262451 |  682 | `			nLen = (sxu32)(zCur - zStart);` |
+|  262451 |  683 | `			if( nLen >= sizeof(zIface) ){` |
 |     ! 0 |  684 | `				return SXERR_SYNTAX;` |
 |       - |  685 | `			}` |
-|  228835 |  686 | `			SyMemcpy(zStart,zIface,nLen);` |
-|  228835 |  687 | `			zIface[nLen] = '\0';` |
-|  228835 |  688 | `			pIface = NativeLookupClass(&(*pVm),zIface);` |
-|  228835 |  689 | `			if( pIface == 0 ){` |
+|  262451 |  686 | `			SyMemcpy(zStart,zIface,nLen);` |
+|  262451 |  687 | `			zIface[nLen] = '\0';` |
+|  262451 |  688 | `			pIface = NativeLookupClass(&(*pVm),zIface);` |
+|  262451 |  689 | `			if( pIface == 0 ){` |
 |     ! 0 |  690 | `				return SXERR_NOTFOUND;` |
 |       - |  691 | `			}` |
-|  228835 |  692 | `			rc = PH7_ClassImplement(pClass,pIface);` |
-|  228835 |  693 | `			if( rc != SXRET_OK ){` |
+|  262451 |  692 | `			rc = PH7_ClassImplement(pClass,pIface);` |
+|  262451 |  693 | `			if( rc != SXRET_OK ){` |
 |     ! 0 |  694 | `				return rc;` |
 |       - |  695 | `			}` |
 |       5 |  696 | `		}` |
-|   74720 |  697 | `	}` |
-|  621115 |  698 | `	return SXRET_OK;` |
-|  310560 |  699 | `}` |
+|   84909 |  697 | `	}` |
+|  730737 |  698 | `	return SXRET_OK;` |
+|  365371 |  699 | `}` |
 |       - |  700 | `/*` |
 |       - |  701 | ` * Install a whole table of native classes, in the compiler's own order: declare` |
 |       - |  702 | ` * them all (so later rows may extend earlier ones), fill in their methods, wire` |
@@ -715,47 +715,47 @@ Coverage: 546/630 lines (86.67%)
 |       - |  705 | ` * Interfaces are declared but never mounted -- VmMountUserClass skips them anyway,` |
 |       - |  706 | ` * their methods being non-invocable.` |
 |       - |  707 | ` */` |
-|  144770 |  708 | `PH7_PRIVATE sxi32 PH7_InstallNativeClasses(ph7_vm *pVm,const PH7_NativeClassSpec *aSpec,sxu32 nSpec)` |
+|  174964 |  708 | `PH7_PRIVATE sxi32 PH7_InstallNativeClasses(ph7_vm *pVm,const PH7_NativeClassSpec *aSpec,sxu32 nSpec)` |
 |       5 |  709 | `{` |
 |       - |  710 | `	ph7_class **apClass;` |
 |       - |  711 | `	sxu32 i,j;` |
 |       - |  712 | `	sxi32 rc;` |
-|  144775 |  713 | `	apClass = (ph7_class **)SyMemBackendAlloc(&pVm->sAllocator,nSpec * sizeof(ph7_class *));` |
-|  144775 |  714 | `	if( apClass == 0 ){` |
+|  174969 |  713 | `	apClass = (ph7_class **)SyMemBackendAlloc(&pVm->sAllocator,nSpec * sizeof(ph7_class *));` |
+|  174969 |  714 | `	if( apClass == 0 ){` |
 |     ! 0 |  715 | `		return SXERR_MEM;` |
 |       - |  716 | `	}` |
-|  765885 |  717 | `	for( i = 0 ; i < nSpec ; i++ ){` |
-|  621115 |  718 | `		apClass[i] = 0;` |
-|  621115 |  719 | `		rc = NativeDeclareClass(&(*pVm),&aSpec[i],&apClass[i]);` |
-|  621115 |  720 | `		if( rc != SXRET_OK ){` |
+|  905701 |  717 | `	for( i = 0 ; i < nSpec ; i++ ){` |
+|  730737 |  718 | `		apClass[i] = 0;` |
+|  730737 |  719 | `		rc = NativeDeclareClass(&(*pVm),&aSpec[i],&apClass[i]);` |
+|  730737 |  720 | `		if( rc != SXRET_OK ){` |
 |     ! 0 |  721 | `			goto Done;` |
 |       - |  722 | `		}` |
-|  310560 |  723 | `	}` |
-|  765885 |  724 | `	for( i = 0 ; i < nSpec ; i++ ){` |
-| 4268385 |  725 | `		for( j = 0 ; j < aSpec[i].nMethod ; j++ ){` |
-| 3647275 |  726 | `			rc = PH7_NativeClassInstallMethod(&(*pVm),apClass[i],&aSpec[i].aMethod[j],0);` |
-| 3647275 |  727 | `			if( rc != SXRET_OK ){` |
+|  365371 |  723 | `	}` |
+|  905701 |  724 | `	for( i = 0 ; i < nSpec ; i++ ){` |
+| 4868121 |  725 | `		for( j = 0 ; j < aSpec[i].nMethod ; j++ ){` |
+| 4137389 |  726 | `			rc = PH7_NativeClassInstallMethod(&(*pVm),apClass[i],&aSpec[i].aMethod[j],0);` |
+| 4137389 |  727 | `			if( rc != SXRET_OK ){` |
 |     ! 0 |  728 | `				goto Done;` |
 |       - |  729 | `			}` |
-| 1823640 |  730 | `		}` |
-|  310560 |  731 | `	}` |
-|  765885 |  732 | `	for( i = 0 ; i < nSpec ; i++ ){` |
-|  621115 |  733 | `		rc = NativeLinkClass(&(*pVm),&aSpec[i],apClass[i]);` |
-|  621115 |  734 | `		if( rc != SXRET_OK ){` |
+| 2068697 |  730 | `		}` |
+|  365371 |  731 | `	}` |
+|  905701 |  732 | `	for( i = 0 ; i < nSpec ; i++ ){` |
+|  730737 |  733 | `		rc = NativeLinkClass(&(*pVm),&aSpec[i],apClass[i]);` |
+|  730737 |  734 | `		if( rc != SXRET_OK ){` |
 |     ! 0 |  735 | `			goto Done;` |
 |       - |  736 | `		}` |
-|  310560 |  737 | `	}` |
-|  765885 |  738 | `	for( i = 0 ; i < nSpec ; i++ ){` |
-|  621115 |  739 | `		rc = VmMountUserClass(&(*pVm),apClass[i]);` |
-|  621115 |  740 | `		if( rc != SXRET_OK ){` |
+|  365371 |  737 | `	}` |
+|  905701 |  738 | `	for( i = 0 ; i < nSpec ; i++ ){` |
+|  730737 |  739 | `		rc = VmMountUserClass(&(*pVm),apClass[i]);` |
+|  730737 |  740 | `		if( rc != SXRET_OK ){` |
 |     ! 0 |  741 | `			goto Done;` |
 |       - |  742 | `		}` |
-|  310560 |  743 | `	}` |
-|  144775 |  744 | `	rc = SXRET_OK;` |
-|   72385 |  745 | `Done:` |
-|  144775 |  746 | `	SyMemBackendFree(&pVm->sAllocator,apClass);` |
-|  144775 |  747 | `	return rc;` |
-|   72390 |  748 | `}` |
+|  365371 |  743 | `	}` |
+|  174969 |  744 | `	rc = SXRET_OK;` |
+|   87482 |  745 | `Done:` |
+|  174969 |  746 | `	SyMemBackendFree(&pVm->sAllocator,apClass);` |
+|  174969 |  747 | `	return rc;` |
+|   87487 |  748 | `}` |
 |       - |  749 | `/*` |
 |       - |  750 | ` * ---------------------------------------------------------------------------` |
 |       - |  751 | ` * Declaring an ENUM from C.` |
@@ -830,21 +830,21 @@ Coverage: 546/630 lines (86.67%)
 |       1 |  820 | `}` |
 |       - |  821 | ``/* The readonly `name` (every enum) and `value` (backed only) case properties,`` |
 |       - |  822 | ` * declared exactly as GenStateCompileEnum does. */` |
-|    9340 |  823 | `static sxi32 NativeEnumInstallProp(ph7_vm *pVm,ph7_class *pClass,const char *zName,` |
+|   10292 |  823 | `static sxi32 NativeEnumInstallProp(ph7_vm *pVm,ph7_class *pClass,const char *zName,` |
 |       - |  824 | `	sxu32 nType,const char *zTypeName)` |
 |       5 |  825 | `{` |
 |       - |  826 | `	SyString sName;` |
 |       - |  827 | `	ph7_class_attr *pAttr;` |
-|    9345 |  828 | `	SyStringInitFromBuf(&sName,zName,SyStrlen(zName));` |
-|    9345 |  829 | `	pAttr = PH7_NewClassAttr(&(*pVm),&sName,0,PH7_CLASS_PROT_PUBLIC,` |
+|   10297 |  828 | `	SyStringInitFromBuf(&sName,zName,SyStrlen(zName));` |
+|   10297 |  829 | `	pAttr = PH7_NewClassAttr(&(*pVm),&sName,0,PH7_CLASS_PROT_PUBLIC,` |
 |       - |  830 | `		PH7_CLASS_ATTR_READONLY\|PH7_CLASS_ATTR_TYPED);` |
-|    9345 |  831 | `	if( pAttr == 0 ){` |
+|   10297 |  831 | `	if( pAttr == 0 ){` |
 |     ! 0 |  832 | `		return SXERR_MEM;` |
 |       - |  833 | `	}` |
-|    9345 |  834 | `	pAttr->nType = nType;` |
-|    9345 |  835 | `	SyStringInitFromBuf(&pAttr->sTypeName,zTypeName,SyStrlen(zTypeName));` |
-|    9345 |  836 | `	return PH7_ClassInstallAttr(pClass,pAttr);` |
-|    4675 |  837 | `}` |
+|   10297 |  834 | `	pAttr->nType = nType;` |
+|   10297 |  835 | `	SyStringInitFromBuf(&pAttr->sTypeName,zTypeName,SyStrlen(zTypeName));` |
+|   10297 |  836 | `	return PH7_ClassInstallAttr(pClass,pAttr);` |
+|    5151 |  837 | `}` |
 |       - |  838 | `/*` |
 |       - |  839 | ` * cases()/from()/tryFrom(), installed on ANY enum -- one declared from C here` |
 |       - |  840 | ` * and one the compiler just finished reading from source. php declares them on` |
@@ -864,24 +864,24 @@ Coverage: 546/630 lines (86.67%)
 |       - |  854 | ` * of a USER file — but php reports them as internal wherever the enum is` |
 |       - |  855 | ` * declared: isInternal() true, getFileName() false, getStartLine() 0.` |
 |       - |  856 | ` */` |
-|   14198 |  857 | `static sxi32 NativeEnumInstallMethod(ph7_vm *pVm,ph7_class *pClass,` |
+|   15638 |  857 | `static sxi32 NativeEnumInstallMethod(ph7_vm *pVm,ph7_class *pClass,` |
 |       - |  858 | `	const PH7_NativeMethodDef *pDef)` |
 |       5 |  859 | `{` |
 |       - |  860 | `	ph7_class_method *pMeth;` |
-|   14203 |  861 | `	sxi32 rc = PH7_NativeClassInstallMethod(&(*pVm),pClass,pDef,0);` |
-|   14203 |  862 | `	if( rc != SXRET_OK ){` |
+|   15643 |  861 | `	sxi32 rc = PH7_NativeClassInstallMethod(&(*pVm),pClass,pDef,0);` |
+|   15643 |  862 | `	if( rc != SXRET_OK ){` |
 |     ! 0 |  863 | `		return rc;` |
 |       - |  864 | `	}` |
-|   14203 |  865 | `	pMeth = PH7_ClassExtractMethod(pClass,pDef->zName,(sxu32)SyStrlen(pDef->zName));` |
-|   14203 |  866 | `	if( pMeth ){` |
-|   14203 |  867 | `		pMeth->sFunc.iFlags \|= VM_FUNC_INTERNAL;` |
+|   15643 |  865 | `	pMeth = PH7_ClassExtractMethod(pClass,pDef->zName,(sxu32)SyStrlen(pDef->zName));` |
+|   15643 |  866 | `	if( pMeth ){` |
+|   15643 |  867 | `		pMeth->sFunc.iFlags \|= VM_FUNC_INTERNAL;` |
 |       - |  868 | `		/* getFileName() reads the recorded source file rather than the flag, and` |
 |       - |  869 | `		 * PH7_NewClassMethod stamped the user file the enum was read from. */` |
-|   14203 |  870 | `		SyStringInitFromBuf(&pMeth->sFunc.sFile,"",0);` |
-|    7099 |  871 | `	}` |
-|   14203 |  872 | `	return SXRET_OK;` |
-|    7104 |  873 | `}` |
-|    4762 |  874 | `PH7_PRIVATE sxi32 PH7_InstallEnumInterfaceMethods(ph7_vm *pVm,ph7_class *pClass)` |
+|   15643 |  870 | `		SyStringInitFromBuf(&pMeth->sFunc.sFile,"",0);` |
+|    7819 |  871 | `	}` |
+|   15643 |  872 | `	return SXRET_OK;` |
+|    7824 |  873 | `}` |
+|    5242 |  874 | `PH7_PRIVATE sxi32 PH7_InstallEnumInterfaceMethods(ph7_vm *pVm,ph7_class *pClass)` |
 |       5 |  875 | `{` |
 |       - |  876 | `	static const PH7_NativeMethodDef sCases =` |
 |       - |  877 | `		{ "cases", PH7_MOD_PUBLIC\|PH7_MOD_STATIC, "", "array", vm_builtin_NativeEnum_cases };` |
@@ -892,19 +892,19 @@ Coverage: 546/630 lines (86.67%)
 |       - |  882 | `		  vm_builtin_NativeEnum_tryFrom },` |
 |       - |  883 | `	};` |
 |       - |  884 | `	sxu32 n;` |
-|    4767 |  885 | `	sxi32 rc = NativeEnumInstallMethod(&(*pVm),pClass,&sCases);` |
-|    4767 |  886 | `	if( rc != SXRET_OK \|\| pClass->nEnumBacking == 0 ){` |
-|      49 |  887 | `		return rc;` |
+|    5247 |  885 | `	sxi32 rc = NativeEnumInstallMethod(&(*pVm),pClass,&sCases);` |
+|    5247 |  886 | `	if( rc != SXRET_OK \|\| pClass->nEnumBacking == 0 ){` |
+|      48 |  887 | `		return rc;` |
 |       - |  888 | `	}` |
-|   14159 |  889 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFrom) ; n++ ){` |
-|    9441 |  890 | `		rc = NativeEnumInstallMethod(&(*pVm),pClass,&aFrom[n]);` |
-|    9441 |  891 | `		if( rc != SXRET_OK ){` |
+|   15599 |  889 | `	for( n = 0 ; n < SX_ARRAYSIZE(aFrom) ; n++ ){` |
+|   10401 |  890 | `		rc = NativeEnumInstallMethod(&(*pVm),pClass,&aFrom[n]);` |
+|   10401 |  891 | `		if( rc != SXRET_OK ){` |
 |     ! 0 |  892 | `			return rc;` |
 |       - |  893 | `		}` |
-|    4723 |  894 | `	}` |
-|    4723 |  895 | `	return SXRET_OK;` |
-|    2386 |  896 | `}` |
-|    4670 |  897 | `PH7_PRIVATE sxi32 PH7_InstallNativeEnum(ph7_vm *pVm,const char *zName,sxu32 nBacking,` |
+|    5203 |  894 | `	}` |
+|    5203 |  895 | `	return SXRET_OK;` |
+|    2626 |  896 | `}` |
+|    5146 |  897 | `PH7_PRIVATE sxi32 PH7_InstallNativeEnum(ph7_vm *pVm,const char *zName,sxu32 nBacking,` |
 |       - |  898 | `	const PH7_NativeEnumCase *aCase,sxu32 nCase,` |
 |       - |  899 | `	const PH7_NativeMethodDef *aMethod,sxu32 nMethod)` |
 |       5 |  900 | `{` |
@@ -912,83 +912,83 @@ Coverage: 546/630 lines (86.67%)
 |       - |  902 | `	SyString sName;` |
 |       - |  903 | `	sxu32 n;` |
 |       - |  904 | `	sxi32 rc;` |
-|    4675 |  905 | `	SyStringInitFromBuf(&sName,zName,SyStrlen(zName));` |
-|    4675 |  906 | `	pClass = PH7_NewRawClass(&(*pVm),&sName,0);` |
-|    4675 |  907 | `	if( pClass == 0 ){` |
+|    5151 |  905 | `	SyStringInitFromBuf(&sName,zName,SyStrlen(zName));` |
+|    5151 |  906 | `	pClass = PH7_NewRawClass(&(*pVm),&sName,0);` |
+|    5151 |  907 | `	if( pClass == 0 ){` |
 |     ! 0 |  908 | `		return SXERR_MEM;` |
 |       - |  909 | `	}` |
 |       - |  910 | `	/* php: an enum is implicitly FINAL and cannot be instantiated. */` |
-|    4675 |  911 | `	pClass->iFlags \|= PH7_CLASS_ENUM\|PH7_CLASS_FINAL;` |
-|    4675 |  912 | `	pClass->nEnumBacking = nBacking;` |
-|    4675 |  913 | `	rc = NativeEnumInstallProp(&(*pVm),pClass,"name",MEMOBJ_STRING,"string");` |
-|    4675 |  914 | `	if( rc != SXRET_OK ){` |
+|    5151 |  911 | `	pClass->iFlags \|= PH7_CLASS_ENUM\|PH7_CLASS_FINAL;` |
+|    5151 |  912 | `	pClass->nEnumBacking = nBacking;` |
+|    5151 |  913 | `	rc = NativeEnumInstallProp(&(*pVm),pClass,"name",MEMOBJ_STRING,"string");` |
+|    5151 |  914 | `	if( rc != SXRET_OK ){` |
 |     ! 0 |  915 | `		return rc;` |
 |       - |  916 | `	}` |
-|    4675 |  917 | `	if( nBacking != 0 ){` |
-|    7010 |  918 | `		rc = NativeEnumInstallProp(&(*pVm),pClass,"value",nBacking,` |
-|    2335 |  919 | `			nBacking == MEMOBJ_INT ? "int" : "string");` |
-|    4675 |  920 | `		if( rc != SXRET_OK ){` |
+|    5151 |  917 | `	if( nBacking != 0 ){` |
+|    7724 |  918 | `		rc = NativeEnumInstallProp(&(*pVm),pClass,"value",nBacking,` |
+|    2573 |  919 | `			nBacking == MEMOBJ_INT ? "int" : "string");` |
+|    5151 |  920 | `		if( rc != SXRET_OK ){` |
 |     ! 0 |  921 | `			return rc;` |
 |       - |  922 | `		}` |
-|    2335 |  923 | `	}` |
-|   14015 |  924 | `	for( n = 0 ; n < nCase ; n++ ){` |
+|    2573 |  923 | `	}` |
+|   15443 |  924 | `	for( n = 0 ; n < nCase ; n++ ){` |
 |       - |  925 | `		ph7_class_attr *pAttr;` |
 |       - |  926 | `		SyString sCase;` |
-|    9345 |  927 | `		SyStringInitFromBuf(&sCase,aCase[n].zName,SyStrlen(aCase[n].zName));` |
-|    9345 |  928 | `		pAttr = PH7_NewClassAttr(&(*pVm),&sCase,0,PH7_CLASS_PROT_PUBLIC,` |
+|   10297 |  927 | `		SyStringInitFromBuf(&sCase,aCase[n].zName,SyStrlen(aCase[n].zName));` |
+|   10297 |  928 | `		pAttr = PH7_NewClassAttr(&(*pVm),&sCase,0,PH7_CLASS_PROT_PUBLIC,` |
 |       - |  929 | `			PH7_CLASS_ATTR_CONSTANT\|PH7_CLASS_ATTR_ENUMCASE);` |
-|    9345 |  930 | `		if( pAttr == 0 ){` |
+|   10297 |  930 | `		if( pAttr == 0 ){` |
 |     ! 0 |  931 | `			return SXERR_MEM;` |
 |       - |  932 | `		}` |
-|    9345 |  933 | `		pAttr->pDeclClass = pClass;` |
+|   10297 |  933 | `		pAttr->pDeclClass = pClass;` |
 |       - |  934 | `		/* The backing literal where a compiled case carries byte-code. */` |
-|    9345 |  935 | `		if( nBacking != 0 ){` |
-|    9345 |  936 | `			pAttr->pNativeValue = &aCase[n].sValue;` |
-|    4670 |  937 | `		}` |
-|    9345 |  938 | `		rc = PH7_ClassInstallAttr(pClass,pAttr);` |
-|    9345 |  939 | `		if( rc != SXRET_OK ){` |
+|   10297 |  935 | `		if( nBacking != 0 ){` |
+|   10297 |  936 | `			pAttr->pNativeValue = &aCase[n].sValue;` |
+|    5146 |  937 | `		}` |
+|   10297 |  938 | `		rc = PH7_ClassInstallAttr(pClass,pAttr);` |
+|   10297 |  939 | `		if( rc != SXRET_OK ){` |
 |     ! 0 |  940 | `			return rc;` |
 |       - |  941 | `		}` |
 |       - |  942 | `		/* Declaration order, which is the order cases() reports. */` |
-|    9345 |  943 | `		SySetPut(&pClass->aEnumCases,(const void *)&pAttr);` |
-|    4675 |  944 | `	}` |
-|    4675 |  945 | `	for( n = 0 ; n < nMethod ; n++ ){` |
+|   10297 |  943 | `		SySetPut(&pClass->aEnumCases,(const void *)&pAttr);` |
+|    5151 |  944 | `	}` |
+|    5151 |  945 | `	for( n = 0 ; n < nMethod ; n++ ){` |
 |     ! 0 |  946 | `		rc = PH7_NativeClassInstallMethod(&(*pVm),pClass,&aMethod[n],0);` |
 |     ! 0 |  947 | `		if( rc != SXRET_OK ){` |
 |     ! 0 |  948 | `			return rc;` |
 |       - |  949 | `		}` |
 |     ! 0 |  950 | `	}` |
-|    4675 |  951 | `	rc = PH7_InstallEnumInterfaceMethods(&(*pVm),pClass);` |
-|    4675 |  952 | `	if( rc != SXRET_OK ){` |
+|    5151 |  951 | `	rc = PH7_InstallEnumInterfaceMethods(&(*pVm),pClass);` |
+|    5151 |  952 | `	if( rc != SXRET_OK ){` |
 |     ! 0 |  953 | `		return rc;` |
 |       - |  954 | `	}` |
-|    4675 |  955 | `	rc = PH7_VmInstallClass(&(*pVm),pClass);` |
-|    4675 |  956 | `	if( rc != SXRET_OK ){` |
+|    5151 |  955 | `	rc = PH7_VmInstallClass(&(*pVm),pClass);` |
+|    5151 |  956 | `	if( rc != SXRET_OK ){` |
 |     ! 0 |  957 | `		return rc;` |
 |       - |  958 | `	}` |
 |       - |  959 | ``	/* php 8.1: every enum satisfies `instanceof UnitEnum`, a backed one`` |
 |       - |  960 | ``	 * `BackedEnum` too. Attached AFTER the methods, so PH7_ClassImplement's`` |
 |       - |  961 | `	 * abstract stubbing finds cases()/from()/tryFrom() already declared. */` |
-|    4675 |  962 | `	pIface = NativeLookupClass(&(*pVm),"UnitEnum");` |
-|    4675 |  963 | `	if( pIface == 0 ){` |
+|    5151 |  962 | `	pIface = NativeLookupClass(&(*pVm),"UnitEnum");` |
+|    5151 |  963 | `	if( pIface == 0 ){` |
 |     ! 0 |  964 | `		return SXERR_NOTFOUND;` |
 |       - |  965 | `	}` |
-|    4675 |  966 | `	rc = PH7_ClassImplement(pClass,pIface);` |
-|    4675 |  967 | `	if( rc != SXRET_OK ){` |
+|    5151 |  966 | `	rc = PH7_ClassImplement(pClass,pIface);` |
+|    5151 |  967 | `	if( rc != SXRET_OK ){` |
 |     ! 0 |  968 | `		return rc;` |
 |       - |  969 | `	}` |
-|    4675 |  970 | `	if( nBacking != 0 ){` |
-|    4675 |  971 | `		pIface = NativeLookupClass(&(*pVm),"BackedEnum");` |
-|    4675 |  972 | `		if( pIface == 0 ){` |
+|    5151 |  970 | `	if( nBacking != 0 ){` |
+|    5151 |  971 | `		pIface = NativeLookupClass(&(*pVm),"BackedEnum");` |
+|    5151 |  972 | `		if( pIface == 0 ){` |
 |     ! 0 |  973 | `			return SXERR_NOTFOUND;` |
 |       - |  974 | `		}` |
-|    4675 |  975 | `		rc = PH7_ClassImplement(pClass,pIface);` |
-|    4675 |  976 | `		if( rc != SXRET_OK ){` |
+|    5151 |  975 | `		rc = PH7_ClassImplement(pClass,pIface);` |
+|    5151 |  976 | `		if( rc != SXRET_OK ){` |
 |     ! 0 |  977 | `			return rc;` |
 |       - |  978 | `		}` |
-|    2335 |  979 | `	}` |
-|    4675 |  980 | `	return VmMountUserClass(&(*pVm),pClass);` |
-|    2340 |  981 | `}` |
+|    2573 |  979 | `	}` |
+|    5151 |  980 | `	return VmMountUserClass(&(*pVm),pClass);` |
+|    2578 |  981 | `}` |
 |       - |  982 | `/*` |
 |       - |  983 | ` * ---------------------------------------------------------------------------` |
 |       - |  984 | ` * InternalIterator.` |
@@ -1114,7 +1114,7 @@ Coverage: 546/630 lines (86.67%)
 |      46 | 1104 | `	}` |
 |      94 | 1105 | `	return pIt;` |
 |      48 | 1106 | `}` |
-|    4670 | 1107 | `PH7_PRIVATE sxi32 PH7_VmInstallNativeIterator(ph7_vm *pVm)` |
+|    5146 | 1107 | `PH7_PRIVATE sxi32 PH7_VmInstallNativeIterator(ph7_vm *pVm)` |
 |       5 | 1108 | `{` |
 |       - | 1109 | `	static const PH7_NativePropDef aProp[] = {` |
 |       - | 1110 | `		{ PH7_NATIVE_IT_SRC,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
@@ -1138,18 +1138,18 @@ Coverage: 546/630 lines (86.67%)
 |       - | 1128 | `	};` |
 |       - | 1129 | `	ph7_class *pIt,*pIterator;` |
 |       - | 1130 | `	sxi32 rc;` |
-|    4675 | 1131 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|    4675 | 1132 | `	if( rc != SXRET_OK ){` |
+|    5151 | 1131 | `	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|    5151 | 1132 | `	if( rc != SXRET_OK ){` |
 |     ! 0 | 1133 | `		return rc;` |
 |       - | 1134 | `	}` |
 |       - | 1135 | ``	/* `implements Iterator` only NOW: PH7_ClassImplement stubs every interface`` |
 |       - | 1136 | `	 * method the class does not already declare as ABSTRACT, so attaching it` |
 |       - | 1137 | `	 * through the spec would have made InternalIterator uninstantiable. */` |
-|    4675 | 1138 | `	pIt = NativeLookupClass(&(*pVm),"InternalIterator");` |
-|    4675 | 1139 | `	pIterator = NativeLookupClass(&(*pVm),"Iterator");` |
-|    4675 | 1140 | `	if( pIt == 0 \|\| pIterator == 0 ){` |
+|    5151 | 1138 | `	pIt = NativeLookupClass(&(*pVm),"InternalIterator");` |
+|    5151 | 1139 | `	pIterator = NativeLookupClass(&(*pVm),"Iterator");` |
+|    5151 | 1140 | `	if( pIt == 0 \|\| pIterator == 0 ){` |
 |     ! 0 | 1141 | `		return SXERR_NOTFOUND;` |
 |       - | 1142 | `	}` |
-|    4675 | 1143 | `	return PH7_ClassImplement(pIt,pIterator);` |
-|    2340 | 1144 | `}` |
+|    5151 | 1143 | `	return PH7_ClassImplement(pIt,pIterator);` |
+|    2578 | 1144 | `}` |
 |       - | 1145 |  |

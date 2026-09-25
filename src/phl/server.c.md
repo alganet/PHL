@@ -71,12 +71,12 @@ Coverage: 299/476 lines (62.82%)
 |    4 |   61 | `}` |
 |    - |   62 | `/* Define PHP_BINARY on a freshly compiled VM. Constants persist across` |
 |    - |   63 | ` * ph7_vm_reset(), so a cache-owned VM needs this only once, at compile time. */` |
-|   24 |   64 | `static void DefinePhpBinary(ph7_vm *pVm)` |
+|   30 |   64 | `static void DefinePhpBinary(ph7_vm *pVm)` |
 |  ! 0 |   65 | `{` |
-|   24 |   66 | `	if( g_phpBinaryPath ){` |
-|   24 |   67 | `		ph7_create_constant(pVm, "PHP_BINARY", PhlServerPhpBinaryConst, (void *)g_phpBinaryPath);` |
-|   12 |   68 | `	}` |
-|   24 |   69 | `}` |
+|   30 |   66 | `	if( g_phpBinaryPath ){` |
+|   30 |   67 | `		ph7_create_constant(pVm, "PHP_BINARY", PhlServerPhpBinaryConst, (void *)g_phpBinaryPath);` |
+|   15 |   68 | `	}` |
+|   30 |   69 | `}` |
 |    - |   70 |  |
 |    - |   71 | `#ifdef __WINNT__` |
 |    - |   72 | `static BOOL WINAPI ConsoleCtrlHandler(DWORD dwCtrlType)` |
@@ -86,27 +86,27 @@ Coverage: 299/476 lines (62.82%)
 |  ! 0 |   76 | `	return TRUE;` |
 |  ! 0 |   77 | `}` |
 |    - |   78 | `#else` |
-|   32 |   79 | `static void SignalHandler(int sig)` |
+|   38 |   79 | `static void SignalHandler(int sig)` |
 |    - |   80 | `{` |
-|   16 |   81 | `	(void)sig;` |
-|   32 |   82 | `	g_shutdown = 1;` |
-|   32 |   83 | `}` |
+|   19 |   81 | `	(void)sig;` |
+|   38 |   82 | `	g_shutdown = 1;` |
+|   38 |   83 | `}` |
 |    - |   84 | `#endif` |
 |    - |   85 | `/*` |
 |    - |   86 | ` * Install signal handlers for graceful shutdown.` |
 |    - |   87 | ` */` |
-|   26 |   88 | `static void InstallSignalHandlers(void)` |
+|   32 |   88 | `static void InstallSignalHandlers(void)` |
 |  ! 0 |   89 | `{` |
 |    - |   90 | `#ifdef __WINNT__` |
 |  ! 0 |   91 | `	SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);` |
 |    - |   92 | `#else` |
 |    - |   93 | `	struct sigaction sa;` |
-|   26 |   94 | `	memset(&sa, 0, sizeof(sa));` |
-|   26 |   95 | `	sa.sa_handler = SignalHandler;` |
-|   26 |   96 | `	sigaction(SIGINT, &sa, 0);` |
-|   26 |   97 | `	sigaction(SIGTERM, &sa, 0);` |
+|   32 |   94 | `	memset(&sa, 0, sizeof(sa));` |
+|   32 |   95 | `	sa.sa_handler = SignalHandler;` |
+|   32 |   96 | `	sigaction(SIGINT, &sa, 0);` |
+|   32 |   97 | `	sigaction(SIGTERM, &sa, 0);` |
 |    - |   98 | `#endif` |
-|   26 |   99 | `}` |
+|   32 |   99 | `}` |
 |    - |  100 | `/*` |
 |    - |  101 | ` * MIME type lookup table.` |
 |    - |  102 | ` */` |
@@ -160,22 +160,22 @@ Coverage: 299/476 lines (62.82%)
 |    - |  150 | ` * Check if a path contains directory traversal sequences.` |
 |    - |  151 | ` * Returns 1 if the path is safe, 0 if it contains "..".` |
 |    - |  152 | ` */` |
-|   38 |  153 | `static int IsPathSafe(const char *zPath)` |
+|   52 |  153 | `static int IsPathSafe(const char *zPath)` |
 |  ! 0 |  154 | `{` |
-|   38 |  155 | `	const char *z = zPath;` |
-|  368 |  156 | `	while( *z ){` |
-|  330 |  157 | `		if( z[0] == '.' && z[1] == '.' && (z[2] == '/' \|\| z[2] == '\\' \|\| z[2] == 0) ){` |
+|   52 |  155 | `	const char *z = zPath;` |
+|  466 |  156 | `	while( *z ){` |
+|  414 |  157 | `		if( z[0] == '.' && z[1] == '.' && (z[2] == '/' \|\| z[2] == '\\' \|\| z[2] == 0) ){` |
 |  ! 0 |  158 | `			return 0;` |
 |    - |  159 | `		}` |
-|  330 |  160 | `		z++;` |
+|  414 |  160 | `		z++;` |
 |  ! 0 |  161 | `	}` |
-|   38 |  162 | `	return 1;` |
-|   19 |  163 | `}` |
+|   52 |  162 | `	return 1;` |
+|   26 |  163 | `}` |
 |    - |  164 | `/*` |
 |    - |  165 | ` * Check if a file exists and is a regular file.` |
 |    - |  166 | ` * Returns 1 if it exists, 0 otherwise. Sets *pSize to the file size.` |
 |    - |  167 | ` */` |
-|   38 |  168 | `static int FileExists(const char *zPath, long *pSize)` |
+|   52 |  168 | `static int FileExists(const char *zPath, long *pSize)` |
 |  ! 0 |  169 | `{` |
 |    - |  170 | `#ifdef __WINNT__` |
 |    - |  171 | `	WIN32_FILE_ATTRIBUTE_DATA info;` |
@@ -191,66 +191,66 @@ Coverage: 299/476 lines (62.82%)
 |  ! 0 |  181 | `	return 1;` |
 |    - |  182 | `#else` |
 |    - |  183 | `	struct stat st;` |
-|   38 |  184 | `	if( stat(zPath, &st) != 0 ){` |
+|   52 |  184 | `	if( stat(zPath, &st) != 0 ){` |
 |    2 |  185 | `		return 0;` |
 |    - |  186 | `	}` |
-|   36 |  187 | `	if( !S_ISREG(st.st_mode) ){` |
+|   50 |  187 | `	if( !S_ISREG(st.st_mode) ){` |
 |  ! 0 |  188 | `		return 0;` |
 |    - |  189 | `	}` |
-|   36 |  190 | `	if( pSize ){` |
-|   36 |  191 | `		*pSize = (long)st.st_size;` |
-|   18 |  192 | `	}` |
-|   36 |  193 | `	return 1;` |
+|   50 |  190 | `	if( pSize ){` |
+|   50 |  191 | `		*pSize = (long)st.st_size;` |
+|   25 |  192 | `	}` |
+|   50 |  193 | `	return 1;` |
 |    - |  194 | `#endif` |
-|   19 |  195 | `}` |
+|   26 |  195 | `}` |
 |    - |  196 | `/*` |
 |    - |  197 | ` * Check if a path is a directory.` |
 |    - |  198 | ` */` |
-|   38 |  199 | `static int IsDirectory(const char *zPath)` |
+|   52 |  199 | `static int IsDirectory(const char *zPath)` |
 |  ! 0 |  200 | `{` |
 |    - |  201 | `#ifdef __WINNT__` |
 |  ! 0 |  202 | `	DWORD attr = GetFileAttributesA(zPath);` |
 |  ! 0 |  203 | `	return (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY));` |
 |    - |  204 | `#else` |
 |    - |  205 | `	struct stat st;` |
-|   38 |  206 | `	if( stat(zPath, &st) != 0 ){` |
+|   52 |  206 | `	if( stat(zPath, &st) != 0 ){` |
 |    2 |  207 | `		return 0;` |
 |    - |  208 | `	}` |
-|   36 |  209 | `	return S_ISDIR(st.st_mode);` |
+|   50 |  209 | `	return S_ISDIR(st.st_mode);` |
 |    - |  210 | `#endif` |
-|   19 |  211 | `}` |
+|   26 |  211 | `}` |
 |    - |  212 | `/*` |
 |    - |  213 | ` * Read the full HTTP request from a socket into a buffer.` |
 |    - |  214 | ` * Reads headers first (until \r\n\r\n), then reads the body` |
 |    - |  215 | ` * based on Content-Length if present.` |
 |    - |  216 | ` * Returns total bytes read, or -1 on error.` |
 |    - |  217 | ` */` |
-|   38 |  218 | `static int ReadRequest(ph7_socket sock, char *zBuf, int nBufSize)` |
+|   52 |  218 | `static int ReadRequest(ph7_socket sock, char *zBuf, int nBufSize)` |
 |  ! 0 |  219 | `{` |
-|   38 |  220 | `	int nTotal = 0;` |
+|   52 |  220 | `	int nTotal = 0;` |
 |    - |  221 | `	int nRead;` |
 |    - |  222 | `	char *zHeaderEnd;` |
 |    - |  223 | `	/* Read data until we find the end of headers */` |
-|   38 |  224 | `	while( nTotal < nBufSize - 1 ){` |
-|   38 |  225 | `		nRead = PH7_NetRecv(sock, zBuf + nTotal, nBufSize - 1 - nTotal, 0);` |
-|   38 |  226 | `		if( nRead <= 0 ){` |
+|   52 |  224 | `	while( nTotal < nBufSize - 1 ){` |
+|   52 |  225 | `		nRead = PH7_NetRecv(sock, zBuf + nTotal, nBufSize - 1 - nTotal, 0);` |
+|   52 |  226 | `		if( nRead <= 0 ){` |
 |  ! 0 |  227 | `			if( nTotal == 0 ){` |
 |  ! 0 |  228 | `				return -1;` |
 |    - |  229 | `			}` |
 |  ! 0 |  230 | `			break;` |
 |    - |  231 | `		}` |
-|   38 |  232 | `		nTotal += nRead;` |
-|   38 |  233 | `		zBuf[nTotal] = 0;` |
+|   52 |  232 | `		nTotal += nRead;` |
+|   52 |  233 | `		zBuf[nTotal] = 0;` |
 |    - |  234 | `		/* Check if we have the complete headers */` |
-|   38 |  235 | `		zHeaderEnd = strstr(zBuf, "\r\n\r\n");` |
-|   38 |  236 | `		if( zHeaderEnd ){` |
-|   38 |  237 | `			int nHeaderLen = (int)(zHeaderEnd - zBuf) + 4;` |
+|   52 |  235 | `		zHeaderEnd = strstr(zBuf, "\r\n\r\n");` |
+|   52 |  236 | `		if( zHeaderEnd ){` |
+|   52 |  237 | `			int nHeaderLen = (int)(zHeaderEnd - zBuf) + 4;` |
 |    - |  238 | `			/* Look for Content-Length */` |
-|   38 |  239 | `			const char *zCL = strstr(zBuf, "Content-Length:");` |
-|   38 |  240 | `			if( zCL == 0 ){` |
-|   38 |  241 | `				zCL = strstr(zBuf, "content-length:");` |
-|   19 |  242 | `			}` |
-|   57 |  243 | `			if( zCL ){` |
+|   52 |  239 | `			const char *zCL = strstr(zBuf, "Content-Length:");` |
+|   52 |  240 | `			if( zCL == 0 ){` |
+|   52 |  241 | `				zCL = strstr(zBuf, "content-length:");` |
+|   26 |  242 | `			}` |
+|   78 |  243 | `			if( zCL ){` |
 |  ! 0 |  244 | `				int nContentLen = atoi(zCL + 15);` |
 |  ! 0 |  245 | `				int nExpected = nHeaderLen + nContentLen;` |
 |  ! 0 |  246 | `				if( nExpected > nBufSize - 1 ){` |
@@ -265,12 +265,12 @@ Coverage: 299/476 lines (62.82%)
 |  ! 0 |  255 | `					nTotal += nRead;` |
 |  ! 0 |  256 | `				}` |
 |  ! 0 |  257 | `			}` |
-|   38 |  258 | `			break;` |
+|   52 |  258 | `			break;` |
 |    - |  259 | `		}` |
 |  ! 0 |  260 | `	}` |
-|   38 |  261 | `	zBuf[nTotal] = 0;` |
-|   38 |  262 | `	return nTotal;` |
-|   19 |  263 | `}` |
+|   52 |  261 | `	zBuf[nTotal] = 0;` |
+|   52 |  262 | `	return nTotal;` |
+|   26 |  263 | `}` |
 |    - |  264 | `/*` |
 |    - |  265 | ` * Send an HTTP response with headers.` |
 |    - |  266 | ` */` |
@@ -308,10 +308,10 @@ Coverage: 299/476 lines (62.82%)
 |    - |  298 | `/*` |
 |    - |  299 | ` * Map a status code to a reason phrase.` |
 |    - |  300 | ` */` |
-|   32 |  301 | `static const char *StatusReason(int iStatus)` |
+|   46 |  301 | `static const char *StatusReason(int iStatus)` |
 |  ! 0 |  302 | `{` |
-|   32 |  303 | `	switch( iStatus ){` |
-|   26 |  304 | `	case 200: return "OK";` |
+|   46 |  303 | `	switch( iStatus ){` |
+|   40 |  304 | `	case 200: return "OK";` |
 |    4 |  305 | `	case 201: return "Created";` |
 |  ! 0 |  306 | `	case 204: return "No Content";` |
 |  ! 0 |  307 | `	case 301: return "Moved Permanently";` |
@@ -327,7 +327,7 @@ Coverage: 299/476 lines (62.82%)
 |  ! 0 |  317 | `	case 503: return "Service Unavailable";` |
 |  ! 0 |  318 | `	default:  return "";` |
 |    - |  319 | `	}` |
-|   16 |  320 | `}` |
+|   23 |  320 | `}` |
 |    - |  321 | `/*` |
 |    - |  322 | ` * Send an HTTP response using the VM's response headers and status code.` |
 |    - |  323 | ` * Falls back to Content-Type: text/html if the script didn't set one.` |
@@ -340,57 +340,57 @@ Coverage: 299/476 lines (62.82%)
 |    - |  330 | `	ph7_socket sock;` |
 |    - |  331 | `	int bHasContentType;` |
 |    - |  332 | `};` |
-|   12 |  333 | `static int VmResponseHeaderCB(const char *zName, unsigned int nName,` |
+|   66 |  333 | `static int VmResponseHeaderCB(const char *zName, unsigned int nName,` |
 |    - |  334 | `							   const char *zValue, unsigned int nValue,` |
 |    - |  335 | `							   void *pUserData)` |
 |  ! 0 |  336 | `{` |
-|   12 |  337 | `	VmResponseCtx *pCtx = (VmResponseCtx *)pUserData;` |
+|   66 |  337 | `	VmResponseCtx *pCtx = (VmResponseCtx *)pUserData;` |
 |    - |  338 | `	char zLine[512];` |
 |    - |  339 | `	int nLine;` |
-|   12 |  340 | `	nLine = snprintf(zLine, sizeof(zLine), "%.*s: %.*s\r\n",` |
+|   66 |  340 | `	nLine = snprintf(zLine, sizeof(zLine), "%.*s: %.*s\r\n",` |
 |    - |  341 | `		(int)nName, zName, (int)nValue, zValue);` |
-|   12 |  342 | `	if( nLine > (int)sizeof(zLine) ) nLine = (int)sizeof(zLine);` |
-|    7 |  343 | `	PH7_NetSendAll(pCtx->sock, zLine, nLine);` |
-|    7 |  344 | `	if( nName == 12 && SyStrnicmp(zName, "Content-Type", 12) == 0 ){` |
+|   66 |  342 | `	if( nLine > (int)sizeof(zLine) ) nLine = (int)sizeof(zLine);` |
+|   34 |  343 | `	PH7_NetSendAll(pCtx->sock, zLine, nLine);` |
+|   34 |  344 | `	if( nName == 12 && SyStrnicmp(zName, "Content-Type", 12) == 0 ){` |
 |    2 |  345 | `		pCtx->bHasContentType = 1;` |
 |    1 |  346 | `	}` |
-|   12 |  347 | `	return PH7_OK;` |
+|   66 |  347 | `	return PH7_OK;` |
 |  ! 0 |  348 | `}` |
-|   32 |  349 | `static void SendVmResponse(ph7_socket sock, ph7_vm *pVm,` |
+|   46 |  349 | `static void SendVmResponse(ph7_socket sock, ph7_vm *pVm,` |
 |    - |  350 | `							const void *pBody, int nBodyLen)` |
 |  ! 0 |  351 | `{` |
 |    - |  352 | `	int iStatus;` |
 |    - |  353 | `	VmResponseCtx sCtx;` |
 |    - |  354 | `	char zLine[512];` |
 |    - |  355 | `	int nLine;` |
-|   32 |  356 | `	iStatus = 200;` |
-|   32 |  357 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_RESPONSE_STATUS, &iStatus);` |
+|   46 |  356 | `	iStatus = 200;` |
+|   46 |  357 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_RESPONSE_STATUS, &iStatus);` |
 |    - |  358 | `	/* Status line */` |
-|   32 |  359 | `	nLine = snprintf(zLine, sizeof(zLine), "HTTP/1.1 %d %s\r\n", iStatus, StatusReason(iStatus));` |
-|   32 |  360 | `	if( nLine > (int)sizeof(zLine) ) nLine = (int)sizeof(zLine);` |
-|   31 |  361 | `	PH7_NetSendAll(sock, zLine, nLine);` |
+|   46 |  359 | `	nLine = snprintf(zLine, sizeof(zLine), "HTTP/1.1 %d %s\r\n", iStatus, StatusReason(iStatus));` |
+|   46 |  360 | `	if( nLine > (int)sizeof(zLine) ) nLine = (int)sizeof(zLine);` |
+|   45 |  361 | `	PH7_NetSendAll(sock, zLine, nLine);` |
 |    - |  362 | `	/* Script-set headers via callback */` |
-|   31 |  363 | `	sCtx.sock = sock;` |
-|   31 |  364 | `	sCtx.bHasContentType = 0;` |
-|   31 |  365 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_RESPONSE_HEADERS, VmResponseHeaderCB, &sCtx);` |
+|   45 |  363 | `	sCtx.sock = sock;` |
+|   45 |  364 | `	sCtx.bHasContentType = 0;` |
+|   45 |  365 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_RESPONSE_HEADERS, VmResponseHeaderCB, &sCtx);` |
 |    - |  366 | `	/* Default Content-Type if not set by the script */` |
-|   31 |  367 | `	if( !sCtx.bHasContentType ){` |
-|   30 |  368 | `		PH7_NetSendAll(sock, "Content-Type: text/html\r\n", 25);` |
-|   15 |  369 | `	}` |
+|   45 |  367 | `	if( !sCtx.bHasContentType ){` |
+|   44 |  368 | `		PH7_NetSendAll(sock, "Content-Type: text/html\r\n", 25);` |
+|   22 |  369 | `	}` |
 |    - |  370 | `	/* Standard headers */` |
-|   46 |  371 | `	nLine = snprintf(zLine, sizeof(zLine),` |
+|   67 |  371 | `	nLine = snprintf(zLine, sizeof(zLine),` |
 |    - |  372 | `		"Content-Length: %d\r\n"` |
 |    - |  373 | `		"Connection: close\r\n"` |
 |    - |  374 | `		"Server: PHL/" PH7_VERSION "\r\n"` |
 |    - |  375 | `		"\r\n",` |
 |    - |  376 | `		nBodyLen);` |
-|   46 |  377 | `	if( nLine > (int)sizeof(zLine) ) nLine = (int)sizeof(zLine);` |
-|   32 |  378 | `	PH7_NetSendAll(sock, zLine, nLine);` |
+|   67 |  377 | `	if( nLine > (int)sizeof(zLine) ) nLine = (int)sizeof(zLine);` |
+|   40 |  378 | `	PH7_NetSendAll(sock, zLine, nLine);` |
 |    - |  379 | `	/* Body */` |
-|   32 |  380 | `	if( pBody && nBodyLen > 0 ){` |
-|   32 |  381 | `		PH7_NetSendAll(sock, pBody, nBodyLen);` |
-|   16 |  382 | `	}` |
-|   32 |  383 | `}` |
+|   40 |  380 | `	if( pBody && nBodyLen > 0 ){` |
+|   34 |  381 | `		PH7_NetSendAll(sock, pBody, nBodyLen);` |
+|   17 |  382 | `	}` |
+|   46 |  383 | `}` |
 |    - |  384 | `/*` |
 |    - |  385 | ` * Serve a static file.` |
 |    - |  386 | ` */` |
@@ -434,37 +434,37 @@ Coverage: 299/476 lines (62.82%)
 |    - |  424 | ` * Writes the method to zMethod (up to nMethodSize) and path to zPath (up to nPathSize).` |
 |    - |  425 | ` * The path is the URI without the query string.` |
 |    - |  426 | ` */` |
-|   76 |  427 | `static void ExtractRequestLine(const char *zRequest, char *zMethod, int nMethodSize,` |
+|  104 |  427 | `static void ExtractRequestLine(const char *zRequest, char *zMethod, int nMethodSize,` |
 |    - |  428 | `							   char *zPath, int nPathSize)` |
 |  ! 0 |  429 | `{` |
-|   76 |  430 | `	const char *z = zRequest;` |
+|  104 |  430 | `	const char *z = zRequest;` |
 |    - |  431 | `	int i;` |
 |    - |  432 | `	/* Extract method */` |
-|  304 |  433 | `	for( i = 0; *z && *z != ' ' && i < nMethodSize - 1; z++, i++ ){` |
-|  228 |  434 | `		zMethod[i] = *z;` |
-|  114 |  435 | `	}` |
-|   76 |  436 | `	zMethod[i] = 0;` |
+|  416 |  433 | `	for( i = 0; *z && *z != ' ' && i < nMethodSize - 1; z++, i++ ){` |
+|  312 |  434 | `		zMethod[i] = *z;` |
+|  156 |  435 | `	}` |
+|  104 |  436 | `	zMethod[i] = 0;` |
 |    - |  437 | `	/* Skip space */` |
-|  152 |  438 | `	while( *z == ' ' ) z++;` |
+|  208 |  438 | `	while( *z == ' ' ) z++;` |
 |    - |  439 | `	/* Extract path (stop at '?', ' ', or end) */` |
-|  736 |  440 | `	for( i = 0; *z && *z != '?' && *z != ' ' && *z != '\r' && i < nPathSize - 1; z++, i++ ){` |
-|  660 |  441 | `		zPath[i] = *z;` |
-|  330 |  442 | `	}` |
-|   76 |  443 | `	zPath[i] = 0;` |
-|   76 |  444 | `}` |
+|  932 |  440 | `	for( i = 0; *z && *z != '?' && *z != ' ' && *z != '\r' && i < nPathSize - 1; z++, i++ ){` |
+|  828 |  441 | `		zPath[i] = *z;` |
+|  414 |  442 | `	}` |
+|  104 |  443 | `	zPath[i] = 0;` |
+|  104 |  444 | `}` |
 |    - |  445 | `/*` |
 |    - |  446 | ` * Resolve a request URI path to a filesystem path under the document root.` |
 |    - |  447 | ` * Returns 1 on success, 0 on failure (bad path).` |
 |    - |  448 | ` * zOut must be at least PHL_MAX_PATH bytes.` |
 |    - |  449 | ` */` |
-|   38 |  450 | `static int ResolvePath(const char *zDocRoot, const char *zUri, char *zOut)` |
+|   52 |  450 | `static int ResolvePath(const char *zDocRoot, const char *zUri, char *zOut)` |
 |  ! 0 |  451 | `{` |
-|   38 |  452 | `	if( !IsPathSafe(zUri) ){` |
+|   52 |  452 | `	if( !IsPathSafe(zUri) ){` |
 |  ! 0 |  453 | `		return 0;` |
 |    - |  454 | `	}` |
-|   38 |  455 | `	snprintf(zOut, PHL_MAX_PATH, "%s%s", zDocRoot, zUri);` |
+|   52 |  455 | `	snprintf(zOut, PHL_MAX_PATH, "%s%s", zDocRoot, zUri);` |
 |    - |  456 | `	/* If path points to a directory, try index.php */` |
-|   38 |  457 | `	if( IsDirectory(zOut) ){` |
+|   52 |  457 | `	if( IsDirectory(zOut) ){` |
 |  ! 0 |  458 | `		int n = (int)strlen(zOut);` |
 |    - |  459 | `		/* Ensure trailing slash */` |
 |  ! 0 |  460 | `		if( n > 0 && zOut[n-1] != '/' && zOut[n-1] != '\\' ){` |
@@ -476,31 +476,31 @@ Coverage: 299/476 lines (62.82%)
 |  ! 0 |  466 | `		}` |
 |  ! 0 |  467 | `		snprintf(zOut + n, PHL_MAX_PATH - n, "index.php");` |
 |  ! 0 |  468 | `	}` |
-|   38 |  469 | `	return 1;` |
-|   19 |  470 | `}` |
+|   52 |  469 | `	return 1;` |
+|   26 |  470 | `}` |
 |    - |  471 | `/*` |
 |    - |  472 | ` * Check if a filename ends with ".php" (case-insensitive).` |
 |    - |  473 | ` */` |
-|   36 |  474 | `static int IsPhpFile(const char *zPath)` |
+|   50 |  474 | `static int IsPhpFile(const char *zPath)` |
 |  ! 0 |  475 | `{` |
-|   36 |  476 | `	int n = (int)strlen(zPath);` |
-|   36 |  477 | `	if( n < 4 ){` |
+|   50 |  476 | `	int n = (int)strlen(zPath);` |
+|   50 |  477 | `	if( n < 4 ){` |
 |  ! 0 |  478 | `		return 0;` |
 |    - |  479 | `	}` |
-|   18 |  480 | `	return (` |
+|   25 |  480 | `	return (` |
 |    - |  481 | `#ifdef __WINNT__` |
 |    - |  482 | `		_stricmp(zPath + n - 4, ".php")` |
 |    - |  483 | `#else` |
-|   36 |  484 | `		strcasecmp(zPath + n - 4, ".php")` |
+|   50 |  484 | `		strcasecmp(zPath + n - 4, ".php")` |
 |    - |  485 | `#endif` |
-|   36 |  486 | `		== 0);` |
-|   18 |  487 | `}` |
+|   50 |  486 | `		== 0);` |
+|   25 |  487 | `}` |
 |    - |  488 | `/*` |
 |    - |  489 | ` * Return a file's last-modification time as a comparable integer (0 on error).` |
 |    - |  490 | ` * Used to invalidate the compiled-VM cache when a script is edited, preserving` |
 |    - |  491 | ` * the dev-server expectation that reloading picks up source changes.` |
 |    - |  492 | ` */` |
-|   32 |  493 | `static long long GetFileMtime(const char *zPath)` |
+|   46 |  493 | `static long long GetFileMtime(const char *zPath)` |
 |  ! 0 |  494 | `{` |
 |    - |  495 | `#ifdef __WINNT__` |
 |    - |  496 | `	WIN32_FILE_ATTRIBUTE_DATA info;` |
@@ -511,12 +511,12 @@ Coverage: 299/476 lines (62.82%)
 |    - |  501 | `		\| (long long)info.ftLastWriteTime.dwLowDateTime;` |
 |    - |  502 | `#else` |
 |    - |  503 | `	struct stat st;` |
-|   32 |  504 | `	if( stat(zPath, &st) != 0 ){` |
+|   46 |  504 | `	if( stat(zPath, &st) != 0 ){` |
 |  ! 0 |  505 | `		return 0;` |
 |    - |  506 | `	}` |
-|   32 |  507 | `	return (long long)st.st_mtime;` |
+|   46 |  507 | `	return (long long)st.st_mtime;` |
 |    - |  508 | `#endif` |
-|   16 |  509 | `}` |
+|   23 |  509 | `}` |
 |    - |  510 | `/* ---- Compiled-VM reuse cache ------------------------------------------------` |
 |    - |  511 | ` * Compilation dominates the per-request cost (the on-hardware profile measured` |
 |    - |  512 | ` * 167 of 197 ms/request in compile). We therefore compile each script once and` |
@@ -543,12 +543,12 @@ Coverage: 299/476 lines (62.82%)
 |    - |  533 | ` * the caller whether the VM is cache-owned (do NOT release it) or a throwaway` |
 |    - |  534 | ` * (release after use, e.g. when reuse is disabled).` |
 |    - |  535 | ` */` |
-|   32 |  536 | `static ph7_vm *AcquireScriptVm(ph7 *pEngine, const char *zPath, int *pbCached)` |
+|   46 |  536 | `static ph7_vm *AcquireScriptVm(ph7 *pEngine, const char *zPath, int *pbCached)` |
 |  ! 0 |  537 | `{` |
-|   32 |  538 | `	int i, iFree = -1, iLru = -1;` |
-|   32 |  539 | `	ph7_vm *pVm = 0;` |
+|   46 |  538 | `	int i, iFree = -1, iLru = -1;` |
+|   46 |  539 | `	ph7_vm *pVm = 0;` |
 |    - |  540 | `	long long nMtime;` |
-|   32 |  541 | `	if( !g_vmReuse ){` |
+|   46 |  541 | `	if( !g_vmReuse ){` |
 |  ! 0 |  542 | `		*pbCached = 0;` |
 |  ! 0 |  543 | `		if( ph7_compile_file(pEngine, zPath, &pVm, 0) != PH7_OK ){` |
 |  ! 0 |  544 | `			return 0;` |
@@ -556,20 +556,20 @@ Coverage: 299/476 lines (62.82%)
 |  ! 0 |  546 | `		DefinePhpBinary(pVm);` |
 |  ! 0 |  547 | `		return pVm;` |
 |    - |  548 | `	}` |
-|   32 |  549 | `	nMtime = GetFileMtime(zPath);` |
-|  416 |  550 | `	for( i = 0 ; i < PHL_VM_CACHE_SIZE ; i++ ){` |
-|  392 |  551 | `		if( g_vmCache[i].pVm == 0 ){` |
-|  384 |  552 | `			if( iFree < 0 ){ iFree = i; }` |
-|  384 |  553 | `			continue;` |
+|   46 |  549 | `	nMtime = GetFileMtime(zPath);` |
+|  526 |  550 | `	for( i = 0 ; i < PHL_VM_CACHE_SIZE ; i++ ){` |
+|  496 |  551 | `		if( g_vmCache[i].pVm == 0 ){` |
+|  480 |  552 | `			if( iFree < 0 ){ iFree = i; }` |
+|  480 |  553 | `			continue;` |
 |    - |  554 | `		}` |
-|    8 |  555 | `		if( strcmp(g_vmCache[i].zPath, zPath) == 0 ){` |
+|   16 |  555 | `		if( strcmp(g_vmCache[i].zPath, zPath) == 0 ){` |
 |    - |  556 | `			/* Hit: reuse only if the source is unchanged on disk (dev-server` |
 |    - |  557 | `			 * live-edit) and the reset succeeds; otherwise drop and recompile. */` |
-|    8 |  558 | `			if( g_vmCache[i].nMtime == nMtime` |
-|    8 |  559 | `			 && ph7_vm_reset(g_vmCache[i].pVm) == PH7_OK ){` |
-|    8 |  560 | `				g_vmCache[i].nUse = ++g_vmCacheClock;` |
-|    8 |  561 | `				*pbCached = 1;` |
-|    8 |  562 | `				return g_vmCache[i].pVm;` |
+|   16 |  558 | `			if( g_vmCache[i].nMtime == nMtime` |
+|   16 |  559 | `			 && ph7_vm_reset(g_vmCache[i].pVm) == PH7_OK ){` |
+|   16 |  560 | `				g_vmCache[i].nUse = ++g_vmCacheClock;` |
+|   16 |  561 | `				*pbCached = 1;` |
+|   16 |  562 | `				return g_vmCache[i].pVm;` |
 |    - |  563 | `			}` |
 |  ! 0 |  564 | `			ph7_vm_release(g_vmCache[i].pVm);` |
 |  ! 0 |  565 | `			g_vmCache[i].pVm = 0;` |
@@ -582,37 +582,37 @@ Coverage: 299/476 lines (62.82%)
 |  ! 0 |  572 | `		}` |
 |  ! 0 |  573 | `	}` |
 |    - |  574 | `	/* Miss: compile a fresh VM. */` |
-|   24 |  575 | `	if( ph7_compile_file(pEngine, zPath, &pVm, 0) != PH7_OK ){` |
+|   30 |  575 | `	if( ph7_compile_file(pEngine, zPath, &pVm, 0) != PH7_OK ){` |
 |  ! 0 |  576 | `		*pbCached = 0;` |
 |  ! 0 |  577 | `		return 0;` |
 |    - |  578 | `	}` |
-|   24 |  579 | `	DefinePhpBinary(pVm);` |
-|   24 |  580 | `	if( iFree < 0 ){` |
+|   30 |  579 | `	DefinePhpBinary(pVm);` |
+|   30 |  580 | `	if( iFree < 0 ){` |
 |    - |  581 | `		/* Cache full: evict the least-recently-used entry. */` |
 |  ! 0 |  582 | `		ph7_vm_release(g_vmCache[iLru].pVm);` |
 |  ! 0 |  583 | `		iFree = iLru;` |
 |  ! 0 |  584 | `	}` |
-|   24 |  585 | `	snprintf(g_vmCache[iFree].zPath, sizeof(g_vmCache[iFree].zPath), "%s", zPath);` |
-|   24 |  586 | `	g_vmCache[iFree].pVm = pVm;` |
-|   24 |  587 | `	g_vmCache[iFree].nUse = ++g_vmCacheClock;` |
-|   24 |  588 | `	g_vmCache[iFree].nMtime = nMtime;` |
-|   24 |  589 | `	*pbCached = 1;` |
-|   24 |  590 | `	return pVm;` |
-|   16 |  591 | `}` |
+|   30 |  585 | `	snprintf(g_vmCache[iFree].zPath, sizeof(g_vmCache[iFree].zPath), "%s", zPath);` |
+|   30 |  586 | `	g_vmCache[iFree].pVm = pVm;` |
+|   30 |  587 | `	g_vmCache[iFree].nUse = ++g_vmCacheClock;` |
+|   30 |  588 | `	g_vmCache[iFree].nMtime = nMtime;` |
+|   30 |  589 | `	*pbCached = 1;` |
+|   30 |  590 | `	return pVm;` |
+|   23 |  591 | `}` |
 |    - |  592 | `/*` |
 |    - |  593 | ` * Release every cached VM. Called at server shutdown.` |
 |    - |  594 | ` */` |
-|   32 |  595 | `static void ReleaseVmCache(void)` |
+|   38 |  595 | `static void ReleaseVmCache(void)` |
 |  ! 0 |  596 | `{` |
 |    - |  597 | `	int i;` |
-|  544 |  598 | `	for( i = 0 ; i < PHL_VM_CACHE_SIZE ; i++ ){` |
-|  512 |  599 | `		if( g_vmCache[i].pVm ){` |
-|   24 |  600 | `			ph7_vm_release(g_vmCache[i].pVm);` |
-|   24 |  601 | `			g_vmCache[i].pVm = 0;` |
-|   24 |  602 | `			g_vmCache[i].zPath[0] = '\0';` |
-|   12 |  603 | `		}` |
-|  256 |  604 | `	}` |
-|   32 |  605 | `}` |
+|  646 |  598 | `	for( i = 0 ; i < PHL_VM_CACHE_SIZE ; i++ ){` |
+|  608 |  599 | `		if( g_vmCache[i].pVm ){` |
+|   30 |  600 | `			ph7_vm_release(g_vmCache[i].pVm);` |
+|   30 |  601 | `			g_vmCache[i].pVm = 0;` |
+|   30 |  602 | `			g_vmCache[i].zPath[0] = '\0';` |
+|   15 |  603 | `		}` |
+|  304 |  604 | `	}` |
+|   38 |  605 | `}` |
 |    - |  606 | `/*` |
 |    - |  607 | ` * Execute a PHP script and send its output as an HTTP response.` |
 |    - |  608 | ` * pEngine is the shared engine instance.` |
@@ -620,54 +620,54 @@ Coverage: 299/476 lines (62.82%)
 |    - |  610 | ` * zRawRequest/nRequestLen is the raw HTTP request for superglobal population.` |
 |    - |  611 | ` * The additional server attributes are set from the request context.` |
 |    - |  612 | ` */` |
-|   32 |  613 | `static void ExecutePhpScript(ph7 *pEngine, ph7_socket client,` |
+|   46 |  613 | `static void ExecutePhpScript(ph7 *pEngine, ph7_socket client,` |
 |    - |  614 | `							 const char *zFilePath, const char *zScriptName,` |
 |    - |  615 | `							 const char *zRawRequest, int nRequestLen,` |
 |    - |  616 | `							 const char *zHost, int iPort, const char *zDocRoot,` |
 |    - |  617 | `							 const char *zRemoteAddr, int iRemotePort)` |
 |  ! 0 |  618 | `{` |
-|   32 |  619 | `	ph7_vm *pVm = 0;` |
+|   46 |  619 | `	ph7_vm *pVm = 0;` |
 |    - |  620 | `	const void *pOutput;` |
 |    - |  621 | `	unsigned int nOutputLen;` |
 |    - |  622 | `	char zPortBuf[16];` |
 |    - |  623 | `	char zRemotePortBuf[16];` |
-|   32 |  624 | `	int bCached = 0;` |
-|   32 |  625 | `	pVm = AcquireScriptVm(pEngine, zFilePath, &bCached);` |
-|   32 |  626 | `	if( pVm == 0 ){` |
+|   46 |  624 | `	int bCached = 0;` |
+|   46 |  625 | `	pVm = AcquireScriptVm(pEngine, zFilePath, &bCached);` |
+|   46 |  626 | `	if( pVm == 0 ){` |
 |  ! 0 |  627 | `		SendError(client, 500, "Internal Server Error");` |
 |  ! 0 |  628 | `		return;` |
 |    - |  629 | `	}` |
 |    - |  630 | `	/* Feed the raw HTTP request to populate $_SERVER, $_GET, $_POST, etc. */` |
-|   32 |  631 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_HTTP_REQUEST, zRawRequest, nRequestLen);` |
+|   46 |  631 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_HTTP_REQUEST, zRawRequest, nRequestLen);` |
 |    - |  632 | `	/* Set additional $_SERVER attributes */` |
-|   32 |  633 | `	snprintf(zPortBuf, sizeof(zPortBuf), "%d", iPort);` |
-|   32 |  634 | `	snprintf(zRemotePortBuf, sizeof(zRemotePortBuf), "%d", iRemotePort);` |
-|   32 |  635 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_SERVER_ATTR, "SERVER_SOFTWARE", "PHL/" PH7_VERSION " Development Server", -1);` |
-|   32 |  636 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_SERVER_ATTR, "SERVER_NAME", zHost, -1);` |
-|   32 |  637 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_SERVER_ATTR, "SERVER_PORT", zPortBuf, -1);` |
-|   32 |  638 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_SERVER_ATTR, "DOCUMENT_ROOT", zDocRoot, -1);` |
-|   32 |  639 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_SERVER_ATTR, "SCRIPT_FILENAME", zFilePath, -1);` |
-|   32 |  640 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_SERVER_ATTR, "SCRIPT_NAME", zScriptName, -1);` |
-|   32 |  641 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_SERVER_ATTR, "REMOTE_ADDR", zRemoteAddr, -1);` |
-|   32 |  642 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_SERVER_ATTR, "REMOTE_PORT", zRemotePortBuf, -1);` |
-|   32 |  643 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_ERR_REPORT);` |
+|   46 |  633 | `	snprintf(zPortBuf, sizeof(zPortBuf), "%d", iPort);` |
+|   46 |  634 | `	snprintf(zRemotePortBuf, sizeof(zRemotePortBuf), "%d", iRemotePort);` |
+|   46 |  635 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_SERVER_ATTR, "SERVER_SOFTWARE", "PHL/" PH7_VERSION " Development Server", -1);` |
+|   46 |  636 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_SERVER_ATTR, "SERVER_NAME", zHost, -1);` |
+|   46 |  637 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_SERVER_ATTR, "SERVER_PORT", zPortBuf, -1);` |
+|   46 |  638 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_SERVER_ATTR, "DOCUMENT_ROOT", zDocRoot, -1);` |
+|   46 |  639 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_SERVER_ATTR, "SCRIPT_FILENAME", zFilePath, -1);` |
+|   46 |  640 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_SERVER_ATTR, "SCRIPT_NAME", zScriptName, -1);` |
+|   46 |  641 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_SERVER_ATTR, "REMOTE_ADDR", zRemoteAddr, -1);` |
+|   46 |  642 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_SERVER_ATTR, "REMOTE_PORT", zRemotePortBuf, -1);` |
+|   46 |  643 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_ERR_REPORT);` |
 |    - |  644 | `	/* Execute the script (output accumulates in the VM's internal buffer) */` |
-|   32 |  645 | `	ph7_vm_exec(pVm, 0);` |
+|   46 |  645 | `	ph7_vm_exec(pVm, 0);` |
 |    - |  646 | `	/* Extract accumulated output */` |
-|   32 |  647 | `	pOutput = 0;` |
-|   32 |  648 | `	nOutputLen = 0;` |
-|   32 |  649 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_EXTRACT_OUTPUT, &pOutput, &nOutputLen);` |
+|   46 |  647 | `	pOutput = 0;` |
+|   46 |  648 | `	nOutputLen = 0;` |
+|   46 |  649 | `	ph7_vm_config(pVm, PH7_VM_CONFIG_EXTRACT_OUTPUT, &pOutput, &nOutputLen);` |
 |    - |  650 | `	/* Send the response using VM-set headers and status code */` |
-|   32 |  651 | `	SendVmResponse(client, pVm, pOutput, (int)nOutputLen);` |
+|   46 |  651 | `	SendVmResponse(client, pVm, pOutput, (int)nOutputLen);` |
 |    - |  652 | `	/* Cache-owned VMs are kept for reuse; throwaways are released. */` |
-|   32 |  653 | `	if( !bCached ){` |
+|   46 |  653 | `	if( !bCached ){` |
 |  ! 0 |  654 | `		ph7_vm_release(pVm);` |
 |  ! 0 |  655 | `	}` |
-|   16 |  656 | `}` |
+|   23 |  656 | `}` |
 |    - |  657 | `/*` |
 |    - |  658 | ` * Handle a single HTTP request.` |
 |    - |  659 | ` */` |
-|   38 |  660 | `static int HandleRequest(ph7 *pEngine, ph7_socket client,` |
+|   52 |  660 | `static int HandleRequest(ph7 *pEngine, ph7_socket client,` |
 |    - |  661 | `						  const char *zDocRoot, const char *zRouter,` |
 |    - |  662 | `						  const char *zHost, int iPort,` |
 |    - |  663 | `						  const char *zRawRequest, int nRequestLen,` |
@@ -678,10 +678,10 @@ Coverage: 299/476 lines (62.82%)
 |    - |  668 | `	char zFilePath[PHL_MAX_PATH];` |
 |    - |  669 | `	long nFileSize;` |
 |    - |  670 | `	/* Extract request line */` |
-|   38 |  671 | `	ExtractRequestLine(zRawRequest, zMethod, sizeof(zMethod), zUri, sizeof(zUri));` |
-|   19 |  672 | `	(void)zMethod;` |
+|   52 |  671 | `	ExtractRequestLine(zRawRequest, zMethod, sizeof(zMethod), zUri, sizeof(zUri));` |
+|   26 |  672 | `	(void)zMethod;` |
 |    - |  673 | `	/* Try router script first (if configured) */` |
-|   38 |  674 | `	if( zRouter && zRouter[0] ){` |
+|   52 |  674 | `	if( zRouter && zRouter[0] ){` |
 |  ! 0 |  675 | `		ph7_vm *pVm = 0;` |
 |    - |  676 | `		ph7_value *pRetVal;` |
 |  ! 0 |  677 | `		int bCached = 0;` |
@@ -727,48 +727,48 @@ Coverage: 299/476 lines (62.82%)
 |    - |  717 | `		/* Router compile failed or returned false: fall through */` |
 |  ! 0 |  718 | `	}` |
 |    - |  719 | `	/* Resolve URI to filesystem path */` |
-|   38 |  720 | `	if( !ResolvePath(zDocRoot, zUri, zFilePath) ){` |
+|   52 |  720 | `	if( !ResolvePath(zDocRoot, zUri, zFilePath) ){` |
 |  ! 0 |  721 | `		SendError(client, 403, "Forbidden");` |
 |  ! 0 |  722 | `		return 403;` |
 |    - |  723 | `	}` |
 |    - |  724 | `	/* Check if file exists */` |
-|   38 |  725 | `	if( FileExists(zFilePath, &nFileSize) ){` |
-|   36 |  726 | `		if( IsPhpFile(zFilePath) ){` |
-|   48 |  727 | `			ExecutePhpScript(pEngine, client, zFilePath, zUri,` |
-|   16 |  728 | `							 zRawRequest, nRequestLen,` |
-|   16 |  729 | `							 zHost, iPort, zDocRoot,` |
-|   16 |  730 | `							 zRemoteAddr, iRemotePort);` |
-|   16 |  731 | `		}else{` |
+|   52 |  725 | `	if( FileExists(zFilePath, &nFileSize) ){` |
+|   50 |  726 | `		if( IsPhpFile(zFilePath) ){` |
+|   69 |  727 | `			ExecutePhpScript(pEngine, client, zFilePath, zUri,` |
+|   23 |  728 | `							 zRawRequest, nRequestLen,` |
+|   23 |  729 | `							 zHost, iPort, zDocRoot,` |
+|   23 |  730 | `							 zRemoteAddr, iRemotePort);` |
+|   23 |  731 | `		}else{` |
 |    4 |  732 | `			ServeStaticFile(client, zFilePath, nFileSize);` |
 |    - |  733 | `		}` |
-|   36 |  734 | `		return 200;` |
+|   50 |  734 | `		return 200;` |
 |    - |  735 | `	}` |
 |    2 |  736 | `	SendError(client, 404, "Not Found");` |
 |    2 |  737 | `	return 404;` |
-|   19 |  738 | `}` |
+|   26 |  738 | `}` |
 |    - |  739 | `/*` |
 |    - |  740 | ` * Log a request line to stderr.` |
 |    - |  741 | ` */` |
-|   38 |  742 | `static void LogRequest(const char *zRemoteAddr, int iRemotePort,` |
+|   52 |  742 | `static void LogRequest(const char *zRemoteAddr, int iRemotePort,` |
 |    - |  743 | `					   const char *zMethod, const char *zUri, int iStatus)` |
 |  ! 0 |  744 | `{` |
 |    - |  745 | `	time_t now;` |
 |    - |  746 | `	struct tm tm_buf;` |
 |    - |  747 | `	char zTime[64];` |
-|   38 |  748 | `	time(&now);` |
+|   52 |  748 | `	time(&now);` |
 |    - |  749 | `#ifdef __WINNT__` |
 |  ! 0 |  750 | `	localtime_s(&tm_buf, &now);` |
 |    - |  751 | `#else` |
-|   38 |  752 | `	localtime_r(&now, &tm_buf);` |
+|   52 |  752 | `	localtime_r(&now, &tm_buf);` |
 |    - |  753 | `#endif` |
-|   38 |  754 | `	strftime(zTime, sizeof(zTime), "%a %b %d %H:%M:%S %Y", &tm_buf);` |
-|   57 |  755 | `	fprintf(stderr, "[%s] %s:%d [%d]: %s %s\n",` |
-|   19 |  756 | `		zTime, zRemoteAddr, iRemotePort, iStatus, zMethod, zUri);` |
-|   38 |  757 | `}` |
+|   52 |  754 | `	strftime(zTime, sizeof(zTime), "%a %b %d %H:%M:%S %Y", &tm_buf);` |
+|   78 |  755 | `	fprintf(stderr, "[%s] %s:%d [%d]: %s %s\n",` |
+|   26 |  756 | `		zTime, zRemoteAddr, iRemotePort, iStatus, zMethod, zUri);` |
+|   52 |  757 | `}` |
 |    - |  758 | `/*` |
 |    - |  759 | ` * Main server entry point.` |
 |    - |  760 | ` */` |
-|   26 |  761 | `int phl_serve(const char *zHost, int iPort, const char *zDocRoot, const char *zRouter, const char *zBinaryPath)` |
+|   32 |  761 | `int phl_serve(const char *zHost, int iPort, const char *zDocRoot, const char *zRouter, const char *zBinaryPath)` |
 |  ! 0 |  762 | `{` |
 |    - |  763 | `	ph7 *pEngine;` |
 |    - |  764 | `	ph7_socket listenSock;` |
@@ -781,45 +781,45 @@ Coverage: 299/476 lines (62.82%)
 |    - |  771 | `	int iRemotePort;` |
 |    - |  772 | `	int rc;` |
 |    - |  773 | `	/* Resolved interpreter path → PHP_BINARY for every served VM. */` |
-|   26 |  774 | `	g_phpBinaryPath = zBinaryPath;` |
+|   32 |  774 | `	g_phpBinaryPath = zBinaryPath;` |
 |    - |  775 | `	/* Compile-once / reuse is on by default; PHL_NO_REUSE=1 forces the legacy` |
 |    - |  776 | `	 * compile-per-request path for behaviour diffing. */` |
 |    - |  777 | `	{` |
-|   26 |  778 | `		const char *zNoReuse = getenv("PHL_NO_REUSE");` |
-|   26 |  779 | `		if( zNoReuse && zNoReuse[0] && zNoReuse[0] != '0' ){` |
+|   32 |  778 | `		const char *zNoReuse = getenv("PHL_NO_REUSE");` |
+|   32 |  779 | `		if( zNoReuse && zNoReuse[0] && zNoReuse[0] != '0' ){` |
 |  ! 0 |  780 | `			g_vmReuse = 0;` |
 |  ! 0 |  781 | `		}` |
 |    - |  782 | `	}` |
 |    - |  783 | `	/* Initialize networking */` |
-|   26 |  784 | `	rc = PH7_NetInit();` |
-|   26 |  785 | `	if( rc != PH7_OK ){` |
+|   32 |  784 | `	rc = PH7_NetInit();` |
+|   32 |  785 | `	if( rc != PH7_OK ){` |
 |  ! 0 |  786 | `		fprintf(stderr, "Error: Failed to initialize networking\n");` |
 |  ! 0 |  787 | `		return 1;` |
 |    - |  788 | `	}` |
 |    - |  789 | `	/* Create the PH7 engine (shared across requests) */` |
-|   26 |  790 | `	rc = ph7_init(&pEngine);` |
-|   26 |  791 | `	if( rc != PH7_OK ){` |
+|   32 |  790 | `	rc = ph7_init(&pEngine);` |
+|   32 |  791 | `	if( rc != PH7_OK ){` |
 |  ! 0 |  792 | `		fprintf(stderr, "Error: Failed to initialize PH7 engine\n");` |
 |  ! 0 |  793 | `		PH7_NetCleanup();` |
 |  ! 0 |  794 | `		return 1;` |
 |    - |  795 | `	}` |
 |    - |  796 | `	/* Create listening socket */` |
-|   26 |  797 | `	listenSock = PH7_NetListen(zHost, iPort, 10);` |
-|   26 |  798 | `	if( listenSock == PH7_NET_INVALID_SOCKET ){` |
+|   32 |  797 | `	listenSock = PH7_NetListen(zHost, iPort, 10);` |
+|   32 |  798 | `	if( listenSock == PH7_NET_INVALID_SOCKET ){` |
 |  ! 0 |  799 | `		fprintf(stderr, "Error: Failed to listen on %s:%d\n", zHost, iPort);` |
 |  ! 0 |  800 | `		ph7_release(pEngine);` |
 |  ! 0 |  801 | `		PH7_NetCleanup();` |
 |  ! 0 |  802 | `		return 1;` |
 |    - |  803 | `	}` |
 |    - |  804 | `	/* Install signal handlers */` |
-|   26 |  805 | `	InstallSignalHandlers();` |
+|   32 |  805 | `	InstallSignalHandlers();` |
 |    - |  806 | `	/* Print banner */` |
-|   26 |  807 | `	fprintf(stderr, "PHL %s Development Server started at http://%s:%d/\n", PH7_VERSION, zHost, iPort);` |
-|   26 |  808 | `	fprintf(stderr, "Document root: %s\n", zDocRoot);` |
-|   26 |  809 | `	if( zRouter ){` |
+|   32 |  807 | `	fprintf(stderr, "PHL %s Development Server started at http://%s:%d/\n", PH7_VERSION, zHost, iPort);` |
+|   32 |  808 | `	fprintf(stderr, "Document root: %s\n", zDocRoot);` |
+|   32 |  809 | `	if( zRouter ){` |
 |  ! 0 |  810 | `		fprintf(stderr, "Router script: %s\n", zRouter);` |
 |  ! 0 |  811 | `	}` |
-|   26 |  812 | `	fprintf(stderr, "Press Ctrl+C to stop.\n");` |
+|   32 |  812 | `	fprintf(stderr, "Press Ctrl+C to stop.\n");` |
 |    - |  813 | `#ifndef __WINNT__` |
 |    - |  814 | `	/* php CLI-server parity: PHP_CLI_SERVER_WORKERS=N pre-forks N workers` |
 |    - |  815 | `	 * that all accept() on the shared listen socket (the kernel load-balances` |
@@ -828,9 +828,9 @@ Coverage: 299/476 lines (62.82%)
 |    - |  818 | `	 * the default (unset/1) stays single-process; Windows keeps the` |
 |    - |  819 | `	 * single-process model (no fork — recorded). */` |
 |    - |  820 | `	{` |
-|   26 |  821 | `		const char *zWorkers = getenv("PHP_CLI_SERVER_WORKERS");` |
-|   26 |  822 | `		int nWorkers = zWorkers ? atoi(zWorkers) : 0;` |
-|   26 |  823 | `		if( nWorkers > 1 ){` |
+|   32 |  821 | `		const char *zWorkers = getenv("PHP_CLI_SERVER_WORKERS");` |
+|   32 |  822 | `		int nWorkers = zWorkers ? atoi(zWorkers) : 0;` |
+|   32 |  823 | `		if( nWorkers > 1 ){` |
 |    - |  824 | `			int iWorker;` |
 |    2 |  825 | `			int bChild = 0;` |
 |    2 |  826 | `			if( nWorkers > 64 ){` |
@@ -859,8 +859,8 @@ Coverage: 299/476 lines (62.82%)
 |    - |  849 | `	}` |
 |    - |  850 | `#endif` |
 |    - |  851 | `	/* Allocate request buffer */` |
-|   32 |  852 | `	zRequestBuf = (char *)malloc(PHL_MAX_REQUEST);` |
-|   32 |  853 | `	if( zRequestBuf == 0 ){` |
+|   38 |  852 | `	zRequestBuf = (char *)malloc(PHL_MAX_REQUEST);` |
+|   38 |  853 | `	if( zRequestBuf == 0 ){` |
 |  ! 0 |  854 | `		fprintf(stderr, "Error: Out of memory\n");` |
 |  ! 0 |  855 | `		PH7_NetClose(listenSock);` |
 |  ! 0 |  856 | `		ph7_release(pEngine);` |
@@ -868,54 +868,54 @@ Coverage: 299/476 lines (62.82%)
 |  ! 0 |  858 | `		return 1;` |
 |    - |  859 | `	}` |
 |    - |  860 | `	/* Accept loop */` |
-|   70 |  861 | `	while( !g_shutdown ){` |
-|   70 |  862 | `		addrLen = sizeof(clientAddr);` |
-|   70 |  863 | `		clientSock = PH7_NetAccept(listenSock, (struct sockaddr *)&clientAddr, &addrLen);` |
-|   70 |  864 | `		if( clientSock == PH7_NET_INVALID_SOCKET ){` |
-|   32 |  865 | `			if( g_shutdown ){` |
-|   32 |  866 | `				break;` |
+|   90 |  861 | `	while( !g_shutdown ){` |
+|   90 |  862 | `		addrLen = sizeof(clientAddr);` |
+|   90 |  863 | `		clientSock = PH7_NetAccept(listenSock, (struct sockaddr *)&clientAddr, &addrLen);` |
+|   90 |  864 | `		if( clientSock == PH7_NET_INVALID_SOCKET ){` |
+|   38 |  865 | `			if( g_shutdown ){` |
+|   38 |  866 | `				break;` |
 |    - |  867 | `			}` |
 |  ! 0 |  868 | `			continue;` |
 |    - |  869 | `		}` |
 |    - |  870 | `		/* Set a receive timeout so we don't block forever on a slow client */` |
-|   38 |  871 | `		PH7_NetSetTimeout(clientSock, 5000);` |
+|   52 |  871 | `		PH7_NetSetTimeout(clientSock, 5000);` |
 |    - |  872 | `		/* Read the request */` |
-|   38 |  873 | `		nRequestLen = ReadRequest(clientSock, zRequestBuf, PHL_MAX_REQUEST);` |
-|   38 |  874 | `		if( nRequestLen > 0 ){` |
+|   52 |  873 | `		nRequestLen = ReadRequest(clientSock, zRequestBuf, PHL_MAX_REQUEST);` |
+|   52 |  874 | `		if( nRequestLen > 0 ){` |
 |    - |  875 | `			char zMethod[16];` |
 |    - |  876 | `			char zUri[PHL_MAX_PATH];` |
 |    - |  877 | `			/* Extract method and URI for logging */` |
-|   38 |  878 | `			ExtractRequestLine(zRequestBuf, zMethod, sizeof(zMethod), zUri, sizeof(zUri));` |
+|   52 |  878 | `			ExtractRequestLine(zRequestBuf, zMethod, sizeof(zMethod), zUri, sizeof(zUri));` |
 |    - |  879 | `			/* Get client address info */` |
-|   38 |  880 | `			PH7_NetAddrToString((struct sockaddr *)&clientAddr, zRemoteAddr, sizeof(zRemoteAddr));` |
-|   38 |  881 | `			iRemotePort = PH7_NetAddrPort((struct sockaddr *)&clientAddr);` |
+|   52 |  880 | `			PH7_NetAddrToString((struct sockaddr *)&clientAddr, zRemoteAddr, sizeof(zRemoteAddr));` |
+|   52 |  881 | `			iRemotePort = PH7_NetAddrPort((struct sockaddr *)&clientAddr);` |
 |    - |  882 | `			/* Handle the request */` |
-|   57 |  883 | `			rc = HandleRequest(pEngine, clientSock, zDocRoot, zRouter,` |
-|   19 |  884 | `						  zHost, iPort, zRequestBuf, nRequestLen,` |
-|   19 |  885 | `						  zRemoteAddr, iRemotePort);` |
+|   78 |  883 | `			rc = HandleRequest(pEngine, clientSock, zDocRoot, zRouter,` |
+|   26 |  884 | `						  zHost, iPort, zRequestBuf, nRequestLen,` |
+|   26 |  885 | `						  zRemoteAddr, iRemotePort);` |
 |    - |  886 | `			/* Log it */` |
-|   38 |  887 | `			LogRequest(zRemoteAddr, iRemotePort, zMethod, zUri, rc);` |
-|   19 |  888 | `		}` |
-|   38 |  889 | `		PH7_NetClose(clientSock);` |
+|   52 |  887 | `			LogRequest(zRemoteAddr, iRemotePort, zMethod, zUri, rc);` |
+|   26 |  888 | `		}` |
+|   52 |  889 | `		PH7_NetClose(clientSock);` |
 |  ! 0 |  890 | `	}` |
 |    - |  891 | `	/* Cleanup */` |
 |    - |  892 | `#ifndef __WINNT__` |
 |    - |  893 | `	/* Parent: take the workers down with us */` |
 |    - |  894 | `	{` |
 |    - |  895 | `		int k;` |
-|   38 |  896 | `		for( k = 0 ; k < g_nWorkerPid ; k++ ){` |
+|   44 |  896 | `		for( k = 0 ; k < g_nWorkerPid ; k++ ){` |
 |    6 |  897 | `			kill(g_aWorkerPid[k], SIGTERM);` |
 |    3 |  898 | `		}` |
 |    - |  899 | `	}` |
 |    - |  900 | `#endif` |
-|   32 |  901 | `	fprintf(stderr, "\nShutting down...\n");` |
-|   32 |  902 | `	ReleaseVmCache();` |
-|   32 |  903 | `	free(zRequestBuf);` |
-|   32 |  904 | `	PH7_NetClose(listenSock);` |
-|   32 |  905 | `	ph7_release(pEngine);` |
-|   32 |  906 | `	PH7_NetCleanup();` |
-|   32 |  907 | `	return 0;` |
-|   16 |  908 | `}` |
+|   38 |  901 | `	fprintf(stderr, "\nShutting down...\n");` |
+|   38 |  902 | `	ReleaseVmCache();` |
+|   38 |  903 | `	free(zRequestBuf);` |
+|   38 |  904 | `	PH7_NetClose(listenSock);` |
+|   38 |  905 | `	ph7_release(pEngine);` |
+|   38 |  906 | `	PH7_NetCleanup();` |
+|   38 |  907 | `	return 0;` |
+|   19 |  908 | `}` |
 |    - |  909 |  |
 |    - |  910 | `#endif /* PHL_ENABLE_SERVER */` |
 |    - |  911 |  |

@@ -56,17 +56,17 @@ Coverage: 179/242 lines (73.97%)
 |    - |   46 | ` * PH7_LibxmlVmRelease before the allocator that holds the shells is torn` |
 |    - |   47 | ` * down.` |
 |    - |   48 | ` */` |
-| 4080 |   49 | `PH7_PRIVATE void PH7_XmlWriterVmSweep(ph7_vm *pVm)` |
+| 4564 |   49 | `PH7_PRIVATE void PH7_XmlWriterVmSweep(ph7_vm *pVm)` |
 |    5 |   50 | `{` |
-| 4085 |   51 | `	phl_xmlwriter *pXw = (phl_xmlwriter *)pVm->pXmlWriters;` |
-| 4091 |   52 | `	while( pXw ){` |
+| 4569 |   51 | `	phl_xmlwriter *pXw = (phl_xmlwriter *)pVm->pXmlWriters;` |
+| 4575 |   52 | `	while( pXw ){` |
 |    7 |   53 | `		phl_xmlwriter *pNext = pXw->pNext;` |
 |    7 |   54 | `		XmlWriterFree(pXw);` |
 |    7 |   55 | `		SyMemBackendFree(&pVm->sAllocator,pXw);` |
 |    7 |   56 | `		pXw = pNext;` |
 |    1 |   57 | `	}` |
-| 4085 |   58 | `	pVm->pXmlWriters = 0;` |
-| 4085 |   59 | `}` |
+| 4569 |   58 | `	pVm->pXmlWriters = 0;` |
+| 4569 |   59 | `}` |
 |    - |   60 |  |
 |   56 |   61 | `static phl_xmlwriter * XmlWriterArg(ph7_value *pVal)` |
 |    1 |   62 | `{` |
@@ -342,7 +342,7 @@ Coverage: 179/242 lines (73.97%)
 |    - |  332 | ` * Install the XMLWriter library.  Called from PH7_VmInit inside the` |
 |    - |  333 | ` * bCompilingBuiltin window, after PH7_VmInstallLibxml.` |
 |    - |  334 | ` */` |
-| 4670 |  335 | `PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)` |
+| 5146 |  335 | `PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)` |
 |    5 |  336 | `{` |
 |    - |  337 | `	/* php's own signatures. Declaring them is what gives these methods argument` |
 |    - |  338 | `	 * coercion and a too-few/too-many ArgumentCountError; the prelude hand-cast` |
@@ -379,7 +379,7 @@ Coverage: 179/242 lines (73.97%)
 |    - |  369 | `		aProp, SX_ARRAYSIZE(aProp),` |
 |    - |  370 | `		0, 0, 0` |
 |    - |  371 | `	};` |
-| 4675 |  372 | `	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
+| 5151 |  372 | `	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
 |    5 |  373 | `}` |
 |    - |  374 |  |
 |    - |  375 | `#else` |

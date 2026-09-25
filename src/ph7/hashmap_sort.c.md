@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 611/668 lines (91.47%)
+Coverage: 672/724 lines (92.82%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -44,35 +44,35 @@ Coverage: 611/668 lines (91.47%)
 |      - |   34 | `**   The "next","prev" pointers for elements in the lists a and b are` |
 |      - |   35 | `**   changed.` |
 |      - |   36 | `*/` |
-|  68138 |   37 | `static ph7_hashmap_node * HashmapNodeMerge(ph7_hashmap_node *pA,ph7_hashmap_node *pB,ProcNodeCmp xCmp,void *pCmpData)` |
+|  75266 |   37 | `static ph7_hashmap_node * HashmapNodeMerge(ph7_hashmap_node *pA,ph7_hashmap_node *pB,ProcNodeCmp xCmp,void *pCmpData)` |
 |      5 |   38 | `{` |
 |      - |   39 | `	ph7_hashmap_node result,*pTail;` |
 |      - |   40 | `    /* Prevent compiler warning */` |
-|  68143 |   41 | `	result.pNext = result.pPrev = 0;` |
-|  68143 |   42 | `	pTail = &result;` |
-| 162718 |   43 | `	while( pA && pB ){` |
-|  94580 |   44 | `		if( xCmp(pA,pB,pCmpData) <= 0 ){` |
-|  73965 |   45 | `			pTail->pPrev = pA;` |
-|  73965 |   46 | `			pA->pNext = pTail;` |
-|  73965 |   47 | `			pTail = pA;` |
-|  73965 |   48 | `			pA = pA->pPrev;` |
-|  37057 |   49 | `		}else{` |
-|  20620 |   50 | `			pTail->pPrev = pB;` |
-|  20620 |   51 | `			pB->pNext = pTail;` |
-|  20620 |   52 | `			pTail = pB;` |
-|  20620 |   53 | `			pB = pB->pPrev;` |
+|  75271 |   41 | `	result.pNext = result.pPrev = 0;` |
+|  75271 |   42 | `	pTail = &result;` |
+| 174204 |   43 | `	while( pA && pB ){` |
+|  98938 |   44 | `		if( xCmp(pA,pB,pCmpData) <= 0 ){` |
+|  77513 |   45 | `			pTail->pPrev = pA;` |
+|  77513 |   46 | `			pA->pNext = pTail;` |
+|  77513 |   47 | `			pTail = pA;` |
+|  77513 |   48 | `			pA = pA->pPrev;` |
+|  38884 |   49 | `		}else{` |
+|  21430 |   50 | `			pTail->pPrev = pB;` |
+|  21430 |   51 | `			pB->pNext = pTail;` |
+|  21430 |   52 | `			pTail = pB;` |
+|  21430 |   53 | `			pB = pB->pPrev;` |
 |      - |   54 | `		}` |
 |      5 |   55 | `	}` |
-|  68143 |   56 | `	if( pA ){` |
-|   5474 |   57 | `		pTail->pPrev = pA;` |
-|   5474 |   58 | `		pA->pNext = pTail;` |
-|  65321 |   59 | `	}else if( pB ){` |
-|  62264 |   60 | `		pTail->pPrev = pB;` |
-|  62264 |   61 | `		pB->pNext = pTail;` |
-|  31222 |   62 | `	}else{` |
-|    415 |   63 | `		pTail->pPrev = pTail->pNext = 0;` |
+|  75271 |   56 | `	if( pA ){` |
+|   5766 |   57 | `		pTail->pPrev = pA;` |
+|   5766 |   58 | `		pA->pNext = pTail;` |
+|  72288 |   59 | `	}else if( pB ){` |
+|  69071 |   60 | `		pTail->pPrev = pB;` |
+|  69071 |   61 | `		pB->pNext = pTail;` |
+|  34624 |   62 | `	}else{` |
+|    444 |   63 | `		pTail->pPrev = pTail->pNext = 0;` |
 |      - |   64 | `	}` |
-|  68143 |   65 | `	return result.pPrev;` |
+|  75271 |   65 | `	return result.pPrev;` |
 |      5 |   66 | `}` |
 |      - |   67 | `/*` |
 |      - |   68 | `** Inputs:` |
@@ -86,49 +86,49 @@ Coverage: 611/668 lines (91.47%)
 |      - |   76 | `**   The "next" pointers for elements in list are changed.` |
 |      - |   77 | `*/` |
 |      - |   78 | `#define N_SORT_BUCKET  32` |
-|   1638 |   79 | `PH7_PRIVATE sxi32 HashmapMergeSort(ph7_hashmap *pMap,ProcNodeCmp xCmp,void *pCmpData)` |
+|   1837 |   79 | `PH7_PRIVATE sxi32 HashmapMergeSort(ph7_hashmap *pMap,ProcNodeCmp xCmp,void *pCmpData)` |
 |      5 |   80 | `{` |
 |      - |   81 | `	ph7_hashmap_node *a[N_SORT_BUCKET], *p,*pIn;` |
 |      - |   82 | `	sxu32 i;` |
-|   1643 |   83 | `	SyZero(a,sizeof(a));` |
+|   1842 |   83 | `	SyZero(a,sizeof(a));` |
 |      - |   84 | `	/* Point to the first inserted entry */` |
-|   1643 |   85 | `	pIn = pMap->pFirst;` |
-|  22009 |   86 | `	while( pIn ){` |
-|  20371 |   87 | `		p = pIn;` |
-|  20371 |   88 | `		pIn = p->pPrev;` |
-|  20371 |   89 | `		p->pPrev = 0;` |
-|  37731 |   90 | `		for(i=0; i<N_SORT_BUCKET-1; i++){` |
-|  37731 |   91 | `			if( a[i]==0 ){` |
-|  20371 |   92 | `				a[i] = p;` |
-|  20371 |   93 | `				break;` |
+|   1842 |   85 | `	pIn = pMap->pFirst;` |
+|  23508 |   86 | `	while( pIn ){` |
+|  21671 |   87 | `		p = pIn;` |
+|  21671 |   88 | `		pIn = p->pPrev;` |
+|  21671 |   89 | `		p->pPrev = 0;` |
+|  39990 |   90 | `		for(i=0; i<N_SORT_BUCKET-1; i++){` |
+|  39990 |   91 | `			if( a[i]==0 ){` |
+|  21671 |   92 | `				a[i] = p;` |
+|  21671 |   93 | `				break;` |
 |    ! 0 |   94 | `			}else{` |
-|  17365 |   95 | `				p = HashmapNodeMerge(a[i],p,xCmp,pCmpData);` |
-|  17365 |   96 | `				a[i] = 0;` |
+|  18324 |   95 | `				p = HashmapNodeMerge(a[i],p,xCmp,pCmpData);` |
+|  18324 |   96 | `				a[i] = 0;` |
 |      - |   97 | `			}` |
-|   8685 |   98 | `		}` |
-|  20371 |   99 | `		if( i==N_SORT_BUCKET-1 ){` |
+|   9163 |   98 | `		}` |
+|  21671 |   99 | `		if( i==N_SORT_BUCKET-1 ){` |
 |      - |  100 | `			/* To get here, there need to be 2^(N_SORT_BUCKET) elements in he input list.` |
 |      - |  101 | `			 * But that is impossible.` |
 |      - |  102 | `			 */` |
 |    ! 0 |  103 | `			a[i] = HashmapNodeMerge(a[i], p,xCmp,pCmpData);` |
 |    ! 0 |  104 | `		}` |
 |      5 |  105 | `	}` |
-|   1643 |  106 | `	p = a[0];` |
-|  52421 |  107 | `	for(i=1; i<N_SORT_BUCKET; i++){` |
+|   1842 |  106 | `	p = a[0];` |
+|  58789 |  107 | `	for(i=1; i<N_SORT_BUCKET; i++){` |
 |      - |  108 | `		/* Higher-index buckets hold EARLIER-inserted (and larger) runs, so the` |
 |      - |  109 | `		 * bucket must be the LEFT operand: HashmapNodeMerge favors its left arg on` |
 |      - |  110 | `		 * a tie (cmp <= 0), and php's sorts are stable (PHP 8.0+) — equal elements` |
 |      - |  111 | `		 * keep their original order. Passing p (the later elements) on the left` |
 |      - |  112 | `		 * reversed equal runs (e.g. usort of five tie-keyed items moved the last to` |
 |      - |  113 | `		 * the front). */` |
-|  50783 |  114 | `		p = HashmapNodeMerge(a[i],p,xCmp,pCmpData);` |
-|  25394 |  115 | `	}` |
-|   1643 |  116 | `	p->pNext = 0;` |
+|  56952 |  114 | `		p = HashmapNodeMerge(a[i],p,xCmp,pCmpData);` |
+|  28463 |  115 | `	}` |
+|   1842 |  116 | `	p->pNext = 0;` |
 |      - |  117 | `	/* Reflect the change */` |
-|   1643 |  118 | `	pMap->pFirst = p;` |
+|   1842 |  118 | `	pMap->pFirst = p;` |
 |      - |  119 | `	/* Reset the loop cursor */` |
-|   1643 |  120 | `	pMap->pCur = pMap->pFirst;` |
-|   1643 |  121 | `	return SXRET_OK;` |
+|   1842 |  120 | `	pMap->pCur = pMap->pFirst;` |
+|   1842 |  121 | `	return SXRET_OK;` |
 |      5 |  122 | `}` |
 |      - |  123 | `/* SPDX-SnippetEnd */` |
 |      - |  124 | `/*` |
@@ -147,1194 +147,1315 @@ Coverage: 611/668 lines (91.47%)
 |      - |  137 | ` * the same around its walk. The flag is also what keeps the second and later` |
 |      - |  138 | ` * comparisons from raising the same Error again.` |
 |      - |  139 | ` */` |
-|    370 |  140 | `static void HashmapFlagStringify(ph7_value *pVal)` |
-|      3 |  141 | `{` |
-|    373 |  142 | `	ph7_vm *pVm = pVal->pVm;` |
-|    373 |  143 | `	if( !PH7_MemObjIsNotStringable(pVal) ){` |
-|    335 |  144 | `		if( PH7_MemObjToStringUV(pVal) == SXRET_OK ){` |
-|    335 |  145 | `			return;` |
-|    ! 0 |  146 | `		}` |
-|      - |  147 | `		/* A __toString() that THREW. Same shape as a refused cast from here on. */` |
-|     39 |  148 | `	}else if( pVm == 0 \|\| pVm->iCmpCallbackExc == 0 ){` |
-|     31 |  149 | `		PH7_MemObjToStringUV(pVal); /* raises php's Error */` |
-|     15 |  150 | `	}` |
-|     39 |  151 | `	if( pVm ){` |
-|     39 |  152 | `		pVm->iCmpCallbackExc = 1;` |
-|     19 |  153 | `	}` |
-|     39 |  154 | `	PH7_MemObjRelease(pVal);` |
-|     39 |  155 | `	MemObjSetType(pVal,MEMOBJ_STRING);` |
-|    188 |  156 | `}` |
-|      - |  157 | `/*` |
-|      - |  158 | ` * Node comparison callback.` |
-|      - |  159 | ` * used-by: [sort(),asort(),...]` |
-|      - |  160 | ` */` |
-|      - |  161 | `/*` |
-|      - |  162 | ` * Compare two scalar values under an EXPLICIT php sort base type (never 0 —` |
-|      - |  163 | ` * SORT_REGULAR is handled by the callers, which differ for keys vs values):` |
-|      - |  164 | ` *   SORT_NUMERIC 1 · SORT_STRING 2 · SORT_LOCALE_STRING 5 · SORT_NATURAL 6,` |
-|      - |  165 | ` * with bFold applying SORT_FLAG_CASE. PHL has no locale tables, so` |
-|      - |  166 | ` * SORT_LOCALE_STRING behaves like SORT_STRING. Mutates both operands (numeric or` |
-|      - |  167 | ` * string cast); the caller owns and releases them.` |
-|      - |  168 | ` */` |
-|    932 |  169 | `static sxi32 HashmapScalarFlagCmp(ph7_value *pA,ph7_value *pB,int base,int bFold)` |
-|      5 |  170 | `{` |
-|      - |  171 | `	sxi32 rc;` |
-|    937 |  172 | `	if( base == 1 ){` |
-|      - |  173 | `		/* SORT_NUMERIC compares as DOUBLES. php's numeric_compare_function is` |
-|      - |  174 | ``		 * `zval_get_double(a)` vs `zval_get_double(b)` under ZEND_THREEWAY_COMPARE`` |
-|      - |  175 | `		 * — not a value comparison over whatever type each operand happens to` |
-|      - |  176 | `		 * settle on. Two consequences PHL got wrong by folding to a NUMBER and` |
-|      - |  177 | `		 * calling the ordinary comparator: the diagnostic named the wrong type` |
-|      - |  178 | `		 * (an object warned "could not be converted to int" where php says` |
-|      - |  179 | `		 * "to float"), and integers above 2^53 were ordered EXACTLY where php's` |
-|      - |  180 | ``		 * doubles tie — `sort([PHP_INT_MAX, PHP_INT_MAX-1], SORT_NUMERIC)` left`` |
-|      - |  181 | `		 * php's stable sort's original order and PHL re-ordered them. Matching php` |
-|      - |  182 | `		 * means adopting its precision loss, which is what parity is (§10).` |
-|      - |  183 | `		 * The == / < shape is ZEND_THREEWAY_COMPARE's, so NaN — equal to nothing,` |
-|      - |  184 | `		 * less than nothing — answers 1 in both engines. */` |
-|      - |  185 | `		ph7_real rA,rB;` |
-|    230 |  186 | `		PH7_MemObjToReal(pA);` |
-|    230 |  187 | `		PH7_MemObjToReal(pB);` |
-|    230 |  188 | `		rA = pA->rVal;` |
-|    230 |  189 | `		rB = pB->rVal;` |
-|    230 |  190 | `		rc = (rA == rB) ? 0 : ((rA < rB) ? -1 : 1);` |
-|    116 |  191 | `	}else{` |
-|      - |  192 | `		/* SORT_STRING (2) / SORT_LOCALE_STRING (5) / SORT_NATURAL (6) */` |
-|      - |  193 | `		const char *zA,*zB;` |
-|      - |  194 | `		sxu32 nA,nB,nMin,i;` |
-|    709 |  195 | `		if( (pA->iFlags & MEMOBJ_STRING) == 0 ){ HashmapFlagStringify(pA); }` |
-|    709 |  196 | `		if( (pB->iFlags & MEMOBJ_STRING) == 0 ){ HashmapFlagStringify(pB); }` |
-|    709 |  197 | `		zA = (const char *)SyBlobData(&pA->sBlob);` |
-|    709 |  198 | `		zB = (const char *)SyBlobData(&pB->sBlob);` |
-|    709 |  199 | `		nA = SyBlobLength(&pA->sBlob);` |
-|    709 |  200 | `		nB = SyBlobLength(&pB->sBlob);` |
-|    709 |  201 | `		if( base == 6 ){` |
-|    189 |  202 | `			rc = PH7_StrNatCmp(zA,(int)nA,zB,(int)nB,bFold);` |
-|     96 |  203 | `		}else{` |
-|      - |  204 | `			/* Lexicographic comparison (binary-safe), case-folded on request. */` |
-|    522 |  205 | `			nMin = nA < nB ? nA : nB;` |
-|    522 |  206 | `			rc = 0;` |
-|    724 |  207 | `			for( i = 0 ; i < nMin ; ++i ){` |
-|    610 |  208 | `				int ca = (unsigned char)zA[i];` |
-|    610 |  209 | `				int cb = (unsigned char)zB[i];` |
-|    610 |  210 | `				if( bFold ){ ca = SyToLower(ca); cb = SyToLower(cb); }` |
-|    610 |  211 | `				if( ca != cb ){ rc = ca < cb ? -1 : 1; break; }` |
-|    104 |  212 | `			}` |
-|    522 |  213 | `			if( rc == 0 ){` |
-|    117 |  214 | `				if( nA < nB ) rc = -1;` |
-|     77 |  215 | `				else if( nA > nB ) rc = 1;` |
-|     57 |  216 | `			}` |
-|      - |  217 | `		}` |
-|      - |  218 | `	}` |
-|    937 |  219 | `	return rc;` |
-|      5 |  220 | `}` |
-|      - |  221 | `/*` |
-|      - |  222 | ` * Are two live values equal under an array_unique() sort_flags? A non-mutating` |
-|      - |  223 | ` * wrapper (works on private copies): base 0 = SORT_REGULAR loose comparison,` |
-|      - |  224 | ` * explicit flags route through HashmapScalarFlagCmp. Used by array_unique.` |
-|      - |  225 | ` */` |
-|    374 |  226 | `PH7_PRIVATE int HashmapValueFlagEqual(ph7_vm *pVm,ph7_value *pA,ph7_value *pB,int base,int bFold)` |
-|      3 |  227 | `{` |
-|      - |  228 | `	ph7_value sA,sB;` |
-|      - |  229 | `	sxi32 rc;` |
-|    377 |  230 | `	PH7_MemObjInit(pVm,&sA);` |
-|    377 |  231 | `	PH7_MemObjInit(pVm,&sB);` |
-|    377 |  232 | `	PH7_MemObjStore(pA,&sA);` |
-|    377 |  233 | `	PH7_MemObjStore(pB,&sB);` |
-|    377 |  234 | `	if( base == 0 ){` |
-|     14 |  235 | `		rc = PH7_MemObjCmp(&sA,&sB,FALSE,0); /* SORT_REGULAR: loose comparison */` |
-|      8 |  236 | `	}else{` |
-|    365 |  237 | `		rc = HashmapScalarFlagCmp(&sA,&sB,base,bFold);` |
-|      - |  238 | `	}` |
-|    377 |  239 | `	PH7_MemObjRelease(&sA);` |
-|    377 |  240 | `	PH7_MemObjRelease(&sB);` |
-|    377 |  241 | `	return rc == 0;` |
-|      3 |  242 | `}` |
+|    418 |  140 | `static void HashmapFlagStringify(ph7_value *pVal)` |
+|      5 |  141 | `{` |
+|    423 |  142 | `	ph7_vm *pVm = pVal->pVm;` |
+|    423 |  143 | `	sxi32 rc = PH7_EXCEPTION;` |
+|    418 |  144 | `	if( (pVal->iFlags & MEMOBJ_OBJ) && pVm` |
+|     87 |  145 | `	 && (pVm->iCmpCallbackExc != 0 \|\| PH7_CALLBACK_UNWOUND(pVm->nBoundaryRc)) ){` |
+|      - |  146 | `		/* This sort already coerced an object once and it did not succeed: php` |
+|      - |  147 | `		 * raises the refusal Error once, and it enters no PHP function at all` |
+|      - |  148 | `		 * while an exception is pending (zend_call_function bails on` |
+|      - |  149 | `		 * EG(exception)), so neither arm runs again -- the operand just renders` |
+|      - |  150 | `		 * as the empty string a refused cast gives. The raise-once guard used to` |
+|      - |  151 | `		 * cover only the NOT-STRINGABLE arm, so a throwing __toString() body went` |
+|      - |  152 | `		 * round again on the next pair; uncaught, it reported the fatal once per` |
+|      - |  153 | `		 * comparison, and after a catch had run in place the second throw was` |
+|      - |  154 | `		 * uncaught and killed a script php merely says "caught" in.` |
+|      - |  155 | `		 * OBJECTS only: blanking an int or a string here would re-order the rest` |
+|      - |  156 | `		 * of the array. */` |
+|     26 |  157 | `		PH7_MemObjRelease(pVal);` |
+|     26 |  158 | `		MemObjSetType(pVal,MEMOBJ_STRING);` |
+|     26 |  159 | `		return;` |
+|      - |  160 | `	}` |
+|    399 |  161 | `	if( !PH7_MemObjIsNotStringable(pVal) ){` |
+|    361 |  162 | `		rc = PH7_MemObjToStringUV(pVal);` |
+|    361 |  163 | `		if( rc == SXRET_OK ){` |
+|    353 |  164 | `			return;` |
+|      - |  165 | `		}` |
+|      - |  166 | `		/* A __toString() that THREW. Same shape as a refused cast from here on. */` |
+|      5 |  167 | `	}else{` |
+|     40 |  168 | `		rc = PH7_MemObjToStringUV(pVal); /* raises php's Error */` |
+|      - |  169 | `	}` |
+|     48 |  170 | `	if( pVm ){` |
+|      - |  171 | `		/* Latch the STATUS the coercion answered, so an UNCAUGHT throw (or an` |
+|      - |  172 | `		 * exit()) out of __toString() leaves the sort with PH7_ABORT rather than` |
+|      - |  173 | `		 * a downgraded PH7_EXCEPTION. */` |
+|     48 |  174 | `		pVm->iCmpCallbackExc = PH7_CALLBACK_UNWOUND(rc) ? rc : PH7_EXCEPTION;` |
+|     23 |  175 | `	}` |
+|     48 |  176 | `	PH7_MemObjRelease(pVal);` |
+|     48 |  177 | `	MemObjSetType(pVal,MEMOBJ_STRING);` |
+|    214 |  178 | `}` |
+|      - |  179 | `/*` |
+|      - |  180 | ` * Node comparison callback.` |
+|      - |  181 | ` * used-by: [sort(),asort(),...]` |
+|      - |  182 | ` */` |
+|      - |  183 | `/*` |
+|      - |  184 | ` * Compare two scalar values under an EXPLICIT php sort base type (never 0 —` |
+|      - |  185 | ` * SORT_REGULAR is handled by the callers, which differ for keys vs values):` |
+|      - |  186 | ` *   SORT_NUMERIC 1 · SORT_STRING 2 · SORT_LOCALE_STRING 5 · SORT_NATURAL 6,` |
+|      - |  187 | ` * with bFold applying SORT_FLAG_CASE. PHL has no locale tables, so` |
+|      - |  188 | ` * SORT_LOCALE_STRING behaves like SORT_STRING. Mutates both operands (numeric or` |
+|      - |  189 | ` * string cast); the caller owns and releases them.` |
+|      - |  190 | ` */` |
+| 520120 |  191 | `static sxi32 HashmapScalarFlagCmp(ph7_value *pA,ph7_value *pB,int base,int bFold)` |
+|      5 |  192 | `{` |
+|      - |  193 | `	sxi32 rc;` |
+| 520125 |  194 | `	if( base == 1 ){` |
+|      - |  195 | `		/* SORT_NUMERIC compares as DOUBLES. php's numeric_compare_function is` |
+|      - |  196 | ``		 * `zval_get_double(a)` vs `zval_get_double(b)` under ZEND_THREEWAY_COMPARE`` |
+|      - |  197 | `		 * — not a value comparison over whatever type each operand happens to` |
+|      - |  198 | `		 * settle on. Two consequences PHL got wrong by folding to a NUMBER and` |
+|      - |  199 | `		 * calling the ordinary comparator: the diagnostic named the wrong type` |
+|      - |  200 | `		 * (an object warned "could not be converted to int" where php says` |
+|      - |  201 | `		 * "to float"), and integers above 2^53 were ordered EXACTLY where php's` |
+|      - |  202 | ``		 * doubles tie — `sort([PHP_INT_MAX, PHP_INT_MAX-1], SORT_NUMERIC)` left`` |
+|      - |  203 | `		 * php's stable sort's original order and PHL re-ordered them. Matching php` |
+|      - |  204 | `		 * means adopting its precision loss, which is what parity is (§10).` |
+|      - |  205 | `		 * The == / < shape is ZEND_THREEWAY_COMPARE's, so NaN — equal to nothing,` |
+|      - |  206 | `		 * less than nothing — answers 1 in both engines. */` |
+|      - |  207 | `		ph7_real rA,rB;` |
+|    230 |  208 | `		PH7_MemObjToReal(pA);` |
+|    230 |  209 | `		PH7_MemObjToReal(pB);` |
+|    230 |  210 | `		rA = pA->rVal;` |
+|    230 |  211 | `		rB = pB->rVal;` |
+|    230 |  212 | `		rc = (rA == rB) ? 0 : ((rA < rB) ? -1 : 1);` |
+|    116 |  213 | `	}else{` |
+|      - |  214 | `		/* SORT_STRING (2) / SORT_LOCALE_STRING (5) / SORT_NATURAL (6) */` |
+|      - |  215 | `		const char *zA,*zB;` |
+|      - |  216 | `		sxu32 nA,nB,nMin,i;` |
+| 519897 |  217 | `		if( (pA->iFlags & MEMOBJ_STRING) == 0 ){ HashmapFlagStringify(pA); }` |
+| 519897 |  218 | `		if( (pB->iFlags & MEMOBJ_STRING) == 0 ){ HashmapFlagStringify(pB); }` |
+| 519897 |  219 | `		zA = (const char *)SyBlobData(&pA->sBlob);` |
+| 519897 |  220 | `		zB = (const char *)SyBlobData(&pB->sBlob);` |
+| 519897 |  221 | `		nA = SyBlobLength(&pA->sBlob);` |
+| 519897 |  222 | `		nB = SyBlobLength(&pB->sBlob);` |
+| 519897 |  223 | `		if( base == 6 ){` |
+|    189 |  224 | `			rc = PH7_StrNatCmp(zA,(int)nA,zB,(int)nB,bFold);` |
+|     96 |  225 | `		}else{` |
+|      - |  226 | `			/* Lexicographic comparison (binary-safe), case-folded on request. */` |
+| 519711 |  227 | `			nMin = nA < nB ? nA : nB;` |
+| 519711 |  228 | `			rc = 0;` |
+| 633189 |  229 | `			for( i = 0 ; i < nMin ; ++i ){` |
+| 632769 |  230 | `				int ca = (unsigned char)zA[i];` |
+| 632769 |  231 | `				int cb = (unsigned char)zB[i];` |
+| 632769 |  232 | `				if( bFold ){ ca = SyToLower(ca); cb = SyToLower(cb); }` |
+| 632769 |  233 | `				if( ca != cb ){ rc = ca < cb ? -1 : 1; break; }` |
+|  56744 |  234 | `			}` |
+| 519711 |  235 | `			if( rc == 0 ){` |
+|    425 |  236 | `				if( nA < nB ) rc = -1;` |
+|    271 |  237 | `				else if( nA > nB ) rc = 1;` |
+|    210 |  238 | `			}` |
+|      - |  239 | `		}` |
+|      - |  240 | `	}` |
+| 520125 |  241 | `	return rc;` |
+|      5 |  242 | `}` |
 |      - |  243 | `/*` |
-|      - |  244 | ` * Compare two node VALUES under php's sort_flags (base 0 = SORT_REGULAR uses the` |
-|      - |  245 | ` * standard value comparison; explicit flags route through HashmapScalarFlagCmp).` |
-|      - |  246 | ` */` |
-|    504 |  247 | `static sxi32 HashmapFlagValueCmp(ph7_hashmap_node *pA,ph7_hashmap_node *pB,sxi32 iFlags)` |
-|      5 |  248 | `{` |
-|      - |  249 | `	ph7_value sA,sB;` |
-|    509 |  250 | `	int base = iFlags & ~8;      /* strip SORT_FLAG_CASE */` |
-|    509 |  251 | `	int bFold = (iFlags & 8) != 0;` |
-|      - |  252 | `	sxi32 rc;` |
-|    509 |  253 | `	if( base == 0 ){` |
-|      - |  254 | `		/* SORT_REGULAR */` |
-|     65 |  255 | `		return HashmapNodeCmp(pA,pB,FALSE);` |
-|      - |  256 | `	}` |
-|    447 |  257 | `	PH7_MemObjInit(pA->pMap->pVm,&sA);` |
-|    447 |  258 | `	PH7_MemObjInit(pA->pMap->pVm,&sB);` |
-|    447 |  259 | `	PH7_HashmapExtractNodeValue(pA,&sA,FALSE);` |
-|    447 |  260 | `	PH7_HashmapExtractNodeValue(pB,&sB,FALSE);` |
-|    447 |  261 | `	rc = HashmapScalarFlagCmp(&sA,&sB,base,bFold);` |
-|    447 |  262 | `	PH7_MemObjRelease(&sA);` |
-|    447 |  263 | `	PH7_MemObjRelease(&sB);` |
-|    447 |  264 | `	return rc;` |
-|    257 |  265 | `}` |
-|  93804 |  266 | `static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
-|      5 |  267 | `{` |
-|  93809 |  268 | `	if( pCmpData == 0 ){` |
-|      - |  269 | `		/* SORT_REGULAR fast path */` |
-|  93441 |  270 | `		return HashmapNodeCmp(pA,pB,FALSE);` |
-|      - |  271 | `	}` |
-|    372 |  272 | `	return HashmapFlagValueCmp(pA,pB,SX_PTR_TO_INT(pCmpData));` |
-|  46754 |  273 | `}` |
-|      - |  274 | `/*` |
-|      - |  275 | ` * Materialise a node's KEY as a scalar ph7_value (int key -> integer, string key` |
-|      - |  276 | ` * -> string) for a flag-aware key comparison.` |
-|      - |  277 | ` */` |
-|    664 |  278 | `static void HashmapNodeKeyToValue(ph7_hashmap_node *pNode,ph7_value *pOut)` |
-|      3 |  279 | `{` |
-|    667 |  280 | `	if( pNode->iType == HASHMAP_INT_NODE ){` |
-|    108 |  281 | `		PH7_MemObjInitFromInt(pNode->pMap->pVm,pOut,pNode->xKey.iKey);` |
-|     55 |  282 | `	}else{` |
-|    561 |  283 | `		PH7_MemObjInitFromString(pNode->pMap->pVm,pOut,0);` |
-|    840 |  284 | `		PH7_MemObjStringAppend(pOut,(const char *)SyBlobData(&pNode->xKey.sKey),` |
-|    279 |  285 | `			SyBlobLength(&pNode->xKey.sKey));` |
-|      - |  286 | `	}` |
-|    667 |  287 | `}` |
+|      - |  244 | ` * Are two live values equal under an array_unique() sort_flags? A non-mutating` |
+|      - |  245 | ` * wrapper (works on private copies): base 0 = SORT_REGULAR loose comparison,` |
+|      - |  246 | ` * explicit flags route through HashmapScalarFlagCmp. Used by array_unique.` |
+|      - |  247 | ` */` |
+| 519494 |  248 | `PH7_PRIVATE int HashmapValueFlagEqual(ph7_vm *pVm,ph7_value *pA,ph7_value *pB,int base,int bFold)` |
+|      5 |  249 | `{` |
+|      - |  250 | `	ph7_value sA,sB;` |
+|      - |  251 | `	sxi32 rc;` |
+| 519499 |  252 | `	PH7_MemObjInit(pVm,&sA);` |
+| 519499 |  253 | `	PH7_MemObjInit(pVm,&sB);` |
+| 519499 |  254 | `	PH7_MemObjStore(pA,&sA);` |
+| 519499 |  255 | `	PH7_MemObjStore(pB,&sB);` |
+| 519499 |  256 | `	if( base == 0 ){` |
+|     14 |  257 | `		rc = PH7_MemObjCmp(&sA,&sB,FALSE,0); /* SORT_REGULAR: loose comparison */` |
+|      8 |  258 | `	}else{` |
+| 519487 |  259 | `		rc = HashmapScalarFlagCmp(&sA,&sB,base,bFold);` |
+|      - |  260 | `	}` |
+| 519499 |  261 | `	PH7_MemObjRelease(&sA);` |
+| 519499 |  262 | `	PH7_MemObjRelease(&sB);` |
+| 519499 |  263 | `	return rc == 0;` |
+|      5 |  264 | `}` |
+|      - |  265 | `/*` |
+|      - |  266 | ` * Compare two node VALUES under php's sort_flags (base 0 = SORT_REGULAR uses the` |
+|      - |  267 | ` * standard value comparison; explicit flags route through HashmapScalarFlagCmp).` |
+|      - |  268 | ` */` |
+|    600 |  269 | `static sxi32 HashmapFlagValueCmp(ph7_hashmap_node *pA,ph7_hashmap_node *pB,sxi32 iFlags)` |
+|      5 |  270 | `{` |
+|      - |  271 | `	ph7_value sA,sB;` |
+|    605 |  272 | `	int base = iFlags & ~8;      /* strip SORT_FLAG_CASE */` |
+|    605 |  273 | `	int bFold = (iFlags & 8) != 0;` |
+|      - |  274 | `	sxi32 rc;` |
+|    605 |  275 | `	if( base == 0 ){` |
+|      - |  276 | `		/* SORT_REGULAR */` |
+|     94 |  277 | `		return HashmapNodeCmp(pA,pB,FALSE);` |
+|      - |  278 | `	}` |
+|    515 |  279 | `	PH7_MemObjInit(pA->pMap->pVm,&sA);` |
+|    515 |  280 | `	PH7_MemObjInit(pA->pMap->pVm,&sB);` |
+|    515 |  281 | `	PH7_HashmapExtractNodeValue(pA,&sA,FALSE);` |
+|    515 |  282 | `	PH7_HashmapExtractNodeValue(pB,&sB,FALSE);` |
+|    515 |  283 | `	rc = HashmapScalarFlagCmp(&sA,&sB,base,bFold);` |
+|    515 |  284 | `	PH7_MemObjRelease(&sA);` |
+|    515 |  285 | `	PH7_MemObjRelease(&sB);` |
+|    515 |  286 | `	return rc;` |
+|    305 |  287 | `}` |
 |      - |  288 | `/*` |
-|      - |  289 | ` * Shared key comparison for ksort()/krsort() under SORT_REGULAR: php compares` |
-|      - |  290 | ` * two array KEYS exactly the way it compares two VALUES, so materialise them` |
-|      - |  291 | `` * and hand them to the standard comparison — the same one sort()/`<=>` use.`` |
-|      - |  292 | ` *` |
-|      - |  293 | ` * The hand-rolled version this replaces got the mixed int/string case right but` |
-|      - |  294 | ` * compared two STRING keys BYTEWISE, so two numeric strings sorted by their` |
-|      - |  295 | ` * bytes: ksort(['10.0'=>1,'9.0'=>2]) answered ['10.0','9.0'] where php answers` |
-|      - |  296 | ` * ['9.0','10.0'], ksort(['1e3'=>1,'20'=>2]) put 1e3 (1000) first, and keys that` |
-|      - |  297 | ` * compare EQUAL ('1.0', '01', 1) lost php's stable order.` |
-|      - |  298 | ` */` |
-|    226 |  299 | `static sxi32 HashmapKeyNodeCmp(ph7_hashmap_node *pA,ph7_hashmap_node *pB)` |
-|      1 |  300 | `{` |
-|      - |  301 | `	ph7_value sA,sB;` |
-|      - |  302 | `	sxi32 rc;` |
-|    227 |  303 | `	if( pA->iType == HASHMAP_INT_NODE && pB->iType == HASHMAP_INT_NODE ){` |
-|      - |  304 | `		/* Two integer keys: the common case, and no allocation needed */` |
-|     23 |  305 | `		return pA->xKey.iKey < pB->xKey.iKey ? -1 : (pA->xKey.iKey > pB->xKey.iKey ? 1 : 0);` |
-|      - |  306 | `	}` |
-|    205 |  307 | `	HashmapNodeKeyToValue(pA,&sA);` |
-|    205 |  308 | `	HashmapNodeKeyToValue(pB,&sB);` |
-|    205 |  309 | `	rc = PH7_MemObjCmp(&sA,&sB,FALSE,0);` |
-|    205 |  310 | `	PH7_MemObjRelease(&sA);` |
-|    205 |  311 | `	PH7_MemObjRelease(&sB);` |
-|    205 |  312 | `	return rc;` |
-|    114 |  313 | `}` |
-|      - |  314 | `/*` |
-|      - |  315 | ` * Compare two node KEYS under php's sort_flags. base 0 = SORT_REGULAR keeps the` |
-|      - |  316 | ` * php-8 mixed int/string key semantics (HashmapKeyNodeCmp); explicit flags route` |
-|      - |  317 | ` * the materialised keys through HashmapScalarFlagCmp.` |
-|      - |  318 | ` */` |
-|    128 |  319 | `static sxi32 HashmapFlagKeyCmp(ph7_hashmap_node *pA,ph7_hashmap_node *pB,sxi32 iFlags)` |
-|      3 |  320 | `{` |
-|      - |  321 | `	ph7_value sA,sB;` |
-|    131 |  322 | `	int base = iFlags & ~8;      /* strip SORT_FLAG_CASE */` |
-|    131 |  323 | `	int bFold = (iFlags & 8) != 0;` |
-|      - |  324 | `	sxi32 rc;` |
-|    131 |  325 | `	if( base == 0 ){` |
-|    ! 0 |  326 | `		return HashmapKeyNodeCmp(pA,pB);` |
-|      - |  327 | `	}` |
-|    131 |  328 | `	HashmapNodeKeyToValue(pA,&sA);` |
-|    131 |  329 | `	HashmapNodeKeyToValue(pB,&sB);` |
-|    131 |  330 | `	rc = HashmapScalarFlagCmp(&sA,&sB,base,bFold);` |
-|    131 |  331 | `	PH7_MemObjRelease(&sA);` |
-|    131 |  332 | `	PH7_MemObjRelease(&sB);` |
-|    131 |  333 | `	return rc;` |
-|     67 |  334 | `}` |
-|      - |  335 | `/*` |
-|      - |  336 | ` * Node comparison callback: Compare nodes by keys only.` |
-|      - |  337 | ` * used-by: [ksort()]` |
-|      - |  338 | ` */` |
-|    288 |  339 | `static sxi32 HashmapCmpCallback2(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
-|      3 |  340 | `{` |
-|    291 |  341 | `	if( pCmpData == 0 ){` |
-|    167 |  342 | `		return HashmapKeyNodeCmp(pA,pB);` |
-|      - |  343 | `	}` |
-|    125 |  344 | `	return HashmapFlagKeyCmp(pA,pB,SX_PTR_TO_INT(pCmpData));` |
-|    147 |  345 | `}` |
-|      - |  346 | `/*` |
-|      - |  347 | ` * Node comparison callback.` |
-|      - |  348 | ` * Used by: [rsort(),arsort()];` |
-|      - |  349 | ` */` |
-|    187 |  350 | `static sxi32 HashmapCmpCallback3(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
-|      3 |  351 | `{` |
-|    190 |  352 | `	if( pCmpData == 0 ){` |
-|      - |  353 | `		/* SORT_REGULAR fast path, reversed */` |
-|    131 |  354 | `		return -HashmapNodeCmp(pA,pB,FALSE);` |
-|      - |  355 | `	}` |
-|     61 |  356 | `	return -HashmapFlagValueCmp(pA,pB,SX_PTR_TO_INT(pCmpData));` |
-|     99 |  357 | `}` |
-|      - |  358 | `/*` |
-|      - |  359 | ` * Node comparison callback: Invoke an user-defined callback for the purpose of node comparison.` |
-|      - |  360 | ` * used-by: [usort(),uasort()]` |
-|      - |  361 | ` */` |
-|    202 |  362 | `static sxi32 HashmapCmpCallback4(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
-|      4 |  363 | `{` |
-|      - |  364 | `	ph7_value sResult,*pCallback;` |
-|      - |  365 | `	ph7_value *pV1,*pV2;` |
-|      - |  366 | `	ph7_value *apArg[2];  /* Callback arguments */` |
-|      - |  367 | `	sxi32 rc;` |
-|      - |  368 | `	/* Point to the desired callback */` |
-|    206 |  369 | `	pCallback = (ph7_value *)pCmpData;` |
-|    206 |  370 | `	if( pA->pMap->pVm->iCmpCallbackExc ){` |
-|      - |  371 | `		/* A previous comparison already raised: stop invoking the callback so` |
-|      - |  372 | `		 * the exception is not thrown again, and let the sort wind down. */` |
-|     14 |  373 | `		return 0;` |
-|      - |  374 | `	}` |
-|      - |  375 | `	/* initialize the result value */` |
-|    194 |  376 | `	PH7_MemObjInit(pA->pMap->pVm,&sResult);` |
-|      - |  377 | `	/* Extract nodes values */` |
-|    194 |  378 | `	pV1 = HashmapExtractNodeValue(pA);` |
-|    194 |  379 | `	pV2 = HashmapExtractNodeValue(pB);` |
-|    194 |  380 | `	apArg[0] = pV1;` |
-|    194 |  381 | `	apArg[1] = pV2;` |
-|      - |  382 | `	/* Invoke the callback */` |
-|    194 |  383 | `	rc = PH7_VmCallUserFunction(pA->pMap->pVm,pCallback,2,apArg,&sResult);` |
-|    194 |  384 | `	if( rc == PH7_EXCEPTION ){` |
-|      - |  385 | `		/* The comparator raised: flag it so the sort driver aborts and` |
-|      - |  386 | `		 * propagates, and order this pair arbitrarily for the rest of the run. */` |
-|     10 |  387 | `		pA->pMap->pVm->iCmpCallbackExc = 1;` |
-|     10 |  388 | `		rc = 0;` |
-|    189 |  389 | `	}else if( rc != SXRET_OK ){` |
-|      - |  390 | `		/* An error occured while calling user defined function [i.e: not defined] */` |
-|    ! 0 |  391 | `		rc = -1; /* Set a dummy result */` |
-|    ! 0 |  392 | `	}else{` |
-|      - |  393 | `		/* Extract callback result */` |
-|    185 |  394 | `		if((sResult.iFlags & MEMOBJ_INT) == 0 ){` |
-|      - |  395 | `			/* Perform an int cast */` |
-|    ! 0 |  396 | `			PH7_MemObjToInteger(&sResult);` |
-|    ! 0 |  397 | `		}` |
-|    185 |  398 | `		rc = (sxi32)sResult.x.iVal;` |
-|      - |  399 | `	}` |
-|    194 |  400 | `	PH7_MemObjRelease(&sResult);` |
-|      - |  401 | `	/* Callback result */` |
-|    194 |  402 | `	return rc;` |
-|    105 |  403 | `}` |
+|      - |  289 | ` * A sort comparison can run USER code with no way to report what it did: an` |
+|      - |  290 | `` * object operand's `__toString()` is reached by SORT_REGULAR's value comparison`` |
+|      - |  291 | ` * as well as by the string flags' coercion, and that body can throw or exit().` |
+|      - |  292 | ` * PH7_MemObjCmp only ever answers an ORDERING, so the status is read off the VM` |
+|      - |  293 | ` * instead — every C->PHP dispatch parks an unwind in nBoundaryRc (VmBoundaryPark)` |
+|      - |  294 | ` * and nothing inside a builtin consumes it, so it is still there when the` |
+|      - |  295 | ` * comparison returns.` |
+|      - |  296 | ` *` |
+|      - |  297 | ` * Two things follow, and both were missing: the merge sort must STAND DOWN (a` |
+|      - |  298 | `` * throwing `__toString()` ran again on the next pair -- and since the enclosing`` |
+|      - |  299 | ` * catch had already run in place, the second throw was UNCAUGHT and killed a` |
+|      - |  300 | ` * script php merely reports "caught" in), and the driver must answer with that` |
+|      - |  301 | `` * status rather than `true`.`` |
+|      - |  302 | ` *` |
+|      - |  303 | ` * Deliberately NOT triggered by a not-stringable object's own coercion Error:` |
+|      - |  304 | ` * that one parks nothing and is flagged by HashmapFlagStringify, and php goes on` |
+|      - |  305 | ` * comparing after it (its array comes out fully sorted, the object first).` |
+|      - |  306 | ` */` |
+|  98493 |  307 | `static void HashmapCmpLatch(ph7_vm *pVm)` |
+|      5 |  308 | `{` |
+|  98493 |  309 | `	if( PH7_CALLBACK_UNWOUND(pVm->nBoundaryRc)` |
+|  49222 |  310 | `	 && (pVm->iCmpCallbackExc == 0 \|\| pVm->nBoundaryRc == PH7_ABORT) ){` |
+|    123 |  311 | `		pVm->iCmpCallbackExc = pVm->nBoundaryRc;` |
+|     75 |  312 | `	}` |
+|  98470 |  313 | `}` |
+|  97852 |  314 | `static sxi32 HashmapCmpCallback1(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
+|      5 |  315 | `{` |
+|  97857 |  316 | `	ph7_vm *pVm = pA->pMap->pVm;` |
+|      - |  317 | `	sxi32 rc;` |
+|  97857 |  318 | `	if( pCmpData == 0 ){` |
+|      - |  319 | `		/* SORT_REGULAR fast path */` |
+|  97441 |  320 | `		rc = HashmapNodeCmp(pA,pB,FALSE);` |
+|  48611 |  321 | `	}else{` |
+|    420 |  322 | `		rc = HashmapFlagValueCmp(pA,pB,SX_PTR_TO_INT(pCmpData));` |
+|      - |  323 | `	}` |
+|  97857 |  324 | `	HashmapCmpLatch(pVm);` |
+|  97857 |  325 | `	return rc;` |
+|      5 |  326 | `}` |
+|      - |  327 | `/*` |
+|      - |  328 | ` * Materialise a node's KEY as a scalar ph7_value (int key -> integer, string key` |
+|      - |  329 | ` * -> string) for a flag-aware key comparison.` |
+|      - |  330 | ` */` |
+|    680 |  331 | `static void HashmapNodeKeyToValue(ph7_hashmap_node *pNode,ph7_value *pOut)` |
+|      3 |  332 | `{` |
+|    683 |  333 | `	if( pNode->iType == HASHMAP_INT_NODE ){` |
+|    108 |  334 | `		PH7_MemObjInitFromInt(pNode->pMap->pVm,pOut,pNode->xKey.iKey);` |
+|     55 |  335 | `	}else{` |
+|    577 |  336 | `		PH7_MemObjInitFromString(pNode->pMap->pVm,pOut,0);` |
+|    864 |  337 | `		PH7_MemObjStringAppend(pOut,(const char *)SyBlobData(&pNode->xKey.sKey),` |
+|    287 |  338 | `			SyBlobLength(&pNode->xKey.sKey));` |
+|      - |  339 | `	}` |
+|    683 |  340 | `}` |
+|      - |  341 | `/*` |
+|      - |  342 | ` * Shared key comparison for ksort()/krsort() under SORT_REGULAR: php compares` |
+|      - |  343 | ` * two array KEYS exactly the way it compares two VALUES, so materialise them` |
+|      - |  344 | `` * and hand them to the standard comparison — the same one sort()/`<=>` use.`` |
+|      - |  345 | ` *` |
+|      - |  346 | ` * The hand-rolled version this replaces got the mixed int/string case right but` |
+|      - |  347 | ` * compared two STRING keys BYTEWISE, so two numeric strings sorted by their` |
+|      - |  348 | ` * bytes: ksort(['10.0'=>1,'9.0'=>2]) answered ['10.0','9.0'] where php answers` |
+|      - |  349 | ` * ['9.0','10.0'], ksort(['1e3'=>1,'20'=>2]) put 1e3 (1000) first, and keys that` |
+|      - |  350 | ` * compare EQUAL ('1.0', '01', 1) lost php's stable order.` |
+|      - |  351 | ` */` |
+|    234 |  352 | `static sxi32 HashmapKeyNodeCmp(ph7_hashmap_node *pA,ph7_hashmap_node *pB)` |
+|      2 |  353 | `{` |
+|      - |  354 | `	ph7_value sA,sB;` |
+|      - |  355 | `	sxi32 rc;` |
+|    236 |  356 | `	if( pA->iType == HASHMAP_INT_NODE && pB->iType == HASHMAP_INT_NODE ){` |
+|      - |  357 | `		/* Two integer keys: the common case, and no allocation needed */` |
+|     23 |  358 | `		return pA->xKey.iKey < pB->xKey.iKey ? -1 : (pA->xKey.iKey > pB->xKey.iKey ? 1 : 0);` |
+|      - |  359 | `	}` |
+|    214 |  360 | `	HashmapNodeKeyToValue(pA,&sA);` |
+|    214 |  361 | `	HashmapNodeKeyToValue(pB,&sB);` |
+|    214 |  362 | `	rc = PH7_MemObjCmp(&sA,&sB,FALSE,0);` |
+|    214 |  363 | `	PH7_MemObjRelease(&sA);` |
+|    214 |  364 | `	PH7_MemObjRelease(&sB);` |
+|    214 |  365 | `	return rc;` |
+|    119 |  366 | `}` |
+|      - |  367 | `/*` |
+|      - |  368 | ` * Compare two node KEYS under php's sort_flags. base 0 = SORT_REGULAR keeps the` |
+|      - |  369 | ` * php-8 mixed int/string key semantics (HashmapKeyNodeCmp); explicit flags route` |
+|      - |  370 | ` * the materialised keys through HashmapScalarFlagCmp.` |
+|      - |  371 | ` */` |
+|    128 |  372 | `static sxi32 HashmapFlagKeyCmp(ph7_hashmap_node *pA,ph7_hashmap_node *pB,sxi32 iFlags)` |
+|      3 |  373 | `{` |
+|      - |  374 | `	ph7_value sA,sB;` |
+|    131 |  375 | `	int base = iFlags & ~8;      /* strip SORT_FLAG_CASE */` |
+|    131 |  376 | `	int bFold = (iFlags & 8) != 0;` |
+|      - |  377 | `	sxi32 rc;` |
+|    131 |  378 | `	if( base == 0 ){` |
+|    ! 0 |  379 | `		return HashmapKeyNodeCmp(pA,pB);` |
+|      - |  380 | `	}` |
+|    131 |  381 | `	HashmapNodeKeyToValue(pA,&sA);` |
+|    131 |  382 | `	HashmapNodeKeyToValue(pB,&sB);` |
+|    131 |  383 | `	rc = HashmapScalarFlagCmp(&sA,&sB,base,bFold);` |
+|    131 |  384 | `	PH7_MemObjRelease(&sA);` |
+|    131 |  385 | `	PH7_MemObjRelease(&sB);` |
+|    131 |  386 | `	return rc;` |
+|     67 |  387 | `}` |
+|      - |  388 | `/*` |
+|      - |  389 | ` * Node comparison callback: Compare nodes by keys only.` |
+|      - |  390 | ` * used-by: [ksort()]` |
+|      - |  391 | ` */` |
+|    296 |  392 | `static sxi32 HashmapCmpCallback2(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
+|      3 |  393 | `{` |
+|    299 |  394 | `	ph7_vm *pVm = pA->pMap->pVm;` |
+|      - |  395 | `	sxi32 rc;` |
+|    299 |  396 | `	if( pCmpData == 0 ){` |
+|    176 |  397 | `		rc = HashmapKeyNodeCmp(pA,pB);` |
+|     89 |  398 | `	}else{` |
+|    125 |  399 | `		rc = HashmapFlagKeyCmp(pA,pB,SX_PTR_TO_INT(pCmpData));` |
+|      - |  400 | `	}` |
+|    299 |  401 | `	HashmapCmpLatch(pVm);` |
+|    299 |  402 | `	return rc;` |
+|      3 |  403 | `}` |
 |      - |  404 | `/*` |
-|      - |  405 | ` * Node comparison callback: Compare nodes by keys only.` |
-|      - |  406 | ` * used-by: [krsort()]` |
+|      - |  405 | ` * Node comparison callback.` |
+|      - |  406 | ` * Used by: [rsort(),arsort()];` |
 |      - |  407 | ` */` |
-|     66 |  408 | `static sxi32 HashmapCmpCallback5(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
-|      2 |  409 | `{` |
-|     68 |  410 | `	if( pCmpData == 0 ){` |
-|     61 |  411 | `		return -HashmapKeyNodeCmp(pA,pB); /* Reverse result */` |
-|      - |  412 | `	}` |
-|      8 |  413 | `	return -HashmapFlagKeyCmp(pA,pB,SX_PTR_TO_INT(pCmpData));` |
-|     35 |  414 | `}` |
-|      - |  415 | `/*` |
-|      - |  416 | ` * Node comparison callback: Invoke an user-defined callback for the purpose of node comparison.` |
-|      - |  417 | ` * used-by: [uksort()]` |
-|      - |  418 | ` */` |
-|      8 |  419 | `static sxi32 HashmapCmpCallback6(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
-|      1 |  420 | `{` |
-|      - |  421 | `	ph7_value sResult,*pCallback;` |
-|      - |  422 | `	ph7_value *apArg[2];  /* Callback arguments */` |
-|      - |  423 | `	ph7_value sK1,sK2;` |
-|      - |  424 | `	sxi32 rc;` |
-|      - |  425 | `	/* Point to the desired callback */` |
-|      9 |  426 | `	pCallback = (ph7_value *)pCmpData;` |
-|      9 |  427 | `	if( pA->pMap->pVm->iCmpCallbackExc ){` |
-|      - |  428 | `		/* A previous comparison already raised: stop invoking the callback so` |
-|      - |  429 | `		 * the exception is not thrown again, and let the sort wind down. */` |
-|    ! 0 |  430 | `		return 0;` |
-|      - |  431 | `	}` |
-|      - |  432 | `	/* initialize the result value */` |
-|      9 |  433 | `	PH7_MemObjInit(pA->pMap->pVm,&sResult);` |
-|      9 |  434 | `	PH7_MemObjInit(pA->pMap->pVm,&sK1);` |
-|      9 |  435 | `	PH7_MemObjInit(pA->pMap->pVm,&sK2);` |
-|      - |  436 | `	/* Extract nodes keys */` |
-|      9 |  437 | `	PH7_HashmapExtractNodeKey(pA,&sK1);` |
-|      9 |  438 | `	PH7_HashmapExtractNodeKey(pB,&sK2);` |
-|      9 |  439 | `	apArg[0] = &sK1;` |
-|      9 |  440 | `	apArg[1] = &sK2;` |
-|      - |  441 | `	/* Mark keys as constants */` |
-|      9 |  442 | `	sK1.nIdx = SXU32_HIGH;` |
-|      9 |  443 | `	sK2.nIdx = SXU32_HIGH;` |
-|      - |  444 | `	/* Invoke the callback */` |
-|      9 |  445 | `	rc = PH7_VmCallUserFunction(pA->pMap->pVm,pCallback,2,apArg,&sResult);` |
-|      9 |  446 | `	if( rc == PH7_EXCEPTION ){` |
-|      - |  447 | `		/* The comparator raised: flag it so the sort driver aborts and` |
-|      - |  448 | `		 * propagates, and order this pair arbitrarily for the rest of the run. */` |
-|    ! 0 |  449 | `		pA->pMap->pVm->iCmpCallbackExc = 1;` |
-|    ! 0 |  450 | `		rc = 0;` |
-|      9 |  451 | `	}else if( rc != SXRET_OK ){` |
-|      - |  452 | `		/* An error occured while calling user defined function [i.e: not defined] */` |
-|    ! 0 |  453 | `		rc = -1; /* Set a dummy result */` |
-|    ! 0 |  454 | `	}else{` |
-|      - |  455 | `		/* Extract callback result */` |
-|      9 |  456 | `		if((sResult.iFlags & MEMOBJ_INT) == 0 ){` |
-|      - |  457 | `			/* Perform an int cast */` |
-|    ! 0 |  458 | `			PH7_MemObjToInteger(&sResult);` |
-|    ! 0 |  459 | `		}` |
-|      9 |  460 | `		rc = (sxi32)sResult.x.iVal;` |
-|      - |  461 | `	}` |
-|      9 |  462 | `	PH7_MemObjRelease(&sResult);` |
-|      9 |  463 | `	PH7_MemObjRelease(&sK1);` |
-|      9 |  464 | `	PH7_MemObjRelease(&sK2);` |
-|      - |  465 | `	/* Callback result */` |
-|      9 |  466 | `	return rc;` |
-|      5 |  467 | `}` |
-|      - |  468 | `/*` |
-|      - |  469 | ` * Node comparison callback: Random node comparison.` |
-|      - |  470 | ` * used-by: [shuffle()]` |
-|      - |  471 | ` */` |
-|     20 |  472 | `PH7_PRIVATE sxi32 HashmapCmpCallback7(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
-|      1 |  473 | `{` |
-|      - |  474 | `	sxu32 n;` |
-|     10 |  475 | `	SXUNUSED(pB); /* cc warning */` |
-|     10 |  476 | `	SXUNUSED(pCmpData);` |
-|      - |  477 | `	/* Grab a random number from the MT19937 generator so shuffle()/array_rand()` |
-|      - |  478 | `	 * respond to srand()/mt_srand() (reproducible under a seed), like php. This` |
-|      - |  479 | `	 * is a random-comparator merge sort, not php's Fisher-Yates, so the ordering` |
-|      - |  480 | `	 * is deterministic-under-seed but not value-parity with php. */` |
-|     21 |  481 | `	n = PH7_VmMtRand(pA->pMap->pVm);` |
-|      - |  482 | `	/* if the random number is odd then the first node 'pA' is greater then` |
-|      - |  483 | `	 * the second node 'pB'. Otherwise the reverse is assumed.` |
-|      - |  484 | `	 */` |
-|     21 |  485 | `	return n&1 ? 1 : -1;` |
-|      1 |  486 | `}` |
-|      - |  487 | `/*` |
-|      - |  488 | ` * Rehash all nodes keys after a merge-sort have been applied.` |
-|      - |  489 | ` * Used by [sort(),usort() and rsort()].` |
-|      - |  490 | ` */` |
-|   1418 |  491 | `PH7_PRIVATE void HashmapSortRehash(ph7_hashmap *pMap)` |
-|      5 |  492 | `{` |
-|      - |  493 | `	ph7_hashmap_node *p,*pLast;` |
-|      - |  494 | `	sxu32 i;` |
-|      - |  495 | `	/* Rehash all entries */` |
-|   1423 |  496 | `	pLast = p = pMap->pFirst;` |
-|   1423 |  497 | `	pMap->iNextIdx = 0;` |
-|   1423 |  498 | `	pMap->bIntKeySeen = 0; /* Reset the automatic index */` |
-|   1423 |  499 | `	i = 0;` |
-|  10533 |  500 | `	for( ;; ){` |
-|  21071 |  501 | `		if( i >= pMap->nEntry ){` |
-|   1423 |  502 | `			pMap->pLast = pLast; /* Fix the last link broken by the merge-sort */` |
-|   1423 |  503 | `			break;` |
-|      - |  504 | `		}` |
-|  19653 |  505 | `		if( p->iType == HASHMAP_BLOB_NODE ){` |
-|      - |  506 | `			/* Do not maintain index association as requested by the PHP specification */` |
-|     19 |  507 | `			SyBlobRelease(&p->xKey.sKey);` |
-|      - |  508 | `			/* Change key type */` |
-|     19 |  509 | `			p->iType = HASHMAP_INT_NODE;` |
-|      9 |  510 | `		}` |
-|  19653 |  511 | `		HashmapRehashIntNode(p);` |
-|      - |  512 | `		/* Point to the next entry */` |
-|  19653 |  513 | `		i++;` |
-|  19653 |  514 | `		pLast = p;` |
-|  19653 |  515 | `		p = p->pPrev; /* Reverse link */` |
-|      5 |  516 | `	}` |
-|   1423 |  517 | `}` |
-|      - |  518 | `/*` |
-|      - |  519 | ` * Array functions implementation.` |
-|      - |  520 | ` * Status:` |
-|      - |  521 | ` *  Stable.` |
-|      - |  522 | ` */` |
-|      - |  523 | `/*` |
-|      - |  524 | ` * Reset / report the comparator-throw flag around a FLAG sort. The string sort` |
-|      - |  525 | ` * flags coerce their operands user-visibly (HashmapScalarFlagCmp), and a` |
-|      - |  526 | ` * not-stringable object raises php's Error there; the comparator can only flag` |
-|      - |  527 | ` * it, so every flag-sort driver clears the flag before its merge sort and` |
-|      - |  528 | ` * answers PH7_EXCEPTION after it. php's array is sorted after the throw too, so` |
-|      - |  529 | ` * the rehash still runs.` |
-|      - |  530 | ` */` |
-|   1660 |  531 | `static sxi32 HashmapFlagSortStatus(ph7_context *pCtx)` |
-|      5 |  532 | `{` |
-|   1665 |  533 | `	if( pCtx->pVm->iCmpCallbackExc ){` |
-|     25 |  534 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
-|     25 |  535 | `		pCtx->nThrowRc = PH7_EXCEPTION;` |
-|     25 |  536 | `		return PH7_EXCEPTION;` |
-|      - |  537 | `	}` |
-|   1641 |  538 | `	return PH7_OK;` |
-|    835 |  539 | `}` |
-|      - |  540 | `/*` |
-|      - |  541 | ` * bool sort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
-|      - |  542 | ` * Sort an array.` |
-|      - |  543 | ` * Parameters` |
-|      - |  544 | ` *  $array` |
-|      - |  545 | ` *   The input array.` |
-|      - |  546 | ` * $sort_flags` |
-|      - |  547 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
-|      - |  548 | ` *  Sorting type flags:` |
-|      - |  549 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
-|      - |  550 | ` *   SORT_NUMERIC - compare items numerically` |
-|      - |  551 | ` *   SORT_STRING - compare items as strings` |
-|      - |  552 | ` * Return` |
-|      - |  553 | ` *  TRUE on success or FALSE on failure.` |
-|      - |  554 | ` *` |
-|      - |  555 | ` */` |
-|   1374 |  556 | `PH7_PRIVATE int ph7_hashmap_sort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      5 |  557 | `{` |
-|      - |  558 | `	ph7_hashmap *pMap;` |
-|      - |  559 | `	/* Make sure we are dealing with a valid hashmap */` |
-|   1379 |  560 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
-|      - |  561 | `		/* Missing/Invalid arguments,return FALSE */` |
-|    ! 0 |  562 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 |  563 | `		return PH7_OK;` |
-|      - |  564 | `	}` |
-|      - |  565 | `	/* Point to the internal representation of the input hashmap */` |
-|   1379 |  566 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|   1379 |  567 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|   1379 |  568 | `	if( pMap->nEntry > 1 ){` |
-|   1343 |  569 | `		sxi32 iCmpFlags = 0;` |
-|   1343 |  570 | `		if( nArg > 1 ){` |
-|      - |  571 | `			/* Extract comparison flags */` |
-|     58 |  572 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
-|     27 |  573 | `		}` |
-|      - |  574 | `		/* Do the merge sort */` |
-|   1343 |  575 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
-|   1343 |  576 | `		HashmapMergeSort(pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));` |
-|      - |  577 | `		/* Rehash [Do not maintain index association as requested by the PHP specification] */` |
-|   1343 |  578 | `		HashmapSortRehash(pMap);` |
-|    706 |  579 | `	}else if( pMap->nEntry == 1 ){` |
-|      - |  580 | `		/* php reindexes even a single-element array: a string key becomes 0 */` |
-|     15 |  581 | `		HashmapSortRehash(pMap);` |
-|      7 |  582 | `	}` |
-|      - |  583 | `	{` |
-|   1379 |  584 | `		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);` |
-|   1379 |  585 | `		if( rcCmp != PH7_OK ){` |
-|     13 |  586 | `			return rcCmp;` |
-|      - |  587 | `		}` |
-|      - |  588 | `	}` |
-|      - |  589 | `	/* All done,return TRUE */` |
-|   1367 |  590 | `	ph7_result_bool(pCtx,1);` |
-|   1367 |  591 | `	return PH7_OK;` |
-|    692 |  592 | `}` |
-|      - |  593 | `/*` |
-|      - |  594 | ` * bool asort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
-|      - |  595 | ` *  Sort an array and maintain index association.` |
-|      - |  596 | ` * Parameters` |
-|      - |  597 | ` *  $array` |
-|      - |  598 | ` *   The input array.` |
-|      - |  599 | ` * $sort_flags` |
-|      - |  600 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
-|      - |  601 | ` *  Sorting type flags:` |
-|      - |  602 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
-|      - |  603 | ` *   SORT_NUMERIC - compare items numerically` |
-|      - |  604 | ` *   SORT_STRING - compare items as strings` |
-|      - |  605 | ` * Return` |
-|      - |  606 | ` *  TRUE on success or FALSE on failure.` |
-|      - |  607 | ` */` |
-|     50 |  608 | `PH7_PRIVATE int ph7_hashmap_asort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      4 |  609 | `{` |
-|      - |  610 | `	ph7_hashmap *pMap;` |
-|      - |  611 | `	/* PHP 8: ArgumentCountError if no arguments */` |
-|     54 |  612 | `	if( nArg < 1 ){` |
-|    ! 0 |  613 | `		return PH7_VmThrowException(pCtx,` |
-|      - |  614 | `			"ArgumentCountError",` |
-|      - |  615 | `			"asort() expects at least 1 argument, 0 given"` |
-|      - |  616 | `			);` |
-|      - |  617 | `	}` |
-|      - |  618 | `	/* PHP 8: TypeError if first argument is not an array */` |
-|     54 |  619 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|    ! 0 |  620 | `		return PH7_VmThrowException(pCtx,` |
-|      - |  621 | `			"TypeError",` |
-|      - |  622 | `			"asort(): Argument #1 ($array) must be of type array, %s given",` |
-|    ! 0 |  623 | `			ph7_type_name(apArg[0])` |
-|      - |  624 | `			);` |
-|      - |  625 | `	}` |
-|      - |  626 | `	/* Point to the internal representation of the input hashmap */` |
-|     54 |  627 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|     54 |  628 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|     54 |  629 | `	if( pMap->nEntry > 1 ){` |
-|     48 |  630 | `		sxi32 iCmpFlags = 0;` |
-|     48 |  631 | `		if( nArg > 1 ){` |
-|      - |  632 | `			/* Extract comparison flags */` |
-|     30 |  633 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
-|     13 |  634 | `		}` |
-|      - |  635 | `		/* Do the merge sort */` |
-|     48 |  636 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
-|     48 |  637 | `		HashmapMergeSort(pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));` |
-|      - |  638 | `		/* Fix the last link broken by the merge */` |
-|    112 |  639 | `		while(pMap->pLast->pPrev){` |
-|     68 |  640 | `			pMap->pLast = pMap->pLast->pPrev;` |
-|      4 |  641 | `		}` |
-|     22 |  642 | `	}` |
-|      - |  643 | `	{` |
-|     54 |  644 | `		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);` |
-|     54 |  645 | `		if( rcCmp != PH7_OK ){` |
-|      5 |  646 | `			return rcCmp;` |
-|      - |  647 | `		}` |
-|      - |  648 | `	}` |
-|      - |  649 | `	/* All done,return TRUE */` |
-|     50 |  650 | `	ph7_result_bool(pCtx,1);` |
-|     50 |  651 | `	return PH7_OK;` |
-|     29 |  652 | `}` |
-|      - |  653 | `/*` |
-|      - |  654 | ` * bool natsort(array &$array)` |
-|      - |  655 | ` * bool natcasesort(array &$array)` |
-|      - |  656 | ` *  Sort an array with php's "natural order" algorithm, maintaining index` |
-|      - |  657 | ` *  association: exactly asort() under SORT_NATURAL (plus SORT_FLAG_CASE for the` |
-|      - |  658 | ` *  case-insensitive twin), which is how php implements them too.` |
-|      - |  659 | ` *` |
-|      - |  660 | `` *  They used to be PRELUDE wrappers over `uasort($array, 'strnatcmp')`, and that`` |
-|      - |  661 | ` *  is a different function: uasort hands each element to a userland callback, so` |
-|      - |  662 | `` *  every element had to satisfy strnatcmp's `string` ZPP row. php's natsort`` |
-|      - |  663 | ` *  COERCES each element the way any string comparison does, so` |
-|      - |  664 | `` *  `natsort([10, "9", null])` — nothing exotic, just a mixed array — was a`` |
-|      - |  665 | ` *  TypeError in PHL and a sorted array in php, and an object with no` |
-|      - |  666 | ` *  __toString() answered strnatcmp's ZPP TypeError instead of php's coercion` |
-|      - |  667 | ` *  Error. Routing through the flag comparator picks up HashmapFlagStringify,` |
-|      - |  668 | ` *  which already renders arrays with php's "Array to string conversion" warning` |
-|      - |  669 | ` *  and raises the coercion Error once per sort.` |
-|      - |  670 | ` */` |
-|     26 |  671 | `PH7_PRIVATE int ph7_hashmap_natsort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      3 |  672 | `{` |
-|     29 |  673 | `	const char *zName = ph7_function_name(pCtx);` |
-|      - |  674 | `	/* natcasesort() is the SORT_FLAG_CASE twin; match the whole name, not a byte. */` |
-|     34 |  675 | `	int bFold = zName && SyStrlen(zName) == sizeof("natcasesort")-1` |
-|     39 |  676 | `		&& SyMemcmp(zName,"natcasesort",sizeof("natcasesort")-1) == 0;` |
-|      - |  677 | `	ph7_hashmap *pMap;` |
-|     29 |  678 | `	if( nArg < 1 ){` |
-|    ! 0 |  679 | `		return PH7_VmThrowException(pCtx,` |
-|      - |  680 | `			"ArgumentCountError",` |
-|    ! 0 |  681 | `			"%s() expects exactly 1 argument, 0 given",zName` |
-|      - |  682 | `			);` |
-|      - |  683 | `	}` |
-|     29 |  684 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|    ! 0 |  685 | `		return PH7_VmThrowException(pCtx,` |
-|      - |  686 | `			"TypeError",` |
-|      - |  687 | `			"%s(): Argument #1 ($array) must be of type array, %s given",` |
-|    ! 0 |  688 | `			zName,ph7_type_name(apArg[0])` |
-|      - |  689 | `			);` |
-|      - |  690 | `	}` |
-|     29 |  691 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|     29 |  692 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|     29 |  693 | `	if( pMap->nEntry > 1 ){` |
-|      - |  694 | `		/* SORT_NATURAL (6), optionally \| SORT_FLAG_CASE (8) — the same iFlags` |
-|      - |  695 | `		 * word asort() forwards, so this is asort($a, SORT_NATURAL) exactly. */` |
-|     25 |  696 | `		sxi32 iCmpFlags = bFold ? (6\|8) : 6;` |
-|     25 |  697 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
-|     25 |  698 | `		HashmapMergeSort(pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));` |
-|     57 |  699 | `		while(pMap->pLast->pPrev){` |
-|     35 |  700 | `			pMap->pLast = pMap->pLast->pPrev;` |
-|      3 |  701 | `		}` |
-|     11 |  702 | `	}` |
-|      - |  703 | `	{` |
-|     29 |  704 | `		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);` |
-|     29 |  705 | `		if( rcCmp != PH7_OK ){` |
-|      5 |  706 | `			return rcCmp;` |
-|      - |  707 | `		}` |
-|      - |  708 | `	}` |
-|     25 |  709 | `	ph7_result_bool(pCtx,1);` |
-|     25 |  710 | `	return PH7_OK;` |
-|     16 |  711 | `}` |
-|      - |  712 | `/*` |
-|      - |  713 | ` * bool arsort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
-|      - |  714 | ` *  Sort an array in reverse order and maintain index association.` |
-|      - |  715 | ` * Parameters` |
-|      - |  716 | ` *  $array` |
-|      - |  717 | ` *   The input array.` |
-|      - |  718 | ` * $sort_flags` |
-|      - |  719 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
-|      - |  720 | ` *  Sorting type flags:` |
-|      - |  721 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
-|      - |  722 | ` *   SORT_NUMERIC - compare items numerically` |
-|      - |  723 | ` *   SORT_STRING - compare items as strings` |
-|      - |  724 | ` * Return` |
-|      - |  725 | ` *  TRUE on success or FALSE on failure.` |
-|      - |  726 | ` */` |
-|     28 |  727 | `PH7_PRIVATE int ph7_hashmap_arsort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      3 |  728 | `{` |
-|      - |  729 | `	ph7_hashmap *pMap;` |
-|      - |  730 | `	/* PHP 8: ArgumentCountError if no arguments */` |
-|     31 |  731 | `	if( nArg < 1 ){` |
-|    ! 0 |  732 | `		return PH7_VmThrowException(pCtx,` |
-|      - |  733 | `			"ArgumentCountError",` |
-|      - |  734 | `			"arsort() expects at least 1 argument, 0 given"` |
-|      - |  735 | `			);` |
-|      - |  736 | `	}` |
-|      - |  737 | `	/* PHP 8: TypeError if first argument is not an array */` |
-|     31 |  738 | `	if( !ph7_value_is_array(apArg[0]) ){` |
-|    ! 0 |  739 | `		return PH7_VmThrowException(pCtx,` |
-|      - |  740 | `			"TypeError",` |
-|      - |  741 | `			"arsort(): Argument #1 ($array) must be of type array, %s given",` |
-|    ! 0 |  742 | `			ph7_type_name(apArg[0])` |
-|      - |  743 | `			);` |
-|      - |  744 | `	}` |
-|      - |  745 | `	/* Point to the internal representation of the input hashmap */` |
-|     31 |  746 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|     31 |  747 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|     31 |  748 | `	if( pMap->nEntry > 1 ){` |
-|     27 |  749 | `		sxi32 iCmpFlags = 0;` |
-|     27 |  750 | `		if( nArg > 1 ){` |
-|      - |  751 | `			/* Extract comparison flags */` |
-|     13 |  752 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
-|      5 |  753 | `		}` |
-|      - |  754 | `		/* Do the merge sort */` |
-|     27 |  755 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
-|     27 |  756 | `		HashmapMergeSort(pMap,HashmapCmpCallback3,SX_INT_TO_PTR(iCmpFlags));` |
-|      - |  757 | `		/* Fix the last link broken by the merge */` |
-|     45 |  758 | `		while(pMap->pLast->pPrev){` |
-|     20 |  759 | `			pMap->pLast = pMap->pLast->pPrev;` |
-|      2 |  760 | `		}` |
-|     12 |  761 | `	}` |
-|      - |  762 | `	{` |
-|     31 |  763 | `		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);` |
-|     31 |  764 | `		if( rcCmp != PH7_OK ){` |
-|      3 |  765 | `			return rcCmp;` |
-|      - |  766 | `		}` |
-|      - |  767 | `	}` |
-|      - |  768 | `	/* All done,return TRUE */` |
-|     28 |  769 | `	ph7_result_bool(pCtx,1);` |
-|     28 |  770 | `	return PH7_OK;` |
-|     17 |  771 | `}` |
-|      - |  772 | `/*` |
-|      - |  773 | ` * bool ksort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
-|      - |  774 | ` *  Sort an array by key.` |
-|      - |  775 | ` * Parameters` |
-|      - |  776 | ` *  $array` |
-|      - |  777 | ` *   The input array.` |
-|      - |  778 | ` * $sort_flags` |
-|      - |  779 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
-|      - |  780 | ` *  Sorting type flags:` |
-|      - |  781 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
-|      - |  782 | ` *   SORT_NUMERIC - compare items numerically` |
-|      - |  783 | ` *   SORT_STRING - compare items as strings` |
-|      - |  784 | ` * Return` |
-|      - |  785 | ` *  TRUE on success or FALSE on failure.` |
-|      - |  786 | ` */` |
-|    104 |  787 | `PH7_PRIVATE int ph7_hashmap_ksort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      3 |  788 | `{` |
-|      - |  789 | `	ph7_hashmap *pMap;` |
-|      - |  790 | `	/* Make sure we are dealing with a valid hashmap */` |
-|    107 |  791 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
-|      - |  792 | `		/* Missing/Invalid arguments,return FALSE */` |
-|    ! 0 |  793 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 |  794 | `		return PH7_OK;` |
-|      - |  795 | `	}` |
-|      - |  796 | `	/* Point to the internal representation of the input hashmap */` |
-|    107 |  797 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|    107 |  798 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|    107 |  799 | `	if( pMap->nEntry > 1 ){` |
-|    107 |  800 | `		sxi32 iCmpFlags = 0;` |
-|    107 |  801 | `		if( nArg > 1 ){` |
-|      - |  802 | `			/* Extract comparison flags */` |
-|     57 |  803 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
-|     27 |  804 | `		}` |
-|      - |  805 | `		/* Do the merge sort */` |
-|    107 |  806 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
-|    107 |  807 | `		HashmapMergeSort(pMap,HashmapCmpCallback2,SX_INT_TO_PTR(iCmpFlags));` |
-|      - |  808 | `		/* Fix the last link broken by the merge */` |
-|    215 |  809 | `		while(pMap->pLast->pPrev){` |
-|    110 |  810 | `			pMap->pLast = pMap->pLast->pPrev;` |
-|      2 |  811 | `		}` |
-|     52 |  812 | `	}` |
-|      - |  813 | `	{` |
-|    107 |  814 | `		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);` |
-|    107 |  815 | `		if( rcCmp != PH7_OK ){` |
-|    ! 0 |  816 | `			return rcCmp;` |
-|      - |  817 | `		}` |
-|      - |  818 | `	}` |
-|      - |  819 | `	/* All done,return TRUE */` |
-|    107 |  820 | `	ph7_result_bool(pCtx,1);` |
-|    107 |  821 | `	return PH7_OK;` |
-|     55 |  822 | `}` |
-|      - |  823 | `/*` |
-|      - |  824 | ` * bool krsort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
-|      - |  825 | ` *  Sort an array by key in reverse order.` |
-|      - |  826 | ` * Parameters` |
-|      - |  827 | ` *  $array` |
-|      - |  828 | ` *   The input array.` |
-|      - |  829 | ` * $sort_flags` |
-|      - |  830 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
-|      - |  831 | ` *  Sorting type flags:` |
-|      - |  832 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
-|      - |  833 | ` *   SORT_NUMERIC - compare items numerically` |
-|      - |  834 | ` *   SORT_STRING - compare items as strings` |
-|      - |  835 | ` * Return` |
-|      - |  836 | ` *  TRUE on success or FALSE on failure.` |
-|      - |  837 | ` */` |
-|     30 |  838 | `PH7_PRIVATE int ph7_hashmap_krsort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      2 |  839 | `{` |
-|      - |  840 | `	ph7_hashmap *pMap;` |
-|      - |  841 | `	/* Make sure we are dealing with a valid hashmap */` |
-|     32 |  842 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
-|      - |  843 | `		/* Missing/Invalid arguments,return FALSE */` |
-|    ! 0 |  844 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 |  845 | `		return PH7_OK;` |
-|      - |  846 | `	}` |
-|      - |  847 | `	/* Point to the internal representation of the input hashmap */` |
-|     32 |  848 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|     32 |  849 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|     32 |  850 | `	if( pMap->nEntry > 1 ){` |
-|     32 |  851 | `		sxi32 iCmpFlags = 0;` |
-|     32 |  852 | `		if( nArg > 1 ){` |
-|      - |  853 | `			/* Extract comparison flags */` |
-|      6 |  854 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
-|      2 |  855 | `		}` |
-|      - |  856 | `		/* Do the merge sort */` |
-|     32 |  857 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
-|     32 |  858 | `		HashmapMergeSort(pMap,HashmapCmpCallback5,SX_INT_TO_PTR(iCmpFlags));` |
-|      - |  859 | `		/* Fix the last link broken by the merge */` |
-|     54 |  860 | `		while(pMap->pLast->pPrev){` |
-|     23 |  861 | `			pMap->pLast = pMap->pLast->pPrev;` |
-|      1 |  862 | `		}` |
-|     15 |  863 | `	}` |
-|      - |  864 | `	{` |
-|     32 |  865 | `		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);` |
-|     32 |  866 | `		if( rcCmp != PH7_OK ){` |
-|    ! 0 |  867 | `			return rcCmp;` |
-|      - |  868 | `		}` |
-|      - |  869 | `	}` |
-|      - |  870 | `	/* All done,return TRUE */` |
-|     32 |  871 | `	ph7_result_bool(pCtx,1);` |
-|     32 |  872 | `	return PH7_OK;` |
-|     17 |  873 | `}` |
-|      - |  874 | `/*` |
-|      - |  875 | ` * bool rsort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
-|      - |  876 | ` * Sort an array in reverse order.` |
-|      - |  877 | ` * Parameters` |
-|      - |  878 | ` *  $array` |
-|      - |  879 | ` *   The input array.` |
-|      - |  880 | ` * $sort_flags` |
-|      - |  881 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
-|      - |  882 | ` *  Sorting type flags:` |
-|      - |  883 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
-|      - |  884 | ` *   SORT_NUMERIC - compare items numerically` |
-|      - |  885 | ` *   SORT_STRING - compare items as strings` |
-|      - |  886 | ` * Return` |
-|      - |  887 | ` *  TRUE on success or FALSE on failure.` |
-|      - |  888 | ` */` |
-|     24 |  889 | `PH7_PRIVATE int ph7_hashmap_rsort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      3 |  890 | `{` |
-|      - |  891 | `	ph7_hashmap *pMap;` |
-|      - |  892 | `	/* Make sure we are dealing with a valid hashmap */` |
-|     27 |  893 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
-|      - |  894 | `		/* Missing/Invalid arguments,return FALSE */` |
-|    ! 0 |  895 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 |  896 | `		return PH7_OK;` |
-|      - |  897 | `	}` |
-|      - |  898 | `	/* Point to the internal representation of the input hashmap */` |
-|     27 |  899 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|     27 |  900 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|     27 |  901 | `	if( pMap->nEntry > 1 ){` |
-|     25 |  902 | `		sxi32 iCmpFlags = 0;` |
-|     25 |  903 | `		if( nArg > 1 ){` |
-|      - |  904 | `			/* Extract comparison flags */` |
-|     11 |  905 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
-|      4 |  906 | `		}` |
-|      - |  907 | `		/* Do the merge sort */` |
-|     25 |  908 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
-|     25 |  909 | `		HashmapMergeSort(pMap,HashmapCmpCallback3,SX_INT_TO_PTR(iCmpFlags));` |
-|      - |  910 | `		/* Rehash [Do not maintain index association as requested by the PHP specification] */` |
-|     25 |  911 | `		HashmapSortRehash(pMap);` |
-|     14 |  912 | `	}else if( pMap->nEntry == 1 ){` |
-|      - |  913 | `		/* php reindexes even a single-element array: a string key becomes 0 */` |
-|      3 |  914 | `		HashmapSortRehash(pMap);` |
-|      1 |  915 | `	}` |
-|      - |  916 | `	{` |
-|     27 |  917 | `		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);` |
-|     27 |  918 | `		if( rcCmp != PH7_OK ){` |
-|      3 |  919 | `			return rcCmp;` |
-|      - |  920 | `		}` |
-|      - |  921 | `	}` |
-|      - |  922 | `	/* All done,return TRUE */` |
-|     25 |  923 | `	ph7_result_bool(pCtx,1);` |
-|     25 |  924 | `	return PH7_OK;` |
-|     15 |  925 | `}` |
-|      - |  926 | `/*` |
-|      - |  927 | ` * bool usort(array &$array,callable $cmp_function)` |
-|      - |  928 | ` *  Sort an array by values using a user-defined comparison function.` |
-|      - |  929 | ` * Parameters` |
-|      - |  930 | ` *  $array` |
-|      - |  931 | ` *   The input array.` |
-|      - |  932 | ` * $cmp_function` |
-|      - |  933 | ` *  The comparison function must return an integer less than, equal to, or greater` |
-|      - |  934 | ` *  than zero if the first argument is considered to be respectively less than, equal` |
-|      - |  935 | ` *  to, or greater than the second.` |
-|      - |  936 | ` *    int callback ( mixed $a, mixed $b )` |
-|      - |  937 | ` * Return` |
-|      - |  938 | ` *  TRUE on success or FALSE on failure.` |
-|      - |  939 | ` */` |
-|     44 |  940 | `PH7_PRIVATE int ph7_hashmap_usort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      4 |  941 | `{` |
-|      - |  942 | `	ph7_hashmap *pMap;` |
-|      - |  943 | `	/* Make sure we are dealing with a valid hashmap */` |
-|     48 |  944 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
-|      - |  945 | `		/* Missing/Invalid arguments,return FALSE */` |
-|    ! 0 |  946 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 |  947 | `		return PH7_OK;` |
-|      - |  948 | `	}` |
-|     48 |  949 | `	if( nArg > 1 ){` |
-|      - |  950 | `		/* php rejects an uncallable comparator with a TypeError, BEFORE touching the` |
-|      - |  951 | `		 * array. PH7 handed it to the dispatcher, which answers NULL in silence -- so` |
-|      - |  952 | `		 * usort() with a bogus comparator reordered the array anyway, by nothing. */` |
-|     48 |  953 | `		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",0);` |
-|     48 |  954 | `		if( rcCb != PH7_OK ){` |
-|      7 |  955 | `			return rcCb;` |
-|      - |  956 | `		}` |
-|     19 |  957 | `	}` |
-|      - |  958 | `	/* Point to the internal representation of the input hashmap */` |
-|     42 |  959 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|     42 |  960 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|     42 |  961 | `	if( pMap->nEntry > 1 ){` |
-|     40 |  962 | `		ph7_value *pCallback = 0;` |
-|      - |  963 | `		ProcNodeCmp xCmp;` |
-|     40 |  964 | `		xCmp = HashmapCmpCallback4; /* User-defined function as the comparison callback */` |
-|     40 |  965 | `		if( nArg > 1 && ph7_value_is_callable(apArg[1]) ){` |
-|      - |  966 | `			/* Point to the desired callback */` |
-|     40 |  967 | `			pCallback = apArg[1];` |
-|     22 |  968 | `		}else{` |
-|      - |  969 | `			/* Use the default comparison function */` |
-|    ! 0 |  970 | `			xCmp = HashmapCmpCallback1;` |
-|      - |  971 | `		}` |
-|      - |  972 | `		/* Do the merge sort */` |
-|     40 |  973 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
-|     40 |  974 | `		HashmapMergeSort(pMap,xCmp,pCallback);` |
-|      - |  975 | `		/* Rehash [Do not maintain index association as requested by the PHP specification] */` |
-|     40 |  976 | `		HashmapSortRehash(pMap);` |
-|     40 |  977 | `		if( pCtx->pVm->iCmpCallbackExc ){` |
-|      - |  978 | `			/* The comparison callback raised: propagate so the dispatcher unwinds. */` |
-|     10 |  979 | `			pCtx->pVm->iCmpCallbackExc = 0;` |
-|     10 |  980 | `			return PH7_EXCEPTION;` |
-|      3 |  981 | `		}` |
-|     17 |  982 | `	}else if( pMap->nEntry == 1 ){` |
-|      - |  983 | `		/* php reindexes even a single-element array: a string key becomes 0 */` |
-|      3 |  984 | `		HashmapSortRehash(pMap);` |
-|      1 |  985 | `	}` |
-|      - |  986 | `	/* All done,return TRUE */` |
-|     33 |  987 | `	ph7_result_bool(pCtx,1);` |
-|     33 |  988 | `	return PH7_OK;` |
-|     26 |  989 | `}` |
-|      - |  990 | `/*` |
-|      - |  991 | ` * bool uasort(array &$array,callable $cmp_function)` |
-|      - |  992 | ` *  Sort an array by values using a user-defined comparison function` |
-|      - |  993 | ` *  and maintain index association.` |
-|      - |  994 | ` * Parameters` |
-|      - |  995 | ` *  $array` |
-|      - |  996 | ` *   The input array.` |
-|      - |  997 | ` * $cmp_function` |
-|      - |  998 | ` *  The comparison function must return an integer less than, equal to, or greater` |
-|      - |  999 | ` *  than zero if the first argument is considered to be respectively less than, equal` |
-|      - | 1000 | ` *  to, or greater than the second.` |
-|      - | 1001 | ` *    int callback ( mixed $a, mixed $b )` |
-|      - | 1002 | ` * Return` |
-|      - | 1003 | ` *  TRUE on success or FALSE on failure.` |
-|      - | 1004 | ` */` |
-|     12 | 1005 | `PH7_PRIVATE int ph7_hashmap_uasort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 1006 | `{` |
-|      - | 1007 | `	ph7_hashmap *pMap;` |
-|      - | 1008 | `	/* Make sure we are dealing with a valid hashmap */` |
-|     13 | 1009 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
-|      - | 1010 | `		/* Missing/Invalid arguments,return FALSE */` |
-|    ! 0 | 1011 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 1012 | `		return PH7_OK;` |
-|      - | 1013 | `	}` |
-|     13 | 1014 | `	if( nArg > 1 ){` |
-|      - | 1015 | `		/* php rejects an uncallable comparator with a TypeError, BEFORE touching the` |
-|      - | 1016 | `		 * array. PH7 handed it to the dispatcher, which answers NULL in silence -- so` |
-|      - | 1017 | `		 * usort() with a bogus comparator reordered the array anyway, by nothing. */` |
-|     13 | 1018 | `		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",0);` |
-|     13 | 1019 | `		if( rcCb != PH7_OK ){` |
-|      5 | 1020 | `			return rcCb;` |
-|      - | 1021 | `		}` |
-|      4 | 1022 | `	}` |
-|      - | 1023 | `	/* Point to the internal representation of the input hashmap */` |
-|      9 | 1024 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|      9 | 1025 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|      9 | 1026 | `	if( pMap->nEntry > 1 ){` |
-|      9 | 1027 | `		ph7_value *pCallback = 0;` |
-|      - | 1028 | `		ProcNodeCmp xCmp;` |
-|      9 | 1029 | `		xCmp = HashmapCmpCallback4; /* User-defined function as the comparison callback */` |
-|      9 | 1030 | `		if( nArg > 1 && ph7_value_is_callable(apArg[1]) ){` |
-|      - | 1031 | `			/* Point to the desired callback */` |
-|      9 | 1032 | `			pCallback = apArg[1];` |
-|      5 | 1033 | `		}else{` |
-|      - | 1034 | `			/* Use the default comparison function */` |
-|    ! 0 | 1035 | `			xCmp = HashmapCmpCallback1;` |
-|      - | 1036 | `		}` |
-|      - | 1037 | `		/* Do the merge sort */` |
-|      9 | 1038 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
-|      9 | 1039 | `		HashmapMergeSort(pMap,xCmp,pCallback);` |
-|      - | 1040 | `		/* Fix the last link broken by the merge */` |
-|     21 | 1041 | `		while(pMap->pLast->pPrev){` |
-|     13 | 1042 | `			pMap->pLast = pMap->pLast->pPrev;` |
-|      1 | 1043 | `		}` |
-|      9 | 1044 | `		if( pCtx->pVm->iCmpCallbackExc ){` |
-|      - | 1045 | `			/* The comparison callback raised: propagate so the dispatcher unwinds. */` |
-|    ! 0 | 1046 | `			pCtx->pVm->iCmpCallbackExc = 0;` |
-|    ! 0 | 1047 | `			return PH7_EXCEPTION;` |
-|      - | 1048 | `		}` |
-|      4 | 1049 | `	}` |
-|      - | 1050 | `	/* All done,return TRUE */` |
-|      9 | 1051 | `	ph7_result_bool(pCtx,1);` |
-|      9 | 1052 | `	return PH7_OK;` |
-|      7 | 1053 | `}` |
-|      - | 1054 | `/*` |
-|      - | 1055 | ` * bool uksort(array &$array,callable $cmp_function)` |
-|      - | 1056 | ` *  Sort an array by keys using a user-defined comparison` |
-|      - | 1057 | ` *  function and maintain index association.` |
-|      - | 1058 | ` * Parameters` |
-|      - | 1059 | ` *  $array` |
-|      - | 1060 | ` *   The input array.` |
-|      - | 1061 | ` * $cmp_function` |
-|      - | 1062 | ` *  The comparison function must return an integer less than, equal to, or greater` |
-|      - | 1063 | ` *  than zero if the first argument is considered to be respectively less than, equal` |
-|      - | 1064 | ` *  to, or greater than the second.` |
-|      - | 1065 | ` *    int callback ( mixed $a, mixed $b )` |
-|      - | 1066 | ` * Return` |
-|      - | 1067 | ` *  TRUE on success or FALSE on failure.` |
-|      - | 1068 | ` */` |
-|      6 | 1069 | `PH7_PRIVATE int ph7_hashmap_uksort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      1 | 1070 | `{` |
-|      - | 1071 | `	ph7_hashmap *pMap;` |
-|      - | 1072 | `	/* Make sure we are dealing with a valid hashmap */` |
-|      7 | 1073 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
-|      - | 1074 | `		/* Missing/Invalid arguments,return FALSE */` |
-|    ! 0 | 1075 | `		ph7_result_bool(pCtx,0);` |
-|    ! 0 | 1076 | `		return PH7_OK;` |
-|      - | 1077 | `	}` |
-|      7 | 1078 | `	if( nArg > 1 ){` |
-|      - | 1079 | `		/* php rejects an uncallable comparator with a TypeError, BEFORE touching the` |
-|      - | 1080 | `		 * array. PH7 handed it to the dispatcher, which answers NULL in silence -- so` |
-|      - | 1081 | `		 * usort() with a bogus comparator reordered the array anyway, by nothing. */` |
-|      7 | 1082 | `		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",0);` |
-|      7 | 1083 | `		if( rcCb != PH7_OK ){` |
-|      3 | 1084 | `			return rcCb;` |
-|      - | 1085 | `		}` |
-|      2 | 1086 | `	}` |
-|      - | 1087 | `	/* Point to the internal representation of the input hashmap */` |
-|      5 | 1088 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
-|      5 | 1089 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
-|      5 | 1090 | `	if( pMap->nEntry > 1 ){` |
-|      5 | 1091 | `		ph7_value *pCallback = 0;` |
-|      - | 1092 | `		ProcNodeCmp xCmp;` |
-|      5 | 1093 | `		xCmp = HashmapCmpCallback6; /* User-defined function as the comparison callback */` |
-|      5 | 1094 | `		if( nArg > 1 && ph7_value_is_callable(apArg[1]) ){` |
-|      - | 1095 | `			/* Point to the desired callback */` |
-|      5 | 1096 | `			pCallback = apArg[1];` |
-|      3 | 1097 | `		}else{` |
-|      - | 1098 | `			/* Use the default comparison function */` |
-|    ! 0 | 1099 | `			xCmp = HashmapCmpCallback2;` |
-|      - | 1100 | `		}` |
-|      - | 1101 | `		/* Do the merge sort */` |
-|      5 | 1102 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
-|      5 | 1103 | `		HashmapMergeSort(pMap,xCmp,pCallback);` |
-|      - | 1104 | `		/* Fix the last link broken by the merge */` |
-|      7 | 1105 | `		while(pMap->pLast->pPrev){` |
-|      3 | 1106 | `			pMap->pLast = pMap->pLast->pPrev;` |
-|      1 | 1107 | `		}` |
-|      5 | 1108 | `		if( pCtx->pVm->iCmpCallbackExc ){` |
-|      - | 1109 | `			/* The comparison callback raised: propagate so the dispatcher unwinds. */` |
-|    ! 0 | 1110 | `			pCtx->pVm->iCmpCallbackExc = 0;` |
-|    ! 0 | 1111 | `			return PH7_EXCEPTION;` |
-|      - | 1112 | `		}` |
-|      2 | 1113 | `	}` |
-|      - | 1114 | `	/* All done,return TRUE */` |
-|      5 | 1115 | `	ph7_result_bool(pCtx,1);` |
-|      5 | 1116 | `	return PH7_OK;` |
-|      4 | 1117 | `}` |
-|      - | 1118 | `/*` |
-|      - | 1119 | ` * bool array_multisort(array &$array, mixed $array1_sort_order = SORT_ASC,` |
-|      - | 1120 | ` *                      mixed $array1_sort_flags = SORT_REGULAR, mixed &...$rest)` |
-|      - | 1121 | ` *  Sort multiple arrays at once: the argument list is a little language read` |
-|      - | 1122 | ` *  left to right — an ARRAY opens a column, and each column may be followed by` |
-|      - | 1123 | ` *  at most one sort ORDER (SORT_ASC/SORT_DESC) and at most one sort FLAGS` |
-|      - | 1124 | ` *  value, in either order. Rows are compared column by column, a tie in one` |
-|      - | 1125 | ` *  column falling through to the next; the resulting permutation is applied to` |
-|      - | 1126 | ` *  EVERY column. String keys are kept, numeric keys are renumbered, and the` |
-|      - | 1127 | ` *  sort is stable (php 8's own guarantee). php's error shapes, pinned by` |
-|      - | 1128 | `` *  probe: a non-int non-array is `Argument #N must be an array or a sort`` |
-|      - | 1129 | `` *  flag`; a misplaced or repeated order/flags is the same text with`` |
-|      - | 1130 | `` *  `... that has not already been specified`; an int that is no flag at all is`` |
-|      - | 1131 | `` *  the ValueError `must be a valid sort flag`; mismatched lengths are`` |
-|      - | 1132 | `` *  `Array sizes are inconsistent` with no function prefix; and only`` |
-|      - | 1133 | `` *  Argument #1 carries its `($array)` name. php declares the whole list`` |
-|      - | 1134 | ` *  prefer-ref (VmBuiltinPrefersRef), so a literal sorts a temporary silently.` |
-|      - | 1135 | ` */` |
-|      - | 1136 | `/* One column of the multisort: the caller's array plus its sort spec. */` |
-|      - | 1137 | `typedef struct MultisortCol MultisortCol;` |
-|      - | 1138 | `struct MultisortCol` |
-|      - | 1139 | `{` |
-|      - | 1140 | `	ph7_value *pArr;        /* The caller's argument slot */` |
-|      - | 1141 | `	ph7_hashmap *pMap;      /* Its hashmap */` |
-|      - | 1142 | `	ph7_hashmap_node **apNode; /* Nodes in ORIGINAL iteration order */` |
-|      - | 1143 | `	sxi32 iFlags;           /* SORT_* comparison flags */` |
-|      - | 1144 | `	int iDir;               /* +1 SORT_ASC, -1 SORT_DESC */` |
-|      - | 1145 | `	int bOrderSeen;         /* An order argument already attached */` |
-|      - | 1146 | `	int bFlagsSeen;         /* A flags argument already attached */` |
-|      - | 1147 | `};` |
-|      - | 1148 | `/* Compare two ROWS, column by column with each column's own direction/flags. */` |
-|     68 | 1149 | `static sxi32 MultisortRowCmp(MultisortCol *aCol,sxu32 nCol,sxu32 iA,sxu32 iB)` |
-|      3 | 1150 | `{` |
-|      - | 1151 | `	sxu32 c;` |
-|     81 | 1152 | `	for( c = 0 ; c < nCol ; c++ ){` |
-|     81 | 1153 | `		sxi32 rc = HashmapFlagValueCmp(aCol[c].apNode[iA],aCol[c].apNode[iB],aCol[c].iFlags);` |
-|     81 | 1154 | `		if( rc != 0 ){` |
-|     71 | 1155 | `			return aCol[c].iDir < 0 ? -rc : rc;` |
-|      - | 1156 | `		}` |
-|      6 | 1157 | `	}` |
-|    ! 0 | 1158 | `	return 0;` |
-|     37 | 1159 | `}` |
-|      - | 1160 | `/*` |
-|      - | 1161 | ` * Stable bottom-up merge sort over the row-index permutation. Iterative on` |
-|      - | 1162 | ` * purpose — the recursive shape would put O(log n) frames on the native stack` |
-|      - | 1163 | ` * (the §7 embedder C-stack family).` |
-|      - | 1164 | ` */` |
-|     24 | 1165 | `static void MultisortSortIdx(MultisortCol *aCol,sxu32 nCol,sxu32 *aIdx,sxu32 *aTmp,sxu32 n)` |
-|      3 | 1166 | `{` |
-|      - | 1167 | `	sxu32 nWidth,iLo;` |
-|     71 | 1168 | `	for( nWidth = 1 ; nWidth < n ; nWidth *= 2 ){` |
-|    111 | 1169 | `		for( iLo = 0 ; iLo < n ; iLo += 2 * nWidth ){` |
-|     67 | 1170 | `			sxu32 iMid = iLo + nWidth;` |
-|     67 | 1171 | `			sxu32 iHi = iLo + 2 * nWidth;` |
-|      - | 1172 | `			sxu32 i,j,k;` |
-|     67 | 1173 | `			if( iMid > n ){ iMid = n; }` |
-|     67 | 1174 | `			if( iHi > n ){ iHi = n; }` |
-|     67 | 1175 | `			i = iLo; j = iMid; k = iLo;` |
-|    135 | 1176 | `			while( i < iMid && j < iHi ){` |
-|      - | 1177 | `				/* <= keeps the run stable: on a full tie the left row wins */` |
-|     71 | 1178 | `				if( MultisortRowCmp(aCol,nCol,aIdx[i],aIdx[j]) <= 0 ){` |
-|     33 | 1179 | `					aTmp[k++] = aIdx[i++];` |
-|     18 | 1180 | `				}else{` |
-|     41 | 1181 | `					aTmp[k++] = aIdx[j++];` |
-|      - | 1182 | `				}` |
-|      3 | 1183 | `			}` |
-|    121 | 1184 | `			while( i < iMid ){ aTmp[k++] = aIdx[i++]; }` |
-|     81 | 1185 | `			while( j < iHi ){ aTmp[k++] = aIdx[j++]; }` |
-|     35 | 1186 | `		}` |
-|      - | 1187 | `		/* aTmp holds the merged runs for this width; swap roles by copying` |
-|      - | 1188 | `		 * back — n is bounded by the array count, one memcpy per doubling. */` |
-|     47 | 1189 | `		SyMemcpy(aTmp,aIdx,(sxu32)(n * sizeof(sxu32)));` |
-|     25 | 1190 | `	}` |
-|     27 | 1191 | `}` |
-|     50 | 1192 | `PH7_PRIVATE int ph7_hashmap_multisort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      3 | 1193 | `{` |
-|      - | 1194 | `	MultisortCol *aCol;` |
-|      - | 1195 | `	sxu32 *aIdx,*aTmp;` |
-|     53 | 1196 | `	sxu32 nCol = 0,nRow,i;` |
-|      - | 1197 | `	sxi32 rcStatus;` |
-|      - | 1198 | `	int iArg;` |
-|      - | 1199 |  |
-|     53 | 1200 | `	if( nArg < 1 ){` |
-|    ! 0 | 1201 | `		return PH7_VmThrowException(pCtx,` |
-|      - | 1202 | `			"ArgumentCountError",` |
-|      - | 1203 | `			"array_multisort() expects at least 1 argument, %d given",` |
-|    ! 0 | 1204 | `			nArg` |
-|      - | 1205 | `			);` |
-|      - | 1206 | `	}` |
-|     78 | 1207 | `	aCol = (MultisortCol *)ph7_context_alloc_chunk(pCtx,` |
-|     50 | 1208 | `		(unsigned int)(sizeof(MultisortCol) * (sxu32)nArg),TRUE,TRUE);` |
-|     53 | 1209 | `	if( aCol == 0 ){` |
-|    ! 0 | 1210 | `		return PH7_ContextMemoryError(pCtx);` |
-|      - | 1211 | `	}` |
-|      - | 1212 | `	/* Read the argument list's little language, php's own state machine. */` |
-|    139 | 1213 | `	for( iArg = 0 ; iArg < nArg ; iArg++ ){` |
-|    111 | 1214 | `		ph7_value *pArg = apArg[iArg];` |
-|      - | 1215 | `		/* Only Argument #1 carries its parameter name in php's messages. */` |
-|    111 | 1216 | `		const char *zName = (iArg == 0) ? " ($array)" : "";` |
-|    111 | 1217 | `		if( ph7_value_is_array(pArg) ){` |
-|     67 | 1218 | `			MultisortCol *pCol = &aCol[nCol++];` |
-|     67 | 1219 | `			pCol->pArr = pArg;` |
-|     67 | 1220 | `			pCol->pMap = (ph7_hashmap *)pArg->x.pOther;` |
-|     67 | 1221 | `			pCol->apNode = 0;` |
-|     67 | 1222 | `			pCol->iFlags = 0; /* SORT_REGULAR */` |
-|     67 | 1223 | `			pCol->iDir = 1;   /* SORT_ASC */` |
-|     67 | 1224 | `			pCol->bOrderSeen = pCol->bFlagsSeen = 0;` |
-|     67 | 1225 | `			continue;` |
-|      - | 1226 | `		}` |
-|     47 | 1227 | `		if( ph7_value_is_float(pArg) \|\| (pArg->iFlags & MEMOBJ_INT) == 0 ){` |
-|      - | 1228 | `			/* A REAL int only, float asked FIRST (ph7_type_name's rule: an` |
-|      - | 1229 | `			 * integer-valued real caches an int and would pass a bare flag` |
-|      - | 1230 | `			 * test). php coerces nothing here: "4", 4.0 and true are all` |
-|      - | 1231 | `			 * refused. */` |
-|     17 | 1232 | `			return PH7_VmThrowException(pCtx,"TypeError",` |
-|      - | 1233 | `				"array_multisort(): Argument #%d%s must be an array or a sort flag",` |
-|      5 | 1234 | `				iArg + 1,zName);` |
-|      - | 1235 | `		}` |
-|      - | 1236 | `		{` |
-|     37 | 1237 | `			sxi64 iVal = ph7_value_to_int64(pArg);` |
-|      - | 1238 | `			/* php masks SORT_FLAG_CASE off for the ORDER match too, but reads` |
-|      - | 1239 | `			 * the direction from the UNMASKED value — so SORT_DESC\|SORT_FLAG_CASE` |
-|      - | 1240 | `			 * (11) consumes the order slot and quirkily sorts ASCENDING. */` |
-|     37 | 1241 | `			if( (iVal & ~(sxi64)8) == 3 /* SORT_DESC */ \|\| (iVal & ~(sxi64)8) == 4 /* SORT_ASC */ ){` |
-|     23 | 1242 | `				if( nCol < 1 \|\| aCol[nCol - 1].bOrderSeen ){` |
-|     11 | 1243 | `					return PH7_VmThrowException(pCtx,"TypeError",` |
-|      - | 1244 | `						"array_multisort(): Argument #%d%s must be an array or a sort flag that has not already been specified",` |
-|      3 | 1245 | `						iArg + 1,zName);` |
-|      - | 1246 | `				}` |
-|     17 | 1247 | `				aCol[nCol - 1].iDir = (iVal == 3) ? -1 : 1;` |
-|     17 | 1248 | `				aCol[nCol - 1].bOrderSeen = 1;` |
-|     24 | 1249 | `			}else if( (iVal & ~(sxi64)8 /* SORT_FLAG_CASE */) == 0 /* SORT_REGULAR */` |
-|     13 | 1250 | `			       \|\| (iVal & ~(sxi64)8) == 1 /* SORT_NUMERIC */` |
-|     11 | 1251 | `			       \|\| (iVal & ~(sxi64)8) == 2 /* SORT_STRING */` |
-|      8 | 1252 | `			       \|\| (iVal & ~(sxi64)8) == 5 /* SORT_LOCALE_STRING */` |
-|      7 | 1253 | `			       \|\| (iVal & ~(sxi64)8) == 6 /* SORT_NATURAL */ ){` |
-|     14 | 1254 | `				if( nCol < 1 \|\| aCol[nCol - 1].bFlagsSeen ){` |
-|      7 | 1255 | `					return PH7_VmThrowException(pCtx,"TypeError",` |
-|      - | 1256 | `						"array_multisort(): Argument #%d%s must be an array or a sort flag that has not already been specified",` |
-|      2 | 1257 | `						iArg + 1,zName);` |
-|      - | 1258 | `				}` |
-|     10 | 1259 | `				aCol[nCol - 1].iFlags = (sxi32)iVal;` |
-|     10 | 1260 | `				aCol[nCol - 1].bFlagsSeen = 1;` |
-|      6 | 1261 | `			}else{` |
-|      4 | 1262 | `				return PH7_VmThrowException(pCtx,"ValueError",` |
-|      - | 1263 | `					"array_multisort(): Argument #%d%s must be a valid sort flag",` |
-|      1 | 1264 | `					iArg + 1,zName);` |
-|      - | 1265 | `			}` |
-|      - | 1266 | `		}` |
-|     14 | 1267 | `	}` |
-|      - | 1268 | `	/* Every column must hold the same number of rows; php's message carries no` |
-|      - | 1269 | `	 * function prefix. */` |
-|     31 | 1270 | `	nRow = aCol[0].pMap->nEntry;` |
-|     45 | 1271 | `	for( i = 1 ; i < nCol ; i++ ){` |
-|     18 | 1272 | `		if( aCol[i].pMap->nEntry != nRow ){` |
-|      3 | 1273 | `			return PH7_VmThrowException(pCtx,"ValueError","Array sizes are inconsistent");` |
-|      - | 1274 | `		}` |
-|      8 | 1275 | `	}` |
-|     29 | 1276 | `	if( nRow > 0 ){` |
-|      - | 1277 | `		/* Collect each column's nodes in original order. */` |
-|     63 | 1278 | `		for( i = 0 ; i < nCol ; i++ ){` |
-|     39 | 1279 | `			ph7_hashmap_node *pNode = aCol[i].pMap->pFirst;` |
-|      - | 1280 | `			sxu32 r;` |
-|     57 | 1281 | `			aCol[i].apNode = (ph7_hashmap_node **)ph7_context_alloc_chunk(pCtx,` |
-|     18 | 1282 | `				(unsigned int)(sizeof(ph7_hashmap_node *) * nRow),FALSE,TRUE);` |
-|     39 | 1283 | `			if( aCol[i].apNode == 0 ){` |
-|    ! 0 | 1284 | `				return PH7_ContextMemoryError(pCtx);` |
-|      - | 1285 | `			}` |
-|    147 | 1286 | `			for( r = 0 ; r < nRow && pNode ; r++ ){` |
-|    111 | 1287 | `				aCol[i].apNode[r] = pNode;` |
-|    111 | 1288 | `				pNode = pNode->pPrev; /* Reverse link */` |
-|     57 | 1289 | `			}` |
-|     21 | 1290 | `		}` |
-|     39 | 1291 | `		aIdx = (sxu32 *)ph7_context_alloc_chunk(pCtx,` |
-|     12 | 1292 | `			(unsigned int)(sizeof(sxu32) * nRow * 2),FALSE,TRUE);` |
-|     27 | 1293 | `		if( aIdx == 0 ){` |
-|    ! 0 | 1294 | `			return PH7_ContextMemoryError(pCtx);` |
-|      - | 1295 | `		}` |
-|     27 | 1296 | `		aTmp = &aIdx[nRow];` |
-|     99 | 1297 | `		for( i = 0 ; i < nRow ; i++ ){` |
-|     75 | 1298 | `			aIdx[i] = i;` |
-|     39 | 1299 | `		}` |
-|      - | 1300 | `		/* The string flags coerce user-visibly and can only FLAG a throw` |
-|      - | 1301 | `		 * (iCmpCallbackExc); clear it, sort, and report after — the flag-sort` |
-|      - | 1302 | `		 * drivers' shared pattern. */` |
-|     27 | 1303 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
-|     27 | 1304 | `		MultisortSortIdx(aCol,nCol,aIdx,aTmp,nRow);` |
-|      - | 1305 | `		/* Apply the permutation to every column: rebuild in sorted order,` |
-|      - | 1306 | `		 * keeping string keys and renumbering int keys, then hand the fresh` |
-|      - | 1307 | `		 * array back through the by-ref slot (a literal has none and the` |
-|      - | 1308 | `		 * result is silently dropped — php's prefer-ref). */` |
-|     63 | 1309 | `		for( i = 0 ; i < nCol ; i++ ){` |
-|     39 | 1310 | `			ph7_value *pNew = ph7_context_new_array(pCtx);` |
-|      - | 1311 | `			sxu32 r;` |
-|     39 | 1312 | `			if( pNew == 0 ){` |
-|    ! 0 | 1313 | `				return PH7_ContextMemoryError(pCtx);` |
-|      - | 1314 | `			}` |
-|    147 | 1315 | `			for( r = 0 ; r < nRow ; r++ ){` |
-|    111 | 1316 | `				ph7_hashmap_node *pNode = aCol[i].apNode[aIdx[r]];` |
-|    165 | 1317 | `				HashmapInsertNode((ph7_hashmap *)pNew->x.pOther,pNode,` |
-|    108 | 1318 | `					pNode->iType == HASHMAP_BLOB_NODE ? TRUE : FALSE);` |
-|     57 | 1319 | `			}` |
-|     39 | 1320 | `			PH7_VmStoreArgByRef(pCtx->pVm,aCol[i].pArr,pNew);` |
-|     21 | 1321 | `		}` |
-|     27 | 1322 | `		rcStatus = HashmapFlagSortStatus(pCtx);` |
-|     27 | 1323 | `		if( rcStatus != PH7_OK ){` |
-|    ! 0 | 1324 | `			return rcStatus;` |
-|      - | 1325 | `		}` |
-|     12 | 1326 | `	}` |
-|     29 | 1327 | `	ph7_result_bool(pCtx,1);` |
-|     29 | 1328 | `	return PH7_OK;` |
-|     28 | 1329 | `}` |
-|      - | 1330 |  |
+|    239 |  408 | `static sxi32 HashmapCmpCallback3(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
+|      4 |  409 | `{` |
+|    243 |  410 | `	ph7_vm *pVm = pA->pMap->pVm;` |
+|      - |  411 | `	sxi32 rc;` |
+|    243 |  412 | `	if( pCmpData == 0 ){` |
+|      - |  413 | `		/* SORT_REGULAR fast path, reversed */` |
+|    164 |  414 | `		rc = -HashmapNodeCmp(pA,pB,FALSE);` |
+|     86 |  415 | `	}else{` |
+|     82 |  416 | `		rc = -HashmapFlagValueCmp(pA,pB,SX_PTR_TO_INT(pCmpData));` |
+|      - |  417 | `	}` |
+|    243 |  418 | `	HashmapCmpLatch(pVm);` |
+|    243 |  419 | `	return rc;` |
+|      4 |  420 | `}` |
+|      - |  421 | `/*` |
+|      - |  422 | ` * Node comparison callback: Invoke an user-defined callback for the purpose of node comparison.` |
+|      - |  423 | ` * used-by: [usort(),uasort()]` |
+|      - |  424 | ` */` |
+|    462 |  425 | `static sxi32 HashmapCmpCallback4(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
+|      5 |  426 | `{` |
+|      - |  427 | `	ph7_value sResult,*pCallback;` |
+|      - |  428 | `	ph7_value *pV1,*pV2;` |
+|      - |  429 | `	ph7_value *apArg[2];  /* Callback arguments */` |
+|      - |  430 | `	sxi32 rc;` |
+|      - |  431 | `	/* Point to the desired callback */` |
+|    467 |  432 | `	pCallback = (ph7_value *)pCmpData;` |
+|    467 |  433 | `	if( pA->pMap->pVm->iCmpCallbackExc ){` |
+|      - |  434 | `		/* A previous comparison already raised: stop invoking the callback so` |
+|      - |  435 | `		 * the exception is not thrown again, and let the sort wind down. */` |
+|     27 |  436 | `		return 0;` |
+|      - |  437 | `	}` |
+|      - |  438 | `	/* initialize the result value */` |
+|    443 |  439 | `	PH7_MemObjInit(pA->pMap->pVm,&sResult);` |
+|      - |  440 | `	/* Extract nodes values */` |
+|    443 |  441 | `	pV1 = HashmapExtractNodeValue(pA);` |
+|    443 |  442 | `	pV2 = HashmapExtractNodeValue(pB);` |
+|    443 |  443 | `	apArg[0] = pV1;` |
+|    443 |  444 | `	apArg[1] = pV2;` |
+|      - |  445 | `	/* Invoke the callback */` |
+|    443 |  446 | `	rc = PH7_VmCallCallbackByValue(pA->pMap->pVm,pCallback,2,apArg,&sResult,0);` |
+|    443 |  447 | `	if( PH7_CALLBACK_UNWOUND(rc) ){` |
+|      - |  448 | `		/* The comparator did not RETURN: latch the STATUS so the sort driver` |
+|      - |  449 | `		 * aborts and propagates exactly it (an UNCAUGHT throw is PH7_ABORT, and` |
+|      - |  450 | `		 * testing only PH7_EXCEPTION left the sort running -- re-entering the` |
+|      - |  451 | `		 * comparator, and the fatal report, for every remaining pair), and order` |
+|      - |  452 | `		 * this pair arbitrarily for the rest of the run. */` |
+|     15 |  453 | `		pA->pMap->pVm->iCmpCallbackExc = rc;` |
+|     15 |  454 | `		rc = 0;` |
+|    437 |  455 | `	}else if( rc != SXRET_OK ){` |
+|      - |  456 | `		/* An error occured while calling user defined function [i.e: not defined] */` |
+|    ! 0 |  457 | `		rc = -1; /* Set a dummy result */` |
+|    ! 0 |  458 | `	}else{` |
+|      - |  459 | `		/* Extract callback result */` |
+|    431 |  460 | `		if((sResult.iFlags & MEMOBJ_INT) == 0 ){` |
+|      - |  461 | `			/* Perform an int cast */` |
+|    ! 0 |  462 | `			PH7_MemObjToInteger(&sResult);` |
+|    ! 0 |  463 | `		}` |
+|    431 |  464 | `		rc = (sxi32)sResult.x.iVal;` |
+|      - |  465 | `	}` |
+|    443 |  466 | `	PH7_MemObjRelease(&sResult);` |
+|      - |  467 | `	/* Callback result */` |
+|    443 |  468 | `	return rc;` |
+|    236 |  469 | `}` |
+|      - |  470 | `/*` |
+|      - |  471 | ` * Node comparison callback: Compare nodes by keys only.` |
+|      - |  472 | ` * used-by: [krsort()]` |
+|      - |  473 | ` */` |
+|     66 |  474 | `static sxi32 HashmapCmpCallback5(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
+|      2 |  475 | `{` |
+|     68 |  476 | `	if( pCmpData == 0 ){` |
+|     61 |  477 | `		return -HashmapKeyNodeCmp(pA,pB); /* Reverse result */` |
+|      - |  478 | `	}` |
+|      8 |  479 | `	return -HashmapFlagKeyCmp(pA,pB,SX_PTR_TO_INT(pCmpData));` |
+|     35 |  480 | `}` |
+|      - |  481 | `/*` |
+|      - |  482 | ` * Node comparison callback: Invoke an user-defined callback for the purpose of node comparison.` |
+|      - |  483 | ` * used-by: [uksort()]` |
+|      - |  484 | ` */` |
+|     18 |  485 | `static sxi32 HashmapCmpCallback6(ph7_hashmap_node *pA,ph7_hashmap_node *pB,void *pCmpData)` |
+|      2 |  486 | `{` |
+|      - |  487 | `	ph7_value sResult,*pCallback;` |
+|      - |  488 | `	ph7_value *apArg[2];  /* Callback arguments */` |
+|      - |  489 | `	ph7_value sK1,sK2;` |
+|      - |  490 | `	sxi32 rc;` |
+|      - |  491 | `	/* Point to the desired callback */` |
+|     20 |  492 | `	pCallback = (ph7_value *)pCmpData;` |
+|     20 |  493 | `	if( pA->pMap->pVm->iCmpCallbackExc ){` |
+|      - |  494 | `		/* A previous comparison already raised: stop invoking the callback so` |
+|      - |  495 | `		 * the exception is not thrown again, and let the sort wind down. */` |
+|      7 |  496 | `		return 0;` |
+|      - |  497 | `	}` |
+|      - |  498 | `	/* initialize the result value */` |
+|     14 |  499 | `	PH7_MemObjInit(pA->pMap->pVm,&sResult);` |
+|     14 |  500 | `	PH7_MemObjInit(pA->pMap->pVm,&sK1);` |
+|     14 |  501 | `	PH7_MemObjInit(pA->pMap->pVm,&sK2);` |
+|      - |  502 | `	/* Extract nodes keys */` |
+|     14 |  503 | `	PH7_HashmapExtractNodeKey(pA,&sK1);` |
+|     14 |  504 | `	PH7_HashmapExtractNodeKey(pB,&sK2);` |
+|     14 |  505 | `	apArg[0] = &sK1;` |
+|     14 |  506 | `	apArg[1] = &sK2;` |
+|      - |  507 | `	/* Mark keys as constants */` |
+|     14 |  508 | `	sK1.nIdx = SXU32_HIGH;` |
+|     14 |  509 | `	sK2.nIdx = SXU32_HIGH;` |
+|      - |  510 | `	/* Invoke the callback */` |
+|     14 |  511 | `	rc = PH7_VmCallCallbackByValue(pA->pMap->pVm,pCallback,2,apArg,&sResult,0);` |
+|     14 |  512 | `	if( PH7_CALLBACK_UNWOUND(rc) ){` |
+|      - |  513 | `		/* The comparator did not RETURN: latch the STATUS so the sort driver` |
+|      - |  514 | `		 * aborts and propagates exactly it (an UNCAUGHT throw is PH7_ABORT, and` |
+|      - |  515 | `		 * testing only PH7_EXCEPTION left the sort running -- re-entering the` |
+|      - |  516 | `		 * comparator, and the fatal report, for every remaining pair), and order` |
+|      - |  517 | `		 * this pair arbitrarily for the rest of the run. */` |
+|      3 |  518 | `		pA->pMap->pVm->iCmpCallbackExc = rc;` |
+|      3 |  519 | `		rc = 0;` |
+|     12 |  520 | `	}else if( rc != SXRET_OK ){` |
+|      - |  521 | `		/* An error occured while calling user defined function [i.e: not defined] */` |
+|    ! 0 |  522 | `		rc = -1; /* Set a dummy result */` |
+|    ! 0 |  523 | `	}else{` |
+|      - |  524 | `		/* Extract callback result */` |
+|     11 |  525 | `		if((sResult.iFlags & MEMOBJ_INT) == 0 ){` |
+|      - |  526 | `			/* Perform an int cast */` |
+|    ! 0 |  527 | `			PH7_MemObjToInteger(&sResult);` |
+|    ! 0 |  528 | `		}` |
+|     11 |  529 | `		rc = (sxi32)sResult.x.iVal;` |
+|      - |  530 | `	}` |
+|     14 |  531 | `	PH7_MemObjRelease(&sResult);` |
+|     14 |  532 | `	PH7_MemObjRelease(&sK1);` |
+|     14 |  533 | `	PH7_MemObjRelease(&sK2);` |
+|      - |  534 | `	/* Callback result */` |
+|     14 |  535 | `	return rc;` |
+|     11 |  536 | `}` |
+|      - |  537 | `/*` |
+|      - |  538 | ` * Permute a hashmap's entries the way php's shuffle() does: Fisher-Yates over` |
+|      - |  539 | ` * the buckets, drawing each index from the MT19937 generator through` |
+|      - |  540 | ` * php_mt_rand_range(). The caller rehashes afterwards (php reindexes the array` |
+|      - |  541 | ` * 0..n-1 and drops string keys).` |
+|      - |  542 | ` *` |
+|      - |  543 | ` * This used to be a merge sort with a coin-flip comparator, which is a permuting` |
+|      - |  544 | ` * shuffle but not a UNIFORM one — the distribution a random comparator produces` |
+|      - |  545 | ` * is skewed and depends on the sort's internals — and it consumed the generator` |
+|      - |  546 | ` * in a different order, so a seeded run answered a different permutation from` |
+|      - |  547 | ` * php's for every seed.` |
+|      - |  548 | ` */` |
+|      8 |  549 | `PH7_PRIVATE sxi32 PH7_HashmapShuffle(ph7_hashmap *pMap)` |
+|      2 |  550 | `{` |
+|      - |  551 | `	ph7_hashmap_node **apNode,*pNode;` |
+|      - |  552 | `	sxu32 n,nLeft;` |
+|      - |  553 | `	SySet aNode;` |
+|     10 |  554 | `	if( pMap->nEntry < 2 ){` |
+|    ! 0 |  555 | `		return SXRET_OK;` |
+|      - |  556 | `	}` |
+|     10 |  557 | `	SySetInit(&aNode,&pMap->pVm->sAllocator,sizeof(ph7_hashmap_node *));` |
+|     50 |  558 | `	for( pNode = pMap->pFirst ; pNode ; pNode = pNode->pPrev ){` |
+|     42 |  559 | `		if( SySetPut(&aNode,(const void *)&pNode) != SXRET_OK ){` |
+|    ! 0 |  560 | `			SySetRelease(&aNode);` |
+|    ! 0 |  561 | `			return SXERR_MEM;` |
+|      - |  562 | `		}` |
+|     22 |  563 | `	}` |
+|     10 |  564 | `	apNode = (ph7_hashmap_node **)SySetBasePtr(&aNode);` |
+|     10 |  565 | `	n = SySetUsed(&aNode);` |
+|      - |  566 | `	/* php walks DOWN from the last index, swapping with a draw in [0,n_left]. */` |
+|     42 |  567 | `	for( nLeft = n - 1 ; nLeft > 0 ; --nLeft ){` |
+|     34 |  568 | `		sxu32 nPick = (sxu32)PH7_VmMtRandRange(pMap->pVm,0,(sxi64)nLeft);` |
+|     34 |  569 | `		if( nPick != nLeft ){` |
+|     24 |  570 | `			ph7_hashmap_node *pTmp = apNode[nLeft];` |
+|     24 |  571 | `			apNode[nLeft] = apNode[nPick];` |
+|     24 |  572 | `			apNode[nPick] = pTmp;` |
+|     11 |  573 | `		}` |
+|     18 |  574 | `	}` |
+|      - |  575 | `	/* Relink in the new order. pPrev is the forward link and pNext the back one` |
+|      - |  576 | `	 * (the whole map is built that way); the rehash after this fixes pLast. */` |
+|     50 |  577 | `	for( n = 0 ; n < SySetUsed(&aNode) ; ++n ){` |
+|     42 |  578 | `		apNode[n]->pPrev = (n + 1 < SySetUsed(&aNode)) ? apNode[n+1] : 0;` |
+|     42 |  579 | `		apNode[n]->pNext = (n > 0) ? apNode[n-1] : 0;` |
+|     22 |  580 | `	}` |
+|     10 |  581 | `	pMap->pFirst = apNode[0];` |
+|     10 |  582 | `	pMap->pLast = apNode[SySetUsed(&aNode) - 1];` |
+|     10 |  583 | `	pMap->pCur = pMap->pFirst;` |
+|     10 |  584 | `	SySetRelease(&aNode);` |
+|     10 |  585 | `	return SXRET_OK;` |
+|      6 |  586 | `}` |
+|      - |  587 | `/*` |
+|      - |  588 | ` * Rehash all nodes keys after a merge-sort have been applied.` |
+|      - |  589 | ` * Used by [sort(),usort() and rsort()].` |
+|      - |  590 | ` */` |
+|   1615 |  591 | `PH7_PRIVATE void HashmapSortRehash(ph7_hashmap *pMap)` |
+|      5 |  592 | `{` |
+|      - |  593 | `	ph7_hashmap_node *p,*pLast;` |
+|      - |  594 | `	sxu32 i;` |
+|      - |  595 | `	/* php's sorts rewind the array's internal pointer. The reordering paths reset` |
+|      - |  596 | `	 * it themselves, but a ONE-element array is reindexed without being reordered` |
+|      - |  597 | ``	 * — and `$a = ['x'=>1]; next($a); sort($a);` then left current() past the end,`` |
+|      - |  598 | `	 * answering false where php answers the element. */` |
+|   1620 |  599 | `	pMap->pCur = pMap->pFirst;` |
+|      - |  600 | `	/* Rehash all entries */` |
+|   1620 |  601 | `	pLast = p = pMap->pFirst;` |
+|   1620 |  602 | `	pMap->iNextIdx = 0;` |
+|   1620 |  603 | `	pMap->bIntKeySeen = 0; /* Reset the automatic index */` |
+|   1620 |  604 | `	i = 0;` |
+|  11274 |  605 | `	for( ;; ){` |
+|  22558 |  606 | `		if( i >= pMap->nEntry ){` |
+|   1620 |  607 | `			pMap->pLast = pLast; /* Fix the last link broken by the merge-sort */` |
+|   1620 |  608 | `			break;` |
+|      - |  609 | `		}` |
+|  20943 |  610 | `		if( p->iType == HASHMAP_BLOB_NODE ){` |
+|      - |  611 | `			/* Do not maintain index association as requested by the PHP specification */` |
+|     50 |  612 | `			SyBlobRelease(&p->xKey.sKey);` |
+|      - |  613 | `			/* Change key type */` |
+|     50 |  614 | `			p->iType = HASHMAP_INT_NODE;` |
+|     24 |  615 | `		}` |
+|  20943 |  616 | `		HashmapRehashIntNode(p);` |
+|      - |  617 | `		/* Point to the next entry */` |
+|  20943 |  618 | `		i++;` |
+|  20943 |  619 | `		pLast = p;` |
+|  20943 |  620 | `		p = p->pPrev; /* Reverse link */` |
+|      5 |  621 | `	}` |
+|   1620 |  622 | `}` |
+|      - |  623 | `/*` |
+|      - |  624 | ` * Array functions implementation.` |
+|      - |  625 | ` * Status:` |
+|      - |  626 | ` *  Stable.` |
+|      - |  627 | ` */` |
+|      - |  628 | `/*` |
+|      - |  629 | ` * Reset / report the comparator-throw flag around a FLAG sort. The string sort` |
+|      - |  630 | ` * flags coerce their operands user-visibly (HashmapScalarFlagCmp), and a` |
+|      - |  631 | ` * not-stringable object raises php's Error there; the comparator can only flag` |
+|      - |  632 | ` * it, so every flag-sort driver clears the flag before its merge sort and` |
+|      - |  633 | ` * answers PH7_EXCEPTION after it. php's array is sorted after the throw too, so` |
+|      - |  634 | ` * the rehash still runs.` |
+|      - |  635 | ` */` |
+|   1807 |  636 | `static sxi32 HashmapFlagSortStatus(ph7_context *pCtx)` |
+|      5 |  637 | `{` |
+|   1812 |  638 | `	if( pCtx->pVm->iCmpCallbackExc ){` |
+|     80 |  639 | `		sxi32 rcExc = pCtx->pVm->iCmpCallbackExc;` |
+|     80 |  640 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
+|     80 |  641 | `		pCtx->nThrowRc = rcExc;` |
+|     80 |  642 | `		return rcExc;` |
+|      - |  643 | `	}` |
+|   1734 |  644 | `	return PH7_OK;` |
+|    908 |  645 | `}` |
+|      - |  646 | `/*` |
+|      - |  647 | ` * bool sort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
+|      - |  648 | ` * Sort an array.` |
+|      - |  649 | ` * Parameters` |
+|      - |  650 | ` *  $array` |
+|      - |  651 | ` *   The input array.` |
+|      - |  652 | ` * $sort_flags` |
+|      - |  653 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
+|      - |  654 | ` *  Sorting type flags:` |
+|      - |  655 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
+|      - |  656 | ` *   SORT_NUMERIC - compare items numerically` |
+|      - |  657 | ` *   SORT_STRING - compare items as strings` |
+|      - |  658 | ` * Return` |
+|      - |  659 | ` *  TRUE on success or FALSE on failure.` |
+|      - |  660 | ` *` |
+|      - |  661 | ` */` |
+|   1483 |  662 | `PH7_PRIVATE int ph7_hashmap_sort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      5 |  663 | `{` |
+|      - |  664 | `	ph7_hashmap *pMap;` |
+|      - |  665 | `	/* Make sure we are dealing with a valid hashmap */` |
+|   1488 |  666 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
+|      - |  667 | `		/* Missing/Invalid arguments,return FALSE */` |
+|    ! 0 |  668 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 |  669 | `		return PH7_OK;` |
+|      - |  670 | `	}` |
+|      - |  671 | `	/* Point to the internal representation of the input hashmap */` |
+|   1488 |  672 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|   1488 |  673 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|   1488 |  674 | `	if( pMap->nEntry > 1 ){` |
+|   1428 |  675 | `		sxi32 iCmpFlags = 0;` |
+|   1428 |  676 | `		if( nArg > 1 ){` |
+|      - |  677 | `			/* Extract comparison flags */` |
+|     70 |  678 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
+|     33 |  679 | `		}` |
+|      - |  680 | `		/* Do the merge sort */` |
+|   1428 |  681 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
+|   1428 |  682 | `		HashmapMergeSort(pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));` |
+|      - |  683 | `		/* Rehash [Do not maintain index association as requested by the PHP specification] */` |
+|   1428 |  684 | `		HashmapSortRehash(pMap);` |
+|    776 |  685 | `	}else if( pMap->nEntry == 1 ){` |
+|      - |  686 | `		/* php reindexes even a single-element array: a string key becomes 0 */` |
+|     23 |  687 | `		HashmapSortRehash(pMap);` |
+|     10 |  688 | `	}` |
+|      - |  689 | `	{` |
+|   1488 |  690 | `		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);` |
+|   1488 |  691 | `		if( rcCmp != PH7_OK ){` |
+|     38 |  692 | `			return rcCmp;` |
+|      - |  693 | `		}` |
+|      - |  694 | `	}` |
+|      - |  695 | `	/* All done,return TRUE */` |
+|   1452 |  696 | `	ph7_result_bool(pCtx,1);` |
+|   1452 |  697 | `	return PH7_OK;` |
+|    746 |  698 | `}` |
+|      - |  699 | `/*` |
+|      - |  700 | ` * bool asort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
+|      - |  701 | ` *  Sort an array and maintain index association.` |
+|      - |  702 | ` * Parameters` |
+|      - |  703 | ` *  $array` |
+|      - |  704 | ` *   The input array.` |
+|      - |  705 | ` * $sort_flags` |
+|      - |  706 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
+|      - |  707 | ` *  Sorting type flags:` |
+|      - |  708 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
+|      - |  709 | ` *   SORT_NUMERIC - compare items numerically` |
+|      - |  710 | ` *   SORT_STRING - compare items as strings` |
+|      - |  711 | ` * Return` |
+|      - |  712 | ` *  TRUE on success or FALSE on failure.` |
+|      - |  713 | ` */` |
+|     62 |  714 | `PH7_PRIVATE int ph7_hashmap_asort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      4 |  715 | `{` |
+|      - |  716 | `	ph7_hashmap *pMap;` |
+|      - |  717 | `	/* PHP 8: ArgumentCountError if no arguments */` |
+|     66 |  718 | `	if( nArg < 1 ){` |
+|    ! 0 |  719 | `		return PH7_VmThrowException(pCtx,` |
+|      - |  720 | `			"ArgumentCountError",` |
+|      - |  721 | `			"asort() expects at least 1 argument, 0 given"` |
+|      - |  722 | `			);` |
+|      - |  723 | `	}` |
+|      - |  724 | `	/* PHP 8: TypeError if first argument is not an array */` |
+|     66 |  725 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|    ! 0 |  726 | `		return PH7_VmThrowException(pCtx,` |
+|      - |  727 | `			"TypeError",` |
+|      - |  728 | `			"asort(): Argument #1 ($array) must be of type array, %s given",` |
+|    ! 0 |  729 | `			ph7_type_name(apArg[0])` |
+|      - |  730 | `			);` |
+|      - |  731 | `	}` |
+|      - |  732 | `	/* Point to the internal representation of the input hashmap */` |
+|     66 |  733 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|     66 |  734 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|     66 |  735 | `	if( pMap->nEntry > 1 ){` |
+|     60 |  736 | `		sxi32 iCmpFlags = 0;` |
+|     60 |  737 | `		if( nArg > 1 ){` |
+|      - |  738 | `			/* Extract comparison flags */` |
+|     29 |  739 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
+|     13 |  740 | `		}` |
+|      - |  741 | `		/* Do the merge sort */` |
+|     60 |  742 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
+|     60 |  743 | `		HashmapMergeSort(pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));` |
+|      - |  744 | `		/* Fix the last link broken by the merge */` |
+|    136 |  745 | `		while(pMap->pLast->pPrev){` |
+|     80 |  746 | `			pMap->pLast = pMap->pLast->pPrev;` |
+|      4 |  747 | `		}` |
+|     28 |  748 | `	}` |
+|      - |  749 | `	{` |
+|     66 |  750 | `		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);` |
+|     66 |  751 | `		if( rcCmp != PH7_OK ){` |
+|     16 |  752 | `			return rcCmp;` |
+|      - |  753 | `		}` |
+|      - |  754 | `	}` |
+|      - |  755 | `	/* All done,return TRUE */` |
+|     52 |  756 | `	ph7_result_bool(pCtx,1);` |
+|     52 |  757 | `	return PH7_OK;` |
+|     35 |  758 | `}` |
+|      - |  759 | `/*` |
+|      - |  760 | ` * bool natsort(array &$array)` |
+|      - |  761 | ` * bool natcasesort(array &$array)` |
+|      - |  762 | ` *  Sort an array with php's "natural order" algorithm, maintaining index` |
+|      - |  763 | ` *  association: exactly asort() under SORT_NATURAL (plus SORT_FLAG_CASE for the` |
+|      - |  764 | ` *  case-insensitive twin), which is how php implements them too.` |
+|      - |  765 | ` *` |
+|      - |  766 | `` *  They used to be PRELUDE wrappers over `uasort($array, 'strnatcmp')`, and that`` |
+|      - |  767 | ` *  is a different function: uasort hands each element to a userland callback, so` |
+|      - |  768 | `` *  every element had to satisfy strnatcmp's `string` ZPP row. php's natsort`` |
+|      - |  769 | ` *  COERCES each element the way any string comparison does, so` |
+|      - |  770 | `` *  `natsort([10, "9", null])` — nothing exotic, just a mixed array — was a`` |
+|      - |  771 | ` *  TypeError in PHL and a sorted array in php, and an object with no` |
+|      - |  772 | ` *  __toString() answered strnatcmp's ZPP TypeError instead of php's coercion` |
+|      - |  773 | ` *  Error. Routing through the flag comparator picks up HashmapFlagStringify,` |
+|      - |  774 | ` *  which already renders arrays with php's "Array to string conversion" warning` |
+|      - |  775 | ` *  and raises the coercion Error once per sort.` |
+|      - |  776 | ` */` |
+|     26 |  777 | `PH7_PRIVATE int ph7_hashmap_natsort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      3 |  778 | `{` |
+|     29 |  779 | `	const char *zName = ph7_function_name(pCtx);` |
+|      - |  780 | `	/* natcasesort() is the SORT_FLAG_CASE twin; match the whole name, not a byte. */` |
+|     34 |  781 | `	int bFold = zName && SyStrlen(zName) == sizeof("natcasesort")-1` |
+|     39 |  782 | `		&& SyMemcmp(zName,"natcasesort",sizeof("natcasesort")-1) == 0;` |
+|      - |  783 | `	ph7_hashmap *pMap;` |
+|     29 |  784 | `	if( nArg < 1 ){` |
+|    ! 0 |  785 | `		return PH7_VmThrowException(pCtx,` |
+|      - |  786 | `			"ArgumentCountError",` |
+|    ! 0 |  787 | `			"%s() expects exactly 1 argument, 0 given",zName` |
+|      - |  788 | `			);` |
+|      - |  789 | `	}` |
+|     29 |  790 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|    ! 0 |  791 | `		return PH7_VmThrowException(pCtx,` |
+|      - |  792 | `			"TypeError",` |
+|      - |  793 | `			"%s(): Argument #1 ($array) must be of type array, %s given",` |
+|    ! 0 |  794 | `			zName,ph7_type_name(apArg[0])` |
+|      - |  795 | `			);` |
+|      - |  796 | `	}` |
+|     29 |  797 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|     29 |  798 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|     29 |  799 | `	if( pMap->nEntry > 1 ){` |
+|      - |  800 | `		/* SORT_NATURAL (6), optionally \| SORT_FLAG_CASE (8) — the same iFlags` |
+|      - |  801 | `		 * word asort() forwards, so this is asort($a, SORT_NATURAL) exactly. */` |
+|     25 |  802 | `		sxi32 iCmpFlags = bFold ? (6\|8) : 6;` |
+|     25 |  803 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
+|     25 |  804 | `		HashmapMergeSort(pMap,HashmapCmpCallback1,SX_INT_TO_PTR(iCmpFlags));` |
+|     57 |  805 | `		while(pMap->pLast->pPrev){` |
+|     35 |  806 | `			pMap->pLast = pMap->pLast->pPrev;` |
+|      3 |  807 | `		}` |
+|     11 |  808 | `	}` |
+|      - |  809 | `	{` |
+|     29 |  810 | `		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);` |
+|     29 |  811 | `		if( rcCmp != PH7_OK ){` |
+|      5 |  812 | `			return rcCmp;` |
+|      - |  813 | `		}` |
+|      - |  814 | `	}` |
+|     25 |  815 | `	ph7_result_bool(pCtx,1);` |
+|     25 |  816 | `	return PH7_OK;` |
+|     16 |  817 | `}` |
+|      - |  818 | `/*` |
+|      - |  819 | ` * bool arsort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
+|      - |  820 | ` *  Sort an array in reverse order and maintain index association.` |
+|      - |  821 | ` * Parameters` |
+|      - |  822 | ` *  $array` |
+|      - |  823 | ` *   The input array.` |
+|      - |  824 | ` * $sort_flags` |
+|      - |  825 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
+|      - |  826 | ` *  Sorting type flags:` |
+|      - |  827 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
+|      - |  828 | ` *   SORT_NUMERIC - compare items numerically` |
+|      - |  829 | ` *   SORT_STRING - compare items as strings` |
+|      - |  830 | ` * Return` |
+|      - |  831 | ` *  TRUE on success or FALSE on failure.` |
+|      - |  832 | ` */` |
+|     28 |  833 | `PH7_PRIVATE int ph7_hashmap_arsort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      3 |  834 | `{` |
+|      - |  835 | `	ph7_hashmap *pMap;` |
+|      - |  836 | `	/* PHP 8: ArgumentCountError if no arguments */` |
+|     31 |  837 | `	if( nArg < 1 ){` |
+|    ! 0 |  838 | `		return PH7_VmThrowException(pCtx,` |
+|      - |  839 | `			"ArgumentCountError",` |
+|      - |  840 | `			"arsort() expects at least 1 argument, 0 given"` |
+|      - |  841 | `			);` |
+|      - |  842 | `	}` |
+|      - |  843 | `	/* PHP 8: TypeError if first argument is not an array */` |
+|     31 |  844 | `	if( !ph7_value_is_array(apArg[0]) ){` |
+|    ! 0 |  845 | `		return PH7_VmThrowException(pCtx,` |
+|      - |  846 | `			"TypeError",` |
+|      - |  847 | `			"arsort(): Argument #1 ($array) must be of type array, %s given",` |
+|    ! 0 |  848 | `			ph7_type_name(apArg[0])` |
+|      - |  849 | `			);` |
+|      - |  850 | `	}` |
+|      - |  851 | `	/* Point to the internal representation of the input hashmap */` |
+|     31 |  852 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|     31 |  853 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|     31 |  854 | `	if( pMap->nEntry > 1 ){` |
+|     27 |  855 | `		sxi32 iCmpFlags = 0;` |
+|     27 |  856 | `		if( nArg > 1 ){` |
+|      - |  857 | `			/* Extract comparison flags */` |
+|     13 |  858 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
+|      5 |  859 | `		}` |
+|      - |  860 | `		/* Do the merge sort */` |
+|     27 |  861 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
+|     27 |  862 | `		HashmapMergeSort(pMap,HashmapCmpCallback3,SX_INT_TO_PTR(iCmpFlags));` |
+|      - |  863 | `		/* Fix the last link broken by the merge */` |
+|     45 |  864 | `		while(pMap->pLast->pPrev){` |
+|     20 |  865 | `			pMap->pLast = pMap->pLast->pPrev;` |
+|      2 |  866 | `		}` |
+|     12 |  867 | `	}` |
+|      - |  868 | `	{` |
+|     31 |  869 | `		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);` |
+|     31 |  870 | `		if( rcCmp != PH7_OK ){` |
+|      3 |  871 | `			return rcCmp;` |
+|      - |  872 | `		}` |
+|      - |  873 | `	}` |
+|      - |  874 | `	/* All done,return TRUE */` |
+|     28 |  875 | `	ph7_result_bool(pCtx,1);` |
+|     28 |  876 | `	return PH7_OK;` |
+|     17 |  877 | `}` |
+|      - |  878 | `/*` |
+|      - |  879 | ` * bool ksort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
+|      - |  880 | ` *  Sort an array by key.` |
+|      - |  881 | ` * Parameters` |
+|      - |  882 | ` *  $array` |
+|      - |  883 | ` *   The input array.` |
+|      - |  884 | ` * $sort_flags` |
+|      - |  885 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
+|      - |  886 | ` *  Sorting type flags:` |
+|      - |  887 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
+|      - |  888 | ` *   SORT_NUMERIC - compare items numerically` |
+|      - |  889 | ` *   SORT_STRING - compare items as strings` |
+|      - |  890 | ` * Return` |
+|      - |  891 | ` *  TRUE on success or FALSE on failure.` |
+|      - |  892 | ` */` |
+|    108 |  893 | `PH7_PRIVATE int ph7_hashmap_ksort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      3 |  894 | `{` |
+|      - |  895 | `	ph7_hashmap *pMap;` |
+|      - |  896 | `	/* Make sure we are dealing with a valid hashmap */` |
+|    111 |  897 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
+|      - |  898 | `		/* Missing/Invalid arguments,return FALSE */` |
+|    ! 0 |  899 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 |  900 | `		return PH7_OK;` |
+|      - |  901 | `	}` |
+|      - |  902 | `	/* Point to the internal representation of the input hashmap */` |
+|    111 |  903 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|    111 |  904 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|    111 |  905 | `	if( pMap->nEntry > 1 ){` |
+|    111 |  906 | `		sxi32 iCmpFlags = 0;` |
+|    111 |  907 | `		if( nArg > 1 ){` |
+|      - |  908 | `			/* Extract comparison flags */` |
+|     57 |  909 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
+|     27 |  910 | `		}` |
+|      - |  911 | `		/* Do the merge sort */` |
+|    111 |  912 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
+|    111 |  913 | `		HashmapMergeSort(pMap,HashmapCmpCallback2,SX_INT_TO_PTR(iCmpFlags));` |
+|      - |  914 | `		/* Fix the last link broken by the merge */` |
+|    221 |  915 | `		while(pMap->pLast->pPrev){` |
+|    112 |  916 | `			pMap->pLast = pMap->pLast->pPrev;` |
+|      2 |  917 | `		}` |
+|     54 |  918 | `	}` |
+|      - |  919 | `	{` |
+|    111 |  920 | `		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);` |
+|    111 |  921 | `		if( rcCmp != PH7_OK ){` |
+|    ! 0 |  922 | `			return rcCmp;` |
+|      - |  923 | `		}` |
+|      - |  924 | `	}` |
+|      - |  925 | `	/* All done,return TRUE */` |
+|    111 |  926 | `	ph7_result_bool(pCtx,1);` |
+|    111 |  927 | `	return PH7_OK;` |
+|     57 |  928 | `}` |
+|      - |  929 | `/*` |
+|      - |  930 | ` * bool krsort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
+|      - |  931 | ` *  Sort an array by key in reverse order.` |
+|      - |  932 | ` * Parameters` |
+|      - |  933 | ` *  $array` |
+|      - |  934 | ` *   The input array.` |
+|      - |  935 | ` * $sort_flags` |
+|      - |  936 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
+|      - |  937 | ` *  Sorting type flags:` |
+|      - |  938 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
+|      - |  939 | ` *   SORT_NUMERIC - compare items numerically` |
+|      - |  940 | ` *   SORT_STRING - compare items as strings` |
+|      - |  941 | ` * Return` |
+|      - |  942 | ` *  TRUE on success or FALSE on failure.` |
+|      - |  943 | ` */` |
+|     30 |  944 | `PH7_PRIVATE int ph7_hashmap_krsort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      2 |  945 | `{` |
+|      - |  946 | `	ph7_hashmap *pMap;` |
+|      - |  947 | `	/* Make sure we are dealing with a valid hashmap */` |
+|     32 |  948 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
+|      - |  949 | `		/* Missing/Invalid arguments,return FALSE */` |
+|    ! 0 |  950 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 |  951 | `		return PH7_OK;` |
+|      - |  952 | `	}` |
+|      - |  953 | `	/* Point to the internal representation of the input hashmap */` |
+|     32 |  954 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|     32 |  955 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|     32 |  956 | `	if( pMap->nEntry > 1 ){` |
+|     32 |  957 | `		sxi32 iCmpFlags = 0;` |
+|     32 |  958 | `		if( nArg > 1 ){` |
+|      - |  959 | `			/* Extract comparison flags */` |
+|      6 |  960 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
+|      2 |  961 | `		}` |
+|      - |  962 | `		/* Do the merge sort */` |
+|     32 |  963 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
+|     32 |  964 | `		HashmapMergeSort(pMap,HashmapCmpCallback5,SX_INT_TO_PTR(iCmpFlags));` |
+|      - |  965 | `		/* Fix the last link broken by the merge */` |
+|     54 |  966 | `		while(pMap->pLast->pPrev){` |
+|     23 |  967 | `			pMap->pLast = pMap->pLast->pPrev;` |
+|      1 |  968 | `		}` |
+|     15 |  969 | `	}` |
+|      - |  970 | `	{` |
+|     32 |  971 | `		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);` |
+|     32 |  972 | `		if( rcCmp != PH7_OK ){` |
+|    ! 0 |  973 | `			return rcCmp;` |
+|      - |  974 | `		}` |
+|      - |  975 | `	}` |
+|      - |  976 | `	/* All done,return TRUE */` |
+|     32 |  977 | `	ph7_result_bool(pCtx,1);` |
+|     32 |  978 | `	return PH7_OK;` |
+|     17 |  979 | `}` |
+|      - |  980 | `/*` |
+|      - |  981 | ` * bool rsort(array &$array[,int $sort_flags = SORT_REGULAR ] )` |
+|      - |  982 | ` * Sort an array in reverse order.` |
+|      - |  983 | ` * Parameters` |
+|      - |  984 | ` *  $array` |
+|      - |  985 | ` *   The input array.` |
+|      - |  986 | ` * $sort_flags` |
+|      - |  987 | ` *  The optional second parameter sort_flags may be used to modify the sorting behavior using these values:` |
+|      - |  988 | ` *  Sorting type flags:` |
+|      - |  989 | ` *   SORT_REGULAR - compare items normally (don't change types)` |
+|      - |  990 | ` *   SORT_NUMERIC - compare items numerically` |
+|      - |  991 | ` *   SORT_STRING - compare items as strings` |
+|      - |  992 | ` * Return` |
+|      - |  993 | ` *  TRUE on success or FALSE on failure.` |
+|      - |  994 | ` */` |
+|     36 |  995 | `PH7_PRIVATE int ph7_hashmap_rsort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      4 |  996 | `{` |
+|      - |  997 | `	ph7_hashmap *pMap;` |
+|      - |  998 | `	/* Make sure we are dealing with a valid hashmap */` |
+|     40 |  999 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
+|      - | 1000 | `		/* Missing/Invalid arguments,return FALSE */` |
+|    ! 0 | 1001 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 1002 | `		return PH7_OK;` |
+|      - | 1003 | `	}` |
+|      - | 1004 | `	/* Point to the internal representation of the input hashmap */` |
+|     40 | 1005 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|     40 | 1006 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|     40 | 1007 | `	if( pMap->nEntry > 1 ){` |
+|     38 | 1008 | `		sxi32 iCmpFlags = 0;` |
+|     38 | 1009 | `		if( nArg > 1 ){` |
+|      - | 1010 | `			/* Extract comparison flags */` |
+|     16 | 1011 | `			iCmpFlags = ph7_value_to_int(apArg[1]);` |
+|      6 | 1012 | `		}` |
+|      - | 1013 | `		/* Do the merge sort */` |
+|     38 | 1014 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
+|     38 | 1015 | `		HashmapMergeSort(pMap,HashmapCmpCallback3,SX_INT_TO_PTR(iCmpFlags));` |
+|      - | 1016 | `		/* Rehash [Do not maintain index association as requested by the PHP specification] */` |
+|     38 | 1017 | `		HashmapSortRehash(pMap);` |
+|     20 | 1018 | `	}else if( pMap->nEntry == 1 ){` |
+|      - | 1019 | `		/* php reindexes even a single-element array: a string key becomes 0 */` |
+|      3 | 1020 | `		HashmapSortRehash(pMap);` |
+|      1 | 1021 | `	}` |
+|      - | 1022 | `	{` |
+|     40 | 1023 | `		sxi32 rcCmp = HashmapFlagSortStatus(pCtx);` |
+|     40 | 1024 | `		if( rcCmp != PH7_OK ){` |
+|     14 | 1025 | `			return rcCmp;` |
+|      - | 1026 | `		}` |
+|      - | 1027 | `	}` |
+|      - | 1028 | `	/* All done,return TRUE */` |
+|     27 | 1029 | `	ph7_result_bool(pCtx,1);` |
+|     27 | 1030 | `	return PH7_OK;` |
+|     22 | 1031 | `}` |
+|      - | 1032 | `/*` |
+|      - | 1033 | ` * bool usort(array &$array,callable $cmp_function)` |
+|      - | 1034 | ` *  Sort an array by values using a user-defined comparison function.` |
+|      - | 1035 | ` * Parameters` |
+|      - | 1036 | ` *  $array` |
+|      - | 1037 | ` *   The input array.` |
+|      - | 1038 | ` * $cmp_function` |
+|      - | 1039 | ` *  The comparison function must return an integer less than, equal to, or greater` |
+|      - | 1040 | ` *  than zero if the first argument is considered to be respectively less than, equal` |
+|      - | 1041 | ` *  to, or greater than the second.` |
+|      - | 1042 | ` *    int callback ( mixed $a, mixed $b )` |
+|      - | 1043 | ` * Return` |
+|      - | 1044 | ` *  TRUE on success or FALSE on failure.` |
+|      - | 1045 | ` */` |
+|    130 | 1046 | `PH7_PRIVATE int ph7_hashmap_usort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      5 | 1047 | `{` |
+|      - | 1048 | `	ph7_hashmap *pMap;` |
+|      - | 1049 | `	/* Make sure we are dealing with a valid hashmap */` |
+|    135 | 1050 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
+|      - | 1051 | `		/* Missing/Invalid arguments,return FALSE */` |
+|    ! 0 | 1052 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 1053 | `		return PH7_OK;` |
+|      - | 1054 | `	}` |
+|    135 | 1055 | `	if( nArg > 1 ){` |
+|      - | 1056 | `		/* php rejects an uncallable comparator with a TypeError, BEFORE touching the` |
+|      - | 1057 | `		 * array. PH7 handed it to the dispatcher, which answers NULL in silence -- so` |
+|      - | 1058 | `		 * usort() with a bogus comparator reordered the array anyway, by nothing. */` |
+|    135 | 1059 | `		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",0);` |
+|    135 | 1060 | `		if( rcCb != PH7_OK ){` |
+|      7 | 1061 | `			return rcCb;` |
+|      - | 1062 | `		}` |
+|     62 | 1063 | `	}` |
+|      - | 1064 | `	/* Point to the internal representation of the input hashmap */` |
+|    129 | 1065 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|    129 | 1066 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|    129 | 1067 | `	if( pMap->nEntry > 1 ){` |
+|    127 | 1068 | `		ph7_value *pCallback = 0;` |
+|      - | 1069 | `		ProcNodeCmp xCmp;` |
+|    127 | 1070 | `		xCmp = HashmapCmpCallback4; /* User-defined function as the comparison callback */` |
+|    127 | 1071 | `		if( nArg > 1 && ph7_value_is_callable(apArg[1]) ){` |
+|      - | 1072 | `			/* Point to the desired callback */` |
+|    127 | 1073 | `			pCallback = apArg[1];` |
+|     66 | 1074 | `		}else{` |
+|      - | 1075 | `			/* Use the default comparison function */` |
+|    ! 0 | 1076 | `			xCmp = HashmapCmpCallback1;` |
+|      - | 1077 | `		}` |
+|      - | 1078 | `		/* Do the merge sort */` |
+|    127 | 1079 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
+|    127 | 1080 | `		HashmapMergeSort(pMap,xCmp,pCallback);` |
+|      - | 1081 | `		/* Rehash [Do not maintain index association as requested by the PHP specification] */` |
+|    127 | 1082 | `		HashmapSortRehash(pMap);` |
+|    127 | 1083 | `		if( pCtx->pVm->iCmpCallbackExc ){` |
+|      - | 1084 | `			/* The comparison callback did not return: propagate its status so the` |
+|      - | 1085 | `			 * dispatcher unwinds. */` |
+|     13 | 1086 | `			sxi32 rcExc = pCtx->pVm->iCmpCallbackExc;` |
+|     13 | 1087 | `			pCtx->pVm->iCmpCallbackExc = 0;` |
+|     13 | 1088 | `			return rcExc;` |
+|      5 | 1089 | `		}` |
+|     59 | 1090 | `	}else if( pMap->nEntry == 1 ){` |
+|      - | 1091 | `		/* php reindexes even a single-element array: a string key becomes 0 */` |
+|      3 | 1092 | `		HashmapSortRehash(pMap);` |
+|      1 | 1093 | `	}` |
+|      - | 1094 | `	/* All done,return TRUE */` |
+|    119 | 1095 | `	ph7_result_bool(pCtx,1);` |
+|    119 | 1096 | `	return PH7_OK;` |
+|     70 | 1097 | `}` |
+|      - | 1098 | `/*` |
+|      - | 1099 | ` * bool uasort(array &$array,callable $cmp_function)` |
+|      - | 1100 | ` *  Sort an array by values using a user-defined comparison function` |
+|      - | 1101 | ` *  and maintain index association.` |
+|      - | 1102 | ` * Parameters` |
+|      - | 1103 | ` *  $array` |
+|      - | 1104 | ` *   The input array.` |
+|      - | 1105 | ` * $cmp_function` |
+|      - | 1106 | ` *  The comparison function must return an integer less than, equal to, or greater` |
+|      - | 1107 | ` *  than zero if the first argument is considered to be respectively less than, equal` |
+|      - | 1108 | ` *  to, or greater than the second.` |
+|      - | 1109 | ` *    int callback ( mixed $a, mixed $b )` |
+|      - | 1110 | ` * Return` |
+|      - | 1111 | ` *  TRUE on success or FALSE on failure.` |
+|      - | 1112 | ` */` |
+|     14 | 1113 | `PH7_PRIVATE int ph7_hashmap_uasort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      2 | 1114 | `{` |
+|      - | 1115 | `	ph7_hashmap *pMap;` |
+|      - | 1116 | `	/* Make sure we are dealing with a valid hashmap */` |
+|     16 | 1117 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
+|      - | 1118 | `		/* Missing/Invalid arguments,return FALSE */` |
+|    ! 0 | 1119 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 1120 | `		return PH7_OK;` |
+|      - | 1121 | `	}` |
+|     16 | 1122 | `	if( nArg > 1 ){` |
+|      - | 1123 | `		/* php rejects an uncallable comparator with a TypeError, BEFORE touching the` |
+|      - | 1124 | `		 * array. PH7 handed it to the dispatcher, which answers NULL in silence -- so` |
+|      - | 1125 | `		 * usort() with a bogus comparator reordered the array anyway, by nothing. */` |
+|     16 | 1126 | `		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",0);` |
+|     16 | 1127 | `		if( rcCb != PH7_OK ){` |
+|      5 | 1128 | `			return rcCb;` |
+|      - | 1129 | `		}` |
+|      5 | 1130 | `	}` |
+|      - | 1131 | `	/* Point to the internal representation of the input hashmap */` |
+|     12 | 1132 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|     12 | 1133 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|     12 | 1134 | `	if( pMap->nEntry > 1 ){` |
+|     12 | 1135 | `		ph7_value *pCallback = 0;` |
+|      - | 1136 | `		ProcNodeCmp xCmp;` |
+|     12 | 1137 | `		xCmp = HashmapCmpCallback4; /* User-defined function as the comparison callback */` |
+|     12 | 1138 | `		if( nArg > 1 && ph7_value_is_callable(apArg[1]) ){` |
+|      - | 1139 | `			/* Point to the desired callback */` |
+|     12 | 1140 | `			pCallback = apArg[1];` |
+|      7 | 1141 | `		}else{` |
+|      - | 1142 | `			/* Use the default comparison function */` |
+|    ! 0 | 1143 | `			xCmp = HashmapCmpCallback1;` |
+|      - | 1144 | `		}` |
+|      - | 1145 | `		/* Do the merge sort */` |
+|     12 | 1146 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
+|     12 | 1147 | `		HashmapMergeSort(pMap,xCmp,pCallback);` |
+|      - | 1148 | `		/* Fix the last link broken by the merge */` |
+|     24 | 1149 | `		while(pMap->pLast->pPrev){` |
+|     13 | 1150 | `			pMap->pLast = pMap->pLast->pPrev;` |
+|      1 | 1151 | `		}` |
+|     12 | 1152 | `		if( pCtx->pVm->iCmpCallbackExc ){` |
+|      - | 1153 | `			/* The comparison callback did not return: propagate its status so the` |
+|      - | 1154 | `			 * dispatcher unwinds. */` |
+|      3 | 1155 | `			sxi32 rcExc = pCtx->pVm->iCmpCallbackExc;` |
+|      3 | 1156 | `			pCtx->pVm->iCmpCallbackExc = 0;` |
+|      3 | 1157 | `			return rcExc;` |
+|      - | 1158 | `		}` |
+|      4 | 1159 | `	}` |
+|      - | 1160 | `	/* All done,return TRUE */` |
+|      9 | 1161 | `	ph7_result_bool(pCtx,1);` |
+|      9 | 1162 | `	return PH7_OK;` |
+|      9 | 1163 | `}` |
+|      - | 1164 | `/*` |
+|      - | 1165 | ` * bool uksort(array &$array,callable $cmp_function)` |
+|      - | 1166 | ` *  Sort an array by keys using a user-defined comparison` |
+|      - | 1167 | ` *  function and maintain index association.` |
+|      - | 1168 | ` * Parameters` |
+|      - | 1169 | ` *  $array` |
+|      - | 1170 | ` *   The input array.` |
+|      - | 1171 | ` * $cmp_function` |
+|      - | 1172 | ` *  The comparison function must return an integer less than, equal to, or greater` |
+|      - | 1173 | ` *  than zero if the first argument is considered to be respectively less than, equal` |
+|      - | 1174 | ` *  to, or greater than the second.` |
+|      - | 1175 | ` *    int callback ( mixed $a, mixed $b )` |
+|      - | 1176 | ` * Return` |
+|      - | 1177 | ` *  TRUE on success or FALSE on failure.` |
+|      - | 1178 | ` */` |
+|     10 | 1179 | `PH7_PRIVATE int ph7_hashmap_uksort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      2 | 1180 | `{` |
+|      - | 1181 | `	ph7_hashmap *pMap;` |
+|      - | 1182 | `	/* Make sure we are dealing with a valid hashmap */` |
+|     12 | 1183 | `	if( nArg < 1 \|\| !ph7_value_is_array(apArg[0]) ){` |
+|      - | 1184 | `		/* Missing/Invalid arguments,return FALSE */` |
+|    ! 0 | 1185 | `		ph7_result_bool(pCtx,0);` |
+|    ! 0 | 1186 | `		return PH7_OK;` |
+|      - | 1187 | `	}` |
+|     12 | 1188 | `	if( nArg > 1 ){` |
+|      - | 1189 | `		/* php rejects an uncallable comparator with a TypeError, BEFORE touching the` |
+|      - | 1190 | `		 * array. PH7 handed it to the dispatcher, which answers NULL in silence -- so` |
+|      - | 1191 | `		 * usort() with a bogus comparator reordered the array anyway, by nothing. */` |
+|     12 | 1192 | `		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[1],2,"callback",0);` |
+|     12 | 1193 | `		if( rcCb != PH7_OK ){` |
+|      3 | 1194 | `			return rcCb;` |
+|      - | 1195 | `		}` |
+|      4 | 1196 | `	}` |
+|      - | 1197 | `	/* Point to the internal representation of the input hashmap */` |
+|     10 | 1198 | `	PH7_HashmapCowSeparate(pCtx->pVm, apArg[0]);` |
+|     10 | 1199 | `	pMap = (ph7_hashmap *)apArg[0]->x.pOther;` |
+|     10 | 1200 | `	if( pMap->nEntry > 1 ){` |
+|     10 | 1201 | `		ph7_value *pCallback = 0;` |
+|      - | 1202 | `		ProcNodeCmp xCmp;` |
+|     10 | 1203 | `		xCmp = HashmapCmpCallback6; /* User-defined function as the comparison callback */` |
+|     10 | 1204 | `		if( nArg > 1 && ph7_value_is_callable(apArg[1]) ){` |
+|      - | 1205 | `			/* Point to the desired callback */` |
+|     10 | 1206 | `			pCallback = apArg[1];` |
+|      6 | 1207 | `		}else{` |
+|      - | 1208 | `			/* Use the default comparison function */` |
+|    ! 0 | 1209 | `			xCmp = HashmapCmpCallback2;` |
+|      - | 1210 | `		}` |
+|      - | 1211 | `		/* Do the merge sort */` |
+|     10 | 1212 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
+|     10 | 1213 | `		HashmapMergeSort(pMap,xCmp,pCallback);` |
+|      - | 1214 | `		/* Fix the last link broken by the merge */` |
+|     12 | 1215 | `		while(pMap->pLast->pPrev){` |
+|      3 | 1216 | `			pMap->pLast = pMap->pLast->pPrev;` |
+|      1 | 1217 | `		}` |
+|     10 | 1218 | `		if( pCtx->pVm->iCmpCallbackExc ){` |
+|      - | 1219 | `			/* The comparison callback did not return: propagate its status so the` |
+|      - | 1220 | `			 * dispatcher unwinds. */` |
+|      3 | 1221 | `			sxi32 rcExc = pCtx->pVm->iCmpCallbackExc;` |
+|      3 | 1222 | `			pCtx->pVm->iCmpCallbackExc = 0;` |
+|      3 | 1223 | `			return rcExc;` |
+|      - | 1224 | `		}` |
+|      3 | 1225 | `	}` |
+|      - | 1226 | `	/* All done,return TRUE */` |
+|      7 | 1227 | `	ph7_result_bool(pCtx,1);` |
+|      7 | 1228 | `	return PH7_OK;` |
+|      7 | 1229 | `}` |
+|      - | 1230 | `/*` |
+|      - | 1231 | ` * bool array_multisort(array &$array, mixed $array1_sort_order = SORT_ASC,` |
+|      - | 1232 | ` *                      mixed $array1_sort_flags = SORT_REGULAR, mixed &...$rest)` |
+|      - | 1233 | ` *  Sort multiple arrays at once: the argument list is a little language read` |
+|      - | 1234 | ` *  left to right — an ARRAY opens a column, and each column may be followed by` |
+|      - | 1235 | ` *  at most one sort ORDER (SORT_ASC/SORT_DESC) and at most one sort FLAGS` |
+|      - | 1236 | ` *  value, in either order. Rows are compared column by column, a tie in one` |
+|      - | 1237 | ` *  column falling through to the next; the resulting permutation is applied to` |
+|      - | 1238 | ` *  EVERY column. String keys are kept, numeric keys are renumbered, and the` |
+|      - | 1239 | ` *  sort is stable (php 8's own guarantee). php's error shapes, pinned by` |
+|      - | 1240 | `` *  probe: a non-int non-array is `Argument #N must be an array or a sort`` |
+|      - | 1241 | `` *  flag`; a misplaced or repeated order/flags is the same text with`` |
+|      - | 1242 | `` *  `... that has not already been specified`; an int that is no flag at all is`` |
+|      - | 1243 | `` *  the ValueError `must be a valid sort flag`; mismatched lengths are`` |
+|      - | 1244 | `` *  `Array sizes are inconsistent` with no function prefix; and only`` |
+|      - | 1245 | `` *  Argument #1 carries its `($array)` name. php declares the whole list`` |
+|      - | 1246 | ` *  prefer-ref (VmBuiltinPrefersRef), so a literal sorts a temporary silently.` |
+|      - | 1247 | ` */` |
+|      - | 1248 | `/* One column of the multisort: the caller's array plus its sort spec. */` |
+|      - | 1249 | `typedef struct MultisortCol MultisortCol;` |
+|      - | 1250 | `struct MultisortCol` |
+|      - | 1251 | `{` |
+|      - | 1252 | `	ph7_value *pArr;        /* The caller's argument slot */` |
+|      - | 1253 | `	ph7_hashmap *pMap;      /* Its hashmap */` |
+|      - | 1254 | `	ph7_hashmap_node **apNode; /* Nodes in ORIGINAL iteration order */` |
+|      - | 1255 | `	sxi32 iFlags;           /* SORT_* comparison flags */` |
+|      - | 1256 | `	int iDir;               /* +1 SORT_ASC, -1 SORT_DESC */` |
+|      - | 1257 | `	int bOrderSeen;         /* An order argument already attached */` |
+|      - | 1258 | `	int bFlagsSeen;         /* A flags argument already attached */` |
+|      - | 1259 | `};` |
+|      - | 1260 | `/* Compare two ROWS, column by column with each column's own direction/flags. */` |
+|     96 | 1261 | `static sxi32 MultisortRowCmp(MultisortCol *aCol,sxu32 nCol,sxu32 iA,sxu32 iB)` |
+|      4 | 1262 | `{` |
+|    100 | 1263 | `	ph7_vm *pVm = aCol[0].pMap->pVm;` |
+|      - | 1264 | `	sxu32 c;` |
+|    110 | 1265 | `	for( c = 0 ; c < nCol ; c++ ){` |
+|    110 | 1266 | `		sxi32 rc = HashmapFlagValueCmp(aCol[c].apNode[iA],aCol[c].apNode[iB],aCol[c].iFlags);` |
+|    110 | 1267 | `		HashmapCmpLatch(pVm);` |
+|    110 | 1268 | `		if( rc != 0 ){` |
+|    100 | 1269 | `			return aCol[c].iDir < 0 ? -rc : rc;` |
+|      - | 1270 | `		}` |
+|      6 | 1271 | `	}` |
+|    ! 0 | 1272 | `	return 0;` |
+|     52 | 1273 | `}` |
+|      - | 1274 | `/*` |
+|      - | 1275 | ` * Stable bottom-up merge sort over the row-index permutation. Iterative on` |
+|      - | 1276 | ` * purpose — the recursive shape would put O(log n) frames on the native stack` |
+|      - | 1277 | ` * (the §7 embedder C-stack family).` |
+|      - | 1278 | ` */` |
+|     34 | 1279 | `static void MultisortSortIdx(MultisortCol *aCol,sxu32 nCol,sxu32 *aIdx,sxu32 *aTmp,sxu32 n)` |
+|      4 | 1280 | `{` |
+|      - | 1281 | `	sxu32 nWidth,iLo;` |
+|    102 | 1282 | `	for( nWidth = 1 ; nWidth < n ; nWidth *= 2 ){` |
+|    162 | 1283 | `		for( iLo = 0 ; iLo < n ; iLo += 2 * nWidth ){` |
+|     98 | 1284 | `			sxu32 iMid = iLo + nWidth;` |
+|     98 | 1285 | `			sxu32 iHi = iLo + 2 * nWidth;` |
+|      - | 1286 | `			sxu32 i,j,k;` |
+|     98 | 1287 | `			if( iMid > n ){ iMid = n; }` |
+|     98 | 1288 | `			if( iHi > n ){ iHi = n; }` |
+|     98 | 1289 | `			i = iLo; j = iMid; k = iLo;` |
+|    194 | 1290 | `			while( i < iMid && j < iHi ){` |
+|      - | 1291 | `				/* <= keeps the run stable: on a full tie the left row wins */` |
+|    100 | 1292 | `				if( MultisortRowCmp(aCol,nCol,aIdx[i],aIdx[j]) <= 0 ){` |
+|     44 | 1293 | `					aTmp[k++] = aIdx[i++];` |
+|     24 | 1294 | `				}else{` |
+|     60 | 1295 | `					aTmp[k++] = aIdx[j++];` |
+|      - | 1296 | `				}` |
+|      4 | 1297 | `			}` |
+|    182 | 1298 | `			while( i < iMid ){ aTmp[k++] = aIdx[i++]; }` |
+|    114 | 1299 | `			while( j < iHi ){ aTmp[k++] = aIdx[j++]; }` |
+|     51 | 1300 | `		}` |
+|      - | 1301 | `		/* aTmp holds the merged runs for this width; swap roles by copying` |
+|      - | 1302 | `		 * back — n is bounded by the array count, one memcpy per doubling. */` |
+|     68 | 1303 | `		SyMemcpy(aTmp,aIdx,(sxu32)(n * sizeof(sxu32)));` |
+|     36 | 1304 | `	}` |
+|     38 | 1305 | `}` |
+|     60 | 1306 | `PH7_PRIVATE int ph7_hashmap_multisort(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      4 | 1307 | `{` |
+|      - | 1308 | `	MultisortCol *aCol;` |
+|      - | 1309 | `	sxu32 *aIdx,*aTmp;` |
+|     64 | 1310 | `	sxu32 nCol = 0,nRow,i;` |
+|      - | 1311 | `	sxi32 rcStatus;` |
+|      - | 1312 | `	int iArg;` |
+|      - | 1313 |  |
+|     64 | 1314 | `	if( nArg < 1 ){` |
+|    ! 0 | 1315 | `		return PH7_VmThrowException(pCtx,` |
+|      - | 1316 | `			"ArgumentCountError",` |
+|      - | 1317 | `			"array_multisort() expects at least 1 argument, %d given",` |
+|    ! 0 | 1318 | `			nArg` |
+|      - | 1319 | `			);` |
+|      - | 1320 | `	}` |
+|     94 | 1321 | `	aCol = (MultisortCol *)ph7_context_alloc_chunk(pCtx,` |
+|     60 | 1322 | `		(unsigned int)(sizeof(MultisortCol) * (sxu32)nArg),TRUE,TRUE);` |
+|     64 | 1323 | `	if( aCol == 0 ){` |
+|    ! 0 | 1324 | `		return PH7_ContextMemoryError(pCtx);` |
+|      - | 1325 | `	}` |
+|      - | 1326 | `	/* Read the argument list's little language, php's own state machine. */` |
+|    162 | 1327 | `	for( iArg = 0 ; iArg < nArg ; iArg++ ){` |
+|    124 | 1328 | `		ph7_value *pArg = apArg[iArg];` |
+|      - | 1329 | `		/* Only Argument #1 carries its parameter name in php's messages. */` |
+|    124 | 1330 | `		const char *zName = (iArg == 0) ? " ($array)" : "";` |
+|    124 | 1331 | `		if( ph7_value_is_array(pArg) ){` |
+|     80 | 1332 | `			MultisortCol *pCol = &aCol[nCol++];` |
+|     80 | 1333 | `			pCol->pArr = pArg;` |
+|     80 | 1334 | `			pCol->pMap = (ph7_hashmap *)pArg->x.pOther;` |
+|     80 | 1335 | `			pCol->apNode = 0;` |
+|     80 | 1336 | `			pCol->iFlags = 0; /* SORT_REGULAR */` |
+|     80 | 1337 | `			pCol->iDir = 1;   /* SORT_ASC */` |
+|     80 | 1338 | `			pCol->bOrderSeen = pCol->bFlagsSeen = 0;` |
+|     80 | 1339 | `			continue;` |
+|      - | 1340 | `		}` |
+|     47 | 1341 | `		if( ph7_value_is_float(pArg) \|\| (pArg->iFlags & MEMOBJ_INT) == 0 ){` |
+|      - | 1342 | `			/* A REAL int only, float asked FIRST (ph7_type_name's rule: an` |
+|      - | 1343 | `			 * integer-valued real caches an int and would pass a bare flag` |
+|      - | 1344 | `			 * test). php coerces nothing here: "4", 4.0 and true are all` |
+|      - | 1345 | `			 * refused. */` |
+|     17 | 1346 | `			return PH7_VmThrowException(pCtx,"TypeError",` |
+|      - | 1347 | `				"array_multisort(): Argument #%d%s must be an array or a sort flag",` |
+|      5 | 1348 | `				iArg + 1,zName);` |
+|      - | 1349 | `		}` |
+|      - | 1350 | `		{` |
+|     37 | 1351 | `			sxi64 iVal = ph7_value_to_int64(pArg);` |
+|      - | 1352 | `			/* php masks SORT_FLAG_CASE off for the ORDER match too, but reads` |
+|      - | 1353 | `			 * the direction from the UNMASKED value — so SORT_DESC\|SORT_FLAG_CASE` |
+|      - | 1354 | `			 * (11) consumes the order slot and quirkily sorts ASCENDING. */` |
+|     37 | 1355 | `			if( (iVal & ~(sxi64)8) == 3 /* SORT_DESC */ \|\| (iVal & ~(sxi64)8) == 4 /* SORT_ASC */ ){` |
+|     23 | 1356 | `				if( nCol < 1 \|\| aCol[nCol - 1].bOrderSeen ){` |
+|     11 | 1357 | `					return PH7_VmThrowException(pCtx,"TypeError",` |
+|      - | 1358 | `						"array_multisort(): Argument #%d%s must be an array or a sort flag that has not already been specified",` |
+|      3 | 1359 | `						iArg + 1,zName);` |
+|      - | 1360 | `				}` |
+|     17 | 1361 | `				aCol[nCol - 1].iDir = (iVal == 3) ? -1 : 1;` |
+|     17 | 1362 | `				aCol[nCol - 1].bOrderSeen = 1;` |
+|     24 | 1363 | `			}else if( (iVal & ~(sxi64)8 /* SORT_FLAG_CASE */) == 0 /* SORT_REGULAR */` |
+|     13 | 1364 | `			       \|\| (iVal & ~(sxi64)8) == 1 /* SORT_NUMERIC */` |
+|     11 | 1365 | `			       \|\| (iVal & ~(sxi64)8) == 2 /* SORT_STRING */` |
+|      8 | 1366 | `			       \|\| (iVal & ~(sxi64)8) == 5 /* SORT_LOCALE_STRING */` |
+|      7 | 1367 | `			       \|\| (iVal & ~(sxi64)8) == 6 /* SORT_NATURAL */ ){` |
+|     14 | 1368 | `				if( nCol < 1 \|\| aCol[nCol - 1].bFlagsSeen ){` |
+|      7 | 1369 | `					return PH7_VmThrowException(pCtx,"TypeError",` |
+|      - | 1370 | `						"array_multisort(): Argument #%d%s must be an array or a sort flag that has not already been specified",` |
+|      2 | 1371 | `						iArg + 1,zName);` |
+|      - | 1372 | `				}` |
+|     10 | 1373 | `				aCol[nCol - 1].iFlags = (sxi32)iVal;` |
+|     10 | 1374 | `				aCol[nCol - 1].bFlagsSeen = 1;` |
+|      6 | 1375 | `			}else{` |
+|      4 | 1376 | `				return PH7_VmThrowException(pCtx,"ValueError",` |
+|      - | 1377 | `					"array_multisort(): Argument #%d%s must be a valid sort flag",` |
+|      1 | 1378 | `					iArg + 1,zName);` |
+|      - | 1379 | `			}` |
+|      - | 1380 | `		}` |
+|     14 | 1381 | `	}` |
+|      - | 1382 | `	/* Every column must hold the same number of rows; php's message carries no` |
+|      - | 1383 | `	 * function prefix. */` |
+|     42 | 1384 | `	nRow = aCol[0].pMap->nEntry;` |
+|     58 | 1385 | `	for( i = 1 ; i < nCol ; i++ ){` |
+|     21 | 1386 | `		if( aCol[i].pMap->nEntry != nRow ){` |
+|      3 | 1387 | `			return PH7_VmThrowException(pCtx,"ValueError","Array sizes are inconsistent");` |
+|      - | 1388 | `		}` |
+|     10 | 1389 | `	}` |
+|     40 | 1390 | `	if( nRow > 0 ){` |
+|      - | 1391 | `		/* Collect each column's nodes in original order. */` |
+|     86 | 1392 | `		for( i = 0 ; i < nCol ; i++ ){` |
+|     52 | 1393 | `			ph7_hashmap_node *pNode = aCol[i].pMap->pFirst;` |
+|      - | 1394 | `			sxu32 r;` |
+|     76 | 1395 | `			aCol[i].apNode = (ph7_hashmap_node **)ph7_context_alloc_chunk(pCtx,` |
+|     24 | 1396 | `				(unsigned int)(sizeof(ph7_hashmap_node *) * nRow),FALSE,TRUE);` |
+|     52 | 1397 | `			if( aCol[i].apNode == 0 ){` |
+|    ! 0 | 1398 | `				return PH7_ContextMemoryError(pCtx);` |
+|      - | 1399 | `			}` |
+|    196 | 1400 | `			for( r = 0 ; r < nRow && pNode ; r++ ){` |
+|    148 | 1401 | `				aCol[i].apNode[r] = pNode;` |
+|    148 | 1402 | `				pNode = pNode->pPrev; /* Reverse link */` |
+|     76 | 1403 | `			}` |
+|     28 | 1404 | `		}` |
+|     55 | 1405 | `		aIdx = (sxu32 *)ph7_context_alloc_chunk(pCtx,` |
+|     17 | 1406 | `			(unsigned int)(sizeof(sxu32) * nRow * 2),FALSE,TRUE);` |
+|     38 | 1407 | `		if( aIdx == 0 ){` |
+|    ! 0 | 1408 | `			return PH7_ContextMemoryError(pCtx);` |
+|      - | 1409 | `		}` |
+|     38 | 1410 | `		aTmp = &aIdx[nRow];` |
+|    140 | 1411 | `		for( i = 0 ; i < nRow ; i++ ){` |
+|    106 | 1412 | `			aIdx[i] = i;` |
+|     55 | 1413 | `		}` |
+|      - | 1414 | `		/* The string flags coerce user-visibly and can only FLAG a throw` |
+|      - | 1415 | `		 * (iCmpCallbackExc); clear it, sort, and report after — the flag-sort` |
+|      - | 1416 | `		 * drivers' shared pattern. */` |
+|     38 | 1417 | `		pCtx->pVm->iCmpCallbackExc = 0;` |
+|     38 | 1418 | `		MultisortSortIdx(aCol,nCol,aIdx,aTmp,nRow);` |
+|     38 | 1419 | `		if( pCtx->pVm->iCmpCallbackExc ){` |
+|      - | 1420 | `			/* A comparison raised. php's array_multisort leaves EVERY column as` |
+|      - | 1421 | `			 * it found it in that case -- unlike sort(), which still writes back` |
+|      - | 1422 | `			 * the order it reached -- so the permutation is dropped rather than` |
+|      - | 1423 | `			 * applied. */` |
+|     11 | 1424 | `			return HashmapFlagSortStatus(pCtx);` |
+|      - | 1425 | `		}` |
+|      - | 1426 | `		/* Apply the permutation to every column: rebuild in sorted order,` |
+|      - | 1427 | `		 * keeping string keys and renumbering int keys, then hand the fresh` |
+|      - | 1428 | `		 * array back through the by-ref slot (a literal has none and the` |
+|      - | 1429 | `		 * result is silently dropped — php's prefer-ref). */` |
+|     63 | 1430 | `		for( i = 0 ; i < nCol ; i++ ){` |
+|     39 | 1431 | `			ph7_value *pNew = ph7_context_new_array(pCtx);` |
+|      - | 1432 | `			sxu32 r;` |
+|     39 | 1433 | `			if( pNew == 0 ){` |
+|    ! 0 | 1434 | `				return PH7_ContextMemoryError(pCtx);` |
+|      - | 1435 | `			}` |
+|    147 | 1436 | `			for( r = 0 ; r < nRow ; r++ ){` |
+|    111 | 1437 | `				ph7_hashmap_node *pNode = aCol[i].apNode[aIdx[r]];` |
+|    165 | 1438 | `				HashmapInsertNode((ph7_hashmap *)pNew->x.pOther,pNode,` |
+|    108 | 1439 | `					pNode->iType == HASHMAP_BLOB_NODE ? TRUE : FALSE);` |
+|     57 | 1440 | `			}` |
+|     39 | 1441 | `			PH7_VmStoreArgByRef(pCtx->pVm,aCol[i].pArr,pNew);` |
+|     21 | 1442 | `		}` |
+|     27 | 1443 | `		rcStatus = HashmapFlagSortStatus(pCtx);` |
+|     27 | 1444 | `		if( rcStatus != PH7_OK ){` |
+|    ! 0 | 1445 | `			return rcStatus;` |
+|      - | 1446 | `		}` |
+|     12 | 1447 | `	}` |
+|     29 | 1448 | `	ph7_result_bool(pCtx,1);` |
+|     29 | 1449 | `	return PH7_OK;` |
+|     34 | 1450 | `}` |
+|      - | 1451 |  |

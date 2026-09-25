@@ -38,11 +38,11 @@ Coverage: 5127/5945 lines (86.24%)
 |     - |   28 | ` * triggering autoload for unknown string names. Returns NULL when the` |
 |     - |   29 | ` * class does not exist (the PHP layer turns that into ReflectionException).` |
 |     - |   30 | ` */` |
-|  2538 |   31 | `static ph7_class * ReflectResolveClass(ph7_vm *pVm, ph7_value *pArg)` |
+|  2548 |   31 | `static ph7_class * ReflectResolveClass(ph7_vm *pVm, ph7_value *pArg)` |
 |     5 |   32 | `{` |
 |     - |   33 | `	ph7_class *pClass;` |
-|  2543 |   34 | `	pClass = PH7_VmExtractClassFromValue(pVm, pArg);` |
-|  2543 |   35 | `	if( pClass == 0 && ph7_value_is_string(pArg) ){` |
+|  2553 |   34 | `	pClass = PH7_VmExtractClassFromValue(pVm, pArg);` |
+|  2553 |   35 | `	if( pClass == 0 && ph7_value_is_string(pArg) ){` |
 |     - |   36 | `		const char *zName;` |
 |     - |   37 | `		int nLen;` |
 |    20 |   38 | `		zName = ph7_value_to_string(pArg, &nLen);` |
@@ -50,7 +50,7 @@ Coverage: 5127/5945 lines (86.24%)
 |    20 |   40 | `			pClass = PH7_VmTriggerAutoload(pVm, zName, (sxu32)nLen, FALSE);` |
 |     9 |   41 | `		}` |
 |     9 |   42 | `	}` |
-|  2543 |   43 | `	return pClass;` |
+|  2553 |   43 | `	return pClass;` |
 |     5 |   44 | `}` |
 |     - |   45 | `/*` |
 |     - |   46 | ` * Hand a freshly created class instance to the caller. The return slot` |
@@ -58,17 +58,17 @@ Coverage: 5127/5945 lines (86.24%)
 |     - |   48 | ` * no extra iRef++ here (see the synthesized-object invariant — a stray` |
 |     - |   49 | ` * bump leaks the object and disables its __destruct).` |
 |     - |   50 | ` */` |
-|   586 |   51 | `static int ReflectResultObject(ph7_context *pCtx, ph7_class_instance *pObj)` |
+|   592 |   51 | `static int ReflectResultObject(ph7_context *pCtx, ph7_class_instance *pObj)` |
 |     5 |   52 | `{` |
-|   591 |   53 | `	if( pObj == 0 ){` |
+|   597 |   53 | `	if( pObj == 0 ){` |
 |   ! 0 |   54 | `		ph7_result_null(pCtx);` |
 |   ! 0 |   55 | `		return PH7_OK;` |
 |     - |   56 | `	}` |
-|   591 |   57 | `	PH7_MemObjRelease(pCtx->pRet);` |
-|   591 |   58 | `	pCtx->pRet->x.pOther = pObj;` |
-|   591 |   59 | `	MemObjSetType(pCtx->pRet, MEMOBJ_OBJ);` |
-|   591 |   60 | `	return PH7_OK;` |
-|   298 |   61 | `}` |
+|   597 |   57 | `	PH7_MemObjRelease(pCtx->pRet);` |
+|   597 |   58 | `	pCtx->pRet->x.pOther = pObj;` |
+|   597 |   59 | `	MemObjSetType(pCtx->pRet, MEMOBJ_OBJ);` |
+|   597 |   60 | `	return PH7_OK;` |
+|   301 |   61 | `}` |
 |     - |   62 | `/* The last of the descriptor marshalling: ReflectMapAddDyn survives because` |
 |     - |   63 | ` * ReflectAttrArgs() answers a php ARRAY whose named arguments are string keys.` |
 |     - |   64 | ` * Its Bool/Int/Str/Null/Attrs/Doc siblings went with __phl_rcinfo. */` |
@@ -250,20 +250,20 @@ Coverage: 5127/5945 lines (86.24%)
 |     - |  240 | ` * against those. The two really do disagree: hasMethod('basePriv') is true on` |
 |     - |  241 | ` * the subclass while getMethods() never mentions it.` |
 |     - |  242 | ` */` |
-|   952 |  243 | `static void ReflectMembers(ph7_vm *pVm, ph7_class *pClass, SySet *pOut, int bLookup)` |
+|   964 |  243 | `static void ReflectMembers(ph7_vm *pVm, ph7_class *pClass, SySet *pOut, int bLookup)` |
 |     5 |  244 | `{` |
 |     - |  245 | `	ph7_class *aChain[REFLECT_WALK_MAX_DEPTH + 1];` |
-|   957 |  246 | `	ph7_class *pWalk = pClass;` |
+|   969 |  246 | `	ph7_class *pWalk = pClass;` |
 |     - |  247 | `	SyHashEntry *pEntry;` |
 |     - |  248 | `	SySet aTmp;` |
-|   957 |  249 | `	int bInternal = (pClass->iFlags & PH7_CLASS_INTERNAL) != 0;` |
+|   969 |  249 | `	int bInternal = (pClass->iFlags & PH7_CLASS_INTERNAL) != 0;` |
 |     - |  250 | `	int iPart;` |
-|   957 |  251 | `	sxu32 nChain = 0, iLevel, nLev, nT;` |
-|  2043 |  252 | `	while( pWalk && nChain < (sxu32)(REFLECT_WALK_MAX_DEPTH + 1) ){` |
-|  1091 |  253 | `		aChain[nChain++] = pWalk;` |
-|  1091 |  254 | `		pWalk = pWalk->pBase;` |
+|   969 |  251 | `	sxu32 nChain = 0, iLevel, nLev, nT;` |
+|  2067 |  252 | `	while( pWalk && nChain < (sxu32)(REFLECT_WALK_MAX_DEPTH + 1) ){` |
+|  1103 |  253 | `		aChain[nChain++] = pWalk;` |
+|  1103 |  254 | `		pWalk = pWalk->pBase;` |
 |     5 |  255 | `	}` |
-|   957 |  256 | `	SySetInit(&aTmp, &pVm->sAllocator, sizeof(SyHashEntry *));` |
+|   969 |  256 | `	SySetInit(&aTmp, &pVm->sAllocator, sizeof(SyHashEntry *));` |
 |     - |  257 | `	/* PROPERTIES of an INTERNAL class come out base-first, and that is php's` |
 |     - |  258 | `	 * registration order rather than a rule of its own: a user class declares its` |
 |     - |  259 | ``	 * own properties and THEN inherits (`class B extends A` reports B's before`` |
@@ -272,37 +272,37 @@ Coverage: 5127/5945 lines (86.24%)
 |     - |  262 | `	 * $severity. Only the property table flips: php lists an internal class's` |
 |     - |  263 | `	 * METHODS and CONSTANTS own-first like everything else, so the walk below` |
 |     - |  264 | `	 * runs the two tables in opposite level orders. */` |
-|  3813 |  265 | `	for( iPart = 0 ; iPart < 3 ; iPart++ ){` |
-|  6119 |  266 | `	  for( nLev = 0 ; nLev < nChain ; nLev++ ){` |
+|  3861 |  265 | `	for( iPart = 0 ; iPart < 3 ; iPart++ ){` |
+|  6191 |  266 | `	  for( nLev = 0 ; nLev < nChain ; nLev++ ){` |
 |     - |  267 | `		ph7_class *pLevel;` |
-|  3263 |  268 | `		int iTab = iPart;` |
-|  3263 |  269 | `		iLevel = (iPart == 0 && bInternal) ? nChain - 1 - nLev : nLev;` |
-|  3263 |  270 | `		pLevel = aChain[iLevel];` |
+|  3299 |  268 | `		int iTab = iPart;` |
+|  3299 |  269 | `		iLevel = (iPart == 0 && bInternal) ? nChain - 1 - nLev : nLev;` |
+|  3299 |  270 | `		pLevel = aChain[iLevel];` |
 |     - |  271 | `		/* --- Properties (hAttr, iPart 0) and constants/enum cases (hConst,` |
 |     - |  272 | `		 * iPart 1) — php's two separate member namespaces. Each table is` |
 |     - |  273 | `		 * collected and emitted independently; the CONSTANT flag still decides` |
 |     - |  274 | `		 * which kind comes out. --- */` |
-|  3263 |  275 | `		if( iPart < 2 ){` |
-|  2177 |  276 | `			SyHash *pSrcHash = iTab ? &pLevel->hConst : &pLevel->hAttr;` |
-|  2177 |  277 | `			SyHash *pRefHash = iTab ? &pClass->hConst : &pClass->hAttr;` |
-|  2177 |  278 | `			SySetReset(&aTmp);` |
-|  2177 |  279 | `			SyHashResetLoopCursor(pSrcHash);` |
-|  9015 |  280 | `			while( (pEntry = SyHashGetNextEntry(pSrcHash)) != 0 ){` |
-|  6843 |  281 | `				ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;` |
-|  6843 |  282 | `				ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pLevel;` |
-|  6843 |  283 | `				if( pAttr->iFlags & PH7_CLASS_ATTR_HIDDEN ){` |
+|  3299 |  275 | `		if( iPart < 2 ){` |
+|  2201 |  276 | `			SyHash *pSrcHash = iTab ? &pLevel->hConst : &pLevel->hAttr;` |
+|  2201 |  277 | `			SyHash *pRefHash = iTab ? &pClass->hConst : &pClass->hAttr;` |
+|  2201 |  278 | `			SySetReset(&aTmp);` |
+|  2201 |  279 | `			SyHashResetLoopCursor(pSrcHash);` |
+|  9075 |  280 | `			while( (pEntry = SyHashGetNextEntry(pSrcHash)) != 0 ){` |
+|  6879 |  281 | `				ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;` |
+|  6879 |  282 | `				ph7_class *pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pLevel;` |
+|  6879 |  283 | `				if( pAttr->iFlags & PH7_CLASS_ATTR_HIDDEN ){` |
 |     - |  284 | `					/* A native class's engine slot: php holds that state in its own C` |
 |     - |  285 | `					 * struct and reports no property for it at all. */` |
 |   387 |  286 | `					continue;` |
 |     - |  287 | `				}` |
-|  6457 |  288 | `				if( iLevel == 0 ){` |
+|  6493 |  288 | `				if( iLevel == 0 ){` |
 |     - |  289 | `					sxu32 j;` |
 |     - |  290 | `					/* Own = declared here or by an off-chain provider (trait) */` |
-|  6423 |  291 | `					for( j = 1 ; j < nChain ; j++ ){` |
+|  6459 |  291 | `					for( j = 1 ; j < nChain ; j++ ){` |
 |   627 |  292 | `						if( aChain[j] == pDecl ){ break; }` |
 |   149 |  293 | `					}` |
-|  6127 |  294 | `					if( j < nChain ){ continue; }` |
-|  2901 |  295 | `				}else{` |
+|  6163 |  294 | `					if( j < nChain ){ continue; }` |
+|  2919 |  295 | `				}else{` |
 |     - |  296 | `					SyHashEntry *pSub;` |
 |   331 |  297 | `					if( pDecl != pLevel ){ continue; }` |
 |     - |  298 | `					/* A base's PRIVATE member is not part of the subclass's` |
@@ -315,29 +315,29 @@ Coverage: 5127/5945 lines (86.24%)
 |   249 |  305 | `					pSub = SyHashGet(pRefHash, pEntry->pKey, pEntry->nKeyLen);` |
 |   249 |  306 | `					if( pSub == 0 \|\| pSub->pUserData != (void *)pAttr ){ continue; }` |
 |     - |  307 | `				}` |
-|  6045 |  308 | `				SySetPut(&aTmp, (const void *)&pEntry);` |
+|  6081 |  308 | `				SySetPut(&aTmp, (const void *)&pEntry);` |
 |     5 |  309 | `			}` |
 |     - |  310 | `			/* Forward: hAttr/hConst iterate in DECLARATION order (tail inserts),` |
 |     - |  311 | `			 * so members come out in the order php reports them. */` |
-|  8217 |  312 | `			for( nT = 0 ; nT < SySetUsed(&aTmp) ; nT++ ){` |
-|  6045 |  313 | `				SyHashEntry *pE = *(SyHashEntry **)SySetAt(&aTmp, nT);` |
-|  6045 |  314 | `				ph7_class_attr *pAttr = (ph7_class_attr *)pE->pUserData;` |
+|  8277 |  312 | `			for( nT = 0 ; nT < SySetUsed(&aTmp) ; nT++ ){` |
+|  6081 |  313 | `				SyHashEntry *pE = *(SyHashEntry **)SySetAt(&aTmp, nT);` |
+|  6081 |  314 | `				ph7_class_attr *pAttr = (ph7_class_attr *)pE->pUserData;` |
 |     - |  315 | `				ReflectMember sMember;` |
-|  6045 |  316 | `				sMember.iKind = (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT)` |
-|  3020 |  317 | `					? REFLECT_MEMBER_CONST : REFLECT_MEMBER_PROP;` |
-|  6045 |  318 | `				sMember.sKey = pAttr->sName;` |
-|  6045 |  319 | `				sMember.pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pLevel;` |
-|  6045 |  320 | `				sMember.pAttr = pAttr;` |
-|  6045 |  321 | `				sMember.pMeth = 0;` |
-|  6045 |  322 | `				SySetPut(pOut, (const void *)&sMember);` |
-|  3025 |  323 | `			}` |
-|  2177 |  324 | `			continue;` |
+|  6081 |  316 | `				sMember.iKind = (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT)` |
+|  3038 |  317 | `					? REFLECT_MEMBER_CONST : REFLECT_MEMBER_PROP;` |
+|  6081 |  318 | `				sMember.sKey = pAttr->sName;` |
+|  6081 |  319 | `				sMember.pDecl = pAttr->pDeclClass ? pAttr->pDeclClass : pLevel;` |
+|  6081 |  320 | `				sMember.pAttr = pAttr;` |
+|  6081 |  321 | `				sMember.pMeth = 0;` |
+|  6081 |  322 | `				SySetPut(pOut, (const void *)&sMember);` |
+|  3043 |  323 | `			}` |
+|  2201 |  324 | `			continue;` |
 |     - |  325 | `		}` |
 |     - |  326 | `		/* --- Methods. The reported name is the hash-entry KEY, not the` |
 |     - |  327 | `		 * function's own name (see ReflectMember::sKey). --- */` |
-|  1091 |  328 | `		SySetReset(&aTmp);` |
-|  1091 |  329 | `		SyHashResetLoopCursor(&pLevel->hMethod);` |
-|  6321 |  330 | `		while( (pEntry = SyHashGetNextEntry(&pLevel->hMethod)) != 0 ){` |
+|  1103 |  328 | `		SySetReset(&aTmp);` |
+|  1103 |  329 | `		SyHashResetLoopCursor(&pLevel->hMethod);` |
+|  6333 |  330 | `		while( (pEntry = SyHashGetNextEntry(&pLevel->hMethod)) != 0 ){` |
 |  5234 |  331 | `			ph7_class_method *pMeth = (ph7_class_method *)pEntry->pUserData;` |
 |  5234 |  332 | `			ph7_class *pDecl = ReflectMethodDeclClass(pClass, pMeth);` |
 |     - |  333 | `			/* A property HOOK is compiled into a method (__phl_hook_get_NAME /` |
@@ -372,7 +372,7 @@ Coverage: 5127/5945 lines (86.24%)
 |     - |  362 | `			}` |
 |  3859 |  363 | `			SySetPut(&aTmp, (const void *)&pEntry);` |
 |     3 |  364 | `		}` |
-|  4947 |  365 | `		for( nT = SySetUsed(&aTmp) ; nT > 0 ; nT-- ){` |
+|  4959 |  365 | `		for( nT = SySetUsed(&aTmp) ; nT > 0 ; nT-- ){` |
 |  3859 |  366 | `			SyHashEntry *pE = *(SyHashEntry **)SySetAt(&aTmp, nT - 1);` |
 |     - |  367 | `			ReflectMember sMember;` |
 |  3859 |  368 | `			sMember.iKind = REFLECT_MEMBER_METHOD;` |
@@ -382,15 +382,15 @@ Coverage: 5127/5945 lines (86.24%)
 |  3859 |  372 | `			sMember.pAttr = 0;` |
 |  3859 |  373 | `			SySetPut(pOut, (const void *)&sMember);` |
 |  1931 |  374 | `		}` |
-|   548 |  375 | `	  }` |
-|  1433 |  376 | `	}` |
-|   957 |  377 | `	SySetRelease(&aTmp);` |
-|   957 |  378 | `}` |
+|   554 |  375 | `	  }` |
+|  1451 |  376 | `	}` |
+|   969 |  377 | `	SySetRelease(&aTmp);` |
+|   969 |  378 | `}` |
 |     - |  379 | `/* Does a collected member name match zName exactly? */` |
-|  2368 |  380 | `static int ReflectKeyIs(const ReflectMember *pM, const char *zName, int nName)` |
+|  2392 |  380 | `static int ReflectKeyIs(const ReflectMember *pM, const char *zName, int nName)` |
 |     5 |  381 | `{` |
-|  2897 |  382 | `	return SyStringLength(&pM->sKey) == (sxu32)nName` |
-|  2368 |  383 | `		&& SyMemcmp(SyStringData(&pM->sKey), zName, (sxu32)nName) == 0;` |
+|  2929 |  382 | `	return SyStringLength(&pM->sKey) == (sxu32)nName` |
+|  2392 |  383 | `		&& SyMemcmp(SyStringData(&pM->sKey), zName, (sxu32)nName) == 0;` |
 |     5 |  384 | `}` |
 |     - |  385 | `/*` |
 |     - |  386 | ` * php's METHOD lookup, which is NOT the listing.` |
@@ -426,19 +426,19 @@ Coverage: 5127/5945 lines (86.24%)
 |     - |  416 | ` * still not instantiable even though getMethods() does not report one.` |
 |     - |  417 | ` */` |
 |    24 |  418 | `static void ReflectCtorCloneVis(ph7_vm *pVm, ph7_class *pClass, sxi32 *piCtor, sxi32 *piClone)` |
-|     2 |  419 | `{` |
+|     3 |  419 | `{` |
 |     - |  420 | `	ph7_class_method *pMeth;` |
 |    12 |  421 | `	SXUNUSED(pVm);` |
-|    26 |  422 | `	*piCtor = *piClone = 0;` |
-|    26 |  423 | `	pMeth = PH7_ClassExtractMethod(pClass, "__construct", sizeof("__construct")-1);` |
-|    26 |  424 | `	if( pMeth ){` |
+|    27 |  422 | `	*piCtor = *piClone = 0;` |
+|    27 |  423 | `	pMeth = PH7_ClassExtractMethod(pClass, "__construct", sizeof("__construct")-1);` |
+|    27 |  424 | `	if( pMeth ){` |
 |    16 |  425 | `		*piCtor = pMeth->iProtection;` |
 |     7 |  426 | `	}` |
-|    26 |  427 | `	pMeth = PH7_ClassExtractMethod(pClass, "__clone", sizeof("__clone")-1);` |
-|    26 |  428 | `	if( pMeth ){` |
+|    27 |  427 | `	pMeth = PH7_ClassExtractMethod(pClass, "__clone", sizeof("__clone")-1);` |
+|    27 |  428 | `	if( pMeth ){` |
 |   ! 0 |  429 | `		*piClone = pMeth->iProtection;` |
 |   ! 0 |  430 | `	}` |
-|    26 |  431 | `}` |
+|    27 |  431 | `}` |
 |     - |  432 | `/* Where __phl_rcinfo() was: a full class DESCRIPTOR array — every constant,` |
 |     - |  433 | ` * property and method of the whole inheritance chain, marshalled once and` |
 |     - |  434 | ` * memoized on pVm->hClassInfo because the prelude classes rebuilt it once per` |
@@ -609,15 +609,15 @@ Coverage: 5127/5945 lines (86.24%)
 |     3 |  599 | `	return PH7_OK;` |
 |     2 |  600 | `}` |
 |     - |  601 | `/* pVal is a Closure instance? Return it, else NULL. */` |
-|  1622 |  602 | `static ph7_class_instance * ReflectValueClosure(ph7_vm *pVm, ph7_value *pVal)` |
+|  1648 |  602 | `static ph7_class_instance * ReflectValueClosure(ph7_vm *pVm, ph7_value *pVal)` |
 |     5 |  603 | `{` |
 |     - |  604 | `	ph7_class_instance *pThis;` |
-|  1627 |  605 | `	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 \|\| pVal->x.pOther == 0 \|\| pVm->pClosureClass == 0 ){` |
-|  1393 |  606 | `		return 0;` |
+|  1653 |  605 | `	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 \|\| pVal->x.pOther == 0 \|\| pVm->pClosureClass == 0 ){` |
+|  1414 |  606 | `		return 0;` |
 |     - |  607 | `	}` |
-|   236 |  608 | `	pThis = (ph7_class_instance *)pVal->x.pOther;` |
-|   236 |  609 | `	return (pThis->pClass == pVm->pClosureClass) ? pThis : 0;` |
-|   816 |  610 | `}` |
+|   243 |  608 | `	pThis = (ph7_class_instance *)pVal->x.pOther;` |
+|   243 |  609 | `	return (pThis->pClass == pVm->pClosureClass) ? pThis : 0;` |
+|   829 |  610 | `}` |
 |     - |  611 | `/*` |
 |     - |  612 | ` * Resolve a reflection callable target into its compiled function.` |
 |     - |  613 | ` *   - pMethodArg a non-empty string  -> method mode: pTarget is a class name` |
@@ -627,16 +627,16 @@ Coverage: 5127/5945 lines (86.24%)
 |     - |  617 | ` *     (*ppHost set, returns NULL).` |
 |     - |  618 | ` * Returns the ph7_vm_func, or NULL (host function or unresolvable).` |
 |     - |  619 | ` */` |
-|  2570 |  620 | `static ph7_vm_func * ReflectResolveCallable(ph7_vm *pVm, ph7_value *pTarget,` |
+|  2584 |  620 | `static ph7_vm_func * ReflectResolveCallable(ph7_vm *pVm, ph7_value *pTarget,` |
 |     - |  621 | `	ph7_value *pMethodArg, ph7_class **ppClass, ph7_class_method **ppMeth,` |
 |     - |  622 | `	ph7_user_func **ppHost, ph7_class_instance **ppClosure)` |
 |     5 |  623 | `{` |
 |     - |  624 | `	SyHashEntry *pEntry;` |
-|  2575 |  625 | `	if( ppClass ){ *ppClass = 0; }` |
-|  2575 |  626 | `	if( ppMeth ){ *ppMeth = 0; }` |
-|  2575 |  627 | `	if( ppHost ){ *ppHost = 0; }` |
-|  2575 |  628 | `	if( ppClosure ){ *ppClosure = 0; }` |
-|  2575 |  629 | `	if( pMethodArg && (pMethodArg->iFlags & MEMOBJ_STRING) && SyBlobLength(&pMethodArg->sBlob) > 0 ){` |
+|  2589 |  625 | `	if( ppClass ){ *ppClass = 0; }` |
+|  2589 |  626 | `	if( ppMeth ){ *ppMeth = 0; }` |
+|  2589 |  627 | `	if( ppHost ){ *ppHost = 0; }` |
+|  2589 |  628 | `	if( ppClosure ){ *ppClosure = 0; }` |
+|  2589 |  629 | `	if( pMethodArg && (pMethodArg->iFlags & MEMOBJ_STRING) && SyBlobLength(&pMethodArg->sBlob) > 0 ){` |
 |  1247 |  630 | `		ph7_class *pClass = ReflectResolveClass(pVm, pTarget);` |
 |     - |  631 | `		ph7_class_method *pMeth;` |
 |  1247 |  632 | `		if( pClass == 0 ){` |
@@ -666,13 +666,13 @@ Coverage: 5127/5945 lines (86.24%)
 |  1247 |  656 | `		return &pMeth->sFunc;` |
 |     - |  657 | `	}` |
 |     - |  658 | `	{` |
-|  1333 |  659 | `		ph7_class_instance *pClo = ReflectValueClosure(pVm, pTarget);` |
-|  1333 |  660 | `		if( pClo ){` |
+|  1347 |  659 | `		ph7_class_instance *pClo = ReflectValueClosure(pVm, pTarget);` |
+|  1347 |  660 | `		if( pClo ){` |
 |     - |  661 | `			SyString sAttr;` |
 |     - |  662 | `			ph7_value *pFn;` |
-|   176 |  663 | `			SyStringInitFromBuf(&sAttr, "__fn", 4);` |
-|   176 |  664 | `			pFn = PH7_ClassInstanceFetchAttr(pClo, &sAttr);` |
-|   176 |  665 | `			if( pFn == 0 \|\| (pFn->iFlags & MEMOBJ_STRING) == 0 \|\| SyBlobLength(&pFn->sBlob) < 1 ){` |
+|   181 |  663 | `			SyStringInitFromBuf(&sAttr, "__fn", 4);` |
+|   181 |  664 | `			pFn = PH7_ClassInstanceFetchAttr(pClo, &sAttr);` |
+|   181 |  665 | `			if( pFn == 0 \|\| (pFn->iFlags & MEMOBJ_STRING) == 0 \|\| SyBlobLength(&pFn->sBlob) < 1 ){` |
 |   ! 0 |  666 | `				return 0;` |
 |     - |  667 | `			}` |
 |     - |  668 | `			/* A closure over an object method or __invoke object` |
@@ -685,9 +685,9 @@ Coverage: 5127/5945 lines (86.24%)
 |     - |  675 | `			{` |
 |     - |  676 | `				SyString sScope;` |
 |     - |  677 | `				ph7_value *pScope;` |
-|   176 |  678 | `				SyStringInitFromBuf(&sScope, "__scope", 7);` |
-|   176 |  679 | `				pScope = PH7_ClassInstanceFetchAttr(pClo, &sScope);` |
-|   176 |  680 | `				if( pScope && (pScope->iFlags & MEMOBJ_STRING) && SyBlobLength(&pScope->sBlob) > 0 ){` |
+|   181 |  678 | `				SyStringInitFromBuf(&sScope, "__scope", 7);` |
+|   181 |  679 | `				pScope = PH7_ClassInstanceFetchAttr(pClo, &sScope);` |
+|   181 |  680 | `				if( pScope && (pScope->iFlags & MEMOBJ_STRING) && SyBlobLength(&pScope->sBlob) > 0 ){` |
 |   119 |  681 | `					ph7_class *pScopeCls = PH7_VmExtractClass(pVm,` |
 |    78 |  682 | `						(const char *)SyBlobData(&pScope->sBlob), SyBlobLength(&pScope->sBlob), FALSE, 0);` |
 |    80 |  683 | `					if( pScopeCls ){` |
@@ -702,8 +702,8 @@ Coverage: 5127/5945 lines (86.24%)
 |     7 |  692 | `					}` |
 |     7 |  693 | `				}` |
 |     - |  694 | `			}` |
-|   112 |  695 | `			pEntry = SyHashGet(&pVm->hFunction, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));` |
-|   112 |  696 | `			if( pEntry == 0 ){` |
+|   117 |  695 | `			pEntry = SyHashGet(&pVm->hFunction, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));` |
+|   117 |  696 | `			if( pEntry == 0 ){` |
 |     - |  697 | `				/* A Closure over a host function (Closure::fromCallable('strlen')) */` |
 |     3 |  698 | `				pEntry = SyHashGet(&pVm->hHostFunction, SyBlobData(&pFn->sBlob), SyBlobLength(&pFn->sBlob));` |
 |     3 |  699 | `				if( pEntry && ppHost ){` |
@@ -712,25 +712,25 @@ Coverage: 5127/5945 lines (86.24%)
 |     1 |  702 | `				}` |
 |     3 |  703 | `				return 0;` |
 |     - |  704 | `			}` |
-|   110 |  705 | `			if( ppClosure ){ *ppClosure = pClo; }` |
-|   110 |  706 | `			return (ph7_vm_func *)pEntry->pUserData;` |
+|   115 |  705 | `			if( ppClosure ){ *ppClosure = pClo; }` |
+|   115 |  706 | `			return (ph7_vm_func *)pEntry->pUserData;` |
 |     - |  707 | `		}` |
 |     - |  708 | `	}` |
-|  1159 |  709 | `	if( pTarget->iFlags & MEMOBJ_STRING ){` |
-|  1159 |  710 | `		if( SyBlobLength(&pTarget->sBlob) < 1 ){` |
+|  1170 |  709 | `	if( pTarget->iFlags & MEMOBJ_STRING ){` |
+|  1170 |  710 | `		if( SyBlobLength(&pTarget->sBlob) < 1 ){` |
 |   ! 0 |  711 | `			return 0;` |
 |     - |  712 | `		}` |
-|  1159 |  713 | `		pEntry = SyHashGet(&pVm->hFunction, SyBlobData(&pTarget->sBlob), SyBlobLength(&pTarget->sBlob));` |
-|  1159 |  714 | `		if( pEntry ){` |
-|   780 |  715 | `			return (ph7_vm_func *)pEntry->pUserData;` |
+|  1170 |  713 | `		pEntry = PH7_VmGetUserFunction(pVm, SyBlobData(&pTarget->sBlob), SyBlobLength(&pTarget->sBlob), FALSE);` |
+|  1170 |  714 | `		if( pEntry ){` |
+|   783 |  715 | `			return (ph7_vm_func *)pEntry->pUserData;` |
 |     - |  716 | `		}` |
-|   380 |  717 | `		pEntry = SyHashGet(&pVm->hHostFunction, SyBlobData(&pTarget->sBlob), SyBlobLength(&pTarget->sBlob));` |
-|   380 |  718 | `		if( pEntry && ppHost ){` |
+|   389 |  717 | `		pEntry = SyHashGet(&pVm->hHostFunction, SyBlobData(&pTarget->sBlob), SyBlobLength(&pTarget->sBlob));` |
+|   389 |  718 | `		if( pEntry && ppHost ){` |
 |   374 |  719 | `			*ppHost = (ph7_user_func *)pEntry->pUserData;` |
 |   186 |  720 | `		}` |
-|   189 |  721 | `	}` |
-|   380 |  722 | `	return 0;` |
-|  1290 |  723 | `}` |
+|   193 |  721 | `	}` |
+|   389 |  722 | `	return 0;` |
+|  1297 |  723 | `}` |
 |     - |  724 | `/*` |
 |     - |  725 | ` * ---------------------------------------------------------------------------` |
 |     - |  726 | ` * The signature parser.` |
@@ -768,24 +768,24 @@ Coverage: 5127/5945 lines (86.24%)
 |     - |  758 | ``/* Byte search that respects single-quoted runs (a default may be `'a,b'` or`` |
 |     - |  759 | `` * `'it\'s'`), which is the whole reason the split is not SyByteFind. Answers`` |
 |     - |  760 | ` * the offset of the first unquoted zWhat, or -1. */` |
-|  4188 |  761 | `static int ReflectSigFindUnquoted(const char *z, int n, char cWhat)` |
+|  4202 |  761 | `static int ReflectSigFindUnquoted(const char *z, int n, char cWhat)` |
 |     4 |  762 | `{` |
-|  4192 |  763 | `	int k, bQuote = 0;` |
-| 55484 |  764 | `	for( k = 0 ; k < n ; k++ ){` |
-| 53494 |  765 | `		if( bQuote ){` |
+|  4206 |  763 | `	int k, bQuote = 0;` |
+| 55600 |  764 | `	for( k = 0 ; k < n ; k++ ){` |
+| 53596 |  765 | `		if( bQuote ){` |
 |   273 |  766 | `			if( z[k] == '\\' && k + 1 < n ){` |
 |    17 |  767 | `				k++;` |
 |   265 |  768 | `			}else if( z[k] == '\'' ){` |
 |   137 |  769 | `				bQuote = 0;` |
 |    69 |  770 | `			}` |
-| 53358 |  771 | `		}else if( z[k] == '\'' ){` |
+| 53460 |  771 | `		}else if( z[k] == '\'' ){` |
 |   137 |  772 | `			bQuote = 1;` |
-| 53154 |  773 | `		}else if( z[k] == cWhat ){` |
+| 53256 |  773 | `		}else if( z[k] == cWhat ){` |
 |  2201 |  774 | `			return k;` |
 |     - |  775 | `		}` |
-| 25650 |  776 | `	}` |
-|  1994 |  777 | `	return -1;` |
-|  2098 |  778 | `}` |
+| 25701 |  776 | `	}` |
+|  2008 |  777 | `	return -1;` |
+|  2105 |  778 | `}` |
 |     - |  779 | `/* Does [z,n) contain zNeedle? (case-sensitive; nNeedle > 0) */` |
 |  1084 |  780 | `static int ReflectSigHas(const char *z, int n, const char *zNeedle, int nNeedle)` |
 |     3 |  781 | `{` |
@@ -799,20 +799,20 @@ Coverage: 5127/5945 lines (86.24%)
 |   545 |  789 | `}` |
 |     - |  790 | ``/* Case-insensitive twin, for the `null` arm of a union type text. */`` |
 |   482 |  791 | `static int ReflectSigHasNoCase(const char *z, int n, const char *zNeedle, int nNeedle)` |
-|     3 |  792 | `{` |
+|     4 |  792 | `{` |
 |     - |  793 | `	int k, j;` |
-|  1919 |  794 | `	for( k = 0 ; k + nNeedle <= n ; k++ ){` |
-|  1511 |  795 | `		for( j = 0 ; j < nNeedle ; j++ ){` |
-|  1507 |  796 | `			if( SyToLower(z[k+j]) != SyToLower(zNeedle[j]) ){` |
-|  1437 |  797 | `				break;` |
+|  1920 |  794 | `	for( k = 0 ; k + nNeedle <= n ; k++ ){` |
+|  1512 |  795 | `		for( j = 0 ; j < nNeedle ; j++ ){` |
+|  1508 |  796 | `			if( SyToLower(z[k+j]) != SyToLower(zNeedle[j]) ){` |
+|  1438 |  797 | `				break;` |
 |     - |  798 | `			}` |
 |    37 |  799 | `		}` |
-|  1441 |  800 | `		if( j == nNeedle ){` |
+|  1442 |  800 | `		if( j == nNeedle ){` |
 |     6 |  801 | `			return 1;` |
 |     - |  802 | `		}` |
-|   720 |  803 | `	}` |
-|   481 |  804 | `	return 0;` |
-|   244 |  805 | `}` |
+|   721 |  803 | `	}` |
+|   482 |  804 | `	return 0;` |
+|   245 |  805 | `}` |
 |     - |  806 | `/*` |
 |     - |  807 | `` * One `C::K` (or `C::class`) term of a declared default, evaluated.`` |
 |     - |  808 | ` *` |
@@ -1247,19 +1247,19 @@ Coverage: 5127/5945 lines (86.24%)
 |    28 | 1237 | `	ph7_result_bool(pCtx, pThis != 0 && PH7_NativeAttrTruthy(pThis, RT_NULLABLE));` |
 |    28 | 1238 | `	return PH7_OK;` |
 |     2 | 1239 | `}` |
-|   380 | 1240 | `static int vm_builtin_ReflectionType_toString(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     3 | 1241 | `{` |
-|   383 | 1242 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   383 | 1243 | `	const char *zText = "";` |
-|   383 | 1244 | `	int nText = 0;` |
-|   190 | 1245 | `	SXUNUSED(nArg);` |
-|   190 | 1246 | `	SXUNUSED(apArg);` |
-|   383 | 1247 | `	if( pThis ){` |
-|   383 | 1248 | `		PH7_NativeAttrStr(pThis, RT_TEXT, &zText, &nText);` |
-|   190 | 1249 | `	}` |
-|   383 | 1250 | `	ph7_result_string(pCtx, zText, nText);` |
-|   383 | 1251 | `	return PH7_OK;` |
-|     3 | 1252 | `}` |
+|   386 | 1240 | `static int vm_builtin_ReflectionType_toString(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     4 | 1241 | `{` |
+|   390 | 1242 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   390 | 1243 | `	const char *zText = "";` |
+|   390 | 1244 | `	int nText = 0;` |
+|   193 | 1245 | `	SXUNUSED(nArg);` |
+|   193 | 1246 | `	SXUNUSED(apArg);` |
+|   390 | 1247 | `	if( pThis ){` |
+|   390 | 1248 | `		PH7_NativeAttrStr(pThis, RT_TEXT, &zText, &nText);` |
+|   193 | 1249 | `	}` |
+|   390 | 1250 | `	ph7_result_string(pCtx, zText, nText);` |
+|   390 | 1251 | `	return PH7_OK;` |
+|     4 | 1252 | `}` |
 |    20 | 1253 | `static int vm_builtin_ReflectionNamedType_getName(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
 |     3 | 1254 | `{` |
 |    23 | 1255 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
@@ -1331,19 +1331,19 @@ Coverage: 5127/5945 lines (86.24%)
 |     1 | 1321 | `}` |
 |     - | 1322 | `/* Build one of the three concrete types with its slots filled. The caller owns` |
 |     - | 1323 | ` * the reference (PH7_NativeResultObject / a list insert drops it). */` |
-|   600 | 1324 | `static ph7_class_instance * ReflectNewType(ph7_context *pCtx, const char *zClass,` |
+|   612 | 1324 | `static ph7_class_instance * ReflectNewType(ph7_context *pCtx, const char *zClass,` |
 |     - | 1325 | `	const char *zText, int nText, int bNullable)` |
 |     4 | 1326 | `{` |
-|   604 | 1327 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   604 | 1328 | `	ph7_class *pClass = PH7_VmExtractClass(pVm, zClass, (sxu32)SyStrlen(zClass), FALSE, 0);` |
-|   604 | 1329 | `	ph7_class_instance *pObj = pClass ? PH7_NewClassInstance(pVm, pClass) : 0;` |
-|   604 | 1330 | `	if( pObj == 0 ){` |
+|   616 | 1327 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   616 | 1328 | `	ph7_class *pClass = PH7_VmExtractClass(pVm, zClass, (sxu32)SyStrlen(zClass), FALSE, 0);` |
+|   616 | 1329 | `	ph7_class_instance *pObj = pClass ? PH7_NewClassInstance(pVm, pClass) : 0;` |
+|   616 | 1330 | `	if( pObj == 0 ){` |
 |   ! 0 | 1331 | `		return 0;` |
 |     - | 1332 | `	}` |
-|   604 | 1333 | `	PH7_NativeSetAttrStr(pVm, pObj, RT_TEXT, zText, nText);` |
-|   604 | 1334 | `	PH7_NativeSetAttrBool(pVm, pObj, RT_NULLABLE, bNullable);` |
-|   604 | 1335 | `	return pObj;` |
-|   304 | 1336 | `}` |
+|   616 | 1333 | `	PH7_NativeSetAttrStr(pVm, pObj, RT_TEXT, zText, nText);` |
+|   616 | 1334 | `	PH7_NativeSetAttrBool(pVm, pObj, RT_NULLABLE, bNullable);` |
+|   616 | 1335 | `	return pObj;` |
+|   310 | 1336 | `}` |
 |     - | 1337 | `/*` |
 |     - | 1338 | ` * Append pType to a composite's member list, handing over the caller's reference.` |
 |     - | 1339 | ` *` |
@@ -1353,32 +1353,32 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 1343 | ` * the moment its factory returned, so the list came back holding dead objects.` |
 |     - | 1344 | ` * PH7_NativeResultObject hands an instance over the same way.` |
 |     - | 1345 | ` */` |
-|   348 | 1346 | `static void ReflectTypeListAdd(ph7_context *pCtx, ph7_value *pList, ph7_class_instance *pType)` |
-|     2 | 1347 | `{` |
+|   354 | 1346 | `static void ReflectTypeListAdd(ph7_context *pCtx, ph7_value *pList, ph7_class_instance *pType)` |
+|     4 | 1347 | `{` |
 |     - | 1348 | `	ph7_value sVal;` |
-|   350 | 1349 | `	if( pType == 0 ){` |
+|   358 | 1349 | `	if( pType == 0 ){` |
 |   ! 0 | 1350 | `		return;` |
 |     - | 1351 | `	}` |
-|   350 | 1352 | `	PH7_MemObjInit(pCtx->pVm, &sVal);` |
-|   350 | 1353 | `	sVal.x.pOther = pType;` |
-|   350 | 1354 | `	sVal.iFlags = MEMOBJ_OBJ;` |
-|   350 | 1355 | `	ph7_array_add_elem(pList, 0, &sVal);   /* takes its own reference */` |
-|   350 | 1356 | `	PH7_ClassInstanceUnref(pType);` |
-|   176 | 1357 | `}` |
+|   358 | 1352 | `	PH7_MemObjInit(pCtx->pVm, &sVal);` |
+|   358 | 1353 | `	sVal.x.pOther = pType;` |
+|   358 | 1354 | `	sVal.iFlags = MEMOBJ_OBJ;` |
+|   358 | 1355 | `	ph7_array_add_elem(pList, 0, &sVal);   /* takes its own reference */` |
+|   358 | 1356 | `	PH7_ClassInstanceUnref(pType);` |
+|   181 | 1357 | `}` |
 |     - | 1358 | `/* Exact, case-insensitive name test (php lower-cases before comparing). */` |
-|   926 | 1359 | `static int ReflectTypeNameIs(const char *z, int n, const char *zWant)` |
+|   942 | 1359 | `static int ReflectTypeNameIs(const char *z, int n, const char *zWant)` |
 |     4 | 1360 | `{` |
-|   930 | 1361 | `	int nWant = (int)SyStrlen(zWant), k;` |
-|   930 | 1362 | `	if( n != nWant ){` |
-|   786 | 1363 | `		return 0;` |
+|   946 | 1361 | `	int nWant = (int)SyStrlen(zWant), k;` |
+|   946 | 1362 | `	if( n != nWant ){` |
+|   800 | 1363 | `		return 0;` |
 |     - | 1364 | `	}` |
-|   330 | 1365 | `	for( k = 0 ; k < n ; k++ ){` |
-|   294 | 1366 | `		if( SyToLower(z[k]) != zWant[k] ){` |
-|   110 | 1367 | `			return 0;` |
+|   334 | 1365 | `	for( k = 0 ; k < n ; k++ ){` |
+|   298 | 1366 | `		if( SyToLower(z[k]) != zWant[k] ){` |
+|   114 | 1367 | `			return 0;` |
 |     - | 1368 | `		}` |
 |    94 | 1369 | `	}` |
 |    38 | 1370 | `	return 1;` |
-|   467 | 1371 | `}` |
+|   475 | 1371 | `}` |
 |     - | 1372 | `/*` |
 |     - | 1373 | ` * A ReflectionNamedType for one name.` |
 |     - | 1374 | ` *` |
@@ -1387,42 +1387,42 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 1377 | ` * own meaning without ever rendering a '?'. Those two rules are independent, and` |
 |     - | 1378 | `` * conflating them is how `?array` came out as `array`.`` |
 |     - | 1379 | ` */` |
-|   508 | 1380 | `static ph7_class_instance * ReflectNewNamed(ph7_context *pCtx, const char *z, int n, int bQMark)` |
+|   518 | 1380 | `static ph7_class_instance * ReflectNewNamed(ph7_context *pCtx, const char *z, int n, int bQMark)` |
 |     4 | 1381 | `{` |
 |     - | 1382 | `	ph7_class_instance *pObj;` |
 |     - | 1383 | `	char zBuf[256];` |
-|   512 | 1384 | `	const char *zText = z;` |
-|   512 | 1385 | `	int nText = n;` |
-|   512 | 1386 | `	int bNullable = bQMark \|\| ReflectTypeNameIs(z, n, "null") \|\| ReflectTypeNameIs(z, n, "mixed");` |
-|   512 | 1387 | `	if( bQMark && n + 1 < (int)sizeof(zBuf) ){` |
-|    60 | 1388 | `		zBuf[0] = '?';` |
-|    60 | 1389 | `		SyMemcpy(z, &zBuf[1], (sxu32)n);` |
-|    60 | 1390 | `		zText = zBuf;` |
-|    60 | 1391 | `		nText = n + 1;` |
-|    29 | 1392 | `	}` |
-|   512 | 1393 | `	pObj = ReflectNewType(pCtx, "ReflectionNamedType", zText, nText, bNullable);` |
-|   512 | 1394 | `	if( pObj ){` |
-|   512 | 1395 | `		PH7_NativeSetAttrStr(pCtx->pVm, pObj, RT_TNAME, z, n);` |
-|   254 | 1396 | `	}` |
-|   512 | 1397 | `	return pObj;` |
+|   522 | 1384 | `	const char *zText = z;` |
+|   522 | 1385 | `	int nText = n;` |
+|   522 | 1386 | `	int bNullable = bQMark \|\| ReflectTypeNameIs(z, n, "null") \|\| ReflectTypeNameIs(z, n, "mixed");` |
+|   522 | 1387 | `	if( bQMark && n + 1 < (int)sizeof(zBuf) ){` |
+|    63 | 1388 | `		zBuf[0] = '?';` |
+|    63 | 1389 | `		SyMemcpy(z, &zBuf[1], (sxu32)n);` |
+|    63 | 1390 | `		zText = zBuf;` |
+|    63 | 1391 | `		nText = n + 1;` |
+|    30 | 1392 | `	}` |
+|   522 | 1393 | `	pObj = ReflectNewType(pCtx, "ReflectionNamedType", zText, nText, bNullable);` |
+|   522 | 1394 | `	if( pObj ){` |
+|   522 | 1395 | `		PH7_NativeSetAttrStr(pCtx->pVm, pObj, RT_TNAME, z, n);` |
+|   259 | 1396 | `	}` |
+|   522 | 1397 | `	return pObj;` |
 |     4 | 1398 | `}` |
 |     - | 1399 | `/*` |
 |     - | 1400 | `` * One ATOM of a type text: `?X`, `(A&B)` or a plain name. An intersection is`` |
 |     - | 1401 | ` * the only composite an atom can be, because php only nests that way.` |
 |     - | 1402 | ` */` |
-|   498 | 1403 | `static ph7_class_instance * ReflectMakeAtom(ph7_context *pCtx, const char *z, int n)` |
+|   508 | 1403 | `static ph7_class_instance * ReflectMakeAtom(ph7_context *pCtx, const char *z, int n)` |
 |     4 | 1404 | `{` |
-|   502 | 1405 | `	int bQMark = 0;` |
-|   502 | 1406 | `	if( n > 0 && z[0] == '?' ){` |
-|    60 | 1407 | `		bQMark = 1;` |
-|    60 | 1408 | `		z++;` |
-|    60 | 1409 | `		n--;` |
-|    29 | 1410 | `	}` |
-|   502 | 1411 | `	if( n > 1 && z[0] == '(' && z[n-1] == ')' ){` |
+|   512 | 1405 | `	int bQMark = 0;` |
+|   512 | 1406 | `	if( n > 0 && z[0] == '?' ){` |
+|    63 | 1407 | `		bQMark = 1;` |
+|    63 | 1408 | `		z++;` |
+|    63 | 1409 | `		n--;` |
+|    30 | 1410 | `	}` |
+|   512 | 1411 | `	if( n > 1 && z[0] == '(' && z[n-1] == ')' ){` |
 |     8 | 1412 | `		z++;` |
 |     8 | 1413 | `		n -= 2;` |
 |     3 | 1414 | `	}` |
-|   502 | 1415 | `	if( ReflectSigFindUnquoted(z, n, '&') >= 0 ){` |
+|   512 | 1415 | `	if( ReflectSigFindUnquoted(z, n, '&') >= 0 ){` |
 |    12 | 1416 | `		ph7_class_instance *pObj = ReflectNewType(pCtx, "ReflectionIntersectionType", z, n, 0);` |
 |    12 | 1417 | `		ph7_value *pList = ph7_context_new_array(pCtx);` |
 |    12 | 1418 | `		const char *zCur = z;` |
@@ -1443,63 +1443,63 @@ Coverage: 5127/5945 lines (86.24%)
 |    12 | 1433 | `		PH7_NativeSetProp(pCtx->pVm, pObj, RT_TYPES, sizeof(RT_TYPES)-1, pList);` |
 |    12 | 1434 | `		return pObj;` |
 |     - | 1435 | `	}` |
-|   492 | 1436 | `	return ReflectNewNamed(pCtx, z, n, bQMark);` |
-|   253 | 1437 | `}` |
+|   502 | 1436 | `	return ReflectNewNamed(pCtx, z, n, bQMark);` |
+|   258 | 1437 | `}` |
 |     - | 1438 | `/*` |
 |     - | 1439 | ` * A declared type TEXT to the object php answers for it: a named type, a union,` |
 |     - | 1440 | `` * or an intersection. NULL for an absent type. `X\|null` collapses back to a`` |
 |     - | 1441 | `` * NULLABLE named type, which is what php reports (`?X`), but only when exactly`` |
 |     - | 1442 | ` * one non-null arm is left and it is not itself an intersection.` |
 |     - | 1443 | ` */` |
-|   390 | 1444 | `static ph7_class_instance * ReflectMakeType(ph7_context *pCtx, const char *zText, int nText)` |
+|   396 | 1444 | `static ph7_class_instance * ReflectMakeType(ph7_context *pCtx, const char *zText, int nText)` |
 |     4 | 1445 | `{` |
-|   394 | 1446 | `	const char *zBody = zText;` |
-|   394 | 1447 | `	int nBody = nText;` |
-|   394 | 1448 | `	int bNullable = 0, bHasNull = 0, nParts = 0, nNonNull = 0;` |
-|   394 | 1449 | `	const char *zLastNonNull = 0;` |
-|   394 | 1450 | `	int nLastNonNull = 0;` |
+|   400 | 1446 | `	const char *zBody = zText;` |
+|   400 | 1447 | `	int nBody = nText;` |
+|   400 | 1448 | `	int bNullable = 0, bHasNull = 0, nParts = 0, nNonNull = 0;` |
+|   400 | 1449 | `	const char *zLastNonNull = 0;` |
+|   400 | 1450 | `	int nLastNonNull = 0;` |
 |     - | 1451 | `	const char *zCur;` |
 |     - | 1452 | `	int nCur, iDepth, k, iStart;` |
-|   394 | 1453 | `	if( nText < 1 ){` |
+|   400 | 1453 | `	if( nText < 1 ){` |
 |   ! 0 | 1454 | `		return 0;` |
 |     - | 1455 | `	}` |
-|   394 | 1456 | `	if( zBody[0] == '?' ){` |
-|    60 | 1457 | `		bNullable = 1;` |
-|    60 | 1458 | `		zBody++;` |
-|    60 | 1459 | `		nBody--;` |
-|    29 | 1460 | `	}` |
+|   400 | 1456 | `	if( zBody[0] == '?' ){` |
+|    63 | 1457 | `		bNullable = 1;` |
+|    63 | 1458 | `		zBody++;` |
+|    63 | 1459 | `		nBody--;` |
+|    30 | 1460 | `	}` |
 |     - | 1461 | ``	/* Split on the TOP-LEVEL '\|' only: `A\|(B&C)` has one at depth 0 and none`` |
 |     - | 1462 | `	 * inside the parentheses. */` |
-|   394 | 1463 | `	iDepth = 0;` |
-|   394 | 1464 | `	iStart = 0;` |
-|  3622 | 1465 | `	for( k = 0 ; k <= nBody ; k++ ){` |
-|  3232 | 1466 | `		if( k < nBody && zBody[k] == '(' ){` |
+|   400 | 1463 | `	iDepth = 0;` |
+|   400 | 1464 | `	iStart = 0;` |
+|  3708 | 1465 | `	for( k = 0 ; k <= nBody ; k++ ){` |
+|  3312 | 1466 | `		if( k < nBody && zBody[k] == '(' ){` |
 |     8 | 1467 | `			iDepth++;` |
 |     8 | 1468 | `			continue;` |
 |     - | 1469 | `		}` |
-|  3226 | 1470 | `		if( k < nBody && zBody[k] == ')' ){` |
+|  3306 | 1470 | `		if( k < nBody && zBody[k] == ')' ){` |
 |     8 | 1471 | `			iDepth--;` |
 |     8 | 1472 | `			continue;` |
 |     - | 1473 | `		}` |
-|  3220 | 1474 | `		if( k == nBody \|\| (zBody[k] == '\|' && iDepth == 0) ){` |
-|   502 | 1475 | `			zCur = &zBody[iStart];` |
-|   502 | 1476 | `			nCur = k - iStart;` |
-|   502 | 1477 | `			nParts++;` |
-|   502 | 1478 | `			if( nCur == 4 && ReflectSigHasNoCase(zCur, 4, "null", 4) ){` |
+|  3300 | 1474 | `		if( k == nBody \|\| (zBody[k] == '\|' && iDepth == 0) ){` |
+|   512 | 1475 | `			zCur = &zBody[iStart];` |
+|   512 | 1476 | `			nCur = k - iStart;` |
+|   512 | 1477 | `			nParts++;` |
+|   512 | 1478 | `			if( nCur == 4 && ReflectSigHasNoCase(zCur, 4, "null", 4) ){` |
 |     3 | 1479 | `				bHasNull = 1;` |
 |     2 | 1480 | `			}else{` |
-|   500 | 1481 | `				nNonNull++;` |
-|   500 | 1482 | `				zLastNonNull = zCur;` |
-|   500 | 1483 | `				nLastNonNull = nCur;` |
+|   510 | 1481 | `				nNonNull++;` |
+|   510 | 1482 | `				zLastNonNull = zCur;` |
+|   510 | 1483 | `				nLastNonNull = nCur;` |
 |     - | 1484 | `			}` |
-|   502 | 1485 | `			iStart = k + 1;` |
-|   249 | 1486 | `		}` |
-|  1612 | 1487 | `	}` |
-|   394 | 1488 | `	if( nParts > 1 ){` |
+|   512 | 1485 | `			iStart = k + 1;` |
+|   254 | 1486 | `		}` |
+|  1652 | 1487 | `	}` |
+|   400 | 1488 | `	if( nParts > 1 ){` |
 |     - | 1489 | `		ph7_class_instance *pObj;` |
 |     - | 1490 | `		ph7_value *pList;` |
-|    82 | 1491 | `		if( bHasNull && nNonNull == 1` |
-|     3 | 1492 | `		 && ReflectSigFindUnquoted(zLastNonNull, nLastNonNull, '&') < 0 ){` |
+|    84 | 1491 | `		if( bHasNull && nNonNull == 1` |
+|     5 | 1492 | `		 && ReflectSigFindUnquoted(zLastNonNull, nLastNonNull, '&') < 0 ){` |
 |     - | 1493 | ``			/* `X\|null` IS `?X` to php. */`` |
 |     - | 1494 | `			char zBuf[256];` |
 |     - | 1495 | `			ph7_class_instance *pNamed;` |
@@ -1517,51 +1517,51 @@ Coverage: 5127/5945 lines (86.24%)
 |   ! 0 | 1507 | `			}` |
 |   ! 0 | 1508 | `			return pNamed;` |
 |     - | 1509 | `		}` |
-|    84 | 1510 | `		pObj = ReflectNewType(pCtx, "ReflectionUnionType", zBody, nBody, bNullable \|\| bHasNull);` |
-|    84 | 1511 | `		pList = ph7_context_new_array(pCtx);` |
-|    84 | 1512 | `		if( pObj == 0 \|\| pList == 0 ){` |
+|    88 | 1510 | `		pObj = ReflectNewType(pCtx, "ReflectionUnionType", zBody, nBody, bNullable \|\| bHasNull);` |
+|    88 | 1511 | `		pList = ph7_context_new_array(pCtx);` |
+|    88 | 1512 | `		if( pObj == 0 \|\| pList == 0 ){` |
 |   ! 0 | 1513 | `			return pObj;` |
 |     - | 1514 | `		}` |
-|    84 | 1515 | `		iDepth = 0;` |
-|    84 | 1516 | `		iStart = 0;` |
-|  1286 | 1517 | `		for( k = 0 ; k <= nBody ; k++ ){` |
-|  1204 | 1518 | `			if( k < nBody && zBody[k] == '(' ){` |
+|    88 | 1515 | `		iDepth = 0;` |
+|    88 | 1516 | `		iStart = 0;` |
+|  1334 | 1517 | `		for( k = 0 ; k <= nBody ; k++ ){` |
+|  1250 | 1518 | `			if( k < nBody && zBody[k] == '(' ){` |
 |     8 | 1519 | `				iDepth++;` |
 |     8 | 1520 | `				continue;` |
 |     - | 1521 | `			}` |
-|  1198 | 1522 | `			if( k < nBody && zBody[k] == ')' ){` |
+|  1244 | 1522 | `			if( k < nBody && zBody[k] == ')' ){` |
 |     8 | 1523 | `				iDepth--;` |
 |     8 | 1524 | `				continue;` |
 |     - | 1525 | `			}` |
-|  1192 | 1526 | `			if( k == nBody \|\| (zBody[k] == '\|' && iDepth == 0) ){` |
-|   287 | 1527 | `				ReflectTypeListAdd(pCtx, pList,` |
-|    95 | 1528 | `					ReflectMakeAtom(pCtx, &zBody[iStart], k - iStart));` |
-|   192 | 1529 | `				iStart = k + 1;` |
-|    95 | 1530 | `			}` |
-|   597 | 1531 | `		}` |
-|    84 | 1532 | `		PH7_NativeSetProp(pCtx->pVm, pObj, RT_TYPES, sizeof(RT_TYPES)-1, pList);` |
-|    84 | 1533 | `		return pObj;` |
+|  1238 | 1526 | `			if( k == nBody \|\| (zBody[k] == '\|' && iDepth == 0) ){` |
+|   298 | 1527 | `				ReflectTypeListAdd(pCtx, pList,` |
+|    98 | 1528 | `					ReflectMakeAtom(pCtx, &zBody[iStart], k - iStart));` |
+|   200 | 1529 | `				iStart = k + 1;` |
+|    98 | 1530 | `			}` |
+|   621 | 1531 | `		}` |
+|    88 | 1532 | `		PH7_NativeSetProp(pCtx->pVm, pObj, RT_TYPES, sizeof(RT_TYPES)-1, pList);` |
+|    88 | 1533 | `		return pObj;` |
 |     - | 1534 | `	}` |
-|   312 | 1535 | `	if( ReflectSigFindUnquoted(zBody, nBody, '&') >= 0 ){` |
+|   316 | 1535 | `	if( ReflectSigFindUnquoted(zBody, nBody, '&') >= 0 ){` |
 |     5 | 1536 | `		return ReflectMakeAtom(pCtx, zBody, nBody);` |
 |     - | 1537 | `	}` |
-|   308 | 1538 | `	if( bNullable ){` |
+|   312 | 1538 | `	if( bNullable ){` |
 |     - | 1539 | `		char zBuf[256];` |
-|    60 | 1540 | `		if( nBody + 1 < (int)sizeof(zBuf) ){` |
-|    60 | 1541 | `			zBuf[0] = '?';` |
-|    60 | 1542 | `			SyMemcpy(zBody, &zBuf[1], (sxu32)nBody);` |
-|    60 | 1543 | `			return ReflectMakeAtom(pCtx, zBuf, nBody + 1);` |
+|    63 | 1540 | `		if( nBody + 1 < (int)sizeof(zBuf) ){` |
+|    63 | 1541 | `			zBuf[0] = '?';` |
+|    63 | 1542 | `			SyMemcpy(zBody, &zBuf[1], (sxu32)nBody);` |
+|    63 | 1543 | `			return ReflectMakeAtom(pCtx, zBuf, nBody + 1);` |
 |     - | 1544 | `		}` |
 |   ! 0 | 1545 | `	}` |
-|   250 | 1546 | `	return ReflectMakeAtom(pCtx, zBody, nBody);` |
-|   199 | 1547 | `}` |
+|   252 | 1546 | `	return ReflectMakeAtom(pCtx, zBody, nBody);` |
+|   202 | 1547 | `}` |
 |     - | 1548 | `/*` |
 |     - | 1549 | ` * Declare the four type classes. Called from PH7_VmInstallReflection() where` |
 |     - | 1550 | `` * chunk 4 used to be compiled, so `Stringable` (a core interface) already`` |
 |     - | 1551 | ` * exists. PH7_CLASS_NOCLONE is php's own rule for these: they are values the` |
 |     - | 1552 | `` * engine hands out, and `clone $type` is an Error, not a copy.`` |
 |     - | 1553 | ` */` |
-|  4670 | 1554 | `PH7_PRIVATE sxi32 PH7_VmInstallReflectionTypes(ph7_vm *pVm)` |
+|  5146 | 1554 | `PH7_PRIVATE sxi32 PH7_VmInstallReflectionTypes(ph7_vm *pVm)` |
 |     5 | 1555 | `{` |
 |     - | 1556 | `	static const PH7_NativePropDef aBaseProp[] = {` |
 |     - | 1557 | `		{ RT_TEXT,     PH7_MOD_PROTECTED\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },` |
@@ -1594,7 +1594,7 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 1584 | `		{ "ReflectionIntersectionType", "ReflectionType", 0, PH7_CLASS_NOCLONE\|PH7_CLASS_NOSERIALIZE,` |
 |     - | 1585 | `		  aCompMethod, SX_ARRAYSIZE(aCompMethod), 0, 0, aCompProp, SX_ARRAYSIZE(aCompProp), 0, 0, 0 },` |
 |     - | 1586 | `	};` |
-|  4675 | 1587 | `	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));` |
+|  5151 | 1587 | `	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));` |
 |     5 | 1588 | `}` |
 |     - | 1589 | `/*` |
 |     - | 1590 | ` * ---------------------------------------------------------------------------` |
@@ -2209,7 +2209,7 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 2199 | ` * PH7_CLASS_NOCLONE is php's rule for it (php declares __clone private AND` |
 |     - | 2200 | ` * refuses the copy), and the class is NOT final — php 8.5 unsealed it.` |
 |     - | 2201 | ` */` |
-|  4670 | 2202 | `PH7_PRIVATE sxi32 PH7_VmInstallReflectionAttribute(ph7_vm *pVm)` |
+|  5146 | 2202 | `PH7_PRIVATE sxi32 PH7_VmInstallReflectionAttribute(ph7_vm *pVm)` |
 |     5 | 2203 | `{` |
 |     - | 2204 | `	static const PH7_NativeConstDef aConst[] = {` |
 |     - | 2205 | `		{ "IS_INSTANCEOF", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 2, 0, 0.0 },` |
@@ -2241,7 +2241,7 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 2231 | `		  aMethod, SX_ARRAYSIZE(aMethod), aConst, SX_ARRAYSIZE(aConst),` |
 |     - | 2232 | `		  aProp, SX_ARRAYSIZE(aProp), 0, 0, 0 },` |
 |     - | 2233 | `	};` |
-|  4675 | 2234 | `	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));` |
+|  5151 | 2234 | `	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));` |
 |     5 | 2235 | `}` |
 |     - | 2236 | `/*` |
 |     - | 2237 | ` * The shared getAttributes() body.` |
@@ -2905,7 +2905,7 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 2895 | ` * Declare the six. Called from PH7_VmInstallReflection() where chunk 5 used to` |
 |     - | 2896 | ` * be compiled, so Reflector (chunk 1) already exists.` |
 |     - | 2897 | ` */` |
-|  4670 | 2898 | `PH7_PRIVATE sxi32 PH7_VmInstallReflectionSmall(ph7_vm *pVm)` |
+|  5146 | 2898 | `PH7_PRIVATE sxi32 PH7_VmInstallReflectionSmall(ph7_vm *pVm)` |
 |     5 | 2899 | `{` |
 |     - | 2900 | `	static const PH7_NativePropDef aGenProp[] = {` |
 |     - | 2901 | `		{ RG_GEN, PH7_MOD_PROTECTED\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
@@ -3004,7 +3004,7 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 2994 | `		{ "ReflectionReference", 0, 0, PH7_CLASS_FINAL\|PH7_CLASS_NOCLONE\|PH7_CLASS_NOSERIALIZE,` |
 |     - | 2995 | `		  aRefMethod, SX_ARRAYSIZE(aRefMethod), 0, 0, aRefProp, SX_ARRAYSIZE(aRefProp), 0, 0, 0 },` |
 |     - | 2996 | `	};` |
-|  4675 | 2997 | `	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));` |
+|  5151 | 2997 | `	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));` |
 |     5 | 2998 | `}` |
 |     - | 2999 | `/*` |
 |     - | 3000 | ` * ---------------------------------------------------------------------------` |
@@ -3028,44 +3028,44 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 3018 | ``/* The class a ReflectionClass reflects: its `name` slot, resolved. The`` |
 |     - | 3019 | ` * constructor already stored the canonical name, so no autoload can be needed` |
 |     - | 3020 | ` * here. */` |
-|   716 | 3021 | `static ph7_class * ReflectClassOf(ph7_context *pCtx)` |
+|   724 | 3021 | `static ph7_class * ReflectClassOf(ph7_context *pCtx)` |
 |     5 | 3022 | `{` |
-|   721 | 3023 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   729 | 3023 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - | 3024 | `	const char *zName;` |
 |     - | 3025 | `	int nName;` |
-|   721 | 3026 | `	if( pThis == 0 ){` |
+|   729 | 3026 | `	if( pThis == 0 ){` |
 |   ! 0 | 3027 | `		return 0;` |
 |     - | 3028 | `	}` |
-|   721 | 3029 | `	PH7_NativeAttrStr(pThis, "name", &zName, &nName);` |
-|   721 | 3030 | `	if( nName < 1 ){` |
+|   729 | 3029 | `	PH7_NativeAttrStr(pThis, "name", &zName, &nName);` |
+|   729 | 3030 | `	if( nName < 1 ){` |
 |   ! 0 | 3031 | `		return 0;` |
 |     - | 3032 | `	}` |
 |     - | 3033 | `	/* PH7_NativeAttrStr borrows bytes that are NOT NUL-terminated: the length` |
 |     - | 3034 | `	 * has to travel with them. */` |
-|   721 | 3035 | `	return PH7_VmExtractClass(pCtx->pVm, zName, (sxu32)nName, FALSE, 0);` |
-|   363 | 3036 | `}` |
+|   729 | 3035 | `	return PH7_VmExtractClass(pCtx->pVm, zName, (sxu32)nName, FALSE, 0);` |
+|   367 | 3036 | `}` |
 |     - | 3037 | `/* The instance a ReflectionObject was built over, or NULL for a plain` |
 |     - | 3038 | ` * ReflectionClass — what makes DYNAMIC properties visible. */` |
 |   132 | 3039 | `static ph7_class_instance * ReflectClassObj(ph7_context *pCtx)` |
-|     4 | 3040 | `{` |
-|   136 | 3041 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   136 | 3042 | `	return pThis ? PH7_NativeAttrObj(pThis, RC_OBJ) : 0;` |
-|     4 | 3043 | `}` |
+|     3 | 3040 | `{` |
+|   135 | 3041 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   135 | 3042 | `	return pThis ? PH7_NativeAttrObj(pThis, RC_OBJ) : 0;` |
+|     3 | 3043 | `}` |
 |     - | 3044 | `/* $this->name as bytes. */` |
-|   460 | 3045 | `static void ReflectClassName(ph7_context *pCtx, const char **pzOut, int *pnOut)` |
+|   464 | 3045 | `static void ReflectClassName(ph7_context *pCtx, const char **pzOut, int *pnOut)` |
 |     5 | 3046 | `{` |
-|   465 | 3047 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   465 | 3048 | `	*pzOut = "";` |
-|   465 | 3049 | `	*pnOut = 0;` |
-|   465 | 3050 | `	if( pThis ){` |
-|   465 | 3051 | `		PH7_NativeAttrStr(pThis, "name", pzOut, pnOut);` |
-|   230 | 3052 | `	}` |
-|   465 | 3053 | `}` |
+|   469 | 3047 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   469 | 3048 | `	*pzOut = "";` |
+|   469 | 3049 | `	*pnOut = 0;` |
+|   469 | 3050 | `	if( pThis ){` |
+|   469 | 3051 | `		PH7_NativeAttrStr(pThis, "name", pzOut, pnOut);` |
+|   232 | 3052 | `	}` |
+|   469 | 3053 | `}` |
 |     - | 3054 | `/* Answer the truth of one of the reflected class's iFlags bits. */` |
-|    86 | 3055 | `static int ReflectClassFlag(ph7_context *pCtx, sxi32 iFlag)` |
+|    88 | 3055 | `static int ReflectClassFlag(ph7_context *pCtx, sxi32 iFlag)` |
 |     3 | 3056 | `{` |
-|    89 | 3057 | `	ph7_class *pClass = ReflectClassOf(pCtx);` |
-|    89 | 3058 | `	return pClass != 0 && (pClass->iFlags & iFlag) != 0;` |
+|    91 | 3057 | `	ph7_class *pClass = ReflectClassOf(pCtx);` |
+|    91 | 3058 | `	return pClass != 0 && (pClass->iFlags & iFlag) != 0;` |
 |     3 | 3059 | `}` |
 |     - | 3060 | `#define REFLECT_CLASS_FLAG(NAME,FLAG,NEGATE) \` |
 |     - | 3061 | `	static int NAME(ph7_context *pCtx, int nArg, ph7_value **apArg) \` |
@@ -3080,31 +3080,31 @@ Coverage: 5127/5945 lines (86.24%)
 |     9 | 3070 | `REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isInterface,   PH7_CLASS_INTERFACE, 0)` |
 |     5 | 3071 | `REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isTrait,       PH7_CLASS_TRAIT,     0)` |
 |    13 | 3072 | `REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isAbstract,    PH7_CLASS_ABSTRACT,  0)` |
-|    35 | 3073 | `REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isFinal,       PH7_CLASS_FINAL,     0)` |
+|    37 | 3073 | `REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isFinal,       PH7_CLASS_FINAL,     0)` |
 |   ! 0 | 3074 | `REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isReadOnly,    PH7_CLASS_READONLY,  0)` |
 |    11 | 3075 | `REFLECT_CLASS_FLAG(vm_builtin_ReflectionClass_isEnum,        PH7_CLASS_ENUM,      0)` |
 |     - | 3076 |  |
 |     - | 3077 | ``/* Build a ReflectionClass over pTarget with its `name` already filled in: the`` |
 |     - | 3078 | ` * constructor would only re-resolve a class this code is holding. */` |
-|   224 | 3079 | `static int ReflectResultClassOf(ph7_context *pCtx, ph7_class *pTarget)` |
-|     3 | 3080 | `{` |
-|   227 | 3081 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   228 | 3079 | `static int ReflectResultClassOf(ph7_context *pCtx, ph7_class *pTarget)` |
+|     4 | 3080 | `{` |
+|   232 | 3081 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - | 3082 | `	ph7_class *pRC;` |
 |     - | 3083 | `	ph7_class_instance *pObj;` |
-|   227 | 3084 | `	if( pTarget == 0 ){` |
+|   232 | 3084 | `	if( pTarget == 0 ){` |
 |   ! 0 | 3085 | `		ph7_result_null(pCtx);` |
 |   ! 0 | 3086 | `		return PH7_OK;` |
 |     - | 3087 | `	}` |
-|   227 | 3088 | `	pRC = PH7_VmExtractClass(pVm, "ReflectionClass", sizeof("ReflectionClass")-1, FALSE, 0);` |
-|   227 | 3089 | `	if( pRC == 0 \|\| (pObj = PH7_NewClassInstance(pVm, pRC)) == 0 ){` |
+|   232 | 3088 | `	pRC = PH7_VmExtractClass(pVm, "ReflectionClass", sizeof("ReflectionClass")-1, FALSE, 0);` |
+|   232 | 3089 | `	if( pRC == 0 \|\| (pObj = PH7_NewClassInstance(pVm, pRC)) == 0 ){` |
 |   ! 0 | 3090 | `		ph7_result_null(pCtx);` |
 |   ! 0 | 3091 | `		return PH7_OK;` |
 |     - | 3092 | `	}` |
-|   339 | 3093 | `	PH7_NativeSetAttrStr(pVm, pObj, "name", SyStringData(&pTarget->sName),` |
-|   224 | 3094 | `		(int)SyStringLength(&pTarget->sName));` |
-|   227 | 3095 | `	PH7_NativeResultObject(pCtx, pObj);` |
-|   227 | 3096 | `	return PH7_OK;` |
-|   115 | 3097 | `}` |
+|   346 | 3093 | `	PH7_NativeSetAttrStr(pVm, pObj, "name", SyStringData(&pTarget->sName),` |
+|   228 | 3094 | `		(int)SyStringLength(&pTarget->sName));` |
+|   232 | 3095 | `	PH7_NativeResultObject(pCtx, pObj);` |
+|   232 | 3096 | `	return PH7_OK;` |
+|   118 | 3097 | `}` |
 |     - | 3098 | ``/* The class an argument declared `ReflectionClass\|string` denotes: a reflector's`` |
 |     - | 3099 | `` * `name` slot, or the string itself. NULL when it names nothing (after`` |
 |     - | 3100 | ` * autoload). */` |
@@ -3125,15 +3125,15 @@ Coverage: 5127/5945 lines (86.24%)
 |    11 | 3115 | `}` |
 |     - | 3116 | `/* ---- constructors ---- */` |
 |     - | 3117 | `/* ReflectionClass::__construct(object\|string $objectOrClass) */` |
-|   388 | 3118 | `static int vm_builtin_ReflectionClass_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|   392 | 3118 | `static int vm_builtin_ReflectionClass_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
 |     5 | 3119 | `{` |
-|   393 | 3120 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   397 | 3120 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - | 3121 | `	ph7_class *pClass;` |
-|   393 | 3122 | `	if( pThis == 0 \|\| nArg < 1 ){` |
+|   397 | 3122 | `	if( pThis == 0 \|\| nArg < 1 ){` |
 |   ! 0 | 3123 | `		return PH7_OK;` |
 |     - | 3124 | `	}` |
-|   393 | 3125 | `	pClass = ReflectResolveClass(pCtx->pVm, apArg[0]);` |
-|   393 | 3126 | `	if( pClass == 0 ){` |
+|   397 | 3125 | `	pClass = ReflectResolveClass(pCtx->pVm, apArg[0]);` |
+|   397 | 3126 | `	if( pClass == 0 ){` |
 |     - | 3127 | `		/* php reports the NAME it was handed, after the declared object\|string` |
 |     - | 3128 | ``		 * has coerced a scalar — `new ReflectionClass(1.5)` says Class "1.5". */`` |
 |     - | 3129 | `		const char *zName;` |
@@ -3142,10 +3142,10 @@ Coverage: 5127/5945 lines (86.24%)
 |    17 | 3132 | `		return PH7_VmThrowException(pCtx, "ReflectionException",` |
 |     5 | 3133 | `			"Class \"%.*s\" does not exist", nName, zName);` |
 |     - | 3134 | `	}` |
-|   572 | 3135 | `	PH7_NativeSetAttrStr(pCtx->pVm, pThis, "name", SyStringData(&pClass->sName),` |
-|   378 | 3136 | `		(int)SyStringLength(&pClass->sName));` |
-|   383 | 3137 | `	return PH7_OK;` |
-|   199 | 3138 | `}` |
+|   578 | 3135 | `	PH7_NativeSetAttrStr(pCtx->pVm, pThis, "name", SyStringData(&pClass->sName),` |
+|   382 | 3136 | `		(int)SyStringLength(&pClass->sName));` |
+|   387 | 3137 | `	return PH7_OK;` |
+|   201 | 3138 | `}` |
 |     - | 3139 | `/* ReflectionObject::__construct(object $object) — the same, plus the receiver` |
 |     - | 3140 | ` * whose DYNAMIC properties the inherited accessors then report. */` |
 |     6 | 3141 | `static int vm_builtin_ReflectionObject_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
@@ -3172,16 +3172,16 @@ Coverage: 5127/5945 lines (86.24%)
 |   ! 0 | 3162 | `	return PH7_OK;` |
 |   ! 0 | 3163 | `}` |
 |     - | 3164 | `/* ---- name ---- */` |
-|   234 | 3165 | `static int vm_builtin_ReflectionClass_getName(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     3 | 3166 | `{` |
+|   238 | 3165 | `static int vm_builtin_ReflectionClass_getName(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     4 | 3166 | `{` |
 |     - | 3167 | `	const char *zName;` |
 |     - | 3168 | `	int nName;` |
-|   117 | 3169 | `	SXUNUSED(nArg);` |
-|   117 | 3170 | `	SXUNUSED(apArg);` |
-|   237 | 3171 | `	ReflectClassName(pCtx, &zName, &nName);` |
-|   237 | 3172 | `	ph7_result_string(pCtx, zName, nName);` |
-|   237 | 3173 | `	return PH7_OK;` |
-|     3 | 3174 | `}` |
+|   119 | 3169 | `	SXUNUSED(nArg);` |
+|   119 | 3170 | `	SXUNUSED(apArg);` |
+|   242 | 3171 | `	ReflectClassName(pCtx, &zName, &nName);` |
+|   242 | 3172 | `	ph7_result_string(pCtx, zName, nName);` |
+|   242 | 3173 | `	return PH7_OK;` |
+|     4 | 3174 | `}` |
 |     - | 3175 | `/* Offset just past the last namespace separator, or -1 when there is none. */` |
 |     6 | 3176 | `static int ReflectNsCut(const char *zName, int nName)` |
 |     1 | 3177 | `{` |
@@ -3256,17 +3256,17 @@ Coverage: 5127/5945 lines (86.24%)
 |     9 | 3246 | `	ph7_result_int64(pCtx, iMods);` |
 |     9 | 3247 | `	return PH7_OK;` |
 |     1 | 3248 | `}` |
-|    16 | 3249 | `static int vm_builtin_ReflectionClass_getParentClass(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     2 | 3250 | `{` |
-|    18 | 3251 | `	ph7_class *pClass = ReflectClassOf(pCtx);` |
-|     8 | 3252 | `	SXUNUSED(nArg);` |
-|     8 | 3253 | `	SXUNUSED(apArg);` |
-|    18 | 3254 | `	if( pClass == 0 \|\| pClass->pBase == 0 ){` |
-|     6 | 3255 | `		ph7_result_bool(pCtx, 0);` |
-|     6 | 3256 | `		return PH7_OK;` |
+|    22 | 3249 | `static int vm_builtin_ReflectionClass_getParentClass(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     3 | 3250 | `{` |
+|    25 | 3251 | `	ph7_class *pClass = ReflectClassOf(pCtx);` |
+|    11 | 3252 | `	SXUNUSED(nArg);` |
+|    11 | 3253 | `	SXUNUSED(apArg);` |
+|    25 | 3254 | `	if( pClass == 0 \|\| pClass->pBase == 0 ){` |
+|     9 | 3255 | `		ph7_result_bool(pCtx, 0);` |
+|     9 | 3256 | `		return PH7_OK;` |
 |     - | 3257 | `	}` |
-|    14 | 3258 | `	return ReflectResultClassOf(pCtx, pClass->pBase);` |
-|    10 | 3259 | `}` |
+|    19 | 3258 | `	return ReflectResultClassOf(pCtx, pClass->pBase);` |
+|    14 | 3259 | `}` |
 |     - | 3260 | `/* getInterfaceNames()/getInterfaces()/getTraitNames()/getTraits() — one walk,` |
 |     - | 3261 | ` * four shapes. bReflector picks name-list vs {name: ReflectionClass}. */` |
 |    44 | 3262 | `static int ReflectClassNameList(ph7_context *pCtx, int bTraits, int bReflector)` |
@@ -3557,17 +3557,17 @@ Coverage: 5127/5945 lines (86.24%)
 |     3 | 3547 | `}` |
 |     - | 3548 | `/* php's own gate, raised before any object exists. */` |
 |    38 | 3549 | `static sxi32 ReflectCheckInstantiable(ph7_context *pCtx, ph7_class *pClass)` |
-|     3 | 3550 | `{` |
-|    41 | 3551 | `	if( pClass->iFlags & PH7_CLASS_INTERFACE ){` |
+|     4 | 3550 | `{` |
+|    42 | 3551 | `	if( pClass->iFlags & PH7_CLASS_INTERFACE ){` |
 |   ! 0 | 3552 | `		return PH7_VmThrowException(pCtx, "Error", "Cannot instantiate interface %z", &pClass->sName);` |
 |     - | 3553 | `	}` |
-|    41 | 3554 | `	if( pClass->iFlags & PH7_CLASS_TRAIT ){` |
+|    42 | 3554 | `	if( pClass->iFlags & PH7_CLASS_TRAIT ){` |
 |   ! 0 | 3555 | `		return PH7_VmThrowException(pCtx, "Error", "Cannot instantiate trait %z", &pClass->sName);` |
 |     - | 3556 | `	}` |
-|    41 | 3557 | `	if( pClass->iFlags & PH7_CLASS_ABSTRACT ){` |
+|    42 | 3557 | `	if( pClass->iFlags & PH7_CLASS_ABSTRACT ){` |
 |     5 | 3558 | `		return PH7_VmThrowException(pCtx, "Error", "Cannot instantiate abstract class %z", &pClass->sName);` |
 |     - | 3559 | `	}` |
-|    37 | 3560 | `	if( pClass->iFlags & PH7_CLASS_NOINSTANTIATE ){` |
+|    38 | 3560 | `	if( pClass->iFlags & PH7_CLASS_NOINSTANTIATE ){` |
 |     - | 3561 | ``		/* The `new` path's create_object refusal, which php raises here too —`` |
 |     - | 3562 | `		 * ReflectionClass::newInstance() on a Closure is the same Error, not a` |
 |     - | 3563 | `		 * visibility one about its private constructor. */` |
@@ -3577,8 +3577,8 @@ Coverage: 5127/5945 lines (86.24%)
 |     4 | 3567 | `		return PH7_VmThrowException(pCtx, "Error",` |
 |     1 | 3568 | `			"Instantiation of class %z is not allowed", &pClass->sName);` |
 |     - | 3569 | `	}` |
-|    32 | 3570 | `	return PH7_OK;` |
-|    22 | 3571 | `}` |
+|    33 | 3570 | `	return PH7_OK;` |
+|    23 | 3571 | `}` |
 |     - | 3572 | `/*` |
 |     - | 3573 | ` * newInstance()/newInstanceArgs(): the checks php runs, then the constructor.` |
 |     - | 3574 | ` * apCtor/nCtor are already-collected positional arguments; pNames is the` |
@@ -3587,31 +3587,31 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 3577 | ` */` |
 |    22 | 3578 | `static int ReflectNewInstance(ph7_context *pCtx, int nCtor, ph7_value **apCtor,` |
 |     - | 3579 | `	SyString *pNames)` |
-|     3 | 3580 | `{` |
-|    25 | 3581 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    25 | 3582 | `	ph7_class *pClass = ReflectClassOf(pCtx);` |
+|     4 | 3580 | `{` |
+|    26 | 3581 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    26 | 3582 | `	ph7_class *pClass = ReflectClassOf(pCtx);` |
 |     - | 3583 | `	ph7_class_instance *pObj;` |
 |     - | 3584 | `	ph7_class_method *pCons;` |
 |     - | 3585 | `	sxi32 iCtorVis, iCloneVis, rc;` |
-|    25 | 3586 | `	if( pClass == 0 ){` |
+|    26 | 3586 | `	if( pClass == 0 ){` |
 |   ! 0 | 3587 | `		ph7_result_null(pCtx);` |
 |   ! 0 | 3588 | `		return PH7_OK;` |
 |     - | 3589 | `	}` |
-|    25 | 3590 | `	rc = ReflectCheckInstantiable(pCtx, pClass);` |
-|    25 | 3591 | `	if( rc != PH7_OK ){` |
+|    26 | 3590 | `	rc = ReflectCheckInstantiable(pCtx, pClass);` |
+|    26 | 3591 | `	if( rc != PH7_OK ){` |
 |     8 | 3592 | `		return rc;` |
 |     - | 3593 | `	}` |
-|    18 | 3594 | `	ReflectCtorCloneVis(pVm, pClass, &iCtorVis, &iCloneVis);` |
-|    18 | 3595 | `	if( iCtorVis != 0 && iCtorVis != PH7_CLASS_PROT_PUBLIC ){` |
+|    19 | 3594 | `	ReflectCtorCloneVis(pVm, pClass, &iCtorVis, &iCloneVis);` |
+|    19 | 3595 | `	if( iCtorVis != 0 && iCtorVis != PH7_CLASS_PROT_PUBLIC ){` |
 |     4 | 3596 | `		return PH7_VmThrowException(pCtx, "ReflectionException",` |
 |     1 | 3597 | `			"Access to non-public constructor of class %z", &pClass->sName);` |
 |     - | 3598 | `	}` |
-|    16 | 3599 | `	if( iCtorVis == 0 && nCtor > 0 ){` |
+|    17 | 3599 | `	if( iCtorVis == 0 && nCtor > 0 ){` |
 |     4 | 3600 | `		return PH7_VmThrowException(pCtx, "ReflectionException",` |
 |     - | 3601 | `			"Class %z does not have a constructor, so you cannot pass any constructor arguments",` |
 |     1 | 3602 | `			&pClass->sName);` |
 |     - | 3603 | `	}` |
-|    14 | 3604 | `	if( VmClassStaticDeferPending(pClass) ){` |
+|    15 | 3604 | `	if( VmClassStaticDeferPending(pClass) ){` |
 |     - | 3605 | `		/* Instantiation materializes the static table (OP_NEW does it too), so a` |
 |     - | 3606 | `		 * broken default raises BEFORE any object exists. */` |
 |     3 | 3607 | `		sxi32 rcMat = PH7_VmMaterializeClassStatics(pVm, pClass);` |
@@ -3642,11 +3642,11 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 3632 | `		}` |
 |     3 | 3633 | `	}` |
 |     9 | 3634 | `	return ReflectResultObject(pCtx, pObj);` |
-|    14 | 3635 | `}` |
+|    15 | 3635 | `}` |
 |    20 | 3636 | `static int vm_builtin_ReflectionClass_newInstance(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     3 | 3637 | `{` |
-|    23 | 3638 | `	return ReflectNewInstance(pCtx, nArg, apArg, 0);` |
-|     3 | 3639 | `}` |
+|     4 | 3637 | `{` |
+|    24 | 3638 | `	return ReflectNewInstance(pCtx, nArg, apArg, 0);` |
+|     4 | 3639 | `}` |
 |     2 | 3640 | `static int vm_builtin_ReflectionClass_newInstanceArgs(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
 |     1 | 3641 | `{` |
 |     - | 3642 | `	SySet aArg;` |
@@ -4003,35 +4003,35 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 3993 | ` */` |
 |   114 | 3994 | `static int ReflectMemberList(ph7_context *pCtx, int iKind, const char *zClass,` |
 |     - | 3995 | `	int nArg, ph7_value **apArg)` |
-|     4 | 3996 | `{` |
-|   118 | 3997 | `	ph7_class *pClass = ReflectClassOf(pCtx);` |
-|   118 | 3998 | `	ph7_class_instance *pObj = ReflectClassObj(pCtx);` |
-|   118 | 3999 | `	ph7_value *pOut = ph7_context_new_array(pCtx);` |
+|     3 | 3996 | `{` |
+|   117 | 3997 | `	ph7_class *pClass = ReflectClassOf(pCtx);` |
+|   117 | 3998 | `	ph7_class_instance *pObj = ReflectClassObj(pCtx);` |
+|   117 | 3999 | `	ph7_value *pOut = ph7_context_new_array(pCtx);` |
 |     - | 4000 | `	ph7_value sSelf;` |
 |     - | 4001 | `	SySet aMembers;` |
 |     - | 4002 | `	sxu32 n;` |
-|   118 | 4003 | `	int bFilter = (nArg > 0 && (apArg[0]->iFlags & MEMOBJ_NULL) == 0);` |
-|   118 | 4004 | `	sxi64 iFilter = bFilter ? ph7_value_to_int64(apArg[0]) : 0;` |
-|   118 | 4005 | `	if( pOut == 0 ){` |
+|   117 | 4003 | `	int bFilter = (nArg > 0 && (apArg[0]->iFlags & MEMOBJ_NULL) == 0);` |
+|   117 | 4004 | `	sxi64 iFilter = bFilter ? ph7_value_to_int64(apArg[0]) : 0;` |
+|   117 | 4005 | `	if( pOut == 0 ){` |
 |   ! 0 | 4006 | `		return PH7_ContextMemoryError(pCtx);` |
 |     - | 4007 | `	}` |
-|   118 | 4008 | `	if( pClass == 0 ){` |
+|   117 | 4008 | `	if( pClass == 0 ){` |
 |   ! 0 | 4009 | `		ph7_result_value(pCtx, pOut);` |
 |   ! 0 | 4010 | `		return PH7_OK;` |
 |     - | 4011 | `	}` |
-|   118 | 4012 | `	ReflectSelfName(pCtx, &sSelf);` |
-|   118 | 4013 | `	SySetInit(&aMembers, &pCtx->pVm->sAllocator, sizeof(ReflectMember));` |
-|   118 | 4014 | `	ReflectMembers(pCtx->pVm, pClass, &aMembers, 0);` |
-|  1288 | 4015 | `	for( n = 0 ; n < SySetUsed(&aMembers) ; n++ ){` |
-|  1174 | 4016 | `		ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);` |
+|   117 | 4012 | `	ReflectSelfName(pCtx, &sSelf);` |
+|   117 | 4013 | `	SySetInit(&aMembers, &pCtx->pVm->sAllocator, sizeof(ReflectMember));` |
+|   117 | 4014 | `	ReflectMembers(pCtx->pVm, pClass, &aMembers, 0);` |
+|  1287 | 4015 | `	for( n = 0 ; n < SySetUsed(&aMembers) ; n++ ){` |
+|  1173 | 4016 | `		ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);` |
 |     - | 4017 | `		ph7_value sName, sVal;` |
 |     - | 4018 | `		ph7_value *apCtor[2];` |
 |     - | 4019 | `		ph7_class_instance *pRef;` |
 |     - | 4020 | `		sxi32 rc;` |
-|  1174 | 4021 | `		if( pM->iKind != iKind ){` |
-|   905 | 4022 | `			continue;` |
+|  1173 | 4021 | `		if( pM->iKind != iKind ){` |
+|   904 | 4022 | `			continue;` |
 |     - | 4023 | `		}` |
-|   282 | 4024 | `		if( bFilter ){` |
+|   281 | 4024 | `		if( bFilter ){` |
 |    33 | 4025 | `			sxi64 iMods = iKind == REFLECT_MEMBER_METHOD ? ReflectMethodModifiers(pM->pMeth)` |
 |    40 | 4026 | `				: (iKind == REFLECT_MEMBER_CONST ? ReflectConstModifiers(pM->pAttr)` |
 |    20 | 4027 | `				                                 : ReflectPropModifiers(pM->pAttr));` |
@@ -4039,13 +4039,13 @@ Coverage: 5127/5945 lines (86.24%)
 |    21 | 4029 | `				continue;` |
 |     - | 4030 | `			}` |
 |     6 | 4031 | `		}` |
-|   262 | 4032 | `		PH7_MemObjInit(pCtx->pVm, &sName);` |
-|   262 | 4033 | `		ph7_value_string(&sName, SyStringData(&pM->sKey), (int)SyStringLength(&pM->sKey));` |
-|   262 | 4034 | `		apCtor[0] = &sSelf;` |
-|   262 | 4035 | `		apCtor[1] = &sName;` |
-|   262 | 4036 | `		pRef = ReflectConstruct(pCtx, zClass, 2, apCtor, &rc);` |
-|   262 | 4037 | `		PH7_MemObjRelease(&sName);` |
-|   262 | 4038 | `		if( pRef == 0 ){` |
+|   261 | 4032 | `		PH7_MemObjInit(pCtx->pVm, &sName);` |
+|   261 | 4033 | `		ph7_value_string(&sName, SyStringData(&pM->sKey), (int)SyStringLength(&pM->sKey));` |
+|   261 | 4034 | `		apCtor[0] = &sSelf;` |
+|   261 | 4035 | `		apCtor[1] = &sName;` |
+|   261 | 4036 | `		pRef = ReflectConstruct(pCtx, zClass, 2, apCtor, &rc);` |
+|   261 | 4037 | `		PH7_MemObjRelease(&sName);` |
+|   261 | 4038 | `		if( pRef == 0 ){` |
 |   ! 0 | 4039 | `			SySetRelease(&aMembers);` |
 |   ! 0 | 4040 | `			PH7_MemObjRelease(&sSelf);` |
 |   ! 0 | 4041 | `			if( rc != PH7_OK ){` |
@@ -4054,16 +4054,16 @@ Coverage: 5127/5945 lines (86.24%)
 |   ! 0 | 4044 | `			ph7_result_value(pCtx, pOut);` |
 |   ! 0 | 4045 | `			return PH7_OK;` |
 |     - | 4046 | `		}` |
-|   262 | 4047 | `		PH7_MemObjInit(pCtx->pVm, &sVal);` |
-|   262 | 4048 | `		sVal.x.pOther = pRef;` |
-|   262 | 4049 | `		sVal.iFlags = MEMOBJ_OBJ;` |
-|   262 | 4050 | `		ph7_array_add_elem(pOut, 0, &sVal);   /* takes its own reference */` |
-|   262 | 4051 | `		PH7_ClassInstanceUnref(pRef);` |
-|   133 | 4052 | `	}` |
-|   118 | 4053 | `	SySetRelease(&aMembers);` |
+|   261 | 4047 | `		PH7_MemObjInit(pCtx->pVm, &sVal);` |
+|   261 | 4048 | `		sVal.x.pOther = pRef;` |
+|   261 | 4049 | `		sVal.iFlags = MEMOBJ_OBJ;` |
+|   261 | 4050 | `		ph7_array_add_elem(pOut, 0, &sVal);   /* takes its own reference */` |
+|   261 | 4051 | `		PH7_ClassInstanceUnref(pRef);` |
+|   132 | 4052 | `	}` |
+|   117 | 4053 | `	SySetRelease(&aMembers);` |
 |     - | 4054 | `	/* A ReflectionObject also reports the instance's own DYNAMIC properties,` |
 |     - | 4055 | `	 * which no class declaration knows about. */` |
-|   118 | 4056 | `	if( iKind == REFLECT_MEMBER_PROP && pObj != 0 && (!bFilter \|\| (iFilter & 1)) ){` |
+|   117 | 4056 | `	if( iKind == REFLECT_MEMBER_PROP && pObj != 0 && (!bFilter \|\| (iFilter & 1)) ){` |
 |     - | 4057 | `		SyHashEntry *pEntry;` |
 |     - | 4058 | `		ph7_value sTarget;` |
 |     3 | 4059 | `		PH7_MemObjInit(pCtx->pVm, &sTarget);` |
@@ -4097,10 +4097,10 @@ Coverage: 5127/5945 lines (86.24%)
 |     1 | 4087 | `		}` |
 |     - | 4088 | `		/* sTarget borrows pObj and never took a reference: nothing to release. */` |
 |     1 | 4089 | `	}` |
-|   118 | 4090 | `	PH7_MemObjRelease(&sSelf);` |
-|   118 | 4091 | `	ph7_result_value(pCtx, pOut);` |
-|   118 | 4092 | `	return PH7_OK;` |
-|    61 | 4093 | `}` |
+|   117 | 4090 | `	PH7_MemObjRelease(&sSelf);` |
+|   117 | 4091 | `	ph7_result_value(pCtx, pOut);` |
+|   117 | 4092 | `	return PH7_OK;` |
+|    60 | 4093 | `}` |
 |    48 | 4094 | `static int vm_builtin_ReflectionClass_getMethods(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
 |     2 | 4095 | `{` |
 |    50 | 4096 | `	return ReflectMemberList(pCtx, REFLECT_MEMBER_METHOD, "ReflectionMethod", nArg, apArg);` |
@@ -4584,7 +4584,7 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 4574 | ` * The method table is in php's own DECLARATION order, which is the order` |
 |     - | 4575 | ` * ReflectionClass::getMethods() reports for these classes themselves.` |
 |     - | 4576 | ` */` |
-|  4670 | 4577 | `PH7_PRIVATE sxi32 PH7_VmInstallReflectionClass(ph7_vm *pVm)` |
+|  5146 | 4577 | `PH7_PRIVATE sxi32 PH7_VmInstallReflectionClass(ph7_vm *pVm)` |
 |     5 | 4578 | `{` |
 |     - | 4579 | `	static const PH7_NativePropDef aClassProp[] = {` |
 |     - | 4580 | `		{ "name",  PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },` |
@@ -4718,7 +4718,7 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 4708 | `		{ "ReflectionObject", "ReflectionClass", 0, PH7_CLASS_NOCLONE\|PH7_CLASS_NOSERIALIZE,` |
 |     - | 4709 | `		  aObjectMethod, SX_ARRAYSIZE(aObjectMethod), 0, 0, 0, 0, 0, 0, 0 },` |
 |     - | 4710 | `	};` |
-|  4675 | 4711 | `	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));` |
+|  5151 | 4711 | `	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));` |
 |     5 | 4712 | `}` |
 |     - | 4713 | `/*` |
 |     - | 4714 | ` * ---------------------------------------------------------------------------` |
@@ -4759,27 +4759,27 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 4749 | ` * func_get_args()) wins over the compiled argument list, exactly as` |
 |     - | 4750 | ` * ReflectSigFixup made it win in the descriptor.` |
 |     - | 4751 | ` */` |
-|  2550 | 4752 | `static int ReflectFuncFill(ph7_vm *pVm, ph7_value *pTarget, ph7_value *pMethodArg,` |
+|  2564 | 4752 | `static int ReflectFuncFill(ph7_vm *pVm, ph7_value *pTarget, ph7_value *pMethodArg,` |
 |     - | 4753 | `	ReflectFuncRef *pOut)` |
 |     5 | 4754 | `{` |
-|  2555 | 4755 | `	SyZero(pOut, sizeof(*pOut));` |
-|  3830 | 4756 | `	pOut->pFunc = ReflectResolveCallable(pVm, pTarget, pMethodArg,` |
-|  1275 | 4757 | `		&pOut->pClass, &pOut->pMeth, &pOut->pHost, &pOut->pClosure);` |
-|  2555 | 4758 | `	if( pOut->pFunc == 0 && pOut->pHost == 0 ){` |
-|     8 | 4759 | `		return 0;` |
+|  2569 | 4755 | `	SyZero(pOut, sizeof(*pOut));` |
+|  3851 | 4756 | `	pOut->pFunc = ReflectResolveCallable(pVm, pTarget, pMethodArg,` |
+|  1282 | 4757 | `		&pOut->pClass, &pOut->pMeth, &pOut->pHost, &pOut->pClosure);` |
+|  2569 | 4758 | `	if( pOut->pFunc == 0 && pOut->pHost == 0 ){` |
+|    17 | 4759 | `		return 0;` |
 |     - | 4760 | `	}` |
-|  2549 | 4761 | `	if( pOut->pFunc == 0 ){` |
+|  2555 | 4761 | `	if( pOut->pFunc == 0 ){` |
 |   377 | 4762 | `		pOut->zSig = pOut->pHost->zSig;` |
 |   377 | 4763 | `		pOut->zRet = pOut->pHost->zRet;` |
 |   377 | 4764 | `		return 1;` |
 |     - | 4765 | `	}` |
-|  2175 | 4766 | `	if( (pOut->pFunc->iFlags & VM_FUNC_NATIVE) && pOut->pFunc->pNative ){` |
+|  2181 | 4766 | `	if( (pOut->pFunc->iFlags & VM_FUNC_NATIVE) && pOut->pFunc->pNative ){` |
 |   987 | 4767 | `		pOut->zSig = pOut->pFunc->pNative->zSig;` |
 |   987 | 4768 | `		if( SyStringLength(&pOut->pFunc->sReturnTypeName) == 0 ){` |
 |   987 | 4769 | `			pOut->zRet = pOut->pFunc->pNative->zRet;` |
 |   492 | 4770 | `		}` |
-|  1681 | 4771 | `	}else if( (pOut->pFunc->iFlags & VM_FUNC_INTERNAL)` |
-|   669 | 4772 | `	 && SySetUsed(&pOut->pFunc->aArgs) == 0 && pOut->pMeth == 0 ){` |
+|  1687 | 4771 | `	}else if( (pOut->pFunc->iFlags & VM_FUNC_INTERNAL)` |
+|   672 | 4772 | `	 && SySetUsed(&pOut->pFunc->aArgs) == 0 && pOut->pMeth == 0 ){` |
 |   ! 0 | 4773 | `		const char *zRet = 0;` |
 |   ! 0 | 4774 | `		pOut->zSig = PH7_VmBuiltinSigLookup(SyStringData(&pOut->pFunc->sName),` |
 |   ! 0 | 4775 | `			SyStringLength(&pOut->pFunc->sName), &zRet);` |
@@ -4787,12 +4787,12 @@ Coverage: 5127/5945 lines (86.24%)
 |   ! 0 | 4777 | `			pOut->zRet = zRet;` |
 |   ! 0 | 4778 | `		}` |
 |   ! 0 | 4779 | `	}` |
-|  2175 | 4780 | `	if( pOut->zSig && pOut->zSig[0] == '\0' ){` |
+|  2181 | 4780 | `	if( pOut->zSig && pOut->zSig[0] == '\0' ){` |
 |     - | 4781 | `		/* A declared-EMPTY signature really is "no parameters", not "undescribed". */` |
 |   414 | 4782 | `		return 1;` |
 |     - | 4783 | `	}` |
-|  1763 | 4784 | `	return 1;` |
-|  1280 | 4785 | `}` |
+|  1769 | 4784 | `	return 1;` |
+|  1287 | 4785 | `}` |
 |     - | 4786 | `/* Is this receiver a ReflectionMethod (rather than a ReflectionFunction)? */` |
 |  1490 | 4787 | `static int ReflectIsMethodReflector(ph7_context *pCtx, ph7_class_instance *pThis)` |
 |     5 | 4788 | `{` |
@@ -4808,55 +4808,55 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 4798 | `` * the object in `__cl` and resolves through it (its `$__fn` is a lambda name no`` |
 |     - | 4799 | ` * function table holds); a ReflectionMethod resolves ($this->class, $this->name).` |
 |     - | 4800 | ` */` |
-|  1298 | 4801 | `static int ReflectFuncOfThis(ph7_context *pCtx, ReflectFuncRef *pOut)` |
+|  1300 | 4801 | `static int ReflectFuncOfThis(ph7_context *pCtx, ReflectFuncRef *pOut)` |
 |     5 | 4802 | `{` |
-|  1303 | 4803 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|  1305 | 4803 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - | 4804 | `	ph7_class_instance *pClo;` |
 |     - | 4805 | `	ph7_value sTarget, sMethod;` |
 |     - | 4806 | `	const char *zName, *zClass;` |
 |     - | 4807 | `	int nName, nClass, rc;` |
-|  1303 | 4808 | `	SyZero(pOut, sizeof(*pOut));` |
-|  1303 | 4809 | `	if( pThis == 0 ){` |
+|  1305 | 4808 | `	SyZero(pOut, sizeof(*pOut));` |
+|  1305 | 4809 | `	if( pThis == 0 ){` |
 |   ! 0 | 4810 | `		return 0;` |
 |     - | 4811 | `	}` |
-|  1303 | 4812 | `	PH7_MemObjInit(pCtx->pVm, &sTarget);` |
-|  1303 | 4813 | `	PH7_MemObjInit(pCtx->pVm, &sMethod);` |
-|  1303 | 4814 | `	pClo = PH7_NativeAttrObj(pThis, RF_CL);` |
-|  1303 | 4815 | `	PH7_NativeAttrStr(pThis, "name", &zName, &nName);` |
-|  1303 | 4816 | `	if( pClo ){` |
-|    86 | 4817 | `		sTarget.x.pOther = pClo;` |
-|    86 | 4818 | `		sTarget.iFlags = MEMOBJ_OBJ;` |
-|  1261 | 4819 | `	}else if( ReflectIsMethodReflector(pCtx, pThis) ){` |
+|  1305 | 4812 | `	PH7_MemObjInit(pCtx->pVm, &sTarget);` |
+|  1305 | 4813 | `	PH7_MemObjInit(pCtx->pVm, &sMethod);` |
+|  1305 | 4814 | `	pClo = PH7_NativeAttrObj(pThis, RF_CL);` |
+|  1305 | 4815 | `	PH7_NativeAttrStr(pThis, "name", &zName, &nName);` |
+|  1305 | 4816 | `	if( pClo ){` |
+|    89 | 4817 | `		sTarget.x.pOther = pClo;` |
+|    89 | 4818 | `		sTarget.iFlags = MEMOBJ_OBJ;` |
+|  1262 | 4819 | `	}else if( ReflectIsMethodReflector(pCtx, pThis) ){` |
 |   909 | 4820 | `		PH7_NativeAttrStr(pThis, "class", &zClass, &nClass);` |
 |   909 | 4821 | `		ph7_value_string(&sTarget, zClass, nClass);` |
 |   909 | 4822 | `		ph7_value_string(&sMethod, zName, nName);` |
 |   457 | 4823 | `	}else{` |
 |   313 | 4824 | `		ph7_value_string(&sTarget, zName, nName);` |
 |     - | 4825 | `	}` |
-|  1303 | 4826 | `	rc = ReflectFuncFill(pCtx->pVm, &sTarget, (sMethod.iFlags & MEMOBJ_STRING) ? &sMethod : 0, pOut);` |
+|  1305 | 4826 | `	rc = ReflectFuncFill(pCtx->pVm, &sTarget, (sMethod.iFlags & MEMOBJ_STRING) ? &sMethod : 0, pOut);` |
 |     - | 4827 | `	/* sTarget only ever BORROWS the closure; releasing it would unref twice. */` |
-|  1303 | 4828 | `	if( (sTarget.iFlags & MEMOBJ_OBJ) == 0 ){` |
+|  1305 | 4828 | `	if( (sTarget.iFlags & MEMOBJ_OBJ) == 0 ){` |
 |  1219 | 4829 | `		PH7_MemObjRelease(&sTarget);` |
 |   607 | 4830 | `	}` |
-|  1303 | 4831 | `	PH7_MemObjRelease(&sMethod);` |
-|  1303 | 4832 | `	return rc;` |
-|   654 | 4833 | `}` |
+|  1305 | 4831 | `	PH7_MemObjRelease(&sMethod);` |
+|  1305 | 4832 | `	return rc;` |
+|   655 | 4833 | `}` |
 |     - | 4834 | `/* How many parameters the target declares. */` |
-|   950 | 4835 | `static int ReflectParamCount(const ReflectFuncRef *pRef)` |
-|     4 | 4836 | `{` |
-|   954 | 4837 | `	if( pRef->zSig ){` |
+|   952 | 4835 | `static int ReflectParamCount(const ReflectFuncRef *pRef)` |
+|     5 | 4836 | `{` |
+|   957 | 4837 | `	if( pRef->zSig ){` |
 |   470 | 4838 | `		return ReflectSigPart(pRef->zSig, (int)SyStrlen(pRef->zSig), -1, 0, 0);` |
 |     - | 4839 | `	}` |
-|   485 | 4840 | `	return pRef->pFunc ? (int)SySetUsed(&pRef->pFunc->aArgs) : 0;` |
-|   479 | 4841 | `}` |
+|   488 | 4840 | `	return pRef->pFunc ? (int)SySetUsed(&pRef->pFunc->aArgs) : 0;` |
+|   481 | 4841 | `}` |
 |     - | 4842 | `/* Describe the iPos-th parameter. Answers 0 when there is none. */` |
 |  1216 | 4843 | `static int ReflectParamAt(const ReflectFuncRef *pRef, int iPos, ReflectParamDesc *pOut)` |
-|     3 | 4844 | `{` |
-|  1219 | 4845 | `	SyZero(pOut, sizeof(*pOut));` |
-|  1219 | 4846 | `	if( iPos < 0 ){` |
+|     4 | 4844 | `{` |
+|  1220 | 4845 | `	SyZero(pOut, sizeof(*pOut));` |
+|  1220 | 4846 | `	if( iPos < 0 ){` |
 |   ! 0 | 4847 | `		return 0;` |
 |     - | 4848 | `	}` |
-|  1219 | 4849 | `	if( pRef->zSig ){` |
+|  1220 | 4849 | `	if( pRef->zSig ){` |
 |   527 | 4850 | `		const char *zPart = 0;` |
 |   527 | 4851 | `		int nPart = 0, nTotal;` |
 |   527 | 4852 | `		nTotal = ReflectSigPart(pRef->zSig, (int)SyStrlen(pRef->zSig), iPos, &zPart, &nPart);` |
@@ -4866,29 +4866,29 @@ Coverage: 5127/5945 lines (86.24%)
 |   525 | 4856 | `		ReflectSigDescribe(zPart, nPart, iPos, pOut);` |
 |   525 | 4857 | `		return 1;` |
 |     - | 4858 | `	}` |
-|   694 | 4859 | `	if( pRef->pFunc == 0 ){` |
+|   695 | 4859 | `	if( pRef->pFunc == 0 ){` |
 |   ! 0 | 4860 | `		return 0;` |
 |     - | 4861 | `	}` |
 |     - | 4862 | `	{` |
-|   694 | 4863 | `		ph7_vm_func_arg *pArg = (ph7_vm_func_arg *)SySetAt(&pRef->pFunc->aArgs, (sxu32)iPos);` |
-|   694 | 4864 | `		if( pArg == 0 ){` |
+|   695 | 4863 | `		ph7_vm_func_arg *pArg = (ph7_vm_func_arg *)SySetAt(&pRef->pFunc->aArgs, (sxu32)iPos);` |
+|   695 | 4864 | `		if( pArg == 0 ){` |
 |    13 | 4865 | `			return 0;` |
 |     - | 4866 | `		}` |
-|   682 | 4867 | `		pOut->iPos = iPos;` |
-|   682 | 4868 | `		pOut->sName = pArg->sName;` |
-|   682 | 4869 | `		pOut->bByRef = (pArg->iFlags & VM_FUNC_ARG_BY_REF) != 0;` |
-|   682 | 4870 | `		pOut->bVariadic = (pArg->iFlags & VM_FUNC_ARG_VARIADIC) != 0;` |
+|   683 | 4867 | `		pOut->iPos = iPos;` |
+|   683 | 4868 | `		pOut->sName = pArg->sName;` |
+|   683 | 4869 | `		pOut->bByRef = (pArg->iFlags & VM_FUNC_ARG_BY_REF) != 0;` |
+|   683 | 4870 | `		pOut->bVariadic = (pArg->iFlags & VM_FUNC_ARG_VARIADIC) != 0;` |
 |     - | 4871 | `		/* The compiler never sets ARG_HAS_DEF; a default IS compiled byte-code` |
 |     - | 4872 | `		 * (the same test the OP_CALL default-value path uses). */` |
-|   682 | 4873 | `		pOut->bHasDef = SySetUsed(&pArg->aByteCode) > 0;` |
-|   682 | 4874 | `		pOut->bNullable = (pArg->iFlags & VM_FUNC_ARG_NULLABLE) != 0;` |
-|   682 | 4875 | `		pOut->bPromoted = (pArg->iFlags & VM_FUNC_ARG_PROMOTED) != 0;` |
-|   682 | 4876 | `		pOut->bOptional = pOut->bVariadic \|\| pOut->bHasDef;` |
-|   682 | 4877 | `		pOut->sType = pArg->sTypeName;` |
-|   682 | 4878 | `		pOut->pArg = pArg;` |
-|   682 | 4879 | `		return 1;` |
+|   683 | 4873 | `		pOut->bHasDef = SySetUsed(&pArg->aByteCode) > 0;` |
+|   683 | 4874 | `		pOut->bNullable = (pArg->iFlags & VM_FUNC_ARG_NULLABLE) != 0;` |
+|   683 | 4875 | `		pOut->bPromoted = (pArg->iFlags & VM_FUNC_ARG_PROMOTED) != 0;` |
+|   683 | 4876 | `		pOut->bOptional = pOut->bVariadic \|\| pOut->bHasDef;` |
+|   683 | 4877 | `		pOut->sType = pArg->sTypeName;` |
+|   683 | 4878 | `		pOut->pArg = pArg;` |
+|   683 | 4879 | `		return 1;` |
 |     - | 4880 | `	}` |
-|   611 | 4881 | `}` |
+|   612 | 4881 | `}` |
 |     - | 4882 | `/* The declaring class php reports for a reflected METHOD. */` |
 |   342 | 4883 | `static ph7_class * ReflectFuncDeclClass(const ReflectFuncRef *pRef)` |
 |     4 | 4884 | `{` |
@@ -4929,13 +4929,13 @@ Coverage: 5127/5945 lines (86.24%)
 |   345 | 4919 | `		*pn = (int)SyStrlen(z);` |
 |   345 | 4920 | `		return 1;` |
 |     - | 4921 | `	}` |
-|   104 | 4922 | `	if( pRef->pFunc == 0 ){` |
+|   103 | 4922 | `	if( pRef->pFunc == 0 ){` |
 |   ! 0 | 4923 | `		return 0;` |
 |     - | 4924 | `	}` |
-|   104 | 4925 | `	if( SyStringLength(&pRef->pFunc->sReturnTypeName) > 0 ){` |
-|    54 | 4926 | `		*pz = SyStringData(&pRef->pFunc->sReturnTypeName);` |
-|    54 | 4927 | `		*pn = (int)SyStringLength(&pRef->pFunc->sReturnTypeName);` |
-|    54 | 4928 | `		return 1;` |
+|   103 | 4925 | `	if( SyStringLength(&pRef->pFunc->sReturnTypeName) > 0 ){` |
+|    53 | 4926 | `		*pz = SyStringData(&pRef->pFunc->sReturnTypeName);` |
+|    53 | 4927 | `		*pn = (int)SyStringLength(&pRef->pFunc->sReturnTypeName);` |
+|    53 | 4928 | `		return 1;` |
 |     - | 4929 | `	}` |
 |     - | 4930 | `	/* The type-text renderer omits void/never atoms (compile.c notes the root fix` |
 |     - | 4931 | `	 * belongs there); name them here for getReturnType(). */` |
@@ -4954,13 +4954,13 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 4944 | `/* The declared return type php would report from getReturnType(): a TENTATIVE one` |
 |     - | 4945 | ` * is not reported there at all, which is the whole distinction. */` |
 |   200 | 4946 | `static int ReflectFuncRetText(const ReflectFuncRef *pRef, const char **pz, int *pn)` |
-|     4 | 4947 | `{` |
-|   204 | 4948 | `	int bTentative = 0;` |
-|   204 | 4949 | `	if( !ReflectFuncRetTextEx(pRef, pz, pn, &bTentative) ){` |
+|     3 | 4947 | `{` |
+|   203 | 4948 | `	int bTentative = 0;` |
+|   203 | 4949 | `	if( !ReflectFuncRetTextEx(pRef, pz, pn, &bTentative) ){` |
 |     9 | 4950 | `		return 0;` |
 |     - | 4951 | `	}` |
-|   196 | 4952 | `	return bTentative ? 0 : 1;` |
-|   104 | 4953 | `}` |
+|   195 | 4952 | `	return bTentative ? 0 : 1;` |
+|   103 | 4953 | `}` |
 |     - | 4954 | `/* Is the reflected function internal (a C builtin or an embedded-chunk one)? */` |
 |   192 | 4955 | `static int ReflectFuncIsInternal(const ReflectFuncRef *pRef)` |
 |     2 | 4956 | `{` |
@@ -4994,18 +4994,18 @@ Coverage: 5127/5945 lines (86.24%)
 |   ! 0 | 4984 | `	SXUNUSED(apArg);` |
 |   ! 0 | 4985 | `	return PH7_OK;` |
 |   ! 0 | 4986 | `}` |
-|   168 | 4987 | `static int vm_builtin_ReflectionFunc_getName(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|   170 | 4987 | `static int vm_builtin_ReflectionFunc_getName(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
 |     4 | 4988 | `{` |
-|   172 | 4989 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   172 | 4990 | `	const char *zName = "";` |
-|   172 | 4991 | `	int nName = 0;` |
-|    84 | 4992 | `	SXUNUSED(nArg);` |
-|    84 | 4993 | `	SXUNUSED(apArg);` |
-|   172 | 4994 | `	if( pThis ){` |
-|   172 | 4995 | `		PH7_NativeAttrStr(pThis, "name", &zName, &nName);` |
-|    84 | 4996 | `	}` |
-|   172 | 4997 | `	ph7_result_string(pCtx, zName, nName);` |
-|   172 | 4998 | `	return PH7_OK;` |
+|   174 | 4989 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   174 | 4990 | `	const char *zName = "";` |
+|   174 | 4991 | `	int nName = 0;` |
+|    85 | 4992 | `	SXUNUSED(nArg);` |
+|    85 | 4993 | `	SXUNUSED(apArg);` |
+|   174 | 4994 | `	if( pThis ){` |
+|   174 | 4995 | `		PH7_NativeAttrStr(pThis, "name", &zName, &nName);` |
+|    85 | 4996 | `	}` |
+|   174 | 4997 | `	ph7_result_string(pCtx, zName, nName);` |
+|   174 | 4998 | `	return PH7_OK;` |
 |     4 | 4999 | `}` |
 |     - | 5000 | ``/* The `name` slot's namespace split — the same three answers ReflectionClass gives. */`` |
 |   ! 0 | 5001 | `static int ReflectFuncNamePart(ph7_context *pCtx, int iWhat)` |
@@ -5306,19 +5306,19 @@ Coverage: 5127/5945 lines (86.24%)
 |    94 | 5296 | `	return PH7_OK;` |
 |    48 | 5297 | `}` |
 |   108 | 5298 | `static int vm_builtin_ReflectionFunc_getReturnType(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     4 | 5299 | `{` |
+|     3 | 5299 | `{` |
 |     - | 5300 | `	ReflectFuncRef sRef;` |
 |     - | 5301 | `	const char *z;` |
 |     - | 5302 | `	int n;` |
 |    54 | 5303 | `	SXUNUSED(nArg);` |
 |    54 | 5304 | `	SXUNUSED(apArg);` |
-|   112 | 5305 | `	REFLECT_FUNC_OR(sRef, ph7_result_null(pCtx))` |
-|   112 | 5306 | `	if( !ReflectFuncRetText(&sRef, &z, &n) ){` |
+|   111 | 5305 | `	REFLECT_FUNC_OR(sRef, ph7_result_null(pCtx))` |
+|   111 | 5306 | `	if( !ReflectFuncRetText(&sRef, &z, &n) ){` |
 |    11 | 5307 | `		ph7_result_null(pCtx);` |
 |    11 | 5308 | `		return PH7_OK;` |
 |     - | 5309 | `	}` |
-|   102 | 5310 | `	return ReflectResultObject(pCtx, ReflectMakeType(pCtx, z, n));` |
-|    58 | 5311 | `}` |
+|   101 | 5310 | `	return ReflectResultObject(pCtx, ReflectMakeType(pCtx, z, n));` |
+|    57 | 5311 | `}` |
 |     - | 5312 | ``/* A native method's `@`-marked zRet is php's `@tentative-return-type`: reported`` |
 |     - | 5313 | ` * HERE and by nothing else, which is what separates it from a real one. */` |
 |    64 | 5314 | `static int vm_builtin_ReflectionFunc_hasTentativeReturnType(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
@@ -5346,20 +5346,20 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 5336 | `	}` |
 |    51 | 5337 | `	return ReflectResultObject(pCtx, ReflectMakeType(pCtx, z, n));` |
 |    26 | 5338 | `}` |
-|    48 | 5339 | `static int vm_builtin_ReflectionFunc_getNumberOfParameters(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|    50 | 5339 | `static int vm_builtin_ReflectionFunc_getNumberOfParameters(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
 |     2 | 5340 | `{` |
 |     - | 5341 | `	ReflectFuncRef sRef;` |
-|    24 | 5342 | `	SXUNUSED(nArg);` |
-|    24 | 5343 | `	SXUNUSED(apArg);` |
-|    50 | 5344 | `	REFLECT_FUNC_OR(sRef, ph7_result_int(pCtx, 0))` |
-|    50 | 5345 | `	if( sRef.pHost && sRef.zSig == 0 ){` |
+|    25 | 5342 | `	SXUNUSED(nArg);` |
+|    25 | 5343 | `	SXUNUSED(apArg);` |
+|    52 | 5344 | `	REFLECT_FUNC_OR(sRef, ph7_result_int(pCtx, 0))` |
+|    52 | 5345 | `	if( sRef.pHost && sRef.zSig == 0 ){` |
 |     - | 5346 | `		/* An UNDESCRIBED builtin: the arity table is all there is. */` |
 |   ! 0 | 5347 | `		ph7_result_int64(pCtx, (sxi64)sRef.pHost->nMinArg);` |
 |   ! 0 | 5348 | `		return PH7_OK;` |
 |     - | 5349 | `	}` |
-|    50 | 5350 | `	ph7_result_int(pCtx, ReflectParamCount(&sRef));` |
-|    50 | 5351 | `	return PH7_OK;` |
-|    26 | 5352 | `}` |
+|    52 | 5350 | `	ph7_result_int(pCtx, ReflectParamCount(&sRef));` |
+|    52 | 5351 | `	return PH7_OK;` |
+|    27 | 5352 | `}` |
 |    24 | 5353 | `static int vm_builtin_ReflectionFunc_getNumberOfRequiredParameters(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
 |     1 | 5354 | `{` |
 |     - | 5355 | `	ReflectFuncRef sRef;` |
@@ -5384,23 +5384,23 @@ Coverage: 5127/5945 lines (86.24%)
 |    13 | 5374 | `}` |
 |     - | 5375 | `/* The (target, method) pair a ReflectionParameter is built over. */` |
 |   286 | 5376 | `static void ReflectFuncParamSpec(ph7_context *pCtx, ph7_value *pSpec)` |
-|     3 | 5377 | `{` |
-|   289 | 5378 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     4 | 5377 | `{` |
+|   290 | 5378 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - | 5379 | `	ph7_class_instance *pClo;` |
 |     - | 5380 | `	const char *zName, *zClass;` |
 |     - | 5381 | `	int nName, nClass;` |
-|   289 | 5382 | `	PH7_MemObjInit(pCtx->pVm, pSpec);` |
-|   289 | 5383 | `	if( pThis == 0 ){` |
+|   290 | 5382 | `	PH7_MemObjInit(pCtx->pVm, pSpec);` |
+|   290 | 5383 | `	if( pThis == 0 ){` |
 |   ! 0 | 5384 | `		return;` |
 |     - | 5385 | `	}` |
-|   289 | 5386 | `	pClo = PH7_NativeAttrObj(pThis, RF_CL);` |
-|   289 | 5387 | `	if( pClo ){` |
+|   290 | 5386 | `	pClo = PH7_NativeAttrObj(pThis, RF_CL);` |
+|   290 | 5387 | `	if( pClo ){` |
 |    11 | 5388 | `		pSpec->x.pOther = pClo;` |
 |    11 | 5389 | `		pSpec->iFlags = MEMOBJ_OBJ;` |
 |    11 | 5390 | `		return;` |
 |     - | 5391 | `	}` |
-|   279 | 5392 | `	PH7_NativeAttrStr(pThis, "name", &zName, &nName);` |
-|   279 | 5393 | `	if( ReflectIsMethodReflector(pCtx, pThis) ){` |
+|   280 | 5392 | `	PH7_NativeAttrStr(pThis, "name", &zName, &nName);` |
+|   280 | 5393 | `	if( ReflectIsMethodReflector(pCtx, pThis) ){` |
 |     - | 5394 | ``		/* `[class, method]`, which ReflectionParameter's constructor accepts */`` |
 |   119 | 5395 | `		ph7_value *pList = ph7_context_new_array(pCtx);` |
 |   119 | 5396 | `		ph7_value *pA = ph7_context_new_scalar(pCtx);` |
@@ -5417,50 +5417,50 @@ Coverage: 5127/5945 lines (86.24%)
 |   119 | 5407 | `		return;` |
 |     - | 5408 | `	}` |
 |   162 | 5409 | `	ph7_value_string(pSpec, zName, nName);` |
-|   146 | 5410 | `}` |
+|   147 | 5410 | `}` |
 |   274 | 5411 | `static int vm_builtin_ReflectionFunc_getParameters(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     3 | 5412 | `{` |
+|     4 | 5412 | `{` |
 |     - | 5413 | `	ReflectFuncRef sRef;` |
-|   277 | 5414 | `	ph7_value *pOut = ph7_context_new_array(pCtx);` |
+|   278 | 5414 | `	ph7_value *pOut = ph7_context_new_array(pCtx);` |
 |     - | 5415 | `	ph7_value sSpec;` |
 |     - | 5416 | `	int n, nTotal;` |
 |   137 | 5417 | `	SXUNUSED(nArg);` |
 |   137 | 5418 | `	SXUNUSED(apArg);` |
-|   277 | 5419 | `	if( pOut == 0 ){` |
+|   278 | 5419 | `	if( pOut == 0 ){` |
 |   ! 0 | 5420 | `		return PH7_ContextMemoryError(pCtx);` |
 |     - | 5421 | `	}` |
-|   277 | 5422 | `	if( !ReflectFuncOfThis(pCtx, &sRef) ){` |
+|   278 | 5422 | `	if( !ReflectFuncOfThis(pCtx, &sRef) ){` |
 |   ! 0 | 5423 | `		ph7_result_value(pCtx, pOut);` |
 |   ! 0 | 5424 | `		return PH7_OK;` |
 |     - | 5425 | `	}` |
-|   277 | 5426 | `	nTotal = ReflectParamCount(&sRef);` |
-|   277 | 5427 | `	ReflectFuncParamSpec(pCtx, &sSpec);` |
-|   671 | 5428 | `	for( n = 0 ; n < nTotal ; n++ ){` |
+|   278 | 5426 | `	nTotal = ReflectParamCount(&sRef);` |
+|   278 | 5427 | `	ReflectFuncParamSpec(pCtx, &sSpec);` |
+|   672 | 5428 | `	for( n = 0 ; n < nTotal ; n++ ){` |
 |     - | 5429 | `		ph7_value sPos, sVal;` |
 |     - | 5430 | `		ph7_value *apCtor[2];` |
 |     - | 5431 | `		ph7_class_instance *pParam;` |
 |     - | 5432 | `		sxi32 rc;` |
-|   397 | 5433 | `		PH7_MemObjInit(pCtx->pVm, &sPos);` |
-|   397 | 5434 | `		ph7_value_int(&sPos, n);` |
-|   397 | 5435 | `		apCtor[0] = &sSpec;` |
-|   397 | 5436 | `		apCtor[1] = &sPos;` |
-|   397 | 5437 | `		pParam = ReflectConstruct(pCtx, "ReflectionParameter", 2, apCtor, &rc);` |
-|   397 | 5438 | `		PH7_MemObjRelease(&sPos);` |
-|   397 | 5439 | `		if( pParam == 0 ){` |
+|   398 | 5433 | `		PH7_MemObjInit(pCtx->pVm, &sPos);` |
+|   398 | 5434 | `		ph7_value_int(&sPos, n);` |
+|   398 | 5435 | `		apCtor[0] = &sSpec;` |
+|   398 | 5436 | `		apCtor[1] = &sPos;` |
+|   398 | 5437 | `		pParam = ReflectConstruct(pCtx, "ReflectionParameter", 2, apCtor, &rc);` |
+|   398 | 5438 | `		PH7_MemObjRelease(&sPos);` |
+|   398 | 5439 | `		if( pParam == 0 ){` |
 |   ! 0 | 5440 | `			break;` |
 |     - | 5441 | `		}` |
-|   397 | 5442 | `		PH7_MemObjInit(pCtx->pVm, &sVal);` |
-|   397 | 5443 | `		sVal.x.pOther = pParam;` |
-|   397 | 5444 | `		sVal.iFlags = MEMOBJ_OBJ;` |
-|   397 | 5445 | `		ph7_array_add_elem(pOut, 0, &sVal);   /* takes its own reference */` |
-|   397 | 5446 | `		PH7_ClassInstanceUnref(pParam);` |
-|   200 | 5447 | `	}` |
-|   277 | 5448 | `	if( (sSpec.iFlags & MEMOBJ_OBJ) == 0 ){` |
-|   271 | 5449 | `		PH7_MemObjRelease(&sSpec);` |
+|   398 | 5442 | `		PH7_MemObjInit(pCtx->pVm, &sVal);` |
+|   398 | 5443 | `		sVal.x.pOther = pParam;` |
+|   398 | 5444 | `		sVal.iFlags = MEMOBJ_OBJ;` |
+|   398 | 5445 | `		ph7_array_add_elem(pOut, 0, &sVal);   /* takes its own reference */` |
+|   398 | 5446 | `		PH7_ClassInstanceUnref(pParam);` |
+|   201 | 5447 | `	}` |
+|   278 | 5448 | `	if( (sSpec.iFlags & MEMOBJ_OBJ) == 0 ){` |
+|   272 | 5449 | `		PH7_MemObjRelease(&sSpec);` |
 |   134 | 5450 | `	}` |
-|   277 | 5451 | `	ph7_result_value(pCtx, pOut);` |
-|   277 | 5452 | `	return PH7_OK;` |
-|   140 | 5453 | `}` |
+|   278 | 5451 | `	ph7_result_value(pCtx, pOut);` |
+|   278 | 5452 | `	return PH7_OK;` |
+|   141 | 5453 | `}` |
 |     4 | 5454 | `static int vm_builtin_ReflectionFunc_getStaticVariables(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
 |     1 | 5455 | `{` |
 |     - | 5456 | `	ReflectFuncRef sRef;` |
@@ -5809,48 +5809,48 @@ Coverage: 5127/5945 lines (86.24%)
 |     2 | 5799 | `}` |
 |     - | 5800 | `/* ---- ReflectionFunction ---- */` |
 |     - | 5801 | `/* ReflectionFunction::__construct(Closure\|string $function) */` |
-|   294 | 5802 | `static int vm_builtin_ReflectionFunction_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|   306 | 5802 | `static int vm_builtin_ReflectionFunction_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
 |     5 | 5803 | `{` |
-|   299 | 5804 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   299 | 5805 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   311 | 5804 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   311 | 5805 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - | 5806 | `	ReflectFuncRef sRef;` |
 |     - | 5807 | `	ph7_class_instance *pClo;` |
-|   299 | 5808 | `	if( pThis == 0 \|\| nArg < 1 ){` |
+|   311 | 5808 | `	if( pThis == 0 \|\| nArg < 1 ){` |
 |   ! 0 | 5809 | `		return PH7_OK;` |
 |     - | 5810 | `	}` |
-|   299 | 5811 | `	pClo = ReflectValueClosure(pVm, apArg[0]);` |
-|   299 | 5812 | `	if( !ReflectFuncFill(pCtx->pVm, apArg[0], 0, &sRef) ){` |
+|   311 | 5811 | `	pClo = ReflectValueClosure(pVm, apArg[0]);` |
+|   311 | 5812 | `	if( !ReflectFuncFill(pCtx->pVm, apArg[0], 0, &sRef) ){` |
 |     - | 5813 | `		const char *zName;` |
 |     - | 5814 | `		int nName;` |
-|     6 | 5815 | `		if( pClo ){` |
+|    15 | 5815 | `		if( pClo ){` |
 |     - | 5816 | `			/* A Closure whose body no table holds: still a valid reflection` |
 |     - | 5817 | `			 * target, so record it and let the accessors answer emptily. */` |
 |   ! 0 | 5818 | `			PH7_NativeSetAttrObj(pVm, pThis, RF_CL, pClo);` |
 |   ! 0 | 5819 | `			return PH7_OK;` |
 |     - | 5820 | `		}` |
-|     6 | 5821 | `		zName = ph7_value_to_string(apArg[0], &nName);` |
-|     8 | 5822 | `		return PH7_VmThrowException(pCtx, "ReflectionException",` |
-|     2 | 5823 | `			"Function %.*s() does not exist", nName, zName);` |
+|    15 | 5821 | `		zName = ph7_value_to_string(apArg[0], &nName);` |
+|    21 | 5822 | `		return PH7_VmThrowException(pCtx, "ReflectionException",` |
+|     6 | 5823 | `			"Function %.*s() does not exist", nName, zName);` |
 |     - | 5824 | `	}` |
-|   295 | 5825 | `	if( pClo ){` |
-|    63 | 5826 | `		PH7_NativeSetAttrObj(pVm, pThis, RF_CL, pClo);` |
-|    30 | 5827 | `	}` |
-|   295 | 5828 | `	if( sRef.pFunc ){` |
-|   216 | 5829 | `		int bAnon = (sRef.pFunc->iFlags & VM_FUNC_CLOSURE) != 0;` |
-|   212 | 5830 | `		if( !bAnon && SyStringLength(&sRef.pFunc->sName) > 9` |
-|   113 | 5831 | `		 && (SyMemcmp(SyStringData(&sRef.pFunc->sName), "[lambda_", 8) == 0` |
+|   299 | 5825 | `	if( pClo ){` |
+|    66 | 5826 | `		PH7_NativeSetAttrObj(pVm, pThis, RF_CL, pClo);` |
+|    31 | 5827 | `	}` |
+|   299 | 5828 | `	if( sRef.pFunc ){` |
+|   221 | 5829 | `		int bAnon = (sRef.pFunc->iFlags & VM_FUNC_CLOSURE) != 0;` |
+|   216 | 5830 | `		if( !bAnon && SyStringLength(&sRef.pFunc->sName) > 9` |
+|   115 | 5831 | `		 && (SyMemcmp(SyStringData(&sRef.pFunc->sName), "[lambda_", 8) == 0` |
 |    39 | 5832 | `		  \|\| SyMemcmp(SyStringData(&sRef.pFunc->sName), "[closure_", 9) == 0) ){` |
 |     3 | 5833 | `			bAnon = 1;` |
 |     1 | 5834 | `		}` |
-|   216 | 5835 | `		if( bAnon ){` |
+|   221 | 5835 | `		if( bAnon ){` |
 |     - | 5836 | ``			/* php 8.4 names an anonymous function `{closure:SCOPE:LINE}`, where SCOPE is`` |
 |     - | 5837 | `			 * the enclosing function and only the FILE at top level — the compiler` |
 |     - | 5838 | `			 * recorded it (sClosureName); the file form is the fallback for a closure` |
 |     - | 5839 | `			 * built without one. */` |
 |     - | 5840 | `			char zBuf[512];` |
-|    39 | 5841 | `			const char *zShow = SyStringData(&sRef.pFunc->sClosureName);` |
-|    39 | 5842 | `			int nShow = (int)SyStringLength(&sRef.pFunc->sClosureName);` |
-|    39 | 5843 | `			if( nShow < 1 ){` |
+|    42 | 5841 | `			const char *zShow = SyStringData(&sRef.pFunc->sClosureName);` |
+|    42 | 5842 | `			int nShow = (int)SyStringLength(&sRef.pFunc->sClosureName);` |
+|    42 | 5843 | `			if( nShow < 1 ){` |
 |   ! 0 | 5844 | `				const char *zFile = SyStringLength(&sRef.pFunc->sFile) > 0` |
 |   ! 0 | 5845 | `					? SyStringData(&sRef.pFunc->sFile) : "";` |
 |   ! 0 | 5846 | `				int nFile = (int)SyStringLength(&sRef.pFunc->sFile);` |
@@ -5858,23 +5858,23 @@ Coverage: 5127/5945 lines (86.24%)
 |   ! 0 | 5848 | `					nFile, zFile, sRef.pFunc->nLine);` |
 |   ! 0 | 5849 | `				zShow = zBuf;` |
 |   ! 0 | 5850 | `			}` |
-|    39 | 5851 | `			PH7_NativeSetAttrStr(pVm, pThis, "name", zShow, nShow);` |
-|    39 | 5852 | `			if( pClo == 0 ){` |
+|    42 | 5851 | `			PH7_NativeSetAttrStr(pVm, pThis, "name", zShow, nShow);` |
+|    42 | 5852 | `			if( pClo == 0 ){` |
 |     - | 5853 | `				/* Named by its lambda name: keep a Closure so the accessors can` |
 |     - | 5854 | `				 * still reach the captured scope. */` |
 |   ! 0 | 5855 | `				PH7_NativeSetAttrObj(pVm, pThis, RF_CL,` |
 |   ! 0 | 5856 | `					PH7_VmNewClosure(pVm, &sRef.pFunc->sName, 0, 0));` |
 |   ! 0 | 5857 | `			}` |
-|    39 | 5858 | `			return PH7_OK;` |
+|    42 | 5858 | `			return PH7_OK;` |
 |     - | 5859 | `		}` |
-|   266 | 5860 | `		PH7_NativeSetAttrStr(pVm, pThis, "name", SyStringData(&sRef.pFunc->sName),` |
-|   176 | 5861 | `			(int)SyStringLength(&sRef.pFunc->sName));` |
-|   178 | 5862 | `		return PH7_OK;` |
+|   270 | 5860 | `		PH7_NativeSetAttrStr(pVm, pThis, "name", SyStringData(&sRef.pFunc->sName),` |
+|   178 | 5861 | `			(int)SyStringLength(&sRef.pFunc->sName));` |
+|   181 | 5862 | `		return PH7_OK;` |
 |     - | 5863 | `	}` |
 |   119 | 5864 | `	PH7_NativeSetAttrStr(pVm, pThis, "name", SyStringData(&sRef.pHost->sName),` |
 |    78 | 5865 | `		(int)SyStringLength(&sRef.pHost->sName));` |
 |    80 | 5866 | `	return PH7_OK;` |
-|   152 | 5867 | `}` |
+|   158 | 5867 | `}` |
 |     6 | 5868 | `static int vm_builtin_ReflectionFunction_isAnonymous(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
 |     1 | 5869 | `{` |
 |     7 | 5870 | `	return vm_builtin_ReflectionFunc_isClosure(pCtx, nArg, apArg);` |
@@ -6406,46 +6406,46 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 6396 | ` * method name, or null.` |
 |     - | 6397 | ` */` |
 |   528 | 6398 | `static int ReflectParamOwner(ph7_context *pCtx, ReflectFuncRef *pRef, ReflectParamDesc *pDesc)` |
-|     2 | 6399 | `{` |
-|   530 | 6400 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     3 | 6399 | `{` |
+|   531 | 6400 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - | 6401 | `	ph7_value *pT, *pM;` |
 |     - | 6402 | `	int rc;` |
-|   530 | 6403 | `	SyZero(pRef, sizeof(*pRef));` |
-|   530 | 6404 | `	if( pDesc ){` |
-|   474 | 6405 | `		SyZero(pDesc, sizeof(*pDesc));` |
+|   531 | 6403 | `	SyZero(pRef, sizeof(*pRef));` |
+|   531 | 6404 | `	if( pDesc ){` |
+|   475 | 6405 | `		SyZero(pDesc, sizeof(*pDesc));` |
 |   236 | 6406 | `	}` |
-|   530 | 6407 | `	if( pThis == 0 ){` |
+|   531 | 6407 | `	if( pThis == 0 ){` |
 |   ! 0 | 6408 | `		return 0;` |
 |     - | 6409 | `	}` |
-|   530 | 6410 | `	pT = PH7_NativeAttr(pThis, RP_T);` |
-|   530 | 6411 | `	pM = PH7_NativeAttr(pThis, RP_M);` |
-|   530 | 6412 | `	if( pT == 0 ){` |
+|   531 | 6410 | `	pT = PH7_NativeAttr(pThis, RP_T);` |
+|   531 | 6411 | `	pM = PH7_NativeAttr(pThis, RP_M);` |
+|   531 | 6412 | `	if( pT == 0 ){` |
 |   ! 0 | 6413 | `		return 0;` |
 |     - | 6414 | `	}` |
-|   530 | 6415 | `	rc = ReflectFuncFill(pCtx->pVm, pT, (pM && (pM->iFlags & MEMOBJ_STRING)) ? pM : 0, pRef);` |
-|   530 | 6416 | `	if( rc == 0 \|\| pDesc == 0 ){` |
+|   531 | 6415 | `	rc = ReflectFuncFill(pCtx->pVm, pT, (pM && (pM->iFlags & MEMOBJ_STRING)) ? pM : 0, pRef);` |
+|   531 | 6416 | `	if( rc == 0 \|\| pDesc == 0 ){` |
 |    57 | 6417 | `		return rc;` |
 |     - | 6418 | `	}` |
-|   474 | 6419 | `	return ReflectParamAt(pRef, (int)PH7_NativeAttrInt(pThis, RP_P), pDesc);` |
-|   266 | 6420 | `}` |
+|   475 | 6419 | `	return ReflectParamAt(pRef, (int)PH7_NativeAttrInt(pThis, RP_P), pDesc);` |
+|   267 | 6420 | `}` |
 |     - | 6421 | `/* ReflectionParameter::__construct($function, string\|int $param) */` |
 |   416 | 6422 | `static int vm_builtin_ReflectionParameter_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     3 | 6423 | `{` |
-|   419 | 6424 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   419 | 6425 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     4 | 6423 | `{` |
+|   420 | 6424 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   420 | 6425 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - | 6426 | `	ReflectFuncRef sRef;` |
 |     - | 6427 | `	ReflectParamDesc sDesc;` |
 |     - | 6428 | `	ph7_value sTarget, sMethod;` |
-|   419 | 6429 | `	int nTotal, iFound = -1, rc = PH7_OK;` |
-|   419 | 6430 | `	if( pThis == 0 \|\| nArg < 2 ){` |
+|   420 | 6429 | `	int nTotal, iFound = -1, rc = PH7_OK;` |
+|   420 | 6430 | `	if( pThis == 0 \|\| nArg < 2 ){` |
 |   ! 0 | 6431 | `		return PH7_OK;` |
 |     - | 6432 | `	}` |
-|   419 | 6433 | `	SyZero(&sDesc, sizeof(sDesc));` |
-|   419 | 6434 | `	PH7_MemObjInit(pVm, &sTarget);` |
-|   419 | 6435 | `	PH7_MemObjInit(pVm, &sMethod);` |
+|   420 | 6433 | `	SyZero(&sDesc, sizeof(sDesc));` |
+|   420 | 6434 | `	PH7_MemObjInit(pVm, &sTarget);` |
+|   420 | 6435 | `	PH7_MemObjInit(pVm, &sMethod);` |
 |     - | 6436 | ``	/* `[$objOrClass, $method]`, `"C::m"` and a plain function/Closure are the`` |
 |     - | 6437 | `	 * three spellings php accepts. */` |
-|   419 | 6438 | `	if( ph7_value_is_array(apArg[0]) ){` |
+|   420 | 6438 | `	if( ph7_value_is_array(apArg[0]) ){` |
 |   109 | 6439 | `		ph7_value *pA = ph7_array_fetch(apArg[0], "0", 1);` |
 |   109 | 6440 | `		ph7_value *pB = ph7_array_fetch(apArg[0], "1", 1);` |
 |   109 | 6441 | `		if( pA && (pA->iFlags & MEMOBJ_OBJ) ){` |
@@ -6465,7 +6465,7 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 6455 | `		 * silently reflected the method. */` |
 |   312 | 6456 | `		PH7_MemObjStore(apArg[0], &sTarget);` |
 |     - | 6457 | `	}` |
-|   419 | 6458 | `	if( !ReflectFuncFill(pCtx->pVm, &sTarget, (sMethod.iFlags & MEMOBJ_STRING) ? &sMethod : 0, &sRef) ){` |
+|   420 | 6458 | `	if( !ReflectFuncFill(pCtx->pVm, &sTarget, (sMethod.iFlags & MEMOBJ_STRING) ? &sMethod : 0, &sRef) ){` |
 |     - | 6459 | `		const char *zName;` |
 |     - | 6460 | `		int nName;` |
 |     3 | 6461 | `		if( sMethod.iFlags & MEMOBJ_STRING ){` |
@@ -6482,18 +6482,18 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 6472 | `		}` |
 |     3 | 6473 | `		goto Done;` |
 |     - | 6474 | `	}` |
-|   417 | 6475 | `	nTotal = ReflectParamCount(&sRef);` |
-|   417 | 6476 | `	if( apArg[1]->iFlags & (MEMOBJ_INT\|MEMOBJ_BOOL) ){` |
-|   407 | 6477 | `		int iWant = (int)ph7_value_to_int(apArg[1]);` |
-|   407 | 6478 | `		if( iWant >= 0 && iWant < nTotal && ReflectParamAt(&sRef, iWant, &sDesc) ){` |
-|   405 | 6479 | `			iFound = iWant;` |
+|   418 | 6475 | `	nTotal = ReflectParamCount(&sRef);` |
+|   418 | 6476 | `	if( apArg[1]->iFlags & (MEMOBJ_INT\|MEMOBJ_BOOL) ){` |
+|   408 | 6477 | `		int iWant = (int)ph7_value_to_int(apArg[1]);` |
+|   408 | 6478 | `		if( iWant >= 0 && iWant < nTotal && ReflectParamAt(&sRef, iWant, &sDesc) ){` |
+|   406 | 6479 | `			iFound = iWant;` |
 |   201 | 6480 | `		}` |
-|   407 | 6481 | `		if( iFound < 0 ){` |
+|   408 | 6481 | `		if( iFound < 0 ){` |
 |     3 | 6482 | `			rc = PH7_VmThrowException(pCtx, "ReflectionException",` |
 |     - | 6483 | `				"The parameter specified by its offset could not be found");` |
 |     3 | 6484 | `			goto Done;` |
 |     - | 6485 | `		}` |
-|   204 | 6486 | `	}else{` |
+|   205 | 6486 | `	}else{` |
 |     - | 6487 | `		const char *zWant;` |
 |     - | 6488 | `		int nWant, n;` |
 |    11 | 6489 | `		zWant = ph7_value_to_string(apArg[1], &nWant);` |
@@ -6511,11 +6511,11 @@ Coverage: 5127/5945 lines (86.24%)
 |     3 | 6501 | `			goto Done;` |
 |     - | 6502 | `		}` |
 |     - | 6503 | `	}` |
-|   618 | 6504 | `	PH7_NativeSetAttrStr(pVm, pThis, "name", SyStringData(&sDesc.sName),` |
+|   619 | 6504 | `	PH7_NativeSetAttrStr(pVm, pThis, "name", SyStringData(&sDesc.sName),` |
 |   410 | 6505 | `		(int)SyStringLength(&sDesc.sName));` |
 |     - | 6506 | `	/* Record the CANONICAL target: the class the method really came through and` |
 |     - | 6507 | `	 * its declared spelling, so a re-resolve cannot land somewhere else. */` |
-|   413 | 6508 | `	if( sRef.pMeth && sRef.pClass ){` |
+|   414 | 6508 | `	if( sRef.pMeth && sRef.pClass ){` |
 |   171 | 6509 | `		PH7_NativeSetAttrStr(pVm, pThis, RP_T, SyStringData(&sRef.pClass->sName),` |
 |   112 | 6510 | `			(int)SyStringLength(&sRef.pClass->sName));` |
 |   171 | 6511 | `		PH7_NativeSetAttrStr(pVm, pThis, RP_M, SyStringData(&sRef.pMeth->sFunc.sName),` |
@@ -6526,12 +6526,12 @@ Coverage: 5127/5945 lines (86.24%)
 |   300 | 6516 | `			PH7_MemObjStore(&sTarget, pSlot);` |
 |   149 | 6517 | `		}` |
 |     - | 6518 | `	}` |
-|   413 | 6519 | `	PH7_NativeSetAttrInt(pVm, pThis, RP_P, (sxi64)iFound);` |
+|   414 | 6519 | `	PH7_NativeSetAttrInt(pVm, pThis, RP_P, (sxi64)iFound);` |
 |   208 | 6520 | `Done:` |
-|   419 | 6521 | `	PH7_MemObjRelease(&sTarget);` |
-|   419 | 6522 | `	PH7_MemObjRelease(&sMethod);` |
-|   419 | 6523 | `	return rc;` |
-|   211 | 6524 | `}` |
+|   420 | 6521 | `	PH7_MemObjRelease(&sTarget);` |
+|   420 | 6522 | `	PH7_MemObjRelease(&sMethod);` |
+|   420 | 6523 | `	return rc;` |
+|   212 | 6524 | `}` |
 |   260 | 6525 | `static int vm_builtin_ReflectionParameter_getName(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
 |     2 | 6526 | `{` |
 |   262 | 6527 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
@@ -6620,18 +6620,18 @@ Coverage: 5127/5945 lines (86.24%)
 |    31 | 6610 | `	return PH7_OK;` |
 |    27 | 6611 | `}` |
 |   186 | 6612 | `static int vm_builtin_ReflectionParameter_getType(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     2 | 6613 | `{` |
+|     3 | 6613 | `{` |
 |     - | 6614 | `	ReflectFuncRef sRef;` |
 |     - | 6615 | `	ReflectParamDesc sDesc;` |
 |    93 | 6616 | `	SXUNUSED(nArg);` |
 |    93 | 6617 | `	SXUNUSED(apArg);` |
-|   188 | 6618 | `	if( !ReflectParamOwner(pCtx, &sRef, &sDesc) \|\| SyStringLength(&sDesc.sType) < 1 ){` |
+|   189 | 6618 | `	if( !ReflectParamOwner(pCtx, &sRef, &sDesc) \|\| SyStringLength(&sDesc.sType) < 1 ){` |
 |     3 | 6619 | `		ph7_result_null(pCtx);` |
 |     3 | 6620 | `		return PH7_OK;` |
 |     - | 6621 | `	}` |
-|   278 | 6622 | `	return ReflectResultObject(pCtx, ReflectMakeType(pCtx,` |
+|   279 | 6622 | `	return ReflectResultObject(pCtx, ReflectMakeType(pCtx,` |
 |   184 | 6623 | `		SyStringData(&sDesc.sType), (int)SyStringLength(&sDesc.sType)));` |
-|    95 | 6624 | `}` |
+|    96 | 6624 | `}` |
 |     - | 6625 | `/*` |
 |     - | 6626 | ` * getClass()/isArray()/isCallable() — php 8.0 deprecated these in favour of` |
 |     - | 6627 | ` * getType() but still declares them, still answers, and emits an E_DEPRECATED` |
@@ -6884,16 +6884,16 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 6874 | `` * PropertyHookType — php's `enum PropertyHookType: string { Get; Set; }`, the`` |
 |     - | 6875 | ` * argument ReflectionProperty::getHook()/hasHook() take.` |
 |     - | 6876 | ` */` |
-|  4670 | 6877 | `PH7_PRIVATE sxi32 PH7_VmInstallReflectionHookType(ph7_vm *pVm)` |
+|  5146 | 6877 | `PH7_PRIVATE sxi32 PH7_VmInstallReflectionHookType(ph7_vm *pVm)` |
 |     5 | 6878 | `{` |
 |     - | 6879 | `	static const PH7_NativeEnumCase aCase[] = {` |
 |     - | 6880 | `		{ "Get", { 0, 0, PH7_NATIVE_VAL_STRING, 0, "get", 0.0 } },` |
 |     - | 6881 | `		{ "Set", { 0, 0, PH7_NATIVE_VAL_STRING, 0, "set", 0.0 } },` |
 |     - | 6882 | `	};` |
-|  4675 | 6883 | `	return PH7_InstallNativeEnum(&(*pVm), "PropertyHookType", MEMOBJ_STRING,` |
+|  5151 | 6883 | `	return PH7_InstallNativeEnum(&(*pVm), "PropertyHookType", MEMOBJ_STRING,` |
 |     - | 6884 | `		aCase, SX_ARRAYSIZE(aCase), 0, 0);` |
 |     5 | 6885 | `}` |
-|  4670 | 6886 | `PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm)` |
+|  5146 | 6886 | `PH7_PRIVATE sxi32 PH7_VmInstallReflectionFunc(ph7_vm *pVm)` |
 |     5 | 6887 | `{` |
 |     - | 6888 | `	static const PH7_NativePropDef aAbstractProp[] = {` |
 |     - | 6889 | `		{ "name",  PH7_MOD_PUBLIC,    { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },` |
@@ -7057,7 +7057,7 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 7047 | `		  aParamMethod, SX_ARRAYSIZE(aParamMethod), 0, 0,` |
 |     - | 7048 | `		  aParamProp, SX_ARRAYSIZE(aParamProp), 0, 0, 0 },` |
 |     - | 7049 | `	};` |
-|  4675 | 7050 | `	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));` |
+|  5151 | 7050 | `	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));` |
 |     5 | 7051 | `}` |
 |     - | 7052 | `/*` |
 |     - | 7053 | ` * ---------------------------------------------------------------------------` |
@@ -7145,41 +7145,41 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 7135 | ``  * not reachable by name from the subclass (`new ReflectionProperty('B','pp')` `` |
 |     - | 7136 | `` * raises where `B extends A` and `A::$pp` is private).`` |
 |     - | 7137 | ` */` |
-|   458 | 7138 | `static int ReflectMemberOfThis(ph7_context *pCtx, ReflectMemberRef *pOut, int iKind)` |
-|     3 | 7139 | `{` |
-|   461 | 7140 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   464 | 7138 | `static int ReflectMemberOfThis(ph7_context *pCtx, ReflectMemberRef *pOut, int iKind)` |
+|     4 | 7139 | `{` |
+|   468 | 7140 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - | 7141 | `	const char *zClass;` |
 |     - | 7142 | `	int nClass;` |
 |     - | 7143 | `	SySet aMembers;` |
 |     - | 7144 | `	sxu32 n;` |
-|   461 | 7145 | `	SyZero(pOut, sizeof(*pOut));` |
-|   461 | 7146 | `	if( pThis == 0 ){` |
+|   468 | 7145 | `	SyZero(pOut, sizeof(*pOut));` |
+|   468 | 7146 | `	if( pThis == 0 ){` |
 |   ! 0 | 7147 | `		return 0;` |
 |     - | 7148 | `	}` |
-|   461 | 7149 | `	PH7_NativeAttrStr(pThis, "class", &zClass, &nClass);` |
-|   461 | 7150 | `	PH7_NativeAttrStr(pThis, "name", &pOut->zName, &pOut->nName);` |
-|   461 | 7151 | `	if( nClass < 1 ){` |
+|   468 | 7149 | `	PH7_NativeAttrStr(pThis, "class", &zClass, &nClass);` |
+|   468 | 7150 | `	PH7_NativeAttrStr(pThis, "name", &pOut->zName, &pOut->nName);` |
+|   468 | 7151 | `	if( nClass < 1 ){` |
 |   ! 0 | 7152 | `		return 0;` |
 |     - | 7153 | `	}` |
-|   461 | 7154 | `	pOut->pClass = PH7_VmExtractClass(pCtx->pVm, zClass, (sxu32)nClass, FALSE, 0);` |
-|   461 | 7155 | `	if( pOut->pClass == 0 ){` |
+|   468 | 7154 | `	pOut->pClass = PH7_VmExtractClass(pCtx->pVm, zClass, (sxu32)nClass, FALSE, 0);` |
+|   468 | 7155 | `	if( pOut->pClass == 0 ){` |
 |   ! 0 | 7156 | `		return 0;` |
 |     - | 7157 | `	}` |
-|   461 | 7158 | `	if( iKind == REFLECT_MEMBER_PROP ){` |
-|   349 | 7159 | `		pOut->pDynObj = PH7_NativeAttrObj(pThis, RP_DYNOBJ);` |
-|   173 | 7160 | `	}` |
-|   461 | 7161 | `	SySetInit(&aMembers, &pCtx->pVm->sAllocator, sizeof(ReflectMember));` |
-|   461 | 7162 | `	ReflectMembers(pCtx->pVm, pOut->pClass, &aMembers, 0);` |
-|  1739 | 7163 | `	for( n = 0 ; n < SySetUsed(&aMembers) ; n++ ){` |
-|  1733 | 7164 | `		ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);` |
-|  1733 | 7165 | `		if( pM->iKind == iKind && ReflectKeyIs(pM, pOut->zName, pOut->nName) ){` |
-|   455 | 7166 | `			pOut->pAttr = pM->pAttr;` |
-|   455 | 7167 | `			break;` |
+|   468 | 7158 | `	if( iKind == REFLECT_MEMBER_PROP ){` |
+|   356 | 7159 | `		pOut->pDynObj = PH7_NativeAttrObj(pThis, RP_DYNOBJ);` |
+|   176 | 7160 | `	}` |
+|   468 | 7161 | `	SySetInit(&aMembers, &pCtx->pVm->sAllocator, sizeof(ReflectMember));` |
+|   468 | 7162 | `	ReflectMembers(pCtx->pVm, pOut->pClass, &aMembers, 0);` |
+|  1752 | 7163 | `	for( n = 0 ; n < SySetUsed(&aMembers) ; n++ ){` |
+|  1746 | 7164 | `		ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);` |
+|  1746 | 7165 | `		if( pM->iKind == iKind && ReflectKeyIs(pM, pOut->zName, pOut->nName) ){` |
+|   462 | 7166 | `			pOut->pAttr = pM->pAttr;` |
+|   462 | 7167 | `			break;` |
 |     - | 7168 | `		}` |
-|   642 | 7169 | `	}` |
-|   461 | 7170 | `	SySetRelease(&aMembers);` |
-|   461 | 7171 | `	return pOut->pAttr != 0 \|\| pOut->pDynObj != 0;` |
-|   232 | 7172 | `}` |
+|   646 | 7169 | `	}` |
+|   468 | 7170 | `	SySetRelease(&aMembers);` |
+|   468 | 7171 | `	return pOut->pAttr != 0 \|\| pOut->pDynObj != 0;` |
+|   236 | 7172 | `}` |
 |     - | 7173 | `/* The class php reports as the member's declarer. */` |
 |    32 | 7174 | `static ph7_class * ReflectMemberDecl(const ReflectMemberRef *pRef)` |
 |     3 | 7175 | `{` |
@@ -7200,49 +7200,49 @@ Coverage: 5127/5945 lines (86.24%)
 |    28 | 7190 | `}` |
 |     - | 7191 | `/* ---- ReflectionProperty ---- */` |
 |     - | 7192 | `/* ReflectionProperty::__construct(object\|string $class, string $property) */` |
-|   216 | 7193 | `static int vm_builtin_ReflectionProperty_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     4 | 7194 | `{` |
-|   220 | 7195 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   220 | 7196 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   220 | 7197 | `	ph7_class_instance *pObj = 0;` |
+|   222 | 7193 | `static int vm_builtin_ReflectionProperty_construct(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     5 | 7194 | `{` |
+|   227 | 7195 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   227 | 7196 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   227 | 7197 | `	ph7_class_instance *pObj = 0;` |
 |     - | 7198 | `	ph7_class *pClass;` |
 |     - | 7199 | `	const char *zProp;` |
 |     - | 7200 | `	int nProp;` |
 |     - | 7201 | `	SySet aMembers;` |
 |     - | 7202 | `	sxu32 n;` |
-|   220 | 7203 | `	int bFound = 0;` |
-|   220 | 7204 | `	if( pThis == 0 \|\| nArg < 2 ){` |
+|   227 | 7203 | `	int bFound = 0;` |
+|   227 | 7204 | `	if( pThis == 0 \|\| nArg < 2 ){` |
 |   ! 0 | 7205 | `		return PH7_OK;` |
 |     - | 7206 | `	}` |
-|   220 | 7207 | `	if( apArg[0]->iFlags & MEMOBJ_OBJ ){` |
+|   227 | 7207 | `	if( apArg[0]->iFlags & MEMOBJ_OBJ ){` |
 |     7 | 7208 | `		pObj = (ph7_class_instance *)apArg[0]->x.pOther;` |
 |     3 | 7209 | `	}` |
-|   220 | 7210 | `	pClass = ReflectResolveClass(pVm, apArg[0]);` |
-|   220 | 7211 | `	if( pClass == 0 ){` |
+|   227 | 7210 | `	pClass = ReflectResolveClass(pVm, apArg[0]);` |
+|   227 | 7211 | `	if( pClass == 0 ){` |
 |     - | 7212 | `		const char *zName;` |
 |     - | 7213 | `		int nName;` |
 |     3 | 7214 | `		zName = ph7_value_to_string(apArg[0], &nName);` |
 |     4 | 7215 | `		return PH7_VmThrowException(pCtx, "ReflectionException",` |
 |     1 | 7216 | `			"Class \"%.*s\" does not exist", nName, zName);` |
 |     - | 7217 | `	}` |
-|   218 | 7218 | `	zProp = ph7_value_to_string(apArg[1], &nProp);` |
-|   218 | 7219 | `	SySetInit(&aMembers, &pVm->sAllocator, sizeof(ReflectMember));` |
-|   218 | 7220 | `	ReflectMembers(pVm, pClass, &aMembers, 0);` |
-|   724 | 7221 | `	for( n = 0 ; n < SySetUsed(&aMembers) ; n++ ){` |
-|   714 | 7222 | `		ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);` |
-|   714 | 7223 | `		if( pM->iKind == REFLECT_MEMBER_PROP && ReflectKeyIs(pM, zProp, nProp) ){` |
+|   225 | 7218 | `	zProp = ph7_value_to_string(apArg[1], &nProp);` |
+|   225 | 7219 | `	SySetInit(&aMembers, &pVm->sAllocator, sizeof(ReflectMember));` |
+|   225 | 7220 | `	ReflectMembers(pVm, pClass, &aMembers, 0);` |
+|   737 | 7221 | `	for( n = 0 ; n < SySetUsed(&aMembers) ; n++ ){` |
+|   727 | 7222 | `		ReflectMember *pM = (ReflectMember *)SySetAt(&aMembers, n);` |
+|   727 | 7223 | `		if( pM->iKind == REFLECT_MEMBER_PROP && ReflectKeyIs(pM, zProp, nProp) ){` |
 |     - | 7224 | `			/* php's $class is the DECLARING class, not the one asked about. */` |
-|   208 | 7225 | `			pClass = pM->pDecl ? pM->pDecl : pClass;` |
-|   208 | 7226 | `			bFound = 1;` |
-|   208 | 7227 | `			break;` |
+|   215 | 7225 | `			pClass = pM->pDecl ? pM->pDecl : pClass;` |
+|   215 | 7226 | `			bFound = 1;` |
+|   215 | 7227 | `			break;` |
 |     - | 7228 | `		}` |
-|   256 | 7229 | `	}` |
-|   218 | 7230 | `	SySetRelease(&aMembers);` |
-|   325 | 7231 | `	PH7_NativeSetAttrStr(pVm, pThis, "class", SyStringData(&pClass->sName),` |
-|   214 | 7232 | `		(int)SyStringLength(&pClass->sName));` |
-|   218 | 7233 | `	if( bFound ){` |
-|   208 | 7234 | `		PH7_NativeSetAttrStr(pVm, pThis, "name", zProp, nProp);` |
-|   208 | 7235 | `		return PH7_OK;` |
+|   260 | 7229 | `	}` |
+|   225 | 7230 | `	SySetRelease(&aMembers);` |
+|   335 | 7231 | `	PH7_NativeSetAttrStr(pVm, pThis, "class", SyStringData(&pClass->sName),` |
+|   220 | 7232 | `		(int)SyStringLength(&pClass->sName));` |
+|   225 | 7233 | `	if( bFound ){` |
+|   215 | 7234 | `		PH7_NativeSetAttrStr(pVm, pThis, "name", zProp, nProp);` |
+|   215 | 7235 | `		return PH7_OK;` |
 |     - | 7236 | `	}` |
 |     - | 7237 | `	/* Not declared: an OBJECT may still own it as a dynamic property. */` |
 |    11 | 7238 | `	if( ReflectInstanceAttr(pObj, zProp, nProp) ){` |
@@ -7252,7 +7252,7 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 7242 | `	}` |
 |     7 | 7243 | `	return PH7_VmThrowException(pCtx, "ReflectionException",` |
 |     2 | 7244 | `		"Property %z::$%.*s does not exist", &pClass->sName, nProp, zProp);` |
-|   112 | 7245 | `}` |
+|   116 | 7245 | `}` |
 |    82 | 7246 | `static int vm_builtin_ReflectionProperty_getName(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
 |     2 | 7247 | `{` |
 |    84 | 7248 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
@@ -7437,20 +7437,20 @@ Coverage: 5127/5945 lines (86.24%)
 |     6 | 7427 | `		&& sRef.pAttr && (sRef.pAttr->iFlags & PH7_CLASS_ATTR_TYPED) != 0);` |
 |     7 | 7428 | `	return PH7_OK;` |
 |     1 | 7429 | `}` |
-|    50 | 7430 | `static int vm_builtin_ReflectionProperty_getType(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     1 | 7431 | `{` |
+|    56 | 7430 | `static int vm_builtin_ReflectionProperty_getType(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
+|     2 | 7431 | `{` |
 |     - | 7432 | `	ReflectMemberRef sRef;` |
-|    25 | 7433 | `	SXUNUSED(nArg);` |
-|    25 | 7434 | `	SXUNUSED(apArg);` |
-|    50 | 7435 | `	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) \|\| sRef.pAttr == 0` |
-|    50 | 7436 | `	 \|\| (sRef.pAttr->iFlags & PH7_CLASS_ATTR_TYPED) == 0` |
-|    48 | 7437 | `	 \|\| SyStringLength(&sRef.pAttr->sTypeName) < 1 ){` |
+|    28 | 7433 | `	SXUNUSED(nArg);` |
+|    28 | 7434 | `	SXUNUSED(apArg);` |
+|    56 | 7435 | `	if( !ReflectMemberOfThis(pCtx, &sRef, REFLECT_MEMBER_PROP) \|\| sRef.pAttr == 0` |
+|    56 | 7436 | `	 \|\| (sRef.pAttr->iFlags & PH7_CLASS_ATTR_TYPED) == 0` |
+|    55 | 7437 | `	 \|\| SyStringLength(&sRef.pAttr->sTypeName) < 1 ){` |
 |     7 | 7438 | `		ph7_result_null(pCtx);` |
 |     7 | 7439 | `		return PH7_OK;` |
 |     - | 7440 | `	}` |
-|    67 | 7441 | `	return ReflectResultObject(pCtx, ReflectMakeType(pCtx,` |
-|    44 | 7442 | `		SyStringData(&sRef.pAttr->sTypeName), (int)SyStringLength(&sRef.pAttr->sTypeName)));` |
-|    26 | 7443 | `}` |
+|    77 | 7441 | `	return ReflectResultObject(pCtx, ReflectMakeType(pCtx,` |
+|    50 | 7442 | `		SyStringData(&sRef.pAttr->sTypeName), (int)SyStringLength(&sRef.pAttr->sTypeName)));` |
+|    30 | 7443 | `}` |
 |    38 | 7444 | `static int vm_builtin_ReflectionProperty_hasDefaultValue(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
 |     1 | 7445 | `{` |
 |     - | 7446 | `	ReflectMemberRef sRef;` |
@@ -7993,7 +7993,7 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 7983 | ` *` |
 |     - | 7984 | ` * The method tables are in php's own DECLARATION order.` |
 |     - | 7985 | ` */` |
-|  4670 | 7986 | `PH7_PRIVATE sxi32 PH7_VmInstallReflectionMember(ph7_vm *pVm)` |
+|  5146 | 7986 | `PH7_PRIVATE sxi32 PH7_VmInstallReflectionMember(ph7_vm *pVm)` |
 |     5 | 7987 | `{` |
 |     - | 7988 | `	static const PH7_NativePropDef aMemberProp[] = {` |
 |     - | 7989 | `		{ "name",  PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },` |
@@ -8130,7 +8130,7 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 8120 | `		  aConstConst, SX_ARRAYSIZE(aConstConst),` |
 |     - | 8121 | `		  aMemberProp, SX_ARRAYSIZE(aMemberProp), 0, 0, 0 },` |
 |     - | 8122 | `	};` |
-|  4675 | 8123 | `	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));` |
+|  5151 | 8123 | `	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));` |
 |     5 | 8124 | `}` |
 |     - | 8125 | `/*` |
 |     - | 8126 | ` * ---------------------------------------------------------------------------` |
@@ -8390,7 +8390,7 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 8380 | ``  * NOT come down with the inheritance: without them `clone $enumReflector` `` |
 |     - | 8381 | ` * reached the private __clone it inherited and reported that instead.` |
 |     - | 8382 | ` */` |
-|  4670 | 8383 | `PH7_PRIVATE sxi32 PH7_VmInstallReflectionEnum(ph7_vm *pVm)` |
+|  5146 | 8383 | `PH7_PRIVATE sxi32 PH7_VmInstallReflectionEnum(ph7_vm *pVm)` |
 |     5 | 8384 | `{` |
 |     - | 8385 | `	static const PH7_NativeMethodDef aEnumMethod[] = {` |
 |     - | 8386 | `		{ "__construct",    PH7_MOD_PUBLIC, "object\|string $objectOrClass", "",` |
@@ -8430,7 +8430,7 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 8420 | `		  PH7_CLASS_NOCLONE\|PH7_CLASS_NOSERIALIZE,` |
 |     - | 8421 | `		  aBackedMethod, SX_ARRAYSIZE(aBackedMethod), 0, 0, 0, 0, 0, 0, 0 },` |
 |     - | 8422 | `	};` |
-|  4675 | 8423 | `	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));` |
+|  5151 | 8423 | `	return PH7_InstallNativeClasses(&(*pVm), aSpec, SX_ARRAYSIZE(aSpec));` |
 |     5 | 8424 | `}` |
 |     - | 8425 | `/*` |
 |     - | 8426 | ` * ---------------------------------------------------------------------------` |
@@ -9160,59 +9160,59 @@ Coverage: 5127/5945 lines (86.24%)
 |     - | 9150 | ` * from PH7_VmInit while pVm->bCompilingBuiltin is set, right after the core` |
 |     - | 9151 | ` * builtin chunks (Exception and friends have to exist already).` |
 |     - | 9152 | ` */` |
-|  4670 | 9153 | `PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)` |
+|  5146 | 9153 | `PH7_PRIVATE sxi32 PH7_VmInstallReflection(ph7_vm *pVm)` |
 |     5 | 9154 | `{` |
 |     - | 9155 | `	sxi32 rc;` |
 |     - | 9156 | `	/* Where chunk 1 was: Reflector, Reflection, ReflectionException,` |
 |     - | 9157 | `	 * ReflectionClass and ReflectionObject are native now. Chunks 2 and 3 name` |
 |     - | 9158 | ``	 * `Reflector` in their own `implements` clauses, so this has to run first. */`` |
-|  4675 | 9159 | `	rc = PH7_VmInstallReflectionClass(&(*pVm));` |
-|  4675 | 9160 | `	if( rc != SXRET_OK ){` |
+|  5151 | 9159 | `	rc = PH7_VmInstallReflectionClass(&(*pVm));` |
+|  5151 | 9160 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 9161 | `		return rc;` |
 |     - | 9162 | `	}` |
 |     - | 9163 | `	/* Where chunk 2 was: ReflectionFunctionAbstract, ReflectionFunction,` |
 |     - | 9164 | `	 * ReflectionMethod and ReflectionParameter are native now. */` |
-|  4675 | 9165 | `	rc = PH7_VmInstallReflectionFunc(&(*pVm));` |
-|  4675 | 9166 | `	if( rc != SXRET_OK ){` |
+|  5151 | 9165 | `	rc = PH7_VmInstallReflectionFunc(&(*pVm));` |
+|  5151 | 9166 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 9167 | `		return rc;` |
 |     - | 9168 | `	}` |
-|  4675 | 9169 | `	rc = PH7_VmInstallReflectionHookType(&(*pVm));` |
-|  4675 | 9170 | `	if( rc != SXRET_OK ){` |
+|  5151 | 9169 | `	rc = PH7_VmInstallReflectionHookType(&(*pVm));` |
+|  5151 | 9170 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 9171 | `		return rc;` |
 |     - | 9172 | `	}` |
 |     - | 9173 | `	/* Where chunk 3 was: ReflectionProperty and ReflectionClassConstant are` |
 |     - | 9174 | `	 * native now, and PropertyHookType is a native ENUM. */` |
-|  4675 | 9175 | `	rc = PH7_VmInstallReflectionMember(&(*pVm));` |
-|  4675 | 9176 | `	if( rc != SXRET_OK ){` |
+|  5151 | 9175 | `	rc = PH7_VmInstallReflectionMember(&(*pVm));` |
+|  5151 | 9176 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 9177 | `		return rc;` |
 |     - | 9178 | `	}` |
 |     - | 9179 | `	/* Where chunk 4 was: the four type classes are native now (see` |
 |     - | 9180 | `	 * PH7_VmInstallReflectionTypes). Stringable exists by this point. */` |
-|  4675 | 9181 | `	rc = PH7_VmInstallReflectionTypes(&(*pVm));` |
-|  4675 | 9182 | `	if( rc != SXRET_OK ){` |
+|  5151 | 9181 | `	rc = PH7_VmInstallReflectionTypes(&(*pVm));` |
+|  5151 | 9182 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 9183 | `		return rc;` |
 |     - | 9184 | `	}` |
 |     - | 9185 | `	/* Where chunk 5 was: ReflectionGenerator/Fiber and the four standalone` |
 |     - | 9186 | `	 * classes chunk 6 used to hold are native now. Reflector (chunk 1) exists. */` |
-|  4675 | 9187 | `	rc = PH7_VmInstallReflectionSmall(&(*pVm));` |
-|  4675 | 9188 | `	if( rc != SXRET_OK ){` |
+|  5151 | 9187 | `	rc = PH7_VmInstallReflectionSmall(&(*pVm));` |
+|  5151 | 9188 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 9189 | `		return rc;` |
 |     - | 9190 | `	}` |
 |     - | 9191 | `	/* Where chunk 6 was: the three ReflectionEnum classes are native now, and` |
 |     - | 9192 | `	 * the class DESCRIPTOR they read (__phl_rcinfo) has no callers left. */` |
-|  4675 | 9193 | `	rc = PH7_VmInstallReflectionEnum(&(*pVm));` |
-|  4675 | 9194 | `	if( rc != SXRET_OK ){` |
+|  5151 | 9193 | `	rc = PH7_VmInstallReflectionEnum(&(*pVm));` |
+|  5151 | 9194 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 9195 | `		return rc;` |
 |     - | 9196 | `	}` |
 |     - | 9197 | `	/* Where chunk 7 was: ReflectionAttribute is native now, and with it the` |
 |     - | 9198 | `	 * builder (__reflect_build_attrs) and the two helpers it needed. */` |
-|  4675 | 9199 | `	rc = PH7_VmInstallReflectionAttribute(&(*pVm));` |
-|  4675 | 9200 | `	if( rc != SXRET_OK ){` |
+|  5151 | 9199 | `	rc = PH7_VmInstallReflectionAttribute(&(*pVm));` |
+|  5151 | 9200 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 9201 | `		return rc;` |
 |     - | 9202 | `	}` |
 |     - | 9203 | `	/* Where chunk 9 was: the export format is ReflectExportClassSelf() and its` |
 |     - | 9204 | `	 * four siblings above. Nothing of the Reflection library is PHP any more,` |
 |     - | 9205 | `	 * so vm_builtin_reflection_lib.c is gone and this IS the installer. */` |
-|  4675 | 9206 | `	return SXRET_OK;` |
-|  2340 | 9207 | `}` |
+|  5151 | 9206 | `	return SXRET_OK;` |
+|  2578 | 9207 | `}` |
 |     - | 9208 |  |
