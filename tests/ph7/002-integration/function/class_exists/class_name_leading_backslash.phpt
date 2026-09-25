@@ -46,15 +46,6 @@ var_dump(class_exists('\\Aliased'));
 // EXACTLY one strip: a doubled leading backslash must stay unresolved
 var_dump(class_exists('\\\\T'));
 var_dump(method_exists('\\\\Closure', 'call'));
-
-// php strips the anchor, THEN autoloads iff the ORIGINAL name was non-empty,
-// passing the STRIPPED (here empty) name: a lone "\" autoloads with "", but a
-// truly empty "" does not autoload at all. (Registered last so the earlier
-// `new "\NoSuch"` probe does not trip it.)
-spl_autoload_register(function ($n) { echo "AUTOLOAD[$n]\n"; });
-var_dump(class_exists('\\'));
-var_dump(class_exists(''));
-var_dump(method_exists('\\', 'm'));
 ?>
 --EXPECT--
 bool(true)
@@ -73,9 +64,4 @@ bool(false)
 bool(true)
 bool(true)
 bool(false)
-bool(false)
-AUTOLOAD[]
-bool(false)
-bool(false)
-AUTOLOAD[]
 bool(false)

@@ -313,9 +313,8 @@ PH7_PRIVATE int vm_builtin_class_exists(ph7_context *pCtx,int nArg,ph7_value **a
 			/* Perform a hash lookup first */
 			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,nName);
 		}
-		/* Gate autoload on the ORIGINAL length (nLen), not the stripped nName:
-		 * php autoloads a lone "\" (with the empty stripped name) but not "". */
-		if( pEntry == 0 && nLen > 0 && iAutoload ){
+		/* A lone "\" strips to no name, and php hands no name to the autoloader. */
+		if( pEntry == 0 && nName > 0 && iAutoload ){
 			/* Try autoload, then re-check */
 			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,nName,FALSE);
 			if( pClass ){
@@ -372,9 +371,8 @@ PH7_PRIVATE int vm_builtin_interface_exists(ph7_context *pCtx,int nArg,ph7_value
 		if( nName > 0 ){
 			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,nName);
 		}
-		/* Gate autoload on the ORIGINAL length (nLen): php autoloads a lone
-		 * "\" with the empty stripped name, but not a truly empty "". */
-		if( pEntry == 0 && nLen > 0 && iAutoload ){
+		/* A lone "\" strips to no name, and php hands no name to the autoloader. */
+		if( pEntry == 0 && nName > 0 && iAutoload ){
 			/* Try autoload — pass iLoadable=FALSE so we get interfaces too */
 			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,nName,FALSE);
 			if( pClass ){
@@ -430,9 +428,8 @@ PH7_PRIVATE int vm_builtin_trait_exists(ph7_context *pCtx,int nArg,ph7_value **a
 		if( nName > 0 ){
 			pEntry = SyHashGet(&pCtx->pVm->hClass,(const void *)zName,nName);
 		}
-		/* Gate autoload on the ORIGINAL length (nLen): php autoloads a lone
-		 * "\" with the empty stripped name, but not a truly empty "". */
-		if( pEntry == 0 && nLen > 0 && iAutoload ){
+		/* A lone "\" strips to no name, and php hands no name to the autoloader. */
+		if( pEntry == 0 && nName > 0 && iAutoload ){
 			/* Try autoload — pass iLoadable=FALSE so we get traits too */
 			ph7_class *pClass = PH7_VmTriggerAutoload(pCtx->pVm,zName,nName,FALSE);
 			if( pClass ){
