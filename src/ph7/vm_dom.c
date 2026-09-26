@@ -583,6 +583,22 @@ DOM_METHOD(vm_builtin_DOMNode_insertBefore)
 	if( iErr ){
 		return DomThrow(pCtx,iErr);
 	}
+	if( pAnchor == pChild ){
+		/*
+		 * A node cannot be inserted before ITSELF, and linking it anyway made
+		 * it its own sibling: `$p->insertBefore($x,$x)` spliced a cycle into
+		 * the child list, and the next walk of the tree -- saveXML, a
+		 * childNodes count, getNodePath -- never returned.
+		 *
+		 * php's refusal here is a plain Error with no DOM code, because there
+		 * is no DOM error for it, and it comes AFTER the node is detached: the
+		 * tree loses the node and the caller is told nothing more.
+		 */
+		DomDetach(pNew->pShell,pChild);
+		DomOrphanAdd(pNew->pShell,pChild);
+		return PH7_VmThrowException(pCtx,"Error",
+			"Cannot add newnode as the previous sibling of refnode");
+	}
 	if( DomIsFragment(pChild) ){
 		xmlNodePtr pFirst;
 		if( pChild->children == 0 ){
