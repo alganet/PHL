@@ -586,6 +586,44 @@ PH7_PRIVATE int PH7_ClassInstancePresent(ph7_class_instance *pThis,ph7_value *pO
 	return 0;
 }
 /*
+ * The nearest ph7_class::xDim in a class's base chain -- php's handler
+ * inheritance, so a user subclass of DOMNodeList reads dimensions the way its
+ * parent does.
+ */
+static ph7_class * NativeDimClass(ph7_class *pClass)
+{
+	while( pClass ){
+		if( pClass->xDim ){
+			return pClass;
+		}
+		pClass = pClass->pBase;
+	}
+	return 0;
+}
+/*
+ * Does `$o[$k]` mean anything for an instance of this class? The subscript
+ * opcode asks BEFORE it commits to php's `Cannot use object of type C as
+ * array`, which is still the answer for every class that has no hook.
+ */
+PH7_PRIVATE int PH7_ClassHasNativeDim(ph7_class *pClass)
+{
+	return NativeDimClass(pClass) != 0;
+}
+/*
+ * Run the hook. Answers 0 when the class has none (nothing in pCtx is touched);
+ * 1 when it answered, which includes a REFUSAL -- the caller reads zThrowClass
+ * to tell the two apart.
+ */
+PH7_PRIVATE int PH7_ClassNativeDim(ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx)
+{
+	ph7_class *pClass = pThis ? NativeDimClass(pThis->pClass) : 0;
+	if( pClass == 0 ){
+		return 0;
+	}
+	pClass->xDim(pThis->pVm,pThis,pCtx);
+	return 1;
+}
+/*
  * Create and install ONE class from its spec: constants and properties, but
  * neither methods nor its base chain.
  *

@@ -1560,6 +1560,145 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		 *                    offsetGet (e.g. ArrayObject's own array read). */
 		ph7_class_instance *pInst = (ph7_class_instance *)pTos->x.pOther;
 		ph7_class *pArrayAccess = pVm->pArrayAccessClass;
+		/* php's read_dimension / has_dimension HANDLERS, which a native class may
+		 * carry without implementing ArrayAccess -- `$list[0]` reads a DOMNodeList
+		 * there while `$list instanceof ArrayAccess` is false. They come FIRST
+		 * because php's interface is implemented THROUGH the handler: a user
+		 * subclass declaring ArrayAccess inherits the parent's handler, so its own
+		 * offsetGet/offsetExists are not consulted for a READ. The WRITE half is
+		 * not here at all -- a store, an append and an unset (iP2 5) fall past
+		 * this into php's `Cannot use object of type C as array` unless the class
+		 * really implements the interface, which is php's own split (that same
+		 * subclass DOES get its offsetSet called). */
+		if( pInst && iP2 != 5 && PH7_ClassHasNativeDim(pInst->pClass) ){
+			PH7_NativeDimCtx sDim;
+			ph7_value sResult;
+			/* `$o[$k] op= v` is php's read-then-WRITE pair, and php reports the
+			 * WRITE's refusal when the read answered nothing at all: an offset the
+			 * handler REFUSED comes back to `zend_binary_assign_op_obj_dim` as a
+			 * miss, which raises `Cannot use object of type C as array` and chains
+			 * the refusal behind it. `??=` is not that pair -- it reads in
+			 * isset-context, so its refusal is what surfaces -- and neither of them
+			 * decides the store itself: that goes through the ordinary write path
+			 * below, which is offsetSet for a subclass that has one. */
+			int bRmwCtx = (iP2 == 1) && VmNextIsCompoundAssign(pInstr + 1);
+			int bIsset = (iP2 == 4 || iP2 == 6);
+			PH7_MemObjInit(&(*pVm),&sResult);
+			sDim.iMode = bIsset ? PH7_NATIVE_DIM_ISSET : PH7_NATIVE_DIM_READ;
+			sDim.pOffset = pIdx;
+			sDim.pResult = &sResult;
+			sDim.zThrowClass = 0;
+			sDim.zThrowMsg[0] = 0;
+			PH7_ClassNativeDim(pInst,&sDim);
+			if( iP2 == 6 && sDim.zThrowClass == 0 && ph7_value_to_bool(&sResult) ){
+				/* empty(): php asks has_dimension first and reads the VALUE only on
+				 * a hit, which is why an out-of-range `empty($map[-1])` is a plain
+				 * TRUE where the read of the same offset refuses. */
+				PH7_MemObjRelease(&sResult);
+				PH7_MemObjInit(&(*pVm),&sResult);
+				sDim.iMode = PH7_NATIVE_DIM_READ;
+				sDim.pResult = &sResult;
+				PH7_ClassNativeDim(pInst,&sDim);
+			}
+			if( sDim.zThrowClass ){
+				char zMsg[256];
+				const char *zClass = sDim.zThrowClass;
+				const char *zText = sDim.zThrowMsg;
+				sxu32 nMsg;
+				if( bRmwCtx ){
+					SyString *pName = &pInst->pClass->sName;
+					zClass = "Error";
+					zText = zMsg;
+					nMsg = SyBufferFormat(zMsg,sizeof(zMsg),
+						"Cannot use object of type %.*s as array",
+						(int)pName->nByte,pName->zString);
+				}else{
+					nMsg = (sxu32)SyStrlen(zText);
+				}
+				VmCoalesceDisarm(pVm);
+				rc = VmThrowFromVm(pVm,zClass,zText,nMsg);
+				PH7_MemObjRelease(&sResult);
+				if( pIdx ){ PH7_MemObjRelease(pIdx); }
+				PH7_MemObjRelease(pTos);
+				MemObjSetType(pTos,MEMOBJ_NULL);
+				pTos->nIdx = SXU32_HIGH;
+				if( rc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+				PH7_THROW_ROUTE_MIDEXPR(rc)
+			}
+			if( iP2 == 4 ){
+				/* isset(): push a BOOL, which is also what keeps vm_builtin_isset
+				 * from warning about a non-variable operand. */
+				int bExists = ph7_value_to_bool(&sResult);
+				PH7_MemObjRelease(&sResult);
+				PH7_MemObjRelease(pTos);
+				pTos->nIdx = SXU32_HIGH;
+				if( bExists ){
+					MemObjSetType(pTos,MEMOBJ_BOOL);
+					pTos->x.iVal = 1;
+				}else{
+					MemObjSetType(pTos,MEMOBJ_NULL);
+				}
+			}else if( iP2 == 3 && (sResult.iFlags & MEMOBJ_NULL) ){
+				/* `$o[$k] ??= v` and the read found nothing: arm (object, key) so
+				 * the NULLC_STORE that follows performs php's store -- offsetSet for
+				 * a subclass that declares one, and `Cannot use object of type C as
+				 * array` for the collections themselves, which is the same verdict
+				 * the plain `$o[$k] = v` gets. */
+				VmCoalesceDisarm(pVm);
+				PH7_MemObjRelease(pTos);
+				MemObjSetType(pTos,MEMOBJ_NULL);
+				pTos->nIdx = SXU32_HIGH;
+				if( pIdx ){
+					PH7_MemObjStore(pIdx,&pVm->sCoalesceKey);
+				}
+				pVm->pCoalesceObj = pInst;
+				pInst->iRef++;
+				pVm->bCoalesceArmed = 1;
+				PH7_MemObjRelease(&sResult);
+			}else{
+				/* The base slot may be the only thing holding this instance, and the
+				 * write-context tail below still speaks for its CLASS -- hold a
+				 * reference across the release, as the ArrayAccess arm does. */
+				pInst->iRef++;
+				if( iP2 == 3 ){
+					VmCoalesceDisarm(pVm); /* a hit short-circuits over the store */
+				}
+				PH7_MemObjRelease(pTos);
+				PH7_MemObjStore(&sResult,pTos);
+				pTos->nIdx = SXU32_HIGH;
+				if( bRmwCtx ){
+					/* php's ASSIGN_DIM_OP: the read gave the current value, the op
+					 * computes on it, and the result goes back out through the write
+					 * path -- offsetSet where there is one, php's Error where there
+					 * is not (VmHookRmwConsume). */
+					VmDimRmwArm(&(*pVm),pInst,pIdx,pTos,
+						(void *)pStack,(void *)aInstr,(sxu32)(pc + 1));
+				}else if( VmIdxFetchForWrite(pInstr,iP2) ){
+					/* php's `Indirect modification of overloaded element` -- silent
+					 * for an OBJECT, which is every value these containers answer,
+					 * and raised for the NULL a miss leaves (`$list[9]++`). */
+					PH7_VmOverloadedElemNotice(&(*pVm),pInst->pClass,pTos);
+				}else if( pInstr->iP2 == 9 ){
+					/* A deferred call ARGUMENT: the read has happened, and whether php
+					 * performed a W fetch is the callee's to say. Carry the value plus
+					 * the class that answered it so the verdict lands at the call. */
+					VmDeferredPath *pPre = VmDeferPathNewPrefetch(&(*pVm),VM_OVER_ELEM,
+						pInst->pClass,0,pTos);
+					if( pPre ){
+						PH7_MemObjRelease(pTos);
+						pTos->x.pOther = pPre;
+						pTos->iFlags = MEMOBJ_NULL | MEMOBJ_AUX_DEFPATH;
+						pTos->nIdx = SXU32_HIGH;
+					}
+				}
+				PH7_ClassInstanceUnref(pInst);
+				PH7_MemObjRelease(&sResult);
+			}
+			if( pIdx ){
+				PH7_MemObjRelease(pIdx);
+			}
+			VM_EXIT_BREAK;
+		}
 		if( pArrayAccess && pInst && PH7_VmInstanceOf(pInst->pClass,pArrayAccess) ){
 			ph7_class_method *pMeth;
 			ph7_value sResult;

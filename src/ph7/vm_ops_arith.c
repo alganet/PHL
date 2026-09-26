@@ -86,9 +86,26 @@ PH7_PRIVATE VmOpRc VmExecOpNullcStore(ph7_vm *pVm,VmExecState *pState,VmInstr *p
 		ph7_value *apArg[2];
 		apArg[0] = &pVm->sCoalesceKey;
 		apArg[1] = pTos;
-		if( pSet ){
-			PH7_VmCallClassMethod(&(*pVm),pInst,pSet,0,2,apArg);
+		if( pSet == 0 ){
+			/* A container that answered the READ and has nowhere to put the write:
+			 * a class carrying a native dimension handler (ph7_class::xDim) and no
+			 * ArrayAccess, which is php's DOMNodeList. The store is the same one
+			 * `$list[9] = 'x'` performs, so it takes the same Error. */
+			char zMsg[256];
+			SyString *pName = &pInst->pClass->sName;
+			sxu32 nMsg = SyBufferFormat(zMsg,sizeof(zMsg),
+				"Cannot use object of type %.*s as array",
+				(int)pName->nByte,pName->zString);
+			rc = VmThrowFromVm(&(*pVm),"Error",zMsg,nMsg);
+			VmPopOperand(&pTos,1);
+			PH7_MemObjRelease(pTos);
+			MemObjSetType(pTos,MEMOBJ_NULL);
+			pTos->nIdx = SXU32_HIGH;
+			VmCoalesceDisarm(pVm);
+			if( rc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+			PH7_THROW_ROUTE_MIDEXPR(rc)
 		}
+		PH7_VmCallClassMethod(&(*pVm),pInst,pSet,0,2,apArg);
 		/* Leave RHS as the expression result (replace pNos with pTos). */
 		PH7_MemObjStore(pTos,pNos);
 		VmPopOperand(&pTos,1);

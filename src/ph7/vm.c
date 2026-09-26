@@ -5167,6 +5167,19 @@ PH7_PRIVATE sxi32 VmHookRmwConsume(ph7_vm *pVm,sxu32 nIdx)
 				apArg[0] = &sKey;
 				apArg[1] = &sVal;
 				PH7_VmCallClassMethod(&(*pVm),sEnt.pThis,pSet,0,2,apArg);
+			}else{
+				/* A container that answers a READ and has nowhere to put the write:
+				 * a class carrying a native dimension handler (ph7_class::xDim) and
+				 * no ArrayAccess, which is php's DOMNodeList. php's read-then-write
+				 * pair ends in the plain store's Error, so `$list[9] .= 'x'` says
+				 * what `$list[9] = 'x'` says. Parked: this runs at an arithmetic
+				 * op's tail, not at a throw boundary. */
+				char zMsg[256];
+				SyString *pName = &sEnt.pThis->pClass->sName;
+				sxu32 nMsg = SyBufferFormat(zMsg,sizeof(zMsg),
+					"Cannot use object of type %.*s as array",
+					(int)pName->nByte,pName->zString);
+				VmBoundaryPark(&(*pVm),VmThrowFromVm(&(*pVm),"Error",zMsg,nMsg));
 			}
 		}else{
 			rc = VmHookSetDispatch(&(*pVm),sEnt.pThis,sEnt.pAttr,sEnt.nBackIdx,&sVal);

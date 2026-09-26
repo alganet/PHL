@@ -6499,27 +6499,37 @@ DOM_METHOD(vm_builtin_DOMNamedNodeMap_item)
 	}
 	return DomResultWrap(pCtx,DomMapItem(pCtx->pVm,PH7_ContextThis(pCtx),iIndex));
 }
+/*
+ * The by-NAME lookup, which `getNamedItem()` and the `$map['href']` subscript
+ * share.
+ *
+ * The MAP asks libxml's name-only question, where DOMElement's own
+ * getAttributeNode resolves the prefix: `getNamedItem('k')` finds the
+ * namespaced `p:k` that `getAttribute('k')` does not. A DECLARATION table is
+ * keyed by that name to begin with, so it is one lookup.
+ */
+static ph7_class_instance * DomMapNamed(ph7_vm *pVm,ph7_class_instance *pMap,const char *zName)
+{
+	phl_domnode *pOwner = pMap ? DomListOwner(pMap) : 0;
+	xmlNodePtr pHit;
+	if( pOwner == 0 ){
+		return 0;
+	}
+	pHit = DomMapIsTable(pMap)
+		? DomTablePayload(pMap,pOwner,
+			xmlHashLookup(DomMapHash(pMap,pOwner),(const xmlChar *)zName))
+		: (xmlNodePtr)DomAttrByLocal((xmlNodePtr)pOwner->pNode,zName);
+	if( pHit == 0 ){
+		return 0;
+	}
+	return DomWrap(&(*pVm),PH7_NativeAttrObj(pMap,DOM_DOC),pOwner->pShell,pHit);
+}
 /* DOMNamedNodeMap::getNamedItem(string $qualifiedName): ?DOMAttr */
 DOM_METHOD(vm_builtin_DOMNamedNodeMap_getNamedItem)
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
-	phl_domnode *pOwner = pThis ? DomListOwner(pThis) : 0;
 	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
-	/* The MAP asks libxml's name-only question, where DOMElement's own
-	 * getAttributeNode resolves the prefix: `getNamedItem('k')` finds the
-	 * namespaced `p:k` that `getAttribute('k')` does not. A DECLARATION table
-	 * is keyed by that name to begin with, so it is one lookup. */
-	xmlNodePtr pHit = pOwner == 0 ? 0
-		: DomMapIsTable(pThis)
-			? DomTablePayload(pThis,pOwner,
-				xmlHashLookup(DomMapHash(pThis,pOwner),(const xmlChar *)zName))
-			: (xmlNodePtr)DomAttrByLocal((xmlNodePtr)pOwner->pNode,zName);
-	if( pHit == 0 ){
-		ph7_result_null(pCtx);
-		return PH7_OK;
-	}
-	return DomResultWrap(pCtx,DomWrap(pCtx->pVm,PH7_NativeAttrObj(pThis,DOM_DOC),
-		pOwner->pShell,pHit));
+	return DomResultWrap(pCtx,DomMapNamed(pCtx->pVm,pThis,zName));
 }
 /* DOMNamedNodeMap::getNamedItemNS(?string $namespace, string $localName): ?DOMNode */
 DOM_METHOD(vm_builtin_DOMNamedNodeMap_getNamedItemNS)
@@ -6555,6 +6565,124 @@ static int DomMapProp(ph7_context *pCtx,const char *zName)
 		return 1;
 	}
 	return 0;
+}
+/*
+ * `$list[0]`, `$map['href']` and `isset($list[0])` -- ph7_class::xDim for the
+ * two collections, which are php's read_dimension / has_dimension handlers.
+ *
+ * php 8.3 gave both classes those handlers WITHOUT declaring ArrayAccess, so
+ * `$list instanceof ArrayAccess` is FALSE there and the subscript reads anyway
+ * -- which is how every modern DOM example is written, and which no interface
+ * list can state. Only the READ half exists: a store, an append and an unset
+ * are all `Cannot use object of type C as array`, which is what the opcode
+ * answers for a class carrying no ArrayAccess.
+ *
+ * What an offset MEANS is one rule for both classes, and it is not the array
+ * one. A STRING that STARTS with a number is an INDEX -- `"1x"` is 1 and
+ * `" 2 "` is 2, silently, php's is_numeric_string with errors allowed -- and
+ * one that does not is a NAME, which the list has no door for at all (so
+ * `$list['x']` is null even on a document whose child element is named x).
+ * Every other offset type takes the ordinary int cast, warning exactly where
+ * php's `(int)` warns (`$map[new stdClass]` is index 1 and a warning).
+ *
+ * Then the two classes DISAGREE about an index outside [0, INT_MAX]: the list
+ * answers null and the map raises `item()`'s own ValueError -- worded the way
+ * php words it with no function frame active to name the argument, so the
+ * `DOMNamedNodeMap::item(): Argument #1 ($index) ` head is not there. isset()
+ * never refuses: php asks has_dimension, and that one answers a plain false.
+ */
+/*
+ * Classify one offset. Answers 1 for a NAME (pScratch holds the string), 0 for
+ * an INDEX in *piIndex. Works on a COPY: the conversion is destructive, the
+ * caller's offset must survive it (empty() asks the same offset twice), and
+ * php's own `$map[$k]` leaves $k alone. The caller releases pScratch.
+ */
+static int DomDimClassify(ph7_vm *pVm,ph7_value *pOffset,ph7_value *pScratch,sxi64 *piIndex)
+{
+	PH7_MemObjInit(&(*pVm),pScratch);
+	PH7_MemObjStore(pOffset,pScratch);
+	*piIndex = 0;
+	if( (pScratch->iFlags & MEMOBJ_STRING) && !PH7_MemObjStringNumericPrefix(pScratch,0) ){
+		return 1; /* a NAME: the caller reads the bytes out of the copy */
+	}
+	/* php reads an int out of every other offset type -- null is 0, a bool its
+	 * value, a float truncated, an array 0 or 1 by emptiness, an object 1 behind
+	 * `could not be converted to int`. The cast is what hands back the reference
+	 * an object / array copy took (MemObjIntValue unrefs before it overwrites the
+	 * type in place), so the release below has only a string blob left to free. */
+	*piIndex = ph7_value_to_int64(pScratch);
+	return 0;
+}
+/* Hand the hook's answer back: the node, or nothing at all for a miss (which
+ * the caller initialized NULL, and which isset() reads as false). */
+static void DomDimAnswer(ph7_vm *pVm,PH7_NativeDimCtx *pCtx,ph7_class_instance *pHit)
+{
+	ph7_value sVal;
+	if( pCtx->iMode == PH7_NATIVE_DIM_ISSET ){
+		pCtx->pResult->x.iVal = pHit ? 1 : 0;
+		MemObjSetType(pCtx->pResult,MEMOBJ_BOOL);
+		return;
+	}
+	if( pHit == 0 ){
+		return;
+	}
+	PH7_MemObjInit(&(*pVm),&sVal);
+	sVal.x.pOther = pHit;      /* borrowed, like every DomWrap answer */
+	sVal.iFlags = MEMOBJ_OBJ;
+	PH7_MemObjStore(&sVal,pCtx->pResult);   /* takes its own reference */
+}
+/* php's refusal for the keyless `$list[]` spelling, which reaches the handler
+ * with no offset at all. */
+static void DomDimNoOffset(ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx)
+{
+	SyString *pName = &pThis->pClass->sName;
+	pCtx->zThrowClass = "Error";
+	SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),
+		"Cannot access %.*s without offset",(int)pName->nByte,pName->zString);
+}
+static void DomListDim(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx)
+{
+	ph7_value sKey;
+	sxi64 iIndex;
+	int bNamed;
+	if( pCtx->pOffset == 0 ){
+		DomDimNoOffset(pThis,pCtx);
+		return;
+	}
+	bNamed = DomDimClassify(&(*pVm),pCtx->pOffset,&sKey,&iIndex);
+	PH7_MemObjRelease(&sKey);
+	if( bNamed || iIndex < 0 || iIndex > DOM_INDEX_MAX ){
+		return; /* a name the list cannot answer, or an index it answers null to */
+	}
+	DomDimAnswer(&(*pVm),pCtx,DomListItem(&(*pVm),pThis,(int)iIndex));
+}
+static void DomMapDim(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx)
+{
+	ph7_value sKey;
+	sxi64 iIndex;
+	int bNamed;
+	if( pCtx->pOffset == 0 ){
+		DomDimNoOffset(pThis,pCtx);
+		return;
+	}
+	bNamed = DomDimClassify(&(*pVm),pCtx->pOffset,&sKey,&iIndex);
+	if( bNamed ){
+		DomDimAnswer(&(*pVm),pCtx,DomMapNamed(&(*pVm),pThis,ph7_value_to_string(&sKey,0)));
+		PH7_MemObjRelease(&sKey);
+		return;
+	}
+	PH7_MemObjRelease(&sKey);
+	if( iIndex < 0 || iIndex > DOM_INDEX_MAX ){
+		/* The range is screened BEFORE the map is looked at, so a map with no
+		 * owner at all -- `(new DOMNamedNodeMap())[-1]` -- refuses too. */
+		if( pCtx->iMode == PH7_NATIVE_DIM_READ ){
+			pCtx->zThrowClass = "ValueError";
+			SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),
+				"must be between 0 and %d",DOM_INDEX_MAX);
+		}
+		return;
+	}
+	DomDimAnswer(&(*pVm),pCtx,DomMapItem(&(*pVm),pThis,(int)iIndex));
 }
 /*
  * Both collections are IteratorAggregates, as php's are -- the chunk made
@@ -10141,6 +10269,18 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		pClass = PH7_VmExtractClass(&(*pVm),"DOMDocument",sizeof("DOMDocument")-1,FALSE,0);
 		if( pClass ){
 			pClass->xClone = DomInstanceCloneDoc;
+		}
+		/* The dimension handlers (ph7_class::xDim, php's read_dimension /
+		 * has_dimension), assigned here for the same reason the clone hook is:
+		 * PH7_NativeClassSpec carries no field for them, and php's own two
+		 * classes wear them without declaring ArrayAccess. */
+		pClass = PH7_VmExtractClass(&(*pVm),"DOMNodeList",sizeof("DOMNodeList")-1,FALSE,0);
+		if( pClass ){
+			pClass->xDim = DomListDim;
+		}
+		pClass = PH7_VmExtractClass(&(*pVm),"DOMNamedNodeMap",sizeof("DOMNamedNodeMap")-1,FALSE,0);
+		if( pClass ){
+			pClass->xDim = DomMapDim;
 		}
 	}
 	return rc;

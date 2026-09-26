@@ -1288,6 +1288,30 @@ struct ph7_builtin_constant
 typedef struct ph7_class_method ph7_class_method;
 typedef struct ph7_class_attr   ph7_class_attr;
 /*
+ * One subscript asked of a native class through ph7_class::xDim -- php's
+ * read_dimension / has_dimension handlers, as one call.
+ *
+ * The hook answers by writing pResult (left NULL for a miss, which the ISSET
+ * mode reads as "not set"), or REFUSES by naming an exception class in
+ * zThrowClass and wording it in zThrowMsg. The refusal is carried back rather
+ * than raised here because only the opcode knows how to route a throw out of a
+ * mid-expression read, and because php's own two modes disagree about it: an
+ * out-of-range `$map[-1]` is a ValueError to a READ (and to `??`, which reads)
+ * and a plain FALSE to `isset()`.
+ */
+typedef struct PH7_NativeDimCtx PH7_NativeDimCtx;
+#define PH7_NATIVE_DIM_READ  0 /* php's read_dimension: the value, or NULL for a miss */
+#define PH7_NATIVE_DIM_ISSET 1 /* php's has_dimension: presence only, and never a refusal */
+struct PH7_NativeDimCtx
+{
+	int iMode;               /* PH7_NATIVE_DIM_READ / PH7_NATIVE_DIM_ISSET */
+	ph7_value *pOffset;      /* The subscript. 0 for the keyless `$o[]` spelling. */
+	ph7_value *pResult;      /* READ: where the answer goes (the caller inits it NULL).
+	                          * ISSET: set to a bool by the hook. */
+	const char *zThrowClass; /* Set by the hook to refuse; 0 (the caller's init) means answered */
+	char zThrowMsg[160];     /* ...and its message, formatted by the hook */
+};
+/*
  * Each class is parsed out and stored in an instance of the following structure.
  * PH7 introduced powerfull extensions to the PHP 5 OO subsystems.
  * Please refer to the official documentation for more information.
@@ -1356,6 +1380,22 @@ struct ph7_class
 	                       * it (a 14th field would touch every row of every spec table under
 	                       * -Werror=missing-field-initializers); the owning installer assigns it
 	                       * on the mounted class right after PH7_InstallNativeClasses. */
+	void (*xDim)(ph7_vm *,ph7_class_instance *,PH7_NativeDimCtx *); /* php's read_dimension /
+	                       * has_dimension handlers, as one callback told which is asking.
+	                       * A class states this when `$o[$k]` MEANS something and the class
+	                       * does not implement ArrayAccess -- php 8.3 gave DOMNodeList and
+	                       * DOMNamedNodeMap dimension handlers WITHOUT declaring the
+	                       * interface, so `$list[0]` reads there while
+	                       * `$list instanceof ArrayAccess` is false. No spec field can say
+	                       * that: the interface list is what a class DECLARES, and this is a
+	                       * handler underneath it. Assigned on the mounted class by the
+	                       * owning installer, like xClone, and inherited by user subclasses
+	                       * (the nearest ancestor's hook runs) -- php's handler inheritance,
+	                       * which is why a subclass's own offsetGet is NOT consulted for a
+	                       * read even when it declares ArrayAccess. The WRITE half stays
+	                       * php's: a store, an append and an unset are all
+	                       * `Cannot use object of type C as array` unless the class really
+	                       * implements ArrayAccess. 0 everywhere else. */
 };
 /* Class configuration flags */
 #define PH7_CLASS_FINAL       0x001 /* Class is final [cannot be extended] */
@@ -1632,6 +1672,8 @@ struct PH7_NativeEnumCase
 };
 PH7_PRIVATE sxi32 PH7_InstallNativeClasses(ph7_vm *pVm,const PH7_NativeClassSpec *aSpec,sxu32 nSpec);
 PH7_PRIVATE int PH7_ClassInstancePresent(ph7_class_instance *pThis,ph7_value *pOut,int bDebug);
+PH7_PRIVATE int PH7_ClassHasNativeDim(ph7_class *pClass);
+PH7_PRIVATE int PH7_ClassNativeDim(ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx);
 PH7_PRIVATE sxi32 PH7_InstallEnumInterfaceMethods(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE sxi32 PH7_InstallNativeEnum(ph7_vm *pVm,const char *zName,sxu32 nBacking,
 	const PH7_NativeEnumCase *aCase,sxu32 nCase,
