@@ -470,6 +470,15 @@ static xmlNodePtr DomChildAt(xmlNodePtr pNode,int iWant)
 /* ===== Tree surgery: DOMNode's four mutators ===== */
 
 /*
+ * Defined with the namespace machinery below, and declared here because the
+ * surgery runs it: a node LINKED into a tree loses the declarations its new
+ * scope already makes, and gains the ones its new scope no longer makes.
+ * (Nothing else in this file is declared ahead of its definition; the
+ * namespace section cannot move up because it reads the attribute walker.)
+ */
+static void DomNsOnInsertEx(xmlNodePtr pNode,int bDeep);
+
+/*
  * php's refusal taxonomy for linking pChild under pParent, or NULL when the
  * link is allowed. The chunk collapsed all of it into one message per method,
  * which cost more than a wording: nothing rejected making a node its own
@@ -524,6 +533,9 @@ static xmlNodePtr DomFragMove(phl_xmldoc *pShell,xmlNodePtr pParent,xmlNodePtr p
 		}else{
 			DomLinkLast(pParent,pChild);
 		}
+		/* php reconciles each node it MOVED, not the fragment they came from --
+		 * and through this path it does so DEEPLY (see DomNsOnInsertEx). */
+		DomNsOnInsertEx(pChild,1);
 		pChild = pNext;
 	}
 	pFrag->children = pFrag->last = 0;
@@ -558,6 +570,7 @@ DOM_METHOD(vm_builtin_DOMNode_appendChild)
 	}
 	DomDetach(pChd->pShell,(xmlNodePtr)pChd->pNode);
 	DomLinkLast((xmlNodePtr)pPar->pNode,(xmlNodePtr)pChd->pNode);
+	DomNsOnInsertEx((xmlNodePtr)pChd->pNode,0);
 	ph7_result_value(pCtx,apArg[0]);
 	return PH7_OK;
 }
@@ -613,6 +626,7 @@ DOM_METHOD(vm_builtin_DOMNode_insertBefore)
 	}else{
 		DomLinkLast(pParent,pChild);
 	}
+	DomNsOnInsertEx(pChild,0);
 	ph7_result_value(pCtx,apArg[0]);
 	return PH7_OK;
 }
@@ -671,6 +685,7 @@ DOM_METHOD(vm_builtin_DOMNode_replaceChild)
 		DomLinkBefore(pParent,pChild,pVictim);
 		xmlUnlinkNode(pVictim);
 		DomOrphanAdd(pOld->pShell,pVictim);
+		DomNsOnInsertEx(pChild,0);
 	}
 	ph7_result_value(pCtx,apArg[1]);
 	return PH7_OK;
@@ -1530,6 +1545,107 @@ static void DomNsReconcile(xmlNodePtr pElem)
 		}
 		pCur = DomWalkNext(pCur,pElem);
 	}
+}
+/*
+ * A declaration is freed with the element that carries it, so one REMOVED from
+ * an element cannot simply be dropped: a node further down may still point at
+ * it. It goes where libxml's own document teardown will free it and nothing
+ * resolves through it -- `doc->oldNs`, which is what php's `dom_set_old_ns`
+ * writes to.
+ */
+static void DomNsPark(xmlNodePtr pOwner,xmlNsPtr pNs)
+{
+	xmlDocPtr pDoc = pOwner->doc;
+	xmlNsPtr pTail;
+	pNs->next = 0;
+	/* The list's HEAD must stay libxml's own `xml` declaration, because
+	 * xmlSearchNs answers doc->oldNs DIRECTLY for the `xml` prefix. Asking for
+	 * it is what builds it. */
+	xmlSearchNs(pDoc,pOwner,(const xmlChar *)"xml");
+	if( pDoc->oldNs == 0 ){
+		pDoc->oldNs = pNs;
+		return;
+	}
+	for( pTail = pDoc->oldNs ; pTail->next ; pTail = pTail->next ){}
+	pTail->next = pNs;
+}
+/*
+ * php's `dom_reconcile_ns`, which every mutator runs on the node it LINKED.
+ * Without it a move wrote documents that are not XML in both directions:
+ * appending a node whose namespace was declared on the ancestor it just left
+ * emitted `<p:b k="1"/>` with the prefix bound nowhere, and appending one that
+ * carries its own declaration (`createElementNS`, or a chunk `appendXML` built)
+ * emitted a second copy of a declaration the new parent already makes.
+ *
+ * The strip is php's own test: same URI, and either the node's declaration
+ * carries NO prefix -- then any binding of that URI in scope replaces it, even
+ * a prefixed one, which is how an appended `createElementNS($uri,'y')` comes
+ * out spelled `p:y` -- or the in-scope binding spells it the same way.
+ *
+ * The re-pointing after it is libxml's own `xmlReconciliateNs`, called here
+ * rather than paraphrased: it re-points EVERY node of the subtree at the first
+ * in-scope binding of its URI found from the inserted node -- so a URI two
+ * prefixes bind is respelled to the first of them, which the setAttributeNS
+ * respeller (DomNsReconcile, which only touches a node whose spelling BROKE)
+ * does not do -- and declares one on the inserted node for a URI nothing in
+ * scope binds any more (including one a DESCENDANT declares, since the search
+ * only ever looks up).
+ */
+static void DomNsStrip(xmlNodePtr pNode,xmlNodePtr pScopeAt)
+{
+	xmlNsPtr pCur = pNode->nsDef,pPrev = 0;
+	if( pNode->doc == 0 ){
+		/* Nothing would own a removed declaration, and a node under it may
+		 * still point at one: leave the element's list alone. */
+		return;
+	}
+	while( pCur ){
+		xmlNsPtr pNext = pCur->next;
+		xmlNsPtr pScope = pCur->href
+			? xmlSearchNsByHref(pNode->doc,pScopeAt,pCur->href) : 0;
+		if( pScope != 0
+		 && (pCur->prefix == 0
+		  || (pScope->prefix != 0 && xmlStrEqual(pScope->prefix,pCur->prefix))) ){
+			if( pPrev ){
+				pPrev->next = pNext;
+			}else{
+				pNode->nsDef = pNext;
+			}
+			DomNsPark(pNode,pCur);
+		}else{
+			pPrev = pCur;
+		}
+		pCur = pNext;
+	}
+}
+/*
+ * php runs the strip on the node it linked and NO deeper -- a redundant
+ * declaration one level down survives an `appendChild` -- but a FRAGMENT is
+ * spliced by a second function that walks each moved child WHOLE, so the same
+ * subtree arriving that way comes out stripped at every depth. bDeep is that
+ * difference, and both halves are measurable.
+ *
+ * The deep walk judges every node against the same scope -- the INSERTION
+ * POINT, not each node's own parent -- so a declaration duplicated inside the
+ * moved subtree survives when the new parent does not make it too.
+ */
+static void DomNsOnInsertEx(xmlNodePtr pNode,int bDeep)
+{
+	if( pNode == 0 || pNode->type != XML_ELEMENT_NODE ){
+		return;
+	}
+	if( bDeep ){
+		xmlNodePtr pCur = pNode,pAt = pNode->parent;
+		while( pCur ){
+			if( pCur->type == XML_ELEMENT_NODE ){
+				DomNsStrip(pCur,pAt);
+			}
+			pCur = DomWalkNext(pCur,pNode);
+		}
+	}else{
+		DomNsStrip(pNode,pNode->parent);
+	}
+	xmlReconciliateNs(pNode->doc,pNode);
 }
 /* A namespace DECLARATION on this element: php's setAttributeNS writes one
  * when the name is `xmlns` or its prefix is, and REBINDS the one already
