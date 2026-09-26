@@ -57,6 +57,22 @@ PH7_PRIVATE void PH7_CurlGlobalInit(void);
  * pOwner is the CurlHandle instance the record backs, so the sweep can blank
  * the instance's slot before freeing what it points at.
  */
+/*
+ * One curl_slist the HANDLE owns, keyed by the option it was set on.
+ *
+ * libcurl does not copy a slist: curl_easy_setopt stores the pointer and reads
+ * it during the transfer, so the list has to outlive the call and be freed by
+ * whoever built it. php keeps exactly this -- a per-handle list of lists --
+ * and duplicates them into a copied handle, which is also the evidence that
+ * curl_easy_duphandle does not deep-copy them either.
+ */
+typedef struct phl_curl_slist phl_curl_slist;
+struct phl_curl_slist {
+	sxi64 iOpt;                 /* the CURLOPT_* this list is set on */
+	struct curl_slist *pList;   /* the list itself, or 0 for an empty array */
+	phl_curl_slist *pNext;
+};
+
 typedef struct phl_curl phl_curl;
 struct phl_curl {
 	CURL *pEasy;                    /* the libcurl easy handle (never 0 while live) */
@@ -64,6 +80,7 @@ struct phl_curl {
 	ph7_vm *pVm;
 	int iLastErr;                   /* CURLcode of the last transfer (php's ch->err.no) */
 	char zErrBuf[CURL_ERROR_SIZE];  /* libcurl's CURLOPT_ERRORBUFFER target */
+	phl_curl_slist *pSlists;        /* the curl_slists this handle owns */
 	phl_curl *pNext;                /* per-VM registry chain */
 };
 

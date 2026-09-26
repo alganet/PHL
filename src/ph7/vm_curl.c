@@ -79,12 +79,52 @@ static phl_curl * CurlNewHandle(ph7_vm *pVm)
 	pVm->pCurlHandles = pCurl;
 	return pCurl;
 }
+/*
+ * The slot a handle keeps one option's curl_slist in, created on first use.
+ * Keyed by option, so setting CURLOPT_HTTPHEADER twice replaces one list
+ * rather than accumulating two.
+ */
+static phl_curl_slist * CurlSlistSlot(phl_curl *pCurl,sxi64 iOpt)
+{
+	phl_curl_slist *pSlot = pCurl->pSlists;
+	while( pSlot ){
+		if( pSlot->iOpt == iOpt ){
+			return pSlot;
+		}
+		pSlot = pSlot->pNext;
+	}
+	pSlot = (phl_curl_slist *)SyMemBackendAlloc(&pCurl->pVm->sAllocator,sizeof(phl_curl_slist));
+	if( pSlot == 0 ){
+		return 0;
+	}
+	SyZero(pSlot,sizeof(phl_curl_slist));
+	pSlot->iOpt = iOpt;
+	pSlot->pNext = pCurl->pSlists;
+	pCurl->pSlists = pSlot;
+	return pSlot;
+}
+static void CurlFreeSlists(phl_curl *pCurl)
+{
+	phl_curl_slist *pSlot = pCurl->pSlists;
+	while( pSlot ){
+		phl_curl_slist *pNext = pSlot->pNext;
+		if( pSlot->pList ){
+			curl_slist_free_all(pSlot->pList);
+		}
+		SyMemBackendFree(&pCurl->pVm->sAllocator,pSlot);
+		pSlot = pNext;
+	}
+	pCurl->pSlists = 0;
+}
 static void CurlFreeHandle(phl_curl *pCurl)
 {
 	if( pCurl->pEasy ){
+		/* The handle goes first: libcurl reads the lists during a transfer and
+		 * must not be left pointing at freed memory even for an instant. */
 		curl_easy_cleanup(pCurl->pEasy);
 		pCurl->pEasy = 0;
 	}
+	CurlFreeSlists(pCurl);
 }
 /*
  * Free every registered handle. Called from PH7_CurlVmReset (a reused VM --
@@ -223,6 +263,39 @@ static void CurlInstanceClone(ph7_vm *pVm,ph7_class_instance *pClone,ph7_class_i
 	}
 	pNew->pEasy = pDup;
 	curl_easy_setopt(pDup,CURLOPT_ERRORBUFFER,pNew->zErrBuf);
+	/*
+	 * The slists have to be rebuilt for the copy, and pointed at from the copy,
+	 * for the same reason the source owns them: libcurl stores the POINTER.
+	 * Left alone, the copy would read the source's lists and keep reading them
+	 * after the source freed them. (php duplicates them here too, which is the
+	 * evidence that duphandle does not.)
+	 */
+	{
+		phl_curl_slist *pFromSlot = pFrom->pSlists;
+		while( pFromSlot ){
+			struct curl_slist *pCopy = 0;
+			struct curl_slist *pWalk = pFromSlot->pList;
+			int bOk = 1;
+			while( pWalk ){
+				struct curl_slist *pNextNode = curl_slist_append(pCopy,pWalk->data);
+				if( pNextNode == 0 ){ bOk = 0; break; }
+				pCopy = pNextNode;
+				pWalk = pWalk->next;
+			}
+			if( bOk ){
+				phl_curl_slist *pSlot = CurlSlistSlot(pNew,pFromSlot->iOpt);
+				if( pSlot ){
+					pSlot->pList = pCopy;
+					curl_easy_setopt(pDup,(CURLoption)pFromSlot->iOpt,pCopy);
+				}else if( pCopy ){
+					curl_slist_free_all(pCopy);
+				}
+			}else if( pCopy ){
+				curl_slist_free_all(pCopy);
+			}
+			pFromSlot = pFromSlot->pNext;
+		}
+	}
 	pNew->pNext = (phl_curl *)pVm->pCurlHandles;
 	pVm->pCurlHandles = pNew;
 	if( CurlAttach(pClone,pNew) != 0 ){
@@ -1164,6 +1237,343 @@ static int vm_builtin_curl_share_strerror(ph7_context *pCtx,int nArg,ph7_value *
 	return CurlStrError(pCtx,nArg,apArg,CurlShareStrErrorTrampoline);
 }
 
+/* ===== curl_setopt() ===== */
+
+/*
+ * What php DOES with the value it is handed, per option.
+ *
+ * The kinds were derived by sweeping all 269 options against 17 value types
+ * and reading what php answered; they are not libcurl's own typing, though
+ * they mostly follow from it. libcurl encodes a type in the option NUMBER
+ * (below 10000 long, 10000-19999 pointer, 20000+ function, 30000+ off_t,
+ * 40000+ blob) and php's switch agrees with that bucket for 247 of the 269 --
+ * the exceptions are the whole reason this is a table rather than arithmetic:
+ * ten pointer options take an ARRAY php turns into a curl_slist, five take a
+ * php STREAM, and six are php's own (RETURNTRANSFER and BINARYTRANSFER exist
+ * in no libcurl, PRIVATE stores a php value, SHARE takes a share handle,
+ * SAFE_UPLOAD refuses to be turned off, DNS_USE_GLOBAL_CACHE is accepted and
+ * ignored).
+ *
+ * The table is also the VALIDATOR. php does not ask libcurl whether an option
+ * exists: an unknown number never reaches the library, it falls off the end of
+ * php's switch. So a number a newer libcurl knows and this table does not is a
+ * ValueError here exactly as it is in php built against the older library.
+ */
+#define CURL_OPT_LONG       0   /* zval -> long, straight to libcurl */
+#define CURL_OPT_STRING     1   /* zval -> string, NUL-screened */
+#define CURL_OPT_SLIST      2   /* array -> curl_slist owned by the handle */
+#define CURL_OPT_CALLBACK   3   /* a php callable (its own slice) */
+#define CURL_OPT_FILE       4   /* a php stream (its own slice) */
+#define CURL_OPT_SAFEUP     5   /* php's own: truthy only */
+#define CURL_OPT_RETURN     6   /* php's own: exec answers the body */
+#define CURL_OPT_PRIVATE    7   /* php's own: stores the value itself */
+#define CURL_OPT_SHARE      8   /* php's own: a CurlShareHandle */
+#define CURL_OPT_POSTFIELDS 9   /* string or array (the upload slice) */
+#define CURL_OPT_IGNORE    10   /* accepted and read by nothing, like php */
+
+static const struct CurlOptDef {
+	sxi64 iOpt;
+	int iKind;
+} aCurlOpt[] = {
+	{ -1,                                CURL_OPT_SAFEUP     },  /* -1 */
+	{ CURLOPT_PORT,                      CURL_OPT_LONG       },  /* 3 */
+	{ CURLOPT_TIMEOUT,                   CURL_OPT_LONG       },  /* 13 */
+	{ CURLOPT_INFILESIZE,                CURL_OPT_LONG       },  /* 14 */
+	{ CURLOPT_LOW_SPEED_LIMIT,           CURL_OPT_LONG       },  /* 19 */
+	{ CURLOPT_LOW_SPEED_TIME,            CURL_OPT_LONG       },  /* 20 */
+	{ CURLOPT_RESUME_FROM,               CURL_OPT_LONG       },  /* 21 */
+	{ CURLOPT_CRLF,                      CURL_OPT_LONG       },  /* 27 */
+	{ CURLOPT_SSLVERSION,                CURL_OPT_LONG       },  /* 32 */
+	{ CURLOPT_TIMECONDITION,             CURL_OPT_LONG       },  /* 33 */
+	{ CURLOPT_TIMEVALUE,                 CURL_OPT_LONG       },  /* 34 */
+	{ CURLOPT_VERBOSE,                   CURL_OPT_LONG       },  /* 41 */
+	{ CURLOPT_HEADER,                    CURL_OPT_LONG       },  /* 42 */
+	{ CURLOPT_NOPROGRESS,                CURL_OPT_LONG       },  /* 43 */
+	{ CURLOPT_NOBODY,                    CURL_OPT_LONG       },  /* 44 */
+	{ CURLOPT_FAILONERROR,               CURL_OPT_LONG       },  /* 45 */
+	{ CURLOPT_UPLOAD,                    CURL_OPT_LONG       },  /* 46 */
+	{ CURLOPT_POST,                      CURL_OPT_LONG       },  /* 47 */
+	{ CURLOPT_DIRLISTONLY,               CURL_OPT_LONG       },  /* 48 */
+	{ CURLOPT_FTPLISTONLY,               CURL_OPT_LONG       },  /* 48 */
+	{ CURLOPT_APPEND,                    CURL_OPT_LONG       },  /* 50 */
+	{ CURLOPT_FTPAPPEND,                 CURL_OPT_LONG       },  /* 50 */
+	{ CURLOPT_NETRC,                     CURL_OPT_LONG       },  /* 51 */
+	{ CURLOPT_FOLLOWLOCATION,            CURL_OPT_LONG       },  /* 52 */
+	{ CURLOPT_TRANSFERTEXT,              CURL_OPT_LONG       },  /* 53 */
+	{ CURLOPT_PUT,                       CURL_OPT_LONG       },  /* 54 */
+	{ CURLOPT_AUTOREFERER,               CURL_OPT_LONG       },  /* 58 */
+	{ CURLOPT_PROXYPORT,                 CURL_OPT_LONG       },  /* 59 */
+	{ CURLOPT_HTTPPROXYTUNNEL,           CURL_OPT_LONG       },  /* 61 */
+	{ CURLOPT_SSL_VERIFYPEER,            CURL_OPT_LONG       },  /* 64 */
+	{ CURLOPT_MAXREDIRS,                 CURL_OPT_LONG       },  /* 68 */
+	{ CURLOPT_FILETIME,                  CURL_OPT_LONG       },  /* 69 */
+	{ CURLOPT_MAXCONNECTS,               CURL_OPT_LONG       },  /* 71 */
+	{ CURLOPT_FRESH_CONNECT,             CURL_OPT_LONG       },  /* 74 */
+	{ CURLOPT_FORBID_REUSE,              CURL_OPT_LONG       },  /* 75 */
+	{ CURLOPT_CONNECTTIMEOUT,            CURL_OPT_LONG       },  /* 78 */
+	{ CURLOPT_HTTPGET,                   CURL_OPT_LONG       },  /* 80 */
+	{ CURLOPT_SSL_VERIFYHOST,            CURL_OPT_LONG       },  /* 81 */
+	{ CURLOPT_HTTP_VERSION,              CURL_OPT_LONG       },  /* 84 */
+	{ CURLOPT_FTP_USE_EPSV,              CURL_OPT_LONG       },  /* 85 */
+	{ CURLOPT_SSLENGINE_DEFAULT,         CURL_OPT_LONG       },  /* 90 */
+	{ CURLOPT_DNS_USE_GLOBAL_CACHE,      CURL_OPT_IGNORE     },  /* 91 */
+	{ CURLOPT_DNS_CACHE_TIMEOUT,         CURL_OPT_LONG       },  /* 92 */
+	{ CURLOPT_COOKIESESSION,             CURL_OPT_LONG       },  /* 96 */
+	{ CURLOPT_BUFFERSIZE,                CURL_OPT_LONG       },  /* 98 */
+	{ CURLOPT_NOSIGNAL,                  CURL_OPT_LONG       },  /* 99 */
+	{ CURLOPT_PROXYTYPE,                 CURL_OPT_LONG       },  /* 101 */
+	{ CURLOPT_UNRESTRICTED_AUTH,         CURL_OPT_LONG       },  /* 105 */
+	{ CURLOPT_FTP_USE_EPRT,              CURL_OPT_LONG       },  /* 106 */
+	{ CURLOPT_HTTPAUTH,                  CURL_OPT_LONG       },  /* 107 */
+	{ CURLOPT_FTP_CREATE_MISSING_DIRS,   CURL_OPT_LONG       },  /* 110 */
+	{ CURLOPT_PROXYAUTH,                 CURL_OPT_LONG       },  /* 111 */
+	{ CURLOPT_FTP_RESPONSE_TIMEOUT,      CURL_OPT_LONG       },  /* 112 */
+	{ CURLOPT_SERVER_RESPONSE_TIMEOUT,   CURL_OPT_LONG       },  /* 112 */
+	{ CURLOPT_IPRESOLVE,                 CURL_OPT_LONG       },  /* 113 */
+	{ CURLOPT_MAXFILESIZE,               CURL_OPT_LONG       },  /* 114 */
+	{ CURLOPT_FTP_SSL,                   CURL_OPT_LONG       },  /* 119 */
+	{ CURLOPT_USE_SSL,                   CURL_OPT_LONG       },  /* 119 */
+	{ CURLOPT_TCP_NODELAY,               CURL_OPT_LONG       },  /* 121 */
+	{ CURLOPT_FTPSSLAUTH,                CURL_OPT_LONG       },  /* 129 */
+	{ CURLOPT_IGNORE_CONTENT_LENGTH,     CURL_OPT_LONG       },  /* 136 */
+	{ CURLOPT_FTP_SKIP_PASV_IP,          CURL_OPT_LONG       },  /* 137 */
+	{ CURLOPT_FTP_FILEMETHOD,            CURL_OPT_LONG       },  /* 138 */
+	{ CURLOPT_LOCALPORT,                 CURL_OPT_LONG       },  /* 139 */
+	{ CURLOPT_LOCALPORTRANGE,            CURL_OPT_LONG       },  /* 140 */
+	{ CURLOPT_CONNECT_ONLY,              CURL_OPT_LONG       },  /* 141 */
+	{ CURLOPT_SSL_SESSIONID_CACHE,       CURL_OPT_LONG       },  /* 150 */
+	{ CURLOPT_SSH_AUTH_TYPES,            CURL_OPT_LONG       },  /* 151 */
+	{ CURLOPT_FTP_SSL_CCC,               CURL_OPT_LONG       },  /* 154 */
+	{ CURLOPT_TIMEOUT_MS,                CURL_OPT_LONG       },  /* 155 */
+	{ CURLOPT_CONNECTTIMEOUT_MS,         CURL_OPT_LONG       },  /* 156 */
+	{ CURLOPT_HTTP_TRANSFER_DECODING,    CURL_OPT_LONG       },  /* 157 */
+	{ CURLOPT_HTTP_CONTENT_DECODING,     CURL_OPT_LONG       },  /* 158 */
+	{ CURLOPT_NEW_FILE_PERMS,            CURL_OPT_LONG       },  /* 159 */
+	{ CURLOPT_NEW_DIRECTORY_PERMS,       CURL_OPT_LONG       },  /* 160 */
+	{ CURLOPT_POSTREDIR,                 CURL_OPT_LONG       },  /* 161 */
+	{ CURLOPT_PROXY_TRANSFER_MODE,       CURL_OPT_LONG       },  /* 166 */
+	{ CURLOPT_ADDRESS_SCOPE,             CURL_OPT_LONG       },  /* 171 */
+	{ CURLOPT_CERTINFO,                  CURL_OPT_LONG       },  /* 172 */
+	{ CURLOPT_TFTP_BLKSIZE,              CURL_OPT_LONG       },  /* 178 */
+	{ CURLOPT_SOCKS5_GSSAPI_NEC,         CURL_OPT_LONG       },  /* 180 */
+	{ CURLOPT_PROTOCOLS,                 CURL_OPT_LONG       },  /* 181 */
+	{ CURLOPT_REDIR_PROTOCOLS,           CURL_OPT_LONG       },  /* 182 */
+	{ CURLOPT_FTP_USE_PRET,              CURL_OPT_LONG       },  /* 188 */
+	{ CURLOPT_RTSP_REQUEST,              CURL_OPT_LONG       },  /* 189 */
+	{ CURLOPT_RTSP_CLIENT_CSEQ,          CURL_OPT_LONG       },  /* 193 */
+	{ CURLOPT_RTSP_SERVER_CSEQ,          CURL_OPT_LONG       },  /* 194 */
+	{ CURLOPT_WILDCARDMATCH,             CURL_OPT_LONG       },  /* 197 */
+	{ CURLOPT_TRANSFER_ENCODING,         CURL_OPT_LONG       },  /* 207 */
+	{ CURLOPT_GSSAPI_DELEGATION,         CURL_OPT_LONG       },  /* 210 */
+	{ CURLOPT_ACCEPTTIMEOUT_MS,          CURL_OPT_LONG       },  /* 212 */
+	{ CURLOPT_TCP_KEEPALIVE,             CURL_OPT_LONG       },  /* 213 */
+	{ CURLOPT_TCP_KEEPIDLE,              CURL_OPT_LONG       },  /* 214 */
+	{ CURLOPT_TCP_KEEPINTVL,             CURL_OPT_LONG       },  /* 215 */
+	{ CURLOPT_SSL_OPTIONS,               CURL_OPT_LONG       },  /* 216 */
+	{ CURLOPT_SASL_IR,                   CURL_OPT_LONG       },  /* 218 */
+	{ CURLOPT_SSL_ENABLE_NPN,            CURL_OPT_LONG       },  /* 225 */
+	{ CURLOPT_SSL_ENABLE_ALPN,           CURL_OPT_LONG       },  /* 226 */
+	{ CURLOPT_EXPECT_100_TIMEOUT_MS,     CURL_OPT_LONG       },  /* 227 */
+	{ CURLOPT_HEADEROPT,                 CURL_OPT_LONG       },  /* 229 */
+	{ CURLOPT_SSL_VERIFYSTATUS,          CURL_OPT_LONG       },  /* 232 */
+	{ CURLOPT_SSL_FALSESTART,            CURL_OPT_LONG       },  /* 233 */
+	{ CURLOPT_PATH_AS_IS,                CURL_OPT_LONG       },  /* 234 */
+	{ CURLOPT_PIPEWAIT,                  CURL_OPT_LONG       },  /* 237 */
+	{ CURLOPT_STREAM_WEIGHT,             CURL_OPT_LONG       },  /* 239 */
+	{ CURLOPT_TFTP_NO_OPTIONS,           CURL_OPT_LONG       },  /* 242 */
+	{ CURLOPT_TCP_FASTOPEN,              CURL_OPT_LONG       },  /* 244 */
+	{ CURLOPT_KEEP_SENDING_ON_ERROR,     CURL_OPT_LONG       },  /* 245 */
+	{ CURLOPT_PROXY_SSL_VERIFYPEER,      CURL_OPT_LONG       },  /* 248 */
+	{ CURLOPT_PROXY_SSL_VERIFYHOST,      CURL_OPT_LONG       },  /* 249 */
+	{ CURLOPT_PROXY_SSLVERSION,          CURL_OPT_LONG       },  /* 250 */
+	{ CURLOPT_PROXY_SSL_OPTIONS,         CURL_OPT_LONG       },  /* 261 */
+	{ CURLOPT_SUPPRESS_CONNECT_HEADERS,  CURL_OPT_LONG       },  /* 265 */
+	{ CURLOPT_SOCKS5_AUTH,               CURL_OPT_LONG       },  /* 267 */
+	{ CURLOPT_SSH_COMPRESSION,           CURL_OPT_LONG       },  /* 268 */
+	{ CURLOPT_HAPPY_EYEBALLS_TIMEOUT_MS, CURL_OPT_LONG       },  /* 271 */
+	{ CURLOPT_HAPROXYPROTOCOL,           CURL_OPT_LONG       },  /* 274 */
+	{ CURLOPT_DNS_SHUFFLE_ADDRESSES,     CURL_OPT_LONG       },  /* 275 */
+	{ CURLOPT_DISALLOW_USERNAME_IN_URL,  CURL_OPT_LONG       },  /* 278 */
+	{ CURLOPT_UPLOAD_BUFFERSIZE,         CURL_OPT_LONG       },  /* 280 */
+	{ CURLOPT_UPKEEP_INTERVAL_MS,        CURL_OPT_LONG       },  /* 281 */
+	{ CURLOPT_HTTP09_ALLOWED,            CURL_OPT_LONG       },  /* 285 */
+	{ CURLOPT_ALTSVC_CTRL,               CURL_OPT_LONG       },  /* 286 */
+	{ CURLOPT_MAXAGE_CONN,               CURL_OPT_LONG       },  /* 288 */
+	{ CURLOPT_MAIL_RCPT_ALLLOWFAILS,     CURL_OPT_LONG       },  /* 290 */
+	{ CURLOPT_HSTS_CTRL,                 CURL_OPT_LONG       },  /* 299 */
+	{ CURLOPT_DOH_SSL_VERIFYPEER,        CURL_OPT_LONG       },  /* 306 */
+	{ CURLOPT_DOH_SSL_VERIFYHOST,        CURL_OPT_LONG       },  /* 307 */
+	{ CURLOPT_DOH_SSL_VERIFYSTATUS,      CURL_OPT_LONG       },  /* 308 */
+	{ CURLOPT_MAXLIFETIME_CONN,          CURL_OPT_LONG       },  /* 314 */
+	{ CURLOPT_MIME_OPTIONS,              CURL_OPT_LONG       },  /* 315 */
+	{ CURLOPT_WS_OPTIONS,                CURL_OPT_LONG       },  /* 320 */
+	{ CURLOPT_CA_CACHE_TIMEOUT,          CURL_OPT_LONG       },  /* 321 */
+	{ CURLOPT_QUICK_EXIT,                CURL_OPT_LONG       },  /* 322 */
+	{ CURLOPT_FILE,                      CURL_OPT_FILE       },  /* 10001 */
+	{ CURLOPT_URL,                       CURL_OPT_STRING     },  /* 10002 */
+	{ CURLOPT_PROXY,                     CURL_OPT_STRING     },  /* 10004 */
+	{ CURLOPT_USERPWD,                   CURL_OPT_STRING     },  /* 10005 */
+	{ CURLOPT_PROXYUSERPWD,              CURL_OPT_STRING     },  /* 10006 */
+	{ CURLOPT_RANGE,                     CURL_OPT_STRING     },  /* 10007 */
+	{ CURLOPT_INFILE,                    CURL_OPT_FILE       },  /* 10009 */
+	{ CURLOPT_READDATA,                  CURL_OPT_FILE       },  /* 10009 */
+	{ CURLOPT_POSTFIELDS,                CURL_OPT_POSTFIELDS },  /* 10015 */
+	{ CURLOPT_REFERER,                   CURL_OPT_STRING     },  /* 10016 */
+	{ CURLOPT_FTPPORT,                   CURL_OPT_STRING     },  /* 10017 */
+	{ CURLOPT_USERAGENT,                 CURL_OPT_STRING     },  /* 10018 */
+	{ CURLOPT_COOKIE,                    CURL_OPT_STRING     },  /* 10022 */
+	{ CURLOPT_HTTPHEADER,                CURL_OPT_SLIST      },  /* 10023 */
+	{ CURLOPT_SSLCERT,                   CURL_OPT_STRING     },  /* 10025 */
+	{ CURLOPT_KEYPASSWD,                 CURL_OPT_STRING     },  /* 10026 */
+	{ CURLOPT_SSLCERTPASSWD,             CURL_OPT_STRING     },  /* 10026 */
+	{ CURLOPT_SSLKEYPASSWD,              CURL_OPT_STRING     },  /* 10026 */
+	{ CURLOPT_QUOTE,                     CURL_OPT_SLIST      },  /* 10028 */
+	{ CURLOPT_WRITEHEADER,               CURL_OPT_FILE       },  /* 10029 */
+	{ CURLOPT_COOKIEFILE,                CURL_OPT_STRING     },  /* 10031 */
+	{ CURLOPT_CUSTOMREQUEST,             CURL_OPT_STRING     },  /* 10036 */
+	{ CURLOPT_STDERR,                    CURL_OPT_FILE       },  /* 10037 */
+	{ CURLOPT_POSTQUOTE,                 CURL_OPT_SLIST      },  /* 10039 */
+	{ CURLOPT_INTERFACE,                 CURL_OPT_STRING     },  /* 10062 */
+	{ CURLOPT_KRB4LEVEL,                 CURL_OPT_STRING     },  /* 10063 */
+	{ CURLOPT_KRBLEVEL,                  CURL_OPT_STRING     },  /* 10063 */
+	{ CURLOPT_CAINFO,                    CURL_OPT_STRING     },  /* 10065 */
+	{ CURLOPT_TELNETOPTIONS,             CURL_OPT_SLIST      },  /* 10070 */
+	{ CURLOPT_RANDOM_FILE,               CURL_OPT_STRING     },  /* 10076 */
+	{ CURLOPT_EGDSOCKET,                 CURL_OPT_STRING     },  /* 10077 */
+	{ CURLOPT_COOKIEJAR,                 CURL_OPT_STRING     },  /* 10082 */
+	{ CURLOPT_SSL_CIPHER_LIST,           CURL_OPT_STRING     },  /* 10083 */
+	{ CURLOPT_SSLCERTTYPE,               CURL_OPT_STRING     },  /* 10086 */
+	{ CURLOPT_SSLKEY,                    CURL_OPT_STRING     },  /* 10087 */
+	{ CURLOPT_SSLKEYTYPE,                CURL_OPT_STRING     },  /* 10088 */
+	{ CURLOPT_SSLENGINE,                 CURL_OPT_STRING     },  /* 10089 */
+	{ CURLOPT_PREQUOTE,                  CURL_OPT_SLIST      },  /* 10093 */
+	{ CURLOPT_CAPATH,                    CURL_OPT_STRING     },  /* 10097 */
+	{ CURLOPT_SHARE,                     CURL_OPT_SHARE      },  /* 10100 */
+	{ CURLOPT_ACCEPT_ENCODING,           CURL_OPT_STRING     },  /* 10102 */
+	{ CURLOPT_ENCODING,                  CURL_OPT_STRING     },  /* 10102 */
+	{ CURLOPT_PRIVATE,                   CURL_OPT_PRIVATE    },  /* 10103 */
+	{ CURLOPT_HTTP200ALIASES,            CURL_OPT_SLIST      },  /* 10104 */
+	{ CURLOPT_NETRC_FILE,                CURL_OPT_STRING     },  /* 10118 */
+	{ CURLOPT_FTP_ACCOUNT,               CURL_OPT_STRING     },  /* 10134 */
+	{ CURLOPT_COOKIELIST,                CURL_OPT_STRING     },  /* 10135 */
+	{ CURLOPT_FTP_ALTERNATIVE_TO_USER,   CURL_OPT_STRING     },  /* 10147 */
+	{ CURLOPT_SSH_PUBLIC_KEYFILE,        CURL_OPT_STRING     },  /* 10152 */
+	{ CURLOPT_SSH_PRIVATE_KEYFILE,       CURL_OPT_STRING     },  /* 10153 */
+	{ CURLOPT_SSH_HOST_PUBLIC_KEY_MD5,   CURL_OPT_STRING     },  /* 10162 */
+	{ CURLOPT_CRLFILE,                   CURL_OPT_STRING     },  /* 10169 */
+	{ CURLOPT_ISSUERCERT,                CURL_OPT_STRING     },  /* 10170 */
+	{ CURLOPT_USERNAME,                  CURL_OPT_STRING     },  /* 10173 */
+	{ CURLOPT_PASSWORD,                  CURL_OPT_STRING     },  /* 10174 */
+	{ CURLOPT_PROXYUSERNAME,             CURL_OPT_STRING     },  /* 10175 */
+	{ CURLOPT_PROXYPASSWORD,             CURL_OPT_STRING     },  /* 10176 */
+	{ CURLOPT_NOPROXY,                   CURL_OPT_STRING     },  /* 10177 */
+	{ CURLOPT_SOCKS5_GSSAPI_SERVICE,     CURL_OPT_STRING     },  /* 10179 */
+	{ CURLOPT_SSH_KNOWNHOSTS,            CURL_OPT_STRING     },  /* 10183 */
+	{ CURLOPT_MAIL_FROM,                 CURL_OPT_STRING     },  /* 10186 */
+	{ CURLOPT_MAIL_RCPT,                 CURL_OPT_SLIST      },  /* 10187 */
+	{ CURLOPT_RTSP_SESSION_ID,           CURL_OPT_STRING     },  /* 10190 */
+	{ CURLOPT_RTSP_STREAM_URI,           CURL_OPT_STRING     },  /* 10191 */
+	{ CURLOPT_RTSP_TRANSPORT,            CURL_OPT_STRING     },  /* 10192 */
+	{ CURLOPT_RESOLVE,                   CURL_OPT_SLIST      },  /* 10203 */
+	{ CURLOPT_TLSAUTH_USERNAME,          CURL_OPT_STRING     },  /* 10204 */
+	{ CURLOPT_TLSAUTH_PASSWORD,          CURL_OPT_STRING     },  /* 10205 */
+	{ CURLOPT_TLSAUTH_TYPE,              CURL_OPT_STRING     },  /* 10206 */
+	{ CURLOPT_DNS_SERVERS,               CURL_OPT_STRING     },  /* 10211 */
+	{ CURLOPT_MAIL_AUTH,                 CURL_OPT_STRING     },  /* 10217 */
+	{ CURLOPT_XOAUTH2_BEARER,            CURL_OPT_STRING     },  /* 10220 */
+	{ CURLOPT_DNS_INTERFACE,             CURL_OPT_STRING     },  /* 10221 */
+	{ CURLOPT_DNS_LOCAL_IP4,             CURL_OPT_STRING     },  /* 10222 */
+	{ CURLOPT_DNS_LOCAL_IP6,             CURL_OPT_STRING     },  /* 10223 */
+	{ CURLOPT_LOGIN_OPTIONS,             CURL_OPT_STRING     },  /* 10224 */
+	{ CURLOPT_PROXYHEADER,               CURL_OPT_SLIST      },  /* 10228 */
+	{ CURLOPT_PINNEDPUBLICKEY,           CURL_OPT_STRING     },  /* 10230 */
+	{ CURLOPT_UNIX_SOCKET_PATH,          CURL_OPT_STRING     },  /* 10231 */
+	{ CURLOPT_PROXY_SERVICE_NAME,        CURL_OPT_STRING     },  /* 10235 */
+	{ CURLOPT_SERVICE_NAME,              CURL_OPT_STRING     },  /* 10236 */
+	{ CURLOPT_DEFAULT_PROTOCOL,          CURL_OPT_STRING     },  /* 10238 */
+	{ CURLOPT_CONNECT_TO,                CURL_OPT_SLIST      },  /* 10243 */
+	{ CURLOPT_PROXY_CAINFO,              CURL_OPT_STRING     },  /* 10246 */
+	{ CURLOPT_PROXY_CAPATH,              CURL_OPT_STRING     },  /* 10247 */
+	{ CURLOPT_PROXY_TLSAUTH_USERNAME,    CURL_OPT_STRING     },  /* 10251 */
+	{ CURLOPT_PROXY_TLSAUTH_PASSWORD,    CURL_OPT_STRING     },  /* 10252 */
+	{ CURLOPT_PROXY_TLSAUTH_TYPE,        CURL_OPT_STRING     },  /* 10253 */
+	{ CURLOPT_PROXY_SSLCERT,             CURL_OPT_STRING     },  /* 10254 */
+	{ CURLOPT_PROXY_SSLCERTTYPE,         CURL_OPT_STRING     },  /* 10255 */
+	{ CURLOPT_PROXY_SSLKEY,              CURL_OPT_STRING     },  /* 10256 */
+	{ CURLOPT_PROXY_SSLKEYTYPE,          CURL_OPT_STRING     },  /* 10257 */
+	{ CURLOPT_PROXY_KEYPASSWD,           CURL_OPT_STRING     },  /* 10258 */
+	{ CURLOPT_PROXY_SSL_CIPHER_LIST,     CURL_OPT_STRING     },  /* 10259 */
+	{ CURLOPT_PROXY_CRLFILE,             CURL_OPT_STRING     },  /* 10260 */
+	{ CURLOPT_PRE_PROXY,                 CURL_OPT_STRING     },  /* 10262 */
+	{ CURLOPT_PROXY_PINNEDPUBLICKEY,     CURL_OPT_STRING     },  /* 10263 */
+	{ CURLOPT_ABSTRACT_UNIX_SOCKET,      CURL_OPT_STRING     },  /* 10264 */
+	{ CURLOPT_REQUEST_TARGET,            CURL_OPT_STRING     },  /* 10266 */
+	{ CURLOPT_TLS13_CIPHERS,             CURL_OPT_STRING     },  /* 10276 */
+	{ CURLOPT_PROXY_TLS13_CIPHERS,       CURL_OPT_STRING     },  /* 10277 */
+	{ CURLOPT_DOH_URL,                   CURL_OPT_STRING     },  /* 10279 */
+	{ CURLOPT_ALTSVC,                    CURL_OPT_STRING     },  /* 10287 */
+	{ CURLOPT_SASL_AUTHZID,              CURL_OPT_STRING     },  /* 10289 */
+	{ CURLOPT_PROXY_ISSUERCERT,          CURL_OPT_STRING     },  /* 10296 */
+	{ CURLOPT_SSL_EC_CURVES,             CURL_OPT_STRING     },  /* 10298 */
+	{ CURLOPT_HSTS,                      CURL_OPT_STRING     },  /* 10300 */
+	{ CURLOPT_AWS_SIGV4,                 CURL_OPT_STRING     },  /* 10305 */
+	{ CURLOPT_SSH_HOST_PUBLIC_KEY_SHA256, CURL_OPT_STRING     },  /* 10311 */
+	{ CURLOPT_PROTOCOLS_STR,             CURL_OPT_STRING     },  /* 10318 */
+	{ CURLOPT_REDIR_PROTOCOLS_STR,       CURL_OPT_STRING     },  /* 10319 */
+	{ 19913,                             CURL_OPT_RETURN     },  /* 19913 */
+	{ 19914,                             CURL_OPT_IGNORE     },  /* 19914 */
+	{ CURLOPT_WRITEFUNCTION,             CURL_OPT_CALLBACK   },  /* 20011 */
+	{ CURLOPT_READFUNCTION,              CURL_OPT_CALLBACK   },  /* 20012 */
+	{ CURLOPT_PROGRESSFUNCTION,          CURL_OPT_CALLBACK   },  /* 20056 */
+	{ CURLOPT_HEADERFUNCTION,            CURL_OPT_CALLBACK   },  /* 20079 */
+	{ CURLOPT_DEBUGFUNCTION,             CURL_OPT_CALLBACK   },  /* 20094 */
+	{ CURLOPT_FNMATCH_FUNCTION,          CURL_OPT_CALLBACK   },  /* 20200 */
+	{ CURLOPT_XFERINFOFUNCTION,          CURL_OPT_CALLBACK   },  /* 20219 */
+	{ CURLOPT_PREREQFUNCTION,            CURL_OPT_CALLBACK   },  /* 20312 */
+	{ CURLOPT_SSH_HOSTKEYFUNCTION,       CURL_OPT_CALLBACK   },  /* 20316 */
+	{ CURLOPT_INFILESIZE_LARGE,          CURL_OPT_LONG       },  /* 30115 */
+	{ CURLOPT_MAXFILESIZE_LARGE,         CURL_OPT_LONG       },  /* 30117 */
+	{ CURLOPT_MAX_SEND_SPEED_LARGE,      CURL_OPT_LONG       },  /* 30145 */
+	{ CURLOPT_MAX_RECV_SPEED_LARGE,      CURL_OPT_LONG       },  /* 30146 */
+	{ CURLOPT_TIMEVALUE_LARGE,           CURL_OPT_LONG       },  /* 30270 */
+	{ CURLOPT_SSLCERT_BLOB,              CURL_OPT_STRING     },  /* 40291 */
+	{ CURLOPT_SSLKEY_BLOB,               CURL_OPT_STRING     },  /* 40292 */
+	{ CURLOPT_PROXY_SSLCERT_BLOB,        CURL_OPT_STRING     },  /* 40293 */
+	{ CURLOPT_PROXY_SSLKEY_BLOB,         CURL_OPT_STRING     },  /* 40294 */
+	{ CURLOPT_ISSUERCERT_BLOB,           CURL_OPT_STRING     },  /* 40295 */
+	{ CURLOPT_PROXY_ISSUERCERT_BLOB,     CURL_OPT_STRING     },  /* 40297 */
+	{ CURLOPT_CAINFO_BLOB,               CURL_OPT_STRING     },  /* 40309 */
+	{ CURLOPT_PROXY_CAINFO_BLOB,         CURL_OPT_STRING     },  /* 40310 */
+};
+
+/*
+ * The option's php NAME, for the diagnostics that print one ("The
+ * CURLOPT_HTTPHEADER option must have an array value"). Read out of the
+ * constant table rather than repeated, so the two can never disagree.
+ */
+static const char * CurlOptName(sxi64 iOpt)
+{
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(aCurlConst) ; ++n ){
+		if( aCurlConst[n].iValue == iOpt
+		 && SyStrncmp(aCurlConst[n].zName,"CURLOPT_",sizeof("CURLOPT_")-1) == 0 ){
+			return aCurlConst[n].zName;
+		}
+	}
+	return "CURLOPT_UNKNOWN";
+}
+
+static const struct CurlOptDef * CurlOptFind(sxi64 iOpt)
+{
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(aCurlOpt) ; ++n ){
+		if( aCurlOpt[n].iOpt == iOpt ){
+			return &aCurlOpt[n];
+		}
+	}
+	return 0;
+}
+
 /* ===== The handle verbs ===== */
 
 /*
@@ -1194,10 +1604,12 @@ static int vm_builtin_curl_init(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		 * $url -- it is the shared option-setter's wording, reached from here.
 		 */
 		if( SyByteFind(zUrl,(sxu32)nUrl,0,0) == SXRET_OK ){
-			PH7_VmThrowException(pCtx,"ValueError",
-				"curl_init(): cURL option must not contain any null bytes");
+			/* The status a throw installs IS the builtin's status: answering
+			 * PH7_OK leaves the throw half-raised, and the next script run in
+			 * the same interpreter prints nothing at all. */
 			ph7_result_bool(pCtx,0);
-			return PH7_OK;
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"curl_init(): cURL option must not contain any null bytes");
 		}
 	}
 	pCurl = CurlNewHandle(pVm);
@@ -1253,6 +1665,304 @@ static int vm_builtin_curl_reset(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_result_null(pCtx);
 	return PH7_OK;
 }
+/*
+ * php's error state after a REFUSED option: errno 48 and libcurl's own text
+ * for it. The ValueError is thrown and the handle still reports the failure --
+ * `curl_setopt($h, 999999, 1)` in a try/catch leaves curl_errno() at 48 -- so
+ * the two are not alternatives, they both happen.
+ */
+static void CurlSetErr(phl_curl *pCurl,int iCode)
+{
+	const char *zMsg;
+	if( pCurl == 0 ){
+		return;
+	}
+	pCurl->iLastErr = iCode;
+	zMsg = curl_easy_strerror((CURLcode)iCode);
+	pCurl->zErrBuf[0] = 0;
+	if( zMsg ){
+		sxu32 nMsg = SyStrlen(zMsg);
+		if( nMsg > sizeof(pCurl->zErrBuf) - 1 ){ nMsg = sizeof(pCurl->zErrBuf) - 1; }
+		SyMemcpy(zMsg,pCurl->zErrBuf,nMsg);
+		pCurl->zErrBuf[nMsg] = 0;
+	}
+}
+/*
+ * Every setter clears the handle's error FIRST (curl_setopt and
+ * curl_setopt_array are two of the three verbs that do; curl_upkeep is the
+ * third, and curl_reset notably is not).
+ */
+static void CurlClearErr(phl_curl *pCurl)
+{
+	if( pCurl ){
+		pCurl->iLastErr = 0;
+		pCurl->zErrBuf[0] = 0;
+	}
+}
+/*
+ * A string option's value. php stringifies ANYTHING for these -- null becomes
+ * "", an array becomes "Array" with the ordinary conversion warning, an object
+ * is the ordinary "could not be converted to string" Error -- and then screens
+ * the result for a NUL, because libcurl takes a C string and would silently
+ * stop at the byte. The screen is on the whole VALUE, which is why the same
+ * sentence appears from curl_init().
+ *
+ * A slist ELEMENT is stringified the same way but is NOT screened: php lets a
+ * header carrying a NUL through, which is measured, not assumed.
+ */
+static int CurlSetString(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *pVal,sxi32 *pRc)
+{
+	const char *zVal;
+	int nVal = 0;
+	sxi32 rcSv;
+	/* The USER-VISIBLE coercion, not the embedder API: an array has to warn
+	 * "Array to string conversion" and an object with no __toString() has to
+	 * be php's catchable Error, both of which the silent ph7_value_to_string()
+	 * skips. */
+	rcSv = PH7_ValueToStringUV(pCtx,pVal,&zVal,&nVal);
+	if( rcSv != SXRET_OK ){
+		/* The coercion threw. Its status is the BUILTIN's status: swallowing it
+		 * and answering PH7_OK leaves the engine with a half-installed throw,
+		 * and the next script run in the same interpreter prints nothing. */
+		*pRc = rcSv;
+		return -1;
+	}
+	if( SyByteFind(zVal,(sxu32)nVal,0,0) == SXRET_OK ){
+		*pRc = PH7_VmThrowException(pCtx,"ValueError",
+			"curl_setopt(): cURL option must not contain any null bytes");
+		return -1;
+	}
+	return curl_easy_setopt(pCurl->pEasy,(CURLoption)iOpt,zVal) == CURLE_OK ? 1 : 0;
+}
+/*
+ * A long option's value, with the one option php screens by hand.
+ * CURLOPT_SSL_VERIFYHOST no longer has a meaningful 1: libcurl treats it as 2,
+ * and php says so at E_NOTICE before passing 2 along -- so a program that
+ * still writes 1 gets php's sentence, not silence.
+ */
+static int CurlSetLong(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *pVal)
+{
+	sxi64 iVal = ph7_value_to_int64(pVal);
+	if( iOpt == CURLOPT_SSL_VERIFYHOST && iVal == 1 ){
+		/* ph7_context_throw_error already prints "curl_setopt(): " */
+		ph7_context_throw_error(pCtx,PH7_CTX_NOTICE,
+			"CURLOPT_SSL_VERIFYHOST no longer accepts the value 1, "
+			"value 2 will be used instead");
+		iVal = 2;
+	}
+	return curl_easy_setopt(pCurl->pEasy,(CURLoption)iOpt,(long)iVal) == CURLE_OK ? 1 : 0;
+}
+/*
+ * An slist option's value: the array's VALUES in order, keys ignored, each
+ * stringified. libcurl does not copy the list, so the handle owns it until the
+ * option is set again or the handle is freed -- which is what pSlist is for.
+ */
+struct CurlSlistBuild {
+	ph7_context *pCtx;
+	struct curl_slist *pList;
+	int bFailed;
+	int bThrew;
+	sxi32 rcThrow;
+};
+static int CurlSlistWalk(ph7_value *pKey,ph7_value *pVal,void *pUser)
+{
+	struct CurlSlistBuild *pB = (struct CurlSlistBuild *)pUser;
+	struct curl_slist *pNext;
+	const char *zVal;
+	int nVal = 0;
+	SXUNUSED(pKey);
+	if( pB->bFailed ){
+		return PH7_OK;
+	}
+	/* Same user-visible coercion the scalar options get -- an object in a
+	 * header list is php's Error, not a silent "Object" -- but NO null-byte
+	 * screen: php lets a list element carrying one through. */
+	{
+		sxi32 rcSv = PH7_ValueToStringUV(pB->pCtx,pVal,&zVal,&nVal);
+		if( rcSv != SXRET_OK ){
+			pB->bFailed = 1;
+			pB->bThrew = 1;
+			pB->rcThrow = rcSv;
+			return PH7_ABORT;
+		}
+	}
+	/* The value is a TEMPORARY the walker owns for this call only, and
+	 * curl_slist_append copies it, so nothing is kept past the return. */
+	pNext = curl_slist_append(pB->pList,zVal ? zVal : "");
+	if( pNext == 0 ){
+		pB->bFailed = 1;
+		return PH7_OK;
+	}
+	pB->pList = pNext;
+	return PH7_OK;
+}
+static int CurlSetSlist(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *pVal,
+	const char *zOptName,sxi32 *pRc)
+{
+	struct CurlSlistBuild sB;
+	phl_curl_slist *pSlot;
+	if( !ph7_value_is_array(pVal) ){
+		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+			"curl_setopt(): The %s option must have an array value",zOptName);
+		return -1;
+	}
+	sB.pCtx = pCtx;
+	sB.pList = 0;
+	sB.bFailed = 0;
+	sB.bThrew = 0;
+	sB.rcThrow = PH7_OK;
+	ph7_array_walk(pVal,CurlSlistWalk,&sB);
+	if( sB.bFailed ){
+		if( sB.pList ){
+			curl_slist_free_all(sB.pList);
+		}
+		if( sB.bThrew ){
+			*pRc = sB.rcThrow;
+			return -1;
+		}
+		return 0;
+	}
+	/* Replace whatever this option held before: the previous list stays alive
+	 * until libcurl has been pointed at the new one. */
+	pSlot = CurlSlistSlot(pCurl,iOpt);
+	if( pSlot == 0 ){
+		if( sB.pList ){
+			curl_slist_free_all(sB.pList);
+		}
+		return 0;
+	}
+	if( curl_easy_setopt(pCurl->pEasy,(CURLoption)iOpt,sB.pList) != CURLE_OK ){
+		if( sB.pList ){
+			curl_slist_free_all(sB.pList);
+		}
+		return 0;
+	}
+	if( pSlot->pList ){
+		curl_slist_free_all(pSlot->pList);
+	}
+	pSlot->pList = sB.pList;
+	return 1;
+}
+/*
+ * One option, the whole switch. Answers 1 (true), 0 (false) or -1 (a throw is
+ * already installed).
+ */
+static int CurlSetOne(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *pVal,
+	const char *zFunc,sxi32 *pRc)
+{
+	const struct CurlOptDef *pDef = CurlOptFind(iOpt);
+	if( pDef == 0 ){
+		/* php's switch has no arm for it, so the library never sees it -- and
+		 * the handle records CURLE_UNKNOWN_OPTION all the same. */
+		CurlSetErr(pCurl,CURLE_UNKNOWN_OPTION);
+		*pRc = PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #2 ($option) is not a valid cURL option",zFunc);
+		return -1;
+	}
+	switch( pDef->iKind ){
+	case CURL_OPT_LONG:
+		return CurlSetLong(pCtx,pCurl,iOpt,pVal);
+	case CURL_OPT_STRING:
+		return CurlSetString(pCtx,pCurl,iOpt,pVal,pRc);
+	case CURL_OPT_SLIST:
+		return CurlSetSlist(pCtx,pCurl,iOpt,pVal,CurlOptName(iOpt),pRc);
+	case CURL_OPT_SAFEUP:
+		/* php's -1: safe uploads cannot be turned off any more, and the
+		 * refusal is on the VALUE's truthiness, not its type. */
+		if( !ph7_value_to_bool(pVal) ){
+			*pRc = PH7_VmThrowException(pCtx,"ValueError",
+				"%s(): Disabling safe uploads is no longer supported",zFunc);
+			return -1;
+		}
+		return 1;
+	case CURL_OPT_IGNORE:
+		return 1;
+	default:
+		break;
+	}
+	/* The kinds whose own slices have not landed: a callable, a stream, the
+	 * share handle, PRIVATE's stored value and POSTFIELDS. Refusing loudly
+	 * beats answering true and transferring something else. */
+	*pRc = PH7_VmThrowException(pCtx,"Error",
+		"%s(): option %s is not implemented yet in this build",zFunc,CurlOptName(iOpt));
+	return -1;
+}
+/* bool curl_setopt(CurlHandle $handle, int $option, mixed $value) */
+static int vm_builtin_curl_setopt(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_curl *pCurl = CurlArg(pCtx,nArg,apArg);
+	sxi32 rcOut = PH7_OK;
+	int rc;
+	if( pCurl == 0 || pCurl->pEasy == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	CurlClearErr(pCurl);
+	rc = CurlSetOne(pCtx,pCurl,ph7_value_to_int64(apArg[1]),apArg[2],"curl_setopt",&rcOut);
+	ph7_result_bool(pCtx,rc == 1);
+	return rcOut;
+}
+/*
+ * bool curl_setopt_array(CurlHandle $handle, array $options)
+ *
+ * The options are applied IN ORDER and the walk stops at the first refusal --
+ * a bad third entry leaves the first two applied. Its two ValueErrors are not
+ * curl_setopt's and are not each other's: a key that is not an option NUMBER
+ * says "must contain only valid cURL options", a key that is not an integer at
+ * all says "contains an invalid cURL option". (A numeric STRING key is neither:
+ * php's array normalizes it to an int before this ever sees it.)
+ */
+struct CurlSetoptArray {
+	ph7_context *pCtx;
+	phl_curl *pCurl;
+	int rc;          /* 1 all applied, 0 a false, -1 a throw is installed */
+	sxi32 rcOut;     /* the status a throwing coercion wants propagated */
+};
+static int CurlSetoptArrayWalk(ph7_value *pKey,ph7_value *pVal,void *pUser)
+{
+	struct CurlSetoptArray *pW = (struct CurlSetoptArray *)pUser;
+	int rc;
+	if( pW->rc != 1 ){
+		return PH7_ABORT;
+	}
+	if( !ph7_value_is_int(pKey) ){
+		pW->rcOut = PH7_VmThrowException(pW->pCtx,"ValueError",
+			"curl_setopt_array(): Argument #2 ($options) contains an invalid cURL option");
+		pW->rc = -1;
+		return PH7_ABORT;
+	}
+	if( CurlOptFind(ph7_value_to_int64(pKey)) == 0 ){
+		CurlSetErr(pW->pCurl,CURLE_UNKNOWN_OPTION);
+		pW->rcOut = PH7_VmThrowException(pW->pCtx,"ValueError",
+			"curl_setopt_array(): Argument #2 ($options) must contain only valid cURL options");
+		pW->rc = -1;
+		return PH7_ABORT;
+	}
+	rc = CurlSetOne(pW->pCtx,pW->pCurl,ph7_value_to_int64(pKey),pVal,"curl_setopt_array",&pW->rcOut);
+	if( rc != 1 ){
+		pW->rc = rc;
+		return PH7_ABORT;
+	}
+	return PH7_OK;
+}
+static int vm_builtin_curl_setopt_array(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_curl *pCurl = CurlArg(pCtx,nArg,apArg);
+	struct CurlSetoptArray sW;
+	if( pCurl == 0 || pCurl->pEasy == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	CurlClearErr(pCurl);
+	sW.pCtx = pCtx;
+	sW.pCurl = pCurl;
+	sW.rc = 1;
+	sW.rcOut = PH7_OK;
+	ph7_array_walk(apArg[1],CurlSetoptArrayWalk,&sW);
+	ph7_result_bool(pCtx,sW.rc == 1);
+	return sW.rcOut;
+}
+
 /*
  * CurlHandle|false curl_copy_handle(CurlHandle $handle)
  *
@@ -1326,7 +2036,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)
 		{ "curl_reset",          vm_builtin_curl_reset          },
 		{ "curl_errno",          vm_builtin_curl_errno          },
 		{ "curl_error",          vm_builtin_curl_error          },
-		{ "curl_copy_handle",    vm_builtin_curl_copy_handle    }
+		{ "curl_copy_handle",    vm_builtin_curl_copy_handle    },
+		{ "curl_setopt",         vm_builtin_curl_setopt         },
+		{ "curl_setopt_array",   vm_builtin_curl_setopt_array   }
 	};
 	/*
 	 * The libcurl handle, and nothing else: php's CurlHandle declares no

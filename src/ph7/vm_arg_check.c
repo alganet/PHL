@@ -389,6 +389,8 @@ static const struct VmBuiltinSig {
 	{ "curl_init", "?string $url = null", "CurlHandle|false" },
 	{ "curl_multi_strerror", "int $error_code", "?string" },
 	{ "curl_reset", "CurlHandle $handle", "void" },
+	{ "curl_setopt", "CurlHandle $handle, int $option, mixed $value", "bool" },
+	{ "curl_setopt_array", "CurlHandle $handle, array $options", "bool" },
 	{ "curl_share_strerror", "int $error_code", "?string" },
 	{ "curl_strerror", "int $error_code", "?string" },
 	{ "curl_version", "", "array|false" },
