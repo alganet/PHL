@@ -332,6 +332,43 @@ PH7_PRIVATE void PH7_LibxmlCaptureEnd(ph7_vm *pVm,sxu32 nMark,const char *zFnNam
 	}
 }
 /*
+ * php's OTHER libxml channel.
+ *
+ * libxml reports an I/O failure through its GENERIC error function rather than
+ * the structured one, with the severity spelled INTO the text ("I/O warning :
+ * ..."), and php prints that text at E_WARNING whatever the severity says --
+ * while the structured copy, which is what `libxml_get_errors()` reports, keeps
+ * libxml's own level and carries no such prefix. A caller with a message from
+ * that channel hands it here: it goes through the same line buffer as every
+ * other diagnostic (so a held fragment is printed in front of it) and takes no
+ * source location, because that channel has none.
+ */
+PH7_PRIVATE void PH7_LibxmlRaiseGeneric(ph7_vm *pVm,const char *zFnName,const char *zMsg)
+{
+	SyString sFunc;
+	SyBlob sOut;
+	const char *zPend;
+	sxu32 nPend,nTrim;
+	SyBlobAppend(&pVm->sLibxmlPend,zMsg,SyStrlen(zMsg));
+	zPend = (const char *)SyBlobData(&pVm->sLibxmlPend);
+	nPend = SyBlobLength(&pVm->sLibxmlPend);
+	if( nPend < 1 || zPend[nPend-1] != '\n' ){
+		return;
+	}
+	nTrim = nPend;
+	while( nTrim > 0 && (zPend[nTrim-1] == '\n' || zPend[nTrim-1] == '\r') ){
+		nTrim--;
+	}
+	SyBlobInit(&sOut,&pVm->sAllocator);
+	SyBlobAppend(&sOut,zPend,nTrim);
+	SyBlobAppend(&sOut,"\0",sizeof(char));
+	SyStringInitFromBuf(&sFunc,zFnName,zFnName ? SyStrlen(zFnName) : 0);
+	PH7_VmThrowError(&(*pVm),zFnName ? &sFunc : 0,PH7_CTX_WARNING,
+		(const char *)SyBlobData(&sOut));
+	SyBlobRelease(&sOut);
+	SyBlobReset(&pVm->sLibxmlPend);
+}
+/*
  * Allocate and register a new document shell on the per-VM registry.
  * Returns NULL on allocation failure (the caller reports OOM).
  */

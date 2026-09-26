@@ -2929,6 +2929,99 @@ static void DomRestoreWarnings(ph7_vm *pVm,phl_dom_errsave sSave)
 	pVm->iErrMask = sSave.iMask;
 	pVm->bErrReport = sSave.bOn;
 }
+/*
+ * The path php names a loaded file by: the VFS's canonical absolute name, or
+ * the working directory joined to it when the file does not exist and there is
+ * nothing to canonicalize. Answers it NUL-terminated in *pOut.
+ */
+static void DomAbsPath(ph7_context *pCtx,const char *zFile,SyBlob *pOut)
+{
+	const ph7_vfs *pVfs = pCtx->pVm->pEngine->pVfs;
+	int bAbs = zFile[0] == '/' || zFile[0] == '\\'
+		|| (zFile[0] && zFile[1] == ':');   /* the win32 spelling */
+	SyBlobInit(pOut,&pCtx->pVm->sAllocator);
+	PH7_MemObjRelease(pCtx->pRet);
+	if( pVfs && pVfs->xRealpath && pVfs->xRealpath(zFile,pCtx) == PH7_OK
+	 && (pCtx->pRet->iFlags & MEMOBJ_STRING) != 0
+	 && SyBlobLength(&pCtx->pRet->sBlob) > 0 ){
+		SyBlobAppend(pOut,SyBlobData(&pCtx->pRet->sBlob),SyBlobLength(&pCtx->pRet->sBlob));
+	}else{
+		/* Not there to canonicalize -- but php still resolves the part that IS
+		 * there (expand_filepath walks each existing component through its
+		 * links), so a missing file under a linked directory is named by the
+		 * directory's real path; on macOS every temp path is one (/var ->
+		 * /private/var). The longest existing prefix is resolved and the missing
+		 * tail kept as written. A bare drive ("C:") is never a prefix: it would
+		 * resolve to that drive's working directory. */
+		SyBlob sFull,sPre;
+		const char *zFull;
+		sxu32 nFull,i,nTail = 0;
+		SyBlobInit(&sFull,&pCtx->pVm->sAllocator);
+		SyBlobInit(&sPre,&pCtx->pVm->sAllocator);
+		if( !bAbs ){
+			SyBlob sDir;
+			DomCwdUri(pCtx,&sDir);
+			SyBlobAppend(&sFull,SyBlobData(&sDir),SyBlobLength(&sDir));
+			SyBlobRelease(&sDir);
+		}
+		SyBlobAppend(&sFull,zFile,(sxu32)SyStrlen(zFile));
+		SyBlobNullAppend(&sFull);
+		zFull = (const char *)SyBlobData(&sFull);
+		nFull = (sxu32)SyStrlen(zFull);
+		for( i = nFull ; i > 1 && pVfs && pVfs->xRealpath ; --i ){
+			if( (zFull[i-1] != '/' && zFull[i-1] != '\\') || zFull[i-2] == ':' ){
+				continue;
+			}
+			SyBlobReset(&sPre);
+			SyBlobAppend(&sPre,zFull,i-1);
+			SyBlobNullAppend(&sPre);
+			PH7_MemObjRelease(pCtx->pRet);
+			if( pVfs->xRealpath((const char *)SyBlobData(&sPre),pCtx) == PH7_OK
+			 && (pCtx->pRet->iFlags & MEMOBJ_STRING) != 0
+			 && SyBlobLength(&pCtx->pRet->sBlob) > 0 ){
+				SyBlobAppend(pOut,SyBlobData(&pCtx->pRet->sBlob),SyBlobLength(&pCtx->pRet->sBlob));
+				nTail = nFull - (i-1);
+				break;
+			}
+		}
+		if( nTail > 0 ){
+			SyBlobAppend(pOut,zFull + (nFull - nTail),nTail);
+		}else{
+			SyBlobAppend(pOut,zFull,nFull);
+		}
+		SyBlobRelease(&sPre);
+		SyBlobRelease(&sFull);
+	}
+	PH7_MemObjRelease(pCtx->pRet);
+	SyBlobNullAppend(pOut);
+}
+/*
+ * Point the receiver at a freshly parsed tree, as both load methods do: the
+ * document object keeps its identity and everything under the OLD tree becomes
+ * stale, so the per-document wrapper cache is dropped with it. Answers 0 when
+ * there is no tree to install, which is each method's `false`; the previous
+ * tree is left alone in that case, as php leaves it.
+ */
+static int DomInstallParsed(ph7_context *pCtx,ph7_class_instance *pThis,xmlDocPtr pDoc)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	phl_xmldoc *pShell = pDoc ? PH7_LibxmlNewDoc(pVm,pDoc) : 0;
+	phl_domnode *pRes = pShell ? DomNewRes(pVm,pShell,pDoc) : 0;
+	ph7_value *pNodes;
+	if( pRes == 0 ){
+		if( pDoc && pShell == 0 ){
+			xmlFreeDoc(pDoc);
+		}
+		return 0;
+	}
+	DomSetRes(pVm,pThis,pRes);
+	pNodes = PH7_NativeAttr(pThis,DOM_NODES);
+	if( pNodes ){
+		PH7_MemObjRelease(pNodes);
+		PH7_MemObjToHashmap(pNodes);
+	}
+	return 1;
+}
 /* DOMDocument::loadXML(string $source, int $options = 0): bool -- the receiver
  * is REPOINTED at a new tree, so its identity cache is dropped with it. */
 DOM_METHOD(vm_builtin_DOMDocument_loadXML)
@@ -2940,9 +3033,6 @@ DOM_METHOD(vm_builtin_DOMDocument_loadXML)
 	int iOpts = nArg > 1 ? ph7_value_to_int(apArg[1]) : 0;
 	phl_dom_errsave sErr;
 	xmlDocPtr pDoc;
-	phl_xmldoc *pShell;
-	phl_domnode *pRes;
-	ph7_value *pNodes;
 	sxu32 nMark;
 	if( pThis == 0 ){
 		return PH7_OK;
@@ -2958,24 +3048,190 @@ DOM_METHOD(vm_builtin_DOMDocument_loadXML)
 	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::loadXML");
 	DomRestoreWarnings(pVm,sErr);
 	DomStampCwd(pCtx,pDoc);
-	pShell = pDoc ? PH7_LibxmlNewDoc(pVm,pDoc) : 0;
-	pRes = pShell ? DomNewRes(pVm,pShell,pDoc) : 0;
-	if( pRes == 0 ){
-		if( pDoc && pShell == 0 ){
-			xmlFreeDoc(pDoc);
+	ph7_result_bool(pCtx,DomInstallParsed(pCtx,pThis,pDoc));
+	return PH7_OK;
+}
+/*
+ * DOMDocument::load(string $filename, int $options = 0): bool
+ *
+ * The same parse as loadXML from a FILE, and php reads that file through its
+ * own stream layer (which is what makes a wrapper and a userland stream valid
+ * destinations there, and what this does too) while letting libxml word the
+ * failure. What only a differential decides:
+ *
+ *   * a file that is not THERE is libxml's own `I/O warning : failed to load
+ *     external entity "<path>"` and nothing else, while one that exists and
+ *     cannot be opened ALSO gets php's stream warning in front of it;
+ *   * the document's URI is the RESOLVED absolute path -- so `load('a/../b.xml')`
+ *     answers the canonical name -- and it is a URI, not a path: a space in it
+ *     comes back as `%20`;
+ *   * a failed load leaves the receiver's previous tree exactly where it was.
+ */
+DOM_METHOD(vm_builtin_DOMDocument_load)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const ph7_io_stream *pStream;
+	const char *zFile;
+	int nFile = 0;
+	int iOpts = nArg > 1 ? ph7_value_to_int(apArg[1]) : 0;
+	phl_dom_errsave sErr;
+	SyBlob sBody,sPath;
+	void *pHandle;
+	xmlDocPtr pDoc;
+	sxu32 nMark;
+	zFile = nArg > 0 ? ph7_value_to_string(apArg[0],&nFile) : "";
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	if( nFile != (int)SyStrlen(zFile) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"DOMDocument::load(): Argument #1 ($filename) must not contain any null bytes");
+	}
+	if( nFile < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"DOMDocument::load(): Argument #1 ($filename) must not be empty");
+	}
+	DomAbsPath(pCtx,zFile,&sPath);
+	pStream = PH7_VmGetStreamDevice(pVm,&zFile,nFile);
+	pHandle = (pStream && pStream->xRead) ? PH7_StreamOpenHandle(pVm,pStream,zFile,
+		PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0,ph7_function_name(pCtx)) : 0;
+	if( pHandle == 0 ){
+		/* php's stream layer says nothing about a file that is simply absent --
+		 * only libxml does, in its own words and with no source location. A file
+		 * that IS there and would not open (a mode, a lock) gets both. */
+		const ph7_vfs *pVfs = pVm->pEngine->pVfs;
+		SyBlob sMsg;
+		if( pVfs && pVfs->xFileExists && pVfs->xFileExists(zFile) == PH7_OK ){
+			VfsThrowOpenWarning(pCtx,zFile);
 		}
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		SyBlobFormat(&sMsg,"failed to load external entity \"%s\"\n",
+			(const char *)SyBlobData(&sPath));
+		SyBlobNullAppend(&sMsg);
+		/* Both of libxml's channels, as php feeds them: the structured copy is
+		 * what `libxml_get_errors()`/`libxml_get_last_error()` answer (level
+		 * WARNING, no file, no line), and the generic one is the text that gets
+		 * PRINTED -- with the severity spelled into it and at E_WARNING. */
+		nMark = PH7_LibxmlCaptureBegin(pVm);
+		PH7_LibxmlQueueError(pVm,XML_ERR_WARNING,XML_IO_LOAD_ERROR,0,0,
+			(const char *)SyBlobData(&sMsg),0);
+		if( pVm->bLibxmlInternalErr ){
+			xmlSetStructuredErrorFunc(0,0);
+		}else{
+			SyBlob sGen;
+			PH7_LibxmlDropErrors(pVm,nMark);
+			SyBlobInit(&sGen,&pVm->sAllocator);
+			SyBlobFormat(&sGen,"I/O warning : %s",(const char *)SyBlobData(&sMsg));
+			SyBlobNullAppend(&sGen);
+			PH7_LibxmlRaiseGeneric(pVm,"DOMDocument::load",(const char *)SyBlobData(&sGen));
+			SyBlobRelease(&sGen);
+		}
+		SyBlobRelease(&sMsg);
+		SyBlobRelease(&sPath);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	DomSetRes(pVm,pThis,pRes);
-	pNodes = PH7_NativeAttr(pThis,DOM_NODES);
-	if( pNodes ){
-		/* Every wrapper into the OLD tree is stale: start a fresh cache. */
-		PH7_MemObjRelease(pNodes);
-		PH7_MemObjToHashmap(pNodes);
+	SyBlobInit(&sBody,&pVm->sAllocator);
+	PH7_StreamReadWholeFile(pHandle,pStream,&sBody);
+	PH7_StreamCloseHandle(pStream,pHandle);
+	if( SyBlobLength(&sBody) < 1 ){
+		/* libxml's memory parser will not even start on nothing, so the error
+		 * php's FILE parser raises there is queued by hand -- same level, same
+		 * code, same wording, so `libxml_get_errors()` reports what php's does
+		 * and the drain prints php's sentence. */
+		nMark = PH7_LibxmlCaptureBegin(pVm);
+		PH7_LibxmlQueueError(pVm,XML_ERR_FATAL,XML_ERR_DOCUMENT_EMPTY,1,1,
+			"Document is empty\n",(const char *)SyBlobData(&sPath));
+		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::load");
+		SyBlobRelease(&sBody);
+		SyBlobRelease(&sPath);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
 	}
-	ph7_result_bool(pCtx,1);
+	iOpts = DomParseOptions(pThis,iOpts);
+	sErr = DomForceWarnings(pVm,(iOpts & XML_PARSE_RECOVER) != 0);
+	nMark = PH7_LibxmlCaptureBegin(pVm);
+	/* The path is the parse's URL: libxml turns it into the document's URI and
+	 * names it in every diagnostic the parse raises. */
+	pDoc = xmlReadMemory((const char *)SyBlobData(&sBody),(int)SyBlobLength(&sBody),
+		(const char *)SyBlobData(&sPath),0,iOpts);
+	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::load");
+	DomRestoreWarnings(pVm,sErr);
+	SyBlobRelease(&sBody);
+	SyBlobRelease(&sPath);
+	ph7_result_bool(pCtx,DomInstallParsed(pCtx,pThis,pDoc));
 	return PH7_OK;
+}
+/*
+ * The two save options php reads, and what they mean to libxml.
+ *
+ * `LIBXML_NOEMPTYTAG` turns `<e/>` into `<e></e>` and reaches BOTH dumps -- a
+ * node's as much as a document's -- while `LIBXML_NOXMLDECL` only reaches the
+ * whole-document one (a node's output has no declaration to drop). Every other
+ * bit of `$options` is ignored, unknown ones included. php spells the first one
+ * with libxml's library-wide switch; this file asks for it per dump instead,
+ * which says the same thing without touching global state (and without the
+ * deprecated symbol: the MSVC gate refuses it under /WX).
+ *
+ * Both dumps therefore run through libxml's save API. The DOCUMENT's goes out
+ * in the encoding its declaration names -- which is also how a document whose
+ * encoding has no converter fails, with no context to write through -- and a
+ * NODE's is always UTF-8, as php's is.
+ */
+#define DOM_SAVE_NOXMLDECL  2
+#define DOM_SAVE_NOEMPTYTAG 4
+static int DomSaveFlags(int bFormat,int iOpts,int bDoc)
+{
+	int iSave = bFormat ? XML_SAVE_FORMAT : 0;
+	if( iOpts & DOM_SAVE_NOEMPTYTAG ){
+		iSave |= XML_SAVE_NO_EMPTY;
+	}
+	if( bDoc && (iOpts & DOM_SAVE_NOXMLDECL) ){
+		iSave |= XML_SAVE_NO_DECL;
+	}
+	return iSave;
+}
+/*
+ * Serialize a whole document (pNode == 0) or one node the way php's savers do.
+ * Answers the bytes in *pzOut (xmlFree'd by the caller) and their count, or -1.
+ */
+static int DomDumpTree(xmlDocPtr pDoc,xmlNodePtr pNode,int bFormat,int iOpts,xmlChar **pzOut)
+{
+	xmlBufferPtr pBuf = xmlBufferCreate();
+	xmlSaveCtxtPtr pSave;
+	int nOut = 0;
+	*pzOut = 0;
+	if( pBuf == 0 ){
+		return -1;
+	}
+	/* A NODE's dump is UTF-8 whatever the document declares, and naming that
+	 * encoding is also what keeps libxml from ESCAPING every non-ASCII character
+	 * (its no-encoding path writes `&#xE9;`, which is right for a document that
+	 * declares nothing and wrong for a node). A DOCUMENT's goes out in its own
+	 * declared encoding, or in that escaping form when it declares none -- which
+	 * is what php answers there. */
+	pSave = xmlSaveToBuffer(pBuf,pNode ? "UTF-8" : (const char *)pDoc->encoding,
+		DomSaveFlags(bFormat,iOpts,pNode == 0));
+	if( pSave == 0 ){
+		xmlBufferFree(pBuf);
+		return -1;
+	}
+	if( (pNode ? xmlSaveTree(pSave,pNode) : xmlSaveDoc(pSave,pDoc)) < 0 ){
+		nOut = -1;
+	}
+	if( xmlSaveClose(pSave) < 0 ){
+		nOut = -1;
+	}
+	if( nOut == 0 ){
+		nOut = (int)xmlBufferLength(pBuf);
+		*pzOut = xmlStrndup(xmlBufferContent(pBuf),nOut);
+		if( *pzOut == 0 ){
+			nOut = -1;
+		}
+	}
+	xmlBufferFree(pBuf);
+	return nOut;
 }
 /* DOMDocument::saveXML(?DOMNode $node = null, int $options = 0): string|false */
 DOM_METHOD(vm_builtin_DOMDocument_saveXML)
@@ -2985,43 +3241,99 @@ DOM_METHOD(vm_builtin_DOMDocument_saveXML)
 	phl_domnode *pDocNd = DomThisNode(pCtx);
 	phl_domnode *pTgt = (nArg > 0 && !ph7_value_is_null(apArg[0])) ? DomObjArg(apArg[0]) : 0;
 	int bFormat = pThis && PH7_NativeAttrTruthy(pThis,"formatOutput");
-	xmlDocPtr pDoc;
+	int iOpts = nArg > 1 ? ph7_value_to_int(apArg[1]) : 0;
+	int bWhole;
+	xmlChar *zOut = 0;
+	int nOut;
 	sxu32 nMark;
 	if( pDocNd == 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	pDoc = (xmlDocPtr)pDocNd->pNode;
+	bWhole = pTgt == 0 || pTgt->pNode == pDocNd->pNode;
 	nMark = PH7_LibxmlCaptureBegin(pVm);
-	if( pTgt == 0 || pTgt->pNode == pDocNd->pNode ){
-		xmlChar *zOut = 0;
-		int nOut = 0;
-		xmlDocDumpFormatMemory(pDoc,&zOut,&nOut,bFormat ? 1 : 0);
-		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::saveXML");
-		if( zOut == 0 ){
-			ph7_result_bool(pCtx,0);
-			return PH7_OK;
+	nOut = DomDumpTree((xmlDocPtr)pDocNd->pNode,bWhole ? 0 : (xmlNodePtr)pTgt->pNode,
+		bFormat,iOpts,&zOut);
+	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::saveXML");
+	if( nOut < 0 ){
+		/* php says so rather than answering an empty document: the encoding the
+		 * declaration names has no converter and nothing was written. */
+		if( bWhole ){
+			ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Could not save document");
 		}
-		ph7_result_string(pCtx,(const char *)zOut,nOut);
-		xmlFree(zOut);
-	}else{
-		xmlBufferPtr pBuf = xmlBufferCreate();
-		int rc;
-		if( pBuf == 0 ){
-			PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::saveXML");
-			ph7_result_bool(pCtx,0);
-			return PH7_OK;
-		}
-		rc = xmlNodeDump(pBuf,pDoc,(xmlNodePtr)pTgt->pNode,0,bFormat ? 1 : 0);
-		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::saveXML");
-		if( rc < 0 ){
-			xmlBufferFree(pBuf);
-			ph7_result_bool(pCtx,0);
-			return PH7_OK;
-		}
-		ph7_result_string(pCtx,(const char *)xmlBufferContent(pBuf),(int)xmlBufferLength(pBuf));
-		xmlBufferFree(pBuf);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
 	}
+	ph7_result_string(pCtx,(const char *)zOut,nOut);
+	xmlFree(zOut);
+	return PH7_OK;
+}
+/*
+ * DOMDocument::save(string $filename, int $options = 0): int|false
+ *
+ * saveXML's bytes written to a file, and the COUNT of them rather than the
+ * bytes -- through the stream layer, which is where php's
+ * `save(<path>): Failed to open stream: <reason>` comes from. Two rules only a
+ * differential decides: `LIBXML_NOXMLDECL` does NOT reach this one (php reads
+ * it in saveXML only, so a saved document always carries its declaration),
+ * and a document whose declared encoding has no converter is a silent `false`
+ * here where saveXML says "Could not save document".
+ */
+DOM_METHOD(vm_builtin_DOMDocument_save)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	phl_domnode *pDocNd = DomThisNode(pCtx);
+	const ph7_io_stream *pStream;
+	const char *zFile;
+	int nFile = 0;
+	int iOpts = nArg > 1 ? ph7_value_to_int(apArg[1]) : 0;
+	int bFormat = pThis && PH7_NativeAttrTruthy(pThis,"formatOutput");
+	int nOut;
+	xmlChar *zOut = 0;
+	void *pHandle;
+	sxu32 nMark;
+	zFile = nArg > 0 ? ph7_value_to_string(apArg[0],&nFile) : "";
+	if( nFile != (int)SyStrlen(zFile) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"DOMDocument::save(): Argument #1 ($filename) must not contain any null bytes");
+	}
+	if( nFile < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"DOMDocument::save(): Argument #1 ($filename) must not be empty");
+	}
+	if( pDocNd == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	nMark = PH7_LibxmlCaptureBegin(pVm);
+	nOut = DomDumpTree((xmlDocPtr)pDocNd->pNode,0,bFormat,iOpts & ~DOM_SAVE_NOXMLDECL,&zOut);
+	/* php reports this failure through the return value alone. */
+	PH7_LibxmlDropErrors(pVm,nMark);
+	if( nOut < 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pStream = PH7_VmGetStreamDevice(pVm,&zFile,nFile);
+	pHandle = (pStream && pStream->xWrite) ? PH7_StreamOpenHandle(pVm,pStream,zFile,
+		PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_CREATE|PH7_IO_OPEN_TRUNC,FALSE,0,FALSE,0,
+		ph7_function_name(pCtx)) : 0;
+	if( pHandle == 0 ){
+		xmlFree(zOut);
+		VfsThrowOpenWarning(pCtx,zFile);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( nOut > 0 && pStream->xWrite(pHandle,(const void *)zOut,nOut) < 0 ){
+		nOut = -1;
+	}
+	PH7_StreamCloseHandle(pStream,pHandle);
+	xmlFree(zOut);
+	if( nOut < 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_int(pCtx,nOut);
 	return PH7_OK;
 }
 /*
@@ -5574,6 +5886,10 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMDocument_construct },
 		{ "loadXML",              PH7_MOD_PUBLIC, "string $source, int $options = 0", "@bool",
 		  vm_builtin_DOMDocument_loadXML },
+		{ "load",                 PH7_MOD_PUBLIC, "string $filename, int $options = 0", "@bool",
+		  vm_builtin_DOMDocument_load },
+		{ "save",                 PH7_MOD_PUBLIC, "string $filename, int $options = 0", "@int|false",
+		  vm_builtin_DOMDocument_save },
 		{ "saveXML",              PH7_MOD_PUBLIC, "?DOMNode $node = null, int $options = 0", "@string|false",
 		  vm_builtin_DOMDocument_saveXML },
 		{ "createElement",        PH7_MOD_PUBLIC, "string $localName, string $value = ''", "",
