@@ -2605,6 +2605,10 @@ struct ph7_vm
 #endif
 #ifdef PH7_ENABLE_LIBXML
 	SySet aLibxmlErr;          /* Queued phl_libxml_err entries (libxml_get_errors) */
+	SyBlob sLibxmlPend;        /* libxml message text held back because it has no trailing
+	                            * newline: php buffers such a fragment and prints it JOINED
+	                            * to the next diagnostic, whenever that arrives (see
+	                            * PH7_LibxmlCaptureEnd). Reset per request. */
 	int bLibxmlInternalErr;    /* libxml_use_internal_errors(true) is active */
 	void *pLibxmlLastErr;      /* phl_libxml_err* slot backing libxml_get_last_error */
 	void *pXmlDocs;            /* phl_xmldoc registry chain; freed on reset/release */

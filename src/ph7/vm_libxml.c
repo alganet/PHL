@@ -72,6 +72,9 @@ PH7_PRIVATE void PH7_LibxmlVmReset(ph7_vm *pVm)
 {
 	phl_xmldoc *pDoc,*pNext;
 	PH7_LibxmlClearErrors(pVm);
+	/* A held message fragment is per-request state: a reused VM must not print
+	 * the previous request's tail joined to this one's first diagnostic. */
+	SyBlobReset(&pVm->sLibxmlPend);
 	pVm->bLibxmlInternalErr = 0;
 	pDoc = (phl_xmldoc *)pVm->pXmlDocs;
 	while( pDoc ){
@@ -99,6 +102,7 @@ PH7_PRIVATE void PH7_LibxmlVmRelease(ph7_vm *pVm)
 {
 	PH7_LibxmlVmReset(pVm);
 	SySetRelease(&pVm->aLibxmlErr);
+	SyBlobRelease(&pVm->sLibxmlPend);
 }
 /*
  * Release the copied message/file strings of one queue entry.
@@ -272,15 +276,35 @@ PH7_PRIVATE void PH7_LibxmlCaptureEnd(ph7_vm *pVm,sxu32 nMark,const char *zFnNam
 		for( n = nMark ; n < SySetUsed(&pVm->aLibxmlErr) ; ++n ){
 			SyString sFunc;
 			SyBlob sMsg;
-			sxu32 nTrim = aErr[n].sMsg.nByte;
+			const char *zPend;
+			sxu32 nPend,nTrim;
+			/* php's libxml diagnostics are LINE-buffered: each message is
+			 * appended to one buffer and the diagnostic is only raised when the
+			 * accumulated text ends in a newline. Most of libxml's messages do,
+			 * so most of them stand alone -- but the ones that do not (libxml's
+			 * "Validation failed: no DTD found !" is one) are held back and
+			 * printed JOINED to whatever comes next, even from a later parse of
+			 * a different document, and are never printed at all if nothing
+			 * else follows. Reproduced rather than tidied up: a program's
+			 * output is what it is. */
+			SyBlobAppend(&pVm->sLibxmlPend,aErr[n].sMsg.zString,aErr[n].sMsg.nByte);
+			zPend = (const char *)SyBlobData(&pVm->sLibxmlPend);
+			nPend = SyBlobLength(&pVm->sLibxmlPend);
+			if( nPend < 1 || zPend[nPend-1] != '\n' ){
+				/* no line yet: hold it for the next message */
+				LibxmlFreeErr(pVm,&aErr[n]);
+				continue;
+			}
+			nTrim = nPend;
 			/* php trims the trailing newline off the warning copy */
-			while( nTrim > 0 && (aErr[n].sMsg.zString[nTrim-1] == '\n' || aErr[n].sMsg.zString[nTrim-1] == '\r') ){
+			while( nTrim > 0 && (zPend[nTrim-1] == '\n' || zPend[nTrim-1] == '\r') ){
 				nTrim--;
 			}
 			SyBlobInit(&sMsg,&pVm->sAllocator);
-			SyBlobAppend(&sMsg,aErr[n].sMsg.zString,nTrim);
+			SyBlobAppend(&sMsg,zPend,nTrim);
 			/* php appends the source location only for parser errors that
-			 * carry a real line; generic libxml errors print bare. */
+			 * carry a real line; generic libxml errors print bare. The location
+			 * and the LEVEL are the flushing message's, not the held one's. */
 			if( aErr[n].iLine > 0 ){
 				if( aErr[n].sFile.nByte > 0 ){
 					SyBlobFormat(&sMsg," in %z, line: %d",&aErr[n].sFile,aErr[n].iLine);
@@ -301,6 +325,7 @@ PH7_PRIVATE void PH7_LibxmlCaptureEnd(ph7_vm *pVm,sxu32 nMark,const char *zFnNam
 				aErr[n].iLevel == XML_ERR_WARNING ? PH7_CTX_NOTICE : PH7_CTX_WARNING,
 				(const char *)SyBlobData(&sMsg));
 			SyBlobRelease(&sMsg);
+			SyBlobReset(&pVm->sLibxmlPend);
 			LibxmlFreeErr(pVm,&aErr[n]);
 		}
 		SySetTruncate(&pVm->aLibxmlErr,nMark);
@@ -784,6 +809,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallLibxml(ph7_vm *pVm)
 	sxu32 n;
 	LibxmlGlobalInit();
 	SySetInit(&pVm->aLibxmlErr,&pVm->sAllocator,sizeof(phl_libxml_err));
+	SyBlobInit(&pVm->sLibxmlPend,&pVm->sAllocator);
 	pVm->bLibxmlInternalErr = 0;
 	pVm->pLibxmlLastErr = 0;
 	pVm->pXmlDocs = 0;
