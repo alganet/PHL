@@ -853,6 +853,43 @@ static ph7_value * VmUnserializeObject(unserialize_data *ud)
 			bIncomplete = 1;
 		}
 	}
+	/*
+	 * The refusal READING one back. It mirrors the writing side's two kinds,
+	 * including the second sentence, and the escape from the soft kind is the
+	 * READING magic: `__wakeup()` or `__unserialize()` declared anywhere in the
+	 * chain, where the writing side wants `__serialize()`/`__sleep()`. A
+	 * subclass of a DOM node with one of those unserializes normally; the same
+	 * subclass with only `__sleep()` does not.
+	 *
+	 * The hard flag admits no escape at all: `class M extends PDO` declaring
+	 * `__unserialize()` still reports the plain sentence, and so does a
+	 * subclass of SplFileInfo, which is the hard kind despite being SPL.
+	 *
+	 * Unlike the writing side this cannot sit after a magic lookup, because
+	 * the magic runs on an instance and the whole point is not to build one --
+	 * so the lookup is explicit here.
+	 *
+	 * Two more rules, both measured: it fires on the HEADER, before the body is
+	 * read (a truncated payload behind a denied class name is still this
+	 * exception, not a syntax error), and it is skipped for the incomplete
+	 * carrier, because `allowed_classes: false` never builds the named class --
+	 * php hands back __PHP_Incomplete_Class there without complaint.
+	 */
+	if( !bIncomplete && VmClassRefusesSerialize(pClass,PH7_CLASS_NOSERIALIZE) ){
+		PH7_VmThrowException(ud->pCtx,"Exception",
+			"Unserialization of '%z' is not allowed",&pClass->sName);
+		ud->exc = 1;
+		return 0;
+	}
+	if( !bIncomplete && VmClassRefusesSerialize(pClass,PH7_CLASS_NOSERIALIZE_SUBOK)
+	 && PH7_ClassExtractMethod(pClass,"__wakeup",sizeof("__wakeup")-1) == 0
+	 && PH7_ClassExtractMethod(pClass,"__unserialize",sizeof("__unserialize")-1) == 0 ){
+		PH7_VmThrowException(ud->pCtx,"Exception",
+			"Unserialization of '%z' is not allowed, unless unserialization methods "
+			"are implemented in a subclass",&pClass->sName);
+		ud->exc = 1;
+		return 0;
+	}
 	if( bIncomplete ){
 		pClass = ud->pVm->pIncClass;
 		if( pClass == 0 ){ return 0; } /* defensive: the carrier is always installed */
