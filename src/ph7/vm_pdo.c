@@ -800,9 +800,16 @@ static int vm_builtin_PDO_setAttribute(ph7_context *pCtx,int nArg,ph7_value **ap
 		case PDO_ATTR_STRINGIFY_FETCHES:
 			pConn->bStringify = pVal ? ph7_value_to_bool(pVal) : 0;
 			break;
-		case PDO_SQLITE_ATTR_TRANSACTION_MODE:
-			pConn->iTxMode = (int)(pVal ? ph7_value_to_int64(pVal) : 0);
+		case PDO_SQLITE_ATTR_TRANSACTION_MODE: {
+			/* only php's three modes; anything else answers false in silence */
+			ph7_int64 iTx = pVal ? ph7_value_to_int64(pVal) : 0;
+			if( iTx < 0 || iTx > 2 ){
+				ph7_result_bool(pCtx,0);
+				return PH7_OK;
+			}
+			pConn->iTxMode = (int)iTx;
 			break;
+		}
 		case PDO_ATTR_STATEMENT_CLASS: {
 			/* Validated now; the class is USED when a statement is built. */
 			sxi32 rcSet = PdoSetStatementClass(pCtx,pConn,pVal);
@@ -2708,6 +2715,93 @@ static int vm_builtin_PDO_query(ph7_context *pCtx,int nArg,ph7_value **apArg)
 }
 
 /* ------------------------------------------------------------------------
+ * Transactions
+ * ------------------------------------------------------------------------ */
+/*
+ * PDO::beginTransaction(): bool / commit() / rollBack() / inTransaction()
+ *
+ * Whether a transaction is open is sqlite's own autocommit flag and not a
+ * count this driver keeps, so a BEGIN the script sent through exec() is
+ * indistinguishable from beginTransaction() -- inTransaction() answers true
+ * for it and a second beginTransaction() refuses.
+ *
+ * The three refusals are bare sentences with no SQLSTATE in front of them,
+ * which is unlike every other PDOException the driver raises; and the four
+ * verbs are the ones that do NOT clear the handle's error on entry.
+ */
+static int PdoTxRun(ph7_context *pCtx,const char *zSql,const char *zFn)
+{
+	phl_pdo *pConn = PdoOfInstance(PH7_ContextThis(pCtx));
+	if( pConn == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");
+	}
+	if( PH7_PdoSqliteExec(pConn,zSql,(int)SyStrlen(zSql)) < 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_PdoRaise(pCtx,pConn,zFn);
+	}
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+static int vm_builtin_PDO_beginTransaction(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo *pConn = PdoOfInstance(PH7_ContextThis(pCtx));
+	const char *zBegin = "BEGIN";
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pConn == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");
+	}
+	if( PH7_PdoSqliteInTransaction(pConn) ){
+		return PH7_VmThrowException(pCtx,"PDOException",
+			"There is already an active transaction");
+	}
+	/* which BEGIN, per Pdo\Sqlite::ATTR_TRANSACTION_MODE */
+	if( pConn->iTxMode == 1 ){
+		zBegin = "BEGIN IMMEDIATE";
+	}else if( pConn->iTxMode == 2 ){
+		zBegin = "BEGIN EXCLUSIVE";
+	}
+	return PdoTxRun(pCtx,zBegin,"PDO::beginTransaction");
+}
+static int vm_builtin_PDO_commit(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo *pConn = PdoOfInstance(PH7_ContextThis(pCtx));
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pConn == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");
+	}
+	if( !PH7_PdoSqliteInTransaction(pConn) ){
+		return PH7_VmThrowException(pCtx,"PDOException","There is no active transaction");
+	}
+	return PdoTxRun(pCtx,"COMMIT","PDO::commit");
+}
+static int vm_builtin_PDO_rollBack(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo *pConn = PdoOfInstance(PH7_ContextThis(pCtx));
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pConn == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");
+	}
+	if( !PH7_PdoSqliteInTransaction(pConn) ){
+		return PH7_VmThrowException(pCtx,"PDOException","There is no active transaction");
+	}
+	return PdoTxRun(pCtx,"ROLLBACK","PDO::rollBack");
+}
+static int vm_builtin_PDO_inTransaction(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo *pConn = PdoOfInstance(PH7_ContextThis(pCtx));
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pConn == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");
+	}
+	ph7_result_bool(pCtx,PH7_PdoSqliteInTransaction(pConn));
+	return PH7_OK;
+}
+
+/* ------------------------------------------------------------------------
  * Connecting
  * ------------------------------------------------------------------------ */
 /*
@@ -3077,8 +3171,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm)
 		{ "connect", PH7_MOD_PUBLIC|PH7_MOD_STATIC,
 		  "string $dsn, ?string $username = null, ?string $password = null, ?array $options = null",
 		  "static", vm_builtin_PDO_connect },
-		{ "beginTransaction", PH7_MOD_PUBLIC, "", "@bool", vm_builtin_pdo_stub },
-		{ "commit",           PH7_MOD_PUBLIC, "", "@bool", vm_builtin_pdo_stub },
+		{ "beginTransaction", PH7_MOD_PUBLIC, "", "@bool", vm_builtin_PDO_beginTransaction },
+		{ "commit",           PH7_MOD_PUBLIC, "", "@bool", vm_builtin_PDO_commit },
 		{ "errorCode",        PH7_MOD_PUBLIC, "", "@?string", vm_builtin_PDO_errorCode },
 		{ "errorInfo",        PH7_MOD_PUBLIC, "", "@array", vm_builtin_PDO_errorInfo },
 		{ "exec",             PH7_MOD_PUBLIC, "string $statement", "@int|false",
@@ -3087,7 +3181,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm)
 		  vm_builtin_PDO_getAttribute },
 		{ "getAvailableDrivers", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "", "@array",
 		  vm_builtin_PDO_getAvailableDrivers },
-		{ "inTransaction",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_pdo_stub },
+		{ "inTransaction",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_PDO_inTransaction },
 		{ "lastInsertId",     PH7_MOD_PUBLIC, "?string $name = null", "@string|false",
 		  vm_builtin_PDO_lastInsertId },
 		{ "prepare",          PH7_MOD_PUBLIC, "string $query, array $options = []",
@@ -3097,7 +3191,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm)
 		  "@PDOStatement|false", vm_builtin_PDO_query },
 		{ "quote",            PH7_MOD_PUBLIC, "string $string, int $type = PDO::PARAM_STR",
 		  "@string|false", vm_builtin_PDO_quote },
-		{ "rollBack",         PH7_MOD_PUBLIC, "", "@bool", vm_builtin_pdo_stub },
+		{ "rollBack",         PH7_MOD_PUBLIC, "", "@bool", vm_builtin_PDO_rollBack },
 		{ "setAttribute",     PH7_MOD_PUBLIC, "int $attribute, mixed $value", "@bool",
 		  vm_builtin_PDO_setAttribute },
 	};

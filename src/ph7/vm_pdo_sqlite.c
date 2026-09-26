@@ -171,6 +171,15 @@ PH7_PRIVATE ph7_int64 PH7_PdoSqliteChanges(phl_pdo *pConn)
 	return pConn->pDb ? (ph7_int64)sqlite3_changes(pConn->pDb) : 0;
 }
 /*
+ * sqlite's own autocommit flag rather than a counter of our own: php reads it
+ * too, which is why `exec("BEGIN")` makes inTransaction() answer true and
+ * beginTransaction() refuse -- the driver has no idea who opened it.
+ */
+PH7_PRIVATE int PH7_PdoSqliteInTransaction(phl_pdo *pConn)
+{
+	return pConn->pDb ? (sqlite3_get_autocommit(pConn->pDb) == 0) : 0;
+}
+/*
  * Prepare ONE statement.  php compiles only the first statement of the string
  * here -- unlike exec(), which runs them all -- and what follows it is simply
  * not executed.

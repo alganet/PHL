@@ -165,6 +165,9 @@ PH7_PRIVATE void PH7_PdoSqliteTakeError(phl_pdo *pConn);
 PH7_PRIVATE ph7_int64 PH7_PdoSqliteExec(phl_pdo *pConn,const char *zSql,int nSql);
 PH7_PRIVATE ph7_int64 PH7_PdoSqliteLastInsertId(phl_pdo *pConn);
 PH7_PRIVATE ph7_int64 PH7_PdoSqliteChanges(phl_pdo *pConn);
+/* Whether a transaction is open: sqlite's own autocommit flag, so a BEGIN the
+ * script sent through exec() counts exactly as beginTransaction() does. */
+PH7_PRIVATE int PH7_PdoSqliteInTransaction(phl_pdo *pConn);
 /* Statement plumbing. Prepare answers 0 on failure with the connection's error
  * set; step answers 1 (a row), 0 (finished) or -1 (failed). */
 PH7_PRIVATE int PH7_PdoSqlitePrepare(phl_pdo_stmt *pSt,const char *zSql,int nSql);
