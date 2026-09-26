@@ -1247,28 +1247,65 @@ DOM_METHOD(vm_builtin_DOMDocument_createCDATASection)
 {
 	return DomDocCreateData(pCtx,XML_CDATA_SECTION_NODE,nArg,apArg);
 }
-/* DOMDocument::normalizeDocument(): void -- merge adjacent text nodes.  Merged-
- * away siblings are PARKED as orphans, never freed, so any PHP wrapper to
- * them stays valid (they just become empty orphans). */
+/*
+ * php's normalization, which both `DOMNode::normalize()` and
+ * `DOMDocument::normalizeDocument()` are: adjacent text nodes merge into the
+ * FIRST of the run, and a text node left EMPTY is then dropped from the tree
+ * entirely -- including one that was empty to begin with, which is what makes
+ * `$el->normalize()` the way a program gets rid of the zero-length text nodes an
+ * edit leaves behind. Dropping them was the half missing here: a document that
+ * had been normalized still serialized `<k></k>` where php writes `<k/>`, and
+ * still counted the empty node in `childNodes->length`.
+ *
+ * Merged-away and dropped siblings are PARKED as orphans, never freed, so any
+ * PHP wrapper to them stays valid -- php keeps exactly those alive too, through
+ * its own wrapper refcount, and a variable holding one reads its old content and
+ * a NULL `parentNode` in both engines.
+ *
+ * The walk descends into a child ELEMENT and into that element's ATTRIBUTES
+ * (an attribute's value is a child text list of its own, and a program that
+ * built one in pieces has the same run of nodes to merge). What it does NOT
+ * touch is the RECEIVER's own attributes -- php's switch reaches an attribute
+ * only through a child element -- so `$el->normalize()` leaves `$el`'s
+ * attributes alone while `$el->parentNode->normalize()` normalizes them.
+ */
 static void DomNormalizeTree(phl_xmldoc *pShell,xmlNodePtr pNode)
 {
 	xmlNodePtr pChild = pNode->children;
 	while( pChild ){
 		if( pChild->type == XML_TEXT_NODE ){
+			xmlNodePtr pNext;
 			while( pChild->next && pChild->next->type == XML_TEXT_NODE ){
-				xmlNodePtr pNext = pChild->next;
+				pNext = pChild->next;
 				if( pNext->content ){
 					xmlNodeAddContent(pChild,pNext->content);
 				}
 				xmlUnlinkNode(pNext);
 				DomOrphanAdd(pShell,pNext);
 			}
+			if( pChild->content == 0 || pChild->content[0] == 0 ){
+				pNext = pChild->next;
+				xmlUnlinkNode(pChild);
+				DomOrphanAdd(pShell,pChild);
+				pChild = pNext;
+				continue;
+			}
 		}else if( pChild->type == XML_ELEMENT_NODE ){
+			xmlAttrPtr pAttr;
+			DomNormalizeTree(pShell,pChild);
+			for( pAttr = pChild->properties ; pAttr ; pAttr = pAttr->next ){
+				DomNormalizeTree(pShell,(xmlNodePtr)pAttr);
+			}
+		}else if( pChild->type == XML_ATTRIBUTE_NODE ){
+			/* Unreachable from a tree walk (attributes are not children), but
+			 * php's switch states it and a fragment/DTD shape could reach it. */
 			DomNormalizeTree(pShell,pChild);
 		}
 		pChild = pChild->next;
 	}
 }
+/* DOMDocument::normalizeDocument(): void and DOMNode::normalize(): void -- php
+ * runs the same walk from the receiver, so the two share one body. */
 DOM_METHOD(vm_builtin_DOMDocument_normalizeDocument)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
@@ -1277,6 +1314,23 @@ DOM_METHOD(vm_builtin_DOMDocument_normalizeDocument)
 	if( pNd ){
 		DomNormalizeTree(pNd->pShell,(xmlNodePtr)pNd->pNode);
 	}
+	return PH7_OK;
+}
+/* DOMNode::getNodePath(): ?string -- the XPath that selects this node, or null
+ * for one that is not addressable at all (anything under a fragment). php hands
+ * libxml's answer straight back, positional predicate and all. */
+DOM_METHOD(vm_builtin_DOMNode_getNodePath)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlChar *zPath = pNd ? xmlGetNodePath((xmlNodePtr)pNd->pNode) : 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( zPath == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	ph7_result_string(pCtx,(const char *)zPath,-1);
+	xmlFree(zPath);
 	return PH7_OK;
 }
 
@@ -2440,6 +2494,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		/* php declares no return type at all on this one, not even a tentative
 		 * one, so the row states none either. */
 		{ "cloneNode",      PH7_MOD_PUBLIC, "bool $deep = false", "", vm_builtin_DOMNode_cloneNode },
+		/* php runs the same walk normalizeDocument() does, from the receiver. */
+		{ "normalize",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_DOMDocument_normalizeDocument },
+		{ "getNodePath",    PH7_MOD_PUBLIC, "", "@?string", vm_builtin_DOMNode_getNodePath },
 		{ "getLineNo",      PH7_MOD_PUBLIC, "", "@int", vm_builtin_DOMNode_getLineNo },
 		{ "C14N",           PH7_MOD_PUBLIC,
 		  "bool $exclusive = false, bool $withComments = false, ?array $xpath = null, "
