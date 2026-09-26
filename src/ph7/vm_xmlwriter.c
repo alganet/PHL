@@ -4,6 +4,7 @@
  */
 #ifdef PH7_ENABLE_LIBXML
 #include "ph7int.h"
+#include <libxml/tree.h>
 #include <libxml/xmlwriter.h>
 
 /*
@@ -85,6 +86,100 @@ static phl_xmlwriter * XmlWriterOf(ph7_context *pCtx)
 	pRes = PH7_ClassInstanceFetchAttr(pThis,&sAttr);
 	return XmlWriterArg(pRes);
 }
+/*
+ * One call into a writer verb.
+ *
+ * php implements the class and the procedural surface with ONE C function per
+ * verb: the method spelling reaches the writer through `$this`, the function
+ * spelling takes it as argument #1 and shifts every other argument up by one.
+ * The two therefore share their diagnostics, and that is visible from PHP --
+ * see XmlWriterCheckName for the off-by-one it leaves in the method's own
+ * error text. A verb body reads its arguments through this descriptor so both
+ * entry points can drive it.
+ */
+typedef struct xw_call xw_call;
+struct xw_call {
+	phl_xmlwriter *pXw;    /* the resolved writer; never NULL in a verb body */
+	const char *zFn;       /* "XMLWriter::startElement" / "xmlwriter_start_element" */
+	const char *zNameArg;  /* this spelling's argument text for the NAME argument */
+	int nArg;              /* how many arguments follow the writer */
+	ph7_value **apArg;     /* the first argument past the writer */
+};
+/*
+ * php's Z_XMLWRITER_P: an XMLWriter that was never opened has no writer behind
+ * it, and every method and every procedural entry refuses it with this Error
+ * rather than answering false -- which is what a caller would otherwise store
+ * or print as if a document had been written.
+ */
+static int XmlWriterMissing(ph7_context *pCtx)
+{
+	return PH7_VmThrowException(pCtx,"Error","Invalid or uninitialized XMLWriter object");
+}
+/*
+ * Build the call descriptor for the METHOD spelling. Returns 0 when the verb
+ * may run, or the throw status when the receiver holds no writer.
+ */
+static int XwCallFromThis(ph7_context *pCtx,xw_call *pCall,const char *zFn,
+	const char *zNameArg,int nArg,ph7_value **apArg)
+{
+	phl_xmlwriter *pXw = XmlWriterOf(pCtx);
+	if( pXw == 0 || pXw->pWriter == 0 ){
+		return XmlWriterMissing(pCtx);
+	}
+	pCall->pXw = pXw;
+	pCall->zFn = zFn;
+	pCall->zNameArg = zNameArg;
+	pCall->nArg = nArg;
+	pCall->apArg = apArg;
+	return 0;
+}
+/* The n-th argument past the writer as a string, or "" when it is absent. */
+static const char * XwStr(xw_call *pCall,int iArg)
+{
+	if( iArg >= pCall->nArg || pCall->apArg[iArg] == 0 ){
+		return "";
+	}
+	return ph7_value_to_string(pCall->apArg[iArg],0);
+}
+/* The n-th argument past the writer as a string, or NULL for an absent/null one. */
+static const char * XwStrOrNull(xw_call *pCall,int iArg)
+{
+	if( iArg >= pCall->nArg || pCall->apArg[iArg] == 0
+	 || ph7_value_is_null(pCall->apArg[iArg]) ){
+		return 0;
+	}
+	return ph7_value_to_string(pCall->apArg[iArg],0);
+}
+/* The n-th argument past the writer as a bool. */
+static int XwBool(xw_call *pCall,int iArg,int bDefault)
+{
+	if( iArg >= pCall->nArg || pCall->apArg[iArg] == 0 ){
+		return bDefault;
+	}
+	return ph7_value_to_bool(pCall->apArg[iArg]) ? 1 : 0;
+}
+/*
+ * php's XMLW_NAME_CHK: the name a verb is handed is validated with libxml's own
+ * xmlValidateName and refused with a ValueError before anything is written --
+ * the alternative is what this engine used to do, which is to hand libxml a name
+ * it will not quote and emit a document that is not XML (`<1bad`, `<a x y="v"`).
+ *
+ * The argument NUMBER php reports is the PROCEDURAL one, hardcoded in the macro,
+ * so the method spelling reports its own first argument as "#2" and prints
+ * whichever of its OWN parameters sits at that shifted position -- `$content`,
+ * `$value`, `$isParam` -- or no name at all when it has none. Reproduced as
+ * written: each entry point states its spelling's text.
+ */
+static int XmlWriterCheckName(ph7_context *pCtx,xw_call *pCall,const char *zName,
+	const char *zWhat)
+{
+	if( xmlValidateName((const xmlChar *)zName,0) == 0 ){
+		return 0;
+	}
+	return PH7_VmThrowException(pCtx,"ValueError",
+		"%s(): Argument %s must be a valid %s, \"%s\" given",
+		pCall->zFn,pCall->zNameArg,zWhat,zName);
+}
 /* bool XMLWriter::openMemory() */
 static int vm_builtin_xw_open_memory(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -132,183 +227,198 @@ static int vm_builtin_xw_open_memory(ph7_context *pCtx,int nArg,ph7_value **apAr
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
-/* bool __xw_set_indent(res,bool) */
-static int vm_builtin_xw_set_indent(ph7_context *pCtx,int nArg,ph7_value **apArg)
+/*
+ * Run one verb inside a libxml error capture window, the way php's own
+ * xmlwriter does: libxml reports a refusal it can explain (a DTD with a public
+ * identifier and no system one, say) through the error handler rather than the
+ * return value, and php turns each one into a warning naming the caller.
+ */
+static int XwRun(ph7_context *pCtx,xw_call *pCall,int (*xVerb)(ph7_context *,xw_call *))
 {
-	phl_xmlwriter *pXw = XmlWriterOf(pCtx);
-	int bIndent = nArg > 0 ? ph7_value_to_bool(apArg[0]) : 0;
-	int rc = -1;
-	if( pXw && pXw->pWriter ){
-		rc = xmlTextWriterSetIndent(pXw->pWriter,bIndent ? 1 : 0);
-		if( rc >= 0 && bIndent ){
-			/* php's default indent string is a single space */
-			xmlTextWriterSetIndentString(pXw->pWriter,(const xmlChar *)" ");
+	sxu32 nMark = PH7_LibxmlCaptureBegin(pCtx->pVm);
+	int rc = xVerb(pCtx,pCall);
+	PH7_LibxmlCaptureEnd(pCtx->pVm,nMark,pCall->zFn);
+	return rc;
+}
+/* Report a libxml writer call the way php does: its int status as a bool. */
+static int XwStatus(ph7_context *pCtx,int rc)
+{
+	ph7_result_bool(pCtx,rc >= 0);
+	return PH7_OK;
+}
+/*
+ * One method entry point. The receiver has to hold a writer (php's Error), and
+ * the verb then reads its arguments from #0 up -- the procedural entry, added
+ * with the rest of that surface, hands it the same descriptor one slot along.
+ */
+#define XW_METHOD(cfn,verb,meth,namearg)                                          \
+static int cfn(ph7_context *pCtx,int nArg,ph7_value **apArg)                      \
+{                                                                                 \
+	xw_call sCall;                                                            \
+	int rc;                                                                   \
+	SyZero(&sCall,sizeof(sCall));                                             \
+	rc = XwCallFromThis(pCtx,&sCall,"XMLWriter::" meth,namearg,nArg,apArg);   \
+	if( rc != 0 ){                                                            \
+		return rc;                                                        \
+	}                                                                         \
+	return XwRun(pCtx,&sCall,verb);                                           \
+}
+
+/* bool XMLWriter::setIndent(bool $enable) */
+static int XwSetIndent(ph7_context *pCtx,xw_call *pCall)
+{
+	/* No indent STRING is set here: libxml's own default is the single space
+	 * php answers with, and writing it back made setIndentString() before
+	 * setIndent() -- the documented order, and the one php's own examples use --
+	 * silently lose the string it had just been given. */
+	return XwStatus(pCtx,xmlTextWriterSetIndent(pCall->pXw->pWriter,XwBool(pCall,0,0)));
+}
+XW_METHOD(vm_builtin_xw_set_indent,XwSetIndent,"setIndent",0)
+
+/* bool XMLWriter::setIndentString(string $indentation) */
+static int XwSetIndentString(ph7_context *pCtx,xw_call *pCall)
+{
+	return XwStatus(pCtx,xmlTextWriterSetIndentString(pCall->pXw->pWriter,
+		(const xmlChar *)XwStr(pCall,0)));
+}
+XW_METHOD(vm_builtin_xw_set_indent_string,XwSetIndentString,"setIndentString",0)
+
+/* bool XMLWriter::startDocument(?string $version, ?string $encoding, ?string $standalone) */
+static int XwStartDocument(ph7_context *pCtx,xw_call *pCall)
+{
+	return XwStatus(pCtx,xmlTextWriterStartDocument(pCall->pXw->pWriter,
+		XwStrOrNull(pCall,0),XwStrOrNull(pCall,1),XwStrOrNull(pCall,2)));
+}
+XW_METHOD(vm_builtin_xw_start_document,XwStartDocument,"startDocument",0)
+
+/* bool XMLWriter::endDocument() */
+static int XwEndDocument(ph7_context *pCtx,xw_call *pCall)
+{
+	return XwStatus(pCtx,xmlTextWriterEndDocument(pCall->pXw->pWriter));
+}
+XW_METHOD(vm_builtin_xw_end_document,XwEndDocument,"endDocument",0)
+
+/* bool XMLWriter::startElement(string $name) */
+static int XwStartElement(ph7_context *pCtx,xw_call *pCall)
+{
+	const char *zName = XwStr(pCall,0);
+	int rc = XmlWriterCheckName(pCtx,pCall,zName,"element name");
+	if( rc != 0 ){
+		return rc;
+	}
+	return XwStatus(pCtx,xmlTextWriterStartElement(pCall->pXw->pWriter,(const xmlChar *)zName));
+}
+XW_METHOD(vm_builtin_xw_start_element,XwStartElement,"startElement","#2")
+
+/* bool XMLWriter::endElement() */
+static int XwEndElement(ph7_context *pCtx,xw_call *pCall)
+{
+	return XwStatus(pCtx,xmlTextWriterEndElement(pCall->pXw->pWriter));
+}
+XW_METHOD(vm_builtin_xw_end_element,XwEndElement,"endElement",0)
+
+/* bool XMLWriter::fullEndElement() */
+static int XwFullEndElement(ph7_context *pCtx,xw_call *pCall)
+{
+	return XwStatus(pCtx,xmlTextWriterFullEndElement(pCall->pXw->pWriter));
+}
+XW_METHOD(vm_builtin_xw_full_end_element,XwFullEndElement,"fullEndElement",0)
+
+/* bool XMLWriter::writeAttribute(string $name, string $value) */
+static int XwWriteAttribute(ph7_context *pCtx,xw_call *pCall)
+{
+	const char *zName = XwStr(pCall,0);
+	int rc = XmlWriterCheckName(pCtx,pCall,zName,"attribute name");
+	if( rc != 0 ){
+		return rc;
+	}
+	return XwStatus(pCtx,xmlTextWriterWriteAttribute(pCall->pXw->pWriter,
+		(const xmlChar *)zName,(const xmlChar *)XwStr(pCall,1)));
+}
+XW_METHOD(vm_builtin_xw_write_attribute,XwWriteAttribute,"writeAttribute","#2 ($value)")
+
+/* bool XMLWriter::writeElement(string $name, ?string $content = null) */
+static int XwWriteElement(ph7_context *pCtx,xw_call *pCall)
+{
+	const char *zName = XwStr(pCall,0);
+	const char *zContent = XwStrOrNull(pCall,1);
+	int rc = XmlWriterCheckName(pCtx,pCall,zName,"element name");
+	if( rc != 0 ){
+		return rc;
+	}
+	if( zContent ){
+		rc = xmlTextWriterWriteElement(pCall->pXw->pWriter,(const xmlChar *)zName,
+			(const xmlChar *)zContent);
+	}else{
+		/* Empty element: start + end so it serializes as <name/> */
+		rc = xmlTextWriterStartElement(pCall->pXw->pWriter,(const xmlChar *)zName);
+		if( rc >= 0 ){
+			rc = xmlTextWriterEndElement(pCall->pXw->pWriter);
 		}
 	}
-	ph7_result_bool(pCtx,rc >= 0);
-	return PH7_OK;
+	return XwStatus(pCtx,rc);
 }
-/* bool __xw_set_indent_string(res,str) */
-static int vm_builtin_xw_set_indent_string(ph7_context *pCtx,int nArg,ph7_value **apArg)
+XW_METHOD(vm_builtin_xw_write_element,XwWriteElement,"writeElement","#2 ($content)")
+
+/* bool XMLWriter::text(string $content) */
+static int XwText(ph7_context *pCtx,xw_call *pCall)
 {
-	phl_xmlwriter *pXw = XmlWriterOf(pCtx);
-	const char *zStr = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
-	int rc = -1;
-	if( pXw && pXw->pWriter ){
-		rc = xmlTextWriterSetIndentString(pXw->pWriter,(const xmlChar *)zStr);
-	}
-	ph7_result_bool(pCtx,rc >= 0);
-	return PH7_OK;
+	return XwStatus(pCtx,xmlTextWriterWriteString(pCall->pXw->pWriter,
+		(const xmlChar *)XwStr(pCall,0)));
 }
-/* bool __xw_start_document(res,?version,?encoding,?standalone) */
-static int vm_builtin_xw_start_document(ph7_context *pCtx,int nArg,ph7_value **apArg)
+XW_METHOD(vm_builtin_xw_text,XwText,"text",0)
+
+/* bool XMLWriter::writeRaw(string $content) */
+static int XwWriteRaw(ph7_context *pCtx,xw_call *pCall)
 {
-	phl_xmlwriter *pXw = XmlWriterOf(pCtx);
-	const char *zVer = (nArg > 0 && !ph7_value_is_null(apArg[0])) ? ph7_value_to_string(apArg[0],0) : 0;
-	const char *zEnc = (nArg > 1 && !ph7_value_is_null(apArg[1])) ? ph7_value_to_string(apArg[1],0) : 0;
-	const char *zStd = (nArg > 2 && !ph7_value_is_null(apArg[2])) ? ph7_value_to_string(apArg[2],0) : 0;
-	int rc = -1;
-	if( pXw && pXw->pWriter ){
-		rc = xmlTextWriterStartDocument(pXw->pWriter,zVer,zEnc,zStd);
-	}
-	ph7_result_bool(pCtx,rc >= 0);
-	return PH7_OK;
+	return XwStatus(pCtx,xmlTextWriterWriteRaw(pCall->pXw->pWriter,
+		(const xmlChar *)XwStr(pCall,0)));
 }
-/* bool __xw_end_document(res) */
-static int vm_builtin_xw_end_document(ph7_context *pCtx,int nArg,ph7_value **apArg)
+XW_METHOD(vm_builtin_xw_write_raw,XwWriteRaw,"writeRaw",0)
+
+/* bool XMLWriter::writeCdata(string $content) */
+static int XwWriteCdata(ph7_context *pCtx,xw_call *pCall)
 {
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	phl_xmlwriter *pXw = XmlWriterOf(pCtx);
-	int rc = (pXw && pXw->pWriter) ? xmlTextWriterEndDocument(pXw->pWriter) : -1;
-	ph7_result_bool(pCtx,rc >= 0);
-	return PH7_OK;
+	return XwStatus(pCtx,xmlTextWriterWriteCDATA(pCall->pXw->pWriter,
+		(const xmlChar *)XwStr(pCall,0)));
 }
-/* bool __xw_start_element(res,name) */
-static int vm_builtin_xw_start_element(ph7_context *pCtx,int nArg,ph7_value **apArg)
+XW_METHOD(vm_builtin_xw_write_cdata,XwWriteCdata,"writeCdata",0)
+
+/* bool XMLWriter::writeComment(string $content) */
+static int XwWriteComment(ph7_context *pCtx,xw_call *pCall)
 {
-	phl_xmlwriter *pXw = XmlWriterOf(pCtx);
-	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
-	int rc = (pXw && pXw->pWriter) ? xmlTextWriterStartElement(pXw->pWriter,(const xmlChar *)zName) : -1;
-	ph7_result_bool(pCtx,rc >= 0);
-	return PH7_OK;
+	return XwStatus(pCtx,xmlTextWriterWriteComment(pCall->pXw->pWriter,
+		(const xmlChar *)XwStr(pCall,0)));
 }
-/* bool __xw_end_element(res) / __xw_full_end_element(res) */
-static int vm_builtin_xw_end_element(ph7_context *pCtx,int nArg,ph7_value **apArg)
+XW_METHOD(vm_builtin_xw_write_comment,XwWriteComment,"writeComment",0)
+
+/* string XMLWriter::outputMemory(bool $flush = true) -- read the buffer back */
+static int XwOutputMemory(ph7_context *pCtx,xw_call *pCall)
 {
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	phl_xmlwriter *pXw = XmlWriterOf(pCtx);
-	int rc = (pXw && pXw->pWriter) ? xmlTextWriterEndElement(pXw->pWriter) : -1;
-	ph7_result_bool(pCtx,rc >= 0);
-	return PH7_OK;
-}
-static int vm_builtin_xw_full_end_element(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	phl_xmlwriter *pXw = XmlWriterOf(pCtx);
-	int rc = (pXw && pXw->pWriter) ? xmlTextWriterFullEndElement(pXw->pWriter) : -1;
-	ph7_result_bool(pCtx,rc >= 0);
-	return PH7_OK;
-}
-/* bool __xw_write_attribute(res,name,value) */
-static int vm_builtin_xw_write_attribute(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	phl_xmlwriter *pXw = XmlWriterOf(pCtx);
-	const char *zName = nArg > 1 ? ph7_value_to_string(apArg[0],0) : "";
-	const char *zVal = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
-	int rc = (pXw && pXw->pWriter)
-		? xmlTextWriterWriteAttribute(pXw->pWriter,(const xmlChar *)zName,(const xmlChar *)zVal) : -1;
-	ph7_result_bool(pCtx,rc >= 0);
-	return PH7_OK;
-}
-/* bool __xw_write_element(res,name,?content) */
-static int vm_builtin_xw_write_element(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	phl_xmlwriter *pXw = XmlWriterOf(pCtx);
-	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
-	int rc = -1;
-	if( pXw && pXw->pWriter ){
-		if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){
-			const char *zContent = ph7_value_to_string(apArg[1],0);
-			rc = xmlTextWriterWriteElement(pXw->pWriter,(const xmlChar *)zName,(const xmlChar *)zContent);
-		}else{
-			/* Empty element: start + end so it serializes as <name/> */
-			rc = xmlTextWriterStartElement(pXw->pWriter,(const xmlChar *)zName);
-			if( rc >= 0 ){
-				rc = xmlTextWriterEndElement(pXw->pWriter);
-			}
-		}
-	}
-	ph7_result_bool(pCtx,rc >= 0);
-	return PH7_OK;
-}
-/* bool __xw_text(res,content) */
-static int vm_builtin_xw_text(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	phl_xmlwriter *pXw = XmlWriterOf(pCtx);
-	const char *zText = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
-	int rc = (pXw && pXw->pWriter) ? xmlTextWriterWriteString(pXw->pWriter,(const xmlChar *)zText) : -1;
-	ph7_result_bool(pCtx,rc >= 0);
-	return PH7_OK;
-}
-/* bool __xw_write_raw(res,content) */
-static int vm_builtin_xw_write_raw(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	phl_xmlwriter *pXw = XmlWriterOf(pCtx);
-	const char *zText = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
-	int rc = (pXw && pXw->pWriter) ? xmlTextWriterWriteRaw(pXw->pWriter,(const xmlChar *)zText) : -1;
-	ph7_result_bool(pCtx,rc >= 0);
-	return PH7_OK;
-}
-/* bool __xw_write_cdata(res,content) */
-static int vm_builtin_xw_write_cdata(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	phl_xmlwriter *pXw = XmlWriterOf(pCtx);
-	const char *zText = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
-	int rc = (pXw && pXw->pWriter) ? xmlTextWriterWriteCDATA(pXw->pWriter,(const xmlChar *)zText) : -1;
-	ph7_result_bool(pCtx,rc >= 0);
-	return PH7_OK;
-}
-/* bool __xw_write_comment(res,content) */
-static int vm_builtin_xw_write_comment(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	phl_xmlwriter *pXw = XmlWriterOf(pCtx);
-	const char *zText = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
-	int rc = (pXw && pXw->pWriter) ? xmlTextWriterWriteComment(pXw->pWriter,(const xmlChar *)zText) : -1;
-	ph7_result_bool(pCtx,rc >= 0);
-	return PH7_OK;
-}
-/* string __xw_output_memory(res,flush) -- read back the in-memory buffer */
-static int vm_builtin_xw_output_memory(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	phl_xmlwriter *pXw = XmlWriterOf(pCtx);
-	int bFlush = nArg > 0 ? ph7_value_to_bool(apArg[0]) : 1;
-	if( pXw == 0 || pXw->pBuf == 0 ){
+	phl_xmlwriter *pXw = pCall->pXw;
+	int bFlush = XwBool(pCall,0,1);
+	if( pXw->pBuf == 0 ){
+		/* Not an in-memory writer: php answers the empty string */
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
 	/* Flush the writer into the buffer before reading (php does this) */
-	if( pXw->pWriter ){
-		xmlTextWriterFlush(pXw->pWriter);
-	}
+	xmlTextWriterFlush(pXw->pWriter);
 	ph7_result_string(pCtx,(const char *)xmlBufferContent(pXw->pBuf),(int)xmlBufferLength(pXw->pBuf));
 	if( bFlush ){
 		xmlBufferEmpty(pXw->pBuf);
 	}
 	return PH7_OK;
 }
-/* int __xw_flush(res,empty) -- flush; returns bytes written (memory writer) */
-static int vm_builtin_xw_flush(ph7_context *pCtx,int nArg,ph7_value **apArg)
+XW_METHOD(vm_builtin_xw_output_memory,XwOutputMemory,"outputMemory",0)
+
+/* string|int XMLWriter::flush(bool $empty = true) */
+static int XwFlush(ph7_context *pCtx,xw_call *pCall)
 {
-	phl_xmlwriter *pXw = XmlWriterOf(pCtx);
-	int bEmpty = nArg > 0 ? ph7_value_to_bool(apArg[0]) : 1;
-	int nOut = 0;
-	if( pXw && pXw->pWriter ){
-		nOut = xmlTextWriterFlush(pXw->pWriter);
-	}
-	if( pXw && pXw->pBuf ){
+	phl_xmlwriter *pXw = pCall->pXw;
+	int bEmpty = XwBool(pCall,0,1);
+	int nOut = xmlTextWriterFlush(pXw->pWriter);
+	if( pXw->pBuf ){
 		/* Memory writer: php returns the buffer as a string from flush() */
 		ph7_result_string(pCtx,(const char *)xmlBufferContent(pXw->pBuf),(int)xmlBufferLength(pXw->pBuf));
 		if( bEmpty ){
@@ -319,12 +429,8 @@ static int vm_builtin_xw_flush(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	return PH7_OK;
 }
+XW_METHOD(vm_builtin_xw_flush,XwFlush,"flush",0)
 
-/*
- * The XMLWriter class: a thin prelude over the __xw_* thunks.  Only the
- * memory API is exposed (openMemory) -- PHPUnit never writes to a URI/file
- * via XMLWriter, and that path is a Milestone-2 addition.
- */
 /* XMLWriter is declared entirely from C by PH7_VmInstallXmlWriter below. It was
  * an embedded PHP class whose every method forwarded to a global __xw_ thunk. */
 
@@ -362,8 +468,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)
 	static const PH7_NativePropDef aProp[] = {
 		{ "__res", PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
+	/* php's XMLWriter has no clone handler, so `clone $w` is the engine's own
+	 * refusal there -- and it has to be one here too: the copy would carry the
+	 * SAME libxml writer in its hidden slot, so the two objects would interleave
+	 * their output into one document and the copy's own buffer would answer "". */
 	static const PH7_NativeClassSpec sSpec = {
-		"XMLWriter", 0, 0, 0,
+		"XMLWriter", 0, 0, PH7_CLASS_NOCLONE,
 		aMethod, SX_ARRAYSIZE(aMethod),
 		0, 0,
 		aProp, SX_ARRAYSIZE(aProp),
