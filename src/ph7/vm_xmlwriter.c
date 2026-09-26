@@ -198,6 +198,21 @@ static int XmlWriterMissing(ph7_context *pCtx)
 	return PH7_VmThrowException(pCtx,"Error","Invalid or uninitialized XMLWriter object");
 }
 /*
+ * The writer behind an `XMLWriter $writer` argument. The declared type has
+ * already refused everything that is not one.
+ */
+static phl_xmlwriter * XmlWriterOfValue(ph7_value *pArg)
+{
+	ph7_class_instance *pThis;
+	SyString sAttr;
+	if( pArg == 0 || (pArg->iFlags & MEMOBJ_OBJ) == 0 ){
+		return 0;
+	}
+	pThis = (ph7_class_instance *)pArg->x.pOther;
+	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);
+	return XmlWriterArg(PH7_ClassInstanceFetchAttr(pThis,&sAttr));
+}
+/*
  * Build the call descriptor for the METHOD spelling. Returns 0 when the verb
  * may run, or the throw status when the receiver holds no writer.
  */
@@ -610,6 +625,40 @@ static int cfn(ph7_context *pCtx,int nArg,ph7_value **apArg)                    
 	int rc;                                                                   \
 	SyZero(&sCall,sizeof(sCall));                                             \
 	rc = XwCallFromThis(pCtx,&sCall,"XMLWriter::" meth,namearg,nArg,apArg);   \
+	if( rc != 0 ){                                                            \
+		return rc;                                                        \
+	}                                                                         \
+	return XwRun(pCtx,&sCall,verb);                                           \
+}
+
+/*
+ * Build the call descriptor for the FUNCTION spelling: the writer is argument
+ * #1 and everything else shifts one slot, which is where php's diagnostics get
+ * their numbering from.
+ */
+static int XwCallFromArg(ph7_context *pCtx,xw_call *pCall,const char *zFn,
+	const char *zNameArg,int nArg,ph7_value **apArg)
+{
+	phl_xmlwriter *pXw = nArg > 0 ? XmlWriterOfValue(apArg[0]) : 0;
+	if( pXw == 0 || pXw->pWriter == 0 ){
+		return XmlWriterMissing(pCtx);
+	}
+	pCall->pXw = pXw;
+	pCall->zFn = zFn;
+	pCall->zNameArg = zNameArg;
+	pCall->iArgBase = 1;
+	pCall->nArg = nArg - 1;
+	pCall->apArg = apArg + 1;
+	return 0;
+}
+/* One procedural entry point: the same verb, one argument along. */
+#define XW_FUNCTION(cfn,verb,fname,namearg)                                       \
+static int cfn(ph7_context *pCtx,int nArg,ph7_value **apArg)                      \
+{                                                                                 \
+	xw_call sCall;                                                            \
+	int rc;                                                                   \
+	SyZero(&sCall,sizeof(sCall));                                             \
+	rc = XwCallFromArg(pCtx,&sCall,fname,namearg,nArg,apArg);                 \
 	if( rc != 0 ){                                                            \
 		return rc;                                                        \
 	}                                                                         \
@@ -1117,6 +1166,83 @@ static int XwFlush(ph7_context *pCtx,xw_call *pCall)
 }
 XW_METHOD(vm_builtin_xw_flush,XwFlush,"flush",0)
 
+/*
+ * The procedural surface. php's ext/xmlwriter presents every verb twice, and
+ * the function spelling is the ORIGINAL one -- the class arrived in 5.1.2 --
+ * so a program written against it is not using an alias for the method but the
+ * name the extension was documented under. Each entry drives the same verb one
+ * argument along, and states its OWN name-argument text: procedural numbering
+ * is what php's macro reports, so here it names the real parameter.
+ */
+XW_FUNCTION(vm_builtin_xmlwriter_set_indent,XwSetIndent,"xmlwriter_set_indent",0)
+XW_FUNCTION(vm_builtin_xmlwriter_set_indent_string,XwSetIndentString,"xmlwriter_set_indent_string",0)
+XW_FUNCTION(vm_builtin_xmlwriter_start_comment,XwStartComment,"xmlwriter_start_comment",0)
+XW_FUNCTION(vm_builtin_xmlwriter_end_comment,XwEndComment,"xmlwriter_end_comment",0)
+XW_FUNCTION(vm_builtin_xmlwriter_start_attribute,XwStartAttribute,"xmlwriter_start_attribute","#2 ($name)")
+XW_FUNCTION(vm_builtin_xmlwriter_end_attribute,XwEndAttribute,"xmlwriter_end_attribute",0)
+XW_FUNCTION(vm_builtin_xmlwriter_write_attribute,XwWriteAttribute,"xmlwriter_write_attribute","#2 ($name)")
+XW_FUNCTION(vm_builtin_xmlwriter_start_attribute_ns,XwStartAttributeNs,"xmlwriter_start_attribute_ns","#3 ($name)")
+XW_FUNCTION(vm_builtin_xmlwriter_write_attribute_ns,XwWriteAttributeNs,"xmlwriter_write_attribute_ns","#3 ($name)")
+XW_FUNCTION(vm_builtin_xmlwriter_start_element,XwStartElement,"xmlwriter_start_element","#2 ($name)")
+XW_FUNCTION(vm_builtin_xmlwriter_end_element,XwEndElement,"xmlwriter_end_element",0)
+XW_FUNCTION(vm_builtin_xmlwriter_full_end_element,XwFullEndElement,"xmlwriter_full_end_element",0)
+XW_FUNCTION(vm_builtin_xmlwriter_start_element_ns,XwStartElementNs,"xmlwriter_start_element_ns","#3 ($name)")
+XW_FUNCTION(vm_builtin_xmlwriter_write_element,XwWriteElement,"xmlwriter_write_element","#2 ($name)")
+XW_FUNCTION(vm_builtin_xmlwriter_write_element_ns,XwWriteElementNs,"xmlwriter_write_element_ns","#3 ($name)")
+XW_FUNCTION(vm_builtin_xmlwriter_start_pi,XwStartPi,"xmlwriter_start_pi","#2 ($target)")
+XW_FUNCTION(vm_builtin_xmlwriter_end_pi,XwEndPi,"xmlwriter_end_pi",0)
+XW_FUNCTION(vm_builtin_xmlwriter_write_pi,XwWritePi,"xmlwriter_write_pi","#2 ($target)")
+XW_FUNCTION(vm_builtin_xmlwriter_start_cdata,XwStartCdata,"xmlwriter_start_cdata",0)
+XW_FUNCTION(vm_builtin_xmlwriter_end_cdata,XwEndCdata,"xmlwriter_end_cdata",0)
+XW_FUNCTION(vm_builtin_xmlwriter_write_cdata,XwWriteCdata,"xmlwriter_write_cdata",0)
+XW_FUNCTION(vm_builtin_xmlwriter_text,XwText,"xmlwriter_text",0)
+XW_FUNCTION(vm_builtin_xmlwriter_write_raw,XwWriteRaw,"xmlwriter_write_raw",0)
+XW_FUNCTION(vm_builtin_xmlwriter_start_document,XwStartDocument,"xmlwriter_start_document",0)
+XW_FUNCTION(vm_builtin_xmlwriter_end_document,XwEndDocument,"xmlwriter_end_document",0)
+XW_FUNCTION(vm_builtin_xmlwriter_write_comment,XwWriteComment,"xmlwriter_write_comment",0)
+XW_FUNCTION(vm_builtin_xmlwriter_start_dtd,XwStartDtd,"xmlwriter_start_dtd",0)
+XW_FUNCTION(vm_builtin_xmlwriter_end_dtd,XwEndDtd,"xmlwriter_end_dtd",0)
+XW_FUNCTION(vm_builtin_xmlwriter_write_dtd,XwWriteDtd,"xmlwriter_write_dtd",0)
+XW_FUNCTION(vm_builtin_xmlwriter_start_dtd_element,XwStartDtdElement,"xmlwriter_start_dtd_element","#2 ($qualifiedName)")
+XW_FUNCTION(vm_builtin_xmlwriter_end_dtd_element,XwEndDtdElement,"xmlwriter_end_dtd_element",0)
+XW_FUNCTION(vm_builtin_xmlwriter_write_dtd_element,XwWriteDtdElement,"xmlwriter_write_dtd_element","#2 ($name)")
+XW_FUNCTION(vm_builtin_xmlwriter_start_dtd_attlist,XwStartDtdAttlist,"xmlwriter_start_dtd_attlist","#2 ($name)")
+XW_FUNCTION(vm_builtin_xmlwriter_end_dtd_attlist,XwEndDtdAttlist,"xmlwriter_end_dtd_attlist",0)
+XW_FUNCTION(vm_builtin_xmlwriter_write_dtd_attlist,XwWriteDtdAttlist,"xmlwriter_write_dtd_attlist","#2 ($name)")
+XW_FUNCTION(vm_builtin_xmlwriter_start_dtd_entity,XwStartDtdEntity,"xmlwriter_start_dtd_entity","#2 ($name)")
+XW_FUNCTION(vm_builtin_xmlwriter_end_dtd_entity,XwEndDtdEntity,"xmlwriter_end_dtd_entity",0)
+XW_FUNCTION(vm_builtin_xmlwriter_write_dtd_entity,XwWriteDtdEntity,"xmlwriter_write_dtd_entity","#2 ($name)")
+XW_FUNCTION(vm_builtin_xmlwriter_output_memory,XwOutputMemory,"xmlwriter_output_memory",0)
+XW_FUNCTION(vm_builtin_xmlwriter_flush,XwFlush,"xmlwriter_flush",0)
+
+/* XMLWriter|false xmlwriter_open_memory() */
+static int vm_builtin_xmlwriter_open_memory(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_xmlwriter *pXw;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	pXw = XmlWriterOpenMemory(pCtx->pVm);
+	if( pXw == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	return XmlWriterFactory(pCtx,pXw);
+}
+/* XMLWriter|false xmlwriter_open_uri(string $uri) */
+static int vm_builtin_xmlwriter_open_uri(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	int rc = PH7_OK;
+	phl_xmlwriter *pXw = XmlWriterOpenUri(pCtx,nArg > 0 ? apArg[0] : 0,"xmlwriter_open_uri",FALSE,&rc);
+	if( pXw == 0 ){
+		if( rc != PH7_OK ){
+			return rc;
+		}
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	return XmlWriterFactory(pCtx,pXw);
+}
+
 /* XMLWriter is declared entirely from C by PH7_VmInstallXmlWriter below. It was
  * an embedded PHP class whose every method forwarded to a global __xw_ thunk. */
 
@@ -1207,6 +1333,56 @@ PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)
 	 * refusal there -- and it has to be one here too: the copy would carry the
 	 * SAME libxml writer in its hidden slot, so the two objects would interleave
 	 * their output into one document and the copy's own buffer would answer "". */
+	/* php's ext/xmlwriter presents every verb under a function name too; each
+	 * one drives the very same body through XwCallFromArg. */
+	static const struct {
+		const char *zName;
+		ProchHostFunction xFunc;
+	} aFunc[] = {
+		{ "xmlwriter_open_uri",    vm_builtin_xmlwriter_open_uri },
+		{ "xmlwriter_open_memory", vm_builtin_xmlwriter_open_memory },
+		{ "xmlwriter_set_indent", vm_builtin_xmlwriter_set_indent },
+		{ "xmlwriter_set_indent_string", vm_builtin_xmlwriter_set_indent_string },
+		{ "xmlwriter_start_comment", vm_builtin_xmlwriter_start_comment },
+		{ "xmlwriter_end_comment", vm_builtin_xmlwriter_end_comment },
+		{ "xmlwriter_start_attribute", vm_builtin_xmlwriter_start_attribute },
+		{ "xmlwriter_end_attribute", vm_builtin_xmlwriter_end_attribute },
+		{ "xmlwriter_write_attribute", vm_builtin_xmlwriter_write_attribute },
+		{ "xmlwriter_start_attribute_ns", vm_builtin_xmlwriter_start_attribute_ns },
+		{ "xmlwriter_write_attribute_ns", vm_builtin_xmlwriter_write_attribute_ns },
+		{ "xmlwriter_start_element", vm_builtin_xmlwriter_start_element },
+		{ "xmlwriter_end_element", vm_builtin_xmlwriter_end_element },
+		{ "xmlwriter_full_end_element", vm_builtin_xmlwriter_full_end_element },
+		{ "xmlwriter_start_element_ns", vm_builtin_xmlwriter_start_element_ns },
+		{ "xmlwriter_write_element", vm_builtin_xmlwriter_write_element },
+		{ "xmlwriter_write_element_ns", vm_builtin_xmlwriter_write_element_ns },
+		{ "xmlwriter_start_pi", vm_builtin_xmlwriter_start_pi },
+		{ "xmlwriter_end_pi", vm_builtin_xmlwriter_end_pi },
+		{ "xmlwriter_write_pi", vm_builtin_xmlwriter_write_pi },
+		{ "xmlwriter_start_cdata", vm_builtin_xmlwriter_start_cdata },
+		{ "xmlwriter_end_cdata", vm_builtin_xmlwriter_end_cdata },
+		{ "xmlwriter_write_cdata", vm_builtin_xmlwriter_write_cdata },
+		{ "xmlwriter_text", vm_builtin_xmlwriter_text },
+		{ "xmlwriter_write_raw", vm_builtin_xmlwriter_write_raw },
+		{ "xmlwriter_start_document", vm_builtin_xmlwriter_start_document },
+		{ "xmlwriter_end_document", vm_builtin_xmlwriter_end_document },
+		{ "xmlwriter_write_comment", vm_builtin_xmlwriter_write_comment },
+		{ "xmlwriter_start_dtd", vm_builtin_xmlwriter_start_dtd },
+		{ "xmlwriter_end_dtd", vm_builtin_xmlwriter_end_dtd },
+		{ "xmlwriter_write_dtd", vm_builtin_xmlwriter_write_dtd },
+		{ "xmlwriter_start_dtd_element", vm_builtin_xmlwriter_start_dtd_element },
+		{ "xmlwriter_end_dtd_element", vm_builtin_xmlwriter_end_dtd_element },
+		{ "xmlwriter_write_dtd_element", vm_builtin_xmlwriter_write_dtd_element },
+		{ "xmlwriter_start_dtd_attlist", vm_builtin_xmlwriter_start_dtd_attlist },
+		{ "xmlwriter_end_dtd_attlist", vm_builtin_xmlwriter_end_dtd_attlist },
+		{ "xmlwriter_write_dtd_attlist", vm_builtin_xmlwriter_write_dtd_attlist },
+		{ "xmlwriter_start_dtd_entity", vm_builtin_xmlwriter_start_dtd_entity },
+		{ "xmlwriter_end_dtd_entity", vm_builtin_xmlwriter_end_dtd_entity },
+		{ "xmlwriter_write_dtd_entity", vm_builtin_xmlwriter_write_dtd_entity },
+		{ "xmlwriter_output_memory", vm_builtin_xmlwriter_output_memory },
+		{ "xmlwriter_flush", vm_builtin_xmlwriter_flush },
+	};
+	sxu32 n;
 	static const PH7_NativeClassSpec sSpec = {
 		"XMLWriter", 0, 0, PH7_CLASS_NOCLONE,
 		aMethod, SX_ARRAYSIZE(aMethod),
@@ -1214,6 +1390,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)
 		aProp, SX_ARRAYSIZE(aProp),
 		XmlWriterInstanceRelease, 0, 0
 	};
+	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){
+		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);
+	}
 	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);
 }
 
