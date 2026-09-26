@@ -84,6 +84,8 @@ PH7_PRIVATE void PH7_LibxmlVmReset(ph7_vm *pVm)
 		pDoc = pNext;
 	}
 	pVm->pXmlDocs = 0;
+	/* The ownerless shell rode the chain just freed. */
+	pVm->pXmlLimbo = 0;
 	/* XMLWriter buffers live outside SyMemBackend too (see vm_xmlwriter.c) */
 	PH7_XmlWriterVmSweep(pVm);
 	/* ext/xml push parsers: their ctxt/myDoc are libxml allocations and the

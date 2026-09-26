@@ -2624,6 +2624,12 @@ struct ph7_vm
 	int bLibxmlInternalErr;    /* libxml_use_internal_errors(true) is active */
 	void *pLibxmlLastErr;      /* phl_libxml_err* slot backing libxml_get_last_error */
 	void *pXmlDocs;            /* phl_xmldoc registry chain; freed on reset/release */
+	void *pXmlLimbo;           /* The OWNERLESS shell (phl_xmldoc with no xmlDoc): every
+	                            * constructed-but-never-adopted DOM node -- php's `new
+	                            * DOMText('t')`, whose node has NO document until the first
+	                            * insertion adopts it -- parks on its orphan set, freed with
+	                            * the registry chain it sits on. Lazily created by the DOM's
+	                            * constructors; reset to 0 whenever the chain is freed. */
 	void *pXmlWriters;         /* XMLWriter registry chain; freed on reset/release */
 	void *pXmlParsers;         /* phl_xmlparser registry chain (ext/xml); freed on reset/release */
 	ph7_value sXmlEntLoader;   /* libxml_set_external_entity_loader()'s callable; NULL = default.

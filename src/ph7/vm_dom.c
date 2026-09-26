@@ -98,8 +98,10 @@ static const char * DomErrText(int iCode)
 	default:                   return "Not Found Error";
 	}
 }
-/* Forward: the refusal has to ask the receiver's document for its mode. */
+/* Forward: the refusal has to ask the receiver's document for its mode --
+ * and check that what the slot holds IS a document. */
 static ph7_class_instance * DomThisDoc(ph7_context *pCtx);
+static phl_domnode * DomResOf(ph7_class_instance *pObj);
 /*
  * A DOM refusal, in whichever of php's TWO modes the document is in.
  *
@@ -128,6 +130,15 @@ static int DomThrowAlways(ph7_context *pCtx,int iCode)
 }
 static int DomThrowFor(ph7_context *pCtx,ph7_class_instance *pDoc,int iCode,int iAnswer)
 {
+	/* Only a DOCUMENT carries the flag: a constructed ownerless node's $__doc
+	 * slot points at its own holder object, and php is always strict there --
+	 * there is no document to have said otherwise. */
+	phl_domnode *pDocNd = pDoc ? DomResOf(pDoc) : 0;
+	xmlNodePtr pDocNode = pDocNd ? (xmlNodePtr)pDocNd->pNode : 0;
+	if( pDocNode
+	 && (pDocNode->type != XML_DOCUMENT_NODE && pDocNode->type != XML_HTML_DOCUMENT_NODE) ){
+		pDoc = 0;
+	}
 	if( pDoc && !PH7_NativeAttrTruthy(pDoc,"strictErrorChecking") ){
 		/* The context prints php's own `Class::method(): ` in front of it. */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,DomErrText(iCode));
@@ -504,12 +515,23 @@ static void DomNodeValue(ph7_context *pCtx,xmlNodePtr pNode)
 		return;
 	}
 	switch( pNode->type ){
-	case XML_ATTRIBUTE_NODE:
 	case XML_TEXT_NODE:
-	case XML_ELEMENT_NODE:
 	case XML_COMMENT_NODE:
 	case XML_CDATA_SECTION_NODE:
 	case XML_PI_NODE:
+		/* The CONTENT POINTER itself, not xmlNodeGetContent's copy: a null
+		 * pointer -- the omitted-argument constructor's state -- reads NULL
+		 * where an empty string reads "", and newer libxml's
+		 * xmlNodeGetContent papers over exactly that difference (2.13 answers
+		 * "" for both, 2.9 answers NULL for the pointer). */
+		if( pNode->content == 0 ){
+			ph7_result_null(pCtx);
+		}else{
+			ph7_result_string(pCtx,(const char *)pNode->content,-1);
+		}
+		return;
+	case XML_ATTRIBUTE_NODE:
+	case XML_ELEMENT_NODE:
 		break;
 	default:
 		ph7_result_null(pCtx);
@@ -519,6 +541,16 @@ static void DomNodeValue(ph7_context *pCtx,xmlNodePtr pNode)
 	ph7_result_string(pCtx,zContent ? (const char *)zContent : "",-1);
 	if( zContent ){
 		xmlFree(zContent);
+	}
+}
+/* The `data` property's reading of the same content: php COERCES there, so a
+ * NULL content pointer -- the omitted-argument constructors' state -- reads ""
+ * from `$node->data` and null from `$node->nodeValue`, one node, two answers. */
+static void DomDataValue(ph7_context *pCtx,xmlNodePtr pNode)
+{
+	DomNodeValue(pCtx,pNode);
+	if( pCtx->pRet->iFlags & MEMOBJ_NULL ){
+		ph7_result_string(pCtx,"",0);
 	}
 }
 /* php's textContent: the same walk, but a document answers its text too */
@@ -572,6 +604,43 @@ static void DomAttrLinkLast(xmlNodePtr pElem,xmlAttrPtr pAttr);
 static void DomAttrLinkBefore(xmlNodePtr pElem,xmlAttrPtr pAttr,xmlAttrPtr pRef);
 static void DomAttrDetach(phl_xmldoc *pShell,xmlAttrPtr pAttr);
 static void DomNsAttrArrive(xmlNodePtr pElem,xmlAttrPtr pAttr);
+/* The adoptNode wrapper machinery, defined with it below: the insertion doors
+ * run it too, because php ADOPTS a constructed, ownerless argument -- doc,
+ * identity-cache home and handle shell all move on the first insertion. */
+static void DomAdoptWrappers(ph7_vm *pVm,ph7_class_instance *pSrcDoc,
+	ph7_class_instance *pDstDoc,phl_xmldoc *pDstShell,xmlNodePtr pNode);
+/*
+ * Take an OWNERLESS subtree into the receiver's world, php's constructed-node
+ * adoption: the libxml nodes get the receiver's document (none of their
+ * strings are dict-interned -- a constructed node's are plain allocations, so
+ * xmlSetTreeDoc is the whole move), the orphan entry crosses from the limbo
+ * shell to the receiver's, and every wrapper PHP holds re-homes into the
+ * receiver's identity cache.  Also the OWNERLESS-to-OWNERLESS merge, where no
+ * document changes hands but the wrappers still need ONE holder for
+ * `$a->firstChild === $b` to hold.  The caller has already screened documents:
+ * a mismatch here means the argument's is NULL.
+ */
+static void DomAdoptIntoRecv(ph7_context *pCtx,ph7_value *pArgVal,phl_domnode *pArgNd)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pSrcHolder = DomObjArgDoc(pArgVal);
+	ph7_class_instance *pDstHolder = DomThisDoc(pCtx);
+	phl_domnode *pRecv = DomThisNode(pCtx);
+	xmlNodePtr pNode = (xmlNodePtr)pArgNd->pNode;
+	xmlNodePtr pRecvNode = pRecv ? (xmlNodePtr)pRecv->pNode : 0;
+	if( pSrcHolder == pDstHolder || pRecvNode == 0 ){
+		return;
+	}
+	if( pNode->doc == 0 && pRecvNode->doc ){
+		xmlSetTreeDoc(pNode,pRecvNode->doc);
+	}
+	if( pArgNd->pShell != pRecv->pShell ){
+		DomOrphanRemove(pArgNd->pShell,pNode);
+		DomOrphanAdd(pRecv->pShell,pNode);
+		pArgNd->pShell = pRecv->pShell;
+	}
+	DomAdoptWrappers(pVm,pSrcHolder,pDstHolder,pRecv->pShell,pNode);
+}
 
 /*
  * php's dom_node_children_valid: the node kinds that can never have children.
@@ -692,7 +761,10 @@ static int DomMutatorAttrAttach(ph7_context *pCtx,phl_domnode *pPar,phl_domnode 
  */
 static int DomLinkRefusalPre(xmlNodePtr pParent,xmlNodePtr pChild)
 {
-	if( pParent->doc != pChild->doc ){
+	/* A child with NO document is exempt: it is a constructed node, and the
+	 * level-2 doors ADOPT it -- where the modern variadic family refuses it
+	 * with this same code. */
+	if( pParent->doc != pChild->doc && pChild->doc != 0 ){
 		return DOM_ERR_WRONG_DOC;
 	}
 	/* A DOCUMENT is never a child, stated outright: the ancestor walk below
@@ -806,6 +878,10 @@ DOM_METHOD(vm_builtin_DOMNode_appendChild)
 	if( iErr ){
 		return DomThrow(pCtx,iErr);
 	}
+	/* Every screen passed: a document-less argument is ADOPTED here, php's
+	 * constructed-node door -- wrappers, orphan entry and (for an owned
+	 * receiver) the document itself all move before the link. */
+	DomAdoptIntoRecv(pCtx,apArg[0],pChd);
 	if( ((xmlNodePtr)pChd->pNode)->type == XML_ATTRIBUTE_NODE ){
 		return DomMutatorAttrAttach(pCtx,pPar,pChd,apArg[0]);
 	}
@@ -865,6 +941,10 @@ DOM_METHOD(vm_builtin_DOMNode_insertBefore)
 	if( iErr ){
 		return DomThrow(pCtx,iErr);
 	}
+	/* The constructed-node adoption, before ANY of the insertion tails --
+	 * php's order, so even an argument the sibling Error is about to strand
+	 * detached comes out of the call owned by this document. */
+	DomAdoptIntoRecv(pCtx,apArg[0],pNew);
 	if( pChild->type == XML_ATTRIBUTE_NODE ){
 		/*
 		 * The attribute half, with insertBefore's own tails. A NULL reference
@@ -1053,6 +1133,8 @@ DOM_METHOD(vm_builtin_DOMNode_replaceChild)
 	if( iErr ){
 		return DomThrow(pCtx,iErr);
 	}
+	/* The constructed-node adoption, php's "document assignment" step. */
+	DomAdoptIntoRecv(pCtx,apArg[0],pNew);
 	if( DomIsFragment(pChild) ){
 		/* No empty-fragment refusal here, unlike the other two: php REMOVES the
 		 * old child and inserts nothing, and answers it as any replaceChild
@@ -1159,10 +1241,12 @@ static int DomNodesScreen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 static int DomNodesConvert(ph7_context *pCtx,phl_xmldoc *pShell,xmlNodePtr pParent,
 	int nArg,ph7_value **apArg,SySet *pList,int *pRc)
 {
+	ph7_class_instance *pDstHolder = DomThisDoc(pCtx);
 	int i;
 	for( i = 0 ; i < nArg ; i++ ){
 		phl_domnode *pNd;
 		xmlNodePtr pNode;
+		ph7_class_instance *pSrcHolder;
 		if( (apArg[i]->iFlags & MEMOBJ_OBJ) == 0 ){
 			int nLen = 0;
 			const char *zText = ph7_value_to_string(apArg[i],&nLen);
@@ -1182,8 +1266,19 @@ static int DomNodesConvert(ph7_context *pCtx,phl_xmldoc *pShell,xmlNodePtr pPare
 		}
 		pNode = (xmlNodePtr)pNd->pNode;
 		if( pNode->doc != pParent->doc ){
+			/* No adoption in the modern family: a constructed node's NULL
+			 * document is a mismatch like any other and refuses -- only the
+			 * OWNERLESS-to-OWNERLESS pair (both NULL) passes. */
 			*pRc = DomThrowVoid(pCtx,DOM_ERR_WRONG_DOC);
 			return -1;
+		}
+		/* Same document, possibly different HOLDER: two constructed trees
+		 * merging. The wrappers move to the receiver's cache so identity
+		 * keeps answering. */
+		pSrcHolder = DomObjArgDoc(apArg[i]);
+		if( pSrcHolder != pDstHolder ){
+			DomAdoptWrappers(pCtx->pVm,pSrcHolder,pDstHolder,pShell,pNode);
+			pNd->pShell = pShell;
 		}
 		if( pNode->type == XML_DOCUMENT_NODE || pNode->type == XML_HTML_DOCUMENT_NODE
 		 || pNode->type == XML_ATTRIBUTE_NODE ){
@@ -1318,6 +1413,12 @@ static int DomParentNodeInsert(ph7_context *pCtx,int nArg,ph7_value **apArg,int 
 		SySetRelease(&sList);
 		return DomThrowVoid(pCtx,iErr);
 	}
+	if( pOne ){
+		/* The single-node shortcut skipped the conversion, so it re-homes its
+		 * wrappers here: an ownerless argument merging into an ownerless
+		 * receiver (the only mismatch the validity lets through). */
+		DomAdoptIntoRecv(pCtx,apArg[0],pOne);
+	}
 	if( iMode == DOM_PN_REPLACE ){
 		/* Every remaining child goes -- through the wrapper-preserving drop a
 		 * content write uses, so a PHP variable holding one keeps a live
@@ -1410,6 +1511,15 @@ static int DomChildNodeOp(ph7_context *pCtx,int nArg,ph7_value **apArg,int iMode
 	if( pParent == 0 ){
 		return PH7_OK;
 	}
+	if( iMode == DOM_CN_REPLACE
+	 && (DomNodeReadOnly(pThis) || DomNodeReadOnly(pParent)) ){
+		/* replaceWith carries the read-only refusal (it REMOVES the receiver)
+		 * where before/after do not: a text child of a constructed ownerless
+		 * element takes before() and refuses replaceWith(). The parentless
+		 * silence above still answers first -- a constructed ROOT is a silent
+		 * no-op, not this refusal. */
+		return DomThrowVoid(pCtx,DOM_ERR_NO_MOD);
+	}
 	if( iMode == DOM_CN_BEFORE ){
 		pViable = pThis->prev;
 		while( pViable && DomArgListHasNode(nArg,apArg,pViable) ){
@@ -1436,6 +1546,12 @@ static int DomChildNodeOp(ph7_context *pCtx,int nArg,ph7_value **apArg,int iMode
 	if( iErr ){
 		SySetRelease(&sList);
 		return DomThrowVoid(pCtx,iErr);
+	}
+	if( pOne ){
+		/* The single-node shortcut skipped the conversion's wrapper re-home:
+		 * an ownerless argument merging into an ownerless receiver's tree, the
+		 * only mismatch the validity lets through. */
+		DomAdoptIntoRecv(pCtx,apArg[0],pOne);
 	}
 	if( iMode == DOM_CN_BEFORE ){
 		/* Step 5: the viable previous sibling's NEXT -- the parent's first
@@ -1499,6 +1615,12 @@ DOM_METHOD(vm_builtin_Dom_removeSelf)
 		return PH7_OK;
 	}
 	pNode = (xmlNodePtr)pNd->pNode;
+	/* The read-only refusal answers BEFORE the parentless one: a constructed
+	 * ownerless node -- necessarily parentless -- is No Modification Allowed
+	 * here, where an owned parentless node is Not Found. */
+	if( DomNodeReadOnly(pNode) || (pNode->parent && DomNodeReadOnly(pNode->parent)) ){
+		return DomThrowVoid(pCtx,DOM_ERR_NO_MOD);
+	}
 	if( pNode->parent == 0 ){
 		return DomThrowVoid(pCtx,DOM_ERR_NOT_FOUND);
 	}
@@ -2082,6 +2204,92 @@ static void DomInstanceCloneDoc(ph7_vm *pVm,ph7_class_instance *pClone,ph7_class
 	 * across are php's answer and stay.) */
 	PH7_NativeSetAttrObj(&(*pVm),pClone,DOM_DOC,pClone);
 	DomSetSlotNull(&(*pVm),pClone,DOM_NODES,sizeof(DOM_NODES)-1);
+}
+
+/* ===== The node CONSTRUCTORS: php's ownerless nodes ===== */
+
+/*
+ * php gives a constructed node NO document at all -- `(new DOMText('t'))->
+ * ownerDocument` is null and the libxml node's doc is NULL -- and adopts it on
+ * the first insertion.  Until then the node has to be OWNED by something that
+ * frees it: the limbo shell, one per VM, a phl_xmldoc with no xmlDoc whose
+ * orphan set carries every constructed-and-never-adopted node to teardown.
+ */
+static phl_xmldoc * DomLimboShell(ph7_vm *pVm)
+{
+	if( pVm->pXmlLimbo == 0 ){
+		pVm->pXmlLimbo = PH7_LibxmlNewDoc(&(*pVm),0);
+	}
+	return (phl_xmldoc *)pVm->pXmlLimbo;
+}
+/*
+ * The shared constructor tail: park the fresh node on the limbo shell, wire
+ * the instance's two slots, and make the instance its OWN holder -- $__doc
+ * points at itself and the identity cache lives on it, exactly the document's
+ * own arrangement, so `$e->firstChild->parentNode === $e` holds for a tree
+ * that belongs to no document.  (ownerDocument still answers null: the getter
+ * reads the NODE's document, not the slot.)  Takes ownership of pNode either
+ * way; a re-run constructor -- `$t->__construct('b')`, which php allows --
+ * simply re-points the slots and leaves the old node parked.
+ */
+static int DomCtorInstall(ph7_context *pCtx,xmlNodePtr pNode)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	phl_xmldoc *pShell;
+	phl_domnode *pRes;
+	if( pNode == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	pShell = pThis ? DomLimboShell(pVm) : 0;
+	pRes = pShell ? DomNewRes(pVm,pShell,pNode) : 0;
+	if( pRes == 0 ){
+		xmlFreeNode(pNode);
+		return pThis ? PH7_ContextMemoryError(pCtx) : PH7_OK;
+	}
+	DomOrphanAdd(pShell,pNode);
+	DomSetRes(pVm,pThis,pRes);
+	PH7_NativeSetAttrObj(pVm,pThis,DOM_DOC,pThis);
+	DomCacheStore(pVm,pThis,pNode,pThis);
+	return PH7_OK;
+}
+/* The content of the character-data three: php passes NULL for an OMITTED
+ * argument and the string -- even the empty one -- for a given one, which is
+ * why `new DOMText()` has a NULL nodeValue where `new DOMText('')` reads "". */
+DOM_METHOD(vm_builtin_DOMText_construct)
+{
+	int nData = 0;
+	const char *zData = nArg > 0 ? ph7_value_to_string(apArg[0],&nData) : 0;
+	xmlNodePtr pNode = zData
+		? xmlNewDocTextLen(0,(const xmlChar *)zData,nData)
+		: xmlNewDocText(0,0);
+	return DomCtorInstall(pCtx,pNode);
+}
+DOM_METHOD(vm_builtin_DOMComment_construct)
+{
+	int nData = 0;
+	const char *zData = nArg > 0 ? ph7_value_to_string(apArg[0],&nData) : 0;
+	xmlNodePtr pNode;
+	if( zData ){
+		/* libxml has no length-taking comment constructor and
+		 * xmlNewDocComment measures with strlen, so a NUL-carrying PHP string
+		 * goes through a bounded copy. */
+		xmlChar *zCopy = xmlStrndup((const xmlChar *)zData,nData);
+		pNode = zCopy ? xmlNewDocComment(0,zCopy) : 0;
+		if( zCopy ){
+			xmlFree(zCopy);
+		}
+	}else{
+		pNode = xmlNewDocComment(0,0);
+	}
+	return DomCtorInstall(pCtx,pNode);
+}
+DOM_METHOD(vm_builtin_DOMCdataSection_construct)
+{
+	int nData = 0;
+	const char *zData = nArg > 0 ? ph7_value_to_string(apArg[0],&nData) : "";
+	return DomCtorInstall(pCtx,
+		xmlNewCDataBlock(0,(const xmlChar *)zData,nData));
 }
 
 /* ===== Namespaces ===== */
@@ -3214,9 +3422,13 @@ static int DomSetAttrNode(ph7_context *pCtx,int nArg,ph7_value **apArg,int bNS)
 	if( pElem == 0 || pAttr == 0 ){
 		return DomThrow(pCtx,DOM_ERR_NOT_FOUND);
 	}
-	if( pAttr->doc != pElem->doc ){
+	if( pAttr->doc != pElem->doc && pAttr->doc != 0 ){
 		return DomThrow(pCtx,DOM_ERR_WRONG_DOC);
 	}
+	/* A constructed, document-less attribute is ADOPTED, like every insertion
+	 * door -- `$el->setAttributeNode(new DOMAttr('k','v'))` is how a built
+	 * attribute reaches a real document. */
+	DomAdoptIntoRecv(pCtx,apArg[0],DomObjArg(apArg[0]));
 	pOld = bNS ? DomAttrByNs(pElem,pAttr->ns ? pAttr->ns->href : 0,(const char *)pAttr->name)
 	           : DomAttrByLocal(pElem,(const char *)pAttr->name);
 	if( pOld == pAttr ){
@@ -4236,6 +4448,12 @@ DOM_METHOD(vm_builtin_DOMDocument_saveXML)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	if( pTgt && pTgt->pNode
+	 && ((xmlNodePtr)pTgt->pNode)->doc != (xmlDocPtr)pDocNd->pNode ){
+		/* Another document's node -- or a constructed one that belongs to none
+		 * yet -- is not this document's to serialize. */
+		return DomThrow(pCtx,DOM_ERR_WRONG_DOC);
+	}
 	bWhole = pTgt == 0 || pTgt->pNode == pDocNd->pNode;
 	nMark = PH7_LibxmlCaptureBegin(pVm);
 	nOut = DomDumpTree((xmlDocPtr)pDocNd->pNode,bWhole ? 0 : (xmlNodePtr)pTgt->pNode,
@@ -4486,6 +4704,9 @@ static int DomDocCreate(ph7_context *pCtx,int iKind,const char *zName,const char
 		if( xmlValidateName((const xmlChar *)zName,0) != 0 ){
 			break;
 		}
+		/* Empty data stays a NULL content pointer, matching php's node state:
+		 * `<?bare?>` serializes with no separator space, `nodeValue` reads
+		 * null -- and `data` reads "", because THAT getter coerces. */
 		pNode = xmlNewDocPI(pDoc,(const xmlChar *)zName,nVal ? (const xmlChar *)zVal : 0);
 		break;
 	case XML_ENTITY_REF_NODE:
@@ -4775,10 +4996,16 @@ DOM_METHOD(vm_builtin_DOMDocument_adoptNode)
 		 * strings the source's dictionary owns. ASan called it what it is, a
 		 * bad free. xmlDOMWrapAdoptNode is libxml's own re-homing: it moves the
 		 * strings, the attribute values and the ID table entries with the node.
+		 * (A CONSTRUCTED node has no document and no dictionary at all, and
+		 * xmlSetTreeDoc IS its whole move.)
 		 */
-		sxu32 nMark = PH7_LibxmlCaptureBegin(pVm);
-		xmlDOMWrapAdoptNode(0,pNode->doc,pNode,(xmlDocPtr)pDocNd->pNode,0,0);
-		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::adoptNode");
+		if( pNode->doc == 0 ){
+			xmlSetTreeDoc(pNode,(xmlDocPtr)pDocNd->pNode);
+		}else{
+			sxu32 nMark = PH7_LibxmlCaptureBegin(pVm);
+			xmlDOMWrapAdoptNode(0,pNode->doc,pNode,(xmlDocPtr)pDocNd->pNode,0,0);
+			PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::adoptNode");
+		}
 		DomAdoptWrappers(pVm,pSrcDoc,DomThisDoc(pCtx),pDocNd->pShell,pNode);
 	}
 	DomOrphanAdd(pDocNd->pShell,pNode);
@@ -4831,12 +5058,18 @@ static int DomInsertAdjacentOp(ph7_context *pCtx,phl_domnode *pRecv,const char *
 		return 1;   /* the null answer, nothing moved */
 	}
 	/* The adopt: detach, re-home across documents (adoptNode's machinery),
-	 * and park until linked. */
+	 * and park until linked. A document-less argument -- a constructed node --
+	 * has no dict-interned strings to move, so xmlSetTreeDoc is its whole
+	 * move; the wrappers cross either way. */
 	DomDetach(pArgShell,pOther);
 	if( pOther->doc != pThis->doc ){
-		sxu32 nMark = PH7_LibxmlCaptureBegin(pVm);
-		xmlDOMWrapAdoptNode(0,pOther->doc,pOther,pThis->doc,0,0);
-		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMElement::insertAdjacentElement");
+		if( pOther->doc == 0 ){
+			xmlSetTreeDoc(pOther,pThis->doc);
+		}else{
+			sxu32 nMark = PH7_LibxmlCaptureBegin(pVm);
+			xmlDOMWrapAdoptNode(0,pOther->doc,pOther,pThis->doc,0,0);
+			PH7_LibxmlCaptureEnd(pVm,nMark,"DOMElement::insertAdjacentElement");
+		}
 		DomAdoptWrappers(pVm,pArgDoc,DomThisDoc(pCtx),pRecv->pShell,pOther);
 	}
 	DomOrphanAdd(pRecv->pShell,pOther);
@@ -5084,12 +5317,19 @@ DOM_METHOD(vm_builtin_DOMCharacterData_substringData)
 	ph7_int64 iCount = nArg > 1 ? ph7_value_to_int64(apArg[1]) : 0;
 	xmlChar *zSub;
 	int nLen,rc = PH7_OK;
-	if( pNode == 0 || pNode->content == 0 ){
+	if( pNode == 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	if( DomCharRange(pCtx,pNode,iOffset,iCount,TRUE,TRUE,&nLen,&rc) != 0 ){
 		return rc;
+	}
+	if( pNode->content == 0 ){
+		/* php reads a NULL content pointer -- the omitted-argument
+		 * constructor's node -- as "": the range still screens (so an offset
+		 * past zero is Index Size), and what is left of nothing is "". */
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
 	}
 	if( (sxu32)(iOffset+iCount) > (sxu32)nLen ){
 		iCount = (ph7_int64)nLen - iOffset;
@@ -5128,9 +5368,15 @@ static int DomCharSplice(ph7_context *pCtx,ph7_int64 iOffset,ph7_int64 iCount,
 	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
 	xmlChar *zHead,*zTail = 0;
 	int nLen,rc = PH7_OK;
-	if( pNode == 0 || pNode->content == 0 ){
+	if( pNode == 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
+	}
+	if( pNode->content == 0 ){
+		/* A writer normalizes the omitted-argument constructor's NULL content
+		 * to "" and proceeds, php's own answer: `insertData(0,'i')` on a
+		 * `new DOMComment()` writes "i", and its nodeValue reads "" after. */
+		xmlNodeSetContent(pNode,(const xmlChar *)"");
 	}
 	/* insertData has no count and takes the unsigned bound; the two that DO
 	 * take one take the signed bound. */
@@ -5205,10 +5451,14 @@ DOM_METHOD(vm_builtin_DOMText_splitText)
 			"DOMText::splitText(): Argument #1 ($offset) must be greater than or equal to 0");
 	}
 	if( pNode == 0
-	 || (pNode->type != XML_TEXT_NODE && pNode->type != XML_CDATA_SECTION_NODE)
-	 || pNode->content == 0 ){
+	 || (pNode->type != XML_TEXT_NODE && pNode->type != XML_CDATA_SECTION_NODE) ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
+	}
+	if( pNode->content == 0 ){
+		/* The omitted-argument constructor's node splits as "": both halves
+		 * empty, php's answer. The split WRITES, so normalizing is its own. */
+		xmlNodeSetContent(pNode,(const xmlChar *)"");
 	}
 	nLen = DomCharLength(pNode);
 	if( iOffset > (ph7_int64)nLen ){
@@ -5344,7 +5594,14 @@ static int DomC14NRun(ph7_context *pCtx,int nArg,ph7_value **apArg,int iXPathPos
 	sPrefixes.apPrefix = 0;
 	SyBlobInit(&sPrefixes.sPool,&pVm->sAllocator);
 	SySetInit(&sPrefixes.aOfs,&pVm->sAllocator,sizeof(sxu32));
-	if( pNode == 0 || pNode->doc == 0 ){
+	if( pNode == 0 ){
+		nOut = -1;
+		goto done;
+	}
+	if( pNode->doc == 0 ){
+		/* php's plain Error, no DOM code: canonicalization asks libxml for the
+		 * document's context, and a constructed node has none. */
+		*pRc = PH7_VmThrowException(pCtx,"Error","Node must be associated with a document");
 		nOut = -1;
 		goto done;
 	}
@@ -5902,6 +6159,12 @@ DOM_METHOD(vm_builtin_DOMXPath_query)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	if( pCtxNd && pCtxNd->pNode
+	 && ((xmlNodePtr)pCtxNd->pNode)->doc != (xmlDocPtr)pDocNd->pNode ){
+		/* php's plain Error, no DOM code -- a context node of another document
+		 * (or of none, a constructed node) cannot anchor this evaluation. */
+		return PH7_VmThrowException(pCtx,"Error","Node from wrong document");
+	}
 	pXCtx = xmlXPathNewContext((xmlDocPtr)pDocNd->pNode);
 	if( pXCtx == 0 ){
 		ph7_result_bool(pCtx,0);
@@ -6074,8 +6337,11 @@ static int DomNodeProp(ph7_context *pCtx,const char *zName)
 		DomResultNodeOf(pCtx,pNd,pNode ? pNode->prev : 0);
 	}else if( DomNameIs(zName,"ownerDocument") ){
 		/* A document has no owner document, which is also why DomWrap answers
-		 * the document itself rather than a second wrapper for it. */
-		DomResultWrap(pCtx,bIsDoc ? 0 : pDoc);
+		 * the document itself rather than a second wrapper for it. The NODE's
+		 * document is the source of truth, not the $__doc slot: a constructed
+		 * ownerless node's slot points at its own holder, and php answers
+		 * null there until an insertion adopts it. */
+		DomResultWrap(pCtx,(bIsDoc || pNode == 0 || pNode->doc == 0) ? 0 : pDoc);
 	}else if( DomNameIs(zName,"parentElement") ){
 		/* php's `?DOMElement`: the parent when it IS an element, so a root
 		 * element (whose parent is the document) answers null. An ATTRIBUTE
@@ -6423,7 +6689,7 @@ static int DomCharDataProp(ph7_context *pCtx,const char *zName)
 	phl_domnode *pNd = DomThisNode(pCtx);
 	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
 	if( DomNameIs(zName,"data") ){
-		DomNodeValue(pCtx,pNode);
+		DomDataValue(pCtx,pNode);
 		return 1;
 	}
 	if( DomNameIs(zName,"length") ){
@@ -6904,7 +7170,7 @@ static int DomPiProp(ph7_context *pCtx,const char *zName)
 		return 1;
 	}
 	if( DomNameIs(zName,"data") ){
-		DomNodeValue(pCtx,pNode);
+		DomDataValue(pCtx,pNode);
 		return 1;
 	}
 	return DomNodeProp(pCtx,zName);
@@ -7077,6 +7343,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 	static const PH7_NativePropDef aNodeProp[] = {
 		{ DOM_RES, PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 		{ DOM_DOC, PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		/* The identity cache. Only a DOCUMENT'S is a document's; a CONSTRUCTED
+		 * ownerless node is its own holder (its $__doc points at itself) and
+		 * caches its tree's wrappers HERE until an insertion adopts them into
+		 * a real document's cache. Empty and unread on every owned node. */
+		{ DOM_NODES, PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
 	/* php's own signatures. Declaring `DOMNode $node` is what makes
 	 * `$n->appendChild(1)` the TypeError php raises instead of a warning from
@@ -7343,6 +7614,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMDocumentFragment_set },
 	};
 	static const PH7_NativeMethodDef aTextMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "string $data = ''", "",
+		  vm_builtin_DOMText_construct },
 		{ "splitText", PH7_MOD_PUBLIC, "int $offset", "", vm_builtin_DOMText_splitText },
 		/* php's 8.x rename and the name it renamed, one body. */
 		{ "isWhitespaceInElementContent", PH7_MOD_PUBLIC, "", "@bool",
@@ -7352,6 +7625,17 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMText_get },
 		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMText_isset },
 		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMText_set },
+	};
+	/* The comment and CDATA constructors -- the only method either class
+	 * declares of its own; php's CDATA data is REQUIRED where the other two
+	 * default. */
+	static const PH7_NativeMethodDef aCommentMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "string $data = ''", "",
+		  vm_builtin_DOMComment_construct },
+	};
+	static const PH7_NativeMethodDef aCdataMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "string $data", "",
+		  vm_builtin_DOMCdataSection_construct },
 	};
 	/* DOMNodeList and DOMNamedNodeMap share a slot layout: what a live view is OF
 	 * ($__owner), the document to wrap results against ($__doc), and -- for the
@@ -7461,9 +7745,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "DOMText", "DOMCharacterData", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aTextMethod, SX_ARRAYSIZE(aTextMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMComment", "DOMCharacterData", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		  aCommentMethod, SX_ARRAYSIZE(aCommentMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMCdataSection", "DOMText", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		  aCdataMethod, SX_ARRAYSIZE(aCdataMethod), 0, 0, 0, 0, 0, 0, 0 },
 		/* php declares the PI under DOMNode (its `data` is its own property, not
 		 * DOMCharacterData's), the fragment and the entity reference plainly. */
 		{ "DOMProcessingInstruction", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
