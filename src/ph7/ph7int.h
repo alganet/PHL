@@ -3504,6 +3504,9 @@ struct phl_libxml_err {
 	int iCode;       /* raw libxml2 error code */
 	int iLine;
 	int iColumn;
+	int bWholeLine;  /* Came off libxml's GENERIC channel, which php line-buffers on its
+	                  * own: the message is a FLUSHED line, so it carries no trailing
+	                  * newline and must not be held back waiting for one. */
 	SyString sMsg;   /* message text, trailing newline preserved (php parity) */
 	SyString sFile;  /* source file/URI, empty for in-memory strings */
 };

@@ -231,6 +231,70 @@ static void LibxmlStructuredErr(void *pUserData,xmlErrorPtr pErr)
 		pErr->int2,pErr->message,pErr->file);
 }
 /*
+ * ...and libxml's OTHER error channel. A handful of diagnostics never reach
+ * the structured handler at all: they are printed with xmlGenericError()
+ * directly, whose default writes them to stderr. XPath is where a program
+ * meets them -- `zz:nope()` under an unbound prefix says "xmlXPathCompOpEval:
+ * function nope bound to undefined prefix zz" through this channel -- and
+ * before this handler they went to the terminal, invisible to
+ * libxml_get_errors() and to a program's error handler alike, in the middle
+ * of whatever the script was writing. php captures them, at libxml's ERROR
+ * level under code 1 with no file or line, and this says the same.
+ *
+ * The signature is printf-style, so the message is formatted here.
+ */
+static void LibxmlGenericErr(void *pUserData,const char *zFmt,...)
+{
+	ph7_vm *pVm = (ph7_vm *)pUserData;
+	SyBlob sMsg;
+	va_list ap;
+	if( pVm == 0 || zFmt == 0 ){
+		return;
+	}
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	va_start(ap,zFmt);
+	SyBlobFormatAp(&sMsg,zFmt,ap);
+	va_end(ap);
+	/* php's own generic handler is line-buffered and reports what it flushed
+	 * WITHOUT the newline, where a structured message keeps its own -- this
+	 * channel's messages arrive whole and newline-terminated. */
+	{
+		char *zMsg = (char *)SyBlobData(&sMsg);
+		sxu32 nMsg = SyBlobLength(&sMsg);
+		while( nMsg > 0 && (zMsg[nMsg-1] == '\n' || zMsg[nMsg-1] == '\r') ){
+			nMsg--;
+		}
+		sMsg.nByte = nMsg;
+	}
+	SyBlobAppend(&sMsg,"",1);   /* the queue copies a C string */
+	PH7_LibxmlQueueError(pVm,XML_ERR_ERROR,1,0,0,(const char *)SyBlobData(&sMsg),"");
+	{
+		phl_libxml_err *aErr = (phl_libxml_err *)SySetBasePtr(&pVm->aLibxmlErr);
+		sxu32 nUsed = SySetUsed(&pVm->aLibxmlErr);
+		if( nUsed > 0 ){
+			aErr[nUsed-1].bWholeLine = 1;
+		}
+		if( pVm->pLibxmlLastErr ){
+			((phl_libxml_err *)pVm->pLibxmlLastErr)->bWholeLine = 1;
+		}
+	}
+	SyBlobRelease(&sMsg);
+}
+/* xmlSetGenericErrorFunc is deprecated from libxml 2.12 and the MSVC gate
+ * refuses a deprecated symbol under /WX. It is still the only door onto that
+ * channel, so the deprecation is suppressed at this one call pair. */
+static void LibxmlGenericSet(ph7_vm *pVm,int bOn)
+{
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable:4996)
+#endif
+	xmlSetGenericErrorFunc(bOn ? (void *)pVm : 0,bOn ? LibxmlGenericErr : 0);
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+}
+/*
  * Bracket a libxml2 entry point.  Begin installs the structured handler
  * routed at this VM and returns the current queue depth; End restores the
  * default handler and, when libxml_use_internal_errors() is OFF, drains
@@ -241,6 +305,7 @@ static void LibxmlStructuredErr(void *pUserData,xmlErrorPtr pErr)
 PH7_PRIVATE sxu32 PH7_LibxmlCaptureBegin(ph7_vm *pVm)
 {
 	xmlSetStructuredErrorFunc(pVm,LibxmlStructuredErr);
+	LibxmlGenericSet(pVm,1);
 	return SySetUsed(&pVm->aLibxmlErr);
 }
 /*
@@ -253,6 +318,7 @@ PH7_PRIVATE sxu32 PH7_LibxmlCaptureBegin(ph7_vm *pVm)
 PH7_PRIVATE void PH7_LibxmlDropErrors(ph7_vm *pVm,sxu32 nMark)
 {
 	xmlSetStructuredErrorFunc(0,0);
+	LibxmlGenericSet(pVm,0);
 	if( pVm->bLibxmlInternalErr ){
 		return;
 	}
@@ -281,6 +347,7 @@ PH7_PRIVATE void PH7_LibxmlCaptureEnd(ph7_vm *pVm,sxu32 nMark,const char *zFnNam
 PH7_PRIVATE void PH7_LibxmlCaptureEndOpts(ph7_vm *pVm,sxu32 nMark,const char *zFnName,int iOpts)
 {
 	xmlSetStructuredErrorFunc(0,0);
+	LibxmlGenericSet(pVm,0);
 	if( pVm->bLibxmlInternalErr ){
 		/* Internal capture on: entries stay queued for libxml_get_errors() */
 		return;
@@ -311,7 +378,7 @@ PH7_PRIVATE void PH7_LibxmlCaptureEndOpts(ph7_vm *pVm,sxu32 nMark,const char *zF
 			SyBlobAppend(&pVm->sLibxmlPend,aErr[n].sMsg.zString,aErr[n].sMsg.nByte);
 			zPend = (const char *)SyBlobData(&pVm->sLibxmlPend);
 			nPend = SyBlobLength(&pVm->sLibxmlPend);
-			if( nPend < 1 || zPend[nPend-1] != '\n' ){
+			if( !aErr[n].bWholeLine && (nPend < 1 || zPend[nPend-1] != '\n') ){
 				/* no line yet: hold it for the next message */
 				LibxmlFreeErr(pVm,&aErr[n]);
 				continue;
