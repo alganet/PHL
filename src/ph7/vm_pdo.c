@@ -26,6 +26,7 @@
 
 static void PdoStmtSweep(phl_pdo *pConn);
 static void PdoBlankSlot(ph7_class_instance *pOwner);
+static void PdoStmtClearFetchState(phl_pdo_stmt *pSt);
 
 /* ------------------------------------------------------------------------
  * Connection lifetime
@@ -222,6 +223,7 @@ static void PdoBindsClear(phl_pdo_stmt *pSt)
 PH7_PRIVATE void PH7_PdoFreeStmt(phl_pdo_stmt *pSt)
 {
 	PdoBindsClear(pSt);
+	PdoStmtClearFetchState(pSt);
 	PH7_PdoSqliteFinalize(pSt);
 	if( pSt->pConnObj ){
 		/* drop the reference taken at creation; the connection may go now */
@@ -1029,6 +1031,49 @@ static sxi32 PdoCheckFetchFlags(ph7_context *pCtx,int iMode,const char *zFn)
 	}
 	return PH7_OK;
 }
+#define PDO_FETCH_LAZY         1
+#define PDO_FETCH_INTO         9
+
+/* Drop whatever a previous setFetchMode() attached to the statement. */
+static void PdoStmtClearFetchState(phl_pdo_stmt *pSt)
+{
+	ph7_vm *pVm = pSt->pConn->pVm;
+	if( pSt->zFetchClass ){
+		SyMemBackendFree(&pVm->sAllocator,pSt->zFetchClass);
+		pSt->zFetchClass = 0;
+		pSt->nFetchClass = 0;
+	}
+	if( pSt->pFetchArgs ){
+		ph7_release_value(pVm,pSt->pFetchArgs);
+		pSt->pFetchArgs = 0;
+	}
+	if( pSt->pFetchInto ){
+		ph7_class_instance *pObj = pSt->pFetchInto;
+		pSt->pFetchInto = 0;
+		PH7_ClassInstanceUnref(pObj);
+	}
+}
+
+/* Call a constructor with the arguments FETCH_CLASS was given, if any. */
+static void PdoCallCtor(ph7_vm *pVm,ph7_class_instance *pObj,ph7_class_method *pCons,
+	ph7_value *pArgs)
+{
+	ph7_value *apArg[16];
+	int nArg = 0;
+	if( pArgs && (pArgs->iFlags & MEMOBJ_HASHMAP) ){
+		ph7_hashmap *pMap = (ph7_hashmap *)pArgs->x.pOther;
+		ph7_hashmap_node *pEntry = pMap->pFirst;
+		sxu32 n,nCount = pMap->nEntry;
+		for( n = 0 ; n < nCount && pEntry && nArg < (int)SX_ARRAYSIZE(apArg) ;
+		     ++n, pEntry = pEntry->pPrev ){
+			ph7_value *pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nValIdx);
+			if( pVal ){
+				apArg[nArg++] = pVal;
+			}
+		}
+	}
+	PH7_VmCallClassMethod(pVm,pObj,pCons,0,nArg,nArg ? apArg : 0);
+}
 /*
  * A column NAME as the connection presents it: ATTR_CASE folds it, and php
  * folds the name only -- never a value, and never a positional key.
@@ -1192,6 +1237,294 @@ static int PdoStmtRow(ph7_vm *pVm,phl_pdo_stmt *pSt,int iMode,ph7_value *pOut)
 	return PdoStmtRowFrom(pVm,pSt,iMode,pOut,0);
 }
 /*
+ * Write one column onto an object.  A DECLARED property takes the native
+ * setter, whatever its visibility -- php fills a private or protected one
+ * named like a column just the same. A class that declares nothing (stdClass,
+ * which is what FETCH_CLASS falls back to) gets a dynamic property instead,
+ * the same one an `(object)` cast would create.
+ */
+static void PdoWriteOneProp(ph7_vm *pVm,ph7_class_instance *pObj,const char *zKey,
+	int nKey,ph7_value *pVal)
+{
+	if( PH7_NativeAttr(pObj,zKey) != 0 ){
+		PH7_NativeSetProp(pVm,pObj,zKey,(sxu32)nKey,pVal);
+		return;
+	}
+	{
+		SyString sName;
+		ph7_value *pSlot;
+		SyStringInitFromBuf(&sName,zKey,nKey);
+		pSlot = PH7_ClassInstanceFetchAttr(pObj,&sName);
+		if( pSlot ){
+			PH7_MemObjStore(pVal,pSlot);
+			return;
+		}
+		pSlot = PH7_VmCreateDynamicAttr(pVm,pObj,zKey,(sxu32)nKey,0);
+		if( pSlot ){
+			PH7_MemObjStore(pVal,pSlot);
+		}
+	}
+}
+/* Write every column of a row onto an object, visibility ignored -- php fills
+ * a private or protected property named like a column just the same. */
+static void PdoWriteRowProps(ph7_vm *pVm,ph7_class_instance *pObj,ph7_value *pRow)
+{
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pEntry;
+	sxu32 n,nCount;
+	if( pRow == 0 || (pRow->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return;
+	}
+	pMap = (ph7_hashmap *)pRow->x.pOther;
+	pEntry = pMap->pFirst;
+	nCount = pMap->nEntry;
+	for( n = 0 ; n < nCount && pEntry ; ++n, pEntry = pEntry->pPrev ){
+		ph7_value sKey;
+		ph7_value *pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nValIdx);
+		int nKey = 0;
+		const char *zKey;
+		PH7_MemObjInit(pVm,&sKey);
+		PH7_HashmapExtractNodeKey(pEntry,&sKey);
+		zKey = ph7_value_to_string(&sKey,&nKey);
+		if( pVal && zKey && nKey > 0 ){
+			PdoWriteOneProp(pVm,pObj,zKey,nKey,pVal);
+		}
+		PH7_MemObjRelease(&sKey);
+	}
+}
+/*
+ * Build one object for FETCH_CLASS / fetchObject().  php writes the columns as
+ * properties and runs the constructor AFTER them, so a constructor that
+ * assigns a property wins over the column of the same name -- unless
+ * FETCH_PROPS_LATE reverses the order, which is the whole point of that flag.
+ * The write ignores visibility: a private or protected property named like a
+ * column is filled just the same, which is why this cannot go through the
+ * ordinary property-store path.
+ */
+static int PdoRowIntoObject(ph7_context *pCtx,phl_pdo_stmt *pSt,ph7_class *pClass,
+	ph7_value *pArgs,int bPropsLate,int iFirstCol,ph7_value *pResult)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pObj;
+	ph7_class_method *pCons;
+	ph7_value *pRow;
+	int rc = 0;
+	pObj = PH7_NewClassInstance(pVm,pClass);
+	if( pObj == 0 ){
+		return 0;
+	}
+	pRow = ph7_context_new_array(pCtx);
+	if( pRow == 0 ){
+		PH7_ClassInstanceUnref(pObj);
+		return 0;
+	}
+	if( !PdoStmtRowFrom(pVm,pSt,PDO_FETCH_ASSOC,pRow,iFirstCol) ){
+		PH7_ClassInstanceUnref(pObj);
+		return 0;
+	}
+	pCons = PH7_ClassExtractMethod(pClass,"__construct",sizeof("__construct")-1);
+	if( bPropsLate && pCons ){
+		PdoCallCtor(pVm,pObj,pCons,pArgs);
+	}
+	{
+		ph7_hashmap *pMap = (ph7_hashmap *)pRow->x.pOther;
+		ph7_hashmap_node *pEntry = pMap->pFirst;
+		sxu32 n,nCount = pMap->nEntry;
+		for( n = 0 ; n < nCount && pEntry ; ++n, pEntry = pEntry->pPrev ){
+			ph7_value sKey;
+			ph7_value *pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nValIdx);
+			int nKey = 0;
+			const char *zKey;
+			PH7_MemObjInit(pVm,&sKey);
+			PH7_HashmapExtractNodeKey(pEntry,&sKey);
+			zKey = ph7_value_to_string(&sKey,&nKey);
+			if( pVal && zKey && nKey > 0 ){
+				PdoWriteOneProp(pVm,pObj,zKey,nKey,pVal);
+			}
+			PH7_MemObjRelease(&sKey);
+		}
+	}
+	if( !bPropsLate && pCons ){
+		PdoCallCtor(pVm,pObj,pCons,pArgs);
+	}
+	PH7_MemObjRelease(pResult);
+	pResult->x.pOther = pObj;
+	pResult->iFlags = MEMOBJ_OBJ;
+	rc = 1;
+	return rc;
+}
+/*
+ * The class a FETCH_CLASS or fetchObject() names.  The two verbs word the same
+ * refusal differently -- fetchAll() names the ARGUMENT POSITION, fetchObject()
+ * names the class it was given -- so the caller supplies the sentence.
+ */
+static ph7_class * PdoResolveFetchClass(ph7_context *pCtx,ph7_value *pName,int bObjectVerb,
+	sxi32 *pRc)
+{
+	ph7_class *pClass;
+	const char *zName;
+	int nName = 0;
+	*pRc = PH7_OK;
+	if( pName == 0 || (pName->iFlags & MEMOBJ_NULL) ){
+		return PH7_VmExtractClass(pCtx->pVm,"stdClass",sizeof("stdClass")-1,FALSE,0);
+	}
+	zName = ph7_value_to_string(pName,&nName);
+	pClass = (zName && nName > 0)
+		? PH7_VmExtractClass(pCtx->pVm,zName,(sxu32)nName,TRUE,0) : 0;
+	if( pClass == 0 ){
+		if( bObjectVerb ){
+			*pRc = PH7_VmThrowException(pCtx,"TypeError",
+				"PDOStatement::fetchObject(): Argument #1 ($class) must be a valid "
+				"class name, %.*s given",nName,zName ? zName : "");
+		}else{
+			*pRc = PH7_VmThrowException(pCtx,"TypeError",
+				"PDOStatement::fetchAll(): Argument #2 must be a valid class");
+		}
+	}
+	return pClass;
+}
+/*
+ * PDOStatement::fetchObject(?string $class = "stdClass", array $ctorArgs = []): object|false
+ *
+ * FETCH_CLASS for exactly one row, with its own refusal wording.
+ */
+static int vm_builtin_PDOStatement_fetchObject(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo_stmt *pSt = PdoStmtOfInstance(PH7_ContextThis(pCtx));
+	ph7_class *pClass;
+	ph7_value sRes;
+	sxi32 rc;
+	if( pSt == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDOStatement object is uninitialized");
+	}
+	pClass = PdoResolveFetchClass(pCtx,nArg > 0 ? apArg[0] : 0,TRUE,&rc);
+	if( pClass == 0 ){
+		return rc;
+	}
+	if( !pSt->bRowPending ){
+		PdoStmtOk(pSt);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pCtx->pVm,&sRes);
+	if( !PdoRowIntoObject(pCtx,pSt,pClass,nArg > 1 ? apArg[1] : 0,FALSE,0,&sRes) ){
+		PH7_MemObjRelease(&sRes);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_value(pCtx,&sRes);
+	PH7_MemObjRelease(&sRes);
+	if( PdoStmtStep(pSt) < 0 ){
+		PdoStmtFailed(pSt,pSt->pConn->zSqlState);
+		return PH7_PdoRaiseStmt(pCtx,pSt,"PDOStatement::fetchObject");
+	}
+	PdoStmtOk(pSt);
+	return PH7_OK;
+}
+/*
+ * One row as an OBJECT: FETCH_CLASS builds a new instance, FETCH_INTO fills
+ * the one the script handed setFetchMode(). A fetch(FETCH_INTO) with no such
+ * object is php's own "No fetch-into object specified." -- a PDOException with
+ * no driver behind it.
+ */
+static int PdoFetchObjectRow(ph7_context *pCtx,phl_pdo_stmt *pSt,int iMode,
+	ph7_value *pClassName,ph7_value *pArgs,const char *zFn)
+{
+	int iBase = iMode & PDO_FETCH_MODE_MASK;
+	int bLate = (iMode & PDO_FETCH_PROPS_LATE) != 0;
+	int iFirst = 0;
+	ph7_class *pClass = 0;
+	ph7_value sRes;
+	sxi32 rc;
+	SXUNUSED(zFn);
+	if( !pSt->bRowPending ){
+		PdoStmtOk(pSt);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( iBase == PDO_FETCH_INTO ){
+		ph7_value *pRow;
+		if( pSt->pFetchInto == 0 ){
+			return PH7_VmThrowException(pCtx,"PDOException",
+				"SQLSTATE[HY000]: General error: No fetch-into object specified.");
+		}
+		pRow = ph7_context_new_array(pCtx);
+		if( pRow == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		if( !PdoStmtRow(pCtx->pVm,pSt,PDO_FETCH_ASSOC,pRow) ){
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		PdoWriteRowProps(pCtx->pVm,pSt->pFetchInto,pRow);
+		PH7_NativeResultObject(pCtx,pSt->pFetchInto);
+		pSt->pFetchInto->iRef++;   /* the result took one; the statement keeps its own */
+		if( PdoStmtStep(pSt) < 0 ){
+			PdoStmtFailed(pSt,pSt->pConn->zSqlState);
+			return PH7_PdoRaiseStmt(pCtx,pSt,"PDOStatement::fetch");
+		}
+		PdoStmtOk(pSt);
+		return PH7_OK;
+	}
+	/* FETCH_CLASS: the class comes from this call or from setFetchMode() */
+	if( pClassName ){
+		pClass = PdoResolveFetchClass(pCtx,pClassName,FALSE,&rc);
+		if( pClass == 0 ){
+			return rc;
+		}
+	}else if( iMode & PDO_FETCH_CLASSTYPE ){
+		/* the FIRST column names the class, and leaves the row */
+		ph7_value *pHead = ph7_context_new_array(pCtx);
+		ph7_value *pName;
+		if( pHead == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		if( !PdoStmtRowFrom(pCtx->pVm,pSt,PDO_FETCH_NUM,pHead,0) ){
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		pSt->bRowPending = 1;   /* the cursor has not moved */
+		pName = PdoArrayAtInt(pCtx->pVm,pHead,0);
+		pClass = PdoResolveFetchClass(pCtx,pName,FALSE,&rc);
+		if( pClass == 0 ){
+			return rc;
+		}
+		iFirst = 1;
+	}else if( pSt->zFetchClass ){
+		ph7_value sName;
+		SyString sStr;
+		SyStringInitFromBuf(&sStr,pSt->zFetchClass,pSt->nFetchClass);
+		PH7_MemObjInitFromString(pCtx->pVm,&sName,&sStr);
+		pClass = PdoResolveFetchClass(pCtx,&sName,FALSE,&rc);
+		PH7_MemObjRelease(&sName);
+		if( pClass == 0 ){
+			return rc;
+		}
+		if( pArgs == 0 ){
+			pArgs = pSt->pFetchArgs;
+		}
+	}else{
+		pClass = PH7_VmExtractClass(pCtx->pVm,"stdClass",sizeof("stdClass")-1,FALSE,0);
+	}
+	if( pClass == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_MemObjInit(pCtx->pVm,&sRes);
+	if( !PdoRowIntoObject(pCtx,pSt,pClass,pArgs,bLate,iFirst,&sRes) ){
+		PH7_MemObjRelease(&sRes);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_value(pCtx,&sRes);
+	PH7_MemObjRelease(&sRes);
+	if( PdoStmtStep(pSt) < 0 ){
+		PdoStmtFailed(pSt,pSt->pConn->zSqlState);
+		return PH7_PdoRaiseStmt(pCtx,pSt,"PDOStatement::fetch");
+	}
+	PdoStmtOk(pSt);
+	return PH7_OK;
+}
+/*
  * PDOStatement::fetch(int $mode = PDO::FETCH_DEFAULT, ...): mixed
  *
  * FETCH_DEFAULT means the connection's ATTR_DEFAULT_FETCH_MODE, which is
@@ -1244,6 +1577,10 @@ static int vm_builtin_PDOStatement_fetch(ph7_context *pCtx,int nArg,ph7_value **
 		}
 		PdoStmtOk(pSt);
 		return PH7_OK;
+	}
+	if( (iMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_CLASS
+	 || (iMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_INTO ){
+		return PdoFetchObjectRow(pCtx,pSt,iMode,0,0,"PDOStatement::fetch");
 	}
 	if( !pSt->bRowPending ){
 		PdoStmtOk(pSt);
@@ -1448,13 +1785,42 @@ static int vm_builtin_PDOStatement_setFetchMode(ph7_context *pCtx,int nArg,ph7_v
 	if( rc != PH7_OK ){
 		return rc;
 	}
-	if( (iMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_COLUMN && nArg < 2 ){
-		return PH7_VmThrowException(pCtx,"ArgumentCountError",
-			"PDOStatement::setFetchMode() expects exactly 2 arguments for the fetch "
-			"mode provided, %d given",nArg);
+	{
+		int iBase = iMode & PDO_FETCH_MODE_MASK;
+		if( (iBase == PDO_FETCH_COLUMN || iBase == PDO_FETCH_INTO
+		  || (iBase == PDO_FETCH_CLASS && (iMode & PDO_FETCH_CLASSTYPE) == 0)) && nArg < 2 ){
+			return PH7_VmThrowException(pCtx,"ArgumentCountError",
+				"PDOStatement::setFetchMode() expects exactly 2 arguments for the fetch "
+				"mode provided, %d given",nArg);
+		}
+		PdoStmtClearFetchState(pSt);
+		if( iBase == PDO_FETCH_CLASS && nArg > 1 ){
+			int nName = 0;
+			const char *zName = ph7_value_to_string(apArg[1],&nName);
+			if( zName && nName > 0 ){
+				pSt->zFetchClass = (char *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,
+					(sxu32)nName + 1);
+				if( pSt->zFetchClass ){
+					SyMemcpy(zName,pSt->zFetchClass,(sxu32)nName);
+					pSt->zFetchClass[nName] = 0;
+					pSt->nFetchClass = nName;
+				}
+			}
+			if( nArg > 2 && (apArg[2]->iFlags & MEMOBJ_HASHMAP) ){
+				pSt->pFetchArgs = ph7_new_array(pCtx->pVm);
+				if( pSt->pFetchArgs ){
+					PH7_MemObjStore(apArg[2],pSt->pFetchArgs);
+				}
+			}
+		}else if( iBase == PDO_FETCH_INTO && nArg > 1
+		       && (apArg[1]->iFlags & MEMOBJ_OBJ) ){
+			pSt->pFetchInto = (ph7_class_instance *)apArg[1]->x.pOther;
+			pSt->pFetchInto->iRef++;   /* the statement writes into it for as long as it lives */
+		}
 	}
 	pSt->iFetchMode = iMode;
-	pSt->iFetchColumn = (nArg > 1) ? (int)ph7_value_to_int64(apArg[1]) : 0;
+	pSt->iFetchColumn = (nArg > 1 && (iMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_COLUMN)
+		? (int)ph7_value_to_int64(apArg[1]) : 0;
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
@@ -1544,6 +1910,16 @@ static int vm_builtin_PDOStatement_fetchAll(ph7_context *pCtx,int nArg,ph7_value
 		if( iCol >= PH7_PdoSqliteColumnCount(pSt) ){
 			return PH7_VmThrowException(pCtx,"ValueError","Invalid column index");
 		}
+	}else if( iBase == PDO_FETCH_CLASS ){
+		if( nArg > 3 ){
+			return PH7_VmThrowException(pCtx,"ArgumentCountError",
+				"PDOStatement::fetchAll() expects at most 3 arguments for the fetch "
+				"mode provided, %d given",nArg);
+		}
+	}else if( iBase == PDO_FETCH_LAZY ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"PDOStatement::fetchAll(): Argument #1 ($mode) PDO::FETCH_LAZY cannot be "
+			"used with PDOStatement::fetchAll()");
 	}else if( iBase == PDO_FETCH_FUNC ){
 		if( nArg != 2 ){
 			return PH7_VmThrowException(pCtx,"ArgumentCountError",
@@ -1580,6 +1956,8 @@ static int vm_builtin_PDOStatement_fetchAll(ph7_context *pCtx,int nArg,ph7_value
 		 || iBase == PDO_FETCH_FUNC || iBase == PDO_FETCH_BOUND ){
 			iRowMode = PDO_FETCH_NUM;
 			iFirst = 0;
+		}else if( iBase == PDO_FETCH_CLASS ){
+			iFirst = 0;
 		}
 		pRow = ph7_context_new_array(pCtx);
 		if( pRow == 0 ){
@@ -1607,6 +1985,43 @@ static int vm_builtin_PDOStatement_fetchAll(ph7_context *pCtx,int nArg,ph7_value
 			}else{
 				PdoGroupAppend(pCtx,pOut,pKey,pRow);
 			}
+		}else if( iBase == PDO_FETCH_CLASS ){
+			/* every row is its own instance; the class and its constructor
+			 * arguments are the same for all of them */
+			ph7_class *pClass;
+			ph7_value sObj;
+			sxi32 rcCls;
+			int iFirstCol = 0;
+			if( nArg > 1 ){
+				pClass = PdoResolveFetchClass(pCtx,apArg[1],FALSE,&rcCls);
+			}else if( iMode & PDO_FETCH_CLASSTYPE ){
+				ph7_value *pHead = ph7_context_new_array(pCtx);
+				if( pHead == 0 ){
+					return PH7_ContextMemoryError(pCtx);
+				}
+				if( !PdoStmtRowFrom(pCtx->pVm,pSt,PDO_FETCH_NUM,pHead,0) ){
+					break;
+				}
+				pSt->bRowPending = 1;
+				pClass = PdoResolveFetchClass(pCtx,PdoArrayAtInt(pCtx->pVm,pHead,0),
+					FALSE,&rcCls);
+				iFirstCol = 1;
+			}else{
+				pClass = PH7_VmExtractClass(pCtx->pVm,"stdClass",sizeof("stdClass")-1,
+					FALSE,0);
+				rcCls = PH7_OK;
+			}
+			if( pClass == 0 ){
+				return rcCls;
+			}
+			PH7_MemObjInit(pCtx->pVm,&sObj);
+			if( !PdoRowIntoObject(pCtx,pSt,pClass,nArg > 2 ? apArg[2] : 0,
+				(iMode & PDO_FETCH_PROPS_LATE) != 0,iFirstCol,&sObj) ){
+				PH7_MemObjRelease(&sObj);
+				break;
+			}
+			ph7_array_add_elem(pOut,0,&sObj);
+			PH7_MemObjRelease(&sObj);
 		}else if( !PdoStmtRow(pCtx->pVm,pSt,iRowMode,pRow) ){
 			break;
 		}else if( iBase == PDO_FETCH_BOUND ){
@@ -2567,7 +2982,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm)
 		  vm_builtin_PDOStatement_fetchColumn },
 		{ "fetchObject",  PH7_MOD_PUBLIC,
 		  "?string $class = 'stdClass', array $constructorArgs = []", "@object|false",
-		  vm_builtin_pdo_stub },
+		  vm_builtin_PDOStatement_fetchObject },
 		{ "getAttribute", PH7_MOD_PUBLIC, "int $name", "@mixed", vm_builtin_pdo_stub },
 		{ "getColumnMeta",PH7_MOD_PUBLIC, "int $column", "@array|false",
 		  vm_builtin_PDOStatement_getColumnMeta },
