@@ -25,6 +25,7 @@
  */
 
 static void PdoStmtSweep(phl_pdo *pConn);
+static void PdoBlankSlot(ph7_class_instance *pOwner);
 
 /* ------------------------------------------------------------------------
  * Connection lifetime
@@ -77,6 +78,7 @@ static void PdoVmSweep(ph7_vm *pVm)
 	phl_pdo *pConn = (phl_pdo *)pVm->pPdoConns;
 	while( pConn ){
 		phl_pdo *pNext = pConn->pNext;
+		PdoBlankSlot(pConn->pOwner);
 		PH7_PdoFreeConn(pConn);
 		SyMemBackendFree(&pVm->sAllocator,pConn);
 		pConn = pNext;
@@ -90,6 +92,27 @@ PH7_PRIVATE void PH7_PdoVmReset(ph7_vm *pVm)
 PH7_PRIVATE void PH7_PdoVmRelease(ph7_vm *pVm)
 {
 	PdoVmSweep(&(*pVm));
+}
+/*
+ * Blank the hidden slot of the object that holds a record we are about to
+ * free.  Without this the object outlives its record -- a PDOStatement whose
+ * connection was released first, or any handle alive at VM teardown -- and its
+ * own release reads freed memory to ask whether it still owns one. (ASan found
+ * exactly that; nothing in the ordinary build noticed.)
+ */
+static void PdoBlankSlot(ph7_class_instance *pOwner)
+{
+	SyString sAttr;
+	ph7_value *pRes;
+	if( pOwner == 0 ){
+		return;
+	}
+	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);
+	pRes = PH7_ClassInstanceFetchAttr(pOwner,&sAttr);
+	if( pRes ){
+		PH7_MemObjRelease(pRes);
+		MemObjSetType(pRes,MEMOBJ_NULL);
+	}
 }
 /* The connection behind a `__res` slot value. */
 static phl_pdo * PdoOfValue(ph7_value *pVal)
@@ -169,8 +192,27 @@ PH7_PRIVATE phl_pdo_stmt * PH7_PdoNewStmt(phl_pdo *pConn)
 	pConn->pStmts = pSt;
 	return pSt;
 }
+/* Drop what bindValue()/bindParam() recorded. */
+static void PdoBindsClear(phl_pdo_stmt *pSt)
+{
+	phl_pdo_bind *pB = pSt->pBinds;
+	ph7_vm *pVm = pSt->pConn->pVm;
+	while( pB ){
+		phl_pdo_bind *pNext = pB->pNext;
+		if( pB->zName ){
+			SyMemBackendFree(&pVm->sAllocator,pB->zName);
+		}
+		if( pB->pVal ){
+			ph7_release_value(pVm,pB->pVal);
+		}
+		SyMemBackendFree(&pVm->sAllocator,pB);
+		pB = pNext;
+	}
+	pSt->pBinds = 0;
+}
 PH7_PRIVATE void PH7_PdoFreeStmt(phl_pdo_stmt *pSt)
 {
+	PdoBindsClear(pSt);
 	PH7_PdoSqliteFinalize(pSt);
 }
 /* Finalize and free every statement of one connection. */
@@ -179,6 +221,7 @@ static void PdoStmtSweep(phl_pdo *pConn)
 	phl_pdo_stmt *pSt = pConn->pStmts;
 	while( pSt ){
 		phl_pdo_stmt *pNext = pSt->pNext;
+		PdoBlankSlot(pSt->pOwner);
 		PH7_PdoFreeStmt(pSt);
 		SyMemBackendFree(&pConn->pVm->sAllocator,pSt);
 		pSt = pNext;
@@ -1143,6 +1186,287 @@ static int vm_builtin_PDOStatement_getIterator(ph7_context *pCtx,int nArg,ph7_va
 	return PH7_OK;
 }
 /*
+ * Record one binding.  A name is kept as the script spelled it -- with or
+ * without its colon -- because the resolution happens at execute(), when the
+ * statement that knows the names exists.
+ */
+static phl_pdo_bind * PdoBindAdd(phl_pdo_stmt *pSt,const char *zName,int nName,int iPos,
+	int iType)
+{
+	ph7_vm *pVm = pSt->pConn->pVm;
+	phl_pdo_bind *pB;
+	/* php REPLACES a binding for the same parameter rather than stacking one */
+	for( pB = pSt->pBinds ; pB ; pB = pB->pNext ){
+		if( zName ? (pB->zName && pB->nName == nName
+		             && SyMemcmp(pB->zName,zName,(sxu32)nName) == 0)
+		          : (pB->zName == 0 && pB->iPos == iPos) ){
+			if( pB->pVal ){
+				ph7_release_value(pVm,pB->pVal);
+				pB->pVal = 0;
+			}
+			pB->iType = iType;
+			pB->nSlot = SXU32_HIGH;
+			return pB;
+		}
+	}
+	pB = (phl_pdo_bind *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_pdo_bind));
+	if( pB == 0 ){
+		return 0;
+	}
+	SyZero(pB,sizeof(phl_pdo_bind));
+	pB->iPos = iPos;
+	pB->iType = iType;
+	pB->nSlot = SXU32_HIGH;
+	if( zName && nName > 0 ){
+		pB->zName = (char *)SyMemBackendAlloc(&pVm->sAllocator,(sxu32)nName + 1);
+		if( pB->zName == 0 ){
+			SyMemBackendFree(&pVm->sAllocator,pB);
+			return 0;
+		}
+		SyMemcpy(zName,pB->zName,(sxu32)nName);
+		pB->zName[nName] = 0;
+		pB->nName = nName;
+	}
+	pB->pNext = pSt->pBinds;
+	pSt->pBinds = pB;
+	return pB;
+}
+/*
+ * The shared body of bindValue() and bindParam(): they differ only in WHEN the
+ * value is read. Argument #1 is a name or a 1-based position, and php refuses
+ * position 0 by ValueError before the statement is consulted at all.
+ */
+static int PdoBindArgument(ph7_context *pCtx,int nArg,ph7_value **apArg,const char *zFn,
+	int bByRef)
+{
+	phl_pdo_stmt *pSt = PdoStmtOfInstance(PH7_ContextThis(pCtx));
+	phl_pdo_bind *pB;
+	ph7_value *pKey;
+	int iType;
+	if( pSt == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDOStatement object is uninitialized");
+	}
+	pKey = nArg > 0 ? apArg[0] : 0;
+	iType = nArg > 2 ? (int)ph7_value_to_int64(apArg[2]) : PDO_PARAM_STR;
+	if( pKey && (pKey->iFlags & MEMOBJ_STRING) ){
+		int nName = 0;
+		const char *zName = ph7_value_to_string(pKey,&nName);
+		pB = PdoBindAdd(pSt,zName,nName,0,iType);
+	}else{
+		ph7_int64 iPos = pKey ? ph7_value_to_int64(pKey) : 0;
+		if( iPos < 1 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"%s(): Argument #1 ($param) must be greater than or equal to 1",zFn);
+		}
+		pB = PdoBindAdd(pSt,0,0,(int)iPos,iType);
+	}
+	if( pB == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( bByRef ){
+		/* bindParam(): remember the caller's SLOT, so a write to that variable
+		 * after this call is the value execute() runs with. The engine hands a
+		 * by-reference argument as the caller's own memobj, and its index is
+		 * how every other deferred read here finds it again. */
+		pB->nSlot = (nArg > 1 && apArg[1]) ? apArg[1]->nIdx : SXU32_HIGH;
+	}else if( nArg > 1 ){
+		/* bindValue(): the statement takes its own copy now */
+		pB->pVal = ph7_new_scalar(pCtx->pVm);
+		if( pB->pVal == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		PH7_MemObjStore(apArg[1],pB->pVal);
+	}
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+static int vm_builtin_PDOStatement_bindValue(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return PdoBindArgument(pCtx,nArg,apArg,"PDOStatement::bindValue",FALSE);
+}
+static int vm_builtin_PDOStatement_bindParam(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return PdoBindArgument(pCtx,nArg,apArg,"PDOStatement::bindParam",TRUE);
+}
+/* Bind one recorded parameter, resolving a name against the live statement. */
+static int PdoBindApply(ph7_vm *pVm,phl_pdo_stmt *pSt,phl_pdo_bind *pB)
+{
+	ph7_value *pVal = pB->pVal;
+	int iPos = pB->iPos;
+	if( pB->zName ){
+		iPos = PH7_PdoSqliteBindIndexOf(pSt,pB->zName,pB->nName);
+	}
+	if( pB->nSlot != SXU32_HIGH ){
+		/* bindParam(): read the caller's variable NOW */
+		pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pB->nSlot);
+	}
+	return PH7_PdoSqliteBindAt(pSt,iPos,pB->iType,pVal);
+}
+/*
+ * execute()'s `?array $params`: php binds the array INSTEAD of whatever was
+ * recorded, an integer key naming a 1-based position (so element 0 is
+ * parameter 1) and a string key naming a placeholder.
+ */
+static int PdoBindFromArray(ph7_vm *pVm,phl_pdo_stmt *pSt,ph7_value *pArray)
+{
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pEntry;
+	sxu32 n,nCount;
+	int rc = 1;
+	if( pArray == 0 || (pArray->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return 1;
+	}
+	pMap = (ph7_hashmap *)pArray->x.pOther;
+	nCount = pMap->nEntry;
+	pEntry = pMap->pFirst;
+	for( n = 0 ; n < nCount && pEntry ; ++n, pEntry = pEntry->pPrev ){
+		ph7_value sKey;
+		ph7_value *pVal = (ph7_value *)SySetAt(&pVm->aMemObj,pEntry->nValIdx);
+		int iPos;
+		PH7_MemObjInit(pVm,&sKey);
+		PH7_HashmapExtractNodeKey(pEntry,&sKey);
+		if( pEntry->iType == HASHMAP_INT_NODE ){
+			iPos = (int)sKey.x.iVal + 1;
+		}else{
+			int nName = 0;
+			const char *zName = ph7_value_to_string(&sKey,&nName);
+			iPos = PH7_PdoSqliteBindIndexOf(pSt,zName,nName);
+		}
+		PH7_MemObjRelease(&sKey);
+		/* php binds every element as a STRING unless the script said otherwise
+		 * through bindValue(); a php null still binds as NULL. */
+		if( !PH7_PdoSqliteBindAt(pSt,iPos,PDO_PARAM_STR,pVal) ){
+			rc = 0;
+			break;
+		}
+	}
+	return rc;
+}
+/*
+ * PDOStatement::execute(?array $params = null): bool
+ *
+ * Runs the statement from the start: the cursor is rewound, the previous run's
+ * values are dropped, the parameters are bound and one step is taken -- the
+ * same first step query() takes, so columnCount() and the first fetch() behave
+ * identically whichever verb produced the statement.
+ */
+static int vm_builtin_PDOStatement_execute(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo_stmt *pSt = PdoStmtOfInstance(PH7_ContextThis(pCtx));
+	int bOk = 1;
+	if( pSt == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDOStatement object is uninitialized");
+	}
+	PH7_PdoTouch(pSt->pConn);
+	PH7_PdoSqliteReset(pSt);
+	pSt->bRowPending = 0;
+	pSt->bDone = 0;
+	if( nArg > 0 && apArg[0] && (apArg[0]->iFlags & MEMOBJ_HASHMAP) ){
+		bOk = PdoBindFromArray(pCtx->pVm,pSt,apArg[0]);
+	}else{
+		phl_pdo_bind *pB;
+		for( pB = pSt->pBinds ; pB && bOk ; pB = pB->pNext ){
+			bOk = PdoBindApply(pCtx->pVm,pSt,pB);
+		}
+	}
+	if( !bOk ){
+		ph7_result_bool(pCtx,0);
+		return PH7_PdoRaise(pCtx,pSt->pConn,"PDOStatement::execute");
+	}
+	pSt->bExecuted = 1;
+	if( PdoStmtStep(pSt) < 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_PdoRaise(pCtx,pSt->pConn,"PDOStatement::execute");
+	}
+	pSt->nChanges = PH7_PdoSqliteColumnCount(pSt) > 0
+		? 0 : PH7_PdoSqliteChanges(pSt->pConn);
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/*
+ * PDO::prepare(string $query, array $options = []): PDOStatement|false
+ *
+ * Compiles without running. The options array is php's per-statement
+ * attribute set; the sqlite driver carries none of the ones a script can put
+ * there, and php ignores an unusable one rather than refusing the call.
+ */
+static int vm_builtin_PDO_prepare(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo *pConn = PdoOfInstance(PH7_ContextThis(pCtx));
+	phl_pdo_stmt *pSt;
+	ph7_class *pClass;
+	ph7_class_instance *pObj;
+	const char *zSql;
+	int nSql = 0;
+	if( pConn == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");
+	}
+	PH7_PdoTouch(pConn);
+	zSql = nArg > 0 ? ph7_value_to_string(apArg[0],&nSql) : 0;
+	if( zSql == 0 || nSql < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"PDO::prepare(): Argument #1 ($query) must not be empty");
+	}
+	pSt = PH7_PdoNewStmt(pConn);
+	if( pSt == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( !PH7_PdoSqlitePrepare(pSt,zSql,nSql) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_PdoRaise(pCtx,pConn,"PDO::prepare");
+	}
+	pClass = PH7_VmExtractClass(pCtx->pVm,"PDOStatement",sizeof("PDOStatement")-1,FALSE,0);
+	pObj = pClass ? PH7_NewClassInstance(pCtx->pVm,pClass) : 0;
+	if( pObj == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( PdoStmtAttach(pObj,pSt) != 0 ){
+		PH7_ClassInstanceUnref(pObj);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_NativeSetAttrStr(pCtx->pVm,pObj,"queryString",zSql,nSql);
+	PH7_NativeResultObject(pCtx,pObj);
+	return PH7_OK;
+}
+/*
+ * PDO::quote(string $string, int $type = PDO::PARAM_STR): string|false
+ *
+ * sqlite's own quoting: single quotes around it, each embedded quote doubled.
+ * A NUL byte has no spelling inside a sqlite literal at all, so php refuses
+ * one -- with a bare sentence carrying no SQLSTATE, unlike every other
+ * PDOException this driver raises.
+ */
+static int vm_builtin_PDO_quote(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo *pConn = PdoOfInstance(PH7_ContextThis(pCtx));
+	const char *zIn;
+	int nIn = 0,i;
+	SyBlob sOut;
+	if( pConn == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");
+	}
+	PH7_PdoTouch(pConn);
+	zIn = nArg > 0 ? ph7_value_to_string(apArg[0],&nIn) : "";
+	for( i = 0 ; i < nIn ; ++i ){
+		if( zIn[i] == 0 ){
+			return PH7_VmThrowException(pCtx,"PDOException",
+				"SQLite PDO::quote does not support null bytes");
+		}
+	}
+	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+	SyBlobAppend(&sOut,"'",1);
+	for( i = 0 ; i < nIn ; ++i ){
+		if( zIn[i] == '\'' ){
+			SyBlobAppend(&sOut,"'",1);
+		}
+		SyBlobAppend(&sOut,&zIn[i],1);
+	}
+	SyBlobAppend(&sOut,"'",1);
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+	return PH7_OK;
+}
+/*
  * PDO::query(string $query, ...): PDOStatement|false
  *
  * Prepares and runs ONE statement -- what follows a `;` is compiled but never
@@ -1582,12 +1906,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm)
 		{ "lastInsertId",     PH7_MOD_PUBLIC, "?string $name = null", "@string|false",
 		  vm_builtin_PDO_lastInsertId },
 		{ "prepare",          PH7_MOD_PUBLIC, "string $query, array $options = []",
-		  "@PDOStatement|false", vm_builtin_pdo_stub },
+		  "@PDOStatement|false", vm_builtin_PDO_prepare },
 		{ "query",            PH7_MOD_PUBLIC,
 		  "string $query, ?int $fetchMode = null, mixed ...$fetchModeArgs",
 		  "@PDOStatement|false", vm_builtin_PDO_query },
 		{ "quote",            PH7_MOD_PUBLIC, "string $string, int $type = PDO::PARAM_STR",
-		  "@string|false", vm_builtin_pdo_stub },
+		  "@string|false", vm_builtin_PDO_quote },
 		{ "rollBack",         PH7_MOD_PUBLIC, "", "@bool", vm_builtin_pdo_stub },
 		{ "setAttribute",     PH7_MOD_PUBLIC, "int $attribute, mixed $value", "@bool",
 		  vm_builtin_PDO_setAttribute },
@@ -1598,16 +1922,17 @@ PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm)
 		  "mixed $driverOptions = null", "@bool", vm_builtin_pdo_stub },
 		{ "bindParam",    PH7_MOD_PUBLIC,
 		  "string|int $param, mixed &$var, int $type = PDO::PARAM_STR, int $maxLength = 0, "
-		  "mixed $driverOptions = null", "@bool", vm_builtin_pdo_stub },
+		  "mixed $driverOptions = null", "@bool", vm_builtin_PDOStatement_bindParam },
 		{ "bindValue",    PH7_MOD_PUBLIC,
 		  "string|int $param, mixed $value, int $type = PDO::PARAM_STR", "@bool",
-		  vm_builtin_pdo_stub },
+		  vm_builtin_PDOStatement_bindValue },
 		{ "closeCursor",  PH7_MOD_PUBLIC, "", "@bool", vm_builtin_PDOStatement_closeCursor },
 		{ "columnCount",  PH7_MOD_PUBLIC, "", "@int", vm_builtin_PDOStatement_columnCount },
 		{ "debugDumpParams", PH7_MOD_PUBLIC, "", "@?bool", vm_builtin_pdo_stub },
 		{ "errorCode",    PH7_MOD_PUBLIC, "", "@?string", vm_builtin_PDOStatement_errorCode },
 		{ "errorInfo",    PH7_MOD_PUBLIC, "", "@array", vm_builtin_PDOStatement_errorInfo },
-		{ "execute",      PH7_MOD_PUBLIC, "?array $params = null", "@bool", vm_builtin_pdo_stub },
+		{ "execute",      PH7_MOD_PUBLIC, "?array $params = null", "@bool",
+		  vm_builtin_PDOStatement_execute },
 		{ "fetch",        PH7_MOD_PUBLIC,
 		  "int $mode = PDO::FETCH_DEFAULT, int $cursorOrientation = PDO::FETCH_ORI_NEXT, "
 		  "int $cursorOffset = 0", "@mixed", vm_builtin_PDOStatement_fetch },

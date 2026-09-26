@@ -73,6 +73,33 @@ struct phl_pdo {
 	phl_pdo *pNext;
 };
 
+/* php's PDO::PARAM_* -- the ones a value can be bound AS. */
+#define PDO_PARAM_NULL   0
+#define PDO_PARAM_INT    1
+#define PDO_PARAM_STR    2
+#define PDO_PARAM_LOB    3
+#define PDO_PARAM_STMT   4
+#define PDO_PARAM_BOOL   5
+/* The two flag bits php ORs into a type; neither changes how sqlite binds. */
+#define PDO_PARAM_FLAGS  0xFFFF0000
+
+/*
+ * One parameter a script bound BEFORE execute().  bindValue() copies the value
+ * here; bindParam() records the caller's variable SLOT instead and reads it at
+ * execute time, which is what makes a later write to that variable the one the
+ * statement runs with.
+ */
+typedef struct phl_pdo_bind phl_pdo_bind;
+struct phl_pdo_bind {
+	char *zName;                  /* ":id" as the script spelled it, or 0 for positional */
+	int nName;
+	int iPos;                     /* 1-based position; 0 when named */
+	int iType;                    /* PDO_PARAM_* */
+	sxu32 nSlot;                  /* bindParam: the caller's memobj index (SXU32_HIGH = none) */
+	ph7_value *pVal;              /* bindValue: this statement's own copy */
+	phl_pdo_bind *pNext;
+};
+
 /*
  * One statement.  It is a FORWARD cursor and nothing more: php's sqlite driver
  * steps once at execute() so columnCount() can answer, holds that row for the
@@ -89,6 +116,7 @@ struct phl_pdo_stmt {
 	int bDone;                    /* the cursor is past the last row */
 	ph7_int64 nChanges;           /* what rowCount() answers: the WRITE's row count */
 	int iFetchMode;               /* PDO::FETCH_* for a fetch() given none */
+	phl_pdo_bind *pBinds;         /* what bindValue()/bindParam() recorded */
 	phl_pdo_stmt *pNext;
 };
 
@@ -123,6 +151,13 @@ PH7_PRIVATE int PH7_PdoSqlitePrepare(phl_pdo_stmt *pSt,const char *zSql,int nSql
 PH7_PRIVATE int PH7_PdoSqliteStep(phl_pdo_stmt *pSt);
 PH7_PRIVATE void PH7_PdoSqliteFinalize(phl_pdo_stmt *pSt);
 PH7_PRIVATE int PH7_PdoSqliteColumnCount(phl_pdo_stmt *pSt);
+/* Rewind a statement so it can run again, dropping the previous run's values. */
+PH7_PRIVATE void PH7_PdoSqliteReset(phl_pdo_stmt *pSt);
+/* Bind one value. iPos is 1-based; a named parameter resolves through
+ * sqlite3_bind_parameter_index first, and an unknown name lands on index 0 --
+ * which is what makes php answer "column index out of range". */
+PH7_PRIVATE int PH7_PdoSqliteBindAt(phl_pdo_stmt *pSt,int iPos,int iType,ph7_value *pVal);
+PH7_PRIVATE int PH7_PdoSqliteBindIndexOf(phl_pdo_stmt *pSt,const char *zName,int nName);
 PH7_PRIVATE const char * PH7_PdoSqliteColumnName(phl_pdo_stmt *pSt,int iCol);
 /* Write column iCol of the row at the cursor into pOut, with sqlite's own type. */
 PH7_PRIVATE void PH7_PdoSqliteColumnValue(phl_pdo_stmt *pSt,int iCol,ph7_value *pOut);

@@ -1403,9 +1403,22 @@ static void PH7_ClassInstanceRelease(ph7_class_instance *pThis)
 	}
 	/* A native class's own teardown, while its slots are still readable. Not a
 	 * __destruct: the classes that need this (WeakReference) declare none in php,
-	 * and Reflection must not grow one. */
-	if( pClass->xRelease ){
-		pClass->xRelease(pVm,pThis);
+	 * and Reflection must not grow one.
+	 *
+	 * Resolved through the ANCESTORS, like php's own free_obj handler: a
+	 * subclass inherits it unless it declares one of its own. Reading it off
+	 * this class alone left every subclass of a handle-owning native class
+	 * without teardown -- `Pdo\Sqlite` (which is how PDO::connect() answers) and
+	 * any userland `extends PDO` alike, both of which then died holding engine
+	 * state that believed it was still reachable. */
+	{
+		ph7_class *pOwner = pClass;
+		while( pOwner && pOwner->xRelease == 0 ){
+			pOwner = pOwner->pBase;
+		}
+		if( pOwner && pOwner->xRelease ){
+			pOwner->xRelease(pVm,pThis);
+		}
 	}
 	/* Weak-reference registry: kill the cell for this instance so every
 	 * WeakReference/WeakMap handle observes the death (the cell outlives the

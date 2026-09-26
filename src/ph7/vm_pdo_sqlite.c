@@ -223,6 +223,87 @@ PH7_PRIVATE int PH7_PdoSqliteColumnCount(phl_pdo_stmt *pSt)
 {
 	return pSt->pStmt ? sqlite3_column_count(pSt->pStmt) : 0;
 }
+/*
+ * Rewind a statement so it can run again.  The bindings go too: php re-binds
+ * everything on every execute(), so a value bound for the previous run must
+ * not survive into the next one.
+ */
+PH7_PRIVATE void PH7_PdoSqliteReset(phl_pdo_stmt *pSt)
+{
+	if( pSt->pStmt ){
+		sqlite3_reset(pSt->pStmt);
+		sqlite3_clear_bindings(pSt->pStmt);
+	}
+}
+/*
+ * Where a NAMED parameter sits.  sqlite answers 0 for a name the statement
+ * does not have, and binding at 0 is SQLITE_RANGE -- which is exactly how php
+ * ends up reporting "column index out of range" for a misspelled placeholder
+ * rather than something that names it.
+ */
+PH7_PRIVATE int PH7_PdoSqliteBindIndexOf(phl_pdo_stmt *pSt,const char *zName,int nName)
+{
+	char zBuf[128];
+	int n = 0;
+	if( pSt->pStmt == 0 || nName < 1 ){
+		return 0;
+	}
+	/* php accepts a name with or without its colon and sqlite wants it WITH,
+	 * so the missing one is supplied here. */
+	if( zName[0] != ':' ){
+		zBuf[n++] = ':';
+	}
+	while( n < (int)sizeof(zBuf) - 1 && n - (zName[0] != ':' ? 1 : 0) < nName ){
+		zBuf[n] = zName[n - (zName[0] != ':' ? 1 : 0)];
+		++n;
+	}
+	zBuf[n] = 0;
+	return sqlite3_bind_parameter_index(pSt->pStmt,zBuf);
+}
+/*
+ * Bind one value at a 1-based position.  php's PARAM_* decides the CAST, not
+ * the value's own type: PARAM_INT over the float 1.9 binds 1, PARAM_STR over
+ * the same binds "1.5", and PARAM_NULL binds null whatever it was handed. The
+ * one type that outranks the declaration is php's own null, which binds as
+ * NULL through any of them.
+ */
+PH7_PRIVATE int PH7_PdoSqliteBindAt(phl_pdo_stmt *pSt,int iPos,int iType,ph7_value *pVal)
+{
+	int rc;
+	if( pSt->pStmt == 0 ){
+		return 0;
+	}
+	iType &= ~PDO_PARAM_FLAGS;
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_NULL) || iType == PDO_PARAM_NULL ){
+		rc = sqlite3_bind_null(pSt->pStmt,iPos);
+	}else{
+		switch( iType ){
+			case PDO_PARAM_INT:
+				rc = sqlite3_bind_int64(pSt->pStmt,iPos,(sqlite3_int64)ph7_value_to_int64(pVal));
+				break;
+			case PDO_PARAM_BOOL:
+				rc = sqlite3_bind_int(pSt->pStmt,iPos,ph7_value_to_bool(pVal) ? 1 : 0);
+				break;
+			case PDO_PARAM_LOB: {
+				int nByte = 0;
+				const char *zVal = ph7_value_to_string(pVal,&nByte);
+				rc = sqlite3_bind_blob(pSt->pStmt,iPos,zVal,nByte,SQLITE_TRANSIENT);
+				break;
+			}
+			default: {
+				int nByte = 0;
+				const char *zVal = ph7_value_to_string(pVal,&nByte);
+				rc = sqlite3_bind_text(pSt->pStmt,iPos,zVal,nByte,SQLITE_TRANSIENT);
+				break;
+			}
+		}
+	}
+	if( rc != SQLITE_OK ){
+		PH7_PdoSqliteTakeError(pSt->pConn);
+		return 0;
+	}
+	return 1;
+}
 PH7_PRIVATE const char * PH7_PdoSqliteColumnName(phl_pdo_stmt *pSt,int iCol)
 {
 	const char *zName = pSt->pStmt ? sqlite3_column_name(pSt->pStmt,iCol) : 0;
