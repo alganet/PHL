@@ -2268,6 +2268,29 @@ DOM_METHOD(vm_builtin_DOMAttr_isId)
 		&& ((xmlAttrPtr)pNode)->atype == XML_ATTRIBUTE_ID);
 	return PH7_OK;
 }
+/*
+ * DOMDocument::getElementById(string $elementId): ?DOMElement
+ *
+ * The other half of the ID three: what `setIdAttribute()` is FOR. libxml keeps
+ * the table (a DTD `ATTLIST ... ID` fills it at parse time, `xmlAddID` fills it
+ * when a program marks one), and php answers the attribute's element -- but
+ * only while that element is still IN the document, so an element removed from
+ * the tree stops being findable even though its attribute still carries the
+ * flag. A DTD-declared DEFAULT has no attribute node behind it and libxml says
+ * so with its own sentinel.
+ */
+DOM_METHOD(vm_builtin_DOMDocument_getElementById)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	const char *zId = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	xmlAttrPtr pAttr = pNd ? xmlGetID((xmlDocPtr)pNd->pNode,(const xmlChar *)zId) : 0;
+	if( pAttr == 0 || pAttr == (xmlAttrPtr)-1 || pAttr->type != XML_ATTRIBUTE_NODE
+	 || pAttr->parent == 0 || !DomIsConnected(pAttr->parent) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return DomResultNodeOf(pCtx,pNd,pAttr->parent);
+}
 /* DOMDocument::createAttribute(string $localName): DOMAttr -- ownerless: php
  * gives it this document but NO element until it is set on one. */
 DOM_METHOD(vm_builtin_DOMDocument_createAttribute)
@@ -4530,6 +4553,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMDocument_saveXML },
 		{ "createElement",        PH7_MOD_PUBLIC, "string $localName, string $value = ''", "",
 		  vm_builtin_DOMDocument_createElement },
+		{ "getElementById",       PH7_MOD_PUBLIC, "string $elementId", "@?DOMElement",
+		  vm_builtin_DOMDocument_getElementById },
 		{ "createAttribute",      PH7_MOD_PUBLIC, "string $localName", "",
 		  vm_builtin_DOMDocument_createAttribute },
 		{ "createAttributeNS",    PH7_MOD_PUBLIC, "?string $namespace, string $qualifiedName", "",
