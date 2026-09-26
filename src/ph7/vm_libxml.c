@@ -292,7 +292,14 @@ PH7_PRIVATE void PH7_LibxmlCaptureEnd(ph7_vm *pVm,sxu32 nMark,const char *zFnNam
 			if( zFnName ){
 				SyStringInitFromBuf(&sFunc,zFnName,SyStrlen(zFnName));
 			}
-			PH7_VmThrowError(&(*pVm),zFnName ? &sFunc : 0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));
+			/* php reports libxml's own SEVERITY: a warning (an unsupported XML
+			 * version, a DTD the content does not follow) is an E_NOTICE there
+			 * and only an error or a fatal is an E_WARNING. The distinction is
+			 * visible to any set_error_handler() and to `error_reporting` --
+			 * a handler screening on E_WARNING must not see the warnings. */
+			PH7_VmThrowError(&(*pVm),zFnName ? &sFunc : 0,
+				aErr[n].iLevel == XML_ERR_WARNING ? PH7_CTX_NOTICE : PH7_CTX_WARNING,
+				(const char *)SyBlobData(&sMsg));
 			SyBlobRelease(&sMsg);
 			LibxmlFreeErr(pVm,&aErr[n]);
 		}
