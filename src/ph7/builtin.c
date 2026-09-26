@@ -848,6 +848,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "mb_lcfirst",   PH7_builtin_mb_ucfirst_f },
 	{ "mb_detect_encoding", PH7_builtin_mb_detect_encoding_f },
 	{ "mb_convert_encoding", PH7_builtin_mb_convert_encoding_f },
+	{ "iconv",        PH7_builtin_iconv_f    }, /* builtin_iconv.c */
 	{ "ucfirst",      PH7_builtin_ucfirst    },
 	{ "lcfirst",      PH7_builtin_lcfirst    },
 	{ "ord",          PH7_builtin_ord        },

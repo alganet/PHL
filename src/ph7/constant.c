@@ -1968,6 +1968,33 @@ static void PH7_HASH_HMAC_Const(ph7_value *pVal,void *pUserData)
 }
 #endif /* PH7_DISABLE_HASH_FUNC */
 /*
+ * ICONV_* — what the converter IS, and iconv_mime_decode()'s $mode bits.
+ * php reports the C library behind its extension here (`glibc`, `libiconv`);
+ * PHL converts with its own code so that a Windows build answers what a POSIX
+ * one does, and says so — the constants exist to be READ, and a program that
+ * branches on them has to see something true.
+ */
+static void PH7_ICONV_IMPL_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_string(pVal,"PHL",(int)sizeof("PHL")-1);
+}
+static void PH7_ICONV_VERSION_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_string(pVal,PH7_VERSION,(int)sizeof(PH7_VERSION)-1);
+}
+static void PH7_ICONV_MIME_DECODE_STRICT_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,1);
+}
+static void PH7_ICONV_MIME_DECODE_CONTINUE_ON_ERROR_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,2);
+}
+/*
  * JSON_HEX_TAG.
  *   Expand the value of JSON_HEX_TAG defined in ph7Int.h.
  */
@@ -2698,6 +2725,10 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"CRYPT_SHA256",           PH7_CRYPT_ONE_Const},
 	{"CRYPT_SHA512",           PH7_CRYPT_ONE_Const},
 #endif
+	{"ICONV_IMPL",             PH7_ICONV_IMPL_Const},
+	{"ICONV_VERSION",          PH7_ICONV_VERSION_Const},
+	{"ICONV_MIME_DECODE_STRICT", PH7_ICONV_MIME_DECODE_STRICT_Const},
+	{"ICONV_MIME_DECODE_CONTINUE_ON_ERROR", PH7_ICONV_MIME_DECODE_CONTINUE_ON_ERROR_Const},
 	{"JSON_HEX_TAG",           PH7_JSON_HEX_TAG_Const},
 	{"JSON_HEX_AMP",           PH7_JSON_HEX_AMP_Const},
 	{"JSON_HEX_APOS",          PH7_JSON_HEX_APOS_Const},

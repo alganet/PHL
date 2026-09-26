@@ -41,6 +41,7 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/builtin_date_parse$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/builtin_fmt$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/builtin_hash$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/builtin_iconv$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/builtin_math$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/builtin_mb$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/builtin_pack$(OBJ_SUFFIX) \
