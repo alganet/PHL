@@ -2351,9 +2351,10 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	PH7_VmInstallSession(&(*pVm));
 	PH7_VmInstallIni(&(*pVm));
 #ifdef PH7_ENABLE_LIBXML
-	/* libxml2-backed surfaces: shared plumbing first, then the DOM and
-	 * XMLWriter class libraries that build on it. */
+	/* libxml2-backed surfaces: shared plumbing first, then the ext/xml push
+	 * parser and the DOM and XMLWriter class libraries that build on it. */
 	PH7_VmInstallLibxml(&(*pVm));
+	PH7_VmInstallXml(&(*pVm));
 	PH7_VmInstallDom(&(*pVm));
 	PH7_VmInstallXmlWriter(&(*pVm));
 #endif

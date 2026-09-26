@@ -1399,7 +1399,7 @@ static const char * const azExtension[] = {
 	"Core", "date", "pcre", "SPL", "json", "standard",
 	"ctype", "filter", "hash", "Reflection", "session", "mbstring"
 #ifdef PH7_ENABLE_LIBXML
-	, "libxml", "dom", "xmlwriter"
+	, "libxml", "xml", "dom", "xmlwriter"
 #endif
 };
 /*

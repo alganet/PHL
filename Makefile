@@ -97,6 +97,7 @@ OBJECTS = \
 	$(BUILD_DIR)/src/ph7/vm_pcre$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_serialize$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_libxml$(OBJ_SUFFIX) \
+	$(BUILD_DIR)/src/ph7/vm_xml$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_dom$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/vm_xmlwriter$(OBJ_SUFFIX) \
 	$(BUILD_DIR)/src/ph7/net$(OBJ_SUFFIX) \

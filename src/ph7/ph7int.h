@@ -2609,6 +2609,7 @@ struct ph7_vm
 	void *pLibxmlLastErr;      /* phl_libxml_err* slot backing libxml_get_last_error */
 	void *pXmlDocs;            /* phl_xmldoc registry chain; freed on reset/release */
 	void *pXmlWriters;         /* XMLWriter registry chain; freed on reset/release */
+	void *pXmlParsers;         /* phl_xmlparser registry chain (ext/xml); freed on reset/release */
 #endif
 	/* php numbers every resource with a small sequential id that (int) casts and
 	 * "Resource id #N" render, and that distinguishes two live resources from one
@@ -3517,6 +3518,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm);
 /* vm_xmlwriter.c */
 PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm);
 PH7_PRIVATE void PH7_XmlWriterVmSweep(ph7_vm *pVm);
+/* vm_xml.c (php's ext/xml: the expat-style push-parser surface over libxml2) */
+PH7_PRIVATE sxi32 PH7_VmInstallXml(ph7_vm *pVm);
+PH7_PRIVATE void PH7_XmlParserVmSweep(ph7_vm *pVm);
 #endif /* PH7_ENABLE_LIBXML */
 /* net.c types and function prototypes */
 #ifdef PH7_ENABLE_NET
