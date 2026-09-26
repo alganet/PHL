@@ -5124,6 +5124,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceWalk(ph7_class_instance *pThis,
 PH7_PRIVATE ph7_value * PH7_ClassInstanceFetchAttr(ph7_class_instance *pThis,const SyString *pName);
 PH7_PRIVATE int PH7_VmDimFetchWritable(ph7_class *pClass);
 PH7_PRIVATE sxu32 PH7_SplDimElemSlot(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pKey,int bCreate);
+PH7_PRIVATE void PH7_SplDirVmRelease(ph7_vm *pVm);
 PH7_PRIVATE void PH7_VmOverloadedElemNotice(ph7_vm *pVm,ph7_class *pClass,ph7_value *pVal);
 PH7_PRIVATE void PH7_VmOverloadedPropNotice(ph7_vm *pVm,ph7_class *pClass,const SyString *pName,ph7_value *pVal);
 PH7_PRIVATE ph7_class_instance * PH7_ContextThis(ph7_context *pCtx);

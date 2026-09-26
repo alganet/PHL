@@ -3304,6 +3304,9 @@ PH7_PRIVATE sxi32 PH7_VmRelease(ph7_vm *pVm)
 	 * SyMemBackend, so the wholesale release below would leak them). */
 	PH7_LibxmlVmRelease(pVm);
 #endif
+	/* Same rule for the OS directory streams behind still-open directory
+	 * iterators: the DIR lives outside the backend. */
+	PH7_SplDirVmRelease(pVm);
 	/* Release the private memory subsystem */
 	SyMemBackendRelease(&pVm->sAllocator);
 	return SXRET_OK;

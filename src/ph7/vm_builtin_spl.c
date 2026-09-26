@@ -8410,6 +8410,26 @@ static void SplDirClose(ph7_vm *pVm,ph7_class_instance *pThis)
 	}
 }
 /*
+ * Close every DIR the program still held at VM shutdown. xRelease (SplDirClose
+ * above) covers an instance the program DESTROYED; an iterator alive at script
+ * end reaches PH7_VmRelease with its handle still open, and the OS stream
+ * behind it lives outside SyMemBackend -- the wholesale release frees the
+ * VmDirHandle record and leaks the DIR (the leak checker is what noticed:
+ * glibc's opendir buffer, ~32KB per survivor). Called from PH7_VmRelease
+ * before the backend goes; the records themselves are backend memory.
+ */
+PH7_PRIVATE void PH7_SplDirVmRelease(ph7_vm *pVm)
+{
+	SyHashEntry *pEntry;
+	SyHashResetLoopCursor(&pVm->hDirHandle);
+	while( (pEntry = SyHashGetNextEntry(&pVm->hDirHandle)) != 0 ){
+		VmDirHandle *pH = (VmDirHandle *)pEntry->pUserData;
+		if( pH && pH->pStream && pH->pStream->xCloseDir ){
+			pH->pStream->xCloseDir(pH->pHandle);
+		}
+	}
+}
+/*
  * php's spl_filesystem_dir_read: invalidate the lazy name, then take ONE entry
  * from the stream; running out leaves the entry empty, which is what valid()
  * reports. The read goes through a scratch call context because the VFS reports
@@ -9240,6 +9260,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)
 #ifdef PH7_DISABLE_BUILTIN_FUNC
 /* Tiny build: no SPL (builtin layer disabled) */
 PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm){ (void)pVm; return SXRET_OK; }
+/* No directory iterators either, so shutdown has nothing to close. */
+PH7_PRIVATE void PH7_SplDirVmRelease(ph7_vm *pVm){ (void)pVm; }
 /* The writable-container fast path is called unconditionally by OP_LOAD_IDX, and its
  * SXU32_HIGH answer already means "no slot available — take the ordinary offsetGet
  * dispatch". With no SPL classes in this build that is the only answer there is, so the
