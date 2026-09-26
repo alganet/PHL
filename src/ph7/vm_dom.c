@@ -2536,28 +2536,53 @@ DOM_METHOD(vm_builtin_DOMDocument_createAttributeNS)
 
 /* Length-carrying: the name comes from a declared string SLOT, whose bytes are
  * NOT NUL-terminated (PH7_NativeAttrStr borrows the blob as-is). */
-static int DomGebtnMatch(xmlNodePtr pNode,const char *zName,int nName)
+static int DomLenEq(const xmlChar *zHave,const char *zWant,int nWant)
+{
+	return zHave != 0 && (int)SyStrlen((const char *)zHave) == nWant
+		&& SyMemcmp((const void *)zHave,(const void *)zWant,(sxu32)nWant) == 0;
+}
+/*
+ * One element against a (namespace, local name) pair. nUri < 0 is the name-only
+ * query, `getElementsByTagName` -- the sentinel is the LENGTH and not the
+ * pointer because an empty declared string slot reads back as a NULL one, which
+ * is exactly the namespace-aware "in NO namespace" case. Under the
+ * namespace-aware query php's three cases are NOT symmetric, and that asymmetry
+ * is the whole content of the rule:
+ *
+ *   `*`          every element, in a namespace or in none
+ *   null or ""   only the elements in NO namespace (php maps its null argument
+ *                and the empty string to the same question)
+ *   a URI        only the elements in it
+ *
+ * The local name is `*` for every name, and an exact match otherwise -- against
+ * libxml's `name`, which is the LOCAL name, so a prefix never enters into it.
+ */
+static int DomGebtnMatch(xmlNodePtr pNode,const char *zUri,int nUri,
+	const char *zName,int nName)
 {
 	if( pNode->type != XML_ELEMENT_NODE ){
 		return 0;
 	}
-	if( nName == 1 && zName[0] == '*' ){
-		return 1;
-	}
-	if( pNode->name == 0 ){
+	if( !(nName == 1 && zName[0] == '*') && !DomLenEq(pNode->name,zName,nName) ){
 		return 0;
 	}
-	return (int)SyStrlen((const char *)pNode->name) == nName
-		&& SyMemcmp((const void *)pNode->name,(const void *)zName,(sxu32)nName) == 0;
+	if( nUri < 0 || (nUri == 1 && zUri[0] == '*') ){
+		return 1;
+	}
+	if( nUri == 0 ){
+		return pNode->ns == 0;
+	}
+	return pNode->ns != 0 && DomLenEq(pNode->ns->href,zUri,nUri);
 }
 /* The list is LIVE: nothing is snapshotted, both queries re-walk the subtree
  * every time DOMNodeList asks. Passing iWant < 0 counts instead of indexing. */
-static xmlNodePtr DomGebtnWalk(xmlNodePtr pRoot,const char *zName,int nName,int iWant,int *pnCount)
+static xmlNodePtr DomGebtnWalk(xmlNodePtr pRoot,const char *zUri,int nUri,
+	const char *zName,int nName,int iWant,int *pnCount)
 {
 	xmlNodePtr pCur = pRoot ? pRoot->children : 0;
 	int iCount = 0;
 	while( pCur ){
-		if( DomGebtnMatch(pCur,zName,nName) ){
+		if( DomGebtnMatch(pCur,zUri,nUri,zName,nName) ){
 			if( iWant >= 0 && iCount == iWant ){
 				return pCur;
 			}
@@ -3516,9 +3541,11 @@ DOM_METHOD(vm_builtin_DOMNode_wakeup)
 #define DNL_CHILD 0   /* $node->childNodes */
 #define DNL_GEBTN 1   /* getElementsByTagName($name) */
 #define DNL_SNAP  2   /* DOMXPath::query() */
+#define DNL_GEBTNNS 3 /* getElementsByTagNameNS($uri, $localName) */
 #define DNL_KIND  "__kind"
 #define DNL_OWNER "__owner"
 #define DNL_NAME  "__name"
+#define DNL_URI   "__uri"
 #define DNL_SNAP_SLOT "__snap"
 
 /* The node a live list is a view OF. */
@@ -3537,8 +3564,8 @@ static ph7_hashmap * DomListSnap(ph7_class_instance *pList)
 static int DomListCount(ph7_class_instance *pList)
 {
 	phl_domnode *pOwner;
-	const char *zName;
-	int nName,iCount = 0;
+	const char *zName,*zUri = 0;
+	int nName,nUri = -1,iCount = 0;
 	if( pList == 0 ){
 		return 0;
 	}
@@ -3554,7 +3581,10 @@ static int DomListCount(ph7_class_instance *pList)
 		return DomChildCount((xmlNodePtr)pOwner->pNode,0);
 	}
 	PH7_NativeAttrStr(pList,DNL_NAME,&zName,&nName);
-	DomGebtnWalk((xmlNodePtr)pOwner->pNode,zName,nName,-1,&iCount);
+	if( PH7_NativeAttrInt(pList,DNL_KIND) == DNL_GEBTNNS ){
+		PH7_NativeAttrStr(pList,DNL_URI,&zUri,&nUri);
+	}
+	DomGebtnWalk((xmlNodePtr)pOwner->pNode,zUri,nUri,zName,nName,-1,&iCount);
 	return iCount;
 }
 /* The wrapper at one index, or NULL past the end. BORROWED, like every wrap. */
@@ -3563,8 +3593,8 @@ static ph7_class_instance * DomListItem(ph7_vm *pVm,ph7_class_instance *pList,in
 	ph7_class_instance *pDoc;
 	phl_domnode *pOwner;
 	xmlNodePtr pNode = 0;
-	const char *zName;
-	int nName;
+	const char *zName,*zUri = 0;
+	int nName,nUri = -1;
 	if( pList == 0 || iIndex < 0 ){
 		return 0;
 	}
@@ -3594,7 +3624,10 @@ static ph7_class_instance * DomListItem(ph7_vm *pVm,ph7_class_instance *pList,in
 		pNode = DomChildAt((xmlNodePtr)pOwner->pNode,iIndex);
 	}else{
 		PH7_NativeAttrStr(pList,DNL_NAME,&zName,&nName);
-		pNode = DomGebtnWalk((xmlNodePtr)pOwner->pNode,zName,nName,iIndex,0);
+		if( PH7_NativeAttrInt(pList,DNL_KIND) == DNL_GEBTNNS ){
+			PH7_NativeAttrStr(pList,DNL_URI,&zUri,&nUri);
+		}
+		pNode = DomGebtnWalk((xmlNodePtr)pOwner->pNode,zUri,nUri,zName,nName,iIndex,0);
 	}
 	return DomWrap(&(*pVm),pDoc,pOwner->pShell,pNode);
 }
@@ -3604,7 +3637,7 @@ static ph7_class_instance * DomListItem(ph7_vm *pVm,ph7_class_instance *pList,in
  */
 static ph7_class_instance * DomNewCollection(ph7_vm *pVm,const char *zClass,
 	ph7_class_instance *pDoc,int iKind,ph7_class_instance *pOwnerObj,
-	const char *zName,ph7_value *pSnap)
+	const char *zName,const char *zUri,ph7_value *pSnap)
 {
 	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);
 	ph7_class_instance *pObj = pClass ? PH7_NewClassInstance(&(*pVm),pClass) : 0;
@@ -3618,6 +3651,9 @@ static ph7_class_instance * DomNewCollection(ph7_vm *pVm,const char *zClass,
 	}
 	if( zName ){
 		PH7_NativeSetAttrStr(&(*pVm),pObj,DNL_NAME,zName,(int)SyStrlen(zName));
+	}
+	if( zUri ){
+		PH7_NativeSetAttrStr(&(*pVm),pObj,DNL_URI,zUri,(int)SyStrlen(zUri));
 	}
 	if( pSnap ){
 		ph7_value *pSlot = PH7_NativeAttr(pObj,DNL_SNAP_SLOT);
@@ -3880,7 +3916,7 @@ DOM_METHOD(vm_builtin_DOMXPath_query)
 	}
 	xmlXPathFreeObject(pObj);
 	xmlXPathFreeContext(pXCtx);
-	pList = DomNewCollection(pVm,"DOMNodeList",pDoc,DNL_SNAP,0,0,pSnap);
+	pList = DomNewCollection(pVm,"DOMNodeList",pDoc,DNL_SNAP,0,0,0,pSnap);
 	if( pList == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
@@ -4022,7 +4058,7 @@ static int DomNodeProp(ph7_context *pCtx,const char *zName)
 	}else if( DomNameIs(zName,"childElementCount") ){
 		ph7_result_int(pCtx,DomChildCount(pNode,1));
 	}else if( DomNameIs(zName,"childNodes") ){
-		ph7_class_instance *pList = DomNewCollection(pVm,"DOMNodeList",pDoc,DNL_CHILD,pThis,0,0);
+		ph7_class_instance *pList = DomNewCollection(pVm,"DOMNodeList",pDoc,DNL_CHILD,pThis,0,0,0);
 		if( pList == 0 ){
 			return -1;
 		}
@@ -4032,7 +4068,7 @@ static int DomNodeProp(ph7_context *pCtx,const char *zName)
 		if( pNode == 0 || pNode->type != XML_ELEMENT_NODE ){
 			ph7_result_null(pCtx);
 		}else{
-			ph7_class_instance *pMap = DomNewCollection(pVm,"DOMNamedNodeMap",pDoc,DNL_CHILD,pThis,0,0);
+			ph7_class_instance *pMap = DomNewCollection(pVm,"DOMNamedNodeMap",pDoc,DNL_CHILD,pThis,0,0,0);
 			if( pMap == 0 ){
 				return -1;
 			}
@@ -4681,7 +4717,36 @@ DOM_METHOD(vm_builtin_Dom_getElementsByTagName)
 	if( pThis == 0 ){
 		return PH7_OK;
 	}
-	pList = DomNewCollection(pCtx->pVm,"DOMNodeList",DomThisDoc(pCtx),DNL_GEBTN,pThis,zName,0);
+	pList = DomNewCollection(pCtx->pVm,"DOMNodeList",DomThisDoc(pCtx),DNL_GEBTN,pThis,zName,0,0);
+	if( pList == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_NativeResultObject(pCtx,pList);
+	return PH7_OK;
+}
+/*
+ * DOMDocument::getElementsByTagNameNS / DOMElement::getElementsByTagNameNS
+ * (?string $namespace, string $localName): DOMNodeList
+ *
+ * The namespace-aware half of the only two lookups the DOM has, and the one
+ * every namespaced format is read with -- an XSLT stylesheet, a SOAP envelope, a
+ * sitemap. Undefined here, so the URI could be answered for a node already found
+ * and never searched FOR.
+ *
+ * The list is live and the receiver is never in it, exactly as the name-only
+ * one; DomGebtnMatch carries php's asymmetric wildcard rules.
+ */
+DOM_METHOD(vm_builtin_Dom_getElementsByTagNameNS)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zUri = DomArgStrOrNull(nArg,apArg,0);
+	const char *zName = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
+	ph7_class_instance *pList;
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	pList = DomNewCollection(pCtx->pVm,"DOMNodeList",DomThisDoc(pCtx),DNL_GEBTNNS,pThis,
+		zName,zUri ? zUri : "",0);
 	if( pList == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
@@ -4821,6 +4886,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMDocument_schemaValidateSource },
 		{ "getElementsByTagName", PH7_MOD_PUBLIC, "string $qualifiedName", "@DOMNodeList",
 		  vm_builtin_Dom_getElementsByTagName },
+		{ "getElementsByTagNameNS", PH7_MOD_PUBLIC, "?string $namespace, string $localName",
+		  "@DOMNodeList", vm_builtin_Dom_getElementsByTagNameNS },
 		{ "__get",                PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMDocument_get },
 		{ "__isset",              PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMDocument_isset },
 		{ "__set",                PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMDocument_set },
@@ -4869,6 +4936,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMElement_setAttributeNS },
 		{ "getElementsByTagName", PH7_MOD_PUBLIC, "string $qualifiedName", "@DOMNodeList",
 		  vm_builtin_Dom_getElementsByTagName },
+		{ "getElementsByTagNameNS", PH7_MOD_PUBLIC, "?string $namespace, string $localName",
+		  "@DOMNodeList", vm_builtin_Dom_getElementsByTagNameNS },
 		{ "__get",                PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMElement_get },
 		{ "__isset",              PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMElement_isset },
 		{ "__set",                PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMElement_set },
@@ -4924,6 +4993,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ DOM_DOC,       PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0, 0.0 }, 0 },
 		{ DNL_OWNER,     PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL,   0, 0, 0.0 }, 0 },
 		{ DNL_NAME,      PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
+		/* ...and, for the namespace-aware lookup, the URI beside the name. */
+		{ DNL_URI,       PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
 		/* The cached node snapshot, missed by the 2 Aug hidden-slot sweep exactly as
 		 * Closure's three were: php presents no property on either class this table
 		 * declares (DOMNodeList, DOMNamedNodeMap), and `__snap` was on var_dump,
