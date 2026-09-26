@@ -2867,6 +2867,82 @@ DOM_METHOD(vm_builtin_DOMDocument_createElementNS)
 	DomOrphanAdd(pDocNd->pShell,pNode);
 	return DomResultNodeOf(pCtx,pDocNd,pNode);
 }
+/*
+ * DOMDocument::importNode(DOMNode $node, bool $deep = false): DOMNode|false
+ *
+ * A node of ANOTHER document copied into this one, which is the only way to
+ * carry a subtree across: every mutator refuses a node whose document is not
+ * the parent's with php's Wrong Document Error, so without this a program that
+ * read two files could not build a third out of them.
+ *
+ * php's rules, measured:
+ *
+ *   * A node ALREADY of this document is answered unchanged -- the same object,
+ *     not a copy, and not detached from wherever it is.
+ *   * A DOCUMENT is refused with a warning and `false`, not an exception.
+ *   * Shallow does not mean bare: an element brings its attributes and its
+ *     namespace declarations, only its children stay behind. A fragment brings
+ *     nothing but itself, and an attribute brings its value whatever $deep says.
+ *   * The copy is an ORPHAN of this document (no parent, and freed with it), and
+ *     a second import of the same node is a second copy.
+ *   * A namespaced ATTRIBUTE is the one kind libxml cannot finish: its copy
+ *     arrives with no namespace at all, and php re-points it at a PREFIXED
+ *     binding of the same URI on the target's ROOT -- reusing one the root
+ *     already has (so the prefix can change, `p:b` arriving as `z:b`) and
+ *     declaring it there otherwise.
+ */
+DOM_METHOD(vm_builtin_DOMDocument_importNode)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	phl_domnode *pDocNd = DomThisNode(pCtx);
+	phl_domnode *pSrc = nArg > 0 ? DomObjArg(apArg[0]) : 0;
+	int bDeep = nArg > 1 && ph7_value_to_bool(apArg[1]);
+	xmlDocPtr pDoc;
+	xmlNodePtr pNode,pCopy;
+	sxu32 nMark;
+	if( pDocNd == 0 || pSrc == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pDoc = (xmlDocPtr)pDocNd->pNode;
+	pNode = (xmlNodePtr)pSrc->pNode;
+	if( pNode->type == XML_DOCUMENT_NODE || pNode->type == XML_HTML_DOCUMENT_NODE ){
+		/* The context prints php's `DOMDocument::importNode(): ` itself. */
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Cannot import: Node Type Not Supported");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( pNode->doc == pDoc ){
+		ph7_result_value(pCtx,apArg[0]);
+		return PH7_OK;
+	}
+	nMark = PH7_LibxmlCaptureBegin(pVm);
+	/* 2 is libxml's `node + namespaces + attributes, no children`, which is what
+	 * makes a shallow import carry the attributes; cloneNode asks the same way. */
+	pCopy = xmlDocCopyNode(pNode,pDoc,bDeep ? 1 : 2);
+	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::importNode");
+	if( pCopy == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( pCopy->type == XML_ATTRIBUTE_NODE && pNode->ns != 0 && pNode->ns->href != 0 ){
+		xmlNodePtr pRoot = xmlDocGetRootElement(pDoc);
+		xmlNsPtr pNs = pRoot
+			? DomNsResolve(pRoot,(const char *)pNode->ns->href,pNode->ns->prefix,1) : 0;
+		if( pNs == 0 ){
+			/* No root element to declare on. php answers an attribute that IS in
+			 * the namespace anyway, through a declaration no element makes; the
+			 * document owns it so that it is freed with it. */
+			pNs = xmlNewNs(0,pNode->ns->href,pNode->ns->prefix);
+			if( pNs ){
+				DomNsPark(pCopy,pNs);
+			}
+		}
+		xmlSetNs(pCopy,pNs);
+	}
+	DomOrphanAdd(pDocNd->pShell,pCopy);
+	return DomResultNodeOf(pCtx,pDocNd,pCopy);
+}
 /* DOMDocument::createTextNode / createComment / createCDATASection(string $data) */
 static int DomDocCreateData(ph7_context *pCtx,int iKind,int nArg,ph7_value **apArg)
 {
@@ -4863,6 +4939,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "createElementNS",      PH7_MOD_PUBLIC,
 		  "?string $namespace, string $qualifiedName, string $value = ''", "",
 		  vm_builtin_DOMDocument_createElementNS },
+		/* php declares no return type on this one either: `DOMNode|false`. */
+		{ "importNode",           PH7_MOD_PUBLIC, "DOMNode $node, bool $deep = false", "",
+		  vm_builtin_DOMDocument_importNode },
 		{ "getElementById",       PH7_MOD_PUBLIC, "string $elementId", "@?DOMElement",
 		  vm_builtin_DOMDocument_getElementById },
 		{ "createAttribute",      PH7_MOD_PUBLIC, "string $localName", "",
