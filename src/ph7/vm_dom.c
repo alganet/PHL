@@ -11,6 +11,9 @@
 #include <libxml/xpath.h>
 #include <libxml/xpathInternals.h>
 #include <libxml/xmlschemas.h>
+#include <libxml/relaxng.h>
+#include <libxml/valid.h>
+#include <libxml/xinclude.h>
 #include <libxml/encoding.h>
 #include <libxml/HTMLparser.h>
 #include <libxml/HTMLtree.h>
@@ -7618,8 +7621,38 @@ DOM_METHOD(vm_builtin_DOMXPath_registerPhpFunctionNS)
 
 /* ===== Schema validation ===== */
 
-/* Schema parser/validator diagnostics: forward onto the shared per-VM queue
- * via PH7_LibxmlQueueError, exactly like the global structured handler. */
+/*
+ * The four schema doors -- {XML Schema, RelaxNG} x {a FILE, a STRING} -- and
+ * php's `validate()` beside them, all one shape:
+ *
+ *   parse the schema (loudly: every libxml complaint reaches the caller's
+ *   error handler), and if that fails say "Invalid Schema" / "Invalid RelaxNG"
+ *   and answer false; otherwise validate the document and answer whether it
+ *   came back clean.
+ *
+ * Only the pair of libxml families differs, so the switch is four calls wide
+ * and the plumbing -- the argument screens, the diagnostic capture, the
+ * refusals -- is written once.  The names a caller sees are php's: a filename
+ * that is empty or carries a NUL is a ValueError naming the argument, raised
+ * before anything is opened.
+ */
+#define DOM_VAL_SCHEMA 0
+#define DOM_VAL_RELAX  1
+
+/*
+ * Schema, RelaxNG and DTD-validity diagnostics: onto the shared per-VM queue
+ * through PH7_LibxmlQueueError, exactly like the global structured handler.
+ *
+ * php installs libxml's printf-style pair here instead, which is why its
+ * validation diagnostics read as libxml writes them -- "I/O warning : failed
+ * to load external entity ...", a parse error over three lines with the
+ * offending source and a caret under it -- while every message this engine
+ * drains is one structured record with its location appended.  The structured
+ * handler is the one this file must keep: it is also what feeds
+ * `libxml_get_errors()`, and php's own switches to exactly this shape once
+ * `libxml_use_internal_errors(true)` is on.  The ANSWERS agree; the wording of
+ * a failure does not (the error-format class).
+ */
 #if LIBXML_VERSION >= 21200
 static void DomSchemaErr(void *pUserData,const xmlError *pErr)
 #else
@@ -7632,55 +7665,239 @@ static void DomSchemaErr(void *pUserData,xmlErrorPtr pErr)
 	PH7_LibxmlQueueError((ph7_vm *)pUserData,(int)pErr->level,pErr->code,pErr->line,
 		pErr->int2,pErr->message,pErr->file);
 }
-/* DOMDocument::schemaValidateSource(string $source, int $flags = 0): bool */
-DOM_METHOD(vm_builtin_DOMDocument_schemaValidateSource)
+/* php's own last word when a schema will not parse, under the method's name. */
+static void DomValidateSaySo(ph7_vm *pVm,const char *zFn,const char *zWhat)
+{
+	SyBlob sMsg;
+	SyBlobInit(&sMsg,&pVm->sAllocator);
+	SyBlobFormat(&sMsg,"%s(): %s",zFn,zWhat);
+	SyBlobNullAppend(&sMsg);
+	PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));
+	SyBlobRelease(&sMsg);
+}
+/*
+ * The argument every schema door takes: a filename or the schema itself. The
+ * two refusals are php's own and answer before any parse.
+ */
+static int DomValidateArg(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile,
+	const char *zFn,const char **pzSrc,int *pnSrc,int *pRc)
+{
+	int nSrc = 0;
+	const char *zSrc = nArg > 0 ? ph7_value_to_string(apArg[0],&nSrc) : "";
+	const char *zParam = bFile ? "filename" : "source";
+	if( bFile && nSrc != (int)SyStrlen(zSrc) ){
+		*pRc = PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #1 ($%s) must not contain any null bytes",zFn,zParam);
+		return 0;
+	}
+	if( nSrc < 1 ){
+		*pRc = PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #1 ($%s) must not be empty",zFn,zParam);
+		return 0;
+	}
+	*pzSrc = zSrc;
+	*pnSrc = nSrc;
+	return 1;
+}
+static int DomValidateRun(ph7_context *pCtx,int nArg,ph7_value **apArg,int iKind,
+	int bFile,const char *zFn)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	phl_domnode *pDocNd = DomThisNode(pCtx);
-	int nXsd = 0;
-	const char *zXsd = nArg > 0 ? ph7_value_to_string(apArg[0],&nXsd) : "";
-	xmlSchemaParserCtxtPtr pParser;
-	xmlSchemaPtr pSchema;
-	xmlSchemaValidCtxtPtr pValid;
-	int rc;
+	int nSrc = 0,rc = PH7_OK,iRc;
+	const char *zSrc = "";
 	sxu32 nMark;
-	if( pDocNd == 0 || nXsd < 1 ){
+	/* php reads the option word from the SCHEMA pair only; RelaxNG's two
+	 * declare no second parameter at all. LIBXML_SCHEMA_CREATE is the one bit
+	 * it acts on -- "write the schema's default values into the document". */
+	int bCreate = iKind == DOM_VAL_SCHEMA && nArg > 1
+		&& (ph7_value_to_int(apArg[1]) & XML_SCHEMA_VAL_VC_I_CREATE) != 0;
+	if( !DomValidateArg(pCtx,nArg,apArg,bFile,zFn,&zSrc,&nSrc,&rc) ){
+		return rc;
+	}
+	if( pDocNd == 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	nMark = PH7_LibxmlCaptureBegin(pVm);
-	pParser = xmlSchemaNewMemParserCtxt(zXsd,nXsd);
-	if( pParser == 0 ){
-		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::schemaValidateSource");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
-	xmlSchemaSetParserStructuredErrors(pParser,DomSchemaErr,pVm);
-	pSchema = xmlSchemaParse(pParser);
-	xmlSchemaFreeParserCtxt(pParser);
-	if( pSchema == 0 ){
-		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::schemaValidateSource");
-		/* php raises "Invalid Schema" and returns false */
-		PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,"DOMDocument::schemaValidateSource(): Invalid Schema");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
-	pValid = xmlSchemaNewValidCtxt(pSchema);
-	if( pValid == 0 ){
+	if( iKind == DOM_VAL_SCHEMA ){
+		xmlSchemaParserCtxtPtr pParser = bFile ? xmlSchemaNewParserCtxt(zSrc)
+		                                       : xmlSchemaNewMemParserCtxt(zSrc,nSrc);
+		xmlSchemaPtr pSchema;
+		xmlSchemaValidCtxtPtr pValid;
+		if( pParser == 0 ){
+			PH7_LibxmlCaptureEnd(pVm,nMark,zFn);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		xmlSchemaSetParserStructuredErrors(pParser,DomSchemaErr,pVm);
+		pSchema = xmlSchemaParse(pParser);
+		xmlSchemaFreeParserCtxt(pParser);
+		if( pSchema == 0 ){
+			PH7_LibxmlCaptureEnd(pVm,nMark,zFn);
+			DomValidateSaySo(pVm,zFn,"Invalid Schema");
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		pValid = xmlSchemaNewValidCtxt(pSchema);
+		if( pValid == 0 ){
+			xmlSchemaFree(pSchema);
+			PH7_LibxmlCaptureEnd(pVm,nMark,zFn);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		if( bCreate ){
+			xmlSchemaSetValidOptions(pValid,XML_SCHEMA_VAL_VC_I_CREATE);
+		}
+		xmlSchemaSetValidStructuredErrors(pValid,DomSchemaErr,pVm);
+		iRc = xmlSchemaValidateDoc(pValid,(xmlDocPtr)pDocNd->pNode);
+		xmlSchemaFreeValidCtxt(pValid);
 		xmlSchemaFree(pSchema);
-		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::schemaValidateSource");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	}else{
+		xmlRelaxNGParserCtxtPtr pParser = bFile ? xmlRelaxNGNewParserCtxt(zSrc)
+		                                        : xmlRelaxNGNewMemParserCtxt(zSrc,nSrc);
+		xmlRelaxNGPtr pSchema;
+		xmlRelaxNGValidCtxtPtr pValid;
+		if( pParser == 0 ){
+			PH7_LibxmlCaptureEnd(pVm,nMark,zFn);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		xmlRelaxNGSetParserStructuredErrors(pParser,DomSchemaErr,pVm);
+		pSchema = xmlRelaxNGParse(pParser);
+		xmlRelaxNGFreeParserCtxt(pParser);
+		if( pSchema == 0 ){
+			PH7_LibxmlCaptureEnd(pVm,nMark,zFn);
+			DomValidateSaySo(pVm,zFn,"Invalid RelaxNG");
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		pValid = xmlRelaxNGNewValidCtxt(pSchema);
+		if( pValid == 0 ){
+			xmlRelaxNGFree(pSchema);
+			PH7_LibxmlCaptureEnd(pVm,nMark,zFn);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		xmlRelaxNGSetValidStructuredErrors(pValid,DomSchemaErr,pVm);
+		iRc = xmlRelaxNGValidateDoc(pValid,(xmlDocPtr)pDocNd->pNode);
+		xmlRelaxNGFreeValidCtxt(pValid);
+		xmlRelaxNGFree(pSchema);
 	}
-	xmlSchemaSetValidStructuredErrors(pValid,DomSchemaErr,pVm);
-	rc = xmlSchemaValidateDoc(pValid,(xmlDocPtr)pDocNd->pNode);
-	xmlSchemaFreeValidCtxt(pValid);
-	xmlSchemaFree(pSchema);
-	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::schemaValidateSource");
-	ph7_result_bool(pCtx,rc == 0);
+	PH7_LibxmlCaptureEnd(pVm,nMark,zFn);
+	ph7_result_bool(pCtx,iRc == 0);
 	return PH7_OK;
 }
-
+/* DOMDocument::schemaValidate(string $filename, int $flags = 0): bool */
+DOM_METHOD(vm_builtin_DOMDocument_schemaValidate)
+{
+	return DomValidateRun(pCtx,nArg,apArg,DOM_VAL_SCHEMA,TRUE,"DOMDocument::schemaValidate");
+}
+/* DOMDocument::schemaValidateSource(string $source, int $flags = 0): bool */
+DOM_METHOD(vm_builtin_DOMDocument_schemaValidateSource)
+{
+	return DomValidateRun(pCtx,nArg,apArg,DOM_VAL_SCHEMA,FALSE,"DOMDocument::schemaValidateSource");
+}
+/* DOMDocument::relaxNGValidate(string $filename): bool */
+DOM_METHOD(vm_builtin_DOMDocument_relaxNGValidate)
+{
+	return DomValidateRun(pCtx,nArg,apArg,DOM_VAL_RELAX,TRUE,"DOMDocument::relaxNGValidate");
+}
+/* DOMDocument::relaxNGValidateSource(string $source): bool */
+DOM_METHOD(vm_builtin_DOMDocument_relaxNGValidateSource)
+{
+	return DomValidateRun(pCtx,nArg,apArg,DOM_VAL_RELAX,FALSE,"DOMDocument::relaxNGValidateSource");
+}
+/*
+ * DOMDocument::validate(): bool -- against the document's OWN DTD, which is
+ * the one question of the five that takes no argument. libxml's validity
+ * complaints ("no DTD found!", "root and DTD name do not match") reach the
+ * caller through the same per-VM queue every other diagnostic here does.
+ */
+DOM_METHOD(vm_builtin_DOMDocument_validate)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	phl_domnode *pDocNd = DomThisNode(pCtx);
+	xmlValidCtxtPtr pValid;
+	sxu32 nMark;
+	int iRc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pDocNd == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	nMark = PH7_LibxmlCaptureBegin(pVm);
+	pValid = xmlNewValidCtxt();
+	if( pValid == 0 ){
+		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::validate");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	iRc = xmlValidateDocument(pValid,(xmlDocPtr)pDocNd->pNode);
+	xmlFreeValidCtxt(pValid);
+	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::validate");
+	ph7_result_bool(pCtx,iRc != 0);
+	return PH7_OK;
+}
+/*
+ * The MARKERS libxml leaves around everything it substituted.
+ *
+ * An XInclude pass wraps each replacement in an XML_XINCLUDE_START /
+ * XML_XINCLUDE_END pair, which are nodes in the tree like any other: they
+ * answer from `childNodes`, they shift every index after them, and the first
+ * child of an element whose only content was an `<xi:include>` is one of them
+ * rather than what was included.  php takes them out before answering, so the
+ * document a caller gets back is the substituted one and nothing else.  They
+ * are parked on the orphan set rather than freed, like every other node this
+ * file unlinks.
+ */
+static void DomDropXIncludeMarks(phl_xmldoc *pShell,xmlNodePtr pNode)
+{
+	xmlNodePtr pNext;
+	while( pNode ){
+		pNext = pNode->next;
+		if( pNode->type == XML_XINCLUDE_START || pNode->type == XML_XINCLUDE_END ){
+			xmlUnlinkNode(pNode);
+			DomOrphanAdd(pShell,pNode);
+		}else{
+			DomDropXIncludeMarks(pShell,pNode->children);
+		}
+		pNode = pNext;
+	}
+}
+/*
+ * DOMDocument::xinclude(int $options = 0): int|false
+ *
+ * php answers the COUNT of substitutions libxml made, -1 when one of them
+ * failed -- and FALSE when there were none at all, which is not an error and
+ * is the one answer a caller has to screen for separately.
+ */
+DOM_METHOD(vm_builtin_DOMDocument_xinclude)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	phl_domnode *pDocNd = DomThisNode(pCtx);
+	int iOpts = nArg > 0 ? ph7_value_to_int(apArg[0]) : 0;
+	sxu32 nMark;
+	int nDone;
+	if( pDocNd == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	nMark = PH7_LibxmlCaptureBegin(pVm);
+	nDone = xmlXIncludeProcessFlags((xmlDocPtr)pDocNd->pNode,iOpts);
+	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::xinclude");
+	if( nDone >= 0 ){
+		DomDropXIncludeMarks(pDocNd->pShell,
+			((xmlDocPtr)pDocNd->pNode)->children);
+	}
+	if( nDone == 0 ){
+		ph7_result_bool(pCtx,0);
+	}else{
+		ph7_result_int(pCtx,nDone);
+	}
+	return PH7_OK;
+}
 
 /* ===== The shared __get dispatch ===== */
 
@@ -9163,8 +9380,19 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "createDocumentFragment", PH7_MOD_PUBLIC, "", "",
 		  vm_builtin_DOMDocument_createFragment },
 		{ "normalizeDocument",    PH7_MOD_PUBLIC, "", "@void", vm_builtin_DOMDocument_normalizeDocument },
+		{ "schemaValidate",       PH7_MOD_PUBLIC, "string $filename, int $flags = 0", "@bool",
+		  vm_builtin_DOMDocument_schemaValidate },
 		{ "schemaValidateSource", PH7_MOD_PUBLIC, "string $source, int $flags = 0", "@bool",
 		  vm_builtin_DOMDocument_schemaValidateSource },
+		/* php declares no option word on the RelaxNG pair at all. */
+		{ "relaxNGValidate",       PH7_MOD_PUBLIC, "string $filename", "@bool",
+		  vm_builtin_DOMDocument_relaxNGValidate },
+		{ "relaxNGValidateSource", PH7_MOD_PUBLIC, "string $source", "@bool",
+		  vm_builtin_DOMDocument_relaxNGValidateSource },
+		{ "validate",             PH7_MOD_PUBLIC, "", "@bool",
+		  vm_builtin_DOMDocument_validate },
+		{ "xinclude",             PH7_MOD_PUBLIC, "int $options = 0", "@int|false",
+		  vm_builtin_DOMDocument_xinclude },
 		{ "getElementsByTagName", PH7_MOD_PUBLIC, "string $qualifiedName", "@DOMNodeList",
 		  vm_builtin_Dom_getElementsByTagName },
 		{ "getElementsByTagNameNS", PH7_MOD_PUBLIC, "?string $namespace, string $localName",
