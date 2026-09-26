@@ -2410,7 +2410,18 @@ struct ph7_vm
 	                             * DirectoryIterator; the class's xRelease closes and unregisters) */
 	SySet aAutoload;            /* Stack of spl_autoload callbacks */
 	SyHash hAutoloadActive;     /* Classes currently being autoloaded (reentrancy guard) */
-	SyHash hTypedSlot;          /* memobj nIdx -> VmClassAttr* for typed property enforcement */
+	SyHash hTypedSlot;          /* memobj nIdx -> VmClassAttr* for every slot a store must be
+	                             * FILTERED through: a declared TYPE to enforce, a native
+	                             * class's write handler, or both (PH7_ATTR_STORE_FILTERED).
+	                             * Registered and dropped through the two helpers below, which
+	                             * are the only writers -- the predicate must not be spelled
+	                             * out at a call site again. */
+	sxu32 nNativeSetSlot;       /* How many of those slots carry a native WRITE HANDLER. Kept
+	                             * by the same two helpers, and read by the in-place mutation
+	                             * opcodes: `$i++` on an ordinary variable must not pay for a
+	                             * hash lookup just because some class in the script declares a
+	                             * typed property, and with no handler-backed slot alive there
+	                             * is nothing for one to find. */
 	SySet aException;           /* Stack of loaded exception */
 	SySet aFinallyAction;       /* ROOT C: stack of VmFinallyAction — pending action (fallthrough /
 	                             * rethrow / return / break-continue) for each inline finally in flight */
@@ -4525,6 +4536,8 @@ PH7_PRIVATE void VmMaterializeIntTyped(ph7_value *pVal, sxu32 nType);
 PH7_PRIVATE void VmDropResumeTarget(ph7_vm *pVm, VmFrame *pFrame);
 PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue,int bCloneInit);
 PH7_PRIVATE sxi32 PH7_VmNativeSetSlot(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue);
+PH7_PRIVATE sxi32 PH7_VmStoreFilterRegister(ph7_vm *pVm,VmClassAttr *pVmAttr);
+PH7_PRIVATE void PH7_VmStoreFilterDrop(ph7_vm *pVm,ph7_class_attr *pAttr,sxu32 nIdx);
 PH7_PRIVATE sxi32 VmEnforceScalarType(ph7_value *pVal, sxu32 nType, int bStrict);
 PH7_PRIVATE void VmExcReleaseAll(ph7_vm *pVm,SySet *pSet);
 PH7_PRIVATE const char *VmFormatValueClassName(ph7_value *pValue,char *zBuf,sxu32 nBuf);

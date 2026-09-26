@@ -2004,11 +2004,42 @@ static sxi32 VmRunNativeSet(ph7_vm *pVm,VmClassAttr *pVmAttr,ph7_value *pValue)
  * 2.456007, the microsecond truncation of the sum). Answers SXRET_OK when the
  * slot is not a native one.
  */
+/*
+ * Register a property slot with the store filter, and drop it again. These two
+ * are the ONLY writers of pVm->hTypedSlot: the predicate that decides membership
+ * lives here once (a declared type, a native write handler, or both), and the
+ * handler COUNT that lets the mutation opcodes skip the table entirely is kept
+ * beside it -- registering in one place and forgetting to drop in another is
+ * exactly how a recycled memobj index would inherit a stale entry.
+ */
+PH7_PRIVATE sxi32 PH7_VmStoreFilterRegister(ph7_vm *pVm,VmClassAttr *pVmAttr)
+{
+	if( !PH7_ATTR_STORE_FILTERED(pVmAttr->pAttr) ){
+		return SXRET_OK;
+	}
+	if( SyHashInsert(&pVm->hTypedSlot,(const void *)&pVmAttr->nIdx,sizeof(sxu32),pVmAttr) != SXRET_OK ){
+		return SXERR_MEM;
+	}
+	if( pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET ){
+		pVm->nNativeSetSlot++;
+	}
+	return SXRET_OK;
+}
+PH7_PRIVATE void PH7_VmStoreFilterDrop(ph7_vm *pVm,ph7_class_attr *pAttr,sxu32 nIdx)
+{
+	if( pAttr == 0 || !PH7_ATTR_STORE_FILTERED(pAttr) ){
+		return;
+	}
+	if( SyHashDeleteEntry(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32),0) == SXRET_OK
+	 && (pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET) && pVm->nNativeSetSlot > 0 ){
+		pVm->nNativeSetSlot--;
+	}
+}
 PH7_PRIVATE sxi32 PH7_VmNativeSetSlot(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue)
 {
 	SyHashEntry *pSlot;
 	VmClassAttr *pVmAttr;
-	if( nIdx == SXU32_HIGH || SyHashTotalEntry(&pVm->hTypedSlot) == 0 ){
+	if( nIdx == SXU32_HIGH || pVm->nNativeSetSlot == 0 ){
 		return SXRET_OK;
 	}
 	pSlot = SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32));

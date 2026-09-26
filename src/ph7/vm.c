@@ -1609,7 +1609,7 @@ static sxi32 VmMountUserClassAttrs(
 						pClass->iFlags |= PH7_CLASS_STATIC_DEFER;
 					}
 				}
-				if( SyHashInsert(&pVm->hTypedSlot,(const void *)&pVmAttrS->nIdx,sizeof(sxu32),pVmAttrS) != SXRET_OK ){
+				if( PH7_VmStoreFilterRegister(&(*pVm),pVmAttrS) != SXRET_OK ){
 					SyMemBackendPoolFree(&pVm->sAllocator,pVmAttrS);
 					return SXERR_MEM;
 				}
@@ -1773,21 +1773,19 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 			}
 			/* Install attribute in the reference table */
 			PH7_VmRefObjInstall(&(*pVm),pMemObj->nIdx,0,0,VM_REF_IDX_KEEP);
-			/* Register the slot for assignment-time filtering -- a declared
-			 * TYPE to enforce, a native class's write handler, or both.
-			 * On failure roll back the just-installed hAttr entry and the
-			 * reserved memobj so the caller sees a consistent instance. */
-			if( PH7_ATTR_STORE_FILTERED(pAttr) ){
-				rc = SyHashInsert(&pVm->hTypedSlot,(const void *)&pVmAttr->nIdx,sizeof(sxu32),pVmAttr);
-				if( rc != SXRET_OK ){
-					VmSlot sSlot;
-					SyHashDeleteEntry(&pObj->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),0);
-					sSlot.nIdx = pMemObj->nIdx;
-					sSlot.pUserData = 0;
-					SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
-					SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
-					return SXERR_MEM;
-				}
+			/* Register the slot with the store filter -- a declared TYPE to
+			 * enforce, a native class's write handler, or both. On failure roll
+			 * back the just-installed hAttr entry and the reserved memobj so the
+			 * caller sees a consistent instance. */
+			rc = PH7_VmStoreFilterRegister(&(*pVm),pVmAttr);
+			if( rc != SXRET_OK ){
+				VmSlot sSlot;
+				SyHashDeleteEntry(&pObj->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),0);
+				sSlot.nIdx = pMemObj->nIdx;
+				sSlot.pUserData = 0;
+				SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
+				SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
+				return SXERR_MEM;
 			}
 		}else{
 			/* Install static/constant attribute */
@@ -2027,15 +2025,13 @@ PH7_PRIVATE void VmRecreateDeclaredAttr(ph7_vm *pVm,ph7_class_instance *pThis,ph
 		return;
 	}
 	PH7_VmRefObjInstall(&(*pVm),pMemObj->nIdx,0,0,VM_REF_IDX_KEEP);
-	if( PH7_ATTR_STORE_FILTERED(pAttr) ){
-		if( SyHashInsert(&pVm->hTypedSlot,(const void *)&pVmAttr->nIdx,sizeof(sxu32),pVmAttr) != SXRET_OK ){
-			VmSlot sSlot;
-			SyHashDeleteEntry(&pThis->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),0);
-			sSlot.nIdx = pMemObj->nIdx; sSlot.pUserData = 0;
-			SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
-			SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
-			return;
-		}
+	if( PH7_VmStoreFilterRegister(&(*pVm),pVmAttr) != SXRET_OK ){
+		VmSlot sSlot;
+		SyHashDeleteEntry(&pThis->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),0);
+		sSlot.nIdx = pMemObj->nIdx; sSlot.pUserData = 0;
+		SySetPut(&pVm->aFreeObj,(const void *)&sSlot);
+		SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
+		return;
 	}
 	if( ppAttr ){
 		*ppAttr = pVmAttr;
@@ -2995,6 +2991,7 @@ static void VmResetTypedSlots(ph7_vm *pVm)
 	}
 	SyHashRelease(&pVm->hTypedSlot);
 	SyHashInit(&pVm->hTypedSlot,&pVm->sAllocator,0,0);
+	pVm->nNativeSetSlot = 0;
 }
 /*
  * php-visible id of a resource. PHL's resource value is a bare void*, so the

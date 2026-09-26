@@ -81,9 +81,7 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 					/* Release this property's own (unshared) slot before repointing.
 					 * A reference-bound property bypasses typed coercion in php, so
 					 * drop any typed-slot enforcement entry too. */
-					if( PH7_ATTR_STORE_FILTERED(pVmAttr->pAttr) ){
-						SyHashDeleteEntry(&pVm->hTypedSlot,(const void *)&nOldIdx,sizeof(sxu32),0);
-					}
+					PH7_VmStoreFilterDrop(&(*pVm),pVmAttr->pAttr,nOldIdx);
 					PH7_VmUnsetMemObj(&(*pVm),nOldIdx,TRUE);
 				}else{
 					/* Already bound elsewhere: give that slot its pin back, which
@@ -107,9 +105,7 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 				if( (pStAttr->iFlags & PH7_CLASS_ATTR_REFBOUND) == 0 ){
 					/* The static's own (unshared) slot. A reference-bound property bypasses
 					 * typed coercion in php, so drop any typed-slot enforcement entry too. */
-					if( PH7_ATTR_STORE_FILTERED(pStAttr) ){
-						SyHashDeleteEntry(&pVm->hTypedSlot,(const void *)&nOldIdx,sizeof(sxu32),0);
-					}
+					PH7_VmStoreFilterDrop(&(*pVm),pStAttr,nOldIdx);
 					PH7_VmUnsetMemObj(&(*pVm),nOldIdx,TRUE);
 				}else{
 					VmUnpinMemObjSlot(&(*pVm),nOldIdx);
