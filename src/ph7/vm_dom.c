@@ -75,6 +75,7 @@ static const char * const azDomDocFlag[] = {
 #define DOM_ERR_HIERARCHY      3
 #define DOM_ERR_WRONG_DOC      4
 #define DOM_ERR_INVALID_CHAR   5
+#define DOM_ERR_NO_MOD         7
 #define DOM_ERR_NOT_FOUND      8
 #define DOM_ERR_NOT_SUPPORTED  9
 #define DOM_ERR_INVALID_STATE 11
@@ -89,6 +90,7 @@ static const char * DomErrText(int iCode)
 	case DOM_ERR_HIERARCHY:    return "Hierarchy Request Error";
 	case DOM_ERR_WRONG_DOC:    return "Wrong Document Error";
 	case DOM_ERR_INVALID_CHAR: return "Invalid Character Error";
+	case DOM_ERR_NO_MOD:       return "No Modification Allowed Error";
 	case DOM_ERR_NOT_SUPPORTED: return "Not Supported Error";
 	case DOM_ERR_INVALID_STATE: return "Invalid State Error";
 	case DOM_ERR_SYNTAX:       return "Syntax Error";
@@ -561,6 +563,118 @@ static xmlNodePtr DomChildAt(xmlNodePtr pNode,int iWant)
  */
 static void DomNsOnInsertEx(xmlNodePtr pNode,int bDeep);
 static void DomDropChildren(ph7_context *pCtx,phl_xmldoc *pShell,xmlNodePtr pNode);
+/* The attribute machinery, defined with the attribute surface below: the four
+ * mutators reach it because php's appendChild/insertBefore ATTACH an attribute
+ * argument as a property rather than splicing it among the children. */
+static xmlAttrPtr DomAttrByLocal(xmlNodePtr pElem,const char *zName);
+static xmlAttrPtr DomAttrByNs(xmlNodePtr pElem,const xmlChar *zUri,const char *zLocal);
+static void DomAttrLinkLast(xmlNodePtr pElem,xmlAttrPtr pAttr);
+static void DomAttrLinkBefore(xmlNodePtr pElem,xmlAttrPtr pAttr,xmlAttrPtr pRef);
+static void DomAttrDetach(phl_xmldoc *pShell,xmlAttrPtr pAttr);
+static void DomNsAttrArrive(xmlNodePtr pElem,xmlAttrPtr pAttr);
+
+/*
+ * php's dom_node_children_valid: the node kinds that can never have children.
+ * A level-2 mutator on such a receiver answers FALSE with nothing said at all
+ * -- no warning, no exception -- and answers it BEFORE any other screen, so
+ * `$text->appendChild($nodeFromAnotherDocument)` is false, not Wrong Document.
+ */
+static int DomChildrenValid(xmlNodePtr pNode)
+{
+	switch( pNode->type ){
+	case XML_TEXT_NODE:
+	case XML_CDATA_SECTION_NODE:
+	case XML_PI_NODE:
+	case XML_COMMENT_NODE:
+	case XML_DOCUMENT_TYPE_NODE:
+	case XML_DTD_NODE:
+	case XML_NOTATION_NODE:
+		return 0;
+	default:
+		return 1;
+	}
+}
+/*
+ * php's dom_node_is_read_only: the DTD-owned kinds -- an entity reference's
+ * subtree is the entity's, shared by every reference to it -- and, one clause
+ * later, a node with NO document: a constructed `new DOMText('t')` that was
+ * never adopted refuses the level-2 child-list doors with No Modification
+ * Allowed where the modern variadic family compares documents instead.
+ */
+static int DomNodeReadOnly(xmlNodePtr pNode)
+{
+	switch( pNode->type ){
+	case XML_ENTITY_REF_NODE:
+	case XML_ENTITY_NODE:
+	case XML_DOCUMENT_TYPE_NODE:
+	case XML_NOTATION_NODE:
+	case XML_DTD_NODE:
+	case XML_ELEMENT_DECL:
+	case XML_ATTRIBUTE_DECL:
+	case XML_ENTITY_DECL:
+		return 1;
+	default:
+		return pNode->doc == 0;
+	}
+}
+/* The two screens every level-2 mutator opens with, in php's order: an
+ * invalid-children receiver answers false in silence, then the read-only
+ * refusal -- the receiver's own, or that of the parent the CHILD would be
+ * taken from. Returns non-zero when the caller must stop (result already
+ * set). */
+static int DomMutatorScreen(ph7_context *pCtx,xmlNodePtr pParent,xmlNodePtr pChild,int *pRc)
+{
+	if( !DomChildrenValid(pParent) ){
+		ph7_result_bool(pCtx,0);
+		*pRc = PH7_OK;
+		return 1;
+	}
+	if( DomNodeReadOnly(pParent)
+	 || (pChild->parent && DomNodeReadOnly(pChild->parent)) ){
+		*pRc = DomThrow(pCtx,DOM_ERR_NO_MOD);
+		return 1;
+	}
+	return 0;
+}
+/*
+ * The attribute HALF of appendChild/insertBefore: php hands an attribute
+ * argument to xmlAddChild, which attaches it as a PROPERTY -- so
+ * `$el->appendChild($attr)` is a spelling of setAttributeNode, not a child
+ * splice (the chunk spliced it among the children and serialized `<r> k=""`,
+ * bytes that are not XML). The receiver must be an ELEMENT: a document, a
+ * fragment or an attribute answers the Hierarchy refusal. An existing
+ * attribute of the same name (libxml's name-only match, so a plain `k`
+ * displaces a namespaced one -- the setAttributeNode rule) is displaced
+ * UNLESS it is the argument itself, and the argument always (re)enters at the
+ * tail of the property list, which is observable: appending an element's own
+ * first attribute moves it last.
+ *
+ * One deliberate divergence, recorded in §7.4: php FREES the displaced
+ * attribute, so a wrapper held across the call answers Invalid State from
+ * every later read ("Couldn't fetch DOMAttr" from a method). PHL parks it
+ * detached and alive -- the same after-state setAttributeNode leaves.
+ */
+static int DomMutatorAttrAttach(ph7_context *pCtx,phl_domnode *pPar,phl_domnode *pChd,
+	ph7_value *pArg)
+{
+	xmlNodePtr pElem = (xmlNodePtr)pPar->pNode;
+	xmlAttrPtr pAttr = (xmlAttrPtr)pChd->pNode;
+	xmlAttrPtr pOld;
+	if( pElem->type != XML_ELEMENT_NODE ){
+		return DomThrow(pCtx,DOM_ERR_HIERARCHY);
+	}
+	pOld = pAttr->ns ? DomAttrByNs(pElem,pAttr->ns->href,(const char *)pAttr->name)
+	                 : DomAttrByLocal(pElem,(const char *)pAttr->name);
+	if( pOld && pOld != pAttr ){
+		xmlUnlinkNode((xmlNodePtr)pOld);
+		DomOrphanAdd(pPar->pShell,(xmlNodePtr)pOld);
+	}
+	DomAttrDetach(pChd->pShell,pAttr);
+	DomAttrLinkLast(pElem,pAttr);
+	DomNsAttrArrive(pElem,pAttr);
+	ph7_result_value(pCtx,pArg);
+	return PH7_OK;
+}
 
 /*
  * php's refusal taxonomy for linking pChild under pParent, or NULL when the
@@ -569,17 +683,48 @@ static void DomDropChildren(ph7_context *pCtx,phl_xmldoc *pShell,xmlNodePtr pNod
  * DESCENDANT, so `$a->firstChild->appendChild($a)` spliced a CYCLE into the
  * tree and every later walk of it ran away.
  */
-static int DomLinkRefusal(xmlNodePtr pParent,xmlNodePtr pChild)
+/*
+ * The refusal is in TWO halves because php's empty-fragment answer sits
+ * between them: a foreign empty fragment is Wrong Document, an empty fragment
+ * on an ATTRIBUTE receiver is the "Document Fragment is empty" warning plus
+ * false -- so the document screen runs before the fragment check and the
+ * receiver-kind screen after it.
+ */
+static int DomLinkRefusalPre(xmlNodePtr pParent,xmlNodePtr pChild)
 {
-	xmlNodePtr p;
 	if( pParent->doc != pChild->doc ){
 		return DOM_ERR_WRONG_DOC;
 	}
-	/* Walking UP from the parent also catches pChild == pParent. */
+	/* A DOCUMENT is never a child, stated outright: the ancestor walk below
+	 * only sees it from an ATTACHED receiver, and a detached one --
+	 * `$d->createElement('x')->appendChild($d)` -- spliced the document node
+	 * into its own orphan's child list, which teardown then freed twice. */
+	if( pChild->type == XML_DOCUMENT_NODE || pChild->type == XML_HTML_DOCUMENT_NODE ){
+		return DOM_ERR_HIERARCHY;
+	}
+	return 0;
+}
+/* The ancestor-cycle walk. Walking UP from the parent also catches
+ * pChild == pParent, so `$frag->appendChild($frag)` is Hierarchy even
+ * for an EMPTY fragment -- the cycle answers before the empty warning. */
+static int DomLinkCycle(xmlNodePtr pParent,xmlNodePtr pChild)
+{
+	xmlNodePtr p;
 	for( p = pParent ; p ; p = p->parent ){
 		if( p == pChild ){
 			return DOM_ERR_HIERARCHY;
 		}
+	}
+	return 0;
+}
+/* An ATTRIBUTE takes text and entity references, nothing else -- not even a
+ * fragment whose every child is text (though the EMPTY fragment's warning
+ * answers before this). php's Hierarchy refusal. */
+static int DomAttrRecvKind(xmlNodePtr pParent,xmlNodePtr pChild)
+{
+	if( pParent->type == XML_ATTRIBUTE_NODE
+	 && pChild->type != XML_TEXT_NODE && pChild->type != XML_ENTITY_REF_NODE ){
+		return DOM_ERR_HIERARCHY;
 	}
 	return 0;
 }
@@ -636,19 +781,36 @@ DOM_METHOD(vm_builtin_DOMNode_appendChild)
 {
 	phl_domnode *pPar = DomThisNode(pCtx);
 	phl_domnode *pChd = nArg > 0 ? DomObjArg(apArg[0]) : 0;
-	int iErr;
+	int iErr,rc;
 	if( pPar == 0 || pChd == 0 ){
 		return DomThrow(pCtx,DOM_ERR_WRONG_DOC);
 	}
-	iErr = DomLinkRefusal((xmlNodePtr)pPar->pNode,(xmlNodePtr)pChd->pNode);
+	if( DomMutatorScreen(pCtx,(xmlNodePtr)pPar->pNode,(xmlNodePtr)pChd->pNode,&rc) ){
+		return rc;
+	}
+	iErr = DomLinkRefusalPre((xmlNodePtr)pPar->pNode,(xmlNodePtr)pChd->pNode);
+	if( iErr == 0 ){
+		iErr = DomLinkCycle((xmlNodePtr)pPar->pNode,(xmlNodePtr)pChd->pNode);
+	}
+	/* The empty-fragment answer sits between the screens: a foreign empty
+	 * fragment is Wrong Document, appending a fragment to ITSELF is the cycle's
+	 * Hierarchy, and only an empty one on an attribute receiver reaches the
+	 * warning plus false. */
+	if( iErr == 0 && DomIsFragment((xmlNodePtr)pChd->pNode)
+	 && ((xmlNodePtr)pChd->pNode)->children == 0 ){
+		return DomFragEmpty(pCtx);
+	}
+	if( iErr == 0 ){
+		iErr = DomAttrRecvKind((xmlNodePtr)pPar->pNode,(xmlNodePtr)pChd->pNode);
+	}
 	if( iErr ){
 		return DomThrow(pCtx,iErr);
 	}
+	if( ((xmlNodePtr)pChd->pNode)->type == XML_ATTRIBUTE_NODE ){
+		return DomMutatorAttrAttach(pCtx,pPar,pChd,apArg[0]);
+	}
 	if( DomIsFragment((xmlNodePtr)pChd->pNode) ){
 		xmlNodePtr pFirst;
-		if( ((xmlNodePtr)pChd->pNode)->children == 0 ){
-			return DomFragEmpty(pCtx);
-		}
 		pFirst = DomFragMove(pChd->pShell,(xmlNodePtr)pPar->pNode,(xmlNodePtr)pChd->pNode,0);
 		return DomResultNodeOf(pCtx,pPar,pFirst);
 	}
@@ -666,19 +828,100 @@ DOM_METHOD(vm_builtin_DOMNode_insertBefore)
 	phl_domnode *pNew = nArg > 0 ? DomObjArg(apArg[0]) : 0;
 	phl_domnode *pRef = (nArg > 1 && !ph7_value_is_null(apArg[1])) ? DomObjArg(apArg[1]) : 0;
 	xmlNodePtr pParent,pChild,pAnchor;
-	int iErr;
+	int iErr,rc;
 	if( pPar == 0 || pNew == 0 ){
 		return DomThrow(pCtx,DOM_ERR_NOT_FOUND);
 	}
 	pParent = (xmlNodePtr)pPar->pNode;
 	pChild = (xmlNodePtr)pNew->pNode;
 	pAnchor = pRef ? (xmlNodePtr)pRef->pNode : 0;
-	iErr = DomLinkRefusal(pParent,pChild);
+	if( DomMutatorScreen(pCtx,pParent,pChild,&rc) ){
+		return rc;
+	}
+	iErr = DomLinkRefusalPre(pParent,pChild);
+	if( iErr == 0 ){
+		iErr = DomLinkCycle(pParent,pChild);
+	}
+	/* Between the screens, and BEFORE the reference-membership refusal: an
+	 * empty fragment answers its warning even against a reference node that
+	 * is no child of the receiver. */
+	if( iErr == 0 && DomIsFragment(pChild) && pChild->children == 0 ){
+		return DomFragEmpty(pCtx);
+	}
+	if( iErr == 0 ){
+		iErr = DomAttrRecvKind(pParent,pChild);
+	}
+	/* An attribute lands on an ELEMENT or nowhere, and php answers that
+	 * Hierarchy refusal BEFORE the reference-membership one -- a fragment
+	 * receiver with an attribute argument and a foreign reference is
+	 * Hierarchy, not Not Found. */
+	if( iErr == 0 && pChild->type == XML_ATTRIBUTE_NODE
+	 && pParent->type != XML_ELEMENT_NODE ){
+		iErr = DOM_ERR_HIERARCHY;
+	}
 	if( iErr == 0 && pAnchor && pAnchor->parent != pParent ){
 		iErr = DOM_ERR_NOT_FOUND;
 	}
 	if( iErr ){
 		return DomThrow(pCtx,iErr);
+	}
+	if( pChild->type == XML_ATTRIBUTE_NODE ){
+		/*
+		 * The attribute half, with insertBefore's own tails. A NULL reference
+		 * is the append spelling and attaches (the same-name displacement
+		 * included). A reference that is itself an ATTRIBUTE of the receiver
+		 * really does mean "before": the argument enters the property list at
+		 * the reference's position. Any other reference runs the DISPLACEMENT
+		 * and then fails the sibling link, php's own order, so
+		 * `$el->insertBefore($attr, $child)` on an element carrying `k="old"`
+		 * LOSES the old attribute, attaches nothing, and raises the plain
+		 * Error the self-sibling splice raises.
+		 */
+		xmlAttrPtr pAttr = (xmlAttrPtr)pChild;
+		xmlAttrPtr pOld;
+		if( pAnchor == 0 ){
+			return DomMutatorAttrAttach(pCtx,pPar,pNew,apArg[0]);
+		}
+		pOld = pAttr->ns
+			? DomAttrByNs(pParent,pAttr->ns->href,(const char *)pAttr->name)
+			: DomAttrByLocal(pParent,(const char *)pAttr->name);
+		if( pOld && pOld != pAttr ){
+			xmlUnlinkNode((xmlNodePtr)pOld);
+			DomOrphanAdd(pPar->pShell,(xmlNodePtr)pOld);
+		}
+		if( pAnchor->type != XML_ATTRIBUTE_NODE
+		 || pAnchor == (xmlNodePtr)pAttr || pAnchor == (xmlNodePtr)pOld ){
+			/* The argument is UNLINKED before the sibling link fails -- php's
+			 * own order, so `$r->insertBefore($cAttr, $child)` costs the other
+			 * element its attribute and attaches nothing here. The link fails
+			 * for a non-attribute reference, for the argument AS its own
+			 * reference, and for a reference the displacement just took --
+			 * php frees it and the sibling link then refuses. */
+			DomAttrDetach(pNew->pShell,pAttr);
+			DomOrphanAdd(pNew->pShell,(xmlNodePtr)pAttr);
+			return PH7_VmThrowException(pCtx,"Error",
+				"Cannot add newnode as the previous sibling of refnode");
+		}
+		DomAttrDetach(pNew->pShell,pAttr);
+		DomAttrLinkBefore(pParent,pAttr,(xmlAttrPtr)pAnchor);
+		DomNsAttrArrive(pParent,pAttr);
+		ph7_result_value(pCtx,apArg[0]);
+		return PH7_OK;
+	}
+	if( pAnchor && pAnchor->type == XML_ATTRIBUTE_NODE ){
+		/*
+		 * A non-attribute argument against an ATTRIBUTE reference: php hands
+		 * the pair to xmlAddPrevSibling, which UNLINKS the argument and then
+		 * splices it into the PROPERTY chain -- state no serializer or
+		 * childNodes walk ever shows, whose exact shape is libxml's version's.
+		 * The bytes agree when PHL simply DETACHES the argument and answers
+		 * it; the one detail php answers differently afterwards is recorded in
+		 * §7.4 (the argument's `parentNode` reads the receiver there).
+		 */
+		DomDetach(pNew->pShell,pChild);
+		DomOrphanAdd(pNew->pShell,pChild);
+		ph7_result_value(pCtx,apArg[0]);
+		return PH7_OK;
 	}
 	if( pAnchor == pChild ){
 		/*
@@ -697,10 +940,9 @@ DOM_METHOD(vm_builtin_DOMNode_insertBefore)
 			"Cannot add newnode as the previous sibling of refnode");
 	}
 	if( DomIsFragment(pChild) ){
+		/* An EMPTY fragment answered its warning above, before the reference
+		 * screen -- php's order. */
 		xmlNodePtr pFirst;
-		if( pChild->children == 0 ){
-			return DomFragEmpty(pCtx);
-		}
 		pFirst = DomFragMove(pNew->pShell,pParent,pChild,pAnchor);
 		return DomResultNodeOf(pCtx,pPar,pFirst);
 	}
@@ -724,8 +966,22 @@ DOM_METHOD(vm_builtin_DOMNode_removeChild)
 		return DomThrow(pCtx,DOM_ERR_NOT_FOUND);
 	}
 	pChild = (xmlNodePtr)pChd->pNode;
-	if( pChild->parent != (xmlNodePtr)pPar->pNode ){
+	/* php's membership test is `no children at all, or the parent pointer
+	 * disagrees` -- which lets an ATTACHED ATTRIBUTE through (its libxml
+	 * parent IS the element), so removeChild really does remove an attribute
+	 * -- but only from an element that has at least one real child; on a
+	 * childless one the same attribute is Not Found. (An entity reference's
+	 * child fails the parent test: its parent is the DTD.) */
+	if( ((xmlNodePtr)pPar->pNode)->children == 0
+	 || pChild->parent != (xmlNodePtr)pPar->pNode ){
 		return DomThrow(pCtx,DOM_ERR_NOT_FOUND);
+	}
+	/* ...and only THEN the read-only refusal, php's order: an entity
+	 * reference's child is Not Found territory never reached, while
+	 * `$ownerless->removeChild($its->child)` is the No Modification
+	 * refusal. */
+	if( DomNodeReadOnly((xmlNodePtr)pPar->pNode) ){
+		return DomThrow(pCtx,DOM_ERR_NO_MOD);
 	}
 	xmlUnlinkNode(pChild);
 	DomOrphanAdd(pChd->pShell,pChild);
@@ -747,7 +1003,50 @@ DOM_METHOD(vm_builtin_DOMNode_replaceChild)
 	pParent = (xmlNodePtr)pPar->pNode;
 	pChild = (xmlNodePtr)pNew->pNode;
 	pVictim = (xmlNodePtr)pOld->pNode;
-	iErr = DomLinkRefusal(pParent,pChild);
+	/*
+	 * php's replaceChild, in its own order (dom_node_replace_child) -- and it
+	 * disagrees with appendChild's twice. The document screen answers FIRST (a
+	 * text receiver or a read-only receiver with a foreign argument is Wrong
+	 * Document here, where appendChild answers false and No Modification).
+	 * Then the two silent-false answers: the invalid-children receiver and the
+	 * CHILDLESS one -- nothing to replace, and php says nothing at all, even
+	 * for an attribute or a document argument. Then the shared insertion
+	 * validity: read-only, the ancestor cycle, the attribute receiver's
+	 * child-kind rule, an attribute argument's element-only rule, the
+	 * document-as-child rule. Then a rule of replaceChild's OWN: old and new
+	 * must be attributes TOGETHER or not at all -- so an attribute argument
+	 * against a foreign ATTRIBUTE victim reads Not Found from the membership
+	 * check (both are attributes, the pair passes) while an element argument
+	 * against the same victim is Hierarchy. The victim's membership answers
+	 * last.
+	 */
+	if( pChild->doc != pParent->doc && pChild->doc != 0 ){
+		return DomThrow(pCtx,DOM_ERR_WRONG_DOC);
+	}
+	if( !DomChildrenValid(pParent) || pParent->children == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( DomNodeReadOnly(pParent)
+	 || (pChild->parent && DomNodeReadOnly(pChild->parent)) ){
+		return DomThrow(pCtx,DOM_ERR_NO_MOD);
+	}
+	iErr = DomLinkCycle(pParent,pChild);
+	if( iErr == 0 ){
+		iErr = DomAttrRecvKind(pParent,pChild);
+	}
+	if( iErr == 0 && pChild->type == XML_ATTRIBUTE_NODE
+	 && pParent->type != XML_ELEMENT_NODE ){
+		iErr = DOM_ERR_HIERARCHY;
+	}
+	if( iErr == 0
+	 && (pChild->type == XML_DOCUMENT_NODE || pChild->type == XML_HTML_DOCUMENT_NODE) ){
+		iErr = DOM_ERR_HIERARCHY;
+	}
+	if( iErr == 0
+	 && (pChild->type == XML_ATTRIBUTE_NODE) != (pVictim->type == XML_ATTRIBUTE_NODE) ){
+		iErr = DOM_ERR_HIERARCHY;
+	}
 	if( iErr == 0 && pVictim->parent != pParent ){
 		iErr = DOM_ERR_NOT_FOUND;
 	}
@@ -764,7 +1063,17 @@ DOM_METHOD(vm_builtin_DOMNode_replaceChild)
 		ph7_result_value(pCtx,apArg[1]);
 		return PH7_OK;
 	}
-	if( pChild != pVictim ){
+	if( pChild != pVictim && pChild->type == XML_ATTRIBUTE_NODE ){
+		/* Both sides are attributes (the XOR above let them through): the swap
+		 * happens in the PROPERTY list, at the victim's position, with NO
+		 * same-name displacement -- php hands the pair to xmlReplaceNode
+		 * as-is, so a duplicate name is the caller's to answer for. */
+		DomAttrDetach(pNew->pShell,(xmlAttrPtr)pChild);
+		DomAttrLinkBefore(pParent,(xmlAttrPtr)pChild,(xmlAttrPtr)pVictim);
+		xmlUnlinkNode(pVictim);
+		DomOrphanAdd(pOld->pShell,pVictim);
+		DomNsAttrArrive(pParent,(xmlAttrPtr)pChild);
+	}else if( pChild != pVictim ){
 		DomDetach(pNew->pShell,pChild);
 		DomLinkBefore(pParent,pChild,pVictim);
 		xmlUnlinkNode(pVictim);
@@ -2821,6 +3130,23 @@ static void DomAttrLinkLast(xmlNodePtr pElem,xmlAttrPtr pAttr)
 	}
 	pLast->next = pAttr;
 	pAttr->prev = pLast;
+}
+/* ...and at a POSITION: before pRef, which must be one of pElem's own --
+ * insertBefore against an attribute reference, and replaceChild's
+ * attribute-for-attribute swap, the two places php lets a caller state the
+ * property list's order. */
+static void DomAttrLinkBefore(xmlNodePtr pElem,xmlAttrPtr pAttr,xmlAttrPtr pRef)
+{
+	pAttr->parent = pElem;
+	pAttr->doc = pElem->doc;
+	pAttr->next = pRef;
+	pAttr->prev = pRef->prev;
+	if( pRef->prev ){
+		pRef->prev->next = pAttr;
+	}else{
+		pElem->properties = pAttr;
+	}
+	pRef->prev = pAttr;
 }
 /* Detach an attribute from its element (or the orphan set) without freeing it:
  * php hands the caller back the node it displaced, alive. */
