@@ -3696,6 +3696,12 @@ PH7_PRIVATE void PH7_XmlWriterVmSweep(ph7_vm *pVm);
 PH7_PRIVATE sxi32 PH7_VmInstallXml(ph7_vm *pVm);
 PH7_PRIVATE void PH7_XmlParserVmSweep(ph7_vm *pVm);
 #endif /* PH7_ENABLE_LIBXML */
+#ifdef PH7_ENABLE_SQLITE
+/* vm_pdo.c (ext/pdo: the driver-independent class library) */
+PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm);
+/* vm_pdo_sqlite.c (ext/pdo_sqlite: the driver and its Pdo\Sqlite subclass) */
+PH7_PRIVATE sxi32 PH7_VmInstallPdoSqlite(ph7_vm *pVm);
+#endif /* PH7_ENABLE_SQLITE */
 /* net.c types and function prototypes */
 #ifdef PH7_ENABLE_NET
 #ifdef __WINNT__

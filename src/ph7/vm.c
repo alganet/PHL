@@ -2382,6 +2382,12 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	PH7_VmInstallDom(&(*pVm));
 	PH7_VmInstallXmlWriter(&(*pVm));
 #endif
+#ifdef PH7_ENABLE_SQLITE
+	/* ext/pdo's class library first: `Pdo\Sqlite` extends PDO, so the driver's
+	 * installer needs the parent already mounted. */
+	PH7_VmInstallPdo(&(*pVm));
+	PH7_VmInstallPdoSqlite(&(*pVm));
+#endif
 	pVm->bCompilingBuiltin = 0;
 	/* Reset the code generator */
 	PH7_ResetCodeGenerator(&(*pVm),pEngine->xConf.xErr,pEngine->xConf.pErrData);

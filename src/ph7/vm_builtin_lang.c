@@ -1401,6 +1401,11 @@ static const char * const azExtension[] = {
 #ifdef PH7_ENABLE_LIBXML
 	, "libxml", "xml", "dom", "xmlwriter"
 #endif
+#ifdef PH7_ENABLE_SQLITE
+	/* ext/sqlite3 (the SQLite3 class family) is NOT one of these: §10 scopes
+	 * this build to PDO's sqlite DRIVER, so only the two pdo names load. */
+	, "PDO", "pdo_sqlite"
+#endif
 };
 /*
  * `phl.stub_extensions` is a PHL-only directive: a comma-separated list of

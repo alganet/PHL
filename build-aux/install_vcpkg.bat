@@ -65,6 +65,15 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+:: sqlite3 backs ext/pdo's sqlite driver (PDO / PDOStatement / Pdo\Sqlite).
+echo Installing sqlite3:x64-windows-static...
+"%VCPKG_DIR%\vcpkg.exe" install sqlite3:x64-windows-static
+
+if %errorlevel% neq 0 (
+    echo Failed to install sqlite3.
+    exit /b 1
+)
+
 echo.
-echo vcpkg, PCRE2 and libxml2 installed successfully.
+echo vcpkg, PCRE2, libxml2 and sqlite3 installed successfully.
 echo vcpkg root: %VCPKG_DIR%
