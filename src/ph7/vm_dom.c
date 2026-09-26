@@ -1315,40 +1315,393 @@ DOM_METHOD(vm_builtin_DOMElement_getAttributeNS)
 	}
 	return PH7_OK;
 }
+/* Document-order successor within pRoot's subtree (pRoot excluded) */
+static xmlNodePtr DomWalkNext(xmlNodePtr pCur,xmlNodePtr pRoot)
+{
+	if( pCur->children ){
+		return pCur->children;
+	}
+	while( pCur && pCur != pRoot ){
+		if( pCur->next ){
+			return pCur->next;
+		}
+		pCur = pCur->parent;
+	}
+	return 0;
+}
+/*
+ * ===== Qualified names and the namespaces they need =====
+ *
+ * The grammar php screens a created name against, and the rule by which it
+ * finds or declares the namespace behind it.  Both were missing here, and what
+ * stood in for them wrote documents that are not XML: `setAttributeNS('urn:b',
+ * '1:x', 'v')` emitted `xmlns:1="urn:b" 1:x="v"`, `('urn:b','a:b:c','v')`
+ * emitted an attribute with two colons in its name, and a prefixed name with a
+ * NULL namespace emitted `xmlns:q=""`.  php refuses all three with a Namespace
+ * Error before the element is touched.
+ */
+#define DOM_XML_NS_URI   "http://www.w3.org/XML/1998/namespace"
+#define DOM_XMLNS_NS_URI "http://www.w3.org/2000/xmlns/"
+
+typedef struct dom_qname dom_qname;
+struct dom_qname {
+	xmlChar *zPrefix;   /* NULL when the name carries none */
+	xmlChar *zLocal;    /* always allocated */
+};
+static void DomQNameRelease(dom_qname *pQ)
+{
+	if( pQ->zPrefix ){
+		xmlFree(pQ->zPrefix);
+	}
+	if( pQ->zLocal ){
+		xmlFree(pQ->zLocal);
+	}
+	pQ->zPrefix = pQ->zLocal = 0;
+}
+static int DomUriIs(const char *zUri,const char *zWant)
+{
+	return zUri != 0 && DomNameIs(zUri,zWant);
+}
+/*
+ * php's `dom_check_qname`: the name has to be a QName, a prefix demands a
+ * namespace, and the two RESERVED prefixes demand theirs.  bStrictXmlns is the
+ * DOM spec's extra pair of rules -- the xmlns namespace may only be spelled by
+ * an xmlns name and vice versa -- which php applies when CREATING a node and
+ * not when setting an attribute (there the unprefixed `xmlns` is the way a
+ * program writes a namespace DECLARATION, whatever URI it passes).
+ * Answers 0, or the DOM error code to raise.
+ */
+static int DomQNameParse(const char *zQname,const char *zUri,int bStrictXmlns,dom_qname *pOut)
+{
+	int bHasUri = zUri != 0 && zUri[0] != 0;
+	int bXmlnsName;
+	pOut->zPrefix = pOut->zLocal = 0;
+	if( zQname == 0 || zQname[0] == 0 ){
+		return DOM_ERR_NAMESPACE;
+	}
+	if( bStrictXmlns ){
+		/* The CREATE side takes a QName and nothing else, and says Namespace
+		 * Error to everything that is not one. */
+		if( xmlValidateQName((const xmlChar *)zQname,0) != 0 ){
+			return DOM_ERR_NAMESPACE;
+		}
+	}
+	pOut->zLocal = xmlSplitQName2((const xmlChar *)zQname,&pOut->zPrefix);
+	if( pOut->zLocal == 0 ){
+		/* No prefix -- or a name that BEGINS with the colon, which libxml hands
+		 * back whole and php then writes literally (`:x`) as long as no
+		 * namespace came with it. */
+		pOut->zLocal = xmlStrdup((const xmlChar *)zQname);
+		if( pOut->zLocal == 0 ){
+			return DOM_ERR_NAMESPACE;
+		}
+	}
+	if( !bStrictXmlns ){
+		/* The SET side separates the two failures php separates. A name with a
+		 * PREFIX is judged as two NCNames and every failure there is the
+		 * Namespace Error; an unprefixed one is judged as a plain Name, and a
+		 * name libxml will not take at all is the Invalid Character Error. A
+		 * namespace then demands that the local part be an NCName too, which is
+		 * what refuses `:x` once a URI comes with it. */
+		if( pOut->zPrefix ){
+			if( xmlValidateNCName(pOut->zPrefix,0) != 0
+			 || xmlValidateNCName(pOut->zLocal,0) != 0 ){
+				DomQNameRelease(pOut);
+				return DOM_ERR_NAMESPACE;
+			}
+		}else if( xmlValidateName((const xmlChar *)zQname,0) != 0 ){
+			DomQNameRelease(pOut);
+			return DOM_ERR_INVALID_CHAR;
+		}
+		if( bHasUri && xmlValidateNCName(pOut->zLocal,0) != 0 ){
+			DomQNameRelease(pOut);
+			return DOM_ERR_NAMESPACE;
+		}
+	}
+	bXmlnsName = pOut->zPrefix == 0 && xmlStrEqual(pOut->zLocal,(const xmlChar *)"xmlns");
+	if( pOut->zPrefix && !bHasUri ){
+		/* A prefix names a namespace, so there has to be one. (Whether the
+		 * prefix may be USED is the resolution's question, not the grammar's:
+		 * php reuses a binding the document already has whatever prefix was
+		 * asked for, and only refuses when it would have to declare one.) */
+		DomQNameRelease(pOut);
+		return DOM_ERR_NAMESPACE;
+	}
+	if( bStrictXmlns && pOut->zPrefix
+	 && xmlStrEqual(pOut->zPrefix,(const xmlChar *)"xml")
+	 && !DomUriIs(zUri,DOM_XML_NS_URI) ){
+		DomQNameRelease(pOut);
+		return DOM_ERR_NAMESPACE;
+	}
+	if( bStrictXmlns ){
+		/* The DOM spec's pairing, which php applies when CREATING a node: the
+		 * xmlns namespace may only be spelled by an xmlns name, and an xmlns
+		 * name may name nothing else. */
+		int bXmlnsPrefix = pOut->zPrefix != 0
+			&& xmlStrEqual(pOut->zPrefix,(const xmlChar *)"xmlns");
+		if( (bXmlnsName || bXmlnsPrefix) != DomUriIs(zUri,DOM_XMLNS_NS_URI) ){
+			DomQNameRelease(pOut);
+			return DOM_ERR_NAMESPACE;
+		}
+	}
+	return 0;
+}
+/*
+ * The namespace a node in zUri should carry, declared on pAnchor when the
+ * document has none.  php REUSES a binding it can find by URI as long as that
+ * binding has a prefix, takes the caller's prefix when it has to declare and
+ * the prefix is free, and otherwise generates `default`, `default1`, ... --
+ * which is why asking for a prefix another URI already owns quietly answers
+ * `default:x` rather than refusing.
+ *
+ * bNeedPrefix is the CREATE side (`createAttributeNS`), where an unprefixed
+ * name still gets a generated prefix; the SET side may declare the DEFAULT
+ * namespace instead.
+ */
+static xmlNsPtr DomFindPrefixedNs(xmlNodePtr pNode,const char *zUri)
+{
+	xmlNodePtr p;
+	for( p = pNode ; p ; p = p->parent ){
+		xmlNsPtr pNs;
+		if( p->type != XML_ELEMENT_NODE ){
+			continue;
+		}
+		for( pNs = p->nsDef ; pNs ; pNs = pNs->next ){
+			if( pNs->prefix == 0 || pNs->href == 0
+			 || !xmlStrEqual(pNs->href,(const xmlChar *)zUri) ){
+				continue;
+			}
+			/* ...and only if a nearer declaration has not taken the prefix. */
+			if( xmlSearchNs(pNode->doc,pNode,pNs->prefix) == pNs ){
+				return pNs;
+			}
+		}
+	}
+	return 0;
+}
+/*
+ * Declare a binding of zUri on pAnchor under a prefix nothing there has taken:
+ * zBase, then zBase1, zBase2...  php starts from `default` for a namespace
+ * with no prefix of its own and from the prefix ITSELF when it is re-spelling
+ * one an inner declaration has shadowed (which is where `p1` comes from).
+ */
+static xmlNsPtr DomNsGenerate(xmlNodePtr pAnchor,const char *zUri,const xmlChar *zBase)
+{
+	xmlNsPtr pNs = 0;
+	int i;
+	for( i = 0 ; i < 1000 ; i++ ){
+		char zGen[256];
+		const char *zB = zBase ? (const char *)zBase : "default";
+		if( SyStrlen(zB) > sizeof(zGen)-16 ){
+			zB = "default";
+		}
+		if( i == 0 ){
+			SyBufferFormat(zGen,sizeof(zGen),"%s",zB);
+		}else{
+			SyBufferFormat(zGen,sizeof(zGen),"%s%d",zB,i);
+		}
+		pNs = xmlNewNs(pAnchor,(const xmlChar *)zUri,(const xmlChar *)zGen);
+		if( pNs ){
+			return pNs;
+		}
+	}
+	return 0;
+}
+/* A binding of this URI an ATTRIBUTE can use: one that carries a prefix. */
+static xmlNsPtr DomNsReuse(xmlNodePtr pAnchor,const char *zUri)
+{
+	xmlNsPtr pNs = xmlSearchNsByHref(pAnchor->doc,pAnchor,(const xmlChar *)zUri);
+	if( pNs && pNs->prefix ){
+		return pNs;   /* including libxml's implicit `xml` binding */
+	}
+	/* Bound, but only WITHOUT a prefix, which does not serve an attribute: a
+	 * prefixed binding of the same URI further out still does. */
+	return pNs ? DomFindPrefixedNs(pAnchor,zUri) : 0;
+}
+static xmlNsPtr DomNsResolve(xmlNodePtr pAnchor,const char *zUri,const xmlChar *zPrefix,int bNeedPrefix)
+{
+	xmlNsPtr pNs;
+	if( !bNeedPrefix ){
+		pNs = DomNsReuse(pAnchor,zUri);
+		if( pNs ){
+			return pNs;
+		}
+	}
+	/* The CREATE side asks libxml's own question and no more: a document that
+	 * binds this URI to the default namespace AND to a prefix answers the
+	 * default one there, and php then declares its own rather than looking for
+	 * the prefixed binding the SET side would have found. */
+	pNs = xmlSearchNsByHref(pAnchor->doc,pAnchor,(const xmlChar *)zUri);
+	if( bNeedPrefix ){
+		if( pNs && pNs->prefix ){
+			return pNs;
+		}
+		pNs = 0;   /* a prefix-less binding is no use to an attribute */
+	}
+	/* A prefix-less binding stops php from declaring another one under the
+	 * caller's prefix -- what happens then is a generated one. */
+	if( pNs == 0 && (zPrefix != 0 || !bNeedPrefix) ){
+		if( !bNeedPrefix && zPrefix
+		 && (xmlStrEqual(zPrefix,(const xmlChar *)"xml")
+		  || xmlStrEqual(zPrefix,(const xmlChar *)"xmlns")) ){
+			/* A RESERVED prefix cannot be declared, and php does not paper over
+			 * that with a generated one: it refuses. (Nothing is refused when
+			 * the URI already had a binding -- the prefix is never consulted
+			 * then, which is why `setAttributeNS($uri,'xml:id',..)` succeeds on
+			 * a document that binds $uri and fails on one that does not.) */
+			return 0;
+		}
+		pNs = xmlNewNs(pAnchor,(const xmlChar *)zUri,zPrefix);
+		if( pNs ){
+			return pNs;
+		}
+	}
+	return DomNsGenerate(pAnchor,zUri,0);
+}
+/*
+ * A declaration that lands on pElem takes the SPELLING away from every node
+ * under it that reached its namespace through a declaration this one now
+ * shadows -- the node still points at a binding nothing can name from there, so
+ * a re-parse of the serialized document reads it in the wrong namespace (or in
+ * none).  php re-points those nodes at a binding of their OWN URI: one still in
+ * scope when there is one, and otherwise a fresh declaration on pElem under
+ * their own prefix numbered up (`p` -> `p1`), or `default` when they had none.
+ *
+ * Only called when a write actually declared something, which is what keeps it
+ * off the ordinary path.
+ */
+static void DomNsRespell(xmlNodePtr pAnchor,xmlNodePtr pNode,int bAttr)
+{
+	xmlNsPtr pNs = pNode->ns,pAlt;
+	if( pNs == 0 || pNs->href == 0 ){
+		return;
+	}
+	if( xmlSearchNs(pNode->doc,pNode,pNs->prefix) == pNs ){
+		return;   /* the prefix still names this very binding */
+	}
+	/* An attribute needs a PREFIXED binding; an element is happy with the
+	 * default one. */
+	pAlt = bAttr ? DomNsReuse(pNode,(const char *)pNs->href)
+	             : xmlSearchNsByHref(pNode->doc,pNode,pNs->href);
+	if( pAlt == 0 ){
+		pAlt = DomNsGenerate(pAnchor,(const char *)pNs->href,pNs->prefix);
+	}
+	if( pAlt ){
+		pNode->ns = pAlt;
+	}
+}
+static int DomNsDefCount(xmlNodePtr pElem)
+{
+	xmlNsPtr pNs;
+	int n = 0;
+	for( pNs = pElem->nsDef ; pNs ; pNs = pNs->next ){
+		n++;
+	}
+	return n;
+}
+static void DomNsReconcile(xmlNodePtr pElem)
+{
+	xmlNodePtr pCur = pElem;
+	while( pCur ){
+		xmlAttrPtr pAttr;
+		if( pCur->type == XML_ELEMENT_NODE ){
+			DomNsRespell(pElem,pCur,0);
+			for( pAttr = pCur->properties ; pAttr ; pAttr = pAttr->next ){
+				if( pAttr->type == XML_ATTRIBUTE_NODE ){
+					DomNsRespell(pElem,(xmlNodePtr)pAttr,1);
+				}
+			}
+		}
+		pCur = DomWalkNext(pCur,pElem);
+	}
+}
+/* A namespace DECLARATION on this element: php's setAttributeNS writes one
+ * when the name is `xmlns` or its prefix is, and REBINDS the one already
+ * there rather than adding a second. */
+static void DomNsDeclare(xmlNodePtr pElem,const xmlChar *zPrefix,const char *zHref)
+{
+	xmlNsPtr pNs;
+	for( pNs = pElem->nsDef ; pNs ; pNs = pNs->next ){
+		int bSame = zPrefix == 0 ? pNs->prefix == 0
+			: (pNs->prefix != 0 && xmlStrEqual(pNs->prefix,zPrefix));
+		if( bSame ){
+			xmlChar *zNew = xmlStrdup((const xmlChar *)zHref);
+			if( zNew == 0 ){
+				return;
+			}
+			if( pNs->href ){
+				xmlFree((xmlChar *)pNs->href);
+			}
+			pNs->href = zNew;
+			return;
+		}
+	}
+	xmlNewNs(pElem,(const xmlChar *)zHref,zPrefix);
+}
 /* DOMElement::setAttributeNS(?string $namespace, string $qualifiedName, string $value): void */
 DOM_METHOD(vm_builtin_DOMElement_setAttributeNS)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
-	const char *zUri = (nArg > 2 && !ph7_value_is_null(apArg[0])) ? ph7_value_to_string(apArg[0],0) : "";
+	const char *zUri = DomArgStrOrNull(nArg,apArg,0);
 	const char *zQname = nArg > 2 ? ph7_value_to_string(apArg[1],0) : "";
 	const char *zVal = nArg > 2 ? ph7_value_to_string(apArg[2],0) : "";
-	sxu32 nColon = 0;
+	int bHasUri = zUri != 0 && zUri[0] != 0;
 	xmlNodePtr pNode;
-	xmlNsPtr pNs;
-	if( pNd == 0 || zQname[0] == 0 ){
+	xmlNsPtr pNs = 0;
+	dom_qname sQ;
+	int rc,bDecl,nOldDefs;
+	if( pNd == 0 ){
 		return DomThrow(pCtx,DOM_ERR_NAMESPACE);
 	}
-	pNode = (xmlNodePtr)pNd->pNode;
-	if( SyByteFind(zQname,SyStrlen(zQname),':',&nColon) == SXRET_OK ){
-		/* Prefixed: find (or declare on this element) the namespace */
-		char zPrefix[128];
-		if( nColon >= sizeof(zPrefix) ){
-			return DomThrow(pCtx,DOM_ERR_NAMESPACE);
-		}
-		SyMemcpy(zQname,zPrefix,nColon);
-		zPrefix[nColon] = 0;
-		pNs = xmlSearchNsByHref(pNode->doc,pNode,(const xmlChar *)zUri);
-		if( pNs == 0 ){
-			pNs = xmlNewNs(pNode,(const xmlChar *)zUri,(const xmlChar *)zPrefix);
-		}
-		if( pNs == 0 ){
-			return DomThrow(pCtx,DOM_ERR_NAMESPACE);
-		}
-		xmlSetNsProp(pNode,pNs,(const xmlChar *)(zQname+nColon+1),(const xmlChar *)zVal);
-	}else{
-		pNs = zUri[0] ? xmlSearchNsByHref(pNode->doc,pNode,(const xmlChar *)zUri) : 0;
-		xmlSetNsProp(pNode,pNs,(const xmlChar *)zQname,(const xmlChar *)zVal);
+	if( zQname[0] == 0 ){
+		/* php screens the EMPTY name at the parameter, before the DOM sees it. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"DOMElement::setAttributeNS(): Argument #2 ($qualifiedName) must not be empty");
 	}
+	rc = DomQNameParse(zQname,zUri,0,&sQ);
+	if( rc ){
+		return DomThrow(pCtx,rc);
+	}
+	pNode = (xmlNodePtr)pNd->pNode;
+	nOldDefs = DomNsDefCount(pNode);
+	/* The DECLARATION spelling is the xmlns NAMESPACE plus an xmlns name --
+	 * `xmlns:z` binds z, plain `xmlns` binds the default one. Everything else
+	 * is an ordinary attribute, including a bare `xmlns` under some other URI:
+	 * php writes it as an ATTRIBUTE whose name happens to be `xmlns`, which
+	 * serializes beside the declaration already there. */
+	bDecl = DomUriIs(zUri,DOM_XMLNS_NS_URI)
+		&& (sQ.zPrefix ? xmlStrEqual(sQ.zPrefix,(const xmlChar *)"xmlns")
+		               : xmlStrEqual(sQ.zLocal,(const xmlChar *)"xmlns"));
+	if( bHasUri && !bDecl ){
+		/* An ordinary attribute: find or declare the namespace it names. The
+		 * xmlns URI is not special here -- php declares it like any other,
+		 * EXCEPT under a prefix, which is the one binding it will not write.
+		 * The same goes for the prefix `xmlns` itself: php will REUSE a binding
+		 * for it (which is how `setAttributeNS(XML_NS,'xmlns:z')` ends up as
+		 * `xml:z`) and refuses to declare one. */
+		if( sQ.zPrefix && DomUriIs(zUri,DOM_XMLNS_NS_URI) ){
+			DomQNameRelease(&sQ);
+			return DomThrow(pCtx,DOM_ERR_NAMESPACE);
+		}
+		pNs = DomNsResolve(pNode,zUri,sQ.zPrefix,0);
+		if( pNs == 0 ){
+			DomQNameRelease(&sQ);
+			return DomThrow(pCtx,DOM_ERR_NAMESPACE);
+		}
+	}
+	if( bDecl ){
+		/* The declaration spelling: `xmlns:z` binds z, plain `xmlns` binds the
+		 * default namespace, and the VALUE is the URI being bound. */
+		DomNsDeclare(pNode,sQ.zPrefix ? sQ.zLocal : 0,zVal);
+	}else{
+		xmlSetNsProp(pNode,pNs,sQ.zLocal,(const xmlChar *)zVal);
+	}
+	/* Either path may have declared something here -- and a declaration, new or
+	 * rebound, can take the spelling away from what is already below it. */
+	if( bDecl || DomNsDefCount(pNode) != nOldDefs ){
+		DomNsReconcile(pNode);
+	}
+	DomQNameRelease(&sQ);
 	return PH7_OK;
 }
 
@@ -1671,23 +2024,54 @@ DOM_METHOD(vm_builtin_DOMDocument_createAttribute)
 	DomOrphanAdd(pNd->pShell,(xmlNodePtr)pAttr);
 	return DomResultNodeOf(pCtx,pNd,(xmlNodePtr)pAttr);
 }
+/*
+ * DOMDocument::createAttributeNS(?string $namespace, string $qualifiedName): DOMAttr
+ *
+ * The namespace is declared on the document's ROOT ELEMENT, not on the
+ * attribute -- which is why a document that has no root element yet cannot
+ * answer at all, and says so with php's warning and a false.
+ */
+DOM_METHOD(vm_builtin_DOMDocument_createAttributeNS)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	const char *zUri = DomArgStrOrNull(nArg,apArg,0);
+	const char *zQname = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
+	xmlNodePtr pRoot;
+	xmlAttrPtr pAttr;
+	dom_qname sQ;
+	int rc;
+	if( pNd == 0 ){
+		return DomThrow(pCtx,DOM_ERR_NAMESPACE);
+	}
+	rc = DomQNameParse(zQname,zUri,1,&sQ);
+	if( rc ){
+		return DomThrow(pCtx,rc);
+	}
+	pRoot = xmlDocGetRootElement((xmlDocPtr)pNd->pNode);
+	if( pRoot == 0 ){
+		DomQNameRelease(&sQ);
+		/* The context prints php's `DOMDocument::createAttributeNS(): ` itself. */
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Document Missing Root Element");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pAttr = xmlNewDocProp((xmlDocPtr)pNd->pNode,sQ.zLocal,0);
+	if( pAttr == 0 ){
+		DomQNameRelease(&sQ);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( zUri && zUri[0] && sQ.zPrefix ){
+		xmlSetNs((xmlNodePtr)pAttr,DomNsResolve(pRoot,zUri,sQ.zPrefix,1));
+	}else if( zUri && zUri[0] && !xmlStrEqual(sQ.zLocal,(const xmlChar *)"xmlns") ){
+		xmlSetNs((xmlNodePtr)pAttr,DomNsResolve(pRoot,zUri,0,1));
+	}
+	DomQNameRelease(&sQ);
+	DomOrphanAdd(pNd->pShell,(xmlNodePtr)pAttr);
+	return DomResultNodeOf(pCtx,pNd,(xmlNodePtr)pAttr);
+}
 
 /* ===== getElementsByTagName (live) ===== */
 
-/* Document-order successor within pRoot's subtree (pRoot excluded) */
-static xmlNodePtr DomWalkNext(xmlNodePtr pCur,xmlNodePtr pRoot)
-{
-	if( pCur->children ){
-		return pCur->children;
-	}
-	while( pCur && pCur != pRoot ){
-		if( pCur->next ){
-			return pCur->next;
-		}
-		pCur = pCur->parent;
-	}
-	return 0;
-}
 /* Length-carrying: the name comes from a declared string SLOT, whose bytes are
  * NOT NUL-terminated (PH7_NativeAttrStr borrows the blob as-is). */
 static int DomGebtnMatch(xmlNodePtr pNode,const char *zName,int nName)
@@ -3829,6 +4213,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMDocument_createElement },
 		{ "createAttribute",      PH7_MOD_PUBLIC, "string $localName", "",
 		  vm_builtin_DOMDocument_createAttribute },
+		{ "createAttributeNS",    PH7_MOD_PUBLIC, "?string $namespace, string $qualifiedName", "",
+		  vm_builtin_DOMDocument_createAttributeNS },
 		{ "createTextNode",       PH7_MOD_PUBLIC, "string $data", "@DOMText",
 		  vm_builtin_DOMDocument_createTextNode },
 		{ "createComment",        PH7_MOD_PUBLIC, "string $data", "@DOMComment",
