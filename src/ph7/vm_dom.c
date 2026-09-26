@@ -670,6 +670,318 @@ DOM_METHOD(vm_builtin_DOMNode_isSameNode)
 	return PH7_OK;
 }
 
+/* ===== Position, containment and structural equality ===== */
+
+/* php's DOMNode::DOCUMENT_POSITION_* -- the DOM's own bit values. */
+#define DOM_POS_DISCONNECTED 1
+#define DOM_POS_PRECEDING    2
+#define DOM_POS_FOLLOWING    4
+#define DOM_POS_CONTAINS     8
+#define DOM_POS_CONTAINED_BY 16
+#define DOM_POS_IMPL_SPEC    32
+
+/* The topmost node reachable by parent links -- the DOCUMENT for a node in a
+ * tree, and the outermost detached node otherwise. */
+static xmlNodePtr DomRootOf(xmlNodePtr pNode)
+{
+	while( pNode && pNode->parent ){
+		pNode = pNode->parent;
+	}
+	return pNode;
+}
+/* Is pAnc a STRICT ancestor of pNode? libxml parents an attribute at its
+ * element, which is how php answers true for `$el->contains($el->attr)`. */
+static int DomIsAncestorOf(xmlNodePtr pAnc,xmlNodePtr pNode)
+{
+	xmlNodePtr p = pNode ? pNode->parent : 0;
+	for( ; p ; p = p->parent ){
+		if( p == pAnc ){
+			return 1;
+		}
+	}
+	return 0;
+}
+static int DomDepthOf(xmlNodePtr pNode)
+{
+	int n = 0;
+	for( ; pNode ; pNode = pNode->parent ){
+		n++;
+	}
+	return n;
+}
+/*
+ * Does pA come before pB in document order? Both are distinct nodes of one
+ * tree. Lifting each to the depth of the other either lands on the SAME node --
+ * one is an ancestor of the other, and an ancestor comes first in a preorder
+ * walk -- or, after stepping up in lockstep, on two distinct children of one
+ * parent, whose child-list order is the answer.
+ *
+ * The ancestor case is reachable even though compareDocumentPosition answers
+ * CONTAINS/CONTAINED_BY for it: an ATTRIBUTE folds onto its element first, so
+ * `$root->attr` against `$child->attr` arrives here as the element PAIR with
+ * one of them an ancestor of the other.
+ */
+static int DomPrecedesInTree(xmlNodePtr pA,xmlNodePtr pB)
+{
+	int nA = DomDepthOf(pA),nB = DomDepthOf(pB);
+	xmlNodePtr pUpA = pA,pUpB = pB,p;
+	while( nA > nB ){ pUpA = pUpA->parent; nA--; }
+	while( nB > nA ){ pUpB = pUpB->parent; nB--; }
+	if( pUpA == pUpB ){
+		return pUpA == pA;   /* pA was not lifted: it is the ancestor */
+	}
+	while( pUpA && pUpB && pUpA->parent != pUpB->parent ){
+		pUpA = pUpA->parent;
+		pUpB = pUpB->parent;
+	}
+	for( p = pUpA ? pUpA->prev : 0 ; p ; p = p->prev ){
+		if( p == pUpB ){
+			return 0;   /* pB is an earlier sibling */
+		}
+	}
+	return 1;
+}
+/*
+ * DOMNode::compareDocumentPosition(DOMNode $other): int
+ *
+ * The DOM's own algorithm, run with `other` as node1 and the receiver as node2.
+ * An ATTRIBUTE is folded onto its element first, which is what makes an
+ * attribute answer `CONTAINED_BY|FOLLOWING` against its own element and
+ * `IMPLEMENTATION_SPECIFIC` plus the attribute-list order against a sibling
+ * attribute -- and what makes it compare as its element against everything else.
+ *
+ * Two nodes in different trees are DISCONNECTED, and the direction bit there is
+ * php's own: the raw node POINTERS, which is the only thing available and which
+ * php marks IMPLEMENTATION_SPECIFIC for exactly that reason. The bit is stable
+ * and antisymmetric within one process; it is not comparable ACROSS engines,
+ * so no test pins it.
+ */
+DOM_METHOD(vm_builtin_DOMNode_compareDocumentPosition)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	phl_domnode *pOtherNd = nArg > 0 ? DomObjArg(apArg[0]) : 0;
+	xmlNodePtr pThisNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	xmlNodePtr pOther = pOtherNd ? (xmlNodePtr)pOtherNd->pNode : 0;
+	xmlNodePtr pNode1,pNode2,pAttr1 = 0,pAttr2 = 0;
+	if( pThisNode == 0 || pOther == 0 ){
+		ph7_result_int(pCtx,0);
+		return PH7_OK;
+	}
+	if( pThisNode == pOther ){
+		ph7_result_int(pCtx,0);
+		return PH7_OK;
+	}
+	pNode1 = pOther;
+	pNode2 = pThisNode;
+	if( pNode1->type == XML_ATTRIBUTE_NODE ){
+		pAttr1 = pNode1;
+		pNode1 = pNode1->parent;
+	}
+	if( pNode2->type == XML_ATTRIBUTE_NODE ){
+		pAttr2 = pNode2;
+		pNode2 = pNode2->parent;
+		if( pAttr1 && pNode1 && pNode1 == pNode2 ){
+			xmlAttrPtr pAttr;
+			for( pAttr = pNode2->properties ; pAttr ; pAttr = pAttr->next ){
+				if( (xmlNodePtr)pAttr == pAttr1 ){
+					ph7_result_int(pCtx,DOM_POS_IMPL_SPEC|DOM_POS_PRECEDING);
+					return PH7_OK;
+				}
+				if( (xmlNodePtr)pAttr == pAttr2 ){
+					ph7_result_int(pCtx,DOM_POS_IMPL_SPEC|DOM_POS_FOLLOWING);
+					return PH7_OK;
+				}
+			}
+		}
+	}
+	if( pNode1 == 0 || pNode2 == 0 || DomRootOf(pNode1) != DomRootOf(pNode2) ){
+		ph7_result_int(pCtx,DOM_POS_DISCONNECTED|DOM_POS_IMPL_SPEC
+			|((sxuptr)pThisNode > (sxuptr)pOther ? DOM_POS_PRECEDING : DOM_POS_FOLLOWING));
+		return PH7_OK;
+	}
+	if( (pAttr1 == 0 && DomIsAncestorOf(pNode1,pNode2))
+	 || (pAttr2 != 0 && pNode1 == pNode2) ){
+		ph7_result_int(pCtx,DOM_POS_CONTAINS|DOM_POS_PRECEDING);
+		return PH7_OK;
+	}
+	if( (pAttr2 == 0 && DomIsAncestorOf(pNode2,pNode1))
+	 || (pAttr1 != 0 && pNode1 == pNode2) ){
+		ph7_result_int(pCtx,DOM_POS_CONTAINED_BY|DOM_POS_FOLLOWING);
+		return PH7_OK;
+	}
+	ph7_result_int(pCtx,DomPrecedesInTree(pNode1,pNode2)
+		? DOM_POS_PRECEDING : DOM_POS_FOLLOWING);
+	return PH7_OK;
+}
+/* DOMNode::contains(DOMNode|DOMNameSpaceNode|null $other): bool -- INCLUSIVE
+ * descendant, so a node contains itself, and (libxml parenting attributes) an
+ * element contains its own attributes. */
+DOM_METHOD(vm_builtin_DOMNode_contains)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	phl_domnode *pOtherNd = (nArg > 0 && !ph7_value_is_null(apArg[0])) ? DomObjArg(apArg[0]) : 0;
+	xmlNodePtr pThisNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	xmlNodePtr pOther = pOtherNd ? (xmlNodePtr)pOtherNd->pNode : 0;
+	ph7_result_bool(pCtx,pThisNode != 0 && pOther != 0
+		&& (pThisNode == pOther || DomIsAncestorOf(pThisNode,pOther)));
+	return PH7_OK;
+}
+/* DOMNode::getRootNode(?array $options = null): DOMNode -- php declares the
+ * options array (the shadow-DOM `composed` key) and reads nothing from it. */
+DOM_METHOD(vm_builtin_DOMNode_getRootNode)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return DomResultNodeOf(pCtx,pNd,DomRootOf(pNd ? (xmlNodePtr)pNd->pNode : 0));
+}
+/*
+ * DOMNode::isSupported(string $feature, string $version): bool -- the DOM Level
+ * 1 feature test, and php's whole table is two rows: `XML` at 1.0 or 2.0 and
+ * `Core` at 1.0 (never `Core` at 2.0). The feature name folds case, the version
+ * does not.
+ */
+DOM_METHOD(vm_builtin_DOMNode_isSupported)
+{
+	const char *zFeature = nArg > 1 ? ph7_value_to_string(apArg[0],0) : "";
+	const char *zVersion = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
+	int bOne = DomNameIs(zVersion,"1.0");
+	int bTwo = DomNameIs(zVersion,"2.0");
+	int bXml = SyStrlen(zFeature) == 3 && SyStrnicmp(zFeature,"XML",3) == 0;
+	int bCore = SyStrlen(zFeature) == 4 && SyStrnicmp(zFeature,"Core",4) == 0;
+	ph7_result_bool(pCtx,(bXml && (bOne || bTwo)) || (bCore && bOne));
+	return PH7_OK;
+}
+/*
+ * php's structural equality, which is NOT the DOM spec's to the letter.
+ *
+ * The type has to match, then the per-kind identity: an ELEMENT compares its
+ * namespace URI, its PREFIX and its local name (so `p:m` and `q:m` bound to the
+ * one URI are NOT equal) plus its attributes as a SET -- same count, and every
+ * attribute matched by namespace, local name and value regardless of order. An
+ * ATTRIBUTE compares its namespace URI, its name and its value and NOT its
+ * prefix, which is the asymmetry no reading of the spec predicts. A PI compares
+ * target and data, character data its content, an entity REFERENCE its name.
+ * Then the children, in order and in the same number.
+ */
+static int DomStrEqOrBothNull(const xmlChar *zA,const xmlChar *zB)
+{
+	if( zA == 0 || zB == 0 ){
+		return zA == zB;
+	}
+	return xmlStrEqual(zA,zB) != 0;
+}
+static void DomNsHrefOf(xmlNodePtr pNode,const xmlChar **pzHref,const xmlChar **pzPrefix)
+{
+	*pzHref = (pNode->ns && pNode->ns->href) ? pNode->ns->href : 0;
+	*pzPrefix = (pNode->ns && pNode->ns->prefix) ? pNode->ns->prefix : 0;
+}
+static int DomAttrValueEq(xmlNodePtr pA,xmlNodePtr pB)
+{
+	xmlChar *zA = xmlNodeGetContent(pA);
+	xmlChar *zB = xmlNodeGetContent(pB);
+	int bEq = DomStrEqOrBothNull(zA,zB);
+	if( zA ){ xmlFree(zA); }
+	if( zB ){ xmlFree(zB); }
+	return bEq;
+}
+static int DomAttrSetEqual(xmlNodePtr pA,xmlNodePtr pB)
+{
+	xmlAttrPtr pOne,pTwo;
+	int nA = 0,nB = 0;
+	for( pOne = pA->properties ; pOne ; pOne = pOne->next ){ nA++; }
+	for( pTwo = pB->properties ; pTwo ; pTwo = pTwo->next ){ nB++; }
+	if( nA != nB ){
+		return 0;
+	}
+	for( pOne = pA->properties ; pOne ; pOne = pOne->next ){
+		const xmlChar *zHrefA,*zPfxA,*zHrefB,*zPfxB;
+		DomNsHrefOf((xmlNodePtr)pOne,&zHrefA,&zPfxA);
+		for( pTwo = pB->properties ; pTwo ; pTwo = pTwo->next ){
+			DomNsHrefOf((xmlNodePtr)pTwo,&zHrefB,&zPfxB);
+			if( DomStrEqOrBothNull(zHrefA,zHrefB)
+			 && DomStrEqOrBothNull(pOne->name,pTwo->name)
+			 && DomAttrValueEq((xmlNodePtr)pOne,(xmlNodePtr)pTwo) ){
+				break;
+			}
+		}
+		if( pTwo == 0 ){
+			return 0;
+		}
+	}
+	return 1;
+}
+static int DomNodesEqual(xmlNodePtr pA,xmlNodePtr pB)
+{
+	xmlNodePtr pKidA,pKidB;
+	const xmlChar *zHrefA,*zPfxA,*zHrefB,*zPfxB;
+	if( pA == 0 || pB == 0 ){
+		return pA == pB;
+	}
+	if( pA->type != pB->type ){
+		return 0;
+	}
+	switch( pA->type ){
+	case XML_ELEMENT_NODE:
+		DomNsHrefOf(pA,&zHrefA,&zPfxA);
+		DomNsHrefOf(pB,&zHrefB,&zPfxB);
+		if( !DomStrEqOrBothNull(zHrefA,zHrefB) || !DomStrEqOrBothNull(zPfxA,zPfxB)
+		 || !DomStrEqOrBothNull(pA->name,pB->name) || !DomAttrSetEqual(pA,pB) ){
+			return 0;
+		}
+		break;
+	case XML_ATTRIBUTE_NODE:
+		DomNsHrefOf(pA,&zHrefA,&zPfxA);
+		DomNsHrefOf(pB,&zHrefB,&zPfxB);
+		if( !DomStrEqOrBothNull(zHrefA,zHrefB)
+		 || !DomStrEqOrBothNull(pA->name,pB->name)
+		 || !DomAttrValueEq(pA,pB) ){
+			return 0;
+		}
+		/* An attribute's value IS its child list; comparing it twice would only
+		 * refuse a value split across nodes that reads the same. */
+		return 1;
+	case XML_PI_NODE:
+		if( !DomStrEqOrBothNull(pA->name,pB->name)
+		 || !DomStrEqOrBothNull(pA->content,pB->content) ){
+			return 0;
+		}
+		break;
+	case XML_TEXT_NODE:
+	case XML_CDATA_SECTION_NODE:
+	case XML_COMMENT_NODE:
+		if( !DomStrEqOrBothNull(pA->content,pB->content) ){
+			return 0;
+		}
+		break;
+	case XML_ENTITY_REF_NODE:
+		/* The reference's NAME is what a program wrote; its children are the
+		 * DECLARATION libxml resolved it to, which is not part of the node. */
+		return DomStrEqOrBothNull(pA->name,pB->name);
+	default:
+		break;
+	}
+	pKidA = pA->children;
+	pKidB = pB->children;
+	while( pKidA && pKidB ){
+		if( !DomNodesEqual(pKidA,pKidB) ){
+			return 0;
+		}
+		pKidA = pKidA->next;
+		pKidB = pKidB->next;
+	}
+	return pKidA == 0 && pKidB == 0;
+}
+/* DOMNode::isEqualNode(?DOMNode $otherNode): bool */
+DOM_METHOD(vm_builtin_DOMNode_isEqualNode)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	phl_domnode *pOtherNd = (nArg > 0 && !ph7_value_is_null(apArg[0])) ? DomObjArg(apArg[0]) : 0;
+	ph7_result_bool(pCtx,pNd != 0 && pOtherNd != 0
+		&& DomNodesEqual((xmlNodePtr)pNd->pNode,(xmlNodePtr)pOtherNd->pNode));
+	return PH7_OK;
+}
+
 /* ===== Copying: cloneNode ===== */
 
 /*
@@ -2497,6 +2809,20 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		/* php runs the same walk normalizeDocument() does, from the receiver. */
 		{ "normalize",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_DOMDocument_normalizeDocument },
 		{ "getNodePath",    PH7_MOD_PUBLIC, "", "@?string", vm_builtin_DOMNode_getNodePath },
+		{ "isEqualNode",    PH7_MOD_PUBLIC, "?DOMNode $otherNode", "bool",
+		  vm_builtin_DOMNode_isEqualNode },
+		{ "isSupported",    PH7_MOD_PUBLIC, "string $feature, string $version", "@bool",
+		  vm_builtin_DOMNode_isSupported },
+		/* php's declared type names DOMNameSpaceNode, a class PHL does not have;
+		 * the row states it anyway so Reflection reports php's, and nothing can
+		 * be handed one. (php's own zpp rejects a NON-object here with a
+		 * "?object" message instead -- PLAN §7.4, the error-format class.) */
+		{ "contains",       PH7_MOD_PUBLIC, "DOMNode|DOMNameSpaceNode|null $other", "bool",
+		  vm_builtin_DOMNode_contains },
+		{ "getRootNode",    PH7_MOD_PUBLIC, "?array $options = null", "DOMNode",
+		  vm_builtin_DOMNode_getRootNode },
+		{ "compareDocumentPosition", PH7_MOD_PUBLIC, "DOMNode $other", "int",
+		  vm_builtin_DOMNode_compareDocumentPosition },
 		{ "getLineNo",      PH7_MOD_PUBLIC, "", "@int", vm_builtin_DOMNode_getLineNo },
 		{ "C14N",           PH7_MOD_PUBLIC,
 		  "bool $exclusive = false, bool $withComments = false, ?array $xpath = null, "
@@ -2510,6 +2836,21 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "__get",          PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNode_get },
 		{ "__isset",        PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNode_isset },
 		{ "__set",          PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMNode_set },
+	};
+	/* php declares the six on DOMNode; every node class inherits them. */
+	static const PH7_NativeConstDef aNodeConst[] = {
+		{ "DOCUMENT_POSITION_DISCONNECTED", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT,
+		  DOM_POS_DISCONNECTED, 0, 0.0 },
+		{ "DOCUMENT_POSITION_PRECEDING", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT,
+		  DOM_POS_PRECEDING, 0, 0.0 },
+		{ "DOCUMENT_POSITION_FOLLOWING", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT,
+		  DOM_POS_FOLLOWING, 0, 0.0 },
+		{ "DOCUMENT_POSITION_CONTAINS", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT,
+		  DOM_POS_CONTAINS, 0, 0.0 },
+		{ "DOCUMENT_POSITION_CONTAINED_BY", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT,
+		  DOM_POS_CONTAINED_BY, 0, 0.0 },
+		{ "DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT,
+		  DOM_POS_IMPL_SPEC, 0, 0.0 },
 	};
 	static const PH7_NativePropDef aDocProp[] = {
 		/* php models both as VIRTUAL hooked properties reading libxml state, so it
@@ -2653,7 +2994,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 	static const PH7_NativeClassSpec aSpec[] = {
 		{ "DOMException", "Exception", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMNode", 0, 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  aNodeMethod, SX_ARRAYSIZE(aNodeMethod), 0, 0, aNodeProp, SX_ARRAYSIZE(aNodeProp), 0, 0, 0 },
+		  aNodeMethod, SX_ARRAYSIZE(aNodeMethod), aNodeConst, SX_ARRAYSIZE(aNodeConst),
+		  aNodeProp, SX_ARRAYSIZE(aNodeProp), 0, 0, 0 },
 		{ "DOMDocument", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aDocMethod, SX_ARRAYSIZE(aDocMethod), 0, 0, aDocProp, SX_ARRAYSIZE(aDocProp), 0, 0, 0 },
 		{ "DOMElement", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
