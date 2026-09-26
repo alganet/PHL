@@ -387,7 +387,9 @@ static phl_xmlwriter * XmlWriterOpenDevice(ph7_vm *pVm,io_private *pDev,int bOwn
 	pXw->bOwnDev = bOwn;
 	pOut = xmlOutputBufferCreateIO(XmlWriterIoWrite,XmlWriterIoClose,(void *)pXw,0);
 	if( pOut == 0 ){
-		pXw->pDev = 0;
+		/* Nothing will call the close callback, so an owned handle is closed here
+		 * rather than left open until the VM goes. */
+		XmlWriterIoClose((void *)pXw);
 		return 0;
 	}
 	pXw->pWriter = xmlNewTextWriter(pOut);
@@ -421,6 +423,67 @@ static int XmlWriterCheckNul(ph7_context *pCtx,const char *zFn,int iArg,const ch
 		"%s(): Argument #%d ($%s) must not contain any null bytes",zFn,iArg,zParam);
 }
 /*
+ * Does the FILE path a failed open was given resolve at all -- that is, does the
+ * directory it names exist? php's `toUri()` factory raises two different things
+ * for a path it cannot write, and this is the line between them:
+ * `expand_filepath()` failing (no such directory) is the ValueError, and
+ * everything the OPEN itself refuses -- a directory, an unwritable directory,
+ * a scheme no wrapper takes -- is the plain Error. A path with no separator is
+ * relative to a working directory that always exists, so it resolves.
+ */
+static int XmlWriterPathResolves(ph7_vm *pVm,const char *zUri,int nUri)
+{
+	const ph7_vfs *pVfs = pVm->pEngine ? pVm->pEngine->pVfs : 0;
+	SyBlob sDir;
+	int i,iCut = -1,rc;
+	/* php reads the path as a URI reference first, and one with a SCHEME skips
+	 * the directory check entirely -- so the open's own refusal, the plain
+	 * Error, answers for it. The exceptions are file:/// and file://localhost/,
+	 * which are stripped to the local path and checked like one. A Windows
+	 * drive path is a URI with a scheme too: "C:" parses as one. */
+	for( i = 0 ; i < nUri ; ++i ){
+		int c = (unsigned char)zUri[i];
+		if( !(SyisAlpha(c) || (i > 0 && (SyisDigit(c) || c == '+' || c == '-' || c == '.'))) ){
+			break;
+		}
+	}
+	if( i > 0 && i < nUri && zUri[i] == ':' ){
+		if( nUri >= 8 && SyStrnicmp(zUri,"file:///",8) == 0 ){
+			zUri += 7;
+			nUri -= 7;
+		}else if( nUri >= 17 && SyStrnicmp(zUri,"file://localhost/",17) == 0 ){
+			zUri += 16;
+			nUri -= 16;
+		}else{
+			return 1;
+		}
+		if( nUri > 2 && SyisAlpha((unsigned char)zUri[1]) && zUri[2] == ':' ){
+			zUri++;   /* file:///C:/x names C:/x */
+			nUri--;
+		}
+	}
+	if( pVfs == 0 || pVfs->xIsdir == 0 ){
+		return 1;
+	}
+	for( i = 0 ; i < nUri ; ++i ){
+		if( zUri[i] == '/' || zUri[i] == '\\' ){
+			iCut = i;
+		}
+	}
+	if( iCut < 0 ){
+		return 1;   /* a bare name: the working directory */
+	}
+	if( iCut == 0 ){
+		return 1;   /* "/name": the root */
+	}
+	SyBlobInit(&sDir,&pVm->sAllocator);
+	SyBlobAppend(&sDir,zUri,(sxu32)iCut);
+	SyBlobAppend(&sDir,"\0",sizeof(char));
+	rc = pVfs->xIsdir((const char *)SyBlobData(&sDir)) == PH7_OK;
+	SyBlobRelease(&sDir);
+	return rc;
+}
+/*
  * Open a URI for writing through the engine's stream layer and answer the
  * writer, or 0 with php's own diagnostic already raised. `zFn` names the
  * spelling (method or function) every message is reported under.
@@ -432,10 +495,12 @@ static phl_xmlwriter * XmlWriterOpenUri(ph7_context *pCtx,ph7_value *pArg,const 
 	const ph7_io_stream *pStream;
 	io_private *pDev;
 	phl_xmlwriter *pXw;
-	const char *zUri;
-	int nUri = 0;
+	const char *zUri,*zSrc;
+	int nUri = 0,nSrc;
 	*pRc = PH7_OK;
 	zUri = pArg ? ph7_value_to_string(pArg,&nUri) : "";
+	zSrc = zUri;
+	nSrc = nUri;
 	if( nUri < 1 ){
 		*pRc = PH7_VmThrowException(pCtx,"ValueError",
 			"%s(): Argument #1 ($uri) must not be empty",zFn);
@@ -464,11 +529,16 @@ static phl_xmlwriter * XmlWriterOpenUri(ph7_context *pCtx,ph7_value *pArg,const 
 	}
 	pXw = pDev ? XmlWriterOpenDevice(pVm,pDev,TRUE) : 0;
 	if( pXw == 0 ){
-		/* php's two refusals for the same failure: the factory raises, the
-		 * opener warns and answers false. */
+		/* php's refusals for the same failure: the FACTORY raises -- a ValueError
+		 * when the path did not resolve, php's plain Error when the open itself
+		 * was refused -- while the opener warns and answers false. */
 		if( bStatic ){
-			*pRc = PH7_VmThrowException(pCtx,"ValueError",
-				"%s(): Argument #1 ($uri) must resolve to a valid file path",zFn);
+			if( pStream == 0 || XmlWriterPathResolves(pVm,zSrc,nSrc) ){
+				*pRc = PH7_VmThrowException(pCtx,"Error","Could not construct libxml writer");
+			}else{
+				*pRc = PH7_VmThrowException(pCtx,"ValueError",
+					"%s(): Argument #1 ($uri) must resolve to a valid file path",zFn);
+			}
 		}else{
 			SyString sFn;
 			SyStringInitFromBuf(&sFn,zFn,SyStrlen(zFn));

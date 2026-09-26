@@ -2,7 +2,7 @@
 SPDX-FileCopyrightText: 2026 Alexandre Gomes Gaigalas <alganet@gmail.com>
 SPDX-License-Identifier: BSD-3-Clause
 --TEST--
-XMLWriter: writing to a URI or a stream (openUri, php 8.5's toMemory/toUri/toStream factories, the flush the object's release performs, and the two arguments a NUL is refused in)
+XMLWriter: writing to a URI or a stream (openUri, php 8.5's toMemory/toUri/toStream factories, the flush the object's release performs, the two failures toUri tells apart, and the two arguments a NUL is refused in)
 --FILE--
 <?php
 function xw_c5_try(string $label, callable $fn): void {
@@ -86,6 +86,30 @@ xw_c5_try('openUri nul',        fn() => (new XMLWriter)->openUri("a\0b"));
 xw_c5_try('toUri nul',          fn() => XMLWriter::toUri("a\0b"));
 xw_c5_try('toStream int',       fn() => XMLWriter::toStream(42));
 xw_c5_try('toStream closed',    function () { $x = fopen('php://memory', 'w'); fclose($x); return XMLWriter::toStream($x); });
+// The warnings a failed open raises name absolute paths, and php adds libxml's
+// own text to them; the EXCEPTION each spelling raises is the
+// contract, so the warnings are swallowed here.
+set_error_handler(fn (int $no, string $msg): bool => true);
+// A path php cannot write raises two different things from the FACTORY: the
+// ValueError when the path did not RESOLVE, and php's plain Error when the open
+// itself was refused. The opener answers false for both.
+foreach ([
+	// The absolute path is written as a file:/// URI: php reads the path as a URI
+	// first, and a Windows drive path ("C:") parses as a SCHEME, which skips the
+	// directory check and answers the plain Error -- as any scheme does. file:///
+	// is stripped and checked on every platform.
+	'no such directory' => 'file://' . (DIRECTORY_SEPARATOR === '\\' ? '/' : '')
+		. str_replace('\\', '/', $dir) . '/nodir/x.xml',
+	'a drive-like scheme' => 'zz:/phl-xw-nodir/x.xml',
+	'relative, no such directory' => 'phl-xw-nodir/x.xml',
+	'a directory' => $dir,
+	'a scheme no wrapper takes' => 'nosuchscheme://x',
+] as $why => $uri) {
+	xw_c5_try("toUri: $why", fn() => get_class(XMLWriter::toUri($uri)));
+	xw_c5_try("openUri: $why", function () use ($uri) { $w = new XMLWriter; return @$w->openUri($uri); });
+}
+restore_error_handler();
+
 xw_c5_try('startDocument nul encoding', function () {
 	$x = new XMLWriter;
 	$x->openMemory();
@@ -119,6 +143,16 @@ openUri nul: ValueError: XMLWriter::openUri(): Argument #1 ($uri) must not conta
 toUri nul: ValueError: XMLWriter::toUri(): Argument #1 ($uri) must not contain any null bytes
 toStream int: TypeError: XMLWriter::toStream(): Argument #1 ($stream) must be of type resource, int given
 toStream closed: TypeError: XMLWriter::toStream(): supplied resource is not a valid stream resource
+toUri: no such directory: ValueError: XMLWriter::toUri(): Argument #1 ($uri) must resolve to a valid file path
+openUri: no such directory: false
+toUri: a drive-like scheme: Error: Could not construct libxml writer
+openUri: a drive-like scheme: false
+toUri: relative, no such directory: ValueError: XMLWriter::toUri(): Argument #1 ($uri) must resolve to a valid file path
+openUri: relative, no such directory: false
+toUri: a directory: Error: Could not construct libxml writer
+openUri: a directory: false
+toUri: a scheme no wrapper takes: Error: Could not construct libxml writer
+openUri: a scheme no wrapper takes: false
 startDocument nul encoding: ValueError: XMLWriter::startDocument(): Argument #2 ($encoding) must not contain any null bytes
 startDocument nul version: array (
   0 => true,
