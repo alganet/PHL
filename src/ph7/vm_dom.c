@@ -119,6 +119,9 @@ static const char * DomClassOfKind(int iKind)
 	case XML_TEXT_NODE:          return "DOMText";
 	case XML_CDATA_SECTION_NODE: return "DOMCdataSection";
 	case XML_COMMENT_NODE:       return "DOMComment";
+	case XML_PI_NODE:            return "DOMProcessingInstruction";
+	case XML_DOCUMENT_FRAG_NODE: return "DOMDocumentFragment";
+	case XML_ENTITY_REF_NODE:    return "DOMEntityReference";
 	default:                     return "DOMNode";
 	}
 }
@@ -356,12 +359,29 @@ static int DomIsConnected(xmlNodePtr pNode)
 	}
 	return pRoot->type == XML_DOCUMENT_NODE || pRoot->type == XML_HTML_DOCUMENT_NODE;
 }
-/* php's nodeValue: NULL for a document, the text content otherwise */
+/*
+ * php's nodeValue, which is null for every node kind that has no value of its
+ * own -- the document, a doctype, a fragment, an entity DECLARATION and an
+ * entity REFERENCE all answer null, where `textContent` on the same node walks
+ * its children and answers a string. (The element case is php's own
+ * convenience: DOM says an element has no node value.)
+ */
 static void DomNodeValue(ph7_context *pCtx,xmlNodePtr pNode)
 {
 	xmlChar *zContent;
-	if( pNode == 0 || pNode->type == XML_DOCUMENT_NODE || pNode->type == XML_HTML_DOCUMENT_NODE
-		|| pNode->type == XML_DOCUMENT_TYPE_NODE ){
+	if( pNode == 0 ){
+		ph7_result_null(pCtx);
+		return;
+	}
+	switch( pNode->type ){
+	case XML_ATTRIBUTE_NODE:
+	case XML_TEXT_NODE:
+	case XML_ELEMENT_NODE:
+	case XML_COMMENT_NODE:
+	case XML_CDATA_SECTION_NODE:
+	case XML_PI_NODE:
+		break;
+	default:
 		ph7_result_null(pCtx);
 		return;
 	}
@@ -425,6 +445,45 @@ static const char * DomLinkRefusal(xmlNodePtr pParent,xmlNodePtr pChild)
 	return 0;
 }
 /*
+ * A DOCUMENT FRAGMENT is not linked, it is EMPTIED: php moves its children into
+ * the target and answers the FIRST of them (the fragment itself is never a
+ * child of anything, which is the whole point of the type -- it is how a
+ * program builds a run of nodes and inserts it in one call). An EMPTY one is
+ * php's warning plus `false`, not an exception.
+ *
+ * *ppFirst takes the first node moved, or NULL when the argument was not a
+ * fragment at all; the caller then links the node itself.
+ */
+static int DomIsFragment(xmlNodePtr pNode)
+{
+	return pNode && pNode->type == XML_DOCUMENT_FRAG_NODE;
+}
+static int DomFragEmpty(ph7_context *pCtx)
+{
+	/* The context already qualifies the message with php's `DOMNode::method(): `. */
+	ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Document Fragment is empty");
+	ph7_result_bool(pCtx,0);
+	return PH7_OK;
+}
+/* Move every child of pFrag into pParent, before pRef or at the end. */
+static xmlNodePtr DomFragMove(phl_xmldoc *pShell,xmlNodePtr pParent,xmlNodePtr pFrag,xmlNodePtr pRef)
+{
+	xmlNodePtr pFirst = pFrag->children;
+	xmlNodePtr pChild = pFirst;
+	while( pChild ){
+		xmlNodePtr pNext = pChild->next;
+		DomDetach(pShell,pChild);
+		if( pRef ){
+			DomLinkBefore(pParent,pChild,pRef);
+		}else{
+			DomLinkLast(pParent,pChild);
+		}
+		pChild = pNext;
+	}
+	pFrag->children = pFrag->last = 0;
+	return pFirst;
+}
+/*
  * DOMNode::appendChild(DOMNode $node): DOMNode
  *
  * Note the argument reaches C already screened -- `$n->appendChild(1)` is a
@@ -442,6 +501,14 @@ DOM_METHOD(vm_builtin_DOMNode_appendChild)
 	zErr = DomLinkRefusal((xmlNodePtr)pPar->pNode,(xmlNodePtr)pChd->pNode);
 	if( zErr ){
 		return PH7_VmThrowException(pCtx,"DOMException","%s",zErr);
+	}
+	if( DomIsFragment((xmlNodePtr)pChd->pNode) ){
+		xmlNodePtr pFirst;
+		if( ((xmlNodePtr)pChd->pNode)->children == 0 ){
+			return DomFragEmpty(pCtx);
+		}
+		pFirst = DomFragMove(pChd->pShell,(xmlNodePtr)pPar->pNode,(xmlNodePtr)pChd->pNode,0);
+		return DomResultNodeOf(pCtx,pPar,pFirst);
 	}
 	DomDetach(pChd->pShell,(xmlNodePtr)pChd->pNode);
 	DomLinkLast((xmlNodePtr)pPar->pNode,(xmlNodePtr)pChd->pNode);
@@ -469,6 +536,14 @@ DOM_METHOD(vm_builtin_DOMNode_insertBefore)
 	}
 	if( zErr ){
 		return PH7_VmThrowException(pCtx,"DOMException","%s",zErr);
+	}
+	if( DomIsFragment(pChild) ){
+		xmlNodePtr pFirst;
+		if( pChild->children == 0 ){
+			return DomFragEmpty(pCtx);
+		}
+		pFirst = DomFragMove(pNew->pShell,pParent,pChild,pAnchor);
+		return DomResultNodeOf(pCtx,pPar,pFirst);
 	}
 	DomDetach(pNew->pShell,pChild);
 	if( pAnchor ){
@@ -518,6 +593,16 @@ DOM_METHOD(vm_builtin_DOMNode_replaceChild)
 	}
 	if( zErr ){
 		return PH7_VmThrowException(pCtx,"DOMException","%s",zErr);
+	}
+	if( DomIsFragment(pChild) ){
+		/* No empty-fragment refusal here, unlike the other two: php REMOVES the
+		 * old child and inserts nothing, and answers it as any replaceChild
+		 * does. */
+		DomFragMove(pNew->pShell,pParent,pChild,pVictim);
+		xmlUnlinkNode(pVictim);
+		DomOrphanAdd(pOld->pShell,pVictim);
+		ph7_result_value(pCtx,apArg[1]);
+		return PH7_OK;
 	}
 	if( pChild != pVictim ){
 		DomDetach(pNew->pShell,pChild);
@@ -981,12 +1066,31 @@ static int DomDocCreate(ph7_context *pCtx,int iKind,const char *zName,const char
 	case XML_COMMENT_NODE:
 		pNode = xmlNewDocComment(pDoc,(const xmlChar *)zVal);
 		break;
+	case XML_PI_NODE:
+		/* php validates the TARGET the same way it validates an element name,
+		 * so `createProcessingInstruction('a b')` is Invalid Character Error
+		 * rather than a document that will not parse back. */
+		if( xmlValidateName((const xmlChar *)zName,0) != 0 ){
+			break;
+		}
+		pNode = xmlNewDocPI(pDoc,(const xmlChar *)zName,nVal ? (const xmlChar *)zVal : 0);
+		break;
+	case XML_ENTITY_REF_NODE:
+		if( xmlValidateName((const xmlChar *)zName,0) != 0 ){
+			break;
+		}
+		pNode = xmlNewReference(pDoc,(const xmlChar *)zName);
+		break;
+	case XML_DOCUMENT_FRAG_NODE:
+		pNode = xmlNewDocFragment(pDoc);
+		break;
 	}
 	PH7_LibxmlCaptureEnd(pVm,nMark,
 		iKind == XML_ELEMENT_NODE ? "DOMDocument::createElement" : "DOMDocument::createNode");
 	if( pNode == 0 ){
-		if( iKind == XML_ELEMENT_NODE ){
-			/* Only createElement can be handed a name libxml refuses. */
+		if( iKind == XML_ELEMENT_NODE || iKind == XML_PI_NODE || iKind == XML_ENTITY_REF_NODE ){
+			/* The three factories that take a NAME are the three that can be
+			 * handed one libxml refuses. */
 			return PH7_VmThrowException(pCtx,"DOMException","Invalid Character Error");
 		}
 		ph7_result_null(pCtx);
@@ -1013,6 +1117,26 @@ static int DomDocCreateData(ph7_context *pCtx,int iKind,int nArg,ph7_value **apA
 DOM_METHOD(vm_builtin_DOMDocument_createTextNode)
 {
 	return DomDocCreateData(pCtx,XML_TEXT_NODE,nArg,apArg);
+}
+/* DOMDocument::createProcessingInstruction(string $target, string $data = '')
+ * / createEntityReference(string $name) / createDocumentFragment() */
+DOM_METHOD(vm_builtin_DOMDocument_createPI)
+{
+	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	int nVal = 0;
+	const char *zVal = nArg > 1 ? ph7_value_to_string(apArg[1],&nVal) : "";
+	return DomDocCreate(pCtx,XML_PI_NODE,zName,zVal,nVal);
+}
+DOM_METHOD(vm_builtin_DOMDocument_createEntityRef)
+{
+	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	return DomDocCreate(pCtx,XML_ENTITY_REF_NODE,zName,"",0);
+}
+DOM_METHOD(vm_builtin_DOMDocument_createFragment)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return DomDocCreate(pCtx,XML_DOCUMENT_FRAG_NODE,"","",0);
 }
 DOM_METHOD(vm_builtin_DOMDocument_createComment)
 {
@@ -2090,12 +2214,34 @@ static int DomSetCharProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,in
 	int rc = DomSetContentProp(pCtx,"DOMCharacterData","data",zName,pVal,FALSE,pRc);
 	return rc != DOM_SET_UNKNOWN ? rc : DomSetNodeProp(pCtx,zName,pVal,pRc);
 }
+static int DomSetPiProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)
+{
+	int rc = DomSetContentProp(pCtx,"DOMProcessingInstruction","data",zName,pVal,FALSE,pRc);
+	return rc != DOM_SET_UNKNOWN ? rc : DomSetNodeProp(pCtx,zName,pVal,pRc);
+}
 /* The two collections and the document have nothing writable of their own yet;
  * `length` is read-only and the document's own directives are §4's next slice. */
 static int DomSetNothing(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)
 {
 	SXUNUSED(pCtx); SXUNUSED(zName); SXUNUSED(pVal); SXUNUSED(pRc);
 	return DOM_SET_UNKNOWN;
+}
+/* DOMProcessingInstruction adds target (its name) and data (its content) --
+ * php declares it under DOMNode, not DOMCharacterData, so the character-data
+ * methods are deliberately absent from it. */
+static int DomPiProp(ph7_context *pCtx,const char *zName)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	if( DomNameIs(zName,"target") ){
+		ph7_result_string(pCtx,(pNode && pNode->name) ? (const char *)pNode->name : "",-1);
+		return 1;
+	}
+	if( DomNameIs(zName,"data") ){
+		DomNodeValue(pCtx,pNode);
+		return 1;
+	}
+	return DomNodeProp(pCtx,zName);
 }
 DOM_PROP_ACCESSORS(DOMNodeList,DomListProp,DomSetNothing)
 DOM_PROP_ACCESSORS(DOMNamedNodeMap,DomMapProp,DomSetNothing)
@@ -2105,6 +2251,45 @@ DOM_PROP_ACCESSORS(DOMElement,DomElemProp,DomSetElemProp)
 DOM_PROP_ACCESSORS(DOMAttr,DomAttrProp,DomSetAttrProp)
 DOM_PROP_ACCESSORS(DOMCharacterData,DomCharProp,DomSetCharProp)
 DOM_PROP_ACCESSORS(DOMText,DomTextProp,DomSetCharProp)
+DOM_PROP_ACCESSORS(DOMProcessingInstruction,DomPiProp,DomSetPiProp)
+/*
+ * DOMDocumentFragment::appendXML(string $data): bool
+ *
+ * php parses the chunk as a well-balanced FRAGMENT (no single root required,
+ * bare text allowed) and appends what it produced; anything libxml refuses is
+ * `false` with nothing appended.
+ */
+DOM_METHOD(vm_builtin_DOMDocumentFragment_appendXML)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	const char *zXml = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	xmlNodePtr pFrag,pList = 0;
+	sxu32 nMark;
+	int rc;
+	if( pNd == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pFrag = (xmlNodePtr)pNd->pNode;
+	nMark = PH7_LibxmlCaptureBegin(pCtx->pVm);
+	rc = xmlParseBalancedChunkMemory(pFrag->doc,0,0,0,(const xmlChar *)zXml,&pList);
+	PH7_LibxmlCaptureEnd(pCtx->pVm,nMark,"DOMDocumentFragment::appendXML");
+	if( rc != 0 ){
+		if( pList ){
+			xmlFreeNodeList(pList);
+		}
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	while( pList ){
+		xmlNodePtr pNext = pList->next;
+		pList->next = pList->prev = 0;
+		DomLinkLast(pFrag,pList);
+		pList = pNext;
+	}
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
 /* DOMDocument::getElementsByTagName / DOMElement::getElementsByTagName --
  * php declares it on those two, not on DOMNode, so both specs name it. */
 DOM_METHOD(vm_builtin_Dom_getElementsByTagName)
@@ -2190,6 +2375,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMDocument_createComment },
 		{ "createCDATASection",   PH7_MOD_PUBLIC, "string $data", "",
 		  vm_builtin_DOMDocument_createCDATASection },
+		{ "createProcessingInstruction", PH7_MOD_PUBLIC, "string $target, string $data = ''", "",
+		  vm_builtin_DOMDocument_createPI },
+		{ "createEntityReference", PH7_MOD_PUBLIC, "string $name", "",
+		  vm_builtin_DOMDocument_createEntityRef },
+		{ "createDocumentFragment", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_DOMDocument_createFragment },
 		{ "normalizeDocument",    PH7_MOD_PUBLIC, "", "@void", vm_builtin_DOMDocument_normalizeDocument },
 		{ "schemaValidateSource", PH7_MOD_PUBLIC, "string $source, int $flags = 0", "@bool",
 		  vm_builtin_DOMDocument_schemaValidateSource },
@@ -2228,6 +2419,16 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMCharacterData_get },
 		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMCharacterData_isset },
 		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMCharacterData_set },
+	};
+	static const PH7_NativeMethodDef aPiMethod[] = {
+		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMProcessingInstruction_get },
+		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMProcessingInstruction_isset },
+		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",
+		  vm_builtin_DOMProcessingInstruction_set },
+	};
+	static const PH7_NativeMethodDef aFragMethod[] = {
+		{ "appendXML", PH7_MOD_PUBLIC, "string $data", "@bool",
+		  vm_builtin_DOMDocumentFragment_appendXML },
 	};
 	static const PH7_NativeMethodDef aTextMethod[] = {
 		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMText_get },
@@ -2305,6 +2506,14 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "DOMComment", "DOMCharacterData", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMCdataSection", "DOMText", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		/* php declares the PI under DOMNode (its `data` is its own property, not
+		 * DOMCharacterData's), the fragment and the entity reference plainly. */
+		{ "DOMProcessingInstruction", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aPiMethod, SX_ARRAYSIZE(aPiMethod), 0, 0, 0, 0, 0, 0, 0 },
+		{ "DOMDocumentFragment", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aFragMethod, SX_ARRAYSIZE(aFragMethod), 0, 0, 0, 0, 0, 0, 0 },
+		{ "DOMEntityReference", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		/* php's own two: IteratorAggregate (NOT Iterator -- the chunk had the
 		 * list carry its own cursor) and Countable. */
