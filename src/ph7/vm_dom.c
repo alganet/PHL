@@ -670,6 +670,107 @@ DOM_METHOD(vm_builtin_DOMNode_isSameNode)
 	return PH7_OK;
 }
 
+/* ===== Copying: cloneNode ===== */
+
+/*
+ * Cloning a DOCUMENT is not cloning a node: php builds a SECOND document --
+ * its own tree, its own wrapper, its own identity cache -- so the copy's
+ * `documentElement` answers the copy as its `ownerDocument` and appending a
+ * node of the ORIGINAL into it is the Wrong Document Error it would be between
+ * any two documents. Everything else is one xmlDocCopyNode into the SAME tree,
+ * parked as an orphan like every other node this file creates.
+ *
+ * The two parser directives ride along: php's copy answers the receiver's
+ * `preserveWhiteSpace` and `formatOutput`, not the class defaults.
+ */
+static int DomCloneDocument(ph7_context *pCtx,phl_domnode *pNd,int bDeep)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class *pClass;
+	ph7_class_instance *pObj;
+	phl_xmldoc *pShell;
+	phl_domnode *pRes;
+	xmlDocPtr pCopy;
+	sxu32 nMark = PH7_LibxmlCaptureBegin(pVm);
+	pCopy = xmlCopyDoc((xmlDocPtr)pNd->pNode,bDeep ? 1 : 0);
+	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMNode::cloneNode");
+	if( pCopy == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* php answers a plain DOMDocument even when the receiver is a subclass of
+	 * one: the copy is built by the extension, not by `new static`. */
+	pClass = PH7_VmExtractClass(pVm,"DOMDocument",sizeof("DOMDocument")-1,FALSE,0);
+	pObj = pClass ? PH7_NewClassInstance(pVm,pClass) : 0;
+	pShell = pObj ? PH7_LibxmlNewDoc(pVm,pCopy) : 0;
+	pRes = pShell ? DomNewRes(pVm,pShell,pCopy) : 0;
+	if( pRes == 0 ){
+		if( pShell == 0 ){
+			xmlFreeDoc(pCopy);   /* not registered: nothing else will free it */
+		}
+		if( pObj ){
+			PH7_ClassInstanceUnref(pObj);
+		}
+		return PH7_ContextMemoryError(pCtx);
+	}
+	DomSetRes(pVm,pObj,pRes);
+	PH7_NativeSetAttrObj(pVm,pObj,DOM_DOC,pObj);
+	if( pThis ){
+		PH7_NativeSetAttrBool(pVm,pObj,"preserveWhiteSpace",
+			PH7_NativeAttrTruthy(pThis,"preserveWhiteSpace"));
+		PH7_NativeSetAttrBool(pVm,pObj,"formatOutput",
+			PH7_NativeAttrTruthy(pThis,"formatOutput"));
+	}
+	PH7_NativeResultObject(pCtx,pObj);
+	return PH7_OK;
+}
+/*
+ * DOMNode::cloneNode(bool $deep = false): DOMNode|false
+ *
+ * The SHALLOW copy is not libxml's shallow copy: php asks for `extended = 2`,
+ * which carries an element's attributes and its own `xmlns` declarations across
+ * while leaving the children behind -- so `$el->cloneNode()` is a usable
+ * template row, not a bare tag. A deep one is `extended = 1`, and libxml then
+ * reconciles whatever namespace the descendants were using onto the copy.
+ */
+DOM_METHOD(vm_builtin_DOMNode_cloneNode)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	int bDeep = nArg > 0 ? ph7_value_to_bool(apArg[0]) : 0;
+	xmlNodePtr pCopy;
+	sxu32 nMark;
+	if( pNode == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( pNode->type == XML_DOCUMENT_NODE || pNode->type == XML_HTML_DOCUMENT_NODE ){
+		return DomCloneDocument(pCtx,pNd,bDeep);
+	}
+	nMark = PH7_LibxmlCaptureBegin(pVm);
+	pCopy = xmlDocCopyNode(pNode,pNode->doc,bDeep ? 1 : 2);
+	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMNode::cloneNode");
+	if( pCopy == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* An ATTRIBUTE copy comes back in NO namespace: libxml resolves an
+	 * attribute's prefix against the element it is being copied ONTO, and there
+	 * is no element here. php's clone keeps the namespace, so `p:at="1"` cloned
+	 * stays `p:at="1"` rather than turning into `at="1"` -- a silent rename of
+	 * the very attribute a namespaced document is keyed on. The copy borrows the
+	 * SOURCE's declaration, which is the only thing it can do: an attribute
+	 * carries no `nsDef` of its own, and the declaration outlives it (nothing in
+	 * this file frees a node before its document). */
+	if( pCopy->type == XML_ATTRIBUTE_NODE && pCopy->ns == 0 ){
+		pCopy->ns = pNode->ns;
+	}
+	DomOrphanAdd(pNd->pShell,pCopy);
+	return DomResultNodeOf(pCtx,pNd,pCopy);
+}
+
 /* ===== Namespaces ===== */
 
 /*
@@ -2336,6 +2437,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "hasChildNodes",  PH7_MOD_PUBLIC, "", "@bool", vm_builtin_DOMNode_hasChildNodes },
 		{ "hasAttributes",  PH7_MOD_PUBLIC, "", "@bool", vm_builtin_DOMNode_hasAttributes },
 		{ "isSameNode",     PH7_MOD_PUBLIC, "DOMNode $otherNode", "@bool", vm_builtin_DOMNode_isSameNode },
+		/* php declares no return type at all on this one, not even a tentative
+		 * one, so the row states none either. */
+		{ "cloneNode",      PH7_MOD_PUBLIC, "bool $deep = false", "", vm_builtin_DOMNode_cloneNode },
 		{ "getLineNo",      PH7_MOD_PUBLIC, "", "@int", vm_builtin_DOMNode_getLineNo },
 		{ "C14N",           PH7_MOD_PUBLIC,
 		  "bool $exclusive = false, bool $withComments = false, ?array $xpath = null, "
