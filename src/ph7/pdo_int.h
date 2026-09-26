@@ -116,6 +116,7 @@ struct phl_pdo_stmt {
 	int bDone;                    /* the cursor is past the last row */
 	ph7_int64 nChanges;           /* what rowCount() answers: the WRITE's row count */
 	int iFetchMode;               /* PDO::FETCH_* for a fetch() given none */
+	int iFetchColumn;             /* setFetchMode(FETCH_COLUMN, n)'s column */
 	/* A statement carries its OWN SQLSTATE. php keeps one per object and shares
 	 * only the DRIVER's code and message (which live on the connection), so a
 	 * failed statement leaves the connection reading "00000" while its own

@@ -996,6 +996,40 @@ static int vm_builtin_PDO_lastInsertId(ph7_context *pCtx,int nArg,ph7_value **ap
 #define PDO_FETCH_NAMED  11
 
 /*
+ * php's fetch FLAGS, which ride on top of a mode. These are the values the
+ * SCRIPT sees (PDO::FETCH_GROUP is 32), not the shifted ones php uses inside
+ * its own C -- the modes themselves occupy the low four bits.
+ */
+#define PDO_FETCH_MODE_MASK   0x0F
+#define PDO_FETCH_GROUP       0x20
+#define PDO_FETCH_UNIQUE      0x40
+#define PDO_FETCH_CLASSTYPE   0x80
+#define PDO_FETCH_PROPS_LATE  0x100
+#define PDO_FETCH_SERIALIZE   0x200
+#define PDO_FETCH_FLAGS       (~PDO_FETCH_MODE_MASK)
+#define PDO_FETCH_BOUND        6
+#define PDO_FETCH_COLUMN       7
+#define PDO_FETCH_CLASS        8
+#define PDO_FETCH_FUNC        10
+#define PDO_FETCH_KEY_PAIR    12
+
+/*
+ * php's three CLASS-only flags refuse to ride on any other mode, and the
+ * refusal names all three whichever one was set. Every entry point that takes
+ * a mode checks this before it counts arguments.
+ */
+static sxi32 PdoCheckFetchFlags(ph7_context *pCtx,int iMode,const char *zFn)
+{
+	int iFlags = iMode & (PDO_FETCH_CLASSTYPE|PDO_FETCH_SERIALIZE|PDO_FETCH_PROPS_LATE);
+	if( iFlags != 0 && (iMode & PDO_FETCH_MODE_MASK) != PDO_FETCH_CLASS ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #1 ($mode) cannot use PDO::FETCH_CLASSTYPE, "
+			"PDO::FETCH_PROPS_LATE, or PDO::FETCH_SERIALIZE fetch flags with a fetch "
+			"mode other than PDO::FETCH_CLASS",zFn);
+	}
+	return PH7_OK;
+}
+/*
  * A column NAME as the connection presents it: ATTR_CASE folds it, and php
  * folds the name only -- never a value, and never a positional key.
  */
@@ -1078,7 +1112,8 @@ static int PdoStmtStep(phl_pdo_stmt *pSt)
  * Build one row in the requested shape.  Answers 0 when the cursor has nothing
  * to hand back, which is what makes fetch() answer false at the end.
  */
-static int PdoStmtRow(ph7_vm *pVm,phl_pdo_stmt *pSt,int iMode,ph7_value *pOut)
+static int PdoStmtRowFrom(ph7_vm *pVm,phl_pdo_stmt *pSt,int iMode,ph7_value *pOut,
+	int iFirstCol)
 {
 	int nCol,iCol;
 	ph7_value *pCell;
@@ -1092,7 +1127,7 @@ static int PdoStmtRow(ph7_vm *pVm,phl_pdo_stmt *pSt,int iMode,ph7_value *pOut)
 		return 0;
 	}
 	SyBlobInit(&sName,&pVm->sAllocator);
-	for( iCol = 0 ; iCol < nCol ; ++iCol ){
+	for( iCol = iFirstCol ; iCol < nCol ; ++iCol ){
 		PdoColumnName(pSt->pConn,PH7_PdoSqliteColumnName(pSt,iCol),&sName);
 		PH7_PdoSqliteColumnValue(pSt,iCol,pCell);
 		PdoApplyValueMods(pSt->pConn,pCell);
@@ -1127,7 +1162,17 @@ static int PdoStmtRow(ph7_vm *pVm,phl_pdo_stmt *pSt,int iMode,ph7_value *pOut)
 		}
 		if( iMode != PDO_FETCH_ASSOC && iMode != PDO_FETCH_OBJ
 		 && iMode != PDO_FETCH_NAMED ){
-			ph7_array_add_elem(pOut,0,pCell);
+			if( iMode == PDO_FETCH_NUM ){
+				/* a NUM row is renumbered from 0 when a leading column was
+				 * dropped; a BOTH row keeps the column's original position,
+				 * which is php's own asymmetry under FETCH_GROUP */
+				ph7_array_add_elem(pOut,0,pCell);
+			}else{
+				ph7_value sIdx;
+				PH7_MemObjInitFromInt(pVm,&sIdx,(sxi64)iCol);
+				ph7_array_add_elem(pOut,&sIdx,pCell);
+				PH7_MemObjRelease(&sIdx);
+			}
 		}
 	}
 	SyBlobRelease(&sName);
@@ -1142,6 +1187,10 @@ static int PdoStmtRow(ph7_vm *pVm,phl_pdo_stmt *pSt,int iMode,ph7_value *pOut)
 	pSt->bRowPending = 0;
 	return 1;
 }
+static int PdoStmtRow(ph7_vm *pVm,phl_pdo_stmt *pSt,int iMode,ph7_value *pOut)
+{
+	return PdoStmtRowFrom(pVm,pSt,iMode,pOut,0);
+}
 /*
  * PDOStatement::fetch(int $mode = PDO::FETCH_DEFAULT, ...): mixed
  *
@@ -1154,12 +1203,47 @@ static int vm_builtin_PDOStatement_fetch(ph7_context *pCtx,int nArg,ph7_value **
 	phl_pdo_stmt *pSt = PdoStmtOfInstance(PH7_ContextThis(pCtx));
 	ph7_value *pRow;
 	int iMode;
+	sxi32 rcFlags;
 	if( pSt == 0 ){
 		return PH7_VmThrowException(pCtx,"Error","PDOStatement object is uninitialized");
 	}
 	iMode = nArg > 0 ? (int)ph7_value_to_int64(apArg[0]) : PDO_FETCH_DEFAULT;
+	rcFlags = PdoCheckFetchFlags(pCtx,iMode,"PDOStatement::fetch");
+	if( rcFlags != PH7_OK ){
+		return rcFlags;
+	}
 	if( iMode == PDO_FETCH_DEFAULT ){
 		iMode = pSt->iFetchMode;
+	}
+	if( (iMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_COLUMN ){
+		/* a statement told to fetch one COLUMN answers that column from here
+		 * on, whichever verb asks for the row */
+		ph7_value *pOneRow,*pOne;
+		if( !pSt->bRowPending ){
+			PdoStmtOk(pSt);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		pOneRow = ph7_context_new_array(pCtx);
+		if( pOneRow == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		if( !PdoStmtRow(pCtx->pVm,pSt,PDO_FETCH_NUM,pOneRow) ){
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		pOne = PdoArrayAtInt(pCtx->pVm,pOneRow,(sxi64)pSt->iFetchColumn);
+		if( pOne ){
+			ph7_result_value(pCtx,pOne);
+		}else{
+			ph7_result_null(pCtx);
+		}
+		if( PdoStmtStep(pSt) < 0 ){
+			PdoStmtFailed(pSt,pSt->pConn->zSqlState);
+			return PH7_PdoRaiseStmt(pCtx,pSt,"PDOStatement::fetch");
+		}
+		PdoStmtOk(pSt);
+		return PH7_OK;
 	}
 	if( !pSt->bRowPending ){
 		PdoStmtOk(pSt);
@@ -1170,7 +1254,7 @@ static int vm_builtin_PDOStatement_fetch(ph7_context *pCtx,int nArg,ph7_value **
 	if( pRow == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
-	if( !PdoStmtRow(pCtx->pVm,pSt,iMode,pRow) ){
+	if( !PdoStmtRow(pCtx->pVm,pSt,iMode & PDO_FETCH_MODE_MASK,pRow) ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -1294,6 +1378,276 @@ static int vm_builtin_PDOStatement_nextRowset(ph7_context *pCtx,int nArg,ph7_val
 	PdoStmtFailed(pSt,"IM001");
 	return PH7_PdoRaiseImplStmt(pCtx,pSt,"PDOStatement::nextRowset","IM001",
 		"driver does not support multiple rowsets");
+}
+/*
+ * PDOStatement::fetchColumn(int $column = 0): mixed
+ *
+ * One column of the next row, by position. An index outside the RESULT SET is
+ * a ValueError rather than a null, and its two refusals are worded unlike
+ * fetchAll()'s -- php's own inconsistency, reproduced.
+ */
+static int vm_builtin_PDOStatement_fetchColumn(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo_stmt *pSt = PdoStmtOfInstance(PH7_ContextThis(pCtx));
+	ph7_int64 iCol;
+	ph7_value *pRow,*pCell;
+	if( pSt == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDOStatement object is uninitialized");
+	}
+	iCol = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;
+	if( iCol < 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"Column index must be greater than or equal to 0");
+	}
+	if( iCol >= (ph7_int64)PH7_PdoSqliteColumnCount(pSt) ){
+		return PH7_VmThrowException(pCtx,"ValueError","Invalid column index");
+	}
+	if( !pSt->bRowPending ){
+		PdoStmtOk(pSt);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pRow = ph7_context_new_array(pCtx);
+	if( pRow == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( !PdoStmtRow(pCtx->pVm,pSt,PDO_FETCH_NUM,pRow) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pCell = PdoArrayAtInt(pCtx->pVm,pRow,(sxi64)iCol);
+	if( pCell ){
+		ph7_result_value(pCtx,pCell);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	if( PdoStmtStep(pSt) < 0 ){
+		PdoStmtFailed(pSt,pSt->pConn->zSqlState);
+		return PH7_PdoRaiseStmt(pCtx,pSt,"PDOStatement::fetchColumn");
+	}
+	PdoStmtOk(pSt);
+	return PH7_OK;
+}
+/*
+ * PDOStatement::setFetchMode(int $mode, mixed ...$args): true
+ *
+ * The mode a bare fetch()/fetchAll() will use from here on. FETCH_COLUMN needs
+ * its column beside it, and php counts arguments PER MODE -- so the arity
+ * refusal names the fetch mode rather than the method's own signature.
+ */
+static int vm_builtin_PDOStatement_setFetchMode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo_stmt *pSt = PdoStmtOfInstance(PH7_ContextThis(pCtx));
+	int iMode;
+	sxi32 rc;
+	if( pSt == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDOStatement object is uninitialized");
+	}
+	iMode = nArg > 0 ? (int)ph7_value_to_int64(apArg[0]) : PDO_FETCH_DEFAULT;
+	rc = PdoCheckFetchFlags(pCtx,iMode,"PDOStatement::setFetchMode");
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( (iMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_COLUMN && nArg < 2 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"PDOStatement::setFetchMode() expects exactly 2 arguments for the fetch "
+			"mode provided, %d given",nArg);
+	}
+	pSt->iFetchMode = iMode;
+	pSt->iFetchColumn = (nArg > 1) ? (int)ph7_value_to_int64(apArg[1]) : 0;
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/* Add one row under a key, collecting repeats into a list (FETCH_GROUP). */
+static void PdoGroupAppend(ph7_context *pCtx,ph7_value *pOut,ph7_value *pKey,ph7_value *pRow)
+{
+	ph7_value *pList = 0;
+	if( pKey && (pKey->iFlags & MEMOBJ_STRING) ){
+		int nKey = 0;
+		const char *zKey = ph7_value_to_string(pKey,&nKey);
+		pList = ph7_array_fetch(pOut,zKey,nKey);
+	}else if( pKey ){
+		SyBlob sKey;
+		SyBlobInit(&sKey,&pCtx->pVm->sAllocator);
+		SyBlobFormat(&sKey,"%qd",ph7_value_to_int64(pKey));
+		SyBlobAppend(&sKey,"",1);
+		pList = ph7_array_fetch(pOut,(const char *)SyBlobData(&sKey),
+			(int)SyBlobLength(&sKey) - 1);
+		SyBlobRelease(&sKey);
+	}
+	if( pList && (pList->iFlags & MEMOBJ_HASHMAP) ){
+		ph7_array_add_elem(pList,0,pRow);
+		return;
+	}
+	pList = ph7_context_new_array(pCtx);
+	if( pList == 0 ){
+		return;
+	}
+	ph7_array_add_elem(pList,0,pRow);
+	ph7_array_add_elem(pOut,pKey,pList);
+}
+/*
+ * PDOStatement::fetchAll(int $mode = PDO::FETCH_DEFAULT, mixed ...$args): array
+ *
+ * Every remaining row in one array. Four of the modes change the shape of that
+ * ARRAY rather than the shape of a row: FETCH_COLUMN reduces each row to one
+ * value, FETCH_KEY_PAIR to a key and a value (and refuses a result set that is
+ * not exactly two columns wide), FETCH_FUNC replaces it with whatever a
+ * callable answers, and GROUP/UNIQUE take the first column as a key -- GROUP
+ * collecting every row under it, UNIQUE keeping the last.
+ *
+ * php counts arguments per mode here too, and its FETCH_FUNC wording is
+ * singular ("expects exactly 2 argument"); both are reproduced as they stand.
+ */
+static int vm_builtin_PDOStatement_fetchAll(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo_stmt *pSt = PdoStmtOfInstance(PH7_ContextThis(pCtx));
+	ph7_value *pOut,*pRow;
+	int iMode,iBase,iCol = 0;
+	int bGroup,bUnique;
+	sxi32 rc;
+	if( pSt == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDOStatement object is uninitialized");
+	}
+	iMode = nArg > 0 ? (int)ph7_value_to_int64(apArg[0]) : PDO_FETCH_DEFAULT;
+	rc = PdoCheckFetchFlags(pCtx,iMode,"PDOStatement::fetchAll");
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	bGroup = (iMode & PDO_FETCH_GROUP) == PDO_FETCH_GROUP;
+	bUnique = (iMode & PDO_FETCH_UNIQUE) == PDO_FETCH_UNIQUE;
+	iBase = iMode & PDO_FETCH_MODE_MASK;
+	if( iBase == PDO_FETCH_DEFAULT ){
+		iBase = pSt->iFetchMode & PDO_FETCH_MODE_MASK;
+		bGroup = bGroup || (pSt->iFetchMode & PDO_FETCH_GROUP) == PDO_FETCH_GROUP;
+		bUnique = bUnique || (pSt->iFetchMode & PDO_FETCH_UNIQUE) == PDO_FETCH_UNIQUE;
+		iCol = pSt->iFetchColumn;
+	}
+	if( iBase == PDO_FETCH_DEFAULT ){
+		iBase = pSt->pConn->iDefaultFetch;
+	}
+	if( iBase == PDO_FETCH_COLUMN ){
+		if( nArg > 2 ){
+			return PH7_VmThrowException(pCtx,"ArgumentCountError",
+				"PDOStatement::fetchAll() expects exactly 2 arguments for the fetch "
+				"mode provided, %d given",nArg);
+		}
+		if( nArg > 1 ){
+			ph7_int64 iWant = ph7_value_to_int64(apArg[1]);
+			if( iWant < 0 ){
+				return PH7_VmThrowException(pCtx,"ValueError",
+					"PDOStatement::fetchAll(): Argument #2 must be greater than or "
+					"equal to 0");
+			}
+			iCol = (int)iWant;
+		}
+		if( iCol >= PH7_PdoSqliteColumnCount(pSt) ){
+			return PH7_VmThrowException(pCtx,"ValueError","Invalid column index");
+		}
+	}else if( iBase == PDO_FETCH_FUNC ){
+		if( nArg != 2 ){
+			return PH7_VmThrowException(pCtx,"ArgumentCountError",
+				"PDOStatement::fetchAll() expects exactly 2 argument for "
+				"PDO::FETCH_FUNC, %d given",nArg);
+		}
+		if( !ph7_value_is_callable(apArg[1]) ){
+			/* php checks the callable BEFORE the first row, so an unusable one
+			 * is a TypeError from PDO and never the engine's own
+			 * "Call to undefined function" from inside the walk */
+			int nName = 0;
+			const char *zName = ph7_value_to_string(apArg[1],&nName);
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"function \"%.*s\" not found or invalid function name",nName,zName);
+		}
+	}else if( nArg > 1 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"PDOStatement::fetchAll() expects exactly 1 argument for the fetch mode "
+			"provided, %d given",nArg);
+	}
+	if( iBase == PDO_FETCH_KEY_PAIR && PH7_PdoSqliteColumnCount(pSt) != 2 ){
+		return PH7_VmThrowException(pCtx,"PDOException",
+			"SQLSTATE[HY000]: General error: PDO::FETCH_KEY_PAIR fetch mode requires "
+			"the result set to contain exactly 2 columns.");
+	}
+	pOut = ph7_context_new_array(pCtx);
+	if( pOut == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	while( pSt->bRowPending ){
+		int iRowMode = iBase;
+		int iFirst = (bGroup || bUnique) ? 1 : 0;
+		if( iBase == PDO_FETCH_COLUMN || iBase == PDO_FETCH_KEY_PAIR
+		 || iBase == PDO_FETCH_FUNC || iBase == PDO_FETCH_BOUND ){
+			iRowMode = PDO_FETCH_NUM;
+			iFirst = 0;
+		}
+		pRow = ph7_context_new_array(pCtx);
+		if( pRow == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		if( iFirst ){
+			/* the FIRST column is the key and never joins the row */
+			ph7_value *pKeyRow = ph7_context_new_array(pCtx);
+			ph7_value *pKey;
+			if( pKeyRow == 0 ){
+				return PH7_ContextMemoryError(pCtx);
+			}
+			if( !PdoStmtRowFrom(pCtx->pVm,pSt,PDO_FETCH_NUM,pKeyRow,0) ){
+				break;
+			}
+			pKey = PdoArrayAtInt(pCtx->pVm,pKeyRow,0);
+			/* the row itself is rebuilt from the SECOND column on; the cursor
+			 * has not moved, so this reads the same sqlite row again */
+			pSt->bRowPending = 1;
+			if( !PdoStmtRowFrom(pCtx->pVm,pSt,iRowMode,pRow,1) ){
+				break;
+			}
+			if( bUnique ){
+				ph7_array_add_elem(pOut,pKey,pRow);
+			}else{
+				PdoGroupAppend(pCtx,pOut,pKey,pRow);
+			}
+		}else if( !PdoStmtRow(pCtx->pVm,pSt,iRowMode,pRow) ){
+			break;
+		}else if( iBase == PDO_FETCH_BOUND ){
+			ph7_value *pTrue = ph7_context_new_scalar(pCtx);
+			if( pTrue ){
+				ph7_value_bool(pTrue,1);
+				ph7_array_add_elem(pOut,0,pTrue);
+			}
+		}else if( iBase == PDO_FETCH_COLUMN ){
+			ph7_array_add_elem(pOut,0,PdoArrayAtInt(pCtx->pVm,pRow,(sxi64)iCol));
+		}else if( iBase == PDO_FETCH_KEY_PAIR ){
+			ph7_array_add_elem(pOut,PdoArrayAtInt(pCtx->pVm,pRow,0),
+				PdoArrayAtInt(pCtx->pVm,pRow,1));
+		}else if( iBase == PDO_FETCH_FUNC ){
+			ph7_value sRes;
+			ph7_value *apCall[32];
+			int n,nCall = PH7_PdoSqliteColumnCount(pSt);
+			if( nCall > (int)SX_ARRAYSIZE(apCall) ){
+				nCall = (int)SX_ARRAYSIZE(apCall);
+			}
+			for( n = 0 ; n < nCall ; ++n ){
+				apCall[n] = PdoArrayAtInt(pCtx->pVm,pRow,(sxi64)n);
+			}
+			PH7_MemObjInit(pCtx->pVm,&sRes);
+			if( PH7_VmCallUserFunction(pCtx->pVm,apArg[1],nCall,apCall,&sRes) != SXRET_OK ){
+				PH7_MemObjRelease(&sRes);
+				return PH7_OK;   /* whatever the callable raised is already in flight */
+			}
+			ph7_array_add_elem(pOut,0,&sRes);
+			PH7_MemObjRelease(&sRes);
+		}else{
+			ph7_array_add_elem(pOut,0,pRow);
+		}
+		if( PdoStmtStep(pSt) < 0 ){
+			PdoStmtFailed(pSt,pSt->pConn->zSqlState);
+			return PH7_PdoRaiseStmt(pCtx,pSt,"PDOStatement::fetchAll");
+		}
+	}
+	PdoStmtOk(pSt);
+	ph7_result_value(pCtx,pOut);
+	return PH7_OK;
 }
 /*
  * PDOStatement::columnCount(): int
@@ -2208,8 +2562,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm)
 		  "int $mode = PDO::FETCH_DEFAULT, int $cursorOrientation = PDO::FETCH_ORI_NEXT, "
 		  "int $cursorOffset = 0", "@mixed", vm_builtin_PDOStatement_fetch },
 		{ "fetchAll",     PH7_MOD_PUBLIC, "int $mode = PDO::FETCH_DEFAULT, mixed ...$args",
-		  "@array", vm_builtin_pdo_stub },
-		{ "fetchColumn",  PH7_MOD_PUBLIC, "int $column = 0", "@mixed", vm_builtin_pdo_stub },
+		  "@array", vm_builtin_PDOStatement_fetchAll },
+		{ "fetchColumn",  PH7_MOD_PUBLIC, "int $column = 0", "@mixed",
+		  vm_builtin_PDOStatement_fetchColumn },
 		{ "fetchObject",  PH7_MOD_PUBLIC,
 		  "?string $class = 'stdClass', array $constructorArgs = []", "@object|false",
 		  vm_builtin_pdo_stub },
@@ -2221,7 +2576,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm)
 		{ "setAttribute", PH7_MOD_PUBLIC, "int $attribute, mixed $value", "@bool",
 		  vm_builtin_pdo_stub },
 		{ "setFetchMode", PH7_MOD_PUBLIC, "int $mode, mixed ...$args", "@true",
-		  vm_builtin_pdo_stub },
+		  vm_builtin_PDOStatement_setFetchMode },
 		{ "getIterator",  PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_PDOStatement_getIterator },
 	};
 	/* The one property php PRESENTS on a statement: var_dump of a PDOStatement
