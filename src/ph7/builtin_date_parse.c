@@ -2353,6 +2353,119 @@ static void DtIvStore(ph7_vm *pVm,ph7_class_instance *pObj,const sxi64 *aVal)
 		PH7_NativeSetAttrInt(pVm,pObj,azDtIvField[k],aVal[k]);
 	}
 }
+/*
+ * ---------------------------------------------------------------------------
+ * A DateInterval's MICROSECONDS.
+ *
+ * php stores them as an int64 COUNT (timelib_rel_time.us) and shows that count
+ * divided by a million, so the float is a rendering and the integer is the
+ * value: `$i->f = 0.1234567` reads back 0.123456 because the write truncated to
+ * 123456 microseconds, and `f` is what diff() fills, what add()/sub() move the
+ * clock by, and what format()'s %f prints.
+ *
+ * PHL's `f` is a real property slot a script reads directly, so the count lives
+ * beside it in a hidden one. The two are written together by every door that
+ * owns the value (the write handler, diff, the constructors); a write that
+ * arrives from somewhere else — unserialize's raw property store, or one of the
+ * §7.4 shapes php answers with a temporary — leaves only `f` behind, so the
+ * count is trusted only while it still RENDERS to the float on show, and is
+ * re-derived from the float when it does not.
+ * ---------------------------------------------------------------------------
+ */
+#define DT_IV_US "__ivUs"
+/* php's conversion of the `f` property to its stored count, cast contract and
+ * all: it TRUNCATES toward zero, WRAPS what no int64 can hold, and answers 0 for
+ * a NaN or an infinity. */
+static sxi64 DtIvUsecOfReal(double r)
+{
+	return PH7_RealToInt64(r * 1000000.0);
+}
+/* The interval's microseconds. */
+static sxi64 DtIvUsec(ph7_class_instance *pIv)
+{
+	ph7_value *pF = PH7_NativeAttr(pIv,"f");
+	sxi64 us = PH7_NativeAttrInt(pIv,DT_IV_US);
+	double r = 0.0;
+	if( pF && (pF->iFlags & MEMOBJ_REAL) ){
+		r = (double)pF->rVal;
+	}else if( pF && (pF->iFlags & MEMOBJ_INT) ){
+		r = (double)pF->x.iVal;
+	}
+	if( (double)us / 1000000.0 == r ){
+		return us;   /* the count `f` was rendered from: exact past 2^53, where the float is not */
+	}
+	return DtIvUsecOfReal(r);
+}
+/*
+ * php's date_interval_write_property: what a write to one of DateInterval's
+ * properties CONVERTS to, since every one of them is a field of php's own C
+ * struct rather than a slot a script's value lands in.
+ *
+ * The six relative fields and `invert` take php's int cast — a float truncates
+ * and warns where it wraps, a string reads its numeric prefix, an array is 1 —
+ * with `invert` narrowed to the 32-bit `int` timelib declares it as (so
+ * `$i->invert = 3000000000` is -1294967296 in both engines). `f` is the
+ * microsecond count above, so its cast warning is raised HERE, on the SCALED
+ * value, which is where php raises it.
+ *
+ * `days` and `from_string` are answered by php's read handler and refused by its
+ * write one: a script that assigns them creates a deprecated DYNAMIC property
+ * that never reaches the interval (`$i->days = 5` leaves `$i->days` false
+ * there). §10 refuses a deprecation, and PHL refuses a dynamic property outright,
+ * so the two meet at the Error PHL already raises for `$i->anythingElse = v`.
+ */
+static void DtIntervalSet(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeSetCtx *pCtx)
+{
+	const char *zName = SyStringData(pCtx->pName);
+	sxu32 nName = SyStringLength(pCtx->pName);
+	ph7_value *pVal = pCtx->pValue;
+	int bInvert;
+	if( nName == sizeof("days")-1 && SyMemcmp(zName,"days",nName) == 0 ){
+		SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),
+			"Cannot create dynamic property DateInterval::$days");
+		pCtx->zThrowClass = "Error";
+		return;
+	}
+	if( nName == sizeof("from_string")-1 && SyMemcmp(zName,"from_string",nName) == 0 ){
+		SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),
+			"Cannot create dynamic property DateInterval::$from_string");
+		pCtx->zThrowClass = "Error";
+		return;
+	}
+	if( nName == sizeof("f")-1 && zName[0] == 'f' ){
+		double r = (double)PH7_ValuePeekReal(pVal);
+		sxi64 us;
+		PH7_RealWarnIntCast(pVm,r * 1000000.0);
+		us = DtIvUsecOfReal(r);
+		PH7_NativeSetAttrInt(pVm,pThis,DT_IV_US,us);
+		PH7_MemObjRelease(pVal);
+		PH7_MemObjInitFromReal(pVm,pVal,(ph7_real)((double)us / 1000000.0));
+		return;
+	}
+	bInvert = nName == sizeof("invert")-1 && SyMemcmp(zName,"invert",nName) == 0;
+	if( !bInvert ){
+		int k;
+		for( k = 0 ; k < (int)SX_ARRAYSIZE(azDtIvField) ; k++ ){
+			if( nName == 1 && zName[0] == azDtIvField[k][0] ){
+				break;
+			}
+		}
+		if( k >= (int)SX_ARRAYSIZE(azDtIvField) ){
+			return;   /* the hidden count slot: written from C, never through here */
+		}
+	}
+	{
+		/* y/m/d/h/i/s and invert, all of them php's int cast. */
+		sxi64 iVal;
+		PH7_MemObjWarnIntCast(pVal);
+		iVal = PH7_ValuePeekInt64(pVal);
+		if( bInvert ){
+			iVal = (sxi64)(sxi32)iVal;
+		}
+		PH7_MemObjRelease(pVal);
+		PH7_MemObjInitFromInt(pVm,pVal,iVal);
+	}
+}
 /* DateInterval::__construct(string $duration) */
 static int vm_builtin_DateInterval_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -2444,40 +2557,32 @@ static void DtIvFormat(ph7_context *pCtx,ph7_class_instance *pObj,const char *zF
 		}
 		t = zFmt[k];
 		switch( t ){
+			/* php prints five of the six through an `(int)` — a 32-bit NARROWING
+			 * of a property it stores as an int64 and hands back whole, so
+			 * `$i->y = 7960523868075137518` reads back in full and prints
+			 * 111352302. The SECONDS are the exception: php formats those with
+			 * its long specifier, in both cases. */
 			case 'Y': SyBlobFormat(&sOut,"%02d",(int)PH7_NativeAttrInt(pObj,"y")); break;
-			case 'y': SyBlobFormat(&sOut,"%qd",PH7_NativeAttrInt(pObj,"y")); break;
+			case 'y': SyBlobFormat(&sOut,"%d",(int)PH7_NativeAttrInt(pObj,"y")); break;
 			case 'M': SyBlobFormat(&sOut,"%02d",(int)PH7_NativeAttrInt(pObj,"m")); break;
-			case 'm': SyBlobFormat(&sOut,"%qd",PH7_NativeAttrInt(pObj,"m")); break;
+			case 'm': SyBlobFormat(&sOut,"%d",(int)PH7_NativeAttrInt(pObj,"m")); break;
 			case 'D': SyBlobFormat(&sOut,"%02d",(int)PH7_NativeAttrInt(pObj,"d")); break;
-			case 'd': SyBlobFormat(&sOut,"%qd",PH7_NativeAttrInt(pObj,"d")); break;
+			case 'd': SyBlobFormat(&sOut,"%d",(int)PH7_NativeAttrInt(pObj,"d")); break;
 			case 'H': SyBlobFormat(&sOut,"%02d",(int)PH7_NativeAttrInt(pObj,"h")); break;
-			case 'h': SyBlobFormat(&sOut,"%qd",PH7_NativeAttrInt(pObj,"h")); break;
+			case 'h': SyBlobFormat(&sOut,"%d",(int)PH7_NativeAttrInt(pObj,"h")); break;
 			case 'I': SyBlobFormat(&sOut,"%02d",(int)PH7_NativeAttrInt(pObj,"i")); break;
-			case 'i': SyBlobFormat(&sOut,"%qd",PH7_NativeAttrInt(pObj,"i")); break;
-			case 'S': SyBlobFormat(&sOut,"%02d",(int)PH7_NativeAttrInt(pObj,"s")); break;
+			case 'i': SyBlobFormat(&sOut,"%d",(int)PH7_NativeAttrInt(pObj,"i")); break;
+			case 'S': SyBlobFormat(&sOut,"%02qd",PH7_NativeAttrInt(pObj,"s")); break;
 			case 's': SyBlobFormat(&sOut,"%qd",PH7_NativeAttrInt(pObj,"s")); break;
 			case 'F': case 'f': {
-				ph7_value *pF = PH7_NativeAttr(pObj,"f");
-				double r = 0.0;
-				sxi64 uS;
-				if( pF && (pF->iFlags & MEMOBJ_REAL) ){
-					r = pF->rVal;
-				}else if( pF && (pF->iFlags & MEMOBJ_INT) ){
-					r = (double)pF->x.iVal;
-				}
-				/* php scales the fraction to microseconds and CASTS, so this
-				 * token carries the cast's whole contract: it TRUNCATES toward
-				 * zero (`$i->f = 0.1234567` prints 123456, not the 123457 the
-				 * half added here rounded it to, and 5.0E-7 prints 0), an `f`
-				 * big enough that a million times it leaves the int64 range
-				 * WRAPS (`$i->f = 1e13` prints -8446744073709551616), and a NaN
-				 * or an infinity is 0. A plain `(sxi64)` was undefined for every
-				 * one of those -- and `%F` narrowed the result to an `int`
-				 * besides, so any microsecond count past INT_MAX printed as
-				 * "000000". (php warns `not representable` where it does this
-				 * conversion, which is the property WRITE, not here -- §7.4.) */
-				r = r * 1000000.0;
-				uS = PH7_RealToInt64(r);
+				/* php prints the STORED microsecond count, which is why
+				 * `$i->f = 0.1234567` prints 123456 rather than the 123457 a
+				 * rounding of the float would give, and why a count no double
+				 * holds exactly still prints its own digits. The conversion the
+				 * cast contract lives in — truncate toward zero, wrap what no
+				 * int64 holds, 0 for a NaN or an infinity, and php's warning
+				 * beside it — happens at the property WRITE, where php does it. */
+				sxi64 uS = DtIvUsec(pObj);
 				if( t == 'F' ){
 					SyBlobFormat(&sOut,"%06qd",uS);
 				}else{
@@ -3818,6 +3923,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "invert",      PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },
 		{ "days",        PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL,   0, 0, 0.0 }, 0 },
 		{ "from_string", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL,   0, 0, 0.0 }, 0 },
+		/* php's timelib_rel_time.us, the count `f` renders: see DtIvUsec. */
+		{ DT_IV_US,      PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeMethodDef aIvMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC, "string $duration", "",
@@ -3924,6 +4031,14 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);
 	}
 	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* php's write_property handler for DateInterval (ph7_class::xSet), assigned
+	 * here for the reason the DOM's clone and dimension hooks are: the spec table
+	 * carries no field for a hook. It also flags the class's properties, which is
+	 * what makes `new` register their slots with the store filter. */
+	rc = PH7_NativeClassInstallSetHook(&(*pVm),"DateInterval",DtIntervalSet);
 	if( rc != SXRET_OK ){
 		return rc;
 	}

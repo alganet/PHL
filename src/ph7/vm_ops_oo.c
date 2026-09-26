@@ -442,6 +442,31 @@ static int VmMemberFetchForWrite(const VmInstr *pInstr)
 	return 0;
 }
 /*
+ * A native class's property is a field of php's own C struct, and the only writes
+ * that reach one are the writes the store filter converts (ph7_class::xSet). So
+ * the fetched value keeps its slot index for exactly the shapes that end in such
+ * a store -- a plain assignment, `??=`, a destructuring target and the
+ * read-modify-write forms -- and is a TEMPORARY for every other use. That is
+ * php's own answer: it has no ptr_ptr handler for such a property, so a reference
+ * bind (`$r = &$i->f`), a by-reference argument (`preg_match($p,$s,$i->s)`) and a
+ * by-reference foreach all get a copy whose writes are SILENTLY lost -- silently,
+ * unlike the overloaded case, which php has a notice for.
+ */
+static int VmMemberNativeSetKeepsSlot(const VmInstr *pInstr)
+{
+	if( pInstr->iP2 == PH7_MEMBER_WRITE ){
+		/* Every fetch the compiler tags for writing: a plain store, `??=`, a
+		 * compound assign, and the base of a subscript write — that last one has
+		 * to reach the real value so `$i->y[0] = 5` is php's "Cannot use a scalar
+		 * value as an array" rather than a write nobody notices. */
+		return 1;
+	}
+	if( pInstr->iP2 == PH7_MEMBER_LIST_TARGET ){
+		return 1;   /* list()/foreach destructuring target */
+	}
+	return VmMemberNextIsWrite(pInstr + 1);   /* ++/-- and the compound assigns */
+}
+/*
  * php's `Indirect modification of overloaded property C::$p has no effect`: the
  * write-context fetch above landed on a property only __get answers for, so what
  * comes back is a VALUE and whatever the rest of the expression writes into it is
@@ -945,7 +970,14 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					 * outside the class); without __unset, an inaccessible unset is php's
 					 * catchable "Cannot access ..." Error and a missing one stays a no-op. */
 					int bUnsAccessible = pEntry ? PH7_VmClassMemberAccess(&(*pVm),pClass,&pObjAttr->pAttr->sName,pObjAttr->pAttr->iProtection,FALSE) : 0;
-					if( pEntry && (pObjAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_SET)) != 0 ){
+					if( pEntry && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET) != 0 ){
+						/* A native class's property is php's own C struct field, and
+						 * unset() is a std handler that looks for a REAL property and
+						 * finds none: nothing happens, nothing is said, and the next
+						 * read still answers the struct. Removing the slot here left
+						 * `unset($i->y); $i->y` an Undefined property warning and NULL
+						 * for a statement php ignores. */
+					}else if( pEntry && (pObjAttr->pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_SET)) != 0 ){
 						/* php 8.4: a hooked property (virtual or backed) can never be
 						 * unset — catchable Error, even from inside its own hook body
 						 * (probe-verified). */
@@ -1374,7 +1406,23 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 					 * below — a reference bind neither reads the value nor triggers
 					 * get/set hooks or an uninitialized-typed Error. pThis stays retained
 					 * (the iRef++ above); OP_STORE_REF releases it. */
-					if( pObjAttr ){
+					if( pObjAttr && (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET) ){
+						/* `$i->f =& $x`: php REFUSES to make a handler-backed property
+						 * the target of a reference — there is no slot to rebind, and
+						 * every write through the alias would skip the conversion the
+						 * handler is there to do. PHL rebound the slot instead, so
+						 * `$x = 2.5` afterwards wrote 2.5 microseconds-free into the
+						 * interval. */
+						SyBlob sErrMsg;
+						SyBlobInit(&sErrMsg,&pVm->sAllocator);
+						SyBlobAppend(&sErrMsg,"Cannot assign by reference to overloaded object",
+							sizeof("Cannot assign by reference to overloaded object")-1);
+						VmBoundaryPark(&(*pVm),VmThrowBuiltinError(&(*pVm),"Error",sizeof("Error")-1,&sErrMsg));
+						pVm->pRefTargetAttr = 0;
+						pVm->pRefTargetThis = 0;
+						pVm->pRefTargetStaticAttr = 0;
+						PH7_ClassInstanceUnref(pThis);
+					}else if( pObjAttr ){
 						pVm->pRefTargetAttr = pObjAttr;
 						pVm->pRefTargetThis = pThis;
 						pVm->pRefTargetStaticAttr = 0;
@@ -1660,6 +1708,11 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 									/* Load attribute index */
 									pTos->nIdx = pObjAttr->nIdx;
 								}
+							}
+							if( (pObjAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET)
+							 && !VmMemberNativeSetKeepsSlot(pInstr) ){
+								pTos->nIdx = SXU32_HIGH;
+								pTos->iFlags |= MEMOBJ_AUX_NATIVEPROP;
 							}
 						}
 						if( pInstr->iP2 == PH7_MEMBER_ISSET ){

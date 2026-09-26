@@ -261,6 +261,14 @@ struct VmDeferredPath {
                                       * through the reference replaced it. The reference-binding
                                       * sites test this. Part of MEMOBJ_AUX, so MemObjStore strips
                                       * it: a plain `$c = $s[1]` copy carries nothing. */
+#define MEMOBJ_AUX_NATIVEPROP 0x400000 /* Stack-only marker: this value was read out of a NATIVE
+                                      * class's handler-backed property (PH7_CLASS_ATTR_NATIVE_SET),
+                                      * which is a field of php's own C struct rather than storage a
+                                      * script may alias. It says the value carries no slot on
+                                      * purpose, so the reference-binding site makes a silent COPY
+                                      * instead of raising the "require a variable not a constant"
+                                      * diagnostic — php binds `$r = &$i->f` to a temporary and says
+                                      * nothing. Part of MEMOBJ_AUX, so a copy can never carry it. */
 /* Mask of all known types */
 #define MEMOBJ_ALL (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL|MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)
 /* Scalar variables
@@ -269,7 +277,7 @@ struct VmDeferredPath {
  *  Types array, object and resource are not scalar.
  */
 #define MEMOBJ_SCALAR (MEMOBJ_STRING|MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_NULL)
-#define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_CUFVAL|MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH|MEMOBJ_AUX_STROFFSET|MEMOBJ_AUX_COALSTROFF|MEMOBJ_AUX_MAGICCALL|MEMOBJ_AUX_MEMBERCALL|MEMOBJ_AUX_ENGINEFN)
+#define MEMOBJ_AUX (MEMOBJ_REFERENCE|MEMOBJ_AUX_SPREAD|MEMOBJ_AUX_NOKEY|MEMOBJ_AUX_CUFVAL|MEMOBJ_AUX_DEFERRED|MEMOBJ_AUX_DEFPATH|MEMOBJ_AUX_STROFFSET|MEMOBJ_AUX_COALSTROFF|MEMOBJ_AUX_MAGICCALL|MEMOBJ_AUX_MEMBERCALL|MEMOBJ_AUX_ENGINEFN|MEMOBJ_AUX_NATIVEPROP)
 /* Closure-instance flags (ph7_class_instance.iFlags), shared by vm_exec.c's OP_LOAD_FCC
  * and vm_exec_ctx.c's closure machinery. Distinct from CLASS_INSTANCE_DESTROYED 0x001
  * (oo.c) and VM_INSTANCE_DUMPING 0x002 (vm_builtin_var.c), which share the same word. */
@@ -1312,6 +1320,32 @@ struct PH7_NativeDimCtx
 	char zThrowMsg[160];     /* ...and its message, formatted by the hook */
 };
 /*
+ * One property WRITE asked of a native class through ph7_class::xSet -- php's
+ * write_property handler.
+ *
+ * A native class whose properties are php's OWN C struct rather than real slots
+ * states this: php converts the incoming value the way its struct field demands
+ * and stores THAT, so `$i->y = 1.5` reads back int(1) and `$i->f = 0.1234567`
+ * reads back 0.123456 (an int64 count of microseconds, shown divided). The hook
+ * rewrites pValue IN PLACE to whatever must land in the slot -- it runs on every
+ * write shape (a plain store, a compound assign, ++/--, a list() target, a
+ * foreach target), because it hangs off the same store filter the typed-property
+ * enforcement does.
+ *
+ * Refusing works the way the dimension hook's does: name an exception class in
+ * zThrowClass and word it in zThrowMsg, and the filter raises it where the store
+ * would have landed. A property php only lets a script write by CREATING a
+ * deprecated dynamic one (DateInterval's `days`) is refused here, §10.
+ */
+typedef struct PH7_NativeSetCtx PH7_NativeSetCtx;
+struct PH7_NativeSetCtx
+{
+	const SyString *pName;   /* The property being written */
+	ph7_value *pValue;       /* The incoming value; the hook rewrites it in place */
+	const char *zThrowClass; /* Set by the hook to refuse; 0 (the caller's init) means stored */
+	char zThrowMsg[160];     /* ...and its message, formatted by the hook */
+};
+/*
  * Each class is parsed out and stored in an instance of the following structure.
  * PH7 introduced powerfull extensions to the PHP 5 OO subsystems.
  * Please refer to the official documentation for more information.
@@ -1396,6 +1430,15 @@ struct ph7_class
 	                       * php's: a store, an append and an unset are all
 	                       * `Cannot use object of type C as array` unless the class really
 	                       * implements ArrayAccess. 0 everywhere else. */
+	void (*xSet)(ph7_vm *,ph7_class_instance *,PH7_NativeSetCtx *); /* php's write_property
+	                       * handler: what a WRITE to one of this class's declared properties
+	                       * converts to (or refuses), for a class whose properties are php's
+	                       * own C struct. Reached from the store filter through the slot
+	                       * table, so every write shape goes through it. Assigned on the
+	                       * mounted class by the owning installer, like xClone and xDim,
+	                       * which also flags the class's properties PH7_CLASS_ATTR_NATIVE_SET
+	                       * so their slots get registered; inherited by user subclasses the
+	                       * way php inherits a handler. 0 everywhere else. */
 };
 /* Class configuration flags */
 #define PH7_CLASS_FINAL       0x001 /* Class is final [cannot be extended] */
@@ -1530,6 +1573,16 @@ struct ph7_class_attr
                                             * has no get hook), no default allowed, reads without a
                                             * get hook are php's "is write-only" Error. PHL still
                                             * allocates the (null) backing slot; this flag hides it. */
+#define PH7_CLASS_ATTR_NATIVE_SET   0x100000 /* A NATIVE class's property whose WRITES run through
+                                            * ph7_class::xSet (php's write_property). Set by the
+                                            * installer that assigns the hook, and read by the two
+                                            * places that care: instantiation, which registers the
+                                            * slot so the store filter can find it, and the filter
+                                            * itself. A slot carrying it is registered in
+                                            * pVm->hTypedSlot exactly as a typed one is -- that table
+                                            * is "slots a store must be filtered through", and the
+                                            * two reasons compose (a native property may also be
+                                            * typed). */
 #define PH7_CLASS_ATTR_REFBOUND     0x80000 /* STATIC property currently bound to another slot by `=&`
                                              * (`C::$s =& $x`). The instance side records this per
                                              * INSTANCE (VM_CLASS_ATTR_REFBOUND); a static has one slot
@@ -1562,7 +1615,17 @@ struct ph7_class_attr
                                             * both engines, and a re-run that now succeeds (the constant
                                             * it names was define()d after the declaration) answers the
                                             * value, as php's does. */
-/* next free bit: 0x40000 */
+/* next free bit: 0x200000 */
+/*
+ * Does a store into this property's slot have to be FILTERED? Two unrelated
+ * reasons say yes -- a declared TYPE to enforce and a native class's own write
+ * handler -- and both are answered by one lookup, since pVm->hTypedSlot keys
+ * every filtered slot by its memobj index. Instantiation registers on this
+ * predicate and the teardown paths deregister on it, so the two must never
+ * disagree.
+ */
+#define PH7_ATTR_STORE_FILTERED(pAttr) \
+	(((pAttr)->iFlags & (PH7_CLASS_ATTR_TYPED|PH7_CLASS_ATTR_NATIVE_SET)) != 0)
 /*
  * Declaring a class from C (oo_native.c).
  *
@@ -1674,6 +1737,9 @@ PH7_PRIVATE sxi32 PH7_InstallNativeClasses(ph7_vm *pVm,const PH7_NativeClassSpec
 PH7_PRIVATE int PH7_ClassInstancePresent(ph7_class_instance *pThis,ph7_value *pOut,int bDebug);
 PH7_PRIVATE int PH7_ClassHasNativeDim(ph7_class *pClass);
 PH7_PRIVATE int PH7_ClassNativeDim(ph7_class_instance *pThis,PH7_NativeDimCtx *pCtx);
+PH7_PRIVATE int PH7_ClassNativeSet(ph7_class_instance *pThis,PH7_NativeSetCtx *pCtx);
+PH7_PRIVATE sxi32 PH7_NativeClassInstallSetHook(ph7_vm *pVm,const char *zClass,
+	void (*xSet)(ph7_vm *,ph7_class_instance *,PH7_NativeSetCtx *));
 PH7_PRIVATE sxi32 PH7_InstallEnumInterfaceMethods(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE sxi32 PH7_InstallNativeEnum(ph7_vm *pVm,const char *zName,sxu32 nBacking,
 	const PH7_NativeEnumCase *aCase,sxu32 nCase,
@@ -1712,6 +1778,9 @@ PH7_PRIVATE int PH7_NativeAttrTruthy(ph7_class_instance *pObj,const char *zName)
 PH7_PRIVATE void PH7_NativeAttrStr(ph7_class_instance *pObj,const char *zName,
 	const char **pzOut,int *pnOut);
 PH7_PRIVATE void PH7_NativeSetAttrInt(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,sxi64 iVal);
+#ifndef PH7_OMIT_FLOATING_POINT
+PH7_PRIVATE void PH7_NativeSetAttrReal(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,ph7_real rVal);
+#endif
 PH7_PRIVATE void PH7_NativeSetAttrStr(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,
 	const char *zVal,int nVal);
 PH7_PRIVATE void PH7_NativeSetAttrBool(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,int bVal);
@@ -1890,6 +1959,12 @@ struct VmClassAttr
 	sxu32 nIdx;            /* Memory object index */
 	sxi32 iState;          /* Per-instance state: VM_CLASS_ATTR_UNINIT */
 	ph7_class *pOwner;     /* Class that declares this attribute (for error msgs) */
+	ph7_class_instance *pInst; /* Instance this slot belongs to, or 0 for a class STATIC.
+	                       * The store filter reaches it for ph7_class::xSet, which is a
+	                       * handler ON AN OBJECT (php's write_property takes the object);
+	                       * DateInterval's writes its own microsecond slot from there.
+	                       * The record lives in the instance's own hAttr and dies with it,
+	                       * so the pointer never outlives what it names. */
 };
 #define VM_CLASS_ATTR_UNINIT  0x01 /* Typed property never written (PHP 7.4+); also the
                                     * write-once latch for readonly properties (cleared on
@@ -4449,6 +4524,7 @@ PH7_PRIVATE sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, 
 PH7_PRIVATE void VmMaterializeIntTyped(ph7_value *pVal, sxu32 nType);
 PH7_PRIVATE void VmDropResumeTarget(ph7_vm *pVm, VmFrame *pFrame);
 PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue,int bCloneInit);
+PH7_PRIVATE sxi32 PH7_VmNativeSetSlot(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue);
 PH7_PRIVATE sxi32 VmEnforceScalarType(ph7_value *pVal, sxu32 nType, int bStrict);
 PH7_PRIVATE void VmExcReleaseAll(ph7_vm *pVm,SySet *pSet);
 PH7_PRIVATE const char *VmFormatValueClassName(ph7_value *pValue,char *zBuf,sxu32 nBuf);

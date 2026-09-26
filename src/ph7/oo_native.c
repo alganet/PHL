@@ -207,6 +207,20 @@ PH7_PRIVATE void PH7_NativeSetAttrInt(ph7_vm *pVm,ph7_class_instance *pObj,const
 	PH7_MemObjRelease(&sVal);
 	NativeAttrMarkInit(pObj,zName);
 }
+#ifndef PH7_OMIT_FLOATING_POINT
+PH7_PRIVATE void PH7_NativeSetAttrReal(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,ph7_real rVal)
+{
+	ph7_value *pSlot = PH7_NativeAttr(pObj,zName);
+	ph7_value sVal;
+	if( pSlot == 0 ){
+		return;
+	}
+	PH7_MemObjInitFromReal(&(*pVm),&sVal,rVal);
+	PH7_MemObjStore(&sVal,pSlot);
+	PH7_MemObjRelease(&sVal);
+	NativeAttrMarkInit(pObj,zName);
+}
+#endif /* PH7_OMIT_FLOATING_POINT */
 PH7_PRIVATE void PH7_NativeSetAttrStr(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,
 	const char *zVal,int nVal)
 {
@@ -622,6 +636,60 @@ PH7_PRIVATE int PH7_ClassNativeDim(ph7_class_instance *pThis,PH7_NativeDimCtx *p
 	}
 	pClass->xDim(pThis->pVm,pThis,pCtx);
 	return 1;
+}
+/*
+ * The nearest ph7_class::xSet in a class's base chain -- the same handler
+ * inheritance the dimension hook gets, so a user subclass of DateInterval
+ * converts its writes the way its parent does.
+ */
+static ph7_class * NativeSetClass(ph7_class *pClass)
+{
+	while( pClass ){
+		if( pClass->xSet ){
+			return pClass;
+		}
+		pClass = pClass->pBase;
+	}
+	return 0;
+}
+/*
+ * Run the write handler for a property store. Answers 0 when no class in the
+ * chain has one (nothing in pCtx is touched); 1 when it ran, which includes a
+ * REFUSAL -- the caller reads zThrowClass to tell the two apart.
+ */
+PH7_PRIVATE int PH7_ClassNativeSet(ph7_class_instance *pThis,PH7_NativeSetCtx *pCtx)
+{
+	ph7_class *pClass = pThis ? NativeSetClass(pThis->pClass) : 0;
+	if( pClass == 0 ){
+		return 0;
+	}
+	pClass->xSet(pThis->pVm,pThis,pCtx);
+	return 1;
+}
+/*
+ * Install a write handler on a mounted native class and mark every INSTANCE
+ * property it declares as filtered, which is what makes instantiation register
+ * the slots the filter looks up. Called by the owning installer right after
+ * PH7_InstallNativeClasses, for the same reason xClone and xDim are: the spec
+ * table has no field for a hook.
+ */
+PH7_PRIVATE sxi32 PH7_NativeClassInstallSetHook(ph7_vm *pVm,const char *zClass,
+	void (*xSet)(ph7_vm *,ph7_class_instance *,PH7_NativeSetCtx *))
+{
+	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);
+	SyHashEntry *pEntry;
+	if( pClass == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	pClass->xSet = xSet;
+	SyHashResetLoopCursor(&pClass->hAttr);
+	while( (pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){
+		ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
+		if( (pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
+			pAttr->iFlags |= PH7_CLASS_ATTR_NATIVE_SET;
+		}
+	}
+	return SXRET_OK;
 }
 /*
  * Create and install ONE class from its spec: constants and properties, but

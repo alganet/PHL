@@ -1974,6 +1974,53 @@ PH7_PRIVATE const char *VmFormatValueClassName(ph7_value *pValue,char *zBuf,sxu3
 	return zBuf;
 }
 
+/*
+ * php's write_property handler (ph7_class::xSet): a native class whose properties
+ * are its own C struct converts the incoming value the way that struct demands —
+ * and may refuse the write outright. The value is rewritten IN PLACE, so what the
+ * caller goes on to store is what the hook left behind.
+ */
+static sxi32 VmRunNativeSet(ph7_vm *pVm,VmClassAttr *pVmAttr,ph7_value *pValue)
+{
+	PH7_NativeSetCtx sSet;
+	if( pVmAttr->pInst == 0 ){
+		return SXRET_OK;   /* a class static: no object for a handler to run on */
+	}
+	sSet.pName = &pVmAttr->pAttr->sName;
+	sSet.pValue = pValue;
+	sSet.zThrowClass = 0;
+	sSet.zThrowMsg[0] = 0;
+	if( PH7_ClassNativeSet(pVmAttr->pInst,&sSet) && sSet.zThrowClass ){
+		return VmThrowFixedError(pVm,sSet.zThrowClass,sSet.zThrowMsg);
+	}
+	return SXRET_OK;
+}
+/*
+ * The same handler, asked of a SLOT that an opcode has already mutated in place.
+ * `$i->f++` and `$i->f--` never pass a value through the store filter — they
+ * increment the slot where it lies — so the conversion has to be applied after
+ * the fact, which is exactly what php does (it reads, increments, and writes
+ * back through the handler: `$i->f = 1.456008; ++$i->f` leaves the property at
+ * 2.456007, the microsecond truncation of the sum). Answers SXRET_OK when the
+ * slot is not a native one.
+ */
+PH7_PRIVATE sxi32 PH7_VmNativeSetSlot(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue)
+{
+	SyHashEntry *pSlot;
+	VmClassAttr *pVmAttr;
+	if( nIdx == SXU32_HIGH || SyHashTotalEntry(&pVm->hTypedSlot) == 0 ){
+		return SXRET_OK;
+	}
+	pSlot = SyHashGet(&pVm->hTypedSlot,(const void *)&nIdx,sizeof(sxu32));
+	if( pSlot == 0 ){
+		return SXRET_OK;
+	}
+	pVmAttr = (VmClassAttr *)pSlot->pUserData;
+	if( pVmAttr->pAttr == 0 || (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET) == 0 ){
+		return SXRET_OK;
+	}
+	return VmRunNativeSet(pVm,pVmAttr,pValue);
+}
 PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value *pValue,int bCloneInit)
 {
 	SyHashEntry *pSlot;
@@ -1992,7 +2039,16 @@ PH7_PRIVATE sxi32 VmEnforcePropertyTypeOnStore(ph7_vm *pVm,sxu32 nIdx,ph7_value 
 	}
 	pVmAttr = (VmClassAttr *)pSlot->pUserData;
 	pAttr = pVmAttr->pAttr;
-	if( pAttr == 0 || (pAttr->iFlags & PH7_CLASS_ATTR_TYPED) == 0 ){
+	if( pAttr == 0 ){
+		return SXRET_OK;
+	}
+	if( pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET ){
+		sxi32 rcNat = VmRunNativeSet(pVm,pVmAttr,pValue);
+		if( rcNat != SXRET_OK ){
+			return rcNat;
+		}
+	}
+	if( (pAttr->iFlags & PH7_CLASS_ATTR_TYPED) == 0 ){
 		return SXRET_OK;
 	}
 	/* `self`/`parent` in the declared type resolve against the class that DECLARED

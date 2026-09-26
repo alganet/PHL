@@ -1258,7 +1258,7 @@ PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc
 			 * is carried over by the iState copy below, so the clone's release also
 			 * leaves the shared slot alone. */
 			if( pDestAttr->nIdx != pSrcAttr->nIdx ){
-				if( pDestAttr->pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+				if( PH7_ATTR_STORE_FILTERED(pDestAttr->pAttr) ){
 					SyHashDeleteEntry(&pVm->hTypedSlot,(const void *)&pDestAttr->nIdx,sizeof(sxu32),0);
 				}
 				PH7_VmUnsetMemObj(pVm,pDestAttr->nIdx,TRUE);
@@ -1363,7 +1363,7 @@ PH7_PRIVATE void PH7_VmReleaseInstanceAttr(ph7_vm *pVm, VmClassAttr *pVmAttr)
 	}else if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
 		/* Drop any typed-property enforcement slot registered for this memobj, before the memobj
 		 * is returned to the free list, so a future recycled slot does not inherit the stale entry. */
-		if( pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+		if( PH7_ATTR_STORE_FILTERED(pVmAttr->pAttr) ){
 			SyHashDeleteEntry(&pVm->hTypedSlot,(const void *)&pVmAttr->nIdx,sizeof(sxu32),0);
 		}
 		PH7_VmUnsetMemObj(pVm,pVmAttr->nIdx,TRUE);

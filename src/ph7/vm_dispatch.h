@@ -172,6 +172,15 @@
 		PH7_DISPATCH_ENFORCE_RC(_rcR) \
 	}
 /*
+ * The native write handler (ph7_class::xSet) for the in-place mutation opcodes
+ * (`++`/`--`), which never pass a value through the store filter: php reads such
+ * a property, increments, and writes BACK through its handler, so the conversion
+ * has to run on the mutated slot. A refusal (DateInterval's `days`) is parked on
+ * the boundary rail like every other mid-expression throw. Must be used inside a
+ * case of the main switch.
+ */
+#define PH7_NATIVE_SET_AFTER_MUTATE(nIdxArg,pSlotArg) 	{ 		sxi32 _rcN = PH7_VmNativeSetSlot(&(*pVm),(nIdxArg),(pSlotArg)); 		if( _rcN != SXRET_OK ){ 			VmBoundaryPark(&(*pVm),_rcN); 		} 	}
+/*
  * php's unary-arithmetic operand contract for OP_UMINUS / OP_UPLUS. php compiles
  * `-$x` as `$x * -1`, so both operators reject the operands multiplication
  * rejects, with multiplication's own wording ("Unsupported operand types:

@@ -777,6 +777,19 @@ static sxi32 VmBindPropByRef(ph7_vm *pVm,ph7_value *pObj,const SyString *pName,s
 	if( pEntry ){
 		pAttr = (VmClassAttr *)pEntry->pUserData;
 		if( (pAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT)) == 0 ){
+			if( pAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_SET ){
+				/* A native class's property is a field of php's own C struct, not
+				 * storage a script may alias: php has no ptr_ptr handler for one, so
+				 * `g($i->s)` with `function g(&$x)` passes the VALUE and the callee's
+				 * write is lost — in SILENCE, unlike the overloaded case below, which
+				 * php has a notice for. `preg_match($p,$s,$i->s)` is the same answer. */
+				ph7_value *pCur = (ph7_value *)SySetAt(&pVm->aMemObj,pAttr->nIdx);
+				*pbNoBind = 1;
+				if( pValOut && pCur ){
+					PH7_MemObjStore(pCur,pValOut);
+				}
+				return SXRET_OK;
+			}
 			*pnOut = pAttr->nIdx;
 			return SXRET_OK;
 		}
@@ -3281,6 +3294,13 @@ case PH7_OP_INCR:
 					}
 					/* Post-increment: pTos retains the old value (a string
 					 * for "5"++, an int/float for direct numeric operands). */
+					/* A NATIVE class's property is php's own C struct field, and
+					 * `++` writes it BACK through the write handler there — so the
+					 * conversion runs on the mutated slot. php's own answer, and
+					 * the EXPRESSION's value is the unconverted sum either way:
+					 * `$i->f = 1.456008; var_dump(++$i->f, $i->f)` prints
+					 * 2.4560079999999997 then 2.456007. */
+					PH7_NATIVE_SET_AFTER_MUTATE(pTos->nIdx,pObj)
 				}
 			}
 		}else{
@@ -3431,6 +3451,7 @@ case PH7_OP_DECR:
 						PH7_MemObjStore(pObj,pTos);
 					}
 					/* Post-decrement: pTos retains the old value. */
+					PH7_NATIVE_SET_AFTER_MUTATE(pTos->nIdx,pObj)   /* see OP_INCR */
 				}
 			}
 		}else{

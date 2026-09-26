@@ -1588,6 +1588,7 @@ static sxi32 VmMountUserClassAttrs(
 				pVmAttrS->nIdx = pMemObj->nIdx;
 				pVmAttrS->iState = 0;
 				pVmAttrS->pOwner = pClass;
+				pVmAttrS->pInst = 0;   /* the class's own slot: no instance behind it */
 				/* Static typed property with no default starts uninitialized
 				 * (constants are already excluded by the enclosing condition). */
 				if( SySetUsed(&pAttr->aByteCode) == 0 ){
@@ -1710,6 +1711,7 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 			pVmAttr->nIdx = pMemObj->nIdx;
 			pVmAttr->iState = 0;
 			pVmAttr->pOwner = pClass;
+			pVmAttr->pInst = pObj;
 			if( pAttr->pNativeValue ){
 				/* Native class, literal default: no initializer to execute, so none
 				 * of the throw/typed-default machinery below can apply either — a
@@ -1771,10 +1773,11 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 			}
 			/* Install attribute in the reference table */
 			PH7_VmRefObjInstall(&(*pVm),pMemObj->nIdx,0,0,VM_REF_IDX_KEEP);
-			/* Register typed property slot for assignment-time enforcement.
+			/* Register the slot for assignment-time filtering -- a declared
+			 * TYPE to enforce, a native class's write handler, or both.
 			 * On failure roll back the just-installed hAttr entry and the
 			 * reserved memobj so the caller sees a consistent instance. */
-			if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+			if( PH7_ATTR_STORE_FILTERED(pAttr) ){
 				rc = SyHashInsert(&pVm->hTypedSlot,(const void *)&pVmAttr->nIdx,sizeof(sxu32),pVmAttr);
 				if( rc != SXRET_OK ){
 					VmSlot sSlot;
@@ -1791,6 +1794,7 @@ PH7_PRIVATE sxi32 PH7_VmCreateClassInstanceFrame(
 			pVmAttr->nIdx = pAttr->nIdx;
 			pVmAttr->iState = 0;
 			pVmAttr->pOwner = pClass;
+			pVmAttr->pInst = 0;   /* a static slot belongs to the class, not to this object */
 			rc = SyHashInsertTail(&pObj->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),pVmAttr);
 			if( rc != SXRET_OK ){
 				SyMemBackendPoolFree(&pVm->sAllocator,pVmAttr);
@@ -1953,6 +1957,7 @@ PH7_PRIVATE ph7_value * PH7_VmCreateDynamicAttr(ph7_vm *pVm,ph7_class_instance *
 	pVmAttr->nIdx = pMemObj->nIdx;
 	pVmAttr->iState = 0;
 	pVmAttr->pOwner = pThis->pClass;
+	pVmAttr->pInst = pThis;
 	/* Tail-insert so iteration (json_encode/foreach/(array)/var_dump) follows
 	 * property-creation order, matching PHP. */
 	if( SyHashInsertTail(&pThis->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),pVmAttr) != SXRET_OK ){
@@ -2001,6 +2006,7 @@ PH7_PRIVATE void VmRecreateDeclaredAttr(ph7_vm *pVm,ph7_class_instance *pThis,ph
 	pVmAttr->nIdx = pMemObj->nIdx;
 	pVmAttr->iState = 0;
 	pVmAttr->pOwner = pThis->pClass;
+	pVmAttr->pInst = pThis;
 	/* Do NOT re-run the declared default initializer. A property recreated after unset() is a fresh
 	 * UNDEFINED property — PHP applies the class default only at construction, not on re-creation. The
 	 * reserved slot stays NULL, so a read-modify-write that triggered this (`$o->p += 1`, `.=`, `??=`)
@@ -2021,7 +2027,7 @@ PH7_PRIVATE void VmRecreateDeclaredAttr(ph7_vm *pVm,ph7_class_instance *pThis,ph
 		return;
 	}
 	PH7_VmRefObjInstall(&(*pVm),pMemObj->nIdx,0,0,VM_REF_IDX_KEEP);
-	if( pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+	if( PH7_ATTR_STORE_FILTERED(pAttr) ){
 		if( SyHashInsert(&pVm->hTypedSlot,(const void *)&pVmAttr->nIdx,sizeof(sxu32),pVmAttr) != SXRET_OK ){
 			VmSlot sSlot;
 			SyHashDeleteEntry(&pThis->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName),0);

@@ -81,7 +81,7 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 					/* Release this property's own (unshared) slot before repointing.
 					 * A reference-bound property bypasses typed coercion in php, so
 					 * drop any typed-slot enforcement entry too. */
-					if( pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+					if( PH7_ATTR_STORE_FILTERED(pVmAttr->pAttr) ){
 						SyHashDeleteEntry(&pVm->hTypedSlot,(const void *)&nOldIdx,sizeof(sxu32),0);
 					}
 					PH7_VmUnsetMemObj(&(*pVm),nOldIdx,TRUE);
@@ -107,7 +107,7 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 				if( (pStAttr->iFlags & PH7_CLASS_ATTR_REFBOUND) == 0 ){
 					/* The static's own (unshared) slot. A reference-bound property bypasses
 					 * typed coercion in php, so drop any typed-slot enforcement entry too. */
-					if( pStAttr->iFlags & PH7_CLASS_ATTR_TYPED ){
+					if( PH7_ATTR_STORE_FILTERED(pStAttr) ){
 						SyHashDeleteEntry(&pVm->hTypedSlot,(const void *)&nOldIdx,sizeof(sxu32),0);
 					}
 					PH7_VmUnsetMemObj(&(*pVm),nOldIdx,TRUE);
@@ -164,10 +164,13 @@ PH7_PRIVATE VmOpRc VmExecOpStoreRef(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 	}
 	nIdx = pTos->nIdx;
 	if(nIdx == SXU32_HIGH ){
-		if( (pTos->iFlags & (MEMOBJ_OBJ|MEMOBJ_HASHMAP|MEMOBJ_RES)) == 0 ){
+		if( (pTos->iFlags & (MEMOBJ_OBJ|MEMOBJ_HASHMAP|MEMOBJ_RES|MEMOBJ_AUX_NATIVEPROP)) == 0 ){
 			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
 				"Reference operator require a variable not a constant as it's right operand");
 		}else{
+			/* An object/array/resource value, or a NATIVE class's handler-backed
+			 * property (`$r = &$i->f`), which php binds to a fresh variable in
+			 * silence because there is no slot behind it to alias. */
 			ph7_value *pObj;
 			/* Extract the desired variable and if not available dynamically create it */
 			pObj = VmExtractMemObj(&(*pVm),&sName,FALSE,TRUE);
