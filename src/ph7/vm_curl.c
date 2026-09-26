@@ -2360,6 +2360,90 @@ static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 
+
+/* ===== escape / unescape / upkeep / pause ===== */
+
+/*
+ * curl_escape / curl_unescape are libcurl's own encoders, called with an
+ * explicit LENGTH in both directions -- so they are NUL-clean where a C-string
+ * call would not be: escaping "\0" answers "%00" and unescaping "%00" answers
+ * the byte back. Neither touches the handle's error state.
+ *
+ * They are also not urlencode(): `+` is escaped to %2B on the way out and is
+ * NOT decoded to a space on the way back.
+ */
+static int vm_builtin_curl_escape(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_curl *pCurl = CurlArg(pCtx,nArg,apArg);
+	const char *zIn;
+	int nIn = 0;
+	char *zOut;
+	if( pCurl == 0 || pCurl->pEasy == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zIn = ph7_value_to_string(apArg[1],&nIn);
+	zOut = curl_easy_escape(pCurl->pEasy,zIn ? zIn : "",nIn);
+	if( zOut == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_string(pCtx,zOut,-1);
+	curl_free(zOut);
+	return PH7_OK;
+}
+static int vm_builtin_curl_unescape(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_curl *pCurl = CurlArg(pCtx,nArg,apArg);
+	const char *zIn;
+	int nIn = 0, nOut = 0;
+	char *zOut;
+	if( pCurl == 0 || pCurl->pEasy == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zIn = ph7_value_to_string(apArg[1],&nIn);
+	zOut = curl_easy_unescape(pCurl->pEasy,zIn ? zIn : "",nIn,&nOut);
+	if( zOut == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* The answer can carry a NUL of its own, so it is taken by LENGTH. */
+	ph7_result_string(pCtx,zOut,nOut);
+	curl_free(zOut);
+	return PH7_OK;
+}
+/* bool curl_upkeep(CurlHandle $handle) -- one of the three verbs that CLEAR */
+static int vm_builtin_curl_upkeep(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_curl *pCurl = CurlArg(pCtx,nArg,apArg);
+	if( pCurl == 0 || pCurl->pEasy == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	CurlClearErr(pCurl);
+	ph7_result_bool(pCtx,curl_easy_upkeep(pCurl->pEasy) == CURLE_OK);
+	return PH7_OK;
+}
+/*
+ * int curl_pause(CurlHandle $handle, int $flags)
+ *
+ * Answers libcurl's CURLcode as an INT rather than a bool -- and leaves the
+ * handle's error state alone, so a pause on a handle with no transfer reports
+ * 43 (CURLE_BAD_FUNCTION_ARGUMENT) while curl_errno() still says whatever the
+ * last transfer said.
+ */
+static int vm_builtin_curl_pause(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_curl *pCurl = CurlArg(pCtx,nArg,apArg);
+	if( pCurl == 0 || pCurl->pEasy == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_int(pCtx,(int)curl_easy_pause(pCurl->pEasy,(int)ph7_value_to_int64(apArg[1])));
+	return PH7_OK;
+}
+
 /* ===== Installation ===== */
 
 PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)
@@ -2381,7 +2465,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)
 		{ "curl_setopt",         vm_builtin_curl_setopt         },
 		{ "curl_setopt_array",   vm_builtin_curl_setopt_array   },
 		{ "curl_getinfo",        vm_builtin_curl_getinfo        },
-		{ "curl_exec",           vm_builtin_curl_exec           }
+		{ "curl_exec",           vm_builtin_curl_exec           },
+		{ "curl_escape",         vm_builtin_curl_escape         },
+		{ "curl_unescape",       vm_builtin_curl_unescape       },
+		{ "curl_upkeep",         vm_builtin_curl_upkeep         },
+		{ "curl_pause",          vm_builtin_curl_pause          }
 	};
 	/*
 	 * The libcurl handle, and nothing else: php's CurlHandle declares no
