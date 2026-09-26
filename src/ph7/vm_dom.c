@@ -60,6 +60,7 @@
 #define DOM_ERR_WRONG_DOC      4
 #define DOM_ERR_INVALID_CHAR   5
 #define DOM_ERR_NOT_FOUND      8
+#define DOM_ERR_NOT_SUPPORTED  9
 #define DOM_ERR_NAMESPACE     14
 /* The sentence php prints for each -- so a refusal that travels as a code can
  * be raised from one place. */
@@ -70,6 +71,7 @@ static const char * DomErrText(int iCode)
 	case DOM_ERR_HIERARCHY:    return "Hierarchy Request Error";
 	case DOM_ERR_WRONG_DOC:    return "Wrong Document Error";
 	case DOM_ERR_INVALID_CHAR: return "Invalid Character Error";
+	case DOM_ERR_NOT_SUPPORTED: return "Not Supported Error";
 	case DOM_ERR_NAMESPACE:    return "Namespace Error";
 	default:                   return "Not Found Error";
 	}
@@ -245,6 +247,15 @@ static phl_domnode * DomObjArg(ph7_value *pVal)
 		return 0;
 	}
 	return DomResOf((ph7_class_instance *)pVal->x.pOther);
+}
+/* ...and the DOCUMENT object it belongs to, which is where its wrapper is
+ * cached and what its `ownerDocument` answers. */
+static ph7_class_instance * DomObjArgDoc(ph7_value *pVal)
+{
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_OBJ) == 0 ){
+		return 0;
+	}
+	return PH7_NativeAttrObj((ph7_class_instance *)pVal->x.pOther,DOM_DOC);
 }
 /* The slot a DOMNameSpaceNode carries beside its own two: the element that
  * MAKES the declaration, which is php's parentNode for one. */
@@ -3006,6 +3017,128 @@ DOM_METHOD(vm_builtin_DOMDocument_importNode)
 	DomOrphanAdd(pDocNd->pShell,pCopy);
 	return DomResultNodeOf(pCtx,pDocNd,pCopy);
 }
+/*
+ * Re-home one node's WRAPPER. `adoptNode` moves the node itself between
+ * documents and answers the SAME object, which has to keep working: its $__doc
+ * slot is what `ownerDocument` reads, its handle's shell is what will free the
+ * node, and its place in a document's identity cache is what makes
+ * `$doc->documentElement === $doc->documentElement` true. All three move.
+ *
+ * The target cache takes its reference BEFORE the source lets go, so the object
+ * cannot be freed in between.
+ */
+static void DomAdoptWrapper(ph7_vm *pVm,ph7_hashmap *pFrom,ph7_hashmap *pTo,
+	ph7_class_instance *pDstDoc,phl_xmldoc *pDstShell,xmlNodePtr pNode)
+{
+	ph7_hashmap_node *pEntry = 0;
+	ph7_class_instance *pObj;
+	ph7_value sKey,*pHit;
+	PH7_MemObjInitFromInt(&(*pVm),&sKey,(sxi64)(sxuptr)pNode);
+	if( PH7_HashmapLookup(pFrom,&sKey,&pEntry) != SXRET_OK || pEntry == 0 ){
+		PH7_MemObjRelease(&sKey);
+		return;   /* PHP never asked for this node: nothing to move */
+	}
+	pHit = HashmapExtractNodeValue(pEntry);
+	pObj = (pHit && (pHit->iFlags & MEMOBJ_OBJ)) ? (ph7_class_instance *)pHit->x.pOther : 0;
+	if( pObj ){
+		phl_domnode *pRes = DomResOf(pObj);
+		ph7_value sVal;
+		PH7_MemObjInit(&(*pVm),&sVal);
+		sVal.x.pOther = pObj;
+		sVal.iFlags = MEMOBJ_OBJ;
+		PH7_HashmapInsert(pTo,&sKey,&sVal);
+		if( pRes ){
+			pRes->pShell = pDstShell;
+		}
+		PH7_NativeSetAttrObj(&(*pVm),pObj,DOM_DOC,pDstDoc);
+	}
+	PH7_HashmapUnlinkNode(pEntry,TRUE);
+	PH7_MemObjRelease(&sKey);
+}
+/* ...for every node of the adopted subtree, attributes and their text included:
+ * php's adoption reaches all of them, which `$kid->ownerDocument` shows. */
+static void DomAdoptWrappers(ph7_vm *pVm,ph7_class_instance *pSrcDoc,
+	ph7_class_instance *pDstDoc,phl_xmldoc *pDstShell,xmlNodePtr pNode)
+{
+	ph7_hashmap *pFrom = DomCache(&(*pVm),pSrcDoc);
+	ph7_hashmap *pTo = DomCache(&(*pVm),pDstDoc);
+	xmlNodePtr pCur = pNode;
+	if( pFrom == 0 || pTo == 0 || pFrom == pTo ){
+		return;
+	}
+	while( pCur ){
+		DomAdoptWrapper(&(*pVm),pFrom,pTo,pDstDoc,pDstShell,pCur);
+		if( pCur->type == XML_ELEMENT_NODE ){
+			xmlAttrPtr pAttr;
+			for( pAttr = pCur->properties ; pAttr ; pAttr = pAttr->next ){
+				xmlNodePtr pKid;
+				DomAdoptWrapper(&(*pVm),pFrom,pTo,pDstDoc,pDstShell,(xmlNodePtr)pAttr);
+				for( pKid = pAttr->children ; pKid ; pKid = pKid->next ){
+					DomAdoptWrapper(&(*pVm),pFrom,pTo,pDstDoc,pDstShell,pKid);
+				}
+			}
+		}
+		pCur = DomWalkNext(pCur,pNode);
+	}
+}
+/*
+ * DOMDocument::adoptNode(DOMNode $node): DOMNode|false
+ *
+ * The other half of importNode: the node is MOVED rather than copied, so the
+ * source loses it and every wrapper PHP holds onto it keeps working and starts
+ * answering this document.
+ *
+ * php's rules, measured:
+ *
+ *   * The answer is the SAME object, and it is always UNLINKED first -- even
+ *     when it already belongs to this document, which is observable:
+ *     `$d->adoptNode($d->documentElement)` leaves the document empty.
+ *   * A DOCUMENT is the Not Supported DOMException; a FRAGMENT is a plain
+ *     `false` with no error at all.
+ *   * An attribute is taken off its element. Every node under what moved changes
+ *     document too, wrappers included.
+ *   * NOTHING is re-declared: an adopted element keeps pointing at its old
+ *     namespace and answers the same namespaceURI while carrying no declaration
+ *     of it -- the declaration appears when it is LINKED, from the reconcile.
+ */
+DOM_METHOD(vm_builtin_DOMDocument_adoptNode)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	phl_domnode *pDocNd = DomThisNode(pCtx);
+	phl_domnode *pSrc = nArg > 0 ? DomObjArg(apArg[0]) : 0;
+	ph7_class_instance *pSrcDoc = nArg > 0 ? DomObjArgDoc(apArg[0]) : 0;
+	xmlNodePtr pNode;
+	if( pDocNd == 0 || pSrc == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pNode = (xmlNodePtr)pSrc->pNode;
+	if( pNode->type == XML_DOCUMENT_NODE || pNode->type == XML_HTML_DOCUMENT_NODE ){
+		return DomThrow(pCtx,DOM_ERR_NOT_SUPPORTED);
+	}
+	if( pNode->type == XML_DOCUMENT_FRAG_NODE ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	DomDetach(pSrc->pShell,pNode);
+	if( pNode->doc != (xmlDocPtr)pDocNd->pNode ){
+		/*
+		 * NOT xmlSetTreeDoc: a parsed document interns its node names in its
+		 * own dictionary, so a node re-homed by hand keeps names owned by the
+		 * document it LEFT -- and freeing the target document then frees
+		 * strings the source's dictionary owns. ASan called it what it is, a
+		 * bad free. xmlDOMWrapAdoptNode is libxml's own re-homing: it moves the
+		 * strings, the attribute values and the ID table entries with the node.
+		 */
+		sxu32 nMark = PH7_LibxmlCaptureBegin(pVm);
+		xmlDOMWrapAdoptNode(0,pNode->doc,pNode,(xmlDocPtr)pDocNd->pNode,0,0);
+		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::adoptNode");
+		DomAdoptWrappers(pVm,pSrcDoc,DomThisDoc(pCtx),pDocNd->pShell,pNode);
+	}
+	DomOrphanAdd(pDocNd->pShell,pNode);
+	ph7_result_value(pCtx,apArg[0]);
+	return PH7_OK;
+}
 /* DOMDocument::createTextNode / createComment / createCDATASection(string $data) */
 static int DomDocCreateData(ph7_context *pCtx,int iKind,int nArg,ph7_value **apArg)
 {
@@ -5005,6 +5138,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		/* php declares no return type on this one either: `DOMNode|false`. */
 		{ "importNode",           PH7_MOD_PUBLIC, "DOMNode $node, bool $deep = false", "",
 		  vm_builtin_DOMDocument_importNode },
+		{ "adoptNode",            PH7_MOD_PUBLIC, "DOMNode $node", "@DOMNode|false",
+		  vm_builtin_DOMDocument_adoptNode },
 		{ "getElementById",       PH7_MOD_PUBLIC, "string $elementId", "@?DOMElement",
 		  vm_builtin_DOMDocument_getElementById },
 		{ "createAttribute",      PH7_MOD_PUBLIC, "string $localName", "",
