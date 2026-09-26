@@ -50,15 +50,16 @@
 #define DOM_NODES "__nodes"
 
 /*
- * The DOCUMENT's parser directives: php's six boolean properties, real slots
+ * The DOCUMENT's own directives: php's seven boolean properties, real slots
  * here (as `preserveWhiteSpace` and `formatOutput` already were) because their
  * value is the extension's own state and not a question about the tree.  Four
- * of them are read by every parse, and a clone of a document carries the whole
- * block across rather than resetting it to the class defaults.
+ * of them are read by every parse and one by every refusal, and a clone of a
+ * document carries the whole block across rather than resetting it to the class
+ * defaults.
  */
 static const char * const azDomDocFlag[] = {
 	"preserveWhiteSpace", "formatOutput", "validateOnParse",
-	"resolveExternals", "substituteEntities", "recover"
+	"resolveExternals", "substituteEntities", "recover", "strictErrorChecking"
 };
 
 /*
@@ -89,9 +90,53 @@ static const char * DomErrText(int iCode)
 	default:                   return "Not Found Error";
 	}
 }
-static int DomThrow(ph7_context *pCtx,int iCode)
+/* Forward: the refusal has to ask the receiver's document for its mode. */
+static ph7_class_instance * DomThisDoc(ph7_context *pCtx);
+/*
+ * A DOM refusal, in whichever of php's TWO modes the document is in.
+ *
+ * `$doc->strictErrorChecking` (true by default) decides whether a refusal is an
+ * exception or a warning: with it off, php raises the SAME sentence as an
+ * E_WARNING under the method's own name and the method answers instead of
+ * unwinding. The two answers it gives are the two this file needs -- `false`
+ * from a method that returns something, and NOTHING from one php declares
+ * `void` -- so the mode is one call with the answer as its argument.
+ *
+ * The flag is document state rather than tree state: it survives a `loadXML()`
+ * onto the same object, and a clone carries it. It is read off the RECEIVER's
+ * document -- the argument's own is not consulted even when the refusal is
+ * about that argument -- with exactly one exception, `adoptNode`, which reads
+ * the argument's and is passed it explicitly.
+ *
+ * And not every refusal consults it at all: php passes a hardcoded "strict" at
+ * `setAttribute` and `toggleAttribute`, which throw whatever the flag says.
+ * Those call DomThrowAlways.
+ */
+#define DOM_REFUSE_FALSE 0   /* the method answers false */
+#define DOM_REFUSE_VOID  1   /* the method answers nothing (php declares it void) */
+static int DomThrowAlways(ph7_context *pCtx,int iCode)
 {
 	return PH7_VmThrowExceptionCode(pCtx,"DOMException",(sxi32)iCode,"%s",DomErrText(iCode));
+}
+static int DomThrowFor(ph7_context *pCtx,ph7_class_instance *pDoc,int iCode,int iAnswer)
+{
+	if( pDoc && !PH7_NativeAttrTruthy(pDoc,"strictErrorChecking") ){
+		/* The context prints php's own `Class::method(): ` in front of it. */
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,DomErrText(iCode));
+		if( iAnswer == DOM_REFUSE_FALSE ){
+			ph7_result_bool(pCtx,0);
+		}
+		return PH7_OK;
+	}
+	return DomThrowAlways(pCtx,iCode);
+}
+static int DomThrow(ph7_context *pCtx,int iCode)
+{
+	return DomThrowFor(pCtx,DomThisDoc(pCtx),iCode,DOM_REFUSE_FALSE);
+}
+static int DomThrowVoid(ph7_context *pCtx,int iCode)
+{
+	return DomThrowFor(pCtx,DomThisDoc(pCtx),iCode,DOM_REFUSE_VOID);
 }
 /* Property names are byte-exact in php, and every name that reaches here is
  * NUL-terminated (ph7_value_to_string null-appends). */
@@ -2048,7 +2093,7 @@ DOM_METHOD(vm_builtin_DOMElement_setAttribute)
 	const char *zVal = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
 	xmlAttrPtr pAttr;
 	if( pNd == 0 || xmlValidateName((const xmlChar *)zName,0) != 0 ){
-		return DomThrow(pCtx,DOM_ERR_INVALID_CHAR);
+		return DomThrowAlways(pCtx,DOM_ERR_INVALID_CHAR);
 	}
 	if( DomNsDeclByName((xmlNodePtr)pNd->pNode,zName) ){
 		/* php will not write THROUGH a declaration this element already makes:
@@ -2138,7 +2183,7 @@ DOM_METHOD(vm_builtin_DOMElement_setAttributeNS)
 	dom_qname sQ;
 	int rc,bDecl,nOldDefs;
 	if( pNd == 0 ){
-		return DomThrow(pCtx,DOM_ERR_NAMESPACE);
+		return DomThrowVoid(pCtx,DOM_ERR_NAMESPACE);
 	}
 	if( zQname[0] == 0 ){
 		/* php screens the EMPTY name at the parameter, before the DOM sees it. */
@@ -2147,7 +2192,7 @@ DOM_METHOD(vm_builtin_DOMElement_setAttributeNS)
 	}
 	rc = DomQNameParse(zQname,zUri,DOM_QN_SET,&sQ);
 	if( rc ){
-		return DomThrow(pCtx,rc);
+		return DomThrowVoid(pCtx,rc);
 	}
 	pNode = (xmlNodePtr)pNd->pNode;
 	nOldDefs = DomNsDefCount(pNode);
@@ -2168,12 +2213,12 @@ DOM_METHOD(vm_builtin_DOMElement_setAttributeNS)
 		 * `xml:z`) and refuses to declare one. */
 		if( sQ.zPrefix && DomUriIs(zUri,DOM_XMLNS_NS_URI) ){
 			DomQNameRelease(&sQ);
-			return DomThrow(pCtx,DOM_ERR_NAMESPACE);
+			return DomThrowVoid(pCtx,DOM_ERR_NAMESPACE);
 		}
 		pNs = DomNsResolve(pNode,zUri,sQ.zPrefix,0);
 		if( pNs == 0 ){
 			DomQNameRelease(&sQ);
-			return DomThrow(pCtx,DOM_ERR_NAMESPACE);
+			return DomThrowVoid(pCtx,DOM_ERR_NAMESPACE);
 		}
 	}
 	if( bDecl ){
@@ -2456,7 +2501,7 @@ DOM_METHOD(vm_builtin_DOMElement_toggleAttribute)
 	xmlAttrPtr pAttr;
 	xmlNsPtr pDecl;
 	if( pElem == 0 || xmlValidateName((const xmlChar *)zName,0) != 0 ){
-		return DomThrow(pCtx,DOM_ERR_INVALID_CHAR);
+		return DomThrowAlways(pCtx,DOM_ERR_INVALID_CHAR);
 	}
 	pAttr = DomAttrByName(pElem,zName);
 	pDecl = pAttr ? 0 : DomNsDeclByName(pElem,zName);
@@ -2523,7 +2568,7 @@ DOM_METHOD(vm_builtin_DOMElement_setIdAttribute)
 	 * element that carries `p:k`. */
 	xmlAttrPtr pAttr = pNd ? DomAttrNoNs((xmlNodePtr)pNd->pNode,zName) : 0;
 	if( pAttr == 0 ){
-		return DomThrow(pCtx,DOM_ERR_NOT_FOUND);
+		return DomThrowVoid(pCtx,DOM_ERR_NOT_FOUND);
 	}
 	return DomMarkId(pAttr,nArg > 1 && ph7_value_to_bool(apArg[1]));
 }
@@ -2535,7 +2580,7 @@ DOM_METHOD(vm_builtin_DOMElement_setIdAttributeNS)
 	const char *zLocal = nArg > 2 ? ph7_value_to_string(apArg[1],0) : "";
 	xmlAttrPtr pAttr = pNd ? DomAttrByNs((xmlNodePtr)pNd->pNode,DomArgUri(nArg,apArg,0),zLocal) : 0;
 	if( pAttr == 0 ){
-		return DomThrow(pCtx,DOM_ERR_NOT_FOUND);
+		return DomThrowVoid(pCtx,DOM_ERR_NOT_FOUND);
 	}
 	return DomMarkId(pAttr,nArg > 2 && ph7_value_to_bool(apArg[2]));
 }
@@ -2544,7 +2589,7 @@ DOM_METHOD(vm_builtin_DOMElement_setIdAttributeNode)
 	phl_domnode *pNd = DomThisNode(pCtx);
 	xmlAttrPtr pAttr = nArg > 1 ? DomAttrArg(apArg[0]) : 0;
 	if( pNd == 0 || pAttr == 0 || pAttr->parent != (xmlNodePtr)pNd->pNode ){
-		return DomThrow(pCtx,DOM_ERR_NOT_FOUND);
+		return DomThrowVoid(pCtx,DOM_ERR_NOT_FOUND);
 	}
 	return DomMarkId(pAttr,nArg > 1 && ph7_value_to_bool(apArg[1]));
 }
@@ -3269,8 +3314,9 @@ static void DomAdoptWrappers(ph7_vm *pVm,ph7_class_instance *pSrcDoc,
  *   * The answer is the SAME object, and it is always UNLINKED first -- even
  *     when it already belongs to this document, which is observable:
  *     `$d->adoptNode($d->documentElement)` leaves the document empty.
- *   * A DOCUMENT is the Not Supported DOMException; a FRAGMENT is a plain
- *     `false` with no error at all.
+ *   * A DOCUMENT is the Not Supported refusal (raised in the mode the ARGUMENT's
+ *     document is in, not the receiver's); a FRAGMENT is a plain `false` with
+ *     no error at all.
  *   * An attribute is taken off its element. Every node under what moved changes
  *     document too, wrappers included.
  *   * NOTHING is re-declared: an adopted element keeps pointing at its old
@@ -3290,7 +3336,11 @@ DOM_METHOD(vm_builtin_DOMDocument_adoptNode)
 	}
 	pNode = (xmlNodePtr)pSrc->pNode;
 	if( pNode->type == XML_DOCUMENT_NODE || pNode->type == XML_HTML_DOCUMENT_NODE ){
-		return DomThrow(pCtx,DOM_ERR_NOT_SUPPORTED);
+		/* The one refusal in this file that consults the ARGUMENT's document
+		 * rather than the receiver's: php reaches for the strictness of the
+		 * node it was handed, so `$strict->adoptNode($lax)` warns and
+		 * `$lax->adoptNode($strict)` throws. */
+		return DomThrowFor(pCtx,pSrcDoc,DOM_ERR_NOT_SUPPORTED,DOM_REFUSE_FALSE);
 	}
 	if( pNode->type == XML_DOCUMENT_FRAG_NODE ){
 		ph7_result_bool(pCtx,0);
@@ -5008,6 +5058,31 @@ static void DomSetContent(ph7_context *pCtx,phl_xmldoc *pShell,xmlNodePtr pNode,
 		DomLinkLast(pNode,pText);
 	}
 }
+/*
+ * The same refusal, raised from a property WRITE.
+ *
+ * A write is not a call, so php has no accessor name to print in front of the
+ * warning and attributes it to the CALLER's scope instead (`f(): Namespace
+ * Error`, `Unknown: ...` at file scope) -- the shape DomSetContent already uses
+ * for the libxml diagnostic a content write can produce. Nothing is answered
+ * either way: a property write has no return value.
+ */
+static int DomThrowWrite(ph7_context *pCtx,int iCode)
+{
+	ph7_class_instance *pDoc = DomThisDoc(pCtx);
+	SyBlob sFn;
+	SyString sName;
+	int rc;
+	if( pDoc == 0 || PH7_NativeAttrTruthy(pDoc,"strictErrorChecking") ){
+		return DomThrowAlways(pCtx,iCode);
+	}
+	SyBlobInit(&sFn,&pCtx->pVm->sAllocator);
+	PH7_VmActiveFuncName(pCtx->pVm,&sFn);
+	SyStringInitFromBuf(&sName,SyBlobData(&sFn),SyBlobLength(&sFn));
+	rc = PH7_VmThrowError(pCtx->pVm,&sName,PH7_CTX_WARNING,DomErrText(iCode));
+	SyBlobRelease(&sFn);
+	return rc;
+}
 /* DOMNode's three writable properties. */
 static int DomSetNodeProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)
 {
@@ -5044,7 +5119,7 @@ static int DomSetNodeProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,in
 				"http://www.w3.org/XML/1998/namespace") ){
 				/* php's reserved-prefix refusal: `xml` may only name ITS namespace. */
 				SyBlobRelease(&sVal);
-				*pRc = DomThrow(pCtx,DOM_ERR_NAMESPACE);
+				*pRc = DomThrowWrite(pCtx,DOM_ERR_NAMESPACE);
 				return DOM_SET_DONE;
 			}
 			/* php looks only at the declarations THIS node carries -- an
@@ -5067,7 +5142,7 @@ static int DomSetNodeProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,in
 			}
 			if( pNs == 0 ){
 				SyBlobRelease(&sVal);
-				*pRc = DomThrow(pCtx,DOM_ERR_NAMESPACE);
+				*pRc = DomThrowWrite(pCtx,DOM_ERR_NAMESPACE);
 				return DOM_SET_DONE;
 			}
 			xmlSetNs(pNode,pNs);
@@ -5488,6 +5563,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "resolveExternals",   PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },
 		{ "substituteEntities", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },
 		{ "recover",            PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },
+		/* The only one php defaults to TRUE: refusals are exceptions until a
+		 * program asks for warnings (DomThrowAs). */
+		{ "strictErrorChecking", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 }, "bool" },
 		/* The identity cache DomWrap keys by node pointer. */
 		{ DOM_NODES,            PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
