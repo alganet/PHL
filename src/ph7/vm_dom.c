@@ -563,9 +563,10 @@ static void DomTextContent(ph7_context *pCtx,xmlNodePtr pNode)
 	}
 }
 /* The two child counts childNodes->length and childElementCount read. */
+static xmlNodePtr DomRefChildren(xmlNodePtr pNode);
 static int DomChildCount(xmlNodePtr pNode,int bElementsOnly)
 {
-	xmlNodePtr pChild = pNode ? pNode->children : 0;
+	xmlNodePtr pChild = DomRefChildren(pNode);
 	int iCount = 0;
 	for( ; pChild ; pChild = pChild->next ){
 		if( !bElementsOnly || pChild->type == XML_ELEMENT_NODE ){
@@ -576,7 +577,7 @@ static int DomChildCount(xmlNodePtr pNode,int bElementsOnly)
 }
 static xmlNodePtr DomChildAt(xmlNodePtr pNode,int iWant)
 {
-	xmlNodePtr pChild = pNode ? pNode->children : 0;
+	xmlNodePtr pChild = DomRefChildren(pNode);
 	for( ; pChild && iWant > 0 ; pChild = pChild->next ){
 		iWant--;
 	}
@@ -609,6 +610,22 @@ static void DomNsAttrArrive(xmlNodePtr pElem,xmlAttrPtr pAttr);
  * identity-cache home and handle shell all move on the first insertion. */
 static void DomAdoptWrappers(ph7_vm *pVm,ph7_class_instance *pSrcDoc,
 	ph7_class_instance *pDstDoc,phl_xmldoc *pDstShell,xmlNodePtr pNode);
+static xmlNodePtr DomWalkNext(xmlNodePtr pCur,xmlNodePtr pRoot);
+/*
+ * An entity REFERENCE's children as php answers them. libxml's re-homing
+ * CLEARS the raw link when a constructed reference is adopted -- and php's
+ * raw state stays cleared, which replaceChild's childless-false cell measures
+ * -- but php's READERS still resolve: `$ref->firstChild` answers the NEW
+ * document's declaration for the name, or the predefined five, or nothing.
+ */
+static xmlNodePtr DomRefChildren(xmlNodePtr pNode)
+{
+	if( pNode && pNode->type == XML_ENTITY_REF_NODE
+	 && pNode->children == 0 && pNode->doc ){
+		return (xmlNodePtr)xmlGetDocEntity(pNode->doc,pNode->name);
+	}
+	return pNode ? pNode->children : 0;
+}
 /*
  * Take an OWNERLESS subtree into the receiver's world, php's constructed-node
  * adoption: the libxml nodes get the receiver's document (none of their
@@ -2401,6 +2418,40 @@ DOM_METHOD(vm_builtin_DOMElement_construct)
 		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMElement::__construct");
 	}
 	return DomCtorInstall(pCtx,pNode);
+}
+/*
+ * The last three: a FRAGMENT takes nothing at all; a PROCESSING INSTRUCTION
+ * validates its target as a plain XML Name (`xml`, `XML` and `p:a` all pass --
+ * php never asks whether the target is reserved) and stores its data
+ * literally, NULL when omitted like the character-data three; an ENTITY
+ * REFERENCE validates its name and takes libxml's answer for the content: a
+ * PREDEFINED name (`amp`) arrives with the shared entity declaration as its
+ * child -- a STATIC libxml global, wrapped but never owned, which is why the
+ * constructor parks only the reference node itself on the limbo shell.
+ */
+DOM_METHOD(vm_builtin_DOMDocumentFragment_construct)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return DomCtorInstall(pCtx,xmlNewDocFragment(0));
+}
+DOM_METHOD(vm_builtin_DOMProcessingInstruction_construct)
+{
+	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	const char *zData = nArg > 1 ? ph7_value_to_string(apArg[1],0) : 0;
+	if( zName[0] == 0 || xmlValidateName((const xmlChar *)zName,0) != 0 ){
+		return DomThrow(pCtx,DOM_ERR_INVALID_CHAR);
+	}
+	return DomCtorInstall(pCtx,
+		xmlNewPI((const xmlChar *)zName,(const xmlChar *)zData));
+}
+DOM_METHOD(vm_builtin_DOMEntityReference_construct)
+{
+	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	if( zName[0] == 0 || xmlValidateName((const xmlChar *)zName,0) != 0 ){
+		return DomThrow(pCtx,DOM_ERR_INVALID_CHAR);
+	}
+	return DomCtorInstall(pCtx,xmlNewReference(0,(const xmlChar *)zName));
 }
 /*
  * DOMAttr::__construct(string $name, string $value = '')
@@ -6458,9 +6509,13 @@ static int DomNodeProp(ph7_context *pCtx,const char *zName)
 	}else if( DomNameIs(zName,"parentNode") ){
 		DomResultNodeOf(pCtx,pNd,pNode ? pNode->parent : 0);
 	}else if( DomNameIs(zName,"firstChild") ){
-		DomResultNodeOf(pCtx,pNd,pNode ? pNode->children : 0);
+		/* Through the entity-reference resolver: an ADOPTED constructed
+		 * reference's raw children are cleared, and php's reader answers the
+		 * document's declaration anyway. */
+		DomResultNodeOf(pCtx,pNd,DomRefChildren(pNode));
 	}else if( DomNameIs(zName,"lastChild") ){
-		DomResultNodeOf(pCtx,pNd,pNode ? pNode->last : 0);
+		DomResultNodeOf(pCtx,pNd,pNode && pNode->last == 0 ? DomRefChildren(pNode)
+			: (pNode ? pNode->last : 0));
 	}else if( DomNameIs(zName,"nextSibling") ){
 		DomResultNodeOf(pCtx,pNd,pNode ? pNode->next : 0);
 	}else if( DomNameIs(zName,"previousSibling") ){
@@ -7393,6 +7448,12 @@ DOM_METHOD(vm_builtin_DOMDocumentFragment_appendXML)
 		return PH7_OK;
 	}
 	pFrag = (xmlNodePtr)pNd->pNode;
+	if( DomNodeReadOnly(pFrag) ){
+		/* A CONSTRUCTED fragment -- `new DOMDocumentFragment()` -- refuses
+		 * this door the way every child-list door refuses an ownerless
+		 * receiver, where its append() takes the same chunk's nodes. */
+		return DomThrow(pCtx,DOM_ERR_NO_MOD);
+	}
 	nMark = PH7_LibxmlCaptureBegin(pCtx->pVm);
 	rc = xmlParseBalancedChunkMemory(pFrag->doc,0,0,0,(const xmlChar *)zXml,&pList);
 	PH7_LibxmlCaptureEnd(pCtx->pVm,nMark,"DOMDocumentFragment::appendXML");
@@ -7732,12 +7793,16 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMCharacterData_set },
 	};
 	static const PH7_NativeMethodDef aPiMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "string $name, string $value = ''", "",
+		  vm_builtin_DOMProcessingInstruction_construct },
 		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMProcessingInstruction_get },
 		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMProcessingInstruction_isset },
 		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",
 		  vm_builtin_DOMProcessingInstruction_set },
 	};
 	static const PH7_NativeMethodDef aFragMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "", "",
+		  vm_builtin_DOMDocumentFragment_construct },
 		{ "appendXML", PH7_MOD_PUBLIC, "string $data", "@bool",
 		  vm_builtin_DOMDocumentFragment_appendXML },
 		{ "append",          PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_append },
@@ -7760,6 +7825,10 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMText_get },
 		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMText_isset },
 		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMText_set },
+	};
+	static const PH7_NativeMethodDef aEntRefMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "string $name", "",
+		  vm_builtin_DOMEntityReference_construct },
 	};
 	/* The comment and CDATA constructors -- the only method either class
 	 * declares of its own; php's CDATA data is REQUIRED where the other two
@@ -7890,7 +7959,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "DOMDocumentFragment", "DOMNode", "DOMParentNode", PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aFragMethod, SX_ARRAYSIZE(aFragMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMEntityReference", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
-		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		  aEntRefMethod, SX_ARRAYSIZE(aEntRefMethod), 0, 0, 0, 0, 0, 0, 0 },
 		/* php's own two: IteratorAggregate (NOT Iterator -- the chunk had the
 		 * list carry its own cursor) and Countable. */
 		{ "DOMNodeList", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
