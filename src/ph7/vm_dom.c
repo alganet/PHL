@@ -8052,6 +8052,43 @@ static int DomThrowWrite(ph7_context *pCtx,int iCode)
 	SyBlobRelease(&sFn);
 	return rc;
 }
+/*
+ * The node kinds a value write REACHES.
+ *
+ * php's two writers do not accept the same list, and everything off it is a
+ * silent NO-OP -- the write is accepted and the node is left exactly as it was.
+ * PHL had one exclusion, the document, and wrote to everything else, which cost
+ * three answers and one crash:
+ *
+ *   - an ENTITY REFERENCE's children are the entity DECLARATION's, shared by
+ *     every reference to it and owned by the DTD; dropping them freed nodes the
+ *     document frees again at teardown -- `$ref->nodeValue = 'x'` aborted the
+ *     process on a double free;
+ *   - a DOCTYPE's children are the declarations of the internal SUBSET, so
+ *     `$doc->doctype->nodeValue = 'x'` silently emptied `<!DOCTYPE r [ ... ]>`
+ *     of every entity, element and attribute declaration in it;
+ *   - a FRAGMENT is emptied by `textContent` and left alone by `nodeValue`,
+ *     which is the one kind where the two writers really do disagree.
+ */
+static int DomValueWritable(xmlNodePtr pNode,int bValue)
+{
+	if( pNode == 0 ){
+		return 0;
+	}
+	switch( pNode->type ){
+	case XML_ELEMENT_NODE:
+	case XML_ATTRIBUTE_NODE:
+	case XML_TEXT_NODE:
+	case XML_COMMENT_NODE:
+	case XML_CDATA_SECTION_NODE:
+	case XML_PI_NODE:
+		return 1;
+	case XML_DOCUMENT_FRAG_NODE:
+		return !bValue;
+	default:
+		return 0;
+	}
+}
 /* DOMNode's three writable properties. */
 static int DomSetNodeProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)
 {
@@ -8060,12 +8097,18 @@ static int DomSetNodeProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,in
 	int bValue = DomNameIs(zName,"nodeValue");
 	SyBlob sVal;
 	if( bValue || DomNameIs(zName,"textContent") ){
+		/* php's one REFUSAL among the no-ops, and it answers before the type
+		 * check does: `$ref->textContent = []` is the readonly Error where
+		 * `$ref->nodeValue = []` is the TypeError. Left unwritten here, the
+		 * accessor macro falls through to it. */
+		if( !bValue && pNode && pNode->type == XML_ENTITY_REF_NODE ){
+			return DOM_SET_UNKNOWN;
+		}
 		if( DomWriteText(pCtx,"DOMNode",bValue ? "nodeValue" : "textContent",
 			bValue ? "?string" : "string",pVal,&sVal,pRc) == 0 ){
 			return DOM_SET_DONE;
 		}
-		/* php leaves a DOCUMENT alone: its nodeValue is null and stays null. */
-		if( pNode && pNode->type != XML_DOCUMENT_NODE && pNode->type != XML_HTML_DOCUMENT_NODE ){
+		if( DomValueWritable(pNode,bValue) ){
 			DomSetContent(pCtx,pNd->pShell,pNode,(const char *)SyBlobData(&sVal),bValue);
 		}
 		SyBlobRelease(&sVal);
