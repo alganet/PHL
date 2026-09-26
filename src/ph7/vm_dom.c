@@ -298,6 +298,64 @@ static void DomNodeName(ph7_context *pCtx,xmlNodePtr pNode)
 		break;
 	}
 }
+/*
+ * The three names a namespaced document reads on every node.
+ *
+ * `namespaceURI` and `localName` are php's `?string` -- null for a node that
+ * cannot carry a name in a namespace at all (a text node, a comment, a PI, the
+ * document itself) -- while `prefix` is a plain `string` that answers "" there,
+ * which is why one of the three cannot be derived from the other two.
+ *
+ * All three are gated on the node KIND before anything is read, which is not
+ * only php's rule but a memory-safety one: only element and attribute nodes are
+ * xmlNode/xmlAttr-shaped, and `->ns` on an xmlDoc aliases its `compression`
+ * int, on an xmlDtd its notation table.  Reading it there and dereferencing the
+ * result is a SIGSEGV out of `$doc->namespaceURI` -- an ordinary property read.
+ */
+static int DomHasNsSlot(xmlNodePtr pNode)
+{
+	return pNode != 0
+		&& (pNode->type == XML_ELEMENT_NODE || pNode->type == XML_ATTRIBUTE_NODE);
+}
+static void DomNamespaceUri(ph7_context *pCtx,xmlNodePtr pNode)
+{
+	if( DomHasNsSlot(pNode) && pNode->ns && pNode->ns->href ){
+		ph7_result_string(pCtx,(const char *)pNode->ns->href,-1);
+	}else{
+		ph7_result_null(pCtx);
+	}
+}
+static void DomPrefix(ph7_context *pCtx,xmlNodePtr pNode)
+{
+	if( DomHasNsSlot(pNode) && pNode->ns && pNode->ns->prefix ){
+		ph7_result_string(pCtx,(const char *)pNode->ns->prefix,-1);
+	}else{
+		ph7_result_string(pCtx,"",0);
+	}
+}
+static void DomLocalName(ph7_context *pCtx,xmlNodePtr pNode)
+{
+	if( DomHasNsSlot(pNode) ){
+		ph7_result_string(pCtx,pNode->name ? (const char *)pNode->name : "",-1);
+	}else{
+		ph7_result_null(pCtx);
+	}
+}
+/* php's `isConnected`: is the node's root the DOCUMENT? A node built by a
+ * create* factory carries the document as its `ownerDocument` from birth, so
+ * that property cannot answer this and a program testing it reads true for a
+ * node it has not appended yet. */
+static int DomIsConnected(xmlNodePtr pNode)
+{
+	xmlNodePtr pRoot = pNode;
+	if( pRoot == 0 ){
+		return 0;
+	}
+	while( pRoot->parent ){
+		pRoot = pRoot->parent;
+	}
+	return pRoot->type == XML_DOCUMENT_NODE || pRoot->type == XML_HTML_DOCUMENT_NODE;
+}
 /* php's nodeValue: NULL for a document, the text content otherwise */
 static void DomNodeValue(ph7_context *pCtx,xmlNodePtr pNode)
 {
@@ -524,6 +582,75 @@ DOM_METHOD(vm_builtin_DOMNode_isSameNode)
 	phl_domnode *pNd = DomThisNode(pCtx);
 	phl_domnode *pOther = nArg > 0 ? DomObjArg(apArg[0]) : 0;
 	ph7_result_bool(pCtx,pNd != 0 && pOther != 0 && pNd->pNode == pOther->pNode);
+	return PH7_OK;
+}
+
+/* ===== Namespaces ===== */
+
+/*
+ * Where a namespace lookup starts. php resolves a DOCUMENT to its root element
+ * first -- so `$doc->lookupPrefix($uri)` answers what the document element
+ * would, and an empty document answers nothing at all -- and starts from the
+ * node itself for everything else, because libxml's own search walks up the
+ * parent chain (which is how a text node or a PI reaches its element's
+ * declarations, and how a detached one reaches none).
+ */
+static xmlNodePtr DomNsAnchor(xmlNodePtr pNode)
+{
+	if( pNode && (pNode->type == XML_DOCUMENT_NODE || pNode->type == XML_HTML_DOCUMENT_NODE) ){
+		return (xmlNodePtr)xmlDocGetRootElement((xmlDocPtr)pNode);
+	}
+	return pNode;
+}
+/* A `?string` argument: its bytes, or NULL for a null one. */
+static const char * DomArgStrOrNull(int nArg,ph7_value **apArg,int iArg)
+{
+	if( iArg >= nArg || ph7_value_is_null(apArg[iArg]) ){
+		return 0;
+	}
+	return ph7_value_to_string(apArg[iArg],0);
+}
+/* DOMNode::lookupNamespaceURI(?string $prefix): ?string */
+DOM_METHOD(vm_builtin_DOMNode_lookupNamespaceURI)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlNodePtr pNode = DomNsAnchor(pNd ? (xmlNodePtr)pNd->pNode : 0);
+	const char *zPrefix = DomArgStrOrNull(nArg,apArg,0);
+	xmlNsPtr pNs = pNode ? xmlSearchNs(pNode->doc,pNode,(const xmlChar *)zPrefix) : 0;
+	if( pNs && pNs->href ){
+		ph7_result_string(pCtx,(const char *)pNs->href,-1);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+/* DOMNode::lookupPrefix(string $namespace): ?string -- the DEFAULT namespace has
+ * no prefix, so a document whose only declaration is `xmlns="..."` answers null
+ * for the very URI lookupNamespaceURI(null) hands back. */
+DOM_METHOD(vm_builtin_DOMNode_lookupPrefix)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlNodePtr pNode = DomNsAnchor(pNd ? (xmlNodePtr)pNd->pNode : 0);
+	const char *zUri = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	xmlNsPtr pNs = (pNode && zUri[0]) ? xmlSearchNsByHref(pNode->doc,pNode,(const xmlChar *)zUri) : 0;
+	if( pNs && pNs->prefix ){
+		ph7_result_string(pCtx,(const char *)pNs->prefix,-1);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+/* DOMNode::isDefaultNamespace(string $namespace): bool -- php tests the URI
+ * against the default declaration in scope, and answers FALSE for the empty
+ * string rather than "this node is in no namespace". */
+DOM_METHOD(vm_builtin_DOMNode_isDefaultNamespace)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlNodePtr pNode = DomNsAnchor(pNd ? (xmlNodePtr)pNd->pNode : 0);
+	const char *zUri = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	xmlNsPtr pNs = (pNode && zUri[0]) ? xmlSearchNs(pNode->doc,pNode,0) : 0;
+	ph7_result_bool(pCtx,pNs != 0 && pNs->href != 0
+		&& xmlStrEqual(pNs->href,(const xmlChar *)zUri));
 	return PH7_OK;
 }
 
@@ -1140,16 +1267,15 @@ DOM_METHOD(vm_builtin_DOMNodeList_item)
 	int iIndex = nArg > 0 ? ph7_value_to_int(apArg[0]) : 0;
 	return DomResultWrap(pCtx,DomListItem(pCtx->pVm,PH7_ContextThis(pCtx),iIndex));
 }
-/* DOMNodeList::__get($name) -- php exposes `length` as a virtual property. */
-DOM_METHOD(vm_builtin_DOMNodeList_get)
+/* php exposes `length` on both collections as a virtual property; the
+ * DOM_PROP_ACCESSORS pair below turns each recognizer into __get + __isset. */
+static int DomListProp(ph7_context *pCtx,const char *zName)
 {
-	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
 	if( DomNameIs(zName,"length") ){
 		ph7_result_int(pCtx,DomListCount(PH7_ContextThis(pCtx)));
-	}else{
-		ph7_result_null(pCtx);
+		return 1;
 	}
-	return PH7_OK;
+	return 0;
 }
 /*
  * DOMNamedNodeMap: an element's attributes, keyed by name.
@@ -1198,15 +1324,13 @@ DOM_METHOD(vm_builtin_DOMNamedNodeMap_getNamedItem)
 	return DomResultWrap(pCtx,DomWrap(pCtx->pVm,PH7_NativeAttrObj(pThis,DOM_DOC),
 		pOwner->pShell,(xmlNodePtr)pAttr));
 }
-DOM_METHOD(vm_builtin_DOMNamedNodeMap_get)
+static int DomMapProp(ph7_context *pCtx,const char *zName)
 {
-	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
 	if( DomNameIs(zName,"length") ){
 		ph7_result_int(pCtx,DomMapCount(PH7_ContextThis(pCtx)));
-	}else{
-		ph7_result_null(pCtx);
+		return 1;
 	}
-	return PH7_OK;
+	return 0;
 }
 /*
  * Both collections are IteratorAggregates, as php's are -- the chunk made
@@ -1483,6 +1607,21 @@ static int DomNodeProp(ph7_context *pCtx,const char *zName)
 		/* A document has no owner document, which is also why DomWrap answers
 		 * the document itself rather than a second wrapper for it. */
 		DomResultWrap(pCtx,bIsDoc ? 0 : pDoc);
+	}else if( DomNameIs(zName,"parentElement") ){
+		/* php's `?DOMElement`: the parent when it IS an element, so a root
+		 * element (whose parent is the document) answers null. An ATTRIBUTE
+		 * answers its element -- libxml parents an attribute, and php reports
+		 * that parent from both this property and `parentNode`. */
+		xmlNodePtr pPar = pNode ? pNode->parent : 0;
+		DomResultNodeOf(pCtx,pNd,(pPar && pPar->type == XML_ELEMENT_NODE) ? pPar : 0);
+	}else if( DomNameIs(zName,"namespaceURI") ){
+		DomNamespaceUri(pCtx,pNode);
+	}else if( DomNameIs(zName,"prefix") ){
+		DomPrefix(pCtx,pNode);
+	}else if( DomNameIs(zName,"localName") ){
+		DomLocalName(pCtx,pNode);
+	}else if( DomNameIs(zName,"isConnected") ){
+		ph7_result_bool(pCtx,DomIsConnected(pNode));
 	}else if( DomNameIs(zName,"childElementCount") ){
 		ph7_result_int(pCtx,DomChildCount(pNode,1));
 	}else if( DomNameIs(zName,"childNodes") ){
@@ -1512,63 +1651,93 @@ static const char * DomGetName(int nArg,ph7_value **apArg)
 {
 	return nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
 }
-DOM_METHOD(vm_builtin_DOMNode_get)
+/*
+ * The __get/__isset pair every DOM class carries.
+ *
+ * Both ride ONE recognizer per class -- the DomProp_X readers below, which
+ * answer 1 when the name is a property of that class and have written its
+ * value, and 0 when it is not.  php models these as real (virtual) properties,
+ * so the 0 case is its `Undefined property` WARNING rather than a silent null,
+ * and `isset()` is php's own has_property: the name has to exist AND read back
+ * non-null (which is what makes `isset($n->nextSibling)` false on a last child
+ * while `isset($n->nodeName)` is true).  Without the __isset half every
+ * `isset($doc->documentElement)` and every `$node->attributes ?? []` answered
+ * as though the whole surface were absent.
+ */
+static int DomUndefProp(ph7_context *pCtx,const char *zName)
 {
-	if( DomNodeProp(pCtx,DomGetName(nArg,apArg)) == 0 ){
-		ph7_result_null(pCtx);
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_result_null(pCtx);
+	if( pThis ){
+		/* php names the INSTANCE's class, so a userland subclass of DOMElement
+		 * is reported under its own name. */
+		SyBlob sMsg;
+		SyString sName;
+		SyStringInitFromBuf(&sName,zName,SyStrlen(zName));
+		SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
+		SyBlobFormat(&sMsg,"Undefined property: %z::$%z",&pThis->pClass->sName,&sName);
+		SyBlobNullAppend(&sMsg);
+		PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));
+		SyBlobRelease(&sMsg);
 	}
 	return PH7_OK;
 }
+#define DOM_PROP_ACCESSORS(CLS,READER)                                          \
+	DOM_METHOD(vm_builtin_##CLS##_get)                                          \
+	{                                                                           \
+		const char *zName = DomGetName(nArg,apArg);                             \
+		if( READER(pCtx,zName) == 0 ){                                          \
+			return DomUndefProp(pCtx,zName);                                    \
+		}                                                                       \
+		return PH7_OK;                                                          \
+	}                                                                           \
+	DOM_METHOD(vm_builtin_##CLS##_isset)                                        \
+	{                                                                           \
+		int bKnown = READER(pCtx,DomGetName(nArg,apArg)) != 0;                  \
+		int bNull = (pCtx->pRet->iFlags & MEMOBJ_NULL) != 0;                    \
+		ph7_result_bool(pCtx,bKnown && !bNull);                                 \
+		return PH7_OK;                                                          \
+	}
 /* DOMDocument adds documentElement. */
-DOM_METHOD(vm_builtin_DOMDocument_get)
+static int DomDocProp(ph7_context *pCtx,const char *zName)
 {
-	const char *zName = DomGetName(nArg,apArg);
 	phl_domnode *pNd;
 	if( DomNameIs(zName,"documentElement") ){
 		pNd = DomThisNode(pCtx);
-		return DomResultNodeOf(pCtx,pNd,pNd ? xmlDocGetRootElement((xmlDocPtr)pNd->pNode) : 0);
+		DomResultNodeOf(pCtx,pNd,pNd ? xmlDocGetRootElement((xmlDocPtr)pNd->pNode) : 0);
+		return 1;
 	}
-	if( DomNodeProp(pCtx,zName) == 0 ){
-		ph7_result_null(pCtx);
-	}
-	return PH7_OK;
+	return DomNodeProp(pCtx,zName);
 }
 /* DOMElement adds tagName. */
-DOM_METHOD(vm_builtin_DOMElement_get)
+static int DomElemProp(ph7_context *pCtx,const char *zName)
 {
-	const char *zName = DomGetName(nArg,apArg);
 	phl_domnode *pNd;
 	if( DomNameIs(zName,"tagName") ){
 		pNd = DomThisNode(pCtx);
 		DomNodeName(pCtx,pNd ? (xmlNodePtr)pNd->pNode : 0);
-		return PH7_OK;
+		return 1;
 	}
-	if( DomNodeProp(pCtx,zName) == 0 ){
-		ph7_result_null(pCtx);
-	}
-	return PH7_OK;
+	return DomNodeProp(pCtx,zName);
 }
 /* DOMAttr adds name/value/ownerElement. */
-DOM_METHOD(vm_builtin_DOMAttr_get)
+static int DomAttrProp(ph7_context *pCtx,const char *zName)
 {
-	const char *zName = DomGetName(nArg,apArg);
 	phl_domnode *pNd = DomThisNode(pCtx);
 	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
 	if( DomNameIs(zName,"name") ){
 		DomNodeName(pCtx,pNode);
-		return PH7_OK;
+		return 1;
 	}
 	if( DomNameIs(zName,"value") ){
 		DomNodeValue(pCtx,pNode);
-		return PH7_OK;
+		return 1;
 	}
 	if( DomNameIs(zName,"ownerElement") ){
-		return DomResultNodeOf(pCtx,pNd,pNode ? pNode->parent : 0);
+		DomResultNodeOf(pCtx,pNd,pNode ? pNode->parent : 0);
+		return 1;
 	}
-	if( DomNodeProp(pCtx,zName) == 0 ){
-		ph7_result_null(pCtx);
-	}
-	return PH7_OK;
+	return DomNodeProp(pCtx,zName);
 }
 /* DOMCharacterData adds data/length; DOMText adds wholeText on top of those. */
 static int DomCharDataProp(ph7_context *pCtx,const char *zName)
@@ -1592,28 +1761,31 @@ static int DomCharDataProp(ph7_context *pCtx,const char *zName)
 	}
 	return 0;
 }
-DOM_METHOD(vm_builtin_DOMCharacterData_get)
+static int DomCharProp(ph7_context *pCtx,const char *zName)
 {
-	const char *zName = DomGetName(nArg,apArg);
-	if( DomCharDataProp(pCtx,zName) == 0 && DomNodeProp(pCtx,zName) == 0 ){
-		ph7_result_null(pCtx);
+	if( DomCharDataProp(pCtx,zName) ){
+		return 1;
 	}
-	return PH7_OK;
+	return DomNodeProp(pCtx,zName);
 }
-DOM_METHOD(vm_builtin_DOMText_get)
+static int DomTextProp(ph7_context *pCtx,const char *zName)
 {
-	const char *zName = DomGetName(nArg,apArg);
 	phl_domnode *pNd;
 	if( DomNameIs(zName,"wholeText") ){
 		pNd = DomThisNode(pCtx);
 		DomNodeValue(pCtx,pNd ? (xmlNodePtr)pNd->pNode : 0);
-		return PH7_OK;
+		return 1;
 	}
-	if( DomCharDataProp(pCtx,zName) == 0 && DomNodeProp(pCtx,zName) == 0 ){
-		ph7_result_null(pCtx);
-	}
-	return PH7_OK;
+	return DomCharProp(pCtx,zName);
 }
+DOM_PROP_ACCESSORS(DOMNodeList,DomListProp)
+DOM_PROP_ACCESSORS(DOMNamedNodeMap,DomMapProp)
+DOM_PROP_ACCESSORS(DOMNode,DomNodeProp)
+DOM_PROP_ACCESSORS(DOMDocument,DomDocProp)
+DOM_PROP_ACCESSORS(DOMElement,DomElemProp)
+DOM_PROP_ACCESSORS(DOMAttr,DomAttrProp)
+DOM_PROP_ACCESSORS(DOMCharacterData,DomCharProp)
+DOM_PROP_ACCESSORS(DOMText,DomTextProp)
 /* DOMDocument::getElementsByTagName / DOMElement::getElementsByTagName --
  * php declares it on those two, not on DOMNode, so both specs name it. */
 DOM_METHOD(vm_builtin_Dom_getElementsByTagName)
@@ -1664,7 +1836,14 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "C14N",           PH7_MOD_PUBLIC,
 		  "bool $exclusive = false, bool $withComments = false, ?array $xpath = null, "
 		  "?array $nsPrefixes = null", "@string|false", vm_builtin_DOMNode_C14N },
+		{ "lookupNamespaceURI", PH7_MOD_PUBLIC, "?string $prefix", "@?string",
+		  vm_builtin_DOMNode_lookupNamespaceURI },
+		{ "lookupPrefix",   PH7_MOD_PUBLIC, "string $namespace", "@?string",
+		  vm_builtin_DOMNode_lookupPrefix },
+		{ "isDefaultNamespace", PH7_MOD_PUBLIC, "string $namespace", "@bool",
+		  vm_builtin_DOMNode_isDefaultNamespace },
 		{ "__get",          PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNode_get },
+		{ "__isset",        PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNode_isset },
 	};
 	static const PH7_NativePropDef aDocProp[] = {
 		/* php models both as VIRTUAL hooked properties reading libxml state, so it
@@ -1697,6 +1876,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "getElementsByTagName", PH7_MOD_PUBLIC, "string $qualifiedName", "@DOMNodeList",
 		  vm_builtin_Dom_getElementsByTagName },
 		{ "__get",                PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMDocument_get },
+		{ "__isset",              PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMDocument_isset },
 	};
 	static const PH7_NativeMethodDef aElemMethod[] = {
 		{ "getAttribute",         PH7_MOD_PUBLIC, "string $qualifiedName", "@string",
@@ -1715,15 +1895,19 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "getElementsByTagName", PH7_MOD_PUBLIC, "string $qualifiedName", "@DOMNodeList",
 		  vm_builtin_Dom_getElementsByTagName },
 		{ "__get",                PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMElement_get },
+		{ "__isset",              PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMElement_isset },
 	};
 	static const PH7_NativeMethodDef aAttrMethod[] = {
-		{ "__get", PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMAttr_get },
+		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMAttr_get },
+		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMAttr_isset },
 	};
 	static const PH7_NativeMethodDef aCharMethod[] = {
-		{ "__get", PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMCharacterData_get },
+		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMCharacterData_get },
+		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMCharacterData_isset },
 	};
 	static const PH7_NativeMethodDef aTextMethod[] = {
-		{ "__get", PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMText_get },
+		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMText_get },
+		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMText_isset },
 	};
 	/* DOMNodeList and DOMNamedNodeMap share a slot layout: what a live view is OF
 	 * ($__owner), the document to wrap results against ($__doc), and -- for the
@@ -1744,6 +1928,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "item",        PH7_MOD_PUBLIC, "int $index", "", vm_builtin_DOMNodeList_item },
 		{ "getIterator", PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_Dom_getIterator },
 		{ "__get",       PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNodeList_get },
+		{ "__isset",     PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNodeList_isset },
 	};
 	static const PH7_NativeMethodDef aMapMethod[] = {
 		{ "count",        PH7_MOD_PUBLIC, "", "@int", vm_builtin_DOMNamedNodeMap_count },
@@ -1752,6 +1937,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMNamedNodeMap_getNamedItem },
 		{ "getIterator",  PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_Dom_getIterator },
 		{ "__get",        PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNamedNodeMap_get },
+		{ "__isset",      PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNamedNodeMap_isset },
 	};
 	static const PH7_NativePropDef aXPathProp[] = {
 		/* Written by the constructor, which is why the slot can carry php's
