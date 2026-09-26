@@ -188,6 +188,15 @@ PH7_PRIVATE phl_pdo_stmt * PH7_PdoNewStmt(phl_pdo *pConn)
 	SyZero(pSt,sizeof(phl_pdo_stmt));
 	pSt->pConn = pConn;
 	pSt->iFetchMode = pConn->iDefaultFetch;
+	pSt->iErrState = PDO_ERR_NONE;
+	/* Retain the PDO object. `$db->query(...)` on a temporary connection hands
+	 * back a statement that outlives it, and php keeps the connection alive
+	 * through exactly this reference -- without it the database closes while
+	 * the statement is still being read. */
+	pSt->pConnObj = pConn->pOwner;
+	if( pSt->pConnObj ){
+		pSt->pConnObj->iRef++;
+	}
 	pSt->pNext = pConn->pStmts;
 	pConn->pStmts = pSt;
 	return pSt;
@@ -214,6 +223,12 @@ PH7_PRIVATE void PH7_PdoFreeStmt(phl_pdo_stmt *pSt)
 {
 	PdoBindsClear(pSt);
 	PH7_PdoSqliteFinalize(pSt);
+	if( pSt->pConnObj ){
+		/* drop the reference taken at creation; the connection may go now */
+		ph7_class_instance *pObj = pSt->pConnObj;
+		pSt->pConnObj = 0;
+		PH7_ClassInstanceUnref(pObj);
+	}
 }
 /* Finalize and free every statement of one connection. */
 static void PdoStmtSweep(phl_pdo *pConn)
@@ -467,6 +482,52 @@ PH7_PRIVATE sxi32 PH7_PdoRaise(ph7_context *pCtx,phl_pdo *pConn,const char *zFn)
 	}else{
 		rc = PdoThrowException(pCtx,(const char *)SyBlobData(&sMsg),pConn->zSqlState,
 			pConn->iDrvCode,FALSE,pConn->zDrvMsg,3);
+	}
+	SyBlobRelease(&sMsg);
+	return rc;
+}
+/*
+ * The same two raisers, for a failure that belongs to a STATEMENT. They differ
+ * from the connection's only in which object's SQLSTATE the message carries --
+ * the driver detail under it is shared -- and in leaving the connection's own
+ * state alone, which is what lets `$db->errorCode()` read "00000" while
+ * `$stmt->errorCode()` reports the failure.
+ */
+PH7_PRIVATE sxi32 PH7_PdoRaiseStmt(ph7_context *pCtx,phl_pdo_stmt *pSt,const char *zFn)
+{
+	SyBlob sMsg;
+	sxi32 rc = PH7_OK;
+	phl_pdo *pConn = pSt->pConn;
+	if( pConn->iErrMode == PDO_ERRMODE_SILENT ){
+		return PH7_OK;
+	}
+	SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
+	SyBlobFormat(&sMsg,"SQLSTATE[%s]: %s: %d %s",pSt->zSqlState,
+		PdoStateDescription(pSt->zSqlState),pConn->iDrvCode,
+		pConn->zDrvMsg ? pConn->zDrvMsg : "");
+	SyBlobAppend(&sMsg,"",1);
+	if( pConn->iErrMode == PDO_ERRMODE_WARNING ){
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s",zFn,(const char *)SyBlobData(&sMsg));
+	}else{
+		rc = PdoThrowException(pCtx,(const char *)SyBlobData(&sMsg),pSt->zSqlState,
+			pConn->iDrvCode,FALSE,pConn->zDrvMsg,3);
+	}
+	SyBlobRelease(&sMsg);
+	return rc;
+}
+PH7_PRIVATE sxi32 PH7_PdoRaiseImplStmt(ph7_context *pCtx,phl_pdo_stmt *pSt,const char *zFn,
+	const char *zSqlState,const char *zMsg)
+{
+	SyBlob sMsg;
+	sxi32 rc = PH7_OK;
+	SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
+	SyBlobFormat(&sMsg,"SQLSTATE[%s]: %s: %s",zSqlState,
+		PdoStateDescription(zSqlState),zMsg);
+	SyBlobAppend(&sMsg,"",1);
+	if( pSt->pConn->iErrMode == PDO_ERRMODE_EXCEPTION ){
+		rc = PdoThrowException(pCtx,(const char *)SyBlobData(&sMsg),zSqlState,0,FALSE,0,2);
+	}else{
+		PH7_VmThrowWarningFmt(pCtx->pVm,"%s(): %s",zFn,(const char *)SyBlobData(&sMsg));
 	}
 	SyBlobRelease(&sMsg);
 	return rc;
@@ -833,31 +894,32 @@ static int vm_builtin_PDO_errorCode(ph7_context *pCtx,int nArg,ph7_value **apArg
 	}
 	return PH7_OK;
 }
-static int vm_builtin_PDO_errorInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
+/*
+ * The three cells errorInfo() answers, for a connection or a statement alike.
+ * The first is the OBJECT's own SQLSTATE; the other two are the DRIVER's last
+ * code and message, which are shared and are reported whenever the object's
+ * own state is not a success -- so a statement that has never run shows the
+ * previous statement's driver detail beside an empty state, exactly as php
+ * does.
+ */
+static int PdoBuildErrorInfo(ph7_context *pCtx,phl_pdo *pConn,int iErrState,
+	const char *zSqlState)
 {
-	phl_pdo *pConn = PdoOfInstance(PH7_ContextThis(pCtx));
-	ph7_value *pArray,*pCell;
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	if( pConn == 0 ){
-		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");
-	}
-	pArray = ph7_context_new_array(pCtx);
-	pCell = ph7_context_new_scalar(pCtx);
+	ph7_value *pArray = ph7_context_new_array(pCtx);
+	ph7_value *pCell = ph7_context_new_scalar(pCtx);
 	if( pArray == 0 || pCell == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
-	if( pConn->iErrState == PDO_ERR_NONE ){
+	if( iErrState == PDO_ERR_NONE ){
 		ph7_value_string(pCell,"",0);
 	}else{
-		ph7_value_string(pCell,pConn->zSqlState,(int)SyStrlen(pConn->zSqlState));
+		ph7_value_string(pCell,zSqlState,(int)SyStrlen(zSqlState));
 	}
 	ph7_array_add_elem(pArray,0,pCell);
-	/* the driver's own code and message are absent unless it FAILED: a
-	 * successful operation reports [state, null, null] */
-	if( pConn->iErrState == PDO_ERR_FAILED && !pConn->bNoDrvDetail ){
+	if( iErrState != PDO_ERR_OK && pConn->iDrvCode != 0 && !pConn->bNoDrvDetail ){
 		ph7_value_int64(pCell,(ph7_int64)pConn->iDrvCode);
 		ph7_array_add_elem(pArray,0,pCell);
+		PH7_MemObjRelease(pCell);
 		if( pConn->zDrvMsg ){
 			ph7_value_string(pCell,pConn->zDrvMsg,(int)SyStrlen(pConn->zDrvMsg));
 		}else{
@@ -871,6 +933,33 @@ static int vm_builtin_PDO_errorInfo(ph7_context *pCtx,int nArg,ph7_value **apArg
 	}
 	ph7_result_value(pCtx,pArray);
 	return PH7_OK;
+}
+/* A statement's own state, moved to "the last thing succeeded". */
+static void PdoStmtOk(phl_pdo_stmt *pSt)
+{
+	pSt->iErrState = PDO_ERR_OK;
+	SyMemcpy("00000",pSt->zSqlState,sizeof("00000"));
+}
+/* A statement's own state, moved to a failure. The driver detail (if any) is
+ * already on the connection, where both objects read it from. */
+static void PdoStmtFailed(phl_pdo_stmt *pSt,const char *zSqlState)
+{
+	sxu32 n;
+	pSt->iErrState = PDO_ERR_FAILED;
+	for( n = 0 ; n < 5 && zSqlState[n] ; ++n ){
+		pSt->zSqlState[n] = zSqlState[n];
+	}
+	pSt->zSqlState[n] = 0;
+}
+static int vm_builtin_PDO_errorInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo *pConn = PdoOfInstance(PH7_ContextThis(pCtx));
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pConn == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");
+	}
+	return PdoBuildErrorInfo(pCtx,pConn,pConn->iErrState,pConn->zSqlState);
 }
 /*
  * PDO::lastInsertId(?string $name = null): string|false
@@ -899,11 +988,69 @@ static int vm_builtin_PDO_lastInsertId(ph7_context *pCtx,int nArg,ph7_value **ap
 /* ------------------------------------------------------------------------
  * Statements: running one, and reading its rows
  * ------------------------------------------------------------------------ */
-/* php's PDO::FETCH_* values, for the modes this slice answers. */
+/* php's PDO::FETCH_* values. */
 #define PDO_FETCH_DEFAULT 0
 #define PDO_FETCH_ASSOC   2
 #define PDO_FETCH_NUM     3
 #define PDO_FETCH_OBJ     5
+#define PDO_FETCH_NAMED  11
+
+/*
+ * A column NAME as the connection presents it: ATTR_CASE folds it, and php
+ * folds the name only -- never a value, and never a positional key.
+ */
+static void PdoColumnName(phl_pdo *pConn,const char *zName,SyBlob *pOut)
+{
+	sxu32 n;
+	sxu32 nName = SyStrlen(zName);
+	char *zBuf;
+	SyBlobReset(pOut);
+	SyBlobAppend(pOut,zName,nName);
+	/* the array setter takes a C STRING and no length, so the terminator is
+	 * part of the buffer and never part of the name */
+	SyBlobAppend(pOut,"",1);
+	if( pConn->iCase == PDO_CASE_NATURAL || nName < 1 ){
+		return;
+	}
+	zBuf = (char *)SyBlobData(pOut);
+	for( n = 0 ; n < nName ; ++n ){
+		zBuf[n] = (char)(pConn->iCase == PDO_CASE_UPPER
+			? SyToUpper(zBuf[n]) : SyToLower(zBuf[n]));
+	}
+}
+/*
+ * The two rewrites php applies to a fetched VALUE, in php's own order.
+ *
+ * ATTR_STRINGIFY_FETCHES turns everything the driver typed into a string --
+ * everything except a null, which stays null. ATTR_ORACLE_NULLS is the empty
+ * string and null trading places: NULL_EMPTY_STRING makes an empty string
+ * null, NULL_TO_STRING makes a null the empty string. Neither touches a string
+ * that merely LOOKS empty, so a single space survives both.
+ */
+static void PdoApplyValueMods(phl_pdo *pConn,ph7_value *pVal)
+{
+	if( pConn->bStringify && (pVal->iFlags & MEMOBJ_NULL) == 0 ){
+		int nByte = 0;
+		const char *zStr = ph7_value_to_string(pVal,&nByte);
+		SyBlob sTmp;
+		SyBlobInit(&sTmp,&pConn->pVm->sAllocator);
+		SyBlobAppend(&sTmp,zStr,(sxu32)nByte);
+		PH7_MemObjRelease(pVal);
+		ph7_value_string(pVal,(const char *)SyBlobData(&sTmp),(int)SyBlobLength(&sTmp));
+		SyBlobRelease(&sTmp);
+	}
+	if( pConn->iOracleNulls == PDO_NULL_EMPTY_STRING ){
+		if( (pVal->iFlags & MEMOBJ_STRING) && SyBlobLength(&pVal->sBlob) == 0 ){
+			PH7_MemObjRelease(pVal);
+			ph7_value_null(pVal);
+		}
+	}else if( pConn->iOracleNulls == PDO_NULL_TO_STRING ){
+		if( pVal->iFlags & MEMOBJ_NULL ){
+			PH7_MemObjRelease(pVal);
+			ph7_value_string(pVal,"",0);
+		}
+	}
+}
 
 /*
  * Step the cursor once and remember what happened. php's driver does this at
@@ -935,6 +1082,7 @@ static int PdoStmtRow(ph7_vm *pVm,phl_pdo_stmt *pSt,int iMode,ph7_value *pOut)
 {
 	int nCol,iCol;
 	ph7_value *pCell;
+	SyBlob sName;
 	if( !pSt->bRowPending ){
 		return 0;
 	}
@@ -943,19 +1091,46 @@ static int PdoStmtRow(ph7_vm *pVm,phl_pdo_stmt *pSt,int iMode,ph7_value *pOut)
 	if( pCell == 0 ){
 		return 0;
 	}
+	SyBlobInit(&sName,&pVm->sAllocator);
 	for( iCol = 0 ; iCol < nCol ; ++iCol ){
-		const char *zName = PH7_PdoSqliteColumnName(pSt,iCol);
+		PdoColumnName(pSt->pConn,PH7_PdoSqliteColumnName(pSt,iCol),&sName);
 		PH7_PdoSqliteColumnValue(pSt,iCol,pCell);
+		PdoApplyValueMods(pSt->pConn,pCell);
 		/* FETCH_BOTH is not a third shape: it is both of the other two, so
 		 * every column lands twice -- named, then positional. FETCH_OBJ builds
 		 * the named shape and is converted below. */
 		if( iMode != PDO_FETCH_NUM ){
-			ph7_array_add_strkey_elem(pOut,zName,pCell);
+			const char *zKey = (const char *)SyBlobData(&sName);
+			int nKey = (int)SyBlobLength(&sName) - 1;   /* less the terminator */
+			if( iMode == PDO_FETCH_NAMED ){
+				/* php's answer to two columns of one name: the first stays a
+				 * scalar, and a second occurrence turns the entry into a LIST
+				 * of every value under that name. Every other named mode keeps
+				 * the last one and drops the rest. */
+				ph7_value *pPrev = ph7_array_fetch(pOut,zKey,nKey);
+				if( pPrev == 0 ){
+					ph7_array_add_strkey_elem(pOut,zKey,pCell);
+				}else if( pPrev->iFlags & MEMOBJ_HASHMAP ){
+					ph7_array_add_elem(pPrev,0,pCell);
+				}else{
+					ph7_value *pList = ph7_new_array(pVm);
+					if( pList ){
+						ph7_array_add_elem(pList,0,pPrev);
+						ph7_array_add_elem(pList,0,pCell);
+						ph7_array_add_strkey_elem(pOut,zKey,pList);
+						ph7_release_value(pVm,pList);
+					}
+				}
+			}else{
+				ph7_array_add_strkey_elem(pOut,zKey,pCell);
+			}
 		}
-		if( iMode != PDO_FETCH_ASSOC && iMode != PDO_FETCH_OBJ ){
+		if( iMode != PDO_FETCH_ASSOC && iMode != PDO_FETCH_OBJ
+		 && iMode != PDO_FETCH_NAMED ){
 			ph7_array_add_elem(pOut,0,pCell);
 		}
 	}
+	SyBlobRelease(&sName);
 	ph7_release_value(pVm,pCell);
 	if( iMode == PDO_FETCH_OBJ ){
 		/* php's stdClass row is the associative one cast to an object -- one
@@ -987,6 +1162,7 @@ static int vm_builtin_PDOStatement_fetch(ph7_context *pCtx,int nArg,ph7_value **
 		iMode = pSt->iFetchMode;
 	}
 	if( !pSt->bRowPending ){
+		PdoStmtOk(pSt);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -1002,11 +1178,131 @@ static int vm_builtin_PDOStatement_fetch(ph7_context *pCtx,int nArg,ph7_value **
 	/* step ahead so the next call knows whether a row is waiting without
 	 * having to ask twice */
 	if( PdoStmtStep(pSt) < 0 ){
-		return PH7_PdoRaise(pCtx,pSt->pConn,"PDOStatement::fetch");
+		PdoStmtFailed(pSt,pSt->pConn->zSqlState);
+		return PH7_PdoRaiseStmt(pCtx,pSt,"PDOStatement::fetch");
 	}
+	PdoStmtOk(pSt);
 	return PH7_OK;
 }
-/* PDOStatement::columnCount(): int -- 0 for a statement that returns no rows. */
+/*
+ * PDOStatement::getColumnMeta(int $column): array|false
+ *
+ * php's eight keys. Two of them describe different things and are routinely
+ * confused: `sqlite:decl_type` is what the SCHEMA declares, and `native_type`
+ * is the type of the value in the CURRENT row -- so a TEXT column holding NULL
+ * reports "TEXT" and "null" at once, and an exhausted cursor reports "null"
+ * for every column.
+ *
+ * A column that does not exist answers false, and php reports the last STEP's
+ * result code as the driver error while doing so: that is why asking for
+ * column 99 while a row is up comes back as "100 another row available"
+ * instead of anything about the index.
+ */
+static int vm_builtin_PDOStatement_getColumnMeta(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo_stmt *pSt = PdoStmtOfInstance(PH7_ContextThis(pCtx));
+	ph7_value *pMeta,*pCell,*pFlags;
+	ph7_int64 iCol;
+	const char *zDecl,*zTable,*zName;
+	int iType,iPdoType;
+	const char *zNative;
+	SyBlob sName;
+	if( pSt == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDOStatement object is uninitialized");
+	}
+	iCol = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;
+	if( iCol < 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"PDOStatement::getColumnMeta(): Argument #1 ($column) must be greater than "
+			"or equal to 0");
+	}
+	if( iCol >= (ph7_int64)PH7_PdoSqliteColumnCount(pSt) ){
+		int iStep = PH7_PdoSqliteLastStepCode(pSt);
+		ph7_result_bool(pCtx,0);
+		/* php reports the last STEP's code as the driver detail here, which is
+		 * why an out-of-range index talks about a row being available */
+		PH7_PdoSetError(pSt->pConn,"HY000",iStep,
+			iStep == 100 ? "another row available" : "no more rows available");
+		pSt->pConn->iErrState = PDO_ERR_OK;   /* the CONNECTION did not fail */
+		SyMemcpy("00000",pSt->pConn->zSqlState,sizeof("00000"));
+		PdoStmtFailed(pSt,"HY000");
+		return PH7_PdoRaiseStmt(pCtx,pSt,"PDOStatement::getColumnMeta");
+	}
+	pMeta = ph7_context_new_array(pCtx);
+	pCell = ph7_context_new_scalar(pCtx);
+	pFlags = ph7_context_new_array(pCtx);
+	if( pMeta == 0 || pCell == 0 || pFlags == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	iType = pSt->bRowPending ? PH7_PdoSqliteColumnType(pSt,(int)iCol) : SQLITE_NULL;
+	switch( iType ){
+		case SQLITE_INTEGER: zNative = "integer"; iPdoType = PDO_PARAM_INT; break;
+		case SQLITE_FLOAT:   zNative = "double";  iPdoType = PDO_PARAM_STR; break;
+		case SQLITE_BLOB:    zNative = "blob";    iPdoType = PDO_PARAM_LOB; break;
+		case SQLITE_NULL:    zNative = "null";    iPdoType = PDO_PARAM_NULL; break;
+		default:             zNative = "string";  iPdoType = PDO_PARAM_STR; break;
+	}
+	PH7_MemObjRelease(pCell);
+	ph7_value_string(pCell,zNative,(int)SyStrlen(zNative));
+	ph7_array_add_strkey_elem(pMeta,"native_type",pCell);
+	ph7_value_int(pCell,iPdoType);
+	ph7_array_add_strkey_elem(pMeta,"pdo_type",pCell);
+	zDecl = PH7_PdoSqliteColumnDecl(pSt,(int)iCol);
+	if( zDecl ){
+		PH7_MemObjRelease(pCell);
+		ph7_value_string(pCell,zDecl,(int)SyStrlen(zDecl));
+		ph7_array_add_strkey_elem(pMeta,"sqlite:decl_type",pCell);
+	}
+	zTable = PH7_PdoSqliteColumnTable(pSt,(int)iCol);
+	if( zTable ){
+		PH7_MemObjRelease(pCell);
+		ph7_value_string(pCell,zTable,(int)SyStrlen(zTable));
+		ph7_array_add_strkey_elem(pMeta,"table",pCell);
+	}
+	ph7_array_add_strkey_elem(pMeta,"flags",pFlags);
+	SyBlobInit(&sName,&pCtx->pVm->sAllocator);
+	zName = PH7_PdoSqliteColumnName(pSt,(int)iCol);
+	PdoColumnName(pSt->pConn,zName,&sName);
+	PH7_MemObjRelease(pCell);
+	ph7_value_string(pCell,(const char *)SyBlobData(&sName),(int)SyBlobLength(&sName) - 1);
+	ph7_array_add_strkey_elem(pMeta,"name",pCell);
+	SyBlobRelease(&sName);
+	ph7_value_int(pCell,-1);
+	ph7_array_add_strkey_elem(pMeta,"len",pCell);
+	ph7_value_int(pCell,0);
+	ph7_array_add_strkey_elem(pMeta,"precision",pCell);
+	ph7_result_value(pCtx,pMeta);
+	return PH7_OK;
+}
+/*
+ * PDOStatement::nextRowset(): bool
+ *
+ * sqlite has no second result set to move to, so this is the layer refusal --
+ * false, and IM001 with php's own "driver does not support multiple rowsets".
+ * It leaves the CURSOR alone: a fetch after it still answers the row that was
+ * waiting.
+ */
+static int vm_builtin_PDOStatement_nextRowset(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo_stmt *pSt = PdoStmtOfInstance(PH7_ContextThis(pCtx));
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pSt == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDOStatement object is uninitialized");
+	}
+	ph7_result_bool(pCtx,0);
+	PdoStmtFailed(pSt,"IM001");
+	return PH7_PdoRaiseImplStmt(pCtx,pSt,"PDOStatement::nextRowset","IM001",
+		"driver does not support multiple rowsets");
+}
+/*
+ * PDOStatement::columnCount(): int
+ *
+ * 0 for a statement that returns no rows -- and also for one that has been
+ * PREPARED but not yet run, even though sqlite already knows the count from
+ * the compile. php only publishes it once the statement has executed, so
+ * `prepare('SELECT 1')->columnCount()` is 0 and not 1.
+ */
 static int vm_builtin_PDOStatement_columnCount(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	phl_pdo_stmt *pSt = PdoStmtOfInstance(PH7_ContextThis(pCtx));
@@ -1015,7 +1311,7 @@ static int vm_builtin_PDOStatement_columnCount(ph7_context *pCtx,int nArg,ph7_va
 	if( pSt == 0 ){
 		return PH7_VmThrowException(pCtx,"Error","PDOStatement object is uninitialized");
 	}
-	ph7_result_int(pCtx,PH7_PdoSqliteColumnCount(pSt));
+	ph7_result_int(pCtx,pSt->bExecuted ? PH7_PdoSqliteColumnCount(pSt) : 0);
 	return PH7_OK;
 }
 /*
@@ -1069,51 +1365,22 @@ static int vm_builtin_PDOStatement_errorCode(ph7_context *pCtx,int nArg,ph7_valu
 	if( pSt == 0 ){
 		return PH7_VmThrowException(pCtx,"Error","PDOStatement object is uninitialized");
 	}
-	if( pSt->pConn->iErrState == PDO_ERR_NONE ){
-		ph7_result_string(pCtx,"00000",sizeof("00000")-1);
+	if( pSt->iErrState == PDO_ERR_NONE ){
+		ph7_result_null(pCtx);
 	}else{
-		ph7_result_string(pCtx,pSt->pConn->zSqlState,(int)SyStrlen(pSt->pConn->zSqlState));
+		ph7_result_string(pCtx,pSt->zSqlState,(int)SyStrlen(pSt->zSqlState));
 	}
 	return PH7_OK;
 }
 static int vm_builtin_PDOStatement_errorInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	phl_pdo_stmt *pSt = PdoStmtOfInstance(PH7_ContextThis(pCtx));
-	ph7_value *pArray,*pCell;
-	phl_pdo *pConn;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	if( pSt == 0 ){
 		return PH7_VmThrowException(pCtx,"Error","PDOStatement object is uninitialized");
 	}
-	pConn = pSt->pConn;
-	pArray = ph7_context_new_array(pCtx);
-	pCell = ph7_context_new_scalar(pCtx);
-	if( pArray == 0 || pCell == 0 ){
-		return PH7_ContextMemoryError(pCtx);
-	}
-	if( pConn->iErrState == PDO_ERR_NONE ){
-		ph7_value_string(pCell,"00000",sizeof("00000")-1);
-	}else{
-		ph7_value_string(pCell,pConn->zSqlState,(int)SyStrlen(pConn->zSqlState));
-	}
-	ph7_array_add_elem(pArray,0,pCell);
-	if( pConn->iErrState == PDO_ERR_FAILED && !pConn->bNoDrvDetail ){
-		ph7_value_int64(pCell,(ph7_int64)pConn->iDrvCode);
-		ph7_array_add_elem(pArray,0,pCell);
-		if( pConn->zDrvMsg ){
-			ph7_value_string(pCell,pConn->zDrvMsg,(int)SyStrlen(pConn->zDrvMsg));
-		}else{
-			ph7_value_null(pCell);
-		}
-		ph7_array_add_elem(pArray,0,pCell);
-	}else{
-		ph7_value_null(pCell);
-		ph7_array_add_elem(pArray,0,pCell);
-		ph7_array_add_elem(pArray,0,pCell);
-	}
-	ph7_result_value(pCtx,pArray);
-	return PH7_OK;
+	return PdoBuildErrorInfo(pCtx,pSt->pConn,pSt->iErrState,pSt->zSqlState);
 }
 /*
  * The InternalIterator a foreach over a statement walks.  A statement is a
@@ -1371,13 +1638,16 @@ static int vm_builtin_PDOStatement_execute(ph7_context *pCtx,int nArg,ph7_value 
 	}
 	if( !bOk ){
 		ph7_result_bool(pCtx,0);
-		return PH7_PdoRaise(pCtx,pSt->pConn,"PDOStatement::execute");
+		PdoStmtFailed(pSt,pSt->pConn->zSqlState);
+		return PH7_PdoRaiseStmt(pCtx,pSt,"PDOStatement::execute");
 	}
 	pSt->bExecuted = 1;
 	if( PdoStmtStep(pSt) < 0 ){
 		ph7_result_bool(pCtx,0);
-		return PH7_PdoRaise(pCtx,pSt->pConn,"PDOStatement::execute");
+		PdoStmtFailed(pSt,pSt->pConn->zSqlState);
+		return PH7_PdoRaiseStmt(pCtx,pSt,"PDOStatement::execute");
 	}
+	PdoStmtOk(pSt);
 	pSt->nChanges = PH7_PdoSqliteColumnCount(pSt) > 0
 		? 0 : PH7_PdoSqliteChanges(pSt->pConn);
 	ph7_result_bool(pCtx,1);
@@ -1516,6 +1786,7 @@ static int vm_builtin_PDO_query(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_ContextMemoryError(pCtx);
 	}
 	PH7_NativeSetAttrStr(pCtx->pVm,pObj,"queryString",zSql,nSql);
+	PdoStmtOk(pSt);   /* it ran, and it ran cleanly */
 	/* PH7_NativeResultObject takes the reference this call made: unref'ing
 	 * again here frees the object the result slot is still holding. */
 	PH7_NativeResultObject(pCtx,pObj);
@@ -1943,8 +2214,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm)
 		  "?string $class = 'stdClass', array $constructorArgs = []", "@object|false",
 		  vm_builtin_pdo_stub },
 		{ "getAttribute", PH7_MOD_PUBLIC, "int $name", "@mixed", vm_builtin_pdo_stub },
-		{ "getColumnMeta",PH7_MOD_PUBLIC, "int $column", "@array|false", vm_builtin_pdo_stub },
-		{ "nextRowset",   PH7_MOD_PUBLIC, "", "@bool", vm_builtin_pdo_stub },
+		{ "getColumnMeta",PH7_MOD_PUBLIC, "int $column", "@array|false",
+		  vm_builtin_PDOStatement_getColumnMeta },
+		{ "nextRowset",   PH7_MOD_PUBLIC, "", "@bool", vm_builtin_PDOStatement_nextRowset },
 		{ "rowCount",     PH7_MOD_PUBLIC, "", "@int", vm_builtin_PDOStatement_rowCount },
 		{ "setAttribute", PH7_MOD_PUBLIC, "int $attribute, mixed $value", "@bool",
 		  vm_builtin_pdo_stub },

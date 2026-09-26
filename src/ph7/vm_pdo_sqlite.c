@@ -310,6 +310,40 @@ PH7_PRIVATE const char * PH7_PdoSqliteColumnName(phl_pdo_stmt *pSt,int iCol)
 	return zName ? zName : "";
 }
 /*
+ * The type the SCHEMA declares for a column, which is not the type of the
+ * value in it: a column declared TEXT holding NULL reports decl_type "TEXT"
+ * and native_type "null". An expression has no declared type at all.
+ */
+PH7_PRIVATE const char * PH7_PdoSqliteColumnDecl(phl_pdo_stmt *pSt,int iCol)
+{
+	return pSt->pStmt ? sqlite3_column_decltype(pSt->pStmt,iCol) : 0;
+}
+/*
+ * The table a column came from.  sqlite compiles this one only under
+ * SQLITE_ENABLE_COLUMN_METADATA, so the SYMBOL's presence is the feature's:
+ * verified present in the Debian and vcpkg libraries this engine links, and
+ * php reports the same key from the same call. A platform whose sqlite lacks
+ * it would fail to LINK rather than answer differently -- and its php would be
+ * missing the key too.
+ */
+PH7_PRIVATE const char * PH7_PdoSqliteColumnTable(phl_pdo_stmt *pSt,int iCol)
+{
+	return pSt->pStmt ? sqlite3_column_table_name(pSt->pStmt,iCol) : 0;
+}
+PH7_PRIVATE int PH7_PdoSqliteColumnType(phl_pdo_stmt *pSt,int iCol)
+{
+	return pSt->pStmt ? sqlite3_column_type(pSt->pStmt,iCol) : SQLITE_NULL;
+}
+/*
+ * What the statement's last step answered.  php reports THIS as the driver
+ * code when getColumnMeta() is asked for a column that does not exist, which
+ * is how a plain out-of-range index comes back as "100 another row available".
+ */
+PH7_PRIVATE int PH7_PdoSqliteLastStepCode(phl_pdo_stmt *pSt)
+{
+	return pSt->bRowPending ? SQLITE_ROW : SQLITE_DONE;
+}
+/*
  * One column of the row at the cursor, in sqlite's OWN type: an INTEGER comes
  * back as an int and a REAL as a float, which is why a fetch from this driver
  * is not all-strings the way a stringifying one is. A BLOB is a php string of
@@ -334,10 +368,11 @@ PH7_PRIVATE void PH7_PdoSqliteColumnValue(phl_pdo_stmt *pSt,int iCol,ph7_value *
 		case SQLITE_BLOB: {
 			const void *pBlob = sqlite3_column_blob(pSt->pStmt,iCol);
 			int nByte = sqlite3_column_bytes(pSt->pStmt,iCol);
-			ph7_value_string(pOut,"",0);   /* make it a string, then fill it */
-			if( pBlob && nByte > 0 ){
-				ph7_value_string(pOut,(const char *)pBlob,nByte);
-			}
+			/* the release is what CLEARS it: ph7_value_string APPENDS to a value
+			 * that is already a string, so writing into a reused cell without
+			 * this carries the previous column's bytes along */
+			PH7_MemObjRelease(pOut);
+			ph7_value_string(pOut,(const char *)pBlob,pBlob ? nByte : 0);
 			break;
 		}
 		case SQLITE_NULL:
@@ -346,10 +381,8 @@ PH7_PRIVATE void PH7_PdoSqliteColumnValue(phl_pdo_stmt *pSt,int iCol,ph7_value *
 		default: {
 			const char *zText = (const char *)sqlite3_column_text(pSt->pStmt,iCol);
 			int nByte = sqlite3_column_bytes(pSt->pStmt,iCol);
-			ph7_value_string(pOut,"",0);
-			if( zText && nByte > 0 ){
-				ph7_value_string(pOut,zText,nByte);
-			}
+			PH7_MemObjRelease(pOut);
+			ph7_value_string(pOut,zText,zText ? nByte : 0);
 			break;
 		}
 	}

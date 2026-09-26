@@ -116,6 +116,15 @@ struct phl_pdo_stmt {
 	int bDone;                    /* the cursor is past the last row */
 	ph7_int64 nChanges;           /* what rowCount() answers: the WRITE's row count */
 	int iFetchMode;               /* PDO::FETCH_* for a fetch() given none */
+	/* A statement carries its OWN SQLSTATE. php keeps one per object and shares
+	 * only the DRIVER's code and message (which live on the connection), so a
+	 * failed statement leaves the connection reading "00000" while its own
+	 * errorInfo() reports the failure. */
+	int iErrState;                /* PDO_ERR_* */
+	char zSqlState[6];
+	ph7_class_instance *pConnObj; /* the PDO object, retained: a statement outliving
+	                               * its connection's last reference must not lose
+	                               * the database under it */
 	phl_pdo_bind *pBinds;         /* what bindValue()/bindParam() recorded */
 	phl_pdo_stmt *pNext;
 };
@@ -133,6 +142,10 @@ PH7_PRIVATE sxi32 PH7_PdoRaiseImpl(ph7_context *pCtx,phl_pdo *pConn,const char *
 	const char *zSqlState,const char *zMsg);
 PH7_PRIVATE sxi32 PH7_PdoThrowConstruct(ph7_context *pCtx,const char *zSqlState,int iCode,
 	const char *zMsg);
+/* The statement-side twins: same routing, the statement's own SQLSTATE. */
+PH7_PRIVATE sxi32 PH7_PdoRaiseStmt(ph7_context *pCtx,phl_pdo_stmt *pSt,const char *zFn);
+PH7_PRIVATE sxi32 PH7_PdoRaiseImplStmt(ph7_context *pCtx,phl_pdo_stmt *pSt,const char *zFn,
+	const char *zSqlState,const char *zMsg);
 
 /* vm_pdo_sqlite.c -- everything that touches libsqlite3. */
 PH7_PRIVATE sxi32 PH7_PdoSqliteOpen(ph7_context *pCtx,phl_pdo *pConn,const char *zPath,
@@ -159,6 +172,14 @@ PH7_PRIVATE void PH7_PdoSqliteReset(phl_pdo_stmt *pSt);
 PH7_PRIVATE int PH7_PdoSqliteBindAt(phl_pdo_stmt *pSt,int iPos,int iType,ph7_value *pVal);
 PH7_PRIVATE int PH7_PdoSqliteBindIndexOf(phl_pdo_stmt *pSt,const char *zName,int nName);
 PH7_PRIVATE const char * PH7_PdoSqliteColumnName(phl_pdo_stmt *pSt,int iCol);
+/* getColumnMeta()'s two driver-side answers: the DECLARED type of a column
+ * (sqlite's own "sqlite:decl_type") and the table it came from. */
+PH7_PRIVATE const char * PH7_PdoSqliteColumnDecl(phl_pdo_stmt *pSt,int iCol);
+PH7_PRIVATE const char * PH7_PdoSqliteColumnTable(phl_pdo_stmt *pSt,int iCol);
+/* The runtime type of the column in the row at the cursor. */
+PH7_PRIVATE int PH7_PdoSqliteColumnType(phl_pdo_stmt *pSt,int iCol);
+/* sqlite's result code from the statement's last step (100 = a row is up). */
+PH7_PRIVATE int PH7_PdoSqliteLastStepCode(phl_pdo_stmt *pSt);
 /* Write column iCol of the row at the cursor into pOut, with sqlite's own type. */
 PH7_PRIVATE void PH7_PdoSqliteColumnValue(phl_pdo_stmt *pSt,int iCol,ph7_value *pOut);
 
