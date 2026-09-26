@@ -12,6 +12,8 @@
 #include <libxml/xpathInternals.h>
 #include <libxml/xmlschemas.h>
 #include <libxml/encoding.h>
+#include <libxml/HTMLparser.h>
+#include <libxml/HTMLtree.h>
 
 /*
  * ext/dom on libxml2: the DOM classes, declared and bodied in C.
@@ -3067,17 +3069,89 @@ DOM_METHOD(vm_builtin_DOMDocument_loadXML)
  *     comes back as `%20`;
  *   * a failed load leaves the receiver's previous tree exactly where it was.
  */
+/*
+ * Read a file for one of the two file-loading methods: the bytes into *pBody,
+ * the name libxml is to know it by into *pPath. Answers 0 when the file could
+ * not be read at all, with php's diagnostics already raised -- the receiver is
+ * left alone then, and the method answers false.
+ */
+static int DomReadFileAs(ph7_context *pCtx,const char *zFile,int nFile,const char *zFn,
+	SyBlob *pBody,SyBlob *pPath,int bVerbatim);
+static int DomReadFile(ph7_context *pCtx,const char *zFile,int nFile,const char *zFn,
+	SyBlob *pBody,SyBlob *pPath)
+{
+	return DomReadFileAs(pCtx,zFile,nFile,zFn,pBody,pPath,0);
+}
+/*
+ * bVerbatim: libxml is to know the file by the path AS WRITTEN rather than by
+ * its canonical absolute name -- loadHTMLFile's rule (see its call).
+ */
+static int DomReadFileAs(ph7_context *pCtx,const char *zFile,int nFile,const char *zFn,
+	SyBlob *pBody,SyBlob *pPath,int bVerbatim)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const ph7_io_stream *pStream;
+	void *pHandle;
+	if( bVerbatim ){
+		SyBlobInit(pPath,&pVm->sAllocator);
+		SyBlobAppend(pPath,zFile,(sxu32)nFile);
+		SyBlobNullAppend(pPath);
+	}else{
+		DomAbsPath(pCtx,zFile,pPath);
+	}
+	pStream = PH7_VmGetStreamDevice(pVm,&zFile,nFile);
+	pHandle = (pStream && pStream->xRead) ? PH7_StreamOpenHandle(pVm,pStream,zFile,
+		PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0,ph7_function_name(pCtx)) : 0;
+	if( pHandle == 0 ){
+		/* php's stream layer says nothing about a file that is simply absent --
+		 * only libxml does, in its own words and with no source location. A file
+		 * that IS there and would not open (a mode, a lock) gets both. */
+		const ph7_vfs *pVfs = pVm->pEngine->pVfs;
+		SyBlob sMsg;
+		sxu32 nMark;
+		if( pVfs && pVfs->xFileExists && pVfs->xFileExists(zFile) == PH7_OK ){
+			VfsThrowOpenWarning(pCtx,zFile);
+		}
+		SyBlobInit(&sMsg,&pVm->sAllocator);
+		SyBlobFormat(&sMsg,"failed to load external entity \"%s\"\n",
+			(const char *)SyBlobData(pPath));
+		SyBlobNullAppend(&sMsg);
+		/* Both of libxml's channels, as php feeds them: the structured copy is
+		 * what `libxml_get_errors()`/`libxml_get_last_error()` answer (level
+		 * WARNING, no file, no line), and the generic one is the text that gets
+		 * PRINTED -- with the severity spelled into it and at E_WARNING. */
+		nMark = PH7_LibxmlCaptureBegin(pVm);
+		PH7_LibxmlQueueError(pVm,XML_ERR_WARNING,XML_IO_LOAD_ERROR,0,0,
+			(const char *)SyBlobData(&sMsg),0);
+		if( pVm->bLibxmlInternalErr ){
+			xmlSetStructuredErrorFunc(0,0);   /* nothing to drain: it stays queued */
+		}else{
+			SyBlob sGen;
+			PH7_LibxmlDropErrors(pVm,nMark);
+			SyBlobInit(&sGen,&pVm->sAllocator);
+			SyBlobFormat(&sGen,"I/O warning : %s",(const char *)SyBlobData(&sMsg));
+			SyBlobNullAppend(&sGen);
+			PH7_LibxmlRaiseGeneric(pVm,zFn,(const char *)SyBlobData(&sGen));
+			SyBlobRelease(&sGen);
+		}
+		SyBlobRelease(&sMsg);
+		SyBlobRelease(pPath);
+		return 0;
+	}
+	SyBlobInit(pBody,&pVm->sAllocator);
+	PH7_StreamReadWholeFile(pHandle,pStream,pBody);
+	PH7_StreamCloseHandle(pStream,pHandle);
+	return 1;
+}
 DOM_METHOD(vm_builtin_DOMDocument_load)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
-	const ph7_io_stream *pStream;
 	const char *zFile;
 	int nFile = 0;
 	int iOpts = nArg > 1 ? ph7_value_to_int(apArg[1]) : 0;
 	phl_dom_errsave sErr;
 	SyBlob sBody,sPath;
-	void *pHandle;
 	xmlDocPtr pDoc;
 	sxu32 nMark;
 	zFile = nArg > 0 ? ph7_value_to_string(apArg[0],&nFile) : "";
@@ -3092,49 +3166,10 @@ DOM_METHOD(vm_builtin_DOMDocument_load)
 		return PH7_VmThrowException(pCtx,"ValueError",
 			"DOMDocument::load(): Argument #1 ($filename) must not be empty");
 	}
-	DomAbsPath(pCtx,zFile,&sPath);
-	pStream = PH7_VmGetStreamDevice(pVm,&zFile,nFile);
-	pHandle = (pStream && pStream->xRead) ? PH7_StreamOpenHandle(pVm,pStream,zFile,
-		PH7_IO_OPEN_RDONLY,FALSE,0,FALSE,0,ph7_function_name(pCtx)) : 0;
-	if( pHandle == 0 ){
-		/* php's stream layer says nothing about a file that is simply absent --
-		 * only libxml does, in its own words and with no source location. A file
-		 * that IS there and would not open (a mode, a lock) gets both. */
-		const ph7_vfs *pVfs = pVm->pEngine->pVfs;
-		SyBlob sMsg;
-		if( pVfs && pVfs->xFileExists && pVfs->xFileExists(zFile) == PH7_OK ){
-			VfsThrowOpenWarning(pCtx,zFile);
-		}
-		SyBlobInit(&sMsg,&pVm->sAllocator);
-		SyBlobFormat(&sMsg,"failed to load external entity \"%s\"\n",
-			(const char *)SyBlobData(&sPath));
-		SyBlobNullAppend(&sMsg);
-		/* Both of libxml's channels, as php feeds them: the structured copy is
-		 * what `libxml_get_errors()`/`libxml_get_last_error()` answer (level
-		 * WARNING, no file, no line), and the generic one is the text that gets
-		 * PRINTED -- with the severity spelled into it and at E_WARNING. */
-		nMark = PH7_LibxmlCaptureBegin(pVm);
-		PH7_LibxmlQueueError(pVm,XML_ERR_WARNING,XML_IO_LOAD_ERROR,0,0,
-			(const char *)SyBlobData(&sMsg),0);
-		if( pVm->bLibxmlInternalErr ){
-			xmlSetStructuredErrorFunc(0,0);
-		}else{
-			SyBlob sGen;
-			PH7_LibxmlDropErrors(pVm,nMark);
-			SyBlobInit(&sGen,&pVm->sAllocator);
-			SyBlobFormat(&sGen,"I/O warning : %s",(const char *)SyBlobData(&sMsg));
-			SyBlobNullAppend(&sGen);
-			PH7_LibxmlRaiseGeneric(pVm,"DOMDocument::load",(const char *)SyBlobData(&sGen));
-			SyBlobRelease(&sGen);
-		}
-		SyBlobRelease(&sMsg);
-		SyBlobRelease(&sPath);
+	if( !DomReadFile(pCtx,zFile,nFile,"DOMDocument::load",&sBody,&sPath) ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	SyBlobInit(&sBody,&pVm->sAllocator);
-	PH7_StreamReadWholeFile(pHandle,pStream,&sBody);
-	PH7_StreamCloseHandle(pStream,pHandle);
 	if( SyBlobLength(&sBody) < 1 ){
 		/* libxml's memory parser will not even start on nothing, so the error
 		 * php's FILE parser raises there is queued by hand -- same level, same
@@ -3164,6 +3199,79 @@ DOM_METHOD(vm_builtin_DOMDocument_load)
 	return PH7_OK;
 }
 /*
+ * DOMDocument::loadHTML(string $source, int $options = 0): bool
+ * DOMDocument::loadHTMLFile(string $filename, int $options = 0): bool
+ *
+ * The other parser: HTML is not XML and libxml has a second one for it, which
+ * closes what the markup left open, supplies the `html`/`body` php's
+ * `LIBXML_HTML_NOIMPLIED` asks it not to, and stamps the DTD
+ * `LIBXML_HTML_NODEFDTD` asks it not to. What comes out is an HTML DOCUMENT --
+ * node type 13, its own serializer -- and the differences from the XML side are
+ * measured ones: the document's own directives reach NOTHING here (only
+ * `$options` does), a document parsed from a STRING is given no URI at all
+ * (where loadXML stamps the working directory), and there is no well-formedness
+ * to fail on, so the answer is true for anything that is not empty.
+ */
+static int DomLoadHtml(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zFn = bFile ? "DOMDocument::loadHTMLFile" : "DOMDocument::loadHTML";
+	const char *zArg = bFile ? "filename" : "source";
+	const char *zSrc;
+	int nSrc = 0;
+	int iOpts = nArg > 1 ? ph7_value_to_int(apArg[1]) : 0;
+	SyBlob sBody,sPath;
+	xmlDocPtr pDoc;
+	sxu32 nMark;
+	zSrc = nArg > 0 ? ph7_value_to_string(apArg[0],&nSrc) : "";
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	if( bFile && nSrc != (int)SyStrlen(zSrc) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #1 ($filename) must not contain any null bytes",zFn);
+	}
+	if( nSrc < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #1 ($%s) must not be empty",zFn,zArg);
+	}
+	if( bFile ){
+		/* loadHTMLFile hands libxml the path AS WRITTEN -- php's
+		 * htmlCreateFileParserCtxt(source): no working directory joined and no
+		 * link resolved, unlike load(), which canonicalizes first. It is the name
+		 * the document's URI and every diagnostic carry. */
+		if( !DomReadFileAs(pCtx,zSrc,nSrc,zFn,&sBody,&sPath,1) ){
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+	}else{
+		/* A string has no URI: php leaves the document's null. */
+		SyBlobInit(&sBody,&pVm->sAllocator);
+		SyBlobAppend(&sBody,zSrc,(sxu32)nSrc);
+		SyBlobInit(&sPath,&pVm->sAllocator);
+		SyBlobNullAppend(&sPath);
+	}
+	nMark = PH7_LibxmlCaptureBegin(pVm);
+	pDoc = SyBlobLength(&sBody) > 0
+		? htmlReadMemory((const char *)SyBlobData(&sBody),(int)SyBlobLength(&sBody),
+			bFile ? (const char *)SyBlobData(&sPath) : 0,0,iOpts)
+		: 0;
+	PH7_LibxmlCaptureEndOpts(pVm,nMark,zFn,iOpts);
+	SyBlobRelease(&sBody);
+	SyBlobRelease(&sPath);
+	ph7_result_bool(pCtx,DomInstallParsed(pCtx,pThis,pDoc));
+	return PH7_OK;
+}
+DOM_METHOD(vm_builtin_DOMDocument_loadHTML)
+{
+	return DomLoadHtml(pCtx,nArg,apArg,FALSE);
+}
+DOM_METHOD(vm_builtin_DOMDocument_loadHTMLFile)
+{
+	return DomLoadHtml(pCtx,nArg,apArg,TRUE);
+}
+/*
  * The two save options php reads, and what they mean to libxml.
  *
  * `LIBXML_NOEMPTYTAG` turns `<e/>` into `<e></e>` and reaches BOTH dumps -- a
@@ -3183,7 +3291,11 @@ DOM_METHOD(vm_builtin_DOMDocument_load)
 #define DOM_SAVE_NOEMPTYTAG 4
 static int DomSaveFlags(int bFormat,int iOpts,int bDoc)
 {
-	int iSave = bFormat ? XML_SAVE_FORMAT : 0;
+	/* AS_XML because the receiver may be an HTML document (`loadHTML` makes
+	 * one): libxml's save context would hand such a document to the HTML
+	 * serializer, and php's XML savers write XML whatever the document is --
+	 * declaration, `<br/>` and all. */
+	int iSave = XML_SAVE_AS_XML | (bFormat ? XML_SAVE_FORMAT : 0);
 	if( iOpts & DOM_SAVE_NOEMPTYTAG ){
 		iSave |= XML_SAVE_NO_EMPTY;
 	}
@@ -3267,6 +3379,128 @@ DOM_METHOD(vm_builtin_DOMDocument_saveXML)
 	ph7_result_string(pCtx,(const char *)zOut,nOut);
 	xmlFree(zOut);
 	return PH7_OK;
+}
+/*
+ * DOMDocument::saveHTML(?DOMNode $node = null): string|false
+ * DOMDocument::saveHTMLFile(string $filename): int|false
+ *
+ * The HTML serializer, which is a different one: a void element comes out
+ * `<br>` rather than `<br/>`, a character with an HTML entity name comes out
+ * under that name, and the whole document carries its DOCTYPE and no XML
+ * declaration. Neither method takes save OPTIONS -- php declares one parameter
+ * each -- but both read `formatOutput`, a NODE's dump included.
+ *
+ * A node from ANOTHER document is php's Wrong Document Error (in whichever mode
+ * this document is in), which is the only refusal either one has.
+ */
+static int DomDumpHtml(xmlDocPtr pDoc,xmlNodePtr pNode,int bFormat,xmlChar **pzOut)
+{
+	xmlBufferPtr pBuf;
+	xmlOutputBufferPtr pOut;
+	int nOut;
+	*pzOut = 0;
+	if( pNode == 0 ){
+		nOut = 0;
+		htmlDocDumpMemoryFormat(pDoc,pzOut,&nOut,bFormat ? 1 : 0);
+		return *pzOut ? nOut : -1;
+	}
+	pBuf = xmlBufferCreate();
+	/* The buffer is the write TARGET, not the output buffer's own storage:
+	 * closing the latter leaves it to us to free. */
+	pOut = pBuf ? xmlOutputBufferCreateBuffer(pBuf,0) : 0;
+	if( pOut == 0 ){
+		if( pBuf ){
+			xmlBufferFree(pBuf);
+		}
+		return -1;
+	}
+	htmlNodeDumpFormatOutput(pOut,pDoc,pNode,0,bFormat ? 1 : 0);
+	xmlOutputBufferFlush(pOut);
+	nOut = (int)xmlBufferLength(pBuf);
+	*pzOut = xmlStrndup(xmlBufferContent(pBuf),nOut);
+	xmlOutputBufferClose(pOut);
+	xmlBufferFree(pBuf);
+	return *pzOut ? nOut : -1;
+}
+static int DomSaveHtml(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	phl_domnode *pDocNd = DomThisNode(pCtx);
+	phl_domnode *pTgt = (!bFile && nArg > 0 && !ph7_value_is_null(apArg[0])) ? DomObjArg(apArg[0]) : 0;
+	int bFormat = pThis && PH7_NativeAttrTruthy(pThis,"formatOutput");
+	const ph7_io_stream *pStream = 0;
+	const char *zFile = "";
+	int nFile = 0,nOut;
+	xmlChar *zOut = 0;
+	void *pHandle;
+	sxu32 nMark;
+	if( bFile ){
+		zFile = nArg > 0 ? ph7_value_to_string(apArg[0],&nFile) : "";
+		if( nFile != (int)SyStrlen(zFile) ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"DOMDocument::saveHTMLFile(): Argument #1 ($filename) must not contain any null bytes");
+		}
+		if( nFile < 1 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"DOMDocument::saveHTMLFile(): Argument #1 ($filename) must not be empty");
+		}
+	}
+	if( pDocNd == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( pTgt && pTgt->pShell != pDocNd->pShell ){
+		return DomThrow(pCtx,DOM_ERR_WRONG_DOC);
+	}
+	if( bFile ){
+		/* Writing to a FILE goes through libxml's file saver, which stamps the
+		 * document with the encoding it is about to use: an `http-equiv`
+		 * Content-Type meta appears in `<head>` -- in the DOCUMENT, not just in
+		 * the output, so the next `saveHTML()` shows it too -- and it always
+		 * says UTF-8, whatever the document's own encoding is. php inherits
+		 * that; the string saver READS the same meta and adds none. */
+		htmlSetMetaEncoding((xmlDocPtr)pDocNd->pNode,(const xmlChar *)"UTF-8");
+	}
+	nMark = PH7_LibxmlCaptureBegin(pVm);
+	nOut = DomDumpHtml((xmlDocPtr)pDocNd->pNode,
+		(pTgt && pTgt->pNode != pDocNd->pNode) ? (xmlNodePtr)pTgt->pNode : 0,bFormat,&zOut);
+	PH7_LibxmlDropErrors(pVm,nMark);
+	if( nOut < 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( !bFile ){
+		ph7_result_string(pCtx,(const char *)zOut,nOut);
+		xmlFree(zOut);
+		return PH7_OK;
+	}
+	pStream = PH7_VmGetStreamDevice(pVm,&zFile,nFile);
+	pHandle = (pStream && pStream->xWrite) ? PH7_StreamOpenHandle(pVm,pStream,zFile,
+		PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_CREATE|PH7_IO_OPEN_TRUNC,FALSE,0,FALSE,0,
+		ph7_function_name(pCtx)) : 0;
+	if( pHandle == 0 ){
+		xmlFree(zOut);
+		VfsThrowOpenWarning(pCtx,zFile);
+		/* php answers the bytes it WROTE, which is none of them -- not false. */
+		ph7_result_int(pCtx,0);
+		return PH7_OK;
+	}
+	if( nOut > 0 && pStream->xWrite(pHandle,(const void *)zOut,nOut) < 0 ){
+		nOut = 0;
+	}
+	PH7_StreamCloseHandle(pStream,pHandle);
+	xmlFree(zOut);
+	ph7_result_int(pCtx,nOut);
+	return PH7_OK;
+}
+DOM_METHOD(vm_builtin_DOMDocument_saveHTML)
+{
+	return DomSaveHtml(pCtx,nArg,apArg,FALSE);
+}
+DOM_METHOD(vm_builtin_DOMDocument_saveHTMLFile)
+{
+	return DomSaveHtml(pCtx,nArg,apArg,TRUE);
 }
 /*
  * DOMDocument::save(string $filename, int $options = 0): int|false
@@ -5890,6 +6124,14 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMDocument_load },
 		{ "save",                 PH7_MOD_PUBLIC, "string $filename, int $options = 0", "@int|false",
 		  vm_builtin_DOMDocument_save },
+		{ "loadHTML",             PH7_MOD_PUBLIC, "string $source, int $options = 0", "@bool",
+		  vm_builtin_DOMDocument_loadHTML },
+		{ "loadHTMLFile",         PH7_MOD_PUBLIC, "string $filename, int $options = 0", "@bool",
+		  vm_builtin_DOMDocument_loadHTMLFile },
+		{ "saveHTML",             PH7_MOD_PUBLIC, "?DOMNode $node = null", "@string|false",
+		  vm_builtin_DOMDocument_saveHTML },
+		{ "saveHTMLFile",         PH7_MOD_PUBLIC, "string $filename", "@int|false",
+		  vm_builtin_DOMDocument_saveHTMLFile },
 		{ "saveXML",              PH7_MOD_PUBLIC, "?DOMNode $node = null, int $options = 0", "@string|false",
 		  vm_builtin_DOMDocument_saveXML },
 		{ "createElement",        PH7_MOD_PUBLIC, "string $localName, string $value = ''", "",

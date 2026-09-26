@@ -418,6 +418,8 @@ PH7_PRIVATE phl_xmldoc * PH7_LibxmlNewDoc(ph7_vm *pVm,void *pXmlDocPtr)
 	}
 LIBXML_INT_CONST(LibxmlConst_VERSION,        LIBXML_VERSION)
 LIBXML_INT_CONST(LibxmlConst_RECOVER,        XML_PARSE_RECOVER)
+LIBXML_INT_CONST(LibxmlConst_HTML_NOIMPLIED, 8192)   /* HTML_PARSE_NOIMPLIED */
+LIBXML_INT_CONST(LibxmlConst_HTML_NODEFDTD,  4)      /* HTML_PARSE_NODEFDTD */
 LIBXML_INT_CONST(LibxmlConst_NOENT,          XML_PARSE_NOENT)
 LIBXML_INT_CONST(LibxmlConst_DTDLOAD,        XML_PARSE_DTDLOAD)
 LIBXML_INT_CONST(LibxmlConst_DTDATTR,        XML_PARSE_DTDATTR)
@@ -523,6 +525,8 @@ PH7_PRIVATE void PH7_RegisterLibxmlConstants(ph7_vm *pVm)
 		{ "LIBXML_DOTTED_VERSION", LibxmlConst_DOTTED_VERSION },
 		{ "LIBXML_LOADED_VERSION", LibxmlConst_LOADED_VERSION },
 		{ "LIBXML_RECOVER",        LibxmlConst_RECOVER        },
+		{ "LIBXML_HTML_NOIMPLIED", LibxmlConst_HTML_NOIMPLIED },
+		{ "LIBXML_HTML_NODEFDTD",  LibxmlConst_HTML_NODEFDTD  },
 		{ "LIBXML_NOENT",          LibxmlConst_NOENT          },
 		{ "LIBXML_DTDLOAD",        LibxmlConst_DTDLOAD        },
 		{ "LIBXML_DTDATTR",        LibxmlConst_DTDATTR        },
