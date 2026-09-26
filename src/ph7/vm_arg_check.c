@@ -379,6 +379,13 @@ static const struct VmBuiltinSig {
 	 * from there; a C builtin has no declaration but this table, so without a row
 	 * here the same function reports NO parameters -- and loses its arity bounds
 	 * with them. */
+	/* ext/curl. Signatures dumped from php 8.5's own ReflectionFunction, which
+	 * is also where the parameter NAMES come from: a named argument spells the
+	 * php one, so an invented name breaks valid php. */
+	{ "curl_multi_strerror", "int $error_code", "?string" },
+	{ "curl_share_strerror", "int $error_code", "?string" },
+	{ "curl_strerror", "int $error_code", "?string" },
+	{ "curl_version", "", "array|false" },
 	{ "get_cfg_var", "string $option", "array|string|false" },
 	{ "ini_get", "string $option", "string|false" },
 	{ "ini_get_all", "?string $extension = null, bool $details = true", "array|false" },

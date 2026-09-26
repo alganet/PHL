@@ -1406,6 +1406,9 @@ static const char * const azExtension[] = {
 	 * this build to PDO's sqlite DRIVER, so only the two pdo names load. */
 	, "PDO", "pdo_sqlite"
 #endif
+#ifdef PH7_ENABLE_CURL
+	, "curl"
+#endif
 };
 /*
  * `phl.stub_extensions` is a PHL-only directive: a comma-separated list of

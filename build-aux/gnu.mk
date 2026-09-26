@@ -26,14 +26,20 @@ LIBXML2_LIBS   := $(shell pkg-config --libs   libxml-2.0 2>/dev/null)
 SQLITE3_CFLAGS := $(shell pkg-config --cflags sqlite3 2>/dev/null)
 SQLITE3_LIBS   := $(shell pkg-config --libs   sqlite3 2>/dev/null)
 
+# libcurl detection via pkg-config (empty when absent or for tiny mode) -- the
+# ext/curl backend. TLS comes from whatever backend the platform's libcurl was
+# built against; PHL links the library, it does not choose the backend.
+CURL_CFLAGS := $(shell pkg-config --cflags libcurl 2>/dev/null)
+CURL_LIBS   := $(shell pkg-config --libs   libcurl 2>/dev/null)
+
 # Per-mode optimization and instrumentation
 full_OPT_CFLAGS     = -O3
 tiny_OPT_CFLAGS     = -Oz
 coverage_OPT_CFLAGS = -O0 -fprofile-arcs -ftest-coverage
 
-full_LDFLAGS = -lm -lpthread $(PCRE2_LIBS) $(LIBXML2_LIBS) $(SQLITE3_LIBS)
+full_LDFLAGS = -lm -lpthread $(PCRE2_LIBS) $(LIBXML2_LIBS) $(SQLITE3_LIBS) $(CURL_LIBS)
 tiny_LDFLAGS =
-coverage_LDFLAGS = -lm -lpthread $(PCRE2_LIBS) $(LIBXML2_LIBS) $(SQLITE3_LIBS) -fprofile-arcs -ftest-coverage
+coverage_LDFLAGS = -lm -lpthread $(PCRE2_LIBS) $(LIBXML2_LIBS) $(SQLITE3_LIBS) $(CURL_LIBS) -fprofile-arcs -ftest-coverage
 
 PH7_DEFINES = $($(MODE)_DEFINES)
 MODE_EXTRA_CFLAGS = $($(MODE)_EXTRA_CFLAGS)

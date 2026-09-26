@@ -18,7 +18,7 @@ runs:
     - if: runner.os == 'Linux'
       uses: awalsh128/cache-apt-pkgs-action@latest
       with:
-        packages: lcov libpcre2-dev libxml2-dev libsqlite3-dev
+        packages: lcov libpcre2-dev libxml2-dev libsqlite3-dev libcurl4-openssl-dev
         version: 1.2
     # The Ubuntu runner ships an older php (8.3) whose ValueError / arity
     # wording predates 8.4/8.5; the cross-engine oracle must be the version PHL
@@ -36,9 +36,9 @@ runs:
     - if: runner.os == 'macOS'
       uses: tecolicom/actions-use-homebrew-tools@v1
       with:
-        tools: lcov php pcre2 libxml2 sqlite
+        tools: lcov php pcre2 libxml2 sqlite curl
         cache: yes
-        key: brewcache-2.3
+        key: brewcache-2.4
     # Homebrew installs php.ini-DEVELOPMENT as php.ini, while setup-php gives the
     # Linux and Windows oracles the production file. The two disagree on what a
     # program prints -- zend.exception_ignore_args decides whether an unhandled
@@ -51,16 +51,17 @@ runs:
         ini="$(php -r 'echo php_ini_loaded_file();')"
         cp "$(dirname "$ini")/php.ini-production" "$ini"
         php -i | grep -E '^zend\.(assertions|exception_ignore_args) '
-    # Homebrew's libxml2 and sqlite are both keg-only; expose their .pc files so
-    # pkg-config finds them (macOS ships libsqlite3 but no sqlite3.pc of its own).
+    # Homebrew's libxml2, sqlite and curl are all keg-only; expose their .pc files
+    # so pkg-config finds them (macOS ships libsqlite3 and libcurl but neither
+    # sqlite3.pc nor a libcurl.pc of its own).
     - if: runner.os == 'macOS'
       shell: bash
-      run: echo "PKG_CONFIG_PATH=$(brew --prefix libxml2)/lib/pkgconfig:$(brew --prefix sqlite)/lib/pkgconfig:$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
+      run: echo "PKG_CONFIG_PATH=$(brew --prefix libxml2)/lib/pkgconfig:$(brew --prefix sqlite)/lib/pkgconfig:$(brew --prefix curl)/lib/pkgconfig:$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
     - if: runner.os == 'Windows'
       uses: microsoft/setup-msbuild@v2
     - if: runner.os == 'Windows'
       shell: cmd
-      run: vcpkg install pcre2:x64-windows-static "libxml2[core]:x64-windows-static" sqlite3:x64-windows-static
+      run: vcpkg install pcre2:x64-windows-static "libxml2[core]:x64-windows-static" sqlite3:x64-windows-static "curl[core,non-http,ssl]:x64-windows-static"
     - if: runner.os == 'Windows'
       uses: actions/cache@v4
       id: cache-opencppcoverage

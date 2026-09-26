@@ -3707,6 +3707,10 @@ PH7_PRIVATE void PH7_PdoVmRelease(ph7_vm *pVm);
 /* vm_pdo_sqlite.c (ext/pdo_sqlite: the driver and its Pdo\Sqlite subclass) */
 PH7_PRIVATE sxi32 PH7_VmInstallPdoSqlite(ph7_vm *pVm);
 #endif /* PH7_ENABLE_SQLITE */
+#ifdef PH7_ENABLE_CURL
+/* vm_curl.c (ext/curl: php's libcurl binding) */
+PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm);
+#endif /* PH7_ENABLE_CURL */
 /* net.c types and function prototypes */
 #ifdef PH7_ENABLE_NET
 #ifdef __WINNT__

@@ -2388,6 +2388,10 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	PH7_VmInstallPdo(&(*pVm));
 	PH7_VmInstallPdoSqlite(&(*pVm));
 #endif
+#ifdef PH7_ENABLE_CURL
+	/* ext/curl: the libcurl binding. */
+	PH7_VmInstallCurl(&(*pVm));
+#endif
 	pVm->bCompilingBuiltin = 0;
 	/* Reset the code generator */
 	PH7_ResetCodeGenerator(&(*pVm),pEngine->xConf.xErr,pEngine->xConf.pErrData);

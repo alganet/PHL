@@ -74,6 +74,20 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+:: libcurl backs ext/curl. The port's own `ssl` feature resolves to `sspi` on
+:: Windows -- Schannel, Windows' own TLS stack -- so no OpenSSL is vendored;
+:: there is no feature literally named "schannel". `non-http` is the port's
+:: other default and is what keeps the protocol list php reports from shrinking
+:: to http/https alone. Both are spelled out so a change of vcpkg defaults
+:: cannot silently retune this build.
+echo Installing curl[core,non-http,ssl]:x64-windows-static...
+"%VCPKG_DIR%\vcpkg.exe" install "curl[core,non-http,ssl]:x64-windows-static"
+
+if %errorlevel% neq 0 (
+    echo Failed to install curl.
+    exit /b 1
+)
+
 echo.
-echo vcpkg, PCRE2, libxml2 and sqlite3 installed successfully.
+echo vcpkg, PCRE2, libxml2, sqlite3 and curl installed successfully.
 echo vcpkg root: %VCPKG_DIR%

@@ -35,6 +35,28 @@ LIBXML2_LIBS = "$(VCPKG_INSTALLED)\lib\libxml2.lib"
 SQLITE3_CFLAGS =
 SQLITE3_LIBS = "$(VCPKG_INSTALLED)\lib\sqlite3.lib"
 
+# libcurl via vcpkg (static; /DCURL_STATICLIB is mandatory for the same reason
+# /DLIBXML_STATIC is above -- without it every libcurl entry point is emitted as
+# an __imp_-prefixed dllimport reference that the static lib cannot satisfy).
+# The headers sit under include\curl\, already on the search path from
+# PCRE2_CFLAGS. The vcpkg port is curl[core,non-http,ssl], whose `ssl` feature
+# resolves to sspi on Windows -- Schannel, so no OpenSSL is vendored and the
+# extra imports are Windows system libs plus the port's own zlib.
+#
+# A STATIC libcurl carries none of its own dependencies, so every one it was
+# built against has to be named here: zlib (content_encoding), secur32
+# (Schannel's InitSecurityInterfaceW), iphlpapi (if_nametoindex), plus the
+# usual crypt32/normaliz/wldap32. The zlib port's output name is not stable
+# across vcpkg versions -- older trees ship zlib.lib, this one ships zs.lib --
+# so pick whichever is actually installed rather than guessing.
+CURL_CFLAGS = /DCURL_STATICLIB
+!IF EXIST("$(VCPKG_INSTALLED)\lib\zlib.lib")
+CURL_ZLIB = "$(VCPKG_INSTALLED)\lib\zlib.lib"
+!ELSE
+CURL_ZLIB = "$(VCPKG_INSTALLED)\lib\zs.lib"
+!ENDIF
+CURL_LIBS = "$(VCPKG_INSTALLED)\lib\libcurl.lib" $(CURL_ZLIB) crypt32.lib normaliz.lib wldap32.lib secur32.lib iphlpapi.lib
+
 # Base flags shared by all modes.
 # /wd4127 (constant conditional) and /wd4702 (unreachable code) are noisy MSVC
 # warnings that this SQLite/PH7-lineage code triggers legitimately (parameterized
@@ -50,9 +72,9 @@ coverage_CFLAGS = $(BASE_CFLAGS) /Od /Zi $(coverage_DEFINES:-=/) $(coverage_EXTR
 
 # Per-mode LDFLAGS (used by patterns.mk generated link rules)
 # bcrypt.lib provides BCryptGenRandom, used by SyOSCSPRNG in src/sx/sxrand.c.
-full_LDFLAGS = /nologo /link advapi32.lib bcrypt.lib ws2_32.lib $(PCRE2_LIBS) $(LIBXML2_LIBS) $(SQLITE3_LIBS) /subsystem:console /entry:mainCRTStartup
+full_LDFLAGS = /nologo /link advapi32.lib bcrypt.lib ws2_32.lib $(PCRE2_LIBS) $(LIBXML2_LIBS) $(SQLITE3_LIBS) $(CURL_LIBS) /subsystem:console /entry:mainCRTStartup
 tiny_LDFLAGS = /nologo /link advapi32.lib bcrypt.lib /subsystem:console /entry:mainCRTStartup
-coverage_LDFLAGS = /nologo /link advapi32.lib bcrypt.lib dbghelp.lib ws2_32.lib $(PCRE2_LIBS) $(LIBXML2_LIBS) $(SQLITE3_LIBS) /subsystem:console /entry:mainCRTStartup
+coverage_LDFLAGS = /nologo /link advapi32.lib bcrypt.lib dbghelp.lib ws2_32.lib $(PCRE2_LIBS) $(LIBXML2_LIBS) $(SQLITE3_LIBS) $(CURL_LIBS) /subsystem:console /entry:mainCRTStartup
 
 LDFLAGS = $(full_LDFLAGS)
 
