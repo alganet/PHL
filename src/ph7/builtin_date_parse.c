@@ -2037,8 +2037,44 @@ static int vm_builtin_DateTime_setISODate(ph7_context *pCtx,int nArg,ph7_value *
 	DtMutResult(pCtx,pTarget,bCopy);
 	return PH7_OK;
 }
-/* add()/sub(): one body, the sign is the difference (and a DateInterval carrying
- * `invert` flips it, exactly as the chunk's __dtAddTs did). */
+/*
+ * One interval applied to a date -- the whole of what add(), sub(), their two
+ * procedural aliases and the DatePeriod walk each did by hand.
+ *
+ * The MICROSECONDS are php's `f`, and php's `f` is a signed count of SECONDS'
+ * fractions that moves the clock like any other field: an interval carrying
+ * f = 2.5 and nothing else moves it two and a half seconds, and its carry into
+ * the second is ordinary floor division (so a sub() past the second borrows).
+ * PHL ignored `f` at all four sites, which left `DatePeriod` over a sub-second
+ * interval standing STILL -- every step answering the start date.
+ *
+ * The arithmetic is done on unsigned intermediates: `f` is a whole int64 count
+ * of microseconds a script may write anything into, and the sum of two of them
+ * is exactly the wrap php's own C arrives at rather than an overflow this build
+ * would trap on.
+ */
+static void DtApplyInterval(ph7_vm *pVm,ph7_class_instance *pSrc,ph7_class_instance *pDst,
+	ph7_class_instance *pIv,int iSign)
+{
+	sxi64 iUsIv,iUs,iCarry;
+	if( PH7_NativeAttrInt(pIv,"invert") ){
+		iSign = -iSign;
+	}
+	iUsIv = DtIvUsec(pIv);
+	if( iSign < 0 ){
+		iUsIv = (sxi64)((sxu64)0 - (sxu64)iUsIv);
+	}
+	iUs = (sxi64)((sxu64)PH7_NativeAttrInt(pSrc,DT_US) + (sxu64)iUsIv);
+	iCarry = DtFloorDiv(iUs,1000000);
+	PH7_NativeSetAttrInt(pVm,pDst,DT_TS,
+		(sxi64)((sxu64)DtCivilAdd(PH7_NativeAttrInt(pSrc,DT_TS),(sxi32)PH7_NativeAttrInt(pSrc,DT_OFF),
+			PH7_NativeAttrInt(pIv,"y"),PH7_NativeAttrInt(pIv,"m"),PH7_NativeAttrInt(pIv,"d"),
+			PH7_NativeAttrInt(pIv,"h"),PH7_NativeAttrInt(pIv,"i"),PH7_NativeAttrInt(pIv,"s"),iSign)
+			+ (sxu64)iCarry));
+	PH7_NativeSetAttrInt(pVm,pDst,DT_US,
+		(sxi64)((sxu64)iUs - (sxu64)iCarry * 1000000));
+}
+/* add()/sub(): one body, the sign is the difference. */
 static int DtAddSub(ph7_context *pCtx,int nArg,ph7_value **apArg,int iSign)
 {
 	ph7_class_instance *pThis = DtThis(pCtx);
@@ -2048,14 +2084,8 @@ static int DtAddSub(ph7_context *pCtx,int nArg,ph7_value **apArg,int iSign)
 		return PH7_OK;
 	}
 	pIv = (ph7_class_instance *)apArg[0]->x.pOther;
-	if( PH7_NativeAttrInt(pIv,"invert") ){
-		iSign = -iSign;
-	}
 	pTarget = DtMutTarget(pCtx,pThis,&bCopy);
-	PH7_NativeSetAttrInt(pCtx->pVm,pTarget,DT_TS,
-		DtCivilAdd(PH7_NativeAttrInt(pThis,DT_TS),(sxi32)PH7_NativeAttrInt(pThis,DT_OFF),
-			PH7_NativeAttrInt(pIv,"y"),PH7_NativeAttrInt(pIv,"m"),PH7_NativeAttrInt(pIv,"d"),
-			PH7_NativeAttrInt(pIv,"h"),PH7_NativeAttrInt(pIv,"i"),PH7_NativeAttrInt(pIv,"s"),iSign));
+	DtApplyInterval(pCtx->pVm,pThis,pTarget,pIv,iSign);
 	DtMutResult(pCtx,pTarget,bCopy);
 	return PH7_OK;
 }
@@ -2879,14 +2909,10 @@ static ph7_class_instance * DpAdvance(ph7_vm *pVm,ph7_class_instance *pCur,
 	ph7_class_instance *pIv)
 {
 	ph7_class_instance *pNext = PH7_CloneClassInstance(pCur);
-	int iSign = PH7_NativeAttrInt(pIv,"invert") ? -1 : 1;
 	if( pNext == 0 ){
 		return 0;
 	}
-	PH7_NativeSetAttrInt(&(*pVm),pNext,DT_TS,
-		DtCivilAdd(PH7_NativeAttrInt(pCur,DT_TS),(sxi32)PH7_NativeAttrInt(pCur,DT_OFF),
-			PH7_NativeAttrInt(pIv,"y"),PH7_NativeAttrInt(pIv,"m"),PH7_NativeAttrInt(pIv,"d"),
-			PH7_NativeAttrInt(pIv,"h"),PH7_NativeAttrInt(pIv,"i"),PH7_NativeAttrInt(pIv,"s"),iSign));
+	DtApplyInterval(&(*pVm),pCur,pNext,pIv,1);
 	return pNext;
 }
 /*
@@ -3131,13 +3157,7 @@ static int DtProcAddSub(ph7_context *pCtx,int nArg,ph7_value **apArg,int iSign)
 	if( pObj == 0 || pIv == 0 ){
 		return PH7_OK;
 	}
-	if( PH7_NativeAttrInt(pIv,"invert") ){
-		iSign = -iSign;
-	}
-	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_TS,
-		DtCivilAdd(PH7_NativeAttrInt(pObj,DT_TS),(sxi32)PH7_NativeAttrInt(pObj,DT_OFF),
-			PH7_NativeAttrInt(pIv,"y"),PH7_NativeAttrInt(pIv,"m"),PH7_NativeAttrInt(pIv,"d"),
-			PH7_NativeAttrInt(pIv,"h"),PH7_NativeAttrInt(pIv,"i"),PH7_NativeAttrInt(pIv,"s"),iSign));
+	DtApplyInterval(pCtx->pVm,pObj,pObj,pIv,iSign);
 	DtResultArg(pCtx,apArg);
 	return PH7_OK;
 }
