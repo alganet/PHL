@@ -3710,6 +3710,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallPdoSqlite(ph7_vm *pVm);
 #ifdef PH7_ENABLE_CURL
 /* vm_curl.c (ext/curl: php's libcurl binding) */
 PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm);
+PH7_PRIVATE void PH7_RegisterCurlConstants(ph7_vm *pVm);
 #endif /* PH7_ENABLE_CURL */
 /* net.c types and function prototypes */
 #ifdef PH7_ENABLE_NET

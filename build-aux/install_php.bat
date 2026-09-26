@@ -54,10 +54,18 @@ exit /b 0
 :: in-process runner down with it, aborting the whole run at test ~1200. Nothing
 :: else here needs enabling: the extensions PHL does not implement are out of
 :: scope by policy, so no cross-engine test can reach them.
+::
+:: curl is the second such DLL, and it is enabled for a sharper reason than
+:: reachability: ext/curl's constant VALUES are not the same on Windows.
+:: CURLAUTH_ANY is libcurl's ~CURLAUTH_DIGEST_IE over an `unsigned long`, which
+:: is 64-bit on LP64 and 32-bit on LLP64 -- so the answer differs between the
+:: two platforms and only the Windows oracle can say which one php gives here.
+:: Without this line that question has no local answer at all.
 :: ---------------------------------------------------------------------------
 :write_ini
 > "%PHP_DIR%\php.ini" echo zend.assertions=-1
 >>"%PHP_DIR%\php.ini" echo date.timezone=UTC
 >>"%PHP_DIR%\php.ini" echo extension_dir="%PHP_DIR%\ext"
 >>"%PHP_DIR%\php.ini" echo extension=mbstring
+>>"%PHP_DIR%\php.ini" echo extension=curl
 exit /b 0

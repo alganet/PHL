@@ -2836,6 +2836,10 @@ PH7_PRIVATE sxi32 PH7_VmMakeReady(
 	/* Register the LIBXML_* / XML_*_NODE constants */
 	PH7_RegisterLibxmlConstants(&(*pVm));
 #endif
+#ifdef PH7_ENABLE_CURL
+	/* Register the CURLOPT_* / CURLINFO_* / CURLE_* family */
+	PH7_RegisterCurlConstants(&(*pVm));
+#endif
 	/* Stamp PHP-8 minimum-arity metadata onto the registered builtins so the
 	 * OP_CALL choke point can raise ArgumentCountError on too few arguments. */
 	VmSetBuiltinArity(&(*pVm));
