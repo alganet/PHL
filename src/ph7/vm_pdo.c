@@ -203,10 +203,8 @@ PH7_PRIVATE phl_pdo_stmt * PH7_PdoNewStmt(phl_pdo *pConn)
 	return pSt;
 }
 /* Drop what bindValue()/bindParam() recorded. */
-static void PdoBindsClear(phl_pdo_stmt *pSt)
+static void PdoBindListFree(ph7_vm *pVm,phl_pdo_bind *pB)
 {
-	phl_pdo_bind *pB = pSt->pBinds;
-	ph7_vm *pVm = pSt->pConn->pVm;
 	while( pB ){
 		phl_pdo_bind *pNext = pB->pNext;
 		if( pB->zName ){
@@ -218,7 +216,13 @@ static void PdoBindsClear(phl_pdo_stmt *pSt)
 		SyMemBackendFree(&pVm->sAllocator,pB);
 		pB = pNext;
 	}
+}
+static void PdoBindsClear(phl_pdo_stmt *pSt)
+{
+	PdoBindListFree(pSt->pConn->pVm,pSt->pBinds);
+	PdoBindListFree(pSt->pConn->pVm,pSt->pColBinds);
 	pSt->pBinds = 0;
+	pSt->pColBinds = 0;
 }
 PH7_PRIVATE void PH7_PdoFreeStmt(phl_pdo_stmt *pSt)
 {
@@ -1525,6 +1529,118 @@ static int PdoFetchObjectRow(ph7_context *pCtx,phl_pdo_stmt *pSt,int iMode,
 	return PH7_OK;
 }
 /*
+ * PDOStatement::bindColumn(string|int $column, mixed &$var, int $type = PDO::PARAM_STR, ...): bool
+ *
+ * Attach a variable to a column, to be written on every FETCH_BOUND fetch.
+ * The column is 1-based like a parameter, and a NAME is resolved NOW against
+ * the statement's columns -- a name that is not there warns immediately (in
+ * every error mode, the way a layer refusal does) and is simply not bound,
+ * while an out-of-range INDEX is accepted here and refused by the fetch.
+ */
+static int vm_builtin_PDOStatement_bindColumn(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo_stmt *pSt = PdoStmtOfInstance(PH7_ContextThis(pCtx));
+	phl_pdo_bind *pB;
+	ph7_value *pKey;
+	int iPos = 0,iType;
+	if( pSt == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDOStatement object is uninitialized");
+	}
+	pKey = nArg > 0 ? apArg[0] : 0;
+	iType = nArg > 2 ? (int)ph7_value_to_int64(apArg[2]) : PDO_PARAM_STR;
+	if( pKey && (pKey->iFlags & MEMOBJ_STRING) ){
+		int nName = 0,iCol,nCol;
+		const char *zName = ph7_value_to_string(pKey,&nName);
+		SyBlob sName;
+		iPos = 0;
+		nCol = PH7_PdoSqliteColumnCount(pSt);
+		SyBlobInit(&sName,&pCtx->pVm->sAllocator);
+		for( iCol = 0 ; iCol < nCol ; ++iCol ){
+			PdoColumnName(pSt->pConn,PH7_PdoSqliteColumnName(pSt,iCol),&sName);
+			if( (int)SyBlobLength(&sName) - 1 == nName
+			 && SyMemcmp(SyBlobData(&sName),zName,(sxu32)nName) == 0 ){
+				iPos = iCol + 1;
+				break;
+			}
+		}
+		SyBlobRelease(&sName);
+		if( iPos == 0 ){
+			/* php routes this one through the error mode like any layer refusal:
+			 * a warning in silent and warning modes, a throw in exception mode --
+			 * and the column is simply not bound either way. */
+			SyBlob sMsg;
+			sxi32 rcWarn;
+			ph7_result_bool(pCtx,1);
+			SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
+			SyBlobFormat(&sMsg,"Did not find column name '%.*s' in the defined "
+				"columns; it will not be bound",nName,zName ? zName : "");
+			SyBlobAppend(&sMsg,"",1);
+			rcWarn = PH7_PdoRaiseImplStmt(pCtx,pSt,"PDOStatement::bindColumn","HY000",
+				(const char *)SyBlobData(&sMsg));
+			SyBlobRelease(&sMsg);
+			return rcWarn;
+		}
+	}else{
+		ph7_int64 iWant = pKey ? ph7_value_to_int64(pKey) : 0;
+		if( iWant < 1 ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"PDOStatement::bindColumn(): Argument #1 ($column) must be greater "
+				"than or equal to 1");
+		}
+		iPos = (int)iWant;
+	}
+	pB = (phl_pdo_bind *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,sizeof(phl_pdo_bind));
+	if( pB == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	SyZero(pB,sizeof(phl_pdo_bind));
+	pB->iPos = iPos;
+	pB->iType = iType;
+	pB->nSlot = (nArg > 1 && apArg[1]) ? apArg[1]->nIdx : SXU32_HIGH;
+	pB->pNext = pSt->pColBinds;
+	pSt->pColBinds = pB;
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/*
+ * Write every bound column of the row at the cursor into the variables
+ * bindColumn() named.  The value takes the bound TYPE, so an unqualified
+ * binding hands back a string where the row itself would have held an int.
+ */
+static sxi32 PdoWriteBoundColumns(ph7_context *pCtx,phl_pdo_stmt *pSt)
+{
+	phl_pdo_bind *pB;
+	int nCol = PH7_PdoSqliteColumnCount(pSt);
+	for( pB = pSt->pColBinds ; pB ; pB = pB->pNext ){
+		ph7_value *pSlot;
+		ph7_value sVal;
+		if( pB->iPos < 1 || pB->iPos > nCol ){
+			return PH7_VmThrowException(pCtx,"ValueError","Invalid column index");
+		}
+		if( pB->nSlot == SXU32_HIGH ){
+			continue;
+		}
+		pSlot = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pB->nSlot);
+		if( pSlot == 0 ){
+			continue;
+		}
+		PH7_MemObjInit(pCtx->pVm,&sVal);
+		PH7_PdoSqliteColumnValue(pSt,pB->iPos - 1,&sVal);
+		PdoApplyValueMods(pSt->pConn,&sVal);
+		if( (sVal.iFlags & MEMOBJ_NULL) == 0 ){
+			switch( pB->iType & ~PDO_PARAM_FLAGS ){
+				case PDO_PARAM_INT:  PH7_MemObjToInteger(&sVal); break;
+				case PDO_PARAM_BOOL: PH7_MemObjToBool(&sVal); break;
+				case PDO_PARAM_LOB:  break;
+				default:             PH7_MemObjToString(&sVal); break;
+			}
+		}
+		PH7_MemObjStore(&sVal,pSlot);
+		PH7_MemObjRelease(&sVal);
+	}
+	return PH7_OK;
+}
+/*
  * PDOStatement::fetch(int $mode = PDO::FETCH_DEFAULT, ...): mixed
  *
  * FETCH_DEFAULT means the connection's ATTR_DEFAULT_FETCH_MODE, which is
@@ -1571,6 +1687,26 @@ static int vm_builtin_PDOStatement_fetch(ph7_context *pCtx,int nArg,ph7_value **
 		}else{
 			ph7_result_null(pCtx);
 		}
+		if( PdoStmtStep(pSt) < 0 ){
+			PdoStmtFailed(pSt,pSt->pConn->zSqlState);
+			return PH7_PdoRaiseStmt(pCtx,pSt,"PDOStatement::fetch");
+		}
+		PdoStmtOk(pSt);
+		return PH7_OK;
+	}
+	if( (iMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_BOUND ){
+		sxi32 rcBound;
+		if( !pSt->bRowPending ){
+			PdoStmtOk(pSt);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		rcBound = PdoWriteBoundColumns(pCtx,pSt);
+		if( rcBound != PH7_OK ){
+			return rcBound;
+		}
+		pSt->bRowPending = 0;
+		ph7_result_bool(pCtx,1);
 		if( PdoStmtStep(pSt) < 0 ){
 			PdoStmtFailed(pSt,pSt->pConn->zSqlState);
 			return PH7_PdoRaiseStmt(pCtx,pSt,"PDOStatement::fetch");
@@ -2022,14 +2158,23 @@ static int vm_builtin_PDOStatement_fetchAll(ph7_context *pCtx,int nArg,ph7_value
 			}
 			ph7_array_add_elem(pOut,0,&sObj);
 			PH7_MemObjRelease(&sObj);
-		}else if( !PdoStmtRow(pCtx->pVm,pSt,iRowMode,pRow) ){
-			break;
 		}else if( iBase == PDO_FETCH_BOUND ){
-			ph7_value *pTrue = ph7_context_new_scalar(pCtx);
+			/* the row goes into the BOUND VARIABLES, not into the result: the
+			 * array collects one true per row and the caller reads the last
+			 * row's values out of its own variables */
+			ph7_value *pTrue;
+			sxi32 rcBound = PdoWriteBoundColumns(pCtx,pSt);
+			if( rcBound != PH7_OK ){
+				return rcBound;
+			}
+			pSt->bRowPending = 0;
+			pTrue = ph7_context_new_scalar(pCtx);
 			if( pTrue ){
 				ph7_value_bool(pTrue,1);
 				ph7_array_add_elem(pOut,0,pTrue);
 			}
+		}else if( !PdoStmtRow(pCtx->pVm,pSt,iRowMode,pRow) ){
+			break;
 		}else if( iBase == PDO_FETCH_COLUMN ){
 			ph7_array_add_elem(pOut,0,PdoArrayAtInt(pCtx->pVm,pRow,(sxi64)iCol));
 		}else if( iBase == PDO_FETCH_KEY_PAIR ){
@@ -2959,7 +3104,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm)
 	static const PH7_NativeMethodDef aStmtMethod[] = {
 		{ "bindColumn",   PH7_MOD_PUBLIC,
 		  "string|int $column, mixed &$var, int $type = PDO::PARAM_STR, int $maxLength = 0, "
-		  "mixed $driverOptions = null", "@bool", vm_builtin_pdo_stub },
+		  "mixed $driverOptions = null", "@bool", vm_builtin_PDOStatement_bindColumn },
 		{ "bindParam",    PH7_MOD_PUBLIC,
 		  "string|int $param, mixed &$var, int $type = PDO::PARAM_STR, int $maxLength = 0, "
 		  "mixed $driverOptions = null", "@bool", vm_builtin_PDOStatement_bindParam },

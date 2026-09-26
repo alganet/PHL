@@ -131,6 +131,8 @@ struct phl_pdo_stmt {
 	                               * its connection's last reference must not lose
 	                               * the database under it */
 	phl_pdo_bind *pBinds;         /* what bindValue()/bindParam() recorded */
+	phl_pdo_bind *pColBinds;      /* what bindColumn() recorded: the same record, read the
+	                               * other way -- a COLUMN and the variable it writes to */
 	phl_pdo_stmt *pNext;
 };
 
