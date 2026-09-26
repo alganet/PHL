@@ -7554,7 +7554,20 @@ static int DomNsNodeProp(ph7_context *pCtx,const char *zName)
 		}
 		return 1;
 	}
-	if( DomNameIs(zName,"nodeValue") || DomNameIs(zName,"namespaceURI") ){
+	if( DomNameIs(zName,"nodeValue") ){
+		/* php builds its wrapper as a fake node whose text CHILD carries the
+		 * URI, and an EMPTY href writes no child at all -- so the xmlns=""
+		 * UNDECLARATION answers null here while namespaceURI below answers
+		 * the empty string off the href itself. Both doors (the attribute
+		 * lookups and the namespace:: axis) share this recognizer. */
+		if( pNs->href && pNs->href[0] ){
+			ph7_result_string(pCtx,(const char *)pNs->href,-1);
+		}else{
+			ph7_result_null(pCtx);
+		}
+		return 1;
+	}
+	if( DomNameIs(zName,"namespaceURI") ){
 		ph7_result_string(pCtx,pNs->href ? (const char *)pNs->href : "",-1);
 		return 1;
 	}
