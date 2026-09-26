@@ -6344,6 +6344,447 @@ static ph7_hashmap * DomXPathNsReg(ph7_vm *pVm,ph7_class_instance *pThis)
 	}
 	return PH7_HashmapCowSeparate(&(*pVm),pSlot);
 }
+/* ===== The PHP-function bridge (php:function / php:functionString / own-URI) ===== */
+
+/* php's reserved URI: `php:function()` is reached through whatever PREFIX the
+ * caller bound to it, so every lookup here is by URI. */
+#define XP_PHPNS "http://php.net/xpath"
+/* Which callables an evaluation may reach: php's register_phpfunctions. */
+#define XP_MODE_NONE   0   /* registerPhpFunctions() never called -- nothing runs */
+#define XP_MODE_ALL    1   /* called bare -- any callable name runs */
+#define XP_MODE_LIST   2   /* called with a restriction -- the table below decides */
+#define XP_FNMODE "__fnmode"
+#define XP_FNREG  "__fnreg"    /* restricted: xpath name => the callable to run */
+#define XP_NSFN   "__nsfn"     /* own-URI: "<uri>\x01<name>" => callable */
+static ph7_hashmap * DomXPathSlotMap(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot)
+{
+	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,zSlot) : 0;
+	if( pSlot == 0 ){
+		return 0;
+	}
+	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){
+			return 0;
+		}
+	}
+	return PH7_HashmapCowSeparate(&(*pVm),pSlot);
+}
+/* Insert (or replace) one string-keyed entry. */
+static void DomXPathMapPut(ph7_vm *pVm,ph7_hashmap *pMap,const char *zKey,int nKey,ph7_value *pVal)
+{
+	ph7_value sKey;
+	PH7_MemObjInitFromString(&(*pVm),&sKey,0);
+	PH7_MemObjStringAppend(&sKey,zKey,(sxu32)nKey);
+	PH7_HashmapInsert(pMap,&sKey,pVal);
+	PH7_MemObjRelease(&sKey);
+}
+/* ...and the matching read, or NULL. The value BELONGS to the map. */
+static ph7_value * DomXPathMapGet(ph7_vm *pVm,ph7_class_instance *pThis,const char *zSlot,
+	const char *zKey,int nKey)
+{
+	ph7_hashmap *pMap = DomXPathSlotMap(&(*pVm),pThis,zSlot);
+	ph7_hashmap_node *pEntry = 0;
+	ph7_value sKey,*pHit;
+	if( pMap == 0 ){
+		return 0;
+	}
+	PH7_MemObjInitFromString(&(*pVm),&sKey,0);
+	PH7_MemObjStringAppend(&sKey,zKey,(sxu32)nKey);
+	if( PH7_HashmapLookup(pMap,&sKey,&pEntry) != SXRET_OK ){
+		pEntry = 0;
+	}
+	PH7_MemObjRelease(&sKey);
+	pHit = pEntry ? HashmapExtractNodeValue(pEntry) : 0;
+	return pHit;
+}
+/*
+ * What one evaluation needs to reach PHP from inside libxml, and what it
+ * brings BACK.
+ *
+ * The bringing back is the whole design problem: a refusal raised from the
+ * callback would run the enclosing catch RIGHT THERE, in the middle of
+ * libxml's own recursion (the builtin-throw rail), so nothing is raised here.
+ * The reason is PARKED -- a code and the name it quotes -- the evaluation is
+ * stopped by setting the parser's error field (not xmlXPathErr, which would
+ * queue a libxml diagnostic php does not print), and DomXPathEvalRun raises
+ * once libxml has unwound. A throw from the CALLBACK ITSELF is the same
+ * story one level up: its dispatch status is parked in rcUnwound and returned
+ * from the method verbatim, which is what makes `php:function("boom") or
+ * php:function("after")` run neither the `or` arm nor anything past it --
+ * php's answer.
+ */
+#define XP_FN_OK        0
+#define XP_FN_NOREG     1   /* registerPhpFunctions() was never called */
+#define XP_FN_NOHANDLER 2   /* restricted, and this name is not in the table */
+#define XP_FN_NOTSTR    3   /* the handler name argument is not a string */
+#define XP_FN_NONAME    4   /* php:function() with no arguments at all */
+#define XP_FN_BADCB     5   /* the name is not callable */
+#define XP_FN_NOTNODE   6   /* the callback answered an object that is not a node */
+typedef struct DomXPathFnCtx DomXPathFnCtx;
+struct DomXPathFnCtx {
+	ph7_context *pCtx;            /* the method's own call context */
+	ph7_class_instance *pThis;    /* the DOMXPath */
+	ph7_class_instance *pDoc;     /* its document object (where wrappers cache) */
+	phl_domnode *pDocNd;
+	int iErr;                     /* XP_FN_* -- raised after libxml unwinds */
+	SyBlob sErrName;              /* the name that refusal quotes */
+	sxi32 rcUnwound;              /* a callback that did not return */
+};
+/* Stop the evaluation without emitting a libxml diagnostic. */
+static void DomXPathFnStop(xmlXPathParserContextPtr pPCtx,DomXPathFnCtx *pFn,int iErr,
+	const char *zName,int nName)
+{
+	if( pFn->iErr == XP_FN_OK ){
+		pFn->iErr = iErr;
+		SyBlobReset(&pFn->sErrName);
+		if( zName && nName > 0 ){
+			SyBlobAppend(&pFn->sErrName,zName,(sxu32)nName);
+		}
+	}
+	pPCtx->error = XPATH_EXPR_ERROR;
+}
+/*
+ * What a callback that did not RETURN leaves behind, which php's two
+ * dispatchers do differently and both visibly.
+ *
+ * The one that looks a callable up in a REGISTERED table -- restricted
+ * php:function, and every own-URI name -- returns without pushing, and libxml,
+ * finding its value stack one short, queues its own "Stack usage error" before
+ * unwinding; that entry is then on the list libxml_get_errors() answers. The
+ * UNRESTRICTED php:function path pushes a value first, so its queue stays
+ * clean. Either way the exception is the answer, and nothing further of the
+ * expression runs.
+ */
+static void DomXPathFnUnwound(xmlXPathParserContextPtr pPCtx,int bRegistered)
+{
+	if( !bRegistered ){
+		valuePush(pPCtx,xmlXPathNewCString(""));
+		pPCtx->error = XPATH_EXPR_ERROR;
+	}
+}
+/* One XPath argument as php sees it: a nodeset becomes an ARRAY of wrappers
+ * (php's own conversion), the three scalars their php types. bAsString is
+ * php:functionString's flag, under which a nodeset arrives as its string
+ * value instead. */
+static void DomXPathArgToValue(DomXPathFnCtx *pFn,xmlXPathObjectPtr pArg,int bAsString,
+	ph7_value *pOut)
+{
+	ph7_vm *pVm = pFn->pCtx->pVm;
+	if( pArg == 0 ){
+		PH7_MemObjInit(pVm,pOut);
+		return;
+	}
+	if( pArg->type == XPATH_NODESET && !bAsString ){
+		ph7_value *pArr = ph7_context_new_array(pFn->pCtx);
+		int i;
+		PH7_MemObjInit(pVm,pOut);
+		if( pArr == 0 ){
+			return;
+		}
+		for( i = 0 ; pArg->nodesetval && i < pArg->nodesetval->nodeNr ; ++i ){
+			xmlNodePtr pNode = pArg->nodesetval->nodeTab[i];
+			ph7_value sElem;
+			ph7_class_instance *pObj;
+			if( pNode == 0 ){
+				continue;
+			}
+			if( pNode->type == XML_NAMESPACE_DECL ){
+				xmlNsPtr pNs = (xmlNsPtr)pNode;
+				xmlNodePtr pElem = (xmlNodePtr)pNs->next;
+				xmlNsPtr pOrig = (pElem && pElem->type == XML_ELEMENT_NODE)
+					? xmlSearchNs((xmlDocPtr)pFn->pDocNd->pNode,pElem,pNs->prefix) : 0;
+				if( pOrig == 0 ){
+					continue;
+				}
+				pObj = DomNewNsNode(pVm,pFn->pDoc,pFn->pDocNd->pShell,pOrig,pElem);
+				if( pObj == 0 ){
+					continue;
+				}
+				PH7_MemObjInit(pVm,&sElem);
+				sElem.x.pOther = pObj;
+				sElem.iFlags = MEMOBJ_OBJ;
+				ph7_array_add_elem(pArr,0,&sElem);   /* takes its own reference */
+				PH7_ClassInstanceUnref(pObj);        /* ...and ours goes back */
+				continue;
+			}
+			pObj = DomWrap(pVm,pFn->pDoc,pFn->pDocNd->pShell,pNode);
+			if( pObj == 0 ){
+				continue;
+			}
+			PH7_MemObjInit(pVm,&sElem);
+			sElem.x.pOther = pObj;   /* BORROWED from the cache; the insert refs it */
+			sElem.iFlags = MEMOBJ_OBJ;
+			ph7_array_add_elem(pArr,0,&sElem);
+		}
+		PH7_MemObjStore(pArr,pOut);
+		return;
+	}
+	switch( pArg->type ){
+	case XPATH_BOOLEAN:
+		PH7_MemObjInitFromBool(pVm,pOut,pArg->boolval);
+		break;
+	case XPATH_NUMBER:
+		PH7_MemObjInitFromReal(pVm,pOut,pArg->floatval);
+		break;
+	default: {
+		xmlChar *zStr = xmlXPathCastToString(pArg);
+		PH7_MemObjInitFromString(pVm,pOut,0);
+		if( zStr ){
+			PH7_MemObjStringAppend(pOut,(const char *)zStr,(sxu32)SyStrlen((const char *)zStr));
+			xmlFree(zStr);
+		}
+		break;
+	}
+	}
+}
+/* The callback's ANSWER, pushed back on the XPath stack: a bool stays a
+ * boolean, a DOM node becomes a one-node set, and everything else is php's
+ * string conversion -- the SAME three for both spellings, since
+ * functionString's flag is about the ARGUMENTS. The conversion is the
+ * user-visible one (an array draws php's "Array to string conversion" notice
+ * and reads "Array"); a non-node object is the TypeError parked above. */
+static void DomXPathPushResult(xmlXPathParserContextPtr pPCtx,DomXPathFnCtx *pFn,
+	ph7_value *pRes)
+{
+	if( (pRes->iFlags & MEMOBJ_BOOL) && (pRes->iFlags & MEMOBJ_STRING) == 0 ){
+		valuePush(pPCtx,xmlXPathNewBoolean(pRes->x.iVal != 0));
+		return;
+	}
+	if( pRes->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pObj = (ph7_class_instance *)pRes->x.pOther;
+		phl_domnode *pNd = DomResOf(pObj);
+		xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+		if( pNode == 0 || pNode->type == XML_NAMESPACE_DECL ){
+			DomXPathFnStop(pPCtx,pFn,XP_FN_NOTNODE,0,0);
+			return;
+		}
+		valuePush(pPCtx,xmlXPathNewNodeSet(pNode));
+		return;
+	}
+	{
+		int nStr = 0;
+		const char *zStr;
+		xmlChar *zDup;
+		if( (pRes->iFlags & MEMOBJ_STRING) == 0 ){
+			sxi32 rcStr = PH7_MemObjToStringUV(pRes);
+			if( PH7_CALLBACK_UNWOUND(rcStr) ){
+				/* A __toString() that threw: the same rail as the callback's
+				 * own throw, one conversion later. */
+				pFn->rcUnwound = rcStr;
+				return;
+			}
+		}
+		zStr = ph7_value_to_string(pRes,&nStr);
+		zDup = xmlStrndup((const xmlChar *)zStr,nStr);
+		valuePush(pPCtx,xmlXPathWrapString(zDup));
+	}
+}
+/*
+ * The one C function behind every PHP-backed XPath name. libxml reaches it
+ * through the lookup below, with the called name and URI on the context.
+ */
+static void DomXPathPhpFn(xmlXPathParserContextPtr pPCtx,int nArgs)
+{
+	xmlXPathContextPtr pXCtx = pPCtx ? pPCtx->context : 0;
+	DomXPathFnCtx *pFn = pXCtx ? (DomXPathFnCtx *)pXCtx->funcLookupData : 0;
+	const xmlChar *zFn = pXCtx ? pXCtx->function : 0;
+	const xmlChar *zUri = pXCtx ? pXCtx->functionURI : 0;
+	int bPhpNs = zUri && xmlStrEqual(zUri,(const xmlChar *)XP_PHPNS);
+	int bAsString = bPhpNs && zFn && xmlStrEqual(zFn,(const xmlChar *)"functionString");
+	int bRegistered = !bPhpNs;   /* a table lookup rather than the name itself */
+	xmlXPathObjectPtr *apArg;
+	ph7_value *apVal = 0,sResult,sName;
+	ph7_value *pCallable = 0;
+	int bNameOwned = 0;
+	ph7_vm *pVm;
+	int nSkip = bPhpNs ? 1 : 0;   /* php:function's first argument NAMES the callback */
+	int i,nCall;
+	sxi32 rc;
+	if( pFn == 0 ){
+		return;
+	}
+	pVm = pFn->pCtx->pVm;
+	/* Take the arguments off the stack FIRST (valuePop answers them last-first),
+	 * so every exit below leaves libxml's stack where it found it. */
+	apArg = nArgs > 0
+		? (xmlXPathObjectPtr *)SyMemBackendAlloc(&pVm->sAllocator,
+			sizeof(xmlXPathObjectPtr) * (sxu32)nArgs)
+		: 0;
+	if( nArgs > 0 && apArg == 0 ){
+		pPCtx->error = XPATH_MEMORY_ERROR;
+		return;
+	}
+	for( i = nArgs - 1 ; i >= 0 ; --i ){
+		apArg[i] = valuePop(pPCtx);
+	}
+	if( pFn->iErr != XP_FN_OK || pFn->rcUnwound != 0 ){
+		goto done;   /* a previous call already stopped this evaluation */
+	}
+	if( bPhpNs ){
+		int nName = 0;
+		const char *zName;
+		sxi64 iMode = PH7_NativeAttrInt(pFn->pThis,XP_FNMODE);
+		if( nArgs < 1 ){
+			DomXPathFnStop(pPCtx,pFn,XP_FN_NONAME,0,0);
+			goto done;
+		}
+		if( apArg[0] == 0 || apArg[0]->type != XPATH_STRING ){
+			DomXPathFnStop(pPCtx,pFn,XP_FN_NOTSTR,0,0);
+			goto done;
+		}
+		zName = apArg[0]->stringval ? (const char *)apArg[0]->stringval : "";
+		nName = (int)SyStrlen(zName);
+		if( iMode == XP_MODE_NONE ){
+			DomXPathFnStop(pPCtx,pFn,XP_FN_NOREG,0,0);
+			goto done;
+		}
+		if( iMode == XP_MODE_LIST ){
+			bRegistered = 1;
+			pCallable = DomXPathMapGet(pVm,pFn->pThis,XP_FNREG,zName,nName);
+			if( pCallable == 0 ){
+				DomXPathFnStop(pPCtx,pFn,XP_FN_NOHANDLER,zName,nName);
+				goto done;
+			}
+		}else{
+			/* Unrestricted: the NAME ITSELF is the callable, screened here
+			 * because no registration screened it. */
+			PH7_MemObjInitFromString(pVm,&sName,0);
+			PH7_MemObjStringAppend(&sName,zName,(sxu32)nName);
+			bNameOwned = 1;
+			if( !PH7_VmIsCallable(pVm,&sName,TRUE) ){
+				DomXPathFnStop(pPCtx,pFn,XP_FN_BADCB,zName,nName);
+				goto done;
+			}
+			pCallable = &sName;
+		}
+	}else{
+		SyBlob sKey;
+		SyBlobInit(&sKey,&pVm->sAllocator);
+		SyBlobAppend(&sKey,(const char *)zUri,zUri ? (sxu32)SyStrlen((const char *)zUri) : 0);
+		SyBlobAppend(&sKey,"\1",1);
+		SyBlobAppend(&sKey,(const char *)zFn,zFn ? (sxu32)SyStrlen((const char *)zFn) : 0);
+		pCallable = DomXPathMapGet(pVm,pFn->pThis,XP_NSFN,
+			(const char *)SyBlobData(&sKey),(int)SyBlobLength(&sKey));
+		SyBlobRelease(&sKey);
+		if( pCallable == 0 ){
+			goto done;   /* not ours after all: libxml reports the unknown function */
+		}
+	}
+	nCall = nArgs - nSkip;
+	if( nCall > 0 ){
+		apVal = (ph7_value *)SyMemBackendAlloc(&pVm->sAllocator,
+			sizeof(ph7_value) * (sxu32)nCall);
+		if( apVal == 0 ){
+			pPCtx->error = XPATH_MEMORY_ERROR;
+			goto done;
+		}
+		for( i = 0 ; i < nCall ; ++i ){
+			DomXPathArgToValue(pFn,apArg[i + nSkip],bAsString,&apVal[i]);
+		}
+	}
+	PH7_MemObjInit(pVm,&sResult);
+	{
+		ph7_value **apPtr = nCall > 0
+			? (ph7_value **)SyMemBackendAlloc(&pVm->sAllocator,
+				sizeof(ph7_value *) * (sxu32)nCall)
+			: 0;
+		if( nCall > 0 && apPtr == 0 ){
+			pPCtx->error = XPATH_MEMORY_ERROR;
+			PH7_MemObjRelease(&sResult);
+			goto done;
+		}
+		for( i = 0 ; i < nCall ; ++i ){
+			apPtr[i] = &apVal[i];
+		}
+		rc = PH7_VmCallCallbackByValue(pVm,pCallable,nCall,apPtr,&sResult,0);
+		if( apPtr ){
+			SyMemBackendFree(&pVm->sAllocator,apPtr);
+		}
+	}
+	if( PH7_CALLBACK_UNWOUND(rc) ){
+		pFn->rcUnwound = rc;
+		DomXPathFnUnwound(pPCtx,bRegistered);
+	}else{
+		DomXPathPushResult(pPCtx,pFn,&sResult);
+	}
+	PH7_MemObjRelease(&sResult);
+done:
+	if( bNameOwned ){
+		PH7_MemObjRelease(&sName);
+	}
+	if( apVal ){
+		for( i = 0 ; i < nArgs - nSkip ; ++i ){
+			PH7_MemObjRelease(&apVal[i]);
+		}
+		SyMemBackendFree(&pVm->sAllocator,apVal);
+	}
+	for( i = 0 ; i < nArgs ; ++i ){
+		if( apArg[i] ){
+			xmlXPathFreeObject(apArg[i]);
+		}
+	}
+	if( apArg ){
+		SyMemBackendFree(&pVm->sAllocator,apArg);
+	}
+}
+/*
+ * libxml's function-resolution hook: answer the bridge for php's two reserved
+ * names and for any (URI, name) this object registered, and NULL for
+ * everything else -- which is what makes libxml fall through to its own table
+ * (so `count()` and friends still resolve).
+ */
+static xmlXPathFunction DomXPathFnLookup(void *pUserData,const xmlChar *zName,const xmlChar *zUri)
+{
+	DomXPathFnCtx *pFn = (DomXPathFnCtx *)pUserData;
+	SyBlob sKey;
+	ph7_value *pHit;
+	if( pFn == 0 || zUri == 0 || zName == 0 ){
+		return 0;
+	}
+	if( xmlStrEqual(zUri,(const xmlChar *)XP_PHPNS) ){
+		if( xmlStrEqual(zName,(const xmlChar *)"function")
+		 || xmlStrEqual(zName,(const xmlChar *)"functionString") ){
+			return DomXPathPhpFn;
+		}
+		return 0;
+	}
+	SyBlobInit(&sKey,&pFn->pCtx->pVm->sAllocator);
+	SyBlobAppend(&sKey,(const char *)zUri,(sxu32)SyStrlen((const char *)zUri));
+	SyBlobAppend(&sKey,"\1",1);
+	SyBlobAppend(&sKey,(const char *)zName,(sxu32)SyStrlen((const char *)zName));
+	pHit = DomXPathMapGet(pFn->pCtx->pVm,pFn->pThis,XP_NSFN,
+		(const char *)SyBlobData(&sKey),(int)SyBlobLength(&sKey));
+	SyBlobRelease(&sKey);
+	return pHit ? DomXPathPhpFn : 0;
+}
+/* The parked refusal, raised once libxml has unwound. */
+static int DomXPathFnRaise(ph7_context *pCtx,DomXPathFnCtx *pFn)
+{
+	const char *zName = (const char *)SyBlobData(&pFn->sErrName);
+	int nName = (int)SyBlobLength(&pFn->sErrName);
+	switch( pFn->iErr ){
+	case XP_FN_NOREG:
+		return PH7_VmThrowException(pCtx,"Error","No callbacks were registered");
+	case XP_FN_NOHANDLER:
+		return PH7_VmThrowException(pCtx,"Error",
+			"No callback handler \"%.*s\" registered",nName,zName);
+	case XP_FN_NOTSTR:
+		return PH7_VmThrowException(pCtx,"TypeError","Handler name must be a string");
+	case XP_FN_NONAME:
+		return PH7_VmThrowException(pCtx,"Error",
+			"Function name must be passed as the first argument");
+	case XP_FN_BADCB:
+		return PH7_VmThrowException(pCtx,"Error",
+			"Invalid callback %.*s, function \"%.*s\" not found or invalid function name",
+			nName,zName,nName,zName);
+	case XP_FN_NOTNODE:
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"Only objects that are instances of DOM nodes can be converted to an XPath expression");
+	default:
+		break;
+	}
+	return PH7_OK;
+}
 /*
  * Build the evaluation context for one query()/evaluate() call: a FRESH
  * xmlXPathContext (php keeps a persistent one; replaying the registration
@@ -6499,6 +6940,7 @@ static int DomXPathEvalRun(ph7_context *pCtx,int nArg,ph7_value **apArg,
 	xmlXPathContextPtr pXCtx;
 	xmlXPathObjectPtr pObj;
 	xmlNsPtr *aNodeNs;
+	DomXPathFnCtx sFn;
 	sxu32 nMark;
 	sxi32 rc;
 	if( pDocNd == 0 ){
@@ -6516,6 +6958,16 @@ static int DomXPathEvalRun(ph7_context *pCtx,int nArg,ph7_value **apArg,
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	/* The PHP-function bridge rides this one evaluation: the record lives on
+	 * THIS stack frame, and libxml carries a pointer to it as its lookup data. */
+	sFn.pCtx = pCtx;
+	sFn.pThis = pThis;
+	sFn.pDoc = pDoc;
+	sFn.pDocNd = pDocNd;
+	sFn.iErr = XP_FN_OK;
+	sFn.rcUnwound = 0;
+	SyBlobInit(&sFn.sErrName,&pVm->sAllocator);
+	xmlXPathRegisterFuncLookup(pXCtx,DomXPathFnLookup,&sFn);
 	nMark = PH7_LibxmlCaptureBegin(pVm);
 	pObj = xmlXPathEvalExpression((const xmlChar *)zExpr,pXCtx);
 	PH7_LibxmlCaptureEnd(pVm,nMark,zMethod);
@@ -6524,6 +6976,25 @@ static int DomXPathEvalRun(ph7_context *pCtx,int nArg,ph7_value **apArg,
 		pXCtx->nsNr = 0;
 		xmlFree(aNodeNs);
 	}
+	if( sFn.rcUnwound != 0 || sFn.iErr != XP_FN_OK ){
+		/* A callback did not return, or the bridge parked a refusal it could
+		 * not raise from inside libxml's recursion. Either way the evaluation
+		 * is over and this is its answer -- raised HERE, where the enclosing
+		 * catch runs with libxml already unwound. */
+		sxi32 rcFn = sFn.rcUnwound;
+		if( pObj ){
+			xmlXPathFreeObject(pObj);
+		}
+		xmlXPathFreeContext(pXCtx);
+		if( rcFn == 0 ){
+			rcFn = DomXPathFnRaise(pCtx,&sFn);
+		}else{
+			pCtx->nThrowRc = rcFn;
+		}
+		SyBlobRelease(&sFn.sErrName);
+		return rcFn;
+	}
+	SyBlobRelease(&sFn.sErrName);
 	if( pObj == 0 ){
 		xmlXPathFreeContext(pXCtx);
 		ph7_result_bool(pCtx,0);
@@ -6626,6 +7097,176 @@ DOM_METHOD(vm_builtin_DOMXPath_registerNamespace)
 	PH7_MemObjRelease(&sKey);
 	PH7_MemObjRelease(&sVal);
 	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+
+/* One row of the $restrict ARRAY: the value must be callable, and the NAME an
+ * expression calls it by is the string key when there is one -- php's alias --
+ * and otherwise the value coerced to a string (an array callable therefore
+ * registers under "Array", with php's own conversion notice). */
+struct DomXPathRestrict {
+	ph7_context *pCtx;
+	ph7_hashmap *pMap;
+	sxi32 rc;
+};
+static int DomXPathRestrictRow(ph7_value *pKey,ph7_value *pVal,void *pUserData)
+{
+	struct DomXPathRestrict *pWalk = (struct DomXPathRestrict *)pUserData;
+	ph7_vm *pVm = pWalk->pCtx->pVm;
+	char zBuf[128];
+	const char *zWhy;
+	if( pWalk->rc != PH7_OK ){
+		return PH7_OK;
+	}
+	zWhy = PH7_VmCallableReason(pVm,pVal,zBuf,(int)sizeof(zBuf));
+	if( zWhy ){
+		pWalk->rc = PH7_VmThrowException(pWalk->pCtx,"TypeError",
+			"DOMXPath::registerPhpFunctions(): Argument #1 ($restrict) must be an array "
+			"with valid callbacks as values, %s",zWhy);
+		return PH7_ABORT;
+	}
+	if( pKey && ph7_value_is_string(pKey) ){
+		int nKey = 0;
+		const char *zKey = ph7_value_to_string(pKey,&nKey);
+		DomXPathMapPut(pVm,pWalk->pMap,zKey,nKey,pVal);
+	}else{
+		/* ph7_value_to_string COERCES in place, which would rewrite the map's
+		 * own value; name off a copy. */
+		ph7_value sName;
+		int nName = 0;
+		const char *zName;
+		PH7_MemObjInit(pVm,&sName);
+		PH7_MemObjStore(pVal,&sName);
+		zName = ph7_value_to_string(&sName,&nName);
+		DomXPathMapPut(pVm,pWalk->pMap,zName,nName,pVal);
+		PH7_MemObjRelease(&sName);
+	}
+	return PH7_OK;
+}
+/*
+ * DOMXPath::registerPhpFunctions(array|string|null $restrict = null): void
+ *
+ * Bare (or null) opens the door to ANY callable name; a string or an array
+ * restricts it to the named ones, accumulating across calls -- a later bare
+ * call re-opens without forgetting the table, and a later restriction closes
+ * it again with everything registered so far still reachable. Each name is
+ * screened for callability HERE, so an evaluation never has to.
+ */
+DOM_METHOD(vm_builtin_DOMXPath_registerPhpFunctions)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_hashmap *pMap;
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	if( nArg < 1 || ph7_value_is_null(apArg[0]) ){
+		PH7_NativeSetAttrInt(pVm,pThis,XP_FNMODE,XP_MODE_ALL);
+		return PH7_OK;
+	}
+	pMap = DomXPathSlotMap(pVm,pThis,XP_FNREG);
+	if( pMap == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	/* The mode moves FIRST, and each row is taken as it is screened: php's
+	 * refusal leaves the object restricted with everything registered up to
+	 * the bad row -- `registerPhpFunctions(['strrev','nope','strtolower'])`
+	 * throws, and afterwards strrev runs while strtolower does not. */
+	PH7_NativeSetAttrInt(pVm,pThis,XP_FNMODE,XP_MODE_LIST);
+	if( ph7_value_is_array(apArg[0]) ){
+		struct DomXPathRestrict sWalk;
+		sWalk.pCtx = pCtx;
+		sWalk.pMap = pMap;
+		sWalk.rc = PH7_OK;
+		ph7_array_walk(apArg[0],DomXPathRestrictRow,&sWalk);
+		if( sWalk.rc != PH7_OK ){
+			return sWalk.rc;
+		}
+	}else{
+		char zBuf[128];
+		const char *zWhy = PH7_VmCallableReason(pVm,apArg[0],zBuf,(int)sizeof(zBuf));
+		int nName = 0;
+		const char *zName;
+		if( zWhy ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"DOMXPath::registerPhpFunctions(): Argument #1 ($restrict) must be a callable, %s",
+				zWhy);
+		}
+		zName = ph7_value_to_string(apArg[0],&nName);
+		DomXPathMapPut(pVm,pMap,zName,nName,apArg[0]);
+	}
+	return PH7_OK;
+}
+/* php's callback NAME grammar for registerPhpFunctionNS: an XML NCName, which
+ * is what an expression can spell as a function name. */
+static int DomXPathIsCallbackName(const char *zName,int nName)
+{
+	int i;
+	if( nName < 1 ){
+		return 0;
+	}
+	if( xmlValidateNCName((const xmlChar *)zName,0) != 0 ){
+		return 0;
+	}
+	/* xmlValidateNCName reads to the NUL, and a name may not carry one. */
+	for( i = 0 ; i < nName ; ++i ){
+		if( zName[i] == 0 ){
+			return 0;
+		}
+	}
+	return (int)SyStrlen(zName) == nName;
+}
+/*
+ * DOMXPath::registerPhpFunctionNS(string $namespaceURI, string $name,
+ *                                 callable $callable): void
+ *
+ * php 8.4's narrow door: one callable under one name in the caller's OWN
+ * namespace -- no `php:function("name")` indirection, and independent of
+ * registerPhpFunctions' mode (it neither needs it nor opens it). php's own
+ * URI is refused, the name must be an NCName, and the callable is screened
+ * here.
+ */
+DOM_METHOD(vm_builtin_DOMXPath_registerPhpFunctionNS)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int nUri = 0,nName = 0;
+	const char *zUri = nArg > 0 ? ph7_value_to_string(apArg[0],&nUri) : "";
+	const char *zName = nArg > 1 ? ph7_value_to_string(apArg[1],&nName) : "";
+	char zBuf[128];
+	const char *zWhy;
+	ph7_hashmap *pMap;
+	SyBlob sKey;
+	if( pThis == 0 || nArg < 3 ){
+		return PH7_OK;
+	}
+	if( nUri == (int)sizeof(XP_PHPNS)-1 && SyMemcmp(zUri,XP_PHPNS,(sxu32)nUri) == 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"DOMXPath::registerPhpFunctionNS(): Argument #1 ($namespaceURI) must not be "
+			"\"%s\" because it is reserved by PHP",XP_PHPNS);
+	}
+	if( !DomXPathIsCallbackName(zName,nName) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"DOMXPath::registerPhpFunctionNS(): Argument #2 ($name) must be a valid callback name");
+	}
+	zWhy = PH7_VmCallableReason(pVm,apArg[2],zBuf,(int)sizeof(zBuf));
+	if( zWhy ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"DOMXPath::registerPhpFunctionNS(): Argument #3 ($callable) must be a valid callback, %s",
+			zWhy);
+	}
+	pMap = DomXPathSlotMap(pVm,pThis,XP_NSFN);
+	if( pMap == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	/* One key from the pair: a URI cannot carry \x01, so the join is
+	 * unambiguous without escaping. */
+	SyBlobInit(&sKey,&pVm->sAllocator);
+	SyBlobAppend(&sKey,zUri,(sxu32)nUri);
+	SyBlobAppend(&sKey,"\1",1);
+	SyBlobAppend(&sKey,zName,(sxu32)nName);
+	DomXPathMapPut(pVm,pMap,(const char *)SyBlobData(&sKey),(int)SyBlobLength(&sKey),apArg[2]);
+	SyBlobRelease(&sKey);
 	return PH7_OK;
 }
 
@@ -8130,7 +8771,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "DOMDocument" },
 		{ "registerNodeNamespaces", PH7_MOD_PUBLIC,
 		  { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 }, "bool" },
-		{ XP_NSREG, PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ XP_NSREG,  PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ XP_FNMODE, PH7_MOD_PUBLIC|PH7_MOD_HIDDEN,
+		  { 0, 0, PH7_NATIVE_VAL_INT, XP_MODE_NONE, 0, 0.0 }, 0 },
+		{ XP_FNREG,  PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ XP_NSFN,   PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeMethodDef aXPathMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC, "DOMDocument $document, bool $registerNodeNS = true", "",
@@ -8143,6 +8788,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMXPath_evaluate },
 		{ "registerNamespace", PH7_MOD_PUBLIC, "string $prefix, string $namespace", "@bool",
 		  vm_builtin_DOMXPath_registerNamespace },
+		{ "registerPhpFunctions", PH7_MOD_PUBLIC, "array|string|null $restrict = null", "@void",
+		  vm_builtin_DOMXPath_registerPhpFunctions },
+		{ "registerPhpFunctionNS", PH7_MOD_PUBLIC,
+		  "string $namespaceURI, string $name, callable $callable", "void",
+		  vm_builtin_DOMXPath_registerPhpFunctionNS },
 	};
 	/* Bases before subclasses: PH7_InstallNativeClasses declares the whole table
 	 * before touching a method, but PH7_ClassInherit still needs the parent to
