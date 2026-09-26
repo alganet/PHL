@@ -1995,6 +1995,25 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 					&pFunc->sName,iArg + 1,nName,zName,nType,zType,zGiven);
 			}
 		}
+		/* A NaN reaching a parameter php declares `string`: php's ZPP coerces it
+		 * (to "NAN") and warns `unexpected NAN value was coerced to string`, the
+		 * same 8.5 diagnostic the cast and the concatenation raise. The builtin
+		 * bodies read their argument with ph7_value_to_string, which is the SILENT
+		 * conversion by design (the engine builds keys and messages with it), so
+		 * the diagnostic belongs here, where the DECLARED type says a coercion is
+		 * what is about to happen. A union that also accepts a NUMBER is left
+		 * alone -- php keeps the float there and coerces nothing -- but
+		 * `array|string`, the spelling str_replace()'s subject carries, does
+		 * coerce and does warn. */
+		if( (pArg->iFlags & (MEMOBJ_REAL|MEMOBJ_STRING)) == MEMOBJ_REAL
+		 && PH7_IS_NAN((double)pArg->rVal)
+		 && VmSigTypeHas(zType,nType,"string")
+		 && !VmSigTypeHas(zType,nType,"float")
+		 && !VmSigTypeHas(zType,nType,"int")
+		 && !VmSigTypeHas(zType,nType,"mixed") ){
+			PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,
+				"unexpected NAN value was coerced to string");
+		}
 		/* A PATH parameter, once its type is settled: php's Z_PARAM_PATH refuses a
 		 * NUL byte outright rather than letting the C API truncate at it. Raised
 		 * after the type verdict because that is php's order — the coercion runs

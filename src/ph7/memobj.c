@@ -634,7 +634,7 @@ static sxi32 MemObjStringValue(SyBlob *pOut,ph7_value *pObj,sxu8 bStrictBool)
  * and were removed under the §10 PH7-ism policy).
  * an array with zero elements.
  */
-static sxi32 MemObjBooleanValue(ph7_value *pObj)
+static sxi32 MemObjIsTruthy(ph7_value *pObj)
 {
 	sxi32 iFlags;
 	iFlags = pObj->iFlags;
@@ -642,9 +642,13 @@ static sxi32 MemObjBooleanValue(ph7_value *pObj)
 #ifdef PH7_OMIT_FLOATING_POINT
 		return pObj->rVal ? 1 : 0;
 #else
+		/* A NaN is neither zero nor equal to itself, so it is TRUE -- php's
+		 * answer too, behind the warning PH7_MemObjToBool raises. */
 		return pObj->rVal != 0.0 ? 1 : 0;
 #endif
-	}else if( iFlags & MEMOBJ_INT ){
+	}else if( iFlags & (MEMOBJ_INT|MEMOBJ_BOOL) ){
+		/* BOOL is here for `empty()`, which asks this of a value of ANY type; the
+		 * bool CONVERSION never does (it returns early when the bit is set). */
 		return pObj->x.iVal ? 1 : 0;
 	}else if (iFlags & MEMOBJ_STRING) {
 		SyString sString;
@@ -660,21 +664,33 @@ static sxi32 MemObjBooleanValue(ph7_value *pObj)
 	}else if( iFlags & MEMOBJ_NULL ){
 		return 0;
 	}else if( iFlags & MEMOBJ_HASHMAP ){
-		ph7_hashmap *pMap = (ph7_hashmap *)pObj->x.pOther;
-		sxu32 n = pMap->nEntry;
-		PH7_HashmapUnref(pMap);
-		return n > 0 ? TRUE : FALSE;
+		return ((ph7_hashmap *)pObj->x.pOther)->nEntry > 0 ? TRUE : FALSE;
 	}else if( iFlags & MEMOBJ_OBJ ){
 		/* php has NO __toBool(): an object is ALWAYS truthy, with no diagnostic.
 		 * PH7's __toBool() could make `if ($obj)` take the other branch, so this
 		 * extension changed control flow in valid php source. */
-		PH7_ClassInstanceUnref((ph7_class_instance *)pObj->x.pOther);
 		return 1;
 	}else if(iFlags & MEMOBJ_RES ){
 		return pObj->x.pOther != 0;
 	}
 	/* NOT REACHED */
 	return 0;
+}
+/*
+ * The same question asked by a CONVERSION, which is about to overwrite the
+ * payload and so owes it a reference drop. Nothing else about the answer
+ * differs -- which is the point: `empty()` and `array_filter()`'s default test
+ * used to carry a SECOND set of rules (PH7_MemObjIsEmpty), and it disagreed.
+ */
+static sxi32 MemObjBooleanValue(ph7_value *pObj)
+{
+	sxi32 rc = MemObjIsTruthy(&(*pObj));
+	if( pObj->iFlags & MEMOBJ_HASHMAP ){
+		PH7_HashmapUnref((ph7_hashmap *)pObj->x.pOther);
+	}else if( pObj->iFlags & MEMOBJ_OBJ ){
+		PH7_ClassInstanceUnref((ph7_class_instance *)pObj->x.pOther);
+	}
+	return rc;
 }
 /*
  * If the ph7_value is of type real,try to make it an integer also.
@@ -734,7 +750,7 @@ PH7_PRIVATE sxi32 PH7_MemObjToReal(ph7_value *pObj)
 /*
  * Convert a ph7_value to type boolean.Invalidate any prior representations.
  */
-PH7_PRIVATE sxi32 PH7_MemObjToBool(ph7_value *pObj)
+static sxi32 MemObjToBoolQuiet(ph7_value *pObj)
 {
 	if( (pObj->iFlags & MEMOBJ_BOOL) == 0 ){
 		/* Preform the conversion */
@@ -744,6 +760,25 @@ PH7_PRIVATE sxi32 PH7_MemObjToBool(ph7_value *pObj)
 		MemObjSetType(pObj,MEMOBJ_BOOL);
 	}
 	return SXRET_OK;
+}
+/*
+ * The same conversion where a php PROGRAM asked for it, which is every
+ * truthiness site there is: `(bool)`, `if`, `!`, `&&`, the ternary, `empty()`,
+ * `boolval()`, `settype()`, a `bool` parameter internal or userland,
+ * `array_filter`'s default test. php 8.5 warns from all of them when the value
+ * is a NaN -- `unexpected NAN value was coerced to bool` -- and answers TRUE.
+ *
+ * A COMPARISON is not one of them: `NAN == true` is silent in php, and it
+ * reaches the same conversion, which is why the quiet form above exists.
+ */
+PH7_PRIVATE sxi32 PH7_MemObjToBool(ph7_value *pObj)
+{
+	if( (pObj->iFlags & (MEMOBJ_BOOL|MEMOBJ_REAL)) == MEMOBJ_REAL
+	 && pObj->pVm && PH7_IS_NAN(pObj->rVal) ){
+		VmErrorFormat(pObj->pVm,PH7_CTX_WARNING,
+			"unexpected NAN value was coerced to bool");
+	}
+	return MemObjToBoolQuiet(&(*pObj));
 }
 /*
  * Convert a ph7_value to type string.Prior representations are NOT invalidated.
@@ -843,6 +878,15 @@ PH7_PRIVATE sxi32 PH7_MemObjToStringUV(ph7_value *pObj)
 	}
 	if( (pObj->iFlags & MEMOBJ_HASHMAP) && pObj->pVm ){
 		PH7_VmThrowError(pObj->pVm,0,PH7_CTX_WARNING,"Array to string conversion");
+	}
+	/* php 8.5's other coercion warning, and it rides HERE for the same reason
+	 * that one does: this is the conversion a program asked for -- a cast, echo,
+	 * concatenation, interpolation, a `string` parameter -- and not the internal
+	 * one a comparison or a debug renderer makes. A NaN is the only float that
+	 * warns; INF and -INF spell themselves out in silence. */
+	if( (pObj->iFlags & MEMOBJ_REAL) && pObj->pVm && PH7_IS_NAN(pObj->rVal) ){
+		PH7_VmThrowError(pObj->pVm,0,PH7_CTX_WARNING,
+			"unexpected NAN value was coerced to string");
 	}
 	if( PH7_MemObjIsNotStringable(pObj) ){
 		return MemObjThrowNotStringable(pObj);
@@ -1180,37 +1224,19 @@ PH7_PRIVATE sxi32 PH7_MemObjIsNumeric(ph7_value *pObj)
  */
 PH7_PRIVATE sxi32 PH7_MemObjIsEmpty(ph7_value *pObj)
 {
-	if( pObj->iFlags & MEMOBJ_NULL ){
-		return TRUE;
-	}else if( pObj->iFlags & MEMOBJ_INT ){
-		return pObj->x.iVal == 0 ? TRUE : FALSE;
-	}else if( pObj->iFlags & MEMOBJ_REAL ){
-		return pObj->rVal == (ph7_real)0 ? TRUE : FALSE;
-	}else if( pObj->iFlags & MEMOBJ_BOOL ){
-		return !pObj->x.iVal;
-	}else if( pObj->iFlags & MEMOBJ_STRING ){
-		if( SyBlobLength(&pObj->sBlob) <= 0 ){
-			return TRUE;
-		}else{
-			const char *zIn,*zEnd;
-			zIn = (const char *)SyBlobData(&pObj->sBlob);
-			zEnd = &zIn[SyBlobLength(&pObj->sBlob)];
-			while( zIn < zEnd ){
-				if( zIn[0] != '0' ){
-					break;
-				}
-				zIn++;
-			}
-			return zIn >= zEnd ? TRUE : FALSE;
-		}
-	}else if( pObj->iFlags & MEMOBJ_HASHMAP ){
-		ph7_hashmap *pMap = (ph7_hashmap *)pObj->x.pOther;
-		return pMap->nEntry == 0 ? TRUE : FALSE;
-	}else if ( pObj->iFlags & (MEMOBJ_OBJ|MEMOBJ_RES) ){
-		return FALSE;
+	/* php's `empty($x)` is `!zend_is_true($x)` -- the same question the bool cast
+	 * asks, and this used to answer it with rules of its own. They disagreed on a
+	 * string of MORE THAN ONE zero: the old walk called every `"0"` run empty, so
+	 * `empty("00")` was true and `array_filter(["00"])` dropped it, where php
+	 * keeps both (only `""` and the single byte `"0"` are false there). The
+	 * warning php raises when a NaN is coerced rides the same door, since
+	 * `empty(NAN)` warns there. */
+	if( (pObj->iFlags & (MEMOBJ_BOOL|MEMOBJ_REAL)) == MEMOBJ_REAL
+	 && pObj->pVm && PH7_IS_NAN(pObj->rVal) ){
+		VmErrorFormat(pObj->pVm,PH7_CTX_WARNING,
+			"unexpected NAN value was coerced to bool");
 	}
-	/* Assume empty by default */
-	return TRUE;
+	return !MemObjIsTruthy(&(*pObj));
 }
 /*
  * Convert a ph7_value so that it has types MEMOBJ_REAL or MEMOBJ_INT
@@ -1907,10 +1933,10 @@ PH7_PRIVATE sxi32 PH7_MemObjCmp(ph7_value *pObj1,ph7_value *pObj2,int bStrict,in
 		 * this way and nothing else -- a RESOURCE used to be decided here too,
 		 * which made every open one equal to every other truthy value. */
 		if( (pObj1->iFlags & MEMOBJ_BOOL) == 0 ){
-			PH7_MemObjToBool(pObj1);
+			MemObjToBoolQuiet(pObj1);   /* php's comparison says nothing about a NaN */
 		}
 		if( (pObj2->iFlags & MEMOBJ_BOOL) == 0 ){
-			PH7_MemObjToBool(pObj2);
+			MemObjToBoolQuiet(pObj2);
 		}
 		return (sxi32)((pObj1->x.iVal != 0) - (pObj2->x.iVal != 0));
 	}else if ( iComb & MEMOBJ_HASHMAP ){
@@ -2289,6 +2315,14 @@ static void MemObjDumpRealValue(SyBlob *pOut,ph7_real rVal)
  */
 PH7_PRIVATE void PH7_MemObjPrintRInline(SyBlob *pOut,ph7_value *pObj)
 {
+	/* print_r RENDERS through the string coercion -- unlike var_dump and
+	 * var_export, which describe the value instead -- so php's NaN warning
+	 * belongs here too, once per value it prints. */
+	if( (pObj->iFlags & (MEMOBJ_REAL|MEMOBJ_STRING)) == MEMOBJ_REAL
+	 && pObj->pVm && PH7_IS_NAN(pObj->rVal) ){
+		VmErrorFormat(pObj->pVm,PH7_CTX_WARNING,
+			"unexpected NAN value was coerced to string");
+	}
 	if( pObj->iFlags & MEMOBJ_NULL ){
 		return;
 	}

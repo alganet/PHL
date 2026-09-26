@@ -1871,6 +1871,16 @@ PH7_PRIVATE sxi32 VmEnforceScalarType(ph7_value *pVal, sxu32 nType, int bStrict)
 		 * integer-only operators. */
 		return SXERR_INVALID;
 	}
+	if( nType == MEMOBJ_STRING && (pVal->iFlags & (MEMOBJ_REAL|MEMOBJ_STRING)) == MEMOBJ_REAL
+	 && pVal->pVm && PH7_IS_NAN(pVal->rVal) ){
+		/* A userland `string` parameter, return or property taking a NaN: php's
+		 * weak coercion warns there exactly as its ZPP does for an internal one
+		 * (`unexpected NAN value was coerced to string`). The cast below is the
+		 * silent conversion -- it is shared with the engine's own -- so the
+		 * diagnostic is raised here, where the DECLARED type is known. */
+		VmErrorFormat(pVal->pVm,PH7_CTX_WARNING,
+			"unexpected NAN value was coerced to string");
+	}
 	{
 		ProcMemObjCast xCast = PH7_MemObjCastMethod(nType);
 		if( xCast ) xCast(pVal);
