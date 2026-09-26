@@ -1938,12 +1938,25 @@ static int vm_builtin_DateTime_setMicrosecond(ph7_context *pCtx,int nArg,ph7_val
 {
 	ph7_class_instance *pThis = DtThis(pCtx);
 	ph7_class_instance *pTarget;
+	sxi64 iUs;
 	int bCopy = 0;
 	if( pThis == 0 || nArg < 1 ){
 		return PH7_OK;
 	}
+	iUs = ph7_value_to_int64(apArg[0]);
+	if( iUs < 0 || iUs > 999999 ){
+		/* php's range refusal, and the reason a date's microseconds can be
+		 * assumed to be a fraction of ONE second everywhere else: PHL stored
+		 * whatever int it was handed, so `setMicrosecond(1000000)` formatted as
+		 * `00:00:00.1000000` and a negative one as `00:00:00.-00001` -- neither
+		 * of them a time. The message names the DECLARING class, so a subclass
+		 * of DateTime still reports DateTime. */
+		return PH7_VmThrowException(pCtx,"DateRangeError",
+			"%s::setMicrosecond(): Argument #1 ($microsecond) must be between 0 and 999999, %qd given",
+			DtIsImmutable(pCtx->pVm,pThis) ? "DateTimeImmutable" : "DateTime",iUs);
+	}
 	pTarget = DtMutTarget(pCtx,pThis,&bCopy);
-	PH7_NativeSetAttrInt(pCtx->pVm,pTarget,DT_US,ph7_value_to_int64(apArg[0]));
+	PH7_NativeSetAttrInt(pCtx->pVm,pTarget,DT_US,iUs);
 	DtMutResult(pCtx,pTarget,bCopy);
 	return PH7_OK;
 }
@@ -4033,6 +4046,14 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "DateInvalidTimeZoneException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "DateMalformedIntervalStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "DateMalformedPeriodStringException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DateInvalidOperationException", "DateException", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		/* php's date tree has an ERROR half beside the exception one -- what a
+		 * caller catches when an argument is out of RANGE (setMicrosecond) or the
+		 * object was never constructed. All three were undefined here, so
+		 * `catch (DateRangeError $e)` could not be spelled at all. */
+		{ "DateError", "Error", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DateRangeError", "DateError", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DateObjectError", "DateError", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "DateTimeInterface", 0, 0, PH7_CLASS_INTERFACE,
 		  0, 0, aIfaceConst, SX_ARRAYSIZE(aIfaceConst), 0, 0, 0, 0, 0 },
 		{ "DateTimeZone", 0, 0, 0,
