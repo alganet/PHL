@@ -2019,6 +2019,273 @@ static int vm_builtin_curl_error(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 
+
+/* ===== curl_getinfo() ===== */
+
+/*
+ * A CURLINFO_* carries its own TYPE in the number: libcurl masks the top bits
+ * with CURLINFO_TYPEMASK, and every one of the 75 selectors php exposes agrees
+ * with its bucket -- string, long, double, slist/pointer, off_t. So the
+ * selector form needs no table at all, only the mask, and a selector a newer
+ * libcurl adds works the moment its constant exists.
+ *
+ * The eight names that are NOT infos (CURLINFO_TEXT, HEADER_IN, DATA_OUT and
+ * the rest of the DEBUGFUNCTION set, plus CURLINFO_LASTONE) fall outside every
+ * bucket, which is exactly why php answers false for them -- the same false an
+ * unknown number gets. No throw, ever, for any selector.
+ */
+static int CurlInfoOne(ph7_context *pCtx,phl_curl *pCurl,sxi64 iInfo)
+{
+	CURL *pE = pCurl->pEasy;
+	switch( (int)(iInfo & CURLINFO_TYPEMASK) ){
+	case CURLINFO_STRING: {
+		char *zVal = 0;
+		if( curl_easy_getinfo(pE,(CURLINFO)iInfo,&zVal) != CURLE_OK || zVal == 0 ){
+			/* libcurl had nothing for it: php's answer is false, not "". */
+			ph7_result_bool(pCtx,0);
+		}else{
+			ph7_result_string(pCtx,zVal,-1);
+		}
+		return PH7_OK;
+	}
+	case CURLINFO_LONG: {
+		long iVal = 0;
+		if( curl_easy_getinfo(pE,(CURLINFO)iInfo,&iVal) != CURLE_OK ){
+			ph7_result_bool(pCtx,0);
+		}else{
+			ph7_result_int64(pCtx,(sxi64)iVal);
+		}
+		return PH7_OK;
+	}
+	case CURLINFO_DOUBLE: {
+		double rVal = 0.0;
+		if( curl_easy_getinfo(pE,(CURLINFO)iInfo,&rVal) != CURLE_OK ){
+			ph7_result_bool(pCtx,0);
+		}else{
+			ph7_result_double(pCtx,rVal);
+		}
+		return PH7_OK;
+	}
+	case CURLINFO_OFF_T: {
+		curl_off_t iVal = 0;
+		if( curl_easy_getinfo(pE,(CURLINFO)iInfo,&iVal) != CURLE_OK ){
+			ph7_result_bool(pCtx,0);
+		}else{
+			ph7_result_int64(pCtx,(sxi64)iVal);
+		}
+		return PH7_OK;
+	}
+	case CURLINFO_SLIST: {
+		/* Two shapes share this bucket. CERTINFO is a struct curl_certinfo,
+		 * NOT a curl_slist, so reading it as one would walk the wrong type --
+		 * php answers an array of per-certificate arrays for it and a flat
+		 * array of strings for the other two. */
+		if( iInfo == CURLINFO_CERTINFO ){
+			struct curl_certinfo *pCi = 0;
+			ph7_value *pOut = ph7_context_new_array(pCtx);
+			ph7_value *pRow;
+			int i;
+			if( pOut == 0 ){
+				ph7_result_bool(pCtx,0);
+				return PH7_OK;
+			}
+			if( curl_easy_getinfo(pE,CURLINFO_CERTINFO,&pCi) == CURLE_OK && pCi ){
+				for( i = 0 ; i < pCi->num_of_certs ; ++i ){
+					struct curl_slist *pWalk = pCi->certinfo[i];
+					pRow = ph7_context_new_array(pCtx);
+					if( pRow == 0 ){ break; }
+					while( pWalk ){
+						ph7_value *pElem = ph7_context_new_scalar(pCtx);
+						if( pElem == 0 ){ break; }
+						ph7_value_string(pElem,pWalk->data ? pWalk->data : "",-1);
+						ph7_array_add_elem(pRow,0,pElem);
+						ph7_context_release_value(pCtx,pElem);
+						pWalk = pWalk->next;
+					}
+					ph7_array_add_elem(pOut,0,pRow);
+					ph7_context_release_value(pCtx,pRow);
+				}
+			}
+			ph7_result_value(pCtx,pOut);
+			return PH7_OK;
+		}else{
+			struct curl_slist *pList = 0;
+			ph7_value *pOut = ph7_context_new_array(pCtx);
+			if( pOut == 0 ){
+				ph7_result_bool(pCtx,0);
+				return PH7_OK;
+			}
+			if( curl_easy_getinfo(pE,(CURLINFO)iInfo,&pList) == CURLE_OK && pList ){
+				struct curl_slist *pWalk = pList;
+				ph7_value *pElem = ph7_context_new_scalar(pCtx);
+				while( pWalk && pElem ){
+					ph7_value_reset_string_cursor(pElem);
+					ph7_value_string(pElem,pWalk->data ? pWalk->data : "",-1);
+					ph7_array_add_elem(pOut,0,pElem);
+					pWalk = pWalk->next;
+				}
+				curl_slist_free_all(pList);
+			}
+			ph7_result_value(pCtx,pOut);
+			return PH7_OK;
+		}
+	}
+	default:
+		break;
+	}
+	/* Not an info at all. */
+	ph7_result_bool(pCtx,0);
+	return PH7_OK;
+}
+
+/*
+ * The no-selector array: php's 41 entries, in php's order, each from the
+ * selector named beside it. Five more exist only past a libcurl version, and
+ * php gates them on the HEADER's version; so do these rows, so a build against
+ * a newer libcurl answers php's 46. The order is user-visible through print_r and a
+ * foreach, and it is not libcurl's.
+ *
+ * bNullStays is the row that a reading would never produce. Through a SELECTOR
+ * every string info libcurl left NULL answers false; in the ARRAY they answer
+ * the EMPTY STRING instead -- except content_type, which stays NULL. So the
+ * same missing value is rendered three different ways depending on how it was
+ * asked for, and only content_type keeps php's null here.
+ */
+static const struct CurlInfoKey {
+	const char *zKey;
+	CURLINFO iInfo;
+	int bNullStays;
+} aCurlInfoKey[] = {
+	{ "url",                     CURLINFO_EFFECTIVE_URL,          0 },
+	{ "content_type",            CURLINFO_CONTENT_TYPE,           1 },
+	{ "http_code",               CURLINFO_RESPONSE_CODE,          0 },
+	{ "header_size",             CURLINFO_HEADER_SIZE,            0 },
+	{ "request_size",            CURLINFO_REQUEST_SIZE,           0 },
+	{ "filetime",                CURLINFO_FILETIME,               0 },
+	{ "ssl_verify_result",       CURLINFO_SSL_VERIFYRESULT,       0 },
+	{ "redirect_count",          CURLINFO_REDIRECT_COUNT,         0 },
+	{ "total_time",              CURLINFO_TOTAL_TIME,             0 },
+	{ "namelookup_time",         CURLINFO_NAMELOOKUP_TIME,        0 },
+	{ "connect_time",            CURLINFO_CONNECT_TIME,           0 },
+	{ "pretransfer_time",        CURLINFO_PRETRANSFER_TIME,       0 },
+	{ "size_upload",             CURLINFO_SIZE_UPLOAD,            0 },
+	{ "size_download",           CURLINFO_SIZE_DOWNLOAD,          0 },
+	{ "speed_download",          CURLINFO_SPEED_DOWNLOAD,         0 },
+	{ "speed_upload",            CURLINFO_SPEED_UPLOAD,           0 },
+	{ "download_content_length", CURLINFO_CONTENT_LENGTH_DOWNLOAD,0 },
+	{ "upload_content_length",   CURLINFO_CONTENT_LENGTH_UPLOAD,  0 },
+	{ "starttransfer_time",      CURLINFO_STARTTRANSFER_TIME,     0 },
+	{ "redirect_time",           CURLINFO_REDIRECT_TIME,          0 },
+	{ "redirect_url",            CURLINFO_REDIRECT_URL,           0 },
+	{ "primary_ip",              CURLINFO_PRIMARY_IP,             0 },
+	{ "certinfo",                CURLINFO_CERTINFO,               0 },
+	{ "primary_port",            CURLINFO_PRIMARY_PORT,           0 },
+	{ "local_ip",                CURLINFO_LOCAL_IP,               0 },
+	{ "local_port",              CURLINFO_LOCAL_PORT,             0 },
+	{ "http_version",            CURLINFO_HTTP_VERSION,           0 },
+	{ "protocol",                CURLINFO_PROTOCOL,               0 },
+	{ "ssl_verifyresult",        CURLINFO_PROXY_SSL_VERIFYRESULT, 0 },
+	{ "scheme",                  CURLINFO_SCHEME,                 0 },
+	{ "appconnect_time_us",      CURLINFO_APPCONNECT_TIME_T,      0 },
+#if LIBCURL_VERSION_NUM >= 0x080600
+	{ "queue_time_us",           CURLINFO_QUEUE_TIME_T,           0 },
+#endif
+	{ "connect_time_us",         CURLINFO_CONNECT_TIME_T,         0 },
+	{ "namelookup_time_us",      CURLINFO_NAMELOOKUP_TIME_T,      0 },
+	{ "pretransfer_time_us",     CURLINFO_PRETRANSFER_TIME_T,     0 },
+	{ "redirect_time_us",        CURLINFO_REDIRECT_TIME_T,        0 },
+	{ "starttransfer_time_us",   CURLINFO_STARTTRANSFER_TIME_T,   0 },
+#if LIBCURL_VERSION_NUM >= 0x080a00
+	{ "posttransfer_time_us",    CURLINFO_POSTTRANSFER_TIME_T,    0 },
+#endif
+	{ "total_time_us",           CURLINFO_TOTAL_TIME_T,           0 },
+	{ "effective_method",        CURLINFO_EFFECTIVE_METHOD,       0 },
+	{ "capath",                  CURLINFO_CAPATH,                 0 },
+	{ "cainfo",                  CURLINFO_CAINFO,                 0 },
+#if LIBCURL_VERSION_NUM >= 0x080700
+	{ "used_proxy",              CURLINFO_USED_PROXY,             0 },
+#endif
+#if LIBCURL_VERSION_NUM >= 0x080c00
+	{ "httpauth_used",           CURLINFO_HTTPAUTH_USED,          0 },
+	{ "proxyauth_used",          CURLINFO_PROXYAUTH_USED,         0 },
+#endif
+	{ "conn_id",                 CURLINFO_CONN_ID,                0 }
+};
+
+/* mixed curl_getinfo(CurlHandle $handle, ?int $option = null) */
+static int vm_builtin_curl_getinfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_curl *pCurl = CurlArg(pCtx,nArg,apArg);
+	ph7_value *pArray,*pWorker;
+	sxu32 n;
+	if( pCurl == 0 || pCurl->pEasy == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){
+		return CurlInfoOne(pCtx,pCurl,ph7_value_to_int64(apArg[1]));
+	}
+	pArray  = ph7_context_new_array(pCtx);
+	pWorker = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pWorker == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	for( n = 0 ; n < SX_ARRAYSIZE(aCurlInfoKey) ; ++n ){
+		const struct CurlInfoKey *pK = &aCurlInfoKey[n];
+		switch( (int)(pK->iInfo & CURLINFO_TYPEMASK) ){
+		case CURLINFO_STRING: {
+			char *zVal = 0;
+			PH7_MemObjRelease(pWorker);
+			if( curl_easy_getinfo(pCurl->pEasy,pK->iInfo,&zVal) != CURLE_OK || zVal == 0 ){
+				if( pK->bNullStays ){
+					ph7_value_null(pWorker);
+				}else{
+					ph7_value_string(pWorker,"",0);
+				}
+			}else{
+				ph7_value_string(pWorker,zVal,-1);
+			}
+			break;
+		}
+		case CURLINFO_LONG: {
+			long iVal = 0;
+			curl_easy_getinfo(pCurl->pEasy,pK->iInfo,&iVal);
+			PH7_MemObjRelease(pWorker);
+			ph7_value_int64(pWorker,(sxi64)iVal);
+			break;
+		}
+		case CURLINFO_DOUBLE: {
+			double rVal = 0.0;
+			curl_easy_getinfo(pCurl->pEasy,pK->iInfo,&rVal);
+			PH7_MemObjRelease(pWorker);
+			ph7_value_double(pWorker,rVal);
+			break;
+		}
+		case CURLINFO_OFF_T: {
+			curl_off_t iVal = 0;
+			curl_easy_getinfo(pCurl->pEasy,pK->iInfo,&iVal);
+			PH7_MemObjRelease(pWorker);
+			ph7_value_int64(pWorker,(sxi64)iVal);
+			break;
+		}
+		default: {
+			/* certinfo, the one array in the table: build it through the
+			 * selector path so the two answers cannot drift apart. */
+			ph7_value *pSaved = pCtx->pRet;
+			SXUNUSED(pSaved);
+			CurlInfoOne(pCtx,pCurl,(sxi64)pK->iInfo);
+			PH7_MemObjRelease(pWorker);
+			PH7_MemObjStore(pCtx->pRet,pWorker);
+			break;
+		}
+		}
+		ph7_array_add_strkey_elem(pArray,pK->zKey,pWorker);
+	}
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+
 /* ===== Installation ===== */
 
 PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)
@@ -2038,7 +2305,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)
 		{ "curl_error",          vm_builtin_curl_error          },
 		{ "curl_copy_handle",    vm_builtin_curl_copy_handle    },
 		{ "curl_setopt",         vm_builtin_curl_setopt         },
-		{ "curl_setopt_array",   vm_builtin_curl_setopt_array   }
+		{ "curl_setopt_array",   vm_builtin_curl_setopt_array   },
+		{ "curl_getinfo",        vm_builtin_curl_getinfo        }
 	};
 	/*
 	 * The libcurl handle, and nothing else: php's CurlHandle declares no
