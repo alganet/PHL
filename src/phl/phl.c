@@ -837,6 +837,11 @@ int main(int argc,char **argv)
 		*/
 		ph7_vm_release(pVm);
 		ph7_release(pEngine);
+		/* The stdin slurp outlives compilation (the compiler keeps pointers
+		 * into the source text), so it is freed only here, after the VM. */
+		if( zStdinCode ){
+			free(zStdinCode);
+		}
 		/* Propagate the script exit status (set via exit()/die()) */
 		return iExitStatus;
 	}
