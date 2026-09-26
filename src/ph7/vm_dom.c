@@ -5941,11 +5941,41 @@ static int DomC14NRun(ph7_context *pCtx,int nArg,ph7_value **apArg,int iXPathPos
 				"Inclusive namespace prefixes only allowed in exclusive mode.");
 		}
 	}
-	nMark = PH7_LibxmlCaptureBegin(pVm);
-	nOut = xmlC14NDocDumpMemory(pNode->doc,pSet,
-		bExclusive ? XML_C14N_EXCLUSIVE_1_0 : XML_C14N_1_0,
-		sPrefixes.apPrefix,bComments,pzOut);
-	PH7_LibxmlCaptureEnd(pVm,nMark,zFn);
+	/* Canonicalized into an output buffer of our own rather than through
+	 * xmlC14NDocDumpMemory, which is php's shape and one diagnostic quieter:
+	 * that wrapper adds an "Internal error : saving doc to output buffer" of
+	 * its own on top of libxml's real complaint, and php -- which drives the
+	 * save itself -- never prints it. */
+	{
+		xmlBufferPtr pBuf = xmlBufferCreate();
+		xmlOutputBufferPtr pOut = pBuf ? xmlOutputBufferCreateBuffer(pBuf,0) : 0;
+		if( pOut == 0 ){
+			if( pBuf ){
+				xmlBufferFree(pBuf);
+			}
+			nOut = -1;
+			goto done;
+		}
+		nMark = PH7_LibxmlCaptureBegin(pVm);
+		nOut = xmlC14NDocSaveTo(pNode->doc,pSet,
+			bExclusive ? XML_C14N_EXCLUSIVE_1_0 : XML_C14N_1_0,
+			sPrefixes.apPrefix,bComments,pOut);
+		PH7_LibxmlCaptureEnd(pVm,nMark,zFn);
+		xmlOutputBufferFlush(pOut);
+		if( nOut >= 0 ){
+			const xmlChar *zBuf = xmlBufferContent(pBuf);
+			nOut = (int)xmlBufferLength(pBuf);
+			/* An EMPTY canonicalization is a real answer -- a detached node
+			 * is visible from nowhere in the document -- so the bytes are
+			 * always allocated, even when there are none. */
+			*pzOut = xmlStrndup(zBuf ? zBuf : (const xmlChar *)"",nOut);
+			if( *pzOut == 0 ){
+				nOut = -1;
+			}
+		}
+		xmlOutputBufferClose(pOut);
+		xmlBufferFree(pBuf);
+	}
 	if( nOut < 0 && *pzOut ){
 		xmlFree(*pzOut);
 		*pzOut = 0;
@@ -5968,8 +5998,13 @@ done:
  * DOMNode::C14N(bool $exclusive = false, bool $withComments = false,
  *               ?array $xpath = null, ?array $nsPrefixes = null): string|false
  *
- * The empty string on canonicalization failure, which is what php answers for
- * a detached node or a fragment: nothing of it is visible from the document.
+ * FALSE when the canonicalization fails, which is the answer a signer has to
+ * be able to tell from a document that canonicalizes to nothing: a detached
+ * node and a fragment are both the EMPTY STRING (nothing of either is visible
+ * from the document, and that is a real answer), while an entity REFERENCE
+ * anywhere in the tree -- an ordinary document parsed without
+ * `substituteEntities` -- is a refusal libxml states and php reports as false.
+ * Answering "" for both signed the empty string instead of failing.
  */
 DOM_METHOD(vm_builtin_DOMNode_C14N)
 {
@@ -5980,7 +6015,7 @@ DOM_METHOD(vm_builtin_DOMNode_C14N)
 		return rc;
 	}
 	if( nOut < 0 ){
-		ph7_result_string(pCtx,"",0);
+		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	ph7_result_string(pCtx,(const char *)zOut,nOut);
@@ -6233,9 +6268,36 @@ DOM_METHOD(vm_builtin_DOMNodeList_count)
 	ph7_result_int(pCtx,DomListCount(PH7_ContextThis(pCtx)));
 	return PH7_OK;
 }
+/*
+ * The index both collections take, screened before it is narrowed.
+ *
+ * php's is a `int` position in a list that cannot hold more than INT_MAX
+ * entries, so everything outside [0, INT_MAX] is out of range -- and the two
+ * classes then disagree about what to DO with one: the list answers null and
+ * the named map raises a ValueError naming the bound.  Narrowing first was a
+ * silent wrong answer either way: `item(4294967296)` and `item(PHP_INT_MIN)`
+ * truncate to 0 and answered the FIRST node of the collection.
+ *
+ * Answers 1 when the index is usable.
+ */
+#define DOM_INDEX_MAX 2147483647
+static int DomCollectionIndex(int nArg,ph7_value **apArg,int *piIndex)
+{
+	ph7_int64 iWant = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;
+	*piIndex = 0;
+	if( iWant < 0 || iWant > DOM_INDEX_MAX ){
+		return 0;
+	}
+	*piIndex = (int)iWant;
+	return 1;
+}
 DOM_METHOD(vm_builtin_DOMNodeList_item)
 {
-	int iIndex = nArg > 0 ? ph7_value_to_int(apArg[0]) : 0;
+	int iIndex;
+	if( !DomCollectionIndex(nArg,apArg,&iIndex) ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
 	return DomResultWrap(pCtx,DomListItem(pCtx->pVm,PH7_ContextThis(pCtx),iIndex));
 }
 /* php exposes `length` on both collections as a virtual property; the
@@ -6404,7 +6466,13 @@ DOM_METHOD(vm_builtin_DOMNamedNodeMap_count)
 }
 DOM_METHOD(vm_builtin_DOMNamedNodeMap_item)
 {
-	int iIndex = nArg > 0 ? ph7_value_to_int(apArg[0]) : 0;
+	int iIndex;
+	if( !DomCollectionIndex(nArg,apArg,&iIndex) ){
+		/* The map REFUSES what the list answers null for, and names the bound. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"DOMNamedNodeMap::item(): Argument #1 ($index) must be between 0 and %d",
+			DOM_INDEX_MAX);
+	}
 	return DomResultWrap(pCtx,DomMapItem(pCtx->pVm,PH7_ContextThis(pCtx),iIndex));
 }
 /* DOMNamedNodeMap::getNamedItem(string $qualifiedName): ?DOMAttr */
