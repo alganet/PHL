@@ -86,6 +86,10 @@ PH7_PRIVATE void PH7_LibxmlVmReset(ph7_vm *pVm)
 	/* ext/xml push parsers: their ctxt/myDoc are libxml allocations and the
 	 * handler VALUES hold references that must drop before the allocator goes. */
 	PH7_XmlParserVmSweep(pVm);
+	/* The entity-loader/streams-context slots hold per-request VALUES (a
+	 * closure, a context resource): drop them so a reused VM starts default. */
+	PH7_MemObjRelease(&pVm->sXmlEntLoader);
+	PH7_MemObjRelease(&pVm->sXmlStreamsCtx);
 }
 /*
  * Final teardown on VM release.  Must run before SyMemBackendRelease()
@@ -541,8 +545,93 @@ static int vm_builtin_libxml_get_last_error_raw(ph7_context *pCtx,int nArg,ph7_v
 }
 
 /*
- * The libxml PHP-visible surface: the LibXMLError class plus the four
- * libxml_* functions, delegating to the __libxml_* thunks above.
+ * ?callable libxml_get_external_entity_loader()
+ *  The stored resolver VERBATIM (a callable string answers as that string),
+ *  or null for the default loader -- php's answer shape.
+ */
+static int vm_builtin_libxml_get_external_entity_loader(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( (pVm->sXmlEntLoader.iFlags & MEMOBJ_NULL) == 0 ){
+		ph7_result_value(pCtx,&pVm->sXmlEntLoader); /* makes its own copy */
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+/*
+ * true libxml_set_external_entity_loader(?callable $resolver_function)
+ *  Store the resolver (null restores the default). The slot is never
+ *  INVOKED here -- no PHL parse path loads an external entity, the same
+ *  off-by-default php's sanitized parser options enforce -- so the
+ *  round-trip contract is the whole observable surface.
+ */
+static int vm_builtin_libxml_set_external_entity_loader(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	if( nArg < 1 ){
+		ph7_result_bool(pCtx,1);
+		return PH7_OK;
+	}
+	if( !ph7_value_is_null(apArg[0]) ){
+		/* php screens through the FCC machinery: a string must resolve as a
+		 * CALLABLE, and the refusal names the callback rule. */
+		sxi32 rc = PH7_CheckCallbackArg(pCtx,apArg[0],1,"resolver_function",1);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+	}
+	PH7_MemObjRelease(&pVm->sXmlEntLoader);
+	if( !ph7_value_is_null(apArg[0]) ){
+		PH7_MemObjStore(apArg[0],&pVm->sXmlEntLoader);
+	}
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/*
+ * void libxml_set_streams_context($context)
+ *  Take a stream-context RESOURCE and keep it for the document loaders.
+ *  php validates lazily at the next load; PHL has no loader that would
+ *  ever read it (the consumer is the http:// wrapper), so
+ *  the check runs here, with php's own two messages.
+ */
+static int vm_builtin_libxml_set_streams_context(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const io_private *pDev;
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	if( (apArg[0]->iFlags & MEMOBJ_RES) == 0 ){
+		const char *zType = "null";
+		if( apArg[0]->iFlags & MEMOBJ_HASHMAP ){ zType = "array"; }
+		else if( apArg[0]->iFlags & MEMOBJ_OBJ ){ zType = "object"; }
+		else if( apArg[0]->iFlags & MEMOBJ_STRING ){ zType = "string"; }
+		else if( apArg[0]->iFlags & MEMOBJ_BOOL ){ zType = "bool"; }
+		else if( apArg[0]->iFlags & MEMOBJ_REAL ){ zType = "float"; }
+		else if( apArg[0]->iFlags & MEMOBJ_INT ){ zType = "int"; }
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"libxml_set_streams_context(): Argument #1 ($context) must be of type resource, %s given",
+			zType);
+	}
+	pDev = (const io_private *)apArg[0]->x.pOther;
+	if( pDev == 0 || pDev->iMagic != STREAM_CTX_MAGIC ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"libxml_set_streams_context(): supplied resource is not a valid Stream-Context resource");
+	}
+	PH7_MemObjRelease(&pVm->sXmlStreamsCtx);
+	PH7_MemObjStore(apArg[0],&pVm->sXmlStreamsCtx);
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+
+/*
+ * The libxml PHP-visible surface: the LibXMLError class plus the seven
+ * libxml_* functions (php's eighth, libxml_disable_entity_loader(), is
+ * E_DEPRECATED since 8.0 and stays removed per the scope policy §10 --
+ * twin-paired in 002-integration/function/libxml/).
  */
 /* LibXMLError is declared from C below, and the four libxml_* functions ARE the
  * C routines -- they used to be PHP wrappers over __libxml_* thunks, with a PHP
@@ -567,6 +656,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallLibxml(ph7_vm *pVm)
 		{ "libxml_get_errors",          vm_builtin_libxml_get_errors_raw      },
 		{ "libxml_clear_errors",        vm_builtin_libxml_clear_errors        },
 		{ "libxml_get_last_error",      vm_builtin_libxml_get_last_error_raw  },
+		{ "libxml_get_external_entity_loader", vm_builtin_libxml_get_external_entity_loader },
+		{ "libxml_set_external_entity_loader", vm_builtin_libxml_set_external_entity_loader },
+		{ "libxml_set_streams_context", vm_builtin_libxml_set_streams_context },
 	};
 	/* Plain data carrier; php declares no methods on it. */
 	static const PH7_NativePropDef aProp[] = {
@@ -587,6 +679,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallLibxml(ph7_vm *pVm)
 	pVm->pLibxmlLastErr = 0;
 	pVm->pXmlDocs = 0;
 	pVm->pXmlWriters = 0;
+	PH7_MemObjInit(pVm,&pVm->sXmlEntLoader);
+	PH7_MemObjInit(pVm,&pVm->sXmlStreamsCtx);
 	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){
 		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);
 	}

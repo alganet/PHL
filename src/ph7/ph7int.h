@@ -2610,6 +2610,12 @@ struct ph7_vm
 	void *pXmlDocs;            /* phl_xmldoc registry chain; freed on reset/release */
 	void *pXmlWriters;         /* XMLWriter registry chain; freed on reset/release */
 	void *pXmlParsers;         /* phl_xmlparser registry chain (ext/xml); freed on reset/release */
+	ph7_value sXmlEntLoader;   /* libxml_set_external_entity_loader()'s callable; NULL = default.
+	                            * Stored and answered, never invoked: no PHL parse path loads an
+	                            * external entity (php's sanitized defaults keep it off too) —
+	                            * a recorded divergence. */
+	ph7_value sXmlStreamsCtx;  /* libxml_set_streams_context()'s stream-context resource; read by
+	                            * nothing until an http:// wrapper exists. */
 #endif
 	/* php numbers every resource with a small sequential id that (int) casts and
 	 * "Resource id #N" render, and that distinguishes two live resources from one
