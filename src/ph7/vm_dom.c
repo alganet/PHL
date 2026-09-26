@@ -1428,8 +1428,15 @@ static xmlNsPtr DomFindPrefixedNs(xmlNodePtr pNode,const char *zUri)
  * zBase, then zBase1, zBase2...  php starts from `default` for a namespace
  * with no prefix of its own and from the prefix ITSELF when it is re-spelling
  * one an inner declaration has shadowed (which is where `p1` comes from).
+ *
+ * bScope is what "nothing there has taken" means. xmlNewNs only refuses a second
+ * declaration on the SAME element, which is the whole test for a re-spelling
+ * (the shadowing declaration is the one being written). An attribute ARRIVING
+ * needs the stronger one -- a prefix bound anywhere in scope is taken, or the
+ * declaration written here would shadow it and re-point every node under it.
  */
-static xmlNsPtr DomNsGenerate(xmlNodePtr pAnchor,const char *zUri,const xmlChar *zBase)
+static xmlNsPtr DomNsGenerateEx(xmlNodePtr pAnchor,const char *zUri,const xmlChar *zBase,
+	int bScope)
 {
 	xmlNsPtr pNs = 0;
 	int i;
@@ -1444,12 +1451,21 @@ static xmlNsPtr DomNsGenerate(xmlNodePtr pAnchor,const char *zUri,const xmlChar 
 		}else{
 			SyBufferFormat(zGen,sizeof(zGen),"%s%d",zB,i);
 		}
+		if( bScope && xmlSearchNs(pAnchor->doc,pAnchor,(const xmlChar *)zGen) != 0 ){
+			/* Taken -- by a declaration IN SCOPE, which xmlNewNs does not see:
+			 * it only refuses a second one on the same element. */
+			continue;
+		}
 		pNs = xmlNewNs(pAnchor,(const xmlChar *)zUri,(const xmlChar *)zGen);
 		if( pNs ){
 			return pNs;
 		}
 	}
 	return 0;
+}
+static xmlNsPtr DomNsGenerate(xmlNodePtr pAnchor,const char *zUri,const xmlChar *zBase)
+{
+	return DomNsGenerateEx(pAnchor,zUri,zBase,0);
 }
 /* A binding of this URI an ATTRIBUTE can use: one that carries a prefix. */
 static xmlNsPtr DomNsReuse(xmlNodePtr pAnchor,const char *zUri)
@@ -1692,6 +1708,52 @@ static void DomNsOnInsertEx(xmlNodePtr pNode,int bDeep)
 		DomNsStrip(pNode,pNode->parent);
 	}
 	xmlReconciliateNs(pNode->doc,pNode);
+}
+/*
+ * The namespace an attribute NODE carries once it is linked onto pElem. Its own
+ * ns struct is a declaration of wherever it came FROM, and moving the node does
+ * not move that: written unchanged it emitted `p:k="1"` with the prefix bound
+ * NOWHERE, and -- when the target's scope binds that prefix to something else --
+ * bound to the WRONG URI, which is the worse half, because those bytes parse
+ * back cleanly as an attribute in a namespace the program never wrote.
+ *
+ * php keeps the spelling when the attribute's own declaration is still in scope
+ * here, even if a nearer one binds the same URI under another prefix. Otherwise
+ * it takes any binding of the URI in scope -- INCLUDING a prefix-less one, where
+ * the attribute then serializes with no prefix at all and still answers the URI,
+ * which is NOT how the by-NAME writes resolve (there an attribute always wants a
+ * prefixed binding, DomNsReuse) -- and otherwise declares one here under the
+ * attribute's own prefix, numbered up when that prefix is taken (`p` -> `p1`).
+ */
+static void DomNsAttrArrive(xmlNodePtr pElem,xmlAttrPtr pAttr)
+{
+	xmlNsPtr pNs = pAttr->ns;
+	if( pNs == 0 || pNs->href == 0 ){
+		return;
+	}
+	if( xmlSearchNs(pElem->doc,pElem,pNs->prefix) == pNs ){
+		return;
+	}
+	pNs = xmlSearchNsByHref(pElem->doc,pElem,pAttr->ns->href);
+	if( pNs ){
+		pAttr->ns = pNs;
+		return;
+	}
+	pNs = DomNsGenerateEx(pElem,(const char *)pAttr->ns->href,pAttr->ns->prefix,1);
+	if( pNs == 0 ){
+		return;
+	}
+	pAttr->ns = pNs;
+	/*
+	 * A declaration LANDED on this element, and php then judges its whole
+	 * subtree from HERE: a descendant whose namespace is declared further down
+	 * is re-pointed at a fresh declaration on this element -- even though the
+	 * one it had is still in scope where it stands. That is libxml's
+	 * xmlReconciliateNs, and it runs ONLY on this path: an arriving attribute
+	 * that needed no declaration leaves the subtree exactly as it was, which is
+	 * measurable both ways.
+	 */
+	xmlReconciliateNs(pElem->doc,pElem);
 }
 /* A namespace DECLARATION on this element: php's setAttributeNS writes one
  * when the name is `xmlns` or its prefix is, and REBINDS the one already
@@ -2219,6 +2281,7 @@ static int DomSetAttrNode(ph7_context *pCtx,int nArg,ph7_value **apArg,int bNS)
 	}
 	DomAttrDetach(pNd->pShell,pAttr);
 	DomAttrLinkLast(pElem,pAttr);
+	DomNsAttrArrive(pElem,pAttr);
 	return DomResultNodeOf(pCtx,pNd,(xmlNodePtr)pOld);
 }
 DOM_METHOD(vm_builtin_DOMElement_setAttributeNode)
