@@ -383,6 +383,7 @@ static const struct VmBuiltinSig {
 	 * is also where the parameter NAMES come from: a named argument spells the
 	 * php one, so an invented name breaks valid php. */
 	{ "curl_close", "CurlHandle $handle", "void" },
+	{ "curl_copy_handle", "CurlHandle $handle", "CurlHandle|false" },
 	{ "curl_errno", "CurlHandle $handle", "int" },
 	{ "curl_error", "CurlHandle $handle", "string" },
 	{ "curl_init", "?string $url = null", "CurlHandle|false" },

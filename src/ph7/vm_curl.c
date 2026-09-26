@@ -184,6 +184,53 @@ static void CurlInstanceRelease(ph7_vm *pVm,ph7_class_instance *pThis)
 	pCurl->pOwner = 0;
 }
 /*
+ * php's clone_obj for CurlHandle: curl_easy_duphandle(). Every OPTION comes
+ * across and nothing else does -- the copy starts with a clean error state
+ * even when the source's last transfer failed.
+ *
+ * The error buffer is why this needs care rather than a bare duphandle.
+ * CURLOPT_ERRORBUFFER is an option like any other, so libcurl copies its
+ * VALUE: the clone would point at the SOURCE's buffer, write its own failures
+ * into it (php's answer for the source would change when the clone failed) and
+ * keep writing there after the source was freed. Re-pointing it at the clone's
+ * own storage is what php does and what makes the two independent.
+ *
+ * Runs after the slot-by-slot copy, so the clone's `__res` currently holds the
+ * SOURCE's record: every exit here has to overwrite or blank it, or two
+ * instances would free one CURL*.
+ */
+static void CurlInstanceClone(ph7_vm *pVm,ph7_class_instance *pClone,ph7_class_instance *pSrc)
+{
+	phl_curl *pFrom = CurlOfInstance(pSrc);
+	phl_curl *pNew;
+	CURL *pDup;
+	if( pFrom == 0 || pFrom->pEasy == 0 ){
+		CurlBlankSlot(pClone);
+		return;
+	}
+	pNew = (phl_curl *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_curl));
+	if( pNew == 0 ){
+		CurlBlankSlot(pClone);
+		return;
+	}
+	SyZero(pNew,sizeof(phl_curl));
+	pNew->pVm = pVm;
+	pDup = curl_easy_duphandle(pFrom->pEasy);
+	if( pDup == 0 ){
+		SyMemBackendFree(&pVm->sAllocator,pNew);
+		CurlBlankSlot(pClone);
+		return;
+	}
+	pNew->pEasy = pDup;
+	curl_easy_setopt(pDup,CURLOPT_ERRORBUFFER,pNew->zErrBuf);
+	pNew->pNext = (phl_curl *)pVm->pCurlHandles;
+	pVm->pCurlHandles = pNew;
+	if( CurlAttach(pClone,pNew) != 0 ){
+		CurlBlankSlot(pClone);
+	}
+}
+
+/*
  * The CurlHandle argument of every verb. The signature table has already
  * screened the TYPE (php's "must be of type CurlHandle, null given" comes from
  * there), so a miss here means the object is one the engine tore down -- which
@@ -1206,6 +1253,37 @@ static int vm_builtin_curl_reset(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	ph7_result_null(pCtx);
 	return PH7_OK;
 }
+/*
+ * CurlHandle|false curl_copy_handle(CurlHandle $handle)
+ *
+ * The same duphandle `clone` does, through a function -- php's two spellings
+ * of one operation, and they answer alike down to the clean error state on the
+ * copy.
+ */
+static int vm_builtin_curl_copy_handle(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	phl_curl *pCurl = CurlArg(pCtx,nArg,apArg);
+	ph7_class_instance *pThis;
+	if( pCurl == 0 || pCurl->pEasy == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pThis = CurlNewInstance(pVm,"CurlHandle",sizeof("CurlHandle")-1);
+	if( pThis == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	CurlInstanceClone(pVm,pThis,(ph7_class_instance *)apArg[0]->x.pOther);
+	if( CurlOfInstance(pThis) == 0 ){
+		/* the dup failed; hand back php's false rather than an empty handle */
+		PH7_ClassInstanceUnref(pThis);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	PH7_NativeResultObject(pCtx,pThis);
+	return PH7_OK;
+}
 /* int curl_errno(CurlHandle $handle) */
 static int vm_builtin_curl_errno(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -1247,7 +1325,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)
 		{ "curl_close",          vm_builtin_curl_close          },
 		{ "curl_reset",          vm_builtin_curl_reset          },
 		{ "curl_errno",          vm_builtin_curl_errno          },
-		{ "curl_error",          vm_builtin_curl_error          }
+		{ "curl_error",          vm_builtin_curl_error          },
+		{ "curl_copy_handle",    vm_builtin_curl_copy_handle    }
 	};
 	/*
 	 * The libcurl handle, and nothing else: php's CurlHandle declares no
@@ -1287,6 +1366,10 @@ PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)
 		if( pClass ){
 			pClass->zNewRefusal =
 				"Cannot directly construct CurlHandle, use curl_init() instead";
+			/* php's clone_obj: `clone $h` is curl_easy_duphandle(), which is
+			 * why this class alone is not PH7_CLASS_NOCLONE. Stated on the
+			 * MOUNTED class, like every other handler hook. */
+			pClass->xClone = CurlInstanceClone;
 		}
 	}
 	return rc;
