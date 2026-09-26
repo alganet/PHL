@@ -875,6 +875,13 @@ DOM_METHOD(vm_builtin_DOMNode_appendChild)
 	if( iErr == 0 ){
 		iErr = DomAttrRecvKind((xmlNodePtr)pPar->pNode,(xmlNodePtr)pChd->pNode);
 	}
+	/* An attribute lands on an ELEMENT or nowhere -- and BEFORE the adoption,
+	 * which is measurable: `$doc->appendChild(new DOMAttr('k'))` refuses with
+	 * the argument still ownerless. */
+	if( iErr == 0 && ((xmlNodePtr)pChd->pNode)->type == XML_ATTRIBUTE_NODE
+	 && ((xmlNodePtr)pPar->pNode)->type != XML_ELEMENT_NODE ){
+		iErr = DOM_ERR_HIERARCHY;
+	}
 	if( iErr ){
 		return DomThrow(pCtx,iErr);
 	}
@@ -2290,6 +2297,129 @@ DOM_METHOD(vm_builtin_DOMCdataSection_construct)
 	const char *zData = nArg > 0 ? ph7_value_to_string(apArg[0],&nData) : "";
 	return DomCtorInstall(pCtx,
 		xmlNewCDataBlock(0,(const xmlChar *)zData,nData));
+}
+/*
+ * DOMElement::__construct(string $qualifiedName, ?string $value = null,
+ *                         string $namespace = '')
+ *
+ * The constructor's name grammar is its OWN, not createElementNS's, each cell
+ * measured: the whole name must be an XML Name first (so `1:a` is Invalid
+ * Character where createElementNS answers Namespace), a prefix without a
+ * namespace is the Namespace refusal, and WITH one the name must be a QName
+ * whose prefix is neither `xml` nor `xmlns` -- php refuses `xml:a` here even
+ * against the xml namespace's own URI, where createElementNS allows it. A
+ * plain `xmlns` passes as an ordinary name and binds the DEFAULT namespace.
+ *
+ * The $value rides libxml's entity parser, createElement's own quirk: `&amp;`
+ * becomes `&`, and an unterminated reference warns (under this constructor's
+ * name) and drops the whole value. An attribute's value -- the constructor
+ * below -- is LITERAL instead: `&amp;` stays five characters.
+ */
+DOM_METHOD(vm_builtin_DOMElement_construct)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	int nVal = 0;
+	const char *zVal = (nArg > 1 && !ph7_value_is_null(apArg[1]))
+		? ph7_value_to_string(apArg[1],&nVal) : 0;
+	const char *zUri = nArg > 2 ? ph7_value_to_string(apArg[2],0) : "";
+	int bHasUri = zUri[0] != 0;
+	xmlChar *zPrefix = 0;
+	xmlChar *zLocal;
+	xmlNodePtr pNode;
+	sxu32 nMark;
+	if( zName[0] == 0 || xmlValidateName((const xmlChar *)zName,0) != 0 ){
+		return DomThrow(pCtx,DOM_ERR_INVALID_CHAR);
+	}
+	/* The split is BY HAND, at the first colon, with a leading colon meaning
+	 * no prefix at all: libxml's xmlSplitQName2 changed its answer for a name
+	 * that ENDS in the colon between 2.9 and 2.13 (the Windows gate caught
+	 * `new DOMElement('a:')` constructing there), and the grammar must answer
+	 * the same on every platform. */
+	{
+		const xmlChar *zColon = xmlStrchr((const xmlChar *)zName,':');
+		if( zColon && zColon != (const xmlChar *)zName ){
+			zPrefix = xmlStrndup((const xmlChar *)zName,
+				(int)(zColon - (const xmlChar *)zName));
+			zLocal = xmlStrdup(zColon + 1);
+		}else{
+			zLocal = 0;
+		}
+	}
+	if( !bHasUri ){
+		if( zPrefix ){
+			/* A prefix names a namespace, and none came. */
+			xmlFree(zPrefix);
+			xmlFree(zLocal);
+			return DomThrow(pCtx,DOM_ERR_NAMESPACE);
+		}
+		if( zLocal ){
+			xmlFree(zLocal);
+		}
+		zLocal = 0;   /* the whole name, `:a` included */
+	}else{
+		if( xmlValidateQName((const xmlChar *)zName,0) != 0
+		 || (zPrefix && (xmlStrEqual(zPrefix,(const xmlChar *)"xml")
+		              || xmlStrEqual(zPrefix,(const xmlChar *)"xmlns"))) ){
+			if( zPrefix ){
+				xmlFree(zPrefix);
+			}
+			if( zLocal ){
+				xmlFree(zLocal);
+			}
+			return DomThrow(pCtx,DOM_ERR_NAMESPACE);
+		}
+	}
+	pNode = xmlNewNode(0,zLocal ? zLocal : (const xmlChar *)zName);
+	if( zLocal ){
+		xmlFree(zLocal);
+	}
+	if( pNode == 0 ){
+		if( zPrefix ){
+			xmlFree(zPrefix);
+		}
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( bHasUri ){
+		/* On the node's OWN nsDef, so the declaration serializes here once an
+		 * insertion adopts the element and lookupNamespaceURI answers it
+		 * meanwhile; the reconcile strips it wherever an ancestor already
+		 * declares the binding. */
+		xmlNsPtr pNs = xmlNewNs(pNode,(const xmlChar *)zUri,zPrefix);
+		if( pNs ){
+			xmlSetNs(pNode,pNs);
+		}
+	}
+	if( zPrefix ){
+		xmlFree(zPrefix);
+	}
+	if( zVal && nVal > 0 ){
+		/* The EMPTY value is skipped whole -- php's `new DOMElement('a','')`
+		 * has no text child at all, where libxml's setter would leave one. */
+		nMark = PH7_LibxmlCaptureBegin(pVm);
+		xmlNodeSetContentLen(pNode,(const xmlChar *)zVal,nVal);
+		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMElement::__construct");
+	}
+	return DomCtorInstall(pCtx,pNode);
+}
+/*
+ * DOMAttr::__construct(string $name, string $value = '')
+ *
+ * The name is a plain XML Name -- NO QName split at all, so `p:a` and even
+ * `xmlns:x` pass whole and carry no namespace (`prefix` reads "" and
+ * `localName` the full spelling). The value is LITERAL: php builds the text
+ * child directly rather than through the entity parser, which is what keeps
+ * `&amp;` five characters where the element constructor's value collapses it.
+ */
+DOM_METHOD(vm_builtin_DOMAttr_construct)
+{
+	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	const char *zVal = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
+	if( zName[0] == 0 || xmlValidateName((const xmlChar *)zName,0) != 0 ){
+		return DomThrow(pCtx,DOM_ERR_INVALID_CHAR);
+	}
+	return DomCtorInstall(pCtx,
+		(xmlNodePtr)xmlNewProp(0,(const xmlChar *)zName,(const xmlChar *)zVal));
 }
 
 /* ===== Namespaces ===== */
@@ -7505,6 +7635,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "__set",                PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMDocument_set },
 	};
 	static const PH7_NativeMethodDef aElemMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC,
+		  "string $qualifiedName, ?string $value = null, string $namespace = ''", "",
+		  vm_builtin_DOMElement_construct },
 		{ "getAttribute",         PH7_MOD_PUBLIC, "string $qualifiedName", "@string",
 		  vm_builtin_DOMElement_getAttribute },
 		{ "hasAttribute",         PH7_MOD_PUBLIC, "string $qualifiedName", "@bool",
@@ -7569,6 +7702,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "__set",                PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMElement_set },
 	};
 	static const PH7_NativeMethodDef aAttrMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "string $name, string $value = ''", "",
+		  vm_builtin_DOMAttr_construct },
 		{ "isId",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_DOMAttr_isId },
 		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMAttr_get },
 		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMAttr_isset },
