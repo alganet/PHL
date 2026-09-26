@@ -1647,6 +1647,230 @@ DOM_METHOD(vm_builtin_DOMNode_getNodePath)
 	return PH7_OK;
 }
 
+/* ===== Character data: the in-place edit family ===== */
+
+/*
+ * Every offset and count on this surface is measured in UTF-8 CHARACTERS, not
+ * bytes -- php runs `xmlUTF8Strlen` over the content and `xmlUTF8Strsub` to cut
+ * it -- so `$t->length` on "áé漢字" is 4 and `substringData(0,1)` is one
+ * character rather than one byte. PHL measured `length` with strlen(), which is
+ * a silently wrong answer for every non-ASCII document: 10 where php says 4,
+ * and every offset a program then computed from it landed mid-character.
+ *
+ * libxml's own UTF-8 helpers are used rather than PHL's, so malformed content
+ * counts and cuts identically in both engines.
+ */
+static int DomCharLength(xmlNodePtr pNode)
+{
+	return (pNode && pNode->content) ? xmlUTF8Strlen(pNode->content) : 0;
+}
+/*
+ * php's Index Size Error: a negative bound, or an offset past the end. The
+ * COUNT is clamped rather than refused once the offset is in range.
+ *
+ * The upper bound is compared UNSIGNED on three of the five and SIGNED on the
+ * other two, and only malformed content tells them apart: `xmlUTF8Strlen`
+ * answers -1 for content that is not valid UTF-8 (`$t->length` reports that
+ * -1), and as an UNSIGNED bound a -1 means "no limit" -- so substringData,
+ * insertData and splitText all work on such a node and let libxml's own cutting
+ * decide what comes back, while deleteData and replaceData refuse it outright,
+ * for every offset and every count. php's own split, kept because a program
+ * handed a byte string that is not UTF-8 gets a value back from three of these
+ * and an exception from the other two.
+ */
+static int DomCharRange(ph7_context *pCtx,xmlNodePtr pNode,ph7_int64 iOffset,
+	ph7_int64 iCount,int bHasCount,int bUnsignedBound,int *pnLen,int *pRc)
+{
+	int nLen = DomCharLength(pNode);
+	int bPastEnd = bUnsignedBound ? (sxu32)iOffset > (sxu32)nLen
+	                              : iOffset > (ph7_int64)nLen;
+	*pnLen = nLen;
+	if( iOffset < 0 || (bHasCount && iCount < 0)
+	 || iOffset > (ph7_int64)SXI32_HIGH || iCount > (ph7_int64)SXI32_HIGH
+	 || bPastEnd ){
+		*pRc = PH7_VmThrowException(pCtx,"DOMException","Index Size Error");
+		return -1;
+	}
+	return 0;
+}
+/* DOMCharacterData::substringData(int $offset, int $count): string */
+DOM_METHOD(vm_builtin_DOMCharacterData_substringData)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	ph7_int64 iOffset = nArg > 1 ? ph7_value_to_int64(apArg[0]) : 0;
+	ph7_int64 iCount = nArg > 1 ? ph7_value_to_int64(apArg[1]) : 0;
+	xmlChar *zSub;
+	int nLen,rc = PH7_OK;
+	if( pNode == 0 || pNode->content == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( DomCharRange(pCtx,pNode,iOffset,iCount,TRUE,TRUE,&nLen,&rc) != 0 ){
+		return rc;
+	}
+	if( (sxu32)(iOffset+iCount) > (sxu32)nLen ){
+		iCount = (ph7_int64)nLen - iOffset;
+	}
+	zSub = xmlUTF8Strsub(pNode->content,(int)iOffset,(int)iCount);
+	ph7_result_string(pCtx,zSub ? (const char *)zSub : "",-1);
+	if( zSub ){
+		xmlFree(zSub);
+	}
+	return PH7_OK;
+}
+/* DOMCharacterData::appendData(string $data): true -- raw bytes, no entity
+ * parsing, which is why `appendData('&amp;')` stores those five characters. */
+DOM_METHOD(vm_builtin_DOMCharacterData_appendData)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	int nData = 0;
+	const char *zData = nArg > 0 ? ph7_value_to_string(apArg[0],&nData) : "";
+	if( pNd ){
+		xmlTextConcat((xmlNodePtr)pNd->pNode,(const xmlChar *)zData,nData);
+	}
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/*
+ * The three writers, which php builds the same way: the head up to $offset, the
+ * replacement, then whatever the count left of the tail.
+ *
+ * insertData is (offset, 0, data), deleteData is (offset, count, ""), and
+ * replaceData is both -- php's own three bodies say the same thing three times.
+ */
+static int DomCharSplice(ph7_context *pCtx,ph7_int64 iOffset,ph7_int64 iCount,
+	int bHasCount,const char *zData,int nData)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	xmlChar *zHead,*zTail = 0;
+	int nLen,rc = PH7_OK;
+	if( pNode == 0 || pNode->content == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* insertData has no count and takes the unsigned bound; the two that DO
+	 * take one take the signed bound. */
+	if( DomCharRange(pCtx,pNode,iOffset,iCount,bHasCount,!bHasCount,&nLen,&rc) != 0 ){
+		return rc;
+	}
+	if( (sxu32)(iOffset+iCount) > (sxu32)nLen ){
+		iCount = (ph7_int64)nLen - iOffset;
+	}
+	zHead = iOffset > 0 ? xmlUTF8Strndup(pNode->content,(int)iOffset)
+	                    : xmlStrdup((const xmlChar *)"");
+	if( iOffset + iCount < (ph7_int64)nLen ){
+		zTail = xmlUTF8Strsub(pNode->content,(int)(iOffset+iCount),
+			(int)((ph7_int64)nLen - iOffset - iCount));
+	}
+	xmlNodeSetContent(pNode,zHead ? zHead : (const xmlChar *)"");
+	if( nData > 0 ){
+		xmlNodeAddContentLen(pNode,(const xmlChar *)zData,nData);
+	}
+	if( zTail ){
+		xmlNodeAddContent(pNode,zTail);
+	}
+	if( zHead ){
+		xmlFree(zHead);
+	}
+	if( zTail ){
+		xmlFree(zTail);
+	}
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/* DOMCharacterData::insertData(int $offset, string $data): true */
+DOM_METHOD(vm_builtin_DOMCharacterData_insertData)
+{
+	int nData = 0;
+	const char *zData = nArg > 1 ? ph7_value_to_string(apArg[1],&nData) : "";
+	return DomCharSplice(pCtx,nArg > 1 ? ph7_value_to_int64(apArg[0]) : 0,0,FALSE,zData,nData);
+}
+/* DOMCharacterData::deleteData(int $offset, int $count): true */
+DOM_METHOD(vm_builtin_DOMCharacterData_deleteData)
+{
+	return DomCharSplice(pCtx,nArg > 1 ? ph7_value_to_int64(apArg[0]) : 0,
+		nArg > 1 ? ph7_value_to_int64(apArg[1]) : 0,TRUE,"",0);
+}
+/* DOMCharacterData::replaceData(int $offset, int $count, string $data): true */
+DOM_METHOD(vm_builtin_DOMCharacterData_replaceData)
+{
+	int nData = 0;
+	const char *zData = nArg > 2 ? ph7_value_to_string(apArg[2],&nData) : "";
+	return DomCharSplice(pCtx,nArg > 2 ? ph7_value_to_int64(apArg[0]) : 0,
+		nArg > 2 ? ph7_value_to_int64(apArg[1]) : 0,TRUE,zData,nData);
+}
+/*
+ * DOMText::splitText(int $offset): DOMText|false
+ *
+ * The receiver keeps the head and a SECOND node takes the tail, spliced in
+ * right after it. Two details only the oracle states: an offset past the end is
+ * plain `false` where a negative one is a ValueError, and splitting a CDATA
+ * section produces a TEXT node -- so `<![CDATA[abcdef]]>` split at 2 serializes
+ * as `<![CDATA[ab]]>cdef`.
+ */
+DOM_METHOD(vm_builtin_DOMText_splitText)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	ph7_int64 iOffset = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;
+	xmlChar *zHead,*zTail;
+	xmlNodePtr pNew;
+	int nLen;
+	if( iOffset < 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"DOMText::splitText(): Argument #1 ($offset) must be greater than or equal to 0");
+	}
+	if( pNode == 0
+	 || (pNode->type != XML_TEXT_NODE && pNode->type != XML_CDATA_SECTION_NODE)
+	 || pNode->content == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	nLen = DomCharLength(pNode);
+	if( iOffset > (ph7_int64)nLen ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zHead = xmlUTF8Strndup(pNode->content,(int)iOffset);
+	zTail = xmlUTF8Strsub(pNode->content,(int)iOffset,(int)((ph7_int64)nLen - iOffset));
+	xmlNodeSetContent(pNode,zHead ? zHead : (const xmlChar *)"");
+	pNew = xmlNewDocText(pNode->doc,zTail ? zTail : (const xmlChar *)"");
+	if( zHead ){
+		xmlFree(zHead);
+	}
+	if( zTail ){
+		xmlFree(zTail);
+	}
+	if( pNew == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( pNode->parent ){
+		/* Spliced by hand, as everything in this file is: xmlAddNextSibling
+		 * MERGES two adjacent text nodes and frees one of them. */
+		if( pNode->next ){
+			DomLinkBefore(pNode->parent,pNew,pNode->next);
+		}else{
+			DomLinkLast(pNode->parent,pNew);
+		}
+	}else{
+		DomOrphanAdd(pNd->pShell,pNew);
+	}
+	return DomResultNodeOf(pCtx,pNd,pNew);
+}
+/* DOMText::isWhitespaceInElementContent() and its 8.x rename
+ * isElementContentWhitespace(): one body, libxml's blank-node test. */
+DOM_METHOD(vm_builtin_DOMText_isWhitespace)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx,pNd && xmlIsBlankNode((xmlNodePtr)pNd->pNode));
+	return PH7_OK;
+}
+
 /* ===== C14N ===== */
 
 /*
@@ -2618,19 +2842,14 @@ static int DomCharDataProp(ph7_context *pCtx,const char *zName)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
 	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
-	xmlChar *zContent;
 	if( DomNameIs(zName,"data") ){
 		DomNodeValue(pCtx,pNode);
 		return 1;
 	}
 	if( DomNameIs(zName,"length") ){
-		/* php's length is the BYTE length of the data, which is what strlen()
-		 * of the chunk's nodeValue measured. */
-		zContent = pNode ? xmlNodeGetContent(pNode) : 0;
-		ph7_result_int(pCtx,zContent ? (int)SyStrlen((const char *)zContent) : 0);
-		if( zContent ){
-			xmlFree(zContent);
-		}
+		/* php counts UTF-8 CHARACTERS here (xmlUTF8Strlen over the node's own
+		 * content), which is the same unit every offset on this class uses. */
+		ph7_result_int(pCtx,DomCharLength(pNode));
 		return 1;
 	}
 	return 0;
@@ -2642,12 +2861,44 @@ static int DomCharProp(ph7_context *pCtx,const char *zName)
 	}
 	return DomNodeProp(pCtx,zName);
 }
+/*
+ * DOMText::wholeText is the whole RUN, not the node: php walks back to the
+ * first adjacent text-or-CDATA sibling and forward to the last, concatenating
+ * all of them, which is what makes it the answer to "what does this element
+ * actually say" after an edit has left the text in pieces. Answering the node's
+ * own data (what PHL did) is the same string only when the run is one node
+ * long, and silently short otherwise.
+ */
+static int DomIsTextRun(xmlNodePtr pNode)
+{
+	return pNode != 0
+		&& (pNode->type == XML_TEXT_NODE || pNode->type == XML_CDATA_SECTION_NODE);
+}
 static int DomTextProp(ph7_context *pCtx,const char *zName)
 {
 	phl_domnode *pNd;
+	xmlNodePtr pNode,pCur;
+	SyBlob sOut;
 	if( DomNameIs(zName,"wholeText") ){
 		pNd = DomThisNode(pCtx);
-		DomNodeValue(pCtx,pNd ? (xmlNodePtr)pNd->pNode : 0);
+		pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+		if( !DomIsTextRun(pNode) ){
+			DomNodeValue(pCtx,pNode);
+			return 1;
+		}
+		while( DomIsTextRun(pNode->prev) ){
+			pNode = pNode->prev;
+		}
+		SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+		for( pCur = pNode ; DomIsTextRun(pCur) ; pCur = pCur->next ){
+			xmlChar *zPart = xmlNodeGetContent(pCur);
+			if( zPart ){
+				SyBlobAppend(&sOut,(const void *)zPart,(sxu32)SyStrlen((const char *)zPart));
+				xmlFree(zPart);
+			}
+		}
+		ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+		SyBlobRelease(&sOut);
 		return 1;
 	}
 	return DomCharProp(pCtx,zName);
@@ -3163,6 +3414,17 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMAttr_set },
 	};
 	static const PH7_NativeMethodDef aCharMethod[] = {
+		/* Every offset and count here is in UTF-8 CHARACTERS, php's unit. */
+		{ "appendData",    PH7_MOD_PUBLIC, "string $data", "@true",
+		  vm_builtin_DOMCharacterData_appendData },
+		{ "substringData", PH7_MOD_PUBLIC, "int $offset, int $count", "",
+		  vm_builtin_DOMCharacterData_substringData },
+		{ "insertData",    PH7_MOD_PUBLIC, "int $offset, string $data", "@bool",
+		  vm_builtin_DOMCharacterData_insertData },
+		{ "deleteData",    PH7_MOD_PUBLIC, "int $offset, int $count", "@bool",
+		  vm_builtin_DOMCharacterData_deleteData },
+		{ "replaceData",   PH7_MOD_PUBLIC, "int $offset, int $count, string $data", "@bool",
+		  vm_builtin_DOMCharacterData_replaceData },
 		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMCharacterData_get },
 		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMCharacterData_isset },
 		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMCharacterData_set },
@@ -3178,6 +3440,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMDocumentFragment_appendXML },
 	};
 	static const PH7_NativeMethodDef aTextMethod[] = {
+		{ "splitText", PH7_MOD_PUBLIC, "int $offset", "", vm_builtin_DOMText_splitText },
+		/* php's 8.x rename and the name it renamed, one body. */
+		{ "isWhitespaceInElementContent", PH7_MOD_PUBLIC, "", "@bool",
+		  vm_builtin_DOMText_isWhitespace },
+		{ "isElementContentWhitespace",   PH7_MOD_PUBLIC, "", "@bool",
+		  vm_builtin_DOMText_isWhitespace },
 		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMText_get },
 		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMText_isset },
 		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMText_set },
