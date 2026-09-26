@@ -87,14 +87,14 @@
  * And php's own precedence comes FIRST: a comparison against null, a bool, an
  * array or an object never reaches the numeric/string rule, so `NAN == true`
  * is TRUE (both truthy) and `NAN < []` is TRUE (an array is greater). Those
- * flags are exactly the branches PH7_MemObjCmp answers ahead of its string and
- * numeric ones -- MEMOBJ_RES with them, which is a separate divergence of its
- * own (a resource compares as a BOOLEAN here where php compares its ID).
+ * flags are exactly the branches PH7_MemObjCmp answers ahead of its numeric
+ * one. A RESOURCE is not among them: php reads it as its ID there, so a NaN
+ * against one is as unordered as a NaN against any other number.
  */
 PH7_PRIVATE sxi32 VmIsUnorderedCmp(ph7_value *pLeft,ph7_value *pRight)
 {
 	if( (pLeft->iFlags | pRight->iFlags)
-	  & (MEMOBJ_NULL|MEMOBJ_BOOL|MEMOBJ_RES|MEMOBJ_HASHMAP|MEMOBJ_OBJ) ){
+	  & (MEMOBJ_NULL|MEMOBJ_BOOL|MEMOBJ_HASHMAP|MEMOBJ_OBJ) ){
 		return FALSE;
 	}
 	if( (pLeft->iFlags & MEMOBJ_REAL) && PH7_IS_NAN(pLeft->rVal) ){

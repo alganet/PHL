@@ -1902,8 +1902,10 @@ PH7_PRIVATE sxi32 PH7_MemObjCmp(ph7_value *pObj1,ph7_value *pObj2,int bStrict,in
 		/* Cast refused (null, array, resource, or no __toString): object is greater. */
 		return bObj1 ? 1 : -1;
 	}
-	if( iComb & (MEMOBJ_NULL|MEMOBJ_RES|MEMOBJ_BOOL) ){
-		/* Convert to boolean: Keep in mind FALSE < TRUE */
+	if( iComb & (MEMOBJ_NULL|MEMOBJ_BOOL) ){
+		/* Convert to boolean: Keep in mind FALSE < TRUE. php decides null and bool
+		 * this way and nothing else -- a RESOURCE used to be decided here too,
+		 * which made every open one equal to every other truthy value. */
 		if( (pObj1->iFlags & MEMOBJ_BOOL) == 0 ){
 			PH7_MemObjToBool(pObj1);
 		}
@@ -1940,6 +1942,32 @@ PH7_PRIVATE sxi32 PH7_MemObjCmp(ph7_value *pObj1,ph7_value *pObj2,int bStrict,in
 		/* Perform the comparison */
 		rc = PH7_ClassInstanceCmp((ph7_class_instance *)pObj1->x.pOther,(ph7_class_instance *)pObj2->x.pOther,bStrict,iNest);
 		return rc;
+	}else if( !VmIsUnorderedCmp(pObj1,pObj2) && (iComb & MEMOBJ_RES) ){
+		/* php compares a resource with a NON-resource as its ID -- the number
+		 * `(int)$fp` answers -- and the other side takes php's LEGACY
+		 * scalar-to-number conversion, not php 8's saner string rule, because
+		 * this comparison never reaches that rule: `$fp == "5abc"` is TRUE for
+		 * resource #5 and `$fp > "x"` compares 5 with 0. PHL compared the pair as
+		 * BOOLEANS, so an open resource equalled every non-empty string, every
+		 * non-zero number and every other open resource, was GREATER than the
+		 * empty array, and `max($fp, 10)` answered the resource.
+		 *
+		 * The two-resource case is decided above (by ID), null and bool before
+		 * that (php's bool comparison), an array above this (an array is
+		 * greater), an object by the cast rule, and a NaN by the unordered one --
+		 * exactly php's order. */
+		int bRes1 = (pObj1->iFlags & MEMOBJ_RES) != 0;
+		ph7_value *pRes = bRes1 ? pObj1 : pObj2;
+		ph7_value *pOther = bRes1 ? pObj2 : pObj1;
+		sxi64 iId = (sxi64)PH7_VmResourceId(pRes->pVm,pRes->x.pOther);
+		PH7_MemObjToNumeric(pOther);
+		if( pOther->iFlags & MEMOBJ_REAL ){
+			ph7_real rId = (ph7_real)iId;
+			rc = rId > pOther->rVal ? 1 : (rId < pOther->rVal ? -1 : 0);
+		}else{
+			rc = iId > pOther->x.iVal ? 1 : (iId < pOther->x.iVal ? -1 : 0);
+		}
+		return bRes1 ? rc : -rc;
 	}else if( VmIsUnorderedCmp(pObj1,pObj2) ){
 		/* A NaN against a number or a string: php answers 1 in BOTH directions
 		 * (`NAN <=> 1` and `1 <=> NAN` are both 1), which is what leaves every
@@ -1948,9 +1976,9 @@ PH7_PRIVATE sxi32 PH7_MemObjCmp(ph7_value *pObj1,ph7_value *pObj2,int bStrict,in
 		 * this comparator with no arm of its own: `in_array(NAN, ["NAN"])` was TRUE
 		 * (php: false), `array_search` found it, and a `switch` matched it -- all
 		 * because the string branch below rendered the NaN as the bytes "NAN" and
-		 * compared those. The precedence php gives null, bool, array, object (and,
-		 * for now, resource) is already spent above: VmIsUnorderedCmp screens those
-		 * flags out, so `NAN == true` stays the bool comparison it is there. */
+		 * compared those. The precedence php gives null, bool, array and object is
+		 * already spent above: VmIsUnorderedCmp screens those flags out, so
+		 * `NAN == true` stays the bool comparison it is there. */
 		return 1;
 	}else if ( iComb & MEMOBJ_STRING ){
 		SyString s1,s2;
