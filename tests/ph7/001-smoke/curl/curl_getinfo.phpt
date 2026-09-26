@@ -57,7 +57,13 @@ foreach ([null, 'http://example.com/path', 'https://x.example:8443/a?b=c'] as $u
         }
         // capath and cainfo answer the BUILD's compiled-in defaults -- CAINFO
         // does not even reflect CURLOPT_CAINFO -- so only their type is stable.
-        if ($k === 'capath' || $k === 'cainfo') { echo "  $k: ", gettype($v), "\n"; continue; }
+        if ($k === 'capath' || $k === 'cainfo'
+            // primary_port/local_port answer 0 on libcurl 8.5 and -1 on 8.21:
+            // the "no port yet" sentinel changed, so only the type is stable.
+            || $k === 'primary_port' || $k === 'local_port') {
+            echo "  $k: ", gettype($v), "\n";
+            continue;
+        }
         echo "  $k: ", gettype($v), ' ', is_array($v) ? 'array(' . count($v) . ')' : var_export($v, true), "\n";
     }
 }
@@ -127,9 +133,9 @@ echo 'curl_getinfo(', implode(', ', array_map(fn($p) => (string)$p->getType() . 
   redirect_url: string ''
   primary_ip: string ''
   certinfo: array array(0)
-  primary_port: integer 0
+  primary_port: integer
   local_ip: string ''
-  local_port: integer 0
+  local_port: integer
   http_version: integer 0
   protocol: integer 0
   ssl_verifyresult: integer 0
@@ -169,9 +175,9 @@ echo 'curl_getinfo(', implode(', ', array_map(fn($p) => (string)$p->getType() . 
   redirect_url: string ''
   primary_ip: string ''
   certinfo: array array(0)
-  primary_port: integer 0
+  primary_port: integer
   local_ip: string ''
-  local_port: integer 0
+  local_port: integer
   http_version: integer 0
   protocol: integer 0
   ssl_verifyresult: integer 0
@@ -211,9 +217,9 @@ echo 'curl_getinfo(', implode(', ', array_map(fn($p) => (string)$p->getType() . 
   redirect_url: string ''
   primary_ip: string ''
   certinfo: array array(0)
-  primary_port: integer 0
+  primary_port: integer
   local_ip: string ''
-  local_port: integer 0
+  local_port: integer
   http_version: integer 0
   protocol: integer 0
   ssl_verifyresult: integer 0

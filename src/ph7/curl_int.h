@@ -81,6 +81,10 @@ struct phl_curl {
 	int iLastErr;                   /* CURLcode of the last transfer (php's ch->err.no) */
 	char zErrBuf[CURL_ERROR_SIZE];  /* libcurl's CURLOPT_ERRORBUFFER target */
 	phl_curl_slist *pSlists;        /* the curl_slists this handle owns */
+	int bReturnTransfer;            /* CURLOPT_RETURNTRANSFER: php's own option, no
+	                                 * libcurl equivalent -- it picks where the body
+	                                 * goes, so it lives here rather than on the
+	                                 * easy handle */
 	phl_curl *pNext;                /* per-VM registry chain */
 };
 

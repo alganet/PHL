@@ -1875,6 +1875,11 @@ static int CurlSetOne(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *pV
 			return -1;
 		}
 		return 1;
+	case CURL_OPT_RETURN:
+		/* php's own option, and a FLAG: every value is accepted (setopt always
+		 * answers true) and only its truthiness matters, at exec time. */
+		pCurl->bReturnTransfer = ph7_value_to_bool(pVal) ? 1 : 0;
+		return 1;
 	case CURL_OPT_IGNORE:
 		return 1;
 	default:
@@ -2286,6 +2291,75 @@ static int vm_builtin_curl_getinfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 
+
+/* ===== curl_exec() ===== */
+
+/*
+ * Where the body goes. php has two destinations and CURLOPT_RETURNTRANSFER
+ * picks between them: a buffer the call ANSWERS, or the script's own output --
+ * which has to be the VM's output consumer, not stdout, so an ob_start() around
+ * curl_exec() captures it the way php's does.
+ */
+struct CurlExecSink {
+	ph7_context *pCtx;
+	SyBlob *pBody;      /* set when RETURNTRANSFER is on */
+};
+static size_t CurlExecWrite(char *zData,size_t nSize,size_t nMemb,void *pUser)
+{
+	struct CurlExecSink *pSink = (struct CurlExecSink *)pUser;
+	size_t nTotal = nSize * nMemb;
+	if( nTotal < 1 ){
+		return 0;
+	}
+	if( pSink->pBody ){
+		if( SyBlobAppend(pSink->pBody,zData,(sxu32)nTotal) != SXRET_OK ){
+			return 0;   /* short write: libcurl turns this into CURLE_WRITE_ERROR */
+		}
+	}else{
+		ph7_context_output(pSink->pCtx,zData,(int)nTotal);
+	}
+	return nTotal;
+}
+/* string|bool curl_exec(CurlHandle $handle) */
+static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_curl *pCurl = CurlArg(pCtx,nArg,apArg);
+	struct CurlExecSink sSink;
+	SyBlob sBody;
+	CURLcode rc;
+	if( pCurl == 0 || pCurl->pEasy == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	SyBlobInit(&sBody,&pCurl->pVm->sAllocator);
+	sSink.pCtx = pCtx;
+	sSink.pBody = pCurl->bReturnTransfer ? &sBody : 0;
+	curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEFUNCTION,CurlExecWrite);
+	curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEDATA,(void *)&sSink);
+	rc = curl_easy_perform(pCurl->pEasy);
+	/* The sink is a stack address: libcurl must not keep it past this call. */
+	curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEFUNCTION,(curl_write_callback)0);
+	curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEDATA,(void *)0);
+	pCurl->iLastErr = (int)rc;
+	if( rc != CURLE_OK ){
+		/* libcurl fills the error buffer itself; when it left it empty (some
+		 * codes carry no detail) php still answers the code's own text. */
+		if( pCurl->zErrBuf[0] == 0 ){
+			CurlSetErr(pCurl,(int)rc);
+		}
+		SyBlobRelease(&sBody);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( pCurl->bReturnTransfer ){
+		ph7_result_string(pCtx,(const char *)SyBlobData(&sBody),(int)SyBlobLength(&sBody));
+	}else{
+		ph7_result_bool(pCtx,1);
+	}
+	SyBlobRelease(&sBody);
+	return PH7_OK;
+}
+
 /* ===== Installation ===== */
 
 PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)
@@ -2306,7 +2380,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)
 		{ "curl_copy_handle",    vm_builtin_curl_copy_handle    },
 		{ "curl_setopt",         vm_builtin_curl_setopt         },
 		{ "curl_setopt_array",   vm_builtin_curl_setopt_array   },
-		{ "curl_getinfo",        vm_builtin_curl_getinfo        }
+		{ "curl_getinfo",        vm_builtin_curl_getinfo        },
+		{ "curl_exec",           vm_builtin_curl_exec           }
 	};
 	/*
 	 * The libcurl handle, and nothing else: php's CurlHandle declares no
