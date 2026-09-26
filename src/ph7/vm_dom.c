@@ -6093,6 +6093,12 @@ static ph7_class_instance * DomListItem(ph7_vm *pVm,ph7_class_instance *pList,in
 		}
 		PH7_MemObjRelease(&sKey);
 		pHit = pEntry ? HashmapExtractNodeValue(pEntry) : 0;
+		if( pHit && (pHit->iFlags & MEMOBJ_OBJ) ){
+			/* A namespace:: axis entry holds the DOMNameSpaceNode ITSELF (a
+			 * fresh object per query, one object per list -- php's answer);
+			 * the snapshot owns it, so this stays a borrow like DomWrap's. */
+			return (ph7_class_instance *)pHit->x.pOther;
+		}
 		pRes = (pHit && (pHit->iFlags & MEMOBJ_RES)) ? (phl_domnode *)pHit->x.pOther : 0;
 		return pRes ? DomWrap(&(*pVm),pDoc,pRes->pShell,(xmlNodePtr)pRes->pNode) : 0;
 	}
@@ -6409,8 +6415,47 @@ static int DomXPathResultList(ph7_context *pCtx,ph7_class_instance *pDoc,
 			xmlNodePtr pNode = pObj->nodesetval->nodeTab[i];
 			phl_domnode *pWrap;
 			ph7_value *pRes;
-			if( pNode == 0 || pNode->type == XML_NAMESPACE_DECL ){
-				continue; /* namespace pseudo-nodes are not exposed */
+			if( pNode == 0 ){
+				continue;
+			}
+			if( pNode->type == XML_NAMESPACE_DECL ){
+				/*
+				 * A namespace:: axis result. libxml hands the set a COPY that
+				 * dies with the XPath object (xmlXPathNodeSetDupNs, its `next`
+				 * pointing at the element the axis ran ON), so the snapshot
+				 * wraps the ORIGINAL in-scope declaration found back through
+				 * that element -- as php answers it: a DOMNameSpaceNode whose
+				 * parentNode is the axis element even for a declaration an
+				 * ANCESTOR made, fresh per query, stored as the OBJECT itself
+				 * (item() twice on one list is one object, php's answer too).
+				 */
+				xmlNsPtr pNs = (xmlNsPtr)pNode;
+				xmlNodePtr pElem = (xmlNodePtr)pNs->next;
+				xmlNsPtr pOrig;
+				ph7_class_instance *pNsObj;
+				if( pElem == 0 || pElem->type != XML_ELEMENT_NODE ){
+					continue; /* not derivable: no element behind the copy */
+				}
+				pOrig = xmlSearchNs((xmlDocPtr)pDocNd->pNode,pElem,pNs->prefix);
+				if( pOrig == 0 ){
+					continue;
+				}
+				pNsObj = DomNewNsNode(pVm,pDoc,pDocNd->pShell,pOrig,pElem);
+				pRes = ph7_context_new_scalar(pCtx);
+				if( pNsObj == 0 || pRes == 0 ){
+					if( pNsObj ){
+						PH7_ClassInstanceUnref(pNsObj);
+					}
+					break;
+				}
+				/* pRes CARRIES the constructor's reference (no bump here): the
+				 * array's insert takes its own, and the call context's release
+				 * of pRes at method end consumes ours -- ending at exactly the
+				 * array's one. */
+				pRes->x.pOther = pNsObj;
+				pRes->iFlags = MEMOBJ_OBJ;
+				ph7_array_add_elem(pSnap,0,pRes);
+				continue;
 			}
 			pWrap = DomNewRes(pVm,pDocNd->pShell,pNode);
 			pRes = ph7_context_new_scalar(pCtx);
