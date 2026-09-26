@@ -50,6 +50,18 @@
 #define DOM_NODES "__nodes"
 
 /*
+ * The DOCUMENT's parser directives: php's six boolean properties, real slots
+ * here (as `preserveWhiteSpace` and `formatOutput` already were) because their
+ * value is the extension's own state and not a question about the tree.  Four
+ * of them are read by every parse, and a clone of a document carries the whole
+ * block across rather than resetting it to the class defaults.
+ */
+static const char * const azDomDocFlag[] = {
+	"preserveWhiteSpace", "formatOutput", "validateOnParse",
+	"resolveExternals", "substituteEntities", "recover"
+};
+
+/*
  * php's DOMException carries the DOM level-2 error CODE beside its sentence --
  * `catch (DOMException $e) { if ($e->getCode() === DOM_NOT_FOUND_ERR) ... }` is
  * how a caller tells one refusal from another, and the sentence is only a
@@ -1088,8 +1100,8 @@ DOM_METHOD(vm_builtin_DOMNode_isEqualNode)
  * any two documents. Everything else is one xmlDocCopyNode into the SAME tree,
  * parked as an orphan like every other node this file creates.
  *
- * The two parser directives ride along: php's copy answers the receiver's
- * `preserveWhiteSpace` and `formatOutput`, not the class defaults.
+ * The parser directives ride along: php's copy answers the receiver's whole
+ * flag block, not the class defaults.
  */
 static int DomCloneDocument(ph7_context *pCtx,phl_domnode *pNd,int bDeep)
 {
@@ -1125,10 +1137,11 @@ static int DomCloneDocument(ph7_context *pCtx,phl_domnode *pNd,int bDeep)
 	DomSetRes(pVm,pObj,pRes);
 	PH7_NativeSetAttrObj(pVm,pObj,DOM_DOC,pObj);
 	if( pThis ){
-		PH7_NativeSetAttrBool(pVm,pObj,"preserveWhiteSpace",
-			PH7_NativeAttrTruthy(pThis,"preserveWhiteSpace"));
-		PH7_NativeSetAttrBool(pVm,pObj,"formatOutput",
-			PH7_NativeAttrTruthy(pThis,"formatOutput"));
+		sxu32 i;
+		for( i = 0 ; i < SX_ARRAYSIZE(azDomDocFlag) ; ++i ){
+			PH7_NativeSetAttrBool(pVm,pObj,azDomDocFlag[i],
+				PH7_NativeAttrTruthy(pThis,azDomDocFlag[i]));
+		}
 	}
 	PH7_NativeResultObject(pCtx,pObj);
 	return PH7_OK;
@@ -2806,6 +2819,71 @@ static void DomStampCwd(ph7_context *pCtx,xmlDocPtr pDoc)
 	}
 	SyBlobRelease(&sDir);
 }
+/*
+ * The parse options one of php's load methods actually runs with: the caller's
+ * `$options`, OR'd with what the document's own directives ask for.
+ *
+ *   preserveWhiteSpace = false  ->  NOBLANKS   (drop ignorable whitespace)
+ *   substituteEntities = true   ->  NOENT      (expand entity references)
+ *   validateOnParse    = true   ->  DTDVALID   (validate against the DTD)
+ *   resolveExternals   = true   ->  DTDATTR    (apply the DTD's default
+ *                                               attributes -- which is also
+ *                                               what makes libxml LOAD an
+ *                                               external subset)
+ *   recover            = true   ->  RECOVER    (keep what parsed)
+ *
+ * The two directions never cancel: a directive can only ADD to the argument,
+ * which is why `loadXML($s, LIBXML_NOENT)` expands entities on a document whose
+ * `substituteEntities` is false.
+ */
+static int DomParseOptions(ph7_class_instance *pThis,int iOpts)
+{
+	if( pThis == 0 ){
+		return iOpts;
+	}
+	if( !PH7_NativeAttrTruthy(pThis,"preserveWhiteSpace") ){
+		iOpts |= XML_PARSE_NOBLANKS;
+	}
+	if( PH7_NativeAttrTruthy(pThis,"substituteEntities") ){
+		iOpts |= XML_PARSE_NOENT;
+	}
+	if( PH7_NativeAttrTruthy(pThis,"validateOnParse") ){
+		iOpts |= XML_PARSE_DTDVALID;
+	}
+	if( PH7_NativeAttrTruthy(pThis,"resolveExternals") ){
+		iOpts |= XML_PARSE_DTDATTR;
+	}
+	if( PH7_NativeAttrTruthy(pThis,"recover") ){
+		iOpts |= XML_PARSE_RECOVER;
+	}
+	return iOpts;
+}
+/*
+ * A RECOVERING parse reports its diagnostics whatever `error_reporting()` says.
+ *
+ * php forces E_WARNING back into the mask for the duration of a parse it is
+ * recovering from -- the point being that a document which came back DAMAGED
+ * must not do so in silence, however the script has configured reporting. It
+ * forces that one level only: a libxml WARNING (an E_NOTICE) stays suppressed.
+ * Answers the previous state, which the caller restores.
+ */
+typedef struct { sxi32 iMask; int bOn; } phl_dom_errsave;
+static phl_dom_errsave DomForceWarnings(ph7_vm *pVm,int bRecover)
+{
+	phl_dom_errsave sSave;
+	sSave.iMask = pVm->iErrMask;
+	sSave.bOn = pVm->bErrReport;
+	if( bRecover ){
+		pVm->iErrMask |= E_WARNING;
+		pVm->bErrReport = 1;
+	}
+	return sSave;
+}
+static void DomRestoreWarnings(ph7_vm *pVm,phl_dom_errsave sSave)
+{
+	pVm->iErrMask = sSave.iMask;
+	pVm->bErrReport = sSave.bOn;
+}
 /* DOMDocument::loadXML(string $source, int $options = 0): bool -- the receiver
  * is REPOINTED at a new tree, so its identity cache is dropped with it. */
 DOM_METHOD(vm_builtin_DOMDocument_loadXML)
@@ -2815,6 +2893,7 @@ DOM_METHOD(vm_builtin_DOMDocument_loadXML)
 	int nLen = 0;
 	const char *zSrc = nArg > 0 ? ph7_value_to_string(apArg[0],&nLen) : "";
 	int iOpts = nArg > 1 ? ph7_value_to_int(apArg[1]) : 0;
+	phl_dom_errsave sErr;
 	xmlDocPtr pDoc;
 	phl_xmldoc *pShell;
 	phl_domnode *pRes;
@@ -2827,12 +2906,12 @@ DOM_METHOD(vm_builtin_DOMDocument_loadXML)
 		return PH7_VmThrowException(pCtx,"ValueError",
 			"DOMDocument::loadXML(): Argument #1 ($source) must not be empty");
 	}
-	if( !PH7_NativeAttrTruthy(pThis,"preserveWhiteSpace") ){
-		iOpts |= XML_PARSE_NOBLANKS;
-	}
+	iOpts = DomParseOptions(pThis,iOpts);
+	sErr = DomForceWarnings(pVm,(iOpts & XML_PARSE_RECOVER) != 0);
 	nMark = PH7_LibxmlCaptureBegin(pVm);
 	pDoc = xmlReadMemory(zSrc,nLen,0,0,iOpts);
 	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::loadXML");
+	DomRestoreWarnings(pVm,sErr);
 	DomStampCwd(pCtx,pDoc);
 	pShell = pDoc ? PH7_LibxmlNewDoc(pVm,pDoc) : 0;
 	pRes = pShell ? DomNewRes(pVm,pShell,pDoc) : 0;
@@ -5402,6 +5481,13 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		 * The TYPE is what the row can state exactly (PLAN §7.4 for the virtual half). */
 		{ "preserveWhiteSpace", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 }, "bool" },
 		{ "formatOutput",       PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },
+		/* The four the parse reads (DomParseOptions). php's defaults are all
+		 * false: nothing is validated, expanded, defaulted or recovered unless
+		 * the program asks. */
+		{ "validateOnParse",    PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },
+		{ "resolveExternals",   PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },
+		{ "substituteEntities", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },
+		{ "recover",            PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },
 		/* The identity cache DomWrap keys by node pointer. */
 		{ DOM_NODES,            PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
