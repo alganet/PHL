@@ -2052,14 +2052,15 @@ static int vm_builtin_DateTime_setISODate(ph7_context *pCtx,int nArg,ph7_value *
  * of microseconds a script may write anything into, and the sum of two of them
  * is exactly the wrap php's own C arrives at rather than an overflow this build
  * would trap on.
+ *
+ * iSign is the FINAL direction, `invert` already folded in by whichever caller
+ * honours it -- add()/sub() and their aliases do, and the period walk does not
+ * (php's own split, below).
  */
 static void DtApplyInterval(ph7_vm *pVm,ph7_class_instance *pSrc,ph7_class_instance *pDst,
 	ph7_class_instance *pIv,int iSign)
 {
 	sxi64 iUsIv,iUs,iCarry;
-	if( PH7_NativeAttrInt(pIv,"invert") ){
-		iSign = -iSign;
-	}
 	iUsIv = DtIvUsec(pIv);
 	if( iSign < 0 ){
 		iUsIv = (sxi64)((sxu64)0 - (sxu64)iUsIv);
@@ -2084,6 +2085,9 @@ static int DtAddSub(ph7_context *pCtx,int nArg,ph7_value **apArg,int iSign)
 		return PH7_OK;
 	}
 	pIv = (ph7_class_instance *)apArg[0]->x.pOther;
+	if( PH7_NativeAttrInt(pIv,"invert") ){
+		iSign = -iSign;   /* an inverted interval subtracts from add() (php) */
+	}
 	pTarget = DtMutTarget(pCtx,pThis,&bCopy);
 	DtApplyInterval(pCtx->pVm,pThis,pTarget,pIv,iSign);
 	DtMutResult(pCtx,pTarget,bCopy);
@@ -2902,9 +2906,19 @@ static int vm_builtin_DatePeriod_getRecurrences(ph7_context *pCtx,int nArg,ph7_v
  * since an excluded start date is stepped over without emitting one).
  */
 #define DP_IT_STEP PH7_NATIVE_IT_POS
-/* One interval step from a date object: a NEW object, so a value already handed
+/*
+ * One interval step from a date object: a NEW object, so a value already handed
  * to the caller is never mutated underneath it (php's iterator answers a fresh
- * object per position too). */
+ * object per position too).
+ *
+ * The step always ADDS, whatever the interval's `invert` says -- php's period
+ * walk reads the fields and not the flag, so a period built on an interval a
+ * diff() answered (or on `$iv->invert = 1`) still runs FORWARD, while a
+ * negative FIELD (`createFromDateString('-1 day')` leaves d = -1 and invert 0)
+ * really does step backward. PHL honoured the flag, so such a period walked the
+ * wrong way -- and with an END date rather than a recurrence count it walked
+ * away from that end, stopped by nothing.
+ */
 static ph7_class_instance * DpAdvance(ph7_vm *pVm,ph7_class_instance *pCur,
 	ph7_class_instance *pIv)
 {
@@ -3156,6 +3170,9 @@ static int DtProcAddSub(ph7_context *pCtx,int nArg,ph7_value **apArg,int iSign)
 	ph7_class_instance *pIv = DtArgObj(nArg,apArg,1);
 	if( pObj == 0 || pIv == 0 ){
 		return PH7_OK;
+	}
+	if( PH7_NativeAttrInt(pIv,"invert") ){
+		iSign = -iSign;
 	}
 	DtApplyInterval(pCtx->pVm,pObj,pObj,pIv,iSign);
 	DtResultArg(pCtx,apArg);
