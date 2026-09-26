@@ -6383,70 +6383,21 @@ static xmlNsPtr * DomXPathCtxOpen(ph7_context *pCtx,phl_domnode *pDocNd,
 	return aNs;
 }
 /*
- * DOMXPath::query(string $expression, ?DOMNode $contextNode = null,
- *                 bool $registerNodeNS = true): DOMNodeList|false
- *
- * The nodeset is frozen into a document-order snapshot (php's query() is not
- * live) and handed to a DOMNodeList of kind DNL_SNAP. false on an invalid
- * expression or a non-nodeset result, which is php's contract.
+ * Freeze a nodeset result into the document-order snapshot a DNL_SNAP
+ * DOMNodeList serves (php's query() is not live), and answer the list. A
+ * non-nodeset pObj answers the EMPTY list: php's query() gives that for a
+ * scalar-typed expression (`count(//x)`), not false.
  */
-DOM_METHOD(vm_builtin_DOMXPath_query)
+static int DomXPathResultList(ph7_context *pCtx,ph7_class_instance *pDoc,
+	phl_domnode *pDocNd,xmlXPathObjectPtr pObj)
 {
 	ph7_vm *pVm = pCtx->pVm;
-	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
-	ph7_class_instance *pDoc = pThis ? PH7_NativeAttrObj(pThis,"document") : 0;
-	phl_domnode *pDocNd = DomResOf(pDoc);
-	const char *zExpr = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
-	phl_domnode *pCtxNd = (nArg > 1 && !ph7_value_is_null(apArg[1])) ? DomObjArg(apArg[1]) : 0;
-	/* php's stub says `= true`, but the live default of the third argument is
-	 * the registerNodeNamespaces PROPERTY (the constructor's second argument
-	 * lands there, and a later property write moves the default with it). */
-	int bRegNodeNs = nArg > 2 ? ph7_value_to_bool(apArg[2])
-		: (pThis ? PH7_NativeAttrTruthy(pThis,"registerNodeNamespaces") : 1);
-	xmlXPathContextPtr pXCtx;
-	xmlXPathObjectPtr pObj;
 	ph7_class_instance *pList;
-	ph7_value *pSnap;
-	xmlNsPtr *aNodeNs;
-	sxu32 nMark;
-	if( pDocNd == 0 ){
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
-	if( pCtxNd && pCtxNd->pNode
-	 && ((xmlNodePtr)pCtxNd->pNode)->doc != (xmlDocPtr)pDocNd->pNode ){
-		/* php's plain Error, no DOM code -- a context node of another document
-		 * (or of none, a constructed node) cannot anchor this evaluation. */
-		return PH7_VmThrowException(pCtx,"Error","Node from wrong document");
-	}
-	aNodeNs = DomXPathCtxOpen(pCtx,pDocNd,pCtxNd,bRegNodeNs,&pXCtx);
-	if( pXCtx == 0 ){
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
-	nMark = PH7_LibxmlCaptureBegin(pVm);
-	pObj = xmlXPathEvalExpression((const xmlChar *)zExpr,pXCtx);
-	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMXPath::query");
-	if( aNodeNs ){
-		pXCtx->namespaces = 0;
-		pXCtx->nsNr = 0;
-		xmlFree(aNodeNs);
-	}
-	if( pObj == 0 || pObj->type != XPATH_NODESET ){
-		if( pObj ){
-			xmlXPathFreeObject(pObj);
-		}
-		xmlXPathFreeContext(pXCtx);
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
-	pSnap = ph7_context_new_array(pCtx);
+	ph7_value *pSnap = ph7_context_new_array(pCtx);
 	if( pSnap == 0 ){
-		xmlXPathFreeObject(pObj);
-		xmlXPathFreeContext(pXCtx);
 		return PH7_ContextMemoryError(pCtx);
 	}
-	if( pObj->nodesetval ){
+	if( pObj && pObj->type == XPATH_NODESET && pObj->nodesetval ){
 		int i;
 		for( i = 0 ; i < pObj->nodesetval->nodeNr ; i++ ){
 			xmlNodePtr pNode = pObj->nodesetval->nodeTab[i];
@@ -6464,14 +6415,113 @@ DOM_METHOD(vm_builtin_DOMXPath_query)
 			ph7_array_add_elem(pSnap,0,pRes);
 		}
 	}
-	xmlXPathFreeObject(pObj);
-	xmlXPathFreeContext(pXCtx);
 	pList = DomNewCollection(pVm,"DOMNodeList",pDoc,DNL_SNAP,0,0,0,pSnap);
 	if( pList == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
 	PH7_NativeResultObject(pCtx,pList);
 	return PH7_OK;
+}
+/*
+ * The one evaluation body under DOMXPath::query and DOMXPath::evaluate. The
+ * two differ only in what they make of the RESULT: query wants a node list
+ * (a scalar gets the empty one), evaluate answers the XPath TYPE as php's
+ * value -- boolean as bool, number as float, string as string, nodeset as
+ * the same snapshot list. An expression that does not evaluate (bad grammar,
+ * unknown function, unresolved prefix) answers false from both, with the
+ * libxml diagnostics on the shared queue.
+ */
+static int DomXPathEvalRun(ph7_context *pCtx,int nArg,ph7_value **apArg,
+	const char *zMethod,int bTyped)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pDoc = pThis ? PH7_NativeAttrObj(pThis,"document") : 0;
+	phl_domnode *pDocNd = DomResOf(pDoc);
+	const char *zExpr = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	phl_domnode *pCtxNd = (nArg > 1 && !ph7_value_is_null(apArg[1])) ? DomObjArg(apArg[1]) : 0;
+	/* php's stub says `= true`, but the live default of the third argument is
+	 * the registerNodeNamespaces PROPERTY (the constructor's second argument
+	 * lands there, and a later property write moves the default with it). */
+	int bRegNodeNs = nArg > 2 ? ph7_value_to_bool(apArg[2])
+		: (pThis ? PH7_NativeAttrTruthy(pThis,"registerNodeNamespaces") : 1);
+	xmlXPathContextPtr pXCtx;
+	xmlXPathObjectPtr pObj;
+	xmlNsPtr *aNodeNs;
+	sxu32 nMark;
+	sxi32 rc;
+	if( pDocNd == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( pCtxNd && pCtxNd->pNode
+	 && ((xmlNodePtr)pCtxNd->pNode)->doc != (xmlDocPtr)pDocNd->pNode ){
+		/* php's plain Error, no DOM code -- a context node of another document
+		 * (or of none, a constructed node) cannot anchor this evaluation. */
+		return PH7_VmThrowException(pCtx,"Error","Node from wrong document");
+	}
+	aNodeNs = DomXPathCtxOpen(pCtx,pDocNd,pCtxNd,bRegNodeNs,&pXCtx);
+	if( pXCtx == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	nMark = PH7_LibxmlCaptureBegin(pVm);
+	pObj = xmlXPathEvalExpression((const xmlChar *)zExpr,pXCtx);
+	PH7_LibxmlCaptureEnd(pVm,nMark,zMethod);
+	if( aNodeNs ){
+		pXCtx->namespaces = 0;
+		pXCtx->nsNr = 0;
+		xmlFree(aNodeNs);
+	}
+	if( pObj == 0 ){
+		xmlXPathFreeContext(pXCtx);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( !bTyped ){
+		rc = DomXPathResultList(pCtx,pDoc,pDocNd,pObj);
+	}else{
+		switch( pObj->type ){
+		case XPATH_BOOLEAN:
+			ph7_result_bool(pCtx,pObj->boolval);
+			rc = PH7_OK;
+			break;
+		case XPATH_NUMBER:
+			ph7_result_double(pCtx,pObj->floatval);
+			rc = PH7_OK;
+			break;
+		case XPATH_STRING:
+			ph7_result_string(pCtx,pObj->stringval ? (const char *)pObj->stringval : "",-1);
+			rc = PH7_OK;
+			break;
+		case XPATH_NODESET:
+			rc = DomXPathResultList(pCtx,pDoc,pDocNd,pObj);
+			break;
+		default:
+			ph7_result_bool(pCtx,0);
+			rc = PH7_OK;
+			break;
+		}
+	}
+	xmlXPathFreeObject(pObj);
+	xmlXPathFreeContext(pXCtx);
+	return rc;
+}
+/*
+ * DOMXPath::query(string $expression, ?DOMNode $contextNode = null,
+ *                 bool $registerNodeNS = true): DOMNodeList|false
+ */
+DOM_METHOD(vm_builtin_DOMXPath_query)
+{
+	return DomXPathEvalRun(pCtx,nArg,apArg,"DOMXPath::query",0);
+}
+/*
+ * DOMXPath::evaluate(string $expression, ?DOMNode $contextNode = null,
+ *                    bool $registerNodeNS = true): mixed
+ */
+DOM_METHOD(vm_builtin_DOMXPath_evaluate)
+{
+	return DomXPathEvalRun(pCtx,nArg,apArg,"DOMXPath::evaluate",1);
 }
 /* DOMXPath::__construct(DOMDocument $document, bool $registerNodeNS = true) */
 DOM_METHOD(vm_builtin_DOMXPath_construct)
@@ -8024,6 +8074,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "query",       PH7_MOD_PUBLIC,
 		  "string $expression, ?DOMNode $contextNode = null, bool $registerNodeNS = true", "@mixed",
 		  vm_builtin_DOMXPath_query },
+		{ "evaluate",    PH7_MOD_PUBLIC,
+		  "string $expression, ?DOMNode $contextNode = null, bool $registerNodeNS = true", "@mixed",
+		  vm_builtin_DOMXPath_evaluate },
 		{ "registerNamespace", PH7_MOD_PUBLIC, "string $prefix, string $namespace", "@bool",
 		  vm_builtin_DOMXPath_registerNamespace },
 	};
