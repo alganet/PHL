@@ -68,7 +68,28 @@ struct phl_pdo {
 	char *zDrvMsg;                /* sqlite's own message, VM-allocated, or 0 */
 	int bNoDrvDetail;             /* the failure came from the LAYER, not the database,
 	                               * so errorInfo() reports [state, null, null] */
+	struct phl_pdo_stmt *pStmts;  /* statements prepared on this connection: they must be
+	                               * finalized before its handle can close */
 	phl_pdo *pNext;
+};
+
+/*
+ * One statement.  It is a FORWARD cursor and nothing more: php's sqlite driver
+ * steps once at execute() so columnCount() can answer, holds that row for the
+ * first fetch(), and steps again per fetch after that. Nothing rewinds -- a
+ * second foreach over the same statement walks nothing, which is php.
+ */
+typedef struct phl_pdo_stmt phl_pdo_stmt;
+struct phl_pdo_stmt {
+	sqlite3_stmt *pStmt;          /* 0 once finalized */
+	phl_pdo *pConn;               /* the connection it was prepared on */
+	ph7_class_instance *pOwner;
+	int bExecuted;                /* execute() has run at least once */
+	int bRowPending;              /* a stepped row is waiting for the next fetch */
+	int bDone;                    /* the cursor is past the last row */
+	ph7_int64 nChanges;           /* what rowCount() answers: the WRITE's row count */
+	int iFetchMode;               /* PDO::FETCH_* for a fetch() given none */
+	phl_pdo_stmt *pNext;
 };
 
 /* vm_pdo.c -- the class library and the shared machinery. */
@@ -95,6 +116,20 @@ PH7_PRIVATE void PH7_PdoSqliteTakeError(phl_pdo *pConn);
  * (with the connection's error already set). */
 PH7_PRIVATE ph7_int64 PH7_PdoSqliteExec(phl_pdo *pConn,const char *zSql,int nSql);
 PH7_PRIVATE ph7_int64 PH7_PdoSqliteLastInsertId(phl_pdo *pConn);
+PH7_PRIVATE ph7_int64 PH7_PdoSqliteChanges(phl_pdo *pConn);
+/* Statement plumbing. Prepare answers 0 on failure with the connection's error
+ * set; step answers 1 (a row), 0 (finished) or -1 (failed). */
+PH7_PRIVATE int PH7_PdoSqlitePrepare(phl_pdo_stmt *pSt,const char *zSql,int nSql);
+PH7_PRIVATE int PH7_PdoSqliteStep(phl_pdo_stmt *pSt);
+PH7_PRIVATE void PH7_PdoSqliteFinalize(phl_pdo_stmt *pSt);
+PH7_PRIVATE int PH7_PdoSqliteColumnCount(phl_pdo_stmt *pSt);
+PH7_PRIVATE const char * PH7_PdoSqliteColumnName(phl_pdo_stmt *pSt,int iCol);
+/* Write column iCol of the row at the cursor into pOut, with sqlite's own type. */
+PH7_PRIVATE void PH7_PdoSqliteColumnValue(phl_pdo_stmt *pSt,int iCol,ph7_value *pOut);
+
+/* vm_pdo.c -- statement lifetime, shared by both units. */
+PH7_PRIVATE phl_pdo_stmt * PH7_PdoNewStmt(phl_pdo *pConn);
+PH7_PRIVATE void PH7_PdoFreeStmt(phl_pdo_stmt *pSt);
 
 #endif /* PH7_ENABLE_SQLITE */
 #endif /* PH7_PDO_INT_H */

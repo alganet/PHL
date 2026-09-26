@@ -166,6 +166,113 @@ PH7_PRIVATE ph7_int64 PH7_PdoSqliteLastInsertId(phl_pdo *pConn)
 {
 	return pConn->pDb ? (ph7_int64)sqlite3_last_insert_rowid(pConn->pDb) : 0;
 }
+PH7_PRIVATE ph7_int64 PH7_PdoSqliteChanges(phl_pdo *pConn)
+{
+	return pConn->pDb ? (ph7_int64)sqlite3_changes(pConn->pDb) : 0;
+}
+/*
+ * Prepare ONE statement.  php compiles only the first statement of the string
+ * here -- unlike exec(), which runs them all -- and what follows it is simply
+ * not executed.
+ */
+PH7_PRIVATE int PH7_PdoSqlitePrepare(phl_pdo_stmt *pSt,const char *zSql,int nSql)
+{
+	int rc;
+	if( pSt->pConn->pDb == 0 ){
+		return 0;
+	}
+	rc = sqlite3_prepare_v2(pSt->pConn->pDb,zSql,nSql,&pSt->pStmt,0);
+	if( rc != SQLITE_OK || pSt->pStmt == 0 ){
+		PH7_PdoSqliteTakeError(pSt->pConn);
+		if( pSt->pStmt ){
+			sqlite3_finalize(pSt->pStmt);
+			pSt->pStmt = 0;
+		}
+		return 0;
+	}
+	return 1;
+}
+/*
+ * One step of the cursor: 1 when a row is available, 0 when the walk is over,
+ * -1 on failure (with the connection's error set).
+ */
+PH7_PRIVATE int PH7_PdoSqliteStep(phl_pdo_stmt *pSt)
+{
+	int rc;
+	if( pSt->pStmt == 0 ){
+		return 0;
+	}
+	rc = sqlite3_step(pSt->pStmt);
+	if( rc == SQLITE_ROW ){
+		return 1;
+	}
+	if( rc == SQLITE_DONE ){
+		return 0;
+	}
+	PH7_PdoSqliteTakeError(pSt->pConn);
+	return -1;
+}
+PH7_PRIVATE void PH7_PdoSqliteFinalize(phl_pdo_stmt *pSt)
+{
+	if( pSt->pStmt ){
+		sqlite3_finalize(pSt->pStmt);
+		pSt->pStmt = 0;
+	}
+}
+PH7_PRIVATE int PH7_PdoSqliteColumnCount(phl_pdo_stmt *pSt)
+{
+	return pSt->pStmt ? sqlite3_column_count(pSt->pStmt) : 0;
+}
+PH7_PRIVATE const char * PH7_PdoSqliteColumnName(phl_pdo_stmt *pSt,int iCol)
+{
+	const char *zName = pSt->pStmt ? sqlite3_column_name(pSt->pStmt,iCol) : 0;
+	return zName ? zName : "";
+}
+/*
+ * One column of the row at the cursor, in sqlite's OWN type: an INTEGER comes
+ * back as an int and a REAL as a float, which is why a fetch from this driver
+ * is not all-strings the way a stringifying one is. A BLOB is a php string of
+ * those bytes, NUL bytes included, so the length has to come from sqlite
+ * rather than from the pointer.
+ */
+PH7_PRIVATE void PH7_PdoSqliteColumnValue(phl_pdo_stmt *pSt,int iCol,ph7_value *pOut)
+{
+	if( pSt->pStmt == 0 ){
+		ph7_value_null(pOut);
+		return;
+	}
+	switch( sqlite3_column_type(pSt->pStmt,iCol) ){
+		case SQLITE_INTEGER:
+			ph7_value_int64(pOut,(ph7_int64)sqlite3_column_int64(pSt->pStmt,iCol));
+			break;
+#ifndef PH7_OMIT_FLOATING_POINT
+		case SQLITE_FLOAT:
+			ph7_value_double(pOut,(ph7_real)sqlite3_column_double(pSt->pStmt,iCol));
+			break;
+#endif
+		case SQLITE_BLOB: {
+			const void *pBlob = sqlite3_column_blob(pSt->pStmt,iCol);
+			int nByte = sqlite3_column_bytes(pSt->pStmt,iCol);
+			ph7_value_string(pOut,"",0);   /* make it a string, then fill it */
+			if( pBlob && nByte > 0 ){
+				ph7_value_string(pOut,(const char *)pBlob,nByte);
+			}
+			break;
+		}
+		case SQLITE_NULL:
+			ph7_value_null(pOut);
+			break;
+		default: {
+			const char *zText = (const char *)sqlite3_column_text(pSt->pStmt,iCol);
+			int nByte = sqlite3_column_bytes(pSt->pStmt,iCol);
+			ph7_value_string(pOut,"",0);
+			if( zText && nByte > 0 ){
+				ph7_value_string(pOut,zText,nByte);
+			}
+			break;
+		}
+	}
+}
 
 static int vm_builtin_pdo_sqlite_stub(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
