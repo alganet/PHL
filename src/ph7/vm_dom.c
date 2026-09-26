@@ -53,6 +53,9 @@
 #define DOM_RES   "__res"
 #define DOM_DOC   "__doc"
 #define DOM_NODES "__nodes"
+/* The base-class => user-class table registerNodeClass writes (defined here
+ * because the document CLONE, far above it, carries the table across). */
+#define DOM_NCLS  "__ncls"
 
 /*
  * The DOCUMENT's own directives: php's seven boolean properties, real slots
@@ -272,6 +275,10 @@ static int DomNodeTypeOf(xmlNodePtr pNode)
 	}
 	return pNode->type == XML_DTD_NODE ? (int)XML_DOCUMENT_TYPE_NODE : (int)pNode->type;
 }
+/* Defined with registerNodeClass below, which is the only thing that makes the
+ * answer anything other than DomClassOfKind's. */
+static const char * DomWrapClassName(ph7_vm *pVm,ph7_class_instance *pDoc,int iKind,
+	SyBlob *pOut);
 /*
  * The wrapper object for one node of pDoc's tree -- the same one every time,
  * which is what makes `$doc->documentElement === $doc->documentElement` true.
@@ -291,6 +298,7 @@ static ph7_class_instance * DomWrap(ph7_vm *pVm,ph7_class_instance *pDoc,
 	phl_domnode *pRes;
 	const char *zClass;
 	ph7_value sKey,sVal;
+	SyBlob sName;
 	if( pNode == 0 || pDoc == 0 ){
 		return 0;
 	}
@@ -310,8 +318,13 @@ static ph7_class_instance * DomWrap(ph7_vm *pVm,ph7_class_instance *pDoc,
 			return (ph7_class_instance *)pHit->x.pOther;
 		}
 	}
-	zClass = DomClassOfKind((int)pNode->type);
+	/* php's class for the kind, unless this document has REGISTERED another
+	 * one for it (registerNodeClass). The name may live in sName's buffer, so
+	 * the blob outlives the lookup. */
+	SyBlobInit(&sName,&pVm->sAllocator);
+	zClass = DomWrapClassName(&(*pVm),pDoc,(int)pNode->type,&sName);
 	pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);
+	SyBlobRelease(&sName);
 	pObj = pClass ? PH7_NewClassInstance(&(*pVm),pClass) : 0;
 	pRes = pObj ? DomNewRes(&(*pVm),pShell,pNode) : 0;
 	if( pRes == 0 ){
@@ -2149,10 +2162,18 @@ static int DomCloneDocument(ph7_context *pCtx,phl_domnode *pNd,int bDeep)
 	DomSetRes(pVm,pObj,pRes);
 	PH7_NativeSetAttrObj(pVm,pObj,DOM_DOC,pObj);
 	if( pThis ){
+		ph7_value *pFrom,*pTo;
 		sxu32 i;
 		for( i = 0 ; i < SX_ARRAYSIZE(azDomDocFlag) ; ++i ){
 			PH7_NativeSetAttrBool(pVm,pObj,azDomDocFlag[i],
 				PH7_NativeAttrTruthy(pThis,azDomDocFlag[i]));
+		}
+		/* ...and the registerNodeClass table, which php's copy answers too --
+		 * shared copy-on-write, which the map's own writer separates. */
+		pFrom = PH7_NativeAttr(pThis,DOM_NCLS);
+		pTo = PH7_NativeAttr(pObj,DOM_NCLS);
+		if( pFrom && pTo && (pFrom->iFlags & MEMOBJ_HASHMAP) ){
+			PH7_MemObjStore(pFrom,pTo);
 		}
 	}
 	PH7_NativeResultObject(pCtx,pObj);
@@ -7899,6 +7920,122 @@ DOM_METHOD(vm_builtin_DOMDocument_xinclude)
 	return PH7_OK;
 }
 
+/*
+ * DOMDocument::registerNodeClass(string $baseClass, ?string $extendedClass): true
+ *
+ * php lets a program say which class a node should be WRAPPED in, per
+ * document: register `MyElement` against `DOMElement` and every element of
+ * that document -- read from the tree or made by a factory -- comes back a
+ * MyElement, so a walk can call the program's own methods on what it finds
+ * instead of carrying a parallel table of its own.
+ *
+ * The lookup is by the class the extension would have used and by nothing
+ * else: registering against `DOMNode` or `DOMCharacterData` changes NO
+ * wrapping, because an element is wrapped as a DOMElement and a text node as a
+ * DOMText, and neither name is the one registered.
+ *
+ * The map is the document's, stored in a hidden slot beside its identity cache
+ * and carried by a document CLONE the way the parser directives are.
+ */
+/* The map, materialized on the document the way its identity cache is. */
+static ph7_hashmap * DomNodeClassMap(ph7_vm *pVm,ph7_class_instance *pDoc,int bMake)
+{
+	ph7_value *pSlot = pDoc ? PH7_NativeAttr(pDoc,DOM_NCLS) : 0;
+	if( pSlot == 0 || (!bMake && (pSlot->iFlags & MEMOBJ_HASHMAP) == 0) ){
+		return 0;
+	}
+	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){
+			return 0;
+		}
+	}
+	return PH7_HashmapCowSeparate(&(*pVm),pSlot);
+}
+/* The class a node of pDoc's tree is wrapped in: the registered one when the
+ * document names it, php's own otherwise. */
+static const char * DomWrapClassName(ph7_vm *pVm,ph7_class_instance *pDoc,int iKind,
+	SyBlob *pOut)
+{
+	const char *zBase = DomClassOfKind(iKind);
+	ph7_hashmap *pMap = DomNodeClassMap(&(*pVm),pDoc,FALSE);
+	ph7_hashmap_node *pEntry = 0;
+	ph7_value sKey,*pHit;
+	if( pMap == 0 ){
+		return zBase;
+	}
+	PH7_MemObjInitFromString(&(*pVm),&sKey,0);
+	PH7_MemObjStringAppend(&sKey,zBase,(sxu32)SyStrlen(zBase));
+	if( PH7_HashmapLookup(pMap,&sKey,&pEntry) == SXRET_OK && pEntry ){
+		pHit = HashmapExtractNodeValue(pEntry);
+		if( pHit && (pHit->iFlags & MEMOBJ_STRING) ){
+			SyBlobAppend(pOut,SyBlobData(&pHit->sBlob),SyBlobLength(&pHit->sBlob));
+			SyBlobNullAppend(pOut);
+			zBase = (const char *)SyBlobData(pOut);
+		}
+	}
+	PH7_MemObjRelease(&sKey);
+	return zBase;
+}
+DOM_METHOD(vm_builtin_DOMDocument_registerNodeClass)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int nBase = 0,nExt = 0;
+	const char *zBase = nArg > 0 ? ph7_value_to_string(apArg[0],&nBase) : "";
+	const char *zExt = (nArg > 1 && !ph7_value_is_null(apArg[1]))
+		? ph7_value_to_string(apArg[1],&nExt) : 0;
+	ph7_class *pBase,*pExt = 0,*pNode;
+	ph7_hashmap *pMap;
+	ph7_value sKey,sVal;
+	pBase = PH7_VmExtractClass(pVm,zBase,(sxu32)nBase,FALSE,0);
+	pNode = PH7_VmExtractClass(pVm,"DOMNode",sizeof("DOMNode")-1,FALSE,0);
+	if( pBase == 0 || pNode == 0 || !PH7_VmInstanceOf(pBase,pNode) ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"DOMDocument::registerNodeClass(): Argument #1 ($baseClass) must be a "
+			"class name derived from DOMNode, %.*s given",nBase,zBase);
+	}
+	if( zExt ){
+		pExt = PH7_VmExtractClass(pVm,zExt,(sxu32)nExt,FALSE,0);
+		if( pExt == 0 ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"DOMDocument::registerNodeClass(): Argument #2 ($extendedClass) must be "
+				"a valid class name or null, %.*s given",nExt,zExt);
+		}
+		if( !PH7_VmInstanceOf(pExt,pBase) ){
+			/* php's plain Error here, not a TypeError: the name IS a class, it
+			 * is simply the wrong one. */
+			return PH7_VmThrowException(pCtx,"Error",
+				"DOMDocument::registerNodeClass(): Argument #2 ($extendedClass) must be "
+				"a class name derived from %z or null, %.*s given",
+				&pBase->sName,nExt,zExt);
+		}
+		if( pExt->iFlags & PH7_CLASS_ABSTRACT ){
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"DOMDocument::registerNodeClass(): Argument #2 ($extendedClass) must "
+				"not be an abstract class");
+		}
+	}
+	pMap = DomNodeClassMap(pVm,pThis,TRUE);
+	if( pMap == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	/* Keyed by the base's OWN spelling, which is the one the wrap looks up. */
+	PH7_MemObjInitFromString(pVm,&sKey,&pBase->sName);
+	if( pExt ){
+		PH7_MemObjInitFromString(pVm,&sVal,&pExt->sName);
+		PH7_HashmapInsert(pMap,&sKey,&sVal);
+		PH7_MemObjRelease(&sVal);
+	}else{
+		ph7_hashmap_node *pEntry = 0;
+		if( PH7_HashmapLookup(pMap,&sKey,&pEntry) == SXRET_OK && pEntry ){
+			PH7_HashmapUnlinkNode(pEntry,TRUE);
+		}
+	}
+	PH7_MemObjRelease(&sKey);
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+
 /* ===== DOMImplementation ===== */
 
 /*
@@ -9552,6 +9689,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "strictErrorChecking", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 }, "bool" },
 		/* The identity cache DomWrap keys by node pointer. */
 		{ DOM_NODES,            PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		/* ...and the base-class => user-class table registerNodeClass writes. */
+		{ DOM_NCLS,             PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeMethodDef aDocMethod[] = {
 		{ "__construct",          PH7_MOD_PUBLIC, "string $version = '1.0', string $encoding = ''", "",
@@ -9603,6 +9742,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "createDocumentFragment", PH7_MOD_PUBLIC, "", "",
 		  vm_builtin_DOMDocument_createFragment },
 		{ "normalizeDocument",    PH7_MOD_PUBLIC, "", "@void", vm_builtin_DOMDocument_normalizeDocument },
+		{ "registerNodeClass",    PH7_MOD_PUBLIC, "string $baseClass, ?string $extendedClass",
+		  "true", vm_builtin_DOMDocument_registerNodeClass },
 		{ "schemaValidate",       PH7_MOD_PUBLIC, "string $filename, int $flags = 0", "@bool",
 		  vm_builtin_DOMDocument_schemaValidate },
 		{ "schemaValidateSource", PH7_MOD_PUBLIC, "string $source, int $flags = 0", "@bool",
