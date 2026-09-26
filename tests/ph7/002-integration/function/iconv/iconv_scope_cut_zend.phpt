@@ -31,6 +31,20 @@ var_dump($accepted > 0);
 var_dump(ICONV_IMPL !== 'PHL', is_string(ICONV_IMPL), ICONV_VERSION === PHP_VERSION);
 /* The two $mode bits iconv_mime_decode() reads are php's numbers either way. */
 var_dump(ICONV_MIME_DECODE_STRICT, ICONV_MIME_DECODE_CONTINUE_ON_ERROR);
+/* php's answer to the two conversions §10 refuses in this family's int
+ * parameters: E_DEPRECATED and the value it would have coerced to. */
+set_error_handler(function ($no, $str) { echo "  D: $str\n"; return true; });
+foreach ([
+    'substr null offset' => fn () => iconv_substr("abc", null),
+    'strpos null offset' => fn () => iconv_strpos("abc", "b", null),
+    'substr lossy float' => fn () => iconv_substr("abcdef", 1.5),
+    'substr exact float' => fn () => iconv_substr("abcdef", 1.0),
+] as $label => $case) {
+    echo str_pad($label, 20), " ";
+    try { var_export($case()); } catch (Throwable $e) { echo get_class($e), ": ", $e->getMessage(); }
+    echo "\n";
+}
+restore_error_handler();
 ?>
 --EXPECT--
 bool(true)
@@ -39,5 +53,12 @@ bool(true)
 bool(false)
 int(1)
 int(2)
+substr null offset     D: iconv_substr(): Passing null to parameter #2 ($offset) of type int is deprecated
+'abc'
+strpos null offset     D: iconv_strpos(): Passing null to parameter #3 ($offset) of type int is deprecated
+1
+substr lossy float     D: Implicit conversion from float 1.5 to int loses precision
+'bcdef'
+substr exact float   'bcdef'
 --CLEAN--
 <?php

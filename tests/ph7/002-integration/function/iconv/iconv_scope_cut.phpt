@@ -31,6 +31,19 @@ restore_error_handler();
 var_dump(ICONV_IMPL, ICONV_VERSION === PHP_VERSION);
 /* The two $mode bits iconv_mime_decode() reads are php's numbers either way. */
 var_dump(ICONV_MIME_DECODE_STRICT, ICONV_MIME_DECODE_CONTINUE_ON_ERROR);
+/* And §10's standing refusals reach this family's int parameters: php only
+ * DEPRECATES a null in a non-nullable scalar and a lossy float→int, so PHL
+ * raises the TypeError php will eventually raise. See the _zend half. */
+foreach ([
+    'substr null offset' => fn () => iconv_substr("abc", null),
+    'strpos null offset' => fn () => iconv_strpos("abc", "b", null),
+    'substr lossy float' => fn () => iconv_substr("abcdef", 1.5),
+    'substr exact float' => fn () => iconv_substr("abcdef", 1.0),
+] as $label => $case) {
+    echo str_pad($label, 20), " ";
+    try { var_export($case()); } catch (Throwable $e) { echo get_class($e), ": ", $e->getMessage(); }
+    echo "\n";
+}
 ?>
 --EXPECT--
 SJIS             W: iconv(): Wrong encoding, conversion from "UTF-8" to "SJIS" is not allowed
@@ -57,5 +70,9 @@ string(3) "PHL"
 bool(false)
 int(1)
 int(2)
+substr null offset   TypeError: iconv_substr(): Argument #2 ($offset) must be of type int, null given
+strpos null offset   TypeError: iconv_strpos(): Argument #3 ($offset) must be of type int, null given
+substr lossy float   TypeError: iconv_substr(): Argument #2 ($offset) must be of type int, float given
+substr exact float   'bcdef'
 --CLEAN--
 <?php

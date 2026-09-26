@@ -132,6 +132,12 @@ struct icv_cs {
 	int iEnc;        /* ICV_* id, or -1 when the name is not one PHL models */
 	int bTranslit;   /* a TRANSLIT token appeared in the error-handler list */
 	int bIgnore;     /* an IGNORE token did -- the LIBRARY's ignore, not php's */
+	/* The name as it was GIVEN, kept because the string family reports an
+	 * unknown one late -- at the point a conversion would have been opened --
+	 * and by then the argument that carried it may be gone. Bounded by the
+	 * length cap, which is checked before any of this. */
+	char zName[ICV_CSNMAXLEN];
+	int nName;
 };
 
 /*
@@ -173,6 +179,8 @@ static void IcvParseCharset(const char *z,int n,icv_cs *pCs)
 	pCs->bTranslit = 0;
 	pCs->bIgnore = 0;
 	n = IcvNameLen(z,n);
+	pCs->nName = n < ICV_CSNMAXLEN ? n : ICV_CSNMAXLEN;
+	SyMemcpy(z,pCs->zName,(sxu32)pCs->nName);
 	for( iFirst = 0 ; iFirst < n && z[iFirst] != '/' ; ++iFirst ){}
 	nBuf = IcvNormalize(zBuf,(int)sizeof(zBuf),z,iFirst);
 	if( nBuf == 0 ){
@@ -607,6 +615,389 @@ static int PH7_builtin_iconv(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 
+
+/* --- The string quartet ------------------------------------------------ */
+
+/*
+ * php's own name for the wide intermediate every one of these four converts
+ * THROUGH, and the one that shows up in their "Wrong encoding" message: the
+ * conversion that fails is the one INTO it, so the message always reads
+ * `from "<the argument>" to "UCS-4LE"`.
+ */
+#define ICV_SUPERSET "UCS-4LE"
+
+/*
+ * The `?string $encoding = null` the string family shares. A missing or null
+ * argument is php's INTERNAL encoding, which is `iconv.internal_encoding`
+ * falling back to `default_charset` -- and since §10 removes the deprecated
+ * `iconv.*` directives, `default_charset` is the whole of it here.
+ *
+ * Only php's LENGTH cap is a diagnostic at this point (answers 0 for it). An
+ * unknown NAME is not, because php does not learn of one until it opens a
+ * conversion -- which is why `iconv_strpos($h, "", 0, "NOPE")` is a silent
+ * false while the same call with a needle warns. IcvEncReady() is that moment.
+ */
+static int IcvStrEncArg(ph7_context *pCtx,ph7_value *pArg,icv_cs *pCs)
+{
+	SyBlob sIni;
+	int rc;
+	if( pArg != 0 && !ph7_value_is_null(pArg) ){
+		int nEnc;
+		const char *zEnc = ph7_value_to_string(pArg,&nEnc);
+		return IcvCharsetArg(pCtx,zEnc,nEnc,pCs);
+	}
+	SyBlobInit(&sIni,&pCtx->pVm->sAllocator);
+	PH7_VmIniGetStr(pCtx->pVm,"default_charset",&sIni);
+	rc = IcvCharsetArg(pCtx,(const char *)SyBlobData(&sIni),(int)SyBlobLength(&sIni),pCs);
+	SyBlobRelease(&sIni);
+	return rc;
+}
+/*
+ * The "Wrong encoding" php raises where it would have opened the conversion.
+ * The conversion the string family opens is the one INTO the wide intermediate,
+ * so the message always names UCS-4LE as the target. Answers 0 after raising.
+ */
+static int IcvEncReady(ph7_context *pCtx,const icv_cs *pCs)
+{
+	if( pCs->iEnc >= 0 ){
+		return 1;
+	}
+	IcvShowError(pCtx,ICV_WRONG_CHARSET,ICV_SUPERSET,(int)sizeof(ICV_SUPERSET)-1,
+		pCs->zName,pCs->nName);
+	return 0;
+}
+
+/*
+ * A decoded string: one code point per character plus the byte offset each one
+ * starts at (nChar+1 entries, so the last is the buffer length). php works the
+ * same way -- it converts to UCS-4 and operates there -- and it is what lets a
+ * search answer in CHARACTERS while a slice is taken in BYTES.
+ */
+typedef struct icv_text icv_text;
+struct icv_text {
+	const char *zIn;
+	int nByte;
+	sxu32 *aCode;
+	int *aOfft;
+	int nChar;
+};
+#define ICV_TEXT_MAX 0x0FFFFFFF
+
+/*
+ * Decode zIn under iEnc into pText. Answers PH7_OK, or PH7_OK with *pErr set to
+ * the diagnostic the input earns -- in which case pText is not usable but was
+ * still allocated, so IcvTextRelease() is safe either way.
+ */
+static int IcvTextDecode(ph7_context *pCtx,icv_text *pText,const char *zIn,int nByte,
+	int iEnc,int *pErr)
+{
+	const unsigned char *z = (const unsigned char *)zIn;
+	int i = 0,n = 0,nSlot;
+	pText->zIn = zIn;
+	pText->nByte = nByte;
+	pText->nChar = 0;
+	pText->aCode = 0;
+	pText->aOfft = 0;
+	*pErr = ICV_OK;
+	if( nByte > ICV_TEXT_MAX ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	nSlot = nByte + 1;
+	pText->aCode = (sxu32 *)ph7_context_alloc_chunk(pCtx,
+		(unsigned int)((sxu32)nSlot * (sizeof(sxu32) + sizeof(int))),FALSE,TRUE);
+	if( pText->aCode == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	pText->aOfft = (int *)&pText->aCode[nSlot];
+	while( i < nByte ){
+		sxu32 cp = 0;
+		int nSeq = IcvDecode(&z[i],nByte - i,iEnc,&cp,pErr);
+		if( nSeq == 0 ){
+			/* The good PREFIX is the answer here, not zero: php's own walk
+			 * stops at the bad character and everything before it has already
+			 * been converted, so nChar is how far a search got and the count
+			 * an out-of-bounds $offset is measured against. */
+			pText->aOfft[n] = i;
+			pText->nChar = n;
+			return PH7_OK;
+		}
+		pText->aCode[n] = cp;
+		pText->aOfft[n] = i;
+		i += nSeq;
+		n++;
+	}
+	pText->aOfft[n] = nByte;
+	pText->nChar = n;
+	return PH7_OK;
+}
+static void IcvTextRelease(ph7_context *pCtx,icv_text *pText)
+{
+	if( pText->aCode ){
+		ph7_context_free_chunk(pCtx,pText->aCode);
+		pText->aCode = 0;
+	}
+}
+
+/* int|false iconv_strlen(string $string, ?string $encoding = null) */
+static int PH7_builtin_iconv_strlen(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zIn;
+	int nIn,err = ICV_OK;
+	icv_cs sCs;
+	icv_text sText;
+	if( nArg < 1 || !IcvStrEncArg(pCtx,nArg > 1 ? apArg[1] : 0,&sCs)
+	 || !IcvEncReady(pCtx,&sCs) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zIn = ph7_value_to_string(apArg[0],&nIn);
+	if( IcvTextDecode(pCtx,&sText,zIn,nIn,sCs.iEnc,&err) != PH7_OK ){
+		return PH7_OK;
+	}
+	IcvTextRelease(pCtx,&sText);
+	if( err != ICV_OK ){
+		IcvShowError(pCtx,err,ICV_SUPERSET,(int)sizeof(ICV_SUPERSET)-1,"",0);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_int(pCtx,sText.nChar);
+	return PH7_OK;
+}
+
+/*
+ * string|false iconv_substr(string $string, int $offset, ?int $length = null,
+ *                           ?string $encoding = null)
+ *
+ * php clamps in the order its own code does, and the order is visible: a null
+ * $length starts life as the string's BYTE count and is then clamped to the
+ * character count, so it can never reach past the end however the two differ.
+ */
+static int PH7_builtin_iconv_substr(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zIn;
+	int nIn,err = ICV_OK,iStart,iStop;
+	sxi64 iOfft,iLen;
+	icv_cs sCs;
+	icv_text sText;
+	if( nArg < 2 || !IcvStrEncArg(pCtx,nArg > 3 ? apArg[3] : 0,&sCs)
+	 || !IcvEncReady(pCtx,&sCs) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zIn = ph7_value_to_string(apArg[0],&nIn);
+	if( PH7_IntArgResolve(pCtx,apArg[1],"iconv_substr",2,"$offset","int",&iOfft) != PH7_OK ){
+		return PH7_OK;
+	}
+	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){
+		if( PH7_IntArgResolve(pCtx,apArg[2],"iconv_substr",3,"$length","?int",&iLen) != PH7_OK ){
+			return PH7_OK;
+		}
+	}else{
+		iLen = nIn;
+	}
+	if( IcvTextDecode(pCtx,&sText,zIn,nIn,sCs.iEnc,&err) != PH7_OK ){
+		return PH7_OK;
+	}
+	if( err != ICV_OK ){
+		IcvTextRelease(pCtx,&sText);
+		IcvShowError(pCtx,err,ICV_SUPERSET,(int)sizeof(ICV_SUPERSET)-1,"",0);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( iOfft < 0 ){
+		iOfft += sText.nChar;
+		if( iOfft < 0 ){
+			iOfft = 0;
+		}
+	}else if( iOfft > sText.nChar ){
+		iOfft = sText.nChar;
+	}
+	if( iLen < 0 ){
+		iLen += sText.nChar - iOfft;
+		if( iLen < 0 ){
+			iLen = 0;
+		}
+	}else if( iLen > sText.nChar ){
+		iLen = sText.nChar;
+	}
+	if( iOfft + iLen > sText.nChar ){
+		iLen = sText.nChar - iOfft;
+	}
+	iStart = sText.aOfft[iOfft];
+	iStop = sText.aOfft[iOfft + iLen];
+	ph7_result_string(pCtx,&zIn[iStart],iStop - iStart);
+	IcvTextRelease(pCtx,&sText);
+	return PH7_OK;
+}
+
+/*
+ * The search both position builtins run: the first match at or after iFrom, or
+ * the LAST one when bReverse is set. Answers the character index or -1.
+ */
+static int IcvSearch(const icv_text *pH,const icv_text *pN,int iFrom,int bReverse)
+{
+	int i,iFound = -1;
+	if( pN->nChar < 1 || pN->nChar > pH->nChar ){
+		return -1;
+	}
+	for( i = iFrom ; i + pN->nChar <= pH->nChar ; ++i ){
+		int k;
+		for( k = 0 ; k < pN->nChar && pH->aCode[i+k] == pN->aCode[k] ; ++k ){}
+		if( k == pN->nChar ){
+			if( !bReverse ){
+				return i;
+			}
+			iFound = i;
+		}
+	}
+	return iFound;
+}
+
+/*
+ * int|false iconv_strpos(string $haystack, string $needle, int $offset = 0,
+ *                        ?string $encoding = null)
+ * int|false iconv_strrpos(string $haystack, string $needle,
+ *                         ?string $encoding = null)
+ *
+ * One body, because php's two differ only in four places: strrpos has no
+ * $offset at all, it tests the empty needle BEFORE the encoding is looked at
+ * (so an over-long name is silent there and warns in strpos), it keeps looking
+ * after a match instead of stopping at the first, and it has no out-of-bounds
+ * ValueError to raise.
+ *
+ * The ORDER below is php's and it is visible from the outside, because the two
+ * halves of the search report differently. The NEEDLE goes through a whole
+ * conversion, so an ill-formed one raises the same two diagnostics anything
+ * else does. The HAYSTACK is walked one character at a time into a buffer
+ * exactly one wide, and php's loop leaves that walk the moment a character
+ * fails to convert -- WITHOUT recording why. So an ill-formed haystack is
+ * silent: the search simply cannot see past the bad byte, and
+ * `iconv_strpos("ab\xFFcd","cd")` is FALSE with nothing said. What it does
+ * decide is the count the out-of-bounds ValueError is measured against, which
+ * is why an $offset past the first bad byte raises where the same call on a
+ * clean string answers false.
+ */
+static int IcvStrposBody(ph7_context *pCtx,int nArg,ph7_value **apArg,int bReverse)
+{
+	const char *zH,*zN;
+	int nH,nN,err = ICV_OK,iScanned,iFound;
+	sxi64 iOfft = 0;
+	icv_cs sCs;
+	icv_text sH,sN;
+	if( nArg < 2 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zH = ph7_value_to_string(apArg[0],&nH);
+	zN = ph7_value_to_string(apArg[1],&nN);
+	if( bReverse && nN < 1 ){
+		/* php's order: the empty needle answers false before the name is
+		 * measured, which is why an over-long $encoding is silent here. */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( !IcvStrEncArg(pCtx,nArg > (bReverse ? 2 : 3) ? apArg[bReverse ? 2 : 3] : 0,&sCs) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( !bReverse && nArg > 2
+	 && PH7_IntArgResolve(pCtx,apArg[2],"iconv_strpos",3,"$offset","int",&iOfft) != PH7_OK ){
+		/* $offset is php's plain `int`, so a null is the deprecation §10 turns
+		 * into a TypeError -- and it has to be REFUSED here rather than skipped,
+		 * which is what treating a null argument as "not passed" would do. */
+		return PH7_OK;
+	}
+	if( iOfft < 0 ){
+		/* A negative offset counts from the end, so THIS is the one path that
+		 * measures the haystack before the needle -- and the one place an
+		 * ill-formed haystack is heard about at all. */
+		if( !IcvEncReady(pCtx,&sCs) ){
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		if( IcvTextDecode(pCtx,&sH,zH,nH,sCs.iEnc,&err) != PH7_OK ){
+			return PH7_OK;
+		}
+		IcvTextRelease(pCtx,&sH);
+		if( err != ICV_OK ){
+			IcvShowError(pCtx,err,ICV_SUPERSET,(int)sizeof(ICV_SUPERSET)-1,"",0);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		iOfft += sH.nChar;
+		if( iOfft < 0 ){
+			PH7_VmThrowException(pCtx,"ValueError",
+				"iconv_strpos(): Argument #3 ($offset) must be contained in argument #1 ($haystack)");
+			return PH7_OK;
+		}
+	}
+	if( nN < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* php converts the NEEDLE whole before it scans, so an ill-formed needle is
+	 * the same two diagnostics as an ill-formed argument anywhere else. */
+	if( !IcvEncReady(pCtx,&sCs) ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( IcvTextDecode(pCtx,&sN,zN,nN,sCs.iEnc,&err) != PH7_OK ){
+		return PH7_OK;
+	}
+	if( err != ICV_OK ){
+		IcvTextRelease(pCtx,&sN);
+		IcvShowError(pCtx,err,ICV_SUPERSET,(int)sizeof(ICV_SUPERSET)-1,"",0);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( IcvTextDecode(pCtx,&sH,zH,nH,sCs.iEnc,&err) != PH7_OK ){
+		IcvTextRelease(pCtx,&sN);
+		return PH7_OK;
+	}
+	iScanned = sH.nChar;
+	iFound = IcvSearch(&sH,&sN,bReverse ? 0 : (int)iOfft,bReverse);
+	IcvTextRelease(pCtx,&sN);
+	IcvTextRelease(pCtx,&sH);
+	if( err != ICV_OK ){
+		/* Whether the walk SAYS anything about the bad character depends on how
+		 * far it got, because php hears about it from the call that converted
+		 * the character BEFORE it. An error at index 0 is therefore silent, and
+		 * so is one the walk never reached -- a full match ends the walk, so
+		 * `iconv_strpos(str_repeat("x",100)."\xFF","xx")` answers 0 with
+		 * nothing said while `iconv_strpos("ab\xFF","ab")` answers FALSE with
+		 * the notice. */
+		int iStop = (!bReverse && iFound >= 0) ? iFound + sN.nChar - 1 : iScanned;
+		if( iScanned >= 1 && iStop >= iScanned - 1 ){
+			IcvShowError(pCtx,err,ICV_SUPERSET,(int)sizeof(ICV_SUPERSET)-1,"",0);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+	}
+	if( !bReverse && iOfft > iScanned ){
+		PH7_VmThrowException(pCtx,"ValueError",
+			"iconv_strpos(): Argument #3 ($offset) must be contained in argument #1 ($haystack)");
+		return PH7_OK;
+	}
+	if( iFound < 0 ){
+		ph7_result_bool(pCtx,0);
+	}else{
+		ph7_result_int(pCtx,iFound);
+	}
+	return PH7_OK;
+}
+static int PH7_builtin_iconv_strpos(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return IcvStrposBody(pCtx,nArg,apArg,0);
+}
+static int PH7_builtin_iconv_strrpos(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return IcvStrposBody(pCtx,nArg,apArg,1);
+}
+
 PH7_PRIVATE int PH7_builtin_iconv_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_iconv(pCtx,nArg,apArg); }
+PH7_PRIVATE int PH7_builtin_iconv_strlen_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_iconv_strlen(pCtx,nArg,apArg); }
+PH7_PRIVATE int PH7_builtin_iconv_substr_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_iconv_substr(pCtx,nArg,apArg); }
+PH7_PRIVATE int PH7_builtin_iconv_strpos_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_iconv_strpos(pCtx,nArg,apArg); }
+PH7_PRIVATE int PH7_builtin_iconv_strrpos_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_iconv_strrpos(pCtx,nArg,apArg); }
 
 #endif /* PH7_DISABLE_BUILTIN_FUNC */
