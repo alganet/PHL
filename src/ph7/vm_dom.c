@@ -3253,10 +3253,22 @@ static int DomLoadHtml(ph7_context *pCtx,int nArg,ph7_value **apArg,int bFile)
 		SyBlobNullAppend(&sPath);
 	}
 	nMark = PH7_LibxmlCaptureBegin(pVm);
-	pDoc = SyBlobLength(&sBody) > 0
-		? htmlReadMemory((const char *)SyBlobData(&sBody),(int)SyBlobLength(&sBody),
-			bFile ? (const char *)SyBlobData(&sPath) : 0,0,iOpts)
-		: 0;
+	if( SyBlobLength(&sBody) > 0 ){
+		pDoc = htmlReadMemory((const char *)SyBlobData(&sBody),(int)SyBlobLength(&sBody),
+			bFile ? (const char *)SyBlobData(&sPath) : 0,0,iOpts);
+	}else{
+		/* An empty FILE is still a document here, unlike on the XML side: php's
+		 * HTML parser says `Document is empty` and hands back the DTD-only
+		 * document `htmlNewDoc` builds. libxml's memory parser will not start on
+		 * nothing, so both halves are made by hand. (An empty STRING never gets
+		 * this far -- it is the ValueError above.) */
+		PH7_LibxmlQueueError(pVm,XML_ERR_ERROR,XML_ERR_DOCUMENT_EMPTY,1,1,
+			"Document is empty\n",(const char *)SyBlobData(&sPath));
+		pDoc = htmlNewDoc(0,0);
+		if( pDoc ){
+			pDoc->URL = xmlStrdup((const xmlChar *)SyBlobData(&sPath));
+		}
+	}
 	PH7_LibxmlCaptureEndOpts(pVm,nMark,zFn,iOpts);
 	SyBlobRelease(&sBody);
 	SyBlobRelease(&sPath);

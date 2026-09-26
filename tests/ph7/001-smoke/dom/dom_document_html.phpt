@@ -82,6 +82,17 @@ var_dump($r->loadHTMLFile($f));
 echo 'uri names the file=', var_export(str_ends_with($r->documentURI, 'page.html'), true),
      ' title=', $r->getElementsByTagName('title')->item(0)->textContent, "\n";
 
+// An empty FILE is still a document to the HTML parser -- unlike the XML side,
+// which answers false -- and what comes back carries the default DTD alone.
+$ef = "$dir/empty.html";
+file_put_contents($ef, '');
+$e = new DOMDocument;
+var_dump($e->loadHTMLFile($ef));
+echo 'uri names it=', var_export(str_ends_with($e->documentURI, 'empty.html'), true),
+     ' children=', $e->childNodes->length,
+     ' root=', var_export($e->documentElement, true), "\n";
+echo 'empty html=', $hide($e->saveHTML()), "\n";
+
 // Refusals: the empty name/source from all four, and a file that is not there.
 $miss = new DOMDocument;
 var_dump($miss->loadHTMLFile("$dir/nope.html"));
@@ -114,6 +125,10 @@ after metas=1 utf8=true
 bytes match=true file is the document=true
 bool(true)
 uri names the file=true title=T
+diag 2: DOMDocument::loadHTMLFile(): Document is empty in DIR/empty.html, line: 1
+bool(true)
+uri names it=true children=1 root=NULL
+empty html=<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" "http://www.w3.org/TR/REC-html40/loose.dtd">\n\n
 diag 2: DOMDocument::loadHTMLFile(): I/O warning : failed to load external entity "DIR/nope.html"
 bool(false)
 ValueError: DOMDocument::loadHTML(): Argument #1 ($source) must not be empty
