@@ -3467,6 +3467,15 @@ static void ReleaseIOPrivate(ph7_context *pCtx,io_private *pDev)
 	ph7_context_free_chunk(pCtx,pDev);
 }
 /*
+ * Release a handle shell whose open FAILED: it never reached PHP, so nothing can
+ * hold a copy and the chunk goes back. For a caller outside this unit (the
+ * XMLWriter URI writer builds its own handle the way fopen does).
+ */
+PH7_PRIVATE void PH7_StreamReleaseUnopened(ph7_context *pCtx,io_private *pDev)
+{
+	ReleaseIOPrivate(pCtx,pDev);
+}
+/*
  * Mark a user-facing IO handle as closed while keeping the io_private alive.
  * The caller has already closed the underlying OS handle; we drop the work
  * buffer and stamp the closed magic so every ph7_value that still references

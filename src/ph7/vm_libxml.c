@@ -237,6 +237,28 @@ PH7_PRIVATE sxu32 PH7_LibxmlCaptureBegin(ph7_vm *pVm)
 	xmlSetStructuredErrorFunc(pVm,LibxmlStructuredErr);
 	return SySetUsed(&pVm->aLibxmlErr);
 }
+/*
+ * End a capture window WITHOUT reporting what it caught: for an entry point
+ * whose failure php reports through the return value alone (a stream write
+ * that could not land under XMLWriter), where libxml's own message would be a
+ * warning php never raises. Entries stay queued when internal capture is on --
+ * `libxml_get_errors()` is the one place php does show them.
+ */
+PH7_PRIVATE void PH7_LibxmlDropErrors(ph7_vm *pVm,sxu32 nMark)
+{
+	xmlSetStructuredErrorFunc(0,0);
+	if( pVm->bLibxmlInternalErr ){
+		return;
+	}
+	if( SySetUsed(&pVm->aLibxmlErr) > nMark ){
+		phl_libxml_err *aErr = (phl_libxml_err *)SySetBasePtr(&pVm->aLibxmlErr);
+		sxu32 n;
+		for( n = nMark ; n < SySetUsed(&pVm->aLibxmlErr) ; ++n ){
+			LibxmlFreeErr(pVm,&aErr[n]);
+		}
+		SySetTruncate(&pVm->aLibxmlErr,nMark);
+	}
+}
 PH7_PRIVATE void PH7_LibxmlCaptureEnd(ph7_vm *pVm,sxu32 nMark,const char *zFnName)
 {
 	xmlSetStructuredErrorFunc(0,0);

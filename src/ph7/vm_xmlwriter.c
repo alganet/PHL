@@ -5,6 +5,7 @@
 #ifdef PH7_ENABLE_LIBXML
 #include "ph7int.h"
 #include <libxml/tree.h>
+#include <libxml/xmlerror.h>
 #include <libxml/xmlwriter.h>
 
 /*
@@ -14,18 +15,41 @@
  *
  * An XMLWriter object holds a phl_xmlwriter resource {xmlTextWriterPtr,
  * xmlBufferPtr} in $__res.  In-memory writers (openMemory) own an
- * xmlBuffer; outputMemory reads it back.  Every writer is chained on the
- * per-VM registry (pVm->pXmlWriters) and freed at VM reset/release since
- * PH7 resources have no destructor hook.
+ * xmlBuffer; outputMemory reads it back.  A writer opened on a URI or
+ * attached to a stream carries an io_private instead and pushes its bytes
+ * through PH7_StreamWrite, so every wrapper this engine has -- php://,
+ * data://, a userland streamWrapper -- is a destination, as in php.
+ * Every writer is chained on the per-VM registry (pVm->pXmlWriters) and
+ * freed at VM reset/release since PH7 resources have no destructor hook.
  */
 
 typedef struct phl_xmlwriter phl_xmlwriter;
 struct phl_xmlwriter {
 	xmlTextWriterPtr pWriter;
 	xmlBufferPtr pBuf;   /* non-NULL for openMemory writers */
+	io_private *pDev;    /* non-NULL for openUri/toUri/toStream writers */
+	int bOwnDev;         /* this writer opened pDev, so its close closes it */
+	int bIoFailed;       /* the last verb's write to pDev failed (see XwRun) */
+	ph7_class_instance *pOwner; /* the object whose slot holds it: the one whose
+	                             * death flushes it (see XmlWriterInstanceRelease) */
 	phl_xmlwriter *pNext;
 };
 
+/*
+ * libxml reports a write that failed through the error handler, and the paths
+ * that run while an object or the whole VM is going away have no caller to
+ * warn: php frees its writers with its request's error handling already gone,
+ * so nothing is printed there either. Drop whatever those paths raise.
+ */
+#if LIBXML_VERSION >= 21200
+static void XmlWriterSilentError(void *pUser,const xmlError *pErr)
+#else
+static void XmlWriterSilentError(void *pUser,xmlErrorPtr pErr)
+#endif
+{
+	SXUNUSED(pUser);
+	SXUNUSED(pErr);
+}
 /*
  * Free one writer (called from the registry sweep in vm_libxml.c via
  * PH7_XmlWriterVmRelease).  The order matters: the text writer must be
@@ -33,6 +57,7 @@ struct phl_xmlwriter {
  */
 static void XmlWriterFree(phl_xmlwriter *pXw)
 {
+	xmlSetStructuredErrorFunc(0,XmlWriterSilentError);
 	if( pXw->pWriter ){
 		xmlFreeTextWriter(pXw->pWriter);
 		pXw->pWriter = 0;
@@ -41,6 +66,7 @@ static void XmlWriterFree(phl_xmlwriter *pXw)
 		xmlBufferFree(pXw->pBuf);
 		pXw->pBuf = 0;
 	}
+	xmlSetStructuredErrorFunc(0,0);
 }
 /*
  * Free every registered writer.  Called from PH7_LibxmlVmReset /
@@ -59,6 +85,60 @@ PH7_PRIVATE void PH7_XmlWriterVmSweep(ph7_vm *pVm)
 	pVm->pXmlWriters = 0;
 }
 
+/*
+ * A writer's bytes on their way to a stream. libxml calls this from its own
+ * output buffer, so everything the engine's stream layer does for fwrite() --
+ * the filter chain, the buffered position -- happens here too.
+ */
+static int XmlWriterIoWrite(void *pUser,const char *zBuf,int nLen)
+{
+	phl_xmlwriter *pXw = (phl_xmlwriter *)pUser;
+	ph7_int64 nWr;
+	if( pXw->pDev == 0 || IO_PRIVATE_INVALID(pXw->pDev) ){
+		/* The script fclose()'d the handle it handed toStream() */
+		pXw->bIoFailed = 1;
+		return -1;
+	}
+	nWr = PH7_StreamWrite(pXw->pDev,(const void *)zBuf,(ph7_int64)nLen);
+	if( nWr < 0 ){
+		pXw->bIoFailed = 1;
+		return -1;
+	}
+	return (int)nWr;
+}
+/*
+ * The output buffer's close, reached from xmlFreeTextWriter (so: the registry
+ * sweep at VM reset). A handle this writer OPENED is closed here, which is
+ * where a file written through openUri() gets its last bytes; a borrowed one --
+ * toStream()'s -- is left alone, because the script still holds it.
+ */
+static int XmlWriterIoClose(void *pUser)
+{
+	phl_xmlwriter *pXw = (phl_xmlwriter *)pUser;
+	if( pXw->bOwnDev && pXw->pDev && !IO_PRIVATE_INVALID(pXw->pDev) ){
+		PH7_StreamFilterReleaseChains(pXw->pDev);
+		PH7_StreamCloseHandle(pXw->pDev->pStream,pXw->pDev->pHandle);
+		MarkIOPrivateClosed(pXw->pDev);
+	}
+	pXw->pDev = 0;
+	return 0;
+}
+/*
+ * Flush a writer and let go of its stream: what php does when the writer is
+ * freed, which is the point at which a file opened through openUri() is
+ * complete. The libxml writer itself stays alive (the registry sweep frees it),
+ * so a later call answers false instead of reaching released memory.
+ */
+static void XmlWriterFlushAndDetach(phl_xmlwriter *pXw)
+{
+	xmlSetStructuredErrorFunc(0,XmlWriterSilentError);
+	if( pXw->pWriter ){
+		xmlTextWriterFlush(pXw->pWriter);
+	}
+	XmlWriterIoClose((void *)pXw);
+	xmlSetStructuredErrorFunc(0,0);
+	pXw->pOwner = 0;
+}
 static phl_xmlwriter * XmlWriterArg(ph7_value *pVal)
 {
 	if( pVal == 0 || !ph7_value_is_resource(pVal) ){
@@ -102,6 +182,8 @@ struct xw_call {
 	phl_xmlwriter *pXw;    /* the resolved writer; never NULL in a verb body */
 	const char *zFn;       /* "XMLWriter::startElement" / "xmlwriter_start_element" */
 	const char *zNameArg;  /* this spelling's argument text for the NAME argument */
+	int iArgBase;          /* 0 for a method, 1 for the function spelling: what a
+	                        * ZPP-style message adds to an argument's position */
 	int nArg;              /* how many arguments follow the writer */
 	ph7_value **apArg;     /* the first argument past the writer */
 };
@@ -129,6 +211,7 @@ static int XwCallFromThis(ph7_context *pCtx,xw_call *pCall,const char *zFn,
 	pCall->pXw = pXw;
 	pCall->zFn = zFn;
 	pCall->zNameArg = zNameArg;
+	pCall->iArgBase = 0;
 	pCall->nArg = nArg;
 	pCall->apArg = apArg;
 	return 0;
@@ -180,52 +263,311 @@ static int XmlWriterCheckName(ph7_context *pCtx,xw_call *pCall,const char *zName
 		"%s(): Argument %s must be a valid %s, \"%s\" given",
 		pCall->zFn,pCall->zNameArg,zWhat,zName);
 }
-/* bool XMLWriter::openMemory() */
-static int vm_builtin_xw_open_memory(ph7_context *pCtx,int nArg,ph7_value **apArg)
+/*
+ * Allocate a writer shell and chain it on the per-VM registry. The shell is
+ * reclaimed with the allocator and the libxml writer behind it by the sweep;
+ * a URI writer's own handle is flushed and closed earlier, when the object
+ * holding it dies (XmlWriterInstanceRelease).
+ */
+static phl_xmlwriter * XmlWriterNew(ph7_vm *pVm)
 {
-	ph7_vm *pVm = pCtx->pVm;
-	phl_xmlwriter *pXw;
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	pXw = (phl_xmlwriter *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_xmlwriter));
+	phl_xmlwriter *pXw = (phl_xmlwriter *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_xmlwriter));
 	if( pXw == 0 ){
-		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+		return 0;
 	}
 	SyZero(pXw,sizeof(phl_xmlwriter));
+	pXw->pNext = (phl_xmlwriter *)pVm->pXmlWriters;
+	pVm->pXmlWriters = (void *)pXw;
+	return pXw;
+}
+/*
+ * Store a writer in an object's hidden slot, flushing the one it replaces.
+ * The replaced SHELL is not freed: the slot is reachable from PHP, so another
+ * value may still name it, and the registry sweep frees every writer anyway.
+ */
+static int XmlWriterAttach(ph7_class_instance *pThis,phl_xmlwriter *pXw)
+{
+	SyString sAttr;
+	ph7_value *pRes;
+	if( pThis == 0 ){
+		return -1;
+	}
+	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);
+	pRes = PH7_ClassInstanceFetchAttr(pThis,&sAttr);
+	if( pRes == 0 ){
+		return -1;
+	}
+	{
+		/* A second open on the same object replaces its writer, and php frees
+		 * the old one there -- which is what flushes a file opened through
+		 * openUri(). Flush and close it here for the same reason; the shell
+		 * itself stays on the registry, since the slot is reachable from PHP. */
+		phl_xmlwriter *pOld = XmlWriterArg(pRes);
+		if( pOld && pOld != pXw && pOld->pOwner == pThis ){
+			XmlWriterFlushAndDetach(pOld);
+		}
+	}
+	PH7_MemObjRelease(pRes);
+	pRes->x.pOther = pXw;
+	MemObjSetType(pRes,MEMOBJ_RES);
+	pXw->pOwner = pThis;
+	return 0;
+}
+/*
+ * php frees the libxml writer with the OBJECT, and for a writer opened on a URI
+ * that is when the file gets its last bytes -- `unset($w)` and then reading the
+ * file is how a document written to disk is finished. PH7 resources carry no
+ * destructor hook, but a native class does: xRelease runs while the instance's
+ * slots are still readable, and before the registry sweep.
+ *
+ * Only the object the writer was ATTACHED to flushes it. The hidden slot is
+ * assignable from PHP, so a second object can name the same writer; the shell
+ * is freed by the sweep and never here, and a write after the flush answers
+ * false rather than reaching released memory.
+ */
+static void XmlWriterInstanceRelease(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	SyString sAttr;
+	ph7_value *pRes;
+	phl_xmlwriter *pXw;
+	SXUNUSED(pVm);
+	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);
+	pRes = PH7_ClassInstanceFetchAttr(pThis,&sAttr);
+	pXw = XmlWriterArg(pRes);
+	if( pXw == 0 || pXw->pOwner != pThis ){
+		return;
+	}
+	XmlWriterFlushAndDetach(pXw);
+}
+/* An in-memory writer: its own xmlBuffer, which outputMemory() reads back. */
+static phl_xmlwriter * XmlWriterOpenMemory(ph7_vm *pVm)
+{
+	phl_xmlwriter *pXw = XmlWriterNew(pVm);
+	if( pXw == 0 ){
+		return 0;
+	}
 	pXw->pBuf = xmlBufferCreate();
 	if( pXw->pBuf ){
 		pXw->pWriter = xmlNewTextWriterMemory(pXw->pBuf,0);
 	}
-	if( pXw->pBuf == 0 || pXw->pWriter == 0 ){
+	if( pXw->pWriter == 0 ){
 		XmlWriterFree(pXw);
-		SyMemBackendFree(&pVm->sAllocator,pXw);
+		return 0;
+	}
+	return pXw;
+}
+/*
+ * A writer over an engine stream handle. `bOwn` says whether closing the writer
+ * closes the handle -- true for openUri()/toUri(), false for the handle
+ * toStream() borrows from the script.
+ */
+static phl_xmlwriter * XmlWriterOpenDevice(ph7_vm *pVm,io_private *pDev,int bOwn)
+{
+	xmlOutputBufferPtr pOut;
+	phl_xmlwriter *pXw = XmlWriterNew(pVm);
+	if( pXw == 0 ){
+		return 0;
+	}
+	pXw->pDev = pDev;
+	pXw->bOwnDev = bOwn;
+	pOut = xmlOutputBufferCreateIO(XmlWriterIoWrite,XmlWriterIoClose,(void *)pXw,0);
+	if( pOut == 0 ){
+		pXw->pDev = 0;
+		return 0;
+	}
+	pXw->pWriter = xmlNewTextWriter(pOut);
+	if( pXw->pWriter == 0 ){
+		/* xmlNewTextWriter does not take the buffer on failure */
+		xmlOutputBufferClose(pOut);
+		pXw->pDev = 0;
+		return 0;
+	}
+	return pXw;
+}
+/*
+ * php refuses a NUL inside the two arguments it hands to a C interface that
+ * would stop at one: the URI, and startDocument()'s encoding NAME. The message
+ * is ZPP's, so the argument number is this SPELLING's own -- unlike the
+ * hand-written name check, which always reports the procedural position.
+ */
+static int XmlWriterCheckNul(ph7_context *pCtx,const char *zFn,int iArg,const char *zParam,
+	ph7_value *pVal)
+{
+	int nLen = 0;
+	const char *zStr;
+	if( pVal == 0 || ph7_value_is_null(pVal) ){
+		return 0;
+	}
+	zStr = ph7_value_to_string(pVal,&nLen);
+	if( SyByteFind(zStr,(sxu32)nLen,'\0',0) != SXRET_OK ){
+		return 0;
+	}
+	return PH7_VmThrowException(pCtx,"ValueError",
+		"%s(): Argument #%d ($%s) must not contain any null bytes",zFn,iArg,zParam);
+}
+/*
+ * Open a URI for writing through the engine's stream layer and answer the
+ * writer, or 0 with php's own diagnostic already raised. `zFn` names the
+ * spelling (method or function) every message is reported under.
+ */
+static phl_xmlwriter * XmlWriterOpenUri(ph7_context *pCtx,ph7_value *pArg,const char *zFn,
+	int bStatic,int *pRc)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const ph7_io_stream *pStream;
+	io_private *pDev;
+	phl_xmlwriter *pXw;
+	const char *zUri;
+	int nUri = 0;
+	*pRc = PH7_OK;
+	zUri = pArg ? ph7_value_to_string(pArg,&nUri) : "";
+	if( nUri < 1 ){
+		*pRc = PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #1 ($uri) must not be empty",zFn);
+		return 0;
+	}
+	*pRc = XmlWriterCheckNul(pCtx,zFn,1,"uri",pArg);
+	if( *pRc != PH7_OK ){
+		return 0;
+	}
+	pStream = PH7_VmGetStreamDevice(pVm,&zUri,nUri);
+	pDev = pStream ? (io_private *)ph7_context_alloc_chunk(pCtx,sizeof(io_private),TRUE,FALSE) : 0;
+	if( pDev ){
+		InitIOPrivate(pVm,pStream,pDev);
+		/* php opens the destination "wb" */
+		pDev->pHandle = PH7_StreamOpenHandle(pVm,pStream,zUri,
+			PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_CREATE|PH7_IO_OPEN_TRUNC,FALSE,pArg,FALSE,0,zFn);
+		if( pDev->pHandle ){
+			int nOrig = 0;
+			const char *zOrig = ph7_value_to_string(pArg,&nOrig);
+			SetIOPrivateOpenedAs(pDev,zOrig,nOrig,"wb",2);
+		}else{
+			/* Nothing reached PHP, so the shell goes back */
+			PH7_StreamReleaseUnopened(pCtx,pDev);
+			pDev = 0;
+		}
+	}
+	pXw = pDev ? XmlWriterOpenDevice(pVm,pDev,TRUE) : 0;
+	if( pXw == 0 ){
+		/* php's two refusals for the same failure: the factory raises, the
+		 * opener warns and answers false. */
+		if( bStatic ){
+			*pRc = PH7_VmThrowException(pCtx,"ValueError",
+				"%s(): Argument #1 ($uri) must resolve to a valid file path",zFn);
+		}else{
+			SyString sFn;
+			SyStringInitFromBuf(&sFn,zFn,SyStrlen(zFn));
+			PH7_VmThrowError(pVm,&sFn,PH7_CTX_WARNING,"Unable to resolve file path");
+		}
+		return 0;
+	}
+	return pXw;
+}
+/* bool XMLWriter::openMemory() */
+static int vm_builtin_xw_open_memory(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_xmlwriter *pXw;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	pXw = XmlWriterOpenMemory(pCtx->pVm);
+	if( pXw == 0 || XmlWriterAttach(PH7_ContextThis(pCtx),pXw) != 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	pXw->pNext = (phl_xmlwriter *)pVm->pXmlWriters;
-	pVm->pXmlWriters = (void *)pXw;
-	/* The prelude used to do the assignment (`$this->__res = __xw_open_memory()`)
-	 * and turn the handle into the bool php returns. Both belong here now: the
-	 * resource is storage the class owns, and openMemory() answers a bool. */
-	{
-		ph7_class_instance *pThis = PH7_ContextThis(pCtx);
-		SyString sAttr;
-		ph7_value *pRes;
-		SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);
-		pRes = pThis ? PH7_ClassInstanceFetchAttr(pThis,&sAttr) : 0;
-		if( pRes == 0 ){
-			XmlWriterFree(pXw);
-			ph7_result_bool(pCtx,0);
-			return PH7_OK;
+	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+/* bool XMLWriter::openUri(string $uri) */
+static int vm_builtin_xw_open_uri(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_xmlwriter *pXw;
+	int rc = PH7_OK;
+	pXw = XmlWriterOpenUri(pCtx,nArg > 0 ? apArg[0] : 0,"XMLWriter::openUri",FALSE,&rc);
+	if( pXw == 0 ){
+		if( rc != PH7_OK ){
+			return rc;
 		}
-		PH7_MemObjRelease(pRes);
-		pRes->x.pOther = pXw;
-		MemObjSetType(pRes,MEMOBJ_RES);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( XmlWriterAttach(PH7_ContextThis(pCtx),pXw) != 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
 	}
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
+}
+/*
+ * The php 8.5 factories. Each answers a NEW writer rather than configuring the
+ * receiver, and each builds the LATE STATIC class, so a subclass of XMLWriter
+ * gets one of its own.
+ */
+static int XmlWriterFactory(ph7_context *pCtx,phl_xmlwriter *pXw)
+{
+	ph7_class *pClass = PH7_ContextCalledClass(pCtx);
+	ph7_class_instance *pObj;
+	if( pClass == 0 ){
+		pClass = PH7_VmExtractClass(pCtx->pVm,"XMLWriter",sizeof("XMLWriter")-1,FALSE,0);
+	}
+	pObj = pClass ? PH7_NewClassInstance(pCtx->pVm,pClass) : 0;
+	if( pObj == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( XmlWriterAttach(pObj,pXw) != 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_NativeResultObject(pCtx,pObj);
+	return PH7_OK;
+}
+/* static XMLWriter::toMemory(): static */
+static int vm_builtin_xw_to_memory(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_xmlwriter *pXw;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	pXw = XmlWriterOpenMemory(pCtx->pVm);
+	if( pXw == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	return XmlWriterFactory(pCtx,pXw);
+}
+/* static XMLWriter::toUri(string $uri): static */
+static int vm_builtin_xw_to_uri(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	int rc = PH7_OK;
+	phl_xmlwriter *pXw = XmlWriterOpenUri(pCtx,nArg > 0 ? apArg[0] : 0,"XMLWriter::toUri",TRUE,&rc);
+	if( pXw == 0 ){
+		return rc;
+	}
+	return XmlWriterFactory(pCtx,pXw);
+}
+/*
+ * static XMLWriter::toStream(mixed $stream): static
+ *
+ * The handle stays the script's: the writer only pushes bytes at it, and
+ * closing the writer does not close it. A handle the script fcloses afterwards
+ * makes every later write fail, which is the answer php's own stream reference
+ * gives once the resource is gone.
+ */
+static int vm_builtin_xw_to_stream(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	io_private *pDev;
+	phl_xmlwriter *pXw;
+	if( nArg < 1 || !ph7_value_is_resource(apArg[0]) ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"XMLWriter::toStream(): Argument #1 ($stream) must be of type resource, %s given",
+			nArg > 0 ? ph7_type_name(apArg[0]) : "null");
+	}
+	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
+	if( IO_PRIVATE_INVALID(pDev) ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"XMLWriter::toStream(): supplied resource is not a valid stream resource");
+	}
+	pXw = XmlWriterOpenDevice(pCtx->pVm,pDev,FALSE);
+	if( pXw == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	return XmlWriterFactory(pCtx,pXw);
 }
 /*
  * Run one verb inside a libxml error capture window, the way php's own
@@ -236,7 +578,17 @@ static int vm_builtin_xw_open_memory(ph7_context *pCtx,int nArg,ph7_value **apAr
 static int XwRun(ph7_context *pCtx,xw_call *pCall,int (*xVerb)(ph7_context *,xw_call *))
 {
 	sxu32 nMark = PH7_LibxmlCaptureBegin(pCtx->pVm);
-	int rc = xVerb(pCtx,pCall);
+	int rc;
+	pCall->pXw->bIoFailed = 0;
+	rc = xVerb(pCtx,pCall);
+	if( pCall->pXw->bIoFailed ){
+		/* A write that could not land is reported by the RETURN value alone:
+		 * php says nothing when the stream behind a writer has gone away, and
+		 * libxml's own "I/O error" would be a warning php never raises. */
+		pCall->pXw->bIoFailed = 0;
+		PH7_LibxmlDropErrors(pCtx->pVm,nMark);
+		return rc;
+	}
 	PH7_LibxmlCaptureEnd(pCtx->pVm,nMark,pCall->zFn);
 	return rc;
 }
@@ -283,9 +635,20 @@ static int XwSetIndentString(ph7_context *pCtx,xw_call *pCall)
 }
 XW_METHOD(vm_builtin_xw_set_indent_string,XwSetIndentString,"setIndentString",0)
 
-/* bool XMLWriter::startDocument(?string $version, ?string $encoding, ?string $standalone) */
+/*
+ * bool XMLWriter::startDocument(?string $version, ?string $encoding, ?string $standalone)
+ *
+ * The ENCODING is the one argument here php refuses a NUL in: it names a
+ * character set for libxml to look up, and that lookup stops at the first NUL.
+ * The version and the standalone flag are written out verbatim and take one.
+ */
 static int XwStartDocument(ph7_context *pCtx,xw_call *pCall)
 {
+	int rc = XmlWriterCheckNul(pCtx,pCall->zFn,pCall->iArgBase + 2,"encoding",
+		pCall->nArg > 1 ? pCall->apArg[1] : 0);
+	if( rc != PH7_OK ){
+		return rc;
+	}
 	return XwStatus(pCtx,xmlTextWriterStartDocument(pCall->pXw->pWriter,
 		XwStrOrNull(pCall,0),XwStrOrNull(pCall,1),XwStrOrNull(pCall,2)));
 }
@@ -769,7 +1132,13 @@ PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)
 	static const PH7_NativeMethodDef aMethod[] = {
 		/* Declared in php's own stub order: get_class_methods() and Reflection
 		 * both answer declaration order, so the two engines list one surface. */
+		{ "openUri",         PH7_MOD_PUBLIC, "string $uri", "@bool", vm_builtin_xw_open_uri },
+		{ "toUri",           PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $uri", "static",
+		  vm_builtin_xw_to_uri },
 		{ "openMemory",      PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_open_memory },
+		{ "toMemory",        PH7_MOD_PUBLIC|PH7_MOD_STATIC, "", "static", vm_builtin_xw_to_memory },
+		{ "toStream",        PH7_MOD_PUBLIC|PH7_MOD_STATIC, "mixed $stream", "static",
+		  vm_builtin_xw_to_stream },
 		{ "setIndent",       PH7_MOD_PUBLIC, "bool $enable", "@bool", vm_builtin_xw_set_indent },
 		{ "setIndentString", PH7_MOD_PUBLIC, "string $indentation", "@bool", vm_builtin_xw_set_indent_string },
 		{ "startComment",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_start_comment },
@@ -843,7 +1212,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)
 		aMethod, SX_ARRAYSIZE(aMethod),
 		0, 0,
 		aProp, SX_ARRAYSIZE(aProp),
-		0, 0, 0
+		XmlWriterInstanceRelease, 0, 0
 	};
 	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);
 }
