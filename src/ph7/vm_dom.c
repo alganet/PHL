@@ -6344,6 +6344,71 @@ static ph7_hashmap * DomXPathNsReg(ph7_vm *pVm,ph7_class_instance *pThis)
 	}
 	return PH7_HashmapCowSeparate(&(*pVm),pSlot);
 }
+/*
+ * DOMXPath::quote(string $str): string  (static, php 8.4)
+ *
+ * XPath 1.0 has no escape inside a string literal, so a value is quotable
+ * only with the quote character it does not contain: no `'` and it goes in
+ * single quotes, no `"` in double ones, and a value carrying BOTH becomes a
+ * `concat()` of runs -- each run taken up to (not including) the next
+ * character of the OTHER kind, so the split alternates and every piece is
+ * quotable. php's algorithm exactly, and its output byte for byte.
+ */
+DOM_METHOD(vm_builtin_DOMXPath_quote)
+{
+	int nStr = 0;
+	const char *zStr = nArg > 0 ? ph7_value_to_string(apArg[0],&nStr) : "";
+	int bSq = 0,bDq = 0,i;
+	SyBlob sOut;
+	for( i = 0 ; i < nStr ; ++i ){
+		if( zStr[i] == '\'' ){
+			bSq = 1;
+		}else if( zStr[i] == '"' ){
+			bDq = 1;
+		}
+	}
+	if( !bSq ){
+		ph7_result_string_format(pCtx,"'%.*s'",nStr,zStr);
+		return PH7_OK;
+	}
+	if( !bDq ){
+		ph7_result_string_format(pCtx,"\"%.*s\"",nStr,zStr);
+		return PH7_OK;
+	}
+	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);
+	SyBlobAppend(&sOut,"concat(",sizeof("concat(")-1);
+	i = 0;
+	while( i < nStr ){
+		/* Whichever quote kind appears FIRST in what is left decides the run:
+		 * the run is wrapped in the OTHER kind and reaches to that first
+		 * occurrence, so it swallows every quote of the kind it is not wrapped
+		 * in. `a'b"c'd"e` is four runs that way, and `0"&'<` is two -- the
+		 * first single-quoted, because its first quote character is the double
+		 * one. */
+		int iStart = i,j;
+		char cQuote = '"';
+		for( j = i ; j < nStr ; ++j ){
+			if( zStr[j] == '\'' || zStr[j] == '"' ){
+				cQuote = zStr[j] == '"' ? '\'' : '"';
+				break;
+			}
+		}
+		while( i < nStr && zStr[i] != cQuote ){
+			i++;
+		}
+		if( iStart > 0 ){
+			SyBlobAppend(&sOut,",",1);
+		}
+		SyBlobAppend(&sOut,&cQuote,1);
+		SyBlobAppend(&sOut,zStr + iStart,(sxu32)(i - iStart));
+		SyBlobAppend(&sOut,&cQuote,1);
+	}
+	SyBlobAppend(&sOut,")",1);
+	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));
+	SyBlobRelease(&sOut);
+	return PH7_OK;
+}
+
 /* ===== The PHP-function bridge (php:function / php:functionString / own-URI) ===== */
 
 /* php's reserved URI: `php:function()` is reached through whatever PREFIX the
@@ -6475,12 +6540,19 @@ static void DomXPathArgToValue(DomXPathFnCtx *pFn,xmlXPathObjectPtr pArg,int bAs
 		return;
 	}
 	if( pArg->type == XPATH_NODESET && !bAsString ){
-		ph7_value *pArr = ph7_context_new_array(pFn->pCtx);
+		/* The array is built on its OWN reference rather than the method's call
+		 * context: a predicate calls this once per node, and a context-owned
+		 * one would live until the whole evaluation ended. */
+		ph7_hashmap *pMap = PH7_NewHashmap(pVm,0,0);
 		int i;
 		PH7_MemObjInit(pVm,pOut);
-		if( pArr == 0 ){
+		if( pMap == 0 ){
 			return;
 		}
+		/* pOut CARRIES the map's only reference, and the caller's release of
+		 * it after the call is what frees it. */
+		pOut->x.pOther = pMap;
+		pOut->iFlags = MEMOBJ_HASHMAP;
 		for( i = 0 ; pArg->nodesetval && i < pArg->nodesetval->nodeNr ; ++i ){
 			xmlNodePtr pNode = pArg->nodesetval->nodeTab[i];
 			ph7_value sElem;
@@ -6503,7 +6575,7 @@ static void DomXPathArgToValue(DomXPathFnCtx *pFn,xmlXPathObjectPtr pArg,int bAs
 				PH7_MemObjInit(pVm,&sElem);
 				sElem.x.pOther = pObj;
 				sElem.iFlags = MEMOBJ_OBJ;
-				ph7_array_add_elem(pArr,0,&sElem);   /* takes its own reference */
+				ph7_array_add_elem(pOut,0,&sElem);   /* takes its own reference */
 				PH7_ClassInstanceUnref(pObj);        /* ...and ours goes back */
 				continue;
 			}
@@ -6514,9 +6586,8 @@ static void DomXPathArgToValue(DomXPathFnCtx *pFn,xmlXPathObjectPtr pArg,int bAs
 			PH7_MemObjInit(pVm,&sElem);
 			sElem.x.pOther = pObj;   /* BORROWED from the cache; the insert refs it */
 			sElem.iFlags = MEMOBJ_OBJ;
-			ph7_array_add_elem(pArr,0,&sElem);
+			ph7_array_add_elem(pOut,0,&sElem);
 		}
-		PH7_MemObjStore(pArr,pOut);
 		return;
 	}
 	switch( pArg->type ){
@@ -6693,10 +6764,18 @@ static void DomXPathPhpFn(xmlXPathParserContextPtr pPCtx,int nArgs)
 			PH7_MemObjRelease(&sResult);
 			goto done;
 		}
+		/* Dispatch off a COPY: pCallable points into a registration map this
+		 * very callback can rewrite (a callback calling registerPhpFunctions
+		 * on its own DOMXPath), and the map's value would go out from under
+		 * the dispatch. */
+		ph7_value sCall;
+		PH7_MemObjInit(pVm,&sCall);
+		PH7_MemObjStore(pCallable,&sCall);
 		for( i = 0 ; i < nCall ; ++i ){
 			apPtr[i] = &apVal[i];
 		}
-		rc = PH7_VmCallCallbackByValue(pVm,pCallable,nCall,apPtr,&sResult,0);
+		rc = PH7_VmCallCallbackByValue(pVm,&sCall,nCall,apPtr,&sResult,0);
+		PH7_MemObjRelease(&sCall);
 		if( apPtr ){
 			SyMemBackendFree(&pVm->sAllocator,apPtr);
 		}
@@ -8793,6 +8872,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "registerPhpFunctionNS", PH7_MOD_PUBLIC,
 		  "string $namespaceURI, string $name, callable $callable", "void",
 		  vm_builtin_DOMXPath_registerPhpFunctionNS },
+		{ "quote", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $str", "string",
+		  vm_builtin_DOMXPath_quote },
 	};
 	/* Bases before subclasses: PH7_InstallNativeClasses declares the whole table
 	 * before touching a method, but PH7_ClassInherit still needs the parent to
