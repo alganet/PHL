@@ -3045,7 +3045,7 @@ DOM_METHOD(vm_builtin_DOMDocument_loadXML)
 	sErr = DomForceWarnings(pVm,(iOpts & XML_PARSE_RECOVER) != 0);
 	nMark = PH7_LibxmlCaptureBegin(pVm);
 	pDoc = xmlReadMemory(zSrc,nLen,0,0,iOpts);
-	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::loadXML");
+	PH7_LibxmlCaptureEndOpts(pVm,nMark,"DOMDocument::loadXML",iOpts);
 	DomRestoreWarnings(pVm,sErr);
 	DomStampCwd(pCtx,pDoc);
 	ph7_result_bool(pCtx,DomInstallParsed(pCtx,pThis,pDoc));
@@ -3156,7 +3156,7 @@ DOM_METHOD(vm_builtin_DOMDocument_load)
 	 * names it in every diagnostic the parse raises. */
 	pDoc = xmlReadMemory((const char *)SyBlobData(&sBody),(int)SyBlobLength(&sBody),
 		(const char *)SyBlobData(&sPath),0,iOpts);
-	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::load");
+	PH7_LibxmlCaptureEndOpts(pVm,nMark,"DOMDocument::load",iOpts);
 	DomRestoreWarnings(pVm,sErr);
 	SyBlobRelease(&sBody);
 	SyBlobRelease(&sPath);

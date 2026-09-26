@@ -3522,6 +3522,7 @@ PH7_PRIVATE void PH7_LibxmlDropErrors(ph7_vm *pVm,sxu32 nMark);
 /* Push one error onto the per-VM queue + last-error slot (strings copied).
  * The shared structured-error callback and the DOM schema error hooks both
  * funnel through this so ph7int.h needs no libxml types. */
+PH7_PRIVATE void PH7_LibxmlCaptureEndOpts(ph7_vm *pVm,sxu32 nMark,const char *zFnName,int iOpts);
 PH7_PRIVATE void PH7_LibxmlRaiseGeneric(ph7_vm *pVm,const char *zFnName,const char *zMsg);
 PH7_PRIVATE void PH7_LibxmlQueueError(ph7_vm *pVm,int iLevel,int iCode,int iLine,int iColumn,
 	const char *zMsg,const char *zFile);

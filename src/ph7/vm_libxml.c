@@ -265,6 +265,19 @@ PH7_PRIVATE void PH7_LibxmlDropErrors(ph7_vm *pVm,sxu32 nMark)
 }
 PH7_PRIVATE void PH7_LibxmlCaptureEnd(ph7_vm *pVm,sxu32 nMark,const char *zFnName)
 {
+	PH7_LibxmlCaptureEndOpts(pVm,nMark,zFnName,0);
+}
+/*
+ * The same drain for a parse that was given OPTIONS, two of which are about
+ * these very diagnostics: `LIBXML_NOERROR` silences the errors and the fatals,
+ * `LIBXML_NOWARNING` the warnings. php silences them at the PRINT, not at the
+ * source -- the queue `libxml_get_errors()` answers still holds them, and so
+ * does the slot `libxml_get_last_error()` reads -- so this skips them here,
+ * after they have been recorded, and the line buffer never sees them either
+ * (php's does not: libxml's message never reaches the printer at all).
+ */
+PH7_PRIVATE void PH7_LibxmlCaptureEndOpts(ph7_vm *pVm,sxu32 nMark,const char *zFnName,int iOpts)
+{
 	xmlSetStructuredErrorFunc(0,0);
 	if( pVm->bLibxmlInternalErr ){
 		/* Internal capture on: entries stay queued for libxml_get_errors() */
@@ -278,6 +291,12 @@ PH7_PRIVATE void PH7_LibxmlCaptureEnd(ph7_vm *pVm,sxu32 nMark,const char *zFnNam
 			SyBlob sMsg;
 			const char *zPend;
 			sxu32 nPend,nTrim;
+			if( (aErr[n].iLevel == XML_ERR_WARNING)
+			 ? (iOpts & XML_PARSE_NOWARNING) != 0
+			 : (iOpts & XML_PARSE_NOERROR) != 0 ){
+				LibxmlFreeErr(pVm,&aErr[n]);
+				continue;
+			}
 			/* php's libxml diagnostics are LINE-buffered: each message is
 			 * appended to one buffer and the diagnostic is only raised when the
 			 * accumulated text ends in a newline. Most of libxml's messages do,
