@@ -298,6 +298,20 @@ static int XwEndDocument(ph7_context *pCtx,xw_call *pCall)
 }
 XW_METHOD(vm_builtin_xw_end_document,XwEndDocument,"endDocument",0)
 
+/* bool XMLWriter::startComment() */
+static int XwStartComment(ph7_context *pCtx,xw_call *pCall)
+{
+	return XwStatus(pCtx,xmlTextWriterStartComment(pCall->pXw->pWriter));
+}
+XW_METHOD(vm_builtin_xw_start_comment,XwStartComment,"startComment",0)
+
+/* bool XMLWriter::endComment() */
+static int XwEndComment(ph7_context *pCtx,xw_call *pCall)
+{
+	return XwStatus(pCtx,xmlTextWriterEndComment(pCall->pXw->pWriter));
+}
+XW_METHOD(vm_builtin_xw_end_comment,XwEndComment,"endComment",0)
+
 /* bool XMLWriter::startAttribute(string $name) */
 static int XwStartAttribute(ph7_context *pCtx,xw_call *pCall)
 {
@@ -459,6 +473,58 @@ static int XwWriteElementNs(ph7_context *pCtx,xw_call *pCall)
 }
 XW_METHOD(vm_builtin_xw_write_element_ns,XwWriteElementNs,"writeElementNs","#3 ($namespace)")
 
+/*
+ * bool XMLWriter::startPi(string $target)
+ *
+ * The target is checked with the same xmlValidateName the element and attribute
+ * names go through -- php names it a "PI target" and nothing else changes, so
+ * `<?php ... ?>` is spellable and `<?x y ... ?>` is a ValueError.
+ */
+static int XwStartPi(ph7_context *pCtx,xw_call *pCall)
+{
+	const char *zTarget = XwStr(pCall,0);
+	int rc = XmlWriterCheckName(pCtx,pCall,zTarget,"PI target");
+	if( rc != 0 ){
+		return rc;
+	}
+	return XwStatus(pCtx,xmlTextWriterStartPI(pCall->pXw->pWriter,(const xmlChar *)zTarget));
+}
+XW_METHOD(vm_builtin_xw_start_pi,XwStartPi,"startPi","#2")
+
+/* bool XMLWriter::endPi() */
+static int XwEndPi(ph7_context *pCtx,xw_call *pCall)
+{
+	return XwStatus(pCtx,xmlTextWriterEndPI(pCall->pXw->pWriter));
+}
+XW_METHOD(vm_builtin_xw_end_pi,XwEndPi,"endPi",0)
+
+/* bool XMLWriter::writePi(string $target, string $content) */
+static int XwWritePi(ph7_context *pCtx,xw_call *pCall)
+{
+	const char *zTarget = XwStr(pCall,0);
+	int rc = XmlWriterCheckName(pCtx,pCall,zTarget,"PI target");
+	if( rc != 0 ){
+		return rc;
+	}
+	return XwStatus(pCtx,xmlTextWriterWritePI(pCall->pXw->pWriter,
+		(const xmlChar *)zTarget,(const xmlChar *)XwStr(pCall,1)));
+}
+XW_METHOD(vm_builtin_xw_write_pi,XwWritePi,"writePi","#2 ($content)")
+
+/* bool XMLWriter::startCdata() */
+static int XwStartCdata(ph7_context *pCtx,xw_call *pCall)
+{
+	return XwStatus(pCtx,xmlTextWriterStartCDATA(pCall->pXw->pWriter));
+}
+XW_METHOD(vm_builtin_xw_start_cdata,XwStartCdata,"startCdata",0)
+
+/* bool XMLWriter::endCdata() */
+static int XwEndCdata(ph7_context *pCtx,xw_call *pCall)
+{
+	return XwStatus(pCtx,xmlTextWriterEndCDATA(pCall->pXw->pWriter));
+}
+XW_METHOD(vm_builtin_xw_end_cdata,XwEndCdata,"endCdata",0)
+
 /* bool XMLWriter::text(string $content) */
 static int XwText(ph7_context *pCtx,xw_call *pCall)
 {
@@ -548,6 +614,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)
 		{ "openMemory",      PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_open_memory },
 		{ "setIndent",       PH7_MOD_PUBLIC, "bool $enable", "@bool", vm_builtin_xw_set_indent },
 		{ "setIndentString", PH7_MOD_PUBLIC, "string $indentation", "@bool", vm_builtin_xw_set_indent_string },
+		{ "startComment",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_start_comment },
+		{ "endComment",      PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_end_comment },
 		{ "startAttribute",  PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_xw_start_attribute },
 		{ "endAttribute",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_end_attribute },
 		{ "writeAttribute",  PH7_MOD_PUBLIC, "string $name, string $value", "@bool", vm_builtin_xw_write_attribute },
@@ -565,6 +633,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)
 		{ "writeElementNs",  PH7_MOD_PUBLIC,
 		  "?string $prefix, string $name, ?string $namespace, ?string $content = null",
 		  "@bool", vm_builtin_xw_write_element_ns },
+		{ "startPi",         PH7_MOD_PUBLIC, "string $target", "@bool", vm_builtin_xw_start_pi },
+		{ "endPi",           PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_end_pi },
+		{ "writePi",         PH7_MOD_PUBLIC, "string $target, string $content", "@bool", vm_builtin_xw_write_pi },
+		{ "startCdata",      PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_start_cdata },
+		{ "endCdata",        PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_end_cdata },
 		{ "writeCdata",      PH7_MOD_PUBLIC, "string $content", "@bool", vm_builtin_xw_write_cdata },
 		{ "text",            PH7_MOD_PUBLIC, "string $content", "@bool", vm_builtin_xw_text },
 		{ "writeRaw",        PH7_MOD_PUBLIC, "string $content", "@bool", vm_builtin_xw_write_raw },
