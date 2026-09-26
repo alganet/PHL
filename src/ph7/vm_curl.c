@@ -43,6 +43,165 @@ PH7_PRIVATE void PH7_CurlGlobalInit(void)
 	}
 }
 
+/* ------------------------------------------------------------------------
+ * Handle lifetime
+ * ------------------------------------------------------------------------ */
+/*
+ * A handle is reached from its CurlHandle object through the hidden `__res`
+ * slot and is ALSO chained on the per-VM registry, because a PH7 resource
+ * carries no destructor: the sweep at VM reset/release is what closes a
+ * transfer a script left open. Unlike ext/pdo's connections, a CurlHandle IS
+ * cloneable (php maps clone to curl_easy_duphandle), so the clone gets its own
+ * record and its own libcurl handle -- never a second object over one CURL*.
+ */
+static void CurlBlankSlot(ph7_class_instance *pOwner);
+
+static phl_curl * CurlNewHandle(ph7_vm *pVm)
+{
+	phl_curl *pCurl = (phl_curl *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_curl));
+	if( pCurl == 0 ){
+		return 0;
+	}
+	SyZero(pCurl,sizeof(phl_curl));
+	pCurl->pVm = pVm;
+	pCurl->pEasy = curl_easy_init();
+	if( pCurl->pEasy == 0 ){
+		SyMemBackendFree(&pVm->sAllocator,pCurl);
+		return 0;
+	}
+	/*
+	 * php gives every handle its own error buffer at creation, and that is
+	 * what curl_error() reports -- not curl_easy_strerror() of the code. It
+	 * has to be re-applied after curl_easy_reset(), which clears it.
+	 */
+	curl_easy_setopt(pCurl->pEasy,CURLOPT_ERRORBUFFER,pCurl->zErrBuf);
+	pCurl->pNext = (phl_curl *)pVm->pCurlHandles;
+	pVm->pCurlHandles = pCurl;
+	return pCurl;
+}
+static void CurlFreeHandle(phl_curl *pCurl)
+{
+	if( pCurl->pEasy ){
+		curl_easy_cleanup(pCurl->pEasy);
+		pCurl->pEasy = 0;
+	}
+}
+/*
+ * Free every registered handle. Called from PH7_CurlVmReset (a reused VM --
+ * the -S server's -- must not answer the next request through a connection the
+ * previous one opened) and from PH7_CurlVmRelease before the allocator holding
+ * the shells is torn down.
+ */
+static void CurlVmSweep(ph7_vm *pVm)
+{
+	phl_curl *pCurl = (phl_curl *)pVm->pCurlHandles;
+	while( pCurl ){
+		phl_curl *pNext = pCurl->pNext;
+		CurlBlankSlot(pCurl->pOwner);
+		CurlFreeHandle(pCurl);
+		SyMemBackendFree(&pVm->sAllocator,pCurl);
+		pCurl = pNext;
+	}
+	pVm->pCurlHandles = 0;
+}
+PH7_PRIVATE void PH7_CurlVmReset(ph7_vm *pVm)
+{
+	CurlVmSweep(&(*pVm));
+}
+PH7_PRIVATE void PH7_CurlVmRelease(ph7_vm *pVm)
+{
+	CurlVmSweep(&(*pVm));
+}
+/*
+ * Blank the hidden slot of the object whose record we are about to free, so
+ * the object cannot outlive its record and then read freed memory to ask
+ * whether it still owns one.
+ */
+static void CurlBlankSlot(ph7_class_instance *pOwner)
+{
+	SyString sAttr;
+	ph7_value *pRes;
+	if( pOwner == 0 ){
+		return;
+	}
+	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);
+	pRes = PH7_ClassInstanceFetchAttr(pOwner,&sAttr);
+	if( pRes ){
+		PH7_MemObjRelease(pRes);
+		MemObjSetType(pRes,MEMOBJ_NULL);
+	}
+}
+/* The handle behind a `__res` slot value. */
+static phl_curl * CurlOfValue(ph7_value *pVal)
+{
+	if( pVal == 0 || !ph7_value_is_resource(pVal) ){
+		return 0;
+	}
+	return (phl_curl *)pVal->x.pOther;
+}
+static phl_curl * CurlOfInstance(ph7_class_instance *pThis)
+{
+	SyString sAttr;
+	if( pThis == 0 ){
+		return 0;
+	}
+	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);
+	return CurlOfValue(PH7_ClassInstanceFetchAttr(pThis,&sAttr));
+}
+/* Store one handle in the receiver's hidden slot. */
+static int CurlAttach(ph7_class_instance *pThis,phl_curl *pCurl)
+{
+	SyString sAttr;
+	ph7_value *pRes;
+	if( pThis == 0 ){
+		return -1;
+	}
+	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);
+	pRes = PH7_ClassInstanceFetchAttr(pThis,&sAttr);
+	if( pRes == 0 ){
+		return -1;
+	}
+	PH7_MemObjRelease(pRes);
+	pRes->x.pOther = pCurl;
+	MemObjSetType(pRes,MEMOBJ_RES);
+	pCurl->pOwner = pThis;
+	return 0;
+}
+/*
+ * The object is going away: close its transfer now rather than at VM reset, so
+ * a script that drops its last reference releases the socket there. The shell
+ * stays on the registry (the sweep frees it) because the slot is still
+ * reachable while the instance is being torn down.
+ */
+static void CurlInstanceRelease(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	phl_curl *pCurl = CurlOfInstance(pThis);
+	SXUNUSED(pVm);
+	if( pCurl == 0 || pCurl->pOwner != pThis ){
+		return;
+	}
+	CurlFreeHandle(pCurl);
+	pCurl->pOwner = 0;
+}
+/*
+ * The CurlHandle argument of every verb. The signature table has already
+ * screened the TYPE (php's "must be of type CurlHandle, null given" comes from
+ * there), so a miss here means the object is one the engine tore down -- which
+ * php cannot produce and which must not be a crash.
+ */
+static phl_curl * CurlArg(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis;
+	SXUNUSED(nArg);
+	pThis = (apArg && ph7_value_is_object(apArg[0])) ?
+		(ph7_class_instance *)apArg[0]->x.pOther : 0;
+	if( pThis == 0 ){
+		return 0;
+	}
+	SXUNUSED(pCtx);
+	return CurlOfInstance(pThis);
+}
+
 /* ===== Constants ===== */
 
 /*
@@ -958,6 +1117,120 @@ static int vm_builtin_curl_share_strerror(ph7_context *pCtx,int nArg,ph7_value *
 	return CurlStrError(pCtx,nArg,apArg,CurlShareStrErrorTrampoline);
 }
 
+/* ===== The handle verbs ===== */
+
+/*
+ * A bare instance of one of the handle classes. `new` on them is refused
+ * (php's "Cannot directly construct ..."), and this is the door the refusal
+ * leaves open: the engine's own creation step, never the opcode's.
+ */
+static ph7_class_instance * CurlNewInstance(ph7_vm *pVm,const char *zName,int nName)
+{
+	ph7_class *pClass = PH7_VmExtractClass(pVm,zName,(sxu32)nName,0,0);
+	return pClass ? PH7_NewClassInstance(pVm,pClass) : 0;
+}
+
+/* CurlHandle|false curl_init(?string $url = null) */
+static int vm_builtin_curl_init(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis;
+	phl_curl *pCurl;
+	const char *zUrl = 0;
+	int nUrl = 0;
+	if( nArg > 0 && !ph7_value_is_null(apArg[0]) ){
+		zUrl = ph7_value_to_string(apArg[0],&nUrl);
+		/*
+		 * php screens the URL for an embedded NUL before libcurl sees it,
+		 * because libcurl takes a C string and would silently stop at the
+		 * byte. The sentence says "cURL option" even though the argument is
+		 * $url -- it is the shared option-setter's wording, reached from here.
+		 */
+		if( SyByteFind(zUrl,(sxu32)nUrl,0,0) == SXRET_OK ){
+			PH7_VmThrowException(pCtx,"ValueError",
+				"curl_init(): cURL option must not contain any null bytes");
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+	}
+	pCurl = CurlNewHandle(pVm);
+	if( pCurl == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pThis = CurlNewInstance(pVm,"CurlHandle",sizeof("CurlHandle")-1);
+	if( pThis == 0 || CurlAttach(pThis,pCurl) != 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( zUrl ){
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_URL,zUrl);
+	}
+	PH7_NativeResultObject(pCtx,pThis);
+	return PH7_OK;
+}
+/*
+ * void curl_close(CurlHandle $handle)
+ *
+ * A NO-OP, which is the whole finding. php 8 turned the resource into an
+ * object, and the object's own teardown is what frees the handle -- so after
+ * curl_close() the handle still works: curl_setopt() answers true, curl_exec()
+ * runs the transfer, curl_errno() reports it. Freeing here (which is what the
+ * name says and what php 7 did) would make every one of those a use-after-free
+ * on a script php runs happily.
+ */
+static int vm_builtin_curl_close(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+/*
+ * void curl_reset(CurlHandle $handle)
+ *
+ * Every OPTION goes back to its default -- and the error state does NOT.
+ * curl_reset() on a handle whose last transfer failed leaves curl_errno()
+ * reporting that failure; only the option setters clear it. (Probing the verbs
+ * one at a time is what shows this: a sweep that resets after a setopt sees a
+ * cleared errno and credits the wrong verb.)
+ */
+static int vm_builtin_curl_reset(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_curl *pCurl = CurlArg(pCtx,nArg,apArg);
+	if( pCurl && pCurl->pEasy ){
+		curl_easy_reset(pCurl->pEasy);
+		/* curl_easy_reset() drops the error buffer with everything else. */
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_ERRORBUFFER,pCurl->zErrBuf);
+	}
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+/* int curl_errno(CurlHandle $handle) */
+static int vm_builtin_curl_errno(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_curl *pCurl = CurlArg(pCtx,nArg,apArg);
+	ph7_result_int(pCtx,pCurl ? pCurl->iLastErr : 0);
+	return PH7_OK;
+}
+/*
+ * string curl_error(CurlHandle $handle)
+ *
+ * The ERROR BUFFER, not curl_easy_strerror(): libcurl writes a sentence naming
+ * the host and port it could not reach, where the code's own text is the
+ * generic "Couldn't connect to server". Empty when nothing has failed.
+ */
+static int vm_builtin_curl_error(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_curl *pCurl = CurlArg(pCtx,nArg,apArg);
+	if( pCurl == 0 ){
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	ph7_result_string(pCtx,pCurl->zErrBuf,-1);
+	return PH7_OK;
+}
+
 /* ===== Installation ===== */
 
 PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)
@@ -969,14 +1242,54 @@ PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)
 		{ "curl_version",        vm_builtin_curl_version        },
 		{ "curl_strerror",       vm_builtin_curl_strerror       },
 		{ "curl_multi_strerror", vm_builtin_curl_multi_strerror },
-		{ "curl_share_strerror", vm_builtin_curl_share_strerror }
+		{ "curl_share_strerror", vm_builtin_curl_share_strerror },
+		{ "curl_init",           vm_builtin_curl_init           },
+		{ "curl_close",          vm_builtin_curl_close          },
+		{ "curl_reset",          vm_builtin_curl_reset          },
+		{ "curl_errno",          vm_builtin_curl_errno          },
+		{ "curl_error",          vm_builtin_curl_error          }
+	};
+	/*
+	 * The libcurl handle, and nothing else: php's CurlHandle declares no
+	 * method, no constant and no property, and prints as an empty object on
+	 * every presentation surface. The one slot here is engine storage, hidden
+	 * so it appears on none of them.
+	 */
+	static const PH7_NativePropDef aProp[] = {
+		{ "__res", PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 }
+	};
+	/*
+	 * FINAL (php refuses `class X extends CurlHandle`), NOINSTANTIATE with
+	 * php's own per-class sentence, and NOSERIALIZE -- but NOT NOCLONE, which
+	 * is where CurlHandle parts company with every other handle class here:
+	 * php maps clone to curl_easy_duphandle(), so `clone $h` answers a second,
+	 * independent handle. ReflectionClass::isInstantiable() still reports true
+	 * for it, which is php's answer too, because the refusal lives in the
+	 * creation step rather than in a private constructor.
+	 */
+	static const PH7_NativeClassSpec sSpec = {
+		"CurlHandle", 0, 0,
+		PH7_CLASS_FINAL|PH7_CLASS_NOINSTANTIATE|PH7_CLASS_NOSERIALIZE,
+		0, 0, 0, 0,
+		aProp, SX_ARRAYSIZE(aProp),
+		CurlInstanceRelease, 0, 0
 	};
 	sxu32 n;
+	sxi32 rc;
 	PH7_CurlGlobalInit();
+	pVm->pCurlHandles = 0;
 	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; ++n ){
 		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);
 	}
-	return SXRET_OK;
+	rc = PH7_InstallNativeClasses(&(*pVm),&sSpec,1);
+	if( rc == SXRET_OK ){
+		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"CurlHandle",sizeof("CurlHandle")-1,FALSE,0);
+		if( pClass ){
+			pClass->zNewRefusal =
+				"Cannot directly construct CurlHandle, use curl_init() instead";
+		}
+	}
+	return rc;
 }
 
 #else

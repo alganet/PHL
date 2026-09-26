@@ -382,7 +382,12 @@ static const struct VmBuiltinSig {
 	/* ext/curl. Signatures dumped from php 8.5's own ReflectionFunction, which
 	 * is also where the parameter NAMES come from: a named argument spells the
 	 * php one, so an invented name breaks valid php. */
+	{ "curl_close", "CurlHandle $handle", "void" },
+	{ "curl_errno", "CurlHandle $handle", "int" },
+	{ "curl_error", "CurlHandle $handle", "string" },
+	{ "curl_init", "?string $url = null", "CurlHandle|false" },
 	{ "curl_multi_strerror", "int $error_code", "?string" },
+	{ "curl_reset", "CurlHandle $handle", "void" },
 	{ "curl_share_strerror", "int $error_code", "?string" },
 	{ "curl_strerror", "int $error_code", "?string" },
 	{ "curl_version", "", "array|false" },

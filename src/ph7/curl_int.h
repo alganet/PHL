@@ -40,5 +40,32 @@
 /* Shared one-time curl_global_init() (vm_curl.c). */
 PH7_PRIVATE void PH7_CurlGlobalInit(void);
 
+/*
+ * One easy handle, and the state php keeps BESIDE it.
+ *
+ * libcurl remembers no "last error" of its own, so the two reporters
+ * (curl_errno/curl_error) read what php stored: the CURLcode the last transfer
+ * returned, and the text libcurl wrote into the handle's CURLOPT_ERRORBUFFER,
+ * which is more specific than curl_easy_strerror() of the same code ("Failed
+ * to connect to 127.0.0.1 port 1 after 0 ms: ..." against "Couldn't connect to
+ * server"). The buffer belongs to the record because libcurl writes into it
+ * during a transfer and keeps the pointer until the option is cleared.
+ *
+ * The record is chained on the per-VM registry (pVm->pCurlHandles) for the
+ * reason ext/pdo's connections are: a CURL* lives outside SyMemBackend, so the
+ * wholesale release at VM teardown would leak it along with its sockets.
+ * pOwner is the CurlHandle instance the record backs, so the sweep can blank
+ * the instance's slot before freeing what it points at.
+ */
+typedef struct phl_curl phl_curl;
+struct phl_curl {
+	CURL *pEasy;                    /* the libcurl easy handle (never 0 while live) */
+	ph7_class_instance *pOwner;     /* the CurlHandle this record backs */
+	ph7_vm *pVm;
+	int iLastErr;                   /* CURLcode of the last transfer (php's ch->err.no) */
+	char zErrBuf[CURL_ERROR_SIZE];  /* libcurl's CURLOPT_ERRORBUFFER target */
+	phl_curl *pNext;                /* per-VM registry chain */
+};
+
 #endif /* PH7_ENABLE_CURL */
 #endif /* PHL_CURL_INT_H */

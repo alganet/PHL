@@ -3309,6 +3309,11 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	 * must not answer the next request through a handle that request opened. */
 	PH7_PdoVmReset(&(*pVm));
 #endif
+#ifdef PH7_ENABLE_CURL
+	/* Same rule for the previous request's curl handles, which hold sockets
+	 * and a connection cache of their own. */
+	PH7_CurlVmReset(&(*pVm));
+#endif
 	/* Drop the stream contexts this run created, the default one included: a
 	 * reused VM (the -S server's) must not answer the next request from the
 	 * previous one's stream_context_set_default(). */
@@ -3351,6 +3356,10 @@ PH7_PRIVATE sxi32 PH7_VmRelease(ph7_vm *pVm)
 #ifdef PH7_ENABLE_SQLITE
 	/* Same rule for the sqlite3 handles behind still-open PDO objects. */
 	PH7_PdoVmRelease(pVm);
+#endif
+#ifdef PH7_ENABLE_CURL
+	/* Same rule for the libcurl handles behind still-open CurlHandle objects. */
+	PH7_CurlVmRelease(pVm);
 #endif
 	/* Same rule for the OS directory streams behind still-open directory
 	 * iterators: the DIR lives outside the backend. */

@@ -2763,6 +2763,9 @@ struct ph7_vm
 	void *pPdoConns;           /* phl_pdo registry chain (ext/pdo); freed on reset/release --
 	                            * a sqlite3 handle lives outside SyMemBackend, so the
 	                            * wholesale release would leak both it and the file lock */
+	void *pCurlHandles;        /* phl_curl registry chain (ext/curl); freed on reset/release --
+	                            * a CURL* lives outside SyMemBackend too, and holds a socket
+	                            * and a connection cache with it */
 	ph7_value sXmlEntLoader;   /* libxml_set_external_entity_loader()'s callable; NULL = default.
 	                            * Stored and answered, never invoked: no PHL parse path loads an
 	                            * external entity (php's sanitized defaults keep it off too) —
@@ -3711,6 +3714,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallPdoSqlite(ph7_vm *pVm);
 /* vm_curl.c (ext/curl: php's libcurl binding) */
 PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm);
 PH7_PRIVATE void PH7_RegisterCurlConstants(ph7_vm *pVm);
+PH7_PRIVATE void PH7_CurlVmReset(ph7_vm *pVm);
+PH7_PRIVATE void PH7_CurlVmRelease(ph7_vm *pVm);
 #endif /* PH7_ENABLE_CURL */
 /* net.c types and function prototypes */
 #ifdef PH7_ENABLE_NET
