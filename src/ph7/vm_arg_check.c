@@ -782,6 +782,7 @@ static const struct VmBuiltinSig {
 	{ "iconv_substr", "string $string, int $offset, ?int $length = NULL, ?string $encoding = NULL", "string|false" },
 	{ "iconv_strpos", "string $haystack, string $needle, int $offset = 0, ?string $encoding = NULL", "int|false" },
 	{ "iconv_strrpos", "string $haystack, string $needle, ?string $encoding = NULL", "int|false" },
+	{ "iconv_get_encoding", "string $type = \"all\"", "array|string|false" },
 	{ "md5", "string $string, bool $binary = false", "string" },
 	{ "md5_file", "string $filename, bool $binary = false", "string|false" },
 	{ "metaphone", "string $string, int $max_phonemes = 0", "string" },

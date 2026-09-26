@@ -853,6 +853,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "iconv_substr", PH7_builtin_iconv_substr_f },
 	{ "iconv_strpos", PH7_builtin_iconv_strpos_f },
 	{ "iconv_strrpos",PH7_builtin_iconv_strrpos_f },
+	{ "iconv_get_encoding", PH7_builtin_iconv_get_encoding_f },
 	{ "ucfirst",      PH7_builtin_ucfirst    },
 	{ "lcfirst",      PH7_builtin_lcfirst    },
 	{ "ord",          PH7_builtin_ord        },

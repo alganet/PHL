@@ -994,7 +994,61 @@ static int PH7_builtin_iconv_strrpos(ph7_context *pCtx,int nArg,ph7_value **apAr
 	return IcvStrposBody(pCtx,nArg,apArg,1);
 }
 
+/* --- The encoding settings --------------------------------------------- */
+
+/*
+ * array|string|false iconv_get_encoding(string $type = "all")
+ *
+ * php answers `iconv.input_encoding` / `output_encoding` / `internal_encoding`,
+ * each falling back to `default_charset`. §10 removes all three of those
+ * directives -- every one of them is deprecated, which is also why this
+ * function's SETTER counterpart is not here at all (see the twin pair in
+ * 002-integration) -- so `default_charset` is what all three answer, and
+ * moving it moves them together, exactly as php does when the iconv directives
+ * are left unset. $type matches case-insensitively; anything else is FALSE,
+ * with no diagnostic of any kind.
+ */
+static int PH7_builtin_iconv_get_encoding(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	static const char * const azType[] = { "input_encoding", "output_encoding", "internal_encoding" };
+	SyBlob sIni;
+	const char *zType = "all";
+	int nType = 3,k;
+	if( nArg > 0 ){
+		zType = ph7_value_to_string(apArg[0],&nType);
+	}
+	SyBlobInit(&sIni,&pCtx->pVm->sAllocator);
+	PH7_VmIniGetStr(pCtx->pVm,"default_charset",&sIni);
+	if( nType == 3 && SyStrnicmp(zType,"all",3) == 0 ){
+		ph7_value *pArray = ph7_context_new_array(pCtx);
+		ph7_value *pVal = ph7_context_new_scalar(pCtx);
+		if( pArray == 0 || pVal == 0 ){
+			SyBlobRelease(&sIni);
+			return PH7_ContextMemoryError(pCtx);
+		}
+		ph7_value_string(pVal,(const char *)SyBlobData(&sIni),(int)SyBlobLength(&sIni));
+		for( k = 0 ; k < (int)SX_ARRAYSIZE(azType) ; ++k ){
+			ph7_array_add_strkey_elem(pArray,azType[k],pVal);
+		}
+		ph7_result_value(pCtx,pArray);
+		ph7_context_release_value(pCtx,pVal);
+		SyBlobRelease(&sIni);
+		return PH7_OK;
+	}
+	for( k = 0 ; k < (int)SX_ARRAYSIZE(azType) ; ++k ){
+		if( nType == (int)SyStrlen(azType[k]) && SyStrnicmp(zType,azType[k],(sxu32)nType) == 0 ){
+			ph7_result_string(pCtx,(const char *)SyBlobData(&sIni),(int)SyBlobLength(&sIni));
+			SyBlobRelease(&sIni);
+			return PH7_OK;
+		}
+	}
+	SyBlobRelease(&sIni);
+	ph7_result_bool(pCtx,0);
+	return PH7_OK;
+}
+
 PH7_PRIVATE int PH7_builtin_iconv_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_iconv(pCtx,nArg,apArg); }
+PH7_PRIVATE int PH7_builtin_iconv_get_encoding_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_iconv_get_encoding(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_iconv_strlen_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_iconv_strlen(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_iconv_substr_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_iconv_substr(pCtx,nArg,apArg); }
 PH7_PRIVATE int PH7_builtin_iconv_strpos_f(ph7_context *pCtx,int nArg,ph7_value **apArg){ return PH7_builtin_iconv_strpos(pCtx,nArg,apArg); }
