@@ -951,6 +951,13 @@ static void WinVfs_TempDir(ph7_context *pCtx)
 		/* Assume the default windows temp directory */
 		ph7_result_string(pCtx,"C:\\Windows\\Temp",-1/*Compute length automatically*/);
 	}else{
+		/* GetTempPath() always ends its answer with a separator and php's
+		 * sys_get_temp_dir() never does -- the unix side already trims one (see
+		 * UnixVfs_TempDir), and a caller joining "/name" to this one was getting
+		 * "...\Temp\/name". */
+		while( n > 1 && (zTemp[n-1] == '\\' || zTemp[n-1] == '/') ){
+			n--;
+		}
 		ph7_result_string(pCtx,zTemp,(int)n);
 	}
 }
