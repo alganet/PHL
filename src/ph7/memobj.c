@@ -1934,6 +1934,18 @@ PH7_PRIVATE sxi32 PH7_MemObjCmp(ph7_value *pObj1,ph7_value *pObj2,int bStrict,in
 		/* Perform the comparison */
 		rc = PH7_ClassInstanceCmp((ph7_class_instance *)pObj1->x.pOther,(ph7_class_instance *)pObj2->x.pOther,bStrict,iNest);
 		return rc;
+	}else if( VmIsUnorderedCmp(pObj1,pObj2) ){
+		/* A NaN against a number or a string: php answers 1 in BOTH directions
+		 * (`NAN <=> 1` and `1 <=> NAN` are both 1), which is what leaves every
+		 * relational operator false at once. The rule lives HERE, not only in the
+		 * operator arms, because everything else that orders values goes through
+		 * this comparator with no arm of its own: `in_array(NAN, ["NAN"])` was TRUE
+		 * (php: false), `array_search` found it, and a `switch` matched it -- all
+		 * because the string branch below rendered the NaN as the bytes "NAN" and
+		 * compared those. The precedence php gives null, bool, array, object (and,
+		 * for now, resource) is already spent above: VmIsUnorderedCmp screens those
+		 * flags out, so `NAN == true` stays the bool comparison it is there. */
+		return 1;
 	}else if ( iComb & MEMOBJ_STRING ){
 		SyString s1,s2;
 		if( !bStrict ){
@@ -2038,14 +2050,15 @@ Numeric:
 			r2 = pObj2->rVal;
 			if( PH7_IS_NAN(r1) || PH7_IS_NAN(r2) ){
 				/*
-				 * Keep a strict three-way comparator contract even for NaN values.
-				 * For ordering purposes, NaN compares equal to NaN and greater than
-				 * any non-NaN numeric value.
+				 * php's answer for an unordered pair, from either side: 1. The
+				 * branch above catches every NaN that arrives AS a float; this one
+				 * is for a NaN that only appears once both operands have been
+				 * converted, and it must agree with it -- an antisymmetric answer
+				 * here (the old `NaN equals NaN, and is greater than everything
+				 * else`) is what made `NAN === NAN` true and `1.5 > NAN` disagree
+				 * with `NAN < 1.5`.
 				 */
-				if( PH7_IS_NAN(r1) ){
-					return PH7_IS_NAN(r2) ? 0 : 1;
-				}
-				return -1;
+				return 1;
 			}
 			if( r1 > r2 ){
 				return 1;

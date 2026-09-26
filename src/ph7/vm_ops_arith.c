@@ -820,14 +820,11 @@ PH7_PRIVATE VmOpRc VmExecOpSpaceship(ph7_vm *pVm,VmExecState *pState,VmInstr *pI
 		VM_EXIT_ABORT;
 	}
 #endif
+	/* php answers the UNORDERED comparison -- a NaN, or two arrays neither of
+	 * which contains the other -- with 1 whichever way round it is asked, and
+	 * PH7_MemObjCmp does the same, so the spaceship needs no case of its own. */
 	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);
-	if( VmIsUnorderedCmp(pNos,pTos) ){
-		/* NaN involved: PHP returns 1 for all NaN spaceship comparisons */
-		rc = 1;
-	}else{
-		/* Normalize to exactly -1, 0, or 1 */
-		rc = (rc > 0) - (rc < 0);
-	}
+	rc = (rc > 0) - (rc < 0);   /* normalize to exactly -1, 0 or 1 */
 	VmPopOperand(&pTos,1);
 	PH7_MemObjRelease(pTos);
 	pTos->x.iVal = rc;
@@ -855,13 +852,18 @@ PH7_PRIVATE VmOpRc VmExecOpGe(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 		VM_EXIT_ABORT;
 	}
 #endif
-	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);
-	if( VmIsUnorderedCmp(pNos,pTos) ){
-		rc = 0;
-	}else if( pInstr->iOp == PH7_OP_GE ){
-		rc = rc >= 0;
+	/* `$a > $b` is php's `$b < $a` -- asked from the OTHER SIDE, not read off
+	 * this side's sign. The two differ exactly where the comparison is
+	 * UNORDERED and php answers 1 both ways (a NaN against a number or a
+	 * string; two same-sized arrays neither of which contains the other): a
+	 * greater-than read off `rc > 0` calls both of those TRUE, where php --
+	 * asking `$b < $a` and getting 1 again -- calls them false, as it does
+	 * every other relational operator on such a pair. */
+	rc = PH7_MemObjCmp(pTos,pNos,FALSE,0);
+	if( pInstr->iOp == PH7_OP_GE ){
+		rc = rc <= 0;
 	}else{
-		rc = rc > 0;
+		rc = rc < 0;
 	}
 	VmPopOperand(&pTos,1);
 	if( !pInstr->iP2 ){
@@ -900,10 +902,10 @@ PH7_PRIVATE VmOpRc VmExecOpLe(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 		VM_EXIT_ABORT;
 	}
 #endif
+	/* An unordered pair answers 1 here too, so both spellings are false for it
+	 * without a case of their own (see OP_GT/OP_GE above). */
 	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);
-	if( VmIsUnorderedCmp(pNos,pTos) ){
-		rc = 0;
-	}else if( pInstr->iOp == PH7_OP_LE ){
+	if( pInstr->iOp == PH7_OP_LE ){
 		rc = rc < 1;
 	}else{
 		rc = rc < 0;
@@ -946,11 +948,7 @@ PH7_PRIVATE VmOpRc VmExecOpTne(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 	}
 #endif
 	rc = PH7_MemObjCmp(pNos,pTos,TRUE,0);
-	if( VmIsUnorderedCmp(pNos,pTos) ){
-		rc = 1;
-	}else{
-		rc = rc != 0;
-	}
+	rc = rc != 0;
 	VmPopOperand(&pTos,1);
 	if( !pInstr->iP2 ){
 		/* Push comparison result without taking the jump */
@@ -988,12 +986,10 @@ PH7_PRIVATE VmOpRc VmExecOpTeq(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 		VM_EXIT_ABORT;
 	}
 #endif
+	/* `NAN === NAN` is false in php, and the comparator says so: an unordered
+	 * pair is 1, never 0. */
 	rc = PH7_MemObjCmp(pNos,pTos,TRUE,0);
-	if( VmIsUnorderedCmp(pNos,pTos) ){
-		rc = 0;
-	}else{
-		rc = rc == 0;
-	}
+	rc = rc == 0;
 	VmPopOperand(&pTos,1);
 	if( !pInstr->iP2 ){
 		/* Push comparison result without taking the jump */
@@ -1032,9 +1028,7 @@ PH7_PRIVATE VmOpRc VmExecOpNeq(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 	}
 #endif
 	rc = PH7_MemObjCmp(pNos,pTos,FALSE,0);
-	if( VmIsUnorderedCmp(pNos,pTos) ){
-		rc = pInstr->iOp == PH7_OP_EQ ? 0 : 1;
-	}else if( pInstr->iOp == PH7_OP_EQ ){
+	if( pInstr->iOp == PH7_OP_EQ ){
 		rc = rc == 0;
 	}else{
 		rc = rc != 0;

@@ -71,10 +71,32 @@
 /* VmAutoloadCB struct moved to ph7int.h */
 
 /*
- * Return TRUE if either operand is a NaN real value.
+ * TRUE when php compares these two operands as UNORDERED -- a NaN against
+ * something php reads as a NUMBER or as a STRING. php answers 1 for that
+ * comparison in BOTH directions, which is what makes `==`, `<`, `>`, `<=` and
+ * `>=` all false at once while `<=>` is 1 either way round.
+ *
+ * Two rules ride on this predicate and both were wrong without them.
+ *
+ * It must be asked BEFORE PH7_MemObjCmp runs: the comparator converts its
+ * operands IN PLACE, so a NaN that took the string path is a MEMOBJ_STRING by
+ * the time the answer comes back and the float is gone. That is how
+ * `NAN == "NAN"` was TRUE here (php: false) and `NAN < "abc"` was TRUE
+ * (php: false) -- the screen ran on two strings and saw no NaN at all.
+ *
+ * And php's own precedence comes FIRST: a comparison against null, a bool, an
+ * array or an object never reaches the numeric/string rule, so `NAN == true`
+ * is TRUE (both truthy) and `NAN < []` is TRUE (an array is greater). Those
+ * flags are exactly the branches PH7_MemObjCmp answers ahead of its string and
+ * numeric ones -- MEMOBJ_RES with them, which is a separate divergence of its
+ * own (a resource compares as a BOOLEAN here where php compares its ID).
  */
 PH7_PRIVATE sxi32 VmIsUnorderedCmp(ph7_value *pLeft,ph7_value *pRight)
 {
+	if( (pLeft->iFlags | pRight->iFlags)
+	  & (MEMOBJ_NULL|MEMOBJ_BOOL|MEMOBJ_RES|MEMOBJ_HASHMAP|MEMOBJ_OBJ) ){
+		return FALSE;
+	}
 	if( (pLeft->iFlags & MEMOBJ_REAL) && PH7_IS_NAN(pLeft->rVal) ){
 		return TRUE;
 	}

@@ -15,10 +15,16 @@ runs:
     # The Ubuntu runner ships an older php (8.3) whose ValueError / arity
     # wording predates 8.4/8.5; the cross-engine oracle must be the version PHL
     # targets, matching the Homebrew php used on macOS below.
+    # coverage: none keeps Xdebug out of the oracle. setup-php loads it by
+    # default, and a loaded Xdebug is not a neutral observer: it turns off
+    # php's frameless internal calls, so max() and min() fall back to the
+    # generic comparator and answer a NAN argument from the other side. PHL's
+    # own coverage is gcov/OpenCppCoverage and never needed it.
     - if: runner.os == 'Linux'
       uses: shivammathur/setup-php@v2
       with:
         php-version: '8.5'
+        coverage: none
     - if: runner.os == 'macOS'
       uses: tecolicom/actions-use-homebrew-tools@v1
       with:
@@ -63,3 +69,4 @@ runs:
       uses: shivammathur/setup-php@v2
       with:
         php-version: '8.5'
+        coverage: none
