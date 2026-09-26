@@ -1397,7 +1397,7 @@ PH7_PRIVATE int vm_builtin_phpversion(ph7_context *pCtx,int nArg,ph7_value **apA
  */
 static const char * const azExtension[] = {
 	"Core", "date", "pcre", "SPL", "json", "standard",
-	"ctype", "filter", "hash", "Reflection", "session", "mbstring"
+	"ctype", "filter", "hash", "Reflection", "session", "mbstring", "iconv"
 #ifdef PH7_ENABLE_LIBXML
 	, "libxml", "xml", "dom", "xmlwriter"
 #endif
