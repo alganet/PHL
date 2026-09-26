@@ -6328,31 +6328,17 @@ DOM_METHOD(vm_builtin_Dom_getIterator)
 /* ===== DOMXPath ===== */
 
 /* The prefix => URI table registerNamespace() feeds, replayed onto the fresh
- * evaluation context each query. Hidden slot, same three-move materialization
- * as the document's identity cache. */
+ * evaluation context each query. Hidden slot, materialized by DomXPathSlotMap
+ * below with the same three moves the document's identity cache needs. */
 #define XP_NSREG "__nsreg"
-static ph7_hashmap * DomXPathNsReg(ph7_vm *pVm,ph7_class_instance *pThis)
-{
-	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,XP_NSREG) : 0;
-	if( pSlot == 0 ){
-		return 0;
-	}
-	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){
-		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){
-			return 0;
-		}
-	}
-	return PH7_HashmapCowSeparate(&(*pVm),pSlot);
-}
 /*
  * DOMXPath::quote(string $str): string  (static, php 8.4)
  *
  * XPath 1.0 has no escape inside a string literal, so a value is quotable
  * only with the quote character it does not contain: no `'` and it goes in
  * single quotes, no `"` in double ones, and a value carrying BOTH becomes a
- * `concat()` of runs -- each run taken up to (not including) the next
- * character of the OTHER kind, so the split alternates and every piece is
- * quotable. php's algorithm exactly, and its output byte for byte.
+ * `concat()` of runs, split by the rule stated at the loop below. php's
+ * algorithm exactly, and its output byte for byte.
  */
 DOM_METHOD(vm_builtin_DOMXPath_quote)
 {
@@ -7159,7 +7145,7 @@ DOM_METHOD(vm_builtin_DOMXPath_registerNamespace)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	pMap = DomXPathNsReg(pVm,pThis);
+	pMap = DomXPathSlotMap(pVm,pThis,XP_NSREG);
 	if( pMap == 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;

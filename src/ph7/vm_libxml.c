@@ -267,15 +267,18 @@ static void LibxmlGenericErr(void *pUserData,const char *zFmt,...)
 		sMsg.nByte = nMsg;
 	}
 	SyBlobAppend(&sMsg,"",1);   /* the queue copies a C string */
-	PH7_LibxmlQueueError(pVm,XML_ERR_ERROR,1,0,0,(const char *)SyBlobData(&sMsg),"");
 	{
-		phl_libxml_err *aErr = (phl_libxml_err *)SySetBasePtr(&pVm->aLibxmlErr);
-		sxu32 nUsed = SySetUsed(&pVm->aLibxmlErr);
-		if( nUsed > 0 ){
-			aErr[nUsed-1].bWholeLine = 1;
-		}
-		if( pVm->pLibxmlLastErr ){
-			((phl_libxml_err *)pVm->pLibxmlLastErr)->bWholeLine = 1;
+		/* The channel mark goes on the entry the queue just took -- confirmed
+		 * by the depth having GROWN, so an insertion that failed cannot leave
+		 * the mark on the message before it. */
+		sxu32 nBefore = SySetUsed(&pVm->aLibxmlErr);
+		PH7_LibxmlQueueError(pVm,XML_ERR_ERROR,1,0,0,(const char *)SyBlobData(&sMsg),"");
+		if( SySetUsed(&pVm->aLibxmlErr) > nBefore ){
+			phl_libxml_err *aErr = (phl_libxml_err *)SySetBasePtr(&pVm->aLibxmlErr);
+			aErr[SySetUsed(&pVm->aLibxmlErr)-1].bWholeLine = 1;
+			if( pVm->pLibxmlLastErr ){
+				((phl_libxml_err *)pVm->pLibxmlLastErr)->bWholeLine = 1;
+			}
 		}
 	}
 	SyBlobRelease(&sMsg);
