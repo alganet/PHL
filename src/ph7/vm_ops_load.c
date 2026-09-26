@@ -1399,11 +1399,18 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 			VmFreeDeferredPath(pPath);
 		}
 	}
-	if( iP2 == 7 && (pTos->iFlags & MEMOBJ_HASHMAP) == 0 ){
+	if( iP2 == 7 && (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ)) == 0 ){
 		/* Keyed list destructuring `["k"=>$v] = $src` from a NON-array source: yield NULL
 		 * (never char-index a string), warning once per key — matching PHP, which warns per
 		 * key here. A NULL source is silent; unlike the positional OP_LOAD_LIST path, a bool
-		 * source DOES warn (PHP warns for bool in keyed destructuring). */
+		 * source DOES warn (PHP warns for bool in keyed destructuring).
+		 * An OBJECT is not one of these: php destructures it through its
+		 * read_dimension handler like any other subscript, so it falls through to
+		 * the object dispatch below — which answers out of the accessor and
+		 * raises php's `Cannot use object of type C as array` for a class that
+		 * has none. `["k"=>$v] = $obj` warned and yielded NULL for every source
+		 * but the one shape (a writable container answering out of its own
+		 * storage) that reached the fast path underneath. */
 		if( (pTos->iFlags & MEMOBJ_NULL) == 0 ){
 			VmWarnCannotUseAsArray(&(*pVm),pTos->iFlags);
 		}
@@ -2352,6 +2359,56 @@ PH7_PRIVATE VmOpRc VmExecOpLoadMap(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 }
 
 /*
+ * Can `$o[$k]` be READ at all? php's read_dimension is either the class's own
+ * native handler -- which a class may carry WITHOUT implementing ArrayAccess,
+ * php's DOMNodeList -- or the standard one, which needs the interface. Neither
+ * is php's `Cannot use object of type C as array`.
+ */
+static int VmObjectDimReadable(ph7_vm *pVm,ph7_class_instance *pInst)
+{
+	if( pInst == 0 ){
+		return 0;
+	}
+	return PH7_ClassHasNativeDim(pInst->pClass)
+	    || (pVm->pArrayAccessClass && PH7_VmInstanceOf(pInst->pClass,pVm->pArrayAccessClass));
+}
+/*
+ * One such READ, into pOut (which the caller inits and owns). The native
+ * handler comes first for the same reason it does at the subscript opcode: php
+ * implements the interface THROUGH the handler. A refusal is dropped here --
+ * the only caller indexes 0..N-1 of its own target list, which no handler
+ * refuses -- and pOut is simply left as it was.
+ *
+ * Answers the accessor's own status so a caller reading a RUN of positions can
+ * stop where php stops: a userland offsetGet that THROWS abandons the rest of
+ * the destructure, leaving every later target at its previous value.
+ */
+static sxi32 VmObjectDimRead(ph7_vm *pVm,ph7_class_instance *pInst,ph7_value *pKey,ph7_value *pOut)
+{
+	ph7_class_method *pGet;
+	sxi32 rcCall;
+	if( PH7_ClassHasNativeDim(pInst->pClass) ){
+		PH7_NativeDimCtx sDim;
+		sDim.iMode = PH7_NATIVE_DIM_READ;
+		sDim.pOffset = pKey;
+		sDim.pResult = pOut;
+		sDim.zThrowClass = 0;
+		sDim.zThrowMsg[0] = 0;
+		PH7_ClassNativeDim(pInst,&sDim);
+		return SXRET_OK;
+	}
+	pGet = PH7_ClassExtractMethod(pInst->pClass,"offsetGet",sizeof("offsetGet")-1);
+	if( pGet == 0 ){
+		return SXRET_OK;
+	}
+	{
+		ph7_value *apArg[1];
+		apArg[0] = pKey;
+		rcCall = PH7_VmCallClassMethod(&(*pVm),pInst,pGet,pOut,1,apArg);
+	}
+	return (rcCall == PH7_EXCEPTION || pVm->nBoundaryRc != 0) ? PH7_EXCEPTION : SXRET_OK;
+}
+/*
  * OP_LOAD_LIST: body moved verbatim from the OP_LOAD_LIST arm of
  * VmByteCodeExecBody; arm-terminal breaks became VM_EXIT_BREAK.
  */
@@ -2426,6 +2483,76 @@ PH7_PRIVATE VmOpRc VmExecOpLoadList(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 			}
 			sKey.x.iVal++; /* Next numeric index */
 			pEntry++;
+		}
+	}else if( (pEntry[-1].iFlags & MEMOBJ_OBJ) && pEntry[-1].x.pOther ){
+		/* php destructures an OBJECT through its read_dimension handler, one
+		 * READ per POSITION -- `[$a, , $c] = $o` asks for 0 and 2 and never 1 --
+		 * so an ArrayObject, an SplFixedArray and (since the handler landed) a
+		 * DOMNodeList all come apart the way an array does. PHL treated every
+		 * object as a non-array source: it warned `Cannot use object as array`
+		 * and assigned NULL to every target, so `[$first, $second] = $list` --
+		 * the shape every modern DOM and SPL example is written in -- silently
+		 * produced two nulls. An object with NO dimension reader is php's
+		 * catchable Error rather than that warning, and it is raised before any
+		 * target is touched. (The KEYED spelling `['k' => $a] = $o` never came
+		 * here: the compiler routes it through OP_LOAD_IDX, which has had the
+		 * accessor dispatch all along.) */
+		ph7_class_instance *pInst = (ph7_class_instance *)pEntry[-1].x.pOther;
+		ph7_value sKey;
+		if( !VmObjectDimReadable(&(*pVm),pInst) ){
+			/* Routed mid-expression, like every other catchable Error raised from
+			 * an opcode that is not a call boundary: the destructure is abandoned
+			 * and an enclosing try in THIS frame lands on its own handler. Settle
+			 * the targets AND the source first — the statement's OP_POP is skipped
+			 * when a catch resumes at the landing pad. */
+			char zMsg[256];
+			SyString *pName = &pInst->pClass->sName;
+			sxu32 nMsg = SyBufferFormat(zMsg,sizeof(zMsg),
+				"Cannot use object of type %.*s as array",
+				(int)pName->nByte,pName->zString);
+			rc = VmThrowFromVm(&(*pVm),"Error",zMsg,nMsg);
+			VmPopOperand(&pTos,pInstr->iP1 + 1);
+			if( rc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+			PH7_THROW_ROUTE_MIDEXPR(rc)
+		}else{
+			PH7_MemObjInitFromInt(&(*pVm),&sKey,0);
+			while( pEntry <= pTos ){
+				if( pEntry->nIdx != SXU32_HIGH /* Variable not constant */ ){
+					sxu32 nSlot = pEntry->nIdx;
+					int bTyped = SyHashTotalEntry(&pVm->hTypedSlot) > 0
+						&& SyHashGet(&pVm->hTypedSlot,(const void *)&nSlot,sizeof(sxu32)) != 0;
+					ph7_value sVal,*pObj;
+					PH7_MemObjInit(&(*pVm),&sVal);
+					if( VmObjectDimRead(&(*pVm),pInst,&sKey,&sVal) != SXRET_OK ){
+						/* The accessor threw: php abandons the destructure there,
+						 * so every later target keeps the value it had -- and this
+						 * target does too, since php assigns nothing for the read
+						 * that failed. */
+						PH7_MemObjRelease(&sVal);
+						rcEnforce = PH7_EXCEPTION;
+						break;
+					}
+					if( bTyped ){
+						/* Same rule as the array source's typed target: enforce on
+						 * the temp so a TypeError leaves the property untouched. */
+						rcEnforce = VmEnforcePropertyTypeOnStore(&(*pVm),nSlot,&sVal,0);
+						if( rcEnforce != SXRET_OK ){
+							PH7_MemObjRelease(&sVal);
+							break;
+						}
+					}
+					/* Re-fetch AFTER the read: a userland offsetGet can reserve
+					 * slots, and growing aMemObj relocates every pointer into it. */
+					pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nSlot);
+					if( pObj ){
+						PH7_MemObjStore(&sVal,pObj);
+					}
+					PH7_MemObjRelease(&sVal);
+				}
+				sKey.x.iVal++; /* Next numeric index */
+				pEntry++;
+			}
+			PH7_MemObjRelease(&sKey);
 		}
 	}else{
 		/* Source is not an array: php warns first (silencing ONLY null — a bool
