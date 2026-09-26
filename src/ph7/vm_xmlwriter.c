@@ -298,6 +298,59 @@ static int XwEndDocument(ph7_context *pCtx,xw_call *pCall)
 }
 XW_METHOD(vm_builtin_xw_end_document,XwEndDocument,"endDocument",0)
 
+/* bool XMLWriter::startAttribute(string $name) */
+static int XwStartAttribute(ph7_context *pCtx,xw_call *pCall)
+{
+	const char *zName = XwStr(pCall,0);
+	int rc = XmlWriterCheckName(pCtx,pCall,zName,"attribute name");
+	if( rc != 0 ){
+		return rc;
+	}
+	return XwStatus(pCtx,xmlTextWriterStartAttribute(pCall->pXw->pWriter,(const xmlChar *)zName));
+}
+XW_METHOD(vm_builtin_xw_start_attribute,XwStartAttribute,"startAttribute","#2")
+
+/* bool XMLWriter::endAttribute() */
+static int XwEndAttribute(ph7_context *pCtx,xw_call *pCall)
+{
+	return XwStatus(pCtx,xmlTextWriterEndAttribute(pCall->pXw->pWriter));
+}
+XW_METHOD(vm_builtin_xw_end_attribute,XwEndAttribute,"endAttribute",0)
+
+/*
+ * bool XMLWriter::startAttributeNs(?string $prefix, string $name, ?string $namespace)
+ *
+ * Only the local NAME is validated -- php checks neither the prefix nor the
+ * namespace, so a prefix with a space in it reaches the document (`<x y:e`),
+ * which is libxml's answer and therefore php's.
+ */
+static int XwStartAttributeNs(ph7_context *pCtx,xw_call *pCall)
+{
+	const char *zName = XwStr(pCall,1);
+	int rc = XmlWriterCheckName(pCtx,pCall,zName,"attribute name");
+	if( rc != 0 ){
+		return rc;
+	}
+	return XwStatus(pCtx,xmlTextWriterStartAttributeNS(pCall->pXw->pWriter,
+		(const xmlChar *)XwStrOrNull(pCall,0),(const xmlChar *)zName,
+		(const xmlChar *)XwStrOrNull(pCall,2)));
+}
+XW_METHOD(vm_builtin_xw_start_attribute_ns,XwStartAttributeNs,"startAttributeNs","#3 ($namespace)")
+
+/* bool XMLWriter::writeAttributeNs(?string $prefix, string $name, ?string $namespace, string $value) */
+static int XwWriteAttributeNs(ph7_context *pCtx,xw_call *pCall)
+{
+	const char *zName = XwStr(pCall,1);
+	int rc = XmlWriterCheckName(pCtx,pCall,zName,"attribute name");
+	if( rc != 0 ){
+		return rc;
+	}
+	return XwStatus(pCtx,xmlTextWriterWriteAttributeNS(pCall->pXw->pWriter,
+		(const xmlChar *)XwStrOrNull(pCall,0),(const xmlChar *)zName,
+		(const xmlChar *)XwStrOrNull(pCall,2),(const xmlChar *)XwStr(pCall,3)));
+}
+XW_METHOD(vm_builtin_xw_write_attribute_ns,XwWriteAttributeNs,"writeAttributeNs","#3 ($namespace)")
+
 /* bool XMLWriter::startElement(string $name) */
 static int XwStartElement(ph7_context *pCtx,xw_call *pCall)
 {
@@ -359,6 +412,52 @@ static int XwWriteElement(ph7_context *pCtx,xw_call *pCall)
 	return XwStatus(pCtx,rc);
 }
 XW_METHOD(vm_builtin_xw_write_element,XwWriteElement,"writeElement","#2 ($content)")
+
+/*
+ * bool XMLWriter::startElementNs(?string $prefix, string $name, ?string $namespace)
+ *
+ * libxml declares the namespace on the element it opens, so a null $namespace
+ * writes the prefixed name alone -- which is how a document declares a prefix
+ * once at the root and uses it below.
+ */
+static int XwStartElementNs(ph7_context *pCtx,xw_call *pCall)
+{
+	const char *zName = XwStr(pCall,1);
+	int rc = XmlWriterCheckName(pCtx,pCall,zName,"element name");
+	if( rc != 0 ){
+		return rc;
+	}
+	return XwStatus(pCtx,xmlTextWriterStartElementNS(pCall->pXw->pWriter,
+		(const xmlChar *)XwStrOrNull(pCall,0),(const xmlChar *)zName,
+		(const xmlChar *)XwStrOrNull(pCall,2)));
+}
+XW_METHOD(vm_builtin_xw_start_element_ns,XwStartElementNs,"startElementNs","#3 ($namespace)")
+
+/* bool XMLWriter::writeElementNs(?string $prefix, string $name, ?string $namespace, ?string $content = null) */
+static int XwWriteElementNs(ph7_context *pCtx,xw_call *pCall)
+{
+	const char *zName = XwStr(pCall,1);
+	const char *zContent = XwStrOrNull(pCall,3);
+	int rc = XmlWriterCheckName(pCtx,pCall,zName,"element name");
+	if( rc != 0 ){
+		return rc;
+	}
+	if( zContent ){
+		rc = xmlTextWriterWriteElementNS(pCall->pXw->pWriter,
+			(const xmlChar *)XwStrOrNull(pCall,0),(const xmlChar *)zName,
+			(const xmlChar *)XwStrOrNull(pCall,2),(const xmlChar *)zContent);
+	}else{
+		/* No content: the empty element php writes, `<p:e xmlns:p="urn"/>` */
+		rc = xmlTextWriterStartElementNS(pCall->pXw->pWriter,
+			(const xmlChar *)XwStrOrNull(pCall,0),(const xmlChar *)zName,
+			(const xmlChar *)XwStrOrNull(pCall,2));
+		if( rc >= 0 ){
+			rc = xmlTextWriterEndElement(pCall->pXw->pWriter);
+		}
+	}
+	return XwStatus(pCtx,rc);
+}
+XW_METHOD(vm_builtin_xw_write_element_ns,XwWriteElementNs,"writeElementNs","#3 ($namespace)")
 
 /* bool XMLWriter::text(string $content) */
 static int XwText(ph7_context *pCtx,xw_call *pCall)
@@ -444,21 +543,35 @@ PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)
 	 * coercion and a too-few/too-many ArgumentCountError; the prelude hand-cast
 	 * every argument ((string)$name, (bool)$enable) and enforced no arity at all. */
 	static const PH7_NativeMethodDef aMethod[] = {
+		/* Declared in php's own stub order: get_class_methods() and Reflection
+		 * both answer declaration order, so the two engines list one surface. */
 		{ "openMemory",      PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_open_memory },
 		{ "setIndent",       PH7_MOD_PUBLIC, "bool $enable", "@bool", vm_builtin_xw_set_indent },
 		{ "setIndentString", PH7_MOD_PUBLIC, "string $indentation", "@bool", vm_builtin_xw_set_indent_string },
+		{ "startAttribute",  PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_xw_start_attribute },
+		{ "endAttribute",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_end_attribute },
+		{ "writeAttribute",  PH7_MOD_PUBLIC, "string $name, string $value", "@bool", vm_builtin_xw_write_attribute },
+		{ "startAttributeNs", PH7_MOD_PUBLIC, "?string $prefix, string $name, ?string $namespace",
+		  "@bool", vm_builtin_xw_start_attribute_ns },
+		{ "writeAttributeNs", PH7_MOD_PUBLIC,
+		  "?string $prefix, string $name, ?string $namespace, string $value",
+		  "@bool", vm_builtin_xw_write_attribute_ns },
+		{ "startElement",    PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_xw_start_element },
+		{ "endElement",      PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_end_element },
+		{ "fullEndElement",  PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_full_end_element },
+		{ "startElementNs",  PH7_MOD_PUBLIC, "?string $prefix, string $name, ?string $namespace",
+		  "@bool", vm_builtin_xw_start_element_ns },
+		{ "writeElement",    PH7_MOD_PUBLIC, "string $name, ?string $content = null", "@bool", vm_builtin_xw_write_element },
+		{ "writeElementNs",  PH7_MOD_PUBLIC,
+		  "?string $prefix, string $name, ?string $namespace, ?string $content = null",
+		  "@bool", vm_builtin_xw_write_element_ns },
+		{ "writeCdata",      PH7_MOD_PUBLIC, "string $content", "@bool", vm_builtin_xw_write_cdata },
+		{ "text",            PH7_MOD_PUBLIC, "string $content", "@bool", vm_builtin_xw_text },
+		{ "writeRaw",        PH7_MOD_PUBLIC, "string $content", "@bool", vm_builtin_xw_write_raw },
 		{ "startDocument",   PH7_MOD_PUBLIC,
 		  "?string $version = null, ?string $encoding = null, ?string $standalone = null",
 		  "@bool", vm_builtin_xw_start_document },
 		{ "endDocument",     PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_end_document },
-		{ "startElement",    PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_xw_start_element },
-		{ "endElement",      PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_end_element },
-		{ "fullEndElement",  PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_full_end_element },
-		{ "writeAttribute",  PH7_MOD_PUBLIC, "string $name, string $value", "@bool", vm_builtin_xw_write_attribute },
-		{ "writeElement",    PH7_MOD_PUBLIC, "string $name, ?string $content = null", "@bool", vm_builtin_xw_write_element },
-		{ "text",            PH7_MOD_PUBLIC, "string $content", "@bool", vm_builtin_xw_text },
-		{ "writeRaw",        PH7_MOD_PUBLIC, "string $content", "@bool", vm_builtin_xw_write_raw },
-		{ "writeCdata",      PH7_MOD_PUBLIC, "string $content", "@bool", vm_builtin_xw_write_cdata },
 		{ "writeComment",    PH7_MOD_PUBLIC, "string $content", "@bool", vm_builtin_xw_write_comment },
 		{ "outputMemory",    PH7_MOD_PUBLIC, "bool $flush = true", "@string", vm_builtin_xw_output_memory },
 		{ "flush",           PH7_MOD_PUBLIC, "bool $empty = true", "@string|int", vm_builtin_xw_flush },
