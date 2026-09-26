@@ -3655,6 +3655,34 @@ PH7_PRIVATE int PH7_VmFuncDisplayName(ph7_vm *pVm,ph7_vm_func *pFunc,const char 
 	*pzOut = zName;
 	return nName;
 }
+/*
+ * php's name for the ACTIVE function -- the one its `name(): ` diagnostic
+ * qualifier prints. A method is rendered with its declaring class ("W::go"),
+ * a closure with php's `{closure:file:line}`, and the global scope with php's
+ * own "main". VmGetFrameContext answers the same question in the shape the
+ * uncaught-exception reporter wants (a bare display name, nothing at global
+ * scope); this one is for a diagnostic raised from INSIDE an internal
+ * function on the caller's behalf, which is how php attributes libxml's
+ * errors -- `$el->nodeValue = 'a&b'` warns under the caller's name, not under
+ * the accessor's.
+ */
+PH7_PRIVATE void PH7_VmActiveFuncName(ph7_vm *pVm,SyBlob *pOut)
+{
+	VmFrame *pFrame = pVm->pFrame;
+	ph7_vm_func *pFunc = 0;
+	if( pFrame ){
+		pFrame = VmSkipExceptionFrames(pFrame);
+		if( pFrame->pParent ){
+			pFunc = (ph7_vm_func *)pFrame->pUserData;
+		}
+	}
+	if( pFunc ){
+		VmReturnFuncName(&(*pVm),pFunc,pOut);
+	}else{
+		SyBlobAppend(pOut,"main",sizeof("main")-1);
+	}
+	SyBlobNullAppend(pOut);
+}
 PH7_PRIVATE void VmGetFrameContext(ph7_vm *pVm,const char **pzFuncName,int *pnFuncLen)
 {
 	VmFrame *pFrame;

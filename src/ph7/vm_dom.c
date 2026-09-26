@@ -1652,7 +1652,7 @@ static const char * DomGetName(int nArg,ph7_value **apArg)
 	return nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
 }
 /*
- * The __get/__isset pair every DOM class carries.
+ * The __get/__isset/__set trio every DOM class carries.
  *
  * Both ride ONE recognizer per class -- the DomProp_X readers below, which
  * answer 1 when the name is a property of that class and have written its
@@ -1682,7 +1682,30 @@ static int DomUndefProp(ph7_context *pCtx,const char *zName)
 	}
 	return PH7_OK;
 }
-#define DOM_PROP_ACCESSORS(CLS,READER)                                          \
+/*
+ * The write half. A per-class WRITER answers one of these; the name it does
+ * not write is looked up in the class's READER, which decides between php's
+ * two refusals -- a property that exists is read-only, one that does not is a
+ * dynamic property (deprecated in php 8.2, so §10 rejects it here, which is
+ * what the engine's own store path would have said had the class carried no
+ * __set at all).
+ */
+#define DOM_SET_UNKNOWN  0   /* not a property of this class */
+#define DOM_SET_DONE     1   /* written, or a refusal already raised into *pRc */
+static int DomRefuseWrite(ph7_context *pCtx,const char *zName,int bKnown)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SyString sName;
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	SyStringInitFromBuf(&sName,zName,SyStrlen(zName));
+	return PH7_VmThrowException(pCtx,"Error",
+		bKnown ? "Cannot modify readonly property %z::$%z"
+		       : "Cannot create dynamic property %z::$%z",
+		&pThis->pClass->sName,&sName);
+}
+#define DOM_PROP_ACCESSORS(CLS,READER,WRITER)                                   \
 	DOM_METHOD(vm_builtin_##CLS##_get)                                          \
 	{                                                                           \
 		const char *zName = DomGetName(nArg,apArg);                             \
@@ -1697,6 +1720,15 @@ static int DomUndefProp(ph7_context *pCtx,const char *zName)
 		int bNull = (pCtx->pRet->iFlags & MEMOBJ_NULL) != 0;                    \
 		ph7_result_bool(pCtx,bKnown && !bNull);                                 \
 		return PH7_OK;                                                          \
+	}                                                                           \
+	DOM_METHOD(vm_builtin_##CLS##_set)                                          \
+	{                                                                           \
+		const char *zName = DomGetName(nArg,apArg);                             \
+		int rc = PH7_OK;                                                        \
+		if( WRITER(pCtx,zName,nArg > 1 ? apArg[1] : 0,&rc) == DOM_SET_DONE ){   \
+			return rc;                                                          \
+		}                                                                       \
+		return DomRefuseWrite(pCtx,zName,READER(pCtx,zName) != 0);              \
 	}
 /* DOMDocument adds documentElement. */
 static int DomDocProp(ph7_context *pCtx,const char *zName)
@@ -1709,13 +1741,27 @@ static int DomDocProp(ph7_context *pCtx,const char *zName)
 	}
 	return DomNodeProp(pCtx,zName);
 }
-/* DOMElement adds tagName. */
+/* DOMElement adds tagName, and the two attribute-backed names php exposes as
+ * properties: `className` IS the class attribute and `id` IS the id one, both
+ * answering "" when the attribute is absent. */
 static int DomElemProp(ph7_context *pCtx,const char *zName)
 {
 	phl_domnode *pNd;
+	int bClass = DomNameIs(zName,"className");
 	if( DomNameIs(zName,"tagName") ){
 		pNd = DomThisNode(pCtx);
 		DomNodeName(pCtx,pNd ? (xmlNodePtr)pNd->pNode : 0);
+		return 1;
+	}
+	if( bClass || DomNameIs(zName,"id") ){
+		xmlChar *zVal;
+		pNd = DomThisNode(pCtx);
+		zVal = pNd ? xmlGetNoNsProp((xmlNodePtr)pNd->pNode,
+			(const xmlChar *)(bClass ? "class" : "id")) : 0;
+		ph7_result_string(pCtx,zVal ? (const char *)zVal : "",-1);
+		if( zVal ){
+			xmlFree(zVal);
+		}
 		return 1;
 	}
 	return DomNodeProp(pCtx,zName);
@@ -1778,14 +1824,287 @@ static int DomTextProp(ph7_context *pCtx,const char *zName)
 	}
 	return DomCharProp(pCtx,zName);
 }
-DOM_PROP_ACCESSORS(DOMNodeList,DomListProp)
-DOM_PROP_ACCESSORS(DOMNamedNodeMap,DomMapProp)
-DOM_PROP_ACCESSORS(DOMNode,DomNodeProp)
-DOM_PROP_ACCESSORS(DOMDocument,DomDocProp)
-DOM_PROP_ACCESSORS(DOMElement,DomElemProp)
-DOM_PROP_ACCESSORS(DOMAttr,DomAttrProp)
-DOM_PROP_ACCESSORS(DOMCharacterData,DomCharProp)
-DOM_PROP_ACCESSORS(DOMText,DomTextProp)
+/*
+ * php's typed-property store for the DOM's own string-shaped properties: a
+ * scalar coerces, null is accepted only where the declared type is nullable
+ * (and means the empty string), and an array or an object is a TypeError
+ * naming the class that DECLARES the property rather than the one the write
+ * went through. The value is coerced through a COPY -- ph7_value_to_string()
+ * converts the object it is handed, and that object is the caller's own
+ * `$v` in `$node->nodeValue = $v`.
+ */
+static int DomWriteText(ph7_context *pCtx,const char *zOwner,const char *zProp,
+	const char *zType,ph7_value *pVal,SyBlob *pOut,int *pRc)
+{
+	int bNullable = zType[0] == '?';
+	ph7_value sTmp;
+	if( pVal == 0
+	 || (pVal->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ)) != 0
+	 || ((pVal->iFlags & MEMOBJ_NULL) != 0 && !bNullable) ){
+		char zBuf[128];
+		const char *zGiven = "null";
+		if( pVal && (pVal->iFlags & MEMOBJ_OBJ) ){
+			ph7_class_instance *pObj = (ph7_class_instance *)pVal->x.pOther;
+			SyBufferFormat(zBuf,sizeof(zBuf),"%z",&pObj->pClass->sName);
+			zGiven = zBuf;
+		}else if( pVal ){
+			zGiven = ph7_type_name(pVal);
+		}
+		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+			"Cannot assign %s to property %s::$%s of type %s",zGiven,zOwner,zProp,zType);
+		return 0;
+	}
+	SyBlobInit(pOut,&pCtx->pVm->sAllocator);
+	if( (pVal->iFlags & MEMOBJ_NULL) == 0 ){
+		PH7_MemObjInit(pCtx->pVm,&sTmp);
+		PH7_MemObjLoad(pVal,&sTmp);
+		PH7_MemObjToString(&sTmp);
+		SyBlobAppend(pOut,SyBlobData(&sTmp.sBlob),SyBlobLength(&sTmp.sBlob));
+		PH7_MemObjRelease(&sTmp);
+	}
+	SyBlobNullAppend(pOut);
+	return 1;
+}
+/* Has this node ever been handed to PHP? The identity cache is the record. */
+static int DomIsWrapped(ph7_vm *pVm,ph7_class_instance *pDoc,xmlNodePtr pNode)
+{
+	ph7_hashmap *pCache = DomCache(&(*pVm),pDoc);
+	ph7_hashmap_node *pEntry = 0;
+	ph7_value sKey;
+	int bHit;
+	if( pCache == 0 ){
+		return 0;
+	}
+	PH7_MemObjInitFromInt(&(*pVm),&sKey,(sxi64)(sxuptr)pNode);
+	bHit = PH7_HashmapLookup(pCache,&sKey,&pEntry) == SXRET_OK && pEntry != 0;
+	PH7_MemObjRelease(&sKey);
+	return bHit;
+}
+/*
+ * php FREES the subtree a content write replaces -- except the nodes a PHP
+ * variable still holds a wrapper for, which it unlinks and keeps as roots of
+ * their own detached fragments. That is observable: after
+ * `$el->textContent = 'flat'`, a variable holding a grandchild still reads its
+ * text and answers NULL for `parentNode`. Parking the subtree whole (which is
+ * what this engine must do -- a wrapper's handle is a raw pointer, so nothing
+ * here is ever freed before the document is) left every such parent attached,
+ * so the same variable answered its old parent's name. Detach exactly the nodes
+ * php would have kept: the OUTERMOST wrapped ones, php's own rule, since it
+ * stops recursing at a node it is keeping.
+ */
+static void DomPartWrapped(ph7_vm *pVm,ph7_class_instance *pDoc,phl_xmldoc *pShell,xmlNodePtr pNode)
+{
+	xmlNodePtr pChild = pNode ? pNode->children : 0;
+	while( pChild ){
+		xmlNodePtr pNext = pChild->next;
+		if( DomIsWrapped(&(*pVm),pDoc,pChild) ){
+			xmlUnlinkNode(pChild);
+			DomOrphanAdd(pShell,pChild);
+		}else{
+			DomPartWrapped(&(*pVm),pDoc,pShell,pChild);
+		}
+		pChild = pNext;
+	}
+}
+/*
+ * Everything a content write has to do before libxml sees it: the node's
+ * children go to the document's ORPHAN set rather than being freed, because a
+ * PHP variable may still hold a wrapper for one of them and the wrapper's
+ * handle is a raw pointer. (php keeps such a node alive through its own
+ * wrapper refcount; this engine parks it, exactly as removeChild does.)
+ */
+static void DomDropChildren(ph7_context *pCtx,phl_xmldoc *pShell,xmlNodePtr pNode)
+{
+	ph7_class_instance *pDoc = DomThisDoc(pCtx);
+	xmlNodePtr pChild = pNode ? pNode->children : 0;
+	while( pChild ){
+		xmlNodePtr pNext = pChild->next;
+		if( !DomIsWrapped(pCtx->pVm,pDoc,pChild) ){
+			DomPartWrapped(pCtx->pVm,pDoc,pShell,pChild);
+		}
+		xmlUnlinkNode(pChild);
+		DomOrphanAdd(pShell,pChild);
+		pChild = pNext;
+	}
+}
+/*
+ * php's two content writes, which are NOT the same write.
+ *
+ * `nodeValue` is libxml's xmlNodeSetContent, and on an element or an attribute
+ * that PARSES entity references: `$el->nodeValue = 'a&b'` is libxml's
+ * "unterminated entity reference" and leaves the node EMPTY, while
+ * `'a&amp;b'` stores the one character. `textContent` sets one raw text child
+ * instead, so the same two strings store what they say. Every other node kind
+ * takes its content literally either way.
+ */
+static void DomSetContent(ph7_context *pCtx,phl_xmldoc *pShell,xmlNodePtr pNode,
+	const char *zText,int bParseEntities)
+{
+	int bTree = pNode->type == XML_ELEMENT_NODE || pNode->type == XML_ATTRIBUTE_NODE;
+	xmlNodePtr pText;
+	DomDropChildren(pCtx,pShell,pNode);
+	if( !bTree || (bParseEntities && zText[0]) ){
+		/* The parsing write is the one that can FAIL -- an unterminated entity
+		 * reference leaves the node empty and libxml says so. Route that through
+		 * the per-VM queue like every other libxml diagnostic here, or it prints
+		 * itself on stderr past error_reporting(), past `@`, and past
+		 * libxml_get_errors(). */
+		SyBlob sFn;
+		sxu32 nMark = PH7_LibxmlCaptureBegin(pCtx->pVm);
+		xmlNodeSetContent(pNode,(const xmlChar *)zText);
+		/* php attributes the warning to the CALLER's scope -- a property write
+		 * is not a call, so there is no accessor name to print. */
+		SyBlobInit(&sFn,&pCtx->pVm->sAllocator);
+		PH7_VmActiveFuncName(pCtx->pVm,&sFn);
+		PH7_LibxmlCaptureEnd(pCtx->pVm,nMark,(const char *)SyBlobData(&sFn));
+		SyBlobRelease(&sFn);
+		return;
+	}
+	/* One raw text child -- and php leaves one even for the EMPTY string, which
+	 * is why `$el->nodeValue = ''` serializes as <r></r> rather than <r/>.
+	 * (The entity-parsing write is the exception: a string libxml refuses, like
+	 * `'a&b'`, leaves the element with no children at all.) */
+	pText = xmlNewDocText(pNode->doc,(const xmlChar *)zText);
+	if( pText ){
+		DomLinkLast(pNode,pText);
+	}
+}
+/* DOMNode's three writable properties. */
+static int DomSetNodeProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	int bValue = DomNameIs(zName,"nodeValue");
+	SyBlob sVal;
+	if( bValue || DomNameIs(zName,"textContent") ){
+		if( DomWriteText(pCtx,"DOMNode",bValue ? "nodeValue" : "textContent",
+			bValue ? "?string" : "string",pVal,&sVal,pRc) == 0 ){
+			return DOM_SET_DONE;
+		}
+		/* php leaves a DOCUMENT alone: its nodeValue is null and stays null. */
+		if( pNode && pNode->type != XML_DOCUMENT_NODE && pNode->type != XML_HTML_DOCUMENT_NODE ){
+			DomSetContent(pCtx,pNd->pShell,pNode,(const char *)SyBlobData(&sVal),bValue);
+		}
+		SyBlobRelease(&sVal);
+		return DOM_SET_DONE;
+	}
+	if( DomNameIs(zName,"prefix") ){
+		xmlNsPtr pNs;
+		xmlNodePtr pDecl;
+		if( DomWriteText(pCtx,"DOMNode","prefix","string",pVal,&sVal,pRc) == 0 ){
+			return DOM_SET_DONE;
+		}
+		/* Only a node that HAS a namespace can be re-prefixed; php ignores the
+		 * write for anything else, including an element in no namespace. */
+		if( DomHasNsSlot(pNode) && pNode->ns && pNode->ns->href ){
+			const char *zPrefix = (const char *)SyBlobData(&sVal);
+			/* An attribute's declaration goes on its ELEMENT. */
+			pDecl = pNode->type == XML_ATTRIBUTE_NODE ? pNode->parent : pNode;
+			if( DomNameIs(zPrefix,"xml")
+			 && !DomNameIs((const char *)pNode->ns->href,
+				"http://www.w3.org/XML/1998/namespace") ){
+				/* php's reserved-prefix refusal: `xml` may only name ITS namespace. */
+				SyBlobRelease(&sVal);
+				*pRc = PH7_VmThrowException(pCtx,"DOMException","Namespace Error");
+				return DOM_SET_DONE;
+			}
+			/* php looks only at the declarations THIS node carries -- an
+			 * ancestor's is not reused, which is why re-prefixing a child grows
+			 * a second `xmlns:q` beside the one its parent already has. */
+			for( pNs = pDecl ? pDecl->nsDef : 0 ; pNs ; pNs = pNs->next ){
+				const char *zHave = pNs->prefix ? (const char *)pNs->prefix : "";
+				if( DomNameIs(zHave,zPrefix) && pNs->href
+				 && xmlStrEqual(pNs->href,pNode->ns->href) ){
+					break;
+				}
+			}
+			if( pNs == 0 ){
+				/* None binds this prefix to the node's own URI: php declares one,
+				 * which is how `$el->prefix = ''` grows an `xmlns="..."` on the
+				 * element itself -- and how a prefix already bound HERE to another
+				 * URI becomes libxml's refusal and php's Namespace Error. */
+				pNs = pDecl ? xmlNewNs(pDecl,pNode->ns->href,
+					zPrefix[0] ? (const xmlChar *)zPrefix : 0) : 0;
+			}
+			if( pNs == 0 ){
+				SyBlobRelease(&sVal);
+				*pRc = PH7_VmThrowException(pCtx,"DOMException","Namespace Error");
+				return DOM_SET_DONE;
+			}
+			xmlSetNs(pNode,pNs);
+		}
+		SyBlobRelease(&sVal);
+		return DOM_SET_DONE;
+	}
+	return DOM_SET_UNKNOWN;
+}
+/* DOMElement adds className and id, both of them ATTRIBUTES under the name. */
+static int DomSetElemProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	int bClass = DomNameIs(zName,"className");
+	SyBlob sVal;
+	if( bClass || DomNameIs(zName,"id") ){
+		if( DomWriteText(pCtx,"DOMElement",bClass ? "className" : "id","string",
+			pVal,&sVal,pRc) == 0 ){
+			return DOM_SET_DONE;
+		}
+		if( pNd ){
+			xmlSetProp((xmlNodePtr)pNd->pNode,(const xmlChar *)(bClass ? "class" : "id"),
+				(const xmlChar *)SyBlobData(&sVal));
+		}
+		SyBlobRelease(&sVal);
+		return DOM_SET_DONE;
+	}
+	return DomSetNodeProp(pCtx,zName,pVal,pRc);
+}
+/* DOMAttr::value and DOMCharacterData::data are the node's own content. The
+ * attribute's parses entity references, as its `nodeValue` does -- only
+ * `textContent` takes an attribute's bytes literally; character data has no
+ * parsing write at all, whichever name it is written under. */
+static int DomSetContentProp(ph7_context *pCtx,const char *zOwner,const char *zProp,
+	const char *zName,ph7_value *pVal,int bParseEntities,int *pRc)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	SyBlob sVal;
+	if( !DomNameIs(zName,zProp) ){
+		return DOM_SET_UNKNOWN;
+	}
+	if( DomWriteText(pCtx,zOwner,zProp,"string",pVal,&sVal,pRc) == 0 ){
+		return DOM_SET_DONE;
+	}
+	if( pNd ){
+		DomSetContent(pCtx,pNd->pShell,(xmlNodePtr)pNd->pNode,
+			(const char *)SyBlobData(&sVal),bParseEntities);
+	}
+	SyBlobRelease(&sVal);
+	return DOM_SET_DONE;
+}
+static int DomSetAttrProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)
+{
+	int rc = DomSetContentProp(pCtx,"DOMAttr","value",zName,pVal,TRUE,pRc);
+	return rc != DOM_SET_UNKNOWN ? rc : DomSetNodeProp(pCtx,zName,pVal,pRc);
+}
+static int DomSetCharProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)
+{
+	int rc = DomSetContentProp(pCtx,"DOMCharacterData","data",zName,pVal,FALSE,pRc);
+	return rc != DOM_SET_UNKNOWN ? rc : DomSetNodeProp(pCtx,zName,pVal,pRc);
+}
+/* The two collections and the document have nothing writable of their own yet;
+ * `length` is read-only and the document's own directives are §4's next slice. */
+static int DomSetNothing(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)
+{
+	SXUNUSED(pCtx); SXUNUSED(zName); SXUNUSED(pVal); SXUNUSED(pRc);
+	return DOM_SET_UNKNOWN;
+}
+DOM_PROP_ACCESSORS(DOMNodeList,DomListProp,DomSetNothing)
+DOM_PROP_ACCESSORS(DOMNamedNodeMap,DomMapProp,DomSetNothing)
+DOM_PROP_ACCESSORS(DOMNode,DomNodeProp,DomSetNodeProp)
+DOM_PROP_ACCESSORS(DOMDocument,DomDocProp,DomSetNodeProp)
+DOM_PROP_ACCESSORS(DOMElement,DomElemProp,DomSetElemProp)
+DOM_PROP_ACCESSORS(DOMAttr,DomAttrProp,DomSetAttrProp)
+DOM_PROP_ACCESSORS(DOMCharacterData,DomCharProp,DomSetCharProp)
+DOM_PROP_ACCESSORS(DOMText,DomTextProp,DomSetCharProp)
 /* DOMDocument::getElementsByTagName / DOMElement::getElementsByTagName --
  * php declares it on those two, not on DOMNode, so both specs name it. */
 DOM_METHOD(vm_builtin_Dom_getElementsByTagName)
@@ -1844,6 +2163,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMNode_isDefaultNamespace },
 		{ "__get",          PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNode_get },
 		{ "__isset",        PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNode_isset },
+		{ "__set",          PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMNode_set },
 	};
 	static const PH7_NativePropDef aDocProp[] = {
 		/* php models both as VIRTUAL hooked properties reading libxml state, so it
@@ -1877,6 +2197,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_Dom_getElementsByTagName },
 		{ "__get",                PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMDocument_get },
 		{ "__isset",              PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMDocument_isset },
+		{ "__set",                PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMDocument_set },
 	};
 	static const PH7_NativeMethodDef aElemMethod[] = {
 		{ "getAttribute",         PH7_MOD_PUBLIC, "string $qualifiedName", "@string",
@@ -1896,18 +2217,22 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_Dom_getElementsByTagName },
 		{ "__get",                PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMElement_get },
 		{ "__isset",              PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMElement_isset },
+		{ "__set",                PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMElement_set },
 	};
 	static const PH7_NativeMethodDef aAttrMethod[] = {
 		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMAttr_get },
 		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMAttr_isset },
+		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMAttr_set },
 	};
 	static const PH7_NativeMethodDef aCharMethod[] = {
 		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMCharacterData_get },
 		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMCharacterData_isset },
+		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMCharacterData_set },
 	};
 	static const PH7_NativeMethodDef aTextMethod[] = {
 		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMText_get },
 		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMText_isset },
+		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMText_set },
 	};
 	/* DOMNodeList and DOMNamedNodeMap share a slot layout: what a live view is OF
 	 * ($__owner), the document to wrap results against ($__doc), and -- for the
@@ -1929,6 +2254,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "getIterator", PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_Dom_getIterator },
 		{ "__get",       PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNodeList_get },
 		{ "__isset",     PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNodeList_isset },
+		{ "__set",       PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMNodeList_set },
 	};
 	static const PH7_NativeMethodDef aMapMethod[] = {
 		{ "count",        PH7_MOD_PUBLIC, "", "@int", vm_builtin_DOMNamedNodeMap_count },
@@ -1938,6 +2264,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "getIterator",  PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_Dom_getIterator },
 		{ "__get",        PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNamedNodeMap_get },
 		{ "__isset",      PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNamedNodeMap_isset },
+		{ "__set",        PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMNamedNodeMap_set },
 	};
 	static const PH7_NativePropDef aXPathProp[] = {
 		/* Written by the constructor, which is why the slot can carry php's

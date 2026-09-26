@@ -4524,6 +4524,7 @@ PH7_PRIVATE VmOpRc VmExecOpForeachStep(ph7_vm *pVm,VmExecState *pState,VmInstr *
 /* vm_error.c — error/diagnostics/type-enforcement machinery shared with vm.c */
 PH7_PRIVATE sxi32 PH7_VmErrPhpBit(sxi32 iErr);
 PH7_PRIVATE void VmGetFrameContext(ph7_vm *pVm,const char **pzFuncName,int *pnFuncLen);
+PH7_PRIVATE void PH7_VmActiveFuncName(ph7_vm *pVm,SyBlob *pOut);
 PH7_PRIVATE sxi32 VmEnterFrame(ph7_vm *pVm,void *pUserData,ph7_class_instance *pThis,VmFrame **ppFrame);
 PH7_PRIVATE void VmExcRelease(ph7_vm *pVm,ph7_exception *pExc);
 PH7_PRIVATE void VmClearFramePending(VmFrame *pFrame);

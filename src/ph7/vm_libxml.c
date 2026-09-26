@@ -289,7 +289,9 @@ PH7_PRIVATE void PH7_LibxmlCaptureEnd(ph7_vm *pVm,sxu32 nMark,const char *zFnNam
 				}
 			}
 			SyBlobAppend(&sMsg,"\0",1);
-			SyStringInitFromBuf(&sFunc,zFnName,SyStrlen(zFnName));
+			if( zFnName ){
+				SyStringInitFromBuf(&sFunc,zFnName,SyStrlen(zFnName));
+			}
 			PH7_VmThrowError(&(*pVm),zFnName ? &sFunc : 0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));
 			SyBlobRelease(&sMsg);
 			LibxmlFreeErr(pVm,&aErr[n]);
