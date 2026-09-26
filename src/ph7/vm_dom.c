@@ -11,6 +11,7 @@
 #include <libxml/xpath.h>
 #include <libxml/xpathInternals.h>
 #include <libxml/xmlschemas.h>
+#include <libxml/encoding.h>
 
 /*
  * ext/dom on libxml2: the DOM classes, declared and bodied in C.
@@ -2739,7 +2740,11 @@ DOM_METHOD(vm_builtin_DOMDocument_construct)
 	if( pThis == 0 ){
 		return PH7_OK;
 	}
-	pDoc = xmlNewDoc((const xmlChar *)(zVersion[0] ? zVersion : "1.0"));
+	/* The version goes through as WRITTEN -- `new DOMDocument('')` is a document
+	 * whose `version` reads "" and whose declaration says `version=""`, which is
+	 * php's answer (only an omitted argument takes the "1.0" default, and that
+	 * one is the signature's). */
+	pDoc = xmlNewDoc((const xmlChar *)zVersion);
 	if( pDoc == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
@@ -2757,6 +2762,49 @@ DOM_METHOD(vm_builtin_DOMDocument_construct)
 	DomSetRes(pVm,pThis,pRes);
 	PH7_NativeSetAttrObj(pVm,pThis,DOM_DOC,pThis);
 	return PH7_OK;
+}
+/*
+ * The URI php stamps on a document parsed from MEMORY.
+ *
+ * A file parse takes its URI from the file; a memory parse has none, and php
+ * gives it the process's CURRENT DIRECTORY with a trailing separator so that a
+ * relative `xml:base` (and every `baseURI` under it) resolves against the same
+ * place a relative include would. The path is the bytes getcwd() answers, not a
+ * URI: a space stays a space. Asks the VFS rather than the C library so the
+ * win32 backend answers its own spelling.
+ *
+ * The answer travels through the context's RESULT slot, which is where the VFS
+ * writes it -- every caller sets its own return value afterwards.
+ */
+static void DomCwdUri(ph7_context *pCtx,SyBlob *pOut)
+{
+	const ph7_vfs *pVfs = pCtx->pVm->pEngine->pVfs;
+	SyBlobInit(pOut,&pCtx->pVm->sAllocator);
+	PH7_MemObjRelease(pCtx->pRet);
+	if( pVfs && pVfs->xGetcwd && pVfs->xGetcwd(pCtx) == PH7_OK
+	 && (pCtx->pRet->iFlags & MEMOBJ_STRING) != 0 ){
+		const char *zDir = (const char *)SyBlobData(&pCtx->pRet->sBlob);
+		sxu32 nDir = SyBlobLength(&pCtx->pRet->sBlob);
+		SyBlobAppend(pOut,zDir,nDir);
+		if( nDir < 1 || (zDir[nDir - 1] != '/' && zDir[nDir - 1] != '\\') ){
+			SyBlobAppend(pOut,"/",sizeof(char));
+		}
+	}
+	PH7_MemObjRelease(pCtx->pRet);
+	SyBlobNullAppend(pOut);
+}
+/* Stamp it, unless the parse already gave the document one. */
+static void DomStampCwd(ph7_context *pCtx,xmlDocPtr pDoc)
+{
+	SyBlob sDir;
+	if( pDoc == 0 || pDoc->URL ){
+		return;
+	}
+	DomCwdUri(pCtx,&sDir);
+	if( SyBlobLength(&sDir) > 0 ){
+		pDoc->URL = xmlStrdup((const xmlChar *)SyBlobData(&sDir));
+	}
+	SyBlobRelease(&sDir);
 }
 /* DOMDocument::loadXML(string $source, int $options = 0): bool -- the receiver
  * is REPOINTED at a new tree, so its identity cache is dropped with it. */
@@ -2785,6 +2833,7 @@ DOM_METHOD(vm_builtin_DOMDocument_loadXML)
 	nMark = PH7_LibxmlCaptureBegin(pVm);
 	pDoc = xmlReadMemory(zSrc,nLen,0,0,iOpts);
 	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::loadXML");
+	DomStampCwd(pCtx,pDoc);
 	pShell = pDoc ? PH7_LibxmlNewDoc(pVm,pDoc) : 0;
 	pRes = pShell ? DomNewRes(pVm,pShell,pDoc) : 0;
 	if( pRes == 0 ){
@@ -4375,6 +4424,19 @@ static int DomNodeProp(ph7_context *pCtx,const char *zName)
 		DomLocalName(pCtx,pNode);
 	}else if( DomNameIs(zName,"isConnected") ){
 		ph7_result_bool(pCtx,DomIsConnected(pNode));
+	}else if( DomNameIs(zName,"baseURI") ){
+		/* php's is libxml's own xmlNodeGetBase(): the nearest `xml:base` on the
+		 * way up, resolved against the DOCUMENT's URI, and that URI itself when
+		 * no ancestor declares one. So it answers null exactly when the document
+		 * was never given a URI -- a `new DOMDocument()` that was not loaded --
+		 * and a node created and never appended still answers its document's. */
+		xmlChar *zBase = pNode ? xmlNodeGetBase(pNode->doc,pNode) : 0;
+		if( zBase ){
+			ph7_result_string(pCtx,(const char *)zBase,-1);
+			xmlFree(zBase);
+		}else{
+			ph7_result_null(pCtx);
+		}
 	}else if( DomNameIs(zName,"childElementCount") ){
 		ph7_result_int(pCtx,DomChildCount(pNode,1));
 	}else if( DomNameIs(zName,"childNodes") ){
@@ -4483,13 +4545,81 @@ static int DomRefuseWrite(ph7_context *pCtx,const char *zName,int bKnown)
 		}                                                                       \
 		return DomRefuseWrite(pCtx,zName,READER(pCtx,zName) != 0);              \
 	}
-/* DOMDocument adds documentElement. */
+/* A libxml string slot answered as php answers it: the bytes, or null when the
+ * document never carried one (`encoding` on a declaration-less document). */
+static void DomResultXmlStr(ph7_context *pCtx,const xmlChar *zVal)
+{
+	if( zVal ){
+		ph7_result_string(pCtx,(const char *)zVal,-1);
+	}else{
+		ph7_result_null(pCtx);
+	}
+}
+/*
+ * The DOCUMENT's own state block.
+ *
+ * Nine of php's twenty-two DOMDocument properties are the XML DECLARATION and
+ * the document's URI, read straight off libxml's xmlDoc -- and php spells most
+ * of them twice, once under the DOM level-3 name and once under the level-1 one
+ * it kept for compatibility (`version`/`xmlVersion`, `encoding`/`xmlEncoding`,
+ * `standalone`/`xmlStandalone`).  The pairs are not synonyms in every
+ * direction: `xmlEncoding` and `actualEncoding` READ the same slot `encoding`
+ * writes and are themselves read-only, which is what makes `$d->xmlEncoding =
+ * 'UTF-8'` php's readonly Error and `$d->encoding = 'UTF-8'` the write that
+ * changes the bytes `saveXML()` emits.
+ *
+ * `actualEncoding` and `config` carry php 8.4's #[\Deprecated]: the notice
+ * fires on a READ and on an `isset()` alike (both go through php's property
+ * handler), which is why it is raised HERE rather than in __get -- and NOT on a
+ * write, where the readonly refusal comes first and is raised by the writer
+ * below without consulting this reader.
+ */
+static int DomDocStateProp(ph7_context *pCtx,const char *zName,xmlDocPtr pDoc)
+{
+	int bDeprAe = DomNameIs(zName,"actualEncoding");
+	if( bDeprAe || DomNameIs(zName,"config") ){
+		PH7_VmThrowError(pCtx->pVm,0,8192 /* E_DEPRECATED */,
+			bDeprAe ? "Property DOMDocument::$actualEncoding is deprecated"
+			        : "Property DOMDocument::$config is deprecated");
+		/* `config` is php's DOM level-3 configuration slot and has never been
+		 * filled in there: the handler answers null and nothing else. */
+		if( bDeprAe ){
+			DomResultXmlStr(pCtx,pDoc ? pDoc->encoding : 0);
+		}else{
+			ph7_result_null(pCtx);
+		}
+		return 1;
+	}
+	if( DomNameIs(zName,"encoding") || DomNameIs(zName,"xmlEncoding") ){
+		DomResultXmlStr(pCtx,pDoc ? pDoc->encoding : 0);
+		return 1;
+	}
+	if( DomNameIs(zName,"version") || DomNameIs(zName,"xmlVersion") ){
+		DomResultXmlStr(pCtx,pDoc ? pDoc->version : 0);
+		return 1;
+	}
+	if( DomNameIs(zName,"documentURI") ){
+		DomResultXmlStr(pCtx,pDoc ? pDoc->URL : 0);
+		return 1;
+	}
+	if( DomNameIs(zName,"standalone") || DomNameIs(zName,"xmlStandalone") ){
+		/* libxml records four states in one int -- no declaration (-1), a
+		 * declaration without the attribute (-2), `no` (0) and `yes` (1) -- and
+		 * php's bool is true for the last one only. */
+		ph7_result_bool(pCtx,pDoc != 0 && pDoc->standalone == 1);
+		return 1;
+	}
+	return 0;
+}
+/* DOMDocument adds documentElement and the state block above. */
 static int DomDocProp(ph7_context *pCtx,const char *zName)
 {
-	phl_domnode *pNd;
+	phl_domnode *pNd = DomThisNode(pCtx);
 	if( DomNameIs(zName,"documentElement") ){
-		pNd = DomThisNode(pCtx);
 		DomResultNodeOf(pCtx,pNd,pNd ? xmlDocGetRootElement((xmlDocPtr)pNd->pNode) : 0);
+		return 1;
+	}
+	if( DomDocStateProp(pCtx,zName,pNd ? (xmlDocPtr)pNd->pNode : 0) ){
 		return 1;
 	}
 	return DomNodeProp(pCtx,zName);
@@ -4666,6 +4796,33 @@ static int DomWriteText(ph7_context *pCtx,const char *zOwner,const char *zProp,
 		PH7_MemObjRelease(&sTmp);
 	}
 	SyBlobNullAppend(pOut);
+	return 1;
+}
+/*
+ * The same screen for a `bool` property. php's weak mode takes an int, a float
+ * or a string and answers its truthiness (`"0"` and `""` are false), and refuses
+ * null, an array and an object -- the one difference from the `?string` block
+ * above being that a bool property is NOT nullable, so `= null` is the TypeError
+ * rather than the empty write. Answers 1 when the caller may go on and use
+ * ph7_value_to_bool(), 0 when the refusal has been raised into *pRc.
+ */
+static int DomWriteBool(ph7_context *pCtx,const char *zOwner,const char *zProp,
+	ph7_value *pVal,int *pRc)
+{
+	if( pVal == 0 || (pVal->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_NULL)) != 0 ){
+		char zBuf[128];
+		const char *zGiven = "null";
+		if( pVal && (pVal->iFlags & MEMOBJ_OBJ) ){
+			ph7_class_instance *pObj = (ph7_class_instance *)pVal->x.pOther;
+			SyBufferFormat(zBuf,sizeof(zBuf),"%z",&pObj->pClass->sName);
+			zGiven = zBuf;
+		}else if( pVal && (pVal->iFlags & MEMOBJ_NULL) == 0 ){
+			zGiven = ph7_type_name(pVal);
+		}
+		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+			"Cannot assign %s to property %s::$%s of type bool",zGiven,zOwner,zProp);
+		return 0;
+	}
 	return 1;
 }
 /* Has this node ever been handed to PHP? The identity cache is the record. */
@@ -4898,8 +5055,87 @@ static int DomSetPiProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int 
 	int rc = DomSetContentProp(pCtx,"DOMProcessingInstruction","data",zName,pVal,FALSE,pRc);
 	return rc != DOM_SET_UNKNOWN ? rc : DomSetNodeProp(pCtx,zName,pVal,pRc);
 }
-/* The two collections and the document have nothing writable of their own yet;
- * `length` is read-only and the document's own directives are §4's next slice. */
+/*
+ * The DOCUMENT's writable state: the three declaration slots php lets a program
+ * change, plus `documentURI`.
+ *
+ * php declares them `?string`/`bool`, so a null goes through the string three as
+ * the EMPTY string (`$d->version = null` writes `<?xml version=""?>`) and is a
+ * TypeError on the bool pair; an array or an object is a TypeError on all of
+ * them.  The read-only four are refused HERE rather than through the reader,
+ * because two of them are deprecated and php's readonly Error comes without the
+ * deprecation notice a read would have raised.
+ */
+static int DomSetDocProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlDocPtr pDoc = pNd ? (xmlDocPtr)pNd->pNode : 0;
+	int bVersion = DomNameIs(zName,"version") || DomNameIs(zName,"xmlVersion");
+	int bUri = DomNameIs(zName,"documentURI");
+	SyBlob sVal;
+	if( DomNameIs(zName,"actualEncoding") || DomNameIs(zName,"config")
+	 || DomNameIs(zName,"xmlEncoding") ){
+		*pRc = DomRefuseWrite(pCtx,zName,1);
+		return DOM_SET_DONE;
+	}
+	if( bVersion || bUri || DomNameIs(zName,"encoding") ){
+		const char *zNew;
+		if( DomWriteText(pCtx,"DOMDocument",zName,"?string",pVal,&sVal,pRc) == 0 ){
+			return DOM_SET_DONE;
+		}
+		zNew = (const char *)SyBlobData(&sVal);
+		if( pDoc == 0 ){
+			SyBlobRelease(&sVal);
+			return DOM_SET_DONE;
+		}
+		if( bVersion ){
+			if( pDoc->version ){
+				xmlFree((xmlChar *)pDoc->version);
+			}
+			pDoc->version = xmlStrdup((const xmlChar *)zNew);
+		}else if( bUri ){
+			if( pDoc->URL ){
+				xmlFree((xmlChar *)pDoc->URL);
+			}
+			pDoc->URL = xmlStrdup((const xmlChar *)zNew);
+		}else{
+			/* php asks libxml for a converter and refuses the name outright when
+			 * there is none -- so `$d->encoding = 'x'` (and the empty string a
+			 * null coerces to) is a ValueError BEFORE anything is written,
+			 * rather than a document that cannot be serialized later. */
+			/* A null is refused before libxml is asked anything, as php does: the
+			 * empty string it coerces to is a name a current libxml (2.15) answers
+			 * WITH a converter, so asking would let the null through. */
+			xmlCharEncodingHandlerPtr pEnc = ph7_value_is_null(pVal) ? 0
+				: xmlFindCharEncodingHandler(zNew);
+			if( pEnc == 0 ){
+				SyBlobRelease(&sVal);
+				*pRc = PH7_VmThrowException(pCtx,"ValueError","Invalid document encoding");
+				return DOM_SET_DONE;
+			}
+			xmlCharEncCloseFunc(pEnc);
+			if( pDoc->encoding ){
+				xmlFree((xmlChar *)pDoc->encoding);
+			}
+			pDoc->encoding = xmlStrdup((const xmlChar *)zNew);
+		}
+		SyBlobRelease(&sVal);
+		return DOM_SET_DONE;
+	}
+	if( DomNameIs(zName,"standalone") || DomNameIs(zName,"xmlStandalone") ){
+		if( DomWriteBool(pCtx,"DOMDocument",zName,pVal,pRc) == 0 ){
+			return DOM_SET_DONE;
+		}
+		if( pDoc ){
+			/* Either way it becomes a DECLARED answer: writing false is
+			 * `standalone="no"` in the output, not the absent attribute. */
+			pDoc->standalone = ph7_value_to_bool(pVal) ? 1 : 0;
+		}
+		return DOM_SET_DONE;
+	}
+	return DomSetNodeProp(pCtx,zName,pVal,pRc);
+}
+/* The two collections have nothing writable of their own; `length` is read-only. */
 static int DomSetNothing(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)
 {
 	SXUNUSED(pCtx); SXUNUSED(zName); SXUNUSED(pVal); SXUNUSED(pRc);
@@ -4983,7 +5219,7 @@ DOM_PROP_ACCESSORS(DOMNameSpaceNode,DomNsNodeProp,DomSetNothing)
 DOM_PROP_ACCESSORS(DOMNodeList,DomListProp,DomSetNothing)
 DOM_PROP_ACCESSORS(DOMNamedNodeMap,DomMapProp,DomSetNothing)
 DOM_PROP_ACCESSORS(DOMNode,DomNodeProp,DomSetNodeProp)
-DOM_PROP_ACCESSORS(DOMDocument,DomDocProp,DomSetNodeProp)
+DOM_PROP_ACCESSORS(DOMDocument,DomDocProp,DomSetDocProp)
 DOM_PROP_ACCESSORS(DOMElement,DomElemProp,DomSetElemProp)
 DOM_PROP_ACCESSORS(DOMAttr,DomAttrProp,DomSetAttrProp)
 DOM_PROP_ACCESSORS(DOMCharacterData,DomCharProp,DomSetCharProp)
