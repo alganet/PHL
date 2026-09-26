@@ -63,6 +63,8 @@ struct phl_pdo {
 	/* The last operation's outcome, as errorCode()/errorInfo() present it. */
 	int bExtendedCodes;           /* Pdo\Sqlite::ATTR_EXTENDED_RESULT_CODES */
 	int iOpenFlags;               /* Pdo\Sqlite::ATTR_OPEN_FLAGS, read at open time */
+	char *zStmtClass;             /* ATTR_STATEMENT_CLASS: what query()/prepare() build */
+	int nStmtClass;
 	int iErrState;                /* PDO_ERR_* */
 	char zSqlState[6];            /* "HY000" and friends; always NUL-terminated */
 	int iDrvCode;                 /* sqlite's own result code */
@@ -105,6 +107,8 @@ struct phl_pdo_bind {
 	ph7_value *pVal;              /* bindValue: this statement's own copy */
 	phl_pdo_bind *pNext;
 };
+/* debugDumpParams() prints the bindings in the order they were MADE, so the
+ * list is walked backwards -- it is built by prepending. */
 
 /*
  * One statement.  It is a FORWARD cursor and nothing more: php's sqlite driver

@@ -88,6 +88,10 @@ PH7_PRIVATE void PH7_PdoFreeConn(phl_pdo *pConn)
 		SyMemBackendFree(&pConn->pVm->sAllocator,pConn->zDrvMsg);
 		pConn->zDrvMsg = 0;
 	}
+	if( pConn->zStmtClass ){
+		SyMemBackendFree(&pConn->pVm->sAllocator,pConn->zStmtClass);
+		pConn->zStmtClass = 0;
+	}
 }
 /*
  * Free every registered connection.  Called from PH7_PdoVmReset (a reused VM --
@@ -605,28 +609,6 @@ PH7_PRIVATE sxi32 PH7_PdoRaiseImpl(ph7_context *pCtx,phl_pdo *pConn,const char *
 	return rc;
 }
 
-/*
- * Every method body below is a placeholder: the DECLARED surface is in place
- * and each slice replaces one group of them with the real body.  The refusal
- * is loud on purpose -- an unimplemented verb must never look like an answer.
- */
-static int PdoUnimplemented(ph7_context *pCtx)
-{
-	SyBlob sFn;
-	SyBlobInit(&sFn,&pCtx->pVm->sAllocator);
-	PH7_VmActiveFuncName(pCtx->pVm,&sFn);
-	PH7_VmThrowException(pCtx,"Error","%.*s is not implemented yet",
-		(int)SyBlobLength(&sFn),(const char *)SyBlobData(&sFn));
-	SyBlobRelease(&sFn);
-	return PH7_OK;
-}
-static int vm_builtin_pdo_stub(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	return PdoUnimplemented(pCtx);
-}
-
 /* ------------------------------------------------------------------------
  * Attributes
  * ------------------------------------------------------------------------ */
@@ -693,7 +675,6 @@ static sxi32 PdoSetStatementClass(ph7_context *pCtx,phl_pdo *pConn,ph7_value *pV
 	const char *zName;
 	int nName;
 	char zBuf[64];
-	SXUNUSED(pConn);
 	if( pVal == 0 || (pVal->iFlags & MEMOBJ_HASHMAP) == 0 ){
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"PDO::setAttribute(): Argument #2 ($value) PDO::ATTR_STATEMENT_CLASS value "
@@ -729,6 +710,18 @@ static sxi32 PdoSetStatementClass(ph7_context *pCtx,phl_pdo *pConn,ph7_value *pV
 		return PH7_VmThrowException(pCtx,"TypeError",
 			"PDO::setAttribute(): Argument #2 ($value) PDO::ATTR_STATEMENT_CLASS "
 			"constructor_args must be of type ?array, array given");
+	}
+	/* remember it: every later query()/prepare() builds THIS class */
+	if( pConn->zStmtClass ){
+		SyMemBackendFree(&pCtx->pVm->sAllocator,pConn->zStmtClass);
+		pConn->zStmtClass = 0;
+		pConn->nStmtClass = 0;
+	}
+	pConn->zStmtClass = (char *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,(sxu32)nName + 1);
+	if( pConn->zStmtClass ){
+		SyMemcpy(zName,pConn->zStmtClass,(sxu32)nName);
+		pConn->zStmtClass[nName] = 0;
+		pConn->nStmtClass = nName;
 	}
 	return PH7_OK;
 }
@@ -782,7 +775,11 @@ static int vm_builtin_PDO_getAttribute(ph7_context *pCtx,int nArg,ph7_value **ap
 			if( pArray == 0 || pName == 0 ){
 				return PH7_ContextMemoryError(pCtx);
 			}
-			ph7_value_string(pName,"PDOStatement",sizeof("PDOStatement")-1);
+			if( pConn->zStmtClass ){
+				ph7_value_string(pName,pConn->zStmtClass,pConn->nStmtClass);
+			}else{
+				ph7_value_string(pName,"PDOStatement",sizeof("PDOStatement")-1);
+			}
 			ph7_array_add_elem(pArray,0,pName);
 			ph7_result_value(pCtx,pArray);
 			break;
@@ -2284,6 +2281,64 @@ static int vm_builtin_PDOStatement_columnCount(ph7_context *pCtx,int nArg,ph7_va
 	return PH7_OK;
 }
 /*
+ * PDOStatement::debugDumpParams(): ?bool
+ *
+ * php's own diagnostic dump, printed rather than returned (it answers null).
+ * The bindings appear in the order they were MADE, and the two kinds report
+ * differently: a positional one carries its 0-based paramno and an empty name,
+ * a named one carries paramno -1 and the name WITH its colon. Both lengths are
+ * printed in brackets, php's `[%d]` shape.
+ */
+static int vm_builtin_PDOStatement_debugDumpParams(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo_stmt *pSt = PdoStmtOfInstance(PH7_ContextThis(pCtx));
+	phl_pdo_bind *pB;
+	const char *zSql = "";
+	int nSql = 0,nBind = 0;
+	ph7_value *pQuery;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pSt == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDOStatement object is uninitialized");
+	}
+	pQuery = pSt->pOwner ? PH7_NativeAttr(pSt->pOwner,"queryString") : 0;
+	if( pQuery ){
+		zSql = ph7_value_to_string(pQuery,&nSql);
+	}
+	for( pB = pSt->pBinds ; pB ; pB = pB->pNext ){
+		++nBind;
+	}
+	ph7_context_output_format(pCtx,"SQL: [%d] %.*s\n",nSql,nSql,zSql);
+	ph7_context_output_format(pCtx,"Params:  %d\n",nBind);
+	/* the list is built by prepending, so walking it backwards is what puts
+	 * the bindings back in the order the script made them */
+	{
+		phl_pdo_bind *apBind[64];
+		int n = 0,i;
+		for( pB = pSt->pBinds ; pB && n < (int)SX_ARRAYSIZE(apBind) ; pB = pB->pNext ){
+			apBind[n++] = pB;
+		}
+		for( i = n - 1 ; i >= 0 ; --i ){
+			pB = apBind[i];
+			if( pB->zName ){
+				ph7_context_output_format(pCtx,"Key: Name: [%d] %.*s\n",
+					pB->nName,pB->nName,pB->zName);
+				ph7_context_output_format(pCtx,"paramno=-1\n");
+				ph7_context_output_format(pCtx,"name=[%d] \"%.*s\"\n",
+					pB->nName,pB->nName,pB->zName);
+			}else{
+				ph7_context_output_format(pCtx,"Key: Position #%d:\n",pB->iPos - 1);
+				ph7_context_output_format(pCtx,"paramno=%d\n",pB->iPos - 1);
+				ph7_context_output_format(pCtx,"name=[0] \"\"\n");
+			}
+			ph7_context_output_format(pCtx,"is_param=1\n");
+			ph7_context_output_format(pCtx,"param_type=%d\n",pB->iType & ~PDO_PARAM_FLAGS);
+		}
+	}
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+/*
  * PDOStatement::getAttribute(int $name): mixed
  *
  * Two of the driver's attributes describe a STATEMENT rather than the
@@ -2669,6 +2724,22 @@ static int vm_builtin_PDOStatement_execute(ph7_context *pCtx,int nArg,ph7_value 
 	return PH7_OK;
 }
 /*
+ * The class query()/prepare() builds.  ATTR_STATEMENT_CLASS replaces
+ * PDOStatement with a subclass of the script's own, and php builds THAT for
+ * every statement the connection makes from then on.
+ */
+static ph7_class * PdoStatementClass(ph7_context *pCtx,phl_pdo *pConn)
+{
+	if( pConn->zStmtClass ){
+		ph7_class *pClass = PH7_VmExtractClass(pCtx->pVm,pConn->zStmtClass,
+			(sxu32)pConn->nStmtClass,FALSE,0);
+		if( pClass ){
+			return pClass;
+		}
+	}
+	return PH7_VmExtractClass(pCtx->pVm,"PDOStatement",sizeof("PDOStatement")-1,FALSE,0);
+}
+/*
  * PDO::prepare(string $query, array $options = []): PDOStatement|false
  *
  * Compiles without running. The options array is php's per-statement
@@ -2700,7 +2771,7 @@ static int vm_builtin_PDO_prepare(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_PdoRaise(pCtx,pConn,"PDO::prepare");
 	}
-	pClass = PH7_VmExtractClass(pCtx->pVm,"PDOStatement",sizeof("PDOStatement")-1,FALSE,0);
+	pClass = PdoStatementClass(pCtx,pConn);
 	pObj = pClass ? PH7_NewClassInstance(pCtx->pVm,pClass) : 0;
 	if( pObj == 0 ){
 		return PH7_ContextMemoryError(pCtx);
@@ -2791,7 +2862,7 @@ static int vm_builtin_PDO_query(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	 * connection would otherwise move what this one reports */
 	pSt->nChanges = PH7_PdoSqliteColumnCount(pSt) > 0
 		? 0 : PH7_PdoSqliteChanges(pConn);
-	pClass = PH7_VmExtractClass(pCtx->pVm,"PDOStatement",sizeof("PDOStatement")-1,FALSE,0);
+	pClass = PdoStatementClass(pCtx,pConn);
 	pObj = pClass ? PH7_NewClassInstance(pCtx->pVm,pClass) : 0;
 	if( pObj == 0 ){
 		return PH7_ContextMemoryError(pCtx);
@@ -3311,7 +3382,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm)
 		  vm_builtin_PDOStatement_bindValue },
 		{ "closeCursor",  PH7_MOD_PUBLIC, "", "@bool", vm_builtin_PDOStatement_closeCursor },
 		{ "columnCount",  PH7_MOD_PUBLIC, "", "@int", vm_builtin_PDOStatement_columnCount },
-		{ "debugDumpParams", PH7_MOD_PUBLIC, "", "@?bool", vm_builtin_pdo_stub },
+		{ "debugDumpParams", PH7_MOD_PUBLIC, "", "@?bool",
+		  vm_builtin_PDOStatement_debugDumpParams },
 		{ "errorCode",    PH7_MOD_PUBLIC, "", "@?string", vm_builtin_PDOStatement_errorCode },
 		{ "errorInfo",    PH7_MOD_PUBLIC, "", "@array", vm_builtin_PDOStatement_errorInfo },
 		{ "execute",      PH7_MOD_PUBLIC, "?array $params = null", "@bool",
