@@ -1742,6 +1742,12 @@ static void DomNsAttrArrive(xmlNodePtr pElem,xmlAttrPtr pAttr)
 	if( pNs == 0 || pNs->href == 0 ){
 		return;
 	}
+	if( DomUriIs((const char *)pNs->href,DOM_XMLNS_NS_URI) ){
+		/* An attribute in the xmlns namespace IS a declaration, and php resolves
+		 * nothing for it: `xmlns="urn:z"` stays spelled that way wherever it is
+		 * written, and never acquires a declaration of the xmlns namespace. */
+		return;
+	}
 	if( xmlSearchNs(pElem->doc,pElem,pNs->prefix) == pNs ){
 		return;
 	}
@@ -2089,6 +2095,16 @@ DOM_METHOD(vm_builtin_DOMElement_getAttributeNS)
 	const xmlChar *zUri = DomArgUri(nArg,apArg,0);
 	const char *zLocal = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
 	xmlChar *zVal = pNd ? xmlGetNsProp((xmlNodePtr)pNd->pNode,(const xmlChar *)zLocal,zUri) : 0;
+	if( zVal == 0 && pNd && DomUriIs((const char *)zUri,DOM_XMLNS_NS_URI) ){
+		/* The other door, the one hasAttributeNS already knew about: a
+		 * DECLARATION answers its URI here. `getAttributeNS($XMLNS, 'p')` was ""
+		 * on an element declaring `xmlns:p`, where php answers the namespace. */
+		xmlNsPtr pDecl = DomNsDeclOf((xmlNodePtr)pNd->pNode,(const xmlChar *)zLocal);
+		if( pDecl && pDecl->href ){
+			ph7_result_string(pCtx,(const char *)pDecl->href,-1);
+			return PH7_OK;
+		}
+	}
 	ph7_result_string(pCtx,zVal ? (const char *)zVal : "",-1);
 	if( zVal ){
 		xmlFree(zVal);
@@ -2380,7 +2396,16 @@ DOM_METHOD(vm_builtin_DOMElement_hasAttributeNS)
 	const xmlChar *zUri = DomArgUri(nArg,apArg,0);
 	xmlNodePtr pElem = pNd ? (xmlNodePtr)pNd->pNode : 0;
 	if( pElem && DomUriIs((const char *)zUri,DOM_XMLNS_NS_URI) ){
-		ph7_result_bool(pCtx,DomNsDeclOf(pElem,(const xmlChar *)zLocal) != 0);
+		/*
+		 * Two doors onto that namespace, and php answers about EITHER: a
+		 * DECLARATION, which is not an attribute in libxml at all, and a real
+		 * attribute in it -- which is what `createAttributeNS($XMLNS, ...)`
+		 * makes, and which this only asked the first door about. (A DEFAULT
+		 * declaration is not one of them: php answers false for the local name
+		 * `xmlns`, and the prefix comparison below never matches it.)
+		 */
+		ph7_result_bool(pCtx,DomAttrByNs(pElem,zUri,zLocal) != 0
+			|| DomNsDeclOf(pElem,(const xmlChar *)zLocal) != 0);
 		return PH7_OK;
 	}
 	ph7_result_bool(pCtx,DomAttrByNs(pElem,zUri,zLocal) != 0);
@@ -2598,7 +2623,30 @@ DOM_METHOD(vm_builtin_DOMDocument_createAttributeNS)
 	}
 	if( zUri && zUri[0] && sQ.zPrefix ){
 		xmlSetNs((xmlNodePtr)pAttr,DomNsResolve(pRoot,zUri,sQ.zPrefix,1));
-	}else if( zUri && zUri[0] && !xmlStrEqual(sQ.zLocal,(const xmlChar *)"xmlns") ){
+	}else if( zUri && zUri[0]
+	 && xmlStrEqual(sQ.zLocal,(const xmlChar *)DOM_XMLNS_NAME) ){
+		/*
+		 * The unprefixed `xmlns` -- the only name the grammar lets through with
+		 * the xmlns namespace, and the name a DEFAULT declaration is written
+		 * with. It IS in that namespace and php answers so, but nothing is
+		 * DECLARED for it: the binding is the attribute's alone, so it is parked
+		 * on the document, which is what frees it. Without this the attribute
+		 * answered namespaceURI null, `hasAttributeNS($XMLNS, 'xmlns')` was
+		 * false for it once written, and `getAttribute('xmlns')` -- a by-NAME
+		 * lookup, which skips a namespaced attribute -- answered its value where
+		 * php answers "".
+		 */
+		xmlNsPtr pNs = DomNsReuse(pRoot,zUri);
+		if( pNs == 0 ){
+			pNs = xmlNewNs(0,(const xmlChar *)zUri,0);
+			if( pNs ){
+				DomNsPark((xmlNodePtr)pAttr,pNs);
+			}
+		}
+		if( pNs ){
+			xmlSetNs((xmlNodePtr)pAttr,pNs);
+		}
+	}else if( zUri && zUri[0] ){
 		xmlSetNs((xmlNodePtr)pAttr,DomNsResolve(pRoot,zUri,0,1));
 	}
 	DomQNameRelease(&sQ);
