@@ -55,6 +55,8 @@ PH7_PRIVATE void PH7_CurlGlobalInit(void)
  * record and its own libcurl handle -- never a second object over one CURL*.
  */
 static void CurlBlankSlot(ph7_class_instance *pOwner);
+static int CurlSetCallback(ph7_context *pCtx,phl_curl *pCurl,ph7_value **ppSlot,
+	ph7_value *pVal,const char *zFunc,const char *zOpt,sxi32 *pRc);
 
 static phl_curl * CurlNewHandle(ph7_vm *pVm)
 {
@@ -116,6 +118,20 @@ static void CurlFreeSlists(phl_curl *pCurl)
 	}
 	pCurl->pSlists = 0;
 }
+static void CurlDropCallbacks(phl_curl *pCurl)
+{
+	ph7_value **apCb[3];
+	int i;
+	apCb[0] = &pCurl->pWriteCb;
+	apCb[1] = &pCurl->pHeaderCb;
+	apCb[2] = &pCurl->pXferCb;
+	for( i = 0 ; i < 3 ; ++i ){
+		if( *apCb[i] ){
+			ph7_release_value(pCurl->pVm,*apCb[i]);
+			*apCb[i] = 0;
+		}
+	}
+}
 static void CurlFreeHandle(phl_curl *pCurl)
 {
 	if( pCurl->pEasy ){
@@ -125,6 +141,7 @@ static void CurlFreeHandle(phl_curl *pCurl)
 		pCurl->pEasy = 0;
 	}
 	CurlFreeSlists(pCurl);
+	CurlDropCallbacks(pCurl);
 }
 /*
  * Free every registered handle. Called from PH7_CurlVmReset (a reused VM --
@@ -1875,6 +1892,27 @@ static int CurlSetOne(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *pV
 			return -1;
 		}
 		return 1;
+	case CURL_OPT_CALLBACK:
+		switch( (int)iOpt ){
+		case CURLOPT_WRITEFUNCTION:
+			return CurlSetCallback(pCtx,pCurl,&pCurl->pWriteCb,pVal,zFunc,
+				CurlOptName(iOpt),pRc);
+		case CURLOPT_HEADERFUNCTION:
+			return CurlSetCallback(pCtx,pCurl,&pCurl->pHeaderCb,pVal,zFunc,
+				CurlOptName(iOpt),pRc);
+		case CURLOPT_XFERINFOFUNCTION:
+		case CURLOPT_PROGRESSFUNCTION: {
+			int rcCb = CurlSetCallback(pCtx,pCurl,&pCurl->pXferCb,pVal,zFunc,
+				CurlOptName(iOpt),pRc);
+			if( rcCb == 1 ){
+				pCurl->bXferIsProgress = (iOpt == CURLOPT_PROGRESSFUNCTION);
+			}
+			return rcCb;
+		}
+		default:
+			break;
+		}
+		break;
 	case CURL_OPT_RETURN:
 		/* php's own option, and a FLAG: every value is accepted (setopt always
 		 * answers true) and only its truthiness matters, at exec time. */
@@ -2292,6 +2330,179 @@ static int vm_builtin_curl_getinfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
 }
 
 
+
+/* ===== The callbacks ===== */
+
+/*
+ * The rule every callback here shares, and the reason they share one shape:
+ * libcurl is in the middle of a transfer when the engine re-enters PHP, and a
+ * throw out of that PHP cannot travel back through libcurl's C frames. So the
+ * status is PARKED on the handle, libcurl is told to stop by returning a value
+ * it reads as a failure, and curl_exec() raises exactly the parked status once
+ * the library has unwound. A second callback while one is parked does not
+ * re-enter PHP at all.
+ *
+ * php's own answer is the evidence this is right: a WRITEFUNCTION that throws
+ * comes out of curl_exec() as the original exception, and leaves curl_errno()
+ * at 0 -- not at the CURLE_WRITE_ERROR the short return would have produced.
+ */
+static int CurlCbParked(phl_curl *pCurl)
+{
+	return pCurl->iCbExc != 0;
+}
+static void CurlCbPark(phl_curl *pCurl,sxi32 rc)
+{
+	pCurl->iCbExc = PH7_CALLBACK_UNWOUND(rc) ? rc : PH7_EXCEPTION;
+}
+/*
+ * Store one callable on the handle. php accepts every callable SHAPE here --
+ * a closure, a function name, both array forms, "Class::method", an invokable
+ * object -- and null, which puts the default back. Anything else is a TypeError
+ * whose tail says which way it was wrong.
+ */
+static int CurlSetCallback(ph7_context *pCtx,phl_curl *pCurl,ph7_value **ppSlot,
+	ph7_value *pVal,const char *zFunc,const char *zOpt,sxi32 *pRc)
+{
+	ph7_vm *pVm = pCurl->pVm;
+	if( ph7_value_is_null(pVal) ){
+		if( *ppSlot ){
+			ph7_release_value(pVm,*ppSlot);
+			*ppSlot = 0;
+		}
+		return 1;
+	}
+	if( !ph7_value_is_string(pVal) && !ph7_value_is_array(pVal) && !ph7_value_is_object(pVal) ){
+		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #3 ($value) must be a valid callback for option %s, "
+			"no array or string given",zFunc,zOpt);
+		return -1;
+	}
+	if( ph7_value_is_array(pVal) && ph7_array_count(pVal) != 2 ){
+		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): Argument #3 ($value) must be a valid callback for option %s, "
+			"array callback must have exactly two members",zFunc,zOpt);
+		return -1;
+	}
+	if( !PH7_VmIsCallable(pVm,pVal,FALSE) ){
+		if( ph7_value_is_string(pVal) ){
+			int nName = 0;
+			const char *zName = ph7_value_to_string(pVal,&nName);
+			*pRc = PH7_VmThrowException(pCtx,"TypeError",
+				"%s(): Argument #3 ($value) must be a valid callback for option %s, "
+				"function \"%.*s\" not found or invalid function name",
+				zFunc,zOpt,nName,zName);
+		}else{
+			*pRc = PH7_VmThrowException(pCtx,"TypeError",
+				"%s(): Argument #3 ($value) must be a valid callback for option %s, "
+				"no array or string given",zFunc,zOpt);
+		}
+		return -1;
+	}
+	if( *ppSlot ){
+		ph7_release_value(pVm,*ppSlot);
+	}
+	/* The handle owns its own copy: libcurl may call this long after the
+	 * caller's value is gone. */
+	*ppSlot = ph7_new_scalar(pVm);
+	if( *ppSlot == 0 ){
+		return 0;
+	}
+	PH7_MemObjStore(pVal,*ppSlot);
+	return 1;
+}
+/* The body/header sink: php hands the callback (handle, chunk) and reads the
+ * BYTE COUNT back. Anything but the chunk's own length stops the transfer with
+ * CURLE_WRITE_ERROR -- 0, -1, true and a non-numeric string alike. */
+static size_t CurlCbWrite(char *zData,size_t nSize,size_t nMemb,void *pUser,
+	phl_curl *pCurl,ph7_value *pCb)
+{
+	ph7_vm *pVm = pCurl->pVm;
+	size_t nTotal = nSize * nMemb;
+	ph7_value sArgs[2],sRes,*apArg[2];
+	sxi32 rc;
+	size_t nOut;
+	SXUNUSED(pUser);
+	if( CurlCbParked(pCurl) ){
+		return 0;
+	}
+	PH7_MemObjInit(pVm,&sArgs[0]);
+	PH7_MemObjInit(pVm,&sArgs[1]);
+	PH7_MemObjInit(pVm,&sRes);
+	if( pCurl->pOwner ){
+		sArgs[0].x.pOther = pCurl->pOwner;
+		sArgs[0].iFlags = MEMOBJ_OBJ;
+		pCurl->pOwner->iRef++;   /* the argument holds a reference for the call */
+	}
+	ph7_value_string(&sArgs[1],zData,(int)nTotal);
+	apArg[0] = &sArgs[0];
+	apArg[1] = &sArgs[1];
+	rc = PH7_VmCallUserFunction(pVm,pCb,2,apArg,&sRes);
+	if( rc != SXRET_OK ){
+		CurlCbPark(pCurl,rc);
+		nOut = 0;
+	}else{
+		nOut = (size_t)ph7_value_to_int64(&sRes);
+	}
+	PH7_MemObjRelease(&sRes);
+	PH7_MemObjRelease(&sArgs[0]);
+	PH7_MemObjRelease(&sArgs[1]);
+	return nOut;
+}
+static size_t CurlWriteThunk(char *zData,size_t nSize,size_t nMemb,void *pUser)
+{
+	phl_curl *pCurl = (phl_curl *)pUser;
+	return CurlCbWrite(zData,nSize,nMemb,pUser,pCurl,pCurl->pWriteCb);
+}
+static size_t CurlHeaderThunk(char *zData,size_t nSize,size_t nMemb,void *pUser)
+{
+	phl_curl *pCurl = (phl_curl *)pUser;
+	return CurlCbWrite(zData,nSize,nMemb,pUser,pCurl,pCurl->pHeaderCb);
+}
+/*
+ * The progress callback, in php's two spellings. XFERINFOFUNCTION takes the
+ * five (handle, dltotal, dlnow, ultotal, ulnow) as INTs; PROGRESSFUNCTION is
+ * the same five and the same order -- php passes the modern shape to both.
+ * A non-zero return aborts the transfer (CURLE_ABORTED_BY_CALLBACK).
+ */
+static int CurlXferThunk(void *pUser,curl_off_t dlTotal,curl_off_t dlNow,
+	curl_off_t ulTotal,curl_off_t ulNow)
+{
+	phl_curl *pCurl = (phl_curl *)pUser;
+	ph7_vm *pVm = pCurl->pVm;
+	ph7_value sArgs[5],sRes,*apArg[5];
+	sxi32 rc;
+	int i,iOut;
+	if( CurlCbParked(pCurl) || pCurl->pXferCb == 0 ){
+		return 1;
+	}
+	for( i = 0 ; i < 5 ; ++i ){
+		PH7_MemObjInit(pVm,&sArgs[i]);
+		apArg[i] = &sArgs[i];
+	}
+	if( pCurl->pOwner ){
+		sArgs[0].x.pOther = pCurl->pOwner;
+		sArgs[0].iFlags = MEMOBJ_OBJ;
+		pCurl->pOwner->iRef++;   /* the argument holds a reference for the call */
+	}
+	ph7_value_int64(&sArgs[1],(sxi64)dlTotal);
+	ph7_value_int64(&sArgs[2],(sxi64)dlNow);
+	ph7_value_int64(&sArgs[3],(sxi64)ulTotal);
+	ph7_value_int64(&sArgs[4],(sxi64)ulNow);
+	PH7_MemObjInit(pVm,&sRes);
+	rc = PH7_VmCallUserFunction(pVm,pCurl->pXferCb,5,apArg,&sRes);
+	if( rc != SXRET_OK ){
+		CurlCbPark(pCurl,rc);
+		iOut = 1;
+	}else{
+		iOut = (int)ph7_value_to_int64(&sRes);
+	}
+	PH7_MemObjRelease(&sRes);
+	for( i = 0 ; i < 5 ; ++i ){
+		PH7_MemObjRelease(&sArgs[i]);
+	}
+	return iOut;
+}
+
 /* ===== curl_exec() ===== */
 
 /*
@@ -2334,12 +2545,46 @@ static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	SyBlobInit(&sBody,&pCurl->pVm->sAllocator);
 	sSink.pCtx = pCtx;
 	sSink.pBody = pCurl->bReturnTransfer ? &sBody : 0;
-	curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEFUNCTION,CurlExecWrite);
-	curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEDATA,(void *)&sSink);
+	pCurl->iCbExc = 0;
+	if( pCurl->pWriteCb ){
+		/* A php WRITEFUNCTION replaces the destination entirely: neither the
+		 * buffer nor the output gets the body. */
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEFUNCTION,CurlWriteThunk);
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEDATA,(void *)pCurl);
+	}else{
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEFUNCTION,CurlExecWrite);
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEDATA,(void *)&sSink);
+	}
+	if( pCurl->pHeaderCb ){
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_HEADERFUNCTION,CurlHeaderThunk);
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_HEADERDATA,(void *)pCurl);
+	}
+	if( pCurl->pXferCb ){
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_XFERINFOFUNCTION,CurlXferThunk);
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_XFERINFODATA,(void *)pCurl);
+	}
 	rc = curl_easy_perform(pCurl->pEasy);
 	/* The sink is a stack address: libcurl must not keep it past this call. */
 	curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEFUNCTION,(curl_write_callback)0);
 	curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEDATA,(void *)0);
+	if( pCurl->pHeaderCb ){
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_HEADERFUNCTION,(curl_write_callback)0);
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_HEADERDATA,(void *)0);
+	}
+	/*
+	 * A callback threw: libcurl has unwound now, so this is where the parked
+	 * status is raised -- and php leaves the handle's errno at 0 for it, not
+	 * at the CURLE_WRITE_ERROR the stopping return would otherwise have set.
+	 */
+	if( pCurl->iCbExc != 0 ){
+		sxi32 rcExc = pCurl->iCbExc;
+		pCurl->iCbExc = 0;
+		pCurl->iLastErr = 0;
+		pCurl->zErrBuf[0] = 0;
+		SyBlobRelease(&sBody);
+		ph7_result_bool(pCtx,0);
+		return rcExc;
+	}
 	pCurl->iLastErr = (int)rc;
 	if( rc != CURLE_OK ){
 		/* libcurl fills the error buffer itself; when it left it empty (some

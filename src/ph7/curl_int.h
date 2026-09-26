@@ -81,6 +81,16 @@ struct phl_curl {
 	int iLastErr;                   /* CURLcode of the last transfer (php's ch->err.no) */
 	char zErrBuf[CURL_ERROR_SIZE];  /* libcurl's CURLOPT_ERRORBUFFER target */
 	phl_curl_slist *pSlists;        /* the curl_slists this handle owns */
+	/*
+	 * The php callables libcurl may call back into, owned by the handle: the
+	 * library keeps the pointer and may call long after curl_setopt returned,
+	 * so the value cannot be the caller's temporary.
+	 */
+	ph7_value *pWriteCb;
+	ph7_value *pHeaderCb;
+	ph7_value *pXferCb;             /* XFERINFOFUNCTION, or PROGRESSFUNCTION */
+	int bXferIsProgress;            /* the older option's argument shape */
+	sxi32 iCbExc;                   /* a callback threw: parked until the verb unwinds */
 	int bReturnTransfer;            /* CURLOPT_RETURNTRANSFER: php's own option, no
 	                                 * libcurl equivalent -- it picks where the body
 	                                 * goes, so it lives here rather than on the
