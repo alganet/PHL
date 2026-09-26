@@ -78,6 +78,7 @@ static const char * const azDomDocFlag[] = {
 #define DOM_ERR_NOT_FOUND      8
 #define DOM_ERR_NOT_SUPPORTED  9
 #define DOM_ERR_INVALID_STATE 11
+#define DOM_ERR_SYNTAX        12
 #define DOM_ERR_NAMESPACE     14
 /* The sentence php prints for each -- so a refusal that travels as a code can
  * be raised from one place. */
@@ -90,6 +91,7 @@ static const char * DomErrText(int iCode)
 	case DOM_ERR_INVALID_CHAR: return "Invalid Character Error";
 	case DOM_ERR_NOT_SUPPORTED: return "Not Supported Error";
 	case DOM_ERR_INVALID_STATE: return "Invalid State Error";
+	case DOM_ERR_SYNTAX:       return "Syntax Error";
 	case DOM_ERR_NAMESPACE:    return "Namespace Error";
 	default:                   return "Not Found Error";
 	}
@@ -148,6 +150,13 @@ static int DomNameIs(const char *zName,const char *zWant)
 {
 	sxu32 n = (sxu32)SyStrlen(zWant);
 	return SyStrlen(zName) == n && SyStrncmp(zName,zWant,n) == 0;
+}
+/* ...and the ONE name the DOM matches case-insensitively: insertAdjacent*'s
+ * `$where` word ("BeforeBegin" works), php's zend_string_equals_literal_ci. */
+static int DomNameIsCi(const char *zName,const char *zWant)
+{
+	sxu32 n = (sxu32)SyStrlen(zWant);
+	return SyStrlen(zName) == n && SyStrnicmp(zName,zWant,n) == 0;
 }
 /* The handle behind an instance's $__res, or NULL for anything else. */
 static phl_domnode * DomResOf(ph7_class_instance *pObj)
@@ -4351,6 +4360,124 @@ DOM_METHOD(vm_builtin_DOMDocument_adoptNode)
 	ph7_result_value(pCtx,apArg[0]);
 	return PH7_OK;
 }
+/*
+ * DOMElement::insertAdjacentElement(string $where, DOMElement $element): ?DOMElement
+ * DOMElement::insertAdjacentText(string $where, string $data): void
+ *
+ * php's dom_insert_adjacent, transcribed.  The WHERE word is matched
+ * case-insensitively against the four positions and anything else is the
+ * Syntax refusal (code 12, new to DomErrText) -- even on a receiver no
+ * position could serve; beforebegin/afterend on a parentless receiver answer
+ * null BEFORE anything moves; and then the argument is ADOPTED into this
+ * document -- a node of another document is MOVED here, wrappers and all,
+ * where every other insertion method refuses it with Wrong Document Error.
+ * Only then does the pre-insertion validity run, so a refusal (the receiver
+ * inside the argument) leaves the adopted argument DETACHED --
+ * `$in->insertAdjacentElement('afterbegin',$host)` costs the tree the whole
+ * host subtree, php's own answer -- and the insertion point is read AFTER the
+ * adopt unlinked the argument, which is what makes inserting one's own next
+ * sibling `afterend` a no-op rather than a swap.
+ *
+ * One deliberate divergence: php SEGFAULTS on
+ * `$a->insertAdjacentElement('beforebegin',$a)` -- its adopt unlinks the
+ * receiver and the insertion then walks a NULL parent.  PHL answers the
+ * Hierarchy refusal its validity was about to reach.
+ */
+static int DomInsertAdjacentOp(ph7_context *pCtx,phl_domnode *pRecv,const char *zWhere,
+	phl_xmldoc *pArgShell,xmlNodePtr pOther,ph7_class_instance *pArgDoc)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	xmlNodePtr pThis = (xmlNodePtr)pRecv->pNode;
+	xmlNodePtr pParent,pRef;
+	int iPos,iErr;
+	if( DomNameIsCi(zWhere,"beforebegin") ){
+		iPos = 0;
+	}else if( DomNameIsCi(zWhere,"afterbegin") ){
+		iPos = 1;
+	}else if( DomNameIsCi(zWhere,"beforeend") ){
+		iPos = 2;
+	}else if( DomNameIsCi(zWhere,"afterend") ){
+		iPos = 3;
+	}else{
+		DomThrowVoid(pCtx,DOM_ERR_SYNTAX);
+		return -1;
+	}
+	if( (iPos == 0 || iPos == 3) && pThis->parent == 0 ){
+		return 1;   /* the null answer, nothing moved */
+	}
+	/* The adopt: detach, re-home across documents (adoptNode's machinery),
+	 * and park until linked. */
+	DomDetach(pArgShell,pOther);
+	if( pOther->doc != pThis->doc ){
+		sxu32 nMark = PH7_LibxmlCaptureBegin(pVm);
+		xmlDOMWrapAdoptNode(0,pOther->doc,pOther,pThis->doc,0,0);
+		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMElement::insertAdjacentElement");
+		DomAdoptWrappers(pVm,pArgDoc,DomThisDoc(pCtx),pRecv->pShell,pOther);
+	}
+	DomOrphanAdd(pRecv->pShell,pOther);
+	switch( iPos ){
+	case 0:  pParent = pThis->parent;  pRef = pThis;            break;
+	case 1:  pParent = pThis;          pRef = pThis->children;  break;
+	case 2:  pParent = pThis;          pRef = 0;                break;
+	default: pParent = pThis->parent;  pRef = pThis->next;      break;
+	}
+	if( pParent == 0 ){
+		/* The argument WAS the receiver: adopting it took the parent away. */
+		DomThrowVoid(pCtx,DOM_ERR_HIERARCHY);
+		return -1;
+	}
+	iErr = DomInsertValidity(pParent,pOther,0);
+	if( iErr ){
+		DomThrowVoid(pCtx,iErr);
+		return -1;
+	}
+	if( pRef == pOther ){
+		pRef = pOther->next;
+	}
+	DomDetach(pRecv->pShell,pOther);
+	if( pRef ){
+		DomLinkBefore(pParent,pOther,pRef);
+	}else{
+		DomLinkLast(pParent,pOther);
+	}
+	DomNsOnInsertEx(pOther,0);
+	return 0;
+}
+DOM_METHOD(vm_builtin_DOMElement_insertAdjacentElement)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	phl_domnode *pOther = nArg > 1 ? DomObjArg(apArg[1]) : 0;
+	const char *zWhere = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	if( pNd == 0 || pOther == 0 ){
+		return PH7_OK;
+	}
+	if( DomInsertAdjacentOp(pCtx,pNd,zWhere,pOther->pShell,(xmlNodePtr)pOther->pNode,
+		DomObjArgDoc(apArg[1])) == 0 ){
+		/* The answer is the argument itself, now linked. */
+		ph7_result_value(pCtx,apArg[1]);
+	}
+	return PH7_OK;
+}
+DOM_METHOD(vm_builtin_DOMElement_insertAdjacentText)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	const char *zWhere = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	const char *zData;
+	int nData = 0;
+	xmlNodePtr pText;
+	if( pNd == 0 ){
+		return PH7_OK;
+	}
+	zData = nArg > 1 ? ph7_value_to_string(apArg[1],&nData) : "";
+	pText = xmlNewDocTextLen(((xmlNodePtr)pNd->pNode)->doc,(const xmlChar *)zData,nData);
+	if( pText == 0 ){
+		return PH7_OK;
+	}
+	/* Never adopted (same document by construction); a refusal or a no-op
+	 * leaves it parked in the shell where php frees it -- unobservable. */
+	DomInsertAdjacentOp(pCtx,pNd,zWhere,pNd->pShell,pText,0);
+	return PH7_OK;
+}
 /* DOMDocument::createTextNode / createComment / createCDATASection(string $data) */
 static int DomDocCreateData(ph7_context *pCtx,int iKind,int nArg,ph7_value **apArg)
 {
@@ -6735,6 +6862,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "append",          PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_append },
 		{ "prepend",         PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_prepend },
 		{ "replaceChildren", PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_replaceChildren },
+		/* The 8.3 pair. php declares the first's return as a plain ?DOMElement
+		 * and the second's as a real void. */
+		{ "insertAdjacentElement", PH7_MOD_PUBLIC, "string $where, DOMElement $element",
+		  "?DOMElement", vm_builtin_DOMElement_insertAdjacentElement },
+		{ "insertAdjacentText",    PH7_MOD_PUBLIC, "string $where, string $data", "void",
+		  vm_builtin_DOMElement_insertAdjacentText },
 		{ "__get",                PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMElement_get },
 		{ "__isset",              PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMElement_isset },
 		{ "__set",                PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMElement_set },
