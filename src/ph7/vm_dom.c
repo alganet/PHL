@@ -6315,6 +6315,73 @@ DOM_METHOD(vm_builtin_Dom_getIterator)
 
 /* ===== DOMXPath ===== */
 
+/* The prefix => URI table registerNamespace() feeds, replayed onto the fresh
+ * evaluation context each query. Hidden slot, same three-move materialization
+ * as the document's identity cache. */
+#define XP_NSREG "__nsreg"
+static ph7_hashmap * DomXPathNsReg(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,XP_NSREG) : 0;
+	if( pSlot == 0 ){
+		return 0;
+	}
+	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){
+			return 0;
+		}
+	}
+	return PH7_HashmapCowSeparate(&(*pVm),pSlot);
+}
+/*
+ * Build the evaluation context for one query()/evaluate() call: a FRESH
+ * xmlXPathContext (php keeps a persistent one; replaying the registration
+ * table onto a fresh one answers the same), anchored at the explicit context
+ * node -- or, with none, at the document ELEMENT, php's own substitution (so
+ * query('file') matches a child of the root; an explicitly PASSED document
+ * node is NOT substituted and carries no namespaces).
+ *
+ * bRegNodeNs is php's $registerNodeNS: the context NODE's in-scope
+ * declarations go into pXCtx->namespaces, the array xmlXPathNsLookup consults
+ * BEFORE the registered table -- which is why a document prefix beats a
+ * registerNamespace() one only for that call. The caller frees the returned
+ * list with xmlFree AFTER evaluating (the xmlNs entries belong to the tree;
+ * only the array is owned).
+ */
+static xmlNsPtr * DomXPathCtxOpen(ph7_context *pCtx,phl_domnode *pDocNd,
+	phl_domnode *pCtxNd,int bRegNodeNs,xmlXPathContextPtr *ppXCtx)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	xmlXPathContextPtr pXCtx;
+	ph7_value *pNsReg;
+	xmlNsPtr *aNs = 0;
+	*ppXCtx = 0;
+	pXCtx = xmlXPathNewContext((xmlDocPtr)pDocNd->pNode);
+	if( pXCtx == 0 ){
+		return 0;
+	}
+	if( pCtxNd ){
+		pXCtx->node = (xmlNodePtr)pCtxNd->pNode;
+	}else{
+		pXCtx->node = xmlDocGetRootElement((xmlDocPtr)pDocNd->pNode);
+	}
+	pNsReg = pThis ? PH7_NativeAttr(pThis,XP_NSREG) : 0;
+	if( pNsReg && (pNsReg->iFlags & MEMOBJ_HASHMAP) ){
+		ph7_array_walk(pNsReg,DomC14NRegisterNs,pXCtx);
+	}
+	if( bRegNodeNs && pXCtx->node ){
+		aNs = xmlGetNsList((xmlDocPtr)pDocNd->pNode,pXCtx->node);
+		if( aNs ){
+			int nNs = 0;
+			while( aNs[nNs] ){
+				nNs++;
+			}
+			pXCtx->namespaces = aNs;
+			pXCtx->nsNr = nNs;
+		}
+	}
+	*ppXCtx = pXCtx;
+	return aNs;
+}
 /*
  * DOMXPath::query(string $expression, ?DOMNode $contextNode = null,
  *                 bool $registerNodeNS = true): DOMNodeList|false
@@ -6331,10 +6398,16 @@ DOM_METHOD(vm_builtin_DOMXPath_query)
 	phl_domnode *pDocNd = DomResOf(pDoc);
 	const char *zExpr = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
 	phl_domnode *pCtxNd = (nArg > 1 && !ph7_value_is_null(apArg[1])) ? DomObjArg(apArg[1]) : 0;
+	/* php's stub says `= true`, but the live default of the third argument is
+	 * the registerNodeNamespaces PROPERTY (the constructor's second argument
+	 * lands there, and a later property write moves the default with it). */
+	int bRegNodeNs = nArg > 2 ? ph7_value_to_bool(apArg[2])
+		: (pThis ? PH7_NativeAttrTruthy(pThis,"registerNodeNamespaces") : 1);
 	xmlXPathContextPtr pXCtx;
 	xmlXPathObjectPtr pObj;
 	ph7_class_instance *pList;
 	ph7_value *pSnap;
+	xmlNsPtr *aNodeNs;
 	sxu32 nMark;
 	if( pDocNd == 0 ){
 		ph7_result_bool(pCtx,0);
@@ -6346,22 +6419,19 @@ DOM_METHOD(vm_builtin_DOMXPath_query)
 		 * (or of none, a constructed node) cannot anchor this evaluation. */
 		return PH7_VmThrowException(pCtx,"Error","Node from wrong document");
 	}
-	pXCtx = xmlXPathNewContext((xmlDocPtr)pDocNd->pNode);
+	aNodeNs = DomXPathCtxOpen(pCtx,pDocNd,pCtxNd,bRegNodeNs,&pXCtx);
 	if( pXCtx == 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* With no explicit context node php evaluates relative expressions
-	 * against the document ELEMENT (so query('file') matches a child of
-	 * the root), not the document node -- match that. */
-	if( pCtxNd ){
-		pXCtx->node = (xmlNodePtr)pCtxNd->pNode;
-	}else{
-		pXCtx->node = xmlDocGetRootElement((xmlDocPtr)pDocNd->pNode);
-	}
 	nMark = PH7_LibxmlCaptureBegin(pVm);
 	pObj = xmlXPathEvalExpression((const xmlChar *)zExpr,pXCtx);
 	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMXPath::query");
+	if( aNodeNs ){
+		pXCtx->namespaces = 0;
+		pXCtx->nsNr = 0;
+		xmlFree(aNodeNs);
+	}
 	if( pObj == 0 || pObj->type != XPATH_NODESET ){
 		if( pObj ){
 			xmlXPathFreeObject(pObj);
@@ -6411,6 +6481,50 @@ DOM_METHOD(vm_builtin_DOMXPath_construct)
 		PH7_NativeSetAttrObj(pCtx->pVm,pThis,"document",
 			(ph7_class_instance *)apArg[0]->x.pOther);
 	}
+	if( pThis && nArg > 1 ){
+		PH7_NativeSetAttrBool(pCtx->pVm,pThis,"registerNodeNamespaces",
+			ph7_value_to_bool(apArg[1]));
+	}
+	return PH7_OK;
+}
+/*
+ * DOMXPath::registerNamespace(string $prefix, string $namespace): bool
+ *
+ * php hands the pair to xmlXPathRegisterNs on its persistent context and
+ * answers its status: only the EMPTY prefix refuses (an invalid NCName one is
+ * taken, and an empty URI is a registration too -- the prefix then resolves,
+ * to a namespace nothing is in). Here the pair goes into the per-object table
+ * the next evaluation replays.
+ */
+DOM_METHOD(vm_builtin_DOMXPath_registerNamespace)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int nPfx = 0;
+	const char *zPfx = nArg > 0 ? ph7_value_to_string(apArg[0],&nPfx) : "";
+	ph7_hashmap *pMap;
+	ph7_value sKey,sVal;
+	if( nPfx < 1 || nArg < 2 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pMap = DomXPathNsReg(pVm,pThis);
+	if( pMap == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	PH7_MemObjInitFromString(pVm,&sKey,0);
+	PH7_MemObjStringAppend(&sKey,zPfx,(sxu32)nPfx);
+	PH7_MemObjInitFromString(pVm,&sVal,0);
+	{
+		int nUri = 0;
+		const char *zUri = ph7_value_to_string(apArg[1],&nUri);
+		PH7_MemObjStringAppend(&sVal,zUri,(sxu32)nUri);
+	}
+	PH7_HashmapInsert(pMap,&sKey,&sVal);
+	PH7_MemObjRelease(&sKey);
+	PH7_MemObjRelease(&sVal);
+	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
 
@@ -7894,8 +8008,15 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 	};
 	static const PH7_NativePropDef aXPathProp[] = {
 		/* Written by the constructor, which is why the slot can carry php's
-		 * non-nullable type with no default at all. */
-		{ "document", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "DOMDocument" },
+		 * non-nullable type with no default at all. php models both declared
+		 * slots as VIRTUAL (the §7.4 residual); the readonly flag here is what
+		 * answers php's write refusal ("Cannot modify readonly property"),
+		 * at the price of isReadOnly() reading true where php reads false. */
+		{ "document", PH7_MOD_PUBLIC|PH7_MOD_READONLY,
+		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "DOMDocument" },
+		{ "registerNodeNamespaces", PH7_MOD_PUBLIC,
+		  { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 }, "bool" },
+		{ XP_NSREG, PH7_MOD_PUBLIC|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeMethodDef aXPathMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC, "DOMDocument $document, bool $registerNodeNS = true", "",
@@ -7903,6 +8024,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "query",       PH7_MOD_PUBLIC,
 		  "string $expression, ?DOMNode $contextNode = null, bool $registerNodeNS = true", "@mixed",
 		  vm_builtin_DOMXPath_query },
+		{ "registerNamespace", PH7_MOD_PUBLIC, "string $prefix, string $namespace", "@bool",
+		  vm_builtin_DOMXPath_registerNamespace },
 	};
 	/* Bases before subclasses: PH7_InstallNativeClasses declares the whole table
 	 * before touching a method, but PH7_ClassInherit still needs the parent to
