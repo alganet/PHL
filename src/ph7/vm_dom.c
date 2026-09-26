@@ -1286,15 +1286,36 @@ static int DomUriIs(const char *zUri,const char *zWant)
 	return zUri != 0 && DomNameIs(zUri,zWant);
 }
 /*
- * php's `dom_check_qname`: the name has to be a QName, a prefix demands a
- * namespace, and the two RESERVED prefixes demand theirs.  bStrictXmlns is the
- * DOM spec's extra pair of rules -- the xmlns namespace may only be spelled by
- * an xmlns name and vice versa -- which php applies when CREATING a node and
- * not when setting an attribute (there the unprefixed `xmlns` is the way a
- * program writes a namespace DECLARATION, whatever URI it passes).
+ * php's `dom_check_qname`: the name has to be a QName, and a prefix demands a
+ * namespace.  Three callers ask three different questions of the same name, so
+ * iMode says which:
+ *
+ *   DOM_QN_SET   setAttributeNS -- the loosest. A prefixed name is judged as two
+ *                NCNames and every failure is the Namespace Error; an unprefixed
+ *                one is a plain Name, where a character libxml will not take is
+ *                the Invalid Character Error. The unprefixed `xmlns` is how a
+ *                program writes a namespace DECLARATION, so nothing about the
+ *                xmlns namespace is checked here.
+ *   DOM_QN_ATTR  createAttributeNS -- a QName and nothing else, plus the DOM
+ *                spec's pairing (the xmlns namespace may only be spelled by an
+ *                xmlns name and an xmlns name may name nothing else) and the
+ *                `xml` prefix's own URI.
+ *   DOM_QN_ELEM  createElementNS -- a QName when a namespace came with it, and
+ *                the SET side's split when none did (so `createElementNS(null,
+ *                'x y')` is the Invalid Character Error where the attribute
+ *                factory says Namespace Error, and `:x` is an element named
+ *                `:x` there and a refusal here). No reserved rule at all: php
+ *                checks those where it RESOLVES the namespace, which is after
+ *                any binding the document already has, so
+ *                `createElementNS($XML_NS, 'xmlns:x')` is an `xml:x` element
+ *                rather than a refusal.
+ *
  * Answers 0, or the DOM error code to raise.
  */
-static int DomQNameParse(const char *zQname,const char *zUri,int bStrictXmlns,dom_qname *pOut)
+#define DOM_QN_SET  0
+#define DOM_QN_ATTR 1
+#define DOM_QN_ELEM 2
+static int DomQNameParse(const char *zQname,const char *zUri,int iMode,dom_qname *pOut)
 {
 	int bHasUri = zUri != 0 && zUri[0] != 0;
 	int bXmlnsName;
@@ -1302,9 +1323,9 @@ static int DomQNameParse(const char *zQname,const char *zUri,int bStrictXmlns,do
 	if( zQname == 0 || zQname[0] == 0 ){
 		return DOM_ERR_NAMESPACE;
 	}
-	if( bStrictXmlns ){
-		/* The CREATE side takes a QName and nothing else, and says Namespace
-		 * Error to everything that is not one. */
+	if( iMode == DOM_QN_ATTR || (iMode == DOM_QN_ELEM && bHasUri) ){
+		/* A created name that names a namespace has to be a QName, and every
+		 * failure there is the Namespace Error. */
 		if( xmlValidateQName((const xmlChar *)zQname,0) != 0 ){
 			return DOM_ERR_NAMESPACE;
 		}
@@ -1319,7 +1340,7 @@ static int DomQNameParse(const char *zQname,const char *zUri,int bStrictXmlns,do
 			return DOM_ERR_NAMESPACE;
 		}
 	}
-	if( !bStrictXmlns ){
+	if( iMode == DOM_QN_SET || (iMode == DOM_QN_ELEM && !bHasUri) ){
 		/* The SET side separates the two failures php separates. A name with a
 		 * PREFIX is judged as two NCNames and every failure there is the
 		 * Namespace Error; an unprefixed one is judged as a plain Name, and a
@@ -1350,14 +1371,14 @@ static int DomQNameParse(const char *zQname,const char *zUri,int bStrictXmlns,do
 		DomQNameRelease(pOut);
 		return DOM_ERR_NAMESPACE;
 	}
-	if( bStrictXmlns && pOut->zPrefix
+	if( iMode == DOM_QN_ATTR && pOut->zPrefix
 	 && xmlStrEqual(pOut->zPrefix,(const xmlChar *)"xml")
 	 && !DomUriIs(zUri,DOM_XML_NS_URI) ){
 		DomQNameRelease(pOut);
 		return DOM_ERR_NAMESPACE;
 	}
-	if( bStrictXmlns ){
-		/* The DOM spec's pairing, which php applies when CREATING a node: the
+	if( iMode == DOM_QN_ATTR ){
+		/* The DOM spec's pairing, which php applies to a created ATTRIBUTE: the
 		 * xmlns namespace may only be spelled by an xmlns name, and an xmlns
 		 * name may name nothing else. */
 		int bXmlnsPrefix = pOut->zPrefix != 0
@@ -1480,6 +1501,31 @@ static xmlNsPtr DomNsResolve(xmlNodePtr pAnchor,const char *zUri,const xmlChar *
 		}
 	}
 	return DomNsGenerate(pAnchor,zUri,0);
+}
+/*
+ * The namespace a node CREATED in zUri carries, which is a different rule from
+ * either side above and php's smallest one: a binding already in scope is used
+ * whatever prefix was asked for -- for a fresh node that means only libxml's own
+ * `xml` declaration, which is why every `createElementNS($XML_NS, ...)` comes
+ * back spelled `xml:` -- and otherwise the node declares zUri on ITSELF under
+ * the caller's prefix, with no generated prefix and no fallback: the three
+ * reserved-name rules php checks here (`dom_get_ns`) are a refusal, not a
+ * rename. NULL means Namespace Error.
+ */
+static xmlNsPtr DomNsForCreate(xmlNodePtr pNode,const char *zUri,const xmlChar *zPrefix)
+{
+	xmlNsPtr pNs = xmlSearchNsByHref(pNode->doc,pNode,(const xmlChar *)zUri);
+	if( pNs ){
+		return pNs;
+	}
+	if( zPrefix != 0
+	 && ((xmlStrEqual(zPrefix,(const xmlChar *)"xml") && !DomUriIs(zUri,DOM_XML_NS_URI))
+	  || (xmlStrEqual(zPrefix,(const xmlChar *)"xmlns") && !DomUriIs(zUri,DOM_XMLNS_NS_URI))
+	  || (DomUriIs(zUri,DOM_XMLNS_NS_URI)
+	   && !xmlStrEqual(zPrefix,(const xmlChar *)"xmlns"))) ){
+		return 0;
+	}
+	return xmlNewNs(pNode,(const xmlChar *)zUri,zPrefix);
 }
 /*
  * A declaration that lands on pElem takes the SPELLING away from every node
@@ -1996,7 +2042,7 @@ DOM_METHOD(vm_builtin_DOMElement_setAttributeNS)
 		return PH7_VmThrowException(pCtx,"ValueError",
 			"DOMElement::setAttributeNS(): Argument #2 ($qualifiedName) must not be empty");
 	}
-	rc = DomQNameParse(zQname,zUri,0,&sQ);
+	rc = DomQNameParse(zQname,zUri,DOM_QN_SET,&sQ);
 	if( rc ){
 		return DomThrow(pCtx,rc);
 	}
@@ -2459,7 +2505,7 @@ DOM_METHOD(vm_builtin_DOMDocument_createAttributeNS)
 	if( pNd == 0 ){
 		return DomThrow(pCtx,DOM_ERR_NAMESPACE);
 	}
-	rc = DomQNameParse(zQname,zUri,1,&sQ);
+	rc = DomQNameParse(zQname,zUri,DOM_QN_ATTR,&sQ);
 	if( rc ){
 		return DomThrow(pCtx,rc);
 	}
@@ -2733,6 +2779,68 @@ DOM_METHOD(vm_builtin_DOMDocument_createElement)
 	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
 	const char *zVal = nArg > 1 ? ph7_value_to_string(apArg[1],&nVal) : "";
 	return DomDocCreate(pCtx,XML_ELEMENT_NODE,zName,zVal,nVal);
+}
+/*
+ * DOMDocument::createElementNS(?string $namespace, string $qualifiedName,
+ *                              string $value = '')
+ *
+ * The only way to build a namespaced ELEMENT -- until this existed a program
+ * could read a namespaced document and not write one, and `Call to undefined
+ * method` was the answer to the first line of every modern DOM example.
+ *
+ * php's rules, measured:
+ *
+ *   * A NULL namespace is a plain element; an EMPTY-STRING one is not the same
+ *     thing, it declares `xmlns=""` on the element and answers `''` for
+ *     namespaceURI. Either with a PREFIXED name is a Namespace Error, since a
+ *     prefix names a namespace.
+ *   * The declaration lands on the NEW element, always: a fresh node has no
+ *     parent, so nothing the document declares elsewhere is in scope yet. What
+ *     the document already makes is settled later, when the element is linked
+ *     in and the redundant declaration is stripped (DomNsOnInsertEx).
+ *   * The $value is not text -- php hands it to libxml, which entity-parses it,
+ *     so `&amp;` becomes `&`, an undefined entity is a warning and `<` is
+ *     escaped. The same quirk createElement already carries.
+ */
+DOM_METHOD(vm_builtin_DOMDocument_createElementNS)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	phl_domnode *pDocNd = DomThisNode(pCtx);
+	const char *zUri = DomArgStrOrNull(nArg,apArg,0);
+	const char *zQname = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
+	int nVal = 0;
+	const char *zVal = nArg > 2 ? ph7_value_to_string(apArg[2],&nVal) : "";
+	xmlNodePtr pNode;
+	dom_qname sQ;
+	sxu32 nMark;
+	int rc;
+	if( pDocNd == 0 ){
+		return DomThrow(pCtx,DOM_ERR_NAMESPACE);
+	}
+	rc = DomQNameParse(zQname,zUri,DOM_QN_ELEM,&sQ);
+	if( rc ){
+		return DomThrow(pCtx,rc);
+	}
+	nMark = PH7_LibxmlCaptureBegin(pVm);
+	pNode = xmlNewDocNode((xmlDocPtr)pDocNd->pNode,0,sQ.zLocal,
+		nVal ? (const xmlChar *)zVal : 0);
+	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMDocument::createElementNS");
+	if( pNode == 0 ){
+		DomQNameRelease(&sQ);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( zUri != 0 ){
+		xmlNsPtr pNs = DomNsForCreate(pNode,zUri,sQ.zPrefix);
+		if( pNs == 0 ){
+			DomQNameRelease(&sQ);
+			xmlFreeNode(pNode);   /* never handed out, never an orphan */
+			return DomThrow(pCtx,DOM_ERR_NAMESPACE);
+		}
+		xmlSetNs(pNode,pNs);
+	}
+	DomQNameRelease(&sQ);
+	DomOrphanAdd(pDocNd->pShell,pNode);
+	return DomResultNodeOf(pCtx,pDocNd,pNode);
 }
 /* DOMDocument::createTextNode / createComment / createCDATASection(string $data) */
 static int DomDocCreateData(ph7_context *pCtx,int iKind,int nArg,ph7_value **apArg)
@@ -4685,6 +4793,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMDocument_saveXML },
 		{ "createElement",        PH7_MOD_PUBLIC, "string $localName, string $value = ''", "",
 		  vm_builtin_DOMDocument_createElement },
+		/* php declares no return type at all on this one either -- its answer is
+		 * `DOMElement|false` and it never wrote that down. */
+		{ "createElementNS",      PH7_MOD_PUBLIC,
+		  "?string $namespace, string $qualifiedName, string $value = ''", "",
+		  vm_builtin_DOMDocument_createElementNS },
 		{ "getElementById",       PH7_MOD_PUBLIC, "string $elementId", "@?DOMElement",
 		  vm_builtin_DOMDocument_getElementById },
 		{ "createAttribute",      PH7_MOD_PUBLIC, "string $localName", "",
