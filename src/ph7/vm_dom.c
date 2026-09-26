@@ -239,8 +239,34 @@ static const char * DomClassOfKind(int iKind)
 	case XML_PI_NODE:            return "DOMProcessingInstruction";
 	case XML_DOCUMENT_FRAG_NODE: return "DOMDocumentFragment";
 	case XML_ENTITY_REF_NODE:    return "DOMEntityReference";
+	case XML_DTD_NODE:
+	case XML_DOCUMENT_TYPE_NODE: return "DOMDocumentType";
+	/* php has one class for the whole declaration half of a DTD and hands an
+	 * ELEMENT declaration the entity's, which is the class a `$doctype->
+	 * childNodes` walk meets. DOMEntity's own readers ask the node's real
+	 * type before touching a field, so an element declaration answers null
+	 * from each of them rather than reading an xmlElement as an xmlEntity. */
+	case XML_ENTITY_DECL:
+	case XML_ELEMENT_DECL:       return "DOMEntity";
 	default:                     return "DOMNode";
 	}
+}
+/*
+ * The nodeType php reports, which is not always libxml's own.
+ *
+ * The two numberings were built to agree -- a text node is 3 in both -- but
+ * libxml parses a DOCTYPE into an XML_DTD_NODE (14) where the DOM's number for
+ * one is DOCUMENT_TYPE_NODE (10), and php reports the DOM's.  So
+ * `$n->nodeType === XML_DOCUMENT_TYPE_NODE` -- the way a walk tells the doctype
+ * from an element without a `get_class` -- was FALSE here for every document
+ * carrying one.
+ */
+static int DomNodeTypeOf(xmlNodePtr pNode)
+{
+	if( pNode == 0 ){
+		return 0;
+	}
+	return pNode->type == XML_DTD_NODE ? (int)XML_DOCUMENT_TYPE_NODE : (int)pNode->type;
 }
 /*
  * The wrapper object for one node of pDoc's tree -- the same one every time,
@@ -679,6 +705,26 @@ static int DomChildrenValid(xmlNodePtr pNode)
 	default:
 		return 1;
 	}
+}
+/*
+ * The two ends of the child list php's `firstChild`/`lastChild` answer, and
+ * what `hasChildNodes()` asks -- all three through the same screen, so the
+ * DOCTYPE (whose declarations libxml really does link as children) answers
+ * null, null and false the way php's do.
+ */
+static xmlNodePtr DomNodeChildFirst(xmlNodePtr pNode)
+{
+	if( pNode == 0 || !DomChildrenValid(pNode) ){
+		return 0;
+	}
+	return DomRefChildren(pNode);
+}
+static xmlNodePtr DomNodeChildLast(xmlNodePtr pNode)
+{
+	if( pNode == 0 || !DomChildrenValid(pNode) ){
+		return 0;
+	}
+	return pNode->last ? pNode->last : DomRefChildren(pNode);
 }
 /*
  * php's dom_node_is_read_only: the DTD-owned kinds -- an entity reference's
@@ -1659,7 +1705,7 @@ DOM_METHOD(vm_builtin_DOMNode_hasChildNodes)
 	phl_domnode *pNd = DomThisNode(pCtx);
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	ph7_result_bool(pCtx,pNd && DomChildCount((xmlNodePtr)pNd->pNode,0) > 0);
+	ph7_result_bool(pCtx,pNd && DomNodeChildFirst((xmlNodePtr)pNd->pNode) != 0);
 	return PH7_OK;
 }
 /* The attribute list of an element (empty for anything else). */
@@ -2032,6 +2078,29 @@ DOM_METHOD(vm_builtin_DOMNode_isEqualNode)
 /* ===== Copying: cloneNode ===== */
 
 /*
+ * One node copied the way php copies it.
+ *
+ * libxml's generic copier has no case for a DTD node and answers NULL there, so
+ * `$doc->doctype->cloneNode()` was `false` -- php reaches for xmlCopyDtd
+ * instead, which carries the whole internal subset (its declarations, entities
+ * and notations) across. The copy keeps the SOURCE's document in its `doc`
+ * slot without being linked into it, which is what makes php's cloned doctype
+ * still answer an `internalSubset` while its `parentNode` is null.
+ */
+static xmlNodePtr DomCopyNode(xmlNodePtr pNode,xmlDocPtr pDoc,int iExtended)
+{
+	xmlNodePtr pCopy;
+	if( pNode->type == XML_DTD_NODE || pNode->type == XML_DOCUMENT_TYPE_NODE ){
+		pCopy = (xmlNodePtr)xmlCopyDtd((xmlDtdPtr)pNode);
+		if( pCopy ){
+			pCopy->doc = pNode->doc;
+		}
+		return pCopy;
+	}
+	return xmlDocCopyNode(pNode,pDoc,iExtended);
+}
+
+/*
  * Cloning a DOCUMENT is not cloning a node: php builds a SECOND document --
  * its own tree, its own wrapper, its own identity cache -- so the copy's
  * `documentElement` answers the copy as its `ownerDocument` and appending a
@@ -2110,7 +2179,7 @@ DOM_METHOD(vm_builtin_DOMNode_cloneNode)
 		return DomCloneDocument(pCtx,pNd,bDeep);
 	}
 	nMark = PH7_LibxmlCaptureBegin(pVm);
-	pCopy = xmlDocCopyNode(pNode,pNode->doc,bDeep ? 1 : 2);
+	pCopy = DomCopyNode(pNode,pNode->doc,bDeep ? 1 : 2);
 	PH7_LibxmlCaptureEnd(pVm,nMark,"DOMNode::cloneNode");
 	if( pCopy == 0 ){
 		ph7_result_bool(pCtx,0);
@@ -2180,7 +2249,7 @@ static void DomInstanceClone(ph7_vm *pVm,ph7_class_instance *pClone,ph7_class_in
 	if( pNode == 0 ){
 		return;   /* no node behind the source: the copy has none either */
 	}
-	pCopy = xmlDocCopyNode(pNode,pNode->doc,1);
+	pCopy = DomCopyNode(pNode,pNode->doc,1);
 	pRes = pCopy ? DomNewRes(&(*pVm),pNd->pShell,pCopy) : 0;
 	if( pRes == 0 ){
 		/* Never leave the slot-copied handle in place: two objects over one
@@ -6022,6 +6091,11 @@ DOM_METHOD(vm_builtin_DOMNode_wakeup)
 #define DNL_GEBTN 1   /* getElementsByTagName($name) */
 #define DNL_SNAP  2   /* DOMXPath::query() */
 #define DNL_GEBTNNS 3 /* getElementsByTagNameNS($uri, $localName) */
+/* ...and a NAMED map is one of two: an element's attribute list, or one of the
+ * two DTD declaration TABLES, which are libxml hash tables rather than node
+ * lists -- the reason a parameter entity, which is a child of the DTD like
+ * every other declaration, is not in `entities`. */
+#define DNL_ENTS  4   /* $doctype->entities */
 #define DNL_KIND  "__kind"
 #define DNL_OWNER "__owner"
 #define DNL_NAME  "__name"
@@ -6178,19 +6252,75 @@ static int DomListProp(ph7_context *pCtx,const char *zName)
  * It shares DOMNodeList's slots (the owner element in $__owner) but walks the
  * attribute list rather than the child list, so it gets its own two readers.
  */
+/* Is this map one of the DTD DECLARATION tables rather than an element's
+ * attribute list? The two are walked with entirely different machinery. */
+static int DomMapIsTable(ph7_class_instance *pMap)
+{
+	return pMap != 0 && PH7_NativeAttrInt(pMap,DNL_KIND) == DNL_ENTS;
+}
+/*
+ * The table itself, which is NULL for a doctype that declares nothing of that
+ * kind: libxml allocates the hash only when the first declaration arrives, so
+ * an absent table is an EMPTY map and not an error.
+ */
+static xmlHashTablePtr DomMapHash(ph7_class_instance *pMap,phl_domnode *pOwner)
+{
+	xmlDtdPtr pDtd = pOwner ? (xmlDtdPtr)pOwner->pNode : 0;
+	if( !DomMapIsTable(pMap) || pDtd == 0
+	 || (pDtd->type != XML_DTD_NODE && pDtd->type != XML_DOCUMENT_TYPE_NODE) ){
+		return 0;
+	}
+	return (xmlHashTablePtr)pDtd->entities;
+}
+/*
+ * php walks these tables with xmlHashScan and takes the n-th thing it is
+ * handed, so the ORDER a map answers in is the hash's and not the document's.
+ * The same walk, so the same order.
+ */
+typedef struct DomHashPick DomHashPick;
+struct DomHashPick {
+	int iWant;              /* index still to be stepped over */
+	void *pHit;             /* the payload at index 0 of what is left */
+};
+static void DomHashPickOne(void *pPayload,void *pData,const xmlChar *zName)
+{
+	DomHashPick *pPick = (DomHashPick *)pData;
+	SXUNUSED(zName);
+	if( pPick->iWant > 0 ){
+		pPick->iWant--;
+	}else if( pPick->pHit == 0 ){
+		pPick->pHit = pPayload;
+	}
+}
+static xmlNodePtr DomHashAt(xmlHashTablePtr pTab,int iIndex)
+{
+	DomHashPick sPick;
+	if( pTab == 0 || iIndex < 0 || iIndex >= xmlHashSize(pTab) ){
+		return 0;
+	}
+	sPick.iWant = iIndex;
+	sPick.pHit = 0;
+	xmlHashScan(pTab,DomHashPickOne,&sPick);
+	return (xmlNodePtr)sPick.pHit;
+}
 static ph7_class_instance * DomMapItem(ph7_vm *pVm,ph7_class_instance *pMap,int iIndex)
 {
 	phl_domnode *pOwner = pMap ? DomListOwner(pMap) : 0;
-	xmlAttrPtr pAttr;
+	xmlNodePtr pNode;
 	if( pOwner == 0 || iIndex < 0 ){
 		return 0;
 	}
-	pAttr = DomAttrAt((xmlNodePtr)pOwner->pNode,iIndex);
-	return DomWrap(&(*pVm),PH7_NativeAttrObj(pMap,DOM_DOC),pOwner->pShell,(xmlNodePtr)pAttr);
+	pNode = DomMapIsTable(pMap) ? DomHashAt(DomMapHash(pMap,pOwner),iIndex)
+	                            : (xmlNodePtr)DomAttrAt((xmlNodePtr)pOwner->pNode,iIndex);
+	return DomWrap(&(*pVm),PH7_NativeAttrObj(pMap,DOM_DOC),pOwner->pShell,pNode);
 }
 static int DomMapCount(ph7_class_instance *pMap)
 {
 	phl_domnode *pOwner = pMap ? DomListOwner(pMap) : 0;
+	if( DomMapIsTable(pMap) ){
+		xmlHashTablePtr pTab = DomMapHash(pMap,pOwner);
+		return pTab ? xmlHashSize(pTab) : 0;
+	}
 	return pOwner ? DomAttrCount((xmlNodePtr)pOwner->pNode) : 0;
 }
 DOM_METHOD(vm_builtin_DOMNamedNodeMap_count)
@@ -6213,14 +6343,18 @@ DOM_METHOD(vm_builtin_DOMNamedNodeMap_getNamedItem)
 	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
 	/* The MAP asks libxml's name-only question, where DOMElement's own
 	 * getAttributeNode resolves the prefix: `getNamedItem('k')` finds the
-	 * namespaced `p:k` that `getAttribute('k')` does not. */
-	xmlAttrPtr pAttr = pOwner ? DomAttrByLocal((xmlNodePtr)pOwner->pNode,zName) : 0;
-	if( pAttr == 0 ){
+	 * namespaced `p:k` that `getAttribute('k')` does not. A DECLARATION table
+	 * is keyed by that name to begin with, so it is one lookup. */
+	xmlNodePtr pHit = pOwner == 0 ? 0
+		: DomMapIsTable(pThis)
+			? (xmlNodePtr)xmlHashLookup(DomMapHash(pThis,pOwner),(const xmlChar *)zName)
+			: (xmlNodePtr)DomAttrByLocal((xmlNodePtr)pOwner->pNode,zName);
+	if( pHit == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
 	return DomResultWrap(pCtx,DomWrap(pCtx->pVm,PH7_NativeAttrObj(pThis,DOM_DOC),
-		pOwner->pShell,(xmlNodePtr)pAttr));
+		pOwner->pShell,pHit));
 }
 /* DOMNamedNodeMap::getNamedItemNS(?string $namespace, string $localName): ?DOMNode */
 DOM_METHOD(vm_builtin_DOMNamedNodeMap_getNamedItemNS)
@@ -6232,16 +6366,21 @@ DOM_METHOD(vm_builtin_DOMNamedNodeMap_getNamedItemNS)
 	/* A NULL namespace is the map's ANY here, not the element's "in no
 	 * namespace": `$el->attributes->getNamedItemNS(null,'k')` answers a
 	 * namespaced `p:k` where `$el->getAttributeNodeNS(null,'k')` answers null.
-	 * An EMPTY namespace is neither -- it matches a URI no document has. */
-	xmlAttrPtr pAttr = pOwner == 0 ? 0
-		: zUri ? DomAttrByNs((xmlNodePtr)pOwner->pNode,zUri,zLocal)
-		       : DomAttrByLocal((xmlNodePtr)pOwner->pNode,zLocal);
-	if( pAttr == 0 ){
+	 * An EMPTY namespace is neither -- it matches a URI no document has.
+	 * A DECLARATION table has no namespaces at all and php reads right past
+	 * the argument there: the URI decides nothing, the name decides
+	 * everything. */
+	xmlNodePtr pHit = pOwner == 0 ? 0
+		: DomMapIsTable(pThis)
+			? (xmlNodePtr)xmlHashLookup(DomMapHash(pThis,pOwner),(const xmlChar *)zLocal)
+		: zUri ? (xmlNodePtr)DomAttrByNs((xmlNodePtr)pOwner->pNode,zUri,zLocal)
+		       : (xmlNodePtr)DomAttrByLocal((xmlNodePtr)pOwner->pNode,zLocal);
+	if( pHit == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
 	return DomResultWrap(pCtx,DomWrap(pCtx->pVm,PH7_NativeAttrObj(pThis,DOM_DOC),
-		pOwner->pShell,(xmlNodePtr)pAttr));
+		pOwner->pShell,pHit));
 }
 static int DomMapProp(ph7_context *pCtx,const char *zName)
 {
@@ -7424,7 +7563,7 @@ static int DomNodeProp(ph7_context *pCtx,const char *zName)
 	}else if( DomNameIs(zName,"nodeValue") ){
 		DomNodeValue(pCtx,pNode);
 	}else if( DomNameIs(zName,"nodeType") ){
-		ph7_result_int(pCtx,pNode ? (int)pNode->type : 0);
+		ph7_result_int(pCtx,DomNodeTypeOf(pNode));
 	}else if( DomNameIs(zName,"textContent") ){
 		DomTextContent(pCtx,pNode);
 	}else if( DomNameIs(zName,"parentNode") ){
@@ -7432,11 +7571,16 @@ static int DomNodeProp(ph7_context *pCtx,const char *zName)
 	}else if( DomNameIs(zName,"firstChild") ){
 		/* Through the entity-reference resolver: an ADOPTED constructed
 		 * reference's raw children are cleared, and php's reader answers the
-		 * document's declaration anyway. */
-		DomResultNodeOf(pCtx,pNd,DomRefChildren(pNode));
+		 * document's declaration anyway.
+		 *
+		 * Both ends are gated on php's dom_node_children_valid, which the
+		 * DOCTYPE is not: libxml links a DTD's declarations as its children
+		 * and php's `firstChild`/`lastChild`/`hasChildNodes()` answer null,
+		 * null and false there all the same -- while `childNodes` (which does
+		 * NOT consult it) lists them. */
+		DomResultNodeOf(pCtx,pNd,DomNodeChildFirst(pNode));
 	}else if( DomNameIs(zName,"lastChild") ){
-		DomResultNodeOf(pCtx,pNd,pNode && pNode->last == 0 ? DomRefChildren(pNode)
-			: (pNode ? pNode->last : 0));
+		DomResultNodeOf(pCtx,pNd,DomNodeChildLast(pNode));
 	}else if( DomNameIs(zName,"nextSibling") ){
 		DomResultNodeOf(pCtx,pNd,pNode ? pNode->next : 0);
 	}else if( DomNameIs(zName,"previousSibling") ){
@@ -7703,10 +7847,173 @@ static int DomDocProp(ph7_context *pCtx,const char *zName)
 		DomResultNodeOf(pCtx,pNd,pNd ? xmlDocGetRootElement((xmlDocPtr)pNd->pNode) : 0);
 		return 1;
 	}
+	if( DomNameIs(zName,"doctype") ){
+		/* The INTERNAL subset alone, which is php's: a DTD pulled in from the
+		 * SYSTEM identifier lands in `extSubset` and is not what `doctype`
+		 * answers. Null for a document that declares none. */
+		DomResultNodeOf(pCtx,pNd,
+			pNd ? (xmlNodePtr)xmlGetIntSubset((xmlDocPtr)pNd->pNode) : 0);
+		return 1;
+	}
 	if( DomDocStateProp(pCtx,zName,pNd ? (xmlDocPtr)pNd->pNode : 0) ){
 		return 1;
 	}
 	if( DomParentNodeProp(pCtx,zName) ){
+		return 1;
+	}
+	return DomNodeProp(pCtx,zName);
+}
+/*
+ * DOMDocumentType: what the `<!DOCTYPE ...>` line SAYS.
+ *
+ * The DTD node has been reachable all along (`$doc->firstChild` on any document
+ * carrying a doctype), so what was missing was not the node but every question
+ * about it: the class, so `instanceof DOMDocumentType` and `get_class()`
+ * answer, and the four identifiers a program reads off one.
+ *
+ * php's `publicId`/`systemId` here are plain strings that answer "" when the
+ * declaration carries none -- unlike DOMEntity's, which are `?string` and null
+ * for the same absence -- so the two classes cannot share a reader.
+ */
+static xmlDtdPtr DomThisDtd(ph7_context *pCtx)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	if( pNode == 0
+	 || (pNode->type != XML_DTD_NODE && pNode->type != XML_DOCUMENT_TYPE_NODE) ){
+		return 0;
+	}
+	return (xmlDtdPtr)pNode;
+}
+/*
+ * `internalSubset`: the bytes BETWEEN the brackets, rebuilt by dumping each
+ * declaration the subset holds.  php reads them off the DOCUMENT's internal
+ * subset rather than the receiver's own children -- so a doctype cloned out of
+ * a document that has none answers null -- and answers null, not "", when
+ * there is no subset to dump at all.
+ */
+static void DomInternalSubset(ph7_context *pCtx,xmlDtdPtr pDtd)
+{
+	xmlDtdPtr pSub = (pDtd && pDtd->doc) ? xmlGetIntSubset(pDtd->doc) : 0;
+	xmlNodePtr pChild = pSub ? pSub->children : 0;
+	xmlBufferPtr pBuf;
+	xmlOutputBufferPtr pOut;
+	if( pChild == 0 ){
+		ph7_result_null(pCtx);
+		return;
+	}
+	pBuf = xmlBufferCreate();
+	pOut = pBuf ? xmlOutputBufferCreateBuffer(pBuf,0) : 0;
+	if( pOut == 0 ){
+		if( pBuf ){
+			xmlBufferFree(pBuf);
+		}
+		ph7_result_null(pCtx);
+		return;
+	}
+	for( ; pChild ; pChild = pChild->next ){
+		xmlNodeDumpOutput(pOut,pSub->doc,pChild,0,0,0);
+	}
+	xmlOutputBufferFlush(pOut);
+	ph7_result_string(pCtx,(const char *)xmlBufferContent(pBuf),(int)xmlBufferLength(pBuf));
+	xmlOutputBufferClose(pOut);
+	xmlBufferFree(pBuf);
+}
+static int DomDocTypeProp(ph7_context *pCtx,const char *zName)
+{
+	xmlDtdPtr pDtd = DomThisDtd(pCtx);
+	if( DomNameIs(zName,"name") ){
+		/* The name the DOCTYPE declares, which is also its nodeName. */
+		ph7_result_string(pCtx,(pDtd && pDtd->name) ? (const char *)pDtd->name : "",-1);
+		return 1;
+	}
+	if( DomNameIs(zName,"publicId") ){
+		ph7_result_string(pCtx,(pDtd && pDtd->ExternalID) ? (const char *)pDtd->ExternalID : "",-1);
+		return 1;
+	}
+	if( DomNameIs(zName,"systemId") ){
+		ph7_result_string(pCtx,(pDtd && pDtd->SystemID) ? (const char *)pDtd->SystemID : "",-1);
+		return 1;
+	}
+	if( DomNameIs(zName,"internalSubset") ){
+		DomInternalSubset(pCtx,pDtd);
+		return 1;
+	}
+	if( DomNameIs(zName,"entities") ){
+		ph7_class_instance *pMap = DomNewCollection(pCtx->pVm,"DOMNamedNodeMap",
+			DomThisDoc(pCtx),DNL_ENTS,PH7_ContextThis(pCtx),0,0,0);
+		if( pMap ){
+			PH7_NativeResultObject(pCtx,pMap);
+		}else{
+			ph7_result_null(pCtx);
+		}
+		return 1;
+	}
+	return DomNodeProp(pCtx,zName);
+}
+/*
+ * DOMEntity: an `<!ENTITY ...>` declaration of the internal subset.
+ *
+ * Its three identifiers are the DOM's "for an UNPARSED entity" rule, which php
+ * follows to the letter: `publicId`, `systemId` and `notationName` answer null
+ * for every entity that is not `NDATA`-declared, so the external-but-parsed
+ * `<!ENTITY e SYSTEM "e.xml">` reads null from all three while
+ * `<!ENTITY g SYSTEM "g.gif" NDATA gif>` reads its own two and the notation's
+ * name.  (`baseURI`, which DOMNode answers, is where the resolved system
+ * identifier does show for both.)
+ *
+ * The other three are php 8.4's deprecated block, and like DOMDocument's the
+ * notice fires on a READ and on an `isset()` alike -- both go through php's
+ * property handler -- and not on a write, where the readonly refusal comes
+ * first and never consults this reader.
+ */
+static xmlEntityPtr DomThisEntity(ph7_context *pCtx)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	/* Only a real entity DECLARATION is xmlEntity-shaped. An ELEMENT
+	 * declaration wears this class in php and is an xmlElement underneath,
+	 * whose fields past the node header are another struct's. */
+	if( pNode == 0 || pNode->type != XML_ENTITY_DECL ){
+		return 0;
+	}
+	return (xmlEntityPtr)pNode;
+}
+static int DomEntityProp(ph7_context *pCtx,const char *zName)
+{
+	xmlEntityPtr pEnt = DomThisEntity(pCtx);
+	int bUnparsed = pEnt && pEnt->etype == XML_EXTERNAL_GENERAL_UNPARSED_ENTITY;
+	if( DomNameIs(zName,"publicId") ){
+		DomResultXmlStr(pCtx,bUnparsed ? pEnt->ExternalID : 0);
+		return 1;
+	}
+	if( DomNameIs(zName,"systemId") ){
+		DomResultXmlStr(pCtx,bUnparsed ? pEnt->SystemID : 0);
+		return 1;
+	}
+	if( DomNameIs(zName,"notationName") ){
+		/* libxml keeps an unparsed entity's notation name in `content`. */
+		DomResultXmlStr(pCtx,bUnparsed ? pEnt->content : 0);
+		return 1;
+	}
+	if( DomNameIs(zName,"actualEncoding") ){
+		PH7_VmThrowError(pCtx->pVm,0,8192 /* E_DEPRECATED */,
+			"Property DOMEntity::$actualEncoding is deprecated");
+		ph7_result_null(pCtx);
+		return 1;
+	}
+	if( DomNameIs(zName,"encoding") ){
+		PH7_VmThrowError(pCtx->pVm,0,8192 /* E_DEPRECATED */,
+			"Property DOMEntity::$encoding is deprecated");
+		ph7_result_null(pCtx);
+		return 1;
+	}
+	if( DomNameIs(zName,"version") ){
+		/* php has never filled any of the three in: the handler answers NULL
+		 * and does nothing else. */
+		PH7_VmThrowError(pCtx->pVm,0,8192 /* E_DEPRECATED */,
+			"Property DOMEntity::$version is deprecated");
+		ph7_result_null(pCtx);
 		return 1;
 	}
 	return DomNodeProp(pCtx,zName);
@@ -8404,6 +8711,28 @@ DOM_PROP_ACCESSORS(DOMAttr,DomAttrProp,DomSetAttrProp)
 DOM_PROP_ACCESSORS(DOMCharacterData,DomCharProp,DomSetCharProp)
 DOM_PROP_ACCESSORS(DOMText,DomTextProp,DomSetCharProp)
 DOM_PROP_ACCESSORS(DOMProcessingInstruction,DomPiProp,DomSetPiProp)
+/* The DTD half's OWN properties are all read-only, so the writer states none of
+ * them and each lands on DomRefuseWrite's readonly Error. DOMNode's three still
+ * write here -- `nodeValue` and `textContent` are accepted and ignored on a
+ * doctype, which is not the same answer as refusing them. */
+DOM_PROP_ACCESSORS(DOMDocumentType,DomDocTypeProp,DomSetNodeProp)
+/*
+ * Every property DOMEntity adds is read-only, and the refusal is raised HERE
+ * rather than by falling through to the reader: the reader is where the three
+ * deprecated names raise their notice, and php's write never reaches it -- the
+ * readonly Error comes first and says nothing about deprecation.
+ */
+static int DomSetEntityProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)
+{
+	if( DomNameIs(zName,"publicId") || DomNameIs(zName,"systemId")
+	 || DomNameIs(zName,"notationName") || DomNameIs(zName,"actualEncoding")
+	 || DomNameIs(zName,"encoding") || DomNameIs(zName,"version") ){
+		*pRc = DomRefuseWrite(pCtx,zName,1);
+		return DOM_SET_DONE;
+	}
+	return DomSetNodeProp(pCtx,zName,pVal,pRc);
+}
+DOM_PROP_ACCESSORS(DOMEntity,DomEntityProp,DomSetEntityProp)
 /* The fragment writes what DOMNode writes; only its READ set is wider. */
 DOM_PROP_ACCESSORS(DOMDocumentFragment,DomFragProp,DomSetNodeProp)
 /*
@@ -8807,6 +9136,20 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "__construct", PH7_MOD_PUBLIC, "string $name", "",
 		  vm_builtin_DOMEntityReference_construct },
 	};
+	/* The DTD half declares no method of its own at all -- php's whole
+	 * DOMDocumentType surface is properties over DOMNode's method list. */
+	static const PH7_NativeMethodDef aDocTypeMethod[] = {
+		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMDocumentType_get },
+		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMDocumentType_isset },
+		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",
+		  vm_builtin_DOMDocumentType_set },
+	};
+	static const PH7_NativeMethodDef aEntityMethod[] = {
+		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMEntity_get },
+		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMEntity_isset },
+		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",
+		  vm_builtin_DOMEntity_set },
+	};
 	/* The comment and CDATA constructors -- the only method either class
 	 * declares of its own; php's CDATA data is REQUIRED where the other two
 	 * default. */
@@ -8960,6 +9303,10 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  aFragMethod, SX_ARRAYSIZE(aFragMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMEntityReference", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aEntRefMethod, SX_ARRAYSIZE(aEntRefMethod), 0, 0, 0, 0, 0, 0, 0 },
+		{ "DOMDocumentType", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aDocTypeMethod, SX_ARRAYSIZE(aDocTypeMethod), 0, 0, 0, 0, 0, 0, 0 },
+		{ "DOMEntity", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aEntityMethod, SX_ARRAYSIZE(aEntityMethod), 0, 0, 0, 0, 0, 0, 0 },
 		/* php's own two: IteratorAggregate (NOT Iterator -- the chunk had the
 		 * list carry its own cursor) and Countable. */
 		{ "DOMNodeList", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
@@ -8989,7 +9336,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		static const char * const azNodeClone[] = {
 			"DOMNode", "DOMElement", "DOMAttr", "DOMCharacterData", "DOMText",
 			"DOMComment", "DOMCdataSection", "DOMProcessingInstruction",
-			"DOMDocumentFragment", "DOMEntityReference"
+			"DOMDocumentFragment", "DOMEntityReference", "DOMDocumentType"
 		};
 		sxu32 n;
 		ph7_class *pClass;
