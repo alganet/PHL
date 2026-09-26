@@ -77,6 +77,7 @@ static const char * const azDomDocFlag[] = {
 #define DOM_ERR_INVALID_CHAR   5
 #define DOM_ERR_NOT_FOUND      8
 #define DOM_ERR_NOT_SUPPORTED  9
+#define DOM_ERR_INVALID_STATE 11
 #define DOM_ERR_NAMESPACE     14
 /* The sentence php prints for each -- so a refusal that travels as a code can
  * be raised from one place. */
@@ -88,6 +89,7 @@ static const char * DomErrText(int iCode)
 	case DOM_ERR_WRONG_DOC:    return "Wrong Document Error";
 	case DOM_ERR_INVALID_CHAR: return "Invalid Character Error";
 	case DOM_ERR_NOT_SUPPORTED: return "Not Supported Error";
+	case DOM_ERR_INVALID_STATE: return "Invalid State Error";
 	case DOM_ERR_NAMESPACE:    return "Namespace Error";
 	default:                   return "Not Found Error";
 	}
@@ -544,10 +546,12 @@ static xmlNodePtr DomChildAt(xmlNodePtr pNode,int iWant)
  * Defined with the namespace machinery below, and declared here because the
  * surgery runs it: a node LINKED into a tree loses the declarations its new
  * scope already makes, and gains the ones its new scope no longer makes.
- * (Nothing else in this file is declared ahead of its definition; the
- * namespace section cannot move up because it reads the attribute walker.)
+ * (The namespace section cannot move up because it reads the attribute
+ * walker; DomDropChildren below is with the property-write machinery it was
+ * built for, and replaceChildren() runs the same wrapper-preserving drop.)
  */
 static void DomNsOnInsertEx(xmlNodePtr pNode,int bDeep);
+static void DomDropChildren(ph7_context *pCtx,phl_xmldoc *pShell,xmlNodePtr pNode);
 
 /*
  * php's refusal taxonomy for linking pChild under pParent, or NULL when the
@@ -761,6 +765,288 @@ DOM_METHOD(vm_builtin_DOMNode_replaceChild)
 	ph7_result_value(pCtx,apArg[1]);
 	return PH7_OK;
 }
+/* ===== The 8.3 parent/child-node family (DOMParentNode / DOMChildNode) ===== */
+
+/*
+ * The name a TypeError prints for a value that is neither a DOMNode nor a
+ * string: the CLASS of an object, php's type keyword for anything else --
+ * the same rendering DomWriteText uses for a typed property store.
+ */
+static const char * DomGivenName(ph7_value *pVal,char *zBuf,sxu32 nBuf)
+{
+	if( pVal && (pVal->iFlags & MEMOBJ_OBJ) ){
+		ph7_class_instance *pObj = (ph7_class_instance *)pVal->x.pOther;
+		SyBufferFormat(zBuf,nBuf,"%z",&pObj->pClass->sName);
+		return zBuf;
+	}
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_NULL) ){
+		return "null";
+	}
+	return ph7_type_name(pVal);
+}
+/*
+ * php's variadic screen for the 8.0 insertion methods: every argument must be
+ * a DOMNode or a STRING (nothing coerces -- an int is refused where an
+ * ordinary `string $data` parameter would take it), the WHOLE list is checked
+ * before anything else runs, and the TypeError names the position with no
+ * parameter name, because many values share the one variadic formal.  The
+ * method name it prints is the DECLARING class's (`DOMCharacterData::before()`
+ * for a comment), which is what pCtx->pFunc->sName already carries.
+ * Answers 0 when every argument passed, non-zero after raising.
+ */
+static int DomNodesScreen(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class *pNodeCls = PH7_VmExtractClass(pCtx->pVm,"DOMNode",sizeof("DOMNode")-1,FALSE,0);
+	int i;
+	for( i = 0 ; i < nArg ; i++ ){
+		ph7_value *pVal = apArg[i];
+		char zBuf[128];
+		if( pVal->iFlags & MEMOBJ_OBJ ){
+			ph7_class_instance *pObj = (ph7_class_instance *)pVal->x.pOther;
+			if( pNodeCls && PH7_VmInstanceOf(pObj->pClass,pNodeCls) ){
+				continue;
+			}
+		}else if( pVal->iFlags & MEMOBJ_STRING ){
+			continue;
+		}
+		PH7_VmThrowException(pCtx,"TypeError",
+			"%z(): Argument #%d must be of type DOMNode|string, %s given",
+			&pCtx->pFunc->sName,i+1,DomGivenName(pVal,zBuf,sizeof(zBuf)));
+		return -1;
+	}
+	return 0;
+}
+/*
+ * php's "convert nodes into a node" (dom_zvals_to_single_node), transcribed
+ * with its ONE-argument shortcut: a single node argument is handed through
+ * whole -- nothing is unlinked, every check waits for the insertion -- while
+ * two or more arguments really are appended one by one into an internal
+ * fragment.  The difference is observable twice over.  A refusal DURING that
+ * conversion (another document's node, a document, an attribute) leaves every
+ * argument already converted DETACHED -- `$b->append($a, $attr)` costs the
+ * tree its $a -- and a refusal at the final insertion (the receiver was in
+ * the converted set) leaves ALL of them detached, which is how
+ * `$b->append($a, $b)` empties <r> of both children where `$r->append($r)`,
+ * one argument, moves nothing at all.  The CYCLE is checked only against the
+ * conversion fragment (i.e. never fails there), NOT against the receiver --
+ * that waits for the insertion step.
+ *
+ * The converted list is built in pList (xmlNodePtr entries, in order).  Every
+ * node it takes is detached and parked in the receiver's orphan set, where a
+ * failure leaves it alive for whatever PHP variable still wraps it -- php
+ * frees the unwrapped ones instead, which no program can see.  A fragment
+ * argument is emptied INTO the list (php unpacks it), so it stays empty even
+ * when a later argument is refused.  Answers 0, or non-zero after raising.
+ */
+static int DomNodesConvert(ph7_context *pCtx,phl_xmldoc *pShell,xmlNodePtr pParent,
+	int nArg,ph7_value **apArg,SySet *pList,int *pRc)
+{
+	int i;
+	for( i = 0 ; i < nArg ; i++ ){
+		phl_domnode *pNd;
+		xmlNodePtr pNode;
+		if( (apArg[i]->iFlags & MEMOBJ_OBJ) == 0 ){
+			int nLen = 0;
+			const char *zText = ph7_value_to_string(apArg[i],&nLen);
+			pNode = xmlNewDocTextLen(pParent->doc,(const xmlChar *)zText,nLen);
+			if( pNode ){
+				DomOrphanAdd(pShell,pNode);
+				SySetPut(pList,(const void *)&pNode);
+			}
+			continue;
+		}
+		pNd = DomObjArg(apArg[i]);
+		if( pNd == 0 ){
+			/* A DOMNode-classed object with no node behind it. php's refusal
+			 * ignores strictErrorChecking. */
+			*pRc = DomThrowAlways(pCtx,DOM_ERR_INVALID_STATE);
+			return -1;
+		}
+		pNode = (xmlNodePtr)pNd->pNode;
+		if( pNode->doc != pParent->doc ){
+			*pRc = DomThrowVoid(pCtx,DOM_ERR_WRONG_DOC);
+			return -1;
+		}
+		if( pNode->type == XML_DOCUMENT_NODE || pNode->type == XML_HTML_DOCUMENT_NODE
+		 || pNode->type == XML_ATTRIBUTE_NODE ){
+			*pRc = DomThrowVoid(pCtx,DOM_ERR_HIERARCHY);
+			return -1;
+		}
+		if( DomIsFragment(pNode) ){
+			xmlNodePtr pChild = pNode->children;
+			while( pChild ){
+				xmlNodePtr pNext = pChild->next;
+				xmlUnlinkNode(pChild);
+				DomOrphanAdd(pShell,pChild);
+				SySetPut(pList,(const void *)&pChild);
+				pChild = pNext;
+			}
+			pNode->children = pNode->last = 0;
+			continue;
+		}
+		DomDetach(pNd->pShell,pNode);
+		DomOrphanAdd(pShell,pNode);
+		SySetPut(pList,(const void *)&pNode);
+	}
+	return 0;
+}
+static int DomListHas(SySet *pList,xmlNodePtr pNode)
+{
+	xmlNodePtr *apNode = (xmlNodePtr *)SySetBasePtr(pList);
+	sxu32 n;
+	for( n = 0 ; n < SySetUsed(pList) ; ++n ){
+		if( apNode[n] == pNode ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
+ * php's pre-insertion validity for what conversion produced, against the REAL
+ * parent this time.  For a single node argument this is where every check
+ * runs -- another document before the kind-or-ancestor Hierarchy refusal, the
+ * same order the conversion pass uses -- and for a converted list the only
+ * question left is whether the receiver is now INSIDE the set (its ancestor
+ * chain passes through a detached argument).  Note what php never checks on
+ * this path: a document receiver takes a second root element and bare text
+ * without complaint, so the document it writes may not be well-formed XML --
+ * measured, and matched.
+ */
+static int DomInsertValidity(xmlNodePtr pParent,xmlNodePtr pSingle,SySet *pList)
+{
+	xmlNodePtr p;
+	if( pSingle ){
+		if( pSingle->doc != pParent->doc ){
+			return DOM_ERR_WRONG_DOC;
+		}
+		if( pSingle->type == XML_DOCUMENT_NODE || pSingle->type == XML_HTML_DOCUMENT_NODE
+		 || pSingle->type == XML_ATTRIBUTE_NODE ){
+			return DOM_ERR_HIERARCHY;
+		}
+		for( p = pParent ; p ; p = p->parent ){
+			if( p == pSingle ){
+				return DOM_ERR_HIERARCHY;
+			}
+		}
+		return 0;
+	}
+	for( p = pParent ; p ; p = p->parent ){
+		if( DomListHas(pList,p) ){
+			return DOM_ERR_HIERARCHY;
+		}
+	}
+	return 0;
+}
+/*
+ * The insertion itself (php's dom_insert_node_list_unchecked): everything in
+ * pList goes before pRef -- at the end when NULL -- in order.  A list node
+ * came through the conversion fragment, so its namespace reconcile is the
+ * DEEP one (dom_reconcile_ns_list); a single node is php's dom_reconcile_ns,
+ * the shallow appendChild rule.  A single node inserted before ITSELF slides
+ * the reference to its next sibling first (the spec's step 3), which is what
+ * makes `$r->prepend($r->firstChild)` a no-op instead of a cycle.
+ */
+static void DomNodesPlace(phl_xmldoc *pShell,xmlNodePtr pParent,xmlNodePtr pRef,SySet *pList)
+{
+	xmlNodePtr *apNode = (xmlNodePtr *)SySetBasePtr(pList);
+	sxu32 n;
+	for( n = 0 ; n < SySetUsed(pList) ; ++n ){
+		xmlNodePtr pNode = apNode[n];
+		DomDetach(pShell,pNode);
+		if( pRef ){
+			DomLinkBefore(pParent,pNode,pRef);
+		}else{
+			DomLinkLast(pParent,pNode);
+		}
+		DomNsOnInsertEx(pNode,1);
+	}
+}
+/*
+ * DOMParentNode::append / prepend / replaceChildren -- one body, three
+ * insertion points.  php declares all three `void`, so a refusal in the
+ * non-strict mode is a warning and NOTHING is answered (DomThrowVoid).
+ */
+#define DOM_PN_APPEND   0
+#define DOM_PN_PREPEND  1
+#define DOM_PN_REPLACE  2
+static int DomParentNodeInsert(ph7_context *pCtx,int nArg,ph7_value **apArg,int iMode)
+{
+	phl_domnode *pPar = DomThisNode(pCtx);
+	phl_domnode *pOne = 0;
+	xmlNodePtr pParent,pSingle = 0,pRef = 0;
+	SySet sList;
+	int iErr,rc = PH7_OK;
+	if( DomNodesScreen(pCtx,nArg,apArg) || pPar == 0 ){
+		return PH7_OK;
+	}
+	pParent = (xmlNodePtr)pPar->pNode;
+	SySetInit(&sList,&pCtx->pVm->sAllocator,sizeof(xmlNodePtr));
+	if( nArg == 1 && (apArg[0]->iFlags & MEMOBJ_OBJ) != 0 ){
+		/* The one-argument shortcut: the node itself, unconverted.  A shell
+		 * with no node behind it is php's SILENT no-op here (the pre-insert
+		 * NULL guard), where the multi-argument conversion raises Invalid
+		 * State -- one more face of the shortcut. */
+		pOne = DomObjArg(apArg[0]);
+		if( pOne == 0 ){
+			return PH7_OK;
+		}
+		pSingle = (xmlNodePtr)pOne->pNode;
+	}else if( DomNodesConvert(pCtx,pPar->pShell,pParent,nArg,apArg,&sList,&rc) ){
+		SySetRelease(&sList);
+		return rc;
+	}
+	iErr = DomInsertValidity(pParent,pSingle,&sList);
+	if( iErr ){
+		SySetRelease(&sList);
+		return DomThrowVoid(pCtx,iErr);
+	}
+	if( iMode == DOM_PN_REPLACE ){
+		/* Every remaining child goes -- through the wrapper-preserving drop a
+		 * content write uses, so a PHP variable holding one keeps a live
+		 * detached node rather than a dangling pointer.  After the validity
+		 * check, as php orders it. */
+		DomDropChildren(pCtx,pPar->pShell,pParent);
+	}else if( iMode == DOM_PN_PREPEND ){
+		/* The first child AFTER conversion has emptied the set out of the
+		 * tree -- and never a member of the set. */
+		pRef = pParent->children;
+	}
+	if( pSingle ){
+		if( DomIsFragment(pSingle) ){
+			/* A single fragment splices -- silently even when EMPTY, unlike
+			 * appendChild's warning. */
+			DomFragMove(pOne->pShell,pParent,pSingle,pRef);
+		}else{
+			if( pRef == pSingle ){
+				pRef = pSingle->next;
+			}
+			DomDetach(pOne->pShell,pSingle);
+			if( pRef ){
+				DomLinkBefore(pParent,pSingle,pRef);
+			}else{
+				DomLinkLast(pParent,pSingle);
+			}
+			DomNsOnInsertEx(pSingle,0);
+		}
+	}else{
+		DomNodesPlace(pPar->pShell,pParent,pRef,&sList);
+	}
+	SySetRelease(&sList);
+	return PH7_OK;
+}
+DOM_METHOD(vm_builtin_Dom_append)
+{
+	return DomParentNodeInsert(pCtx,nArg,apArg,DOM_PN_APPEND);
+}
+DOM_METHOD(vm_builtin_Dom_prepend)
+{
+	return DomParentNodeInsert(pCtx,nArg,apArg,DOM_PN_PREPEND);
+}
+DOM_METHOD(vm_builtin_Dom_replaceChildren)
+{
+	return DomParentNodeInsert(pCtx,nArg,apArg,DOM_PN_REPLACE);
+}
+
 /* DOMNode::hasChildNodes(): bool / hasAttributes(): bool / getLineNo(): int */
 DOM_METHOD(vm_builtin_DOMNode_hasChildNodes)
 {
@@ -5124,8 +5410,6 @@ static int DomNodeProp(ph7_context *pCtx,const char *zName)
 		}else{
 			ph7_result_null(pCtx);
 		}
-	}else if( DomNameIs(zName,"childElementCount") ){
-		ph7_result_int(pCtx,DomChildCount(pNode,1));
 	}else if( DomNameIs(zName,"childNodes") ){
 		ph7_class_instance *pList = DomNewCollection(pVm,"DOMNodeList",pDoc,DNL_CHILD,pThis,0,0,0);
 		if( pList == 0 ){
@@ -5298,6 +5582,33 @@ static int DomDocStateProp(ph7_context *pCtx,const char *zName,xmlDocPtr pDoc)
 	}
 	return 0;
 }
+/*
+ * The three DOMParentNode properties.  php declares them on the three
+ * implementers ONLY -- DOMDocument, DOMElement and DOMDocumentFragment -- so
+ * `$text->childElementCount` is the Undefined property warning there, which
+ * is why childElementCount cannot live in DomNodeProp (it did, and every node
+ * kind answered 0 in silence where php warns and answers null).
+ */
+static int DomParentNodeProp(ph7_context *pCtx,const char *zName)
+{
+	int bLast = DomNameIs(zName,"lastElementChild");
+	if( bLast || DomNameIs(zName,"firstElementChild") ){
+		phl_domnode *pNd = DomThisNode(pCtx);
+		xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+		xmlNodePtr pChild = pNode ? (bLast ? pNode->last : pNode->children) : 0;
+		while( pChild && pChild->type != XML_ELEMENT_NODE ){
+			pChild = bLast ? pChild->prev : pChild->next;
+		}
+		DomResultNodeOf(pCtx,pNd,pChild);
+		return 1;
+	}
+	if( DomNameIs(zName,"childElementCount") ){
+		phl_domnode *pNd = DomThisNode(pCtx);
+		ph7_result_int(pCtx,DomChildCount(pNd ? (xmlNodePtr)pNd->pNode : 0,1));
+		return 1;
+	}
+	return 0;
+}
 /* DOMDocument adds documentElement and the state block above. */
 static int DomDocProp(ph7_context *pCtx,const char *zName)
 {
@@ -5307,6 +5618,9 @@ static int DomDocProp(ph7_context *pCtx,const char *zName)
 		return 1;
 	}
 	if( DomDocStateProp(pCtx,zName,pNd ? (xmlDocPtr)pNd->pNode : 0) ){
+		return 1;
+	}
+	if( DomParentNodeProp(pCtx,zName) ){
 		return 1;
 	}
 	return DomNodeProp(pCtx,zName);
@@ -5347,6 +5661,17 @@ static int DomElemProp(ph7_context *pCtx,const char *zName)
 	}
 	if( DomNameIs(zName,"schemaTypeInfo") ){
 		return DomSchemaTypeInfo(pCtx);
+	}
+	if( DomParentNodeProp(pCtx,zName) ){
+		return 1;
+	}
+	return DomNodeProp(pCtx,zName);
+}
+/* DOMDocumentFragment: the three DOMParentNode properties over DOMNode's. */
+static int DomFragProp(ph7_context *pCtx,const char *zName)
+{
+	if( DomParentNodeProp(pCtx,zName) ){
+		return 1;
 	}
 	return DomNodeProp(pCtx,zName);
 }
@@ -5937,6 +6262,8 @@ DOM_PROP_ACCESSORS(DOMAttr,DomAttrProp,DomSetAttrProp)
 DOM_PROP_ACCESSORS(DOMCharacterData,DomCharProp,DomSetCharProp)
 DOM_PROP_ACCESSORS(DOMText,DomTextProp,DomSetCharProp)
 DOM_PROP_ACCESSORS(DOMProcessingInstruction,DomPiProp,DomSetPiProp)
+/* The fragment writes what DOMNode writes; only its READ set is wider. */
+DOM_PROP_ACCESSORS(DOMDocumentFragment,DomFragProp,DomSetNodeProp)
 /*
  * DOMDocumentFragment::appendXML(string $data): bool
  *
@@ -6183,6 +6510,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_Dom_getElementsByTagName },
 		{ "getElementsByTagNameNS", PH7_MOD_PUBLIC, "?string $namespace, string $localName",
 		  "@DOMNodeList", vm_builtin_Dom_getElementsByTagNameNS },
+		/* The DOMParentNode three: real (non-tentative) void, one untyped
+		 * variadic -- php's own rows, screened inside the body. */
+		{ "append",          PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_append },
+		{ "prepend",         PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_prepend },
+		{ "replaceChildren", PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_replaceChildren },
 		{ "__get",                PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMDocument_get },
 		{ "__isset",              PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMDocument_isset },
 		{ "__set",                PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMDocument_set },
@@ -6233,6 +6565,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_Dom_getElementsByTagName },
 		{ "getElementsByTagNameNS", PH7_MOD_PUBLIC, "?string $namespace, string $localName",
 		  "@DOMNodeList", vm_builtin_Dom_getElementsByTagNameNS },
+		{ "append",          PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_append },
+		{ "prepend",         PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_prepend },
+		{ "replaceChildren", PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_replaceChildren },
 		{ "__get",                PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMElement_get },
 		{ "__isset",              PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMElement_isset },
 		{ "__set",                PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMElement_set },
@@ -6268,6 +6603,13 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 	static const PH7_NativeMethodDef aFragMethod[] = {
 		{ "appendXML", PH7_MOD_PUBLIC, "string $data", "@bool",
 		  vm_builtin_DOMDocumentFragment_appendXML },
+		{ "append",          PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_append },
+		{ "prepend",         PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_prepend },
+		{ "replaceChildren", PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_replaceChildren },
+		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMDocumentFragment_get },
+		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMDocumentFragment_isset },
+		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",
+		  vm_builtin_DOMDocumentFragment_set },
 	};
 	static const PH7_NativeMethodDef aTextMethod[] = {
 		{ "splitText", PH7_MOD_PUBLIC, "int $offset", "", vm_builtin_DOMText_splitText },
@@ -6353,14 +6695,25 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 	 * DOMNodeList/DOMNamedNodeMap are not refused at all (`0:{}`), which is what they
 	 * became once serialize() stopped emitting the hidden slot. Restating the flag on
 	 * every row is rule 29: a native subclass does not inherit its parent's. */
+	/* php's 8.0 insertion interfaces: three untyped-variadic void methods on
+	 * the parent side (the child side is DOMChildNode below).  A class row
+	 * declares its methods before the implement phase runs, so nothing is
+	 * stubbed abstract. */
+	static const PH7_NativeMethodDef aParentNodeIf[] = {
+		{ "append",          PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },
+		{ "prepend",         PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },
+		{ "replaceChildren", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },
+	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		{ "DOMException", "Exception", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+		{ "DOMParentNode", 0, 0, PH7_CLASS_INTERFACE,
+		  aParentNodeIf, SX_ARRAYSIZE(aParentNodeIf), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMNode", 0, 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aNodeMethod, SX_ARRAYSIZE(aNodeMethod), aNodeConst, SX_ARRAYSIZE(aNodeConst),
 		  aNodeProp, SX_ARRAYSIZE(aNodeProp), 0, 0, 0 },
-		{ "DOMDocument", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		{ "DOMDocument", "DOMNode", "DOMParentNode", PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aDocMethod, SX_ARRAYSIZE(aDocMethod), 0, 0, aDocProp, SX_ARRAYSIZE(aDocProp), 0, 0, 0 },
-		{ "DOMElement", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		{ "DOMElement", "DOMNode", "DOMParentNode", PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aElemMethod, SX_ARRAYSIZE(aElemMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMAttr", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aAttrMethod, SX_ARRAYSIZE(aAttrMethod), 0, 0, 0, 0, 0, 0, 0 },
@@ -6376,7 +6729,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		 * DOMCharacterData's), the fragment and the entity reference plainly. */
 		{ "DOMProcessingInstruction", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aPiMethod, SX_ARRAYSIZE(aPiMethod), 0, 0, 0, 0, 0, 0, 0 },
-		{ "DOMDocumentFragment", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		{ "DOMDocumentFragment", "DOMNode", "DOMParentNode", PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aFragMethod, SX_ARRAYSIZE(aFragMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMEntityReference", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
