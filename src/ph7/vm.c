@@ -3296,6 +3296,11 @@ PH7_PRIVATE sxi32 PH7_VmReset(ph7_vm *pVm)
 	/* Drop the libxml error queue and the previous request's documents */
 	PH7_LibxmlVmReset(&(*pVm));
 #endif
+#ifdef PH7_ENABLE_SQLITE
+	/* Close the previous request's databases: a reused VM (the -S server's)
+	 * must not answer the next request through a handle that request opened. */
+	PH7_PdoVmReset(&(*pVm));
+#endif
 	/* Drop the stream contexts this run created, the default one included: a
 	 * reused VM (the -S server's) must not answer the next request from the
 	 * previous one's stream_context_set_default(). */
@@ -3334,6 +3339,10 @@ PH7_PRIVATE sxi32 PH7_VmRelease(ph7_vm *pVm)
 	/* Free the libxml document registry (libxml2 allocations live outside
 	 * SyMemBackend, so the wholesale release below would leak them). */
 	PH7_LibxmlVmRelease(pVm);
+#endif
+#ifdef PH7_ENABLE_SQLITE
+	/* Same rule for the sqlite3 handles behind still-open PDO objects. */
+	PH7_PdoVmRelease(pVm);
 #endif
 	/* Same rule for the OS directory streams behind still-open directory
 	 * iterators: the DIR lives outside the backend. */

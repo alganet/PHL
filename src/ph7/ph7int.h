@@ -2760,6 +2760,9 @@ struct ph7_vm
 	                            * constructors; reset to 0 whenever the chain is freed. */
 	void *pXmlWriters;         /* XMLWriter registry chain; freed on reset/release */
 	void *pXmlParsers;         /* phl_xmlparser registry chain (ext/xml); freed on reset/release */
+	void *pPdoConns;           /* phl_pdo registry chain (ext/pdo); freed on reset/release --
+	                            * a sqlite3 handle lives outside SyMemBackend, so the
+	                            * wholesale release would leak both it and the file lock */
 	ph7_value sXmlEntLoader;   /* libxml_set_external_entity_loader()'s callable; NULL = default.
 	                            * Stored and answered, never invoked: no PHL parse path loads an
 	                            * external entity (php's sanitized defaults keep it off too) —
@@ -3699,6 +3702,8 @@ PH7_PRIVATE void PH7_XmlParserVmSweep(ph7_vm *pVm);
 #ifdef PH7_ENABLE_SQLITE
 /* vm_pdo.c (ext/pdo: the driver-independent class library) */
 PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm);
+PH7_PRIVATE void PH7_PdoVmReset(ph7_vm *pVm);
+PH7_PRIVATE void PH7_PdoVmRelease(ph7_vm *pVm);
 /* vm_pdo_sqlite.c (ext/pdo_sqlite: the driver and its Pdo\Sqlite subclass) */
 PH7_PRIVATE sxi32 PH7_VmInstallPdoSqlite(ph7_vm *pVm);
 #endif /* PH7_ENABLE_SQLITE */

@@ -4,7 +4,7 @@
  */
 #ifdef PH7_ENABLE_SQLITE
 #include "ph7int.h"
-#include <sqlite3.h>
+#include "pdo_int.h"
 
 /*
  * ext/pdo_sqlite: the driver.  This unit owns the sqlite3 connection and
@@ -20,6 +20,94 @@
  * authorizer verdicts are sqlite's own macros rather than copied numbers --
  * they belong to the library, so they are read from its header.
  */
+
+/*
+ * Copy sqlite's own view of the last failure onto the connection.  php's
+ * driver maps a handful of result codes to their SQL-standard SQLSTATE and
+ * leaves everything else at HY000 ("general error"), which is what nearly
+ * every sqlite failure reports.
+ */
+PH7_PRIVATE void PH7_PdoSqliteTakeError(phl_pdo *pConn)
+{
+	const char *zSqlState = "HY000";
+	int iCode = pConn->pDb ? sqlite3_extended_errcode(pConn->pDb) : SQLITE_ERROR;
+	const char *zMsg = pConn->pDb ? sqlite3_errmsg(pConn->pDb) : "unknown error";
+	switch( iCode & 0xff ){
+		case SQLITE_NOTFOUND:   zSqlState = "42S02"; break;
+		case SQLITE_INTERRUPT:  zSqlState = "57014"; break;
+		case SQLITE_NOLFS:      zSqlState = "HYC00"; break;
+		case SQLITE_TOOBIG:     zSqlState = "22001"; break;
+		case SQLITE_CONSTRAINT: zSqlState = "23000"; break;
+		case SQLITE_ERROR:
+		default:                zSqlState = "HY000"; break;
+	}
+	PH7_PdoSetError(pConn,zSqlState,iCode,zMsg);
+}
+/*
+ * The library version both ATTR_SERVER_VERSION and ATTR_CLIENT_VERSION answer.
+ * It is the LINKED library's, so it differs between this engine's platforms
+ * (3.45 on a Debian host, whatever vcpkg last shipped on Windows) -- which is
+ * why no test may pin it.
+ */
+PH7_PRIVATE const char * PH7_PdoSqliteLibVersion(void)
+{
+	return sqlite3_libversion();
+}
+/*
+ * Open one database.  php hands sqlite3_open_v2 the DSN's path verbatim, so
+ * every spelling sqlite itself understands is a spelling PDO understands: a
+ * relative or absolute path, the empty string (a private temporary database on
+ * disk), `:memory:`, and the `file:...?mode=` URI form.
+ *
+ * A failure here is NOT routed through the error mode: php's constructor
+ * always throws PDOException, whatever ATTR_ERRMODE the options asked for, and
+ * the exception carries sqlite's own code as its $code (an int, unlike the
+ * SQLSTATE string a later failure reports).
+ */
+PH7_PRIVATE sxi32 PH7_PdoSqliteOpen(ph7_context *pCtx,phl_pdo *pConn,const char *zPath,
+	int nPath,int iFlags)
+{
+	char *zTerm;
+	int rc;
+	/* sqlite3_open_v2 wants a C string and the DSN slice is not one. */
+	zTerm = (char *)SyMemBackendAlloc(&pConn->pVm->sAllocator,(sxu32)nPath + 1);
+	if( zTerm == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( nPath > 0 ){
+		SyMemcpy(zPath,zTerm,(sxu32)nPath);
+	}
+	zTerm[nPath] = 0;
+	rc = sqlite3_open_v2(zTerm,&pConn->pDb,iFlags,0);
+	SyMemBackendFree(&pConn->pVm->sAllocator,zTerm);
+	if( rc != SQLITE_OK ){
+		/* sqlite3_open_v2 hands back a handle even on failure so the message can
+		 * be read off it; take the message first, then close. */
+		const char *zMsg = pConn->pDb ? sqlite3_errmsg(pConn->pDb) : sqlite3_errstr(rc);
+		sxi32 rcThrow;
+		SyBlob sMsg;
+		SyBlobInit(&sMsg,&pConn->pVm->sAllocator);
+		SyBlobAppend(&sMsg,zMsg,SyStrlen(zMsg));
+		SyBlobAppend(&sMsg,"",1);
+		rcThrow = PH7_PdoThrowConstruct(pCtx,"HY000",rc,(const char *)SyBlobData(&sMsg));
+		SyBlobRelease(&sMsg);
+		PH7_PdoSqliteClose(pConn);
+		return rcThrow;
+	}
+	return PH7_OK;
+}
+/*
+ * Close one database.  Every statement this connection prepared must already
+ * be finalized (later slices own that); sqlite3_close_v2 is used so a leaked
+ * one defers the close rather than leaking the handle itself.
+ */
+PH7_PRIVATE void PH7_PdoSqliteClose(phl_pdo *pConn)
+{
+	if( pConn->pDb ){
+		sqlite3_close_v2(pConn->pDb);
+		pConn->pDb = 0;
+	}
+}
 
 static int vm_builtin_pdo_sqlite_stub(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
