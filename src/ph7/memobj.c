@@ -87,7 +87,6 @@ PH7_PRIVATE const char *ph7_type_name(ph7_value *pVal)
  * Each ph7_values struct may cache multiple representations (string,
  * integer etc.) of the same value.
  */
-#ifndef PH7_OMIT_FLOATING_POINT
 /*
  * TRUE when a double is what an int64 can hold exactly -- php's
  * ZEND_DOUBLE_FITS_LONG with its non-finite screen folded in. The bounds are
@@ -97,11 +96,10 @@ PH7_PRIVATE const char *ph7_type_name(ph7_value *pVal)
  * both infinities fail one of the two comparisons, so no libm predicate is
  * needed to screen them.
  */
-PH7_PRIVATE int PH7_RealFitsInt64(ph7_real r)
+PH7_PRIVATE int PH7_RealFitsInt64(double r)
 {
 	return r >= -9223372036854775808.0 && r < 9223372036854775808.0;
 }
-#endif /* PH7_OMIT_FLOATING_POINT */
 /*
  * Convert a 64-bit IEEE double into a 64-bit signed integer -- php's
  * zend_dval_to_lval, the answer every CAST site gives for a double no int can
@@ -121,16 +119,9 @@ PH7_PRIVATE int PH7_RealFitsInt64(ph7_real r)
  * integer -- its mantissa is scaled by 2^11 at least -- so the low 64 bits are
  * the 53-bit mantissa shifted LEFT, which is 0 once the shift reaches 64.
  */
-static sxi64 MemObjRealToInt(ph7_value *pObj)
+PH7_PRIVATE sxi64 PH7_RealToInt64(double r)
 {
-#ifdef PH7_OMIT_FLOATING_POINT
-	/* Real and 64bit integer are the same when floating point arithmetic
-	 * is omitted from the build.
-	 */
-	return pObj->rVal;
-#else
   union { double d; sxu64 u; } bits;
-  ph7_real r = pObj->rVal;
   sxu64 uMag;
   int iShift;
   if( PH7_RealFitsInt64(r) ){
@@ -156,6 +147,16 @@ static sxi64 MemObjRealToInt(ph7_value *pObj)
     uMag = (sxu64)0 - uMag;
   }
   return (sxi64)uMag;
+}
+static sxi64 MemObjRealToInt(ph7_value *pObj)
+{
+#ifdef PH7_OMIT_FLOATING_POINT
+	/* Real and 64bit integer are the same when floating point arithmetic
+	 * is omitted from the build.
+	 */
+	return pObj->rVal;
+#else
+	return PH7_RealToInt64(pObj->rVal);
 #endif
 }
 /*
@@ -178,23 +179,28 @@ static sxi64 MemObjRealToInt(ph7_value *pObj)
  * The value is rendered the way php's `%.*H` renders it -- the shortest
  * decimal that round-trips, the shape var_dump and serialize already share.
  */
-PH7_PRIVATE void PH7_MemObjWarnIntCast(ph7_value *pObj)
+PH7_PRIVATE void PH7_RealWarnIntCast(ph7_vm *pVm,double r)
 {
-#ifndef PH7_OMIT_FLOATING_POINT
 	SyBlob sVal;
 	char zVal[64];
-	if( pObj == 0 || pObj->pVm == 0 || (pObj->iFlags & MEMOBJ_REAL) == 0
-	 || PH7_RealFitsInt64(pObj->rVal) ){
+	if( pVm == 0 || PH7_RealFitsInt64(r) ){
 		return;
 	}
 	SyBlobInitFromBuf(&sVal,zVal,(sxu32)sizeof(zVal) - 1);
-	PH7_AppendShortestReal(&sVal,pObj->rVal);
+	PH7_AppendShortestReal(&sVal,r);
 	zVal[SyBlobLength(&sVal)] = 0;   /* the blob is LOCKED: it truncates, never grows */
-	VmErrorFormat(pObj->pVm,PH7_CTX_WARNING,
+	VmErrorFormat(pVm,PH7_CTX_WARNING,
 		"The float %s is not representable as an int, cast occurred",zVal);
-#else
-	SXUNUSED(pObj);
-#endif
+}
+/* The same warning asked of a VALUE: only a float can carry one, and the flag
+ * test mirrors the conversion's own routing (MemObjIntValue reads MEMOBJ_REAL
+ * first), so the diagnostic and the answer always describe the same branch. */
+PH7_PRIVATE void PH7_MemObjWarnIntCast(ph7_value *pObj)
+{
+	if( pObj == 0 || (pObj->iFlags & MEMOBJ_REAL) == 0 ){
+		return;
+	}
+	PH7_RealWarnIntCast(pObj->pVm,(double)pObj->rVal);
 }
 /*
  * Convert a raw token value typically a stream of digit [i.e: hex,octal,binary or decimal]

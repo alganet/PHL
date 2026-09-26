@@ -1426,7 +1426,7 @@ static int VmSigTypeIsIntOnly(const char *zType,int nType)
  */
 static int VmDoubleFitsInt(double d)
 {
-	if( !(d >= -9223372036854775808.0 && d < 9223372036854775808.0) ){
+	if( !PH7_RealFitsInt64(d) ){
 		return 0;
 	}
 	return d == (double)(sxi64)d;

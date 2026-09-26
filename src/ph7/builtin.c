@@ -38,7 +38,7 @@ PH7_PRIVATE sxi32 PH7_IntArgResolve(
 		double dVal = ph7_value_to_double(pArg);
 		sxi64 iVal;
 		/* php: NAN/INF/out-of-int64-range floats fail ZPP outright */
-		if( dVal != dVal || dVal >= 9223372036854775808.0 || dVal < -9223372036854775808.0 ){
+		if( !PH7_RealFitsInt64(dVal) ){
 			return PH7_VmThrowException(pCtx,
 				"TypeError",
 				"%s(): Argument #%d (%s) must be of type %s, float given",
@@ -80,7 +80,7 @@ PH7_PRIVATE sxi32 PH7_IntArgResolve(
 			double dVal = 0;
 			sxi64 iVal;
 			SyStrToReal(zNum,(sxu32)nSlen,(void *)&dVal,0);
-			if( dVal != dVal || dVal >= 9223372036854775808.0 || dVal < -9223372036854775808.0 ){
+			if( !PH7_RealFitsInt64(dVal) ){
 				return PH7_VmThrowException(pCtx,
 					"TypeError",
 					"%s(): Argument #%d (%s) must be of type %s, string given",

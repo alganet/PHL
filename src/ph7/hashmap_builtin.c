@@ -1320,7 +1320,7 @@ PH7_PRIVATE int ph7_hashmap_range(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			/* zend_dval_to_lval_silent + zend_is_long_compatible: an integral
 			 * in-sxi64-range float step behaves as an int (char ranges accept
 			 * it, int endpoints stay int); anything else is a float step. */
-			if( step_double < 9223372036854775808.0 ){
+			if( PH7_RealFitsInt64(step_double) ){
 				step = (sxi64)step_double;
 				if( (double)step != step_double ){
 					is_step_double = 1;
@@ -4210,7 +4210,7 @@ static sxi32 HashmapMinMaxCmp(ph7_vm *pVm,ph7_value *pA,ph7_value *pB)
 static int HashmapMinMaxLongExact(sxi64 iVal)
 {
 	double r = (double)iVal;
-	if( r >= 9223372036854775808.0 || r < -9223372036854775808.0 ){
+	if( !PH7_RealFitsInt64(r) ){
 		return 0;
 	}
 	return (sxi64)r == iVal;
@@ -4787,7 +4787,7 @@ PH7_PRIVATE int ph7_hashmap_pad(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( iKind == RANGE_IN_DOUBLE ){
 			/* php ZPP: a float-string outside the int64 range (or NaN) fails
 			 * outright — also keeps the (sxi64) cast below UB-free. */
-			if( dReal != dReal || dReal >= 9223372036854775808.0 || dReal < -9223372036854775808.0 ){
+			if( !PH7_RealFitsInt64(dReal) ){
 				return PH7_VmThrowException(pCtx,
 					"TypeError",
 					"array_pad(): Argument #2 ($length) must be of type int, string given"

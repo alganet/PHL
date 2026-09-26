@@ -2985,7 +2985,10 @@ PH7_PRIVATE int PH7_builtin_chr(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	 * automatic prefix that ph7_context_throw_error*() would add. */
 	if( ph7_value_is_float(apArg[0]) ){
 		double d = ph7_value_to_double(apArg[0]);
-		if( d != (double)(sxi64)d ){
+		/* The range test comes FIRST: `(sxi64)d` is undefined outside it, and a
+		 * test of an undefined cast is one an optimiser may delete. NaN and both
+		 * infinities fail it, which is the answer wanted anyway. */
+		if( !PH7_RealFitsInt64(d) || d != (double)(sxi64)d ){
 			/* php only DEPRECATES a lossy float->int here; PHL rejects it. */
 			return PH7_VmThrowException(pCtx,"TypeError",
 				"chr(): Argument #1 ($codepoint) must be of type int, float given");
@@ -4365,13 +4368,14 @@ PH7_PRIVATE int PH7_builtin_count_chars(ph7_context *pCtx,int nArg,ph7_value **a
 					"count_chars(): Argument #2 ($mode) must be of type int, string given");
 			}
 			d = ph7_value_to_double(apArg[1]);
-			if( d != (double)(sxi64)d ){
+			if( !PH7_RealFitsInt64(d) || d != (double)(sxi64)d ){
 				return PH7_VmThrowException(pCtx,"TypeError",
 					"count_chars(): Argument #2 ($mode) must be of type int, string given");
 			}
 		}else if( ph7_value_is_float(apArg[1]) ){
 			double d = ph7_value_to_double(apArg[1]);
-			if( d != (double)(sxi64)d ){
+			/* Range first: see chr() above -- an out-of-range cast is undefined. */
+			if( !PH7_RealFitsInt64(d) || d != (double)(sxi64)d ){
 				return PH7_VmThrowException(pCtx,"TypeError",
 					"count_chars(): Argument #2 ($mode) must be of type int, float given");
 			}

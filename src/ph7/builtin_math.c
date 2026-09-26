@@ -1122,13 +1122,14 @@ PH7_PRIVATE int PH7_builtin_number_format(ph7_context *pCtx,int nArg,ph7_value *
 					"number_format(): Argument #2 ($decimals) must be of type int, string given");
 			}
 			dMode = ph7_value_to_double(apArg[1]);
-			if( dMode != (double)(sxi64)dMode ){
+			/* Range first: `(sxi64)dMode` is undefined outside it (§2). */
+			if( !PH7_RealFitsInt64(dMode) || dMode != (double)(sxi64)dMode ){
 				return PH7_VmThrowException(pCtx,"TypeError",
 					"number_format(): Argument #2 ($decimals) must be of type int, string given");
 			}
 		}else if( ph7_value_is_float(apArg[1]) ){
 			double dMode = ph7_value_to_double(apArg[1]);
-			if( dMode != (double)(sxi64)dMode ){
+			if( !PH7_RealFitsInt64(dMode) || dMode != (double)(sxi64)dMode ){
 				return PH7_VmThrowException(pCtx,"TypeError",
 					"number_format(): Argument #2 ($decimals) must be of type int, float given");
 			}
@@ -1174,7 +1175,7 @@ PH7_PRIVATE int PH7_builtin_number_format(ph7_context *pCtx,int nArg,ph7_value *
 	/* A double past 2^52 has no fractional digits left, so php formats it as an
 	 * INTEGER when it fits one — that is what keeps 4503599627370496.0 exact. */
 	if( (d >= 4503599627370496.0 || d <= -4503599627370496.0)
-	 && d >= -9223372036854775808.0 && d < 9223372036854775808.0 ){
+	 && PH7_RealFitsInt64(d) ){
 		return NumberFormatLong(pCtx,(sxi64)d,nDec,zPoint,nPoint,zSep,nSep);
 	}
 	if( d < 0 ){

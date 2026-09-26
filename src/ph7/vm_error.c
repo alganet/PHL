@@ -463,7 +463,11 @@ PH7_PRIVATE int VmValueIsLossyToInt(ph7_value *pVal)
 	 * optimiser is entitled to delete -- which is exactly how the printf family's
 	 * PHP_INT_MIN guard disappeared (§2). NaN fails both comparisons and either
 	 * infinity fails one, so all three are lossy without a libm predicate. */
-	if( !(r >= -9223372036854775808.0 && r < 9223372036854775808.0) ){
+	/* The cast is a no-op wherever ph7_real is the double this screen is written
+	 * for. Under PH7_OMIT_FLOATING_POINT ph7_real is sxi64, and handing an
+	 * integer to a double parameter is a narrowing MSVC reports as C4244 --
+	 * which /WX makes a build error, so the tiny build is where it bites. */
+	if( !PH7_RealFitsInt64((double)r) ){
 		return TRUE;
 	}
 	return r != (ph7_real)(sxi64)r;
@@ -1747,7 +1751,12 @@ PH7_PRIVATE sxi32 VmCoerceToUnion(ph7_vm *pVm, ph7_value *pValue, SySet *pAlts, 
 			}
 			if( pValue->iFlags & MEMOBJ_REAL ){
 				ph7_real r = pValue->rVal;
-				if( r == (ph7_real)(sxi64)r ){
+				/* Range first: `(sxi64)r` is undefined outside it (§2), and NaN
+				 * and the infinities are not exact ints either way. */
+				/* (double)r: see VmValueIsLossyToInt -- a no-op where ph7_real
+				 * is double, and the narrowing MSVC turns into an error under
+				 * PH7_OMIT_FLOATING_POINT otherwise. */
+				if( PH7_RealFitsInt64((double)r) && r == (ph7_real)(sxi64)r ){
 					PH7_MemObjToInteger(pValue);
 					return SXRET_OK;
 				}

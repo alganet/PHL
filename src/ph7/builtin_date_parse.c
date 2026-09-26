@@ -2465,9 +2465,21 @@ static void DtIvFormat(ph7_context *pCtx,ph7_class_instance *pObj,const char *zF
 				}else if( pF && (pF->iFlags & MEMOBJ_INT) ){
 					r = (double)pF->x.iVal;
 				}
-				uS = (sxi64)(r * 1000000.0 + (r < 0 ? -0.5 : 0.5));
+				/* php scales the fraction to microseconds and CASTS, so this
+				 * token carries the cast's whole contract: it TRUNCATES toward
+				 * zero (`$i->f = 0.1234567` prints 123456, not the 123457 the
+				 * half added here rounded it to, and 5.0E-7 prints 0), an `f`
+				 * big enough that a million times it leaves the int64 range
+				 * WRAPS (`$i->f = 1e13` prints -8446744073709551616), and a NaN
+				 * or an infinity is 0. A plain `(sxi64)` was undefined for every
+				 * one of those -- and `%F` narrowed the result to an `int`
+				 * besides, so any microsecond count past INT_MAX printed as
+				 * "000000". (php warns `not representable` where it does this
+				 * conversion, which is the property WRITE, not here -- §7.4.) */
+				r = r * 1000000.0;
+				uS = PH7_RealToInt64(r);
 				if( t == 'F' ){
-					SyBlobFormat(&sOut,"%06d",(int)uS);
+					SyBlobFormat(&sOut,"%06qd",uS);
 				}else{
 					SyBlobFormat(&sOut,"%qd",uS);
 				}
