@@ -557,6 +557,164 @@ static int XwWriteComment(ph7_context *pCtx,xw_call *pCall)
 }
 XW_METHOD(vm_builtin_xw_write_comment,XwWriteComment,"writeComment",0)
 
+/*
+ * The DTD twelve.
+ *
+ * libxml decides the shape of every one of these, and two of its decisions are
+ * only reported through the error handler: a DOCTYPE with a public identifier
+ * and no system one ("system identifier needed!"), and a DTD opened once the
+ * root element has been written ("DTD allowed only in prolog!"). Both come out
+ * as php's warning through the capture window in XwRun.
+ *
+ * php validates the name of the internal-subset declarations and NOT the
+ * DOCTYPE's own qualified name, so `startDtd('x y')` writes `<!DOCTYPE x y`
+ * while `startDtdElement('x y')` is a ValueError -- and the ValueError for
+ * startDtdEntity says "attribute name" where its neighbours say "element name",
+ * because php reaches for a different macro there.
+ */
+/* bool XMLWriter::startDtd(string $qualifiedName, ?string $publicId, ?string $systemId) */
+static int XwStartDtd(ph7_context *pCtx,xw_call *pCall)
+{
+	return XwStatus(pCtx,xmlTextWriterStartDTD(pCall->pXw->pWriter,
+		(const xmlChar *)XwStr(pCall,0),(const xmlChar *)XwStrOrNull(pCall,1),
+		(const xmlChar *)XwStrOrNull(pCall,2)));
+}
+XW_METHOD(vm_builtin_xw_start_dtd,XwStartDtd,"startDtd",0)
+
+/* bool XMLWriter::endDtd() */
+static int XwEndDtd(ph7_context *pCtx,xw_call *pCall)
+{
+	return XwStatus(pCtx,xmlTextWriterEndDTD(pCall->pXw->pWriter));
+}
+XW_METHOD(vm_builtin_xw_end_dtd,XwEndDtd,"endDtd",0)
+
+/* bool XMLWriter::writeDtd(string $name, ?string $publicId, ?string $systemId, ?string $content) */
+static int XwWriteDtd(ph7_context *pCtx,xw_call *pCall)
+{
+	return XwStatus(pCtx,xmlTextWriterWriteDTD(pCall->pXw->pWriter,
+		(const xmlChar *)XwStr(pCall,0),(const xmlChar *)XwStrOrNull(pCall,1),
+		(const xmlChar *)XwStrOrNull(pCall,2),(const xmlChar *)XwStrOrNull(pCall,3)));
+}
+XW_METHOD(vm_builtin_xw_write_dtd,XwWriteDtd,"writeDtd",0)
+
+/* bool XMLWriter::startDtdElement(string $qualifiedName) */
+static int XwStartDtdElement(ph7_context *pCtx,xw_call *pCall)
+{
+	const char *zName = XwStr(pCall,0);
+	int rc = XmlWriterCheckName(pCtx,pCall,zName,"element name");
+	if( rc != 0 ){
+		return rc;
+	}
+	return XwStatus(pCtx,xmlTextWriterStartDTDElement(pCall->pXw->pWriter,(const xmlChar *)zName));
+}
+XW_METHOD(vm_builtin_xw_start_dtd_element,XwStartDtdElement,"startDtdElement","#2")
+
+/* bool XMLWriter::endDtdElement() */
+static int XwEndDtdElement(ph7_context *pCtx,xw_call *pCall)
+{
+	return XwStatus(pCtx,xmlTextWriterEndDTDElement(pCall->pXw->pWriter));
+}
+XW_METHOD(vm_builtin_xw_end_dtd_element,XwEndDtdElement,"endDtdElement",0)
+
+/* bool XMLWriter::writeDtdElement(string $name, string $content) */
+static int XwWriteDtdElement(ph7_context *pCtx,xw_call *pCall)
+{
+	const char *zName = XwStr(pCall,0);
+	int rc = XmlWriterCheckName(pCtx,pCall,zName,"element name");
+	if( rc != 0 ){
+		return rc;
+	}
+	return XwStatus(pCtx,xmlTextWriterWriteDTDElement(pCall->pXw->pWriter,
+		(const xmlChar *)zName,(const xmlChar *)XwStr(pCall,1)));
+}
+XW_METHOD(vm_builtin_xw_write_dtd_element,XwWriteDtdElement,"writeDtdElement","#2 ($content)")
+
+/* bool XMLWriter::startDtdAttlist(string $name) */
+static int XwStartDtdAttlist(ph7_context *pCtx,xw_call *pCall)
+{
+	const char *zName = XwStr(pCall,0);
+	int rc = XmlWriterCheckName(pCtx,pCall,zName,"element name");
+	if( rc != 0 ){
+		return rc;
+	}
+	return XwStatus(pCtx,xmlTextWriterStartDTDAttlist(pCall->pXw->pWriter,(const xmlChar *)zName));
+}
+XW_METHOD(vm_builtin_xw_start_dtd_attlist,XwStartDtdAttlist,"startDtdAttlist","#2")
+
+/* bool XMLWriter::endDtdAttlist() */
+static int XwEndDtdAttlist(ph7_context *pCtx,xw_call *pCall)
+{
+	return XwStatus(pCtx,xmlTextWriterEndDTDAttlist(pCall->pXw->pWriter));
+}
+XW_METHOD(vm_builtin_xw_end_dtd_attlist,XwEndDtdAttlist,"endDtdAttlist",0)
+
+/* bool XMLWriter::writeDtdAttlist(string $name, string $content) */
+static int XwWriteDtdAttlist(ph7_context *pCtx,xw_call *pCall)
+{
+	const char *zName = XwStr(pCall,0);
+	int rc = XmlWriterCheckName(pCtx,pCall,zName,"element name");
+	if( rc != 0 ){
+		return rc;
+	}
+	return XwStatus(pCtx,xmlTextWriterWriteDTDAttlist(pCall->pXw->pWriter,
+		(const xmlChar *)zName,(const xmlChar *)XwStr(pCall,1)));
+}
+XW_METHOD(vm_builtin_xw_write_dtd_attlist,XwWriteDtdAttlist,"writeDtdAttlist","#2 ($content)")
+
+/* bool XMLWriter::startDtdEntity(string $name, bool $isParam) */
+static int XwStartDtdEntity(ph7_context *pCtx,xw_call *pCall)
+{
+	const char *zName = XwStr(pCall,0);
+	int rc = XmlWriterCheckName(pCtx,pCall,zName,"attribute name");
+	if( rc != 0 ){
+		return rc;
+	}
+	return XwStatus(pCtx,xmlTextWriterStartDTDEntity(pCall->pXw->pWriter,
+		XwBool(pCall,1,0),(const xmlChar *)zName));
+}
+XW_METHOD(vm_builtin_xw_start_dtd_entity,XwStartDtdEntity,"startDtdEntity","#2 ($isParam)")
+
+/* bool XMLWriter::endDtdEntity() */
+static int XwEndDtdEntity(ph7_context *pCtx,xw_call *pCall)
+{
+	return XwStatus(pCtx,xmlTextWriterEndDTDEntity(pCall->pXw->pWriter));
+}
+XW_METHOD(vm_builtin_xw_end_dtd_entity,XwEndDtdEntity,"endDtdEntity",0)
+
+/*
+ * bool XMLWriter::writeDtdEntity(string $name, string $content, bool $isParam = false,
+ *                                ?string $publicId = null, ?string $systemId = null,
+ *                                ?string $notationData = null)
+ *
+ * php has two calls behind this one name, and picks by whether a public or
+ * system identifier is there: with neither it writes the INTERNAL entity (the
+ * $content), and with either it writes the EXTERNAL declaration -- where
+ * $content is not written at all. $notationData does NOT decide, so a call that
+ * names only a notation is still the internal entity and the notation is
+ * dropped, which is php's answer and not an oversight of this port.
+ */
+static int XwWriteDtdEntity(ph7_context *pCtx,xw_call *pCall)
+{
+	const char *zName = XwStr(pCall,0);
+	const char *zPub = XwStrOrNull(pCall,3);
+	const char *zSys = XwStrOrNull(pCall,4);
+	const char *zNdata = XwStrOrNull(pCall,5);
+	int rc = XmlWriterCheckName(pCtx,pCall,zName,"element name");
+	if( rc != 0 ){
+		return rc;
+	}
+	if( zPub == 0 && zSys == 0 ){
+		rc = xmlTextWriterWriteDTDInternalEntity(pCall->pXw->pWriter,XwBool(pCall,2,0),
+			(const xmlChar *)zName,(const xmlChar *)XwStr(pCall,1));
+	}else{
+		rc = xmlTextWriterWriteDTDExternalEntity(pCall->pXw->pWriter,XwBool(pCall,2,0),
+			(const xmlChar *)zName,(const xmlChar *)zPub,(const xmlChar *)zSys,
+			(const xmlChar *)zNdata);
+	}
+	return XwStatus(pCtx,rc);
+}
+XW_METHOD(vm_builtin_xw_write_dtd_entity,XwWriteDtdEntity,"writeDtdEntity","#2 ($content)")
+
 /* string XMLWriter::outputMemory(bool $flush = true) -- read the buffer back */
 static int XwOutputMemory(ph7_context *pCtx,xw_call *pCall)
 {
@@ -646,6 +804,28 @@ PH7_PRIVATE sxi32 PH7_VmInstallXmlWriter(ph7_vm *pVm)
 		  "@bool", vm_builtin_xw_start_document },
 		{ "endDocument",     PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_end_document },
 		{ "writeComment",    PH7_MOD_PUBLIC, "string $content", "@bool", vm_builtin_xw_write_comment },
+		{ "startDtd",        PH7_MOD_PUBLIC,
+		  "string $qualifiedName, ?string $publicId = null, ?string $systemId = null",
+		  "@bool", vm_builtin_xw_start_dtd },
+		{ "endDtd",          PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_end_dtd },
+		{ "writeDtd",        PH7_MOD_PUBLIC,
+		  "string $name, ?string $publicId = null, ?string $systemId = null, ?string $content = null",
+		  "@bool", vm_builtin_xw_write_dtd },
+		{ "startDtdElement", PH7_MOD_PUBLIC, "string $qualifiedName", "@bool", vm_builtin_xw_start_dtd_element },
+		{ "endDtdElement",   PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_end_dtd_element },
+		{ "writeDtdElement", PH7_MOD_PUBLIC, "string $name, string $content", "@bool",
+		  vm_builtin_xw_write_dtd_element },
+		{ "startDtdAttlist", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_xw_start_dtd_attlist },
+		{ "endDtdAttlist",   PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_end_dtd_attlist },
+		{ "writeDtdAttlist", PH7_MOD_PUBLIC, "string $name, string $content", "@bool",
+		  vm_builtin_xw_write_dtd_attlist },
+		{ "startDtdEntity",  PH7_MOD_PUBLIC, "string $name, bool $isParam", "@bool",
+		  vm_builtin_xw_start_dtd_entity },
+		{ "endDtdEntity",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_xw_end_dtd_entity },
+		{ "writeDtdEntity",  PH7_MOD_PUBLIC,
+		  "string $name, string $content, bool $isParam = false, ?string $publicId = null, "
+		  "?string $systemId = null, ?string $notationData = null",
+		  "@bool", vm_builtin_xw_write_dtd_entity },
 		{ "outputMemory",    PH7_MOD_PUBLIC, "bool $flush = true", "@string", vm_builtin_xw_output_memory },
 		{ "flush",           PH7_MOD_PUBLIC, "bool $empty = true", "@string|int", vm_builtin_xw_flush },
 	};
