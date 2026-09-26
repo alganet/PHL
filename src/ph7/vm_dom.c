@@ -9,6 +9,7 @@
 #include <libxml/c14n.h>
 #include <libxml/xmlsave.h>
 #include <libxml/xpath.h>
+#include <libxml/xpathInternals.h>
 #include <libxml/xmlschemas.h>
 
 /*
@@ -1648,79 +1649,315 @@ DOM_METHOD(vm_builtin_DOMNode_getNodePath)
 
 /* ===== C14N ===== */
 
-/* Visibility callback: keep only the target's subtree (attrs/ns follow
- * their owning element) -- the same shape php's ext/dom uses. */
-static int DomC14NIsVisible(void *pUserData,xmlNodePtr pNode,xmlNodePtr pParent)
+/*
+ * php canonicalizes a NODE by handing libxml the node SET an XPath produces
+ * from it -- `(.//. | .//@* | .//namespace::*)` with the node as context -- and
+ * a DOCUMENT by handing it no set at all, which is how a document's top-level
+ * comments reach the output where a node's cannot. Running a VISIBILITY
+ * callback instead (the shape this file had) is close but not the same: an
+ * ATTRIBUTE canonicalizes to its own ` b="2"` under php, where a "keep the
+ * target's subtree" callback answers the empty string.
+ *
+ * All four of php's parameters are read here. `$exclusive` picks Exclusive
+ * C14N, `$withComments` keeps comments, `$xpath` REPLACES the default node set
+ * with the caller's query (and may register prefixes for it), and `$nsPrefixes`
+ * lists the namespace prefixes an exclusive canonicalization must declare even
+ * where they are unused. Only the two bools were honoured before, so
+ * `C14N(true)` -- the mode every XML-DSig signer asks for -- silently
+ * canonicalized inclusively and produced bytes that will not verify.
+ */
+
+/* The `namespaces` sub-array of `$xpath`: prefix => URI, string pairs only. */
+static int DomC14NRegisterNs(ph7_value *pKey,ph7_value *pVal,void *pUserData)
 {
-	xmlNodePtr pTarget = (xmlNodePtr)pUserData;
-	xmlNodePtr p;
-	if( pNode->type == XML_NAMESPACE_DECL ){
-		p = pParent;
-	}else if( pNode->type == XML_ATTRIBUTE_NODE ){
-		p = pNode->parent;
-	}else{
-		p = pNode;
+	xmlXPathContextPtr pXCtx = (xmlXPathContextPtr)pUserData;
+	if( pKey && pVal && ph7_value_is_string(pKey) && ph7_value_is_string(pVal) ){
+		xmlXPathRegisterNs(pXCtx,(const xmlChar *)ph7_value_to_string(pKey,0),
+			(const xmlChar *)ph7_value_to_string(pVal,0));
 	}
-	while( p ){
-		if( p == pTarget ){
-			return 1;
+	return PH7_OK;
+}
+/*
+ * The `$nsPrefixes` list, collected into the NULL-terminated array libxml
+ * wants. Non-string entries are skipped, exactly as php skips them.
+ *
+ * The bytes are COPIED. ph7_array_walk hands its callback a temporary copy of
+ * each value and releases it the moment the callback returns, so keeping the
+ * pointer leaves a dangling one -- which libxml then compares against real
+ * prefixes and matches at random, so `C14N(true,false,null,['u','p'])` declared
+ * whichever prefix the freed memory happened to still read as.
+ */
+typedef struct DomC14NPrefixes DomC14NPrefixes;
+struct DomC14NPrefixes {
+	SyBlob sPool;    /* the prefix bytes, NUL-terminated one after another */
+	SySet aOfs;      /* each prefix's offset into sPool */
+	xmlChar **apPrefix;
+};
+static int DomC14NCollectPrefix(ph7_value *pKey,ph7_value *pVal,void *pUserData)
+{
+	DomC14NPrefixes *pList = (DomC14NPrefixes *)pUserData;
+	SXUNUSED(pKey);
+	if( pVal && ph7_value_is_string(pVal) ){
+		sxu32 nOfs = SyBlobLength(&pList->sPool);
+		int nByte = 0;
+		const char *zVal = ph7_value_to_string(pVal,&nByte);
+		SySetPut(&pList->aOfs,(const void *)&nOfs);
+		SyBlobAppend(&pList->sPool,zVal,(sxu32)nByte);
+		SyBlobAppend(&pList->sPool,"",1);
+	}
+	return PH7_OK;
+}
+/*
+ * Canonicalize the receiver into *pzOut (xmlFree'd by the caller) and answer
+ * its byte count, or -1 when php answers false/"" instead. *pRc carries a
+ * refusal php raises before anything is written.
+ *
+ * iXPathPos is the 1-based position of `$xpath` in the CALLING method's
+ * parameter list: 3 on C14N, 4 on C14NFile, and php's messages print it.
+ */
+static int DomC14NRun(ph7_context *pCtx,int nArg,ph7_value **apArg,int iXPathPos,
+	const char *zFn,xmlChar **pzOut,int *pRc)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	int iFirst = iXPathPos - 3;   /* index of $exclusive */
+	int bExclusive = nArg > iFirst && ph7_value_to_bool(apArg[iFirst]);
+	int bComments = nArg > iFirst+1 && ph7_value_to_bool(apArg[iFirst+1]);
+	ph7_value *pXPath = (nArg > iFirst+2 && ph7_value_is_array(apArg[iFirst+2]))
+		? apArg[iFirst+2] : 0;
+	ph7_value *pPrefixes = (nArg > iFirst+3 && ph7_value_is_array(apArg[iFirst+3]))
+		? apArg[iFirst+3] : 0;
+	DomC14NPrefixes sPrefixes;
+	xmlXPathContextPtr pXCtx = 0;
+	xmlXPathObjectPtr pXObj = 0;
+	xmlNodeSetPtr pSet = 0;
+	sxu32 nMark,n;
+	int nOut;
+	*pzOut = 0;
+	sPrefixes.apPrefix = 0;
+	SyBlobInit(&sPrefixes.sPool,&pVm->sAllocator);
+	SySetInit(&sPrefixes.aOfs,&pVm->sAllocator,sizeof(sxu32));
+	if( pNode == 0 || pNode->doc == 0 ){
+		nOut = -1;
+		goto done;
+	}
+	if( pXPath ){
+		ph7_value *pQuery = ph7_array_fetch(pXPath,"query",(int)sizeof("query")-1);
+		ph7_value *pNs;
+		if( pQuery == 0 ){
+			*pRc = PH7_VmThrowException(pCtx,"ValueError",
+				"%s(): Argument #%d ($xpath) must have a \"query\" key",zFn,iXPathPos);
+			nOut = -1;
+			goto done;
 		}
-		p = p->parent;
+		if( !ph7_value_is_string(pQuery) ){
+			*pRc = PH7_VmThrowException(pCtx,"TypeError",
+				"%s(): Argument #%d ($xpath) \"query\" option must be a string, %s given",
+				zFn,iXPathPos,ph7_type_name(pQuery));
+			nOut = -1;
+			goto done;
+		}
+		pXCtx = xmlXPathNewContext(pNode->doc);
+		if( pXCtx == 0 ){
+			nOut = -1;
+			goto done;
+		}
+		pXCtx->node = pNode;
+		pNs = ph7_array_fetch(pXPath,"namespaces",(int)sizeof("namespaces")-1);
+		if( pNs && ph7_value_is_array(pNs) ){
+			ph7_array_walk(pNs,DomC14NRegisterNs,pXCtx);
+		}
+		nMark = PH7_LibxmlCaptureBegin(pVm);
+		pXObj = xmlXPathEvalExpression((const xmlChar *)ph7_value_to_string(pQuery,0),pXCtx);
+		/* php lets libxml's own complaint out first ("Invalid expression"), THEN
+		 * raises its refusal, so the queue is flushed rather than dropped. */
+		PH7_LibxmlCaptureEnd(pVm,nMark,zFn);
+		pXCtx->node = 0;
+	}else if( pNode->type != XML_DOCUMENT_NODE ){
+		pXCtx = xmlXPathNewContext(pNode->doc);
+		if( pXCtx == 0 ){
+			nOut = -1;
+			goto done;
+		}
+		pXCtx->node = pNode;
+		nMark = PH7_LibxmlCaptureBegin(pVm);
+		pXObj = xmlXPathEvalExpression(
+			(const xmlChar *)"(.//. | .//@* | .//namespace::*)",pXCtx);
+		PH7_LibxmlCaptureEnd(pVm,nMark,zFn);
+		pXCtx->node = 0;
 	}
-	return 0;
+	if( pXCtx ){
+		if( pXObj == 0 || pXObj->type != XPATH_NODESET ){
+			*pRc = PH7_VmThrowException(pCtx,"Error","XPath query did not return a nodeset");
+			nOut = -1;
+			goto done;
+		}
+		pSet = pXObj->nodesetval;
+	}
+	/* php reads `$nsPrefixes` only AFTER the query has been resolved, so a bad
+	 * query's refusal reaches the caller with no notice in front of it. */
+	if( pPrefixes ){
+		if( bExclusive ){
+			ph7_array_walk(pPrefixes,DomC14NCollectPrefix,&sPrefixes);
+			n = SySetUsed(&sPrefixes.aOfs);
+			if( n > 0 ){
+				sPrefixes.apPrefix = (xmlChar **)SyMemBackendAlloc(&pVm->sAllocator,
+					(sxu32)((n+1)*sizeof(xmlChar *)));
+				if( sPrefixes.apPrefix == 0 ){
+					nOut = -1;
+					goto done;
+				}
+				/* Offsets, not pointers, until the pool has stopped growing. */
+				for( n = 0 ; n < SySetUsed(&sPrefixes.aOfs) ; ++n ){
+					sPrefixes.apPrefix[n] = (xmlChar *)SyBlobData(&sPrefixes.sPool)
+						+ ((sxu32 *)SySetBasePtr(&sPrefixes.aOfs))[n];
+				}
+				sPrefixes.apPrefix[n] = 0;
+			}
+		}else{
+			/* php's E_NOTICE, and the list is then ignored outright. */
+			ph7_context_throw_error(pCtx,PH7_CTX_NOTICE,
+				"Inclusive namespace prefixes only allowed in exclusive mode.");
+		}
+	}
+	nMark = PH7_LibxmlCaptureBegin(pVm);
+	nOut = xmlC14NDocDumpMemory(pNode->doc,pSet,
+		bExclusive ? XML_C14N_EXCLUSIVE_1_0 : XML_C14N_1_0,
+		sPrefixes.apPrefix,bComments,pzOut);
+	PH7_LibxmlCaptureEnd(pVm,nMark,zFn);
+	if( nOut < 0 && *pzOut ){
+		xmlFree(*pzOut);
+		*pzOut = 0;
+	}
+done:
+	if( pXObj ){
+		xmlXPathFreeObject(pXObj);
+	}
+	if( pXCtx ){
+		xmlXPathFreeContext(pXCtx);
+	}
+	if( sPrefixes.apPrefix ){
+		SyMemBackendFree(&pVm->sAllocator,(void *)sPrefixes.apPrefix);
+	}
+	SyBlobRelease(&sPrefixes.sPool);
+	SySetRelease(&sPrefixes.aOfs);
+	return nOut;
 }
 /*
  * DOMNode::C14N(bool $exclusive = false, bool $withComments = false,
  *               ?array $xpath = null, ?array $nsPrefixes = null): string|false
  *
- * "" on canonicalization failure (php returns an empty string for
- * empty/unserializable input). The four parameters are php's; PHL canonicalizes
- * inclusive-with-comments only, exactly as the chunk did -- they are declared so
- * the arity and types are php's, not so the body branches on them.
+ * The empty string on canonicalization failure, which is what php answers for
+ * a detached node or a fragment: nothing of it is visible from the document.
  */
 DOM_METHOD(vm_builtin_DOMNode_C14N)
 {
-	ph7_vm *pVm = pCtx->pVm;
-	phl_domnode *pNd = DomThisNode(pCtx);
-	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
-	sxu32 nMark;
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	if( pNode == 0 || pNode->doc == 0 ){
+	xmlChar *zOut = 0;
+	int rc = PH7_OK;
+	int nOut = DomC14NRun(pCtx,nArg,apArg,3,"DOMNode::C14N",&zOut,&rc);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( nOut < 0 ){
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
-	nMark = PH7_LibxmlCaptureBegin(pVm);
-	if( pNode->type == XML_DOCUMENT_NODE || pNode->type == XML_HTML_DOCUMENT_NODE ){
-		xmlChar *zOut = 0;
-		int nOut = xmlC14NDocDumpMemory((xmlDocPtr)pNode,0,XML_C14N_1_0,0,0,&zOut);
-		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMNode::C14N");
-		if( nOut < 0 || zOut == 0 ){
-			ph7_result_string(pCtx,"",0);
-		}else{
-			ph7_result_string(pCtx,(const char *)zOut,nOut);
-		}
-		if( zOut ){
-			xmlFree(zOut);
-		}
-	}else{
-		xmlOutputBufferPtr pOut = xmlAllocOutputBuffer(0);
-		int rc = -1;
-		if( pOut ){
-			rc = xmlC14NExecute(pNode->doc,DomC14NIsVisible,pNode,XML_C14N_1_0,0,0,pOut);
-		}
-		PH7_LibxmlCaptureEnd(pVm,nMark,"DOMNode::C14N");
-		if( pOut == 0 || rc < 0 ){
-			ph7_result_string(pCtx,"",0);
-		}else{
-			ph7_result_string(pCtx,(const char *)xmlOutputBufferGetContent(pOut),
-				(int)xmlOutputBufferGetSize(pOut));
-		}
-		if( pOut ){
-			xmlOutputBufferClose(pOut);
-		}
-	}
+	ph7_result_string(pCtx,(const char *)zOut,nOut);
+	xmlFree(zOut);
 	return PH7_OK;
+}
+/*
+ * DOMNode::C14NFile(string $uri, bool $exclusive = false,
+ *                   bool $withComments = false, ?array $xpath = null,
+ *                   ?array $nsPrefixes = null): int|false
+ *
+ * The same canonicalization written to a destination instead of answered, and
+ * the byte count rather than the bytes. The destination goes through the stream
+ * layer -- php's libxml I/O is wired to php's streams, so `php://stdout` and a
+ * userland wrapper are both valid here -- which is also where php's
+ * "Failed to open stream" warning comes from.
+ */
+DOM_METHOD(vm_builtin_DOMNode_C14NFile)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const ph7_io_stream *pStream;
+	void *pHandle;
+	xmlChar *zOut = 0;
+	const char *zFile;
+	int nFile = 0,nOut,rc = PH7_OK;
+	zFile = nArg > 0 ? ph7_value_to_string(apArg[0],&nFile) : "";
+	if( nFile != (int)SyStrlen(zFile) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"DOMNode::C14NFile(): Argument #1 ($uri) must not contain any null bytes");
+	}
+	if( nFile < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError","Path must not be empty");
+	}
+	nOut = DomC14NRun(pCtx,nArg,apArg,4,"DOMNode::C14NFile",&zOut,&rc);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( nOut < 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pStream = PH7_VmGetStreamDevice(pVm,&zFile,nFile);
+	pHandle = (pStream && pStream->xWrite) ? PH7_StreamOpenHandle(pVm,pStream,zFile,
+		PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_CREATE|PH7_IO_OPEN_TRUNC,FALSE,0,FALSE,0,
+		ph7_function_name(pCtx)) : 0;
+	if( pHandle == 0 ){
+		xmlFree(zOut);
+		VfsThrowOpenWarning(pCtx,zFile);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( nOut > 0 && pStream->xWrite(pHandle,(const void *)zOut,nOut) < 0 ){
+		nOut = -1;
+	}
+	PH7_StreamCloseHandle(pStream,pHandle);
+	xmlFree(zOut);
+	if( nOut < 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_result_int(pCtx,nOut);
+	return PH7_OK;
+}
+/*
+ * DOMNode::__sleep(): array and DOMNode::__wakeup(): void
+ *
+ * php declares both on DOMNode and both do one thing: refuse. They are the
+ * MECHANISM behind the refusal, not decoration -- `serialize()` finds `__sleep`
+ * and `unserialize()` calls `__wakeup`, which is why a subclass that declares
+ * its own escapes both. Without them, PHL refused serialize() from its own deny
+ * handler (same sentence) but UNSERIALIZE went through in silence and handed
+ * back a DOM object with no node behind it, which then answered nothing for
+ * every property a program read off it.
+ */
+DOM_METHOD(vm_builtin_DOMNode_sleep)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	return PH7_VmThrowException(pCtx,"Exception",
+		"Serialization of '%z' is not allowed, unless serialization methods "
+		"are implemented in a subclass",&pThis->pClass->sName);
+}
+DOM_METHOD(vm_builtin_DOMNode_wakeup)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	return PH7_VmThrowException(pCtx,"Exception",
+		"Unserialization of '%z' is not allowed, unless unserialization methods "
+		"are implemented in a subclass",&pThis->pClass->sName);
 }
 
 /* ===== DOMNodeList and DOMNamedNodeMap ===== */
@@ -2827,6 +3064,14 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "C14N",           PH7_MOD_PUBLIC,
 		  "bool $exclusive = false, bool $withComments = false, ?array $xpath = null, "
 		  "?array $nsPrefixes = null", "@string|false", vm_builtin_DOMNode_C14N },
+		{ "C14NFile",       PH7_MOD_PUBLIC,
+		  "string $uri, bool $exclusive = false, bool $withComments = false, "
+		  "?array $xpath = null, ?array $nsPrefixes = null", "@int|false",
+		  vm_builtin_DOMNode_C14NFile },
+		/* The refusal MACHINERY, not decoration: serialize() finds __sleep and
+		 * unserialize() calls __wakeup, so a subclass declaring either escapes. */
+		{ "__sleep",        PH7_MOD_PUBLIC, "", "array", vm_builtin_DOMNode_sleep },
+		{ "__wakeup",       PH7_MOD_PUBLIC, "", "void", vm_builtin_DOMNode_wakeup },
 		{ "lookupNamespaceURI", PH7_MOD_PUBLIC, "?string $prefix", "@?string",
 		  vm_builtin_DOMNode_lookupNamespaceURI },
 		{ "lookupPrefix",   PH7_MOD_PUBLIC, "string $namespace", "@?string",
