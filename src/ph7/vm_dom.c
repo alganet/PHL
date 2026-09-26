@@ -1185,12 +1185,63 @@ DOM_METHOD(vm_builtin_DOMNode_isDefaultNamespace)
 
 /* ===== Element attributes ===== */
 
+/*
+ * An attribute of pElem by QUALIFIED name, php's own two-step lookup.
+ *
+ * libxml's xmlHasProp() matches the stored name and ignores namespaces
+ * entirely, which is wrong in both directions and was the answer the whole
+ * by-name surface gave: `getAttribute('x:b')` found NOTHING (the stored name is
+ * `b`, the prefix lives in the node's ns) while `getAttribute('b')` found the
+ * NAMESPACED one and `removeAttribute('b')` deleted it.  php looks for an
+ * attribute in NO namespace under the whole name first -- which is what finds
+ * one written under an unresolvable prefix, stored with the colon in its name --
+ * and only then splits the prefix, resolves it in the element's scope and asks
+ * again by (local name, URI).  An unresolvable prefix finds nothing.
+ *
+ * A DTD-declared DEFAULT is not an attribute here: xmlHasNsProp answers the
+ * DECLARATION node for those, which is a different node kind entirely.
+ */
+static xmlAttrPtr DomAttrNoNs(xmlNodePtr pElem,const char *zName)
+{
+	xmlAttrPtr pAttr;
+	if( pElem == 0 || pElem->type != XML_ELEMENT_NODE ){
+		return 0;
+	}
+	pAttr = xmlHasNsProp(pElem,(const xmlChar *)zName,0);
+	return (pAttr && pAttr->type == XML_ATTRIBUTE_NODE) ? pAttr : 0;
+}
+static xmlAttrPtr DomAttrByName(xmlNodePtr pElem,const char *zName)
+{
+	xmlAttrPtr pAttr = DomAttrNoNs(pElem,zName);
+	if( pAttr == 0 && pElem ){
+		xmlChar *zPrefix = 0;
+		xmlChar *zLocal = xmlSplitQName2((const xmlChar *)zName,&zPrefix);
+		if( zLocal ){
+			if( zPrefix ){
+				xmlNsPtr pNs = xmlSearchNs(pElem->doc,pElem,zPrefix);
+				if( pNs ){
+					pAttr = xmlHasNsProp(pElem,zLocal,pNs->href);
+				}
+				xmlFree(zPrefix);
+			}
+			xmlFree(zLocal);
+		}
+	}
+	return (pAttr && pAttr->type == XML_ATTRIBUTE_NODE) ? pAttr : 0;
+}
+static xmlAttrPtr DomAttrByNs(xmlNodePtr pElem,const xmlChar *zUri,const char *zLocal)
+{
+	xmlAttrPtr pAttr = pElem ? xmlHasNsProp(pElem,(const xmlChar *)zLocal,zUri) : 0;
+	return (pAttr && pAttr->type == XML_ATTRIBUTE_NODE) ? pAttr : 0;
+}
+
 /* DOMElement::getAttribute(string $qualifiedName): string -- "" when absent */
 DOM_METHOD(vm_builtin_DOMElement_getAttribute)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
 	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
-	xmlChar *zVal = pNd ? xmlGetProp((xmlNodePtr)pNd->pNode,(const xmlChar *)zName) : 0;
+	xmlAttrPtr pAttr = pNd ? DomAttrByName((xmlNodePtr)pNd->pNode,zName) : 0;
+	xmlChar *zVal = pAttr ? xmlNodeListGetString(pAttr->doc,pAttr->children,1) : 0;
 	ph7_result_string(pCtx,zVal ? (const char *)zVal : "",-1);
 	if( zVal ){
 		xmlFree(zVal);
@@ -1202,7 +1253,7 @@ DOM_METHOD(vm_builtin_DOMElement_hasAttribute)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
 	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
-	ph7_result_bool(pCtx,pNd && xmlHasProp((xmlNodePtr)pNd->pNode,(const xmlChar *)zName) != 0);
+	ph7_result_bool(pCtx,pNd && DomAttrByName((xmlNodePtr)pNd->pNode,zName) != 0);
 	return PH7_OK;
 }
 /* DOMElement::setAttribute(string $qualifiedName, string $value): DOMAttr -- php
@@ -1217,8 +1268,8 @@ DOM_METHOD(vm_builtin_DOMElement_setAttribute)
 		return DomThrow(pCtx,DOM_ERR_INVALID_CHAR);
 	}
 	xmlSetProp((xmlNodePtr)pNd->pNode,(const xmlChar *)zName,(const xmlChar *)zVal);
-	pAttr = xmlHasProp((xmlNodePtr)pNd->pNode,(const xmlChar *)zName);
-	if( pAttr == 0 || pAttr->type != XML_ATTRIBUTE_NODE ){
+	pAttr = DomAttrByName((xmlNodePtr)pNd->pNode,zName);
+	if( pAttr == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
@@ -1229,8 +1280,8 @@ DOM_METHOD(vm_builtin_DOMElement_removeAttribute)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
 	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
-	xmlAttrPtr pAttr = pNd ? xmlHasProp((xmlNodePtr)pNd->pNode,(const xmlChar *)zName) : 0;
-	if( pAttr == 0 || pAttr->type != XML_ATTRIBUTE_NODE ){
+	xmlAttrPtr pAttr = pNd ? DomAttrByName((xmlNodePtr)pNd->pNode,zName) : 0;
+	if( pAttr == 0 ){
 		/* Absent (or a DTD default): php returns false */
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -1239,13 +1290,25 @@ DOM_METHOD(vm_builtin_DOMElement_removeAttribute)
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
+/*
+ * A `?string $namespace` argument as libxml wants it: NULL for php's null,
+ * which is how a caller asks for the attribute in NO namespace, and the bytes
+ * otherwise.  Handing libxml "" for a null instead is not the same question --
+ * "" matches a namespace whose URI is the empty string, which no document has,
+ * so `getAttributeNS(null, 'href')` answered "" for every plain attribute.
+ */
+static const xmlChar * DomArgUri(int nArg,ph7_value **apArg,int iArg)
+{
+	const char *z = DomArgStrOrNull(nArg,apArg,iArg);
+	return (const xmlChar *)z;
+}
 /* DOMElement::getAttributeNS(?string $namespace, string $localName): string */
 DOM_METHOD(vm_builtin_DOMElement_getAttributeNS)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
-	const char *zUri = (nArg > 1 && !ph7_value_is_null(apArg[0])) ? ph7_value_to_string(apArg[0],0) : "";
+	const xmlChar *zUri = DomArgUri(nArg,apArg,0);
 	const char *zLocal = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
-	xmlChar *zVal = pNd ? xmlGetNsProp((xmlNodePtr)pNd->pNode,(const xmlChar *)zLocal,(const xmlChar *)zUri) : 0;
+	xmlChar *zVal = pNd ? xmlGetNsProp((xmlNodePtr)pNd->pNode,(const xmlChar *)zLocal,zUri) : 0;
 	ph7_result_string(pCtx,zVal ? (const char *)zVal : "",-1);
 	if( zVal ){
 		xmlFree(zVal);
@@ -1287,6 +1350,326 @@ DOM_METHOD(vm_builtin_DOMElement_setAttributeNS)
 		xmlSetNsProp(pNode,pNs,(const xmlChar *)zQname,(const xmlChar *)zVal);
 	}
 	return PH7_OK;
+}
+
+/* ===== Attribute NODES ===== */
+
+/*
+ * The half of the attribute surface that hands out (and takes) the attribute
+ * NODE rather than its string.  It is how a program moves an attribute between
+ * elements, reads one it has held across an edit, or asks which attributes an
+ * element carries at all -- and none of it existed here, so `getAttributeNode`
+ * was a `Call to undefined method` and every idiom built on it stopped at the
+ * first line.
+ */
+
+/* The xmlAttr a DOMAttr-typed argument stands for (already screened by ZPP:
+ * anything that is not a DOMAttr never reaches the body). */
+static xmlAttrPtr DomAttrArg(ph7_value *pVal)
+{
+	phl_domnode *pNd = DomObjArg(pVal);
+	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	return (pNode && pNode->type == XML_ATTRIBUTE_NODE) ? (xmlAttrPtr)pNode : 0;
+}
+/* The plain setAttributeNode spelling asks libxml's own name-only question --
+ * php's does too, so an attribute named `b` displaces a namespaced `x:b`
+ * there where the NS spelling would not. */
+static xmlAttrPtr DomAttrByLocal(xmlNodePtr pElem,const char *zName)
+{
+	xmlAttrPtr pAttr = pElem ? xmlHasProp(pElem,(const xmlChar *)zName) : 0;
+	return (pAttr && pAttr->type == XML_ATTRIBUTE_NODE) ? pAttr : 0;
+}
+/* Append an attribute to an element's property list. The list is its own chain
+ * (pElem->properties), not the child chain, which is why DomLinkLast will not
+ * do: an attribute spliced among the CHILDREN serializes inside the tag body. */
+static void DomAttrLinkLast(xmlNodePtr pElem,xmlAttrPtr pAttr)
+{
+	xmlAttrPtr pLast = pElem->properties;
+	pAttr->parent = pElem;
+	pAttr->doc = pElem->doc;
+	pAttr->next = 0;
+	if( pLast == 0 ){
+		pElem->properties = pAttr;
+		pAttr->prev = 0;
+		return;
+	}
+	while( pLast->next ){
+		pLast = pLast->next;
+	}
+	pLast->next = pAttr;
+	pAttr->prev = pLast;
+}
+/* Detach an attribute from its element (or the orphan set) without freeing it:
+ * php hands the caller back the node it displaced, alive. */
+static void DomAttrDetach(phl_xmldoc *pShell,xmlAttrPtr pAttr)
+{
+	if( pAttr->parent ){
+		xmlUnlinkNode((xmlNodePtr)pAttr);
+	}else{
+		DomOrphanRemove(pShell,(xmlNodePtr)pAttr);
+	}
+}
+/* DOMElement::getAttributeNode(string $qualifiedName): DOMAttr|false -- FALSE
+ * for an absent one, where the NS spelling below answers null. */
+DOM_METHOD(vm_builtin_DOMElement_getAttributeNode)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	xmlAttrPtr pAttr = pNd ? DomAttrByName((xmlNodePtr)pNd->pNode,zName) : 0;
+	if( pAttr == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	return DomResultNodeOf(pCtx,pNd,(xmlNodePtr)pAttr);
+}
+/* DOMElement::getAttributeNodeNS(?string $namespace, string $localName): ?DOMAttr */
+DOM_METHOD(vm_builtin_DOMElement_getAttributeNodeNS)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	const char *zLocal = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
+	xmlAttrPtr pAttr = pNd ? DomAttrByNs((xmlNodePtr)pNd->pNode,DomArgUri(nArg,apArg,0),zLocal) : 0;
+	return DomResultNodeOf(pCtx,pNd,(xmlNodePtr)pAttr);
+}
+/*
+ * DOMElement::setAttributeNode(DOMAttr $attr): ?DOMAttr and its NS spelling.
+ *
+ * php answers the attribute it DISPLACED (alive and ownerless) or null, and
+ * the two spellings differ only in how they decide what "the same attribute"
+ * is: the plain one matches on the local name alone, the NS one on the name
+ * and the namespace URI together.  An attribute that already belongs to
+ * another element of the same document is MOVED, not copied.
+ */
+static int DomSetAttrNode(ph7_context *pCtx,int nArg,ph7_value **apArg,int bNS)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlAttrPtr pAttr = nArg > 0 ? DomAttrArg(apArg[0]) : 0;
+	xmlNodePtr pElem = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	xmlAttrPtr pOld;
+	if( pElem == 0 || pAttr == 0 ){
+		return DomThrow(pCtx,DOM_ERR_NOT_FOUND);
+	}
+	if( pAttr->doc != pElem->doc ){
+		return DomThrow(pCtx,DOM_ERR_WRONG_DOC);
+	}
+	pOld = bNS ? DomAttrByNs(pElem,pAttr->ns ? pAttr->ns->href : 0,(const char *)pAttr->name)
+	           : DomAttrByLocal(pElem,(const char *)pAttr->name);
+	if( pOld == pAttr ){
+		/* Already this element's, under this spelling: php does nothing at all
+		 * and answers null rather than handing the node back to itself. */
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	if( pOld ){
+		xmlUnlinkNode((xmlNodePtr)pOld);
+		DomOrphanAdd(pNd->pShell,(xmlNodePtr)pOld);
+	}
+	DomAttrDetach(pNd->pShell,pAttr);
+	DomAttrLinkLast(pElem,pAttr);
+	return DomResultNodeOf(pCtx,pNd,(xmlNodePtr)pOld);
+}
+DOM_METHOD(vm_builtin_DOMElement_setAttributeNode)
+{
+	return DomSetAttrNode(pCtx,nArg,apArg,0);
+}
+DOM_METHOD(vm_builtin_DOMElement_setAttributeNodeNS)
+{
+	return DomSetAttrNode(pCtx,nArg,apArg,1);
+}
+/* DOMElement::removeAttributeNode(DOMAttr $attr): DOMAttr -- an attribute that
+ * is not THIS element's is php's Not Found, whichever element owns it. */
+DOM_METHOD(vm_builtin_DOMElement_removeAttributeNode)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlAttrPtr pAttr = nArg > 0 ? DomAttrArg(apArg[0]) : 0;
+	xmlNodePtr pElem = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	if( pElem == 0 || pAttr == 0 || pAttr->parent != pElem ){
+		return DomThrow(pCtx,DOM_ERR_NOT_FOUND);
+	}
+	xmlUnlinkNode((xmlNodePtr)pAttr);
+	DomOrphanAdd(pNd->pShell,(xmlNodePtr)pAttr);
+	return DomResultNodeOf(pCtx,pNd,(xmlNodePtr)pAttr);
+}
+/* The qualified name a serializer would write for an attribute. */
+static int DomAttrQName(xmlAttrPtr pAttr,SyBlob *pOut)
+{
+	if( pAttr->ns && pAttr->ns->prefix ){
+		SyBlobAppend(pOut,(const void *)pAttr->ns->prefix,SyStrlen((const char *)pAttr->ns->prefix));
+		SyBlobAppend(pOut,(const void *)":",sizeof(char));
+	}
+	SyBlobAppend(pOut,(const void *)pAttr->name,SyStrlen((const char *)pAttr->name));
+	return PH7_OK;
+}
+/* DOMElement::getAttributeNames(): array -- the qualified names, in document
+ * order, as a LIST (php re-keys from zero). */
+DOM_METHOD(vm_builtin_DOMElement_getAttributeNames)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	ph7_value *pArray = ph7_context_new_array(pCtx);
+	ph7_value *pVal = ph7_context_new_scalar(pCtx);
+	xmlAttrPtr pAttr;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pArray == 0 || pVal == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	for( pAttr = DomAttrList(pNd ? (xmlNodePtr)pNd->pNode : 0) ; pAttr ; pAttr = pAttr->next ){
+		SyBlob sName;
+		if( pAttr->type != XML_ATTRIBUTE_NODE ){
+			continue;
+		}
+		SyBlobInit(&sName,&pCtx->pVm->sAllocator);
+		DomAttrQName(pAttr,&sName);
+		ph7_value_string_format(pVal,"%.*s",(int)SyBlobLength(&sName),(const char *)SyBlobData(&sName));
+		ph7_array_add_elem(pArray,0,pVal);
+		ph7_value_reset_string_cursor(pVal);
+		SyBlobRelease(&sName);
+	}
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/* DOMElement::hasAttributeNS(?string $namespace, string $localName): bool */
+DOM_METHOD(vm_builtin_DOMElement_hasAttributeNS)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	const char *zLocal = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
+	ph7_result_bool(pCtx,pNd != 0
+		&& DomAttrByNs((xmlNodePtr)pNd->pNode,DomArgUri(nArg,apArg,0),zLocal) != 0);
+	return PH7_OK;
+}
+/* DOMElement::removeAttributeNS(?string $namespace, string $localName): void --
+ * an absent one is silence, as php's is. */
+DOM_METHOD(vm_builtin_DOMElement_removeAttributeNS)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	const char *zLocal = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
+	xmlAttrPtr pAttr = pNd ? DomAttrByNs((xmlNodePtr)pNd->pNode,DomArgUri(nArg,apArg,0),zLocal) : 0;
+	if( pAttr ){
+		xmlRemoveProp(pAttr);
+	}
+	return PH7_OK;
+}
+/*
+ * DOMElement::toggleAttribute(string $qualifiedName, ?bool $force = null): bool
+ *
+ * php's 8.3 verb: with no $force it flips (removing answers false, adding a
+ * value-less attribute answers true), and with one it only ADDS or only
+ * REMOVES -- an add that finds the attribute already there leaves its value
+ * alone.  The name is validated first, so a bad one is refused before the
+ * element is touched.
+ */
+DOM_METHOD(vm_builtin_DOMElement_toggleAttribute)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	int bForceGiven = nArg > 1 && !ph7_value_is_null(apArg[1]);
+	int bForce = bForceGiven && ph7_value_to_bool(apArg[1]);
+	xmlNodePtr pElem = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	xmlAttrPtr pAttr;
+	if( pElem == 0 || xmlValidateName((const xmlChar *)zName,0) != 0 ){
+		return DomThrow(pCtx,DOM_ERR_INVALID_CHAR);
+	}
+	pAttr = DomAttrByName(pElem,zName);
+	if( bForceGiven ? bForce : (pAttr == 0) ){
+		if( pAttr == 0 ){
+			xmlSetProp(pElem,(const xmlChar *)zName,(const xmlChar *)"");
+		}
+		ph7_result_bool(pCtx,1);
+		return PH7_OK;
+	}
+	if( pAttr ){
+		xmlRemoveProp(pAttr);
+	}
+	ph7_result_bool(pCtx,0);
+	return PH7_OK;
+}
+/*
+ * The ID three.  php's `setIdAttribute*` is what makes an attribute the one
+ * `getElementById()` answers by, in a document with no DTD to say so, and
+ * `DOMAttr::isId()` is how a caller reads the flag back.  All three refuse a
+ * name the element does not carry with Not Found -- including an attribute that
+ * belongs to a DIFFERENT element, which is why the node spelling checks the
+ * owner rather than trusting the argument.
+ */
+static int DomMarkId(xmlAttrPtr pAttr,int bIsId)
+{
+	if( bIsId ){
+		if( pAttr->atype != XML_ATTRIBUTE_ID ){
+			xmlChar *zVal = xmlNodeListGetString(pAttr->doc,pAttr->children,1);
+			if( zVal ){
+				xmlAddID(0,pAttr->doc,zVal,pAttr);
+				xmlFree(zVal);
+			}
+		}
+		pAttr->atype = XML_ATTRIBUTE_ID;
+	}else{
+		if( pAttr->atype == XML_ATTRIBUTE_ID ){
+			xmlRemoveID(pAttr->doc,pAttr);
+		}
+		pAttr->atype = (xmlAttributeType)0;
+	}
+	return PH7_OK;
+}
+DOM_METHOD(vm_builtin_DOMElement_setIdAttribute)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	const char *zName = nArg > 1 ? ph7_value_to_string(apArg[0],0) : "";
+	/* php's ID lookup is the STRICT one -- the whole name in NO namespace, with
+	 * no prefix resolution, so `setIdAttribute('p:k')` is Not Found even on an
+	 * element that carries `p:k`. */
+	xmlAttrPtr pAttr = pNd ? DomAttrNoNs((xmlNodePtr)pNd->pNode,zName) : 0;
+	if( pAttr == 0 ){
+		return DomThrow(pCtx,DOM_ERR_NOT_FOUND);
+	}
+	return DomMarkId(pAttr,nArg > 1 && ph7_value_to_bool(apArg[1]));
+}
+/* php's second parameter is spelled $qualifiedName and matched as a LOCAL one:
+ * the namespace decides the rest. */
+DOM_METHOD(vm_builtin_DOMElement_setIdAttributeNS)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	const char *zLocal = nArg > 2 ? ph7_value_to_string(apArg[1],0) : "";
+	xmlAttrPtr pAttr = pNd ? DomAttrByNs((xmlNodePtr)pNd->pNode,DomArgUri(nArg,apArg,0),zLocal) : 0;
+	if( pAttr == 0 ){
+		return DomThrow(pCtx,DOM_ERR_NOT_FOUND);
+	}
+	return DomMarkId(pAttr,nArg > 2 && ph7_value_to_bool(apArg[2]));
+}
+DOM_METHOD(vm_builtin_DOMElement_setIdAttributeNode)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlAttrPtr pAttr = nArg > 1 ? DomAttrArg(apArg[0]) : 0;
+	if( pNd == 0 || pAttr == 0 || pAttr->parent != (xmlNodePtr)pNd->pNode ){
+		return DomThrow(pCtx,DOM_ERR_NOT_FOUND);
+	}
+	return DomMarkId(pAttr,nArg > 1 && ph7_value_to_bool(apArg[1]));
+}
+/* DOMAttr::isId(): bool */
+DOM_METHOD(vm_builtin_DOMAttr_isId)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_bool(pCtx,pNode != 0 && pNode->type == XML_ATTRIBUTE_NODE
+		&& ((xmlAttrPtr)pNode)->atype == XML_ATTRIBUTE_ID);
+	return PH7_OK;
+}
+/* DOMDocument::createAttribute(string $localName): DOMAttr -- ownerless: php
+ * gives it this document but NO element until it is set on one. */
+DOM_METHOD(vm_builtin_DOMDocument_createAttribute)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	xmlAttrPtr pAttr;
+	if( pNd == 0 || xmlValidateName((const xmlChar *)zName,0) != 0 ){
+		return DomThrow(pCtx,DOM_ERR_INVALID_CHAR);
+	}
+	pAttr = xmlNewDocProp((xmlDocPtr)pNd->pNode,(const xmlChar *)zName,0);
+	if( pAttr == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	DomOrphanAdd(pNd->pShell,(xmlNodePtr)pAttr);
+	return DomResultNodeOf(pCtx,pNd,(xmlNodePtr)pAttr);
 }
 
 /* ===== getElementsByTagName (live) ===== */
@@ -2398,8 +2781,32 @@ DOM_METHOD(vm_builtin_DOMNamedNodeMap_getNamedItem)
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	phl_domnode *pOwner = pThis ? DomListOwner(pThis) : 0;
 	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
-	xmlAttrPtr pAttr = pOwner ? xmlHasProp((xmlNodePtr)pOwner->pNode,(const xmlChar *)zName) : 0;
-	if( pAttr == 0 || pAttr->type != XML_ATTRIBUTE_NODE ){
+	/* The MAP asks libxml's name-only question, where DOMElement's own
+	 * getAttributeNode resolves the prefix: `getNamedItem('k')` finds the
+	 * namespaced `p:k` that `getAttribute('k')` does not. */
+	xmlAttrPtr pAttr = pOwner ? DomAttrByLocal((xmlNodePtr)pOwner->pNode,zName) : 0;
+	if( pAttr == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	return DomResultWrap(pCtx,DomWrap(pCtx->pVm,PH7_NativeAttrObj(pThis,DOM_DOC),
+		pOwner->pShell,(xmlNodePtr)pAttr));
+}
+/* DOMNamedNodeMap::getNamedItemNS(?string $namespace, string $localName): ?DOMNode */
+DOM_METHOD(vm_builtin_DOMNamedNodeMap_getNamedItemNS)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	phl_domnode *pOwner = pThis ? DomListOwner(pThis) : 0;
+	const char *zLocal = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
+	const xmlChar *zUri = DomArgUri(nArg,apArg,0);
+	/* A NULL namespace is the map's ANY here, not the element's "in no
+	 * namespace": `$el->attributes->getNamedItemNS(null,'k')` answers a
+	 * namespaced `p:k` where `$el->getAttributeNodeNS(null,'k')` answers null.
+	 * An EMPTY namespace is neither -- it matches a URI no document has. */
+	xmlAttrPtr pAttr = pOwner == 0 ? 0
+		: zUri ? DomAttrByNs((xmlNodePtr)pOwner->pNode,zUri,zLocal)
+		       : DomAttrByLocal((xmlNodePtr)pOwner->pNode,zLocal);
+	if( pAttr == 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
@@ -2823,6 +3230,17 @@ static int DomDocProp(ph7_context *pCtx,const char *zName)
 	}
 	return DomNodeProp(pCtx,zName);
 }
+/*
+ * php declares `schemaTypeInfo` on both DOMElement and DOMAttr and has never
+ * filled it in: ext/dom answers NULL from a handler that does nothing else.
+ * It is a declared property all the same, so a read is NOT the undefined-property
+ * warning -- which is the whole difference this row buys.
+ */
+static int DomSchemaTypeInfo(ph7_context *pCtx)
+{
+	ph7_result_null(pCtx);
+	return 1;
+}
 /* DOMElement adds tagName, and the two attribute-backed names php exposes as
  * properties: `className` IS the class attribute and `id` IS the id one, both
  * answering "" when the attribute is absent. */
@@ -2846,9 +3264,12 @@ static int DomElemProp(ph7_context *pCtx,const char *zName)
 		}
 		return 1;
 	}
+	if( DomNameIs(zName,"schemaTypeInfo") ){
+		return DomSchemaTypeInfo(pCtx);
+	}
 	return DomNodeProp(pCtx,zName);
 }
-/* DOMAttr adds name/value/ownerElement. */
+/* DOMAttr adds name/value/ownerElement/specified/schemaTypeInfo. */
 static int DomAttrProp(ph7_context *pCtx,const char *zName)
 {
 	phl_domnode *pNd = DomThisNode(pCtx);
@@ -2864,6 +3285,15 @@ static int DomAttrProp(ph7_context *pCtx,const char *zName)
 	if( DomNameIs(zName,"ownerElement") ){
 		DomResultNodeOf(pCtx,pNd,pNode ? pNode->parent : 0);
 		return 1;
+	}
+	/* php's `specified` is a DOM level-1 remnant: ext/dom answers TRUE for every
+	 * attribute a program can reach, including one it just created. */
+	if( DomNameIs(zName,"specified") ){
+		ph7_result_bool(pCtx,1);
+		return 1;
+	}
+	if( DomNameIs(zName,"schemaTypeInfo") ){
+		return DomSchemaTypeInfo(pCtx);
 	}
 	return DomNodeProp(pCtx,zName);
 }
@@ -3397,6 +3827,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMDocument_saveXML },
 		{ "createElement",        PH7_MOD_PUBLIC, "string $localName, string $value = ''", "",
 		  vm_builtin_DOMDocument_createElement },
+		{ "createAttribute",      PH7_MOD_PUBLIC, "string $localName", "",
+		  vm_builtin_DOMDocument_createAttribute },
 		{ "createTextNode",       PH7_MOD_PUBLIC, "string $data", "@DOMText",
 		  vm_builtin_DOMDocument_createTextNode },
 		{ "createComment",        PH7_MOD_PUBLIC, "string $data", "@DOMComment",
@@ -3429,6 +3861,34 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMElement_removeAttribute },
 		{ "getAttributeNS",       PH7_MOD_PUBLIC, "?string $namespace, string $localName", "@string",
 		  vm_builtin_DOMElement_getAttributeNS },
+		/* php declares no return type at all on the five that hand out a NODE --
+		 * not even a tentative one -- because their answer is a union it never
+		 * wrote down. The rows state none either. */
+		{ "getAttributeNode",     PH7_MOD_PUBLIC, "string $qualifiedName", "",
+		  vm_builtin_DOMElement_getAttributeNode },
+		{ "getAttributeNodeNS",   PH7_MOD_PUBLIC, "?string $namespace, string $localName", "",
+		  vm_builtin_DOMElement_getAttributeNodeNS },
+		{ "setAttributeNode",     PH7_MOD_PUBLIC, "DOMAttr $attr", "",
+		  vm_builtin_DOMElement_setAttributeNode },
+		{ "setAttributeNodeNS",   PH7_MOD_PUBLIC, "DOMAttr $attr", "",
+		  vm_builtin_DOMElement_setAttributeNodeNS },
+		{ "removeAttributeNode",  PH7_MOD_PUBLIC, "DOMAttr $attr", "",
+		  vm_builtin_DOMElement_removeAttributeNode },
+		{ "getAttributeNames",    PH7_MOD_PUBLIC, "", "array",
+		  vm_builtin_DOMElement_getAttributeNames },
+		{ "hasAttributeNS",       PH7_MOD_PUBLIC, "?string $namespace, string $localName", "@bool",
+		  vm_builtin_DOMElement_hasAttributeNS },
+		{ "removeAttributeNS",    PH7_MOD_PUBLIC, "?string $namespace, string $localName", "@void",
+		  vm_builtin_DOMElement_removeAttributeNS },
+		{ "toggleAttribute",      PH7_MOD_PUBLIC, "string $qualifiedName, ?bool $force = null", "bool",
+		  vm_builtin_DOMElement_toggleAttribute },
+		{ "setIdAttribute",       PH7_MOD_PUBLIC, "string $qualifiedName, bool $isId", "@void",
+		  vm_builtin_DOMElement_setIdAttribute },
+		{ "setIdAttributeNS",     PH7_MOD_PUBLIC,
+		  "string $namespace, string $qualifiedName, bool $isId", "@void",
+		  vm_builtin_DOMElement_setIdAttributeNS },
+		{ "setIdAttributeNode",   PH7_MOD_PUBLIC, "DOMAttr $attr, bool $isId", "@void",
+		  vm_builtin_DOMElement_setIdAttributeNode },
 		{ "setAttributeNS",       PH7_MOD_PUBLIC,
 		  "?string $namespace, string $qualifiedName, string $value", "@void",
 		  vm_builtin_DOMElement_setAttributeNS },
@@ -3439,6 +3899,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "__set",                PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMElement_set },
 	};
 	static const PH7_NativeMethodDef aAttrMethod[] = {
+		{ "isId",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_DOMAttr_isId },
 		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMAttr_get },
 		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMAttr_isset },
 		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMAttr_set },
@@ -3507,6 +3968,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "item",         PH7_MOD_PUBLIC, "int $index", "@?DOMNode", vm_builtin_DOMNamedNodeMap_item },
 		{ "getNamedItem", PH7_MOD_PUBLIC, "string $qualifiedName", "@?DOMNode",
 		  vm_builtin_DOMNamedNodeMap_getNamedItem },
+		{ "getNamedItemNS", PH7_MOD_PUBLIC, "?string $namespace, string $localName", "@?DOMNode",
+		  vm_builtin_DOMNamedNodeMap_getNamedItemNS },
 		{ "getIterator",  PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_Dom_getIterator },
 		{ "__get",        PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNamedNodeMap_get },
 		{ "__isset",      PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNamedNodeMap_isset },
