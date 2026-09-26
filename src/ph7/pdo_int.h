@@ -62,6 +62,7 @@ struct phl_pdo {
 	int iTxMode;                  /* Pdo\Sqlite::ATTR_TRANSACTION_MODE */
 	/* The last operation's outcome, as errorCode()/errorInfo() present it. */
 	int bExtendedCodes;           /* Pdo\Sqlite::ATTR_EXTENDED_RESULT_CODES */
+	int iOpenFlags;               /* Pdo\Sqlite::ATTR_OPEN_FLAGS, read at open time */
 	int iErrState;                /* PDO_ERR_* */
 	char zSqlState[6];            /* "HY000" and friends; always NUL-terminated */
 	int iDrvCode;                 /* sqlite's own result code */
@@ -70,6 +71,11 @@ struct phl_pdo {
 	                               * so errorInfo() reports [state, null, null] */
 	struct phl_pdo_stmt *pStmts;  /* statements prepared on this connection: they must be
 	                               * finalized before its handle can close */
+	struct phl_pdo_udf *pUdfs;    /* createFunction/createCollation callbacks, kept alive
+	                               * for as long as sqlite may call them */
+	sxi32 iCallbackExc;           /* the status a callback threw with, PARKED: sqlite has to
+	                               * finish unwinding before the engine may raise it, and
+	                               * the verb that started the step answers exactly this */
 	phl_pdo *pNext;
 };
 
@@ -136,8 +142,36 @@ struct phl_pdo_stmt {
 	phl_pdo_stmt *pNext;
 };
 
+/*
+ * One userland callback registered on a connection: a scalar function, an
+ * aggregate's step/finalize pair, or a collation.  The connection owns the
+ * ph7_value holding the callable, because sqlite will call it long after the
+ * registering call has returned.
+ */
+typedef struct phl_pdo_udf phl_pdo_udf;
+struct phl_pdo_udf {
+	phl_pdo *pConn;
+	ph7_value *pCallback;         /* the callable itself */
+	ph7_value *pFinalize;         /* an aggregate's second half, or 0 */
+	char *zName;                  /* the SQL name, for the registry's own bookkeeping */
+	phl_pdo_udf *pNext;
+};
+/*
+ * One aggregate in progress.  sqlite hands the same scratch buffer to every
+ * step of one group and then to the finalizer, which is where php keeps its
+ * running context and row count -- both visible to the callbacks as their
+ * first two arguments.
+ */
+typedef struct phl_pdo_agg phl_pdo_agg;
+struct phl_pdo_agg {
+	ph7_value *pCtx;              /* whatever the last step returned */
+	int nRow;                     /* rows seen so far */
+};
+
 /* vm_pdo.c -- the class library and the shared machinery. */
 PH7_PRIVATE phl_pdo * PH7_PdoNewConn(ph7_vm *pVm);
+/* The connection behind a PDO object's hidden slot (the driver unit needs it too). */
+PH7_PRIVATE phl_pdo * PH7_PdoConnOfInstance(ph7_class_instance *pThis);
 PH7_PRIVATE void PH7_PdoFreeConn(phl_pdo *pConn);
 PH7_PRIVATE void PH7_PdoSetError(phl_pdo *pConn,const char *zSqlState,int iCode,const char *zMsg);
 PH7_PRIVATE void PH7_PdoClearError(phl_pdo *pConn);
@@ -168,6 +202,15 @@ PH7_PRIVATE ph7_int64 PH7_PdoSqliteChanges(phl_pdo *pConn);
 /* Whether a transaction is open: sqlite's own autocommit flag, so a BEGIN the
  * script sent through exec() counts exactly as beginTransaction() does. */
 PH7_PRIVATE int PH7_PdoSqliteInTransaction(phl_pdo *pConn);
+/* Register a userland scalar function or collation on the connection. */
+PH7_PRIVATE int PH7_PdoSqliteAddFunction(phl_pdo_udf *pUdf,const char *zName,int nArg,int iFlags);
+PH7_PRIVATE int PH7_PdoSqliteAddCollation(phl_pdo_udf *pUdf,const char *zName);
+PH7_PRIVATE int PH7_PdoSqliteAddAggregate(phl_pdo_udf *pUdf,const char *zName,int nArg);
+PH7_PRIVATE void PH7_PdoSqliteSetAuthorizer(phl_pdo *pConn,phl_pdo_udf *pUdf);
+PH7_PRIVATE int PH7_PdoSqliteStmtReadonly(phl_pdo_stmt *pSt);
+PH7_PRIVATE int PH7_PdoSqliteStmtBusy(phl_pdo_stmt *pSt);
+PH7_PRIVATE int PH7_PdoSqliteLoadExtension(phl_pdo *pConn,const char *zName);
+PH7_PRIVATE void PH7_PdoSqliteExtendedCodes(phl_pdo *pConn,int bOn);
 /* Statement plumbing. Prepare answers 0 on failure with the connection's error
  * set; step answers 1 (a row), 0 (finished) or -1 (failed). */
 PH7_PRIVATE int PH7_PdoSqlitePrepare(phl_pdo_stmt *pSt,const char *zSql,int nSql);

@@ -26,6 +26,7 @@
 
 static void PdoStmtSweep(phl_pdo *pConn);
 static void PdoBlankSlot(ph7_class_instance *pOwner);
+static phl_pdo * PdoOfInstance(ph7_class_instance *pThis);
 static void PdoStmtClearFetchState(phl_pdo_stmt *pSt);
 
 /* ------------------------------------------------------------------------
@@ -62,6 +63,26 @@ PH7_PRIVATE void PH7_PdoFreeConn(phl_pdo *pConn)
 	/* sqlite refuses to close a database that still has a live statement, so
 	 * the cursors go first. */
 	PdoStmtSweep(pConn);
+	{
+		/* the callbacks sqlite still points at; the close is what makes them
+		 * unreachable, so they are released after it below */
+		phl_pdo_udf *pUdf = pConn->pUdfs;
+		while( pUdf ){
+			phl_pdo_udf *pNext = pUdf->pNext;
+			if( pUdf->pCallback ){
+				ph7_release_value(pConn->pVm,pUdf->pCallback);
+			}
+			if( pUdf->pFinalize ){
+				ph7_release_value(pConn->pVm,pUdf->pFinalize);
+			}
+			if( pUdf->zName ){
+				SyMemBackendFree(&pConn->pVm->sAllocator,pUdf->zName);
+			}
+			SyMemBackendFree(&pConn->pVm->sAllocator,pUdf);
+			pUdf = pNext;
+		}
+		pConn->pUdfs = 0;
+	}
 	PH7_PdoSqliteClose(pConn);
 	if( pConn->zDrvMsg ){
 		SyMemBackendFree(&pConn->pVm->sAllocator,pConn->zDrvMsg);
@@ -122,6 +143,10 @@ static phl_pdo * PdoOfValue(ph7_value *pVal)
 		return 0;
 	}
 	return (phl_pdo *)ph7_value_to_resource(pVal);
+}
+PH7_PRIVATE phl_pdo * PH7_PdoConnOfInstance(ph7_class_instance *pThis)
+{
+	return PdoOfInstance(pThis);
 }
 static phl_pdo * PdoOfInstance(ph7_class_instance *pThis)
 {
@@ -475,6 +500,11 @@ PH7_PRIVATE sxi32 PH7_PdoRaise(ph7_context *pCtx,phl_pdo *pConn,const char *zFn)
 {
 	SyBlob sMsg;
 	sxi32 rc = PH7_OK;
+	if( pConn->iCallbackExc != 0 ){
+		sxi32 rcExc = pConn->iCallbackExc;
+		pConn->iCallbackExc = 0;
+		return rcExc;
+	}
 	if( pConn->iErrMode == PDO_ERRMODE_SILENT ){
 		return PH7_OK;
 	}
@@ -504,6 +534,14 @@ PH7_PRIVATE sxi32 PH7_PdoRaiseStmt(ph7_context *pCtx,phl_pdo_stmt *pSt,const cha
 	SyBlob sMsg;
 	sxi32 rc = PH7_OK;
 	phl_pdo *pConn = pSt->pConn;
+	if( pConn->iCallbackExc != 0 ){
+		/* the step did not fail: a userland callback THREW inside it, and what
+		 * the script must see is that exception rather than a PDOException
+		 * about the statement sqlite stopped */
+		sxi32 rcExc = pConn->iCallbackExc;
+		pConn->iCallbackExc = 0;
+		return rcExc;
+	}
 	if( pConn->iErrMode == PDO_ERRMODE_SILENT ){
 		return PH7_OK;
 	}
@@ -615,6 +653,10 @@ static int vm_builtin_pdo_stub(ph7_context *pCtx,int nArg,ph7_value **apArg)
 #define PDO_ATTR_DEFAULT_FETCH_MODE  19
 #define PDO_ATTR_EMULATE_PREPARES    20
 #define PDO_ATTR_DEFAULT_STR_PARAM   21
+#define PDO_SQLITE_ATTR_OPEN_FLAGS            1000
+#define PDO_SQLITE_ATTR_READONLY_STATEMENT    1001
+#define PDO_SQLITE_ATTR_EXTENDED_RESULT_CODES 1002
+#define PDO_SQLITE_ATTR_BUSY_STATEMENT        1003
 #define PDO_SQLITE_ATTR_TRANSACTION_MODE 1005
 
 /* One int-keyed element of an array value, or 0 when the key is absent. */
@@ -721,6 +763,8 @@ static int vm_builtin_PDO_getAttribute(ph7_context *pCtx,int nArg,ph7_value **ap
 		case PDO_ATTR_STRINGIFY_FETCHES:  ph7_result_bool(pCtx,pConn->bStringify); break;
 		case PDO_ATTR_PERSISTENT:         ph7_result_bool(pCtx,pConn->bPersistent); break;
 		case PDO_SQLITE_ATTR_TRANSACTION_MODE: ph7_result_int(pCtx,pConn->iTxMode); break;
+		/* ATTR_EXTENDED_RESULT_CODES is write-ONLY: php refuses to read it back
+		 * like any attribute the driver does not carry. */
 		case PDO_ATTR_DRIVER_NAME:
 			ph7_result_string(pCtx,"sqlite",sizeof("sqlite")-1);
 			break;
@@ -799,6 +843,10 @@ static int vm_builtin_PDO_setAttribute(ph7_context *pCtx,int nArg,ph7_value **ap
 			break;
 		case PDO_ATTR_STRINGIFY_FETCHES:
 			pConn->bStringify = pVal ? ph7_value_to_bool(pVal) : 0;
+			break;
+		case PDO_SQLITE_ATTR_EXTENDED_RESULT_CODES:
+			pConn->bExtendedCodes = pVal ? ph7_value_to_bool(pVal) : 0;
+			PH7_PdoSqliteExtendedCodes(pConn,pConn->bExtendedCodes);
 			break;
 		case PDO_SQLITE_ATTR_TRANSACTION_MODE: {
 			/* only php's three modes; anything else answers false in silence */
@@ -2236,6 +2284,52 @@ static int vm_builtin_PDOStatement_columnCount(ph7_context *pCtx,int nArg,ph7_va
 	return PH7_OK;
 }
 /*
+ * PDOStatement::getAttribute(int $name): mixed
+ *
+ * Two of the driver's attributes describe a STATEMENT rather than the
+ * connection -- whether it only reads, and whether it is mid-walk -- and both
+ * are sqlite's own answers about the compiled statement. Everything else is
+ * the same IM001 refusal the connection gives.
+ */
+static int vm_builtin_PDOStatement_getAttribute(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo_stmt *pSt = PdoStmtOfInstance(PH7_ContextThis(pCtx));
+	ph7_int64 iAttr;
+	if( pSt == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDOStatement object is uninitialized");
+	}
+	iAttr = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;
+	if( iAttr == PDO_SQLITE_ATTR_READONLY_STATEMENT ){
+		ph7_result_bool(pCtx,PH7_PdoSqliteStmtReadonly(pSt));
+		return PH7_OK;
+	}
+	if( iAttr == PDO_SQLITE_ATTR_BUSY_STATEMENT ){
+		ph7_result_bool(pCtx,PH7_PdoSqliteStmtBusy(pSt));
+		return PH7_OK;
+	}
+	ph7_result_null(pCtx);
+	return PH7_PdoRaiseImplStmt(pCtx,pSt,"PDOStatement::getAttribute","IM001",
+		"driver does not support that attribute");
+}
+/*
+ * PDOStatement::setAttribute(int $attribute, mixed $value): bool
+ *
+ * This driver carries no SETTABLE statement attribute at all, so every one of
+ * them is the same IM001 refusal.
+ */
+static int vm_builtin_PDOStatement_setAttribute(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo_stmt *pSt = PdoStmtOfInstance(PH7_ContextThis(pCtx));
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pSt == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDOStatement object is uninitialized");
+	}
+	ph7_result_bool(pCtx,0);
+	return PH7_PdoRaiseImplStmt(pCtx,pSt,"PDOStatement::setAttribute","IM001",
+		"driver does not support that attribute");
+}
+/*
  * PDOStatement::rowCount(): int
  *
  * The number of rows a WRITE changed. It is not the size of a result set --
@@ -2845,6 +2939,10 @@ static void PdoApplyOptions(phl_pdo *pConn,ph7_value *pOptions)
 			 * has no pool to keep the handle in. */
 			case PDO_ATTR_PERSISTENT:         pConn->bPersistent = ph7_value_to_bool(pVal); break;
 			case PDO_SQLITE_ATTR_TRANSACTION_MODE: pConn->iTxMode = (int)ph7_value_to_int64(pVal); break;
+			/* the OPEN flags are read here and used by the open itself, which is
+			 * the only moment they mean anything */
+			case PDO_SQLITE_ATTR_OPEN_FLAGS: pConn->iOpenFlags = (int)ph7_value_to_int64(pVal); break;
+			case PDO_SQLITE_ATTR_EXTENDED_RESULT_CODES: pConn->bExtendedCodes = ph7_value_to_bool(pVal); break;
 			default: break;
 		}
 	}
@@ -2937,8 +3035,14 @@ static int PdoOpenParsed(ph7_context *pCtx,phl_pdo *pConn,const char *zDsn,int n
 	 * filenames on and a vcpkg one is not, so `sqlite:file::memory:?cache=shared`
 	 * opened a memory database on one platform and created a FILE of that name on
 	 * the other. php's own sqlite has them on, so on is the answer everywhere. */
-	return PH7_PdoSqliteOpen(pCtx,pConn,zDsn + nDriver + 1,nDsn - nDriver - 1,
-		SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE|SQLITE_OPEN_URI);
+	{
+		/* the script's own ATTR_OPEN_FLAGS replace the read-write default */
+		int iFlags = pConn->iOpenFlags
+			? pConn->iOpenFlags
+			: (SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE);
+		return PH7_PdoSqliteOpen(pCtx,pConn,zDsn + nDriver + 1,nDsn - nDriver - 1,
+			iFlags|SQLITE_OPEN_URI);
+	}
 }
 /*
  * One DSN, resolved then split: php's `uri:` form is read first, and what it
@@ -3222,13 +3326,14 @@ PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm)
 		{ "fetchObject",  PH7_MOD_PUBLIC,
 		  "?string $class = 'stdClass', array $constructorArgs = []", "@object|false",
 		  vm_builtin_PDOStatement_fetchObject },
-		{ "getAttribute", PH7_MOD_PUBLIC, "int $name", "@mixed", vm_builtin_pdo_stub },
+		{ "getAttribute", PH7_MOD_PUBLIC, "int $name", "@mixed",
+		  vm_builtin_PDOStatement_getAttribute },
 		{ "getColumnMeta",PH7_MOD_PUBLIC, "int $column", "@array|false",
 		  vm_builtin_PDOStatement_getColumnMeta },
 		{ "nextRowset",   PH7_MOD_PUBLIC, "", "@bool", vm_builtin_PDOStatement_nextRowset },
 		{ "rowCount",     PH7_MOD_PUBLIC, "", "@int", vm_builtin_PDOStatement_rowCount },
 		{ "setAttribute", PH7_MOD_PUBLIC, "int $attribute, mixed $value", "@bool",
-		  vm_builtin_pdo_stub },
+		  vm_builtin_PDOStatement_setAttribute },
 		{ "setFetchMode", PH7_MOD_PUBLIC, "int $mode, mixed ...$args", "@true",
 		  vm_builtin_PDOStatement_setFetchMode },
 		{ "getIterator",  PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_PDOStatement_getIterator },
