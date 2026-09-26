@@ -1046,6 +1046,148 @@ DOM_METHOD(vm_builtin_Dom_replaceChildren)
 {
 	return DomParentNodeInsert(pCtx,nArg,apArg,DOM_PN_REPLACE);
 }
+/*
+ * Is this xmlNodePtr one of the ARGUMENT nodes?  The viable-sibling walks ask
+ * it about tree nodes, so only object arguments can match -- php's
+ * dom_is_node_in_list does the same walk over the zval list.
+ */
+static int DomArgListHasNode(int nArg,ph7_value **apArg,xmlNodePtr pNode)
+{
+	int i;
+	for( i = 0 ; i < nArg ; i++ ){
+		phl_domnode *pNd = DomObjArg(apArg[i]);
+		if( pNd && (xmlNodePtr)pNd->pNode == pNode ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
+ * DOMChildNode::before / after / replaceWith -- php's WHATWG transcription
+ * (dom_parent_node_before/after, dom_child_replace_with), sharing the parent
+ * side's conversion machinery.  The order is the measurable part: the TYPE
+ * screen runs first even for a node with no parent; a parentless receiver
+ * then returns in SILENCE -- around an argument that could never be inserted
+ * -- and only then does conversion run, with the same mid-list detachment the
+ * parent side has.  The reference sibling ("viable") is the nearest sibling
+ * NOT in the argument set, read before anything moves; the insertion point is
+ * derived from it after conversion, so a set member that was also the first
+ * child no longer counts.
+ */
+#define DOM_CN_BEFORE   0
+#define DOM_CN_AFTER    1
+#define DOM_CN_REPLACE  2
+static int DomChildNodeOp(ph7_context *pCtx,int nArg,ph7_value **apArg,int iMode)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	phl_domnode *pOne = 0;
+	xmlNodePtr pThis,pParent,pViable,pRef,pSingle = 0;
+	SySet sList;
+	int iErr,rc = PH7_OK;
+	if( DomNodesScreen(pCtx,nArg,apArg) || pNd == 0 ){
+		return PH7_OK;
+	}
+	pThis = (xmlNodePtr)pNd->pNode;
+	pParent = pThis->parent;
+	if( pParent == 0 ){
+		return PH7_OK;
+	}
+	if( iMode == DOM_CN_BEFORE ){
+		pViable = pThis->prev;
+		while( pViable && DomArgListHasNode(nArg,apArg,pViable) ){
+			pViable = pViable->prev;
+		}
+	}else{
+		pViable = pThis->next;
+		while( pViable && DomArgListHasNode(nArg,apArg,pViable) ){
+			pViable = pViable->next;
+		}
+	}
+	SySetInit(&sList,&pCtx->pVm->sAllocator,sizeof(xmlNodePtr));
+	if( nArg == 1 && (apArg[0]->iFlags & MEMOBJ_OBJ) != 0 ){
+		pOne = DomObjArg(apArg[0]);
+		if( pOne == 0 ){
+			return PH7_OK;
+		}
+		pSingle = (xmlNodePtr)pOne->pNode;
+	}else if( DomNodesConvert(pCtx,pNd->pShell,pParent,nArg,apArg,&sList,&rc) ){
+		SySetRelease(&sList);
+		return rc;
+	}
+	iErr = DomInsertValidity(pParent,pSingle,&sList);
+	if( iErr ){
+		SySetRelease(&sList);
+		return DomThrowVoid(pCtx,iErr);
+	}
+	if( iMode == DOM_CN_BEFORE ){
+		/* Step 5: the viable previous sibling's NEXT -- the parent's first
+		 * child when there is none -- both read after conversion. */
+		pRef = pViable ? pViable->next : pParent->children;
+	}else{
+		pRef = pViable;
+	}
+	if( iMode == DOM_CN_REPLACE ){
+		/* php unlinks the receiver unless conversion already took it. */
+		if( pThis != pSingle && !DomListHas(&sList,pThis) ){
+			xmlUnlinkNode(pThis);
+			DomOrphanAdd(pNd->pShell,pThis);
+		}
+	}
+	if( pSingle ){
+		if( DomIsFragment(pSingle) ){
+			DomFragMove(pOne->pShell,pParent,pSingle,pRef);
+		}else{
+			if( pRef == pSingle ){
+				pRef = pSingle->next;
+			}
+			DomDetach(pOne->pShell,pSingle);
+			if( pRef ){
+				DomLinkBefore(pParent,pSingle,pRef);
+			}else{
+				DomLinkLast(pParent,pSingle);
+			}
+			DomNsOnInsertEx(pSingle,0);
+		}
+	}else{
+		DomNodesPlace(pNd->pShell,pParent,pRef,&sList);
+	}
+	SySetRelease(&sList);
+	return PH7_OK;
+}
+DOM_METHOD(vm_builtin_Dom_before)
+{
+	return DomChildNodeOp(pCtx,nArg,apArg,DOM_CN_BEFORE);
+}
+DOM_METHOD(vm_builtin_Dom_after)
+{
+	return DomChildNodeOp(pCtx,nArg,apArg,DOM_CN_AFTER);
+}
+DOM_METHOD(vm_builtin_Dom_replaceWith)
+{
+	return DomChildNodeOp(pCtx,nArg,apArg,DOM_CN_REPLACE);
+}
+/*
+ * DOMChildNode::remove(): void -- and php's asymmetry: where before() on a
+ * parentless node is a silent no-op, remove() is the Not Found refusal, in
+ * whichever mode the document is in.
+ */
+DOM_METHOD(vm_builtin_Dom_removeSelf)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlNodePtr pNode;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pNd == 0 ){
+		return PH7_OK;
+	}
+	pNode = (xmlNodePtr)pNd->pNode;
+	if( pNode->parent == 0 ){
+		return DomThrowVoid(pCtx,DOM_ERR_NOT_FOUND);
+	}
+	xmlUnlinkNode(pNode);
+	DomOrphanAdd(pNd->pShell,pNode);
+	return PH7_OK;
+}
 
 /* DOMNode::hasChildNodes(): bool / hasAttributes(): bool / getLineNo(): int */
 DOM_METHOD(vm_builtin_DOMNode_hasChildNodes)
@@ -5609,6 +5751,26 @@ static int DomParentNodeProp(ph7_context *pCtx,const char *zName)
 	}
 	return 0;
 }
+/*
+ * The two DOMChildNode-side properties.  php declares them on DOMElement and
+ * DOMCharacterData only -- an attribute, a PI or the document warns Undefined
+ * property -- and they skip every node kind that is not an element.
+ */
+static int DomChildNodeProp(ph7_context *pCtx,const char *zName)
+{
+	int bNext = DomNameIs(zName,"nextElementSibling");
+	if( bNext || DomNameIs(zName,"previousElementSibling") ){
+		phl_domnode *pNd = DomThisNode(pCtx);
+		xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+		xmlNodePtr pSib = pNode ? (bNext ? pNode->next : pNode->prev) : 0;
+		while( pSib && pSib->type != XML_ELEMENT_NODE ){
+			pSib = bNext ? pSib->next : pSib->prev;
+		}
+		DomResultNodeOf(pCtx,pNd,pSib);
+		return 1;
+	}
+	return 0;
+}
 /* DOMDocument adds documentElement and the state block above. */
 static int DomDocProp(ph7_context *pCtx,const char *zName)
 {
@@ -5662,7 +5824,7 @@ static int DomElemProp(ph7_context *pCtx,const char *zName)
 	if( DomNameIs(zName,"schemaTypeInfo") ){
 		return DomSchemaTypeInfo(pCtx);
 	}
-	if( DomParentNodeProp(pCtx,zName) ){
+	if( DomParentNodeProp(pCtx,zName) || DomChildNodeProp(pCtx,zName) ){
 		return 1;
 	}
 	return DomNodeProp(pCtx,zName);
@@ -5722,7 +5884,7 @@ static int DomCharDataProp(ph7_context *pCtx,const char *zName)
 }
 static int DomCharProp(ph7_context *pCtx,const char *zName)
 {
-	if( DomCharDataProp(pCtx,zName) ){
+	if( DomCharDataProp(pCtx,zName) || DomChildNodeProp(pCtx,zName) ){
 		return 1;
 	}
 	return DomNodeProp(pCtx,zName);
@@ -6565,6 +6727,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_Dom_getElementsByTagName },
 		{ "getElementsByTagNameNS", PH7_MOD_PUBLIC, "?string $namespace, string $localName",
 		  "@DOMNodeList", vm_builtin_Dom_getElementsByTagNameNS },
+		/* The DOMChildNode four, php's order on this class. */
+		{ "remove",          PH7_MOD_PUBLIC, "", "void", vm_builtin_Dom_removeSelf },
+		{ "before",          PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_before },
+		{ "after",           PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_after },
+		{ "replaceWith",     PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_replaceWith },
 		{ "append",          PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_append },
 		{ "prepend",         PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_prepend },
 		{ "replaceChildren", PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_replaceChildren },
@@ -6590,6 +6757,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  vm_builtin_DOMCharacterData_deleteData },
 		{ "replaceData",   PH7_MOD_PUBLIC, "int $offset, int $count, string $data", "@bool",
 		  vm_builtin_DOMCharacterData_replaceData },
+		/* The DOMChildNode four, php's order on THIS class -- replaceWith
+		 * leads here where DOMElement's list starts at remove. */
+		{ "replaceWith", PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_replaceWith },
+		{ "remove",      PH7_MOD_PUBLIC, "", "void", vm_builtin_Dom_removeSelf },
+		{ "before",      PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_before },
+		{ "after",       PH7_MOD_PUBLIC, "...$nodes", "void", vm_builtin_Dom_after },
 		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMCharacterData_get },
 		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMCharacterData_isset },
 		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void", vm_builtin_DOMCharacterData_set },
@@ -6704,20 +6877,28 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "prepend",         PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },
 		{ "replaceChildren", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },
 	};
+	static const PH7_NativeMethodDef aChildNodeIf[] = {
+		{ "remove",      PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "", "void", 0 },
+		{ "before",      PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },
+		{ "after",       PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },
+		{ "replaceWith", PH7_MOD_PUBLIC|PH7_MOD_ABSTRACT, "...$nodes", "void", 0 },
+	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		{ "DOMException", "Exception", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMParentNode", 0, 0, PH7_CLASS_INTERFACE,
 		  aParentNodeIf, SX_ARRAYSIZE(aParentNodeIf), 0, 0, 0, 0, 0, 0, 0 },
+		{ "DOMChildNode", 0, 0, PH7_CLASS_INTERFACE,
+		  aChildNodeIf, SX_ARRAYSIZE(aChildNodeIf), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMNode", 0, 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aNodeMethod, SX_ARRAYSIZE(aNodeMethod), aNodeConst, SX_ARRAYSIZE(aNodeConst),
 		  aNodeProp, SX_ARRAYSIZE(aNodeProp), 0, 0, 0 },
 		{ "DOMDocument", "DOMNode", "DOMParentNode", PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aDocMethod, SX_ARRAYSIZE(aDocMethod), 0, 0, aDocProp, SX_ARRAYSIZE(aDocProp), 0, 0, 0 },
-		{ "DOMElement", "DOMNode", "DOMParentNode", PH7_CLASS_NOSERIALIZE_SUBOK,
+		{ "DOMElement", "DOMNode", "DOMParentNode,DOMChildNode", PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aElemMethod, SX_ARRAYSIZE(aElemMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMAttr", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aAttrMethod, SX_ARRAYSIZE(aAttrMethod), 0, 0, 0, 0, 0, 0, 0 },
-		{ "DOMCharacterData", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		{ "DOMCharacterData", "DOMNode", "DOMChildNode", PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aCharMethod, SX_ARRAYSIZE(aCharMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMText", "DOMCharacterData", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aTextMethod, SX_ARRAYSIZE(aTextMethod), 0, 0, 0, 0, 0, 0, 0 },
