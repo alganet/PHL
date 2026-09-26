@@ -3340,6 +3340,10 @@ PH7_PRIVATE sxi32 PH7_MemObjToNull(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjToReal(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjToInteger(ph7_value *pObj);
 PH7_PRIVATE sxi32 PH7_MemObjToBool(ph7_value *pObj);
+#ifndef PH7_OMIT_FLOATING_POINT
+PH7_PRIVATE int PH7_RealFitsInt64(ph7_real r);
+#endif
+PH7_PRIVATE void PH7_MemObjWarnIntCast(ph7_value *pObj);
 PH7_PRIVATE sxi64 PH7_TokenValueToInt64(SyString *pData);
 /* lex.c function prototypes */
 PH7_PRIVATE sxi32 PH7_TokenizeRawText(const char *zInput,sxu32 nLen,SySet *pOut,sxu32 nBaseLine);

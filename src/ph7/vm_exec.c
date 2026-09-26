@@ -2353,6 +2353,9 @@ case PH7_OP_CVT_INT:
 	}
 #endif
 	if((pTos->iFlags & MEMOBJ_INT) == 0 ){
+		/* php warns from the conversion itself when no int can hold the float
+		 * (`(int)1e19`); the value it then answers is the modular wrap. */
+		PH7_MemObjWarnIntCast(pTos);
 		PH7_MemObjToInteger(pTos);
 	}
 	/* Invalidate any prior representation */

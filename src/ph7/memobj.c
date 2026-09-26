@@ -87,14 +87,39 @@ PH7_PRIVATE const char *ph7_type_name(ph7_value *pVal)
  * Each ph7_values struct may cache multiple representations (string,
  * integer etc.) of the same value.
  */
+#ifndef PH7_OMIT_FLOATING_POINT
 /*
- * Convert a 64-bit IEEE double into a 64-bit signed integer.
- * If the double is too large, return 0x8000000000000000.
+ * TRUE when a double is what an int64 can hold exactly -- php's
+ * ZEND_DOUBLE_FITS_LONG with its non-finite screen folded in. The bounds are
+ * tested in DOUBLE space and the arithmetic there is exact: -2^63 is a double
+ * to the bit and so is +2^63, one past the range, with no double in between it
+ * and LARGEST_INT64. Hence `>=` on the way down and `<` on the way up. NaN and
+ * both infinities fail one of the two comparisons, so no libm predicate is
+ * needed to screen them.
+ */
+PH7_PRIVATE int PH7_RealFitsInt64(ph7_real r)
+{
+	return r >= -9223372036854775808.0 && r < 9223372036854775808.0;
+}
+#endif /* PH7_OMIT_FLOATING_POINT */
+/*
+ * Convert a 64-bit IEEE double into a 64-bit signed integer -- php's
+ * zend_dval_to_lval, the answer every CAST site gives for a double no int can
+ * hold: NaN and both infinities are 0, and a finite out-of-range value WRAPS
+ * modulo 2^64 into the signed band (`(int)1e19` is -8446744073709551616,
+ * `(int)1e30` is 5076964154930102272, `(int)1e100` is 0 because every one of
+ * its low 64 bits is).
  *
- * Most systems appear to do this simply by assigning ariables and without
- * the extra range tests.
- * But there are reports that windows throws an expection if the floating
- * point value is out of range.
+ * PHL used to answer PHP_INT_MIN for all of them, in silence -- a recorded §2
+ * divergence, and a silent wrong answer wherever a program casts a computed
+ * float. The warning php prints beside the value is the cast SITE's to raise:
+ * this is also the conversion an int representation is speculatively cached
+ * through (MemObjTryIntger), where php says nothing at all.
+ *
+ * php reaches the wrap through fmod(d, 2^64); the same answer comes out of the
+ * IEEE bits with no libm. A double of magnitude >= 2^63 is already an exact
+ * integer -- its mantissa is scaled by 2^11 at least -- so the low 64 bits are
+ * the 53-bit mantissa shifted LEFT, which is 0 once the shift reaches 64.
  */
 static sxi64 MemObjRealToInt(ph7_value *pObj)
 {
@@ -104,37 +129,71 @@ static sxi64 MemObjRealToInt(ph7_value *pObj)
 	 */
 	return pObj->rVal;
 #else
- /*
-  ** Many compilers we encounter do not define constants for the
-  ** minimum and maximum 64-bit integers, or they define them
-  ** inconsistently.  And many do not understand the "LL" notation.
-  ** So we define our own static constants here using nothing
-  ** larger than a 32-bit integer constant.
-  */
-  static const sxi64 minInt = SMALLEST_INT64;
+  union { double d; sxu64 u; } bits;
   ph7_real r = pObj->rVal;
-  /* The bounds are tested in DOUBLE space, and the arithmetic there is exact:
-  ** (ph7_real)minInt is -2^63 to the bit, so -(ph7_real)minInt is +2^63 -- one
-  ** past the range -- and no double exists between LARGEST_INT64 and it. Hence
-  ** `>=` on the way up and `<` on the way down.
-  **
-  ** The upper test used to be `r > (ph7_real)maxInt`, and (ph7_real)maxInt ROUNDS
-  ** UP to 2^63: a double of exactly 2^63 passed the guard and reached `(sxi64)r`,
-  ** which is undefined behaviour. x86 happens to answer minInt there -- the same
-  ** value this returns -- but aarch64 saturates to maxInt, so PHL answered two
-  ** different values for `(int)9.2233720368547758E+18` on the two platforms it
-  ** builds for. NaN compares false against every bound and reached the same cast,
-  ** so it is screened here too.
-  **
-  ** minInt is deliberate for BOTH directions, not maxInt going up: it is the
-  ** answer x86's cast produced, and the corpus pins it. php's own answer for a
-  ** non-representable float is a modular wrap (and a warning) -- a divergence
-  ** recorded in §2, not something this boundary fix changes. */
-  if( PH7_IS_NAN(r) || r < (ph7_real)minInt || r >= -(ph7_real)minInt ){
-    return minInt;
-  }else{
+  sxu64 uMag;
+  int iShift;
+  if( PH7_RealFitsInt64(r) ){
+    /* In range: php truncates toward zero, and so does C. */
     return (sxi64)r;
   }
+  if( PH7_IS_NAN(r) || PH7_IS_INF(r) ){
+    return 0;
+  }
+  bits.d = r;
+  /* Unbiased exponent, minus the 52 fraction bits: the power of two the
+  ** mantissa is scaled by. |r| >= 2^63 puts it at 11 or more. */
+  iShift = (int)((bits.u >> 52) & 0x7FF) - 1023 - 52;
+  if( iShift >= 64 ){
+    /* Every set bit sits above the 64th, so the residue is 0 -- and the shift
+    ** below would be undefined. */
+    return 0;
+  }
+  uMag = ((bits.u & 0x000FFFFFFFFFFFFFULL) | 0x0010000000000000ULL) << iShift;
+  if( bits.u >> 63 ){
+    /* Unsigned negation is the two's-complement residue php's `dmod += 2^64`
+    ** arrives at, and is defined for every input including 0. */
+    uMag = (sxu64)0 - uMag;
+  }
+  return (sxi64)uMag;
+#endif
+}
+/*
+ * php's `Warning: The float %s is not representable as an int, cast occurred`,
+ * printed BESIDE the wrapped value MemObjRealToInt answers -- at every CAST
+ * site, which is what php's zend_dval_to_lval raises it from: `(int)$f`,
+ * `intval()`, `settype()`, the printf integer conversions, and a native
+ * subscript that reads an int out of its offset.
+ *
+ * Not a DEPRECATION: php's other float->int diagnostic (`Implicit conversion
+ * from float %s to int loses precision`) is the E_DEPRECATED that §10 refuses
+ * outright with a TypeError, and it fires at the sites this one does NOT --
+ * the operators, the array key, the int parameter, none of which reach a cast
+ * here because the refusal comes first. An explicit cast is never lossy in
+ * php's eyes, so this warning is all it says. The two other conversions that
+ * read an int out of a float say nothing at all and must not call this: the
+ * speculative int representation (MemObjTryIntger) and php's string-offset
+ * cast, which has a message of its own.
+ *
+ * The value is rendered the way php's `%.*H` renders it -- the shortest
+ * decimal that round-trips, the shape var_dump and serialize already share.
+ */
+PH7_PRIVATE void PH7_MemObjWarnIntCast(ph7_value *pObj)
+{
+#ifndef PH7_OMIT_FLOATING_POINT
+	SyBlob sVal;
+	char zVal[64];
+	if( pObj == 0 || pObj->pVm == 0 || (pObj->iFlags & MEMOBJ_REAL) == 0
+	 || PH7_RealFitsInt64(pObj->rVal) ){
+		return;
+	}
+	SyBlobInitFromBuf(&sVal,zVal,(sxu32)sizeof(zVal) - 1);
+	PH7_AppendShortestReal(&sVal,pObj->rVal);
+	zVal[SyBlobLength(&sVal)] = 0;   /* the blob is LOCKED: it truncates, never grows */
+	VmErrorFormat(pObj->pVm,PH7_CTX_WARNING,
+		"The float %s is not representable as an int, cast occurred",zVal);
+#else
+	SXUNUSED(pObj);
 #endif
 }
 /*

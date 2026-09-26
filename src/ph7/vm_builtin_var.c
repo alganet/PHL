@@ -484,6 +484,8 @@ PH7_PRIVATE int vm_builtin_settype(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	PH7_MemObjStore(apArg[0],pNew);
 	if( (nLen == 3 && SyStrnicmp(zType,"int",3) == 0)
 	 || (nLen == 7 && SyStrnicmp(zType,"integer",7) == 0) ){
+		/* settype() IS the cast operator, warning included. */
+		PH7_MemObjWarnIntCast(pNew);
 		PH7_MemObjToInteger(pNew);
 		MemObjSetType(pNew,MEMOBJ_INT);
 	}else if( (nLen == 5 && SyStrnicmp(zType,"float",5) == 0)

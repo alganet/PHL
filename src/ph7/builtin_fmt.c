@@ -654,6 +654,9 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 			if( pArg == 0 ){
 				c = 0;
 			}else{
+				/* An integer conversion is a CAST site: php warns here for a float
+				 * no int can hold, then formats the wrapped value. */
+				PH7_MemObjWarnIntCast(pArg);
 				c = ph7_value_to_int(pArg);
 			}
 			/* NUL byte is an acceptable value */
@@ -735,6 +738,9 @@ PH7_PRIVATE sxi32 PH7_InputFormat(
 			if( pArg == 0 ){
 				iVal = 0;
 			}else{
+				/* Every radix is a CAST site: `%d`/`%x`/`%u`/`%b`/`%o` of a float
+				 * no int can hold warn, then print the modular wrap of it. */
+				PH7_MemObjWarnIntCast(pArg);
 				iVal = ph7_value_to_int64(pArg);
 			}
 			/* An integer conversion has no PRECISION in php: the '.' part of the

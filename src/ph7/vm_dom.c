@@ -6610,6 +6610,7 @@ static int DomDimClassify(ph7_vm *pVm,ph7_value *pOffset,ph7_value *pScratch,sxi
 	 * `could not be converted to int`. The cast is what hands back the reference
 	 * an object / array copy took (MemObjIntValue unrefs before it overwrites the
 	 * type in place), so the release below has only a string blob left to free. */
+	PH7_MemObjWarnIntCast(pScratch);
 	*piIndex = ph7_value_to_int64(pScratch);
 	return 0;
 }

@@ -506,7 +506,9 @@ static int PH7_builtin_intval(ph7_context *pCtx,int nArg,ph7_value **apArg)
 				? (int)uB : -(int)(SXU32_HIGH - uB) - 1;
 			iVal = IntvalStrToInt64(zVal,nLen,iBase,iB);
 		}else{
-			/* Perform the cast */
+			/* Perform the cast -- the same one the `(int)` operator performs, so
+			 * a float no int can hold warns here too. */
+			PH7_MemObjWarnIntCast(apArg[0]);
 			iVal = ph7_value_to_int64(apArg[0]);
 		}
 		ph7_result_int64(pCtx,iVal);
