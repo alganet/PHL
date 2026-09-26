@@ -688,6 +688,15 @@ PH7_PRIVATE int GenStateIsReservedConstant(SyString *pName)
   ((iOp) == EXPR_OP_ARROW || (iOp) == EXPR_OP_NULLSAFE_ARROW || \
    (iOp) == EXPR_OP_DC    || (iOp) == EXPR_OP_SUBSCRIPT     || \
    (iOp) == EXPR_OP_FUNC_CALL)
+/*
+ * The chain operators that ACCESS a container -- the same four minus the call,
+ * whose result is an ordinary value however the chain around it is read. Used
+ * to spot an INTERMEDIATE link of an isset()/empty() chain, which php reads for
+ * its value rather than for a truth.
+ */
+#define GEN_IS_ACCESS_OP(iOp) \
+  ((iOp) == EXPR_OP_ARROW || (iOp) == EXPR_OP_NULLSAFE_ARROW || \
+   (iOp) == EXPR_OP_DC    || (iOp) == EXPR_OP_SUBSCRIPT)
 
 /*
  * Patch every pending NULLSAFE_JMP recorded after the given baseline so
@@ -1211,8 +1220,11 @@ static sxi32 GenStateEmitExprCode(
 			 * original). isset/empty are never stripped: PHP stays silent on a missing intermediate
 			 * in `isset($o->a->b)`, which the suppression modes mirror. */
 			sxi32 iLeftFlags = iFlags;
-			sxu32 nNullcLhsFirst = PH7_VmInstrLength(pGen->pVm);
-			int bNullcLhs = 0;
+			/* The LHS chain whose subscript reads must be QUIET (LOAD_IDX iP2=8):
+			 * `??`'s left operand, and an isset()/empty() chain's intermediate
+			 * links -- php reads both silently and for the value. */
+			sxu32 nQuietLhsFirst = PH7_VmInstrLength(pGen->pVm);
+			int bQuietLhs = 0;
 			/* D1 commit 2: a deferred element/property call arg records its lvalue chain, but
 			 * that chain must be CONTIGUOUS. Only propagate DEFER_ARG to the base when the base
 			 * is itself a continuable lvalue — a plain variable (an undefined base auto-defers),
@@ -1227,6 +1239,33 @@ static sxi32 GenStateEmitExprCode(
 				if( !bContinuable ){
 					iLeftFlags &= ~EXPR_FLAG_DEFER_ARG;
 				}
+			}
+			/*
+			 * An isset()/empty() CHAIN reads its intermediate links for their
+			 * VALUE, not for a truth. php walks `isset($o->a->b)` by fetching
+			 * `$o->a` in BP_VAR_IS mode -- silent, but a real read that runs
+			 * __isset AND THEN __get (or offsetExists and then offsetGet) --
+			 * and only the LAST link answers the isset question. PHL gave every
+			 * link the terminal context, so the intermediate pushed a bool and
+			 * the final `->b` was a property of `true`: `isset($model->rel->id)`
+			 * was FALSE for every class with accessors, and so was
+			 * `isset($container['k']['j'])` over ArrayAccess -- a silently wrong
+			 * guard, not a diagnostic.
+			 *
+			 * The intermediate context is `??`'s (PH7_MEMBER_COALESCE for a
+			 * member, LOAD_IDX iP2=8 for a subscript, patched over the emitted
+			 * range below), which is exactly "silent, and the value": EMPTY's
+			 * would read a shade differently, since a class declaring __get with
+			 * no __isset is read through __get for an intermediate link and is
+			 * NOT for a terminal isset()/empty().
+			 */
+			if( (iLeftFlags & (EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_EMPTY))
+				&& pNode->pOp && pNode->pLeft && pNode->pLeft->pOp
+				&& GEN_IS_ACCESS_OP(pNode->pOp->iOp)
+				&& GEN_IS_ACCESS_OP(pNode->pLeft->pOp->iOp) ){
+				iLeftFlags &= ~(EXPR_FLAG_LOAD_IDX_ISSET|EXPR_FLAG_LOAD_IDX_EMPTY);
+				iLeftFlags |= EXPR_FLAG_MEMBER_COALESCE|EXPR_FLAG_QUIET_VAR;
+				bQuietLhs = 1;
 			}
 			if( pNode->pLeft && pNode->pLeft->pOp
 				&& (pNode->pLeft->pOp->iOp == EXPR_OP_ARROW
@@ -1285,7 +1324,7 @@ static sxi32 GenStateEmitExprCode(
 				 * `$x['k'] ?? d`. QUIET_VAR silences the variable read wherever it
 				 * sits in the chain. */
 				iLeftFlags |= EXPR_FLAG_QUIET_VAR;
-				bNullcLhs = 1;
+				bQuietLhs = 1;
 				if( pNode->pLeft->pOp
 					&& (pNode->pLeft->pOp->iOp == EXPR_OP_ARROW
 						|| pNode->pLeft->pOp->iOp == EXPR_OP_NULLSAFE_ARROW
@@ -1314,8 +1353,8 @@ static sxi32 GenStateEmitExprCode(
 				iLeftFlags |= EXPR_FLAG_NEW_CALLEE;
 			}
 			rc = GenStateEmitExprCode(&(*pGen),pNode->pLeft,iLeftFlags|EXPR_FLAG_RDONLY_LOAD);
-			if( rc == SXRET_OK && bNullcLhs ){
-				/* Mark EVERY subscript read in the `??` left chain quiet (iP2=8).
+			if( rc == SXRET_OK && bQuietLhs ){
+				/* Mark EVERY subscript read in the quiet left chain (iP2=8).
 				 * Peeking at the next instruction only catches the OUTERMOST
 				 * access, so `$d['x']['y'] ?? $v` still warned for the inner one;
 				 * and a forward scan would be unsound, since an unrelated sibling
@@ -1325,7 +1364,7 @@ static sxi32 GenStateEmitExprCode(
 				 * `??=` and keep their meaning. */
 				sxu32 nEnd = PH7_VmInstrLength(pGen->pVm);
 				sxu32 nAt;
-				for( nAt = nNullcLhsFirst ; nAt < nEnd ; ++nAt ){
+				for( nAt = nQuietLhsFirst ; nAt < nEnd ; ++nAt ){
 					VmInstr *pFix = PH7_VmGetInstr(pGen->pVm,nAt);
 					if( pFix && pFix->iOp == PH7_OP_LOAD_IDX && pFix->iP2 == 0 ){
 						pFix->iP2 = 8;

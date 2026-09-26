@@ -2067,6 +2067,18 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		PH7_MemObjRelease(pTos);
 		pTos->nIdx = SXU32_HIGH;
 	}
+	if( iP2 == 4 && (pTos->iFlags & MEMOBJ_NULL) == 0 ){
+		/* isset() context: reduce a found element to the same non-null marker the
+		 * ArrayAccess arm above pushes. A TEMPORARY array (a call's return value,
+		 * or an accessor's -- `isset(f()['k'])`, `isset($o->magic['k'])`) leaves no
+		 * variable index behind, and the trailing builtin read that as a CONSTANT
+		 * and warned about it; php's isset() is a language construct with no such
+		 * diagnostic. */
+		PH7_MemObjRelease(pTos);
+		pTos->x.iVal = 1;
+		MemObjSetType(pTos,MEMOBJ_BOOL);
+		pTos->nIdx = SXU32_HIGH;
+	}
 	VM_EXIT_BREAK;
 	VM_EXIT_BREAK;
 }

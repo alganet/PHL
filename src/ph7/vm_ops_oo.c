@@ -1662,6 +1662,23 @@ PH7_PRIVATE VmOpRc VmExecOpMember(ph7_vm *pVm,VmExecState *pState,VmInstr *pInst
 								}
 							}
 						}
+						if( pInstr->iP2 == PH7_MEMBER_ISSET ){
+							/* isset() tests null-ness and nothing else, so reduce the loaded
+							 * value to the same non-null marker the __isset and get-hook
+							 * paths push. A property read off a TEMPORARY receiver
+							 * (`isset(f()->p)`, `isset((new C)->p)`, and now every
+							 * intermediate link of an accessor chain) leaves no variable
+							 * index behind, and the trailing builtin read that as a
+							 * CONSTANT and warned -- a diagnostic php has no equivalent of,
+							 * its isset() being a language construct rather than a call. */
+							int bSet = (pTos->iFlags & MEMOBJ_NULL) == 0;
+							PH7_MemObjRelease(pTos);
+							if( bSet ){
+								pTos->x.iVal = 1;
+								MemObjSetType(pTos,MEMOBJ_BOOL);
+							}
+							pTos->nIdx = SXU32_HIGH;
+						}
 					}else{
 						/* Inaccessible (private/protected) from this scope. php consults
 						 * __get here exactly like a missing property (band A #3a) before
