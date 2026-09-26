@@ -5312,8 +5312,14 @@ DOM_METHOD(vm_builtin_DOMElement_insertAdjacentText)
 	if( pText == 0 ){
 		return PH7_OK;
 	}
-	/* Never adopted (same document by construction); a refusal or a no-op
-	 * leaves it parked in the shell where php frees it -- unobservable. */
+	/* Park it FIRST. The op's two earliest refusals -- the Syntax word and
+	 * the parentless beforebegin/afterend null -- return before its own
+	 * DomOrphanAdd runs, and an unparked fresh node outlives every owner
+	 * (the leak checker is what noticed). Parking is idempotent, the op's
+	 * detach removes exactly one entry, and the linked node ends OFF the
+	 * orphan list -- so the early paths leave it parked in the shell where
+	 * teardown frees it, unobservable, which is php's answer. */
+	DomOrphanAdd(pNd->pShell,pText);
 	DomInsertAdjacentOp(pCtx,pNd,zWhere,pNd->pShell,pText,0);
 	return PH7_OK;
 }
