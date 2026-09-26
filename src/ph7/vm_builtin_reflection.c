@@ -3542,7 +3542,18 @@ static int vm_builtin_ReflectionClass_isCloneable(ph7_context *pCtx, int nArg, p
 		return PH7_OK;
 	}
 	ReflectCtorCloneVis(pCtx->pVm, pClass, &iCtor, &iClone);
-	ph7_result_bool(pCtx, iClone == 0 || iClone == PH7_CLASS_PROT_PUBLIC);
+	if( iClone != 0 ){
+		/* php consults a declared __clone FIRST and answers its visibility --
+		 * even when the clone_obj refusal would still answer `clone` itself, so
+		 * a subclass of Exception that declares a public __clone reports TRUE
+		 * and refuses anyway. php's own inconsistency, kept. */
+		ph7_result_bool(pCtx, iClone == PH7_CLASS_PROT_PUBLIC);
+		return PH7_OK;
+	}
+	/* No __clone anywhere: php's answer is whether the clone_obj handler
+	 * exists. The refusal flag walks the base chain like the handler it
+	 * models, so `class M extends IteratorIterator {}` reports false too. */
+	ph7_result_bool(pCtx, !PH7_ClassIsUncloneable(pClass));
 	return PH7_OK;
 }
 /* php's own gate, raised before any object exists. */

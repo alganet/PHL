@@ -2616,7 +2616,7 @@ PH7_PRIVATE VmOpRc VmExecOpClone(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr
 	 * `clone $gen` PRINTED an uncatchable diagnostic and then carried on with the
 	 * ORIGINAL object standing in for the copy — the one shape of `clone` that
 	 * answered a value php never lets the program reach. */
-	if( (pSrc->pClass->iFlags & (PH7_CLASS_ENUM|PH7_CLASS_NOCLONE))
+	if( (pSrc->pClass->iFlags & PH7_CLASS_ENUM) || PH7_ClassIsUncloneable(pSrc->pClass)
 		|| pSrc->pClass == pVm->pGeneratorClass || pSrc->pClass == pVm->pFiberClass ){
 		SyBlob sMsg;
 		SyBlobInit(&sMsg,&pVm->sAllocator);

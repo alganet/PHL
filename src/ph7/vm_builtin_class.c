@@ -1654,7 +1654,7 @@ PH7_PRIVATE int vm_builtin_clone(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* The uncloneable classes, same rule and wording as the operator: an enum case
 	 * (the singleton identity would break), a class whose instances own a C-side
 	 * resource, and Generator/Fiber. */
-	if( (pSrc->pClass->iFlags & (PH7_CLASS_ENUM|PH7_CLASS_NOCLONE))
+	if( (pSrc->pClass->iFlags & PH7_CLASS_ENUM) || PH7_ClassIsUncloneable(pSrc->pClass)
 		|| pSrc->pClass == pVm->pGeneratorClass || pSrc->pClass == pVm->pFiberClass ){
 		return PH7_VmThrowException(pCtx,"Error",
 			"Trying to clone an uncloneable object of class %z",&pSrc->pClass->sName);

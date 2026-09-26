@@ -1183,6 +1183,25 @@ static ph7_value * ExtractClassAttrValue(ph7_vm *pVm,VmClassAttr *pAttr)
  *       )
  * )
  */
+/*
+ * Is `clone` refused for this class? php's uncloneable internal classes refuse
+ * for their USER SUBCLASSES too -- `class M extends IteratorIterator {}` makes
+ * `clone $m` the same catchable Error, named after M -- because the refusal is
+ * the inherited clone_obj handler, not the class's own row. So the flag is
+ * consulted up the base chain, not on the instance's class alone. (A subclass
+ * declaring its own __clone() changes nothing there either: php never reaches
+ * it, and neither does this engine -- the refusal answers first.)
+ */
+PH7_PRIVATE int PH7_ClassIsUncloneable(ph7_class *pClass)
+{
+	ph7_class *pC;
+	for( pC = pClass ; pC ; pC = pC->pBase ){
+		if( pC->iFlags & PH7_CLASS_NOCLONE ){
+			return 1;
+		}
+	}
+	return 0;
+}
 PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc)
 {
 	ph7_class_instance *pClone;
@@ -1289,6 +1308,20 @@ PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc
 			}
 		}
 		SySetRelease(&sDrop);
+	}
+	/* The native clone hook (php's clone_obj handler): what the copy MEANS for a
+	 * class whose instances stand for engine-side state -- a DOM wrapper's copy
+	 * is a copy of the node. The nearest ancestor's hook serves a user subclass,
+	 * which is php's handler inheritance. Runs before any __clone(), as php's
+	 * handler does. */
+	{
+		ph7_class *pHook;
+		for( pHook = pClone->pClass ; pHook ; pHook = pHook->pBase ){
+			if( pHook->xClone ){
+				pHook->xClone(pVm,pClone,pSrc);
+				break;
+			}
+		}
 	}
 	/* call the __clone method on the cloned object if available */
 	pMethod = PH7_ClassExtractMethod(pClone->pClass,"__clone",sizeof("__clone")-1);

@@ -1675,6 +1675,105 @@ DOM_METHOD(vm_builtin_DOMNode_cloneNode)
 	DomOrphanAdd(pNd->pShell,pCopy);
 	return DomResultNodeOf(pCtx,pNd,pCopy);
 }
+/* Enter one wrapper into a holder's identity cache, keyed by the node pointer.
+ * The cache takes its OWN reference; the caller keeps whatever it holds. */
+static void DomCacheStore(ph7_vm *pVm,ph7_class_instance *pDoc,xmlNodePtr pNode,
+	ph7_class_instance *pObj)
+{
+	ph7_hashmap *pCache = DomCache(&(*pVm),pDoc);
+	ph7_value sKey,sVal;
+	if( pCache == 0 ){
+		return;
+	}
+	PH7_MemObjInitFromInt(&(*pVm),&sKey,(sxi64)(sxuptr)pNode);
+	PH7_MemObjInit(&(*pVm),&sVal);
+	sVal.x.pOther = pObj;
+	sVal.iFlags = MEMOBJ_OBJ;
+	PH7_HashmapInsert(pCache,&sKey,&sVal);
+	PH7_MemObjRelease(&sKey);
+}
+/* Empty a slot the instance copied from its clone source: the null value. */
+static void DomSetSlotNull(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,sxu32 nName)
+{
+	ph7_value sNull;
+	PH7_MemObjInit(&(*pVm),&sNull);
+	PH7_NativeSetProp(&(*pVm),pObj,zName,nName,&sNull);
+}
+/*
+ * `clone $node` / `clone $doc` -- ph7_class::xClone for the DOM classes.
+ *
+ * php's clone_obj handler copies the NODE, so the clone is a second SUBTREE and
+ * not a second object over the same one.  The slot-by-slot copy that runs
+ * before this hook duplicated $__res, and stopping there is the XMLWriter clone
+ * bug one family later: a write through either object shows through both.
+ *
+ * php's rules, measured: the copy is always DEEP (`clone $el` carries the whole
+ * subtree where cloneNode() defaults shallow), always DETACHED, and stays in
+ * the SAME document -- `$c->ownerDocument === $d` -- while a DOCUMENT is copied
+ * whole into a second document, directives, declaration and URI included, so
+ * mutating the copy's tree leaves the original's bytes alone.  A user subclass
+ * clones through the inherited hook and keeps its class and its own properties,
+ * php's handler inheritance (the ENGINE's chain walk serves that).
+ */
+static void DomInstanceClone(ph7_vm *pVm,ph7_class_instance *pClone,ph7_class_instance *pSrc)
+{
+	phl_domnode *pNd = DomResOf(pSrc);
+	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	ph7_class_instance *pDoc = PH7_NativeAttrObj(pClone,DOM_DOC);
+	xmlNodePtr pCopy;
+	phl_domnode *pRes;
+	if( pNode == 0 ){
+		return;   /* no node behind the source: the copy has none either */
+	}
+	pCopy = xmlDocCopyNode(pNode,pNode->doc,1);
+	pRes = pCopy ? DomNewRes(&(*pVm),pNd->pShell,pCopy) : 0;
+	if( pRes == 0 ){
+		/* Never leave the slot-copied handle in place: two objects over one
+		 * node is the exact aliasing this hook exists to prevent. */
+		if( pCopy ){
+			xmlFreeNode(pCopy);
+		}
+		DomSetSlotNull(&(*pVm),pClone,DOM_RES,sizeof(DOM_RES)-1);
+		return;
+	}
+	/* The same namespace borrow cloneNode() does: an attribute copied with no
+	 * element to resolve against comes back in NO namespace. */
+	if( pCopy->type == XML_ATTRIBUTE_NODE && pCopy->ns == 0 ){
+		pCopy->ns = pNode->ns;
+	}
+	DomOrphanAdd(pNd->pShell,pCopy);
+	DomSetRes(&(*pVm),pClone,pRes);
+	/* The clone IS the copy's wrapper: enter it into the identity cache so
+	 * `$c->firstChild->parentNode === $c` holds. ($__doc rode the slot copy.) */
+	DomCacheStore(&(*pVm),pDoc,pCopy,pClone);
+}
+static void DomInstanceCloneDoc(ph7_vm *pVm,ph7_class_instance *pClone,ph7_class_instance *pSrc)
+{
+	phl_domnode *pNd = DomResOf(pSrc);
+	xmlDocPtr pCopy;
+	phl_xmldoc *pShell;
+	phl_domnode *pRes;
+	if( pNd == 0 || pNd->pNode == 0 ){
+		return;
+	}
+	pCopy = xmlCopyDoc((xmlDocPtr)pNd->pNode,1);
+	pShell = pCopy ? PH7_LibxmlNewDoc(&(*pVm),pCopy) : 0;
+	pRes = pShell ? DomNewRes(&(*pVm),pShell,pCopy) : 0;
+	if( pRes == 0 ){
+		if( pCopy && pShell == 0 ){
+			xmlFreeDoc(pCopy);   /* not registered: nothing else will free it */
+		}
+		DomSetSlotNull(&(*pVm),pClone,DOM_RES,sizeof(DOM_RES)-1);
+		return;
+	}
+	DomSetRes(&(*pVm),pClone,pRes);
+	/* Its own document, its own identity cache: the slot copy pointed both at
+	 * the SOURCE's, so the copy's documentElement would have answered the
+	 * original document as its owner. (The directive slots the copy carried
+	 * across are php's answer and stay.) */
+	PH7_NativeSetAttrObj(&(*pVm),pClone,DOM_DOC,pClone);
+	DomSetSlotNull(&(*pVm),pClone,DOM_NODES,sizeof(DOM_NODES)-1);
+}
 
 /* ===== Namespaces ===== */
 
@@ -7049,10 +7148,10 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  0, 0, 0, 0, 0, 0, 0, 0, 0 },
 		/* php's own two: IteratorAggregate (NOT Iterator -- the chunk had the
 		 * list carry its own cursor) and Countable. */
-		{ "DOMNodeList", 0, "IteratorAggregate,Countable", 0,
+		{ "DOMNodeList", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
 		  aListMethod, SX_ARRAYSIZE(aListMethod), 0, 0, aListProp, SX_ARRAYSIZE(aListProp),
 		  0, &sDomListIterVtab, 0 },
-		{ "DOMNamedNodeMap", 0, "IteratorAggregate,Countable", 0,
+		{ "DOMNamedNodeMap", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
 		  aMapMethod, SX_ARRAYSIZE(aMapMethod), 0, 0, aListProp, SX_ARRAYSIZE(aListProp),
 		  0, &sDomMapIterVtab, 0 },
 		/* php's own: a class of its OWN, with no parent at all -- a namespace
@@ -7062,10 +7161,37 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "DOMNameSpaceNode", 0, 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aNsNodeMethod, SX_ARRAYSIZE(aNsNodeMethod), 0, 0,
 		  aNsNodeProp, SX_ARRAYSIZE(aNsNodeProp), 0, 0, 0 },
-		{ "DOMXPath", 0, 0, PH7_CLASS_NOSERIALIZE,
+		{ "DOMXPath", 0, 0, PH7_CLASS_NOSERIALIZE|PH7_CLASS_NOCLONE,
 		  aXPathMethod, SX_ARRAYSIZE(aXPathMethod), 0, 0, aXPathProp, SX_ARRAYSIZE(aXPathProp), 0, 0, 0 },
 	};
-	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+	if( rc == SXRET_OK ){
+		/* The clone hook (ph7_class::xClone, php's clone_obj): stated on every
+		 * node class -- rule 29, a hook is per-row and never inherited between
+		 * native rows -- and assigned HERE because PH7_NativeClassSpec carries
+		 * no field for it. The document's copies the whole document; a user
+		 * subclass reaches the nearest ancestor's hook through the engine's
+		 * chain walk, php's handler inheritance. */
+		static const char * const azNodeClone[] = {
+			"DOMNode", "DOMElement", "DOMAttr", "DOMCharacterData", "DOMText",
+			"DOMComment", "DOMCdataSection", "DOMProcessingInstruction",
+			"DOMDocumentFragment", "DOMEntityReference"
+		};
+		sxu32 n;
+		ph7_class *pClass;
+		for( n = 0 ; n < SX_ARRAYSIZE(azNodeClone) ; ++n ){
+			pClass = PH7_VmExtractClass(&(*pVm),azNodeClone[n],
+				(sxu32)SyStrlen(azNodeClone[n]),FALSE,0);
+			if( pClass ){
+				pClass->xClone = DomInstanceClone;
+			}
+		}
+		pClass = PH7_VmExtractClass(&(*pVm),"DOMDocument",sizeof("DOMDocument")-1,FALSE,0);
+		if( pClass ){
+			pClass->xClone = DomInstanceCloneDoc;
+		}
+	}
+	return rc;
 }
 
 #else

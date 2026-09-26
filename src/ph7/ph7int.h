@@ -1344,6 +1344,18 @@ struct ph7_class
 	                       * class, when it is not the usual "Instantiation of class %s is not
 	                       * allowed". php words Directory's as "Cannot directly construct
 	                       * Directory, use dir() instead"; 0 selects the standard sentence. */
+	void (*xClone)(ph7_vm *,ph7_class_instance *,ph7_class_instance *); /* php's clone_obj handler
+	                       * analogue: what `clone $o` DOES for an instance beyond the slot-by-slot
+	                       * copy, run on (clone, source) after the copy and before any __clone().
+	                       * A DOM node's copy must be a copy of the NODE, not a second object over
+	                       * the same one -- without this, a mutation through either object writes
+	                       * the other. This is NOT __clone: php declares no such method on these
+	                       * classes, so Reflection must not report one. Inherited by user
+	                       * subclasses (the nearest ancestor's hook runs), which is php's handler
+	                       * inheritance. 0 everywhere else. PH7_NativeClassSpec has no field for
+	                       * it (a 14th field would touch every row of every spec table under
+	                       * -Werror=missing-field-initializers); the owning installer assigns it
+	                       * on the mounted class right after PH7_InstallNativeClasses. */
 };
 /* Class configuration flags */
 #define PH7_CLASS_FINAL       0x001 /* Class is final [cannot be extended] */
@@ -5080,6 +5092,11 @@ PH7_PRIVATE sxi32 PH7_ClassInterfaceInherit(ph7_class *pSub,ph7_class *pBase);
 PH7_PRIVATE sxi32 PH7_ClassImplement(ph7_class *pMain,ph7_class *pInterface);
 PH7_PRIVATE ph7_class_instance * PH7_NewClassInstance(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc);
+/* The two clone questions that follow php's HANDLER inheritance rather than the
+ * class's own row: a user subclass of an uncloneable class is uncloneable
+ * (`class M extends IteratorIterator {}` refuses `clone $m` with M's name), and
+ * a subclass of a class with a native clone hook clones through that hook. */
+PH7_PRIVATE int PH7_ClassIsUncloneable(ph7_class *pClass);
 PH7_PRIVATE sxi32 PH7_ClassInstanceCmp(ph7_class_instance *pLeft,ph7_class_instance *pRight,int bStrict,int iNest);
 PH7_PRIVATE void  PH7_ClassInstanceUnref(ph7_class_instance *pThis);
 PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,int ShowType,int nTab,int nDepth);
