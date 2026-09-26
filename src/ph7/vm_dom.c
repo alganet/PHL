@@ -48,6 +48,36 @@
 #define DOM_DOC   "__doc"
 #define DOM_NODES "__nodes"
 
+/*
+ * php's DOMException carries the DOM level-2 error CODE beside its sentence --
+ * `catch (DOMException $e) { if ($e->getCode() === DOM_NOT_FOUND_ERR) ... }` is
+ * how a caller tells one refusal from another, and the sentence is only a
+ * sentence.  Every throw below states its code; DOM_PHP_ERR (0) is php's own
+ * "not a DOM error" and no refusal here uses it.
+ */
+#define DOM_ERR_INDEX_SIZE     1
+#define DOM_ERR_HIERARCHY      3
+#define DOM_ERR_WRONG_DOC      4
+#define DOM_ERR_INVALID_CHAR   5
+#define DOM_ERR_NOT_FOUND      8
+#define DOM_ERR_NAMESPACE     14
+/* The sentence php prints for each -- so a refusal that travels as a code can
+ * be raised from one place. */
+static const char * DomErrText(int iCode)
+{
+	switch( iCode ){
+	case DOM_ERR_INDEX_SIZE:   return "Index Size Error";
+	case DOM_ERR_HIERARCHY:    return "Hierarchy Request Error";
+	case DOM_ERR_WRONG_DOC:    return "Wrong Document Error";
+	case DOM_ERR_INVALID_CHAR: return "Invalid Character Error";
+	case DOM_ERR_NAMESPACE:    return "Namespace Error";
+	default:                   return "Not Found Error";
+	}
+}
+static int DomThrow(ph7_context *pCtx,int iCode)
+{
+	return PH7_VmThrowExceptionCode(pCtx,"DOMException",(sxi32)iCode,"%s",DomErrText(iCode));
+}
 /* Property names are byte-exact in php, and every name that reaches here is
  * NUL-terminated (ph7_value_to_string null-appends). */
 static int DomNameIs(const char *zName,const char *zWant)
@@ -431,16 +461,16 @@ static xmlNodePtr DomChildAt(xmlNodePtr pNode,int iWant)
  * DESCENDANT, so `$a->firstChild->appendChild($a)` spliced a CYCLE into the
  * tree and every later walk of it ran away.
  */
-static const char * DomLinkRefusal(xmlNodePtr pParent,xmlNodePtr pChild)
+static int DomLinkRefusal(xmlNodePtr pParent,xmlNodePtr pChild)
 {
 	xmlNodePtr p;
 	if( pParent->doc != pChild->doc ){
-		return "Wrong Document Error";
+		return DOM_ERR_WRONG_DOC;
 	}
 	/* Walking UP from the parent also catches pChild == pParent. */
 	for( p = pParent ; p ; p = p->parent ){
 		if( p == pChild ){
-			return "Hierarchy Request Error";
+			return DOM_ERR_HIERARCHY;
 		}
 	}
 	return 0;
@@ -495,13 +525,13 @@ DOM_METHOD(vm_builtin_DOMNode_appendChild)
 {
 	phl_domnode *pPar = DomThisNode(pCtx);
 	phl_domnode *pChd = nArg > 0 ? DomObjArg(apArg[0]) : 0;
-	const char *zErr;
+	int iErr;
 	if( pPar == 0 || pChd == 0 ){
-		return PH7_VmThrowException(pCtx,"DOMException","Wrong Document Error");
+		return DomThrow(pCtx,DOM_ERR_WRONG_DOC);
 	}
-	zErr = DomLinkRefusal((xmlNodePtr)pPar->pNode,(xmlNodePtr)pChd->pNode);
-	if( zErr ){
-		return PH7_VmThrowException(pCtx,"DOMException","%s",zErr);
+	iErr = DomLinkRefusal((xmlNodePtr)pPar->pNode,(xmlNodePtr)pChd->pNode);
+	if( iErr ){
+		return DomThrow(pCtx,iErr);
 	}
 	if( DomIsFragment((xmlNodePtr)pChd->pNode) ){
 		xmlNodePtr pFirst;
@@ -524,19 +554,19 @@ DOM_METHOD(vm_builtin_DOMNode_insertBefore)
 	phl_domnode *pNew = nArg > 0 ? DomObjArg(apArg[0]) : 0;
 	phl_domnode *pRef = (nArg > 1 && !ph7_value_is_null(apArg[1])) ? DomObjArg(apArg[1]) : 0;
 	xmlNodePtr pParent,pChild,pAnchor;
-	const char *zErr;
+	int iErr;
 	if( pPar == 0 || pNew == 0 ){
-		return PH7_VmThrowException(pCtx,"DOMException","Not Found Error");
+		return DomThrow(pCtx,DOM_ERR_NOT_FOUND);
 	}
 	pParent = (xmlNodePtr)pPar->pNode;
 	pChild = (xmlNodePtr)pNew->pNode;
 	pAnchor = pRef ? (xmlNodePtr)pRef->pNode : 0;
-	zErr = DomLinkRefusal(pParent,pChild);
-	if( zErr == 0 && pAnchor && pAnchor->parent != pParent ){
-		zErr = "Not Found Error";
+	iErr = DomLinkRefusal(pParent,pChild);
+	if( iErr == 0 && pAnchor && pAnchor->parent != pParent ){
+		iErr = DOM_ERR_NOT_FOUND;
 	}
-	if( zErr ){
-		return PH7_VmThrowException(pCtx,"DOMException","%s",zErr);
+	if( iErr ){
+		return DomThrow(pCtx,iErr);
 	}
 	if( DomIsFragment(pChild) ){
 		xmlNodePtr pFirst;
@@ -562,11 +592,11 @@ DOM_METHOD(vm_builtin_DOMNode_removeChild)
 	phl_domnode *pChd = nArg > 0 ? DomObjArg(apArg[0]) : 0;
 	xmlNodePtr pChild;
 	if( pPar == 0 || pChd == 0 ){
-		return PH7_VmThrowException(pCtx,"DOMException","Not Found Error");
+		return DomThrow(pCtx,DOM_ERR_NOT_FOUND);
 	}
 	pChild = (xmlNodePtr)pChd->pNode;
 	if( pChild->parent != (xmlNodePtr)pPar->pNode ){
-		return PH7_VmThrowException(pCtx,"DOMException","Not Found Error");
+		return DomThrow(pCtx,DOM_ERR_NOT_FOUND);
 	}
 	xmlUnlinkNode(pChild);
 	DomOrphanAdd(pChd->pShell,pChild);
@@ -581,19 +611,19 @@ DOM_METHOD(vm_builtin_DOMNode_replaceChild)
 	phl_domnode *pNew = nArg > 1 ? DomObjArg(apArg[0]) : 0;
 	phl_domnode *pOld = nArg > 1 ? DomObjArg(apArg[1]) : 0;
 	xmlNodePtr pParent,pChild,pVictim;
-	const char *zErr;
+	int iErr;
 	if( pPar == 0 || pNew == 0 || pOld == 0 ){
-		return PH7_VmThrowException(pCtx,"DOMException","Not Found Error");
+		return DomThrow(pCtx,DOM_ERR_NOT_FOUND);
 	}
 	pParent = (xmlNodePtr)pPar->pNode;
 	pChild = (xmlNodePtr)pNew->pNode;
 	pVictim = (xmlNodePtr)pOld->pNode;
-	zErr = DomLinkRefusal(pParent,pChild);
-	if( zErr == 0 && pVictim->parent != pParent ){
-		zErr = "Not Found Error";
+	iErr = DomLinkRefusal(pParent,pChild);
+	if( iErr == 0 && pVictim->parent != pParent ){
+		iErr = DOM_ERR_NOT_FOUND;
 	}
-	if( zErr ){
-		return PH7_VmThrowException(pCtx,"DOMException","%s",zErr);
+	if( iErr ){
+		return DomThrow(pCtx,iErr);
 	}
 	if( DomIsFragment(pChild) ){
 		/* No empty-fragment refusal here, unlike the other two: php REMOVES the
@@ -1184,7 +1214,7 @@ DOM_METHOD(vm_builtin_DOMElement_setAttribute)
 	const char *zVal = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
 	xmlAttrPtr pAttr;
 	if( pNd == 0 || xmlValidateName((const xmlChar *)zName,0) != 0 ){
-		return PH7_VmThrowException(pCtx,"DOMException","Invalid Character Error");
+		return DomThrow(pCtx,DOM_ERR_INVALID_CHAR);
 	}
 	xmlSetProp((xmlNodePtr)pNd->pNode,(const xmlChar *)zName,(const xmlChar *)zVal);
 	pAttr = xmlHasProp((xmlNodePtr)pNd->pNode,(const xmlChar *)zName);
@@ -1233,14 +1263,14 @@ DOM_METHOD(vm_builtin_DOMElement_setAttributeNS)
 	xmlNodePtr pNode;
 	xmlNsPtr pNs;
 	if( pNd == 0 || zQname[0] == 0 ){
-		return PH7_VmThrowException(pCtx,"DOMException","Namespace Error");
+		return DomThrow(pCtx,DOM_ERR_NAMESPACE);
 	}
 	pNode = (xmlNodePtr)pNd->pNode;
 	if( SyByteFind(zQname,SyStrlen(zQname),':',&nColon) == SXRET_OK ){
 		/* Prefixed: find (or declare on this element) the namespace */
 		char zPrefix[128];
 		if( nColon >= sizeof(zPrefix) ){
-			return PH7_VmThrowException(pCtx,"DOMException","Namespace Error");
+			return DomThrow(pCtx,DOM_ERR_NAMESPACE);
 		}
 		SyMemcpy(zQname,zPrefix,nColon);
 		zPrefix[nColon] = 0;
@@ -1249,7 +1279,7 @@ DOM_METHOD(vm_builtin_DOMElement_setAttributeNS)
 			pNs = xmlNewNs(pNode,(const xmlChar *)zUri,(const xmlChar *)zPrefix);
 		}
 		if( pNs == 0 ){
-			return PH7_VmThrowException(pCtx,"DOMException","Namespace Error");
+			return DomThrow(pCtx,DOM_ERR_NAMESPACE);
 		}
 		xmlSetNsProp(pNode,pNs,(const xmlChar *)(zQname+nColon+1),(const xmlChar *)zVal);
 	}else{
@@ -1458,7 +1488,7 @@ static int DomDocCreate(ph7_context *pCtx,int iKind,const char *zName,const char
 	xmlNodePtr pNode = 0;
 	sxu32 nMark;
 	if( pDocNd == 0 ){
-		return PH7_VmThrowException(pCtx,"DOMException","Invalid Character Error");
+		return DomThrow(pCtx,DOM_ERR_INVALID_CHAR);
 	}
 	pDoc = (xmlDocPtr)pDocNd->pNode;
 	nMark = PH7_LibxmlCaptureBegin(pVm);
@@ -1505,7 +1535,7 @@ static int DomDocCreate(ph7_context *pCtx,int iKind,const char *zName,const char
 		if( iKind == XML_ELEMENT_NODE || iKind == XML_PI_NODE || iKind == XML_ENTITY_REF_NODE ){
 			/* The three factories that take a NAME are the three that can be
 			 * handed one libxml refuses. */
-			return PH7_VmThrowException(pCtx,"DOMException","Invalid Character Error");
+			return DomThrow(pCtx,DOM_ERR_INVALID_CHAR);
 		}
 		ph7_result_null(pCtx);
 		return PH7_OK;
@@ -1688,7 +1718,7 @@ static int DomCharRange(ph7_context *pCtx,xmlNodePtr pNode,ph7_int64 iOffset,
 	if( iOffset < 0 || (bHasCount && iCount < 0)
 	 || iOffset > (ph7_int64)SXI32_HIGH || iCount > (ph7_int64)SXI32_HIGH
 	 || bPastEnd ){
-		*pRc = PH7_VmThrowException(pCtx,"DOMException","Index Size Error");
+		*pRc = DomThrow(pCtx,DOM_ERR_INDEX_SIZE);
 		return -1;
 	}
 	return 0;
@@ -3084,7 +3114,7 @@ static int DomSetNodeProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,in
 				"http://www.w3.org/XML/1998/namespace") ){
 				/* php's reserved-prefix refusal: `xml` may only name ITS namespace. */
 				SyBlobRelease(&sVal);
-				*pRc = PH7_VmThrowException(pCtx,"DOMException","Namespace Error");
+				*pRc = DomThrow(pCtx,DOM_ERR_NAMESPACE);
 				return DOM_SET_DONE;
 			}
 			/* php looks only at the declarations THIS node carries -- an
@@ -3107,7 +3137,7 @@ static int DomSetNodeProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,in
 			}
 			if( pNs == 0 ){
 				SyBlobRelease(&sVal);
-				*pRc = PH7_VmThrowException(pCtx,"DOMException","Namespace Error");
+				*pRc = DomThrow(pCtx,DOM_ERR_NAMESPACE);
 				return DOM_SET_DONE;
 			}
 			xmlSetNs(pNode,pNs);

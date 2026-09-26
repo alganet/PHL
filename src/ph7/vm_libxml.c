@@ -366,6 +366,51 @@ LIBXML_INT_CONST(LibxmlConst_DOCUMENT_FRAG_NODE,  XML_DOCUMENT_FRAG_NODE)
 LIBXML_INT_CONST(LibxmlConst_NOTATION_NODE,       XML_NOTATION_NODE)
 LIBXML_INT_CONST(LibxmlConst_HTML_DOCUMENT_NODE,  XML_HTML_DOCUMENT_NODE)
 LIBXML_INT_CONST(LibxmlConst_DTD_NODE,            XML_DTD_NODE)
+LIBXML_INT_CONST(LibxmlConst_ELEMENT_DECL_NODE,   XML_ELEMENT_DECL)
+LIBXML_INT_CONST(LibxmlConst_ATTRIBUTE_DECL_NODE, XML_ATTRIBUTE_DECL)
+LIBXML_INT_CONST(LibxmlConst_ENTITY_DECL_NODE,    XML_ENTITY_DECL)
+/* php spells libxml's XML_NAMESPACE_DECL twice, under both DOM's name for a
+ * namespace node and libxml's own. */
+LIBXML_INT_CONST(LibxmlConst_NAMESPACE_DECL_NODE, XML_NAMESPACE_DECL)
+LIBXML_INT_CONST(LibxmlConst_LOCAL_NAMESPACE,     XML_NAMESPACE_DECL)
+/*
+ * The DTD attribute-TYPE enum. php's numbers are libxml's xmlAttributeType with
+ * one deliberate hole: php has no XML_ATTRIBUTE_ENTITIES and gives the name
+ * XML_ATTRIBUTE_ENTITY libxml's ENTITIES value (6), so the two disagree about
+ * what "entity" means by one.  php's numbering is the contract.
+ */
+LIBXML_INT_CONST(LibxmlConst_ATTRIBUTE_CDATA,       XML_ATTRIBUTE_CDATA)
+LIBXML_INT_CONST(LibxmlConst_ATTRIBUTE_ID,          XML_ATTRIBUTE_ID)
+LIBXML_INT_CONST(LibxmlConst_ATTRIBUTE_IDREF,       XML_ATTRIBUTE_IDREF)
+LIBXML_INT_CONST(LibxmlConst_ATTRIBUTE_IDREFS,      XML_ATTRIBUTE_IDREFS)
+LIBXML_INT_CONST(LibxmlConst_ATTRIBUTE_ENTITY,      XML_ATTRIBUTE_ENTITIES)
+LIBXML_INT_CONST(LibxmlConst_ATTRIBUTE_NMTOKEN,     XML_ATTRIBUTE_NMTOKEN)
+LIBXML_INT_CONST(LibxmlConst_ATTRIBUTE_NMTOKENS,    XML_ATTRIBUTE_NMTOKENS)
+LIBXML_INT_CONST(LibxmlConst_ATTRIBUTE_ENUMERATION, XML_ATTRIBUTE_ENUMERATION)
+LIBXML_INT_CONST(LibxmlConst_ATTRIBUTE_NOTATION,    XML_ATTRIBUTE_NOTATION)
+/*
+ * ext/dom's DOMException codes -- the DOM level-2 numbering an exception's
+ * getCode() answers, which is what a catch tests to tell one refusal from
+ * another (php's own zero, DOM_PHP_ERR, is the code for everything that is not
+ * a DOM error).
+ */
+LIBXML_INT_CONST(LibxmlConst_PHP_ERR,                  0)
+LIBXML_INT_CONST(LibxmlConst_INDEX_SIZE_ERR,           1)
+LIBXML_INT_CONST(LibxmlConst_DOMSTRING_SIZE_ERR,       2)
+LIBXML_INT_CONST(LibxmlConst_HIERARCHY_REQUEST_ERR,    3)
+LIBXML_INT_CONST(LibxmlConst_WRONG_DOCUMENT_ERR,       4)
+LIBXML_INT_CONST(LibxmlConst_INVALID_CHARACTER_ERR,    5)
+LIBXML_INT_CONST(LibxmlConst_NO_DATA_ALLOWED_ERR,      6)
+LIBXML_INT_CONST(LibxmlConst_NO_MODIFICATION_ALLOWED_ERR, 7)
+LIBXML_INT_CONST(LibxmlConst_NOT_FOUND_ERR,            8)
+LIBXML_INT_CONST(LibxmlConst_NOT_SUPPORTED_ERR,        9)
+LIBXML_INT_CONST(LibxmlConst_INUSE_ATTRIBUTE_ERR,     10)
+LIBXML_INT_CONST(LibxmlConst_INVALID_STATE_ERR,       11)
+LIBXML_INT_CONST(LibxmlConst_SYNTAX_ERR,              12)
+LIBXML_INT_CONST(LibxmlConst_INVALID_MODIFICATION_ERR,13)
+LIBXML_INT_CONST(LibxmlConst_NAMESPACE_ERR,           14)
+LIBXML_INT_CONST(LibxmlConst_INVALID_ACCESS_ERR,      15)
+LIBXML_INT_CONST(LibxmlConst_VALIDATION_ERR,          16)
 
 static void LibxmlConst_DOTTED_VERSION(ph7_value *pVal,void *pUnused)
 {
@@ -424,6 +469,37 @@ PH7_PRIVATE void PH7_RegisterLibxmlConstants(ph7_vm *pVm)
 		{ "XML_NOTATION_NODE",      LibxmlConst_NOTATION_NODE      },
 		{ "XML_HTML_DOCUMENT_NODE", LibxmlConst_HTML_DOCUMENT_NODE },
 		{ "XML_DTD_NODE",           LibxmlConst_DTD_NODE           },
+		{ "XML_ELEMENT_DECL_NODE",  LibxmlConst_ELEMENT_DECL_NODE  },
+		{ "XML_ATTRIBUTE_DECL_NODE",LibxmlConst_ATTRIBUTE_DECL_NODE},
+		{ "XML_ENTITY_DECL_NODE",   LibxmlConst_ENTITY_DECL_NODE   },
+		{ "XML_NAMESPACE_DECL_NODE",LibxmlConst_NAMESPACE_DECL_NODE},
+		{ "XML_LOCAL_NAMESPACE",    LibxmlConst_LOCAL_NAMESPACE    },
+		{ "XML_ATTRIBUTE_CDATA",       LibxmlConst_ATTRIBUTE_CDATA       },
+		{ "XML_ATTRIBUTE_ID",          LibxmlConst_ATTRIBUTE_ID          },
+		{ "XML_ATTRIBUTE_IDREF",       LibxmlConst_ATTRIBUTE_IDREF       },
+		{ "XML_ATTRIBUTE_IDREFS",      LibxmlConst_ATTRIBUTE_IDREFS      },
+		{ "XML_ATTRIBUTE_ENTITY",      LibxmlConst_ATTRIBUTE_ENTITY      },
+		{ "XML_ATTRIBUTE_NMTOKEN",     LibxmlConst_ATTRIBUTE_NMTOKEN     },
+		{ "XML_ATTRIBUTE_NMTOKENS",    LibxmlConst_ATTRIBUTE_NMTOKENS    },
+		{ "XML_ATTRIBUTE_ENUMERATION", LibxmlConst_ATTRIBUTE_ENUMERATION },
+		{ "XML_ATTRIBUTE_NOTATION",    LibxmlConst_ATTRIBUTE_NOTATION    },
+		{ "DOM_PHP_ERR",                    LibxmlConst_PHP_ERR                    },
+		{ "DOM_INDEX_SIZE_ERR",             LibxmlConst_INDEX_SIZE_ERR             },
+		{ "DOMSTRING_SIZE_ERR",             LibxmlConst_DOMSTRING_SIZE_ERR         },
+		{ "DOM_HIERARCHY_REQUEST_ERR",      LibxmlConst_HIERARCHY_REQUEST_ERR      },
+		{ "DOM_WRONG_DOCUMENT_ERR",         LibxmlConst_WRONG_DOCUMENT_ERR         },
+		{ "DOM_INVALID_CHARACTER_ERR",      LibxmlConst_INVALID_CHARACTER_ERR      },
+		{ "DOM_NO_DATA_ALLOWED_ERR",        LibxmlConst_NO_DATA_ALLOWED_ERR        },
+		{ "DOM_NO_MODIFICATION_ALLOWED_ERR",LibxmlConst_NO_MODIFICATION_ALLOWED_ERR},
+		{ "DOM_NOT_FOUND_ERR",              LibxmlConst_NOT_FOUND_ERR              },
+		{ "DOM_NOT_SUPPORTED_ERR",          LibxmlConst_NOT_SUPPORTED_ERR          },
+		{ "DOM_INUSE_ATTRIBUTE_ERR",        LibxmlConst_INUSE_ATTRIBUTE_ERR        },
+		{ "DOM_INVALID_STATE_ERR",          LibxmlConst_INVALID_STATE_ERR          },
+		{ "DOM_SYNTAX_ERR",                 LibxmlConst_SYNTAX_ERR                 },
+		{ "DOM_INVALID_MODIFICATION_ERR",   LibxmlConst_INVALID_MODIFICATION_ERR   },
+		{ "DOM_NAMESPACE_ERR",              LibxmlConst_NAMESPACE_ERR              },
+		{ "DOM_INVALID_ACCESS_ERR",         LibxmlConst_INVALID_ACCESS_ERR         },
+		{ "DOM_VALIDATION_ERR",             LibxmlConst_VALIDATION_ERR             },
 	};
 	sxu32 n;
 	for( n = 0 ; n < sizeof(aConst)/sizeof(aConst[0]) ; n++ ){
