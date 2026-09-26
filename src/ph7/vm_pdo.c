@@ -147,16 +147,29 @@ PH7_PRIVATE void PH7_PdoClearError(phl_pdo *pConn)
 {
 	pConn->iErrState = PDO_ERR_OK;
 	pConn->iDrvCode = 0;
+	pConn->bNoDrvDetail = 0;
 	SyMemcpy("00000",pConn->zSqlState,sizeof("00000"));
 	if( pConn->zDrvMsg ){
 		SyMemBackendFree(&pConn->pVm->sAllocator,pConn->zDrvMsg);
 		pConn->zDrvMsg = 0;
 	}
 }
+/*
+ * php clears the handle's error at the ENTRY of most verbs -- exec, query,
+ * prepare, quote, lastInsertId and both attribute accessors -- so a failure is
+ * invisible to errorCode() as soon as any of them is called, even on a handle
+ * that has never run anything (NULL becomes "00000"). The verbs that do NOT
+ * clear are the two reporters themselves and the transaction quartet.
+ */
+PH7_PRIVATE void PH7_PdoTouch(phl_pdo *pConn)
+{
+	PH7_PdoClearError(pConn);
+}
 PH7_PRIVATE void PH7_PdoSetError(phl_pdo *pConn,const char *zSqlState,int iCode,const char *zMsg)
 {
 	sxu32 n;
 	pConn->iErrState = PDO_ERR_FAILED;
+	pConn->bNoDrvDetail = 0;
 	pConn->iDrvCode = iCode;
 	for( n = 0 ; n < 5 && zSqlState[n] ; ++n ){
 		pConn->zSqlState[n] = zSqlState[n];
@@ -267,6 +280,39 @@ PH7_PRIVATE sxi32 PH7_PdoThrowConstruct(ph7_context *pCtx,const char *zSqlState,
 	return rc;
 }
 /*
+ * php's SQLSTATE-to-description table, which is what a failure message says
+ * BEFORE the driver's own code and text: a constraint violation reads
+ * `SQLSTATE[23000]: Integrity constraint violation: 19 UNIQUE constraint
+ * failed: u.v`, not "General error". Only the rows this driver can actually
+ * reach are here; anything else falls back to HY000's sentence, which is what
+ * php answers for an unlisted state too.
+ *
+ * HY000, 23000 and IM001 are probe-verified against the oracle. The remaining
+ * three are php's own wording for states the sqlite driver maps but cannot
+ * reach in practice -- SQLITE_TOOBIG needs a value past the 1 GB limit,
+ * SQLITE_INTERRUPT an interrupt this engine never issues -- so no probe can
+ * confirm them and none can contradict them either.
+ */
+static const char * PdoStateDescription(const char *zState)
+{
+	static const struct { const char *zState; const char *zText; } aState[] = {
+		{ "HY000", "General error" },
+		{ "23000", "Integrity constraint violation" },
+		{ "IM001", "Driver does not support this function" },
+		{ "42S02", "Base table or view not found" },
+		{ "22001", "String data, right truncated" },
+		{ "HYC00", "Optional feature not implemented" },
+		{ "57014", "Statement canceled" },
+	};
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(aState) ; ++n ){
+		if( SyStrncmp(zState,aState[n].zState,6) == 0 ){
+			return aState[n].zText;
+		}
+	}
+	return "General error";
+}
+/*
  * A failed OPERATION, routed through ATTR_ERRMODE: silent leaves the answer to
  * errorCode()/errorInfo(), warning adds php's E_WARNING naming the method, and
  * exception throws. The wording is one sentence in all three:
@@ -280,7 +326,8 @@ PH7_PRIVATE sxi32 PH7_PdoRaise(ph7_context *pCtx,phl_pdo *pConn,const char *zFn)
 		return PH7_OK;
 	}
 	SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
-	SyBlobFormat(&sMsg,"SQLSTATE[%s]: General error: %d %s",pConn->zSqlState,
+	SyBlobFormat(&sMsg,"SQLSTATE[%s]: %s: %d %s",pConn->zSqlState,
+		PdoStateDescription(pConn->zSqlState),
 		pConn->iDrvCode,pConn->zDrvMsg ? pConn->zDrvMsg : "");
 	SyBlobAppend(&sMsg,"",1);
 	if( pConn->iErrMode == PDO_ERRMODE_WARNING ){
@@ -304,9 +351,13 @@ PH7_PRIVATE sxi32 PH7_PdoRaiseImpl(ph7_context *pCtx,phl_pdo *pConn,const char *
 {
 	SyBlob sMsg;
 	sxi32 rc = PH7_OK;
+	if( pConn ){
+		PH7_PdoSetError(pConn,zSqlState,0,0);
+		pConn->bNoDrvDetail = 1;
+	}
 	SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
-	SyBlobFormat(&sMsg,"SQLSTATE[%s]: Driver does not support this function: %s",
-		zSqlState,zMsg);
+	SyBlobFormat(&sMsg,"SQLSTATE[%s]: %s: %s",zSqlState,
+		PdoStateDescription(zSqlState),zMsg);
 	SyBlobAppend(&sMsg,"",1);
 	if( pConn && pConn->iErrMode == PDO_ERRMODE_EXCEPTION ){
 		rc = PdoThrowException(pCtx,(const char *)SyBlobData(&sMsg),zSqlState,0,FALSE,0,2);
@@ -461,6 +512,7 @@ static int vm_builtin_PDO_getAttribute(ph7_context *pCtx,int nArg,ph7_value **ap
 	if( pConn == 0 ){
 		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");
 	}
+	PH7_PdoTouch(pConn);
 	iAttr = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;
 	switch( iAttr ){
 		case PDO_ATTR_ERRMODE:            ph7_result_int(pCtx,pConn->iErrMode); break;
@@ -515,6 +567,7 @@ static int vm_builtin_PDO_setAttribute(ph7_context *pCtx,int nArg,ph7_value **ap
 	if( pConn == 0 ){
 		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");
 	}
+	PH7_PdoTouch(pConn);
 	iAttr = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;
 	pVal = nArg > 1 ? apArg[1] : 0;
 	switch( iAttr ){
@@ -587,6 +640,127 @@ static int vm_builtin_PDO_setAttribute(ph7_context *pCtx,int nArg,ph7_value **ap
 			return PH7_OK;
 	}
 	ph7_result_bool(pCtx,1);
+	return PH7_OK;
+}
+
+/* ------------------------------------------------------------------------
+ * Running statements, and reporting what happened
+ * ------------------------------------------------------------------------ */
+/*
+ * PDO::exec(string $statement): int|false
+ *
+ * Runs every statement the string holds and answers the number of rows the
+ * last one CHANGED. A statement that changes nothing -- a SELECT, a CREATE,
+ * whitespace, a comment -- leaves sqlite's counter alone, so exec() answers
+ * whatever the previous write did rather than 0; that is php's answer too,
+ * because php reads the same counter.
+ */
+static int vm_builtin_PDO_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo *pConn = PdoOfInstance(PH7_ContextThis(pCtx));
+	const char *zSql;
+	int nSql = 0;   /* the length is only written when the argument IS read */
+	ph7_int64 nChange;
+	if( pConn == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");
+	}
+	PH7_PdoTouch(pConn);
+	zSql = nArg > 0 ? ph7_value_to_string(apArg[0],&nSql) : 0;
+	if( zSql == 0 || nSql < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"PDO::exec(): Argument #1 ($statement) must not be empty");
+	}
+	nChange = PH7_PdoSqliteExec(pConn,zSql,nSql);
+	if( nChange < 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_PdoRaise(pCtx,pConn,"PDO::exec");
+	}
+	ph7_result_int64(pCtx,nChange);
+	return PH7_OK;
+}
+/*
+ * PDO::errorCode(): ?string
+ *
+ * Three answers, not two: a handle nothing has run on yet answers NULL, one
+ * whose last operation succeeded answers "00000", and a failed one answers the
+ * SQLSTATE. errorInfo() splits the same three ways, and its FIRST cell is the
+ * empty string -- not null -- in the never-used case.
+ */
+static int vm_builtin_PDO_errorCode(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo *pConn = PdoOfInstance(PH7_ContextThis(pCtx));
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pConn == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");
+	}
+	if( pConn->iErrState == PDO_ERR_NONE ){
+		ph7_result_null(pCtx);
+	}else{
+		ph7_result_string(pCtx,pConn->zSqlState,(int)SyStrlen(pConn->zSqlState));
+	}
+	return PH7_OK;
+}
+static int vm_builtin_PDO_errorInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo *pConn = PdoOfInstance(PH7_ContextThis(pCtx));
+	ph7_value *pArray,*pCell;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pConn == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");
+	}
+	pArray = ph7_context_new_array(pCtx);
+	pCell = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pCell == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( pConn->iErrState == PDO_ERR_NONE ){
+		ph7_value_string(pCell,"",0);
+	}else{
+		ph7_value_string(pCell,pConn->zSqlState,(int)SyStrlen(pConn->zSqlState));
+	}
+	ph7_array_add_elem(pArray,0,pCell);
+	/* the driver's own code and message are absent unless it FAILED: a
+	 * successful operation reports [state, null, null] */
+	if( pConn->iErrState == PDO_ERR_FAILED && !pConn->bNoDrvDetail ){
+		ph7_value_int64(pCell,(ph7_int64)pConn->iDrvCode);
+		ph7_array_add_elem(pArray,0,pCell);
+		if( pConn->zDrvMsg ){
+			ph7_value_string(pCell,pConn->zDrvMsg,(int)SyStrlen(pConn->zDrvMsg));
+		}else{
+			ph7_value_null(pCell);
+		}
+		ph7_array_add_elem(pArray,0,pCell);
+	}else{
+		ph7_value_null(pCell);
+		ph7_array_add_elem(pArray,0,pCell);
+		ph7_array_add_elem(pArray,0,pCell);
+	}
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/*
+ * PDO::lastInsertId(?string $name = null): string|false
+ *
+ * sqlite's rowid of the last insert, as a STRING -- php's portable answer,
+ * since another driver's sequence may not fit an int. A handle that has
+ * inserted nothing answers "0" rather than false, and the $name a sequence
+ * driver would use is accepted and ignored here, as php accepts it.
+ */
+static int vm_builtin_PDO_lastInsertId(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_pdo *pConn = PdoOfInstance(PH7_ContextThis(pCtx));
+	char zBuf[32];
+	int nBuf;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pConn == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","PDO object is uninitialized");
+	}
+	PH7_PdoTouch(pConn);
+	nBuf = SyBufferFormat(zBuf,sizeof(zBuf),"%qd",PH7_PdoSqliteLastInsertId(pConn));
+	ph7_result_string(pCtx,zBuf,nBuf);
 	return PH7_OK;
 }
 
@@ -962,16 +1136,17 @@ PH7_PRIVATE sxi32 PH7_VmInstallPdo(ph7_vm *pVm)
 		  "static", vm_builtin_PDO_connect },
 		{ "beginTransaction", PH7_MOD_PUBLIC, "", "@bool", vm_builtin_pdo_stub },
 		{ "commit",           PH7_MOD_PUBLIC, "", "@bool", vm_builtin_pdo_stub },
-		{ "errorCode",        PH7_MOD_PUBLIC, "", "@?string", vm_builtin_pdo_stub },
-		{ "errorInfo",        PH7_MOD_PUBLIC, "", "@array", vm_builtin_pdo_stub },
-		{ "exec",             PH7_MOD_PUBLIC, "string $statement", "@int|false", vm_builtin_pdo_stub },
+		{ "errorCode",        PH7_MOD_PUBLIC, "", "@?string", vm_builtin_PDO_errorCode },
+		{ "errorInfo",        PH7_MOD_PUBLIC, "", "@array", vm_builtin_PDO_errorInfo },
+		{ "exec",             PH7_MOD_PUBLIC, "string $statement", "@int|false",
+		  vm_builtin_PDO_exec },
 		{ "getAttribute",     PH7_MOD_PUBLIC, "int $attribute", "@mixed",
 		  vm_builtin_PDO_getAttribute },
 		{ "getAvailableDrivers", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "", "@array",
 		  vm_builtin_PDO_getAvailableDrivers },
 		{ "inTransaction",    PH7_MOD_PUBLIC, "", "@bool", vm_builtin_pdo_stub },
 		{ "lastInsertId",     PH7_MOD_PUBLIC, "?string $name = null", "@string|false",
-		  vm_builtin_pdo_stub },
+		  vm_builtin_PDO_lastInsertId },
 		{ "prepare",          PH7_MOD_PUBLIC, "string $query, array $options = []",
 		  "@PDOStatement|false", vm_builtin_pdo_stub },
 		{ "query",            PH7_MOD_PUBLIC,

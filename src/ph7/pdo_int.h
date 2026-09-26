@@ -61,10 +61,13 @@ struct phl_pdo {
 	int bPersistent;              /* what ATTR_PERSISTENT reports back */
 	int iTxMode;                  /* Pdo\Sqlite::ATTR_TRANSACTION_MODE */
 	/* The last operation's outcome, as errorCode()/errorInfo() present it. */
+	int bExtendedCodes;           /* Pdo\Sqlite::ATTR_EXTENDED_RESULT_CODES */
 	int iErrState;                /* PDO_ERR_* */
 	char zSqlState[6];            /* "HY000" and friends; always NUL-terminated */
 	int iDrvCode;                 /* sqlite's own result code */
 	char *zDrvMsg;                /* sqlite's own message, VM-allocated, or 0 */
+	int bNoDrvDetail;             /* the failure came from the LAYER, not the database,
+	                               * so errorInfo() reports [state, null, null] */
 	phl_pdo *pNext;
 };
 
@@ -73,6 +76,9 @@ PH7_PRIVATE phl_pdo * PH7_PdoNewConn(ph7_vm *pVm);
 PH7_PRIVATE void PH7_PdoFreeConn(phl_pdo *pConn);
 PH7_PRIVATE void PH7_PdoSetError(phl_pdo *pConn,const char *zSqlState,int iCode,const char *zMsg);
 PH7_PRIVATE void PH7_PdoClearError(phl_pdo *pConn);
+/* php clears the handle's error at the ENTRY of most verbs, which is why a
+ * failure is invisible to errorCode() after the next successful call. */
+PH7_PRIVATE void PH7_PdoTouch(phl_pdo *pConn);
 PH7_PRIVATE sxi32 PH7_PdoRaise(ph7_context *pCtx,phl_pdo *pConn,const char *zFn);
 PH7_PRIVATE sxi32 PH7_PdoRaiseImpl(ph7_context *pCtx,phl_pdo *pConn,const char *zFn,
 	const char *zSqlState,const char *zMsg);
@@ -85,6 +91,10 @@ PH7_PRIVATE sxi32 PH7_PdoSqliteOpen(ph7_context *pCtx,phl_pdo *pConn,const char 
 PH7_PRIVATE void PH7_PdoSqliteClose(phl_pdo *pConn);
 PH7_PRIVATE const char * PH7_PdoSqliteLibVersion(void);
 PH7_PRIVATE void PH7_PdoSqliteTakeError(phl_pdo *pConn);
+/* Run every statement in one string; answers the change count or -1 on failure
+ * (with the connection's error already set). */
+PH7_PRIVATE ph7_int64 PH7_PdoSqliteExec(phl_pdo *pConn,const char *zSql,int nSql);
+PH7_PRIVATE ph7_int64 PH7_PdoSqliteLastInsertId(phl_pdo *pConn);
 
 #endif /* PH7_ENABLE_SQLITE */
 #endif /* PH7_PDO_INT_H */

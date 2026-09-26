@@ -30,7 +30,15 @@
 PH7_PRIVATE void PH7_PdoSqliteTakeError(phl_pdo *pConn)
 {
 	const char *zSqlState = "HY000";
-	int iCode = pConn->pDb ? sqlite3_extended_errcode(pConn->pDb) : SQLITE_ERROR;
+	/* The PRIMARY result code, not the extended one: a UNIQUE violation is 19
+	 * (SQLITE_CONSTRAINT) and not 2067 (SQLITE_CONSTRAINT_UNIQUE) unless the
+	 * script asked for extended codes, which is what that driver attribute is
+	 * for. sqlite reports the extended code from both accessors once they are
+	 * enabled on the connection, so the choice is made here. */
+	int iCode = pConn->pDb
+		? (pConn->bExtendedCodes ? sqlite3_extended_errcode(pConn->pDb)
+		                         : sqlite3_errcode(pConn->pDb))
+		: SQLITE_ERROR;
 	const char *zMsg = pConn->pDb ? sqlite3_errmsg(pConn->pDb) : "unknown error";
 	switch( iCode & 0xff ){
 		case SQLITE_NOTFOUND:   zSqlState = "42S02"; break;
@@ -107,6 +115,56 @@ PH7_PRIVATE void PH7_PdoSqliteClose(phl_pdo *pConn)
 		sqlite3_close_v2(pConn->pDb);
 		pConn->pDb = 0;
 	}
+}
+
+/*
+ * PDO::exec()'s work: prepare, step and finalize every statement the string
+ * holds, one after another.  php runs them ALL -- `INSERT ...; INSERT ...;` is
+ * two inserts -- and answers sqlite3_changes(), which is the count from the
+ * LAST statement that changed anything and is left ALONE by a SELECT or by a
+ * statement that changes nothing. That is why exec() over a SELECT answers
+ * whatever the previous write answered rather than 0.
+ */
+PH7_PRIVATE ph7_int64 PH7_PdoSqliteExec(phl_pdo *pConn,const char *zSql,int nSql)
+{
+	const char *zTail = zSql;
+	const char *zEnd = zSql + nSql;
+	if( pConn->pDb == 0 ){
+		return -1;
+	}
+	while( zTail < zEnd ){
+		sqlite3_stmt *pStmt = 0;
+		const char *zNext = 0;
+		int rc = sqlite3_prepare_v2(pConn->pDb,zTail,(int)(zEnd - zTail),&pStmt,&zNext);
+		if( rc != SQLITE_OK ){
+			PH7_PdoSqliteTakeError(pConn);
+			return -1;
+		}
+		if( pStmt == 0 ){
+			/* whitespace or a comment: nothing to run, and php answers the
+			 * change count it already had rather than an error */
+			if( zNext == 0 || zNext <= zTail ){
+				break;
+			}
+			zTail = zNext;
+			continue;
+		}
+		do{
+			rc = sqlite3_step(pStmt);
+		}while( rc == SQLITE_ROW );
+		if( rc != SQLITE_DONE ){
+			PH7_PdoSqliteTakeError(pConn);
+			sqlite3_finalize(pStmt);
+			return -1;
+		}
+		sqlite3_finalize(pStmt);
+		zTail = zNext ? zNext : zEnd;
+	}
+	return (ph7_int64)sqlite3_changes(pConn->pDb);
+}
+PH7_PRIVATE ph7_int64 PH7_PdoSqliteLastInsertId(phl_pdo *pConn)
+{
+	return pConn->pDb ? (ph7_int64)sqlite3_last_insert_rowid(pConn->pDb) : 0;
 }
 
 static int vm_builtin_pdo_sqlite_stub(ph7_context *pCtx,int nArg,ph7_value **apArg)
