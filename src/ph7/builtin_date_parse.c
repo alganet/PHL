@@ -798,7 +798,7 @@ static sxi64 DtCivilAdd(sxi64 iTs,sxi32 iOff,sxi64 y,sxi64 m,sxi64 d,
 typedef struct dt_diff dt_diff;
 struct dt_diff
 {
-	sxi64 y,m,d,h,i,s,nDays;
+	sxi64 y,m,d,h,i,s,uSec,nDays;
 	int bInvert;
 };
 /*
@@ -814,14 +814,27 @@ struct dt_diff
  * settles the inverted case: |d| < 31 and the borrowed month has at least 28 days,
  * while a 28-day base month can only be reached from a day-of-month <= 29.
  */
-static void DtCivilDiff(sxi64 iTs1,sxi32 iOff,sxi64 iTs2,dt_diff *pOut)
+static void DtCivilDiff(sxi64 iTs1,int uSec1,sxi32 iOff,sxi64 iTs2,int uSec2,dt_diff *pOut)
 {
 	sxi64 iA,iB,iLa,iLb,daysA,daysB,yA,yB;
-	int moA,dA,moB,dB,bInvert;
-	sxi64 sA,sB,y,m,d,h,i,s;
-	bInvert = iTs1 > iTs2;
+	int moA,dA,moB,dB,bInvert,usA,usB;
+	sxi64 sA,sB,y,m,d,h,i,s,us;
+	/* The MICROSECONDS are part of which date comes first -- `$a->diff($b)` on two
+	 * dates inside the same second is an INVERTED interval when $a is the later of
+	 * them -- and their borrow is a whole second off the later date, so every field
+	 * below and the day COUNT are computed from the borrowed instant: a difference
+	 * of one microsecond less than a day is 23:59:59.999999 with days = 0, not a
+	 * day. */
+	bInvert = iTs1 > iTs2 || (iTs1 == iTs2 && uSec1 > uSec2);
 	iA = bInvert ? iTs2 : iTs1;
 	iB = bInvert ? iTs1 : iTs2;
+	usA = bInvert ? uSec2 : uSec1;
+	usB = bInvert ? uSec1 : uSec2;
+	us = usB - usA;
+	if( us < 0 ){
+		us += 1000000;
+		iB--;
+	}
 	iLa = iA + iOff;
 	iLb = iB + iOff;
 	daysA = DtFloorDiv(iLa,86400);
@@ -861,6 +874,7 @@ static void DtCivilDiff(sxi64 iTs1,sxi32 iOff,sxi64 iTs2,dt_diff *pOut)
 	pOut->h = h;
 	pOut->i = i;
 	pOut->s = s;
+	pOut->uSec = us;
 	pOut->nDays = (iB - iA) / 86400;
 	pOut->bInvert = bInvert;
 }
@@ -1399,6 +1413,56 @@ parse_num_off:	{
 #define DT_US    "__dtUs"
 #define DTZ_OFF  "__dtzOff"
 #define DTZ_NAME "__dtzName"
+/*
+ * ---------------------------------------------------------------------------
+ * A DateInterval's MICROSECONDS.
+ *
+ * php stores them as an int64 COUNT (timelib_rel_time.us) and shows that count
+ * divided by a million, so the float is a rendering and the integer is the
+ * value: `$i->f = 0.1234567` reads back 0.123456 because the write truncated to
+ * 123456 microseconds, and `f` is what diff() fills, what add()/sub() move the
+ * clock by, and what format()'s %f prints.
+ *
+ * PHL's `f` is a real property slot a script reads directly, so the count lives
+ * beside it in a hidden one. The two are written together by every door that
+ * owns the value (the write handler, diff, the constructors); a write that
+ * arrives from somewhere else — unserialize's raw property store, or one of the
+ * §7.4 shapes php answers with a temporary — leaves only `f` behind, so the
+ * count is trusted only while it still RENDERS to the float on show, and is
+ * re-derived from the float when it does not.
+ * ---------------------------------------------------------------------------
+ */
+#define DT_IV_US "__ivUs"
+/* php's conversion of the `f` property to its stored count, cast contract and
+ * all: it TRUNCATES toward zero, WRAPS what no int64 can hold, and answers 0 for
+ * a NaN or an infinity. */
+static sxi64 DtIvUsecOfReal(double r)
+{
+	return PH7_RealToInt64(r * 1000000.0);
+}
+/* The interval's microseconds. */
+static sxi64 DtIvUsec(ph7_class_instance *pIv)
+{
+	ph7_value *pF = PH7_NativeAttr(pIv,"f");
+	sxi64 us = PH7_NativeAttrInt(pIv,DT_IV_US);
+	double r = 0.0;
+	if( pF && (pF->iFlags & MEMOBJ_REAL) ){
+		r = (double)pF->rVal;
+	}else if( pF && (pF->iFlags & MEMOBJ_INT) ){
+		r = (double)pF->x.iVal;
+	}
+	if( (double)us / 1000000.0 == r ){
+		return us;   /* the count `f` was rendered from: exact past 2^53, where the float is not */
+	}
+	return DtIvUsecOfReal(r);
+}
+/* Store a microsecond count and the float php shows for it -- the two halves of
+ * the same value, written together by every door that owns it. */
+static void DtIvSetUsec(ph7_vm *pVm,ph7_class_instance *pIv,sxi64 us)
+{
+	PH7_NativeSetAttrInt(pVm,pIv,DT_IV_US,us);
+	PH7_NativeSetAttrReal(pVm,pIv,"f",(ph7_real)((double)us / 1000000.0));
+}
 /* One date object's state, as the bodies below pass it around. */
 typedef struct dt_state dt_state;
 struct dt_state
@@ -1790,8 +1854,9 @@ static int DtDiffResult(ph7_context *pCtx,ph7_class_instance *pBase,
 	if( pIvClass == 0 ){
 		return PH7_OK;
 	}
-	DtCivilDiff(PH7_NativeAttrInt(pBase,DT_TS),(sxi32)PH7_NativeAttrInt(pBase,DT_OFF),
-		PH7_NativeAttrInt(pTarget,DT_TS),&sDiff);
+	DtCivilDiff(PH7_NativeAttrInt(pBase,DT_TS),(int)PH7_NativeAttrInt(pBase,DT_US),
+		(sxi32)PH7_NativeAttrInt(pBase,DT_OFF),
+		PH7_NativeAttrInt(pTarget,DT_TS),(int)PH7_NativeAttrInt(pTarget,DT_US),&sDiff);
 	pIv = PH7_NewClassInstance(pVm,pIvClass);
 	if( pIv == 0 ){
 		return PH7_ContextMemoryError(pCtx);
@@ -1802,6 +1867,7 @@ static int DtDiffResult(ph7_context *pCtx,ph7_class_instance *pBase,
 	PH7_NativeSetAttrInt(pVm,pIv,"h",sDiff.h);
 	PH7_NativeSetAttrInt(pVm,pIv,"i",sDiff.i);
 	PH7_NativeSetAttrInt(pVm,pIv,"s",sDiff.s);
+	DtIvSetUsec(pVm,pIv,sDiff.uSec);
 	PH7_NativeSetAttrInt(pVm,pIv,"days",sDiff.nDays);
 	PH7_NativeSetAttrInt(pVm,pIv,"invert",bAbsolute ? 0 : sDiff.bInvert);
 	PH7_NativeResultObject(pCtx,pIv);
@@ -2352,49 +2418,6 @@ static void DtIvStore(ph7_vm *pVm,ph7_class_instance *pObj,const sxi64 *aVal)
 	for( k = 0 ; k < 6 ; k++ ){
 		PH7_NativeSetAttrInt(pVm,pObj,azDtIvField[k],aVal[k]);
 	}
-}
-/*
- * ---------------------------------------------------------------------------
- * A DateInterval's MICROSECONDS.
- *
- * php stores them as an int64 COUNT (timelib_rel_time.us) and shows that count
- * divided by a million, so the float is a rendering and the integer is the
- * value: `$i->f = 0.1234567` reads back 0.123456 because the write truncated to
- * 123456 microseconds, and `f` is what diff() fills, what add()/sub() move the
- * clock by, and what format()'s %f prints.
- *
- * PHL's `f` is a real property slot a script reads directly, so the count lives
- * beside it in a hidden one. The two are written together by every door that
- * owns the value (the write handler, diff, the constructors); a write that
- * arrives from somewhere else — unserialize's raw property store, or one of the
- * §7.4 shapes php answers with a temporary — leaves only `f` behind, so the
- * count is trusted only while it still RENDERS to the float on show, and is
- * re-derived from the float when it does not.
- * ---------------------------------------------------------------------------
- */
-#define DT_IV_US "__ivUs"
-/* php's conversion of the `f` property to its stored count, cast contract and
- * all: it TRUNCATES toward zero, WRAPS what no int64 can hold, and answers 0 for
- * a NaN or an infinity. */
-static sxi64 DtIvUsecOfReal(double r)
-{
-	return PH7_RealToInt64(r * 1000000.0);
-}
-/* The interval's microseconds. */
-static sxi64 DtIvUsec(ph7_class_instance *pIv)
-{
-	ph7_value *pF = PH7_NativeAttr(pIv,"f");
-	sxi64 us = PH7_NativeAttrInt(pIv,DT_IV_US);
-	double r = 0.0;
-	if( pF && (pF->iFlags & MEMOBJ_REAL) ){
-		r = (double)pF->rVal;
-	}else if( pF && (pF->iFlags & MEMOBJ_INT) ){
-		r = (double)pF->x.iVal;
-	}
-	if( (double)us / 1000000.0 == r ){
-		return us;   /* the count `f` was rendered from: exact past 2^53, where the float is not */
-	}
-	return DtIvUsecOfReal(r);
 }
 /*
  * php's date_interval_write_property: what a write to one of DateInterval's

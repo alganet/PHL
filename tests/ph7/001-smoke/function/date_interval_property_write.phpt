@@ -136,3 +136,7 @@ Error: Cannot assign by reference to overloaded object
 float(0)
 int(2)
 float(2.9)
+--CLEAN--
+<?php
+/* the smoke corpus runs in ONE interpreter: leave no globals behind */
+unset($i, $j, $k, $l, $m, $n, $q, $qx, $r, $v, $p);
