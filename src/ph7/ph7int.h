@@ -3517,6 +3517,14 @@ typedef struct phl_xmldoc phl_xmldoc;
 struct phl_xmldoc {
 	void *pDoc;         /* xmlDocPtr (void* keeps libxml headers out of ph7int.h) */
 	SySet aOrphans;     /* xmlNodePtr's unlinked from the tree but still owned */
+	/* The stand-in NODES a DTD's NOTATION declarations are answered through:
+	 * an xmlNotation is {name, PublicID, SystemID} and nothing else -- it has
+	 * no type field, so it cannot be walked as a node -- and php builds an
+	 * entity-shaped node per lookup. One per declaration is built here and
+	 * kept, so the wrapper identity every other node has holds for these too;
+	 * they need their own free (vm_libxml.c), since xmlFreeNode would read
+	 * an xmlEntity's length/etype pair as a node's property list. */
+	SySet aNotations;   /* synthesized XML_NOTATION_NODE xmlNodePtr's */
 	ph7_vm *pVm;        /* Owning VM (error routing from libxml callbacks) */
 	int bPreserveWS;    /* DOMDocument->preserveWhiteSpace */
 	int bFormatOutput;  /* DOMDocument->formatOutput */

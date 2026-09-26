@@ -248,6 +248,7 @@ static const char * DomClassOfKind(int iKind)
 	 * from each of them rather than reading an xmlElement as an xmlEntity. */
 	case XML_ENTITY_DECL:
 	case XML_ELEMENT_DECL:       return "DOMEntity";
+	case XML_NOTATION_NODE:      return "DOMNotation";
 	default:                     return "DOMNode";
 	}
 }
@@ -6096,6 +6097,7 @@ DOM_METHOD(vm_builtin_DOMNode_wakeup)
  * lists -- the reason a parameter entity, which is a child of the DTD like
  * every other declaration, is not in `entities`. */
 #define DNL_ENTS  4   /* $doctype->entities */
+#define DNL_NOTS  5   /* $doctype->notations */
 #define DNL_KIND  "__kind"
 #define DNL_OWNER "__owner"
 #define DNL_NAME  "__name"
@@ -6256,7 +6258,8 @@ static int DomListProp(ph7_context *pCtx,const char *zName)
  * attribute list? The two are walked with entirely different machinery. */
 static int DomMapIsTable(ph7_class_instance *pMap)
 {
-	return pMap != 0 && PH7_NativeAttrInt(pMap,DNL_KIND) == DNL_ENTS;
+	sxi64 iKind = pMap ? PH7_NativeAttrInt(pMap,DNL_KIND) : (sxi64)DNL_CHILD;
+	return iKind == DNL_ENTS || iKind == DNL_NOTS;
 }
 /*
  * The table itself, which is NULL for a doctype that declares nothing of that
@@ -6270,7 +6273,75 @@ static xmlHashTablePtr DomMapHash(ph7_class_instance *pMap,phl_domnode *pOwner)
 	 || (pDtd->type != XML_DTD_NODE && pDtd->type != XML_DOCUMENT_TYPE_NODE) ){
 		return 0;
 	}
-	return (xmlHashTablePtr)pDtd->entities;
+	return (xmlHashTablePtr)(PH7_NativeAttrInt(pMap,DNL_KIND) == DNL_NOTS
+		? pDtd->notations : pDtd->entities);
+}
+/*
+ * A NOTATION declaration answered as a node.
+ *
+ * libxml's xmlNotation is `{name, PublicID, SystemID}` -- three strings and no
+ * type field -- so it cannot be handed to anything that walks a node.  php
+ * builds an entity-shaped stand-in around it (the two structs share their
+ * header, which is why the same reader answers both) with NO document and NO
+ * parent, and that absence is php-visible: a notation's `ownerDocument` is
+ * null, its `isConnected` false and its `getRootNode()` itself.
+ *
+ * php builds a FRESH one per lookup and frees it with the object; PHL builds
+ * one per declaration and keeps it on the document's shell, so the wrapper
+ * identity every other node has holds here too (PLAN §7.4: `$map->item(0) ===
+ * $map->item(0)` is true here and false there).
+ */
+static xmlNodePtr DomNotationNode(phl_xmldoc *pShell,xmlNotationPtr pNot)
+{
+	xmlEntityPtr *apHave;
+	xmlEntityPtr pNode;
+	sxu32 n;
+	if( pShell == 0 || pNot == 0 ){
+		return 0;
+	}
+	apHave = (xmlEntityPtr *)SySetBasePtr(&pShell->aNotations);
+	for( n = 0 ; n < SySetUsed(&pShell->aNotations) ; ++n ){
+		if( apHave[n]->_private == (void *)pNot ){
+			return (xmlNodePtr)apHave[n];
+		}
+	}
+	pNode = (xmlEntityPtr)xmlMalloc(sizeof(xmlEntity));
+	if( pNode == 0 ){
+		return 0;
+	}
+	SyZero(pNode,sizeof(xmlEntity));
+	pNode->type = XML_NOTATION_NODE;
+	pNode->name = xmlStrdup(pNot->name);
+	pNode->ExternalID = xmlStrdup(pNot->PublicID);
+	pNode->SystemID = xmlStrdup(pNot->SystemID);
+	/* The declaration this stands for, so a second lookup finds it again. */
+	pNode->_private = (void *)pNot;
+	if( SySetPut(&pShell->aNotations,(const void *)&pNode) != SXRET_OK ){
+		if( pNode->name ){
+			xmlFree((xmlChar *)pNode->name);
+		}
+		if( pNode->ExternalID ){
+			xmlFree((xmlChar *)pNode->ExternalID);
+		}
+		if( pNode->SystemID ){
+			xmlFree((xmlChar *)pNode->SystemID);
+		}
+		xmlFree(pNode);
+		return 0;
+	}
+	return (xmlNodePtr)pNode;
+}
+/* The payload a table map hands back, as a node: an entity declaration IS one,
+ * a notation declaration needs its stand-in. */
+static xmlNodePtr DomTablePayload(ph7_class_instance *pMap,phl_domnode *pOwner,void *pPayload)
+{
+	if( pPayload == 0 ){
+		return 0;
+	}
+	if( PH7_NativeAttrInt(pMap,DNL_KIND) == DNL_NOTS ){
+		return DomNotationNode(pOwner->pShell,(xmlNotationPtr)pPayload);
+	}
+	return (xmlNodePtr)pPayload;
 }
 /*
  * php walks these tables with xmlHashScan and takes the n-th thing it is
@@ -6292,7 +6363,7 @@ static void DomHashPickOne(void *pPayload,void *pData,const xmlChar *zName)
 		pPick->pHit = pPayload;
 	}
 }
-static xmlNodePtr DomHashAt(xmlHashTablePtr pTab,int iIndex)
+static void * DomHashAt(xmlHashTablePtr pTab,int iIndex)
 {
 	DomHashPick sPick;
 	if( pTab == 0 || iIndex < 0 || iIndex >= xmlHashSize(pTab) ){
@@ -6301,7 +6372,7 @@ static xmlNodePtr DomHashAt(xmlHashTablePtr pTab,int iIndex)
 	sPick.iWant = iIndex;
 	sPick.pHit = 0;
 	xmlHashScan(pTab,DomHashPickOne,&sPick);
-	return (xmlNodePtr)sPick.pHit;
+	return sPick.pHit;
 }
 static ph7_class_instance * DomMapItem(ph7_vm *pVm,ph7_class_instance *pMap,int iIndex)
 {
@@ -6310,8 +6381,9 @@ static ph7_class_instance * DomMapItem(ph7_vm *pVm,ph7_class_instance *pMap,int 
 	if( pOwner == 0 || iIndex < 0 ){
 		return 0;
 	}
-	pNode = DomMapIsTable(pMap) ? DomHashAt(DomMapHash(pMap,pOwner),iIndex)
-	                            : (xmlNodePtr)DomAttrAt((xmlNodePtr)pOwner->pNode,iIndex);
+	pNode = DomMapIsTable(pMap)
+		? DomTablePayload(pMap,pOwner,DomHashAt(DomMapHash(pMap,pOwner),iIndex))
+		: (xmlNodePtr)DomAttrAt((xmlNodePtr)pOwner->pNode,iIndex);
 	return DomWrap(&(*pVm),PH7_NativeAttrObj(pMap,DOM_DOC),pOwner->pShell,pNode);
 }
 static int DomMapCount(ph7_class_instance *pMap)
@@ -6347,7 +6419,8 @@ DOM_METHOD(vm_builtin_DOMNamedNodeMap_getNamedItem)
 	 * is keyed by that name to begin with, so it is one lookup. */
 	xmlNodePtr pHit = pOwner == 0 ? 0
 		: DomMapIsTable(pThis)
-			? (xmlNodePtr)xmlHashLookup(DomMapHash(pThis,pOwner),(const xmlChar *)zName)
+			? DomTablePayload(pThis,pOwner,
+				xmlHashLookup(DomMapHash(pThis,pOwner),(const xmlChar *)zName))
 			: (xmlNodePtr)DomAttrByLocal((xmlNodePtr)pOwner->pNode,zName);
 	if( pHit == 0 ){
 		ph7_result_null(pCtx);
@@ -6372,7 +6445,8 @@ DOM_METHOD(vm_builtin_DOMNamedNodeMap_getNamedItemNS)
 	 * everything. */
 	xmlNodePtr pHit = pOwner == 0 ? 0
 		: DomMapIsTable(pThis)
-			? (xmlNodePtr)xmlHashLookup(DomMapHash(pThis,pOwner),(const xmlChar *)zLocal)
+			? DomTablePayload(pThis,pOwner,
+				xmlHashLookup(DomMapHash(pThis,pOwner),(const xmlChar *)zLocal))
 		: zUri ? (xmlNodePtr)DomAttrByNs((xmlNodePtr)pOwner->pNode,zUri,zLocal)
 		       : (xmlNodePtr)DomAttrByLocal((xmlNodePtr)pOwner->pNode,zLocal);
 	if( pHit == 0 ){
@@ -7939,9 +8013,10 @@ static int DomDocTypeProp(ph7_context *pCtx,const char *zName)
 		DomInternalSubset(pCtx,pDtd);
 		return 1;
 	}
-	if( DomNameIs(zName,"entities") ){
+	if( DomNameIs(zName,"entities") || DomNameIs(zName,"notations") ){
 		ph7_class_instance *pMap = DomNewCollection(pCtx->pVm,"DOMNamedNodeMap",
-			DomThisDoc(pCtx),DNL_ENTS,PH7_ContextThis(pCtx),0,0,0);
+			DomThisDoc(pCtx),DomNameIs(zName,"notations") ? DNL_NOTS : DNL_ENTS,
+			PH7_ContextThis(pCtx),0,0,0);
 		if( pMap ){
 			PH7_NativeResultObject(pCtx,pMap);
 		}else{
@@ -8733,6 +8808,40 @@ static int DomSetEntityProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,
 	return DomSetNodeProp(pCtx,zName,pVal,pRc);
 }
 DOM_PROP_ACCESSORS(DOMEntity,DomEntityProp,DomSetEntityProp)
+/*
+ * DOMNotation: the two identifiers a `<!NOTATION ...>` declares.
+ *
+ * Both are plain strings that answer "" for the half that is absent -- a
+ * SYSTEM-only notation reads "" from `publicId` -- where DOMEntity's same-named
+ * pair are `?string`. The node under them is the stand-in DomNotationNode
+ * built, which shares the entity's layout, so both identifiers are read from
+ * the same two fields.
+ */
+static int DomNotationProp(ph7_context *pCtx,const char *zName)
+{
+	phl_domnode *pNd = DomThisNode(pCtx);
+	xmlNodePtr pNode = pNd ? (xmlNodePtr)pNd->pNode : 0;
+	xmlEntityPtr pNot = (pNode && pNode->type == XML_NOTATION_NODE)
+		? (xmlEntityPtr)pNode : 0;
+	if( DomNameIs(zName,"publicId") ){
+		ph7_result_string(pCtx,(pNot && pNot->ExternalID) ? (const char *)pNot->ExternalID : "",-1);
+		return 1;
+	}
+	if( DomNameIs(zName,"systemId") ){
+		ph7_result_string(pCtx,(pNot && pNot->SystemID) ? (const char *)pNot->SystemID : "",-1);
+		return 1;
+	}
+	return DomNodeProp(pCtx,zName);
+}
+static int DomSetNotationProp(ph7_context *pCtx,const char *zName,ph7_value *pVal,int *pRc)
+{
+	if( DomNameIs(zName,"publicId") || DomNameIs(zName,"systemId") ){
+		*pRc = DomRefuseWrite(pCtx,zName,1);
+		return DOM_SET_DONE;
+	}
+	return DomSetNodeProp(pCtx,zName,pVal,pRc);
+}
+DOM_PROP_ACCESSORS(DOMNotation,DomNotationProp,DomSetNotationProp)
 /* The fragment writes what DOMNode writes; only its READ set is wider. */
 DOM_PROP_ACCESSORS(DOMDocumentFragment,DomFragProp,DomSetNodeProp)
 /*
@@ -9150,6 +9259,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",
 		  vm_builtin_DOMEntity_set },
 	};
+	static const PH7_NativeMethodDef aNotationMethod[] = {
+		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNotation_get },
+		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNotation_isset },
+		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",
+		  vm_builtin_DOMNotation_set },
+	};
 	/* The comment and CDATA constructors -- the only method either class
 	 * declares of its own; php's CDATA data is REQUIRED where the other two
 	 * default. */
@@ -9307,6 +9422,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  aDocTypeMethod, SX_ARRAYSIZE(aDocTypeMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMEntity", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aEntityMethod, SX_ARRAYSIZE(aEntityMethod), 0, 0, 0, 0, 0, 0, 0 },
+		{ "DOMNotation", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
+		  aNotationMethod, SX_ARRAYSIZE(aNotationMethod), 0, 0, 0, 0, 0, 0, 0 },
 		/* php's own two: IteratorAggregate (NOT Iterator -- the chunk had the
 		 * list carry its own cursor) and Countable. */
 		{ "DOMNodeList", 0, "IteratorAggregate,Countable", PH7_CLASS_NOCLONE,
