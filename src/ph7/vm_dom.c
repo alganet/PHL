@@ -7899,6 +7899,216 @@ DOM_METHOD(vm_builtin_DOMDocument_xinclude)
 	return PH7_OK;
 }
 
+/* ===== DOMImplementation ===== */
+
+/*
+ * php's factory for the two things that cannot be made from a document that
+ * does not exist yet: a DOCTYPE, and a document with a namespaced root.
+ *
+ * It carries no state at all -- `new DOMImplementation` is enough, its three
+ * methods are ordinary instance methods, and `$doc->implementation` answers a
+ * FRESH one on every read.
+ */
+
+/* A node that belongs to NO document, wrapped and owned the way a constructed
+ * one is: parked on the per-VM limbo shell, its own identity-cache holder. The
+ * caller owns the reference. */
+static ph7_class_instance * DomLimboWrap(ph7_vm *pVm,xmlNodePtr pNode)
+{
+	const char *zClass = DomClassOfKind((int)pNode->type);
+	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);
+	ph7_class_instance *pObj = pClass ? PH7_NewClassInstance(&(*pVm),pClass) : 0;
+	phl_xmldoc *pShell = pObj ? DomLimboShell(&(*pVm)) : 0;
+	phl_domnode *pRes = pShell ? DomNewRes(&(*pVm),pShell,pNode) : 0;
+	if( pRes == 0 ){
+		if( pObj ){
+			PH7_ClassInstanceUnref(pObj);
+		}
+		return 0;
+	}
+	DomOrphanAdd(pShell,pNode);
+	DomSetRes(&(*pVm),pObj,pRes);
+	PH7_NativeSetAttrObj(&(*pVm),pObj,DOM_DOC,pObj);
+	DomCacheStore(&(*pVm),pObj,pNode,pObj);
+	return pObj;
+}
+/*
+ * DOMImplementation::hasFeature(string $feature, string $version): bool
+ *
+ * php's table is two rows wide and the version is compared as a STRING: only
+ * "1.0", "2.0" and "" are versions at all, and of those "Core" answers for
+ * "1.0" alone where "XML" answers for every one. So `hasFeature('Core','2.0')`
+ * is false while `hasFeature('XML','2.0')` is true, and `hasFeature('Core','1')`
+ * -- a version that is not spelled the way the table spells it -- is false.
+ */
+DOM_METHOD(vm_builtin_DOMImplementation_hasFeature)
+{
+	const char *zFeature = nArg > 0 ? ph7_value_to_string(apArg[0],0) : "";
+	const char *zVersion = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
+	int bKnown = DomNameIs(zVersion,"1.0") || DomNameIs(zVersion,"2.0")
+		|| zVersion[0] == 0;
+	ph7_result_bool(pCtx,bKnown
+		&& (DomNameIsCi(zFeature,"XML")
+			|| (DomNameIsCi(zFeature,"Core") && DomNameIs(zVersion,"1.0"))));
+	return PH7_OK;
+}
+/*
+ * DOMImplementation::createDocumentType(string $qualifiedName,
+ *     string $publicId = '', string $systemId = ''): DOMDocumentType
+ *
+ * The name is not checked at ALL beyond being non-empty -- `1bad`, `a b` and
+ * `p:q:r` are each a doctype php builds without a word -- because nothing has
+ * parsed it: the name is the bytes the `<!DOCTYPE ...>` line will carry.
+ */
+DOM_METHOD(vm_builtin_DOMImplementation_createDocumentType)
+{
+	int nName = 0;
+	const char *zName = nArg > 0 ? ph7_value_to_string(apArg[0],&nName) : "";
+	const char *zPub = nArg > 1 ? ph7_value_to_string(apArg[1],0) : "";
+	const char *zSys = nArg > 2 ? ph7_value_to_string(apArg[2],0) : "";
+	ph7_class_instance *pObj;
+	xmlDtdPtr pDtd;
+	if( nName < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"DOMImplementation::createDocumentType(): Argument #1 ($qualifiedName) "
+			"must not be empty");
+	}
+	pDtd = xmlNewDtd(0,(const xmlChar *)zName,
+		zPub[0] ? (const xmlChar *)zPub : 0,
+		zSys[0] ? (const xmlChar *)zSys : 0);
+	if( pDtd == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	pObj = DomLimboWrap(pCtx->pVm,(xmlNodePtr)pDtd);
+	if( pObj == 0 ){
+		xmlFreeDtd(pDtd);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_NativeResultObject(pCtx,pObj);
+	return PH7_OK;
+}
+/*
+ * DOMImplementation::createDocument(?string $namespace = null,
+ *     string $qualifiedName = '', ?DOMDocumentType $doctype = null): DOMDocument
+ *
+ * An empty qualified name is a document with no root at all, which is what
+ * makes the three-argument call with only a doctype meaningful.  The name is a
+ * QName or nothing (`1bad` and `a:b:c` are the Namespace Error), and the
+ * namespace decides what becomes of its PREFIX: with a URI the element is
+ * declared under it, and WITHOUT one the prefix is simply dropped -- php
+ * builds the element from the local name and hangs the declaration on it
+ * afterwards, so `createDocument('', 'p:root')` is `<root/>`.
+ *
+ * A doctype that already belongs to a document is the Wrong Document Error,
+ * so the same DOMDocumentType cannot seed two documents.
+ */
+DOM_METHOD(vm_builtin_DOMImplementation_createDocument)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const xmlChar *zUri = DomArgUri(nArg,apArg,0);
+	int nName = 0;
+	const char *zName = nArg > 1 ? ph7_value_to_string(apArg[1],&nName) : "";
+	phl_domnode *pDtdNd = (nArg > 2 && !ph7_value_is_null(apArg[2])) ? DomObjArg(apArg[2]) : 0;
+	xmlDtdPtr pDtd = pDtdNd ? (xmlDtdPtr)pDtdNd->pNode : 0;
+	ph7_class *pClass;
+	ph7_class_instance *pObj;
+	phl_xmldoc *pShell;
+	phl_domnode *pRes;
+	xmlDocPtr pDoc;
+	xmlNodePtr pRoot = 0;
+	xmlNsPtr pNs = 0;
+	xmlChar *zPrefix = 0,*zLocal = 0;
+	if( pDtd && pDtd->doc ){
+		/* php's own screen, and the reason a doctype seeds ONE document. */
+		return DomThrowAlways(pCtx,DOM_ERR_WRONG_DOC);
+	}
+	if( nName > 0 ){
+		if( xmlValidateQName((const xmlChar *)zName,0) != 0 ){
+			return DomThrowAlways(pCtx,DOM_ERR_NAMESPACE);
+		}
+		zLocal = xmlSplitQName2((const xmlChar *)zName,&zPrefix);
+		if( zLocal == 0 ){
+			zLocal = xmlStrdup((const xmlChar *)zName);
+		}
+		if( zUri && zUri[0] ){
+			/* php asks libxml for the declaration BEFORE it has a node to hang
+			 * it on, and takes a refusal (the `xml` prefix over its own URI is
+			 * one) as the Namespace Error. */
+			pNs = xmlNewNs(0,zUri,zPrefix);
+			if( pNs == 0 ){
+				if( zLocal ){
+					xmlFree(zLocal);
+				}
+				if( zPrefix ){
+					xmlFree(zPrefix);
+				}
+				return DomThrowAlways(pCtx,DOM_ERR_NAMESPACE);
+			}
+		}
+	}
+	pDoc = xmlNewDoc((const xmlChar *)"1.0");
+	pClass = pDoc ? PH7_VmExtractClass(pVm,"DOMDocument",sizeof("DOMDocument")-1,FALSE,0) : 0;
+	pObj = pClass ? PH7_NewClassInstance(pVm,pClass) : 0;
+	pShell = pObj ? PH7_LibxmlNewDoc(pVm,pDoc) : 0;
+	pRes = pShell ? DomNewRes(pVm,pShell,pDoc) : 0;
+	if( pRes == 0 ){
+		if( pDoc && pShell == 0 ){
+			xmlFreeDoc(pDoc);
+		}
+		if( pObj ){
+			PH7_ClassInstanceUnref(pObj);
+		}
+		if( pNs ){
+			xmlFreeNs(pNs);
+		}
+		if( zLocal ){
+			xmlFree(zLocal);
+		}
+		if( zPrefix ){
+			xmlFree(zPrefix);
+		}
+		return PH7_ContextMemoryError(pCtx);
+	}
+	DomSetRes(pVm,pObj,pRes);
+	PH7_NativeSetAttrObj(pVm,pObj,DOM_DOC,pObj);
+	if( pDtd ){
+		/* The doctype MOVES: it leaves the limbo shell for this document's
+		 * tree, and every wrapper of it -- its own and its declarations' --
+		 * re-homes on adoptNode's machinery, which is what makes the doctype
+		 * answer this document as its `ownerDocument` afterwards rather than
+		 * the holder it was its own. */
+		ph7_class_instance *pDtdObj = (ph7_class_instance *)apArg[2]->x.pOther;
+		DomOrphanRemove(pDtdNd->pShell,(xmlNodePtr)pDtd);
+		pDtd->doc = pDoc;
+		pDoc->intSubset = pDtd;
+		DomLinkLast((xmlNodePtr)pDoc,(xmlNodePtr)pDtd);
+		DomAdoptWrappers(pVm,pDtdObj,pObj,pShell,(xmlNodePtr)pDtd);
+	}
+	if( nName > 0 ){
+		pRoot = xmlNewDocNode(pDoc,0,zLocal,0);
+		if( pRoot ){
+			xmlDocSetRootElement(pDoc,pRoot);
+			if( pNs ){
+				pNs->next = pRoot->nsDef;
+				pRoot->nsDef = pNs;
+				xmlSetNs(pRoot,pNs);
+				pNs = 0;
+			}
+		}
+	}
+	if( pNs ){
+		xmlFreeNs(pNs);
+	}
+	if( zLocal ){
+		xmlFree(zLocal);
+	}
+	if( zPrefix ){
+		xmlFree(zPrefix);
+	}
+	PH7_NativeResultObject(pCtx,pObj);
+	return PH7_OK;
+}
+
 /* ===== The shared __get dispatch ===== */
 
 /*
@@ -8204,6 +8414,19 @@ static int DomDocProp(ph7_context *pCtx,const char *zName)
 	phl_domnode *pNd = DomThisNode(pCtx);
 	if( DomNameIs(zName,"documentElement") ){
 		DomResultNodeOf(pCtx,pNd,pNd ? xmlDocGetRootElement((xmlDocPtr)pNd->pNode) : 0);
+		return 1;
+	}
+	if( DomNameIs(zName,"implementation") ){
+		/* A FRESH object on every read, which is php's: the class has no state
+		 * and nothing ties one to a document. */
+		ph7_class *pClass = PH7_VmExtractClass(pCtx->pVm,"DOMImplementation",
+			sizeof("DOMImplementation")-1,FALSE,0);
+		ph7_class_instance *pImpl = pClass ? PH7_NewClassInstance(pCtx->pVm,pClass) : 0;
+		if( pImpl ){
+			PH7_NativeResultObject(pCtx,pImpl);
+		}else{
+			ph7_result_null(pCtx);
+		}
 		return 1;
 	}
 	if( DomNameIs(zName,"doctype") ){
@@ -9555,6 +9778,18 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		{ "__set",   PH7_MOD_PUBLIC, "string $name, mixed $value", "@void",
 		  vm_builtin_DOMEntity_set },
 	};
+	/* php's factory class: three ordinary instance methods and no state. */
+	static const PH7_NativeMethodDef aImplMethod[] = {
+		{ "createDocumentType", PH7_MOD_PUBLIC,
+		  "string $qualifiedName, string $publicId = '', string $systemId = ''", "",
+		  vm_builtin_DOMImplementation_createDocumentType },
+		{ "createDocument", PH7_MOD_PUBLIC,
+		  "?string $namespace = null, string $qualifiedName = '', "
+		  "?DOMDocumentType $doctype = null", "DOMDocument",
+		  vm_builtin_DOMImplementation_createDocument },
+		{ "hasFeature", PH7_MOD_PUBLIC, "string $feature, string $version", "bool",
+		  vm_builtin_DOMImplementation_hasFeature },
+	};
 	static const PH7_NativeMethodDef aNotationMethod[] = {
 		{ "__get",   PH7_MOD_PUBLIC, "string $name", "", vm_builtin_DOMNotation_get },
 		{ "__isset", PH7_MOD_PUBLIC, "string $name", "@bool", vm_builtin_DOMNotation_isset },
@@ -9718,6 +9953,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDom(ph7_vm *pVm)
 		  aDocTypeMethod, SX_ARRAYSIZE(aDocTypeMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMEntity", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aEntityMethod, SX_ARRAYSIZE(aEntityMethod), 0, 0, 0, 0, 0, 0, 0 },
+		{ "DOMImplementation", 0, 0, 0,
+		  aImplMethod, SX_ARRAYSIZE(aImplMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "DOMNotation", "DOMNode", 0, PH7_CLASS_NOSERIALIZE_SUBOK,
 		  aNotationMethod, SX_ARRAYSIZE(aNotationMethod), 0, 0, 0, 0, 0, 0, 0 },
 		/* php's own two: IteratorAggregate (NOT Iterator -- the chunk had the
