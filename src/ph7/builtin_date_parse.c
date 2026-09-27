@@ -131,9 +131,13 @@ struct dt_parsed
 	int nTimeTok;                   /* php's have_time: 0 = the string named no time
 	                                 * of day, 1 = it named one, 2 = a second bare
 	                                 * digit run then read as a YEAR */
-	int iWday;                      /* weekday target 0=Sunday..6, or -1 for none */
+	int bWday;                      /* the string named a weekday */
+	int iWday;                      /* that weekday, 0=Sunday..6 -- or NEGATIVE,
+	                                 * which is what `ago` makes of it */
 	int iWdayBehavior;              /* php's 0 (next/last), 1 (bare name), 2 (... this week) */
 	int iFirstLast;                 /* php's first_last_day_of: 0 none, 1 first, 2 last */
+	int bWeekdays;                  /* php's `weekday` special was named */
+	sxi64 iWeekdays;                /* ... this many BUSINESS days */
 	sxi32 iOff;                     /* the offset in force */
 	int bOffSet;                    /* 0 = the string named no zone, 1 = an offset,
 	                                 * 2 = a NAME the string spelled (zZone below) */
@@ -159,9 +163,12 @@ static void DtFieldsInit(dt_parsed *p,sxi32 iBaseOff)
 	p->h = p->i = p->s = p->us = DT_UNSET;
 	p->ry = p->rm = p->rd = p->rh = p->ri = p->rs = p->rus = 0;
 	p->bHaveDate = p->nTimeTok = 0;
-	p->iWday = -1;
+	p->bWday = 0;
+	p->iWday = 0;
 	p->iWdayBehavior = 0;
 	p->iFirstLast = 0;
+	p->bWeekdays = 0;
+	p->iWeekdays = 0;
 	p->iOff = iBaseOff;
 	p->bOffSet = 0;
 	p->zZone = 0;
@@ -234,11 +241,62 @@ static void DtAdjustWeekday(dt_parsed *p)
 		p->d = p->d - dow + wd;
 		return;
 	}
+	if( wd < 0 ){
+		/* php's mirror of the hunt, which only `ago` reaches: it turns the target
+		 * weekday negative, and `next monday ago` is the Monday before. */
+		sxi64 nwd = -wd;
+		p->d = DtWAdd(p->d,-(7 - (nwd - dow)));
+		return;
+	}
 	diff = wd - dow;
 	if( (p->rd < 0 && diff < 0) || (p->rd >= 0 && diff <= -p->iWdayBehavior) ){
 		diff += 7;
 	}
 	p->d = DtWAdd(p->d,diff);
+}
+/*
+ * php's `weekday` special: a count of BUSINESS days, which php applies before
+ * everything else. Whole fives are whole weeks (the day of the week is kept),
+ * the remainder walks past the weekend, and a count that lands on one is pushed
+ * off it -- forward to Monday when the count is zero, back to Friday when a
+ * positive count ends there.
+ */
+static void DtAdjustWeekdays(dt_parsed *p)
+{
+	sxi64 dow = DtDowOf(DtDayCountOf(p->y,p->m,p->d));
+	sxi64 count = p->iWeekdays,rem;
+	p->d = DtWAdd(p->d,(count / 5) * 7);
+	rem = count % 5;
+	if( count == 0 ){
+		if( dow == 0 ){ p->d += 1; }
+		else if( dow == 6 ){ p->d += 2; }
+		return;
+	}
+	if( count > 0 ){
+		if( rem == 0 ){
+			if( dow == 0 ){ p->d -= 2; }
+			else if( dow == 6 ){ p->d -= 1; }
+			return;
+		}
+		if( dow == 6 ){ p->d += 2; rem--; dow = 1; }
+		else if( dow == 0 ){ p->d += 1; rem--; dow = 1; }
+		if( rem > 0 ){
+			if( dow + rem > 5 ){ p->d += 2; }
+			p->d += rem;
+		}
+		return;
+	}
+	if( rem == 0 ){
+		if( dow == 0 ){ p->d += 1; }
+		else if( dow == 6 ){ p->d += 2; }
+		return;
+	}
+	if( dow == 0 ){ p->d -= 2; rem++; dow = 5; }
+	else if( dow == 6 ){ p->d -= 1; rem++; dow = 5; }
+	if( rem < 0 ){
+		if( dow + rem < 1 ){ p->d -= 2; }
+		p->d += rem;
+	}
 }
 /* php's `first|last day of`: the first is the day 1, the last is day 0 of the
  * month AFTER -- which the normalizer then reads back as the month's own last. */
@@ -287,7 +345,7 @@ static sxi64 DtApplyFields(dt_parsed *p,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs
 	 * makes it swallow the relative DAYS beside it. */
 	DtFirstLastDay(p);
 	DtNormalize(p);
-	if( p->iWday >= 0 ){
+	if( p->bWday ){
 		DtAdjustWeekday(p);
 		DtNormalize(p);
 	}
@@ -299,6 +357,14 @@ static sxi64 DtApplyFields(dt_parsed *p,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs
 	p->m  = DtWAdd(p->m,p->rm);
 	p->y  = DtWAdd(p->y,p->ry);
 	DtFirstLastDay(p);
+	/* php's business-day count runs AFTER the relative vector AND after the
+	 * `first|last day of` flag, so `last weekday -8 months` walks back from the
+	 * month it landed on and `first day of next month +9 weekdays` counts from
+	 * that 1st. */
+	if( p->bWeekdays ){
+		DtNormalize(p);
+		DtAdjustWeekdays(p);
+	}
 	DtNormalize(p);
 	*pUs = (int)p->us;
 	return DtMakeTs(p->y,(int)p->m,(int)p->d,(int)p->h,(int)p->i,(int)p->s,p->iOff);
@@ -784,6 +850,62 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
 #undef MDSKIPWS
 }
 /*
+ * Apply php's relative UNIT word at z with the amount v, and answer the bytes it
+ * takes -- 0 when there is no unit word here. Shared by the two spellings that
+ * reach one: a number in front of it, and php's `this`/`next`/`last`/`previous`,
+ * which is the same rule with the amount 0, 1 or -1 (`next hour`, `last year`).
+ */
+static int DtRelUnit(const char *z,const char *zEnd,sxi64 v,dt_parsed *p,int *pbSpecial)
+{
+	*pbSpecial = 0;
+#define DT_UNITEQ(zKw,nKw) (zEnd-z >= (nKw) && SyStrnicmp(z,zKw,nKw) == 0 \
+	&& (zEnd-z == (nKw) || !SyisAlpha(z[(nKw)])))
+	/* php's SUB-SECOND relative units, checked before the words they are
+	 * prefixes of ("ms" would otherwise swallow "msec"). `us` is NOT one of
+	 * them there, and neither is the Greek mu -- only U+00B5, the MICRO
+	 * SIGN, which is the two bytes 0xC2 0xB5 here. They accumulate apart
+	 * from the seconds and carry into them in DtApplyFields, so `-500
+	 * microseconds` from midnight is the previous day's 23:59:59.999500. */
+	if( DT_UNITEQ("microseconds",12) ){ p->rus = DtWAdd(p->rus,v);        return 12; }
+	else if( DT_UNITEQ("microsecond",11) ){ p->rus = DtWAdd(p->rus,v);    return 11; }
+	else if( DT_UNITEQ("milliseconds",12) ){ p->rus = DtWAdd(p->rus,DtWMul(v,1000)); return 12; }
+	else if( DT_UNITEQ("millisecond",11) ){ p->rus = DtWAdd(p->rus,DtWMul(v,1000)); return 11; }
+	else if( DT_UNITEQ("usecs",5) )  { p->rus = DtWAdd(p->rus,v);         return 5; }
+	else if( DT_UNITEQ("usec",4) )   { p->rus = DtWAdd(p->rus,v);         return 4; }
+	else if( DT_UNITEQ("msecs",5) )  { p->rus = DtWAdd(p->rus,DtWMul(v,1000)); return 5; }
+	else if( DT_UNITEQ("msec",4) )   { p->rus = DtWAdd(p->rus,DtWMul(v,1000)); return 4; }
+	else if( DT_UNITEQ("\xc2\xb5s",3) ){ p->rus = DtWAdd(p->rus,v);       return 3; }
+	else if( DT_UNITEQ("ms",2) )     { p->rus = DtWAdd(p->rus,DtWMul(v,1000)); return 2; }
+	else if( DT_UNITEQ("seconds",7) ){ p->rs = DtWAdd(p->rs,v);           return 7; }
+	else if( DT_UNITEQ("second",6) ) { p->rs = DtWAdd(p->rs,v);           return 6; }
+	else if( DT_UNITEQ("secs",4) )   { p->rs = DtWAdd(p->rs,v);           return 4; }
+	else if( DT_UNITEQ("sec",3) )    { p->rs = DtWAdd(p->rs,v);           return 3; }
+	else if( DT_UNITEQ("minutes",7) ){ p->ri = DtWAdd(p->ri,v);           return 7; }
+	else if( DT_UNITEQ("minute",6) ) { p->ri = DtWAdd(p->ri,v);           return 6; }
+	else if( DT_UNITEQ("mins",4) )   { p->ri = DtWAdd(p->ri,v);           return 4; }
+	else if( DT_UNITEQ("min",3) )    { p->ri = DtWAdd(p->ri,v);           return 3; }
+	else if( DT_UNITEQ("hours",5) )  { p->rh = DtWAdd(p->rh,v);           return 5; }
+	else if( DT_UNITEQ("hour",4) )   { p->rh = DtWAdd(p->rh,v);           return 4; }
+	else if( DT_UNITEQ("days",4) )   { p->rd = DtWAdd(p->rd,v);           return 4; }
+	else if( DT_UNITEQ("day",3) )    { p->rd = DtWAdd(p->rd,v);           return 3; }
+	else if( DT_UNITEQ("weeks",5) )  { p->rd = DtWAdd(p->rd,DtWMul(v,7)); return 5; }
+	else if( DT_UNITEQ("week",4) )   { p->rd = DtWAdd(p->rd,DtWMul(v,7)); return 4; }
+	else if( DT_UNITEQ("fortnights",10) ){ p->rd = DtWAdd(p->rd,DtWMul(v,14)); return 10; }
+	else if( DT_UNITEQ("fortnight",9) )  { p->rd = DtWAdd(p->rd,DtWMul(v,14)); return 9; }
+	else if( DT_UNITEQ("months",6) ) { p->rm = DtWAdd(p->rm,v);           return 6; }
+	else if( DT_UNITEQ("month",5) )  { p->rm = DtWAdd(p->rm,v);           return 5; }
+	else if( DT_UNITEQ("years",5) )  { p->ry = DtWAdd(p->ry,v);           return 5; }
+	else if( DT_UNITEQ("year",4) )   { p->ry = DtWAdd(p->ry,v);           return 4; }
+	/* php's BUSINESS-day count, which is not a field of the vector at all but a
+	 * move of its own (see DtAdjustWeekdays) */
+	/* php SETS this one rather than adding to it, so the last count in the string
+	 * is the only one that moves anything. */
+	else if( DT_UNITEQ("weekdays",8) ){ p->bWeekdays = 1; *pbSpecial = 1; p->iWeekdays = v; return 8; }
+	else if( DT_UNITEQ("weekday",7) ) { p->bWeekdays = 1; *pbSpecial = 1; p->iWeekdays = v; return 7; }
+	return 0;
+#undef DT_UNITEQ
+}
+/*
  * php's date-string parse, onto the field vector: absolute forms
  * "now" | "@<ts>" | "YYYY-MM-DD[( |T)HH:MM[:SS]][Z|±HH[:MM]]" | "HH:MM[:SS]" |
  * a textual month date, the keywords today/midnight/noon/tomorrow/yesterday, the
@@ -947,11 +1069,18 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 			dow = DtMatchWeekday(z,zEnd,&adv);
 			if( dow >= 0 ){
 				DtUnhaveTime(p);
+				p->bWday = 1;
 				p->iWday = dow;
 				/* php: "next"/"last" carry behaviour 0 and shift whole weeks
 				 * (`last monday` is -7 days from the matching one); a bare name
-				 * and "this" carry behaviour 1 and shift nothing. */
-				p->iWdayBehavior = (bHavePrefix && dir != 0) ? 0 : 1;
+				 * and "this" carry behaviour 1 and shift nothing. A bare name
+				 * does NOT overwrite the WEEK behaviour a `... week` word already
+				 * set, which is what keeps `last week monday` in that week. */
+				if( bHavePrefix ){
+					p->iWdayBehavior = (dir != 0) ? 0 : 1;
+				}else if( p->iWdayBehavior != 2 ){
+					p->iWdayBehavior = 1;
+				}
 				if( dir < 0 ){ p->rd = DtWAdd(p->rd,-7); }
 				z += adv;
 				bAny = 1;
@@ -967,27 +1096,65 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 			const char *zSave = z;
 			int dir = 2; /* 2 = no prefix */
 			if( DT_LOWEQ("next",4) ){ dir = 1; z += 4; }
+			else if( DT_LOWEQ("previous",8) ){ dir = -1; z += 8; }
 			else if( DT_LOWEQ("last",4) ){ dir = -1; z += 4; }
 			else if( DT_LOWEQ("this",4) ){ dir = 0; z += 4; }
 			if( dir != 2 ){
 				DT_SKIP_WS();
-				if( DT_LOWEQ("month",5) ){
-					z += 5;
-					p->rm = DtWAdd(p->rm,dir);
-					bAny = 1;
-					continue;
-				}
 				if( DT_LOWEQ("week",4) ){
 					z += 4;
 					p->rd = DtWAdd(p->rd,(sxi64)dir * 7);
-					if( p->iWday < 0 ){ p->iWday = 1; }   /* php: Monday, unless a
-						* weekday was already named ("monday this week") */
+					if( !p->bWday ){        /* php: Monday, unless a weekday was
+						* already named ("monday this week") */
+						p->bWday = 1;
+						p->iWday = 1;
+					}
 					p->iWdayBehavior = 2;
 					bAny = 1;
 					continue;
 				}
+				/* every other unit is the ordinary relative one with an amount of
+				 * 0, 1 or -1: `next hour`, `last year`, `previous day`. */
+				{
+					int nU,bSpec;
+					nU = DtRelUnit(z,zEnd,(sxi64)dir,p,&bSpec);
+					if( nU > 0 ){
+						/* php's business-day count zeroes the clock when a WORD
+						 * asked for it (`next weekday` is midnight) and leaves it
+						 * alone when a number did (`2 weekdays` keeps the hour). */
+						if( bSpec ){ DtUnhaveTime(p); }
+						z += nU;
+						bAny = 1;
+						continue;
+					}
+				}
 			}
 			z = zSave;
+		}
+		/* A bare `weekday`, with no count in front of it, is not the business-day
+		 * move at all in php but the MONDAY hunt -- the same answer a bare weekday
+		 * NAME gives. */
+		if( DT_LOWEQ("weekdays",8) || DT_LOWEQ("weekday",7) ){
+			DtUnhaveTime(p);
+			p->bWday = 1;
+			p->iWday = 1;
+			if( p->iWdayBehavior != 2 ){ p->iWdayBehavior = 1; }
+			z += DT_LOWEQ("weekdays",8) ? 8 : 7;
+			bAny = 1;
+			continue;
+		}
+		/* php's `ago` NEGATES the relative vector as it stands -- the weekday it
+		 * hunts for included, which is what makes `next monday ago` the Monday
+		 * before -- so a second `ago` puts it back. */
+		if( DT_LOWEQ("ago",3) ){
+			p->ry = -p->ry; p->rm = -p->rm; p->rd = -p->rd;
+			p->rh = -p->rh; p->ri = -p->ri; p->rs = -p->rs;   /* NOT the micro-
+				* seconds: php's `ago` leaves that one field standing */
+			p->iWday = -p->iWday;
+			p->iWeekdays = -p->iWeekdays;
+			z += 3;
+			bAny = 1;
+			continue;
 		}
 		/* The absolute DATE tokens, php's own rule that any of them may stand
 		 * anywhere in the string: "first day of january", "+1 day january",
@@ -1038,43 +1205,15 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 			}
 			if( neg ){ v = -v; }
 			DT_SKIP_WS();
-			/* php's SUB-SECOND relative units, checked before the words they are
-			 * prefixes of ("ms" would otherwise swallow "msec"). `us` is NOT one of
-			 * them there, and neither is the Greek mu -- only U+00B5, the MICRO
-			 * SIGN, which is the two bytes 0xC2 0xB5 here. They accumulate apart
-			 * from the seconds and carry into them in DtApplyFields, so `-500
-			 * microseconds` from midnight is the previous day's 23:59:59.999500. */
-			if( DT_LOWEQ("microseconds",12) ){ p->rus = DtWAdd(p->rus,v);        z += 12; }
-			else if( DT_LOWEQ("microsecond",11) ){ p->rus = DtWAdd(p->rus,v);    z += 11; }
-			else if( DT_LOWEQ("milliseconds",12) ){ p->rus = DtWAdd(p->rus,DtWMul(v,1000)); z += 12; }
-			else if( DT_LOWEQ("millisecond",11) ){ p->rus = DtWAdd(p->rus,DtWMul(v,1000)); z += 11; }
-			else if( DT_LOWEQ("usecs",5) )  { p->rus = DtWAdd(p->rus,v);         z += 5; }
-			else if( DT_LOWEQ("usec",4) )   { p->rus = DtWAdd(p->rus,v);         z += 4; }
-			else if( DT_LOWEQ("msecs",5) )  { p->rus = DtWAdd(p->rus,DtWMul(v,1000)); z += 5; }
-			else if( DT_LOWEQ("msec",4) )   { p->rus = DtWAdd(p->rus,DtWMul(v,1000)); z += 4; }
-			else if( DT_LOWEQ("\xc2\xb5s",3) ){ p->rus = DtWAdd(p->rus,v);       z += 3; }
-			else if( DT_LOWEQ("ms",2) )     { p->rus = DtWAdd(p->rus,DtWMul(v,1000)); z += 2; }
-			else if( DT_LOWEQ("seconds",7) ){ p->rs = DtWAdd(p->rs,v);           z += 7; }
-			else if( DT_LOWEQ("second",6) ) { p->rs = DtWAdd(p->rs,v);           z += 6; }
-			else if( DT_LOWEQ("secs",4) )   { p->rs = DtWAdd(p->rs,v);           z += 4; }
-			else if( DT_LOWEQ("sec",3) )    { p->rs = DtWAdd(p->rs,v);           z += 3; }
-			else if( DT_LOWEQ("minutes",7) ){ p->ri = DtWAdd(p->ri,v);           z += 7; }
-			else if( DT_LOWEQ("minute",6) ) { p->ri = DtWAdd(p->ri,v);           z += 6; }
-			else if( DT_LOWEQ("mins",4) )   { p->ri = DtWAdd(p->ri,v);           z += 4; }
-			else if( DT_LOWEQ("min",3) )    { p->ri = DtWAdd(p->ri,v);           z += 3; }
-			else if( DT_LOWEQ("hours",5) )  { p->rh = DtWAdd(p->rh,v);           z += 5; }
-			else if( DT_LOWEQ("hour",4) )   { p->rh = DtWAdd(p->rh,v);           z += 4; }
-			else if( DT_LOWEQ("days",4) )   { p->rd = DtWAdd(p->rd,v);           z += 4; }
-			else if( DT_LOWEQ("day",3) )    { p->rd = DtWAdd(p->rd,v);           z += 3; }
-			else if( DT_LOWEQ("weeks",5) )  { p->rd = DtWAdd(p->rd,DtWMul(v,7)); z += 5; }
-			else if( DT_LOWEQ("week",4) )   { p->rd = DtWAdd(p->rd,DtWMul(v,7)); z += 4; }
-			else if( DT_LOWEQ("fortnights",10) ){ p->rd = DtWAdd(p->rd,DtWMul(v,14)); z += 10; }
-			else if( DT_LOWEQ("fortnight",9) )  { p->rd = DtWAdd(p->rd,DtWMul(v,14)); z += 9; }
-			else if( DT_LOWEQ("months",6) ) { p->rm = DtWAdd(p->rm,v);           z += 6; }
-			else if( DT_LOWEQ("month",5) )  { p->rm = DtWAdd(p->rm,v);           z += 5; }
-			else if( DT_LOWEQ("years",5) )  { p->ry = DtWAdd(p->ry,v);           z += 5; }
-			else if( DT_LOWEQ("year",4) )   { p->ry = DtWAdd(p->ry,v);           z += 4; }
-			else{ bNoUnit = 1; }
+			/* php's unit words, sub-second ones first: they are all one rule (see
+			 * DtRelUnit), and the microseconds accumulate apart from the seconds
+			 * so `-500 microseconds` from midnight borrows a whole second. */
+			{
+				int nU,bSpec;
+				nU = DtRelUnit(z,zEnd,v,p,&bSpec);
+				if( nU > 0 ){ z += nU; }
+				else{ bNoUnit = 1; }
+			}
 			if( !bNoUnit ){
 				/* php's own ceiling on a relative number, checked once the UNIT
 				 * has claimed the run (the nocolon rules below have their own
