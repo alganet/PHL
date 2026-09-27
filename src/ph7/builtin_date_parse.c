@@ -3800,7 +3800,42 @@ static void DpNext(ph7_vm *pVm,ph7_class_instance *pThis)
 	PH7_NativeSetAttrInt(pVm,pThis,PH7_NATIVE_IT_KEY,PH7_NativeAttrInt(pThis,PH7_NATIVE_IT_KEY) + 1);
 	DpSettle(pVm,pThis);
 }
-static const PH7_NativeIterVtab sDpIterVtab = { DpRewind, DpNext };
+/*
+ * php's DatePeriod::$current IS the walk's cursor: the date the iterator sits on,
+ * and -- once the walk is over -- the one PAST the end, the date that failed the
+ * test. php writes it from the iterator's METHODS rather than from the walk, so a
+ * getIterator() nobody has touched yet leaves it where the last walk left it, and
+ * the first valid()/current()/key()/rewind()/next() moves it. PHL left it NULL
+ * forever, so a program reading the period mid-walk (or after one) saw nothing.
+ */
+static void DpPublish(ph7_vm *pVm,ph7_class_instance *pIt)
+{
+	ph7_class_instance *pPeriod = PH7_NativeAttrObj(pIt,PH7_NATIVE_IT_SRC);
+	if( pPeriod == 0 ){
+		return;
+	}
+	PH7_NativeSetAttrObj(&(*pVm),pPeriod,"current",PH7_NativeAttrObj(pIt,PH7_NATIVE_IT_CUR));
+}
+/*
+ * php refuses the WALK of an unconstructed period, not the door to it: its
+ * getIterator() hands back a real InternalIterator and the DateObjectError
+ * arrives at the first rewind(). The sentence is the ITERATOR's too, and it
+ * differs from every other one in this family -- it names DatePeriod plainly
+ * whatever the object's own class is, where a method called on a subclass reports
+ * `SubP (inheriting DatePeriod)`.
+ */
+static int DpIterGuard(ph7_context *pCtx,ph7_class_instance *pIt)
+{
+	ph7_class_instance *pPeriod = PH7_NativeAttrObj(pIt,PH7_NATIVE_IT_SRC);
+	if( pPeriod != 0 && DtIsInit(pPeriod) ){
+		return 0;
+	}
+	PH7_VmThrowException(pCtx,"DateObjectError",
+		"Object of type DatePeriod has not been correctly initialized by calling "
+		"parent::__construct() in its constructor");
+	return 1;
+}
+static const PH7_NativeIterVtab sDpIterVtab = { DpRewind, DpNext, DpPublish, DpIterGuard };
 /*
  * DatePeriod::getIterator(): Iterator
  *
@@ -3811,7 +3846,9 @@ static const PH7_NativeIterVtab sDpIterVtab = { DpRewind, DpNext };
  */
 static int vm_builtin_DatePeriod_getIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pThis = DtThis(pCtx);
+	/* Raw: php's door does not screen the struct -- the ITERATOR does, at the
+	 * first walk (DpIterGuard). */
+	ph7_class_instance *pThis = DtThisRaw(pCtx);
 	ph7_class_instance *pIt;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);

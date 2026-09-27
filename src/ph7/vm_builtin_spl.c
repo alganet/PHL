@@ -477,7 +477,7 @@ static void WmNext(ph7_vm *pVm,ph7_class_instance *pIt)
 	}
 	WmSettle(pVm,pIt,pNode);
 }
-static const PH7_NativeIterVtab sWmIterVtab = { WmRewind, WmNext };
+static const PH7_NativeIterVtab sWmIterVtab = { WmRewind, WmNext, 0, 0 };
 /* WeakMap::getIterator(): Iterator — a PHP GENERATOR before, which a C body cannot
  * be; php answers an InternalIterator here, and so does this. */
 static int vm_builtin_WeakMap_getIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -6262,7 +6262,7 @@ static void FaIterNext(ph7_vm *pVm,ph7_class_instance *pIt)
 		PH7_NativeAttrInt(pIt,PH7_NATIVE_IT_POS) + 1);
 	FaIterSettle(&(*pVm),pIt);
 }
-static const PH7_NativeIterVtab sFaIterVtab = { FaIterRewind, FaIterNext };
+static const PH7_NativeIterVtab sFaIterVtab = { FaIterRewind, FaIterNext, 0, 0 };
 static int vm_builtin_SplFixedArray_getIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);

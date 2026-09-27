@@ -6739,8 +6739,8 @@ static void DomMapNext(ph7_vm *pVm,ph7_class_instance *pIt)
 		PH7_NativeAttrInt(pIt,PH7_NATIVE_IT_POS) + 1);
 	DomIterSettle(&(*pVm),pIt,1);
 }
-static const PH7_NativeIterVtab sDomListIterVtab = { DomListRewind, DomListNext };
-static const PH7_NativeIterVtab sDomMapIterVtab  = { DomMapRewind,  DomMapNext };
+static const PH7_NativeIterVtab sDomListIterVtab = { DomListRewind, DomListNext, 0, 0 };
+static const PH7_NativeIterVtab sDomMapIterVtab  = { DomMapRewind,  DomMapNext, 0, 0 };
 /* Both getIterator()s: a fresh InternalIterator per call, as php's are. */
 DOM_METHOD(vm_builtin_Dom_getIterator)
 {

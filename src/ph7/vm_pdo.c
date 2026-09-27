@@ -2505,7 +2505,7 @@ static void PdoStmtIterNext(ph7_vm *pVm,ph7_class_instance *pIt)
 		PH7_NativeAttrInt(pIt,PH7_NATIVE_IT_POS) + 1);
 	PdoStmtIterSettle(&(*pVm),pIt);
 }
-static const PH7_NativeIterVtab sPdoStmtIterVtab = { PdoStmtIterRewind, PdoStmtIterNext };
+static const PH7_NativeIterVtab sPdoStmtIterVtab = { PdoStmtIterRewind, PdoStmtIterNext, 0, 0 };
 static int vm_builtin_PDOStatement_getIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);

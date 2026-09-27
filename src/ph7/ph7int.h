@@ -1914,6 +1914,20 @@ struct PH7_NativeIterVtab
 {
 	void (*xRewind)(ph7_vm *pVm,ph7_class_instance *pIt); /* settle on the first element */
 	void (*xNext)(ph7_vm *pVm,ph7_class_instance *pIt);   /* settle on the one after */
+	/* Optional: publish the cursor back onto the AGGREGATE, for a class that shows
+	 * its walk as one of its own properties. DatePeriod is the case -- its
+	 * `current` is the cursor, and php writes it from every iterator method rather
+	 * than from the walk itself, so `getIterator()` alone leaves it where the last
+	 * walk left it and the first valid()/current()/key()/rewind()/next() moves it.
+	 * Called by the InternalIterator methods, never by the vtable's own halves. */
+	void (*xPublish)(ph7_vm *pVm,ph7_class_instance *pIt);
+	/* Optional: may this iterator be WALKED at all? Answered per call rather than
+	 * once at creation because php refuses at the walk and not at the door --
+	 * DatePeriod::getIterator() on an object nobody constructed hands back a real
+	 * InternalIterator there, and the DateObjectError arrives at the first
+	 * rewind(). Non-zero means the guard raised; the method then answers nothing
+	 * and the host-call boundary reports the throw. */
+	int (*xGuard)(ph7_context *pCtx,ph7_class_instance *pIt);
 };
 /* The state slots, private to InternalIterator and shared by every vtable:
  * the aggregate, the value and key at the cursor, an integer cursor and a spare

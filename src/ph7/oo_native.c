@@ -1307,11 +1307,42 @@ PH7_PRIVATE sxi32 PH7_InstallNativeEnum(ph7_vm *pVm,const char *zName,sxu32 nBac
  * everyone.
  * ---------------------------------------------------------------------------
  */
-/* The walk THIS iterator was made for: the vtable of the aggregate it holds. */
+/*
+ * The walk THIS iterator was made for: the vtable of the aggregate it holds,
+ * looked up ALONG THE BASE CHAIN. A subclass of a native aggregate inherits the
+ * walk the way it inherits the getIterator() that reaches it -- without this a
+ * `class P extends DatePeriod {}` (or DOMNodeList, WeakMap, PDOStatement,
+ * FilesystemIterator) answered a real InternalIterator that yielded NOTHING, so
+ * every foreach over one was silently empty.
+ */
 static const PH7_NativeIterVtab * NativeIterVtab(ph7_class_instance *pIt)
 {
 	ph7_class_instance *pSrc = PH7_NativeAttrObj(pIt,PH7_NATIVE_IT_SRC);
-	return pSrc ? pSrc->pClass->pIterVtab : 0;
+	ph7_class *pClass;
+	for( pClass = pSrc ? pSrc->pClass : 0 ; pClass ; pClass = pClass->pBase ){
+		if( pClass->pIterVtab ){
+			return pClass->pIterVtab;
+		}
+	}
+	return 0;
+}
+/* Hand the cursor back to the aggregate, for a class that shows its walk as one
+ * of its own properties (see PH7_NativeIterVtab::xPublish). Every InternalIterator
+ * method calls this -- php's aggregate is written from the iterator's methods, not
+ * from the walk, so a getIterator() nobody has touched yet leaves it alone. */
+static void NativeIterPublish(ph7_vm *pVm,ph7_class_instance *pIt)
+{
+	const PH7_NativeIterVtab *pVtab = NativeIterVtab(pIt);
+	if( pVtab && pVtab->xPublish ){
+		pVtab->xPublish(&(*pVm),pIt);
+	}
+}
+/* May this iterator be walked? See PH7_NativeIterVtab::xGuard -- the aggregate
+ * gets to refuse at each of the five methods, which is where php refuses. */
+static int NativeIterRefused(ph7_context *pCtx,ph7_class_instance *pIt)
+{
+	const PH7_NativeIterVtab *pVtab = NativeIterVtab(pIt);
+	return (pVtab && pVtab->xGuard) ? pVtab->xGuard(pCtx,pIt) : 0;
 }
 static int vm_builtin_InternalIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -1322,12 +1353,16 @@ static int vm_builtin_InternalIterator_rewind(ph7_context *pCtx,int nArg,ph7_val
 	if( pThis == 0 ){
 		return PH7_OK;
 	}
+	if( NativeIterRefused(pCtx,pThis) ){
+		return PH7_OK;
+	}
 	pVtab = NativeIterVtab(pThis);
 	if( pVtab == 0 || pVtab->xRewind == 0 ){
 		PH7_NativeSetAttrBool(pCtx->pVm,pThis,PH7_NATIVE_IT_DONE,1);
 		return PH7_OK;
 	}
 	pVtab->xRewind(pCtx->pVm,pThis);
+	NativeIterPublish(pCtx->pVm,pThis);
 	return PH7_OK;
 }
 static int vm_builtin_InternalIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -1336,6 +1371,9 @@ static int vm_builtin_InternalIterator_next(ph7_context *pCtx,int nArg,ph7_value
 	const PH7_NativeIterVtab *pVtab;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
+	if( pThis && NativeIterRefused(pCtx,pThis) ){
+		return PH7_OK;
+	}
 	if( pThis == 0 || PH7_NativeAttrTruthy(pThis,PH7_NATIVE_IT_DONE) ){
 		return PH7_OK;
 	}
@@ -1345,6 +1383,7 @@ static int vm_builtin_InternalIterator_next(ph7_context *pCtx,int nArg,ph7_value
 		return PH7_OK;
 	}
 	pVtab->xNext(pCtx->pVm,pThis);
+	NativeIterPublish(pCtx->pVm,pThis);
 	return PH7_OK;
 }
 static int vm_builtin_InternalIterator_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -1352,6 +1391,12 @@ static int vm_builtin_InternalIterator_valid(ph7_context *pCtx,int nArg,ph7_valu
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
+	if( pThis && NativeIterRefused(pCtx,pThis) ){
+		return PH7_OK;
+	}
+	if( pThis ){
+		NativeIterPublish(pCtx->pVm,pThis);
+	}
 	ph7_result_bool(pCtx,pThis != 0 && !PH7_NativeAttrTruthy(pThis,PH7_NATIVE_IT_DONE));
 	return PH7_OK;
 }
@@ -1361,6 +1406,12 @@ static int NativeIterReadSlot(ph7_context *pCtx,const char *zSlot)
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	ph7_value *pVal;
+	if( pThis && NativeIterRefused(pCtx,pThis) ){
+		return PH7_OK;
+	}
+	if( pThis ){
+		NativeIterPublish(pCtx->pVm,pThis);
+	}
 	if( pThis == 0 || PH7_NativeAttrTruthy(pThis,PH7_NATIVE_IT_DONE) ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
@@ -1411,7 +1462,7 @@ PH7_PRIVATE ph7_class_instance * PH7_NativeIteratorNew(ph7_vm *pVm,ph7_class_ins
 	}
 	PH7_NativeSetAttrObj(&(*pVm),pIt,PH7_NATIVE_IT_SRC,pSrc);
 	PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);
-	pVtab = pSrc->pClass->pIterVtab;
+	pVtab = NativeIterVtab(pIt);
 	if( pVtab && pVtab->xRewind ){
 		pVtab->xRewind(&(*pVm),pIt);
 	}
