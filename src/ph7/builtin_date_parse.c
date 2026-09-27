@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "ph7int.h"
+#include <stdio.h>   /* snprintf: the digit engine for php's own %g rendering */
 /*
  * The DateTime family: proleptic-Gregorian date math, the date/time
  * string parser, the __dt_* host thunks, the embedded zDateTimeLib PHP
@@ -2310,6 +2311,125 @@ static int DtCopyOf(ph7_context *pCtx,int nArg,ph7_value **apArg,const char *zFa
 	PH7_NativeResultObject(pCtx,pObj);
 	return PH7_OK;
 }
+/*
+ * php's rendering of the timestamp its DateRangeError names -- its own `%g`:
+ * six significant digits, and an exponent form that keeps a fractional digit,
+ * so 2^63 prints "9.22337e+18" and 1e19 prints "1.0e+19". NaN and the
+ * infinities print as the bare words php prints them as everywhere else.
+ *
+ * libc is the digit engine (the byte-exact-floats rule the printf family
+ * already follows) and PH7_PhpFloatShape turns its output into php's shape.
+ */
+static void DtRealText(double r,char *zBuf,int nBuf)
+{
+	int n;
+	if( PH7_IS_NAN(r) ){
+		SyMemcpy("NAN",zBuf,sizeof("NAN"));
+		return;
+	}
+	if( PH7_IS_INF(r) ){
+		SyMemcpy(r < 0 ? "-INF" : "INF",zBuf,r < 0 ? sizeof("-INF") : sizeof("INF"));
+		return;
+	}
+	n = snprintf(zBuf,(size_t)nBuf,"%.6g",r);
+	if( n < 0 || n >= nBuf - 2 ){
+		zBuf[0] = 0;
+		return;
+	}
+	zBuf[PH7_PhpFloatShape(zBuf,n,1)] = 0;
+}
+/*
+ * DateTime::createFromTimestamp(int|float $timestamp) (php 8.4), and the same
+ * on DateTimeImmutable -- the float door onto the clock, and the only factory
+ * that reads MICROSECONDS out of its argument.
+ *
+ * The zone is a fixed +00:00 whatever the default timezone is, exactly as
+ * `new DateTime('@0')` answers; the seconds floor and the fraction rounds to
+ * the nearest microsecond (php's 1.9999999 is 2.000000, and its -1.9999999 is
+ * -2.000000, both of which fall out of taking the floor first).
+ */
+static int DtCreateFromTimestamp(ph7_context *pCtx,int nArg,ph7_value **apArg,const char *zFallback)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class *pClass = DtFactoryClass(pCtx,zFallback);
+	ph7_class_instance *pObj;
+	dt_state sState;
+	char zNameBuf[16];
+	if( pClass == 0 || nArg < 1 ){
+		return PH7_OK;
+	}
+	sState.uSec = 0;
+	{
+		/* Which ARM of `int|float` the argument satisfies decides the rest, and
+		 * a numeric STRING picks its own: php reads "5" as an int and "5.5" as
+		 * a float, so the SHAPE of the digits is the test rather than the
+		 * value's storage. Everything that is not a number at all was refused
+		 * upstream by the declared type. */
+		double r = 0.0;
+		int bReal = 0;
+		if( apArg[0]->iFlags & MEMOBJ_REAL ){
+			bReal = 1;
+			r = (double)apArg[0]->rVal;
+		}else if( apArg[0]->iFlags & MEMOBJ_STRING ){
+			int nStr;
+			const char *zStr = ph7_value_to_string(apArg[0],&nStr);
+			sxi64 iLong;
+			double dReal;
+			if( RangeStrToNumber(zStr,(sxu32)nStr,&iLong,&dReal) == RANGE_IN_DOUBLE ){
+				bReal = 1;
+				r = dReal;
+			}
+		}
+		if( !bReal ){
+			sState.iTs = ph7_value_to_int64(apArg[0]);
+		}else if( !PH7_RealFitsInt64(r) ){
+			/* php's own bounds, and its own words for them: the ceiling is
+			 * printed as the last microsecond below 2^63 even though the test
+			 * is against 2^63 itself (no double lies between the two).
+			 * "%z" takes the class name as the length+pointer pair it is. */
+			char zVal[64];
+			DtRealText(r,zVal,(int)sizeof(zVal));
+			return PH7_VmThrowException(pCtx,"DateRangeError",
+				"%z::createFromTimestamp(): Argument #1 ($timestamp) must be a finite "
+				"number between -9223372036854775808 and 9223372036854775807.999999, "
+				"%s given",&pClass->sName,zVal);
+		}else{
+			/* floor(), by hand: <math.h> belongs to the optional math module and
+			 * the clock does not depend on it. The C cast truncates toward zero,
+			 * so only a negative value with a fraction needs the step down. */
+			double fFrac;
+			sState.iTs = (sxi64)r;
+			if( (double)sState.iTs > r ){
+				sState.iTs--;
+			}
+			fFrac = (r - (double)sState.iTs) * 1000000.0;
+			sState.uSec = (int)(fFrac + 0.5);
+			if( sState.uSec >= 1000000 ){
+				/* The rounding carried into the second (php's 1.9999999). */
+				sState.uSec -= 1000000;
+				sState.iTs++;
+			}
+		}
+	}
+	sState.iOff = 0;
+	sState.nName = DtOffName(zNameBuf,sizeof(zNameBuf),0);
+	sState.zName = zNameBuf;
+	pObj = PH7_NewClassInstance(pVm,pClass);
+	if( pObj == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	DtStore(pVm,pObj,&sState);
+	PH7_NativeResultObject(pCtx,pObj);
+	return PH7_OK;
+}
+static int vm_builtin_DateTime_createFromTimestamp(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtCreateFromTimestamp(pCtx,nArg,apArg,"DateTime");
+}
+static int vm_builtin_DateTimeImmutable_createFromTimestamp(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtCreateFromTimestamp(pCtx,nArg,apArg,"DateTimeImmutable");
+}
 static int vm_builtin_DateTime_copyOf(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	return DtCopyOf(pCtx,nArg,apArg,"DateTime");
@@ -4026,6 +4146,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		  vm_builtin_DateTime_createFromFormat },
 		{ "createFromImmutable", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "DateTimeImmutable $object", "@static",
 		  vm_builtin_DateTime_copyOf },
+		{ "createFromTimestamp", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "int|float $timestamp", "static",
+		  vm_builtin_DateTime_createFromTimestamp },
 		{ "createFromInterface", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "DateTimeInterface $object", "DateTime",
 		  vm_builtin_DateTime_copyOf },
 		DT_NATIVE_SERIAL_METHODS(DateTime),
@@ -4037,6 +4159,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		  vm_builtin_DateTimeImmutable_createFromFormat },
 		{ "createFromMutable",   PH7_MOD_PUBLIC|PH7_MOD_STATIC, "DateTime $object", "@static",
 		  vm_builtin_DateTimeImmutable_copyOf },
+		{ "createFromTimestamp", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "int|float $timestamp", "static",
+		  vm_builtin_DateTimeImmutable_createFromTimestamp },
 		{ "createFromInterface", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "DateTimeInterface $object", "DateTimeImmutable",
 		  vm_builtin_DateTimeImmutable_copyOf },
 		DT_NATIVE_SERIAL_METHODS(DateTimeImmutable),
