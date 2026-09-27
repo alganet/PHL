@@ -1882,6 +1882,18 @@ SkipToStringType:
 					}
 				}
 			}
+			/* A promoted parameter's `#[...]` belongs to BOTH members in php: the
+			 * ReflectionParameter reports it and so does the ReflectionProperty,
+			 * which is what makes `#[\Override] public $p` in a constructor
+			 * signature a PROPERTY claim. The records are shared, not copied --
+			 * the parameter owns them for the VM's lifetime. */
+			{
+				ph7_attribute *aSrc = (ph7_attribute *)SySetBasePtr(&pArg->aAttrs);
+				sxu32 k;
+				for( k = 0 ; k < SySetUsed(&pArg->aAttrs) ; k++ ){
+					SySetPut(&pAttr->aAttrs,(const void *)&aSrc[k]);
+				}
+			}
 			rc = PH7_ClassInstallAttr(pClass,pAttr);
 			if( rc != SXRET_OK ){
 				PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
@@ -2483,6 +2495,12 @@ HookSyntax:
 	}
 	return SXERR_CORRUPT;
 }
+/* php's #[\Override] verification, defined with the rest of the class-link
+ * checks below; both compilers (class and interface) drive the same pair. */
+static sxi32 GenStateCollectOverrides(ph7_gen_state *pGen,ph7_class *pClass,
+	SySet *pMeths,SySet *pProps);
+static sxi32 GenStateCheckOverrides(ph7_gen_state *pGen,ph7_class *pClass,
+	SySet *pMeths,SySet *pProps);
 /*
  * Compile an object interface.
  *  According to the PHP language reference manual
@@ -2500,6 +2518,8 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 	ph7_class *pSavedCurClass = pGen->pCurClass; /* restored at 'done' */
 	SyToken *pEnd,*pTmp;
 	SyString *pName;
+	SySet aOvMeth,aOvProp;   /* the #[\Override] claims this interface DECLARED */
+	sxu32 nErrEntry = pGen->nErr; /* errors already reported when this one started */
 	sxi32 nKwrd;
 	sxi32 rc;
 	{
@@ -2809,8 +2829,13 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 			}
 		}
 	}
+	/* An interface method may claim #[\Override] too, against the interfaces this
+	 * one extends -- collected before the inherit copies theirs in. */
+	GenStateCollectOverrides(&(*pGen),pClass,&aOvMeth,&aOvProp);
 	/* Reject a php-fatal redeclaration before hoisting the interface */
 	if( GenStateGuardClassRedeclaration(pGen,pClass) == SXERR_ABORT ){
+		SySetRelease(&aOvMeth);
+		SySetRelease(&aOvProp);
 		return SXERR_ABORT;
 	}
 	/* Install the interface */
@@ -2819,6 +2844,14 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 		/* Inherit from the base interface */
 		rc = PH7_ClassInterfaceInherit(pClass,pBase);
 	}
+	if( rc == SXRET_OK && pGen->nErr == nErrEntry
+	 && GenStateCheckOverrides(&(*pGen),pClass,&aOvMeth,&aOvProp) == SXERR_ABORT ){
+		SySetRelease(&aOvMeth);
+		SySetRelease(&aOvProp);
+		return SXERR_ABORT;
+	}
+	SySetRelease(&aOvMeth);
+	SySetRelease(&aOvProp);
 	if( rc != SXRET_OK ){
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
 		return SXERR_ABORT;
@@ -2991,6 +3024,162 @@ static void GenStateAppendAbstractMemberName(SyBlob *pMsg,const SyString *pMName
 		return;
 	}
 	SyBlobAppend(pMsg,(const void *)pMName->zString,pMName->nByte);
+}
+/*
+ * ---------------------------------------------------------------------------
+ * php's `#[\Override]` (8.3, widened to properties in 8.5).
+ *
+ * The attribute is a CLAIM the engine checks where the member is written: the
+ * name must already exist above, so a typo, a renamed parent method or a base
+ * class that dropped one is a fatal at the declaration instead of a method
+ * nobody ever calls. php runs it at class LINK time, after inheritance, and its
+ * rules are the inheritance rules rather than a name search:
+ *
+ *   - a PRIVATE parent member is not inherited, so it is not something to
+ *     override;
+ *   - the CONSTRUCTOR is exempt from php's inheritance signature check unless it
+ *     is abstract (or an interface's), and #[\Override] follows that exemption —
+ *     a concrete parent `__construct` does NOT satisfy the claim while an
+ *     abstract one does;
+ *   - a method matches CASE-INSENSITIVELY and a property case-SENSITIVELY, which
+ *     is php's rule for the two namespaces everywhere else;
+ *   - an interface counts for a method, at any depth and through any ancestor;
+ *   - a TRAIT used by this very class does not: its method is the using class's
+ *     own, and php reports the USING class's name when the claim fails.
+ * ---------------------------------------------------------------------------
+ */
+#define GEN_OVERRIDE_ATTR "Override"
+/* Does this member carry `#[\Override]`? The compiler resolves an attribute name
+ * to its fully-qualified spelling and class names are case-insensitive, so one
+ * case-folded compare against the whole set is the test. */
+static int GenStateHasOverrideAttr(SySet *pAttrs)
+{
+	ph7_attribute *aAttr = (ph7_attribute *)SySetBasePtr(pAttrs);
+	sxu32 n;
+	for( n = 0 ; n < SySetUsed(pAttrs) ; ++n ){
+		if( aAttr[n].sName.nByte == sizeof(GEN_OVERRIDE_ATTR)-1
+		 && SyStrnicmp(aAttr[n].sName.zString,GEN_OVERRIDE_ATTR,
+			sizeof(GEN_OVERRIDE_ATTR)-1) == 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/* Does an interface reachable from pClass -- its own, or any ancestor's --
+ * declare this method? An interface that extends others already carries their
+ * stubs in its own table, so one level of lookup per interface is enough. */
+static int GenStateIfaceDeclaresMethod(ph7_class *pClass,const SyString *pName)
+{
+	for( ; pClass ; pClass = pClass->pBase ){
+		ph7_class **apIface = (ph7_class **)SySetBasePtr(&pClass->aInterface);
+		sxu32 n;
+		for( n = 0 ; n < SySetUsed(&pClass->aInterface) ; ++n ){
+			if( apIface[n]
+			 && PH7_ClassExtractMethod(apIface[n],pName->zString,pName->nByte) ){
+				return 1;
+			}
+		}
+	}
+	return 0;
+}
+/* Is there a parent METHOD this one may claim to override? */
+static int GenStateOverridesMethod(ph7_class *pClass,const SyString *pName)
+{
+	int bCtor = pName->nByte == sizeof("__construct")-1
+		&& SyStrnicmp(pName->zString,"__construct",sizeof("__construct")-1) == 0;
+	ph7_class *pWalk;
+	for( pWalk = pClass->pBase ; pWalk ; pWalk = pWalk->pBase ){
+		ph7_class_method *pMeth = PH7_ClassExtractMethod(pWalk,pName->zString,pName->nByte);
+		if( pMeth == 0 || pMeth->iProtection == PH7_CLASS_PROT_PRIVATE ){
+			continue;
+		}
+		if( bCtor && (pMeth->iFlags & PH7_CLASS_ATTR_ABSTRACT) == 0 ){
+			continue;   /* php exempts a concrete parent constructor */
+		}
+		return 1;
+	}
+	return GenStateIfaceDeclaresMethod(pClass,pName);
+}
+/* Is there a parent PROPERTY this one may claim to override? Interfaces declare
+ * none, so this is the base chain alone. */
+static int GenStateOverridesProp(ph7_class *pClass,const SyString *pName)
+{
+	ph7_class *pWalk;
+	for( pWalk = pClass->pBase ; pWalk ; pWalk = pWalk->pBase ){
+		ph7_class_attr *pAttr = PH7_ClassExtractAttribute(pWalk,pName->zString,pName->nByte);
+		if( pAttr && pAttr->iProtection != PH7_CLASS_PROT_PRIVATE ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
+ * Verify every `#[\Override]` the class DECLARED, in php's order: the methods
+ * first and then the properties, each in declaration order, and the first
+ * failure is the whole diagnostic (it is a fatal).
+ *
+ * The two sets are collected BEFORE inheritance runs -- an inherited method
+ * keeps the parent's attribute record and php does not re-check it there -- and
+ * verified after, which is when the answer exists.
+ */
+static sxi32 GenStateCollectOverrides(ph7_gen_state *pGen,ph7_class *pClass,
+	SySet *pMeths,SySet *pProps)
+{
+	static const sxu32 nHookPfx = sizeof("__phl_hook_get_")-1;
+	SyHashEntry *pEntry;
+	SySetInit(pMeths,&pGen->pVm->sAllocator,sizeof(ph7_class_method *));
+	SySetInit(pProps,&pGen->pVm->sAllocator,sizeof(ph7_class_attr *));
+	SyHashResetLoopCursor(&pClass->hMethod);
+	while( (pEntry = SyHashGetNextEntry(&pClass->hMethod)) != 0 ){
+		ph7_class_method *pMeth = (ph7_class_method *)pEntry->pUserData;
+		SyString *pName = &pMeth->sFunc.sName;
+		/* A property hook is compiled to a method here and is a PROPERTY in php,
+		 * so the property arm below owns its claim. */
+		if( pName->nByte > nHookPfx
+		 && SyMemcmp((const void *)pName->zString,(const void *)"__phl_hook_",
+			sizeof("__phl_hook_")-1) == 0 ){
+			continue;
+		}
+		if( GenStateHasOverrideAttr(&pMeth->sFunc.aAttrs) ){
+			SySetPut(pMeths,(const void *)&pMeth);
+		}
+	}
+	SyHashResetLoopCursor(&pClass->hAttr);
+	while( (pEntry = SyHashGetNextEntry(&pClass->hAttr)) != 0 ){
+		ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
+		if( GenStateHasOverrideAttr(&pAttr->aAttrs) ){
+			SySetPut(pProps,(const void *)&pAttr);
+		}
+	}
+	return SXRET_OK;
+}
+static sxi32 GenStateCheckOverrides(ph7_gen_state *pGen,ph7_class *pClass,
+	SySet *pMeths,SySet *pProps)
+{
+	ph7_class_method **apMeth = (ph7_class_method **)SySetBasePtr(pMeths);
+	ph7_class_attr **apProp = (ph7_class_attr **)SySetBasePtr(pProps);
+	sxu32 n;
+	/* hMethod is a LIFO iteration list (SyHashInsert), so the collected order is
+	 * the REVERSE of the declaration order; hAttr is a FIFO one
+	 * (SyHashInsertTail) and needs no such turn. php reports the first member it
+	 * finds in declaration order and stops. */
+	for( n = SySetUsed(pMeths) ; n > 0 ; --n ){
+		ph7_class_method *pMeth = apMeth[n - 1];
+		if( !GenStateOverridesMethod(pClass,&pMeth->sFunc.sName) ){
+			return PH7_GenCompileError(&(*pGen),E_ERROR,pMeth->sFunc.nLine,
+				"%z::%z() has #[\\Override] attribute, but no matching parent method exists",
+				&pClass->sName,&pMeth->sFunc.sName);
+		}
+	}
+	for( n = 0 ; n < SySetUsed(pProps) ; ++n ){
+		if( !GenStateOverridesProp(pClass,&apProp[n]->sName) ){
+			/* php reports the CLASS's line for a property, not the property's. */
+			return PH7_GenCompileError(&(*pGen),E_ERROR,pClass->nLine,
+				"%z::$%z has #[\\Override] attribute, but no matching parent property exists",
+				&pClass->sName,&apProp[n]->sName);
+		}
+	}
+	return SXRET_OK;
 }
 /*
  * Check that a concrete class has no remaining abstract methods.
@@ -4127,6 +4316,8 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 	sxi32 iProtection;
 	SySet aInterfaces;
 	SySet aUseEntries;
+	SySet aOvMeth,aOvProp;   /* the #[\Override] claims this class DECLARED */
+	sxu32 nErrEntry = pGen->nErr; /* errors already reported when this class started */
 	sxi32 iAttrflags;
 	SyString *pName;
 	sxi32 nKwrd;
@@ -4840,8 +5031,14 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 			return SXERR_ABORT;
 		}
 	}
+	/* The members this class DECLARES that claim #[\Override] -- recorded here,
+	 * before inheritance copies the base's records in beside them, and verified
+	 * once the answer exists. */
+	GenStateCollectOverrides(&(*pGen),pClass,&aOvMeth,&aOvProp);
 	/* Reject a php-fatal redeclaration before hoisting the class */
 	if( GenStateGuardClassRedeclaration(pGen,pClass) == SXERR_ABORT ){
+		SySetRelease(&aOvMeth);
+		SySetRelease(&aOvProp);
 		return SXERR_ABORT;
 	}
 	/* Install the class */
@@ -4910,6 +5107,8 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 			if( rcCheck == SXERR_ABORT ){
 				SySetRelease(&aUseEntries);
 				SySetRelease(&aInterfaces);
+				SySetRelease(&aOvMeth);
+				SySetRelease(&aOvProp);
 				return SXERR_ABORT;
 			}
 		}
@@ -4919,12 +5118,30 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 			if( rcCheck == SXERR_ABORT ){
 				SySetRelease(&aUseEntries);
 				SySetRelease(&aInterfaces);
+				SySetRelease(&aOvMeth);
+				SySetRelease(&aOvProp);
+				return SXERR_ABORT;
+			}
+		}
+		/* ...and the #[\Override] claims LAST: php reports an unimplemented
+		 * abstract method and an inheritance visibility clash before this one,
+		 * and stops there — php's E_COMPILE_ERROR does not return, so a
+		 * declaration that already failed says nothing more. */
+		if( rc == SXRET_OK && pGen->nErr == nErrEntry ){
+			sxi32 rcCheck = GenStateCheckOverrides(&(*pGen),pClass,&aOvMeth,&aOvProp);
+			if( rcCheck == SXERR_ABORT ){
+				SySetRelease(&aUseEntries);
+				SySetRelease(&aInterfaces);
+				SySetRelease(&aOvMeth);
+				SySetRelease(&aOvProp);
 				return SXERR_ABORT;
 			}
 		}
 	}
 	SySetRelease(&aUseEntries);
 	SySetRelease(&aInterfaces);
+	SySetRelease(&aOvMeth);
+	SySetRelease(&aOvProp);
 	if( rc != SXRET_OK ){
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
 		return SXERR_ABORT;

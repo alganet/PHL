@@ -68,8 +68,18 @@ static void Fatal(const char *zMsg)
  * emitted by the error consumer (a compile/parse error), which is exactly what
  * php does — it prints the parse error and nothing more.
  */
+/* The engine this process built, so the silent-fatal exit can give it back:
+ * ph7_lib_shutdown() releases the LIBRARY, and an engine instance owns a mutex
+ * of its own. Without this the fatal path leaks it, which is invisible in
+ * ordinary use (the process is exiting) and turns every leak-detecting run over
+ * a corpus that spawns a failing child into a wall of reports. */
+static ph7 *pFatalEngine = 0;
 static void FatalSilent(void)
 {
+	if( pFatalEngine ){
+		ph7_release(pFatalEngine);
+		pFatalEngine = 0;
+	}
 	ph7_lib_shutdown();
 	exit(255);
 }
@@ -600,6 +610,7 @@ int main(int argc,char **argv)
 #endif
 	/* Allocate a new PH7 engine instance */
 	rc = ph7_init(&pEngine);
+	pFatalEngine = pEngine;
 	if( rc != PH7_OK ){
 		/*
 		 * If the supplied memory subsystem is so sick that we are unable
@@ -642,6 +653,7 @@ int main(int argc,char **argv)
 		if( n >= argc ){
 			/* No file argument (e.g. `-l` alone, or `-l` mixed with `-r`). */
 			ph7_release(pEngine);
+			pFatalEngine = 0;
 			puts("No input file specified");
 			return 255;
 		}
@@ -656,6 +668,7 @@ int main(int argc,char **argv)
 			printf("Errors parsing %s\n",zFile);
 		}
 		ph7_release(pEngine);
+		pFatalEngine = 0;
 		return (rc == PH7_OK) ? 0 : 255;
 	}
 	/* Now,it's time to compile our PHP file */
@@ -837,6 +850,7 @@ int main(int argc,char **argv)
 		*/
 		ph7_vm_release(pVm);
 		ph7_release(pEngine);
+		pFatalEngine = 0;
 		/* The stdin slurp outlives compilation (the compiler keeps pointers
 		 * into the source text), so it is freed only here, after the VM. */
 		if( zStdinCode ){

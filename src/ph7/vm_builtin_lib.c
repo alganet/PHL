@@ -1452,6 +1452,8 @@ static sxi32 VmInstallAttributes(ph7_vm *pVm)
 		  aMarkerMethod, SX_ARRAYSIZE(aMarkerMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "ReturnTypeWillChange", 0, 0, PH7_CLASS_FINAL,
 		  aMarkerMethod, SX_ARRAYSIZE(aMarkerMethod), 0, 0, 0, 0, 0, 0, 0 },
+		{ "Override", 0, 0, PH7_CLASS_FINAL,
+		  aMarkerMethod, SX_ARRAYSIZE(aMarkerMethod), 0, 0, 0, 0, 0, 0, 0 },
 		/* php refuses BOTH directions for the box (ZEND_ACC_NOT_SERIALIZABLE), which
 		 * is the whole point: a redacted value must not reach a payload either. */
 		{ "SensitiveParameterValue", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE,
@@ -1466,6 +1468,7 @@ static sxi32 VmInstallAttributes(ph7_vm *pVm)
 	static const PH7_NativeAttrArg aMaskDep[]    = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 87, 0, 0.0 } } };
 	static const PH7_NativeAttrArg aMaskParam[]  = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 32, 0, 0.0 } } };
 	static const PH7_NativeAttrArg aMaskMethod[] = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 4,  0, 0.0 } } };
+	static const PH7_NativeAttrArg aMaskMembr[]  = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 12, 0, 0.0 } } };
 	static const struct {
 		const char *zClass;
 		const PH7_NativeAttrArg *aArg;   /* php's TARGET_* mask for that class */
@@ -1475,6 +1478,7 @@ static sxi32 VmInstallAttributes(ph7_vm *pVm)
 		{ "AllowDynamicProperties", aMaskClass  },   /* TARGET_CLASS */
 		{ "SensitiveParameter",     aMaskParam  },   /* TARGET_PARAMETER */
 		{ "ReturnTypeWillChange",   aMaskMethod },   /* TARGET_METHOD */
+		{ "Override",               aMaskMembr  },   /* METHOD|PROPERTY (php 8.5) */
 	};
 	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 	sxu32 n;
