@@ -140,6 +140,11 @@ struct dt_parsed
 	                                 * which is what `ago` makes of it */
 	int iWdayBehavior;              /* php's 0 (next/last), 1 (bare name), 2 (... this week) */
 	int iFirstLast;                 /* php's first_last_day_of: 0 none, 1 first, 2 last */
+	int bWdayOf;                    /* php's `first monday of` special: a weekday
+	                                 * hunted inside the MONTH the rest of the
+	                                 * string lands on, rather than from the day */
+	int iWdayOfNext;                /* ...and whether it starts from the month
+	                                 * AFTER, which is php's `last` and `this` */
 	int bWeekdays;                  /* php's `weekday` special was named */
 	sxi64 iWeekdays;                /* ... this many BUSINESS days */
 	sxi32 iOff;                     /* the offset in force */
@@ -175,6 +180,8 @@ static void DtFieldsInit(dt_parsed *p,sxi32 iBaseOff)
 	p->iWday = 0;
 	p->iWdayBehavior = 0;
 	p->iFirstLast = 0;
+	p->bWdayOf = 0;
+	p->iWdayOfNext = 0;
 	p->bWeekdays = 0;
 	p->iWeekdays = 0;
 	p->iOff = iBaseOff;
@@ -337,6 +344,29 @@ static void DtFirstLastDay(dt_parsed *p)
  * +05:00 there. The one exception is the `@epoch` form, which names an absolute
  * INSTANT (and, in php, re-zones the object to +00:00 with it). */
 #define DT_PARSE_KEEP_ZONE     0x02
+/*
+ * php's DAY_OF_WEEK_IN_MONTH special -- `first monday of`, `last sunday of
+ * february 2020` -- and it is not a rule of its own so much as a way IN to the
+ * weekday hunt the vector already carries: the MONTH is settled first (the
+ * relative MONTHS are applied and consumed here, though not the years, which
+ * ride on to the ordinary pass), the day becomes that month's 1st, and the
+ * ordinary hunt walks forward to the weekday from there. The count rides the
+ * relative DAYS -- a week per count past the first -- so `tenth tuesday of` is
+ * the first one plus nine weeks, and the relative days a string spells beside
+ * it simply add on.
+ *
+ * `last` and `previous` are the same rule one month on with a week taken off
+ * (php's own encoding: the 1st of the NEXT month, then -7 from the weekday it
+ * finds), and `this` is that month shift with nothing taken off, which is why it
+ * answers the FIRST such weekday of the month after.
+ */
+static void DtWeekdayOfMonth(dt_parsed *p)
+{
+	p->m = DtWAdd(p->m,DtWAdd(p->rm,(sxi64)p->iWdayOfNext));
+	p->rm = 0;
+	p->d = 1;
+	DtNormalize(p);
+}
 static sxi64 DtApplyFields(dt_parsed *p,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs,
 	int iFlags,int *pUs)
 {
@@ -359,6 +389,9 @@ static sxi64 DtApplyFields(dt_parsed *p,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs
 	 * hunt and a relative month start from the month's edge (`last monday first
 	 * day of this month` never leaves January), and once at the end, which is what
 	 * makes it swallow the relative DAYS beside it. */
+	if( p->bWdayOf ){
+		DtWeekdayOfMonth(p);
+	}
 	DtFirstLastDay(p);
 	DtNormalize(p);
 	if( p->bWday ){
@@ -1693,6 +1726,38 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 			dow = DtMatchWeekdayEx(z,zEnd,&adv,bHavePrefix);
 			if( dow >= 0 && DtRelUnitLen(z,zEnd,p) > adv ){
 				dow = -1;   /* `next month` is the UNIT, not `mon` and a stray `th` */
+			}
+			if( dow >= 0 && bHavePrefix ){
+				/* php's `first monday of`: a WORD count, a weekday and the word
+				 * `of` are one token, and what it names is a weekday inside a
+				 * MONTH. The digit spelling does not reach it -- `1 monday of` is
+				 * a refusal there -- and neither does a bare name. */
+				const char *zOf = &z[adv];
+				while( zOf < zEnd && DtIsSep((unsigned char)zOf[0]) ){ zOf++; }
+				if( zEnd - zOf >= 2 && SyStrnicmp(zOf,"of",2) == 0
+				 && (zEnd - zOf == 2 || !SyisAlpha(zOf[2])) ){
+					DtUnhaveTime(p);
+					p->bWdayOf = 1;
+					p->bWday = 1;
+					p->iWday = dow;
+					if( p->iWdayBehavior != 2 ){
+						/* a day that already matches counts for every count php
+						 * spells forward (behaviour 1); `last` and `previous`,
+						 * which walk back a week from the month after, skip it */
+						p->iWdayBehavior = iCnt >= 0 ? 1 : 0;
+					}
+					if( iCnt >= 1 ){
+						p->rd = DtWAdd(p->rd,DtWMul(iCnt - 1,7));
+					}else{
+						p->iWdayOfNext = 1;
+						if( iCnt < 0 ){
+							p->rd = DtWAdd(p->rd,-7);
+						}
+					}
+					z = &zOf[2];
+					bAny = 1;
+					continue;
+				}
 			}
 			if( dow >= 0 ){
 				DtUnhaveTime(p);
