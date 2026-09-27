@@ -29,6 +29,10 @@ static void PdoBlankSlot(ph7_class_instance *pOwner);
 static phl_pdo * PdoOfInstance(ph7_class_instance *pThis);
 static void PdoStmtClearFetchState(phl_pdo_stmt *pSt);
 static void PdoStmtLazyClear(phl_pdo_stmt *pSt);
+static void PdoBoundColumnsForRow(ph7_vm *pVm,phl_pdo_stmt *pSt);
+static int PdoBoundColumnsForIterRow(ph7_vm *pVm,phl_pdo_stmt *pSt);
+static sxi32 PdoBoundColumnsRefuse(ph7_context *pCtx,phl_pdo_stmt *pSt,int bWholeSet);
+static int PdoBoundColumnsBad(phl_pdo_stmt *pSt);
 
 /* ------------------------------------------------------------------------
  * Connection lifetime
@@ -1301,6 +1305,7 @@ static int PdoStmtRowFrom(ph7_vm *pVm,phl_pdo_stmt *pSt,int iMode,ph7_value *pOu
 	if( !pSt->bRowPending ){
 		return 0;
 	}
+	PdoBoundColumnsForRow(pVm,pSt);
 	nCol = PH7_PdoSqliteColumnCount(pSt);
 	pCell = ph7_new_scalar(pVm);
 	if( pCell == 0 ){
@@ -1562,6 +1567,9 @@ static int vm_builtin_PDOStatement_fetchObject(ph7_context *pCtx,int nArg,ph7_va
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
+	if( PdoBoundColumnsBad(pSt) ){
+		return PdoBoundColumnsRefuse(pCtx,pSt,0);
+	}
 	PH7_MemObjInit(pCtx->pVm,&sRes);
 	if( !PdoRowIntoObject(pCtx,pSt,pClass,nArg > 1 ? apArg[1] : 0,FALSE,0,&sRes) ){
 		PH7_MemObjRelease(&sRes);
@@ -1597,6 +1605,9 @@ static int PdoFetchObjectRow(ph7_context *pCtx,phl_pdo_stmt *pSt,int iMode,
 		PdoStmtOk(pSt);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
+	}
+	if( PdoBoundColumnsBad(pSt) ){
+		return PdoBoundColumnsRefuse(pCtx,pSt,0);
 	}
 	if( iBase == PDO_FETCH_INTO ){
 		ph7_value *pRow;
@@ -1745,16 +1756,54 @@ static int vm_builtin_PDOStatement_bindColumn(ph7_context *pCtx,int nArg,ph7_val
 		}
 		iPos = (int)iWant;
 	}
-	pB = (phl_pdo_bind *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,sizeof(phl_pdo_bind));
-	if( pB == 0 ){
-		return PH7_ContextMemoryError(pCtx);
+	/* php REPLACES a binding rather than stacking one, and which it considers
+	 * the same is not symmetric: a binding made by NAME takes over whatever
+	 * already stands for that COLUMN, while one made by NUMBER only replaces
+	 * another made by number. So `bindColumn(3,$x)` then `bindColumn('c2',$y)`
+	 * is one binding and $x is never written again, while the same pair the
+	 * other way round is two and both are. */
+	{
+		int nName = 0;
+		const char *zName = (pKey && (pKey->iFlags & MEMOBJ_STRING))
+			? ph7_value_to_string(pKey,&nName) : 0;
+		for( pB = pSt->pColBinds ; pB ; pB = pB->pNext ){
+			if( zName ? (pB->iPos == iPos
+			             || (pB->zName && pB->nName == nName
+			                 && SyMemcmp(pB->zName,zName,(sxu32)nName) == 0))
+			          : (pB->zName == 0 && pB->iPos == iPos) ){
+				break;
+			}
+		}
+		if( pB == 0 ){
+			pB = (phl_pdo_bind *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,sizeof(phl_pdo_bind));
+			if( pB == 0 ){
+				return PH7_ContextMemoryError(pCtx);
+			}
+			SyZero(pB,sizeof(phl_pdo_bind));
+			pB->pNext = pSt->pColBinds;
+			pSt->pColBinds = pB;
+		}
+		/* The entry remembers HOW it was named, replaced entries included: that
+		 * is what a later binding by NUMBER matches against (it takes over a
+		 * nameless entry and leaves a named one standing). */
+		if( pB->zName ){
+			SyMemBackendFree(&pCtx->pVm->sAllocator,pB->zName);
+			pB->zName = 0;
+			pB->nName = 0;
+		}
+		if( zName && nName > 0 ){
+			pB->zName = (char *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,(sxu32)nName + 1);
+			if( pB->zName == 0 ){
+				return PH7_ContextMemoryError(pCtx);
+			}
+			SyMemcpy(zName,pB->zName,(sxu32)nName);
+			pB->zName[nName] = 0;
+			pB->nName = nName;
+		}
 	}
-	SyZero(pB,sizeof(phl_pdo_bind));
 	pB->iPos = iPos;
 	pB->iType = iType;
 	pB->nSlot = (nArg > 1 && apArg[1]) ? apArg[1]->nIdx : SXU32_HIGH;
-	pB->pNext = pSt->pColBinds;
-	pSt->pColBinds = pB;
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
@@ -1763,38 +1812,133 @@ static int vm_builtin_PDOStatement_bindColumn(ph7_context *pCtx,int nArg,ph7_val
  * bindColumn() named.  The value takes the bound TYPE, so an unqualified
  * binding hands back a string where the row itself would have held an int.
  */
-static sxi32 PdoWriteBoundColumns(ph7_context *pCtx,phl_pdo_stmt *pSt)
+static int PdoWriteBoundColumns(ph7_vm *pVm,phl_pdo_stmt *pSt)
 {
 	phl_pdo_bind *pB;
 	int nCol = PH7_PdoSqliteColumnCount(pSt);
 	for( pB = pSt->pColBinds ; pB ; pB = pB->pNext ){
 		ph7_value *pSlot;
 		ph7_value sVal;
-		if( pB->iPos < 1 || pB->iPos > nCol ){
-			return PH7_VmThrowException(pCtx,"ValueError","Invalid column index");
-		}
 		if( pB->nSlot == SXU32_HIGH ){
 			continue;
 		}
-		pSlot = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj,pB->nSlot);
+		pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,pB->nSlot);
 		if( pSlot == 0 ){
 			continue;
 		}
-		PH7_MemObjInit(pCtx->pVm,&sVal);
+		if( pB->iPos < 1 || pB->iPos > nCol ){
+			/* A column the statement does not have writes a NULL into its
+			 * variable and only THEN refuses (the refusal is the caller's). */
+			PH7_MemObjInit(pVm,&sVal);
+			PH7_MemObjStore(&sVal,pSlot);
+			PH7_MemObjRelease(&sVal);
+			continue;
+		}
+		PH7_MemObjInit(pVm,&sVal);
 		PH7_PdoSqliteColumnValue(pSt,pB->iPos - 1,&sVal);
 		PdoApplyValueMods(pSt->pConn,&sVal);
-		if( (sVal.iFlags & MEMOBJ_NULL) == 0 ){
-			switch( pB->iType & ~PDO_PARAM_FLAGS ){
+		/* php switches on the type it was GIVEN, flags and all: PARAM_NULL
+		 * writes a null whatever the column holds, INT/STR/BOOL convert, and
+		 * everything else -- PARAM_LOB, PARAM_STMT, a number no constant names,
+		 * or any of these with PARAM_INPUT_OUTPUT ored on -- writes the driver's
+		 * own value untouched. A column holding NULL stays null throughout. */
+		if( pB->iType == PDO_PARAM_NULL ){
+			PH7_MemObjRelease(&sVal);
+			PH7_MemObjInit(pVm,&sVal);
+		}else if( (sVal.iFlags & MEMOBJ_NULL) == 0 ){
+			switch( pB->iType ){
 				case PDO_PARAM_INT:  PH7_MemObjToInteger(&sVal); break;
 				case PDO_PARAM_BOOL: PH7_MemObjToBool(&sVal); break;
-				case PDO_PARAM_LOB:  break;
-				default:             PH7_MemObjToString(&sVal); break;
+				case PDO_PARAM_STR:  PH7_MemObjToString(&sVal); break;
+				default:             break;   /* the value as the driver typed it */
 			}
 		}
 		PH7_MemObjStore(&sVal,pSlot);
 		PH7_MemObjRelease(&sVal);
 	}
-	return PH7_OK;
+	return 1;
+}
+/*
+ * Does every binding name a column this statement HAS? The width is the
+ * statement's and does not change while it is walked, so this is asked ONCE by
+ * the verb rather than per row -- which is also what keeps php's
+ * `Invalid column index` out of the middle of fetchAll()'s loop, where a raise
+ * has no frame to leave.
+ */
+static int PdoBoundColumnsInRange(phl_pdo_stmt *pSt)
+{
+	phl_pdo_bind *pB;
+	int nCol = PH7_PdoSqliteColumnCount(pSt);
+	for( pB = pSt->pColBinds ; pB ; pB = pB->pNext ){
+		if( pB->iPos < 1 || pB->iPos > nCol ){
+			return 0;
+		}
+	}
+	return 1;
+}
+/*
+ * The bound columns of the row a verb is about to hand out. php writes them on
+ * EVERY fetch, whatever the mode -- FETCH_BOUND is only the mode that answers
+ * `true` INSTEAD of a row, not the one that does the writing -- so this runs
+ * wherever a row is read. A binding OUT of range is not its business: the verb
+ * screens for one first and refuses through PdoBoundColumnsRefuse.
+ */
+static void PdoBoundColumnsForRow(ph7_vm *pVm,phl_pdo_stmt *pSt)
+{
+	if( pSt->pColBinds == 0 || !pSt->bRowPending || !PdoBoundColumnsInRange(pSt) ){
+		/* php looks at the bindings only when there is a ROW to write from, so a
+		 * cursor with nothing left answers false rather than refusing; a binding
+		 * OUT of range was screened by the verb before the row was read. */
+		return;
+	}
+	PdoWriteBoundColumns(pVm,pSt);
+}
+/* Has the verb about to read a row a binding it cannot honour? */
+static int PdoBoundColumnsBad(phl_pdo_stmt *pSt)
+{
+	return pSt->pColBinds != 0 && pSt->bRowPending && !PdoBoundColumnsInRange(pSt);
+}
+/*
+ * php's refusal for a binding naming a column the statement does not have. It
+ * reads the row and moves the cursor ON before the refusal surfaces, so three
+ * fetches over three rows refuse one by one and the fourth answers false --
+ * and fetchAll(), which would have walked the whole set, exhausts it and
+ * refuses once.
+ */
+static sxi32 PdoBoundColumnsRefuse(ph7_context *pCtx,phl_pdo_stmt *pSt,int bWholeSet)
+{
+	/* The bindings it CAN honour are written all the same -- the one it cannot
+	 * reach does not stop the rest -- and for the whole-set verb they are
+	 * written from EVERY row it walks past, so the caller is left holding the
+	 * last row's values exactly as a successful fetchAll() would leave them. */
+	do{
+		PdoWriteBoundColumns(pCtx->pVm,pSt);
+		pSt->bRowPending = 0;
+		PdoStmtStep(pSt);
+	}while( bWholeSet && pSt->bRowPending );
+	PdoStmtOk(pSt);
+	return PH7_VmThrowException(pCtx,"ValueError","Invalid column index");
+}
+/*
+ * The same, for the foreach ITERATOR: its vtable is handed a VM with no call
+ * context, so the refusal is raised on the VM directly -- the walk is inside
+ * the foreach opcode, which is the frame php raises it out of too.
+ */
+static int PdoBoundColumnsForIterRow(ph7_vm *pVm,phl_pdo_stmt *pSt)
+{
+	if( pSt->pColBinds == 0 || !pSt->bRowPending || PdoBoundColumnsInRange(pSt) ){
+		return 1;   /* the row read below writes them, through the same routine */
+	}
+	/* Same as the verbs' refusal -- the honourable bindings are written and the
+	 * row is consumed before it surfaces -- but raised on the VM directly: the
+	 * walk is inside the foreach opcode, which is the frame php raises out of,
+	 * and the iterator's vtable has no call context to throw into. */
+	PdoWriteBoundColumns(pVm,pSt);
+	pSt->bRowPending = 0;
+	PdoStmtStep(pSt);
+	VmThrowFromVm(pVm,"ValueError","Invalid column index",
+		sizeof("Invalid column index")-1);
+	return 0;
 }
 /* ------------------------------------------------------------------------
  * PDORow: what PDO::FETCH_LAZY answers
@@ -2146,6 +2290,7 @@ static void PdoRowInstanceRelease(ph7_vm *pVm,ph7_class_instance *pThis)
 static ph7_class_instance * PdoLazyRowFor(ph7_vm *pVm,phl_pdo_stmt *pSt)
 {
 	ph7_class_instance *pRow = pSt->pLazyRow;
+	PdoBoundColumnsForRow(pVm,pSt);
 	PdoStmtLazyCapture(pSt);
 	if( pRow == 0 ){
 		ph7_class *pClass = PH7_VmExtractClass(pVm,"PDORow",sizeof("PDORow")-1,FALSE,0);
@@ -2243,6 +2388,9 @@ static int vm_builtin_PDOStatement_fetch(ph7_context *pCtx,int nArg,ph7_value **
 			"PDOStatement::fetch(): Argument #1 ($mode) must be a bitmask of "
 			"PDO::FETCH_* constants");
 	}
+	if( PdoBoundColumnsBad(pSt) ){
+		return PdoBoundColumnsRefuse(pCtx,pSt,0);
+	}
 	if( (iMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_LAZY ){
 		return PdoFetchLazyRow(pCtx,pSt);
 	}
@@ -2319,16 +2467,12 @@ static int vm_builtin_PDOStatement_fetch(ph7_context *pCtx,int nArg,ph7_value **
 		return PH7_OK;
 	}
 	if( (iMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_BOUND ){
-		sxi32 rcBound;
 		if( !PdoStmtHasRow(pSt) ){
 			PdoStmtOk(pSt);
 			ph7_result_bool(pCtx,0);
 			return PH7_OK;
 		}
-		rcBound = PdoWriteBoundColumns(pCtx,pSt);
-		if( rcBound != PH7_OK ){
-			return rcBound;
-		}
+		PdoBoundColumnsForRow(pCtx->pVm,pSt);
 		pSt->bRowPending = 0;
 		ph7_result_bool(pCtx,1);
 		if( PdoStmtStep(pSt) < 0 ){
@@ -2503,6 +2647,9 @@ static int vm_builtin_PDOStatement_fetchColumn(ph7_context *pCtx,int nArg,ph7_va
 		PdoStmtOk(pSt);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
+	}
+	if( PdoBoundColumnsBad(pSt) ){
+		return PdoBoundColumnsRefuse(pCtx,pSt,0);
 	}
 	pRow = ph7_context_new_array(pCtx);
 	if( pRow == 0 ){
@@ -2821,6 +2968,9 @@ static int vm_builtin_PDOStatement_fetchAll(ph7_context *pCtx,int nArg,ph7_value
 	if( pOut == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
+	if( PdoBoundColumnsBad(pSt) ){
+		return PdoBoundColumnsRefuse(pCtx,pSt,1);
+	}
 	while( PdoStmtHasRow(pSt) ){
 		int iRowMode = iBase;
 		int iFirst = (bGroup || bUnique) ? 1 : 0;
@@ -2910,10 +3060,7 @@ static int vm_builtin_PDOStatement_fetchAll(ph7_context *pCtx,int nArg,ph7_value
 			 * array collects one true per row and the caller reads the last
 			 * row's values out of its own variables */
 			ph7_value *pTrue;
-			sxi32 rcBound = PdoWriteBoundColumns(pCtx,pSt);
-			if( rcBound != PH7_OK ){
-				return rcBound;
-			}
+			PdoBoundColumnsForRow(pCtx->pVm,pSt);
 			pSt->bRowPending = 0;
 			pTrue = ph7_context_new_scalar(pCtx);
 			if( pTrue ){
@@ -3162,6 +3309,10 @@ static void PdoStmtIterSettle(ph7_vm *pVm,ph7_class_instance *pIt)
 	phl_pdo_stmt *pSt = PdoStmtOfInstance(pSrc);
 	ph7_value *pRow;
 	if( pSt == 0 || !PdoStmtHasRow(pSt) ){
+		PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);
+		return;
+	}
+	if( !PdoBoundColumnsForIterRow(pVm,pSt) ){
 		PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);
 		return;
 	}
