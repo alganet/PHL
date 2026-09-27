@@ -3328,38 +3328,12 @@ static int vm_builtin_strtotime(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * class php answers there.
  * ---------------------------------------------------------------------------
  */
-/* php's unit words for DateInterval::createFromDateString(), longest first so a
- * prefix never wins over the word that contains it. */
-typedef struct dt_unit dt_unit;
-struct dt_unit
-{
-	const char *zName;
-	int iField;   /* 0=y 1=m 2=d 3=h 4=i 5=s 6=microseconds */
-	int nMul;
-};
 /* The MICROSECOND slot of the parsed vector: php keeps it apart from the six
  * relative fields (timelib_rel_time.us), and it does not carry into the seconds
  * the way the CLOCK's does -- `1000000 microseconds` is an interval whose `%f`
  * prints 1000000 and whose `s` is 0. */
 #define DT_IV_FIELDS 6
 #define DT_IV_USLOT  6
-static const dt_unit aDtUnit[] = {
-	/* Sub-second first: the words below are their prefixes, and php has no `us`
-	 * (only `usec`) and no Greek mu (only U+00B5, the two bytes 0xC2 0xB5). */
-	{ "microseconds", DT_IV_USLOT, 1 },    { "microsecond", DT_IV_USLOT, 1 },
-	{ "milliseconds", DT_IV_USLOT, 1000 }, { "millisecond", DT_IV_USLOT, 1000 },
-	{ "usecs", DT_IV_USLOT, 1 },           { "usec", DT_IV_USLOT, 1 },
-	{ "msecs", DT_IV_USLOT, 1000 },        { "msec", DT_IV_USLOT, 1000 },
-	{ "\xc2\xb5s", DT_IV_USLOT, 1 },       { "ms", DT_IV_USLOT, 1000 },
-	{ "seconds", 5, 1 }, { "second", 5, 1 }, { "secs", 5, 1 }, { "sec", 5, 1 },
-	{ "minutes", 4, 1 }, { "minute", 4, 1 }, { "mins", 4, 1 }, { "min", 4, 1 },
-	{ "hours", 3, 1 },   { "hour", 3, 1 },
-	{ "fortnights", 2, 14 }, { "fortnight", 2, 14 },
-	{ "weeks", 2, 7 },   { "week", 2, 7 },
-	{ "days", 2, 1 },    { "day", 2, 1 },
-	{ "months", 1, 1 },  { "month", 1, 1 },
-	{ "years", 0, 1 },   { "year", 0, 1 },
-};
 static const char * const azDtIvField[] = { "y", "m", "d", "h", "i", "s" };
 /* Read an unsigned run of digits; returns the count consumed. Stops ACCUMULATING
  * past DT_DIGITS_SAFE while still counting, so a caller that is about to refuse
@@ -3440,7 +3414,7 @@ static int DtIvParseIso(const char *zIn,int nIn,sxi64 *aOut)
 static int DtIvParseRelative(const char *zIn,int nIn,sxi64 *aOut,int *piPos,
 	char *pcAt,const char **pzReason)
 {
-	const char *z = zIn,*zEnd = &zIn[nIn];
+	dt_parsed sVec;
 	sxi64 iTs = 0;
 	sxi32 iOff = 0;
 	int bOffSet = 0,uSec = 0,iErr;
@@ -3454,55 +3428,28 @@ static int DtIvParseRelative(const char *zIn,int nIn,sxi64 *aOut,int *piPos,
 		*pzReason = "Empty string";
 		return -1;
 	}
-	iErr = DtParse(zIn,nIn,0,0,0,&iTs,&iOff,&bOffSet,&uSec);
+	iErr = DtParseEx(zIn,nIn,0,0,0,0,&iTs,&iOff,&bOffSet,&uSec,&sVec);
 	if( iErr != 0 ){
 		*pzReason = DtParseErr(zIn,nIn,iErr,piPos,pcAt);
 		return -1;
 	}
-	while( z < zEnd ){
-		sxi64 v;
-		int n,iSign = 1,iUnit;
-		while( z < zEnd && (z[0] == ' ' || z[0] == '\t' || z[0] == '\n' || z[0] == '\r'
-		 || z[0] == ',' || z[0] == '+') ){
-			z++;
-		}
-		if( z < zEnd && z[0] == '-' ){
-			iSign = -1;
-			z++;
-		}
-		n = DtIvDigits(z,zEnd,&v);
-		if( n > DT_DIGITS_REL ){
-			/* The same ceiling DtParse enforces; it has already refused the string
-			 * by the time we get here, so this only keeps the two in step. */
-			return -1;
-		}
-		if( n == 0 ){
-			/* Not a number: skip the token (php's parser already accepted the
-			 * string, so this is a relative form with no interval field). */
-			while( z < zEnd && z[0] != ' ' && z[0] != ',' ){
-				z++;
-			}
-			continue;
-		}
-		z += n;
-		while( z < zEnd && (z[0] == ' ' || z[0] == '\t') ){
-			z++;
-		}
-		iUnit = -1;
-		for( k = 0 ; k < (int)SX_ARRAYSIZE(aDtUnit) ; k++ ){
-			int nU = (int)SyStrlen(aDtUnit[k].zName);
-			if( zEnd - z >= nU && SyStrnicmp(z,aDtUnit[k].zName,(sxu32)nU) == 0
-			 && (zEnd - z == nU || !(SyisAlphaNum(z[nU]) || z[nU] == '_')) ){
-				iUnit = k;
-				z += nU;
-				break;
-			}
-		}
-		if( iUnit < 0 ){
-			continue;
-		}
-		aOut[aDtUnit[iUnit].iField] += iSign * v * aDtUnit[iUnit].nMul;
+	/* php REFUSES a string carrying any absolute element -- a date, a time of day
+	 * or a zone -- rather than reading an interval out of what is left: it checks
+	 * the same three flags the parse already carries. A relative NAVIGATION word
+	 * is not one of them, which is what makes `tomorrow` the interval d = 1. */
+	if( sVec.bHaveDate || sVec.nTimeTok || sVec.bOffSet ){
+		return -2;
 	}
+	/* The vector IS the interval: php reads timelib_rel_time's own fields, so a
+	 * week is already days there and the microseconds stand apart from the
+	 * seconds. */
+	aOut[0] = sVec.ry;
+	aOut[1] = sVec.rm;
+	aOut[2] = sVec.rd;
+	aOut[3] = sVec.rh;
+	aOut[4] = sVec.ri;
+	aOut[5] = sVec.rs;
+	aOut[DT_IV_USLOT] = sVec.rus;
 	return 0;
 }
 /* Write the six relative fields onto a DateInterval instance. */
@@ -3611,17 +3558,20 @@ static int vm_builtin_DateInterval_construct(ph7_context *pCtx,int nArg,ph7_valu
  * where the method throws.
  */
 static ph7_class_instance * DtIvFromDateString(ph7_context *pCtx,const char *zIn,int nIn,
-	int *piPos,char *pcAt,const char **pzReason)
+	int *piPos,char *pcAt,const char **pzReason,int *pbNonRel)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class *pClass = DtFactoryClass(pCtx,"DateInterval");
 	ph7_class_instance *pObj;
 	sxi64 aVal[DT_IV_USLOT + 1];
 	ph7_value sVal;
+	int rc;
+	*pbNonRel = 0;
 	if( pClass == 0 ){
 		return 0;
 	}
-	if( DtIvParseRelative(zIn,nIn,aVal,piPos,pcAt,pzReason) != 0 ){
+	if( (rc = DtIvParseRelative(zIn,nIn,aVal,piPos,pcAt,pzReason)) != 0 ){
+		*pbNonRel = (rc == -2);
 		return 0;
 	}
 	pObj = DtNewInstance(pVm,pClass);
@@ -3639,15 +3589,19 @@ static ph7_class_instance * DtIvFromDateString(ph7_context *pCtx,const char *zIn
 static int vm_builtin_DateInterval_createFromDateString(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zIn,*zReason = "";
-	int nIn,iPos = 0;
+	int nIn,iPos = 0,bNonRel = 0;
 	char cAt = ' ';
 	ph7_class_instance *pObj;
 	if( nArg < 1 ){
 		return PH7_OK;
 	}
 	zIn = ph7_value_to_string(apArg[0],&nIn);
-	pObj = DtIvFromDateString(pCtx,zIn,nIn,&iPos,&cAt,&zReason);
+	pObj = DtIvFromDateString(pCtx,zIn,nIn,&iPos,&cAt,&zReason,&bNonRel);
 	if( pObj == 0 ){
+		if( bNonRel ){
+			return PH7_VmThrowException(pCtx,"DateMalformedIntervalStringException",
+				"String '%.*s' contains non-relative elements",nIn,zIn);
+		}
 		return PH7_VmThrowException(pCtx,"DateMalformedIntervalStringException",
 			"Unknown or bad format (%.*s) at position %d (%c): %s",nIn,zIn,iPos,cAt,zReason);
 	}
@@ -4477,15 +4431,22 @@ static int vm_builtin_date_isodate_set(ph7_context *pCtx,int nArg,ph7_value **ap
 static int vm_builtin_date_interval_create_from_date_string(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zIn,*zReason = "";
-	int nIn,iPos = 0;
+	int nIn,iPos = 0,bNonRel = 0;
 	char cAt = ' ';
 	ph7_class_instance *pObj;
 	if( nArg < 1 ){
 		return PH7_OK;
 	}
 	zIn = ph7_value_to_string(apArg[0],&nIn);
-	pObj = DtIvFromDateString(pCtx,zIn,nIn,&iPos,&cAt,&zReason);
+	pObj = DtIvFromDateString(pCtx,zIn,nIn,&iPos,&cAt,&zReason,&bNonRel);
 	if( pObj == 0 ){
+		if( bNonRel ){
+			PH7_VmThrowWarningFmt(pCtx->pVm,
+				"date_interval_create_from_date_string(): String '%.*s' contains "
+				"non-relative elements",nIn,zIn);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
 		PH7_VmThrowWarningFmt(pCtx->pVm,
 			"date_interval_create_from_date_string(): Unknown or bad format (%.*s) "
 			"at position %d (%c): %s",nIn,zIn,iPos,cAt,zReason);
