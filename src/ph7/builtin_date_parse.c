@@ -1514,6 +1514,65 @@ static int DtIsOrdinal(const char *z,const char *zEnd)
 		|| SyStrnicmp(z,"rd",2) == 0 || SyStrnicmp(z,"th",2) == 0;
 }
 /*
+ * php's `americanshort`, `month "/" day` -- the American date with no year at
+ * all (`4/20`, `12/31`, `10/2`), which this engine had only in its
+ * month/day/year form, so the most common way an American program spells a date
+ * without one did not parse.
+ *
+ * Its fields are spelled INSIDE the pattern rather than range-checked
+ * afterwards, `"0"? [0-9] | "1"[0-2]` and `[0-2]?[0-9] | "3"[01]`, so a
+ * two-digit reading that is out of range leaves its second digit to the string
+ * instead of sinking the rule: `4/32` is the 3rd with a stray `2` behind it and
+ * `13/20` an unexpected `1` and then March the 20th. Zero matches both fields
+ * and normalizes, which is what makes `0/1` December of the year before.
+ * php's ordinal suffix rides the day with NOTHING between them, so `4/20th` is
+ * the 20th where `4/20 th` is the 20th beside a zone it cannot find.
+ *
+ * The YEAR is left alone -- php's action writes only the month and the day --
+ * which is what keeps `4/20` on the base moment's year.
+ */
+static int DtTryAmericanShort(const char *z,const char *zEnd,const char **pzOut,
+	dt_parsed *p,const char *zIn)
+{
+	const char *zTok = z;
+	int mo,d,rc;
+	if( z >= zEnd || !SyisDigit(z[0]) ){
+		return 0;
+	}
+	mo = z[0] - '0';
+	if( z+1 < zEnd && SyisDigit(z[1]) && (z[0] == '0' || (z[0] == '1' && z[1] <= '2')) ){
+		mo = mo*10 + (z[1]-'0');
+		z += 2;
+	}else{
+		z++;
+	}
+	if( z >= zEnd || z[0] != '/' ){
+		return 0;
+	}
+	z++;
+	if( z >= zEnd || !SyisDigit(z[0]) ){
+		return 0;
+	}
+	d = z[0] - '0';
+	if( z+1 < zEnd && SyisDigit(z[1])
+	 && (z[0] <= '2' || (z[0] == '3' && z[1] <= '1')) ){
+		d = d*10 + (z[1]-'0');
+		z += 2;
+	}else{
+		z++;
+	}
+	if( DtIsOrdinal(z,zEnd) ){
+		z += 2;
+	}
+	*pzOut = z;
+	if( (rc = DtMarkDate(p,zTok,zIn)) != 0 ){
+		return rc;
+	}
+	p->m = mo;
+	p->d = d;
+	return 1;
+}
+/*
  * Try to read a textual-month date at z, in either order:
  *   MonthName [Day] [Year]   ("Jan 15 2020", "January", "January 2020")
  *   Day MonthName [Year]     ("15 January 2020", "15th Jan")
@@ -2086,6 +2145,13 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 			continue;
 		}
 		if( SyisDigit(z[0]) && (iRc = DtTryNumericDate(z,zEnd,&z,p,zIn)) != 0 ){
+			if( iRc != 1 ){ return iRc; }
+			bAny = 1;
+			continue;
+		}
+		/* ...and the same date with no YEAR, which is a shorter read than the
+		 * three-field one above and so is tried after it. */
+		if( SyisDigit(z[0]) && (iRc = DtTryAmericanShort(z,zEnd,&z,p,zIn)) != 0 ){
 			if( iRc != 1 ){ return iRc; }
 			bAny = 1;
 			continue;
