@@ -1441,10 +1441,9 @@ static void PdoWriteRowProps(ph7_vm *pVm,ph7_class_instance *pObj,ph7_value *pRo
  * column is filled just the same, which is why this cannot go through the
  * ordinary property-store path.
  */
-static int PdoRowIntoObject(ph7_context *pCtx,phl_pdo_stmt *pSt,ph7_class *pClass,
+static int PdoRowIntoObject(ph7_vm *pVm,phl_pdo_stmt *pSt,ph7_class *pClass,
 	ph7_value *pArgs,int bPropsLate,int iFirstCol,ph7_value *pResult)
 {
-	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pObj;
 	ph7_class_method *pCons;
 	ph7_value *pRow;
@@ -1453,12 +1452,15 @@ static int PdoRowIntoObject(ph7_context *pCtx,phl_pdo_stmt *pSt,ph7_class *pClas
 	if( pObj == 0 ){
 		return 0;
 	}
-	pRow = ph7_context_new_array(pCtx);
+	/* VM-allocated rather than context-allocated: the foreach ITERATOR builds
+	 * objects through here too, and its vtable has no call context. */
+	pRow = ph7_new_array(pVm);
 	if( pRow == 0 ){
 		PH7_ClassInstanceUnref(pObj);
 		return 0;
 	}
 	if( !PdoStmtRowFrom(pVm,pSt,PDO_FETCH_ASSOC,pRow,iFirstCol) ){
+		ph7_release_value(pVm,pRow);
 		PH7_ClassInstanceUnref(pObj);
 		return 0;
 	}
@@ -1487,6 +1489,7 @@ static int PdoRowIntoObject(ph7_context *pCtx,phl_pdo_stmt *pSt,ph7_class *pClas
 	if( !bPropsLate && pCons ){
 		PdoCallCtor(pVm,pObj,pCons,pArgs);
 	}
+	ph7_release_value(pVm,pRow);
 	PH7_MemObjRelease(pResult);
 	pResult->x.pOther = pObj;
 	pResult->iFlags = MEMOBJ_OBJ;
@@ -1531,18 +1534,22 @@ static ph7_class * PdoResolveFetchClass(ph7_context *pCtx,ph7_value *pName,int b
  * finds there and falls back to stdClass for anything it cannot use -- a name
  * no class carries, a null, a number -- rather than refusing the row.
  */
-static ph7_class * PdoClassTypeClass(ph7_context *pCtx,ph7_value *pName)
+static ph7_class * PdoIterClassOf(ph7_vm *pVm,ph7_value *pName)
 {
 	ph7_class *pClass = 0;
 	if( pName && (pName->iFlags & MEMOBJ_NULL) == 0 ){
 		int nName = 0;
 		const char *zName = ph7_value_to_string(pName,&nName);
 		if( zName && nName > 0 ){
-			pClass = PH7_VmExtractClass(pCtx->pVm,zName,(sxu32)nName,FALSE,0);
+			pClass = PH7_VmExtractClass(pVm,zName,(sxu32)nName,FALSE,0);
 		}
 	}
 	return pClass ? pClass
-		: PH7_VmExtractClass(pCtx->pVm,"stdClass",sizeof("stdClass")-1,FALSE,0);
+		: PH7_VmExtractClass(pVm,"stdClass",sizeof("stdClass")-1,FALSE,0);
+}
+static ph7_class * PdoClassTypeClass(ph7_context *pCtx,ph7_value *pName)
+{
+	return PdoIterClassOf(pCtx->pVm,pName);
 }
 /*
  * PDOStatement::fetchObject(?string $class = "stdClass", array $ctorArgs = []): object|false
@@ -1571,7 +1578,7 @@ static int vm_builtin_PDOStatement_fetchObject(ph7_context *pCtx,int nArg,ph7_va
 		return PdoBoundColumnsRefuse(pCtx,pSt,0);
 	}
 	PH7_MemObjInit(pCtx->pVm,&sRes);
-	if( !PdoRowIntoObject(pCtx,pSt,pClass,nArg > 1 ? apArg[1] : 0,FALSE,0,&sRes) ){
+	if( !PdoRowIntoObject(pCtx->pVm,pSt,pClass,nArg > 1 ? apArg[1] : 0,FALSE,0,&sRes) ){
 		PH7_MemObjRelease(&sRes);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -1681,7 +1688,7 @@ static int PdoFetchObjectRow(ph7_context *pCtx,phl_pdo_stmt *pSt,int iMode,
 		return rc;   /* an interface, a trait, an enum or an abstract class */
 	}
 	PH7_MemObjInit(pCtx->pVm,&sRes);
-	if( !PdoRowIntoObject(pCtx,pSt,pClass,pArgs,bLate,iFirst,&sRes) ){
+	if( !PdoRowIntoObject(pCtx->pVm,pSt,pClass,pArgs,bLate,iFirst,&sRes) ){
 		PH7_MemObjRelease(&sRes);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -3048,7 +3055,7 @@ static int vm_builtin_PDOStatement_fetchAll(ph7_context *pCtx,int nArg,ph7_value
 				return rcCls;
 			}
 			PH7_MemObjInit(pCtx->pVm,&sObj);
-			if( !PdoRowIntoObject(pCtx,pSt,pClass,nArg > 2 ? apArg[2] : 0,
+			if( !PdoRowIntoObject(pCtx->pVm,pSt,pClass,nArg > 2 ? apArg[2] : 0,
 				(iMode & PDO_FETCH_PROPS_LATE) != 0,iFirstCol,&sObj) ){
 				PH7_MemObjRelease(&sObj);
 				break;
@@ -3316,25 +3323,98 @@ static void PdoStmtIterSettle(ph7_vm *pVm,ph7_class_instance *pIt)
 		PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);
 		return;
 	}
-	if( (pSt->iFetchMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_LAZY ){
-		/* php walks a LAZY statement with its one row object: every step
-		 * answers the same PDORow, showing the row the cursor is on. */
-		ph7_class_instance *pLazy = PdoLazyRowFor(pVm,pSt);
-		ph7_value sRowVal;
-		if( pLazy == 0 ){
+	{
+		/* A foreach honours the statement's mode, the whole of it: php walks a
+		 * LAZY statement with its one row object, a CLASS or INTO one with the
+		 * objects those modes build, a COLUMN one with that column's value and
+		 * a BOUND one with `true` per row (the values having gone to the bound
+		 * variables). Only the four row SHAPES are what PdoStmtRow answers. */
+		int iBase = pSt->iFetchMode & PDO_FETCH_MODE_MASK;
+		ph7_value sCur;
+		int bHave = 0;
+		PH7_MemObjInit(pVm,&sCur);
+		if( iBase == PDO_FETCH_LAZY ){
+			ph7_class_instance *pLazy = PdoLazyRowFor(pVm,pSt);
+			if( pLazy ){
+				sCur.x.pOther = pLazy;
+				MemObjSetType(&sCur,MEMOBJ_OBJ);
+				bHave = 1;   /* the reference PdoLazyRowFor took is this value's */
+			}
+		}else if( iBase == PDO_FETCH_BOUND ){
+			/* the row IS the bound variables: nothing else reads it, so the
+			 * write happens here rather than inside a row build */
+			PdoBoundColumnsForRow(pVm,pSt);
+			pSt->bRowPending = 0;
+			ph7_value_bool(&sCur,1);
+			bHave = 1;
+		}else if( iBase == PDO_FETCH_COLUMN ){
+			ph7_value *pNumRow = ph7_new_array(pVm);
+			if( pNumRow ){
+				if( PdoStmtRowFrom(pVm,pSt,PDO_FETCH_NUM,pNumRow,0) ){
+					ph7_value *pOne = PdoArrayAtInt(pVm,pNumRow,(sxi64)pSt->iFetchColumn);
+					if( pOne ){
+						PH7_MemObjStore(pOne,&sCur);
+					}
+					bHave = 1;
+				}
+				ph7_release_value(pVm,pNumRow);
+			}
+		}else if( iBase == PDO_FETCH_CLASS || iBase == PDO_FETCH_INTO ){
+			ph7_class *pClass = 0;
+			int iFirst = 0;
+			if( iBase == PDO_FETCH_INTO ){
+				if( pSt->pFetchInto ){
+					ph7_value *pRowVals = ph7_new_array(pVm);
+					if( pRowVals && PdoStmtRowFrom(pVm,pSt,PDO_FETCH_ASSOC,pRowVals,0) ){
+						PdoWriteRowProps(pVm,pSt->pFetchInto,pRowVals);
+						pSt->pFetchInto->iRef++;
+						sCur.x.pOther = pSt->pFetchInto;
+						MemObjSetType(&sCur,MEMOBJ_OBJ);
+						bHave = 1;
+					}
+					if( pRowVals ){
+						ph7_release_value(pVm,pRowVals);
+					}
+				}
+			}else{
+				if( pSt->iFetchMode & PDO_FETCH_CLASSTYPE ){
+					/* the FIRST column names the class and leaves the row */
+					ph7_value *pHead = ph7_new_array(pVm);
+					if( pHead && PdoStmtRowFrom(pVm,pSt,PDO_FETCH_NUM,pHead,0) ){
+						pSt->bRowPending = 1;   /* the cursor has not moved */
+						pClass = PdoIterClassOf(pVm,PdoArrayAtInt(pVm,pHead,0));
+						iFirst = 1;
+					}
+					if( pHead ){
+						ph7_release_value(pVm,pHead);
+					}
+				}else if( pSt->zFetchClass ){
+					pClass = PH7_VmExtractClass(pVm,pSt->zFetchClass,
+						(sxu32)pSt->nFetchClass,FALSE,0);
+				}
+				if( pClass && PdoRowIntoObject(pVm,pSt,pClass,pSt->pFetchArgs,
+						(pSt->iFetchMode & PDO_FETCH_PROPS_LATE) != 0,iFirst,&sCur) ){
+					bHave = 1;
+				}
+			}
+		}
+		if( bHave ){
+			PH7_NativeSetProp(&(*pVm),pIt,PH7_NATIVE_IT_CUR,
+				(int)SyStrlen(PH7_NATIVE_IT_CUR),&sCur);
+			PH7_MemObjRelease(&sCur);
+			PH7_NativeSetAttrInt(&(*pVm),pIt,PH7_NATIVE_IT_KEY,
+				PH7_NativeAttrInt(pIt,PH7_NATIVE_IT_POS));
+			PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,0);
+			PdoStmtStep(pSt);
+			return;
+		}
+		PH7_MemObjRelease(&sCur);
+		if( iBase != PDO_FETCH_ASSOC && iBase != PDO_FETCH_NUM && iBase != PDO_FETCH_BOTH
+		 && iBase != PDO_FETCH_OBJ && iBase != PDO_FETCH_NAMED ){
+			/* a mode with nothing to hand out ends the walk */
 			PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);
 			return;
 		}
-		PH7_MemObjInit(pVm,&sRowVal);
-		sRowVal.x.pOther = pLazy;
-		MemObjSetType(&sRowVal,MEMOBJ_OBJ);
-		PH7_NativeSetProp(&(*pVm),pIt,PH7_NATIVE_IT_CUR,(int)SyStrlen(PH7_NATIVE_IT_CUR),&sRowVal);
-		PH7_MemObjRelease(&sRowVal);   /* gives the reference PdoLazyRowFor took back */
-		PH7_NativeSetAttrInt(&(*pVm),pIt,PH7_NATIVE_IT_KEY,
-			PH7_NativeAttrInt(pIt,PH7_NATIVE_IT_POS));
-		PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,0);
-		PdoStmtStep(pSt);
-		return;
 	}
 	pRow = ph7_new_array(pVm);
 	if( pRow == 0 || !PdoStmtRow(pVm,pSt,pSt->iFetchMode,pRow) ){
