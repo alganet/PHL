@@ -53,6 +53,17 @@ PH7_PRIVATE void PH7_CurlGlobalInit(void);
 #define PHL_CURL_DEST_STDOUT 0   /* the script's own output -- php's default */
 #define PHL_CURL_DEST_RETURN 1   /* CURLOPT_RETURNTRANSFER: curl_exec answers it */
 #define PHL_CURL_DEST_USER   2   /* CURLOPT_WRITEFUNCTION: the callback is the sink */
+#define PHL_CURL_DEST_FILE   3   /* CURLOPT_FILE: a php stream is the sink */
+
+/*
+ * Where the RESPONSE HEADERS go. The same "one setting, last writer wins"
+ * shape as the body's, with a different default: php ignores headers until
+ * something asks for them, so a transfer with neither option set prints
+ * nothing of its own.
+ */
+#define PHL_CURL_HDR_IGNORE 0    /* php's default */
+#define PHL_CURL_HDR_USER   1    /* CURLOPT_HEADERFUNCTION */
+#define PHL_CURL_HDR_FILE   2    /* CURLOPT_WRITEHEADER: a php stream */
 
 /*
  * One easy handle, and the state php keeps BESIDE it.
@@ -133,6 +144,10 @@ struct phl_curl {
 	ph7_value *pXferCb;             /* XFERINFOFUNCTION, or PROGRESSFUNCTION */
 	int bXferIsProgress;            /* the older option's argument shape */
 	sxi32 iCbExc;                   /* a callback threw: parked until the verb unwinds */
+	int bCbExcKeepErr;              /* ...and the transfer's own CURLcode stands: a
+	                                 * READ callback that throws does not abort the
+	                                 * library, so php reports the timeout that
+	                                 * follows rather than a cleared error state */
 	int iWriteDest;                 /* where the body goes: one of PHL_CURL_DEST_* */
 	/*
 	 * The multipart body CURLOPT_POSTFIELDS built from an array: the mime
@@ -151,6 +166,20 @@ struct phl_curl {
 	 * a stored null.
 	 */
 	ph7_value *pPrivate;
+	/*
+	 * The php STREAMS a transfer may be pointed at, each held as the resource
+	 * VALUE rather than as a raw io_private: the value keeps the resource
+	 * alive for as long as the handle names it, and a stream the script closed
+	 * anyway is then an invalid handle the writers can see rather than a
+	 * dangling pointer.
+	 */
+	ph7_value *pWriteStream;        /* CURLOPT_FILE */
+	ph7_value *pHeaderStream;       /* CURLOPT_WRITEHEADER */
+	ph7_value *pStderrStream;       /* CURLOPT_STDERR */
+	ph7_value *pReadStream;         /* CURLOPT_INFILE / CURLOPT_READDATA */
+	ph7_value *pReadCb;             /* CURLOPT_READFUNCTION */
+	ph7_value *pDebugCb;            /* CURLOPT_DEBUGFUNCTION */
+	int iHeaderDest;                /* where the headers go: PHL_CURL_HDR_* */
 	ph7_context *pExecCtx;          /* the running curl_exec, for a diagnostic an
 	                                 * upload read raises from inside libcurl */
 	int bNoPathRead;                /* an upload part with no source was read: the

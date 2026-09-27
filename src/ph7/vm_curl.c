@@ -126,17 +126,29 @@ static void CurlFreeSlists(phl_curl *pCurl)
 }
 static void CurlDropCallbacks(phl_curl *pCurl)
 {
-	ph7_value **apCb[3];
+	ph7_value **apCb[8];
 	int i;
 	apCb[0] = &pCurl->pWriteCb;
 	apCb[1] = &pCurl->pHeaderCb;
 	apCb[2] = &pCurl->pXferCb;
-	for( i = 0 ; i < 3 ; ++i ){
+	apCb[3] = &pCurl->pReadCb;
+	apCb[4] = &pCurl->pDebugCb;
+	/* The stream slots go with them: they are php-side state too, and
+	 * curl_reset() puts every option back. */
+	apCb[5] = &pCurl->pWriteStream;
+	apCb[6] = &pCurl->pHeaderStream;
+	apCb[7] = &pCurl->pStderrStream;
+	for( i = 0 ; i < 8 ; ++i ){
 		if( *apCb[i] ){
 			ph7_release_value(pCurl->pVm,*apCb[i]);
 			*apCb[i] = 0;
 		}
 	}
+	if( pCurl->pReadStream ){
+		ph7_release_value(pCurl->pVm,pCurl->pReadStream);
+		pCurl->pReadStream = 0;
+	}
+	pCurl->iHeaderDest = PHL_CURL_HDR_IGNORE;
 }
 /*
  * Give a record its OWN copy of a stored value -- a retained callable, or the
@@ -352,6 +364,13 @@ static void CurlInstanceClone(ph7_vm *pVm,ph7_class_instance *pClone,ph7_class_i
 	CurlCopyValue(pVm,&pNew->pHeaderCb,pFrom->pHeaderCb);
 	CurlCopyValue(pVm,&pNew->pXferCb,pFrom->pXferCb);
 	CurlCopyValue(pVm,&pNew->pPrivate,pFrom->pPrivate);
+	CurlCopyValue(pVm,&pNew->pReadCb,pFrom->pReadCb);
+	CurlCopyValue(pVm,&pNew->pDebugCb,pFrom->pDebugCb);
+	CurlCopyValue(pVm,&pNew->pWriteStream,pFrom->pWriteStream);
+	CurlCopyValue(pVm,&pNew->pHeaderStream,pFrom->pHeaderStream);
+	CurlCopyValue(pVm,&pNew->pStderrStream,pFrom->pStderrStream);
+	CurlCopyValue(pVm,&pNew->pReadStream,pFrom->pReadStream);
+	pNew->iHeaderDest = pFrom->iHeaderDest;
 	pNew->pNext = (phl_curl *)pVm->pCurlHandles;
 	pVm->pCurlHandles = pNew;
 	/*
@@ -2606,6 +2625,83 @@ static int CurlSetSlist(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *
 	}
 	return 1;
 }
+/* ===== The php STREAMS a transfer can be pointed at ===== */
+
+/*
+ * php's screen for the five options that take a stream, worded as php words
+ * it -- and it is worded twice: a value that is not a resource AT ALL and a
+ * resource that has been closed report different sentences, both TypeErrors.
+ * The three WRITE destinations screen once more, for a handle opened read-only,
+ * and that one is a ValueError.
+ *
+ * null is accepted by all five and clears the option, which is how a script
+ * puts the default back.
+ */
+static io_private * CurlStreamArg(ph7_context *pCtx,ph7_value *pVal,int bWritable,
+	const char *zFunc,sxi32 *pRc)
+{
+	io_private *pDev;
+	if( !ph7_value_is_resource(pVal) ){
+		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): supplied argument is not a valid File-Handle resource",zFunc);
+		return 0;
+	}
+	pDev = (io_private *)ph7_value_to_resource(pVal);
+	if( IO_PRIVATE_INVALID(pDev) ){
+		/* "resource", not "argument": php tells a closed handle apart from a
+		 * value that was never one. */
+		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+			"%s(): supplied resource is not a valid File-Handle resource",zFunc);
+		return 0;
+	}
+	if( bWritable ){
+		/* The mode the opener asked for is what php reads too: anything but a
+		 * bare "r" can be written. */
+		const char *zMode = pDev->zMode;
+		if( zMode[0] == 0 || (zMode[0] == 'r' && SyByteFind(zMode,(sxu32)SyStrlen(zMode),'+',0) != SXRET_OK) ){
+			*pRc = PH7_VmThrowException(pCtx,"ValueError",
+				"%s(): The provided file handle must be writable",zFunc);
+			return 0;
+		}
+	}
+	return pDev;
+}
+/* The open stream a stored value names, or 0 if the script has closed it. */
+static io_private * CurlStreamOf(ph7_value *pVal)
+{
+	io_private *pDev;
+	if( pVal == 0 || !ph7_value_is_resource(pVal) ){
+		return 0;
+	}
+	pDev = (io_private *)ph7_value_to_resource(pVal);
+	return IO_PRIVATE_INVALID(pDev) ? 0 : pDev;
+}
+/* Store one of the five, or clear it when the value is null. */
+static int CurlSetStreamSlot(ph7_context *pCtx,phl_curl *pCurl,ph7_value **ppSlot,
+	ph7_value *pVal,int bWritable,const char *zFunc,sxi32 *pRc)
+{
+	ph7_vm *pVm = pCurl->pVm;
+	if( ph7_value_is_null(pVal) ){
+		if( *ppSlot ){
+			ph7_release_value(pVm,*ppSlot);
+			*ppSlot = 0;
+		}
+		return 1;
+	}
+	if( CurlStreamArg(pCtx,pVal,bWritable,zFunc,pRc) == 0 ){
+		return -1;
+	}
+	if( *ppSlot ){
+		ph7_release_value(pVm,*ppSlot);
+	}
+	*ppSlot = ph7_new_scalar(pVm);
+	if( *ppSlot == 0 ){
+		return 0;
+	}
+	PH7_MemObjStore(pVal,*ppSlot);
+	return 1;
+}
+
 /*
  * CURLOPT_POSTFIELDS, everything that is not an array: the request BODY.
  *
@@ -2678,8 +2774,46 @@ static int CurlSetOne(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *pV
 			return -1;
 		}
 		return 1;
+	case CURL_OPT_FILE:
+		/* The five php STREAM options. Three of them are DESTINATIONS and move
+		 * the same one-setting-wins fields CURLOPT_RETURNTRANSFER and the
+		 * callbacks move; the read pair is the upload source and moves
+		 * nothing. */
+		switch( (int)iOpt ){
+		case CURLOPT_FILE: {
+			int rcS = CurlSetStreamSlot(pCtx,pCurl,&pCurl->pWriteStream,pVal,TRUE,zFunc,pRc);
+			if( rcS == 1 ){
+				pCurl->iWriteDest = pCurl->pWriteStream ? PHL_CURL_DEST_FILE
+				                                        : PHL_CURL_DEST_STDOUT;
+			}
+			return rcS;
+		}
+		case CURLOPT_WRITEHEADER: {
+			int rcS = CurlSetStreamSlot(pCtx,pCurl,&pCurl->pHeaderStream,pVal,TRUE,zFunc,pRc);
+			if( rcS == 1 ){
+				pCurl->iHeaderDest = pCurl->pHeaderStream ? PHL_CURL_HDR_FILE
+				                                          : PHL_CURL_HDR_IGNORE;
+			}
+			return rcS;
+		}
+		case CURLOPT_STDERR:
+			return CurlSetStreamSlot(pCtx,pCurl,&pCurl->pStderrStream,pVal,TRUE,zFunc,pRc);
+		case CURLOPT_INFILE:
+			/* CURLOPT_READDATA is the same number: one slot, either spelling,
+			 * and no writability screen -- php reads from it. */
+			return CurlSetStreamSlot(pCtx,pCurl,&pCurl->pReadStream,pVal,FALSE,zFunc,pRc);
+		default:
+			break;
+		}
+		break;
 	case CURL_OPT_CALLBACK:
 		switch( (int)iOpt ){
+		case CURLOPT_READFUNCTION:
+			return CurlSetCallback(pCtx,pCurl,&pCurl->pReadCb,pVal,zFunc,
+				CurlOptName(iOpt),pRc);
+		case CURLOPT_DEBUGFUNCTION:
+			return CurlSetCallback(pCtx,pCurl,&pCurl->pDebugCb,pVal,zFunc,
+				CurlOptName(iOpt),pRc);
 		case CURLOPT_WRITEFUNCTION: {
 			/* The one option that moves the destination as well as the slot:
 			 * a callback claims the body, and a null hands it back to the
@@ -2693,9 +2827,17 @@ static int CurlSetOne(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *pV
 			}
 			return rcCb;
 		}
-		case CURLOPT_HEADERFUNCTION:
-			return CurlSetCallback(pCtx,pCurl,&pCurl->pHeaderCb,pVal,zFunc,
+		case CURLOPT_HEADERFUNCTION: {
+			/* The header destination moves with it, exactly as the body's does
+			 * with CURLOPT_WRITEFUNCTION. */
+			int rcCb = CurlSetCallback(pCtx,pCurl,&pCurl->pHeaderCb,pVal,zFunc,
 				CurlOptName(iOpt),pRc);
+			if( rcCb == 1 ){
+				pCurl->iHeaderDest = pCurl->pHeaderCb ? PHL_CURL_HDR_USER
+				                                      : PHL_CURL_HDR_IGNORE;
+			}
+			return rcCb;
+		}
 		case CURLOPT_XFERINFOFUNCTION:
 		case CURLOPT_PROGRESSFUNCTION: {
 			int rcCb = CurlSetCallback(pCtx,pCurl,&pCurl->pXferCb,pVal,zFunc,
@@ -3334,6 +3476,174 @@ static int CurlXferThunk(void *pUser,curl_off_t dlTotal,curl_off_t dlNow,
 	return iOut;
 }
 
+/*
+ * The stream SINKS: a body or a header block written to a php stream. A write
+ * that does not take everything stops the transfer, which is libcurl's rule
+ * for any short write, and a stream the script closed after naming it is the
+ * same short write rather than a crash.
+ */
+static size_t CurlStreamSink(char *zData,size_t nSize,size_t nMemb,void *pUser)
+{
+	io_private *pDev = CurlStreamOf((ph7_value *)pUser);
+	size_t nTotal = nSize * nMemb;
+	ph7_int64 n;
+	if( pDev == 0 || nTotal < 1 ){
+		return pDev == 0 ? 0 : nTotal;
+	}
+	n = PH7_StreamWrite(pDev,zData,(ph7_int64)nTotal);
+	return n < 0 ? 0 : (size_t)n;
+}
+/*
+ * The header sink, which has one job more than the body's: php installs a
+ * header callback on EVERY transfer so that the headers do not fall through to
+ * the body's destination, and the callback drops them when nothing asked.
+ */
+static size_t CurlHeaderSink(char *zData,size_t nSize,size_t nMemb,void *pUser)
+{
+	phl_curl *pCurl = (phl_curl *)pUser;
+	size_t nTotal = nSize * nMemb;
+	if( pCurl->iHeaderDest == PHL_CURL_HDR_FILE ){
+		return CurlStreamSink(zData,nSize,nMemb,(void *)pCurl->pHeaderStream);
+	}
+	return nTotal;   /* IGNORE: read and dropped, which is php's default */
+}
+/*
+ * The upload SOURCE. php has two: a stream it reads itself, and a callback it
+ * asks for the bytes -- and the callback is handed the stream too, as its
+ * second argument, so the documented idiom is a callback that fread()s the
+ * handle it was given.
+ *
+ * A callback that THROWS ends the read without aborting the transfer: php
+ * answers zero bytes, so libcurl waits for the length that was declared and
+ * the transfer ends in CURLE_OPERATION_TIMEDOUT with the exception on top.
+ * That is measured, not chosen -- the write callback's own throw aborts.
+ */
+static size_t CurlReadThunk(char *zBuf,size_t nSize,size_t nMemb,void *pUser)
+{
+	phl_curl *pCurl = (phl_curl *)pUser;
+	ph7_vm *pVm = pCurl->pVm;
+	size_t nWant = nSize * nMemb;
+	io_private *pDev = CurlStreamOf(pCurl->pReadStream);
+	ph7_value sArgs[3],sRes,*apArg[3];
+	const char *zOut;
+	int nOut = 0,i;
+	sxi32 rc;
+	if( pCurl->pReadCb == 0 ){
+		ph7_int64 n;
+		if( pDev == 0 || nWant < 1 ){
+			return 0;
+		}
+		n = PH7_StreamRead(pDev,zBuf,(ph7_int64)nWant);
+		return n < 1 ? 0 : (size_t)n;
+	}
+	if( CurlCbParked(pCurl) ){
+		return 0;
+	}
+	for( i = 0 ; i < 3 ; ++i ){
+		PH7_MemObjInit(pVm,&sArgs[i]);
+		apArg[i] = &sArgs[i];
+	}
+	if( pCurl->pOwner ){
+		sArgs[0].x.pOther = pCurl->pOwner;
+		sArgs[0].iFlags = MEMOBJ_OBJ;
+		pCurl->pOwner->iRef++;
+	}
+	if( pDev ){
+		ph7_value_resource(&sArgs[1],pDev);
+	}
+	ph7_value_int64(&sArgs[2],(sxi64)nWant);
+	PH7_MemObjInit(pVm,&sRes);
+	rc = PH7_VmCallUserFunction(pVm,pCurl->pReadCb,3,apArg,&sRes);
+	if( rc != SXRET_OK ){
+		CurlCbPark(pCurl,rc);
+		/* Zero bytes, not an abort: libcurl goes on waiting for the length the
+		 * transfer declared, so the CURLcode the handle ends with is the
+		 * timeout -- and php reports it beside the exception. */
+		pCurl->bCbExcKeepErr = 1;
+		nOut = 0;
+	}else{
+		zOut = ph7_value_to_string(&sRes,&nOut);
+		if( nOut > (int)nWant ){
+			nOut = (int)nWant;
+		}
+		if( nOut > 0 ){
+			SyMemcpy(zOut,zBuf,(sxu32)nOut);
+		}
+	}
+	PH7_MemObjRelease(&sRes);
+	for( i = 0 ; i < 3 ; ++i ){
+		PH7_MemObjRelease(&sArgs[i]);
+	}
+	return (size_t)(nOut < 0 ? 0 : nOut);
+}
+/*
+ * libcurl's trace, in php's two spellings.
+ *
+ * CURLOPT_STDERR takes a php stream where libcurl wants a FILE*, which no
+ * portable cast produces from this engine's handles (a Windows one carries a
+ * HANDLE and not a descriptor at all). So the trace is rendered here instead,
+ * from libcurl's own debug callback and with libcurl's own prefixes -- the
+ * same three kinds its default writer prints and in the same shape, one prefix
+ * per CHUNK rather than per line.
+ *
+ * A php DEBUGFUNCTION takes the callback outright, and then nothing reaches
+ * CURLOPT_STDERR at all: libcurl's own writer is what a debug callback
+ * replaces, and php answers the same way.
+ */
+static const char * const azCurlTracePrefix[] = {
+	"* ", "< ", "> ", "{ ", "} ", "{ ", "} "
+};
+static int CurlDebugThunk(CURL *pEasy,curl_infotype eType,char *zData,size_t nSize,void *pUser)
+{
+	phl_curl *pCurl = (phl_curl *)pUser;
+	ph7_vm *pVm = pCurl->pVm;
+	SXUNUSED(pEasy);
+	if( pCurl->pDebugCb ){
+		ph7_value sArgs[3],sRes,*apArg[3];
+		sxi32 rc;
+		int i;
+		if( CurlCbParked(pCurl) ){
+			return 0;
+		}
+		for( i = 0 ; i < 3 ; ++i ){
+			PH7_MemObjInit(pVm,&sArgs[i]);
+			apArg[i] = &sArgs[i];
+		}
+		if( pCurl->pOwner ){
+			sArgs[0].x.pOther = pCurl->pOwner;
+			sArgs[0].iFlags = MEMOBJ_OBJ;
+			pCurl->pOwner->iRef++;
+		}
+		ph7_value_int64(&sArgs[1],(sxi64)eType);
+		ph7_value_string(&sArgs[2],zData,(int)nSize);
+		PH7_MemObjInit(pVm,&sRes);
+		rc = PH7_VmCallUserFunction(pVm,pCurl->pDebugCb,3,apArg,&sRes);
+		if( rc != SXRET_OK ){
+			CurlCbPark(pCurl,rc);
+		}
+		PH7_MemObjRelease(&sRes);
+		for( i = 0 ; i < 3 ; ++i ){
+			PH7_MemObjRelease(&sArgs[i]);
+		}
+		return 0;
+	}
+	{
+		io_private *pDev = CurlStreamOf(pCurl->pStderrStream);
+		/* libcurl's own writer prints the text and the two header kinds and
+		 * drops the DATA blocks; anything else here would be output php's
+		 * CURLOPT_STDERR never produced. */
+		if( pDev == 0 || (eType != CURLINFO_TEXT && eType != CURLINFO_HEADER_IN
+		                  && eType != CURLINFO_HEADER_OUT) ){
+			return 0;
+		}
+		PH7_StreamWrite(pDev,azCurlTracePrefix[(int)eType],2);
+		if( nSize > 0 ){
+			PH7_StreamWrite(pDev,zData,(ph7_int64)nSize);
+		}
+	}
+	return 0;
+}
+
 /* ===== curl_exec() ===== */
 
 /*
@@ -3377,6 +3687,7 @@ static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	sSink.pCtx = pCtx;
 	sSink.pBody = pCurl->iWriteDest == PHL_CURL_DEST_RETURN ? &sBody : 0;
 	pCurl->iCbExc = 0;
+	pCurl->bCbExcKeepErr = 0;
 	pCurl->bNoPathRead = 0;
 	/* An upload part reads from inside libcurl and may have a diagnostic to
 	 * raise; this is the context it belongs to. */
@@ -3386,13 +3697,32 @@ static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		 * buffer nor the output gets the body. */
 		curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEFUNCTION,CurlWriteThunk);
 		curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEDATA,(void *)pCurl);
+	}else if( pCurl->iWriteDest == PHL_CURL_DEST_FILE ){
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEFUNCTION,CurlStreamSink);
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEDATA,(void *)pCurl->pWriteStream);
 	}else{
 		curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEFUNCTION,CurlExecWrite);
 		curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEDATA,(void *)&sSink);
 	}
-	if( pCurl->pHeaderCb ){
+	/*
+	 * The header callback is installed on EVERY transfer, php's way: without
+	 * one libcurl would fall back to the body's destination for a response
+	 * whose headers were asked for, and php's default is to drop them.
+	 */
+	if( pCurl->iHeaderDest == PHL_CURL_HDR_USER && pCurl->pHeaderCb ){
 		curl_easy_setopt(pCurl->pEasy,CURLOPT_HEADERFUNCTION,CurlHeaderThunk);
 		curl_easy_setopt(pCurl->pEasy,CURLOPT_HEADERDATA,(void *)pCurl);
+	}else{
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_HEADERFUNCTION,CurlHeaderSink);
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_HEADERDATA,(void *)pCurl);
+	}
+	if( pCurl->pReadCb || pCurl->pReadStream ){
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_READFUNCTION,CurlReadThunk);
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_READDATA,(void *)pCurl);
+	}
+	if( pCurl->pDebugCb || pCurl->pStderrStream ){
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_DEBUGFUNCTION,CurlDebugThunk);
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_DEBUGDATA,(void *)pCurl);
 	}
 	if( pCurl->pXferCb ){
 		curl_easy_setopt(pCurl->pEasy,CURLOPT_XFERINFOFUNCTION,CurlXferThunk);
@@ -3403,10 +3733,8 @@ static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* The sink is a stack address: libcurl must not keep it past this call. */
 	curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEFUNCTION,(curl_write_callback)0);
 	curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEDATA,(void *)0);
-	if( pCurl->pHeaderCb ){
-		curl_easy_setopt(pCurl->pEasy,CURLOPT_HEADERFUNCTION,(curl_write_callback)0);
-		curl_easy_setopt(pCurl->pEasy,CURLOPT_HEADERDATA,(void *)0);
-	}
+	curl_easy_setopt(pCurl->pEasy,CURLOPT_HEADERFUNCTION,(curl_write_callback)0);
+	curl_easy_setopt(pCurl->pEasy,CURLOPT_HEADERDATA,(void *)0);
 	/*
 	 * A callback threw: libcurl has unwound now, so this is where the parked
 	 * status is raised -- and php leaves the handle's errno at 0 for it, not
@@ -3415,8 +3743,16 @@ static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	if( pCurl->iCbExc != 0 ){
 		sxi32 rcExc = pCurl->iCbExc;
 		pCurl->iCbExc = 0;
-		pCurl->iLastErr = 0;
-		pCurl->zErrBuf[0] = 0;
+		if( pCurl->bCbExcKeepErr ){
+			pCurl->iLastErr = (int)rc;
+			if( pCurl->zErrBuf[0] == 0 && rc != CURLE_OK ){
+				CurlSetErr(pCurl,(int)rc);
+			}
+			pCurl->bCbExcKeepErr = 0;
+		}else{
+			pCurl->iLastErr = 0;
+			pCurl->zErrBuf[0] = 0;
+		}
 		SyBlobRelease(&sBody);
 		ph7_result_bool(pCtx,0);
 		return rcExc;
