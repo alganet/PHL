@@ -467,7 +467,7 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
  * success (ts/off/bOffSet out), or the byte position of the first
  * unparseable character +1 (for php's "at position N" message).
  */
-static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
+static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs,
 	sxi64 *pTs,sxi32 *pOff,int *pbOffSet,int *pUs)
 {
 	const char *z = zIn, *zEnd = &zIn[nLen];
@@ -477,8 +477,12 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
 	int bAny = 0;
 	int iNumRc,iMonRc,nYr;
 	sxi64 iYr = 0;
-	int uSec = 0;
-	*pUs = 0;
+	/* The microseconds this parse STARTS from -- what modify() must add its
+	 * relative `+1 microsecond` to, and what an absolute time in the string
+	 * replaces. Zero for a fresh parse. */
+	int uSec = iBaseUs;
+	sxi64 iRelUs = 0;   /* sub-second relative units, carried into iTs at the end */
+	*pUs = iBaseUs;
 #define DT_SKIP_WS() while( z < zEnd && (z[0]==' '||z[0]=='\t'||z[0]==',') ){ z++; }
 #define DT_LOWEQ(zKw,nKw) (zEnd-z >= (nKw) && SyStrnicmp(z,zKw,nKw) == 0 \
 	&& (zEnd-z == (nKw) || !SyisAlpha(z[(nKw)])))
@@ -567,6 +571,12 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
 			s = (z[1]-'0')*10 + (z[2]-'0');
 			if( s > 59 ){ return (int)(&z[2] - zIn) + 1; }
 			z += 3;
+		}
+		/* A time of day REPLACES the sub-second clock, fraction or not (see the
+		 * trailing-time branch below, which does the same). */
+		uSec = 0;
+		if( z < zEnd && z[0]=='.' && zEnd-z >= 2 && SyisDigit(z[1]) ){
+			uSec = DtReadFraction(&z,zEnd);
 		}
 		iTs = days*86400 + (sxi64)h*3600 + (sxi64)mi*60 + s - iOff;
 		bAny = 1;
@@ -740,6 +750,14 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
 				if( ss > 59 ){ return (int)(&z[2] - zIn) + 1; }
 				z += 3;
 			}
+			/* A time of day REPLACES the sub-second clock, fraction or not:
+			 * `modify('08:09:10')` zeroes the microseconds php's way, and
+			 * `modify('05:06:07.000009')` -- which did not parse here at all --
+			 * sets them. */
+			uSec = 0;
+			if( z < zEnd && z[0]=='.' && zEnd-z >= 2 && SyisDigit(z[1]) ){
+				uSec = DtReadFraction(&z,zEnd);
+			}
 			iTs = days*86400 + (sxi64)hh*3600 + (sxi64)mm*60 + ss - iOff;
 			bAny = 1;
 			continue;
@@ -760,7 +778,23 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
 			while( z < zEnd && SyisDigit(z[0]) ){ v = v*10 + (z[0]-'0'); z++; }
 			if( neg ){ v = -v; }
 			DT_SKIP_WS();
-			if( DT_LOWEQ("seconds",7) )     { iTs += v;            z += 7; }
+			/* php's SUB-SECOND relative units, checked before the words they are
+			 * prefixes of ("ms" would otherwise swallow "msec"). `us` is NOT one of
+			 * them there, and neither is the Greek mu -- only U+00B5, the MICRO
+			 * SIGN, which is the two bytes 0xC2 0xB5 here. They accumulate apart
+			 * from the seconds and CARRY into them once, below, so `-500
+			 * microseconds` from midnight is the previous day's 23:59:59.999500. */
+			if( DT_LOWEQ("microseconds",12) ){ iRelUs += v;        z += 12; }
+			else if( DT_LOWEQ("microsecond",11) ){ iRelUs += v;    z += 11; }
+			else if( DT_LOWEQ("milliseconds",12) ){ iRelUs += v*1000; z += 12; }
+			else if( DT_LOWEQ("millisecond",11) ){ iRelUs += v*1000; z += 11; }
+			else if( DT_LOWEQ("usecs",5) )  { iRelUs += v;         z += 5; }
+			else if( DT_LOWEQ("usec",4) )   { iRelUs += v;         z += 4; }
+			else if( DT_LOWEQ("msecs",5) )  { iRelUs += v*1000;    z += 5; }
+			else if( DT_LOWEQ("msec",4) )   { iRelUs += v*1000;    z += 4; }
+			else if( DT_LOWEQ("\xc2\xb5s",3) ){ iRelUs += v;       z += 3; }
+			else if( DT_LOWEQ("ms",2) )     { iRelUs += v*1000;    z += 2; }
+			else if( DT_LOWEQ("seconds",7) ){ iTs += v;            z += 7; }
 			else if( DT_LOWEQ("second",6) ) { iTs += v;            z += 6; }
 			else if( DT_LOWEQ("secs",4) )   { iTs += v;            z += 4; }
 			else if( DT_LOWEQ("sec",3) )    { iTs += v;            z += 3; }
@@ -790,6 +824,14 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
 	}
 	if( !bAny ){
 		return 1;
+	}
+	if( iRelUs != 0 ){
+		/* One carry, floored, so a NEGATIVE run borrows a whole second: php's
+		 * `-500 microseconds` from midnight is 23:59:59.999500 the day before. */
+		sxi64 iTot = (sxi64)uSec + iRelUs;
+		sxi64 iCarry = DtFloorDiv(iTot,1000000);
+		iTs += iCarry;
+		uSec = (int)(iTot - iCarry * 1000000);
 	}
 	*pTs = iTs;
 	*pOff = iOff;
@@ -1726,7 +1768,7 @@ static int DtInitState(ph7_context *pCtx,const char *zIn,int nIn,sxi32 iZoneOff,
 	sxi64 iTs = 0;
 	sxi32 iOff = 0;
 	int bOffSet = 0,uSec = 0,iErrPos;
-	iErrPos = DtParse(zIn,nIn,(sxi64)time(0),iZoneOff,&iTs,&iOff,&bOffSet,&uSec);
+	iErrPos = DtParse(zIn,nIn,(sxi64)time(0),iZoneOff,0,&iTs,&iOff,&bOffSet,&uSec);
 	if( iErrPos != 0 ){
 		*pzErr = DtParseErr(zIn,nIn,iErrPos,piPos,pcAt);
 		return -1;
@@ -2169,7 +2211,7 @@ static int vm_builtin_DateTime_modify(ph7_context *pCtx,int nArg,ph7_value **apA
 	}
 	zMod = ph7_value_to_string(apArg[0],&nMod);
 	iErrPos = DtParse(zMod,nMod,PH7_NativeAttrInt(pThis,DT_TS),(sxi32)PH7_NativeAttrInt(pThis,DT_OFF),
-		&iTs,&iOff,&bOffSet,&uSec);
+		(int)PH7_NativeAttrInt(pThis,DT_US),&iTs,&iOff,&bOffSet,&uSec);
 	if( iErrPos != 0 ){
 		int bImm = DtIsImmutable(pVm,pThis);
 		zErr = DtParseErr(zMod,nMod,iErrPos,&iPos,&cAt);
@@ -2179,6 +2221,10 @@ static int vm_builtin_DateTime_modify(ph7_context *pCtx,int nArg,ph7_value **apA
 	}
 	pTarget = DtMutTarget(pCtx,pThis,&bCopy);
 	PH7_NativeSetAttrInt(pVm,pTarget,DT_TS,iTs);
+	/* The modifier may have moved the SUB-SECOND clock too (`+1 microsecond`,
+	 * `+250 ms`) or set it outright (a time of day with a fraction); the parse
+	 * started from the object's own, so this is the whole answer either way. */
+	PH7_NativeSetAttrInt(pVm,pTarget,DT_US,uSec);
 	DtMutResult(pCtx,pTarget,bCopy);
 	return PH7_OK;
 }
@@ -2679,7 +2725,7 @@ static int vm_builtin_strtotime(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	iBase = (nArg > 1 && (apArg[1]->iFlags & MEMOBJ_NULL) == 0)
 		? ph7_value_to_int64(apArg[1]) : (sxi64)time(0);
-	if( DtParse(zIn,nIn,iBase,0,&iTs,&iOff,&bOffSet,&uSec) != 0 ){
+	if( DtParse(zIn,nIn,iBase,0,0,&iTs,&iOff,&bOffSet,&uSec) != 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -2702,10 +2748,23 @@ typedef struct dt_unit dt_unit;
 struct dt_unit
 {
 	const char *zName;
-	int iField;   /* 0=y 1=m 2=d 3=h 4=i 5=s */
+	int iField;   /* 0=y 1=m 2=d 3=h 4=i 5=s 6=microseconds */
 	int nMul;
 };
+/* The MICROSECOND slot of the parsed vector: php keeps it apart from the six
+ * relative fields (timelib_rel_time.us), and it does not carry into the seconds
+ * the way the CLOCK's does -- `1000000 microseconds` is an interval whose `%f`
+ * prints 1000000 and whose `s` is 0. */
+#define DT_IV_FIELDS 6
+#define DT_IV_USLOT  6
 static const dt_unit aDtUnit[] = {
+	/* Sub-second first: the words below are their prefixes, and php has no `us`
+	 * (only `usec`) and no Greek mu (only U+00B5, the two bytes 0xC2 0xB5). */
+	{ "microseconds", DT_IV_USLOT, 1 },    { "microsecond", DT_IV_USLOT, 1 },
+	{ "milliseconds", DT_IV_USLOT, 1000 }, { "millisecond", DT_IV_USLOT, 1000 },
+	{ "usecs", DT_IV_USLOT, 1 },           { "usec", DT_IV_USLOT, 1 },
+	{ "msecs", DT_IV_USLOT, 1000 },        { "msec", DT_IV_USLOT, 1000 },
+	{ "\xc2\xb5s", DT_IV_USLOT, 1 },       { "ms", DT_IV_USLOT, 1000 },
 	{ "seconds", 5, 1 }, { "second", 5, 1 }, { "secs", 5, 1 }, { "sec", 5, 1 },
 	{ "minutes", 4, 1 }, { "minute", 4, 1 }, { "mins", 4, 1 }, { "min", 4, 1 },
 	{ "hours", 3, 1 },   { "hour", 3, 1 },
@@ -2738,7 +2797,7 @@ static int DtIvParseIso(const char *zIn,int nIn,sxi64 *aOut)
 	const char *z = zIn,*zEnd = &zIn[nIn];
 	int bTime = 0,bAny = 0;
 	int k;
-	for( k = 0 ; k < 6 ; k++ ){
+	for( k = 0 ; k <= DT_IV_USLOT ; k++ ){
 		aOut[k] = 0;
 	}
 	if( nIn < 2 || zIn[0] != 'P' || zIn[nIn-1] == 'T' ){
@@ -2794,7 +2853,7 @@ static int DtIvParseRelative(const char *zIn,int nIn,sxi64 *aOut,int *piPos,
 	sxi32 iOff = 0;
 	int bOffSet = 0,uSec = 0,iErr;
 	int k;
-	for( k = 0 ; k < 6 ; k++ ){
+	for( k = 0 ; k <= DT_IV_USLOT ; k++ ){
 		aOut[k] = 0;
 	}
 	if( nIn < 1 ){
@@ -2803,7 +2862,7 @@ static int DtIvParseRelative(const char *zIn,int nIn,sxi64 *aOut,int *piPos,
 		*pzReason = "Empty string";
 		return -1;
 	}
-	iErr = DtParse(zIn,nIn,0,0,&iTs,&iOff,&bOffSet,&uSec);
+	iErr = DtParse(zIn,nIn,0,0,0,&iTs,&iOff,&bOffSet,&uSec);
 	if( iErr != 0 ){
 		*pzReason = DtParseErr(zIn,nIn,iErr,piPos,pcAt);
 		return -1;
@@ -2853,9 +2912,12 @@ static int DtIvParseRelative(const char *zIn,int nIn,sxi64 *aOut,int *piPos,
 static void DtIvStore(ph7_vm *pVm,ph7_class_instance *pObj,const sxi64 *aVal)
 {
 	int k;
-	for( k = 0 ; k < 6 ; k++ ){
+	for( k = 0 ; k < DT_IV_FIELDS ; k++ ){
 		PH7_NativeSetAttrInt(pVm,pObj,azDtIvField[k],aVal[k]);
 	}
+	/* ...and the microseconds through the pair that owns them, so `f` and the
+	 * hidden count stay one value. */
+	DtIvSetUsec(pVm,pObj,aVal[DT_IV_USLOT]);
 }
 /*
  * php's date_interval_write_property: what a write to one of DateInterval's
@@ -2933,7 +2995,7 @@ static int vm_builtin_DateInterval_construct(ph7_context *pCtx,int nArg,ph7_valu
 	ph7_class_instance *pThis = DtThis(pCtx);
 	const char *zDur;
 	int nDur;
-	sxi64 aVal[6];
+	sxi64 aVal[DT_IV_USLOT + 1];
 	if( pThis == 0 || nArg < 1 ){
 		return PH7_OK;
 	}
@@ -2956,7 +3018,7 @@ static ph7_class_instance * DtIvFromDateString(ph7_context *pCtx,const char *zIn
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class *pClass = DtFactoryClass(pCtx,"DateInterval");
 	ph7_class_instance *pObj;
-	sxi64 aVal[6];
+	sxi64 aVal[DT_IV_USLOT + 1];
 	ph7_value sVal;
 	if( pClass == 0 ){
 		return 0;
@@ -3129,7 +3191,7 @@ static int DpConstructInto(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,
 		const char *zStart,*zDur;
 		int nStart,nDur,k;
 		sxi64 nRec = 0;
-		sxi64 aIv[6];
+		sxi64 aIv[DT_IV_USLOT + 1];
 		dt_state sState;
 		char zNameBuf[16];
 		const char *zErr;
@@ -3557,7 +3619,7 @@ static int vm_builtin_date_modify(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	zMod = ph7_value_to_string(apArg[1],&nMod);
 	iErrPos = DtParse(zMod,nMod,PH7_NativeAttrInt(pObj,DT_TS),(sxi32)PH7_NativeAttrInt(pObj,DT_OFF),
-		&iTs,&iOff,&bOffSet,&uSec);
+		(int)PH7_NativeAttrInt(pObj,DT_US),&iTs,&iOff,&bOffSet,&uSec);
 	if( iErrPos != 0 ){
 		zErr = DtParseErr(zMod,nMod,iErrPos,&iPos,&cAt);
 		PH7_VmThrowWarningFmt(pCtx->pVm,
@@ -3567,6 +3629,7 @@ static int vm_builtin_date_modify(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_TS,iTs);
+	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_US,uSec);   /* see DateTime::modify() */
 	DtResultArg(pCtx,apArg);
 	return PH7_OK;
 }
