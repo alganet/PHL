@@ -158,7 +158,23 @@ struct dt_parsed
 	                                 * second is ignored and the third refused */
 	int bEpoch;                     /* the string named an `@epoch`, which is the
 	                                 * one form modify() lets name a ZONE */
+	/* Warnings a RULE raises but only the scan can publish. They ride the vector
+	 * so that the copy a longest-match probe runs on discards them with itself:
+	 * a probe that succeeds makes its caller stand down and the real rule raises
+	 * them again, a probe that fails raised nothing. */
+	int nWarnPend;
+	int aWarnPos[PH7_DT_MAX_WARN];
+	const char *azWarn[PH7_DT_MAX_WARN];
 };
+/* php's add_warning, held until the scan can publish it. */
+static void DtWarnPend(dt_parsed *p,int iPos,const char *zMsg)
+{
+	if( p->nWarnPend < PH7_DT_MAX_WARN ){
+		p->aWarnPos[p->nWarnPend] = iPos;
+		p->azWarn[p->nWarnPend] = zMsg;
+	}
+	p->nWarnPend++;
+}
 /* Wrapping add: a relative vector holds whatever the string spelled, and php's
  * own answer past the int64 ceiling is garbage of its own -- but the OVERFLOW
  * would be undefined here, and this build gates on UBSan. */
@@ -191,6 +207,7 @@ static void DtFieldsInit(dt_parsed *p,sxi32 iBaseOff)
 	p->bZoneIdent = 0;
 	p->nZoneTok = 0;
 	p->bEpoch = 0;
+	p->nWarnPend = 0;
 }
 /* php's TIMELIB_UNHAVE_TIME: the clock is ZEROED rather than unset, and the
  * string still counts as carrying no time of its own -- which is why `tomorrow`
@@ -550,7 +567,9 @@ static int DtHour12(int h,int bPm)
 static int DtReadTimeOfDay(const char **pz,const char *zEnd,const char *zIn,dt_parsed *p)
 {
 	const char *z = *pz;
+	const char *zTok = *pz;   /* the byte a refusal names: this token's first */
 	int h,mi,s = 0,n,bT = 0,bPm = 0,nMer,nMin = 0,nSec = 0,bFrac = 0;
+	sxi64 uSec = 0;
 	char cSep1 = 0,cSep2 = 0;
 	if( z < zEnd && (z[0]=='t' || z[0]=='T') ){ z++; bT = 1; }
 	if( (n = DtReadField(z,zEnd,24,&h)) == 0 ){ return 0; }
@@ -567,7 +586,13 @@ static int DtReadTimeOfDay(const char **pz,const char *zEnd,const char *zIn,dt_p
 		if( (nMer = DtMeridian(zMer,zEnd,&bPm)) == 0 ){
 			return 0;
 		}
-		if( p->nTimeTok ){ return -((int)(*pz - zIn) + 1); }
+		/* php's TIMELIB_HAVE_TIME runs inside the ACTION, so the token is matched
+		 * and behind the cursor before the refusal is raised: the walk resumes
+		 * past it, not on it. */
+		if( p->nTimeTok ){
+			*pz = &zMer[nMer];
+			return -((int)(zTok - zIn) + 1);
+		}
 		p->h = DtHour12(h,bPm);
 		p->i = p->s = p->us = 0;
 		p->nTimeTok = 1;
@@ -579,8 +604,6 @@ static int DtReadTimeOfDay(const char **pz,const char *zEnd,const char *zIn,dt_p
 	if( (n = DtReadField(z,zEnd,59,&mi)) == 0 ){ return 0; }
 	nMin = n;
 	z += n;
-	/* php's "Double time specification", reported at this token's start */
-	if( p->nTimeTok ){ return -((int)(*pz - zIn) + 1); }
 	if( z < zEnd && (z[0]==':' || z[0]=='.') && z+1 < zEnd && SyisDigit(z[1]) ){
 		cSep2 = z[0];
 		n = DtReadField(&z[1],zEnd,60,&s);
@@ -588,12 +611,8 @@ static int DtReadTimeOfDay(const char **pz,const char *zEnd,const char *zIn,dt_p
 		z += n + 1;
 		if( z < zEnd && z[0]=='.' && z+1 < zEnd && SyisDigit(z[1]) ){
 			bFrac = 1;
-			p->us = DtReadFraction(&z,zEnd);
-		}else{
-			p->us = 0;
+			uSec = DtReadFraction(&z,zEnd);
 		}
-	}else{
-		p->us = 0;
 	}
 	/* ...and the twelve-hour half of the same clock, which php spells behind the
 	 * fields: `3:04pm`, `3:04:05 a.m.`. It is only a meridian when the hour is
@@ -619,11 +638,21 @@ static int DtReadTimeOfDay(const char **pz,const char *zEnd,const char *zIn,dt_p
 			z = &zMer[nMer];
 		}
 	}
+	/* php's "Double time specification". Its TIMELIB_HAVE_TIME sits in the
+	 * action, so the whole token -- meridian and fraction included -- has been
+	 * matched and the cursor is past it before the refusal is raised; the byte it
+	 * names is still the token's first. Nothing is written: the clock a second
+	 * time token would set is not php's answer either. */
+	if( p->nTimeTok ){
+		*pz = z;
+		return -((int)(zTok - zIn) + 1);
+	}
 	/* A time of day sets the whole clock, sub-second included: php writes the
 	 * microseconds of a time WITHOUT a fraction as zero. */
 	p->h = h;
 	p->i = mi;
 	p->s = s;
+	p->us = uSec;
 	p->nTimeTok = 1;
 	*pz = z;
 	return 1;
@@ -794,6 +823,13 @@ static int DtZoneShape(const char *z,const char *zEnd,const char **pzName,int *p
 	while( nLet < 6 && &z[nPar+nLet] < zEnd && SyisAlpha((unsigned char)z[nPar+nLet]) ){
 		nLet++;
 	}
+	/* ...except a lone `t` with a digit behind it, which php's clock reads
+	 * LONGER than any zone: `t9` is nine in the morning, not the military zone T
+	 * with a stray digit, and `12:00t9` is php's second time specification. */
+	if( nPar == 0 && nLet == 1 && (z[0] == 't' || z[0] == 'T')
+	 && &z[1] < zEnd && SyisDigit(z[1]) ){
+		nLet = 0;
+	}
 	if( nLet > 0 ){
 		nBare = nPar + nLet;
 		if( &z[nBare] < zEnd && z[nBare] == ')' ){
@@ -926,6 +962,10 @@ static int DtZoneTok(const char **pz,const char *zEnd,dt_parsed *p,const char *z
 	if( rc < 0 ){
 		return -((int)(z - zIn) + 1) - DT_ERR_DZONE;
 	}
+	if( rc > 0 ){
+		/* php's TIMELIB_HAVE_TZ warns on the SECOND and refuses only the third */
+		DtWarnPend(p,(int)(z - zIn),"Double timezone specification");
+	}
 	if( rc == 0 ){
 		if( !bKnown ){
 			return -((int)(z - zIn) + 1) - DT_ERR_TZID;
@@ -938,6 +978,31 @@ static int DtZoneTok(const char **pz,const char *zEnd,dt_parsed *p,const char *z
  * same position, and the date rules read a time suffix of their own. */
 static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
 	dt_parsed *p,const char *zIn);
+/* True if php's `hour24 [:.] minute` reads here -- the head of every clock its
+ * combined date-and-time rules end in, and the reason a month, a day and a clock
+ * are ONE token there: it reads longer than the YEAR the same digits would be. */
+static int DtClockFollows(const char *z,const char *zEnd)
+{
+	int h,i,n;
+	if( z >= zEnd || !SyisDigit(z[0]) ){
+		return 0;
+	}
+	h = z[0] - '0';
+	n = 1;
+	if( &z[1] < zEnd && SyisDigit(z[1]) && (z[0]-'0')*10 + (z[1]-'0') <= 24 ){
+		h = (z[0]-'0')*10 + (z[1]-'0');
+		n = 2;
+	}
+	if( h > 24 || &z[n] >= zEnd || (z[n] != ':' && z[n] != '.') || &z[n+1] >= zEnd
+	 || !SyisDigit(z[n+1]) ){
+		return 0;
+	}
+	i = z[n+1] - '0';
+	if( &z[n+2] < zEnd && SyisDigit(z[n+2]) ){
+		i = i*10 + (z[n+2]-'0');
+	}
+	return i <= 59;
+}
 /* True if z points at a two-letter English ordinal suffix (st/nd/rd/th). */
 static int DtIsOrdinal(const char *z,const char *zEnd)
 {
@@ -974,15 +1039,47 @@ static int DtTimeSuffix(const char **pz,const char *zEnd,const char *zIn,dt_pars
 			}
 		}
 		rc = DtReadTimeOfDay(&zTime,zEnd,zIn,p);
-		if( rc < 0 ){ return rc; }
+		if( rc < 0 ){ *pz = zTime; return rc; }
 		if( rc == 0 ){
 			*pz = z;
 			return 0;
 		}
 		z = zTime;
-		/* The zone ATTACHED to the time is the same token the string may spell
-		 * anywhere else, so `...T12:00:00+02:00:30` reads its seconds too. */
-		if( (rc = DtZoneTok(&z,zEnd,p,zIn)) < 0 ){ return rc; }
+		/* The zone ATTACHED to the time is php's `iso8601normtz`: a `Z` or a
+		 * numeric offset, whose seconds `...T12:00:00+02:00:30` reads too. A
+		 * NAME is not part of this token -- it is one of the string's own, which
+		 * is what leaves the `this` of `24:00:00this week` to the relative rule
+		 * that reads it longer. */
+		if( z < zEnd && (z[0] == 'Z' || z[0] == 'z')
+		 && !(z+1 < zEnd && SyisAlpha((unsigned char)z[1])) ){
+			if( DtZoneCount(p) < 0 ){
+				*pz = &z[1];
+				return -((int)(z - zIn) + 1) - DT_ERR_DZONE;
+			}
+			if( p->nZoneTok == 1 ){
+				DtZoneStore(p,0,"Z",1,0);
+			}else{
+				DtWarnPend(p,(int)(z - zIn),"Double timezone specification");
+			}
+			z++;
+		}else{
+			sxi32 iOffTz = 0;
+			int nTz = DtZoneCorr(z,zEnd,&iOffTz);
+			if( nTz > 0 ){
+				int rcZ = DtZoneCount(p);
+				const char *zTz = z;
+				z += nTz;
+				if( rcZ < 0 ){
+					*pz = z;
+					return -((int)(zTz - zIn) + 1) - DT_ERR_DZONE;
+				}
+				if( rcZ == 0 ){
+					DtZoneStore(p,iOffTz,0,0,0);
+				}else{
+					DtWarnPend(p,(int)(zTz - zIn),"Double timezone specification");
+				}
+			}
+		}
 	}
 	*pz = z;
 	return 0;
@@ -1116,9 +1213,7 @@ static int DtTryIsoWeek(const char *z,const char *zEnd,const char **pzOut,
 		}
 	}
 	z = &z[i];
-	if( (rcT = DtTimeSuffix(&z,zEnd,zIn,p)) != 0 ){
-		return rcT;
-	}
+	*pzOut = z;
 	if( (rcT = DtMarkDate(p,zTok,zIn)) != 0 ){ return rcT; }
 	/* php's weekday numbering here is 0 = Sunday, and week 1 is the one whose
 	 * Monday is at most three days after New Year's Day. */
@@ -1145,14 +1240,31 @@ static int DtTryIsoDate(const char *z,const char *zEnd,const char **pzOut,
 	const char *zRest;
 	const char *zTok = z;
 	sxi64 y = 0;
-	int nYr,mo,d,rcT,bRange = 0;
+	int nYr,mo = 0,d = 0,rcT,bRange = 0,bFull;
 	if( (nYr = DtTryIsoYear(z,zEnd,&y,&bRange)) == 0 ){
 		return 0;
 	}
 	zRest = &z[nYr];   /* the '-' that closed the year */
-	if( zEnd-z < nYr + 6
+	bFull = !(zEnd-z < nYr + 6
 	 || !SyisDigit(zRest[1])||!SyisDigit(zRest[2])||zRest[3] != '-'
-	 ||!SyisDigit(zRest[4])||!SyisDigit(zRest[5]) ){
+	 ||!SyisDigit(zRest[4])||!SyisDigit(zRest[5]));
+	if( bFull ){
+		mo = (zRest[1]-'0')*10 + (zRest[2]-'0');
+		d  = (zRest[4]-'0')*10 + (zRest[5]-'0');
+		/* php spells the ranges INSIDE the pattern, so a month past 12 or a day
+		 * past 31 means this spelling never matched at all -- the shorter rule
+		 * behind it did, and the digits it did not take are left to the string.
+		 * `2020-13-45` is January the 1st of 2020 with a refusal on its `3`, not
+		 * a refusal and no date; the difference is invisible in what either
+		 * engine THROWS and plain in what it collects, because a date already
+		 * read is what makes the next one a `Double date specification`.
+		 * ("00" lexes fine and normalizes: month 0 is December of the year
+		 * before, which the field normalizer does on its own.) */
+		if( mo > 12 || d > 31 ){
+			bFull = 0;
+		}
+	}
+	if( !bFull ){
 		/* Not the full spelling. Two SHORTER ones stand behind it, both php's and
 		 * both only after a plain four-digit year (`+12345-01` is neither): the
 		 * YEAR-MONTH `2020-01`, whose day is the 1st, and the ISO ORDINAL
@@ -1187,6 +1299,7 @@ static int DtTryIsoDate(const char *z,const char *zEnd,const char **pzOut,
 			 * is php's answer for the whole string -- `3854-2-40` is a day out of
 			 * range there, not the year-month `3854-2` with `-40` behind it. */
 			if( rcP != 0 && rcP != 1 ){
+				*pzOut = zProbe;
 				return rcP;
 			}
 		}
@@ -1211,29 +1324,24 @@ static int DtTryIsoDate(const char *z,const char *zEnd,const char **pzOut,
 			}
 		}
 		z = &zRest[1+nd];
-		if( (rcT = DtTimeSuffix(&z,zEnd,zIn,p)) != 0 ){
-			return rcT;
-		}
+		*pzOut = z;
 		if( (rcT = DtMarkDate(p,zTok,zIn)) != 0 ){ return rcT; }
 		p->y = y;
 		p->m = mo;
 		p->d = d;
+		if( (rcT = DtTimeSuffix(&z,zEnd,zIn,p)) != 0 ){
+			*pzOut = z;
+			return rcT;
+		}
 		*pzOut = z;
 		return 1;
 	}
 	if( bRange ){
 		/* the whole `[+-]YYYY-MM-DD` matched and its year is past the int64 the
 		 * field is kept in: php's "Number out of range", at the sign */
+		*pzOut = &zRest[6];
 		return -((int)(zTok - zIn) + 1) - DT_ERR_RANGE;
 	}
-	mo = (zRest[1]-'0')*10 + (zRest[2]-'0');
-	d  = (zRest[4]-'0')*10 + (zRest[5]-'0');
-	/* php's lexer dies on the SECOND digit of an out-of-range month/day (either
-	 * the two-digit pattern fails there, or a one-digit component matched and the
-	 * separator check fails there); "00" lexes fine and normalizes (month 0 ==
-	 * December of the previous year, which the field normalizer does on its own). */
-	if( mo > 12 ){ return (int)(&zRest[2] - zIn) + 1; }
-	if( d > 31 ){ return (int)(&zRest[5] - zIn) + 1; }
 	z = &zRest[6];
 	/* php's DAY carries an optional ordinal suffix wherever a day stands, this
 	 * spelling included: `2020-01-02nd` is the 2nd. Only behind a plain
@@ -1242,13 +1350,15 @@ static int DtTryIsoDate(const char *z,const char *zEnd,const char **pzOut,
 	if( nYr == 4 && DtIsOrdinal(z,zEnd) ){
 		z += 2;
 	}
-	if( (rcT = DtTimeSuffix(&z,zEnd,zIn,p)) != 0 ){
-		return rcT;
-	}
+	*pzOut = z;
 	if( (rcT = DtMarkDate(p,zTok,zIn)) != 0 ){ return rcT; }
 	p->y = y;
 	p->m = mo;
 	p->d = d;
+	if( (rcT = DtTimeSuffix(&z,zEnd,zIn,p)) != 0 ){
+		*pzOut = z;
+		return rcT;
+	}
 	*pzOut = z;
 	return 1;
 }
@@ -1289,15 +1399,17 @@ static int DtTryIsoOrdinalDot(const char *z,const char *zEnd,const char **pzOut,
 	}
 	y = (sxi64)((z[0]-'0')*1000 + (z[1]-'0')*100 + (z[2]-'0')*10 + (z[3]-'0'));
 	z += 8;
-	if( (rcT = DtTimeSuffix(&z,zEnd,zIn,p)) != 0 ){
-		return rcT;
-	}
+	*pzOut = z;
 	if( (rcT = DtMarkDate(p,zTok,zIn)) != 0 ){
 		return rcT;
 	}
 	p->y = y;
 	p->m = 1;
 	p->d = doy;   /* the field normalizer resolves it out of January */
+	if( (rcT = DtTimeSuffix(&z,zEnd,zIn,p)) != 0 ){
+		*pzOut = z;
+		return rcT;
+	}
 	*pzOut = z;
 	return 1;
 }
@@ -1350,6 +1462,9 @@ static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
 	if( z >= zEnd || !SyisDigit(z[0]) ){ return 0; }
 	c = 0; nc = 0;
 	while( z < zEnd && SyisDigit(z[0]) && nc < 4 ){ c = c*10 + (z[0]-'0'); z++; nc++; }
+	/* Which of the three the DAY is -- the separator and the widths decide, and
+	 * both the field WIDTH below and php's ordinal suffix follow from it. */
+	iDayField = sep == '/' ? (na == 4 ? 3 : 2) : (sep == '.' ? 1 : (nc == 4 ? 1 : 3));
 	/* map fields to Y/M/D; nyear tracks the year field's width for 2-digit mapping.
 	 * '/'  : YYYY/MM/DD when the first field is 4 digits, else MM/DD/YYYY.
 	 * '-'/'.': a 4-digit LAST field is DD-MM-YYYY (day first); otherwise YY-MM-DD
@@ -1406,6 +1521,16 @@ static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
 	 * which is what makes `9.30.359699` the time 09:30:35 and the year 9699. Month
 	 * 0 and day 0 do match, and normalize (month 0 is December of the year
 	 * before). */
+	/* A DAY is at most two digits wide in every one of php's spellings, where a
+	 * YEAR may be four, so the third field's width depends on which of the two
+	 * the mapping made it: `2020/1/22020-01-02` is the 22nd with a second date
+	 * behind it, not a day of 2202. */
+	if( iDayField == 3 && nc > 2 ){
+		int nDrop = nc - 2;
+		while( nDrop-- > 0 ){ c /= 10; z--; }
+		nc = 2;
+		d = c;
+	}
 	/* php's DAY pattern is one or two digits and the two-digit reading only when
 	 * it is in range, so an out-of-range pair leaves its second digit to the
 	 * string rather than sinking the rule: `3854-2-40` is the 4th with a stray
@@ -1416,11 +1541,6 @@ static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
 		z--;
 	}
 	if( mo > 12 || d > 31 ){ return 0; }
-	/* Which of the three the DAY is, and so where php's ordinal suffix may
-	 * stand. The third field's is read HERE rather than above, because a suffix
-	 * that may not stand there is simply not part of the token and the string
-	 * reads it as a zone: `20-1-2020th` is the 20th with `th` behind it. */
-	iDayField = sep == '/' ? (na == 4 ? 3 : 2) : (sep == '.' ? 1 : (nc == 4 ? 1 : 3));
 	if( (bOrd1 && iDayField != 1) || (bOrd2 && iDayField != 2) ){
 		return 0;
 	}
@@ -1428,8 +1548,7 @@ static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
 		z += 2;
 	}
 	/* optional time-of-day suffix, then commit */
-	rcT = DtTimeSuffix(&z,zEnd,zIn,p);
-	if( rcT != 0 ){ return rcT; }
+	*pzOut = z;
 	if( (rcT = DtMarkDate(p,zTok,zIn)) != 0 ){ return rcT; }
 	/* php's American rule reads its year through a helper that comes back UNSET
 	 * once the ordinal has been stepped over, so `4/20th/2020` is the 20th of
@@ -1439,7 +1558,9 @@ static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
 	}
 	p->m = mo;
 	p->d = d;
+	rcT = DtTimeSuffix(&z,zEnd,zIn,p);
 	*pzOut = z;
+	if( rcT != 0 ){ return rcT; }
 	return 1;
 }
 /*
@@ -1673,7 +1794,7 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
 	const char *zTok = z;
 	const char *zAfterMon = 0;
 	int mo,d = 1,adv,haveDay = 0,haveYear = 0;
-	int bMonthFirst = 0,nSuf = 0;
+	int bMonthFirst = 0,nSuf = 0,bClock = 0;
 	sxi64 y = 0;
 	int rcT;
 /* php's textual-date rule spells its run with the full stop in it (`5.january`
@@ -1703,6 +1824,12 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
 				haveDay = 1;
 				bMonthFirst = 1;
 				while( z < zEnd && MDISSUF((unsigned char)z[0]) ){ z++; nSuf++; }
+				/* php's `dateshortwithtimeshort`: a month, a day and a CLOCK are
+				 * ONE token there, and it reads longer than the year the same
+				 * digits would be -- which is what makes `january 12 12:00` noon
+				 * on the 12th where `january 12 12` is the year 2012, and
+				 * `january 12 123:00` the year 123 with a refusal behind it. */
+				bClock = DtClockFollows(z,zEnd);
 			}
 		}
 	}else if( SyisDigit(z[0]) ){
@@ -1717,8 +1844,11 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
 	}else{
 		return 0;
 	}
-	/* optional year */
-	if( z < zEnd && SyisDigit(z[0]) ){
+	/* The optional YEAR -- but php's rule spells the run between the day and it
+	 * as REQUIRED, so `january 124` is no date at all where `january 12 4` and
+	 * `january 12s4` are the year 2004. */
+	if( !bClock && !(bMonthFirst && haveDay && nSuf == 0)
+	 && z < zEnd && SyisDigit(z[0]) ){
 		int ny = 0;
 		y = 0;
 		while( z < zEnd && SyisDigit(z[0]) && ny < 4 ){ y = y*10 + (z[0]-'0'); z++; ny++; }
@@ -1747,14 +1877,21 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
 		d = 1;
 	}
 	/* optional time-of-day suffix */
-	rcT = DtTimeSuffix(&z,zEnd,zIn,p);
-	if( rcT != 0 ){ return rcT; }
+	*pzOut = z;
 	if( (rcT = DtMarkDate(p,zTok,zIn)) != 0 ){ return rcT; }
 	p->m = mo;
 	if( haveDay ){ p->d = d; }
 	else if( haveYear ){ p->d = 1; }
 	if( haveYear ){ p->y = y; }
+	if( bClock ){
+		rcT = DtReadTimeOfDay(&z,zEnd,zIn,p);
+		*pzOut = z;
+		if( rcT < 0 ){ return rcT; }
+		return 1;
+	}
+	rcT = DtTimeSuffix(&z,zEnd,zIn,p);
 	*pzOut = z;
+	if( rcT != 0 ){ return rcT; }
 	return 1;
 #undef MDSKIPWS
 #undef MDISSUF
@@ -1942,6 +2079,7 @@ static int DtTryEpoch(const char **pz,const char *zEnd,dt_parsed *p,const char *
 		return -((int)(zAt - zIn) + 1) - DT_ERR_DZONE;
 	}
 	if( rc > 0 ){
+		DtWarnPend(p,(int)(zAt - zIn),"Double timezone specification");
 		return 1;   /* php returns from inside HAVE_TZ: nothing below runs */
 	}
 	DtZoneStore(p,0,0,0,0);
@@ -1966,58 +2104,64 @@ static int DtTryEpoch(const char **pz,const char *zEnd,dt_parsed *p,const char *
 	}
 	return 1;
 }
-static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
+/* Forward: the scan publishes what it collects, and words a refusal in php's
+ * own terms -- both live below, beside the record they write to. */
+static const char * DtParseErr(const char *zIn,int nLen,int iErrPos,int *piPos,char *pcAt);
+static void DtRecErr(phl_dt_lasterr *pRec,int iPos,const char *zMsg);
+static void DtRecWarn(phl_dt_lasterr *pRec,int iPos,const char *zMsg);
+static void DtRecReset(phl_dt_lasterr *pRec);
+static int DtDaysInMonth(sxi64 y,int m);
+static int DtParseFields(const char *zIn,int nLen,dt_parsed *p,phl_dt_lasterr *pRec)
 {
 	const char *z,*zEnd;
 	const char *zPrev = 0;
 	int bAny = 0;
-	int iRc;
+	int iRc,iFirst = 0,k;
 	/* php's trim comes FIRST and the positions below are all measured from what
 	 * it leaves, so rebase on it here and every rule inherits the answer. */
 	DtTrimEnds(&zIn,&nLen);
 	z = zIn;
 	zEnd = &zIn[nLen];
-	/* Whatever the trim left of php's leading separator run -- a NUL, a full
-	 * stop -- the scanner steps over, and the wider set it tolerates at the
-	 * trailing end goes with it. */
-	while( z < zEnd && (DtIsEdgeSep((unsigned char)z[0]) || z[0] == '.') ){ z++; }
+	/* The wider set php tolerates at the trailing END -- a carriage return, a
+	 * vertical tab, a form feed, a NUL -- closes the string; at the FRONT the
+	 * trim has taken what it takes and everything left is an ordinary token
+	 * separator, which DT_SKIP_WS below reads. Stepping over more than that
+	 * loses a byte php refuses: `.\rjanuary` is an unexpected `\r` there. */
 	while( zEnd > z && DtIsEdgeSep((unsigned char)zEnd[-1]) ){ zEnd--; }
 #define DT_SKIP_WS() while( DtIsSepAt(z,zEnd) ){ z++; }
 /* ...and the run INSIDE one token, which is php's narrower `space`. */
 #define DT_SPACE() while( z < zEnd && DtIsSpace((unsigned char)z[0]) ){ z++; }
 #define DT_LOWEQ(zKw,nKw) (zEnd-z >= (nKw) && SyStrnicmp(z,zKw,nKw) == 0 \
 	&& DtWordEnds(z,zEnd,nKw))
+/*
+ * php's scanner RECORDS a refusal and reads on, so an error is not the end of
+ * the parse: the reason and the byte are published and the walk resumes one
+ * byte past what was named -- which is exactly where php's catch-all rule
+ * leaves its cursor. A token that MATCHED and whose action then complained is
+ * already behind the cursor, because the rule that raised it moved past it, so
+ * taking whichever of the two is FURTHER covers both kinds. The first code is
+ * kept: it is the one the constructors put in their sentence.
+ */
+#define DT_FAIL(iCode) do{ \
+		int _p = 0; \
+		char _c = ' '; \
+		const char *_m = DtParseErr(zIn,nLen,(iCode),&_p,&_c); \
+		DtRecErr(pRec,_p,_m); \
+		if( iFirst == 0 ){ iFirst = (iCode); } \
+		if( z < &zIn[_p + 1] ){ z = &zIn[_p + 1]; } \
+		if( z > zEnd ){ z = zEnd; } \
+	}while(0)
 	DT_SKIP_WS();
 	if( z >= zEnd ){
 		/* php: the empty string is "now" */
 		return 0;
 	}
-	if( SyisDigit(z[0]) && (iRc = DtTryIsoWeek(z,zEnd,&z,p,zIn)) != 0 ){
-		/* YYYY[-]Www[[-]D] -- the ISO WEEK date, whose `W` is what tells it from
-		 * every other four-digit-first spelling. */
-		if( iRc != 1 ){ return iRc; }
-		bAny = 1;
-	}else if( (iRc = DtTryIsoDate(z,zEnd,&z,p,zIn)) != 0 ){
-		/* [+-]YYYY-MM-DD[...] -- the sign, and any year width past four, are php's
-		 * EXPANDED form (see DtTryIsoYear). Anything other than 1 is an error code
-		 * in DtParse's own convention; propagate it verbatim. */
-		if( iRc != 1 ){ return iRc; }
-		bAny = 1;
-	}else if( SyisDigit(z[0])
-	 && (iRc = DtTryNumericDate(z,zEnd,&z,p,zIn)) != 0 ){
-		/* DD-MM-YYYY / DD.MM.YYYY (day first), MM/DD/YYYY (slash, American), and
-		 * YYYY/MM/DD (slash, year first) — see DtTryNumericDate. */
-		if( iRc != 1 ){ return iRc; }
-		bAny = 1;
-	}else if( SyisDigit(z[0])
-	 && (iRc = DtTryMonthDate(z,zEnd,&z,p,zIn)) != 0 ){
-		/* "15 January 2020" — the day-first textual spelling. The month-first one
-		 * is an ordinary token of the loop below, since php takes a month name
-		 * anywhere in the string. */
-		if( iRc != 1 ){ return iRc; }
-		bAny = 1;
-	}
-	/* Relative / keyword sequence */
+	/*
+	 * One rule set, tried at every position -- php's scanner has no head of its
+	 * own and neither does this walk. The keyword rules come first and are
+	 * spelled in LETTERS, so nothing they could claim reaches the date rules
+	 * behind them by another route.
+	 */
 	for(;;){
 		/* Every pass must CONSUME something. A shape rule that claims a token
 		 * without advancing the cursor would spin here forever -- and one did:
@@ -2026,7 +2170,8 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 		 * `new DateTime('2020-1-1 12:00')` hung the engine outright. The rule is
 		 * fixed above; this makes the whole class of it a refusal instead. */
 		if( z == zPrev ){
-			return (int)(z - zIn) + 1;
+			DT_FAIL((int)(z - zIn) + 1);
+			continue;
 		}
 		zPrev = z;
 		DT_SKIP_WS();
@@ -2034,7 +2179,7 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 			break;
 		}
 		if( (iRc = DtTryEpoch(&z,zEnd,p,zIn)) != 0 ){
-			if( iRc != 1 ){ return iRc; }
+			if( iRc != 1 ){ DT_FAIL(iRc); continue; }
 			bAny = 1;
 			continue;
 		}
@@ -2241,41 +2386,41 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 		 * all reach here. The dates go first so that the longest reading wins --
 		 * `1.2.2020` is a date where a bare `1.2` is the time 01:02. */
 		if( SyisDigit(z[0]) && (iRc = DtTryIsoWeek(z,zEnd,&z,p,zIn)) != 0 ){
-			if( iRc != 1 ){ return iRc; }
+			if( iRc != 1 ){ DT_FAIL(iRc); continue; }
 			bAny = 1;
 			continue;
 		}
 		if( (iRc = DtTryIsoDate(z,zEnd,&z,p,zIn)) != 0 ){
-			if( iRc != 1 ){ return iRc; }
+			if( iRc != 1 ){ DT_FAIL(iRc); continue; }
 			bAny = 1;
 			continue;
 		}
 		if( SyisDigit(z[0]) && (iRc = DtTryIsoOrdinalDot(z,zEnd,&z,p,zIn)) != 0 ){
-			if( iRc != 1 ){ return iRc; }
+			if( iRc != 1 ){ DT_FAIL(iRc); continue; }
 			bAny = 1;
 			continue;
 		}
 		if( SyisDigit(z[0]) && (iRc = DtTryNumericDate(z,zEnd,&z,p,zIn)) != 0 ){
-			if( iRc != 1 ){ return iRc; }
+			if( iRc != 1 ){ DT_FAIL(iRc); continue; }
 			bAny = 1;
 			continue;
 		}
 		/* ...and the same date with no YEAR, which is a shorter read than the
 		 * three-field one above and so is tried after it. */
 		if( SyisDigit(z[0]) && (iRc = DtTryAmericanShort(z,zEnd,&z,p,zIn)) != 0 ){
-			if( iRc != 1 ){ return iRc; }
+			if( iRc != 1 ){ DT_FAIL(iRc); continue; }
 			bAny = 1;
 			continue;
 		}
 		if( (SyisAlpha(z[0]) || SyisDigit(z[0]))
 		 && (iRc = DtTryMonthDate(z,zEnd,&z,p,zIn)) != 0 ){
-			if( iRc != 1 ){ return iRc; }
+			if( iRc != 1 ){ DT_FAIL(iRc); continue; }
 			bAny = 1;
 			continue;
 		}
 		/* A time of day ("next thursday 15:00", or one standing alone). */
 		if( (iRc = DtReadTimeOfDay(&z,zEnd,zIn,p)) != 0 ){
-			if( iRc != 1 ){ return iRc; }
+			if( iRc != 1 ){ DT_FAIL(iRc); continue; }
 			bAny = 1;
 			continue;
 		}
@@ -2293,7 +2438,11 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 				 * and `+.3 days` are refusals there. */
 				DT_SPACE();
 			}
-			if( z >= zEnd || !SyisDigit(z[0]) ){ return (int)(zNumStart - zIn) + 1; }
+			if( z >= zEnd || !SyisDigit(z[0]) ){
+				z = zNumStart;
+				DT_FAIL((int)(zNumStart - zIn) + 1);
+				continue;
+			}
 			zDig = z;
 			while( z < zEnd && SyisDigit(z[0]) ){
 				if( nDig < DT_DIGITS_SAFE ){ v = v*10 + (z[0]-'0'); }
@@ -2335,7 +2484,8 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 				 * has claimed the run (the nocolon rules below have their own
 				 * widths, and a bare `20240102123456` is a date and a time). */
 				if( nDig > DT_DIGITS_REL ){
-					return -((int)(zDig - zIn) + 1) - DT_ERR_RANGE;
+					DT_FAIL(-((int)(zDig - zIn) + 1) - DT_ERR_RANGE);
+					continue;
 				}
 				bAny = 1;
 				continue;
@@ -2377,7 +2527,7 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 				while( zm < zEnd && (zm[0]==' '||zm[0]=='\t'||zm[0]=='.'||zm[0]=='-') ){ zm++; }
 				if( (mo2 = DtMatchMonth(zm,zEnd,&adv)) != 0 ){
 					int rcD = DtMarkDate(p,z,zIn);
-					if( rcD != 0 ){ return rcD; }
+					if( rcD != 0 ){ z = &zm[adv]; DT_FAIL(rcD); continue; }
 					p->y = (sxi64)(DTNUM2(0)*100 + DTNUM2(2));
 					p->m = mo2;
 					p->d = 1;
@@ -2388,7 +2538,7 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 			}
 			if( !bT && n >= 8 && mo <= 12 && d <= 31 ){
 				int rcD = DtMarkDate(p,z,zIn);
-				if( rcD != 0 ){ return rcD; }
+				if( rcD != 0 ){ z = &zd[8]; DT_FAIL(rcD); continue; }
 				p->y = (sxi64)(DTNUM2(0)*100 + DTNUM2(2));
 				p->m = mo;
 				p->d = d;
@@ -2397,7 +2547,7 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 				/* php's ISO ORDINAL date, YYYYDDD: the day of the year, which the
 				 * field normalizer resolves out of January. */
 				int rcD = DtMarkDate(p,z,zIn);
-				if( rcD != 0 ){ return rcD; }
+				if( rcD != 0 ){ z = &zd[7]; DT_FAIL(rcD); continue; }
 				p->y = (sxi64)(DTNUM2(0)*100 + DTNUM2(2));
 				p->m = 1;
 				p->d = doy;
@@ -2405,13 +2555,21 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 			}else if( n >= 6 && h <= 24 && mi <= 59 && se <= 60 ){
 				/* six digits are php's whole clock, and a SECOND clock is its
 				 * refusal rather than the year the four-digit run falls back to */
-				if( p->nTimeTok ){ return -((int)(z - zIn) + 1); }
+				if( p->nTimeTok ){
+					iRc = -((int)(z - zIn) + 1);
+					z = &zd[6];
+					DT_FAIL(iRc);
+					continue;
+				}
 				p->h = h; p->i = mi; p->s = se; p->us = 0;
 				p->nTimeTok = 1;
 				z = &zd[6];
 			}else if( n >= 4 && h <= 24 && mi <= 59 ){
 				if( p->nTimeTok >= 2 ){
-					return -((int)(z - zIn) + 1);
+					iRc = -((int)(z - zIn) + 1);
+					z = &zd[4];
+					DT_FAIL(iRc);
+					continue;
 				}
 				if( p->nTimeTok == 1 ){
 					p->y = (sxi64)(DTNUM2(0)*100 + DTNUM2(2));
@@ -2435,7 +2593,12 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 				 * nothing at all, and the hour is read the same greedy way as the
 				 * one before a colon (`t95846` is 09:00 and the year 5846). */
 				int nh = DtReadField(zd,zEnd,24,&h);
-				if( p->nTimeTok ){ return -((int)(z - zIn) + 1); }
+				if( p->nTimeTok ){
+					iRc = -((int)(z - zIn) + 1);
+					z = &zd[nh];
+					DT_FAIL(iRc);
+					continue;
+				}
 				p->h = h;
 				p->i = p->s = p->us = 0;
 				p->nTimeTok = 1;
@@ -2456,11 +2619,35 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 		 * takes the longest reading: `+1 day` is a relative and `t9` a clock, and
 		 * both would otherwise be read as a zone. */
 		if( (iRc = DtZoneTok(&z,zEnd,p,zIn)) != 0 ){
-			if( iRc != 1 ){ return iRc; }
+			if( iRc != 1 ){ DT_FAIL(iRc); continue; }
 			bAny = 1;
 			continue;
 		}
-		return (int)(z - zIn) + 1;
+		DT_FAIL((int)(z - zIn) + 1);
+	}
+	/* The warnings a RULE raised, in the order the scan met them ... */
+	for( k = 0 ; k < p->nWarnPend && k < PH7_DT_MAX_WARN ; k++ ){
+		DtRecWarn(pRec,p->aWarnPos[k],p->azWarn[k]);
+	}
+	/*
+	 * ...and the two php raises once the scan is over, both at the byte one past
+	 * the string. They are about what the string SPELLED rather than what any
+	 * rule refused, so a date nobody could hold (`2020-02-31`, `2020-102`) and a
+	 * clock nobody could show (`24:00:00`, `23:59:60`) are warnings on a parse
+	 * that otherwise succeeds. php asks the time first, and both land on the same
+	 * key -- so a string with both counts two and shows the date's.
+	 */
+	if( p->nTimeTok
+	 && (p->h > 23 || p->i > 59 || p->s > 59 || p->h < 0 || p->i < 0 || p->s < 0) ){
+		DtRecWarn(pRec,nLen + 1,"The parsed time was invalid");
+	}
+	if( p->bHaveDate
+	 && (p->m < 1 || p->m > 12 || p->d < 1
+	     || p->d > DtDaysInMonth(p->y,(int)p->m)) ){
+		DtRecWarn(pRec,nLen + 1,"The parsed date was invalid");
+	}
+	if( iFirst != 0 ){
+		return iFirst;
 	}
 	if( !bAny ){
 		return 1;
@@ -2468,6 +2655,7 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 	return 0;
 #undef DT_SKIP_WS
 #undef DT_LOWEQ
+#undef DT_FAIL
 }
 /*
  * Parse zIn against the base moment and answer the timestamp it names. The
@@ -2475,13 +2663,17 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
  * order the string spelled its units in reaches the clock.
  */
 static int DtParseEx(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs,
-	int iFlags,sxi64 *pTs,sxi32 *pOff,int *pbOffSet,int *pUs,dt_parsed *pVec)
+	int iFlags,sxi64 *pTs,sxi32 *pOff,int *pbOffSet,int *pUs,dt_parsed *pVec,
+	phl_dt_lasterr *pRec)
 {
 	dt_parsed sP;
 	int iErr;
 	DtFieldsInit(&sP,iBaseOff);
 	*pUs = iBaseUs;
-	iErr = DtParseFields(zIn,nLen,&sP);
+	if( pRec ){
+		DtRecReset(pRec);
+	}
+	iErr = DtParseFields(zIn,nLen,&sP,pRec);
 	if( pVec ){
 		*pVec = sP;
 	}
@@ -2496,7 +2688,7 @@ static int DtParseEx(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int i
 static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs,
 	sxi64 *pTs,sxi32 *pOff,int *pbOffSet,int *pUs)
 {
-	return DtParseEx(zIn,nLen,iBaseTs,iBaseOff,iBaseUs,0,pTs,pOff,pbOffSet,pUs,0);
+	return DtParseEx(zIn,nLen,iBaseTs,iBaseOff,iBaseUs,0,pTs,pOff,pbOffSet,pUs,0,0);
 }
 /*
  * php's parse-failure reason, from DtParse's error code.
@@ -2754,11 +2946,67 @@ static int DtEatName(const char **pz,const char *zEnd,const char **azNames,int n
  * Publish one scan's warnings and errors as the record getLastErrors() answers.
  * The messages are static literals, so the record copies pointers, never bytes.
  */
-static void DtFfDiag(phl_dt_lasterr *pDiag,int nErr,int nErrKept,const int *aErrPos,
+/*
+ * Record one parse's diagnostics as getLastErrors()'s answer.
+ *
+ * php resets the record on EVERY constructor, modify() and createFromFormat()
+ * call -- a clean parse answers `false` again -- and publishes what the scan
+ * collected, which is every error it met rather than the one it stopped on.
+ * The error rows grow with the string (one per byte at worst), the warnings
+ * cannot exceed their own three rules, and every message is a static literal.
+ */
+static void DtRecReset(phl_dt_lasterr *pRec)
+{
+	pRec->bSet = 0;
+	pRec->nWarn = pRec->nWarnKept = 0;
+	pRec->nErr = pRec->nErrKept = 0;
+	SyBlobReset(&pRec->sErr);
+}
+static void DtRecErr(phl_dt_lasterr *pRec,int iPos,const char *zMsg)
+{
+	phl_dt_diag_row sRow;
+	if( pRec == 0 ){
+		return;
+	}
+	pRec->bSet = 1;
+	pRec->nErr++;
+	sRow.iPos = iPos;
+	sRow.zMsg = zMsg;
+	if( SyBlobAppend(&pRec->sErr,(const void *)&sRow,sizeof(sRow)) == SXRET_OK ){
+		pRec->nErrKept++;
+	}
+}
+static void DtRecWarn(phl_dt_lasterr *pRec,int iPos,const char *zMsg)
+{
+	if( pRec == 0 ){
+		return;
+	}
+	pRec->bSet = 1;
+	pRec->nWarn++;
+	if( pRec->nWarnKept < PH7_DT_MAX_WARN ){
+		pRec->aWarnPos[pRec->nWarnKept] = iPos;
+		pRec->azWarn[pRec->nWarnKept] = zMsg;
+		pRec->nWarnKept++;
+	}
+}
+static void DtLastErrClear(ph7_vm *pVm)
+{
+	DtRecReset(&pVm->sDtLastErr);
+}
+typedef struct dt_ff_diag dt_ff_diag;
+struct dt_ff_diag
+{
+	int nErr,nErrKept;
+	int aErrPos[PH7_DT_MAX_ERR];
+	const char *azErr[PH7_DT_MAX_ERR];
+	int nWarn;
+	int aWarnPos[PH7_DT_MAX_WARN];
+	const char *azWarn[PH7_DT_MAX_WARN];
+};
+static void DtFfDiag(dt_ff_diag *pDiag,int nErr,int nErrKept,const int *aErrPos,
 	const char **azErr,int nWarn,const int *aWarnPos,const char **azWarn)
 {
 	int k;
-	pDiag->bSet = (sxu8)(nErr > 0 || nWarn > 0);
 	pDiag->nErr = nErr;
 	pDiag->nErrKept = nErrKept;
 	for( k = 0 ; k < nErrKept ; k++ ){
@@ -2766,11 +3014,23 @@ static void DtFfDiag(phl_dt_lasterr *pDiag,int nErr,int nErrKept,const int *aErr
 		pDiag->azErr[k] = azErr[k];
 	}
 	pDiag->nWarn = nWarn;
-	pDiag->nWarnKept = nWarn;
 	for( k = 0 ; k < nWarn ; k++ ){
 		pDiag->aWarnPos[k] = aWarnPos[k];
 		pDiag->azWarn[k] = azWarn[k];
 	}
+}
+/* ...published into the VM's record the way a string scan publishes its own. */
+static void DtLastErrFf(ph7_vm *pVm,const dt_ff_diag *pDiag)
+{
+	int k;
+	DtLastErrClear(&(*pVm));
+	for( k = 0 ; k < pDiag->nWarn ; k++ ){
+		DtRecWarn(&pVm->sDtLastErr,pDiag->aWarnPos[k],pDiag->azWarn[k]);
+	}
+	for( k = 0 ; k < pDiag->nErrKept ; k++ ){
+		DtRecErr(&pVm->sDtLastErr,pDiag->aErrPos[k],pDiag->azErr[k]);
+	}
+	pVm->sDtLastErr.nErr = pDiag->nErr;   /* php counts what it dropped too */
 }
 typedef struct dt_ff_res dt_ff_res;
 struct dt_ff_res
@@ -2781,7 +3041,7 @@ struct dt_ff_res
 	char zName[16];
 	int uSec;
 	int bHasUs;
-	phl_dt_lasterr sDiag;
+	dt_ff_diag sDiag;
 };
 static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 	sxi64 iNow,sxi32 iDefOff,dt_ff_res *pOut)
@@ -3620,26 +3880,6 @@ static int DtZoneArgInit(ph7_context *pCtx,ph7_value *pArg)
 	return -1;
 }
 /*
- * Record one parse's diagnostics as getLastErrors()'s answer.
- *
- * php resets the record on EVERY constructor and createFromFormat() call — a clean
- * parse answers `false` again — and a failing constructor publishes its reason as a
- * one-entry error map before it throws.
- */
-static void DtLastErrClear(ph7_vm *pVm)
-{
-	SyZero(&pVm->sDtLastErr,sizeof(pVm->sDtLastErr));
-}
-static void DtLastErrOne(ph7_vm *pVm,int iPos,const char *zMsg)
-{
-	DtLastErrClear(&(*pVm));
-	pVm->sDtLastErr.bSet = 1;
-	pVm->sDtLastErr.nErr = 1;
-	pVm->sDtLastErr.nErrKept = 1;
-	pVm->sDtLastErr.aErrPos[0] = iPos;
-	pVm->sDtLastErr.azErr[0] = zMsg;
-}
-/*
  * Parse $datetime into a date object's state, php's constructor rules: an explicit
  * offset in the string wins over the $timezone argument, a literal "Z" keeps its
  * own name, and everything else takes the argument's (or the default) zone.
@@ -3658,7 +3898,10 @@ static int DtInitState(ph7_context *pCtx,const char *zIn,int nIn,sxi32 iZoneOff,
 	 * names no time of day keeps them (`new DateTime()`, `+1 day`), and one that
 	 * does zeroes them along with the rest of the clock. */
 	DtNowUs(pCtx->pVm,&iNow,&uNow);
-	iErrPos = DtParseEx(zIn,nIn,iNow,iZoneOff,uNow,0,&iTs,&iOff,&bOffSet,&uSec,&sVec);
+	/* php publishes what this scan collected through getLastErrors(), whether or
+	 * not it throws, and a clean parse puts the record back to `false`. */
+	iErrPos = DtParseEx(zIn,nIn,iNow,iZoneOff,uNow,0,&iTs,&iOff,&bOffSet,&uSec,&sVec,
+		&pCtx->pVm->sDtLastErr);
 	if( iErrPos != 0 ){
 		*pzErr = DtParseErr(zIn,nIn,iErrPos,piPos,pcAt);
 		return -1;
@@ -3926,13 +4169,10 @@ static int vm_builtin_DateTime_construct(ph7_context *pCtx,int nArg,ph7_value **
 	}
 	if( DtInitState(pCtx,zIn,nIn,iZoneOff,zZone,nZone,iZoneKind,&sState,zNameBuf,
 		sizeof(zNameBuf),&zErr,&iPos,&cAt) != 0 ){
-		/* php publishes the failure through getLastErrors() as well as throwing. */
-		DtLastErrOne(pVm,iPos,zErr);
 		return PH7_VmThrowException(pCtx,"DateMalformedStringException",
 			"Failed to parse time string (%.*s) at position %d (%c): %s",
 			DtCStrLen(zIn,nIn),zIn,iPos,cAt,zErr);
 	}
-	DtLastErrClear(pVm);
 	DtStore(pVm,pThis,&sState);
 	DtSetInit(pVm,pThis);
 	return PH7_OK;
@@ -4115,7 +4355,7 @@ static int vm_builtin_DateTime_modify(ph7_context *pCtx,int nArg,ph7_value **apA
 	 * php's own flag for exactly that, and the constructor's parse does not pass it. */
 	iErrPos = DtParseEx(zMod,nMod,PH7_NativeAttrInt(pThis,DT_TS),(sxi32)PH7_NativeAttrInt(pThis,DT_OFF),
 		(int)PH7_NativeAttrInt(pThis,DT_US),DT_PARSE_OVERRIDE_TIME|DT_PARSE_KEEP_ZONE,
-		&iTs,&iOff,&bOffSet,&uSec,&sVec);
+		&iTs,&iOff,&bOffSet,&uSec,&sVec,&pVm->sDtLastErr);
 	if( iErrPos != 0 ){
 		int bImm = DtIsImmutable(pVm,pThis);
 		zErr = DtParseErr(zMod,nMod,iErrPos,&iPos,&cAt);
@@ -4335,7 +4575,7 @@ static int vm_builtin_DateTime_sub(ph7_context *pCtx,int nArg,ph7_value **apArg)
 static int vm_builtin_DateTime_getLastErrors(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
-	const phl_dt_lasterr *pErr = &pVm->sDtLastErr;
+	phl_dt_lasterr *pErr = &pVm->sDtLastErr;
 	ph7_value *pArr,*pWarn,*pErrs,*pVal;
 	int k;
 	SXUNUSED(nArg);
@@ -4356,10 +4596,13 @@ static int vm_builtin_DateTime_getLastErrors(ph7_context *pCtx,int nArg,ph7_valu
 		ph7_array_add_intkey_elem(pWarn,pErr->aWarnPos[k],pVal);
 		ph7_value_reset_string_cursor(pVal);
 	}
-	for( k = 0 ; k < pErr->nErrKept ; k++ ){
-		ph7_value_string(pVal,pErr->azErr[k],-1);
-		ph7_array_add_intkey_elem(pErrs,pErr->aErrPos[k],pVal);
-		ph7_value_reset_string_cursor(pVal);
+	{
+		const phl_dt_diag_row *aRow = (const phl_dt_diag_row *)SyBlobData(&pErr->sErr);
+		for( k = 0 ; k < pErr->nErrKept ; k++ ){
+			ph7_value_string(pVal,aRow[k].zMsg,-1);
+			ph7_array_add_intkey_elem(pErrs,aRow[k].iPos,pVal);
+			ph7_value_reset_string_cursor(pVal);
+		}
 	}
 	ph7_value_int(pVal,pErr->nWarn);
 	ph7_array_add_strkey_elem(pArr,"warning_count",pVal);
@@ -4412,11 +4655,11 @@ static int DtCreateFromFormat(ph7_context *pCtx,int nArg,ph7_value **apArg,const
 	}
 	DtNowUs(pCtx->pVm,&iNowFf,0);
 	if( DtFromFormat(zFmt,nFmt,zIn,nIn,iNowFf,iZoneOff,&sRes) != 0 ){
-		pVm->sDtLastErr = sRes.sDiag;
+		DtLastErrFf(pVm,&sRes.sDiag);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	pVm->sDtLastErr = sRes.sDiag;
+	DtLastErrFf(pVm,&sRes.sDiag);
 	sState.iTs = sRes.iTs;
 	sState.uSec = sRes.bHasUs ? sRes.uSec : 0;
 	switch( sRes.iOffKind ){
@@ -4757,7 +5000,9 @@ static int DtIvParseRelative(const char *zIn,int nIn,sxi64 *aOut,int *piPos,
 		*pzReason = "Empty string";
 		return -1;
 	}
-	iErr = DtParseEx(zIn,nIn,0,0,0,0,&iTs,&iOff,&bOffSet,&uSec,&sVec);
+	/* createFromDateString() does NOT publish getLastErrors() in php: the record
+	 * keeps whatever the last constructor or modify() left in it. */
+	iErr = DtParseEx(zIn,nIn,0,0,0,0,&iTs,&iOff,&bOffSet,&uSec,&sVec,0);
 	if( iErr != 0 ){
 		*pzReason = DtParseErr(zIn,nIn,iErr,piPos,pcAt);
 		return -1;
@@ -5588,11 +5833,9 @@ static int DtProcCreate(ph7_context *pCtx,int nArg,ph7_value **apArg,const char 
 	}
 	if( DtInitState(pCtx,zIn,nIn,iZoneOff,zZone,nZone,iZoneKind,&sState,zNameBuf,
 		sizeof(zNameBuf),&zErr,&iPos,&cAt) != 0 ){
-		DtLastErrOne(pVm,iPos,zErr);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	DtLastErrClear(pVm);
 	pObj = DtNewInstance(pVm,pClass);
 	if( pObj == 0 ){
 		return PH7_ContextMemoryError(pCtx);
@@ -5646,7 +5889,7 @@ static int vm_builtin_date_modify(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	zMod = ph7_value_to_string(apArg[1],&nMod);
 	iErrPos = DtParseEx(zMod,nMod,PH7_NativeAttrInt(pObj,DT_TS),(sxi32)PH7_NativeAttrInt(pObj,DT_OFF),
 		(int)PH7_NativeAttrInt(pObj,DT_US),DT_PARSE_OVERRIDE_TIME|DT_PARSE_KEEP_ZONE,
-		&iTs,&iOff,&bOffSet,&uSec,&sVec);
+		&iTs,&iOff,&bOffSet,&uSec,&sVec,&pCtx->pVm->sDtLastErr);
 	if( iErrPos != 0 ){
 		zErr = DtParseErr(zMod,nMod,iErrPos,&iPos,&cAt);
 		PH7_VmThrowWarningFmt(pCtx->pVm,
@@ -7150,6 +7393,9 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 	/* php's date.timezone default */
 	SyMemcpy("UTC",pVm->zDefTz,sizeof("UTC"));
 	pVm->nDefTz = sizeof("UTC") - 1;
+	/* The error rows are allocated from the VM's own backend and released
+	 * wholesale with it, so this is the only lifetime call they need. */
+	SyBlobInit(&pVm->sDtLastErr.sErr,&pVm->sAllocator);
 	DtLastErrClear(&(*pVm));
 	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; n++ ){
 		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);

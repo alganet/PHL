@@ -2628,6 +2628,14 @@ struct VmIniEntry
  */
 #define PH7_DT_MAX_WARN 3
 #define PH7_DT_MAX_ERR  8
+/* One diagnostic row. The message is always a static literal, so a row keeps
+ * the pointer rather than the bytes. */
+typedef struct phl_dt_diag_row phl_dt_diag_row;
+struct phl_dt_diag_row
+{
+	int iPos;
+	const char *zMsg;
+};
 typedef struct phl_dt_lasterr phl_dt_lasterr;
 struct phl_dt_lasterr
 {
@@ -2638,8 +2646,11 @@ struct phl_dt_lasterr
 	const char *azWarn[PH7_DT_MAX_WARN];
 	int nErr;                         /* error_count (total) */
 	int nErrKept;                     /* rows in the errors map */
-	int aErrPos[PH7_DT_MAX_ERR];
-	const char *azErr[PH7_DT_MAX_ERR];
+	/* php's scanner records an error and READS ON, so a string may carry one per
+	 * byte of itself: the rows grow rather than fitting a fixed array. The blob
+	 * holds nErrKept phl_dt_diag_row, allocated from the VM's own backend and
+	 * released wholesale with it. */
+	SyBlob sErr;
 };
 typedef struct VmIniSlot VmIniSlot;
 struct VmIniSlot
