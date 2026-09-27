@@ -501,8 +501,13 @@ PH7_PRIVATE sxi32 PH7_ClassInherit(ph7_gen_state *pGen,ph7_class *pSub,ph7_class
 		return rc;
 	}
 	/* readonly class inheritance (PHP 8.2): a readonly class may only extend a
-	 * readonly class, and a non-readonly class may not extend a readonly one. */
-	if( (pBase->iFlags & PH7_CLASS_READONLY) != (pSub->iFlags & PH7_CLASS_READONLY) ){
+	 * readonly class, and a non-readonly class may not extend a readonly one.
+	 * A FINAL base is not one of these cases at all -- it cannot be extended by
+	 * anything, and php reports only that. Both diagnostics used to fire for a
+	 * `final readonly` base and the readonly one was reported, which is the wrong
+	 * reason; BcMath\Number is the engine's first such class. */
+	if( (pBase->iFlags & PH7_CLASS_FINAL) == 0
+	 && (pBase->iFlags & PH7_CLASS_READONLY) != (pSub->iFlags & PH7_CLASS_READONLY) ){
 		if( pBase->iFlags & PH7_CLASS_READONLY ){
 			rc = PH7_GenCompileError(&(*pGen),E_ERROR,pSub->nLine,
 				"Non-readonly class %z cannot extend readonly class %z",

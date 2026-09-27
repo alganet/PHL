@@ -668,7 +668,16 @@ static sxi32 MemObjIsTruthy(ph7_value *pObj)
 	}else if( iFlags & MEMOBJ_OBJ ){
 		/* php has NO __toBool(): an object is ALWAYS truthy, with no diagnostic.
 		 * PH7's __toBool() could make `if ($obj)` take the other branch, so this
-		 * extension changed control flow in valid php source. */
+		 * extension changed control flow in valid php source.
+		 *
+		 * An INTERNAL class may still install php's cast_object handler for
+		 * _IS_BOOL, which is a different thing entirely -- it is not reachable
+		 * from PHP source and php ships exactly one: a zero BcMath\Number is
+		 * falsy, so `if ($n)` and `empty($n)` read the VALUE. */
+		int bNative = 1;
+		if( PH7_ClassNativeBool((ph7_class_instance *)pObj->x.pOther,&bNative) ){
+			return bNative;
+		}
 		return 1;
 	}else if(iFlags & MEMOBJ_RES ){
 		return pObj->x.pOther != 0;
@@ -1917,6 +1926,20 @@ PH7_PRIVATE sxi32 PH7_MemObjCmp(ph7_value *pObj1,ph7_value *pObj2,int bStrict,in
 		ph7_value *pSelf  = bObj1 ? pObj1 : pObj2;
 		ph7_value *pOther = bObj1 ? pObj2 : pObj1;
 		ph7_value sCast;
+		{
+			/* ...unless the object's class declares php's compare handler, which is
+			 * asked about a scalar partner too: `Number('1.5') == '1.50'` is TRUE
+			 * where the cast rule would compare two strings. A handler that does not
+			 * recognize the value falls through to the cast below. */
+			sxi32 iNative = 1;
+			if( PH7_ClassNativeCmpValue((ph7_class_instance *)pSelf->x.pOther,pOther,
+				!bObj1,&iNative) ){
+				/* The hook was told which side it is on and has already flipped its
+				 * ordering; the uncomparable 1 is deliberately NOT flipped, which is
+				 * what leaves every relational spelling false from both directions. */
+				return iNative;
+			}
+		}
 		if( MemObjCmpCastObject(pSelf,pOther,&sCast) ){
 			/* sCast is a scalar, so the recursion cannot come back through here. */
 			rc = bObj1 ? PH7_MemObjCmp(&sCast,pOther,bStrict,iNest)

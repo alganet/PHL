@@ -3711,7 +3711,13 @@ static sxi64 ReflectPropModifiers(ph7_class_attr *pAttr)
 {
 	sxi64 iMods = ReflectVisMask(pAttr->iProtection);
 	if( pAttr->iFlags & PH7_CLASS_ATTR_STATIC ){ iMods |= 16; }
-	if( pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL ){ iMods |= 512; }
+	/* php's IS_VIRTUAL is "there is no slot behind this name", and it has two
+	 * sources: a HOOKED property with no backing store, and a NATIVE class's
+	 * property that php fabricates from its own C struct (DatePeriod's, and
+	 * BcMath\Number's value/scale). Both report virtual there. */
+	if( pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_VIRTUAL|PH7_CLASS_ATTR_NATIVE_VIRTUAL) ){
+		iMods |= 512;
+	}
 	if( pAttr->iFlags & PH7_CLASS_ATTR_READONLY ){ iMods |= 128; }
 	if( ReflectPropProtectedSet(pAttr) ){ iMods |= 2048; }
 	if( pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET ){
@@ -7335,7 +7341,8 @@ static int ReflectPropFlag(ph7_context *pCtx, int iWhat)
 		case 6: bYes = (pAttr->iFlags & PH7_CLASS_ATTR_READONLY) != 0; break;
 		case 7: bYes = 1; break;                                    /* isDefault */
 		case 8: bYes = 0; break;                                    /* isDynamic */
-		case 9: bYes = (pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL) != 0; break;
+		case 9: bYes = (pAttr->iFlags
+			& (PH7_CLASS_ATTR_HOOK_VIRTUAL|PH7_CLASS_ATTR_NATIVE_VIRTUAL)) != 0; break;
 		default:
 			bYes = (pAttr->iFlags & (PH7_CLASS_ATTR_HOOK_GET|PH7_CLASS_ATTR_HOOK_SET)) != 0;
 			break;

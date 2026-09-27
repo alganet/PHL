@@ -1386,12 +1386,48 @@ struct PH7_NativeSetCtx
 typedef struct PH7_NativeCmpCtx PH7_NativeCmpCtx;
 struct PH7_NativeCmpCtx
 {
-	ph7_class_instance *pOther; /* The RIGHT operand (pThis is the left one) */
+	ph7_class_instance *pOther; /* The RIGHT operand as an INSTANCE, or 0 when it is a scalar */
+	ph7_value *pOtherValue;     /* ...and the scalar itself, for the object-versus-value door
+	                             * (php asks the same handler for `$n == 2`). 0 when pOther is set. */
+	int bReversed;              /* The instance is the RIGHT operand: the hook owes the
+	                             * answer already flipped, EXCEPT for the uncomparable 1,
+	                             * which php answers from both directions alike. */
+	int bAnswered;              /* Set by the hook when it RECOGNIZED the partner. The scalar
+	                             * door falls back to php's cast rule when it did not; the
+	                             * instance door keeps its older "always decided" contract. */
 	sxi32 iResult;              /* -1 / 0 / 1; 1 is also php's ZEND_UNCOMPARABLE.
 	                             * The caller inits it to 1, so a hook that
 	                             * recognizes nothing may simply return. */
 	const char *zThrowClass;    /* Set by the hook to refuse; 0 (the caller's init) means answered */
 	char zThrowMsg[160];        /* ...and its message, formatted by the hook */
+};
+/*
+ * One ARITHMETIC operator asked of a native class through ph7_class::xArith --
+ * php's do_operation handler, which is what makes `$a + $b` mean something for
+ * an object.
+ *
+ * php asks the LEFT operand's handler first and the RIGHT one's when the left
+ * has none, so the handler sees a pair it may be either half of and decides for
+ * both: what the other operand is allowed to be, how it converts, and what the
+ * answer is. Declining (leaving bHandled at 0) puts the pair back on the
+ * ordinary numeric path, where an object is `Unsupported operand types`.
+ *
+ * A REFUSAL is carried back rather than raised here, the way the dimension and
+ * compare hooks' are: the opcode owns the operand stack and has to settle it
+ * before any throw, and the exception CLASS varies -- BcMath\Number answers
+ * ValueError for a string that is not a number and DivisionByZeroError for a
+ * zero divisor, neither of which is the TypeError the ordinary path raises.
+ */
+typedef struct PH7_NativeArithCtx PH7_NativeArithCtx;
+struct PH7_NativeArithCtx
+{
+	const char *zOp;         /* "+", "-", "*", "/", "%" or "**" */
+	ph7_value *pLeft;        /* The two operands, in SOURCE order */
+	ph7_value *pRight;
+	ph7_value *pResult;      /* Where the handler writes the answer */
+	int bHandled;            /* Set by the hook to claim the pair */
+	const char *zThrowClass; /* ...or set this to refuse; 0 means no refusal */
+	char zThrowMsg[160];     /* ...and word it here */
 };
 /*
  * Each class is parsed out and stored in an instance of the following structure.
@@ -1487,6 +1523,12 @@ struct ph7_class
 	                       * which also flags the class's properties PH7_CLASS_ATTR_NATIVE_SET
 	                       * so their slots get registered; inherited by user subclasses the
 	                       * way php inherits a handler. 0 everywhere else. */
+	int (*xBool)(ph7_vm *,ph7_class_instance *); /* php's cast_object for _IS_BOOL: an
+	                       * object is ALWAYS truthy unless its class says otherwise, and
+	                       * BcMath\Number is the one that does -- a zero Number is falsy. */
+	void (*xArith)(ph7_vm *,ph7_class_instance *,PH7_NativeArithCtx *); /* php's do_operation
+	                       * handler; see PH7_NativeArithCtx. 0 for every class that has none,
+	                       * which is all of them but BcMath\Number. */
 	void (*xCmp)(ph7_vm *,ph7_class_instance *,PH7_NativeCmpCtx *); /* php's compare handler:
 	                       * what `==`, `<` and `<=>` MEAN for an instance of this class,
 	                       * asked instead of the property-by-property walk. php gives one
@@ -1849,8 +1891,24 @@ PH7_PRIVATE int PH7_ClassNativeSet(ph7_class_instance *pThis,PH7_NativeSetCtx *p
 PH7_PRIVATE sxi32 PH7_NativeClassInstallSetHook(ph7_vm *pVm,const char *zClass,
 	void (*xSet)(ph7_vm *,ph7_class_instance *,PH7_NativeSetCtx *));
 PH7_PRIVATE int PH7_ClassNativeCmp(ph7_class_instance *pLeft,ph7_class_instance *pRight,sxi32 *pResult);
+PH7_PRIVATE int PH7_ClassNativeCmpValue(ph7_class_instance *pLeft,ph7_value *pOther,
+	int bReversed,sxi32 *pResult);
 PH7_PRIVATE sxi32 PH7_NativeClassInstallCmpHook(ph7_vm *pVm,const char *zClass,
 	void (*xCmp)(ph7_vm *,ph7_class_instance *,PH7_NativeCmpCtx *));
+PH7_PRIVATE sxi32 PH7_NativeClassInstallArithHook(ph7_vm *pVm,const char *zClass,
+	void (*xArith)(ph7_vm *,ph7_class_instance *,PH7_NativeArithCtx *));
+PH7_PRIVATE sxi32 PH7_NativeClassInstallBoolHook(ph7_vm *pVm,const char *zClass,
+	int (*xBool)(ph7_vm *,ph7_class_instance *));
+PH7_PRIVATE int PH7_ClassNativeBool(ph7_class_instance *pThis,int *pOut);
+/*
+ * What VmArithOperandStep() decided about one operator's pair.
+ */
+#define PH7_ARITH_ORDINARY  0   /* no handler: run the numeric arithmetic */
+#define PH7_ARITH_HANDLED   1   /* a handler answered; the destination already holds it */
+#define PH7_ARITH_REFUSED  (-1) /* throw *pzClass with the message in pMsgOut */
+PH7_PRIVATE int VmArithOperandStep(ph7_vm *pVm,ph7_value *pLeft,ph7_value *pRight,
+	const char *zOp,ph7_value *pDest,const char **pzClass,SyBlob *pMsgOut);
+PH7_PRIVATE int PH7_ValueHasArithHandler(ph7_value *pVal);
 PH7_PRIVATE sxi32 PH7_NativeClassMarkVirtualProps(ph7_vm *pVm,const char *zClass);
 PH7_PRIVATE sxi32 PH7_NativeClassMarkLazyProps(ph7_vm *pVm,const char *zClass,int bDefaultRead);
 PH7_PRIVATE sxi32 PH7_NativeClassMarkNoWriteProps(ph7_vm *pVm,const char *zClass);
@@ -5267,6 +5325,7 @@ PH7_PRIVATE int PH7_builtin_bcsqrt(ph7_context *pCtx,int nArg,ph7_value **apArg)
 PH7_PRIVATE int PH7_builtin_bcround(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_bcfloor(ph7_context *pCtx,int nArg,ph7_value **apArg);
 PH7_PRIVATE int PH7_builtin_bcceil(ph7_context *pCtx,int nArg,ph7_value **apArg);
+PH7_PRIVATE sxi32 PH7_VmInstallBcMath(ph7_vm *pVm);
 PH7_PRIVATE int PH7_builtin_bcscale(ph7_context *pCtx,int nArg,ph7_value **apArg);
 /* builtin_calendar.c -- ext/calendar: the serial day number and its calendars */
 PH7_PRIVATE int PH7_builtin_gregoriantojd(ph7_context *pCtx,int nArg,ph7_value **apArg);

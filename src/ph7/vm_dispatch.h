@@ -181,6 +181,56 @@
  */
 #define PH7_NATIVE_SET_AFTER_MUTATE(nIdxArg,pSlotArg) 	{ 		sxi32 _rcN = PH7_VmNativeSetSlot(&(*pVm),(nIdxArg),(pSlotArg)); 		if( _rcN != SXRET_OK ){ 			VmBoundaryPark(&(*pVm),_rcN); 		} 	}
 /*
+ * `++` / `--` over an operand whose class declares php's do_operation: zend
+ * compiles the step as `$n + 1` / `$n - 1` for such an object, so it reaches the
+ * SAME handler the binary operators do. Everything the two arms do below this
+ * refuses an object outright, which is why the dispatch has to come first.
+ *
+ * The prefix form answers the NEW value; the postfix one keeps the old object,
+ * which pTos already holds its own reference to. Must be used directly inside a
+ * case of the main switch.
+ */
+#define PH7_INCDEC_NATIVE_ARITH(OPTEXT) \
+	if( PH7_ValueHasArithHandler(pTos) ){ \
+		SyBlob _sStepMsg; \
+		ph7_value _sStepOne, _sStepSum; \
+		const char *_zStepCls = "TypeError"; \
+		int _rcStep; \
+		SyBlobInit(&_sStepMsg,&pVm->sAllocator); \
+		PH7_MemObjInitFromInt(&(*pVm),&_sStepOne,1); \
+		PH7_MemObjInit(&(*pVm),&_sStepSum); \
+		_rcStep = VmArithOperandStep(&(*pVm),pTos,&_sStepOne,OPTEXT,&_sStepSum, \
+			&_zStepCls,&_sStepMsg); \
+		PH7_MemObjRelease(&_sStepOne); \
+		if( _rcStep == PH7_ARITH_REFUSED ){ \
+			sxi32 _rcThr; \
+			PH7_MemObjRelease(&_sStepSum); \
+			PH7_MemObjRelease(pTos); \
+			MemObjSetType(pTos,MEMOBJ_NULL); \
+			pTos->nIdx = SXU32_HIGH; \
+			_rcThr = VmThrowFromVm(&(*pVm),_zStepCls,(const char *)SyBlobData(&_sStepMsg), \
+				SyBlobLength(&_sStepMsg)); \
+			SyBlobRelease(&_sStepMsg); \
+			if( _rcThr == SXERR_ABORT ){ goto Abort; } \
+			rc = _rcThr; \
+			PH7_THROW_ROUTE_MIDEXPR(rc) \
+		} \
+		SyBlobRelease(&_sStepMsg); \
+		if( pTos->nIdx != SXU32_HIGH ){ \
+			ph7_value *_pStepObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx); \
+			if( _pStepObj ){ \
+				PH7_ENFORCE_TYPED_STORE(pTos->nIdx,&_sStepSum); \
+				PH7_MemObjStore(&_sStepSum,_pStepObj); \
+			} \
+		} \
+		if( pInstr->iP1 ){ \
+			PH7_MemObjStore(&_sStepSum,pTos); \
+		} \
+		PH7_MemObjRelease(&_sStepSum); \
+		PH7_HOOK_RMW_WRITEBACK(pTos->nIdx,pTos); \
+		break; \
+	}
+/*
  * php's unary-arithmetic operand contract for OP_UMINUS / OP_UPLUS. php compiles
  * `-$x` as `$x * -1`, so both operators reject the operands multiplication
  * rejects, with multiplication's own wording ("Unsupported operand types:
@@ -188,10 +238,36 @@
  * throwing -- an in-place catch resumes with a balanced stack. Must be used
  * directly inside a case of the main switch.
  */
-#define PH7_UNARY_ARITH_CONTRACT() \
+#define PH7_UNARY_ARITH_CONTRACT(MULTIPLIER) \
 	{ \
 		SyBlob _sUnMsg; \
 		SyBlobInit(&_sUnMsg,&pVm->sAllocator); \
+		/* php compiles both unaries as a MULTIPLICATION, so an operand whose \
+		 * class declares do_operation answers them too: `-$n` is `$n * -1`. */ \
+		if( PH7_ValueHasArithHandler(pTos) ){ \
+			ph7_value _sUnRhs; \
+			const char *_zUnCls = "TypeError"; \
+			int _rcUnNa; \
+			PH7_MemObjInitFromInt(&(*pVm),&_sUnRhs,(MULTIPLIER)); \
+			_rcUnNa = VmArithOperandStep(&(*pVm),pTos,&_sUnRhs,"*",pTos,&_zUnCls,&_sUnMsg); \
+			PH7_MemObjRelease(&_sUnRhs); \
+			if( _rcUnNa == PH7_ARITH_HANDLED ){ \
+				SyBlobRelease(&_sUnMsg); \
+				break; \
+			} \
+			if( _rcUnNa == PH7_ARITH_REFUSED ){ \
+				sxi32 _rcUn2; \
+				PH7_MemObjRelease(pTos); \
+				MemObjSetType(pTos,MEMOBJ_NULL); \
+				pTos->nIdx = SXU32_HIGH; \
+				_rcUn2 = VmThrowFromVm(&(*pVm),_zUnCls,(const char *)SyBlobData(&_sUnMsg), \
+					SyBlobLength(&_sUnMsg)); \
+				SyBlobRelease(&_sUnMsg); \
+				if( _rcUn2 == SXERR_ABORT ){ VM_EXIT_ABORT; } \
+				rc = _rcUn2; \
+				PH7_THROW_ROUTE_MIDEXPR(rc) \
+			} \
+		} \
 		if( VmUnaryArithOperandCheck(&(*pVm),pTos,&_sUnMsg) != SXRET_OK ){ \
 			sxi32 _rcUn; \
 			PH7_MemObjRelease(pTos); \

@@ -797,10 +797,78 @@ PH7_PRIVATE int PH7_ClassNativeCmp(ph7_class_instance *pLeft,ph7_class_instance 
 	return 1;
 }
 /*
+ * The same handler, asked about a SCALAR partner -- php's compare handler is one
+ * door and `$n == 2` reaches it exactly as `$n == $m` does. Answers 1 only when
+ * the hook RECOGNIZED the value; otherwise the caller falls back to php's
+ * cast-the-object rule, which is what every class without a handler gets.
+ */
+PH7_PRIVATE int PH7_ClassNativeCmpValue(ph7_class_instance *pLeft,ph7_value *pOther,
+	int bReversed,sxi32 *pResult)
+{
+	ph7_class *pClass = pLeft ? NativeCmpClass(pLeft->pClass) : 0;
+	PH7_NativeCmpCtx sCtx;
+	ph7_vm *pVm;
+	if( pClass == 0 ){
+		return 0;
+	}
+	pVm = pLeft->pVm;
+	SyZero(&sCtx,sizeof(sCtx));
+	sCtx.pOtherValue = pOther;
+	sCtx.bReversed = bReversed;
+	sCtx.iResult = 1;   /* php's ZEND_UNCOMPARABLE */
+	pClass->xCmp(pVm,pLeft,&sCtx);
+	if( sCtx.zThrowClass && pVm->zCmpRefusalClass == 0 ){
+		pVm->zCmpRefusalClass = sCtx.zThrowClass;
+		SyMemcpy(sCtx.zThrowMsg,pVm->zCmpRefusalMsg,sizeof(pVm->zCmpRefusalMsg));
+		pVm->zCmpRefusalMsg[sizeof(pVm->zCmpRefusalMsg)-1] = 0;
+	}
+	if( !sCtx.bAnswered ){
+		return 0;
+	}
+	*pResult = sCtx.iResult;
+	return 1;
+}
+/*
  * Install a compare handler on a mounted native class. Called by the owning
  * installer right after PH7_InstallNativeClasses, for the reason xClone, xDim
  * and xSet are: the spec table has no field for a hook.
  */
+/*
+ * php's cast_object handler for _IS_BOOL, which is the one conversion an object
+ * may decide for itself. Answers 1 when the class HAS a handler, with the truth
+ * value in *pOut; every other class keeps php's rule that an object is truthy.
+ */
+PH7_PRIVATE int PH7_ClassNativeBool(ph7_class_instance *pThis,int *pOut)
+{
+	ph7_class *pClass;
+	for( pClass = pThis ? pThis->pClass : 0 ; pClass ; pClass = pClass->pBase ){
+		if( pClass->xBool ){
+			*pOut = pClass->xBool(pThis->pVm,pThis) ? 1 : 0;
+			return 1;
+		}
+	}
+	return 0;
+}
+PH7_PRIVATE sxi32 PH7_NativeClassInstallBoolHook(ph7_vm *pVm,const char *zClass,
+	int (*xBool)(ph7_vm *,ph7_class_instance *))
+{
+	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);
+	if( pClass == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	pClass->xBool = xBool;
+	return SXRET_OK;
+}
+PH7_PRIVATE sxi32 PH7_NativeClassInstallArithHook(ph7_vm *pVm,const char *zClass,
+	void (*xArith)(ph7_vm *,ph7_class_instance *,PH7_NativeArithCtx *))
+{
+	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),zClass,(sxu32)SyStrlen(zClass),FALSE,0);
+	if( pClass == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	pClass->xArith = xArith;
+	return SXRET_OK;
+}
 PH7_PRIVATE sxi32 PH7_NativeClassInstallCmpHook(ph7_vm *pVm,const char *zClass,
 	void (*xCmp)(ph7_vm *,ph7_class_instance *,PH7_NativeCmpCtx *))
 {

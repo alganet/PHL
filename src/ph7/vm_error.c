@@ -4741,6 +4741,75 @@ PH7_PRIVATE sxi32 VmUnaryArithOperandCheck(ph7_vm *pVm,ph7_value *pVal,SyBlob *p
 	PH7_MemObjRelease(&sInt);
 	return rc;
 }
+/*
+ * One arithmetic operator's whole prologue: php's do_operation handler first,
+ * then the ordinary operand contract.
+ *
+ * php asks the LEFT operand's class for a handler and falls back to the RIGHT
+ * one's, which is why an `int + Number` works as well as a `Number + int`. A
+ * handler that answers writes into pDest (the slot the opcode was going to
+ * leave its result in), so the caller's only job is to skip the numeric
+ * arithmetic. A handler that REFUSES hands back an exception class and a
+ * message, and the caller throws them where it would have thrown the TypeError
+ * -- after settling the operand stack.
+ */
+/* Does this value's class declare php's do_operation? `++`/`--` ask before they
+ * refuse an object, since everything below that refusal is numeric. */
+PH7_PRIVATE int PH7_ValueHasArithHandler(ph7_value *pVal)
+{
+	ph7_class_instance *pInst;
+	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 || pVal->x.pOther == 0 ){
+		return 0;
+	}
+	pInst = (ph7_class_instance *)pVal->x.pOther;
+	return pInst->pClass != 0 && pInst->pClass->xArith != 0;
+}
+PH7_PRIVATE int VmArithOperandStep(ph7_vm *pVm,ph7_value *pLeft,ph7_value *pRight,
+	const char *zOp,ph7_value *pDest,const char **pzClass,SyBlob *pMsgOut)
+{
+	ph7_class_instance *pInst = 0;
+	int i;
+	*pzClass = "TypeError";
+	for( i = 0 ; i < 2 ; ++i ){
+		ph7_value *pSide = i == 0 ? pLeft : pRight;
+		if( (pSide->iFlags & MEMOBJ_OBJ) != 0 && pSide->x.pOther ){
+			ph7_class_instance *pCand = (ph7_class_instance *)pSide->x.pOther;
+			if( pCand->pClass && pCand->pClass->xArith ){
+				pInst = pCand;
+				break;
+			}
+		}
+	}
+	if( pInst ){
+		PH7_NativeArithCtx sCtx;
+		ph7_value sRes;
+		PH7_MemObjInit(&(*pVm),&sRes);
+		sCtx.zOp = zOp;
+		sCtx.pLeft = pLeft;
+		sCtx.pRight = pRight;
+		sCtx.pResult = &sRes;
+		sCtx.bHandled = 0;
+		sCtx.zThrowClass = 0;
+		sCtx.zThrowMsg[0] = 0;
+		pInst->pClass->xArith(&(*pVm),pInst,&sCtx);
+		if( sCtx.zThrowClass ){
+			PH7_MemObjRelease(&sRes);
+			*pzClass = sCtx.zThrowClass;
+			SyBlobAppend(pMsgOut,sCtx.zThrowMsg,(sxu32)SyStrlen(sCtx.zThrowMsg));
+			return PH7_ARITH_REFUSED;
+		}
+		if( sCtx.bHandled ){
+			PH7_MemObjStore(&sRes,pDest);
+			PH7_MemObjRelease(&sRes);
+			return PH7_ARITH_HANDLED;
+		}
+		PH7_MemObjRelease(&sRes);
+	}
+	if( VmArithOperandCheck(&(*pVm),pLeft,pRight,zOp,pMsgOut) != SXRET_OK ){
+		return PH7_ARITH_REFUSED;
+	}
+	return PH7_ARITH_ORDINARY;
+}
 PH7_PRIVATE sxi32 VmArithOperandCheck(ph7_vm *pVm,ph7_value *pLeft,ph7_value *pRight,const char *zOp,SyBlob *pMsgOut)
 {
 	int bBadL = 0, bBadR = 0;

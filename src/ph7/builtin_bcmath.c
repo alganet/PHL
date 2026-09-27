@@ -230,6 +230,37 @@ static int BcNumParse(BcNum *p,const char *zIn,int nIn)
 	BcNumNormalize(p);
 	return 1;
 }
+/* The same, for an sxi64 -- BcMath\Number's `int` argument and operand. */
+static int BcNumFromInt64(BcNum *p,sxi64 iVal)
+{
+	char zBuf[32];
+	int n = 0;
+	sxu64 uVal;
+	int bNeg = 0;
+	if( iVal < 0 ){
+		bNeg = 1;
+		/* -PHP_INT_MIN has no positive counterpart: negate in UNSIGNED. */
+		uVal = (sxu64)0 - (sxu64)iVal;
+	}else{
+		uVal = (sxu64)iVal;
+	}
+	do{
+		zBuf[n++] = (char)('0' + (int)(uVal % 10));
+		uVal /= 10;
+	}while( uVal != 0 && n < (int)sizeof(zBuf) );
+	if( BcNumAlloc(p,(sxu32)n,0) ){
+		return -1;
+	}
+	{
+		int i;
+		for( i = 0 ; i < n ; ++i ){
+			p->aDig[i] = (unsigned char)(zBuf[n - 1 - i] - '0');
+		}
+	}
+	p->bNeg = bNeg;
+	BcNumNormalize(p);
+	return 0;
+}
 /*
  * Render p the way php prints a bc number: an optional '-', the integer digits,
  * and -- only when the scale is not zero -- a '.' and exactly nFrac digits.
@@ -1637,4 +1668,967 @@ PH7_PRIVATE int PH7_builtin_bcscale(ph7_context *pCtx,int nArg,ph7_value **apArg
 	ph7_result_int64(pCtx,(sxi64)nOld);
 	return PH7_OK;
 }
+/* ------------------------------------------------------------------ *
+ *  BcMath\Number -- php 8.4's object face of the same arithmetic       *
+ * ------------------------------------------------------------------ */
+/*
+ * The class is the SAME numbers with two differences that run through every
+ * method, and both were measured rather than assumed:
+ *
+ *   - it carries its own SCALE and never reads `bcmath.scale`. Where a bc*
+ *     function pads or cuts to the directive, a method with no $scale computes
+ *     one: max for add/sub/mod, the SUM for mul, 0 for a comparison's cut and
+ *     for powmod, and for the three that do not terminate -- div, a negative
+ *     pow, sqrt -- ten places past the RECEIVER's own scale, with the trailing
+ *     zeros then trimmed but never below that receiver's scale. That last rule
+ *     is why `Number('0.25')->sqrt()` is '0.50' and `Number('9')->sqrt()` is
+ *     '3'.
+ *   - it answers php's do_operation, so `+ - * / % **`, unary minus and
+ *     `++`/`--` all work on it. An operand may be a Number, an integer, a bool
+ *     or a STRING in the bc grammar; a string that is not one is a ValueError
+ *     naming the SIDE it came from, and everything else declines to the
+ *     ordinary `Unsupported operand types`.
+ *
+ * php reaches its `int` arm for a FLOAT operand through an implicit conversion
+ * it DEPRECATES when precision is lost. §10 refuses that: an integral float
+ * converts (2.0 is 2), and every other one -- 1.5, NAN, INF, 1e20 -- is the
+ * TypeError php itself raises for the three it cannot convert either.
+ */
+#define BC_NUMBER_CLASS "BcMath\\Number"
+/* Ten places past the receiver's own scale: php's "compute enough and trim". */
+#define BC_NUMBER_DIV_PAD 10
+
+/* Trim trailing fraction zeros, but never below nMin places. */
+static void BcNumTrimScale(BcNum *p,sxu32 nMin)
+{
+	while( p->nFrac > nMin && p->aDig[p->nInt + p->nFrac - 1] == 0 ){
+		p->nFrac--;
+	}
+	BcNumNormalize(p);
+}
+/* The BcNum a live Number instance holds. */
+static int BcNumberValue(ph7_class_instance *pObj,BcNum *pOut)
+{
+	const char *zVal = 0;
+	int nVal = 0;
+	PH7_NativeAttrStr(pObj,"value",&zVal,&nVal);
+	return BcNumParse(pOut,zVal,nVal) == 1 ? 0 : -1;
+}
+/* A fresh Number carrying pVal. */
+static ph7_class_instance * BcNumberNew(ph7_vm *pVm,const BcNum *pVal)
+{
+	ph7_class *pClass = PH7_VmExtractClass(&(*pVm),BC_NUMBER_CLASS,
+		sizeof(BC_NUMBER_CLASS)-1,FALSE,0);
+	ph7_class_instance *pObj;
+	SyBlob sTxt;
+	if( pClass == 0 ){
+		return 0;
+	}
+	pObj = PH7_NewClassInstance(&(*pVm),pClass);
+	if( pObj == 0 ){
+		return 0;
+	}
+	SyBlobInit(&sTxt,&pVm->sAllocator);
+	if( BcNumToBlob(pVal,&sTxt) ){
+		SyBlobRelease(&sTxt);
+		PH7_ClassInstanceUnref(pObj);
+		return 0;
+	}
+	PH7_NativeSetAttrStr(&(*pVm),pObj,"value",
+		(const char *)SyBlobData(&sTxt),(int)SyBlobLength(&sTxt));
+	SyBlobRelease(&sTxt);
+	PH7_NativeSetAttrInt(&(*pVm),pObj,"scale",(sxi64)pVal->nFrac);
+	return pObj;
+}
+/*
+ * Read one operand as a bc number, for a METHOD (zFunc set) or for an OPERATOR
+ * (zFunc 0, bLeft saying which side it came from).
+ *
+ * Answers 1 on success. On 0 the caller has a refusal in *pzClass/zMsg; on -1 a
+ * memory failure. A value the class has no conversion for at all leaves
+ * *pzClass at 0, which the OPERATOR path reads as "decline" -- the ordinary
+ * numeric contract then words `Unsupported operand types` for it.
+ */
+static int BcNumberOperand(ph7_vm *pVm,ph7_value *pVal,BcNum *pOut,
+	const char **pzClass,char *zMsg,int nMsg,
+	const char *zFunc,const char *zTypeText,int iPos,const char *zParam,int bLeft)
+{
+	char zGiven[64];
+	SXUNUSED(pVm);
+	*pzClass = 0;
+	if( (pVal->iFlags & MEMOBJ_OBJ) != 0 && pVal->x.pOther ){
+		ph7_class_instance *pInst = (ph7_class_instance *)pVal->x.pOther;
+		if( pInst->pClass
+		 && pInst->pClass->sName.nByte == sizeof(BC_NUMBER_CLASS)-1
+		 && SyMemcmp(pInst->pClass->sName.zString,BC_NUMBER_CLASS,
+			sizeof(BC_NUMBER_CLASS)-1) == 0 ){
+			return BcNumberValue(pInst,pOut) == 0 ? 1 : -1;
+		}
+	}else if( (pVal->iFlags & MEMOBJ_REAL) != 0 ){
+#ifndef PH7_OMIT_FLOATING_POINT
+		/* php's `int` arm, reached by an implicit conversion it deprecates when
+		 * anything is lost. An integral float in range converts; §10 refuses the
+		 * rest, which is also what php does with NAN, INF and 1e20. */
+		double d = (double)pVal->rVal;
+		if( PH7_RealFitsInt64(d) && d == (double)(sxi64)d ){
+			return BcNumFromInt64(pOut,(sxi64)d) == 0 ? 1 : -1;
+		}
+#endif
+	}else if( (pVal->iFlags & (MEMOBJ_INT|MEMOBJ_BOOL)) != 0
+	       && (pVal->iFlags & MEMOBJ_STRING) == 0 ){
+		return BcNumFromInt64(pOut,pVal->x.iVal) == 0 ? 1 : -1;
+	}else if( (pVal->iFlags & MEMOBJ_STRING) != 0 ){
+		const char *zStr;
+		int nStr = 0;
+		int rc;
+		zStr = ph7_value_to_string(pVal,&nStr);
+		rc = BcNumParse(pOut,zStr,nStr);
+		if( rc == 1 ){
+			return 1;
+		}
+		if( rc < 0 ){
+			return -1;
+		}
+		*pzClass = "ValueError";
+		if( zFunc ){
+			SyBufferFormat(zMsg,(sxu32)nMsg,"%s(): Argument #%d ($%s) is not well-formed",
+				zFunc,iPos,zParam);
+		}else{
+			SyBufferFormat(zMsg,(sxu32)nMsg,
+				"%s string operand cannot be converted to " BC_NUMBER_CLASS,
+				bLeft ? "Left" : "Right");
+		}
+		return 0;
+	}
+	if( zFunc ){
+		/* php words this one by hand rather than from the declared type: the stub
+		 * says `BcMath\Number|string|int` and the refusal says "int, string, or",
+	 * while the CONSTRUCTOR's `string|int` is worded the ordinary way. */
+		*pzClass = "TypeError";
+		SyBufferFormat(zMsg,(sxu32)nMsg,
+			"%s(): Argument #%d ($%s) must be of type %s, %s given",
+			zFunc,iPos,zParam,zTypeText,
+			VmValueGivenName(pVal,zGiven,sizeof(zGiven)));
+	}
+	return 0;
+}
+/* The receiver of a BcMath\Number method. */
+static ph7_class_instance * BcNumberThis(ph7_context *pCtx)
+{
+	return PH7_ContextThis(pCtx);
+}
+/* Resolve a method's `?int $scale` argument: absent or null means "compute one". */
+static int BcNumberArgScale(ph7_context *pCtx,int nArg,ph7_value **apArg,int iPos,
+	const char *zFunc,sxu32 *pScale,int *pbAuto)
+{
+	*pbAuto = 1;
+	*pScale = 0;
+	if( nArg > iPos && (apArg[iPos]->iFlags & MEMOBJ_NULL) == 0 ){
+		sxi64 iScale = ph7_value_to_int64(apArg[iPos]);
+		if( iScale < 0 || iScale > BC_MAX_SCALE ){
+			PH7_VmThrowException(pCtx,"ValueError",
+				"%s(): Argument #%d ($scale) must be between 0 and %d",
+				zFunc,iPos + 1,BC_MAX_SCALE);
+			return 0;
+		}
+		*pScale = (sxu32)iScale;
+		*pbAuto = 0;
+	}
+	return 1;
+}
+/* Hand a computed number back as a fresh Number instance. */
+static int BcNumberResult(ph7_context *pCtx,const BcNum *pVal)
+{
+	ph7_class_instance *pObj = BcNumberNew(pCtx->pVm,pVal);
+	if( pObj == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_NativeResultObject(pCtx,pObj);
+	return PH7_OK;
+}
+/*
+ * The one body behind every binary method AND behind the operator handler: the
+ * two numbers are already parsed, so all that is left is which operation and
+ * which scale.
+ *
+ * Answers 0 on success (pOut holds the answer), or -1 with *pzClass/zMsg set
+ * for php's two arithmetic refusals (a zero divisor, a fractional or negative
+ * exponent) and -2 for a memory failure.
+ */
+#define BC_NUM_ADD    0
+#define BC_NUM_SUB    1
+#define BC_NUM_MUL    2
+#define BC_NUM_DIV    3
+#define BC_NUM_MOD    4
+#define BC_NUM_POW    5
+#define BC_NUM_DIVMOD 6
+static int BcNumberCompute(ph7_vm *pVm,int iOp,const BcNum *a,const BcNum *b,
+	sxu32 nScale,int bAuto,BcNum *pOut,BcNum *pQuot,
+	const char **pzClass,char *zMsg,int nMsg)
+{
+	int rc = -2;
+	*pzClass = 0;
+	switch( iOp ){
+		case BC_NUM_ADD:
+		case BC_NUM_SUB:
+			if( bAuto ){
+				nScale = a->nFrac > b->nFrac ? a->nFrac : b->nFrac;
+			}
+			if( BcNumAddSigned(pOut,a,b,iOp == BC_NUM_SUB)
+			 || BcNumSetScale(pOut,nScale) ){
+				return -2;
+			}
+			return 0;
+		case BC_NUM_MUL:
+			if( bAuto ){
+				nScale = a->nFrac + b->nFrac;
+			}
+			if( BcNumMul(pOut,a,b) || BcNumSetScale(pOut,nScale) ){
+				return -2;
+			}
+			return 0;
+		case BC_NUM_DIV:
+			if( BcNumIsZero(b) ){
+				*pzClass = "DivisionByZeroError";
+				SyBufferFormat(zMsg,(sxu32)nMsg,"Division by zero");
+				return -1;
+			}
+			if( bAuto ){
+				/* Compute ten places past the RECEIVER's scale and trim back to it:
+				 * `Number('1.50')->div(1)` is '1.50' and `Number('1')->div(8)` is
+				 * '0.125'. */
+				if( a->nFrac > BC_MAX_SCALE - BC_NUMBER_DIV_PAD
+				 || BcNumDivide(pOut,a,b,a->nFrac + BC_NUMBER_DIV_PAD) ){
+					return -2;
+				}
+				BcNumTrimScale(pOut,a->nFrac);
+				return 0;
+			}
+			return BcNumDivide(pOut,a,b,nScale) ? -2 : 0;
+		case BC_NUM_MOD:
+		case BC_NUM_DIVMOD:
+			if( BcNumIsZero(b) ){
+				*pzClass = "DivisionByZeroError";
+				SyBufferFormat(zMsg,(sxu32)nMsg,
+					iOp == BC_NUM_MOD ? "Modulo by zero" : "Division by zero");
+				return -1;
+			}
+			if( bAuto ){
+				nScale = a->nFrac > b->nFrac ? a->nFrac : b->nFrac;
+			}
+			return BcNumDivMod(pQuot,pOut,a,b,nScale) ? -2 : 0;
+		case BC_NUM_POW: {
+			sxi64 iExp = 0;
+			sxu64 uExp;
+			BcNum sP, sOne;
+			if( BcNumHasFraction(b) ){
+				*pzClass = "ValueError";
+				SyBufferFormat(zMsg,(sxu32)nMsg,"exponent cannot have a fractional part");
+				return -1;
+			}
+			if( !BcNumToInt64(b,&iExp) ){
+				*pzClass = "ValueError";
+				SyBufferFormat(zMsg,(sxu32)nMsg,"exponent is too large");
+				return -1;
+			}
+			if( iExp < 0 && BcNumIsZero(a) ){
+				*pzClass = "DivisionByZeroError";
+				SyBufferFormat(zMsg,(sxu32)nMsg,"Negative power of zero");
+				return -1;
+			}
+			/* -PHP_INT_MIN has no positive counterpart: negate in UNSIGNED. */
+			uExp = iExp < 0 ? ((sxu64)0 - (sxu64)iExp) : (sxu64)iExp;
+			BcNumInit(&sP,pVm ? &pVm->sAllocator : a->pAlloc);
+			BcNumInit(&sOne,sP.pAlloc);
+			if( BcNumPowInt(&sP,a,uExp) ){
+				goto pow_out;
+			}
+			if( iExp >= 0 ){
+				if( !bAuto && BcNumSetScale(&sP,nScale) ){
+					goto pow_out;
+				}
+				BcNumSwap(pOut,&sP);
+				rc = 0;
+				goto pow_out;
+			}
+			/* A negative exponent is 1 divided by the exact power, and the same
+			 * "ten past the receiver, then trim" rule division uses. */
+			if( BcNumSmall(&sOne,1) ){
+				goto pow_out;
+			}
+			if( bAuto ){
+				if( a->nFrac > BC_MAX_SCALE - BC_NUMBER_DIV_PAD
+				 || BcNumDivide(pOut,&sOne,&sP,a->nFrac + BC_NUMBER_DIV_PAD) ){
+					goto pow_out;
+				}
+				BcNumTrimScale(pOut,a->nFrac);
+			}else if( BcNumDivide(pOut,&sOne,&sP,nScale) ){
+				goto pow_out;
+			}
+			rc = 0;
+pow_out:
+			BcNumRelease(&sP);
+			BcNumRelease(&sOne);
+			return rc;
+		}
+		default:
+			break;
+	}
+	return -2;
+}
+/*
+ * php's do_operation for BcMath\Number: `+ - * / % **`, either side.
+ */
+static void BcNumberArith(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeArithCtx *pCtx)
+{
+	BcNum sA, sB, sR, sQ;
+	const char *zClass = 0;
+	int iOp;
+	int rc;
+	SXUNUSED(pThis);
+	switch( pCtx->zOp[0] ){
+		case '+': iOp = BC_NUM_ADD; break;
+		case '-': iOp = BC_NUM_SUB; break;
+		case '/': iOp = BC_NUM_DIV; break;
+		case '%': iOp = BC_NUM_MOD; break;
+		case '*': iOp = pCtx->zOp[1] == '*' ? BC_NUM_POW : BC_NUM_MUL; break;
+		default:  return;   /* not an operator this class answers */
+	}
+	BcNumInit(&sA,&pVm->sAllocator);
+	BcNumInit(&sB,&pVm->sAllocator);
+	BcNumInit(&sR,&pVm->sAllocator);
+	BcNumInit(&sQ,&pVm->sAllocator);
+	rc = BcNumberOperand(pVm,pCtx->pLeft,&sA,&zClass,
+		pCtx->zThrowMsg,(int)sizeof(pCtx->zThrowMsg),0,0,0,0,1);
+	if( rc != 1 ){
+		goto done;
+	}
+	rc = BcNumberOperand(pVm,pCtx->pRight,&sB,&zClass,
+		pCtx->zThrowMsg,(int)sizeof(pCtx->zThrowMsg),0,0,0,0,0);
+	if( rc != 1 ){
+		goto done;
+	}
+	rc = BcNumberCompute(pVm,iOp,&sA,&sB,0,1,&sR,&sQ,&zClass,
+		pCtx->zThrowMsg,(int)sizeof(pCtx->zThrowMsg));
+	if( rc == 0 ){
+		ph7_class_instance *pObj = BcNumberNew(pVm,&sR);
+		if( pObj ){
+			pCtx->pResult->x.pOther = pObj;
+			MemObjSetType(pCtx->pResult,MEMOBJ_OBJ);
+			pCtx->bHandled = 1;
+		}
+	}
+done:
+	if( zClass ){
+		pCtx->zThrowClass = zClass;
+	}
+	BcNumRelease(&sA);
+	BcNumRelease(&sB);
+	BcNumRelease(&sR);
+	BcNumRelease(&sQ);
+}
+/*
+ * php's cast_object for _IS_BOOL: a Number is truthy unless it is ZERO, which is
+ * the one place in the language where an object is not automatically true.
+ */
+static int BcNumberBool(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	BcNum sA;
+	int bTruthy = 1;
+	BcNumInit(&sA,&pVm->sAllocator);
+	if( BcNumberValue(pThis,&sA) == 0 ){
+		bTruthy = !BcNumIsZero(&sA);
+	}
+	BcNumRelease(&sA);
+	return bTruthy;
+}
+/*
+ * php's compare handler: two Numbers, or a Number against an int or a numeric
+ * STRING.
+ *
+ * NULL and BOOL are left alone on purpose -- php decides those pairs BEFORE it
+ * asks a handler, by converting both sides to bool, so `$n == true` is true for
+ * every Number including zero. A FLOAT reaches php's int arm through the same
+ * deprecated conversion the arithmetic uses; §10 refuses it, and the refusal's
+ * shape in a comparison (which cannot throw) is php's own UNCOMPARABLE -- 1 from
+ * either side, which leaves `==` false and every relational false.
+ */
+static void BcNumberCmp(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeCmpCtx *pCtx)
+{
+	BcNum sA, sB;
+	/* A comparison cannot raise, so the operand reader's refusal is DISCARDED
+	 * here: a partner it will not take is left to php's own rule, and a malformed
+	 * string then compares AS a string -- which is php's answer for it too. */
+	const char *zClass = 0;
+	char zMsg[64];
+	BcNumInit(&sA,&pVm->sAllocator);
+	BcNumInit(&sB,&pVm->sAllocator);
+	if( BcNumberValue(pThis,&sA) == 0 ){
+		ph7_value sOther, *pOther = pCtx->pOtherValue;
+		PH7_MemObjInit(&(*pVm),&sOther);
+		if( pOther == 0 && pCtx->pOther && pCtx->pOther->pClass ){
+			/* The instance door hands the partner over as an INSTANCE; wrap it so
+			 * one operand reader serves both. */
+			sOther.x.pOther = pCtx->pOther;
+			MemObjSetType(&sOther,MEMOBJ_OBJ);
+			pOther = &sOther;
+		}
+		if( pOther && (pOther->iFlags & (MEMOBJ_NULL|MEMOBJ_BOOL)) != 0 ){
+			pOther = 0;   /* php's own rule decides these */
+		}else if( pOther && (pOther->iFlags & MEMOBJ_REAL) != 0
+		       && (pOther->iFlags & MEMOBJ_OBJ) == 0 ){
+			/* A float: convertible only when nothing is lost (§10). Either way the
+			 * pair is ANSWERED here, so no cast-the-object rule runs behind it. */
+			pCtx->bAnswered = 1;
+			if( BcNumberOperand(pVm,pOther,&sB,&zClass,zMsg,(int)sizeof(zMsg),
+				0,0,0,0,0) == 1 ){
+				pCtx->iResult = BcNumCmp(&sA,&sB);
+				if( pCtx->bReversed ){
+					pCtx->iResult = -pCtx->iResult;
+				}
+			}
+			pOther = 0;
+		}
+		if( pOther
+		 && BcNumberOperand(pVm,pOther,&sB,&zClass,zMsg,(int)sizeof(zMsg),0,0,0,0,0) == 1 ){
+			pCtx->iResult = BcNumCmp(&sA,&sB);
+			if( pCtx->bReversed ){
+				pCtx->iResult = -pCtx->iResult;
+			}
+			pCtx->bAnswered = 1;
+		}
+		/* The wrapper never OWNED the instance: drop the pointer before release. */
+		MemObjSetType(&sOther,MEMOBJ_NULL);
+		sOther.x.pOther = 0;
+		PH7_MemObjRelease(&sOther);
+	}
+	BcNumRelease(&sA);
+	BcNumRelease(&sB);
+}
+/*
+ * BcMath\Number::__construct(string|int $num)
+ *
+ * The type screen is hand-rolled (the row carries `~`) for one reason: php
+ * reaches the `int` arm for a FLOAT through the conversion §10 refuses, and a
+ * declared `string|int` would quietly take the string arm instead --
+ * `new Number(1.5)` would be '1.5' where php answers '1'.
+ */
+static int vm_builtin_BcNumber_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = BcNumberThis(pCtx);
+	BcNum sVal;
+	const char *zClass = 0;
+	char zMsg[192];
+	int rc;
+	if( pThis == 0 || nArg < 1 ){
+		return PH7_OK;
+	}
+	BcNumInit(&sVal,&pCtx->pVm->sAllocator);
+	rc = BcNumberOperand(pCtx->pVm,apArg[0],&sVal,&zClass,zMsg,(int)sizeof(zMsg),
+		BC_NUMBER_CLASS "::__construct","string|int",1,"num",0);
+	if( rc != 1 ){
+		BcNumRelease(&sVal);
+		if( rc < 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		return PH7_VmThrowException(pCtx,zClass,"%s",zMsg);
+	}
+	{
+		SyBlob sTxt;
+		SyBlobInit(&sTxt,&pCtx->pVm->sAllocator);
+		if( BcNumToBlob(&sVal,&sTxt) ){
+			SyBlobRelease(&sTxt);
+			BcNumRelease(&sVal);
+			return PH7_ContextMemoryError(pCtx);
+		}
+		PH7_NativeSetAttrStr(pCtx->pVm,pThis,"value",
+			(const char *)SyBlobData(&sTxt),(int)SyBlobLength(&sTxt));
+		SyBlobRelease(&sTxt);
+	}
+	PH7_NativeSetAttrInt(pCtx->pVm,pThis,"scale",(sxi64)sVal.nFrac);
+	BcNumRelease(&sVal);
+	return PH7_OK;
+}
+/*
+ * add/sub/mul/div/mod/divmod/pow: one body, php's per-method wording on top.
+ * The refusals php words WITHOUT a method prefix (a zero divisor, a fractional
+ * exponent) come straight from the shared compute; the ones it words WITH a
+ * prefix are raised here.
+ */
+static int BcNumberBinary(ph7_context *pCtx,int nArg,ph7_value **apArg,int iOp,
+	const char *zMethod)
+{
+	ph7_class_instance *pThis = BcNumberThis(pCtx);
+	BcNum sA, sB, sR, sQ;
+	const char *zClass = 0;
+	char zMsg[192];
+	char zFunc[64];
+	sxu32 nScale = 0;
+	int bAuto = 1;
+	int rc = PH7_OK;
+	int cc;
+	if( pThis == 0 || nArg < 1 ){
+		return PH7_OK;
+	}
+	SyBufferFormat(zFunc,sizeof(zFunc),"%s::%s",BC_NUMBER_CLASS,zMethod);
+	BcNumInit(&sA,&pCtx->pVm->sAllocator);
+	BcNumInit(&sB,&pCtx->pVm->sAllocator);
+	BcNumInit(&sR,&pCtx->pVm->sAllocator);
+	BcNumInit(&sQ,&pCtx->pVm->sAllocator);
+	if( !BcNumberArgScale(pCtx,nArg,apArg,1,zFunc,&nScale,&bAuto) ){
+		goto done;
+	}
+	if( BcNumberValue(pThis,&sA) ){
+		rc = PH7_ContextMemoryError(pCtx);
+		goto done;
+	}
+	cc = BcNumberOperand(pCtx->pVm,apArg[0],&sB,&zClass,zMsg,(int)sizeof(zMsg),
+		zFunc,"int, string, or " BC_NUMBER_CLASS,1,
+		iOp == BC_NUM_POW ? "exponent" : "num",0);
+	if( cc != 1 ){
+		if( cc < 0 ){
+			rc = PH7_ContextMemoryError(pCtx);
+		}else{
+			PH7_VmThrowException(pCtx,zClass,"%s",zMsg);
+		}
+		goto done;
+	}
+	cc = BcNumberCompute(pCtx->pVm,iOp,&sA,&sB,nScale,bAuto,&sR,&sQ,&zClass,
+		zMsg,(int)sizeof(zMsg));
+	if( cc == -2 ){
+		rc = PH7_ContextMemoryError(pCtx);
+		goto done;
+	}
+	if( cc == -1 ){
+		if( iOp == BC_NUM_POW && SyStrncmp(zMsg,"exponent",sizeof("exponent")-1) == 0 ){
+			/* php's method wording repeats the parameter name after naming it. */
+			PH7_VmThrowException(pCtx,zClass,"%s(): Argument #1 ($exponent) %s",zFunc,zMsg);
+		}else{
+			PH7_VmThrowException(pCtx,zClass,"%s",zMsg);
+		}
+		goto done;
+	}
+	if( iOp == BC_NUM_DIVMOD ){
+		ph7_value *pOut = ph7_context_new_array(pCtx);
+		ph7_value *pCur = ph7_context_new_scalar(pCtx);
+		ph7_class_instance *pQObj = BcNumberNew(pCtx->pVm,&sQ);
+		ph7_class_instance *pRObj = BcNumberNew(pCtx->pVm,&sR);
+		if( pOut == 0 || pCur == 0 || pQObj == 0 || pRObj == 0 ){
+			rc = PH7_ContextMemoryError(pCtx);
+			goto done;
+		}
+		pCur->x.pOther = pQObj;
+		MemObjSetType(pCur,MEMOBJ_OBJ);
+		ph7_array_add_elem(pOut,0,pCur);
+		pCur->x.pOther = pRObj;
+		ph7_array_add_elem(pOut,0,pCur);
+		MemObjSetType(pCur,MEMOBJ_NULL);
+		pCur->x.pOther = 0;
+		ph7_result_value(pCtx,pOut);
+		PH7_ClassInstanceUnref(pQObj);
+		PH7_ClassInstanceUnref(pRObj);
+		ph7_context_release_value(pCtx,pCur);
+		ph7_context_release_value(pCtx,pOut);
+		goto done;
+	}
+	rc = BcNumberResult(pCtx,&sR);
+done:
+	BcNumRelease(&sA);
+	BcNumRelease(&sB);
+	BcNumRelease(&sR);
+	BcNumRelease(&sQ);
+	return rc;
+}
+static int vm_builtin_BcNumber_add(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{ return BcNumberBinary(pCtx,nArg,apArg,BC_NUM_ADD,"add"); }
+static int vm_builtin_BcNumber_sub(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{ return BcNumberBinary(pCtx,nArg,apArg,BC_NUM_SUB,"sub"); }
+static int vm_builtin_BcNumber_mul(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{ return BcNumberBinary(pCtx,nArg,apArg,BC_NUM_MUL,"mul"); }
+static int vm_builtin_BcNumber_div(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{ return BcNumberBinary(pCtx,nArg,apArg,BC_NUM_DIV,"div"); }
+static int vm_builtin_BcNumber_mod(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{ return BcNumberBinary(pCtx,nArg,apArg,BC_NUM_MOD,"mod"); }
+static int vm_builtin_BcNumber_divmod(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{ return BcNumberBinary(pCtx,nArg,apArg,BC_NUM_DIVMOD,"divmod"); }
+static int vm_builtin_BcNumber_pow(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{ return BcNumberBinary(pCtx,nArg,apArg,BC_NUM_POW,"pow"); }
+/*
+ * BcMath\Number::powmod(BcMath\Number|string|int $exponent, BcMath\Number|string|int $modulus, ?int $scale = null)
+ *
+ * The scale is 0 unless one is asked for -- the receiver's own places never
+ * reach the answer, because every operand is an integer by the time it runs.
+ */
+static int vm_builtin_BcNumber_powmod(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	static const char *azParam[] = { "exponent", "modulus" };
+	ph7_class_instance *pThis = BcNumberThis(pCtx);
+	BcNum sA, aArg[2], sR;
+	const char *zClass = 0;
+	char zMsg[192];
+	char zFunc[64];
+	sxu32 nScale = 0;
+	int bAuto = 1;
+	int rc = PH7_OK;
+	int i;
+	if( pThis == 0 || nArg < 2 ){
+		return PH7_OK;
+	}
+	SyBufferFormat(zFunc,sizeof(zFunc),"%s::powmod",BC_NUMBER_CLASS);
+	BcNumInit(&sA,&pCtx->pVm->sAllocator);
+	BcNumInit(&sR,&pCtx->pVm->sAllocator);
+	for( i = 0 ; i < 2 ; ++i ){
+		BcNumInit(&aArg[i],&pCtx->pVm->sAllocator);
+	}
+	if( !BcNumberArgScale(pCtx,nArg,apArg,2,zFunc,&nScale,&bAuto) ){
+		goto done;
+	}
+	if( BcNumberValue(pThis,&sA) ){
+		rc = PH7_ContextMemoryError(pCtx);
+		goto done;
+	}
+	for( i = 0 ; i < 2 ; ++i ){
+		int cc = BcNumberOperand(pCtx->pVm,apArg[i],&aArg[i],&zClass,zMsg,
+			(int)sizeof(zMsg),zFunc,"int, string, or " BC_NUMBER_CLASS,i + 1,azParam[i],0);
+		if( cc != 1 ){
+			if( cc < 0 ){
+				rc = PH7_ContextMemoryError(pCtx);
+			}else{
+				PH7_VmThrowException(pCtx,zClass,"%s",zMsg);
+			}
+			goto done;
+		}
+	}
+	/* php names the RECEIVER without a prefix ("Base number ...") and the two
+	 * arguments with one, in this order. */
+	if( BcNumHasFraction(&sA) ){
+		PH7_VmThrowException(pCtx,"ValueError",
+			"Base number cannot have a fractional part");
+		goto done;
+	}
+	if( BcNumHasFraction(&aArg[0]) ){
+		PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #1 ($exponent) cannot have a fractional part",zFunc);
+		goto done;
+	}
+	if( aArg[0].bNeg && !BcNumIsZero(&aArg[0]) ){
+		PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #1 ($exponent) must be greater than or equal to 0",zFunc);
+		goto done;
+	}
+	if( BcNumHasFraction(&aArg[1]) ){
+		PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #2 ($modulus) cannot have a fractional part",zFunc);
+		goto done;
+	}
+	if( BcNumIsZero(&aArg[1]) ){
+		PH7_VmThrowException(pCtx,"DivisionByZeroError","Modulo by zero");
+		goto done;
+	}
+	if( BcNumPowMod(&sR,&sA,&aArg[0],&aArg[1]) || BcNumSetScale(&sR,nScale) ){
+		rc = PH7_ContextMemoryError(pCtx);
+		goto done;
+	}
+	rc = BcNumberResult(pCtx,&sR);
+done:
+	BcNumRelease(&sA);
+	BcNumRelease(&sR);
+	for( i = 0 ; i < 2 ; ++i ){
+		BcNumRelease(&aArg[i]);
+	}
+	return rc;
+}
+/*
+ * BcMath\Number::sqrt(?int $scale = null)
+ */
+static int vm_builtin_BcNumber_sqrt(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = BcNumberThis(pCtx);
+	BcNum sA, sR;
+	char zFunc[64];
+	sxu32 nScale = 0;
+	int bAuto = 1;
+	int rc = PH7_OK;
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	SyBufferFormat(zFunc,sizeof(zFunc),"%s::sqrt",BC_NUMBER_CLASS);
+	BcNumInit(&sA,&pCtx->pVm->sAllocator);
+	BcNumInit(&sR,&pCtx->pVm->sAllocator);
+	if( !BcNumberArgScale(pCtx,nArg,apArg,0,zFunc,&nScale,&bAuto) ){
+		goto done;
+	}
+	if( BcNumberValue(pThis,&sA) ){
+		rc = PH7_ContextMemoryError(pCtx);
+		goto done;
+	}
+	if( sA.bNeg && !BcNumIsZero(&sA) ){
+		/* php words this one from the RECEIVER, with no method prefix. */
+		PH7_VmThrowException(pCtx,"ValueError",
+			"Base number must be greater than or equal to 0");
+		goto done;
+	}
+	if( bAuto ){
+		if( sA.nFrac > BC_MAX_SCALE - BC_NUMBER_DIV_PAD
+		 || BcNumSqrt(&sR,&sA,sA.nFrac + BC_NUMBER_DIV_PAD) ){
+			rc = PH7_ContextMemoryError(pCtx);
+			goto done;
+		}
+		BcNumTrimScale(&sR,sA.nFrac);
+	}else if( BcNumSqrt(&sR,&sA,nScale) ){
+		rc = PH7_ContextMemoryError(pCtx);
+		goto done;
+	}
+	rc = BcNumberResult(pCtx,&sR);
+done:
+	BcNumRelease(&sA);
+	BcNumRelease(&sR);
+	return rc;
+}
+/*
+ * BcMath\Number::floor() / ceil() / round(int $precision = 0, RoundingMode $mode = ...)
+ */
+static int BcNumberRoundOp(ph7_context *pCtx,int nArg,ph7_value **apArg,int iMode)
+{
+	ph7_class_instance *pThis = BcNumberThis(pCtx);
+	BcNum sA, sR;
+	sxi64 iPrec = 0;
+	int rc = PH7_OK;
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	BcNumInit(&sA,&pCtx->pVm->sAllocator);
+	BcNumInit(&sR,&pCtx->pVm->sAllocator);
+	if( iMode < 0 ){
+		if( nArg > 0 ){
+			iPrec = ph7_value_to_int64(apArg[0]);
+			if( iPrec > BC_MAX_SCALE ){
+				PH7_VmThrowException(pCtx,"ValueError",
+					"%s::round(): Argument #1 ($precision) must be between %qd and %d",
+					BC_NUMBER_CLASS,(sxi64)(-SXI64_HIGH - 1),BC_MAX_SCALE);
+				goto done;
+			}
+		}
+		iMode = PH7_ROUND_HALF_UP;
+		if( nArg > 1 ){
+			PH7_RoundingModeCase(apArg[1],&iMode);
+		}
+	}
+	if( BcNumberValue(pThis,&sA) || BcNumRound(&sR,&sA,iPrec,iMode) ){
+		rc = PH7_ContextMemoryError(pCtx);
+		goto done;
+	}
+	rc = BcNumberResult(pCtx,&sR);
+done:
+	BcNumRelease(&sA);
+	BcNumRelease(&sR);
+	return rc;
+}
+static int vm_builtin_BcNumber_round(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{ return BcNumberRoundOp(pCtx,nArg,apArg,-1); }
+static int vm_builtin_BcNumber_floor(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{ return BcNumberRoundOp(pCtx,nArg,apArg,PH7_ROUND_FLOOR); }
+static int vm_builtin_BcNumber_ceil(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{ return BcNumberRoundOp(pCtx,nArg,apArg,PH7_ROUND_CEILING); }
+/*
+ * BcMath\Number::compare(BcMath\Number|string|int $num, ?int $scale = null)
+ *
+ * With a $scale both sides are CUT to it first, exactly as bccomp() does; with
+ * none the comparison is exact.
+ */
+static int vm_builtin_BcNumber_compare(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = BcNumberThis(pCtx);
+	BcNum sA, sB;
+	const char *zClass = 0;
+	char zMsg[192];
+	char zFunc[64];
+	sxu32 nScale = 0;
+	int bAuto = 1;
+	int rc = PH7_OK;
+	int cc;
+	if( pThis == 0 || nArg < 1 ){
+		return PH7_OK;
+	}
+	SyBufferFormat(zFunc,sizeof(zFunc),"%s::compare",BC_NUMBER_CLASS);
+	BcNumInit(&sA,&pCtx->pVm->sAllocator);
+	BcNumInit(&sB,&pCtx->pVm->sAllocator);
+	if( !BcNumberArgScale(pCtx,nArg,apArg,1,zFunc,&nScale,&bAuto) ){
+		goto done;
+	}
+	if( BcNumberValue(pThis,&sA) ){
+		rc = PH7_ContextMemoryError(pCtx);
+		goto done;
+	}
+	cc = BcNumberOperand(pCtx->pVm,apArg[0],&sB,&zClass,zMsg,(int)sizeof(zMsg),
+		zFunc,"int, string, or " BC_NUMBER_CLASS,1,"num",0);
+	if( cc != 1 ){
+		if( cc < 0 ){
+			rc = PH7_ContextMemoryError(pCtx);
+		}else{
+			PH7_VmThrowException(pCtx,zClass,"%s",zMsg);
+		}
+		goto done;
+	}
+	if( !bAuto && (BcNumSetScale(&sA,nScale) || BcNumSetScale(&sB,nScale)) ){
+		rc = PH7_ContextMemoryError(pCtx);
+		goto done;
+	}
+	ph7_result_int(pCtx,BcNumCmp(&sA,&sB));
+done:
+	BcNumRelease(&sA);
+	BcNumRelease(&sB);
+	return rc;
+}
+/*
+ * BcMath\Number::__toString()
+ */
+static int vm_builtin_BcNumber_toString(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = BcNumberThis(pCtx);
+	const char *zVal = 0;
+	int nVal = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		PH7_NativeAttrStr(pThis,"value",&zVal,&nVal);
+	}
+	ph7_result_string(pCtx,zVal ? zVal : "0",zVal ? nVal : 1);
+	return PH7_OK;
+}
+/*
+ * BcMath\Number::__serialize() / __unserialize(array $data)
+ *
+ * Only the VALUE travels -- the scale follows from it, which is why php's
+ * serialization is a one-key array and its `O:13:...` form carries one property.
+ */
+static int vm_builtin_BcNumber_serialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = BcNumberThis(pCtx);
+	ph7_value *pOut, *pCur;
+	const char *zVal = 0;
+	int nVal = 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	pOut = ph7_context_new_array(pCtx);
+	pCur = ph7_context_new_scalar(pCtx);
+	if( pOut == 0 || pCur == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( pThis ){
+		PH7_NativeAttrStr(pThis,"value",&zVal,&nVal);
+	}
+	ph7_value_string(pCur,zVal ? zVal : "0",zVal ? nVal : 1);
+	ph7_array_add_strkey_elem(pOut,"value",pCur);
+	ph7_result_value(pCtx,pOut);
+	ph7_context_release_value(pCtx,pCur);
+	ph7_context_release_value(pCtx,pOut);
+	return PH7_OK;
+}
+static int vm_builtin_BcNumber_unserialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = BcNumberThis(pCtx);
+	ph7_value *pVal;
+	BcNum sVal;
+	int rc = PH7_OK;
+	if( pThis == 0 || nArg < 1 || (apArg[0]->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		return PH7_VmThrowException(pCtx,"Exception","Invalid serialization data for "
+			BC_NUMBER_CLASS " object");
+	}
+	pVal = ph7_array_fetch(apArg[0],"value",sizeof("value")-1);
+	BcNumInit(&sVal,&pCtx->pVm->sAllocator);
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_STRING) == 0
+	 || BcNumParse(&sVal,(const char *)SyBlobData(&pVal->sBlob),
+		(int)SyBlobLength(&pVal->sBlob)) != 1 ){
+		BcNumRelease(&sVal);
+		return PH7_VmThrowException(pCtx,"Exception","Invalid serialization data for "
+			BC_NUMBER_CLASS " object");
+	}
+	{
+		SyBlob sTxt;
+		SyBlobInit(&sTxt,&pCtx->pVm->sAllocator);
+		if( BcNumToBlob(&sVal,&sTxt) ){
+			rc = PH7_ContextMemoryError(pCtx);
+		}else{
+			PH7_NativeSetAttrStr(pCtx->pVm,pThis,"value",
+				(const char *)SyBlobData(&sTxt),(int)SyBlobLength(&sTxt));
+			PH7_NativeSetAttrInt(pCtx->pVm,pThis,"scale",(sxi64)sVal.nFrac);
+		}
+		SyBlobRelease(&sTxt);
+	}
+	BcNumRelease(&sVal);
+	return rc;
+}
+/*
+ * Declare BcMath\Number.
+ */
+PH7_PRIVATE sxi32 PH7_VmInstallBcMath(ph7_vm *pVm)
+{
+	static const PH7_NativePropDef aProp[] = {
+		{ "value", PH7_MOD_PUBLIC|PH7_MOD_PROT_SET|PH7_MOD_READONLY,
+		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
+		{ "scale", PH7_MOD_PUBLIC|PH7_MOD_PROT_SET|PH7_MOD_READONLY,
+		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "int" }
+	};
+	static const PH7_NativeMethodDef aMethod[] = {
+		/* `~` on the first parameter of every one of these: php's stub declares a
+		 * UNION and its refusal words a different one ("int, string, or"), and the
+		 * float arm is the conversion §10 refuses -- both of which the generic
+		 * screen cannot express, so each body raises its own. */
+		{ "__construct", PH7_MOD_PUBLIC, "~string|int $num", 0,
+		  vm_builtin_BcNumber_construct },
+		{ "add", PH7_MOD_PUBLIC, "~BcMath\\Number|string|int $num, ?int $scale = NULL",
+		  "BcMath\\Number", vm_builtin_BcNumber_add },
+		{ "sub", PH7_MOD_PUBLIC, "~BcMath\\Number|string|int $num, ?int $scale = NULL",
+		  "BcMath\\Number", vm_builtin_BcNumber_sub },
+		{ "mul", PH7_MOD_PUBLIC, "~BcMath\\Number|string|int $num, ?int $scale = NULL",
+		  "BcMath\\Number", vm_builtin_BcNumber_mul },
+		{ "div", PH7_MOD_PUBLIC, "~BcMath\\Number|string|int $num, ?int $scale = NULL",
+		  "BcMath\\Number", vm_builtin_BcNumber_div },
+		{ "mod", PH7_MOD_PUBLIC, "~BcMath\\Number|string|int $num, ?int $scale = NULL",
+		  "BcMath\\Number", vm_builtin_BcNumber_mod },
+		{ "divmod", PH7_MOD_PUBLIC, "~BcMath\\Number|string|int $num, ?int $scale = NULL",
+		  "array", vm_builtin_BcNumber_divmod },
+		{ "powmod", PH7_MOD_PUBLIC,
+		  "~BcMath\\Number|string|int $exponent, ~BcMath\\Number|string|int $modulus, ?int $scale = NULL",
+		  "BcMath\\Number", vm_builtin_BcNumber_powmod },
+		{ "pow", PH7_MOD_PUBLIC, "~BcMath\\Number|string|int $exponent, ?int $scale = NULL",
+		  "BcMath\\Number", vm_builtin_BcNumber_pow },
+		{ "sqrt", PH7_MOD_PUBLIC, "?int $scale = NULL", "BcMath\\Number",
+		  vm_builtin_BcNumber_sqrt },
+		{ "floor", PH7_MOD_PUBLIC, "", "BcMath\\Number", vm_builtin_BcNumber_floor },
+		{ "ceil", PH7_MOD_PUBLIC, "", "BcMath\\Number", vm_builtin_BcNumber_ceil },
+		{ "round", PH7_MOD_PUBLIC, "int $precision = 0, RoundingMode $mode = ?",
+		  "BcMath\\Number", vm_builtin_BcNumber_round },
+		{ "compare", PH7_MOD_PUBLIC, "~BcMath\\Number|string|int $num, ?int $scale = NULL",
+		  "int", vm_builtin_BcNumber_compare },
+		{ "__toString", PH7_MOD_PUBLIC, "", "string", vm_builtin_BcNumber_toString },
+		{ "__serialize", PH7_MOD_PUBLIC, "", "array", vm_builtin_BcNumber_serialize },
+		{ "__unserialize", PH7_MOD_PUBLIC, "array $data", "void",
+		  vm_builtin_BcNumber_unserialize }
+	};
+	static const PH7_NativeClassSpec sSpec = {
+		BC_NUMBER_CLASS, 0, "Stringable",
+		PH7_CLASS_FINAL|PH7_CLASS_READONLY,
+		aMethod, SX_ARRAYSIZE(aMethod),
+		0, 0,
+		aProp, SX_ARRAYSIZE(aProp),
+		0, 0, 0
+	};
+	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),&sSpec,1);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* php builds both properties out of its own struct rather than storing them,
+	 * which is what `virtual` reports and what keeps the object comparator off
+	 * them -- the compare handler below decides every pair. */
+	PH7_NativeClassMarkVirtualProps(&(*pVm),BC_NUMBER_CLASS);
+	PH7_NativeClassInstallCmpHook(&(*pVm),BC_NUMBER_CLASS,BcNumberCmp);
+	PH7_NativeClassInstallBoolHook(&(*pVm),BC_NUMBER_CLASS,BcNumberBool);
+	PH7_NativeClassInstallArithHook(&(*pVm),BC_NUMBER_CLASS,BcNumberArith);
+	return SXRET_OK;
+}
+#else
+/* The tiny build has no bc* functions, so it has no class for them either. */
+PH7_PRIVATE sxi32 PH7_VmInstallBcMath(ph7_vm *pVm){ SXUNUSED(pVm); return SXRET_OK; }
 #endif /* PH7_DISABLE_BUILTIN_FUNC */

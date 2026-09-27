@@ -2399,6 +2399,8 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	 * builtin guard because round() -- and bcround() -- do: a build with no
 	 * consumer for the symbol does not ship the symbol. */
 	PH7_VmInstallRoundingMode(&(*pVm));
+	/* BcMath\Number: after RoundingMode, whose cases its round() reads. */
+	PH7_VmInstallBcMath(&(*pVm));
 #endif
 	PH7_VmInstallSession(&(*pVm));
 	PH7_VmInstallIni(&(*pVm));

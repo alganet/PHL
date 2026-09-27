@@ -218,6 +218,9 @@ PH7_PRIVATE VmOpRc VmExecOpNullcStore(ph7_vm *pVm,VmExecState *pState,VmInstr *p
  */
 PH7_PRIVATE VmOpRc VmExecOpDiv(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 {
+	/* php's do_operation: an operand whose class declares one decides the pair. */
+	int rcNa;
+	const char *zArCls = "TypeError";
 	ph7_value *pTos = pState->pTos;
 	ph7_value *pStack = pState->pStack;
 	VmInstr *aInstr = pState->aInstr;
@@ -231,13 +234,14 @@ PH7_PRIVATE VmOpRc VmExecOpDiv(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 		 * BEFORE throwing, so the catch does not run over the abandoned operands. */
 		SyBlob sArMsg;
 		SyBlobInit(&sArMsg,&pVm->sAllocator);
-		if( VmArithOperandCheck(&(*pVm),pNos,pTos,"/",&sArMsg) != SXRET_OK ){
+		rcNa = VmArithOperandStep(&(*pVm),pNos,pTos,"/",pNos,&zArCls,&sArMsg);
+		if( rcNa == PH7_ARITH_REFUSED ){
 			sxi32 rcAr;
 			VmPopOperand(&pTos,1);
 			PH7_MemObjRelease(pTos);
 			MemObjSetType(pTos,MEMOBJ_NULL);
 			pTos->nIdx = SXU32_HIGH;
-			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+			rcAr = VmThrowFromVm(&(*pVm),zArCls,(const char *)SyBlobData(&sArMsg),
 				SyBlobLength(&sArMsg));
 			SyBlobRelease(&sArMsg);
 			if( rcAr == SXERR_ABORT ){ VM_EXIT_ABORT; }
@@ -245,6 +249,10 @@ PH7_PRIVATE VmOpRc VmExecOpDiv(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 			PH7_THROW_ROUTE_MIDEXPR(rc)
 		}
 		SyBlobRelease(&sArMsg);
+	}
+	if( rcNa == PH7_ARITH_HANDLED ){
+		VmPopOperand(&pTos,1);
+		VM_EXIT_BREAK;
 	}
 	ph7_real a,b,r;
 #ifdef UNTRUST
@@ -330,6 +338,9 @@ PH7_PRIVATE VmOpRc VmExecOpDiv(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
  */
 PH7_PRIVATE VmOpRc VmExecOpModStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 {
+	/* php's do_operation: an operand whose class declares one decides the pair. */
+	int rcNa;
+	const char *zArCls = "TypeError";
 	ph7_value *pTos = pState->pTos;
 	ph7_value *pStack = pState->pStack;
 	VmInstr *aInstr = pState->aInstr;
@@ -349,13 +360,14 @@ PH7_PRIVATE VmOpRc VmExecOpModStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 		 * array, object or resource operand is a TypeError too. */
 		SyBlob sArMsg;
 		SyBlobInit(&sArMsg,&pVm->sAllocator);
-		if( VmArithOperandCheck(&(*pVm),pTos,pNos,"%",&sArMsg) != SXRET_OK ){
+		rcNa = VmArithOperandStep(&(*pVm),pTos,pNos,"%",pNos,&zArCls,&sArMsg);
+		if( rcNa == PH7_ARITH_REFUSED ){
 			sxi32 rcAr;
 			VmPopOperand(&pTos,1);
 			PH7_MemObjRelease(pTos);
 			MemObjSetType(pTos,MEMOBJ_NULL);
 			pTos->nIdx = SXU32_HIGH;
-			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+			rcAr = VmThrowFromVm(&(*pVm),zArCls,(const char *)SyBlobData(&sArMsg),
 				SyBlobLength(&sArMsg));
 			SyBlobRelease(&sArMsg);
 			if( rcAr == SXERR_ABORT ){ VM_EXIT_ABORT; }
@@ -363,6 +375,9 @@ PH7_PRIVATE VmOpRc VmExecOpModStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 			PH7_THROW_ROUTE_MIDEXPR(rc)
 		}
 		SyBlobRelease(&sArMsg);
+	}
+	if( rcNa == PH7_ARITH_HANDLED ){
+		goto mod_store_write;
 	}
 	/* Force the operands to be integer (php deprecates a lossy float here) */
 	rc = VmRejectFloatOperand(&(*pVm),pNos);
@@ -394,6 +409,7 @@ PH7_PRIVATE VmOpRc VmExecOpModStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 	/* Push the result */
 	pNos->x.iVal = r;
 	MemObjSetType(pNos,MEMOBJ_INT);
+mod_store_write:
 	if( pTos->nIdx == SXU32_HIGH ){
 		/* A read-modify-write THROUGH a temporary: php drops it in silence. */
 	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
@@ -412,6 +428,9 @@ PH7_PRIVATE VmOpRc VmExecOpModStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
  */
 PH7_PRIVATE VmOpRc VmExecOpMod(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 {
+	/* php's do_operation: an operand whose class declares one decides the pair. */
+	int rcNa;
+	const char *zArCls = "TypeError";
 	ph7_value *pTos = pState->pTos;
 	ph7_value *pStack = pState->pStack;
 	VmInstr *aInstr = pState->aInstr;
@@ -425,13 +444,14 @@ PH7_PRIVATE VmOpRc VmExecOpMod(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 		 * BEFORE throwing, so the catch does not run over the abandoned operands. */
 		SyBlob sArMsg;
 		SyBlobInit(&sArMsg,&pVm->sAllocator);
-		if( VmArithOperandCheck(&(*pVm),pNos,pTos,"%",&sArMsg) != SXRET_OK ){
+		rcNa = VmArithOperandStep(&(*pVm),pNos,pTos,"%",pNos,&zArCls,&sArMsg);
+		if( rcNa == PH7_ARITH_REFUSED ){
 			sxi32 rcAr;
 			VmPopOperand(&pTos,1);
 			PH7_MemObjRelease(pTos);
 			MemObjSetType(pTos,MEMOBJ_NULL);
 			pTos->nIdx = SXU32_HIGH;
-			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+			rcAr = VmThrowFromVm(&(*pVm),zArCls,(const char *)SyBlobData(&sArMsg),
 				SyBlobLength(&sArMsg));
 			SyBlobRelease(&sArMsg);
 			if( rcAr == SXERR_ABORT ){ VM_EXIT_ABORT; }
@@ -439,6 +459,10 @@ PH7_PRIVATE VmOpRc VmExecOpMod(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 			PH7_THROW_ROUTE_MIDEXPR(rc)
 		}
 		SyBlobRelease(&sArMsg);
+	}
+	if( rcNa == PH7_ARITH_HANDLED ){
+		VmPopOperand(&pTos,1);
+		VM_EXIT_BREAK;
 	}
 	sxi64 a,b,r;
 #ifdef UNTRUST
@@ -489,6 +513,9 @@ PH7_PRIVATE VmOpRc VmExecOpMod(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
  */
 PH7_PRIVATE VmOpRc VmExecOpSubStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 {
+	/* php's do_operation: an operand whose class declares one decides the pair. */
+	int rcNa;
+	const char *zArCls = "TypeError";
 	ph7_value *pTos = pState->pTos;
 	ph7_value *pStack = pState->pStack;
 	VmInstr *aInstr = pState->aInstr;
@@ -507,13 +534,14 @@ PH7_PRIVATE VmOpRc VmExecOpSubStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 		 * array, object or resource operand is a TypeError too. */
 		SyBlob sArMsg;
 		SyBlobInit(&sArMsg,&pVm->sAllocator);
-		if( VmArithOperandCheck(&(*pVm),pTos,pNos,"-",&sArMsg) != SXRET_OK ){
+		rcNa = VmArithOperandStep(&(*pVm),pTos,pNos,"-",pNos,&zArCls,&sArMsg);
+		if( rcNa == PH7_ARITH_REFUSED ){
 			sxi32 rcAr;
 			VmPopOperand(&pTos,1);
 			PH7_MemObjRelease(pTos);
 			MemObjSetType(pTos,MEMOBJ_NULL);
 			pTos->nIdx = SXU32_HIGH;
-			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+			rcAr = VmThrowFromVm(&(*pVm),zArCls,(const char *)SyBlobData(&sArMsg),
 				SyBlobLength(&sArMsg));
 			SyBlobRelease(&sArMsg);
 			if( rcAr == SXERR_ABORT ){ VM_EXIT_ABORT; }
@@ -521,6 +549,9 @@ PH7_PRIVATE VmOpRc VmExecOpSubStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 			PH7_THROW_ROUTE_MIDEXPR(rc)
 		}
 		SyBlobRelease(&sArMsg);
+	}
+	if( rcNa == PH7_ARITH_HANDLED ){
+		goto sub_store_write;
 	}
 	/* Force the operands to be numeric (see OP_SUB) */
 	PH7_MemObjToNumeric(pTos);
@@ -561,6 +592,7 @@ PH7_PRIVATE VmOpRc VmExecOpSubStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 			MemObjSetType(pNos,MEMOBJ_INT);
 		}
 	}
+sub_store_write:
 	if( pTos->nIdx == SXU32_HIGH ){
 		/* A read-modify-write THROUGH a temporary: php drops it in silence. */
 	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
@@ -579,6 +611,9 @@ PH7_PRIVATE VmOpRc VmExecOpSubStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
  */
 PH7_PRIVATE VmOpRc VmExecOpSub(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 {
+	/* php's do_operation: an operand whose class declares one decides the pair. */
+	int rcNa;
+	const char *zArCls = "TypeError";
 	ph7_value *pTos = pState->pTos;
 	ph7_value *pStack = pState->pStack;
 	VmInstr *aInstr = pState->aInstr;
@@ -597,13 +632,14 @@ PH7_PRIVATE VmOpRc VmExecOpSub(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 		 * BEFORE throwing, so the catch does not run over the abandoned operands. */
 		SyBlob sArMsg;
 		SyBlobInit(&sArMsg,&pVm->sAllocator);
-		if( VmArithOperandCheck(&(*pVm),pNos,pTos,"-",&sArMsg) != SXRET_OK ){
+		rcNa = VmArithOperandStep(&(*pVm),pNos,pTos,"-",pNos,&zArCls,&sArMsg);
+		if( rcNa == PH7_ARITH_REFUSED ){
 			sxi32 rcAr;
 			VmPopOperand(&pTos,1);
 			PH7_MemObjRelease(pTos);
 			MemObjSetType(pTos,MEMOBJ_NULL);
 			pTos->nIdx = SXU32_HIGH;
-			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+			rcAr = VmThrowFromVm(&(*pVm),zArCls,(const char *)SyBlobData(&sArMsg),
 				SyBlobLength(&sArMsg));
 			SyBlobRelease(&sArMsg);
 			if( rcAr == SXERR_ABORT ){ VM_EXIT_ABORT; }
@@ -611,6 +647,10 @@ PH7_PRIVATE VmOpRc VmExecOpSub(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 			PH7_THROW_ROUTE_MIDEXPR(rc)
 		}
 		SyBlobRelease(&sArMsg);
+	}
+	if( rcNa == PH7_ARITH_HANDLED ){
+		VmPopOperand(&pTos,1);
+		VM_EXIT_BREAK;
 	}
 	/* Force the operands to be numeric. Without this a string operand fell through
 	 * to the integer branch below, which read the raw x.iVal union member: "10" - "4"
@@ -790,6 +830,9 @@ PH7_PRIVATE void PH7_MemObjPow(ph7_value *pBase,ph7_value *pExp,ph7_value *pOut)
  */
 PH7_PRIVATE VmOpRc VmExecOpPowStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 {
+	/* php's do_operation: an operand whose class declares one decides the pair. */
+	int rcNa;
+	const char *zArCls = "TypeError";
 	ph7_value *pTos = pState->pTos;
 	ph7_value *pStack = pState->pStack;
 	VmInstr *aInstr = pState->aInstr;
@@ -813,13 +856,14 @@ PH7_PRIVATE VmOpRc VmExecOpPowStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 		 * `int ** string`, the way `$x ** "abc"` is. */
 		SyBlob sArMsg;
 		SyBlobInit(&sArMsg,&pVm->sAllocator);
-		if( VmArithOperandCheck(&(*pVm),pBase,pExp,"**",&sArMsg) != SXRET_OK ){
+		rcNa = VmArithOperandStep(&(*pVm),pBase,pExp,"**",pNos,&zArCls,&sArMsg);
+		if( rcNa == PH7_ARITH_REFUSED ){
 			sxi32 rcAr;
 			VmPopOperand(&pTos,1);
 			PH7_MemObjRelease(pTos);
 			MemObjSetType(pTos,MEMOBJ_NULL);
 			pTos->nIdx = SXU32_HIGH;
-			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+			rcAr = VmThrowFromVm(&(*pVm),zArCls,(const char *)SyBlobData(&sArMsg),
 				SyBlobLength(&sArMsg));
 			SyBlobRelease(&sArMsg);
 			if( rcAr == SXERR_ABORT ){ VM_EXIT_ABORT; }
@@ -833,7 +877,9 @@ PH7_PRIVATE VmOpRc VmExecOpPowStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 		VM_EXIT_ABORT;
 	}
 #endif
-	PH7_MemObjPow(pBase,pExp,pNos);
+	if( rcNa == PH7_ARITH_ORDINARY ){
+		PH7_MemObjPow(pBase,pExp,pNos);
+	}
 	if( bStore ){
 		ph7_value *pObj;
 		if( pTos->nIdx == SXU32_HIGH ){
@@ -1247,6 +1293,9 @@ PH7_PRIVATE VmOpRc VmExecOpShr(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
  */
 PH7_PRIVATE VmOpRc VmExecOpMulStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pInstr)
 {
+	/* php's do_operation: an operand whose class declares one decides the pair. */
+	int rcNa;
+	const char *zArCls = "TypeError";
 	ph7_value *pTos = pState->pTos;
 	ph7_value *pStack = pState->pStack;
 	VmInstr *aInstr = pState->aInstr;
@@ -1266,13 +1315,14 @@ PH7_PRIVATE VmOpRc VmExecOpMulStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 		ph7_value *pMulR = (pInstr->iOp == PH7_OP_MUL_STORE) ? pNos : pTos;
 		SyBlob sArMsg;
 		SyBlobInit(&sArMsg,&pVm->sAllocator);
-		if( VmArithOperandCheck(&(*pVm),pMulL,pMulR,"*",&sArMsg) != SXRET_OK ){
+		rcNa = VmArithOperandStep(&(*pVm),pMulL,pMulR,"*",pNos,&zArCls,&sArMsg);
+		if( rcNa == PH7_ARITH_REFUSED ){
 			sxi32 rcAr;
 			VmPopOperand(&pTos,1);
 			PH7_MemObjRelease(pTos);
 			MemObjSetType(pTos,MEMOBJ_NULL);
 			pTos->nIdx = SXU32_HIGH;
-			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+			rcAr = VmThrowFromVm(&(*pVm),zArCls,(const char *)SyBlobData(&sArMsg),
 				SyBlobLength(&sArMsg));
 			SyBlobRelease(&sArMsg);
 			if( rcAr == SXERR_ABORT ){ VM_EXIT_ABORT; }
@@ -1280,6 +1330,9 @@ PH7_PRIVATE VmOpRc VmExecOpMulStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 			PH7_THROW_ROUTE_MIDEXPR(rc)
 		}
 		SyBlobRelease(&sArMsg);
+	}
+	if( rcNa == PH7_ARITH_HANDLED ){
+		goto mul_store_write;
 	}
 	/* Force the operand to be numeric */
 #ifdef UNTRUST
@@ -1326,6 +1379,7 @@ PH7_PRIVATE VmOpRc VmExecOpMulStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 			MemObjSetType(pNos,MEMOBJ_INT);
 		}
 	}
+mul_store_write:
 	if( pInstr->iOp == PH7_OP_MUL_STORE ){
 		ph7_value *pObj;
 		if( pTos->nIdx == SXU32_HIGH ){

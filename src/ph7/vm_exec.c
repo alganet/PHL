@@ -3272,6 +3272,7 @@ case PH7_OP_INCR:
 			break;
 		}
 	}
+	PH7_INCDEC_NATIVE_ARITH("+")
 	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)) != 0 ){
 		/* php's ++ operand contract: an array, object or resource is a catchable
 		 * TypeError, not the silent no-op this used to be. Settle the operand
@@ -3432,6 +3433,7 @@ case PH7_OP_DECR:
 			break;
 		}
 	}
+	PH7_INCDEC_NATIVE_ARITH("-")
 	if( (pTos->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_OBJ|MEMOBJ_RES)) != 0 ){
 		/* php's `--` operand contract, the mirror of INCR's: an array, object or
 		 * resource is a catchable TypeError, not a silent no-op. */
@@ -3560,7 +3562,7 @@ case PH7_OP_UMINUS:
 #endif
 	/* php's `$x * -1` operand contract: an array, object, resource or
 	 * non-numeric string is a TypeError, not a warned int(-1). */
-	PH7_UNARY_ARITH_CONTRACT()
+	PH7_UNARY_ARITH_CONTRACT(-1)
 	/* Force a numeric (integer,real or both) cast */
 	PH7_MemObjToNumeric(pTos);
 	if( pTos->iFlags & MEMOBJ_REAL ){
@@ -3601,7 +3603,7 @@ case PH7_OP_UPLUS:
 #endif
 	/* Unary plus is php's `$x * 1`, so it answers the same TypeError as unary
 	 * minus -- naming `int` as the other operand, exactly as php does. */
-	PH7_UNARY_ARITH_CONTRACT()
+	PH7_UNARY_ARITH_CONTRACT(1)
 	/* Force a numeric (integer,real or both) cast */
 	PH7_MemObjToNumeric(pTos);
 	if( pTos->iFlags & MEMOBJ_REAL ){
@@ -3749,6 +3751,9 @@ case PH7_OP_POW_STORE: {
  */
 case PH7_OP_ADD:{
 	ph7_value *pNos = &pTos[-1];
+	/* php's do_operation: an operand whose class declares one decides the pair. */
+	int rcNa;
+	const char *zArCls = "TypeError";
 #ifdef UNTRUST
 	if( pNos < pStack ){
 		goto Abort;
@@ -3760,13 +3765,14 @@ case PH7_OP_ADD:{
 		 * BEFORE throwing, so the catch does not run over the abandoned operands. */
 		SyBlob sArMsg;
 		SyBlobInit(&sArMsg,&pVm->sAllocator);
-		if( VmArithOperandCheck(&(*pVm),pNos,pTos,"+",&sArMsg) != SXRET_OK ){
+		rcNa = VmArithOperandStep(&(*pVm),pNos,pTos,"+",pNos,&zArCls,&sArMsg);
+		if( rcNa == PH7_ARITH_REFUSED ){
 			sxi32 rcAr;
 			VmPopOperand(&pTos,1);
 			PH7_MemObjRelease(pTos);
 			MemObjSetType(pTos,MEMOBJ_NULL);
 			pTos->nIdx = SXU32_HIGH;
-			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+			rcAr = VmThrowFromVm(&(*pVm),zArCls,(const char *)SyBlobData(&sArMsg),
 				SyBlobLength(&sArMsg));
 			SyBlobRelease(&sArMsg);
 			if( rcAr == SXERR_ABORT ){ goto Abort; }
@@ -3775,8 +3781,10 @@ case PH7_OP_ADD:{
 		}
 		SyBlobRelease(&sArMsg);
 	}
-	/* Perform the addition */
-	PH7_MemObjAdd(pNos,pTos,FALSE);
+	/* Perform the addition (unless a do_operation handler already answered) */
+	if( rcNa == PH7_ARITH_ORDINARY ){
+		PH7_MemObjAdd(pNos,pTos,FALSE);
+	}
 	VmPopOperand(&pTos,1);
 	break;
 				}
@@ -3790,6 +3798,9 @@ case PH7_OP_ADD_STORE:{
 	ph7_value *pNos = &pTos[-1];
 	ph7_value *pObj;
 	sxu32 nIdx;
+	/* php's do_operation: an operand whose class declares one decides the pair. */
+	int rcNa;
+	const char *zArCls = "TypeError";
 #ifdef UNTRUST
 	if( pNos < pStack ){
 		goto Abort;
@@ -3802,13 +3813,14 @@ case PH7_OP_ADD_STORE:{
 		 * array, object or resource operand is a TypeError too. */
 		SyBlob sArMsg;
 		SyBlobInit(&sArMsg,&pVm->sAllocator);
-		if( VmArithOperandCheck(&(*pVm),pTos,pNos,"+",&sArMsg) != SXRET_OK ){
+		rcNa = VmArithOperandStep(&(*pVm),pTos,pNos,"+",pTos,&zArCls,&sArMsg);
+		if( rcNa == PH7_ARITH_REFUSED ){
 			sxi32 rcAr;
 			VmPopOperand(&pTos,1);
 			PH7_MemObjRelease(pTos);
 			MemObjSetType(pTos,MEMOBJ_NULL);
 			pTos->nIdx = SXU32_HIGH;
-			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+			rcAr = VmThrowFromVm(&(*pVm),zArCls,(const char *)SyBlobData(&sArMsg),
 				SyBlobLength(&sArMsg));
 			SyBlobRelease(&sArMsg);
 			if( rcAr == SXERR_ABORT ){ goto Abort; }
@@ -3828,7 +3840,9 @@ case PH7_OP_ADD_STORE:{
 		pVm->bHaltRequested = 1;
 		goto Abort;
 	}
-	PH7_MemObjAdd(pTos,pNos,TRUE);
+	if( rcNa == PH7_ARITH_ORDINARY ){
+		PH7_MemObjAdd(pTos,pNos,TRUE);
+	}
 	/* Peform the store operation */
 	if( nIdx == SXU32_HIGH ){
 		/* A read-modify-write THROUGH a temporary (`f()[0] += 5`): php computes it,
@@ -3968,6 +3982,9 @@ case PH7_OP_DIV_STORE:{
 	ph7_value *pNos = &pTos[-1];
 	ph7_value *pObj;
 	ph7_real a,b,r;
+	/* php's do_operation: an operand whose class declares one decides the pair. */
+	int rcNa;
+	const char *zArCls = "TypeError";
 #ifdef UNTRUST
 	if( pNos < pStack ){
 		goto Abort;
@@ -3980,13 +3997,14 @@ case PH7_OP_DIV_STORE:{
 		 * array, object or resource operand is a TypeError too. */
 		SyBlob sArMsg;
 		SyBlobInit(&sArMsg,&pVm->sAllocator);
-		if( VmArithOperandCheck(&(*pVm),pTos,pNos,"/",&sArMsg) != SXRET_OK ){
+		rcNa = VmArithOperandStep(&(*pVm),pTos,pNos,"/",pNos,&zArCls,&sArMsg);
+		if( rcNa == PH7_ARITH_REFUSED ){
 			sxi32 rcAr;
 			VmPopOperand(&pTos,1);
 			PH7_MemObjRelease(pTos);
 			MemObjSetType(pTos,MEMOBJ_NULL);
 			pTos->nIdx = SXU32_HIGH;
-			rcAr = VmThrowFromVm(&(*pVm),"TypeError",(const char *)SyBlobData(&sArMsg),
+			rcAr = VmThrowFromVm(&(*pVm),zArCls,(const char *)SyBlobData(&sArMsg),
 				SyBlobLength(&sArMsg));
 			SyBlobRelease(&sArMsg);
 			if( rcAr == SXERR_ABORT ){ goto Abort; }
@@ -3995,7 +4013,7 @@ case PH7_OP_DIV_STORE:{
 		}
 		SyBlobRelease(&sArMsg);
 	}
-	{
+	if( rcNa == PH7_ARITH_ORDINARY ){
 		/* php's `/` answers an INT when both operands are ints and the division is
 		 * exact (`6/3 === 2`, not `2.0`), and `$x /= $y` is that same operator: php
 		 * has one division and the compound form only decides where the answer goes.
