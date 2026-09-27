@@ -573,11 +573,43 @@ static int DtZoneCorrLen(const char *z,const char *zEnd)
 	return nH;
 }
 /*
+ * php's MILITARY zones: a single LETTER is a whole-hour offset -- `A`..`I` are
+ * +1..+9, `K`..`M` +10..+12 and `N`..`Y` -1..-12, with `Z` the zero ISO 8601
+ * spells and no `J` at all. php names one by its UPPERCASE letter whatever case
+ * it was written in, and calls it an ABBREVIATION; no tz database is involved,
+ * which is why this engine can answer the whole set exactly. Answers 1 and fills
+ * the offset and the name (a static literal, as every stored zone name here is),
+ * or 0 for `J` and for anything that is not a letter.
+ */
+static int DtZoneMil(int c,sxi32 *piOff,const char **pzName)
+{
+	static const char zLetters[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+	int i;
+	if( c >= 'a' && c <= 'z' ){
+		c -= 'a' - 'A';
+	}
+	if( c < 'A' || c > 'Z' || c == 'J' ){
+		return 0;
+	}
+	i = c - 'A';
+	*pzName = &zLetters[i];
+	if( c == 'Z' ){
+		*piOff = 0;
+	}else if( c < 'J' ){
+		*piOff = (sxi32)(i + 1) * 3600;    /* A..I: +1..+9 */
+	}else if( c <= 'M' ){
+		*piOff = (sxi32)i * 3600;          /* K..M: +10..+12 (the missing J shifts them) */
+	}else{
+		*piOff = -(sxi32)(i - 12) * 3600;  /* N..Y: -1..-12 */
+	}
+	return 1;
+}
+/*
  * php's timezone NAME token, the spellings this engine has without a tz database:
  * `UTC` (an IDENTIFIER when spelled in that exact case, an abbreviation in any
- * other), `GMT` and `Z`, each in any case. Answers the bytes taken, or 0. An
- * ALPHABETIC byte may not follow: `UTC1` is the zone with a stray `1` after it
- * where `UTCX` is a name php looks up and does not find.
+ * other), `GMT`, and the military letters above -- each in any case. Answers the
+ * bytes taken, or 0. An ALPHABETIC byte may not follow: `UTC1` is the zone with a
+ * stray `1` after it where `UTCX` is a name php looks up and does not find.
  */
 static int DtZoneWord(const char *z,const char *zEnd,sxi32 *piOff,const char **pzName,
 	int *pnName,int *pbIdent)
@@ -585,12 +617,12 @@ static int DtZoneWord(const char *z,const char *zEnd,sxi32 *piOff,const char **p
 	int n = 0;
 	if( zEnd-z >= 3 && (SyStrnicmp(z,"utc",3) == 0 || SyStrnicmp(z,"gmt",3) == 0) ){
 		int bUtc = (z[0] == 'u' || z[0] == 'U');
+		*piOff = 0;
 		*pzName = bUtc ? "UTC" : "GMT";
 		*pnName = 3;
 		*pbIdent = (bUtc && SyMemcmp(z,"UTC",3) == 0);
 		n = 3;
-	}else if( z < zEnd && (z[0] == 'Z' || z[0] == 'z') ){
-		*pzName = "Z";
+	}else if( z < zEnd && DtZoneMil(z[0],piOff,pzName) ){
 		*pnName = 1;
 		*pbIdent = 0;
 		n = 1;
@@ -598,7 +630,6 @@ static int DtZoneWord(const char *z,const char *zEnd,sxi32 *piOff,const char **p
 	if( n == 0 || (zEnd-z > n && SyisAlpha(z[n])) ){
 		return 0;
 	}
-	*piOff = 0;
 	return n;
 }
 /* Forward: the offset's VALUE is the one DateTimeZone reads too (the door that
@@ -2805,9 +2836,10 @@ static int DtZoneParse(const char *zTz,int nTz,sxi32 *piOff,const char **pzName,
 		zTz++;
 		nTz--;
 	}
-	if( nTz == 1 && (zTz[0] == 'Z' || zTz[0] == 'z') ){
-		*piOff = 0;
-		*pzName = "Z";
+	/* A single letter is php's military zone here too -- `new DateTimeZone('t')`
+	 * is named `T` and answers -07:00 -- which is what lets a date carrying one
+	 * round-trip through serialize()/__unserialize(). */
+	if( nTz == 1 && DtZoneMil(zTz[0],piOff,pzName) ){
 		*pnName = 1;
 		*piKind = DT_ZONE_ABBR;
 		return 0;
