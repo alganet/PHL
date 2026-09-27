@@ -3104,19 +3104,29 @@ static void DtLastErrFf(ph7_vm *pVm,const dt_ff_diag *pDiag)
 	}
 	pVm->sDtLastErr.nErr = pDiag->nErr;   /* php counts what it dropped too */
 }
+/*
+ * What one run of the FORMAT scanner read, field by field.
+ *
+ * php's format parser starts every field UNSET and never consults the clock: the
+ * struct below is what the scan itself put there, so a format that named no year
+ * leaves `y` unset rather than this year's. The moment a DateTime wants is built
+ * from it afterwards (DtFfResolve), which is where the current instant finally
+ * fills what the format never mentioned -- php's own timelib_fill_holes, run once
+ * the scan is over rather than while it is going on.
+ */
 typedef struct dt_ff_res dt_ff_res;
 struct dt_ff_res
 {
-	sxi64 iTs;
+	sxi64 y,mo,d,h,mi,s,us;   /* DT_UNSET == php's TIMELIB_UNSET */
 	sxi32 iOff;
 	int iOffKind;
 	char zName[16];
-	int uSec;
-	int bHasUs;
+	int bWday;                /* php's relative.have_weekday_relative */
+	sxi64 iWday;
 	dt_ff_diag sDiag;
 };
 static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
-	sxi64 iNow,sxi32 iDefOff,dt_ff_res *pOut)
+	dt_ff_res *pOut)
 {
 	static const char *azDay3[] = {"sun","mon","tue","wed","thu","fri","sat"};
 	static const char *azDayFull[] = {"sunday","monday","tuesday","wednesday",
@@ -3127,10 +3137,12 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 		"may","june","july","august","september","october","november","december"};
 	const char *zEnd,*zInEnd,*z;
 	sxi64 v;
-	/* -1 == unset */
-	sxi64 y = -1,mo = -1,d = -1,h = -1,mi = -1,s = -1,h12 = -1,uVal = 0;
-	int iMeridiem = -1,bHasU = 0,bPipe = 0,bPlus = 0,iWdayFf = -1;
-	int uSecFF = 0,bHasUs = 0;
+	sxi64 y = DT_UNSET,mo = DT_UNSET,d = DT_UNSET;
+	sxi64 h = DT_UNSET,mi = DT_UNSET,s = DT_UNSET,us = DT_UNSET;
+	sxi64 uVal = 0;
+	int bHasU = 0,bPlus = 0;
+	int bWday = 0;
+	sxi64 iWday = 0;
 	int iOffKind = 0;
 	sxi32 iOffVal = 0;
 	char zName[16];
@@ -3156,12 +3168,24 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 		char c = zFmt[0];
 		zFmt++;
 		zErr = 0;
+		/* php's two RESET specifiers act where they stand rather than at the end
+		 * of the scan: `!` puts every field at its 1970 default whatever the
+		 * format already read, `|` only fills what nothing has read yet, and a
+		 * specifier after either one overwrites what it left. */
 		if( c == '!' ){
-			y = 1970; mo = 1; d = 1; h = 0; mi = 0; s = 0;
-			h12 = -1; iMeridiem = -1;
+			y = 1970; mo = 1; d = 1; h = 0; mi = 0; s = 0; us = 0;
 			continue;
 		}
-		if( c == '|' ){ bPipe = 1; continue; }
+		if( c == '|' ){
+			if( y == DT_UNSET ){ y = 1970; }
+			if( mo == DT_UNSET ){ mo = 1; }
+			if( d == DT_UNSET ){ d = 1; }
+			if( h == DT_UNSET ){ h = 0; }
+			if( mi == DT_UNSET ){ mi = 0; }
+			if( s == DT_UNSET ){ s = 0; }
+			if( us == DT_UNSET ){ us = 0; }
+			continue;
+		}
 		if( c == '+' ){ bPlus = 1; continue; }
 		if( z >= zInEnd ){
 			/* timelib aborts the scan once input is exhausted */
@@ -3174,6 +3198,7 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 				DT_FF_LOGERR((int)(z - zIn),"A two digit day could not be found");
 				if( DtHuntDigits(&z,zInEnd,1,2,&d) < 0 ){
 					DT_FF_LOGERR(nIn,"A two digit day could not be found");
+					d = DT_UNSET;
 				}
 			}
 			break;
@@ -3181,16 +3206,20 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 			/* php's textual day is a RELATIVE weekday, not decoration: it moves
 			 * the date it was read beside, forward to that weekday and keeping a
 			 * day that already matches. */
-			if( (iWdayFf = DtEatName(&z,zInEnd,azDay3,7)) == 0 ){
+			if( (iWday = DtEatName(&z,zInEnd,azDay3,7)) == 0 ){
 				zErr = "A textual day could not be found";
+			}else{
+				iWday--;
+				bWday = 1;
 			}
-			iWdayFf--;
 			break;
 		case 'l':
-			if( (iWdayFf = DtEatName(&z,zInEnd,azDayFull,7)) == 0 ){
+			if( (iWday = DtEatName(&z,zInEnd,azDayFull,7)) == 0 ){
 				zErr = "A textual day could not be found";
+			}else{
+				iWday--;
+				bWday = 1;
 			}
-			iWdayFf--;
 			break;
 		case 'S':
 			/* ordinal suffix: st nd rd th */
@@ -3204,6 +3233,7 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 				DT_FF_LOGERR((int)(z - zIn),"A two digit month could not be found");
 				if( DtHuntDigits(&z,zInEnd,1,2,&mo) < 0 ){
 					DT_FF_LOGERR(nIn,"A two digit month could not be found");
+					mo = DT_UNSET;
 				}
 			}
 			break;
@@ -3224,6 +3254,7 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 				DT_FF_LOGERR((int)(z - zIn),"A two digit year could not be found");
 				if( DtHuntDigits(&z,zInEnd,2,2,&y) < 0 ){
 					DT_FF_LOGERR(nIn,"A two digit year could not be found");
+					y = DT_UNSET;
 				}else if( y >= 0 ){
 					y += (y <= 69) ? 2000 : 1900;
 				}
@@ -3238,6 +3269,7 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 				DT_FF_LOGERR((int)(z - zIn),"A four digit year could not be found");
 				if( DtHuntDigits(&z,zInEnd,1,4,&y) < 0 ){
 					DT_FF_LOGERR(nIn,"A four digit year could not be found");
+					y = DT_UNSET;
 				}
 			}
 			break;
@@ -3247,14 +3279,16 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 				DT_FF_LOGERR((int)(z - zIn),"A two digit hour could not be found");
 				if( DtHuntDigits(&z,zInEnd,1,2,&h) < 0 ){
 					DT_FF_LOGERR(nIn,"A two digit hour could not be found");
+					h = DT_UNSET;
 				}
 			}
 			break;
 		case 'h': case 'g':
-			if( !DtEatDigits(&z,zInEnd,1,2,&h12) ){
+			if( !DtEatDigits(&z,zInEnd,1,2,&h) ){
 				DT_FF_LOGERR((int)(z - zIn),"A two digit hour could not be found");
-				if( DtHuntDigits(&z,zInEnd,1,2,&h12) < 0 ){
+				if( DtHuntDigits(&z,zInEnd,1,2,&h) < 0 ){
 					DT_FF_LOGERR(nIn,"A two digit hour could not be found");
+					h = DT_UNSET;
 				}
 			}
 			break;
@@ -3263,6 +3297,7 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 				DT_FF_LOGERR((int)(z - zIn),"A two digit minute could not be found");
 				if( DtHuntDigits(&z,zInEnd,1,2,&mi) < 0 ){
 					DT_FF_LOGERR(nIn,"A two digit minute could not be found");
+					mi = DT_UNSET;
 				}
 			}
 			break;
@@ -3271,6 +3306,7 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 				DT_FF_LOGERR((int)(z - zIn),"A two digit second could not be found");
 				if( DtHuntDigits(&z,zInEnd,1,2,&s) < 0 ){
 					DT_FF_LOGERR(nIn,"A two digit second could not be found");
+					s = DT_UNSET;
 				}
 			}
 			break;
@@ -3281,14 +3317,14 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 				DT_FF_LOGERR((int)(z - zIn),"A six digit microsecond could not be found");
 				if( DtHuntDigits(&z,zInEnd,1,6,&v) < 0 ){
 					DT_FF_LOGERR(nIn,"A six digit microsecond could not be found");
-				}else{
-					zStart = z; /* HuntDigits repositioned; treat as freshly read */
+					break;
 				}
+				zStart = z; /* HuntDigits repositioned; treat as freshly read */
 			}
 			{
 				int nd = (int)(z - zStart);
 				while( nd > 0 && nd < 6 ){ v *= 10; nd++; }
-				uSecFF = (int)v; bHasUs = 1;
+				us = v;
 			}
 			break;
 				 }
@@ -3298,22 +3334,32 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 				DT_FF_LOGERR((int)(z - zIn),"A three digit millisecond could not be found");
 				if( DtHuntDigits(&z,zInEnd,1,3,&v) < 0 ){
 					DT_FF_LOGERR(nIn,"A three digit millisecond could not be found");
-				}else{
-					zStart = z;
+					break;
 				}
+				zStart = z;
 			}
 			{
 				int nd = (int)(z - zStart);
 				while( nd > 0 && nd < 3 ){ v *= 10; nd++; }
-				uSecFF = (int)v * 1000; bHasUs = 1; /* ms -> us */
+				us = v * 1000;   /* ms -> us */
 			}
 			break;
 				 }
 		case 'a': case 'A':{
+			/* php's meridian is an ADJUSTMENT to whatever hour was already read,
+			 * not a 12-hour reading of its own: `am` takes noon back to midnight
+			 * and leaves every other hour standing, `pm` adds twelve to all but
+			 * twelve itself, and an hour the format never read is left unset. */
 			static const char *azMer[] = {"am","pm","a.m.","p.m."};
 			int k = DtEatName(&z,zInEnd,azMer,4);
 			if( k ){
-				iMeridiem = ((k - 1) & 1);
+				sxi64 iAdj;
+				if( ((k - 1) & 1) == 0 ){
+					iAdj = (h == 12) ? -12 : 0;
+				}else{
+					iAdj = (h != 12) ? 12 : 0;
+				}
+				if( h != DT_UNSET ){ h += iAdj; }
 			}else{
 				zErr = "A meridian could not be found";
 			}
@@ -3452,88 +3498,95 @@ parse_num_off:	{
 			DT_FF_LOGERR((int)(z - zIn),"Trailing data");
 		}
 	}
-	if( nErr > 0 ){
-		/* The diagnostics are the caller's on this path too: php reports the
-		 * warnings of a parse that ALSO failed, which the old string encoding had
-		 * no room for. */
-		DtFfDiag(&pOut->sDiag,nErr,nErrKept,aErrPos,aErrMsg,nWarn,aWarnPos,aWarnMsg);
-		return -1;
+	if( bHasU ){
+		/* php's `U` publishes the moment through the whole field set: the
+		 * timestamp is spread back over y/m/d/h/i/s at UTC, which is what the
+		 * component reader shows and what the clock is rebuilt from. */
+		Sytm sTm;
+		DtFillSytm(uVal,0,0,&sTm);
+		y = sTm.tm_year; mo = sTm.tm_mon + 1; d = sTm.tm_mday;
+		h = sTm.tm_hour; mi = sTm.tm_min; s = sTm.tm_sec;
+		iOffKind = 1;
+		iOffVal = 0;
 	}
-	if( bPipe ){
-		if( y < 0 ){ y = 1970; }
-		if( mo < 0 ){ mo = 1; }
-		if( d < 0 ){ d = 1; }
-		if( h < 0 && h12 < 0 ){ h = 0; }
-		if( mi < 0 ){ mi = 0; }
-		if( s < 0 ){ s = 0; }
+	/* php's own clean-up: naming ANY part of the clock puts the rest of it at
+	 * zero, so a format that read only the minute is that minute past midnight
+	 * rather than past the current hour. */
+	if( h != DT_UNSET || mi != DT_UNSET || s != DT_UNSET || us != DT_UNSET ){
+		if( h == DT_UNSET ){ h = 0; }
+		if( mi == DT_UNSET ){ mi = 0; }
+		if( s == DT_UNSET ){ s = 0; }
+		if( us == DT_UNSET ){ us = 0; }
 	}
-	{
-		/* remaining unset fields come from "now" in the default offset */
-		sxi64 iLocal = iNow + iDefOff;
-		sxi64 days = DtFloorDiv(iLocal,86400);
-		sxi64 secs = iLocal - days*86400;
-		sxi64 ny;
-		int nmo,nd;
-		DtCivilFromDays(days,&ny,&nmo,&nd);
-		if( y < 0 ){ y = ny; }
-		if( mo < 0 ){ mo = nmo; }
-		if( d < 0 ){ d = nd; }
-		if( h12 >= 0 ){
-			h = (h12 % 12) + ((iMeridiem == 1) ? 12 : 0);
-		}
-		/* php: parsing a time component zeroes the finer unset units */
-		if( h >= 0 ){
-			if( mi < 0 ){ mi = 0; }
-			if( s < 0 ){ s = 0; }
-		}else if( mi >= 0 ){
-			if( s < 0 ){ s = 0; }
-		}
-		if( h < 0 ){ h = secs / 3600; }
-		if( mi < 0 ){ mi = (secs / 60) % 60; }
-		if( s < 0 ){ s = secs % 60; }
-	}
-	if( iWdayFf >= 0 ){
-		/* php's weekday hunt for this parser is the bare NAME's: forward to that
-		 * weekday, and a day that already matches counts. The clock is left
-		 * standing, unlike the string parser's. */
-		sxi64 iDays = DtDaysFromCivil(y,(int)mo,1) + (d - 1);
-		int iDow = DtDowOf(iDays);
-		d += (iWdayFf - iDow + 7) % 7;
-	}
-	/* php validates the RESOLVED fields and warns (parse still succeeds,
-	 * values roll over via civil arithmetic) */
-	if( mo < 1 || mo > 12 || d < 1 || d > DtDaysInMonth(y,(int)mo) ){
+	/* ...and the two validity WARNINGS, each asked only of a whole component
+	 * the scan actually filled, at wherever in the input the scan stopped. */
+	if( h != DT_UNSET && mi != DT_UNSET && s != DT_UNSET
+	 && (h < 0 || h > 23 || mi < 0 || mi > 59 || s < 0 || s > 59) ){
 		if( nWarn < PH7_DT_MAX_WARN ){
-			aWarnPos[nWarn] = nIn;
-			aWarnMsg[nWarn] = "The parsed date was invalid";
-			nWarn++;
-		}
-	}
-	if( h > 24 || mi > 59 || s > 59 ){
-		if( nWarn < PH7_DT_MAX_WARN ){
-			aWarnPos[nWarn] = nIn;
+			aWarnPos[nWarn] = (int)(z - zIn);
 			aWarnMsg[nWarn] = "The parsed time was invalid";
 			nWarn++;
 		}
 	}
-	{
-		sxi32 iUseOff = (iOffKind != 0) ? iOffVal : iDefOff;
-		if( bHasU ){
-			pOut->iTs = uVal;
-			iUseOff = 0;
-			iOffKind = 1;
-		}else{
-			pOut->iTs = DtMakeTs(y,(int)mo,(int)d,(int)h,(int)mi,(int)s,iUseOff);
+	if( y != DT_UNSET && mo != DT_UNSET && d != DT_UNSET
+	 && (mo < 1 || mo > 12 || d < 1 || d > DtDaysInMonth(y,(int)mo)) ){
+		if( nWarn < PH7_DT_MAX_WARN ){
+			aWarnPos[nWarn] = (int)(z - zIn);
+			aWarnMsg[nWarn] = "The parsed date was invalid";
+			nWarn++;
 		}
-		pOut->iOff = iUseOff;
-		pOut->iOffKind = iOffKind;
-		SyMemcpy(zName,pOut->zName,sizeof(pOut->zName));
-		pOut->zName[sizeof(pOut->zName)-1] = 0;
-		pOut->uSec = uSecFF;
-		pOut->bHasUs = bHasUs;
 	}
+	pOut->y = y; pOut->mo = mo; pOut->d = d;
+	pOut->h = h; pOut->mi = mi; pOut->s = s; pOut->us = us;
+	pOut->iOff = iOffVal;
+	pOut->iOffKind = iOffKind;
+	pOut->bWday = bWday;
+	pOut->iWday = iWday;
+	SyMemcpy(zName,pOut->zName,sizeof(pOut->zName));
+	pOut->zName[sizeof(pOut->zName)-1] = 0;
 	DtFfDiag(&pOut->sDiag,nErr,nErrKept,aErrPos,aErrMsg,nWarn,aWarnPos,aWarnMsg);
-	return 0;
+	return nErr > 0 ? -1 : 0;
+}
+/*
+ * php's timelib_fill_holes and timelib_update_ts, the step between the scan
+ * above and the moment a DateTime carries.
+ *
+ * Everything the format never named comes from the current instant -- in the
+ * zone the call was given, because php builds its `now` there -- and the
+ * relative WEEKDAY a textual day left behind moves the resulting date forward
+ * to that weekday, a day that already matches counting as a match.
+ */
+static sxi64 DtFfResolve(const dt_ff_res *pRes,sxi64 iNow,int iNowUs,
+	sxi32 iDefOff,int *piUs)
+{
+	sxi64 y = pRes->y,mo = pRes->mo,d = pRes->d;
+	sxi64 h = pRes->h,mi = pRes->mi,s = pRes->s,us = pRes->us;
+	sxi64 iLocal = iNow + iDefOff;
+	sxi64 days = DtFloorDiv(iLocal,86400);
+	sxi64 secs = iLocal - days*86400;
+	sxi64 ny;
+	int nmo,nd;
+	DtCivilFromDays(days,&ny,&nmo,&nd);
+	if( us == DT_UNSET ){
+		/* php reads the microseconds off the clock only for a format that read
+		 * no part of the moment at all. */
+		us = (y != DT_UNSET || mo != DT_UNSET || d != DT_UNSET
+		   || h != DT_UNSET || mi != DT_UNSET || s != DT_UNSET) ? 0 : iNowUs;
+	}
+	if( y == DT_UNSET ){ y = ny; }
+	if( mo == DT_UNSET ){ mo = nmo; }
+	if( d == DT_UNSET ){ d = nd; }
+	if( h == DT_UNSET ){ h = secs / 3600; }
+	if( mi == DT_UNSET ){ mi = (secs / 60) % 60; }
+	if( s == DT_UNSET ){ s = secs % 60; }
+	if( pRes->bWday ){
+		sxi64 iDays = DtDaysFromCivil(y,(int)mo,1) + (d - 1);
+		int iDow = DtDowOf(iDays);
+		d += (pRes->iWday - iDow + 7) % 7;
+	}
+	*piUs = (int)us;
+	return DtMakeTs(y,(int)mo,(int)d,(int)h,(int)mi,(int)s,
+		pRes->iOffKind != 0 ? pRes->iOff : iDefOff);
 }
 /*
  * ---------------------------------------------------------------------------
@@ -4729,7 +4782,7 @@ static int DtCreateFromFormat(ph7_context *pCtx,int nArg,ph7_value **apArg,const
 	int nZone;
 	sxi32 iZoneOff = 0;
 	const char *zFmt,*zIn;
-	int nFmt,nIn;
+	int nFmt,nIn,iNowUs = 0,iResUs = 0;
 	sxi64 iNowFf = 0;
 	if( pClass == 0 || nArg < 2 ){
 		return PH7_OK;
@@ -4745,15 +4798,15 @@ static int DtCreateFromFormat(ph7_context *pCtx,int nArg,ph7_value **apArg,const
 		}
 		DtZoneOf(apArg[2],&iZoneOff,&zZone,&nZone,&iZoneKind);
 	}
-	DtNowUs(pCtx->pVm,&iNowFf,0);
-	if( DtFromFormat(zFmt,nFmt,zIn,nIn,iNowFf,iZoneOff,&sRes) != 0 ){
+	DtNowUs(pCtx->pVm,&iNowFf,&iNowUs);
+	if( DtFromFormat(zFmt,nFmt,zIn,nIn,&sRes) != 0 ){
 		DtLastErrFf(pVm,&sRes.sDiag);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	DtLastErrFf(pVm,&sRes.sDiag);
-	sState.iTs = sRes.iTs;
-	sState.uSec = sRes.bHasUs ? sRes.uSec : 0;
+	sState.iTs = DtFfResolve(&sRes,iNowFf,iNowUs,iZoneOff,&iResUs);
+	sState.uSec = iResUs;
 	switch( sRes.iOffKind ){
 		case 0:
 			sState.iOff = iZoneOff;
