@@ -3212,6 +3212,14 @@ enum ph7_vm_op {
  * own wording for a bad base — except the removal itself, which belongs to the
  * OUTERMOST subscript alone. */
 #define VM_IDX_CTX_UNSET_BASE 10
+/* A READ-MODIFY-WRITE subscript (`$a[k] += v`, `$a[k]++`, `$a[k] .= v`) — php's
+ * BP_VAR_RW fetch. It needs a writable slot exactly as the plain write context
+ * (1) does, and everything downstream treats it as one; the single thing that
+ * separates them is that php READS the element first, so a missing key WARNS
+ * before it is created. Every level of a chain carries it (`$a['x']['y'] += 1`
+ * warns for both), which is why it is a compile-time context and not a peek at
+ * the instruction that follows. */
+#define VM_IDX_CTX_RMW 11
 #define VM_IDX_IS_UNSET(iP2) ((iP2) == VM_IDX_CTX_UNSET || (iP2) == VM_IDX_CTX_UNSET_BASE)
 #define PH7_MEMBER_READ   0 /* attribute read */
 #define PH7_MEMBER_METHOD 1 /* method-call preparation */

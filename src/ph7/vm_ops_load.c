@@ -1316,7 +1316,14 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 	 * (iP2==0) for base dispatch / the read tail, EXCEPT the dedicated block right after the
 	 * index is popped, which — on a lookup MISS with a reachable base — captures the lvalue
 	 * path (MEMOBJ_AUX_DEFPATH) instead of warning, and exits. Everything else sees iP2. */
-	sxi32 iP2 = (pInstr->iP2 == 9) ? 0 : pInstr->iP2;
+	/* A read-modify-write fetch (VM_IDX_CTX_RMW: `$a[k] += v`, `$a[k]++`) IS the
+	 * write context for everything below — it COW-separates, it vivifies a missing
+	 * key, it refuses the same offset TYPES — so normalize it to 1 here and keep
+	 * the single thing that separates the two: php READ the element first, so a key
+	 * that was not there to read WARNS before it is created. */
+	int bRmwFetch = (pInstr->iP2 == VM_IDX_CTX_RMW);
+	int bRmwMiss = 0;
+	sxi32 iP2 = (pInstr->iP2 == 9) ? 0 : (bRmwFetch ? 1 : pInstr->iP2);
 	pIdx = 0;
 	if( pInstr->iP1 == 0 ){
 		if( !iP2){
@@ -2189,6 +2196,12 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		 * every INTERMEDIATE behind -- `unset($a["y"]["z"])` grew an empty
 		 * $a["y"]. The COW separation the unset context needs happened above and
 		 * does not depend on this insert. */
+		if( bRmwFetch && rc != SXRET_OK ){
+			/* php's read half missed. Record it BEFORE the vivification below
+			 * overwrites rc — the warning is about what was not there to read, and
+			 * it is emitted after the slot exists, exactly as php does it. */
+			bRmwMiss = 1;
+		}
 		if( rc != SXRET_OK && (iP2 == 1 || iP2 == 3) ){
 			/* Create a new empty entry */
 			rc = PH7_HashmapInsert(pMap,pIdx,0);
@@ -2204,14 +2217,15 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 			}
 		}
 	}
-	if( rc != SXRET_OK && pIdx && (iP2 == 2 || iP2 == 0)
+	if( pIdx && (bRmwMiss || (rc != SXRET_OK && (iP2 == 2 || iP2 == 0)))
 	 && (pTos->iFlags & MEMOBJ_HASHMAP)
 	 && !VmIdxFeedsCoalesce(pInstr) ){
 		/* `$a['k'] ?? $d` compiles its LHS as a plain read (iP2 == 0) followed
 		 * by NULLC/NULLC_JMP — php does NOT warn there, so peek ahead and stay
 		 * silent (same guard the magic-accessor read path uses). */
-		/* php warns when a missing key is READ (iP2 == 0) or destructured
-		 * (iP2 == 2). isset/empty/??/unset (iP2 3-6) and write-context
+		/* php warns when a missing key is READ (iP2 == 0), destructured
+		 * (iP2 == 2), or read by the READ half of a read-modify-write (bRmwMiss).
+		 * isset/empty/??/unset (iP2 3-6) and plain write-context
 		 * vivification (iP2 == 1) stay silent, as does a read on a non-array
 		 * base (already diagnosed above). php prints an INT key bare and a
 		 * STRING key quoted, and it decides which one the key IS by the same fold
@@ -2222,7 +2236,20 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		 * is the hashmap's own, so ask it rather than re-derive it. */
 		SyBlob sMsg;
 		SyBlobInit(&sMsg,&pVm->sAllocator);
-		if( PH7_HashmapKeyIsInt(pIdx) ){
+		if( (ph7_hashmap *)pTos->x.pOther == pVm->pGlobal ){
+			/* $GLOBALS is the symbol table, so a key that is not there is a VARIABLE
+			 * that is not there, and php says so: `Undefined global variable $x`,
+			 * with the subscript spelled RAW after the `$` ($GLOBALS[5] reads
+			 * `$5`) rather than folded and quoted the way an array key is. Only the
+			 * LIVE map takes this wording — a copy of $GLOBALS is a by-value
+			 * snapshot (memobj.c) and warns as the ordinary array it is. */
+			SyString sName;
+			if( (pIdx->iFlags & MEMOBJ_STRING) == 0 ){
+				PH7_MemObjToString(pIdx);
+			}
+			SyStringInitFromBuf(&sName,SyBlobData(&pIdx->sBlob),SyBlobLength(&pIdx->sBlob));
+			SyBlobFormat(&sMsg,"Undefined global variable $%z",&sName);
+		}else if( PH7_HashmapKeyIsInt(pIdx) ){
 			if( (pIdx->iFlags & MEMOBJ_INT) == 0 ){
 				PH7_MemObjToInteger(pIdx);
 			}

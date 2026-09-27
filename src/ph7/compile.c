@@ -1829,8 +1829,13 @@ static sxi32 GenStateEmitExprCode(
 				 * unnecessarily; peek-only for arrays (same as iP2=0). */
 				iP2 = 6;
 			}else if( iFlags & EXPR_FLAG_LOAD_IDX_STORE ){
-				/* Create an empty entry when the desired index is not found */
-				iP2 = 1;
+				/* Create an empty entry when the desired index is not found.
+				 * A read-modify-write target (`$a[k] += v`, `$a[k]++`) creates it
+				 * the same way but READS it first, so php warns about the missing
+				 * key before seeding it — the RMW context says which of the two
+				 * this is (VM_IDX_CTX_RMW). The flag rides the whole LHS chain, so
+				 * an intermediate level gets it too, as php's BP_VAR_RW fetch does. */
+				iP2 = (iFlags & EXPR_FLAG_RMW_LOAD) ? VM_IDX_CTX_RMW : 1;
 			}else if( iFlags & EXPR_FLAG_DEFER_ARG ){
 				/* D1 commit 2: deferred by-ref/by-value element arg. Behaves as a read but,
 				 * on a lookup miss, records the lvalue path instead of warning; OP_CALL
