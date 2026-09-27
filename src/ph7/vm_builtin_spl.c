@@ -9611,11 +9611,19 @@ static const char * SfiName(ph7_vm *pVm,ph7_class_instance *pThis,int *pnLen)
  * the path is a real prefix, and the whole name otherwise. getFilename(),
  * getBasename() and getExtension() all start here.
  */
+/* A GlobIterator's path comes from its STREAM rather than from its slot
+ * (defined with the directory machinery below); 0 for any other object. */
+static const char * SplDirGlobPath(ph7_vm *pVm,ph7_class_instance *pThis,int *pnLen);
 static const char * SfiTail(ph7_vm *pVm,ph7_class_instance *pThis,int *pnLen)
 {
 	int nName = 0,nPath = 0;
 	const char *zName = SfiName(pVm,pThis,&nName);
-	SfiStr(pThis,SFI_P,&nPath);
+	/* The name was JOINED from the walk's path, which for a glob handle is the
+	 * current match's directory and not the `glob://pattern` in the slot --
+	 * measuring against the slot left the whole joined name here. */
+	if( SplDirGlobPath(pVm,pThis,&nPath) == 0 ){
+		SfiStr(pThis,SFI_P,&nPath);
+	}
 	if( nPath > 0 && nPath < nName ){
 		*pnLen = nName - (nPath + 1);
 		return &zName[nPath + 1];
@@ -9750,13 +9758,20 @@ static int vm_builtin_SplFileInfo_construct(ph7_context *pCtx,int nArg,ph7_value
 }
 static int vm_builtin_SplFileInfo_getPath(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	sxi32 rcChk;
 	int nPath = 0;
-	const char *zPath = SfiStr(PH7_ContextThis(pCtx),SFI_P,&nPath);
+	const char *zPath;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	if( !SfoChecked(pCtx,&rcChk) ){
 		return rcChk;
+	}
+	/* A GlobIterator answers the directory of the CURRENT match (see
+	 * SplDirGlobPath): the pattern in its slot names no directory. */
+	zPath = SplDirGlobPath(pCtx->pVm,pThis,&nPath);
+	if( zPath == 0 ){
+		zPath = SfiStr(pThis,SFI_P,&nPath);
 	}
 	ph7_result_string(pCtx,zPath,nPath);
 	return PH7_OK;
@@ -10356,10 +10371,22 @@ static sxi32 SfiFillDebug(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
 	if( bDir ){
 		ph7_value sKey,sVal;
 		const char *zSub;
+		int nSlot = 0;
+		const char *zSlot = SfiStr(pThis,SFI_P,&nSlot);
 		PH7_MemObjInitFromString(pVm,&sKey,0);
 		PH7_MemObjStringAppend(&sKey,"\0DirectoryIterator\0glob",
 			sizeof("\0DirectoryIterator\0glob")-1);
-		PH7_MemObjInitFromBool(pVm,&sVal,0);
+		/* php's own test, on the slot rather than on the stream: the whole
+		 * `glob://pattern` when the path carries that prefix, and FALSE for an
+		 * ordinary directory. A GlobIterator's constructor puts the prefix on
+		 * whether or not the caller wrote it, so this is always the pattern. */
+		if( nSlot >= (int)sizeof("glob://")-1
+		 && SyMemcmp(zSlot,"glob://",sizeof("glob://")-1) == 0 ){
+			PH7_MemObjInitFromString(pVm,&sVal,0);
+			PH7_MemObjStringAppend(&sVal,zSlot,(sxu32)nSlot);
+		}else{
+			PH7_MemObjInitFromBool(pVm,&sVal,0);
+		}
 		ph7_array_add_elem(pOut,&sKey,&sVal);
 		PH7_MemObjRelease(&sKey);
 		PH7_MemObjRelease(&sVal);
@@ -10471,13 +10498,15 @@ static sxi32 VmInstallSplFileInfo(ph7_vm *pVm)
 		  vm_builtin_SplFileInfo_getFileInfo },
 		{ "getPathInfo",   PH7_MOD_PUBLIC, "?string $class = null", "@?SplFileInfo",
 		  vm_builtin_SplFileInfo_getPathInfo },
-		{ "setInfoClass",  PH7_MOD_PUBLIC, "~string $class = SplFileInfo::class", "@void",
-		  vm_builtin_SplFileInfo_setInfoClass },
+		/* spl_directory.stub.php's order, which is what every method-enumeration
+		 * surface reports: openFile, setFileClass, setInfoClass. */
 		{ "openFile",      PH7_MOD_PUBLIC,
 		  "string $mode = \"r\", bool $useIncludePath = false, $context = null",
 		  "@SplFileObject", vm_builtin_SplFileInfo_openFile },
 		{ "setFileClass",  PH7_MOD_PUBLIC, "~string $class = SplFileObject::class", "@void",
 		  vm_builtin_SplFileInfo_setFileClass },
+		{ "setInfoClass",  PH7_MOD_PUBLIC, "~string $class = SplFileInfo::class", "@void",
+		  vm_builtin_SplFileInfo_setInfoClass },
 		{ "__toString",    PH7_MOD_PUBLIC, "", "string", vm_builtin_SplFileInfo_getPathname },
 		{ "__debugInfo",   PH7_MOD_PUBLIC, "", "@array", vm_builtin_SplFileInfo_debugInfo },
 		/* php does NOT mark this one tentative -- it is the only method here that
@@ -10585,6 +10614,39 @@ static VmDirHandle * SplDirFind(ph7_vm *pVm,ph7_class_instance *pThis)
 	}
 	pEntry = SyHashGet(&pVm->hDirHandle,(const void *)&pThis,sizeof(void *));
 	return pEntry ? (VmDirHandle *)pEntry->pUserData : 0;
+}
+/* Is this a GlobIterator? The CLASS question, asked where there may be no
+ * handle to ask -- an instance whose parent constructor never ran has one. */
+static int SplGlobIs(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_class *pGlob;
+	if( pThis == 0 ){
+		return 0;
+	}
+	pGlob = PH7_VmExtractClass(pVm,"GlobIterator",sizeof("GlobIterator")-1,FALSE,0);
+	return pGlob && PH7_VmInstanceOf(pThis->pClass,pGlob) ? 1 : 0;
+}
+/*
+ * php's spl_filesystem_object_get_path for a GLOB handle: the directory of the
+ * match the last read handed out, which the STREAM tracks and the object does
+ * not. It moves with the walk -- `glob://a/` + `*` + `/` + `*.txt` reports `a/sub1`, then
+ * `a/sub2` -- it is the EMPTY string for a match with no slash in it, and it is
+ * cleared when the walk runs out, which is what makes getPathname() answer ""
+ * past the end.
+ *
+ * Answers 0 for any other handle, whose path is the slot the constructor wrote.
+ * Asked through SplDirFind() rather than SplDirState(): a handle that is not
+ * open has no current match to have a directory OF, and GlobIterator is
+ * uncloneable, so the re-open SplDirState() exists for cannot arise here.
+ */
+static const char * SplDirGlobPath(ph7_vm *pVm,ph7_class_instance *pThis,int *pnLen)
+{
+	VmDirHandle *pH = SplDirFind(pVm,pThis);
+	*pnLen = 0;
+	if( pH == 0 || pH->pStream == 0 || !PH7_GlobStreamIs(pH->pStream) ){
+		return 0;
+	}
+	return PH7_GlobStreamPath(pH->pHandle,pnLen);
 }
 /* Close the handle this instance owns, if any. The class's xRelease, and the
  * first half of a re-open. */
@@ -10787,15 +10849,23 @@ static const char * SplDirName(ph7_vm *pVm,ph7_class_instance *pThis,int *pnLen)
 		*pnLen = nName;
 		return zName;
 	}
-	zPath = SfiStr(pThis,SFI_P,&nPath);
-	if( nPath < 1 ){
-		*pnLen = 0;
-		return "";
+	/* A glob handle's path is the current match's directory, not the slot --
+	 * the slot holds the whole `glob://pattern`, which is not a directory at
+	 * all. php's join then has a branch PHL never needed: when the path is
+	 * EMPTY the name is the entry ALONE, which is what makes
+	 * `new GlobIterator('d')` answer `d` for getPathname() rather than `/d`. */
+	zPath = SplDirGlobPath(pVm,pThis,&nPath);
+	if( zPath == 0 ){
+		zPath = SfiStr(pThis,SFI_P,&nPath);
+		if( nPath < 1 ){
+			*pnLen = 0;
+			return "";
+		}
 	}
 	SyBlobInit(&sName,&pVm->sAllocator);
-	SyBlobAppend(&sName,zPath,(sxu32)nPath);
-	{
+	if( nPath > 0 ){
 		char cSlash = SplDirSlash(PH7_NativeAttrInt(pThis,SDI_F));
+		SyBlobAppend(&sName,zPath,(sxu32)nPath);
 		SyBlobAppend(&sName,(const void *)&cSlash,sizeof(char));
 	}
 	zEntry = SfiStr(pThis,SDI_E,&nEntry);
@@ -10810,8 +10880,15 @@ static const char * SplDirName(ph7_vm *pVm,ph7_class_instance *pThis,int *pnLen)
 static VmDirHandle * SplDirChecked(ph7_context *pCtx,sxi32 *pRc)
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
-	VmDirHandle *pH = SplDirState(pCtx->pVm,pThis);
-	*pRc = PH7_OK;
+	VmDirHandle *pH;
+	/* php's `check` object handlers run BEFORE the method does, so a
+	 * GlobIterator whose parent constructor never ran refuses with THAT
+	 * sentence rather than this one -- and refuses methods this check would
+	 * have let through. A class without those handlers passes straight by. */
+	if( !SfoChecked(pCtx,pRc) ){
+		return 0;
+	}
+	pH = SplDirState(pCtx->pVm,pThis);
 	if( pH == 0 ){
 		*pRc = PH7_VmThrowException(pCtx,"Error","Object not initialized");
 	}
@@ -10823,20 +10900,20 @@ static VmDirHandle * SplDirChecked(ph7_context *pCtx,sxi32 *pRc)
  * carrying the OPEN's own errno text (php promotes the opendir warning, so the
  * message is the warning's, prefixed with the constructor that raised it).
  */
-static int SplDirConstruct(ph7_context *pCtx,const char *zClass,int nArg,ph7_value **apArg,
-	sxi64 iFlags)
+static int SplDirConstructVal(ph7_context *pCtx,const char *zClass,const char *zArg,
+	ph7_value *pPath,sxi64 iFlags)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	const char *zPath;
 	int nPath = 0;
-	if( pThis == 0 || nArg < 1 ){
+	if( pThis == 0 ){
 		return PH7_OK;
 	}
-	zPath = ph7_value_to_string(apArg[0],&nPath);
+	zPath = ph7_value_to_string(pPath,&nPath);
 	if( nPath < 1 ){
 		return PH7_VmThrowException(pCtx,"ValueError",
-			"%s::__construct(): Argument #1 ($directory) must not be empty",zClass);
+			"%s::__construct(): Argument #1 ($%s) must not be empty",zClass,zArg);
 	}
 	if( SplDirFind(pVm,pThis) ){
 		return PH7_VmThrowException(pCtx,"Error","Directory object is already initialized");
@@ -10849,6 +10926,16 @@ static int SplDirConstruct(ph7_context *pCtx,const char *zClass,int nArg,ph7_val
 	}
 	SplDirReadSkip(pVm,pThis,SplDirFind(pVm,pThis));
 	return PH7_OK;
+}
+/* The three directory classes take their path straight from the argument; only
+ * GlobIterator rewrites it first, which is why the open takes a VALUE. */
+static int SplDirConstruct(ph7_context *pCtx,const char *zClass,int nArg,ph7_value **apArg,
+	sxi64 iFlags)
+{
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	return SplDirConstructVal(pCtx,zClass,"directory",apArg[0],iFlags);
 }
 /* DirectoryIterator::__construct(string $directory) — php's flags for this one
  * are KEY_AS_PATHNAME|CURRENT_AS_SELF, and it takes no flags argument. */
@@ -10898,9 +10985,14 @@ static int vm_builtin_FilesystemIterator_rewind(ph7_context *pCtx,int nArg,ph7_v
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
-	VmDirHandle *pH = SplDirState(pVm,pThis);
+	VmDirHandle *pH;
+	sxi32 rcChk;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
+	pH = SplDirState(pVm,pThis);
 	PH7_NativeSetAttrInt(pVm,pThis,SDI_I,0);
 	if( pH && pH->pStream->xRewindDir ){
 		pH->pStream->xRewindDir(pH->pHandle);
@@ -11108,8 +11200,12 @@ static int vm_builtin_FilesystemIterator_key(ph7_context *pCtx,int nArg,ph7_valu
 	sxi64 iFlags = PH7_NativeAttrInt(pThis,SDI_F);
 	int nOut = 0;
 	const char *zOut;
+	sxi32 rcChk;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
 	if( (iFlags & SDI_KEY_MODE_MASK) == SDI_KEY_AS_FILENAME ){
 		zOut = SfiStr(pThis,SDI_E,&nOut);
 		ph7_result_string(pCtx,zOut,nOut);
@@ -11127,8 +11223,12 @@ static int vm_builtin_FilesystemIterator_current(ph7_context *pCtx,int nArg,ph7_
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	sxi64 iMode = PH7_NativeAttrInt(pThis,SDI_F) & SDI_CURRENT_MODE_MASK;
+	sxi32 rcChk;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
 	if( iMode == SDI_CURRENT_AS_PATHNAME || iMode == SDI_CURRENT_AS_FILEINFO ){
 		if( SplDirState(pVm,pThis) == 0 ){
 			return PH7_VmThrowException(pCtx,"Error","Object not initialized");
@@ -11153,7 +11253,15 @@ static int vm_builtin_FilesystemIterator_current(ph7_context *pCtx,int nArg,ph7_
 		if( rc != PH7_OK ){
 			return rc;
 		}
-		zDir = SfiStr(pThis,SFI_P,&nDir);
+		/* The child's PATH is the directory the walk is in, which for a glob
+		 * handle is the current match's own -- the slot holds the whole
+		 * `glob://pattern`, and handing THAT over made every SplFileInfo the
+		 * iterator produced answer the pattern for getPath() and the joined
+		 * name for getFilename(). */
+		zDir = SplDirGlobPath(pVm,pThis,&nDir);
+		if( zDir == 0 ){
+			zDir = SfiStr(pThis,SFI_P,&nDir);
+		}
 		zName = SfiName(pVm,pThis,&nName);
 		return SfiMakeInfoEx(pCtx,pClass,zName,nName,zDir,nDir);
 	}
@@ -11164,16 +11272,24 @@ static int vm_builtin_FilesystemIterator_current(ph7_context *pCtx,int nArg,ph7_
  * everything else in the word is engine state the class keeps to itself. */
 static int vm_builtin_FilesystemIterator_getFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	sxi32 rcChk;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
 	ph7_result_int64(pCtx,PH7_NativeAttrInt(PH7_ContextThis(pCtx),SDI_F) & SDI_FLAGS_MASK);
 	return PH7_OK;
 }
 static int vm_builtin_FilesystemIterator_setFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi32 rcChk;
 	sxi64 iFlags = PH7_NativeAttrInt(pThis,SDI_F);
 	sxi64 iNew = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
 	PH7_NativeSetAttrInt(pCtx->pVm,pThis,SDI_F,(iFlags & ~(sxi64)SDI_FLAGS_MASK)
 		| (iNew & (sxi64)SDI_FLAGS_MASK));
 	return PH7_OK;
@@ -11318,7 +11434,73 @@ static int vm_builtin_RecursiveDirectoryIterator_getSubPathname(ph7_context *pCt
 	return PH7_OK;
 }
 /*
- * The three declarations. Method ORDER, signatures and tentative return types
+ * GlobIterator::__construct(string $pattern, int $flags = 0)
+ *
+ * php's DIT_CTOR_GLOB: the `glob://` prefix goes on when the caller did not
+ * write one, and the whole `glob://pattern` is what the path slot keeps -- so
+ * the `glob` debug key shows it, and getPath() has to ask the STREAM instead
+ * (SplDirGlobPath). The default flags are 0, which is
+ * KEY_AS_PATHNAME|CURRENT_AS_FILEINFO with SKIP_DOTS OFF where
+ * FilesystemIterator has it on: `glob('d/.*')` yields `.` and `..` through the
+ * iterator exactly as it does through the function.
+ */
+static int vm_builtin_GlobIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const char *zPat;
+	int nPat = 0;
+	ph7_value sUri;
+	sxi32 rc;
+	if( PH7_ContextThis(pCtx) == 0 || nArg < 1 ){
+		return PH7_OK;
+	}
+	zPat = ph7_value_to_string(apArg[0],&nPat);
+	if( nPat < 1 ){
+		/* php's empty check runs on the ARGUMENT, before the prefix goes on. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"GlobIterator::__construct(): Argument #1 ($pattern) must not be empty");
+	}
+	PH7_MemObjInitFromString(pVm,&sUri,0);
+	/* Both of php's prefix tests are CASE-SENSITIVE, where the wrapper LOOKUP
+	 * that follows is not: `GLOB://x` is prefixed again, so the pattern the
+	 * device is finally handed still spells `GLOB://x` and matches nothing --
+	 * and the debug key shows the doubled string. */
+	if( nPat < (int)sizeof("glob://")-1
+	 || SyMemcmp(zPat,"glob://",sizeof("glob://")-1) != 0 ){
+		PH7_MemObjStringAppend(&sUri,"glob://",sizeof("glob://")-1);
+	}
+	PH7_MemObjStringAppend(&sUri,zPat,(sxu32)nPat);
+	rc = SplDirConstructVal(pCtx,"GlobIterator","pattern",&sUri,
+		SplDirFlagArg(nArg,apArg,SDI_KEY_AS_PATHNAME|SDI_CURRENT_AS_FILEINFO));
+	PH7_MemObjRelease(&sUri);
+	return rc;
+}
+/*
+ * GlobIterator::count(): php's php_glob_stream_get_count, which is the number
+ * of MATCHES and does not move with the walk -- a pattern ending in a slash
+ * counts its directories and yields none of them, because their entry is the
+ * empty string a walk reads as the end.
+ */
+static int vm_builtin_GlobIterator_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	VmDirHandle *pH;
+	sxi32 rcChk;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
+	pH = SplDirFind(pCtx->pVm,pThis);
+	if( pH == 0 || pH->pStream == 0 || !PH7_GlobStreamIs(pH->pStream) ){
+		/* php's own "should not happen", raised as a fatal there. */
+		return PH7_VmThrowException(pCtx,"Error","GlobIterator lost glob state");
+	}
+	ph7_result_int64(pCtx,PH7_GlobStreamCount(pH->pHandle));
+	return PH7_OK;
+}
+/*
+ * The four declarations. Method ORDER, signatures and tentative return types
  * are spl_directory.stub.php's; the four slots are php's `u.dir` arm and carry
  * PH7_MOD_HIDDEN because php declares no property at all here. Each class
  * restates NOSERIALIZE and the presentation hook: a native subclass inherits
@@ -11395,6 +11577,13 @@ static sxi32 VmInstallSplDirIterators(ph7_vm *pVm)
 		{ "getSubPathname", PH7_MOD_PUBLIC, "", "@string",
 		  vm_builtin_RecursiveDirectoryIterator_getSubPathname },
 	};
+	static const PH7_NativeMethodDef aGlobMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC,
+		  "string $pattern, int $flags = FilesystemIterator::KEY_AS_PATHNAME | "
+		  "FilesystemIterator::CURRENT_AS_FILEINFO", 0,
+		  vm_builtin_GlobIterator_construct },
+		{ "count",       PH7_MOD_PUBLIC, "", "@int", vm_builtin_GlobIterator_count },
+	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		{ "DirectoryIterator", "SplFileInfo", "SeekableIterator", PH7_CLASS_NOSERIALIZE,
 		  aDirMethod, SX_ARRAYSIZE(aDirMethod), 0, 0,
@@ -11405,6 +11594,15 @@ static sxi32 VmInstallSplDirIterators(ph7_vm *pVm)
 		{ "RecursiveDirectoryIterator", "FilesystemIterator", "RecursiveIterator",
 		  PH7_CLASS_NOSERIALIZE,
 		  aRdiMethod, SX_ARRAYSIZE(aRdiMethod), 0, 0,
+		  0, 0, SplDirClose, 0, SfiPresent },
+		/* php gives this one the `check` object handlers SplFileObject has, so it
+		 * is UNCLONEABLE and refuses every method -- inherited ones included --
+		 * on an instance whose parent constructor never ran (SfoIsChecked). A
+		 * native class inherits neither the refusals nor the hooks (rule 29), so
+		 * both are restated here. */
+		{ "GlobIterator", "FilesystemIterator", "Countable",
+		  PH7_CLASS_NOSERIALIZE|PH7_CLASS_NOCLONE,
+		  aGlobMethod, SX_ARRAYSIZE(aGlobMethod), 0, 0,
 		  0, 0, SplDirClose, 0, SfiPresent },
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
@@ -11474,7 +11672,10 @@ static io_private * SfoDev(ph7_class_instance *pThis)
 }
 /* Is this instance one of the classes php gives the `check` handlers to? Asked
  * as a CLASS question for the same reason SplDirIs() is: a user class may
- * declare anything it likes. */
+ * declare anything it likes. php gives them to TWO: SplFileObject and
+ * GlobIterator, which is why an unconstructed GlobIterator refuses every method
+ * with this sentence where an unconstructed FilesystemIterator answers
+ * `Object not initialized` -- and why neither of the two can be cloned. */
 static int SfoIsChecked(ph7_vm *pVm,ph7_class_instance *pThis)
 {
 	ph7_class *pFile;
@@ -11482,18 +11683,43 @@ static int SfoIsChecked(ph7_vm *pVm,ph7_class_instance *pThis)
 		return 0;
 	}
 	pFile = PH7_VmExtractClass(pVm,"SplFileObject",sizeof("SplFileObject")-1,FALSE,0);
-	return pFile && PH7_VmInstanceOf(pThis->pClass,pFile);
+	if( pFile && PH7_VmInstanceOf(pThis->pClass,pFile) ){
+		return 1;
+	}
+	pFile = PH7_VmExtractClass(pVm,"GlobIterator",sizeof("GlobIterator")-1,FALSE,0);
+	return pFile && PH7_VmInstanceOf(pThis->pClass,pFile) ? 1 : 0;
 }
 /*
  * php's spl_filesystem_object_get_method_check, as a guard the bodies call:
  * an instance of a `check` class with nothing open answers NO method at all.
  * Answers 0 when the caller must return *pRc.
  */
+/*
+ * php's `u.file.stream == NULL && orig_path == NULL`. The two classes that
+ * carry the check handlers fill different halves of it. SplFileObject has an
+ * open BYTE stream -- and NO orig_path when its open FAILED, which is why a
+ * subclass that catches its own parent constructor's exception is left
+ * refusing every method. GlobIterator has a path instead: the whole
+ * `glob://pattern`, written by the open whether the pattern matched anything
+ * or not, so an iterator over nothing is still a working object.
+ */
+static int SfoCheckReady(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	int nPath = 0;
+	if( SfoDev(pThis) != 0 ){
+		return 1;
+	}
+	if( !SplGlobIs(pVm,pThis) ){
+		return 0;
+	}
+	SfiStr(pThis,SFI_P,&nPath);
+	return nPath > 0;
+}
 static int SfoChecked(ph7_context *pCtx,sxi32 *pRc)
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	*pRc = PH7_OK;
-	if( SfoIsChecked(pCtx->pVm,pThis) && SfoDev(pThis) == 0 ){
+	if( SfoIsChecked(pCtx->pVm,pThis) && !SfoCheckReady(pCtx->pVm,pThis) ){
 		*pRc = PH7_VmThrowException(pCtx,"Error",
 			"The parent constructor was not called: the object is in an invalid state");
 		return 0;

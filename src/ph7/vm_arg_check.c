@@ -1626,6 +1626,7 @@ static sxu32 VmBuiltinPathMask(SyString *pName)
 		{ "DirectoryIterator::__construct",          30, 1u<<0 },
 		{ "FilesystemIterator::__construct",         31, 1u<<0 },
 		{ "RecursiveDirectoryIterator::__construct", 39, 1u<<0 },
+		{ "GlobIterator::__construct",                25, 1u<<0 },
 	};
 	sxu32 i;
 	if( pName == 0 || pName->zString == 0 || pName->nByte == 0 ){
