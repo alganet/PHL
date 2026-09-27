@@ -56,6 +56,11 @@ $g->validateOnParse = true;
 $g->loadXML('<r/>');
 $h = new DOMDocument;
 $h->loadXML($warn);
+// The cleanup goes OUTSIDE the handler: this test's diagnostics are its
+// subject, so its handler cannot screen on error_reporting() (the in-process
+// corpus does not promise an ambient value), and an `@` under a handler that
+// records everything prints whatever the unlink happens to say.
+restore_error_handler();
 @unlink($file);
 --EXPECT--
 options=0

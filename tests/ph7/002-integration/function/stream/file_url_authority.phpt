@@ -19,6 +19,9 @@ $fu_name = 'phl_fileurl_' . getmypid() . '.txt';
 $fu_path = $fu_dir . '/' . $fu_name;
 file_put_contents($fu_path, "OK\n");
 /* The temp path carries a pid; mask it so the expectation is the SHAPE. */
+/* No error_reporting() screen: the `@` on the calls below is this test's own
+ * SUBJECT -- it suppresses the display while the handler records the text.
+ * The cleanup `@unlink` is taken out from under the handler instead. */
 set_error_handler(function ($n, $s) use ($fu_path, $fu_name) {
     echo '  ERR[', $n, '] ',
         str_replace([$fu_path, ltrim($fu_path, '/'), $fu_name], '<P>', $s), "\n";
@@ -44,6 +47,7 @@ chdir($fu_dir);
 var_dump(@file_get_contents('file://' . $fu_name));
 var_dump(@file_get_contents($fu_name));
 
+restore_error_handler();
 @unlink($fu_path);
 ?>
 --EXPECT--

@@ -104,6 +104,9 @@ foreach (['loadHTML', 'loadHTMLFile', 'saveHTMLFile'] as $m) {
 var_dump($w->saveHTMLFile("$dir/no-such-dir/x.html"));
 
 array_map('unlink', glob("$dir/*"));
+// Outside the handler: an `@`-suppressed cleanup under a handler that records
+// everything prints whatever it happens to say (see dom_document_load_save_file).
+restore_error_handler();
 @rmdir($dir);
 --EXPECT--
 bool(true)

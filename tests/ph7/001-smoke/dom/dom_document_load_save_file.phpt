@@ -31,8 +31,14 @@ $hide = function ($s) use (&$dir) {
     }
     return str_ireplace($names, 'DIR', $s);
 };
-set_error_handler(function ($no, $str) use ($hide) { echo "diag $no: ", $hide($str), "\n"; return true; });
+// The scaffolding runs BEFORE the handler is installed: an `@`-suppressed call
+// under a handler that records everything prints whatever it happens to say, and
+// a directory left behind by an interrupted run is enough to make it say
+// something (that is what turned session_cookie_params red on the Windows gate).
+// Screening on error_reporting() would work in a subprocess, but the smoke
+// corpus shares ONE interpreter and does not promise an ambient value.
 @mkdir($dir);
+set_error_handler(function ($no, $str) use ($hide) { echo "diag $no: ", $hide($str), "\n"; return true; });
 $in = "$dir/in.xml";
 file_put_contents($in, "<?xml version=\"1.0\" encoding=\"US-ASCII\"?>\n<r a=\"1\">\n  <x>t</x>\n  <e/>\n</r>\n");
 
@@ -106,6 +112,7 @@ libxml_clear_errors();
 libxml_use_internal_errors(false);
 
 array_map('unlink', glob("$dir/*"));
+restore_error_handler();
 @rmdir($dir);
 --EXPECT--
 bool(true)

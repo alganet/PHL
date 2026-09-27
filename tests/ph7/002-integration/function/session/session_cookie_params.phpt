@@ -10,6 +10,13 @@ PH7 / PHP: session_get_cookie_params() / session_set_cookie_params() and the sev
 $log = [];
 $warn = [];
 set_error_handler(function ($no, $msg) use (&$warn) {
+    // The `@`-suppressed scaffolding below (the save-path mkdir) must not land
+    // here: a directory left behind by an interrupted run made this test red on
+    // the Windows gate with an "mkdir(): File exists" nobody asked for. Screening
+    // is safe in THIS corpus because each test is its own process, so the ambient
+    // error_reporting is the engine default; the smoke corpus shares one
+    // interpreter and takes the scaffolding out from under the handler instead.
+    if (!(error_reporting() & $no)) { return true; }
     // php names where the session started / the output began; PHL has no record of
     // either position yet (headers_sent()'s out-params).
     $warn[] = preg_replace('/ \((started|sent) from .*$/', '', $msg);
