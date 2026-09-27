@@ -1622,8 +1622,13 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 				z = &zd[4];
 			}else if( !bT && n >= 4 ){
 				/* php's bare year4, which does NOT count as a date: the month, the
-				 * day and the clock all stay the base moment's. */
+				 * day and the clock all stay the base moment's -- the MICROSECONDS
+				 * excepted. The run reached this branch through php's have_time
+				 * bookkeeping, which zeroes the sub-second field on the way past,
+				 * so `new DateTime('7609')` is the current time of day on that
+				 * year with nothing under the second. */
 				p->y = (sxi64)(DTNUM2(0)*100 + DTNUM2(2));
+				p->us = 0;
 				z = &zd[4];
 			}else if( bT ){
 				/* php's `t` + an HOUR alone: `t9` is 09:00 where a bare `9` is

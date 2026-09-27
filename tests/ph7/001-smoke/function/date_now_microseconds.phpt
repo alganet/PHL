@@ -41,6 +41,12 @@ var_dump((new DateTime('@1600000000'))->format('u'));
 /* php's createFromFormat fills the fields its format never named from the
  * current clock, but its microseconds start at zero */
 var_dump(DateTime::createFromFormat('Y-m-d', '2020-01-01')->format('u'));
+/* a BARE four-digit run php reads as a year keeps the current time of day and
+ * still answers nothing under the second: the run reached that reading through
+ * php's have_time bookkeeping, which zeroes the sub-second field on the way */
+var_dump((new DateTime('7609'))->format('u'));
+var_dump((new DateTime('9999 +1 day'))->format('u'));
+var_dump((new DateTime('7609'))->format('Y'));
 /* the whole point: two moments a program measures differ by a real fraction */
 $a = new DateTime();
 usleep(2000);
@@ -62,5 +68,8 @@ string(6) "000000"
 string(6) "000000"
 string(6) "000000"
 string(6) "000000"
+string(6) "000000"
+string(6) "000000"
+string(4) "7609"
 bool(true)
 bool(true)
