@@ -1277,20 +1277,92 @@ static sxi32 VmInstallDirectory(ph7_vm *pVm)
 }
 /*
  * ---------------------------------------------------------------------------
- * php's two attribute classes.
+ * php's attribute classes.
  *
- * Both carry an ATTRIBUTE of their own — `#[Attribute(Attribute::TARGET_CLASS)]`
- * on Attribute, a target mask on Deprecated — and those records are load-bearing
- * rather than decorative: the engine reads them to decide whether a user's
- * `#[Deprecated]` may sit where it does, and ReflectionAttribute answers them.
- * A compiled attribute holds its argument as byte-code, so this is what
+ * Each carries an ATTRIBUTE of its own — `#[Attribute(Attribute::TARGET_CLASS)]`
+ * on Attribute, a target mask on every other one — and those records are
+ * load-bearing rather than decorative: the engine reads them to decide whether a
+ * user's `#[Deprecated]` may sit where it does, and ReflectionAttribute answers
+ * them. A compiled attribute holds its argument as byte-code, so this is what
  * `PH7_NativeClassAddAttribute()` exists for (rule 11's next unused corner,
  * exercised here): the argument rides as a literal.
  *
  * php's Deprecated mask is 87 — TARGET_CLASS|FUNCTION|METHOD|CLASS_CONSTANT|
  * CONSTANT — where the chunk wrote 86 and left the CLASS bit out.
+ *
+ * Three of them declare NOTHING but their own mask, because what they mean is a
+ * question something else asks: `#[AllowDynamicProperties]` is read by the
+ * dynamic-property decision at the write site, `#[SensitiveParameter]` by the
+ * backtrace builder, `#[ReturnTypeWillChange]` by php's tentative-return-type
+ * check (which the §10 non-deprecated policy removed, so nothing consults it
+ * here). They still have to EXIST: a program that spells one and then asks
+ * `getAttributes()[0]->newInstance()` gets php's object, not
+ * `Attribute class "AllowDynamicProperties" not found`.
+ *
+ * `SensitiveParameterValue` is not an attribute at all — it is the box php puts
+ * a redacted argument in — but it belongs to the same feature and to the same
+ * declaration site.
  * ---------------------------------------------------------------------------
  */
+/* php declares `public function __construct()` on the three marker attributes, so
+ * Reflection reports one and `new AllowDynamicProperties(1)` is an
+ * ArgumentCountError. The body has nothing to do: the object carries no state. */
+static int vm_builtin_AttrMarker_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return PH7_OK;
+}
+/* SensitiveParameterValue::__construct(mixed $value) / getValue() / __debugInfo() */
+#define SPV_SLOT "value"
+static int vm_builtin_SensitiveParameterValue_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	if( pThis && nArg > 0 ){
+		PH7_NativeSetProp(pCtx->pVm,pThis,SPV_SLOT,sizeof(SPV_SLOT)-1,apArg[0]);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_SensitiveParameterValue_getValue(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pVal = pThis ? PH7_NativeAttr(pThis,SPV_SLOT) : 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pVal ){
+		ph7_result_value(pCtx,pVal);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_SensitiveParameterValue_debugInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pOut = ph7_context_new_array(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pOut == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	ph7_result_value(pCtx,pOut);
+	return PH7_OK;
+}
+/*
+ * php gives the class a `get_properties_for` handler that answers NULL for every
+ * purpose, so the box shows nothing to var_export, the `(array)` cast or
+ * json_encode either — not just to var_dump's `__debugInfo()`. The point of the
+ * class is that the value it holds does not leak onto a display surface.
+ */
+static sxi32 VmPresentSensitiveParameterValue(ph7_vm *pVm,ph7_class_instance *pThis,
+	ph7_value *pOut,int bDebug)
+{
+	SXUNUSED(pVm);
+	SXUNUSED(pThis);
+	SXUNUSED(pOut);
+	SXUNUSED(bDebug);
+	return SXRET_OK;   /* the empty shape, both handlers */
+}
 static int vm_builtin_Attribute_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
@@ -1351,6 +1423,22 @@ static sxi32 VmInstallAttributes(ph7_vm *pVm)
 		{ "__construct", PH7_MOD_PUBLIC, "?string $message = null, ?string $since = null", 0,
 		  vm_builtin_Deprecated_construct },
 	};
+	/* The three markers: one argless constructor each and no state at all. */
+	static const PH7_NativeMethodDef aMarkerMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "", 0, vm_builtin_AttrMarker_construct },
+	};
+	static const PH7_NativePropDef aSpvProp[] = {
+		{ SPV_SLOT, PH7_MOD_PRIVATE|PH7_MOD_READONLY,
+		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "mixed" },
+	};
+	static const PH7_NativeMethodDef aSpvMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "mixed $value", 0,
+		  vm_builtin_SensitiveParameterValue_construct },
+		{ "getValue",    PH7_MOD_PUBLIC, "", "mixed",
+		  vm_builtin_SensitiveParameterValue_getValue },
+		{ "__debugInfo", PH7_MOD_PUBLIC, "", "array",
+		  vm_builtin_SensitiveParameterValue_debugInfo },
+	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		{ "Attribute", 0, 0, PH7_CLASS_FINAL,
 		  aAttrMethod, SX_ARRAYSIZE(aAttrMethod), aAttrConst, SX_ARRAYSIZE(aAttrConst),
@@ -1358,23 +1446,43 @@ static sxi32 VmInstallAttributes(ph7_vm *pVm)
 		{ "Deprecated", 0, 0, PH7_CLASS_FINAL,
 		  aDepMethod, SX_ARRAYSIZE(aDepMethod), 0, 0,
 		  aDepProp, SX_ARRAYSIZE(aDepProp), 0, 0, 0 },
+		{ "AllowDynamicProperties", 0, 0, PH7_CLASS_FINAL,
+		  aMarkerMethod, SX_ARRAYSIZE(aMarkerMethod), 0, 0, 0, 0, 0, 0, 0 },
+		{ "SensitiveParameter", 0, 0, PH7_CLASS_FINAL,
+		  aMarkerMethod, SX_ARRAYSIZE(aMarkerMethod), 0, 0, 0, 0, 0, 0, 0 },
+		{ "ReturnTypeWillChange", 0, 0, PH7_CLASS_FINAL,
+		  aMarkerMethod, SX_ARRAYSIZE(aMarkerMethod), 0, 0, 0, 0, 0, 0, 0 },
+		/* php refuses BOTH directions for the box (ZEND_ACC_NOT_SERIALIZABLE), which
+		 * is the whole point: a redacted value must not reach a payload either. */
+		{ "SensitiveParameterValue", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE,
+		  aSpvMethod, SX_ARRAYSIZE(aSpvMethod), 0, 0,
+		  aSpvProp, SX_ARRAYSIZE(aSpvProp), 0, 0,
+		  VmPresentSensitiveParameterValue },
 	};
-	static const PH7_NativeAttrArg aOnAttribute[] = {
-		{ 0, { 0, 0, PH7_NATIVE_VAL_INT, 1, 0, 0.0 } },   /* TARGET_CLASS */
-	};
-	static const PH7_NativeAttrArg aOnDeprecated[] = {
-		{ 0, { 0, 0, PH7_NATIVE_VAL_INT, 87, 0, 0.0 } },  /* php's own mask */
+	/* Each attribute class's own `#[Attribute(mask)]`, php's masks verbatim. The
+	 * literal rows are STATIC because PH7_NativeClassAddAttribute keeps a pointer
+	 * to them for the VM's lifetime. */
+	static const PH7_NativeAttrArg aMaskClass[]  = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 1,  0, 0.0 } } };
+	static const PH7_NativeAttrArg aMaskDep[]    = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 87, 0, 0.0 } } };
+	static const PH7_NativeAttrArg aMaskParam[]  = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 32, 0, 0.0 } } };
+	static const PH7_NativeAttrArg aMaskMethod[] = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 4,  0, 0.0 } } };
+	static const struct {
+		const char *zClass;
+		const PH7_NativeAttrArg *aArg;   /* php's TARGET_* mask for that class */
+	} aOwnAttr[] = {
+		{ "Attribute",              aMaskClass  },   /* TARGET_CLASS */
+		{ "Deprecated",             aMaskDep    },   /* CLASS|FUNCTION|METHOD|CLASS_CONSTANT|CONSTANT */
+		{ "AllowDynamicProperties", aMaskClass  },   /* TARGET_CLASS */
+		{ "SensitiveParameter",     aMaskParam  },   /* TARGET_PARAMETER */
+		{ "ReturnTypeWillChange",   aMaskMethod },   /* TARGET_METHOD */
 	};
 	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
-	if( rc == SXRET_OK ){
+	sxu32 n;
+	for( n = 0 ; rc == SXRET_OK && n < SX_ARRAYSIZE(aOwnAttr) ; ++n ){
 		rc = PH7_NativeClassAddAttribute(&(*pVm),
-			PH7_VmExtractClass(&(*pVm),"Attribute",sizeof("Attribute")-1,FALSE,0),
-			"Attribute",aOnAttribute,SX_ARRAYSIZE(aOnAttribute));
-	}
-	if( rc == SXRET_OK ){
-		rc = PH7_NativeClassAddAttribute(&(*pVm),
-			PH7_VmExtractClass(&(*pVm),"Deprecated",sizeof("Deprecated")-1,FALSE,0),
-			"Attribute",aOnDeprecated,SX_ARRAYSIZE(aOnDeprecated));
+			PH7_VmExtractClass(&(*pVm),aOwnAttr[n].zClass,
+				(sxu32)SyStrlen(aOwnAttr[n].zClass),FALSE,0),
+			"Attribute",aOwnAttr[n].aArg,1);
 	}
 	return rc;
 }

@@ -3697,16 +3697,32 @@ static sxi64 ReflectVisMask(sxi32 iProt)
 	}
 	return iProt == PH7_CLASS_PROT_PROTECTED ? 2 : 4;
 }
+/*
+ * Is this property protected(set) as far as php's Reflection is concerned?
+ *
+ * The bit is either DECLARED or implied by `readonly` — but readonly implies it
+ * only for a property whose read side is PUBLIC. A `protected readonly` or
+ * `private readonly` one already writes no wider than it reads, so php adds
+ * nothing (`private readonly int $v` is modifiers 132, not 2180), and an explicit
+ * `private(set)` beside readonly is the set visibility, so readonly adds nothing
+ * there either (`public private(set) readonly` is 4257).
+ */
+static int ReflectPropProtectedSet(ph7_class_attr *pAttr)
+{
+	if( pAttr->iFlags & PH7_CLASS_ATTR_PROTECTED_SET ){
+		return 1;
+	}
+	return (pAttr->iFlags & PH7_CLASS_ATTR_READONLY)
+	    && (pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET) == 0
+	    && pAttr->iProtection == PH7_CLASS_PROT_PUBLIC;
+}
 static sxi64 ReflectPropModifiers(ph7_class_attr *pAttr)
 {
 	sxi64 iMods = ReflectVisMask(pAttr->iProtection);
 	if( pAttr->iFlags & PH7_CLASS_ATTR_STATIC ){ iMods |= 16; }
 	if( pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL ){ iMods |= 512; }
-	if( pAttr->iFlags & PH7_CLASS_ATTR_READONLY ){
-		/* php models readonly as protected(set) and reports the bit. */
-		iMods |= 128|2048;
-	}
-	if( pAttr->iFlags & PH7_CLASS_ATTR_PROTECTED_SET ){ iMods |= 2048; }
+	if( pAttr->iFlags & PH7_CLASS_ATTR_READONLY ){ iMods |= 128; }
+	if( ReflectPropProtectedSet(pAttr) ){ iMods |= 2048; }
 	if( pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET ){
 		/* private(set) cannot be widened by a subclass, so php reports it FINAL. */
 		iMods |= 4096|32;
@@ -7323,7 +7339,7 @@ static int ReflectPropFlag(ph7_context *pCtx, int iWhat)
 		case 1: bYes = pAttr->iProtection == PH7_CLASS_PROT_PRIVATE; break;
 		case 2: bYes = pAttr->iProtection == PH7_CLASS_PROT_PROTECTED; break;
 		case 3: bYes = (pAttr->iFlags & PH7_CLASS_ATTR_PRIVATE_SET) != 0; break;
-		case 4: bYes = (pAttr->iFlags & PH7_CLASS_ATTR_PROTECTED_SET) != 0; break;
+		case 4: bYes = ReflectPropProtectedSet(pAttr); break;
 		case 5: bYes = (pAttr->iFlags & PH7_CLASS_ATTR_STATIC) != 0; break;
 		case 6: bYes = (pAttr->iFlags & PH7_CLASS_ATTR_READONLY) != 0; break;
 		case 7: bYes = 1; break;                                    /* isDefault */

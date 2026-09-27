@@ -578,6 +578,8 @@ PH7_PRIVATE sxi32 PH7_NativeClassAddAttribute(ph7_vm *pVm,ph7_class *pClass,
 				SyStringInitFromBuf(&sArgRec.sName,zN,SyStrlen(aArg[n].zName));
 			}
 		}
+		/* The literal is BORROWED, not copied: aArg must have static storage
+		 * duration (every caller states its rows as `static const`). */
 		sArgRec.pNativeValue = (const void *)&aArg[n].sValue;
 		SySetPut(&sAttr.aArgs,(const void *)&sArgRec);
 	}
