@@ -85,6 +85,29 @@ foreach ([PDO::FETCH_ASSOC, PDO::FETCH_LAZY, PDO::FETCH_COLUMN, PDO::FETCH_BOUND
     foreach ($feSt as $feVal) { $feN++; }
     echo 'empty ', $feMode, ' => ', $feN, "\n";
 }
+/* a mode the CONNECTION's default left with nothing to build from is refused at
+ * the DOOR and at every step, the way php refuses it */
+$feBare = new PDO('sqlite::memory:', null, null, [PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_CLASS]);
+$feBare->exec('CREATE TABLE fb (a TEXT)');
+$feBare->exec("INSERT INTO fb VALUES ('v')");
+try { $feBare->query('SELECT * FROM fb')->getIterator(); }
+catch (Throwable $e) { echo get_class($e), ': ', $e->getMessage(), "\n"; }
+try { foreach ($feBare->query('SELECT * FROM fb') as $feRow) {} }
+catch (Throwable $e) { echo get_class($e), ': ', $e->getMessage(), "\n"; }
+$feInto2 = new PDO('sqlite::memory:', null, null, [PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_INTO]);
+$feInto2->exec('CREATE TABLE fi (a TEXT)');
+$feInto2->exec("INSERT INTO fi VALUES ('v')");
+try { foreach ($feInto2->query('SELECT * FROM fi') as $feRow) {} }
+catch (Throwable $e) { echo get_class($e), ': ', $e->getMessage(), "\n"; }
+/* a binding naming a column the statement does not have refuses the walk, and
+ * the row it read is gone */
+$feBound = $feDb->query('SELECT * FROM fe');
+$feBound->bindColumn(9, $feNever);
+try { foreach ($feBound as $feRow) {} }
+catch (Throwable $e) { echo get_class($e), ': ', $e->getMessage(), "\n"; }
+try { var_dump($feBound->fetch(PDO::FETCH_NUM)); }
+catch (Throwable $e) { echo get_class($e), ': ', $e->getMessage(), "\n"; }
+var_dump($feNever);
 ?>
 --EXPECT--
 ASSOC      [[0,"{\"a\":\"FeRow\",\"b\":\"x\"}"],[1,"{\"a\":\"1\",\"b\":\"y\"}"]]
@@ -107,3 +130,9 @@ empty 2 => 0
 empty 1 => 0
 empty 7 => 0
 empty 6 => 0
+PDOException: SQLSTATE[HY000]: General error: No fetch class specified
+PDOException: SQLSTATE[HY000]: General error: No fetch class specified
+PDOException: SQLSTATE[HY000]: General error: No fetch-into object specified.
+ValueError: Invalid column index
+ValueError: Invalid column index
+NULL

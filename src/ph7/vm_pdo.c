@@ -33,7 +33,6 @@ static io_private * PdoLobStreamNew(ph7_vm *pVm,const char *zData,int nData);
 static sxi32 PdoStatementCtor(ph7_context *pCtx,phl_pdo *pConn,ph7_class *pClass,
 	ph7_class_instance *pObj);
 static void PdoBoundColumnsForRow(ph7_vm *pVm,phl_pdo_stmt *pSt);
-static int PdoBoundColumnsForIterRow(ph7_vm *pVm,phl_pdo_stmt *pSt);
 static sxi32 PdoBoundColumnsRefuse(ph7_context *pCtx,phl_pdo_stmt *pSt,int bWholeSet);
 static int PdoBoundColumnsBad(phl_pdo_stmt *pSt);
 
@@ -1988,25 +1987,43 @@ static sxi32 PdoBoundColumnsRefuse(ph7_context *pCtx,phl_pdo_stmt *pSt,int bWhol
 	return PH7_VmThrowException(pCtx,"ValueError","Invalid column index");
 }
 /*
- * The same, for the foreach ITERATOR: its vtable is handed a VM with no call
- * context, so the refusal is raised on the VM directly -- the walk is inside
- * the foreach opcode, which is the frame php raises it out of too.
+ * May this statement be WALKED at all? php's iterator refusals are the verbs'
+ * own, and a foreach reaches them through the InternalIterator GUARD -- which
+ * is where a call CONTEXT exists, so the throw leaves the loop the way every
+ * other one does (raising on the VM from inside the vtable let execution carry
+ * on past the loop). Three of them: a binding naming a column the statement
+ * does not have -- consuming the row first, exactly as a fetch does -- and the
+ * two modes a connection's ATTR_DEFAULT_FETCH_MODE can leave a statement in
+ * with nothing beside it to build from.
  */
-static int PdoBoundColumnsForIterRow(ph7_vm *pVm,phl_pdo_stmt *pSt)
+static int PdoStmtWalkRefusal(ph7_context *pCtx,phl_pdo_stmt *pSt)
 {
-	if( pSt->pColBinds == 0 || !pSt->bRowPending || PdoBoundColumnsInRange(pSt) ){
-		return 1;   /* the row read below writes them, through the same routine */
+	int iBase;
+	if( pSt == 0 || !pSt->bRowPending ){
+		return 0;   /* nothing to hand out, so nothing to refuse */
 	}
-	/* Same as the verbs' refusal -- the honourable bindings are written and the
-	 * row is consumed before it surfaces -- but raised on the VM directly: the
-	 * walk is inside the foreach opcode, which is the frame php raises out of,
-	 * and the iterator's vtable has no call context to throw into. */
-	PdoWriteBoundColumns(pVm,pSt);
-	pSt->bRowPending = 0;
-	PdoStmtStep(pSt);
-	VmThrowFromVm(pVm,"ValueError","Invalid column index",
-		sizeof("Invalid column index")-1);
+	if( PdoBoundColumnsBad(pSt) ){
+		PdoBoundColumnsRefuse(pCtx,pSt,0);
+		return 1;
+	}
+	iBase = pSt->iFetchMode & PDO_FETCH_MODE_MASK;
+	if( iBase == PDO_FETCH_INTO && pSt->pFetchInto == 0 ){
+		PH7_VmThrowException(pCtx,"PDOException",
+			"SQLSTATE[HY000]: General error: No fetch-into object specified.");
+		return 1;
+	}
+	if( iBase == PDO_FETCH_CLASS && (pSt->iFetchMode & PDO_FETCH_CLASSTYPE) == 0
+	 && pSt->zFetchClass == 0 ){
+		PH7_VmThrowException(pCtx,"PDOException",
+			"SQLSTATE[HY000]: General error: No fetch class specified");
+		return 1;
+	}
 	return 0;
+}
+static int PdoStmtIterGuard(ph7_context *pCtx,ph7_class_instance *pIt)
+{
+	return PdoStmtWalkRefusal(pCtx,PdoStmtOfInstance(
+		PH7_NativeAttrObj(pIt,PH7_NATIVE_IT_SRC)));
 }
 /* ------------------------------------------------------------------------
  * The blob STREAM: what Pdo\Sqlite::openBlob() answers
@@ -3645,10 +3662,6 @@ static void PdoStmtIterSettle(ph7_vm *pVm,ph7_class_instance *pIt)
 		PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);
 		return;
 	}
-	if( !PdoBoundColumnsForIterRow(pVm,pSt) ){
-		PH7_NativeSetAttrBool(&(*pVm),pIt,PH7_NATIVE_IT_DONE,1);
-		return;
-	}
 	{
 		/* A foreach honours the statement's mode, the whole of it: php walks a
 		 * LAZY statement with its one row object, a CLASS or INTO one with the
@@ -3780,7 +3793,8 @@ static void PdoStmtIterNext(ph7_vm *pVm,ph7_class_instance *pIt)
 		PH7_NativeAttrInt(pIt,PH7_NATIVE_IT_POS) + 1);
 	PdoStmtIterSettle(&(*pVm),pIt);
 }
-static const PH7_NativeIterVtab sPdoStmtIterVtab = { PdoStmtIterRewind, PdoStmtIterNext, 0, 0 };
+static const PH7_NativeIterVtab sPdoStmtIterVtab = {
+	PdoStmtIterRewind, PdoStmtIterNext, 0, PdoStmtIterGuard };
 static int vm_builtin_PDOStatement_getIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
@@ -3789,6 +3803,11 @@ static int vm_builtin_PDOStatement_getIterator(ph7_context *pCtx,int nArg,ph7_va
 	SXUNUSED(apArg);
 	if( pThis == 0 ){
 		return PH7_VmThrowException(pCtx,"Error","PDOStatement::getIterator() needs a receiver");
+	}
+	if( PdoStmtWalkRefusal(pCtx,PdoStmtOfInstance(pThis)) ){
+		/* php refuses at the DOOR as well as at every step: `getIterator()` on a
+		 * statement it cannot walk raises there, before an iterator exists. */
+		return PH7_OK;
 	}
 	pIt = PH7_NativeIteratorNew(pCtx->pVm,pThis);
 	if( pIt == 0 ){
