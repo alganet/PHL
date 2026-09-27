@@ -689,13 +689,47 @@ static ph7_int64 IoPrivateFilteredRead(io_private *pDev,void *pBuf,ph7_int64 nLe
 }
 static ph7_int64 IoPrivateDeviceRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
 {
+	ph7_int64 n;
 	if( pDev->pReadFilters != 0 || SyBlobLength(&pDev->sFilt) > pDev->nFiltOfft ){
 		/* Bytes can still be waiting after the last read filter was REMOVED:
 		 * php flushes a filter on its way out and what it emitted belongs to
 		 * the reader that comes next. */
 		return IoPrivateFilteredRead(pDev,pBuf,nLen);
 	}
-	return IoPrivateRawRead(pDev,pBuf,nLen);
+	errno = 0;
+	n = IoPrivateRawRead(pDev,pBuf,nLen);
+	if( n < 0 ){
+		/* LATCH the failure for the reader to report. php's notice comes from
+		 * the stream op, which knows the errno but not which builtin is asking;
+		 * here the builtin knows how to report and the device knows why, so the
+		 * two meet at the latch -- the same shape the socket write already uses.
+		 * Cleared by whoever reports it, so one failure is announced once. */
+		pDev->iLastReadErr = errno ? errno : EIO;
+	}
+	return n;
+}
+/*
+ * php's `fread(): Read of 8192 bytes failed with errno=9 Bad file descriptor`:
+ * the NOTICE its plain-file read op raises when the device refuses -- a read
+ * from a handle opened write-only being the everyday case. The COUNT is not
+ * what the caller asked for: php fills its read buffer, so it reports the
+ * CHUNK size (8192 by default, whatever stream_set_chunk_size() left
+ * otherwise) at every reader. Silent for every other device, as php's is.
+ */
+static void StreamReportReadFailure(ph7_context *pCtx,io_private *pDev)
+{
+	int iErr;
+	if( pDev == 0 || pDev->iLastReadErr == 0 ){
+		return;
+	}
+	iErr = pDev->iLastReadErr;
+	pDev->iLastReadErr = 0;
+	if( pDev->pStream != pCtx->pVm->pDefStream ){
+		return;
+	}
+	ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,
+		"Read of %u bytes failed with errno=%d %s",
+		pDev->nChunk > 0 ? pDev->nChunk : 8192u,iErr,VfsStrerror(iErr));
 }
 PH7_PRIVATE ph7_int64 PH7_StreamRead(io_private *pDev,void *pBuf,ph7_int64 nLen)
 {
@@ -1134,6 +1168,7 @@ PH7_PRIVATE int PH7_builtin_fgetc(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* IO result */
 	if( n < 1 ){
 		/* EOF or error,return FALSE */
+		StreamReportReadFailure(pCtx,pDev);
 		ph7_result_bool(pCtx,0);
 	}else{
 		/* Return the string holding the character */
@@ -1257,6 +1292,7 @@ PH7_PRIVATE int PH7_builtin_fgets(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	n = StreamReadLine(pDev,&zLine,nLen);
 	if( n < 1 ){
 		/* EOF or IO error,return FALSE */
+		StreamReportReadFailure(pCtx,pDev);
 		ph7_result_bool(pCtx,0);
 	}else{
 		/* Return the freshly extracted line */
@@ -1471,6 +1507,7 @@ PH7_PRIVATE int PH7_builtin_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 	}else if( nRead < 0 ){
 		/* A real IO error, which is php's other false here. */
+		StreamReportReadFailure(pCtx,pDev);
 		ph7_result_bool(pCtx,0);
 	}else{
 		/* Make a copy of the data just read. Zero bytes is EOF, not a failure:
@@ -1577,6 +1614,7 @@ PH7_PRIVATE int PH7_builtin_fgetcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 	n = StreamReadLine(pDev,&zLine,nLen);
 	if( n < 1 ){
 		/* EOF or IO error,return FALSE */
+		StreamReportReadFailure(pCtx,pDev);
 		ph7_result_bool(pCtx,0);
 	}else{
 		ph7_value *pArray;
@@ -2892,6 +2930,13 @@ PH7_PRIVATE int PH7_builtin_fpassthru(ph7_context *pCtx,int nArg,ph7_value **apA
 		n = PH7_StreamRead(pDev,zBuf,sizeof(zBuf));
 		if( n < 1 ){
 			/* Error or EOF */
+			StreamReportReadFailure(pCtx,pDev);
+			if( n < 0 && nRead == 0 ){
+				/* php answers the failing read's own -1 when NOTHING was passed
+				 * through; a failure after some bytes reports those bytes. */
+				ph7_result_int64(pCtx,-1);
+				return PH7_OK;
+			}
 			break;
 		}
 		/* Increment the read counter */
@@ -3085,6 +3130,9 @@ PH7_PRIVATE int PH7_builtin_fputcsv(ph7_context *pCtx,int nArg,ph7_value **apArg
 	StreamSeekBackForWrite(pDev);
 	nWr = PH7_StreamWrite(pDev,(const void *)SyBlobData(&sLine),
 		(ph7_int64)SyBlobLength(&sLine));
+	if( nWr < 0 ){
+		SockReportWriteFailure(pCtx,pDev,(int)SyBlobLength(&sLine));
+	}
 	SyBlobRelease(&sLine);
 	if( nWr < 0 ){
 		ph7_result_bool(pCtx,0);
@@ -3102,7 +3150,13 @@ typedef struct fprintf_data fprintf_data;
 struct fprintf_data
 {
 	io_private *pIO;        /* IO stream */
-	ph7_int64 nCount;       /* Total number of bytes written */
+	ph7_int64 nCount;       /* Total bytes FORMATTED (php's answer, not the bytes
+	                         * the device took: php builds the whole string, writes
+	                         * it once and returns its length whatever the write
+	                         * did) */
+	int bIoErr;             /* the device refused, so stop feeding it -- but this
+	                         * is an IO failure and not a mid-format THROW, and the
+	                         * caller must not confuse the two */
 };
 /*
  * Callback [i.e: Formatted input consumer] for the fprintf function.
@@ -3113,13 +3167,15 @@ static int fprintfConsumer(ph7_context *pCtx,const char *zInput,int nLen,void *p
 	ph7_int64 n;
 	/* Write the formatted data */
 	n = PH7_StreamWrite(pFdata->pIO,(const void *)zInput,nLen);
-	if( n < 1 ){
-		SXUNUSED(pCtx); /* cc warning */
-		/* IO error,abort immediately */
+	pFdata->nCount += nLen;
+	if( n < 0 ){
+		SockReportWriteFailure(pCtx,pFdata->pIO,nLen);
+		/* Nothing more can reach the device; stop, and let the caller answer.
+		 * Propagating this as a THROW status aborted the whole script -- a
+		 * failed fprintf() ended the program where php returns a number. */
+		pFdata->bIoErr = 1;
 		return SXERR_ABORT;
 	}
-	/* Increment counter */
-	pFdata->nCount += n;
 	return PH7_OK;
 }
 /*
@@ -3201,14 +3257,16 @@ PH7_PRIVATE int PH7_builtin_fprintf(ph7_context *pCtx,int nArg,ph7_value **apArg
 	/* Prepare our private data */
 	sFdata.nCount = 0;
 	sFdata.pIO = pDev;
+	sFdata.bIoErr = 0;
 	/* Format the string */
 	{
 	sxi32 rcv = PH7_InputFormat(fprintfConsumer,pCtx,zFormat,nLen,nArg - 1,&apArg[1],(void *)&sFdata,FALSE);
 	/* Return total number of bytes written */
 	ph7_result_int64(pCtx,sFdata.nCount);
 	/* A %s argument that could not be coerced raised php's Error mid-format; the
-	 * bytes still went to the stream, as php's do, so report the throw last. */
-	if( rcv != SXRET_OK ){
+	 * bytes still went to the stream, as php's do, so report the throw last. A
+	 * refused DEVICE is not that: php answers the length either way. */
+	if( rcv != SXRET_OK && !sFdata.bIoErr ){
 		pCtx->nThrowRc = rcv;
 		return rcv;
 	}
@@ -3310,6 +3368,7 @@ PH7_PRIVATE int PH7_builtin_vfprintf(ph7_context *pCtx,int nArg,ph7_value **apAr
 	/* Prepare our private data */
 	sFdata.nCount = 0;
 	sFdata.pIO = pDev;
+	sFdata.bIoErr = 0;
 	/* Format the string */
 	{
 	sxi32 rcv = PH7_InputFormat(fprintfConsumer,pCtx,zFormat,nLen,n,(ph7_value **)SySetBasePtr(&sArg),(void *)&sFdata,TRUE);
@@ -3317,8 +3376,9 @@ PH7_PRIVATE int PH7_builtin_vfprintf(ph7_context *pCtx,int nArg,ph7_value **apAr
 	ph7_result_int64(pCtx,sFdata.nCount);
 	SySetRelease(&sArg);
 	/* A %s argument that could not be coerced raised php's Error mid-format; the
-	 * bytes still went to the stream, as php's do, so report the throw last. */
-	if( rcv != SXRET_OK ){
+	 * bytes still went to the stream, as php's do, so report the throw last. A
+	 * refused DEVICE is not that: php answers the length either way. */
+	if( rcv != SXRET_OK && !sFdata.bIoErr ){
 		pCtx->nThrowRc = rcv;
 		return rcv;
 	}
@@ -3353,99 +3413,75 @@ PH7_PRIVATE int PH7_builtin_vfprintf(ph7_context *pCtx,int nArg,ph7_value **apAr
  *          be used after the lock is requested).
  *   'c+' 	Open the file for reading and writing; otherwise it has the same behavior as 'c'.
  */
-static int StrModeToFlags(ph7_context *pCtx,const char *zMode,int nLen)
+/*
+ * php's php_stream_parse_fopen_modes, which is narrower than the list above
+ * reads: only the FIRST character decides, it must be one of `r w a x c` in
+ * LOWER case, and everything after it is SCANNED -- `+` anywhere makes the
+ * open read-write, `b`/`t` anywhere pick the translation mode, and any other
+ * byte is ignored. Anything else is refused OUTRIGHT, which is what the -1
+ * answer is for; the empty mode is one of them.
+ *
+ * The chunk read only the first TWO characters and had its own idea of both
+ * halves, so six ordinary spellings opened the wrong way in silence: `rb+`,
+ * `ab+` and `cb+` -- the `+` is not in position two -- were opened read-only
+ * or write-only, `rw` was READ-WRITE where php gives read-only, `wr`
+ * likewise, and an unknown or upper-case mode was accepted with a PH7-ism
+ * notice and a read-only open where php refuses the call.
+ */
+static int StrModeToFlags(const char *zMode,int nLen,int *piFlags)
 {
-	const char *zEnd = &zMode[nLen];
-	int iFlag = 0;
-	int c;
+	int iFlag,i;
+	int bPlus = 0,bBin = 0,bText = 0;
 	if( nLen < 1 ){
-		/* Open in a read-only mode */
-		return PH7_IO_OPEN_RDONLY;
+		return -1;
 	}
-	c = zMode[0];
-	if( c == 'r' || c == 'R' ){
-		/* Read-only access */
-		iFlag = PH7_IO_OPEN_RDONLY;
-		zMode++; /* Advance */
-		if( zMode < zEnd ){
-			c = zMode[0];
-			if( c == '+' || c == 'w' || c == 'W' ){
-				/* Read+Write access */
-				iFlag = PH7_IO_OPEN_RDWR;
-			}
+	switch( zMode[0] ){
+		case 'r':
+			/* Read-only access */
+			iFlag = PH7_IO_OPEN_RDONLY;
+			break;
+		case 'w':
+			/* Overwrite mode; create the file if it is not there */
+			iFlag = PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_TRUNC|PH7_IO_OPEN_CREATE;
+			break;
+		case 'a':
+			/* Append mode; create the file if it is not there */
+			iFlag = PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_APPEND|PH7_IO_OPEN_CREATE;
+			break;
+		case 'x':
+			/* Exclusive create: fails when the file already exists. EXCL is left
+			 * to imply the creation on its own -- the device decoders test
+			 * CREATE first, so setting both would drop the O_EXCL. */
+			iFlag = PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_EXCL;
+			break;
+		case 'c':
+			/* Create if absent, and neither truncate nor fail if present */
+			iFlag = PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_CREATE;
+			break;
+		default:
+			return -1;
+	}
+	for( i = 1 ; i < nLen ; ++i ){
+		if( zMode[i] == '+' ){
+			bPlus = 1;
+		}else if( zMode[i] == 'b' ){
+			bBin = 1;
+		}else if( zMode[i] == 't' ){
+			bText = 1;
 		}
-	}else if( c == 'w' || c == 'W' ){
-		/* Overwrite mode.
-		 * If the file does not exists,try to create it
-		 */
-		iFlag = PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_TRUNC|PH7_IO_OPEN_CREATE;
-		zMode++; /* Advance */
-		if( zMode < zEnd ){
-			c = zMode[0];
-			if( c == '+' || c == 'r' || c == 'R' ){
-				/* Read+Write access */
-				iFlag &= ~PH7_IO_OPEN_WRONLY;
-				iFlag |= PH7_IO_OPEN_RDWR;
-			}
-		}
-	}else if( c == 'a' || c == 'A' ){
-		/* Append mode (place the file pointer at the end of the file).
-		 * Create the file if it does not exists.
-		 */
-		iFlag = PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_APPEND|PH7_IO_OPEN_CREATE;
-		zMode++; /* Advance */
-		if( zMode < zEnd ){
-			c = zMode[0];
-			if( c == '+' ){
-				/* Read-Write access */
-				iFlag &= ~PH7_IO_OPEN_WRONLY;
-				iFlag |= PH7_IO_OPEN_RDWR;
-			}
-		}
-	}else if( c == 'x' || c == 'X' ){
-		/* Exclusive access.
-		 * If the file already exists,return immediately with a failure code.
-		 * Otherwise create a new file.
-		 */
-		iFlag = PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_EXCL;
-		zMode++; /* Advance */
-		if( zMode < zEnd ){
-			c = zMode[0];
-			if( c == '+' || c == 'r' || c == 'R' ){
-				/* Read-Write access */
-				iFlag &= ~PH7_IO_OPEN_WRONLY;
-				iFlag |= PH7_IO_OPEN_RDWR;
-			}
-		}
-	}else if( c == 'c' || c == 'C' ){
-		/* Overwrite mode.Create the file if it does not exists.*/
-		iFlag = PH7_IO_OPEN_WRONLY|PH7_IO_OPEN_CREATE;
-		zMode++; /* Advance */
-		if( zMode < zEnd ){
-			c = zMode[0];
-			if( c == '+' ){
-				/* Read-Write access */
-				iFlag &= ~PH7_IO_OPEN_WRONLY;
-				iFlag |= PH7_IO_OPEN_RDWR;
-			}
-		}
+	}
+	if( bPlus ){
+		iFlag &= ~(PH7_IO_OPEN_RDONLY|PH7_IO_OPEN_WRONLY);
+		iFlag |= PH7_IO_OPEN_RDWR;
+	}
+	/* php's `b` wins over `t` when both are named, and binary is its default. */
+	if( bText && !bBin ){
+		iFlag |= PH7_IO_OPEN_TEXT;
 	}else{
-		/* Invalid mode. Assume a read only open */
-		ph7_context_throw_error(pCtx,PH7_CTX_NOTICE,"Invalid open mode,PH7 is assuming a Read-Only open");
-		iFlag = PH7_IO_OPEN_RDONLY;
+		iFlag |= PH7_IO_OPEN_BINARY;
 	}
-	while( zMode < zEnd ){
-		c = zMode[0];
-		if( c == 'b' || c == 'B' ){
-			iFlag &= ~PH7_IO_OPEN_TEXT;
-			iFlag |= PH7_IO_OPEN_BINARY;
-		}else if( c == 't' || c == 'T' ){
-			iFlag &= ~PH7_IO_OPEN_BINARY;
-			iFlag |= PH7_IO_OPEN_TEXT;
-		}
-		zMode++;
-	}
-	return iFlag;
+	*piFlags = iFlag;
+	return 0;
 }
 /*
  * Initialize the IO private structure.
@@ -3458,6 +3494,7 @@ PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_priva
 	SyBlobInit(&pOut->sUri,&pVm->sAllocator);
 	pOut->zMode[0] = 0;
 	pOut->bEof = 0;
+	pOut->iLastReadErr = 0;
 	pOut->bDir = 0;
 	pOut->bPersist = 0;
 	pOut->nChunk = 8192; /* php's own default, and what stream_set_chunk_size() reports first */
@@ -3650,6 +3687,7 @@ PH7_PRIVATE int PH7_builtin_stream_get_contents(ph7_context *pCtx,int nArg,ph7_v
 			if( nRead == 0 ){
 				pDev->bEof = 1;
 			}
+			StreamReportReadFailure(pCtx,pDev);
 			break;
 		}
 		ph7_result_string(pCtx,zBuf,(int)nRead); /* appends */
@@ -4612,13 +4650,19 @@ static int SockStreamData_Open(const char *zName,int iMode,ph7_value *pResource,
  * php's `fwrite(): Send of 4 bytes failed with errno=32 Broken pipe` — the
  * NOTICE its socket ops raise for a send that failed, which is the only
  * diagnostic a write to a departed peer produces (the return value is the same
- * false a closed handle answers). Silent for every other device: nothing else
- * here has an OS error of its own to report.
+ * false a closed handle answers). The PLAIN-FILE device has the same notice
+ * worded `Write of`, which is what a write to a handle opened read-only
+ * produces: php answers false AND says why, where this engine only answered
+ * false. Silent for every other device — nothing else here has an OS error of
+ * its own to report, and php's notice lives in those two stream ops alone.
  */
 static void SockReportWriteFailure(ph7_context *pCtx,io_private *pDev,int nLen)
 {
+	if( pDev == 0 ){
+		return;
+	}
 #ifdef PH7_ENABLE_NET
-	if( pDev && pDev->pStream == &sTCP_Stream && pDev->pHandle ){
+	if( pDev->pStream == &sTCP_Stream && pDev->pHandle ){
 		sock_private *pSock = (sock_private *)pDev->pHandle;
 		if( pSock->iLastErr != 0 ){
 			ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,
@@ -4626,12 +4670,13 @@ static void SockReportWriteFailure(ph7_context *pCtx,io_private *pDev,int nLen)
 				nLen,pSock->iLastErr,PH7_NetStrError(pSock->iLastErr));
 			pSock->iLastErr = 0;
 		}
+		return;
 	}
-#else
-	SXUNUSED(pCtx);
-	SXUNUSED(pDev);
-	SXUNUSED(nLen);
 #endif
+	if( pDev->pStream == pCtx->pVm->pDefStream ){
+		ph7_context_throw_error_format(pCtx,PH7_CTX_NOTICE,
+			"Write of %d bytes failed with errno=%d %s",nLen,errno,VfsStrerror(errno));
+	}
 }
 /* The settings family below owns both of these; the socket openers here are
  * declared ahead of it so one handle-wrapping routine can serve both halves. */
@@ -6631,6 +6676,7 @@ PH7_PRIVATE int PH7_builtin_stream_copy_to_stream(ph7_context *pCtx,int nArg,ph7
 		}
 		nWr = PH7_StreamWrite(pTo,(const void *)zBuf,nRead);
 		if( nWr < 0 ){
+			SockReportWriteFailure(pCtx,pTo,(int)nRead);
 			break;
 		}
 		nTotal += nWr;
@@ -7134,6 +7180,17 @@ PH7_PRIVATE io_private * PH7_StreamOpenPath(ph7_context *pCtx,ph7_value *pPath,
 		*piErr = PH7_STREAM_OPEN_NODEVICE;
 		return 0;
 	}
+	/* php's mode grammar belongs to the PLAIN-FILE wrapper and to nothing else:
+	 * php://, data:// and a userland wrapper are handed whatever the caller
+	 * wrote and decide for themselves (`fopen('php://memory','zz')` opens
+	 * read-only rather than failing), so only the default device refuses. */
+	if( StrModeToFlags(zMode,nMode,&iOpenFlags) != 0 ){
+		if( pStream == pCtx->pVm->pDefStream ){
+			*piErr = PH7_STREAM_OPEN_BADMODE;
+			return 0;
+		}
+		iOpenFlags = PH7_IO_OPEN_RDONLY;
+	}
 	/* Allocate a new IO private instance */
 	pDev = (io_private *)ph7_context_alloc_chunk(pCtx,sizeof(io_private),TRUE,FALSE);
 	if( pDev == 0 ){
@@ -7151,8 +7208,6 @@ PH7_PRIVATE io_private * PH7_StreamOpenPath(ph7_context *pCtx,ph7_value *pPath,
 	}
 	/* Initialize the structure */
 	InitIOPrivate(pCtx->pVm,pStream,pDev);
-	/* Convert open mode to PH7 flags */
-	iOpenFlags = StrModeToFlags(pCtx,zMode,nMode);
 	PH7_StreamCtxArm(pCtx->pVm,pCtxRes);
 	/* Try to get a handle */
 	pDev->pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zUri,iOpenFlags,
@@ -7228,6 +7283,10 @@ PH7_PRIVATE int PH7_builtin_fopen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	if( pDev == 0 ){
 		if( iErr == PH7_STREAM_OPEN_NODEVICE ){
 			VfsThrowNoDeviceWarning(pCtx,zErrUri,FALSE);
+		}else if( iErr == PH7_STREAM_OPEN_BADMODE ){
+			PH7_VmThrowWarningFmt(pCtx->pVm,
+				"%s(%s): Failed to open stream: `%.*s' is not a valid mode for fopen",
+				ph7_function_name(pCtx),zErrUri,imLen,zMode);
 		}else if( iErr == PH7_STREAM_OPEN_FAILED ){
 			VfsThrowOpenWarning(pCtx,zErrUri);
 		}else{

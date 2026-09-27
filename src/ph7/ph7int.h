@@ -4333,6 +4333,10 @@ struct io_private
 	sxu8 bHasTimeout;/* stream_set_timeout() armed one, so an EAGAIN read EXPIRED */
 	sxu8 bTimedOut;  /* the last read expired; php's meta `timed_out`, cleared by the next */
 	sxu8 bEof;       /* a read on this handle has already come back empty */
+	int iLastReadErr;/* errno of the last device read that FAILED, latched for the
+	                  * reader to announce (php's "Read of N bytes failed with
+	                  * errno=..." notice) and cleared once it has. 0 = nothing
+	                  * to report; a read that merely found EOF never sets it. */
 	sxu8 bDir;       /* opendir()/dir() handle rather than a byte stream */
 	sxu8 bPersist;   /* opened PERSISTENTLY: get_resource_type() names it apart */
 	/* The stream CONTEXT this handle carries (phl_stream_ctx*), owned by the VM
@@ -4543,6 +4547,7 @@ PH7_PRIVATE ph7_int64 StreamReadLine(io_private *pDev,const char **pzData,ph7_in
 #define PH7_STREAM_OPEN_NODEVICE 1 /* no wrapper is registered for the scheme */
 #define PH7_STREAM_OPEN_FAILED   2 /* the wrapper refused the name (errno is set) */
 #define PH7_STREAM_OPEN_NOMEM    3
+#define PH7_STREAM_OPEN_BADMODE  4 /* the plain-file wrapper refused the MODE */
 PH7_PRIVATE io_private * PH7_StreamOpenPath(ph7_context *pCtx,ph7_value *pPath,
 	const char *zMode,int nMode,int bUseInclude,phl_stream_ctx *pCtxRes,
 	ph7_value *pCtxArg,int *piErr,const char **pzErrUri);

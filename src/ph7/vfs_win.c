@@ -1149,8 +1149,14 @@ static int WinFile_Open(const char *zPath,int iOpenMode,ph7_value *pResource,voi
 		dwAccess = GENERIC_WRITE;
 	}
 	if( iOpenMode & PH7_IO_OPEN_APPEND ){
-		/* Append mode */
-		dwAccess = FILE_APPEND_DATA;
+		/* Append mode. On Windows the "every write lands at the END" rule is
+		 * FILE_APPEND_DATA *without* FILE_WRITE_DATA, so the mask has to be
+		 * BUILT rather than replaced: `a+` is read-write, and overwriting the
+		 * whole mask left such a handle with no READ access at all -- every
+		 * read on one answered false where php reads the file. (Invisible until
+		 * the mode grammar started seeing the `+` of `ab+`.) */
+		dwAccess = (iOpenMode & PH7_IO_OPEN_RDWR)
+			? (GENERIC_READ|FILE_APPEND_DATA) : FILE_APPEND_DATA;
 	}
 	if( iOpenMode & PH7_IO_OPEN_TEMP ){
 		/* File is temporary */
@@ -1519,6 +1525,13 @@ static int WinFile_Sync(void *pUserData)
 	HANDLE pHandle = (HANDLE)pUserData;
 	BOOL rc;
 	rc = FlushFileBuffers(pHandle);
+	if( !rc && GetLastError() == ERROR_ACCESS_DENIED ){
+		/* A handle with no WRITE access: FlushFileBuffers refuses it, and php's
+		 * fflush() -- a C-library fflush over a read-only stream -- succeeds.
+		 * `fflush($h)` on a file opened 'r' answered false here and true
+		 * everywhere else, which is a platform difference and not an answer. */
+		return PH7_OK;
+	}
 	return rc ? PH7_OK : - 1;
 }
 /* int (*xStat)(void *,ph7_value *,ph7_value *) */

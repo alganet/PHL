@@ -11671,6 +11671,11 @@ static sxi32 SfoOpen(ph7_context *pCtx,ph7_class_instance *pThis,ph7_value *pPat
 				"%s(): Unable to find the wrapper \"%.*s\" - did you forget to enable it "
 				"when you configured PHP?",ph7_function_name(pCtx),nScheme,zPath);
 		}
+		if( iErr == PH7_STREAM_OPEN_BADMODE ){
+			return PH7_VmThrowException(pCtx,"RuntimeException",
+				"%s(%s): Failed to open stream: `%.*s' is not a valid mode for fopen",
+				ph7_function_name(pCtx),zErrUri ? zErrUri : "",nMode,zMode);
+		}
 		if( iErr == PH7_STREAM_OPEN_NOMEM ){
 			return PH7_ContextMemoryError(pCtx);
 		}
