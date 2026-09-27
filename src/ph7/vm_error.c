@@ -4778,6 +4778,13 @@ PH7_PRIVATE sxi32 VmArithOperandCheck(ph7_vm *pVm,ph7_value *pLeft,ph7_value *pR
 		}
 		if( bBad ){
 			if( i == 0 ){ bBadL = 1; } else { bBadR = 1; }
+			/* php converts the operands one at a time and STOPS at the first one it
+			 * refuses — the second is never looked at, so it never says anything about
+			 * it. `"abc" + "5x"` is the TypeError alone, where walking both operands
+			 * first announced `A non-numeric value encountered` for the "5x" php never
+			 * reached. The other order is unaffected: `"5x" + "abc"` warns for the left
+			 * operand and then throws, in both engines. */
+			break;
 		}
 	}
 	if( bBadL || bBadR ){
