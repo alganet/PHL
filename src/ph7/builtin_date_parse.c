@@ -3056,18 +3056,25 @@ static void DtFfDiag(dt_ff_diag *pDiag,int nErr,int nErrKept,const int *aErrPos,
 		pDiag->azWarn[k] = azWarn[k];
 	}
 }
-/* ...published into the VM's record the way a string scan publishes its own. */
-static void DtLastErrFf(ph7_vm *pVm,const dt_ff_diag *pDiag)
+/* ...poured into a record of the shape a string scan fills, so that both
+ * readers of a format scan -- getLastErrors() and the component view -- show
+ * it through the same presenter. */
+static void DtFfDiagInto(phl_dt_lasterr *pRec,const dt_ff_diag *pDiag)
 {
 	int k;
-	DtLastErrClear(&(*pVm));
+	DtRecReset(pRec);
 	for( k = 0 ; k < pDiag->nWarn ; k++ ){
-		DtRecWarn(&pVm->sDtLastErr,pDiag->aWarnPos[k],pDiag->azWarn[k]);
+		DtRecWarn(pRec,pDiag->aWarnPos[k],pDiag->azWarn[k]);
 	}
 	for( k = 0 ; k < pDiag->nErrKept ; k++ ){
-		DtRecErr(&pVm->sDtLastErr,pDiag->aErrPos[k],pDiag->azErr[k]);
+		DtRecErr(pRec,pDiag->aErrPos[k],pDiag->azErr[k]);
 	}
-	pVm->sDtLastErr.nErr = pDiag->nErr;   /* php counts what it dropped too */
+	pRec->nErr = pDiag->nErr;   /* php counts what it dropped too */
+}
+/* ...and the VM's own, which getLastErrors() answers from. */
+static void DtLastErrFf(ph7_vm *pVm,const dt_ff_diag *pDiag)
+{
+	DtFfDiagInto(&pVm->sDtLastErr,pDiag);
 }
 /*
  * php's do_range_limit: carry *pa into *pb until *pa sits inside [iStart,iEnd).
@@ -3222,10 +3229,11 @@ static int DtFfZone(const char **pz,const char *zEnd,int *piKind,sxi32 *piOff,
 {
 	const char *z = *pz;
 	int nPar = 0,bNeg,bIdent = 0,rc;
-	*piKind = 0;
+	/* The OFFSET is written whatever happens -- php assigns the reader's answer,
+	 * which is zero when it resolved nothing -- while the KIND and the NAME are
+	 * touched only by a zone that DID resolve. So a second specifier that finds
+	 * nothing zeroes the offset the first one read and leaves its kind standing. */
 	*piOff = 0;
-	*pzName = 0;
-	*pnName = 0;
 	while( z < zEnd && (z[0] == ' ' || z[0] == '\t' || z[0] == '(') ){
 		if( z[0] == '(' ){ nPar++; }
 		z++;
@@ -3734,10 +3742,15 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 				break;
 			}
 			{
-				int nd = (int)(z - zStart);
-				while( nd < nMax ){ v *= 10; nd++; }
-				while( nd > nMax ){ v /= 10; nd--; }
-				us = (c == 'u') ? v : v * 1000;
+				/* ...and BOTH spellings land on the same scale, because php
+				 * multiplies the millisecond by a thousand after dividing it by
+				 * the width: what either one answers is the digits it read
+				 * times ten to the six-minus-bytes-walked, and a reader that
+				 * walked more than six bytes answers a truncated fraction. */
+				int k = 6 - (int)(z - zStart);
+				while( k > 0 ){ v *= 10; k--; }
+				while( k < 0 ){ v /= 10; k++; }
+				us = v;
 			}
 			break;
 				 }
@@ -6736,6 +6749,49 @@ static int vm_builtin_date_parse(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	SyBlobRelease(&sRec.sErr);
 	return rc;
 }
+/*
+ * date_parse_from_format(): the FORMAT scanner's components, through the very
+ * presenter date_parse() answers with -- php reads both of them out of one
+ * function, so a field the scan left unset is `false` in either, and the
+ * `relative` block appears here for exactly one reason: a textual DAY, which
+ * this parser records as a weekday to move to rather than as a day.
+ *
+ * Like date_parse(), it publishes NOTHING into getLastErrors() -- php leaves
+ * that record to the constructors -- so the scan's diagnostics go into a record
+ * of this call's own.
+ */
+static int vm_builtin_date_parse_from_format(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	phl_dt_lasterr sRec;
+	dt_ff_res sRes;
+	dt_comp sC;
+	const char *zFmt,*zIn;
+	int nFmt,nIn,rc;
+	if( nArg < 2 ){
+		return PH7_OK;
+	}
+	zFmt = ph7_value_to_string(apArg[0],&nFmt);
+	zIn  = ph7_value_to_string(apArg[1],&nIn);
+	DtFromFormat(zFmt,nFmt,zIn,nIn,&sRes);
+	SyZero(&sRec,sizeof(sRec));
+	SyBlobInit(&sRec.sErr,&pVm->sAllocator);
+	DtFfDiagInto(&sRec,&sRes.sDiag);
+	SyZero(&sC,sizeof(sC));
+	sC.y = sRes.y; sC.mo = sRes.mo; sC.d = sRes.d;
+	sC.h = sRes.h; sC.mi = sRes.mi; sC.s = sRes.s; sC.us = sRes.us;
+	sC.iZoneSeen = sRes.bLocal;
+	sC.iZoneKind = sRes.iOffKind;
+	sC.iOff = sRes.iOff;
+	sC.zName = sRes.zName;
+	sC.nName = sRes.nName;
+	sC.bHaveRel = sRes.bWday;
+	sC.bWday = sRes.bWday;
+	sC.iWday = (int)sRes.iWday;
+	rc = DtCompResult(pCtx,&sC,&sRec);
+	SyBlobRelease(&sRec.sErr);
+	return rc;
+}
 /* date_interval_create_from_date_string(): warns and answers false where the
  * method throws. */
 static int vm_builtin_date_interval_create_from_date_string(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -8096,6 +8152,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "date_interval_format",         vm_builtin_date_interval_format },
 		{ "date_get_last_errors",         vm_builtin_date_get_last_errors },
 		{ "date_parse",                   vm_builtin_date_parse },
+		{ "date_parse_from_format",       vm_builtin_date_parse_from_format },
 		{ "timezone_open",                vm_builtin_timezone_open },
 		{ "timezone_name_get",            vm_builtin_timezone_name_get },
 		{ "timezone_offset_get",          vm_builtin_timezone_offset_get },

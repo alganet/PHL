@@ -668,6 +668,7 @@ static const struct VmBuiltinSig {
 	{ "date_modify", "DateTime $object, string $modifier", "DateTime|false" },
 	{ "date_offset_get", "DateTimeInterface $object", "int" },
 	{ "date_parse", "string $datetime", "array" },
+	{ "date_parse_from_format", "string $format, string $datetime", "array" },
 	{ "date_sub", "DateTime $object, DateInterval $interval", "DateTime" },
 	{ "date_time_set", "DateTime $object, int $hour, int $minute, int $second = 0, int $microsecond = 0", "DateTime" },
 	{ "date_timestamp_get", "DateTimeInterface $object", "int" },
@@ -1607,6 +1608,16 @@ static sxu32 VmBuiltinPathMask(SyString *pName)
 		{ "disk_free_space",  15, 1u<<0 },
 		{ "disk_total_space", 16, 1u<<0 },
 		{ "diskfreespace",    13, 1u<<0 },
+		/* Not paths at all, and php screens them exactly as if they were: the
+		 * datetime a FORMAT is read against is Z_PARAM_PATH_STR at every door
+		 * that takes one, so a NUL inside it is the same catchable ValueError.
+		 * Only these five; `new DateTime($s)`, `date_create()`, `modify()` and
+		 * `date_parse()` take an ordinary string there and read up to the NUL. */
+		{ "date_parse_from_format",                22, 1u<<1 },
+		{ "date_create_from_format",               23, 1u<<1 },
+		{ "date_create_immutable_from_format",     33, 1u<<1 },
+		{ "DateTime::createFromFormat",            26, 1u<<1 },
+		{ "DateTimeImmutable::createFromFormat",   35, 1u<<1 },
 		/* Path-shaped settings and the pattern matcher */
 		{ "fnmatch",           7, (1u<<0)|(1u<<1) },
 		{ "set_include_path", 16, 1u<<0 },
