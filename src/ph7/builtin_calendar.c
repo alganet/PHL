@@ -153,6 +153,14 @@ static sxi64 CalGregorianToSdn(int inputYear,int inputMonth,int inputDay)
 			+ inputDay
 			- GREGOR_SDN_OFFSET);
 }
+/* The Julian calendar shares these two: same month names, same lengths. */
+static const char * const azMonthShort[13] = {
+	"","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"
+};
+static const char * const azMonthLong[13] = {
+	"","January","February","March","April","May","June","July","August",
+	"September","October","November","December"
+};
 /* ------------------------------------------------------------------ *
  *  Julian                                                             *
  * ------------------------------------------------------------------ */
@@ -259,8 +267,20 @@ static const int aMonthsPerYear[19] = {
 static const int aYearOffset[19] = {
 	0,12,24,37,49,61,74,86,99,111,123,136,148,160,173,185,197,210,222
 };
-/* The month names in Hebrew, ISO-8859-8 -- php's own bytes. A leap year has
- * an Adar I and an Adar II; a regular one has neither, only "Adar" in slot 7. */
+/*
+ * A leap year has an Adar I and an Adar II; a regular one has neither, only
+ * "Adar" in slot 7 -- so slot 6 of the regular table is the empty string and
+ * the two tables are picked between by the YEAR, not by the calendar. The
+ * Hebrew pair below is the same two tables in ISO-8859-8, php's own bytes.
+ */
+static const char * const azJewishMonthLeap[14] = {
+	"","Tishri","Heshvan","Kislev","Tevet","Shevat","Adar I","Adar II",
+	"Nisan","Iyyar","Sivan","Tammuz","Av","Elul"
+};
+static const char * const azJewishMonth[14] = {
+	"","Tishri","Heshvan","Kislev","Tevet","Shevat","","Adar",
+	"Nisan","Iyyar","Sivan","Tammuz","Av","Elul"
+};
 static const char * const azJewishHebMonthLeap[14] = {
 	"","\xFA\xF9\xF8\xE9","\xE7\xF9\xE5\xEF","\xEB\xF1\xEC\xE5","\xE8\xE1\xFA",
 	"\xF9\xE1\xE8","\xE0\xE3\xF8 \xE0'","\xE0\xE3\xF8 \xE1'","\xF0\xE9\xF1\xEF",
@@ -273,6 +293,8 @@ static const char * const azJewishHebMonth[14] = {
 	"\xF1\xE9\xE5\xEF","\xFA\xEE\xE5\xE6","\xE0\xE1","\xE0\xEC\xE5\xEC"
 };
 /* Which of the two name tables a Jewish year takes. */
+#define CAL_JEWISH_MONTH_NAME(y) \
+	((aMonthsPerYear[((y)-1) % 19] == 13) ? azJewishMonthLeap : azJewishMonth)
 #define CAL_JEWISH_HEB_MONTH_NAME(y) \
 	((aMonthsPerYear[((y)-1) % 19] == 13) ? azJewishHebMonthLeap : azJewishHebMonth)
 /*
@@ -583,6 +605,71 @@ static sxi64 CalFrenchToSdn(int year,int month,int day)
 			+ day
 			+ FRENCH_SDN_OFFSET);
 }
+/* Slot 13 is the five or six holidays that close a year, not a month. */
+static const char * const azFrenchMonth[14] = {
+	"","Vendemiaire","Brumaire","Frimaire","Nivose","Pluviose","Ventose",
+	"Germinal","Floreal","Prairial","Messidor","Thermidor","Fructidor","Extra"
+};
+
+/* ------------------------------------------------------------------ *
+ *  Day of week                                                        *
+ * ------------------------------------------------------------------ */
+/*
+ * Plain arithmetic on the counter, with no calendar consulted -- which is why
+ * a serial day number every converter above rejects (0, a negative one, one
+ * past the Jewish maximum) still has a weekday, and why the `+ 8` is there: C
+ * gives a negative remainder for a negative operand.
+ */
+static int CalDayOfWeek(sxi64 sdn)
+{
+	return (int)(sdn % 7 + 8) % 7;
+}
+static const char * const azDayShort[7] = {
+	"Sun","Mon","Tue","Wed","Thu","Fri","Sat"
+};
+static const char * const azDayLong[7] = {
+	"Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"
+};
+
+/* ------------------------------------------------------------------ *
+ *  The calendar table                                                 *
+ * ------------------------------------------------------------------ */
+/*
+ * The four calendars behind one id, in the order the CAL_* constants number
+ * them. The two lunisolar ones carry no separate abbreviations -- one table
+ * answers both of cal_info()'s name keys -- and the Jewish entry holds the
+ * LEAP-year spelling, which is what cal_info() shows; the per-YEAR choice
+ * between the two Jewish tables is made at the two places that know a year.
+ */
+#define CAL_NUM_CALS 4
+/* The ids the CAL_* constants carry, named here because three routines below
+ * ask "is this the Jewish one?" or "is this the French one?" about them. */
+#define CAL_ID_GREGORIAN 0
+#define CAL_ID_JULIAN    1
+#define CAL_ID_JEWISH    2
+#define CAL_ID_FRENCH    3
+typedef struct cal_entry cal_entry;
+struct cal_entry {
+	const char *zName;                          /* "Gregorian" */
+	const char *zSymbol;                        /* "CAL_GREGORIAN" */
+	sxi64 (*xToSdn)(int,int,int);
+	void (*xFromSdn)(sxi64,int *,int *,int *);
+	int nMonth;                                 /* 12, or 13 for the lunisolar pair */
+	int nMaxDayInMonth;
+	const char * const *azShort;
+	const char * const *azLong;
+};
+static const cal_entry aCalendar[CAL_NUM_CALS] = {
+	{ "Gregorian","CAL_GREGORIAN",CalGregorianToSdn,CalSdnToGregorian,12,31,
+	  azMonthShort,azMonthLong },
+	{ "Julian","CAL_JULIAN",CalJulianToSdn,CalSdnToJulian,12,31,
+	  azMonthShort,azMonthLong },
+	{ "Jewish","CAL_JEWISH",CalJewishToSdn,CalSdnToJewish,13,30,
+	  azJewishMonthLeap,azJewishMonthLeap },
+	{ "French","CAL_FRENCH",CalFrenchToSdn,CalSdnToFrench,13,30,
+	  azFrenchMonth,azFrenchMonth }
+};
+
 /* ------------------------------------------------------------------ *
  *  The PHP surface                                                    *
  * ------------------------------------------------------------------ */
@@ -813,4 +900,328 @@ PH7_PRIVATE int PH7_builtin_jdtojewish(ph7_context *pCtx,int nArg,ph7_value **ap
 		zDay,CAL_JEWISH_HEB_MONTH_NAME(year)[month],zYear);
 	return PH7_OK;
 }
+/*
+ * The calendar id every generic entry point screens first. Answers 1 and
+ * raises php's ValueError -- whose ARGUMENT NUMBER differs per function --
+ * when the id names no calendar.
+ */
+static int CalBadId(ph7_context *pCtx,sxi64 iCal,const char *zFn,int nPos)
+{
+	if( iCal >= 0 && iCal < CAL_NUM_CALS ){
+		return 0;
+	}
+	PH7_VmThrowException(pCtx,"ValueError",
+		"%s(): Argument #%d ($calendar) must be a valid calendar ID",zFn,nPos);
+	return 1;
+}
+/* One calendar's row of cal_info(), written into pOut. */
+static void CalInfoOne(ph7_context *pCtx,const cal_entry *pCal,ph7_value *pOut)
+{
+	ph7_value *pMonths,*pShort,*pVal;
+	int i;
+	pMonths = ph7_context_new_array(pCtx);
+	pShort  = ph7_context_new_array(pCtx);
+	pVal    = ph7_context_new_scalar(pCtx);
+	if( pMonths == 0 || pShort == 0 || pVal == 0 ){
+		return;
+	}
+	for( i = 1 ; i <= pCal->nMonth ; ++i ){
+		ph7_value_string(pVal,pCal->azLong[i],-1);
+		ph7_array_add_intkey_elem(pMonths,i,pVal);
+		ph7_value_reset_string_cursor(pVal);
+		ph7_value_string(pVal,pCal->azShort[i],-1);
+		ph7_array_add_intkey_elem(pShort,i,pVal);
+		ph7_value_reset_string_cursor(pVal);
+	}
+	ph7_array_add_strkey_elem(pOut,"months",pMonths);
+	ph7_array_add_strkey_elem(pOut,"abbrevmonths",pShort);
+	ph7_value_int(pVal,pCal->nMaxDayInMonth);
+	ph7_array_add_strkey_elem(pOut,"maxdaysinmonth",pVal);
+	ph7_value_string(pVal,pCal->zName,-1);
+	ph7_array_add_strkey_elem(pOut,"calname",pVal);
+	ph7_value_reset_string_cursor(pVal);
+	ph7_value_string(pVal,pCal->zSymbol,-1);
+	ph7_array_add_strkey_elem(pOut,"calsymbol",pVal);
+	ph7_context_release_value(pCtx,pVal);
+	ph7_context_release_value(pCtx,pShort);
+	ph7_context_release_value(pCtx,pMonths);
+}
+/*
+ * array cal_info(int $calendar = -1)
+ *  -1 -- the default -- is not an error but a REQUEST for all four, keyed by
+ *  calendar id; every other negative value is refused.
+ */
+PH7_PRIVATE int PH7_builtin_cal_info(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pArray;
+	sxi64 iCal = -1;
+	if( nArg > 0 ){
+		iCal = ph7_value_to_int64(apArg[0]);
+	}
+	pArray = ph7_context_new_array(pCtx);
+	if( pArray == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	if( iCal == -1 ){
+		int i;
+		for( i = 0 ; i < CAL_NUM_CALS ; ++i ){
+			ph7_value *pOne = ph7_context_new_array(pCtx);
+			if( pOne == 0 ){
+				continue;
+			}
+			CalInfoOne(pCtx,&aCalendar[i],pOne);
+			ph7_array_add_intkey_elem(pArray,i,pOne);
+			ph7_context_release_value(pCtx,pOne);
+		}
+		ph7_result_value(pCtx,pArray);
+		return PH7_OK;
+	}
+	if( CalBadId(pCtx,iCal,"cal_info",1) ){
+		return PH7_OK;
+	}
+	CalInfoOne(pCtx,&aCalendar[iCal],pArray);
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/*
+ * int cal_days_in_month(int $calendar, int $month, int $year)
+ *  There is no month-length table anywhere in this extension: php converts the
+ *  first of the month and the first of the NEXT month and subtracts, which is
+ *  what lets one routine answer for a lunisolar calendar whose months move
+ *  from year to year. A month the calendar cannot convert is therefore a bare
+ *  "Invalid date" ValueError -- no function prefix, unlike the three argument
+ *  screens above it.
+ */
+PH7_PRIVATE int PH7_builtin_cal_days_in_month(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const cal_entry *pCal;
+	sxi64 iCal,iMonth,iYear,sdnStart,sdnNext;
+	if( nArg < 3 ){
+		/* Arity is enforced from aBuiltinSig[] before the call. */
+		ph7_result_int(pCtx,0);
+		return PH7_OK;
+	}
+	iCal   = ph7_value_to_int64(apArg[0]);
+	iMonth = ph7_value_to_int64(apArg[1]);
+	iYear  = ph7_value_to_int64(apArg[2]);
+	if( CalBadId(pCtx,iCal,"cal_days_in_month",1) ){
+		return PH7_OK;
+	}
+	if( iMonth <= 0 || iMonth > CAL_INT_MAX - 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"cal_days_in_month(): Argument #2 ($month) must be between 1 and %d",
+			CAL_INT_MAX - 1);
+	}
+	if( iYear > CAL_INT_MAX - 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"cal_days_in_month(): Argument #3 ($year) must be less than %d",
+			CAL_INT_MAX - 1);
+	}
+	pCal = &aCalendar[iCal];
+	sdnStart = pCal->xToSdn(CalTruncInt(iYear),CalTruncInt(iMonth),1);
+	if( sdnStart == 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError","Invalid date");
+	}
+	sdnNext = pCal->xToSdn(CalTruncInt(iYear),CalTruncInt(iMonth + 1),1);
+	if( sdnNext == 0 ){
+		/* The next month is the next YEAR's first -- and the year after 1 B.C.
+		 * is 1 A.D., not 0. */
+		if( iYear == -1 ){
+			sdnNext = pCal->xToSdn(1,1,1);
+		}else{
+			sdnNext = pCal->xToSdn(CalTruncInt(iYear + 1),1,1);
+			if( iCal == CAL_ID_FRENCH && sdnNext == 0 ){
+				/* The French calendar ends at 0014-13-05, so its last month has
+				 * no next year to be measured against. */
+				sdnNext = 2380953;
+			}
+		}
+	}
+	ph7_result_int64(pCtx,sdnNext - sdnStart);
+	return PH7_OK;
+}
+/*
+ * int cal_to_jd(int $calendar, int $month, int $day, int $year)
+ *  Each argument gets a different screen: the day the whole int range, the
+ *  month a 1-based one, and the year only an UPPER bound -- so a year below
+ *  the int range is narrowed rather than refused.
+ */
+PH7_PRIVATE int PH7_builtin_cal_to_jd(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi64 iCal,iMonth,iDay,iYear;
+	if( nArg < 4 ){
+		ph7_result_int(pCtx,0);
+		return PH7_OK;
+	}
+	iCal   = ph7_value_to_int64(apArg[0]);
+	iMonth = ph7_value_to_int64(apArg[1]);
+	iDay   = ph7_value_to_int64(apArg[2]);
+	iYear  = ph7_value_to_int64(apArg[3]);
+	if( CalBadId(pCtx,iCal,"cal_to_jd",1) ){
+		return PH7_OK;
+	}
+	if( iMonth <= 0 || iMonth > CAL_INT_MAX - 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"cal_to_jd(): Argument #2 ($month) must be between 1 and %d",CAL_INT_MAX - 1);
+	}
+	if( iDay > CAL_INT_MAX || iDay < CAL_INT_MIN ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"cal_to_jd(): Argument #3 ($day) must be between %d and %d",
+			CAL_INT_MIN,CAL_INT_MAX);
+	}
+	if( iYear > CAL_INT_MAX - 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"cal_to_jd(): Argument #4 ($year) must be less than %d",CAL_INT_MAX - 1);
+	}
+	ph7_result_int64(pCtx,aCalendar[iCal].xToSdn(CalTruncInt(iYear),
+		CalTruncInt(iMonth),CalTruncInt(iDay)));
+	return PH7_OK;
+}
+/*
+ * array cal_from_jd(int $julian_day, int $calendar)
+ *  Nine keys. Two are special-cased for the Jewish calendar and for it alone:
+ *  a serial day number BEFORE that calendar begins answers a NULL day of week
+ *  and two empty day names, where every other calendar still names one -- the
+ *  weekday is arithmetic on the counter and does not care whether the date
+ *  exists -- and its month names come from the YEAR's own leap/regular table.
+ */
+PH7_PRIVATE int PH7_builtin_cal_from_jd(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const cal_entry *pCal;
+	ph7_value *pArray,*pVal;
+	sxi64 iJd,iCal;
+	int year,month,day;
+	if( nArg < 2 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	iJd  = ph7_value_to_int64(apArg[0]);
+	iCal = ph7_value_to_int64(apArg[1]);
+	if( CalBadId(pCtx,iCal,"cal_from_jd",2) ){
+		return PH7_OK;
+	}
+	pCal = &aCalendar[iCal];
+	pArray = ph7_context_new_array(pCtx);
+	pVal   = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pVal == 0 ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	pCal->xFromSdn(iJd,&year,&month,&day);
+	ph7_value_string_format(pVal,"%d/%d/%d",month,day,year);
+	ph7_array_add_strkey_elem(pArray,"date",pVal);
+	ph7_value_reset_string_cursor(pVal);
+	ph7_value_int(pVal,month); ph7_array_add_strkey_elem(pArray,"month",pVal);
+	ph7_value_int(pVal,day);   ph7_array_add_strkey_elem(pArray,"day",pVal);
+	ph7_value_int(pVal,year);  ph7_array_add_strkey_elem(pArray,"year",pVal);
+	if( iCal != CAL_ID_JEWISH || year > 0 ){
+		int dow = CalDayOfWeek(iJd);
+		ph7_value_int(pVal,dow);
+		ph7_array_add_strkey_elem(pArray,"dow",pVal);
+		ph7_value_string(pVal,azDayShort[dow],-1);
+		ph7_array_add_strkey_elem(pArray,"abbrevdayname",pVal);
+		ph7_value_reset_string_cursor(pVal);
+		ph7_value_string(pVal,azDayLong[dow],-1);
+		ph7_array_add_strkey_elem(pArray,"dayname",pVal);
+		ph7_value_reset_string_cursor(pVal);
+	}else{
+		ph7_value_null(pVal);
+		ph7_array_add_strkey_elem(pArray,"dow",pVal);
+		ph7_value_string(pVal,"",0);
+		ph7_array_add_strkey_elem(pArray,"abbrevdayname",pVal);
+		ph7_array_add_strkey_elem(pArray,"dayname",pVal);
+		ph7_value_reset_string_cursor(pVal);
+	}
+	if( iCal == CAL_ID_JEWISH ){
+		const char *zMonth = year > 0 ? CAL_JEWISH_MONTH_NAME(year)[month] : "";
+		ph7_value_string(pVal,zMonth,-1);
+		ph7_array_add_strkey_elem(pArray,"abbrevmonth",pVal);
+		ph7_array_add_strkey_elem(pArray,"monthname",pVal);
+	}else{
+		ph7_value_string(pVal,pCal->azShort[month],-1);
+		ph7_array_add_strkey_elem(pArray,"abbrevmonth",pVal);
+		ph7_value_reset_string_cursor(pVal);
+		ph7_value_string(pVal,pCal->azLong[month],-1);
+		ph7_array_add_strkey_elem(pArray,"monthname",pVal);
+	}
+	ph7_context_release_value(pCtx,pVal);
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/*
+ * int|string jddayofweek(int $julian_day, int $mode = CAL_DOW_DAYNO)
+ *  Only two modes answer a name; every other value -- negative, unknown, out
+ *  of range -- falls through to the day NUMBER.
+ */
+PH7_PRIVATE int PH7_builtin_jddayofweek(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi64 iMode = 0;
+	int dow;
+	if( nArg < 1 ){
+		ph7_result_int(pCtx,0);
+		return PH7_OK;
+	}
+	dow = CalDayOfWeek(ph7_value_to_int64(apArg[0]));
+	if( nArg > 1 ){
+		iMode = ph7_value_to_int64(apArg[1]);
+	}
+	if( iMode == 1 ){
+		ph7_result_string(pCtx,azDayLong[dow],-1);
+	}else if( iMode == 2 ){
+		ph7_result_string(pCtx,azDayShort[dow],-1);
+	}else{
+		ph7_result_int(pCtx,dow);
+	}
+	return PH7_OK;
+}
+/*
+ * string jdmonthname(int $julian_day, int $mode)
+ *  $mode picks the CALENDAR as well as the spelling, and its six values are
+ *  not in the order the calendar ids are: 0/1 Gregorian short/long, 2/3
+ *  Julian, 4 Jewish, 5 French. Anything else is the Gregorian short name. A
+ *  day the chosen calendar cannot place lands on month slot 0, which is the
+ *  empty string in every table.
+ */
+PH7_PRIVATE int PH7_builtin_jdmonthname(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zMonth;
+	sxi64 iJd,iMode;
+	int year,month,day;
+	if( nArg < 2 ){
+		ph7_result_string(pCtx,"",0);
+		return PH7_OK;
+	}
+	iJd = ph7_value_to_int64(apArg[0]);
+	iMode = ph7_value_to_int64(apArg[1]);
+	switch( iMode ){
+		case 1:
+			CalSdnToGregorian(iJd,&year,&month,&day);
+			zMonth = azMonthLong[month];
+			break;
+		case 2:
+			CalSdnToJulian(iJd,&year,&month,&day);
+			zMonth = azMonthShort[month];
+			break;
+		case 3:
+			CalSdnToJulian(iJd,&year,&month,&day);
+			zMonth = azMonthLong[month];
+			break;
+		case 4:
+			CalSdnToJewish(iJd,&year,&month,&day);
+			zMonth = year > 0 ? CAL_JEWISH_MONTH_NAME(year)[month] : "";
+			break;
+		case 5:
+			CalSdnToFrench(iJd,&year,&month,&day);
+			zMonth = azFrenchMonth[month];
+			break;
+		default:
+			CalSdnToGregorian(iJd,&year,&month,&day);
+			zMonth = azMonthShort[month];
+			break;
+	}
+	ph7_result_string(pCtx,zMonth,-1);
+	return PH7_OK;
+}
+
 #endif /* PH7_DISABLE_BUILTIN_FUNC */

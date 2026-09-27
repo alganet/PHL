@@ -310,17 +310,6 @@
    "  $count = $total;"\
    "  return $subject;"\
    "}"\
-   "function cal_days_in_month($calendar, $month, $year){"\
-   "  $month = (int)$month; $year = (int)$year;"\
-   "  $days = array(31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31);"\
-   "  if( $month < 1 || $month > 12 ){"\
-   "    throw new ValueError('cal_days_in_month(): Argument #2 ($month) must be a valid month');"\
-   "  }"\
-   "  if( $month === 2 && ((($year % 4 === 0) && ($year % 100 !== 0)) || ($year % 400 === 0)) ){"\
-   "    return 29;"\
-   "  }"\
-   "  return $days[$month - 1];"\
-   "}"\
    "function preg_grep($pattern, $array, $flags = 0){"\
    "  $out = array();"\
    "  foreach( $array as $k => $v ){"\

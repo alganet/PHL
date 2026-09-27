@@ -149,11 +149,84 @@ static void PH7_INTMAX_Const(ph7_value *pVal,void *pUnused)
 	SXUNUSED(pUnused);
 	ph7_value_int64(pVal,SXI64_HIGH);
 }
-/* ext/calendar: the only calendar cal_days_in_month() is asked for in practice. */
+/*
+ * ext/calendar: the four calendars, numbered in the order the conversion table
+ * holds them, and CAL_NUM_CALS as their count -- which is what makes the
+ * "valid calendar ID" screen a plain 0 <= id < CAL_NUM_CALS test.
+ */
 static void PH7_CAL_GREGORIAN_Const(ph7_value *pVal,void *pUnused)
 {
 	SXUNUSED(pUnused);
 	ph7_value_int(pVal,0);
+}
+static void PH7_CAL_JULIAN_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,1);
+}
+static void PH7_CAL_JEWISH_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,2);
+}
+static void PH7_CAL_FRENCH_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,3);
+}
+static void PH7_CAL_NUM_CALS_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,4);
+}
+/* jddayofweek()'s three modes. Note that SHORT is 2 and LONG is 1: the numbers
+ * are not in the order the names suggest. */
+static void PH7_CAL_DOW_DAYNO_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,0);
+}
+static void PH7_CAL_DOW_LONG_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,1);
+}
+static void PH7_CAL_DOW_SHORT_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,2);
+}
+/* jdmonthname()'s six modes, which pick the CALENDAR as well as the spelling
+ * and are numbered independently of the CAL_* calendar ids above. */
+static void PH7_CAL_MONTH_GREGORIAN_SHORT_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,0);
+}
+static void PH7_CAL_MONTH_GREGORIAN_LONG_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,1);
+}
+static void PH7_CAL_MONTH_JULIAN_SHORT_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,2);
+}
+static void PH7_CAL_MONTH_JULIAN_LONG_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,3);
+}
+static void PH7_CAL_MONTH_JEWISH_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,4);
+}
+static void PH7_CAL_MONTH_FRENCH_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,5);
 }
 /*
  * ext/calendar: the three flags jdtojewish()'s Hebrew spelling reads. They are
@@ -2516,6 +2589,19 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"INPUT_ENV",                   PH7_INPUT_ENV_Const },
 	{"INPUT_SERVER",                PH7_INPUT_SERVER_Const },
 	{"CAL_GREGORIAN",        PH7_CAL_GREGORIAN_Const },
+	{"CAL_JULIAN",           PH7_CAL_JULIAN_Const    },
+	{"CAL_JEWISH",           PH7_CAL_JEWISH_Const    },
+	{"CAL_FRENCH",           PH7_CAL_FRENCH_Const    },
+	{"CAL_NUM_CALS",         PH7_CAL_NUM_CALS_Const  },
+	{"CAL_DOW_DAYNO",        PH7_CAL_DOW_DAYNO_Const },
+	{"CAL_DOW_LONG",         PH7_CAL_DOW_LONG_Const  },
+	{"CAL_DOW_SHORT",        PH7_CAL_DOW_SHORT_Const },
+	{"CAL_MONTH_GREGORIAN_SHORT", PH7_CAL_MONTH_GREGORIAN_SHORT_Const },
+	{"CAL_MONTH_GREGORIAN_LONG",  PH7_CAL_MONTH_GREGORIAN_LONG_Const },
+	{"CAL_MONTH_JULIAN_SHORT",    PH7_CAL_MONTH_JULIAN_SHORT_Const },
+	{"CAL_MONTH_JULIAN_LONG",     PH7_CAL_MONTH_JULIAN_LONG_Const },
+	{"CAL_MONTH_JEWISH",          PH7_CAL_MONTH_JEWISH_Const },
+	{"CAL_MONTH_FRENCH",          PH7_CAL_MONTH_FRENCH_Const },
 	{"CAL_JEWISH_ADD_ALAFIM_GERESH", PH7_CAL_JEWISH_ADD_ALAFIM_GERESH_Const },
 	{"CAL_JEWISH_ADD_ALAFIM",        PH7_CAL_JEWISH_ADD_ALAFIM_Const },
 	{"CAL_JEWISH_ADD_GERESHAYIM",    PH7_CAL_JEWISH_ADD_GERESHAYIM_Const },

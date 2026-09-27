@@ -1396,7 +1396,7 @@ PH7_PRIVATE int vm_builtin_phpversion(ph7_context *pCtx,int nArg,ph7_value **apA
  * case-INSENSITIVELY, which is why one table serves both.
  */
 static const char * const azExtension[] = {
-	"Core", "date", "pcre", "SPL", "json", "standard",
+	"Core", "date", "pcre", "SPL", "json", "standard", "calendar",
 	"ctype", "filter", "hash", "Reflection", "session", "mbstring", "iconv"
 #ifdef PH7_ENABLE_LIBXML
 	, "libxml", "xml", "dom", "xmlwriter"
