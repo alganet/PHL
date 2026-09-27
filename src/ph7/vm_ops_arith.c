@@ -699,34 +699,55 @@ PH7_PRIVATE void PH7_MemObjPow(ph7_value *pBase,ph7_value *pExp,ph7_value *pOut)
 	a = pBase->rVal;
 	b = pExp->rVal;
 	r = pow(a, b);
-	/* Match PHP: int**non-negative-int stays int when the exact result
-	 * fits in sxi64. Use exponentiation by squaring with overflow checks
-	 * rather than casting the double back, because the boundary 2^63 is
-	 * representable as double but not as signed int64. */
+	/* int ** non-negative int is php's OWN loop, not a call to pow(), and the
+	 * difference is visible in the answer twice over. php multiplies in
+	 * `pow_function_base`'s doubling loop and, the moment a step OVERFLOWS, finishes
+	 * in DOUBLE space FROM THERE — `dval * pow(l2, i)` with whatever exponent is
+	 * left — rather than re-computing pow(base, exp) from the original operands.
+	 * That carries the accumulated SIGN, so `(-3) ** PHP_INT_MAX` is -INF where
+	 * pow() answers +INF, and it rounds differently, so `3 ** 100` is
+	 * 5.1537752073201141e+47 where pow() gives ...132e+47 and `10 ** 64` is
+	 * 1.0000000000000002e+64 where pow() gives exactly 1e+64. 33 rows of a 380-row
+	 * base×exponent sweep were wrong, sign included.
+	 * The overflowing product is the DOUBLE product of the two operands, which is
+	 * what php's ZEND_SIGNED_MULTIPLY_LONG hands back wherever it detects the
+	 * overflow with a builtin (gcc/clang) or with _mul128 (MSVC) — the two
+	 * platforms PHL builds on. */
 	if( bBothInt && exp_i >= 0 ){
-		sxi64 result_i = 1;
-		sxi64 cur_base = base_i;
-		sxi64 cur_exp  = exp_i;
-		int overflow = 0;
-		while( cur_exp > 0 ){
-			if( cur_exp & 1 ){
-				if( PH7_MUL_OVERFLOW64(result_i, cur_base, &result_i) ){
-					overflow = 1;
-					break;
-				}
-			}
-			cur_exp >>= 1;
-			if( cur_exp > 0 ){
-				if( PH7_MUL_OVERFLOW64(cur_base, cur_base, &cur_base) ){
-					overflow = 1;
-					break;
-				}
-			}
-		}
-		if( !overflow ){
-			pOut->x.iVal = result_i;
+		sxi64 l1 = 1, l2 = base_i, i = exp_i, iProd;
+		if( i == 0 ){
+			/* Anything to the 0 is int 1 — php answers before it looks at the base. */
+			pOut->x.iVal = 1;
 			MemObjSetType(pOut, MEMOBJ_INT);
 			usedInt = 1;
+		}else if( l2 == 0 ){
+			pOut->x.iVal = 0;
+			MemObjSetType(pOut, MEMOBJ_INT);
+			usedInt = 1;
+		}else{
+			while( i >= 1 ){
+				if( i % 2 ){
+					--i;
+					if( PH7_MUL_OVERFLOW64(l1, l2, &iProd) ){
+						r = ((ph7_real)l1 * (ph7_real)l2) * pow((ph7_real)l2,(ph7_real)i);
+						break;
+					}
+					l1 = iProd;
+				}else{
+					i /= 2;
+					if( PH7_MUL_OVERFLOW64(l2, l2, &iProd) ){
+						r = (ph7_real)l1 * pow((ph7_real)l2 * (ph7_real)l2,(ph7_real)i);
+						break;
+					}
+					l2 = iProd;
+				}
+				if( i == 0 ){
+					pOut->x.iVal = l1;
+					MemObjSetType(pOut, MEMOBJ_INT);
+					usedInt = 1;
+					break;
+				}
+			}
 		}
 	}
 	if( !usedInt ){
