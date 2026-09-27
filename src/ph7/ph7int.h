@@ -2949,6 +2949,9 @@ struct ph7_vm
 	void *pCurlMultis;         /* phl_curlm registry chain (ext/curl); swept BEFORE
 	                            * pCurlHandles, since a multi still holds the easy handles
 	                            * that were added to it */
+	void *pCurlShares;         /* phl_curlsh registry chain (ext/curl); swept AFTER
+	                            * pCurlHandles, since a CURLSH an easy handle still names
+	                            * refuses to be cleaned up */
 	ph7_value sXmlEntLoader;   /* libxml_set_external_entity_loader()'s callable; NULL = default.
 	                            * Stored and answered, never invoked: no PHL parse path loads an
 	                            * external entity (php's sanitized defaults keep it off too) —

@@ -7,11 +7,12 @@
 
 /*
  * Section:
- *    ext/curl -- the MULTI interface (php's `curl_multi_*`).
+ *    ext/curl -- the MULTI and SHARE interfaces (php's `curl_multi_*` and
+ *    `curl_share_*`).
  * Status:
- *    The whole multi surface: the handle class, its option setter, the set of
- *    easy handles it holds, and the verbs that drive them. The share half
- *    follows.
+ *    Complete: the multi handle with its option setter, its set of easy
+ *    handles and the verbs that drive them, plus the two SHARE classes and
+ *    their five verbs.
  *
  * WHAT A MULTI HANDLE IS HERE. libcurl's multi interface is a SET of easy
  * handles plus a scheduler; php wraps the set in an object and keeps its own
@@ -616,6 +617,359 @@ static int vm_builtin_curl_multi_setopt(ph7_context *pCtx,int nArg,ph7_value **a
 	return PH7_OK;
 }
 
+/* ------------------------------------------------------------------------
+ * The SHARE surface
+ * ------------------------------------------------------------------------ */
+/*
+ * A share handle is a cache several easy handles read and write together --
+ * php has two classes over it, and they are NOT related by inheritance:
+ * curl_share_close() and curl_share_setopt() take a CurlShareHandle and refuse
+ * a CurlSharePersistentHandle by type, which is how php keeps a process-wide
+ * cache out of the reach of the verbs that would reconfigure it.
+ */
+static const char * const CurlShareClass = "CurlShareHandle";
+static const char * const CurlSharePersistClass = "CurlSharePersistentHandle";
+
+/*
+ * One record. pBorrow is the cache a PERSISTENT record joins rather than
+ * creates: its object is its own (php's two persistent handles are never
+ * identical, and never equal either), and the CURLSH under them is one.
+ */
+static phl_curlsh * CurlShareNew(ph7_vm *pVm,CURLSH *pBorrow)
+{
+	phl_curlsh *pSh = (phl_curlsh *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_curlsh));
+	if( pSh == 0 ){
+		return 0;
+	}
+	SyZero(pSh,sizeof(phl_curlsh));
+	pSh->pVm = pVm;
+	pSh->pShare = pBorrow ? pBorrow : curl_share_init();
+	pSh->bOwnsShare = pBorrow == 0;
+	if( pSh->pShare == 0 ){
+		SyMemBackendFree(&pVm->sAllocator,pSh);
+		return 0;
+	}
+	pSh->pNext = (phl_curlsh *)pVm->pCurlShares;
+	pVm->pCurlShares = pSh;
+	return pSh;
+}
+/*
+ * Free every registered share. Runs LAST (see PH7_CurlVmReset): libcurl
+ * refuses to clean up a share an easy handle is still attached to, so every
+ * CURL* has to have been cleaned up first or this leaks the cache.
+ */
+PH7_PRIVATE void PH7_CurlShareVmSweep(ph7_vm *pVm)
+{
+	phl_curlsh *pSh = (phl_curlsh *)pVm->pCurlShares;
+	while( pSh ){
+		phl_curlsh *pNext = pSh->pNext;
+		PH7_CurlBlankSlot(pSh->pOwner);
+		if( pSh->pShare && pSh->bOwnsShare ){
+			curl_share_cleanup(pSh->pShare);
+		}
+		SyMemBackendFree(&pVm->sAllocator,pSh);
+		pSh = pNext;
+	}
+	pVm->pCurlShares = 0;
+}
+/*
+ * The object is going away. A PERSISTENT share is NOT torn down here: it is
+ * the point of the class that it outlives the objects handed out for it, and
+ * the sweep is what closes it. An ordinary one is closed with its last object,
+ * the way every other handle class here is -- unless a live transfer still
+ * names it, which libcurl refuses to cleanup and which the sweep will pick up
+ * once the easy handles are gone.
+ */
+static void CurlShareInstanceRelease(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	phl_curlsh *pSh = (phl_curlsh *)PH7_CurlSlotOf(pThis);
+	SXUNUSED(pVm);
+	if( pSh == 0 || pSh->pOwner != pThis ){
+		return;
+	}
+	/* The instance is being torn down: the record must stop naming it whatever
+	 * happens next, or the sweep blanks a slot in freed memory. */
+	pSh->pOwner = 0;
+	if( pSh->bPersistent || !pSh->bOwnsShare ){
+		return;
+	}
+	if( pSh->pShare && curl_share_cleanup(pSh->pShare) == CURLSHE_OK ){
+		/* CURLSHE_IN_USE says a transfer still names it: leave it to the sweep,
+		 * which runs after every easy handle is gone. */
+		pSh->pShare = 0;
+	}
+}
+/* The record behind a share argument of either class. */
+static phl_curlsh * CurlShareArg(int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis;
+	pThis = (nArg > 0 && apArg && ph7_value_is_object(apArg[0])) ?
+		(ph7_class_instance *)apArg[0]->x.pOther : 0;
+	return (phl_curlsh *)PH7_CurlSlotOf(pThis);
+}
+/* Hand back a new object over one record. */
+static int CurlShareResult(ph7_context *pCtx,phl_curlsh *pSh,const char *zClass)
+{
+	ph7_class_instance *pThis = PH7_CurlNewInstance(pCtx->pVm,zClass,(int)SyStrlen(zClass));
+	if( pThis == 0 || PH7_CurlSlotAttach(pThis,(void *)pSh) != 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( pSh->pOwner == 0 ){
+		pSh->pOwner = pThis;
+	}
+	PH7_NativeResultObject(pCtx,pThis);
+	return PH7_OK;
+}
+/* CurlShareHandle curl_share_init() */
+static int vm_builtin_curl_share_init(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_curlsh *pSh;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	pSh = CurlShareNew(pCtx->pVm,0);
+	if( pSh == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	return CurlShareResult(pCtx,pSh,CurlShareClass);
+}
+/*
+ * void curl_share_close(CurlShareHandle $share_handle)
+ *
+ * A NO-OP, the same finding curl_close() carries: the object's own teardown is
+ * what frees the cache, so a closed share still takes options and still shares
+ * -- and it does not clear the error state either.
+ */
+static int vm_builtin_curl_share_close(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+/* int curl_share_errno(CurlShareHandle $share_handle) */
+static int vm_builtin_curl_share_errno(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_curlsh *pSh = CurlShareArg(nArg,apArg);
+	ph7_result_int(pCtx,pSh ? pSh->iLastErr : 0);
+	return PH7_OK;
+}
+/*
+ * bool curl_share_setopt(CurlShareHandle $share_handle, int $option, mixed $value)
+ *
+ * Two options, and the VALUE is libcurl's to judge: php casts whatever it was
+ * given to a long and hands it over, so `"3"` and `3.7` are both
+ * CURL_LOCK_DATA_DNS while a null, a true and an out-of-range number are the
+ * library's CURLSHE_BAD_OPTION -- false, with the code left on the handle. An
+ * option php does not know is a ValueError, and it leaves the same code
+ * behind, so the throw and the refusal are not alternatives.
+ */
+static int vm_builtin_curl_share_setopt(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_curlsh *pSh = CurlShareArg(nArg,apArg);
+	sxi64 iOpt;
+	CURLSHcode rc;
+	if( pSh == 0 || pSh->pShare == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	iOpt = ph7_value_to_int64(apArg[1]);
+	if( iOpt != CURLSHOPT_SHARE && iOpt != CURLSHOPT_UNSHARE ){
+		pSh->iLastErr = (int)CURLSHE_BAD_OPTION;
+		ph7_result_bool(pCtx,0);
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"curl_share_setopt(): Argument #2 ($option) is not a valid cURL share option");
+	}
+	rc = curl_share_setopt(pSh->pShare,(CURLSHoption)iOpt,
+		(long)ph7_value_to_int64(apArg[2]));
+	pSh->iLastErr = (int)rc;
+	ph7_result_bool(pCtx,rc == CURLSHE_OK);
+	return PH7_OK;
+}
+/*
+ * The option set a persistent share is asked for, as a bit per
+ * CURL_LOCK_DATA_*, or -1 with the refusal already thrown.
+ *
+ * php validates ELEMENT BY ELEMENT in the array's own order, and the three
+ * refusals are three different sentences: a value no int cast applies to is a
+ * TypeError naming the type it got; one that is not a CURL_LOCK_DATA_* is a
+ * ValueError; and COOKIE is a ValueError of its own, because a cookie jar
+ * shared across php REQUESTS would hand one visitor's cookies to the next.
+ * The set itself is normalized -- sorted, and each name once -- which is what
+ * the `options` property answers.
+ */
+#define PHL_CURLSH_LOCK_MIN CURL_LOCK_DATA_COOKIE
+#define PHL_CURLSH_LOCK_MAX CURL_LOCK_DATA_PSL
+struct CurlShareOptWalk {
+	ph7_context *pCtx;
+	sxi64 iMask;
+	sxi32 rcThrow;
+	int bFailed;
+};
+static int CurlShareOptOne(ph7_value *pKey,ph7_value *pVal,void *pUser)
+{
+	struct CurlShareOptWalk *pW = (struct CurlShareOptWalk *)pUser;
+	sxi64 iVal;
+	SXUNUSED(pKey);
+	if( ph7_value_is_array(pVal) || ph7_value_is_object(pVal) ||
+		(ph7_value_is_string(pVal) && !PH7_MemObjIsNumeric(pVal)) ){
+		pW->rcThrow = PH7_VmThrowException(pW->pCtx,"TypeError",
+			"curl_share_init_persistent(): Argument #1 ($share_options) must contain "
+			"only int values, %s given",PH7_MemObjTypeDump(pVal));
+		pW->bFailed = 1;
+		return PH7_ABORT;
+	}
+	iVal = ph7_value_to_int64(pVal);
+	if( iVal < PHL_CURLSH_LOCK_MIN || iVal > PHL_CURLSH_LOCK_MAX ){
+		pW->rcThrow = PH7_VmThrowException(pW->pCtx,"ValueError",
+			"curl_share_init_persistent(): Argument #1 ($share_options) must contain "
+			"only CURL_LOCK_DATA_* constants");
+		pW->bFailed = 1;
+		return PH7_ABORT;
+	}
+	if( iVal == CURL_LOCK_DATA_COOKIE ){
+		pW->rcThrow = PH7_VmThrowException(pW->pCtx,"ValueError",
+			"curl_share_init_persistent(): Argument #1 ($share_options) must not contain "
+			"CURL_LOCK_DATA_COOKIE because sharing cookies across PHP requests is unsafe");
+		pW->bFailed = 1;
+		return PH7_ABORT;
+	}
+	pW->iMask |= ((sxi64)1 << iVal);
+	return PH7_OK;
+}
+/*
+ * CurlSharePersistentHandle curl_share_init_persistent(array $share_options)
+ *
+ * php's 8.5 addition, and the newest thing in the extension: a share that is
+ * meant to outlive the request, so two calls asking for the same set get two
+ * OBJECTS over one cache rather than two caches. The set is what they are
+ * matched on, and the object carries it back as a readonly property -- the one
+ * property any handle class here declares.
+ */
+static int vm_builtin_curl_share_init_persistent(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	struct CurlShareOptWalk sWalk;
+	ph7_class_instance *pThis;
+	phl_curlsh *pSh;
+	ph7_value *pOpts;
+	int i;
+	if( nArg < 1 || !ph7_value_is_array(apArg[0]) || ph7_array_count(apArg[0]) < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"curl_share_init_persistent(): Argument #1 ($share_options) must not be empty");
+	}
+	sWalk.pCtx = pCtx;
+	sWalk.iMask = 0;
+	sWalk.rcThrow = PH7_OK;
+	sWalk.bFailed = 0;
+	ph7_array_walk(apArg[0],CurlShareOptOne,&sWalk);
+	if( sWalk.bFailed ){
+		ph7_result_bool(pCtx,0);
+		return sWalk.rcThrow;
+	}
+	/* The same set answers the same cache, which is what "persistent" means
+	 * here: the registry is per-VM, since a CURLSH shared across VMs would
+	 * outlive the allocator that tracks it and be read by two threads of a
+	 * `-S` server at once. */
+	for( pSh = (phl_curlsh *)pVm->pCurlShares ; pSh ; pSh = pSh->pNext ){
+		if( pSh->bPersistent && pSh->bOwnsShare && pSh->iMask == sWalk.iMask ){
+			break;
+		}
+	}
+	if( pSh ){
+		/* Join the cache, with a record (and so an object) of this call's own. */
+		pSh = CurlShareNew(pVm,pSh->pShare);
+	}else{
+		pSh = CurlShareNew(pVm,0);
+		if( pSh ){
+			for( i = PHL_CURLSH_LOCK_MIN ; i <= PHL_CURLSH_LOCK_MAX ; ++i ){
+				if( sWalk.iMask & ((sxi64)1 << i) ){
+					curl_share_setopt(pSh->pShare,CURLSHOPT_SHARE,(long)i);
+				}
+			}
+		}
+	}
+	if( pSh == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pSh->bPersistent = 1;
+	pSh->iMask = sWalk.iMask;
+	/*
+	 * Every call gets its OWN object -- php's two are never identical, and
+	 * never equal either -- and each carries the normalized set. The property
+	 * is readonly and protected(set), so this write is the only one it will
+	 * ever take.
+	 */
+	pThis = PH7_CurlNewInstance(pVm,CurlSharePersistClass,(int)SyStrlen(CurlSharePersistClass));
+	if( pThis == 0 || PH7_CurlSlotAttach(pThis,(void *)pSh) != 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( pSh->pOwner == 0 ){
+		pSh->pOwner = pThis;
+	}
+	pOpts = ph7_new_array(pVm);
+	if( pOpts ){
+		ph7_value *pItem = ph7_new_scalar(pVm);
+		if( pItem ){
+			for( i = PHL_CURLSH_LOCK_MIN ; i <= PHL_CURLSH_LOCK_MAX ; ++i ){
+				if( sWalk.iMask & ((sxi64)1 << i) ){
+					ph7_value_int64(pItem,(sxi64)i);
+					ph7_array_add_elem(pOpts,0,pItem);
+				}
+			}
+			ph7_release_value(pVm,pItem);
+		}
+		PH7_NativeSetProp(pVm,pThis,"options",sizeof("options")-1,pOpts);
+		ph7_release_value(pVm,pOpts);
+	}
+	PH7_NativeResultObject(pCtx,pThis);
+	return PH7_OK;
+}
+/*
+ * CURLOPT_SHARE, reached from curl_setopt's option table. Only a share object
+ * of either class is attached; php takes anything else in silence.
+ *
+ * What makes it a share is that its record is on the share REGISTRY -- a
+ * cheaper and safer question than its class name, since a CurlHandle and a
+ * CurlMultiHandle keep their own records in the very same hidden slot.
+ */
+PH7_PRIVATE int PH7_CurlSetShare(phl_curl *pCurl,ph7_value *pVal)
+{
+	void *pRec;
+	phl_curlsh *pSh;
+	if( !ph7_value_is_object(pVal) ){
+		return 0;
+	}
+	pRec = PH7_CurlSlotOf((ph7_class_instance *)pVal->x.pOther);
+	if( pRec == 0 ){
+		return 0;
+	}
+	for( pSh = (phl_curlsh *)pCurl->pVm->pCurlShares ; pSh ; pSh = pSh->pNext ){
+		if( (void *)pSh == pRec ){
+			break;
+		}
+	}
+	if( pSh == 0 || pSh->pShare == 0 ){
+		return 0;
+	}
+	curl_easy_setopt(pCurl->pEasy,CURLOPT_SHARE,pSh->pShare);
+	/* The handle holds the OBJECT: libcurl keeps the CURLSH pointer and reads
+	 * it during every transfer, so the share must outlive the handle naming
+	 * it. */
+	if( pCurl->pShare ){
+		ph7_release_value(pCurl->pVm,pCurl->pShare);
+	}
+	pCurl->pShare = ph7_new_scalar(pCurl->pVm);
+	if( pCurl->pShare ){
+		PH7_MemObjStore(pVal,pCurl->pShare);
+	}
+	return 1;
+}
+
 /* ===== Installation ===== */
 
 PH7_PRIVATE sxi32 PH7_VmInstallCurlMulti(ph7_vm *pVm)
@@ -634,7 +988,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallCurlMulti(ph7_vm *pVm)
 		{ "curl_multi_exec",          vm_builtin_curl_multi_exec          },
 		{ "curl_multi_select",        vm_builtin_curl_multi_select        },
 		{ "curl_multi_info_read",     vm_builtin_curl_multi_info_read     },
-		{ "curl_multi_getcontent",    vm_builtin_curl_multi_getcontent    }
+		{ "curl_multi_getcontent",    vm_builtin_curl_multi_getcontent    },
+		{ "curl_share_init",          vm_builtin_curl_share_init          },
+		{ "curl_share_init_persistent", vm_builtin_curl_share_init_persistent },
+		{ "curl_share_close",         vm_builtin_curl_share_close         },
+		{ "curl_share_errno",         vm_builtin_curl_share_errno         },
+		{ "curl_share_setopt",        vm_builtin_curl_share_setopt        }
 	};
 	/*
 	 * The set, and nothing else: php's CurlMultiHandle declares no method, no
@@ -650,16 +1009,45 @@ PH7_PRIVATE sxi32 PH7_VmInstallCurlMulti(ph7_vm *pVm)
 	 * -- unlike CurlHandle -- NOCLONE: libcurl has no curl_multi_duphandle, so
 	 * php's `clone $mh` is "Trying to clone an uncloneable object".
 	 */
+	/*
+	 * The persistent share is the only handle class in this extension with a
+	 * php-visible property: `public protected(set) readonly array $options`,
+	 * the set it was asked for, normalized. It is written once by the factory
+	 * and refused every other way -- a store, an `unset()`, an indirect
+	 * modification through `[]` and a dynamic property beside it.
+	 */
+	static const PH7_NativePropDef aShareProp[] = {
+		{ "__res", PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 }
+	};
+	static const PH7_NativePropDef aPersistProp[] = {
+		{ "__res", PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ "options", PH7_MOD_PUBLIC|PH7_MOD_PROT_SET|PH7_MOD_READONLY,
+		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "array" }
+	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		{ "CurlMultiHandle", 0, 0,
 		  PH7_CLASS_FINAL|PH7_CLASS_NOINSTANTIATE|PH7_CLASS_NOSERIALIZE|PH7_CLASS_NOCLONE,
 		  0, 0, 0, 0,
 		  aProp, SX_ARRAYSIZE(aProp),
-		  CurlMultiInstanceRelease, 0, 0 }
+		  CurlMultiInstanceRelease, 0, 0 },
+		{ "CurlShareHandle", 0, 0,
+		  PH7_CLASS_FINAL|PH7_CLASS_NOINSTANTIATE|PH7_CLASS_NOSERIALIZE|PH7_CLASS_NOCLONE,
+		  0, 0, 0, 0,
+		  aShareProp, SX_ARRAYSIZE(aShareProp),
+		  CurlShareInstanceRelease, 0, 0 },
+		/* NOT a subclass of CurlShareHandle: php's share verbs refuse this one
+		 * BY TYPE, which is what keeps a process-wide cache out of the reach of
+		 * the setter that would reconfigure it. */
+		{ "CurlSharePersistentHandle", 0, 0,
+		  PH7_CLASS_FINAL|PH7_CLASS_NOINSTANTIATE|PH7_CLASS_NOSERIALIZE|PH7_CLASS_NOCLONE,
+		  0, 0, 0, 0,
+		  aPersistProp, SX_ARRAYSIZE(aPersistProp),
+		  CurlShareInstanceRelease, 0, 0 }
 	};
 	sxu32 n;
 	sxi32 rc;
 	pVm->pCurlMultis = 0;
+	pVm->pCurlShares = 0;
 	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; ++n ){
 		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);
 	}
@@ -670,6 +1058,19 @@ PH7_PRIVATE sxi32 PH7_VmInstallCurlMulti(ph7_vm *pVm)
 		if( pClass ){
 			pClass->zNewRefusal =
 				"Cannot directly construct CurlMultiHandle, use curl_multi_init() instead";
+		}
+		pClass = PH7_VmExtractClass(&(*pVm),"CurlShareHandle",
+			sizeof("CurlShareHandle")-1,FALSE,0);
+		if( pClass ){
+			pClass->zNewRefusal =
+				"Cannot directly construct CurlShareHandle, use curl_share_init() instead";
+		}
+		pClass = PH7_VmExtractClass(&(*pVm),"CurlSharePersistentHandle",
+			sizeof("CurlSharePersistentHandle")-1,FALSE,0);
+		if( pClass ){
+			pClass->zNewRefusal =
+				"Cannot directly construct CurlSharePersistentHandle, "
+				"use curl_share_init_persistent() instead";
 		}
 	}
 	return rc;

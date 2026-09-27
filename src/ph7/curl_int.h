@@ -194,6 +194,12 @@ struct phl_curl {
 	 */
 	ph7_value *pPrivate;
 	/*
+	 * The share handle CURLOPT_SHARE attached, held as the OBJECT: libcurl
+	 * keeps the CURLSH pointer and reads it during every transfer, so the share
+	 * has to outlive the handle that names it.
+	 */
+	ph7_value *pShare;
+	/*
 	 * The php STREAMS a transfer may be pointed at, each held as the resource
 	 * VALUE rather than as a raw io_private: the value keeps the resource
 	 * alive for as long as the handle names it, and a stream the script closed
@@ -264,9 +270,39 @@ PH7_PRIVATE void PH7_CurlEndTransfer(phl_curl *pCurl);
 PH7_PRIVATE void PH7_CurlRecordResult(phl_curl *pCurl,int iCode);
 PH7_PRIVATE void PH7_CurlResultBody(ph7_context *pCtx,phl_curl *pCurl);
 
+/*
+ * One share handle. php has two classes over it -- CurlShareHandle and
+ * CurlSharePersistentHandle, which are NOT related by inheritance -- and the
+ * only difference the record carries is whether it is one of the PERSISTENT
+ * ones, which are looked up by their option set rather than made fresh.
+ *
+ * Chained on its own per-VM registry (pVm->pCurlShares) and swept LAST: a
+ * CURLSH still attached to an easy handle refuses to be cleaned up
+ * (CURLSHE_IN_USE) and would leak, so every CURL* has to be gone first.
+ */
+typedef struct phl_curlsh phl_curlsh;
+struct phl_curlsh {
+	CURLSH *pShare;                 /* the libcurl share handle (never 0 while live) */
+	ph7_class_instance *pOwner;     /* the CurlShareHandle this record backs */
+	ph7_vm *pVm;
+	int iLastErr;                   /* CURLSHcode of the last setopt */
+	int bPersistent;                /* built by curl_share_init_persistent() */
+	int bOwnsShare;                 /* this record is the one that cleans the CURLSH up.
+	                                 * Every persistent call answers its OWN object over
+	                                 * the SAME cache -- php's two are never identical and
+	                                 * never equal either -- so the records that follow the
+	                                 * first one for a given option set borrow its CURLSH */
+	sxi64 iMask;                    /* the persistent one's option set, as a bit per
+	                                 * CURL_LOCK_DATA_*: what a second call with the
+	                                 * same options is matched on */
+	phl_curlsh *pNext;              /* per-VM registry chain */
+};
+
 /* vm_curl_multi.c */
 PH7_PRIVATE sxi32 PH7_VmInstallCurlMulti(ph7_vm *pVm);
 PH7_PRIVATE void PH7_CurlMultiVmSweep(ph7_vm *pVm);
+PH7_PRIVATE void PH7_CurlShareVmSweep(ph7_vm *pVm);
+PH7_PRIVATE int PH7_CurlSetShare(phl_curl *pCurl,ph7_value *pVal);
 
 #endif /* PH7_ENABLE_CURL */
 #endif /* PHL_CURL_INT_H */

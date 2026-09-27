@@ -146,6 +146,11 @@ static void CurlDropCallbacks(phl_curl *pCurl)
 		ph7_release_value(pCurl->pVm,pCurl->pReadStream);
 		pCurl->pReadStream = 0;
 	}
+	if( pCurl->pShare ){
+		/* curl_easy_reset() has just dropped libcurl's own pointer to it. */
+		ph7_release_value(pCurl->pVm,pCurl->pShare);
+		pCurl->pShare = 0;
+	}
 	pCurl->iHeaderDest = PHL_CURL_HDR_IGNORE;
 }
 /*
@@ -180,6 +185,10 @@ static void CurlFreeHandle(phl_curl *pCurl)
 		ph7_release_value(pCurl->pVm,pCurl->pPrivate);
 		pCurl->pPrivate = 0;
 	}
+	if( pCurl->pShare ){
+		ph7_release_value(pCurl->pVm,pCurl->pShare);
+		pCurl->pShare = 0;
+	}
 }
 /*
  * Free every registered handle. Called from PH7_CurlVmReset (a reused VM --
@@ -202,6 +211,9 @@ static void CurlVmSweep(ph7_vm *pVm)
 		pCurl = pNext;
 	}
 	pVm->pCurlHandles = 0;
+	/* And the shares last: one an easy handle was still attached to refuses to
+	 * be cleaned up, so nothing may name it by now. */
+	PH7_CurlShareVmSweep(&(*pVm));
 }
 PH7_PRIVATE void PH7_CurlVmReset(ph7_vm *pVm)
 {
@@ -419,6 +431,9 @@ static void CurlInstanceClone(ph7_vm *pVm,ph7_class_instance *pClone,ph7_class_i
 	CurlCopyValue(pVm,&pNew->pHeaderStream,pFrom->pHeaderStream);
 	CurlCopyValue(pVm,&pNew->pStderrStream,pFrom->pStderrStream);
 	CurlCopyValue(pVm,&pNew->pReadStream,pFrom->pReadStream);
+	/* duphandle copies the CURLSH pointer, so the copy names the same share and
+	 * has to hold it alive too. */
+	CurlCopyValue(pVm,&pNew->pShare,pFrom->pShare);
 	pNew->iHeaderDest = pFrom->iHeaderDest;
 	pNew->pNext = (phl_curl *)pVm->pCurlHandles;
 	pVm->pCurlHandles = pNew;
@@ -2933,14 +2948,24 @@ static int CurlSetOne(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *pV
 		 * this handle OWNS would otherwise outlive its last reader. */
 		CurlFreeMime(pCurl);
 		return CurlSetPostFields(pCtx,pCurl,pVal,pRc);
+	case CURL_OPT_SHARE:
+		/*
+		 * The one option php accepts ANY value for and screens nothing: a share
+		 * handle of either class is attached, and everything else -- a null, an
+		 * int, an array, another CurlHandle -- is taken and dropped in silence,
+		 * with true answered either way. There is no getter to tell the two
+		 * apart, so the only visible difference is whether the transfers then
+		 * share a cache.
+		 */
+		PH7_CurlSetShare(pCurl,pVal);
+		return 1;
 	case CURL_OPT_IGNORE:
 		return 1;
 	default:
 		break;
 	}
-	/* The kinds whose own slices have not landed: a callable, a stream, the
-	 * share handle, PRIVATE's stored value and POSTFIELDS. Refusing loudly
-	 * beats answering true and transferring something else. */
+	/* The kinds this build does not implement. Refusing loudly beats answering
+	 * true and transferring something else. */
 	*pRc = PH7_VmThrowException(pCtx,"Error",
 		"%s(): option %s is not implemented yet in this build",zFunc,CurlOptName(iOpt));
 	return -1;
