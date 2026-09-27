@@ -4286,6 +4286,14 @@ static sxi32 DtPresentDateTime(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *
 	ph7_value sVal;
 	int nName;
 	SXUNUSED(bDebug); /* php shows the same three keys to both handlers */
+	if( !DtIsInit(pThis) ){
+		/* php builds this shape FROM the struct the constructor allocates, so an
+		 * object that has none shows nothing at all -- var_dump, print_r,
+		 * var_export, the (array) cast and json_encode all answer an empty shape
+		 * where PHL published a 1970 date nothing had asked for. A SUBCLASS's own
+		 * properties still show: they are the object's, not the struct's. */
+		return SXRET_OK;
+	}
 	DtLoad(pThis,&sState);
 	nName = sState.nName;
 	if( nName >= (int)sizeof(zZone) ){
@@ -4312,6 +4320,9 @@ static sxi32 DtPresentTimeZone(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *
 	const char *zName = 0;
 	int nName = 0;
 	SXUNUSED(bDebug);
+	if( !DtIsInit(pThis) ){
+		return SXRET_OK;   /* no struct, nothing to show -- see DtPresentDateTime */
+	}
 	PH7_NativeAttrStr(pThis,DTZ_NAME,&zName,&nName);
 	DtPresentZone(&(*pVm),pOut,zName ? zName : "",nName,
 		DtZoneKindOf(pThis,DTZ_KIND,zName,nName));
@@ -4356,16 +4367,6 @@ static sxi32 DtPresentTimeZone(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *
  * ZEND_UNCOMPARABLE -- the 1-from-both-sides the caller defaults to.
  * ---------------------------------------------------------------------------
  */
-/* Is this instance an instance of the named date class? */
-static int DtCmpIsA(ph7_vm *pVm,ph7_class_instance *pObj,const char *zClass)
-{
-	ph7_class *pClass;
-	if( pObj == 0 ){
-		return 0;
-	}
-	pClass = DtClass(&(*pVm),zClass);
-	return pClass != 0 && PH7_VmInstanceOf(pObj->pClass,pClass);
-}
 /*
  * DateTime / DateTimeImmutable: php's date_object_compare_date, which is
  * timelib_time_compare on the two INSTANTS -- the epoch second first, the
@@ -4376,9 +4377,19 @@ static int DtCmpIsA(ph7_vm *pVm,ph7_class_instance *pObj,const char *zClass)
 static void DtCmpDateTime(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeCmpCtx *pCtx)
 {
 	dt_state sL,sR;
-	if( !DtCmpIsA(&(*pVm),pThis,"DateTimeInterface")
-	 || !DtCmpIsA(&(*pVm),pCtx->pOther,"DateTimeInterface") ){
+	if( !DtIsA(&(*pVm),pThis,"DateTimeInterface")
+	 || !DtIsA(&(*pVm),pCtx->pOther,"DateTimeInterface") ){
 		return;   /* uncomparable, which is what the caller pre-loaded */
+	}
+	if( !DtIsInit(pThis) || !DtIsInit(pCtx->pOther) ){
+		/* An unconstructed date has no instant to compare, and php refuses from
+		 * EITHER side -- so `$fresh == $uninitialized` raises as well. The screen
+		 * sits below the both-are-dates one on purpose: a date against something
+		 * that is not one stays php's silent uncomparable. */
+		pCtx->zThrowClass = "DateObjectError";
+		SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),
+			"Trying to compare an incomplete DateTime or DateTimeImmutable object");
+		return;
 	}
 	DtLoad(pThis,&sL);
 	DtLoad(pCtx->pOther,&sR);
@@ -4404,8 +4415,8 @@ static void DtCmpDateTime(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeCmpCtx
  */
 static void DtCmpInterval(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeCmpCtx *pCtx)
 {
-	if( !DtCmpIsA(&(*pVm),pThis,"DateInterval")
-	 || !DtCmpIsA(&(*pVm),pCtx->pOther,"DateInterval") ){
+	if( !DtIsA(&(*pVm),pThis,"DateInterval")
+	 || !DtIsA(&(*pVm),pCtx->pOther,"DateInterval") ){
 		return;   /* an interval against something else: uncomparable, and silent */
 	}
 	PH7_VmThrowError(&(*pVm),0,PH7_CTX_WARNING,"Cannot compare DateInterval objects");
@@ -4424,8 +4435,17 @@ static void DtCmpTimeZone(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeCmpCtx
 	const char *zL = 0,*zR = 0;
 	int nL = 0,nR = 0;
 	int iKindL,iKindR;
-	if( !DtCmpIsA(&(*pVm),pThis,"DateTimeZone")
-	 || !DtCmpIsA(&(*pVm),pCtx->pOther,"DateTimeZone") ){
+	if( !DtIsA(&(*pVm),pThis,"DateTimeZone")
+	 || !DtIsA(&(*pVm),pCtx->pOther,"DateTimeZone") ){
+		return;
+	}
+	if( !DtIsInit(pThis) || !DtIsInit(pCtx->pOther) ){
+		/* php's own sentence for the zone half, and its own class: a DateException
+		 * carries the KIND mismatch below, an unconstructed operand a
+		 * DateObjectError. */
+		pCtx->zThrowClass = "DateObjectError";
+		SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),
+			"Trying to compare uninitialized DateTimeZone objects");
 		return;
 	}
 	PH7_NativeAttrStr(pThis,DTZ_NAME,&zL,&nL);
