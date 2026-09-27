@@ -3547,14 +3547,21 @@ static int vm_builtin_ReflectionClass_isCloneable(ph7_context *pCtx, int nArg, p
 	ph7_result_bool(pCtx, !PH7_ClassIsUncloneable(pClass));
 	return PH7_OK;
 }
-/* php's own gate, raised before any object exists. */
-static sxi32 ReflectCheckInstantiable(ph7_context *pCtx, ph7_class *pClass)
+/*
+ * php's own gate, raised before any object exists -- the one every C-side
+ * instantiation asks, Reflection's newInstance() and PDO's FETCH_CLASS alike.
+ */
+PH7_PRIVATE sxi32 PH7_VmCheckInstantiable(ph7_context *pCtx, ph7_class *pClass)
 {
 	if( pClass->iFlags & PH7_CLASS_INTERFACE ){
 		return PH7_VmThrowException(pCtx, "Error", "Cannot instantiate interface %z", &pClass->sName);
 	}
 	if( pClass->iFlags & PH7_CLASS_TRAIT ){
 		return PH7_VmThrowException(pCtx, "Error", "Cannot instantiate trait %z", &pClass->sName);
+	}
+	if( pClass->iFlags & PH7_CLASS_ENUM ){
+		/* php 8.1 names the enum rather than the FINAL class it also is. */
+		return PH7_VmThrowException(pCtx, "Error", "Cannot instantiate enum %z", &pClass->sName);
 	}
 	if( pClass->iFlags & PH7_CLASS_ABSTRACT ){
 		return PH7_VmThrowException(pCtx, "Error", "Cannot instantiate abstract class %z", &pClass->sName);
@@ -3591,7 +3598,7 @@ static int ReflectNewInstance(ph7_context *pCtx, int nCtor, ph7_value **apCtor,
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	rc = ReflectCheckInstantiable(pCtx, pClass);
+	rc = PH7_VmCheckInstantiable(pCtx, pClass);
 	if( rc != PH7_OK ){
 		return rc;
 	}
@@ -3669,7 +3676,7 @@ static int vm_builtin_ReflectionClass_newInstanceWithoutConstructor(ph7_context 
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
-	rc = ReflectCheckInstantiable(pCtx, pClass);
+	rc = PH7_VmCheckInstantiable(pCtx, pClass);
 	if( rc != PH7_OK ){
 		return rc;
 	}

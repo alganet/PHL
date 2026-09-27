@@ -1085,14 +1085,15 @@ static int vm_builtin_PDO_lastInsertId(ph7_context *pCtx,int nArg,ph7_value **ap
  * refusal names all three whichever one was set. Every entry point that takes
  * a mode checks this before it counts arguments.
  */
-static sxi32 PdoCheckFetchFlags(ph7_context *pCtx,int iMode,const char *zFn)
+static sxi32 PdoCheckFetchFlags(ph7_context *pCtx,int iMode,const char *zFn,
+	int iArgNo,const char *zParam)
 {
 	int iFlags = iMode & (PDO_FETCH_CLASSTYPE|PDO_FETCH_SERIALIZE|PDO_FETCH_PROPS_LATE);
 	if( iFlags != 0 && (iMode & PDO_FETCH_MODE_MASK) != PDO_FETCH_CLASS ){
 		return PH7_VmThrowException(pCtx,"ValueError",
-			"%s(): Argument #1 ($mode) cannot use PDO::FETCH_CLASSTYPE, "
+			"%s(): Argument #%d ($%s) cannot use PDO::FETCH_CLASSTYPE, "
 			"PDO::FETCH_PROPS_LATE, or PDO::FETCH_SERIALIZE fetch flags with a fetch "
-			"mode other than PDO::FETCH_CLASS",zFn);
+			"mode other than PDO::FETCH_CLASS",zFn,iArgNo,zParam);
 	}
 	return PH7_OK;
 }
@@ -1503,8 +1504,11 @@ static ph7_class * PdoResolveFetchClass(ph7_context *pCtx,ph7_value *pName,int b
 		return PH7_VmExtractClass(pCtx->pVm,"stdClass",sizeof("stdClass")-1,FALSE,0);
 	}
 	zName = ph7_value_to_string(pName,&nName);
+	/* EXISTENCE, not instantiability: php takes the name of an abstract class
+	 * or an interface here and refuses it where the object would be BUILT,
+	 * with the ordinary `Cannot instantiate ...` Error. */
 	pClass = (zName && nName > 0)
-		? PH7_VmExtractClass(pCtx->pVm,zName,(sxu32)nName,TRUE,0) : 0;
+		? PH7_VmExtractClass(pCtx->pVm,zName,(sxu32)nName,FALSE,0) : 0;
 	if( pClass == 0 ){
 		if( bObjectVerb ){
 			*pRc = PH7_VmThrowException(pCtx,"TypeError",
@@ -1516,6 +1520,24 @@ static ph7_class * PdoResolveFetchClass(ph7_context *pCtx,ph7_value *pName,int b
 		}
 	}
 	return pClass;
+}
+/*
+ * The class a FETCH_CLASSTYPE row names in its first column. php takes what it
+ * finds there and falls back to stdClass for anything it cannot use -- a name
+ * no class carries, a null, a number -- rather than refusing the row.
+ */
+static ph7_class * PdoClassTypeClass(ph7_context *pCtx,ph7_value *pName)
+{
+	ph7_class *pClass = 0;
+	if( pName && (pName->iFlags & MEMOBJ_NULL) == 0 ){
+		int nName = 0;
+		const char *zName = ph7_value_to_string(pName,&nName);
+		if( zName && nName > 0 ){
+			pClass = PH7_VmExtractClass(pCtx->pVm,zName,(sxu32)nName,FALSE,0);
+		}
+	}
+	return pClass ? pClass
+		: PH7_VmExtractClass(pCtx->pVm,"stdClass",sizeof("stdClass")-1,FALSE,0);
 }
 /*
  * PDOStatement::fetchObject(?string $class = "stdClass", array $ctorArgs = []): object|false
@@ -1619,10 +1641,7 @@ static int PdoFetchObjectRow(ph7_context *pCtx,phl_pdo_stmt *pSt,int iMode,
 		}
 		pSt->bRowPending = 1;   /* the cursor has not moved */
 		pName = PdoArrayAtInt(pCtx->pVm,pHead,0);
-		pClass = PdoResolveFetchClass(pCtx,pName,FALSE,&rc);
-		if( pClass == 0 ){
-			return rc;
-		}
+		pClass = PdoClassTypeClass(pCtx,pName);
 		iFirst = 1;
 	}else if( pSt->zFetchClass ){
 		ph7_value sName;
@@ -1638,10 +1657,17 @@ static int PdoFetchObjectRow(ph7_context *pCtx,phl_pdo_stmt *pSt,int iMode,
 			pArgs = pSt->pFetchArgs;
 		}
 	}else{
-		pClass = PH7_VmExtractClass(pCtx->pVm,"stdClass",sizeof("stdClass")-1,FALSE,0);
+		/* FETCH_CLASS with no class anywhere -- neither this call's nor a
+		 * setFetchMode()'s -- is php's own layer refusal, not a stdClass row. */
+		return PH7_VmThrowException(pCtx,"PDOException",
+			"SQLSTATE[HY000]: General error: No fetch class specified");
 	}
 	if( pClass == 0 ){
 		return PH7_ContextMemoryError(pCtx);
+	}
+	rc = PH7_VmCheckInstantiable(pCtx,pClass);
+	if( rc != PH7_OK ){
+		return rc;   /* an interface, a trait, an enum or an abstract class */
 	}
 	PH7_MemObjInit(pCtx->pVm,&sRes);
 	if( !PdoRowIntoObject(pCtx,pSt,pClass,pArgs,bLate,iFirst,&sRes) ){
@@ -2202,15 +2228,60 @@ static int vm_builtin_PDOStatement_fetch(ph7_context *pCtx,int nArg,ph7_value **
 		return PH7_VmThrowException(pCtx,"Error","PDOStatement object is uninitialized");
 	}
 	iMode = nArg > 0 ? (int)ph7_value_to_int64(apArg[0]) : PDO_FETCH_DEFAULT;
-	rcFlags = PdoCheckFetchFlags(pCtx,iMode,"PDOStatement::fetch");
+	rcFlags = PdoCheckFetchFlags(pCtx,iMode,"PDOStatement::fetch",1,"mode");
 	if( rcFlags != PH7_OK ){
 		return rcFlags;
 	}
 	if( iMode == PDO_FETCH_DEFAULT ){
 		iMode = pSt->iFetchMode;
 	}
+	if( (iMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_DEFAULT ){
+		/* A statement whose own mode is FETCH_DEFAULT -- which only a
+		 * connection whose ATTR_DEFAULT_FETCH_MODE is 0 leaves it on -- has no
+		 * mode to fall back to, and php says so at the fetch. */
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"PDOStatement::fetch(): Argument #1 ($mode) must be a bitmask of "
+			"PDO::FETCH_* constants");
+	}
 	if( (iMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_LAZY ){
 		return PdoFetchLazyRow(pCtx,pSt);
+	}
+	if( (iMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_KEY_PAIR ){
+		/* php's own fetch() cannot do this mode: it builds a value var_dump
+		 * crashes on and json_encode refuses, and one spelling of the same call
+		 * aborts the process (§10 -- a php defect PHL does not reproduce). The
+		 * honest answer is the one the mode NAMES and fetchAll() builds: the
+		 * row as a single key => value pair. */
+		ph7_value *pPair,*pRowVals,*pKey,*pVal;
+		if( PH7_PdoSqliteColumnCount(pSt) != 2 ){
+			return PH7_VmThrowException(pCtx,"PDOException",
+				"SQLSTATE[HY000]: General error: PDO::FETCH_KEY_PAIR fetch mode requires "
+				"the result set to contain exactly 2 columns.");
+		}
+		if( !PdoStmtHasRow(pSt) ){
+			PdoStmtOk(pSt);
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		pPair    = ph7_context_new_array(pCtx);
+		pRowVals = ph7_context_new_array(pCtx);
+		if( pPair == 0 || pRowVals == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		if( !PdoStmtRow(pCtx->pVm,pSt,PDO_FETCH_NUM,pRowVals) ){
+			ph7_result_bool(pCtx,0);
+			return PH7_OK;
+		}
+		pKey = PdoArrayAtInt(pCtx->pVm,pRowVals,0);
+		pVal = PdoArrayAtInt(pCtx->pVm,pRowVals,1);
+		ph7_array_add_elem(pPair,pKey,pVal);
+		ph7_result_value(pCtx,pPair);
+		if( PdoStmtStep(pSt) < 0 ){
+			PdoStmtFailed(pSt,pSt->pConn->zSqlState);
+			return PH7_PdoRaiseStmt(pCtx,pSt,"PDOStatement::fetch");
+		}
+		PdoStmtOk(pSt);
+		return PH7_OK;
 	}
 	if( (iMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_COLUMN ){
 		/* a statement told to fetch one COLUMN answers that column from here
@@ -2220,6 +2291,11 @@ static int vm_builtin_PDOStatement_fetch(ph7_context *pCtx,int nArg,ph7_value **
 			PdoStmtOk(pSt);
 			ph7_result_bool(pCtx,0);
 			return PH7_OK;
+		}
+		if( pSt->iFetchColumn >= PH7_PdoSqliteColumnCount(pSt) ){
+			/* php checks the width only once it has a ROW to read it from, so a
+			 * cursor with nothing left answers false rather than refusing. */
+			return PH7_VmThrowException(pCtx,"ValueError","Invalid column index");
 		}
 		pOneRow = ph7_context_new_array(pCtx);
 		if( pOneRow == 0 ){
@@ -2450,64 +2526,176 @@ static int vm_builtin_PDOStatement_fetchColumn(ph7_context *pCtx,int nArg,ph7_va
 	return PH7_OK;
 }
 /*
+ * php's `pdo_stmt_setup_fetch_mode`: the mode a statement will use from here
+ * on, and the whole screen over it. Two verbs give one: setFetchMode()'s first
+ * argument and query()'s SECOND, so every diagnostic counts arguments the way
+ * the verb that took them does -- `iModeArg` is the mode's own 1-based
+ * position, and the counts php reports are that position plus what the mode
+ * needs beside it.
+ *
+ * The rules are php's, per mode: FETCH_COLUMN wants a column NUMBER and
+ * FETCH_INTO an OBJECT, both exactly one; FETCH_CLASS wants a class NAME and
+ * accepts constructor arguments behind it -- unless FETCH_CLASSTYPE rides on
+ * it, which takes the class from the first column and therefore wants nothing;
+ * FETCH_FUNC belongs to fetchAll() alone; and every other mode takes the mode
+ * and nothing else. A base outside php's own enum is `must be a bitmask of
+ * PDO::FETCH_* constants`. FETCH_DEFAULT itself names the connection's
+ * ATTR_DEFAULT_FETCH_MODE and leaves the statement on it.
+ */
+static sxi32 PdoSetupFetchMode(ph7_context *pCtx,phl_pdo_stmt *pSt,int nArg,ph7_value **apArg,
+	int iModeArg,const char *zFn,const char *zModeParam)
+{
+	ph7_value *pMode = nArg >= iModeArg ? apArg[iModeArg-1] : 0;
+	int iMode = pMode ? (int)ph7_value_to_int64(pMode) : PDO_FETCH_DEFAULT;
+	int iBase = iMode & PDO_FETCH_MODE_MASK;
+	int nExtra = nArg - iModeArg;          /* arguments given BEHIND the mode */
+	char zBuf[64];
+	sxi32 rc;
+	/* php clears the statement's mode BEFORE it judges the new one, and clears
+	 * it to the CONNECTION's default rather than to what the statement was
+	 * carrying -- so a REFUSED setFetchMode() leaves a statement that was
+	 * fetching NUM answering whatever ATTR_DEFAULT_FETCH_MODE says. */
+	PdoStmtClearFetchState(pSt);
+	pSt->iFetchMode = pSt->pConn->iDefaultFetch;
+	pSt->iFetchColumn = 0;
+	if( iBase > PDO_FETCH_KEY_PAIR ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #%d ($%s) must be a bitmask of PDO::FETCH_* constants",
+			zFn,iModeArg,zModeParam);
+	}
+	rc = PdoCheckFetchFlags(pCtx,iMode,zFn,iModeArg,zModeParam);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	if( iBase == PDO_FETCH_FUNC ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #%d ($%s) PDO::FETCH_FUNC can only be used with "
+			"PDOStatement::fetchAll()",zFn,iModeArg,zModeParam);
+	}
+	if( iBase == PDO_FETCH_CLASS && (iMode & PDO_FETCH_CLASSTYPE) == 0 ){
+		/* The class NAME, then optional constructor arguments. php checks the
+		 * TYPE of what it was handed before it counts, so a wrong second
+		 * argument is a TypeError even when a fourth is there too. */
+		if( nExtra < 1 ){
+			return PH7_VmThrowException(pCtx,"ArgumentCountError",
+				"%s() expects at least %d arguments for the fetch mode provided, %d given",
+				zFn,iModeArg+1,nArg);
+		}
+		if( (apArg[iModeArg]->iFlags & MEMOBJ_STRING) == 0 ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"%s(): Argument #%d must be of type string, %s given",
+				zFn,iModeArg+1,VmValueGivenName(apArg[iModeArg],zBuf,sizeof(zBuf)));
+		}
+		{
+			/* php resolves the name HERE -- before it looks at the constructor
+			 * arguments behind it -- so a class that does not exist is refused
+			 * where it was named rather than at the first fetch, and one that
+			 * merely cannot be instantiated is accepted here and refused there. */
+			int nCls = 0;
+			const char *zCls = ph7_value_to_string(apArg[iModeArg],&nCls);
+			if( zCls == 0 || nCls < 1
+			 || PH7_VmExtractClass(pCtx->pVm,zCls,(sxu32)nCls,FALSE,0) == 0 ){
+				return PH7_VmThrowException(pCtx,"TypeError",
+					"%s(): Argument #%d must be a valid class",zFn,iModeArg+1);
+			}
+		}
+		if( nExtra > 1 && (apArg[iModeArg+1]->iFlags & (MEMOBJ_HASHMAP|MEMOBJ_NULL)) == 0 ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"%s(): Argument #%d must be of type ?array, %s given",
+				zFn,iModeArg+2,VmValueGivenName(apArg[iModeArg+1],zBuf,sizeof(zBuf)));
+		}
+		if( nExtra > 2 ){
+			return PH7_VmThrowException(pCtx,"ArgumentCountError",
+				"%s() expects at most %d arguments for the fetch mode provided, %d given",
+				zFn,iModeArg+2,nArg);
+		}
+	}else if( iBase == PDO_FETCH_COLUMN || iBase == PDO_FETCH_INTO ){
+		if( nExtra != 1 ){
+			return PH7_VmThrowException(pCtx,"ArgumentCountError",
+				"%s() expects exactly %d arguments for the fetch mode provided, %d given",
+				zFn,iModeArg+1,nArg);
+		}
+		/* php's screen is the zval's TYPE: only a real int passes, and a float
+		 * whose value happens to be integral does not (the slot may carry the
+		 * int flag beside the real one once something has read it as a number,
+		 * so the REAL bit is what decides). */
+		if( iBase == PDO_FETCH_COLUMN
+		 && ((apArg[iModeArg]->iFlags & MEMOBJ_INT) == 0
+		  || (apArg[iModeArg]->iFlags & MEMOBJ_REAL) != 0) ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"%s(): Argument #%d must be of type int, %s given",
+				zFn,iModeArg+1,VmValueGivenName(apArg[iModeArg],zBuf,sizeof(zBuf)));
+		}
+		if( iBase == PDO_FETCH_INTO && (apArg[iModeArg]->iFlags & MEMOBJ_OBJ) == 0 ){
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"%s(): Argument #%d must be of type object, %s given",
+				zFn,iModeArg+1,VmValueGivenName(apArg[iModeArg],zBuf,sizeof(zBuf)));
+		}
+		if( iBase == PDO_FETCH_COLUMN && ph7_value_to_int64(apArg[iModeArg]) < 0 ){
+			/* A NEGATIVE column is refused where it is given; one merely past
+			 * the last column is not, and answers php's `Invalid column index`
+			 * at the fetch -- the statement's width is not this screen's
+			 * business. */
+			return PH7_VmThrowException(pCtx,"ValueError",
+				"%s(): Argument #%d must be greater than or equal to 0",zFn,iModeArg+1);
+		}
+	}else if( nExtra > 0 ){
+		return PH7_VmThrowException(pCtx,"ArgumentCountError",
+			"%s() expects exactly %d arguments for the fetch mode provided, %d given",
+			zFn,iModeArg,nArg);
+	}
+	if( iBase == PDO_FETCH_CLASS && (iMode & PDO_FETCH_CLASSTYPE) == 0 ){
+		int nName = 0;
+		const char *zName = ph7_value_to_string(apArg[iModeArg],&nName);
+		if( zName && nName > 0 ){
+			pSt->zFetchClass = (char *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,
+				(sxu32)nName + 1);
+			if( pSt->zFetchClass ){
+				SyMemcpy(zName,pSt->zFetchClass,(sxu32)nName);
+				pSt->zFetchClass[nName] = 0;
+				pSt->nFetchClass = nName;
+			}
+		}
+		if( nExtra > 1 && (apArg[iModeArg+1]->iFlags & MEMOBJ_HASHMAP) ){
+			pSt->pFetchArgs = ph7_new_array(pCtx->pVm);
+			if( pSt->pFetchArgs ){
+				PH7_MemObjStore(apArg[iModeArg+1],pSt->pFetchArgs);
+			}
+		}
+	}else if( iBase == PDO_FETCH_INTO ){
+		pSt->pFetchInto = (ph7_class_instance *)apArg[iModeArg]->x.pOther;
+		pSt->pFetchInto->iRef++;   /* the statement writes into it for as long as it lives */
+	}
+	/* FETCH_DEFAULT is not a mode to keep: the statement stays on the
+	 * connection's default it was just cleared to (php 8.5.11, GH-20214). */
+	if( iBase != PDO_FETCH_DEFAULT ){
+		pSt->iFetchMode = iMode;
+	}
+	pSt->iFetchColumn = iBase == PDO_FETCH_COLUMN
+		? (int)ph7_value_to_int64(apArg[iModeArg]) : 0;
+	return PH7_OK;
+}
+/*
  * PDOStatement::setFetchMode(int $mode, mixed ...$args): true
  *
- * The mode a bare fetch()/fetchAll() will use from here on. FETCH_COLUMN needs
- * its column beside it, and php counts arguments PER MODE -- so the arity
- * refusal names the fetch mode rather than the method's own signature.
+ * The mode a bare fetch()/fetchAll() will use from here on -- one spelling of
+ * the screen above, the other being PDO::query()'s second argument.
  */
 static int vm_builtin_PDOStatement_setFetchMode(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	phl_pdo_stmt *pSt = PdoStmtOfInstance(PH7_ContextThis(pCtx));
-	int iMode;
 	sxi32 rc;
 	if( pSt == 0 ){
 		return PH7_VmThrowException(pCtx,"Error","PDOStatement object is uninitialized");
 	}
-	iMode = nArg > 0 ? (int)ph7_value_to_int64(apArg[0]) : PDO_FETCH_DEFAULT;
-	rc = PdoCheckFetchFlags(pCtx,iMode,"PDOStatement::setFetchMode");
+	rc = PdoSetupFetchMode(pCtx,pSt,nArg,apArg,1,"PDOStatement::setFetchMode","mode");
 	if( rc != PH7_OK ){
 		return rc;
 	}
-	{
-		int iBase = iMode & PDO_FETCH_MODE_MASK;
-		if( (iBase == PDO_FETCH_COLUMN || iBase == PDO_FETCH_INTO
-		  || (iBase == PDO_FETCH_CLASS && (iMode & PDO_FETCH_CLASSTYPE) == 0)) && nArg < 2 ){
-			return PH7_VmThrowException(pCtx,"ArgumentCountError",
-				"PDOStatement::setFetchMode() expects exactly 2 arguments for the fetch "
-				"mode provided, %d given",nArg);
-		}
-		PdoStmtClearFetchState(pSt);
-		if( iBase == PDO_FETCH_CLASS && nArg > 1 ){
-			int nName = 0;
-			const char *zName = ph7_value_to_string(apArg[1],&nName);
-			if( zName && nName > 0 ){
-				pSt->zFetchClass = (char *)SyMemBackendAlloc(&pCtx->pVm->sAllocator,
-					(sxu32)nName + 1);
-				if( pSt->zFetchClass ){
-					SyMemcpy(zName,pSt->zFetchClass,(sxu32)nName);
-					pSt->zFetchClass[nName] = 0;
-					pSt->nFetchClass = nName;
-				}
-			}
-			if( nArg > 2 && (apArg[2]->iFlags & MEMOBJ_HASHMAP) ){
-				pSt->pFetchArgs = ph7_new_array(pCtx->pVm);
-				if( pSt->pFetchArgs ){
-					PH7_MemObjStore(apArg[2],pSt->pFetchArgs);
-				}
-			}
-		}else if( iBase == PDO_FETCH_INTO && nArg > 1
-		       && (apArg[1]->iFlags & MEMOBJ_OBJ) ){
-			pSt->pFetchInto = (ph7_class_instance *)apArg[1]->x.pOther;
-			pSt->pFetchInto->iRef++;   /* the statement writes into it for as long as it lives */
-		}
-	}
-	pSt->iFetchMode = iMode;
-	pSt->iFetchColumn = (nArg > 1 && (iMode & PDO_FETCH_MODE_MASK) == PDO_FETCH_COLUMN)
-		? (int)ph7_value_to_int64(apArg[1]) : 0;
 	ph7_result_bool(pCtx,1);
 	return PH7_OK;
 }
+
 /* Add one row under a key, collecting repeats into a list (FETCH_GROUP). */
 static void PdoGroupAppend(ph7_context *pCtx,ph7_value *pOut,ph7_value *pKey,ph7_value *pRow)
 {
@@ -2560,7 +2748,7 @@ static int vm_builtin_PDOStatement_fetchAll(ph7_context *pCtx,int nArg,ph7_value
 		return PH7_VmThrowException(pCtx,"Error","PDOStatement object is uninitialized");
 	}
 	iMode = nArg > 0 ? (int)ph7_value_to_int64(apArg[0]) : PDO_FETCH_DEFAULT;
-	rc = PdoCheckFetchFlags(pCtx,iMode,"PDOStatement::fetchAll");
+	rc = PdoCheckFetchFlags(pCtx,iMode,"PDOStatement::fetchAll",1,"mode");
 	if( rc != PH7_OK ){
 		return rc;
 	}
@@ -2687,15 +2875,26 @@ static int vm_builtin_PDOStatement_fetchAll(ph7_context *pCtx,int nArg,ph7_value
 					break;
 				}
 				pSt->bRowPending = 1;
-				pClass = PdoResolveFetchClass(pCtx,PdoArrayAtInt(pCtx->pVm,pHead,0),
-					FALSE,&rcCls);
+				pClass = PdoClassTypeClass(pCtx,PdoArrayAtInt(pCtx->pVm,pHead,0));
+				rcCls = PH7_OK;
 				iFirstCol = 1;
+			}else if( pSt->zFetchClass ){
+				ph7_value sName;
+				SyString sStr;
+				SyStringInitFromBuf(&sStr,pSt->zFetchClass,pSt->nFetchClass);
+				PH7_MemObjInitFromString(pCtx->pVm,&sName,&sStr);
+				pClass = PdoResolveFetchClass(pCtx,&sName,FALSE,&rcCls);
+				PH7_MemObjRelease(&sName);
 			}else{
 				pClass = PH7_VmExtractClass(pCtx->pVm,"stdClass",sizeof("stdClass")-1,
 					FALSE,0);
 				rcCls = PH7_OK;
 			}
 			if( pClass == 0 ){
+				return rcCls;
+			}
+			rcCls = PH7_VmCheckInstantiable(pCtx,pClass);
+			if( rcCls != PH7_OK ){
 				return rcCls;
 			}
 			PH7_MemObjInit(pCtx->pVm,&sObj);
@@ -3391,6 +3590,18 @@ static int vm_builtin_PDO_query(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_ContextMemoryError(pCtx);
 	}
 	PH7_NativeSetAttrStr(pCtx->pVm,pObj,"queryString",zSql,nSql);
+	if( nArg > 1 && (apArg[1]->iFlags & MEMOBJ_NULL) == 0 ){
+		/* php's second argument IS setFetchMode(), run on the statement this
+		 * call just built -- same screen, same per-mode arity, and diagnostics
+		 * that count from PDO::query()'s own signature. A refusal leaves the
+		 * statement behind (php's does too), so it is raised after the object
+		 * exists rather than before the query runs. */
+		sxi32 rcMode = PdoSetupFetchMode(pCtx,pSt,nArg,apArg,2,"PDO::query","fetchMode");
+		if( rcMode != PH7_OK ){
+			PH7_ClassInstanceUnref(pObj);
+			return rcMode;
+		}
+	}
 	PdoStmtOk(pSt);   /* it ran, and it ran cleanly */
 	/* PH7_NativeResultObject takes the reference this call made: unref'ing
 	 * again here frees the object the result slot is still holding. */

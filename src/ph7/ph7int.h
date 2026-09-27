@@ -1964,6 +1964,9 @@ PH7_PRIVATE int PH7_ClassNativeDim(ph7_class_instance *pThis,PH7_NativeDimCtx *p
  * array` for every class that does not. Answers the message length. */
 PH7_PRIVATE sxu32 PH7_ClassNativeDimRefusal(ph7_class_instance *pThis,int iMode,
 	char *zMsg,sxu32 nMsg);
+/* php's instantiation gate -- interface / trait / enum / abstract / a class
+ * whose create_object handler refuses -- asked by every C-side `new`. */
+PH7_PRIVATE sxi32 PH7_VmCheckInstantiable(ph7_context *pCtx,ph7_class *pClass);
 PH7_PRIVATE int PH7_ClassHasNativeProp(ph7_class *pClass);
 PH7_PRIVATE int PH7_ClassNativeProp(ph7_class_instance *pThis,PH7_NativePropCtx *pCtx);
 PH7_PRIVATE int PH7_ClassNativePropAsk(ph7_class_instance *pThis,PH7_NativePropCtx *pCtx,
