@@ -2180,7 +2180,14 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 					  pNode->pLeft = apNode[iLeft];
 					  apNode[iLeft] = 0;
 					  if( pNode->pLeft && pNode->pLeft->pOp && pNode->pLeft->pOp->iPrec > 4 ){
-						  if( pNode->pLeft->pLeft == 0 || pNode->pLeft->pRight == 0 ){
+						  /* "Is the operand a finished subtree?" — a binary node fills
+						   * pLeft+pRight and a full ternary fills all three, but a SHORT
+						   * ternary (`a ?: b`, which is what `!($a ?: $b)` hands here)
+						   * fills pCond+pRight and leaves pLeft NULL on purpose. Reading
+						   * pLeft alone called it unfinished and refused source php
+						   * compiles — every unary and cast over a parenthesised elvis. */
+						  if( pNode->pLeft->pRight == 0
+							  || (pNode->pLeft->pLeft == 0 && pNode->pLeft->pCond == 0) ){
 							   /* Syntax error */
 							  rc = PH7_GenSyntaxError(pGen,0,0);
 							  if( rc != SXERR_ABORT ){
@@ -2360,7 +2367,17 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 			  continue;
 		  }
 		  pNode = apNode[iCur];
-		  if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_QUESTY && pNode->pLeft == 0 ){
+		  /* `pLeft == 0` alone does NOT mean "not linked yet" for this operator: a
+		   * SHORT ternary (`a ?: b`) leaves pLeft NULL on purpose and records its
+		   * operands in pCond/pRight. A completed elvis node sitting in this slot —
+		   * which is what a parenthesised group leaves behind, `($a ?: $b)` — was
+		   * therefore re-entered here, and the term to its left is whatever the
+		   * enclosing expression put there (the `=` of `$x = ($a ?: $b);`), so the
+		   * "missing condition" branch fired on source php compiles. pCond is the
+		   * real linked/not-linked marker, and the nesting scan below already
+		   * reads it that way. */
+		  if( pNode->pOp && pNode->pOp->iOp == EXPR_OP_QUESTY && pNode->pLeft == 0
+			  && pNode->pCond == 0 ){
 			  sxi32 iNest = 1;
 			  if( iLeft < 0 || !NODE_ISTERM(iLeft) ){
 				  /* Missing condition */
