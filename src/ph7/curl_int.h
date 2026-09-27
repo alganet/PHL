@@ -41,6 +41,20 @@
 PH7_PRIVATE void PH7_CurlGlobalInit(void);
 
 /*
+ * Where a transfer's BODY goes.
+ *
+ * php keeps one field for this, not a flag per option: CURLOPT_RETURNTRANSFER
+ * and CURLOPT_WRITEFUNCTION both write it, so the LAST of the two to be set
+ * decides, and setting the callback back to null does not restore the other --
+ * it lands on the default. Modelling them as two independent settings answers
+ * differently in three places (a handle carrying both, a null that follows a
+ * RETURNTRANSFER, and the copy of either), so the destination is one value.
+ */
+#define PHL_CURL_DEST_STDOUT 0   /* the script's own output -- php's default */
+#define PHL_CURL_DEST_RETURN 1   /* CURLOPT_RETURNTRANSFER: curl_exec answers it */
+#define PHL_CURL_DEST_USER   2   /* CURLOPT_WRITEFUNCTION: the callback is the sink */
+
+/*
  * One easy handle, and the state php keeps BESIDE it.
  *
  * libcurl remembers no "last error" of its own, so the two reporters
@@ -91,10 +105,7 @@ struct phl_curl {
 	ph7_value *pXferCb;             /* XFERINFOFUNCTION, or PROGRESSFUNCTION */
 	int bXferIsProgress;            /* the older option's argument shape */
 	sxi32 iCbExc;                   /* a callback threw: parked until the verb unwinds */
-	int bReturnTransfer;            /* CURLOPT_RETURNTRANSFER: php's own option, no
-	                                 * libcurl equivalent -- it picks where the body
-	                                 * goes, so it lives here rather than on the
-	                                 * easy handle */
+	int iWriteDest;                 /* where the body goes: one of PHL_CURL_DEST_* */
 	phl_curl *pNext;                /* per-VM registry chain */
 };
 

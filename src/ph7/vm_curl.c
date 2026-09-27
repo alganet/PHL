@@ -132,6 +132,21 @@ static void CurlDropCallbacks(phl_curl *pCurl)
 		}
 	}
 }
+/*
+ * Give a record its OWN copy of a callable. The two handles must not share one
+ * ph7_value: whichever released it first would leave the other calling freed
+ * memory from inside libcurl.
+ */
+static void CurlCopyCallable(ph7_vm *pVm,ph7_value **ppSlot,ph7_value *pFrom)
+{
+	if( pFrom == 0 ){
+		return;
+	}
+	*ppSlot = ph7_new_scalar(pVm);
+	if( *ppSlot ){
+		PH7_MemObjStore(pFrom,*ppSlot);
+	}
+}
 static void CurlFreeHandle(phl_curl *pCurl)
 {
 	if( pCurl->pEasy ){
@@ -313,6 +328,17 @@ static void CurlInstanceClone(ph7_vm *pVm,ph7_class_instance *pClone,ph7_class_i
 			pFromSlot = pFromSlot->pNext;
 		}
 	}
+	/*
+	 * The state libcurl knows nothing about travels too. php copies the write
+	 * destination and every retained callable into the duplicate -- a copied
+	 * handle that answered its body and called back would otherwise print it
+	 * and call nothing, which is the same wrong answer twice.
+	 */
+	pNew->iWriteDest = pFrom->iWriteDest;
+	pNew->bXferIsProgress = pFrom->bXferIsProgress;
+	CurlCopyCallable(pVm,&pNew->pWriteCb,pFrom->pWriteCb);
+	CurlCopyCallable(pVm,&pNew->pHeaderCb,pFrom->pHeaderCb);
+	CurlCopyCallable(pVm,&pNew->pXferCb,pFrom->pXferCb);
 	pNew->pNext = (phl_curl *)pVm->pCurlHandles;
 	pVm->pCurlHandles = pNew;
 	if( CurlAttach(pClone,pNew) != 0 ){
@@ -1670,6 +1696,13 @@ static int vm_builtin_curl_close(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * reporting that failure; only the option setters clear it. (Probing the verbs
  * one at a time is what shows this: a sweep that resets after a setopt sees a
  * cleared errno and credits the wrong verb.)
+ *
+ * "Every option" includes the ones libcurl never saw: the retained callables
+ * and the write destination are php's own state, and php resets them here
+ * alongside the library's -- so a reset handle prints its next body rather
+ * than answering it, and calls nothing. The slists go with them: libcurl has
+ * just dropped every pointer to one, so the lists this handle owns are
+ * unreachable and freeing them here is the last chance before close.
  */
 static int vm_builtin_curl_reset(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -1678,6 +1711,10 @@ static int vm_builtin_curl_reset(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		curl_easy_reset(pCurl->pEasy);
 		/* curl_easy_reset() drops the error buffer with everything else. */
 		curl_easy_setopt(pCurl->pEasy,CURLOPT_ERRORBUFFER,pCurl->zErrBuf);
+		CurlDropCallbacks(pCurl);
+		CurlFreeSlists(pCurl);
+		pCurl->iWriteDest = PHL_CURL_DEST_STDOUT;
+		pCurl->bXferIsProgress = 0;
 	}
 	ph7_result_null(pCtx);
 	return PH7_OK;
@@ -1894,9 +1931,19 @@ static int CurlSetOne(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *pV
 		return 1;
 	case CURL_OPT_CALLBACK:
 		switch( (int)iOpt ){
-		case CURLOPT_WRITEFUNCTION:
-			return CurlSetCallback(pCtx,pCurl,&pCurl->pWriteCb,pVal,zFunc,
+		case CURLOPT_WRITEFUNCTION: {
+			/* The one option that moves the destination as well as the slot:
+			 * a callback claims the body, and a null hands it back to the
+			 * DEFAULT rather than to whatever CURLOPT_RETURNTRANSFER last
+			 * said. */
+			int rcCb = CurlSetCallback(pCtx,pCurl,&pCurl->pWriteCb,pVal,zFunc,
 				CurlOptName(iOpt),pRc);
+			if( rcCb == 1 ){
+				pCurl->iWriteDest = pCurl->pWriteCb ? PHL_CURL_DEST_USER
+				                                    : PHL_CURL_DEST_STDOUT;
+			}
+			return rcCb;
+		}
 		case CURLOPT_HEADERFUNCTION:
 			return CurlSetCallback(pCtx,pCurl,&pCurl->pHeaderCb,pVal,zFunc,
 				CurlOptName(iOpt),pRc);
@@ -1915,8 +1962,11 @@ static int CurlSetOne(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *pV
 		break;
 	case CURL_OPT_RETURN:
 		/* php's own option, and a FLAG: every value is accepted (setopt always
-		 * answers true) and only its truthiness matters, at exec time. */
-		pCurl->bReturnTransfer = ph7_value_to_bool(pVal) ? 1 : 0;
+		 * answers true) and only its truthiness matters. It moves the same
+		 * destination CURLOPT_WRITEFUNCTION moves, so setting it after a
+		 * callback takes the body back off that callback. */
+		pCurl->iWriteDest = ph7_value_to_bool(pVal) ? PHL_CURL_DEST_RETURN
+		                                            : PHL_CURL_DEST_STDOUT;
 		return 1;
 	case CURL_OPT_IGNORE:
 		return 1;
@@ -2544,9 +2594,9 @@ static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	SyBlobInit(&sBody,&pCurl->pVm->sAllocator);
 	sSink.pCtx = pCtx;
-	sSink.pBody = pCurl->bReturnTransfer ? &sBody : 0;
+	sSink.pBody = pCurl->iWriteDest == PHL_CURL_DEST_RETURN ? &sBody : 0;
 	pCurl->iCbExc = 0;
-	if( pCurl->pWriteCb ){
+	if( pCurl->iWriteDest == PHL_CURL_DEST_USER && pCurl->pWriteCb ){
 		/* A php WRITEFUNCTION replaces the destination entirely: neither the
 		 * buffer nor the output gets the body. */
 		curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEFUNCTION,CurlWriteThunk);
@@ -2596,9 +2646,13 @@ static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	if( pCurl->bReturnTransfer ){
+	if( pCurl->iWriteDest == PHL_CURL_DEST_RETURN ){
 		ph7_result_string(pCtx,(const char *)SyBlobData(&sBody),(int)SyBlobLength(&sBody));
 	}else{
+		/* Every other destination answers TRUE, the callback one included:
+		 * php reads the return value off the DESTINATION, so a handle carrying
+		 * both a RETURNTRANSFER and a later WRITEFUNCTION answers true and not
+		 * the empty buffer nothing filled. */
 		ph7_result_bool(pCtx,1);
 	}
 	SyBlobRelease(&sBody);
