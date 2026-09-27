@@ -445,6 +445,7 @@ static sxi64 DtApplyFields(dt_parsed *p,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs
 #define DT_ERR_RANGE    1000000
 #define DT_ERR_DDATE    2000000
 #define DT_ERR_DZONE    3000000
+#define DT_ERR_TZID     4000000
 /*
  * php refuses a SECOND absolute date outright -- `2020-01-01 january` and
  * `20240102 20240102` are both "Double date specification" there, reported at the
@@ -636,20 +637,32 @@ static int DtReadTimeOfDay(const char **pz,const char *zEnd,const char *zIn,dt_p
  *
  * zName NULL means a fixed OFFSET, whose name php builds from the offset itself.
  */
-static int DtSetZone(dt_parsed *p,sxi32 iOff,const char *zName,int nName,int bIdent)
+static int DtZoneCount(dt_parsed *p)
 {
-	if( p->nZoneTok >= 2 ){
-		return 1;
+	int n = p->nZoneTok;
+	if( n < 2 ){
+		p->nZoneTok = n + 1;
 	}
-	p->nZoneTok++;
-	if( p->bOffSet ){
-		return 0;
-	}
+	return n == 0 ? 0 : (n == 1 ? 1 : -1);
+}
+/* ...and the VALUE, written only for the token the rule above accepted. */
+static void DtZoneStore(dt_parsed *p,sxi32 iOff,const char *zName,int nName,int bIdent)
+{
 	p->iOff = iOff;
 	p->bOffSet = zName ? 2 : 1;
 	p->zZone = zName;
 	p->nZone = nName;
 	p->bZoneIdent = bIdent;
+}
+static int DtSetZone(dt_parsed *p,sxi32 iOff,const char *zName,int nName,int bIdent)
+{
+	int rc = DtZoneCount(p);
+	if( rc < 0 ){
+		return 1;
+	}
+	if( rc == 0 ){
+		DtZoneStore(p,iOff,zName,nName,bIdent);
+	}
 	return 0;
 }
 /* Exactly two digits whose value is <= iMax -- php's `minutelz`/`secondlz`, and
@@ -741,32 +754,115 @@ static int DtZoneMil(int c,sxi32 *piOff,const char **pzName)
 	return 1;
 }
 /*
- * php's timezone NAME token, the spellings this engine has without a tz database:
- * `UTC` (an IDENTIFIER when spelled in that exact case, an abbreviation in any
- * other), `GMT`, and the military letters above -- each in any case. Answers the
- * bytes taken, or 0. An ALPHABETIC byte may not follow: `UTC1` is the zone with a
- * stray `1` after it where `UTCX` is a name php looks up and does not find.
+ * php's longest match, seen from a WORD's side. Every rule spelled in letters
+ * competes with the TIMEZONE token, which reads at most SIX of them
+ * (DtZoneShape), so a keyword wins only when it is at least as long as that
+ * read -- which is to say when it runs to the end of the letter run, or is six
+ * letters itself and ties (a tie goes to whichever rule timelib spells first,
+ * and the zone is its last). `nowx`, `janx` and `todayx` are unknown zones;
+ * `januaryx`, `tomorrowx` and `augustx` are the word with a military zone
+ * behind it.
+ *
+ * The rules that are only ever PART of a longer one -- the ordinal and
+ * navigation words, which need a unit or a weekday after them -- do not get
+ * this: `previousx month` is a zone in php, because `previous` alone is not a
+ * token there at all.
  */
-static int DtZoneWord(const char *z,const char *zEnd,sxi32 *piOff,const char **pzName,
+static int DtWordEnds(const char *z,const char *zEnd,int nKw)
+{
+	return nKw >= 6 || &z[nKw] >= zEnd || !SyisAlpha((unsigned char)z[nKw]);
+}
+/*
+ * php's timezone token by SHAPE. Its scanner matches the re2c rule and asks what
+ * the letters SPELL only afterwards, which is why `Z,tues` reports a double
+ * timezone at the `tues` rather than a name the database does not have -- and
+ * why an unknown word is a token that the string reads PAST rather than a byte
+ * it stops on. The rule is two alternatives and, as every re2c rule does, the
+ * longer of the two wins:
+ *
+ *   "("? [A-Za-z]{1,6} ")"?          the abbreviation -- each paren optional on
+ *                                    its own, so `(abc` and `abc)` both match
+ *   [A-Z][a-z]+([_/-][A-Za-z]+)+     the tz-database identifier, `Europe/Paris`
+ *
+ * The SIX-letter cap on the first is what every other word-shaped rule competes
+ * against (DtWordEnds): `janx` is an unknown zone where `januaryx` is January
+ * beside the military zone X.
+ *
+ * Answers the bytes the token takes and reports the letters inside it, the
+ * parens dropped.
+ */
+static int DtZoneShape(const char *z,const char *zEnd,const char **pzName,int *pnName)
+{
+	int nPar = 0,nLet = 0,nBare = 0,nId = 0;
+	if( z < zEnd && z[0] == '(' ){
+		nPar = 1;
+	}
+	while( nLet < 6 && &z[nPar+nLet] < zEnd && SyisAlpha((unsigned char)z[nPar+nLet]) ){
+		nLet++;
+	}
+	if( nLet > 0 ){
+		nBare = nPar + nLet;
+		if( &z[nBare] < zEnd && z[nBare] == ')' ){
+			nBare++;
+		}
+	}
+	if( z < zEnd && z[0] >= 'A' && z[0] <= 'Z' ){
+		int k = 1,nSeg = 0;
+		while( &z[k] < zEnd && z[k] >= 'a' && z[k] <= 'z' ){ k++; }
+		if( k > 1 ){
+			for(;;){
+				int j = k;
+				if( &z[j] >= zEnd || (z[j] != '_' && z[j] != '/' && z[j] != '-') ){
+					break;
+				}
+				j++;
+				if( &z[j] >= zEnd || !SyisAlpha((unsigned char)z[j]) ){
+					break;
+				}
+				while( &z[j] < zEnd && SyisAlpha((unsigned char)z[j]) ){ j++; }
+				k = j;
+				nSeg++;
+			}
+			if( nSeg > 0 ){
+				nId = k;
+			}
+		}
+	}
+	if( nId > nBare ){
+		*pzName = z;
+		*pnName = nId;
+		return nId;
+	}
+	if( nBare == 0 ){
+		return 0;
+	}
+	*pzName = &z[nPar];
+	*pnName = nLet;
+	return nBare;
+}
+/*
+ * ...and what the letters spell, the spellings this engine has without a tz
+ * database: `UTC` (an IDENTIFIER in that exact case, an abbreviation in any
+ * other), `GMT`, and the military letters above. Answers 1 when the name is one
+ * of them, 0 for every other shape php would look up and this build cannot.
+ */
+static int DtZoneName(const char *z,int n,sxi32 *piOff,const char **pzName,
 	int *pnName,int *pbIdent)
 {
-	int n = 0;
-	if( zEnd-z >= 3 && (SyStrnicmp(z,"utc",3) == 0 || SyStrnicmp(z,"gmt",3) == 0) ){
+	if( n == 3 && (SyStrnicmp(z,"utc",3) == 0 || SyStrnicmp(z,"gmt",3) == 0) ){
 		int bUtc = (z[0] == 'u' || z[0] == 'U');
 		*piOff = 0;
 		*pzName = bUtc ? "UTC" : "GMT";
 		*pnName = 3;
 		*pbIdent = (bUtc && SyMemcmp(z,"UTC",3) == 0);
-		n = 3;
-	}else if( z < zEnd && DtZoneMil(z[0],piOff,pzName) ){
+		return 1;
+	}
+	if( n == 1 && DtZoneMil(z[0],piOff,pzName) ){
 		*pnName = 1;
 		*pbIdent = 0;
-		n = 1;
+		return 1;
 	}
-	if( n == 0 || (zEnd-z > n && SyisAlpha(z[n])) ){
-		return 0;
-	}
-	return n;
+	return 0;
 }
 /* Forward: the offset's VALUE is the one DateTimeZone reads too (the door that
  * takes a whole string rather than a token), so both spellings share it. */
@@ -802,40 +898,46 @@ static int DtZoneTok(const char **pz,const char *zEnd,dt_parsed *p,const char *z
 {
 	const char *z = *pz;
 	const char *zName = 0;
-	int nName = 0,bIdent = 0,n = 0,nTok = 0;
+	int nName = 0,bIdent = 0,n = 0,nTok = 0,bKnown = 0,rc;
 	sxi32 iOff = 0;
-	if( z < zEnd && z[0] == '(' ){
-		/* php's parenthesized zone is one token: no blanks inside it, and the
-		 * closing paren is part of the match. */
-		if( (n = DtZoneWord(&z[1],zEnd,&iOff,&zName,&nName,&bIdent)) != 0
-		 && &z[1+n] < zEnd && z[1+n] == ')' ){
-			nTok = n + 2;
-		}
-	}
 	/* The `GMT` in front of an offset is read before the NAME of the same three
 	 * bytes, because php's scanner takes the longer token -- and only when a whole
 	 * offset follows it, which is what makes `GMT+02:00` the offset, `gmt+2` the
 	 * zone GMT with a stray relative number after it, and `GMT+` the zone GMT with
 	 * a refusal ON the sign. */
-	else if( zEnd-z > 3 && SyMemcmp(z,"GMT",3) == 0
+	if( zEnd-z > 3 && SyMemcmp(z,"GMT",3) == 0
 	 && (n = DtZoneCorr(&z[3],zEnd,&iOff)) != 0 ){
 		zName = 0;
 		nTok = n + 3;
+		bKnown = 1;
 	}
-	else if( (n = DtZoneWord(z,zEnd,&iOff,&zName,&nName,&bIdent)) != 0 ){
+	else if( (n = DtZoneShape(z,zEnd,&zName,&nName)) != 0 ){
 		nTok = n;
+		bKnown = DtZoneName(zName,nName,&iOff,&zName,&nName,&bIdent);
 	}
 	else if( (n = DtZoneCorr(z,zEnd,&iOff)) != 0 ){
 		zName = 0;
 		nTok = n;
+		bKnown = 1;
 	}
 	if( nTok == 0 ){
 		return 0;
 	}
-	if( DtSetZone(p,iOff,zName,nName,bIdent) ){
+	/* php's TIMELIB_HAVE_TZ runs BEFORE the lookup, so only the string's FIRST
+	 * zone token is ever asked what it spells: a second is dropped whatever it
+	 * says, a third is the refusal, and neither is reported as a name the
+	 * database does not have. The token is consumed either way. */
+	*pz = &z[nTok];
+	rc = DtZoneCount(p);
+	if( rc < 0 ){
 		return -((int)(z - zIn) + 1) - DT_ERR_DZONE;
 	}
-	*pz = &z[nTok];
+	if( rc == 0 ){
+		if( !bKnown ){
+			return -((int)(z - zIn) + 1) - DT_ERR_TZID;
+		}
+		DtZoneStore(p,iOff,zName,nName,bIdent);
+	}
 	return 1;
 }
 /* Forward: the time SUFFIX has to know whether a DATE would read longer at the
@@ -1277,7 +1379,7 @@ static int DtMatchMonth(const char *z,const char *zEnd,int *pAdv)
 	for( i = 0 ; i < SX_ARRAYSIZE(aM) ; ++i ){
 		int n = aM[i].n;
 		if( zEnd - z >= n && SyStrnicmp(z,aM[i].z,(sxu32)n) == 0
-		 && (zEnd - z == n || !SyisAlpha(z[n])) ){
+		 && DtWordEnds(z,zEnd,n) ){
 			*pAdv = n;
 			return aM[i].mo;
 		}
@@ -1546,8 +1648,11 @@ static int DtRelWord(const char *z,const char *zEnd,sxi64 *pVal,int *pbNav)
 static int DtRelUnit(const char *z,const char *zEnd,sxi64 v,dt_parsed *p,int *pbSpecial)
 {
 	*pbSpecial = 0;
-#define DT_UNITEQ(zKw,nKw) (zEnd-z >= (nKw) && SyStrnicmp(z,zKw,nKw) == 0 \
-	&& (zEnd-z == (nKw) || !SyisAlpha(z[(nKw)])))
+/* A unit word is never a token on its own -- the NUMBER (or the navigation
+ * word) in front of it started the match, so nothing competes with it at its
+ * own position and letters behind it belong to whatever comes next: `+1 dayx`
+ * is a day and the military zone X, `+1 dayxyz` a day and an unknown zone. */
+#define DT_UNITEQ(zKw,nKw) (zEnd-z >= (nKw) && SyStrnicmp(z,zKw,nKw) == 0)
 	/* php's SUB-SECOND relative units, checked before the words they are
 	 * prefixes of ("ms" would otherwise swallow "msec"). `us` is NOT one of
 	 * them there, and neither is the Greek mu -- only U+00B5, the MICRO
@@ -1576,6 +1681,10 @@ static int DtRelUnit(const char *z,const char *zEnd,sxi64 v,dt_parsed *p,int *pb
 	else if( DT_UNITEQ("hour",4) )   { p->rh = DtWAdd(p->rh,v);           return 4; }
 	else if( DT_UNITEQ("days",4) )   { p->rd = DtWAdd(p->rd,v);           return 4; }
 	else if( DT_UNITEQ("day",3) )    { p->rd = DtWAdd(p->rd,v);           return 3; }
+	/* php's business-day words go BEFORE the plain week, because its scanner
+	 * takes the longest of the two and `week` is their prefix. */
+	else if( DT_UNITEQ("weekdays",8) ){ p->bWeekdays = 1; *pbSpecial = 1; p->iWeekdays = v; return 8; }
+	else if( DT_UNITEQ("weekday",7) ) { p->bWeekdays = 1; *pbSpecial = 1; p->iWeekdays = v; return 7; }
 	else if( DT_UNITEQ("weeks",5) )  { p->rd = DtWAdd(p->rd,DtWMul(v,7)); return 5; }
 	else if( DT_UNITEQ("week",4) )   { p->rd = DtWAdd(p->rd,DtWMul(v,7)); return 4; }
 	else if( DT_UNITEQ("fortnights",10) ){ p->rd = DtWAdd(p->rd,DtWMul(v,14)); return 10; }
@@ -1588,8 +1697,6 @@ static int DtRelUnit(const char *z,const char *zEnd,sxi64 v,dt_parsed *p,int *pb
 	 * move of its own (see DtAdjustWeekdays) */
 	/* php SETS this one rather than adding to it, so the last count in the string
 	 * is the only one that moves anything. */
-	else if( DT_UNITEQ("weekdays",8) ){ p->bWeekdays = 1; *pbSpecial = 1; p->iWeekdays = v; return 8; }
-	else if( DT_UNITEQ("weekday",7) ) { p->bWeekdays = 1; *pbSpecial = 1; p->iWeekdays = v; return 7; }
 	return 0;
 #undef DT_UNITEQ
 }
@@ -1636,7 +1743,7 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 /* ...and the run INSIDE one token, which is php's narrower `space`. */
 #define DT_SPACE() while( z < zEnd && DtIsSpace((unsigned char)z[0]) ){ z++; }
 #define DT_LOWEQ(zKw,nKw) (zEnd-z >= (nKw) && SyStrnicmp(z,zKw,nKw) == 0 \
-	&& (zEnd-z == (nKw) || !SyisAlpha(z[(nKw)])))
+	&& DtWordEnds(z,zEnd,nKw))
 	DT_SKIP_WS();
 	if( z >= zEnd ){
 		/* php: the empty string is "now" */
@@ -2189,11 +2296,14 @@ static const char * DtParseErr(const char *zIn,int nLen,int iErrPos,int *piPos,c
 	 * whole DT_ERR_RANGE band lower -- its "Number out of range", which is what a
 	 * digit run too wide for the clock reports; then "Double date specification"
 	 * and, lowest, "Double timezone specification". */
-	int bRange = 0,bDDate = 0,bDZone = 0;
+	int bRange = 0,bDDate = 0,bDZone = 0,bTzId = 0;
 	int bDouble;
 	int iPos;
 	DtTrimEnds(&zIn,&nLen);   /* the position is php's, i.e. the trimmed string's */
-	if( iErrPos < -DT_ERR_DZONE ){
+	if( iErrPos < -DT_ERR_TZID ){
+		bTzId = 1;
+		iErrPos += DT_ERR_TZID;
+	}else if( iErrPos < -DT_ERR_DZONE ){
 		bDZone = 1;
 		iErrPos += DT_ERR_DZONE;
 	}else if( iErrPos < -DT_ERR_DDATE ){
@@ -2203,7 +2313,7 @@ static const char * DtParseErr(const char *zIn,int nLen,int iErrPos,int *piPos,c
 		bRange = 1;
 		iErrPos += DT_ERR_RANGE;
 	}
-	bDouble = !bRange && !bDDate && !bDZone && iErrPos < 0;
+	bDouble = !bRange && !bDDate && !bDZone && !bTzId && iErrPos < 0;
 	iPos = (iErrPos < 0 ? -iErrPos : iErrPos) - 1;
 	char cAt = (iPos < nLen) ? zIn[iPos] : ' ';
 	*piPos = iPos;
@@ -2218,6 +2328,9 @@ static const char * DtParseErr(const char *zIn,int nLen,int iErrPos,int *piPos,c
 	}
 	if( bDZone ){
 		return "Double timezone specification";
+	}
+	if( bTzId ){
+		return "The timezone could not be found in the database";
 	}
 	/* php's own parenthesized-zone token starts at the `(`, so a name it cannot
 	 * find there is reported at the paren with the zone reason, not the byte. */
