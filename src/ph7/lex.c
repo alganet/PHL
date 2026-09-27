@@ -428,6 +428,26 @@ static sxi32 TokenizePHP(SyStream *pStream,SyToken *pToken,void *pUserData,void 
 					}
 				}
 			}
+			/* ...and php 8.5's `(void)`, which is a cast TOKEN there too. `void` is
+			 * not a reserved word (`const void = 5;` is legal in both engines), so
+			 * the merge keys on the identifier's text -- and it happens wherever
+			 * the three tokens meet, which is php's own behaviour: `foo(void)` is
+			 * `foo` followed by a stray cast, not a call passing a constant. */
+			if( pTokSet->nUsed >= 2 ){
+				SyToken *pTmp = (SyToken *)SySetPeek(pTokSet);
+				if( (pTmp->nType & PH7_TK_ID)
+				 && pTmp->sData.nByte == sizeof("void")-1
+				 && SyStrnicmp(pTmp->sData.zString,"void",sizeof("void")-1) == 0 ){
+					pTmp = (SyToken *)SySetAt(pTokSet,pTokSet->nUsed - 2);
+					if( pTmp->nType & PH7_TK_LPAREN ){
+						pToken->nType = PH7_TK_VOID_CAST;
+						SyStringInitFromBuf(&pToken->sData,"(void)",sizeof("(void)")-1);
+						pToken->pUserData = 0;
+						pTokSet->nUsed -= 2;
+						return SXRET_OK;
+					}
+				}
+			}
 			pToken->nType = PH7_TK_RPAREN;
 			break;
 				  }

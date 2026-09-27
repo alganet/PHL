@@ -5817,6 +5817,21 @@ case PH7_OP_CALL: {
 	 * (an internal function invoking a userland callback binds its arguments weakly),
 	 * and a call the callback body makes must not inherit it. */
 	int bCallbackWeak = pVm->bCallbackWeak;
+	/* ...and whether this call's ANSWER is thrown away, which is what a
+	 * #[\NoDiscard] callee warns about. The compiled call site says so directly
+	 * (bDiscard, stamped where the statement pops the value: php's
+	 * !RETURN_VALUE_USED); php also propagates the same bit THROUGH
+	 * `call_user_func()`/`call_user_func_array()`, which is why
+	 * `call_user_func('f');` warns and `array_map('f', $a);` does not, and a
+	 * synthetic OP_CALL has no call site of its own to carry it -- so the two
+	 * builtins hand it over on this latch. Consumed here like the rest. */
+	int bResultDropped = pVm->bDiscardCallback ? 1 : (pInstr->bDiscard != 0);
+	/* php's forwarding of that bit through call_user_func() is a COMPILE-time
+	 * special case on the literal name, so `$g = "call_user_func"; $g("f");` does
+	 * not forward. The callee slot's nIdx says which spelling this is: a compiled
+	 * literal is marked constant, a variable read is not. */
+	int bLiteralCallee = (pTos->nIdx == SXU32_HIGH);
+	pVm->bDiscardCallback = 0;
 	pVm->bMagicDispatch = 0;
 	pVm->bClosureScreened = 0;
 	pVm->bCallbackWeak = 0;
@@ -6018,10 +6033,17 @@ case PH7_OP_CALL: {
 			 * (pInstr->p3) so an FCC array callable invoked as `$c(name: …)` binds by name —
 			 * mirroring the __invoke-object branch below. */
 			pVm->bClosureScreened = bCbScreened; /* see the capture above */
+			/* This call SITE is what decides the answer is dropped, and the
+			 * dispatch below builds a synthetic OP_CALL that has no site of its
+			 * own — hand the bit over on the latch, so a #[\NoDiscard] callee
+			 * reached through an array callable, a "C::m" string or __invoke
+			 * warns exactly as a directly-spelled one does. */
+			pVm->bDiscardCallback = bResultDropped;
 			rcArr = PH7_VmCallUserFunctionWithMap(pVm,pTos,(int)SySetUsed(&aArg),(ph7_value **)SySetBasePtr(&aArg),&sResult,pEffCallMap);
-			/* The latch is consumed by the method OP_CALL this dispatch builds; clear it here
-			 * for the paths that never reach one. */
+			/* Both latches are consumed by the method OP_CALL this dispatch builds;
+			 * clear them here for the paths that never reach one. */
 			pVm->bClosureScreened = 0;
+			pVm->bDiscardCallback = 0;
 			SySetReset(&aArg);
 			/* Pop given arguments */
 			if( nCallArgs > 0 ){
@@ -6070,11 +6092,13 @@ case PH7_OP_CALL: {
 				pArg++;
 			}
 			PH7_MemObjInit(pVm,&sResult);
+			pVm->bDiscardCallback = bResultDropped;   /* see the array-callable site */
 			rcInv = VmCallObjectInvoke(&(*pVm),pThis,
 				(int)SySetUsed(&aArg),
 				(ph7_value **)SySetBasePtr(&aArg),
 				&sResult,
 				pEffCallMap);
+			pVm->bDiscardCallback = 0;
 			SySetReset(&aArg);
 			/* Pin pThis BEFORE popping operands: VmPopOperand releases the callable
 			 * slot itself (it pops top-down and the callable IS pTos), which for a
@@ -6432,6 +6456,21 @@ case PH7_OP_CALL: {
 			 * execution (generators: at the g(...) call site, like php). */
 			VmDeprecatedAttrNotice(&(*pVm),pVmFunc,
 				(pVmFunc->iFlags & VM_FUNC_CLASS_METHOD) ? pSelfHint : 0);
+		}
+		/* php 8.5 #[\NoDiscard]: the CALL SITE decided this answer is thrown away
+		 * (the codegen's bDiscard, php's !RETURN_VALUE_USED), and a `(void)` cast
+		 * in front of the statement is what clears it. Raised before the body, so
+		 * a callee that throws has already warned — php's order. */
+		if( (pVmFunc->iFlags & VM_FUNC_NODISCARD) && bResultDropped ){
+			/* php calls it a "method" whenever the callee has a class SCOPE, and a
+			 * closure declared in a class body has one -- `C::{closure:C::go():3}`. */
+			ph7_class *pNdClass = 0;
+			if( pVmFunc->iFlags & VM_FUNC_CLASS_METHOD ){
+				pNdClass = pSelfHint;
+			}else if( pVmFunc->iFlags & VM_FUNC_CLOSURE ){
+				pNdClass = (ph7_class *)pVmFunc->pLsbClass;
+			}
+			VmNoDiscardWarn(&(*pVm),pVmFunc,pNdClass);
 		}
 		/* D1: resolve deferred plain-var arguments against this callee's declaration
 		 * now — BEFORE the native/generator splits and VmEnterFrame, while pVm->pFrame is
@@ -7758,8 +7797,10 @@ SkipFuncBody:
 					pArg++;
 				}
 				PH7_MemObjInit(pVm,&sResult);
+				pVm->bDiscardCallback = bResultDropped;   /* see the sibling site */
 				rcSm = PH7_VmCallUserFunctionWithMap(pVm,pTos,(int)SySetUsed(&aArg),
 					(ph7_value **)SySetBasePtr(&aArg),&sResult,pEffCallMap);
+				pVm->bDiscardCallback = 0;
 				SySetReset(&aArg);
 				if( nCallArgs > 0 ){
 					VmPopOperand(&pTos,nCallArgs);
@@ -7931,9 +7972,15 @@ NativeCall:
 			 * prefixes with the caller. Saved and restored: a builtin can call
 			 * back into php and reach this line again. */
 			SyString *pSavedCallee = pVm->pCalleeName;
+			/* php's two callback FORWARDS pass "the answer is being dropped" on to
+			 * the callback they drive; every other builtin ignores this. Saved and
+			 * restored for the same reason the callee name is. */
+			int bSavedHostDiscard = pVm->bHostDiscard;
 			pVm->pCalleeName = &pFunc->sName;
+			pVm->bHostDiscard = bResultDropped && bLiteralCallee;
 			/* Call the foreign function */
 			rc = pFunc->xFunc(&sCtx,nGiven,(ph7_value **)SySetBasePtr(&aArg));
+			pVm->bHostDiscard = bSavedHostDiscard;
 			pVm->pCalleeName = pSavedCallee;
 			if( PH7_CmpRefusalPending(pVm) ){
 				/* A native compare handler refused a pair this builtin compared

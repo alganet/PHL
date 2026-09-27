@@ -1700,6 +1700,13 @@ static sxi32 GenStateCompileClassMethod(
 			goto Synchronize;
 		}
 	}
+	/* php's #[\NoDiscard] declaration rules, which want the return type. */
+	if( GenStateApplyNoDiscard(&(*pGen),&pMeth->sFunc,pClass,
+			pName->nByte == sizeof("__construct")-1
+			 && SyStrnicmp(pName->zString,"__construct",sizeof("__construct")-1) == 0)
+		== SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
 	/* php's compile-time magic-method declaration rules, DECIDED here — with the
 	 * signature in hand and before the __toString return-type rule below, which
 	 * is php's own order (`static function __toString($a): int` reports the

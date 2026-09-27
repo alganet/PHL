@@ -208,6 +208,13 @@ PH7_PRIVATE int GenStateUnconditionalTopLevel(ph7_gen_state *pGen);
 PH7_PRIVATE int GenStateIsReservedConstant(SyString *pName);
 PH7_PRIVATE void *GenStateAttachStrictFlag(ph7_gen_state *pGen,void *p3);
 PH7_PRIVATE sxi32 GenStateParseReturnType(ph7_gen_state *pGen,ph7_vm_func *pFunc);
+/* php 8.5 #[\NoDiscard]: its declaration-time refusals, and the two codegen
+ * halves of the `(void)` cast that silences it. */
+PH7_PRIVATE sxi32 GenStateApplyNoDiscard(ph7_gen_state *pGen,ph7_vm_func *pFunc,
+	ph7_class *pClass,int bCtor);
+PH7_PRIVATE int GenStateTakeVoidCast(ph7_gen_state *pGen);
+PH7_PRIVATE int GenStateEnableClauseVoidCasts(ph7_gen_state *pGen,int bLastToo);
+PH7_PRIVATE void GenStateMarkDiscardedCall(ph7_gen_state *pGen);
 PH7_PRIVATE sxi32 GenStateParseUnionTypeDecl(ph7_gen_state *pGen,sxu32 *pnType,SyString *pClass,SySet *pAlts,
 	sxi32 *piTypeFlags,SyString *pTypeText,int iNullableFlag,int iUnionFlag,int bAllowVoid,sxu32 nLine);
 PH7_PRIVATE int SyMemcmpNoCase(const char *zA,const char *zB,sxu32 n);

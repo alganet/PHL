@@ -1132,13 +1132,16 @@ PH7_PRIVATE sxi32 PH7_CompileFor(ph7_gen_state *pGen)
 	 * compiled through this same window — recorded as a known leniency. */
 	pGen->nCommaExprOk++;
 	pGen->zClauseCloser = "\";\""; /* init/condition clauses close on ';' */
-	/* Compile initialization expressions if available */
+	/* Compile initialization expressions if available. Every element of a `for`
+	 * clause is a statement position in php, `(void)` cast included. */
+	GenStateEnableClauseVoidCasts(&(*pGen),1);
 	rc = PH7_CompileExpr(&(*pGen),0,0);
 	/* Pop operand lvalues */
 	if( rc == SXERR_ABORT ){
 		/* Expression handler request an operation abort [i.e: Out-of-memory] */
 		return SXERR_ABORT;
 	}else if( rc != SXERR_EMPTY ){
+		GenStateMarkDiscardedCall(&(*pGen));
 		PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
 	}
 	if( (pGen->pIn->nType & PH7_TK_SEMI) == 0 ){
@@ -1160,6 +1163,16 @@ PH7_PRIVATE sxi32 PH7_CompileFor(ph7_gen_state *pGen)
 	/* Deffer continue jumps */
 	pForBlock->bPostContinue = TRUE;
 	/* Compile the condition */
+	if( GenStateEnableClauseVoidCasts(&(*pGen),0) ){
+		/* php names the clause terminator, not the cast, when the offending
+		 * `(void)` is on the element that has to BE the condition. */
+		rc = PH7_GenCompileError(pGen,E_PARSE,pGen->pIn->nLine,
+			"syntax error, unexpected token \";\", expecting \",\"");
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		return SXRET_OK;
+	}
 	rc = PH7_CompileExpr(&(*pGen),0,0);
 	if( rc == SXERR_ABORT ){
 		/* Expression handler request an operation abort [i.e: Out-of-memory] */
@@ -1217,6 +1230,7 @@ PH7_PRIVATE sxi32 PH7_CompileFor(ph7_gen_state *pGen)
 		SWAP_DELIMITER(pGen,pPostStart,pEnd);
 		pGen->nCommaExprOk++; /* post-expressions are a clause list again */
 		pGen->zClauseCloser = "\")\""; /* the post clause closes on ')' */
+		GenStateEnableClauseVoidCasts(&(*pGen),1);
 		rc = PH7_CompileExpr(&(*pGen),0,0);
 		pGen->nCommaExprOk--;
 		pGen->zClauseCloser = 0;
@@ -1233,6 +1247,7 @@ PH7_PRIVATE sxi32 PH7_CompileFor(ph7_gen_state *pGen)
 			/* Expression handler request an operation abort [i.e: Out-of-memory] */
 			return SXERR_ABORT;
 		}else if( rc != SXERR_EMPTY){
+			GenStateMarkDiscardedCall(&(*pGen));
 			/* Pop operand lvalue */
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
 		}
@@ -2113,6 +2128,17 @@ PH7_PRIVATE sxi32 PH7_CompileReturn(ph7_gen_state *pGen)
 	/* Jump the 'return' keyword */
 	pGen->pIn++;
 	nInstrBefore = PH7_VmInstrLength(pGen->pVm);
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_VOID_CAST) ){
+		/* php's `(void)` cast is a STATEMENT prefix, so `return (void) f();` is a
+		 * parse error there — and the expected-token set is the one `return` has,
+		 * which is why php names `";"` here and nothing after `$x = (void)`. */
+		rc = PH7_GenCompileError(pGen,E_PARSE,pGen->pIn->nLine,
+			"syntax error, unexpected token \"(void)\", expecting \";\"");
+		if( rc == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
+		return SXRET_OK;
+	}
 	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) == 0 ){
 		/* php: a stray token after `return EXPR` is `... expecting ";"`. */
 		const char *zSave = pGen->zClauseCloser;

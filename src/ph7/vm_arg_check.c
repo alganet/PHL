@@ -2608,6 +2608,19 @@ PH7_PRIVATE void PH7_VmThrowWarningFmt(ph7_vm *pVm,const char *zFmt,...)
 	va_end(ap);
 }
 /*
+ * Emit a formatted E_USER_WARNING with no function-name prefix: php reports
+ * #[\NoDiscard] as a USER warning (512) for the same reason it reports
+ * #[\Deprecated] as a USER deprecation — the attribute is userland-authored,
+ * and a set_error_handler sees the number.
+ */
+static void VmThrowUserWarningFmt(ph7_vm *pVm,const char *zFmt,...)
+{
+	va_list ap;
+	va_start(ap,zFmt);
+	PH7_VmThrowErrorAp(pVm,0,E_USER_WARNING,zFmt,ap);
+	va_end(ap);
+}
+/*
  * Emit a formatted E_USER_DEPRECATED diagnostic with no function-name prefix:
  * php reports #[\Deprecated] as USER-deprecated (16384, it is userland-authored),
  * not the engine's E_DEPRECATED (8192) — handler-visible errno matters.
@@ -2835,6 +2848,95 @@ PH7_PRIVATE void VmDeprecatedAttrNotice(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_class
 	}
 	PH7_MemObjRelease(&sMsg);
 	PH7_MemObjRelease(&sSince);
+}
+/*
+ * php 8.5's #[\NoDiscard] warning, raised at the CALL, before the body runs, and
+ * once per call (a loop warns every time round).
+ *
+ * The subject is a "function" unless the callee has a class scope, in which case
+ * php names the DECLARING class -- an inherited method reports the class that
+ * wrote it, and so does `parent::m()`. The tail after php's sentence is the
+ * attribute's own message: a constant EXPRESSION for a compiled declaration
+ * (evaluated here, where the constants it may name exist) and a fixed string for
+ * an internal member, which is how php words the immutable date mutators.
+ */
+PH7_PRIVATE void VmNoDiscardWarn(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_class *pDeclClass)
+{
+	ph7_attribute *aAttr = (ph7_attribute *)SySetBasePtr(&pFunc->aAttrs);
+	const SyString *pName = &pFunc->sName;
+	ph7_value sMsg;
+	SyBlob sOut;
+	int bMsg = 0;
+	sxu32 n;
+	/* A closure reports php's `{closure:SCOPE:LINE}` spelling, like every other
+	 * diagnostic that names one. */
+	if( SyStringLength(&pFunc->sClosureName) > 0 ){
+		pName = &pFunc->sClosureName;
+	}
+	SyBlobInit(&sOut,&pVm->sAllocator);
+	if( pDeclClass ){
+		SyBlobFormat(&sOut,"The return value of method %z::%z() should either be used "
+			"or intentionally ignored by casting it as (void)",&pDeclClass->sName,pName);
+	}else{
+		SyBlobFormat(&sOut,"The return value of function %z() should either be used "
+			"or intentionally ignored by casting it as (void)",pName);
+	}
+	PH7_MemObjInit(pVm,&sMsg);
+for( n = 0 ; !bMsg && n < SySetUsed(&pFunc->aAttrs) ; ++n ){
+		ph7_attr_arg *aArg;
+		sxu32 i,nPos = 0;
+		if( SyStringLength(&aAttr[n].sName) != sizeof("NoDiscard")-1
+		 || SyStrnicmp(SyStringData(&aAttr[n].sName),"NoDiscard",
+				sizeof("NoDiscard")-1) != 0 ){
+			continue;
+		}
+		aArg = (ph7_attr_arg *)SySetBasePtr(&aAttr[n].aArgs);
+		for( i = 0 ; i < SySetUsed(&aAttr[n].aArgs) ; ++i ){
+			ph7_attr_arg *pArg = &aArg[i];
+			int isMsg;
+			if( SyStringLength(&pArg->sName) == 0 ){
+				isMsg = (nPos == 0);
+				nPos++;
+			}else{
+				isMsg = SyStringLength(&pArg->sName) == sizeof("message")-1
+					&& SyMemcmp(SyStringData(&pArg->sName),"message",
+						sizeof("message")-1) == 0;
+			}
+			if( !isMsg ){
+				continue;
+			}
+			/* A compiled declaration holds the message as a constant
+			 * EXPRESSION (evaluated here, where the constants it may name
+			 * exist); a native one holds it as a literal, like every other
+			 * attribute argument a C-declared class carries. */
+			if( SySetUsed(&pArg->aByteCode) > 0 ){
+				if( VmLocalExec(pVm,&pArg->aByteCode,&sMsg,FALSE) != SXRET_OK ){
+					continue;
+				}
+			}else if( pArg->pNativeValue ){
+				PH7_NativeLiteralValue(pVm,pArg->pNativeValue,&sMsg);
+			}else{
+				continue;
+			}
+			if( (sMsg.iFlags & MEMOBJ_STRING) == 0 ){
+				PH7_MemObjToString(&sMsg);
+			}
+			bMsg = 1;
+			break;
+		}
+		break;
+	}
+	if( bMsg && SyBlobLength(&sMsg.sBlob) > 0 ){
+		SyBlobFormat(&sOut,", %.*s",(int)SyBlobLength(&sMsg.sBlob),
+			(const char *)SyBlobData(&sMsg.sBlob));
+	}
+	PH7_MemObjRelease(&sMsg);
+	/* php raises it as E_USER_WARNING (512), not the engine's E_WARNING: the
+	 * attribute is userland-authored, the same reason #[\Deprecated] is
+	 * E_USER_DEPRECATED. A set_error_handler sees the number. */
+	VmThrowUserWarningFmt(pVm,"%.*s",
+		(int)SyBlobLength(&sOut),(const char *)SyBlobData(&sOut));
+	SyBlobRelease(&sOut);
 }
 /*
  * Same notice for a #[\Deprecated] class constant, at its static-access site:

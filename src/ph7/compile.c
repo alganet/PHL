@@ -1602,7 +1602,10 @@ static sxi32 GenStateEmitExprCode(
 				iP2 = 9;
 			}
 		}else if( pNode->pOp->iOp == EXPR_OP_COMMA ){
-			/* POP the left node */
+			/* POP the left node — its answer is dropped exactly as a statement's is,
+			 * so a #[\NoDiscard] callee warns for it too (php warns for every
+			 * element of a `for` clause list, not just the last). */
+			GenStateMarkDiscardedCall(&(*pGen));
 			PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
 		}
 	}
@@ -2953,6 +2956,80 @@ PH7_PRIVATE sxi32 GenStateCollectParamAttrs(ph7_gen_state *pGen,SyToken *pTok,Sy
 	}
 	return SXRET_OK;
 }
+/*
+ * php 8.5's `(void)` cast is a STATEMENT prefix, not an expression operator:
+ * `$x = (void) f();` and `return (void) f();` are parse errors there too, and
+ * the only thing it does is say that dropping the answer is DELIBERATE, which
+ * silences a #[\NoDiscard] callee. The lexer already assembled the three tokens
+ * into one (PH7_TK_VOID_CAST); this consumes it and answers 1.
+ */
+PH7_PRIVATE int GenStateTakeVoidCast(ph7_gen_state *pGen)
+{
+	if( pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_VOID_CAST) ){
+		pGen->pIn++;
+		return 1;
+	}
+	return 0;
+}
+/*
+ * php's grammar takes a `(void)` cast at the head of an expression STATEMENT and
+ * at the head of each element of a `for` clause list — `for ((void) f(), $i = 0;
+ * $i < 1; $i++, (void) g())` is all valid, while `for ($i = (void) f();;)` is
+ * not. The statement head is consumed by GenStateTakeVoidCast; a clause is one
+ * expression with comma operators in it, so its element heads are marked HERE,
+ * before it compiles: the token becomes the no-op cast operator parse.c declares,
+ * and every other `(void)` in the clause stays unrecognized, which is php's own
+ * refusal. Nothing is moved or removed — the token stream is shared with the
+ * rest of the file.
+ */
+PH7_PRIVATE int GenStateEnableClauseVoidCasts(ph7_gen_state *pGen,int bLastToo)
+{
+	SyToken *pTok = pGen->pIn,*pLastMark = 0;
+	int iDepth = 0,bHead = 1,bCommaAfter = 0;
+	for( ; pTok < pGen->pEnd ; pTok++ ){
+		if( pTok->nType & (PH7_TK_LPAREN|PH7_TK_OSB|PH7_TK_OCB) ){
+			iDepth++;
+		}else if( pTok->nType & (PH7_TK_RPAREN|PH7_TK_CSB|PH7_TK_CCB) ){
+			iDepth--;
+		}else if( iDepth == 0 && (pTok->nType & PH7_TK_SEMI) ){
+			/* The three clauses share one token range (only the post one is
+			 * delimited), so this scan stops where its own clause does. */
+			break;
+		}else if( iDepth == 0 && (pTok->nType & PH7_TK_COMMA) ){
+			bHead = 1;
+			bCommaAfter = 1;
+			continue;
+		}else if( iDepth == 0 && bHead && (pTok->nType & PH7_TK_VOID_CAST) ){
+			pTok->nType |= PH7_TK_OP;
+			pTok->pUserData = (void *)PH7_ExprExtractOperator(&pTok->sData,0);
+			pLastMark = pTok;
+			bCommaAfter = 0;
+		}
+		bHead = 0;
+	}
+	/* The CONDITION clause's last element is the condition VALUE, so php refuses a
+	 * `(void)` on that one and only that one: `for (;(void) f();)` is a parse error
+	 * where `for (;(void) f(), $i < 1;)` is fine. */
+	if( !bLastToo && pLastMark && !bCommaAfter ){
+		pLastMark->nType &= ~(sxu32)PH7_TK_OP;
+		pLastMark->pUserData = 0;
+		return 1;
+	}
+	return 0;
+}
+/*
+ * The statement is about to throw its expression's value away. When that value
+ * came straight out of a CALL, mark the call: php's !RETURN_VALUE_USED, which is
+ * what a #[\NoDiscard] callee reads. `f() + 1;` drops the ADD's result, not the
+ * call's, so only the last instruction is looked at.
+ */
+PH7_PRIVATE void GenStateMarkDiscardedCall(ph7_gen_state *pGen)
+{
+	VmInstr *pInstr = PH7_VmPeekInstr(pGen->pVm);
+	if( pInstr && pInstr->iOp == PH7_OP_CALL ){
+		pInstr->bDiscard = 1;
+	}
+}
 PH7_PRIVATE sxi32 GenStateCompileChunk(
 	ph7_gen_state *pGen, /* Code generator state */
 	sxi32 iFlags         /* Compile flags */
@@ -3056,11 +3133,25 @@ PH7_PRIVATE sxi32 GenStateCompileChunk(
 				xCons = PH7_CompileLabel;
 			}
 			if( xCons == 0 ){
-				/* Assume an expression an try to compile it */
-				rc = PH7_CompileExpr(&(*pGen),0,0);
-				if(  rc != SXERR_EMPTY ){
-					/* Pop l-value */
-					PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
+				/* Assume an expression an try to compile it. A leading php 8.5
+				 * `(void)` cast is consumed here — statement head is one of the two
+				 * places its grammar takes one — and says the answer is dropped
+				 * DELIBERATELY, so the call below is not marked. */
+				int bVoid = GenStateTakeVoidCast(&(*pGen));
+				if( bVoid && pGen->pIn < pGen->pEnd && (pGen->pIn->nType & PH7_TK_SEMI) ){
+					/* php's grammar wants an expression after the cast: `(void);`
+					 * is `syntax error, unexpected token ";"` there. */
+					rc = PH7_GenCompileError(pGen,E_PARSE,pGen->pIn->nLine,
+						"syntax error, unexpected token \";\"");
+				}else{
+					rc = PH7_CompileExpr(&(*pGen),0,0);
+					if( rc != SXERR_EMPTY ){
+						if( !bVoid ){
+							GenStateMarkDiscardedCall(&(*pGen));
+						}
+						/* Pop l-value */
+						PH7_VmEmitInstr(pGen->pVm,PH7_OP_POP,1,0,0,0);
+					}
 				}
 			}else{
 				/* Go compile the sucker */

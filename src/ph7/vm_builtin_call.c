@@ -1393,6 +1393,9 @@ PH7_PRIVATE sxi32 VmCallClassMethodLsb(
 	 * OP_MEMBER twin carries, so PH7_VmGetUserFunction resolves it here too. */
 	aStack[i].iFlags = MEMOBJ_STRING|MEMOBJ_AUX_ENGINEFN;
 	aStack[i].nIdx = SXU32_HIGH;
+	/* Zero first: a flag added to VmInstr (bStrict, bDiscard) must read as
+	 * UNSET on a synthetic instruction, not as whatever this stack frame held. */
+	SyZero(aInstr,sizeof(aInstr));
 	aInstr[0].iOp = PH7_OP_CALL;
 	aInstr[0].iP1 = nArg;
 	aInstr[0].iP2 = 0;
@@ -2513,6 +2516,9 @@ PH7_PRIVATE sxi32 PH7_VmCallUserFunctionWithMap(
 	 * MEMOBJ_AUX like every other one. Only the unwrap above ever sets it. */
 	aStack[i].iFlags |= (pFunc->iFlags & MEMOBJ_AUX_ENGINEFN);
 	/* Emit the CALL istruction */
+	/* Zero first: a flag added to VmInstr (bStrict, bDiscard) must read as
+	 * UNSET on a synthetic instruction, not as whatever this stack frame held. */
+	SyZero(aInstr,sizeof(aInstr));
 	aInstr[0].iOp = PH7_OP_CALL;
 	aInstr[0].iP1 = nArg; /* Total number of given arguments */
 	aInstr[0].iP2 = 0;

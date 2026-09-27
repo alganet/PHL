@@ -542,32 +542,34 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallProperty(ph7_vm *pVm,ph7_class *pClass,
 	return PH7_ClassInstallAttr(pClass,pAttr);
 }
 /*
- * Attach an `#[Attr(...)]` to a class declared from C.
+ * Attach an `#[Attr(...)]` to something declared from C.
  *
- * php declares `#[Attribute(Attribute::TARGET_CLASS)]` on Attribute itself and a
- * target mask on Deprecated, and both records are LOAD-BEARING: the compiler
- * reads them to decide whether a user's `#[Deprecated]` may sit where it does,
- * and ReflectionAttribute answers them. A compiled attribute holds its argument
+ * php declares `#[Attribute(Attribute::TARGET_CLASS)]` on Attribute itself, a
+ * target mask on every other attribute class, and `#[NoDiscard(message: …)]` on
+ * nine DateTimeImmutable methods — and those records are LOAD-BEARING: the
+ * compiler reads them to decide whether a user's `#[Deprecated]` may sit where
+ * it does, the NoDiscard warning reads its message from them, and
+ * ReflectionAttribute answers them all. A compiled attribute holds its argument
  * as byte-code; there is no compiler here, so the argument rides as the same
  * literal record a native constant or property default uses and every reader
  * takes that branch when the byte-code is empty.
+ *
+ * NativeBuildAttr is the shared half; the two entry points below hang the record
+ * on a class or on one of its methods. aArg is BORROWED, so callers state their
+ * rows `static const`.
  */
-PH7_PRIVATE sxi32 PH7_NativeClassAddAttribute(ph7_vm *pVm,ph7_class *pClass,
-	const char *zAttr,const PH7_NativeAttrArg *aArg,sxu32 nArg)
+static sxi32 NativeBuildAttr(ph7_vm *pVm,ph7_attribute *pAttr,const char *zAttr,
+	const PH7_NativeAttrArg *aArg,sxu32 nArg)
 {
-	ph7_attribute sAttr;
 	char *zDup;
 	sxu32 n;
-	if( pClass == 0 ){
-		return SXERR_NOTFOUND;
-	}
-	SyZero(&sAttr,sizeof(sAttr));
+	SyZero(pAttr,sizeof(*pAttr));
 	zDup = SyMemBackendStrDup(&pVm->sAllocator,zAttr,SyStrlen(zAttr));
 	if( zDup == 0 ){
 		return SXERR_MEM;
 	}
-	SyStringInitFromBuf(&sAttr.sName,zDup,SyStrlen(zAttr));
-	SySetInit(&sAttr.aArgs,&pVm->sAllocator,sizeof(ph7_attr_arg));
+	SyStringInitFromBuf(&pAttr->sName,zDup,SyStrlen(zAttr));
+	SySetInit(&pAttr->aArgs,&pVm->sAllocator,sizeof(ph7_attr_arg));
 	for( n = 0 ; n < nArg ; n++ ){
 		ph7_attr_arg sArgRec;
 		SyZero(&sArgRec,sizeof(sArgRec));
@@ -581,7 +583,49 @@ PH7_PRIVATE sxi32 PH7_NativeClassAddAttribute(ph7_vm *pVm,ph7_class *pClass,
 		/* The literal is BORROWED, not copied: aArg must have static storage
 		 * duration (every caller states its rows as `static const`). */
 		sArgRec.pNativeValue = (const void *)&aArg[n].sValue;
-		SySetPut(&sAttr.aArgs,(const void *)&sArgRec);
+		SySetPut(&pAttr->aArgs,(const void *)&sArgRec);
+	}
+	return SXRET_OK;
+}
+/*
+ * Declare one of a native class's METHODS php 8.5's `#[\NoDiscard]`, argument
+ * and all — the same record a compiled declaration carries, so Reflection
+ * reports the attribute and the warning reads its message from the one place a
+ * userland one is read from. Assigned by the owning installer after
+ * PH7_InstallNativeClasses, like xClone/xDim/xSet: a spec-row field would have
+ * to be left empty by every other table.
+ */
+PH7_PRIVATE sxi32 PH7_NativeMethodSetNoDiscard(ph7_vm *pVm,ph7_class *pClass,
+	const char *zMethod,const PH7_NativeAttrArg *aArg,sxu32 nArg)
+{
+	ph7_class_method *pMeth;
+	ph7_attribute sAttr;
+	sxi32 rc;
+	if( pClass == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	pMeth = PH7_ClassExtractMethod(pClass,zMethod,(sxu32)SyStrlen(zMethod));
+	if( pMeth == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	rc = NativeBuildAttr(&(*pVm),&sAttr,"NoDiscard",aArg,nArg);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	pMeth->sFunc.iFlags |= VM_FUNC_NODISCARD;
+	return SySetPut(&pMeth->sFunc.aAttrs,(const void *)&sAttr);
+}
+PH7_PRIVATE sxi32 PH7_NativeClassAddAttribute(ph7_vm *pVm,ph7_class *pClass,
+	const char *zAttr,const PH7_NativeAttrArg *aArg,sxu32 nArg)
+{
+	ph7_attribute sAttr;
+	sxi32 rc;
+	if( pClass == 0 ){
+		return SXERR_NOTFOUND;
+	}
+	rc = NativeBuildAttr(&(*pVm),&sAttr,zAttr,aArg,nArg);
+	if( rc != SXRET_OK ){
+		return rc;
 	}
 	return SySetPut(&pClass->aAttrs,(const void *)&sAttr);
 }

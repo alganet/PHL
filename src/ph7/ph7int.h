@@ -1207,7 +1207,14 @@ struct ph7_vm_func_closure_env
                                        * `C::m()` call and shift how it reads its arguments. Set by
                                        * the native builder only: the compiler's behaviour for
                                        * bytecode methods is deliberately left untouched. */
-/* next free bit: 0x400000 */
+#define VM_FUNC_NODISCARD 0x400000 /* php 8.5's #[\NoDiscard]: a caller that DROPS this
+                                       * function's answer is warned at the call site. Set by
+                                       * the compiler from the declared attribute, and by the
+                                       * native builder for the internal members php marks
+                                       * (PH7_VmFuncSetNoDiscard). The message, when there is
+                                       * one, comes from zNoDiscard for a native member and
+                                       * from the attribute's own argument for a compiled one. */
+/* next free bit: 0x800000 */
 /*
  * Each user defined function is parsed out and stored in an instance
  * of the following structure.
@@ -1874,6 +1881,8 @@ struct PH7_NativeAttrArg
 };
 PH7_PRIVATE sxi32 PH7_NativeClassAddAttribute(ph7_vm *pVm,ph7_class *pClass,
 	const char *zAttr,const PH7_NativeAttrArg *aArg,sxu32 nArg);
+PH7_PRIVATE sxi32 PH7_NativeMethodSetNoDiscard(ph7_vm *pVm,ph7_class *pClass,
+	const char *zMethod,const PH7_NativeAttrArg *aArg,sxu32 nArg);
 PH7_PRIVATE sxi32 PH7_NativeClassInstallProperty(ph7_vm *pVm,ph7_class *pClass,
 	const PH7_NativePropDef *pDef);
 PH7_PRIVATE void PH7_NativeLiteralValue(ph7_vm *pVm,const void *pLiteral,ph7_value *pOut);
@@ -2014,6 +2023,12 @@ struct VmInstr
 	                * call (a magic method, a property hook) can bind its arguments under the
 	                * CALLING file's mode — php's rule — instead of always coercing. Sits in
 	                * the padding after iOp: sizeof(VmInstr) is unchanged. */
+	sxu8  bDiscard; /* PH7_OP_CALL only: php's !RETURN_VALUE_USED. The statement that owns
+	                * this call throws its answer away (`f();`, not `$x = f();` and not
+	                * `f() + 1;`), which is the one thing a #[\NoDiscard] callee warns
+	                * about. Set by the codegen at the statement-discard site and cleared
+	                * by a `(void)` cast in front of it, which is php's way of saying the
+	                * drop is deliberate. Padding after bStrict, like bStrict itself. */
 	sxi32 iP1; /* First operand */
 	sxu32 iP2; /* Second operand (Often the jump destination) */
 	void *p3;  /* Third operand (Often Upper layer private data) */
@@ -2505,6 +2520,15 @@ struct ph7_vm
 	                             * FORWARDS, call_user_func and call_user_func_array, do not set it:
 	                             * they pass the caller's own mode on an argument map. Cleared at
 	                             * the head of OP_CALL like the latches below. */
+	int bHostDiscard;           /* The HOST (C) function now running was called from a statement
+	                             * that throws its answer away. Set around the foreign-function
+	                             * dispatch in OP_CALL from the instruction's bDiscard, and read
+	                             * by exactly two builtins: php's two callback FORWARDS. */
+	int bDiscardCallback;       /* Consume-once: the next call dispatched through
+	                             * PH7_VmCallUserFunction inherits that drop, which is how
+	                             * `call_user_func('f');` warns for a #[\NoDiscard] `f` and
+	                             * `array_map('f', $a);` does not (php special-cases the same two
+	                             * names at compile time). Consumed at the head of OP_CALL. */
 	int bMagicDispatch;         /* Consume-once: the next method OP_CALL is the ENGINE reaching for
 	                             * a magic method (PH7_VmCallMagicMethod), so the visibility check
 	                             * lets a non-public one through — php only WARNS at such a
@@ -3305,6 +3329,12 @@ enum ph7_expr_id {
 #define PH7_TK_ARRAY_OP  0x0800000 /* Array operator '=>' */
 #define PH7_TK_ELLIPSIS  0x1000000 /* Ellipsis '...' */
 #define PH7_TK_OTHER     0x2000000 /* Other symbols */
+#define PH7_TK_VOID_CAST 0x8000000 /* php 8.5's `(void)` cast, assembled by the lexer from the three
+                                      * tokens the way every other cast operator is. It is NOT an
+                                      * expression operator: php's grammar takes it only at the head
+                                      * of an expression STATEMENT or of a `for` clause, so anywhere
+                                      * else it stays an unrecognized token and the parser reports
+                                      * php's `unexpected token "(void)"`. */
 #define PH7_TK_MEMBER_NAME 0x4000000 /* Reserved word used as a member NAME right after -> / ?-> / ::
                                       * (Enum::Null, C::Array, $o->list()): a plain identifier, never
                                       * the literal value — GenStateLoadLiteral skips its value conversion. */
@@ -4520,6 +4550,7 @@ PH7_PRIVATE int vm_builtin_var_export(ph7_context *pCtx,int nArg,ph7_value **apA
 /* vm_builtin_lang.c function prototypes (rows stay in vm.c's aVmFunc[]) */
 PH7_PRIVATE sxi32 VmClassConstEvalOnDemand(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pAttr);
 PH7_PRIVATE void VmDeprecatedConstNotice(ph7_vm *pVm,ph7_class *pClass,ph7_class_attr *pMember);
+PH7_PRIVATE void VmNoDiscardWarn(ph7_vm *pVm,ph7_vm_func *pFunc,ph7_class *pDeclClass);
 PH7_PRIVATE ph7_value * VmEnumCaseBackingValue(ph7_vm *pVm,ph7_class_attr *pCase);
 PH7_PRIVATE sxi32 VmEnumMaterialize(ph7_vm *pVm,ph7_class *pClass);
 PH7_PRIVATE void VmExpandConstantWithNotice(ph7_vm *pVm,ph7_constant *pCons,ph7_value *pOut);

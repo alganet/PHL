@@ -504,6 +504,10 @@ PH7_PRIVATE sxi32 PH7_VmEmitInstr(
 	 * instruction's source position; pIn can sit one past the end of the stream
 	 * between statements, hence the range check. */
 	sInstr.bStrict = (sxu8)(pGen->bStrictTypes ? 1 : 0);
+	/* Nothing is discarded until the statement that owns this call says so
+	 * (GenStateMarkDiscardedCall, after the fact) — but the field must not be
+	 * this stack frame's leftovers in the meantime. */
+	sInstr.bDiscard = 0;
 	sInstr.nLine = 0;
 	if( pGen->pIn && pGen->pEnd && pGen->pIn < pGen->pEnd ){
 		sInstr.nLine = pGen->pIn->nLine;

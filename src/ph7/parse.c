@@ -176,6 +176,13 @@ static const ph7_expr_op aOpTable[] = {
 	{ {"(array)",  sizeof("(array)")-1 }, EXPR_OP_TYPECAST, 4, EXPR_OP_ASSOC_RIGHT, PH7_OP_CVT_ARRAY},
 	{ {"(object)", sizeof("(object)")-1}, EXPR_OP_TYPECAST, 4, EXPR_OP_ASSOC_RIGHT, PH7_OP_CVT_OBJ  },
 	{ {"(unset)",  sizeof("(unset)")-1 }, EXPR_OP_TYPECAST, 4, EXPR_OP_ASSOC_RIGHT, PH7_OP_CVT_NULL },
+	/* php 8.5's `(void)`: not a conversion at all — it converts nothing and answers
+	 * the operand — but it sits exactly where a cast sits and binds exactly as
+	 * tightly. Only the codegen's `for`-clause pass ever hands a token this row
+	 * (GenStateEnableClauseVoidCasts): php's grammar takes `(void)` at the head of
+	 * an expression STATEMENT and at the head of each `for` clause element, and
+	 * NOWHERE else, so the token is otherwise left unrecognized on purpose. */
+	{ {"(void)",   sizeof("(void)")-1  }, EXPR_OP_TYPECAST, 4, EXPR_OP_ASSOC_RIGHT, PH7_OP_NOOP     },
 	                           /* Binary operators */
 	/* Precedence 5,right-associative: exponentiation (PHP 5.6) */
 	{ {"**",sizeof(char)*2}, EXPR_OP_POW, 5, EXPR_OP_ASSOC_RIGHT, PH7_OP_POW},

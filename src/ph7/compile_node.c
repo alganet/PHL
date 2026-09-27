@@ -149,6 +149,11 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		if( GenStateCollectParamAttrs(&(*pGen),pTokKw,&pAnnonFunc->aAttrs) == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
+		/* A closure's own attributes arrive AFTER its body compiled, so the
+		 * #[\NoDiscard] rules are decided here rather than with the signature. */
+		if( GenStateApplyNoDiscard(&(*pGen),pAnnonFunc,0,0) == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
 	}
 	/* Every anonymous function is a Closure object in PHP, so emit OP_LOAD_CLOSURE for
 	 * both real closures (per-instantiation captured env) and plain lambdas (no captures);
@@ -591,6 +596,9 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		return SXERR_ABORT;
 	}else if( rc == SXERR_SYNTAX ){
 		return SXERR_SYNTAX;
+	}
+	if( GenStateApplyNoDiscard(&(*pGen),pFunc,0,0) == SXERR_ABORT ){
+		return SXERR_ABORT;
 	}
 	/* Expect '=>' */
 	if( pGen->pIn >= pGen->pEnd || (pGen->pIn->nType & PH7_TK_ARRAY_OP) == 0 ){

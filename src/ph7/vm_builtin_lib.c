@@ -1372,6 +1372,22 @@ static int vm_builtin_Attribute_construct(ph7_context *pCtx,int nArg,ph7_value *
 	}
 	return PH7_OK;
 }
+/* NoDiscard::__construct(?string $message = null) */
+static int vm_builtin_NoDiscard_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value sVal;
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pCtx->pVm,&sVal);
+	if( nArg > 0 ){
+		PH7_MemObjStore(apArg[0],&sVal);
+	}
+	PH7_NativeSetProp(pCtx->pVm,pThis,"message",sizeof("message")-1,&sVal);
+	PH7_MemObjRelease(&sVal);
+	return PH7_OK;
+}
 static int vm_builtin_Deprecated_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
@@ -1423,6 +1439,15 @@ static sxi32 VmInstallAttributes(ph7_vm *pVm)
 		{ "__construct", PH7_MOD_PUBLIC, "?string $message = null, ?string $since = null", 0,
 		  vm_builtin_Deprecated_construct },
 	};
+	/* NoDiscard is Deprecated's shape minus the `since`. */
+	static const PH7_NativePropDef aNdProp[] = {
+		{ "message", PH7_MOD_PUBLIC|PH7_MOD_PROT_SET|PH7_MOD_READONLY,
+		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "?string" },
+	};
+	static const PH7_NativeMethodDef aNdMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "?string $message = null", 0,
+		  vm_builtin_NoDiscard_construct },
+	};
 	/* The three markers: one argless constructor each and no state at all. */
 	static const PH7_NativeMethodDef aMarkerMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC, "", 0, vm_builtin_AttrMarker_construct },
@@ -1454,6 +1479,9 @@ static sxi32 VmInstallAttributes(ph7_vm *pVm)
 		  aMarkerMethod, SX_ARRAYSIZE(aMarkerMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "Override", 0, 0, PH7_CLASS_FINAL,
 		  aMarkerMethod, SX_ARRAYSIZE(aMarkerMethod), 0, 0, 0, 0, 0, 0, 0 },
+		{ "NoDiscard", 0, 0, PH7_CLASS_FINAL,
+		  aNdMethod, SX_ARRAYSIZE(aNdMethod), 0, 0,
+		  aNdProp, SX_ARRAYSIZE(aNdProp), 0, 0, 0 },
 		/* php refuses BOTH directions for the box (ZEND_ACC_NOT_SERIALIZABLE), which
 		 * is the whole point: a redacted value must not reach a payload either. */
 		{ "SensitiveParameterValue", 0, 0, PH7_CLASS_FINAL|PH7_CLASS_NOSERIALIZE,
@@ -1469,6 +1497,7 @@ static sxi32 VmInstallAttributes(ph7_vm *pVm)
 	static const PH7_NativeAttrArg aMaskParam[]  = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 32, 0, 0.0 } } };
 	static const PH7_NativeAttrArg aMaskMethod[] = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 4,  0, 0.0 } } };
 	static const PH7_NativeAttrArg aMaskMembr[]  = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 12, 0, 0.0 } } };
+	static const PH7_NativeAttrArg aMaskCallee[] = { { 0, { 0, 0, PH7_NATIVE_VAL_INT, 6,  0, 0.0 } } };
 	static const struct {
 		const char *zClass;
 		const PH7_NativeAttrArg *aArg;   /* php's TARGET_* mask for that class */
@@ -1479,6 +1508,7 @@ static sxi32 VmInstallAttributes(ph7_vm *pVm)
 		{ "SensitiveParameter",     aMaskParam  },   /* TARGET_PARAMETER */
 		{ "ReturnTypeWillChange",   aMaskMethod },   /* TARGET_METHOD */
 		{ "Override",               aMaskMembr  },   /* METHOD|PROPERTY (php 8.5) */
+		{ "NoDiscard",              aMaskCallee },   /* FUNCTION|METHOD (php 8.5) */
 	};
 	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 	sxu32 n;

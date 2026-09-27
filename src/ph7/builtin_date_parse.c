@@ -5963,6 +5963,50 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 	if( rc != SXRET_OK ){
 		return rc;
 	}
+	/* php 8.5 marks every IMMUTABLE mutator #[\NoDiscard]: these nine answer a NEW
+	 * object and change nothing, so a caller who drops the answer wrote a
+	 * statement that does nothing at all -- the single most common way to misuse
+	 * DateTimeImmutable. The mutable DateTime twins are NOT marked (there the
+	 * object really did change), and neither is any other internal member: this is
+	 * php's whole internal NoDiscard set. The message is php's own wording, with
+	 * the method named in it. */
+	{
+		/* Nine rows, nine static literals: PH7_NativeMethodSetNoDiscard borrows the
+		 * argument record for the VM's lifetime. php's stub spells the message as a
+		 * NAMED argument, and getArguments() shows the key. */
+		static const PH7_NativeAttrArg aNdWhy[] = {
+			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,
+			  "as DateTimeImmutable::modify() does not modify the object itself", 0.0 } },
+			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,
+			  "as DateTimeImmutable::add() does not modify the object itself", 0.0 } },
+			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,
+			  "as DateTimeImmutable::sub() does not modify the object itself", 0.0 } },
+			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,
+			  "as DateTimeImmutable::setTimezone() does not modify the object itself", 0.0 } },
+			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,
+			  "as DateTimeImmutable::setTime() does not modify the object itself", 0.0 } },
+			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,
+			  "as DateTimeImmutable::setDate() does not modify the object itself", 0.0 } },
+			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,
+			  "as DateTimeImmutable::setISODate() does not modify the object itself", 0.0 } },
+			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,
+			  "as DateTimeImmutable::setTimestamp() does not modify the object itself", 0.0 } },
+			{ "message", { 0, 0, PH7_NATIVE_VAL_STRING, 0,
+			  "as DateTimeImmutable::setMicrosecond() does not modify the object itself", 0.0 } },
+		};
+		static const char *const azNdMethod[] = {
+			"modify","add","sub","setTimezone","setTime","setDate","setISODate",
+			"setTimestamp","setMicrosecond"
+		};
+		ph7_class *pImm = PH7_VmExtractClass(&(*pVm),"DateTimeImmutable",
+			sizeof("DateTimeImmutable")-1,FALSE,0);
+		for( n = 0 ; n < SX_ARRAYSIZE(azNdMethod) ; n++ ){
+			rc = PH7_NativeMethodSetNoDiscard(&(*pVm),pImm,azNdMethod[n],&aNdWhy[n],1);
+			if( rc != SXRET_OK ){
+				return rc;
+			}
+		}
+	}
 	/* php's state for these two IS their properties, and the table is written FROM
 	 * the C struct its constructor allocates -- so an object nobody constructed has
 	 * no such property at all. PHL declared them from `new`, so an unconstructed

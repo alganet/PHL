@@ -1524,6 +1524,46 @@ PH7_PRIVATE sxi32 GenStateParseUnionTypeDecl(
 }
 
 /*
+ * php 8.5's `#[\NoDiscard]`, decided where the declaration is WRITTEN.
+ *
+ * The attribute says a caller must do something with the answer, so php refuses
+ * it on a declaration that HAS no answer -- a `void` or `never` return type --
+ * and on a constructor, which is called for its object rather than its return.
+ * The nouns are php's: a "function" everywhere but a class body, where the same
+ * sentence says "method". Run once the return type is parsed, since that is
+ * what it judges; a declaration that already failed says nothing more.
+ */
+PH7_PRIVATE sxi32 GenStateApplyNoDiscard(ph7_gen_state *pGen,ph7_vm_func *pFunc,
+	ph7_class *pClass,int bCtor)
+{
+	ph7_attribute *aAttr = (ph7_attribute *)SySetBasePtr(&pFunc->aAttrs);
+	const char *zKind = pClass ? "method" : "function";
+	sxu32 n;
+	for( n = 0 ; n < SySetUsed(&pFunc->aAttrs) ; ++n ){
+		if( SyStringLength(&aAttr[n].sName) != sizeof("NoDiscard")-1
+		 || SyStrnicmp(SyStringData(&aAttr[n].sName),"NoDiscard",sizeof("NoDiscard")-1) != 0 ){
+			continue;
+		}
+		if( bCtor ){
+			return PH7_GenCompileError(&(*pGen),E_ERROR,pFunc->nLine,
+				"Method %z::%z cannot be #[\\NoDiscard]",&pClass->sName,&pFunc->sName);
+		}
+		if( pFunc->nReturnType == MEMOBJ_VOID ){
+			return PH7_GenCompileError(&(*pGen),E_ERROR,pFunc->nLine,
+				"A void %s does not return a value, but #[\\NoDiscard] requires a return value",
+				zKind);
+		}
+		if( pFunc->nReturnType == MEMOBJ_NEVER ){
+			return PH7_GenCompileError(&(*pGen),E_ERROR,pFunc->nLine,
+				"A never returning %s does not return a value, but #[\\NoDiscard] requires a return value",
+				zKind);
+		}
+		pFunc->iFlags |= VM_FUNC_NODISCARD;
+		return SXRET_OK;
+	}
+	return SXRET_OK;
+}
+/*
  * Parse a return type declaration (`: type`) after a function/method signature.
  * pGen->pIn should point to the token after `)`.
  * Sets pFunc->nReturnType and pFunc->sReturnClass.
@@ -1689,6 +1729,12 @@ PH7_PRIVATE sxi32 GenStateCompileFunc(
 			return SXERR_SYNTAX;
 		}
 	}
+	/* php's #[\NoDiscard] declaration rules, which want the return type. A
+	 * closure's second (post-`use`) return-type parse re-runs below; the flag is
+	 * idempotent and the refusals are the same either way. */
+	if( GenStateApplyNoDiscard(&(*pGen),pFunc,0,0) == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
 	if( bHandleClosure ){
 		ph7_vm_func_closure_env sEnv;
 		int got_this = 0; /* TRUE if $this have been seen */
@@ -1790,6 +1836,10 @@ PH7_PRIVATE sxi32 GenStateCompileFunc(
 						return SXERR_ABORT;
 					}else if( rcRt2 == SXERR_SYNTAX ){
 						return SXERR_SYNTAX;
+					}
+					/* The type this closure really declared is only known now. */
+					if( GenStateApplyNoDiscard(&(*pGen),pFunc,0,0) == SXERR_ABORT ){
+						return SXERR_ABORT;
 					}
 				}
 		}

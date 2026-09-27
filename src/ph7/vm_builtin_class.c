@@ -1811,6 +1811,10 @@ PH7_PRIVATE int vm_builtin_call_user_func(ph7_context *pCtx,int nArg,ph7_value *
 		sInner.bStrict = 0;
 		sInner.nTotal = pOuter->nTotal > 1 ? pOuter->nTotal - 1 : 0;
 		sInner.aNames = sInner.nTotal > 0 ? &pOuter->aNames[1] : 0;
+		/* php's compiler rewrites `call_user_func(f, ...)` into a direct call to
+		 * f, so a DROPPED answer here is a dropped answer for the callback: hand
+		 * the bit on, one call deep. */
+		pCtx->pVm->bDiscardCallback = pCtx->pVm->bHostDiscard;
 		rc = PH7_VmCallUserFunctionWithMap(pCtx->pVm,apArg[0],nArg - 1,&apArg[1],&sResult,&sInner);
 	}else{
 		/* call_user_func is one of php's two FORWARDS: the callback binds under the
@@ -1821,8 +1825,12 @@ PH7_PRIVATE int vm_builtin_call_user_func(ph7_context *pCtx,int nArg,ph7_value *
 		VmCallArgMap sFwd;
 		SyZero(&sFwd,sizeof(sFwd));
 		sFwd.bStrict = (pCtx->pArgMap && pCtx->pArgMap->bStrict) ? 1 : 0;
+		pCtx->pVm->bDiscardCallback = pCtx->pVm->bHostDiscard;   /* see above */
 		rc = PH7_VmCallUserFunctionWithMap(pCtx->pVm,apArg[0],nArg - 1,&apArg[1],&sResult,&sFwd);
 	}
+	/* The latch is consumed by the OP_CALL the dispatch builds; clear it for the
+	 * paths that never reach one, so it cannot describe some later call. */
+	pCtx->pVm->bDiscardCallback = 0;
 	if( rc == PH7_EXCEPTION ){
 		/* The callback raised: propagate so the OP_CALL dispatcher unwinds
 		 * through the nearest try/catch instead of returning FALSE. */
@@ -1929,7 +1937,9 @@ PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_v
 		SyMemBackendFree(&pCtx->pVm->sAllocator,apNode);
 		apNode = 0;
 	}
-	/* Try to invoke the callback */
+	/* Try to invoke the callback. Like call_user_func, this is a php FORWARD: a
+	 * dropped answer here is a dropped answer for the callback. */
+	pCtx->pVm->bDiscardCallback = pCtx->pVm->bHostDiscard;
 	if( aNames ){
 		VmCallArgMap sMap;
 		SyZero(&sMap,sizeof(sMap)); /* new map fields must read unset, not stack garbage */
@@ -1952,6 +1962,7 @@ PH7_PRIVATE int vm_builtin_call_user_func_array(ph7_context *pCtx,int nArg,ph7_v
 		rc = PH7_VmCallUserFunctionWithMap(pCtx->pVm,apArg[0],(int)nSlot,
 			(ph7_value **)SySetBasePtr(&aArg),&sResult,&sFwd);
 	}
+	pCtx->pVm->bDiscardCallback = 0;   /* see the call_user_func sibling */
 	if( rc == PH7_EXCEPTION ){
 		/* The callback raised: propagate so the OP_CALL dispatcher unwinds. */
 		PH7_MemObjRelease(&sResult);
