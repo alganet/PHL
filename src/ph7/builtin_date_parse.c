@@ -446,6 +446,7 @@ static sxi64 DtApplyFields(dt_parsed *p,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs
 #define DT_ERR_DDATE    2000000
 #define DT_ERR_DZONE    3000000
 #define DT_ERR_TZID     4000000
+#define DT_ERR_UNEXPDATA 5000000
 /*
  * php refuses a SECOND absolute date outright -- `2020-01-01 january` and
  * `20240102 20240102` are both "Double date specification" there, reported at the
@@ -653,17 +654,6 @@ static void DtZoneStore(dt_parsed *p,sxi32 iOff,const char *zName,int nName,int 
 	p->zZone = zName;
 	p->nZone = nName;
 	p->bZoneIdent = bIdent;
-}
-static int DtSetZone(dt_parsed *p,sxi32 iOff,const char *zName,int nName,int bIdent)
-{
-	int rc = DtZoneCount(p);
-	if( rc < 0 ){
-		return 1;
-	}
-	if( rc == 0 ){
-		DtZoneStore(p,iOff,zName,nName,bIdent);
-	}
-	return 0;
 }
 /* Exactly two digits whose value is <= iMax -- php's `minutelz`/`secondlz`, and
  * the hour of its two-colon spelling. */
@@ -1723,6 +1713,94 @@ static int DtRelUnitLen(const char *z,const char *zEnd,const dt_parsed *p)
  * Returns 0 on success, or the byte position of the first unparseable character
  * +1 (for php's "at position N" message).
  */
+/*
+ * php's `@epoch` token, which its scanner reads ANYWHERE in a string rather
+ * than only at its head: `2020-01-02 @100` and `12:00 @100` are the epoch
+ * there, not refusals.
+ *
+ * The shape is `"@" "-"? [0-9]+ ("." [0-9]{0,6})?`. A PLUS is no part of it, so
+ * `@+100` is an unexpected `@` with a UTC offset behind it; and the fraction
+ * stops at SIX digits, which leaves the seventh to the string (`@100.1234567`
+ * refuses on it while `@100.1234567890` reads the trailing four as a year).
+ *
+ * The ACTION is php's own order, and the order is what shows: TIMELIB_UNHAVE_DATE
+ * and TIMELIB_UNHAVE_TIME first -- which ZERO the civil fields rather than
+ * unsetting them, so an epoch behind a date reads back as the year 0, not as the
+ * date -- then TIMELIB_HAVE_TZ, then the value. The middle step is a RETURN when
+ * the string already named a zone, so `UTC @100` leaves nothing behind but those
+ * zeroes: neither 1970 nor the seconds are ever written. An empty fraction is
+ * php's `Found unexpected data`, raised at the `@` and after the value, which is
+ * why `@100.,UTC` still reads back as 1970 plus a hundred seconds.
+ *
+ * Advances *pz over what it took; answers 0 when this is not the token, 1 when
+ * it is, or an error code in DtParse's own convention.
+ */
+static int DtTryEpoch(const char **pz,const char *zEnd,dt_parsed *p,const char *zIn)
+{
+	const char *z = *pz,*zAt = z;
+	sxi64 v = 0,us = 0;
+	int neg = 0,nDig = 0,bDot = 0,nFrac = 0,k,rc;
+	if( z >= zEnd || z[0] != '@' ){
+		return 0;
+	}
+	z++;
+	if( z < zEnd && z[0] == '-' ){ neg = 1; z++; }
+	if( z >= zEnd || !SyisDigit(z[0]) ){
+		/* php's lexer never matched a token here at all: the `@` is the refusal */
+		return (int)(zAt - zIn) + 1;
+	}
+	while( z < zEnd && SyisDigit(z[0]) ){
+		if( nDig < DT_DIGITS_SAFE ){ v = v*10 + (z[0]-'0'); }
+		nDig++;
+		z++;
+	}
+	if( z < zEnd && z[0] == '.' ){
+		bDot = 1;
+		z++;
+		while( nFrac < 6 && z < zEnd && SyisDigit(z[0]) ){
+			us = us*10 + (z[0]-'0');
+			nFrac++;
+			z++;
+		}
+		for( k = nFrac ; k < 6 ; k++ ){ us *= 10; }
+	}
+	*pz = z;
+	if( nDig > DT_DIGITS_EPOCH ){
+		/* php reports it at the `@`, with its own reason. */
+		return -((int)(zAt - zIn) + 1) - DT_ERR_RANGE;
+	}
+	p->y = p->m = p->d = 0;
+	p->bHaveDate = 0;
+	DtUnhaveTime(p);
+	rc = DtZoneCount(p);
+	if( rc < 0 ){
+		return -((int)(zAt - zIn) + 1) - DT_ERR_DZONE;
+	}
+	if( rc > 0 ){
+		return 1;   /* php returns from inside HAVE_TZ: nothing below runs */
+	}
+	DtZoneStore(p,0,0,0,0);
+	p->bEpoch = 1;
+	p->y = 1970; p->m = 1; p->d = 1;
+	p->h = p->i = p->s = p->us = 0;
+	if( neg ){ v = -v; }
+	/* The fraction is a count FORWARD, so a negative epoch borrows a second for
+	 * it (`@-1.5` is two seconds before the epoch plus half of one); and it lands
+	 * on the RELATIVE microseconds, which is why a later `tomorrow` -- whose whole
+	 * job is to zero the clock -- leaves it standing. */
+	if( nFrac > 0 ){
+		if( v < 0 && us > 0 ){
+			v--;
+			us = 1000000 - us;
+		}
+		p->rus = us;
+	}
+	p->rs = DtWAdd(p->rs,v);
+	if( bDot && nFrac == 0 ){
+		return -((int)(zAt - zIn) + 1) - DT_ERR_UNEXPDATA;
+	}
+	return 1;
+}
 static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 {
 	const char *z,*zEnd;
@@ -1749,52 +1827,7 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 		/* php: the empty string is "now" */
 		return 0;
 	}
-	/* "@<seconds>" absolute epoch. php spells it as the 1970 epoch plus a RELATIVE
-	 * second count, which is why `@0 +1 day` is a day past it there. */
-	if( z[0] == '@' ){
-		int neg = 0;
-		sxi64 v = 0;
-		const char *zAt = z;
-		z++;
-		if( z < zEnd && (z[0]=='-'||z[0]=='+') ){ neg = (z[0]=='-'); z++; }
-		/* php's lexer rejects the whole token: the error points at the '@' */
-		if( z >= zEnd || !SyisDigit(z[0]) ){ return (int)(zAt - zIn) + 1; }
-		{
-			int nDig = 0;
-			while( z < zEnd && SyisDigit(z[0]) ){
-				if( nDig < DT_DIGITS_SAFE ){ v = v*10 + (z[0]-'0'); }
-				nDig++;
-				z++;
-			}
-			if( nDig > DT_DIGITS_EPOCH ){
-				/* php reports it at the '@', with its own reason. */
-				return -((int)(zAt - zIn) + 1) - DT_ERR_RANGE;
-			}
-		}
-		p->y = 1970; p->m = 1; p->d = 1;
-		p->h = p->i = p->s = p->us = 0;
-		if( neg ){ v = -v; }
-		/* php accepts a fractional epoch ("@1600000000.5" -> .5s = 500000us). The
-		 * fraction is a count FORWARD, so a negative epoch borrows a second for it
-		 * (`@-1.5` is two seconds before the epoch plus half of one); and it lands
-		 * on the RELATIVE microseconds, which is why a later `tomorrow` -- whose
-		 * whole job is to zero the clock -- leaves it standing. */
-		if( z < zEnd && z[0]=='.' && zEnd-z >= 2 && SyisDigit(z[1]) ){
-			sxi64 us = DtReadFraction(&z,zEnd);
-			if( v < 0 && us > 0 ){
-				v--;
-				us = 1000000 - us;
-			}
-			p->rus = us;
-		}
-		p->rs = DtWAdd(p->rs,v);
-		/* php's `@` names UTC, and it is a zone TOKEN like any other. */
-		p->bEpoch = 1;
-		if( DtSetZone(p,0,0,0,0) ){
-			return -((int)(zAt - zIn) + 1) - DT_ERR_DZONE;
-		}
-		bAny = 1;
-	}else if( SyisDigit(z[0]) && (iRc = DtTryIsoWeek(z,zEnd,&z,p,zIn)) != 0 ){
+	if( SyisDigit(z[0]) && (iRc = DtTryIsoWeek(z,zEnd,&z,p,zIn)) != 0 ){
 		/* YYYY[-]Www[[-]D] -- the ISO WEEK date, whose `W` is what tells it from
 		 * every other four-digit-first spelling. */
 		if( iRc != 1 ){ return iRc; }
@@ -1834,6 +1867,11 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 		DT_SKIP_WS();
 		if( z >= zEnd ){
 			break;
+		}
+		if( (iRc = DtTryEpoch(&z,zEnd,p,zIn)) != 0 ){
+			if( iRc != 1 ){ return iRc; }
+			bAny = 1;
+			continue;
 		}
 		if( DT_LOWEQ("now",3) ){
 			z += 3;
@@ -2296,11 +2334,14 @@ static const char * DtParseErr(const char *zIn,int nLen,int iErrPos,int *piPos,c
 	 * whole DT_ERR_RANGE band lower -- its "Number out of range", which is what a
 	 * digit run too wide for the clock reports; then "Double date specification"
 	 * and, lowest, "Double timezone specification". */
-	int bRange = 0,bDDate = 0,bDZone = 0,bTzId = 0;
+	int bRange = 0,bDDate = 0,bDZone = 0,bTzId = 0,bUnexp = 0;
 	int bDouble;
 	int iPos;
 	DtTrimEnds(&zIn,&nLen);   /* the position is php's, i.e. the trimmed string's */
-	if( iErrPos < -DT_ERR_TZID ){
+	if( iErrPos < -DT_ERR_UNEXPDATA ){
+		bUnexp = 1;
+		iErrPos += DT_ERR_UNEXPDATA;
+	}else if( iErrPos < -DT_ERR_TZID ){
 		bTzId = 1;
 		iErrPos += DT_ERR_TZID;
 	}else if( iErrPos < -DT_ERR_DZONE ){
@@ -2313,7 +2354,7 @@ static const char * DtParseErr(const char *zIn,int nLen,int iErrPos,int *piPos,c
 		bRange = 1;
 		iErrPos += DT_ERR_RANGE;
 	}
-	bDouble = !bRange && !bDDate && !bDZone && !bTzId && iErrPos < 0;
+	bDouble = !bRange && !bDDate && !bDZone && !bTzId && !bUnexp && iErrPos < 0;
 	iPos = (iErrPos < 0 ? -iErrPos : iErrPos) - 1;
 	char cAt = (iPos < nLen) ? zIn[iPos] : ' ';
 	*piPos = iPos;
@@ -2331,6 +2372,9 @@ static const char * DtParseErr(const char *zIn,int nLen,int iErrPos,int *piPos,c
 	}
 	if( bTzId ){
 		return "The timezone could not be found in the database";
+	}
+	if( bUnexp ){
+		return "Found unexpected data";
 	}
 	/* php's own parenthesized-zone token starts at the `(`, so a name it cannot
 	 * find there is reported at the paren with the zone reason, not the byte. */
