@@ -748,6 +748,83 @@ PH7_PRIVATE int PH7_builtin_hypot(ph7_context *pCtx,int nArg,ph7_value **apArg)
 #define PH7_ROUND_TOWARD_ZERO    7
 #define PH7_ROUND_AWAY_FROM_ZERO 8
 /*
+ * php 8.4's `enum RoundingMode`, in php's own DECLARATION order -- which is the
+ * order cases() reports and is NOT the order of the integer modes above. The two
+ * numberings disagree past the four HALF_* ones: php's integer 5 is CEILING and
+ * its enum's fifth case is TowardsZero, so the mapping has to be stated rather
+ * than computed from an ordinal. A PURE enum (no backing value), which is why the
+ * case carries its mode HERE instead of in a `case X = 5;` the script could read.
+ *
+ * The enum is what round()'s third argument is documented as; the integer
+ * spelling stays accepted beside it because php still accepts it, which is what
+ * `RoundingMode|int` in the signature says.
+ */
+static const struct MathRoundingModeCase {
+	const char *zName;
+	int iMode;
+} aRoundingMode[] = {
+	{ "HalfAwayFromZero", PH7_ROUND_HALF_UP        },
+	{ "HalfTowardsZero",  PH7_ROUND_HALF_DOWN      },
+	{ "HalfEven",         PH7_ROUND_HALF_EVEN      },
+	{ "HalfOdd",          PH7_ROUND_HALF_ODD       },
+	{ "TowardsZero",      PH7_ROUND_TOWARD_ZERO    },
+	{ "AwayFromZero",     PH7_ROUND_AWAY_FROM_ZERO },
+	{ "NegativeInfinity", PH7_ROUND_FLOOR          },
+	{ "PositiveInfinity", PH7_ROUND_CEILING        },
+};
+/*
+ * Answer TRUE (and the integer mode) when pVal is a RoundingMode CASE.
+ *
+ * An enum case is an ordinary object here, so the test is its class plus the
+ * `name` slot every case carries -- the pure enum has no backing value to read.
+ */
+PH7_PRIVATE int PH7_RoundingModeCase(ph7_value *pVal,int *pMode)
+{
+	ph7_class_instance *pObj;
+	const char *zName = 0;
+	int nName = 0;
+	sxu32 n;
+	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 || pVal->x.pOther == 0 ){
+		return 0;
+	}
+	pObj = (ph7_class_instance *)pVal->x.pOther;
+	if( pObj->pClass == 0 || pObj->pClass->sName.nByte != sizeof("RoundingMode")-1
+	 || SyMemcmp(pObj->pClass->sName.zString,"RoundingMode",sizeof("RoundingMode")-1) != 0 ){
+		return 0;
+	}
+	PH7_NativeAttrStr(pObj,"name",&zName,&nName);
+	for( n = 0 ; n < SX_ARRAYSIZE(aRoundingMode) ; ++n ){
+		int nCase = (int)SyStrlen(aRoundingMode[n].zName);
+		if( nName == nCase && SyMemcmp(zName,aRoundingMode[n].zName,(sxu32)nCase) == 0 ){
+			*pMode = aRoundingMode[n].iMode;
+			return 1;
+		}
+	}
+	return 0;
+}
+/*
+ * Declare `enum RoundingMode` -- pure, eight cases, php's declaration order.
+ */
+PH7_PRIVATE sxi32 PH7_VmInstallRoundingMode(ph7_vm *pVm)
+{
+	/* The builder DUPLICATES each case name and, for an unbacked enum, keeps no
+	 * pointer into sValue at all, so this array may live on the stack. */
+	PH7_NativeEnumCase aCase[SX_ARRAYSIZE(aRoundingMode)];
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(aRoundingMode) ; ++n ){
+		aCase[n].zName = aRoundingMode[n].zName;
+		/* PH7_NATIVE_VAL_NULL: a pure enum's case has no backing value at all. */
+		aCase[n].sValue.zName = 0;
+		aCase[n].sValue.iMods = 0;
+		aCase[n].sValue.iType = PH7_NATIVE_VAL_NULL;
+		aCase[n].sValue.iValue = 0;
+		aCase[n].sValue.zValue = 0;
+		aCase[n].sValue.rValue = 0.0;
+	}
+	return PH7_InstallNativeEnum(&(*pVm),"RoundingMode",0,
+		aCase,SX_ARRAYSIZE(aCase),0,0);
+}
+/*
  * 10**power via an exact lookup table for 0..22, falling back to pow()
  * otherwise. Port of php-src PHP-8.5 ext/standard/math.c php_intpow10().
  */
@@ -947,19 +1024,24 @@ PH7_PRIVATE int PH7_builtin_round(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		}
 	}
 	/*
-	 * Mode (arg #3). PHP 8.5 accepts the integer modes 1..8. Read the full
+	 * Mode (arg #3). php declares it `RoundingMode|int`, so an enum CASE and the
+	 * raw integer both arrive here. The integer modes are 1..8; read the full
 	 * 64-bit value before range-checking so a large out-of-range mode cannot
 	 * alias a valid 1..8 via a truncating 32-bit cast (e.g. 0x1_0000_0003).
 	 */
 	if( nArg > 2 ){
-		sxi64 m = ph7_value_to_int64(apArg[2]);
-		if( m < PH7_ROUND_HALF_UP || m > PH7_ROUND_AWAY_FROM_ZERO ){
-			return PH7_VmThrowException(pCtx,
-				"ValueError",
-				"round(): Argument #3 ($mode) must be a valid rounding mode (RoundingMode::*)"
-				);
+		/* A RoundingMode case answers its integer mode straight into `mode`; the
+		 * integer spelling is range-checked here. */
+		if( !PH7_RoundingModeCase(apArg[2],&mode) ){
+			sxi64 m = ph7_value_to_int64(apArg[2]);
+			if( m < PH7_ROUND_HALF_UP || m > PH7_ROUND_AWAY_FROM_ZERO ){
+				return PH7_VmThrowException(pCtx,
+					"ValueError",
+					"round(): Argument #3 ($mode) must be a valid rounding mode (RoundingMode::*)"
+					);
+			}
+			mode = (int)m;
 		}
-		mode = (int)m;
 	}
 	value = ph7_value_to_double(apArg[0]);
 	/* Integer input with non-negative precision needs no rounding. */

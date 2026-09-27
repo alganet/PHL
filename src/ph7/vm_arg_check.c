@@ -1950,6 +1950,24 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 					 * `true`/`false` (the rule Generator::throw()'s own check
 					 * already followed, and which this screen now runs first). */
 					zGiven = VmValueGivenName(pArg,zGivenBuf,sizeof(zGivenBuf));
+				}else if( (pArg->iFlags & (MEMOBJ_STRING|MEMOBJ_NULL)) == MEMOBJ_STRING
+				       && !VmSigTypeHas(zType,nType,"string")
+				       && !VmSigTypeHas(zType,nType,"bool")
+				       && !VmSigTypeHas(zType,nType,"true")
+				       && !VmSigTypeHas(zType,nType,"false")
+				       && !VmSigTypeHas(zType,nType,"array")
+				       && !VmSigTypeHas(zType,nType,"callable")
+				       && !PH7_MemObjStringIsNumeric(pArg) ){
+					/* The one arm that let this STRING past is `int`/`float`, and it
+					 * only takes a NUMERIC one — no coercion turns a string into an
+					 * instance of the class arm beside it. `round(1.5, 0, "x")` is
+					 * php's `must be of type RoundingMode|int, string given`; PHL
+					 * narrowed it to mode 0 and reported the ValueError for an
+					 * invalid MODE, which blames the wrong thing. The plain
+					 * number-only spelling is screened by the STRING branch below;
+					 * a class arm routes the same argument through here instead, so
+					 * the rule has to be stated in both places. */
+					zGiven = "string";
 				}
 			}else if( (pArg->iFlags & MEMOBJ_REAL) != 0
 			       && VmSigTypeIsIntOnly(zType,nType)

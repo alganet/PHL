@@ -1266,8 +1266,14 @@ PH7_PRIVATE sxi32 PH7_InstallNativeEnum(ph7_vm *pVm,const char *zName,sxu32 nBac
 	if( pClass == 0 ){
 		return SXERR_MEM;
 	}
-	/* php: an enum is implicitly FINAL and cannot be instantiated. */
-	pClass->iFlags |= PH7_CLASS_ENUM|PH7_CLASS_FINAL;
+	/* php: no enum can be extended or instantiated, and the ENUM flag alone says
+	 * so -- the `extends` refusal names the enum rather than a final class, and it
+	 * is asked first. The FINAL flag is deliberately NOT set: php stamps
+	 * ZEND_ACC_FINAL on a COMPILED enum only, so `isFinal()`/`getModifiers()`
+	 * answer true/32 for `enum U {}` and false/0 for every enum php declares from
+	 * C (RoundingMode, PropertyHookType). Setting it here made an internal enum
+	 * report itself as a userland one. */
+	pClass->iFlags |= PH7_CLASS_ENUM;
 	pClass->nEnumBacking = nBacking;
 	rc = NativeEnumInstallProp(&(*pVm),pClass,"name",MEMOBJ_STRING,"string");
 	if( rc != SXRET_OK ){

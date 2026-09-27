@@ -2394,6 +2394,12 @@ PH7_PRIVATE sxi32 PH7_VmInit(
 	PH7_VmInstallStreamFilter(&(*pVm));
 #endif
 	PH7_VmInstallTokenizer(&(*pVm));
+#ifndef PH7_DISABLE_BUILTIN_FUNC
+	/* php 8.4's RoundingMode, round()'s declared third argument. It rides the
+	 * builtin guard because round() -- and bcround() -- do: a build with no
+	 * consumer for the symbol does not ship the symbol. */
+	PH7_VmInstallRoundingMode(&(*pVm));
+#endif
 	PH7_VmInstallSession(&(*pVm));
 	PH7_VmInstallIni(&(*pVm));
 #ifdef PH7_ENABLE_LIBXML
