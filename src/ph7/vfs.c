@@ -3336,6 +3336,7 @@ PH7_PRIVATE sxi32 PH7_RegisterIORoutine(ph7_vm *pVm)
 		{"feof",      PH7_builtin_feof   },
 		{"fgetc",     PH7_builtin_fgetc  },
 		{"fgets",     PH7_builtin_fgets  },
+		{"fscanf",    PH7_builtin_fscanf },
 		{"stream_get_line", PH7_builtin_stream_get_line },
 		{"fread",     PH7_builtin_fread  },
 		{"fgetcsv",   PH7_builtin_fgetcsv},

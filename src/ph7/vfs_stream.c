@@ -1142,6 +1142,53 @@ PH7_PRIVATE int PH7_builtin_fgetc(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	return PH7_OK;
 }
 /*
+ * array|int|false|null fscanf(resource $stream, string $format, mixed &...$vars)
+ *  Parse the NEXT LINE of $stream according to $format.
+ *
+ *  php reads one whole line -- the newline included, which is what makes a
+ *  trailing `%s` stop where it does -- and hands it to the same scanner
+ *  sscanf() runs, so every rule of that family (the two-pass format read, the
+ *  -1 / NULL "nothing converted" answer) is this function's too. The one
+ *  answer of its own is FALSE, and it means the STREAM was at its end: a line
+ *  that scans to nothing is still NULL or -1, exactly as sscanf's would be.
+ */
+PH7_PRIVATE int PH7_builtin_fscanf(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const ph7_io_stream *pStream;
+	const char *zLine,*zFmt;
+	io_private *pDev;
+	ph7_int64 n;
+	int nFmt = 0;
+	if( nArg < 2 || !ph7_value_is_resource(apArg[0]) ){
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pDev = (io_private *)ph7_value_to_resource(apArg[0]);
+	if( IO_PRIVATE_INVALID(pDev) ){
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting an IO handle");
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pStream = pDev->pStream;
+	if( pStream == 0 ){
+		ph7_context_throw_error_format(pCtx,PH7_CTX_WARNING,
+			"IO routine(%s) not implemented in the underlying stream(%s) device,PH7 is returning FALSE",
+			ph7_function_name(pCtx),"null_stream"
+			);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	n = StreamReadLine(pDev,&zLine,-1);
+	if( n < 1 ){
+		/* Nothing left in the stream at all. */
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	zFmt = ph7_value_to_string(apArg[1],&nFmt);
+	return (int)PH7_ScanfRun(pCtx,zLine,(int)n,zFmt,nFmt,&apArg[2],nArg - 2);
+}
+/*
  * string fgets(resource $handle[,int64 $length ])
  *  Gets line from file pointer.
  * Parameters

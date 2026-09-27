@@ -770,6 +770,10 @@ static sxu32 GenStateByRefBuiltinMask(SyString *pName)
 		{ "exec",                   4, (1u<<1)|(1u<<2) },  /* &$output, &$result_code */
 		{ "system",                 6, 1u<<1 },  /* &$result_code (apArg[1]) */
 		{ "passthru",               8, 1u<<1 },  /* &$result_code (apArg[1]) */
+		/* A by-ref VARIADIC tail: every actual from the third on is one of
+		 * sscanf()'s `&...$vars`, so each is created rather than read. */
+		{ "sscanf",                 6, ~((1u<<2) - 1u) },
+		{ "fscanf",                 6, ~((1u<<2) - 1u) },
 	};
 	sxu32 i;
 	if( pName == 0 || pName->zString == 0 || pName->nByte == 0 ){

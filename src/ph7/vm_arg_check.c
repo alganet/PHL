@@ -907,6 +907,8 @@ static const struct VmBuiltinSig {
 	{ "opendir", "string $directory, $context = NULL", "" },
 	{ "ord", "string $character", "int" },
 	{ "pack", "string $format, mixed ...$values = ?", "string" },
+	{ "sscanf", "string $string, string $format, mixed &...$vars = ?", "array|int|null" },
+	{ "fscanf", "$stream, string $format, mixed &...$vars = ?", "array|int|false|null" },
 	{ "unpack", "string $format, string $string, int $offset = 0", "array|false" },
 	{ "parse_ini_file", "string $filename, bool $process_sections = false, int $scanner_mode = 0", "array|false" },
 	{ "parse_ini_string", "string $ini_string, bool $process_sections = false, int $scanner_mode = 0", "array|false" },
@@ -2345,6 +2347,13 @@ PH7_PRIVATE int PH7_VmSigParamName(const char *zSig,int nPos,SyString *pOut)
 	if( nPos >= nParam || aParam[nPos].nName < 1 ){
 		return 0;
 	}
+	if( aParam[nPos].bVariadic ){
+		/* php's get_function_arg_name() answers NULL past `num_args`, which
+		 * counts the non-variadic parameters alone -- so an actual absorbed by
+		 * a `...` tail is named in no diagnostic (`sscanf(): Argument #3 must
+		 * be passed by reference, value given`, with no ` ($vars)`). */
+		return 0;
+	}
 	SyStringInitFromBuf(pOut,aParam[nPos].zName,(sxu32)aParam[nPos].nName);
 	return 1;
 }
@@ -2426,7 +2435,11 @@ PH7_PRIVATE sxi32 PH7_VmScreenByRefArgShapes(
 			PH7_VmArgTempCallNotice(pCtx->pVm,pMap,(sxu32)n,apArg[n]);
 			continue;
 		}
-		if( n < nParam && aParam[n].nName > 0 ){
+		/* php names the parameter only when the position is a DECLARED one:
+		 * get_function_arg_name() answers NULL past `num_args`, which counts
+		 * the non-variadic parameters alone. So an actual absorbed by a `&...`
+		 * tail (sscanf's `&...$vars`) is refused without a name. */
+		if( n < nParam && aParam[n].nName > 0 && !aParam[n].bVariadic ){
 			return PH7_VmThrowException(pCtx,"Error",
 				"%z(): Argument #%d ($%.*s) could not be passed by reference",
 				&pFunc->sName,n + 1,aParam[n].nName,aParam[n].zName);

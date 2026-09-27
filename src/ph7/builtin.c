@@ -937,6 +937,7 @@ static const ph7_builtin_func aBuiltInFunc[] = {
 	{ "metaphone",    PH7_builtin_metaphone  },
 	{ "pack",         PH7_builtin_pack       },
 	{ "unpack",       PH7_builtin_unpack     },
+	{ "sscanf",       PH7_builtin_sscanf     },
 	{ "wordwrap",     PH7_builtin_wordwrap   },
 	{ "strtok",       PH7_builtin_strtok     },
 	{ "str_pad",      PH7_builtin_str_pad    },
