@@ -62,10 +62,14 @@
 	"  /* php's rule is a two-way split, not a three-value enum: SORT_NONE leaves the"\
 	"     order alone and EVERY other value sorts -- ascending only for the exact"\
 	"     SORT_ASCENDING, descending otherwise. PHL left an unknown value UNSORTED,"\
-	"     which reads as SORT_NONE. */"\
+	"     which reads as SORT_NONE."\
+	"     The comparison is php_stream_dirent_alphasort's strcoll(), which in the C"\
+	"     locale php runs in is a BYTE compare -- so SORT_STRING, not the default"\
+	"     SORT_REGULAR. Sorting by VALUE ordered numeric names numerically, which is"\
+	"     a different listing: `9` came before `10`, and `00` before `0`. */"\
 	"  if( $sorting_order != SCANDIR_SORT_NONE ){"\
-	"      if( $sorting_order == SCANDIR_SORT_ASCENDING ){ sort($aDir); }"\
-	"      else { rsort($aDir); }"\
+	"      if( $sorting_order == SCANDIR_SORT_ASCENDING ){ sort($aDir,SORT_STRING); }"\
+	"      else { rsort($aDir,SORT_STRING); }"\
 	"  }"\
 	"  return $aDir;"\
 	"}"\
@@ -134,7 +138,7 @@
 	"    /* php sorts the names it ANSWERS, slash included, so `a/../` comes before"\
 	"       `a/./` -- sorting the bases and appending afterwards has them the other"\
 	"       way round. */"\
-	"    if( ($flags & GLOB_NOSORT) == 0 ){ sort($pArray); }"\
+	"    if( ($flags & GLOB_NOSORT) == 0 ){ sort($pArray,SORT_STRING); }"\
 	"  }"\
 	"  if( ($flags & GLOB_NOCHECK) && sizeof($pArray) < 1 ){ $pArray[] = $pattern; }"\
 	"  return $pArray;"\
@@ -154,7 +158,7 @@
 	"        $pArray[] = $zHit;"\
 	"      }"\
 	"    }"\
-	"    if( ($flags & GLOB_NOSORT) == 0 ){ sort($pArray); }"\
+	"    if( ($flags & GLOB_NOSORT) == 0 ){ sort($pArray,SORT_STRING); }"\
 	"    if( ($flags & GLOB_NOCHECK) && sizeof($pArray) < 1 ){ $pArray[] = $pattern; }"\
 	"    return $pArray;"\
 	"  }"\
@@ -197,8 +201,11 @@
 	"closedir($pHandle);"\
 	"}"\
 	"if( ($flags & GLOB_NOSORT) == 0 ){"\
-	"  /* Sort the array */"\
-	"  sort($pArray);"\
+	"  /* glob(3) sorts with strcoll(), a BYTE compare in the C locale php runs in,"\
+	"     and it sorts the whole ANSWER rather than each directory it walked. The"\
+	"     default SORT_REGULAR compared numeric names as NUMBERS, so a directory of"\
+	"     `1.jpg`..`10.jpg` came back in a different order than php lists it. */"\
+	"  sort($pArray,SORT_STRING);"\
 	"}"\
 	"if( ($flags & GLOB_NOCHECK) && sizeof($pArray) < 1 ){"\
 	"  /* Return the search pattern if no files matching were found */"\
