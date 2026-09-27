@@ -812,7 +812,7 @@ static sxi32 GetLine(io_private *pDev,ph7_int64 *pLen,const char **pzLine)
 /*
  * Read a single line from the underlying IO stream device.
  */
-static ph7_int64 StreamReadLine(io_private *pDev,const char **pzData,ph7_int64 nMaxLen)
+PH7_PRIVATE ph7_int64 StreamReadLine(io_private *pDev,const char **pzData,ph7_int64 nMaxLen)
 {
 	char zBuf[8192];
 	ph7_int64 n;
@@ -7102,23 +7102,111 @@ PH7_PRIVATE int PH7_builtin_stream_is_local(ph7_context *pCtx,int nArg,ph7_value
 	return PH7_OK;
 }
 /* PH7_ENABLE_NET */
-PH7_PRIVATE int PH7_builtin_fopen(ph7_context *pCtx,int nArg,ph7_value **apArg)
+/*
+ * The open that fopen() is: the device lookup, the io_private, the mode
+ * translation, the handle and the meta-data record `stream_get_meta_data()`
+ * reports back. php's fopen() and its SplFileObject constructor both call
+ * php_stream_open_wrapper_ex(), so both doors here share this body rather than
+ * spelling the sequence twice.
+ *
+ * NOTHING is reported from in here. The two failures are handed back through
+ * *piErr, because the two callers word them differently: fopen() warns, while
+ * SplFileObject's constructor promotes the same warning to a RuntimeException
+ * (php's zend_replace_error_handling). *pzErrUri is the name to report -- the
+ * scheme-stripped remainder, which is what the warning has always printed.
+ */
+PH7_PRIVATE io_private * PH7_StreamOpenPath(ph7_context *pCtx,ph7_value *pPath,
+	const char *zMode,int nMode,int bUseInclude,phl_stream_ctx *pCtxRes,
+	ph7_value *pCtxArg,int *piErr,const char **pzErrUri)
 {
 	const ph7_io_stream *pStream;
-	const char *zUri,*zMode;
+	const char *zUri;
 	ph7_value *pResource;
 	io_private *pDev;
+	int iLen,iOpenFlags;
+	zUri = ph7_value_to_string(pPath,&iLen);
+	*piErr = PH7_STREAM_OPEN_OK;
+	*pzErrUri = zUri;
+	/* Try to extract a stream */
+	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zUri,iLen);
+	*pzErrUri = zUri;
+	if( pStream == 0 ){
+		*piErr = PH7_STREAM_OPEN_NODEVICE;
+		return 0;
+	}
+	/* Allocate a new IO private instance */
+	pDev = (io_private *)ph7_context_alloc_chunk(pCtx,sizeof(io_private),TRUE,FALSE);
+	if( pDev == 0 ){
+		*piErr = PH7_STREAM_OPEN_NOMEM;
+		return 0;
+	}
+	pResource = 0;
+	if( pCtxArg ){
+		pResource = pCtxArg;
+	}else if( is_php_stream(pStream) || is_data_stream(pStream) ){
+		/* TICKET 1433-80: The php:// and data:// streams need a ph7_value to
+		 * access the underlying virtual machine.
+		 */
+		pResource = pPath;
+	}
+	/* Initialize the structure */
+	InitIOPrivate(pCtx->pVm,pStream,pDev);
+	/* Convert open mode to PH7 flags */
+	iOpenFlags = StrModeToFlags(pCtx,zMode,nMode);
+	PH7_StreamCtxArm(pCtx->pVm,pCtxRes);
+	/* Try to get a handle */
+	pDev->pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zUri,iOpenFlags,
+		bUseInclude,pResource,FALSE,0,ph7_function_name(pCtx));
+	if( pDev->pHandle == 0 ){
+		ReleaseIOPrivate(pCtx,pDev);
+		*piErr = PH7_STREAM_OPEN_FAILED;
+		return 0;
+	}
+	/* Remember what we were asked for: stream_get_meta_data() reports both.
+	 * The URI is the ORIGINAL argument, not the scheme-stripped remainder
+	 * PH7_VmGetStreamDevice() advanced zUri past. */
+	{
+		int nUri;
+		const char *zOrig = ph7_value_to_string(pPath,&nUri);
+		const char *zMeta = zMode;
+		int nMeta = nMode;
+		if( is_php_stream(pStream)
+		 && PH7_PhpStreamKind(pDev->pHandle) == PH7_IO_STREAM_OUTPUT ){
+			/* php://output has one mode whatever it was asked for. */
+			zMeta = "wb";
+			nMeta = 2;
+		}else if( is_php_stream(pStream)
+		 && PH7_PhpStreamKind(pDev->pHandle) == PH7_IO_STREAM_MEMORY ){
+			/* php's memory streams do not keep the mode they were opened with:
+			 * a buffer is readable and writable either way, so php reports the
+			 * one it actually built. */
+			int i,bWrite = 0,bAppend = nMode > 0 && (zMode[0] == 'a' || zMode[0] == 'A');
+			for( i = 0 ; i < nMode ; i++ ){
+				if( zMode[i] == 'w' || zMode[i] == 'W' || zMode[i] == 'a'
+				 || zMode[i] == 'A' || zMode[i] == '+' ){
+					bWrite = 1;
+				}
+			}
+			zMeta = bWrite ? (bAppend ? "a+b" : "w+b") : "rb";
+			nMeta = (int)SyStrlen(zMeta);
+		}
+		SetIOPrivateOpenedAs(pDev,zOrig,nUri,zMeta,nMeta);
+	}
+	return pDev;
+}
+PH7_PRIVATE int PH7_builtin_fopen(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	const char *zMode,*zErrUri;
+	io_private *pDev;
 	phl_stream_ctx *pCtxRes;
-	int iLen,imLen,bThrew = 0;
-	int iOpenFlags;
+	int imLen,bThrew = 0,iErr;
 	if( nArg < 1 || !ph7_value_is_string(apArg[0]) ){
 		/* Missing/Invalid arguments,return FALSE */
 		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Expecting a file path or URL");
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	/* Extract the URI and the desired access mode */
-	zUri  = ph7_value_to_string(apArg[0],&iLen);
+	/* Extract the desired access mode */
 	if( nArg > 1 ){
 		zMode = ph7_value_to_string(apArg[1],&imLen);
 	}else{
@@ -7134,72 +7222,19 @@ PH7_PRIVATE int PH7_builtin_fopen(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	if( bThrew ){
 		return PH7_OK;
 	}
-	/* Try to extract a stream */
-	pStream = PH7_VmGetStreamDevice(pCtx->pVm,&zUri,iLen);
-	if( pStream == 0 ){
-		VfsThrowNoDeviceWarning(pCtx,zUri,FALSE);
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
-	/* Allocate a new IO private instance */
-	pDev = (io_private *)ph7_context_alloc_chunk(pCtx,sizeof(io_private),TRUE,FALSE);
+	pDev = PH7_StreamOpenPath(pCtx,apArg[0],zMode,imLen,
+		nArg > 2 ? ph7_value_to_bool(apArg[2]) : FALSE,pCtxRes,
+		nArg > 3 ? apArg[3] : 0,&iErr,&zErrUri);
 	if( pDev == 0 ){
-		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
-	}
-	pResource = 0;
-	if( nArg > 3 ){
-		pResource = apArg[3];
-	}else if( is_php_stream(pStream) || is_data_stream(pStream) ){
-		/* TICKET 1433-80: The php:// and data:// streams need a ph7_value to
-		 * access the underlying virtual machine.
-		 */
-		pResource = apArg[0];
-	}
-	/* Initialize the structure */
-	InitIOPrivate(pCtx->pVm,pStream,pDev);
-	/* Convert open mode to PH7 flags */
-	iOpenFlags = StrModeToFlags(pCtx,zMode,imLen);
-	PH7_StreamCtxArm(pCtx->pVm,pCtxRes);
-	/* Try to get a handle */
-	pDev->pHandle = PH7_StreamOpenHandle(pCtx->pVm,pStream,zUri,iOpenFlags,
-		nArg > 2 ? ph7_value_to_bool(apArg[2]) : FALSE,pResource,FALSE,0,ph7_function_name(pCtx));
-	if( pDev->pHandle == 0 ){
-		VfsThrowOpenWarning(pCtx,zUri);
-		ph7_result_bool(pCtx,0);
-		ReleaseIOPrivate(pCtx,pDev);
-		return PH7_OK;
-	}
-	/* Remember what we were asked for: stream_get_meta_data() reports both.
-	 * The URI is the ORIGINAL argument, not the scheme-stripped remainder
-	 * PH7_VmGetStreamDevice() advanced zUri past. */
-	{
-		int nUri;
-		const char *zOrig = ph7_value_to_string(apArg[0],&nUri);
-		const char *zMeta = zMode;
-		int nMeta = imLen;
-		if( is_php_stream(pStream)
-		 && PH7_PhpStreamKind(pDev->pHandle) == PH7_IO_STREAM_OUTPUT ){
-			/* php://output has one mode whatever it was asked for. */
-			zMeta = "wb";
-			nMeta = 2;
-		}else if( is_php_stream(pStream)
-		 && PH7_PhpStreamKind(pDev->pHandle) == PH7_IO_STREAM_MEMORY ){
-			/* php's memory streams do not keep the mode they were opened with:
-			 * a buffer is readable and writable either way, so php reports the
-			 * one it actually built. */
-			int i,bWrite = 0,bAppend = imLen > 0 && (zMode[0] == 'a' || zMode[0] == 'A');
-			for( i = 0 ; i < imLen ; i++ ){
-				if( zMode[i] == 'w' || zMode[i] == 'W' || zMode[i] == 'a'
-				 || zMode[i] == 'A' || zMode[i] == '+' ){
-					bWrite = 1;
-				}
-			}
-			zMeta = bWrite ? (bAppend ? "a+b" : "w+b") : "rb";
-			nMeta = (int)SyStrlen(zMeta);
+		if( iErr == PH7_STREAM_OPEN_NODEVICE ){
+			VfsThrowNoDeviceWarning(pCtx,zErrUri,FALSE);
+		}else if( iErr == PH7_STREAM_OPEN_FAILED ){
+			VfsThrowOpenWarning(pCtx,zErrUri);
+		}else{
+			ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");
 		}
-		SetIOPrivateOpenedAs(pDev,zOrig,nUri,zMeta,nMeta);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
 	}
 	/* All done,return the io_private instance as a resource */
 	ph7_result_resource(pCtx,pDev);

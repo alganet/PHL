@@ -9520,6 +9520,22 @@ static sxi32 VmInstallSplMultipleIterator(ph7_vm *pVm)
 #define SDI_I  "__i"   /* php's u.dir.index: what key() answers */
 #define SDI_F  "__f"   /* php's flags */
 #define SDI_S  "__s"   /* php's u.dir.sub_path (RecursiveDirectoryIterator) */
+/* And the FILE arm, php's `u.file`. Declared by SplFileObject; named up here
+ * because the shared presentation hook shows three of its slots. */
+#define SFO_H  "__fh"  /* the open io_private, as a resource */
+#define SFO_M  "__fo"  /* php's u.file.open_mode */
+#define SFO_FL "__ff"  /* php's flags */
+#define SFO_ML "__fm"  /* php's u.file.max_line_len */
+#define SFO_D  "__fd"  /* php's u.file.delimiter */
+#define SFO_EN "__fn"  /* php's u.file.enclosure */
+#define SFO_ES "__fx"  /* php's u.file.escape (PH7_CSV_NO_ESCAPE = disabled) */
+#define SFO_ED "__fq"  /* php's u.file.is_escape_default */
+#define SFO_L  "__fl"  /* php's u.file.current_line */
+#define SFO_Z  "__fz"  /* php's u.file.current_zval */
+#define SFO_LS "__fs"  /* which of the two is live (SFO_HAS_*) */
+#define SFO_K  "__fk"  /* php's u.file.current_line_num */
+/* The open stream behind an SplFileObject, or 0 for one that has none. */
+static io_private * SfoDev(ph7_class_instance *pThis);
 
 /* php's IS_SLASH is PLATFORM-dependent: a backslash separates on Windows and is an
  * ordinary filename byte everywhere else, which is why `new SplFileInfo('C:\\x\\y')`
@@ -9617,17 +9633,26 @@ static sxi32 SfiPathBuf(ph7_vm *pVm,ph7_class_instance *pThis,char *zBuf,int nBu
 	zBuf[nName] = 0;
 	return SXRET_OK;
 }
+/* The two refusals an accessor may owe before it reads anything (below). */
+static int SfoChecked(ph7_context *pCtx,sxi32 *pRc);
 /*
  * php's get_file_name() ahead of an accessor that needs a path: an object whose
  * parent constructor never ran has no name AT ALL and raises Error rather than
  * failing a stat -- which for a directory iterator is the case where the open
  * never happened. Answers 0 when the caller must return *pRc.
+ *
+ * The SplFileObject family reaches these same accessors by inheritance and
+ * refuses EARLIER and differently: php gives those classes a get_method handler
+ * that stops every method on an uninitialized instance, so that check runs
+ * first here too.
  */
 static int SfiDirReady(ph7_context *pCtx,sxi32 *pRc)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
-	*pRc = PH7_OK;
+	if( !SfoChecked(pCtx,pRc) ){
+		return 0;
+	}
 	if( SplDirIs(pVm,pThis) && SplDirState(pVm,pThis) == 0 ){
 		*pRc = PH7_VmThrowException(pCtx,"Error","Object not initialized");
 		return 0;
@@ -9718,10 +9743,14 @@ static int vm_builtin_SplFileInfo_construct(ph7_context *pCtx,int nArg,ph7_value
 }
 static int vm_builtin_SplFileInfo_getPath(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	sxi32 rcChk;
 	int nPath = 0;
 	const char *zPath = SfiStr(PH7_ContextThis(pCtx),SFI_P,&nPath);
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
 	ph7_result_string(pCtx,zPath,nPath);
 	return PH7_OK;
 }
@@ -9733,11 +9762,15 @@ static int vm_builtin_SplFileInfo_getPath(ph7_context *pCtx,int nArg,ph7_value *
  */
 static int vm_builtin_SplFileInfo_getPathname(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	sxi32 rcChk;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	int nName = 0;
 	const char *zName;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
 	if( SplDirIs(pCtx->pVm,pThis) && SplDirAtEnd(pThis) ){
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
@@ -9748,19 +9781,27 @@ static int vm_builtin_SplFileInfo_getPathname(ph7_context *pCtx,int nArg,ph7_val
 }
 static int vm_builtin_SplFileInfo_getFilename(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	sxi32 rcChk;
 	int nTail = 0;
 	const char *zTail = SfiTail(pCtx->pVm,PH7_ContextThis(pCtx),&nTail);
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
 	ph7_result_string(pCtx,zTail,nTail);
 	return PH7_OK;
 }
 /* php's getBasename(): php_basename() of the tail, suffix rule included. */
 static int vm_builtin_SplFileInfo_getBasename(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	sxi32 rcChk;
 	int nTail = 0,nBase = 0;
 	const char *zTail = SfiTail(pCtx->pVm,PH7_ContextThis(pCtx),&nTail);
 	const char *zBase = PH7_ExtractBaseName(zTail,nTail,&nBase);
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
 	if( nArg > 0 ){
 		int nSuffix = 0;
 		const char *zSuffix = ph7_value_to_string(apArg[0],&nSuffix);
@@ -9777,11 +9818,15 @@ static int vm_builtin_SplFileInfo_getBasename(ph7_context *pCtx,int nArg,ph7_val
  * extension 'hidden'. */
 static int vm_builtin_SplFileInfo_getExtension(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	sxi32 rcChk;
 	int nTail = 0,nBase = 0,i;
 	const char *zTail = SfiTail(pCtx->pVm,PH7_ContextThis(pCtx),&nTail);
 	const char *zBase = PH7_ExtractBaseName(zTail,nTail,&nBase);
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
 	for( i = nBase - 1 ; i >= 0 ; --i ){
 		if( zBase[i] == '.' ){
 			ph7_result_string(pCtx,&zBase[i+1],nBase - i - 1);
@@ -9939,11 +9984,15 @@ static int vm_builtin_SplFileInfo_getLinkTarget(ph7_context *pCtx,int nArg,ph7_v
 }
 static int vm_builtin_SplFileInfo_getRealPath(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	sxi32 rcChk;
 	const ph7_vfs *pVfs = pCtx->pVm->pEngine->pVfs;
 	char zPath[4096];
 	int rc = -1;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
 	if( pVfs && pVfs->xRealpath
 	 && SfiPathBuf(pCtx->pVm,PH7_ContextThis(pCtx),zPath,(int)sizeof(zPath)) == SXRET_OK ){
 		rc = pVfs->xRealpath(zPath,pCtx);
@@ -10036,12 +10085,16 @@ static sxi32 SfiMakeInfo(ph7_context *pCtx,ph7_class *pClass,const char *zPath,i
 }
 static int vm_builtin_SplFileInfo_getFileInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	sxi32 rcChk,rc;
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	ph7_class *pClass = 0;
 	int nName = 0,nDir = 0;
 	const char *zName,*zDir = 0;
-	sxi32 rc = SfiInfoClass(pCtx,"getFileInfo",nArg > 0 ? apArg[0] : 0,&pClass);
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
+	rc = SfiInfoClass(pCtx,"getFileInfo",nArg > 0 ? apArg[0] : 0,&pClass);
 	if( rc != PH7_OK ){
 		return rc;
 	}
@@ -10064,12 +10117,16 @@ static int vm_builtin_SplFileInfo_getFileInfo(ph7_context *pCtx,int nArg,ph7_val
  * an empty one — which for a directory iterator includes one that has run out. */
 static int vm_builtin_SplFileInfo_getPathInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	sxi32 rcChk,rc;
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	ph7_class *pClass = 0;
 	int nName = 0,nDir = 0;
 	const char *zName,*zDir;
-	sxi32 rc = SfiInfoClass(pCtx,"getPathInfo",nArg > 0 ? apArg[0] : 0,&pClass);
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
+	rc = SfiInfoClass(pCtx,"getPathInfo",nArg > 0 ? apArg[0] : 0,&pClass);
 	if( rc != PH7_OK ){
 		return rc;
 	}
@@ -10087,12 +10144,16 @@ static int vm_builtin_SplFileInfo_getPathInfo(ph7_context *pCtx,int nArg,ph7_val
 }
 static int vm_builtin_SplFileInfo_setInfoClass(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	sxi32 rcChk;
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
 	ph7_class *pBase = PH7_VmExtractClass(pVm,"SplFileInfo",sizeof("SplFileInfo")-1,FALSE,0);
 	ph7_class *pClass;
 	const char *zName = "SplFileInfo";
 	int nName = (int)sizeof("SplFileInfo")-1;
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
 	if( nArg > 0 ){
 		zName = ph7_value_to_string(apArg[0],&nName);
 	}
@@ -10169,6 +10230,25 @@ static sxi32 SfiFillDebug(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
 		SfiDebugStr(pVm,pOut,"\0RecursiveDirectoryIterator\0subPathName",
 			(int)sizeof("\0RecursiveDirectoryIterator\0subPathName")-1,zSub,nSub);
 	}
+	if( SfoDev(pThis) ){
+		/* php's `type == SPL_FS_FILE` arm: the open mode and the two CSV
+		 * characters, which is the only place any of the three is visible. An
+		 * SplFileObject whose constructor never ran is still SPL_FS_INFO and
+		 * shows none of them. */
+		int nMode = 0,c;
+		const char *zMode = SfiStr(pThis,SFO_M,&nMode);
+		SfiDebugStr(pVm,pOut,"\0SplFileObject\0openMode",
+			(int)sizeof("\0SplFileObject\0openMode")-1,zMode,nMode);
+		c = (int)PH7_NativeAttrInt(pThis,SFO_D);
+		{
+			char zChar = (char)c;
+			SfiDebugStr(pVm,pOut,"\0SplFileObject\0delimiter",
+				(int)sizeof("\0SplFileObject\0delimiter")-1,&zChar,1);
+			zChar = (char)PH7_NativeAttrInt(pThis,SFO_EN);
+			SfiDebugStr(pVm,pOut,"\0SplFileObject\0enclosure",
+				(int)sizeof("\0SplFileObject\0enclosure")-1,&zChar,1);
+		}
+	}
 	return PH7_OK;
 }
 static sxi32 SfiPresent(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
@@ -10180,10 +10260,14 @@ static sxi32 SfiPresent(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,in
 }
 static int vm_builtin_SplFileInfo_debugInfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
+	sxi32 rcChk;
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_value sOut;
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
 	PH7_MemObjInit(pVm,&sOut);
 	if( PH7_MemObjToHashmap(&sOut) != SXRET_OK ){
 		PH7_MemObjRelease(&sOut);
@@ -11171,6 +11255,1163 @@ static sxi32 VmInstallSplDirIterators(ph7_vm *pVm)
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }
+/*
+ * ---------------------------------------------------------------------------
+ * SplFileObject.
+ *
+ * php's SPL_FS_FILE arm of the same `spl_filesystem_object`: an OPEN stream plus
+ * ONE line of look-ahead. The line is the whole model, and nearly every rule
+ * below is about which of the two current values is live rather than about IO.
+ * php keeps `current_line` (a string) and `current_zval` (the READ_CSV array)
+ * side by side, either or both present, and `current()` picks between them; the
+ * line NUMBER is bumped by whatever read produced them, which is why `key()`
+ * counts differently for `fgetc()` (only a `\n` advances it), for `fgets()`
+ * (always) and for `current()` (only when a line was already there).
+ *
+ * The stream lives in a hidden slot as a RESOURCE rather than on a registry the
+ * way a DirectoryIterator's DIR does, because php makes this class UNCLONEABLE
+ * (its `check` object handlers null the clone handler out) -- so no second
+ * object can ever reach the same handle, and the class's xRelease is the only
+ * teardown there is. That is also php's flush point: a file written through an
+ * SplFileObject is finished when the OBJECT dies.
+ *
+ * Those same `check` handlers give the class a get_method that refuses EVERY
+ * method -- the ones inherited from SplFileInfo included -- on an instance whose
+ * parent constructor never ran (a subclass that forgets it, a caught
+ * constructor failure). SfiReady() below is where that check lives, so the
+ * inherited accessors carry it too.
+ * ---------------------------------------------------------------------------
+ */
+/* php's spl_directory.h SPL_FILE_OBJECT_* flags, and the mask getFlags() cuts
+ * the stored word with. */
+#define SFO_DROP_NEW_LINE 0x0001
+#define SFO_READ_AHEAD    0x0002
+#define SFO_SKIP_EMPTY    0x0004
+#define SFO_READ_CSV      0x0008
+#define SFO_FLAGS_MASK    0x000F
+/* Which of php's two current values this instance is holding. Both may be live
+ * at once: a CSV read keeps the raw line beside the parsed array. */
+#define SFO_HAS_LINE 0x1
+#define SFO_HAS_ZVAL 0x2
+/* The state slots are named beside SplFileInfo's, up with the `u.dir` arm: they
+ * are all hidden (php declares no property on this class either) and three of
+ * them are what the shared presentation hook shows.
+ *
+ * What a read attempt did. php's zend_result plus the third case a THROW is:
+ * the read routines run user code (a subclass's getCurrentLine) and raise
+ * php's own RuntimeException, so a caller has to be able to abandon. */
+#define SFO_READ_OK    0
+#define SFO_READ_FAIL  1
+#define SFO_READ_THROW 2
+
+/* This class's own getCurrentLine body, named ahead of the read routine that
+ * has to tell it apart from a subclass's override. */
+static int vm_builtin_SplFileObject_fgets(ph7_context *pCtx,int nArg,ph7_value **apArg);
+/* php's `!intern->u.file.stream`: the uninitialized object. */
+static io_private * SfoDev(ph7_class_instance *pThis)
+{
+	ph7_value *pVal = pThis ? PH7_NativeAttr(pThis,SFO_H) : 0;
+	io_private *pDev;
+	if( pVal == 0 || (pVal->iFlags & MEMOBJ_RES) == 0 ){
+		return 0;
+	}
+	pDev = (io_private *)pVal->x.pOther;
+	return IO_PRIVATE_INVALID(pDev) ? 0 : pDev;
+}
+/* Is this instance one of the classes php gives the `check` handlers to? Asked
+ * as a CLASS question for the same reason SplDirIs() is: a user class may
+ * declare anything it likes. */
+static int SfoIsChecked(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_class *pFile;
+	if( pThis == 0 ){
+		return 0;
+	}
+	pFile = PH7_VmExtractClass(pVm,"SplFileObject",sizeof("SplFileObject")-1,FALSE,0);
+	return pFile && PH7_VmInstanceOf(pThis->pClass,pFile);
+}
+/*
+ * php's spl_filesystem_object_get_method_check, as a guard the bodies call:
+ * an instance of a `check` class with nothing open answers NO method at all.
+ * Answers 0 when the caller must return *pRc.
+ */
+static int SfoChecked(ph7_context *pCtx,sxi32 *pRc)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	*pRc = PH7_OK;
+	if( SfoIsChecked(pCtx->pVm,pThis) && SfoDev(pThis) == 0 ){
+		*pRc = PH7_VmThrowException(pCtx,"Error",
+			"The parent constructor was not called: the object is in an invalid state");
+		return 0;
+	}
+	return 1;
+}
+static sxi64 SfoFlags(ph7_class_instance *pThis)
+{
+	return PH7_NativeAttrInt(pThis,SFO_FL);
+}
+/* php's spl_filesystem_file_free_line: BOTH current values go. */
+static void SfoFreeLine(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_value *pZ;
+	PH7_NativeSetAttrStr(pVm,pThis,SFO_L,"",0);
+	pZ = PH7_NativeAttr(pThis,SFO_Z);
+	if( pZ ){
+		PH7_MemObjRelease(pZ);
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,SFO_LS,0);
+}
+/* The current line's bytes. Only meaningful while SFO_HAS_LINE is set. */
+static const char * SfoLine(ph7_class_instance *pThis,int *pnLen)
+{
+	return SfiStr(pThis,SFO_L,pnLen);
+}
+/*
+ * php's spl_filesystem_file_read_ex: drop what is held, refuse at EOF (loudly
+ * unless silent), take ONE line, apply DROP_NEW_LINE unless this is the CSV
+ * path, and add `iLineAdd` to the line number.
+ */
+static int SfoReadEx(ph7_context *pCtx,int bSilent,int iLineAdd,int bCsv,sxi32 *pRc)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	io_private *pDev = SfoDev(pThis);
+	sxi64 iMax = PH7_NativeAttrInt(pThis,SFO_ML);
+	const char *zLine = 0;
+	ph7_int64 n;
+	*pRc = PH7_OK;
+	SfoFreeLine(pVm,pThis);
+	if( pDev == 0 || pDev->bEof ){
+		if( !bSilent ){
+			int nName = 0;
+			const char *zName = SfiName(pVm,pThis,&nName);
+			*pRc = PH7_VmThrowException(pCtx,"RuntimeException",
+				"Cannot read from file %.*s",nName,zName);
+			return SFO_READ_THROW;
+		}
+		return SFO_READ_FAIL;
+	}
+	n = StreamReadLine(pDev,&zLine,iMax > 0 ? (ph7_int64)iMax : 0);
+	if( n < 1 ){
+		/* php's buf == NULL: the line is the EMPTY string, not an absence. */
+		PH7_NativeSetAttrStr(pVm,pThis,SFO_L,"",0);
+	}else{
+		if( !bCsv && (SfoFlags(pThis) & SFO_DROP_NEW_LINE) ){
+			if( zLine[n-1] == '\n' ){
+				n--;
+				if( n > 0 && zLine[n-1] == '\r' ){
+					n--;
+				}
+			}
+		}
+		PH7_NativeSetAttrStr(pVm,pThis,SFO_L,zLine,(int)n);
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,SFO_LS,SFO_HAS_LINE);
+	PH7_NativeSetAttrInt(pVm,pThis,SFO_K,PH7_NativeAttrInt(pThis,SFO_K) + iLineAdd);
+	return SFO_READ_OK;
+}
+/* php's spl_filesystem_file_read: the line number advances only when a line was
+ * ALREADY there, which is what makes the first current() answer key 0. */
+static int SfoReadOne(ph7_context *pCtx,int bSilent,int bCsv,sxi32 *pRc)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int iAdd = (PH7_NativeAttrInt(pThis,SFO_LS) & SFO_HAS_LINE) ? 1 : 0;
+	return SfoReadEx(pCtx,bSilent,iAdd,bCsv,pRc);
+}
+/* php's is_line_empty: an empty line, or -- under READ_CSV|DROP_NEW_LINE, whose
+ * combination does NOT strip the newline -- a line that is only one. */
+static int SfoLineEmpty(ph7_class_instance *pThis)
+{
+	int nLine = 0;
+	const char *zLine = SfoLine(pThis,&nLine);
+	sxi64 iFlags = SfoFlags(pThis);
+	if( nLine == 0 ){
+		return 1;
+	}
+	if( (iFlags & SFO_READ_CSV) && (iFlags & SFO_DROP_NEW_LINE) ){
+		return (nLine == 1 && zLine[0] == '\n')
+			|| (nLine == 2 && zLine[0] == '\r' && zLine[1] == '\n');
+	}
+	return 0;
+}
+/*
+ * php's spl_filesystem_file_read_csv: read lines until one is not empty (when
+ * SKIP_EMPTY says so), then parse the RECORD -- which may run past the line,
+ * because an open enclosure carries the newline inside the value.
+ */
+static int SfoReadCsv(ph7_context *pCtx,int delim,int encl,int escape,ph7_value *pOut,
+	int bSilent,sxi32 *pRc)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	io_private *pDev;
+	ph7_value *pSlot;
+	ph7_value sArray;
+	SyBlob sRec;
+	PH7_CsvScan sScan;
+	int nLine = 0,rc;
+	const char *zLine;
+	do{
+		rc = SfoReadOne(pCtx,bSilent,TRUE,pRc);
+		if( rc != SFO_READ_OK ){
+			return rc;
+		}
+	}while( SfoLineEmpty(pThis) && (SfoFlags(pThis) & SFO_SKIP_EMPTY) );
+	PH7_MemObjInit(pVm,&sArray);
+	if( PH7_MemObjToHashmap(&sArray) != SXRET_OK ){
+		PH7_MemObjRelease(&sArray);
+		*pRc = PH7_ContextMemoryError(pCtx);
+		return SFO_READ_THROW;
+	}
+	zLine = SfoLine(pThis,&nLine);
+	SyBlobInit(&sRec,&pVm->sAllocator);
+	SyBlobAppend(&sRec,(const void *)zLine,(sxu32)nLine);
+	pDev = SfoDev(pThis);
+	PH7_CsvScanInit(&sScan);
+	while( pDev && PH7_CsvScanOpen(&sScan,(const char *)SyBlobData(&sRec),
+			SyBlobLength(&sRec),delim,encl,escape) ){
+		ph7_int64 n;
+		if( SyBlobLength(&sRec) >= (sxu32)SXI32_HIGH ){
+			break;   /* the parser measures in int; stop rather than wrap negative */
+		}
+		n = StreamReadLine(pDev,&zLine,0);
+		if( n < 1 ){
+			break;   /* EOF inside the enclosure: php answers what it has */
+		}
+		SyBlobAppend(&sRec,(const void *)zLine,(sxu32)n);
+	}
+	PH7_ProcessCsv(&sArray,(const char *)SyBlobData(&sRec),(int)SyBlobLength(&sRec),
+		delim,encl,escape,0);
+	SyBlobRelease(&sRec);
+	pSlot = PH7_NativeAttr(pThis,SFO_Z);
+	if( pSlot ){
+		PH7_MemObjStore(&sArray,pSlot);
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,SFO_LS,
+		(sxi64)(PH7_NativeAttrInt(pThis,SFO_LS) | SFO_HAS_ZVAL));
+	if( pOut ){
+		ph7_value *pKeep = PH7_NativeAttr(pThis,SFO_Z);
+		if( pKeep ){
+			PH7_MemObjLoad(pKeep,pOut);
+		}
+	}
+	PH7_MemObjRelease(&sArray);
+	return SFO_READ_OK;
+}
+/* This instance's three CSV settings. */
+static void SfoCsvControl(ph7_class_instance *pThis,int *pDelim,int *pEncl,int *pEsc)
+{
+	*pDelim = (int)PH7_NativeAttrInt(pThis,SFO_D);
+	*pEncl  = (int)PH7_NativeAttrInt(pThis,SFO_EN);
+	*pEsc   = (int)PH7_NativeAttrInt(pThis,SFO_ES);
+}
+/*
+ * php's spl_filesystem_file_read_line_ex, whose middle branch is the one only a
+ * differential finds: a SUBCLASS that overrides getCurrentLine() drives the
+ * iteration, so the line every accessor sees is whatever that method answered
+ * -- and the line number is bumped once by the read the method made and again
+ * here, which is why such a subclass counts in threes.
+ */
+static int SfoReadLineEx(ph7_context *pCtx,int bSilent,sxi32 *pRc)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_method *pCur;
+	int delim,encl,escape;
+	*pRc = PH7_OK;
+	if( SfoFlags(pThis) & SFO_READ_CSV ){
+		SfoCsvControl(pThis,&delim,&encl,&escape);
+		return SfoReadCsv(pCtx,delim,encl,escape,0,bSilent,pRc);
+	}
+	/* php compares the resolved method's declaring SCOPE with SplFileObject; a
+	 * ph7_class_method carries no such pointer, and the C BODY answers the same
+	 * question -- this class's getCurrentLine IS its fgets. */
+	pCur = PH7_ClassExtractMethod(pThis->pClass,"getCurrentLine",sizeof("getCurrentLine")-1);
+	if( pCur && (pCur->sFunc.pNative == 0
+	          || pCur->sFunc.pNative->xFunc != vm_builtin_SplFileObject_fgets) ){
+		io_private *pDev;
+		ph7_value sRet;
+		sxi32 rc;
+		SfoFreeLine(pVm,pThis);
+		pDev = SfoDev(pThis);
+		if( pDev == 0 || pDev->bEof ){
+			if( !bSilent ){
+				int nName = 0;
+				const char *zName = SfiName(pVm,pThis,&nName);
+				*pRc = PH7_VmThrowException(pCtx,"RuntimeException",
+					"Cannot read from file %.*s",nName,zName);
+				return SFO_READ_THROW;
+			}
+			return SFO_READ_FAIL;
+		}
+		PH7_MemObjInit(pVm,&sRet);
+		rc = PH7_VmCallClassMethod(pVm,pThis,pCur,&sRet,0,0);
+		if( rc != SXRET_OK ){
+			PH7_MemObjRelease(&sRet);
+			*pRc = rc;
+			return SFO_READ_THROW;
+		}
+		if( (sRet.iFlags & MEMOBJ_STRING) == 0 ){
+			/* php's own TypeError: the declared `: string` return is checked by
+			 * the CALLER here, because the method may have no declared type. */
+			const char *zGot = PH7_MemObjTypeDump(&sRet);
+			*pRc = PH7_VmThrowException(pCtx,"TypeError",
+				"%z::getCurrentLine(): Return value must be of type string, %s returned",
+				&pThis->pClass->sName,zGot);
+			PH7_MemObjRelease(&sRet);
+			return SFO_READ_THROW;
+		}
+		if( PH7_NativeAttrInt(pThis,SFO_LS) != 0 ){
+			PH7_NativeSetAttrInt(pVm,pThis,SFO_K,PH7_NativeAttrInt(pThis,SFO_K) + 1);
+		}
+		SfoFreeLine(pVm,pThis);
+		{
+			int nRet = 0;
+			const char *zRet = ph7_value_to_string(&sRet,&nRet);
+			PH7_NativeSetAttrStr(pVm,pThis,SFO_L,zRet,nRet);
+		}
+		PH7_NativeSetAttrInt(pVm,pThis,SFO_LS,SFO_HAS_LINE);
+		PH7_MemObjRelease(&sRet);
+		return SFO_READ_OK;
+	}
+	return SfoReadOne(pCtx,bSilent,FALSE,pRc);
+}
+/* php's spl_filesystem_file_read_line: the SKIP_EMPTY loop around it. */
+static int SfoReadLine(ph7_context *pCtx,int bSilent,sxi32 *pRc)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int rc = SfoReadLineEx(pCtx,bSilent,pRc);
+	while( (SfoFlags(pThis) & SFO_SKIP_EMPTY) && rc == SFO_READ_OK && SfoLineEmpty(pThis) ){
+		SfoFreeLine(pCtx->pVm,pThis);
+		rc = SfoReadLineEx(pCtx,bSilent,pRc);
+	}
+	return rc;
+}
+/* php's spl_filesystem_file_rewind: seek to 0, drop the line, reset the count,
+ * and read one ahead when READ_AHEAD asks. */
+static sxi32 SfoRewind(ph7_context *pCtx)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	io_private *pDev = SfoDev(pThis);
+	sxi32 rc = PH7_OK;
+	if( pDev == 0 ){
+		return PH7_VmThrowException(pCtx,"Error","Object not initialized");
+	}
+	if( PH7_StreamSeekWrapped(pDev,0,0 /* SEEK_SET */) != PH7_OK ){
+		int nName = 0;
+		const char *zName = SfiName(pVm,pThis,&nName);
+		return PH7_VmThrowException(pCtx,"RuntimeException","Cannot rewind file %.*s",
+			nName,zName);
+	}
+	SfoFreeLine(pVm,pThis);
+	PH7_NativeSetAttrInt(pVm,pThis,SFO_K,0);
+	if( SfoFlags(pThis) & SFO_READ_AHEAD ){
+		SfoReadLine(pCtx,TRUE,&rc);
+	}
+	return rc;
+}
+/*
+ * The open both SplFileObject::__construct and SplFileInfo::openFile() are.
+ * php promotes the warning its stream opener would print to a RuntimeException
+ * (zend_replace_error_handling), so the text is the warning's -- worded from
+ * this context's own qualified name, which is what the caller reports.
+ */
+static sxi32 SfoOpen(ph7_context *pCtx,ph7_class_instance *pThis,ph7_value *pPath,
+	const char *zMode,int nMode,int bUseInclude,ph7_value *pCtxArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const ph7_vfs *pVfs = pVm->pEngine->pVfs;
+	phl_stream_ctx *pCtxRes;
+	io_private *pDev;
+	ph7_value *pSlot;
+	const char *zErrUri,*zPath;
+	int nPath = 0,iErr = 0,bThrew = 0;
+	zPath = ph7_value_to_string(pPath,&nPath);
+	/* php's order, and each step is observable from the one before it: the NUL
+	 * is ZPP's and comes first, then the already-open refusal, then the
+	 * directory stat, and only then the EMPTY path -- which is the stream
+	 * opener's ValueError rather than the constructor's. */
+	if( SyByteFind(zPath,(sxu32)nPath,'\0',0) == SXRET_OK ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #1 ($filename) must not contain any null bytes",
+			ph7_function_name(pCtx));
+	}
+	if( SfoDev(pThis) != 0 ){
+		return PH7_VmThrowException(pCtx,"Error","Cannot call constructor twice");
+	}
+	if( pVfs && pVfs->xIsdir && nPath > 0 && nPath < 4096 ){
+		char zBuf[4096];
+		SyMemcpy(zPath,zBuf,(sxu32)nPath);
+		zBuf[nPath] = 0;
+		if( pVfs->xIsdir(zBuf) == PH7_OK ){
+			return PH7_VmThrowException(pCtx,"LogicException",
+				"Cannot use SplFileObject with directories");
+		}
+	}
+	if( nPath < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError","Path must not be empty");
+	}
+	pCtxRes = pCtxArg ? PH7_StreamCtxFromArg(pCtx,1,&pCtxArg,0,"$context",0,&bThrew)
+	                  : PH7_StreamCtxDefault(pVm);
+	if( bThrew ){
+		return PH7_OK;
+	}
+	pDev = PH7_StreamOpenPath(pCtx,pPath,zMode,nMode,bUseInclude,pCtxRes,pCtxArg,
+		&iErr,&zErrUri);
+	if( pDev == 0 ){
+		if( iErr == PH7_STREAM_OPEN_NODEVICE ){
+			int nScheme = 0;
+			if( PH7_VmStreamDeviceIsRemoteHost(zPath,nPath,&nScheme) ){
+				return PH7_VmThrowException(pCtx,"RuntimeException",
+					"%s(%.*s): Failed to open stream: no suitable wrapper could be found",
+					ph7_function_name(pCtx),nPath,zPath);
+			}
+			return PH7_VmThrowException(pCtx,"RuntimeException",
+				"%s(): Unable to find the wrapper \"%.*s\" - did you forget to enable it "
+				"when you configured PHP?",ph7_function_name(pCtx),nScheme,zPath);
+		}
+		if( iErr == PH7_STREAM_OPEN_NOMEM ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		return PH7_VmThrowException(pCtx,"RuntimeException",
+			"%s(%s): Failed to open stream: %s",ph7_function_name(pCtx),
+			zErrUri ? zErrUri : "",VfsStrerror(errno));
+	}
+	pSlot = PH7_NativeAttr(pThis,SFO_H);
+	if( pSlot == 0 ){
+		PH7_StreamCloseHandle(pDev->pStream,pDev->pHandle);
+		MarkIOPrivateClosed(pDev);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_MemObjRelease(pSlot);
+	pSlot->x.pOther = pDev;
+	MemObjSetType(pSlot,MEMOBJ_RES);
+	PH7_NativeSetAttrStr(pVm,pThis,SFO_M,zMode,nMode);
+	SfiSetName(pVm,pThis,zPath,nPath);
+	return PH7_OK;
+}
+/* The class's teardown: php closes the stream with the OBJECT, which is when a
+ * file written through one gets its last bytes. */
+static void SfoRelease(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	io_private *pDev = SfoDev(pThis);
+	SXUNUSED(pVm);
+	if( pDev == 0 ){
+		return;
+	}
+	PH7_StreamFilterReleaseChains(pDev);
+	PH7_StreamCloseHandle(pDev->pStream,pDev->pHandle);
+	MarkIOPrivateClosed(pDev);
+}
+/*
+ * SplFileObject::__construct(string $filename, string $mode = 'r',
+ *                            bool $useIncludePath = false, $context = null)
+ */
+static int vm_builtin_SplFileObject_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zMode = "r";
+	int nMode = 1;
+	if( pThis == 0 || nArg < 1 ){
+		return PH7_OK;
+	}
+	if( nArg > 1 ){
+		zMode = ph7_value_to_string(apArg[1],&nMode);
+	}
+	return SfoOpen(pCtx,pThis,apArg[0],zMode,nMode,
+		nArg > 2 ? ph7_value_to_bool(apArg[2]) : FALSE,
+		nArg > 3 && (apArg[3]->iFlags & MEMOBJ_NULL) == 0 ? apArg[3] : 0);
+}
+/* The guard every method below opens with: the handle, or the refusal. */
+static io_private * SfoNeed(ph7_context *pCtx,sxi32 *pRc)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	io_private *pDev = SfoDev(pThis);
+	*pRc = PH7_OK;
+	if( pDev == 0 ){
+		*pRc = PH7_VmThrowException(pCtx,"Error",
+			"The parent constructor was not called: the object is in an invalid state");
+	}
+	return pDev;
+}
+static int vm_builtin_SplFileObject_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	if( SfoNeed(pCtx,&rc) == 0 ){
+		return rc;
+	}
+	return SfoRewind(pCtx);
+}
+static int vm_builtin_SplFileObject_eof(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	io_private *pDev = SfoNeed(pCtx,&rc);
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	if( pDev == 0 ){
+		return rc;
+	}
+	ph7_result_bool(pCtx,pDev->bEof != 0);
+	return PH7_OK;
+}
+/* php's valid(): the LINE decides under READ_AHEAD, the stream otherwise. */
+static int vm_builtin_SplFileObject_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi32 rc;
+	io_private *pDev;
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	if( SfoIsChecked(pCtx->pVm,pThis) && SfoDev(pThis) == 0 ){
+		return PH7_VmThrowException(pCtx,"Error",
+			"The parent constructor was not called: the object is in an invalid state");
+	}
+	if( SfoFlags(pThis) & SFO_READ_AHEAD ){
+		ph7_result_bool(pCtx,PH7_NativeAttrInt(pThis,SFO_LS) != 0);
+		return PH7_OK;
+	}
+	pDev = SfoNeed(pCtx,&rc);
+	if( pDev == 0 ){
+		return rc;
+	}
+	ph7_result_bool(pCtx,pDev->bEof == 0);
+	return PH7_OK;
+}
+/* php's fgets(), which is also this class's getCurrentLine(): a LOUD read that
+ * always advances the line number. */
+static int vm_builtin_SplFileObject_fgets(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi32 rc;
+	int nLine = 0;
+	const char *zLine;
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	if( SfoNeed(pCtx,&rc) == 0 ){
+		return rc;
+	}
+	if( SfoReadEx(pCtx,FALSE,1,FALSE,&rc) != SFO_READ_OK ){
+		return rc;
+	}
+	zLine = SfoLine(pThis,&nLine);
+	ph7_result_string(pCtx,zLine,nLine);
+	return PH7_OK;
+}
+/*
+ * php's current(): read one line if nothing is held, then pick between the two
+ * current values -- the STRING wins unless READ_CSV has an array beside it.
+ */
+static int vm_builtin_SplFileObject_current(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi32 rc;
+	sxi64 iHas;
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	if( SfoNeed(pCtx,&rc) == 0 ){
+		return rc;
+	}
+	if( PH7_NativeAttrInt(pThis,SFO_LS) == 0 ){
+		if( SfoReadLine(pCtx,TRUE,&rc) == SFO_READ_THROW ){
+			return rc;
+		}
+	}
+	iHas = PH7_NativeAttrInt(pThis,SFO_LS);
+	if( (iHas & SFO_HAS_LINE)
+	 && (!(SfoFlags(pThis) & SFO_READ_CSV) || (iHas & SFO_HAS_ZVAL) == 0) ){
+		int nLine = 0;
+		const char *zLine = SfoLine(pThis,&nLine);
+		ph7_result_string(pCtx,zLine,nLine);
+	}else if( iHas & SFO_HAS_ZVAL ){
+		ph7_value *pZ = PH7_NativeAttr(pThis,SFO_Z);
+		if( pZ ){
+			ph7_result_value(pCtx,pZ);
+		}else{
+			ph7_result_bool(pCtx,0);
+		}
+	}else{
+		ph7_result_bool(pCtx,0);
+	}
+	return PH7_OK;
+}
+/* php's key(): the stored count, deliberately WITHOUT reading ahead -- which is
+ * what lets fgetc() count newlines instead of lines. */
+static int vm_builtin_SplFileObject_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rcChk;
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
+	ph7_result_int64(pCtx,PH7_NativeAttrInt(PH7_ContextThis(pCtx),SFO_K));
+	return PH7_OK;
+}
+static int vm_builtin_SplFileObject_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi32 rc;
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	if( SfoNeed(pCtx,&rc) == 0 ){
+		return rc;
+	}
+	SfoFreeLine(pVm,pThis);
+	if( SfoFlags(pThis) & SFO_READ_AHEAD ){
+		if( SfoReadLine(pCtx,TRUE,&rc) == SFO_READ_THROW ){
+			return rc;
+		}
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,SFO_K,PH7_NativeAttrInt(pThis,SFO_K) + 1);
+	return PH7_OK;
+}
+static int vm_builtin_SplFileObject_setFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rcChk;
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
+	/* php stores the WHOLE word and masks only on the way out. */
+	PH7_NativeSetAttrInt(pCtx->pVm,PH7_ContextThis(pCtx),SFO_FL,
+		nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0);
+	return PH7_OK;
+}
+static int vm_builtin_SplFileObject_getFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rcChk;
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
+	ph7_result_int64(pCtx,SfoFlags(PH7_ContextThis(pCtx)) & SFO_FLAGS_MASK);
+	return PH7_OK;
+}
+static int vm_builtin_SplFileObject_setMaxLineLen(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi64 iLen = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;
+	sxi32 rcChk;
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
+	if( iLen < 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #1 ($maxLength) must be greater than or equal to 0",
+			ph7_function_name(pCtx));
+	}
+	PH7_NativeSetAttrInt(pCtx->pVm,PH7_ContextThis(pCtx),SFO_ML,iLen);
+	return PH7_OK;
+}
+static int vm_builtin_SplFileObject_getMaxLineLen(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rcChk;
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
+	ph7_result_int64(pCtx,PH7_NativeAttrInt(PH7_ContextThis(pCtx),SFO_ML));
+	return PH7_OK;
+}
+/* php's RecursiveIterator half: a file has no children and says so. */
+static int vm_builtin_SplFileObject_hasChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rcChk;
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
+	ph7_result_bool(pCtx,0);
+	return PH7_OK;
+}
+static int vm_builtin_SplFileObject_getChildren(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rcChk;
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
+	ph7_result_null(pCtx);
+	return PH7_OK;
+}
+/*
+ * php's fgetcsv(): the three arguments override this instance's settings for
+ * ONE call, and the argument NUMBERS are this spelling's own.
+ */
+static int vm_builtin_SplFileObject_fgetcsv(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int delim,encl,escape;
+	sxi32 rc;
+	if( SfoNeed(pCtx,&rc) == 0 ){
+		return rc;
+	}
+	SfoCsvControl(pThis,&delim,&encl,&escape);
+	if( nArg > 0 ){
+		rc = PH7_CsvCharArg(pCtx,apArg[0],1,"separator",0,&delim);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+	}
+	if( nArg > 1 ){
+		rc = PH7_CsvCharArg(pCtx,apArg[1],2,"enclosure",0,&encl);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+	}
+	if( nArg > 2 ){
+		rc = PH7_CsvCharArg(pCtx,apArg[2],3,"escape",1,&escape);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+	}
+	{
+		ph7_value sOut;
+		int r;
+		PH7_MemObjInit(pCtx->pVm,&sOut);
+		r = SfoReadCsv(pCtx,delim,encl,escape,&sOut,TRUE,&rc);
+		if( r == SFO_READ_OK ){
+			ph7_result_value(pCtx,&sOut);
+		}else if( r == SFO_READ_FAIL ){
+			ph7_result_bool(pCtx,0);
+		}
+		PH7_MemObjRelease(&sOut);
+		return r == SFO_READ_THROW ? rc : PH7_OK;
+	}
+}
+/* php's fputcsv(): the same overrides, at the positions THIS method numbers. */
+static int vm_builtin_SplFileObject_fputcsv(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *apOut[6];
+	ph7_value sDelim,sEncl,sEsc;
+	int delim,encl,escape,nOut,r;
+	sxi32 rc;
+	if( SfoNeed(pCtx,&rc) == 0 ){
+		return rc;
+	}
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	SfoCsvControl(pThis,&delim,&encl,&escape);
+	if( nArg > 1 ){
+		rc = PH7_CsvCharArg(pCtx,apArg[1],2,"separator",0,&delim);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+	}
+	if( nArg > 2 ){
+		rc = PH7_CsvCharArg(pCtx,apArg[2],3,"enclosure",0,&encl);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+	}
+	if( nArg > 3 ){
+		rc = PH7_CsvCharArg(pCtx,apArg[3],4,"escape",1,&escape);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+	}
+	/* The writer lives in vfs_stream.c and takes the three as STRINGS, at
+	 * fputcsv()'s own positions; the settings resolved above are handed over in
+	 * that shape rather than re-parsed there. */
+	PH7_MemObjInitFromString(pCtx->pVm,&sDelim,0);
+	PH7_MemObjInitFromString(pCtx->pVm,&sEncl,0);
+	PH7_MemObjInitFromString(pCtx->pVm,&sEsc,0);
+	{
+		char c = (char)delim;
+		PH7_MemObjStringAppend(&sDelim,&c,sizeof(char));
+		c = (char)encl;
+		PH7_MemObjStringAppend(&sEncl,&c,sizeof(char));
+		if( escape != PH7_CSV_NO_ESCAPE ){
+			c = (char)escape;
+			PH7_MemObjStringAppend(&sEsc,&c,sizeof(char));
+		}
+	}
+	apOut[0] = PH7_NativeAttr(pThis,SFO_H);
+	apOut[1] = apArg[0];
+	apOut[2] = &sDelim;
+	apOut[3] = &sEncl;
+	apOut[4] = &sEsc;
+	nOut = 5;
+	if( nArg > 4 ){
+		apOut[5] = apArg[4];
+		nOut = 6;
+	}
+	r = PH7_builtin_fputcsv(pCtx,nOut,apOut);
+	PH7_MemObjRelease(&sDelim);
+	PH7_MemObjRelease(&sEncl);
+	PH7_MemObjRelease(&sEsc);
+	return r;
+}
+static int vm_builtin_SplFileObject_setCsvControl(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int delim = ',',encl = '"',escape = '\\';
+	sxi32 rc,rcChk;
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
+	if( nArg > 0 ){
+		rc = PH7_CsvCharArg(pCtx,apArg[0],1,"separator",0,&delim);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+	}
+	if( nArg > 1 ){
+		rc = PH7_CsvCharArg(pCtx,apArg[1],2,"enclosure",0,&encl);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+	}
+	if( nArg > 2 ){
+		rc = PH7_CsvCharArg(pCtx,apArg[2],3,"escape",1,&escape);
+		if( rc != PH7_OK ){
+			return rc;
+		}
+		/* Naming the escape at all is what stops php's deprecation notice. */
+		PH7_NativeSetAttrInt(pVm,pThis,SFO_ED,0);
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,SFO_D,delim);
+	PH7_NativeSetAttrInt(pVm,pThis,SFO_EN,encl);
+	PH7_NativeSetAttrInt(pVm,pThis,SFO_ES,escape);
+	return PH7_OK;
+}
+static int vm_builtin_SplFileObject_getCsvControl(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pArr,*pVal;
+	int delim,encl,escape;
+	char c;
+	sxi32 rcChk;
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
+	SfoCsvControl(pThis,&delim,&encl,&escape);
+	pArr = ph7_context_new_array(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	if( pArr == 0 || pVal == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	c = (char)delim;
+	ph7_value_string(pVal,&c,1);
+	ph7_array_add_elem(pArr,0,pVal);
+	ph7_value_reset_string_cursor(pVal);
+	c = (char)encl;
+	ph7_value_string(pVal,&c,1);
+	ph7_array_add_elem(pArr,0,pVal);
+	ph7_value_reset_string_cursor(pVal);
+	/* A disabled escape is reported as the EMPTY string, not as a byte. */
+	if( escape != PH7_CSV_NO_ESCAPE ){
+		c = (char)escape;
+		ph7_value_string(pVal,&c,1);
+	}else{
+		ph7_value_string(pVal,"",0);
+	}
+	ph7_array_add_elem(pArr,0,pVal);
+	ph7_result_value(pCtx,pArr);
+	return PH7_OK;
+}
+/*
+ * The eight methods that are the corresponding builtin over this object's own
+ * handle. Each pre-validates what php validates IN THE METHOD -- the argument
+ * numbers are the method's, one lower than the function's -- and then hands the
+ * work to the one implementation there is. Every diagnostic the builtin raises
+ * itself is worded from ph7_function_name(), which in here is the qualified
+ * method name php prints.
+ */
+static int SfoDelegate(ph7_context *pCtx,int nArg,ph7_value **apArg,
+	int (*xFunc)(ph7_context *,int,ph7_value **))
+{
+	ph7_value *apOut[8];
+	sxi32 rc;
+	int i;
+	if( SfoNeed(pCtx,&rc) == 0 ){
+		return rc;
+	}
+	if( nArg > (int)(SX_ARRAYSIZE(apOut) - 1) ){
+		nArg = (int)(SX_ARRAYSIZE(apOut) - 1);
+	}
+	apOut[0] = PH7_NativeAttr(PH7_ContextThis(pCtx),SFO_H);
+	for( i = 0 ; i < nArg ; ++i ){
+		apOut[i+1] = apArg[i];
+	}
+	return xFunc(pCtx,nArg + 1,apOut);
+}
+static int vm_builtin_SplFileObject_fflush(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_fflush);
+}
+static int vm_builtin_SplFileObject_ftell(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_ftell);
+}
+static int vm_builtin_SplFileObject_fstat(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_fstat);
+}
+static int vm_builtin_SplFileObject_fpassthru(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_fpassthru);
+}
+static int vm_builtin_SplFileObject_fwrite(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_fwrite);
+}
+/* php validates the operation in the METHOD, so the refusal names argument #1. */
+static int vm_builtin_SplFileObject_flock(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rcChk;
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
+	if( nArg > 0 && (ph7_value_to_int(apArg[0]) & 3) == 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #1 ($operation) must be one of LOCK_SH, LOCK_EX, or LOCK_UN",
+			ph7_function_name(pCtx));
+	}
+	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_flock);
+}
+static int vm_builtin_SplFileObject_ftruncate(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rcChk;
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
+	if( nArg > 0 && ph7_value_to_int64(apArg[0]) < 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #1 ($size) must be greater than or equal to 0",
+			ph7_function_name(pCtx));
+	}
+	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_ftruncate);
+}
+static int vm_builtin_SplFileObject_fread(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rcChk;
+	if( !SfoChecked(pCtx,&rcChk) ){
+		return rcChk;
+	}
+	if( nArg < 1 || ph7_value_to_int64(apArg[0]) <= 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #1 ($length) must be greater than 0",
+			ph7_function_name(pCtx));
+	}
+	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_fread);
+}
+/* php's fseek() drops the held line first: the position moved, so what was read
+ * ahead no longer describes it. */
+static int vm_builtin_SplFileObject_fseek(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	sxi32 rc;
+	if( SfoNeed(pCtx,&rc) == 0 ){
+		return rc;
+	}
+	SfoFreeLine(pCtx->pVm,PH7_ContextThis(pCtx));
+	return SfoDelegate(pCtx,nArg,apArg,PH7_builtin_fseek);
+}
+/*
+ * php's fgetc(): one byte, the held line dropped, and the line number advanced
+ * only when the byte IS a newline.
+ */
+static int vm_builtin_SplFileObject_fgetc(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	io_private *pDev;
+	char c;
+	sxi32 rc;
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	pDev = SfoNeed(pCtx,&rc);
+	if( pDev == 0 ){
+		return rc;
+	}
+	SfoFreeLine(pVm,pThis);
+	if( PH7_StreamRead(pDev,&c,sizeof(char)) < 1 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	if( c == '\n' ){
+		PH7_NativeSetAttrInt(pVm,pThis,SFO_K,PH7_NativeAttrInt(pThis,SFO_K) + 1);
+	}
+	ph7_result_string(pCtx,&c,sizeof(char));
+	return PH7_OK;
+}
+/* php's fscanf(): the format is run over the NEXT LINE, read loudly. */
+static int vm_builtin_SplFileObject_fscanf(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zFmt,*zLine;
+	int nFmt = 0,nLine = 0;
+	SyBlob sLine;
+	sxi32 rc;
+	if( SfoNeed(pCtx,&rc) == 0 ){
+		return rc;
+	}
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	if( SfoReadOne(pCtx,FALSE,FALSE,&rc) != SFO_READ_OK ){
+		return rc;
+	}
+	/* The scan allocates, and allocating moves the slot the line lives in. The
+	 * length is read in its own statement: as one argument beside the call that
+	 * WRITES it, nothing orders the two. */
+	zLine = SfoLine(pThis,&nLine);
+	SyBlobInit(&sLine,&pCtx->pVm->sAllocator);
+	SyBlobAppend(&sLine,zLine,(sxu32)nLine);
+	zFmt = ph7_value_to_string(apArg[0],&nFmt);
+	rc = PH7_ScanfRun(pCtx,(const char *)SyBlobData(&sLine),(int)SyBlobLength(&sLine),
+		zFmt,nFmt,&apArg[1],nArg - 1);
+	SyBlobRelease(&sLine);
+	return (int)rc;
+}
+/*
+ * php's seek(): rewind, then walk FORWARD through the object's own read -- so a
+ * subclass's getCurrentLine() is obeyed -- and, without READ_AHEAD, land one
+ * past with nothing held.
+ */
+static int vm_builtin_SplFileObject_seek(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 iLine,i;
+	sxi32 rc;
+	if( SfoNeed(pCtx,&rc) == 0 ){
+		return rc;
+	}
+	iLine = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;
+	if( iLine < 0 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s(): Argument #1 ($line) must be greater than or equal to 0",
+			ph7_function_name(pCtx));
+	}
+	rc = SfoRewind(pCtx);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	for( i = 0 ; i < iLine ; ++i ){
+		int r = SfoReadLine(pCtx,TRUE,&rc);
+		if( r == SFO_READ_THROW ){
+			return rc;
+		}
+		if( r != SFO_READ_OK ){
+			return PH7_OK;
+		}
+	}
+	if( iLine > 0 && (SfoFlags(pThis) & SFO_READ_AHEAD) == 0 ){
+		PH7_NativeSetAttrInt(pVm,pThis,SFO_K,PH7_NativeAttrInt(pThis,SFO_K) + 1);
+		SfoFreeLine(pVm,pThis);
+	}
+	return PH7_OK;
+}
+/* php's __toString(): the current line, read LOUDLY when there is none. */
+static int vm_builtin_SplFileObject_toString(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int nLine = 0;
+	const char *zLine;
+	sxi32 rc;
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	if( SfoNeed(pCtx,&rc) == 0 ){
+		return rc;
+	}
+	if( (PH7_NativeAttrInt(pThis,SFO_LS) & SFO_HAS_LINE) == 0 ){
+		if( SfoReadLine(pCtx,FALSE,&rc) != SFO_READ_OK ){
+			return rc;
+		}
+	}
+	zLine = SfoLine(pThis,&nLine);
+	ph7_result_string(pCtx,zLine,nLine);
+	return PH7_OK;
+}
+/*
+ * The declaration. Method ORDER, signatures and tentative return types are
+ * spl_directory.stub.php's. php gives this class NO clone handler at all, which
+ * is its "uncloneable" -- and the same @not-serializable SplFileInfo carries.
+ */
+static sxi32 VmInstallSplFileObject(ph7_vm *pVm)
+{
+	static const PH7_NativePropDef aFileProp[] = {
+		{ SFO_H,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ SFO_M,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "r", 0.0 }, 0 },
+		{ SFO_FL, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+		{ SFO_ML, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+		{ SFO_D,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, ',', 0, 0.0 }, 0 },
+		{ SFO_EN, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, '"', 0, 0.0 }, 0 },
+		{ SFO_ES, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, '\\', 0, 0.0 }, 0 },
+		{ SFO_ED, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 1, 0, 0.0 }, 0 },
+		{ SFO_L,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
+		{ SFO_Z,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ SFO_LS, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+		{ SFO_K,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+	};
+	static const PH7_NativeConstDef aFileConst[] = {
+		{ "DROP_NEW_LINE", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SFO_DROP_NEW_LINE, 0, 0.0 },
+		{ "READ_AHEAD",    PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SFO_READ_AHEAD, 0, 0.0 },
+		{ "SKIP_EMPTY",    PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SFO_SKIP_EMPTY, 0, 0.0 },
+		{ "READ_CSV",      PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SFO_READ_CSV, 0, 0.0 },
+	};
+	static const PH7_NativeMethodDef aFileMethod[] = {
+		{ "__construct",   PH7_MOD_PUBLIC,
+		  "string $filename, string $mode = \"r\", bool $useIncludePath = false, "
+		  "$context = null", 0, vm_builtin_SplFileObject_construct },
+		{ "rewind",        PH7_MOD_PUBLIC, "", "@void", vm_builtin_SplFileObject_rewind },
+		{ "eof",           PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplFileObject_eof },
+		{ "valid",         PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplFileObject_valid },
+		{ "fgets",         PH7_MOD_PUBLIC, "", "@string", vm_builtin_SplFileObject_fgets },
+		{ "fread",         PH7_MOD_PUBLIC, "int $length", "@string|false",
+		  vm_builtin_SplFileObject_fread },
+		{ "fgetcsv",       PH7_MOD_PUBLIC,
+		  "string $separator = \",\", string $enclosure = \"\\\"\", string $escape = \"\\\\\"",
+		  "@array|false", vm_builtin_SplFileObject_fgetcsv },
+		{ "fputcsv",       PH7_MOD_PUBLIC,
+		  "array $fields, string $separator = \",\", string $enclosure = \"\\\"\", "
+		  "string $escape = \"\\\\\", string $eol = \"\\n\"", "@int|false",
+		  vm_builtin_SplFileObject_fputcsv },
+		{ "setCsvControl", PH7_MOD_PUBLIC,
+		  "string $separator = \",\", string $enclosure = \"\\\"\", string $escape = \"\\\\\"",
+		  "@void", vm_builtin_SplFileObject_setCsvControl },
+		{ "getCsvControl", PH7_MOD_PUBLIC, "", "@array",
+		  vm_builtin_SplFileObject_getCsvControl },
+		{ "flock",         PH7_MOD_PUBLIC, "int $operation, &$wouldBlock = null", "@bool",
+		  vm_builtin_SplFileObject_flock },
+		{ "fflush",        PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplFileObject_fflush },
+		{ "ftell",         PH7_MOD_PUBLIC, "", "@int|false", vm_builtin_SplFileObject_ftell },
+		{ "fseek",         PH7_MOD_PUBLIC, "int $offset, int $whence = SEEK_SET", "@int",
+		  vm_builtin_SplFileObject_fseek },
+		{ "fgetc",         PH7_MOD_PUBLIC, "", "@string|false", vm_builtin_SplFileObject_fgetc },
+		{ "fpassthru",     PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplFileObject_fpassthru },
+		{ "fscanf",        PH7_MOD_PUBLIC, "string $format, mixed &...$vars", "@array|int|null",
+		  vm_builtin_SplFileObject_fscanf },
+		{ "fwrite",        PH7_MOD_PUBLIC, "string $data, ?int $length = null", "@int|false",
+		  vm_builtin_SplFileObject_fwrite },
+		{ "fstat",         PH7_MOD_PUBLIC, "", "@array", vm_builtin_SplFileObject_fstat },
+		{ "ftruncate",     PH7_MOD_PUBLIC, "int $size", "@bool",
+		  vm_builtin_SplFileObject_ftruncate },
+		{ "current",       PH7_MOD_PUBLIC, "", "@string|array|false",
+		  vm_builtin_SplFileObject_current },
+		{ "key",           PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplFileObject_key },
+		{ "next",          PH7_MOD_PUBLIC, "", "@void", vm_builtin_SplFileObject_next },
+		{ "setFlags",      PH7_MOD_PUBLIC, "int $flags", "@void",
+		  vm_builtin_SplFileObject_setFlags },
+		{ "getFlags",      PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplFileObject_getFlags },
+		{ "setMaxLineLen", PH7_MOD_PUBLIC, "int $maxLength", "@void",
+		  vm_builtin_SplFileObject_setMaxLineLen },
+		{ "getMaxLineLen", PH7_MOD_PUBLIC, "", "@int", vm_builtin_SplFileObject_getMaxLineLen },
+		{ "hasChildren",   PH7_MOD_PUBLIC, "", "@bool", vm_builtin_SplFileObject_hasChildren },
+		{ "getChildren",   PH7_MOD_PUBLIC, "", "@?RecursiveIterator",
+		  vm_builtin_SplFileObject_getChildren },
+		{ "seek",          PH7_MOD_PUBLIC, "int $line", "@void", vm_builtin_SplFileObject_seek },
+		/* php aliases getCurrentLine() to fgets(); the override branch in
+		 * SfoReadLineEx() is what makes REPLACING it mean something. */
+		{ "getCurrentLine",PH7_MOD_PUBLIC, "", "@string", vm_builtin_SplFileObject_fgets },
+		{ "__toString",    PH7_MOD_PUBLIC, "", "string", vm_builtin_SplFileObject_toString },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "SplFileObject", "SplFileInfo", "RecursiveIterator,SeekableIterator",
+		  PH7_CLASS_NOSERIALIZE|PH7_CLASS_NOCLONE,
+		  aFileMethod, SX_ARRAYSIZE(aFileMethod), aFileConst, SX_ARRAYSIZE(aFileConst),
+		  aFileProp, SX_ARRAYSIZE(aFileProp), SfoRelease, 0, SfiPresent },
+	};
+	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+}
 PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)
 {
 	sxi32 rc = VmInstallWeak(&(*pVm));
@@ -11221,7 +12462,13 @@ PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)
 	}
 	/* After SplFileInfo: DirectoryIterator extends it, and PH7_ClassInherit copies
 	 * the base's methods DOWN (rule 14). */
-	return VmInstallSplDirIterators(&(*pVm));
+	rc = VmInstallSplDirIterators(&(*pVm));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* After SplFileInfo for the same reason; the dir iterators are ahead of it
+	 * only because they are declared together. */
+	return VmInstallSplFileObject(&(*pVm));
 }
 
 #endif /* PH7_DISABLE_BUILTIN_FUNC */

@@ -4532,6 +4532,20 @@ PH7_PRIVATE void InitIOPrivate(ph7_vm *pVm,const ph7_io_stream *pStream,io_priva
 PH7_PRIVATE void SetIOPrivateOpenedAs(io_private *pDev,const char *zUri,int nUriLen,const char *zMode,int nModeLen);
 PH7_PRIVATE void MarkIOPrivateClosed(io_private *pDev);
 PH7_PRIVATE void PH7_StreamReleaseUnopened(ph7_context *pCtx,io_private *pDev);
+/* One buffered line off a handle, php's php_stream_get_line: the newline is
+ * INCLUDED, nMaxLen (0 = no cap) bounds the bytes handed back and the remainder
+ * stays buffered. The pointer is into the handle's own working buffer and the
+ * next read invalidates it. */
+PH7_PRIVATE ph7_int64 StreamReadLine(io_private *pDev,const char **pzData,ph7_int64 nMaxLen);
+/* Why PH7_StreamOpenPath() answered 0. It reports nothing itself: fopen() warns
+ * and SplFileObject's constructor throws, which is php's own split. */
+#define PH7_STREAM_OPEN_OK       0
+#define PH7_STREAM_OPEN_NODEVICE 1 /* no wrapper is registered for the scheme */
+#define PH7_STREAM_OPEN_FAILED   2 /* the wrapper refused the name (errno is set) */
+#define PH7_STREAM_OPEN_NOMEM    3
+PH7_PRIVATE io_private * PH7_StreamOpenPath(ph7_context *pCtx,ph7_value *pPath,
+	const char *zMode,int nMode,int bUseInclude,phl_stream_ctx *pCtxRes,
+	ph7_value *pCtxArg,int *piErr,const char **pzErrUri);
 /* "Failed to open stream" warning helper (vfs.c, errno-based); used by the
  * fopen/opendir/file_* family in vfs_stream.c. */
 PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile);
