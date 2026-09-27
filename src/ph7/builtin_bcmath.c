@@ -151,6 +151,16 @@ static void BcNumNormalize(BcNum *p)
 		p->bNeg = 0;
 	}
 }
+/* Copy pSrc into pDest, which keeps its own buffer. */
+static int BcNumCopy(BcNum *pDest,const BcNum *pSrc)
+{
+	if( BcNumAlloc(pDest,pSrc->nInt,pSrc->nFrac) ){
+		return -1;
+	}
+	SyMemcpy(pSrc->aDig,pDest->aDig,pSrc->nInt + pSrc->nFrac);
+	pDest->bNeg = pSrc->bNeg;
+	return 0;
+}
 /*
  * php's number grammar, and the whole of it:
  *
@@ -458,6 +468,534 @@ static int BcNumMul(BcNum *pOut,const BcNum *a,const BcNum *b)
 	BcNumNormalize(pOut);
 	return 0;
 }
+/* ------------------------------------------------------------------ *
+ *  Division, and everything built on it                               *
+ * ------------------------------------------------------------------ */
+/* Trade two numbers' whole state, so a routine can hand its scratch result to
+ * its caller's slot without copying the digits. */
+static void BcNumSwap(BcNum *a,BcNum *b)
+{
+	BcNum sTmp = *a;
+	*a = *b;
+	*b = sTmp;
+}
+/* Set p to a small non-negative integer (0..9 is all any caller needs). */
+static int BcNumSmall(BcNum *p,int iVal)
+{
+	if( BcNumAlloc(p,1,0) ){
+		return -1;
+	}
+	p->aDig[0] = (unsigned char)iVal;
+	return 0;
+}
+/*
+ * pOut = pIn's DIGITS with nAdd zeros appended, read as a scale-0 integer --
+ * i.e. the integer `pIn * 10^(pIn->nFrac + nAdd)`. This is how a scaled decimal
+ * division is turned into an integer one.
+ */
+static int BcNumShiftLeft(BcNum *pOut,const BcNum *pIn,sxu32 nAdd)
+{
+	sxu32 n = pIn->nInt + pIn->nFrac;
+	if( nAdd > BC_MAX_DIGITS || n > BC_MAX_DIGITS - nAdd ){
+		return -1;
+	}
+	if( BcNumAlloc(pOut,n + nAdd,0) ){
+		return -1;
+	}
+	SyMemcpy(pIn->aDig,pOut->aDig,n);
+	/* BcNumAlloc zeroed the buffer, so the nAdd tail digits are already '0'. */
+	BcNumNormalize(pOut);
+	return 0;
+}
+/*
+ * pOut = pIn's DIGITS with the last nDrop dropped -- the integer floor of the
+ * magnitude divided by 10^nDrop, which is what a magnitude-plus-sign
+ * representation needs for a truncation toward zero.
+ */
+static int BcNumShiftRight(BcNum *pOut,const BcNum *pIn,sxu32 nDrop)
+{
+	sxu32 n = pIn->nInt + pIn->nFrac;
+	if( nDrop >= n ){
+		return BcNumSmall(pOut,0);
+	}
+	if( BcNumAlloc(pOut,n - nDrop,0) ){
+		return -1;
+	}
+	SyMemcpy(pIn->aDig,pOut->aDig,n - nDrop);
+	BcNumNormalize(pOut);
+	return 0;
+}
+/*
+ * Put the decimal point back into a scale-0 number: the last nScale digits
+ * become the fraction, with leading zeros prepended when there are not enough
+ * digits to reach it (1 / 10^5 comes back as five digits and needs a sixth).
+ */
+static int BcNumSetPoint(BcNum *p,sxu32 nScale)
+{
+	sxu32 n = p->nInt + p->nFrac;
+	if( n <= nScale ){
+		sxu32 nPad = nScale + 1 - n;
+		unsigned char *aNew;
+		/* nScale runs to php's 2^31-1, so the cap has to be tested on the PAD
+		 * before the subtraction below can be trusted not to wrap. */
+		if( nPad > BC_MAX_DIGITS || n > BC_MAX_DIGITS - nPad ){
+			return -1;
+		}
+		aNew = (unsigned char *)SyMemBackendAlloc(p->pAlloc,n + nPad);
+		if( aNew == 0 ){
+			return -1;
+		}
+		SyZero(aNew,nPad);
+		SyMemcpy(p->aDig,&aNew[nPad],n);
+		SyMemBackendFree(p->pAlloc,p->aDig);
+		p->aDig = aNew;
+		p->nAlloc = n + nPad;
+		n += nPad;
+	}
+	p->nInt = n - nScale;
+	p->nFrac = nScale;
+	BcNumNormalize(p);
+	return 0;
+}
+/* aT[0..nD] = q * aD[0..nD-1], one digit longer than aD so the carry fits. */
+static void BcBufMulDigit(const unsigned char *aD,sxu32 nD,int q,unsigned char *aT)
+{
+	sxu32 i;
+	int carry = 0;
+	for( i = 0 ; i < nD ; ++i ){
+		int prod = aD[nD - 1 - i] * q + carry;
+		aT[nD - i] = (unsigned char)(prod % 10);
+		carry = prod / 10;
+	}
+	aT[0] = (unsigned char)carry;
+}
+static int BcBufCmp(const unsigned char *a,const unsigned char *b,sxu32 n)
+{
+	sxu32 i;
+	for( i = 0 ; i < n ; ++i ){
+		if( a[i] != b[i] ){
+			return a[i] < b[i] ? -1 : 1;
+		}
+	}
+	return 0;
+}
+/* a -= b over equal-length buffers; the caller has checked a >= b. */
+static void BcBufSub(unsigned char *a,const unsigned char *b,sxu32 n)
+{
+	sxu32 i;
+	int borrow = 0;
+	for( i = n ; i > 0 ; --i ){
+		int d = a[i-1] - b[i-1] - borrow;
+		if( d < 0 ){
+			d += 10;
+			borrow = 1;
+		}else{
+			borrow = 0;
+		}
+		a[i-1] = (unsigned char)d;
+	}
+}
+/*
+ * Long division over MAGNITUDES read as digit strings, the decimal point in
+ * neither operand consulted: pQ = |pN| / |pD| and pR = |pN| % |pD|, both scale 0
+ * and both non-negative. The caller has already refused a zero divisor.
+ *
+ * NEITHER output may alias an input: the first thing this does is reallocate
+ * pQ, which would free the digits it is about to read.
+ *
+ * One quotient digit per input digit, found by BINARY SEARCH over 0..9 (four
+ * trial multiplies) rather than by the leading-digit estimate a normalized
+ * Knuth division uses -- the estimate needs a normalization pass and a
+ * correction loop to be right, and at four trials a digit this is both exact by
+ * construction and fast enough for numbers a script hands in.
+ */
+static int BcMagDivMod(BcNum *pQ,BcNum *pR,const BcNum *pN,const BcNum *pD)
+{
+	const unsigned char *zN = pN->aDig, *zD = pD->aDig;
+	sxu32 nN = pN->nInt + pN->nFrac, nD = pD->nInt + pD->nFrac;
+	unsigned char *aR = 0, *aT = 0;
+	sxu32 i;
+	int rc = -1;
+	/* The SIGNIFICANT width of each operand: 0.005 is the digit string "0005",
+	 * whose leading zeros are not part of the divisor. */
+	while( nD > 1 && zD[0] == 0 ){ zD++; nD--; }
+	while( nN > 1 && zN[0] == 0 ){ zN++; nN--; }
+	if( BcNumAlloc(pQ,nN,0) ){
+		return -1;
+	}
+	aR = (unsigned char *)SyMemBackendAlloc(pQ->pAlloc,nD + 1);
+	aT = (unsigned char *)SyMemBackendAlloc(pQ->pAlloc,nD + 1);
+	if( aR == 0 || aT == 0 ){
+		goto out;
+	}
+	SyZero(aR,nD + 1);
+	for( i = 0 ; i < nN ; ++i ){
+		int lo = 0, hi = 9;
+		sxu32 k;
+		/* Shift the running remainder left one place and bring the next digit
+		 * down; aR stays nD+1 wide, which is the widest a remainder-plus-digit
+		 * can be. */
+		for( k = 0 ; k < nD ; ++k ){
+			aR[k] = aR[k + 1];
+		}
+		aR[nD] = zN[i];
+		while( lo < hi ){
+			int mid = (lo + hi + 1) / 2;
+			BcBufMulDigit(zD,nD,mid,aT);
+			if( BcBufCmp(aT,aR,nD + 1) <= 0 ){
+				lo = mid;
+			}else{
+				hi = mid - 1;
+			}
+		}
+		if( lo > 0 ){
+			BcBufMulDigit(zD,nD,lo,aT);
+			BcBufSub(aR,aT,nD + 1);
+		}
+		pQ->aDig[i] = (unsigned char)lo;
+	}
+	if( BcNumAlloc(pR,nD + 1,0) ){
+		goto out;
+	}
+	SyMemcpy(aR,pR->aDig,nD + 1);
+	BcNumNormalize(pR);
+	BcNumNormalize(pQ);
+	rc = 0;
+out:
+	if( aR ){ SyMemBackendFree(pQ->pAlloc,aR); }
+	if( aT ){ SyMemBackendFree(pQ->pAlloc,aT); }
+	return rc;
+}
+/*
+ * pOut = a / b, truncated toward zero to nScale places. pOut may not alias
+ * either operand; the caller has already refused a zero divisor.
+ *
+ * The scaled quotient is an INTEGER one: with sa and sb the two scales,
+ *
+ *     trunc(a/b * 10^scale) = floor( (A * 10^(sb+scale)) / (B * 10^sa) )
+ *
+ * over the digit strings A and B, so only ONE of the two ever needs padding --
+ * whichever side the exponent sb+scale-sa falls on.
+ */
+static int BcNumDivide(BcNum *pOut,const BcNum *a,const BcNum *b,sxu32 nScale)
+{
+	BcNum sT, sR;
+	const BcNum *pN = a, *pD = b;
+	sxi64 e = (sxi64)b->nFrac + (sxi64)nScale - (sxi64)a->nFrac;
+	int rc = -1;
+	BcNumInit(&sT,a->pAlloc);
+	BcNumInit(&sR,a->pAlloc);
+	if( e > 0 ){
+		if( e > (sxi64)BC_MAX_DIGITS || BcNumShiftLeft(&sT,a,(sxu32)e) ){
+			goto out;
+		}
+		pN = &sT;
+	}else if( e < 0 ){
+		if( -e > (sxi64)BC_MAX_DIGITS || BcNumShiftLeft(&sT,b,(sxu32)(-e)) ){
+			goto out;
+		}
+		pD = &sT;
+	}
+	if( BcMagDivMod(pOut,&sR,pN,pD) || BcNumSetPoint(pOut,nScale) ){
+		goto out;
+	}
+	pOut->bNeg = (a->bNeg != b->bNeg);
+	BcNumNormalize(pOut);
+	rc = 0;
+out:
+	BcNumRelease(&sT);
+	BcNumRelease(&sR);
+	return rc;
+}
+/*
+ * php's divmod: the quotient is the TRUNCATED integer one (scale 0, whatever
+ * $scale says) and the remainder is `a - b * q` cut to $scale. Truncation is
+ * what gives the remainder the sign of the DIVIDEND, both here and in bcmod():
+ * -10 % 3 is -1 and 10 % -3 is 1.
+ *
+ * pQ and pR may not alias the operands.
+ */
+static int BcNumDivMod(BcNum *pQ,BcNum *pR,const BcNum *a,const BcNum *b,sxu32 nScale)
+{
+	BcNum sT;
+	int rc = -1;
+	BcNumInit(&sT,a->pAlloc);
+	if( BcNumDivide(pQ,a,b,0) ){
+		goto out;
+	}
+	if( BcNumMul(&sT,b,pQ) ){
+		goto out;
+	}
+	if( BcNumAddSigned(pR,a,&sT,1) || BcNumSetScale(pR,nScale) ){
+		goto out;
+	}
+	rc = 0;
+out:
+	BcNumRelease(&sT);
+	return rc;
+}
+/* p /= 2, in place, over a scale-0 magnitude. */
+static void BcNumHalve(BcNum *p)
+{
+	sxu32 i, n = p->nInt + p->nFrac;
+	int carry = 0;
+	for( i = 0 ; i < n ; ++i ){
+		int cur = carry * 10 + p->aDig[i];
+		p->aDig[i] = (unsigned char)(cur / 2);
+		carry = cur % 2;
+	}
+	BcNumNormalize(p);
+}
+/*
+ * pOut = floor(sqrt(pN)) over a scale-0 magnitude, by Newton's iteration
+ *
+ *     x <- (x + N/x) / 2
+ *
+ * started at 10^ceil(digits/2), which is above sqrt(N) for every N with that
+ * many digits. From above, the sequence decreases to floor(sqrt(N)) and then
+ * stops going down, which is the loop's exit test.
+ *
+ * Every step is a FULL-precision division, so the cost is about log2(scale)
+ * divisions -- fine to a few hundred places and visibly slower than php's
+ * limb-based one past a few thousand, which is the same trade the one-digit-per-
+ * byte representation makes everywhere else in this file.
+ */
+static int BcIntSqrt(BcNum *pOut,const BcNum *pN)
+{
+	BcNum sX, sQ, sR, sT;
+	int rc = -1;
+	if( BcNumIsZero(pN) ){
+		return BcNumSmall(pOut,0);
+	}
+	BcNumInit(&sX,pN->pAlloc);
+	BcNumInit(&sQ,pN->pAlloc);
+	BcNumInit(&sR,pN->pAlloc);
+	BcNumInit(&sT,pN->pAlloc);
+	if( BcNumSmall(&sT,1) || BcNumShiftLeft(&sX,&sT,(pN->nInt + 1) / 2) ){
+		goto out;
+	}
+	for( ;; ){
+		if( BcNumIsZero(&sX) ){
+			break; /* unreachable for N >= 1; a guard, not a case */
+		}
+		if( BcMagDivMod(&sQ,&sR,pN,&sX) ){
+			goto out;
+		}
+		if( BcMagAdd(&sT,&sX,&sQ) ){
+			goto out;
+		}
+		BcNumHalve(&sT);
+		if( BcMagCmp(&sT,&sX) >= 0 ){
+			break;
+		}
+		BcNumSwap(&sX,&sT);
+	}
+	BcNumSwap(pOut,&sX);
+	rc = 0;
+out:
+	BcNumRelease(&sX);
+	BcNumRelease(&sQ);
+	BcNumRelease(&sR);
+	BcNumRelease(&sT);
+	return rc;
+}
+/*
+ * pOut = sqrt(a) truncated to nScale places. The whole job is one integer
+ * square root:
+ *
+ *     trunc(sqrt(a) * 10^scale) = floor( sqrt( A * 10^(2*scale - sa) ) )
+ *
+ * and when that exponent is NEGATIVE the digits are simply dropped first --
+ * floor(sqrt(x)) is floor(sqrt(floor(x))) for any x >= 0, so truncating the
+ * radicand cannot move the answer.
+ */
+static int BcNumSqrt(BcNum *pOut,const BcNum *a,sxu32 nScale)
+{
+	BcNum sN;
+	sxi64 e = 2 * (sxi64)nScale - (sxi64)a->nFrac;
+	int rc = -1;
+	BcNumInit(&sN,a->pAlloc);
+	if( e >= 0 ){
+		if( e > (sxi64)BC_MAX_DIGITS || BcNumShiftLeft(&sN,a,(sxu32)e) ){
+			goto out;
+		}
+	}else if( BcNumShiftRight(&sN,a,(sxu32)(-e)) ){
+		goto out;
+	}
+	if( BcIntSqrt(pOut,&sN) || BcNumSetPoint(pOut,nScale) ){
+		goto out;
+	}
+	rc = 0;
+out:
+	BcNumRelease(&sN);
+	return rc;
+}
+/*
+ * pOut = a ** uExp, EXACT, by repeated squaring. Exact is the contract, not an
+ * implementation choice: `bcpow('1.5','10',2)` is '57.66', the exact
+ * 57.6650390625 cut, where truncating each squaring to the scale would answer
+ * '57.60'.
+ */
+static int BcNumPowInt(BcNum *pOut,const BcNum *a,sxu64 uExp)
+{
+	BcNum sBase, sTmp;
+	int rc = -1;
+	BcNumInit(&sBase,a->pAlloc);
+	BcNumInit(&sTmp,a->pAlloc);
+	if( BcNumSmall(pOut,1) || BcNumCopy(&sBase,a) ){
+		goto out;
+	}
+	while( uExp != 0 ){
+		if( uExp & 1 ){
+			if( BcNumMul(&sTmp,pOut,&sBase) ){
+				goto out;
+			}
+			BcNumSwap(pOut,&sTmp);
+		}
+		uExp >>= 1;
+		if( uExp != 0 ){
+			if( BcNumMul(&sTmp,&sBase,&sBase) ){
+				goto out;
+			}
+			BcNumSwap(&sBase,&sTmp);
+		}
+	}
+	rc = 0;
+out:
+	BcNumRelease(&sBase);
+	BcNumRelease(&sTmp);
+	return rc;
+}
+/*
+ * The integer VALUE of a number whose fraction is all zeros, for the two
+ * arguments php reads as counts rather than as quantities (an exponent, a
+ * modulus). Answers 0 when the value does not fit an sxi64, which is what php
+ * calls `is too large`.
+ */
+static int BcNumToInt64(const BcNum *p,sxi64 *pOut)
+{
+	sxu64 uVal = 0;
+	sxu32 i;
+	for( i = 0 ; i < p->nInt ; ++i ){
+		/* Screen BEFORE the multiply: past 2^63/10 the next step would wrap, and
+		 * a wrapped value is indistinguishable from a small one. */
+		if( uVal > (sxu64)922337203685477580 ){
+			return 0;
+		}
+		uVal = uVal * 10 + p->aDig[i];
+		if( uVal > (sxu64)0x8000000000000000 ){
+			return 0;
+		}
+	}
+	if( p->bNeg ){
+		/* -PHP_INT_MIN has no positive counterpart: negate in UNSIGNED. */
+		*pOut = (sxi64)((sxu64)0 - uVal);
+	}else{
+		if( uVal > (sxu64)0x7FFFFFFFFFFFFFFF ){
+			return 0;
+		}
+		*pOut = (sxi64)uVal;
+	}
+	return 1;
+}
+/* Does this number have a fraction at all? (Trailing zeros do not count: php
+ * accepts `bcpow('1','1.0')` and refuses `bcpow('1','1.5')`.) */
+static int BcNumHasFraction(const BcNum *p)
+{
+	sxu32 i;
+	for( i = 0 ; i < p->nFrac ; ++i ){
+		if( p->aDig[p->nInt + i] != 0 ){
+			return 1;
+		}
+	}
+	return 0;
+}
+/* pOut = p's INTEGER part, sign kept -- the digits of a number whose fraction
+ * the caller has already established is all zeros. */
+static int BcNumIntPart(BcNum *pOut,const BcNum *p)
+{
+	if( BcNumShiftRight(pOut,p,p->nFrac) ){
+		return -1;
+	}
+	pOut->bNeg = p->bNeg;
+	BcNumNormalize(pOut);
+	return 0;
+}
+/* pOut = (a * b) mod m over non-negative scale-0 magnitudes. pOut must alias
+ * none of the four other numbers. */
+static int BcModMul(BcNum *pOut,const BcNum *a,const BcNum *b,const BcNum *m,
+	BcNum *pTmp,BcNum *pQ)
+{
+	if( BcNumMul(pTmp,a,b) ){
+		return -1;
+	}
+	pTmp->bNeg = 0;
+	return BcMagDivMod(pQ,pOut,pTmp,m);
+}
+/*
+ * pOut = (a ** e) mod m, php's answer -- which is a TRUNCATED-division
+ * remainder, so the modulus's sign is ignored and the result carries the
+ * DIVIDEND's: the power's, i.e. the base's when the exponent is odd.
+ * `bcpowmod('-5','3','7')` is -6, not 1.
+ *
+ * The exponent is consumed as DECIMAL DIGITS rather than as a machine integer,
+ * which is what lets php accept one of any width here where bcpow() refuses
+ * anything past a long: Horner in base ten, `res = res**10 * a**digit` for each
+ * digit left to right, with a reduction after every multiply so nothing ever
+ * grows past the modulus. All three arguments are integers by now (php refuses
+ * a fractional one).
+ */
+static int BcNumPowMod(BcNum *pOut,const BcNum *a,const BcNum *pExp,const BcNum *m)
+{
+	BcNum sBase, sRes, sTmp, sQ, sM, sA, sB;
+	sxu32 i;
+	int bOddExp;
+	int rc = -1;
+	BcNumInit(&sBase,a->pAlloc);
+	BcNumInit(&sRes,a->pAlloc);
+	BcNumInit(&sTmp,a->pAlloc);
+	BcNumInit(&sQ,a->pAlloc);
+	BcNumInit(&sM,a->pAlloc);
+	BcNumInit(&sA,a->pAlloc);
+	BcNumInit(&sB,a->pAlloc);
+	bOddExp = (pExp->aDig[pExp->nInt - 1] & 1) != 0;
+	if( BcNumIntPart(&sM,m) || BcNumIntPart(&sTmp,a) ){
+		goto out;
+	}
+	sM.bNeg = sTmp.bNeg = 0;   /* magnitudes: the signs are decided at the end */
+	if( BcNumSmall(&sRes,1) || BcMagDivMod(&sQ,&sBase,&sTmp,&sM) ){
+		goto out;
+	}
+	for( i = 0 ; i < pExp->nInt ; ++i ){
+		int d = pExp->aDig[i];
+		/* res <- res**10, as ((res**2)**2 * res)**2. */
+		if( BcModMul(&sA,&sRes,&sRes,&sM,&sTmp,&sQ)        /* res**2  */
+		 || BcModMul(&sB,&sA,&sA,&sM,&sTmp,&sQ)            /* res**4  */
+		 || BcModMul(&sA,&sB,&sRes,&sM,&sTmp,&sQ)          /* res**5  */
+		 || BcModMul(&sRes,&sA,&sA,&sM,&sTmp,&sQ) ){       /* res**10 */
+			goto out;
+		}
+		while( d-- > 0 ){
+			if( BcModMul(&sA,&sRes,&sBase,&sM,&sTmp,&sQ) ){
+				goto out;
+			}
+			BcNumSwap(&sRes,&sA);
+		}
+	}
+	BcNumSwap(pOut,&sRes);
+	pOut->bNeg = (a->bNeg && bOddExp);
+	BcNumNormalize(pOut);
+	rc = 0;
+out:
+	BcNumRelease(&sBase);
+	BcNumRelease(&sRes);
+	BcNumRelease(&sTmp);
+	BcNumRelease(&sQ);
+	BcNumRelease(&sM);
+	BcNumRelease(&sA);
+	BcNumRelease(&sB);
+	return rc;
+}
 /*
  * The `bcmath.scale` directive, which is where every $scale argument defaults
  * from and the only state bcscale() has. php clamps nothing here: a directive
@@ -626,6 +1164,269 @@ PH7_PRIVATE int PH7_builtin_bccomp(ph7_context *pCtx,int nArg,ph7_value **apArg)
 done:
 	BcNumRelease(&sA);
 	BcNumRelease(&sB);
+	return rc;
+}
+/*
+ * bcdiv/bcmod/bcdivmod share their whole argument shape and differ only in what
+ * they hand back, so one body serves all three. php's ZERO-divisor refusal is
+ * worded from the OPERATION rather than from the function: bcdivmod() says
+ * "Division by zero" where bcmod() says "Modulo by zero".
+ */
+#define BC_DIV_QUOTIENT 0
+#define BC_DIV_MODULUS  1
+#define BC_DIV_BOTH     2
+static int BcDivideOp(ph7_context *pCtx,int nArg,ph7_value **apArg,int iWhat,
+	const char *zFunc)
+{
+	BcNum sA, sB, sQ, sR;
+	sxu32 nScale = 0;
+	int rc = PH7_OK;
+	BcNumInit(&sA,&pCtx->pVm->sAllocator);
+	BcNumInit(&sB,&pCtx->pVm->sAllocator);
+	BcNumInit(&sQ,&pCtx->pVm->sAllocator);
+	BcNumInit(&sR,&pCtx->pVm->sAllocator);
+	if( !BcArgScale(pCtx,nArg,apArg,2,zFunc,&nScale)
+	 || !BcArgNum(pCtx,apArg[0],0,"num1",zFunc,&sA)
+	 || !BcArgNum(pCtx,apArg[1],1,"num2",zFunc,&sB) ){
+		goto done;
+	}
+	if( BcNumIsZero(&sB) ){
+		PH7_VmThrowException(pCtx,"DivisionByZeroError",
+			iWhat == BC_DIV_MODULUS ? "Modulo by zero" : "Division by zero");
+		goto done;
+	}
+	if( iWhat == BC_DIV_QUOTIENT ){
+		if( BcNumDivide(&sQ,&sA,&sB,nScale) ){
+			rc = PH7_ContextMemoryError(pCtx);
+			goto done;
+		}
+		rc = BcResultNum(pCtx,&sQ);
+		goto done;
+	}
+	if( BcNumDivMod(&sQ,&sR,&sA,&sB,nScale) ){
+		rc = PH7_ContextMemoryError(pCtx);
+		goto done;
+	}
+	if( iWhat == BC_DIV_MODULUS ){
+		rc = BcResultNum(pCtx,&sR);
+		goto done;
+	}
+	{
+		/* bcdivmod answers the LIST php answers: the integer quotient, then the
+		 * remainder at the scale. */
+		ph7_value *pOut = ph7_context_new_array(pCtx);
+		ph7_value *pCur = ph7_context_new_scalar(pCtx);
+		SyBlob sTxt;
+		if( pOut == 0 || pCur == 0 ){
+			rc = PH7_ContextMemoryError(pCtx);
+			goto done;
+		}
+		SyBlobInit(&sTxt,&pCtx->pVm->sAllocator);
+		if( BcNumToBlob(&sQ,&sTxt) ){
+			SyBlobRelease(&sTxt);
+			rc = PH7_ContextMemoryError(pCtx);
+			goto done;
+		}
+		ph7_value_string(pCur,(const char *)SyBlobData(&sTxt),(int)SyBlobLength(&sTxt));
+		ph7_array_add_elem(pOut,0,pCur);
+		SyBlobReset(&sTxt);
+		ph7_value_reset_string_cursor(pCur);
+		if( BcNumToBlob(&sR,&sTxt) ){
+			SyBlobRelease(&sTxt);
+			rc = PH7_ContextMemoryError(pCtx);
+			goto done;
+		}
+		ph7_value_string(pCur,(const char *)SyBlobData(&sTxt),(int)SyBlobLength(&sTxt));
+		ph7_array_add_elem(pOut,0,pCur);
+		SyBlobRelease(&sTxt);
+		ph7_result_value(pCtx,pOut);
+		ph7_context_release_value(pCtx,pCur);
+		ph7_context_release_value(pCtx,pOut);
+	}
+done:
+	BcNumRelease(&sA);
+	BcNumRelease(&sB);
+	BcNumRelease(&sQ);
+	BcNumRelease(&sR);
+	return rc;
+}
+/*
+ * string bcdiv(string $num1, string $num2, ?int $scale = null)
+ */
+PH7_PRIVATE int PH7_builtin_bcdiv(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return BcDivideOp(pCtx,nArg,apArg,BC_DIV_QUOTIENT,"bcdiv");
+}
+/*
+ * string bcmod(string $num1, string $num2, ?int $scale = null)
+ */
+PH7_PRIVATE int PH7_builtin_bcmod(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return BcDivideOp(pCtx,nArg,apArg,BC_DIV_MODULUS,"bcmod");
+}
+/*
+ * array bcdivmod(string $num1, string $num2, ?int $scale = null)
+ */
+PH7_PRIVATE int PH7_builtin_bcdivmod(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return BcDivideOp(pCtx,nArg,apArg,BC_DIV_BOTH,"bcdivmod");
+}
+/*
+ * string bcpow(string $num, string $exponent, ?int $scale = null)
+ *
+ * The exponent is a COUNT, so php refuses a fractional one (a zero fraction is
+ * fine: '1.0' is the integer 1) and refuses one no long can hold. A negative
+ * exponent is the reciprocal of the exact power, divided at the scale -- and
+ * over a zero base that is php's DivisionByZeroError rather than a ValueError.
+ */
+PH7_PRIVATE int PH7_builtin_bcpow(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	BcNum sA, sE, sP, sOne;
+	sxu32 nScale = 0;
+	sxi64 iExp = 0;
+	int rc = PH7_OK;
+	BcNumInit(&sA,&pCtx->pVm->sAllocator);
+	BcNumInit(&sE,&pCtx->pVm->sAllocator);
+	BcNumInit(&sP,&pCtx->pVm->sAllocator);
+	BcNumInit(&sOne,&pCtx->pVm->sAllocator);
+	if( !BcArgScale(pCtx,nArg,apArg,2,"bcpow",&nScale)
+	 || !BcArgNum(pCtx,apArg[0],0,"num","bcpow",&sA)
+	 || !BcArgNum(pCtx,apArg[1],1,"exponent","bcpow",&sE) ){
+		goto done;
+	}
+	if( BcNumHasFraction(&sE) ){
+		PH7_VmThrowException(pCtx,"ValueError",
+			"bcpow(): Argument #2 ($exponent) cannot have a fractional part");
+		goto done;
+	}
+	if( !BcNumToInt64(&sE,&iExp) ){
+		PH7_VmThrowException(pCtx,"ValueError",
+			"bcpow(): Argument #2 ($exponent) is too large");
+		goto done;
+	}
+	if( iExp < 0 && BcNumIsZero(&sA) ){
+		PH7_VmThrowException(pCtx,"DivisionByZeroError","Negative power of zero");
+		goto done;
+	}
+	{
+		/* -PHP_INT_MIN has no positive counterpart: negate in UNSIGNED. */
+		sxu64 uExp = iExp < 0 ? ((sxu64)0 - (sxu64)iExp) : (sxu64)iExp;
+		if( BcNumPowInt(&sP,&sA,uExp) ){
+			rc = PH7_ContextMemoryError(pCtx);
+			goto done;
+		}
+	}
+	if( iExp < 0 ){
+		if( BcNumSmall(&sOne,1) || BcNumDivide(&sA,&sOne,&sP,nScale) ){
+			rc = PH7_ContextMemoryError(pCtx);
+			goto done;
+		}
+		rc = BcResultNum(pCtx,&sA);
+		goto done;
+	}
+	if( BcNumSetScale(&sP,nScale) ){
+		rc = PH7_ContextMemoryError(pCtx);
+		goto done;
+	}
+	rc = BcResultNum(pCtx,&sP);
+done:
+	BcNumRelease(&sA);
+	BcNumRelease(&sE);
+	BcNumRelease(&sP);
+	BcNumRelease(&sOne);
+	return rc;
+}
+/*
+ * string bcpowmod(string $num, string $exponent, string $modulus, ?int $scale = null)
+ *
+ * All three are COUNTS here: php refuses a fractional part in any of them, and
+ * a negative exponent (there is no modular inverse in this API).
+ */
+PH7_PRIVATE int PH7_builtin_bcpowmod(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	static const char *azParam[] = { "num", "exponent", "modulus" };
+	BcNum aNum[3], sR;
+	sxu32 nScale = 0;
+	int rc = PH7_OK;
+	int i;
+	for( i = 0 ; i < 3 ; ++i ){
+		BcNumInit(&aNum[i],&pCtx->pVm->sAllocator);
+	}
+	BcNumInit(&sR,&pCtx->pVm->sAllocator);
+	if( !BcArgScale(pCtx,nArg,apArg,3,"bcpowmod",&nScale) ){
+		goto done;
+	}
+	for( i = 0 ; i < 3 ; ++i ){
+		if( !BcArgNum(pCtx,apArg[i],i,azParam[i],"bcpowmod",&aNum[i]) ){
+			goto done;
+		}
+	}
+	/* php's order, which a fuzz round found: the two leading arguments are
+	 * screened for a fraction, then the EXPONENT's sign, and only then the
+	 * modulus's fraction. A negative exponent beside a fractional modulus names
+	 * the exponent. */
+	for( i = 0 ; i < 2 ; ++i ){
+		if( BcNumHasFraction(&aNum[i]) ){
+			PH7_VmThrowException(pCtx,"ValueError",
+				"bcpowmod(): Argument #%d ($%s) cannot have a fractional part",
+				i + 1,azParam[i]);
+			goto done;
+		}
+	}
+	if( aNum[1].bNeg && !BcNumIsZero(&aNum[1]) ){
+		PH7_VmThrowException(pCtx,"ValueError",
+			"bcpowmod(): Argument #2 ($exponent) must be greater than or equal to 0");
+		goto done;
+	}
+	if( BcNumHasFraction(&aNum[2]) ){
+		PH7_VmThrowException(pCtx,"ValueError",
+			"bcpowmod(): Argument #3 ($modulus) cannot have a fractional part");
+		goto done;
+	}
+	if( BcNumIsZero(&aNum[2]) ){
+		PH7_VmThrowException(pCtx,"DivisionByZeroError","Modulo by zero");
+		goto done;
+	}
+	if( BcNumPowMod(&sR,&aNum[0],&aNum[1],&aNum[2])
+	 || BcNumSetScale(&sR,nScale) ){
+		rc = PH7_ContextMemoryError(pCtx);
+		goto done;
+	}
+	rc = BcResultNum(pCtx,&sR);
+done:
+	for( i = 0 ; i < 3 ; ++i ){
+		BcNumRelease(&aNum[i]);
+	}
+	BcNumRelease(&sR);
+	return rc;
+}
+/*
+ * string bcsqrt(string $num, ?int $scale = null)
+ */
+PH7_PRIVATE int PH7_builtin_bcsqrt(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	BcNum sA, sR;
+	sxu32 nScale = 0;
+	int rc = PH7_OK;
+	BcNumInit(&sA,&pCtx->pVm->sAllocator);
+	BcNumInit(&sR,&pCtx->pVm->sAllocator);
+	if( !BcArgScale(pCtx,nArg,apArg,1,"bcsqrt",&nScale)
+	 || !BcArgNum(pCtx,apArg[0],0,"num","bcsqrt",&sA) ){
+		goto done;
+	}
+	if( sA.bNeg && !BcNumIsZero(&sA) ){
+		PH7_VmThrowException(pCtx,"ValueError",
+			"bcsqrt(): Argument #1 ($num) must be greater than or equal to 0");
+		goto done;
+	}
+	if( BcNumSqrt(&sR,&sA,nScale) ){
+		rc = PH7_ContextMemoryError(pCtx);
+		goto done;
+	}
+	rc = BcResultNum(pCtx,&sR);
+done:
+	BcNumRelease(&sA);
+	BcNumRelease(&sR);
 	return rc;
 }
 /*
