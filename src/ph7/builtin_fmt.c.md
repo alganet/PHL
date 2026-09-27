@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 548/620 lines (88.39%)
+Coverage: 550/622 lines (88.42%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -101,41 +101,41 @@ Coverage: 548/620 lines (88.39%)
 |      - |   91 | ` * char, so a NUL specifier byte — "%\0" — is still reported, not mistaken for` |
 |      - |   92 | ` * "all valid".)` |
 |      - |   93 | ` */` |
-|   2230 |   94 | `static int FormatUnknownSpec(const char *zIn,int nByte,int *pBad,int *pbDangling)` |
+|   4088 |   94 | `static int FormatUnknownSpec(const char *zIn,int nByte,int *pBad,int *pbDangling)` |
 |      5 |   95 | `{` |
-|   2235 |   96 | `	const char *zEnd = &zIn[nByte];` |
+|   4093 |   96 | `	const char *zEnd = &zIn[nByte];` |
 |      - |   97 | `	int c,idx;` |
-|  27723 |   98 | `	while( zIn < zEnd ){` |
-|  25529 |   99 | `		if( zIn[0] != '%' ){` |
-|  19579 |  100 | `			zIn++;` |
-|  19579 |  101 | `			continue;` |
+|  59927 |   98 | `	while( zIn < zEnd ){` |
+|  55875 |   99 | `		if( zIn[0] != '%' ){` |
+|  43241 |  100 | `			zIn++;` |
+|  43241 |  101 | `			continue;` |
 |      - |  102 | `		}` |
-|   5955 |  103 | `		zIn++; /* jump the percent sign */` |
+|  12639 |  103 | `		zIn++; /* jump the percent sign */` |
 |      - |  104 | `		/* php-supported flags: '-', '+', ' ', '0' and the "'<pad>'" custom-pad` |
 |      - |  105 | `		 * form. '#' is intentionally NOT treated as a flag so it surfaces as an` |
 |      - |  106 | `		 * unknown specifier, matching php. */` |
-|   8787 |  107 | `		while( zIn < zEnd ){` |
-|   8775 |  108 | `			c = zIn[0];` |
-|   8775 |  109 | `			if( c=='-' \|\| c=='+' \|\| c==' ' \|\| c=='0' ){` |
-|   2789 |  110 | `				zIn++;` |
-|   2789 |  111 | `				continue;` |
+|  18259 |  107 | `		while( zIn < zEnd ){` |
+|  18247 |  108 | `			c = zIn[0];` |
+|  18247 |  109 | `			if( c=='-' \|\| c=='+' \|\| c==' ' \|\| c=='0' ){` |
+|   5577 |  110 | `				zIn++;` |
+|   5577 |  111 | `				continue;` |
 |      - |  112 | `			}` |
-|   5991 |  113 | `			if( c=='\'' ){` |
+|  12675 |  113 | `			if( c=='\'' ){` |
 |     49 |  114 | `				zIn++;` |
 |     49 |  115 | `				if( zIn < zEnd ){` |
 |     49 |  116 | `					zIn++; /* the custom pad character */` |
 |     24 |  117 | `				}` |
 |     49 |  118 | `				continue;` |
 |      - |  119 | `			}` |
-|   5943 |  120 | `			break;` |
+|  12627 |  120 | `			break;` |
 |    ! 0 |  121 | `		}` |
 |      - |  122 | `		/* field width */` |
-|  10667 |  123 | `		while( zIn < zEnd && zIn[0]>='0' && zIn[0]<='9' ){` |
-|   4717 |  124 | `			zIn++;` |
+|  22109 |  123 | `		while( zIn < zEnd && zIn[0]>='0' && zIn[0]<='9' ){` |
+|   9475 |  124 | `			zIn++;` |
 |      5 |  125 | `		}` |
 |      - |  126 | `		/* positional specifier ($) — php parses flags AFTER it (e.g. "%1$-10s"),` |
 |      - |  127 | `		 * so skip the full flag set and width again, mirroring the main loop. */` |
-|   5955 |  128 | `		if( zIn < zEnd && zIn[0]=='$' ){` |
+|  12639 |  128 | `		if( zIn < zEnd && zIn[0]=='$' ){` |
 |     50 |  129 | `			zIn++;` |
 |     52 |  130 | `			while( zIn < zEnd ){` |
 |     50 |  131 | `				c = zIn[0];` |
@@ -157,36 +157,36 @@ Coverage: 548/620 lines (88.39%)
 |      1 |  147 | `			}` |
 |     24 |  148 | `		}` |
 |      - |  149 | `		/* precision */` |
-|   5955 |  150 | `		if( zIn < zEnd && zIn[0]=='.' ){` |
+|  12639 |  150 | `		if( zIn < zEnd && zIn[0]=='.' ){` |
 |    146 |  151 | `			zIn++;` |
 |    300 |  152 | `			while( zIn < zEnd && zIn[0]>='0' && zIn[0]<='9' ){` |
 |    156 |  153 | `				zIn++;` |
 |      2 |  154 | `			}` |
 |     72 |  155 | `		}` |
 |      - |  156 | `		/* a single 'l' length modifier (ignored, php compat) */` |
-|   5955 |  157 | `		if( zIn < zEnd && zIn[0]=='l' ){` |
+|  12639 |  157 | `		if( zIn < zEnd && zIn[0]=='l' ){` |
 |     11 |  158 | `			zIn++;` |
 |      5 |  159 | `		}` |
-|   5955 |  160 | `		if( zIn >= zEnd ){` |
+|  12639 |  160 | `		if( zIn >= zEnd ){` |
 |      - |  161 | `			/* A dangling '%' the format string ends on: php raises` |
 |      - |  162 | ``			 * `ValueError: Missing format specifier at end of string`. */`` |
 |     17 |  163 | `			*pbDangling = TRUE;` |
 |     17 |  164 | `			return FALSE;` |
 |      - |  165 | `		}` |
-|   5939 |  166 | `		c = zIn[0];` |
-|   5939 |  167 | `		zIn++; /* jump the conversion specifier */` |
-|  13697 |  168 | `		for( idx = 0 ; idx < (int)SX_ARRAYSIZE(aFmt) ; idx++ ){` |
-|  13677 |  169 | `			if( c == aFmt[idx].fmttype ){` |
-|   5919 |  170 | `				break;` |
+|  12623 |  166 | `		c = zIn[0];` |
+|  12623 |  167 | `		zIn++; /* jump the conversion specifier */` |
+|  27883 |  168 | `		for( idx = 0 ; idx < (int)SX_ARRAYSIZE(aFmt) ; idx++ ){` |
+|  27863 |  169 | `			if( c == aFmt[idx].fmttype ){` |
+|  12603 |  170 | `				break;` |
 |      - |  171 | `			}` |
-|   3884 |  172 | `		}` |
-|   5939 |  173 | `		if( idx >= (int)SX_ARRAYSIZE(aFmt) ){` |
+|   7632 |  172 | `		}` |
+|  12623 |  173 | `		if( idx >= (int)SX_ARRAYSIZE(aFmt) ){` |
 |     21 |  174 | `			*pBad = c; /* unknown specifier */` |
 |     21 |  175 | `			return TRUE;` |
 |      - |  176 | `		}` |
 |      5 |  177 | `	}` |
-|   2199 |  178 | `	return FALSE;` |
-|   1120 |  179 | `}` |
+|   4057 |  178 | `	return FALSE;` |
+|   2046 |  179 | `}` |
 |      - |  180 | `/*` |
 |      - |  181 | ` * Validate a printf-style format string. PHP 8 raises a catchable ValueError for` |
 |      - |  182 | ` * an unknown conversion specifier, thrown before any output is produced. Every` |
@@ -195,19 +195,19 @@ Coverage: 548/620 lines (88.39%)
 |      - |  185 | ` * throw is caught in place, PH7_ABORT when it goes uncaught).` |
 |      - |  186 | ` * Returns PH7_OK when the format is valid.` |
 |      - |  187 | ` */` |
-|   2230 |  188 | `PH7_PRIVATE sxi32 PH7_FormatValidate(ph7_context *pCtx,const char *zFormat,int nByte)` |
+|   4088 |  188 | `PH7_PRIVATE sxi32 PH7_FormatValidate(ph7_context *pCtx,const char *zFormat,int nByte)` |
 |      5 |  189 | `{` |
-|   2235 |  190 | `	int badSpec = 0,bDangling = FALSE;` |
-|   2235 |  191 | `	if( FormatUnknownSpec(zFormat,nByte,&badSpec,&bDangling) ){` |
+|   4093 |  190 | `	int badSpec = 0,bDangling = FALSE;` |
+|   4093 |  191 | `	if( FormatUnknownSpec(zFormat,nByte,&badSpec,&bDangling) ){` |
 |     31 |  192 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
 |     10 |  193 | `			"Unknown format specifier \"%c\"",badSpec);` |
 |      - |  194 | `	}` |
-|   2215 |  195 | `	if( bDangling ){` |
+|   4073 |  195 | `	if( bDangling ){` |
 |     17 |  196 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
 |      - |  197 | `			"Missing format specifier at end of string");` |
 |      - |  198 | `	}` |
-|   2199 |  199 | `	return PH7_OK;` |
-|   1120 |  200 | `}` |
+|   4057 |  199 | `	return PH7_OK;` |
+|   2046 |  200 | `}` |
 |      - |  201 | `/*` |
 |      - |  202 | ` * Read a run of decimal digits, saturating at PH7_FMT_NUM_CAP rather than` |
 |      - |  203 | `` * wrapping: `%99999999999999999999d` must be REPORTED, and a signed overflow on`` |
@@ -215,24 +215,24 @@ Coverage: 548/620 lines (88.39%)
 |      - |  205 | ` * out negative, or a positional index come out as an ordinary sequential one).` |
 |      - |  206 | ` */` |
 |      - |  207 | `#define PH7_FMT_NUM_CAP 2147483647` |
-|  12322 |  208 | `static int FormatScanNumber(const char **pzIn,const char *zEnd)` |
+|  25690 |  208 | `static int FormatScanNumber(const char **pzIn,const char *zEnd)` |
 |      5 |  209 | `{` |
-|  12327 |  210 | `	const char *zIn = *pzIn;` |
-|  12327 |  211 | `	int v = 0;` |
-|  22241 |  212 | `	while( zIn < zEnd && zIn[0]>='0' && zIn[0]<='9' ){` |
-|   9919 |  213 | `		int d = zIn[0]-'0';` |
+|  25695 |  210 | `	const char *zIn = *pzIn;` |
+|  25695 |  211 | `	int v = 0;` |
+|  45125 |  212 | `	while( zIn < zEnd && zIn[0]>='0' && zIn[0]<='9' ){` |
+|  19435 |  213 | `		int d = zIn[0]-'0';` |
 |      - |  214 | `		/* Tested BEFORE the multiply: a signed overflow is undefined, so a guard` |
 |      - |  215 | `		 * that inspects the wrapped result is one an optimiser may delete — and` |
 |      - |  216 | ``		 * did, which is how `%2147483648d` slipped past the range check below. */`` |
-|   9919 |  217 | `		if( v > (PH7_FMT_NUM_CAP - d)/10 ){` |
+|  19435 |  217 | `		if( v > (PH7_FMT_NUM_CAP - d)/10 ){` |
 |     29 |  218 | `			v = PH7_FMT_NUM_CAP;` |
 |     15 |  219 | `		}else{` |
-|   9891 |  220 | `			v = v*10 + d;` |
+|  19407 |  220 | `			v = v*10 + d;` |
 |      - |  221 | `		}` |
-|   9919 |  222 | `		zIn++;` |
+|  19435 |  222 | `		zIn++;` |
 |      5 |  223 | `	}` |
-|  12327 |  224 | `	*pzIn = zIn;` |
-|  12327 |  225 | `	return v;` |
+|  25695 |  224 | `	*pzIn = zIn;` |
+|  25695 |  225 | `	return v;` |
 |      5 |  226 | `}` |
 |      - |  227 | `/*` |
 |      - |  228 | ` * Count the number of VALUE arguments a format string needs: the greater of the` |
@@ -254,22 +254,22 @@ Coverage: 548/620 lines (88.39%)
 |      - |  244 | `#define PH7_FMT_BAD_WIDTH     "Width must be between 0 and 2147483647"` |
 |      - |  245 | `#define PH7_FMT_BAD_PRECISION "Precision must be between 0 and 2147483647"` |
 |      - |  246 | `#define PH7_FMT_BAD_PAD       "Missing padding character"` |
-|   2282 |  247 | `static int FormatRequiredArgs(const char *zIn,int nByte,const char **pzBad)` |
+|   4140 |  247 | `static int FormatRequiredArgs(const char *zIn,int nByte,const char **pzBad)` |
 |      5 |  248 | `{` |
-|   2287 |  249 | `	const char *zEnd = &zIn[nByte];` |
-|   2287 |  250 | `	int c,seq = 0,maxpos = 0;` |
-|  27875 |  251 | `	while( zIn < zEnd ){` |
-|  25639 |  252 | `		int numVal = 0,pos = 0;` |
-|  25639 |  253 | `		if( zIn[0] != '%' ){` |
-|  19619 |  254 | `			zIn++;` |
-|  19619 |  255 | `			continue;` |
+|   4145 |  249 | `	const char *zEnd = &zIn[nByte];` |
+|   4145 |  250 | `	int c,seq = 0,maxpos = 0;` |
+|  60079 |  251 | `	while( zIn < zEnd ){` |
+|  55985 |  252 | `		int numVal = 0,pos = 0;` |
+|  55985 |  253 | `		if( zIn[0] != '%' ){` |
+|  43281 |  254 | `			zIn++;` |
+|  43281 |  255 | `			continue;` |
 |      - |  256 | `		}` |
-|   6025 |  257 | `		zIn++; /* jump the percent sign */` |
+|  12709 |  257 | `		zIn++; /* jump the percent sign */` |
 |      - |  258 | `		/* leading flags (incl. the "'<pad>'" custom-pad form) */` |
-|   8861 |  259 | `		while( zIn < zEnd ){` |
-|   8843 |  260 | `			c = zIn[0];` |
-|   8843 |  261 | `			if( c=='-' \|\| c=='+' \|\| c==' ' \|\| c=='0' ){ zIn++; continue; }` |
-|   6055 |  262 | `			if( c=='\'' ){` |
+|  18333 |  259 | `		while( zIn < zEnd ){` |
+|  18315 |  260 | `			c = zIn[0];` |
+|  18315 |  261 | `			if( c=='-' \|\| c=='+' \|\| c==' ' \|\| c=='0' ){ zIn++; continue; }` |
+|  12739 |  262 | `			if( c=='\'' ){` |
 |     53 |  263 | `				zIn++;` |
 |     53 |  264 | `				if( zIn >= zEnd ){` |
 |      - |  265 | `					/* A custom-pad flag the string ends on: php names THAT, not the` |
@@ -280,11 +280,11 @@ Coverage: 548/620 lines (88.39%)
 |     49 |  270 | `				zIn++;` |
 |     49 |  271 | `				continue;` |
 |      - |  272 | `			}` |
-|   6003 |  273 | `			break;` |
+|  12687 |  273 | `			break;` |
 |    ! 0 |  274 | `		}` |
 |      - |  275 | `		/* leading number: a positional index when a '$' follows, else the width */` |
-|   6021 |  276 | `		numVal = FormatScanNumber(&zIn,zEnd);` |
-|   6021 |  277 | `		if( zIn < zEnd && zIn[0]=='$' ){` |
+|  12705 |  276 | `		numVal = FormatScanNumber(&zIn,zEnd);` |
+|  12705 |  277 | `		if( zIn < zEnd && zIn[0]=='$' ){` |
 |     68 |  278 | `			pos = numVal;` |
 |      - |  279 | ``			/* php: `0 < N < 2147483647`, so `%0$s` and `%2147483647$s` are both the`` |
 |      - |  280 | `			 * ValueError — the second used to overflow the required-count report to` |
@@ -311,12 +311,12 @@ Coverage: 548/620 lines (88.39%)
 |    ! 0 |  301 | `			}` |
 |     58 |  302 | `			numVal = FormatScanNumber(&zIn,zEnd);` |
 |     28 |  303 | `		}` |
-|   6011 |  304 | `		if( numVal >= PH7_FMT_NUM_CAP ){` |
+|  12695 |  304 | `		if( numVal >= PH7_FMT_NUM_CAP ){` |
 |      7 |  305 | `			*pzBad = PH7_FMT_BAD_WIDTH;` |
 |      7 |  306 | `			return seq;` |
 |      - |  307 | `		}` |
 |      - |  308 | `		/* precision */` |
-|   6005 |  309 | `		if( zIn < zEnd && zIn[0]=='.' ){` |
+|  12689 |  309 | `		if( zIn < zEnd && zIn[0]=='.' ){` |
 |    150 |  310 | `			zIn++;` |
 |    150 |  311 | `			if( FormatScanNumber(&zIn,zEnd) >= PH7_FMT_NUM_CAP ){` |
 |      5 |  312 | `				*pzBad = PH7_FMT_BAD_PRECISION;` |
@@ -324,8 +324,8 @@ Coverage: 548/620 lines (88.39%)
 |      - |  314 | `			}` |
 |     72 |  315 | `		}` |
 |      - |  316 | `		/* a single 'l' length modifier (ignored, php compat) */` |
-|   6001 |  317 | `		if( zIn < zEnd && zIn[0]=='l' ){ zIn++; }` |
-|   6001 |  318 | `		if( zIn >= zEnd ){` |
+|  12685 |  317 | `		if( zIn < zEnd && zIn[0]=='l' ){ zIn++; }` |
+|  12685 |  318 | `		if( zIn >= zEnd ){` |
 |      - |  319 | `			/* A dangling '%' still COUNTS as needing a value: php reports` |
 |      - |  320 | `			 * sprintf("%") as "2 arguments are required, 1 given" and only` |
 |      - |  321 | `			 * raises the missing-specifier ValueError once the count is met. */` |
@@ -336,17 +336,17 @@ Coverage: 548/620 lines (88.39%)
 |      - |  326 | `			}` |
 |     23 |  327 | `			break;` |
 |      - |  328 | `		}` |
-|   5979 |  329 | `		c = zIn[0];` |
-|   5979 |  330 | `		zIn++; /* jump the conversion specifier */` |
-|   5979 |  331 | `		if( c == '%' ){ continue; } /* %% consumes no argument */` |
-|   5969 |  332 | `		if( pos > 0 ){` |
+|  12663 |  329 | `		c = zIn[0];` |
+|  12663 |  330 | `		zIn++; /* jump the conversion specifier */` |
+|  12663 |  331 | `		if( c == '%' ){ continue; } /* %% consumes no argument */` |
+|  12553 |  332 | `		if( pos > 0 ){` |
 |     56 |  333 | `			if( pos > maxpos ){ maxpos = pos; }` |
 |     29 |  334 | `		}else{` |
-|   5915 |  335 | `			seq++;` |
+|  12499 |  335 | `			seq++;` |
 |      - |  336 | `		}` |
 |      5 |  337 | `	}` |
-|   2263 |  338 | `	return seq > maxpos ? seq : maxpos;` |
-|   1146 |  339 | `}` |
+|   4121 |  338 | `	return seq > maxpos ? seq : maxpos;` |
+|   2072 |  339 | `}` |
 |      - |  340 | `/*` |
 |      - |  341 | ` * PHP 8: a printf-family call with fewer VALUE arguments than the format needs` |
 |      - |  342 | ` * throws BEFORE any output. The non-vararg family (sprintf/printf/fprintf) raises` |
@@ -359,17 +359,17 @@ Coverage: 548/620 lines (88.39%)
 |      - |  349 | ` * ValueError counts only the array, so nFixed is ignored there). Returns PH7_OK` |
 |      - |  350 | ` * when enough.` |
 |      - |  351 | ` */` |
-|   2282 |  352 | `PH7_PRIVATE sxi32 PH7_FormatCheckArgCount(ph7_context *pCtx,const char *zFormat,int nByte,int nValues,int nFixed,int bVararg)` |
+|   4140 |  352 | `PH7_PRIVATE sxi32 PH7_FormatCheckArgCount(ph7_context *pCtx,const char *zFormat,int nByte,int nValues,int nFixed,int bVararg)` |
 |      5 |  353 | `{` |
-|   2287 |  354 | `	const char *zBad = 0;` |
-|   2287 |  355 | `	int required = FormatRequiredArgs(zFormat,nByte,&zBad);` |
-|   2287 |  356 | `	if( zBad ){` |
+|   4145 |  354 | `	const char *zBad = 0;` |
+|   4145 |  355 | `	int required = FormatRequiredArgs(zFormat,nByte,&zBad);` |
+|   4145 |  356 | `	if( zBad ){` |
 |      - |  357 | `		/* php refuses a specifier's own shape before it counts the values, so` |
 |      - |  358 | ``		 * `sprintf("%2$s%0$s","a")` and `sprintf("%'","a")` are the ValueError and`` |
 |      - |  359 | `		 * not the (also true) ArgumentCountError. */` |
 |     25 |  360 | `		return PH7_VmThrowException(pCtx,"ValueError","%s",zBad);` |
 |      - |  361 | `	}` |
-|   2263 |  362 | `	if( nValues < required ){` |
+|   4121 |  362 | `	if( nValues < required ){` |
 |     29 |  363 | `		if( bVararg ){` |
 |     13 |  364 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
 |      4 |  365 | `				"The arguments array must contain %d items, %d given",required,nValues);` |
@@ -377,8 +377,8 @@ Coverage: 548/620 lines (88.39%)
 |     31 |  367 | `		return PH7_VmThrowException(pCtx,"ArgumentCountError",` |
 |     10 |  368 | `			"%d arguments are required, %d given",required+nFixed,nValues+nFixed);` |
 |      - |  369 | `	}` |
-|   2235 |  370 | `	return PH7_OK;` |
-|   1146 |  371 | `}` |
+|   4093 |  370 | `	return PH7_OK;` |
+|   2072 |  371 | `}` |
 |      - |  372 | `/*` |
 |      - |  373 | `` * PHP 8: a printf-family `$format` argument is a `string` parameter — scalars`` |
 |      - |  374 | ` * (int/float/bool) and null coerce to a string, but an array/object/resource` |
@@ -401,16 +401,16 @@ Coverage: 548/620 lines (88.39%)
 |      - |  391 | `	}` |
 |     28 |  392 | `	return PH7_OK;` |
 |     16 |  393 | `}` |
-|   2282 |  394 | `PH7_PRIVATE sxi32 PH7_FormatCheckFormatArg(ph7_context *pCtx,ph7_value *pArg,int iArg)` |
+|   4140 |  394 | `PH7_PRIVATE sxi32 PH7_FormatCheckFormatArg(ph7_context *pCtx,ph7_value *pArg,int iArg)` |
 |      5 |  395 | `{` |
-|   2287 |  396 | `	if( ph7_value_is_array(pArg) \|\| ph7_value_is_object(pArg) \|\| ph7_value_is_resource(pArg) ){` |
+|   4145 |  396 | `	if( ph7_value_is_array(pArg) \|\| ph7_value_is_object(pArg) \|\| ph7_value_is_resource(pArg) ){` |
 |      - |  397 | `		char zBuf[64];` |
 |    ! 0 |  398 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
 |      - |  399 | `			"%s(): Argument #%d ($format) must be of type string, %s given",` |
 |    ! 0 |  400 | `			ph7_function_name(pCtx),iArg,VmValueGivenName(pArg,zBuf,sizeof(zBuf)));` |
 |      - |  401 | `	}` |
-|   2287 |  402 | `	return PH7_OK;` |
-|   1146 |  403 | `}` |
+|   4145 |  402 | `	return PH7_OK;` |
+|   2072 |  403 | `}` |
 |      - |  404 | `/*` |
 |      - |  405 | ` * Format a given string.` |
 |      - |  406 | ` * The root program.  All variations call this core.` |
@@ -425,7 +425,7 @@ Coverage: 548/620 lines (88.39%)
 |      - |  415 | ` *   zIn       This is the format string, as in the usual print.` |
 |      - |  416 | ` *   apArg     This is a pointer to a list of arguments.` |
 |      - |  417 | ` */` |
-|   2194 |  418 | `PH7_PRIVATE sxi32 PH7_InputFormat(` |
+|   4052 |  418 | `PH7_PRIVATE sxi32 PH7_InputFormat(` |
 |      - |  419 | `	int (*xConsumer)(ph7_context *,const char *,int,void *), /* Format consumer */` |
 |      - |  420 | `	ph7_context *pCtx,  /* call context */` |
 |      - |  421 | `	const char *zIn,    /* Format string */` |
@@ -436,9 +436,9 @@ Coverage: 548/620 lines (88.39%)
 |      - |  426 | `	int vf              /* TRUE if called from vfprintf,vsprintf context */` |
 |      - |  427 | `	)` |
 |      5 |  428 | `{` |
-|   2199 |  429 | `	char spaces[] = "                                                  ";` |
+|   4057 |  429 | `	char spaces[] = "                                                  ";` |
 |      - |  430 | `#define etSPACESIZE ((int)sizeof(spaces)-1)` |
-|   2199 |  431 | `	const char *zCur,*zEnd = &zIn[nByte];` |
+|   4057 |  431 | `	const char *zCur,*zEnd = &zIn[nByte];` |
 |      - |  432 | `	char *zBuf,zWorker[PH7_FMT_BUFSIZ];       /* Working buffer */` |
 |      - |  433 | `	const ph7_fmt_info *pInfo;  /* Pointer to the appropriate info structure */` |
 |      - |  434 | `	int flag_alternateform; /* True if "#" flag is present */` |
@@ -486,15 +486,15 @@ Coverage: 548/620 lines (88.39%)
 |      - |  476 | `	int bExplicitPrec;` |
 |      - |  477 | `	/* zExtra (unused) removed to prevent compiler warning. */` |
 |      - |  478 | `	int c,rc,n;` |
-|   2199 |  479 | `	sxi32 rcRet = SXRET_OK;   /* Status to hand back through the single exit */` |
-|   2199 |  480 | `	ph7_value *pThrowArg = 0; /* First not-stringable %s argument; throws at the end */` |
+|   4057 |  479 | `	sxi32 rcRet = SXRET_OK;   /* Status to hand back through the single exit */` |
+|   4057 |  480 | `	ph7_value *pThrowArg = 0; /* First not-stringable %s argument; throws at the end */` |
 |      - |  481 | `	int length;              /* Length of the field */` |
 |      - |  482 | `	int prefix;` |
 |      - |  483 | `	sxu8 xtype;              /* Conversion paradigm */` |
 |      - |  484 | `	int width;               /* Width of the current field */` |
 |      - |  485 | `	int idx;` |
-|   2199 |  486 | `	n = (vf == TRUE) ? 0 : 1;` |
-|   2199 |  487 | `	PH7_MemObjInit(pCtx->pVm,&sScratch);` |
+|   4057 |  486 | `	n = (vf == TRUE) ? 0 : 1;` |
+|   4057 |  487 | `	PH7_MemObjInit(pCtx->pVm,&sScratch);` |
 |      - |  488 | `	/* Take the next argument as a scratch COPY: nothing below may write to the` |
 |      - |  489 | `	 * caller's value. Answers 0 exactly as the raw form did when the arguments run` |
 |      - |  490 | `	 * out (a shortfall is refused by PH7_FormatCheckArgCount before we get here).` |
@@ -514,37 +514,37 @@ Coverage: 548/620 lines (88.39%)
 |      - |  504 | `	 * (called by every format builtin before this routine), so the specifier set` |
 |      - |  505 | `	 * seen here is always valid. */` |
 |      - |  506 | `	/* Start the format process */` |
-|   4052 |  507 | `	for(;;){` |
-|   8109 |  508 | `		zCur = zIn;` |
-|  27657 |  509 | `		while( zIn < zEnd && zIn[0] != '%' ){` |
-|  19553 |  510 | `			zIn++;` |
+|   8314 |  507 | `	for(;;){` |
+|  16651 |  508 | `		zCur = zIn;` |
+|  59861 |  509 | `		while( zIn < zEnd && zIn[0] != '%' ){` |
+|  43215 |  510 | `			zIn++;` |
 |      5 |  511 | `		}` |
-|   8109 |  512 | `		if( zCur < zIn ){` |
+|  16651 |  512 | `		if( zCur < zIn ){` |
 |      - |  513 | `			/* Consume chunk verbatim */` |
-|   5661 |  514 | `			rc = xConsumer(pCtx,zCur,(int)(zIn-zCur),pUserData);` |
-|   5661 |  515 | `			if( rc != SXRET_OK ){` |
+|  12755 |  514 | `			rc = xConsumer(pCtx,zCur,(int)(zIn-zCur),pUserData);` |
+|  12755 |  515 | `			if( rc != SXRET_OK ){` |
 |      - |  516 | `				/* Callback requested an abort (e.g. an allocation failure) */` |
 |    ! 0 |  517 | `				break;` |
 |      - |  518 | `			}` |
-|   2828 |  519 | `		}` |
-|   8109 |  520 | `		if( zIn >= zEnd ){` |
+|   6369 |  519 | `		}` |
+|  16651 |  520 | `		if( zIn >= zEnd ){` |
 |      - |  521 | `			/* No more input to process,break immediately */` |
-|   2197 |  522 | `			break;` |
+|   4055 |  522 | `			break;` |
 |      - |  523 | `		}` |
 |      - |  524 | `		/* Find out what flags are present */` |
-|   5917 |  525 | `		flag_leftjustify = flag_plussign =` |
-|   5912 |  526 | `			flag_alternateform = flag_zeropad = 0;` |
+|  12601 |  525 | `		flag_leftjustify = flag_plussign =` |
+|  12596 |  526 | `			flag_alternateform = flag_zeropad = 0;` |
 |      - |  527 | `		/* Reset the pad character: a custom pad ('X) from a PREVIOUS specifier must` |
 |      - |  528 | `		 * not bleed into this one. php resets it for every specifier. */` |
-|   5917 |  529 | `		cPad = ' ';` |
-|   5917 |  530 | `		bDropDigits = 0;` |
-|   5917 |  531 | `		cLeadSign = 0;` |
-|   5917 |  532 | `		nPos = -1;` |
-|   5917 |  533 | `		zIn++; /* Jump the precent sign */` |
-|   2956 |  534 | `		do{` |
-|   8745 |  535 | `			c = zIn[0];` |
-|   8745 |  536 | `			switch( c ){` |
-|   2461 |  537 | `			case '-':   flag_leftjustify = 1;     c = 0;   break;` |
+|  12601 |  529 | `		cPad = ' ';` |
+|  12601 |  530 | `		bDropDigits = 0;` |
+|  12601 |  531 | `		cLeadSign = 0;` |
+|  12601 |  532 | `		nPos = -1;` |
+|  12601 |  533 | `		zIn++; /* Jump the precent sign */` |
+|   6292 |  534 | `		do{` |
+|  18217 |  535 | `			c = zIn[0];` |
+|  18217 |  536 | `			switch( c ){` |
+|   5249 |  537 | `			case '-':   flag_leftjustify = 1;     c = 0;   break;` |
 |    112 |  538 | `			case '+':   flag_plussign = 1;        c = 0;   break;` |
 |     39 |  539 | `			case ' ':   cPad = ' ';               c = 0;   break;` |
 |    180 |  540 | `			case '0':   cPad = '0';               c = 0;   break;` |
@@ -556,12 +556,12 @@ Coverage: 548/620 lines (88.39%)
 |     47 |  546 | `					c = 0;` |
 |     23 |  547 | `				}` |
 |     46 |  548 | `				break;` |
-|   5912 |  549 | `			default:                                       break;` |
+|  12596 |  549 | `			default:                                       break;` |
 |      - |  550 | `			}` |
-|   8745 |  551 | `		}while( c==0 && (zIn++ < zEnd) );` |
+|  18217 |  551 | `		}while( c==0 && (zIn++ < zEnd) );` |
 |      - |  552 | `		/* Get the field width (saturating — see FormatScanNumber) */` |
-|   5917 |  553 | `		width = FormatScanNumber(&zIn,zEnd);` |
-|   5917 |  554 | `		if( zIn < zEnd && zIn[0] == '$' ){` |
+|  12601 |  553 | `		width = FormatScanNumber(&zIn,zEnd);` |
+|  12601 |  554 | `		if( zIn < zEnd && zIn[0] == '$' ){` |
 |      - |  555 | `			/* Position specifer */` |
 |     48 |  556 | `			if( width > 0 ){` |
 |     48 |  557 | `				nPos = vf ? width - 1 : width;` |
@@ -598,9 +598,9 @@ Coverage: 548/620 lines (88.39%)
 |      - |  588 | `		 * such bound; the two zero-pad-into-zWorker sites are what needed the` |
 |      - |  589 | `		 * limit, and both are gone (see cLeadSign). */` |
 |      - |  590 | `		/* Get the precision */` |
-|   5917 |  591 | `		precision = -1;` |
-|   5917 |  592 | `		bExplicitPrec = 0;` |
-|   5917 |  593 | `		if( zIn < zEnd && zIn[0] == '.' ){` |
+|  12601 |  591 | `		precision = -1;` |
+|  12601 |  592 | `		bExplicitPrec = 0;` |
+|  12601 |  593 | `		if( zIn < zEnd && zIn[0] == '.' ){` |
 |    146 |  594 | `			zIn++;` |
 |    146 |  595 | `			bExplicitPrec = ( zIn < zEnd && zIn[0]>='0' && zIn[0]<='9' );` |
 |    146 |  596 | `			precision = FormatScanNumber(&zIn,zEnd);` |
@@ -608,32 +608,32 @@ Coverage: 548/620 lines (88.39%)
 |      - |  598 | `		/* Consume a single 'l' length modifier (a C-ism php accepts and ignores,` |
 |      - |  599 | `		 * e.g. "%ld"); PH7_FormatValidate mirrors this. Exactly one is skipped:` |
 |      - |  600 | `		 * in "%lld" the second 'l' becomes the (unknown) specifier, just like php. */` |
-|   5917 |  601 | `		if( zIn < zEnd && zIn[0] == 'l' ){` |
+|  12601 |  601 | `		if( zIn < zEnd && zIn[0] == 'l' ){` |
 |      9 |  602 | `			zIn++;` |
 |      4 |  603 | `		}` |
-|   5917 |  604 | `		if( zIn >= zEnd ){` |
+|  12601 |  604 | `		if( zIn >= zEnd ){` |
 |      - |  605 | `			/* No more input */` |
 |    ! 0 |  606 | `			break;` |
 |      - |  607 | `		}` |
 |      - |  608 | `		/* Fetch the info entry for the field */` |
-|   5917 |  609 | `		pInfo = 0;` |
-|   5917 |  610 | `		xtype = PH7_FMT_ERROR;` |
-|   5917 |  611 | `		c = zIn[0];` |
-|   5917 |  612 | `		zIn++; /* Jump the format specifer */` |
-|  13335 |  613 | `		for(idx=0; idx< (int)SX_ARRAYSIZE(aFmt); idx++){` |
-|  13335 |  614 | `			if( c==aFmt[idx].fmttype ){` |
-|   5917 |  615 | `				pInfo = &aFmt[idx];` |
-|   5917 |  616 | `				xtype = pInfo->type;` |
-|   5917 |  617 | `				break;` |
+|  12601 |  609 | `		pInfo = 0;` |
+|  12601 |  610 | `		xtype = PH7_FMT_ERROR;` |
+|  12601 |  611 | `		c = zIn[0];` |
+|  12601 |  612 | `		zIn++; /* Jump the format specifer */` |
+|  27521 |  613 | `		for(idx=0; idx< (int)SX_ARRAYSIZE(aFmt); idx++){` |
+|  27521 |  614 | `			if( c==aFmt[idx].fmttype ){` |
+|  12601 |  615 | `				pInfo = &aFmt[idx];` |
+|  12601 |  616 | `				xtype = pInfo->type;` |
+|  12601 |  617 | `				break;` |
 |      - |  618 | `			}` |
-|   3714 |  619 | `		}` |
-|   5917 |  620 | `		zBuf = zWorker; /* Point to the working buffer */` |
-|   5917 |  621 | `		length = 0;` |
+|   7462 |  619 | `		}` |
+|  12601 |  620 | `		zBuf = zWorker; /* Point to the working buffer */` |
+|  12601 |  621 | `		length = 0;` |
 |      - |  622 | `		/* A '0' pad — however it was spelled, "%05d" or the custom "%'05d" — is` |
 |      - |  623 | `		 * also php's "put the sign in front of the padding" rule` |
 |      - |  624 | ``		 * (php_sprintf_appendstring's `(neg \|\| always_sign) && padding == '0'`),`` |
 |      - |  625 | `		 * which is what the two zero-pad blocks below implement. */` |
-|   5917 |  626 | `		flag_zeropad = (cPad == '0');` |
+|  12601 |  626 | `		flag_zeropad = (cPad == '0');` |
 |      - |  627 | `		/* zExtra previously assigned here; not used anywhere, removed. */` |
 |      - |  628 | `		 /*` |
 |      - |  629 | `		  ** At this point, variables are initialized as follows:` |
@@ -650,653 +650,659 @@ Coverage: 548/620 lines (88.39%)
 |      - |  640 | `		  **   precision                   The specified precision.  The default` |
 |      - |  641 | `		  **                               is -1.` |
 |      - |  642 | `		  */` |
-|   5917 |  643 | `		switch(xtype){` |
-|      5 |  644 | `		case PH7_FMT_PERCENT:` |
+|  12601 |  643 | `		switch(xtype){` |
+|     55 |  644 | `		case PH7_FMT_PERCENT:` |
 |      - |  645 | `			/* A literal percent character */` |
-|     11 |  646 | `			zWorker[0] = '%';` |
-|     11 |  647 | `			length = (int)sizeof(char);` |
-|     11 |  648 | `			break;` |
-|      4 |  649 | `		case PH7_FMT_CHARX:` |
+|    111 |  646 | `			zWorker[0] = '%';` |
+|    111 |  647 | `			length = (int)sizeof(char);` |
+|    111 |  648 | `			break;` |
+|      5 |  649 | `		case PH7_FMT_CHARX:` |
 |      - |  650 | `			/* The argument is treated as an integer, and presented as the character` |
 |      - |  651 | `			 * with that ASCII value` |
 |      - |  652 | `			 */` |
-|      9 |  653 | `			pArg = NEXT_ARG;` |
-|      9 |  654 | `			if( pArg == 0 ){` |
+|     12 |  653 | `			pArg = NEXT_ARG;` |
+|     12 |  654 | `			if( pArg == 0 ){` |
 |    ! 0 |  655 | `				c = 0;` |
 |    ! 0 |  656 | `			}else{` |
-|      9 |  657 | `				c = ph7_value_to_int(pArg);` |
-|      - |  658 | `			}` |
-|      - |  659 | `			/* NUL byte is an acceptable value */` |
-|      9 |  660 | `			zWorker[0] = (char)c;` |
-|      9 |  661 | `			length = (int)sizeof(char);` |
-|      - |  662 | `			/* php's 'c' is the one conversion with no field: it appends the byte` |
-|      - |  663 | `			 * through php_sprintf_appendchar, which takes neither a width nor an` |
-|      - |  664 | `			 * alignment, so "%5c" and "%-5c" are both a bare one-byte string. */` |
-|      9 |  665 | `			width = 0;` |
-|      9 |  666 | `			break;` |
-|   2244 |  667 | `		case PH7_FMT_STRING:` |
-|      - |  668 | `			/* the argument is treated as and presented as a string */` |
-|   4493 |  669 | `			pArg = NEXT_ARG;` |
-|   4493 |  670 | `			if( pArg == 0 ){` |
-|    ! 0 |  671 | `				length = 0;` |
-|   4493 |  672 | `			}else if( PH7_MemObjIsNotStringable(pArg) ){` |
-|      - |  673 | `				/* php's user-visible coercion for %s (§2), object half: a class with` |
-|      - |  674 | `				 * no __toString() is the catchable "could not be converted to` |
-|      - |  675 | `				 * string" Error — but php does NOT let it interrupt the format. The` |
-|      - |  676 | `				 * conversion substitutes NOTHING, the format runs to the end, the` |
-|      - |  677 | `				 * output is written, and only then does the Error surface. So the` |
-|      - |  678 | `				 * throw cannot be RAISED here: PHL's VmThrowException runs an` |
-|      - |  679 | `				 * in-place catch immediately, which would print the format's tail` |
-|      - |  680 | `				 * after the catch body. Remember the value and throw once the` |
-|      - |  681 | `				 * output is out (see the tail of this function). */` |
-|     21 |  682 | `				zBuf = "";` |
-|     21 |  683 | `				length = 0;` |
-|     21 |  684 | `				if( pThrowArg == 0 ){` |
-|      - |  685 | `					/* The CALLER's value, not the scratch copy: this one is used after` |
-|      - |  686 | `					 * the loop, once the scratch has been reloaded (and released). */` |
-|     19 |  687 | `					pThrowArg = pRawArg;` |
-|      9 |  688 | `				}` |
-|     11 |  689 | `			}else{` |
-|      - |  690 | `				/* An ARRAY warns and renders as "Array"; a Stringable renders. */` |
-|      - |  691 | `				const char *zSv;` |
-|   4473 |  692 | `				sxi32 rcSv = PH7_ValueToStringUV(pCtx,pArg,&zSv,&length);` |
-|   4473 |  693 | `				zBuf = (char *)zSv;` |
-|   4473 |  694 | `				if( rcSv != SXRET_OK ){` |
-|      - |  695 | `					/* A __toString() that THREW: unlike the case above this one` |
-|      - |  696 | `					 * cannot be predicted, and the throw has already run any` |
-|      - |  697 | `					 * in-place catch. Stop formatting rather than emitting the` |
-|      - |  698 | `					 * format's tail after the catch body — every other builtin that` |
-|      - |  699 | `					 * calls user code (array_map, usort) stops the same way. php` |
-|      - |  700 | `					 * keeps going and prints the tail; recorded divergence, and` |
-|      - |  701 | `					 * both engines raise the same exception. */` |
-|      3 |  702 | `					rcRet = rcSv;` |
-|      3 |  703 | `					goto Done;` |
-|      - |  704 | `				}` |
-|      - |  705 | `			}` |
-|   4491 |  706 | `			if( length < 1 ){` |
-|      - |  707 | `				/* An empty %s substitutes NOTHING in php. PH7 substituted a single` |
-|      - |  708 | `				 * SPACE here, so printf("[%s]","") printed "[ ]" and any format with an` |
-|      - |  709 | `				 * absent optional part gained a stray space. */` |
-|     38 |  710 | `				zBuf = "";` |
-|     38 |  711 | `				length = 0;` |
-|     18 |  712 | `			}` |
-|   4491 |  713 | `			if( bExplicitPrec && precision<length ){` |
-|      7 |  714 | `				length = precision;` |
-|      3 |  715 | `			}` |
-|   4491 |  716 | `			break;` |
-|    598 |  717 | `		case PH7_FMT_RADIX: {` |
-|      - |  718 | `			/* The digits are produced from an UNSIGNED accumulator. Two php rules` |
-|      - |  719 | `			 * ride on that, and the inherited signed one got both wrong:` |
-|      - |  720 | `			 *` |
-|      - |  721 | `			 *  - only %d is SIGNED. %u/%x/%X/%o/%b REINTERPRET the same 64 bits as` |
-|      - |  722 | `			 *    unsigned (php_sprintf_appenduint / php_sprintf_append2n cast to` |
-|      - |  723 | `			 *    zend_ulong), so sprintf("%x",-1) is "ffffffffffffffff", not the` |
-|      - |  724 | `			 *    magnitude "1" this used to print for every negative value;` |
-|      - |  725 | `			 *  - the magnitude of PHP_INT_MIN has no signed representation, so` |
-|      - |  726 | ``			 *    `iVal = -iVal` was signed overflow — undefined, and the guard`` |
-|      - |  727 | ``			 *    testing for it afterwards (`if( iVal < 0 )`) is exactly what a`` |
-|      - |  728 | `			 *    compiler may assume cannot happen. It did: the negative` |
-|      - |  729 | ``			 *    accumulator reached `cset[iVal%base]`, indexing BEFORE the digit`` |
-|      - |  730 | `			 *    table, so sprintf("%d",PHP_INT_MIN) printed whatever bytes sat` |
-|      - |  731 | `			 *    there. Unsigned negation is well-defined for every input.` |
-|      - |  732 | `			 */` |
-|      - |  733 | `			sxu64 uVal;` |
-|   1201 |  734 | `			pArg = NEXT_ARG;` |
-|   1201 |  735 | `			if( pArg == 0 ){` |
-|    ! 0 |  736 | `				iVal = 0;` |
-|    ! 0 |  737 | `			}else{` |
-|   1201 |  738 | `				iVal = ph7_value_to_int64(pArg);` |
-|      - |  739 | `			}` |
-|      - |  740 | `			/* An integer conversion has no PRECISION in php: the '.' part of the` |
-|      - |  741 | ``			 * specifier never reaches the digits. `%.5d` of 42 is "42", not the`` |
-|      - |  742 | `			 * "00042" C would print — php's php_sprintf_appendint simply is not` |
-|      - |  743 | `			 * handed one. For the other radices the same absence is louder:` |
-|      - |  744 | `			 * php_sprintf_append2n forwards a max_width of 0 with the` |
-|      - |  745 | `			 * "precision was given" flag set, so ANY explicit precision truncates` |
-|      - |  746 | ``			 * the digits to nothing and `%.1x` of 42 is the EMPTY string (padded`` |
-|      - |  747 | `			 * to $width, which is why "%5.1x" is five spaces). Reproduced rather` |
-|      - |  748 | `			 * than smoothed over — parity is binding (§10). */` |
-|   1201 |  749 | `			bDropDigits = (bExplicitPrec && pInfo->base != 10);` |
-|   1201 |  750 | `			if( precision >= 0 ){` |
-|     19 |  751 | `				precision = -1;` |
-|      9 |  752 | `			}` |
-|      - |  753 | `			/* php's "Can't right-pad 0's on integers" (php_sprintf_appendint, which` |
-|      - |  754 | `			 * %u shares) — and only there: %x/%X/%o/%b go through append2n and %e/%f` |
-|      - |  755 | `			 * through appenddouble, which both DO right-pad with zeros, so` |
-|      - |  756 | `			 * "%-08x" of 5 really is "50000000" while "%-08d" is "5       ".` |
-|      - |  757 | `			 * base 10 is exactly the 'd'/'u' pair of the table above. */` |
-|   1201 |  758 | `			if( flag_leftjustify && flag_zeropad && pInfo->base == 10 ){` |
-|     19 |  759 | `				flag_zeropad = 0;` |
-|     19 |  760 | `				cPad = ' ';` |
-|      9 |  761 | `			}` |
-|      - |  762 | `        /* For the format %#x, the value zero is printed "0" not "0x0". */` |
-|   1201 |  763 | `        if( iVal==0 ) flag_alternateform = 0;` |
-|   1201 |  764 | `        if( pInfo->flags & PH7_FMT_FLAG_SIGNED ){` |
-|   1039 |  765 | `          if( iVal<0 ){` |
-|    116 |  766 | `            uVal = (sxu64)0 - (sxu64)iVal;` |
-|    116 |  767 | `            prefix = '-';` |
-|     59 |  768 | `          }else{` |
-|    925 |  769 | `            uVal = (sxu64)iVal;` |
-|      - |  770 | `            /* php's ' ' is a PAD selector, not C's space-for-a-positive-sign, so` |
-|      - |  771 | `             * '+' is the only flag that prefixes a non-negative value. */` |
-|    925 |  772 | `            prefix = flag_plussign ? '+' : 0;` |
-|      - |  773 | `          }` |
-|    522 |  774 | `        }else{` |
-|    163 |  775 | `			uVal = (sxu64)iVal;` |
-|    163 |  776 | `			prefix = 0;` |
-|      - |  777 | `		}` |
-|      - |  778 | `        /* Zero padding is a RIGHT-aligned idea: it fills between the sign and the` |
-|      - |  779 | `         * first digit. Left-aligned, php pads on the far side like any other pad` |
-|      - |  780 | `         * character (append2n hands the '0' straight to appendstring's ALIGN_LEFT` |
-|      - |  781 | `         * arm), so "%-08x" of 5 is "50000000". */` |
-|   1201 |  782 | `        if( flag_zeropad && !flag_leftjustify ){` |
-|    112 |  783 | `          cLeadSign = (char)prefix;` |
-|    112 |  784 | `          prefix = 0;` |
-|     55 |  785 | `        }` |
-|   1201 |  786 | `        zBuf = &zWorker[PH7_FMT_BUFSIZ-1];` |
-|      - |  787 | `        {` |
-|      - |  788 | `          const char *cset;` |
-|      - |  789 | `          sxu64 base;` |
-|   1201 |  790 | `          cset = pInfo->charset;` |
-|   1201 |  791 | `          base = (sxu64)pInfo->base;` |
-|    598 |  792 | `          do{                                           /* Convert to ascii */` |
-|   4009 |  793 | `            *(--zBuf) = cset[uVal%base];` |
-|   4009 |  794 | `            uVal = uVal/base;` |
-|   4009 |  795 | `          }while( uVal>0 );` |
-|      - |  796 | `        }` |
-|   1201 |  797 | `		length = (int)(&zWorker[PH7_FMT_BUFSIZ-1]-zBuf);` |
-|      - |  798 | `        /* No zero fill here: a radix conversion has no precision to fill to, and` |
-|      - |  799 | `         * the '0' pad is the output block's job now (see cLeadSign). */` |
-|   1201 |  800 | `        if( prefix ) *(--zBuf) = (char)prefix;               /* Add sign */` |
-|   1201 |  801 | `        if( flag_alternateform && pInfo->prefix ){      /* Add "0" or "0x" */` |
-|      - |  802 | `          char *pre, x;` |
-|    ! 0 |  803 | `          pre = pInfo->prefix;` |
-|    ! 0 |  804 | `          if( *zBuf!=pre[0] ){` |
-|    ! 0 |  805 | `            for(pre=pInfo->prefix; (x=(*pre))!=0; pre++) *(--zBuf) = x;` |
-|    ! 0 |  806 | `          }` |
-|    ! 0 |  807 | `        }` |
-|   1201 |  808 | `		length = (int)(&zWorker[PH7_FMT_BUFSIZ-1]-zBuf);` |
-|   1201 |  809 | `		if( bDropDigits ){` |
-|      9 |  810 | `			length = 0;` |
-|      4 |  811 | `		}` |
-|   1201 |  812 | `		break;` |
-|      - |  813 | `		}` |
-|    105 |  814 | `		case PH7_FMT_FLOAT:` |
-|      - |  815 | `		case PH7_FMT_EXP:` |
-|      - |  816 | `		case PH7_FMT_GENERIC:{` |
-|      - |  817 | `#ifndef PH7_OMIT_FLOATING_POINT` |
-|      - |  818 | `		double realvalue;` |
-|      - |  819 | `		char zFmt[8];` |
-|      - |  820 | `		int nOut, nFmt;` |
-|    212 |  821 | `		pArg = NEXT_ARG;` |
-|    212 |  822 | `		if( pArg == 0 ){` |
-|    ! 0 |  823 | `			realvalue = 0;` |
-|    ! 0 |  824 | `		}else{` |
-|    212 |  825 | `			realvalue = ph7_value_to_double(pArg);` |
-|      - |  826 | `		}` |
-|      - |  827 | `		/* php prints the IEEE specials bare — NaN / INF / -INF with no width` |
-|      - |  828 | `		 * padding, precision, or sign flags (php_sprintf_appenddouble). */` |
-|    212 |  829 | `		if( PH7_IS_NAN(realvalue) ){` |
-|     21 |  830 | `			zBuf = "NaN";` |
-|     21 |  831 | `			length = 3;` |
-|     21 |  832 | `			width = 0;` |
-|     21 |  833 | `			break;` |
-|      - |  834 | `		}` |
-|    192 |  835 | `		if( PH7_IS_INF(realvalue) ){` |
-|     37 |  836 | `			if( realvalue < 0.0 ){` |
-|     15 |  837 | `				zBuf = "-INF";` |
-|     15 |  838 | `				length = 4;` |
-|      8 |  839 | `			}else{` |
-|     23 |  840 | `				zBuf = "INF";` |
-|     23 |  841 | `				length = 3;` |
-|      - |  842 | `			}` |
-|     37 |  843 | `			width = 0;` |
-|     37 |  844 | `			break;` |
-|      - |  845 | `		}` |
-|    156 |  846 | `		if( precision<0 ) precision = 6;         /* Set default precision */` |
-|    156 |  847 | `		if( precision > 53 ){` |
-|      - |  848 | `			/* php's FORMAT_CONV_MAX_PRECISION cap, with the same E_NOTICE` |
-|      - |  849 | `			 * (message prefixed with the active function's name, like` |
-|      - |  850 | `			 * php_error_docref). */` |
-|      - |  851 | `			char zMsg[160];` |
-|      4 |  852 | `			SyBufferFormat(zMsg,sizeof(zMsg),` |
-|      - |  853 | `				"%z(): Requested precision of %d digits was truncated to PHP maximum of %d digits",` |
-|      2 |  854 | `				&pCtx->pFunc->sName,precision,53);` |
-|      3 |  855 | `			PH7_VmThrowError(pCtx->pVm,0,E_NOTICE,zMsg);` |
-|      3 |  856 | `			precision = 53;` |
-|      1 |  857 | `		}` |
-|      - |  858 | ``		/* php's %f/%e extract the sign via `num < 0`, so negative zero prints`` |
-|      - |  859 | `		 * unsigned there — while %g (php_gcvt on the raw value) keeps "-0". */` |
-|    156 |  860 | `		if( xtype!=PH7_FMT_GENERIC && realvalue == 0.0 ){` |
-|      9 |  861 | `			realvalue = 0.0;` |
-|      4 |  862 | `		}` |
-|      - |  863 | `		/* php's float conversions are correctly rounded (zend_dtoa); use libc` |
-|      - |  864 | `		 * snprintf as the digit engine (the byte-exact-floats rule — the old` |
-|      - |  865 | `		 * hand-rolled vxGetdigit loop stopped at 16 significant digits, so` |
-|      - |  866 | `		 * e.g. %f of 1e308 printed zeros where php prints the exact binary64` |
-|      - |  867 | `		 * expansion), then post-process into php's exact shapes below. */` |
-|    156 |  868 | `		nFmt = 0;` |
-|    156 |  869 | `		zFmt[nFmt++] = '%';` |
-|    156 |  870 | `		if( flag_alternateform ) zFmt[nFmt++] = '#';` |
-|      - |  871 | `		/* php's ' ' flag selects space PADDING (its default), not C's` |
-|      - |  872 | `		 * space-for-positive-sign — so flag_blanksign is NOT forwarded. */` |
-|    156 |  873 | `		if( flag_plussign ) zFmt[nFmt++] = '+';` |
-|    156 |  874 | `		zFmt[nFmt++] = '.';` |
-|    156 |  875 | `		zFmt[nFmt++] = '*';` |
-|    204 |  876 | `		zFmt[nFmt++] = (char)(xtype==PH7_FMT_FLOAT ? 'f' :` |
-|     32 |  877 | `			(xtype==PH7_FMT_EXP ? ((pInfo->charset[0]=='E') ? 'E' : 'e')` |
-|     32 |  878 | `			                    : ((pInfo->charset[0]=='E') ? 'G' : 'g')));` |
-|    156 |  879 | `		zFmt[nFmt] = 0;` |
-|    156 |  880 | `		nOut = snprintf(zWorker,sizeof(zWorker),zFmt,precision,realvalue);` |
-|    156 |  881 | `		if( nOut < 0 \|\| nOut >= (int)sizeof(zWorker) ){` |
-|      - |  882 | `			/* Cannot happen with precision capped at 53 (%f of DBL_MAX is` |
-|      - |  883 | `			 * ~365 bytes); keep the truncated output rather than overrun. */` |
-|    ! 0 |  884 | `			nOut = (int)SyStrlen(zWorker);` |
-|    ! 0 |  885 | `		}` |
-|    156 |  886 | `		nOut = (int)PH7_PhpFloatShape(zWorker,(sxi32)nOut,xtype==PH7_FMT_GENERIC);` |
-|    156 |  887 | `		zBuf = zWorker;` |
-|    156 |  888 | `		length = nOut;` |
-|      - |  889 | `		/* The zero padding goes between the sign snprintf wrote and the first` |
-|      - |  890 | `		 * digit, so hand the sign to the output block and leave the rest here. */` |
-|    154 |  891 | `		if( flag_zeropad && !flag_leftjustify` |
-|     22 |  892 | `		 && (zWorker[0]=='-' \|\| zWorker[0]=='+') ){` |
-|     11 |  893 | `			cLeadSign = zWorker[0];` |
-|     11 |  894 | `			zBuf++;` |
-|     11 |  895 | `			length--;` |
-|      5 |  896 | `		}` |
-|      - |  897 | `#else` |
-|      - |  898 | `         zBuf = " ";` |
-|      - |  899 | `		 length = (int)sizeof(char);` |
-|      - |  900 | `#endif /* PH7_OMIT_FLOATING_POINT */` |
-|    156 |  901 | `		 break;` |
-|      - |  902 | `							 }` |
-|    ! 0 |  903 | `		default:` |
-|      - |  904 | `			/* Unreachable: PH7_FormatValidate() rejects unknown specifiers with a` |
-|      - |  905 | `			 * catchable ValueError before formatting begins. Kept as a defensive` |
-|      - |  906 | `			 * no-op that emits nothing. */` |
-|    ! 0 |  907 | `			length = 0;` |
-|    ! 0 |  908 | `			break;` |
-|      - |  909 | `		}` |
-|      - |  910 | `		 /*` |
-|      - |  911 | `		 ** The text of the conversion is pointed to by "zBuf" and is` |
-|      - |  912 | `		 ** "length" characters long.The field width is "width".Do` |
-|      - |  913 | `		 ** the output.` |
-|      - |  914 | `		 */` |
-|   5915 |  915 | `    if( cLeadSign ){` |
-|      - |  916 | `      /* php writes the sign ahead of a '0' pad run; it fills one byte of the` |
-|      - |  917 | `       * field, so the padding below has that much less to do. */` |
-|     37 |  918 | `      rc = xConsumer(pCtx,&cLeadSign,1,pUserData);` |
-|     37 |  919 | `      if( rc != SXRET_OK ){` |
-|    ! 0 |  920 | `        rcRet = SXERR_ABORT;` |
-|    ! 0 |  921 | `        goto Done;` |
-|      - |  922 | `      }` |
-|     37 |  923 | `      width--;` |
-|     18 |  924 | `    }` |
-|   5915 |  925 | `    if( width > length ){` |
-|      - |  926 | `      /* Fill the pad buffer with THIS specifier's pad character. */` |
-| 124751 |  927 | `      for( idx = 0 ; idx < etSPACESIZE ; ++idx ){ spaces[idx] = cPad; }` |
-|   1223 |  928 | `    }` |
-|   5915 |  929 | `    if( !flag_leftjustify ){` |
-|      - |  930 | `      register int nspace;` |
-|   3459 |  931 | `      nspace = width-length;` |
-|   3459 |  932 | `      if( nspace>0 ){` |
-|   2335 |  933 | `        while( nspace>=etSPACESIZE ){` |
-|   2103 |  934 | `			rc = xConsumer(pCtx,spaces,etSPACESIZE,pUserData);` |
-|   2103 |  935 | `			if( rc != SXRET_OK ){` |
-|    ! 0 |  936 | `				rcRet = SXERR_ABORT; /* Consumer routine request an operation abort */` |
-|    ! 0 |  937 | `				goto Done;` |
-|      - |  938 | `			}` |
-|   2103 |  939 | `			nspace -= etSPACESIZE;` |
-|      1 |  940 | `        }` |
-|    233 |  941 | `        if( nspace>0 ){` |
-|    233 |  942 | `			rc = xConsumer(pCtx,spaces,(unsigned int)nspace,pUserData);` |
-|    233 |  943 | `			if( rc != SXRET_OK ){` |
-|    ! 0 |  944 | `				rcRet = SXERR_ABORT; /* Consumer routine request an operation abort */` |
-|    ! 0 |  945 | `				goto Done;` |
-|      - |  946 | `			}` |
-|    115 |  947 | `		}` |
-|    115 |  948 | `      }` |
-|   1727 |  949 | `    }` |
-|   5915 |  950 | `    if( length>0 ){` |
-|   5869 |  951 | `		rc = xConsumer(pCtx,zBuf,(unsigned int)length,pUserData);` |
-|   5869 |  952 | `		if( rc != SXRET_OK ){` |
-|    ! 0 |  953 | `		  rcRet = SXERR_ABORT; /* Consumer routine request an operation abort */` |
-|    ! 0 |  954 | `		  goto Done;` |
-|      - |  955 | `		}` |
-|   2932 |  956 | `    }` |
-|   5915 |  957 | `    if( flag_leftjustify ){` |
-|      - |  958 | `      register int nspace;` |
-|   2461 |  959 | `      nspace = width-length;` |
-|   2461 |  960 | `      if( nspace>0 ){` |
-|   2689 |  961 | `        while( nspace>=etSPACESIZE ){` |
-|    469 |  962 | `			rc = xConsumer(pCtx,spaces,etSPACESIZE,pUserData);` |
-|    469 |  963 | `			if( rc != SXRET_OK ){` |
-|    ! 0 |  964 | `				rcRet = SXERR_ABORT; /* Consumer routine request an operation abort */` |
-|    ! 0 |  965 | `				goto Done;` |
-|      - |  966 | `			}` |
-|    469 |  967 | `			nspace -= etSPACESIZE;` |
-|      1 |  968 | `        }` |
-|   2221 |  969 | `        if( nspace>0 ){` |
-|   2221 |  970 | `			rc = xConsumer(pCtx,spaces,(unsigned int)nspace,pUserData);` |
-|   2221 |  971 | `			if( rc != SXRET_OK ){` |
-|    ! 0 |  972 | `				rcRet = SXERR_ABORT; /* Consumer routine request an operation abort */` |
-|    ! 0 |  973 | `				goto Done;` |
-|      - |  974 | `			}` |
-|   1108 |  975 | `		}` |
-|   1108 |  976 | `      }` |
-|   1228 |  977 | `    }` |
-|      5 |  978 | ` }/* for(;;) */` |
-|   2197 |  979 | `	if( pThrowArg ){` |
-|      - |  980 | `		/* The format ran to completion and its output is out; raise php's Error` |
-|      - |  981 | ``		 * now. `printf("A[%s]B", new P())` prints "A[]B" and THEN throws, while`` |
-|      - |  982 | `		 * sprintf()'s finished result is simply discarded by the unwind. */` |
-|     19 |  983 | `		PH7_MemObjRelease(&sScratch);` |
-|     19 |  984 | `		return PH7_MemObjToStringUV(pThrowArg);` |
-|      - |  985 | `	}` |
-|   1087 |  986 | `Done:` |
-|      - |  987 | `	/* Single exit: the scratch copy holds a reference on an array/instance` |
-|      - |  988 | `	 * argument it was loaded from, so every way out releases it. */` |
-|   2181 |  989 | `	PH7_MemObjRelease(&sScratch);` |
-|   2181 |  990 | `	return rcRet;` |
-|   1102 |  991 | `}` |
-|      - |  992 | `/*` |
-|      - |  993 | ` * Callback [i.e: Formatted input consumer] of the sprintf function.` |
-|      - |  994 | ` */` |
-|   4680 |  995 | `static int sprintfConsumer(ph7_context *pCtx,const char *zInput,int nLen,void *pUserData)` |
-|      4 |  996 | `{` |
-|      - |  997 | `	/* pUserData points to the caller's allocation-rc slot so an OOM during the` |
-|      - |  998 | `	 * result append is surfaced (the builtin raises a fatal); returning the` |
-|      - |  999 | `	 * non-OK rc also stops the format loop. */` |
-|   4684 | 1000 | `	sxi32 *pRc = (sxi32 *)pUserData;` |
-|   4684 | 1001 | `	*pRc = ph7_result_string(pCtx,zInput,nLen);` |
-|   4684 | 1002 | `	return *pRc;` |
-|      4 | 1003 | `}` |
-|      - | 1004 | `/*` |
-|      - | 1005 | ` * string sprintf(string $format[,mixed $args [, mixed $... ]])` |
-|      - | 1006 | ` *  Return a formatted string.` |
-|      - | 1007 | ` * Parameters` |
-|      - | 1008 | ` *  $format` |
-|      - | 1009 | ` *    The format string (see block comment above)` |
-|      - | 1010 | ` * Return` |
-|      - | 1011 | ` *  A string produced according to the formatting string format.` |
-|      - | 1012 | ` */` |
-|    668 | 1013 | `PH7_PRIVATE int PH7_builtin_sprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      4 | 1014 | `{` |
-|      - | 1015 | `	sxi32 rcFmt;` |
-|      - | 1016 | `	const char *zFormat;` |
-|    672 | 1017 | `	sxi32 rc = SXRET_OK;` |
-|      - | 1018 | `	int nLen;` |
-|    672 | 1019 | `	if( nArg < 1 ){` |
-|      - | 1020 | `		/* Missing arguments,return the empty string */` |
-|    ! 0 | 1021 | `		ph7_result_string(pCtx,"",0);` |
-|    ! 0 | 1022 | `		return PH7_OK;` |
-|      - | 1023 | `	}` |
-|      - | 1024 | `	/* PHP 8: a non-string-coercible $format (array/object/resource) is a TypeError. */` |
-|    672 | 1025 | `	rc = PH7_FormatCheckFormatArg(pCtx,apArg[0],1);` |
-|    672 | 1026 | `	if( rc != PH7_OK ){` |
-|    ! 0 | 1027 | `		return rc;` |
-|      - | 1028 | `	}` |
-|      - | 1029 | `	/* Extract the string format (scalars/null coerce). */` |
-|    672 | 1030 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
-|    672 | 1031 | `	if( nLen < 1 ){` |
-|      - | 1032 | `		/* Empty string */` |
-|    ! 0 | 1033 | `		ph7_result_string(pCtx,"",0);` |
-|    ! 0 | 1034 | `		return PH7_OK;` |
-|      - | 1035 | `	}` |
-|      - | 1036 | `	/* PHP 8: an unknown format specifier throws a catchable ValueError before any` |
-|      - | 1037 | `	 * output; propagate the throw status verbatim. */` |
-|    672 | 1038 | `	rc = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,nArg-1,1,FALSE);` |
-|    672 | 1039 | `	if( rc != PH7_OK ){` |
-|     41 | 1040 | `		return rc;` |
+|      - |  657 | `				/* An integer conversion is a CAST site: php warns here for a float` |
+|      - |  658 | `				 * no int can hold, then formats the wrapped value. */` |
+|     12 |  659 | `				PH7_MemObjWarnIntCast(pArg);` |
+|     12 |  660 | `				c = ph7_value_to_int(pArg);` |
+|      - |  661 | `			}` |
+|      - |  662 | `			/* NUL byte is an acceptable value */` |
+|     12 |  663 | `			zWorker[0] = (char)c;` |
+|     12 |  664 | `			length = (int)sizeof(char);` |
+|      - |  665 | `			/* php's 'c' is the one conversion with no field: it appends the byte` |
+|      - |  666 | `			 * through php_sprintf_appendchar, which takes neither a width nor an` |
+|      - |  667 | `			 * alignment, so "%5c" and "%-5c" are both a bare one-byte string. */` |
+|     12 |  668 | `			width = 0;` |
+|     12 |  669 | `			break;` |
+|   5005 |  670 | `		case PH7_FMT_STRING:` |
+|      - |  671 | `			/* the argument is treated as and presented as a string */` |
+|  10009 |  672 | `			pArg = NEXT_ARG;` |
+|  10009 |  673 | `			if( pArg == 0 ){` |
+|    ! 0 |  674 | `				length = 0;` |
+|  10009 |  675 | `			}else if( PH7_MemObjIsNotStringable(pArg) ){` |
+|      - |  676 | `				/* php's user-visible coercion for %s (§2), object half: a class with` |
+|      - |  677 | `				 * no __toString() is the catchable "could not be converted to` |
+|      - |  678 | `				 * string" Error — but php does NOT let it interrupt the format. The` |
+|      - |  679 | `				 * conversion substitutes NOTHING, the format runs to the end, the` |
+|      - |  680 | `				 * output is written, and only then does the Error surface. So the` |
+|      - |  681 | `				 * throw cannot be RAISED here: PHL's VmThrowException runs an` |
+|      - |  682 | `				 * in-place catch immediately, which would print the format's tail` |
+|      - |  683 | `				 * after the catch body. Remember the value and throw once the` |
+|      - |  684 | `				 * output is out (see the tail of this function). */` |
+|     21 |  685 | `				zBuf = "";` |
+|     21 |  686 | `				length = 0;` |
+|     21 |  687 | `				if( pThrowArg == 0 ){` |
+|      - |  688 | `					/* The CALLER's value, not the scratch copy: this one is used after` |
+|      - |  689 | `					 * the loop, once the scratch has been reloaded (and released). */` |
+|     19 |  690 | `					pThrowArg = pRawArg;` |
+|      9 |  691 | `				}` |
+|     11 |  692 | `			}else{` |
+|      - |  693 | `				/* An ARRAY warns and renders as "Array"; a Stringable renders. */` |
+|      - |  694 | `				const char *zSv;` |
+|   9989 |  695 | `				sxi32 rcSv = PH7_ValueToStringUV(pCtx,pArg,&zSv,&length);` |
+|   9989 |  696 | `				zBuf = (char *)zSv;` |
+|   9989 |  697 | `				if( rcSv != SXRET_OK ){` |
+|      - |  698 | `					/* A __toString() that THREW: unlike the case above this one` |
+|      - |  699 | `					 * cannot be predicted, and the throw has already run any` |
+|      - |  700 | `					 * in-place catch. Stop formatting rather than emitting the` |
+|      - |  701 | `					 * format's tail after the catch body — every other builtin that` |
+|      - |  702 | `					 * calls user code (array_map, usort) stops the same way. php` |
+|      - |  703 | `					 * keeps going and prints the tail; recorded divergence, and` |
+|      - |  704 | `					 * both engines raise the same exception. */` |
+|      3 |  705 | `					rcRet = rcSv;` |
+|      3 |  706 | `					goto Done;` |
+|      - |  707 | `				}` |
+|      - |  708 | `			}` |
+|  10007 |  709 | `			if( length < 1 ){` |
+|      - |  710 | `				/* An empty %s substitutes NOTHING in php. PH7 substituted a single` |
+|      - |  711 | `				 * SPACE here, so printf("[%s]","") printed "[ ]" and any format with an` |
+|      - |  712 | `				 * absent optional part gained a stray space. */` |
+|     82 |  713 | `				zBuf = "";` |
+|     82 |  714 | `				length = 0;` |
+|     40 |  715 | `			}` |
+|  10007 |  716 | `			if( bExplicitPrec && precision<length ){` |
+|      7 |  717 | `				length = precision;` |
+|      3 |  718 | `			}` |
+|  10007 |  719 | `			break;` |
+|   1133 |  720 | `		case PH7_FMT_RADIX: {` |
+|      - |  721 | `			/* The digits are produced from an UNSIGNED accumulator. Two php rules` |
+|      - |  722 | `			 * ride on that, and the inherited signed one got both wrong:` |
+|      - |  723 | `			 *` |
+|      - |  724 | `			 *  - only %d is SIGNED. %u/%x/%X/%o/%b REINTERPRET the same 64 bits as` |
+|      - |  725 | `			 *    unsigned (php_sprintf_appenduint / php_sprintf_append2n cast to` |
+|      - |  726 | `			 *    zend_ulong), so sprintf("%x",-1) is "ffffffffffffffff", not the` |
+|      - |  727 | `			 *    magnitude "1" this used to print for every negative value;` |
+|      - |  728 | `			 *  - the magnitude of PHP_INT_MIN has no signed representation, so` |
+|      - |  729 | ``			 *    `iVal = -iVal` was signed overflow — undefined, and the guard`` |
+|      - |  730 | ``			 *    testing for it afterwards (`if( iVal < 0 )`) is exactly what a`` |
+|      - |  731 | `			 *    compiler may assume cannot happen. It did: the negative` |
+|      - |  732 | ``			 *    accumulator reached `cset[iVal%base]`, indexing BEFORE the digit`` |
+|      - |  733 | `			 *    table, so sprintf("%d",PHP_INT_MIN) printed whatever bytes sat` |
+|      - |  734 | `			 *    there. Unsigned negation is well-defined for every input.` |
+|      - |  735 | `			 */` |
+|      - |  736 | `			sxu64 uVal;` |
+|   2265 |  737 | `			pArg = NEXT_ARG;` |
+|   2265 |  738 | `			if( pArg == 0 ){` |
+|    ! 0 |  739 | `				iVal = 0;` |
+|    ! 0 |  740 | `			}else{` |
+|      - |  741 | ``				/* Every radix is a CAST site: `%d`/`%x`/`%u`/`%b`/`%o` of a float`` |
+|      - |  742 | `				 * no int can hold warn, then print the modular wrap of it. */` |
+|   2265 |  743 | `				PH7_MemObjWarnIntCast(pArg);` |
+|   2265 |  744 | `				iVal = ph7_value_to_int64(pArg);` |
+|      - |  745 | `			}` |
+|      - |  746 | `			/* An integer conversion has no PRECISION in php: the '.' part of the` |
+|      - |  747 | ``			 * specifier never reaches the digits. `%.5d` of 42 is "42", not the`` |
+|      - |  748 | `			 * "00042" C would print — php's php_sprintf_appendint simply is not` |
+|      - |  749 | `			 * handed one. For the other radices the same absence is louder:` |
+|      - |  750 | `			 * php_sprintf_append2n forwards a max_width of 0 with the` |
+|      - |  751 | `			 * "precision was given" flag set, so ANY explicit precision truncates` |
+|      - |  752 | ``			 * the digits to nothing and `%.1x` of 42 is the EMPTY string (padded`` |
+|      - |  753 | `			 * to $width, which is why "%5.1x" is five spaces). Reproduced rather` |
+|      - |  754 | `			 * than smoothed over — parity is binding (§10). */` |
+|   2265 |  755 | `			bDropDigits = (bExplicitPrec && pInfo->base != 10);` |
+|   2265 |  756 | `			if( precision >= 0 ){` |
+|     19 |  757 | `				precision = -1;` |
+|      9 |  758 | `			}` |
+|      - |  759 | `			/* php's "Can't right-pad 0's on integers" (php_sprintf_appendint, which` |
+|      - |  760 | `			 * %u shares) — and only there: %x/%X/%o/%b go through append2n and %e/%f` |
+|      - |  761 | `			 * through appenddouble, which both DO right-pad with zeros, so` |
+|      - |  762 | `			 * "%-08x" of 5 really is "50000000" while "%-08d" is "5       ".` |
+|      - |  763 | `			 * base 10 is exactly the 'd'/'u' pair of the table above. */` |
+|   2265 |  764 | `			if( flag_leftjustify && flag_zeropad && pInfo->base == 10 ){` |
+|     19 |  765 | `				flag_zeropad = 0;` |
+|     19 |  766 | `				cPad = ' ';` |
+|      9 |  767 | `			}` |
+|      - |  768 | `        /* For the format %#x, the value zero is printed "0" not "0x0". */` |
+|   2265 |  769 | `        if( iVal==0 ) flag_alternateform = 0;` |
+|   2265 |  770 | `        if( pInfo->flags & PH7_FMT_FLAG_SIGNED ){` |
+|   2029 |  771 | `          if( iVal<0 ){` |
+|    187 |  772 | `            uVal = (sxu64)0 - (sxu64)iVal;` |
+|    187 |  773 | `            prefix = '-';` |
+|     95 |  774 | `          }else{` |
+|   1845 |  775 | `            uVal = (sxu64)iVal;` |
+|      - |  776 | `            /* php's ' ' is a PAD selector, not C's space-for-a-positive-sign, so` |
+|      - |  777 | `             * '+' is the only flag that prefixes a non-negative value. */` |
+|   1845 |  778 | `            prefix = flag_plussign ? '+' : 0;` |
+|      - |  779 | `          }` |
+|   1014 |  780 | `        }else{` |
+|    238 |  781 | `			uVal = (sxu64)iVal;` |
+|    238 |  782 | `			prefix = 0;` |
+|      - |  783 | `		}` |
+|      - |  784 | `        /* Zero padding is a RIGHT-aligned idea: it fills between the sign and the` |
+|      - |  785 | `         * first digit. Left-aligned, php pads on the far side like any other pad` |
+|      - |  786 | `         * character (append2n hands the '0' straight to appendstring's ALIGN_LEFT` |
+|      - |  787 | `         * arm), so "%-08x" of 5 is "50000000". */` |
+|   2265 |  788 | `        if( flag_zeropad && !flag_leftjustify ){` |
+|    112 |  789 | `          cLeadSign = (char)prefix;` |
+|    112 |  790 | `          prefix = 0;` |
+|     55 |  791 | `        }` |
+|   2265 |  792 | `        zBuf = &zWorker[PH7_FMT_BUFSIZ-1];` |
+|      - |  793 | `        {` |
+|      - |  794 | `          const char *cset;` |
+|      - |  795 | `          sxu64 base;` |
+|   2265 |  796 | `          cset = pInfo->charset;` |
+|   2265 |  797 | `          base = (sxu64)pInfo->base;` |
+|   1127 |  798 | `          do{                                           /* Convert to ascii */` |
+|   6715 |  799 | `            *(--zBuf) = cset[uVal%base];` |
+|   6715 |  800 | `            uVal = uVal/base;` |
+|   6715 |  801 | `          }while( uVal>0 );` |
+|      - |  802 | `        }` |
+|   2265 |  803 | `		length = (int)(&zWorker[PH7_FMT_BUFSIZ-1]-zBuf);` |
+|      - |  804 | `        /* No zero fill here: a radix conversion has no precision to fill to, and` |
+|      - |  805 | `         * the '0' pad is the output block's job now (see cLeadSign). */` |
+|   2265 |  806 | `        if( prefix ) *(--zBuf) = (char)prefix;               /* Add sign */` |
+|   2265 |  807 | `        if( flag_alternateform && pInfo->prefix ){      /* Add "0" or "0x" */` |
+|      - |  808 | `          char *pre, x;` |
+|    ! 0 |  809 | `          pre = pInfo->prefix;` |
+|    ! 0 |  810 | `          if( *zBuf!=pre[0] ){` |
+|    ! 0 |  811 | `            for(pre=pInfo->prefix; (x=(*pre))!=0; pre++) *(--zBuf) = x;` |
+|    ! 0 |  812 | `          }` |
+|    ! 0 |  813 | `        }` |
+|   2265 |  814 | `		length = (int)(&zWorker[PH7_FMT_BUFSIZ-1]-zBuf);` |
+|   2265 |  815 | `		if( bDropDigits ){` |
+|      9 |  816 | `			length = 0;` |
+|      4 |  817 | `		}` |
+|   2265 |  818 | `		break;` |
+|      - |  819 | `		}` |
+|    106 |  820 | `		case PH7_FMT_FLOAT:` |
+|      - |  821 | `		case PH7_FMT_EXP:` |
+|      - |  822 | `		case PH7_FMT_GENERIC:{` |
+|      - |  823 | `#ifndef PH7_OMIT_FLOATING_POINT` |
+|      - |  824 | `		double realvalue;` |
+|      - |  825 | `		char zFmt[8];` |
+|      - |  826 | `		int nOut, nFmt;` |
+|    214 |  827 | `		pArg = NEXT_ARG;` |
+|    214 |  828 | `		if( pArg == 0 ){` |
+|    ! 0 |  829 | `			realvalue = 0;` |
+|    ! 0 |  830 | `		}else{` |
+|    214 |  831 | `			realvalue = ph7_value_to_double(pArg);` |
+|      - |  832 | `		}` |
+|      - |  833 | `		/* php prints the IEEE specials bare — NaN / INF / -INF with no width` |
+|      - |  834 | `		 * padding, precision, or sign flags (php_sprintf_appenddouble). */` |
+|    214 |  835 | `		if( PH7_IS_NAN(realvalue) ){` |
+|     23 |  836 | `			zBuf = "NaN";` |
+|     23 |  837 | `			length = 3;` |
+|     23 |  838 | `			width = 0;` |
+|     23 |  839 | `			break;` |
+|      - |  840 | `		}` |
+|    192 |  841 | `		if( PH7_IS_INF(realvalue) ){` |
+|     37 |  842 | `			if( realvalue < 0.0 ){` |
+|     15 |  843 | `				zBuf = "-INF";` |
+|     15 |  844 | `				length = 4;` |
+|      8 |  845 | `			}else{` |
+|     23 |  846 | `				zBuf = "INF";` |
+|     23 |  847 | `				length = 3;` |
+|      - |  848 | `			}` |
+|     37 |  849 | `			width = 0;` |
+|     37 |  850 | `			break;` |
+|      - |  851 | `		}` |
+|    156 |  852 | `		if( precision<0 ) precision = 6;         /* Set default precision */` |
+|    156 |  853 | `		if( precision > 53 ){` |
+|      - |  854 | `			/* php's FORMAT_CONV_MAX_PRECISION cap, with the same E_NOTICE` |
+|      - |  855 | `			 * (message prefixed with the active function's name, like` |
+|      - |  856 | `			 * php_error_docref). */` |
+|      - |  857 | `			char zMsg[160];` |
+|      4 |  858 | `			SyBufferFormat(zMsg,sizeof(zMsg),` |
+|      - |  859 | `				"%z(): Requested precision of %d digits was truncated to PHP maximum of %d digits",` |
+|      2 |  860 | `				&pCtx->pFunc->sName,precision,53);` |
+|      3 |  861 | `			PH7_VmThrowError(pCtx->pVm,0,E_NOTICE,zMsg);` |
+|      3 |  862 | `			precision = 53;` |
+|      1 |  863 | `		}` |
+|      - |  864 | ``		/* php's %f/%e extract the sign via `num < 0`, so negative zero prints`` |
+|      - |  865 | `		 * unsigned there — while %g (php_gcvt on the raw value) keeps "-0". */` |
+|    156 |  866 | `		if( xtype!=PH7_FMT_GENERIC && realvalue == 0.0 ){` |
+|      9 |  867 | `			realvalue = 0.0;` |
+|      4 |  868 | `		}` |
+|      - |  869 | `		/* php's float conversions are correctly rounded (zend_dtoa); use libc` |
+|      - |  870 | `		 * snprintf as the digit engine (the byte-exact-floats rule — the old` |
+|      - |  871 | `		 * hand-rolled vxGetdigit loop stopped at 16 significant digits, so` |
+|      - |  872 | `		 * e.g. %f of 1e308 printed zeros where php prints the exact binary64` |
+|      - |  873 | `		 * expansion), then post-process into php's exact shapes below. */` |
+|    156 |  874 | `		nFmt = 0;` |
+|    156 |  875 | `		zFmt[nFmt++] = '%';` |
+|    156 |  876 | `		if( flag_alternateform ) zFmt[nFmt++] = '#';` |
+|      - |  877 | `		/* php's ' ' flag selects space PADDING (its default), not C's` |
+|      - |  878 | `		 * space-for-positive-sign — so flag_blanksign is NOT forwarded. */` |
+|    156 |  879 | `		if( flag_plussign ) zFmt[nFmt++] = '+';` |
+|    156 |  880 | `		zFmt[nFmt++] = '.';` |
+|    156 |  881 | `		zFmt[nFmt++] = '*';` |
+|    204 |  882 | `		zFmt[nFmt++] = (char)(xtype==PH7_FMT_FLOAT ? 'f' :` |
+|     32 |  883 | `			(xtype==PH7_FMT_EXP ? ((pInfo->charset[0]=='E') ? 'E' : 'e')` |
+|     32 |  884 | `			                    : ((pInfo->charset[0]=='E') ? 'G' : 'g')));` |
+|    156 |  885 | `		zFmt[nFmt] = 0;` |
+|    156 |  886 | `		nOut = snprintf(zWorker,sizeof(zWorker),zFmt,precision,realvalue);` |
+|    156 |  887 | `		if( nOut < 0 \|\| nOut >= (int)sizeof(zWorker) ){` |
+|      - |  888 | `			/* Cannot happen with precision capped at 53 (%f of DBL_MAX is` |
+|      - |  889 | `			 * ~365 bytes); keep the truncated output rather than overrun. */` |
+|    ! 0 |  890 | `			nOut = (int)SyStrlen(zWorker);` |
+|    ! 0 |  891 | `		}` |
+|    156 |  892 | `		nOut = (int)PH7_PhpFloatShape(zWorker,(sxi32)nOut,xtype==PH7_FMT_GENERIC);` |
+|    156 |  893 | `		zBuf = zWorker;` |
+|    156 |  894 | `		length = nOut;` |
+|      - |  895 | `		/* The zero padding goes between the sign snprintf wrote and the first` |
+|      - |  896 | `		 * digit, so hand the sign to the output block and leave the rest here. */` |
+|    154 |  897 | `		if( flag_zeropad && !flag_leftjustify` |
+|     22 |  898 | `		 && (zWorker[0]=='-' \|\| zWorker[0]=='+') ){` |
+|     11 |  899 | `			cLeadSign = zWorker[0];` |
+|     11 |  900 | `			zBuf++;` |
+|     11 |  901 | `			length--;` |
+|      5 |  902 | `		}` |
+|      - |  903 | `#else` |
+|      - |  904 | `         zBuf = " ";` |
+|      - |  905 | `		 length = (int)sizeof(char);` |
+|      - |  906 | `#endif /* PH7_OMIT_FLOATING_POINT */` |
+|    156 |  907 | `		 break;` |
+|      - |  908 | `							 }` |
+|    ! 0 |  909 | `		default:` |
+|      - |  910 | `			/* Unreachable: PH7_FormatValidate() rejects unknown specifiers with a` |
+|      - |  911 | `			 * catchable ValueError before formatting begins. Kept as a defensive` |
+|      - |  912 | `			 * no-op that emits nothing. */` |
+|    ! 0 |  913 | `			length = 0;` |
+|    ! 0 |  914 | `			break;` |
+|      - |  915 | `		}` |
+|      - |  916 | `		 /*` |
+|      - |  917 | `		 ** The text of the conversion is pointed to by "zBuf" and is` |
+|      - |  918 | `		 ** "length" characters long.The field width is "width".Do` |
+|      - |  919 | `		 ** the output.` |
+|      - |  920 | `		 */` |
+|  12599 |  921 | `    if( cLeadSign ){` |
+|      - |  922 | `      /* php writes the sign ahead of a '0' pad run; it fills one byte of the` |
+|      - |  923 | `       * field, so the padding below has that much less to do. */` |
+|     37 |  924 | `      rc = xConsumer(pCtx,&cLeadSign,1,pUserData);` |
+|     37 |  925 | `      if( rc != SXRET_OK ){` |
+|    ! 0 |  926 | `        rcRet = SXERR_ABORT;` |
+|    ! 0 |  927 | `        goto Done;` |
+|      - |  928 | `      }` |
+|     37 |  929 | `      width--;` |
+|     18 |  930 | `    }` |
+|  12599 |  931 | `    if( width > length ){` |
+|      - |  932 | `      /* Fill the pad buffer with THIS specifier's pad character. */` |
+| 253577 |  933 | `      for( idx = 0 ; idx < etSPACESIZE ; ++idx ){ spaces[idx] = cPad; }` |
+|   2486 |  934 | `    }` |
+|  12599 |  935 | `    if( !flag_leftjustify ){` |
+|      - |  936 | `      register int nspace;` |
+|   7355 |  937 | `      nspace = width-length;` |
+|   7355 |  938 | `      if( nspace>0 ){` |
+|   2609 |  939 | `        while( nspace>=etSPACESIZE ){` |
+|   2103 |  940 | `			rc = xConsumer(pCtx,spaces,etSPACESIZE,pUserData);` |
+|   2103 |  941 | `			if( rc != SXRET_OK ){` |
+|    ! 0 |  942 | `				rcRet = SXERR_ABORT; /* Consumer routine request an operation abort */` |
+|    ! 0 |  943 | `				goto Done;` |
+|      - |  944 | `			}` |
+|   2103 |  945 | `			nspace -= etSPACESIZE;` |
+|      1 |  946 | `        }` |
+|    507 |  947 | `        if( nspace>0 ){` |
+|    507 |  948 | `			rc = xConsumer(pCtx,spaces,(unsigned int)nspace,pUserData);` |
+|    507 |  949 | `			if( rc != SXRET_OK ){` |
+|    ! 0 |  950 | `				rcRet = SXERR_ABORT; /* Consumer routine request an operation abort */` |
+|    ! 0 |  951 | `				goto Done;` |
+|      - |  952 | `			}` |
+|    252 |  953 | `		}` |
+|    252 |  954 | `      }` |
+|   3669 |  955 | `    }` |
+|  12599 |  956 | `    if( length>0 ){` |
+|  12509 |  957 | `		rc = xConsumer(pCtx,zBuf,(unsigned int)length,pUserData);` |
+|  12509 |  958 | `		if( rc != SXRET_OK ){` |
+|    ! 0 |  959 | `		  rcRet = SXERR_ABORT; /* Consumer routine request an operation abort */` |
+|    ! 0 |  960 | `		  goto Done;` |
+|      - |  961 | `		}` |
+|   6246 |  962 | `    }` |
+|  12599 |  963 | `    if( flag_leftjustify ){` |
+|      - |  964 | `      register int nspace;` |
+|   5249 |  965 | `      nspace = width-length;` |
+|   5249 |  966 | `      if( nspace>0 ){` |
+|   4975 |  967 | `        while( nspace>=etSPACESIZE ){` |
+|    503 |  968 | `			rc = xConsumer(pCtx,spaces,etSPACESIZE,pUserData);` |
+|    503 |  969 | `			if( rc != SXRET_OK ){` |
+|    ! 0 |  970 | `				rcRet = SXERR_ABORT; /* Consumer routine request an operation abort */` |
+|    ! 0 |  971 | `				goto Done;` |
+|      - |  972 | `			}` |
+|    503 |  973 | `			nspace -= etSPACESIZE;` |
+|      1 |  974 | `        }` |
+|   4473 |  975 | `        if( nspace>0 ){` |
+|   4473 |  976 | `			rc = xConsumer(pCtx,spaces,(unsigned int)nspace,pUserData);` |
+|   4473 |  977 | `			if( rc != SXRET_OK ){` |
+|    ! 0 |  978 | `				rcRet = SXERR_ABORT; /* Consumer routine request an operation abort */` |
+|    ! 0 |  979 | `				goto Done;` |
+|      - |  980 | `			}` |
+|   2234 |  981 | `		}` |
+|   2234 |  982 | `      }` |
+|   2622 |  983 | `    }` |
+|      5 |  984 | ` }/* for(;;) */` |
+|   4055 |  985 | `	if( pThrowArg ){` |
+|      - |  986 | `		/* The format ran to completion and its output is out; raise php's Error` |
+|      - |  987 | ``		 * now. `printf("A[%s]B", new P())` prints "A[]B" and THEN throws, while`` |
+|      - |  988 | `		 * sprintf()'s finished result is simply discarded by the unwind. */` |
+|     19 |  989 | `		PH7_MemObjRelease(&sScratch);` |
+|     19 |  990 | `		return PH7_MemObjToStringUV(pThrowArg);` |
+|      - |  991 | `	}` |
+|   2019 |  992 | `Done:` |
+|      - |  993 | `	/* Single exit: the scratch copy holds a reference on an array/instance` |
+|      - |  994 | `	 * argument it was loaded from, so every way out releases it. */` |
+|   4039 |  995 | `	PH7_MemObjRelease(&sScratch);` |
+|   4039 |  996 | `	return rcRet;` |
+|   2028 |  997 | `}` |
+|      - |  998 | `/*` |
+|      - |  999 | ` * Callback [i.e: Formatted input consumer] of the sprintf function.` |
+|      - | 1000 | ` */` |
+|   4814 | 1001 | `static int sprintfConsumer(ph7_context *pCtx,const char *zInput,int nLen,void *pUserData)` |
+|      4 | 1002 | `{` |
+|      - | 1003 | `	/* pUserData points to the caller's allocation-rc slot so an OOM during the` |
+|      - | 1004 | `	 * result append is surfaced (the builtin raises a fatal); returning the` |
+|      - | 1005 | `	 * non-OK rc also stops the format loop. */` |
+|   4818 | 1006 | `	sxi32 *pRc = (sxi32 *)pUserData;` |
+|   4818 | 1007 | `	*pRc = ph7_result_string(pCtx,zInput,nLen);` |
+|   4818 | 1008 | `	return *pRc;` |
+|      4 | 1009 | `}` |
+|      - | 1010 | `/*` |
+|      - | 1011 | ` * string sprintf(string $format[,mixed $args [, mixed $... ]])` |
+|      - | 1012 | ` *  Return a formatted string.` |
+|      - | 1013 | ` * Parameters` |
+|      - | 1014 | ` *  $format` |
+|      - | 1015 | ` *    The format string (see block comment above)` |
+|      - | 1016 | ` * Return` |
+|      - | 1017 | ` *  A string produced according to the formatting string format.` |
+|      - | 1018 | ` */` |
+|    758 | 1019 | `PH7_PRIVATE int PH7_builtin_sprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      4 | 1020 | `{` |
+|      - | 1021 | `	sxi32 rcFmt;` |
+|      - | 1022 | `	const char *zFormat;` |
+|    762 | 1023 | `	sxi32 rc = SXRET_OK;` |
+|      - | 1024 | `	int nLen;` |
+|    762 | 1025 | `	if( nArg < 1 ){` |
+|      - | 1026 | `		/* Missing arguments,return the empty string */` |
+|    ! 0 | 1027 | `		ph7_result_string(pCtx,"",0);` |
+|    ! 0 | 1028 | `		return PH7_OK;` |
+|      - | 1029 | `	}` |
+|      - | 1030 | `	/* PHP 8: a non-string-coercible $format (array/object/resource) is a TypeError. */` |
+|    762 | 1031 | `	rc = PH7_FormatCheckFormatArg(pCtx,apArg[0],1);` |
+|    762 | 1032 | `	if( rc != PH7_OK ){` |
+|    ! 0 | 1033 | `		return rc;` |
+|      - | 1034 | `	}` |
+|      - | 1035 | `	/* Extract the string format (scalars/null coerce). */` |
+|    762 | 1036 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
+|    762 | 1037 | `	if( nLen < 1 ){` |
+|      - | 1038 | `		/* Empty string */` |
+|    ! 0 | 1039 | `		ph7_result_string(pCtx,"",0);` |
+|    ! 0 | 1040 | `		return PH7_OK;` |
 |      - | 1041 | `	}` |
-|      - | 1042 | `	/* PHP 8: too few value arguments is a catchable ArgumentCountError before output. */` |
-|    632 | 1043 | `	rc = PH7_FormatValidate(pCtx,zFormat,nLen);` |
-|    632 | 1044 | `	if( rc != PH7_OK ){` |
-|     31 | 1045 | `		return rc;` |
-|      - | 1046 | `	}` |
-|      - | 1047 | `	/* Seed the result with the empty string: a format whose every conversion` |
-|      - | 1048 | `	 * substitutes NOTHING ("%s" of "", false or null) never calls the consumer at` |
-|      - | 1049 | `	 * all, and an untouched return value is NULL — so sprintf("%s","") answered` |
-|      - | 1050 | `	 * NULL where php answers "". */` |
-|    602 | 1051 | `	ph7_result_string(pCtx,"",0);` |
-|      - | 1052 | `	/* Format the string; sprintfConsumer reports an allocation failure via &rc. */` |
-|    602 | 1053 | `	rcFmt = PH7_InputFormat(sprintfConsumer,pCtx,zFormat,nLen,nArg,apArg,(void *)&rc,FALSE);` |
-|    602 | 1054 | `	if( rc != SXRET_OK ){` |
-|      - | 1055 | `		/* The result append ran out of memory: raise a fatal rather than` |
-|      - | 1056 | `		 * returning a silently-truncated string. */` |
-|    ! 0 | 1057 | `		return PH7_ContextMemoryError(pCtx);` |
-|      - | 1058 | `	}` |
-|      - | 1059 | `	/* A %s argument that could not be coerced raised php's Error mid-format. The` |
-|      - | 1060 | `	 * format still ran and the output/result still happened (php does exactly` |
-|      - | 1061 | `	 * that), so report the throw last. */` |
-|    602 | 1062 | `	if( rcFmt != SXRET_OK ){` |
-|     12 | 1063 | `		pCtx->nThrowRc = rcFmt;` |
-|     12 | 1064 | `		return rcFmt;` |
-|      - | 1065 | `	}` |
-|    592 | 1066 | `	return PH7_OK;` |
-|    338 | 1067 | `}` |
-|      - | 1068 | `/*` |
-|      - | 1069 | ` * Callback [i.e: Formatted input consumer] of the printf function.` |
-|      - | 1070 | ` */` |
-|  11854 | 1071 | `static int printfConsumer(ph7_context *pCtx,const char *zInput,int nLen,void *pUserData)` |
-|      5 | 1072 | `{` |
-|  11859 | 1073 | `	ph7_int64 *pCounter = (ph7_int64 *)pUserData;` |
-|      - | 1074 | `	/* Call the VM output consumer directly */` |
-|  11859 | 1075 | `	ph7_context_output(pCtx,zInput,nLen);` |
-|      - | 1076 | `	/* Increment counter */` |
-|  11859 | 1077 | `	*pCounter += nLen;` |
-|  11859 | 1078 | `	return PH7_OK;` |
-|      5 | 1079 | `}` |
-|      - | 1080 | `/*` |
-|      - | 1081 | ` * int64 printf(string $format[,mixed $args[,mixed $... ]])` |
-|      - | 1082 | ` *  Output a formatted string.` |
-|      - | 1083 | ` * Parameters` |
-|      - | 1084 | ` *  $format` |
-|      - | 1085 | ` *   See sprintf() for a description of format.` |
-|      - | 1086 | ` * Return` |
-|      - | 1087 | ` *  The length of the outputted string.` |
-|      - | 1088 | ` */` |
-|   1558 | 1089 | `PH7_PRIVATE int PH7_builtin_printf(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      5 | 1090 | `{` |
-|      - | 1091 | `	sxi32 rcFmt;` |
-|   1563 | 1092 | `	ph7_int64 nCounter = 0;` |
-|      - | 1093 | `	const char *zFormat;` |
-|      - | 1094 | `	int nLen;` |
-|   1563 | 1095 | `	if( nArg < 1 ){` |
-|      - | 1096 | `		/* Missing arguments,return 0 */` |
-|    ! 0 | 1097 | `		ph7_result_int(pCtx,0);` |
-|    ! 0 | 1098 | `		return PH7_OK;` |
-|      - | 1099 | `	}` |
-|      - | 1100 | `	/* PHP 8: a non-string-coercible $format (array/object/resource) is a TypeError. */` |
-|      - | 1101 | `	{` |
-|   1563 | 1102 | `		sxi32 rcf = PH7_FormatCheckFormatArg(pCtx,apArg[0],1);` |
-|   1563 | 1103 | `		if( rcf != PH7_OK ){` |
-|    ! 0 | 1104 | `			return rcf;` |
-|      - | 1105 | `		}` |
-|      - | 1106 | `	}` |
-|      - | 1107 | `	/* Extract the string format (scalars/null coerce). */` |
-|   1563 | 1108 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
-|   1563 | 1109 | `	if( nLen < 1 ){` |
-|      - | 1110 | `		/* Empty string */` |
-|    ! 0 | 1111 | `		ph7_result_int(pCtx,0);` |
-|    ! 0 | 1112 | `		return PH7_OK;` |
-|      - | 1113 | `	}` |
-|      - | 1114 | `	{` |
-|      - | 1115 | `		/* PHP 8: too few value arguments is a catchable ArgumentCountError before` |
-|      - | 1116 | `		 * output, and php runs this check BEFORE validating the specifiers. */` |
-|   1563 | 1117 | `		sxi32 rcv = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,nArg-1,1,FALSE);` |
-|   1563 | 1118 | `		if( rcv != PH7_OK ){` |
-|      3 | 1119 | `			return rcv;` |
-|      - | 1120 | `		}` |
-|      - | 1121 | `		/* PHP 8: an unknown or missing format specifier throws a catchable ValueError` |
-|      - | 1122 | `		 * before any output; propagate the throw status verbatim. */` |
-|   1561 | 1123 | `		rcv = PH7_FormatValidate(pCtx,zFormat,nLen);` |
-|   1561 | 1124 | `		if( rcv != PH7_OK ){` |
-|    ! 0 | 1125 | `			return rcv;` |
+|      - | 1042 | `	/* PHP 8: an unknown format specifier throws a catchable ValueError before any` |
+|      - | 1043 | `	 * output; propagate the throw status verbatim. */` |
+|    762 | 1044 | `	rc = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,nArg-1,1,FALSE);` |
+|    762 | 1045 | `	if( rc != PH7_OK ){` |
+|     41 | 1046 | `		return rc;` |
+|      - | 1047 | `	}` |
+|      - | 1048 | `	/* PHP 8: too few value arguments is a catchable ArgumentCountError before output. */` |
+|    722 | 1049 | `	rc = PH7_FormatValidate(pCtx,zFormat,nLen);` |
+|    722 | 1050 | `	if( rc != PH7_OK ){` |
+|     31 | 1051 | `		return rc;` |
+|      - | 1052 | `	}` |
+|      - | 1053 | `	/* Seed the result with the empty string: a format whose every conversion` |
+|      - | 1054 | `	 * substitutes NOTHING ("%s" of "", false or null) never calls the consumer at` |
+|      - | 1055 | `	 * all, and an untouched return value is NULL — so sprintf("%s","") answered` |
+|      - | 1056 | `	 * NULL where php answers "". */` |
+|    692 | 1057 | `	ph7_result_string(pCtx,"",0);` |
+|      - | 1058 | `	/* Format the string; sprintfConsumer reports an allocation failure via &rc. */` |
+|    692 | 1059 | `	rcFmt = PH7_InputFormat(sprintfConsumer,pCtx,zFormat,nLen,nArg,apArg,(void *)&rc,FALSE);` |
+|    692 | 1060 | `	if( rc != SXRET_OK ){` |
+|      - | 1061 | `		/* The result append ran out of memory: raise a fatal rather than` |
+|      - | 1062 | `		 * returning a silently-truncated string. */` |
+|    ! 0 | 1063 | `		return PH7_ContextMemoryError(pCtx);` |
+|      - | 1064 | `	}` |
+|      - | 1065 | `	/* A %s argument that could not be coerced raised php's Error mid-format. The` |
+|      - | 1066 | `	 * format still ran and the output/result still happened (php does exactly` |
+|      - | 1067 | `	 * that), so report the throw last. */` |
+|    692 | 1068 | `	if( rcFmt != SXRET_OK ){` |
+|     12 | 1069 | `		pCtx->nThrowRc = rcFmt;` |
+|     12 | 1070 | `		return rcFmt;` |
+|      - | 1071 | `	}` |
+|    682 | 1072 | `	return PH7_OK;` |
+|    380 | 1073 | `}` |
+|      - | 1074 | `/*` |
+|      - | 1075 | ` * Callback [i.e: Formatted input consumer] of the printf function.` |
+|      - | 1076 | ` */` |
+|  28014 | 1077 | `static int printfConsumer(ph7_context *pCtx,const char *zInput,int nLen,void *pUserData)` |
+|      5 | 1078 | `{` |
+|  28019 | 1079 | `	ph7_int64 *pCounter = (ph7_int64 *)pUserData;` |
+|      - | 1080 | `	/* Call the VM output consumer directly */` |
+|  28019 | 1081 | `	ph7_context_output(pCtx,zInput,nLen);` |
+|      - | 1082 | `	/* Increment counter */` |
+|  28019 | 1083 | `	*pCounter += nLen;` |
+|  28019 | 1084 | `	return PH7_OK;` |
+|      5 | 1085 | `}` |
+|      - | 1086 | `/*` |
+|      - | 1087 | ` * int64 printf(string $format[,mixed $args[,mixed $... ]])` |
+|      - | 1088 | ` *  Output a formatted string.` |
+|      - | 1089 | ` * Parameters` |
+|      - | 1090 | ` *  $format` |
+|      - | 1091 | ` *   See sprintf() for a description of format.` |
+|      - | 1092 | ` * Return` |
+|      - | 1093 | ` *  The length of the outputted string.` |
+|      - | 1094 | ` */` |
+|   3326 | 1095 | `PH7_PRIVATE int PH7_builtin_printf(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      5 | 1096 | `{` |
+|      - | 1097 | `	sxi32 rcFmt;` |
+|   3331 | 1098 | `	ph7_int64 nCounter = 0;` |
+|      - | 1099 | `	const char *zFormat;` |
+|      - | 1100 | `	int nLen;` |
+|   3331 | 1101 | `	if( nArg < 1 ){` |
+|      - | 1102 | `		/* Missing arguments,return 0 */` |
+|    ! 0 | 1103 | `		ph7_result_int(pCtx,0);` |
+|    ! 0 | 1104 | `		return PH7_OK;` |
+|      - | 1105 | `	}` |
+|      - | 1106 | `	/* PHP 8: a non-string-coercible $format (array/object/resource) is a TypeError. */` |
+|      - | 1107 | `	{` |
+|   3331 | 1108 | `		sxi32 rcf = PH7_FormatCheckFormatArg(pCtx,apArg[0],1);` |
+|   3331 | 1109 | `		if( rcf != PH7_OK ){` |
+|    ! 0 | 1110 | `			return rcf;` |
+|      - | 1111 | `		}` |
+|      - | 1112 | `	}` |
+|      - | 1113 | `	/* Extract the string format (scalars/null coerce). */` |
+|   3331 | 1114 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
+|   3331 | 1115 | `	if( nLen < 1 ){` |
+|      - | 1116 | `		/* Empty string */` |
+|    ! 0 | 1117 | `		ph7_result_int(pCtx,0);` |
+|    ! 0 | 1118 | `		return PH7_OK;` |
+|      - | 1119 | `	}` |
+|      - | 1120 | `	{` |
+|      - | 1121 | `		/* PHP 8: too few value arguments is a catchable ArgumentCountError before` |
+|      - | 1122 | `		 * output, and php runs this check BEFORE validating the specifiers. */` |
+|   3331 | 1123 | `		sxi32 rcv = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,nArg-1,1,FALSE);` |
+|   3331 | 1124 | `		if( rcv != PH7_OK ){` |
+|      3 | 1125 | `			return rcv;` |
 |      - | 1126 | `		}` |
-|      - | 1127 | `	}` |
-|      - | 1128 | `	/* Format the string */` |
-|   1561 | 1129 | `	rcFmt = PH7_InputFormat(printfConsumer,pCtx,zFormat,nLen,nArg,apArg,(void *)&nCounter,FALSE);` |
-|      - | 1130 | `	/* Return the length of the outputted string */` |
-|   1561 | 1131 | `	ph7_result_int64(pCtx,nCounter);` |
-|      - | 1132 | `	/* A %s argument that could not be coerced raised php's Error mid-format. The` |
-|      - | 1133 | `	 * format still ran and the output/result still happened (php does exactly` |
-|      - | 1134 | `	 * that), so report the throw last. */` |
-|   1561 | 1135 | `	if( rcFmt != SXRET_OK ){` |
-|      3 | 1136 | `		pCtx->nThrowRc = rcFmt;` |
-|      3 | 1137 | `		return rcFmt;` |
-|      - | 1138 | `	}` |
-|   1559 | 1139 | `	return PH7_OK;` |
-|    784 | 1140 | `}` |
-|      - | 1141 | `/*` |
-|      - | 1142 | ` * int vprintf(string $format,array $args)` |
-|      - | 1143 | ` *  Output a formatted string.` |
-|      - | 1144 | ` * Parameters` |
-|      - | 1145 | ` *  $format` |
-|      - | 1146 | ` *   See sprintf() for a description of format.` |
-|      - | 1147 | ` * Return` |
-|      - | 1148 | ` *  The length of the outputted string.` |
-|      - | 1149 | ` */` |
-|      6 | 1150 | `PH7_PRIVATE int PH7_builtin_vprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      2 | 1151 | `{` |
-|      - | 1152 | `	sxi32 rcFmt;` |
-|      8 | 1153 | `	ph7_int64 nCounter = 0;` |
-|      - | 1154 | `	const char *zFormat;` |
-|      - | 1155 | `	ph7_hashmap *pMap;` |
-|      - | 1156 | `	SySet sArg;` |
-|      - | 1157 | `	int nLen,n;` |
-|      8 | 1158 | `	if( nArg < 2 ){` |
-|      - | 1159 | `		/* Missing arguments,return 0 */` |
-|    ! 0 | 1160 | `		ph7_result_int(pCtx,0);` |
-|    ! 0 | 1161 | `		return PH7_OK;` |
-|      - | 1162 | `	}` |
-|      - | 1163 | `	/* PHP 8 checks arguments left-to-right: $format (#1) then $values (#2). */` |
-|      8 | 1164 | `	rcFmt = PH7_FormatCheckFormatArg(pCtx,apArg[0],1);` |
-|      8 | 1165 | `	if( rcFmt != PH7_OK ){` |
-|    ! 0 | 1166 | `		return rcFmt;` |
-|      - | 1167 | `	}` |
-|      8 | 1168 | `	if( !ph7_value_is_array(apArg[1]) ){` |
-|      - | 1169 | `		/* PHP 8: a non-array $values is a catchable TypeError. */` |
-|      - | 1170 | `		char zBuf[64];` |
-|    ! 0 | 1171 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
-|      - | 1172 | `			"vprintf(): Argument #2 ($values) must be of type array, %s given",` |
-|    ! 0 | 1173 | `			VmValueGivenName(apArg[1],zBuf,sizeof(zBuf)));` |
-|      - | 1174 | `	}` |
-|      - | 1175 | `	/* Extract the string format (scalars/null coerce). */` |
-|      8 | 1176 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
-|      8 | 1177 | `	if( nLen < 1 ){` |
-|      - | 1178 | `		/* Empty string */` |
-|    ! 0 | 1179 | `		ph7_result_int(pCtx,0);` |
-|    ! 0 | 1180 | `		return PH7_OK;` |
-|      - | 1181 | `	}` |
-|      - | 1182 | `	/* Point to the hashmap */` |
-|      8 | 1183 | `	pMap = (ph7_hashmap *)apArg[1]->x.pOther;` |
-|      - | 1184 | `	/* PHP 8: too few items in the $values array is a catchable ValueError before output.` |
-|      - | 1185 | `	 * Checked on the entry count before materialising the value set. php runs this check` |
-|      - | 1186 | `	 * BEFORE validating the specifiers, so vsprintf("%",[]) reports the missing item` |
-|      - | 1187 | `	 * rather than the missing specifier. */` |
-|      8 | 1188 | `	rcFmt = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,(int)pMap->nEntry,1,TRUE);` |
-|      8 | 1189 | `	if( rcFmt != PH7_OK ){` |
-|    ! 0 | 1190 | `		return rcFmt;` |
-|      - | 1191 | `	}` |
-|      - | 1192 | `	/* PHP 8: an unknown or missing format specifier throws a catchable ValueError before` |
-|      - | 1193 | `	 * any output; propagate the throw status verbatim. */` |
-|      8 | 1194 | `	rcFmt = PH7_FormatValidate(pCtx,zFormat,nLen);` |
+|      - | 1127 | `		/* PHP 8: an unknown or missing format specifier throws a catchable ValueError` |
+|      - | 1128 | `		 * before any output; propagate the throw status verbatim. */` |
+|   3329 | 1129 | `		rcv = PH7_FormatValidate(pCtx,zFormat,nLen);` |
+|   3329 | 1130 | `		if( rcv != PH7_OK ){` |
+|    ! 0 | 1131 | `			return rcv;` |
+|      - | 1132 | `		}` |
+|      - | 1133 | `	}` |
+|      - | 1134 | `	/* Format the string */` |
+|   3329 | 1135 | `	rcFmt = PH7_InputFormat(printfConsumer,pCtx,zFormat,nLen,nArg,apArg,(void *)&nCounter,FALSE);` |
+|      - | 1136 | `	/* Return the length of the outputted string */` |
+|   3329 | 1137 | `	ph7_result_int64(pCtx,nCounter);` |
+|      - | 1138 | `	/* A %s argument that could not be coerced raised php's Error mid-format. The` |
+|      - | 1139 | `	 * format still ran and the output/result still happened (php does exactly` |
+|      - | 1140 | `	 * that), so report the throw last. */` |
+|   3329 | 1141 | `	if( rcFmt != SXRET_OK ){` |
+|      3 | 1142 | `		pCtx->nThrowRc = rcFmt;` |
+|      3 | 1143 | `		return rcFmt;` |
+|      - | 1144 | `	}` |
+|   3327 | 1145 | `	return PH7_OK;` |
+|   1668 | 1146 | `}` |
+|      - | 1147 | `/*` |
+|      - | 1148 | ` * int vprintf(string $format,array $args)` |
+|      - | 1149 | ` *  Output a formatted string.` |
+|      - | 1150 | ` * Parameters` |
+|      - | 1151 | ` *  $format` |
+|      - | 1152 | ` *   See sprintf() for a description of format.` |
+|      - | 1153 | ` * Return` |
+|      - | 1154 | ` *  The length of the outputted string.` |
+|      - | 1155 | ` */` |
+|      6 | 1156 | `PH7_PRIVATE int PH7_builtin_vprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      2 | 1157 | `{` |
+|      - | 1158 | `	sxi32 rcFmt;` |
+|      8 | 1159 | `	ph7_int64 nCounter = 0;` |
+|      - | 1160 | `	const char *zFormat;` |
+|      - | 1161 | `	ph7_hashmap *pMap;` |
+|      - | 1162 | `	SySet sArg;` |
+|      - | 1163 | `	int nLen,n;` |
+|      8 | 1164 | `	if( nArg < 2 ){` |
+|      - | 1165 | `		/* Missing arguments,return 0 */` |
+|    ! 0 | 1166 | `		ph7_result_int(pCtx,0);` |
+|    ! 0 | 1167 | `		return PH7_OK;` |
+|      - | 1168 | `	}` |
+|      - | 1169 | `	/* PHP 8 checks arguments left-to-right: $format (#1) then $values (#2). */` |
+|      8 | 1170 | `	rcFmt = PH7_FormatCheckFormatArg(pCtx,apArg[0],1);` |
+|      8 | 1171 | `	if( rcFmt != PH7_OK ){` |
+|    ! 0 | 1172 | `		return rcFmt;` |
+|      - | 1173 | `	}` |
+|      8 | 1174 | `	if( !ph7_value_is_array(apArg[1]) ){` |
+|      - | 1175 | `		/* PHP 8: a non-array $values is a catchable TypeError. */` |
+|      - | 1176 | `		char zBuf[64];` |
+|    ! 0 | 1177 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
+|      - | 1178 | `			"vprintf(): Argument #2 ($values) must be of type array, %s given",` |
+|    ! 0 | 1179 | `			VmValueGivenName(apArg[1],zBuf,sizeof(zBuf)));` |
+|      - | 1180 | `	}` |
+|      - | 1181 | `	/* Extract the string format (scalars/null coerce). */` |
+|      8 | 1182 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
+|      8 | 1183 | `	if( nLen < 1 ){` |
+|      - | 1184 | `		/* Empty string */` |
+|    ! 0 | 1185 | `		ph7_result_int(pCtx,0);` |
+|    ! 0 | 1186 | `		return PH7_OK;` |
+|      - | 1187 | `	}` |
+|      - | 1188 | `	/* Point to the hashmap */` |
+|      8 | 1189 | `	pMap = (ph7_hashmap *)apArg[1]->x.pOther;` |
+|      - | 1190 | `	/* PHP 8: too few items in the $values array is a catchable ValueError before output.` |
+|      - | 1191 | `	 * Checked on the entry count before materialising the value set. php runs this check` |
+|      - | 1192 | `	 * BEFORE validating the specifiers, so vsprintf("%",[]) reports the missing item` |
+|      - | 1193 | `	 * rather than the missing specifier. */` |
+|      8 | 1194 | `	rcFmt = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,(int)pMap->nEntry,1,TRUE);` |
 |      8 | 1195 | `	if( rcFmt != PH7_OK ){` |
 |    ! 0 | 1196 | `		return rcFmt;` |
 |      - | 1197 | `	}` |
-|      - | 1198 | `	/* Extract arguments from the hashmap */` |
-|      8 | 1199 | `	n = PH7_HashmapValuesToSet(pMap,&sArg);` |
-|      - | 1200 | `	/* Format the string */` |
-|      8 | 1201 | `	rcFmt = PH7_InputFormat(printfConsumer,pCtx,zFormat,nLen,n,(ph7_value **)SySetBasePtr(&sArg),(void *)&nCounter,TRUE);` |
-|      - | 1202 | `	/* Release the container */` |
-|      8 | 1203 | `	SySetRelease(&sArg);` |
-|      - | 1204 | `	/* Return the length of the outputted string */` |
-|      8 | 1205 | `	ph7_result_int64(pCtx,nCounter);` |
-|      - | 1206 | `	/* A %s argument that could not be coerced raised php's Error mid-format. The` |
-|      - | 1207 | `	 * format still ran and the output/result still happened (php does exactly` |
-|      - | 1208 | `	 * that), so report the throw last. */` |
-|      8 | 1209 | `	if( rcFmt != SXRET_OK ){` |
-|      3 | 1210 | `		pCtx->nThrowRc = rcFmt;` |
-|      3 | 1211 | `		return rcFmt;` |
-|      - | 1212 | `	}` |
-|      5 | 1213 | `	return PH7_OK;` |
-|      5 | 1214 | `}` |
-|      - | 1215 | `/*` |
-|      - | 1216 | ` * int vsprintf(string $format,array $args)` |
-|      - | 1217 | ` *  Output a formatted string.` |
-|      - | 1218 | ` * Parameters` |
-|      - | 1219 | ` *  $format` |
-|      - | 1220 | ` *   See sprintf() for a description of format.` |
-|      - | 1221 | ` * Return` |
-|      - | 1222 | ` *  A string produced according to the formatting string format.` |
-|      - | 1223 | ` */` |
-|     24 | 1224 | `PH7_PRIVATE int PH7_builtin_vsprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      2 | 1225 | `{` |
-|      - | 1226 | `	sxi32 rcFmt;` |
-|      - | 1227 | `	const char *zFormat;` |
-|      - | 1228 | `	ph7_hashmap *pMap;` |
-|      - | 1229 | `	SySet sArg;` |
-|     26 | 1230 | `	sxi32 rc = SXRET_OK;` |
-|      - | 1231 | `	int nLen,n;` |
-|     26 | 1232 | `	if( nArg < 2 ){` |
-|      - | 1233 | `		/* Missing arguments,return the empty string */` |
-|    ! 0 | 1234 | `		ph7_result_string(pCtx,"",0);` |
-|    ! 0 | 1235 | `		return PH7_OK;` |
-|      - | 1236 | `	}` |
-|      - | 1237 | `	/* PHP 8 checks arguments left-to-right: $format (#1) then $values (#2). */` |
-|     26 | 1238 | `	rc = PH7_FormatCheckFormatArg(pCtx,apArg[0],1);` |
-|     26 | 1239 | `	if( rc != PH7_OK ){` |
-|    ! 0 | 1240 | `		return rc;` |
-|      - | 1241 | `	}` |
-|     26 | 1242 | `	if( !ph7_value_is_array(apArg[1]) ){` |
-|      - | 1243 | `		/* PHP 8: a non-array $values is a catchable TypeError. */` |
-|      - | 1244 | `		char zBuf[64];` |
-|    ! 0 | 1245 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
-|      - | 1246 | `			"vsprintf(): Argument #2 ($values) must be of type array, %s given",` |
-|    ! 0 | 1247 | `			VmValueGivenName(apArg[1],zBuf,sizeof(zBuf)));` |
-|      - | 1248 | `	}` |
-|      - | 1249 | `	/* Extract the string format (scalars/null coerce). */` |
-|     26 | 1250 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
-|     26 | 1251 | `	if( nLen < 1 ){` |
-|      - | 1252 | `		/* Empty string */` |
-|    ! 0 | 1253 | `		ph7_result_string(pCtx,"",0);` |
-|    ! 0 | 1254 | `		return PH7_OK;` |
-|      - | 1255 | `	}` |
-|      - | 1256 | `	/* Point to hashmap */` |
-|     26 | 1257 | `	pMap = (ph7_hashmap *)apArg[1]->x.pOther;` |
-|      - | 1258 | `	/* PHP 8: too few items in the $values array is a catchable ValueError before output.` |
-|      - | 1259 | `	 * php runs this BEFORE validating the specifiers. */` |
-|     26 | 1260 | `	rcFmt = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,(int)pMap->nEntry,1,TRUE);` |
-|     26 | 1261 | `	if( rcFmt != PH7_OK ){` |
-|      7 | 1262 | `		return rcFmt;` |
-|      - | 1263 | `	}` |
-|      - | 1264 | `	/* PHP 8: an unknown or missing format specifier throws a catchable ValueError before` |
-|      - | 1265 | `	 * any output; propagate the throw status verbatim. */` |
-|     20 | 1266 | `	rcFmt = PH7_FormatValidate(pCtx,zFormat,nLen);` |
-|     20 | 1267 | `	if( rcFmt != PH7_OK ){` |
-|      3 | 1268 | `		return rcFmt;` |
+|      - | 1198 | `	/* PHP 8: an unknown or missing format specifier throws a catchable ValueError before` |
+|      - | 1199 | `	 * any output; propagate the throw status verbatim. */` |
+|      8 | 1200 | `	rcFmt = PH7_FormatValidate(pCtx,zFormat,nLen);` |
+|      8 | 1201 | `	if( rcFmt != PH7_OK ){` |
+|    ! 0 | 1202 | `		return rcFmt;` |
+|      - | 1203 | `	}` |
+|      - | 1204 | `	/* Extract arguments from the hashmap */` |
+|      8 | 1205 | `	n = PH7_HashmapValuesToSet(pMap,&sArg);` |
+|      - | 1206 | `	/* Format the string */` |
+|      8 | 1207 | `	rcFmt = PH7_InputFormat(printfConsumer,pCtx,zFormat,nLen,n,(ph7_value **)SySetBasePtr(&sArg),(void *)&nCounter,TRUE);` |
+|      - | 1208 | `	/* Release the container */` |
+|      8 | 1209 | `	SySetRelease(&sArg);` |
+|      - | 1210 | `	/* Return the length of the outputted string */` |
+|      8 | 1211 | `	ph7_result_int64(pCtx,nCounter);` |
+|      - | 1212 | `	/* A %s argument that could not be coerced raised php's Error mid-format. The` |
+|      - | 1213 | `	 * format still ran and the output/result still happened (php does exactly` |
+|      - | 1214 | `	 * that), so report the throw last. */` |
+|      8 | 1215 | `	if( rcFmt != SXRET_OK ){` |
+|      3 | 1216 | `		pCtx->nThrowRc = rcFmt;` |
+|      3 | 1217 | `		return rcFmt;` |
+|      - | 1218 | `	}` |
+|      5 | 1219 | `	return PH7_OK;` |
+|      5 | 1220 | `}` |
+|      - | 1221 | `/*` |
+|      - | 1222 | ` * int vsprintf(string $format,array $args)` |
+|      - | 1223 | ` *  Output a formatted string.` |
+|      - | 1224 | ` * Parameters` |
+|      - | 1225 | ` *  $format` |
+|      - | 1226 | ` *   See sprintf() for a description of format.` |
+|      - | 1227 | ` * Return` |
+|      - | 1228 | ` *  A string produced according to the formatting string format.` |
+|      - | 1229 | ` */` |
+|     24 | 1230 | `PH7_PRIVATE int PH7_builtin_vsprintf(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      2 | 1231 | `{` |
+|      - | 1232 | `	sxi32 rcFmt;` |
+|      - | 1233 | `	const char *zFormat;` |
+|      - | 1234 | `	ph7_hashmap *pMap;` |
+|      - | 1235 | `	SySet sArg;` |
+|     26 | 1236 | `	sxi32 rc = SXRET_OK;` |
+|      - | 1237 | `	int nLen,n;` |
+|     26 | 1238 | `	if( nArg < 2 ){` |
+|      - | 1239 | `		/* Missing arguments,return the empty string */` |
+|    ! 0 | 1240 | `		ph7_result_string(pCtx,"",0);` |
+|    ! 0 | 1241 | `		return PH7_OK;` |
+|      - | 1242 | `	}` |
+|      - | 1243 | `	/* PHP 8 checks arguments left-to-right: $format (#1) then $values (#2). */` |
+|     26 | 1244 | `	rc = PH7_FormatCheckFormatArg(pCtx,apArg[0],1);` |
+|     26 | 1245 | `	if( rc != PH7_OK ){` |
+|    ! 0 | 1246 | `		return rc;` |
+|      - | 1247 | `	}` |
+|     26 | 1248 | `	if( !ph7_value_is_array(apArg[1]) ){` |
+|      - | 1249 | `		/* PHP 8: a non-array $values is a catchable TypeError. */` |
+|      - | 1250 | `		char zBuf[64];` |
+|    ! 0 | 1251 | `		return PH7_VmThrowException(pCtx,"TypeError",` |
+|      - | 1252 | `			"vsprintf(): Argument #2 ($values) must be of type array, %s given",` |
+|    ! 0 | 1253 | `			VmValueGivenName(apArg[1],zBuf,sizeof(zBuf)));` |
+|      - | 1254 | `	}` |
+|      - | 1255 | `	/* Extract the string format (scalars/null coerce). */` |
+|     26 | 1256 | `	zFormat = ph7_value_to_string(apArg[0],&nLen);` |
+|     26 | 1257 | `	if( nLen < 1 ){` |
+|      - | 1258 | `		/* Empty string */` |
+|    ! 0 | 1259 | `		ph7_result_string(pCtx,"",0);` |
+|    ! 0 | 1260 | `		return PH7_OK;` |
+|      - | 1261 | `	}` |
+|      - | 1262 | `	/* Point to hashmap */` |
+|     26 | 1263 | `	pMap = (ph7_hashmap *)apArg[1]->x.pOther;` |
+|      - | 1264 | `	/* PHP 8: too few items in the $values array is a catchable ValueError before output.` |
+|      - | 1265 | `	 * php runs this BEFORE validating the specifiers. */` |
+|     26 | 1266 | `	rcFmt = PH7_FormatCheckArgCount(pCtx,zFormat,nLen,(int)pMap->nEntry,1,TRUE);` |
+|     26 | 1267 | `	if( rcFmt != PH7_OK ){` |
+|      7 | 1268 | `		return rcFmt;` |
 |      - | 1269 | `	}` |
-|      - | 1270 | `	/* Extract arguments from the hashmap */` |
-|     18 | 1271 | `	n = PH7_HashmapValuesToSet(pMap,&sArg);` |
-|      - | 1272 | `	/* Format the string; sprintfConsumer reports an allocation failure via &rc. */` |
-|      - | 1273 | `	/* Empty-result seed — see PH7_builtin_sprintf. */` |
-|     18 | 1274 | `	ph7_result_string(pCtx,"",0);` |
-|     18 | 1275 | `	rcFmt = PH7_InputFormat(sprintfConsumer,pCtx,zFormat,nLen,n,(ph7_value **)SySetBasePtr(&sArg),(void *)&rc,TRUE);` |
-|      - | 1276 | `	/* Release the container */` |
-|     18 | 1277 | `	SySetRelease(&sArg);` |
-|     18 | 1278 | `	if( rc != SXRET_OK ){` |
-|      - | 1279 | `		/* The result append ran out of memory: raise a fatal. */` |
-|    ! 0 | 1280 | `		return PH7_ContextMemoryError(pCtx);` |
-|      - | 1281 | `	}` |
-|      - | 1282 | `	/* A %s argument that could not be coerced raised php's Error mid-format. The` |
-|      - | 1283 | `	 * format still ran and the output/result still happened (php does exactly` |
-|      - | 1284 | `	 * that), so report the throw last. */` |
-|     18 | 1285 | `	if( rcFmt != SXRET_OK ){` |
-|      3 | 1286 | `		pCtx->nThrowRc = rcFmt;` |
-|      3 | 1287 | `		return rcFmt;` |
-|      - | 1288 | `	}` |
-|     15 | 1289 | `	return PH7_OK;` |
-|     14 | 1290 | `}` |
-|      - | 1291 | `#endif /* PH7_NEED_FMT_AND_INI */` |
-|      - | 1292 |  |
+|      - | 1270 | `	/* PHP 8: an unknown or missing format specifier throws a catchable ValueError before` |
+|      - | 1271 | `	 * any output; propagate the throw status verbatim. */` |
+|     20 | 1272 | `	rcFmt = PH7_FormatValidate(pCtx,zFormat,nLen);` |
+|     20 | 1273 | `	if( rcFmt != PH7_OK ){` |
+|      3 | 1274 | `		return rcFmt;` |
+|      - | 1275 | `	}` |
+|      - | 1276 | `	/* Extract arguments from the hashmap */` |
+|     18 | 1277 | `	n = PH7_HashmapValuesToSet(pMap,&sArg);` |
+|      - | 1278 | `	/* Format the string; sprintfConsumer reports an allocation failure via &rc. */` |
+|      - | 1279 | `	/* Empty-result seed — see PH7_builtin_sprintf. */` |
+|     18 | 1280 | `	ph7_result_string(pCtx,"",0);` |
+|     18 | 1281 | `	rcFmt = PH7_InputFormat(sprintfConsumer,pCtx,zFormat,nLen,n,(ph7_value **)SySetBasePtr(&sArg),(void *)&rc,TRUE);` |
+|      - | 1282 | `	/* Release the container */` |
+|     18 | 1283 | `	SySetRelease(&sArg);` |
+|     18 | 1284 | `	if( rc != SXRET_OK ){` |
+|      - | 1285 | `		/* The result append ran out of memory: raise a fatal. */` |
+|    ! 0 | 1286 | `		return PH7_ContextMemoryError(pCtx);` |
+|      - | 1287 | `	}` |
+|      - | 1288 | `	/* A %s argument that could not be coerced raised php's Error mid-format. The` |
+|      - | 1289 | `	 * format still ran and the output/result still happened (php does exactly` |
+|      - | 1290 | `	 * that), so report the throw last. */` |
+|     18 | 1291 | `	if( rcFmt != SXRET_OK ){` |
+|      3 | 1292 | `		pCtx->nThrowRc = rcFmt;` |
+|      3 | 1293 | `		return rcFmt;` |
+|      - | 1294 | `	}` |
+|     15 | 1295 | `	return PH7_OK;` |
+|     14 | 1296 | `}` |
+|      - | 1297 | `#endif /* PH7_NEED_FMT_AND_INI */` |
+|      - | 1298 |  |

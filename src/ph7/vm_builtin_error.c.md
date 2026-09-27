@@ -198,30 +198,30 @@ Coverage: 300/356 lines (84.27%)
 |     - |  188 | ` *   Returns the old error_reporting level or the current level if no level` |
 |     - |  189 | ` *   parameter is given.` |
 |     - |  190 | ` */` |
-|   266 |  191 | `PH7_PRIVATE int vm_builtin_error_reporting(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   466 |  191 | `PH7_PRIVATE int vm_builtin_error_reporting(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     5 |  192 | `{` |
-|   271 |  193 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   471 |  193 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - |  194 | `	int nOld;` |
 |     - |  195 | `	/* Extract the old reporting level */` |
-|   271 |  196 | `	nOld = pVm->bErrReport ? (int)pVm->iErrMask : 0;` |
-|   271 |  197 | `	if( pVm->nErrSuppress > 0 ){` |
+|   471 |  196 | `	nOld = pVm->bErrReport ? (int)pVm->iErrMask : 0;` |
+|   471 |  197 | `	if( pVm->nErrSuppress > 0 ){` |
 |     - |  198 | `		/* Inside the '@' silence operator php reports the level masked down to` |
 |     - |  199 | `		 * the errors '@' cannot suppress: E_ERROR\|E_PARSE\|E_CORE_ERROR\|` |
 |     - |  200 | `		 * E_COMPILE_ERROR\|E_USER_ERROR\|E_RECOVERABLE_ERROR (== 4437). A custom` |
 |     - |  201 | `		 * error handler (e.g. PHPUnit's) consults error_reporting() to honor` |
 |     - |  202 | `		 * '@', so a suppressed warning must fall outside the returned mask. */` |
-|    76 |  203 | `		nOld &= 4437;` |
-|    36 |  204 | `	}` |
-|   271 |  205 | `	if( nArg > 0 ){` |
+|   250 |  203 | `		nOld &= 4437;` |
+|   123 |  204 | `	}` |
+|   471 |  205 | `	if( nArg > 0 ){` |
 |     - |  206 | `		int nNew;` |
 |     - |  207 | `		/* Keep the LEVEL, not just an on/off bit: php masks per-severity. */` |
-|    67 |  208 | `		nNew = ph7_value_to_int(apArg[0]);` |
-|    67 |  209 | `		pVm->iErrMask = (sxi32)nNew;` |
-|    67 |  210 | `		pVm->bErrReport = nNew != 0;` |
-|    31 |  211 | `	}` |
+|    75 |  208 | `		nNew = ph7_value_to_int(apArg[0]);` |
+|    75 |  209 | `		pVm->iErrMask = (sxi32)nNew;` |
+|    75 |  210 | `		pVm->bErrReport = nNew != 0;` |
+|    35 |  211 | `	}` |
 |     - |  212 | `	/* Return the old level */` |
-|   271 |  213 | `	ph7_result_int(pCtx,nOld);` |
-|   271 |  214 | `	return PH7_OK;` |
+|   471 |  213 | `	ph7_result_int(pCtx,nOld);` |
+|   471 |  214 | `	return PH7_OK;` |
 |     5 |  215 | `}` |
 |     - |  216 | `/*` |
 |     - |  217 | ` * bool error_log(string $message[,int $message_type = 0 [,string $destination[,string $extra_headers]]])` |
@@ -338,7 +338,7 @@ Coverage: 300/356 lines (84.27%)
 |     - |  328 | ` * pushes for it. Both routines below are shared by the error and the exception` |
 |     - |  329 | ` * handler because php implements them the same way.` |
 |     - |  330 | ` */` |
-| 11762 |  331 | `static sxi32 VmHandlerPush(` |
+| 12444 |  331 | `static sxi32 VmHandlerPush(` |
 |     - |  332 | `	ph7_vm *pVm,` |
 |     - |  333 | `	ph7_value *pActive,   /* the currently installed handler */` |
 |     - |  334 | `	sxi64 *piLevels,      /* its $error_levels (unused by the exception handler) */` |
@@ -349,35 +349,35 @@ Coverage: 300/356 lines (84.27%)
 |     5 |  339 | `{` |
 |     - |  340 | `	VmHandlerSlot sSlot;` |
 |     - |  341 | `	sxi32 rc;` |
-| 11767 |  342 | `	PH7_MemObjInit(pVm,&sSlot.sCb);` |
-| 11767 |  343 | `	PH7_MemObjStore(pActive,&sSlot.sCb);` |
-| 11767 |  344 | `	sSlot.iLevels = *piLevels;` |
-| 11767 |  345 | `	rc = SySetPut(pStack,(const void *)&sSlot);` |
-| 11767 |  346 | `	if( rc != SXRET_OK ){` |
+| 12449 |  342 | `	PH7_MemObjInit(pVm,&sSlot.sCb);` |
+| 12449 |  343 | `	PH7_MemObjStore(pActive,&sSlot.sCb);` |
+| 12449 |  344 | `	sSlot.iLevels = *piLevels;` |
+| 12449 |  345 | `	rc = SySetPut(pStack,(const void *)&sSlot);` |
+| 12449 |  346 | `	if( rc != SXRET_OK ){` |
 |   ! 0 |  347 | `		PH7_MemObjRelease(&sSlot.sCb);` |
 |   ! 0 |  348 | `		return rc;` |
 |     - |  349 | `	}` |
-| 11767 |  350 | `	PH7_MemObjRelease(pActive);` |
-| 11767 |  351 | `	MemObjSetType(pActive,MEMOBJ_NULL);` |
-| 11767 |  352 | `	if( pNewCb ){` |
-|  6207 |  353 | `		PH7_MemObjStore(pNewCb,pActive);` |
-|  3101 |  354 | `	}` |
-| 11767 |  355 | `	*piLevels = iLevels;` |
-| 11767 |  356 | `	return SXRET_OK;` |
-|  5886 |  357 | `}` |
-|   588 |  358 | `static void VmHandlerPop(ph7_vm *pVm,ph7_value *pActive,sxi64 *piLevels,SySet *pStack)` |
+| 12449 |  350 | `	PH7_MemObjRelease(pActive);` |
+| 12449 |  351 | `	MemObjSetType(pActive,MEMOBJ_NULL);` |
+| 12449 |  352 | `	if( pNewCb ){` |
+|  6609 |  353 | `		PH7_MemObjStore(pNewCb,pActive);` |
+|  3302 |  354 | `	}` |
+| 12449 |  355 | `	*piLevels = iLevels;` |
+| 12449 |  356 | `	return SXRET_OK;` |
+|  6227 |  357 | `}` |
+|   670 |  358 | `static void VmHandlerPop(ph7_vm *pVm,ph7_value *pActive,sxi64 *piLevels,SySet *pStack)` |
 |     5 |  359 | `{` |
-|   593 |  360 | `	VmHandlerSlot *pSlot = (VmHandlerSlot *)SySetPop(pStack);` |
-|   593 |  361 | `	PH7_MemObjRelease(pActive);` |
-|   593 |  362 | `	MemObjSetType(pActive,MEMOBJ_NULL);` |
-|   593 |  363 | `	*piLevels = PH7_E_ALL_MASK;` |
-|   593 |  364 | `	if( pSlot ){` |
-|   589 |  365 | `		PH7_MemObjStore(&pSlot->sCb,pActive);` |
-|   589 |  366 | `		*piLevels = pSlot->iLevels;` |
-|   589 |  367 | `		PH7_MemObjRelease(&pSlot->sCb);` |
-|   292 |  368 | `	}` |
-|   294 |  369 | `	SXUNUSED(pVm);` |
-|   593 |  370 | `}` |
+|   675 |  360 | `	VmHandlerSlot *pSlot = (VmHandlerSlot *)SySetPop(pStack);` |
+|   675 |  361 | `	PH7_MemObjRelease(pActive);` |
+|   675 |  362 | `	MemObjSetType(pActive,MEMOBJ_NULL);` |
+|   675 |  363 | `	*piLevels = PH7_E_ALL_MASK;` |
+|   675 |  364 | `	if( pSlot ){` |
+|   671 |  365 | `		PH7_MemObjStore(&pSlot->sCb,pActive);` |
+|   671 |  366 | `		*piLevels = pSlot->iLevels;` |
+|   671 |  367 | `		PH7_MemObjRelease(&pSlot->sCb);` |
+|   333 |  368 | `	}` |
+|   335 |  369 | `	SXUNUSED(pVm);` |
+|   675 |  370 | `}` |
 |     - |  371 | `/*` |
 |     - |  372 | ` * bool restore_exception_handler(void)` |
 |     - |  373 | ` *  Restores the previously defined exception handler function.` |
@@ -456,17 +456,17 @@ Coverage: 300/356 lines (84.27%)
 |     - |  446 | ` * Return` |
 |     - |  447 | ` *  Always TRUE.` |
 |     - |  448 | ` */` |
-|   576 |  449 | `PH7_PRIVATE int vm_builtin_restore_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   658 |  449 | `PH7_PRIVATE int vm_builtin_restore_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     5 |  450 | `{` |
-|   581 |  451 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   288 |  452 | `	SXUNUSED(nArg); /* cc warning */` |
-|   288 |  453 | `	SXUNUSED(apArg);` |
+|   663 |  451 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   329 |  452 | `	SXUNUSED(nArg); /* cc warning */` |
+|   329 |  453 | `	SXUNUSED(apArg);` |
 |     - |  454 | `	/* The popped handler's $error_levels comes back with it. An empty stack pops` |
 |     - |  455 | `	 * to NO handler; php answers TRUE either way, because the return value says` |
 |     - |  456 | `	 * "the call is valid", not "a handler was in place". */` |
-|   581 |  457 | `	VmHandlerPop(pVm,&pVm->sErrCB,&pVm->iErrCBLevels,&pVm->aErrCBSaved);` |
-|   581 |  458 | `	ph7_result_bool(pCtx,1);` |
-|   581 |  459 | `	return PH7_OK;` |
+|   663 |  457 | `	VmHandlerPop(pVm,&pVm->sErrCB,&pVm->iErrCBLevels,&pVm->aErrCBSaved);` |
+|   663 |  458 | `	ph7_result_bool(pCtx,1);` |
+|   663 |  459 | `	return PH7_OK;` |
 |     5 |  460 | `}` |
 |     - |  461 | `/*` |
 |     - |  462 | ` * value set_error_handler(callable $error_handler)` |
@@ -501,47 +501,47 @@ Coverage: 300/356 lines (84.27%)
 |     - |  491 | `` *  including for the `null` reset, which php pushes onto the handler stack like`` |
 |     - |  492 | ` *  any other value rather than treating as a failure.` |
 |     - |  493 | ` */` |
-| 11752 |  494 | `PH7_PRIVATE int vm_builtin_set_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+| 12434 |  494 | `PH7_PRIVATE int vm_builtin_set_error_handler(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     5 |  495 | `{` |
-| 11757 |  496 | `	ph7_vm *pVm = pCtx->pVm;` |
+| 12439 |  496 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - |  497 | `	sxi64 iLevels;` |
 |     - |  498 | `	/* php answers the handler this call REPLACES -- the active one, not the entry` |
 |     - |  499 | `	 * saved under it. Returning the saved entry answered the handler from one` |
 |     - |  500 | `	 * level further down (and NULL for the very first replacement of a handler` |
 |     - |  501 | `	 * that was really there). */` |
-| 11757 |  502 | `	if( ph7_value_is_callable(&pVm->sErrCB) ){` |
-|  6079 |  503 | `		ph7_result_value(pCtx,&pVm->sErrCB); /* Will make it's own copy */` |
-|  3041 |  504 | `	}else{` |
-|  5681 |  505 | `		ph7_result_null(pCtx);` |
+| 12439 |  502 | `	if( ph7_value_is_callable(&pVm->sErrCB) ){` |
+|  6471 |  503 | `		ph7_result_value(pCtx,&pVm->sErrCB); /* Will make it's own copy */` |
+|  3237 |  504 | `	}else{` |
+|  5971 |  505 | `		ph7_result_null(pCtx);` |
 |     - |  506 | `	}` |
-| 11757 |  507 | `	if( nArg < 1 ){` |
+| 12439 |  507 | `	if( nArg < 1 ){` |
 |   ! 0 |  508 | `		return PH7_OK;` |
 |     - |  509 | `	}` |
 |     - |  510 | `	/* $error_levels rides WITH the handler: it is read at full width (php ANDs` |
 |     - |  511 | `	 * a zend_long, so 2^32+1024 still selects E_USER_NOTICE) and is pushed and` |
 |     - |  512 | `	 * popped with it. */` |
-| 11757 |  513 | `	iLevels = nArg > 1 ? ph7_value_to_int64(apArg[1]) : PH7_E_ALL_MASK;` |
-| 11757 |  514 | `	if( !ph7_value_is_null(apArg[0]) ){` |
+| 12439 |  513 | `	iLevels = nArg > 1 ? ph7_value_to_int64(apArg[1]) : PH7_E_ALL_MASK;` |
+| 12439 |  514 | `	if( !ph7_value_is_null(apArg[0]) ){` |
 |     - |  515 | `		/* php REFUSES anything else that cannot be called, naming why. PH7` |
 |     - |  516 | `		 * answered TRUE and kept the old handler, so a misspelled handler name` |
 |     - |  517 | `		 * left the program reporting through the engine's own path in silence. */` |
-|  6201 |  518 | `		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[0],1,"callback",1);` |
-|  6201 |  519 | `		if( rcCb != PH7_OK ){` |
+|  6603 |  518 | `		sxi32 rcCb = PH7_CheckCallbackArg(pCtx,apArg[0],1,"callback",1);` |
+|  6603 |  519 | `		if( rcCb != PH7_OK ){` |
 |     5 |  520 | `			return rcCb;` |
 |     - |  521 | `		}` |
-|  3096 |  522 | `	}` |
+|  3297 |  522 | `	}` |
 |     - |  523 | ``	/* A `null` argument is a real stack entry: it silences the handler until a`` |
 |     - |  524 | `	 * restore_error_handler() pops it and brings the previous one -- with ITS` |
 |     - |  525 | `	 * levels -- back. */` |
-| 17627 |  526 | `	if( SXRET_OK != VmHandlerPush(pVm,&pVm->sErrCB,&pVm->iErrCBLevels,&pVm->aErrCBSaved,` |
-| 11748 |  527 | `			ph7_value_is_null(apArg[0]) ? 0 : apArg[0],iLevels) ){` |
+| 18650 |  526 | `	if( SXRET_OK != VmHandlerPush(pVm,&pVm->sErrCB,&pVm->iErrCBLevels,&pVm->aErrCBSaved,` |
+| 12430 |  527 | `			ph7_value_is_null(apArg[0]) ? 0 : apArg[0],iLevels) ){` |
 |     - |  528 | `		/* Out of memory. Nothing was installed and nothing was saved, so answering` |
 |     - |  529 | `		 * the previous handler would claim a replacement that did not happen. */` |
 |   ! 0 |  530 | `		return PH7_VmThrowException(pCtx,"Error",` |
 |   ! 0 |  531 | `			"%s(): out of memory installing the handler",ph7_function_name(pCtx));` |
 |     - |  532 | `	}` |
-| 11753 |  533 | `	return PH7_OK;` |
-|  5881 |  534 | `}` |
+| 12435 |  533 | `	return PH7_OK;` |
+|  6222 |  534 | `}` |
 |     - |  535 | `/*` |
 |     - |  536 | ` * ?callable get_error_handler(void)     -- php 8.5` |
 |     - |  537 | ` * ?callable get_exception_handler(void) -- php 8.5` |
@@ -658,47 +658,47 @@ Coverage: 300/356 lines (84.27%)
 |     - |  648 | ` * out-of-range signed conversion is implementation-defined.` |
 |     - |  649 | ` */` |
 |    96 |  650 | `static sxi32 VmBacktraceLimit(int nArg,ph7_value **apArg)` |
-|     3 |  651 | `{` |
+|     2 |  651 | `{` |
 |     - |  652 | `	sxu32 uL;` |
-|    99 |  653 | `	if( nArg < 2 \|\| apArg[1] == 0 ){` |
-|    51 |  654 | `		return 0;` |
+|    98 |  653 | `	if( nArg < 2 \|\| apArg[1] == 0 ){` |
+|    50 |  654 | `		return 0;` |
 |     - |  655 | `	}` |
 |    49 |  656 | `	uL = (sxu32)((sxu64)ph7_value_to_int64(apArg[1]) & 0xFFFFFFFF);` |
 |    49 |  657 | `	return (uL <= (sxu32)SXI32_HIGH) ? (sxi32)uL : -(sxi32)(SXU32_HIGH - uL) - 1;` |
-|    51 |  658 | `}` |
+|    50 |  658 | `}` |
 |    54 |  659 | `PH7_PRIVATE int vm_builtin_debug_backtrace(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     3 |  660 | `{` |
-|    57 |  661 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     2 |  660 | `{` |
+|    56 |  661 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - |  662 | `	ph7_value *pList;` |
 |     - |  663 | `	/* $options (php default DEBUG_BACKTRACE_PROVIDE_OBJECT): bit 1 attaches the` |
 |     - |  664 | `	 * frame's $this as 'object', bit 2 (IGNORE_ARGS) suppresses the 'args' list. */` |
-|    57 |  665 | `	sxi32 iOptions = (nArg > 0 && apArg[0]) ? ph7_value_to_int(apArg[0]) : 1 /*PROVIDE_OBJECT*/;` |
+|    56 |  665 | `	sxi32 iOptions = (nArg > 0 && apArg[0]) ? ph7_value_to_int(apArg[0]) : 1 /*PROVIDE_OBJECT*/;` |
 |     - |  666 | `	/* $limit: how many frames to report, 0 meaning all of them. It was declared` |
 |     - |  667 | `	 * in aBuiltinSig[], screened as an int and then never read, so asking for the` |
 |     - |  668 | `	 * caller alone answered the WHOLE stack -- and a program that logs` |
 |     - |  669 | `	 * debug_backtrace(0, 1) per request logged the entire chain every time. */` |
-|    57 |  670 | `	sxi32 iLimit = VmBacktraceLimit(nArg,apArg);` |
+|    56 |  670 | `	sxi32 iLimit = VmBacktraceLimit(nArg,apArg);` |
 |     - |  671 | `	/* php returns a LIST of frames, innermost first -- one entry per ACTIVE call, each` |
 |     - |  672 | `	 * describing the callee (function/class) and the position of the CALL SITE.` |
 |     - |  673 | `	 * VmBuildBacktrace walks the full frame chain (shared with the Throwable trace` |
 |     - |  674 | `	 * stamp); PH7 originally returned only the innermost frame here. */` |
-|    57 |  675 | `	pList = ph7_context_new_array(pCtx);` |
-|    57 |  676 | `	if( pList == 0 ){` |
+|    56 |  675 | `	pList = ph7_context_new_array(pCtx);` |
+|    56 |  676 | `	if( pList == 0 ){` |
 |   ! 0 |  677 | `		ph7_context_throw_error(pCtx,PH7_CTX_ERR,"PH7 is running out of memory");` |
 |   ! 0 |  678 | `		ph7_result_null(pCtx);` |
 |   ! 0 |  679 | `		SXUNUSED(nArg); /* cc warning */` |
 |   ! 0 |  680 | `		SXUNUSED(apArg);` |
 |   ! 0 |  681 | `		return PH7_OK;` |
 |     - |  682 | `	}` |
-|    57 |  683 | `	VmBuildBacktrace(&(*pVm),iOptions,iLimit,pList);` |
+|    56 |  683 | `	VmBuildBacktrace(&(*pVm),iOptions,iLimit,pList);` |
 |     - |  684 | `	/* Return the freshly created list */` |
-|    57 |  685 | `	ph7_result_value(pCtx,pList);` |
+|    56 |  685 | `	ph7_result_value(pCtx,pList);` |
 |     - |  686 | `	/*` |
 |     - |  687 | `	 * Don't worry about freeing memory, everything will be released automatically` |
 |     - |  688 | `	 * as soon we return from this function.` |
 |     - |  689 | `	 */` |
-|    57 |  690 | `	return PH7_OK;` |
-|    30 |  691 | `}` |
+|    56 |  690 | `	return PH7_OK;` |
+|    29 |  691 | `}` |
 |     - |  692 | `/*` |
 |     - |  693 | ` * Generate a small backtrace.` |
 |     - |  694 | ` * Store the generated dump in the given BLOB` |

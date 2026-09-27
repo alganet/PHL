@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 5308/5962 lines (89.03%)
+Coverage: 5318/5972 lines (89.05%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -511,7 +511,7 @@ Coverage: 5308/5962 lines (89.03%)
 |     - |  501 | ` * attached only once its own exist -- PH7_ClassImplement stubs a missing one as` |
 |     - |  502 | ` * ABSTRACT, which would leave the class uninstantiable.` |
 |     - |  503 | ` */` |
-|  5146 |  504 | `static sxi32 VmInstallWeak(ph7_vm *pVm)` |
+|  5254 |  504 | `static sxi32 VmInstallWeak(ph7_vm *pVm)` |
 |     5 |  505 | `{` |
 |     - |  506 | `	static const PH7_NativePropDef aRefProp[] = {` |
 |     - |  507 | `		/* The shared cell, as a pointer. Private to a final class and never handed` |
@@ -554,27 +554,27 @@ Coverage: 5308/5962 lines (89.03%)
 |     - |  544 | `	static const char *azMapIface[] = { "ArrayAccess", "Countable", "IteratorAggregate" };` |
 |     - |  545 | `	ph7_class *pMap;` |
 |     - |  546 | `	sxu32 n;` |
-|  5151 |  547 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|  5151 |  548 | `	if( rc != SXRET_OK ){` |
+|  5259 |  547 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  5259 |  548 | `	if( rc != SXRET_OK ){` |
 |   ! 0 |  549 | `		return rc;` |
 |     - |  550 | `	}` |
-|  5151 |  551 | `	pMap = PH7_VmExtractClass(&(*pVm),"WeakMap",sizeof("WeakMap")-1,FALSE,0);` |
-|  5151 |  552 | `	if( pMap == 0 ){` |
+|  5259 |  551 | `	pMap = PH7_VmExtractClass(&(*pVm),"WeakMap",sizeof("WeakMap")-1,FALSE,0);` |
+|  5259 |  552 | `	if( pMap == 0 ){` |
 |   ! 0 |  553 | `		return SXERR_NOTFOUND;` |
 |     - |  554 | `	}` |
-| 20589 |  555 | `	for( n = 0 ; n < SX_ARRAYSIZE(azMapIface) ; n++ ){` |
-| 23162 |  556 | `		ph7_class *pIface = PH7_VmExtractClass(&(*pVm),azMapIface[n],` |
-| 15438 |  557 | `			(sxu32)SyStrlen(azMapIface[n]),FALSE,0);` |
-| 15443 |  558 | `		if( pIface == 0 ){` |
+| 21021 |  555 | `	for( n = 0 ; n < SX_ARRAYSIZE(azMapIface) ; n++ ){` |
+| 23648 |  556 | `		ph7_class *pIface = PH7_VmExtractClass(&(*pVm),azMapIface[n],` |
+| 15762 |  557 | `			(sxu32)SyStrlen(azMapIface[n]),FALSE,0);` |
+| 15767 |  558 | `		if( pIface == 0 ){` |
 |   ! 0 |  559 | `			return SXERR_NOTFOUND;` |
 |     - |  560 | `		}` |
-| 15443 |  561 | `		rc = PH7_ClassImplement(pMap,pIface);` |
-| 15443 |  562 | `		if( rc != SXRET_OK ){` |
+| 15767 |  561 | `		rc = PH7_ClassImplement(pMap,pIface);` |
+| 15767 |  562 | `		if( rc != SXRET_OK ){` |
 |   ! 0 |  563 | `			return rc;` |
 |     - |  564 | `		}` |
-|  7724 |  565 | `	}` |
-|  5151 |  566 | `	return SXRET_OK;` |
-|  2578 |  567 | `}` |
+|  7886 |  565 | `	}` |
+|  5259 |  566 | `	return SXRET_OK;` |
+|  2632 |  567 | `}` |
 |     - |  568 |  |
 |     - |  569 | `/*` |
 |     - |  570 | ` * ---------------------------------------------------------------------------` |
@@ -687,27 +687,27 @@ Coverage: 5308/5962 lines (89.03%)
 |     - |  677 | ` * The instance's storage slot, separated for writing (every caller may mutate it). Answers` |
 |     - |  678 | ` * the SLOT rather than the hashmap because that is what the array builtins below take.` |
 |     - |  679 | ` */` |
-|  5828 |  680 | `static ph7_value * SplStoreSlot(ph7_vm *pVm,ph7_class_instance *pThis)` |
-|     5 |  681 | `{` |
-|  5833 |  682 | `	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,SPL_D) : 0;` |
-|  5833 |  683 | `	if( pSlot == 0 ){` |
+|  5836 |  680 | `static ph7_value * SplStoreSlot(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|     3 |  681 | `{` |
+|  5839 |  682 | `	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,SPL_D) : 0;` |
+|  5839 |  683 | `	if( pSlot == 0 ){` |
 |   ! 0 |  684 | `		return 0;` |
 |     - |  685 | `	}` |
-|  5833 |  686 | `	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
+|  5839 |  686 | `	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
 |   ! 0 |  687 | `		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){` |
 |   ! 0 |  688 | `			return 0;` |
 |     - |  689 | `		}` |
 |   ! 0 |  690 | `	}` |
-|  5833 |  691 | `	if( PH7_HashmapCowSeparate(pVm,pSlot) == 0 ){` |
+|  5839 |  691 | `	if( PH7_HashmapCowSeparate(pVm,pSlot) == 0 ){` |
 |   ! 0 |  692 | `		return 0;` |
 |     - |  693 | `	}` |
-|  5833 |  694 | `	return pSlot;` |
-|  2919 |  695 | `}` |
-|  3348 |  696 | `static ph7_hashmap * SplStore(ph7_vm *pVm,ph7_class_instance *pThis)` |
-|     4 |  697 | `{` |
-|  3352 |  698 | `	ph7_value *pSlot = SplStoreSlot(pVm,pThis);` |
-|  3352 |  699 | `	return pSlot ? (ph7_hashmap *)pSlot->x.pOther : 0;` |
-|     4 |  700 | `}` |
+|  5839 |  694 | `	return pSlot;` |
+|  2921 |  695 | `}` |
+|  3356 |  696 | `static ph7_hashmap * SplStore(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|     3 |  697 | `{` |
+|  3359 |  698 | `	ph7_value *pSlot = SplStoreSlot(pVm,pThis);` |
+|  3359 |  699 | `	return pSlot ? (ph7_hashmap *)pSlot->x.pOther : 0;` |
+|     3 |  700 | `}` |
 |     - |  701 | `/*` |
 |     - |  702 | `` * php's `spl_array_read_dimension` / `zend_weakmap_read_dimension` FAST PATH: a fetch on`` |
 |     - |  703 | ` * one of these containers answers with the store's OWN element, not with a copy of it.` |
@@ -772,15 +772,15 @@ Coverage: 5308/5962 lines (89.03%)
 |     - |  762 | ` * shape) and the check is written here. An OBJECT contributes its properties, as the PHP` |
 |     - |  763 | ` * did through get_object_vars().` |
 |     - |  764 | ` */` |
-|   800 |  765 | `static sxi32 SplInitStore(ph7_context *pCtx,ph7_class_instance *pThis,` |
+|   806 |  765 | `static sxi32 SplInitStore(ph7_context *pCtx,ph7_class_instance *pThis,` |
 |     - |  766 | `	ph7_value *pArray,const char *zOwner)` |
 |     5 |  767 | `{` |
-|   805 |  768 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   805 |  769 | `	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,SPL_D) : 0;` |
-|   805 |  770 | `	if( pSlot == 0 ){` |
+|   811 |  768 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   811 |  769 | `	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,SPL_D) : 0;` |
+|   811 |  770 | `	if( pSlot == 0 ){` |
 |   ! 0 |  771 | `		return PH7_OK;` |
 |     - |  772 | `	}` |
-|   805 |  773 | `	if( pArray == 0 ){` |
+|   811 |  773 | `	if( pArray == 0 ){` |
 |     - |  774 | ``		/* No argument at all: php's `$array = []` default. A native method has no compiled`` |
 |     - |  775 | `		 * parameter records for the defaults to live in (rule 33's neighbour), so the body` |
 |     - |  776 | `		 * applies it — and an EXPLICIT null still has to reach the refusal below, which is` |
@@ -794,10 +794,10 @@ Coverage: 5308/5962 lines (89.03%)
 |    83 |  784 | `		MemObjSetType(pSlot,MEMOBJ_HASHMAP);` |
 |    83 |  785 | `		return PH7_OK;` |
 |     - |  786 | `	}` |
-|   723 |  787 | `	if( pArray->iFlags & MEMOBJ_HASHMAP ){` |
-|   707 |  788 | `		PH7_MemObjRelease(pSlot);` |
-|   707 |  789 | `		PH7_MemObjStore(pArray,pSlot); /* a copy: the store is the object's own */` |
-|   707 |  790 | `		return PH7_OK;` |
+|   729 |  787 | `	if( pArray->iFlags & MEMOBJ_HASHMAP ){` |
+|   713 |  788 | `		PH7_MemObjRelease(pSlot);` |
+|   713 |  789 | `		PH7_MemObjStore(pArray,pSlot); /* a copy: the store is the object's own */` |
+|   713 |  790 | `		return PH7_OK;` |
 |     - |  791 | `	}` |
 |    17 |  792 | `	if( pArray->iFlags & MEMOBJ_OBJ ){` |
 |     - |  793 | `		/* The PHP read get_object_vars($array): the properties this scope can see, by` |
@@ -839,20 +839,20 @@ Coverage: 5308/5962 lines (89.03%)
 |    19 |  829 | `	return PH7_VmThrowException(pCtx,"TypeError",` |
 |     - |  830 | `		"%s(): Argument #1 ($array) must be of type array, %s given",` |
 |     6 |  831 | `		zOwner,ph7_type_name(pArray));` |
-|   405 |  832 | `}` |
+|   408 |  832 | `}` |
 |     - |  833 | `/* Hand one of the engine's own array builtins the instance's storage slot. */` |
 |  2246 |  834 | `static int SplArrayCall(ph7_context *pCtx,ProchHostFunction xFunc,ph7_value *pExtra)` |
-|     4 |  835 | `{` |
-|  2250 |  836 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     3 |  835 | `{` |
+|  2249 |  836 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - |  837 | `	ph7_value *apCall[2];` |
-|  2250 |  838 | `	ph7_value *pSlot = SplStoreSlot(pCtx->pVm,pThis);` |
-|  2250 |  839 | `	if( pSlot == 0 ){` |
+|  2249 |  838 | `	ph7_value *pSlot = SplStoreSlot(pCtx->pVm,pThis);` |
+|  2249 |  839 | `	if( pSlot == 0 ){` |
 |   ! 0 |  840 | `		return PH7_OK;` |
 |     - |  841 | `	}` |
-|  2250 |  842 | `	apCall[0] = pSlot;` |
-|  2250 |  843 | `	apCall[1] = pExtra;` |
-|  2250 |  844 | `	return xFunc(pCtx,pExtra ? 2 : 1,apCall);` |
-|  1127 |  845 | `}` |
+|  2249 |  842 | `	apCall[0] = pSlot;` |
+|  2249 |  843 | `	apCall[1] = pExtra;` |
+|  2249 |  844 | `	return xFunc(pCtx,pExtra ? 2 : 1,apCall);` |
+|  1126 |  845 | `}` |
 |    16 |  846 | `static int vm_builtin_SplStore_offsetExists(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     2 |  847 | `{` |
 |    18 |  848 | `	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));` |
@@ -866,12 +866,12 @@ Coverage: 5308/5962 lines (89.03%)
 |    18 |  856 | `	ph7_result_bool(pCtx,bFound);` |
 |    18 |  857 | `	return PH7_OK;` |
 |     2 |  858 | `}` |
-|    24 |  859 | `static int vm_builtin_SplStore_offsetGet(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    28 |  859 | `static int vm_builtin_SplStore_offsetGet(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     2 |  860 | `{` |
-|    26 |  861 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    26 |  862 | `	ph7_hashmap *pMap = SplStore(pVm,PH7_ContextThis(pCtx));` |
-|    26 |  863 | `	ph7_hashmap_node *pNode = 0;` |
-|    26 |  864 | `	if( pMap == 0 \|\| nArg < 1 \|\| PH7_HashmapLookup(pMap,apArg[0],&pNode) != SXRET_OK ){` |
+|    30 |  861 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    30 |  862 | `	ph7_hashmap *pMap = SplStore(pVm,PH7_ContextThis(pCtx));` |
+|    30 |  863 | `	ph7_hashmap_node *pNode = 0;` |
+|    30 |  864 | `	if( pMap == 0 \|\| nArg < 1 \|\| PH7_HashmapLookup(pMap,apArg[0],&pNode) != SXRET_OK ){` |
 |     - |  865 | `		/* php warns "Undefined array key" for a missing offset, with the key rendered` |
 |     - |  866 | `		 * the way the LOOKUP folded it (an integer bare, a string quoted) — the same` |
 |     - |  867 | `		 * pair OP_LOAD_IDX prints. This one now reports the CALLER's line, where the` |
@@ -897,9 +897,9 @@ Coverage: 5308/5962 lines (89.03%)
 |     3 |  887 | `		ph7_result_null(pCtx);` |
 |     3 |  888 | `		return PH7_OK;` |
 |     - |  889 | `	}` |
-|    24 |  890 | `	ph7_result_value(pCtx,(ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx));` |
-|    24 |  891 | `	return PH7_OK;` |
-|    14 |  892 | `}` |
+|    28 |  890 | `	ph7_result_value(pCtx,(ph7_value *)SySetAt(&pVm->aMemObj,pNode->nValIdx));` |
+|    28 |  891 | `	return PH7_OK;` |
+|    16 |  892 | `}` |
 |     - |  893 | `/*` |
 |     - |  894 | ` * Insert into the store, keeping php's cursor rule.` |
 |     - |  895 | ` *` |
@@ -957,13 +957,13 @@ Coverage: 5308/5962 lines (89.03%)
 |    35 |  947 | `	}` |
 |    73 |  948 | `	return PH7_OK;` |
 |     3 |  949 | `}` |
-|    24 |  950 | `static int vm_builtin_SplStore_count(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    26 |  950 | `static int vm_builtin_SplStore_count(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 |  951 | `{` |
-|    25 |  952 | `	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));` |
-|    12 |  953 | `	SXUNUSED(nArg);` |
-|    12 |  954 | `	SXUNUSED(apArg);` |
-|    25 |  955 | `	ph7_result_int64(pCtx,pMap ? (ph7_int64)pMap->nEntry : 0);` |
-|    25 |  956 | `	return PH7_OK;` |
+|    27 |  952 | `	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));` |
+|    13 |  953 | `	SXUNUSED(nArg);` |
+|    13 |  954 | `	SXUNUSED(apArg);` |
+|    27 |  955 | `	ph7_result_int64(pCtx,pMap ? (ph7_int64)pMap->nEntry : 0);` |
+|    27 |  956 | `	return PH7_OK;` |
 |     1 |  957 | `}` |
 |    14 |  958 | `static int vm_builtin_SplStore_getFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 |  959 | `{` |
@@ -1030,17 +1030,17 @@ Coverage: 5308/5962 lines (89.03%)
 |     2 | 1020 | `}` |
 |     - | 1021 | `/* ArrayIterator's cursor: the stored array's own internal pointer, as the PHP had it. */` |
 |   670 | 1022 | `static int vm_builtin_ArrayIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     3 | 1023 | `{` |
-|   673 | 1024 | `	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));` |
+|     2 | 1023 | `{` |
+|   672 | 1024 | `	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));` |
 |   335 | 1025 | `	SXUNUSED(nArg);` |
 |   335 | 1026 | `	SXUNUSED(apArg);` |
-|   673 | 1027 | `	if( pMap == 0 \|\| pMap->pCur == 0 ){` |
+|   672 | 1027 | `	if( pMap == 0 \|\| pMap->pCur == 0 ){` |
 |     - | 1028 | `		/* Past the end php answers NULL, where current() the FUNCTION answers false. */` |
 |     7 | 1029 | `		ph7_result_null(pCtx);` |
 |     7 | 1030 | `		return PH7_OK;` |
 |     - | 1031 | `	}` |
-|   667 | 1032 | `	return SplArrayCall(pCtx,ph7_hashmap_current,0);` |
-|   338 | 1033 | `}` |
+|   666 | 1032 | `	return SplArrayCall(pCtx,ph7_hashmap_current,0);` |
+|   337 | 1033 | `}` |
 |   620 | 1034 | `static int vm_builtin_ArrayIterator_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     2 | 1035 | `{` |
 |   310 | 1036 | `	SXUNUSED(nArg);` |
@@ -1056,21 +1056,21 @@ Coverage: 5308/5962 lines (89.03%)
 |   561 | 1046 | `	return PH7_OK;` |
 |     1 | 1047 | `}` |
 |   372 | 1048 | `static int vm_builtin_ArrayIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     3 | 1049 | `{` |
+|     2 | 1049 | `{` |
 |   186 | 1050 | `	SXUNUSED(nArg);` |
 |   186 | 1051 | `	SXUNUSED(apArg);` |
-|   375 | 1052 | `	SplArrayCall(pCtx,ph7_hashmap_reset,0);` |
-|   375 | 1053 | `	ph7_result_null(pCtx);` |
-|   375 | 1054 | `	return PH7_OK;` |
-|     3 | 1055 | `}` |
+|   374 | 1052 | `	SplArrayCall(pCtx,ph7_hashmap_reset,0);` |
+|   374 | 1053 | `	ph7_result_null(pCtx);` |
+|   374 | 1054 | `	return PH7_OK;` |
+|     2 | 1055 | `}` |
 |  1218 | 1056 | `static int vm_builtin_ArrayIterator_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     3 | 1057 | `{` |
-|  1221 | 1058 | `	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));` |
+|     2 | 1057 | `{` |
+|  1220 | 1058 | `	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));` |
 |   609 | 1059 | `	SXUNUSED(nArg);` |
 |   609 | 1060 | `	SXUNUSED(apArg);` |
-|  1221 | 1061 | `	ph7_result_bool(pCtx,pMap && pMap->pCur ? 1 : 0);` |
-|  1221 | 1062 | `	return PH7_OK;` |
-|     3 | 1063 | `}` |
+|  1220 | 1061 | `	ph7_result_bool(pCtx,pMap && pMap->pCur ? 1 : 0);` |
+|  1220 | 1062 | `	return PH7_OK;` |
+|     2 | 1063 | `}` |
 |    34 | 1064 | `static int vm_builtin_ArrayIterator_seek(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 | 1065 | `{` |
 |    35 | 1066 | `	ph7_hashmap *pMap = SplStore(pCtx->pVm,PH7_ContextThis(pCtx));` |
@@ -1089,8 +1089,8 @@ Coverage: 5308/5962 lines (89.03%)
 |    19 | 1079 | `	}` |
 |    29 | 1080 | `	return PH7_OK;` |
 |    18 | 1081 | `}` |
-|   614 | 1082 | `static int vm_builtin_ArrayIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     4 | 1083 | `{` |
+|   616 | 1082 | `static int vm_builtin_ArrayIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     2 | 1083 | `{` |
 |   618 | 1084 | `	ph7_vm *pVm = pCtx->pVm;` |
 |   618 | 1085 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - | 1086 | `	ph7_hashmap *pMap;` |
@@ -1105,9 +1105,9 @@ Coverage: 5308/5962 lines (89.03%)
 |   608 | 1095 | `	pMap = SplStore(pVm,pThis);` |
 |   608 | 1096 | `	if( pMap ){` |
 |   608 | 1097 | `		pMap->pCur = pMap->pFirst; /* reset($this->__d) */` |
-|   302 | 1098 | `	}` |
+|   303 | 1098 | `	}` |
 |   608 | 1099 | `	return PH7_OK;` |
-|   311 | 1100 | `}` |
+|   310 | 1100 | `}` |
 |     - | 1101 | `/* ArrayObject */` |
 |    16 | 1102 | `static int vm_builtin_ArrayObject_setIteratorClass(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 | 1103 | `{` |
@@ -1134,23 +1134,23 @@ Coverage: 5308/5962 lines (89.03%)
 |     9 | 1124 | `	PH7_NativeSetAttrStr(pVm,pThis,SPL_IT,zName,nName);` |
 |     9 | 1125 | `	return PH7_OK;` |
 |     9 | 1126 | `}` |
-|   162 | 1127 | `static int vm_builtin_ArrayObject_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     4 | 1128 | `{` |
-|   166 | 1129 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   166 | 1130 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   166 | 1131 | `	sxi32 rc = SplInitStore(pCtx,pThis,nArg > 0 ? apArg[0] : 0,` |
+|   166 | 1127 | `static int vm_builtin_ArrayObject_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     5 | 1128 | `{` |
+|   171 | 1129 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   171 | 1130 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   171 | 1131 | `	sxi32 rc = SplInitStore(pCtx,pThis,nArg > 0 ? apArg[0] : 0,` |
 |     - | 1132 | `		"ArrayObject::__construct");` |
-|   166 | 1133 | `	if( rc != PH7_OK ){` |
+|   171 | 1133 | `	if( rc != PH7_OK ){` |
 |     3 | 1134 | `		return rc;` |
 |     - | 1135 | `	}` |
-|   164 | 1136 | `	if( pThis && nArg > 1 ){` |
+|   169 | 1136 | `	if( pThis && nArg > 1 ){` |
 |    19 | 1137 | `		PH7_NativeSetAttrInt(pVm,pThis,SPL_F,ph7_value_to_int64(apArg[1]) & SPL_FLAG_MASK);` |
 |     9 | 1138 | `	}` |
-|   164 | 1139 | `	if( nArg > 2 ){` |
+|   169 | 1139 | `	if( nArg > 2 ){` |
 |     7 | 1140 | `		return vm_builtin_ArrayObject_setIteratorClass(pCtx,1,&apArg[2]);` |
 |     - | 1141 | `	}` |
-|   158 | 1142 | `	return PH7_OK;` |
-|    85 | 1143 | `}` |
+|   163 | 1142 | `	return PH7_OK;` |
+|    88 | 1143 | `}` |
 |     4 | 1144 | `static int vm_builtin_ArrayObject_exchangeArray(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 | 1145 | `{` |
 |     5 | 1146 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
@@ -1507,7 +1507,7 @@ Coverage: 5308/5962 lines (89.03%)
 |     - | 1497 | ` * therefore cannot wait for the chunk. RecursiveArrayIterator still lives there and extends` |
 |     - | 1498 | ` * ArrayIterator, so this install has to run BEFORE the chunk is evaluated.` |
 |     - | 1499 | ` */` |
-|  5146 | 1500 | `static sxi32 VmInstallSplStore(ph7_vm *pVm)` |
+|  5254 | 1500 | `static sxi32 VmInstallSplStore(ph7_vm *pVm)` |
 |     5 | 1501 | `{` |
 |     - | 1502 | `	static const PH7_NativeMethodDef aSeekMethod[] = {` |
 |     - | 1503 | `		{ "seek", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "int $offset", 0, 0 },` |
@@ -1604,7 +1604,7 @@ Coverage: 5308/5962 lines (89.03%)
 |     - | 1594 | `		  aObjMethod, SX_ARRAYSIZE(aObjMethod), aConst, SX_ARRAYSIZE(aConst),` |
 |     - | 1595 | `		  aObjProp, SX_ARRAYSIZE(aObjProp), 0, 0, SplStorePresent },` |
 |     - | 1596 | `	};` |
-|  5151 | 1597 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  5259 | 1597 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |     5 | 1598 | `}` |
 |     - | 1599 | `/*` |
 |     - | 1600 | ` * ---------------------------------------------------------------------------` |
@@ -1810,34 +1810,34 @@ Coverage: 5308/5962 lines (89.03%)
 |     - | 1800 | ` * with the DECLARING class's name and with getIterator() rather than __construct(),` |
 |     - | 1801 | ` * so each class hands its own name in.` |
 |     - | 1802 | ` */` |
-|   176 | 1803 | `static sxi32 DualConstruct(ph7_context *pCtx,const char *zOwner,int nArg,ph7_value **apArg)` |
+|   178 | 1803 | `static sxi32 DualConstruct(ph7_context *pCtx,const char *zOwner,int nArg,ph7_value **apArg)` |
 |     1 | 1804 | `{` |
-|   177 | 1805 | `	ph7_vm *pVm = pCtx->pVm;` |
-|   177 | 1806 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   179 | 1805 | `	ph7_vm *pVm = pCtx->pVm;` |
+|   179 | 1806 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
 |     - | 1807 | `	ph7_class_instance *pObj;` |
 |     - | 1808 | `	ph7_class *pIterCls, *pAggCls, *pTravCls;` |
-|   177 | 1809 | `	ph7_class *pCast = 0;` |
-|   177 | 1810 | `	ph7_class_instance *pHold = 0;   /* the unwrapped iterator, kept alive across levels */` |
+|   179 | 1809 | `	ph7_class *pCast = 0;` |
+|   179 | 1810 | `	ph7_class_instance *pHold = 0;   /* the unwrapped iterator, kept alive across levels */` |
 |     - | 1811 | `	int nLevel;` |
-|   177 | 1812 | `	if( pThis == 0 ){` |
+|   179 | 1812 | `	if( pThis == 0 ){` |
 |   ! 0 | 1813 | `		return PH7_OK;` |
 |     - | 1814 | `	}` |
-|   177 | 1815 | `	if( PH7_NativeAttrObj(pThis,IT_IN) != 0 ){` |
+|   179 | 1815 | `	if( PH7_NativeAttrObj(pThis,IT_IN) != 0 ){` |
 |     4 | 1816 | `		return PH7_VmThrowException(pCtx,"BadMethodCallException",` |
 |     1 | 1817 | `			"%s::getIterator() must be called exactly once per instance",zOwner);` |
 |     - | 1818 | `	}` |
-|   175 | 1819 | `	if( nArg < 1 \|\| (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){` |
+|   177 | 1819 | `	if( nArg < 1 \|\| (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){` |
 |   ! 0 | 1820 | `		return PH7_OK;   /* the shared ZPP screen already refused a non-object */` |
 |     - | 1821 | `	}` |
-|   175 | 1822 | `	pObj = (ph7_class_instance *)apArg[0]->x.pOther;` |
-|   175 | 1823 | `	pIterCls = PH7_VmExtractClass(pVm,"Iterator",sizeof("Iterator")-1,FALSE,0);` |
-|   175 | 1824 | `	pAggCls = PH7_VmExtractClass(pVm,"IteratorAggregate",sizeof("IteratorAggregate")-1,FALSE,0);` |
-|   175 | 1825 | `	pTravCls = PH7_VmExtractClass(pVm,"Traversable",sizeof("Traversable")-1,FALSE,0);` |
-|   175 | 1826 | `	if( pIterCls && PH7_VmInstanceOf(pObj->pClass,pIterCls) ){` |
+|   177 | 1822 | `	pObj = (ph7_class_instance *)apArg[0]->x.pOther;` |
+|   177 | 1823 | `	pIterCls = PH7_VmExtractClass(pVm,"Iterator",sizeof("Iterator")-1,FALSE,0);` |
+|   177 | 1824 | `	pAggCls = PH7_VmExtractClass(pVm,"IteratorAggregate",sizeof("IteratorAggregate")-1,FALSE,0);` |
+|   177 | 1825 | `	pTravCls = PH7_VmExtractClass(pVm,"Traversable",sizeof("Traversable")-1,FALSE,0);` |
+|   177 | 1826 | `	if( pIterCls && PH7_VmInstanceOf(pObj->pClass,pIterCls) ){` |
 |     - | 1827 | `		/* Already an Iterator: php ignores $class entirely on this path. */` |
-|   165 | 1828 | `		PH7_NativeSetAttrObj(pVm,pThis,IT_IN,pObj);` |
-|   165 | 1829 | `		PH7_NativeSetAttrObj(pVm,pThis,IT_IT,pObj);` |
-|   165 | 1830 | `		return PH7_OK;` |
+|   167 | 1828 | `		PH7_NativeSetAttrObj(pVm,pThis,IT_IN,pObj);` |
+|   167 | 1829 | `		PH7_NativeSetAttrObj(pVm,pThis,IT_IT,pObj);` |
+|   167 | 1830 | `		return PH7_OK;` |
 |     - | 1831 | `	}` |
 |    11 | 1832 | `	if( nArg > 1 && (apArg[1]->iFlags & MEMOBJ_NULL) == 0 ){` |
 |     - | 1833 | `		/* php's DOWNCAST: $class names the class whose getIterator() to run, which is` |
@@ -1908,10 +1908,10 @@ Coverage: 5308/5962 lines (89.03%)
 |     7 | 1898 | `		PH7_ClassInstanceUnref(pHold);   /* both slots hold their own now */` |
 |     3 | 1899 | `	}` |
 |     7 | 1900 | `	return PH7_OK;` |
-|    89 | 1901 | `}` |
-|    36 | 1902 | `static int vm_builtin_IteratorIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    90 | 1901 | `}` |
+|    38 | 1902 | `static int vm_builtin_IteratorIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 | 1903 | `{` |
-|    37 | 1904 | `	return DualConstruct(pCtx,"IteratorIterator",nArg,apArg);` |
+|    39 | 1904 | `	return DualConstruct(pCtx,"IteratorIterator",nArg,apArg);` |
 |     1 | 1905 | `}` |
 |     2 | 1906 | `static int vm_builtin_FilterIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 | 1907 | `{` |
@@ -3176,7 +3176,7 @@ Coverage: 5308/5962 lines (89.03%)
 |     - | 3166 | ` * (§7.4) — DateTime and the reflectors already report a plain return type where php` |
 |     - | 3167 | ` * reports a tentative one.` |
 |     - | 3168 | ` */` |
-|  5146 | 3169 | `static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)` |
+|  5254 | 3169 | `static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)` |
 |     5 | 3170 | `{` |
 |     - | 3171 | `	static const PH7_NativePropDef aDualProp[] = {` |
 |     - | 3172 | `		{ IT_IN, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
@@ -3363,7 +3363,7 @@ Coverage: 5308/5962 lines (89.03%)
 |     - | 3353 | `		{ "EmptyIterator", 0, "Iterator", 0,` |
 |     - | 3354 | `		  aEmptyMethod, SX_ARRAYSIZE(aEmptyMethod), 0, 0, 0, 0, 0, 0, 0 },` |
 |     - | 3355 | `	};` |
-|  5151 | 3356 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  5259 | 3356 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |     5 | 3357 | `}` |
 |     - | 3358 | `/*` |
 |     - | 3359 | ` * ---------------------------------------------------------------------------` |
@@ -4177,7 +4177,7 @@ Coverage: 5308/5962 lines (89.03%)
 |     - | 4167 | ` * because that is the order Reflection reports. Every return type is php's` |
 |     - | 4168 | `` * `@tentative-return-type` kind (rule 45).`` |
 |     - | 4169 | ` */` |
-|  5146 | 4170 | `static sxi32 VmInstallSplRecursiveIt(ph7_vm *pVm)` |
+|  5254 | 4170 | `static sxi32 VmInstallSplRecursiveIt(ph7_vm *pVm)` |
 |     5 | 4171 | `{` |
 |     - | 4172 | `	static const PH7_NativePropDef aRitProp[] = {` |
 |     - | 4173 | `		{ RIT_ST,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
@@ -4246,7 +4246,7 @@ Coverage: 5308/5962 lines (89.03%)
 |     - | 4236 | `		  aRitConst, SX_ARRAYSIZE(aRitConst),` |
 |     - | 4237 | `		  aRitProp, SX_ARRAYSIZE(aRitProp), 0, 0, 0 },` |
 |     - | 4238 | `	};` |
-|  5151 | 4239 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  5259 | 4239 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |     5 | 4240 | `}` |
 |     - | 4241 | `/*` |
 |     - | 4242 | ` * ---------------------------------------------------------------------------` |
@@ -5033,7 +5033,7 @@ Coverage: 5308/5962 lines (89.03%)
 |     - | 5023 | ` * the flags slot -- which is exactly how php does it (the create handler stamps` |
 |     - | 5024 | ` * the flags; there is no constructor to run).` |
 |     - | 5025 | ` */` |
-|  5146 | 5026 | `static sxi32 VmInstallSplDllist(ph7_vm *pVm)` |
+|  5254 | 5026 | `static sxi32 VmInstallSplDllist(ph7_vm *pVm)` |
 |     5 | 5027 | `{` |
 |     - | 5028 | `	static const PH7_NativeMethodDef aDllMethod[] = {` |
 |     - | 5029 | `		{ "add",             PH7_MOD_PUBLIC, "int $index, mixed $value", "@void",` |
@@ -5110,7 +5110,7 @@ Coverage: 5308/5962 lines (89.03%)
 |     - | 5100 | `		  0, 0, 0, 0,` |
 |     - | 5101 | `		  aStackProp, SX_ARRAYSIZE(aStackProp), 0, 0, DllPresent },` |
 |     - | 5102 | `	};` |
-|  5151 | 5103 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  5259 | 5103 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |     5 | 5104 | `}` |
 |     - | 5105 | `/*` |
 |     - | 5106 | ` * ---------------------------------------------------------------------------` |
@@ -5808,7 +5808,7 @@ Coverage: 5308/5962 lines (89.03%)
 |     - | 5798 | ` * queue's default extract mode is EXTR_DATA, stamped as a property default the` |
 |     - | 5799 | ` * way the DLL family's fix bit is.` |
 |     - | 5800 | ` */` |
-|  5146 | 5801 | `static sxi32 VmInstallSplHeap(ph7_vm *pVm)` |
+|  5254 | 5801 | `static sxi32 VmInstallSplHeap(ph7_vm *pVm)` |
 |     5 | 5802 | `{` |
 |     - | 5803 | `	static const PH7_NativePropDef aHeapProp[] = {` |
 |     - | 5804 | `		{ HP_H,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
@@ -5894,7 +5894,7 @@ Coverage: 5308/5962 lines (89.03%)
 |     - | 5884 | `		{ "SplMaxHeap", "SplHeap", 0, 0,` |
 |     - | 5885 | `		  aMaxMethod, SX_ARRAYSIZE(aMaxMethod), 0, 0, 0, 0, 0, 0, HeapPresent },` |
 |     - | 5886 | `	};` |
-|  5151 | 5887 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  5259 | 5887 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |     5 | 5888 | `}` |
 |     - | 5889 | `/*` |
 |     - | 5890 | ` * ---------------------------------------------------------------------------` |
@@ -5925,66 +5925,66 @@ Coverage: 5308/5962 lines (89.03%)
 |     - | 5915 | `#define FA_A "__a"   /* the elements, 0..n-1 */` |
 |     - | 5916 | `#define FA_N "__n"   /* php's size */` |
 |     - | 5917 |  |
-|   764 | 5918 | `static ph7_value * FaSlot(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|   774 | 5918 | `static ph7_value * FaSlot(ph7_vm *pVm,ph7_class_instance *pThis)` |
 |     1 | 5919 | `{` |
-|   765 | 5920 | `	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,FA_A) : 0;` |
-|   765 | 5921 | `	if( pSlot == 0 ){` |
+|   775 | 5920 | `	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,FA_A) : 0;` |
+|   775 | 5921 | `	if( pSlot == 0 ){` |
 |   ! 0 | 5922 | `		return 0;` |
 |     - | 5923 | `	}` |
-|   765 | 5924 | `	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
-|   107 | 5925 | `		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){` |
+|   775 | 5924 | `	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){` |
+|   109 | 5925 | `		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){` |
 |   ! 0 | 5926 | `			return 0;` |
 |     - | 5927 | `		}` |
-|    53 | 5928 | `	}` |
-|   765 | 5929 | `	if( PH7_HashmapCowSeparate(pVm,pSlot) == 0 ){` |
+|    54 | 5928 | `	}` |
+|   775 | 5929 | `	if( PH7_HashmapCowSeparate(pVm,pSlot) == 0 ){` |
 |   ! 0 | 5930 | `		return 0;` |
 |     - | 5931 | `	}` |
-|   765 | 5932 | `	return pSlot;` |
-|   383 | 5933 | `}` |
-|   718 | 5934 | `static ph7_hashmap * FaMap(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|   775 | 5932 | `	return pSlot;` |
+|   388 | 5933 | `}` |
+|   728 | 5934 | `static ph7_hashmap * FaMap(ph7_vm *pVm,ph7_class_instance *pThis)` |
 |     1 | 5935 | `{` |
-|   719 | 5936 | `	ph7_value *pSlot = FaSlot(pVm,pThis);` |
-|   719 | 5937 | `	return pSlot ? (ph7_hashmap *)pSlot->x.pOther : 0;` |
+|   729 | 5936 | `	ph7_value *pSlot = FaSlot(pVm,pThis);` |
+|   729 | 5937 | `	return pSlot ? (ph7_hashmap *)pSlot->x.pOther : 0;` |
 |     1 | 5938 | `}` |
-|   452 | 5939 | `static sxi64 FaSize(ph7_class_instance *pThis)` |
+|   458 | 5939 | `static sxi64 FaSize(ph7_class_instance *pThis)` |
 |     1 | 5940 | `{` |
-|   453 | 5941 | `	return pThis ? PH7_NativeAttrInt(pThis,FA_N) : 0;` |
+|   459 | 5941 | `	return pThis ? PH7_NativeAttrInt(pThis,FA_N) : 0;` |
 |     1 | 5942 | `}` |
-|    94 | 5943 | `static ph7_value * FaAt(ph7_vm *pVm,ph7_class_instance *pThis,sxi64 i)` |
+|    96 | 5943 | `static ph7_value * FaAt(ph7_vm *pVm,ph7_class_instance *pThis,sxi64 i)` |
 |     1 | 5944 | `{` |
-|    95 | 5945 | `	ph7_hashmap *pMap = FaMap(pVm,pThis);` |
-|    95 | 5946 | `	ph7_hashmap_node *pNode = 0;` |
-|    95 | 5947 | `	if( pMap == 0 \|\| HashmapLookupIntKey(pMap,i,&pNode) != SXRET_OK ){` |
+|    97 | 5945 | `	ph7_hashmap *pMap = FaMap(pVm,pThis);` |
+|    97 | 5946 | `	ph7_hashmap_node *pNode = 0;` |
+|    97 | 5947 | `	if( pMap == 0 \|\| HashmapLookupIntKey(pMap,i,&pNode) != SXRET_OK ){` |
 |   ! 0 | 5948 | `		return 0;` |
 |     - | 5949 | `	}` |
-|    95 | 5950 | `	return HashmapExtractNodeValue(pNode);` |
-|    48 | 5951 | `}` |
-|   508 | 5952 | `static void FaPut(ph7_vm *pVm,ph7_class_instance *pThis,sxi64 i,ph7_value *pVal)` |
+|    97 | 5950 | `	return HashmapExtractNodeValue(pNode);` |
+|    49 | 5951 | `}` |
+|   514 | 5952 | `static void FaPut(ph7_vm *pVm,ph7_class_instance *pThis,sxi64 i,ph7_value *pVal)` |
 |     1 | 5953 | `{` |
-|   509 | 5954 | `	ph7_hashmap *pMap = FaMap(pVm,pThis);` |
+|   515 | 5954 | `	ph7_hashmap *pMap = FaMap(pVm,pThis);` |
 |     - | 5955 | `	ph7_value sKey;` |
-|   509 | 5956 | `	if( pMap == 0 ){` |
+|   515 | 5956 | `	if( pMap == 0 ){` |
 |   ! 0 | 5957 | `		return;` |
 |     - | 5958 | `	}` |
-|   509 | 5959 | `	PH7_MemObjInitFromInt(pVm,&sKey,i);` |
-|   509 | 5960 | `	PH7_HashmapInsert(pMap,&sKey,pVal);` |
-|   509 | 5961 | `	PH7_MemObjRelease(&sKey);` |
-|   255 | 5962 | `}` |
+|   515 | 5959 | `	PH7_MemObjInitFromInt(pVm,&sKey,i);` |
+|   515 | 5960 | `	PH7_HashmapInsert(pMap,&sKey,pVal);` |
+|   515 | 5961 | `	PH7_MemObjRelease(&sKey);` |
+|   258 | 5962 | `}` |
 |     - | 5963 | `/*` |
 |     - | 5964 | ` * php's offset decode. An INTEGER-LIKE string is accepted (php's own` |
 |     - | 5965 | `` * `ZEND_HANDLE_NUMERIC_STRING`), a bool is its 0/1, and every other type is named`` |
 |     - | 5966 | ` * in the refusal. Returns 0 and leaves a TypeError raised when it cannot decode.` |
 |     - | 5967 | ` */` |
-|   268 | 5968 | `static int FaOffset(ph7_context *pCtx,ph7_value *pArg,sxi64 *piOut,sxi32 *pRc)` |
+|   272 | 5968 | `static int FaOffset(ph7_context *pCtx,ph7_value *pArg,sxi64 *piOut,sxi32 *pRc)` |
 |     1 | 5969 | `{` |
-|   269 | 5970 | `	*pRc = PH7_OK;` |
-|   269 | 5971 | `	if( pArg == 0 ){` |
+|   273 | 5970 | `	*pRc = PH7_OK;` |
+|   273 | 5971 | `	if( pArg == 0 ){` |
 |   ! 0 | 5972 | `		*piOut = 0;` |
 |   ! 0 | 5973 | `		return 1;` |
 |     - | 5974 | `	}` |
-|   269 | 5975 | `	if( pArg->iFlags & MEMOBJ_INT ){` |
-|   249 | 5976 | `		*piOut = pArg->x.iVal;` |
-|   249 | 5977 | `		return 1;` |
+|   273 | 5975 | `	if( pArg->iFlags & MEMOBJ_INT ){` |
+|   253 | 5976 | `		*piOut = pArg->x.iVal;` |
+|   253 | 5977 | `		return 1;` |
 |     - | 5978 | `	}` |
 |    21 | 5979 | `	if( pArg->iFlags & MEMOBJ_BOOL ){` |
 |     5 | 5980 | `		*piOut = pArg->x.iVal ? 1 : 0;` |
@@ -6003,58 +6003,58 @@ Coverage: 5308/5962 lines (89.03%)
 |    19 | 5993 | `	*pRc = PH7_VmThrowException(pCtx,"TypeError",` |
 |     6 | 5994 | `		"Cannot access offset of type %s on SplFixedArray",ph7_type_name(pArg));` |
 |    13 | 5995 | `	return 0;` |
-|   135 | 5996 | `}` |
+|   137 | 5996 | `}` |
 |    10 | 5997 | `static sxi32 FaOutOfBounds(ph7_context *pCtx)` |
 |     1 | 5998 | `{` |
 |    11 | 5999 | `	return PH7_VmThrowException(pCtx,"OutOfBoundsException","Index invalid or out of range");` |
 |     1 | 6000 | `}` |
 |     - | 6001 | ``/* php's setSize: grow with nulls, shrink by dropping the tail, answer `true`. */`` |
-|   116 | 6002 | `static sxi32 FaResize(ph7_vm *pVm,ph7_class_instance *pThis,sxi64 nNew)` |
+|   118 | 6002 | `static sxi32 FaResize(ph7_vm *pVm,ph7_class_instance *pThis,sxi64 nNew)` |
 |     1 | 6003 | `{` |
-|   117 | 6004 | `	sxi64 nOld = FaSize(pThis);` |
-|   117 | 6005 | `	ph7_hashmap *pMap = FaMap(pVm,pThis);` |
+|   119 | 6004 | `	sxi64 nOld = FaSize(pThis);` |
+|   119 | 6005 | `	ph7_hashmap *pMap = FaMap(pVm,pThis);` |
 |     - | 6006 | `	sxi64 i;` |
-|   117 | 6007 | `	if( pMap == 0 ){` |
+|   119 | 6007 | `	if( pMap == 0 ){` |
 |   ! 0 | 6008 | `		return SXERR_MEM;` |
 |     - | 6009 | `	}` |
-|   127 | 6010 | `	for( i = nNew ; i < nOld ; ++i ){` |
+|   129 | 6010 | `	for( i = nNew ; i < nOld ; ++i ){` |
 |    11 | 6011 | `		ph7_hashmap_node *pNode = 0;` |
 |    11 | 6012 | `		if( HashmapLookupIntKey(pMap,i,&pNode) == SXRET_OK ){` |
 |    11 | 6013 | `			PH7_HashmapUnlinkNode(pNode,TRUE);` |
 |     5 | 6014 | `		}` |
 |     6 | 6015 | `	}` |
-|   389 | 6016 | `	for( i = nOld ; i < nNew ; ++i ){` |
+|   395 | 6016 | `	for( i = nOld ; i < nNew ; ++i ){` |
 |     - | 6017 | `		ph7_value sNull;` |
-|   273 | 6018 | `		PH7_MemObjInit(pVm,&sNull);` |
-|   273 | 6019 | `		FaPut(pVm,pThis,i,&sNull);` |
-|   273 | 6020 | `		PH7_MemObjRelease(&sNull);` |
-|   137 | 6021 | `	}` |
-|   117 | 6022 | `	PH7_NativeSetAttrInt(pVm,pThis,FA_N,nNew);` |
-|   117 | 6023 | `	return SXRET_OK;` |
-|    59 | 6024 | `}` |
-|    90 | 6025 | `static int vm_builtin_SplFixedArray_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|   277 | 6018 | `		PH7_MemObjInit(pVm,&sNull);` |
+|   277 | 6019 | `		FaPut(pVm,pThis,i,&sNull);` |
+|   277 | 6020 | `		PH7_MemObjRelease(&sNull);` |
+|   139 | 6021 | `	}` |
+|   119 | 6022 | `	PH7_NativeSetAttrInt(pVm,pThis,FA_N,nNew);` |
+|   119 | 6023 | `	return SXRET_OK;` |
+|    60 | 6024 | `}` |
+|    92 | 6025 | `static int vm_builtin_SplFixedArray_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 | 6026 | `{` |
-|    91 | 6027 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    91 | 6028 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|    91 | 6029 | `	sxi64 nSize = 0;` |
-|    91 | 6030 | `	if( pThis == 0 ){` |
+|    93 | 6027 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    93 | 6028 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|    93 | 6029 | `	sxi64 nSize = 0;` |
+|    93 | 6030 | `	if( pThis == 0 ){` |
 |   ! 0 | 6031 | `		return PH7_OK;` |
 |     - | 6032 | `	}` |
-|    91 | 6033 | `	if( nArg > 0 ){` |
-|    87 | 6034 | `		sxi32 rc = PH7_IntArgResolve(pCtx,apArg[0],"SplFixedArray::__construct",1,"$size","int",&nSize);` |
-|    87 | 6035 | `		if( rc != SXRET_OK ){` |
+|    93 | 6033 | `	if( nArg > 0 ){` |
+|    89 | 6034 | `		sxi32 rc = PH7_IntArgResolve(pCtx,apArg[0],"SplFixedArray::__construct",1,"$size","int",&nSize);` |
+|    89 | 6035 | `		if( rc != SXRET_OK ){` |
 |   ! 0 | 6036 | `			return rc;` |
 |     - | 6037 | `		}` |
-|    43 | 6038 | `	}` |
-|    91 | 6039 | `	if( nSize < 0 ){` |
+|    44 | 6038 | `	}` |
+|    93 | 6039 | `	if( nSize < 0 ){` |
 |     - | 6040 | `		/* php words this from __construct(), not from the setSize() it forwards to —` |
 |     - | 6041 | ``		 * which is what the chunk's `$this->setSize()` reported. */`` |
 |     3 | 6042 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
 |     - | 6043 | `			"SplFixedArray::__construct(): Argument #1 ($size) must be greater than or equal to 0");` |
 |     - | 6044 | `	}` |
-|    89 | 6045 | `	FaResize(pVm,pThis,nSize);` |
-|    89 | 6046 | `	return PH7_OK;` |
-|    46 | 6047 | `}` |
+|    91 | 6045 | `	FaResize(pVm,pThis,nSize);` |
+|    91 | 6046 | `	return PH7_OK;` |
+|    47 | 6047 | `}` |
 |     6 | 6048 | `static int vm_builtin_SplFixedArray_getSize(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 | 6049 | `{` |
 |     3 | 6050 | `	SXUNUSED(nArg);` |
@@ -6122,44 +6122,44 @@ Coverage: 5308/5962 lines (89.03%)
 |    11 | 6112 | `	ph7_result_bool(pCtx,pVal != 0 && (pVal->iFlags & MEMOBJ_NULL) == 0);` |
 |    11 | 6113 | `	return PH7_OK;` |
 |    11 | 6114 | `}` |
-|    36 | 6115 | `static int vm_builtin_SplFixedArray_offsetGet(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    38 | 6115 | `static int vm_builtin_SplFixedArray_offsetGet(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 | 6116 | `{` |
-|    37 | 6117 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|    37 | 6118 | `	sxi64 iIdx = 0;` |
-|    37 | 6119 | `	sxi32 rc = PH7_OK;` |
+|    39 | 6117 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|    39 | 6118 | `	sxi64 iIdx = 0;` |
+|    39 | 6119 | `	sxi32 rc = PH7_OK;` |
 |     - | 6120 | `	ph7_value *pVal;` |
-|    37 | 6121 | `	if( nArg < 1 ){` |
+|    39 | 6121 | `	if( nArg < 1 ){` |
 |   ! 0 | 6122 | `		return PH7_OK;` |
 |     - | 6123 | `	}` |
-|    37 | 6124 | `	if( !FaOffset(pCtx,apArg[0],&iIdx,&rc) ){` |
+|    39 | 6124 | `	if( !FaOffset(pCtx,apArg[0],&iIdx,&rc) ){` |
 |     7 | 6125 | `		return rc;` |
 |     - | 6126 | `	}` |
-|    31 | 6127 | `	if( iIdx < 0 \|\| iIdx >= FaSize(pThis) ){` |
+|    33 | 6127 | `	if( iIdx < 0 \|\| iIdx >= FaSize(pThis) ){` |
 |     7 | 6128 | `		return FaOutOfBounds(pCtx);` |
 |     - | 6129 | `	}` |
-|    25 | 6130 | `	pVal = FaAt(pCtx->pVm,pThis,iIdx);` |
-|    25 | 6131 | `	if( pVal ){` |
-|    25 | 6132 | `		ph7_result_value(pCtx,pVal);` |
-|    12 | 6133 | `	}` |
-|    25 | 6134 | `	return PH7_OK;` |
-|    19 | 6135 | `}` |
-|   210 | 6136 | `static int vm_builtin_SplFixedArray_offsetSet(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    27 | 6130 | `	pVal = FaAt(pCtx->pVm,pThis,iIdx);` |
+|    27 | 6131 | `	if( pVal ){` |
+|    27 | 6132 | `		ph7_result_value(pCtx,pVal);` |
+|    13 | 6133 | `	}` |
+|    27 | 6134 | `	return PH7_OK;` |
+|    20 | 6135 | `}` |
+|   212 | 6136 | `static int vm_builtin_SplFixedArray_offsetSet(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 | 6137 | `{` |
-|   211 | 6138 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   211 | 6139 | `	sxi64 iIdx = 0;` |
-|   211 | 6140 | `	sxi32 rc = PH7_OK;` |
-|   211 | 6141 | `	if( nArg < 2 ){` |
+|   213 | 6138 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   213 | 6139 | `	sxi64 iIdx = 0;` |
+|   213 | 6140 | `	sxi32 rc = PH7_OK;` |
+|   213 | 6141 | `	if( nArg < 2 ){` |
 |   ! 0 | 6142 | `		return PH7_OK;` |
 |     - | 6143 | `	}` |
-|   211 | 6144 | `	if( !FaOffset(pCtx,apArg[0],&iIdx,&rc) ){` |
+|   213 | 6144 | `	if( !FaOffset(pCtx,apArg[0],&iIdx,&rc) ){` |
 |     3 | 6145 | `		return rc;` |
 |     - | 6146 | `	}` |
-|   209 | 6147 | `	if( iIdx < 0 \|\| iIdx >= FaSize(pThis) ){` |
+|   211 | 6147 | `	if( iIdx < 0 \|\| iIdx >= FaSize(pThis) ){` |
 |     5 | 6148 | `		return FaOutOfBounds(pCtx);` |
 |     - | 6149 | `	}` |
-|   205 | 6150 | `	FaPut(pCtx->pVm,pThis,iIdx,apArg[1]);` |
-|   205 | 6151 | `	return PH7_OK;` |
-|   106 | 6152 | `}` |
+|   207 | 6150 | `	FaPut(pCtx->pVm,pThis,iIdx,apArg[1]);` |
+|   207 | 6151 | `	return PH7_OK;` |
+|   107 | 6152 | `}` |
 |     2 | 6153 | `static int vm_builtin_SplFixedArray_offsetUnset(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |     1 | 6154 | `{` |
 |     3 | 6155 | `	ph7_vm *pVm = pCtx->pVm;` |
@@ -6398,7 +6398,7 @@ Coverage: 5308/5962 lines (89.03%)
 |     - | 6388 | ` * note that __construct, __serialize, __unserialize, getIterator and jsonSerialize` |
 |     - | 6389 | ` * are the FIVE methods php does NOT mark tentative here.` |
 |     - | 6390 | ` */` |
-|  5146 | 6391 | `static sxi32 VmInstallSplFixedArray(ph7_vm *pVm)` |
+|  5254 | 6391 | `static sxi32 VmInstallSplFixedArray(ph7_vm *pVm)` |
 |     5 | 6392 | `{` |
 |     - | 6393 | `	static const PH7_NativePropDef aFaProp[] = {` |
 |     - | 6394 | `		{ FA_A, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },` |
@@ -6436,7 +6436,7 @@ Coverage: 5308/5962 lines (89.03%)
 |     - | 6426 | `		  aFaMethod, SX_ARRAYSIZE(aFaMethod), 0, 0,` |
 |     - | 6427 | `		  aFaProp, SX_ARRAYSIZE(aFaProp), 0, &sFaIterVtab, FaPresent },` |
 |     - | 6428 | `	};` |
-|  5151 | 6429 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  5259 | 6429 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |     5 | 6430 | `}` |
 |     - | 6431 | `/*` |
 |     - | 6432 | ` * ---------------------------------------------------------------------------` |
@@ -7454,7 +7454,7 @@ Coverage: 5308/5962 lines (89.03%)
 |     - | 7444 | ` * interfaces are methodless-but-typed contracts php declares beside it, and` |
 |     - | 7445 | ` * seek() is the ONE method php does not mark tentative.` |
 |     - | 7446 | ` */` |
-|  5146 | 7447 | `static sxi32 VmInstallSplObjectStorage(ph7_vm *pVm)` |
+|  5254 | 7447 | `static sxi32 VmInstallSplObjectStorage(ph7_vm *pVm)` |
 |     5 | 7448 | `{` |
 |     - | 7449 | `	static const PH7_NativeMethodDef aObserverMethod[] = {` |
 |     - | 7450 | `		{ "update", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "SplSubject $subject", "@void", 0 },` |
@@ -7526,7 +7526,7 @@ Coverage: 5308/5962 lines (89.03%)
 |     - | 7516 | `		  aSosMethod, SX_ARRAYSIZE(aSosMethod), 0, 0,` |
 |     - | 7517 | `		  aSosProp, SX_ARRAYSIZE(aSosProp), 0, 0, SosPresent },` |
 |     - | 7518 | `	};` |
-|  5151 | 7519 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  5259 | 7519 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |     5 | 7520 | `}` |
 |     - | 7521 | `/*` |
 |     - | 7522 | ` * ---------------------------------------------------------------------------` |
@@ -8255,7 +8255,7 @@ Coverage: 5308/5962 lines (89.03%)
 |     - | 8245 | ` * setFileClass() are absent because SplFileObject is (§7), and everything else is` |
 |     - | 8246 | ` * php's, tentative return types included.` |
 |     - | 8247 | ` */` |
-|  5146 | 8248 | `static sxi32 VmInstallSplFileInfo(ph7_vm *pVm)` |
+|  5254 | 8248 | `static sxi32 VmInstallSplFileInfo(ph7_vm *pVm)` |
 |     5 | 8249 | `{` |
 |     - | 8250 | `	static const PH7_NativePropDef aSfiProp[] = {` |
 |     - | 8251 | `		{ SFI_N,  PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },` |
@@ -8309,7 +8309,7 @@ Coverage: 5308/5962 lines (89.03%)
 |     - | 8299 | `		  aSfiMethod, SX_ARRAYSIZE(aSfiMethod), 0, 0,` |
 |     - | 8300 | `		  aSfiProp, SX_ARRAYSIZE(aSfiProp), 0, 0, SfiPresent },` |
 |     - | 8301 | `	};` |
-|  5151 | 8302 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|  5259 | 8302 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |     5 | 8303 | `}` |
 |     - | 8304 | `/*` |
 |     - | 8305 | ` * ---------------------------------------------------------------------------` |
@@ -8400,864 +8400,886 @@ Coverage: 5308/5962 lines (89.03%)
 |     1 | 8390 | `{` |
 |     - | 8391 | `	SyHashEntry *pEntry;` |
 |   506 | 8392 | `	if( pThis == 0 \|\| SyHashTotalEntry(&pVm->hDirHandle) < 1 ){` |
-|     5 | 8393 | `		return 0;` |
+|     9 | 8393 | `		return 0;` |
 |     - | 8394 | `	}` |
-|   502 | 8395 | `	pEntry = SyHashGet(&pVm->hDirHandle,(const void *)&pThis,sizeof(void *));` |
-|   502 | 8396 | `	return pEntry ? (VmDirHandle *)pEntry->pUserData : 0;` |
+|   498 | 8395 | `	pEntry = SyHashGet(&pVm->hDirHandle,(const void *)&pThis,sizeof(void *));` |
+|   498 | 8396 | `	return pEntry ? (VmDirHandle *)pEntry->pUserData : 0;` |
 |   255 | 8397 | `}` |
 |     - | 8398 | `/* Close the handle this instance owns, if any. The class's xRelease, and the` |
 |     - | 8399 | ` * first half of a re-open. */` |
-|    38 | 8400 | `static void SplDirClose(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|    40 | 8400 | `static void SplDirClose(ph7_vm *pVm,ph7_class_instance *pThis)` |
 |     1 | 8401 | `{` |
-|    39 | 8402 | `	void *pData = 0;` |
-|    38 | 8403 | `	if( SyHashDeleteEntry(&pVm->hDirHandle,(const void *)&pThis,sizeof(void *),&pData) == SXRET_OK` |
-|    36 | 8404 | `	 && pData ){` |
-|    33 | 8405 | `		VmDirHandle *pH = (VmDirHandle *)pData;` |
-|    33 | 8406 | `		if( pH->pStream && pH->pStream->xCloseDir ){` |
-|    33 | 8407 | `			pH->pStream->xCloseDir(pH->pHandle);` |
-|    16 | 8408 | `		}` |
-|    33 | 8409 | `		SyMemBackendFree(&pVm->sAllocator,pH);` |
-|    16 | 8410 | `	}` |
-|    39 | 8411 | `}` |
+|    41 | 8402 | `	void *pData = 0;` |
+|    40 | 8403 | `	if( SyHashDeleteEntry(&pVm->hDirHandle,(const void *)&pThis,sizeof(void *),&pData) == SXRET_OK` |
+|    38 | 8404 | `	 && pData ){` |
+|    35 | 8405 | `		VmDirHandle *pH = (VmDirHandle *)pData;` |
+|    35 | 8406 | `		if( pH->pStream && pH->pStream->xCloseDir ){` |
+|    35 | 8407 | `			pH->pStream->xCloseDir(pH->pHandle);` |
+|    17 | 8408 | `		}` |
+|    35 | 8409 | `		SyMemBackendFree(&pVm->sAllocator,pH);` |
+|    17 | 8410 | `	}` |
+|    41 | 8411 | `}` |
 |     - | 8412 | `/*` |
-|     - | 8413 | ` * php's spl_filesystem_dir_read: invalidate the lazy name, then take ONE entry` |
-|     - | 8414 | ` * from the stream; running out leaves the entry empty, which is what valid()` |
-|     - | 8415 | ` * reports. The read goes through a scratch call context because the VFS reports` |
-|     - | 8416 | ` * a name by writing a RESULT -- borrowing the method's own return slot would` |
-|     - | 8417 | ` * append to whatever the body is about to answer (rule 54).` |
-|     - | 8418 | ` */` |
-|   232 | 8419 | `static void SplDirRead(ph7_vm *pVm,ph7_class_instance *pThis,VmDirHandle *pH)` |
-|     1 | 8420 | `{` |
-|     - | 8421 | `	ph7_context sCtx;` |
-|     - | 8422 | `	ph7_value sOut;` |
-|   233 | 8423 | `	int rc = -1;` |
-|   233 | 8424 | `	PH7_NativeSetAttrStr(pVm,pThis,SFI_N,"",0);` |
-|   233 | 8425 | `	PH7_MemObjInit(pVm,&sOut);` |
-|   233 | 8426 | `	VmInitCallContext(&sCtx,pVm,0,&sOut,0);` |
-|   233 | 8427 | `	if( pH && pH->pStream && pH->pStream->xReadDir ){` |
-|   233 | 8428 | `		rc = pH->pStream->xReadDir(pH->pHandle,&sCtx);` |
-|   117 | 8429 | `	}` |
-|   233 | 8430 | `	if( rc == PH7_OK ){` |
-|   209 | 8431 | `		int nName = 0;` |
-|   209 | 8432 | `		const char *zName = ph7_value_to_string(&sOut,&nName);` |
-|   209 | 8433 | `		PH7_NativeSetAttrStr(pVm,pThis,SDI_E,zName,nName);` |
-|   106 | 8434 | `	}else{` |
-|    25 | 8435 | `		PH7_NativeSetAttrStr(pVm,pThis,SDI_E,"",0);` |
-|     - | 8436 | `	}` |
-|   233 | 8437 | `	VmReleaseCallContext(&sCtx);` |
-|   233 | 8438 | `	PH7_MemObjRelease(&sOut);` |
-|   233 | 8439 | `}` |
-|     - | 8440 | `/* php's read loop: one entry, then more while SKIP_DOTS and this is a dot. */` |
-|   155 | 8441 | `static void SplDirReadSkip(ph7_vm *pVm,ph7_class_instance *pThis,VmDirHandle *pH)` |
-|     1 | 8442 | `{` |
-|   156 | 8443 | `	sxi64 iFlags = PH7_NativeAttrInt(pThis,SDI_F);` |
-|   149 | 8444 | `	for(;;){` |
-|   227 | 8445 | `		int nEntry = 0;` |
-|     - | 8446 | `		const char *zEntry;` |
-|   227 | 8447 | `		SplDirRead(pVm,pThis,pH);` |
-|   227 | 8448 | `		if( (iFlags & SDI_SKIPDOTS) == 0 ){` |
-|   122 | 8449 | `			return;` |
-|     - | 8450 | `		}` |
-|   140 | 8451 | `		zEntry = SfiStr(pThis,SDI_E,&nEntry);` |
-|   140 | 8452 | `		if( !SplDirIsDot(zEntry,nEntry) ){` |
-|    69 | 8453 | `			return;` |
-|     - | 8454 | `		}` |
-|     1 | 8455 | `	}` |
-|    79 | 8456 | `}` |
-|     - | 8457 | `/*` |
-|     - | 8458 | ` * php's spl_filesystem_dir_open: open the directory, remember it under the path` |
-|     - | 8459 | ` * MINUS one trailing slash, and read the first entry. Answers 0 when the open` |
-|     - | 8460 | ` * failed, having still written the path (php sets it either way, so a caught` |
-|     - | 8461 | ` * constructor failure leaves the same shape behind).` |
-|     - | 8462 | ` */` |
-|    54 | 8463 | `static VmDirHandle * SplDirOpen(ph7_vm *pVm,ph7_class_instance *pThis,` |
-|     - | 8464 | `	const char *zPath,int nPath)` |
-|     1 | 8465 | `{` |
-|     - | 8466 | `	const ph7_io_stream *pStream;` |
-|     - | 8467 | `	const char *zDevice;` |
-|     - | 8468 | `	VmDirHandle *pH;` |
-|     - | 8469 | `	char zBuf[4096];` |
-|    55 | 8470 | `	void *pHandle = 0;` |
-|    55 | 8471 | `	int nKeep = nPath;` |
-|    55 | 8472 | `	if( nPath < 1 \|\| nPath >= (int)sizeof(zBuf) ){` |
-|   ! 0 | 8473 | `		return 0;` |
-|     - | 8474 | `	}` |
-|    55 | 8475 | `	SyMemcpy(zPath,zBuf,(sxu32)nPath);` |
-|    55 | 8476 | `	zBuf[nPath] = 0;` |
-|    55 | 8477 | `	zDevice = zBuf;` |
-|    55 | 8478 | `	pStream = PH7_VmGetStreamDevice(pVm,&zDevice,nPath);` |
-|    55 | 8479 | `	if( nKeep > 1 && SFI_IS_SLASH(zPath[nKeep-1]) ){` |
-|   ! 0 | 8480 | `		nKeep--;` |
-|   ! 0 | 8481 | `	}` |
-|    55 | 8482 | `	PH7_NativeSetAttrStr(pVm,pThis,SFI_P,zPath,nKeep);` |
-|    55 | 8483 | `	PH7_NativeSetAttrInt(pVm,pThis,SDI_I,0);` |
-|    55 | 8484 | `	PH7_NativeSetAttrStr(pVm,pThis,SDI_E,"",0);` |
-|    55 | 8485 | `	PH7_NativeSetAttrStr(pVm,pThis,SFI_N,"",0);` |
-|    54 | 8486 | `	if( pStream == 0 \|\| pStream->xOpenDir == 0` |
-|    55 | 8487 | `	 \|\| pStream->xOpenDir(zDevice,0,&pHandle) != PH7_OK ){` |
-|     3 | 8488 | `		return 0;` |
-|     - | 8489 | `	}` |
-|    53 | 8490 | `	pH = (VmDirHandle *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmDirHandle));` |
-|    53 | 8491 | `	if( pH == 0 ){` |
-|   ! 0 | 8492 | `		if( pStream->xCloseDir ){` |
-|   ! 0 | 8493 | `			pStream->xCloseDir(pHandle);` |
-|   ! 0 | 8494 | `		}` |
-|   ! 0 | 8495 | `		return 0;` |
-|     - | 8496 | `	}` |
-|    53 | 8497 | `	pH->pStream = pStream;` |
-|    53 | 8498 | `	pH->pHandle = pHandle;` |
-|    53 | 8499 | `	pH->pThis = pThis;` |
-|     - | 8500 | `	/* SyHashInsert BORROWS the key bytes: key off the record's own field, which` |
-|     - | 8501 | `	 * lives exactly as long as the entry does (rule 22). */` |
-|    53 | 8502 | `	if( SyHashInsert(&pVm->hDirHandle,(const void *)&pH->pThis,sizeof(void *),pH) != SXRET_OK ){` |
-|   ! 0 | 8503 | `		if( pStream->xCloseDir ){` |
-|   ! 0 | 8504 | `			pStream->xCloseDir(pHandle);` |
-|   ! 0 | 8505 | `		}` |
-|   ! 0 | 8506 | `		SyMemBackendFree(&pVm->sAllocator,pH);` |
-|   ! 0 | 8507 | `		return 0;` |
-|     - | 8508 | `	}` |
-|    53 | 8509 | `	return pH;` |
-|    28 | 8510 | `}` |
-|     - | 8511 | `/*` |
-|     - | 8512 | ` * The open handle behind this instance, RE-OPENING it for a fresh clone.` |
-|     - | 8513 | ` *` |
-|     - | 8514 | ` * php's clone handler opens the directory again and reads forward to the` |
-|     - | 8515 | ` * source's index, because a directory stream cannot be duplicated; PHL does the` |
-|     - | 8516 | ` * same work on first use instead, which is what keeps the handle out of every` |
-|     - | 8517 | ``  * php-visible surface — a property slot carrying it would make `$a == clone $a` `` |
-|     - | 8518 | ` * false, and php says true.` |
-|     - | 8519 | ` */` |
-|   401 | 8520 | `static VmDirHandle * SplDirState(ph7_vm *pVm,ph7_class_instance *pThis)` |
-|     1 | 8521 | `{` |
-|   402 | 8522 | `	VmDirHandle *pH = SplDirFind(pVm,pThis);` |
-|     - | 8523 | `	sxi64 iIndex;` |
-|   402 | 8524 | `	int nPath = 0;` |
-|     - | 8525 | `	const char *zPath;` |
-|     - | 8526 | `	SyBlob sPath;` |
-|   402 | 8527 | `	if( pH ){` |
-|   376 | 8528 | `		return pH;` |
-|     - | 8529 | `	}` |
-|    27 | 8530 | `	zPath = SfiStr(pThis,SFI_P,&nPath);` |
-|    27 | 8531 | `	if( nPath < 1 ){` |
-|    25 | 8532 | `		return 0;   /* never constructed: php's "Object not initialized" */` |
-|     - | 8533 | `	}` |
-|     - | 8534 | `	/* The path slot is about to be rewritten by the open, so copy it out first. */` |
-|     3 | 8535 | `	SyBlobInit(&sPath,&pVm->sAllocator);` |
-|     3 | 8536 | `	SyBlobAppend(&sPath,zPath,(sxu32)nPath);` |
-|     3 | 8537 | `	iIndex = PH7_NativeAttrInt(pThis,SDI_I);` |
-|     3 | 8538 | `	pH = SplDirOpen(pVm,pThis,(const char *)SyBlobData(&sPath),(int)SyBlobLength(&sPath));` |
-|     3 | 8539 | `	SyBlobRelease(&sPath);` |
-|     3 | 8540 | `	if( pH == 0 ){` |
-|   ! 0 | 8541 | `		return 0;` |
-|     - | 8542 | `	}` |
-|     3 | 8543 | `	SplDirReadSkip(pVm,pThis,pH);` |
-|     - | 8544 | `	{` |
-|     3 | 8545 | `		sxi64 iAt = iIndex;` |
-|     5 | 8546 | `		while( iAt-- > 0 ){` |
-|     3 | 8547 | `			SplDirReadSkip(pVm,pThis,pH);` |
-|     1 | 8548 | `		}` |
+|     - | 8413 | ` * Close every DIR the program still held at VM shutdown. xRelease (SplDirClose` |
+|     - | 8414 | ` * above) covers an instance the program DESTROYED; an iterator alive at script` |
+|     - | 8415 | ` * end reaches PH7_VmRelease with its handle still open, and the OS stream` |
+|     - | 8416 | ` * behind it lives outside SyMemBackend -- the wholesale release frees the` |
+|     - | 8417 | ` * VmDirHandle record and leaks the DIR (the leak checker is what noticed:` |
+|     - | 8418 | ` * glibc's opendir buffer, ~32KB per survivor). Called from PH7_VmRelease` |
+|     - | 8419 | ` * before the backend goes; the records themselves are backend memory.` |
+|     - | 8420 | ` */` |
+|  4656 | 8421 | `PH7_PRIVATE void PH7_SplDirVmRelease(ph7_vm *pVm)` |
+|     5 | 8422 | `{` |
+|     - | 8423 | `	SyHashEntry *pEntry;` |
+|  4661 | 8424 | `	SyHashResetLoopCursor(&pVm->hDirHandle);` |
+|  4679 | 8425 | `	while( (pEntry = SyHashGetNextEntry(&pVm->hDirHandle)) != 0 ){` |
+|    19 | 8426 | `		VmDirHandle *pH = (VmDirHandle *)pEntry->pUserData;` |
+|    19 | 8427 | `		if( pH && pH->pStream && pH->pStream->xCloseDir ){` |
+|    19 | 8428 | `			pH->pStream->xCloseDir(pH->pHandle);` |
+|     9 | 8429 | `		}` |
+|     1 | 8430 | `	}` |
+|  4661 | 8431 | `}` |
+|     - | 8432 | `/*` |
+|     - | 8433 | ` * php's spl_filesystem_dir_read: invalidate the lazy name, then take ONE entry` |
+|     - | 8434 | ` * from the stream; running out leaves the entry empty, which is what valid()` |
+|     - | 8435 | ` * reports. The read goes through a scratch call context because the VFS reports` |
+|     - | 8436 | ` * a name by writing a RESULT -- borrowing the method's own return slot would` |
+|     - | 8437 | ` * append to whatever the body is about to answer (rule 54).` |
+|     - | 8438 | ` */` |
+|   232 | 8439 | `static void SplDirRead(ph7_vm *pVm,ph7_class_instance *pThis,VmDirHandle *pH)` |
+|     1 | 8440 | `{` |
+|     - | 8441 | `	ph7_context sCtx;` |
+|     - | 8442 | `	ph7_value sOut;` |
+|   233 | 8443 | `	int rc = -1;` |
+|   233 | 8444 | `	PH7_NativeSetAttrStr(pVm,pThis,SFI_N,"",0);` |
+|   233 | 8445 | `	PH7_MemObjInit(pVm,&sOut);` |
+|   233 | 8446 | `	VmInitCallContext(&sCtx,pVm,0,&sOut,0);` |
+|   233 | 8447 | `	if( pH && pH->pStream && pH->pStream->xReadDir ){` |
+|   233 | 8448 | `		rc = pH->pStream->xReadDir(pH->pHandle,&sCtx);` |
+|   117 | 8449 | `	}` |
+|   233 | 8450 | `	if( rc == PH7_OK ){` |
+|   209 | 8451 | `		int nName = 0;` |
+|   209 | 8452 | `		const char *zName = ph7_value_to_string(&sOut,&nName);` |
+|   209 | 8453 | `		PH7_NativeSetAttrStr(pVm,pThis,SDI_E,zName,nName);` |
+|   106 | 8454 | `	}else{` |
+|    25 | 8455 | `		PH7_NativeSetAttrStr(pVm,pThis,SDI_E,"",0);` |
+|     - | 8456 | `	}` |
+|   233 | 8457 | `	VmReleaseCallContext(&sCtx);` |
+|   233 | 8458 | `	PH7_MemObjRelease(&sOut);` |
+|   233 | 8459 | `}` |
+|     - | 8460 | `/* php's read loop: one entry, then more while SKIP_DOTS and this is a dot. */` |
+|   155 | 8461 | `static void SplDirReadSkip(ph7_vm *pVm,ph7_class_instance *pThis,VmDirHandle *pH)` |
+|     1 | 8462 | `{` |
+|   156 | 8463 | `	sxi64 iFlags = PH7_NativeAttrInt(pThis,SDI_F);` |
+|   149 | 8464 | `	for(;;){` |
+|   227 | 8465 | `		int nEntry = 0;` |
+|     - | 8466 | `		const char *zEntry;` |
+|   227 | 8467 | `		SplDirRead(pVm,pThis,pH);` |
+|   227 | 8468 | `		if( (iFlags & SDI_SKIPDOTS) == 0 ){` |
+|   122 | 8469 | `			return;` |
+|     - | 8470 | `		}` |
+|   140 | 8471 | `		zEntry = SfiStr(pThis,SDI_E,&nEntry);` |
+|   140 | 8472 | `		if( !SplDirIsDot(zEntry,nEntry) ){` |
+|    69 | 8473 | `			return;` |
+|     - | 8474 | `		}` |
+|     1 | 8475 | `	}` |
+|    79 | 8476 | `}` |
+|     - | 8477 | `/*` |
+|     - | 8478 | ` * php's spl_filesystem_dir_open: open the directory, remember it under the path` |
+|     - | 8479 | ` * MINUS one trailing slash, and read the first entry. Answers 0 when the open` |
+|     - | 8480 | ` * failed, having still written the path (php sets it either way, so a caught` |
+|     - | 8481 | ` * constructor failure leaves the same shape behind).` |
+|     - | 8482 | ` */` |
+|    54 | 8483 | `static VmDirHandle * SplDirOpen(ph7_vm *pVm,ph7_class_instance *pThis,` |
+|     - | 8484 | `	const char *zPath,int nPath)` |
+|     1 | 8485 | `{` |
+|     - | 8486 | `	const ph7_io_stream *pStream;` |
+|     - | 8487 | `	const char *zDevice;` |
+|     - | 8488 | `	VmDirHandle *pH;` |
+|     - | 8489 | `	char zBuf[4096];` |
+|    55 | 8490 | `	void *pHandle = 0;` |
+|    55 | 8491 | `	int nKeep = nPath;` |
+|    55 | 8492 | `	if( nPath < 1 \|\| nPath >= (int)sizeof(zBuf) ){` |
+|   ! 0 | 8493 | `		return 0;` |
+|     - | 8494 | `	}` |
+|    55 | 8495 | `	SyMemcpy(zPath,zBuf,(sxu32)nPath);` |
+|    55 | 8496 | `	zBuf[nPath] = 0;` |
+|    55 | 8497 | `	zDevice = zBuf;` |
+|    55 | 8498 | `	pStream = PH7_VmGetStreamDevice(pVm,&zDevice,nPath);` |
+|    55 | 8499 | `	if( nKeep > 1 && SFI_IS_SLASH(zPath[nKeep-1]) ){` |
+|   ! 0 | 8500 | `		nKeep--;` |
+|   ! 0 | 8501 | `	}` |
+|    55 | 8502 | `	PH7_NativeSetAttrStr(pVm,pThis,SFI_P,zPath,nKeep);` |
+|    55 | 8503 | `	PH7_NativeSetAttrInt(pVm,pThis,SDI_I,0);` |
+|    55 | 8504 | `	PH7_NativeSetAttrStr(pVm,pThis,SDI_E,"",0);` |
+|    55 | 8505 | `	PH7_NativeSetAttrStr(pVm,pThis,SFI_N,"",0);` |
+|    54 | 8506 | `	if( pStream == 0 \|\| pStream->xOpenDir == 0` |
+|    55 | 8507 | `	 \|\| pStream->xOpenDir(zDevice,0,&pHandle) != PH7_OK ){` |
+|     3 | 8508 | `		return 0;` |
+|     - | 8509 | `	}` |
+|    53 | 8510 | `	pH = (VmDirHandle *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(VmDirHandle));` |
+|    53 | 8511 | `	if( pH == 0 ){` |
+|   ! 0 | 8512 | `		if( pStream->xCloseDir ){` |
+|   ! 0 | 8513 | `			pStream->xCloseDir(pHandle);` |
+|   ! 0 | 8514 | `		}` |
+|   ! 0 | 8515 | `		return 0;` |
+|     - | 8516 | `	}` |
+|    53 | 8517 | `	pH->pStream = pStream;` |
+|    53 | 8518 | `	pH->pHandle = pHandle;` |
+|    53 | 8519 | `	pH->pThis = pThis;` |
+|     - | 8520 | `	/* SyHashInsert BORROWS the key bytes: key off the record's own field, which` |
+|     - | 8521 | `	 * lives exactly as long as the entry does (rule 22). */` |
+|    53 | 8522 | `	if( SyHashInsert(&pVm->hDirHandle,(const void *)&pH->pThis,sizeof(void *),pH) != SXRET_OK ){` |
+|   ! 0 | 8523 | `		if( pStream->xCloseDir ){` |
+|   ! 0 | 8524 | `			pStream->xCloseDir(pHandle);` |
+|   ! 0 | 8525 | `		}` |
+|   ! 0 | 8526 | `		SyMemBackendFree(&pVm->sAllocator,pH);` |
+|   ! 0 | 8527 | `		return 0;` |
+|     - | 8528 | `	}` |
+|    53 | 8529 | `	return pH;` |
+|    28 | 8530 | `}` |
+|     - | 8531 | `/*` |
+|     - | 8532 | ` * The open handle behind this instance, RE-OPENING it for a fresh clone.` |
+|     - | 8533 | ` *` |
+|     - | 8534 | ` * php's clone handler opens the directory again and reads forward to the` |
+|     - | 8535 | ` * source's index, because a directory stream cannot be duplicated; PHL does the` |
+|     - | 8536 | ` * same work on first use instead, which is what keeps the handle out of every` |
+|     - | 8537 | ``  * php-visible surface — a property slot carrying it would make `$a == clone $a` `` |
+|     - | 8538 | ` * false, and php says true.` |
+|     - | 8539 | ` */` |
+|   401 | 8540 | `static VmDirHandle * SplDirState(ph7_vm *pVm,ph7_class_instance *pThis)` |
+|     1 | 8541 | `{` |
+|   402 | 8542 | `	VmDirHandle *pH = SplDirFind(pVm,pThis);` |
+|     - | 8543 | `	sxi64 iIndex;` |
+|   402 | 8544 | `	int nPath = 0;` |
+|     - | 8545 | `	const char *zPath;` |
+|     - | 8546 | `	SyBlob sPath;` |
+|   402 | 8547 | `	if( pH ){` |
+|   376 | 8548 | `		return pH;` |
 |     - | 8549 | `	}` |
-|     - | 8550 | `	/* The open above reset the index; the clone stands where the source stood. */` |
-|     3 | 8551 | `	PH7_NativeSetAttrInt(pVm,pThis,SDI_I,iIndex);` |
-|     3 | 8552 | `	return pH;` |
-|   203 | 8553 | `}` |
-|     - | 8554 | `/*` |
-|     - | 8555 | ` * php's spl_filesystem_object_get_file_name for a DIR: the path, a slash and the` |
-|     - | 8556 | ` * current entry, cached until the next read drops it. Called through SfiName(),` |
-|     - | 8557 | ` * so every SplFileInfo accessor sees the same lazy value php's do.` |
-|     - | 8558 | ` */` |
-|    70 | 8559 | `static const char * SplDirName(ph7_vm *pVm,ph7_class_instance *pThis,int *pnLen)` |
-|     1 | 8560 | `{` |
-|    71 | 8561 | `	int nName = 0,nPath = 0,nEntry = 0;` |
-|    71 | 8562 | `	const char *zName = SfiStr(pThis,SFI_N,&nName);` |
-|     - | 8563 | `	const char *zPath,*zEntry;` |
-|     - | 8564 | `	SyBlob sName;` |
-|    71 | 8565 | `	if( nName > 0 ){` |
-|    25 | 8566 | `		*pnLen = nName;` |
-|    25 | 8567 | `		return zName;` |
-|     - | 8568 | `	}` |
-|    47 | 8569 | `	zPath = SfiStr(pThis,SFI_P,&nPath);` |
-|    47 | 8570 | `	if( nPath < 1 ){` |
-|   ! 0 | 8571 | `		*pnLen = 0;` |
-|   ! 0 | 8572 | `		return "";` |
-|     - | 8573 | `	}` |
-|    47 | 8574 | `	SyBlobInit(&sName,&pVm->sAllocator);` |
-|    47 | 8575 | `	SyBlobAppend(&sName,zPath,(sxu32)nPath);` |
-|     - | 8576 | `	{` |
-|    47 | 8577 | `		char cSlash = SplDirSlash(PH7_NativeAttrInt(pThis,SDI_F));` |
-|    47 | 8578 | `		SyBlobAppend(&sName,(const void *)&cSlash,sizeof(char));` |
-|     - | 8579 | `	}` |
-|    47 | 8580 | `	zEntry = SfiStr(pThis,SDI_E,&nEntry);` |
-|    47 | 8581 | `	SyBlobAppend(&sName,zEntry,(sxu32)nEntry);` |
-|    70 | 8582 | `	PH7_NativeSetAttrStr(pVm,pThis,SFI_N,` |
-|    46 | 8583 | `		(const char *)SyBlobData(&sName),(int)SyBlobLength(&sName));` |
-|    47 | 8584 | `	SyBlobRelease(&sName);` |
-|    47 | 8585 | `	return SfiStr(pThis,SFI_N,pnLen);` |
-|    36 | 8586 | `}` |
-|     - | 8587 | `/* php's CHECK_DIRECTORY_ITERATOR_IS_INITIALIZED: every DirectoryIterator method` |
-|     - | 8588 | ` * refuses an object whose parent constructor never ran. */` |
-|   303 | 8589 | `static VmDirHandle * SplDirChecked(ph7_context *pCtx,sxi32 *pRc)` |
-|     1 | 8590 | `{` |
-|   304 | 8591 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|   304 | 8592 | `	VmDirHandle *pH = SplDirState(pCtx->pVm,pThis);` |
-|   304 | 8593 | `	*pRc = PH7_OK;` |
-|   304 | 8594 | `	if( pH == 0 ){` |
-|    15 | 8595 | `		*pRc = PH7_VmThrowException(pCtx,"Error","Object not initialized");` |
-|     7 | 8596 | `	}` |
-|   304 | 8597 | `	return pH;` |
-|     1 | 8598 | `}` |
-|     - | 8599 | `/*` |
-|     - | 8600 | ` * The shared constructor: php's spl_filesystem_object_construct, whose two` |
-|     - | 8601 | ` * refusals are a ValueError for an empty path and an UnexpectedValueException` |
-|     - | 8602 | ` * carrying the OPEN's own errno text (php promotes the opendir warning, so the` |
-|     - | 8603 | ` * message is the warning's, prefixed with the constructor that raised it).` |
-|     - | 8604 | ` */` |
-|    58 | 8605 | `static int SplDirConstruct(ph7_context *pCtx,const char *zClass,int nArg,ph7_value **apArg,` |
-|     - | 8606 | `	sxi64 iFlags)` |
-|     1 | 8607 | `{` |
-|    59 | 8608 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    59 | 8609 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     - | 8610 | `	const char *zPath;` |
-|    59 | 8611 | `	int nPath = 0;` |
-|    59 | 8612 | `	if( pThis == 0 \|\| nArg < 1 ){` |
-|   ! 0 | 8613 | `		return PH7_OK;` |
-|     - | 8614 | `	}` |
-|    59 | 8615 | `	zPath = ph7_value_to_string(apArg[0],&nPath);` |
-|    59 | 8616 | `	if( nPath < 1 ){` |
-|     7 | 8617 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
-|     2 | 8618 | `			"%s::__construct(): Argument #1 ($directory) must not be empty",zClass);` |
-|     - | 8619 | `	}` |
-|    55 | 8620 | `	if( SplDirFind(pVm,pThis) ){` |
-|     3 | 8621 | `		return PH7_VmThrowException(pCtx,"Error","Directory object is already initialized");` |
-|     - | 8622 | `	}` |
-|    53 | 8623 | `	PH7_NativeSetAttrInt(pVm,pThis,SDI_F,iFlags);` |
-|    53 | 8624 | `	if( SplDirOpen(pVm,pThis,zPath,nPath) == 0 ){` |
-|     4 | 8625 | `		return PH7_VmThrowException(pCtx,"UnexpectedValueException",` |
-|     1 | 8626 | `			"%s::__construct(%.*s): Failed to open directory: %s",zClass,nPath,zPath,` |
-|     2 | 8627 | `			VfsStrerror(errno));` |
-|     - | 8628 | `	}` |
-|    51 | 8629 | `	SplDirReadSkip(pVm,pThis,SplDirFind(pVm,pThis));` |
-|    51 | 8630 | `	return PH7_OK;` |
-|    30 | 8631 | `}` |
-|     - | 8632 | `/* DirectoryIterator::__construct(string $directory) — php's flags for this one` |
-|     - | 8633 | ` * are KEY_AS_PATHNAME\|CURRENT_AS_SELF, and it takes no flags argument. */` |
-|    32 | 8634 | `static int vm_builtin_DirectoryIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 8635 | `{` |
-|    33 | 8636 | `	return SplDirConstruct(pCtx,"DirectoryIterator",nArg,apArg,` |
-|     - | 8637 | `		SDI_KEY_AS_PATHNAME\|SDI_CURRENT_AS_SELF);` |
-|     1 | 8638 | `}` |
-|     - | 8639 | `/* The flags argument the two subclasses share: php's ZPP overwrites the whole` |
-|     - | 8640 | ` * default when one is given, so SKIP_DOTS is NOT implied by passing flags. */` |
-|    26 | 8641 | `static sxi64 SplDirFlagArg(int nArg,ph7_value **apArg,sxi64 iDefault)` |
-|     1 | 8642 | `{` |
-|    27 | 8643 | `	return nArg > 1 ? ph7_value_to_int64(apArg[1]) : iDefault;` |
-|     1 | 8644 | `}` |
-|    16 | 8645 | `static int vm_builtin_FilesystemIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 8646 | `{` |
-|    25 | 8647 | `	return SplDirConstruct(pCtx,"FilesystemIterator",nArg,apArg,` |
-|     8 | 8648 | `		SplDirFlagArg(nArg,apArg,SDI_KEY_AS_PATHNAME\|SDI_CURRENT_AS_FILEINFO\|SDI_SKIPDOTS));` |
-|     1 | 8649 | `}` |
-|    10 | 8650 | `static int vm_builtin_RecursiveDirectoryIterator_construct(ph7_context *pCtx,int nArg,` |
-|     - | 8651 | `	ph7_value **apArg)` |
-|     1 | 8652 | `{` |
-|    16 | 8653 | `	return SplDirConstruct(pCtx,"RecursiveDirectoryIterator",nArg,apArg,` |
-|     5 | 8654 | `		SplDirFlagArg(nArg,apArg,SDI_KEY_AS_PATHNAME\|SDI_CURRENT_AS_FILEINFO));` |
-|     1 | 8655 | `}` |
-|     - | 8656 | `/* DirectoryIterator::rewind(): php re-opens nothing — it rewinds the STREAM and` |
-|     - | 8657 | ` * takes one entry, with no dot skipping at this level. */` |
-|     8 | 8658 | `static int vm_builtin_DirectoryIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 8659 | `{` |
-|     - | 8660 | `	sxi32 rc;` |
-|     9 | 8661 | `	VmDirHandle *pH = SplDirChecked(pCtx,&rc);` |
-|     4 | 8662 | `	SXUNUSED(nArg);` |
-|     4 | 8663 | `	SXUNUSED(apArg);` |
-|     9 | 8664 | `	if( pH == 0 ){` |
-|     3 | 8665 | `		return rc;` |
-|     - | 8666 | `	}` |
-|     7 | 8667 | `	PH7_NativeSetAttrInt(pCtx->pVm,PH7_ContextThis(pCtx),SDI_I,0);` |
-|     7 | 8668 | `	if( pH->pStream->xRewindDir ){` |
-|     7 | 8669 | `		pH->pStream->xRewindDir(pH->pHandle);` |
-|     3 | 8670 | `	}` |
-|     7 | 8671 | `	SplDirRead(pCtx->pVm,PH7_ContextThis(pCtx),pH);` |
-|     7 | 8672 | `	return PH7_OK;` |
-|     5 | 8673 | `}` |
-|     - | 8674 | `/* FilesystemIterator::rewind(): the same, plus the dot skipping, and php does` |
-|     - | 8675 | ` * NOT check the handle here (an uninitialized object simply rewinds to nothing). */` |
-|    20 | 8676 | `static int vm_builtin_FilesystemIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 8677 | `{` |
-|    21 | 8678 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    21 | 8679 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|    21 | 8680 | `	VmDirHandle *pH = SplDirState(pVm,pThis);` |
-|    10 | 8681 | `	SXUNUSED(nArg);` |
-|    10 | 8682 | `	SXUNUSED(apArg);` |
-|    21 | 8683 | `	PH7_NativeSetAttrInt(pVm,pThis,SDI_I,0);` |
-|    21 | 8684 | `	if( pH && pH->pStream->xRewindDir ){` |
-|    21 | 8685 | `		pH->pStream->xRewindDir(pH->pHandle);` |
-|    10 | 8686 | `	}` |
-|    21 | 8687 | `	SplDirReadSkip(pVm,pThis,pH);` |
-|    21 | 8688 | `	return PH7_OK;` |
-|     1 | 8689 | `}` |
-|    83 | 8690 | `static int vm_builtin_DirectoryIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 8691 | `{` |
-|    84 | 8692 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    84 | 8693 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     - | 8694 | `	sxi32 rc;` |
-|    84 | 8695 | `	VmDirHandle *pH = SplDirChecked(pCtx,&rc);` |
-|    42 | 8696 | `	SXUNUSED(nArg);` |
-|    42 | 8697 | `	SXUNUSED(apArg);` |
-|    84 | 8698 | `	if( pH == 0 ){` |
-|     3 | 8699 | `		return rc;` |
-|     - | 8700 | `	}` |
-|     - | 8701 | `	/* php advances the index PAST the end too, which is why key() keeps counting` |
-|     - | 8702 | `	 * once valid() is false. */` |
-|    82 | 8703 | `	PH7_NativeSetAttrInt(pVm,pThis,SDI_I,PH7_NativeAttrInt(pThis,SDI_I) + 1);` |
-|    82 | 8704 | `	SplDirReadSkip(pVm,pThis,pH);` |
-|    82 | 8705 | `	return PH7_OK;` |
-|    43 | 8706 | `}` |
-|   109 | 8707 | `static int vm_builtin_DirectoryIterator_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 8708 | `{` |
-|     - | 8709 | `	sxi32 rc;` |
-|   110 | 8710 | `	VmDirHandle *pH = SplDirChecked(pCtx,&rc);` |
-|    55 | 8711 | `	SXUNUSED(nArg);` |
-|    55 | 8712 | `	SXUNUSED(apArg);` |
-|   110 | 8713 | `	if( pH == 0 ){` |
-|     3 | 8714 | `		return rc;` |
-|     - | 8715 | `	}` |
-|   108 | 8716 | `	ph7_result_bool(pCtx,!SplDirAtEnd(PH7_ContextThis(pCtx)));` |
-|   108 | 8717 | `	return PH7_OK;` |
-|    56 | 8718 | `}` |
-|    26 | 8719 | `static int vm_builtin_DirectoryIterator_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 8720 | `{` |
-|     - | 8721 | `	sxi32 rc;` |
-|    27 | 8722 | `	VmDirHandle *pH = SplDirChecked(pCtx,&rc);` |
-|    13 | 8723 | `	SXUNUSED(nArg);` |
-|    13 | 8724 | `	SXUNUSED(apArg);` |
-|    27 | 8725 | `	if( pH == 0 ){` |
-|     3 | 8726 | `		return rc;` |
-|     - | 8727 | `	}` |
-|    25 | 8728 | `	ph7_result_int64(pCtx,PH7_NativeAttrInt(PH7_ContextThis(pCtx),SDI_I));` |
-|    25 | 8729 | `	return PH7_OK;` |
-|    14 | 8730 | `}` |
-|    10 | 8731 | `static int vm_builtin_DirectoryIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 8732 | `{` |
-|     - | 8733 | `	sxi32 rc;` |
-|    11 | 8734 | `	VmDirHandle *pH = SplDirChecked(pCtx,&rc);` |
-|     5 | 8735 | `	SXUNUSED(nArg);` |
-|     5 | 8736 | `	SXUNUSED(apArg);` |
-|    11 | 8737 | `	if( pH == 0 ){` |
-|     3 | 8738 | `		return rc;` |
-|     - | 8739 | `	}` |
-|     9 | 8740 | `	SplResultBorrowed(pCtx,PH7_ContextThis(pCtx));` |
-|     9 | 8741 | `	return PH7_OK;` |
-|     6 | 8742 | `}` |
-|    12 | 8743 | `static int vm_builtin_DirectoryIterator_isDot(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 8744 | `{` |
-|    13 | 8745 | `	int nEntry = 0;` |
-|     - | 8746 | `	const char *zEntry;` |
-|     - | 8747 | `	sxi32 rc;` |
-|    13 | 8748 | `	VmDirHandle *pH = SplDirChecked(pCtx,&rc);` |
-|     6 | 8749 | `	SXUNUSED(nArg);` |
-|     6 | 8750 | `	SXUNUSED(apArg);` |
-|    13 | 8751 | `	if( pH == 0 ){` |
-|     3 | 8752 | `		return rc;` |
-|     - | 8753 | `	}` |
-|    11 | 8754 | `	zEntry = SfiStr(PH7_ContextThis(pCtx),SDI_E,&nEntry);` |
-|    11 | 8755 | `	ph7_result_bool(pCtx,SplDirIsDot(zEntry,nEntry));` |
-|    11 | 8756 | `	return PH7_OK;` |
-|     7 | 8757 | `}` |
-|     - | 8758 | `/*` |
-|     - | 8759 | ` * php's seek(): rewind if the target is behind us, then walk forward through` |
-|     - | 8760 | ` * the OBJECT's own valid()/next() — a subclass overriding either is obeyed, and` |
-|     - | 8761 | ` * running out raises php's OutOfBoundsException with the iterator left standing` |
-|     - | 8762 | ` * where the walk stopped.` |
-|     - | 8763 | ` */` |
-|    10 | 8764 | `static int vm_builtin_DirectoryIterator_seek(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 8765 | `{` |
-|    11 | 8766 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    11 | 8767 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     - | 8768 | `	ph7_class_method *pMethod;` |
-|     - | 8769 | `	sxi64 iPos;` |
-|     - | 8770 | `	sxi32 rc;` |
-|    11 | 8771 | `	VmDirHandle *pH = SplDirChecked(pCtx,&rc);` |
-|    11 | 8772 | `	if( pH == 0 ){` |
-|   ! 0 | 8773 | `		return rc;` |
-|     - | 8774 | `	}` |
-|    11 | 8775 | `	iPos = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;` |
-|    11 | 8776 | `	if( PH7_NativeAttrInt(pThis,SDI_I) > iPos ){` |
-|     5 | 8777 | `		pMethod = PH7_ClassExtractMethod(pThis->pClass,"rewind",sizeof("rewind")-1);` |
-|     5 | 8778 | `		if( pMethod ){` |
-|     5 | 8779 | `			rc = PH7_VmCallClassMethod(pVm,pThis,pMethod,0,0,0);` |
-|     5 | 8780 | `			if( rc != SXRET_OK ){` |
-|   ! 0 | 8781 | `				return rc;` |
-|     - | 8782 | `			}` |
-|     2 | 8783 | `		}` |
-|     2 | 8784 | `	}` |
-|    27 | 8785 | `	while( PH7_NativeAttrInt(pThis,SDI_I) < iPos ){` |
-|     - | 8786 | `		ph7_value sRet;` |
-|     - | 8787 | `		int bValid;` |
-|    19 | 8788 | `		pMethod = PH7_ClassExtractMethod(pThis->pClass,"valid",sizeof("valid")-1);` |
-|    19 | 8789 | `		if( pMethod == 0 ){` |
-|   ! 0 | 8790 | `			break;` |
-|     - | 8791 | `		}` |
-|    19 | 8792 | `		PH7_MemObjInit(pVm,&sRet);` |
-|    19 | 8793 | `		rc = PH7_VmCallClassMethod(pVm,pThis,pMethod,&sRet,0,0);` |
-|    19 | 8794 | `		bValid = rc == SXRET_OK && ph7_value_to_bool(&sRet);` |
-|    19 | 8795 | `		PH7_MemObjRelease(&sRet);` |
-|    19 | 8796 | `		if( rc != SXRET_OK ){` |
-|   ! 0 | 8797 | `			return rc;` |
-|     - | 8798 | `		}` |
-|    19 | 8799 | `		if( !bValid ){` |
-|     4 | 8800 | `			return PH7_VmThrowException(pCtx,"OutOfBoundsException",` |
-|     1 | 8801 | `				"Seek position %qd is out of range",iPos);` |
-|     - | 8802 | `		}` |
-|    17 | 8803 | `		pMethod = PH7_ClassExtractMethod(pThis->pClass,"next",sizeof("next")-1);` |
-|    17 | 8804 | `		if( pMethod == 0 ){` |
-|   ! 0 | 8805 | `			break;` |
-|     - | 8806 | `		}` |
-|    17 | 8807 | `		rc = PH7_VmCallClassMethod(pVm,pThis,pMethod,0,0,0);` |
-|    17 | 8808 | `		if( rc != SXRET_OK ){` |
-|   ! 0 | 8809 | `			return rc;` |
-|     - | 8810 | `		}` |
-|     1 | 8811 | `	}` |
-|     9 | 8812 | `	return PH7_OK;` |
-|     6 | 8813 | `}` |
-|     - | 8814 | `/* DirectoryIterator's three name accessors read the ENTRY, not the pathname —` |
-|     - | 8815 | `` * which is why `getFilename()` answers `..` where SplFileInfo's would answer the`` |
-|     - | 8816 | `` * whole path, and why `__toString()` is aliased to this one rather than to`` |
-|     - | 8817 | ` * getPathname(). */` |
-|    41 | 8818 | `static int vm_builtin_DirectoryIterator_getFilename(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 8819 | `{` |
-|    42 | 8820 | `	int nEntry = 0;` |
-|     - | 8821 | `	const char *zEntry;` |
-|     - | 8822 | `	sxi32 rc;` |
-|    42 | 8823 | `	VmDirHandle *pH = SplDirChecked(pCtx,&rc);` |
-|    21 | 8824 | `	SXUNUSED(nArg);` |
-|    21 | 8825 | `	SXUNUSED(apArg);` |
-|    42 | 8826 | `	if( pH == 0 ){` |
-|     3 | 8827 | `		return rc;` |
-|     - | 8828 | `	}` |
-|    40 | 8829 | `	zEntry = SfiStr(PH7_ContextThis(pCtx),SDI_E,&nEntry);` |
-|    40 | 8830 | `	ph7_result_string(pCtx,zEntry,nEntry);` |
-|    40 | 8831 | `	return PH7_OK;` |
-|    22 | 8832 | `}` |
-|     2 | 8833 | `static int vm_builtin_DirectoryIterator_getBasename(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 8834 | `{` |
-|     3 | 8835 | `	int nEntry = 0,nBase = 0;` |
-|     - | 8836 | `	const char *zEntry,*zBase;` |
-|     - | 8837 | `	sxi32 rc;` |
-|     3 | 8838 | `	VmDirHandle *pH = SplDirChecked(pCtx,&rc);` |
-|     3 | 8839 | `	if( pH == 0 ){` |
-|   ! 0 | 8840 | `		return rc;` |
-|     - | 8841 | `	}` |
-|     3 | 8842 | `	zEntry = SfiStr(PH7_ContextThis(pCtx),SDI_E,&nEntry);` |
-|     3 | 8843 | `	zBase = PH7_ExtractBaseName(zEntry,nEntry,&nBase);` |
-|     3 | 8844 | `	if( nArg > 0 ){` |
-|     3 | 8845 | `		int nSuffix = 0;` |
-|     3 | 8846 | `		const char *zSuffix = ph7_value_to_string(apArg[0],&nSuffix);` |
-|     2 | 8847 | `		if( nSuffix > 0 && nSuffix < nBase` |
-|     3 | 8848 | `		 && SyMemcmp(&zBase[nBase - nSuffix],zSuffix,(sxu32)nSuffix) == 0 ){` |
-|     3 | 8849 | `			nBase -= nSuffix;` |
-|     1 | 8850 | `		}` |
-|     1 | 8851 | `	}` |
-|     3 | 8852 | `	ph7_result_string(pCtx,zBase,nBase);` |
-|     3 | 8853 | `	return PH7_OK;` |
-|     2 | 8854 | `}` |
-|     2 | 8855 | `static int vm_builtin_DirectoryIterator_getExtension(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 8856 | `{` |
-|     3 | 8857 | `	int nEntry = 0,nBase = 0,i;` |
-|     - | 8858 | `	const char *zEntry,*zBase;` |
-|     - | 8859 | `	sxi32 rc;` |
-|     3 | 8860 | `	VmDirHandle *pH = SplDirChecked(pCtx,&rc);` |
-|     1 | 8861 | `	SXUNUSED(nArg);` |
-|     1 | 8862 | `	SXUNUSED(apArg);` |
-|     3 | 8863 | `	if( pH == 0 ){` |
-|   ! 0 | 8864 | `		return rc;` |
-|     - | 8865 | `	}` |
-|     3 | 8866 | `	zEntry = SfiStr(PH7_ContextThis(pCtx),SDI_E,&nEntry);` |
-|     3 | 8867 | `	zBase = PH7_ExtractBaseName(zEntry,nEntry,&nBase);` |
-|     9 | 8868 | `	for( i = nBase - 1 ; i >= 0 ; --i ){` |
-|     9 | 8869 | `		if( zBase[i] == '.' ){` |
-|     3 | 8870 | `			ph7_result_string(pCtx,&zBase[i+1],nBase - i - 1);` |
-|     3 | 8871 | `			return PH7_OK;` |
-|     - | 8872 | `		}` |
-|     4 | 8873 | `	}` |
-|   ! 0 | 8874 | `	ph7_result_string(pCtx,"",0);` |
-|   ! 0 | 8875 | `	return PH7_OK;` |
-|     2 | 8876 | `}` |
-|     - | 8877 | `/*` |
-|     - | 8878 | ` * FilesystemIterator::key()/current(): php compares the flag against its MASK` |
-|     - | 8879 | `` * (`(flags & MODE_MASK) == mode`) rather than testing a bit, so a stray bit in`` |
-|     - | 8880 | ``  * another field cannot change either answer — which the chunk's `& KEY_AS_FILENAME` `` |
-|     - | 8881 | `` * and `=== CURRENT_AS_PATHNAME` both got wrong in one direction or the other.`` |
-|     - | 8882 | ` */` |
-|    28 | 8883 | `static int vm_builtin_FilesystemIterator_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 8884 | `{` |
-|    29 | 8885 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    29 | 8886 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|    29 | 8887 | `	sxi64 iFlags = PH7_NativeAttrInt(pThis,SDI_F);` |
-|    29 | 8888 | `	int nOut = 0;` |
-|     - | 8889 | `	const char *zOut;` |
-|    14 | 8890 | `	SXUNUSED(nArg);` |
-|    14 | 8891 | `	SXUNUSED(apArg);` |
-|    29 | 8892 | `	if( (iFlags & SDI_KEY_MODE_MASK) == SDI_KEY_AS_FILENAME ){` |
-|     5 | 8893 | `		zOut = SfiStr(pThis,SDI_E,&nOut);` |
-|     5 | 8894 | `		ph7_result_string(pCtx,zOut,nOut);` |
-|     5 | 8895 | `		return PH7_OK;` |
-|     - | 8896 | `	}` |
-|    25 | 8897 | `	if( SplDirState(pVm,pThis) == 0 ){` |
-|   ! 0 | 8898 | `		return PH7_VmThrowException(pCtx,"Error","Object not initialized");` |
-|     - | 8899 | `	}` |
-|    25 | 8900 | `	zOut = SfiName(pVm,pThis,&nOut);` |
-|    25 | 8901 | `	ph7_result_string(pCtx,zOut,nOut);` |
-|    25 | 8902 | `	return PH7_OK;` |
-|    15 | 8903 | `}` |
-|    40 | 8904 | `static int vm_builtin_FilesystemIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 8905 | `{` |
-|    41 | 8906 | `	ph7_vm *pVm = pCtx->pVm;` |
-|    41 | 8907 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|    41 | 8908 | `	sxi64 iMode = PH7_NativeAttrInt(pThis,SDI_F) & SDI_CURRENT_MODE_MASK;` |
-|    20 | 8909 | `	SXUNUSED(nArg);` |
-|    20 | 8910 | `	SXUNUSED(apArg);` |
-|    41 | 8911 | `	if( iMode == SDI_CURRENT_AS_PATHNAME \|\| iMode == SDI_CURRENT_AS_FILEINFO ){` |
-|    29 | 8912 | `		if( SplDirState(pVm,pThis) == 0 ){` |
-|   ! 0 | 8913 | `			return PH7_VmThrowException(pCtx,"Error","Object not initialized");` |
-|     - | 8914 | `		}` |
-|    14 | 8915 | `	}` |
-|    41 | 8916 | `	if( iMode == SDI_CURRENT_AS_PATHNAME ){` |
-|     5 | 8917 | `		int nName = 0;` |
-|     5 | 8918 | `		const char *zName = SfiName(pVm,pThis,&nName);` |
-|     5 | 8919 | `		ph7_result_string(pCtx,zName,nName);` |
-|     5 | 8920 | `		return PH7_OK;` |
-|     - | 8921 | `	}` |
-|    37 | 8922 | `	if( iMode == SDI_CURRENT_AS_FILEINFO ){` |
-|    25 | 8923 | `		ph7_class *pClass = 0;` |
-|    25 | 8924 | `		int nName = 0,nDir = 0;` |
-|     - | 8925 | `		const char *zName,*zDir;` |
-|     - | 8926 | `		sxi32 rc;` |
-|    25 | 8927 | `		if( SplDirAtEnd(pThis) ){` |
-|     - | 8928 | `			/* php's create_type again: there is no entry to describe. */` |
-|   ! 0 | 8929 | `			return PH7_VmThrowException(pCtx,"RuntimeException","Could not open file");` |
-|     - | 8930 | `		}` |
-|    25 | 8931 | `		rc = SfiInfoClass(pCtx,"current",0,&pClass);` |
-|    25 | 8932 | `		if( rc != PH7_OK ){` |
-|   ! 0 | 8933 | `			return rc;` |
+|    27 | 8550 | `	zPath = SfiStr(pThis,SFI_P,&nPath);` |
+|    27 | 8551 | `	if( nPath < 1 ){` |
+|    25 | 8552 | `		return 0;   /* never constructed: php's "Object not initialized" */` |
+|     - | 8553 | `	}` |
+|     - | 8554 | `	/* The path slot is about to be rewritten by the open, so copy it out first. */` |
+|     3 | 8555 | `	SyBlobInit(&sPath,&pVm->sAllocator);` |
+|     3 | 8556 | `	SyBlobAppend(&sPath,zPath,(sxu32)nPath);` |
+|     3 | 8557 | `	iIndex = PH7_NativeAttrInt(pThis,SDI_I);` |
+|     3 | 8558 | `	pH = SplDirOpen(pVm,pThis,(const char *)SyBlobData(&sPath),(int)SyBlobLength(&sPath));` |
+|     3 | 8559 | `	SyBlobRelease(&sPath);` |
+|     3 | 8560 | `	if( pH == 0 ){` |
+|   ! 0 | 8561 | `		return 0;` |
+|     - | 8562 | `	}` |
+|     3 | 8563 | `	SplDirReadSkip(pVm,pThis,pH);` |
+|     - | 8564 | `	{` |
+|     3 | 8565 | `		sxi64 iAt = iIndex;` |
+|     5 | 8566 | `		while( iAt-- > 0 ){` |
+|     3 | 8567 | `			SplDirReadSkip(pVm,pThis,pH);` |
+|     1 | 8568 | `		}` |
+|     - | 8569 | `	}` |
+|     - | 8570 | `	/* The open above reset the index; the clone stands where the source stood. */` |
+|     3 | 8571 | `	PH7_NativeSetAttrInt(pVm,pThis,SDI_I,iIndex);` |
+|     3 | 8572 | `	return pH;` |
+|   203 | 8573 | `}` |
+|     - | 8574 | `/*` |
+|     - | 8575 | ` * php's spl_filesystem_object_get_file_name for a DIR: the path, a slash and the` |
+|     - | 8576 | ` * current entry, cached until the next read drops it. Called through SfiName(),` |
+|     - | 8577 | ` * so every SplFileInfo accessor sees the same lazy value php's do.` |
+|     - | 8578 | ` */` |
+|    70 | 8579 | `static const char * SplDirName(ph7_vm *pVm,ph7_class_instance *pThis,int *pnLen)` |
+|     1 | 8580 | `{` |
+|    71 | 8581 | `	int nName = 0,nPath = 0,nEntry = 0;` |
+|    71 | 8582 | `	const char *zName = SfiStr(pThis,SFI_N,&nName);` |
+|     - | 8583 | `	const char *zPath,*zEntry;` |
+|     - | 8584 | `	SyBlob sName;` |
+|    71 | 8585 | `	if( nName > 0 ){` |
+|    25 | 8586 | `		*pnLen = nName;` |
+|    25 | 8587 | `		return zName;` |
+|     - | 8588 | `	}` |
+|    47 | 8589 | `	zPath = SfiStr(pThis,SFI_P,&nPath);` |
+|    47 | 8590 | `	if( nPath < 1 ){` |
+|   ! 0 | 8591 | `		*pnLen = 0;` |
+|   ! 0 | 8592 | `		return "";` |
+|     - | 8593 | `	}` |
+|    47 | 8594 | `	SyBlobInit(&sName,&pVm->sAllocator);` |
+|    47 | 8595 | `	SyBlobAppend(&sName,zPath,(sxu32)nPath);` |
+|     - | 8596 | `	{` |
+|    47 | 8597 | `		char cSlash = SplDirSlash(PH7_NativeAttrInt(pThis,SDI_F));` |
+|    47 | 8598 | `		SyBlobAppend(&sName,(const void *)&cSlash,sizeof(char));` |
+|     - | 8599 | `	}` |
+|    47 | 8600 | `	zEntry = SfiStr(pThis,SDI_E,&nEntry);` |
+|    47 | 8601 | `	SyBlobAppend(&sName,zEntry,(sxu32)nEntry);` |
+|    70 | 8602 | `	PH7_NativeSetAttrStr(pVm,pThis,SFI_N,` |
+|    46 | 8603 | `		(const char *)SyBlobData(&sName),(int)SyBlobLength(&sName));` |
+|    47 | 8604 | `	SyBlobRelease(&sName);` |
+|    47 | 8605 | `	return SfiStr(pThis,SFI_N,pnLen);` |
+|    36 | 8606 | `}` |
+|     - | 8607 | `/* php's CHECK_DIRECTORY_ITERATOR_IS_INITIALIZED: every DirectoryIterator method` |
+|     - | 8608 | ` * refuses an object whose parent constructor never ran. */` |
+|   303 | 8609 | `static VmDirHandle * SplDirChecked(ph7_context *pCtx,sxi32 *pRc)` |
+|     1 | 8610 | `{` |
+|   304 | 8611 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|   304 | 8612 | `	VmDirHandle *pH = SplDirState(pCtx->pVm,pThis);` |
+|   304 | 8613 | `	*pRc = PH7_OK;` |
+|   304 | 8614 | `	if( pH == 0 ){` |
+|    15 | 8615 | `		*pRc = PH7_VmThrowException(pCtx,"Error","Object not initialized");` |
+|     7 | 8616 | `	}` |
+|   304 | 8617 | `	return pH;` |
+|     1 | 8618 | `}` |
+|     - | 8619 | `/*` |
+|     - | 8620 | ` * The shared constructor: php's spl_filesystem_object_construct, whose two` |
+|     - | 8621 | ` * refusals are a ValueError for an empty path and an UnexpectedValueException` |
+|     - | 8622 | ` * carrying the OPEN's own errno text (php promotes the opendir warning, so the` |
+|     - | 8623 | ` * message is the warning's, prefixed with the constructor that raised it).` |
+|     - | 8624 | ` */` |
+|    58 | 8625 | `static int SplDirConstruct(ph7_context *pCtx,const char *zClass,int nArg,ph7_value **apArg,` |
+|     - | 8626 | `	sxi64 iFlags)` |
+|     1 | 8627 | `{` |
+|    59 | 8628 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    59 | 8629 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     - | 8630 | `	const char *zPath;` |
+|    59 | 8631 | `	int nPath = 0;` |
+|    59 | 8632 | `	if( pThis == 0 \|\| nArg < 1 ){` |
+|   ! 0 | 8633 | `		return PH7_OK;` |
+|     - | 8634 | `	}` |
+|    59 | 8635 | `	zPath = ph7_value_to_string(apArg[0],&nPath);` |
+|    59 | 8636 | `	if( nPath < 1 ){` |
+|     7 | 8637 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
+|     2 | 8638 | `			"%s::__construct(): Argument #1 ($directory) must not be empty",zClass);` |
+|     - | 8639 | `	}` |
+|    55 | 8640 | `	if( SplDirFind(pVm,pThis) ){` |
+|     3 | 8641 | `		return PH7_VmThrowException(pCtx,"Error","Directory object is already initialized");` |
+|     - | 8642 | `	}` |
+|    53 | 8643 | `	PH7_NativeSetAttrInt(pVm,pThis,SDI_F,iFlags);` |
+|    53 | 8644 | `	if( SplDirOpen(pVm,pThis,zPath,nPath) == 0 ){` |
+|     4 | 8645 | `		return PH7_VmThrowException(pCtx,"UnexpectedValueException",` |
+|     1 | 8646 | `			"%s::__construct(%.*s): Failed to open directory: %s",zClass,nPath,zPath,` |
+|     2 | 8647 | `			VfsStrerror(errno));` |
+|     - | 8648 | `	}` |
+|    51 | 8649 | `	SplDirReadSkip(pVm,pThis,SplDirFind(pVm,pThis));` |
+|    51 | 8650 | `	return PH7_OK;` |
+|    30 | 8651 | `}` |
+|     - | 8652 | `/* DirectoryIterator::__construct(string $directory) — php's flags for this one` |
+|     - | 8653 | ` * are KEY_AS_PATHNAME\|CURRENT_AS_SELF, and it takes no flags argument. */` |
+|    32 | 8654 | `static int vm_builtin_DirectoryIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 8655 | `{` |
+|    33 | 8656 | `	return SplDirConstruct(pCtx,"DirectoryIterator",nArg,apArg,` |
+|     - | 8657 | `		SDI_KEY_AS_PATHNAME\|SDI_CURRENT_AS_SELF);` |
+|     1 | 8658 | `}` |
+|     - | 8659 | `/* The flags argument the two subclasses share: php's ZPP overwrites the whole` |
+|     - | 8660 | ` * default when one is given, so SKIP_DOTS is NOT implied by passing flags. */` |
+|    26 | 8661 | `static sxi64 SplDirFlagArg(int nArg,ph7_value **apArg,sxi64 iDefault)` |
+|     1 | 8662 | `{` |
+|    27 | 8663 | `	return nArg > 1 ? ph7_value_to_int64(apArg[1]) : iDefault;` |
+|     1 | 8664 | `}` |
+|    16 | 8665 | `static int vm_builtin_FilesystemIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 8666 | `{` |
+|    25 | 8667 | `	return SplDirConstruct(pCtx,"FilesystemIterator",nArg,apArg,` |
+|     8 | 8668 | `		SplDirFlagArg(nArg,apArg,SDI_KEY_AS_PATHNAME\|SDI_CURRENT_AS_FILEINFO\|SDI_SKIPDOTS));` |
+|     1 | 8669 | `}` |
+|    10 | 8670 | `static int vm_builtin_RecursiveDirectoryIterator_construct(ph7_context *pCtx,int nArg,` |
+|     - | 8671 | `	ph7_value **apArg)` |
+|     1 | 8672 | `{` |
+|    16 | 8673 | `	return SplDirConstruct(pCtx,"RecursiveDirectoryIterator",nArg,apArg,` |
+|     5 | 8674 | `		SplDirFlagArg(nArg,apArg,SDI_KEY_AS_PATHNAME\|SDI_CURRENT_AS_FILEINFO));` |
+|     1 | 8675 | `}` |
+|     - | 8676 | `/* DirectoryIterator::rewind(): php re-opens nothing — it rewinds the STREAM and` |
+|     - | 8677 | ` * takes one entry, with no dot skipping at this level. */` |
+|     8 | 8678 | `static int vm_builtin_DirectoryIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 8679 | `{` |
+|     - | 8680 | `	sxi32 rc;` |
+|     9 | 8681 | `	VmDirHandle *pH = SplDirChecked(pCtx,&rc);` |
+|     4 | 8682 | `	SXUNUSED(nArg);` |
+|     4 | 8683 | `	SXUNUSED(apArg);` |
+|     9 | 8684 | `	if( pH == 0 ){` |
+|     3 | 8685 | `		return rc;` |
+|     - | 8686 | `	}` |
+|     7 | 8687 | `	PH7_NativeSetAttrInt(pCtx->pVm,PH7_ContextThis(pCtx),SDI_I,0);` |
+|     7 | 8688 | `	if( pH->pStream->xRewindDir ){` |
+|     7 | 8689 | `		pH->pStream->xRewindDir(pH->pHandle);` |
+|     3 | 8690 | `	}` |
+|     7 | 8691 | `	SplDirRead(pCtx->pVm,PH7_ContextThis(pCtx),pH);` |
+|     7 | 8692 | `	return PH7_OK;` |
+|     5 | 8693 | `}` |
+|     - | 8694 | `/* FilesystemIterator::rewind(): the same, plus the dot skipping, and php does` |
+|     - | 8695 | ` * NOT check the handle here (an uninitialized object simply rewinds to nothing). */` |
+|    20 | 8696 | `static int vm_builtin_FilesystemIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 8697 | `{` |
+|    21 | 8698 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    21 | 8699 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|    21 | 8700 | `	VmDirHandle *pH = SplDirState(pVm,pThis);` |
+|    10 | 8701 | `	SXUNUSED(nArg);` |
+|    10 | 8702 | `	SXUNUSED(apArg);` |
+|    21 | 8703 | `	PH7_NativeSetAttrInt(pVm,pThis,SDI_I,0);` |
+|    21 | 8704 | `	if( pH && pH->pStream->xRewindDir ){` |
+|    21 | 8705 | `		pH->pStream->xRewindDir(pH->pHandle);` |
+|    10 | 8706 | `	}` |
+|    21 | 8707 | `	SplDirReadSkip(pVm,pThis,pH);` |
+|    21 | 8708 | `	return PH7_OK;` |
+|     1 | 8709 | `}` |
+|    83 | 8710 | `static int vm_builtin_DirectoryIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 8711 | `{` |
+|    84 | 8712 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    84 | 8713 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     - | 8714 | `	sxi32 rc;` |
+|    84 | 8715 | `	VmDirHandle *pH = SplDirChecked(pCtx,&rc);` |
+|    42 | 8716 | `	SXUNUSED(nArg);` |
+|    42 | 8717 | `	SXUNUSED(apArg);` |
+|    84 | 8718 | `	if( pH == 0 ){` |
+|     3 | 8719 | `		return rc;` |
+|     - | 8720 | `	}` |
+|     - | 8721 | `	/* php advances the index PAST the end too, which is why key() keeps counting` |
+|     - | 8722 | `	 * once valid() is false. */` |
+|    82 | 8723 | `	PH7_NativeSetAttrInt(pVm,pThis,SDI_I,PH7_NativeAttrInt(pThis,SDI_I) + 1);` |
+|    82 | 8724 | `	SplDirReadSkip(pVm,pThis,pH);` |
+|    82 | 8725 | `	return PH7_OK;` |
+|    43 | 8726 | `}` |
+|   109 | 8727 | `static int vm_builtin_DirectoryIterator_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 8728 | `{` |
+|     - | 8729 | `	sxi32 rc;` |
+|   110 | 8730 | `	VmDirHandle *pH = SplDirChecked(pCtx,&rc);` |
+|    55 | 8731 | `	SXUNUSED(nArg);` |
+|    55 | 8732 | `	SXUNUSED(apArg);` |
+|   110 | 8733 | `	if( pH == 0 ){` |
+|     3 | 8734 | `		return rc;` |
+|     - | 8735 | `	}` |
+|   108 | 8736 | `	ph7_result_bool(pCtx,!SplDirAtEnd(PH7_ContextThis(pCtx)));` |
+|   108 | 8737 | `	return PH7_OK;` |
+|    56 | 8738 | `}` |
+|    26 | 8739 | `static int vm_builtin_DirectoryIterator_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 8740 | `{` |
+|     - | 8741 | `	sxi32 rc;` |
+|    27 | 8742 | `	VmDirHandle *pH = SplDirChecked(pCtx,&rc);` |
+|    13 | 8743 | `	SXUNUSED(nArg);` |
+|    13 | 8744 | `	SXUNUSED(apArg);` |
+|    27 | 8745 | `	if( pH == 0 ){` |
+|     3 | 8746 | `		return rc;` |
+|     - | 8747 | `	}` |
+|    25 | 8748 | `	ph7_result_int64(pCtx,PH7_NativeAttrInt(PH7_ContextThis(pCtx),SDI_I));` |
+|    25 | 8749 | `	return PH7_OK;` |
+|    14 | 8750 | `}` |
+|    10 | 8751 | `static int vm_builtin_DirectoryIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 8752 | `{` |
+|     - | 8753 | `	sxi32 rc;` |
+|    11 | 8754 | `	VmDirHandle *pH = SplDirChecked(pCtx,&rc);` |
+|     5 | 8755 | `	SXUNUSED(nArg);` |
+|     5 | 8756 | `	SXUNUSED(apArg);` |
+|    11 | 8757 | `	if( pH == 0 ){` |
+|     3 | 8758 | `		return rc;` |
+|     - | 8759 | `	}` |
+|     9 | 8760 | `	SplResultBorrowed(pCtx,PH7_ContextThis(pCtx));` |
+|     9 | 8761 | `	return PH7_OK;` |
+|     6 | 8762 | `}` |
+|    12 | 8763 | `static int vm_builtin_DirectoryIterator_isDot(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 8764 | `{` |
+|    13 | 8765 | `	int nEntry = 0;` |
+|     - | 8766 | `	const char *zEntry;` |
+|     - | 8767 | `	sxi32 rc;` |
+|    13 | 8768 | `	VmDirHandle *pH = SplDirChecked(pCtx,&rc);` |
+|     6 | 8769 | `	SXUNUSED(nArg);` |
+|     6 | 8770 | `	SXUNUSED(apArg);` |
+|    13 | 8771 | `	if( pH == 0 ){` |
+|     3 | 8772 | `		return rc;` |
+|     - | 8773 | `	}` |
+|    11 | 8774 | `	zEntry = SfiStr(PH7_ContextThis(pCtx),SDI_E,&nEntry);` |
+|    11 | 8775 | `	ph7_result_bool(pCtx,SplDirIsDot(zEntry,nEntry));` |
+|    11 | 8776 | `	return PH7_OK;` |
+|     7 | 8777 | `}` |
+|     - | 8778 | `/*` |
+|     - | 8779 | ` * php's seek(): rewind if the target is behind us, then walk forward through` |
+|     - | 8780 | ` * the OBJECT's own valid()/next() — a subclass overriding either is obeyed, and` |
+|     - | 8781 | ` * running out raises php's OutOfBoundsException with the iterator left standing` |
+|     - | 8782 | ` * where the walk stopped.` |
+|     - | 8783 | ` */` |
+|    10 | 8784 | `static int vm_builtin_DirectoryIterator_seek(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 8785 | `{` |
+|    11 | 8786 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    11 | 8787 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     - | 8788 | `	ph7_class_method *pMethod;` |
+|     - | 8789 | `	sxi64 iPos;` |
+|     - | 8790 | `	sxi32 rc;` |
+|    11 | 8791 | `	VmDirHandle *pH = SplDirChecked(pCtx,&rc);` |
+|    11 | 8792 | `	if( pH == 0 ){` |
+|   ! 0 | 8793 | `		return rc;` |
+|     - | 8794 | `	}` |
+|    11 | 8795 | `	iPos = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;` |
+|    11 | 8796 | `	if( PH7_NativeAttrInt(pThis,SDI_I) > iPos ){` |
+|     5 | 8797 | `		pMethod = PH7_ClassExtractMethod(pThis->pClass,"rewind",sizeof("rewind")-1);` |
+|     5 | 8798 | `		if( pMethod ){` |
+|     5 | 8799 | `			rc = PH7_VmCallClassMethod(pVm,pThis,pMethod,0,0,0);` |
+|     5 | 8800 | `			if( rc != SXRET_OK ){` |
+|   ! 0 | 8801 | `				return rc;` |
+|     - | 8802 | `			}` |
+|     2 | 8803 | `		}` |
+|     2 | 8804 | `	}` |
+|    27 | 8805 | `	while( PH7_NativeAttrInt(pThis,SDI_I) < iPos ){` |
+|     - | 8806 | `		ph7_value sRet;` |
+|     - | 8807 | `		int bValid;` |
+|    19 | 8808 | `		pMethod = PH7_ClassExtractMethod(pThis->pClass,"valid",sizeof("valid")-1);` |
+|    19 | 8809 | `		if( pMethod == 0 ){` |
+|   ! 0 | 8810 | `			break;` |
+|     - | 8811 | `		}` |
+|    19 | 8812 | `		PH7_MemObjInit(pVm,&sRet);` |
+|    19 | 8813 | `		rc = PH7_VmCallClassMethod(pVm,pThis,pMethod,&sRet,0,0);` |
+|    19 | 8814 | `		bValid = rc == SXRET_OK && ph7_value_to_bool(&sRet);` |
+|    19 | 8815 | `		PH7_MemObjRelease(&sRet);` |
+|    19 | 8816 | `		if( rc != SXRET_OK ){` |
+|   ! 0 | 8817 | `			return rc;` |
+|     - | 8818 | `		}` |
+|    19 | 8819 | `		if( !bValid ){` |
+|     4 | 8820 | `			return PH7_VmThrowException(pCtx,"OutOfBoundsException",` |
+|     1 | 8821 | `				"Seek position %qd is out of range",iPos);` |
+|     - | 8822 | `		}` |
+|    17 | 8823 | `		pMethod = PH7_ClassExtractMethod(pThis->pClass,"next",sizeof("next")-1);` |
+|    17 | 8824 | `		if( pMethod == 0 ){` |
+|   ! 0 | 8825 | `			break;` |
+|     - | 8826 | `		}` |
+|    17 | 8827 | `		rc = PH7_VmCallClassMethod(pVm,pThis,pMethod,0,0,0);` |
+|    17 | 8828 | `		if( rc != SXRET_OK ){` |
+|   ! 0 | 8829 | `			return rc;` |
+|     - | 8830 | `		}` |
+|     1 | 8831 | `	}` |
+|     9 | 8832 | `	return PH7_OK;` |
+|     6 | 8833 | `}` |
+|     - | 8834 | `/* DirectoryIterator's three name accessors read the ENTRY, not the pathname —` |
+|     - | 8835 | `` * which is why `getFilename()` answers `..` where SplFileInfo's would answer the`` |
+|     - | 8836 | `` * whole path, and why `__toString()` is aliased to this one rather than to`` |
+|     - | 8837 | ` * getPathname(). */` |
+|    41 | 8838 | `static int vm_builtin_DirectoryIterator_getFilename(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 8839 | `{` |
+|    42 | 8840 | `	int nEntry = 0;` |
+|     - | 8841 | `	const char *zEntry;` |
+|     - | 8842 | `	sxi32 rc;` |
+|    42 | 8843 | `	VmDirHandle *pH = SplDirChecked(pCtx,&rc);` |
+|    21 | 8844 | `	SXUNUSED(nArg);` |
+|    21 | 8845 | `	SXUNUSED(apArg);` |
+|    42 | 8846 | `	if( pH == 0 ){` |
+|     3 | 8847 | `		return rc;` |
+|     - | 8848 | `	}` |
+|    40 | 8849 | `	zEntry = SfiStr(PH7_ContextThis(pCtx),SDI_E,&nEntry);` |
+|    40 | 8850 | `	ph7_result_string(pCtx,zEntry,nEntry);` |
+|    40 | 8851 | `	return PH7_OK;` |
+|    22 | 8852 | `}` |
+|     2 | 8853 | `static int vm_builtin_DirectoryIterator_getBasename(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 8854 | `{` |
+|     3 | 8855 | `	int nEntry = 0,nBase = 0;` |
+|     - | 8856 | `	const char *zEntry,*zBase;` |
+|     - | 8857 | `	sxi32 rc;` |
+|     3 | 8858 | `	VmDirHandle *pH = SplDirChecked(pCtx,&rc);` |
+|     3 | 8859 | `	if( pH == 0 ){` |
+|   ! 0 | 8860 | `		return rc;` |
+|     - | 8861 | `	}` |
+|     3 | 8862 | `	zEntry = SfiStr(PH7_ContextThis(pCtx),SDI_E,&nEntry);` |
+|     3 | 8863 | `	zBase = PH7_ExtractBaseName(zEntry,nEntry,&nBase);` |
+|     3 | 8864 | `	if( nArg > 0 ){` |
+|     3 | 8865 | `		int nSuffix = 0;` |
+|     3 | 8866 | `		const char *zSuffix = ph7_value_to_string(apArg[0],&nSuffix);` |
+|     2 | 8867 | `		if( nSuffix > 0 && nSuffix < nBase` |
+|     3 | 8868 | `		 && SyMemcmp(&zBase[nBase - nSuffix],zSuffix,(sxu32)nSuffix) == 0 ){` |
+|     3 | 8869 | `			nBase -= nSuffix;` |
+|     1 | 8870 | `		}` |
+|     1 | 8871 | `	}` |
+|     3 | 8872 | `	ph7_result_string(pCtx,zBase,nBase);` |
+|     3 | 8873 | `	return PH7_OK;` |
+|     2 | 8874 | `}` |
+|     2 | 8875 | `static int vm_builtin_DirectoryIterator_getExtension(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 8876 | `{` |
+|     3 | 8877 | `	int nEntry = 0,nBase = 0,i;` |
+|     - | 8878 | `	const char *zEntry,*zBase;` |
+|     - | 8879 | `	sxi32 rc;` |
+|     3 | 8880 | `	VmDirHandle *pH = SplDirChecked(pCtx,&rc);` |
+|     1 | 8881 | `	SXUNUSED(nArg);` |
+|     1 | 8882 | `	SXUNUSED(apArg);` |
+|     3 | 8883 | `	if( pH == 0 ){` |
+|   ! 0 | 8884 | `		return rc;` |
+|     - | 8885 | `	}` |
+|     3 | 8886 | `	zEntry = SfiStr(PH7_ContextThis(pCtx),SDI_E,&nEntry);` |
+|     3 | 8887 | `	zBase = PH7_ExtractBaseName(zEntry,nEntry,&nBase);` |
+|     9 | 8888 | `	for( i = nBase - 1 ; i >= 0 ; --i ){` |
+|     9 | 8889 | `		if( zBase[i] == '.' ){` |
+|     3 | 8890 | `			ph7_result_string(pCtx,&zBase[i+1],nBase - i - 1);` |
+|     3 | 8891 | `			return PH7_OK;` |
+|     - | 8892 | `		}` |
+|     4 | 8893 | `	}` |
+|   ! 0 | 8894 | `	ph7_result_string(pCtx,"",0);` |
+|   ! 0 | 8895 | `	return PH7_OK;` |
+|     2 | 8896 | `}` |
+|     - | 8897 | `/*` |
+|     - | 8898 | ` * FilesystemIterator::key()/current(): php compares the flag against its MASK` |
+|     - | 8899 | `` * (`(flags & MODE_MASK) == mode`) rather than testing a bit, so a stray bit in`` |
+|     - | 8900 | ``  * another field cannot change either answer — which the chunk's `& KEY_AS_FILENAME` `` |
+|     - | 8901 | `` * and `=== CURRENT_AS_PATHNAME` both got wrong in one direction or the other.`` |
+|     - | 8902 | ` */` |
+|    28 | 8903 | `static int vm_builtin_FilesystemIterator_key(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 8904 | `{` |
+|    29 | 8905 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    29 | 8906 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|    29 | 8907 | `	sxi64 iFlags = PH7_NativeAttrInt(pThis,SDI_F);` |
+|    29 | 8908 | `	int nOut = 0;` |
+|     - | 8909 | `	const char *zOut;` |
+|    14 | 8910 | `	SXUNUSED(nArg);` |
+|    14 | 8911 | `	SXUNUSED(apArg);` |
+|    29 | 8912 | `	if( (iFlags & SDI_KEY_MODE_MASK) == SDI_KEY_AS_FILENAME ){` |
+|     5 | 8913 | `		zOut = SfiStr(pThis,SDI_E,&nOut);` |
+|     5 | 8914 | `		ph7_result_string(pCtx,zOut,nOut);` |
+|     5 | 8915 | `		return PH7_OK;` |
+|     - | 8916 | `	}` |
+|    25 | 8917 | `	if( SplDirState(pVm,pThis) == 0 ){` |
+|   ! 0 | 8918 | `		return PH7_VmThrowException(pCtx,"Error","Object not initialized");` |
+|     - | 8919 | `	}` |
+|    25 | 8920 | `	zOut = SfiName(pVm,pThis,&nOut);` |
+|    25 | 8921 | `	ph7_result_string(pCtx,zOut,nOut);` |
+|    25 | 8922 | `	return PH7_OK;` |
+|    15 | 8923 | `}` |
+|    40 | 8924 | `static int vm_builtin_FilesystemIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 8925 | `{` |
+|    41 | 8926 | `	ph7_vm *pVm = pCtx->pVm;` |
+|    41 | 8927 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|    41 | 8928 | `	sxi64 iMode = PH7_NativeAttrInt(pThis,SDI_F) & SDI_CURRENT_MODE_MASK;` |
+|    20 | 8929 | `	SXUNUSED(nArg);` |
+|    20 | 8930 | `	SXUNUSED(apArg);` |
+|    41 | 8931 | `	if( iMode == SDI_CURRENT_AS_PATHNAME \|\| iMode == SDI_CURRENT_AS_FILEINFO ){` |
+|    29 | 8932 | `		if( SplDirState(pVm,pThis) == 0 ){` |
+|   ! 0 | 8933 | `			return PH7_VmThrowException(pCtx,"Error","Object not initialized");` |
 |     - | 8934 | `		}` |
-|    25 | 8935 | `		zDir = SfiStr(pThis,SFI_P,&nDir);` |
-|    25 | 8936 | `		zName = SfiName(pVm,pThis,&nName);` |
-|    25 | 8937 | `		return SfiMakeInfoEx(pCtx,pClass,zName,nName,zDir,nDir);` |
-|     - | 8938 | `	}` |
-|    13 | 8939 | `	SplResultBorrowed(pCtx,pThis);` |
-|    13 | 8940 | `	return PH7_OK;` |
-|    21 | 8941 | `}` |
-|     - | 8942 | `/* php's getFlags()/setFlags() answer and accept only the three mode fields;` |
-|     - | 8943 | ` * everything else in the word is engine state the class keeps to itself. */` |
-|     8 | 8944 | `static int vm_builtin_FilesystemIterator_getFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 8945 | `{` |
-|     4 | 8946 | `	SXUNUSED(nArg);` |
-|     4 | 8947 | `	SXUNUSED(apArg);` |
-|     9 | 8948 | `	ph7_result_int64(pCtx,PH7_NativeAttrInt(PH7_ContextThis(pCtx),SDI_F) & SDI_FLAGS_MASK);` |
-|     9 | 8949 | `	return PH7_OK;` |
-|     1 | 8950 | `}` |
-|     2 | 8951 | `static int vm_builtin_FilesystemIterator_setFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|     1 | 8952 | `{` |
-|     3 | 8953 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     3 | 8954 | `	sxi64 iFlags = PH7_NativeAttrInt(pThis,SDI_F);` |
-|     3 | 8955 | `	sxi64 iNew = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;` |
-|     4 | 8956 | `	PH7_NativeSetAttrInt(pCtx->pVm,pThis,SDI_F,(iFlags & ~(sxi64)SDI_FLAGS_MASK)` |
-|     2 | 8957 | `		\| (iNew & (sxi64)SDI_FLAGS_MASK));` |
-|     3 | 8958 | `	return PH7_OK;` |
-|     1 | 8959 | `}` |
-|     - | 8960 | `/*` |
-|     - | 8961 | ` * RecursiveDirectoryIterator::hasChildren(bool $allowLinks = false).` |
-|     - | 8962 | ` *` |
-|     - | 8963 | ` * php lstats the entry and then asks two separate questions of it: a plain` |
-|     - | 8964 | ` * directory has children, and a SYMLINK has them only when the walk was told to` |
-|     - | 8965 | ` * follow links. Asked of the VFS rather than of a mode word, because the mode is` |
-|     - | 8966 | ` * not filled on Windows (the same lesson getType() learned).` |
-|     - | 8967 | ` */` |
-|     4 | 8968 | `static int vm_builtin_RecursiveDirectoryIterator_hasChildren(ph7_context *pCtx,int nArg,` |
-|     - | 8969 | `	ph7_value **apArg)` |
-|     1 | 8970 | `{` |
-|     5 | 8971 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     5 | 8972 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     5 | 8973 | `	const ph7_vfs *pVfs = pVm->pEngine->pVfs;` |
-|     5 | 8974 | `	int nEntry = 0;` |
-|     5 | 8975 | `	const char *zEntry = SfiStr(pThis,SDI_E,&nEntry);` |
-|     - | 8976 | `	char zPath[4096];` |
-|     5 | 8977 | `	int bAllow = nArg > 0 ? ph7_value_to_bool(apArg[0]) : 0;` |
-|     5 | 8978 | `	sxi64 iFlags = PH7_NativeAttrInt(pThis,SDI_F);` |
-|     4 | 8979 | `	if( nEntry < 1 \|\| SplDirIsDot(zEntry,nEntry) \|\| pVfs == 0` |
-|     3 | 8980 | `	 \|\| SfiPathBuf(pVm,pThis,zPath,(int)sizeof(zPath)) != SXRET_OK ){` |
-|     3 | 8981 | `		ph7_result_bool(pCtx,0);` |
-|     3 | 8982 | `		return PH7_OK;` |
-|     - | 8983 | `	}` |
-|     2 | 8984 | `	if( pVfs->xIslink && pVfs->xIslink(zPath) == PH7_OK` |
-|     2 | 8985 | `	 && !bAllow && (iFlags & SDI_FOLLOW_SYMLINKS) == 0 ){` |
-|   ! 0 | 8986 | `		ph7_result_bool(pCtx,0);` |
-|   ! 0 | 8987 | `		return PH7_OK;` |
-|     - | 8988 | `	}` |
-|     3 | 8989 | `	ph7_result_bool(pCtx,pVfs->xIsdir && pVfs->xIsdir(zPath) == PH7_OK);` |
-|     3 | 8990 | `	return PH7_OK;` |
-|     3 | 8991 | `}` |
-|     - | 8992 | `/*` |
-|     - | 8993 | ` * getChildren(): php builds an instance of the RUNTIME class through its` |
-|     - | 8994 | ` * constructor with (pathname, flags), then hands it the sub path — which is what` |
-|     - | 8995 | ` * makes getSubPathname() name the whole nested route rather than just the entry` |
-|     - | 8996 | `` * (the chunk answered `''` and the filename, wrong at every depth below one).`` |
-|     - | 8997 | ` */` |
-|     2 | 8998 | `static int vm_builtin_RecursiveDirectoryIterator_getChildren(ph7_context *pCtx,int nArg,` |
-|     - | 8999 | `	ph7_value **apArg)` |
-|     1 | 9000 | `{` |
-|     3 | 9001 | `	ph7_vm *pVm = pCtx->pVm;` |
-|     3 | 9002 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     - | 9003 | `	ph7_class_instance *pNew;` |
-|     - | 9004 | `	ph7_class_method *pCons;` |
-|     - | 9005 | `	ph7_value sPath,sFlags,*apCall[2];` |
-|     3 | 9006 | `	int nName = 0,nSub = 0,nEntry = 0;` |
-|     - | 9007 | `	const char *zName;` |
-|     3 | 9008 | `	sxi64 iFlags = PH7_NativeAttrInt(pThis,SDI_F);` |
-|     - | 9009 | `	sxi32 rc;` |
-|     - | 9010 | `	SyBlob sSub;` |
-|     1 | 9011 | `	SXUNUSED(nArg);` |
-|     1 | 9012 | `	SXUNUSED(apArg);` |
-|     3 | 9013 | `	if( SplDirState(pVm,pThis) == 0 ){` |
-|   ! 0 | 9014 | `		return PH7_VmThrowException(pCtx,"Error","Object not initialized");` |
-|     - | 9015 | `	}` |
-|     3 | 9016 | `	pNew = PH7_NewClassInstance(pVm,pThis->pClass);` |
-|     3 | 9017 | `	if( pNew == 0 ){` |
-|   ! 0 | 9018 | `		return PH7_ContextMemoryError(pCtx);` |
-|     - | 9019 | `	}` |
-|     3 | 9020 | `	pNew->iRef++;` |
-|     3 | 9021 | `	zName = SfiName(pVm,pThis,&nName);` |
-|     3 | 9022 | `	PH7_MemObjInitFromString(pVm,&sPath,0);` |
-|     3 | 9023 | `	PH7_MemObjStringAppend(&sPath,zName,(sxu32)nName);` |
-|     3 | 9024 | `	PH7_MemObjInitFromInt(pVm,&sFlags,iFlags);` |
-|     3 | 9025 | `	apCall[0] = &sPath;` |
-|     3 | 9026 | `	apCall[1] = &sFlags;` |
-|     3 | 9027 | `	pCons = PH7_ClassExtractMethod(pThis->pClass,"__construct",sizeof("__construct")-1);` |
-|     3 | 9028 | `	rc = pCons ? PH7_VmCallClassMethod(pVm,pNew,pCons,0,2,apCall) : SXRET_OK;` |
-|     3 | 9029 | `	PH7_MemObjRelease(&sPath);` |
-|     3 | 9030 | `	PH7_MemObjRelease(&sFlags);` |
-|     3 | 9031 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 9032 | `		PH7_ClassInstanceUnref(pNew);` |
-|   ! 0 | 9033 | `		return rc;` |
-|     - | 9034 | `	}` |
-|     - | 9035 | `	/* php's sub_path: the parent's, this entry appended. */` |
-|     3 | 9036 | `	SyBlobInit(&sSub,&pVm->sAllocator);` |
-|     - | 9037 | `	{` |
-|     3 | 9038 | `		const char *zSub = SfiStr(pThis,SDI_S,&nSub);` |
-|     3 | 9039 | `		SyBlobAppend(&sSub,zSub,(sxu32)nSub);` |
-|     - | 9040 | `	}` |
-|     3 | 9041 | `	if( nSub > 0 ){` |
-|   ! 0 | 9042 | `		char cSlash = SplDirSlash(iFlags);` |
-|   ! 0 | 9043 | `		SyBlobAppend(&sSub,(const void *)&cSlash,sizeof(char));` |
-|   ! 0 | 9044 | `	}` |
-|     - | 9045 | `	{` |
-|     3 | 9046 | `		const char *zEntry = SfiStr(pThis,SDI_E,&nEntry);` |
-|     3 | 9047 | `		SyBlobAppend(&sSub,zEntry,(sxu32)nEntry);` |
-|     - | 9048 | `	}` |
-|     4 | 9049 | `	PH7_NativeSetAttrStr(pVm,pNew,SDI_S,` |
-|     2 | 9050 | `		(const char *)SyBlobData(&sSub),(int)SyBlobLength(&sSub));` |
-|     3 | 9051 | `	SyBlobRelease(&sSub);` |
-|     - | 9052 | `	{` |
-|     3 | 9053 | `		int nInfo = 0;` |
-|     3 | 9054 | `		const char *zInfo = SfiStr(pThis,SFI_IC,&nInfo);` |
-|     3 | 9055 | `		PH7_NativeSetAttrStr(pVm,pNew,SFI_IC,zInfo,nInfo);` |
-|     - | 9056 | `	}` |
-|     3 | 9057 | `	PH7_NativeResultObject(pCtx,pNew);` |
-|     3 | 9058 | `	PH7_ClassInstanceUnref(pNew);` |
-|     3 | 9059 | `	return PH7_OK;` |
-|     2 | 9060 | `}` |
-|     4 | 9061 | `static int vm_builtin_RecursiveDirectoryIterator_getSubPath(ph7_context *pCtx,int nArg,` |
-|     - | 9062 | `	ph7_value **apArg)` |
-|     1 | 9063 | `{` |
-|     5 | 9064 | `	int nSub = 0;` |
-|     5 | 9065 | `	const char *zSub = SfiStr(PH7_ContextThis(pCtx),SDI_S,&nSub);` |
-|     2 | 9066 | `	SXUNUSED(nArg);` |
-|     2 | 9067 | `	SXUNUSED(apArg);` |
-|     5 | 9068 | `	ph7_result_string(pCtx,zSub,nSub);` |
-|     5 | 9069 | `	return PH7_OK;` |
-|     1 | 9070 | `}` |
-|     4 | 9071 | `static int vm_builtin_RecursiveDirectoryIterator_getSubPathname(ph7_context *pCtx,int nArg,` |
-|     - | 9072 | `	ph7_value **apArg)` |
-|     1 | 9073 | `{` |
-|     5 | 9074 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|     5 | 9075 | `	int nSub = 0,nEntry = 0;` |
-|     5 | 9076 | `	const char *zSub = SfiStr(pThis,SDI_S,&nSub);` |
-|     - | 9077 | `	SyBlob sOut;` |
-|     2 | 9078 | `	SXUNUSED(nArg);` |
-|     2 | 9079 | `	SXUNUSED(apArg);` |
-|     5 | 9080 | `	if( nSub < 1 ){` |
-|     3 | 9081 | `		const char *zEntry = SfiStr(pThis,SDI_E,&nEntry);` |
-|     3 | 9082 | `		ph7_result_string(pCtx,zEntry,nEntry);` |
-|     3 | 9083 | `		return PH7_OK;` |
-|     - | 9084 | `	}` |
-|     3 | 9085 | `	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);` |
-|     3 | 9086 | `	SyBlobAppend(&sOut,zSub,(sxu32)nSub);` |
-|     - | 9087 | `	{` |
-|     3 | 9088 | `		char cSlash = SplDirSlash(PH7_NativeAttrInt(pThis,SDI_F));` |
-|     3 | 9089 | `		SyBlobAppend(&sOut,(const void *)&cSlash,sizeof(char));` |
-|     - | 9090 | `	}` |
-|     - | 9091 | `	{` |
-|     3 | 9092 | `		const char *zEntry = SfiStr(pThis,SDI_E,&nEntry);` |
-|     3 | 9093 | `		SyBlobAppend(&sOut,zEntry,(sxu32)nEntry);` |
-|     - | 9094 | `	}` |
-|     3 | 9095 | `	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));` |
-|     3 | 9096 | `	SyBlobRelease(&sOut);` |
-|     3 | 9097 | `	return PH7_OK;` |
-|     3 | 9098 | `}` |
-|     - | 9099 | `/*` |
-|     - | 9100 | ` * The three declarations. Method ORDER, signatures and tentative return types` |
-|     - | 9101 | `` * are spl_directory.stub.php's; the four slots are php's `u.dir` arm and carry`` |
-|     - | 9102 | ` * PH7_MOD_HIDDEN because php declares no property at all here. Each class` |
-|     - | 9103 | ` * restates NOSERIALIZE and the presentation hook: a native subclass inherits` |
-|     - | 9104 | ` * neither (rule 29).` |
-|     - | 9105 | ` */` |
-|  5146 | 9106 | `static sxi32 VmInstallSplDirIterators(ph7_vm *pVm)` |
-|     5 | 9107 | `{` |
-|     - | 9108 | `	static const PH7_NativePropDef aDirProp[] = {` |
-|     - | 9109 | `		{ SDI_E, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },` |
-|     - | 9110 | `		{ SDI_I, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },` |
-|     - | 9111 | `		{ SDI_F, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },` |
-|     - | 9112 | `		{ SDI_S, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },` |
-|     - | 9113 | `	};` |
-|     - | 9114 | `	static const PH7_NativeMethodDef aDirMethod[] = {` |
-|     - | 9115 | `		{ "__construct",  PH7_MOD_PUBLIC, "string $directory", 0,` |
-|     - | 9116 | `		  vm_builtin_DirectoryIterator_construct },` |
-|     - | 9117 | `		{ "getFilename",  PH7_MOD_PUBLIC, "", "@string",` |
-|     - | 9118 | `		  vm_builtin_DirectoryIterator_getFilename },` |
-|     - | 9119 | `		{ "getExtension", PH7_MOD_PUBLIC, "", "@string",` |
-|     - | 9120 | `		  vm_builtin_DirectoryIterator_getExtension },` |
-|     - | 9121 | `		{ "getBasename",  PH7_MOD_PUBLIC, "string $suffix = \"\"", "@string",` |
-|     - | 9122 | `		  vm_builtin_DirectoryIterator_getBasename },` |
-|     - | 9123 | `		{ "isDot",        PH7_MOD_PUBLIC, "", "@bool", vm_builtin_DirectoryIterator_isDot },` |
-|     - | 9124 | `		{ "rewind",       PH7_MOD_PUBLIC, "", "@void", vm_builtin_DirectoryIterator_rewind },` |
-|     - | 9125 | `		{ "valid",        PH7_MOD_PUBLIC, "", "@bool", vm_builtin_DirectoryIterator_valid },` |
-|     - | 9126 | `		{ "key",          PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_DirectoryIterator_key },` |
-|     - | 9127 | `		{ "current",      PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_DirectoryIterator_current },` |
-|     - | 9128 | `		{ "next",         PH7_MOD_PUBLIC, "", "@void", vm_builtin_DirectoryIterator_next },` |
-|     - | 9129 | `		{ "seek",         PH7_MOD_PUBLIC, "int $offset", "@void",` |
-|     - | 9130 | `		  vm_builtin_DirectoryIterator_seek },` |
-|     - | 9131 | ``		/* php aliases this one to getFilename(), so `echo $it` prints the ENTRY where`` |
-|     - | 9132 | `		 * SplFileInfo's __toString prints the whole pathname. Not tentative. */` |
-|     - | 9133 | `		{ "__toString",   PH7_MOD_PUBLIC, "", "string",` |
-|     - | 9134 | `		  vm_builtin_DirectoryIterator_getFilename },` |
-|     - | 9135 | `	};` |
-|     - | 9136 | `	static const PH7_NativeConstDef aFsConst[] = {` |
-|     - | 9137 | `		{ "CURRENT_MODE_MASK",   PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_CURRENT_MODE_MASK, 0, 0.0 },` |
-|     - | 9138 | `		{ "CURRENT_AS_PATHNAME", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_CURRENT_AS_PATHNAME, 0, 0.0 },` |
-|     - | 9139 | `		{ "CURRENT_AS_FILEINFO", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_CURRENT_AS_FILEINFO, 0, 0.0 },` |
-|     - | 9140 | `		{ "CURRENT_AS_SELF",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_CURRENT_AS_SELF, 0, 0.0 },` |
-|     - | 9141 | `		{ "KEY_MODE_MASK",       PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_KEY_MODE_MASK, 0, 0.0 },` |
-|     - | 9142 | `		{ "KEY_AS_PATHNAME",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_KEY_AS_PATHNAME, 0, 0.0 },` |
-|     - | 9143 | `		{ "FOLLOW_SYMLINKS",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_FOLLOW_SYMLINKS, 0, 0.0 },` |
-|     - | 9144 | `		{ "KEY_AS_FILENAME",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_KEY_AS_FILENAME, 0, 0.0 },` |
-|     - | 9145 | `		{ "NEW_CURRENT_AND_KEY", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_KEY_AS_FILENAME\|SDI_CURRENT_AS_FILEINFO, 0, 0.0 },` |
-|     - | 9146 | `		{ "OTHER_MODE_MASK",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_OTHERS_MASK, 0, 0.0 },` |
-|     - | 9147 | `		{ "SKIP_DOTS",           PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_SKIPDOTS, 0, 0.0 },` |
-|     - | 9148 | `		{ "UNIX_PATHS",          PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_UNIXPATHS, 0, 0.0 },` |
-|     - | 9149 | `	};` |
-|     - | 9150 | `	static const PH7_NativeMethodDef aFsMethod[] = {` |
-|     - | 9151 | `		{ "__construct", PH7_MOD_PUBLIC,` |
-|     - | 9152 | `		  "string $directory, int $flags = FilesystemIterator::KEY_AS_PATHNAME \| "` |
-|     - | 9153 | `		  "FilesystemIterator::CURRENT_AS_FILEINFO \| FilesystemIterator::SKIP_DOTS", 0,` |
-|     - | 9154 | `		  vm_builtin_FilesystemIterator_construct },` |
-|     - | 9155 | `		{ "rewind",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_FilesystemIterator_rewind },` |
-|     - | 9156 | `		{ "key",         PH7_MOD_PUBLIC, "", "@string", vm_builtin_FilesystemIterator_key },` |
-|     - | 9157 | `		{ "current",     PH7_MOD_PUBLIC, "", "@SplFileInfo\|FilesystemIterator\|string",` |
-|     - | 9158 | `		  vm_builtin_FilesystemIterator_current },` |
-|     - | 9159 | `		{ "getFlags",    PH7_MOD_PUBLIC, "", "@int", vm_builtin_FilesystemIterator_getFlags },` |
-|     - | 9160 | `		{ "setFlags",    PH7_MOD_PUBLIC, "int $flags", "@void",` |
-|     - | 9161 | `		  vm_builtin_FilesystemIterator_setFlags },` |
-|     - | 9162 | `	};` |
-|     - | 9163 | `	static const PH7_NativeMethodDef aRdiMethod[] = {` |
-|     - | 9164 | `		{ "__construct",    PH7_MOD_PUBLIC,` |
-|     - | 9165 | `		  "string $directory, int $flags = FilesystemIterator::KEY_AS_PATHNAME \| "` |
-|     - | 9166 | `		  "FilesystemIterator::CURRENT_AS_FILEINFO", 0,` |
-|     - | 9167 | `		  vm_builtin_RecursiveDirectoryIterator_construct },` |
-|     - | 9168 | `		{ "hasChildren",    PH7_MOD_PUBLIC, "bool $allowLinks = false", "@bool",` |
-|     - | 9169 | `		  vm_builtin_RecursiveDirectoryIterator_hasChildren },` |
-|     - | 9170 | `		{ "getChildren",    PH7_MOD_PUBLIC, "", "@RecursiveDirectoryIterator",` |
-|     - | 9171 | `		  vm_builtin_RecursiveDirectoryIterator_getChildren },` |
-|     - | 9172 | `		{ "getSubPath",     PH7_MOD_PUBLIC, "", "@string",` |
-|     - | 9173 | `		  vm_builtin_RecursiveDirectoryIterator_getSubPath },` |
-|     - | 9174 | `		{ "getSubPathname", PH7_MOD_PUBLIC, "", "@string",` |
-|     - | 9175 | `		  vm_builtin_RecursiveDirectoryIterator_getSubPathname },` |
-|     - | 9176 | `	};` |
-|     - | 9177 | `	static const PH7_NativeClassSpec aSpec[] = {` |
-|     - | 9178 | `		{ "DirectoryIterator", "SplFileInfo", "SeekableIterator", PH7_CLASS_NOSERIALIZE,` |
-|     - | 9179 | `		  aDirMethod, SX_ARRAYSIZE(aDirMethod), 0, 0,` |
-|     - | 9180 | `		  aDirProp, SX_ARRAYSIZE(aDirProp), SplDirClose, 0, SfiPresent },` |
-|     - | 9181 | `		{ "FilesystemIterator", "DirectoryIterator", 0, PH7_CLASS_NOSERIALIZE,` |
-|     - | 9182 | `		  aFsMethod, SX_ARRAYSIZE(aFsMethod), aFsConst, SX_ARRAYSIZE(aFsConst),` |
-|     - | 9183 | `		  0, 0, SplDirClose, 0, SfiPresent },` |
-|     - | 9184 | `		{ "RecursiveDirectoryIterator", "FilesystemIterator", "RecursiveIterator",` |
-|     - | 9185 | `		  PH7_CLASS_NOSERIALIZE,` |
-|     - | 9186 | `		  aRdiMethod, SX_ARRAYSIZE(aRdiMethod), 0, 0,` |
-|     - | 9187 | `		  0, 0, SplDirClose, 0, SfiPresent },` |
-|     - | 9188 | `	};` |
-|  5151 | 9189 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|     5 | 9190 | `}` |
-|  5146 | 9191 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)` |
-|     5 | 9192 | `{` |
-|  5151 | 9193 | `	sxi32 rc = VmInstallWeak(&(*pVm));` |
-|  5151 | 9194 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 9195 | `		return rc;` |
-|     - | 9196 | `	}` |
-|     - | 9197 | `	/* Ordering, now that zSplLib is gone: the remaining PHP in this subsystem is` |
-|     - | 9198 | `	 * the tokenizer chunk's, so these only have to satisfy each OTHER. */` |
-|  5151 | 9199 | `	rc = VmInstallSplStore(&(*pVm));` |
-|  5151 | 9200 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 9201 | `		return rc;` |
-|     - | 9202 | `	}` |
-|  5151 | 9203 | `	rc = VmInstallSplDualIterators(&(*pVm));` |
-|  5151 | 9204 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 9205 | `		return rc;` |
-|     - | 9206 | `	}` |
-|     - | 9207 | `	/* After the dual iterators: RecursiveIteratorIterator names OuterIterator and` |
-|     - | 9208 | `	 * RecursiveIterator, both declared by that table. */` |
-|  5151 | 9209 | `	rc = VmInstallSplRecursiveIt(&(*pVm));` |
-|  5151 | 9210 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 9211 | `		return rc;` |
-|     - | 9212 | `	}` |
-|  5151 | 9213 | `	rc = VmInstallSplDllist(&(*pVm));` |
-|  5151 | 9214 | `	if( rc != SXRET_OK ){` |
+|    14 | 8935 | `	}` |
+|    41 | 8936 | `	if( iMode == SDI_CURRENT_AS_PATHNAME ){` |
+|     5 | 8937 | `		int nName = 0;` |
+|     5 | 8938 | `		const char *zName = SfiName(pVm,pThis,&nName);` |
+|     5 | 8939 | `		ph7_result_string(pCtx,zName,nName);` |
+|     5 | 8940 | `		return PH7_OK;` |
+|     - | 8941 | `	}` |
+|    37 | 8942 | `	if( iMode == SDI_CURRENT_AS_FILEINFO ){` |
+|    25 | 8943 | `		ph7_class *pClass = 0;` |
+|    25 | 8944 | `		int nName = 0,nDir = 0;` |
+|     - | 8945 | `		const char *zName,*zDir;` |
+|     - | 8946 | `		sxi32 rc;` |
+|    25 | 8947 | `		if( SplDirAtEnd(pThis) ){` |
+|     - | 8948 | `			/* php's create_type again: there is no entry to describe. */` |
+|   ! 0 | 8949 | `			return PH7_VmThrowException(pCtx,"RuntimeException","Could not open file");` |
+|     - | 8950 | `		}` |
+|    25 | 8951 | `		rc = SfiInfoClass(pCtx,"current",0,&pClass);` |
+|    25 | 8952 | `		if( rc != PH7_OK ){` |
+|   ! 0 | 8953 | `			return rc;` |
+|     - | 8954 | `		}` |
+|    25 | 8955 | `		zDir = SfiStr(pThis,SFI_P,&nDir);` |
+|    25 | 8956 | `		zName = SfiName(pVm,pThis,&nName);` |
+|    25 | 8957 | `		return SfiMakeInfoEx(pCtx,pClass,zName,nName,zDir,nDir);` |
+|     - | 8958 | `	}` |
+|    13 | 8959 | `	SplResultBorrowed(pCtx,pThis);` |
+|    13 | 8960 | `	return PH7_OK;` |
+|    21 | 8961 | `}` |
+|     - | 8962 | `/* php's getFlags()/setFlags() answer and accept only the three mode fields;` |
+|     - | 8963 | ` * everything else in the word is engine state the class keeps to itself. */` |
+|     8 | 8964 | `static int vm_builtin_FilesystemIterator_getFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 8965 | `{` |
+|     4 | 8966 | `	SXUNUSED(nArg);` |
+|     4 | 8967 | `	SXUNUSED(apArg);` |
+|     9 | 8968 | `	ph7_result_int64(pCtx,PH7_NativeAttrInt(PH7_ContextThis(pCtx),SDI_F) & SDI_FLAGS_MASK);` |
+|     9 | 8969 | `	return PH7_OK;` |
+|     1 | 8970 | `}` |
+|     2 | 8971 | `static int vm_builtin_FilesystemIterator_setFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|     1 | 8972 | `{` |
+|     3 | 8973 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     3 | 8974 | `	sxi64 iFlags = PH7_NativeAttrInt(pThis,SDI_F);` |
+|     3 | 8975 | `	sxi64 iNew = nArg > 0 ? ph7_value_to_int64(apArg[0]) : 0;` |
+|     4 | 8976 | `	PH7_NativeSetAttrInt(pCtx->pVm,pThis,SDI_F,(iFlags & ~(sxi64)SDI_FLAGS_MASK)` |
+|     2 | 8977 | `		\| (iNew & (sxi64)SDI_FLAGS_MASK));` |
+|     3 | 8978 | `	return PH7_OK;` |
+|     1 | 8979 | `}` |
+|     - | 8980 | `/*` |
+|     - | 8981 | ` * RecursiveDirectoryIterator::hasChildren(bool $allowLinks = false).` |
+|     - | 8982 | ` *` |
+|     - | 8983 | ` * php lstats the entry and then asks two separate questions of it: a plain` |
+|     - | 8984 | ` * directory has children, and a SYMLINK has them only when the walk was told to` |
+|     - | 8985 | ` * follow links. Asked of the VFS rather than of a mode word, because the mode is` |
+|     - | 8986 | ` * not filled on Windows (the same lesson getType() learned).` |
+|     - | 8987 | ` */` |
+|     4 | 8988 | `static int vm_builtin_RecursiveDirectoryIterator_hasChildren(ph7_context *pCtx,int nArg,` |
+|     - | 8989 | `	ph7_value **apArg)` |
+|     1 | 8990 | `{` |
+|     5 | 8991 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     5 | 8992 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     5 | 8993 | `	const ph7_vfs *pVfs = pVm->pEngine->pVfs;` |
+|     5 | 8994 | `	int nEntry = 0;` |
+|     5 | 8995 | `	const char *zEntry = SfiStr(pThis,SDI_E,&nEntry);` |
+|     - | 8996 | `	char zPath[4096];` |
+|     5 | 8997 | `	int bAllow = nArg > 0 ? ph7_value_to_bool(apArg[0]) : 0;` |
+|     5 | 8998 | `	sxi64 iFlags = PH7_NativeAttrInt(pThis,SDI_F);` |
+|     4 | 8999 | `	if( nEntry < 1 \|\| SplDirIsDot(zEntry,nEntry) \|\| pVfs == 0` |
+|     3 | 9000 | `	 \|\| SfiPathBuf(pVm,pThis,zPath,(int)sizeof(zPath)) != SXRET_OK ){` |
+|     3 | 9001 | `		ph7_result_bool(pCtx,0);` |
+|     3 | 9002 | `		return PH7_OK;` |
+|     - | 9003 | `	}` |
+|     2 | 9004 | `	if( pVfs->xIslink && pVfs->xIslink(zPath) == PH7_OK` |
+|     2 | 9005 | `	 && !bAllow && (iFlags & SDI_FOLLOW_SYMLINKS) == 0 ){` |
+|   ! 0 | 9006 | `		ph7_result_bool(pCtx,0);` |
+|   ! 0 | 9007 | `		return PH7_OK;` |
+|     - | 9008 | `	}` |
+|     3 | 9009 | `	ph7_result_bool(pCtx,pVfs->xIsdir && pVfs->xIsdir(zPath) == PH7_OK);` |
+|     3 | 9010 | `	return PH7_OK;` |
+|     3 | 9011 | `}` |
+|     - | 9012 | `/*` |
+|     - | 9013 | ` * getChildren(): php builds an instance of the RUNTIME class through its` |
+|     - | 9014 | ` * constructor with (pathname, flags), then hands it the sub path — which is what` |
+|     - | 9015 | ` * makes getSubPathname() name the whole nested route rather than just the entry` |
+|     - | 9016 | `` * (the chunk answered `''` and the filename, wrong at every depth below one).`` |
+|     - | 9017 | ` */` |
+|     2 | 9018 | `static int vm_builtin_RecursiveDirectoryIterator_getChildren(ph7_context *pCtx,int nArg,` |
+|     - | 9019 | `	ph7_value **apArg)` |
+|     1 | 9020 | `{` |
+|     3 | 9021 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     3 | 9022 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     - | 9023 | `	ph7_class_instance *pNew;` |
+|     - | 9024 | `	ph7_class_method *pCons;` |
+|     - | 9025 | `	ph7_value sPath,sFlags,*apCall[2];` |
+|     3 | 9026 | `	int nName = 0,nSub = 0,nEntry = 0;` |
+|     - | 9027 | `	const char *zName;` |
+|     3 | 9028 | `	sxi64 iFlags = PH7_NativeAttrInt(pThis,SDI_F);` |
+|     - | 9029 | `	sxi32 rc;` |
+|     - | 9030 | `	SyBlob sSub;` |
+|     1 | 9031 | `	SXUNUSED(nArg);` |
+|     1 | 9032 | `	SXUNUSED(apArg);` |
+|     3 | 9033 | `	if( SplDirState(pVm,pThis) == 0 ){` |
+|   ! 0 | 9034 | `		return PH7_VmThrowException(pCtx,"Error","Object not initialized");` |
+|     - | 9035 | `	}` |
+|     3 | 9036 | `	pNew = PH7_NewClassInstance(pVm,pThis->pClass);` |
+|     3 | 9037 | `	if( pNew == 0 ){` |
+|   ! 0 | 9038 | `		return PH7_ContextMemoryError(pCtx);` |
+|     - | 9039 | `	}` |
+|     3 | 9040 | `	pNew->iRef++;` |
+|     3 | 9041 | `	zName = SfiName(pVm,pThis,&nName);` |
+|     3 | 9042 | `	PH7_MemObjInitFromString(pVm,&sPath,0);` |
+|     3 | 9043 | `	PH7_MemObjStringAppend(&sPath,zName,(sxu32)nName);` |
+|     3 | 9044 | `	PH7_MemObjInitFromInt(pVm,&sFlags,iFlags);` |
+|     3 | 9045 | `	apCall[0] = &sPath;` |
+|     3 | 9046 | `	apCall[1] = &sFlags;` |
+|     3 | 9047 | `	pCons = PH7_ClassExtractMethod(pThis->pClass,"__construct",sizeof("__construct")-1);` |
+|     3 | 9048 | `	rc = pCons ? PH7_VmCallClassMethod(pVm,pNew,pCons,0,2,apCall) : SXRET_OK;` |
+|     3 | 9049 | `	PH7_MemObjRelease(&sPath);` |
+|     3 | 9050 | `	PH7_MemObjRelease(&sFlags);` |
+|     3 | 9051 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 9052 | `		PH7_ClassInstanceUnref(pNew);` |
+|   ! 0 | 9053 | `		return rc;` |
+|     - | 9054 | `	}` |
+|     - | 9055 | `	/* php's sub_path: the parent's, this entry appended. */` |
+|     3 | 9056 | `	SyBlobInit(&sSub,&pVm->sAllocator);` |
+|     - | 9057 | `	{` |
+|     3 | 9058 | `		const char *zSub = SfiStr(pThis,SDI_S,&nSub);` |
+|     3 | 9059 | `		SyBlobAppend(&sSub,zSub,(sxu32)nSub);` |
+|     - | 9060 | `	}` |
+|     3 | 9061 | `	if( nSub > 0 ){` |
+|   ! 0 | 9062 | `		char cSlash = SplDirSlash(iFlags);` |
+|   ! 0 | 9063 | `		SyBlobAppend(&sSub,(const void *)&cSlash,sizeof(char));` |
+|   ! 0 | 9064 | `	}` |
+|     - | 9065 | `	{` |
+|     3 | 9066 | `		const char *zEntry = SfiStr(pThis,SDI_E,&nEntry);` |
+|     3 | 9067 | `		SyBlobAppend(&sSub,zEntry,(sxu32)nEntry);` |
+|     - | 9068 | `	}` |
+|     4 | 9069 | `	PH7_NativeSetAttrStr(pVm,pNew,SDI_S,` |
+|     2 | 9070 | `		(const char *)SyBlobData(&sSub),(int)SyBlobLength(&sSub));` |
+|     3 | 9071 | `	SyBlobRelease(&sSub);` |
+|     - | 9072 | `	{` |
+|     3 | 9073 | `		int nInfo = 0;` |
+|     3 | 9074 | `		const char *zInfo = SfiStr(pThis,SFI_IC,&nInfo);` |
+|     3 | 9075 | `		PH7_NativeSetAttrStr(pVm,pNew,SFI_IC,zInfo,nInfo);` |
+|     - | 9076 | `	}` |
+|     3 | 9077 | `	PH7_NativeResultObject(pCtx,pNew);` |
+|     3 | 9078 | `	PH7_ClassInstanceUnref(pNew);` |
+|     3 | 9079 | `	return PH7_OK;` |
+|     2 | 9080 | `}` |
+|     4 | 9081 | `static int vm_builtin_RecursiveDirectoryIterator_getSubPath(ph7_context *pCtx,int nArg,` |
+|     - | 9082 | `	ph7_value **apArg)` |
+|     1 | 9083 | `{` |
+|     5 | 9084 | `	int nSub = 0;` |
+|     5 | 9085 | `	const char *zSub = SfiStr(PH7_ContextThis(pCtx),SDI_S,&nSub);` |
+|     2 | 9086 | `	SXUNUSED(nArg);` |
+|     2 | 9087 | `	SXUNUSED(apArg);` |
+|     5 | 9088 | `	ph7_result_string(pCtx,zSub,nSub);` |
+|     5 | 9089 | `	return PH7_OK;` |
+|     1 | 9090 | `}` |
+|     4 | 9091 | `static int vm_builtin_RecursiveDirectoryIterator_getSubPathname(ph7_context *pCtx,int nArg,` |
+|     - | 9092 | `	ph7_value **apArg)` |
+|     1 | 9093 | `{` |
+|     5 | 9094 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|     5 | 9095 | `	int nSub = 0,nEntry = 0;` |
+|     5 | 9096 | `	const char *zSub = SfiStr(pThis,SDI_S,&nSub);` |
+|     - | 9097 | `	SyBlob sOut;` |
+|     2 | 9098 | `	SXUNUSED(nArg);` |
+|     2 | 9099 | `	SXUNUSED(apArg);` |
+|     5 | 9100 | `	if( nSub < 1 ){` |
+|     3 | 9101 | `		const char *zEntry = SfiStr(pThis,SDI_E,&nEntry);` |
+|     3 | 9102 | `		ph7_result_string(pCtx,zEntry,nEntry);` |
+|     3 | 9103 | `		return PH7_OK;` |
+|     - | 9104 | `	}` |
+|     3 | 9105 | `	SyBlobInit(&sOut,&pCtx->pVm->sAllocator);` |
+|     3 | 9106 | `	SyBlobAppend(&sOut,zSub,(sxu32)nSub);` |
+|     - | 9107 | `	{` |
+|     3 | 9108 | `		char cSlash = SplDirSlash(PH7_NativeAttrInt(pThis,SDI_F));` |
+|     3 | 9109 | `		SyBlobAppend(&sOut,(const void *)&cSlash,sizeof(char));` |
+|     - | 9110 | `	}` |
+|     - | 9111 | `	{` |
+|     3 | 9112 | `		const char *zEntry = SfiStr(pThis,SDI_E,&nEntry);` |
+|     3 | 9113 | `		SyBlobAppend(&sOut,zEntry,(sxu32)nEntry);` |
+|     - | 9114 | `	}` |
+|     3 | 9115 | `	ph7_result_string(pCtx,(const char *)SyBlobData(&sOut),(int)SyBlobLength(&sOut));` |
+|     3 | 9116 | `	SyBlobRelease(&sOut);` |
+|     3 | 9117 | `	return PH7_OK;` |
+|     3 | 9118 | `}` |
+|     - | 9119 | `/*` |
+|     - | 9120 | ` * The three declarations. Method ORDER, signatures and tentative return types` |
+|     - | 9121 | `` * are spl_directory.stub.php's; the four slots are php's `u.dir` arm and carry`` |
+|     - | 9122 | ` * PH7_MOD_HIDDEN because php declares no property at all here. Each class` |
+|     - | 9123 | ` * restates NOSERIALIZE and the presentation hook: a native subclass inherits` |
+|     - | 9124 | ` * neither (rule 29).` |
+|     - | 9125 | ` */` |
+|  5254 | 9126 | `static sxi32 VmInstallSplDirIterators(ph7_vm *pVm)` |
+|     5 | 9127 | `{` |
+|     - | 9128 | `	static const PH7_NativePropDef aDirProp[] = {` |
+|     - | 9129 | `		{ SDI_E, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },` |
+|     - | 9130 | `		{ SDI_I, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },` |
+|     - | 9131 | `		{ SDI_F, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },` |
+|     - | 9132 | `		{ SDI_S, PH7_MOD_PRIVATE\|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },` |
+|     - | 9133 | `	};` |
+|     - | 9134 | `	static const PH7_NativeMethodDef aDirMethod[] = {` |
+|     - | 9135 | `		{ "__construct",  PH7_MOD_PUBLIC, "string $directory", 0,` |
+|     - | 9136 | `		  vm_builtin_DirectoryIterator_construct },` |
+|     - | 9137 | `		{ "getFilename",  PH7_MOD_PUBLIC, "", "@string",` |
+|     - | 9138 | `		  vm_builtin_DirectoryIterator_getFilename },` |
+|     - | 9139 | `		{ "getExtension", PH7_MOD_PUBLIC, "", "@string",` |
+|     - | 9140 | `		  vm_builtin_DirectoryIterator_getExtension },` |
+|     - | 9141 | `		{ "getBasename",  PH7_MOD_PUBLIC, "string $suffix = \"\"", "@string",` |
+|     - | 9142 | `		  vm_builtin_DirectoryIterator_getBasename },` |
+|     - | 9143 | `		{ "isDot",        PH7_MOD_PUBLIC, "", "@bool", vm_builtin_DirectoryIterator_isDot },` |
+|     - | 9144 | `		{ "rewind",       PH7_MOD_PUBLIC, "", "@void", vm_builtin_DirectoryIterator_rewind },` |
+|     - | 9145 | `		{ "valid",        PH7_MOD_PUBLIC, "", "@bool", vm_builtin_DirectoryIterator_valid },` |
+|     - | 9146 | `		{ "key",          PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_DirectoryIterator_key },` |
+|     - | 9147 | `		{ "current",      PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_DirectoryIterator_current },` |
+|     - | 9148 | `		{ "next",         PH7_MOD_PUBLIC, "", "@void", vm_builtin_DirectoryIterator_next },` |
+|     - | 9149 | `		{ "seek",         PH7_MOD_PUBLIC, "int $offset", "@void",` |
+|     - | 9150 | `		  vm_builtin_DirectoryIterator_seek },` |
+|     - | 9151 | ``		/* php aliases this one to getFilename(), so `echo $it` prints the ENTRY where`` |
+|     - | 9152 | `		 * SplFileInfo's __toString prints the whole pathname. Not tentative. */` |
+|     - | 9153 | `		{ "__toString",   PH7_MOD_PUBLIC, "", "string",` |
+|     - | 9154 | `		  vm_builtin_DirectoryIterator_getFilename },` |
+|     - | 9155 | `	};` |
+|     - | 9156 | `	static const PH7_NativeConstDef aFsConst[] = {` |
+|     - | 9157 | `		{ "CURRENT_MODE_MASK",   PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_CURRENT_MODE_MASK, 0, 0.0 },` |
+|     - | 9158 | `		{ "CURRENT_AS_PATHNAME", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_CURRENT_AS_PATHNAME, 0, 0.0 },` |
+|     - | 9159 | `		{ "CURRENT_AS_FILEINFO", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_CURRENT_AS_FILEINFO, 0, 0.0 },` |
+|     - | 9160 | `		{ "CURRENT_AS_SELF",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_CURRENT_AS_SELF, 0, 0.0 },` |
+|     - | 9161 | `		{ "KEY_MODE_MASK",       PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_KEY_MODE_MASK, 0, 0.0 },` |
+|     - | 9162 | `		{ "KEY_AS_PATHNAME",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_KEY_AS_PATHNAME, 0, 0.0 },` |
+|     - | 9163 | `		{ "FOLLOW_SYMLINKS",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_FOLLOW_SYMLINKS, 0, 0.0 },` |
+|     - | 9164 | `		{ "KEY_AS_FILENAME",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_KEY_AS_FILENAME, 0, 0.0 },` |
+|     - | 9165 | `		{ "NEW_CURRENT_AND_KEY", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_KEY_AS_FILENAME\|SDI_CURRENT_AS_FILEINFO, 0, 0.0 },` |
+|     - | 9166 | `		{ "OTHER_MODE_MASK",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_OTHERS_MASK, 0, 0.0 },` |
+|     - | 9167 | `		{ "SKIP_DOTS",           PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_SKIPDOTS, 0, 0.0 },` |
+|     - | 9168 | `		{ "UNIX_PATHS",          PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, SDI_UNIXPATHS, 0, 0.0 },` |
+|     - | 9169 | `	};` |
+|     - | 9170 | `	static const PH7_NativeMethodDef aFsMethod[] = {` |
+|     - | 9171 | `		{ "__construct", PH7_MOD_PUBLIC,` |
+|     - | 9172 | `		  "string $directory, int $flags = FilesystemIterator::KEY_AS_PATHNAME \| "` |
+|     - | 9173 | `		  "FilesystemIterator::CURRENT_AS_FILEINFO \| FilesystemIterator::SKIP_DOTS", 0,` |
+|     - | 9174 | `		  vm_builtin_FilesystemIterator_construct },` |
+|     - | 9175 | `		{ "rewind",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_FilesystemIterator_rewind },` |
+|     - | 9176 | `		{ "key",         PH7_MOD_PUBLIC, "", "@string", vm_builtin_FilesystemIterator_key },` |
+|     - | 9177 | `		{ "current",     PH7_MOD_PUBLIC, "", "@SplFileInfo\|FilesystemIterator\|string",` |
+|     - | 9178 | `		  vm_builtin_FilesystemIterator_current },` |
+|     - | 9179 | `		{ "getFlags",    PH7_MOD_PUBLIC, "", "@int", vm_builtin_FilesystemIterator_getFlags },` |
+|     - | 9180 | `		{ "setFlags",    PH7_MOD_PUBLIC, "int $flags", "@void",` |
+|     - | 9181 | `		  vm_builtin_FilesystemIterator_setFlags },` |
+|     - | 9182 | `	};` |
+|     - | 9183 | `	static const PH7_NativeMethodDef aRdiMethod[] = {` |
+|     - | 9184 | `		{ "__construct",    PH7_MOD_PUBLIC,` |
+|     - | 9185 | `		  "string $directory, int $flags = FilesystemIterator::KEY_AS_PATHNAME \| "` |
+|     - | 9186 | `		  "FilesystemIterator::CURRENT_AS_FILEINFO", 0,` |
+|     - | 9187 | `		  vm_builtin_RecursiveDirectoryIterator_construct },` |
+|     - | 9188 | `		{ "hasChildren",    PH7_MOD_PUBLIC, "bool $allowLinks = false", "@bool",` |
+|     - | 9189 | `		  vm_builtin_RecursiveDirectoryIterator_hasChildren },` |
+|     - | 9190 | `		{ "getChildren",    PH7_MOD_PUBLIC, "", "@RecursiveDirectoryIterator",` |
+|     - | 9191 | `		  vm_builtin_RecursiveDirectoryIterator_getChildren },` |
+|     - | 9192 | `		{ "getSubPath",     PH7_MOD_PUBLIC, "", "@string",` |
+|     - | 9193 | `		  vm_builtin_RecursiveDirectoryIterator_getSubPath },` |
+|     - | 9194 | `		{ "getSubPathname", PH7_MOD_PUBLIC, "", "@string",` |
+|     - | 9195 | `		  vm_builtin_RecursiveDirectoryIterator_getSubPathname },` |
+|     - | 9196 | `	};` |
+|     - | 9197 | `	static const PH7_NativeClassSpec aSpec[] = {` |
+|     - | 9198 | `		{ "DirectoryIterator", "SplFileInfo", "SeekableIterator", PH7_CLASS_NOSERIALIZE,` |
+|     - | 9199 | `		  aDirMethod, SX_ARRAYSIZE(aDirMethod), 0, 0,` |
+|     - | 9200 | `		  aDirProp, SX_ARRAYSIZE(aDirProp), SplDirClose, 0, SfiPresent },` |
+|     - | 9201 | `		{ "FilesystemIterator", "DirectoryIterator", 0, PH7_CLASS_NOSERIALIZE,` |
+|     - | 9202 | `		  aFsMethod, SX_ARRAYSIZE(aFsMethod), aFsConst, SX_ARRAYSIZE(aFsConst),` |
+|     - | 9203 | `		  0, 0, SplDirClose, 0, SfiPresent },` |
+|     - | 9204 | `		{ "RecursiveDirectoryIterator", "FilesystemIterator", "RecursiveIterator",` |
+|     - | 9205 | `		  PH7_CLASS_NOSERIALIZE,` |
+|     - | 9206 | `		  aRdiMethod, SX_ARRAYSIZE(aRdiMethod), 0, 0,` |
+|     - | 9207 | `		  0, 0, SplDirClose, 0, SfiPresent },` |
+|     - | 9208 | `	};` |
+|  5259 | 9209 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|     5 | 9210 | `}` |
+|  5254 | 9211 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)` |
+|     5 | 9212 | `{` |
+|  5259 | 9213 | `	sxi32 rc = VmInstallWeak(&(*pVm));` |
+|  5259 | 9214 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 9215 | `		return rc;` |
 |     - | 9216 | `	}` |
-|  5151 | 9217 | `	rc = VmInstallSplHeap(&(*pVm));` |
-|  5151 | 9218 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 9219 | `		return rc;` |
-|     - | 9220 | `	}` |
-|  5151 | 9221 | `	rc = VmInstallSplFixedArray(&(*pVm));` |
-|  5151 | 9222 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 9223 | `		return rc;` |
-|     - | 9224 | `	}` |
-|  5151 | 9225 | `	rc = VmInstallSplObjectStorage(&(*pVm));` |
-|  5151 | 9226 | `	if( rc != SXRET_OK ){` |
-|   ! 0 | 9227 | `		return rc;` |
-|     - | 9228 | `	}` |
-|  5151 | 9229 | `	rc = VmInstallSplFileInfo(&(*pVm));` |
-|  5151 | 9230 | `	if( rc != SXRET_OK ){` |
+|     - | 9217 | `	/* Ordering, now that zSplLib is gone: the remaining PHP in this subsystem is` |
+|     - | 9218 | `	 * the tokenizer chunk's, so these only have to satisfy each OTHER. */` |
+|  5259 | 9219 | `	rc = VmInstallSplStore(&(*pVm));` |
+|  5259 | 9220 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 9221 | `		return rc;` |
+|     - | 9222 | `	}` |
+|  5259 | 9223 | `	rc = VmInstallSplDualIterators(&(*pVm));` |
+|  5259 | 9224 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 9225 | `		return rc;` |
+|     - | 9226 | `	}` |
+|     - | 9227 | `	/* After the dual iterators: RecursiveIteratorIterator names OuterIterator and` |
+|     - | 9228 | `	 * RecursiveIterator, both declared by that table. */` |
+|  5259 | 9229 | `	rc = VmInstallSplRecursiveIt(&(*pVm));` |
+|  5259 | 9230 | `	if( rc != SXRET_OK ){` |
 |   ! 0 | 9231 | `		return rc;` |
 |     - | 9232 | `	}` |
-|     - | 9233 | `	/* After SplFileInfo: DirectoryIterator extends it, and PH7_ClassInherit copies` |
-|     - | 9234 | `	 * the base's methods DOWN (rule 14). */` |
-|  5151 | 9235 | `	return VmInstallSplDirIterators(&(*pVm));` |
-|  2578 | 9236 | `}` |
-|     - | 9237 |  |
-|     - | 9238 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
-|     - | 9239 |  |
-|     - | 9240 | `#ifdef PH7_DISABLE_BUILTIN_FUNC` |
-|     - | 9241 | `/* Tiny build: no SPL (builtin layer disabled) */` |
-|     - | 9242 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm){ (void)pVm; return SXRET_OK; }` |
-|     - | 9243 | `/* The writable-container fast path is called unconditionally by OP_LOAD_IDX, and its` |
-|     - | 9244 | ` * SXU32_HIGH answer already means "no slot available — take the ordinary offsetGet` |
-|     - | 9245 | ` * dispatch". With no SPL classes in this build that is the only answer there is, so the` |
-|     - | 9246 | ` * stub keeps the tiny target LINKING without a second #ifdef at the call site. */` |
-|     - | 9247 | `PH7_PRIVATE sxu32 PH7_SplDimElemSlot(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pKey,int bCreate)` |
-|     - | 9248 | `{` |
-|     - | 9249 | `	(void)pVm; (void)pThis; (void)pKey; (void)bCreate;` |
-|     - | 9250 | `	return SXU32_HIGH;` |
-|     - | 9251 | `}` |
-|     - | 9252 | `#endif` |
-|     - | 9253 |  |
+|  5259 | 9233 | `	rc = VmInstallSplDllist(&(*pVm));` |
+|  5259 | 9234 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 9235 | `		return rc;` |
+|     - | 9236 | `	}` |
+|  5259 | 9237 | `	rc = VmInstallSplHeap(&(*pVm));` |
+|  5259 | 9238 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 9239 | `		return rc;` |
+|     - | 9240 | `	}` |
+|  5259 | 9241 | `	rc = VmInstallSplFixedArray(&(*pVm));` |
+|  5259 | 9242 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 9243 | `		return rc;` |
+|     - | 9244 | `	}` |
+|  5259 | 9245 | `	rc = VmInstallSplObjectStorage(&(*pVm));` |
+|  5259 | 9246 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 9247 | `		return rc;` |
+|     - | 9248 | `	}` |
+|  5259 | 9249 | `	rc = VmInstallSplFileInfo(&(*pVm));` |
+|  5259 | 9250 | `	if( rc != SXRET_OK ){` |
+|   ! 0 | 9251 | `		return rc;` |
+|     - | 9252 | `	}` |
+|     - | 9253 | `	/* After SplFileInfo: DirectoryIterator extends it, and PH7_ClassInherit copies` |
+|     - | 9254 | `	 * the base's methods DOWN (rule 14). */` |
+|  5259 | 9255 | `	return VmInstallSplDirIterators(&(*pVm));` |
+|  2632 | 9256 | `}` |
+|     - | 9257 |  |
+|     - | 9258 | `#endif /* PH7_DISABLE_BUILTIN_FUNC */` |
+|     - | 9259 |  |
+|     - | 9260 | `#ifdef PH7_DISABLE_BUILTIN_FUNC` |
+|     - | 9261 | `/* Tiny build: no SPL (builtin layer disabled) */` |
+|     - | 9262 | `PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm){ (void)pVm; return SXRET_OK; }` |
+|     - | 9263 | `/* No directory iterators either, so shutdown has nothing to close. */` |
+|     - | 9264 | `PH7_PRIVATE void PH7_SplDirVmRelease(ph7_vm *pVm){ (void)pVm; }` |
+|     - | 9265 | `/* The writable-container fast path is called unconditionally by OP_LOAD_IDX, and its` |
+|     - | 9266 | ` * SXU32_HIGH answer already means "no slot available — take the ordinary offsetGet` |
+|     - | 9267 | ` * dispatch". With no SPL classes in this build that is the only answer there is, so the` |
+|     - | 9268 | ` * stub keeps the tiny target LINKING without a second #ifdef at the call site. */` |
+|     - | 9269 | `PH7_PRIVATE sxu32 PH7_SplDimElemSlot(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pKey,int bCreate)` |
+|     - | 9270 | `{` |
+|     - | 9271 | `	(void)pVm; (void)pThis; (void)pKey; (void)bCreate;` |
+|     - | 9272 | `	return SXU32_HIGH;` |
+|     - | 9273 | `}` |
+|     - | 9274 | `#endif` |
+|     - | 9275 |  |

@@ -40,16 +40,16 @@ Coverage: 1229/1292 lines (95.12%)
 |       - |   30 | `/*` |
 |       - |   31 | ` * Note: this code is harmless on little-endian machines.` |
 |       - |   32 | ` */` |
-|   35018 |   33 | `static void byteReverse (unsigned char *buf, unsigned longs)` |
-|       5 |   34 | `{` |
+|   35022 |   33 | `static void byteReverse (unsigned char *buf, unsigned longs)` |
+|       4 |   34 | `{` |
 |       - |   35 | `	sxu32 t;` |
-|   17509 |   36 | `        do {` |
-|  500153 |   37 | `                t = (sxu32)((unsigned)buf[3]<<8 \| buf[2]) << 16 \|` |
-|  333432 |   38 | `                            ((unsigned)buf[1]<<8 \| buf[0]);` |
-|  333437 |   39 | `                *(sxu32*)buf = t;` |
-|  333437 |   40 | `                buf += 4;` |
-|  333437 |   41 | `        } while (--longs);` |
-|   35023 |   42 | `}` |
+|   17511 |   36 | `        do {` |
+|  500206 |   37 | `                t = (sxu32)((unsigned)buf[3]<<8 \| buf[2]) << 16 \|` |
+|  333468 |   38 | `                            ((unsigned)buf[1]<<8 \| buf[0]);` |
+|  333472 |   39 | `                *(sxu32*)buf = t;` |
+|  333472 |   40 | `                buf += 4;` |
+|  333472 |   41 | `        } while (--longs);` |
+|   35026 |   42 | `}` |
 |       - |   43 | `/* The four core functions - F1 is optimized somewhat */` |
 |       - |   44 |  |
 |       - |   45 | `/* #define F1(x, y, z) (x & y \| ~x & z) */` |
@@ -80,104 +80,104 @@ Coverage: 1229/1292 lines (95.12%)
 |       - |   70 | ` * reflect the addition of 16 longwords of new data.MD5Update blocks` |
 |       - |   71 | ` * the data and converts bytes into longwords for this routine.` |
 |       - |   72 | ` */` |
-|   18814 |   73 | `static void MD5Transform(sxu32 buf[4], const sxu32 in[16])` |
-|       5 |   74 | `{` |
+|   18816 |   73 | `static void MD5Transform(sxu32 buf[4], const sxu32 in[16])` |
+|       4 |   74 | `{` |
 |       - |   75 | `	register sxu32 a, b, c, d;` |
 |       - |   76 |  |
-|   18819 |   77 | `        a = buf[0];` |
-|   18819 |   78 | `        b = buf[1];` |
-|   18819 |   79 | `        c = buf[2];` |
-|   18819 |   80 | `        d = buf[3];` |
+|   18820 |   77 | `        a = buf[0];` |
+|   18820 |   78 | `        b = buf[1];` |
+|   18820 |   79 | `        c = buf[2];` |
+|   18820 |   80 | `        d = buf[3];` |
 |       - |   81 |  |
-|   18819 |   82 | `        SX_MD5STEP(F1, a, b, c, d, in[ 0]+0xd76aa478,  7);` |
-|   18819 |   83 | `        SX_MD5STEP(F1, d, a, b, c, in[ 1]+0xe8c7b756, 12);` |
-|   18819 |   84 | `        SX_MD5STEP(F1, c, d, a, b, in[ 2]+0x242070db, 17);` |
-|   18819 |   85 | `        SX_MD5STEP(F1, b, c, d, a, in[ 3]+0xc1bdceee, 22);` |
-|   18819 |   86 | `        SX_MD5STEP(F1, a, b, c, d, in[ 4]+0xf57c0faf,  7);` |
-|   18819 |   87 | `        SX_MD5STEP(F1, d, a, b, c, in[ 5]+0x4787c62a, 12);` |
-|   18819 |   88 | `        SX_MD5STEP(F1, c, d, a, b, in[ 6]+0xa8304613, 17);` |
-|   18819 |   89 | `        SX_MD5STEP(F1, b, c, d, a, in[ 7]+0xfd469501, 22);` |
-|   18819 |   90 | `        SX_MD5STEP(F1, a, b, c, d, in[ 8]+0x698098d8,  7);` |
-|   18819 |   91 | `        SX_MD5STEP(F1, d, a, b, c, in[ 9]+0x8b44f7af, 12);` |
-|   18819 |   92 | `        SX_MD5STEP(F1, c, d, a, b, in[10]+0xffff5bb1, 17);` |
-|   18819 |   93 | `        SX_MD5STEP(F1, b, c, d, a, in[11]+0x895cd7be, 22);` |
-|   18819 |   94 | `        SX_MD5STEP(F1, a, b, c, d, in[12]+0x6b901122,  7);` |
-|   18819 |   95 | `        SX_MD5STEP(F1, d, a, b, c, in[13]+0xfd987193, 12);` |
-|   18819 |   96 | `        SX_MD5STEP(F1, c, d, a, b, in[14]+0xa679438e, 17);` |
-|   18819 |   97 | `        SX_MD5STEP(F1, b, c, d, a, in[15]+0x49b40821, 22);` |
+|   18820 |   82 | `        SX_MD5STEP(F1, a, b, c, d, in[ 0]+0xd76aa478,  7);` |
+|   18820 |   83 | `        SX_MD5STEP(F1, d, a, b, c, in[ 1]+0xe8c7b756, 12);` |
+|   18820 |   84 | `        SX_MD5STEP(F1, c, d, a, b, in[ 2]+0x242070db, 17);` |
+|   18820 |   85 | `        SX_MD5STEP(F1, b, c, d, a, in[ 3]+0xc1bdceee, 22);` |
+|   18820 |   86 | `        SX_MD5STEP(F1, a, b, c, d, in[ 4]+0xf57c0faf,  7);` |
+|   18820 |   87 | `        SX_MD5STEP(F1, d, a, b, c, in[ 5]+0x4787c62a, 12);` |
+|   18820 |   88 | `        SX_MD5STEP(F1, c, d, a, b, in[ 6]+0xa8304613, 17);` |
+|   18820 |   89 | `        SX_MD5STEP(F1, b, c, d, a, in[ 7]+0xfd469501, 22);` |
+|   18820 |   90 | `        SX_MD5STEP(F1, a, b, c, d, in[ 8]+0x698098d8,  7);` |
+|   18820 |   91 | `        SX_MD5STEP(F1, d, a, b, c, in[ 9]+0x8b44f7af, 12);` |
+|   18820 |   92 | `        SX_MD5STEP(F1, c, d, a, b, in[10]+0xffff5bb1, 17);` |
+|   18820 |   93 | `        SX_MD5STEP(F1, b, c, d, a, in[11]+0x895cd7be, 22);` |
+|   18820 |   94 | `        SX_MD5STEP(F1, a, b, c, d, in[12]+0x6b901122,  7);` |
+|   18820 |   95 | `        SX_MD5STEP(F1, d, a, b, c, in[13]+0xfd987193, 12);` |
+|   18820 |   96 | `        SX_MD5STEP(F1, c, d, a, b, in[14]+0xa679438e, 17);` |
+|   18820 |   97 | `        SX_MD5STEP(F1, b, c, d, a, in[15]+0x49b40821, 22);` |
 |       - |   98 |  |
-|   18819 |   99 | `        SX_MD5STEP(F2, a, b, c, d, in[ 1]+0xf61e2562,  5);` |
-|   18819 |  100 | `        SX_MD5STEP(F2, d, a, b, c, in[ 6]+0xc040b340,  9);` |
-|   18819 |  101 | `        SX_MD5STEP(F2, c, d, a, b, in[11]+0x265e5a51, 14);` |
-|   18819 |  102 | `        SX_MD5STEP(F2, b, c, d, a, in[ 0]+0xe9b6c7aa, 20);` |
-|   18819 |  103 | `        SX_MD5STEP(F2, a, b, c, d, in[ 5]+0xd62f105d,  5);` |
-|   18819 |  104 | `        SX_MD5STEP(F2, d, a, b, c, in[10]+0x02441453,  9);` |
-|   18819 |  105 | `        SX_MD5STEP(F2, c, d, a, b, in[15]+0xd8a1e681, 14);` |
-|   18819 |  106 | `        SX_MD5STEP(F2, b, c, d, a, in[ 4]+0xe7d3fbc8, 20);` |
-|   18819 |  107 | `        SX_MD5STEP(F2, a, b, c, d, in[ 9]+0x21e1cde6,  5);` |
-|   18819 |  108 | `        SX_MD5STEP(F2, d, a, b, c, in[14]+0xc33707d6,  9);` |
-|   18819 |  109 | `        SX_MD5STEP(F2, c, d, a, b, in[ 3]+0xf4d50d87, 14);` |
-|   18819 |  110 | `        SX_MD5STEP(F2, b, c, d, a, in[ 8]+0x455a14ed, 20);` |
-|   18819 |  111 | `        SX_MD5STEP(F2, a, b, c, d, in[13]+0xa9e3e905,  5);` |
-|   18819 |  112 | `        SX_MD5STEP(F2, d, a, b, c, in[ 2]+0xfcefa3f8,  9);` |
-|   18819 |  113 | `        SX_MD5STEP(F2, c, d, a, b, in[ 7]+0x676f02d9, 14);` |
-|   18819 |  114 | `        SX_MD5STEP(F2, b, c, d, a, in[12]+0x8d2a4c8a, 20);` |
+|   18820 |   99 | `        SX_MD5STEP(F2, a, b, c, d, in[ 1]+0xf61e2562,  5);` |
+|   18820 |  100 | `        SX_MD5STEP(F2, d, a, b, c, in[ 6]+0xc040b340,  9);` |
+|   18820 |  101 | `        SX_MD5STEP(F2, c, d, a, b, in[11]+0x265e5a51, 14);` |
+|   18820 |  102 | `        SX_MD5STEP(F2, b, c, d, a, in[ 0]+0xe9b6c7aa, 20);` |
+|   18820 |  103 | `        SX_MD5STEP(F2, a, b, c, d, in[ 5]+0xd62f105d,  5);` |
+|   18820 |  104 | `        SX_MD5STEP(F2, d, a, b, c, in[10]+0x02441453,  9);` |
+|   18820 |  105 | `        SX_MD5STEP(F2, c, d, a, b, in[15]+0xd8a1e681, 14);` |
+|   18820 |  106 | `        SX_MD5STEP(F2, b, c, d, a, in[ 4]+0xe7d3fbc8, 20);` |
+|   18820 |  107 | `        SX_MD5STEP(F2, a, b, c, d, in[ 9]+0x21e1cde6,  5);` |
+|   18820 |  108 | `        SX_MD5STEP(F2, d, a, b, c, in[14]+0xc33707d6,  9);` |
+|   18820 |  109 | `        SX_MD5STEP(F2, c, d, a, b, in[ 3]+0xf4d50d87, 14);` |
+|   18820 |  110 | `        SX_MD5STEP(F2, b, c, d, a, in[ 8]+0x455a14ed, 20);` |
+|   18820 |  111 | `        SX_MD5STEP(F2, a, b, c, d, in[13]+0xa9e3e905,  5);` |
+|   18820 |  112 | `        SX_MD5STEP(F2, d, a, b, c, in[ 2]+0xfcefa3f8,  9);` |
+|   18820 |  113 | `        SX_MD5STEP(F2, c, d, a, b, in[ 7]+0x676f02d9, 14);` |
+|   18820 |  114 | `        SX_MD5STEP(F2, b, c, d, a, in[12]+0x8d2a4c8a, 20);` |
 |       - |  115 |  |
-|   18819 |  116 | `        SX_MD5STEP(F3, a, b, c, d, in[ 5]+0xfffa3942,  4);` |
-|   18819 |  117 | `        SX_MD5STEP(F3, d, a, b, c, in[ 8]+0x8771f681, 11);` |
-|   18819 |  118 | `        SX_MD5STEP(F3, c, d, a, b, in[11]+0x6d9d6122, 16);` |
-|   18819 |  119 | `        SX_MD5STEP(F3, b, c, d, a, in[14]+0xfde5380c, 23);` |
-|   18819 |  120 | `        SX_MD5STEP(F3, a, b, c, d, in[ 1]+0xa4beea44,  4);` |
-|   18819 |  121 | `        SX_MD5STEP(F3, d, a, b, c, in[ 4]+0x4bdecfa9, 11);` |
-|   18819 |  122 | `        SX_MD5STEP(F3, c, d, a, b, in[ 7]+0xf6bb4b60, 16);` |
-|   18819 |  123 | `        SX_MD5STEP(F3, b, c, d, a, in[10]+0xbebfbc70, 23);` |
-|   18819 |  124 | `        SX_MD5STEP(F3, a, b, c, d, in[13]+0x289b7ec6,  4);` |
-|   18819 |  125 | `        SX_MD5STEP(F3, d, a, b, c, in[ 0]+0xeaa127fa, 11);` |
-|   18819 |  126 | `        SX_MD5STEP(F3, c, d, a, b, in[ 3]+0xd4ef3085, 16);` |
-|   18819 |  127 | `        SX_MD5STEP(F3, b, c, d, a, in[ 6]+0x04881d05, 23);` |
-|   18819 |  128 | `        SX_MD5STEP(F3, a, b, c, d, in[ 9]+0xd9d4d039,  4);` |
-|   18819 |  129 | `        SX_MD5STEP(F3, d, a, b, c, in[12]+0xe6db99e5, 11);` |
-|   18819 |  130 | `        SX_MD5STEP(F3, c, d, a, b, in[15]+0x1fa27cf8, 16);` |
-|   18819 |  131 | `        SX_MD5STEP(F3, b, c, d, a, in[ 2]+0xc4ac5665, 23);` |
+|   18820 |  116 | `        SX_MD5STEP(F3, a, b, c, d, in[ 5]+0xfffa3942,  4);` |
+|   18820 |  117 | `        SX_MD5STEP(F3, d, a, b, c, in[ 8]+0x8771f681, 11);` |
+|   18820 |  118 | `        SX_MD5STEP(F3, c, d, a, b, in[11]+0x6d9d6122, 16);` |
+|   18820 |  119 | `        SX_MD5STEP(F3, b, c, d, a, in[14]+0xfde5380c, 23);` |
+|   18820 |  120 | `        SX_MD5STEP(F3, a, b, c, d, in[ 1]+0xa4beea44,  4);` |
+|   18820 |  121 | `        SX_MD5STEP(F3, d, a, b, c, in[ 4]+0x4bdecfa9, 11);` |
+|   18820 |  122 | `        SX_MD5STEP(F3, c, d, a, b, in[ 7]+0xf6bb4b60, 16);` |
+|   18820 |  123 | `        SX_MD5STEP(F3, b, c, d, a, in[10]+0xbebfbc70, 23);` |
+|   18820 |  124 | `        SX_MD5STEP(F3, a, b, c, d, in[13]+0x289b7ec6,  4);` |
+|   18820 |  125 | `        SX_MD5STEP(F3, d, a, b, c, in[ 0]+0xeaa127fa, 11);` |
+|   18820 |  126 | `        SX_MD5STEP(F3, c, d, a, b, in[ 3]+0xd4ef3085, 16);` |
+|   18820 |  127 | `        SX_MD5STEP(F3, b, c, d, a, in[ 6]+0x04881d05, 23);` |
+|   18820 |  128 | `        SX_MD5STEP(F3, a, b, c, d, in[ 9]+0xd9d4d039,  4);` |
+|   18820 |  129 | `        SX_MD5STEP(F3, d, a, b, c, in[12]+0xe6db99e5, 11);` |
+|   18820 |  130 | `        SX_MD5STEP(F3, c, d, a, b, in[15]+0x1fa27cf8, 16);` |
+|   18820 |  131 | `        SX_MD5STEP(F3, b, c, d, a, in[ 2]+0xc4ac5665, 23);` |
 |       - |  132 |  |
-|   18819 |  133 | `        SX_MD5STEP(F4, a, b, c, d, in[ 0]+0xf4292244,  6);` |
-|   18819 |  134 | `        SX_MD5STEP(F4, d, a, b, c, in[ 7]+0x432aff97, 10);` |
-|   18819 |  135 | `        SX_MD5STEP(F4, c, d, a, b, in[14]+0xab9423a7, 15);` |
-|   18819 |  136 | `        SX_MD5STEP(F4, b, c, d, a, in[ 5]+0xfc93a039, 21);` |
-|   18819 |  137 | `        SX_MD5STEP(F4, a, b, c, d, in[12]+0x655b59c3,  6);` |
-|   18819 |  138 | `        SX_MD5STEP(F4, d, a, b, c, in[ 3]+0x8f0ccc92, 10);` |
-|   18819 |  139 | `        SX_MD5STEP(F4, c, d, a, b, in[10]+0xffeff47d, 15);` |
-|   18819 |  140 | `        SX_MD5STEP(F4, b, c, d, a, in[ 1]+0x85845dd1, 21);` |
-|   18819 |  141 | `        SX_MD5STEP(F4, a, b, c, d, in[ 8]+0x6fa87e4f,  6);` |
-|   18819 |  142 | `        SX_MD5STEP(F4, d, a, b, c, in[15]+0xfe2ce6e0, 10);` |
-|   18819 |  143 | `        SX_MD5STEP(F4, c, d, a, b, in[ 6]+0xa3014314, 15);` |
-|   18819 |  144 | `        SX_MD5STEP(F4, b, c, d, a, in[13]+0x4e0811a1, 21);` |
-|   18819 |  145 | `        SX_MD5STEP(F4, a, b, c, d, in[ 4]+0xf7537e82,  6);` |
-|   18819 |  146 | `        SX_MD5STEP(F4, d, a, b, c, in[11]+0xbd3af235, 10);` |
-|   18819 |  147 | `        SX_MD5STEP(F4, c, d, a, b, in[ 2]+0x2ad7d2bb, 15);` |
-|   18819 |  148 | `        SX_MD5STEP(F4, b, c, d, a, in[ 9]+0xeb86d391, 21);` |
+|   18820 |  133 | `        SX_MD5STEP(F4, a, b, c, d, in[ 0]+0xf4292244,  6);` |
+|   18820 |  134 | `        SX_MD5STEP(F4, d, a, b, c, in[ 7]+0x432aff97, 10);` |
+|   18820 |  135 | `        SX_MD5STEP(F4, c, d, a, b, in[14]+0xab9423a7, 15);` |
+|   18820 |  136 | `        SX_MD5STEP(F4, b, c, d, a, in[ 5]+0xfc93a039, 21);` |
+|   18820 |  137 | `        SX_MD5STEP(F4, a, b, c, d, in[12]+0x655b59c3,  6);` |
+|   18820 |  138 | `        SX_MD5STEP(F4, d, a, b, c, in[ 3]+0x8f0ccc92, 10);` |
+|   18820 |  139 | `        SX_MD5STEP(F4, c, d, a, b, in[10]+0xffeff47d, 15);` |
+|   18820 |  140 | `        SX_MD5STEP(F4, b, c, d, a, in[ 1]+0x85845dd1, 21);` |
+|   18820 |  141 | `        SX_MD5STEP(F4, a, b, c, d, in[ 8]+0x6fa87e4f,  6);` |
+|   18820 |  142 | `        SX_MD5STEP(F4, d, a, b, c, in[15]+0xfe2ce6e0, 10);` |
+|   18820 |  143 | `        SX_MD5STEP(F4, c, d, a, b, in[ 6]+0xa3014314, 15);` |
+|   18820 |  144 | `        SX_MD5STEP(F4, b, c, d, a, in[13]+0x4e0811a1, 21);` |
+|   18820 |  145 | `        SX_MD5STEP(F4, a, b, c, d, in[ 4]+0xf7537e82,  6);` |
+|   18820 |  146 | `        SX_MD5STEP(F4, d, a, b, c, in[11]+0xbd3af235, 10);` |
+|   18820 |  147 | `        SX_MD5STEP(F4, c, d, a, b, in[ 2]+0x2ad7d2bb, 15);` |
+|   18820 |  148 | `        SX_MD5STEP(F4, b, c, d, a, in[ 9]+0xeb86d391, 21);` |
 |       - |  149 |  |
-|   18819 |  150 | `        buf[0] += a;` |
-|   18819 |  151 | `        buf[1] += b;` |
-|   18819 |  152 | `        buf[2] += c;` |
-|   18819 |  153 | `        buf[3] += d;` |
-|   18819 |  154 | `}` |
+|   18820 |  150 | `        buf[0] += a;` |
+|   18820 |  151 | `        buf[1] += b;` |
+|   18820 |  152 | `        buf[2] += c;` |
+|   18820 |  153 | `        buf[3] += d;` |
+|   18820 |  154 | `}` |
 |       - |  155 | `/*` |
 |       - |  156 | ` * Update context to reflect the concatenation of another buffer full` |
 |       - |  157 | ` * of bytes.` |
 |       - |  158 | ` */` |
-|   56824 |  159 | `PH7_PRIVATE void MD5Update(MD5Context *ctx, const unsigned char *buf, unsigned int len)` |
+|   56826 |  159 | `PH7_PRIVATE void MD5Update(MD5Context *ctx, const unsigned char *buf, unsigned int len)` |
 |       4 |  160 | `{` |
 |       - |  161 | `	sxu32 t;` |
 |       - |  162 |  |
 |       - |  163 | `        /* Update bitcount */` |
-|   56828 |  164 | `        t = ctx->bits[0];` |
-|   56828 |  165 | `        if ((ctx->bits[0] = t + ((sxu32)len << 3)) < t)` |
+|   56830 |  164 | `        t = ctx->bits[0];` |
+|   56830 |  165 | `        if ((ctx->bits[0] = t + ((sxu32)len << 3)) < t)` |
 |     ! 0 |  166 | `                ctx->bits[1]++; /* Carry from low to high */` |
-|   56828 |  167 | `        ctx->bits[1] += len >> 29;` |
-|   56828 |  168 | `        t = (t >> 3) & 0x3f;    /* Bytes already in shsInfo->data */` |
+|   56830 |  167 | `        ctx->bits[1] += len >> 29;` |
+|   56830 |  168 | `        t = (t >> 3) & 0x3f;    /* Bytes already in shsInfo->data */` |
 |       - |  169 | `        /* Handle any leading odd-sized chunks */` |
-|   56828 |  170 | `        if ( t ) {` |
+|   56830 |  170 | `        if ( t ) {` |
 |   40571 |  171 | `                unsigned char *p = (unsigned char *)ctx->in + t;` |
 |       - |  172 |  |
 |   40571 |  173 | `                t = 64-t;` |
@@ -192,7 +192,7 @@ Coverage: 1229/1292 lines (95.12%)
 |     ! 0 |  182 | `                len -= t;` |
 |     ! 0 |  183 | `        }` |
 |       - |  184 | `        /* Process data in 64-byte chunks */` |
-|   18868 |  185 | `        while (len >= 64) {` |
+|   18870 |  185 | `        while (len >= 64) {` |
 |    2613 |  186 | `                SyMemcpy(buf,ctx->in,64);` |
 |    2613 |  187 | `                byteReverse(ctx->in, 16);` |
 |    2613 |  188 | `                MD5Transform(ctx->buf, (sxu32*)ctx->in);` |
@@ -200,29 +200,29 @@ Coverage: 1229/1292 lines (95.12%)
 |    2613 |  190 | `                len -= 64;` |
 |       3 |  191 | `        }` |
 |       - |  192 | `        /* Handle any remaining bytes of data.*/` |
-|   16258 |  193 | `        SyMemcpy(buf,ctx->in,len);` |
-|   28416 |  194 | `}` |
+|   16260 |  193 | `        SyMemcpy(buf,ctx->in,len);` |
+|   28417 |  194 | `}` |
 |       - |  195 | `/*` |
 |       - |  196 | ` * Final wrapup - pad to 64-byte boundary with the bit pattern` |
 |       - |  197 | ` * 1 0* (64-bit count of bits processed, MSB-first)` |
 |       - |  198 | ` */` |
-|   16209 |  199 | `PH7_PRIVATE void MD5Final(unsigned char digest[16], MD5Context *ctx){` |
+|   16210 |  199 | `PH7_PRIVATE void MD5Final(unsigned char digest[16], MD5Context *ctx){` |
 |       - |  200 | `        unsigned count;` |
 |       - |  201 | `        unsigned char *p;` |
 |       - |  202 |  |
 |       - |  203 | `        /* Compute number of bytes mod 64 */` |
-|   16209 |  204 | `        count = (ctx->bits[0] >> 3) & 0x3F;` |
+|   16210 |  204 | `        count = (ctx->bits[0] >> 3) & 0x3F;` |
 |       - |  205 |  |
 |       - |  206 | `        /* Set the first char of padding to 0x80.This is safe since there is` |
 |       - |  207 | `           always at least one byte free */` |
-|   16209 |  208 | `        p = ctx->in + count;` |
-|   16209 |  209 | `        *p++ = 0x80;` |
+|   16210 |  208 | `        p = ctx->in + count;` |
+|   16210 |  209 | `        *p++ = 0x80;` |
 |       - |  210 |  |
 |       - |  211 | `        /* Bytes of padding needed to make 64 bytes */` |
-|   16209 |  212 | `        count = 64 - 1 - count;` |
+|   16210 |  212 | `        count = 64 - 1 - count;` |
 |       - |  213 |  |
 |       - |  214 | `        /* Pad out to 56 mod 64 */` |
-|   16209 |  215 | `        if (count < 8) {` |
+|   16210 |  215 | `        if (count < 8) {` |
 |       - |  216 | `                /* Two lots of padding:  Pad the first block to 64 bytes */` |
 |     ! 0 |  217 | `               SyZero(p,count);` |
 |     ! 0 |  218 | `                byteReverse(ctx->in, 16);` |
@@ -232,42 +232,42 @@ Coverage: 1229/1292 lines (95.12%)
 |     ! 0 |  222 | `                SyZero(ctx->in,56);` |
 |     ! 0 |  223 | `        } else {` |
 |       - |  224 | `                /* Pad block to 56 bytes */` |
-|   16209 |  225 | `                SyZero(p,count-8);` |
+|   16210 |  225 | `                SyZero(p,count-8);` |
 |       - |  226 | `        }` |
-|   16209 |  227 | `        byteReverse(ctx->in, 14);` |
+|   16210 |  227 | `        byteReverse(ctx->in, 14);` |
 |       - |  228 |  |
 |       - |  229 | `        /* Append length in bits and transform */` |
-|   16209 |  230 | `        ((sxu32*)ctx->in)[ 14 ] = ctx->bits[0];` |
-|   16209 |  231 | `        ((sxu32*)ctx->in)[ 15 ] = ctx->bits[1];` |
+|   16210 |  230 | `        ((sxu32*)ctx->in)[ 14 ] = ctx->bits[0];` |
+|   16210 |  231 | `        ((sxu32*)ctx->in)[ 15 ] = ctx->bits[1];` |
 |       - |  232 |  |
-|   16209 |  233 | `        MD5Transform(ctx->buf, (sxu32*)ctx->in);` |
-|   16209 |  234 | `        byteReverse((unsigned char *)ctx->buf, 4);` |
-|   16209 |  235 | `        SyMemcpy(ctx->buf,digest,0x10);` |
-|   16209 |  236 | `        SyZero(ctx,sizeof(ctx));    /* In case it's sensitive */` |
-|   16209 |  237 | `}` |
+|   16210 |  233 | `        MD5Transform(ctx->buf, (sxu32*)ctx->in);` |
+|   16210 |  234 | `        byteReverse((unsigned char *)ctx->buf, 4);` |
+|   16210 |  235 | `        SyMemcpy(ctx->buf,digest,0x10);` |
+|   16210 |  236 | `        SyZero(ctx,sizeof(ctx));    /* In case it's sensitive */` |
+|   16210 |  237 | `}` |
 |       - |  238 | `#undef F1` |
 |       - |  239 | `#undef F2` |
 |       - |  240 | `#undef F3` |
 |       - |  241 | `#undef F4` |
-|   16214 |  242 | `PH7_PRIVATE sxi32 MD5Init(MD5Context *pCtx)` |
-|       5 |  243 | `{` |
-|   16219 |  244 | `	pCtx->buf[0] = 0x67452301;` |
-|   16219 |  245 | `    pCtx->buf[1] = 0xefcdab89;` |
-|   16219 |  246 | `    pCtx->buf[2] = 0x98badcfe;` |
-|   16219 |  247 | `    pCtx->buf[3] = 0x10325476;` |
-|   16219 |  248 | `    pCtx->bits[0] = 0;` |
-|   16219 |  249 | `    pCtx->bits[1] = 0;` |
+|   16216 |  242 | `PH7_PRIVATE sxi32 MD5Init(MD5Context *pCtx)` |
+|       4 |  243 | `{` |
+|   16220 |  244 | `	pCtx->buf[0] = 0x67452301;` |
+|   16220 |  245 | `    pCtx->buf[1] = 0xefcdab89;` |
+|   16220 |  246 | `    pCtx->buf[2] = 0x98badcfe;` |
+|   16220 |  247 | `    pCtx->buf[3] = 0x10325476;` |
+|   16220 |  248 | `    pCtx->bits[0] = 0;` |
+|   16220 |  249 | `    pCtx->bits[1] = 0;` |
 |       - |  250 |  |
-|   16219 |  251 | `   return SXRET_OK;` |
-|       5 |  252 | `}` |
-|      44 |  253 | `PH7_PRIVATE sxi32 SyMD5Compute(const void *pIn,sxu32 nLen,unsigned char zDigest[16])` |
-|       2 |  254 | `{` |
+|   16220 |  251 | `   return SXRET_OK;` |
+|       4 |  252 | `}` |
+|      46 |  253 | `PH7_PRIVATE sxi32 SyMD5Compute(const void *pIn,sxu32 nLen,unsigned char zDigest[16])` |
+|       3 |  254 | `{` |
 |       - |  255 | `	MD5Context sCtx;` |
-|      46 |  256 | `	MD5Init(&sCtx);` |
-|      46 |  257 | `	MD5Update(&sCtx,(const unsigned char *)pIn,nLen);` |
-|      46 |  258 | `	MD5Final(zDigest,&sCtx);` |
-|      46 |  259 | `	return SXRET_OK;` |
-|       2 |  260 | `}` |
+|      49 |  256 | `	MD5Init(&sCtx);` |
+|      49 |  257 | `	MD5Update(&sCtx,(const unsigned char *)pIn,nLen);` |
+|      49 |  258 | `	MD5Final(zDigest,&sCtx);` |
+|      49 |  259 | `	return SXRET_OK;` |
+|       3 |  260 | `}` |
 |       - |  261 | `/*` |
 |       - |  262 | ` * SHA-1 in C` |
 |       - |  263 | ` * By Steve Reid <steve@edmweb.com>` |
@@ -1882,7 +1882,7 @@ Coverage: 1229/1292 lines (95.12%)
 |     173 | 1872 | `	}` |
 |      53 | 1873 | `}` |
 |       - | 1874 | `#endif /* PH7_DISABLE_HASH_FUNC */` |
-|    1882 | 1875 | `PH7_PRIVATE sxi32 SyBinToHexConsumer(const void *pIn,sxu32 nLen,ProcConsumer xConsumer,void *pConsumerData)` |
+|    2098 | 1875 | `PH7_PRIVATE sxi32 SyBinToHexConsumer(const void *pIn,sxu32 nLen,ProcConsumer xConsumer,void *pConsumerData)` |
 |       5 | 1876 | `{` |
 |       - | 1877 | `	static const unsigned char zHexTab[] = "0123456789abcdef";` |
 |       - | 1878 | `	const unsigned char *zIn,*zEnd;` |
@@ -1893,19 +1893,19 @@ Coverage: 1229/1292 lines (95.12%)
 |       - | 1883 | `		return SXERR_EMPTY;` |
 |       - | 1884 | `	}` |
 |       - | 1885 | `#endif` |
-|    1887 | 1886 | `	zIn   = (const unsigned char *)pIn;` |
-|    1887 | 1887 | `	zEnd  = &zIn[nLen];` |
-|    9369 | 1888 | `	for(;;){` |
-|   18743 | 1889 | `		if( zIn >= zEnd  ){` |
-|    1863 | 1890 | `			break;` |
+|    2103 | 1886 | `	zIn   = (const unsigned char *)pIn;` |
+|    2103 | 1887 | `	zEnd  = &zIn[nLen];` |
+|    9808 | 1888 | `	for(;;){` |
+|   19621 | 1889 | `		if( zIn >= zEnd  ){` |
+|    2079 | 1890 | `			break;` |
 |       - | 1891 | `		}` |
-|   16885 | 1892 | `		zOut[0] = zHexTab[zIn[0] >> 4];  zOut[1] = zHexTab[zIn[0] & 0x0F];` |
-|   16885 | 1893 | `		rc = xConsumer((const void *)zOut,sizeof(char)*2,pConsumerData);` |
-|   16885 | 1894 | `		if( rc != SXRET_OK ){` |
+|   17547 | 1892 | `		zOut[0] = zHexTab[zIn[0] >> 4];  zOut[1] = zHexTab[zIn[0] & 0x0F];` |
+|   17547 | 1893 | `		rc = xConsumer((const void *)zOut,sizeof(char)*2,pConsumerData);` |
+|   17547 | 1894 | `		if( rc != SXRET_OK ){` |
 |      25 | 1895 | `			return rc;` |
 |       - | 1896 | `		}` |
-|   16861 | 1897 | `		zIn++;` |
+|   17523 | 1897 | `		zIn++;` |
 |       5 | 1898 | `	}` |
-|    1863 | 1899 | `        return SXRET_OK;` |
-|     946 | 1900 | `}` |
+|    2079 | 1899 | `        return SXRET_OK;` |
+|    1054 | 1900 | `}` |
 |       - | 1901 |  |

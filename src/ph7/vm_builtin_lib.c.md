@@ -477,43 +477,43 @@ Coverage: 401/463 lines (86.61%)
 |       - |  467 | `#define EXC_READ_RAW 0` |
 |       - |  468 | `#define EXC_READ_STR 1` |
 |       - |  469 | `#define EXC_READ_INT 2` |
-|    7426 |  470 | `static int VmExcReadSlot(ph7_context *pCtx,const char *zSlot,int iAs)` |
+|    9031 |  470 | `static int VmExcReadSlot(ph7_context *pCtx,const char *zSlot,int iAs)` |
 |       5 |  471 | `{` |
-|    7431 |  472 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-|    7431 |  473 | `	ph7_value *pVal = pThis ? PH7_NativeAttr(pThis,zSlot) : 0;` |
+|    9036 |  472 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+|    9036 |  473 | `	ph7_value *pVal = pThis ? PH7_NativeAttr(pThis,zSlot) : 0;` |
 |       - |  474 | `	ph7_value sTmp;` |
-|    7431 |  475 | `	if( iAs == EXC_READ_RAW ){` |
-|      54 |  476 | `		if( pVal ){` |
-|      54 |  477 | `			ph7_result_value(pCtx,pVal);` |
-|      29 |  478 | `		}else{` |
+|    9036 |  475 | `	if( iAs == EXC_READ_RAW ){` |
+|     506 |  476 | `		if( pVal ){` |
+|     506 |  477 | `			ph7_result_value(pCtx,pVal);` |
+|     255 |  478 | `		}else{` |
 |     ! 0 |  479 | `			ph7_result_null(pCtx);` |
 |       - |  480 | `		}` |
-|      54 |  481 | `		return PH7_OK;` |
+|     506 |  481 | `		return PH7_OK;` |
 |       - |  482 | `	}` |
 |       - |  483 | `	/* Through a COPY: converting the slot would rewrite the exception's state. */` |
-|    7381 |  484 | `	PH7_MemObjInit(pCtx->pVm,&sTmp);` |
-|    7381 |  485 | `	if( pVal ){` |
-|    7381 |  486 | `		PH7_MemObjStore(pVal,&sTmp);` |
-|    3688 |  487 | `	}` |
-|    7381 |  488 | `	if( iAs == EXC_READ_INT ){` |
+|    8534 |  484 | `	PH7_MemObjInit(pCtx->pVm,&sTmp);` |
+|    8534 |  485 | `	if( pVal ){` |
+|    8534 |  486 | `		PH7_MemObjStore(pVal,&sTmp);` |
+|    4264 |  487 | `	}` |
+|    8534 |  488 | `	if( iAs == EXC_READ_INT ){` |
 |     629 |  489 | `		PH7_MemObjToInteger(&sTmp);` |
 |     317 |  490 | `	}else{` |
-|    6757 |  491 | `		PH7_MemObjToString(&sTmp);` |
+|    7910 |  491 | `		PH7_MemObjToString(&sTmp);` |
 |       - |  492 | `	}` |
-|    7381 |  493 | `	ph7_result_value(pCtx,&sTmp);` |
-|    7381 |  494 | `	PH7_MemObjRelease(&sTmp);` |
-|    7381 |  495 | `	return PH7_OK;` |
-|    3718 |  496 | `}` |
-|    6738 |  497 | `static int vm_builtin_Exception_getMessage(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|    8534 |  493 | `	ph7_result_value(pCtx,&sTmp);` |
+|    8534 |  494 | `	PH7_MemObjRelease(&sTmp);` |
+|    8534 |  495 | `	return PH7_OK;` |
+|    4520 |  496 | `}` |
+|    7891 |  497 | `static int vm_builtin_Exception_getMessage(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |       5 |  498 | `{` |
-|    3369 |  499 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|    6743 |  500 | `	return VmExcReadSlot(pCtx,EXC_MESSAGE,EXC_READ_STR);` |
+|    3945 |  499 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|    7896 |  500 | `	return VmExcReadSlot(pCtx,EXC_MESSAGE,EXC_READ_STR);` |
 |       5 |  501 | `}` |
-|      16 |  502 | `static int vm_builtin_Exception_getCode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       2 |  503 | `{` |
-|       8 |  504 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|      18 |  505 | `	return VmExcReadSlot(pCtx,EXC_CODE,EXC_READ_RAW);` |
-|       2 |  506 | `}` |
+|     468 |  502 | `static int vm_builtin_Exception_getCode(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|       3 |  503 | `{` |
+|     234 |  504 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
+|     471 |  505 | `	return VmExcReadSlot(pCtx,EXC_CODE,EXC_READ_RAW);` |
+|       3 |  506 | `}` |
 |      14 |  507 | `static int vm_builtin_Exception_getFile(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |       3 |  508 | `{` |
 |       7 |  509 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
@@ -525,15 +525,15 @@ Coverage: 401/463 lines (86.61%)
 |     629 |  515 | `	return VmExcReadSlot(pCtx,EXC_LINE,EXC_READ_INT);` |
 |       5 |  516 | `}` |
 |       8 |  517 | `static int vm_builtin_Exception_getTrace(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       3 |  518 | `{` |
+|       2 |  518 | `{` |
 |       4 |  519 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|      11 |  520 | `	return VmExcReadSlot(pCtx,EXC_TRACE,EXC_READ_RAW);` |
-|       3 |  521 | `}` |
+|      10 |  520 | `	return VmExcReadSlot(pCtx,EXC_TRACE,EXC_READ_RAW);` |
+|       2 |  521 | `}` |
 |      22 |  522 | `static int vm_builtin_Exception_getPrevious(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|       2 |  523 | `{` |
+|       3 |  523 | `{` |
 |      11 |  524 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
-|      24 |  525 | `	return VmExcReadSlot(pCtx,EXC_PREVIOUS,EXC_READ_RAW);` |
-|       2 |  526 | `}` |
+|      25 |  525 | `	return VmExcReadSlot(pCtx,EXC_PREVIOUS,EXC_READ_RAW);` |
+|       3 |  526 | `}` |
 |       4 |  527 | `static int vm_builtin_ErrorException_getSeverity(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |       1 |  528 | `{` |
 |       2 |  529 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
@@ -546,38 +546,38 @@ Coverage: 401/463 lines (86.61%)
 |       - |  536 | ` * not the same as writing the defaults: a subclass may redeclare` |
 |       - |  537 | `` * `protected $message = 'default'`, and php keeps it for `new Sub()`.`` |
 |       - |  538 | ` */` |
-| 1456020 |  539 | `static void VmExcInitProps(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,` |
+| 1457283 |  539 | `static void VmExcInitProps(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,` |
 |       - |  540 | `	ph7_value **apArg,int iPrev)` |
 |       5 |  541 | `{` |
-| 1456025 |  542 | `	if( nArg > 0 ){` |
-| 1455951 |  543 | `		int nMsg = 0;` |
-| 1455951 |  544 | `		const char *zMsg = ph7_value_to_string(apArg[0],&nMsg);` |
-| 1455951 |  545 | `		PH7_NativeSetAttrStr(pCtx->pVm,pThis,EXC_MESSAGE,zMsg,nMsg);` |
-|  727973 |  546 | `	}` |
-| 1456025 |  547 | `	if( nArg > 1 ){` |
+| 1457288 |  542 | `	if( nArg > 0 ){` |
+| 1457214 |  543 | `		int nMsg = 0;` |
+| 1457214 |  544 | `		const char *zMsg = ph7_value_to_string(apArg[0],&nMsg);` |
+| 1457214 |  545 | `		PH7_NativeSetAttrStr(pCtx->pVm,pThis,EXC_MESSAGE,zMsg,nMsg);` |
+|  728604 |  546 | `	}` |
+| 1457288 |  547 | `	if( nArg > 1 ){` |
 |       - |  548 | `		ph7_value sCode;` |
-|      49 |  549 | `		PH7_MemObjInit(pCtx->pVm,&sCode);` |
-|      49 |  550 | `		PH7_MemObjStore(apArg[1],&sCode);` |
-|      49 |  551 | `		PH7_MemObjToInteger(&sCode);` |
-|      49 |  552 | `		if( sCode.x.iVal != 0 ){` |
-|      28 |  553 | `			PH7_NativeSetAttrInt(pCtx->pVm,pThis,EXC_CODE,sCode.x.iVal);` |
-|      13 |  554 | `		}` |
-|      49 |  555 | `		PH7_MemObjRelease(&sCode);` |
-|      23 |  556 | `	}` |
+|     457 |  549 | `		PH7_MemObjInit(pCtx->pVm,&sCode);` |
+|     457 |  550 | `		PH7_MemObjStore(apArg[1],&sCode);` |
+|     457 |  551 | `		PH7_MemObjToInteger(&sCode);` |
+|     457 |  552 | `		if( sCode.x.iVal != 0 ){` |
+|     436 |  553 | `			PH7_NativeSetAttrInt(pCtx->pVm,pThis,EXC_CODE,sCode.x.iVal);` |
+|     217 |  554 | `		}` |
+|     457 |  555 | `		PH7_MemObjRelease(&sCode);` |
+|     227 |  556 | `	}` |
 |       - |  557 | ``	/* php's `previous` is the LAST parameter of each constructor, and`` |
 |       - |  558 | `	 * ErrorException's is #5 rather than #2. */` |
-| 1456025 |  559 | `	if( nArg > iPrev && (apArg[iPrev]->iFlags & MEMOBJ_OBJ) && apArg[iPrev]->x.pOther ){` |
+| 1457288 |  559 | `	if( nArg > iPrev && (apArg[iPrev]->iFlags & MEMOBJ_OBJ) && apArg[iPrev]->x.pOther ){` |
 |      24 |  560 | `		PH7_NativeSetAttrObj(pCtx->pVm,pThis,EXC_PREVIOUS,` |
 |      14 |  561 | `			(ph7_class_instance *)apArg[iPrev]->x.pOther);` |
 |       7 |  562 | `	}` |
-| 1456025 |  563 | `}` |
-| 1456006 |  564 | `static int vm_builtin_Exception_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+| 1457288 |  563 | `}` |
+| 1457269 |  564 | `static int vm_builtin_Exception_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
 |       5 |  565 | `{` |
-| 1456011 |  566 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
-| 1456011 |  567 | `	if( pThis ){` |
-| 1456011 |  568 | `		VmExcInitProps(pCtx,pThis,nArg,apArg,2);` |
-|  728003 |  569 | `	}` |
-| 1456011 |  570 | `	return PH7_OK;` |
+| 1457274 |  566 | `	ph7_class_instance *pThis = PH7_ContextThis(pCtx);` |
+| 1457274 |  567 | `	if( pThis ){` |
+| 1457274 |  568 | `		VmExcInitProps(pCtx,pThis,nArg,apArg,2);` |
+|  728634 |  569 | `	}` |
+| 1457274 |  570 | `	return PH7_OK;` |
 |       5 |  571 | `}` |
 |       - |  572 | `/*` |
 |       - |  573 | ` * ErrorException's own constructor: php's Exception three, then severity, then` |
@@ -1009,7 +1009,7 @@ Coverage: 401/463 lines (86.61%)
 |       - |  999 | `#define EXC_PROP_TAIL \` |
 |       - | 1000 | `	{ EXC_TRACE,    PH7_MOD_PRIVATE,   { 0, 0, PH7_NATIVE_VAL_ARRAY, 0, 0, 0.0 }, "array" }, \` |
 |       - | 1001 | `	{ EXC_PREVIOUS, PH7_MOD_PRIVATE,   { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, "?Throwable" }` |
-|    5146 | 1002 | `static sxi32 VmInstallExceptions(ph7_vm *pVm)` |
+|    5254 | 1002 | `static sxi32 VmInstallExceptions(ph7_vm *pVm)` |
 |       5 | 1003 | `{` |
 |       - | 1004 | `	static const PH7_NativeMethodDef aExcMethod[] = {` |
 |       - | 1005 | `		EXC_METHODS(EXC_CTOR_SIG,vm_builtin_Exception_construct)` |
@@ -1079,7 +1079,7 @@ Coverage: 401/463 lines (86.61%)
 |       - | 1069 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
 |       - | 1070 | `		{ "JsonException", "Exception", 0, PH7_CLASS_NOCLONE, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
 |       - | 1071 | `	};` |
-|    5151 | 1072 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|    5259 | 1072 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |       5 | 1073 | `}` |
 |       - | 1074 | `/*` |
 |       - | 1075 | ` * The eleven core interfaces, declared from C.` |
@@ -1104,7 +1104,7 @@ Coverage: 401/463 lines (86.61%)
 |       - | 1094 | `` * Traversable regardless of row order. An interface's parent is `zParent`, not`` |
 |       - | 1095 | `` * `zImplements` (Reflection walks pBase to attribute an inherited method).`` |
 |       - | 1096 | ` */` |
-|    5146 | 1097 | `static sxi32 VmInstallCoreInterfaces(ph7_vm *pVm)` |
+|    5254 | 1097 | `static sxi32 VmInstallCoreInterfaces(ph7_vm *pVm)` |
 |       5 | 1098 | `{` |
 |       - | 1099 | `	static const PH7_NativeMethodDef aStringable[] = {` |
 |       - | 1100 | `		{ "__toString", PH7_MOD_PUBLIC\|PH7_MOD_ABSTRACT, "", "string", 0 },` |
@@ -1182,7 +1182,7 @@ Coverage: 401/463 lines (86.61%)
 |       - | 1172 | `		{ "Serializable", 0, 0, PH7_CLASS_INTERFACE,` |
 |       - | 1173 | `		  aSerializable, SX_ARRAYSIZE(aSerializable), 0, 0, 0, 0, 0, 0, 0 },` |
 |       - | 1174 | `	};` |
-|    5151 | 1175 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|    5259 | 1175 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |       5 | 1176 | `}` |
 |       - | 1177 | `/*` |
 |       - | 1178 | ` * ---------------------------------------------------------------------------` |
@@ -1256,7 +1256,7 @@ Coverage: 401/463 lines (86.61%)
 |       2 | 1246 | `	SXUNUSED(nArg); SXUNUSED(apArg);` |
 |       5 | 1247 | `	return VmDirForward(pCtx,"closedir","close");` |
 |       1 | 1248 | `}` |
-|    5146 | 1249 | `static sxi32 VmInstallDirectory(ph7_vm *pVm)` |
+|    5254 | 1249 | `static sxi32 VmInstallDirectory(ph7_vm *pVm)` |
 |       5 | 1250 | `{` |
 |       - | 1251 | `	static const PH7_NativePropDef aDirProp[] = {` |
 |       - | 1252 | `		{ DIR_PATH,   PH7_MOD_PUBLIC\|PH7_MOD_PROT_SET\|PH7_MOD_READONLY,` |
@@ -1274,16 +1274,16 @@ Coverage: 401/463 lines (86.61%)
 |       - | 1264 | `		aDirMethod, SX_ARRAYSIZE(aDirMethod), 0, 0,` |
 |       - | 1265 | `		aDirProp, SX_ARRAYSIZE(aDirProp), 0, 0, 0` |
 |       - | 1266 | `	};` |
-|    5151 | 1267 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
-|    5151 | 1268 | `	if( rc == SXRET_OK ){` |
-|    5151 | 1269 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"Directory",sizeof("Directory")-1,FALSE,0);` |
-|    5151 | 1270 | `		if( pClass ){` |
+|    5259 | 1267 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
+|    5259 | 1268 | `	if( rc == SXRET_OK ){` |
+|    5259 | 1269 | `		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"Directory",sizeof("Directory")-1,FALSE,0);` |
+|    5259 | 1270 | `		if( pClass ){` |
 |       - | 1271 | `			/* php words this refusal per class rather than with the generic` |
 |       - | 1272 | `			 * "Instantiation of class %s is not allowed". */` |
-|    5151 | 1273 | `			pClass->zNewRefusal = "Cannot directly construct Directory, use dir() instead";` |
-|    2573 | 1274 | `		}` |
-|    2573 | 1275 | `	}` |
-|    5151 | 1276 | `	return rc;` |
+|    5259 | 1273 | `			pClass->zNewRefusal = "Cannot directly construct Directory, use dir() instead";` |
+|    2627 | 1274 | `		}` |
+|    2627 | 1275 | `	}` |
+|    5259 | 1276 | `	return rc;` |
 |       5 | 1277 | `}` |
 |       - | 1278 | `/*` |
 |       - | 1279 | ` * ---------------------------------------------------------------------------` |
@@ -1329,7 +1329,7 @@ Coverage: 401/463 lines (86.61%)
 |      11 | 1319 | `	}` |
 |      11 | 1320 | `	return PH7_OK;` |
 |       6 | 1321 | `}` |
-|    5146 | 1322 | `static sxi32 VmInstallAttributes(ph7_vm *pVm)` |
+|    5254 | 1322 | `static sxi32 VmInstallAttributes(ph7_vm *pVm)` |
 |       5 | 1323 | `{` |
 |       - | 1324 | `	static const PH7_NativeConstDef aAttrConst[] = {` |
 |       - | 1325 | `		{ "TARGET_CLASS",          PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 1, 0, 0.0 },` |
@@ -1375,18 +1375,18 @@ Coverage: 401/463 lines (86.61%)
 |       - | 1365 | `	static const PH7_NativeAttrArg aOnDeprecated[] = {` |
 |       - | 1366 | `		{ 0, { 0, 0, PH7_NATIVE_VAL_INT, 87, 0, 0.0 } },  /* php's own mask */` |
 |       - | 1367 | `	};` |
-|    5151 | 1368 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
-|    5151 | 1369 | `	if( rc == SXRET_OK ){` |
-|    7724 | 1370 | `		rc = PH7_NativeClassAddAttribute(&(*pVm),` |
-|    2573 | 1371 | `			PH7_VmExtractClass(&(*pVm),"Attribute",sizeof("Attribute")-1,FALSE,0),` |
+|    5259 | 1368 | `	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|    5259 | 1369 | `	if( rc == SXRET_OK ){` |
+|    7886 | 1370 | `		rc = PH7_NativeClassAddAttribute(&(*pVm),` |
+|    2627 | 1371 | `			PH7_VmExtractClass(&(*pVm),"Attribute",sizeof("Attribute")-1,FALSE,0),` |
 |       - | 1372 | `			"Attribute",aOnAttribute,SX_ARRAYSIZE(aOnAttribute));` |
-|    2573 | 1373 | `	}` |
-|    5151 | 1374 | `	if( rc == SXRET_OK ){` |
-|    7724 | 1375 | `		rc = PH7_NativeClassAddAttribute(&(*pVm),` |
-|    2573 | 1376 | `			PH7_VmExtractClass(&(*pVm),"Deprecated",sizeof("Deprecated")-1,FALSE,0),` |
+|    2627 | 1373 | `	}` |
+|    5259 | 1374 | `	if( rc == SXRET_OK ){` |
+|    7886 | 1375 | `		rc = PH7_NativeClassAddAttribute(&(*pVm),` |
+|    2627 | 1376 | `			PH7_VmExtractClass(&(*pVm),"Deprecated",sizeof("Deprecated")-1,FALSE,0),` |
 |       - | 1377 | `			"Attribute",aOnDeprecated,SX_ARRAYSIZE(aOnDeprecated));` |
-|    2573 | 1378 | `	}` |
-|    5151 | 1379 | `	return rc;` |
+|    2627 | 1378 | `	}` |
+|    5259 | 1379 | `	return rc;` |
 |       5 | 1380 | `}` |
 |       - | 1381 | `/*` |
 |       - | 1382 | ` * stdClass and Random\RandomException.` |
@@ -1401,7 +1401,7 @@ Coverage: 401/463 lines (86.61%)
 |       - | 1391 | ` * closing brace here, so anything following it in the same chunk would have` |
 |       - | 1392 | ` * leaked into the Random namespace.` |
 |       - | 1393 | ` */` |
-|    5146 | 1394 | `static sxi32 VmInstallStdClasses(ph7_vm *pVm)` |
+|    5254 | 1394 | `static sxi32 VmInstallStdClasses(ph7_vm *pVm)` |
 |       5 | 1395 | `{` |
 |       - | 1396 | `	static const PH7_NativeClassSpec aSpec[] = {` |
 |       - | 1397 | `		{ "stdClass", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
@@ -1418,21 +1418,21 @@ Coverage: 401/463 lines (86.61%)
 |       - | 1408 | `		{ "Filter\\FilterFailedException", "Filter\\FilterException", 0, 0,` |
 |       - | 1409 | `		  0, 0, 0, 0, 0, 0, 0, 0, 0 },` |
 |       - | 1410 | `	};` |
-|    5151 | 1411 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|    5259 | 1411 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |       5 | 1412 | `}` |
-|    5146 | 1413 | `PH7_PRIVATE sxi32 PH7_VmInstallBuiltinLib(ph7_vm *pVm)` |
+|    5254 | 1413 | `PH7_PRIVATE sxi32 PH7_VmInstallBuiltinLib(ph7_vm *pVm)` |
 |       5 | 1414 | `{` |
 |       - | 1415 | `	SyString sBuiltin;` |
 |       - | 1416 | `	/* The interfaces first: everything below implements one of them` |
 |       - | 1417 | `	 * (Exception implements Throwable). */` |
-|    5151 | 1418 | `	VmInstallCoreInterfaces(&(*pVm));` |
-|    5151 | 1419 | `	VmInstallExceptions(&(*pVm));` |
-|    5151 | 1420 | `	VmInstallStdClasses(&(*pVm));` |
-|    5151 | 1421 | `	VmInstallDirectory(&(*pVm));` |
-|    5151 | 1422 | `	VmInstallAttributes(&(*pVm));` |
-|    5151 | 1423 | `	SyStringInitFromBuf(&sBuiltin,PH7_BUILTIN_LIB,sizeof(PH7_BUILTIN_LIB)-1);` |
+|    5259 | 1418 | `	VmInstallCoreInterfaces(&(*pVm));` |
+|    5259 | 1419 | `	VmInstallExceptions(&(*pVm));` |
+|    5259 | 1420 | `	VmInstallStdClasses(&(*pVm));` |
+|    5259 | 1421 | `	VmInstallDirectory(&(*pVm));` |
+|    5259 | 1422 | `	VmInstallAttributes(&(*pVm));` |
+|    5259 | 1423 | `	SyStringInitFromBuf(&sBuiltin,PH7_BUILTIN_LIB,sizeof(PH7_BUILTIN_LIB)-1);` |
 |       - | 1424 | `	/* Compile the built-in library */` |
-|    5151 | 1425 | `	VmEvalChunk(&(*pVm),0,&sBuiltin,PH7_PHP_ONLY,FALSE);` |
-|    5151 | 1426 | `	return SXRET_OK;` |
+|    5259 | 1425 | `	VmEvalChunk(&(*pVm),0,&sBuiltin,PH7_PHP_ONLY,FALSE);` |
+|    5259 | 1426 | `	return SXRET_OK;` |
 |       5 | 1427 | `}` |
 |       - | 1428 |  |

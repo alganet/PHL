@@ -261,14 +261,14 @@ Coverage: 370/936 lines (39.53%)
 |    9559 |  251 | `	ph7_value_int(pVal,SX_PTR_TO_INT(pUserData));` |
 |    9559 |  252 | `}` |
 |       - |  253 |  |
-|    4552 |  254 | `PH7_PRIVATE void PH7_RegisterTokenizerConstants(ph7_vm *pVm)` |
+|    4660 |  254 | `PH7_PRIVATE void PH7_RegisterTokenizerConstants(ph7_vm *pVm)` |
 |       5 |  255 | `{` |
 |       - |  256 | `	sxu32 n;` |
-|  705565 |  257 | `	for( n = 0 ; n < SX_ARRAYSIZE(aTokConst) ; ++n ){` |
-| 1051517 |  258 | `		ph7_create_constant(&(*pVm),aTokConst[n].zName,TokConstExpand,` |
-|  701008 |  259 | `			SX_INT_TO_PTR(aTokConst[n].iId));` |
-|  350509 |  260 | `	}` |
-|    4557 |  261 | `}` |
+|  722305 |  257 | `	for( n = 0 ; n < SX_ARRAYSIZE(aTokConst) ; ++n ){` |
+| 1076465 |  258 | `		ph7_create_constant(&(*pVm),aTokConst[n].zName,TokConstExpand,` |
+|  717640 |  259 | `			SX_INT_TO_PTR(aTokConst[n].iId));` |
+|  358825 |  260 | `	}` |
+|    4665 |  261 | `}` |
 |       - |  262 |  |
 |       - |  263 | `#ifndef PH7_DISABLE_BUILTIN_FUNC` |
 |       - |  264 |  |
@@ -1589,7 +1589,7 @@ Coverage: 370/936 lines (39.53%)
 |       - | 1579 | ` * then the final constructor — and the four properties are declared with NO` |
 |       - | 1580 | ` * default, which is what makes them php's uninitialized typed slots.` |
 |       - | 1581 | ` */` |
-|    5146 | 1582 | `static sxi32 VmInstallPhpToken(ph7_vm *pVm)` |
+|    5254 | 1582 | `static sxi32 VmInstallPhpToken(ph7_vm *pVm)` |
 |       5 | 1583 | `{` |
 |       - | 1584 | `	static const PH7_NativePropDef aTokProp[] = {` |
 |       - | 1585 | `		{ "id",   PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "int" },` |
@@ -1613,13 +1613,13 @@ Coverage: 370/936 lines (39.53%)
 |       - | 1603 | `		  aTokMethod, SX_ARRAYSIZE(aTokMethod), 0, 0,` |
 |       - | 1604 | `		  aTokProp, SX_ARRAYSIZE(aTokProp), 0, 0, 0 },` |
 |       - | 1605 | `	};` |
-|    5151 | 1606 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
+|    5259 | 1606 | `	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));` |
 |       5 | 1607 | `}` |
 |       - | 1608 |  |
-|    5151 | 1609 | `PH7_PRIVATE sxi32 PH7_VmInstallTokenizer(ph7_vm *pVm){` |
-|    5151 | 1610 | `	ph7_create_function(&(*pVm),"token_get_all",PH7_builtin_token_get_all,0);` |
-|    5151 | 1611 | `	ph7_create_function(&(*pVm),"token_name",PH7_builtin_token_name,0);` |
-|    5151 | 1612 | `	return VmInstallPhpToken(&(*pVm));` |
+|    5259 | 1609 | `PH7_PRIVATE sxi32 PH7_VmInstallTokenizer(ph7_vm *pVm){` |
+|    5259 | 1610 | `	ph7_create_function(&(*pVm),"token_get_all",PH7_builtin_token_get_all,0);` |
+|    5259 | 1611 | `	ph7_create_function(&(*pVm),"token_name",PH7_builtin_token_name,0);` |
+|    5259 | 1612 | `	return VmInstallPhpToken(&(*pVm));` |
 |       5 | 1613 | `}` |
 |       - | 1614 |  |
 |       - | 1615 | `#else /* PH7_DISABLE_BUILTIN_FUNC */` |

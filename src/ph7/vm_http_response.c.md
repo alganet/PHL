@@ -214,31 +214,31 @@ Coverage: 319/383 lines (83.29%)
 |     - |  204 | ` *   Returns a list of response headers as "Name: Value" strings.` |
 |     - |  205 | ` */` |
 |    12 |  206 | `static int vm_builtin_headers_list(ph7_context *pCtx, int nArg, ph7_value **apArg)` |
-|     3 |  207 | `{` |
-|    15 |  208 | `	ph7_vm *pVm = pCtx->pVm;` |
+|     2 |  207 | `{` |
+|    14 |  208 | `	ph7_vm *pVm = pCtx->pVm;` |
 |     - |  209 | `	ph7_value *pArray;` |
 |     - |  210 | `	ph7_value *pEntry;` |
 |     - |  211 | `	VmResponseHeader *aHdr;` |
 |     - |  212 | `	sxu32 i, n;` |
 |     6 |  213 | `	(void)nArg; (void)apArg;` |
-|    15 |  214 | `	pArray = ph7_context_new_array(pCtx);` |
-|    15 |  215 | `	pEntry = ph7_context_new_scalar(pCtx);` |
-|    15 |  216 | `	if( pArray == 0 \|\| pEntry == 0 ){` |
+|    14 |  214 | `	pArray = ph7_context_new_array(pCtx);` |
+|    14 |  215 | `	pEntry = ph7_context_new_scalar(pCtx);` |
+|    14 |  216 | `	if( pArray == 0 \|\| pEntry == 0 ){` |
 |   ! 0 |  217 | `		ph7_result_null(pCtx);` |
 |   ! 0 |  218 | `		return PH7_OK;` |
 |     - |  219 | `	}` |
-|    15 |  220 | `	aHdr = (VmResponseHeader *)SySetBasePtr(&pVm->aResponseHeaders);` |
-|    15 |  221 | `	n = SySetUsed(&pVm->aResponseHeaders);` |
-|    25 |  222 | `	for( i = 0; i < n; i++ ){` |
+|    14 |  220 | `	aHdr = (VmResponseHeader *)SySetBasePtr(&pVm->aResponseHeaders);` |
+|    14 |  221 | `	n = SySetUsed(&pVm->aResponseHeaders);` |
+|    24 |  222 | `	for( i = 0; i < n; i++ ){` |
 |    10 |  223 | `		ph7_value_reset_string_cursor(pEntry);` |
 |    15 |  224 | `		ph7_value_string_format(pEntry, "%.*s: %.*s",` |
 |    10 |  225 | `			(int)aHdr[i].sName.nByte, aHdr[i].sName.zString,` |
 |    10 |  226 | `			(int)aHdr[i].sValue.nByte, aHdr[i].sValue.zString);` |
 |    10 |  227 | `		ph7_array_add_elem(pArray, 0, pEntry);` |
 |     5 |  228 | `	}` |
-|    15 |  229 | `	ph7_result_value(pCtx, pArray);` |
-|    15 |  230 | `	return PH7_OK;` |
-|     9 |  231 | `}` |
+|    14 |  229 | `	ph7_result_value(pCtx, pArray);` |
+|    14 |  230 | `	return PH7_OK;` |
+|     8 |  231 | `}` |
 |     - |  232 | `/*` |
 |     - |  233 | ` * int http_response_code([int $code])` |
 |     - |  234 | ` *   Get or set the HTTP response status code.` |
@@ -606,7 +606,7 @@ Coverage: 319/383 lines (83.29%)
 |     - |  596 | `/*` |
 |     - |  597 | ` * Register all HTTP response functions with the VM.` |
 |     - |  598 | ` */` |
-|  4552 |  599 | `PH7_PRIVATE void PH7_RegisterHttpResponseFunctions(ph7_vm *pVm)` |
+|  4660 |  599 | `PH7_PRIVATE void PH7_RegisterHttpResponseFunctions(ph7_vm *pVm)` |
 |     5 |  600 | `{` |
 |     - |  601 | `	static const ph7_builtin_func aFunc[] = {` |
 |     - |  602 | `		{ "header",             vm_builtin_header             },` |
@@ -618,8 +618,8 @@ Coverage: 319/383 lines (83.29%)
 |     - |  608 | `		{ "setrawcookie",       vm_builtin_setrawcookie       },` |
 |     - |  609 | `	};` |
 |     - |  610 | `	sxu32 n;` |
-| 36421 |  611 | `	for( n = 0; n < SX_ARRAYSIZE(aFunc); n++ ){` |
-| 31869 |  612 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
-| 15937 |  613 | `	}` |
-|  4557 |  614 | `}` |
+| 37285 |  611 | `	for( n = 0; n < SX_ARRAYSIZE(aFunc); n++ ){` |
+| 32625 |  612 | `		ph7_create_function(&(*pVm), aFunc[n].zName, aFunc[n].xFunc, 0);` |
+| 16315 |  613 | `	}` |
+|  4665 |  614 | `}` |
 |     - |  615 |  |

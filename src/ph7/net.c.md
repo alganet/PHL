@@ -179,13 +179,13 @@ Coverage: 381/474 lines (80.38%)
 |    - |  169 | ` * one failure php does not report as an error: a read answers "" or false by` |
 |    - |  170 | ` * the handle's own rules, and a write answers what it managed to send.` |
 |    - |  171 | ` */` |
-|   11 |  172 | `PH7_PRIVATE int PH7_NetWouldBlock(void)` |
+|   12 |  172 | `PH7_PRIVATE int PH7_NetWouldBlock(void)` |
 |    2 |  173 | `{` |
 |    - |  174 | `#ifdef __WINNT__` |
 |    2 |  175 | `	int iErr = WSAGetLastError();` |
 |    2 |  176 | `	return iErr == WSAEWOULDBLOCK \|\| iErr == WSAETIMEDOUT;` |
 |    - |  177 | `#else` |
-|   11 |  178 | `	return errno == EAGAIN \|\| errno == EWOULDBLOCK \|\| errno == EINTR;` |
+|   12 |  178 | `	return errno == EAGAIN \|\| errno == EWOULDBLOCK \|\| errno == EINTR;` |
 |    - |  179 | `#endif` |
 |    2 |  180 | `}` |
 |    - |  181 | `/*` |
@@ -523,17 +523,17 @@ Coverage: 381/474 lines (80.38%)
 |    - |  513 | ` * Receive data from a socket.` |
 |    - |  514 | ` * Returns the number of bytes received, or -1 on error.` |
 |    - |  515 | ` */` |
-|   94 |  516 | `PH7_PRIVATE int PH7_NetRecv(ph7_socket sock, void *pBuf, int nLen, int flags)` |
+|   92 |  516 | `PH7_PRIVATE int PH7_NetRecv(ph7_socket sock, void *pBuf, int nLen, int flags)` |
 |    3 |  517 | `{` |
-|   97 |  518 | `	return (int)recv(sock, (char *)pBuf, nLen, flags);` |
+|   95 |  518 | `	return (int)recv(sock, (char *)pBuf, nLen, flags);` |
 |    3 |  519 | `}` |
 |    - |  520 | `/*` |
 |    - |  521 | ` * Send data on a socket.` |
 |    - |  522 | ` * Returns the number of bytes sent, or -1 on error.` |
 |    - |  523 | ` */` |
-|   55 |  524 | `PH7_PRIVATE int PH7_NetSend(ph7_socket sock, const void *pBuf, int nLen, int flags)` |
+|   53 |  524 | `PH7_PRIVATE int PH7_NetSend(ph7_socket sock, const void *pBuf, int nLen, int flags)` |
 |    3 |  525 | `{` |
-|   58 |  526 | `	return (int)send(sock, (const char *)pBuf, nLen, flags);` |
+|   56 |  526 | `	return (int)send(sock, (const char *)pBuf, nLen, flags);` |
 |    3 |  527 | `}` |
 |    - |  528 | `/*` |
 |    - |  529 | ` * Send all data on a socket, retrying on partial writes.` |

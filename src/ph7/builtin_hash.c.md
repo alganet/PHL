@@ -40,38 +40,38 @@ Coverage: 1127/1242 lines (90.74%)
 |      - |   30 | ` * Return` |
 |      - |   31 | ` *  MD5 Hash as a 32-character hexadecimal string.` |
 |      - |   32 | ` */` |
-|     44 |   33 | `PH7_PRIVATE int PH7_builtin_md5(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      2 |   34 | `{` |
+|     46 |   33 | `PH7_PRIVATE int PH7_builtin_md5(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
+|      3 |   34 | `{` |
 |      - |   35 | `	unsigned char zDigest[16];` |
-|     46 |   36 | `	int raw_output = FALSE;` |
+|     49 |   36 | `	int raw_output = FALSE;` |
 |      - |   37 | `	const void *pIn;` |
 |      - |   38 | `	int nLen;` |
-|     46 |   39 | `	if( nArg < 1 ){` |
+|     49 |   39 | `	if( nArg < 1 ){` |
 |      - |   40 | `		/* Missing arguments,return the empty string */` |
 |    ! 0 |   41 | `		ph7_result_string(pCtx,"",0);` |
 |    ! 0 |   42 | `		return PH7_OK;` |
 |      - |   43 | `	}` |
 |      - |   44 | `	/* Extract the input string (the empty string hashes to a well-defined` |
 |      - |   45 | `	 * digest in PHP — d41d8cd9… — so it must NOT short-circuit). */` |
-|     46 |   46 | `	pIn = (const void *)ph7_value_to_string(apArg[0],&nLen);` |
-|     46 |   47 | `	if( nArg > 1 ){` |
+|     49 |   46 | `	pIn = (const void *)ph7_value_to_string(apArg[0],&nLen);` |
+|     49 |   47 | `	if( nArg > 1 ){` |
 |      - |   48 | `` 		/* php's weak mode COERCES the flag, so `md5($s, 1)` and `md5($s, "1")` `` |
 |      - |   49 | ``		 * ask for raw output exactly as `true` does. Reading it only when it`` |
 |      - |   50 | `		 * already IS a bool answered the HEX digest for all of them -- a` |
 |      - |   51 | `		 * different string, of a different length, in silence. */` |
-|     29 |   52 | `		raw_output = ph7_value_to_bool(apArg[1]);` |
-|     14 |   53 | `	}` |
+|     31 |   52 | `		raw_output = ph7_value_to_bool(apArg[1]);` |
+|     15 |   53 | `	}` |
 |      - |   54 | `	/* Compute the MD5 digest */` |
-|     46 |   55 | `	SyMD5Compute(pIn,(sxu32)nLen,zDigest);` |
-|     46 |   56 | `	if( raw_output ){` |
+|     49 |   55 | `	SyMD5Compute(pIn,(sxu32)nLen,zDigest);` |
+|     49 |   56 | `	if( raw_output ){` |
 |      - |   57 | `		/* Output raw digest */` |
-|     19 |   58 | `		ph7_result_string(pCtx,(const char *)zDigest,(int)sizeof(zDigest));` |
-|     10 |   59 | `	}else{` |
+|     21 |   58 | `		ph7_result_string(pCtx,(const char *)zDigest,(int)sizeof(zDigest));` |
+|     11 |   59 | `	}else{` |
 |      - |   60 | `		/* Perform a binary to hex conversion */` |
-|     28 |   61 | `		SyBinToHexConsumer((const void *)zDigest,sizeof(zDigest),HashConsumer,pCtx);` |
+|     29 |   61 | `		SyBinToHexConsumer((const void *)zDigest,sizeof(zDigest),HashConsumer,pCtx);` |
 |      - |   62 | `	}` |
-|     46 |   63 | `	return PH7_OK;` |
-|     24 |   64 | `}` |
+|     49 |   63 | `	return PH7_OK;` |
+|     26 |   64 | `}` |
 |      - |   65 | `/*` |
 |      - |   66 | ` * string sha1(string $str[,bool $raw_output = false])` |
 |      - |   67 | ` *   Calculate the sha1 hash of a string.` |
@@ -155,9 +155,9 @@ Coverage: 1127/1242 lines (90.74%)
 |      - |  145 | ` * all. Thin adapters normalize the differing context types and the reversed` |
 |      - |  146 | ` * MD5Final argument order behind a uniform Init/Update/Final over a HashCtx union.` |
 |      - |  147 | ` */` |
-|    136 |  148 | `static void HashMd5Init(HashCtx *c,sxu64 nSeed){ SXUNUSED(nSeed); MD5Init(&c->md5); }` |
+|    135 |  148 | `static void HashMd5Init(HashCtx *c,sxu64 nSeed){ SXUNUSED(nSeed); MD5Init(&c->md5); }` |
 |    263 |  149 | `static void HashMd5Update(HashCtx *c,const unsigned char *d,unsigned int n){ MD5Update(&c->md5,d,n); }` |
-|    126 |  150 | `static void HashMd5Final(HashCtx *c,unsigned char *o){ MD5Final(o,&c->md5); }` |
+|    125 |  150 | `static void HashMd5Final(HashCtx *c,unsigned char *o){ MD5Final(o,&c->md5); }` |
 |  16415 |  151 | `static void HashSha1Init(HashCtx *c,sxu64 nSeed){ SXUNUSED(nSeed); SHA1Init(&c->sha1); }` |
 |  32895 |  152 | `static void HashSha1Update(HashCtx *c,const unsigned char *d,unsigned int n){ SHA1Update(&c->sha1,d,n); }` |
 |  16415 |  153 | `static void HashSha1Final(HashCtx *c,unsigned char *o){ SHA1Final(&c->sha1,o); }` |
@@ -329,7 +329,7 @@ Coverage: 1127/1242 lines (90.74%)
 |   9882 |  319 | `	for( i = 0; i < SX_ARRAYSIZE(aHashAlgo); i++ ){` |
 |   9862 |  320 | `		if( (int)SyStrlen(aHashAlgo[i].zName) == nLen` |
 |   5950 |  321 | `			&& SyStrnicmp(aHashAlgo[i].zName,zName,(sxu32)nLen) == 0 ){` |
-|    664 |  322 | `			return &aHashAlgo[i];` |
+|    663 |  322 | `			return &aHashAlgo[i];` |
 |      - |  323 | `		}` |
 |   4605 |  324 | `	}` |
 |     20 |  325 | `	return 0;` |
@@ -338,28 +338,28 @@ Coverage: 1127/1242 lines (90.74%)
 |      - |  328 | ` * it does not, zero-padded either way. Shared by hash_hmac() and hash_init(). */` |
 |    128 |  329 | `static void HashHmacKeyBlock(const HashAlgo *pAlgo,const char *zKey,int nKeyLen,` |
 |      - |  330 | `	unsigned char *zKeyBlock)` |
-|      3 |  331 | `{` |
+|      2 |  331 | `{` |
 |      - |  332 | `	HashCtx sCtx;` |
-|    131 |  333 | `	SyZero(zKeyBlock,(sxu32)HASH_MAX_BLOCK);` |
-|    131 |  334 | `	if( nKeyLen > pAlgo->nBlockLen ){` |
+|    130 |  333 | `	SyZero(zKeyBlock,(sxu32)HASH_MAX_BLOCK);` |
+|    130 |  334 | `	if( nKeyLen > pAlgo->nBlockLen ){` |
 |      5 |  335 | `		pAlgo->xInit(&sCtx,0);` |
 |      5 |  336 | `		pAlgo->xUpdate(&sCtx,(const unsigned char *)zKey,(unsigned int)nKeyLen);` |
 |      5 |  337 | `		pAlgo->xFinal(&sCtx,zKeyBlock);` |
-|    129 |  338 | `	}else if( nKeyLen > 0 ){` |
-|    115 |  339 | `		SyMemcpy(zKey,zKeyBlock,(sxu32)nKeyLen);` |
+|    128 |  338 | `	}else if( nKeyLen > 0 ){` |
+|    114 |  339 | `		SyMemcpy(zKey,zKeyBlock,(sxu32)nKeyLen);` |
 |     56 |  340 | `	}` |
-|    131 |  341 | `}` |
+|    130 |  341 | `}` |
 |      - |  342 | `/* Feed the inner pad, which is what makes an HMAC context an HMAC context. */` |
 |   8904 |  343 | `static void HashHmacInner(const HashAlgo *pAlgo,HashCtx *pCtx,const unsigned char *zKeyBlock)` |
-|      3 |  344 | `{` |
+|      2 |  344 | `{` |
 |      - |  345 | `	unsigned char zPad[HASH_MAX_BLOCK];` |
 |      - |  346 | `	int i;` |
-| 580155 |  347 | `	for( i = 0 ; i < pAlgo->nBlockLen ; ++i ){` |
-| 571251 |  348 | `		zPad[i] = (unsigned char)(zKeyBlock[i] ^ 0x36);` |
-| 285627 |  349 | `	}` |
-|   8907 |  350 | `	pAlgo->xInit(pCtx,0);` |
-|   8907 |  351 | `	pAlgo->xUpdate(pCtx,zPad,(unsigned int)pAlgo->nBlockLen);` |
-|   8907 |  352 | `}` |
+| 580154 |  347 | `	for( i = 0 ; i < pAlgo->nBlockLen ; ++i ){` |
+| 571250 |  348 | `		zPad[i] = (unsigned char)(zKeyBlock[i] ^ 0x36);` |
+| 285626 |  349 | `	}` |
+|   8906 |  350 | `	pAlgo->xInit(pCtx,0);` |
+|   8906 |  351 | `	pAlgo->xUpdate(pCtx,zPad,(unsigned int)pAlgo->nBlockLen);` |
+|   8906 |  352 | `}` |
 |      - |  353 | `/* …and the outer one, which turns the inner digest into the answer. */` |
 |   8902 |  354 | `static void HashHmacOuter(const HashAlgo *pAlgo,const unsigned char *zKeyBlock,` |
 |      - |  355 | `	const unsigned char *zInner,unsigned char *zOut)` |
@@ -540,18 +540,18 @@ Coverage: 1127/1242 lines (90.74%)
 |      - |  530 | ` * past that buffer. Each arm bounds exactly the fields its Update trusts.` |
 |      - |  531 | ` */` |
 |   1052 |  532 | `static int HashStateValid(const HashState *pState)` |
-|      3 |  533 | `{` |
+|      2 |  533 | `{` |
 |      - |  534 | `	static const int aSumLen[9] = { 4,4,4,4,4,4,8,8,4 };` |
 |      - |  535 | `	static const int aMurLen[3] = { 4,16,16 };` |
 |      - |  536 | `	static const int aRmdLen[4] = { 16,20,32,40 };` |
-|   1055 |  537 | `	const HashCtx *p = &pState->sCtx;` |
+|   1054 |  537 | `	const HashCtx *p = &pState->sCtx;` |
 |      - |  538 | `	const HashAlgo *pAlgo;` |
-|   1055 |  539 | `	if( pState->nAlgo >= SX_ARRAYSIZE(aHashAlgo) ){` |
+|   1054 |  539 | `	if( pState->nAlgo >= SX_ARRAYSIZE(aHashAlgo) ){` |
 |      3 |  540 | `		return 0;` |
 |      - |  541 | `	}` |
-|   1053 |  542 | `	pAlgo = &aHashAlgo[pState->nAlgo];` |
-|   1053 |  543 | `	switch( pAlgo->nCtxKind ){` |
-|    147 |  544 | `		case HCTX_MD5:    return 1; /* its cursor is derived and masked to 0..63 */` |
+|   1052 |  542 | `	pAlgo = &aHashAlgo[pState->nAlgo];` |
+|   1052 |  543 | `	switch( pAlgo->nCtxKind ){` |
+|    146 |  544 | `		case HCTX_MD5:    return 1; /* its cursor is derived and masked to 0..63 */` |
 |     83 |  545 | `		case HCTX_SHA1:   return 1; /* likewise, from count[0] */` |
 |     77 |  546 | `		case HCTX_MD4:    return p->md4.nIndex < 64;` |
 |     77 |  547 | `		case HCTX_MD2:    return p->md2.nIndex < 16;` |
@@ -575,41 +575,41 @@ Coverage: 1127/1242 lines (90.74%)
 |    114 |  565 | `			&& aRmdLen[p->ripemd.nKind] == pAlgo->nDigestLen;` |
 |    ! 0 |  566 | `		default:          return 0;` |
 |      - |  567 | `	}` |
-|    529 |  568 | `}` |
+|    528 |  568 | `}` |
 |      - |  569 | `/* Read the state out of the slot. The slot's bytes are not aligned for a` |
 |      - |  570 | ` * struct holding 64-bit lanes, so it is COPIED rather than pointed at. */` |
 |   1060 |  571 | `static int HashStateRead(ph7_class_instance *pThis,HashState *pOut)` |
-|      3 |  572 | `{` |
-|   1063 |  573 | `	const char *zRaw = 0;` |
-|   1063 |  574 | `	int nRaw = 0;` |
-|   1063 |  575 | `	if( pThis == 0 ){` |
+|      2 |  572 | `{` |
+|   1062 |  573 | `	const char *zRaw = 0;` |
+|   1062 |  574 | `	int nRaw = 0;` |
+|   1062 |  575 | `	if( pThis == 0 ){` |
 |    ! 0 |  576 | `		return 0;` |
 |      - |  577 | `	}` |
-|   1063 |  578 | `	PH7_NativeAttrStr(pThis,HASH_CTX_SLOT,&zRaw,&nRaw);` |
-|   1063 |  579 | `	if( zRaw == 0 \|\| nRaw != (int)sizeof(HashState) ){` |
+|   1062 |  578 | `	PH7_NativeAttrStr(pThis,HASH_CTX_SLOT,&zRaw,&nRaw);` |
+|   1062 |  579 | `	if( zRaw == 0 \|\| nRaw != (int)sizeof(HashState) ){` |
 |     17 |  580 | `		return 0;` |
 |      - |  581 | `	}` |
-|   1047 |  582 | `	SyMemcpy(zRaw,pOut,(sxu32)sizeof(HashState));` |
-|   1047 |  583 | `	return HashStateValid(pOut);` |
-|    533 |  584 | `}` |
+|   1046 |  582 | `	SyMemcpy(zRaw,pOut,(sxu32)sizeof(HashState));` |
+|   1046 |  583 | `	return HashStateValid(pOut);` |
+|    532 |  584 | `}` |
 |   1102 |  585 | `static void HashStateWrite(ph7_vm *pVm,ph7_class_instance *pThis,const HashState *pIn)` |
-|      3 |  586 | `{` |
-|   1105 |  587 | `	PH7_NativeSetAttrStr(pVm,pThis,HASH_CTX_SLOT,(const char *)pIn,(int)sizeof(HashState));` |
-|   1105 |  588 | `}` |
+|      2 |  586 | `{` |
+|   1104 |  587 | `	PH7_NativeSetAttrStr(pVm,pThis,HASH_CTX_SLOT,(const char *)pIn,(int)sizeof(HashState));` |
+|   1104 |  588 | `}` |
 |      - |  589 | ``/* Build a HashContext around a state. Never through `new`: the constructor`` |
 |      - |  590 | ` * exists only to be private, which is php's own arrangement. */` |
 |     88 |  591 | `static ph7_class_instance * HashContextNew(ph7_vm *pVm,const HashState *pState)` |
-|      3 |  592 | `{` |
+|      2 |  592 | `{` |
 |      - |  593 | `	ph7_class *pClass;` |
 |      - |  594 | `	ph7_class_instance *pThis;` |
-|     91 |  595 | `	pClass = PH7_VmExtractClass(pVm,"HashContext",sizeof("HashContext")-1,FALSE,0);` |
-|     91 |  596 | `	pThis = pClass ? PH7_NewClassInstance(pVm,pClass) : 0;` |
-|     91 |  597 | `	if( pThis == 0 ){` |
+|     90 |  595 | `	pClass = PH7_VmExtractClass(pVm,"HashContext",sizeof("HashContext")-1,FALSE,0);` |
+|     90 |  596 | `	pThis = pClass ? PH7_NewClassInstance(pVm,pClass) : 0;` |
+|     90 |  597 | `	if( pThis == 0 ){` |
 |    ! 0 |  598 | `		return 0;` |
 |      - |  599 | `	}` |
-|     91 |  600 | `	HashStateWrite(pVm,pThis,pState);` |
-|     91 |  601 | `	return pThis;` |
-|     47 |  602 | `}` |
+|     90 |  600 | `	HashStateWrite(pVm,pThis,pState);` |
+|     90 |  601 | `	return pThis;` |
+|     46 |  602 | `}` |
 |      - |  603 | `/*` |
 |      - |  604 | ` * The $context argument of hash_update/hash_final/hash_copy. The declared type` |
 |      - |  605 | ` * has already refused a non-HashContext (php's "must be of type HashContext");` |
@@ -618,53 +618,53 @@ Coverage: 1127/1242 lines (90.74%)
 |      - |  608 | ` */` |
 |   1030 |  609 | `static ph7_class_instance * HashContextArg(ph7_context *pCtx,ph7_value *pArg,` |
 |      - |  610 | `	HashState *pState,int *pRc)` |
-|      3 |  611 | `{` |
+|      2 |  611 | `{` |
 |      - |  612 | `	ph7_class_instance *pThis;` |
-|   1033 |  613 | `	*pRc = PH7_OK;` |
-|   1033 |  614 | `	pThis = (pArg->iFlags & MEMOBJ_OBJ) ? (ph7_class_instance *)pArg->x.pOther : 0;` |
-|   1033 |  615 | `	if( !HashStateRead(pThis,pState) \|\| pState->bDone ){` |
+|   1032 |  613 | `	*pRc = PH7_OK;` |
+|   1032 |  614 | `	pThis = (pArg->iFlags & MEMOBJ_OBJ) ? (ph7_class_instance *)pArg->x.pOther : 0;` |
+|   1032 |  615 | `	if( !HashStateRead(pThis,pState) \|\| pState->bDone ){` |
 |     10 |  616 | `		*pRc = PH7_VmThrowException(pCtx,"TypeError",` |
 |      - |  617 | `			"%s(): Argument #1 ($context) must be a valid, non-finalized HashContext",` |
 |      3 |  618 | `			ph7_function_name(pCtx));` |
 |      7 |  619 | `		return 0;` |
 |      - |  620 | `	}` |
-|   1027 |  621 | `	return pThis;` |
-|    518 |  622 | `}` |
+|   1026 |  621 | `	return pThis;` |
+|    517 |  622 | `}` |
 |      - |  623 | `/*` |
 |      - |  624 | ` * HashContext hash_init(string $algo[,int $flags = 0[,string $key = ""[,array $options = []]]])` |
 |      - |  625 | ` *   Initialize an incremental hashing context.` |
 |      - |  626 | ` */` |
 |     94 |  627 | `PH7_PRIVATE int PH7_builtin_hash_init(ph7_context *pCtx,int nArg,ph7_value **apArg)` |
-|      3 |  628 | `{` |
+|      2 |  628 | `{` |
 |      - |  629 | `	const HashAlgo *pAlgo;` |
-|     97 |  630 | `	const char *zAlgo,*zKey = "";` |
-|     97 |  631 | `	int nAlgoLen,nKeyLen = 0,rc;` |
-|     97 |  632 | `	ph7_int64 iFlags = 0;` |
+|     96 |  630 | `	const char *zAlgo,*zKey = "";` |
+|     96 |  631 | `	int nAlgoLen,nKeyLen = 0,rc;` |
+|     96 |  632 | `	ph7_int64 iFlags = 0;` |
 |      - |  633 | `	ph7_class_instance *pThis;` |
 |      - |  634 | `	HashState sState;` |
-|     97 |  635 | `	sxu64 nSeed = 0;` |
-|     97 |  636 | `	if( nArg < 1 ){` |
+|     96 |  635 | `	sxu64 nSeed = 0;` |
+|     96 |  636 | `	if( nArg < 1 ){` |
 |    ! 0 |  637 | `		return PH7_VmThrowException(pCtx,"ArgumentCountError",` |
 |    ! 0 |  638 | `			"hash_init() expects at least 1 argument, %d given",nArg);` |
 |      - |  639 | `	}` |
-|     97 |  640 | `	zAlgo = ph7_value_to_string(apArg[0],&nAlgoLen);` |
-|     97 |  641 | `	pAlgo = HashFindAlgo(zAlgo,nAlgoLen);` |
-|     97 |  642 | `	if( pAlgo == 0 ){` |
+|     96 |  640 | `	zAlgo = ph7_value_to_string(apArg[0],&nAlgoLen);` |
+|     96 |  641 | `	pAlgo = HashFindAlgo(zAlgo,nAlgoLen);` |
+|     96 |  642 | `	if( pAlgo == 0 ){` |
 |      5 |  643 | `		return PH7_VmThrowException(pCtx,"ValueError",` |
 |      - |  644 | `			"hash_init(): Argument #1 ($algo) must be a valid hashing algorithm");` |
 |      - |  645 | `	}` |
-|     93 |  646 | `	if( nArg > 1 ){` |
+|     92 |  646 | `	if( nArg > 1 ){` |
 |     16 |  647 | `		iFlags = ph7_value_to_int64(apArg[1]);` |
 |      7 |  648 | `	}` |
-|     93 |  649 | `	if( nArg > 2 ){` |
+|     92 |  649 | `	if( nArg > 2 ){` |
 |     16 |  650 | `		zKey = ph7_value_to_string(apArg[2],&nKeyLen);` |
 |      7 |  651 | `	}` |
-|     93 |  652 | `	SyZero(&sState,sizeof(sState));` |
-|     93 |  653 | `	sState.nAlgo = (sxu32)(pAlgo - aHashAlgo);` |
+|     92 |  652 | `	SyZero(&sState,sizeof(sState));` |
+|     92 |  653 | `	sState.nAlgo = (sxu32)(pAlgo - aHashAlgo);` |
 |      - |  654 | `	/* php looks at ONE bit of $flags and ignores the rest, so hash_init($a,99)` |
 |      - |  655 | `	 * is an HMAC request rather than an error. */` |
-|     93 |  656 | `	sState.bHmac = (iFlags & PH7_HASH_HMAC) ? 1 : 0;` |
-|     93 |  657 | `	if( sState.bHmac ){` |
+|     92 |  656 | `	sState.bHmac = (iFlags & PH7_HASH_HMAC) ? 1 : 0;` |
+|     92 |  657 | `	if( sState.bHmac ){` |
 |     14 |  658 | `		if( pAlgo->nBlockLen < 1 ){` |
 |      3 |  659 | `			return PH7_VmThrowException(pCtx,"ValueError",` |
 |      - |  660 | `				"hash_init(): Argument #1 ($algo) must be a cryptographic hashing algorithm if HMAC is requested");` |
@@ -674,26 +674,26 @@ Coverage: 1127/1242 lines (90.74%)
 |      - |  664 | `				"hash_init(): Argument #3 ($key) must not be empty when HMAC is requested");` |
 |      - |  665 | `		}` |
 |      3 |  666 | `	}` |
-|     87 |  667 | `	if( nArg > 3 ){` |
+|     86 |  667 | `	if( nArg > 3 ){` |
 |    ! 0 |  668 | `		rc = HashSeedOption(pCtx,pAlgo,apArg[3],&nSeed);` |
 |    ! 0 |  669 | `		if( rc != PH7_OK ){` |
 |    ! 0 |  670 | `			return rc;` |
 |      - |  671 | `		}` |
 |    ! 0 |  672 | `	}` |
-|     87 |  673 | `	if( sState.bHmac ){` |
+|     86 |  673 | `	if( sState.bHmac ){` |
 |      8 |  674 | `		HashHmacKeyBlock(pAlgo,zKey,nKeyLen,sState.zKey);` |
 |      8 |  675 | `		HashHmacInner(pAlgo,&sState.sCtx,sState.zKey);` |
 |      5 |  676 | `	}else{` |
 |      - |  677 | `		/* A $key without the flag is simply not read -- php ignores it too. */` |
-|     81 |  678 | `		pAlgo->xInit(&sState.sCtx,nSeed);` |
+|     80 |  678 | `		pAlgo->xInit(&sState.sCtx,nSeed);` |
 |      - |  679 | `	}` |
-|     87 |  680 | `	pThis = HashContextNew(pCtx->pVm,&sState);` |
-|     87 |  681 | `	if( pThis == 0 ){` |
+|     86 |  680 | `	pThis = HashContextNew(pCtx->pVm,&sState);` |
+|     86 |  681 | `	if( pThis == 0 ){` |
 |    ! 0 |  682 | `		return PH7_ContextMemoryError(pCtx);` |
 |      - |  683 | `	}` |
-|     87 |  684 | `	PH7_NativeResultObject(pCtx,pThis);` |
-|     87 |  685 | `	return PH7_OK;` |
-|     50 |  686 | `}` |
+|     86 |  684 | `	PH7_NativeResultObject(pCtx,pThis);` |
+|     86 |  685 | `	return PH7_OK;` |
+|     49 |  686 | `}` |
 |      - |  687 | `/*` |
 |      - |  688 | ` * bool hash_update(HashContext $context,string $data)` |
 |      - |  689 | ` *   Feed the context. Always true -- php has no failure to report here.` |
@@ -927,7 +927,7 @@ Coverage: 1127/1242 lines (90.74%)
 |      - |  917 | ` * and var_export show nothing), and __debugInfo supplies the one key var_dump` |
 |      - |  918 | ` * and print_r do show.` |
 |      - |  919 | ` */` |
-|   5146 |  920 | `PH7_PRIVATE sxi32 PH7_VmInstallHashContext(ph7_vm *pVm)` |
+|   5254 |  920 | `PH7_PRIVATE sxi32 PH7_VmInstallHashContext(ph7_vm *pVm)` |
 |      5 |  921 | `{` |
 |      - |  922 | `	static const PH7_NativeMethodDef aMethod[] = {` |
 |      - |  923 | `		{ "__construct", PH7_MOD_PRIVATE, "", 0, vm_builtin_HashContext_construct },` |
@@ -944,7 +944,7 @@ Coverage: 1127/1242 lines (90.74%)
 |      - |  934 | `		aMethod, SX_ARRAYSIZE(aMethod), 0, 0,` |
 |      - |  935 | `		aProp, SX_ARRAYSIZE(aProp), 0, 0, 0` |
 |      - |  936 | `	};` |
-|   5151 |  937 | `	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
+|   5259 |  937 | `	return PH7_InstallNativeClasses(&(*pVm),&sSpec,1);` |
 |      5 |  938 | `}` |
 |      - |  939 | `/*` |
 |      - |  940 | ` * ---------------------------------------------------------------------------` |
@@ -1642,10 +1642,10 @@ Coverage: 1127/1242 lines (90.74%)
 |   1561 | 1632 | `		int v = -1;` |
 |   1561 | 1633 | `		char c = zIn[i];` |
 |   1561 | 1634 | `		if( c >= 'A' && c <= 'Z' ){ v = c - 'A'; }` |
-|    872 | 1635 | `		else if( c >= 'a' && c <= 'z' ){ v = c - 'a' + 26; }` |
-|    254 | 1636 | `		else if( c >= '0' && c <= '9' ){ v = c - '0' + 52; }` |
-|     22 | 1637 | `		else if( c == '+' ){ v = 62; }` |
-|     10 | 1638 | `		else if( c == '/' ){ v = 63; }` |
+|    871 | 1635 | `		else if( c >= 'a' && c <= 'z' ){ v = c - 'a' + 26; }` |
+|    260 | 1636 | `		else if( c >= '0' && c <= '9' ){ v = c - '0' + 52; }` |
+|     21 | 1637 | `		else if( c == '+' ){ v = 62; }` |
+|      7 | 1638 | `		else if( c == '/' ){ v = 63; }` |
 |   1561 | 1639 | `		if( v < 0 ){` |
 |    ! 0 | 1640 | `			return -1;` |
 |      - | 1641 | `		}` |

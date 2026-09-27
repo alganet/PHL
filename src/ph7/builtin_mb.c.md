@@ -740,13 +740,13 @@ Coverage: 1194/1296 lines (92.13%)
 |     - |  730 | ` * PHL's modelled set. Surrounding ASCII whitespace is trimmed (php accepts` |
 |     - |  731 | ` * " UTF-8"). */` |
 |  4246 |  732 | `static int MbEncodingNameId(const char *z,int n)` |
-|     3 |  733 | `{` |
-|  6367 |  734 | `	while( n > 0 && (z[0]==' '\|\|z[0]=='\t'\|\|z[0]=='\n'\|\|z[0]=='\r') ){ z++; n--; }` |
-|  6367 |  735 | `	while( n > 0 && (z[n-1]==' '\|\|z[n-1]=='\t'\|\|z[n-1]=='\n'\|\|z[n-1]=='\r') ){ n--; }` |
-|  4229 |  736 | `	if( (n==5 && SyStrnicmp(z,"UTF-8",5)==0) \|\| (n==4 && SyStrnicmp(z,"UTF8",4)==0) ){` |
+|     2 |  733 | `{` |
+|  6366 |  734 | `	while( n > 0 && (z[0]==' '\|\|z[0]=='\t'\|\|z[0]=='\n'\|\|z[0]=='\r') ){ z++; n--; }` |
+|  6366 |  735 | `	while( n > 0 && (z[n-1]==' '\|\|z[n-1]=='\t'\|\|z[n-1]=='\n'\|\|z[n-1]=='\r') ){ n--; }` |
+|  4228 |  736 | `	if( (n==5 && SyStrnicmp(z,"UTF-8",5)==0) \|\| (n==4 && SyStrnicmp(z,"UTF8",4)==0) ){` |
 |    63 |  737 | `		return 0;` |
 |     - |  738 | `	}` |
-|  4167 |  739 | `	if( (n==4 && SyStrnicmp(z,"8bit",4)==0) \|\| (n==6 && SyStrnicmp(z,"binary",6)==0) ){` |
+|  4166 |  739 | `	if( (n==4 && SyStrnicmp(z,"8bit",4)==0) \|\| (n==6 && SyStrnicmp(z,"binary",6)==0) ){` |
 |    80 |  740 | `		return 1;` |
 |     - |  741 | `	}` |
 |  4090 |  742 | `	if( (n==10 && SyStrnicmp(z,"ISO-8859-1",10)==0) \|\| (n==9 && SyStrnicmp(z,"ISO8859-1",9)==0)` |
@@ -757,7 +757,7 @@ Coverage: 1194/1296 lines (92.13%)
 |    45 |  747 | `		return 3;` |
 |     - |  748 | `	}` |
 |  4032 |  749 | `	return -1;` |
-|  2121 |  750 | `}` |
+|  2120 |  750 | `}` |
 |    12 |  751 | `static const char * MbEncodingName(int iNameId)` |
 |     1 |  752 | `{` |
 |    13 |  753 | `	if( iNameId < 0 \|\| iNameId >= (int)SX_ARRAYSIZE(aMbEncName) ){` |
@@ -768,10 +768,10 @@ Coverage: 1194/1296 lines (92.13%)
 |     - |  758 | `/* Resolve an encoding name to an MB_ENC_* id, or -1 when it is outside PHL's` |
 |     - |  759 | ` * modelled set. */` |
 |  4220 |  760 | `static int MbConvEncId(const char *z,int n)` |
-|     3 |  761 | `{` |
-|  4223 |  762 | `	int iName = MbEncodingNameId(z,n);` |
-|  4223 |  763 | `	return iName < 0 ? -1 : aMbEncName[iName].iEnc;` |
-|     3 |  764 | `}` |
+|     2 |  761 | `{` |
+|  4222 |  762 | `	int iName = MbEncodingNameId(z,n);` |
+|  4222 |  763 | `	return iName < 0 ? -1 : aMbEncName[iName].iEnc;` |
+|     2 |  764 | `}` |
 |     - |  765 | `/* How a substitution is written. The code point it uses is a separate value,` |
 |     - |  766 | ` * which is php's own split: mb_substitute_character("long") leaves the code` |
 |     - |  767 | ` * point where it was, and an ERROR character still takes that code point` |
@@ -831,23 +831,23 @@ Coverage: 1194/1296 lines (92.13%)
 |     - |  821 | ` * php's ValueError. A missing/null argument is php's internal encoding, which` |
 |     - |  822 | ` * PHL fixes at UTF-8. */` |
 |  4844 |  823 | `static int MbEncodingArg(ph7_context *pCtx,ph7_value *pArg,const char *zFunc,int iArgNo)` |
-|     3 |  824 | `{` |
+|     2 |  824 | `{` |
 |     - |  825 | `	const char *zEnc;` |
 |     - |  826 | `	int nEnc,iEnc;` |
-|  4847 |  827 | `	if( pArg == 0 \|\| ph7_value_is_null(pArg) ){` |
+|  4846 |  827 | `	if( pArg == 0 \|\| ph7_value_is_null(pArg) ){` |
 |     - |  828 | `		/* php's internal encoding, which mb_internal_encoding() sets */` |
 |   686 |  829 | `		return aMbEncName[pCtx->pVm->iMbEncoding].iEnc;` |
 |     - |  830 | `	}` |
-|  4163 |  831 | `	zEnc = ph7_value_to_string(pArg,&nEnc);` |
-|  4163 |  832 | `	iEnc = MbConvEncId(zEnc,nEnc);` |
-|  4163 |  833 | `	if( iEnc < 0 ){` |
+|  4162 |  831 | `	zEnc = ph7_value_to_string(pArg,&nEnc);` |
+|  4162 |  832 | `	iEnc = MbConvEncId(zEnc,nEnc);` |
+|  4162 |  833 | `	if( iEnc < 0 ){` |
 |  6041 |  834 | `		PH7_VmThrowException(pCtx,"ValueError",` |
 |     - |  835 | `			"%s(): Argument #%d ($encoding) must be a valid encoding, \"%.*s\" given",` |
 |  2013 |  836 | `			zFunc,iArgNo,nEnc,zEnc);` |
 |  4028 |  837 | `		return -1;` |
 |     - |  838 | `	}` |
 |   136 |  839 | `	return iEnc;` |
-|  2425 |  840 | `}` |
+|  2424 |  840 | `}` |
 |     - |  841 | `/* Decode the character at z[0..n-1] under iEnc: its code (a code point, or` |
 |     - |  842 | ` * MB_BAD_CODE for an error character) with *pLen set to the bytes it spans. */` |
 |  2606 |  843 | `static sxu32 MbNextCode(const unsigned char *z,sxu32 n,int iEnc,sxu32 *pLen)` |

@@ -2,7 +2,7 @@
 
 <style>code, pre { background: none !important; white-space: pre !important; width: 100% !important; display: inline-block !important; } td { border: none !important; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }</style>
 
-Coverage: 731/840 lines (87.02%)
+Coverage: 732/843 lines (86.83%)
 
 [Root index](../../index.md) | [Directory index](index.md)
 
@@ -104,7 +104,7 @@ Coverage: 731/840 lines (87.02%)
 |    2 |   94 | `		case ERROR_LOCK_VIOLATION:    errno = EACCES; break;` |
 |    - |   95 | `		case ERROR_FILE_EXISTS:` |
 |    1 |   96 | `		case ERROR_ALREADY_EXISTS:    errno = EEXIST; break;` |
-|    1 |   97 | `		case ERROR_DIR_NOT_EMPTY:     errno = ENOTEMPTY; break;` |
+|    2 |   97 | `		case ERROR_DIR_NOT_EMPTY:     errno = ENOTEMPTY; break;` |
 |    1 |   98 | `		default:                      errno = EIO; break;` |
 |    - |   99 | `	}` |
 |    5 |  100 | `}` |
@@ -961,655 +961,662 @@ Coverage: 731/840 lines (87.02%)
 |    - |  951 | `		/* Assume the default windows temp directory */` |
 |  ! 0 |  952 | `		ph7_result_string(pCtx,"C:\\Windows\\Temp",-1/*Compute length automatically*/);` |
 |  ! 0 |  953 | `	}else{` |
-|    5 |  954 | `		ph7_result_string(pCtx,zTemp,(int)n);` |
-|    - |  955 | `	}` |
-|    5 |  956 | `}` |
-|    - |  957 | `/* unsigned int (*xProcessId)(void) */` |
-|    - |  958 | `static unsigned int WinVfs_ProcessId(void)` |
-|    5 |  959 | `{` |
-|    5 |  960 | `	DWORD nID = 0;` |
-|    - |  961 | `#ifndef __MINGW32__` |
-|    5 |  962 | `	nID = GetProcessId(GetCurrentProcess());` |
-|    - |  963 | `#endif /* __MINGW32__ */` |
-|    5 |  964 | `	return (unsigned int)nID;` |
-|    5 |  965 | `}` |
-|    - |  966 | `/* void (*xUsername)(ph7_context *) */` |
-|    - |  967 | `static void WinVfs_Username(ph7_context *pCtx)` |
-|    1 |  968 | `{` |
-|    - |  969 | `	WCHAR zUser[1024];` |
-|    - |  970 | `	DWORD nByte;` |
-|    - |  971 | `	BOOL rc;` |
-|    1 |  972 | `	nByte = sizeof(zUser);` |
-|    1 |  973 | `	rc = GetUserNameW(zUser,&nByte);` |
-|    1 |  974 | `	if( !rc ){` |
-|    - |  975 | `		/* Set a dummy name */` |
-|  ! 0 |  976 | `		ph7_result_string(pCtx,"Unknown",sizeof("Unknown")-1);` |
-|  ! 0 |  977 | `	}else{` |
-|    - |  978 | `		char *zName;` |
-|    1 |  979 | `		zName = unicodeToUtf8(zUser);` |
-|    1 |  980 | `		if( zName == 0 ){` |
-|  ! 0 |  981 | `			ph7_result_string(pCtx,"Unknown",sizeof("Unknown")-1);` |
-|  ! 0 |  982 | `		}else{` |
-|    1 |  983 | `			ph7_result_string(pCtx,zName,-1/*Compute length automatically*/); /* Will make it's own copy */` |
-|    1 |  984 | `			HeapFree(GetProcessHeap(),0,zName);` |
-|    - |  985 | `		}` |
-|    - |  986 | `	}` |
-|    - |  987 |  |
-|    1 |  988 | `}` |
-|    - |  989 | `/* int (*xChroot)(const char *) — Windows has no chroot; fail cleanly so chroot()` |
-|    - |  990 | ` * returns false. (php has no chroot symbol at all; PHL exposes it as an extension` |
-|    - |  991 | ` * and this reports the failure without a "not implemented in the VFS" warning.) */` |
-|    - |  992 | `static int WinVfs_chroot(const char *zPath)` |
-|  ! 0 |  993 | `{` |
-|    - |  994 | `	(void)zPath;` |
-|  ! 0 |  995 | `	return -1;` |
-|  ! 0 |  996 | `}` |
-|    - |  997 | `#ifndef SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE` |
-|    - |  998 | `#define SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE 0x2` |
-|    - |  999 | `#endif` |
-|    - | 1000 | `#ifndef SYMBOLIC_LINK_FLAG_DIRECTORY` |
-|    - | 1001 | `#define SYMBOLIC_LINK_FLAG_DIRECTORY 0x1` |
-|    - | 1002 | `#endif` |
-|    - | 1003 | `/* int (*xLink)(const char *,const char *,int) — hard link (iSym==0) via` |
-|    - | 1004 | ` * CreateHardLink or symbolic link (iSym!=0) via CreateSymbolicLink, mirroring` |
-|    - | 1005 | ` * php on Windows. Developer-mode symlink creation is allowed. */` |
-|    - | 1006 | `static int WinVfs_Link(const char *zOld,const char *zNew,int iSym)` |
-|    1 | 1007 | `{` |
-|    - | 1008 | `	void *pOld, *pNew;` |
-|    - | 1009 | `	BOOL rc;` |
-|    1 | 1010 | `	pOld = convertUtf8Filename(zOld);` |
-|    1 | 1011 | `	if( pOld == 0 ){` |
-|  ! 0 | 1012 | `		return -1;` |
-|    - | 1013 | `	}` |
-|    1 | 1014 | `	pNew = convertUtf8Filename(zNew);` |
-|    1 | 1015 | `	if( pNew == 0 ){` |
-|  ! 0 | 1016 | `		HeapFree(GetProcessHeap(),0,pOld);` |
-|  ! 0 | 1017 | `		return -1;` |
-|    - | 1018 | `	}` |
-|    1 | 1019 | `	if( iSym ){` |
-|    1 | 1020 | `		DWORD dwFlags = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;` |
-|    1 | 1021 | `		DWORD attr = GetFileAttributesW((LPCWSTR)pOld);` |
-|    1 | 1022 | `		if( attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY) ){` |
-|  ! 0 | 1023 | `			dwFlags \|= SYMBOLIC_LINK_FLAG_DIRECTORY;` |
-|    - | 1024 | `		}` |
-|    1 | 1025 | `		rc = CreateSymbolicLinkW((LPCWSTR)pNew,(LPCWSTR)pOld,dwFlags) ? TRUE : FALSE;` |
-|    1 | 1026 | `	}else{` |
-|    1 | 1027 | `		rc = CreateHardLinkW((LPCWSTR)pNew,(LPCWSTR)pOld,0);` |
-|    - | 1028 | `	}` |
-|    1 | 1029 | `	HeapFree(GetProcessHeap(),0,pNew);` |
-|    1 | 1030 | `	HeapFree(GetProcessHeap(),0,pOld);` |
-|    1 | 1031 | `	return rc ? PH7_OK : -1;` |
-|    1 | 1032 | `}` |
-|    - | 1033 | `/* int (*xUmask)(int) — Windows has no umask; php's umask() returns 0 there. */` |
-|    - | 1034 | `static int WinVfs_Umask(int iMask)` |
-|    1 | 1035 | `{` |
-|    - | 1036 | `	(void)iMask;` |
-|    1 | 1037 | `	return 0;` |
-|    1 | 1038 | `}` |
-|    - | 1039 | `/* int (*xUid)(void) / int (*xGid)(void) — no uid/gid on Windows; php's` |
-|    - | 1040 | ` * getmyuid()/getmygid() both return 0. */` |
-|    - | 1041 | `static int WinVfs_Uid(void)` |
+|    - |  954 | `		/* GetTempPath() always ends its answer with a separator and php's` |
+|    - |  955 | `		 * sys_get_temp_dir() never does -- the unix side already trims one (see` |
+|    - |  956 | `		 * UnixVfs_TempDir), and a caller joining "/name" to this one was getting` |
+|    - |  957 | `		 * "...\Temp\/name". */` |
+|    5 |  958 | `		while( n > 1 && (zTemp[n-1] == '\\' \|\| zTemp[n-1] == '/') ){` |
+|    5 |  959 | `			n--;` |
+|    5 |  960 | `		}` |
+|    5 |  961 | `		ph7_result_string(pCtx,zTemp,(int)n);` |
+|    - |  962 | `	}` |
+|    5 |  963 | `}` |
+|    - |  964 | `/* unsigned int (*xProcessId)(void) */` |
+|    - |  965 | `static unsigned int WinVfs_ProcessId(void)` |
+|    5 |  966 | `{` |
+|    5 |  967 | `	DWORD nID = 0;` |
+|    - |  968 | `#ifndef __MINGW32__` |
+|    5 |  969 | `	nID = GetProcessId(GetCurrentProcess());` |
+|    - |  970 | `#endif /* __MINGW32__ */` |
+|    5 |  971 | `	return (unsigned int)nID;` |
+|    5 |  972 | `}` |
+|    - |  973 | `/* void (*xUsername)(ph7_context *) */` |
+|    - |  974 | `static void WinVfs_Username(ph7_context *pCtx)` |
+|    1 |  975 | `{` |
+|    - |  976 | `	WCHAR zUser[1024];` |
+|    - |  977 | `	DWORD nByte;` |
+|    - |  978 | `	BOOL rc;` |
+|    1 |  979 | `	nByte = sizeof(zUser);` |
+|    1 |  980 | `	rc = GetUserNameW(zUser,&nByte);` |
+|    1 |  981 | `	if( !rc ){` |
+|    - |  982 | `		/* Set a dummy name */` |
+|  ! 0 |  983 | `		ph7_result_string(pCtx,"Unknown",sizeof("Unknown")-1);` |
+|  ! 0 |  984 | `	}else{` |
+|    - |  985 | `		char *zName;` |
+|    1 |  986 | `		zName = unicodeToUtf8(zUser);` |
+|    1 |  987 | `		if( zName == 0 ){` |
+|  ! 0 |  988 | `			ph7_result_string(pCtx,"Unknown",sizeof("Unknown")-1);` |
+|  ! 0 |  989 | `		}else{` |
+|    1 |  990 | `			ph7_result_string(pCtx,zName,-1/*Compute length automatically*/); /* Will make it's own copy */` |
+|    1 |  991 | `			HeapFree(GetProcessHeap(),0,zName);` |
+|    - |  992 | `		}` |
+|    - |  993 | `	}` |
+|    - |  994 |  |
+|    1 |  995 | `}` |
+|    - |  996 | `/* int (*xChroot)(const char *) — Windows has no chroot; fail cleanly so chroot()` |
+|    - |  997 | ` * returns false. (php has no chroot symbol at all; PHL exposes it as an extension` |
+|    - |  998 | ` * and this reports the failure without a "not implemented in the VFS" warning.) */` |
+|    - |  999 | `static int WinVfs_chroot(const char *zPath)` |
+|  ! 0 | 1000 | `{` |
+|    - | 1001 | `	(void)zPath;` |
+|  ! 0 | 1002 | `	return -1;` |
+|  ! 0 | 1003 | `}` |
+|    - | 1004 | `#ifndef SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE` |
+|    - | 1005 | `#define SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE 0x2` |
+|    - | 1006 | `#endif` |
+|    - | 1007 | `#ifndef SYMBOLIC_LINK_FLAG_DIRECTORY` |
+|    - | 1008 | `#define SYMBOLIC_LINK_FLAG_DIRECTORY 0x1` |
+|    - | 1009 | `#endif` |
+|    - | 1010 | `/* int (*xLink)(const char *,const char *,int) — hard link (iSym==0) via` |
+|    - | 1011 | ` * CreateHardLink or symbolic link (iSym!=0) via CreateSymbolicLink, mirroring` |
+|    - | 1012 | ` * php on Windows. Developer-mode symlink creation is allowed. */` |
+|    - | 1013 | `static int WinVfs_Link(const char *zOld,const char *zNew,int iSym)` |
+|    1 | 1014 | `{` |
+|    - | 1015 | `	void *pOld, *pNew;` |
+|    - | 1016 | `	BOOL rc;` |
+|    1 | 1017 | `	pOld = convertUtf8Filename(zOld);` |
+|    1 | 1018 | `	if( pOld == 0 ){` |
+|  ! 0 | 1019 | `		return -1;` |
+|    - | 1020 | `	}` |
+|    1 | 1021 | `	pNew = convertUtf8Filename(zNew);` |
+|    1 | 1022 | `	if( pNew == 0 ){` |
+|  ! 0 | 1023 | `		HeapFree(GetProcessHeap(),0,pOld);` |
+|  ! 0 | 1024 | `		return -1;` |
+|    - | 1025 | `	}` |
+|    1 | 1026 | `	if( iSym ){` |
+|    1 | 1027 | `		DWORD dwFlags = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;` |
+|    1 | 1028 | `		DWORD attr = GetFileAttributesW((LPCWSTR)pOld);` |
+|    1 | 1029 | `		if( attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY) ){` |
+|  ! 0 | 1030 | `			dwFlags \|= SYMBOLIC_LINK_FLAG_DIRECTORY;` |
+|    - | 1031 | `		}` |
+|    1 | 1032 | `		rc = CreateSymbolicLinkW((LPCWSTR)pNew,(LPCWSTR)pOld,dwFlags) ? TRUE : FALSE;` |
+|    1 | 1033 | `	}else{` |
+|    1 | 1034 | `		rc = CreateHardLinkW((LPCWSTR)pNew,(LPCWSTR)pOld,0);` |
+|    - | 1035 | `	}` |
+|    1 | 1036 | `	HeapFree(GetProcessHeap(),0,pNew);` |
+|    1 | 1037 | `	HeapFree(GetProcessHeap(),0,pOld);` |
+|    1 | 1038 | `	return rc ? PH7_OK : -1;` |
+|    1 | 1039 | `}` |
+|    - | 1040 | `/* int (*xUmask)(int) — Windows has no umask; php's umask() returns 0 there. */` |
+|    - | 1041 | `static int WinVfs_Umask(int iMask)` |
 |    1 | 1042 | `{` |
-|    1 | 1043 | `	return 0;` |
-|    1 | 1044 | `}` |
-|    - | 1045 | `static int WinVfs_Gid(void)` |
-|    1 | 1046 | `{` |
-|    1 | 1047 | `	return 0;` |
-|    1 | 1048 | `}` |
-|    - | 1049 | `/* Export the windows vfs */` |
-|    - | 1050 | `PH7_PRIVATE const ph7_vfs sWinVfs = {` |
-|    - | 1051 | `	"Windows_vfs",` |
-|    - | 1052 | `	PH7_VFS_VERSION,` |
-|    - | 1053 | `	WinVfs_chdir,    /* int (*xChdir)(const char *) */` |
-|    - | 1054 | `	WinVfs_chroot,   /* int (*xChroot)(const char *); */` |
-|    - | 1055 | `	WinVfs_getcwd,   /* int (*xGetcwd)(ph7_context *) */` |
-|    - | 1056 | `	WinVfs_mkdir,    /* int (*xMkdir)(const char *,int,int) */` |
-|    - | 1057 | `	WinVfs_rmdir,    /* int (*xRmdir)(const char *) */` |
-|    - | 1058 | `	WinVfs_isdir,    /* int (*xIsdir)(const char *) */` |
-|    - | 1059 | `	WinVfs_Rename,   /* int (*xRename)(const char *,const char *) */` |
-|    - | 1060 | `	WinVfs_Realpath, /*int (*xRealpath)(const char *,ph7_context *)*/` |
-|    - | 1061 | `	WinVfs_Sleep,               /* int (*xSleep)(unsigned int) */` |
-|    - | 1062 | `	WinVfs_unlink,   /* int (*xUnlink)(const char *) */` |
-|    - | 1063 | `	WinVfs_FileExists, /* int (*xFileExists)(const char *) */` |
-|    - | 1064 | `	WinVfs_chmod, /*int (*xChmod)(const char *,int)*/` |
-|    - | 1065 | `	0, /*int (*xChown)(const char *,const char *)*/` |
-|    - | 1066 | `	0, /*int (*xChgrp)(const char *,const char *)*/` |
-|    - | 1067 | `	WinVfs_DiskFreeSpace,/* ph7_int64 (*xFreeSpace)(const char *) */` |
-|    - | 1068 | `	WinVfs_DiskTotalSpace,/* ph7_int64 (*xTotalSpace)(const char *) */` |
-|    - | 1069 | `	WinVfs_FileSize, /* ph7_int64 (*xFileSize)(const char *) */` |
-|    - | 1070 | `	WinVfs_FileAtime,/* ph7_int64 (*xFileAtime)(const char *) */` |
-|    - | 1071 | `	WinVfs_FileMtime,/* ph7_int64 (*xFileMtime)(const char *) */` |
-|    - | 1072 | `	WinVfs_FileCtime,/* ph7_int64 (*xFileCtime)(const char *) */` |
-|    - | 1073 | `	WinVfs_Stat, /* int (*xStat)(const char *,ph7_value *,ph7_value *) */` |
-|    - | 1074 | `	WinVfs_Stat, /* int (*xlStat)(const char *,ph7_value *,ph7_value *) */` |
-|    - | 1075 | `	WinVfs_isfile,     /* int (*xIsfile)(const char *) */` |
-|    - | 1076 | `	WinVfs_islink,     /* int (*xIslink)(const char *) */` |
-|    - | 1077 | `	WinVfs_isfile,     /* int (*xReadable)(const char *) */` |
-|    - | 1078 | `	WinVfs_iswritable, /* int (*xWritable)(const char *) */` |
-|    - | 1079 | `	WinVfs_isexecutable, /* int (*xExecutable)(const char *) */` |
-|    - | 1080 | `	WinVfs_Filetype,   /* int (*xFiletype)(const char *,ph7_context *) */` |
-|    - | 1081 | `	WinVfs_Getenv,     /* int (*xGetenv)(const char *,ph7_context *) */` |
-|    - | 1082 | `	WinVfs_Setenv,     /* int (*xSetenv)(const char *,const char *) */` |
-|    - | 1083 | `	WinVfs_Touch,      /* int (*xTouch)(const char *,ph7_int64,ph7_int64) */` |
-|    - | 1084 | `	WinVfs_Mmap,       /* int (*xMmap)(const char *,void **,ph7_int64 *) */` |
-|    - | 1085 | `	WinVfs_Unmap,      /* void (*xUnmap)(void *,ph7_int64);  */` |
-|    - | 1086 | `	WinVfs_Link,       /* int (*xLink)(const char *,const char *,int) */` |
-|    - | 1087 | `	WinVfs_Umask,      /* int (*xUmask)(int) */` |
-|    - | 1088 | `	WinVfs_TempDir,    /* void (*xTempDir)(ph7_context *) */` |
-|    - | 1089 | `	WinVfs_ProcessId,  /* unsigned int (*xProcessId)(void) */` |
-|    - | 1090 | `	WinVfs_Uid, /* int (*xUid)(void) */` |
-|    - | 1091 | `	WinVfs_Gid, /* int (*xGid)(void) */` |
-|    - | 1092 | `	WinVfs_Username,    /* void (*xUsername)(ph7_context *) */` |
-|    - | 1093 | `	0, /* int (*xExec)(const char *,ph7_context *) */` |
-|    - | 1094 | `	WinVfs_Readlink, /* int (*xReadlink)(const char *,ph7_context *) */` |
-|    - | 1095 | `	WinVfs_Environ  /* int (*xEnviron)(ph7_context *) */` |
-|    - | 1096 | `};` |
-|    - | 1097 | `/* Windows file IO */` |
-|    - | 1098 | `#ifndef INVALID_SET_FILE_POINTER` |
-|    - | 1099 | `# define INVALID_SET_FILE_POINTER ((DWORD)-1)` |
-|    - | 1100 | `#endif` |
-|    - | 1101 | `/* int (*xOpen)(const char *,int,ph7_value *,void **) */` |
-|    - | 1102 | `static int WinFile_Open(const char *zPath,int iOpenMode,ph7_value *pResource,void **ppHandle)` |
-|    5 | 1103 | `{` |
-|    5 | 1104 | `	DWORD dwType = FILE_ATTRIBUTE_NORMAL \| FILE_FLAG_RANDOM_ACCESS;` |
-|    5 | 1105 | `	DWORD dwAccess = GENERIC_READ;` |
-|    - | 1106 | `	DWORD dwShare,dwCreate;` |
-|    - | 1107 | `	void *pConverted;` |
-|    - | 1108 | `	HANDLE pHandle;` |
-|    - | 1109 |  |
-|    5 | 1110 | `	pConverted = convertUtf8Filename(zPath);` |
-|    5 | 1111 | `	if( pConverted == 0 ){` |
-|  ! 0 | 1112 | `		errno = ENOMEM;` |
-|  ! 0 | 1113 | `		return -1;` |
-|    - | 1114 | `	}` |
-|    - | 1115 | `	/* Set the desired flags according to the open mode */` |
-|    5 | 1116 | `	if( iOpenMode & PH7_IO_OPEN_CREATE ){` |
-|    - | 1117 | `		/* Open existing file, or create if it doesn't exist */` |
-|    5 | 1118 | `		dwCreate = OPEN_ALWAYS;` |
-|    5 | 1119 | `		if( iOpenMode & PH7_IO_OPEN_TRUNC ){` |
-|    - | 1120 | `			/* If the specified file exists and is writable, the function overwrites the file */` |
-|    5 | 1121 | `			dwCreate = CREATE_ALWAYS;` |
-|    5 | 1122 | `		}` |
-|    5 | 1123 | `	}else if( iOpenMode & PH7_IO_OPEN_EXCL ){` |
-|    - | 1124 | `		/* Creates a new file, only if it does not already exist.` |
-|    - | 1125 | `		* If the file exists, it fails.` |
-|    - | 1126 | `		*/` |
-|    5 | 1127 | `		dwCreate = CREATE_NEW;` |
-|    5 | 1128 | `	}else if( iOpenMode & PH7_IO_OPEN_TRUNC ){` |
-|    - | 1129 | `		/* Opens a file and truncates it so that its size is zero bytes` |
-|    - | 1130 | `		 * The file must exist.` |
-|    - | 1131 | `		 */` |
-|  ! 0 | 1132 | `		dwCreate = TRUNCATE_EXISTING;` |
-|  ! 0 | 1133 | `	}else{` |
-|    - | 1134 | `		/* Opens a file, only if it exists. */` |
-|    5 | 1135 | `		dwCreate = OPEN_EXISTING;` |
-|    - | 1136 | `	}` |
-|    5 | 1137 | `	if( iOpenMode & PH7_IO_OPEN_RDWR ){` |
-|    - | 1138 | `		/* Read+Write access */` |
-|    5 | 1139 | `		dwAccess \|= GENERIC_WRITE;` |
-|    5 | 1140 | `	}else if( iOpenMode & PH7_IO_OPEN_WRONLY ){` |
-|    - | 1141 | `		/* Write only access */` |
-|    5 | 1142 | `		dwAccess = GENERIC_WRITE;` |
+|    - | 1043 | `	(void)iMask;` |
+|    1 | 1044 | `	return 0;` |
+|    1 | 1045 | `}` |
+|    - | 1046 | `/* int (*xUid)(void) / int (*xGid)(void) — no uid/gid on Windows; php's` |
+|    - | 1047 | ` * getmyuid()/getmygid() both return 0. */` |
+|    - | 1048 | `static int WinVfs_Uid(void)` |
+|    1 | 1049 | `{` |
+|    1 | 1050 | `	return 0;` |
+|    1 | 1051 | `}` |
+|    - | 1052 | `static int WinVfs_Gid(void)` |
+|    1 | 1053 | `{` |
+|    1 | 1054 | `	return 0;` |
+|    1 | 1055 | `}` |
+|    - | 1056 | `/* Export the windows vfs */` |
+|    - | 1057 | `PH7_PRIVATE const ph7_vfs sWinVfs = {` |
+|    - | 1058 | `	"Windows_vfs",` |
+|    - | 1059 | `	PH7_VFS_VERSION,` |
+|    - | 1060 | `	WinVfs_chdir,    /* int (*xChdir)(const char *) */` |
+|    - | 1061 | `	WinVfs_chroot,   /* int (*xChroot)(const char *); */` |
+|    - | 1062 | `	WinVfs_getcwd,   /* int (*xGetcwd)(ph7_context *) */` |
+|    - | 1063 | `	WinVfs_mkdir,    /* int (*xMkdir)(const char *,int,int) */` |
+|    - | 1064 | `	WinVfs_rmdir,    /* int (*xRmdir)(const char *) */` |
+|    - | 1065 | `	WinVfs_isdir,    /* int (*xIsdir)(const char *) */` |
+|    - | 1066 | `	WinVfs_Rename,   /* int (*xRename)(const char *,const char *) */` |
+|    - | 1067 | `	WinVfs_Realpath, /*int (*xRealpath)(const char *,ph7_context *)*/` |
+|    - | 1068 | `	WinVfs_Sleep,               /* int (*xSleep)(unsigned int) */` |
+|    - | 1069 | `	WinVfs_unlink,   /* int (*xUnlink)(const char *) */` |
+|    - | 1070 | `	WinVfs_FileExists, /* int (*xFileExists)(const char *) */` |
+|    - | 1071 | `	WinVfs_chmod, /*int (*xChmod)(const char *,int)*/` |
+|    - | 1072 | `	0, /*int (*xChown)(const char *,const char *)*/` |
+|    - | 1073 | `	0, /*int (*xChgrp)(const char *,const char *)*/` |
+|    - | 1074 | `	WinVfs_DiskFreeSpace,/* ph7_int64 (*xFreeSpace)(const char *) */` |
+|    - | 1075 | `	WinVfs_DiskTotalSpace,/* ph7_int64 (*xTotalSpace)(const char *) */` |
+|    - | 1076 | `	WinVfs_FileSize, /* ph7_int64 (*xFileSize)(const char *) */` |
+|    - | 1077 | `	WinVfs_FileAtime,/* ph7_int64 (*xFileAtime)(const char *) */` |
+|    - | 1078 | `	WinVfs_FileMtime,/* ph7_int64 (*xFileMtime)(const char *) */` |
+|    - | 1079 | `	WinVfs_FileCtime,/* ph7_int64 (*xFileCtime)(const char *) */` |
+|    - | 1080 | `	WinVfs_Stat, /* int (*xStat)(const char *,ph7_value *,ph7_value *) */` |
+|    - | 1081 | `	WinVfs_Stat, /* int (*xlStat)(const char *,ph7_value *,ph7_value *) */` |
+|    - | 1082 | `	WinVfs_isfile,     /* int (*xIsfile)(const char *) */` |
+|    - | 1083 | `	WinVfs_islink,     /* int (*xIslink)(const char *) */` |
+|    - | 1084 | `	WinVfs_isfile,     /* int (*xReadable)(const char *) */` |
+|    - | 1085 | `	WinVfs_iswritable, /* int (*xWritable)(const char *) */` |
+|    - | 1086 | `	WinVfs_isexecutable, /* int (*xExecutable)(const char *) */` |
+|    - | 1087 | `	WinVfs_Filetype,   /* int (*xFiletype)(const char *,ph7_context *) */` |
+|    - | 1088 | `	WinVfs_Getenv,     /* int (*xGetenv)(const char *,ph7_context *) */` |
+|    - | 1089 | `	WinVfs_Setenv,     /* int (*xSetenv)(const char *,const char *) */` |
+|    - | 1090 | `	WinVfs_Touch,      /* int (*xTouch)(const char *,ph7_int64,ph7_int64) */` |
+|    - | 1091 | `	WinVfs_Mmap,       /* int (*xMmap)(const char *,void **,ph7_int64 *) */` |
+|    - | 1092 | `	WinVfs_Unmap,      /* void (*xUnmap)(void *,ph7_int64);  */` |
+|    - | 1093 | `	WinVfs_Link,       /* int (*xLink)(const char *,const char *,int) */` |
+|    - | 1094 | `	WinVfs_Umask,      /* int (*xUmask)(int) */` |
+|    - | 1095 | `	WinVfs_TempDir,    /* void (*xTempDir)(ph7_context *) */` |
+|    - | 1096 | `	WinVfs_ProcessId,  /* unsigned int (*xProcessId)(void) */` |
+|    - | 1097 | `	WinVfs_Uid, /* int (*xUid)(void) */` |
+|    - | 1098 | `	WinVfs_Gid, /* int (*xGid)(void) */` |
+|    - | 1099 | `	WinVfs_Username,    /* void (*xUsername)(ph7_context *) */` |
+|    - | 1100 | `	0, /* int (*xExec)(const char *,ph7_context *) */` |
+|    - | 1101 | `	WinVfs_Readlink, /* int (*xReadlink)(const char *,ph7_context *) */` |
+|    - | 1102 | `	WinVfs_Environ  /* int (*xEnviron)(ph7_context *) */` |
+|    - | 1103 | `};` |
+|    - | 1104 | `/* Windows file IO */` |
+|    - | 1105 | `#ifndef INVALID_SET_FILE_POINTER` |
+|    - | 1106 | `# define INVALID_SET_FILE_POINTER ((DWORD)-1)` |
+|    - | 1107 | `#endif` |
+|    - | 1108 | `/* int (*xOpen)(const char *,int,ph7_value *,void **) */` |
+|    - | 1109 | `static int WinFile_Open(const char *zPath,int iOpenMode,ph7_value *pResource,void **ppHandle)` |
+|    5 | 1110 | `{` |
+|    5 | 1111 | `	DWORD dwType = FILE_ATTRIBUTE_NORMAL \| FILE_FLAG_RANDOM_ACCESS;` |
+|    5 | 1112 | `	DWORD dwAccess = GENERIC_READ;` |
+|    - | 1113 | `	DWORD dwShare,dwCreate;` |
+|    - | 1114 | `	void *pConverted;` |
+|    - | 1115 | `	HANDLE pHandle;` |
+|    - | 1116 |  |
+|    5 | 1117 | `	pConverted = convertUtf8Filename(zPath);` |
+|    5 | 1118 | `	if( pConverted == 0 ){` |
+|  ! 0 | 1119 | `		errno = ENOMEM;` |
+|  ! 0 | 1120 | `		return -1;` |
+|    - | 1121 | `	}` |
+|    - | 1122 | `	/* Set the desired flags according to the open mode */` |
+|    5 | 1123 | `	if( iOpenMode & PH7_IO_OPEN_CREATE ){` |
+|    - | 1124 | `		/* Open existing file, or create if it doesn't exist */` |
+|    5 | 1125 | `		dwCreate = OPEN_ALWAYS;` |
+|    5 | 1126 | `		if( iOpenMode & PH7_IO_OPEN_TRUNC ){` |
+|    - | 1127 | `			/* If the specified file exists and is writable, the function overwrites the file */` |
+|    5 | 1128 | `			dwCreate = CREATE_ALWAYS;` |
+|    5 | 1129 | `		}` |
+|    5 | 1130 | `	}else if( iOpenMode & PH7_IO_OPEN_EXCL ){` |
+|    - | 1131 | `		/* Creates a new file, only if it does not already exist.` |
+|    - | 1132 | `		* If the file exists, it fails.` |
+|    - | 1133 | `		*/` |
+|    5 | 1134 | `		dwCreate = CREATE_NEW;` |
+|    5 | 1135 | `	}else if( iOpenMode & PH7_IO_OPEN_TRUNC ){` |
+|    - | 1136 | `		/* Opens a file and truncates it so that its size is zero bytes` |
+|    - | 1137 | `		 * The file must exist.` |
+|    - | 1138 | `		 */` |
+|  ! 0 | 1139 | `		dwCreate = TRUNCATE_EXISTING;` |
+|  ! 0 | 1140 | `	}else{` |
+|    - | 1141 | `		/* Opens a file, only if it exists. */` |
+|    5 | 1142 | `		dwCreate = OPEN_EXISTING;` |
 |    - | 1143 | `	}` |
-|    5 | 1144 | `	if( iOpenMode & PH7_IO_OPEN_APPEND ){` |
-|    - | 1145 | `		/* Append mode */` |
-|    1 | 1146 | `		dwAccess = FILE_APPEND_DATA;` |
-|    - | 1147 | `	}` |
-|    5 | 1148 | `	if( iOpenMode & PH7_IO_OPEN_TEMP ){` |
-|    - | 1149 | `		/* File is temporary */` |
-|  ! 0 | 1150 | `		dwType = FILE_ATTRIBUTE_TEMPORARY;` |
-|    - | 1151 | `	}` |
-|    5 | 1152 | `	dwShare = FILE_SHARE_READ \| FILE_SHARE_WRITE;` |
-|    5 | 1153 | `	pHandle = CreateFileW((LPCWSTR)pConverted,dwAccess,dwShare,0,dwCreate,dwType,0);` |
-|    5 | 1154 | `	if( pHandle == INVALID_HANDLE_VALUE){` |
-|    - | 1155 | `		/* Mapped BEFORE the HeapFree: the caller's warning is worded` |
-|    - | 1156 | `		 * "Failed to open stream: %s" from strerror(errno), and CreateFileW` |
-|    - | 1157 | `		 * reports through GetLastError() only -- so every failed open on` |
-|    - | 1158 | `		 * Windows read "No error" (or, worse, whatever errno an unrelated` |
-|    - | 1159 | `		 * earlier call had left behind) where php names the real reason. */` |
-|    5 | 1160 | `		WinVfsMapErrno();` |
-|    5 | 1161 | `		HeapFree(GetProcessHeap(),0,pConverted);` |
-|    - | 1162 | `		SXUNUSED(pResource); /* MSVC warning */` |
-|    5 | 1163 | `		return -1;` |
-|    - | 1164 | `	}` |
-|    5 | 1165 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
-|    - | 1166 | `	/* Make the handle accessible to the upper layer */` |
-|    5 | 1167 | `	*ppHandle = (void *)pHandle;` |
-|    5 | 1168 | `	return PH7_OK;` |
-|    5 | 1169 | `}` |
-|    - | 1170 | `/* An instance of the following structure is used to record state information` |
-|    - | 1171 | ` * while iterating throw directory entries.` |
-|    - | 1172 | ` */` |
-|    - | 1173 | `typedef struct WinDir_Info WinDir_Info;` |
-|    - | 1174 | `struct WinDir_Info` |
-|    - | 1175 | `{` |
-|    - | 1176 | `	HANDLE pDirHandle;` |
-|    - | 1177 | `	void *pPath;` |
-|    - | 1178 | `	WIN32_FIND_DATAW sInfo;` |
-|    - | 1179 | `	int rc;` |
-|    - | 1180 | `};` |
-|    - | 1181 | `/* The Win32 code the last failed opendir() stopped on, for the warning php` |
-|    - | 1182 | ` * raises from it ahead of its own "Failed to open directory". */` |
-|    - | 1183 | `static DWORD dwOpenDirErr = 0;` |
-|    - | 1184 | `/*` |
-|    - | 1185 | ` * php_win32_docref1_from_error()'s text for the last failed opendir(): the` |
-|    - | 1186 | ` * system message with its trailing line breaks and periods stripped, and then` |
-|    - | 1187 | ` * two MORE characters cut -- php's own bug, which is why a missing directory is` |
-|    - | 1188 | ` * "The system cannot find the file specifi". 0 when there is nothing to say.` |
-|    - | 1189 | ` */` |
-|    - | 1190 | `PH7_PRIVATE unsigned long PH7_WinOpenDirReason(char *zBuf,int nBuf)` |
-|    5 | 1191 | `{` |
-|    5 | 1192 | `	WCHAR *zMsg = 0;` |
-|    - | 1193 | `	DWORD n;` |
-|    - | 1194 | `	int nOut;` |
-|    5 | 1195 | `	if( dwOpenDirErr == 0 \|\| nBuf < 1 ){` |
-|  ! 0 | 1196 | `		return 0;` |
-|    - | 1197 | `	}` |
-|    5 | 1198 | `	n = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER\|FORMAT_MESSAGE_FROM_SYSTEM\|FORMAT_MESSAGE_IGNORE_INSERTS,` |
-|    - | 1199 | `		0,dwOpenDirErr,MAKELANGID(LANG_NEUTRAL,SUBLANG_NEUTRAL),(LPWSTR)&zMsg,0,0);` |
-|    5 | 1200 | `	zBuf[0] = 0;` |
-|    5 | 1201 | `	if( n > 0 && zMsg ){` |
-|    5 | 1202 | `		while( n > 0 && (zMsg[n-1] == L'\r' \|\| zMsg[n-1] == L'\n' \|\| zMsg[n-1] == L'.') ){` |
-|    5 | 1203 | `			n--;` |
-|    5 | 1204 | `		}` |
-|    5 | 1205 | `		nOut = WideCharToMultiByte(CP_UTF8,0,zMsg,(int)n,zBuf,nBuf-1,0,0);` |
-|    5 | 1206 | `		if( nOut < 0 ){` |
-|  ! 0 | 1207 | `			nOut = 0;` |
-|    - | 1208 | `		}` |
-|    5 | 1209 | `		zBuf[nOut] = 0;` |
-|    5 | 1210 | `		if( nOut >= 2 ){` |
-|    5 | 1211 | `			zBuf[nOut-2] = 0;` |
-|    - | 1212 | `		}` |
-|    - | 1213 | `	}` |
-|    5 | 1214 | `	if( zMsg ){` |
-|    5 | 1215 | `		LocalFree(zMsg);` |
-|    - | 1216 | `	}` |
-|    5 | 1217 | `	return (unsigned long)dwOpenDirErr;` |
-|    5 | 1218 | `}` |
-|    - | 1219 | `/* int (*xOpenDir)(const char *,ph7_value *,void **) */` |
-|    - | 1220 | `static int WinDir_Open(const char *zPath,ph7_value *pResource,void **ppHandle)` |
-|    5 | 1221 | `{` |
-|    - | 1222 | `	WinDir_Info *pDirInfo;` |
-|    - | 1223 | `	void *pConverted;` |
-|    - | 1224 | `	char *zPrep;` |
-|    - | 1225 | `	sxu32 n;` |
-|    5 | 1226 | `	dwOpenDirErr = 0;` |
-|    - | 1227 | `	/* Prepare the path */` |
-|    5 | 1228 | `	n = SyStrlen(zPath);` |
-|    - | 1229 | `	{` |
-|    - | 1230 | `		/* php resolves the path BEFORE it lists it, and a name that does not` |
-|    - | 1231 | `		 * resolve fails there, with that lookup's code: 2 for a missing leaf, 3` |
-|    - | 1232 | `		 * for a missing parent, 267 for a file in the way. Look the path itself` |
-|    - | 1233 | `		 * up the same way (a drive root cannot be, and needs no asking). */` |
-|    5 | 1234 | `		sxu32 nProbe = n;` |
-|    5 | 1235 | `		while( nProbe > 0 && (zPath[nProbe-1] == '/' \|\| zPath[nProbe-1] == '\\') ){` |
-|    2 | 1236 | `			nProbe--;` |
-|    2 | 1237 | `		}` |
-|    5 | 1238 | `		if( nProbe > 0 && zPath[nProbe-1] != ':' ){` |
-|    - | 1239 | `			WIN32_FIND_DATAW sProbe;` |
-|    - | 1240 | `			HANDLE hProbe;` |
-|    5 | 1241 | `			zPrep = (char *)HeapAlloc(GetProcessHeap(),0,nProbe+1);` |
-|    5 | 1242 | `			if( zPrep == 0 ){` |
-|  ! 0 | 1243 | `				errno = ENOMEM;` |
-|  ! 0 | 1244 | `				return -1;` |
-|    - | 1245 | `			}` |
-|    5 | 1246 | `			SyMemcpy((const void *)zPath,zPrep,nProbe);` |
-|    5 | 1247 | `			zPrep[nProbe] = 0;` |
-|    5 | 1248 | `			pConverted = convertUtf8Filename(zPrep);` |
-|    5 | 1249 | `			HeapFree(GetProcessHeap(),0,zPrep);` |
-|    5 | 1250 | `			if( pConverted == 0 ){` |
-|  ! 0 | 1251 | `				errno = ENOMEM;` |
-|  ! 0 | 1252 | `				return -1;` |
-|    - | 1253 | `			}` |
-|    5 | 1254 | `			hProbe = FindFirstFileW((LPCWSTR)pConverted,&sProbe);` |
-|    5 | 1255 | `			if( hProbe == INVALID_HANDLE_VALUE ){` |
-|    5 | 1256 | `				dwOpenDirErr = GetLastError();` |
-|    5 | 1257 | `			}else{` |
-|    5 | 1258 | `				FindClose(hProbe);` |
-|    - | 1259 | `			}` |
-|    5 | 1260 | `			HeapFree(GetProcessHeap(),0,pConverted);` |
-|    5 | 1261 | `			if( dwOpenDirErr != 0 ){` |
-|    5 | 1262 | `				errno = ENOENT;` |
-|    5 | 1263 | `				return -1;` |
-|    - | 1264 | `			}` |
-|    - | 1265 | `		}` |
-|    - | 1266 | `	}` |
-|    5 | 1267 | `	zPrep = (char *)HeapAlloc(GetProcessHeap(),0,n+sizeof("\\*")+4);` |
-|    5 | 1268 | `	if( zPrep == 0 ){` |
-|  ! 0 | 1269 | `		errno = ENOMEM;` |
-|  ! 0 | 1270 | `		return -1;` |
-|    - | 1271 | `	}` |
-|    5 | 1272 | `	SyMemcpy((const void *)zPath,zPrep,n);` |
-|    5 | 1273 | `	zPrep[n]   = '\\';` |
-|    5 | 1274 | `	zPrep[n+1] =  '*';` |
-|    5 | 1275 | `	zPrep[n+2] = 0;` |
-|    5 | 1276 | `	pConverted = convertUtf8Filename(zPrep);` |
-|    5 | 1277 | `	HeapFree(GetProcessHeap(),0,zPrep);` |
-|    5 | 1278 | `	if( pConverted == 0 ){` |
-|  ! 0 | 1279 | `		errno = ENOMEM;` |
-|  ! 0 | 1280 | `		return -1;` |
-|    - | 1281 | `	}` |
-|    - | 1282 | `	/* Allocate a new instance */` |
-|    5 | 1283 | `	pDirInfo = (WinDir_Info *)HeapAlloc(GetProcessHeap(),0,sizeof(WinDir_Info));` |
-|    5 | 1284 | `	if( pDirInfo == 0 ){` |
-|  ! 0 | 1285 | `		errno = ENOMEM;` |
-|  ! 0 | 1286 | `		HeapFree(GetProcessHeap(),0,pConverted);` |
-|  ! 0 | 1287 | `		pResource = 0; /* Compiler warning */` |
-|  ! 0 | 1288 | `		return -1;` |
-|    - | 1289 | `	}` |
-|    5 | 1290 | `	pDirInfo->rc = SXRET_OK;` |
-|    5 | 1291 | `	pDirInfo->pDirHandle = FindFirstFileW((LPCWSTR)pConverted,&pDirInfo->sInfo);` |
-|    5 | 1292 | `	if( pDirInfo->pDirHandle == INVALID_HANDLE_VALUE ){` |
-|    - | 1293 | `		/* Cannot open directory -- same reason as WinFile_Open above. A path that` |
-|    - | 1294 | `		 * resolved but is not a directory is 267, which php reports as ENOENT. */` |
-|    1 | 1295 | `		dwOpenDirErr = GetLastError();` |
-|    1 | 1296 | `		WinVfsMapErrno();` |
-|    1 | 1297 | `		if( dwOpenDirErr == ERROR_DIRECTORY ){` |
-|    1 | 1298 | `			errno = ENOENT;` |
-|    - | 1299 | `		}` |
-|    1 | 1300 | `		HeapFree(GetProcessHeap(),0,pConverted);` |
-|    1 | 1301 | `		HeapFree(GetProcessHeap(),0,pDirInfo);` |
-|    1 | 1302 | `		return -1;` |
-|    - | 1303 | `	}` |
-|    - | 1304 | `	/* Save the path */` |
-|    5 | 1305 | `	pDirInfo->pPath = pConverted;` |
-|    - | 1306 | `	/* Save our structure */` |
-|    5 | 1307 | `	*ppHandle = pDirInfo;` |
-|    5 | 1308 | `	return PH7_OK;` |
-|    5 | 1309 | `}` |
-|    - | 1310 | `/* void (*xCloseDir)(void *) */` |
-|    - | 1311 | `static void WinDir_Close(void *pUserData)` |
-|    5 | 1312 | `{` |
-|    5 | 1313 | `	WinDir_Info *pDirInfo = (WinDir_Info *)pUserData;` |
-|    5 | 1314 | `	if( pDirInfo->pDirHandle != INVALID_HANDLE_VALUE ){` |
-|    5 | 1315 | `		FindClose(pDirInfo->pDirHandle);` |
-|    - | 1316 | `	}` |
-|    5 | 1317 | `	HeapFree(GetProcessHeap(),0,pDirInfo->pPath);` |
-|    5 | 1318 | `	HeapFree(GetProcessHeap(),0,pDirInfo);` |
-|    5 | 1319 | `}` |
-|    - | 1320 | `/* void (*xClose)(void *); */` |
-|    - | 1321 | `static void WinFile_Close(void *pUserData)` |
-|    5 | 1322 | `{` |
-|    5 | 1323 | `	HANDLE pHandle = (HANDLE)pUserData;` |
-|    5 | 1324 | `	CloseHandle(pHandle);` |
-|    5 | 1325 | `}` |
-|    - | 1326 | `/* int (*xReadDir)(void *,ph7_context *) */` |
-|    - | 1327 | `static int WinDir_Read(void *pUserData,ph7_context *pCtx)` |
-|    5 | 1328 | `{` |
-|    5 | 1329 | `	WinDir_Info *pDirInfo = (WinDir_Info *)pUserData;` |
-|    - | 1330 | `	LPWIN32_FIND_DATAW pData;` |
-|    - | 1331 | `	char *zName;` |
-|    - | 1332 | `	BOOL rc;` |
-|    5 | 1333 | `	if( pDirInfo->rc != SXRET_OK ){` |
-|    - | 1334 | `		/* No more entry to process */` |
-|    5 | 1335 | `		return -1;` |
-|    - | 1336 | `	}` |
-|    5 | 1337 | `	pData = &pDirInfo->sInfo;` |
-|    - | 1338 | `	/* php parity: readdir()/scandir() include the '.' and '..' entries, so unlike` |
-|    - | 1339 | `	 * the historical PH7 behaviour we return them instead of skipping. */` |
-|    5 | 1340 | `	zName = unicodeToUtf8(pData->cFileName);` |
-|    5 | 1341 | `	if( zName == 0 ){` |
-|    - | 1342 | `		/* Out of memory */` |
-|  ! 0 | 1343 | `		return -1;` |
-|    - | 1344 | `	}` |
-|    - | 1345 | `	/* Return the current file name */` |
-|    5 | 1346 | `	ph7_result_string(pCtx,zName,-1);` |
-|    5 | 1347 | `	HeapFree(GetProcessHeap(),0,zName);` |
-|    - | 1348 | `	/* Point to the next entry */` |
-|    5 | 1349 | `	rc = FindNextFileW(pDirInfo->pDirHandle,&pDirInfo->sInfo);` |
-|    5 | 1350 | `	if( !rc ){` |
-|    5 | 1351 | `		pDirInfo->rc = SXERR_EOF;` |
-|    - | 1352 | `	}` |
-|    5 | 1353 | `	return PH7_OK;` |
-|    5 | 1354 | `}` |
-|    - | 1355 | `/* void (*xRewindDir)(void *) */` |
-|    - | 1356 | `static void WinDir_RewindDir(void *pUserData)` |
-|    2 | 1357 | `{` |
-|    2 | 1358 | `	WinDir_Info *pDirInfo = (WinDir_Info *)pUserData;` |
-|    2 | 1359 | `	FindClose(pDirInfo->pDirHandle);` |
-|    2 | 1360 | `	pDirInfo->pDirHandle = FindFirstFileW((LPCWSTR)pDirInfo->pPath,&pDirInfo->sInfo);` |
-|    2 | 1361 | `	if( pDirInfo->pDirHandle == INVALID_HANDLE_VALUE ){` |
-|  ! 0 | 1362 | `		pDirInfo->rc = SXERR_EOF;` |
-|  ! 0 | 1363 | `	}else{` |
-|    2 | 1364 | `		pDirInfo->rc = SXRET_OK;` |
-|    - | 1365 | `	}` |
-|    2 | 1366 | `}` |
-|    - | 1367 | `/* ph7_int64 (*xRead)(void *,void *,ph7_int64); */` |
-|    - | 1368 | `static ph7_int64 WinFile_Read(void *pOS,void *pBuffer,ph7_int64 nDatatoRead)` |
-|    5 | 1369 | `{` |
-|    5 | 1370 | `	HANDLE pHandle = (HANDLE)pOS;` |
-|    - | 1371 | `	DWORD nRd;` |
-|    - | 1372 | `	BOOL rc;` |
-|    5 | 1373 | `	rc = ReadFile(pHandle,pBuffer,(DWORD)nDatatoRead,&nRd,0);` |
-|    5 | 1374 | `	if( !rc ){` |
-|    - | 1375 | `		/* EOF or IO error */` |
-|    1 | 1376 | `		return -1;` |
-|    - | 1377 | `	}` |
-|    5 | 1378 | `	return (ph7_int64)nRd;` |
-|    5 | 1379 | `}` |
-|    - | 1380 | `/* ph7_int64 (*xWrite)(void *,const void *,ph7_int64); */` |
-|    - | 1381 | `static ph7_int64 WinFile_Write(void *pOS,const void *pBuffer,ph7_int64 nWrite)` |
-|    5 | 1382 | `{` |
-|    5 | 1383 | `	const char *zData = (const char *)pBuffer;` |
-|    5 | 1384 | `	HANDLE pHandle = (HANDLE)pOS;` |
-|    - | 1385 | `	ph7_int64 nCount;` |
-|    - | 1386 | `	DWORD nWr;` |
-|    - | 1387 | `	BOOL rc;` |
-|    5 | 1388 | `	nWr = 0;` |
-|    5 | 1389 | `	nCount = 0;` |
-|    - | 1390 | `	for(;;){` |
-|    5 | 1391 | `		if( nWrite < 1 ){` |
-|    5 | 1392 | `			break;` |
-|    - | 1393 | `		}` |
-|    5 | 1394 | `		rc = WriteFile(pHandle,zData,(DWORD)nWrite,&nWr,0);` |
-|    5 | 1395 | `		if( !rc ){` |
-|    - | 1396 | `			/* IO error — surface a POSIX errno for the caller's diagnostic` |
-|    - | 1397 | `			 * (e.g. a byte-range lock violation reports EACCES like php). */` |
-|    1 | 1398 | `			WinVfsMapErrno();` |
-|    1 | 1399 | `			break;` |
+|    5 | 1144 | `	if( iOpenMode & PH7_IO_OPEN_RDWR ){` |
+|    - | 1145 | `		/* Read+Write access */` |
+|    5 | 1146 | `		dwAccess \|= GENERIC_WRITE;` |
+|    5 | 1147 | `	}else if( iOpenMode & PH7_IO_OPEN_WRONLY ){` |
+|    - | 1148 | `		/* Write only access */` |
+|    5 | 1149 | `		dwAccess = GENERIC_WRITE;` |
+|    - | 1150 | `	}` |
+|    5 | 1151 | `	if( iOpenMode & PH7_IO_OPEN_APPEND ){` |
+|    - | 1152 | `		/* Append mode */` |
+|    1 | 1153 | `		dwAccess = FILE_APPEND_DATA;` |
+|    - | 1154 | `	}` |
+|    5 | 1155 | `	if( iOpenMode & PH7_IO_OPEN_TEMP ){` |
+|    - | 1156 | `		/* File is temporary */` |
+|  ! 0 | 1157 | `		dwType = FILE_ATTRIBUTE_TEMPORARY;` |
+|    - | 1158 | `	}` |
+|    5 | 1159 | `	dwShare = FILE_SHARE_READ \| FILE_SHARE_WRITE;` |
+|    5 | 1160 | `	pHandle = CreateFileW((LPCWSTR)pConverted,dwAccess,dwShare,0,dwCreate,dwType,0);` |
+|    5 | 1161 | `	if( pHandle == INVALID_HANDLE_VALUE){` |
+|    - | 1162 | `		/* Mapped BEFORE the HeapFree: the caller's warning is worded` |
+|    - | 1163 | `		 * "Failed to open stream: %s" from strerror(errno), and CreateFileW` |
+|    - | 1164 | `		 * reports through GetLastError() only -- so every failed open on` |
+|    - | 1165 | `		 * Windows read "No error" (or, worse, whatever errno an unrelated` |
+|    - | 1166 | `		 * earlier call had left behind) where php names the real reason. */` |
+|    5 | 1167 | `		WinVfsMapErrno();` |
+|    5 | 1168 | `		HeapFree(GetProcessHeap(),0,pConverted);` |
+|    - | 1169 | `		SXUNUSED(pResource); /* MSVC warning */` |
+|    5 | 1170 | `		return -1;` |
+|    - | 1171 | `	}` |
+|    5 | 1172 | `	HeapFree(GetProcessHeap(),0,pConverted);` |
+|    - | 1173 | `	/* Make the handle accessible to the upper layer */` |
+|    5 | 1174 | `	*ppHandle = (void *)pHandle;` |
+|    5 | 1175 | `	return PH7_OK;` |
+|    5 | 1176 | `}` |
+|    - | 1177 | `/* An instance of the following structure is used to record state information` |
+|    - | 1178 | ` * while iterating throw directory entries.` |
+|    - | 1179 | ` */` |
+|    - | 1180 | `typedef struct WinDir_Info WinDir_Info;` |
+|    - | 1181 | `struct WinDir_Info` |
+|    - | 1182 | `{` |
+|    - | 1183 | `	HANDLE pDirHandle;` |
+|    - | 1184 | `	void *pPath;` |
+|    - | 1185 | `	WIN32_FIND_DATAW sInfo;` |
+|    - | 1186 | `	int rc;` |
+|    - | 1187 | `};` |
+|    - | 1188 | `/* The Win32 code the last failed opendir() stopped on, for the warning php` |
+|    - | 1189 | ` * raises from it ahead of its own "Failed to open directory". */` |
+|    - | 1190 | `static DWORD dwOpenDirErr = 0;` |
+|    - | 1191 | `/*` |
+|    - | 1192 | ` * php_win32_docref1_from_error()'s text for the last failed opendir(): the` |
+|    - | 1193 | ` * system message with its trailing line breaks and periods stripped, and then` |
+|    - | 1194 | ` * two MORE characters cut -- php's own bug, which is why a missing directory is` |
+|    - | 1195 | ` * "The system cannot find the file specifi". 0 when there is nothing to say.` |
+|    - | 1196 | ` */` |
+|    - | 1197 | `PH7_PRIVATE unsigned long PH7_WinOpenDirReason(char *zBuf,int nBuf)` |
+|    5 | 1198 | `{` |
+|    5 | 1199 | `	WCHAR *zMsg = 0;` |
+|    - | 1200 | `	DWORD n;` |
+|    - | 1201 | `	int nOut;` |
+|    5 | 1202 | `	if( dwOpenDirErr == 0 \|\| nBuf < 1 ){` |
+|  ! 0 | 1203 | `		return 0;` |
+|    - | 1204 | `	}` |
+|    5 | 1205 | `	n = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER\|FORMAT_MESSAGE_FROM_SYSTEM\|FORMAT_MESSAGE_IGNORE_INSERTS,` |
+|    - | 1206 | `		0,dwOpenDirErr,MAKELANGID(LANG_NEUTRAL,SUBLANG_NEUTRAL),(LPWSTR)&zMsg,0,0);` |
+|    5 | 1207 | `	zBuf[0] = 0;` |
+|    5 | 1208 | `	if( n > 0 && zMsg ){` |
+|    5 | 1209 | `		while( n > 0 && (zMsg[n-1] == L'\r' \|\| zMsg[n-1] == L'\n' \|\| zMsg[n-1] == L'.') ){` |
+|    5 | 1210 | `			n--;` |
+|    5 | 1211 | `		}` |
+|    5 | 1212 | `		nOut = WideCharToMultiByte(CP_UTF8,0,zMsg,(int)n,zBuf,nBuf-1,0,0);` |
+|    5 | 1213 | `		if( nOut < 0 ){` |
+|  ! 0 | 1214 | `			nOut = 0;` |
+|    - | 1215 | `		}` |
+|    5 | 1216 | `		zBuf[nOut] = 0;` |
+|    5 | 1217 | `		if( nOut >= 2 ){` |
+|    5 | 1218 | `			zBuf[nOut-2] = 0;` |
+|    - | 1219 | `		}` |
+|    - | 1220 | `	}` |
+|    5 | 1221 | `	if( zMsg ){` |
+|    5 | 1222 | `		LocalFree(zMsg);` |
+|    - | 1223 | `	}` |
+|    5 | 1224 | `	return (unsigned long)dwOpenDirErr;` |
+|    5 | 1225 | `}` |
+|    - | 1226 | `/* int (*xOpenDir)(const char *,ph7_value *,void **) */` |
+|    - | 1227 | `static int WinDir_Open(const char *zPath,ph7_value *pResource,void **ppHandle)` |
+|    5 | 1228 | `{` |
+|    - | 1229 | `	WinDir_Info *pDirInfo;` |
+|    - | 1230 | `	void *pConverted;` |
+|    - | 1231 | `	char *zPrep;` |
+|    - | 1232 | `	sxu32 n;` |
+|    5 | 1233 | `	dwOpenDirErr = 0;` |
+|    - | 1234 | `	/* Prepare the path */` |
+|    5 | 1235 | `	n = SyStrlen(zPath);` |
+|    - | 1236 | `	{` |
+|    - | 1237 | `		/* php resolves the path BEFORE it lists it, and a name that does not` |
+|    - | 1238 | `		 * resolve fails there, with that lookup's code: 2 for a missing leaf, 3` |
+|    - | 1239 | `		 * for a missing parent, 267 for a file in the way. Look the path itself` |
+|    - | 1240 | `		 * up the same way (a drive root cannot be, and needs no asking). */` |
+|    5 | 1241 | `		sxu32 nProbe = n;` |
+|    5 | 1242 | `		while( nProbe > 0 && (zPath[nProbe-1] == '/' \|\| zPath[nProbe-1] == '\\') ){` |
+|  ! 0 | 1243 | `			nProbe--;` |
+|  ! 0 | 1244 | `		}` |
+|    5 | 1245 | `		if( nProbe > 0 && zPath[nProbe-1] != ':' ){` |
+|    - | 1246 | `			WIN32_FIND_DATAW sProbe;` |
+|    - | 1247 | `			HANDLE hProbe;` |
+|    5 | 1248 | `			zPrep = (char *)HeapAlloc(GetProcessHeap(),0,nProbe+1);` |
+|    5 | 1249 | `			if( zPrep == 0 ){` |
+|  ! 0 | 1250 | `				errno = ENOMEM;` |
+|  ! 0 | 1251 | `				return -1;` |
+|    - | 1252 | `			}` |
+|    5 | 1253 | `			SyMemcpy((const void *)zPath,zPrep,nProbe);` |
+|    5 | 1254 | `			zPrep[nProbe] = 0;` |
+|    5 | 1255 | `			pConverted = convertUtf8Filename(zPrep);` |
+|    5 | 1256 | `			HeapFree(GetProcessHeap(),0,zPrep);` |
+|    5 | 1257 | `			if( pConverted == 0 ){` |
+|  ! 0 | 1258 | `				errno = ENOMEM;` |
+|  ! 0 | 1259 | `				return -1;` |
+|    - | 1260 | `			}` |
+|    5 | 1261 | `			hProbe = FindFirstFileW((LPCWSTR)pConverted,&sProbe);` |
+|    5 | 1262 | `			if( hProbe == INVALID_HANDLE_VALUE ){` |
+|    5 | 1263 | `				dwOpenDirErr = GetLastError();` |
+|    5 | 1264 | `			}else{` |
+|    5 | 1265 | `				FindClose(hProbe);` |
+|    - | 1266 | `			}` |
+|    5 | 1267 | `			HeapFree(GetProcessHeap(),0,pConverted);` |
+|    5 | 1268 | `			if( dwOpenDirErr != 0 ){` |
+|    5 | 1269 | `				errno = ENOENT;` |
+|    5 | 1270 | `				return -1;` |
+|    - | 1271 | `			}` |
+|    - | 1272 | `		}` |
+|    - | 1273 | `	}` |
+|    5 | 1274 | `	zPrep = (char *)HeapAlloc(GetProcessHeap(),0,n+sizeof("\\*")+4);` |
+|    5 | 1275 | `	if( zPrep == 0 ){` |
+|  ! 0 | 1276 | `		errno = ENOMEM;` |
+|  ! 0 | 1277 | `		return -1;` |
+|    - | 1278 | `	}` |
+|    5 | 1279 | `	SyMemcpy((const void *)zPath,zPrep,n);` |
+|    5 | 1280 | `	zPrep[n]   = '\\';` |
+|    5 | 1281 | `	zPrep[n+1] =  '*';` |
+|    5 | 1282 | `	zPrep[n+2] = 0;` |
+|    5 | 1283 | `	pConverted = convertUtf8Filename(zPrep);` |
+|    5 | 1284 | `	HeapFree(GetProcessHeap(),0,zPrep);` |
+|    5 | 1285 | `	if( pConverted == 0 ){` |
+|  ! 0 | 1286 | `		errno = ENOMEM;` |
+|  ! 0 | 1287 | `		return -1;` |
+|    - | 1288 | `	}` |
+|    - | 1289 | `	/* Allocate a new instance */` |
+|    5 | 1290 | `	pDirInfo = (WinDir_Info *)HeapAlloc(GetProcessHeap(),0,sizeof(WinDir_Info));` |
+|    5 | 1291 | `	if( pDirInfo == 0 ){` |
+|  ! 0 | 1292 | `		errno = ENOMEM;` |
+|  ! 0 | 1293 | `		HeapFree(GetProcessHeap(),0,pConverted);` |
+|  ! 0 | 1294 | `		pResource = 0; /* Compiler warning */` |
+|  ! 0 | 1295 | `		return -1;` |
+|    - | 1296 | `	}` |
+|    5 | 1297 | `	pDirInfo->rc = SXRET_OK;` |
+|    5 | 1298 | `	pDirInfo->pDirHandle = FindFirstFileW((LPCWSTR)pConverted,&pDirInfo->sInfo);` |
+|    5 | 1299 | `	if( pDirInfo->pDirHandle == INVALID_HANDLE_VALUE ){` |
+|    - | 1300 | `		/* Cannot open directory -- same reason as WinFile_Open above. A path that` |
+|    - | 1301 | `		 * resolved but is not a directory is 267, which php reports as ENOENT. */` |
+|    1 | 1302 | `		dwOpenDirErr = GetLastError();` |
+|    1 | 1303 | `		WinVfsMapErrno();` |
+|    1 | 1304 | `		if( dwOpenDirErr == ERROR_DIRECTORY ){` |
+|    1 | 1305 | `			errno = ENOENT;` |
+|    - | 1306 | `		}` |
+|    1 | 1307 | `		HeapFree(GetProcessHeap(),0,pConverted);` |
+|    1 | 1308 | `		HeapFree(GetProcessHeap(),0,pDirInfo);` |
+|    1 | 1309 | `		return -1;` |
+|    - | 1310 | `	}` |
+|    - | 1311 | `	/* Save the path */` |
+|    5 | 1312 | `	pDirInfo->pPath = pConverted;` |
+|    - | 1313 | `	/* Save our structure */` |
+|    5 | 1314 | `	*ppHandle = pDirInfo;` |
+|    5 | 1315 | `	return PH7_OK;` |
+|    5 | 1316 | `}` |
+|    - | 1317 | `/* void (*xCloseDir)(void *) */` |
+|    - | 1318 | `static void WinDir_Close(void *pUserData)` |
+|    5 | 1319 | `{` |
+|    5 | 1320 | `	WinDir_Info *pDirInfo = (WinDir_Info *)pUserData;` |
+|    5 | 1321 | `	if( pDirInfo->pDirHandle != INVALID_HANDLE_VALUE ){` |
+|    5 | 1322 | `		FindClose(pDirInfo->pDirHandle);` |
+|    - | 1323 | `	}` |
+|    5 | 1324 | `	HeapFree(GetProcessHeap(),0,pDirInfo->pPath);` |
+|    5 | 1325 | `	HeapFree(GetProcessHeap(),0,pDirInfo);` |
+|    5 | 1326 | `}` |
+|    - | 1327 | `/* void (*xClose)(void *); */` |
+|    - | 1328 | `static void WinFile_Close(void *pUserData)` |
+|    5 | 1329 | `{` |
+|    5 | 1330 | `	HANDLE pHandle = (HANDLE)pUserData;` |
+|    5 | 1331 | `	CloseHandle(pHandle);` |
+|    5 | 1332 | `}` |
+|    - | 1333 | `/* int (*xReadDir)(void *,ph7_context *) */` |
+|    - | 1334 | `static int WinDir_Read(void *pUserData,ph7_context *pCtx)` |
+|    5 | 1335 | `{` |
+|    5 | 1336 | `	WinDir_Info *pDirInfo = (WinDir_Info *)pUserData;` |
+|    - | 1337 | `	LPWIN32_FIND_DATAW pData;` |
+|    - | 1338 | `	char *zName;` |
+|    - | 1339 | `	BOOL rc;` |
+|    5 | 1340 | `	if( pDirInfo->rc != SXRET_OK ){` |
+|    - | 1341 | `		/* No more entry to process */` |
+|    5 | 1342 | `		return -1;` |
+|    - | 1343 | `	}` |
+|    5 | 1344 | `	pData = &pDirInfo->sInfo;` |
+|    - | 1345 | `	/* php parity: readdir()/scandir() include the '.' and '..' entries, so unlike` |
+|    - | 1346 | `	 * the historical PH7 behaviour we return them instead of skipping. */` |
+|    5 | 1347 | `	zName = unicodeToUtf8(pData->cFileName);` |
+|    5 | 1348 | `	if( zName == 0 ){` |
+|    - | 1349 | `		/* Out of memory */` |
+|  ! 0 | 1350 | `		return -1;` |
+|    - | 1351 | `	}` |
+|    - | 1352 | `	/* Return the current file name */` |
+|    5 | 1353 | `	ph7_result_string(pCtx,zName,-1);` |
+|    5 | 1354 | `	HeapFree(GetProcessHeap(),0,zName);` |
+|    - | 1355 | `	/* Point to the next entry */` |
+|    5 | 1356 | `	rc = FindNextFileW(pDirInfo->pDirHandle,&pDirInfo->sInfo);` |
+|    5 | 1357 | `	if( !rc ){` |
+|    5 | 1358 | `		pDirInfo->rc = SXERR_EOF;` |
+|    - | 1359 | `	}` |
+|    5 | 1360 | `	return PH7_OK;` |
+|    5 | 1361 | `}` |
+|    - | 1362 | `/* void (*xRewindDir)(void *) */` |
+|    - | 1363 | `static void WinDir_RewindDir(void *pUserData)` |
+|    2 | 1364 | `{` |
+|    2 | 1365 | `	WinDir_Info *pDirInfo = (WinDir_Info *)pUserData;` |
+|    2 | 1366 | `	FindClose(pDirInfo->pDirHandle);` |
+|    2 | 1367 | `	pDirInfo->pDirHandle = FindFirstFileW((LPCWSTR)pDirInfo->pPath,&pDirInfo->sInfo);` |
+|    2 | 1368 | `	if( pDirInfo->pDirHandle == INVALID_HANDLE_VALUE ){` |
+|  ! 0 | 1369 | `		pDirInfo->rc = SXERR_EOF;` |
+|  ! 0 | 1370 | `	}else{` |
+|    2 | 1371 | `		pDirInfo->rc = SXRET_OK;` |
+|    - | 1372 | `	}` |
+|    2 | 1373 | `}` |
+|    - | 1374 | `/* ph7_int64 (*xRead)(void *,void *,ph7_int64); */` |
+|    - | 1375 | `static ph7_int64 WinFile_Read(void *pOS,void *pBuffer,ph7_int64 nDatatoRead)` |
+|    5 | 1376 | `{` |
+|    5 | 1377 | `	HANDLE pHandle = (HANDLE)pOS;` |
+|    - | 1378 | `	DWORD nRd;` |
+|    - | 1379 | `	BOOL rc;` |
+|    5 | 1380 | `	rc = ReadFile(pHandle,pBuffer,(DWORD)nDatatoRead,&nRd,0);` |
+|    5 | 1381 | `	if( !rc ){` |
+|    - | 1382 | `		/* EOF or IO error */` |
+|    1 | 1383 | `		return -1;` |
+|    - | 1384 | `	}` |
+|    5 | 1385 | `	return (ph7_int64)nRd;` |
+|    5 | 1386 | `}` |
+|    - | 1387 | `/* ph7_int64 (*xWrite)(void *,const void *,ph7_int64); */` |
+|    - | 1388 | `static ph7_int64 WinFile_Write(void *pOS,const void *pBuffer,ph7_int64 nWrite)` |
+|    5 | 1389 | `{` |
+|    5 | 1390 | `	const char *zData = (const char *)pBuffer;` |
+|    5 | 1391 | `	HANDLE pHandle = (HANDLE)pOS;` |
+|    - | 1392 | `	ph7_int64 nCount;` |
+|    - | 1393 | `	DWORD nWr;` |
+|    - | 1394 | `	BOOL rc;` |
+|    5 | 1395 | `	nWr = 0;` |
+|    5 | 1396 | `	nCount = 0;` |
+|    - | 1397 | `	for(;;){` |
+|    5 | 1398 | `		if( nWrite < 1 ){` |
+|    5 | 1399 | `			break;` |
 |    - | 1400 | `		}` |
-|    5 | 1401 | `		nWrite -= nWr;` |
-|    5 | 1402 | `		nCount += nWr;` |
-|    5 | 1403 | `		zData += nWr;` |
-|    5 | 1404 | `	}` |
-|    5 | 1405 | `	if( nWrite > 0 ){` |
-|    1 | 1406 | `		return -1;` |
-|    - | 1407 | `	}` |
-|    5 | 1408 | `	return nCount;` |
-|    5 | 1409 | `}` |
-|    - | 1410 | `/* int (*xSeek)(void *,ph7_int64,int) */` |
-|    - | 1411 | `static int WinFile_Seek(void *pUserData,ph7_int64 iOfft,int whence)` |
-|    2 | 1412 | `{` |
-|    2 | 1413 | `	HANDLE pHandle = (HANDLE)pUserData;` |
-|    - | 1414 | `	DWORD dwMove,dwNew;` |
-|    - | 1415 | `	LONG nHighOfft;` |
-|    2 | 1416 | `	switch(whence){` |
-|    - | 1417 | `	case 1:/*SEEK_CUR*/` |
-|    1 | 1418 | `		dwMove = FILE_CURRENT;` |
-|    1 | 1419 | `		break;` |
-|    - | 1420 | `	case 2: /* SEEK_END */` |
-|  ! 0 | 1421 | `		dwMove = FILE_END;` |
-|  ! 0 | 1422 | `		break;` |
-|    - | 1423 | `	case 0: /* SEEK_SET */` |
-|    - | 1424 | `	default:` |
-|    2 | 1425 | `		dwMove = FILE_BEGIN;` |
-|    - | 1426 | `		break;` |
-|    - | 1427 | `	}` |
-|    2 | 1428 | `	nHighOfft = (LONG)(iOfft >> 32);` |
-|    2 | 1429 | `	dwNew = SetFilePointer(pHandle,(LONG)iOfft,&nHighOfft,dwMove);` |
-|    2 | 1430 | `	if( dwNew == INVALID_SET_FILE_POINTER ){` |
-|  ! 0 | 1431 | `		return -1;` |
-|    - | 1432 | `	}` |
-|    2 | 1433 | `	return PH7_OK;` |
-|    2 | 1434 | `}` |
-|    - | 1435 | `/* int (*xLock)(void *,int) — see the lock_type value space in ph7.h */` |
-|    - | 1436 | `static int WinFile_Lock(void *pUserData,int lock_type)` |
-|    1 | 1437 | `{` |
-|    1 | 1438 | `	HANDLE pHandle = (HANDLE)pUserData;` |
-|    - | 1439 | `	OVERLAPPED sDummy;` |
-|    - | 1440 | `	BOOL rc;` |
-|    1 | 1441 | `	SyZero(&sDummy,sizeof(sDummy));` |
-|    - | 1442 | `	/* Lock/unlock the whole file. php locks the maximal byte range, so the lock` |
-|    - | 1443 | `	 * is effective even for an empty or freshly-truncated file — the previous` |
-|    - | 1444 | `	 * code locked only GetFileSize() bytes (i.e. nothing for a 0-byte file). */` |
-|    1 | 1445 | `	if( lock_type < 0 ){` |
-|    - | 1446 | `		/* Unlock the file */` |
-|    1 | 1447 | `		rc = UnlockFileEx(pHandle,0,0xFFFFFFFF,0xFFFFFFFF,&sDummy);` |
-|    1 | 1448 | `	}else{` |
-|    - | 1449 | `		/* LOCKFILE_FAIL_IMMEDIATELY belongs to the NON-BLOCKING requests only: it` |
-|    - | 1450 | `		 * used to be passed unconditionally, so a plain flock($f,LOCK_EX) answered` |
-|    - | 1451 | `		 * false under contention on Windows where php (and POSIX) waits. */` |
-|    1 | 1452 | `		DWORD dwFlags = 0;` |
-|    1 | 1453 | `		if( lock_type == PH7_IO_LOCK_EX \|\| lock_type == PH7_IO_LOCK_EX_NB ){` |
-|    1 | 1454 | `			dwFlags \|= LOCKFILE_EXCLUSIVE_LOCK;` |
-|    - | 1455 | `		}` |
-|    1 | 1456 | `		if( lock_type == PH7_IO_LOCK_SH_NB \|\| lock_type == PH7_IO_LOCK_EX_NB ){` |
-|    1 | 1457 | `			dwFlags \|= LOCKFILE_FAIL_IMMEDIATELY;` |
-|    - | 1458 | `		}` |
-|    1 | 1459 | `		rc = LockFileEx(pHandle,dwFlags,0,0xFFFFFFFF,0xFFFFFFFF,&sDummy);` |
-|    1 | 1460 | `		if( !rc && GetLastError() == ERROR_LOCK_VIOLATION ){` |
-|    - | 1461 | `			/* Refused because another holder has the range: php's $would_block. */` |
-|    1 | 1462 | `			return SXERR_BUSY;` |
-|    - | 1463 | `		}` |
-|    - | 1464 | `	}` |
-|    1 | 1465 | `	return rc ? PH7_OK : -1 /* Lock error */;` |
-|    1 | 1466 | `}` |
-|    - | 1467 | `/* ph7_int64 (*xTell)(void *) */` |
-|    - | 1468 | `static ph7_int64 WinFile_Tell(void *pUserData)` |
-|    3 | 1469 | `{` |
-|    3 | 1470 | `	HANDLE pHandle = (HANDLE)pUserData;` |
-|    - | 1471 | `	DWORD dwNew;` |
-|    3 | 1472 | `	dwNew = SetFilePointer(pHandle,0,0,FILE_CURRENT/* SEEK_CUR */);` |
-|    3 | 1473 | `	if( dwNew == INVALID_SET_FILE_POINTER ){` |
-|  ! 0 | 1474 | `		return -1;` |
-|    - | 1475 | `	}` |
-|    3 | 1476 | `	return (ph7_int64)dwNew;` |
-|    3 | 1477 | `}` |
-|    - | 1478 | `/* int (*xTrunc)(void *,ph7_int64)` |
-|    - | 1479 | ` *` |
-|    - | 1480 | ` * SetEndOfFile() truncates at the CURRENT file pointer, so the size has to be` |
-|    - | 1481 | ` * seeked to first — and the pointer is then left there. POSIX ftruncate() does` |
-|    - | 1482 | ` * not move it, and neither does php on either platform, so the caller's` |
-|    - | 1483 | `` * position is saved across the pair: without this, `ftruncate($h,6)` after an`` |
-|    - | 1484 | ` * fgets() moved the handle to 6 on Windows and left it where it was everywhere` |
-|    - | 1485 | ` * else, and every position-shaped answer after it (ftell, the next read, a` |
-|    - | 1486 | ` * write's landing point) diverged by platform.` |
-|    - | 1487 | ` */` |
-|    - | 1488 | `static int WinFile_Trunc(void *pUserData,ph7_int64 nOfft)` |
-|    1 | 1489 | `{` |
-|    1 | 1490 | `	HANDLE pHandle = (HANDLE)pUserData;` |
-|    - | 1491 | `	LONG HighOfft,HighCur;` |
-|    - | 1492 | `	DWORD dwNew,dwCur;` |
-|    - | 1493 | `	BOOL rc;` |
-|    1 | 1494 | `	HighCur = 0;` |
-|    1 | 1495 | `	dwCur = SetFilePointer(pHandle,0,&HighCur,FILE_CURRENT);` |
-|    1 | 1496 | `	if( dwCur == INVALID_SET_FILE_POINTER && GetLastError() != NO_ERROR ){` |
-|  ! 0 | 1497 | `		return -1;` |
-|    - | 1498 | `	}` |
-|    1 | 1499 | `	HighOfft = (LONG)(nOfft >> 32);` |
-|    1 | 1500 | `	dwNew = SetFilePointer(pHandle,(LONG)nOfft,&HighOfft,FILE_BEGIN);` |
-|    1 | 1501 | `	if( dwNew == INVALID_SET_FILE_POINTER && GetLastError() != NO_ERROR ){` |
-|  ! 0 | 1502 | `		return -1;` |
-|    - | 1503 | `	}` |
-|    1 | 1504 | `	rc = SetEndOfFile(pHandle);` |
-|    - | 1505 | `	/* Put the caller back where it was, whether the truncation worked or not. */` |
-|    1 | 1506 | `	SetFilePointer(pHandle,(LONG)dwCur,&HighCur,FILE_BEGIN);` |
-|    1 | 1507 | `	return rc ? PH7_OK : -1;` |
-|    1 | 1508 | `}` |
-|    - | 1509 | `/* int (*xSync)(void *); */` |
-|    - | 1510 | `static int WinFile_Sync(void *pUserData)` |
-|    1 | 1511 | `{` |
-|    1 | 1512 | `	HANDLE pHandle = (HANDLE)pUserData;` |
-|    - | 1513 | `	BOOL rc;` |
-|    1 | 1514 | `	rc = FlushFileBuffers(pHandle);` |
-|    1 | 1515 | `	return rc ? PH7_OK : - 1;` |
-|    1 | 1516 | `}` |
-|    - | 1517 | `/* int (*xStat)(void *,ph7_value *,ph7_value *) */` |
-|    - | 1518 | `static int WinFile_Stat(void *pUserData,ph7_value *pArray,ph7_value *pWorker)` |
-|    1 | 1519 | `{` |
-|    - | 1520 | `	BY_HANDLE_FILE_INFORMATION sInfo;` |
-|    1 | 1521 | `	HANDLE pHandle = (HANDLE)pUserData;` |
-|    - | 1522 | `	BOOL rc;` |
-|    1 | 1523 | `	rc = GetFileInformationByHandle(pHandle,&sInfo);` |
-|    1 | 1524 | `	if( !rc ){` |
-|  ! 0 | 1525 | `		return -1;` |
-|    - | 1526 | `	}` |
-|    - | 1527 | `	/* dev */` |
-|    1 | 1528 | `	ph7_value_int64(pWorker,(ph7_int64)sInfo.dwVolumeSerialNumber);` |
-|    1 | 1529 | `	ph7_array_add_strkey_elem(pArray,"dev",pWorker); /* Will make it's own copy */` |
-|    - | 1530 | `	/* ino */` |
-|    1 | 1531 | `	ph7_value_int64(pWorker,(ph7_int64)(((ph7_int64)sInfo.nFileIndexHigh << 32) \| sInfo.nFileIndexLow));` |
-|    1 | 1532 | `	ph7_array_add_strkey_elem(pArray,"ino",pWorker); /* Will make it's own copy */` |
-|    - | 1533 | `	/* mode */` |
-|    1 | 1534 | `	ph7_value_int(pWorker,0);` |
-|    1 | 1535 | `	ph7_array_add_strkey_elem(pArray,"mode",pWorker);` |
-|    - | 1536 | `	/* nlink */` |
-|    1 | 1537 | `	ph7_value_int(pWorker,(int)sInfo.nNumberOfLinks);` |
-|    1 | 1538 | `	ph7_array_add_strkey_elem(pArray,"nlink",pWorker); /* Will make it's own copy */` |
-|    - | 1539 | `	/* uid,gid,rdev */` |
-|    1 | 1540 | `	ph7_value_int(pWorker,0);` |
-|    1 | 1541 | `	ph7_array_add_strkey_elem(pArray,"uid",pWorker);` |
-|    1 | 1542 | `	ph7_array_add_strkey_elem(pArray,"gid",pWorker);` |
-|    1 | 1543 | `	ph7_array_add_strkey_elem(pArray,"rdev",pWorker);` |
-|    - | 1544 | `	/* size */` |
-|    1 | 1545 | `	ph7_value_int64(pWorker,(ph7_int64)(((ph7_int64)sInfo.nFileSizeHigh << 32) \| sInfo.nFileSizeLow));` |
-|    1 | 1546 | `	ph7_array_add_strkey_elem(pArray,"size",pWorker); /* Will make it's own copy */` |
-|    - | 1547 | `	/* atime */` |
-|    1 | 1548 | `	ph7_value_int64(pWorker,convertWindowsTimeToUnixTime(&sInfo.ftLastAccessTime));` |
-|    1 | 1549 | `	ph7_array_add_strkey_elem(pArray,"atime",pWorker); /* Will make it's own copy */` |
-|    - | 1550 | `	/* mtime */` |
-|    1 | 1551 | `	ph7_value_int64(pWorker,convertWindowsTimeToUnixTime(&sInfo.ftLastWriteTime));` |
-|    1 | 1552 | `	ph7_array_add_strkey_elem(pArray,"mtime",pWorker); /* Will make it's own copy */` |
-|    - | 1553 | `	/* ctime */` |
-|    1 | 1554 | `	ph7_value_int64(pWorker,convertWindowsTimeToUnixTime(&sInfo.ftCreationTime));` |
-|    1 | 1555 | `	ph7_array_add_strkey_elem(pArray,"ctime",pWorker); /* Will make it's own copy */` |
-|    - | 1556 | `	/* blksize,blocks */` |
-|    1 | 1557 | `	ph7_value_int(pWorker,0);` |
-|    1 | 1558 | `	ph7_array_add_strkey_elem(pArray,"blksize",pWorker);` |
-|    1 | 1559 | `	ph7_array_add_strkey_elem(pArray,"blocks",pWorker);` |
-|    1 | 1560 | `	return PH7_OK;` |
-|    1 | 1561 | `}` |
-|    - | 1562 | `/* Export the file:// stream */` |
-|    - | 1563 | `/*` |
-|    - | 1564 | ` * php copies a plain file with MapViewOfFile(), and a view has to START on an` |
-|    - | 1565 | ` * allocation granule, so it maps from the granule the position sits in. At the` |
-|    - | 1566 | ` * end of the file that is a view of zero requested bytes -- which php's copy` |
-|    - | 1567 | ` * loop reads as a failure -- unless the end sits ON a granule (an empty file` |
-|    - | 1568 | ` * included), where php refuses the zero-length view and its read loop answers` |
-|    - | 1569 | ` * 0. Linux's mmap() refuses every zero-length map, so there it is always 0.` |
-|    - | 1570 | ` * nAhead is what the handle has read ahead of the script's position.` |
-|    - | 1571 | ` */` |
-|    - | 1572 | `PH7_PRIVATE int PH7_WinFileMapsEmptyView(void *pHandle,ph7_int64 nAhead)` |
-|    1 | 1573 | `{` |
-|    - | 1574 | `	LARGE_INTEGER iSize,iZero,iPos;` |
-|    - | 1575 | `	SYSTEM_INFO sInfo;` |
-|    1 | 1576 | `	iZero.QuadPart = 0;` |
-|    - | 1577 | `	if( !GetFileSizeEx((HANDLE)pHandle,&iSize)` |
-|    - | 1578 | `	 \|\| !SetFilePointerEx((HANDLE)pHandle,iZero,&iPos,FILE_CURRENT)` |
-|    1 | 1579 | `	 \|\| iPos.QuadPart - nAhead < iSize.QuadPart ){` |
-|    1 | 1580 | `		return 0;` |
-|    - | 1581 | `	}` |
-|    1 | 1582 | `	GetSystemInfo(&sInfo);` |
-|    1 | 1583 | `	return sInfo.dwAllocationGranularity != 0` |
-|    - | 1584 | `		&& (iSize.QuadPart % (ph7_int64)sInfo.dwAllocationGranularity) != 0;` |
-|    1 | 1585 | `}` |
-|    - | 1586 | `PH7_PRIVATE const ph7_io_stream sWinFileStream = {` |
-|    - | 1587 | `	"file", /* Stream name */` |
-|    - | 1588 | `	PH7_IO_STREAM_VERSION,` |
-|    - | 1589 | `	WinFile_Open,  /* xOpen */` |
-|    - | 1590 | `	WinDir_Open,   /* xOpenDir */` |
-|    - | 1591 | `	WinFile_Close, /* xClose */` |
-|    - | 1592 | `	WinDir_Close,  /* xCloseDir */` |
-|    - | 1593 | `	WinFile_Read,  /* xRead */` |
-|    - | 1594 | `	WinDir_Read,   /* xReadDir */` |
-|    - | 1595 | `	WinFile_Write, /* xWrite */` |
-|    - | 1596 | `	WinFile_Seek,  /* xSeek */` |
-|    - | 1597 | `	WinFile_Lock,  /* xLock */` |
-|    - | 1598 | `	WinDir_RewindDir, /* xRewindDir */` |
-|    - | 1599 | `	WinFile_Tell,  /* xTell */` |
-|    - | 1600 | `	WinFile_Trunc, /* xTrunc */` |
-|    - | 1601 | `	WinFile_Sync,  /* xSeek */` |
-|    - | 1602 | `	WinFile_Stat   /* xStat */` |
-|    - | 1603 | `};` |
-|    - | 1604 | `#endif /* __WINNT__ */` |
-|    - | 1605 |  |
+|    5 | 1401 | `		rc = WriteFile(pHandle,zData,(DWORD)nWrite,&nWr,0);` |
+|    5 | 1402 | `		if( !rc ){` |
+|    - | 1403 | `			/* IO error — surface a POSIX errno for the caller's diagnostic` |
+|    - | 1404 | `			 * (e.g. a byte-range lock violation reports EACCES like php). */` |
+|    1 | 1405 | `			WinVfsMapErrno();` |
+|    1 | 1406 | `			break;` |
+|    - | 1407 | `		}` |
+|    5 | 1408 | `		nWrite -= nWr;` |
+|    5 | 1409 | `		nCount += nWr;` |
+|    5 | 1410 | `		zData += nWr;` |
+|    5 | 1411 | `	}` |
+|    5 | 1412 | `	if( nWrite > 0 ){` |
+|    1 | 1413 | `		return -1;` |
+|    - | 1414 | `	}` |
+|    5 | 1415 | `	return nCount;` |
+|    5 | 1416 | `}` |
+|    - | 1417 | `/* int (*xSeek)(void *,ph7_int64,int) */` |
+|    - | 1418 | `static int WinFile_Seek(void *pUserData,ph7_int64 iOfft,int whence)` |
+|    2 | 1419 | `{` |
+|    2 | 1420 | `	HANDLE pHandle = (HANDLE)pUserData;` |
+|    - | 1421 | `	DWORD dwMove,dwNew;` |
+|    - | 1422 | `	LONG nHighOfft;` |
+|    2 | 1423 | `	switch(whence){` |
+|    - | 1424 | `	case 1:/*SEEK_CUR*/` |
+|    1 | 1425 | `		dwMove = FILE_CURRENT;` |
+|    1 | 1426 | `		break;` |
+|    - | 1427 | `	case 2: /* SEEK_END */` |
+|  ! 0 | 1428 | `		dwMove = FILE_END;` |
+|  ! 0 | 1429 | `		break;` |
+|    - | 1430 | `	case 0: /* SEEK_SET */` |
+|    - | 1431 | `	default:` |
+|    2 | 1432 | `		dwMove = FILE_BEGIN;` |
+|    - | 1433 | `		break;` |
+|    - | 1434 | `	}` |
+|    2 | 1435 | `	nHighOfft = (LONG)(iOfft >> 32);` |
+|    2 | 1436 | `	dwNew = SetFilePointer(pHandle,(LONG)iOfft,&nHighOfft,dwMove);` |
+|    2 | 1437 | `	if( dwNew == INVALID_SET_FILE_POINTER ){` |
+|  ! 0 | 1438 | `		return -1;` |
+|    - | 1439 | `	}` |
+|    2 | 1440 | `	return PH7_OK;` |
+|    2 | 1441 | `}` |
+|    - | 1442 | `/* int (*xLock)(void *,int) — see the lock_type value space in ph7.h */` |
+|    - | 1443 | `static int WinFile_Lock(void *pUserData,int lock_type)` |
+|    1 | 1444 | `{` |
+|    1 | 1445 | `	HANDLE pHandle = (HANDLE)pUserData;` |
+|    - | 1446 | `	OVERLAPPED sDummy;` |
+|    - | 1447 | `	BOOL rc;` |
+|    1 | 1448 | `	SyZero(&sDummy,sizeof(sDummy));` |
+|    - | 1449 | `	/* Lock/unlock the whole file. php locks the maximal byte range, so the lock` |
+|    - | 1450 | `	 * is effective even for an empty or freshly-truncated file — the previous` |
+|    - | 1451 | `	 * code locked only GetFileSize() bytes (i.e. nothing for a 0-byte file). */` |
+|    1 | 1452 | `	if( lock_type < 0 ){` |
+|    - | 1453 | `		/* Unlock the file */` |
+|    1 | 1454 | `		rc = UnlockFileEx(pHandle,0,0xFFFFFFFF,0xFFFFFFFF,&sDummy);` |
+|    1 | 1455 | `	}else{` |
+|    - | 1456 | `		/* LOCKFILE_FAIL_IMMEDIATELY belongs to the NON-BLOCKING requests only: it` |
+|    - | 1457 | `		 * used to be passed unconditionally, so a plain flock($f,LOCK_EX) answered` |
+|    - | 1458 | `		 * false under contention on Windows where php (and POSIX) waits. */` |
+|    1 | 1459 | `		DWORD dwFlags = 0;` |
+|    1 | 1460 | `		if( lock_type == PH7_IO_LOCK_EX \|\| lock_type == PH7_IO_LOCK_EX_NB ){` |
+|    1 | 1461 | `			dwFlags \|= LOCKFILE_EXCLUSIVE_LOCK;` |
+|    - | 1462 | `		}` |
+|    1 | 1463 | `		if( lock_type == PH7_IO_LOCK_SH_NB \|\| lock_type == PH7_IO_LOCK_EX_NB ){` |
+|    1 | 1464 | `			dwFlags \|= LOCKFILE_FAIL_IMMEDIATELY;` |
+|    - | 1465 | `		}` |
+|    1 | 1466 | `		rc = LockFileEx(pHandle,dwFlags,0,0xFFFFFFFF,0xFFFFFFFF,&sDummy);` |
+|    1 | 1467 | `		if( !rc && GetLastError() == ERROR_LOCK_VIOLATION ){` |
+|    - | 1468 | `			/* Refused because another holder has the range: php's $would_block. */` |
+|    1 | 1469 | `			return SXERR_BUSY;` |
+|    - | 1470 | `		}` |
+|    - | 1471 | `	}` |
+|    1 | 1472 | `	return rc ? PH7_OK : -1 /* Lock error */;` |
+|    1 | 1473 | `}` |
+|    - | 1474 | `/* ph7_int64 (*xTell)(void *) */` |
+|    - | 1475 | `static ph7_int64 WinFile_Tell(void *pUserData)` |
+|    3 | 1476 | `{` |
+|    3 | 1477 | `	HANDLE pHandle = (HANDLE)pUserData;` |
+|    - | 1478 | `	DWORD dwNew;` |
+|    3 | 1479 | `	dwNew = SetFilePointer(pHandle,0,0,FILE_CURRENT/* SEEK_CUR */);` |
+|    3 | 1480 | `	if( dwNew == INVALID_SET_FILE_POINTER ){` |
+|  ! 0 | 1481 | `		return -1;` |
+|    - | 1482 | `	}` |
+|    3 | 1483 | `	return (ph7_int64)dwNew;` |
+|    3 | 1484 | `}` |
+|    - | 1485 | `/* int (*xTrunc)(void *,ph7_int64)` |
+|    - | 1486 | ` *` |
+|    - | 1487 | ` * SetEndOfFile() truncates at the CURRENT file pointer, so the size has to be` |
+|    - | 1488 | ` * seeked to first — and the pointer is then left there. POSIX ftruncate() does` |
+|    - | 1489 | ` * not move it, and neither does php on either platform, so the caller's` |
+|    - | 1490 | `` * position is saved across the pair: without this, `ftruncate($h,6)` after an`` |
+|    - | 1491 | ` * fgets() moved the handle to 6 on Windows and left it where it was everywhere` |
+|    - | 1492 | ` * else, and every position-shaped answer after it (ftell, the next read, a` |
+|    - | 1493 | ` * write's landing point) diverged by platform.` |
+|    - | 1494 | ` */` |
+|    - | 1495 | `static int WinFile_Trunc(void *pUserData,ph7_int64 nOfft)` |
+|    1 | 1496 | `{` |
+|    1 | 1497 | `	HANDLE pHandle = (HANDLE)pUserData;` |
+|    - | 1498 | `	LONG HighOfft,HighCur;` |
+|    - | 1499 | `	DWORD dwNew,dwCur;` |
+|    - | 1500 | `	BOOL rc;` |
+|    1 | 1501 | `	HighCur = 0;` |
+|    1 | 1502 | `	dwCur = SetFilePointer(pHandle,0,&HighCur,FILE_CURRENT);` |
+|    1 | 1503 | `	if( dwCur == INVALID_SET_FILE_POINTER && GetLastError() != NO_ERROR ){` |
+|  ! 0 | 1504 | `		return -1;` |
+|    - | 1505 | `	}` |
+|    1 | 1506 | `	HighOfft = (LONG)(nOfft >> 32);` |
+|    1 | 1507 | `	dwNew = SetFilePointer(pHandle,(LONG)nOfft,&HighOfft,FILE_BEGIN);` |
+|    1 | 1508 | `	if( dwNew == INVALID_SET_FILE_POINTER && GetLastError() != NO_ERROR ){` |
+|  ! 0 | 1509 | `		return -1;` |
+|    - | 1510 | `	}` |
+|    1 | 1511 | `	rc = SetEndOfFile(pHandle);` |
+|    - | 1512 | `	/* Put the caller back where it was, whether the truncation worked or not. */` |
+|    1 | 1513 | `	SetFilePointer(pHandle,(LONG)dwCur,&HighCur,FILE_BEGIN);` |
+|    1 | 1514 | `	return rc ? PH7_OK : -1;` |
+|    1 | 1515 | `}` |
+|    - | 1516 | `/* int (*xSync)(void *); */` |
+|    - | 1517 | `static int WinFile_Sync(void *pUserData)` |
+|    1 | 1518 | `{` |
+|    1 | 1519 | `	HANDLE pHandle = (HANDLE)pUserData;` |
+|    - | 1520 | `	BOOL rc;` |
+|    1 | 1521 | `	rc = FlushFileBuffers(pHandle);` |
+|    1 | 1522 | `	return rc ? PH7_OK : - 1;` |
+|    1 | 1523 | `}` |
+|    - | 1524 | `/* int (*xStat)(void *,ph7_value *,ph7_value *) */` |
+|    - | 1525 | `static int WinFile_Stat(void *pUserData,ph7_value *pArray,ph7_value *pWorker)` |
+|    1 | 1526 | `{` |
+|    - | 1527 | `	BY_HANDLE_FILE_INFORMATION sInfo;` |
+|    1 | 1528 | `	HANDLE pHandle = (HANDLE)pUserData;` |
+|    - | 1529 | `	BOOL rc;` |
+|    1 | 1530 | `	rc = GetFileInformationByHandle(pHandle,&sInfo);` |
+|    1 | 1531 | `	if( !rc ){` |
+|  ! 0 | 1532 | `		return -1;` |
+|    - | 1533 | `	}` |
+|    - | 1534 | `	/* dev */` |
+|    1 | 1535 | `	ph7_value_int64(pWorker,(ph7_int64)sInfo.dwVolumeSerialNumber);` |
+|    1 | 1536 | `	ph7_array_add_strkey_elem(pArray,"dev",pWorker); /* Will make it's own copy */` |
+|    - | 1537 | `	/* ino */` |
+|    1 | 1538 | `	ph7_value_int64(pWorker,(ph7_int64)(((ph7_int64)sInfo.nFileIndexHigh << 32) \| sInfo.nFileIndexLow));` |
+|    1 | 1539 | `	ph7_array_add_strkey_elem(pArray,"ino",pWorker); /* Will make it's own copy */` |
+|    - | 1540 | `	/* mode */` |
+|    1 | 1541 | `	ph7_value_int(pWorker,0);` |
+|    1 | 1542 | `	ph7_array_add_strkey_elem(pArray,"mode",pWorker);` |
+|    - | 1543 | `	/* nlink */` |
+|    1 | 1544 | `	ph7_value_int(pWorker,(int)sInfo.nNumberOfLinks);` |
+|    1 | 1545 | `	ph7_array_add_strkey_elem(pArray,"nlink",pWorker); /* Will make it's own copy */` |
+|    - | 1546 | `	/* uid,gid,rdev */` |
+|    1 | 1547 | `	ph7_value_int(pWorker,0);` |
+|    1 | 1548 | `	ph7_array_add_strkey_elem(pArray,"uid",pWorker);` |
+|    1 | 1549 | `	ph7_array_add_strkey_elem(pArray,"gid",pWorker);` |
+|    1 | 1550 | `	ph7_array_add_strkey_elem(pArray,"rdev",pWorker);` |
+|    - | 1551 | `	/* size */` |
+|    1 | 1552 | `	ph7_value_int64(pWorker,(ph7_int64)(((ph7_int64)sInfo.nFileSizeHigh << 32) \| sInfo.nFileSizeLow));` |
+|    1 | 1553 | `	ph7_array_add_strkey_elem(pArray,"size",pWorker); /* Will make it's own copy */` |
+|    - | 1554 | `	/* atime */` |
+|    1 | 1555 | `	ph7_value_int64(pWorker,convertWindowsTimeToUnixTime(&sInfo.ftLastAccessTime));` |
+|    1 | 1556 | `	ph7_array_add_strkey_elem(pArray,"atime",pWorker); /* Will make it's own copy */` |
+|    - | 1557 | `	/* mtime */` |
+|    1 | 1558 | `	ph7_value_int64(pWorker,convertWindowsTimeToUnixTime(&sInfo.ftLastWriteTime));` |
+|    1 | 1559 | `	ph7_array_add_strkey_elem(pArray,"mtime",pWorker); /* Will make it's own copy */` |
+|    - | 1560 | `	/* ctime */` |
+|    1 | 1561 | `	ph7_value_int64(pWorker,convertWindowsTimeToUnixTime(&sInfo.ftCreationTime));` |
+|    1 | 1562 | `	ph7_array_add_strkey_elem(pArray,"ctime",pWorker); /* Will make it's own copy */` |
+|    - | 1563 | `	/* blksize,blocks */` |
+|    1 | 1564 | `	ph7_value_int(pWorker,0);` |
+|    1 | 1565 | `	ph7_array_add_strkey_elem(pArray,"blksize",pWorker);` |
+|    1 | 1566 | `	ph7_array_add_strkey_elem(pArray,"blocks",pWorker);` |
+|    1 | 1567 | `	return PH7_OK;` |
+|    1 | 1568 | `}` |
+|    - | 1569 | `/* Export the file:// stream */` |
+|    - | 1570 | `/*` |
+|    - | 1571 | ` * php copies a plain file with MapViewOfFile(), and a view has to START on an` |
+|    - | 1572 | ` * allocation granule, so it maps from the granule the position sits in. At the` |
+|    - | 1573 | ` * end of the file that is a view of zero requested bytes -- which php's copy` |
+|    - | 1574 | ` * loop reads as a failure -- unless the end sits ON a granule (an empty file` |
+|    - | 1575 | ` * included), where php refuses the zero-length view and its read loop answers` |
+|    - | 1576 | ` * 0. Linux's mmap() refuses every zero-length map, so there it is always 0.` |
+|    - | 1577 | ` * nAhead is what the handle has read ahead of the script's position.` |
+|    - | 1578 | ` */` |
+|    - | 1579 | `PH7_PRIVATE int PH7_WinFileMapsEmptyView(void *pHandle,ph7_int64 nAhead)` |
+|    1 | 1580 | `{` |
+|    - | 1581 | `	LARGE_INTEGER iSize,iZero,iPos;` |
+|    - | 1582 | `	SYSTEM_INFO sInfo;` |
+|    1 | 1583 | `	iZero.QuadPart = 0;` |
+|    - | 1584 | `	if( !GetFileSizeEx((HANDLE)pHandle,&iSize)` |
+|    - | 1585 | `	 \|\| !SetFilePointerEx((HANDLE)pHandle,iZero,&iPos,FILE_CURRENT)` |
+|    1 | 1586 | `	 \|\| iPos.QuadPart - nAhead < iSize.QuadPart ){` |
+|    1 | 1587 | `		return 0;` |
+|    - | 1588 | `	}` |
+|    1 | 1589 | `	GetSystemInfo(&sInfo);` |
+|    1 | 1590 | `	return sInfo.dwAllocationGranularity != 0` |
+|    - | 1591 | `		&& (iSize.QuadPart % (ph7_int64)sInfo.dwAllocationGranularity) != 0;` |
+|    1 | 1592 | `}` |
+|    - | 1593 | `PH7_PRIVATE const ph7_io_stream sWinFileStream = {` |
+|    - | 1594 | `	"file", /* Stream name */` |
+|    - | 1595 | `	PH7_IO_STREAM_VERSION,` |
+|    - | 1596 | `	WinFile_Open,  /* xOpen */` |
+|    - | 1597 | `	WinDir_Open,   /* xOpenDir */` |
+|    - | 1598 | `	WinFile_Close, /* xClose */` |
+|    - | 1599 | `	WinDir_Close,  /* xCloseDir */` |
+|    - | 1600 | `	WinFile_Read,  /* xRead */` |
+|    - | 1601 | `	WinDir_Read,   /* xReadDir */` |
+|    - | 1602 | `	WinFile_Write, /* xWrite */` |
+|    - | 1603 | `	WinFile_Seek,  /* xSeek */` |
+|    - | 1604 | `	WinFile_Lock,  /* xLock */` |
+|    - | 1605 | `	WinDir_RewindDir, /* xRewindDir */` |
+|    - | 1606 | `	WinFile_Tell,  /* xTell */` |
+|    - | 1607 | `	WinFile_Trunc, /* xTrunc */` |
+|    - | 1608 | `	WinFile_Sync,  /* xSeek */` |
+|    - | 1609 | `	WinFile_Stat   /* xStat */` |
+|    - | 1610 | `};` |
+|    - | 1611 | `#endif /* __WINNT__ */` |
+|    - | 1612 |  |
