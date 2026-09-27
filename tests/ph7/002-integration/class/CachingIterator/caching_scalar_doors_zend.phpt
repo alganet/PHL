@@ -35,6 +35,13 @@ foreach ([1.5, null] as $flags) {
     catch (Throwable $e) { echo 'flags ', var_export($flags, true), ' => ',
         get_class($e), ': ', $e->getMessage(), "\n"; }
 }
+
+/* RecursiveTreeIterator's own null door: php reads $cachingIteratorFlags as an
+ * int, so a null becomes 0 and builds a wrapper that does not catch. */
+try { $t = new RecursiveTreeIterator(new RecursiveArrayIterator([1]), 8, null, 1);
+      $t->rewind();
+      echo 'tree null flags => ', $t->getSubIterator()->getFlags(), "\n"; }
+catch (Throwable $e) { echo 'tree null flags => ', get_class($e), ': ', $e->getMessage(), "\n"; }
 ?>
 --EXPECT--
 offsetGet => NULL
@@ -46,3 +53,4 @@ cache untouched => {"x":1}
 int key => false
 flags 1.5 => 1
 flags NULL => 0
+tree null flags => 65536

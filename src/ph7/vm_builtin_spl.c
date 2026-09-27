@@ -5121,6 +5121,435 @@ static int vm_builtin_RecursiveIteratorIterator_getMaxDepth(ph7_context *pCtx,in
 	return PH7_OK;
 }
 /*
+ * ---------------------------------------------------------------------------
+ * RecursiveTreeIterator: the RecursiveIteratorIterator that draws the tree.
+ *
+ * It is the same traversal with a STRING built around each element, and the
+ * drawing is why php wraps the iterator it is handed in a
+ * RecursiveCachingIterator: the ASCII branches need to know whether a level has
+ * a NEXT element, and hasNext() is the one question only the caching decorator
+ * answers. So the sub-iterator at every level here is a
+ * RecursiveCachingIterator, getSubIterator()/getInnerIterator() report one, and
+ * `$cachingIteratorFlags` is what that wrapper is built with — CATCH_GET_CHILD
+ * when the caller says nothing, and EXACTLY what the caller says otherwise.
+ *
+ * The prefix is six parts: a fixed LEFT, one MID per level above this one
+ * (chosen by whether that level has a next element), one END for this level
+ * (chosen the same way) and a fixed RIGHT. current() is prefix + entry + postfix
+ * and key() is prefix + key + postfix, each bypassable through its own flag —
+ * and those flags live in the SAME word as RecursiveIteratorIterator's
+ * CATCH_GET_CHILD, which is why php declares that constant on both classes.
+ */
+#define RTI_PFX "__pfx"   /* php's prefix[6] */
+#define RTI_PST "__pst"   /* php's postfix */
+
+#define RTIT_BYPASS_CURRENT     4
+#define RTIT_BYPASS_KEY         8
+#define RTIT_PREFIX_LEFT        0
+#define RTIT_PREFIX_MID_HAS_NEXT 1
+#define RTIT_PREFIX_MID_LAST    2
+#define RTIT_PREFIX_END_HAS_NEXT 3
+#define RTIT_PREFIX_END_LAST    4
+#define RTIT_PREFIX_RIGHT       5
+
+/* php's `object->prefix[N]` defaults, set in the constructor. */
+static const char * const azRtiPrefix[] = { "", "| ", "  ", "|-", "\\-", "" };
+
+static ph7_value * RtiPrefixSlot(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,RTI_PFX) : 0;
+	if( pSlot == 0 ){
+		return 0;
+	}
+	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){
+			return 0;
+		}
+	}
+	if( PH7_HashmapCowSeparate(pVm,pSlot) == 0 ){
+		return 0;
+	}
+	return pSlot;
+}
+/* One prefix part, appended to pOut. A part nothing has written is php's own
+ * default rather than the empty string. */
+static void RtiAppendPart(ph7_vm *pVm,ph7_class_instance *pThis,int iPart,ph7_value *pOut)
+{
+	ph7_value *pSlot = RtiPrefixSlot(pVm,pThis);
+	ph7_hashmap_node *pNode = 0;
+	ph7_value *pVal = 0;
+	const char *zTxt;
+	int nTxt;
+	if( pSlot && HashmapLookupIntKey((ph7_hashmap *)pSlot->x.pOther,(sxi64)iPart,&pNode) == SXRET_OK ){
+		pVal = HashmapExtractNodeValue(pNode);
+	}
+	if( pVal == 0 ){
+		return;
+	}
+	zTxt = ph7_value_to_string(pVal,&nTxt);
+	if( nTxt > 0 ){
+		PH7_MemObjStringAppend(pOut,zTxt,(sxu32)nTxt);
+	}
+}
+/* php's `hasnext` on one level's sub-iterator; a level with no answer draws
+ * nothing at all. */
+static sxi32 RtiLevelHasNext(ph7_context *pCtx,int iLevel,int *pbHas,int *pbAnswered)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pSub = RitSub(pVm,PH7_ContextThis(pCtx),iLevel);
+	ph7_class_method *pMethod = pSub
+		? PH7_ClassExtractMethod(pSub->pClass,"hasNext",sizeof("hasNext")-1) : 0;
+	ph7_value sRes;
+	sxi32 rc;
+	*pbHas = 0;
+	*pbAnswered = 0;
+	if( pMethod == 0 ){
+		return SXRET_OK;
+	}
+	PH7_MemObjInit(pVm,&sRes);
+	rc = PH7_VmCallClassMethod(pVm,pSub,pMethod,&sRes,0,0);
+	if( rc == SXRET_OK ){
+		PH7_MemObjToBool(&sRes);          /* a STATUS, not the answer */
+		*pbHas = sRes.x.iVal != 0;
+		*pbAnswered = 1;
+	}
+	PH7_MemObjRelease(&sRes);
+	return rc;
+}
+static sxi32 RtiBuildPrefix(ph7_context *pCtx,ph7_value *pOut)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int iLevel = RitInt(pThis,RIT_LVL);
+	int i,bHas,bAnswered;
+	sxi32 rc;
+	RtiAppendPart(pVm,pThis,RTIT_PREFIX_LEFT,pOut);
+	for( i = 0 ; i < iLevel ; ++i ){
+		rc = RtiLevelHasNext(pCtx,i,&bHas,&bAnswered);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+		if( bAnswered ){
+			RtiAppendPart(pVm,pThis,bHas ? RTIT_PREFIX_MID_HAS_NEXT : RTIT_PREFIX_MID_LAST,pOut);
+		}
+	}
+	rc = RtiLevelHasNext(pCtx,iLevel,&bHas,&bAnswered);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	if( bAnswered ){
+		RtiAppendPart(pVm,pThis,bHas ? RTIT_PREFIX_END_HAS_NEXT : RTIT_PREFIX_END_LAST,pOut);
+	}
+	RtiAppendPart(pVm,pThis,RTIT_PREFIX_RIGHT,pOut);
+	return SXRET_OK;
+}
+/*
+ * php's get_entry: the CACHED current() of this level's caching iterator, as a
+ * string. An ARRAY is the word "Array" and says nothing while doing it — php
+ * never runs a cast here — and an object with no __toString still raises.
+ */
+static sxi32 RtiBuildEntry(ph7_context *pCtx,ph7_value *pOut)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pSub = RitSub(pVm,pThis,RitInt(pThis,RIT_LVL));
+	ph7_class_method *pMethod = pSub
+		? PH7_ClassExtractMethod(pSub->pClass,"current",sizeof("current")-1) : 0;
+	ph7_value sRes;
+	sxi32 rc;
+	if( pMethod == 0 ){
+		return SXRET_OK;
+	}
+	PH7_MemObjInit(pVm,&sRes);
+	rc = PH7_VmCallClassMethod(pVm,pSub,pMethod,&sRes,0,0);
+	if( rc != SXRET_OK ){
+		PH7_MemObjRelease(&sRes);
+		return rc;
+	}
+	if( sRes.iFlags & MEMOBJ_HASHMAP ){
+		PH7_MemObjStringAppend(pOut,"Array",sizeof("Array")-1);
+	}else if( (sRes.iFlags & MEMOBJ_NULL) == 0 ){
+		rc = PH7_MemObjToStringUV(&sRes);
+		if( rc == SXRET_OK ){
+			int nTxt;
+			const char *zTxt = ph7_value_to_string(&sRes,&nTxt);
+			if( nTxt > 0 ){
+				PH7_MemObjStringAppend(pOut,zTxt,(sxu32)nTxt);
+			}
+		}
+	}
+	PH7_MemObjRelease(&sRes);
+	return rc;
+}
+static void RtiAppendPostfix(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
+{
+	ph7_value *pSlot = PH7_NativeAttr(pThis,RTI_PST);
+	const char *zTxt;
+	int nTxt;
+	if( pSlot == 0 ){
+		return;
+	}
+	zTxt = ph7_value_to_string(pSlot,&nTxt);
+	if( nTxt > 0 ){
+		PH7_MemObjStringAppend(pOut,zTxt,(sxu32)nTxt);
+	}
+	SXUNUSED(pVm);
+}
+static int vm_builtin_RecursiveTreeIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class *pCls;
+	ph7_class_method *pCons;
+	ph7_class_instance *pWrap;
+	ph7_value sFlags,sMode,sCache,sSrc,sWrap,*apCtor[3],*pSlot;
+	sxi64 iFlags = RTIT_BYPASS_KEY, iCache = RIT_CATCH_GET_CHILD, iMode = RIT_SELF_FIRST;
+	int i;
+	sxi32 rc;
+	if( pThis == 0 || nArg < 1 ){
+		return PH7_OK;
+	}
+	/* php's ZPP is "o|lzl" — a bare OBJECT — while the stub declares the union
+	 * this row carries for Reflection, so the type screen stands aside (the `~`
+	 * marker) and the refusal is worded here. */
+	if( (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 || apArg[0]->x.pOther == 0 ){
+		char zGiven[64];
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"RecursiveTreeIterator::__construct(): Argument #1 ($iterator) "
+			"must be of type object, %s given",
+			VmValueGivenName(apArg[0],zGiven,sizeof(zGiven)));
+	}
+	if( nArg > 1 ){
+		iFlags = ph7_value_to_int64(apArg[1]);
+	}
+	if( nArg > 2 ){
+		/* A caller's value REPLACES the CATCH_GET_CHILD default rather than joining
+		 * it — `new RecursiveTreeIterator($it, 8, CachingIterator::TOSTRING_USE_KEY)`
+		 * builds a wrapper that does NOT catch. */
+		iCache = ph7_value_to_int64(apArg[2]);
+	}
+	if( nArg > 3 ){
+		iMode = ph7_value_to_int64(apArg[3]);
+	}
+	/* The six prefix parts and the postfix php seeds every instance with. */
+	pSlot = RtiPrefixSlot(pVm,pThis);
+	for( i = 0 ; pSlot && i < (int)SX_ARRAYSIZE(azRtiPrefix) ; ++i ){
+		ph7_value sPart;
+		PH7_MemObjInitFromString(pVm,&sPart,0);
+		PH7_MemObjStringAppend(&sPart,azRtiPrefix[i],(sxu32)SyStrlen(azRtiPrefix[i]));
+		ph7_array_add_intkey_elem(pSlot,i,&sPart);
+		PH7_MemObjRelease(&sPart);
+	}
+	{
+		ph7_value sPost;
+		PH7_MemObjInitFromString(pVm,&sPost,0);
+		DualSetSlot(pVm,pThis,RTI_PST,&sPost);
+		PH7_MemObjRelease(&sPost);
+	}
+	/* php wraps the iterator FIRST, so a source the wrapper refuses is reported by
+	 * RecursiveCachingIterator::__construct and never reaches the traversal. */
+	pCls = PH7_VmExtractClass(pVm,"RecursiveCachingIterator",
+		sizeof("RecursiveCachingIterator")-1,FALSE,0);
+	pCons = pCls ? PH7_ClassExtractMethod(pCls,"__construct",sizeof("__construct")-1) : 0;
+	if( pCons == 0 ){
+		return PH7_OK;
+	}
+	pWrap = PH7_NewClassInstance(pVm,pCls);
+	if( pWrap == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	pWrap->iRef++;
+	/* php unwraps an IteratorAggregate BEFORE it wraps: the caching iterator has
+	 * to be handed the RecursiveIterator itself, so `getIterator()` runs here and
+	 * exactly once. */
+	PH7_MemObjInit(pVm,&sSrc);
+	PH7_MemObjStore(apArg[0],&sSrc);
+	{
+		ph7_class *pAggCls = PH7_VmExtractClass(pVm,"IteratorAggregate",
+			sizeof("IteratorAggregate")-1,FALSE,0);
+		ph7_class_instance *pSrc = (ph7_class_instance *)sSrc.x.pOther;
+		if( pAggCls && PH7_VmInstanceOf(pSrc->pClass,pAggCls) ){
+			ph7_class_method *pGet = PH7_ClassExtractMethod(pSrc->pClass,"getIterator",
+				sizeof("getIterator")-1);
+			ph7_value sInner;
+			PH7_MemObjInit(pVm,&sInner);
+			rc = pGet ? PH7_VmCallClassMethod(pVm,pSrc,pGet,&sInner,0,0) : SXRET_OK;
+			if( rc != SXRET_OK ){
+				PH7_MemObjRelease(&sInner);
+				PH7_MemObjRelease(&sSrc);
+				PH7_ClassInstanceUnref(pWrap);
+				return rc;
+			}
+			PH7_MemObjStore(&sInner,&sSrc);
+			PH7_MemObjRelease(&sInner);
+		}
+	}
+	PH7_MemObjInitFromInt(pVm,&sCache,iCache);
+	apCtor[0] = &sSrc;
+	apCtor[1] = &sCache;
+	rc = PH7_VmCallClassMethod(pVm,pWrap,pCons,0,2,apCtor);
+	PH7_MemObjRelease(&sCache);
+	PH7_MemObjRelease(&sSrc);
+	if( rc != SXRET_OK ){
+		PH7_ClassInstanceUnref(pWrap);
+		return rc;
+	}
+	PH7_MemObjInit(pVm,&sWrap);
+	sWrap.x.pOther = pWrap;
+	MemObjSetType(&sWrap,MEMOBJ_OBJ);
+	pWrap->iRef++;                    /* the temporary owns one of its own */
+	PH7_MemObjInitFromInt(pVm,&sMode,iMode);
+	PH7_MemObjInitFromInt(pVm,&sFlags,iFlags);
+	apCtor[0] = &sWrap;
+	apCtor[1] = &sMode;
+	apCtor[2] = &sFlags;
+	rc = vm_builtin_RecursiveIteratorIterator_construct(pCtx,3,apCtor);
+	PH7_MemObjRelease(&sWrap);
+	PH7_MemObjRelease(&sMode);
+	PH7_MemObjRelease(&sFlags);
+	PH7_ClassInstanceUnref(pWrap);
+	return rc;
+}
+static int vm_builtin_RecursiveTreeIterator_getPrefix(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value sOut;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !RitReady(PH7_ContextThis(pCtx)) ){
+		return RitNotReady(pCtx);
+	}
+	PH7_MemObjInitFromString(pCtx->pVm,&sOut,0);
+	rc = RtiBuildPrefix(pCtx,&sOut);
+	if( rc == SXRET_OK ){
+		ph7_result_value(pCtx,&sOut);
+	}
+	PH7_MemObjRelease(&sOut);
+	return rc == SXRET_OK ? PH7_OK : rc;
+}
+static int vm_builtin_RecursiveTreeIterator_getEntry(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value sOut;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !RitReady(PH7_ContextThis(pCtx)) ){
+		return RitNotReady(pCtx);
+	}
+	PH7_MemObjInitFromString(pCtx->pVm,&sOut,0);
+	rc = RtiBuildEntry(pCtx,&sOut);
+	if( rc == SXRET_OK ){
+		ph7_result_value(pCtx,&sOut);
+	}
+	PH7_MemObjRelease(&sOut);
+	return rc == SXRET_OK ? PH7_OK : rc;
+}
+static int vm_builtin_RecursiveTreeIterator_getPostfix(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pSlot;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !RitReady(pThis) ){
+		return RitNotReady(pCtx);
+	}
+	pSlot = PH7_NativeAttr(pThis,RTI_PST);
+	if( pSlot ){
+		ph7_result_value(pCtx,pSlot);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_RecursiveTreeIterator_setPostfix(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	if( nArg < 1 || pThis == 0 ){
+		return PH7_OK;
+	}
+	DualSetSlot(pCtx->pVm,pThis,RTI_PST,apArg[0]);
+	return PH7_OK;
+}
+static int vm_builtin_RecursiveTreeIterator_setPrefixPart(ph7_context *pCtx,int nArg,
+	ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pSlot;
+	sxi64 iPart;
+	if( nArg < 2 || pThis == 0 ){
+		return PH7_OK;
+	}
+	iPart = ph7_value_to_int64(apArg[0]);
+	if( iPart < RTIT_PREFIX_LEFT || iPart > RTIT_PREFIX_RIGHT ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"RecursiveTreeIterator::setPrefixPart(): Argument #1 ($part) must be a "
+			"RecursiveTreeIterator::PREFIX_* constant");
+	}
+	pSlot = RtiPrefixSlot(pCtx->pVm,pThis);
+	if( pSlot ){
+		ph7_array_add_intkey_elem(pSlot,(int)iPart,apArg[1]);
+	}
+	return PH7_OK;
+}
+/* php's current()/key(): the traversal's own answer, wrapped unless its BYPASS
+ * flag is set. The wrapped form is always a STRING, prefix and postfix included. */
+static int RtiWrapped(ph7_context *pCtx,int bKey)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value sOut;
+	sxi32 rc;
+	if( !RitReady(pThis) ){
+		return RitNotReady(pCtx);
+	}
+	if( RitInt(pThis,RIT_FL) & (bKey ? RTIT_BYPASS_KEY : RTIT_BYPASS_CURRENT) ){
+		return bKey ? RitCurrentLevelCall(pCtx,"key",sizeof("key")-1)
+		            : RitCurrentLevelCall(pCtx,"current",sizeof("current")-1);
+	}
+	PH7_MemObjInitFromString(pVm,&sOut,0);
+	rc = RtiBuildPrefix(pCtx,&sOut);
+	if( rc == SXRET_OK ){
+		if( bKey ){
+			ph7_class_instance *pSub = RitSub(pVm,pThis,RitInt(pThis,RIT_LVL));
+			ph7_class_method *pMethod = pSub
+				? PH7_ClassExtractMethod(pSub->pClass,"key",sizeof("key")-1) : 0;
+			if( pMethod ){
+				ph7_value sKey;
+				PH7_MemObjInit(pVm,&sKey);
+				rc = PH7_VmCallClassMethod(pVm,pSub,pMethod,&sKey,0,0);
+				if( rc == SXRET_OK && (sKey.iFlags & MEMOBJ_NULL) == 0 ){
+					int nTxt;
+					const char *zTxt;
+					rc = PH7_MemObjToStringUV(&sKey);
+					zTxt = ph7_value_to_string(&sKey,&nTxt);
+					if( rc == SXRET_OK && nTxt > 0 ){
+						PH7_MemObjStringAppend(&sOut,zTxt,(sxu32)nTxt);
+					}
+				}
+				PH7_MemObjRelease(&sKey);
+			}
+		}else{
+			rc = RtiBuildEntry(pCtx,&sOut);
+		}
+	}
+	if( rc == SXRET_OK ){
+		RtiAppendPostfix(pVm,pThis,&sOut);
+		ph7_result_value(pCtx,&sOut);
+	}
+	PH7_MemObjRelease(&sOut);
+	return rc == SXRET_OK ? PH7_OK : rc;
+}
+static int vm_builtin_RecursiveTreeIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return RtiWrapped(pCtx,FALSE);
+}
+static int vm_builtin_RecursiveTreeIterator_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return RtiWrapped(pCtx,TRUE);
+}
+/*
  * The declaration. Method ORDER follows spl_iterators.stub.php line for line,
  * because that is the order Reflection reports. Every return type is php's
  * `@tentative-return-type` kind (rule 45).
@@ -5188,11 +5617,51 @@ static sxi32 VmInstallSplRecursiveIt(ph7_vm *pVm)
 	/* PH7_CLASS_NOCLONE: php refuses `clone` outright ("Trying to clone an
 	 * uncloneable object"), and a slot-by-slot copy would share one level stack --
 	 * and with it one cursor -- between two traversals. */
+	static const PH7_NativeConstDef aRtiConst[] = {
+		{ "BYPASS_CURRENT",        PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, RTIT_BYPASS_CURRENT, 0, 0.0 },
+		{ "BYPASS_KEY",            PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, RTIT_BYPASS_KEY, 0, 0.0 },
+		{ "PREFIX_LEFT",           PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, RTIT_PREFIX_LEFT, 0, 0.0 },
+		{ "PREFIX_MID_HAS_NEXT",   PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT,
+		  RTIT_PREFIX_MID_HAS_NEXT, 0, 0.0 },
+		{ "PREFIX_MID_LAST",       PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, RTIT_PREFIX_MID_LAST, 0, 0.0 },
+		{ "PREFIX_END_HAS_NEXT",   PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT,
+		  RTIT_PREFIX_END_HAS_NEXT, 0, 0.0 },
+		{ "PREFIX_END_LAST",       PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, RTIT_PREFIX_END_LAST, 0, 0.0 },
+		{ "PREFIX_RIGHT",          PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, RTIT_PREFIX_RIGHT, 0, 0.0 },
+	};
+	static const PH7_NativePropDef aRtiProp[] = {
+		{ RTI_PFX, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ RTI_PST, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+	};
+	static const PH7_NativeMethodDef aRtiMethod[] = {
+		{ "__construct",   PH7_MOD_PUBLIC,
+		  "~RecursiveIterator|IteratorAggregate $iterator, int $flags = 8, "
+		  "int $cachingIteratorFlags = 16, int $mode = 1", 0,
+		  vm_builtin_RecursiveTreeIterator_construct },
+		{ "key",           PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_RecursiveTreeIterator_key },
+		{ "current",       PH7_MOD_PUBLIC, "", "@mixed", vm_builtin_RecursiveTreeIterator_current },
+		{ "getPrefix",     PH7_MOD_PUBLIC, "", "@string",
+		  vm_builtin_RecursiveTreeIterator_getPrefix },
+		{ "setPostfix",    PH7_MOD_PUBLIC, "string $postfix", "@void",
+		  vm_builtin_RecursiveTreeIterator_setPostfix },
+		{ "setPrefixPart", PH7_MOD_PUBLIC, "int $part, string $value", "@void",
+		  vm_builtin_RecursiveTreeIterator_setPrefixPart },
+		{ "getEntry",      PH7_MOD_PUBLIC, "", "@string",
+		  vm_builtin_RecursiveTreeIterator_getEntry },
+		{ "getPostfix",    PH7_MOD_PUBLIC, "", "@string",
+		  vm_builtin_RecursiveTreeIterator_getPostfix },
+	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		{ "RecursiveIteratorIterator", 0, "OuterIterator", PH7_CLASS_NOCLONE,
 		  aRitMethod, SX_ARRAYSIZE(aRitMethod),
 		  aRitConst, SX_ARRAYSIZE(aRitConst),
 		  aRitProp, SX_ARRAYSIZE(aRitProp), 0, 0, 0 },
+		/* Its four inherited mode constants come with the parent; the eight below
+		 * are its own, and BYPASS_* share the flags word CATCH_GET_CHILD lives in. */
+		{ "RecursiveTreeIterator", "RecursiveIteratorIterator", 0, PH7_CLASS_NOCLONE,
+		  aRtiMethod, SX_ARRAYSIZE(aRtiMethod),
+		  aRtiConst, SX_ARRAYSIZE(aRtiConst),
+		  aRtiProp, SX_ARRAYSIZE(aRtiProp), 0, 0, 0 },
 	};
 	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 }
