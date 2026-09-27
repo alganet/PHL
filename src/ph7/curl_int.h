@@ -87,7 +87,35 @@ struct phl_curl_slist {
 	phl_curl_slist *pNext;
 };
 
+/*
+ * One FILE part of a multipart body, and the stream it reads from.
+ *
+ * php does not hand libcurl a path: it opens the CURLFile's name through the
+ * STREAM layer at setopt time and gives the mime part read/seek callbacks over
+ * that open stream. Three answers only that model produces, all measured
+ * against php 8.5.9: `php://temp` and `data://text/plain,hi` are legal upload
+ * sources, a file UNLINKED between setopt and exec still uploads (the handle is
+ * already open), and a file that cannot be opened is CURLE_ABORTED_BY_CALLBACK
+ * at exec rather than a refusal at setopt.
+ *
+ * The record outlives the setopt call and is owned by the handle, because
+ * libcurl reads it during the transfer. It is NOT freed through libcurl's own
+ * mime free callback: curl_easy_duphandle copies a callback part by copying the
+ * callback ARGUMENT, so a freeing duplicate would tear down the source's
+ * stream. The handle frees its own list instead, and a duplicate rebuilds the
+ * whole mime from the array php keeps for exactly that purpose.
+ */
 typedef struct phl_curl phl_curl;
+typedef struct phl_curl_part phl_curl_part;
+struct phl_curl_part {
+	const ph7_io_stream *pStream;  /* the device the handle was opened on */
+	void *pHandle;                 /* the open stream, or 0 when the open failed */
+	curl_off_t nSize;              /* what the part declares, taken at setopt time */
+	int bNoPath;                   /* the CURLFile named nothing at all */
+	phl_curl *pOwner;              /* for the diagnostics a read raises */
+	phl_curl_part *pNext;
+};
+
 struct phl_curl {
 	CURL *pEasy;                    /* the libcurl easy handle (never 0 while live) */
 	ph7_class_instance *pOwner;     /* the CurlHandle this record backs */
@@ -106,6 +134,19 @@ struct phl_curl {
 	int bXferIsProgress;            /* the older option's argument shape */
 	sxi32 iCbExc;                   /* a callback threw: parked until the verb unwinds */
 	int iWriteDest;                 /* where the body goes: one of PHL_CURL_DEST_* */
+	/*
+	 * The multipart body CURLOPT_POSTFIELDS built from an array: the mime
+	 * libcurl reads, the streams its file parts read from, and the ARRAY
+	 * itself -- which php keeps so that a copied handle can rebuild the whole
+	 * structure rather than share one that cannot be duplicated.
+	 */
+	curl_mime *pMime;
+	phl_curl_part *pParts;
+	ph7_value *pPostArray;
+	ph7_context *pExecCtx;          /* the running curl_exec, for a diagnostic an
+	                                 * upload read raises from inside libcurl */
+	int bNoPathRead;                /* an upload part with no source was read: the
+	                                 * refusal is raised once the library unwinds */
 	phl_curl *pNext;                /* per-VM registry chain */
 };
 

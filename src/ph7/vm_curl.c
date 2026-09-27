@@ -4,6 +4,7 @@
  */
 #ifdef PH7_ENABLE_CURL
 #include "curl_int.h"
+#include <errno.h>
 
 /*
  * Section:
@@ -55,6 +56,11 @@ PH7_PRIVATE void PH7_CurlGlobalInit(void)
  * record and its own libcurl handle -- never a second object over one CURL*.
  */
 static void CurlBlankSlot(ph7_class_instance *pOwner);
+static ph7_class_instance * CurlNewInstance(ph7_vm *pVm,const char *zName,int nName);
+static void CurlFreeMime(phl_curl *pCurl);
+static int CurlCbParked(phl_curl *pCurl);
+static void CurlCbPark(phl_curl *pCurl,sxi32 rc);
+static int CurlSetPostFieldsArray(ph7_context *pCtx,phl_curl *pCurl,ph7_value *pVal,sxi32 *pRc);
 static int CurlSetCallback(ph7_context *pCtx,phl_curl *pCurl,ph7_value **ppSlot,
 	ph7_value *pVal,const char *zFunc,const char *zOpt,sxi32 *pRc);
 
@@ -157,6 +163,7 @@ static void CurlFreeHandle(phl_curl *pCurl)
 	}
 	CurlFreeSlists(pCurl);
 	CurlDropCallbacks(pCurl);
+	CurlFreeMime(pCurl);
 }
 /*
  * Free every registered handle. Called from PH7_CurlVmReset (a reused VM --
@@ -341,6 +348,18 @@ static void CurlInstanceClone(ph7_vm *pVm,ph7_class_instance *pClone,ph7_class_i
 	CurlCopyCallable(pVm,&pNew->pXferCb,pFrom->pXferCb);
 	pNew->pNext = (phl_curl *)pVm->pCurlHandles;
 	pVm->pCurlHandles = pNew;
+	/*
+	 * A multipart body is REBUILT rather than copied, which is what php does
+	 * and the only thing that can be done: duphandle copies a callback part by
+	 * copying its argument, so the copy would read the source's open streams
+	 * and both would try to close them. Rebuilding re-opens every CURLFile,
+	 * which is visible -- a copy made after the file was unlinked fails where
+	 * the original still succeeds -- and that is php's answer too.
+	 */
+	if( pFrom->pPostArray ){
+		sxi32 rcThrow = PH7_OK;
+		CurlSetPostFieldsArray(0,pNew,pFrom->pPostArray,&rcThrow);
+	}
 	if( CurlAttach(pClone,pNew) != 0 ){
 		CurlBlankSlot(pClone);
 	}
@@ -1617,6 +1636,668 @@ static const struct CurlOptDef * CurlOptFind(sxi64 iOpt)
 	return 0;
 }
 
+/* ===== The multipart body ===== */
+
+/*
+ * CURLOPT_POSTFIELDS with an ARRAY is a multipart/form-data request, and php
+ * builds it out of libcurl's mime API rather than encoding anything itself --
+ * which is why the boundary is the LIBRARY's and no test may pin it.
+ *
+ * php's walk is one level deep and no more. Each entry becomes a part named by
+ * its KEY (an integer key spelled in decimal), and a value that is itself an
+ * array is walked once more with the OUTER key repeated -- so
+ * `['a' => ['x','y']]` is two parts both named "a". A third level has no rule
+ * of its own: the value is stringified, which is php's "Array to string
+ * conversion" warning and the five letters "Array".
+ *
+ * A part's NAME reaches libcurl as a C string and stops at a NUL; its CONTENT
+ * does not, because the data calls carry a length. Both are php's answers.
+ */
+static void CurlFreeParts(phl_curl *pCurl)
+{
+	phl_curl_part *pPart = pCurl->pParts;
+	while( pPart ){
+		phl_curl_part *pNext = pPart->pNext;
+		if( pPart->pHandle && pPart->pStream ){
+			PH7_StreamCloseHandle(pPart->pStream,pPart->pHandle);
+		}
+		SyMemBackendFree(&pCurl->pVm->sAllocator,pPart);
+		pPart = pNext;
+	}
+	pCurl->pParts = 0;
+}
+/*
+ * Drop the multipart body a handle carries: the mime first (libcurl reads the
+ * parts through it), then the streams those parts were reading, then the array
+ * kept for a rebuild.
+ */
+static void CurlFreeMime(phl_curl *pCurl)
+{
+	if( pCurl->pMime ){
+		curl_mime_free(pCurl->pMime);
+		pCurl->pMime = 0;
+	}
+	CurlFreeParts(pCurl);
+	if( pCurl->pPostArray ){
+		ph7_release_value(pCurl->pVm,pCurl->pPostArray);
+		pCurl->pPostArray = 0;
+	}
+}
+/*
+ * The read side of a file part. A part whose stream never opened answers
+ * CURL_READFUNC_ABORT, which is php's answer for a missing or unreadable
+ * upload: curl_exec fails with CURLE_ABORTED_BY_CALLBACK and says nothing
+ * else. A read that FAILS mid-file is php's E_NOTICE naming the size and the
+ * errno -- the same sentence hash_file() prints, because it is the same stream
+ * layer underneath -- and then the same abort.
+ */
+static size_t CurlPartRead(char *zBuf,size_t nSize,size_t nMemb,void *pArg)
+{
+	phl_curl_part *pPart = (phl_curl_part *)pArg;
+	phl_curl *pCurl = pPart->pOwner;
+	ph7_int64 nWant = (ph7_int64)(nSize * nMemb);
+	ph7_int64 n;
+	if( pPart->pHandle == 0 || pPart->pStream == 0 || pPart->pStream->xRead == 0 ){
+		if( pPart->bNoPath && pCurl ){
+			/* php opens the source again when it reads, so a CURLFile naming
+			 * nothing refuses TWICE: once from the setter, and once from here.
+			 * Noted only -- the refusal itself is raised by curl_exec, after
+			 * the library has unwound, so that it carries curl_exec's frame. */
+			pCurl->bNoPathRead = 1;
+		}
+		return CURL_READFUNC_ABORT;
+	}
+	if( nWant < 1 ){
+		return 0;
+	}
+	/* php reads its streams in 8 KB pieces whatever libcurl asked for, and the
+	 * size it names in the failure notice below is that piece. */
+	if( nWant > 8192 ){
+		nWant = 8192;
+	}
+	n = pPart->pStream->xRead(pPart->pHandle,zBuf,nWant);
+	if( n < 0 ){
+		/* php's own sentence for a read that fails rather than ends -- the one
+		 * that tells a directory apart from an empty file. */
+		if( pCurl && pCurl->pExecCtx ){
+			ph7_context_throw_error_format(pCurl->pExecCtx,PH7_CTX_NOTICE,
+				"Read of %d bytes failed with errno=%d %s",
+				(int)nWant,errno,VfsStrerror(errno));
+		}
+		return CURL_READFUNC_ABORT;
+	}
+	return (size_t)n;
+}
+static int CurlPartSeek(void *pArg,curl_off_t iOfft,int iOrigin)
+{
+	phl_curl_part *pPart = (phl_curl_part *)pArg;
+	int whence;
+	if( pPart->pHandle == 0 || pPart->pStream == 0 || pPart->pStream->xSeek == 0 ){
+		return CURL_SEEKFUNC_CANTSEEK;
+	}
+	/* The stream layer's own whence spelling: 0 SET, 1 CUR, 2 END. */
+	whence = iOrigin == SEEK_END ? 2 : (iOrigin == SEEK_CUR ? 1 : 0);
+	return pPart->pStream->xSeek(pPart->pHandle,(ph7_int64)iOfft,whence) == PH7_OK
+		? CURL_SEEKFUNC_OK : CURL_SEEKFUNC_CANTSEEK;
+}
+/*
+ * The size of an open stream, php's way: the `size` field of its own stat.
+ * Answers -1 when the device has no stat at all (a wrapper that only reads),
+ * which libcurl reads as "length unknown" and sends chunked.
+ */
+static curl_off_t CurlStreamSize(ph7_vm *pVm,const ph7_io_stream *pStream,void *pHandle)
+{
+	ph7_value *pArray,*pWorker,*pSize;
+	curl_off_t nOut = -1;
+	if( pStream == 0 || pStream->xStat == 0 ){
+		return -1;
+	}
+	pArray = ph7_new_array(pVm);
+	pWorker = ph7_new_scalar(pVm);
+	if( pArray == 0 || pWorker == 0 ){
+		if( pArray ){ ph7_release_value(pVm,pArray); }
+		if( pWorker ){ ph7_release_value(pVm,pWorker); }
+		return -1;
+	}
+	if( pStream->xStat(pHandle,pArray,pWorker) == PH7_OK ){
+		pSize = ph7_array_fetch(pArray,"size",sizeof("size")-1);
+		if( pSize ){
+			ph7_int64 n = ph7_value_to_int64(pSize);
+			if( n >= 0 ){
+				nOut = (curl_off_t)n;
+			}
+		}
+	}
+	ph7_release_value(pVm,pArray);
+	ph7_release_value(pVm,pWorker);
+	return nOut;
+}
+/*
+ * Open one CURLFile's name and hand libcurl a part that reads it.
+ *
+ * The open happens HERE, at setopt time, which is php's timing and is visible
+ * from a script: a file unlinked between setopt and exec still uploads, and one
+ * TRUNCATED between them sends the size it had (libcurl was told the length up
+ * front, so the transfer then stalls -- php's answer too).
+ */
+static phl_curl_part * CurlPartOpen(phl_curl *pCurl,const char *zPath,int nPath)
+{
+	ph7_vm *pVm = pCurl->pVm;
+	phl_curl_part *pPart;
+	const ph7_io_stream *pStream;
+	pPart = (phl_curl_part *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_curl_part));
+	if( pPart == 0 ){
+		return 0;
+	}
+	SyZero(pPart,sizeof(phl_curl_part));
+	pPart->nSize = -1;
+	pPart->pOwner = pCurl;
+	pPart->bNoPath = nPath < 0;
+	/* nPath < 0 is the caller saying "there is nothing to open": the part
+	 * exists so that the transfer aborts, which is what a refused upload does
+	 * in php too. */
+	pStream = nPath < 0 ? 0 : PH7_VmGetStreamDevice(pVm,&zPath,nPath);
+	if( pStream && pStream->xOpen && pStream->xRead ){
+		pPart->pStream = pStream;
+		/* Silent on failure: php reports a missing upload at exec, through the
+		 * abort the read callback answers, and never at the setter. */
+		pPart->pHandle = PH7_StreamOpenHandle(pVm,pStream,zPath,PH7_IO_OPEN_RDONLY,
+			FALSE,0,FALSE,0,0);
+	}
+	if( pPart->pHandle ){
+		/*
+		 * The declared LENGTH, which is what keeps the request
+		 * Content-Length'd rather than chunked, and php reads it from the
+		 * STAT of the open handle -- not by seeking to the end, which is a
+		 * different number for a directory: lseek(SEEK_END) on one answers the
+		 * filesystem's maximum offset (INT64_MAX on tmpfs) where fstat answers
+		 * its real size. Handing libcurl the first of those makes an upload
+		 * that php refuses succeed with an empty body.
+		 */
+		pPart->nSize = CurlStreamSize(pVm,pStream,pPart->pHandle);
+		if( pPart->nSize < 0 && pStream->xSeek && pStream->xTell ){
+			/* A wrapper with no stat of its own -- php://temp, data:// --
+			 * still knows where its end is, and php declares a length for
+			 * those too. Only a device that can do neither goes out chunked. */
+			if( pStream->xSeek(pPart->pHandle,0,2/*SEEK_END*/) == PH7_OK ){
+				ph7_int64 nEnd = pStream->xTell(pPart->pHandle);
+				if( pStream->xSeek(pPart->pHandle,0,0/*SEEK_SET*/) == PH7_OK && nEnd >= 0 ){
+					pPart->nSize = (curl_off_t)nEnd;
+				}
+			}
+		}
+	}
+	pPart->pNext = pCurl->pParts;
+	pCurl->pParts = pPart;
+	return pPart;
+}
+
+/* ===== CURLFile and CURLStringFile ===== */
+
+/*
+ * The two upload boxes, and the only classes in this extension a script may
+ * construct. Neither is FINAL and neither declares a private constructor, so a
+ * subclass is ordinary php -- and CURLFile is the one class here that is not
+ * serializable while CURLStringFile IS, which is php's split and not a rule:
+ * the file box names something on disk that another process may not have,
+ * the string box carries its own bytes.
+ *
+ * Their properties are ORDINARY public typed slots, readable and writable from
+ * php, and the getters/setters are the php-4-era spelling of the same three.
+ * That is why nothing here is hidden and nothing is validated after `new`: the
+ * mime builder reads whatever the slots hold at the moment setopt is called.
+ */
+#define CURLFILE_NAME     "name"
+#define CURLFILE_MIME     "mime"
+#define CURLFILE_POSTNAME "postname"
+#define CURLSTR_DATA      "data"
+
+/*
+ * php screens the FILENAME for a NUL byte and nothing else -- not the mime
+ * type, not the posted name, both of which reach libcurl through an API that
+ * takes a C string and will simply stop at the byte. Measured, not assumed.
+ */
+static int CurlFileFill(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,
+	ph7_value **apArg,const char *zWho)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	const char *zName;
+	int nName = 0;
+	if( pThis == 0 || nArg < 1 ){
+		return PH7_OK;
+	}
+	zName = ph7_value_to_string(apArg[0],&nName);
+	if( SyByteFind(zName,(sxu32)nName,0,0) == SXRET_OK ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s: Argument #1 ($filename) must not contain any null bytes",zWho);
+	}
+	PH7_NativeSetAttrStr(pVm,pThis,CURLFILE_NAME,zName,nName);
+	if( nArg > 1 && !ph7_value_is_null(apArg[1]) ){
+		int nMime = 0;
+		const char *zMime = ph7_value_to_string(apArg[1],&nMime);
+		PH7_NativeSetAttrStr(pVm,pThis,CURLFILE_MIME,zMime,nMime);
+	}
+	if( nArg > 2 && !ph7_value_is_null(apArg[2]) ){
+		int nPost = 0;
+		const char *zPost = ph7_value_to_string(apArg[2],&nPost);
+		PH7_NativeSetAttrStr(pVm,pThis,CURLFILE_POSTNAME,zPost,nPost);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_CURLFile_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	/* php names the DECLARING class in the refusal, so a subclass of CURLFile
+	 * still reports `CURLFile::__construct()`. */
+	return CurlFileFill(pCtx,PH7_ContextThis(pCtx),nArg,apArg,"CURLFile::__construct()");
+}
+/* The three getters, each a slot read; php's return types are TENTATIVE. */
+static int CurlFileGet(ph7_context *pCtx,const char *zProp)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pVal = pThis ? PH7_NativeAttr(pThis,zProp) : 0;
+	if( pVal ){
+		ph7_result_value(pCtx,pVal);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_CURLFile_getFilename(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return CurlFileGet(pCtx,CURLFILE_NAME);
+}
+static int vm_builtin_CURLFile_getMimeType(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return CurlFileGet(pCtx,CURLFILE_MIME);
+}
+static int vm_builtin_CURLFile_getPostFilename(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg); SXUNUSED(apArg);
+	return CurlFileGet(pCtx,CURLFILE_POSTNAME);
+}
+static int CurlFileSet(ph7_context *pCtx,int nArg,ph7_value **apArg,const char *zProp)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	if( pThis && nArg > 0 ){
+		int nVal = 0;
+		const char *zVal = ph7_value_to_string(apArg[0],&nVal);
+		PH7_NativeSetAttrStr(pCtx->pVm,pThis,zProp,zVal,nVal);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_CURLFile_setMimeType(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return CurlFileSet(pCtx,nArg,apArg,CURLFILE_MIME);
+}
+static int vm_builtin_CURLFile_setPostFilename(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return CurlFileSet(pCtx,nArg,apArg,CURLFILE_POSTNAME);
+}
+static int vm_builtin_CURLStringFile_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_vm *pVm = pCtx->pVm;
+	int n = 0;
+	const char *z;
+	if( pThis == 0 || nArg < 2 ){
+		return PH7_OK;
+	}
+	/* No NUL screen anywhere here: the DATA is length-carrying by definition
+	 * and php screens neither of the other two. */
+	z = ph7_value_to_string(apArg[0],&n);
+	PH7_NativeSetAttrStr(pVm,pThis,CURLSTR_DATA,z,n);
+	z = ph7_value_to_string(apArg[1],&n);
+	PH7_NativeSetAttrStr(pVm,pThis,CURLFILE_POSTNAME,z,n);
+	/* The third slot is always written, default included: php's signature
+	 * fills it, and a CURLStringFile whose `mime` stayed UNINITIALIZED reads
+	 * back as an error rather than as php's octet-stream. */
+	if( nArg > 2 ){
+		z = ph7_value_to_string(apArg[2],&n);
+	}else{
+		z = "application/octet-stream";
+		n = (int)sizeof("application/octet-stream") - 1;
+	}
+	PH7_NativeSetAttrStr(pVm,pThis,CURLFILE_MIME,z,n);
+	return PH7_OK;
+}
+/* CURLFile curl_file_create(string $filename, ?string $mime_type = null, ?string $posted_filename = null) */
+static int vm_builtin_curl_file_create(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = CurlNewInstance(pCtx->pVm,"CURLFile",sizeof("CURLFile")-1);
+	int rc;
+	if( pThis == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	/* The same three writes the constructor makes, and the same refusal --
+	 * named for THIS function, which is how php words it here. */
+	rc = CurlFileFill(pCtx,pThis,nArg,apArg,"curl_file_create()");
+	if( rc != PH7_OK ){
+		PH7_ClassInstanceUnref(pThis);
+		return rc;
+	}
+	PH7_NativeResultObject(pCtx,pThis);
+	return PH7_OK;
+}
+
+/* ===== The multipart walk ===== */
+
+struct CurlMimeBuild {
+	ph7_context *pCtx;
+	phl_curl *pCurl;
+	curl_mime *pMime;
+	ph7_class *pFileClass;    /* CURLFile, or 0 if it somehow is not mounted */
+	ph7_class *pStrFileClass; /* CURLStringFile */
+	const char *zName;        /* the OUTER key, while a nested array is walked */
+	int bNested;              /* inside the one level of nesting php allows */
+	int bFailed;
+	sxi32 rcThrow;            /* the first throw a cast raised, or PH7_OK */
+};
+/*
+ * libcurl's mime API takes C STRINGS, and a php string is a pointer and a
+ * length that need not be terminated -- a native slot read hands back the
+ * bytes of a blob whose tail is whatever the last value left there. So every
+ * name, filename and type handed to the library is copied through here first.
+ * (Skipping it is not a subtle bug: the second CURLFile in a script uploads
+ * under the first one's filename.)
+ */
+static char * CurlCStr(ph7_vm *pVm,const char *z,int n)
+{
+	char *zOut;
+	if( n < 0 ){
+		n = 0;
+	}
+	zOut = (char *)SyMemBackendAlloc(&pVm->sAllocator,(sxu32)n + 1);
+	if( zOut == 0 ){
+		return 0;
+	}
+	if( n > 0 ){
+		SyMemcpy(z,zOut,(sxu32)n);
+	}
+	zOut[n] = 0;
+	return zOut;
+}
+static void CurlCStrFree(ph7_vm *pVm,char *z)
+{
+	if( z ){
+		SyMemBackendFree(&pVm->sAllocator,z);
+	}
+}
+/* A slot of one of the upload boxes, as a C string the caller frees. */
+static char * CurlAttrCStr(ph7_vm *pVm,ph7_class_instance *pObj,const char *zProp,int *pnOut)
+{
+	const char *z = 0;
+	int n = 0;
+	PH7_NativeAttrStr(pObj,zProp,&z,&n);
+	if( pnOut ){
+		*pnOut = n;
+	}
+	return CurlCStr(pVm,z,n);
+}
+/* The key of a part, in php's spelling: a string key as written, an integer
+ * key in decimal. */
+static char * CurlMimeKey(ph7_vm *pVm,ph7_value *pKey)
+{
+	char zBuf[32];
+	int nKey = 0;
+	const char *zKey;
+	if( ph7_value_is_string(pKey) ){
+		zKey = ph7_value_to_string(pKey,&nKey);
+		return CurlCStr(pVm,zKey,nKey);
+	}
+	nKey = (int)SyBufferFormat(zBuf,sizeof(zBuf),"%qd",ph7_value_to_int64(pKey));
+	return CurlCStr(pVm,zBuf,nKey);
+}
+/* One ordinary field: the value stringified, the name as given. */
+static void CurlMimeSimple(struct CurlMimeBuild *pB,const char *zName,ph7_value *pVal)
+{
+	curl_mimepart *pPart;
+	const char *zVal = "";
+	int nVal = 0;
+	sxi32 rcSv;
+	rcSv = PH7_ValueToStringUV(pB->pCtx,pVal,&zVal,&nVal);
+	if( rcSv != SXRET_OK ){
+		/* php's cast throws and still answers "" -- and its loop keeps
+		 * walking, so the part is added empty and the entries after it are
+		 * added too. */
+		if( pB->rcThrow == PH7_OK ){
+			pB->rcThrow = rcSv;
+		}
+		zVal = "";
+		nVal = 0;
+	}
+	pPart = curl_mime_addpart(pB->pMime);
+	if( pPart == 0 ){
+		pB->bFailed = 1;
+		return;
+	}
+	/* curl_mime_name takes a C string, so a NUL in the key truncates it --
+	 * php's answer, because php calls the same function. */
+	if( curl_mime_name(pPart,zName) != CURLE_OK
+	 || curl_mime_data(pPart,zVal,(size_t)nVal) != CURLE_OK ){
+		pB->bFailed = 1;
+	}
+}
+/* A CURLFile: the stream part, plus php's two optional overrides. */
+static void CurlMimeFile(struct CurlMimeBuild *pB,const char *zName,ph7_class_instance *pObj)
+{
+	ph7_vm *pVm = pB->pCurl->pVm;
+	curl_mimepart *pPart;
+	phl_curl_part *pSrc;
+	char *zPath,*zMime,*zPost;
+	int nPath = 0,nMime = 0,nPost = 0;
+	zPath = CurlAttrCStr(pVm,pObj,CURLFILE_NAME,&nPath);
+	zMime = CurlAttrCStr(pVm,pObj,CURLFILE_MIME,&nMime);
+	zPost = CurlAttrCStr(pVm,pObj,CURLFILE_POSTNAME,&nPost);
+	if( zPath == 0 || zMime == 0 || zPost == 0 ){
+		pB->bFailed = 1;
+		goto done;
+	}
+	if( nPath < 1 ){
+		/* php's stream layer refuses an empty path with this ValueError, and
+		 * the refusal reaches the script from the SETTER. PHL's own open
+		 * answers a warning and false instead, so the sentence is spelled
+		 * here rather than left to differ. The part is still added, with
+		 * nothing to read: a caught refusal must not leave a handle that then
+		 * POSTs an empty body as though the upload had worked. */
+		if( pB->rcThrow == PH7_OK ){
+			pB->rcThrow = PH7_VmThrowException(pB->pCtx,"ValueError",
+				"Path must not be empty");
+		}
+	}
+	pSrc = CurlPartOpen(pB->pCurl,zPath,nPath > 0 ? nPath : -1);
+	if( pSrc == 0 ){
+		pB->bFailed = 1;
+		goto done;
+	}
+	pPart = curl_mime_addpart(pB->pMime);
+	if( pPart == 0 ){
+		pB->bFailed = 1;
+		goto done;
+	}
+	/*
+	 * No FREE callback: curl_easy_duphandle copies a callback part by copying
+	 * its argument, so a duplicate that freed on teardown would tear down the
+	 * SOURCE's stream. The handle owns the record and frees it itself.
+	 *
+	 * The TYPE is always stated, php's default included: libcurl guesses one
+	 * for a part it opened itself and states nothing for a callback part, so
+	 * leaving it out drops the `Content-Type: application/octet-stream` line
+	 * php sends for a CURLFile with no mime type of its own.
+	 */
+	if( curl_mime_name(pPart,zName) != CURLE_OK
+	 || curl_mime_data_cb(pPart,pSrc->nSize,CurlPartRead,CurlPartSeek,0,pSrc) != CURLE_OK
+	 || curl_mime_filename(pPart,nPost > 0 ? zPost : zPath) != CURLE_OK
+	 || curl_mime_type(pPart,nMime > 0 ? zMime : "application/octet-stream") != CURLE_OK ){
+		pB->bFailed = 1;
+	}
+done:
+	CurlCStrFree(pVm,zPath);
+	CurlCStrFree(pVm,zMime);
+	CurlCStrFree(pVm,zPost);
+}
+/* A CURLStringFile: the same part shape with the bytes in hand. */
+static void CurlMimeStringFile(struct CurlMimeBuild *pB,const char *zName,ph7_class_instance *pObj)
+{
+	ph7_vm *pVm = pB->pCurl->pVm;
+	curl_mimepart *pPart;
+	const char *zData = 0;
+	char *zMime,*zPost;
+	int nData = 0,nMime = 0,nPost = 0;
+	/* The DATA is the one string that is not a C string: curl_mime_data takes
+	 * a length, so a NUL inside it survives -- php's answer. */
+	PH7_NativeAttrStr(pObj,CURLSTR_DATA,&zData,&nData);
+	zMime = CurlAttrCStr(pVm,pObj,CURLFILE_MIME,&nMime);
+	zPost = CurlAttrCStr(pVm,pObj,CURLFILE_POSTNAME,&nPost);
+	if( zMime == 0 || zPost == 0 ){
+		pB->bFailed = 1;
+		goto done;
+	}
+	pPart = curl_mime_addpart(pB->pMime);
+	if( pPart == 0 ){
+		pB->bFailed = 1;
+		goto done;
+	}
+	if( curl_mime_name(pPart,zName) != CURLE_OK
+	 || curl_mime_data(pPart,nData > 0 ? zData : "",(size_t)(nData > 0 ? nData : 0)) != CURLE_OK
+	 || curl_mime_filename(pPart,zPost) != CURLE_OK
+	 || curl_mime_type(pPart,nMime > 0 ? zMime : "application/octet-stream") != CURLE_OK ){
+		pB->bFailed = 1;
+	}
+done:
+	CurlCStrFree(pVm,zMime);
+	CurlCStrFree(pVm,zPost);
+}
+static int CurlMimeWalk(ph7_value *pKey,ph7_value *pVal,void *pUser)
+{
+	struct CurlMimeBuild *pB = (struct CurlMimeBuild *)pUser;
+	ph7_vm *pVm = pB->pCurl->pVm;
+	char *zOwn = 0;
+	const char *zName;
+	if( pB->bFailed ){
+		return PH7_ABORT;
+	}
+	if( pB->bNested ){
+		/* Inside a nested array the OUTER key names every part, and the key
+		 * here is thrown away -- php's rule, and the reason two values under
+		 * one key answer two parts of the same name. */
+		zName = pB->zName;
+	}else{
+		zOwn = CurlMimeKey(pVm,pKey);
+		if( zOwn == 0 ){
+			pB->bFailed = 1;
+			return PH7_ABORT;
+		}
+		zName = zOwn;
+		if( ph7_value_is_array(pVal) ){
+			/* One level, and one only: a third would recurse, and php's does
+			 * not -- it stringifies, warning and all. */
+			pB->zName = zOwn;
+			pB->bNested = 1;
+			ph7_array_walk(pVal,CurlMimeWalk,pB);
+			pB->bNested = 0;
+			pB->zName = 0;
+			CurlCStrFree(pVm,zOwn);
+			return pB->bFailed ? PH7_ABORT : PH7_OK;
+		}
+	}
+	if( ph7_value_is_object(pVal) ){
+		ph7_class_instance *pObj = (ph7_class_instance *)pVal->x.pOther;
+		if( pObj && pB->pFileClass && PH7_VmInstanceOf(pObj->pClass,pB->pFileClass) ){
+			CurlMimeFile(pB,zName,pObj);
+			goto done;
+		}
+		if( pObj && pB->pStrFileClass && PH7_VmInstanceOf(pObj->pClass,pB->pStrFileClass) ){
+			CurlMimeStringFile(pB,zName,pObj);
+			goto done;
+		}
+	}
+	CurlMimeSimple(pB,zName,pVal);
+done:
+	CurlCStrFree(pVm,zOwn);
+	return pB->bFailed ? PH7_ABORT : PH7_OK;
+}
+/*
+ * CURLOPT_POSTFIELDS with an array. An EMPTY one is not a multipart body at
+ * all: php sets the ordinary empty string, so the request is a POST with a
+ * zero-length urlencoded body and no boundary anywhere.
+ */
+static int CurlSetPostFieldsArray(ph7_context *pCtx,phl_curl *pCurl,ph7_value *pVal,sxi32 *pRc)
+{
+	/* pCtx is 0 on the CLONE path, which has no calling context of its own:
+	 * every value in the array cast cleanly when the option was first set, so
+	 * there is nothing left to report. */
+	ph7_vm *pVm = pCurl->pVm;
+	struct CurlMimeBuild sB;
+	curl_mime *pMime;
+	if( ph7_array_count(pVal) < 1 ){
+		CurlFreeMime(pCurl);
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_POSTFIELDSIZE,(long)0);
+		return curl_easy_setopt(pCurl->pEasy,CURLOPT_COPYPOSTFIELDS,"") == CURLE_OK ? 1 : 0;
+	}
+	pMime = curl_mime_init(pCurl->pEasy);
+	if( pMime == 0 ){
+		return 0;
+	}
+	SyZero(&sB,sizeof(sB));
+	sB.pCtx = pCtx;
+	sB.pCurl = pCurl;
+	sB.pMime = pMime;
+	sB.rcThrow = PH7_OK;
+	sB.pFileClass = PH7_VmExtractClass(pVm,"CURLFile",sizeof("CURLFile")-1,FALSE,0);
+	sB.pStrFileClass = PH7_VmExtractClass(pVm,"CURLStringFile",sizeof("CURLStringFile")-1,FALSE,0);
+	/* The parts of the PREVIOUS body must not be freed while libcurl still
+	 * points at them, so the old mime is dropped only after the new one is
+	 * installed -- and the new parts are chained on the handle as they open,
+	 * which is why the old list is taken aside first. */
+	{
+		phl_curl_part *pOldParts = pCurl->pParts;
+		curl_mime *pOldMime = pCurl->pMime;
+		phl_curl_part *pNewParts;
+		pCurl->pParts = 0;
+		ph7_array_walk(pVal,CurlMimeWalk,&sB);
+		pNewParts = pCurl->pParts;    /* whatever the walk opened */
+		pCurl->pParts = pOldParts;
+		if( sB.bFailed || curl_easy_setopt(pCurl->pEasy,CURLOPT_MIMEPOST,pMime) != CURLE_OK ){
+			/* Nothing was installed, so the handle keeps the body it had and
+			 * only the half-built one is torn down. */
+			curl_mime_free(pMime);
+			pCurl->pParts = pNewParts;
+			CurlFreeParts(pCurl);
+			pCurl->pParts = pOldParts;
+			if( sB.rcThrow != PH7_OK ){
+				*pRc = sB.rcThrow;
+				return -1;
+			}
+			return 0;
+		}
+		/* Installed: libcurl no longer points at the old body, so it goes. */
+		if( pOldMime ){
+			curl_mime_free(pOldMime);
+		}
+		CurlFreeParts(pCurl);
+		pCurl->pParts = pNewParts;
+		pCurl->pMime = pMime;
+	}
+	/* php keeps the ARRAY: a copied handle rebuilds the whole structure from
+	 * it, because a mime whose parts read through callbacks cannot be shared
+	 * between two handles. */
+	if( pCurl->pPostArray ){
+		ph7_release_value(pVm,pCurl->pPostArray);
+	}
+	pCurl->pPostArray = ph7_new_scalar(pVm);
+	if( pCurl->pPostArray ){
+		PH7_MemObjStore(pVal,pCurl->pPostArray);
+	}
+	if( sB.rcThrow != PH7_OK ){
+		*pRc = sB.rcThrow;
+		return -1;
+	}
+	return 1;
+}
+
 /* ===== The handle verbs ===== */
 
 /*
@@ -1713,6 +2394,7 @@ static int vm_builtin_curl_reset(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		curl_easy_setopt(pCurl->pEasy,CURLOPT_ERRORBUFFER,pCurl->zErrBuf);
 		CurlDropCallbacks(pCurl);
 		CurlFreeSlists(pCurl);
+		CurlFreeMime(pCurl);
 		pCurl->iWriteDest = PHL_CURL_DEST_STDOUT;
 		pCurl->bXferIsProgress = 0;
 	}
@@ -2030,11 +2712,14 @@ static int CurlSetOne(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *pV
 		                                            : PHL_CURL_DEST_STDOUT;
 		return 1;
 	case CURL_OPT_POSTFIELDS:
-		if( !ph7_value_is_array(pVal) ){
-			return CurlSetPostFields(pCtx,pCurl,pVal,pRc);
+		if( ph7_value_is_array(pVal) ){
+			return CurlSetPostFieldsArray(pCtx,pCurl,pVal,pRc);
 		}
-		/* The ARRAY form is a multipart body and a slice of its own. */
-		break;
+		/* A body set the plain way replaces a multipart one -- libcurl decides
+		 * that by itself (the last of the two options set wins), but the mime
+		 * this handle OWNS would otherwise outlive its last reader. */
+		CurlFreeMime(pCurl);
+		return CurlSetPostFields(pCtx,pCurl,pVal,pRc);
 	case CURL_OPT_IGNORE:
 		return 1;
 	default:
@@ -2663,6 +3348,10 @@ static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	sSink.pCtx = pCtx;
 	sSink.pBody = pCurl->iWriteDest == PHL_CURL_DEST_RETURN ? &sBody : 0;
 	pCurl->iCbExc = 0;
+	pCurl->bNoPathRead = 0;
+	/* An upload part reads from inside libcurl and may have a diagnostic to
+	 * raise; this is the context it belongs to. */
+	pCurl->pExecCtx = pCtx;
 	if( pCurl->iWriteDest == PHL_CURL_DEST_USER && pCurl->pWriteCb ){
 		/* A php WRITEFUNCTION replaces the destination entirely: neither the
 		 * buffer nor the output gets the body. */
@@ -2681,6 +3370,7 @@ static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		curl_easy_setopt(pCurl->pEasy,CURLOPT_XFERINFODATA,(void *)pCurl);
 	}
 	rc = curl_easy_perform(pCurl->pEasy);
+	pCurl->pExecCtx = 0;
 	/* The sink is a stack address: libcurl must not keep it past this call. */
 	curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEFUNCTION,(curl_write_callback)0);
 	curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEDATA,(void *)0);
@@ -2701,6 +3391,16 @@ static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		SyBlobRelease(&sBody);
 		ph7_result_bool(pCtx,0);
 		return rcExc;
+	}
+	if( pCurl->bNoPathRead ){
+		/* An upload part with no source of its own: php refuses at the read as
+		 * well as at the setter, and this is where the second refusal lands. */
+		pCurl->bNoPathRead = 0;
+		pCurl->iLastErr = 0;
+		pCurl->zErrBuf[0] = 0;
+		SyBlobRelease(&sBody);
+		ph7_result_bool(pCtx,0);
+		return PH7_VmThrowException(pCtx,"ValueError","Path must not be empty");
 	}
 	pCurl->iLastErr = (int)rc;
 	if( rc != CURLE_OK ){
@@ -2835,7 +3535,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)
 		{ "curl_escape",         vm_builtin_curl_escape         },
 		{ "curl_unescape",       vm_builtin_curl_unescape       },
 		{ "curl_upkeep",         vm_builtin_curl_upkeep         },
-		{ "curl_pause",          vm_builtin_curl_pause          }
+		{ "curl_pause",          vm_builtin_curl_pause          },
+		{ "curl_file_create",    vm_builtin_curl_file_create    }
 	};
 	/*
 	 * The libcurl handle, and nothing else: php's CurlHandle declares no
@@ -2855,12 +3556,57 @@ PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)
 	 * for it, which is php's answer too, because the refusal lives in the
 	 * creation step rather than in a private constructor.
 	 */
-	static const PH7_NativeClassSpec sSpec = {
-		"CurlHandle", 0, 0,
-		PH7_CLASS_FINAL|PH7_CLASS_NOINSTANTIATE|PH7_CLASS_NOSERIALIZE,
-		0, 0, 0, 0,
-		aProp, SX_ARRAYSIZE(aProp),
-		CurlInstanceRelease, 0, 0
+	/*
+	 * The two upload boxes. php's CURLFile gives its three slots an empty
+	 * default and CURLStringFile gives its three none at all -- so an unset
+	 * CURLStringFile property is UNINITIALIZED where a CURLFile one reads back
+	 * "". Neither class is final, and only the file box refuses serialization,
+	 * which is php's own asymmetry: the string box carries its bytes with it
+	 * and the file box names something another process may not have.
+	 *
+	 * The getters carry TENTATIVE return types (php's `@tentative-return-type`,
+	 * the leading `@` here), so getReturnType() answers null for them exactly
+	 * as it does under php.
+	 */
+	static const PH7_NativePropDef aFileProp[] = {
+		{ CURLFILE_NAME,     PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, "string" },
+		{ CURLFILE_MIME,     PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, "string" },
+		{ CURLFILE_POSTNAME, PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, "string" }
+	};
+	static const PH7_NativeMethodDef aFileMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC,
+		  "string $filename, ?string $mime_type = null, ?string $posted_filename = null", 0,
+		  vm_builtin_CURLFile_construct },
+		{ "getFilename",     PH7_MOD_PUBLIC, "", "@string", vm_builtin_CURLFile_getFilename },
+		{ "getMimeType",     PH7_MOD_PUBLIC, "", "@string", vm_builtin_CURLFile_getMimeType },
+		{ "getPostFilename", PH7_MOD_PUBLIC, "", "@string", vm_builtin_CURLFile_getPostFilename },
+		{ "setMimeType",     PH7_MOD_PUBLIC, "string $mime_type", "@void",
+		  vm_builtin_CURLFile_setMimeType },
+		{ "setPostFilename", PH7_MOD_PUBLIC, "string $posted_filename", "@void",
+		  vm_builtin_CURLFile_setPostFilename }
+	};
+	static const PH7_NativePropDef aStrFileProp[] = {
+		{ CURLSTR_DATA,      PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
+		{ CURLFILE_POSTNAME, PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" },
+		{ CURLFILE_MIME,     PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "string" }
+	};
+	static const PH7_NativeMethodDef aStrFileMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC,
+		  "string $data, string $postname, string $mime = 'application/octet-stream'", 0,
+		  vm_builtin_CURLStringFile_construct }
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		{ "CurlHandle", 0, 0,
+		  PH7_CLASS_FINAL|PH7_CLASS_NOINSTANTIATE|PH7_CLASS_NOSERIALIZE,
+		  0, 0, 0, 0,
+		  aProp, SX_ARRAYSIZE(aProp),
+		  CurlInstanceRelease, 0, 0 },
+		{ "CURLFile", 0, 0, PH7_CLASS_NOSERIALIZE,
+		  aFileMethod, SX_ARRAYSIZE(aFileMethod), 0, 0,
+		  aFileProp, SX_ARRAYSIZE(aFileProp), 0, 0, 0 },
+		{ "CURLStringFile", 0, 0, 0,
+		  aStrFileMethod, SX_ARRAYSIZE(aStrFileMethod), 0, 0,
+		  aStrFileProp, SX_ARRAYSIZE(aStrFileProp), 0, 0, 0 }
 	};
 	sxu32 n;
 	sxi32 rc;
@@ -2869,7 +3615,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)
 	for( n = 0 ; n < SX_ARRAYSIZE(aFunc) ; ++n ){
 		ph7_create_function(&(*pVm),aFunc[n].zName,aFunc[n].xFunc,0);
 	}
-	rc = PH7_InstallNativeClasses(&(*pVm),&sSpec,1);
+	rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
 	if( rc == SXRET_OK ){
 		ph7_class *pClass = PH7_VmExtractClass(&(*pVm),"CurlHandle",sizeof("CurlHandle")-1,FALSE,0);
 		if( pClass ){

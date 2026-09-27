@@ -388,6 +388,7 @@ static const struct VmBuiltinSig {
 	{ "curl_error", "CurlHandle $handle", "string" },
 	{ "curl_escape", "CurlHandle $handle, string $string", "string|false" },
 	{ "curl_exec", "CurlHandle $handle", "string|bool" },
+	{ "curl_file_create", "string $filename, ?string $mime_type = null, ?string $posted_filename = null", "CURLFile" },
 	{ "curl_getinfo", "CurlHandle $handle, ?int $option = null", "mixed" },
 	{ "curl_init", "?string $url = null", "CurlHandle|false" },
 	{ "curl_multi_strerror", "int $error_code", "?string" },
