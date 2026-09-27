@@ -1905,7 +1905,16 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 				 /* Subscripting */
 				 sxi32 iArrTok = iCur + 1;
 				 sxi32 iNest = 1;
-				 if(  iLeft < 0 || apNode[iLeft] == 0 || (apNode[iLeft]->pOp == 0 && (apNode[iLeft]->xCode != PH7_CompileVariable &&
+				 /* php's `dereferencable` list has `'(' expr ')'` in it, so WHATEVER a
+				  * parenthesised group evaluates to may be subscripted:
+				  * `((array)$o)['k']`, `((string)$s)[1]`, `(clone $o)[0]`, `(1+2)[0]`,
+				  * `(1)[0]`. The base test below is a whitelist of node SHAPES, and no
+				  * shape describes "the user wrote parentheses", so every such group
+				  * whose root was not already a term or a postfix chain was refused as
+				  * `Invalid array name` — a compile fatal on source php runs. The `->`
+				  * branch further down reads the same flag for the same reason. */
+				 if( !(iLeft >= 0 && apNode[iLeft] && (apNode[iLeft]->iFlags & EXPR_NODE_PARENS))
+					 && ( iLeft < 0 || apNode[iLeft] == 0 || (apNode[iLeft]->pOp == 0 && (apNode[iLeft]->xCode != PH7_CompileVariable &&
 					 apNode[iLeft]->xCode != PH7_CompileSimpleString && apNode[iLeft]->xCode != PH7_CompileString &&
 					 apNode[iLeft]->xCode != PH7_CompileHereDoc && apNode[iLeft]->xCode != PH7_CompileNowDoc &&
 					 /* A CONSTANT is a valid subscript base too: `const X=[1,2]; X[0]`.
@@ -1918,7 +1927,7 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 					 ( apNode[iLeft]->pOp && apNode[iLeft]->pOp->iPrec != 2 /* postfix */
 						 /* PHP 8.4: a folded `new C()` (precedence-1 op) is a valid
 						  * subscript base — `new C()[0]` means `(new C())[0]`. */
-						 && apNode[iLeft]->pOp->iOp != EXPR_OP_NEW ) ){
+						 && apNode[iLeft]->pOp->iOp != EXPR_OP_NEW ) ) ){
 						 /* Syntax error */
 						 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"Invalid array name");
 						 if( rc != SXERR_ABORT ){
