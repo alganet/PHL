@@ -804,6 +804,86 @@ static int DtTryIsoYear(const char *z,const char *zEnd,sxi64 *pY)
 	return (int)(zScan - z);
 }
 /*
+ * php's ISO WEEK DATE, the spelling ISO 8601 gives a week rather than a day:
+ * `YYYY[-]Www` and `YYYY[-]Www[-]D`, with the year exactly four digits and
+ * unsigned, the week exactly two and inside 01..53, and the day ONE digit
+ * inside 0..7. Everything outside that is not this token at all, which is why
+ * `2020-W54`, `2020-W5` and `2020-w05` refuse where the loop runs out of rules
+ * rather than here -- and why `2020-W05-8` is the week alone with `-8` left
+ * standing as a zone OFFSET, which is the answer php gives it.
+ *
+ * php does not resolve the week to a calendar date: timelib writes the year
+ * with January 1st and puts the whole distance on the RELATIVE day count, which
+ * is what `date_parse('2020-W05')` shows as `day => 26`. The distance runs from
+ * that January 1st to the Monday of week 1 -- the week holding the 4th -- plus
+ * a week per week and a day per day.
+ *
+ * Returns 0 when the text is not one (caller falls through), 1 on success, or
+ * an error code in DtParse's own convention.
+ */
+static int DtTryIsoWeek(const char *z,const char *zEnd,const char **pzOut,
+	dt_parsed *p,const char *zIn)
+{
+	const char *zTok = z;
+	sxi64 y = 0;
+	int i,w,iDow = 1,dow1,rcT;
+	/* the shortest spelling is the compact `2020W05` */
+	if( zEnd - z < 7 ){
+		return 0;
+	}
+	for( i = 0 ; i < 4 ; i++ ){
+		if( !SyisDigit(z[i]) ){
+			return 0;
+		}
+		y = y*10 + (z[i] - '0');
+	}
+	if( z[i] == '-' ){
+		i++;
+	}
+	if( &z[i+2] >= zEnd || z[i] != 'W' ){
+		return 0;
+	}
+	i++;
+	if( !SyisDigit(z[i]) || !SyisDigit(z[i+1]) ){
+		return 0;
+	}
+	w = (z[i]-'0')*10 + (z[i+1]-'0');
+	i += 2;
+	if( w < 1 || w > 53 ){
+		return 0;
+	}
+	{
+		/* the day, with its own separator: a digit past 7 belongs to whatever
+		 * follows the token, its sign included */
+		int j = i;
+		if( &z[j] < zEnd && z[j] == '-' ){
+			j++;
+		}
+		if( &z[j] < zEnd && z[j] >= '0' && z[j] <= '7' ){
+			iDow = z[j] - '0';
+			i = j + 1;
+		}
+	}
+	z = &z[i];
+	if( (rcT = DtTimeSuffix(&z,zEnd,zIn,p)) != 0 ){
+		return rcT;
+	}
+	if( (rcT = DtMarkDate(p,zTok,zIn)) != 0 ){ return rcT; }
+	/* php's weekday numbering here is 0 = Sunday, and week 1 is the one whose
+	 * Monday is at most three days after New Year's Day. */
+	dow1 = DtDowOf(DtDaysFromCivil(y,1,1));
+	p->y = y;
+	p->m = 1;
+	p->d = 1;
+	/* php ASSIGNS that count rather than adding to it, the way `tomorrow` and
+	 * `yesterday` do -- so a `+1 week` written BEFORE the week date is discarded
+	 * by it (`+1 week 2020-W05` is the week's own Monday) while one written after
+	 * moves on from it. */
+	p->rd = (sxi64)(1 - (dow1 > 4 ? dow1 - 7 : dow1) + (w - 1)*7 + (iDow - 1));
+	*pzOut = z;
+	return 1;
+}
+/*
  * Try to read php's ISO date at z: [+-]YYYY-MM-DD plus an optional time suffix.
  * Returns 0 when the text is not one (caller falls through), 1 on success, or an
  * error code in DtParse's own convention.
@@ -1276,6 +1356,11 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 			return -((int)(zAt - zIn) + 1) - DT_ERR_DZONE;
 		}
 		bAny = 1;
+	}else if( SyisDigit(z[0]) && (iRc = DtTryIsoWeek(z,zEnd,&z,p,zIn)) != 0 ){
+		/* YYYY[-]Www[[-]D] -- the ISO WEEK date, whose `W` is what tells it from
+		 * every other four-digit-first spelling. */
+		if( iRc != 1 ){ return iRc; }
+		bAny = 1;
 	}else if( (iRc = DtTryIsoDate(z,zEnd,&z,p,zIn)) != 0 ){
 		/* [+-]YYYY-MM-DD[...] -- the sign, and any year width past four, are php's
 		 * EXPANDED form (see DtTryIsoYear). Anything other than 1 is an error code
@@ -1477,6 +1562,11 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 		 * "march 3" and the tail of `12345-01-01` (a compact time, then a date)
 		 * all reach here. The dates go first so that the longest reading wins --
 		 * `1.2.2020` is a date where a bare `1.2` is the time 01:02. */
+		if( SyisDigit(z[0]) && (iRc = DtTryIsoWeek(z,zEnd,&z,p,zIn)) != 0 ){
+			if( iRc != 1 ){ return iRc; }
+			bAny = 1;
+			continue;
+		}
 		if( (iRc = DtTryIsoDate(z,zEnd,&z,p,zIn)) != 0 ){
 			if( iRc != 1 ){ return iRc; }
 			bAny = 1;
