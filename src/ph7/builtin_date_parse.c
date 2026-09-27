@@ -815,19 +815,80 @@ static int DtTryIsoDate(const char *z,const char *zEnd,const char **pzOut,
 	const char *zTok = z;
 	sxi64 y = 0;
 	int nYr,mo,d,rcT;
-	if( (nYr = DtTryIsoYear(z,zEnd,&y)) == 0 || zEnd-z < nYr + 6 ){
+	if( (nYr = DtTryIsoYear(z,zEnd,&y)) == 0 ){
 		return 0;
 	}
 	zRest = &z[nYr];   /* the '-' that closed the year */
-	if( !SyisDigit(zRest[1])||!SyisDigit(zRest[2])||zRest[3] != '-'
+	if( zEnd-z < nYr + 6
+	 || !SyisDigit(zRest[1])||!SyisDigit(zRest[2])||zRest[3] != '-'
 	 ||!SyisDigit(zRest[4])||!SyisDigit(zRest[5]) ){
-		/* Not this spelling: `2020-1-1` and `2020-1-1 12:00` are the DAY-FIRST
-		 * numeric rule's, php's own separate one, so hand the text on instead of
-		 * refusing it here. (Refusing was also unsound: the position this reports
-		 * is the TOKEN's, and a token at position 0 encodes as the 1 that means
-		 * "matched" -- which left the caller's cursor where it was and spun the
-		 * parse loop forever. The loop guards itself now as well.) */
-		return 0;
+		/* Not the full spelling. Two SHORTER ones stand behind it, both php's and
+		 * both only after a plain four-digit year (`+12345-01` is neither): the
+		 * YEAR-MONTH `2020-01`, whose day is the 1st, and the ISO ORDINAL
+		 * `2020-102`, whose three digits are the day of the YEAR. At most three
+		 * digits belong to either, and whatever is left of the run is the string's
+		 * -- as is the whole token when the DAY-FIRST numeric rule (`2020-1-1`),
+		 * php's own separate one, reads longer here.
+		 *
+		 * Anything else hands the text on rather than refusing: the position this
+		 * would report is the TOKEN's, and a token at position 0 encodes as the 1
+		 * that means "matched", which spun the parse loop forever. */
+		int nd = 0;
+		while( &zRest[1+nd] < zEnd && SyisDigit(zRest[1+nd]) ){ nd++; }
+		if( nYr != 4 || !SyisDigit(z[0]) || nd == 0 ){
+			return 0;
+		}
+		if( nd > 3 ){ nd = 3; }
+		{
+			/* The DAY-FIRST rule reads `2020-1-1` whole, which is LONGER than the
+			 * year-month reading of its head -- php's scanner takes the longer
+			 * token, so let it. The probe runs on a copy with the date flag
+			 * cleared, so a refusal it would raise cannot answer the question. */
+			dt_parsed sTry = *p;
+			const char *zProbe = zTok;
+			int rcP;
+			sTry.bHaveDate = 0;
+			rcP = DtTryNumericDate(zTok,zEnd,&zProbe,&sTry,zIn);
+			if( rcP == 1 && zProbe > &zRest[1+nd] ){
+				return 0;
+			}
+			/* The longer token matched and its own field check REFUSED it, which
+			 * is php's answer for the whole string -- `3854-2-40` is a day out of
+			 * range there, not the year-month `3854-2` with `-40` behind it. */
+			if( rcP != 0 && rcP != 1 ){
+				return rcP;
+			}
+		}
+		/* The LONGEST reading that validates wins and the rest of the run is left
+		 * to the string, which is where php's refusals for this shape really come
+		 * from: `2020-13` is the month 1 with a stray `3` after it (its "position
+		 * 6"), and `1526-797-45` the month 7 with `97-45` left over. */
+		{
+			int doy = nd == 3 ? (zRest[1]-'0')*100 + (zRest[2]-'0')*10 + (zRest[3]-'0') : 0;
+			int mo2 = nd >= 2 ? (zRest[1]-'0')*10 + (zRest[2]-'0') : 99;
+			if( nd == 3 && doy >= 1 && doy <= 366 ){
+				mo = 1;
+				d = doy;   /* the field normalizer resolves it out of January */
+			}else if( nd >= 2 && mo2 <= 12 ){
+				nd = 2;
+				mo = mo2;
+				d = 1;
+			}else{
+				nd = 1;
+				mo = zRest[1]-'0';
+				d = 1;
+			}
+		}
+		z = &zRest[1+nd];
+		if( (rcT = DtTimeSuffix(&z,zEnd,zIn,p)) != 0 ){
+			return rcT;
+		}
+		if( (rcT = DtMarkDate(p,zTok,zIn)) != 0 ){ return rcT; }
+		p->y = y;
+		p->m = mo;
+		p->d = d;
+		*pzOut = z;
+		return 1;
 	}
 	mo = (zRest[1]-'0')*10 + (zRest[2]-'0');
 	d  = (zRest[4]-'0')*10 + (zRest[5]-'0');
@@ -940,6 +1001,15 @@ static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
 	 * which is what makes `9.30.359699` the time 09:30:35 and the year 9699. Month
 	 * 0 and day 0 do match, and normalize (month 0 is December of the year
 	 * before). */
+	/* php's DAY pattern is one or two digits and the two-digit reading only when
+	 * it is in range, so an out-of-range pair leaves its second digit to the
+	 * string rather than sinking the rule: `3854-2-40` is the 4th with a stray
+	 * `0` after it there (its refusal), not the year-month `3854-2`. Only the
+	 * year-first dash shape spells its day that way. */
+	if( d > 31 && sep == '-' && na == 4 && nc == 2 && d / 10 <= 31 ){
+		d /= 10;
+		z--;
+	}
 	if( mo > 12 || d > 31 ){ return 0; }
 	/* optional time-of-day suffix, then commit */
 	rcT = DtTimeSuffix(&z,zEnd,zIn,p);
