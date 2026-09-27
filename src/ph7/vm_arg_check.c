@@ -1824,6 +1824,17 @@ PH7_PRIVATE sxi32 VmEnforceBuiltinArgTypes(
 		}
 		zType = zCur;
 		nType = (int)(zName - zCur);
+		if( nType > 0 && zType[0] == '~' ){
+			/* A `~Type $p` row is php's stub-versus-body mismatch: the type php
+			 * DECLARES (which Reflection must report) is looser than the one its C
+			 * body asks for, so the screen stands aside and the builtin raises the
+			 * TypeError itself. RecursiveCachingIterator::__construct is the first:
+			 * it is declared `Iterator $iterator` and refuses anything that is not a
+			 * RecursiveIterator. */
+			zCur = (zStop < zEnd) ? zStop + 1 : zEnd;
+			iArg++;
+			continue;
+		}
 		/* Trim the trailing spaces and the by-ref marker of "array &$array" */
 		bByRef = 0;
 		while( nType > 0 && (zType[nType-1] == ' ' || zType[nType-1] == '&') ){

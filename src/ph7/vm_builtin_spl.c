@@ -1768,14 +1768,25 @@ static sxi32 DualRewindInner(ph7_vm *pVm,ph7_class_instance *pThis)
 	PH7_NativeSetAttrInt(pVm,pThis,IT_CP,0);
 	return DualCall(pVm,pThis,"rewind",sizeof("rewind")-1,0);
 }
-/* php's spl_dual_it_next: free, advance the inner, count the step. */
-static sxi32 DualNextInner(ph7_vm *pVm,ph7_class_instance *pThis)
+/*
+ * php's spl_dual_it_next: free, advance the inner, count the step. Its `do_free`
+ * is FALSE for exactly one caller — CachingIterator, which has just copied the
+ * pair it is standing on and steps the inner one ahead of it, so dropping the
+ * cache here would erase the very element the decorator answers.
+ */
+static sxi32 DualNextInnerEx(ph7_vm *pVm,ph7_class_instance *pThis,int bFree)
 {
 	sxi32 rc;
-	DualFree(pVm,pThis);
+	if( bFree ){
+		DualFree(pVm,pThis);
+	}
 	rc = DualCall(pVm,pThis,"next",sizeof("next")-1,0);
 	PH7_NativeSetAttrInt(pVm,pThis,IT_CP,PH7_NativeAttrInt(pThis,IT_CP)+1);
 	return rc;
+}
+static sxi32 DualNextInner(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	return DualNextInnerEx(pVm,pThis,TRUE);
 }
 /* Hand back a cached slot, or php's null for an empty cache. */
 static int DualResultSlot(ph7_context *pCtx,const char *zName)
@@ -3321,6 +3332,697 @@ static int vm_builtin_AppendIterator_getArrayIterator(ph7_context *pCtx,int nArg
 	return PH7_OK;
 }
 /*
+ * ---------------------------------------------------------------------------
+ * CachingIterator and RecursiveCachingIterator.
+ *
+ * The caching iterator is one step AHEAD of the iterator it decorates: each fetch
+ * copies current()/key() into the cache every dual iterator keeps and then ADVANCES
+ * the inner one, which is what makes hasNext() answerable at all — it is the
+ * inner's live valid(), asked after that step. Everything else this class does
+ * happens inside the same fetch, in php's order: the FULL_CACHE entry is written,
+ * then (for the recursive twin) the CHILDREN are built, then the string form is
+ * computed, then the inner is advanced.
+ *
+ * That eager string is the class's least obvious rule. CALL_TOSTRING casts the
+ * ELEMENT and TOSTRING_USE_INNER casts the inner ITERATOR, both at FETCH time, so
+ * the default `new CachingIterator($it)` over objects with no __toString throws
+ * from rewind() and over arrays warns `Array to string conversion` once per
+ * element — neither waits for anyone to write `(string)$it`. The other two
+ * spellings (TOSTRING_USE_KEY / TOSTRING_USE_CURRENT) are read out of the cache at
+ * __toString() time instead, and NO spelling at all is a BadMethodCallException
+ * that names the RECEIVER's class.
+ *
+ * getFlags() answers the RAW word, php's private CIT_VALID (0x10000) included, so
+ * a fetched iterator reports 65537 where its constructor was handed 1. setFlags()
+ * keeps the high half and replaces the low one, and refuses to unset either of the
+ * two flags whose machinery cannot be turned off mid-walk; the CONSTRUCTOR masks
+ * with CIT_PUBLIC instead, so `new CachingIterator($it, 1024)` reports 1024 while
+ * setFlags(1024) on a default instance is a refusal.
+ */
+#define CIT_FL   "__cfl"    /* php's u.caching.flags, its private CIT_VALID included */
+#define CIT_STR  "__cstr"   /* php's u.caching.zstr: the string computed at fetch */
+#define CIT_CCH  "__ccch"   /* php's u.caching.zcache */
+#define CIT_KIDS "__ckid"   /* php's u.caching.zchildren, the recursive twin's only state */
+
+#define CIT_CALL_TOSTRING     0x00000001
+#define CIT_TOSTRING_USE_KEY  0x00000002
+#define CIT_TOSTRING_USE_CUR  0x00000004
+#define CIT_TOSTRING_USE_INN  0x00000008
+#define CIT_CATCH_GET_CHILD   0x00000010
+#define CIT_FULL_CACHE        0x00000100
+#define CIT_PUBLIC            0x0000FFFF
+#define CIT_VALID             0x00010000
+
+static sxi64 CitFlags(ph7_class_instance *pThis)
+{
+	return pThis ? PH7_NativeAttrInt(pThis,CIT_FL) : 0;
+}
+/* php's spl_cit_check_flags: at most ONE of the four string spellings. */
+static int CitCheckFlags(sxi64 iFlags)
+{
+	int n = 0;
+	if( iFlags & CIT_CALL_TOSTRING ){ n++; }
+	if( iFlags & CIT_TOSTRING_USE_KEY ){ n++; }
+	if( iFlags & CIT_TOSTRING_USE_CUR ){ n++; }
+	if( iFlags & CIT_TOSTRING_USE_INN ){ n++; }
+	return n <= 1;
+}
+/* Both of this class's refusals name the RECEIVER's class and point at
+ * CachingIterator::__construct whatever that receiver is. */
+static int CitRefuse(ph7_context *pCtx,ph7_class_instance *pThis,const char *zWhat)
+{
+	SyString *pName = &pThis->pClass->sName;
+	return PH7_VmThrowException(pCtx,"BadMethodCallException",
+		"%z does not %s (see CachingIterator::__construct)",pName,zWhat);
+}
+/* The cache slot, separated for writing (every caller may mutate it). */
+static ph7_value * CitCacheSlot(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_value *pSlot = pThis ? PH7_NativeAttr(pThis,CIT_CCH) : 0;
+	if( pSlot == 0 ){
+		return 0;
+	}
+	if( (pSlot->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		if( PH7_MemObjToHashmap(pSlot) != SXRET_OK ){
+			return 0;
+		}
+	}
+	if( PH7_HashmapCowSeparate(pVm,pSlot) == 0 ){
+		return 0;
+	}
+	return pSlot;
+}
+/* Every cache reader is refused outright without FULL_CACHE, php's own guard. */
+static ph7_value * CitCacheChecked(ph7_context *pCtx,int *pRc)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	*pRc = PH7_OK;
+	if( !DualReady(pThis) ){
+		*pRc = DualNotReady(pCtx);
+		return 0;
+	}
+	if( (CitFlags(pThis) & CIT_FULL_CACHE) == 0 ){
+		*pRc = CitRefuse(pCtx,pThis,"use a full cache");
+		return 0;
+	}
+	return CitCacheSlot(pCtx->pVm,pThis);
+}
+/*
+ * php's array_set_zval_key screens the key exactly as `$a[$k] = v` does, so an
+ * OBJECT or ARRAY key raises rather than folding to anything — the same wording
+ * the engine's own subscript store uses.
+ */
+static int CitCacheKeyCheck(ph7_context *pCtx,ph7_value *pKey)
+{
+	if( pKey->iFlags & MEMOBJ_OBJ ){
+		ph7_class_instance *pInst = (ph7_class_instance *)pKey->x.pOther;
+		SyString *pName = pInst && pInst->pClass ? &pInst->pClass->sName : 0;
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"Cannot access offset of type %z on array",pName);
+	}
+	if( pKey->iFlags & MEMOBJ_HASHMAP ){
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"Cannot access offset of type array on array");
+	}
+	return PH7_OK;
+}
+/*
+ * php's spl_caching_it_next tail: the string the class will answer from. The two
+ * eager spellings are exclusive (spl_cit_check_flags saw to that), and the cast is
+ * php's own, warnings and refusals included.
+ */
+static sxi32 CitMakeString(ph7_context *pCtx,ph7_class_instance *pThis,sxi64 iFlags)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value sVal;
+	sxi32 rc;
+	PH7_MemObjInit(pVm,&sVal);
+	if( iFlags & CIT_TOSTRING_USE_INN ){
+		ph7_class_instance *pIn = PH7_NativeAttrObj(pThis,IT_IN);
+		if( pIn ){
+			/* The temporary OWNS this reference: PH7_MemObjRelease below drops one,
+			 * and the cast itself may retype the slot out from under the object. */
+			pIn->iRef++;
+			sVal.x.pOther = pIn;
+			MemObjSetType(&sVal,MEMOBJ_OBJ);
+		}
+	}else{
+		ph7_value *pCur = PH7_NativeAttr(pThis,IT_CD);
+		if( pCur ){
+			PH7_MemObjStore(pCur,&sVal);
+		}
+	}
+	rc = PH7_MemObjToStringUV(&sVal);
+	if( rc == SXRET_OK ){
+		DualSetSlot(pVm,pThis,CIT_STR,&sVal);
+	}
+	PH7_MemObjRelease(&sVal);
+	return rc;
+}
+/*
+ * php's recursion half of the same fetch: ask the INNER iterator whether the
+ * element has children and, if it does, build the child decorator EAGERLY —
+ * getChildren() only hands back what this already made. CATCH_GET_CHILD swallows
+ * a throw from any of the three steps (hasChildren, getChildren, and the child's
+ * own constructor), which is php's clear-the-exception-and-carry-on.
+ *
+ * The child is a plain RecursiveCachingIterator even when the receiver is a
+ * SUBCLASS: php names the class entry here rather than reading ZEND_THIS's, which
+ * is the opposite of what the recursive FILTERS do.
+ */
+static sxi32 CitBuildChildren(ph7_context *pCtx,ph7_class_instance *pThis)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pIn = PH7_NativeAttrObj(pThis,IT_IN);
+	ph7_class_instance *pChild;
+	ph7_class *pCls;
+	ph7_class_method *pMethod;
+	ph7_value sRes,sFlags,*apCtor[2];
+	int bCatch = (CitFlags(pThis) & CIT_CATCH_GET_CHILD) != 0;
+	int bThrew = FALSE;
+	sxi32 rc;
+	PH7_NativeSetAttrObj(pVm,pThis,CIT_KIDS,0);
+	pMethod = pIn ? PH7_ClassExtractMethod(pIn->pClass,"hasChildren",sizeof("hasChildren")-1) : 0;
+	if( pMethod == 0 ){
+		return SXRET_OK;
+	}
+	PH7_MemObjInit(pVm,&sRes);
+	rc = bCatch ? PH7_VmCallMethodSwallow(pVm,pIn,pMethod,&sRes,0,0,&bThrew)
+	            : PH7_VmCallClassMethod(pVm,pIn,pMethod,&sRes,0,0);
+	if( rc != SXRET_OK || bThrew ){
+		PH7_MemObjRelease(&sRes);
+		return rc;
+	}
+	PH7_MemObjToBool(&sRes);              /* a STATUS, not the answer */
+	if( sRes.x.iVal == 0 ){
+		PH7_MemObjRelease(&sRes);
+		return SXRET_OK;
+	}
+	PH7_MemObjRelease(&sRes);
+	pMethod = PH7_ClassExtractMethod(pIn->pClass,"getChildren",sizeof("getChildren")-1);
+	if( pMethod == 0 ){
+		return SXRET_OK;
+	}
+	PH7_MemObjInit(pVm,&sRes);
+	rc = bCatch ? PH7_VmCallMethodSwallow(pVm,pIn,pMethod,&sRes,0,0,&bThrew)
+	            : PH7_VmCallClassMethod(pVm,pIn,pMethod,&sRes,0,0);
+	if( rc != SXRET_OK || bThrew ){
+		PH7_MemObjRelease(&sRes);
+		return rc;
+	}
+	pCls = PH7_VmExtractClass(pVm,"RecursiveCachingIterator",
+		sizeof("RecursiveCachingIterator")-1,FALSE,0);
+	pMethod = pCls ? PH7_ClassExtractMethod(pCls,"__construct",sizeof("__construct")-1) : 0;
+	if( pMethod == 0 ){
+		PH7_MemObjRelease(&sRes);
+		return SXRET_OK;
+	}
+	pChild = PH7_NewClassInstance(pVm,pCls);
+	if( pChild == 0 ){
+		PH7_MemObjRelease(&sRes);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	pChild->iRef++;
+	PH7_MemObjInitFromInt(pVm,&sFlags,CitFlags(pThis) & CIT_PUBLIC);
+	apCtor[0] = &sRes;
+	apCtor[1] = &sFlags;
+	rc = bCatch ? PH7_VmCallMethodSwallow(pVm,pChild,pMethod,0,2,apCtor,&bThrew)
+	            : PH7_VmCallClassMethod(pVm,pChild,pMethod,0,2,apCtor);
+	PH7_MemObjRelease(&sRes);
+	PH7_MemObjRelease(&sFlags);
+	if( rc == SXRET_OK && !bThrew ){
+		PH7_NativeSetAttrObj(pVm,pThis,CIT_KIDS,pChild);
+	}
+	PH7_ClassInstanceUnref(pChild);
+	return rc;
+}
+/*
+ * php's `intern->dit_type == DIT_RecursiveCachingIterator`. rewind() and next()
+ * are declared on CachingIterator ALONE and inherited by the twin, so the one body
+ * they share has to ask what it is standing on.
+ */
+static int CitIsRecursive(ph7_vm *pVm,ph7_class_instance *pThis)
+{
+	ph7_class *pCls = PH7_VmExtractClass(pVm,"RecursiveCachingIterator",
+		sizeof("RecursiveCachingIterator")-1,FALSE,0);
+	return pThis && pCls && PH7_VmInstanceOf(pThis->pClass,pCls);
+}
+/*
+ * php's spl_caching_it_next: fetch, record, and step the inner iterator on. The
+ * ORDER below is php's and is observable — a loud inner iterator sees
+ * valid/current/key, then hasChildren/getChildren, then the __toString cast, then
+ * next.
+ */
+static sxi32 CitFetch(ph7_context *pCtx)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int bRecursive = CitIsRecursive(pVm,pThis);
+	sxi64 iFlags;
+	sxi32 rc,rcStr;
+	/* php's spl_dual_it_free for this type drops the string and the children with
+	 * the cached pair, which is what makes `(string)$it` empty and hasChildren()
+	 * false once the walk has run off the end. */
+	{
+		ph7_value *pStr = PH7_NativeAttr(pThis,CIT_STR);
+		if( pStr ){
+			PH7_MemObjRelease(pStr);
+		}
+	}
+	PH7_NativeSetAttrObj(pVm,pThis,CIT_KIDS,0);
+	rc = DualFetch(pVm,pThis,TRUE);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	iFlags = CitFlags(pThis);
+	if( !DualFilled(pThis) ){
+		PH7_NativeSetAttrInt(pVm,pThis,CIT_FL,iFlags & ~(sxi64)CIT_VALID);
+		return SXRET_OK;
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,CIT_FL,iFlags | CIT_VALID);
+	if( iFlags & CIT_FULL_CACHE ){
+		ph7_value *pCache = CitCacheSlot(pVm,pThis);
+		ph7_value *pKey = PH7_NativeAttr(pThis,IT_CK);
+		ph7_value *pCur = PH7_NativeAttr(pThis,IT_CD);
+		if( pCache && pKey && pCur ){
+			/* php's array_set_zval_key: the ordinary array-key rules, an object
+			 * key's refusal included. */
+			rc = CitCacheKeyCheck(pCtx,pKey);
+			if( rc != PH7_OK ){
+				return rc;
+			}
+			ph7_array_add_elem(pCache,pKey,pCur);
+		}
+	}
+	if( bRecursive ){
+		/* php checks EG(exception) here and RETURNS, so a throw from the children
+		 * half leaves the inner iterator where it stands. */
+		rc = CitBuildChildren(pCtx,pThis);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
+	}
+	rcStr = SXRET_OK;
+	if( iFlags & (CIT_CALL_TOSTRING|CIT_TOSTRING_USE_INN) ){
+		rcStr = CitMakeString(pCtx,pThis,iFlags);
+	}
+	/* php makes no such check after the CAST, so an element with no __toString
+	 * throws AND leaves the inner iterator one step on: hasNext() answers from
+	 * where the walk really is, not from where the throw interrupted it. */
+	rc = DualNextInnerEx(pVm,pThis,FALSE);
+	return rcStr != SXRET_OK ? rcStr : rc;
+}
+static int CitConstruct(ph7_context *pCtx,const char *zOwner,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 iFlags = CIT_CALL_TOSTRING;
+	sxi32 rc;
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	if( nArg > 1 ){
+		iFlags = ph7_value_to_int64(apArg[1]);
+	}
+	if( !CitCheckFlags(iFlags) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s::__construct(): Argument #2 ($flags) must contain only one of "
+			"CachingIterator::CALL_TOSTRING, CachingIterator::TOSTRING_USE_KEY, "
+			"CachingIterator::TOSTRING_USE_CURRENT, or CachingIterator::TOSTRING_USE_INNER",
+			zOwner);
+	}
+	/* Only the ITERATOR reaches the shared constructor: its second argument is
+	 * IteratorIterator's `$class` downcast, and this one's is an int. */
+	rc = DualConstruct(pCtx,zOwner,nArg > 0 ? 1 : 0,apArg);
+	if( rc != PH7_OK ){
+		return rc;
+	}
+	PH7_NativeSetAttrInt(pVm,pThis,CIT_FL,iFlags & CIT_PUBLIC);
+	return PH7_OK;
+}
+static int vm_builtin_CachingIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return CitConstruct(pCtx,"CachingIterator",nArg,apArg);
+}
+/*
+ * php's stub DECLARES `Iterator $iterator` here and its body then asks for
+ * spl_ce_RecursiveIterator, so Reflection reports the looser type while the
+ * refusal names the tighter one. Both halves are reproduced: the signature above
+ * is the stub's, this check is the body's.
+ */
+static int vm_builtin_RecursiveCachingIterator_construct(ph7_context *pCtx,int nArg,
+	ph7_value **apArg)
+{
+	if( nArg > 0 ){
+		ph7_class *pRec = PH7_VmExtractClass(pCtx->pVm,"RecursiveIterator",
+			sizeof("RecursiveIterator")-1,FALSE,0);
+		ph7_class_instance *pObj = (apArg[0]->iFlags & MEMOBJ_OBJ)
+			? (ph7_class_instance *)apArg[0]->x.pOther : 0;
+		if( pRec && (pObj == 0 || !PH7_VmInstanceOf(pObj->pClass,pRec)) ){
+			char zBuf[64];
+			return PH7_VmThrowException(pCtx,"TypeError",
+				"RecursiveCachingIterator::__construct(): Argument #1 ($iterator) must be "
+				"of type RecursiveIterator, %s given",
+				VmValueGivenName(apArg[0],zBuf,sizeof(zBuf)));
+		}
+	}
+	return CitConstruct(pCtx,"RecursiveCachingIterator",nArg,apArg);
+}
+static int vm_builtin_CachingIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pCache;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !DualReady(pThis) ){
+		return DualNotReady(pCtx);
+	}
+	pCache = PH7_NativeAttr(pThis,CIT_CCH);
+	if( pCache ){
+		/* php's zend_hash_clean: a rewind starts the cache over. */
+		PH7_MemObjRelease(pCache);
+		PH7_MemObjToHashmap(pCache);
+	}
+	rc = DualRewindInner(pVm,pThis);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	rc = CitFetch(pCtx);
+	return rc == SXRET_OK ? PH7_OK : rc;
+}
+static int vm_builtin_CachingIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !DualReady(pThis) ){
+		return DualNotReady(pCtx);
+	}
+	rc = CitFetch(pCtx);
+	return rc == SXRET_OK ? PH7_OK : rc;
+}
+/* valid() is the private CIT_VALID bit, not the inner iterator's answer: the
+ * decorator stands on what it fetched and the inner has already moved past it. */
+static int vm_builtin_CachingIterator_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !DualReady(pThis) ){
+		return DualNotReady(pCtx);
+	}
+	ph7_result_bool(pCtx,(CitFlags(pThis) & CIT_VALID) != 0);
+	return PH7_OK;
+}
+/* hasNext() is the inner iterator's LIVE valid(), which is why moving the inner
+ * behind the decorator's back changes the answer. */
+static int vm_builtin_CachingIterator_hasNext(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int bValid = 0;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !DualReady(pThis) ){
+		return DualNotReady(pCtx);
+	}
+	rc = DualInnerValid(pCtx->pVm,pThis,&bValid);
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	ph7_result_bool(pCtx,bValid);
+	return PH7_OK;
+}
+static int vm_builtin_CachingIterator_toString(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 iFlags;
+	ph7_value sOut,*pSrc;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !DualReady(pThis) ){
+		return DualNotReady(pCtx);
+	}
+	iFlags = CitFlags(pThis);
+	if( (iFlags & (CIT_CALL_TOSTRING|CIT_TOSTRING_USE_KEY|CIT_TOSTRING_USE_CUR
+		|CIT_TOSTRING_USE_INN)) == 0 ){
+		return CitRefuse(pCtx,pThis,"fetch string value");
+	}
+	if( iFlags & (CIT_TOSTRING_USE_KEY|CIT_TOSTRING_USE_CUR) ){
+		/* Read out of the CACHE at call time, converted then and there. */
+		pSrc = PH7_NativeAttr(pThis,(iFlags & CIT_TOSTRING_USE_KEY) ? IT_CK : IT_CD);
+		PH7_MemObjInit(pCtx->pVm,&sOut);
+		if( pSrc ){
+			PH7_MemObjStore(pSrc,&sOut);
+		}
+		rc = PH7_MemObjToStringUV(&sOut);
+		if( rc == SXRET_OK ){
+			ph7_result_value(pCtx,&sOut);
+		}
+		PH7_MemObjRelease(&sOut);
+		return rc == SXRET_OK ? PH7_OK : rc;
+	}
+	pSrc = PH7_NativeAttr(pThis,CIT_STR);
+	if( pSrc && (pSrc->iFlags & MEMOBJ_STRING) ){
+		ph7_result_value(pCtx,pSrc);
+	}else{
+		/* php's `zstr is not a string` — nothing has been fetched. */
+		ph7_result_string(pCtx,"",0);
+	}
+	return PH7_OK;
+}
+static int vm_builtin_CachingIterator_getFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !DualReady(pThis) ){
+		return DualNotReady(pCtx);
+	}
+	ph7_result_int64(pCtx,CitFlags(pThis));
+	return PH7_OK;
+}
+static int vm_builtin_CachingIterator_setFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	sxi64 iOld,iNew;
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	iNew = ph7_value_to_int64(apArg[0]);
+	if( !CitCheckFlags(iNew) ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"CachingIterator::setFlags(): Argument #1 ($flags) must contain only one of "
+			"CachingIterator::CALL_TOSTRING, CachingIterator::TOSTRING_USE_KEY, "
+			"CachingIterator::TOSTRING_USE_CURRENT, or CachingIterator::TOSTRING_USE_INNER");
+	}
+	if( !DualReady(pThis) ){
+		return DualNotReady(pCtx);
+	}
+	/* The two eager spellings are computed at FETCH time, so php refuses to turn
+	 * either off mid-walk rather than leaving a stale string behind. */
+	iOld = CitFlags(pThis);
+	if( (iOld & CIT_CALL_TOSTRING) != 0 && (iNew & CIT_CALL_TOSTRING) == 0 ){
+		return PH7_VmThrowException(pCtx,"InvalidArgumentException",
+			"Unsetting flag CALL_TO_STRING is not possible");
+	}
+	if( (iOld & CIT_TOSTRING_USE_INN) != 0 && (iNew & CIT_TOSTRING_USE_INN) == 0 ){
+		return PH7_VmThrowException(pCtx,"InvalidArgumentException",
+			"Unsetting flag TOSTRING_USE_INNER is not possible");
+	}
+	PH7_NativeSetAttrInt(pCtx->pVm,pThis,CIT_FL,(iOld & ~(sxi64)CIT_PUBLIC) | (iNew & CIT_PUBLIC));
+	return PH7_OK;
+}
+static int vm_builtin_CachingIterator_getCache(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pCache;
+	int rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	pCache = CitCacheChecked(pCtx,&rc);
+	if( pCache == 0 ){
+		return rc;
+	}
+	ph7_result_value(pCtx,pCache);
+	return PH7_OK;
+}
+static int vm_builtin_CachingIterator_count(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pCache;
+	int rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	pCache = CitCacheChecked(pCtx,&rc);
+	if( pCache == 0 ){
+		return rc;
+	}
+	ph7_result_int64(pCtx,pCache->x.pOther ? ((ph7_hashmap *)pCache->x.pOther)->nEntry : 0);
+	return PH7_OK;
+}
+/*
+ * The four ArrayAccess members read and write that same cache. php's `$key` is
+ * DECLARED untyped and screened as a string by the body, so a non-stringable key
+ * is a TypeError naming `string` while an int or a float becomes an array key the
+ * ordinary way.
+ */
+static ph7_value * CitOffsetKey(ph7_context *pCtx,const char *zMethod,ph7_value *pKey,
+	ph7_value *pOut,int *pRc)
+{
+	char zBuf[64];
+	*pRc = PH7_OK;
+	if( !PH7_ArgSatisfiesString(pKey) ){
+		*pRc = PH7_VmThrowException(pCtx,"TypeError",
+			"CachingIterator::%s(): Argument #1 ($key) must be of type string, %s given",
+			zMethod,VmValueGivenName(pKey,zBuf,sizeof(zBuf)));
+		return 0;
+	}
+	PH7_MemObjInit(pCtx->pVm,pOut);
+	PH7_MemObjStore(pKey,pOut);
+	if( PH7_MemObjToString(pOut) != SXRET_OK ){
+		PH7_MemObjRelease(pOut);
+		*pRc = PH7_OK;
+		return 0;
+	}
+	return pOut;
+}
+static int vm_builtin_CachingIterator_offsetGet(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pCache,*pKey,sKey;
+	ph7_hashmap_node *pNode = 0;
+	int rc;
+	pCache = CitCacheChecked(pCtx,&rc);
+	if( pCache == 0 ){
+		return rc;
+	}
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	pKey = CitOffsetKey(pCtx,"offsetGet",apArg[0],&sKey,&rc);
+	if( pKey == 0 ){
+		return rc;
+	}
+	if( PH7_HashmapLookup((ph7_hashmap *)pCache->x.pOther,pKey,&pNode) == SXRET_OK ){
+		ph7_value *pVal = HashmapExtractNodeValue(pNode);
+		if( pVal ){
+			ph7_result_value(pCtx,pVal);
+		}
+	}else{
+		/* php reads the cache as an ARRAY here, warning included — but it has already
+		 * cast the key to a STRING, so the key is QUOTED even where a plain array read
+		 * would print a bare integer ($c[0] on a missing key says `"0"`). */
+		SyBlob sMsg;
+		SyString sKeyText;
+		int nKey = 0;
+		const char *zKey = ph7_value_to_string(pKey,&nKey);
+		SyStringInitFromBuf(&sKeyText,zKey,(sxu32)nKey);
+		SyBlobInit(&sMsg,&pCtx->pVm->sAllocator);
+		SyBlobFormat(&sMsg,"Undefined array key \"%z\"",&sKeyText);
+		SyBlobNullAppend(&sMsg);
+		PH7_VmThrowError(pCtx->pVm,0,PH7_CTX_WARNING,(const char *)SyBlobData(&sMsg));
+		SyBlobRelease(&sMsg);
+	}
+	PH7_MemObjRelease(&sKey);
+	return PH7_OK;
+}
+static int vm_builtin_CachingIterator_offsetExists(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pCache,*pKey,sKey;
+	ph7_hashmap_node *pNode = 0;
+	int rc;
+	pCache = CitCacheChecked(pCtx,&rc);
+	if( pCache == 0 ){
+		return rc;
+	}
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	pKey = CitOffsetKey(pCtx,"offsetExists",apArg[0],&sKey,&rc);
+	if( pKey == 0 ){
+		return rc;
+	}
+	ph7_result_bool(pCtx,
+		PH7_HashmapLookup((ph7_hashmap *)pCache->x.pOther,pKey,&pNode) == SXRET_OK);
+	PH7_MemObjRelease(&sKey);
+	return PH7_OK;
+}
+static int vm_builtin_CachingIterator_offsetSet(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pCache,*pKey,sKey;
+	int rc;
+	pCache = CitCacheChecked(pCtx,&rc);
+	if( pCache == 0 ){
+		return rc;
+	}
+	if( nArg < 2 ){
+		return PH7_OK;
+	}
+	pKey = CitOffsetKey(pCtx,"offsetSet",apArg[0],&sKey,&rc);
+	if( pKey == 0 ){
+		return rc;
+	}
+	ph7_array_add_elem(pCache,pKey,apArg[1]);
+	PH7_MemObjRelease(&sKey);
+	return PH7_OK;
+}
+static int vm_builtin_CachingIterator_offsetUnset(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_value *pCache,*pKey,sKey;
+	ph7_hashmap_node *pNode = 0;
+	int rc;
+	pCache = CitCacheChecked(pCtx,&rc);
+	if( pCache == 0 ){
+		return rc;
+	}
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	pKey = CitOffsetKey(pCtx,"offsetUnset",apArg[0],&sKey,&rc);
+	if( pKey == 0 ){
+		return rc;
+	}
+	if( PH7_HashmapLookup((ph7_hashmap *)pCache->x.pOther,pKey,&pNode) == SXRET_OK ){
+		PH7_HashmapUnlinkNode(pNode,TRUE);
+	}
+	PH7_MemObjRelease(&sKey);
+	return PH7_OK;
+}
+/* The recursive twin answers what the FETCH built and nothing else: no children
+ * means the fetch found none, and two calls hand back the SAME object. */
+static int vm_builtin_RecursiveCachingIterator_hasChildren(ph7_context *pCtx,int nArg,
+	ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !DualReady(pThis) ){
+		return DualNotReady(pCtx);
+	}
+	ph7_result_bool(pCtx,PH7_NativeAttrObj(pThis,CIT_KIDS) != 0);
+	return PH7_OK;
+}
+static int vm_builtin_RecursiveCachingIterator_getChildren(ph7_context *pCtx,int nArg,
+	ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pKids;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !DualReady(pThis) ){
+		return DualNotReady(pCtx);
+	}
+	pKids = PH7_NativeAttrObj(pThis,CIT_KIDS);
+	if( pKids ){
+		SplResultBorrowed(pCtx,pKids);
+	}else{
+		ph7_result_null(pCtx);
+	}
+	return PH7_OK;
+}
+/*
  * The declarations. php's method ORDER is the order Reflection reports, so each
  * table follows spl_iterators.stub.php line for line; the parameter types are the
  * stub's too, which is what makes `Iterator $iterator` refuse an IteratorAggregate
@@ -3480,6 +4182,49 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 		{ "getChildren", PH7_MOD_PUBLIC, "", "@?RecursiveRegexIterator",
 		  vm_builtin_RecursiveRegexIterator_getChildren },
 	};
+	static const PH7_NativeConstDef aCitConst[] = {
+		{ "CALL_TOSTRING",       PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, CIT_CALL_TOSTRING, 0, 0.0 },
+		{ "CATCH_GET_CHILD",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, CIT_CATCH_GET_CHILD, 0, 0.0 },
+		{ "TOSTRING_USE_KEY",    PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, CIT_TOSTRING_USE_KEY, 0, 0.0 },
+		{ "TOSTRING_USE_CURRENT",PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, CIT_TOSTRING_USE_CUR, 0, 0.0 },
+		{ "TOSTRING_USE_INNER",  PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, CIT_TOSTRING_USE_INN, 0, 0.0 },
+		{ "FULL_CACHE",          PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, CIT_FULL_CACHE, 0, 0.0 },
+	};
+	static const PH7_NativePropDef aCitProp[] = {
+		{ CIT_FL,   PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+		{ CIT_STR,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ CIT_CCH,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ CIT_KIDS, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+	};
+	static const PH7_NativeMethodDef aCitMethod[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "Iterator $iterator, int $flags = 1", 0,
+		  vm_builtin_CachingIterator_construct },
+		{ "rewind",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_CachingIterator_rewind },
+		{ "valid",       PH7_MOD_PUBLIC, "", "@bool", vm_builtin_CachingIterator_valid },
+		{ "next",        PH7_MOD_PUBLIC, "", "@void", vm_builtin_CachingIterator_next },
+		{ "hasNext",     PH7_MOD_PUBLIC, "", "@bool", vm_builtin_CachingIterator_hasNext },
+		{ "__toString",  PH7_MOD_PUBLIC, "", "string", vm_builtin_CachingIterator_toString },
+		{ "getFlags",    PH7_MOD_PUBLIC, "", "@int", vm_builtin_CachingIterator_getFlags },
+		{ "setFlags",    PH7_MOD_PUBLIC, "int $flags", "@void", vm_builtin_CachingIterator_setFlags },
+		{ "offsetGet",   PH7_MOD_PUBLIC, "$key", "@mixed", vm_builtin_CachingIterator_offsetGet },
+		{ "offsetSet",   PH7_MOD_PUBLIC, "$key, mixed $value", "@void",
+		  vm_builtin_CachingIterator_offsetSet },
+		{ "offsetUnset", PH7_MOD_PUBLIC, "$key", "@void", vm_builtin_CachingIterator_offsetUnset },
+		{ "offsetExists",PH7_MOD_PUBLIC, "$key", "@bool", vm_builtin_CachingIterator_offsetExists },
+		{ "getCache",    PH7_MOD_PUBLIC, "", "@array", vm_builtin_CachingIterator_getCache },
+		{ "count",       PH7_MOD_PUBLIC, "", "@int", vm_builtin_CachingIterator_count },
+	};
+	static const PH7_NativeMethodDef aRcitMethod[] = {
+		/* `~Iterator`: php DECLARES Iterator here and its body asks for a
+		 * RecursiveIterator, so the screen stands aside and the constructor below
+		 * raises php's own refusal. */
+		{ "__construct", PH7_MOD_PUBLIC, "~Iterator $iterator, int $flags = 1", 0,
+		  vm_builtin_RecursiveCachingIterator_construct },
+		{ "hasChildren", PH7_MOD_PUBLIC, "", "@bool",
+		  vm_builtin_RecursiveCachingIterator_hasChildren },
+		{ "getChildren", PH7_MOD_PUBLIC, "", "@?RecursiveCachingIterator",
+		  vm_builtin_RecursiveCachingIterator_getChildren },
+	};
 	static const PH7_NativePropDef aAppendProp[] = {
 		{ AP_LIST, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
 	};
@@ -3554,6 +4299,15 @@ static sxi32 VmInstallSplDualIterators(ph7_vm *pVm)
 		  aRcbfMethod, SX_ARRAYSIZE(aRcbfMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "RecursiveRegexIterator", "RegexIterator", "RecursiveIterator", PH7_CLASS_NOCLONE,
 		  aRregexMethod, SX_ARRAYSIZE(aRregexMethod), 0, 0, 0, 0, 0, 0, 0 },
+		/* CachingIterator is Stringable through __toString, and Countable/ArrayAccess
+		 * over the FULL_CACHE array — three interfaces the class refuses to serve
+		 * unless it was built with that flag. */
+		{ "CachingIterator", "IteratorIterator", "ArrayAccess,Countable,Stringable",
+		  PH7_CLASS_NOCLONE,
+		  aCitMethod, SX_ARRAYSIZE(aCitMethod), aCitConst, SX_ARRAYSIZE(aCitConst),
+		  aCitProp, SX_ARRAYSIZE(aCitProp), 0, 0, 0 },
+		{ "RecursiveCachingIterator", "CachingIterator", "RecursiveIterator", PH7_CLASS_NOCLONE,
+		  aRcitMethod, SX_ARRAYSIZE(aRcitMethod), 0, 0, 0, 0, 0, 0, 0 },
 		{ "EmptyIterator", 0, "Iterator", 0,
 		  aEmptyMethod, SX_ARRAYSIZE(aEmptyMethod), 0, 0, 0, 0, 0, 0, 0 },
 	};

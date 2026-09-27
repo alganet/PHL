@@ -1061,6 +1061,13 @@ static void ReflectSigDescribe(const char *z, int n, int iPos, ReflectParamDesc 
 	int iEq, iDollar, iSpace;
 	SyZero(pOut,sizeof(*pOut));
 	pOut->iPos = iPos;
+	if( n > 0 && z[0] == '~' ){
+		/* The signature table's "declared here, screened by the builtin" marker
+		 * (see vm_arg_check.c): php DECLARES this type and its C body asks for a
+		 * tighter one, so Reflection reports what follows the marker. */
+		z++;
+		n--;
+	}
 	/* `= default` splits off first: everything after the first unquoted '='. */
 	iEq = ReflectSigFindUnquoted(z,n,'=');
 	if( iEq >= 0 ){
