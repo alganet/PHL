@@ -3107,8 +3107,15 @@ case PH7_OP_STORE: {
 			break;
 		}
 		if( nIdx == SXU32_HIGH ){
-			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
-				"Cannot perform assignment on a constant class attribute,PH7 is loading NULL");
+			/* No slot behind the property: the receiver is a TEMPORARY nothing else
+			 * holds (`mk()->p = 5` on a freshly built object, `(new A)->p` where the
+			 * compile-time screen lets it through). php performs the write on the
+			 * doomed object and says nothing — the object is gone at the end of the
+			 * statement, so the store is unobservable either way. PHL announced it
+			 * with `Cannot perform assignment on a constant class attribute,PH7 is
+			 * loading NULL`, a diagnostic php has no equivalent of. Every case that
+			 * IS a refusal — a class constant, a hooked or handler-backed property —
+			 * is decided before this point now. */
 			pTos->nIdx = SXU32_HIGH;
 		}else{
 			/* Enforce typed property declaration if any. May coerce the
@@ -3808,7 +3815,8 @@ case PH7_OP_ADD_STORE:{
 	PH7_MemObjAdd(pTos,pNos,TRUE);
 	/* Peform the store operation */
 	if( nIdx == SXU32_HIGH ){
-		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
+		/* A read-modify-write THROUGH a temporary (`f()[0] += 5`): php computes it,
+		 * drops it and stays silent. See the OP_STORE member note above. */
 	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx)) != 0 ){
 		PH7_ENFORCE_TYPED_STORE(nIdx,pTos);
 		PH7_MemObjStore(pTos,pObj);
@@ -3995,7 +4003,7 @@ case PH7_OP_DIV_STORE:{
 		PH7_MemObjTryInteger(pNos);
 	}
 	if( pTos->nIdx == SXU32_HIGH ){
-		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
+		/* A read-modify-write THROUGH a temporary: php drops it in silence. */
 	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 		PH7_MemObjStore(pNos,pObj);
@@ -4154,7 +4162,7 @@ case PH7_OP_BXOR_STORE:{
 	MemObjSetType(pNos,MEMOBJ_INT);
 	}
 	if( pTos->nIdx == SXU32_HIGH ){
-		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
+		/* A read-modify-write THROUGH a temporary: php drops it in silence. */
 	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 		PH7_MemObjStore(pNos,pObj);
@@ -4366,7 +4374,7 @@ case PH7_OP_CAT_STORE:{
 	}
 	/* Perform the store operation */
 	if( pTos->nIdx == SXU32_HIGH ){
-		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
+		/* A read-modify-write THROUGH a temporary: php drops it in silence. */
 	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pTos);
 		PH7_MemObjStore(pTos,pObj);

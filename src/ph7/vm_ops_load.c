@@ -691,6 +691,27 @@ PH7_PRIVATE VmOpRc VmExecOpStoreIdxRef(ph7_vm *pVm,VmExecState *pState,VmInstr *
 		ph7_value *pObj;
 		pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx);
 		if( pObj == 0 ){
+			/* No slot behind the container: this is a write THROUGH a TEMPORARY
+			 * (`f()[0] = 5`, `f()[0][1] = 5`). php still screens the base's TYPE the
+			 * same way it does for a variable — writing an index into an int, a
+			 * float, a resource or a bool is its catchable "Cannot use a scalar value
+			 * as an array" — and only the value it writes is discarded with the
+			 * temporary. PHL skipped the screen along with the write, so the whole
+			 * statement ran in silence. A NULL base keeps php's silence: the array it
+			 * vivifies into dies with the temporary, and so does an offset written
+			 * into a temporary STRING. */
+			if( (pTos->iFlags & (MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_RES|MEMOBJ_BOOL)) != 0 ){
+				sxi32 rcSc;
+				if( pKey ){
+					PH7_MemObjRelease(pKey);
+				}
+				VmPopOperand(&pTos,1);
+				rcSc = VmThrowFromVm(&(*pVm),"Error","Cannot use a scalar value as an array",
+					sizeof("Cannot use a scalar value as an array")-1);
+				if( rcSc == SXERR_ABORT ){ VM_EXIT_ABORT; }
+				rc = rcSc;
+				PH7_THROW_ROUTE_MIDEXPR(rc)
+			}
 			if( pKey ){
 			  PH7_MemObjRelease(pKey);
 			}
@@ -1971,9 +1992,18 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 		}
 	}
 	if( (iP2 == 1 || iP2 == 3 || VM_IDX_IS_UNSET(iP2)) && (pTos->iFlags & MEMOBJ_HASHMAP) == 0 ){
-		if( pTos->nIdx != SXU32_HIGH ){
-			ph7_value *pObj;
-			if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
+		{
+			/* The base's TYPE decides here, whether or not there is a SLOT behind it.
+			 * A write THROUGH a temporary — `f()[0] = 5`, `f()[0][1] = 5` — gets the
+			 * same verdict from php; the only difference is that what it writes is
+			 * discarded afterwards. PHL skipped the whole screen when the base had no
+			 * slot, so `ui()[0] += 5` over an int RESULT ran in silence where php
+			 * throws. The temporary is screened and vivified in place, on the stack —
+			 * there is nowhere to write it back to. */
+			ph7_value *pObj = (pTos->nIdx != SXU32_HIGH)
+				? (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)
+				: pTos;
+			if( pObj != 0 ){
 				/* php 8 write-context auto-vivify rules: NULL converts to array
 				 * silently; FALSE converts with the 8.1 deprecation; any other
 				 * scalar base — int/float/true/resource — is php's catchable
@@ -2009,7 +2039,9 @@ PH7_PRIVATE VmOpRc VmExecOpLoadIdx(ph7_vm *pVm,VmExecState *pState,VmInstr *pIns
 				 * unset() builtin is the no-op php's is. */
 				if( !VM_IDX_IS_UNSET(iP2) ){
 					PH7_MemObjToHashmap(pObj);
-					PH7_MemObjLoad(pObj,pTos);
+					if( pObj != pTos ){
+						PH7_MemObjLoad(pObj,pTos);
+					}
 				}
 			}
 		}

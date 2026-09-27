@@ -198,8 +198,10 @@ PH7_PRIVATE VmOpRc VmExecOpNullcStore(ph7_vm *pVm,VmExecState *pState,VmInstr *p
 	}
 	nIdx = pNos->nIdx;
 	if( nIdx == SXU32_HIGH ){
-		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,
-			"Cannot perform assignment on a constant class attribute");
+		/* A read-modify-write THROUGH a temporary (`f()[0] .= "x"`, `mk()->p += 1`):
+		 * php computes it, drops it with the temporary and stays silent. Every case
+		 * that IS a refusal — a class constant, a hooked or handler-backed property —
+		 * is decided before the VM sees it. */
 	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,nIdx)) != 0 ){
 		PH7_ENFORCE_TYPED_STORE(nIdx,pTos);
 		PH7_MemObjStore(pTos,pObj);
@@ -393,7 +395,7 @@ PH7_PRIVATE VmOpRc VmExecOpModStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 	pNos->x.iVal = r;
 	MemObjSetType(pNos,MEMOBJ_INT);
 	if( pTos->nIdx == SXU32_HIGH ){
-		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
+		/* A read-modify-write THROUGH a temporary: php drops it in silence. */
 	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 		PH7_MemObjStore(pNos,pObj);
@@ -560,7 +562,7 @@ PH7_PRIVATE VmOpRc VmExecOpSubStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 		}
 	}
 	if( pTos->nIdx == SXU32_HIGH ){
-		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
+		/* A read-modify-write THROUGH a temporary: php drops it in silence. */
 	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 		PH7_MemObjStore(pNos,pObj);
@@ -811,7 +813,7 @@ PH7_PRIVATE VmOpRc VmExecOpPowStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 	if( bStore ){
 		ph7_value *pObj;
 		if( pTos->nIdx == SXU32_HIGH ){
-			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
+			/* A read-modify-write THROUGH a temporary: php drops it in silence. */
 		}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 			PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 			PH7_MemObjStore(pNos,pObj);
@@ -1162,7 +1164,7 @@ PH7_PRIVATE VmOpRc VmExecOpShrStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 	pNos->x.iVal = r;
 	MemObjSetType(pNos,MEMOBJ_INT);
 	if( pTos->nIdx == SXU32_HIGH ){
-		PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
+		/* A read-modify-write THROUGH a temporary: php drops it in silence. */
 	}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 		PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 		PH7_MemObjStore(pNos,pObj);
@@ -1297,7 +1299,7 @@ PH7_PRIVATE VmOpRc VmExecOpMulStore(ph7_vm *pVm,VmExecState *pState,VmInstr *pIn
 	if( pInstr->iOp == PH7_OP_MUL_STORE ){
 		ph7_value *pObj;
 		if( pTos->nIdx == SXU32_HIGH ){
-			PH7_VmThrowError(&(*pVm),0,PH7_CTX_ERR,"Cannot perform assignment on a constant class attribute");
+			/* A read-modify-write THROUGH a temporary: php drops it in silence. */
 		}else if( (pObj = (ph7_value *)SySetAt(&pVm->aMemObj,pTos->nIdx)) != 0 ){
 			PH7_ENFORCE_TYPED_STORE(pTos->nIdx,pNos);
 			PH7_MemObjStore(pNos,pObj);
