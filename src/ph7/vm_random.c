@@ -40,6 +40,17 @@
 #define RAND_ENG_PCG     "Random\\Engine\\PcgOneseq128XslRr64"
 #define RAND_ENG_XOSHIRO "Random\\Engine\\Xoshiro256StarStar"
 #define RAND_ENG_SECURE  "Random\\Engine\\Secure"
+#define RAND_RANDOMIZER  "Random\\Randomizer"
+#define RAND_BOUNDARY    "Random\\IntervalBoundary"
+/*
+ * php's rejection budget. Every draw that has to be discarded -- a range that
+ * is not a power of two, an alphabet offset that overshoots -- is counted, and
+ * php gives up after fifty rather than spinning forever on an engine that
+ * answers the same bits every time. The give-up is a
+ * Random\BrokenRandomEngineError, which is the only way a caller ever learns
+ * that its own engine is broken.
+ */
+#define RAND_ATTEMPTS 50
 /* The hidden slot every seeded engine keeps its raw state record in. */
 #define RAND_STATE_SLOT  "__st"
 /*
@@ -944,6 +955,678 @@ static int vm_builtin_RandSecure_generate(ph7_context *pCtx,int nArg,ph7_value *
 }
 /*
  * ---------------------------------------------------------------------------
+ * The bit SOURCE a Randomizer draws from.
+ *
+ * php's Randomizer takes any Random\Engine, and the two kinds behave
+ * differently enough that the difference is worth a type. A NATIVE engine's
+ * state is read once at the start of a method and written back once at the
+ * end, so shuffling a thousand elements costs one round trip rather than a
+ * thousand; a USERLAND engine has to be CALLED for every single draw, may
+ * return a string of any length, and may throw -- at which point everything
+ * downstream has to stop.
+ * ---------------------------------------------------------------------------
+ */
+#define RAND_SRC_MT      0
+#define RAND_SRC_PCG     1
+#define RAND_SRC_XOSHIRO 2
+#define RAND_SRC_SECURE  3
+#define RAND_SRC_USER    4
+typedef struct RandSource RandSource;
+struct RandSource
+{
+	ph7_context *pCtx;
+	ph7_class_instance *pEngine;
+	ph7_class_method *pGenerate;  /* RAND_SRC_USER only */
+	int iKind;
+	int bFailed;                  /* a throw is pending: draw nothing more */
+	sxi32 rc;                     /* the status that throw left behind */
+	union {
+		RandMtState sMt;
+		RandPcgState sPcg;
+		RandXoshiroState sXo;
+	} u;
+};
+/* Is pObj an instance of the native engine named zName? The three seeded
+ * engines are FINAL, so an exact class match is the whole test. */
+static int RandClassIs(ph7_class_instance *pObj,const char *zName)
+{
+	sxu32 nName = (sxu32)SyStrlen(zName);
+	if( pObj == 0 || pObj->pClass == 0 || pObj->pClass->sName.nByte != nName ){
+		return 0;
+	}
+	return SyMemcmp(pObj->pClass->sName.zString,zName,nName) == 0;
+}
+static void RandSourceOpen(ph7_context *pCtx,ph7_class_instance *pEngine,RandSource *pSrc)
+{
+	SyZero(pSrc,sizeof(*pSrc));
+	pSrc->pCtx = pCtx;
+	pSrc->pEngine = pEngine;
+	if( RandClassIs(pEngine,RAND_ENG_MT) ){
+		pSrc->iKind = RAND_SRC_MT;
+		RandStateLoad(pEngine,&pSrc->u.sMt,(sxu32)sizeof(pSrc->u.sMt));
+	}else if( RandClassIs(pEngine,RAND_ENG_PCG) ){
+		pSrc->iKind = RAND_SRC_PCG;
+		RandStateLoad(pEngine,&pSrc->u.sPcg,(sxu32)sizeof(pSrc->u.sPcg));
+	}else if( RandClassIs(pEngine,RAND_ENG_XOSHIRO) ){
+		pSrc->iKind = RAND_SRC_XOSHIRO;
+		RandStateLoad(pEngine,&pSrc->u.sXo,(sxu32)sizeof(pSrc->u.sXo));
+	}else if( RandClassIs(pEngine,RAND_ENG_SECURE) ){
+		pSrc->iKind = RAND_SRC_SECURE;
+	}else{
+		pSrc->iKind = RAND_SRC_USER;
+		pSrc->pGenerate = pEngine && pEngine->pClass
+			? PH7_ClassExtractMethod(pEngine->pClass,"generate",sizeof("generate")-1)
+			: 0;
+	}
+}
+/* Write a native engine's advanced state back onto its object. */
+static void RandSourceClose(RandSource *pSrc)
+{
+	ph7_vm *pVm = pSrc->pCtx->pVm;
+	switch( pSrc->iKind ){
+	case RAND_SRC_MT:
+		RandStateStore(pVm,pSrc->pEngine,&pSrc->u.sMt,(sxu32)sizeof(pSrc->u.sMt));
+		break;
+	case RAND_SRC_PCG:
+		RandStateStore(pVm,pSrc->pEngine,&pSrc->u.sPcg,(sxu32)sizeof(pSrc->u.sPcg));
+		break;
+	case RAND_SRC_XOSHIRO:
+		RandStateStore(pVm,pSrc->pEngine,&pSrc->u.sXo,(sxu32)sizeof(pSrc->u.sXo));
+		break;
+	default:
+		break;
+	}
+}
+/*
+ * One draw. Answers how many BYTES it produced (php's last_generated_size, the
+ * number the assembly below counts in) and 0 when nothing more can be drawn.
+ *
+ * A userland engine is where the size stops being a constant: php reads the
+ * string it returns, refuses an EMPTY one outright, and truncates anything
+ * past eight bytes -- so a nine-byte engine is an eight-byte engine.
+ */
+static int RandSourceNext(RandSource *pSrc,sxu64 *pOut)
+{
+	if( pSrc->bFailed ){
+		return 0;
+	}
+	switch( pSrc->iKind ){
+	case RAND_SRC_MT: {
+		SyMT19937Ctx sCtx;
+		RandMtToCtx(&pSrc->u.sMt,&sCtx);
+		*pOut = (sxu64)SyMT19937Next(&sCtx);
+		RandMtFromCtx(&sCtx,&pSrc->u.sMt);
+		return 4;
+	}
+	case RAND_SRC_PCG: {
+		RandU128 s = RandPcgStep(RandU128Make(pSrc->u.sPcg.hi,pSrc->u.sPcg.lo));
+		pSrc->u.sPcg.hi = s.hi;
+		pSrc->u.sPcg.lo = s.lo;
+		*pOut = RandPcgOutput(s);
+		return 8;
+	}
+	case RAND_SRC_XOSHIRO:
+		*pOut = RandXoshiroNext(pSrc->u.sXo.aState);
+		return 8;
+	case RAND_SRC_SECURE: {
+		unsigned char zBuf[8];
+		int i;
+		if( SyOSCSPRNG(zBuf,(sxu32)sizeof(zBuf)) != SXRET_OK ){
+			pSrc->bFailed = 1;
+			pSrc->rc = PH7_VmThrowException(pSrc->pCtx,"Random\\RandomException",
+				"Cannot generate a random string");
+			return 0;
+		}
+		*pOut = 0;
+		for( i = 0 ; i < 8 ; ++i ){
+			*pOut |= ((sxu64)zBuf[i]) << (i * 8);
+		}
+		return 8;
+	}
+	default: {
+		ph7_value sResult;
+		const char *zVal;
+		int nVal = 0, i, n;
+		sxi32 rc;
+		if( pSrc->pGenerate == 0 ){
+			pSrc->bFailed = 1;
+			return 0;
+		}
+		PH7_MemObjInit(pSrc->pCtx->pVm,&sResult);
+		rc = PH7_VmCallClassMethod(pSrc->pCtx->pVm,pSrc->pEngine,pSrc->pGenerate,
+			&sResult,0,0);
+		if( rc == PH7_ABORT || rc == PH7_EXCEPTION ){
+			/* The engine threw. Stop here and let its throw be the answer --
+			 * anything drawn after it would be reported out of order. */
+			PH7_MemObjRelease(&sResult);
+			pSrc->bFailed = 1;
+			pSrc->rc = rc;
+			return 0;
+		}
+		zVal = ph7_value_to_string(&sResult,&nVal);
+		if( nVal < 1 ){
+			PH7_MemObjRelease(&sResult);
+			pSrc->bFailed = 1;
+			pSrc->rc = PH7_VmThrowException(pSrc->pCtx,RAND_ERR_BROKEN,
+				"A random engine must return a non-empty string");
+			return 0;
+		}
+		n = nVal > 8 ? 8 : nVal;
+		*pOut = 0;
+		for( i = 0 ; i < n ; ++i ){
+			*pOut |= ((sxu64)(unsigned char)zVal[i]) << (i * 8);
+		}
+		PH7_MemObjRelease(&sResult);
+		return n;
+	}
+	}
+}
+/*
+ * Draw until there are at least nWant bytes, low draw first. An engine narrower
+ * than the answer is used several times; one that is WIDER is used once and the
+ * surplus dropped, which is why a 64-bit engine asked for 32 bits keeps its low
+ * half and throws the rest away rather than saving it for the next call.
+ */
+static int RandBits(RandSource *pSrc,int nWant,sxu64 *pOut)
+{
+	sxu64 r = 0;
+	int nTotal = 0;
+	do {
+		sxu64 v;
+		int n = RandSourceNext(pSrc,&v);
+		if( n <= 0 ){
+			return 0;
+		}
+		r |= v << (nTotal * 8);
+		nTotal += n;
+	}while( nTotal < nWant );
+	*pOut = nWant >= 8 ? r : (r & (((sxu64)1 << (nWant * 8)) - 1));
+	return 1;
+}
+static int RandBroken(RandSource *pSrc)
+{
+	pSrc->bFailed = 1;
+	pSrc->rc = PH7_VmThrowException(pSrc->pCtx,RAND_ERR_BROKEN,
+		"Failed to generate an acceptable random number in %d attempts",RAND_ATTEMPTS);
+	return 0;
+}
+/*
+ * A uniform value in [0, uMax], drawn nWidth bytes at a time.
+ *
+ * Three cases, and php takes them in this order because each is cheaper than
+ * the next: the full width needs no work at all, a range whose SIZE is a power
+ * of two is an exact mask, and anything else has to REJECT the tail that would
+ * otherwise bias the modulo -- redrawing, but only fifty times, after which the
+ * engine is declared broken rather than looped on forever.
+ */
+static int RandRange(RandSource *pSrc,sxu64 uMax,int nWidth,sxu64 *pOut)
+{
+	sxu64 uFull = nWidth >= 8 ? (sxu64)~(sxu64)0 : ((((sxu64)1) << (nWidth * 8)) - 1);
+	sxu64 r, uLimit;
+	int nTry;
+	if( !RandBits(pSrc,nWidth,&r) ){
+		return 0;
+	}
+	if( uMax == uFull ){
+		*pOut = r;
+		return 1;
+	}
+	uMax++;
+	if( (uMax & (uMax - 1)) == 0 ){
+		*pOut = r & (uMax - 1);
+		return 1;
+	}
+	uLimit = uFull - (uFull % uMax) - 1;
+	for( nTry = 0 ; r > uLimit ; ++nTry ){
+		if( nTry >= RAND_ATTEMPTS ){
+			return RandBroken(pSrc);
+		}
+		if( !RandBits(pSrc,nWidth,&r) ){
+			return 0;
+		}
+	}
+	*pOut = r % uMax;
+	return 1;
+}
+/*
+ * php's php_random_range: the WIDTH is chosen from the span, not from the
+ * engine. A span that fits in 32 bits is drawn 32 bits at a time even from a
+ * 64-bit engine, which is why an engine's draw count depends on the interval
+ * the caller asked for.
+ */
+static int RandRangeInt(RandSource *pSrc,sxi64 iMin,sxi64 iMax,sxi64 *pOut)
+{
+	sxu64 uMax = (sxu64)iMax - (sxu64)iMin;
+	sxu64 r;
+	if( !RandRange(pSrc,uMax,uMax > 0xFFFFFFFF ? 8 : 4,&r) ){
+		return 0;
+	}
+	*pOut = (sxi64)(r + (sxu64)iMin);
+	return 1;
+}
+/*
+ * ---------------------------------------------------------------------------
+ * Random\IntervalBoundary
+ *
+ * Which ENDS of getFloat()'s interval are reachable. A pure enum, like
+ * RoundingMode -- there is no number behind a case, so the case name is the
+ * whole of it.
+ * ---------------------------------------------------------------------------
+ */
+#define RAND_BOUND_CO 0   /* [min, max) -- php's default */
+#define RAND_BOUND_CC 1   /* [min, max] */
+#define RAND_BOUND_OC 2   /* (min, max] */
+#define RAND_BOUND_OO 3   /* (min, max) */
+static const struct RandBoundaryCase {
+	const char *zName;
+	int iBound;
+} aRandBoundary[] = {
+	{ "ClosedOpen",   RAND_BOUND_CO },
+	{ "ClosedClosed", RAND_BOUND_CC },
+	{ "OpenClosed",   RAND_BOUND_OC },
+	{ "OpenOpen",     RAND_BOUND_OO },
+};
+static int RandBoundaryCase(ph7_value *pVal,int *pBound)
+{
+	ph7_class_instance *pObj;
+	const char *zName = 0;
+	int nName = 0;
+	sxu32 n;
+	if( (pVal->iFlags & MEMOBJ_OBJ) == 0 || pVal->x.pOther == 0 ){
+		return 0;
+	}
+	pObj = (ph7_class_instance *)pVal->x.pOther;
+	if( !RandClassIs(pObj,RAND_BOUNDARY) ){
+		return 0;
+	}
+	PH7_NativeAttrStr(pObj,"name",&zName,&nName);
+	for( n = 0 ; n < SX_ARRAYSIZE(aRandBoundary) ; ++n ){
+		int nCase = (int)SyStrlen(aRandBoundary[n].zName);
+		if( nName == nCase && SyMemcmp(zName,aRandBoundary[n].zName,(sxu32)nCase) == 0 ){
+			*pBound = aRandBoundary[n].iBound;
+			return 1;
+		}
+	}
+	return 0;
+}
+static sxi32 RandInstallBoundary(ph7_vm *pVm)
+{
+	PH7_NativeEnumCase aCase[SX_ARRAYSIZE(aRandBoundary)];
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(aRandBoundary) ; ++n ){
+		aCase[n].zName = aRandBoundary[n].zName;
+		aCase[n].sValue.zName = 0;
+		aCase[n].sValue.iMods = 0;
+		aCase[n].sValue.iType = PH7_NATIVE_VAL_NULL;
+		aCase[n].sValue.iValue = 0;
+		aCase[n].sValue.zValue = 0;
+		aCase[n].sValue.rValue = 0.0;
+	}
+	return PH7_InstallNativeEnum(&(*pVm),RAND_BOUNDARY,0,
+		aCase,SX_ARRAYSIZE(aCase),0,0);
+}
+/*
+ * ---------------------------------------------------------------------------
+ * Random\Randomizer
+ *
+ * The consumer half: it owns an engine (readonly, so the sequence a Randomizer
+ * draws cannot be swapped underneath it) and turns that engine's bits into
+ * answers a program can use.
+ * ---------------------------------------------------------------------------
+ */
+#define RAND_ENGINE_SLOT "engine"
+/*
+ * Open the receiver's engine. Answers 0 when there is no engine to open, which
+ * is only reachable through an object nobody constructed.
+ */
+static int RandizerOpen(ph7_context *pCtx,RandSource *pSrc)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pEngine = pThis ? PH7_NativeAttrObj(pThis,RAND_ENGINE_SLOT) : 0;
+	if( pEngine == 0 ){
+		return 0;
+	}
+	RandSourceOpen(pCtx,pEngine,pSrc);
+	return 1;
+}
+/*
+ * Finish a method: write the engine's state back, and report whatever the
+ * source failed with. A failed source has already raised; the status is
+ * returned so the enclosing call unwinds the way a throw from any other
+ * builtin does.
+ */
+static sxi32 RandizerDone(RandSource *pSrc)
+{
+	RandSourceClose(pSrc);
+	return pSrc->bFailed ? (pSrc->rc == PH7_OK ? PH7_OK : pSrc->rc) : PH7_OK;
+}
+static int vm_builtin_Randomizer_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_class_instance *pEngine = 0;
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	if( nArg > 0 && (apArg[0]->iFlags & MEMOBJ_OBJ) != 0 ){
+		pEngine = (ph7_class_instance *)apArg[0]->x.pOther;
+	}
+	if( pEngine == 0 ){
+		/* php's default is the CSPRNG: a Randomizer nobody handed an engine to
+		 * is unpredictable rather than reproducible. */
+		ph7_class *pClass = PH7_VmExtractClass(pCtx->pVm,RAND_ENG_SECURE,
+			sizeof(RAND_ENG_SECURE)-1,FALSE,0);
+		ph7_class_instance *pNew = pClass ? PH7_NewClassInstance(pCtx->pVm,pClass) : 0;
+		if( pNew == 0 ){
+			return PH7_ContextMemoryError(pCtx);
+		}
+		PH7_NativeSetAttrObj(pCtx->pVm,pThis,RAND_ENGINE_SLOT,pNew);
+		PH7_ClassInstanceUnref(pNew);
+		return PH7_OK;
+	}
+	PH7_NativeSetAttrObj(pCtx->pVm,pThis,RAND_ENGINE_SLOT,pEngine);
+	return PH7_OK;
+}
+/*
+ * Random\Randomizer::nextInt(): int -- ONE draw, shifted down a bit.
+ *
+ * php drops the low bit rather than masking off the high one, which is what
+ * makes the answer non-negative: an engine's draw is unsigned and a zend_long
+ * is not, so the sign bit has to go, and going down is cheaper than going up.
+ * It is one draw, so a 32-bit engine answers 31 bits here.
+ */
+static int vm_builtin_Randomizer_nextInt(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	RandSource sSrc;
+	sxu64 r;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !RandizerOpen(pCtx,&sSrc) ){
+		return PH7_OK;
+	}
+	if( RandSourceNext(&sSrc,&r) > 0 ){
+		ph7_result_int64(pCtx,(sxi64)(r >> 1));
+	}
+	return RandizerDone(&sSrc);
+}
+static int vm_builtin_Randomizer_getInt(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	RandSource sSrc;
+	sxi64 iMin, iMax, iOut;
+	if( nArg < 2 ){
+		return PH7_OK;
+	}
+	iMin = ph7_value_to_int64(apArg[0]);
+	iMax = ph7_value_to_int64(apArg[1]);
+	if( iMin > iMax ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s::getInt(): Argument #2 ($max) must be greater than or equal to "
+			"argument #1 ($min)",RAND_RANDOMIZER);
+	}
+	if( !RandizerOpen(pCtx,&sSrc) ){
+		return PH7_OK;
+	}
+	if( RandRangeInt(&sSrc,iMin,iMax,&iOut) ){
+		ph7_result_int64(pCtx,iOut);
+	}
+	return RandizerDone(&sSrc);
+}
+/*
+ * Random\Randomizer::getBytes(int $length): string
+ *
+ * Every draw contributes its OWN width and the last one is cut short, so an
+ * engine's surplus bytes are discarded at the boundary rather than carried into
+ * the next call -- `getBytes(10)` from a 32-bit engine spends three draws and
+ * throws away two bytes.
+ */
+static int vm_builtin_Randomizer_getBytes(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	RandSource sSrc;
+	sxi64 iLen;
+	sxi64 iDone = 0;
+	if( nArg < 1 ){
+		return PH7_OK;
+	}
+	iLen = ph7_value_to_int64(apArg[0]);
+	if( iLen < 1 ){
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"%s::getBytes(): Argument #1 ($length) must be greater than 0",
+			RAND_RANDOMIZER);
+	}
+	if( !RandizerOpen(pCtx,&sSrc) ){
+		return PH7_OK;
+	}
+	while( iDone < iLen ){
+		char zBuf[8];
+		sxu64 r;
+		int n = RandSourceNext(&sSrc,&r), i;
+		if( n <= 0 ){
+			return RandizerDone(&sSrc);
+		}
+		if( (sxi64)n > iLen - iDone ){
+			n = (int)(iLen - iDone);
+		}
+		for( i = 0 ; i < n ; ++i ){
+			zBuf[i] = (char)((r >> (i * 8)) & 0xFF);
+		}
+		ph7_result_string(pCtx,zBuf,n);
+		iDone += n;
+	}
+	return RandizerDone(&sSrc);
+}
+#ifndef PH7_OMIT_FLOATING_POINT
+/* 2^-53: the step of the [0,1) grid nextFloat() draws on. */
+#define RAND_TWO_POW_M53 (1.0 / 9007199254740992.0)
+static int RandIsFinite(double d)
+{
+	union { double d; sxu64 u; } v;
+	v.d = d;
+	return ((v.u >> 52) & 0x7FF) != 0x7FF;
+}
+/*
+ * The gamma of the interval: the spacing just BELOW |x|, which for a power of
+ * two is HALF the spacing above it and at the subnormal boundary is neither.
+ * Reading it off the representation as "this double minus the previous one"
+ * gets all three right and needs no libm; the subtraction is exact.
+ */
+static double RandGamma(double x)
+{
+	union { double d; sxu64 u; } a, prev;
+	a.d = x;
+	a.u &= (sxu64)0x7FFFFFFFFFFFFFFF;   /* |x|, and -0.0 becomes +0.0 */
+	if( a.u == 0 ){
+		return 0.0;
+	}
+	prev.u = a.u - 1;
+	return a.d - prev.d;
+}
+/* ceil()/floor() over a double already known to be within +-2^54. */
+static sxi64 RandCeilI(double v)
+{
+	sxi64 t = (sxi64)v;
+	return (double)t < v ? t + 1 : t;
+}
+static sxi64 RandFloorI(double v)
+{
+	sxi64 t = (sxi64)v;
+	return (double)t > v ? t - 1 : t;
+}
+/*
+ * php's gamma-section (Goualard 2020), and the only float draw in the language
+ * that is uniform over the REPRESENTABLE doubles of an interval rather than
+ * over the reals it approximates.
+ *
+ * The grid is the multiples of one gamma, and the gamma is taken from the
+ * endpoint with the LARGER magnitude -- the coarse end, so that every step
+ * lands on a double that exists. That endpoint is also where the counting
+ * starts, which is why the answers walk DOWN from $max when $max is the larger
+ * and UP from $min when $min is. The step count covers the whole interval
+ * (rounded up), so the far end can overshoot by less than one gamma; php
+ * clamps it back, which is how the far endpoint stays reachable.
+ *
+ * The four boundaries differ only in how many steps there are and whether the
+ * first one is taken: a closed end includes its own value, an open one starts a
+ * step in.
+ */
+static int RandFloatSection(ph7_context *pCtx,RandSource *pSrc,
+	double rMin,double rMax,int iBound,double *pOut)
+{
+	double rGamma, rVal;
+	sxi64 iHi, iLo;
+	sxu64 uCount, uMax, k;
+	int bDown;
+	if( !RandIsFinite(rMin) ){
+		pSrc->bFailed = 1;
+		pSrc->rc = PH7_VmThrowException(pCtx,"ValueError",
+			"%s::getFloat(): Argument #1 ($min) must be finite",RAND_RANDOMIZER);
+		return 0;
+	}
+	if( !RandIsFinite(rMax) ){
+		pSrc->bFailed = 1;
+		pSrc->rc = PH7_VmThrowException(pCtx,"ValueError",
+			"%s::getFloat(): Argument #2 ($max) must be finite",RAND_RANDOMIZER);
+		return 0;
+	}
+	if( iBound == RAND_BOUND_CC ? rMin > rMax : !(rMin < rMax) ){
+		pSrc->bFailed = 1;
+		pSrc->rc = PH7_VmThrowException(pCtx,"ValueError",
+			"%s::getFloat(): Argument #2 ($max) must be greater than %sargument #1 ($min)",
+			RAND_RANDOMIZER,iBound == RAND_BOUND_CC ? "or equal to " : "");
+		return 0;
+	}
+	bDown = !((rMin < 0 ? -rMin : rMin) > (rMax < 0 ? -rMax : rMax));
+	rGamma = RandGamma(bDown ? rMax : rMin);
+	if( rGamma == 0.0 ){
+		/* Both ends are zero -- ClosedClosed over [0.0, 0.0], the one interval
+		 * with no gamma at all. php still DRAWS here, so the engine advances. */
+		iHi = iLo = 0;
+	}else{
+		iHi = RandCeilI(rMax / rGamma);
+		iLo = RandFloorI(rMin / rGamma);
+	}
+	uCount = (sxu64)(iHi - iLo);
+	if( iBound == RAND_BOUND_CC ){
+		uMax = uCount;
+	}else if( iBound == RAND_BOUND_OO ){
+		if( uCount < 2 ){
+			pSrc->bFailed = 1;
+			pSrc->rc = PH7_VmThrowException(pCtx,"ValueError",
+				"The given interval is empty, there are no floats between "
+				"argument #1 ($min) and argument #2 ($max)");
+			return 0;
+		}
+		uMax = uCount - 2;
+	}else{
+		uMax = uCount - 1;
+	}
+	if( !RandRange(pSrc,uMax,8,&k) ){
+		return 0;
+	}
+	/* The answer is a GRID INDEX times the gamma, never `$max - k*gamma`: the
+	 * step count runs past 2^53 on a wide interval, so a double could not hold
+	 * k -- while the index it lands on always fits, being the endpoint's own
+	 * quotient. That is what makes every answer exact.
+	 *
+	 * The LAST step is the far endpoint ITSELF rather than a computed one. The
+	 * count covers the interval rounded UP, so the grid's last position is at
+	 * or past that end and naming it is what keeps it reachable -- and it is
+	 * the only way an endpoint OFF the grid (a $min that is not a multiple of
+	 * the gamma, or is -0.0, or divides to zero) is ever answered. */
+	if( bDown ){
+		if( iBound == RAND_BOUND_CO || iBound == RAND_BOUND_OO ){
+			k++;
+		}
+		rVal = k >= uCount ? rMin : (double)(iHi - (sxi64)k) * rGamma;
+	}else{
+		if( iBound == RAND_BOUND_OC || iBound == RAND_BOUND_OO ){
+			k++;
+		}
+		rVal = k >= uCount ? rMax : (double)(iLo + (sxi64)k) * rGamma;
+	}
+	*pOut = rVal;
+	return 1;
+}
+static int vm_builtin_Randomizer_nextFloat(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	RandSource sSrc;
+	sxu64 r;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( !RandizerOpen(pCtx,&sSrc) ){
+		return PH7_OK;
+	}
+	/* 53 bits, the whole mantissa, off the TOP of the draw: the low bits of a
+	 * linear generator are the weak ones. */
+	if( RandBits(&sSrc,8,&r) ){
+		ph7_result_double(pCtx,(double)(sxi64)(r >> 11) * RAND_TWO_POW_M53);
+	}
+	return RandizerDone(&sSrc);
+}
+static int vm_builtin_Randomizer_getFloat(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	RandSource sSrc;
+	double rMin, rMax, rOut;
+	int iBound = RAND_BOUND_CO;
+	if( nArg < 2 ){
+		return PH7_OK;
+	}
+	rMin = (double)ph7_value_to_double(apArg[0]);
+	rMax = (double)ph7_value_to_double(apArg[1]);
+	if( nArg > 2 ){
+		RandBoundaryCase(apArg[2],&iBound);
+	}
+	if( !RandizerOpen(pCtx,&sSrc) ){
+		return PH7_OK;
+	}
+	if( RandFloatSection(pCtx,&sSrc,rMin,rMax,iBound,&rOut) ){
+		ph7_result_double(pCtx,rOut);
+	}
+	return RandizerDone(&sSrc);
+}
+#endif /* PH7_OMIT_FLOATING_POINT */
+/*
+ * Random\Randomizer::__serialize() -- one element, the property table, with
+ * the ENGINE in it. The engine serializes itself, so a Randomizer round-trips
+ * exactly when its engine does (and not at all when the engine is Secure).
+ */
+static int vm_builtin_Randomizer_serialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pOut = ph7_context_new_array(pCtx);
+	ph7_value *pProps = ph7_context_new_array(pCtx);
+	ph7_value *pEngine = pThis ? PH7_NativeAttr(pThis,RAND_ENGINE_SLOT) : 0;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pOut == 0 || pProps == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	if( pEngine ){
+		ph7_array_add_strkey_elem(pProps,RAND_ENGINE_SLOT,pEngine);
+	}
+	ph7_array_add_elem(pOut,0,pProps);
+	ph7_result_value(pCtx,pOut);
+	ph7_context_release_value(pCtx,pProps);
+	ph7_context_release_value(pCtx,pOut);
+	return PH7_OK;
+}
+static int vm_builtin_Randomizer_unserialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_value *pProps, *pEngine;
+	if( pThis == 0 || nArg < 1 ){
+		return RandBadSerialization(pCtx,RAND_RANDOMIZER);
+	}
+	pProps = RandArrayAt(apArg[0],0);
+	pEngine = pProps ? ph7_array_fetch(pProps,RAND_ENGINE_SLOT,
+		sizeof(RAND_ENGINE_SLOT)-1) : 0;
+	if( pEngine == 0 || (pEngine->iFlags & MEMOBJ_OBJ) == 0 ){
+		return RandBadSerialization(pCtx,RAND_RANDOMIZER);
+	}
+	PH7_NativeSetAttrObj(pCtx->pVm,pThis,RAND_ENGINE_SLOT,
+		(ph7_class_instance *)pEngine->x.pOther);
+	return PH7_OK;
+}
+/*
+ * ---------------------------------------------------------------------------
  * Declaration.
  * ---------------------------------------------------------------------------
  */
@@ -992,6 +1675,30 @@ PH7_PRIVATE sxi32 PH7_VmInstallRandom(ph7_vm *pVm)
 	/* The state slot is HIDDEN: php keeps an engine's state in its own struct
 	 * and presents no property for it, so var_dump()/get_object_vars() must not
 	 * see one either -- __debugInfo() is the whole of what php shows. */
+	static const PH7_NativeMethodDef aRandomizer[] = {
+		{ "__construct", PH7_MOD_PUBLIC, "?Random\\Engine $engine = NULL", 0,
+		  vm_builtin_Randomizer_construct },
+		{ "nextInt", PH7_MOD_PUBLIC, "", "int", vm_builtin_Randomizer_nextInt },
+		{ "getInt", PH7_MOD_PUBLIC, "int $min, int $max", "int",
+		  vm_builtin_Randomizer_getInt },
+		{ "getBytes", PH7_MOD_PUBLIC, "int $length", "string",
+		  vm_builtin_Randomizer_getBytes },
+#ifndef PH7_OMIT_FLOATING_POINT
+		{ "nextFloat", PH7_MOD_PUBLIC, "", "float", vm_builtin_Randomizer_nextFloat },
+		{ "getFloat", PH7_MOD_PUBLIC,
+		  "float $min, float $max, Random\\IntervalBoundary $boundary = ?", "float",
+		  vm_builtin_Randomizer_getFloat },
+#endif
+		{ "__serialize", PH7_MOD_PUBLIC, "", "array", vm_builtin_Randomizer_serialize },
+		{ "__unserialize", PH7_MOD_PUBLIC, "array $data", "void",
+		  vm_builtin_Randomizer_unserialize },
+	};
+	/* php's `public protected(set) readonly Random\Engine $engine`: the caller
+	 * may read the engine it handed over and may never swap it. */
+	static const PH7_NativePropDef aRandomizerProp[] = {
+		{ RAND_ENGINE_SLOT, PH7_MOD_PUBLIC|PH7_MOD_PROT_SET|PH7_MOD_READONLY,
+		  { 0, 0, PH7_NATIVE_VAL_NONE, 0, 0, 0.0 }, "Random\\Engine" },
+	};
 	static const PH7_NativePropDef aState[] = {
 		{ RAND_STATE_SLOT, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN,
 		  { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
@@ -1015,8 +1722,16 @@ PH7_PRIVATE sxi32 PH7_VmInstallRandom(ph7_vm *pVm)
 		{ RAND_ENG_SECURE, 0, RAND_IF_CSAFE,
 		  PH7_CLASS_FINAL|PH7_CLASS_NOCLONE|PH7_CLASS_NOSERIALIZE,
 		  aSecure, SX_ARRAYSIZE(aSecure), 0, 0, 0, 0, 0, 0, 0 },
+		{ RAND_RANDOMIZER, 0, 0, PH7_CLASS_FINAL,
+		  aRandomizer, SX_ARRAYSIZE(aRandomizer), 0, 0,
+		  aRandomizerProp, SX_ARRAYSIZE(aRandomizerProp), 0, 0, 0 },
 	};
-	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+	sxi32 rc = PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* The enum after the classes: getFloat()'s default reads a case of it. */
+	return RandInstallBoundary(&(*pVm));
 }
 #else
 /* The tiny build ships no ext/random object surface: its consumers -- the
