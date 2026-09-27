@@ -13,8 +13,11 @@ shows:
     stops the transfer with CURLE_WRITE_ERROR (23) mid-body, so a partial body
     is what the caller keeps;
   * a callback that THROWS comes out of curl_exec as the original exception and
-    leaves curl_errno at 0 -- the parked status wins over the CURLE_WRITE_ERROR
-    the stopping return would otherwise have set;
+    does NOT stop the transfer: the whole body still arrives, the status line is
+    still read, and curl_errno reports the transfer that really happened. Only
+    a real response shows the difference -- an aborting throw and a carrying-on
+    one both answer false with the same exception, and differ in
+    CURLINFO_SIZE_DOWNLOAD and (for a prerequisite throw) in the status code;
   * the progress callback is asked before any byte arrives, so its first call
     is all zeroes, and a non-zero return is CURLE_ABORTED_BY_CALLBACK (42).
 
@@ -77,6 +80,35 @@ try {
     printf("-- throwing cb: %s: %s errno=%d\n", get_class($e), $e->getMessage(), curl_errno($h));
 }
 
+/* 3b. ... and the transfer it threw out of RAN: every callback that can throw
+   answers libcurl what means "carry on", so the body is downloaded whole and
+   the response is a response. A prerequisite throw is the loudest of the four:
+   aborting it would leave no status code at all. */
+$shapes = array(
+    'write'    => array(CURLOPT_WRITEFUNCTION, function ($h, $c) { throw new RuntimeException('w'); }),
+    'header'   => array(CURLOPT_HEADERFUNCTION, function ($h, $c) { throw new RuntimeException('h'); }),
+    'progress' => array(CURLOPT_XFERINFOFUNCTION, function ($h, $a, $b, $c, $d) { throw new RuntimeException('p'); }),
+    'prereq'   => array(CURLOPT_PREREQFUNCTION, function ($h, $a, $b, $c, $d) { throw new RuntimeException('q'); }),
+);
+foreach ($shapes as $label => $pair) {
+    $h = newHandle($base . '/headers');
+    if ($pair[0] === CURLOPT_XFERINFOFUNCTION) {
+        /* only for the progress shape: NOPROGRESS off with no callback of our
+           own is libcurl's own meter, written straight to stderr */
+        curl_setopt($h, CURLOPT_NOPROGRESS, false);
+    }
+    curl_setopt($h, $pair[0], $pair[1]);
+    try {
+        curl_exec($h);
+        $seen = 'no exception';
+    } catch (Throwable $e) {
+        $seen = $e->getMessage();
+    }
+    printf("-- %-8s throw: %s size=%d code=%d errno=%d\n", $label, $seen,
+        curl_getinfo($h, CURLINFO_SIZE_DOWNLOAD), curl_getinfo($h, CURLINFO_HTTP_CODE),
+        curl_errno($h));
+}
+
 /* 4. the header callback counts the lines of a redirect chain */
 $lines = array();
 $h = newHandle($base . '/redirect');
@@ -128,6 +160,10 @@ curl_test_server_stop($proc, $port);
 -- write cb: exec=true collected='headed' errno=0
 -- short return: exec=false errno=23
 -- throwing cb: RuntimeException: from the sink errno=0
+-- write    throw: w size=6 code=200 errno=0
+-- header   throw: h size=6 code=200 errno=0
+-- progress throw: p size=6 code=200 errno=0
+-- prereq   throw: q size=6 code=200 errno=0
 -- header cb over a redirect: statuses=HTTP/1.1 302 Found,HTTP/1.1 200 OK count=8
 -- progress: first='0/0/0/0' calls>0=true
 -- progress abort: exec=false errno=42
@@ -135,5 +171,5 @@ curl_test_server_stop($proc, $port);
 -- basic: body='hello Basic user:pass' code=200
 --CLEAN--
 <?php
-unset($port, $base, $proc, $h, $got, $lines, $calls);
+unset($port, $base, $proc, $h, $got, $lines, $calls, $shapes, $pair, $label, $seen);
 ?>

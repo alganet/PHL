@@ -164,11 +164,11 @@ struct phl_curl {
 	ph7_value *pHeaderCb;
 	ph7_value *pXferCb;             /* XFERINFOFUNCTION, or PROGRESSFUNCTION */
 	int bXferIsProgress;            /* the older option's argument shape */
-	sxi32 iCbExc;                   /* a callback threw: parked until the verb unwinds */
-	int bCbExcKeepErr;              /* ...and the transfer's own CURLcode stands: a
-	                                 * READ callback that throws does not abort the
-	                                 * library, so php reports the timeout that
-	                                 * follows rather than a cleared error state */
+	sxi32 iCbExc;                   /* a callback threw: parked until the verb unwinds.
+	                                 * The transfer runs on regardless -- the parked
+	                                 * callbacks answer libcurl what means "carry on" --
+	                                 * so the CURLcode the handle ends with is the
+	                                 * transfer's own, whatever the throw was */
 	int iWriteDest;                 /* where the body goes: one of PHL_CURL_DEST_* */
 	/*
 	 * The multipart body CURLOPT_POSTFIELDS built from an array: the mime

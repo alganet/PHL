@@ -3340,14 +3340,25 @@ static int vm_builtin_curl_getinfo(ph7_context *pCtx,int nArg,ph7_value **apArg)
  * The rule every callback here shares, and the reason they share one shape:
  * libcurl is in the middle of a transfer when the engine re-enters PHP, and a
  * throw out of that PHP cannot travel back through libcurl's C frames. So the
- * status is PARKED on the handle, libcurl is told to stop by returning a value
- * it reads as a failure, and curl_exec() raises exactly the parked status once
- * the library has unwound. A second callback while one is parked does not
+ * status is PARKED on the handle and curl_exec() raises exactly that status
+ * once the library has unwound. A second callback while one is parked does not
  * re-enter PHP at all.
  *
- * php's own answer is the evidence this is right: a WRITEFUNCTION that throws
- * comes out of curl_exec() as the original exception, and leaves curl_errno()
- * at 0 -- not at the CURLE_WRITE_ERROR the short return would have produced.
+ * WHAT THE THROW ANSWERS THE LIBRARY. Not a failure: php hands libcurl the
+ * value that means CARRY ON -- the chunk's own length for a writer, 0 for the
+ * progress and prerequisite callbacks -- so a callback that threw does not stop
+ * the transfer. The whole body still arrives, the status line is still read,
+ * and only the exception says anything happened: curl_exec() answers false with
+ * it, and curl_errno() reports whatever the completed transfer really ended in
+ * (0 for one that succeeded). Answering a FAILURE instead was silently visible
+ * in three places -- CURLINFO_SIZE_DOWNLOAD went to 0, a prerequisite throw
+ * left CURLINFO_HTTP_CODE at 0, and under a multi handle
+ * curl_multi_info_read() reported CURLE_WRITE_ERROR where php reports
+ * CURLE_OK.
+ *
+ * The one callback that is NOT on this rail is the READ one: php's own answer
+ * there leaves the transfer waiting for the length it declared (§7.4), so it
+ * keeps its own shape.
  */
 static int CurlCbParked(phl_curl *pCurl)
 {
@@ -3426,7 +3437,7 @@ static size_t CurlCbWrite(char *zData,size_t nSize,size_t nMemb,void *pUser,
 	size_t nOut;
 	SXUNUSED(pUser);
 	if( CurlCbParked(pCurl) ){
-		return 0;
+		return nTotal;   /* parked: consumed, so the transfer carries on */
 	}
 	PH7_MemObjInit(pVm,&sArgs[0]);
 	PH7_MemObjInit(pVm,&sArgs[1]);
@@ -3442,7 +3453,7 @@ static size_t CurlCbWrite(char *zData,size_t nSize,size_t nMemb,void *pUser,
 	rc = PH7_VmCallUserFunction(pVm,pCb,2,apArg,&sRes);
 	if( rc != SXRET_OK ){
 		CurlCbPark(pCurl,rc);
-		nOut = 0;
+		nOut = nTotal;
 	}else{
 		nOut = (size_t)ph7_value_to_int64(&sRes);
 	}
@@ -3465,7 +3476,9 @@ static size_t CurlHeaderThunk(char *zData,size_t nSize,size_t nMemb,void *pUser)
  * The progress callback, in php's two spellings. XFERINFOFUNCTION takes the
  * five (handle, dltotal, dlnow, ultotal, ulnow) as INTs; PROGRESSFUNCTION is
  * the same five and the same order -- php passes the modern shape to both.
- * A non-zero return aborts the transfer (CURLE_ABORTED_BY_CALLBACK).
+ * A non-zero return aborts the transfer (CURLE_ABORTED_BY_CALLBACK) -- which
+ * is why a THROW answers zero here: php's transfer runs to completion with the
+ * exception waiting for the call to unwind.
  */
 static int CurlXferThunk(void *pUser,curl_off_t dlTotal,curl_off_t dlNow,
 	curl_off_t ulTotal,curl_off_t ulNow)
@@ -3476,7 +3489,7 @@ static int CurlXferThunk(void *pUser,curl_off_t dlTotal,curl_off_t dlNow,
 	sxi32 rc;
 	int i,iOut;
 	if( CurlCbParked(pCurl) || pCurl->pXferCb == 0 ){
-		return 1;
+		return 0;
 	}
 	for( i = 0 ; i < 5 ; ++i ){
 		PH7_MemObjInit(pVm,&sArgs[i]);
@@ -3495,7 +3508,7 @@ static int CurlXferThunk(void *pUser,curl_off_t dlTotal,curl_off_t dlNow,
 	rc = PH7_VmCallUserFunction(pVm,pCurl->pXferCb,5,apArg,&sRes);
 	if( rc != SXRET_OK ){
 		CurlCbPark(pCurl,rc);
-		iOut = 1;
+		iOut = 0;
 	}else{
 		iOut = (int)ph7_value_to_int64(&sRes);
 	}
@@ -3589,7 +3602,6 @@ static size_t CurlReadThunk(char *zBuf,size_t nSize,size_t nMemb,void *pUser)
 		/* Zero bytes, not an abort: libcurl goes on waiting for the length the
 		 * transfer declared, so the CURLcode the handle ends with is the
 		 * timeout -- and php reports it beside the exception. */
-		pCurl->bCbExcKeepErr = 1;
 		nOut = 0;
 	}else{
 		zOut = ph7_value_to_string(&sRes,&nOut);
@@ -3681,8 +3693,9 @@ static int CurlDebugThunk(CURL *pEasy,curl_infotype eType,char *zData,size_t nSi
  * CURL_PREREQFUNC_OK or CURL_PREREQFUNC_ABORT back; the abort is the
  * CURLE_ABORTED_BY_CALLBACK every other refusing callback answers with.
  *
- * A throw parks on the same rail as the rest and aborts here, so the handle
- * ends at errno 0 with the exception, not at 42.
+ * A throw parks on the same rail as the rest and answers OK here: php's
+ * request goes out and the response arrives, so CURLINFO_HTTP_CODE reports the
+ * status of a transfer that really happened rather than 0.
  */
 static int CurlPreReqThunk(void *pUser,char *zConnIp,char *zLocalIp,int nConnPort,int nLocalPort)
 {
@@ -3692,7 +3705,7 @@ static int CurlPreReqThunk(void *pUser,char *zConnIp,char *zLocalIp,int nConnPor
 	sxi32 rc;
 	int i,iOut;
 	if( CurlCbParked(pCurl) || pCurl->pPreReqCb == 0 ){
-		return CURL_PREREQFUNC_ABORT;
+		return CURL_PREREQFUNC_OK;
 	}
 	for( i = 0 ; i < 5 ; ++i ){
 		PH7_MemObjInit(pVm,&sArgs[i]);
@@ -3711,7 +3724,7 @@ static int CurlPreReqThunk(void *pUser,char *zConnIp,char *zLocalIp,int nConnPor
 	rc = PH7_VmCallUserFunction(pVm,pCurl->pPreReqCb,5,apArg,&sRes);
 	if( rc != SXRET_OK ){
 		CurlCbPark(pCurl,rc);
-		iOut = CURL_PREREQFUNC_ABORT;
+		iOut = CURL_PREREQFUNC_OK;
 	}else{
 		iOut = (int)ph7_value_to_int64(&sRes);
 	}
@@ -3765,7 +3778,6 @@ static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	sSink.pCtx = pCtx;
 	sSink.pBody = pCurl->iWriteDest == PHL_CURL_DEST_RETURN ? &sBody : 0;
 	pCurl->iCbExc = 0;
-	pCurl->bCbExcKeepErr = 0;
 	pCurl->bNoPathRead = 0;
 	/* An upload part reads from inside libcurl and may have a diagnostic to
 	 * raise; this is the context it belongs to. */
@@ -3819,21 +3831,17 @@ static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	curl_easy_setopt(pCurl->pEasy,CURLOPT_HEADERDATA,(void *)0);
 	/*
 	 * A callback threw: libcurl has unwound now, so this is where the parked
-	 * status is raised -- and php leaves the handle's errno at 0 for it, not
-	 * at the CURLE_WRITE_ERROR the stopping return would otherwise have set.
+	 * status is raised. The handle keeps the CURLcode the transfer really
+	 * ended in -- 0 for the ordinary case, since a throwing callback no longer
+	 * stops anything, and the read callback's own timeout for the one shape
+	 * that still ends badly.
 	 */
 	if( pCurl->iCbExc != 0 ){
 		sxi32 rcExc = pCurl->iCbExc;
 		pCurl->iCbExc = 0;
-		if( pCurl->bCbExcKeepErr ){
-			pCurl->iLastErr = (int)rc;
-			if( pCurl->zErrBuf[0] == 0 && rc != CURLE_OK ){
-				CurlSetErr(pCurl,(int)rc);
-			}
-			pCurl->bCbExcKeepErr = 0;
-		}else{
-			pCurl->iLastErr = 0;
-			pCurl->zErrBuf[0] = 0;
+		pCurl->iLastErr = (int)rc;
+		if( pCurl->zErrBuf[0] == 0 && rc != CURLE_OK ){
+			CurlSetErr(pCurl,(int)rc);
 		}
 		SyBlobRelease(&sBody);
 		ph7_result_bool(pCtx,0);
