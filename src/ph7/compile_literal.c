@@ -1397,6 +1397,11 @@ PH7_PRIVATE sxi32 GenStateCompileArrayEntry(
  */
 static sxi32 GenStateArrayNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRoot)
 {
+	/* `array(&$x)` is a full write target in php, call included: `[&f()]` is its
+	 * "Can't use function return value in write context", not the
+	 * reference-returning-function exemption `$r =& f()` gets. A nullsafe chain
+	 * here takes the WRITE wording too, not the reference one — php never asks
+	 * `zend_assert_not_short_circuited` on an array entry. */
 	sxi32 rc = GenStateWriteTargetCheck(&(*pGen),pRoot,0);
 	if( rc != SXRET_OK ){
 		return rc;

@@ -1316,24 +1316,30 @@ static sxi32 GenStateForEachNodeValidator(ph7_gen_state *pGen,ph7_expr_node *pRo
 	if( pRoot->pOp ){
 		switch( pRoot->pOp->iOp ){
 		case EXPR_OP_ARROW:     /* $o->p */
-		case EXPR_OP_DC:        /* C::$s */
 		case EXPR_OP_SUBSCRIPT: /* $a['k'], $a[] */
 			return SXRET_OK;
+		case EXPR_OP_DC:        /* C::$s — but `as C::K` is php's parse error */
+			if( !PH7_ExprNodeIsClassConst(pRoot) ){
+				return SXRET_OK;
+			}
+			break;
 		case EXPR_OP_NULLSAFE_ARROW:
 			zMsg = "Can't use nullsafe operator in write context";
 			break;
-		case EXPR_OP_FUNC_CALL:
-			zMsg = "Can't use function return value in write context";
-			break;
+		/* A CALL target (`as f()`) never reaches here — GenStateWriteTargetCheck
+		 * above already refused it, and with php's function/method distinction. */
 		default:
 			break;
 		}
 	}else if( pRoot->xCode == PH7_CompileVariable ){
 		return SXRET_OK;
 	}
-	/* Unexpected expression */
-	rc = PH7_GenCompileError(&(*pGen),E_ERROR,pRoot->pStart? pRoot->pStart->nLine : 0,
-		zMsg ? zMsg : "foreach: Expecting a variable name");
+	if( zMsg == 0 ){
+		/* Not a `variable` in php's grammar: php's own syntax error, which names
+		 * the token that follows the target. */
+		return PH7_ExprOperandNotAVariable(&(*pGen),pRoot);
+	}
+	rc = PH7_GenCompileError(&(*pGen),E_ERROR,pRoot->pStart? pRoot->pStart->nLine : 0,zMsg);
 	if( rc != SXERR_ABORT ){
 		rc = SXERR_INVALID;
 	}

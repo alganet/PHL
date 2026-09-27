@@ -907,8 +907,16 @@ PH7_PRIVATE int PH7_ExprNodeIsThis(ph7_expr_node *pNode)
  * other computed value are not, and an internal function's result gets php's own
  * separate wording — which is what `(clone $o)->p = 1` is, `clone` being a
  * function in php 8.5.
+ *
+ * **A call is writable THROUGH but not writable INTO.** The distinction is
+ * php's, and it is made in two different places: `zend_compile_var_inner` lets
+ * a call be the base of a chain, while `zend_ensure_writable_variable` refuses
+ * the call when it is the target ITSELF, with a wording that says which kind of
+ * call it was. So `f()[0] = 5` compiles and `f() = 5` does not. The one write
+ * site that does not ask the second question is the SOURCE of `=&`, which is
+ * why `$r =& f()` is a runtime notice rather than a compile error.
  */
-PH7_PRIVATE sxi32 GenStateWriteTargetCheck(ph7_gen_state *pGen,ph7_expr_node *pTarget,int bUnset)
+PH7_PRIVATE sxi32 GenStateWriteTargetCheck(ph7_gen_state *pGen,ph7_expr_node *pTarget,int iCtx)
 {
 	ph7_expr_node *pBase = pTarget;
 	const char *zMsg = 0;
@@ -917,14 +925,44 @@ PH7_PRIVATE sxi32 GenStateWriteTargetCheck(ph7_gen_state *pGen,ph7_expr_node *pT
 		return SXRET_OK;
 	}
 	if( PH7_ExprNodeIsThis(pTarget) ){
-		zMsg = bUnset ? "Cannot unset $this" : "Cannot re-assign $this";
+		zMsg = (iCtx & PH7_WTC_UNSET) ? "Cannot unset $this" : "Cannot re-assign $this";
+	}else if( pTarget->pOp && pTarget->pOp->iOp == EXPR_OP_FUNC_CALL
+	       && (iCtx & PH7_WTC_REFSRC) == 0 ){
+		/* The target is the call itself (`f() = 5`, `f()++`, `unset(f())`,
+		 * `foreach (… as f())`). php names the kind of call: a METHOD callee —
+		 * `$o->m()`, `C::m()` — reports "method", everything else "function".
+		 * A PARENTHESISED member callee is php's variable-invocation
+		 * (`($o->p)()` calls the property's VALUE), which is an ordinary
+		 * function call, exactly the distinction the OP_CALL codegen makes. */
+		int bMethod = pTarget->pLeft
+			&& pTarget->pLeft->pOp
+			&& (pTarget->pLeft->pOp->iOp == EXPR_OP_ARROW
+			 || pTarget->pLeft->pOp->iOp == EXPR_OP_NULLSAFE_ARROW
+			 || pTarget->pLeft->pOp->iOp == EXPR_OP_DC)
+			&& (pTarget->pLeft->iFlags & EXPR_NODE_PARENS) == 0;
+		zMsg = bMethod
+			? "Can't use method return value in write context"
+			: "Can't use function return value in write context";
+	}else if( PH7_ExprContainsNullsafe(pTarget) ){
+		/* php asks this AFTER the call question (`$o?->m()++` is a method return
+		 * value, not a nullsafe chain) and BEFORE the base one (`(new A)?->p = 1`
+		 * is the nullsafe refusal, not the temporary). A reference SOURCE has its
+		 * own sentence for it. The `=`/`+=`/`unset()`/foreach paths screened this
+		 * themselves; `++`/`--`, `??=` and `array(&…)` did not, so `$o?->p++` ran. */
+		zMsg = (iCtx & PH7_WTC_REFSRC)
+			? "Cannot take reference of a nullsafe chain"
+			: "Can't use nullsafe operator in write context";
 	}else{
 		/* Walk to the base of the access chain; the links themselves are writable. */
 		while( pBase && pBase->pOp ){
-			if( pBase->pOp->iOp == EXPR_OP_DC ){
+			if( pBase->pOp->iOp == EXPR_OP_DC && !PH7_ExprNodeIsClassConst(pBase) ){
 				/* A `::` left operand is a CLASS reference, not a value — `C::$s = 1`
 				 * and even `(new C)::$s = 1` write class-level storage that outlives
-				 * any temporary, so the chain stops being about a base here. */
+				 * any temporary, so the chain stops being about a base here. A `::`
+				 * naming a CONSTANT is not storage, though: `A::K[0] = 5` subscripts
+				 * a COPY, so it falls through to the computed-base verdict below —
+				 * php's "Cannot use temporary expression in write context", where
+				 * PHL wrote into the copy and answered nothing. */
 				return SXRET_OK;
 			}
 			if( pBase->pOp->iOp != EXPR_OP_ARROW && pBase->pOp->iOp != EXPR_OP_NULLSAFE_ARROW
@@ -1040,6 +1078,13 @@ static sxi32 GenStateEmitExprCode(
 		sxu32 nJmp = 0;
 		sxu32 nNcNsBase;
 		VmInstr *pInstrFix;
+		/* `??=` compiles its own way and so never reached the prec-18 write-target
+		 * check below: `(new A)->p ??= 3` and `"lit"->p->q ??= 3` ran here where
+		 * php refuses them. */
+		rc = GenStateWriteTargetCheck(&(*pGen),pNode->pRight,0);
+		if( rc != SXRET_OK ){
+			return rc;
+		}
 		/* Null coalescing assignment requires a custom compile order: the LHS
 		 * target (pRight for prec-18 right-assoc ops) must be evaluated first
 		 * so we can short-circuit the RHS when LHS is non-null. Pass
@@ -1681,10 +1726,23 @@ static sxi32 GenStateEmitExprCode(
 			 * target so a missing base (the container of a subscript-write, or a bare
 			 * `$o->p`) is auto-created — PHP auto-vivifies on a plain write AND on a `=&`
 			 * bind (`$a[0] =& $x` creates $a as [0 => &$x], it does not warn). */
-			/* php's compile-time write-target rules first ($this, a temporary base). */
+			/* php's compile-time write-target rules first ($this, a temporary base,
+			 * the call that is the target itself). */
 			rc = GenStateWriteTargetCheck(&(*pGen),pNode->pRight,0);
 			if( rc != SXRET_OK ){
 				return rc;
+			}
+			if( pNode->pOp->iOp == EXPR_OP_REF ){
+				/* php compiles a reference SOURCE in write context too
+				 * (`zend_compile_var(source, BP_VAR_W, 1)`), so `$r =& (new A)->p`
+				 * and `$r =& (clone $o)->p` are the same two compile refusals a
+				 * write to them would be. Only the call-as-target question is not
+				 * asked here: `$r =& f()` is legal. The operands were swapped in
+				 * parse.c, so the source is pLeft. */
+				rc = GenStateWriteTargetCheck(&(*pGen),pNode->pLeft,PH7_WTC_REFSRC);
+				if( rc != SXRET_OK ){
+					return rc;
+				}
 			}
 			iFlags |= EXPR_FLAG_LOAD_IDX_STORE | EXPR_FLAG_MEMBER_WRITE;
 			if( iVmOp != PH7_OP_STORE && pNode->pOp->iOp != EXPR_OP_REF ){
@@ -2462,24 +2520,28 @@ PH7_PRIVATE ProcNodeConstruct PH7_GetNodeHandler(sxu32 nNodeType)
 	return 0;
 }
 /*
- * Tree validator for unset() arguments — rejects any `?->` node in
- * the argument expression with PHP's "Can't use nullsafe operator
- * in write context" parse error.
+ * Tree validator for unset() arguments — php's write-target rules, then its
+ * "Can't use nullsafe operator in write context", then the grammar: `unset()`
+ * takes a `variable`, so `unset(GK)`, `unset("s")` and `unset(A::K)` are php
+ * PARSE errors where PHL let them reach the VM and answer with a PH7-ism.
  */
 static sxi32 GenStateUnsetValidator(ph7_gen_state *pGen, ph7_expr_node *pNode)
 {
 	sxi32 rc;
-	rc = GenStateWriteTargetCheck(&(*pGen),pNode,1 /* unset wording for $this */);
+	rc = GenStateWriteTargetCheck(&(*pGen),pNode,PH7_WTC_UNSET);
 	if( rc != SXRET_OK ){
 		return rc;
 	}
-	if( !PH7_ExprContainsNullsafe(pNode) ){
-		return SXRET_OK;
+	if( PH7_ExprContainsNullsafe(pNode) ){
+		rc = PH7_GenCompileError(pGen,E_ERROR,
+			pNode ? pNode->pStart->nLine : 1,
+			"Can't use nullsafe operator in write context");
+		return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
 	}
-	rc = PH7_GenCompileError(pGen,E_PARSE,
-		pNode ? pNode->pStart->nLine : 1,
-		"Can't use nullsafe operator in write context");
-	return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
+	if( pNode && PH7_ExprIsModifiableValue(pNode) == FALSE ){
+		return PH7_ExprOperandNotAVariable(pGen,pNode);
+	}
+	return SXRET_OK;
 }
 /*
  * Compile an unset() statement.

@@ -1464,7 +1464,7 @@ PH7_PRIVATE sxi32 PH7_ExprFreeTree(ph7_gen_state *pGen,SySet *pNodeSet)
  * Return TRUE if any node in the expression subtree is the nullsafe
  * operator `?->`.  Used by write-context checks to reject assignments,
  * references, and unset() that target any link of a nullsafe chain
- * (PHP 8.0 makes this a fatal parse error:
+ * (PHP 8.0 makes this a compile fatal:
  * "Can't use nullsafe operator in write context").
  */
 PH7_PRIVATE int PH7_ExprContainsNullsafe(ph7_expr_node *pNode)
@@ -1484,35 +1484,140 @@ PH7_PRIVATE int PH7_ExprContainsNullsafe(ph7_expr_node *pNode)
 	return 0;
 }
 /*
+ * TRUE when a `::` node names a class CONSTANT (`A::K`, `A::class`) rather than
+ * a static PROPERTY (`A::$s`, `A::$$name`).
+ *
+ * php's grammar puts the two in different rules and only the property is a
+ * `variable`: a class constant is a `constant`, which nothing but a DEREFERENCE
+ * (`A::K[0]`, `A::K->p`) can turn into one — and that dereference answers a
+ * TEMPORARY. So `A::K = 5`, `A::K++` and `unset(A::K)` are php PARSE errors
+ * while `A::K[0] = 5` is its "Cannot use temporary expression in write
+ * context". PHL treated every `::` as class-level STORAGE, so the first three
+ * were reported at runtime with a PH7-ism (or, for `A::K++` and `--A::K`, ran in
+ * silence) and the fourth wrote into a discarded copy of the constant.
+ *
+ * The token after `::` decides it: a static property always spells a `$`.
+ */
+PH7_PRIVATE int PH7_ExprNodeIsClassConst(ph7_expr_node *pNode)
+{
+	if( pNode == 0 || pNode->pOp == 0 || pNode->pOp->iOp != EXPR_OP_DC ){
+		return FALSE;
+	}
+	if( pNode->pRight == 0 || pNode->pRight->pStart == 0 ){
+		/* Not linked yet / nothing to look at: keep the old permissive answer. */
+		return FALSE;
+	}
+	return (pNode->pRight->pStart->nType & PH7_TK_DOLLAR) == 0;
+}
+/*
  * Check if the given node is a modifialbe l/r-value.
  * Return TRUE if modifiable.FALSE otherwise.
+ *
+ * This is the SHAPE question only: is the target an access chain at all?
+ * Whether the chain's BASE may be written through is php's separate rule, made
+ * at codegen by GenStateWriteTargetCheck (php: zend_compile_var_inner) so every
+ * write kind — `=`, `+=`, `=&`, `++`, `unset()`, a foreach target — reaches it
+ * and reports php's own two refusals instead of a message naming the operator.
  */
-static int ExprIsModifiableValue(ph7_expr_node *pNode,sxu8 bFunc)
+PH7_PRIVATE int PH7_ExprIsModifiableValue(ph7_expr_node *pNode)
 {
 	sxi32 iExprOp;
 	if( pNode->pOp == 0 ){
 		return pNode->xCode == PH7_CompileVariable ? TRUE : FALSE;
 	}
 	iExprOp = pNode->pOp->iOp;
-	if( iExprOp == EXPR_OP_ARROW /*'->' */ || iExprOp == EXPR_OP_DC /*'::'*/ ){
+	if( iExprOp == EXPR_OP_ARROW /*'->' */ ){
 			return TRUE;
 	}
+	if( iExprOp == EXPR_OP_DC /*'::'*/ ){
+		/* `C::$s` is storage; `C::K` is a constant, and php's grammar will not
+		 * take one as a write target at all. */
+		return PH7_ExprNodeIsClassConst(pNode) ? FALSE : TRUE;
+	}
 	if( iExprOp == EXPR_OP_SUBSCRIPT/*'[]'*/ ){
-		if( pNode->pLeft->pOp ) {
-			if( pNode->pLeft->pOp->iOp != EXPR_OP_SUBSCRIPT /*'['*/ && pNode->pLeft->pOp->iOp != EXPR_OP_ARROW /*'->'*/
-				&& pNode->pLeft->pOp->iOp != EXPR_OP_DC /*'::'*/){
-				return FALSE;
-			}
-		}else if( pNode->pLeft->xCode != PH7_CompileVariable ){
-			return FALSE;
-		}
+		/* A subscript is a writable shape whatever it subscripts. php compiles
+		 * and RUNS `f()[0] = 5` and `str_split("ab")[0] = "z"` — the write lands
+		 * on the temporary the call answered and is discarded — and refuses a
+		 * literal/cast/computed/`new` base with a wording of its own. Screening
+		 * the base here rejected both alike with `'=': Left operand must be a
+		 * modifiable l-value`, and did it BEFORE the codegen check that knows
+		 * php's rules could speak. */
 		return TRUE;
 	}
-	if( bFunc && iExprOp == EXPR_OP_FUNC_CALL ){
+	if( iExprOp == EXPR_OP_FUNC_CALL ){
+		/* A call is a shape both ways: as a reference SOURCE (`$r =& f()`) it is
+		 * php-legal, and as a write TARGET it is php's own compile fatal naming
+		 * the kind of call, which GenStateWriteTargetCheck raises. */
 		return TRUE;
 	}
 	/* Not a modifiable l or r-value */
 	return FALSE;
+}
+/*
+ * php refuses a write to something that is not a `variable` in its GRAMMAR, so
+ * what comes out is a SYNTAX error naming a token — never a sentence about the
+ * operator, which is all PHL had ("'=': Left operand must be a modifiable
+ * l-value", "'++' operator needs l-value", and two more for `=&` and `unset()`).
+ * Which token php names depends on which side of the operator the offending
+ * operand sits, and both shapes are here:
+ *
+ *   the operand LEFT of the operator (`5 = 1`, `A::K += 1`, `(1+2)++`) —  php
+ *   has already shifted it and stops AT the operator, so that is what it names.
+ */
+static sxi32 ExprWriteTargetNotAVariable(ph7_gen_state *pGen,ph7_expr_node *pOpNode)
+{
+	sxi32 rc;
+	if( pOpNode->pOp && pOpNode->pOp->iOp == EXPR_OP_REF ){
+		/* php lexes `=&` as `=` then `&`, and stops on the `=`. */
+		rc = PH7_GenCompileError(pGen,E_PARSE,
+			pOpNode->pStart ? pOpNode->pStart->nLine : 0,
+			"syntax error, unexpected token \"=\"");
+	}else{
+		rc = PH7_GenSyntaxError(pGen,pOpNode->pStart,0);
+	}
+	return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
+}
+/*
+ * A token pointer one PAST the last token of a subtree is only a real token
+ * while the subtree is not the last thing in the file. `<?php --A::K` (no
+ * terminator) walked off the end of the stream and named a garbage token on
+ * line 0; php says "unexpected end of file" there, which is what
+ * PH7_GenSyntaxError answers for a NULL. Returns pTok, or 0 when it is outside
+ * the chunk's token stream.
+ */
+PH7_PRIVATE SyToken * PH7_ExprTokenInStream(ph7_gen_state *pGen,SyToken *pTok)
+{
+	SyToken *pBase, *pStreamEnd;
+	if( pTok == 0 || pGen->pTokenSet == 0 ){
+		return pTok;
+	}
+	pBase = (SyToken *)SySetBasePtr(pGen->pTokenSet);
+	pStreamEnd = &pBase[SySetUsed(pGen->pTokenSet)];
+	return (pTok >= pBase && pTok < pStreamEnd) ? pTok : 0;
+}
+/*
+ *   the operand RIGHT of the operator (`--A::K`, `$r =& "s"`, `unset(GK)`) — it
+ *   was shifted as a `constant`/`dereferencable_scalar`, so php runs past it and
+ *   stops on whatever FOLLOWS, still expecting the dereference that would have
+ *   made it a variable. A bare integer/float is the exception: nothing in php's
+ *   grammar dereferences one, so the literal itself is named.
+ */
+PH7_PRIVATE sxi32 PH7_ExprOperandNotAVariable(ph7_gen_state *pGen,ph7_expr_node *pOperand)
+{
+	SyToken *pMin = 0, *pMax = 0;
+	sxi32 rc;
+	if( pOperand && pOperand->pOp == 0 && pOperand->pStart
+	 && (pOperand->pStart->nType & (PH7_TK_INTEGER|PH7_TK_REAL)) ){
+		rc = PH7_GenSyntaxError(pGen,pOperand->pStart,0);
+	}else{
+		/* The whole SUBTREE has to be stepped over, not just the node's own
+		 * tokens: `A::K` and `(1+2)` each named an inner token otherwise. The
+		 * span's max is already one past the last token. */
+		PH7_ExprSubtreeSpan(pOperand,&pMin,&pMax);
+		rc = PH7_GenSyntaxError(pGen,PH7_ExprTokenInStream(pGen,pMax),
+			"\"->\" or \"?->\" or \"[\"");
+	}
+	return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
 }
 /* Forward declaration */
 static sxi32 ExprMakeTree(ph7_gen_state *pGen,ph7_expr_node **apNode,sxi32 nToken);
@@ -1765,6 +1870,7 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 	 sxi32 i,iLeft,iRight;
 	 ph7_expr_node *pNode;
 	 ph7_expr_node *pSuppress;
+	 ph7_expr_node *pUnOuter = 0;
 	 sxi32 iCur;
 	 sxi32 rc;
 	 if( nToken <= 0 || (nToken == 1 && apNode[0]->xCode) ){
@@ -2164,7 +2270,10 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 		 }
 		 pNode = apNode[iCur];
 		 if( pNode->pOp && pNode->pOp->iPrec == 3 && pNode->pLeft == 0){
-			 if( iLeft >= 0 && ((apNode[iLeft]->pOp && apNode[iLeft]->pOp->iPrec == 2 /* Postfix */)
+			 if( iLeft >= 0 && ((apNode[iLeft]->pOp && apNode[iLeft]->pOp->iPrec == 2 /* Postfix */
+					 /* …but `A::K++` is php's parse error, not an increment of
+					  * class-level storage: a class CONSTANT is not a variable. */
+					 && !PH7_ExprNodeIsClassConst(apNode[iLeft]))
 				 || apNode[iLeft]->xCode == PH7_CompileVariable) ){
 					 /* Link the node to the tree */
 					 pNode->pLeft = apNode[iLeft];
@@ -2181,13 +2290,16 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 		 pNode = apNode[iCur];
 		 if( pNode->pOp && pNode->pOp->iPrec == 3 && pNode->pLeft == 0){
 			 if( iLeft < 0 || (apNode[iLeft]->pOp == 0 && apNode[iLeft]->xCode != PH7_CompileVariable)
-				 || ( apNode[iLeft]->pOp && apNode[iLeft]->pOp->iPrec != 2 /* Postfix */) ){
-					 /* Syntax error */
-					 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"'%z' operator needs l-value",&pNode->pOp->sOp);
-					 if( rc != SXERR_ABORT ){
-						 rc = SXERR_SYNTAX;
+				 || ( apNode[iLeft]->pOp && (apNode[iLeft]->pOp->iPrec != 2 /* Postfix */
+					 || PH7_ExprNodeIsClassConst(apNode[iLeft]))) ){
+					 /* Not a variable. Nothing to the right at all means the operator
+					  * was POSTFIX and its target (already passed over) was refused,
+					  * which is where php stops; otherwise this is a PREFIX operator
+					  * over a non-variable and php stops past that operand. */
+					 if( iLeft < 0 ){
+						 return ExprWriteTargetNotAVariable(pGen,pNode);
 					 }
-					 return rc;
+					 return PH7_ExprOperandNotAVariable(pGen,apNode[iLeft]);
 			 }
 			 /* Link the node to the tree */
 			 pNode->pLeft = apNode[iLeft];
@@ -2349,6 +2461,8 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 			 }
 			 pNode = apNode[iCur];
 			 if( pNode->pOp && pNode->pOp->iPrec == i && pNode->pLeft == 0 ){
+				 ph7_expr_node *pRefUn = 0;      /* `=&` under a prefix unary */
+				 ph7_expr_node *pRefUnOuter = 0;
 				 /* Get the right node */
 				 iRight = iCur + 1;
 				 while( iRight < nToken && apNode[iRight] == 0 ){
@@ -2365,43 +2479,78 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 				 if( pNode->pOp->iOp == EXPR_OP_REF ){
 					 sxi32  iTmp;
 					 /* Reference operator [i.e: '&=' ]*/
-					 /* PHP 8.0: `&$a?->b` is a parse error — references
-					  * cannot target a nullsafe chain anywhere. Check the
-					  * right operand first since EXPR_OP_REF's operand order
-					  * is swapped below. */
-					 if( PH7_ExprContainsNullsafe(apNode[iRight]) ){
-						 rc = PH7_GenCompileError(pGen,E_PARSE,pNode->pStart->nLine,
-							 "Can't use nullsafe operator in write context");
+					 /* A prefix unary covers the whole BIND too — `@$a[0] =& $x` is
+					  * `@($a[0] =& $x)`, and so are its `-`/`+`/`!`/`~`/cast spellings,
+					  * every one of which php runs. Same hoist the assignment path makes
+					  * below, re-wrapped after the operands are swapped and linked. */
+					 {
+						 ph7_expr_node *pUn = apNode[iLeft];
+						 while( pUn->pOp && pUn->pLeft
+							 && (pUn->iFlags & EXPR_NODE_PARENS) == 0
+							 && (pUn->pOp->iPrec == 4 /* -, +, !, ~, @, (cast) */
+							  || pUn->pOp->iOp == EXPR_OP_CLONE) ){
+							 pRefUn = pUn;      /* innermost unary over the bind target */
+							 pUn = pUn->pLeft;
+						 }
+						 if( pRefUn ){
+							 pRefUnOuter = apNode[iLeft]; /* the chain's result node */
+							 apNode[iLeft] = pUn;
+						 }
+					 }
+					 /* PHP 8.0: a reference and a nullsafe chain do not mix, and php
+					  * has a different sentence for each SIDE — the bind target is a
+					  * write like any other, while the SOURCE gets a wording of its
+					  * own. Both operands are still in written order here; the swap
+					  * below turns them over. */
+					 if( PH7_ExprContainsNullsafe(apNode[iLeft])
+					  || PH7_ExprContainsNullsafe(apNode[iRight]) ){
+						 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
+							 PH7_ExprContainsNullsafe(apNode[iLeft])
+								 ? "Can't use nullsafe operator in write context"
+								 : "Cannot take reference of a nullsafe chain");
 						 if( rc != SXERR_ABORT ){
 							 rc = SXERR_SYNTAX;
 						 }
 						 return rc;
 					 }
 					 /* A member LHS (`$o->p =& $x`, `self::$s =& $x`) is a valid
-					  * reference target — ExprIsModifiableValue already accepts
-					  * EXPR_OP_ARROW (`->`) and EXPR_OP_DC (`::`) and rejects the
-					  * nullsafe `?->` form (not in its l-value list), so no extra
+					  * reference target — PH7_ExprIsModifiableValue accepts
+					  * EXPR_OP_ARROW (`->`) and a static-PROPERTY `::`, and rejects
+					  * both a class CONSTANT and the nullsafe `?->` form, so no extra
 					  * PH7_OP_MEMBER guard is needed here. The runtime member
 					  * ref-store is emitted by the STORE_REF codegen below. */
-					 if( ExprIsModifiableValue(apNode[iLeft],FALSE) == FALSE ){
-						 /* Left operand must be a modifiable l-value */
-						 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,"'&': Left operand must be a modifiable l-value");
-						 if( rc != SXERR_ABORT ){
-							 rc = SXERR_SYNTAX;
-						 }
-						 return rc;
+					 if( PH7_ExprIsModifiableValue(apNode[iLeft]) == FALSE ){
+						 /* The bind TARGET is not a variable: php stops at the `=`. */
+						 return ExprWriteTargetNotAVariable(pGen,pNode);
 					 }
 					 if( apNode[iLeft]->pOp == 0 || apNode[iLeft]->pOp->iOp != EXPR_OP_SUBSCRIPT /*$a[] =& 14*/) {
-						 if(  ExprIsModifiableValue(apNode[iRight],TRUE) == FALSE ){
-							 if( apNode[iRight]->pOp == 0 ||  (apNode[iRight]->pOp->iOp != EXPR_OP_NEW /* new */
-								 && apNode[iRight]->pOp->iOp != EXPR_OP_CLONE /* clone */) ){
-									 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
-										 "Reference operator '&' require a variable not a constant expression as it's right operand");
-									 if( rc != SXERR_ABORT ){
-										 rc = SXERR_SYNTAX;
-									 }
-									 return rc;
+						 if(  PH7_ExprIsModifiableValue(apNode[iRight]) == FALSE ){
+							 /* The SOURCE has to be a variable too, and php's `&new` /
+							  * `&clone` legacy productions each stop somewhere of their
+							  * own: `$r =& clone $o` names the `clone` keyword (nothing
+							  * in a `variable` may start with it), while `$r =& new A`
+							  * enters php 4's `&new` rule, which wants the ARGUMENT
+							  * list — `expecting "("` — unless one was written, in
+							  * which case the rule completes and php asks for the
+							  * dereference like everything else. PHL accepted BOTH
+							  * spellings and silently bound a copy. */
+							 if( apNode[iRight]->pOp
+								 && apNode[iRight]->pOp->iOp == EXPR_OP_CLONE ){
+								 rc = PH7_GenSyntaxError(pGen,apNode[iRight]->pStart,0);
+								 return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
 							 }
+							 if( apNode[iRight]->pOp
+								 && apNode[iRight]->pOp->iOp == EXPR_OP_NEW ){
+								 SyToken *pNMin = 0, *pNMax = 0;
+								 PH7_ExprSubtreeSpan(apNode[iRight],&pNMin,&pNMax);
+								 if( pNMax == 0 || pNMax <= apNode[iRight]->pStart
+								  || (pNMax[-1].nType & PH7_TK_RPAREN) == 0 ){
+									 rc = PH7_GenSyntaxError(pGen,
+										 PH7_ExprTokenInStream(pGen,pNMax),"\"(\"");
+									 return rc == SXERR_ABORT ? SXERR_ABORT : SXERR_SYNTAX;
+								 }
+							 }
+							 return PH7_ExprOperandNotAVariable(pGen,apNode[iRight]);
 						 }
 					 }
 					 /* Swap operands */
@@ -2413,6 +2562,11 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 				 pNode->pLeft = apNode[iLeft];
 				 pNode->pRight = apNode[iRight];
 				 apNode[iLeft] = apNode[iRight] = 0;
+				 if( pRefUn ){
+					 /* Re-wrap: the unary chain now covers the whole bind. */
+					 pRefUn->pLeft = pNode;
+					 apNode[iCur] = pRefUnOuter;
+				 }
 			 }
 			 iLeft = iCur;
 		 }
@@ -2536,27 +2690,42 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 			  * chain still contains a `?->` that cannot participate in
 			  * a write. */
 			 if( PH7_ExprContainsNullsafe(apNode[iLeft]) ){
-				 rc = PH7_GenCompileError(pGen,E_PARSE,pNode->pStart->nLine,
+				 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
 					 "Can't use nullsafe operator in write context");
 				 if( rc != SXERR_ABORT ){
 					 rc = SXERR_SYNTAX;
 				 }
 				 return rc;
 			 }
-			 /* php parses `@$x = expr` as `@($x = expr)` — the suppression covers the
-			  * whole assignment, not just its target. The unary phase already bound '@'
-			  * to the LHS, which left the assignment staring at a non-lvalue, so detach
-			  * it here, let the assignment bind to the real target, and re-wrap below.
+			 /* Every PREFIX unary in php covers the whole assignment rather than just
+			  * its target: `@$x = expr` is `@($x = expr)`, and so are `-$x = 5`,
+			  * `+$x = 5`, `!$x = 5`, `~$x = 5`, `(int)$x = 5` and `clone $o = 5` —
+			  * every one of them RUNS in php, writing $x and then applying the
+			  * operator to the result. The unary phase has already bound the operator
+			  * to the LHS, which leaves the assignment staring at a non-lvalue, so
+			  * walk down to the innermost operand, let the assignment bind THERE, and
+			  * re-wrap below. Only `@` was handled here, so the other eight spellings
+			  * did not compile at all. A PARENTHESISED operand (`(-$x) = 5`) is a
+			  * genuine non-lvalue and stays refused, and `new` keeps its own
+			  * production, where php refuses too.
 			  * Same shape as the '**'-beneath-unary hoist further up. */
 			 pSuppress = 0;
-			 if( apNode[iLeft]->pOp
-				 && apNode[iLeft]->pOp->iVmOp == PH7_OP_ERR_CTRL
-				 && apNode[iLeft]->pLeft != 0
-				 && (apNode[iLeft]->iFlags & EXPR_NODE_PARENS) == 0 ){
-				 pSuppress = apNode[iLeft];
-				 apNode[iLeft] = pSuppress->pLeft;
+			 pUnOuter = 0;
+			 {
+				 ph7_expr_node *pUn = apNode[iLeft];
+				 while( pUn->pOp && pUn->pLeft
+					 && (pUn->iFlags & EXPR_NODE_PARENS) == 0
+					 && (pUn->pOp->iPrec == 4 /* -, +, !, ~, @, (cast) */
+					  || pUn->pOp->iOp == EXPR_OP_CLONE) ){
+					 pSuppress = pUn;  /* innermost unary seen so far */
+					 pUn = pUn->pLeft;
+				 }
+				 if( pSuppress ){
+					 pUnOuter = apNode[iLeft]; /* the chain's result node */
+					 apNode[iLeft] = pUn;
+				 }
 			 }
-			 if( ExprIsModifiableValue(apNode[iLeft],FALSE) == FALSE ){
+			 if( PH7_ExprIsModifiableValue(apNode[iLeft]) == FALSE ){
 				 /* php binds `A op $lv = B` as `A op ($lv = B)`: assignment takes the
 				  * immediate lvalue on its left, not the whole binary subtree. When the
 				  * left operand is a (non-lvalue) binary/comparison/logical subtree, walk
@@ -2567,10 +2736,10 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 					 ph7_expr_node *pHost = apNode[iLeft];
 					 ph7_expr_node *pParent = pHost;
 					 while( pParent->pRight && pParent->pRight->pOp && pParent->pRight->pRight
-						 && ExprIsModifiableValue(pParent->pRight,FALSE) == FALSE ){
+						 && PH7_ExprIsModifiableValue(pParent->pRight) == FALSE ){
 						 pParent = pParent->pRight;
 					 }
-					 if( pParent->pRight && ExprIsModifiableValue(pParent->pRight,FALSE)
+					 if( pParent->pRight && PH7_ExprIsModifiableValue(pParent->pRight)
 						 && PH7_ExprContainsNullsafe(pParent->pRight) == 0 ){
 						 pNode->pLeft = apNode[iRight];   /* assignment RHS value */
 						 pNode->pRight = pParent->pRight; /* the extracted lvalue */
@@ -2583,19 +2752,9 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 				 }
 				 if( pNode->pOp->iVmOp != PH7_OP_STORE ||
 					 (apNode[iLeft]->xCode != PH7_CompileList && apNode[iLeft]->xCode != PH7_CompileShortList) ){
-					 /* Left operand must be a modifiable l-value */
-					 if( pNode->pOp->iOp == EXPR_OP_NULLC_ASSIGN ){
-						 /* PHP-compatible parse error for a non-lvalue LHS to null coalescing assignment */
-						 rc = PH7_GenCompileError(pGen,E_PARSE,pNode->pStart->nLine,
-							 "syntax error, unexpected token \"%z\"",&pNode->pOp->sOp);
-					 }else{
-						 rc = PH7_GenCompileError(pGen,E_ERROR,pNode->pStart->nLine,
-							 "'%z': Left operand must be a modifiable l-value",&pNode->pOp->sOp);
-					 }
-					 if( rc != SXERR_ABORT ){
-						 rc = SXERR_SYNTAX;
-					 }
-					 return rc;
+					 /* The target is not a `variable` in php's grammar: php stops at
+					  * the assignment operator itself, whatever the target was. */
+					 return ExprWriteTargetNotAVariable(pGen,pNode);
 				 }
 			 }
 			 /* Link the node to the tree (Reverse) */
@@ -2603,9 +2762,9 @@ PH7_PRIVATE void PH7_ExprSubtreeSpan(ph7_expr_node *pNode,SyToken **ppMin,SyToke
 			 pNode->pRight = apNode[iLeft];
 			 apNode[iLeft] = apNode[iRight] = 0;
 			 if( pSuppress ){
-				 /* Re-wrap: the '@' now suppresses the whole assignment */
+				 /* Re-wrap: the unary chain now covers the whole assignment. */
 				 pSuppress->pLeft = pNode;
-				 apNode[iCur] = pSuppress;
+				 apNode[iCur] = pUnOuter;
 			 }
 		 }
 		 iRight = iCur;
