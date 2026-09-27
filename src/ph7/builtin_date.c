@@ -669,9 +669,16 @@ PH7_PRIVATE sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pT
 			break;
 				 }
 		case 'p':{
-			/* Like P, but "Z" for UTC (php 8.0+) */
+			/* Like P, but "Z" for UTC (php 8.0+). Two rules PHL had wrong, both
+			 * visible only once a zone can carry SECONDS or be an abbreviation:
+			 * php decides on what P would have PRINTED rather than on the raw
+			 * offset, so "+00:00:59" prints Z and "-00:00:59" prints "-00:00";
+			 * and the GMT abbreviation is php's one exception -- it prints
+			 * "+00:00" where the UTC and Z spellings of the same instant print Z. */
 			long a;
-			if( pTm->tm_gmtoff == 0 ){
+			if( pTm->tm_gmtoff >= 0 && pTm->tm_gmtoff < 60
+			 && !(pTm->tm_zone && SyStrncmp(pTm->tm_zone,"GMT",3) == 0
+			      && pTm->tm_zone[3] == 0) ){
 				ph7_result_string(pCtx,"Z",1);
 				break;
 			}

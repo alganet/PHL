@@ -1472,6 +1472,30 @@ parse_num_off:	{
 #define DTZ_OFF  "__dtzOff"
 #define DTZ_NAME "__dtzName"
 /*
+ * php's timezone_type -- 1 = a fixed UTC OFFSET, 2 = an ABBREVIATION, 3 = an
+ * IDENTIFIER -- STORED beside the name rather than read back off it, because the
+ * name does not carry it: `new DateTimeZone('utc')` and `new DateTimeZone('UTC')`
+ * are both named "UTC" there and are an abbreviation and an identifier
+ * respectively, which is what makes them refuse to compare with each other. The
+ * date objects keep their own copy (DT_ZKIND) for the same reason: php presents a
+ * DateTime built with the lowercase zone as type 2.
+ *
+ * DtZoneTypeOf() remains the rule for a name that arrives with NO kind -- php's
+ * own __unserialize re-derives it that way, which is why a serialized type-2 "UTC"
+ * comes back as type 3 in both engines.
+ */
+#define DTZ_KIND "__dtzKind"
+#define DT_ZKIND "__dtZKind"
+#define DT_ZONE_OFFSET 1
+#define DT_ZONE_ABBR   2
+#define DT_ZONE_ID     3
+/* The kind the script DEFAULT zone has, and it is not the name's own rule:
+ * date_default_timezone_set() takes a tz-database IDENTIFIER and nothing else, so
+ * php reports a date built under a `GMT` default as type 3 while
+ * `new DateTimeZone('GMT')` -- the same three letters spelled as a zone -- is the
+ * abbreviation, type 2. */
+#define DT_ZONE_DEFAULT_KIND DT_ZONE_ID
+/*
  * ---------------------------------------------------------------------------
  * A DateInterval's MICROSECONDS.
  *
@@ -1530,6 +1554,7 @@ struct dt_state
 	int uSec;
 	const char *zName;   /* borrowed from the instance's own slot */
 	int nName;
+	int iZoneKind;       /* php's timezone_type: DT_ZONE_OFFSET / _ABBR / _ID */
 };
 /* php's name for a fixed offset: "+HH:MM" (and "+00:00" for zero, never "-00:00"). */
 static int DtOffName(char *zBuf,sxu32 nBuf,sxi32 iOff)
@@ -1538,12 +1563,67 @@ static int DtOffName(char *zBuf,sxu32 nBuf,sxi32 iOff)
 	return (int)SyBufferFormat(zBuf,nBuf,"%c%02d:%02d",
 		iOff < 0 ? '-' : '+',(int)(a / 3600),(int)((a % 3600) / 60));
 }
+/*
+ * The same name with php's SECONDS field, which it appends only when there is
+ * one: `new DateTimeZone('+01:00:59')` is named "+01:00:59" and answers that to
+ * getName() and to format('e'), while `P`, `p`, `O` and `T` -- built from
+ * DtOffName above -- still stop at the minute there. So the two spellings are
+ * separate on purpose.
+ */
+static int DtOffNameSec(char *zBuf,sxu32 nBuf,sxi32 iOff)
+{
+	sxi32 a = iOff < 0 ? -iOff : iOff;
+	if( a % 60 == 0 ){
+		return DtOffName(zBuf,nBuf,iOff);
+	}
+	return (int)SyBufferFormat(zBuf,nBuf,"%c%02d:%02d:%02d",
+		iOff < 0 ? '-' : '+',(int)(a / 3600),(int)((a % 3600) / 60),(int)(a % 60));
+}
+/*
+ * php's timezone_type read off a NAME alone -- the fallback for a zone that
+ * reached the engine without one: a payload `__unserialize()` re-parses (php
+ * re-derives there too, which is why a serialized type-2 "UTC" comes back a
+ * type 3 in both engines), and an object whose slots are still at their
+ * defaults. Everywhere a SPELLING was seen, the kind stored with it wins --
+ * "UTC" and "utc" are one name and two kinds.
+ *
+ * 1 = a fixed UTC OFFSET ("+02:00"), 2 = an ABBREVIATION ("GMT", "Z"),
+ * 3 = an IDENTIFIER ("UTC", "Europe/Paris"). PHL accepts offsets, UTC, GMT and Z
+ * today; the identifier arm is written for the whole rule so a tz database can
+ * only add names, never change the tagging.
+ */
+static int DtZoneTypeOf(const char *zName,int nName)
+{
+	sxu32 nPos = 0;
+	if( nName > 0 && (zName[0] == '+' || zName[0] == '-') ){
+		return DT_ZONE_OFFSET;
+	}
+	if( nName == 3 && SyMemcmp(zName,"UTC",3) == 0 ){
+		return DT_ZONE_ID;
+	}
+	if( nName > 0 && SyByteFind(zName,(sxu32)nName,'/',&nPos) == SXRET_OK ){
+		return DT_ZONE_ID;
+	}
+	return DT_ZONE_ABBR;
+}
+/* The kind an instance carries in zSlot, or the name's own rule when the slot is
+ * still zero -- an object built by newInstanceWithoutConstructor, or one whose
+ * state predates the slot. */
+static int DtZoneKindOf(ph7_class_instance *pObj,const char *zSlot,const char *zName,int nName)
+{
+	int iKind = (int)PH7_NativeAttrInt(pObj,zSlot);
+	if( iKind < DT_ZONE_OFFSET || iKind > DT_ZONE_ID ){
+		return DtZoneTypeOf(zName ? zName : "",nName);
+	}
+	return iKind;
+}
 static void DtLoad(ph7_class_instance *pObj,dt_state *pOut)
 {
 	pOut->iTs  = PH7_NativeAttrInt(pObj,DT_TS);
 	pOut->iOff = (sxi32)PH7_NativeAttrInt(pObj,DT_OFF);
 	pOut->uSec = (int)PH7_NativeAttrInt(pObj,DT_US);
 	PH7_NativeAttrStr(pObj,DT_NAME,&pOut->zName,&pOut->nName);
+	pOut->iZoneKind = DtZoneKindOf(pObj,DT_ZKIND,pOut->zName,pOut->nName);
 }
 static void DtStore(ph7_vm *pVm,ph7_class_instance *pObj,const dt_state *pIn)
 {
@@ -1551,6 +1631,7 @@ static void DtStore(ph7_vm *pVm,ph7_class_instance *pObj,const dt_state *pIn)
 	PH7_NativeSetAttrInt(pVm,pObj,DT_OFF,pIn->iOff);
 	PH7_NativeSetAttrInt(pVm,pObj,DT_US,pIn->uSec);
 	PH7_NativeSetAttrStr(pVm,pObj,DT_NAME,pIn->zName,pIn->nName);
+	PH7_NativeSetAttrInt(pVm,pObj,DT_ZKIND,pIn->iZoneKind);
 }
 /* The receiver of a native method, or NULL when the call has no object (which the
  * dispatcher only allows for a static one). */
@@ -1596,7 +1677,7 @@ static void DtMutResult(ph7_context *pCtx,ph7_class_instance *pTarget,int bCopy)
 /* Read a DateTimeZone argument's two slots. php's ext/date reads its own internal
  * timezone struct here, so an overridden getName()/getOffset() is ignored by both
  * engines. Answers 0 when the value is not a DateTimeZone at all. */
-static int DtZoneOf(ph7_value *pArg,sxi32 *piOff,const char **pzName,int *pnName)
+static int DtZoneOf(ph7_value *pArg,sxi32 *piOff,const char **pzName,int *pnName,int *piKind)
 {
 	ph7_class_instance *pObj;
 	if( pArg == 0 || (pArg->iFlags & MEMOBJ_OBJ) == 0 ){
@@ -1608,6 +1689,7 @@ static int DtZoneOf(ph7_value *pArg,sxi32 *piOff,const char **pzName,int *pnName
 	}
 	*piOff = (sxi32)PH7_NativeAttrInt(pObj,DTZ_OFF);
 	PH7_NativeAttrStr(pObj,DTZ_NAME,pzName,pnName);
+	*piKind = DtZoneKindOf(pObj,DTZ_KIND,*pzName,*pnName);
 	return 1;
 }
 /*
@@ -1638,8 +1720,8 @@ static void DtLastErrOne(ph7_vm *pVm,int iPos,const char *zMsg)
  * this reports.
  */
 static int DtInitState(ph7_context *pCtx,const char *zIn,int nIn,sxi32 iZoneOff,
-	const char *zZoneName,int nZoneName,dt_state *pOut,char *zNameBuf,sxu32 nNameBuf,
-	const char **pzErr,int *piPos,char *pcAt)
+	const char *zZoneName,int nZoneName,int iZoneKind,dt_state *pOut,char *zNameBuf,
+	sxu32 nNameBuf,const char **pzErr,int *piPos,char *pcAt)
 {
 	sxi64 iTs = 0;
 	sxi32 iOff = 0;
@@ -1656,76 +1738,197 @@ static int DtInitState(ph7_context *pCtx,const char *zIn,int nIn,sxi32 iZoneOff,
 		if( bOffSet == 2 ){
 			pOut->zName = "Z";
 			pOut->nName = 1;
+			pOut->iZoneKind = DT_ZONE_ABBR;   /* php's `Z` is an abbreviation */
 		}else{
 			pOut->nName = DtOffName(zNameBuf,nNameBuf,iOff);
 			pOut->zName = zNameBuf;
+			pOut->iZoneKind = DT_ZONE_OFFSET;
 		}
 	}else{
 		pOut->iOff = iZoneOff;
 		pOut->zName = zZoneName;
 		pOut->nName = nZoneName;
+		pOut->iZoneKind = iZoneKind;
 	}
 	SXUNUSED(pCtx);
 	return 0;
 }
 /*
+ * php's UTC-OFFSET spellings, the whole set of them. Reads the digits and colons
+ * after the sign and dispatches on their SHAPE, which is what php's scanner does:
+ *
+ *   D | DD              the HOURS alone            +1     +01    +59
+ *   DDD                 H then MM                  +130 = +01:30, +999 = +10:39
+ *   DDDD                HH then MM                 +0100  +0060 = +01:00
+ *   DDDDDD              HH then MM then SS         +010059 = +01:00:59
+ *   D:D | DD:D | D:DD | DD:DD    hours then minutes
+ *   DD:DD:DD            hours, minutes and seconds
+ *
+ * Five digits, seven digits and a one-digit hour before two colons are php's own
+ * refusals. Minutes and seconds are NOT bounded on their own -- `+00:60` is an
+ * hour and `+01:99` is +02:39 -- only the TOTAL is, and a total at or past 100
+ * hours is php's separate "Timezone offset is out of range" (answered here as -2,
+ * because the two refusals are worded differently at every door).
+ *
+ * Answers the KIND as well (php's timezone_type), because the name cannot carry
+ * it: "UTC" spelled exactly is an IDENTIFIER and any other casing of it is an
+ * ABBREVIATION, and php refuses to compare the two.
+ */
+#define DT_ZONE_OFF_LIMIT 360000   /* php's ceiling: |offset| < 100 hours */
+static int DtZoneOffsetDigits(const char *z,int n,sxi32 *piOff,int *pnUsed)
+{
+	int aVal[3];
+	int aWidth[3];
+	int nPart = 0;
+	int i;
+	sxi64 iOff;
+	aVal[0] = aVal[1] = aVal[2] = 0;
+	aWidth[0] = aWidth[1] = aWidth[2] = 0;
+	/* Read the RUN of digits and colons and stop at anything else; the caller
+	 * decides what a tail means. At most two colons, and no group may be empty
+	 * or wider than two -- except the single group of a colonless spelling,
+	 * which is split by WIDTH below instead. */
+	for( i = 0 ; i < n ; ++i ){
+		if( z[i] == ':' ){
+			if( nPart >= 2 ){
+				break;
+			}
+			nPart++;
+			continue;
+		}
+		if( !SyisDigit(z[i]) ){
+			break;
+		}
+		if( aWidth[nPart] >= 6 ){
+			return -1;
+		}
+		aVal[nPart] = aVal[nPart] * 10 + (z[i] - '0');
+		aWidth[nPart]++;
+	}
+	*pnUsed = i;
+	if( nPart == 0 ){
+		/* No colon: the WIDTH says how the digits split. */
+		int v = aVal[0];
+		switch( aWidth[0] ){
+			case 1: case 2:  /* H, HH */
+				iOff = (sxi64)v * 3600;
+				break;
+			case 3:          /* H MM */
+				iOff = (sxi64)(v / 100) * 3600 + (v % 100) * 60;
+				break;
+			case 4:          /* HH MM */
+				iOff = (sxi64)(v / 100) * 3600 + (v % 100) * 60;
+				break;
+			case 6:          /* HH MM SS */
+				iOff = (sxi64)(v / 10000) * 3600 + ((v / 100) % 100) * 60 + (v % 100);
+				break;
+			default:         /* five, or seven and up */
+				return -1;
+		}
+	}else{
+		/* Colons: H:M through HH:MM, or HH:MM:SS with two digits everywhere
+		 * (php refuses `+1:00:00` and `+01:00:0` alike, and takes `+1:1` for
+		 * +01:01). A trailing colon leaves an empty group, which is a refusal. */
+		int nWant = nPart == 2 ? 2 : 0;
+		for( i = 0 ; i <= nPart ; ++i ){
+			if( aWidth[i] < 1 || aWidth[i] > 2 || (nWant && aWidth[i] != nWant) ){
+				return -1;
+			}
+		}
+		iOff = (sxi64)aVal[0] * 3600 + (sxi64)aVal[1] * 60 + aVal[2];
+	}
+	if( iOff >= DT_ZONE_OFF_LIMIT ){
+		/* Past php's ceiling, and php answers THAT even when the spelling has a
+		 * tail it would otherwise reject: the range is checked on what the
+		 * scanner read, before anything is said about what follows. */
+		return -2;
+	}
+	*piOff = (sxi32)iOff;
+	return 0;
+}
+/*
  * The timezone spellings PHL understands with no tz database: UTC, GMT, Z and a
- * fixed [+-]HH:?MM offset. Shared by DateTimeZone::__construct(), which throws on
- * a miss, and timezone_open(), which warns and answers false.
+ * fixed offset, optionally behind a `GMT` prefix and behind leading blanks.
+ * Shared by DateTimeZone::__construct(), which throws on a miss, and
+ * timezone_open(), which warns and answers false. Answers 0, -1 (unknown or bad)
+ * or -2 (an offset past php's range).
  */
 static int DtZoneParse(const char *zTz,int nTz,sxi32 *piOff,const char **pzName,
-	int *pnName,char *zBuf,sxu32 nBuf)
+	int *pnName,int *piKind,char *zBuf,sxu32 nBuf)
 {
-	if( nTz == 1 && zTz[0] == 'Z' ){
+	int rc,nUsed = 0;
+	/* php's scanner skips leading blanks and nothing else -- a TRAILING one is a
+	 * refusal, and so is a newline before the sign. */
+	while( nTz > 0 && (zTz[0] == ' ' || zTz[0] == '\t') ){
+		zTz++;
+		nTz--;
+	}
+	if( nTz == 1 && (zTz[0] == 'Z' || zTz[0] == 'z') ){
 		*piOff = 0;
 		*pzName = "Z";
 		*pnName = 1;
+		*piKind = DT_ZONE_ABBR;
 		return 0;
 	}
 	if( nTz == 3 && (SyStrnicmp(zTz,"UTC",3) == 0 || SyStrnicmp(zTz,"GMT",3) == 0) ){
-		/* php answers the canonical spelling, whatever case the caller used. */
+		/* php answers the canonical spelling, whatever case the caller used --
+		 * and only the exact "UTC" is one of its tz-database IDENTIFIERS. */
+		int bUtc = (zTz[0] == 'u' || zTz[0] == 'U');
 		*piOff = 0;
-		*pzName = (zTz[0] == 'u' || zTz[0] == 'U') ? "UTC" : "GMT";
+		*pzName = bUtc ? "UTC" : "GMT";
 		*pnName = 3;
+		*piKind = (bUtc && SyMemcmp(zTz,"UTC",3) == 0) ? DT_ZONE_ID : DT_ZONE_ABBR;
 		return 0;
 	}
-	if( (nTz == 6 || nTz == 5) && (zTz[0] == '+' || zTz[0] == '-')
-	 && SyisDigit(zTz[1]) && SyisDigit(zTz[2])
-	 && (nTz == 5 ? (SyisDigit(zTz[3]) && SyisDigit(zTz[4]))
-	              : (zTz[3] == ':' && SyisDigit(zTz[4]) && SyisDigit(zTz[5]))) ){
-		int h = (zTz[1] - '0') * 10 + (zTz[2] - '0');
-		int m = nTz == 5 ? (zTz[3] - '0') * 10 + (zTz[4] - '0')
-		                 : (zTz[4] - '0') * 10 + (zTz[5] - '0');
-		sxi32 iOff = h * 3600 + m * 60;
-		if( zTz[0] == '-' ){
-			iOff = -iOff;
-		}
-		*piOff = iOff;
-		/* php normalizes the NAME through the offset, so "-00:00" is "+00:00". */
-		*pnName = DtOffName(zBuf,nBuf,iOff);
-		*pzName = zBuf;
-		return 0;
+	if( nTz > 3 && SyMemcmp(zTz,"GMT",3) == 0 ){
+		/* `GMT+01:00` is php's offset, named for the offset alone. The prefix is
+		 * UPPERCASE only there (`gmt+1` is a refusal where the bare `gmt` is a
+		 * zone), no blank is allowed between the two halves, and `UTC+1` is not a
+		 * spelling at all. */
+		zTz += 3;
+		nTz -= 3;
 	}
-	return -1;
+	if( nTz < 2 || (zTz[0] != '+' && zTz[0] != '-') ){
+		return -1;
+	}
+	rc = DtZoneOffsetDigits(zTz + 1,nTz - 1,piOff,&nUsed);
+	if( rc != 0 ){
+		return rc;
+	}
+	if( nUsed != nTz - 1 ){
+		return -1;   /* a tail the scanner did not read: not a zone at all */
+	}
+	if( zTz[0] == '-' ){
+		*piOff = -*piOff;
+	}
+	/* php normalizes the NAME through the offset, so "-00:00" is "+00:00", and
+	 * carries the SECONDS field only when there is one. */
+	*pnName = DtOffNameSec(zBuf,nBuf,*piOff);
+	*pzName = zBuf;
+	*piKind = DT_ZONE_OFFSET;
+	return 0;
 }
 /* DateTimeZone::__construct(string $timezone) */
 static int vm_builtin_DateTimeZone_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_class_instance *pThis = DtThis(pCtx);
 	const char *zTz,*zName;
-	int nTz,nName;
+	int nTz,nName,iKind = DT_ZONE_ID,rc;
 	sxi32 iOff = 0;
 	char zBuf[16];
 	if( pThis == 0 || nArg < 1 ){
 		return PH7_OK;
 	}
 	zTz = ph7_value_to_string(apArg[0],&nTz);
-	if( DtZoneParse(zTz,nTz,&iOff,&zName,&nName,zBuf,sizeof(zBuf)) != 0 ){
+	rc = DtZoneParse(zTz,nTz,&iOff,&zName,&nName,&iKind,zBuf,sizeof(zBuf));
+	if( rc != 0 ){
 		return PH7_VmThrowException(pCtx,"DateInvalidTimeZoneException",
-			"DateTimeZone::__construct(): Unknown or bad timezone (%.*s)",nTz,zTz);
+			rc == -2 ? "DateTimeZone::__construct(): Timezone offset is out of range (%.*s)"
+			         : "DateTimeZone::__construct(): Unknown or bad timezone (%.*s)",nTz,zTz);
 	}
 	PH7_NativeSetAttrInt(pCtx->pVm,pThis,DTZ_OFF,iOff);
 	PH7_NativeSetAttrStr(pCtx->pVm,pThis,DTZ_NAME,zName,nName);
+	PH7_NativeSetAttrInt(pCtx->pVm,pThis,DTZ_KIND,iKind);
 	return PH7_OK;
 }
 /* DateTimeZone::getName() */
@@ -1769,19 +1972,21 @@ static int vm_builtin_DateTime_construct(ph7_context *pCtx,int nArg,ph7_value **
 	const char *zErr;
 	int iPos;
 	char cAt;
+	int iZoneKind;
 	if( pThis == 0 ){
 		return PH7_OK;
 	}
 	zZone = pVm->zDefTz;
 	nZone = (int)pVm->nDefTz;
+	iZoneKind = DT_ZONE_DEFAULT_KIND;
 	if( nArg > 0 ){
 		zIn = ph7_value_to_string(apArg[0],&nIn);
 	}
 	if( nArg > 1 && (apArg[1]->iFlags & MEMOBJ_NULL) == 0 ){
-		DtZoneOf(apArg[1],&iZoneOff,&zZone,&nZone);
+		DtZoneOf(apArg[1],&iZoneOff,&zZone,&nZone,&iZoneKind);
 	}
-	if( DtInitState(pCtx,zIn,nIn,iZoneOff,zZone,nZone,&sState,zNameBuf,sizeof(zNameBuf),
-		&zErr,&iPos,&cAt) != 0 ){
+	if( DtInitState(pCtx,zIn,nIn,iZoneOff,zZone,nZone,iZoneKind,&sState,zNameBuf,
+		sizeof(zNameBuf),&zErr,&iPos,&cAt) != 0 ){
 		/* php publishes the failure through getLastErrors() as well as throwing. */
 		DtLastErrOne(pVm,iPos,zErr);
 		return PH7_VmThrowException(pCtx,"DateMalformedStringException",
@@ -1873,6 +2078,7 @@ static int DtTimezoneResult(ph7_context *pCtx,ph7_class_instance *pObj)
 	PH7_NativeAttrStr(pObj,DT_NAME,&zName,&nName);
 	PH7_NativeSetAttrInt(pVm,pZone,DTZ_OFF,PH7_NativeAttrInt(pObj,DT_OFF));
 	PH7_NativeSetAttrStr(pVm,pZone,DTZ_NAME,zName,nName);
+	PH7_NativeSetAttrInt(pVm,pZone,DTZ_KIND,DtZoneKindOf(pObj,DT_ZKIND,zName,nName));
 	PH7_NativeResultObject(pCtx,pZone);
 	return PH7_OK;
 }
@@ -2024,17 +2230,18 @@ static int vm_builtin_DateTime_setTimezone(ph7_context *pCtx,int nArg,ph7_value 
 	ph7_class_instance *pThis = DtThis(pCtx);
 	ph7_class_instance *pTarget;
 	const char *zName = "UTC";
-	int nName = 3,bCopy = 0;
+	int nName = 3,bCopy = 0,iKind = DT_ZONE_ID;
 	sxi32 iOff = 0;
 	if( pThis == 0 || nArg < 1 ){
 		return PH7_OK;
 	}
-	if( !DtZoneOf(apArg[0],&iOff,&zName,&nName) ){
+	if( !DtZoneOf(apArg[0],&iOff,&zName,&nName,&iKind) ){
 		return PH7_OK;
 	}
 	pTarget = DtMutTarget(pCtx,pThis,&bCopy);
 	PH7_NativeSetAttrInt(pCtx->pVm,pTarget,DT_OFF,iOff);
 	PH7_NativeSetAttrStr(pCtx->pVm,pTarget,DT_NAME,zName,nName);
+	PH7_NativeSetAttrInt(pCtx->pVm,pTarget,DT_ZKIND,iKind);
 	DtMutResult(pCtx,pTarget,bCopy);
 	return PH7_OK;
 }
@@ -2229,6 +2436,7 @@ static int DtCreateFromFormat(ph7_context *pCtx,int nArg,ph7_value **apArg,const
 	ph7_class_instance *pObj;
 	dt_ff_res sRes;
 	dt_state sState;
+	int iZoneKind;
 	char zNameBuf[16];
 	const char *zZone;
 	int nZone;
@@ -2242,8 +2450,9 @@ static int DtCreateFromFormat(ph7_context *pCtx,int nArg,ph7_value **apArg,const
 	zIn  = ph7_value_to_string(apArg[1],&nIn);
 	zZone = pVm->zDefTz;
 	nZone = (int)pVm->nDefTz;
+	iZoneKind = DT_ZONE_DEFAULT_KIND;
 	if( nArg > 2 && (apArg[2]->iFlags & MEMOBJ_NULL) == 0 ){
-		DtZoneOf(apArg[2],&iZoneOff,&zZone,&nZone);
+		DtZoneOf(apArg[2],&iZoneOff,&zZone,&nZone,&iZoneKind);
 	}
 	if( DtFromFormat(zFmt,nFmt,zIn,nIn,(sxi64)time(0),iZoneOff,&sRes) != 0 ){
 		pVm->sDtLastErr = sRes.sDiag;
@@ -2258,21 +2467,25 @@ static int DtCreateFromFormat(ph7_context *pCtx,int nArg,ph7_value **apArg,const
 			sState.iOff = iZoneOff;
 			sState.zName = zZone;
 			sState.nName = nZone;
+			sState.iZoneKind = iZoneKind;
 			break;
 		case 2:
 			sState.iOff = 0;
 			sState.zName = "Z";
 			sState.nName = 1;
+			sState.iZoneKind = DT_ZONE_ABBR;
 			break;
 		case 3:
 			sState.iOff = sRes.iOff;
 			sState.zName = sRes.zName;
 			sState.nName = (int)SyStrlen(sRes.zName);
+			sState.iZoneKind = DtZoneTypeOf(sState.zName,sState.nName);
 			break;
 		default:
 			sState.iOff = sRes.iOff;
 			sState.nName = DtOffName(zNameBuf,sizeof(zNameBuf),sRes.iOff);
 			sState.zName = zNameBuf;
+			sState.iZoneKind = DT_ZONE_OFFSET;
 			break;
 	}
 	pObj = PH7_NewClassInstance(pVm,pClass);
@@ -2414,6 +2627,7 @@ static int DtCreateFromTimestamp(ph7_context *pCtx,int nArg,ph7_value **apArg,co
 	sState.iOff = 0;
 	sState.nName = DtOffName(zNameBuf,sizeof(zNameBuf),0);
 	sState.zName = zNameBuf;
+	sState.iZoneKind = DT_ZONE_OFFSET;   /* php's fixed `+00:00`, not the UTC id */
 	pObj = PH7_NewClassInstance(pVm,pClass);
 	if( pObj == 0 ){
 		return PH7_ContextMemoryError(pCtx);
@@ -2946,7 +3160,8 @@ static int DpConstructInto(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,
 		}
 		zDur = &zStart[nStart+1];
 		nDur = (int)(&zSpec[nSpec] - zDur);
-		if( DtInitState(pCtx,zStart,nStart,0,pVm->zDefTz,(int)pVm->nDefTz,&sState,
+		if( DtInitState(pCtx,zStart,nStart,0,pVm->zDefTz,(int)pVm->nDefTz,
+			DT_ZONE_DEFAULT_KIND,&sState,
 			zNameBuf,sizeof(zNameBuf),&zErr,&iPos,&cAt) != 0
 		 || DtIvParseIso(zDur,nDur,aIv) != 0 ){
 			return PH7_VmThrowException(pCtx,"DateMalformedPeriodStringException",
@@ -3267,7 +3482,7 @@ static int DtProcCreate(ph7_context *pCtx,int nArg,ph7_value **apArg,const char 
 	ph7_class *pClass = DtClass(pVm,zClass);
 	ph7_class_instance *pObj;
 	const char *zIn = "now",*zZone;
-	int nIn = 3,nZone,iPos;
+	int nIn = 3,nZone,iPos,iZoneKind;
 	sxi32 iZoneOff = 0;
 	dt_state sState;
 	char zNameBuf[16],cAt;
@@ -3277,14 +3492,15 @@ static int DtProcCreate(ph7_context *pCtx,int nArg,ph7_value **apArg,const char 
 	}
 	zZone = pVm->zDefTz;
 	nZone = (int)pVm->nDefTz;
+	iZoneKind = DT_ZONE_DEFAULT_KIND;
 	if( nArg > 0 ){
 		zIn = ph7_value_to_string(apArg[0],&nIn);
 	}
 	if( nArg > 1 && (apArg[1]->iFlags & MEMOBJ_NULL) == 0 ){
-		DtZoneOf(apArg[1],&iZoneOff,&zZone,&nZone);
+		DtZoneOf(apArg[1],&iZoneOff,&zZone,&nZone,&iZoneKind);
 	}
-	if( DtInitState(pCtx,zIn,nIn,iZoneOff,zZone,nZone,&sState,zNameBuf,sizeof(zNameBuf),
-		&zErr,&iPos,&cAt) != 0 ){
+	if( DtInitState(pCtx,zIn,nIn,iZoneOff,zZone,nZone,iZoneKind,&sState,zNameBuf,
+		sizeof(zNameBuf),&zErr,&iPos,&cAt) != 0 ){
 		DtLastErrOne(pVm,iPos,zErr);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -3420,13 +3636,14 @@ static int vm_builtin_date_timezone_set(ph7_context *pCtx,int nArg,ph7_value **a
 {
 	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
 	const char *zName = "UTC";
-	int nName = 3;
+	int nName = 3,iKind = DT_ZONE_ID;
 	sxi32 iOff = 0;
-	if( pObj == 0 || nArg < 2 || !DtZoneOf(apArg[1],&iOff,&zName,&nName) ){
+	if( pObj == 0 || nArg < 2 || !DtZoneOf(apArg[1],&iOff,&zName,&nName,&iKind) ){
 		return PH7_OK;
 	}
 	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_OFF,iOff);
 	PH7_NativeSetAttrStr(pCtx->pVm,pObj,DT_NAME,zName,nName);
+	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_ZKIND,iKind);
 	DtResultArg(pCtx,apArg);
 	return PH7_OK;
 }
@@ -3520,15 +3737,18 @@ static int vm_builtin_timezone_open(ph7_context *pCtx,int nArg,ph7_value **apArg
 	ph7_class *pClass = DtClass(pVm,"DateTimeZone");
 	ph7_class_instance *pObj;
 	const char *zTz,*zName;
-	int nTz,nName;
+	int nTz,nName,iKind = DT_ZONE_ID,rc;
 	sxi32 iOff = 0;
 	char zBuf[16];
 	if( pClass == 0 || nArg < 1 ){
 		return PH7_OK;
 	}
 	zTz = ph7_value_to_string(apArg[0],&nTz);
-	if( DtZoneParse(zTz,nTz,&iOff,&zName,&nName,zBuf,sizeof(zBuf)) != 0 ){
-		PH7_VmThrowWarningFmt(pVm,"timezone_open(): Unknown or bad timezone (%.*s)",nTz,zTz);
+	rc = DtZoneParse(zTz,nTz,&iOff,&zName,&nName,&iKind,zBuf,sizeof(zBuf));
+	if( rc != 0 ){
+		PH7_VmThrowWarningFmt(pVm,
+			rc == -2 ? "timezone_open(): Timezone offset is out of range (%.*s)"
+			         : "timezone_open(): Unknown or bad timezone (%.*s)",nTz,zTz);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
@@ -3538,6 +3758,7 @@ static int vm_builtin_timezone_open(ph7_context *pCtx,int nArg,ph7_value **apArg
 	}
 	PH7_NativeSetAttrInt(pVm,pObj,DTZ_OFF,iOff);
 	PH7_NativeSetAttrStr(pVm,pObj,DTZ_NAME,zName,nName);
+	PH7_NativeSetAttrInt(pVm,pObj,DTZ_KIND,iKind);
 	PH7_NativeResultObject(pCtx,pObj);
 	return PH7_OK;
 }
@@ -3570,7 +3791,8 @@ static int vm_builtin_timezone_offset_get(ph7_context *pCtx,int nArg,ph7_value *
 	{ DT_TS,   PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 }, \
 	{ DT_OFF,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 }, \
 	{ DT_NAME, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "UTC", 0.0 }, 0 }, \
-	{ DT_US,   PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 }
+	{ DT_US,   PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 }, \
+	{ DT_ZKIND,PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, DT_ZONE_ID, 0, 0.0 }, 0 }
 /*
  * The methods DateTime and DateTimeImmutable share -- the whole of the old trait
  * plus the mutators, whose one difference (write $this, or write a clone) the
@@ -3625,20 +3847,6 @@ static int vm_builtin_timezone_offset_get(ph7_context *pCtx,int nArg,ph7_value *
  * PHL accepts offsets, UTC, GMT and Z today; the identifier arm is written for the
  * whole rule so a tz database can only add names, never change the tagging.
  */
-static int DtZoneTypeOf(const char *zName,int nName)
-{
-	sxu32 nPos = 0;
-	if( nName > 0 && (zName[0] == '+' || zName[0] == '-') ){
-		return 1;
-	}
-	if( nName == 3 && SyStrnicmp(zName,"UTC",3) == 0 ){
-		return 3;
-	}
-	if( nName > 0 && SyByteFind(zName,(sxu32)nName,'/',&nPos) == SXRET_OK ){
-		return 3;
-	}
-	return 2;
-}
 static void DtPresentPut(ph7_vm *pVm,ph7_value *pOut,const char *zKey,ph7_value *pVal)
 {
 	ph7_value sKey;
@@ -3647,10 +3855,10 @@ static void DtPresentPut(ph7_vm *pVm,ph7_value *pOut,const char *zKey,ph7_value 
 	ph7_array_add_elem(pOut,&sKey,pVal);
 	PH7_MemObjRelease(&sKey);
 }
-static void DtPresentZone(ph7_vm *pVm,ph7_value *pOut,const char *zName,int nName)
+static void DtPresentZone(ph7_vm *pVm,ph7_value *pOut,const char *zName,int nName,int iKind)
 {
 	ph7_value sVal;
-	PH7_MemObjInitFromInt(&(*pVm),&sVal,DtZoneTypeOf(zName,nName));
+	PH7_MemObjInitFromInt(&(*pVm),&sVal,iKind);
 	DtPresentPut(&(*pVm),pOut,"timezone_type",&sVal);
 	PH7_MemObjRelease(&sVal);
 	PH7_MemObjInitFromString(&(*pVm),&sVal,0);
@@ -3685,7 +3893,7 @@ static sxi32 DtPresentDateTime(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *
 	PH7_MemObjStringAppend(&sVal,zDate,(sxu32)SyStrlen(zDate));
 	DtPresentPut(&(*pVm),pOut,"date",&sVal);
 	PH7_MemObjRelease(&sVal);
-	DtPresentZone(&(*pVm),pOut,zZone,nName);
+	DtPresentZone(&(*pVm),pOut,zZone,nName,sState.iZoneKind);
 	return SXRET_OK;
 }
 static sxi32 DtPresentTimeZone(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut,int bDebug)
@@ -3694,7 +3902,8 @@ static sxi32 DtPresentTimeZone(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *
 	int nName = 0;
 	SXUNUSED(bDebug);
 	PH7_NativeAttrStr(pThis,DTZ_NAME,&zName,&nName);
-	DtPresentZone(&(*pVm),pOut,zName ? zName : "",nName);
+	DtPresentZone(&(*pVm),pOut,zName ? zName : "",nName,
+		DtZoneKindOf(pThis,DTZ_KIND,zName,nName));
 	return SXRET_OK;
 }
 /*
@@ -3810,15 +4019,15 @@ static void DtCmpTimeZone(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeCmpCtx
 	}
 	PH7_NativeAttrStr(pThis,DTZ_NAME,&zL,&nL);
 	PH7_NativeAttrStr(pCtx->pOther,DTZ_NAME,&zR,&nR);
-	iKindL = DtZoneTypeOf(zL ? zL : "",nL);
-	iKindR = DtZoneTypeOf(zR ? zR : "",nR);
+	iKindL = DtZoneKindOf(pThis,DTZ_KIND,zL,nL);
+	iKindR = DtZoneKindOf(pCtx->pOther,DTZ_KIND,zR,nR);
 	if( iKindL != iKindR ){
 		pCtx->zThrowClass = "DateException";
 		SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),
 			"Cannot compare two different kinds of DateTimeZone objects");
 		return;   /* the uncomparable 1 stands in until the refusal is raised */
 	}
-	if( iKindL == 1 ){
+	if( iKindL == DT_ZONE_OFFSET ){
 		pCtx->iResult = PH7_NativeAttrInt(pThis,DTZ_OFF)
 		              == PH7_NativeAttrInt(pCtx->pOther,DTZ_OFF) ? 0 : 1;
 		return;
@@ -3905,7 +4114,7 @@ static int DtZoneRestore(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pData)
 {
 	ph7_value *pType,*pName;
 	const char *zTz,*zName;
-	int nTz,nName;
+	int nTz,nName,iKind = DT_ZONE_ID;
 	sxi32 iOff = 0;
 	sxi64 iType;
 	char zBuf[16];
@@ -3923,11 +4132,15 @@ static int DtZoneRestore(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pData)
 	}
 	zTz = (const char *)SyBlobData(&pName->sBlob);
 	nTz = (int)SyBlobLength(&pName->sBlob);
-	if( DtZoneParse(zTz,nTz,&iOff,&zName,&nName,zBuf,sizeof(zBuf)) != 0 ){
+	if( DtZoneParse(zTz,nTz,&iOff,&zName,&nName,&iKind,zBuf,sizeof(zBuf)) != 0 ){
 		return -1;
 	}
 	PH7_NativeSetAttrInt(&(*pVm),pThis,DTZ_OFF,iOff);
 	PH7_NativeSetAttrStr(&(*pVm),pThis,DTZ_NAME,zName,nName);
+	/* The payload's own `timezone_type` is NOT read back: php re-derives the kind
+	 * from the name here too, which is what turns a serialized type-2 "UTC" into a
+	 * type 3 on the way in. */
+	PH7_NativeSetAttrInt(&(*pVm),pThis,DTZ_KIND,iKind);
 	return 0;
 }
 /*
@@ -3953,7 +4166,7 @@ static int DtDateRestore(ph7_context *pCtx,ph7_class_instance *pThis,ph7_value *
 	ph7_vm *pVm = pCtx->pVm;
 	ph7_value *pDate,*pType,*pName;
 	const char *zDate,*zTz,*zZone,*zErr;
-	int nDate,nTz,nZone,iPos;
+	int nDate,nTz,nZone,iPos,iKind = DT_ZONE_ID;
 	sxi32 iOff = 0;
 	sxi64 iType;
 	dt_state sState;
@@ -3978,11 +4191,19 @@ static int DtDateRestore(ph7_context *pCtx,ph7_class_instance *pThis,ph7_value *
 	if( iType < 1 || iType > 3 ){
 		return -1;
 	}
-	if( DtZoneParse(zTz,nTz,&iOff,&zZone,&nZone,zZoneBuf,sizeof(zZoneBuf)) != 0 ){
+	if( DtZoneParse(zTz,nTz,&iOff,&zZone,&nZone,&iKind,zZoneBuf,sizeof(zZoneBuf)) != 0 ){
 		return -1;
 	}
-	if( DtInitState(pCtx,zDate,nDate,iOff,zZone,nZone,&sState,zNameBuf,sizeof(zNameBuf),
-		&zErr,&iPos,&cAt) != 0 ){
+	if( (iOff < 0 ? -iOff : iOff) / 3600 > 24 ){
+		/* php reads the payload's zone back through its DATE-STRING grammar, whose
+		 * offsets stop at hour 24 -- narrower than the zone constructor's 99. So a
+		 * DateTime carrying `+25:00` serializes there and refuses to come back,
+		 * while the DateTimeZone alone round-trips. Only the HOUR field is bounded:
+		 * `+24:59` and `+24:00:01` are both fine. */
+		return -1;
+	}
+	if( DtInitState(pCtx,zDate,nDate,iOff,zZone,nZone,iKind,&sState,zNameBuf,
+		sizeof(zNameBuf),&zErr,&iPos,&cAt) != 0 ){
 		return -1;
 	}
 	DtStore(pVm,pThis,&sState);
@@ -4233,6 +4454,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 	static const PH7_NativePropDef aZoneProp[] = {
 		{ DTZ_OFF,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },
 		{ DTZ_NAME, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "UTC", 0.0 }, 0 },
+		{ DTZ_KIND, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN,
+		  { 0, 0, PH7_NATIVE_VAL_INT, DT_ZONE_ID, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeMethodDef aZoneMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC, "string $timezone", "", vm_builtin_DateTimeZone_construct },
