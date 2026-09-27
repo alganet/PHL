@@ -2946,6 +2946,9 @@ struct ph7_vm
 	void *pCurlHandles;        /* phl_curl registry chain (ext/curl); freed on reset/release --
 	                            * a CURL* lives outside SyMemBackend too, and holds a socket
 	                            * and a connection cache with it */
+	void *pCurlMultis;         /* phl_curlm registry chain (ext/curl); swept BEFORE
+	                            * pCurlHandles, since a multi still holds the easy handles
+	                            * that were added to it */
 	ph7_value sXmlEntLoader;   /* libxml_set_external_entity_loader()'s callable; NULL = default.
 	                            * Stored and answered, never invoked: no PHL parse path loads an
 	                            * external entity (php's sanitized defaults keep it off too) —

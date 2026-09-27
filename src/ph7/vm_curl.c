@@ -55,14 +55,10 @@ PH7_PRIVATE void PH7_CurlGlobalInit(void)
  * cloneable (php maps clone to curl_easy_duphandle), so the clone gets its own
  * record and its own libcurl handle -- never a second object over one CURL*.
  */
-static void CurlBlankSlot(ph7_class_instance *pOwner);
-static ph7_class_instance * CurlNewInstance(ph7_vm *pVm,const char *zName,int nName);
 static void CurlFreeMime(phl_curl *pCurl);
 static int CurlCbParked(phl_curl *pCurl);
 static void CurlCbPark(phl_curl *pCurl,sxi32 rc);
 static int CurlSetPostFieldsArray(ph7_context *pCtx,phl_curl *pCurl,ph7_value *pVal,sxi32 *pRc);
-static int CurlSetCallback(ph7_context *pCtx,phl_curl *pCurl,ph7_value **ppSlot,
-	ph7_value *pVal,const char *zFunc,const char *zOpt,sxi32 *pRc);
 
 static phl_curl * CurlNewHandle(ph7_vm *pVm)
 {
@@ -191,10 +187,14 @@ static void CurlFreeHandle(phl_curl *pCurl)
  */
 static void CurlVmSweep(ph7_vm *pVm)
 {
-	phl_curl *pCurl = (phl_curl *)pVm->pCurlHandles;
+	phl_curl *pCurl;
+	/* The multis first: one still holds the easy handles it was given, and
+	 * curl_multi_remove_handle has to reach a CURL* that is still there. */
+	PH7_CurlMultiVmSweep(&(*pVm));
+	pCurl = (phl_curl *)pVm->pCurlHandles;
 	while( pCurl ){
 		phl_curl *pNext = pCurl->pNext;
-		CurlBlankSlot(pCurl->pOwner);
+		PH7_CurlBlankSlot(pCurl->pOwner);
 		CurlFreeHandle(pCurl);
 		SyMemBackendFree(&pVm->sAllocator,pCurl);
 		pCurl = pNext;
@@ -213,8 +213,13 @@ PH7_PRIVATE void PH7_CurlVmRelease(ph7_vm *pVm)
  * Blank the hidden slot of the object whose record we are about to free, so
  * the object cannot outlive its record and then read freed memory to ask
  * whether it still owns one.
+ *
+ * The three slot helpers are shared with the multi/share unit rather than
+ * duplicated there: every handle class in this extension keeps its record in
+ * the same hidden `__res` slot, so the only thing that differs is what the
+ * pointer points AT.
  */
-static void CurlBlankSlot(ph7_class_instance *pOwner)
+PH7_PRIVATE void PH7_CurlBlankSlot(ph7_class_instance *pOwner)
 {
 	SyString sAttr;
 	ph7_value *pRes;
@@ -228,25 +233,25 @@ static void CurlBlankSlot(ph7_class_instance *pOwner)
 		MemObjSetType(pRes,MEMOBJ_NULL);
 	}
 }
-/* The handle behind a `__res` slot value. */
-static phl_curl * CurlOfValue(ph7_value *pVal)
+/* The record behind a `__res` slot value. */
+static void * CurlRecOfValue(ph7_value *pVal)
 {
 	if( pVal == 0 || !ph7_value_is_resource(pVal) ){
 		return 0;
 	}
-	return (phl_curl *)pVal->x.pOther;
+	return pVal->x.pOther;
 }
-static phl_curl * CurlOfInstance(ph7_class_instance *pThis)
+PH7_PRIVATE void * PH7_CurlSlotOf(ph7_class_instance *pThis)
 {
 	SyString sAttr;
 	if( pThis == 0 ){
 		return 0;
 	}
 	SyStringInitFromBuf(&sAttr,"__res",sizeof("__res")-1);
-	return CurlOfValue(PH7_ClassInstanceFetchAttr(pThis,&sAttr));
+	return CurlRecOfValue(PH7_ClassInstanceFetchAttr(pThis,&sAttr));
 }
-/* Store one handle in the receiver's hidden slot. */
-static int CurlAttach(ph7_class_instance *pThis,phl_curl *pCurl)
+/* Store one record in the receiver's hidden slot. */
+PH7_PRIVATE int PH7_CurlSlotAttach(ph7_class_instance *pThis,void *pRec)
 {
 	SyString sAttr;
 	ph7_value *pRes;
@@ -259,10 +264,30 @@ static int CurlAttach(ph7_class_instance *pThis,phl_curl *pCurl)
 		return -1;
 	}
 	PH7_MemObjRelease(pRes);
-	pRes->x.pOther = pCurl;
+	pRes->x.pOther = pRec;
 	MemObjSetType(pRes,MEMOBJ_RES);
+	return 0;
+}
+static phl_curl * CurlOfInstance(ph7_class_instance *pThis)
+{
+	return (phl_curl *)PH7_CurlSlotOf(pThis);
+}
+static int CurlAttach(ph7_class_instance *pThis,phl_curl *pCurl)
+{
+	if( PH7_CurlSlotAttach(pThis,(void *)pCurl) != 0 ){
+		return -1;
+	}
 	pCurl->pOwner = pThis;
 	return 0;
+}
+/*
+ * The phl_curl behind a CurlHandle the multi unit was handed. The signature
+ * table has already screened the class, so a miss is an engine-torn-down
+ * object rather than anything a script can write.
+ */
+PH7_PRIVATE void * PH7_CurlEasyOfInstance(ph7_class_instance *pThis)
+{
+	return (void *)CurlOfInstance(pThis);
 }
 /*
  * The object is going away: close its transfer now rather than at VM reset, so
@@ -302,12 +327,12 @@ static void CurlInstanceClone(ph7_vm *pVm,ph7_class_instance *pClone,ph7_class_i
 	phl_curl *pNew;
 	CURL *pDup;
 	if( pFrom == 0 || pFrom->pEasy == 0 ){
-		CurlBlankSlot(pClone);
+		PH7_CurlBlankSlot(pClone);
 		return;
 	}
 	pNew = (phl_curl *)SyMemBackendAlloc(&pVm->sAllocator,sizeof(phl_curl));
 	if( pNew == 0 ){
-		CurlBlankSlot(pClone);
+		PH7_CurlBlankSlot(pClone);
 		return;
 	}
 	SyZero(pNew,sizeof(phl_curl));
@@ -315,7 +340,7 @@ static void CurlInstanceClone(ph7_vm *pVm,ph7_class_instance *pClone,ph7_class_i
 	pDup = curl_easy_duphandle(pFrom->pEasy);
 	if( pDup == 0 ){
 		SyMemBackendFree(&pVm->sAllocator,pNew);
-		CurlBlankSlot(pClone);
+		PH7_CurlBlankSlot(pClone);
 		return;
 	}
 	pNew->pEasy = pDup;
@@ -388,7 +413,7 @@ static void CurlInstanceClone(ph7_vm *pVm,ph7_class_instance *pClone,ph7_class_i
 		CurlSetPostFieldsArray(0,pNew,pFrom->pPostArray,&rcThrow);
 	}
 	if( CurlAttach(pClone,pNew) != 0 ){
-		CurlBlankSlot(pClone);
+		PH7_CurlBlankSlot(pClone);
 	}
 }
 
@@ -1992,7 +2017,7 @@ static int vm_builtin_CURLStringFile_construct(ph7_context *pCtx,int nArg,ph7_va
 /* CURLFile curl_file_create(string $filename, ?string $mime_type = null, ?string $posted_filename = null) */
 static int vm_builtin_curl_file_create(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pThis = CurlNewInstance(pCtx->pVm,"CURLFile",sizeof("CURLFile")-1);
+	ph7_class_instance *pThis = PH7_CurlNewInstance(pCtx->pVm,"CURLFile",sizeof("CURLFile")-1);
 	int rc;
 	if( pThis == 0 ){
 		ph7_result_bool(pCtx,0);
@@ -2332,7 +2357,7 @@ static int CurlSetPostFieldsArray(ph7_context *pCtx,phl_curl *pCurl,ph7_value *p
  * (php's "Cannot directly construct ..."), and this is the door the refusal
  * leaves open: the engine's own creation step, never the opcode's.
  */
-static ph7_class_instance * CurlNewInstance(ph7_vm *pVm,const char *zName,int nName)
+PH7_PRIVATE ph7_class_instance * PH7_CurlNewInstance(ph7_vm *pVm,const char *zName,int nName)
 {
 	ph7_class *pClass = PH7_VmExtractClass(pVm,zName,(sxu32)nName,0,0);
 	return pClass ? PH7_NewClassInstance(pVm,pClass) : 0;
@@ -2368,7 +2393,7 @@ static int vm_builtin_curl_init(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	pThis = CurlNewInstance(pVm,"CurlHandle",sizeof("CurlHandle")-1);
+	pThis = PH7_CurlNewInstance(pVm,"CurlHandle",sizeof("CurlHandle")-1);
 	if( pThis == 0 || CurlAttach(pThis,pCurl) != 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -2811,21 +2836,21 @@ static int CurlSetOne(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *pV
 	case CURL_OPT_CALLBACK:
 		switch( (int)iOpt ){
 		case CURLOPT_READFUNCTION:
-			return CurlSetCallback(pCtx,pCurl,&pCurl->pReadCb,pVal,zFunc,
-				CurlOptName(iOpt),pRc);
+			return PH7_CurlSetCallback(pCtx,pCurl->pVm,&pCurl->pReadCb,pVal,zFunc,
+				"#3 ($value)",CurlOptName(iOpt),TRUE,pRc);
 		case CURLOPT_DEBUGFUNCTION:
-			return CurlSetCallback(pCtx,pCurl,&pCurl->pDebugCb,pVal,zFunc,
-				CurlOptName(iOpt),pRc);
+			return PH7_CurlSetCallback(pCtx,pCurl->pVm,&pCurl->pDebugCb,pVal,zFunc,
+				"#3 ($value)",CurlOptName(iOpt),TRUE,pRc);
 		case CURLOPT_PREREQFUNCTION:
-			return CurlSetCallback(pCtx,pCurl,&pCurl->pPreReqCb,pVal,zFunc,
-				CurlOptName(iOpt),pRc);
+			return PH7_CurlSetCallback(pCtx,pCurl->pVm,&pCurl->pPreReqCb,pVal,zFunc,
+				"#3 ($value)",CurlOptName(iOpt),TRUE,pRc);
 		case CURLOPT_WRITEFUNCTION: {
 			/* The one option that moves the destination as well as the slot:
 			 * a callback claims the body, and a null hands it back to the
 			 * DEFAULT rather than to whatever CURLOPT_RETURNTRANSFER last
 			 * said. */
-			int rcCb = CurlSetCallback(pCtx,pCurl,&pCurl->pWriteCb,pVal,zFunc,
-				CurlOptName(iOpt),pRc);
+			int rcCb = PH7_CurlSetCallback(pCtx,pCurl->pVm,&pCurl->pWriteCb,pVal,zFunc,
+				"#3 ($value)",CurlOptName(iOpt),TRUE,pRc);
 			if( rcCb == 1 ){
 				pCurl->iWriteDest = pCurl->pWriteCb ? PHL_CURL_DEST_USER
 				                                    : PHL_CURL_DEST_STDOUT;
@@ -2835,8 +2860,8 @@ static int CurlSetOne(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *pV
 		case CURLOPT_HEADERFUNCTION: {
 			/* The header destination moves with it, exactly as the body's does
 			 * with CURLOPT_WRITEFUNCTION. */
-			int rcCb = CurlSetCallback(pCtx,pCurl,&pCurl->pHeaderCb,pVal,zFunc,
-				CurlOptName(iOpt),pRc);
+			int rcCb = PH7_CurlSetCallback(pCtx,pCurl->pVm,&pCurl->pHeaderCb,pVal,zFunc,
+				"#3 ($value)",CurlOptName(iOpt),TRUE,pRc);
 			if( rcCb == 1 ){
 				pCurl->iHeaderDest = pCurl->pHeaderCb ? PHL_CURL_HDR_USER
 				                                      : PHL_CURL_HDR_IGNORE;
@@ -2845,8 +2870,8 @@ static int CurlSetOne(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *pV
 		}
 		case CURLOPT_XFERINFOFUNCTION:
 		case CURLOPT_PROGRESSFUNCTION: {
-			int rcCb = CurlSetCallback(pCtx,pCurl,&pCurl->pXferCb,pVal,zFunc,
-				CurlOptName(iOpt),pRc);
+			int rcCb = PH7_CurlSetCallback(pCtx,pCurl->pVm,&pCurl->pXferCb,pVal,zFunc,
+				"#3 ($value)",CurlOptName(iOpt),TRUE,pRc);
 			if( rcCb == 1 ){
 				pCurl->bXferIsProgress = (iOpt == CURLOPT_PROGRESSFUNCTION);
 			}
@@ -2990,7 +3015,7 @@ static int vm_builtin_curl_copy_handle(ph7_context *pCtx,int nArg,ph7_value **ap
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	pThis = CurlNewInstance(pVm,"CurlHandle",sizeof("CurlHandle")-1);
+	pThis = PH7_CurlNewInstance(pVm,"CurlHandle",sizeof("CurlHandle")-1);
 	if( pThis == 0 ){
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
@@ -3338,11 +3363,11 @@ static void CurlCbPark(phl_curl *pCurl,sxi32 rc)
  * object -- and null, which puts the default back. Anything else is a TypeError
  * whose tail says which way it was wrong.
  */
-static int CurlSetCallback(ph7_context *pCtx,phl_curl *pCurl,ph7_value **ppSlot,
-	ph7_value *pVal,const char *zFunc,const char *zOpt,sxi32 *pRc)
+PH7_PRIVATE int PH7_CurlSetCallback(ph7_context *pCtx,ph7_vm *pVm,ph7_value **ppSlot,
+	ph7_value *pVal,const char *zFunc,const char *zArg,const char *zOpt,int bNullClears,
+	sxi32 *pRc)
 {
-	ph7_vm *pVm = pCurl->pVm;
-	if( ph7_value_is_null(pVal) ){
+	if( bNullClears && ph7_value_is_null(pVal) ){
 		if( *ppSlot ){
 			ph7_release_value(pVm,*ppSlot);
 			*ppSlot = 0;
@@ -3351,14 +3376,14 @@ static int CurlSetCallback(ph7_context *pCtx,phl_curl *pCurl,ph7_value **ppSlot,
 	}
 	if( !ph7_value_is_string(pVal) && !ph7_value_is_array(pVal) && !ph7_value_is_object(pVal) ){
 		*pRc = PH7_VmThrowException(pCtx,"TypeError",
-			"%s(): Argument #3 ($value) must be a valid callback for option %s, "
-			"no array or string given",zFunc,zOpt);
+			"%s(): Argument %s must be a valid callback for option %s, "
+			"no array or string given",zFunc,zArg,zOpt);
 		return -1;
 	}
 	if( ph7_value_is_array(pVal) && ph7_array_count(pVal) != 2 ){
 		*pRc = PH7_VmThrowException(pCtx,"TypeError",
-			"%s(): Argument #3 ($value) must be a valid callback for option %s, "
-			"array callback must have exactly two members",zFunc,zOpt);
+			"%s(): Argument %s must be a valid callback for option %s, "
+			"array callback must have exactly two members",zFunc,zArg,zOpt);
 		return -1;
 	}
 	if( !PH7_VmIsCallable(pVm,pVal,FALSE) ){
@@ -3366,13 +3391,13 @@ static int CurlSetCallback(ph7_context *pCtx,phl_curl *pCurl,ph7_value **ppSlot,
 			int nName = 0;
 			const char *zName = ph7_value_to_string(pVal,&nName);
 			*pRc = PH7_VmThrowException(pCtx,"TypeError",
-				"%s(): Argument #3 ($value) must be a valid callback for option %s, "
+				"%s(): Argument %s must be a valid callback for option %s, "
 				"function \"%.*s\" not found or invalid function name",
-				zFunc,zOpt,nName,zName);
+				zFunc,zArg,zOpt,nName,zName);
 		}else{
 			*pRc = PH7_VmThrowException(pCtx,"TypeError",
-				"%s(): Argument #3 ($value) must be a valid callback for option %s, "
-				"no array or string given",zFunc,zOpt);
+				"%s(): Argument %s must be a valid callback for option %s, "
+				"no array or string given",zFunc,zArg,zOpt);
 		}
 		return -1;
 	}
@@ -4048,6 +4073,10 @@ PH7_PRIVATE sxi32 PH7_VmInstallCurl(ph7_vm *pVm)
 			 * MOUNTED class, like every other handler hook. */
 			pClass->xClone = CurlInstanceClone;
 		}
+	}
+	if( rc == SXRET_OK ){
+		/* The multi and share halves, in their own unit (vm_curl_multi.c). */
+		rc = PH7_VmInstallCurlMulti(&(*pVm));
 	}
 	return rc;
 }

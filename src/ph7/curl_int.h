@@ -20,9 +20,8 @@
 #include <curl/curl.h>
 
 /*
- * Private header shared by the ext/curl units (vm_curl.c today; the multi and
- * share halves join it later). Nothing here is public API -- the same role
- * pdo_int.h plays for ext/pdo.
+ * Private header shared by the ext/curl units (vm_curl.c, vm_curl_multi.c).
+ * Nothing here is public API -- the same role pdo_int.h plays for ext/pdo.
  *
  * MINIMUM LIBCURL. php's ext/curl exposes a surface that grows with the
  * library: options, info selectors and error codes are ENUM MEMBERS, not
@@ -39,6 +38,28 @@
 
 /* Shared one-time curl_global_init() (vm_curl.c). */
 PH7_PRIVATE void PH7_CurlGlobalInit(void);
+
+/*
+ * The hidden `__res` slot every handle class in this extension keeps its
+ * record in, and the creation door `new` is refused through. Shared by the two
+ * units because the slot is the same one; only the record differs.
+ */
+PH7_PRIVATE void PH7_CurlBlankSlot(ph7_class_instance *pOwner);
+PH7_PRIVATE void * PH7_CurlSlotOf(ph7_class_instance *pThis);
+PH7_PRIVATE int PH7_CurlSlotAttach(ph7_class_instance *pThis,void *pRec);
+PH7_PRIVATE ph7_class_instance * PH7_CurlNewInstance(ph7_vm *pVm,const char *zName,int nName);
+PH7_PRIVATE void * PH7_CurlEasyOfInstance(ph7_class_instance *pThis);
+/*
+ * Validate and retain one php callable for an option. Two things differ
+ * between the two setters that use it, and both are php's own wording rather
+ * than anything about the callable: curl_setopt() blames "#3 ($value)" where
+ * curl_multi_setopt() blames "#2 ($option)" -- the argument the value did not
+ * come from -- and NULL puts an easy handle's callback back to the default
+ * where the multi's push option refuses it like any other non-callable.
+ */
+PH7_PRIVATE int PH7_CurlSetCallback(ph7_context *pCtx,ph7_vm *pVm,ph7_value **ppSlot,
+	ph7_value *pVal,const char *zFunc,const char *zArg,const char *zOpt,int bNullClears,
+	sxi32 *pRc);
 
 /*
  * Where a transfer's BODY goes.
@@ -187,6 +208,47 @@ struct phl_curl {
 	                                 * refusal is raised once the library unwinds */
 	phl_curl *pNext;                /* per-VM registry chain */
 };
+
+/*
+ * One easy handle a multi holds, and the OBJECT it holds it by.
+ *
+ * php's multi keeps a reference to every added CurlHandle -- `unset($h)` after
+ * curl_multi_add_handle() leaves the transfer running and
+ * curl_multi_get_handles() still answers the same object -- so the entry owns a
+ * php VALUE rather than a bare pointer. The order of the chain is php's answer
+ * for get_handles(): insertion order, and a handle removed and re-added goes to
+ * the END.
+ */
+typedef struct phl_curlm phl_curlm;
+typedef struct phl_curlm_ent phl_curlm_ent;
+struct phl_curlm_ent {
+	ph7_value *pVal;               /* the CurlHandle object, holding its reference */
+	ph7_class_instance *pObj;      /* the same instance, for identity comparisons */
+	phl_curlm_ent *pNext;
+};
+
+/*
+ * One multi handle, and the state php keeps beside it.
+ *
+ * Chained on its own per-VM registry (pVm->pCurlMultis) for the reason the easy
+ * handles are: a CURLM* lives outside SyMemBackend, and it must be swept BEFORE
+ * the easy handles it still holds.
+ */
+struct phl_curlm {
+	CURLM *pMulti;                  /* the libcurl multi handle (never 0 while live) */
+	ph7_class_instance *pOwner;     /* the CurlMultiHandle this record backs */
+	ph7_vm *pVm;
+	int iLastErr;                   /* CURLMcode of the last verb that reports one:
+	                                 * add/remove/exec/setopt write it, and
+	                                 * select/info_read/get_handles leave it alone */
+	phl_curlm_ent *pHandles;        /* the easy handles added, in php's order */
+	ph7_value *pPushCb;             /* CURLMOPT_PUSHFUNCTION */
+	phl_curlm *pNext;               /* per-VM registry chain */
+};
+
+/* vm_curl_multi.c */
+PH7_PRIVATE sxi32 PH7_VmInstallCurlMulti(ph7_vm *pVm);
+PH7_PRIVATE void PH7_CurlMultiVmSweep(ph7_vm *pVm);
 
 #endif /* PH7_ENABLE_CURL */
 #endif /* PHL_CURL_INT_H */
