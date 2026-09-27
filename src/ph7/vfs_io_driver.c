@@ -260,7 +260,13 @@ static int PHPStreamData_Open(const char *zName,int iMode,ph7_value *pResource,v
 		iMode = PH7_IO_STREAM_MEMORY;
 		bTemp = SyStrnicmp(sStream.zString,"temp",sizeof("temp")-1) == 0;
 	}else{
-		/* unknown stream name */
+		/* An unknown php:// name is php's own diagnostic, raised BESIDE the
+		 * caller's "Failed to open stream" rather than instead of it — the same
+		 * sentence the empty `php://filter` above already raised. */
+		if( pResource && pResource->pVm ){
+			PH7_VmThrowError(pResource->pVm,pResource->pVm->pCalleeName,
+				PH7_CTX_WARNING,"Invalid php:// URL specified");
+		}
 		return -1;
 	}
 	/* Create our handle */
@@ -535,6 +541,10 @@ static int DataStreamData_Open(const char *zName,int iMode,ph7_value *pResource,
 		zIn++;
 	}
 	if( zComma == 0 ){
+		/* php's own wording for the one thing its data wrapper checks. */
+		if( pResource && pResource->pVm ){
+			PH7_StreamSetOpenError(pResource->pVm,"rfc2397: no comma in URL");
+		}
 		return -1;
 	}
 	if( zComma - zName >= (int)sizeof(";base64")-1

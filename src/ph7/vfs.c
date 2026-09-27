@@ -141,10 +141,31 @@ static void VfsThrowSysWarning(ph7_context *pCtx,const char *zPath)
 	PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s): %s",
 		ph7_function_name(pCtx),zPath ? zPath : "",VfsStrerror(errno));
 }
+/*
+ * php's "fopen(data://x): Failed to open stream: rfc2397: no comma in URL".
+ *
+ * Two things in that sentence were this engine's own. The NAME was whatever
+ * PH7_VmGetStreamDevice() left after the scheme, so a wrapper's failure blamed
+ * a path the script never wrote (`fopen(x)`, `fopen(nosuchthing)`); it is the
+ * whole URI when the caller is reporting the open that lookup resolved, which
+ * is what the pointer it handed back identifies. And the REASON was errno --
+ * which only the plain-file wrapper sets, so every other one reported whatever
+ * errno happened to be lying around, including `Success` for a failed open.
+ * php's reason is the wrapper's: its own sentence when it logged one, and a
+ * flat "operation failed" when it did not.
+ */
 PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile)
 {
-	PH7_VmThrowWarningFmt(pCtx->pVm,"%s(%s): Failed to open stream: %s",
-		ph7_function_name(pCtx),zFile ? zFile : "",VfsStrerror(errno));
+	ph7_vm *pVm = pCtx->pVm;
+	const char *zName = zFile ? zFile : "";
+	int nName = -1;
+	if( zFile != 0 && zFile == pVm->zOpenUriTail && pVm->zOpenUri != 0 ){
+		zName = pVm->zOpenUri;
+		nName = pVm->nOpenUri;
+	}
+	PH7_VmThrowWarningFmt(pVm,"%s(%.*s): Failed to open stream: %s",
+		ph7_function_name(pCtx),nName < 0 ? (int)SyStrlen(zName) : nName,zName,
+		pVm->zOpenErr ? pVm->zOpenErr : VfsStrerror(errno));
 }
 /*
  * php's answer when NO wrapper will take a name is a reason of its own, raised

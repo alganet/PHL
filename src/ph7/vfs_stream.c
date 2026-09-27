@@ -969,6 +969,27 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 		 * nothing else, so it is dropped on every exit — a caller that armed one
 		 * and returned early must not leave it for the next open to pick up. */
 		pVm->pOpenCtx = 0;
+		if( pVm->nOpenDepth < 1 ){
+			pVm->zOpenErr = 0;
+		}
+		return 0;
+	}
+	/* Arm the reason THIS open would report. php's default for a wrapper that
+	 * logs nothing of its own is a flat "operation failed"; only the plain-file
+	 * wrapper reports an errno, which is why every other one used to print
+	 * whatever errno was left over — `Success` for a failure, among others. An
+	 * xOpen body may replace it through PH7_StreamSetOpenError(). */
+	if( pVm->nOpenDepth < 1 ){
+		pVm->zOpenErr = pStream == pVm->pDefStream ? 0 : "operation failed";
+	}
+	if( pStream->xOpen == 0 ){
+		/* A wrapper with a dir_opener and NOTHING else — glob:// is php's one,
+		 * and this is php's sentence for it. Reached before the call, because
+		 * the call would be through a null pointer. */
+		pVm->pOpenCtx = 0;
+		if( pVm->nOpenDepth < 1 ){
+			pVm->zOpenErr = "wrapper does not support stream open";
+		}
 		return 0;
 	}
 	/* A wrapper registered with STREAM_IS_URL speaks to the network, and php lets
@@ -1006,6 +1027,10 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 		pResource = &sDummy;
 	}
 	SyStringInitFromBuf(&sFile,zFile,SyStrlen(zFile));
+	/* Everything from here to the matching decrement is INSIDE an open, so a
+	 * wrapper that opens something of its own does not get to rename the
+	 * failure its caller will report. */
+	pVm->nOpenDepth++;
 	if( use_include ){
 		if(	/* include_path names DIRECTORIES, so it has nothing to say about a
 			 * URL: walking it for a `php://filter/…` one built `<dir>/filter/…`
@@ -1083,6 +1108,7 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 		/* Open the URI direcly */
 		rc = pStream->xOpen(zFile,iFlags,pResource,&pHandle);
 	}
+	pVm->nOpenDepth--;
 	/* The armed context describes exactly ONE open — every attempt of the
 	 * include-path walk above included — so it is dropped here whether the open
 	 * worked or not. A device that wanted it (a userland wrapper) read it while
@@ -1092,8 +1118,33 @@ PH7_PRIVATE void * PH7_StreamOpenHandle(ph7_vm *pVm,const ph7_io_stream *pStream
 		/* IO error */
 		return 0;
 	}
+	/* Nothing failed, so nothing is owed a reason: a later warning must not
+	 * find this one still armed. An INNER open succeeding says nothing about
+	 * the outer one, which may still be on its way to failing. */
+	if( pVm->nOpenDepth < 1 ){
+		pVm->zOpenErr = 0;
+	}
 	/* Return the file handle */
 	return pHandle;
+}
+/* See ph7int.h: the wrapper's own reason for the open in flight. */
+PH7_PRIVATE void PH7_StreamSetOpenError(ph7_vm *pVm,const char *zReason)
+{
+	/* Only the OUTERMOST wrapper's own body may name the failure: an inner
+	 * open's wrapper is describing something the caller never asked for. */
+	if( pVm->nOpenDepth == 1 ){
+		pVm->zOpenErr = zReason;
+	}
+}
+/* See ph7int.h. */
+PH7_PRIVATE void PH7_StreamSetOpenErrorCall(ph7_vm *pVm,const char *zClass,const char *zMethod)
+{
+	if( pVm->nOpenDepth != 1 ){
+		return;
+	}
+	SyBufferFormat(pVm->zOpenErrBuf,sizeof(pVm->zOpenErrBuf),"\"%s::%s\" call failed",
+		zClass ? zClass : "",zMethod);
+	pVm->zOpenErr = pVm->zOpenErrBuf;
 }
 /*
  * Read the whole contents of an open IO stream handle [i.e local file/URL..]
@@ -5317,6 +5368,9 @@ static int UwrapOpenSlot(int iSlot,const char *zName,int iMode,ph7_value *pResou
 	PH7_MemObjRelease(&sOpened);
 	PH7_MemObjRelease(&sRet);
 	if( rc != 0 ){
+		/* php's own wording for a wrapper that declined: the call it made, not
+		 * an errno the wrapper never set. */
+		PH7_StreamSetOpenErrorCall(pVm,pSlot->zClass,"stream_open");
 		PH7_ClassInstanceUnref(pH->pObj);
 		SyMemBackendFree(&pVm->sAllocator,pH);
 		return -1;

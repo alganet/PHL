@@ -3035,6 +3035,26 @@ struct ph7_vm
 	void *pStreamCtx;          /* phl_stream_ctx registry chain; freed on reset */
 	void *pDefaultCtx;         /* phl_stream_ctx* — the default context, or 0 */
 	void *pOpenCtx;            /* the context the open in flight runs under */
+	/* What a FAILED open says. php names the URI the script wrote -- scheme and
+	 * all -- and gives the WRAPPER's reason for it, where only the plain-file
+	 * wrapper's reason is an errno. PH7_VmGetStreamDevice() advances past the
+	 * scheme, so the two halves of the name are remembered here as it does:
+	 * zOpenUriTail is the pointer it handed back, and a warning printing THAT
+	 * pointer is reporting THIS open and may name the whole thing instead. */
+	const char *zOpenUri;      /* the URI as written, or 0 */
+	int nOpenUri;              /* its length */
+	const char *zOpenUriTail;  /* the scheme-stripped remainder handed to the wrapper */
+	const char *zOpenErr;      /* the wrapper's own reason for the open in flight, or 0
+	                            * for the plain-file wrapper's errno */
+	char zOpenErrBuf[160];     /* storage for a reason that has to be BUILT -- a userland
+	                            * wrapper names its own class and method -- since the
+	                            * caller's buffer does not outlive the call */
+	int nOpenDepth;            /* opens in flight. The three fields above belong to the
+	                            * OUTERMOST one: php://filter opens its own resource from
+	                            * inside its xOpen, and that inner open would otherwise
+	                            * report the RESOURCE's errno under the filter's name --
+	                            * and leave zOpenUriTail pointing into a blob it frees on
+	                            * the way out. */
 	/* Stream filters (stream_filter_append and the php://filter wrapper). The
 	 * chain owns every filter INSTANCE the script created, so one that is never
 	 * removed still goes back at reset. */
@@ -4561,6 +4581,13 @@ PH7_PRIVATE io_private * PH7_StreamOpenPath(ph7_context *pCtx,ph7_value *pPath,
 /* "Failed to open stream" warning helper (vfs.c, errno-based); used by the
  * fopen/opendir/file_* family in vfs_stream.c. */
 PH7_PRIVATE void VfsThrowOpenWarning(ph7_context *pCtx,const char *zFile);
+/* A wrapper's own reason for refusing the open in flight, which is what php
+ * prints after "Failed to open stream:" instead of an errno. Set from an xOpen
+ * body; PH7_StreamOpenHandle() re-arms the default before every open. */
+PH7_PRIVATE void PH7_StreamSetOpenError(ph7_vm *pVm,const char *zReason);
+/* The same, for php's `"Cls::method" call failed`: a userland wrapper's refusal
+ * names the call that made it, so the sentence is built and copied. */
+PH7_PRIVATE void PH7_StreamSetOpenErrorCall(ph7_vm *pVm,const char *zClass,const char *zMethod);
 PH7_PRIVATE void VfsThrowNoDeviceWarning(ph7_context *pCtx,const char *zUri,int bDir);
 PH7_PRIVATE int PH7_VfsStatDoubleUp(ph7_value *pIn,ph7_value *pOut);
 PH7_PRIVATE const char * VfsStrerror(int iErr);

@@ -6812,6 +6812,19 @@ PH7_PRIVATE const ph7_io_stream * PH7_VmGetStreamDevice(
 	const char *zIn,*zNext;
 	ph7_io_stream *pStream;
 	int nScheme = 0;
+	/* A failed open names the URI the SCRIPT wrote, and every caller from here
+	 * on holds only what is left after the scheme -- so both halves are
+	 * remembered as the scheme comes off, and forgotten on every arm that does
+	 * not take one off (see VfsThrowOpenWarning). */
+	if( pVm->nOpenDepth < 1 ){
+		pVm->zOpenUri = 0;
+		pVm->zOpenUriTail = 0;
+		pVm->nOpenUri = 0;
+		/* The reason goes with them: a caller that resolves a device and then
+		 * declines to open it (dom asks for xRead/xWrite first) must not report
+		 * the PREVIOUS open's wrapper reason. */
+		pVm->zOpenErr = 0;
+	}
 	/* Check if a scheme [i.e: file://,http://,zip://...] is available */
 	zIn = *pzDevice;
 	if( !VmUrlScheme(zIn,nByte,&nScheme) ){
@@ -6837,6 +6850,11 @@ PH7_PRIVATE const ph7_io_stream * PH7_VmGetStreamDevice(
 		return 0;
 	}
 	*pzDevice = zNext;
+	if( pVm->nOpenDepth < 1 ){
+		pVm->zOpenUri = zIn;
+		pVm->nOpenUri = nByte;
+		pVm->zOpenUriTail = zNext;
+	}
 	return pStream;
 }
 /*
