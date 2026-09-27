@@ -170,6 +170,12 @@ struct phl_curl {
 	                                 * so the CURLcode the handle ends with is the
 	                                 * transfer's own, whatever the throw was */
 	int iWriteDest;                 /* where the body goes: one of PHL_CURL_DEST_* */
+	SyBlob sBody;                   /* the body a RETURNTRANSFER transfer collected.
+	                                 * On the HANDLE rather than on the call because
+	                                 * php's is: curl_multi_getcontent() reads it long
+	                                 * after the curl_multi_exec() that filled it, and a
+	                                 * plain curl_exec() answers the same bytes. Emptied
+	                                 * at the start of a transfer, never at the end */
 	/*
 	 * The multipart body CURLOPT_POSTFIELDS built from an array: the mime
 	 * libcurl reads, the streams its file parts read from, and the ARRAY
@@ -245,6 +251,18 @@ struct phl_curlm {
 	ph7_value *pPushCb;             /* CURLMOPT_PUSHFUNCTION */
 	phl_curlm *pNext;               /* per-VM registry chain */
 };
+
+/*
+ * One transfer, from either rail. curl_exec() and curl_multi_exec() differ in
+ * what drives libcurl and in nothing else, so the handler installation, the
+ * context a body prints through and the error state a finished transfer leaves
+ * are shared rather than written twice.
+ */
+PH7_PRIVATE void PH7_CurlBodyReset(phl_curl *pCurl);
+PH7_PRIVATE void PH7_CurlBeginTransfer(phl_curl *pCurl,ph7_context *pCtx);
+PH7_PRIVATE void PH7_CurlEndTransfer(phl_curl *pCurl);
+PH7_PRIVATE void PH7_CurlRecordResult(phl_curl *pCurl,int iCode);
+PH7_PRIVATE void PH7_CurlResultBody(ph7_context *pCtx,phl_curl *pCurl);
 
 /* vm_curl_multi.c */
 PH7_PRIVATE sxi32 PH7_VmInstallCurlMulti(ph7_vm *pVm);

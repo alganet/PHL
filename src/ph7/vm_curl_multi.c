@@ -9,8 +9,9 @@
  * Section:
  *    ext/curl -- the MULTI interface (php's `curl_multi_*`).
  * Status:
- *    The container half: the handle class, its option setter, and the set of
- *    easy handles it holds. The driving verbs (exec/select/info_read) follow.
+ *    The whole multi surface: the handle class, its option setter, the set of
+ *    easy handles it holds, and the verbs that drive them. The share half
+ *    follows.
  *
  * WHAT A MULTI HANDLE IS HERE. libcurl's multi interface is a SET of easy
  * handles plus a scheduler; php wraps the set in an object and keeps its own
@@ -260,6 +261,7 @@ static int vm_builtin_curl_multi_add_handle(ph7_context *pCtx,int nArg,ph7_value
 	rc = curl_multi_add_handle(pMulti->pMulti,pCurl->pEasy);
 	pMulti->iLastErr = (int)rc;
 	if( rc == CURLM_OK ){
+		PH7_CurlBodyReset(pCurl);
 		if( CurlMultiFind(pMulti,pObj) == 0 && CurlMultiAppend(pMulti,apArg[1],pObj) != 0 ){
 			/* Out of memory building the entry: undo the add rather than leave
 			 * libcurl scheduling a transfer this set cannot report on. */
@@ -335,6 +337,181 @@ static int vm_builtin_curl_multi_get_handles(ph7_context *pCtx,int nArg,ph7_valu
 		ph7_array_add_elem(pArray,0,pEnt->pVal);
 	}
 	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+
+/* ------------------------------------------------------------------------
+ * Driving the set
+ * ------------------------------------------------------------------------ */
+/*
+ * int curl_multi_exec(CurlMultiHandle $multi_handle, int &$still_running)
+ *
+ * One turn of libcurl's scheduler over every handle in the set, and the count
+ * of transfers still going written back through the reference. It is the whole
+ * loop a program writes: exec, select, exec again until nothing runs.
+ *
+ * Every handle's handlers are installed before each turn rather than once at
+ * add time, because a script may point a handle somewhere else between two
+ * turns and nothing else would notice. The CONTEXT they carry is this call's,
+ * which is what makes a body with no destination of its own print through the
+ * VM's output consumer (so an ob_start() around the loop catches it) and what
+ * a callback's throw is raised on.
+ *
+ * A throw is parked per handle by the callback rail and raised HERE, once the
+ * library has unwound -- the transfer itself carries on, so the set's own
+ * answer for it is the CURLcode it really ended in.
+ */
+static int vm_builtin_curl_multi_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_curlm *pMulti = CurlMultiArg(nArg,apArg);
+	phl_curlm_ent *pEnt;
+	ph7_value sVal;
+	sxi32 rcExc = PH7_OK;
+	int nRunning = 0;
+	CURLMcode rc = CURLM_BAD_HANDLE;
+	if( pMulti && pMulti->pMulti ){
+		for( pEnt = pMulti->pHandles ; pEnt ; pEnt = pEnt->pNext ){
+			phl_curl *pCurl = (phl_curl *)PH7_CurlEasyOfInstance(pEnt->pObj);
+			if( pCurl ){
+				PH7_CurlBeginTransfer(pCurl,pCtx);
+			}
+		}
+		rc = curl_multi_perform(pMulti->pMulti,&nRunning);
+		for( pEnt = pMulti->pHandles ; pEnt ; pEnt = pEnt->pNext ){
+			phl_curl *pCurl = (phl_curl *)PH7_CurlEasyOfInstance(pEnt->pObj);
+			if( pCurl == 0 ){
+				continue;
+			}
+			PH7_CurlEndTransfer(pCurl);
+			if( pCurl->iCbExc != 0 ){
+				/* The first throw of the turn is the one that travels; the rest
+				 * are dropped with the same rule a second callback follows. */
+				if( rcExc == PH7_OK ){
+					rcExc = pCurl->iCbExc;
+				}
+				pCurl->iCbExc = 0;
+			}
+		}
+		pMulti->iLastErr = (int)rc;
+	}
+	PH7_MemObjInitFromInt(pCtx->pVm,&sVal,(sxi64)nRunning);
+	PH7_VmStoreArgByRef(pCtx->pVm,apArg[1],&sVal);
+	PH7_MemObjRelease(&sVal);
+	ph7_result_int(pCtx,(int)rc);
+	return rcExc;
+}
+/*
+ * int curl_multi_select(CurlMultiHandle $multi_handle, float $timeout = 1.0)
+ *
+ * Waits for one of the set's sockets to become readable or writable and
+ * answers how many did -- or 0 when the timeout ran out first, which is also
+ * the immediate answer for a set with no socket at all: the wait is libcurl's
+ * curl_multi_wait(), which does not sleep for a set it has nothing to wait on.
+ * An error is -1, and the set's error state is NOT touched either way.
+ *
+ * The bound on the timeout is php's, not libcurl's: the seconds become an int
+ * of MILLISECONDS, so anything past INT_MAX of them is refused up front -- and
+ * so is a NaN, which the comparison below rejects by not being >= 0.
+ */
+static int vm_builtin_curl_multi_select(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_curlm *pMulti = CurlMultiArg(nArg,apArg);
+	double rTimeout = nArg > 1 ? (double)ph7_value_to_double(apArg[1]) : 1.0;
+	int nFds = 0;
+	CURLMcode rc;
+	if( !(rTimeout >= 0.0) || rTimeout > (double)SXI32_HIGH / 1000.0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_VmThrowException(pCtx,"ValueError",
+			"curl_multi_select(): Argument #2 ($timeout) must be between 0 and %f",
+			(double)SXI32_HIGH / 1000.0);
+	}
+	if( pMulti == 0 || pMulti->pMulti == 0 ){
+		ph7_result_int(pCtx,-1);
+		return PH7_OK;
+	}
+	rc = curl_multi_wait(pMulti->pMulti,0,0,(int)(rTimeout * 1000.0),&nFds);
+	ph7_result_int(pCtx,rc == CURLM_OK ? nFds : -1);
+	return PH7_OK;
+}
+/*
+ * array|false curl_multi_info_read(CurlMultiHandle $multi_handle, int &$queued_messages = null)
+ *
+ * One message off libcurl's queue -- always a CURLMSG_DONE -- as php's three
+ * keys in php's order, with the CurlHandle OBJECT that was added rather than
+ * the CURL* the message names. The count still queued is written back only
+ * when there WAS a message: an empty queue answers false and leaves the
+ * reference exactly as the caller left it.
+ *
+ * This is also the verb that gives the easy handle its error state. Until the
+ * message is read, curl_errno() on a handle whose multi transfer already
+ * finished still answers 0 -- the transfer reported to the SET, and reading the
+ * message is what moves the result onto the handle. libcurl wrote the detailed
+ * text into the handle's error buffer during the transfer; a code with no
+ * detail falls back to its own sentence, the same as the easy rail.
+ */
+static int vm_builtin_curl_multi_info_read(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_curlm *pMulti = CurlMultiArg(nArg,apArg);
+	ph7_value *pArray,*pVal;
+	phl_curlm_ent *pEnt;
+	CURLMsg *pMsg;
+	int nQueued = 0;
+	if( pMulti == 0 || pMulti->pMulti == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pMsg = curl_multi_info_read(pMulti->pMulti,&nQueued);
+	if( pMsg == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	pArray = ph7_context_new_array(pCtx);
+	pVal = ph7_context_new_scalar(pCtx);
+	if( pArray == 0 || pVal == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	ph7_value_int64(pVal,(sxi64)pMsg->msg);
+	ph7_array_add_strkey_elem(pArray,"msg",pVal);
+	ph7_value_int64(pVal,(sxi64)pMsg->data.result);
+	ph7_array_add_strkey_elem(pArray,"result",pVal);
+	for( pEnt = pMulti->pHandles ; pEnt ; pEnt = pEnt->pNext ){
+		phl_curl *pCurl = (phl_curl *)PH7_CurlEasyOfInstance(pEnt->pObj);
+		if( pCurl == 0 || pCurl->pEasy != pMsg->easy_handle ){
+			continue;
+		}
+		PH7_CurlRecordResult(pCurl,(int)pMsg->data.result);
+		ph7_array_add_strkey_elem(pArray,"handle",pEnt->pVal);
+		break;
+	}
+	if( nArg > 1 ){
+		ph7_value_int64(pVal,(sxi64)nQueued);
+		PH7_VmStoreArgByRef(pCtx->pVm,apArg[1],pVal);
+	}
+	ph7_result_value(pCtx,pArray);
+	return PH7_OK;
+}
+/*
+ * ?string curl_multi_getcontent(CurlHandle $handle)
+ *
+ * The body a RETURNTRANSFER handle collected -- the only way to reach it after
+ * a multi transfer, which has no call to answer it. It reads the DESTINATION
+ * that stands now rather than what the last transfer did, so a handle whose
+ * body went to the output, to a callback or to a stream answers null, and one
+ * that was reset after collecting a body answers null too. The verb belongs to
+ * the easy handle: it is the same buffer a plain curl_exec() answers, and
+ * asking twice answers twice.
+ */
+static int vm_builtin_curl_multi_getcontent(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = (nArg > 0 && apArg && ph7_value_is_object(apArg[0])) ?
+		(ph7_class_instance *)apArg[0]->x.pOther : 0;
+	phl_curl *pCurl = pThis ? (phl_curl *)PH7_CurlEasyOfInstance(pThis) : 0;
+	if( pCurl == 0 || pCurl->iWriteDest != PHL_CURL_DEST_RETURN ){
+		ph7_result_null(pCtx);
+		return PH7_OK;
+	}
+	PH7_CurlResultBody(pCtx,pCurl);
 	return PH7_OK;
 }
 
@@ -453,7 +630,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallCurlMulti(ph7_vm *pVm)
 		{ "curl_multi_setopt",        vm_builtin_curl_multi_setopt        },
 		{ "curl_multi_add_handle",    vm_builtin_curl_multi_add_handle    },
 		{ "curl_multi_remove_handle", vm_builtin_curl_multi_remove_handle },
-		{ "curl_multi_get_handles",   vm_builtin_curl_multi_get_handles   }
+		{ "curl_multi_get_handles",   vm_builtin_curl_multi_get_handles   },
+		{ "curl_multi_exec",          vm_builtin_curl_multi_exec          },
+		{ "curl_multi_select",        vm_builtin_curl_multi_select        },
+		{ "curl_multi_info_read",     vm_builtin_curl_multi_info_read     },
+		{ "curl_multi_getcontent",    vm_builtin_curl_multi_getcontent    }
 	};
 	/*
 	 * The set, and nothing else: php's CurlMultiHandle declares no method, no

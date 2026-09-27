@@ -68,6 +68,7 @@ static phl_curl * CurlNewHandle(ph7_vm *pVm)
 	}
 	SyZero(pCurl,sizeof(phl_curl));
 	pCurl->pVm = pVm;
+	SyBlobInit(&pCurl->sBody,&pVm->sAllocator);
 	pCurl->pEasy = curl_easy_init();
 	if( pCurl->pEasy == 0 ){
 		SyMemBackendFree(&pVm->sAllocator,pCurl);
@@ -174,6 +175,7 @@ static void CurlFreeHandle(phl_curl *pCurl)
 	CurlFreeSlists(pCurl);
 	CurlDropCallbacks(pCurl);
 	CurlFreeMime(pCurl);
+	SyBlobRelease(&pCurl->sBody);
 	if( pCurl->pPrivate ){
 		ph7_release_value(pCurl->pVm,pCurl->pPrivate);
 		pCurl->pPrivate = 0;
@@ -337,6 +339,7 @@ static void CurlInstanceClone(ph7_vm *pVm,ph7_class_instance *pClone,ph7_class_i
 	}
 	SyZero(pNew,sizeof(phl_curl));
 	pNew->pVm = pVm;
+	SyBlobInit(&pNew->sBody,&pVm->sAllocator);
 	pDup = curl_easy_duphandle(pFrom->pEasy);
 	if( pDup == 0 ){
 		SyMemBackendFree(&pVm->sAllocator,pNew);
@@ -345,6 +348,25 @@ static void CurlInstanceClone(ph7_vm *pVm,ph7_class_instance *pClone,ph7_class_i
 	}
 	pNew->pEasy = pDup;
 	curl_easy_setopt(pDup,CURLOPT_ERRORBUFFER,pNew->zErrBuf);
+	/*
+	 * duphandle copies the option VALUES, and every handler this engine
+	 * installs carries the SOURCE record as its argument. The copy installs its
+	 * own before it transfers, but nothing may be left pointing at another
+	 * handle's record in between -- so they come off here, which also puts the
+	 * copy back on libcurl's defaults exactly as a fresh handle is.
+	 */
+	curl_easy_setopt(pDup,CURLOPT_WRITEFUNCTION,(curl_write_callback)0);
+	curl_easy_setopt(pDup,CURLOPT_WRITEDATA,(void *)0);
+	curl_easy_setopt(pDup,CURLOPT_HEADERFUNCTION,(curl_write_callback)0);
+	curl_easy_setopt(pDup,CURLOPT_HEADERDATA,(void *)0);
+	curl_easy_setopt(pDup,CURLOPT_READFUNCTION,(curl_read_callback)0);
+	curl_easy_setopt(pDup,CURLOPT_READDATA,(void *)0);
+	curl_easy_setopt(pDup,CURLOPT_DEBUGFUNCTION,(curl_debug_callback)0);
+	curl_easy_setopt(pDup,CURLOPT_DEBUGDATA,(void *)0);
+	curl_easy_setopt(pDup,CURLOPT_XFERINFOFUNCTION,(curl_xferinfo_callback)0);
+	curl_easy_setopt(pDup,CURLOPT_XFERINFODATA,(void *)0);
+	curl_easy_setopt(pDup,CURLOPT_PREREQFUNCTION,(curl_prereq_callback)0);
+	curl_easy_setopt(pDup,CURLOPT_PREREQDATA,(void *)0);
 	/*
 	 * The slists have to be rebuilt for the copy, and pointed at from the copy,
 	 * for the same reason the source owns them: libcurl stores the POINTER.
@@ -3042,12 +3064,18 @@ static int vm_builtin_curl_errno(ph7_context *pCtx,int nArg,ph7_value **apArg)
  *
  * The ERROR BUFFER, not curl_easy_strerror(): libcurl writes a sentence naming
  * the host and port it could not reach, where the code's own text is the
- * generic "Couldn't connect to server". Empty when nothing has failed.
+ * generic "Couldn't connect to server".
+ *
+ * It is gated on the recorded CODE, not on the buffer: php answers the empty
+ * string whenever curl_errno() is 0, whatever libcurl left behind. The two
+ * disagree on the multi rail, where a transfer can be over and its buffer
+ * written while the handle's code is still 0 -- reading the message is what
+ * moves the result onto the handle, and until then php reports nothing.
  */
 static int vm_builtin_curl_error(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	phl_curl *pCurl = CurlArg(pCtx,nArg,apArg);
-	if( pCurl == 0 ){
+	if( pCurl == 0 || pCurl->iLastErr == 0 ){
 		ph7_result_string(pCtx,"",0);
 		return PH7_OK;
 	}
@@ -3738,49 +3766,57 @@ static int CurlPreReqThunk(void *pUser,char *zConnIp,char *zLocalIp,int nConnPor
 /* ===== curl_exec() ===== */
 
 /*
- * Where the body goes. php has two destinations and CURLOPT_RETURNTRANSFER
- * picks between them: a buffer the call ANSWERS, or the script's own output --
+ * Where the body goes when no callback and no stream has claimed it: the
+ * buffer CURLOPT_RETURNTRANSFER answers with, or the script's own output --
  * which has to be the VM's output consumer, not stdout, so an ob_start() around
- * curl_exec() captures it the way php's does.
+ * either exec verb captures it the way php's does.
+ *
+ * The buffer belongs to the HANDLE and not to the call, which is php's model
+ * and the only one the multi rail can use: a transfer driven by
+ * curl_multi_exec() has no call to answer, so curl_multi_getcontent() reads the
+ * bytes off the handle afterwards. It is emptied at the START of a transfer --
+ * curl_exec(), and curl_multi_add_handle() for the multi rail -- and never at
+ * the end, so the last body stays readable for as long as the destination
+ * stands.
  */
-struct CurlExecSink {
-	ph7_context *pCtx;
-	SyBlob *pBody;      /* set when RETURNTRANSFER is on */
-};
-static size_t CurlExecWrite(char *zData,size_t nSize,size_t nMemb,void *pUser)
+PH7_PRIVATE void PH7_CurlBodyReset(phl_curl *pCurl)
 {
-	struct CurlExecSink *pSink = (struct CurlExecSink *)pUser;
+	SyBlobReset(&pCurl->sBody);
+}
+static size_t CurlBodySink(char *zData,size_t nSize,size_t nMemb,void *pUser)
+{
+	phl_curl *pCurl = (phl_curl *)pUser;
 	size_t nTotal = nSize * nMemb;
 	if( nTotal < 1 ){
 		return 0;
 	}
-	if( pSink->pBody ){
-		if( SyBlobAppend(pSink->pBody,zData,(sxu32)nTotal) != SXRET_OK ){
+	if( pCurl->iWriteDest == PHL_CURL_DEST_RETURN ){
+		if( SyBlobAppend(&pCurl->sBody,zData,(sxu32)nTotal) != SXRET_OK ){
 			return 0;   /* short write: libcurl turns this into CURLE_WRITE_ERROR */
 		}
+	}else if( pCurl->pExecCtx ){
+		ph7_context_output(pCurl->pExecCtx,zData,(int)nTotal);
 	}else{
-		ph7_context_output(pSink->pCtx,zData,(int)nTotal);
+		return 0;   /* no call to print through: a short write, not a crash */
 	}
 	return nTotal;
 }
-/* string|bool curl_exec(CurlHandle $handle) */
-static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
+/*
+ * Install every handler this transfer needs and take the CONTEXT it runs
+ * under. Shared with the multi rail, which installs for each of its handles
+ * before every curl_multi_perform() -- a destination can be changed between
+ * two of them, and there is no other moment that would notice.
+ */
+PH7_PRIVATE void PH7_CurlBeginTransfer(phl_curl *pCurl,ph7_context *pCtx)
 {
-	phl_curl *pCurl = CurlArg(pCtx,nArg,apArg);
-	struct CurlExecSink sSink;
-	SyBlob sBody;
-	CURLcode rc;
-	if( pCurl == 0 || pCurl->pEasy == 0 ){
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+	if( pCurl->pEasy == 0 ){
+		return;
 	}
-	SyBlobInit(&sBody,&pCurl->pVm->sAllocator);
-	sSink.pCtx = pCtx;
-	sSink.pBody = pCurl->iWriteDest == PHL_CURL_DEST_RETURN ? &sBody : 0;
 	pCurl->iCbExc = 0;
 	pCurl->bNoPathRead = 0;
 	/* An upload part reads from inside libcurl and may have a diagnostic to
-	 * raise; this is the context it belongs to. */
+	 * raise; this is the context it belongs to, and the one the default
+	 * destination prints through. */
 	pCurl->pExecCtx = pCtx;
 	if( pCurl->iWriteDest == PHL_CURL_DEST_USER && pCurl->pWriteCb ){
 		/* A php WRITEFUNCTION replaces the destination entirely: neither the
@@ -3791,8 +3827,8 @@ static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEFUNCTION,CurlStreamSink);
 		curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEDATA,(void *)pCurl->pWriteStream);
 	}else{
-		curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEFUNCTION,CurlExecWrite);
-		curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEDATA,(void *)&sSink);
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEFUNCTION,CurlBodySink);
+		curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEDATA,(void *)pCurl);
 	}
 	/*
 	 * The header callback is installed on EVERY transfer, php's way: without
@@ -3822,13 +3858,42 @@ static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		curl_easy_setopt(pCurl->pEasy,CURLOPT_XFERINFOFUNCTION,CurlXferThunk);
 		curl_easy_setopt(pCurl->pEasy,CURLOPT_XFERINFODATA,(void *)pCurl);
 	}
-	rc = curl_easy_perform(pCurl->pEasy);
+}
+PH7_PRIVATE void PH7_CurlEndTransfer(phl_curl *pCurl)
+{
 	pCurl->pExecCtx = 0;
-	/* The sink is a stack address: libcurl must not keep it past this call. */
-	curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEFUNCTION,(curl_write_callback)0);
-	curl_easy_setopt(pCurl->pEasy,CURLOPT_WRITEDATA,(void *)0);
-	curl_easy_setopt(pCurl->pEasy,CURLOPT_HEADERFUNCTION,(curl_write_callback)0);
-	curl_easy_setopt(pCurl->pEasy,CURLOPT_HEADERDATA,(void *)0);
+}
+/*
+ * What a finished transfer leaves on the handle. libcurl fills the error
+ * buffer itself; when it left it empty (some codes carry no detail) php still
+ * answers the code's own text.
+ */
+PH7_PRIVATE void PH7_CurlRecordResult(phl_curl *pCurl,int iCode)
+{
+	pCurl->iLastErr = iCode;
+	if( iCode != CURLE_OK && pCurl->zErrBuf[0] == 0 ){
+		CurlSetErr(pCurl,iCode);
+	}
+}
+/* The body a RETURNTRANSFER handle is holding, as this call's answer. */
+PH7_PRIVATE void PH7_CurlResultBody(ph7_context *pCtx,phl_curl *pCurl)
+{
+	sxu32 nLen = SyBlobLength(&pCurl->sBody);
+	ph7_result_string(pCtx,nLen > 0 ? (const char *)SyBlobData(&pCurl->sBody) : "",(int)nLen);
+}
+/* string|bool curl_exec(CurlHandle $handle) */
+static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	phl_curl *pCurl = CurlArg(pCtx,nArg,apArg);
+	CURLcode rc;
+	if( pCurl == 0 || pCurl->pEasy == 0 ){
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	PH7_CurlBodyReset(pCurl);
+	PH7_CurlBeginTransfer(pCurl,pCtx);
+	rc = curl_easy_perform(pCurl->pEasy);
+	PH7_CurlEndTransfer(pCurl);
 	/*
 	 * A callback threw: libcurl has unwound now, so this is where the parked
 	 * status is raised. The handle keeps the CURLcode the transfer really
@@ -3839,11 +3904,7 @@ static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	if( pCurl->iCbExc != 0 ){
 		sxi32 rcExc = pCurl->iCbExc;
 		pCurl->iCbExc = 0;
-		pCurl->iLastErr = (int)rc;
-		if( pCurl->zErrBuf[0] == 0 && rc != CURLE_OK ){
-			CurlSetErr(pCurl,(int)rc);
-		}
-		SyBlobRelease(&sBody);
+		PH7_CurlRecordResult(pCurl,(int)rc);
 		ph7_result_bool(pCtx,0);
 		return rcExc;
 	}
@@ -3853,23 +3914,16 @@ static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		pCurl->bNoPathRead = 0;
 		pCurl->iLastErr = 0;
 		pCurl->zErrBuf[0] = 0;
-		SyBlobRelease(&sBody);
 		ph7_result_bool(pCtx,0);
 		return PH7_VmThrowException(pCtx,"ValueError","Path must not be empty");
 	}
-	pCurl->iLastErr = (int)rc;
+	PH7_CurlRecordResult(pCurl,(int)rc);
 	if( rc != CURLE_OK ){
-		/* libcurl fills the error buffer itself; when it left it empty (some
-		 * codes carry no detail) php still answers the code's own text. */
-		if( pCurl->zErrBuf[0] == 0 ){
-			CurlSetErr(pCurl,(int)rc);
-		}
-		SyBlobRelease(&sBody);
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
 	if( pCurl->iWriteDest == PHL_CURL_DEST_RETURN ){
-		ph7_result_string(pCtx,(const char *)SyBlobData(&sBody),(int)SyBlobLength(&sBody));
+		PH7_CurlResultBody(pCtx,pCurl);
 	}else{
 		/* Every other destination answers TRUE, the callback one included:
 		 * php reads the return value off the DESTINATION, so a handle carrying
@@ -3877,7 +3931,6 @@ static int vm_builtin_curl_exec(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		 * the empty buffer nothing filled. */
 		ph7_result_bool(pCtx,1);
 	}
-	SyBlobRelease(&sBody);
 	return PH7_OK;
 }
 
