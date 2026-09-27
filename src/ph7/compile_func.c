@@ -400,6 +400,14 @@ PH7_PRIVATE sxi32 GenStateCollectFuncArgs(ph7_vm_func *pFunc,ph7_gen_state *pGen
 			 */
 			SyBlobRelease(&sSig);
 		}
+		/* php's attribute placement rules, once the promotion modifiers are read:
+		 * a PROMOTED parameter is a property as well, so `#[\Override] public $p`
+		 * in a constructor signature is accepted here and judged as the property
+		 * claim it is -- while php still NAMES the target "parameter". */
+		if( GenStateCheckAttrPlacement(&(*pGen),&sArg.aAttrs,32,
+				(sArg.iFlags & VM_FUNC_ARG_PROMOTED) ? (32|8) : 32,0,0) == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
 		/* Save in the argument set */
 		SySetPut(&pFunc->aArgs,(const void *)&sArg);
 	}
@@ -1709,6 +1717,9 @@ PH7_PRIVATE sxi32 GenStateCompileFunc(
 	pFunc->nLine = nLine;
 	GenStateConsumeDoc(&(*pGen),&pFunc->sDoc);
 	if( GenStateConsumeAttrs(&(*pGen),&pFunc->aAttrs) == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
+	if( GenStateCheckAttrPlacement(&(*pGen),&pFunc->aAttrs,2,2,0,0) == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
 	if( pGen->pIn < pEnd ){

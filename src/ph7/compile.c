@@ -2957,6 +2957,144 @@ PH7_PRIVATE sxi32 GenStateCollectParamAttrs(ph7_gen_state *pGen,SyToken *pTok,Sy
 	return SXRET_OK;
 }
 /*
+ * ---------------------------------------------------------------------------
+ * Where php's OWN attributes may be written.
+ *
+ * php's seven internal attribute classes each carry a target mask and a
+ * validator, and the engine runs them where the declaration COMPILES: a
+ * misplaced `#[\Attribute]`, `#[\Override]` or `#[\NoDiscard]` is a fatal at
+ * the line it sits on, before anything else in the file runs. A USERLAND
+ * attribute is different — php checks its mask only when someone asks for it,
+ * at `newInstance()` — so this table is closed on purpose and unknown names go
+ * unchecked, which is php's behaviour and not an omission.
+ *
+ * The masks are the same seven the classes declare (see VmInstallAttributes);
+ * they are repeated here because the compiler runs before any class exists.
+ * None of the seven is IS_REPEATABLE, so a second one is php's own refusal.
+ * ---------------------------------------------------------------------------
+ */
+/* php's Attribute::TARGET_* names, in bit order (TARGET_CLASS is bit 0). */
+static const char *const azGenAttrTarget[] = {
+	"class","function","method","property","class constant","parameter","constant"
+};
+static const struct {
+	const char *zName;
+	int iMask;
+} aGenInternalAttr[] = {
+	{ "Attribute",              1  },
+	{ "Deprecated",             87 },
+	{ "AllowDynamicProperties", 1  },
+	{ "SensitiveParameter",     32 },
+	{ "ReturnTypeWillChange",   4  },
+	{ "Override",               12 },
+	{ "NoDiscard",              6  },
+};
+/*
+ * The extra validator php gives three of them, asked only once the target is
+ * known to be a CLASS: the mask says "a class" and these say WHICH kinds.
+ * Answers php's noun for the refused kind, or 0 when the class is acceptable.
+ */
+static const char * GenStateAttrClassRefusal(const char *zAttr,sxi32 iFlags)
+{
+	/* zAttr is a row of aGenInternalAttr, so an exact compare is the whole test. */
+	int bAttr = SyStrncmp(zAttr,"Attribute",sizeof("Attribute")) == 0;
+	int bDyn  = SyStrncmp(zAttr,"AllowDynamicProperties",sizeof("AllowDynamicProperties")) == 0;
+	int bDep  = SyStrncmp(zAttr,"Deprecated",sizeof("Deprecated")) == 0;
+	if( !bAttr && !bDyn && !bDep ){
+		return 0;
+	}
+	if( iFlags & PH7_CLASS_INTERFACE ){ return "interface"; }
+	if( iFlags & PH7_CLASS_ENUM ){ return "enum"; }
+	if( iFlags & PH7_CLASS_TRAIT ){
+		/* php 8.5 DOES mark a deprecated trait; the other two refuse one. */
+		return bDep ? 0 : "trait";
+	}
+	if( bAttr ){
+		/* An attribute class must be instantiable. */
+		return (iFlags & PH7_CLASS_ABSTRACT) ? "abstract class" : 0;
+	}
+	if( bDyn ){
+		/* A readonly class has no dynamic property to allow. */
+		return (iFlags & PH7_CLASS_READONLY) ? "readonly class" : 0;
+	}
+	return "class";   /* #[\Deprecated] on any other class kind */
+}
+/*
+ * Validate one declaration's attribute set against php's placement rules.
+ *
+ * iTarget is the single Attribute::TARGET_* bit php NAMES for this declaration
+ * and iAccept the mask it accepts, which differ in exactly one place: a PROMOTED
+ * constructor parameter is a parameter and a property both, so it takes either
+ * bit while still reporting "parameter". pClassName/iClassFlags describe the
+ * subject when the target is a class (0 and 0 otherwise).
+ */
+PH7_PRIVATE sxi32 GenStateCheckAttrPlacement(ph7_gen_state *pGen,SySet *pAttrs,
+	int iTarget,int iAccept,const SyString *pClassName,sxi32 iClassFlags)
+{
+	ph7_attribute *aAttr = (ph7_attribute *)SySetBasePtr(pAttrs);
+	sxu32 n,k;
+	for( n = 0 ; n < SySetUsed(pAttrs) ; ++n ){
+		SyString *pName = &aAttr[n].sName;
+		sxu32 iRow;
+		for( iRow = 0 ; iRow < SX_ARRAYSIZE(aGenInternalAttr) ; ++iRow ){
+			if( pName->nByte == (sxu32)SyStrlen(aGenInternalAttr[iRow].zName)
+			 && SyStrnicmp(pName->zString,aGenInternalAttr[iRow].zName,pName->nByte) == 0 ){
+				break;
+			}
+		}
+		if( iRow >= SX_ARRAYSIZE(aGenInternalAttr) ){
+			continue;   /* a userland attribute: judged at newInstance(), not here */
+		}
+		if( (aGenInternalAttr[iRow].iMask & iAccept) == 0 ){
+			SyBlob sAllowed;
+			int iBit;
+			sxi32 rc;
+			SyBlobInit(&sAllowed,&pGen->pVm->sAllocator);
+			for( iBit = 0 ; iBit < (int)SX_ARRAYSIZE(azGenAttrTarget) ; iBit++ ){
+				if( (aGenInternalAttr[iRow].iMask & (1 << iBit)) == 0 ){
+					continue;
+				}
+				if( SyBlobLength(&sAllowed) > 0 ){
+					SyBlobAppend(&sAllowed,", ",sizeof(", ")-1);
+				}
+				SyBlobAppend(&sAllowed,azGenAttrTarget[iBit],
+					(sxu32)SyStrlen(azGenAttrTarget[iBit]));
+			}
+			SyBlobAppend(&sAllowed,"",sizeof(char));   /* NUL for the %s below */
+			for( iBit = 0 ; iBit < (int)SX_ARRAYSIZE(azGenAttrTarget) ; iBit++ ){
+				if( iTarget == (1 << iBit) ){
+					break;
+				}
+			}
+			rc = PH7_GenCompileError(pGen,E_ERROR,aAttr[n].nLine,
+				"Attribute \"%z\" cannot target %s (allowed targets: %s)",pName,
+				iBit < (int)SX_ARRAYSIZE(azGenAttrTarget) ? azGenAttrTarget[iBit] : "",
+				SyBlobData(&sAllowed));
+			SyBlobRelease(&sAllowed);
+			return rc;
+		}
+		/* ...then repetition, which is what php checks second: the FIRST of a
+		 * misplaced pair reports its target instead. */
+		for( k = 0 ; k < n ; ++k ){
+			if( aAttr[k].sName.nByte == pName->nByte
+			 && SyStrnicmp(aAttr[k].sName.zString,pName->zString,pName->nByte) == 0 ){
+				return PH7_GenCompileError(pGen,E_ERROR,aAttr[n].nLine,
+					"Attribute \"%z\" must not be repeated",pName);
+			}
+		}
+		if( iTarget == 1 && pClassName ){
+			const char *zRefused = GenStateAttrClassRefusal(aGenInternalAttr[iRow].zName,
+				iClassFlags);
+			if( zRefused ){
+				return PH7_GenCompileError(pGen,E_ERROR,aAttr[n].nLine,
+					"Cannot apply #[\\%s] to %s %z",aGenInternalAttr[iRow].zName,
+					zRefused,pClassName);
+			}
+		}
+	}
+	return SXRET_OK;
+}
+/*
  * php 8.5's `(void)` cast is a STATEMENT prefix, not an expression operator:
  * `$x = (void) f();` and `return (void) f();` are parse errors there too, and
  * the only thing it does is say that dropping the answer is DELIBERATE, which

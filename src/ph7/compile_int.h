@@ -212,6 +212,8 @@ PH7_PRIVATE sxi32 GenStateParseReturnType(ph7_gen_state *pGen,ph7_vm_func *pFunc
  * halves of the `(void)` cast that silences it. */
 PH7_PRIVATE sxi32 GenStateApplyNoDiscard(ph7_gen_state *pGen,ph7_vm_func *pFunc,
 	ph7_class *pClass,int bCtor);
+PH7_PRIVATE sxi32 GenStateCheckAttrPlacement(ph7_gen_state *pGen,SySet *pAttrs,
+	int iTarget,int iAccept,const SyString *pClassName,sxi32 iClassFlags);
 PH7_PRIVATE int GenStateTakeVoidCast(ph7_gen_state *pGen);
 PH7_PRIVATE int GenStateEnableClauseVoidCasts(ph7_gen_state *pGen,int bLastToo);
 PH7_PRIVATE void GenStateMarkDiscardedCall(ph7_gen_state *pGen);

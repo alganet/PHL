@@ -713,6 +713,9 @@ loop:
 		if( GenStateConsumeAttrs(&(*pGen),&pCons->aAttrs) == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
+		if( GenStateCheckAttrPlacement(&(*pGen),&pCons->aAttrs,16,16,0,0) == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
 	}
 	if( pCons == 0 ){
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 is running out of memory");
@@ -1241,6 +1244,9 @@ loop:
 		if( GenStateConsumeAttrs(&(*pGen),&pAttr->aAttrs) == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
+		if( GenStateCheckAttrPlacement(&(*pGen),&pAttr->aAttrs,8,8,0,0) == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
 	}
 	if( pAttr == 0 ){
 		PH7_GenCompileError(pGen,E_ERROR,nLine,"Fatal, PH7 engine is running out of memory");
@@ -1652,6 +1658,9 @@ static sxi32 GenStateCompileClassMethod(
 	pMeth->sFunc.nLine = nKwLine;
 	GenStateConsumeDoc(&(*pGen),&pMeth->sFunc.sDoc);
 	if( GenStateConsumeAttrs(&(*pGen),&pMeth->sFunc.aAttrs) == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
+	if( GenStateCheckAttrPlacement(&(*pGen),&pMeth->sFunc.aAttrs,4,4,0,0) == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
 	/* Jump the left parenthesis '(' */
@@ -2568,6 +2577,10 @@ PH7_PRIVATE sxi32 PH7_CompileClassInterface(ph7_gen_state *pGen)
 	}
 	/* Mark as an interface (PH7_NewRawClass may have set INTERNAL) */
 	pClass->iFlags |= PH7_CLASS_INTERFACE;
+	if( GenStateCheckAttrPlacement(&(*pGen),&pClass->aAttrs,1,1,
+			&pClass->sName,pClass->iFlags) == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
 	/* Assume no base class is given */
 	pBase = 0;
 	if( pGen->pIn < pGen->pEnd  && (pGen->pIn->nType & PH7_TK_KEYWORD) ){
@@ -3491,6 +3504,9 @@ static sxi32 GenStateCompileEnumCase(ph7_gen_state *pGen,ph7_class *pClass)
 	}
 	GenStateConsumeDoc(&(*pGen),&pCase->sDoc);
 	if( GenStateConsumeAttrs(&(*pGen),&pCase->aAttrs) == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
+	if( GenStateCheckAttrPlacement(&(*pGen),&pCase->aAttrs,16,16,0,0) == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
 	pGen->pIn++; /* Jump the case name */
@@ -4597,6 +4613,12 @@ static sxi32 GenStateCompileClassEx(ph7_gen_state *pGen,sxi32 iFlags,
 	pGen->pEnd = pEnd;
 	/* Merge the inherited flags (PH7_NewRawClass may have set INTERNAL) */
 	pClass->iFlags |= iFlags;
+	/* ...which is what php's own attribute validators judge: `#[\Attribute]` on an
+	 * abstract class, `#[\AllowDynamicProperties]` on a readonly one or an enum. */
+	if( GenStateCheckAttrPlacement(&(*pGen),&pClass->aAttrs,1,1,
+			&pClass->sName,pClass->iFlags) == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
 	/* This class/enum is now the lexical class for its body — see pCurClass. */
 	pGen->pCurClass = pClass;
 	/* Start the parse process */
@@ -5473,6 +5495,10 @@ PH7_PRIVATE sxi32 PH7_CompileTrait(ph7_gen_state *pGen)
 	pGen->pEnd = pEnd;
 	/* Mark as trait (PH7_NewRawClass may have set INTERNAL) */
 	pClass->iFlags |= PH7_CLASS_TRAIT;
+	if( GenStateCheckAttrPlacement(&(*pGen),&pClass->aAttrs,1,1,
+			&pClass->sName,pClass->iFlags) == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
 	/* This trait is now the lexical class for its body, so a property/parameter
 	 * default here resolves __TRAIT__ to it (see pCurClass). */
 	pGen->pCurClass = pClass;

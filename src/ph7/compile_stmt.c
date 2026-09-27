@@ -211,6 +211,11 @@ Loop:
 					SyBlobRelease(&sFQN);
 					return SXERR_ABORT;
 				}
+				if( GenStateCheckAttrPlacement(&(*pGen),&pRegCons->aAttrs,64,64,0,0)
+					== SXERR_ABORT ){
+					SyBlobRelease(&sFQN);
+					return SXERR_ABORT;
+				}
 			}
 		}
 		SyBlobRelease(&sFQN);

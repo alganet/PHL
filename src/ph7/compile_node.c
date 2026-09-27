@@ -149,6 +149,9 @@ PH7_PRIVATE sxi32 PH7_CompileAnnonFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 		if( GenStateCollectParamAttrs(&(*pGen),pTokKw,&pAnnonFunc->aAttrs) == SXERR_ABORT ){
 			return SXERR_ABORT;
 		}
+		if( GenStateCheckAttrPlacement(&(*pGen),&pAnnonFunc->aAttrs,2,2,0,0) == SXERR_ABORT ){
+			return SXERR_ABORT;
+		}
 		/* A closure's own attributes arrive AFTER its body compiled, so the
 		 * #[\NoDiscard] rules are decided here rather than with the signature. */
 		if( GenStateApplyNoDiscard(&(*pGen),pAnnonFunc,0,0) == SXERR_ABORT ){
@@ -580,6 +583,9 @@ PH7_PRIVATE sxi32 PH7_CompileArrowFunc(ph7_gen_state *pGen,sxi32 iCompileFlag)
 	SyStringInitFromBuf(&pGen->sPendingClosureName,0,0);
 	/* Expression-position attributes (`$f = #[A] fn () => …`) */
 	if( GenStateCollectParamAttrs(&(*pGen),pTokKw,&pFunc->aAttrs) == SXERR_ABORT ){
+		return SXERR_ABORT;
+	}
+	if( GenStateCheckAttrPlacement(&(*pGen),&pFunc->aAttrs,2,2,0,0) == SXERR_ABORT ){
 		return SXERR_ABORT;
 	}
 	/* Collect function arguments */
