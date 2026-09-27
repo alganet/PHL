@@ -1249,6 +1249,55 @@ static int DtTryIsoDate(const char *z,const char *zEnd,const char **pzOut,
 	return 1;
 }
 /*
+ * php's ISO ORDINAL date spelled with a FULL STOP, `YYYY.DDD` -- the same date
+ * `2020-102` gives, and the ONLY dotted form a four-digit year takes: `2020.1`
+ * and `2020.12` are no date at all there (the four digits are a clock and the
+ * rest is refused), the run is exactly three digits inside 001..366, the sign
+ * belongs to a rule of its own (`+2020.102` is not one), and a time suffix may
+ * follow.
+ *
+ * It matters beyond its own spelling, because php's full stop between two digit
+ * runs is an ordinary SEPARATOR and this is the only rule that competes for it.
+ * PHL had no such rule and stood the competition down instead -- a dot before a
+ * digit was simply not a separator -- which refused every string where no dotted
+ * date is there to claim it: `20240102.2020` is a date, a separator and a clock
+ * in php, and `1234.2020` is THIS date with a digit left over (php refuses on
+ * the fifth byte of the run, not on the dot).
+ */
+static int DtTryIsoOrdinalDot(const char *z,const char *zEnd,const char **pzOut,
+	dt_parsed *p,const char *zIn)
+{
+	const char *zTok = z;
+	sxi64 y;
+	int i,doy,rcT;
+	if( zEnd - z < 8 ){
+		return 0;
+	}
+	for( i = 0 ; i < 4 ; i++ ){
+		if( !SyisDigit(z[i]) ){ return 0; }
+	}
+	if( z[4] != '.' || !SyisDigit(z[5]) || !SyisDigit(z[6]) || !SyisDigit(z[7]) ){
+		return 0;
+	}
+	doy = (z[5]-'0')*100 + (z[6]-'0')*10 + (z[7]-'0');
+	if( doy < 1 || doy > 366 ){
+		return 0;
+	}
+	y = (sxi64)((z[0]-'0')*1000 + (z[1]-'0')*100 + (z[2]-'0')*10 + (z[3]-'0'));
+	z += 8;
+	if( (rcT = DtTimeSuffix(&z,zEnd,zIn,p)) != 0 ){
+		return rcT;
+	}
+	if( (rcT = DtMarkDate(p,zTok,zIn)) != 0 ){
+		return rcT;
+	}
+	p->y = y;
+	p->m = 1;
+	p->d = doy;   /* the field normalizer resolves it out of January */
+	*pzOut = z;
+	return 1;
+}
+/*
  * Try to read a non-ISO numeric date at z: three integer components joined by ONE
  * consistent separator, plus an optional time suffix. php's field order depends on
  * the separator:
@@ -1437,21 +1486,18 @@ static int DtIsSpace(int c)
 	return c == ' ' || c == '\t';
 }
 /*
- * ...and the full stop, which is one only where a DIGIT does not follow it. A
- * dot BETWEEN two digit runs binds them into a single token attempt -- php reads
- * `5218.1268` as a dotted date, fails on its field widths and refuses the whole
- * of it, where the same two runs with a space between them are a year and a year
- * -- so stepping over it there would answer a string php declines.
+ * ...and the full stop, which php separates with unconditionally. The rules that
+ * SPELL a dot -- the day-first `1.2.2020`, the clock's second separator, the
+ * ordinal `2020.102` -- claim their own bytes before the run between tokens is
+ * ever consulted, so nothing is lost by stepping over the rest: `20240102.2020`
+ * is a date, a separator and a clock there.
  */
 static int DtIsSepAt(const char *z,const char *zEnd)
 {
 	if( z >= zEnd ){
 		return 0;
 	}
-	if( z[0] == '.' ){
-		return &z[1] >= zEnd || !SyisDigit(z[1]);
-	}
-	return DtIsSep((unsigned char)z[0]);
+	return z[0] == '.' || DtIsSep((unsigned char)z[0]);
 }
 /*
  * ...and the wider set php tolerates at the ENDS of the string, where a
@@ -2173,6 +2219,11 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 			continue;
 		}
 		if( (iRc = DtTryIsoDate(z,zEnd,&z,p,zIn)) != 0 ){
+			if( iRc != 1 ){ return iRc; }
+			bAny = 1;
+			continue;
+		}
+		if( SyisDigit(z[0]) && (iRc = DtTryIsoOrdinalDot(z,zEnd,&z,p,zIn)) != 0 ){
 			if( iRc != 1 ){ return iRc; }
 			bAny = 1;
 			continue;
