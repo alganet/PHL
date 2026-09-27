@@ -8478,6 +8478,461 @@ static sxi32 VmInstallSplObjectStorage(ph7_vm *pVm)
 }
 /*
  * ---------------------------------------------------------------------------
+ * MultipleIterator: several iterators stepped in LOCKSTEP.
+ *
+ * php builds it on the very storage above — its C struct IS an
+ * spl_SplObjectStorage, which is why `__debugInfo()` answers under
+ * SplObjectStorage's own mangled key — so this class holds the same {obj, inf}
+ * table and reuses the same attach/detach/hash routines. What it adds is two
+ * flags and the rule they make: MIT_NEED_ALL is valid only while EVERY
+ * sub-iterator is, MIT_NEED_ANY while any one is, and an empty set is never
+ * valid at all.
+ *
+ * current() and key() answer an ARRAY built in attach order, and how they treat
+ * an exhausted member is the difference between the two modes: under NEED_ANY it
+ * contributes NULL and the walk carries on, under NEED_ALL it is php's
+ * `Called current() with non valid sub iterator` — a different refusal from the
+ * empty set's `Called current() on an invalid iterator`. MIT_KEYS_ASSOC keys that
+ * array by the `$info` each iterator was attached with, which is what makes a
+ * NULL info an error at KEY time rather than at attach time, and what makes a
+ * DUPLICATE info an error at attach.
+ */
+#define MIT_NEED_ANY      0
+#define MIT_NEED_ALL      1
+#define MIT_KEYS_NUMERIC  0
+#define MIT_KEYS_ASSOC    2
+#define MIT_FL "__mfl"   /* php's flags word, stored raw */
+
+static sxi64 MitFlags(ph7_class_instance *pThis)
+{
+	return pThis ? PH7_NativeAttrInt(pThis,MIT_FL) : 0;
+}
+/*
+ * php compares two `$info`s with zend_is_identical, not with `==` and not as
+ * array keys: the string "5" and the int 5 are DIFFERENT infos and both may be
+ * attached, while `true` and `1.5` are the same one because the ZPP narrowed
+ * both to the int 1.
+ */
+static int MitInfoSame(ph7_value *pA,ph7_value *pB)
+{
+	if( (pA->iFlags & MEMOBJ_STRING) != (pB->iFlags & MEMOBJ_STRING) ){
+		return 0;
+	}
+	if( pA->iFlags & MEMOBJ_STRING ){
+		sxu32 nA = SyBlobLength(&pA->sBlob), nB = SyBlobLength(&pB->sBlob);
+		return nA == nB
+			&& (nA == 0 || SyMemcmp(SyBlobData(&pA->sBlob),SyBlobData(&pB->sBlob),nA) == 0);
+	}
+	if( (pA->iFlags & MEMOBJ_NULL) || (pB->iFlags & MEMOBJ_NULL) ){
+		return 0;   /* a NULL info is never a duplicate: php only checks a given one */
+	}
+	return pA->x.iVal == pB->x.iVal;
+}
+/* Call a no-argument method on one sub-iterator. */
+static sxi32 MitCallOn(ph7_vm *pVm,ph7_class_instance *pIt,const char *zName,sxu32 nName,
+	ph7_value *pOut)
+{
+	ph7_class_method *pMethod = pIt ? PH7_ClassExtractMethod(pIt->pClass,zName,nName) : 0;
+	if( pMethod == 0 ){
+		return SXRET_OK;
+	}
+	return PH7_VmCallClassMethod(pVm,pIt,pMethod,pOut,0,0);
+}
+/*
+ * SNAPSHOT the members before calling into any of them. A sub-iterator's own
+ * rewind()/valid()/next() is user code and may attach or detach on this very
+ * object, and a hash walk holding a node pointer across that call is reading a
+ * table that moved. The snapshot is an ordinary array of the {obj, inf} pairs,
+ * so it holds a reference to every member for the length of the pass.
+ */
+static sxi32 MitSnapshot(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
+{
+	ph7_hashmap *pMap = SosMap(pVm,pThis);
+	ph7_hashmap_node *pNode;
+	sxu32 n;
+	PH7_MemObjInit(pVm,pOut);
+	if( PH7_MemObjToHashmap(pOut) != SXRET_OK ){
+		return SXERR_MEM;
+	}
+	if( pMap == 0 ){
+		return SXRET_OK;
+	}
+	for( pNode = pMap->pFirst, n = 0 ; pNode && n < pMap->nEntry ; ++n, pNode = pNode->pPrev ){
+		ph7_value *pPair = HashmapExtractNodeValue(pNode);
+		if( pPair ){
+			ph7_array_add_elem(pOut,0,pPair);
+		}
+	}
+	return SXRET_OK;
+}
+/* One snapshot entry's `obj` half as an instance, and its `inf` half. */
+static ph7_class_instance * MitShotObj(ph7_value *pOut,sxu32 iAt,ph7_value **ppInf)
+{
+	ph7_hashmap_node *pNode = 0;
+	ph7_value *pPair,*pObj;
+	if( ppInf ){
+		*ppInf = 0;
+	}
+	if( (pOut->iFlags & MEMOBJ_HASHMAP) == 0
+	 || HashmapLookupIntKey((ph7_hashmap *)pOut->x.pOther,(sxi64)iAt,&pNode) != SXRET_OK ){
+		return 0;
+	}
+	pPair = HashmapExtractNodeValue(pNode);
+	if( ppInf ){
+		*ppInf = SosPart(pPair,"inf");
+	}
+	pObj = SosPart(pPair,"obj");
+	if( pObj == 0 || (pObj->iFlags & MEMOBJ_OBJ) == 0 ){
+		return 0;
+	}
+	return (ph7_class_instance *)pObj->x.pOther;
+}
+static sxu32 MitShotCount(ph7_value *pShot)
+{
+	return (pShot->iFlags & MEMOBJ_HASHMAP) && pShot->x.pOther
+		? ((ph7_hashmap *)pShot->x.pOther)->nEntry : 0;
+}
+/* Walk every sub-iterator, calling one no-argument method on each. */
+static sxi32 MitCallAll(ph7_context *pCtx,const char *zName,sxu32 nName)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_value sShot;
+	sxu32 i,nCount;
+	sxi32 rc = MitSnapshot(pVm,PH7_ContextThis(pCtx),&sShot);
+	if( rc != SXRET_OK ){
+		PH7_MemObjRelease(&sShot);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	nCount = MitShotCount(&sShot);
+	for( i = 0 ; i < nCount ; ++i ){
+		ph7_class_instance *pIt = MitShotObj(&sShot,i,0);
+		rc = MitCallOn(pVm,pIt,zName,nName,0);
+		if( rc != SXRET_OK ){
+			PH7_MemObjRelease(&sShot);
+			return rc;
+		}
+	}
+	PH7_MemObjRelease(&sShot);
+	return PH7_OK;
+}
+static sxi32 MitSubValid(ph7_vm *pVm,ph7_class_instance *pIt,int *pbValid)
+{
+	ph7_value sVal;
+	sxi32 rc;
+	*pbValid = 0;
+	PH7_MemObjInit(pVm,&sVal);
+	rc = MitCallOn(pVm,pIt,"valid",sizeof("valid")-1,&sVal);
+	if( rc == SXRET_OK ){
+		PH7_MemObjToBool(&sVal);          /* a STATUS, not the answer */
+		*pbValid = sVal.x.iVal != 0;
+	}
+	PH7_MemObjRelease(&sVal);
+	return rc;
+}
+static int vm_builtin_MultipleIterator_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	PH7_NativeSetAttrInt(pCtx->pVm,pThis,MIT_FL,
+		nArg > 0 ? ph7_value_to_int64(apArg[0]) : MIT_NEED_ALL);
+	return PH7_OK;
+}
+static int vm_builtin_MultipleIterator_getFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	ph7_result_int64(pCtx,MitFlags(PH7_ContextThis(pCtx)));
+	return PH7_OK;
+}
+static int vm_builtin_MultipleIterator_setFlags(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	if( nArg > 0 && pThis ){
+		/* php screens nothing here: the word is stored as given. */
+		PH7_NativeSetAttrInt(pCtx->pVm,pThis,MIT_FL,ph7_value_to_int64(apArg[0]));
+	}
+	return PH7_OK;
+}
+/*
+ * php's attachIterator: the $info must be UNIQUE across the table, which is what
+ * MIT_KEYS_ASSOC needs to build a key set — checked whatever the flags say, since
+ * they can be turned on later.
+ */
+static int vm_builtin_MultipleIterator_attachIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pNode;
+	ph7_value sInf;
+	sxu32 n;
+	sxi32 rc;
+	if( nArg < 1 || pThis == 0 ){
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pVm,&sInf);
+	if( nArg > 1 && (apArg[1]->iFlags & MEMOBJ_NULL) == 0 ){
+		PH7_MemObjStore(apArg[1],&sInf);
+		/* php's `string|int` ZPP: a numeric string stays a string, everything else
+		 * that is not already one becomes an int. */
+		if( (sInf.iFlags & MEMOBJ_STRING) == 0 ){
+			PH7_MemObjToInteger(&sInf);
+		}
+		pMap = SosMap(pVm,pThis);
+		for( pNode = pMap ? pMap->pFirst : 0, n = 0 ; pNode && n < pMap->nEntry ; ++n ){
+			ph7_value *pPair = HashmapExtractNodeValue(pNode);
+			ph7_value *pOld = SosPart(pPair,"inf");
+			if( pOld && MitInfoSame(pOld,&sInf) ){
+				PH7_MemObjRelease(&sInf);
+				return PH7_VmThrowException(pCtx,"InvalidArgumentException",
+					"Key duplication error");
+			}
+			pNode = pNode->pPrev;
+		}
+	}
+	rc = SosAttach(pCtx,pThis,apArg[0],&sInf);
+	PH7_MemObjRelease(&sInf);
+	return rc;
+}
+static int vm_builtin_MultipleIterator_detachIterator(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	if( nArg < 1 || pThis == 0 ){
+		return PH7_OK;
+	}
+	return SosDetach(pCtx,pThis,apArg[0],0);
+}
+static int vm_builtin_MultipleIterator_containsIterator(ph7_context *pCtx,int nArg,
+	ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	ph7_hashmap *pMap;
+	ph7_hashmap_node *pNode = 0;
+	ph7_value sObj,sKey;
+	sxi32 rc;
+	if( nArg < 1 || pThis == 0 ){
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pVm,&sObj);
+	PH7_MemObjInit(pVm,&sKey);
+	PH7_MemObjStore(apArg[0],&sObj);
+	rc = SosKey(pCtx,pThis,&sObj,&sKey);
+	if( rc == PH7_OK ){
+		pMap = SosMap(pVm,pThis);
+		ph7_result_bool(pCtx,
+			pMap && PH7_HashmapLookup(pMap,&sKey,&pNode) == SXRET_OK);
+	}
+	PH7_MemObjRelease(&sObj);
+	PH7_MemObjRelease(&sKey);
+	return rc;
+}
+static int vm_builtin_MultipleIterator_countIterators(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_hashmap *pMap;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	pMap = SosMap(pCtx->pVm,PH7_ContextThis(pCtx));
+	ph7_result_int64(pCtx,pMap ? (sxi64)pMap->nEntry : 0);
+	return PH7_OK;
+}
+static int vm_builtin_MultipleIterator_rewind(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return MitCallAll(pCtx,"rewind",sizeof("rewind")-1);
+}
+static int vm_builtin_MultipleIterator_next(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return MitCallAll(pCtx,"next",sizeof("next")-1);
+}
+static int vm_builtin_MultipleIterator_valid(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	int bExpect = (MitFlags(pThis) & MIT_NEED_ALL) ? 1 : 0;
+	ph7_value sShot;
+	sxu32 i,nCount;
+	sxi32 rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	rc = MitSnapshot(pVm,pThis,&sShot);
+	if( rc != SXRET_OK ){
+		PH7_MemObjRelease(&sShot);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	nCount = MitShotCount(&sShot);
+	if( nCount < 1 ){
+		/* php: an empty set is never valid, whichever mode it is in. */
+		PH7_MemObjRelease(&sShot);
+		ph7_result_bool(pCtx,0);
+		return PH7_OK;
+	}
+	for( i = 0 ; i < nCount ; ++i ){
+		int bValid = 0;
+		rc = MitSubValid(pVm,MitShotObj(&sShot,i,0),&bValid);
+		if( rc != SXRET_OK ){
+			PH7_MemObjRelease(&sShot);
+			return rc;
+		}
+		if( bValid != bExpect ){
+			/* NEED_ALL stops at the first invalid one, NEED_ANY at the first valid
+			 * one, and each answers the opposite of what it was looking for. */
+			PH7_MemObjRelease(&sShot);
+			ph7_result_bool(pCtx,!bExpect);
+			return PH7_OK;
+		}
+	}
+	PH7_MemObjRelease(&sShot);
+	ph7_result_bool(pCtx,bExpect);
+	return PH7_OK;
+}
+/*
+ * php's spl_multiple_iterator_get_all, which current() and key() share. The
+ * refusals differ by cause: an EMPTY set is "on an invalid iterator", an
+ * exhausted member under NEED_ALL is "with non valid sub iterator", and a NULL
+ * $info under MIT_KEYS_ASSOC is the InvalidArgumentException this is the only
+ * site of.
+ */
+static int MitGetAll(ph7_context *pCtx,int bKey)
+{
+	ph7_vm *pVm = pCtx->pVm;
+	ph7_class_instance *pThis = PH7_ContextThis(pCtx);
+	const char *zWhat = bKey ? "key" : "current";
+	sxi64 iFlags = MitFlags(pThis);
+	ph7_value sShot,sOut,sVal;
+	sxu32 i,nCount;
+	sxi32 rc;
+	rc = MitSnapshot(pVm,pThis,&sShot);
+	if( rc != SXRET_OK ){
+		PH7_MemObjRelease(&sShot);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	nCount = MitShotCount(&sShot);
+	if( nCount < 1 ){
+		PH7_MemObjRelease(&sShot);
+		return PH7_VmThrowException(pCtx,"RuntimeException",
+			"Called %s() on an invalid iterator",zWhat);
+	}
+	PH7_MemObjInit(pVm,&sOut);
+	if( PH7_MemObjToHashmap(&sOut) != SXRET_OK ){
+		PH7_MemObjRelease(&sShot);
+		PH7_MemObjRelease(&sOut);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	for( i = 0 ; i < nCount ; ++i ){
+		ph7_value *pInf = 0;
+		ph7_class_instance *pIt = MitShotObj(&sShot,i,&pInf);
+		int bValid = 0;
+		/* php asks the sub-iterator FIRST and only then looks at the key it would
+		 * file the answer under, so an exhausted member under NEED_ALL reports the
+		 * iterator rather than the missing $info. */
+		rc = MitSubValid(pVm,pIt,&bValid);
+		if( rc != SXRET_OK ){
+			goto fail;
+		}
+		PH7_MemObjInit(pVm,&sVal);
+		if( bValid ){
+			rc = MitCallOn(pVm,pIt,bKey ? "key" : "current",bKey ? 3 : 7,&sVal);
+			if( rc != SXRET_OK ){
+				PH7_MemObjRelease(&sVal);
+				goto fail;
+			}
+		}else if( iFlags & MIT_NEED_ALL ){
+			PH7_MemObjRelease(&sVal);
+			PH7_MemObjRelease(&sShot);
+			PH7_MemObjRelease(&sOut);
+			return PH7_VmThrowException(pCtx,"RuntimeException",
+				"Called %s() with non valid sub iterator",zWhat);
+		}
+		/* NEED_ANY leaves the null sVal in place: an exhausted member contributes
+		 * php's null and the walk carries on. */
+		if( iFlags & MIT_KEYS_ASSOC ){
+			/* The snapshot's own `inf` slot: re-read after the call above, since it
+			 * lives in a hashmap the call may have moved. */
+			MitShotObj(&sShot,i,&pInf);
+			if( pInf == 0 || (pInf->iFlags & MEMOBJ_NULL) ){
+				PH7_MemObjRelease(&sVal);
+				PH7_MemObjRelease(&sShot);
+				PH7_MemObjRelease(&sOut);
+				return PH7_VmThrowException(pCtx,"InvalidArgumentException",
+					"Sub-Iterator is associated with NULL");
+			}
+		}
+		ph7_array_add_elem(&sOut,(iFlags & MIT_KEYS_ASSOC) ? pInf : 0,&sVal);
+		PH7_MemObjRelease(&sVal);
+	}
+	PH7_MemObjRelease(&sShot);
+	ph7_result_value(pCtx,&sOut);
+	PH7_MemObjRelease(&sOut);
+	return PH7_OK;
+fail:
+	PH7_MemObjRelease(&sShot);
+	PH7_MemObjRelease(&sOut);
+	return rc;
+}
+static int vm_builtin_MultipleIterator_current(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return MitGetAll(pCtx,FALSE);
+}
+static int vm_builtin_MultipleIterator_key(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	return MitGetAll(pCtx,TRUE);
+}
+static sxi32 VmInstallSplMultipleIterator(ph7_vm *pVm)
+{
+	static const PH7_NativeConstDef aMitConst[] = {
+		{ "MIT_NEED_ANY",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, MIT_NEED_ANY, 0, 0.0 },
+		{ "MIT_NEED_ALL",     PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, MIT_NEED_ALL, 0, 0.0 },
+		{ "MIT_KEYS_NUMERIC", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, MIT_KEYS_NUMERIC, 0, 0.0 },
+		{ "MIT_KEYS_ASSOC",   PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, MIT_KEYS_ASSOC, 0, 0.0 },
+	};
+	static const PH7_NativePropDef aMitProp[] = {
+		{ SOS_S,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_NULL, 0, 0, 0.0 }, 0 },
+		{ MIT_FL, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+	};
+	static const PH7_NativeMethodDef aMitMethod[] = {
+		{ "__construct",      PH7_MOD_PUBLIC, "int $flags = 1", 0,
+		  vm_builtin_MultipleIterator_construct },
+		{ "getFlags",         PH7_MOD_PUBLIC, "", "@int", vm_builtin_MultipleIterator_getFlags },
+		{ "setFlags",         PH7_MOD_PUBLIC, "int $flags", "@void",
+		  vm_builtin_MultipleIterator_setFlags },
+		{ "attachIterator",   PH7_MOD_PUBLIC, "Iterator $iterator, string|int|null $info = null",
+		  "@void", vm_builtin_MultipleIterator_attachIterator },
+		{ "detachIterator",   PH7_MOD_PUBLIC, "Iterator $iterator", "@void",
+		  vm_builtin_MultipleIterator_detachIterator },
+		{ "containsIterator", PH7_MOD_PUBLIC, "Iterator $iterator", "@bool",
+		  vm_builtin_MultipleIterator_containsIterator },
+		{ "countIterators",   PH7_MOD_PUBLIC, "", "@int",
+		  vm_builtin_MultipleIterator_countIterators },
+		{ "rewind",           PH7_MOD_PUBLIC, "", "@void", vm_builtin_MultipleIterator_rewind },
+		{ "valid",            PH7_MOD_PUBLIC, "", "@bool", vm_builtin_MultipleIterator_valid },
+		{ "key",              PH7_MOD_PUBLIC, "", "@array", vm_builtin_MultipleIterator_key },
+		{ "current",          PH7_MOD_PUBLIC, "", "@array", vm_builtin_MultipleIterator_current },
+		{ "next",             PH7_MOD_PUBLIC, "", "@void", vm_builtin_MultipleIterator_next },
+		{ "__debugInfo",      PH7_MOD_PUBLIC, "", "@array",
+		  vm_builtin_SplObjectStorage_debugInfo },
+	};
+	static const PH7_NativeClassSpec aSpec[] = {
+		/* No presenter: php declares no properties and shows none, and the storage
+		 * is reachable only through __debugInfo() — which is SplObjectStorage's own,
+		 * mangled key included, because the struct behind both classes is one. */
+		{ "MultipleIterator", 0, "Iterator", 0,
+		  aMitMethod, SX_ARRAYSIZE(aMitMethod), aMitConst, SX_ARRAYSIZE(aMitConst),
+		  aMitProp, SX_ARRAYSIZE(aMitProp), 0, 0, 0 },
+	};
+	return PH7_InstallNativeClasses(&(*pVm),aSpec,SX_ARRAYSIZE(aSpec));
+}
+/*
+ * ---------------------------------------------------------------------------
  * SplFileInfo.
  *
  * php's `spl_filesystem_object` keeps TWO strings for a path, and which one a
@@ -10201,6 +10656,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallSpl(ph7_vm *pVm)
 		return rc;
 	}
 	rc = VmInstallSplObjectStorage(&(*pVm));
+	if( rc != SXRET_OK ){
+		return rc;
+	}
+	/* After SplObjectStorage: MultipleIterator holds the same storage and reaches
+	 * its attach/detach/debug routines. */
+	rc = VmInstallSplMultipleIterator(&(*pVm));
 	if( rc != SXRET_OK ){
 		return rc;
 	}
