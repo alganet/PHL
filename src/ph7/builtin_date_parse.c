@@ -3283,26 +3283,6 @@ static ph7_class_instance * DtIvFromDateString(ph7_context *pCtx,const char *zIn
 	PH7_MemObjRelease(&sVal);
 	return pObj;
 }
-/*
- * DateInterval::__wakeup() / DatePeriod::__wakeup().
- *
- * php declares both, and both exist to hand the payload's properties back to the
- * object's C struct -- which is to say: to INITIALIZE it. PHL's state for these
- * two classes IS the php-visible property table, so the engine's own unserialize
- * has already restored everything; what is left is exactly the thing the struct
- * stands for here, the initialized flag. Without it an `unserialize(serialize($i))`
- * would hand back an object every door refuses.
- */
-static int DtWakeupProps(ph7_context *pCtx,int nArg,ph7_value **apArg)
-{
-	ph7_class_instance *pThis = DtThisRaw(pCtx);
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	if( pThis ){
-		DtSetInit(pCtx->pVm,pThis);
-	}
-	return PH7_OK;
-}
 static int vm_builtin_DateInterval_createFromDateString(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	const char *zIn,*zReason = "";
@@ -4843,6 +4823,309 @@ static int vm_builtin_DateTimeImmutable_setState(ph7_context *pCtx,int nArg,ph7_
 {
 	return DtSetStateMagic(pCtx,nArg,apArg,0,"DateTimeImmutable");
 }
+/*
+ * ---------------------------------------------------------------------------
+ * php's serialization quartet for DateInterval and DatePeriod.
+ *
+ * Both classes declare __serialize/__unserialize/__wakeup/__set_state there and
+ * neither declared any of them here, so `serialize()` walked the slots by luck
+ * (the bytes matched, because for these two classes the state IS the php-visible
+ * property table), `var_export()`'s `\DateInterval::__set_state(array(...))` text
+ * evaluated to "Call to undefined method", and `serialize()` of an object that
+ * was never constructed answered a payload where php raises.
+ *
+ * The two RESTORE rules are not the same rule, and both are php's:
+ *
+ *   DateInterval reads each field on its own and fills a MISSING one with -1 --
+ *   timelib's "unset" marker, which is why `unserialize('O:12:"DateInterval":0:{}')`
+ *   is an interval of -1 years. `invert`, `f` and `from_string` are the three
+ *   exceptions, absent as 0, 0.0 and false. Nothing is refused.
+ *
+ *   DatePeriod refuses ANY payload that is not complete and well-typed: all seven
+ *   keys, the three dates null or a DateTimeInterface, the interval a
+ *   DateInterval, the count a real int and the two flags real bools -- one miss
+ *   and it is php's `Invalid serialization data for DatePeriod object`.
+ * ---------------------------------------------------------------------------
+ */
+/* __serialize(): the object's own visible slots, mangled the way php mangles a
+ * non-public one -- which is what a subclass's private property serializes as. */
+static int DtSerializeProps(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = DtThis(pCtx);   /* php raises on an unconstructed one */
+	ph7_value sOut;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pCtx->pVm,&sOut);
+	if( PH7_MemObjToHashmap(&sOut) != SXRET_OK ){
+		PH7_MemObjRelease(&sOut);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_ClassInstanceToHashmapRaw(pThis,(ph7_hashmap *)sOut.x.pOther);
+	ph7_result_value(pCtx,&sOut);
+	PH7_MemObjRelease(&sOut);
+	return PH7_OK;
+}
+/* One payload field, with the value php gives an absent one. A container is not a
+ * number to php's reader either, so it counts as absent. */
+static sxi64 DtIvRestoreInt(ph7_value *pData,const char *zKey,sxi64 iAbsent)
+{
+	ph7_value *pVal = ph7_array_fetch(pData,zKey,-1);
+	if( pVal == 0 || (pVal->iFlags & (MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_STRING)) == 0 ){
+		return iAbsent;
+	}
+	return PH7_ValuePeekInt64(pVal);
+}
+/* php's date_interval_initialize_from_hash(), field by field. */
+static void DtIvRestore(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pData)
+{
+	static const char * const azMinusOne[] = { "y","m","d","h","i","s" };
+	ph7_value *pVal;
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(azMinusOne) ; ++n ){
+		PH7_NativeSetAttrInt(&(*pVm),pThis,azMinusOne[n],
+			DtIvRestoreInt(pData,azMinusOne[n],-1));
+	}
+	PH7_NativeSetAttrInt(&(*pVm),pThis,"invert",DtIvRestoreInt(pData,"invert",0));
+	/* `days` is php's one field with two TYPES -- a day count, or false when the
+	 * interval was not measured between two dates -- so a bool payload stays a
+	 * bool where every other field is narrowed to an int. */
+	pVal = ph7_array_fetch(pData,"days",-1);
+	if( pVal && (pVal->iFlags & MEMOBJ_BOOL) ){
+		PH7_NativeSetAttrBool(&(*pVm),pThis,"days",pVal->x.iVal != 0);
+	}else{
+		PH7_NativeSetAttrInt(&(*pVm),pThis,"days",DtIvRestoreInt(pData,"days",-1));
+	}
+	pVal = ph7_array_fetch(pData,"f",-1);
+	DtIvSetUsec(&(*pVm),pThis,
+		pVal && (pVal->iFlags & (MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_STRING))
+			? DtIvUsecOfReal((double)PH7_ValuePeekReal(pVal)) : 0);
+	pVal = ph7_array_fetch(pData,"from_string",-1);
+	if( pVal && (pVal->iFlags & MEMOBJ_BOOL) && pVal->x.iVal ){
+		/* php's LAZY interval: it keeps the STRING and presents `from_string` and
+		 * `date_string` alone, answering the ten fields from the text on demand.
+		 * PHL has no lazy shape (PLAN §7.4), so the text is parsed here and the
+		 * ten are filled: the ANSWERS match php, only the shape does not -- which
+		 * is better than the -1s a payload php wrote would otherwise restore to. */
+		ph7_value *pStr = ph7_array_fetch(pData,"date_string",-1);
+		sxi64 aVal[DT_IV_USLOT + 1];
+		int nIn,iPos = 0;
+		char cAt = ' ';
+		const char *zIn,*zReason = "";
+		PH7_NativeSetAttrBool(&(*pVm),pThis,"from_string",1);
+		if( pStr && (pStr->iFlags & MEMOBJ_STRING) ){
+			zIn = (const char *)SyBlobData(&pStr->sBlob);
+			nIn = (int)SyBlobLength(&pStr->sBlob);
+			if( DtIvParseRelative(zIn,nIn,aVal,&iPos,&cAt,&zReason) == 0 ){
+				/* DtIvStore writes the six fields and the microseconds; `days` is
+				 * php's own answer for an interval that was not measured between
+				 * two dates, and the flag above stays as it was set. */
+				DtIvStore(&(*pVm),pThis,aVal);
+				PH7_NativeSetAttrBool(&(*pVm),pThis,"days",0);
+			}
+		}
+		return;
+	}
+	PH7_NativeSetAttrBool(&(*pVm),pThis,"from_string",0);
+}
+/*
+ * php's date_period_initialize_from_hash(): the whole payload or nothing.
+ * Answers 0 when it restored, -1 when the caller must raise.
+ */
+static int DpRestoreOne(ph7_vm *pVm,ph7_value *pData,const char *zKey,const char *zClass,
+	int iFlags,ph7_value **ppOut)
+{
+	ph7_value *pVal = ph7_array_fetch(pData,zKey,-1);
+	if( pVal == 0 ){
+		return -1;
+	}
+	if( zClass ){
+		if( (pVal->iFlags & MEMOBJ_NULL) == 0
+		 && !DtValueIsA(&(*pVm),pVal,zClass) ){
+			return -1;
+		}
+	}else if( (pVal->iFlags & iFlags) == 0 ){
+		return -1;
+	}
+	*ppOut = pVal;
+	return 0;
+}
+static int DpRestore(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pData)
+{
+	ph7_value *pStart,*pCur,*pEnd,*pIv,*pRec,*pIncS,*pIncE;
+	if( (pData->iFlags & MEMOBJ_HASHMAP) == 0
+	 || DpRestoreOne(&(*pVm),pData,"start","DateTimeInterface",0,&pStart) != 0
+	 || DpRestoreOne(&(*pVm),pData,"current","DateTimeInterface",0,&pCur) != 0
+	 || DpRestoreOne(&(*pVm),pData,"end","DateTimeInterface",0,&pEnd) != 0
+	 || DpRestoreOne(&(*pVm),pData,"interval","DateInterval",0,&pIv) != 0
+	 || DpRestoreOne(&(*pVm),pData,"recurrences",0,MEMOBJ_INT,&pRec) != 0
+	 || DpRestoreOne(&(*pVm),pData,"include_start_date",0,MEMOBJ_BOOL,&pIncS) != 0
+	 || DpRestoreOne(&(*pVm),pData,"include_end_date",0,MEMOBJ_BOOL,&pIncE) != 0 ){
+		return -1;
+	}
+	PH7_NativeSetProp(&(*pVm),pThis,"start",sizeof("start")-1,pStart);
+	PH7_NativeSetProp(&(*pVm),pThis,"current",sizeof("current")-1,pCur);
+	PH7_NativeSetProp(&(*pVm),pThis,"end",sizeof("end")-1,pEnd);
+	PH7_NativeSetProp(&(*pVm),pThis,"interval",sizeof("interval")-1,pIv);
+	PH7_NativeSetProp(&(*pVm),pThis,"recurrences",sizeof("recurrences")-1,pRec);
+	PH7_NativeSetProp(&(*pVm),pThis,"include_start_date",sizeof("include_start_date")-1,pIncS);
+	PH7_NativeSetProp(&(*pVm),pThis,"include_end_date",sizeof("include_end_date")-1,pIncE);
+	return 0;
+}
+/* Every payload key that is not part of the class's own shape becomes a property,
+ * the way php's restore_custom_* does (a name the class does not DECLARE is
+ * dropped here, which is what PHL's own unserialize does with one). */
+typedef struct dt_prop_restore dt_prop_restore;
+struct dt_prop_restore
+{
+	ph7_class_instance *pThis;
+	const char * const *azOwn;   /* the keys the class's own restore already read */
+	sxu32 nOwn;
+};
+static int DtPropRestoreWalk(ph7_value *pKey,ph7_value *pVal,void *pUserData)
+{
+	dt_prop_restore *pRes = (dt_prop_restore *)pUserData;
+	const char *zKey;
+	int nKey;
+	sxu32 n;
+	if( !ph7_value_is_string(pKey) ){
+		return PH7_OK;
+	}
+	zKey = ph7_value_to_string(pKey,&nKey);
+	for( n = 0 ; n < pRes->nOwn ; ++n ){
+		if( (int)SyStrlen(pRes->azOwn[n]) == nKey
+		 && SyMemcmp(pRes->azOwn[n],zKey,(sxu32)nKey) == 0 ){
+			return PH7_OK;
+		}
+	}
+	PH7_NativeSetProp(pRes->pThis->pVm,pRes->pThis,zKey,(sxu32)nKey,pVal);
+	return PH7_OK;
+}
+/* The shared body of __unserialize/__wakeup/__set_state for the two classes:
+ * bPeriod picks the rule, pThis is the object being filled. */
+static int DtPropsRestoreInto(ph7_context *pCtx,ph7_class_instance *pThis,ph7_value *pData,
+	int bPeriod,const char *zClass)
+{
+	static const char * const azIvOwn[] = {
+		"y","m","d","h","i","s","f","invert","days","from_string","date_string"
+	};
+	static const char * const azDpOwn[] = {
+		"start","current","end","interval","recurrences",
+		"include_start_date","include_end_date"
+	};
+	dt_prop_restore sRes;
+	if( bPeriod ){
+		if( DpRestore(pCtx->pVm,pThis,pData) != 0 ){
+			return DtSerialError(pCtx,zClass);
+		}
+	}else{
+		DtIvRestore(pCtx->pVm,pThis,pData);
+	}
+	sRes.pThis = pThis;
+	sRes.azOwn = bPeriod ? azDpOwn : azIvOwn;
+	sRes.nOwn = bPeriod ? SX_ARRAYSIZE(azDpOwn) : SX_ARRAYSIZE(azIvOwn);
+	ph7_array_walk(pData,DtPropRestoreWalk,&sRes);
+	DtSetInit(pCtx->pVm,pThis);
+	return PH7_OK;
+}
+static int DtUnserializeProps(ph7_context *pCtx,int nArg,ph7_value **apArg,int bPeriod,
+	const char *zClass)
+{
+	/* Raw: this is a door that INITIALIZES -- unserialize() calls it on an object
+	 * the engine built without a constructor. */
+	ph7_class_instance *pThis = DtThisRaw(pCtx);
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	if( DtCheckDataArg(pCtx,nArg,apArg,zClass) != 0 ){
+		return PH7_EXCEPTION;
+	}
+	return DtPropsRestoreInto(pCtx,pThis,apArg[0],bPeriod,zClass);
+}
+static int vm_builtin_DateInterval_unserialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtUnserializeProps(pCtx,nArg,apArg,0,"DateInterval");
+}
+static int vm_builtin_DatePeriod_unserialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtUnserializeProps(pCtx,nArg,apArg,1,"DatePeriod");
+}
+/*
+ * __wakeup(): the LEGACY payload, which the engine has already written into the
+ * object's own properties -- so the restore rule reads them back off the object
+ * itself. An interval whose payload said nothing becomes php's all -1 interval;
+ * a period whose payload is incomplete is php's Error, `new DatePeriod` included.
+ */
+static int DtWakeupProps(ph7_context *pCtx,int nArg,ph7_value **apArg,int bPeriod,
+	const char *zClass)
+{
+	ph7_class_instance *pThis = DtThisRaw(pCtx);
+	ph7_value sProps;
+	int rc;
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis == 0 ){
+		return PH7_OK;
+	}
+	PH7_MemObjInit(pCtx->pVm,&sProps);
+	if( PH7_MemObjToHashmap(&sProps) != SXRET_OK ){
+		PH7_MemObjRelease(&sProps);
+		return PH7_ContextMemoryError(pCtx);
+	}
+	PH7_ClassInstanceToHashmapRaw(pThis,(ph7_hashmap *)sProps.x.pOther);
+	rc = DtPropsRestoreInto(pCtx,pThis,&sProps,bPeriod,zClass);
+	PH7_MemObjRelease(&sProps);
+	return rc;
+}
+static int vm_builtin_DateInterval_wakeup(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtWakeupProps(pCtx,nArg,apArg,0,"DateInterval");
+}
+static int vm_builtin_DatePeriod_wakeup(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtWakeupProps(pCtx,nArg,apArg,1,"DatePeriod");
+}
+/* __set_state(array $array): what var_export's text evaluates to. php builds the
+ * class the method is DECLARED on, as it does for the date classes. */
+static int DtSetStateProps(ph7_context *pCtx,int nArg,ph7_value **apArg,int bPeriod,
+	const char *zClass)
+{
+	ph7_class *pClass = DtClass(pCtx->pVm,zClass);
+	ph7_class_instance *pObj;
+	int rc;
+	if( pClass == 0 ){
+		return PH7_OK;
+	}
+	if( nArg < 1 || (apArg[0]->iFlags & MEMOBJ_HASHMAP) == 0 ){
+		char zBuf[64];
+		return PH7_VmThrowException(pCtx,"TypeError",
+			"%s::__set_state(): Argument #1 ($array) must be of type array, %s given",
+			zClass,nArg > 0 ? VmValueGivenName(apArg[0],zBuf,sizeof(zBuf)) : "none");
+	}
+	/* Not DtNewInstance(): the restore below is what initializes it, and only if
+	 * it succeeds. */
+	pObj = PH7_NewClassInstance(pCtx->pVm,pClass);
+	if( pObj == 0 ){
+		return PH7_ContextMemoryError(pCtx);
+	}
+	rc = DtPropsRestoreInto(pCtx,pObj,apArg[0],bPeriod,zClass);
+	if( rc != PH7_OK || pCtx->nThrowRc != 0 ){
+		PH7_ClassInstanceUnref(pObj);
+		return rc;
+	}
+	PH7_NativeResultObject(pCtx,pObj);
+	return PH7_OK;
+}
+static int vm_builtin_DateInterval_setState(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtSetStateProps(pCtx,nArg,apArg,0,"DateInterval");
+}
+static int vm_builtin_DatePeriod_setState(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	return DtSetStateProps(pCtx,nArg,apArg,1,"DatePeriod");
+}
 /* The four rows both date classes take. __serialize/__unserialize are php's only
  * NON-tentative internal returns in this family; __wakeup and __set_state carry the
  * `@`, and __set_state's return names the CONCRETE class php's stub writes. */
@@ -4957,7 +5240,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "createFromDateString", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $datetime", "@DateInterval",
 		  vm_builtin_DateInterval_createFromDateString },
 		{ "format",      PH7_MOD_PUBLIC, "string $format", "@string", vm_builtin_DateInterval_format },
-		{ "__wakeup",    PH7_MOD_PUBLIC, "", "@void", DtWakeupProps },
+		{ "__serialize",   PH7_MOD_PUBLIC, "", "array", DtSerializeProps },
+		{ "__unserialize", PH7_MOD_PUBLIC, "array $data", "void",
+		  vm_builtin_DateInterval_unserialize },
+		{ "__wakeup",      PH7_MOD_PUBLIC, "", "@void", vm_builtin_DateInterval_wakeup },
+		{ "__set_state",   PH7_MOD_PUBLIC|PH7_MOD_STATIC, "array $array", "@DateInterval",
+		  vm_builtin_DateInterval_setState },
 	};
 	/* php models all seven as VIRTUAL hooked properties, so it reports no default
 	 * for any of them; PHL's are real slots and keep theirs, because a read before
@@ -4993,7 +5281,12 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		  vm_builtin_DatePeriod_getDateInterval },
 		{ "getRecurrences",  PH7_MOD_PUBLIC, "", "@?int", vm_builtin_DatePeriod_getRecurrences },
 		{ "getIterator",     PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_DatePeriod_getIterator },
-		{ "__wakeup",        PH7_MOD_PUBLIC, "", "@void", DtWakeupProps },
+		{ "__serialize",     PH7_MOD_PUBLIC, "", "array", DtSerializeProps },
+		{ "__unserialize",   PH7_MOD_PUBLIC, "array $data", "void",
+		  vm_builtin_DatePeriod_unserialize },
+		{ "__wakeup",        PH7_MOD_PUBLIC, "", "@void", vm_builtin_DatePeriod_wakeup },
+		{ "__set_state",     PH7_MOD_PUBLIC|PH7_MOD_STATIC, "array $array", "@DatePeriod",
+		  vm_builtin_DatePeriod_setState },
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		/* Exceptions first: the classes below throw them. */
