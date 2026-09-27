@@ -2612,8 +2612,11 @@ static int vm_builtin_DateTime_modify(ph7_context *pCtx,int nArg,ph7_value **apA
 		return PH7_OK;
 	}
 	zMod = ph7_value_to_string(apArg[0],&nMod);
-	iErrPos = DtParse(zMod,nMod,PH7_NativeAttrInt(pThis,DT_TS),(sxi32)PH7_NativeAttrInt(pThis,DT_OFF),
-		(int)PH7_NativeAttrInt(pThis,DT_US),&iTs,&iOff,&bOffSet,&uSec);
+	/* php's modify() writes only the fields the string really SET, so a modifier
+	 * that names no time of day keeps the receiver's -- DT_PARSE_OVERRIDE_TIME is
+	 * php's own flag for exactly that, and the constructor's parse does not pass it. */
+	iErrPos = DtParseEx(zMod,nMod,PH7_NativeAttrInt(pThis,DT_TS),(sxi32)PH7_NativeAttrInt(pThis,DT_OFF),
+		(int)PH7_NativeAttrInt(pThis,DT_US),DT_PARSE_OVERRIDE_TIME,&iTs,&iOff,&bOffSet,&uSec,0);
 	if( iErrPos != 0 ){
 		int bImm = DtIsImmutable(pVm,pThis);
 		zErr = DtParseErr(zMod,nMod,iErrPos,&iPos,&cAt);
@@ -4157,8 +4160,8 @@ static int vm_builtin_date_modify(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		return PH7_OK;
 	}
 	zMod = ph7_value_to_string(apArg[1],&nMod);
-	iErrPos = DtParse(zMod,nMod,PH7_NativeAttrInt(pObj,DT_TS),(sxi32)PH7_NativeAttrInt(pObj,DT_OFF),
-		(int)PH7_NativeAttrInt(pObj,DT_US),&iTs,&iOff,&bOffSet,&uSec);
+	iErrPos = DtParseEx(zMod,nMod,PH7_NativeAttrInt(pObj,DT_TS),(sxi32)PH7_NativeAttrInt(pObj,DT_OFF),
+		(int)PH7_NativeAttrInt(pObj,DT_US),DT_PARSE_OVERRIDE_TIME,&iTs,&iOff,&bOffSet,&uSec,0);
 	if( iErrPos != 0 ){
 		zErr = DtParseErr(zMod,nMod,iErrPos,&iPos,&cAt);
 		PH7_VmThrowWarningFmt(pCtx->pVm,
