@@ -1919,6 +1919,46 @@ static int CurlSetSlist(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *
 	return 1;
 }
 /*
+ * CURLOPT_POSTFIELDS, everything that is not an array: the request BODY.
+ *
+ * php stringifies the value the way every other string option does -- an int,
+ * a float, a bool, null and a resource all have a spelling, an object needs a
+ * __toString() and is otherwise the ordinary Error -- and then hands libcurl
+ * the LENGTH beside the bytes. That pair is the difference from a plain string
+ * option: a body may contain a NUL and php does not screen for one, so the
+ * option is set through CURLOPT_POSTFIELDSIZE + CURLOPT_COPYPOSTFIELDS rather
+ * than through CURLOPT_POSTFIELDS, whose C string would stop at the byte.
+ *
+ * COPYPOSTFIELDS is also the reason nothing here has to be retained: libcurl
+ * takes its own copy, so the caller's string may die the moment setopt
+ * returns, which is what php's own answer for `$s = str_repeat(...); setopt();
+ * unset($s);` shows.
+ */
+static int CurlSetPostFields(ph7_context *pCtx,phl_curl *pCurl,ph7_value *pVal,sxi32 *pRc)
+{
+	const char *zVal;
+	int nVal = 0;
+	sxi32 rcSv;
+	rcSv = PH7_ValueToStringUV(pCtx,pVal,&zVal,&nVal);
+	if( rcSv != SXRET_OK ){
+		/* The cast threw and still happened: php sets the body to the empty
+		 * string it answered, so the handle is a POST with no content after
+		 * the throw travels. */
+		zVal = "";
+		nVal = 0;
+		*pRc = rcSv;
+	}
+	/* The size FIRST: COPYPOSTFIELDS reads it to know how much to copy, and
+	 * reads the string's own length only when it is still at the -1 default. */
+	if( curl_easy_setopt(pCurl->pEasy,CURLOPT_POSTFIELDSIZE,(long)nVal) != CURLE_OK ){
+		return rcSv != SXRET_OK ? -1 : 0;
+	}
+	if( curl_easy_setopt(pCurl->pEasy,CURLOPT_COPYPOSTFIELDS,zVal) != CURLE_OK ){
+		return rcSv != SXRET_OK ? -1 : 0;
+	}
+	return rcSv != SXRET_OK ? -1 : 1;
+}
+/*
  * One option, the whole switch. Answers 1 (true), 0 (false) or -1 (a throw is
  * already installed).
  */
@@ -1989,6 +2029,12 @@ static int CurlSetOne(ph7_context *pCtx,phl_curl *pCurl,sxi64 iOpt,ph7_value *pV
 		pCurl->iWriteDest = ph7_value_to_bool(pVal) ? PHL_CURL_DEST_RETURN
 		                                            : PHL_CURL_DEST_STDOUT;
 		return 1;
+	case CURL_OPT_POSTFIELDS:
+		if( !ph7_value_is_array(pVal) ){
+			return CurlSetPostFields(pCtx,pCurl,pVal,pRc);
+		}
+		/* The ARRAY form is a multipart body and a slice of its own. */
+		break;
 	case CURL_OPT_IGNORE:
 		return 1;
 	default:

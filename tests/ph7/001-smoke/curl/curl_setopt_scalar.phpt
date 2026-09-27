@@ -7,8 +7,9 @@ curl_setopt() converts by option KIND, and refuses an option php's own switch do
 The type half of curl_setopt, derived by sweeping all 269 options against 17
 value types and reading what php answered. Four kinds are covered here -- the
 long options, the string options, the ten that take an array php turns into a
-curl_slist, and php's own CURLOPT_SAFE_UPLOAD. The callback, stream and
-POSTFIELDS kinds refuse loudly until their slices land.
+curl_slist, and php's own CURLOPT_SAFE_UPLOAD. The stream kind refuses loudly
+until its slice lands; the callback kind and CURLOPT_POSTFIELDS have theirs of
+their own.
 
 What the sweep decided, and what a reading of the manual would not:
 
