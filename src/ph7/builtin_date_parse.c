@@ -3172,8 +3172,12 @@ static int DtValueIsA(ph7_vm *pVm,ph7_value *pVal,const char *zClass)
  * php overloads it three ways and rejects everything else with ONE message, which
  * is why the signature stays unenforced and the shapes are checked here.
  */
+/* php's ceiling for a recurrence count, and it is checked TWICE: once on the
+ * number the caller wrote, and once on that number plus the dates the OPTIONS
+ * add -- two different exception classes and two different sentences. */
+#define DP_REC_LIMIT 2147483640
 static int DpConstructInto(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,ph7_value **apArg,
-	const char *zIsoStartClass)
+	const char *zIsoStartClass,const char *zCallee)
 {
 	ph7_vm *pVm = pCtx->pVm;
 	sxi64 iOptions = 0;
@@ -3210,6 +3214,21 @@ static int DpConstructInto(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,
 		if( nDigits == 0 || k >= nSpec || zSpec[k] != '/' ){
 			return PH7_VmThrowException(pCtx,"DateMalformedPeriodStringException",
 				"Unknown or bad format (%.*s)",nSpec,zSpec);
+		}
+		if( nDigits > 9 ){
+			/* php's ISO scanner reads at most NINE digits of the count and drops
+			 * the rest on the floor -- `R2147483639/...` is 214748363 recurrences
+			 * there, and `R99999999999999999999/...` is 999999999. Reading them
+			 * all was a silent wrong answer here. */
+			nRec = 0;
+			DtIvDigits(&zSpec[1],&zSpec[1 + 9],&nRec);
+		}
+		if( nRec < 1 ){
+			/* `R0` is php's refusal, and it is worded as a MISSING count rather
+			 * than an out-of-range one. */
+			return PH7_VmThrowException(pCtx,"DateMalformedPeriodStringException",
+				"%s(): ISO interval must contain an end date or a recurrence count, "
+				"\"%.*s\" given",zCallee,nSpec,zSpec);
 		}
 		zStart = &zSpec[k+1];
 		nStart = 0;
@@ -3256,6 +3275,32 @@ static int DpConstructInto(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,
 		if( nArg > 3 ){
 			iOptions = ph7_value_to_int64(apArg[3]);
 		}
+		if( apArg[2]->iFlags & MEMOBJ_INT ){
+			/* php's two range checks on a recurrence COUNT, in its order and with
+			 * its two exception classes: the bare number first, then the number
+			 * plus the dates the options ask for (the start date unless
+			 * EXCLUDE_START_DATE, and the end date if INCLUDE_END_DATE) -- which
+			 * is why `2147483639` alone is refused while the same count with
+			 * EXCLUDE_START_DATE is built. PHL accepted every one of them,
+			 * `0` and `-1` included, and iterated a period php refuses to make. */
+			sxi64 iRec = apArg[2]->x.iVal;
+			sxi64 iWithOpt;
+			if( iRec < 1 || iRec >= DP_REC_LIMIT ){
+				return PH7_VmThrowException(pCtx,"DateMalformedPeriodStringException",
+					"%s(): Recurrence count must be greater or equal to 1 and lower than %d",
+					zCallee,DP_REC_LIMIT);
+			}
+			/* Only now: the sum is computed on a count already known to be under
+			 * the ceiling, so the two dates the options may add cannot overflow it
+			 * (PHP_INT_MAX + 1 did, and UBSan said so). */
+			iWithOpt = iRec + ((iOptions & 1) == 0 ? 1 : 0)
+			         + ((iOptions & 2) != 0 ? 1 : 0);
+			if( iWithOpt >= DP_REC_LIMIT ){
+				return PH7_VmThrowException(pCtx,"DateMalformedStringException",
+					"%s(): Recurrence count must be greater or equal to 1 and lower than %d "
+					"(including options)",zCallee,DP_REC_LIMIT);
+			}
+		}
 		pStart = PH7_CloneClassInstance((ph7_class_instance *)apArg[0]->x.pOther);
 		pIv = (ph7_class_instance *)apArg[1]->x.pOther;
 		if( pStart == 0 ){
@@ -3285,7 +3330,7 @@ static int vm_builtin_DatePeriod_construct(ph7_context *pCtx,int nArg,ph7_value 
 	if( pThis == 0 ){
 		return PH7_OK;
 	}
-	return DpConstructInto(pCtx,pThis,nArg,apArg,"DateTime");
+	return DpConstructInto(pCtx,pThis,nArg,apArg,"DateTime","DatePeriod::__construct");
 }
 /* DatePeriod::createFromISO8601String(string $specification, int $options = 0) */
 static int vm_builtin_DatePeriod_createFromISO8601String(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -3302,7 +3347,8 @@ static int vm_builtin_DatePeriod_createFromISO8601String(ph7_context *pCtx,int n
 		return PH7_ContextMemoryError(pCtx);
 	}
 	/* php's factory IS the constructor, with the same overloaded argument shape. */
-	rc = DpConstructInto(pCtx,pObj,nArg,apArg,"DateTimeImmutable");
+	rc = DpConstructInto(pCtx,pObj,nArg,apArg,"DateTimeImmutable",
+		"DatePeriod::createFromISO8601String");
 	if( rc != PH7_OK || pCtx->nThrowRc != 0 ){
 		PH7_ClassInstanceUnref(pObj);
 		return rc;
