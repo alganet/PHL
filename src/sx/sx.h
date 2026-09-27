@@ -80,7 +80,9 @@ struct Sytm
   int tm_hour;    /* hours (0 - 23) */
   int tm_mday;    /* day of month (1 - 31) */
   int tm_mon;     /* month of year (0 - 11) */
-  int tm_year;    /* year + 1900 */
+  sxi64 tm_year;  /* absolute year (NOT the C library's year-1900). 64-bit because
+                   * php's clock runs to year 292277026596 at PHP_INT_MAX seconds,
+                   * and an int wrapped that to 219250468 in silence. */
   int tm_wday;    /* day of week (Sunday = 0) */
   int tm_yday;    /* day of year (0 - 365) */
   int tm_isdst;   /* is summer time in effect? */

@@ -12,18 +12,6 @@
  */
 #include <time.h>
 /* Civil-date helpers (defined with the DateTime layer below) */
-/*
- * STRUCT_TM_TO_SYTM zeroes tm_gmtoff (struct tm carries it only as a BSD/glibc
- * extension, absent on newlib/ESP32). Derive the zone offset portably from the
- * broken-down civil fields and the timestamp they came from: for localtime()
- * fills this yields the local UTC offset, for gmtime() fills it yields 0.
- */
-static void DtSytmFillOffset(Sytm *pSTm,time_t t)
-{
-	sxi64 iCivil = DtDaysFromCivil((sxi64)pSTm->tm_year,pSTm->tm_mon+1,pSTm->tm_mday) * 86400
-		+ (sxi64)pSTm->tm_hour*3600 + (sxi64)pSTm->tm_min*60 + (sxi64)pSTm->tm_sec;
-	pSTm->tm_gmtoff = (long)(iCivil - (sxi64)t);
-}
 #ifdef __WINNT__
 #ifdef _MSC_VER
 #if _MSC_VER >= 1400 /* Visual Studio 2005 and up */
@@ -118,6 +106,24 @@ static void DateNow(ph7_vm *pVm,sytime *pOut)
 		pOut->tm_usec = 0; /* no sub-second source; embedders supply one via PH7_CONFIG_CLOCK */
 	}
 #endif /* __UNIXES__ */
+}
+/*
+ * Break a Unix timestamp (or the current time) down into a Sytm the way the
+ * DateTime layer does: PHL's own civil arithmetic, not the platform's gmtime().
+ *
+ * gmtime() keeps its year in an `int` and simply FAILS past it, and the five
+ * procedural doors below then formatted the CURRENT time instead -- so
+ * `date('Y', PHP_INT_MAX)` read today's year here where php reads
+ * 292277026596. The engine has no tz database (date_default_timezone_set()
+ * takes UTC/GMT only), so date() and gmdate() share this UTC breakdown exactly
+ * as they already did through gmtime().
+ */
+static void DtSytmOfTimestamp(sxi64 iTs,Sytm *pOut)
+{
+	/* A NULL tm_zone is what the date()-family fills mean by "the script's
+	 * default timezone" -- DateFormat's 'e'/'T' read pVm->zDefTz through it,
+	 * so naming the zone here would pin every one of them to UTC. */
+	DtFillSytm(iTs,0,0,pOut);
 }
  /*
   * int64 time(void)
@@ -241,36 +247,14 @@ PH7_PRIVATE int PH7_builtin_getdate(ph7_context *pCtx,int nArg,ph7_value **apArg
 {
 	ph7_value *pValue,*pArray;
 	Sytm sTm;
-	if( nArg < 1 ){
-#ifdef __WINNT__
-		SYSTEMTIME sOS;
-		GetSystemTime(&sOS);
-		SYSTEMTIME_TO_SYTM(&sOS,&sTm);
-#else
-		struct tm *pTm;
-		time_t t;
+	time_t t;
+	if( nArg < 1 || !ph7_value_is_int(apArg[0]) ){
 		time(&t);
-		pTm = gmtime(&t);
-		STRUCT_TM_TO_SYTM(pTm,&sTm);
-		DtSytmFillOffset(&sTm,t);
-#endif
 	}else{
 		/* Use the given timestamp */
-		time_t t;
-		struct tm *pTm;
-		if( ph7_value_is_int(apArg[0]) ){
-			t = (time_t)ph7_value_to_int64(apArg[0]);
-			pTm = gmtime(&t);
-			if( pTm == 0 ){
-				time(&t);
-			}
-		}else{
-			time(&t);
-		}
-		pTm = gmtime(&t);
-		STRUCT_TM_TO_SYTM(pTm,&sTm);
-		DtSytmFillOffset(&sTm,t);
+		t = (time_t)ph7_value_to_int64(apArg[0]);
 	}
+	DtSytmOfTimestamp((sxi64)t,&sTm);
 	/* Element value */
 	pValue = ph7_context_new_scalar(pCtx);
 	if( pValue == 0 ){
@@ -305,7 +289,7 @@ PH7_PRIVATE int PH7_builtin_getdate(ph7_context *pCtx,int nArg,ph7_value **apArg
 	ph7_value_int(pValue,sTm.tm_mon+1);
 	ph7_array_add_strkey_elem(pArray,"mon",pValue);
 	/* year */
-	ph7_value_int(pValue,sTm.tm_year);
+	ph7_value_int64(pValue,sTm.tm_year);
 	ph7_array_add_strkey_elem(pArray,"year",pValue);
 	/* yday */
 	ph7_value_int(pValue,sTm.tm_yday);
@@ -318,6 +302,11 @@ PH7_PRIVATE int PH7_builtin_getdate(ph7_context *pCtx,int nArg,ph7_value **apArg
 	/* Month [i.e: January,February,...] */
 	ph7_value_string(pValue,SyTimeGetMonth(sTm.tm_mon),-1);
 	ph7_array_add_strkey_elem(pArray,"month",pValue);
+	/* php's eleventh entry, keyed by the INTEGER 0 and written last: the
+	 * timestamp the other ten were derived from. It was missing, so the
+	 * documented `$g[0]` read as an Undefined array key. */
+	ph7_value_int64(pValue,(ph7_int64)t);
+	ph7_array_add_elem(pArray,0/* Automatic index */,pValue);
 	/* Return the freshly created array */
 	ph7_result_value(pCtx,pArray);
 	return PH7_OK;
@@ -369,6 +358,9 @@ PH7_PRIVATE int PH7_builtin_gettimeofday(ph7_context *pCtx,int nArg,ph7_value **
 }
 /* Check if the given year is leap or not */
 #define IS_LEAP_YEAR(YEAR)	(YEAR % 400 ? ( YEAR % 100 ? ( YEAR % 4 ? 0 : 1 ) : 0 ) : 1)
+/* A year's magnitude, for the tokens php pads BEHIND the sign. Negating through
+ * sxu64 keeps the arithmetic defined even at the 64-bit floor. */
+#define DT_ABSYEAR(Y) ((sxi64)((Y) < 0 ? (sxu64)0 - (sxu64)(Y) : (sxu64)(Y)))
 /* ISO-8601 numeric representation of the day of the week */
 static const int aISO8601[] = { 7 /* Sunday */,1 /* Monday */,2,3,4,5,6 };
 /*
@@ -490,14 +482,14 @@ PH7_PRIVATE sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pT
 			/* ISO-8601 week-numbering year / week number: both belong to the
 			 * year owning the Thursday of the civil week (php: 2024-12-31 is
 			 * 2025-W01, 2027-01-01 is 2026-W53). php pads W but not o. */
-			sxi64 days = DtDaysFromCivil((sxi64)pTm->tm_year,pTm->tm_mon+1,pTm->tm_mday);
+			sxi64 days = DtDaysFromCivil(pTm->tm_year,pTm->tm_mon+1,pTm->tm_mday);
 			int isoDow = (int)(((days + 3) % 7 + 7) % 7) + 1; /* Mon=1..Sun=7 */
 			sxi64 thu = days + (4 - isoDow);
 			sxi64 wy;
 			int wm,wd;
 			DtCivilFromDays(thu,&wy,&wm,&wd);
 			if( zIn[0] == 'o' ){
-				ph7_result_string_format(pCtx,"%d",(int)wy);
+				ph7_result_string_format(pCtx,"%qd",wy);
 			}else{
 				ph7_result_string_format(pCtx,"%02d",
 					(int)((thu - DtDaysFromCivil(wy,1,1)) / 7) + 1);
@@ -505,26 +497,29 @@ PH7_PRIVATE sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pT
 			break;
 				 }
 		case 'Y':
-			/*	A full numeric representation of a year, 4 digits */
-			ph7_result_string_format(pCtx,"%04d",pTm->tm_year);
+			/* A full numeric representation of a year, at least 4 digits. php pads
+			 * the ABSOLUTE value behind the sign (-495 prints "-0495"); a plain
+			 * "%04qd" spends one of the four columns on the '-' and printed "-495". */
+			ph7_result_string_format(pCtx,"%s%04qd",
+				pTm->tm_year < 0 ? "-" : "",DT_ABSYEAR(pTm->tm_year));
 			break;
 		case 'X':
 			/* Expanded full year, always signed (php 8.2+): +2024 */
-			ph7_result_string_format(pCtx,"%c%04d",
-				pTm->tm_year < 0 ? '-' : '+',
-				pTm->tm_year < 0 ? -pTm->tm_year : pTm->tm_year);
+			ph7_result_string_format(pCtx,"%c%04qd",
+				pTm->tm_year < 0 ? '-' : '+',DT_ABSYEAR(pTm->tm_year));
 			break;
 		case 'x':
-			/* Expanded year, signed only past 4 digits (php 8.2+) */
+			/* Expanded year, signed only past 4 digits (php 8.2+) — otherwise 'Y'. */
 			if( pTm->tm_year > 9999 ){
-				ph7_result_string_format(pCtx,"+%d",pTm->tm_year);
+				ph7_result_string_format(pCtx,"+%qd",pTm->tm_year);
 			}else{
-				ph7_result_string_format(pCtx,"%04d",pTm->tm_year);
+				ph7_result_string_format(pCtx,"%s%04qd",
+					pTm->tm_year < 0 ? "-" : "",DT_ABSYEAR(pTm->tm_year));
 			}
 			break;
 		case 'y':
 			/*A two digit representation of a year*/
-			ph7_result_string_format(pCtx,"%02d",pTm->tm_year%100);
+			ph7_result_string_format(pCtx,"%02qd",pTm->tm_year%100);
 			break;
 		case 'a':
 			/*	Lowercase Ante meridiem and Post meridiem */
@@ -535,11 +530,12 @@ PH7_PRIVATE sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pT
 			ph7_result_string(pCtx,pTm->tm_hour >= 12 ? "PM" : "AM",2);
 			break;
 		case 'B':{
-			/* Swatch Internet time: thousandths of the UTC+1 day */
-			sxi64 iUtc = DtDaysFromCivil((sxi64)pTm->tm_year,pTm->tm_mon+1,pTm->tm_mday) * 86400
-				+ (sxi64)pTm->tm_hour*3600 + (sxi64)pTm->tm_min*60 + (sxi64)pTm->tm_sec
-				- (sxi64)pTm->tm_gmtoff;
-			sxi64 iBie = (iUtc + 3600) % 86400;
+			/* Swatch Internet time: thousandths of the UTC+1 day. Only the time
+			 * OF DAY decides it, so take it from the clock fields rather than
+			 * rebuilding the absolute timestamp -- that product overflows an
+			 * int64 near the extremes of php's own clock. */
+			sxi64 iBie = ((sxi64)pTm->tm_hour*3600 + (sxi64)pTm->tm_min*60 + pTm->tm_sec
+				- (sxi64)pTm->tm_gmtoff + 3600) % 86400;
 			if( iBie < 0 ){
 				iBie += 86400;
 			}
@@ -633,7 +629,10 @@ PH7_PRIVATE sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pT
 		case 'r':{
 			/* RFC 2822 formatted date 	Example: Thu, 21 Dec 2000 16:01:07 +0200 */
 			long a = pTm->tm_gmtoff < 0 ? -pTm->tm_gmtoff : pTm->tm_gmtoff;
-			ph7_result_string_format(pCtx,"%.3s, %02d %.3s %4d %02d:%02d:%02d %c%02d%02d",
+			/* php zero-pads this year to four columns INCLUDING the sign
+			 * ("0050", "-001"), where a plain "%4d" space-padded every year
+			 * below 1000 — an ordinary date, not just a BCE one. */
+			ph7_result_string_format(pCtx,"%.3s, %02d %.3s %04qd %02d:%02d:%02d %c%02d%02d",
 				SyTimeGetDay(pTm->tm_wday),
 				pTm->tm_mday,
 				SyTimeGetMonth(pTm->tm_mon),
@@ -650,10 +649,10 @@ PH7_PRIVATE sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pT
 			/* Seconds since the Unix Epoch FOR THIS Sytm (php: the timestamp
 			 * being formatted — pre-fix this printed time(0) regardless of the
 			 * date under format). */
-			ph7_result_string_format(pCtx,"%qd",
-				DtDaysFromCivil((sxi64)pTm->tm_year,pTm->tm_mon+1,pTm->tm_mday) * 86400
-				+ (sxi64)pTm->tm_hour*3600 + (sxi64)pTm->tm_min*60 + (sxi64)pTm->tm_sec
-				- (sxi64)pTm->tm_gmtoff);
+			ph7_result_string_format(pCtx,"%qd",(sxi64)(
+				(sxu64)DtDaysFromCivil(pTm->tm_year,pTm->tm_mon+1,pTm->tm_mday) * 86400u
+				+ (sxu64)((sxi64)pTm->tm_hour*3600 + (sxi64)pTm->tm_min*60
+				          + (sxi64)pTm->tm_sec - (sxi64)pTm->tm_gmtoff)));
 			break;
 		case 'O':{
 			/* Difference to GMT without colon: +0530 (php) */
@@ -688,7 +687,8 @@ PH7_PRIVATE sxi32 DateFormat(ph7_context *pCtx,const char *zIn,int nLen,Sytm *pT
 		case 'c':{
 			/* 	ISO 8601 date: 2004-02-12T15:19:21+00:00 (php) */
 			long a = pTm->tm_gmtoff < 0 ? -pTm->tm_gmtoff : pTm->tm_gmtoff;
-			ph7_result_string_format(pCtx,"%4d-%02d-%02dT%02d:%02d:%02d%c%02d:%02d",
+			/* Same four-column zero pad as 'r' (php: "0050-…", "-001-…"). */
+			ph7_result_string_format(pCtx,"%04qd-%02d-%02dT%02d:%02d:%02d%c%02d:%02d",
 				pTm->tm_year,
 				pTm->tm_mon+1,
 				pTm->tm_mday,
@@ -789,22 +789,12 @@ PH7_PRIVATE int PH7_builtin_date(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_string(pCtx,"",0);
 	}
 	if( nArg < 2 ){
-#ifdef __WINNT__
-		SYSTEMTIME sOS;
-		GetSystemTime(&sOS);
-		SYSTEMTIME_TO_SYTM(&sOS,&sTm);
-#else
-		struct tm *pTm;
 		time_t t;
 		time(&t);
-		pTm = gmtime(&t);
-		STRUCT_TM_TO_SYTM(pTm,&sTm);
-		DtSytmFillOffset(&sTm,t);
-#endif
+		DtSytmOfTimestamp((sxi64)t,&sTm);
 	}else{
 		/* Use the given timestamp (php 8 ?int weak ZPP; TypeError otherwise) */
 		time_t t = 0;
-		struct tm *pTm;
 		int bUseNow;
 		int rc = DateResolveTimestamp(pCtx,apArg[1],&bUseNow,&t);
 		if( rc != PH7_OK ){
@@ -813,13 +803,7 @@ PH7_PRIVATE int PH7_builtin_date(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( bUseNow ){
 			time(&t);
 		}
-		pTm = gmtime(&t);
-		if( pTm == 0 ){
-			time(&t);
-			pTm = gmtime(&t);
-		}
-		STRUCT_TM_TO_SYTM(pTm,&sTm);
-		DtSytmFillOffset(&sTm,t);
+		DtSytmOfTimestamp((sxi64)t,&sTm);
 	}
 	/* Format the given string */
 	DateFormat(pCtx,zFormat,nLen,&sTm,0);
@@ -855,22 +839,12 @@ PH7_PRIVATE int PH7_builtin_gmdate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_string(pCtx,"",0);
 	}
 	if( nArg < 2 ){
-#ifdef __WINNT__
-		SYSTEMTIME sOS;
-		GetSystemTime(&sOS);
-		SYSTEMTIME_TO_SYTM(&sOS,&sTm);
-#else
-		struct tm *pTm;
 		time_t t;
 		time(&t);
-		pTm = gmtime(&t);
-		STRUCT_TM_TO_SYTM(pTm,&sTm);
-		DtSytmFillOffset(&sTm,t);
-#endif
+		DtSytmOfTimestamp((sxi64)t,&sTm);
 	}else{
 		/* Use the given timestamp (php 8 ?int weak ZPP; TypeError otherwise) */
 		time_t t = 0;
-		struct tm *pTm;
 		int bUseNow;
 		int rc = DateResolveTimestamp(pCtx,apArg[1],&bUseNow,&t);
 		if( rc != PH7_OK ){
@@ -879,13 +853,7 @@ PH7_PRIVATE int PH7_builtin_gmdate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		if( bUseNow ){
 			time(&t);
 		}
-		pTm = gmtime(&t);
-		if( pTm == 0 ){
-			time(&t);
-			pTm = gmtime(&t);
-		}
-		STRUCT_TM_TO_SYTM(pTm,&sTm);
-		DtSytmFillOffset(&sTm,t);
+		DtSytmOfTimestamp((sxi64)t,&sTm);
 	}
 	/* Format the given string */
 	DateFormat(pCtx,zFormat,nLen,&sTm,0);
@@ -921,34 +889,18 @@ PH7_PRIVATE int PH7_builtin_localtime(ph7_context *pCtx,int nArg,ph7_value **apA
 	int isAssoc = 0;
 	Sytm sTm;
 	if( nArg < 1 ){
-#ifdef __WINNT__
-		SYSTEMTIME sOS;
-		GetSystemTime(&sOS); /* TODO(chems): GMT not local */
-		SYSTEMTIME_TO_SYTM(&sOS,&sTm);
-#else
-		struct tm *pTm;
 		time_t t;
 		time(&t);
-		pTm = gmtime(&t);
-		STRUCT_TM_TO_SYTM(pTm,&sTm);
-		DtSytmFillOffset(&sTm,t);
-#endif
+		DtSytmOfTimestamp((sxi64)t,&sTm);
 	}else{
 		/* Use the given timestamp */
 		time_t t;
-		struct tm *pTm;
 		if( ph7_value_is_int(apArg[0]) ){
 			t = (time_t)ph7_value_to_int64(apArg[0]);
-			pTm = gmtime(&t);
-			if( pTm == 0 ){
-				time(&t);
-			}
 		}else{
 			time(&t);
 		}
-		pTm = gmtime(&t);
-		STRUCT_TM_TO_SYTM(pTm,&sTm);
-		DtSytmFillOffset(&sTm,t);
+		DtSytmOfTimestamp((sxi64)t,&sTm);
 	}
 	/* Element value */
 	pValue = ph7_context_new_scalar(pCtx);
@@ -1004,7 +956,7 @@ PH7_PRIVATE int PH7_builtin_localtime(ph7_context *pCtx,int nArg,ph7_value **apA
 		ph7_array_add_elem(pArray,0/* Automatic index */,pValue);
 	}
 	/* year since 1900 */
-	ph7_value_int(pValue,sTm.tm_year-1900);
+	ph7_value_int64(pValue,sTm.tm_year-1900);
 	if( isAssoc ){
 		ph7_array_add_strkey_elem(pArray,"tm_year",pValue);
 	}else{
@@ -1093,33 +1045,16 @@ PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		ph7_result_int(pCtx,-1);
 	}
 	if( nArg < 2 ){
-#ifdef __WINNT__
-		SYSTEMTIME sOS;
-		GetSystemTime(&sOS);
 		time(&t);
-		SYSTEMTIME_TO_SYTM(&sOS,&sTm);
-#else
-		struct tm *pTm;
-		time(&t);
-		pTm = gmtime(&t);
-		STRUCT_TM_TO_SYTM(pTm,&sTm);
-		DtSytmFillOffset(&sTm,t);
-#endif
+		DtSytmOfTimestamp((sxi64)t,&sTm);
 	}else{
 		/* Use the given timestamp */
-		struct tm *pTm;
 		if( ph7_value_is_int(apArg[1]) ){
 			t = (time_t)ph7_value_to_int64(apArg[1]);
-			pTm = gmtime(&t);
-			if( pTm == 0 ){
-				time(&t);
-			}
 		}else{
 			time(&t);
 		}
-		pTm = gmtime(&t);
-		STRUCT_TM_TO_SYTM(pTm,&sTm);
-		DtSytmFillOffset(&sTm,t);
+		DtSytmOfTimestamp((sxi64)t,&sTm);
 	}
 	/* Perform the requested operation */
 	switch(zFormat[0]){
@@ -1145,8 +1080,12 @@ PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		break;
 	case 'B': {
 		/* Swatch Internet time: 1000 "beats" per day in UTC+1, no fractions.
-		 * Integer math throughout so the tiny build (no floating point) agrees. */
-		ph7_int64 iSec = ((ph7_int64)t + 3600) % 86400;
+		 * Integer math throughout so the tiny build (no floating point) agrees.
+		 * Read the time OF DAY off the broken-down clock: `t + 3600` overflows
+		 * at the top of php's timestamp range, which is undefined and answered
+		 * the wrong beat. */
+		ph7_int64 iSec = ((ph7_int64)sTm.tm_hour*3600 + sTm.tm_min*60 + sTm.tm_sec
+			- sTm.tm_gmtoff + 3600) % 86400;
 		if( iSec < 0 ){
 			iSec += 86400;
 		}
@@ -1208,7 +1147,7 @@ PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		 * The old code indexed a weekday table and returned a DAY number
 		 * (1..7) as if it were a week number — idate("W") answered 4 in the
 		 * middle of July. Same derivation as date()'s 'o'/'W' above. */
-		sxi64 days = DtDaysFromCivil((sxi64)sTm.tm_year,sTm.tm_mon+1,sTm.tm_mday);
+		sxi64 days = DtDaysFromCivil(sTm.tm_year,sTm.tm_mon+1,sTm.tm_mday);
 		int isoDow = (int)(((days + 3) % 7 + 7) % 7) + 1; /* Mon=1..Sun=7 */
 		sxi64 thu = days + (4 - isoDow);
 		sxi64 wy;
@@ -1238,16 +1177,22 @@ PH7_PRIVATE int PH7_builtin_idate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 		iVal = sTm.tm_gmtoff;
 		break;
 	default:
-		/* unknown format,throw a warning */
-		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Unrecognized date format token");
-		/* php returns FALSE for an unrecognized token, not 0 — the two are
-		 * distinguishable (`idate($t) === false` is the documented check) and
-		 * 0 is a legitimate result for several real tokens. */
-		ph7_result_bool(pCtx,0);
-		return PH7_OK;
+		/* Unknown token: php's own -1, which the shared tail below reports. */
+		iVal = -1;
+		break;
 	}
-	/* Return the time value */
-	ph7_result_int64(pCtx,iVal);
+	/* php's idate answers a C `int`, so every token is narrowed to one -- and
+	 * -1 is the single value it uses for "no answer": it warns about the TOKEN
+	 * and answers FALSE, whatever produced the -1. That is why
+	 * `idate('U', PHP_INT_MAX)` is a false with an "Unrecognized date format
+	 * token" warning in front of it rather than the timestamp. `idate() === false`
+	 * is the documented check, and 0 is a legitimate answer for several tokens. */
+	if( (int)iVal == -1 ){
+		ph7_context_throw_error(pCtx,PH7_CTX_WARNING,"Unrecognized date format token");
+		ph7_result_bool(pCtx,0);
+	}else{
+		ph7_result_int64(pCtx,(int)iVal);
+	}
 	return PH7_OK;
 }
 /*

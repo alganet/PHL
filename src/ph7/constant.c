@@ -291,7 +291,7 @@ static void PH7_DATE_Const(ph7_value *pVal,void *pUnused)
 #endif
 	SXUNUSED(pUnused); /* cc warning */
 	/* Expand */
-	ph7_value_string_format(pVal,"%04d-%02d-%02d",sTm.tm_year,sTm.tm_mon+1,sTm.tm_mday);
+	ph7_value_string_format(pVal,"%04qd-%02d-%02d",sTm.tm_year,sTm.tm_mon+1,sTm.tm_mday);
 }
 /*
  * __FILE__

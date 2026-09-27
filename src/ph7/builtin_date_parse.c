@@ -35,7 +35,12 @@ PH7_PRIVATE sxi64 DtDaysFromCivil(sxi64 y,int m,int d)
 	yoe = (unsigned)(y - era * 400);
 	doy = (unsigned)((153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1);
 	doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-	return era * 146097 + (sxi64)doe - 719468;
+	/* Unsigned tail: php's expanded ISO year has no width limit, and php's own
+	 * answer for one past the clock is a WRAP of the seconds it converts to --
+	 * `new DateTime('-999999999999-01-01')` reads back as year 169108098508
+	 * there. Wrapping through sxu64 reproduces that instead of overflowing a
+	 * signed product, which is undefined. */
+	return (sxi64)((sxu64)era * 146097u + (sxu64)doe - 719468u);
 }
 PH7_PRIVATE void DtCivilFromDays(sxi64 z,sxi64 *py,int *pm,int *pd)
 {
@@ -62,21 +67,31 @@ PH7_PRIVATE sxi64 DtFloorDiv(sxi64 a,sxi64 b)
 	}
 	return q;
 }
-/* Timestamp + offset -> Sytm (with zone metadata for DateFormat's T/e/O/P/Z) */
-static void DtFillSytm(sxi64 iTs,sxi32 iOff,char *zZone,Sytm *pTm)
+/* Timestamp + offset -> Sytm (with zone metadata for DateFormat's T/e/O/P/Z).
+ * Shared with builtin_date.c, whose procedural doors used to reach for the
+ * platform's gmtime() and lose every year past an int. */
+PH7_PRIVATE void DtFillSytm(sxi64 iTs,sxi32 iOff,char *zZone,Sytm *pTm)
 {
-	sxi64 t = iTs + iOff;
+	/* Both steps are written to stay DEFINED at the ends of php's clock:
+	 * `iTs + iOff` overflows for a timestamp near the int64 floor, and so does
+	 * rebuilding the day's start as `days * 86400` (UBSan caught the second at
+	 * setTimestamp(PHP_INT_MIN)->format()). The remainder gives the same
+	 * seconds-of-day with no product at all. */
+	sxi64 t = (sxi64)((sxu64)iTs + (sxu64)iOff);
 	sxi64 days = DtFloorDiv(t,86400);
-	sxi64 secs = t - days * 86400;
+	sxi64 secs = t % 86400;
 	sxi64 y;
 	int mo,d;
+	if( secs < 0 ){
+		secs += 86400;
+	}
 	DtCivilFromDays(days,&y,&mo,&d);
 	pTm->tm_sec  = (int)(secs % 60);
 	pTm->tm_min  = (int)((secs / 60) % 60);
 	pTm->tm_hour = (int)(secs / 3600);
 	pTm->tm_mday = d;
 	pTm->tm_mon  = mo - 1;
-	pTm->tm_year = (int)y;
+	pTm->tm_year = y;
 	pTm->tm_wday = (int)(((days % 7) + 11) % 7); /* day 0 = Thursday(4) */
 	pTm->tm_yday = (int)(days - DtDaysFromCivil(y,1,1));
 	pTm->tm_isdst = 0;
@@ -85,7 +100,12 @@ static void DtFillSytm(sxi64 iTs,sxi32 iOff,char *zZone,Sytm *pTm)
 }
 static sxi64 DtMakeTs(sxi64 y,int mo,int d,int h,int mi,int s,sxi32 iOff)
 {
-	return DtDaysFromCivil(y,mo,d) * 86400 + (sxi64)h*3600 + (sxi64)mi*60 + s - iOff;
+	/* Unsigned throughout: a year outside the clock's own range (the parser
+	 * accepts php's expanded form, which has no width limit) would otherwise
+	 * overflow this product, which is undefined rather than merely wrong. */
+	sxu64 t = (sxu64)DtDaysFromCivil(y,mo,d) * 86400u;
+	t += (sxu64)((sxi64)h*3600 + (sxi64)mi*60 + s - iOff);
+	return (sxi64)t;
 }
 /* Month-arithmetic with php's overflow semantics (Jan 31 +1 month -> Mar 2/3):
  * normalize the month, keep the day — the civil day-count formula is linear in
@@ -200,6 +220,40 @@ static int DtRead1or2(const char *z,const char *zEnd,int *pn)
  * convention (positive 1-based position into zIn, negative = "double time") when the
  * shape matched but a component is out of range.
  */
+/*
+ * The YEAR of php's ISO date, at the head of a string: four digits, or php's
+ * EXPANDED form -- a sign in front of AT LEAST four digits, with no upper width
+ * (`-1234-03-04`, `+12345-01-01`, `-123456789-01-01`). The sign is what admits
+ * the extra digits: an unsigned five-digit run is not a date to php at all, and
+ * a signed run shorter than four is not one either (`-123-03-04` fails there).
+ *
+ * Answers the bytes the year occupies -- the caller finds the '-' that closes it
+ * at that offset -- or 0 when the head is not one. A magnitude past the int64
+ * ceiling SATURATES there instead of overflowing; php's own answer past that
+ * point is garbage of its own (a 20-digit year reads back as 1999 there), so
+ * nothing pins that corner -- only the absence of undefined behaviour.
+ */
+static int DtTryIsoYear(const char *z,const char *zEnd,sxi64 *pY)
+{
+	static const sxu64 iCeil = (sxu64)0x7FFFFFFFFFFFFFFF;
+	int nSign = (z < zEnd && (z[0] == '+' || z[0] == '-')) ? 1 : 0;
+	const char *zDig = &z[nSign];
+	const char *zScan = zDig;
+	sxu64 y = 0;
+	while( zScan < zEnd && SyisDigit(zScan[0]) ){
+		sxu64 dig = (sxu64)(zScan[0] - '0');
+		y = (y > (iCeil - dig) / 10) ? iCeil : y * 10 + dig;
+		zScan++;
+	}
+	if( zScan - zDig < 4 || (nSign == 0 && zScan - zDig != 4) ){
+		return 0;
+	}
+	if( zScan >= zEnd || zScan[0] != '-' ){
+		return 0;
+	}
+	*pY = (nSign && z[0] == '-') ? -(sxi64)y : (sxi64)y;
+	return (int)(zScan - z);
+}
 static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
 	sxi64 *pTs,sxi32 *pOff,int *pbOff,const char *zIn,int *pUs)
 {
@@ -420,7 +474,8 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
 	sxi32 iOff = iBaseOff;
 	int bOffSet = 0;
 	int bAny = 0;
-	int iNumRc,iMonRc;
+	int iNumRc,iMonRc,nYr;
+	sxi64 iYr = 0;
 	int uSec = 0;
 	*pUs = 0;
 #define DT_SKIP_WS() while( z < zEnd && (z[0]==' '||z[0]=='\t'||z[0]==',') ){ z++; }
@@ -454,24 +509,26 @@ static int DtParse(const char *zIn,int nLen,sxi64 iBaseTs,sxi32 iBaseOff,
 		DT_SKIP_WS();
 		return (z < zEnd) ? (int)(z - zIn) + 1 : 0;
 	}
-	/* Absolute date: YYYY-MM-DD[...] */
-	if( zEnd-z >= 10 && SyisDigit(z[0]) && SyisDigit(z[1]) && SyisDigit(z[2])
-	 && SyisDigit(z[3]) && z[4]=='-' ){
-		sxi64 y = (z[0]-'0')*1000 + (z[1]-'0')*100 + (z[2]-'0')*10 + (z[3]-'0');
+	/* Absolute date: [+-]YYYY-MM-DD[...] (the sign, and any year width past four,
+	 * are php's EXPANDED form -- see DtTryIsoYear) */
+	if( (nYr = DtTryIsoYear(z,zEnd,&iYr)) != 0 && zEnd-z >= nYr + 6 ){
+		const char *zRest = &z[nYr];   /* the '-' that closed the year */
+		sxi64 y = iYr;
 		int mo,d,h=0,mi=0,s=0;
-		if( !SyisDigit(z[5])||!SyisDigit(z[6])||z[7] != '-'||!SyisDigit(z[8])||!SyisDigit(z[9]) ){
+		if( !SyisDigit(zRest[1])||!SyisDigit(zRest[2])||zRest[3] != '-'
+		 ||!SyisDigit(zRest[4])||!SyisDigit(zRest[5]) ){
 			return (int)(z - zIn) + 1;
 		}
-		mo = (z[5]-'0')*10 + (z[6]-'0');
-		d  = (z[8]-'0')*10 + (z[9]-'0');
+		mo = (zRest[1]-'0')*10 + (zRest[2]-'0');
+		d  = (zRest[4]-'0')*10 + (zRest[5]-'0');
 		/* php's lexer dies on the SECOND digit of an out-of-range month/day
 		 * (either the two-digit pattern fails there, or a one-digit component
 		 * matched and the separator check fails there); "00" lexes fine and
 		 * normalizes (month 0 == December of the previous year). */
-		if( mo > 12 ){ return (int)(&z[6] - zIn) + 1; }
-		if( d > 31 ){ return (int)(&z[9] - zIn) + 1; }
+		if( mo > 12 ){ return (int)(&zRest[2] - zIn) + 1; }
+		if( d > 31 ){ return (int)(&zRest[5] - zIn) + 1; }
 		if( mo == 0 ){ mo = 12; y--; }
-		z += 10;
+		z = &zRest[6];
 		{
 			int rcT = DtTimeSuffix(&z,zEnd,zIn,&h,&mi,&s,&iOff,&bOffSet,&uSec);
 			if( rcT != 0 ){ return rcT; }
@@ -3501,7 +3558,7 @@ static sxi32 DtPresentDateTime(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *
 	zZone[nName] = 0;
 	DtFillSytm(sState.iTs,sState.iOff,zZone,&sTm);
 	/* php's fixed shape here, not a format string: "Y-m-d H:i:s.uuuuuu". */
-	SyBufferFormat(zDate,sizeof(zDate),"%04d-%02d-%02d %02d:%02d:%02d.%06d",
+	SyBufferFormat(zDate,sizeof(zDate),"%04qd-%02d-%02d %02d:%02d:%02d.%06d",
 		sTm.tm_year,sTm.tm_mon + 1,sTm.tm_mday,sTm.tm_hour,sTm.tm_min,sTm.tm_sec,
 		sState.uSec);
 	PH7_MemObjInitFromString(&(*pVm),&sVal,0);
