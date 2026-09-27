@@ -1014,6 +1014,43 @@ static int CloneCallFormFollows(SyToken *pClone,SyToken *pEnd)
  * quoted string, a heredoc/nowdoc,a literal [i.e: PHP_EOL],a namespace path
  * [i.e: namespaces\path\to..],a array/list [i.e: array(4,5,6)] and so on.
  */
+/*
+ * Where a KEYWORD-headed operand ends: `yield <expr>`, `throw <expr>` and the
+ * one-operand language constructs (`print`, `include`, `require`, …) each take
+ * the rest of the enclosing group, so PH7_DelimitNestedTokens is the right shape
+ * for them — EXCEPT that php's grammar gives them `expr`, and a top-level COMMA
+ * is not part of an `expr`. In an ARGUMENT LIST that comma is the separator, so
+ * `f(yield 1, 2)` and `f(print "p", 2)` are two arguments in php; here the
+ * operand ran straight past it and the leftover `, 2` came back as
+ * `syntax error, unexpected token ","` on source php runs. (An ARRAY literal
+ * never showed it: its body is re-split on commas before these nodes are ever
+ * extracted.) At statement level nothing legitimate follows such an operand with
+ * a comma, so stopping is php's answer there too — `yield 1, 2;` and
+ * `print "a", "b";` stay the parse error both engines already gave.
+ */
+static void ExprDelimitKeywordOperand(SyToken *pIn,SyToken *pEnd,SyToken **ppEnd)
+{
+	SyToken *pCur = pIn;
+	sxi32 iNest = 1;
+	for(;;){
+		if( pCur >= pEnd ){
+			break;
+		}
+		if( (pCur->nType & PH7_TK_COMMA) && iNest <= 1 ){
+			break;
+		}
+		if( pCur->nType & (PH7_TK_LPAREN|PH7_TK_OCB|PH7_TK_OSB) ){
+			iNest++;
+		}else if( pCur->nType & (PH7_TK_RPAREN|PH7_TK_CCB|PH7_TK_CSB) ){
+			iNest--;
+			if( iNest <= 0 ){
+				break;
+			}
+		}
+		pCur++;
+	}
+	*ppEnd = pCur;
+}
 static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLastWasTerm,int bAfterMemberOp)
 {
 	ph7_expr_node *pNode;
@@ -1229,9 +1266,7 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 		 }else if( nKeyword == PH7_TKWRD_YIELD ){
 			 /* yield expression: collect tokens for the yielded value(s) */
 			 pCur++; /* Skip 'yield' keyword */
-			 PH7_DelimitNestedTokens(pCur,pGen->pEnd,
-				 PH7_TK_LPAREN|PH7_TK_OCB|PH7_TK_OSB,
-				 PH7_TK_RPAREN|PH7_TK_CCB|PH7_TK_CSB,&pCur);
+			 ExprDelimitKeywordOperand(pCur,pGen->pEnd,&pCur);
 			 pNode->xCode = PH7_CompileYield;
 		 }else if( nKeyword == PH7_TKWRD_FUNCTION
 			|| ( nKeyword == PH7_TKWRD_STATIC && &pCur[1] < pGen->pEnd
@@ -1288,13 +1323,12 @@ static sxi32 ExprExtractNode(ph7_gen_state *pGen,ph7_expr_node **ppNode,int iLas
 			  * Consume the 'throw' keyword and all tokens up to the enclosing
 			  * close delimiter; PH7_CompileThrowExpr will reparse the body. */
 			 pCur++; /* Skip 'throw' */
-			 PH7_DelimitNestedTokens(pCur,pGen->pEnd,
-				 PH7_TK_LPAREN|PH7_TK_OCB|PH7_TK_OSB,
-				 PH7_TK_RPAREN|PH7_TK_CCB|PH7_TK_CSB,&pCur);
+			 ExprDelimitKeywordOperand(pCur,pGen->pEnd,&pCur);
 			 pNode->xCode = PH7_CompileThrowExpr;
 		 }else if( PH7_IsLangConstruct(nKeyword,FALSE) == TRUE && &pCur[1] < pGen->pEnd ){
-			 /* Language constructs [i.e: print,echo,die...] require special handling */
-			 PH7_DelimitNestedTokens(pCur,pGen->pEnd,PH7_TK_LPAREN|PH7_TK_OCB|PH7_TK_OSB, PH7_TK_RPAREN|PH7_TK_CCB|PH7_TK_CSB,&pCur);
+			 /* Language constructs [i.e: print,echo,die...] require special handling.
+			  * Each of the six that reach here takes exactly ONE operand. */
+			 ExprDelimitKeywordOperand(pCur,pGen->pEnd,&pCur);
 			 pNode->xCode = PH7_CompileLangConstruct;
 		 }else{
 			 /* Assume a literal */
