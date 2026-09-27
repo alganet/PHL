@@ -179,6 +179,32 @@ static void PH7_CAL_NUM_CALS_Const(ph7_value *pVal,void *pUnused)
 	SXUNUSED(pUnused);
 	ph7_value_int(pVal,4);
 }
+/*
+ * easter_days()/easter_date()'s $mode. DEFAULT is not a rule but a
+ * date-dependent choice between the two below it; ROMAN moves the 1583-1752
+ * window to the Gregorian rule, and the two ALWAYS_ modes pin one rule for
+ * every year.
+ */
+static void PH7_CAL_EASTER_DEFAULT_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,0);
+}
+static void PH7_CAL_EASTER_ROMAN_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,1);
+}
+static void PH7_CAL_EASTER_ALWAYS_GREGORIAN_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,2);
+}
+static void PH7_CAL_EASTER_ALWAYS_JULIAN_Const(ph7_value *pVal,void *pUnused)
+{
+	SXUNUSED(pUnused);
+	ph7_value_int(pVal,3);
+}
 /* jddayofweek()'s three modes. Note that SHORT is 2 and LONG is 1: the numbers
  * are not in the order the names suggest. */
 static void PH7_CAL_DOW_DAYNO_Const(ph7_value *pVal,void *pUnused)
@@ -2602,6 +2628,10 @@ static const ph7_builtin_constant aBuiltIn[] = {
 	{"CAL_MONTH_JULIAN_LONG",     PH7_CAL_MONTH_JULIAN_LONG_Const },
 	{"CAL_MONTH_JEWISH",          PH7_CAL_MONTH_JEWISH_Const },
 	{"CAL_MONTH_FRENCH",          PH7_CAL_MONTH_FRENCH_Const },
+	{"CAL_EASTER_DEFAULT",   PH7_CAL_EASTER_DEFAULT_Const },
+	{"CAL_EASTER_ROMAN",     PH7_CAL_EASTER_ROMAN_Const   },
+	{"CAL_EASTER_ALWAYS_GREGORIAN", PH7_CAL_EASTER_ALWAYS_GREGORIAN_Const },
+	{"CAL_EASTER_ALWAYS_JULIAN",    PH7_CAL_EASTER_ALWAYS_JULIAN_Const },
 	{"CAL_JEWISH_ADD_ALAFIM_GERESH", PH7_CAL_JEWISH_ADD_ALAFIM_GERESH_Const },
 	{"CAL_JEWISH_ADD_ALAFIM",        PH7_CAL_JEWISH_ADD_ALAFIM_Const },
 	{"CAL_JEWISH_ADD_GERESHAYIM",    PH7_CAL_JEWISH_ADD_GERESHAYIM_Const },
