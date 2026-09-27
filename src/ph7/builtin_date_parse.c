@@ -898,10 +898,33 @@ static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
 			if( na == 4 ){ y = a; mo = b; d = c; nyear = na; }
 			else{ mo = a; d = b; y = c; nyear = nc; }
 		}else if( sep == '.' ){
-			/* php's dot date is DD.MM.YYYY only (a 4-digit year, day first). Other
-			 * widths are not a clean php format (php itself yields garbage there),
-			 * so don't claim the match — let the caller fail the parse. */
-			if( na == 4 || nc != 4 ){ return 0; }
+			/* php's dot date is day-first with a 2- or 4-digit YEAR (`20.03.67` is
+			 * 2067-03-20). Any other width is not a clean php format -- php itself
+			 * yields garbage there -- so don't claim the match.
+			 *
+			 * A 2-digit year is the same BYTES as php's dotted CLOCK, and the clock
+			 * is the rule its scanner declares first, so the clock wins whenever it
+			 * READS: `20.03.00` is 20:03:00 and `20.03.67`, whose seconds no clock
+			 * can hold, is the date. The probe runs on a copy with the time flag
+			 * cleared, so a "Double time specification" this string would raise
+			 * cannot answer the question. */
+			if( na == 4 ){ return 0; }
+			if( nc == 3 ){
+				/* php takes FOUR digits or two, never three: the year of
+				 * `20.03.671` is 67 and the `1` is left to the string. */
+				c /= 10;
+				nc = 2;
+				z--;
+			}
+			if( nc != 4 && nc != 2 ){ return 0; }
+			if( nc == 2 ){
+				dt_parsed sTry = *p;
+				const char *zProbe = zTok;
+				sTry.nTimeTok = 0;
+				if( DtReadTimeOfDay(&zProbe,zEnd,zIn,&sTry) == 1 && zProbe == z ){
+					return 0;
+				}
+			}
 			d = a; mo = b; y = c; nyear = nc;
 		}else{ /* '-' : a 4-digit LAST field is DD-MM-YYYY, else YY-MM-DD */
 			if( nc == 4 ){ d = a; mo = b; y = c; nyear = nc; }
