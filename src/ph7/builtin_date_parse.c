@@ -886,6 +886,11 @@ static int DtZoneShape(const char *z,const char *zEnd,const char **pzName,int *p
 	*pnName = nLet;
 	return nBare;
 }
+/* php's timezone_type -- 1 = a fixed UTC OFFSET, 2 = an ABBREVIATION, 3 = an
+ * IDENTIFIER. Both parsers answer in these, so they stand above both. */
+#define DT_ZONE_OFFSET 1
+#define DT_ZONE_ABBR   2
+#define DT_ZONE_ID     3
 /*
  * ...and what the letters spell, the spellings this engine has without a tz
  * database: `UTC` (an IDENTIFIER in that exact case, an abbreviation in any
@@ -2957,37 +2962,6 @@ static sxi64 DtIsoDate(sxi64 iTs,sxi32 iOff,sxi64 y,sxi64 w,sxi64 dow)
 	target = monday1 + (w - 1)*7 + (dow - 1);
 	return target*86400 + iTod - iOff;
 }
-/* Consume nMin..nMax digits from *pz; returns count consumed (0 = failure) */
-static int DtEatDigits(const char **pz,const char *zEnd,int nMin,int nMax,sxi64 *pVal)
-{
-	const char *z = *pz;
-	sxi64 v = 0;
-	int n = 0;
-	while( z < zEnd && n < nMax && SyisDigit(z[0]) ){
-		v = v*10 + (z[0] - '0');
-		z++;
-		n++;
-	}
-	if( n < nMin ){
-		return 0;
-	}
-	*pz = z;
-	*pVal = v;
-	return n;
-}
-/* Case-insensitive name-table lookup; returns 1-based index or 0 */
-static int DtEatName(const char **pz,const char *zEnd,const char **azNames,int nNames)
-{
-	int k;
-	for( k = 0 ; k < nNames ; k++ ){
-		int n = (int)SyStrlen(azNames[k]);
-		if( zEnd - *pz >= n && SyStrnicmp(*pz,azNames[k],(sxu32)n) == 0 ){
-			*pz += n;
-			return k + 1;
-		}
-	}
-	return 0;
-}
 /*
  * php's DateTime::createFromFormat engine.
  *
@@ -3091,6 +3065,127 @@ static void DtLastErrFf(ph7_vm *pVm,const dt_ff_diag *pDiag)
 		DtRecErr(&pVm->sDtLastErr,pDiag->aErrPos[k],pDiag->azErr[k]);
 	}
 	pVm->sDtLastErr.nErr = pDiag->nErr;   /* php counts what it dropped too */
+}
+/* strtol over a bounded run: it reads the digits it finds and stops at the
+ * first byte that is not one, which is how php's offset arithmetic reads each
+ * group of a colon spelling out of the middle of the run. */
+static sxi64 DtFfZoneNum(const char *z,const char *zEnd)
+{
+	sxi64 v = 0;
+	while( z < zEnd && SyisDigit(z[0]) ){
+		v = v*10 + (z[0] - '0');
+		z++;
+	}
+	return v;
+}
+/*
+ * php's timelib_parse_tz_cor, the digits behind a format zone's sign. It takes
+ * the whole run of digits and colons and then decides what the run MEANT from
+ * its length alone, which is why `+9999` is 99 hours and 99 minutes and `+2460`
+ * is 24 hours and 60: nothing here is in range of anything. A length the switch
+ * does not name is no offset at all. Answers 1 when the run spelled one.
+ */
+static int DtFfZoneCor(const char **pz,const char *zEnd,sxi32 *piOff)
+{
+	const char *z = *pz,*zBeg = *pz;
+	int n;
+	sxi64 v;
+	while( z < zEnd && (SyisDigit(z[0]) || z[0] == ':') ){ z++; }
+	n = (int)(z - zBeg);
+	*pz = z;
+	*piOff = 0;
+	switch( n ){
+	case 1: case 2:
+		*piOff = (sxi32)(DtFfZoneNum(zBeg,zEnd) * 3600);
+		return 1;
+	case 3: case 4:
+		if( zBeg[1] == ':' ){
+			*piOff = (sxi32)(DtFfZoneNum(zBeg,zEnd) * 3600
+				+ DtFfZoneNum(&zBeg[2],zEnd) * 60);
+		}else if( zBeg[2] == ':' ){
+			*piOff = (sxi32)(DtFfZoneNum(zBeg,zEnd) * 3600
+				+ DtFfZoneNum(&zBeg[3],zEnd) * 60);
+		}else{
+			v = DtFfZoneNum(zBeg,zEnd);
+			*piOff = (sxi32)((v / 100) * 3600 + (v % 100) * 60);
+		}
+		return 1;
+	case 5:
+		if( zBeg[2] != ':' ){ break; }
+		*piOff = (sxi32)(DtFfZoneNum(zBeg,zEnd) * 3600
+			+ DtFfZoneNum(&zBeg[3],zEnd) * 60);
+		return 1;
+	case 6:
+		v = DtFfZoneNum(zBeg,zEnd);
+		*piOff = (sxi32)((v / 10000) * 3600 + ((v / 100) % 100) * 60 + (v % 100));
+		return 1;
+	case 8:
+		if( zBeg[2] != ':' || zBeg[5] != ':' ){ break; }
+		*piOff = (sxi32)(DtFfZoneNum(zBeg,zEnd) * 3600
+			+ DtFfZoneNum(&zBeg[3],zEnd) * 60 + DtFfZoneNum(&zBeg[6],zEnd));
+		return 1;
+	default:
+		break;
+	}
+	return 0;
+}
+/*
+ * php's timelib_parse_zone, and there is no SHAPE to match here the way the
+ * string scanner matches one: a format's zone specifier reads whatever stands
+ * at the cursor. Blanks and opening parens go first, an uppercase `GMT` in
+ * front of a sign is dropped, a sign is a UTC OFFSET whatever follows it, and
+ * anything else is a NAME taken to the end of its run -- letters, digits, `/`,
+ * `_`, `+` and `-` all belong to it, which is why `gmt+3` is one unknown word
+ * where `GMT+3` is three hours.
+ *
+ * A sign settles the KIND before the digits are read, so an offset nothing
+ * follows is still an offset -- of zero, with a refusal beside it. Answers 1
+ * when the zone resolved, 0 when it did not.
+ */
+static int DtFfZone(const char **pz,const char *zEnd,int *piKind,sxi32 *piOff,
+	const char **pzName,int *pnName)
+{
+	const char *z = *pz;
+	int nPar = 0,bNeg,bIdent = 0,rc;
+	*piKind = 0;
+	*piOff = 0;
+	*pzName = 0;
+	*pnName = 0;
+	while( z < zEnd && (z[0] == ' ' || z[0] == '\t' || z[0] == '(') ){
+		if( z[0] == '(' ){ nPar++; }
+		z++;
+	}
+	if( zEnd - z > 3 && SyMemcmp(z,"GMT",3) == 0 && (z[3] == '+' || z[3] == '-') ){
+		z += 3;
+	}
+	if( z < zEnd && (z[0] == '+' || z[0] == '-') ){
+		bNeg = (z[0] == '-');
+		z++;
+		*piKind = DT_ZONE_OFFSET;
+		rc = DtFfZoneCor(&z,zEnd,piOff);
+		if( bNeg ){ *piOff = -*piOff; }
+		*pz = z;
+		return rc;
+	}
+	{
+		const char *zWord = z;
+		int nWord;
+		while( z < zEnd && (SyisAlphaNum((unsigned char)z[0]) || z[0] == '/'
+		 || z[0] == '_' || z[0] == '-' || z[0] == '+') ){
+			z++;
+		}
+		nWord = (int)(z - zWord);
+		rc = nWord > 0 && DtZoneName(zWord,nWord,piOff,pzName,pnName,&bIdent);
+		if( rc ){
+			*piKind = bIdent ? DT_ZONE_ID : DT_ZONE_ABBR;
+		}
+		while( nPar > 0 && z < zEnd && z[0] == ')' ){
+			z++;
+			nPar--;
+		}
+		*pz = z;
+		return rc;
+	}
 }
 /*
  * php's timelib_get_nr, the reader behind every plain digit field of a format:
@@ -3348,8 +3443,10 @@ struct dt_ff_res
 {
 	sxi64 y,mo,d,h,mi,s,us;   /* DT_UNSET == php's TIMELIB_UNSET */
 	sxi32 iOff;
-	int iOffKind;
-	char zName[16];
+	int bLocal;               /* php's is_localtime -- a zone was READ */
+	int iOffKind;             /* ...and php's zone_type, 0 when it meant nothing */
+	const char *zName;        /* a static literal, as every zone name here is */
+	int nName;
 	int bWday;                /* php's relative.have_weekday_relative */
 	sxi64 iWday;
 	dt_ff_diag sDiag;
@@ -3362,12 +3459,12 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 	sxi64 y = DT_UNSET,mo = DT_UNSET,d = DT_UNSET;
 	sxi64 h = DT_UNSET,mi = DT_UNSET,s = DT_UNSET,us = DT_UNSET;
 	sxi64 uVal = 0;
-	int bPlus = 0;
+	int bPlus = 0,bLocal = 0;
 	int bWday = 0;
 	sxi64 iWday = 0;
-	int iOffKind = 0;
+	int iOffKind = 0,nName = 0;
 	sxi32 iOffVal = 0;
-	char zName[16];
+	const char *zName = 0;
 	const char *zErr = 0;
 	const char *aWarnMsg[PH7_DT_MAX_WARN];
 	int aWarnPos[PH7_DT_MAX_WARN];
@@ -3381,7 +3478,6 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 	zEnd = &zFmt[DtCStrLen(zFmt,nFmt)];
 	zInEnd = &zIn[DtCStrLen(zIn,nIn)];
 	z = zIn;
-	zName[0] = 0;
 #define DT_FF_LOGERR(iPos,zMsg) \
 	{ int _p = (iPos),_k,_f = -1; \
 	  nErr++; \
@@ -3570,46 +3666,24 @@ static int DtFromFormat(const char *zFmt,int nFmt,const char *zIn,int nIn,
 			DtFillSytm(uVal,0,0,&sTm);
 			y = sTm.tm_year; mo = sTm.tm_mon + 1; d = sTm.tm_mday;
 			h = sTm.tm_hour; mi = sTm.tm_min; s = sTm.tm_sec;
-			iOffKind = 1;
+			bLocal = 1;
+			iOffKind = DT_ZONE_OFFSET;
 			iOffVal = 0;
+			zName = 0;
+			nName = 0;
 			break;
 				 }
-		case 'e': case 'T':{
-			static const char *azZone[] = {"UTC","GMT","Z"};
-			int k = DtEatName(&z,zInEnd,azZone,3);
-			if( k == 3 ){
-				iOffKind = 2; iOffVal = 0;
-			}else if( k ){
-				iOffKind = 3; iOffVal = 0;
-				SyMemcpy(azZone[k-1],zName,4);
-			}else if( z < zInEnd && (z[0]=='+' || z[0]=='-') ){
-				goto parse_num_off;
-			}else{
+		case 'e': case 'T': case 'P': case 'p': case 'O':
+			/* php's five zone specifiers are ONE rule, and it is the whole of
+			 * timelib_parse_zone rather than the shape each letter is named
+			 * after: `O` reads `UTC` and `e` reads `+02:00`. The zone is LOCAL
+			 * from here whatever the answer -- only the KIND is left at zero
+			 * when the name meant nothing. */
+			bLocal = 1;
+			if( !DtFfZone(&z,zInEnd,&iOffKind,&iOffVal,&zName,&nName) ){
 				zErr = "The timezone could not be found in the database";
 			}
 			break;
-				 }
-		case 'O': case 'P':
-parse_num_off:	{
-			int sign,oh,om = 0;
-			sxi64 t;
-			if( z >= zInEnd || (z[0] != '+' && z[0] != '-') ){
-				zErr = "The timezone could not be found in the database";
-				break;
-			}
-			sign = (z[0]=='-') ? -1 : 1;
-			z++;
-			if( !DtEatDigits(&z,zInEnd,2,2,&t) ){
-				zErr = "The timezone could not be found in the database";
-				break;
-			}
-			oh = (int)t;
-			if( z < zInEnd && z[0]==':' ){ z++; }
-			if( DtEatDigits(&z,zInEnd,2,2,&t) ){ om = (int)t; }
-			iOffKind = 1;
-			iOffVal = sign * (oh*3600 + om*60);
-			break;
-				 }
 		case '?':
 			z++;
 			break;
@@ -3730,11 +3804,12 @@ parse_num_off:	{
 	pOut->y = y; pOut->mo = mo; pOut->d = d;
 	pOut->h = h; pOut->mi = mi; pOut->s = s; pOut->us = us;
 	pOut->iOff = iOffVal;
+	pOut->bLocal = bLocal;
 	pOut->iOffKind = iOffKind;
+	pOut->zName = zName;
+	pOut->nName = nName;
 	pOut->bWday = bWday;
 	pOut->iWday = iWday;
-	SyMemcpy(zName,pOut->zName,sizeof(pOut->zName));
-	pOut->zName[sizeof(pOut->zName)-1] = 0;
 	DtFfDiag(&pOut->sDiag,nErr,nErrKept,aErrPos,aErrMsg,nWarn,aWarnPos,aWarnMsg);
 	return nErr > 0 ? -1 : 0;
 #undef DT_FF_CHECKSIGNED
@@ -3843,9 +3918,6 @@ static sxi64 DtFfResolve(const dt_ff_res *pRes,sxi64 iNow,int iNowUs,
  * cloned struct does.
  */
 #define DT_INIT  "__dtInit"
-#define DT_ZONE_OFFSET 1
-#define DT_ZONE_ABBR   2
-#define DT_ZONE_ID     3
 /* The kind the script DEFAULT zone has, and it is not the name's own rule:
  * date_default_timezone_set() takes a tz-database IDENTIFIER and nothing else, so
  * php reports a date built under a `GMT` default as type 3 while
@@ -3930,11 +4002,26 @@ static int DtOffName(char *zBuf,sxu32 nBuf,sxi32 iOff)
 static int DtOffNameSec(char *zBuf,sxu32 nBuf,sxi32 iOff)
 {
 	sxi32 a = iOff < 0 ? -iOff : iOff;
+	/* php renders this into a buffer sized for its own example -- "+05:00" or
+	 * "+05:00:01" -- so an offset whose hours want three digits comes back CUT.
+	 * Only a format can build one: every other door caps the offset below 100
+	 * hours, and `e` on `+9999` is 100 hours 39 minutes, named "+100:3". */
+	int nMax = (a % 60 == 0) ? 6 : 9;
+	int n;
 	if( a % 60 == 0 ){
-		return DtOffName(zBuf,nBuf,iOff);
+		n = DtOffName(zBuf,nBuf,iOff);
+	}else{
+		n = (int)SyBufferFormat(zBuf,nBuf,"%c%02d:%02d:%02d",
+			iOff < 0 ? '-' : '+',(int)(a / 3600),(int)((a % 3600) / 60),(int)(a % 60));
 	}
-	return (int)SyBufferFormat(zBuf,nBuf,"%c%02d:%02d:%02d",
-		iOff < 0 ? '-' : '+',(int)(a / 3600),(int)((a % 3600) / 60),(int)(a % 60));
+	if( n > nMax ){
+		/* php's snprintf CUTS the text at the buffer and still answers the
+		 * length it WANTED, so the name a script reads back carries php's own
+		 * terminator inside it: `+9999` is the seven bytes "+100:3\0". */
+		zBuf[nMax] = 0;
+		if( n > nMax + 1 ){ n = nMax + 1; }
+	}
+	return n;
 }
 /*
  * php's timezone_type read off a NAME alone -- the fallback for a zone that
@@ -5006,31 +5093,22 @@ static int DtCreateFromFormat(ph7_context *pCtx,int nArg,ph7_value **apArg,const
 	DtLastErrFf(pVm,&sRes.sDiag);
 	sState.iTs = DtFfResolve(&sRes,iNowFf,iNowUs,iZoneOff,&iResUs);
 	sState.uSec = iResUs;
-	switch( sRes.iOffKind ){
-		case 0:
-			sState.iOff = iZoneOff;
-			sState.zName = zZone;
-			sState.nName = nZone;
-			sState.iZoneKind = iZoneKind;
-			break;
-		case 2:
-			sState.iOff = 0;
-			sState.zName = "Z";
-			sState.nName = 1;
-			sState.iZoneKind = DT_ZONE_ABBR;
-			break;
-		case 3:
-			sState.iOff = sRes.iOff;
-			sState.zName = sRes.zName;
-			sState.nName = (int)SyStrlen(sRes.zName);
-			sState.iZoneKind = DtZoneTypeOf(sState.zName,sState.nName);
-			break;
-		default:
-			sState.iOff = sRes.iOff;
-			sState.nName = DtOffName(zNameBuf,sizeof(zNameBuf),sRes.iOff);
-			sState.zName = zNameBuf;
-			sState.iZoneKind = DT_ZONE_OFFSET;
-			break;
+	if( sRes.iOffKind == 0 ){
+		/* nothing the format read resolved, so the call's own zone stands */
+		sState.iOff = iZoneOff;
+		sState.zName = zZone;
+		sState.nName = nZone;
+		sState.iZoneKind = iZoneKind;
+	}else if( sRes.iOffKind == DT_ZONE_OFFSET ){
+		sState.iOff = sRes.iOff;
+		sState.nName = DtOffNameSec(zNameBuf,sizeof(zNameBuf),sRes.iOff);
+		sState.zName = zNameBuf;
+		sState.iZoneKind = DT_ZONE_OFFSET;
+	}else{
+		sState.iOff = sRes.iOff;
+		sState.zName = sRes.zName;
+		sState.nName = sRes.nName;
+		sState.iZoneKind = sRes.iOffKind;
 	}
 	pObj = DtNewInstance(pVm,pClass);
 	if( pObj == 0 ){
