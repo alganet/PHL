@@ -2517,13 +2517,54 @@ static const unsigned char sqlite3UpperToLower[] = {
 **
 **         abc[*]xyz        Matches "abc*xyz" only
 */
+/*
+ * One POSIX character class of a `[...]` set, as glibc's matcher answers it.
+ * The classes are ASCII-only in the C locale php runs its fnmatch()/glob() in,
+ * so a code point past 127 belongs to none of them.
+ */
+static int PatternPosixClass(const unsigned char *zName,int nName,int c)
+{
+	static const struct { const char *zName; int nName; } aClass[] = {
+		{ "alnum", 5 }, { "alpha", 5 }, { "blank", 5 }, { "cntrl", 5 },
+		{ "digit", 5 }, { "graph", 5 }, { "lower", 5 }, { "print", 5 },
+		{ "punct", 5 }, { "space", 5 }, { "upper", 5 }, { "xdigit", 6 },
+	};
+	int i,iWhich = -1;
+	for( i = 0 ; i < (int)(sizeof(aClass)/sizeof(aClass[0])) ; ++i ){
+		if( aClass[i].nName == nName
+		 && SyMemcmp(aClass[i].zName,(const char *)zName,(sxu32)nName) == 0 ){
+			iWhich = i;
+			break;
+		}
+	}
+	if( iWhich < 0 || c < 0 || c > 127 ){
+		/* An unknown class name matches nothing, which is what a matcher that
+		 * cannot name the set can honestly say. */
+		return 0;
+	}
+	switch( iWhich ){
+		case 0: return SyisAlphaNum(c);
+		case 1: return SyisAlpha(c);
+		case 2: return c == ' ' || c == '\t';
+		case 3: return c < 0x20 || c == 0x7F;
+		case 4: return SyisDigit(c);
+		case 5: return c > 0x20 && c < 0x7F;
+		case 6: return SyisLower(c);
+		case 7: return c >= 0x20 && c < 0x7F;
+		case 8: return c > 0x20 && c < 0x7F && !SyisAlphaNum(c);
+		case 9: return SyisSpace(c);
+		case 10: return SyisUpper(c);
+		default: return SyisHex(c);
+	}
+}
 static int patternCompare(
   const u8 *zPattern,              /* The glob pattern */
   const u8 *zString,               /* The string to compare against the glob */
   const int esc,                    /* The escape character */
-  int noCase
+  int noCase,
+  int bCaret                        /* `[^...]` inverts (fnmatch) or is a literal `^` (glob) */
 ){
-  int c, c2;
+  int c, c2, cLow;
   int invert;
   int seen;
   u8 matchOne = '?';
@@ -2548,8 +2589,13 @@ static int patternCompare(
           return 0;
         }
       }else if( c==matchSet ){
-	  if( (esc==0) || (matchSet<0x80) ) return 0;
-	  while( *zString && patternCompare(&zPattern[-1],zString,esc,noCase)==0 ){
+        /* A `[...]` set right after a `*`: try it at every remaining position.
+         * The two asserts SQLite has here became guards, and one of them --
+         * "'[' is a single-byte character" -- is ALWAYS true, so this branch
+         * returned 0 for every pattern of the shape `*[...]`. `*[ab]`,
+         * `a*[0-9]` and `*[[:digit:]]` matched NOTHING, in fnmatch(), in
+         * glob() and in strglob() alike. */
+        while( *zString && patternCompare(&zPattern[-1],zString,esc,noCase,bCaret)==0 ){
           SQLITE_SKIP_UTF8(zString);
         }
         return *zString!=0;
@@ -2568,7 +2614,7 @@ static int patternCompare(
           }
         }
         if( c2==0 ) return 0;
-		if( patternCompare(zPattern,zString,esc,noCase) ) return 1;
+		if( patternCompare(zPattern,zString,esc,noCase,bCaret) ) return 1;
       }
       return 0;
     }else if( !prevEscape && c==matchOne ){
@@ -2577,13 +2623,30 @@ static int patternCompare(
       }
     }else if( c==matchSet ){
       int prior_c = 0;
-      if( esc == 0 ) return 0;
+      /* SQLite asserts here that its GLOB has no escape character; the guard
+       * that replaced the assert reads the condition BACKWARDS, so a set
+       * matched nothing whenever escaping was turned off -- every `[...]` in
+       * an `fnmatch($p,$s,FNM_NOESCAPE)` call answered false. */
       seen = 0;
       invert = 0;
       c = PH7_Utf8Read(zString, 0, &zString);
       if( c==0 ) return 0;
+      /* A case-INSENSITIVE match folds inside the set too: this branch ignored
+       * noCase entirely, so `fnmatch('[a-c]','B',FNM_CASEFOLD)` was false and
+       * its negation `[!a-c]` was true -- both the opposite of php's. The
+       * folded subject is what MEMBERS and RANGES are compared against; a
+       * character CLASS is not folded at all (glibc tests `[[:upper:]]`
+       * against the character as written, FNM_CASEFOLD or not). */
+      cLow = c;
+      if( noCase ){
+        GlogUpperToLower(cLow);
+      }
       c2 = PH7_Utf8Read(zPattern, 0, &zPattern);
-      if( c2=='^' ){
+      /* POSIX spells the negation `!` and glibc accepts `^` as well; php's
+       * fnmatch()/glob() are glibc's, so BOTH invert. Only `^` did here, which
+       * made `[!a]` a set holding `!` and `a` -- the exact INVERSE answer for
+       * the spelling a shell uses. */
+      if( c2=='!' || (bCaret && c2=='^') ){
         invert = 1;
         c2 = PH7_Utf8Read(zPattern, 0, &zPattern);
       }
@@ -2592,15 +2655,42 @@ static int patternCompare(
         c2 = PH7_Utf8Read(zPattern, 0, &zPattern);
       }
       while( c2 && c2!=']' ){
+        int cFold = c2;
+        if( noCase ){
+          GlogUpperToLower(cFold);
+        }
+        if( c2=='[' && zPattern[0]==':' ){
+          /* A POSIX character CLASS, `[:alpha:]`, which glibc's matcher knows
+           * and this one did not -- the whole `[[:digit:]]` bracket read as the
+           * literal set `[:digt` and matched the wrong characters in silence. */
+          const unsigned char *zName = &zPattern[1];
+          const unsigned char *zEnd = zName;
+          while( zEnd[0] != 0 && !(zEnd[0]==':' && zEnd[1]==']') ){
+            zEnd++;
+          }
+          if( zEnd[0] != 0 ){
+            if( PatternPosixClass(zName,(int)(zEnd - zName),c) ){
+              seen = 1;
+            }
+            zPattern = zEnd + 2;
+            prior_c = 0;
+            c2 = PH7_Utf8Read(zPattern, 0, &zPattern);
+            continue;
+          }
+        }
         if( c2=='-' && zPattern[0]!=']' && zPattern[0]!=0 && prior_c>0 ){
           c2 = PH7_Utf8Read(zPattern, 0, &zPattern);
-          if( c>=prior_c && c<=c2 ) seen = 1;
+          cFold = c2;
+          if( noCase ){
+            GlogUpperToLower(cFold);
+          }
+          if( cLow>=prior_c && cLow<=cFold ) seen = 1;
           prior_c = 0;
         }else{
-          if( c==c2 ){
+          if( cLow==cFold ){
             seen = 1;
           }
-          prior_c = c2;
+          prior_c = cFold;
         }
         c2 = PH7_Utf8Read(zPattern, 0, &zPattern);
       }
@@ -2628,13 +2718,14 @@ static int patternCompare(
  * Wrapper around patternCompare() defined above.
  * See block comment above for more information.
  */
-static int Glob(const unsigned char *zPattern,const unsigned char *zString,int iEsc,int CaseCompare)
+static int Glob(const unsigned char *zPattern,const unsigned char *zString,int iEsc,
+	int CaseCompare,int bCaret)
 {
 	int rc;
 	if( iEsc < 0 ){
 		iEsc = '\\';
 	}
-	rc = patternCompare(zPattern,zString,iEsc,CaseCompare);
+	rc = patternCompare(zPattern,zString,iEsc,CaseCompare,bCaret);
 	return rc;
 }
 /*
@@ -2678,8 +2769,10 @@ static int PH7_builtin_fnmatch(ph7_context *pCtx,int nArg,ph7_value **apArg)
 			noCase = 1;
 		}
 	}
-	/* Go globbing */
-	rc = Glob((const unsigned char *)zPattern,(const unsigned char *)zString,iEsc,noCase);
+	/* Go globbing. fnmatch() is glibc's, whose matcher takes `^` as a second
+	 * spelling of the negation -- glob(3)'s does NOT, and strglob() below
+	 * carries glob()'s rule because that is what the prelude glob() drives. */
+	rc = Glob((const unsigned char *)zPattern,(const unsigned char *)zString,iEsc,noCase,TRUE);
 	/* Globbing result */
 	ph7_result_bool(pCtx,rc);
 	return PH7_OK;
@@ -2709,8 +2802,9 @@ static int PH7_builtin_strglob(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	/* Extract the pattern and the string */
 	zPattern  = ph7_value_to_string(apArg[0],0);
 	zString = ph7_value_to_string(apArg[1],0);
-	/* Go globbing */
-	rc = Glob((const unsigned char *)zPattern,(const unsigned char *)zString,iEsc,0);
+	/* Go globbing, with glob(3)'s set rules: only `!` inverts, and a `^` right
+	 * after the `[` is an ordinary member of the set. */
+	rc = Glob((const unsigned char *)zPattern,(const unsigned char *)zString,iEsc,0,FALSE);
 	/* Globbing result */
 	ph7_result_bool(pCtx,rc);
 	return PH7_OK;

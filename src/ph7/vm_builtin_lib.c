@@ -117,6 +117,48 @@
 	"    return $pArray;"\
 	"  }"\
 	"}"\
+	"/* A pattern that ENDS in a slash names DIRECTORIES, and php keeps the slash:"\
+	"   glob('d/') is ['d/'] and glob('d/*' . '/') is ['d/a/','d/b/']. Answer the base"\
+	"   without it, as directories, and put it back -- ONE slash at a time, so a"\
+	"   pattern ending in two keeps both. */"\
+	"if( substr($pattern,-1) === '/' ){"\
+	"  $zBase = substr($pattern,0,-1);"\
+	"  if( $zBase === '' ){"\
+	"    /* the pattern was '/' itself */"\
+	"    $pArray = is_dir('/') ? array('/') : array();"\
+	"  }else{"\
+	"    $pArray = array();"\
+	"    foreach( glob($zBase,($flags & ~(GLOB_MARK|GLOB_NOCHECK)) | GLOB_ONLYDIR) as $zHit ){"\
+	"      $pArray[] = $zHit . '/';"\
+	"    }"\
+	"    /* php sorts the names it ANSWERS, slash included, so `a/../` comes before"\
+	"       `a/./` -- sorting the bases and appending afterwards has them the other"\
+	"       way round. */"\
+	"    if( ($flags & GLOB_NOSORT) == 0 ){ sort($pArray); }"\
+	"  }"\
+	"  if( ($flags & GLOB_NOCHECK) && sizeof($pArray) < 1 ){ $pArray[] = $pattern; }"\
+	"  return $pArray;"\
+	"}"\
+	"/* A wildcard in the DIRECTORY part is matched LEVEL BY LEVEL, which is what"\
+	"   glob(3) does: list the directories that part names, then glob the last"\
+	"   component inside each. Reading only the last component -- all this used to"\
+	"   do -- answered [] for `src/*' . '/*.php', the everyday two-level spelling,"\
+	"   and for every deeper one. */"\
+	"$slash = strrpos($pattern,'/');"\
+	"if( $slash !== false ){"\
+	"  $zHead = substr($pattern,0,$slash);"\
+	"  if( $zHead !== '' && strcspn($zHead,'*?[') != strlen($zHead) ){"\
+	"    $pArray = array();"\
+	"    foreach( glob($zHead . '/') as $zDirHit ){"\
+	"      foreach( glob($zDirHit . substr($pattern,$slash+1),$flags & ~GLOB_NOCHECK) as $zHit ){"\
+	"        $pArray[] = $zHit;"\
+	"      }"\
+	"    }"\
+	"    if( ($flags & GLOB_NOSORT) == 0 ){ sort($pArray); }"\
+	"    if( ($flags & GLOB_NOCHECK) && sizeof($pArray) < 1 ){ $pArray[] = $pattern; }"\
+	"    return $pArray;"\
+	"  }"\
+	"}"\
 	"/* php keeps the literal directory portion of the pattern in every result;"\
 	"   split off everything up to and including the last '/' as the prefix. */"\
 	"$slash = strrpos($pattern,'/');"\
