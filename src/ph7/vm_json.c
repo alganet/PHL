@@ -703,7 +703,7 @@ static sxi32 VmJsonEncode(
 				SyHashResetLoopCursor(&pThis->hAttr);
 				while( (pAttrEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
 					VmClassAttr *pVmAttr = (VmClassAttr *)pAttrEntry->pUserData;
-					if( (pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HIDDEN))
+					if( PH7_ATTR_UNPRESENTED(pVmAttr)
 					 || pVmAttr->pAttr->iProtection != PH7_CLASS_PROT_PUBLIC ){
 						continue;
 					}

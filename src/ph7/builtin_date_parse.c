@@ -4303,6 +4303,28 @@ static int DtIvParseRelative(const char *zIn,int nIn,sxi64 *aOut,int *piPos,
 	aOut[DT_IV_USLOT] = sVec.rus;
 	return 0;
 }
+/*
+ * php's from-string interval is a different OBJECT: it keeps the STRING and
+ * presents `from_string` and `date_string` alone, answering the ten fields from
+ * what it parsed whenever a script asks for one. PHL fills the ten as it always
+ * did -- every reader, the write filter, format(), add()/sub() and DatePeriod go
+ * on reading real slots -- and hides them from the surfaces that SHOW the
+ * object, which is the whole of the difference php's shape makes.
+ */
+static void DtIvFromString(ph7_vm *pVm,ph7_class_instance *pObj,const char *zIn,int nIn)
+{
+	static const char * const azHide[] = {
+		"y","m","d","h","i","s","f","invert","days"
+	};
+	int k;
+	PH7_NativeSetAttrBool(&(*pVm),pObj,"from_string",1);
+	/* the ON-DEMAND slot: this write is what puts the name on the object, and it
+	 * lands behind `from_string`, which is php's order */
+	PH7_NativeSetAttrStr(&(*pVm),pObj,"date_string",zIn,nIn);
+	for( k = 0 ; k < (int)SX_ARRAYSIZE(azHide) ; k++ ){
+		PH7_NativeHideAttr(pObj,azHide[k]);
+	}
+}
 /* Write the six relative fields onto a DateInterval instance. */
 static void DtIvStore(ph7_vm *pVm,ph7_class_instance *pObj,const sxi64 *aVal)
 {
@@ -4347,6 +4369,12 @@ static void DtIntervalSet(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeSetCtx
 	if( nName == sizeof("from_string")-1 && SyMemcmp(zName,"from_string",nName) == 0 ){
 		SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),
 			"Cannot create dynamic property DateInterval::$from_string");
+		pCtx->zThrowClass = "Error";
+		return;
+	}
+	if( nName == sizeof("date_string")-1 && SyMemcmp(zName,"date_string",nName) == 0 ){
+		SyBufferFormat(pCtx->zThrowMsg,sizeof(pCtx->zThrowMsg),
+			"Cannot create dynamic property DateInterval::$date_string");
 		pCtx->zThrowClass = "Error";
 		return;
 	}
@@ -4415,7 +4443,6 @@ static ph7_class_instance * DtIvFromDateString(ph7_context *pCtx,const char *zIn
 	ph7_class *pClass = DtFactoryClass(pCtx,"DateInterval");
 	ph7_class_instance *pObj;
 	sxi64 aVal[DT_IV_USLOT + 1];
-	ph7_value sVal;
 	int rc;
 	*pbNonRel = 0;
 	if( pClass == 0 ){
@@ -4430,11 +4457,7 @@ static ph7_class_instance * DtIvFromDateString(ph7_context *pCtx,const char *zIn
 		return 0;
 	}
 	DtIvStore(pVm,pObj,aVal);
-	/* php marks the interval as built from a string; the `date_string` property it
-	 * adds with it needs a dynamic property PHL has no equivalent of (§7.4). */
-	PH7_MemObjInitFromBool(pVm,&sVal,1);
-	PH7_NativeSetProp(pVm,pObj,"from_string",sizeof("from_string")-1,&sVal);
-	PH7_MemObjRelease(&sVal);
+	DtIvFromString(pVm,pObj,zIn,nIn);
 	return pObj;
 }
 static int vm_builtin_DateInterval_createFromDateString(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -5473,7 +5496,14 @@ static void DtAddNativeProps(ph7_vm *pVm,ph7_class_instance *pThis,const char *z
 		ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
 		ph7_value *pVal;
 		ph7_value sKey;
+		SyHashEntry *pOwn;
 		if( pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HIDDEN) ){
+			continue;
+		}
+		/* ...and a slot THIS object hides is not part of its shape either: a
+		 * from-string interval serializes as the two names php writes. */
+		pOwn = SyHashGet(&pThis->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName));
+		if( pOwn && (((VmClassAttr *)pOwn->pUserData)->iState & VM_CLASS_ATTR_UNSEEN) ){
 			continue;
 		}
 		pVal = PH7_ClassInstanceFetchAttr(pThis,&pAttr->sName);
@@ -6178,32 +6208,32 @@ static void DtIvRestore(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pData)
 	DtIvSetUsec(&(*pVm),pThis,
 		pVal && (pVal->iFlags & (MEMOBJ_INT|MEMOBJ_REAL|MEMOBJ_BOOL|MEMOBJ_STRING))
 			? DtIvUsecOfReal((double)PH7_ValuePeekReal(pVal)) : 0);
-	pVal = ph7_array_fetch(pData,"from_string",-1);
-	if( pVal && (pVal->iFlags & MEMOBJ_BOOL) && pVal->x.iVal ){
-		/* php's LAZY interval: it keeps the STRING and presents `from_string` and
-		 * `date_string` alone, answering the ten fields from the text on demand.
-		 * PHL has no lazy shape (PLAN §7.4), so the text is parsed here and the
-		 * ten are filled: the ANSWERS match php, only the shape does not -- which
-		 * is better than the -1s a payload php wrote would otherwise restore to. */
-		ph7_value *pStr = ph7_array_fetch(pData,"date_string",-1);
+	/* php's LAZY interval, and what it keys on is the STRING rather than the
+	 * flag beside it: a payload carrying `date_string` comes back as an interval
+	 * built from that string -- the ten fields parsed out of it and hidden behind
+	 * the two names php shows -- while one carrying `from_string` alone is an
+	 * ordinary interval whose fields the reader above already filled. */
+	pVal = ph7_array_fetch(pData,"date_string",-1);
+	if( pVal && (pVal->iFlags & MEMOBJ_STRING) ){
 		sxi64 aVal[DT_IV_USLOT + 1];
 		int nIn,iPos = 0;
 		char cAt = ' ';
 		const char *zIn,*zReason = "";
-		PH7_NativeSetAttrBool(&(*pVm),pThis,"from_string",1);
-		if( pStr && (pStr->iFlags & MEMOBJ_STRING) ){
-			zIn = (const char *)SyBlobData(&pStr->sBlob);
-			nIn = (int)SyBlobLength(&pStr->sBlob);
-			if( DtIvParseRelative(zIn,nIn,aVal,&iPos,&cAt,&zReason) == 0 ){
-				/* DtIvStore writes the six fields and the microseconds; `days` is
-				 * php's own answer for an interval that was not measured between
-				 * two dates, and the flag above stays as it was set. */
-				DtIvStore(&(*pVm),pThis,aVal);
-				PH7_NativeSetAttrBool(&(*pVm),pThis,"days",0);
-			}
+		zIn = (const char *)SyBlobData(&pVal->sBlob);
+		nIn = (int)SyBlobLength(&pVal->sBlob);
+		if( DtIvParseRelative(zIn,nIn,aVal,&iPos,&cAt,&zReason) == 0 ){
+			/* DtIvStore writes the six fields and the microseconds; `days` is
+			 * php's own answer for an interval that was not measured between two
+			 * dates. */
+			DtIvStore(&(*pVm),pThis,aVal);
+			PH7_NativeSetAttrBool(&(*pVm),pThis,"days",0);
 		}
+		DtIvFromString(&(*pVm),pThis,zIn,nIn);
 		return;
 	}
+	/* ...and a payload without one is an ordinary interval whatever its
+	 * `from_string` says: php answers false there even for the `b:1` a hand-made
+	 * payload carries. */
 	PH7_NativeSetAttrBool(&(*pVm),pThis,"from_string",0);
 }
 /*
@@ -6506,6 +6536,11 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "invert",      PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 },
 		{ "days",        PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL,   0, 0, 0.0 }, 0 },
 		{ "from_string", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL,   0, 0, 0.0 }, 0 },
+		/* php's `date_string` is on an interval built from a STRING and on no
+		 * other, so it is installed by the write that names it: an ordinary
+		 * interval does not carry the name at all, and `isset()` says so. */
+		{ "date_string", PH7_MOD_PUBLIC|PH7_MOD_ONDEMAND,
+		  { 0, 0, PH7_NATIVE_VAL_STRING, 0, "", 0.0 }, 0 },
 		/* php's timelib_rel_time.us, the count `f` renders: see DtIvUsec. */
 		{ DT_IV_US,      PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
 		{ DT_INIT,       PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },

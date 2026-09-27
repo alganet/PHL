@@ -1263,6 +1263,14 @@ PH7_PRIVATE ph7_class_instance * PH7_CloneClassInstance(ph7_class_instance *pSrc
 			/* Dynamic property: synthesize the matching slot on the clone. */
 			pvDest = PH7_VmCreateDynamicAttr(pVm,pClone,
 				SyStringData(&pSrcAttr->pAttr->sName),SyStringLength(&pSrcAttr->pAttr->sName),&pDestAttr);
+		}else if( pSrcAttr->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_ONDEMAND ){
+			/* An ON-DEMAND property is installed by the write that names it, so
+			 * the clone's frame has no slot for one -- and php's copy carries it
+			 * (a cloned from-string DateInterval keeps its `date_string`). */
+			VmRecreateDeclaredAttr(pVm,pClone,pSrcAttr->pAttr,&pDestAttr);
+			if( pDestAttr ){
+				pvDest = ExtractClassAttrValue(pVm,pDestAttr);
+			}
 		}
 		/* Fetch the source value LAST: PH7_VmCreateDynamicAttr above may have
 		 * reserved a slot and reallocated pVm->aMemObj, which would dangle any
@@ -1925,7 +1933,8 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 			SyHashResetLoopCursor(&pThis->hAttr);
 			while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0){
 				VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
-				if((pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_HOOK_VIRTUAL|PH7_CLASS_ATTR_HIDDEN)) == 0
+				if( !PH7_ATTR_UNPRESENTED(pVmAttr)
+				 && (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL) == 0
 				 && !PH7_ClassAttrUninitialized(pVmAttr) ){
 					nProp++;
 				}
@@ -1945,7 +1954,8 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceDump(SyBlob *pOut,ph7_class_instance *pThis,i
 	SyHashResetLoopCursor(&pThis->hAttr);
 	while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0){
 		VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
-		if((pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_HOOK_VIRTUAL|PH7_CLASS_ATTR_HIDDEN)) == 0 ){
+		if( !PH7_ATTR_UNPRESENTED(pVmAttr)
+		 && (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL) == 0 ){
 			if( PH7_ClassAttrUninitialized(pVmAttr) ){
 				/* var_dump names the property and prints php's marker in place of
 				 * the value it has not got; print_r has no such marker and leaves
@@ -2221,7 +2231,7 @@ static sxi32 ClassInstanceToHashmapRaw(ph7_class_instance *pThis,ph7_hashmap *pM
 	while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
 		/* Point to the current attribute */
 		pAttr = (VmClassAttr *)pEntry->pUserData;
-		if( pAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HIDDEN) ){
+		if( PH7_ATTR_UNPRESENTED(pAttr) ){
 			/* A static property is the CLASS's, not the object's: php's cast
 			 * yields only the instance's own properties. */
 			continue;
@@ -2323,7 +2333,7 @@ PH7_PRIVATE sxi32 PH7_ClassInstanceWalk(
 	while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
 		/* Point to the current attribute */
 		pAttr = (VmClassAttr *)pEntry->pUserData;
-		if( pAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HIDDEN) ){
+		if( PH7_ATTR_UNPRESENTED(pAttr) ){
 			/* Class-level members are not part of the object (php) */
 			continue;
 		}

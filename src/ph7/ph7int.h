@@ -1836,7 +1836,14 @@ struct ph7_class_attr
                                             * C::$p`. Every write form is refused, not just `=`:
                                             * `++`, a by-reference bind, a destructuring target, and
                                             * a write to an object that was never constructed. */
-/* next free bit: 0x2000000 */
+#define PH7_CLASS_ATTR_NATIVE_ONDEMAND 0x2000000 /* A LAZY property the group materialization
+                                            * SKIPS: it is installed only when a C body writes
+                                            * it by name, so an object that never took one does
+                                            * not carry the name at all. php's DateInterval
+                                            * `date_string` is the case -- it exists on an
+                                            * interval built from a STRING and on no other, and
+                                            * `isset()`/`property_exists()` answer false there. */
+/* next free bit: 0x4000000 */
 /*
  * Does a store into this property's slot have to be FILTERED? Two unrelated
  * reasons say yes -- a declared TYPE to enforce and a native class's own write
@@ -1870,6 +1877,8 @@ struct ph7_class_attr
 #define PH7_MOD_READONLY   0x40 /* PROPERTY only: php's `readonly` (PH7_CLASS_ATTR_READONLY) */
 #define PH7_MOD_PROT_SET   0x80 /* PROPERTY only: php's `protected(set)` asymmetric visibility */
 #define PH7_MOD_PRIV_SET   0x100 /* PROPERTY only: php's `private(set)` asymmetric visibility */
+#define PH7_MOD_ONDEMAND   0x200 /* PROPERTY only: installed on the object only when a C body
+                                  * writes it (PH7_CLASS_ATTR_NATIVE_ONDEMAND) */
 /* Literal kinds a native class constant may carry */
 #define PH7_NATIVE_VAL_NULL   0
 #define PH7_NATIVE_VAL_INT    1
@@ -1999,6 +2008,7 @@ PH7_PRIVATE sxi32 PH7_NativeClassMarkVirtualProps(ph7_vm *pVm,const char *zClass
 PH7_PRIVATE sxi32 PH7_NativeClassMarkLazyProps(ph7_vm *pVm,const char *zClass,int bDefaultRead);
 PH7_PRIVATE sxi32 PH7_NativeClassMarkNoWriteProps(ph7_vm *pVm,const char *zClass);
 PH7_PRIVATE void PH7_NativeMaterializeLazy(ph7_vm *pVm,ph7_class_instance *pObj);
+PH7_PRIVATE void PH7_NativeHideAttr(ph7_class_instance *pObj,const char *zName);
 /*
  * The refusal a native compare handler carried back (ph7_vm::zCmpRefusalClass):
  * pending? raise it here, where a throw can be routed; raise it on a host CALL
@@ -2149,6 +2159,17 @@ struct ph7_class_instance
  */
 #define VM_INSTANCE_LAZY_DONE 0x010
 /*
+ * Is this instance slot kept OUT of every surface that shows the object? Two
+ * unrelated reasons say yes: the class calls it an engine slot
+ * (PH7_CLASS_ATTR_HIDDEN) or this one OBJECT hides it (VM_CLASS_ATTR_UNSEEN).
+ * Class-level members are not the object's either, so the one test covers all
+ * three.
+ */
+#define PH7_ATTR_UNPRESENTED(pVmAttr) \
+	(((pVmAttr)->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT \
+	                              |PH7_CLASS_ATTR_HIDDEN)) != 0 \
+	 || ((pVmAttr)->iState & VM_CLASS_ATTR_UNSEEN) != 0)
+/*
  * Is this DECLARED attribute absent from the object because its class declares it
  * LAZILY and nothing has installed the set yet? The two miss paths -- a property
  * write and a by-reference bind -- ask before they re-create a declared slot.
@@ -2286,6 +2307,14 @@ struct VmClassAttr
                                     * because php's own handler is: a PDOStatement nobody
                                     * built a cursor for takes the write, and only one
                                     * carrying a statement refuses. */
+#define VM_CLASS_ATTR_UNSEEN  0x10 /* Per-INSTANCE presentation hide: the slot reads, writes and
+                                    * answers isset() the way it always did, and every surface
+                                    * that SHOWS an object -- var_dump/print_r/var_export, the
+                                    * (array) cast, get_object_vars, foreach, json_encode,
+                                    * serialize, http_build_query and Reflection's object dump
+                                    * -- walks past it. php's from-string DateInterval is the
+                                    * case: it answers `$i->d` from the string it kept while
+                                    * presenting `from_string` and `date_string` alone. */
 #define VM_CLASS_ATTR_TYPE_DEFER 0x04 /* Typed STATIC property whose eagerly-evaluated DEFAULT failed
                                        * its type check at class mount. php evaluates static defaults
                                        * lazily, so the failure is deferred: any static-property access

@@ -1862,8 +1862,8 @@ static void ReflectExportValue(ph7_context *pCtx, SyBlob *pOut, ph7_value *pVal,
 			while((pEntry = SyHashGetNextEntry(&pObj->hAttr)) != 0 ){
 				VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
 				ph7_value *pSlot;
-				if( pVmAttr->pAttr->iFlags
-					& (PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_HOOK_VIRTUAL|PH7_CLASS_ATTR_HIDDEN) ){
+				if( PH7_ATTR_UNPRESENTED(pVmAttr)
+				 || (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL) ){
 					continue; /* class-level members are not part of the object */
 				}
 				pSlot = (ph7_value *)SySetAt(&pCtx->pVm->aMemObj, pVmAttr->nIdx);
@@ -4063,6 +4063,26 @@ static int ReflectMemberList(ph7_context *pCtx, int iKind, const char *zClass,
 			 * kind (DatePeriod's seven, PH7_CLASS_ATTR_NATIVE_LAZY_DEFAULT) is
 			 * reported whatever the object holds, because php declares it. */
 			continue;
+		}
+		if( iKind == REFLECT_MEMBER_PROP && pObj == 0 && pM->pAttr != 0
+		 && (pM->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_ONDEMAND) != 0 ){
+			/* An ON-DEMAND property belongs to the objects that took it, so the
+			 * CLASS's list -- which php builds from declarations and DateInterval
+			 * has none of -- does not gain a name for it. */
+			continue;
+		}
+		if( iKind == REFLECT_MEMBER_PROP && pObj != 0 && pM->pAttr != 0
+		 && (pM->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_LAZY) != 0
+		 && (pM->pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_LAZY_DEFAULT) == 0 ){
+			/* ...and for the same reason a property the object HIDES or never took
+			 * is not on it either: php's from-string DateInterval reflects the two
+			 * names it presents, and an ordinary one has no `date_string` at all. */
+			SyHashEntry *pOwn = SyHashGet(&pObj->hAttr,
+				SyStringData(&pM->pAttr->sName),SyStringLength(&pM->pAttr->sName));
+			if( pOwn == 0
+			 || (((VmClassAttr *)pOwn->pUserData)->iState & VM_CLASS_ATTR_UNSEEN) ){
+				continue;
+			}
 		}
 		if( bFilter ){
 			sxi64 iMods = iKind == REFLECT_MEMBER_METHOD ? ReflectMethodModifiers(pM->pMeth)

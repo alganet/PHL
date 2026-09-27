@@ -173,9 +173,8 @@ static int VmAttrIsProperty(VmClassAttr *pVmAttr)
 	 * the SPL DECORATOR family, whose state php does not round-trip either — its
 	 * payload is `O:16:"IteratorIterator":0:{}`, which is exactly what dropping the
 	 * slots produces. */
-	return (pVmAttr->pAttr->iFlags
-		& (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HOOK_VIRTUAL
-		  |PH7_CLASS_ATTR_HIDDEN)) == 0;
+	return !PH7_ATTR_UNPRESENTED(pVmAttr)
+		&& (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL) == 0;
 }
 /* __sleep() walker state: emit each named property in the array's order. */
 typedef struct sleep_ctx sleep_ctx;

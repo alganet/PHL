@@ -206,8 +206,43 @@ static void NativeAttrMarkInit(ph7_class_instance *pObj,const char *zName)
  */
 static ph7_value * NativeAttrForWrite(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName)
 {
+	ph7_value *pSlot;
 	PH7_NativeMaterializeLazy(&(*pVm),pObj);
-	return PH7_NativeAttr(pObj,zName);
+	pSlot = PH7_NativeAttr(pObj,zName);
+	if( pSlot == 0 && pObj ){
+		/* An ON-DEMAND property is installed by the write that names it and by
+		 * nothing else, so an object nobody wrote one on does not carry the name
+		 * (php's `date_string`, which exists on a from-string DateInterval alone). */
+		SyHashEntry *pEntry = SyHashGet(&pObj->pClass->hAttr,zName,(sxu32)SyStrlen(zName));
+		if( pEntry ){
+			ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
+			if( pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_ONDEMAND ){
+				VmClassAttr *pVmAttr = 0;
+				VmRecreateDeclaredAttr(&(*pVm),pObj,pAttr,&pVmAttr);
+				if( pVmAttr ){
+					pVmAttr->iState &= ~VM_CLASS_ATTR_UNINIT;
+					pSlot = (ph7_value *)SySetAt(&pVm->aMemObj,pVmAttr->nIdx);
+				}
+			}
+		}
+	}
+	return pSlot;
+}
+/*
+ * Keep one of this OBJECT's slots out of every surface that shows it, while it
+ * goes on reading, writing and answering isset() as it did
+ * (VM_CLASS_ATTR_UNSEEN).
+ */
+PH7_PRIVATE void PH7_NativeHideAttr(ph7_class_instance *pObj,const char *zName)
+{
+	SyHashEntry *pEntry;
+	if( pObj == 0 ){
+		return;
+	}
+	pEntry = SyHashGet(&pObj->hAttr,zName,(sxu32)SyStrlen(zName));
+	if( pEntry ){
+		((VmClassAttr *)pEntry->pUserData)->iState |= VM_CLASS_ATTR_UNSEEN;
+	}
 }
 PH7_PRIVATE void PH7_NativeSetAttrInt(ph7_vm *pVm,ph7_class_instance *pObj,const char *zName,sxi64 iVal)
 {
@@ -509,6 +544,9 @@ PH7_PRIVATE sxi32 PH7_NativeClassInstallProperty(ph7_vm *pVm,ph7_class *pClass,
 	}
 	if( pDef->iMods & PH7_MOD_HIDDEN ){
 		iFlags |= PH7_CLASS_ATTR_HIDDEN;
+	}
+	if( pDef->iMods & PH7_MOD_ONDEMAND ){
+		iFlags |= PH7_CLASS_ATTR_NATIVE_ONDEMAND;
 	}
 	/* php declares several native slots readonly and asymmetrically visible
 	 * (`public protected(set) readonly string $path` on Directory), and both are
@@ -1103,8 +1141,9 @@ PH7_PRIVATE void PH7_NativeMaterializeLazy(ph7_vm *pVm,ph7_class_instance *pObj)
 		ph7_class_attr *pAttr = (ph7_class_attr *)pEntry->pUserData;
 		VmClassAttr *pVmAttr = 0;
 		ph7_value *pSlot;
-		if( (pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_LAZY) == 0 ){
-			continue;
+		if( (pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_LAZY) == 0
+		 || (pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_ONDEMAND) != 0 ){
+			continue;   /* ...and an ON-DEMAND one waits for the write that names it */
 		}
 		if( SyHashGet(&pObj->hAttr,SyStringData(&pAttr->sName),SyStringLength(&pAttr->sName)) != 0 ){
 			continue;

@@ -4552,7 +4552,7 @@ static void HttpQueryWalkObject(http_query_state *p,ph7_class_instance *pThis,
 		VmClassAttr *pAttr = (VmClassAttr *)pEntry->pUserData;
 		SyString *pName = &pAttr->pAttr->sName;
 		ph7_value *pValue;
-		if( pAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HIDDEN) ){
+		if( PH7_ATTR_UNPRESENTED(pAttr) ){
 			continue;
 		}
 		if( pAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL ){

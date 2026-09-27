@@ -180,6 +180,19 @@ PH7_PRIVATE int vm_builtin_property_exists(ph7_context *pCtx,int nArg,ph7_value 
 				 * answered true for both. */
 				SyHashEntry *pAttrE = SyHashGet(&pClass->hAttr,(const void *)zName,(sxu32)nLen);
 				ph7_class_attr *pAttr = pAttrE ? (ph7_class_attr *)pAttrE->pUserData : 0;
+				if( pAttr && (pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_ONDEMAND)
+				 && (apArg[0]->iFlags & MEMOBJ_OBJ) ){
+					/* An ON-DEMAND property is on the objects that took it and on no
+					 * other: php declares none of them, so the class table cannot be
+					 * what answers here. */
+					ph7_class_instance *pThis = (ph7_class_instance *)apArg[0]->x.pOther;
+					if( pThis == 0
+					 || SyHashGet(&pThis->hAttr,(const void *)zName,(sxu32)nLen) == 0 ){
+						pAttr = 0;
+					}
+				}else if( pAttr && (pAttr->iFlags & PH7_CLASS_ATTR_NATIVE_ONDEMAND) ){
+					pAttr = 0;   /* asked about the CLASS: php declares no such name */
+				}
 				if( pAttr && (pAttr->iFlags & PH7_CLASS_ATTR_CONSTANT) == 0 ){
 					/* A base's PRIVATE property is invisible to the child it was asked
 					 * about, php's `property_info->ce == ce` rule: PHL copies one down
@@ -1360,7 +1373,7 @@ PH7_PRIVATE int vm_builtin_get_object_vars(ph7_context *pCtx,int nArg,ph7_value 
 		SyHashResetLoopCursor(&pThis->hAttr);
 		while((pEntry = SyHashGetNextEntry(&pThis->hAttr)) != 0 ){
 			VmClassAttr *pVmAttr = (VmClassAttr *)pEntry->pUserData;
-			if( pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT|PH7_CLASS_ATTR_HIDDEN) ){
+			if( PH7_ATTR_UNPRESENTED(pVmAttr) ){
 				/* Only non-static/constant attributes are extracted */
 				continue;
 			}

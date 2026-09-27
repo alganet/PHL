@@ -597,8 +597,8 @@ static void SplAddMembers(ph7_vm *pVm,ph7_class_instance *pThis,ph7_value *pOut)
 		SyString *pName = &pVmAttr->pAttr->sName;
 		ph7_value *pVal;
 		ph7_value sKey;
-		if( pVmAttr->pAttr->iFlags & (PH7_CLASS_ATTR_STATIC|PH7_CLASS_ATTR_CONSTANT
-			|PH7_CLASS_ATTR_HIDDEN|PH7_CLASS_ATTR_HOOK_VIRTUAL) ){
+		if( PH7_ATTR_UNPRESENTED(pVmAttr)
+		 || (pVmAttr->pAttr->iFlags & PH7_CLASS_ATTR_HOOK_VIRTUAL) ){
 			continue;
 		}
 		pVal = PH7_ClassInstanceExtractAttrValue(pThis,pVmAttr);
