@@ -934,6 +934,13 @@ static int DtZoneTok(const char **pz,const char *zEnd,dt_parsed *p,const char *z
  * same position, and the date rules read a time suffix of their own. */
 static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
 	dt_parsed *p,const char *zIn);
+/* True if z points at a two-letter English ordinal suffix (st/nd/rd/th). */
+static int DtIsOrdinal(const char *z,const char *zEnd)
+{
+	if( zEnd - z < 2 ){ return 0; }
+	return SyStrnicmp(z,"st",2) == 0 || SyStrnicmp(z,"nd",2) == 0
+		|| SyStrnicmp(z,"rd",2) == 0 || SyStrnicmp(z,"th",2) == 0;
+}
 /*
  * Parse an OPTIONAL time-of-day suffix after a date component: a space or `T`,
  * then php's time of day, then a `Z` or a UTC offset. On entry *pz points just
@@ -1224,6 +1231,13 @@ static int DtTryIsoDate(const char *z,const char *zEnd,const char **pzOut,
 	if( mo > 12 ){ return (int)(&zRest[2] - zIn) + 1; }
 	if( d > 31 ){ return (int)(&zRest[5] - zIn) + 1; }
 	z = &zRest[6];
+	/* php's DAY carries an optional ordinal suffix wherever a day stands, this
+	 * spelling included: `2020-01-02nd` is the 2nd. Only behind a plain
+	 * four-digit year, though -- the EXPANDED form is a rule of its own, and
+	 * `+12345-01-02nd` leaves the `nd` to the string as an unknown zone. */
+	if( nYr == 4 && DtIsOrdinal(z,zEnd) ){
+		z += 2;
+	}
 	if( (rcT = DtTimeSuffix(&z,zEnd,zIn,p)) != 0 ){
 		return rcT;
 	}
@@ -1257,16 +1271,26 @@ static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
 	char sep;
 	int y,mo,d;
 	int rcT;
+	int bOrd1 = 0,bOrd2 = 0,iDayField;
 	/* first field: 1-4 digits */
 	if( !SyisDigit(z[0]) ){ return 0; }
 	a = 0; na = 0;
 	while( z < zEnd && SyisDigit(z[0]) && na < 4 ){ a = a*10 + (z[0]-'0'); z++; na++; }
+	/* php's ordinal suffix belongs to the DAY, and which FIELD that is depends on
+	 * the separator and the widths -- both of them known only further down. So it
+	 * is read where it may stand and judged once the mapping is: a suffix on the
+	 * year or the month is not this token at all (`2020th-1-2` and `20-1th-2020`
+	 * are refusals in php too, since the separator behind it never matches). A
+	 * day is at most TWO digits wide there, so a wider run does not carry one
+	 * either -- `020th-1-2020` is a refusal on its first byte. */
+	if( na <= 2 && DtIsOrdinal(z,zEnd) ){ bOrd1 = 1; z += 2; }
 	if( z >= zEnd || (z[0] != '-' && z[0] != '/' && z[0] != '.') ){ return 0; }
 	sep = z[0];
 	z++;
 	/* second field: 1-2 digits */
 	if( z >= zEnd || !SyisDigit(z[0]) ){ return 0; }
 	b = DtRead1or2(z,zEnd,&nb); z += nb;
+	if( DtIsOrdinal(z,zEnd) ){ bOrd2 = 1; z += 2; }
 	if( z >= zEnd || z[0] != sep ){ return 0; }
 	z++;
 	/* third field: 1-4 digits */
@@ -1339,11 +1363,27 @@ static int DtTryNumericDate(const char *z,const char *zEnd,const char **pzOut,
 		z--;
 	}
 	if( mo > 12 || d > 31 ){ return 0; }
+	/* Which of the three the DAY is, and so where php's ordinal suffix may
+	 * stand. The third field's is read HERE rather than above, because a suffix
+	 * that may not stand there is simply not part of the token and the string
+	 * reads it as a zone: `20-1-2020th` is the 20th with `th` behind it. */
+	iDayField = sep == '/' ? (na == 4 ? 3 : 2) : (sep == '.' ? 1 : (nc == 4 ? 1 : 3));
+	if( (bOrd1 && iDayField != 1) || (bOrd2 && iDayField != 2) ){
+		return 0;
+	}
+	if( iDayField == 3 && nc <= 2 && DtIsOrdinal(z,zEnd) ){
+		z += 2;
+	}
 	/* optional time-of-day suffix, then commit */
 	rcT = DtTimeSuffix(&z,zEnd,zIn,p);
 	if( rcT != 0 ){ return rcT; }
 	if( (rcT = DtMarkDate(p,zTok,zIn)) != 0 ){ return rcT; }
-	p->y = y;
+	/* php's American rule reads its year through a helper that comes back UNSET
+	 * once the ordinal has been stepped over, so `4/20th/2020` is the 20th of
+	 * April on the BASE moment's year where `4/20/2020` is 2020's. */
+	if( !bOrd2 ){
+		p->y = y;
+	}
 	p->m = mo;
 	p->d = d;
 	*pzOut = z;
@@ -1505,13 +1545,6 @@ static int DtMatchWeekdayEx(const char *z,const char *zEnd,int *pAdv,int bLoose)
 		}
 	}
 	return -1;
-}
-/* True if z points at a two-letter English ordinal suffix (st/nd/rd/th). */
-static int DtIsOrdinal(const char *z,const char *zEnd)
-{
-	if( zEnd - z < 2 ){ return 0; }
-	return SyStrnicmp(z,"st",2) == 0 || SyStrnicmp(z,"nd",2) == 0
-		|| SyStrnicmp(z,"rd",2) == 0 || SyStrnicmp(z,"th",2) == 0;
 }
 /*
  * php's `americanshort`, `month "/" day` -- the American date with no year at
