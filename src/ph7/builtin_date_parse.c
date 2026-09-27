@@ -2115,14 +2115,12 @@ static int DtTryEpoch(const char **pz,const char *zEnd,dt_parsed *p,const char *
 	p->h = p->i = p->s = p->us = 0;
 	p->bUsUnset = 0;
 	if( neg ){ v = -v; }
-	/* The fraction is a count FORWARD, so a negative epoch borrows a second for
-	 * it (`@-1.5` is two seconds before the epoch plus half of one); and it lands
-	 * on the RELATIVE microseconds, which is why a later `tomorrow` -- whose whole
-	 * job is to zero the clock -- leaves it standing. */
+	/* php adds the fraction to the RELATIVE microseconds with the token's own
+	 * sign rather than borrowing a second for it, so `@-1.5` is -1s and -500000us
+	 * there -- the same instant, and the count date_parse() shows. Being relative
+	 * is also what makes a later `tomorrow`, whose whole job is to zero the
+	 * clock, leave it standing. */
 	if( nFrac > 0 ){
-		/* php adds the fraction to the relative MICROSECONDS with the token's own
-		 * sign rather than borrowing a second for it, so `@-1.5` is -1s and
-		 * -500000us there -- the same instant, and the count date_parse() shows. */
 		p->rus = neg ? -us : us;
 	}
 	p->rs = DtWAdd(p->rs,v);
@@ -2214,6 +2212,11 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p,phl_dt_lasterr *p
 		 * fixed above; this makes the whole class of it a refusal instead. */
 		if( z == zPrev ){
 			DT_FAIL((int)(z - zIn) + 1);
+			if( z == zPrev ){
+				/* Nothing could advance it -- stop rather than spin, which is the
+				 * failure this guard exists for. */
+				break;
+			}
 			continue;
 		}
 		zPrev = z;
