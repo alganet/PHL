@@ -1584,6 +1584,24 @@ parse_num_off:	{
  */
 #define DTZ_KIND "__dtzKind"
 #define DT_ZKIND "__dtZKind"
+/*
+ * Has this object been CONSTRUCTED?
+ *
+ * php keeps its date state in a C struct hanging off the object and allocates it
+ * in the constructor, so an object that never ran one -- what
+ * `newInstanceWithoutConstructor()` answers, and what a subclass whose own
+ * constructor forgets `parent::__construct()` IS -- has no state at all, and every
+ * door raises `DateObjectError` rather than reading it. PHL's state lives in
+ * ordinary (hidden) slots, which are there from instantiation and hold their
+ * declared defaults, so such an object silently WAS 1970-01-01 UTC.
+ *
+ * This is that struct's presence, as the one thing a slot can carry: zero until
+ * some constructor -- or one of the C factories, which build a complete object
+ * without running one -- says otherwise. Every class in the family declares it,
+ * every method reaches it through DtThis(), and a clone inherits it the way php's
+ * cloned struct does.
+ */
+#define DT_INIT  "__dtInit"
 #define DT_ZONE_OFFSET 1
 #define DT_ZONE_ABBR   2
 #define DT_ZONE_ID     3
@@ -1731,15 +1749,134 @@ static void DtStore(ph7_vm *pVm,ph7_class_instance *pObj,const dt_state *pIn)
 	PH7_NativeSetAttrStr(pVm,pObj,DT_NAME,pIn->zName,pIn->nName);
 	PH7_NativeSetAttrInt(pVm,pObj,DT_ZKIND,pIn->iZoneKind);
 }
-/* The receiver of a native method, or NULL when the call has no object (which the
- * dispatcher only allows for a static one). */
-static ph7_class_instance * DtThis(ph7_context *pCtx)
-{
-	return PH7_ContextThis(pCtx);
-}
 static ph7_class * DtClass(ph7_vm *pVm,const char *zName)
 {
 	return PH7_VmExtractClass(&(*pVm),zName,(sxu32)SyStrlen(zName),FALSE,0);
+}
+/* Is this instance an instance of the named date class? */
+static int DtIsA(ph7_vm *pVm,ph7_class_instance *pObj,const char *zClass)
+{
+	ph7_class *pClass;
+	if( pObj == 0 ){
+		return 0;
+	}
+	pClass = DtClass(&(*pVm),zClass);
+	return pClass != 0 && PH7_VmInstanceOf(pObj->pClass,pClass);
+}
+/* Has this object run a constructor (or been built whole by a C factory)? */
+static int DtIsInit(ph7_class_instance *pObj)
+{
+	return pObj != 0 && PH7_NativeAttrInt(pObj,DT_INIT) != 0;
+}
+/* Say so. Called by every constructor that SUCCEEDS -- a failing one leaves the
+ * object as it found it, which is php's answer too: an object whose
+ * `__construct()` threw is still an uninitialized one. */
+static void DtSetInit(ph7_vm *pVm,ph7_class_instance *pObj)
+{
+	PH7_NativeSetAttrInt(&(*pVm),pObj,DT_INIT,1);
+}
+/* A date object built from C rather than by a constructor: complete on arrival, so
+ * it is born initialized. Every factory in this file goes through here. */
+static ph7_class_instance * DtNewInstance(ph7_vm *pVm,ph7_class *pClass)
+{
+	ph7_class_instance *pObj = pClass ? PH7_NewClassInstance(&(*pVm),pClass) : 0;
+	if( pObj ){
+		DtSetInit(&(*pVm),pObj);
+	}
+	return pObj;
+}
+/*
+ * php's DateObjectError, worded for the object it is raised on: the class's own
+ * name, and -- for a SUBCLASS -- the internal class it inherits, whatever the
+ * depth of the chain (`class B extends A extends DateTime` reports
+ * "B (inheriting DateTime)").
+ */
+static const char * DtNativeBase(ph7_vm *pVm,ph7_class_instance *pObj)
+{
+	static const char * const azBase[] = {
+		"DateTime","DateTimeImmutable","DateTimeZone","DateInterval","DatePeriod"
+	};
+	sxu32 n;
+	for( n = 0 ; n < SX_ARRAYSIZE(azBase) ; ++n ){
+		if( DtIsA(&(*pVm),pObj,azBase[n]) ){
+			return azBase[n];
+		}
+	}
+	return 0;
+}
+static int DtThrowUninit(ph7_context *pCtx,ph7_class_instance *pObj)
+{
+	const char *zBase = DtNativeBase(pCtx->pVm,pObj);
+	SyString *pName = &pObj->pClass->sName;
+	if( zBase == 0
+	 || (pName->nByte == SyStrlen(zBase) && SyMemcmp(pName->zString,zBase,pName->nByte) == 0) ){
+		return PH7_VmThrowException(pCtx,"DateObjectError",
+			"Object of type %z has not been correctly initialized by calling "
+			"parent::__construct() in its constructor",pName);
+	}
+	return PH7_VmThrowException(pCtx,"DateObjectError",
+		"Object of type %z (inheriting %s) has not been correctly initialized by "
+		"calling parent::__construct() in its constructor",pName,zBase);
+}
+/*
+ * The receiver of a native method, or NULL when the call has no object (which the
+ * dispatcher only allows for a static one) -- and NULL as well for an object that
+ * was never constructed, whose DateObjectError is raised here.
+ *
+ * This is the one screen the whole family shares: every method body already treats
+ * a null receiver as "nothing to do" and returns PH7_OK, and the raise records the
+ * status on the context, which the host-call boundary reports (VmHostFuncThrowRc).
+ * The four doors php lets through -- the constructors, __unserialize and __wakeup,
+ * which exist to initialize the object, and DatePeriod's two nullable getters --
+ * take DtThisRaw() instead.
+ */
+static ph7_class_instance * DtThisRaw(ph7_context *pCtx)
+{
+	return PH7_ContextThis(pCtx);
+}
+static ph7_class_instance * DtThis(ph7_context *pCtx)
+{
+	ph7_class_instance *pThis = DtThisRaw(pCtx);
+	if( pThis == 0 || DtIsInit(pThis) ){
+		return pThis;
+	}
+	DtThrowUninit(pCtx,pThis);
+	return 0;
+}
+/*
+ * An object ARGUMENT that must be constructed: php raises the same DateObjectError
+ * for a date it is HANDED as for the one it is called on. Answers -1 when it
+ * raised; a value that is not an object at all was refused by the declared type
+ * upstream, so it passes through.
+ */
+static int DtArgInit(ph7_context *pCtx,ph7_value *pArg)
+{
+	ph7_class_instance *pObj;
+	if( pArg == 0 || (pArg->iFlags & MEMOBJ_OBJ) == 0 ){
+		return 0;
+	}
+	pObj = (ph7_class_instance *)pArg->x.pOther;
+	if( DtIsInit(pObj) ){
+		return 0;
+	}
+	DtThrowUninit(pCtx,pObj);
+	return -1;
+}
+/*
+ * The same refusal for the one door that names the parameter's DECLARED type
+ * instead of the object's class: php reports DatePeriod's start and end dates as
+ * "DateTimeInterface" whatever they really are.
+ */
+static int DtArgInitNamed(ph7_context *pCtx,ph7_value *pArg,const char *zName)
+{
+	if( pArg == 0 || (pArg->iFlags & MEMOBJ_OBJ) == 0
+	 || DtIsInit((ph7_class_instance *)pArg->x.pOther) ){
+		return 0;
+	}
+	PH7_VmThrowException(pCtx,"DateObjectError",
+		"Object of type %s has not been correctly initialized by calling "
+		"parent::__construct() in its constructor",zName);
+	return -1;
 }
 /* An immutable receiver mutates a COPY; a mutable one mutates itself. That is the
  * only difference between the two classes' method tables, so both share one body. */
@@ -1785,10 +1922,39 @@ static int DtZoneOf(ph7_value *pArg,sxi32 *piOff,const char **pzName,int *pnName
 	if( PH7_NativeAttr(pObj,DTZ_NAME) == 0 ){
 		return 0;
 	}
+	if( !DtIsInit(pObj) ){
+		/* php reads the zone's C struct here too, and an unconstructed one has
+		 * none: its timelib fallback is a fixed UTC OFFSET, which is why
+		 * `$d->setTimezone($uninitialized)` answers "+00:00" rather than raising.
+		 * The doors that BUILD a date from a zone refuse instead -- see
+		 * DtZoneArgInit(), which they call first. */
+		*piOff = 0;
+		*pzName = "+00:00";
+		*pnName = (int)sizeof("+00:00") - 1;
+		*piKind = DT_ZONE_OFFSET;
+		return 1;
+	}
 	*piOff = (sxi32)PH7_NativeAttrInt(pObj,DTZ_OFF);
 	PH7_NativeAttrStr(pObj,DTZ_NAME,pzName,pnName);
 	*piKind = DtZoneKindOf(pObj,DTZ_KIND,*pzName,*pnName);
 	return 1;
+}
+/*
+ * The zone argument of a door that INITIALIZES a date from it -- the two
+ * constructors, `date_create()` and `createFromFormat()`. php refuses an
+ * unconstructed zone there, and with a different sentence and a different class
+ * from every other uninitialized-object refusal in the family: a plain `Error`,
+ * naming no method. Answers -1 when it raised.
+ */
+static int DtZoneArgInit(ph7_context *pCtx,ph7_value *pArg)
+{
+	if( pArg == 0 || (pArg->iFlags & MEMOBJ_OBJ) == 0
+	 || DtIsInit((ph7_class_instance *)pArg->x.pOther) ){
+		return 0;
+	}
+	PH7_VmThrowException(pCtx,"Error",
+		"The DateTimeZone object has not been correctly initialized by its constructor");
+	return -1;
 }
 /*
  * Record one parse's diagnostics as getLastErrors()'s answer.
@@ -2009,7 +2175,7 @@ static int DtZoneParse(const char *zTz,int nTz,sxi32 *piOff,const char **pzName,
 /* DateTimeZone::__construct(string $timezone) */
 static int vm_builtin_DateTimeZone_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pThis = DtThis(pCtx);
+	ph7_class_instance *pThis = DtThisRaw(pCtx);   /* the door that INITIALIZES */
 	const char *zTz,*zName;
 	int nTz,nName,iKind = DT_ZONE_ID,rc;
 	sxi32 iOff = 0;
@@ -2027,6 +2193,7 @@ static int vm_builtin_DateTimeZone_construct(ph7_context *pCtx,int nArg,ph7_valu
 	PH7_NativeSetAttrInt(pCtx->pVm,pThis,DTZ_OFF,iOff);
 	PH7_NativeSetAttrStr(pCtx->pVm,pThis,DTZ_NAME,zName,nName);
 	PH7_NativeSetAttrInt(pCtx->pVm,pThis,DTZ_KIND,iKind);
+	DtSetInit(pCtx->pVm,pThis);
 	return PH7_OK;
 }
 /* DateTimeZone::getName() */
@@ -2048,9 +2215,9 @@ static int vm_builtin_DateTimeZone_getName(ph7_context *pCtx,int nArg,ph7_value 
 static int vm_builtin_DateTimeZone_getOffset(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_class_instance *pThis = DtThis(pCtx);
-	SXUNUSED(nArg);
-	SXUNUSED(apArg);
-	if( pThis == 0 ){
+	/* php screens the date it is handed even though a fixed offset does not
+	 * depend on the instant. */
+	if( pThis == 0 || (nArg > 0 && DtArgInit(pCtx,apArg[0]) != 0) ){
 		return PH7_OK;
 	}
 	/* Fixed-offset zones only, so the instant does not change the answer. */
@@ -2061,7 +2228,7 @@ static int vm_builtin_DateTimeZone_getOffset(ph7_context *pCtx,int nArg,ph7_valu
 static int vm_builtin_DateTime_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
 	ph7_vm *pVm = pCtx->pVm;
-	ph7_class_instance *pThis = DtThis(pCtx);
+	ph7_class_instance *pThis = DtThisRaw(pCtx);   /* the door that INITIALIZES */
 	const char *zIn = "now",*zZone;
 	int nIn = 3,nZone;
 	sxi32 iZoneOff = 0;
@@ -2081,6 +2248,9 @@ static int vm_builtin_DateTime_construct(ph7_context *pCtx,int nArg,ph7_value **
 		zIn = ph7_value_to_string(apArg[0],&nIn);
 	}
 	if( nArg > 1 && (apArg[1]->iFlags & MEMOBJ_NULL) == 0 ){
+		if( DtZoneArgInit(pCtx,apArg[1]) != 0 ){
+			return PH7_OK;
+		}
 		DtZoneOf(apArg[1],&iZoneOff,&zZone,&nZone,&iZoneKind);
 	}
 	if( DtInitState(pCtx,zIn,nIn,iZoneOff,zZone,nZone,iZoneKind,&sState,zNameBuf,
@@ -2093,6 +2263,7 @@ static int vm_builtin_DateTime_construct(ph7_context *pCtx,int nArg,ph7_value **
 	}
 	DtLastErrClear(pVm);
 	DtStore(pVm,pThis,&sState);
+	DtSetInit(pVm,pThis);
 	return PH7_OK;
 }
 /* One date object's `format()`, shared with the date_format() alias. */
@@ -2169,7 +2340,7 @@ static int DtTimezoneResult(ph7_context *pCtx,ph7_class_instance *pObj)
 	if( pZoneClass == 0 ){
 		return PH7_OK;
 	}
-	pZone = PH7_NewClassInstance(pVm,pZoneClass);
+	pZone = DtNewInstance(pVm,pZoneClass);
 	if( pZone == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
@@ -2219,7 +2390,7 @@ static int DtDiffResult(ph7_context *pCtx,ph7_class_instance *pBase,
 	DtCivilDiff(PH7_NativeAttrInt(pBase,DT_TS),(int)PH7_NativeAttrInt(pBase,DT_US),
 		(sxi32)PH7_NativeAttrInt(pBase,DT_OFF),
 		PH7_NativeAttrInt(pTarget,DT_TS),(int)PH7_NativeAttrInt(pTarget,DT_US),&sDiff);
-	pIv = PH7_NewClassInstance(pVm,pIvClass);
+	pIv = DtNewInstance(pVm,pIvClass);
 	if( pIv == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
@@ -2241,7 +2412,8 @@ static int vm_builtin_DateTime_diff(ph7_context *pCtx,int nArg,ph7_value **apArg
 	ph7_class_instance *pThis = DtThis(pCtx);
 	ph7_class_instance *pTarget;
 	int bAbsolute = 0;
-	if( pThis == 0 || nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+	if( pThis == 0 || nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0
+	 || DtArgInit(pCtx,apArg[0]) != 0 ){
 		return PH7_OK;
 	}
 	pTarget = (ph7_class_instance *)apArg[0]->x.pOther;
@@ -2461,7 +2633,8 @@ static int DtAddSub(ph7_context *pCtx,int nArg,ph7_value **apArg,int iSign)
 	ph7_class_instance *pThis = DtThis(pCtx);
 	ph7_class_instance *pTarget,*pIv;
 	int bCopy = 0;
-	if( pThis == 0 || nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+	if( pThis == 0 || nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0
+	 || DtArgInit(pCtx,apArg[0]) != 0 ){
 		return PH7_OK;
 	}
 	pIv = (ph7_class_instance *)apArg[0]->x.pOther;
@@ -2554,6 +2727,9 @@ static int DtCreateFromFormat(ph7_context *pCtx,int nArg,ph7_value **apArg,const
 	nZone = (int)pVm->nDefTz;
 	iZoneKind = DT_ZONE_DEFAULT_KIND;
 	if( nArg > 2 && (apArg[2]->iFlags & MEMOBJ_NULL) == 0 ){
+		if( DtZoneArgInit(pCtx,apArg[2]) != 0 ){
+			return PH7_OK;
+		}
 		DtZoneOf(apArg[2],&iZoneOff,&zZone,&nZone,&iZoneKind);
 	}
 	if( DtFromFormat(zFmt,nFmt,zIn,nIn,(sxi64)time(0),iZoneOff,&sRes) != 0 ){
@@ -2590,7 +2766,7 @@ static int DtCreateFromFormat(ph7_context *pCtx,int nArg,ph7_value **apArg,const
 			sState.iZoneKind = DT_ZONE_OFFSET;
 			break;
 	}
-	pObj = PH7_NewClassInstance(pVm,pClass);
+	pObj = DtNewInstance(pVm,pClass);
 	if( pObj == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
@@ -2613,12 +2789,13 @@ static int DtCopyOf(ph7_context *pCtx,int nArg,ph7_value **apArg,const char *zFa
 	ph7_class *pClass = DtFactoryClass(pCtx,zFallback);
 	ph7_class_instance *pSrc,*pObj;
 	dt_state sState;
-	if( pClass == 0 || nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0 ){
+	if( pClass == 0 || nArg < 1 || (apArg[0]->iFlags & MEMOBJ_OBJ) == 0
+	 || DtArgInit(pCtx,apArg[0]) != 0 ){
 		return PH7_OK;
 	}
 	pSrc = (ph7_class_instance *)apArg[0]->x.pOther;
 	DtLoad(pSrc,&sState);
-	pObj = PH7_NewClassInstance(pVm,pClass);
+	pObj = DtNewInstance(pVm,pClass);
 	if( pObj == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
@@ -2730,7 +2907,7 @@ static int DtCreateFromTimestamp(ph7_context *pCtx,int nArg,ph7_value **apArg,co
 	sState.nName = DtOffName(zNameBuf,sizeof(zNameBuf),0);
 	sState.zName = zNameBuf;
 	sState.iZoneKind = DT_ZONE_OFFSET;   /* php's fixed `+00:00`, not the UTC id */
-	pObj = PH7_NewClassInstance(pVm,pClass);
+	pObj = DtNewInstance(pVm,pClass);
 	if( pObj == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
@@ -3059,7 +3236,7 @@ static void DtIntervalSet(ph7_vm *pVm,ph7_class_instance *pThis,PH7_NativeSetCtx
 /* DateInterval::__construct(string $duration) */
 static int vm_builtin_DateInterval_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pThis = DtThis(pCtx);
+	ph7_class_instance *pThis = DtThisRaw(pCtx);   /* the door that INITIALIZES */
 	const char *zDur;
 	int nDur;
 	sxi64 aVal[DT_IV_USLOT + 1];
@@ -3072,6 +3249,7 @@ static int vm_builtin_DateInterval_construct(ph7_context *pCtx,int nArg,ph7_valu
 			"Unknown or bad format (%.*s)",nDur,zDur);
 	}
 	DtIvStore(pCtx->pVm,pThis,aVal);
+	DtSetInit(pCtx->pVm,pThis);
 	return PH7_OK;
 }
 /*
@@ -3093,7 +3271,7 @@ static ph7_class_instance * DtIvFromDateString(ph7_context *pCtx,const char *zIn
 	if( DtIvParseRelative(zIn,nIn,aVal,piPos,pcAt,pzReason) != 0 ){
 		return 0;
 	}
-	pObj = PH7_NewClassInstance(pVm,pClass);
+	pObj = DtNewInstance(pVm,pClass);
 	if( pObj == 0 ){
 		return 0;
 	}
@@ -3104,6 +3282,26 @@ static ph7_class_instance * DtIvFromDateString(ph7_context *pCtx,const char *zIn
 	PH7_NativeSetProp(pVm,pObj,"from_string",sizeof("from_string")-1,&sVal);
 	PH7_MemObjRelease(&sVal);
 	return pObj;
+}
+/*
+ * DateInterval::__wakeup() / DatePeriod::__wakeup().
+ *
+ * php declares both, and both exist to hand the payload's properties back to the
+ * object's C struct -- which is to say: to INITIALIZE it. PHL's state for these
+ * two classes IS the php-visible property table, so the engine's own unserialize
+ * has already restored everything; what is left is exactly the thing the struct
+ * stands for here, the initialized flag. Without it an `unserialize(serialize($i))`
+ * would hand back an object every door refuses.
+ */
+static int DtWakeupProps(ph7_context *pCtx,int nArg,ph7_value **apArg)
+{
+	ph7_class_instance *pThis = DtThisRaw(pCtx);
+	SXUNUSED(nArg);
+	SXUNUSED(apArg);
+	if( pThis ){
+		DtSetInit(pCtx->pVm,pThis);
+	}
+	return PH7_OK;
 }
 static int vm_builtin_DateInterval_createFromDateString(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
@@ -3318,8 +3516,8 @@ static int DpConstructInto(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,
 		/* php's two ISO entry points disagree on the class they build, and both
 		 * answers are load-bearing: `new DatePeriod("R2/...")` yields DateTime
 		 * where DatePeriod::createFromISO8601String() yields DateTimeImmutable. */
-		pStart = PH7_NewClassInstance(pVm,DtClass(pVm,zIsoStartClass));
-		pIv = PH7_NewClassInstance(pVm,DtClass(pVm,"DateInterval"));
+		pStart = DtNewInstance(pVm,DtClass(pVm,zIsoStartClass));
+		pIv = DtNewInstance(pVm,DtClass(pVm,"DateInterval"));
 		if( pStart == 0 || pIv == 0 ){
 			return PH7_ContextMemoryError(pCtx);
 		}
@@ -3338,6 +3536,18 @@ static int DpConstructInto(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,
 		 || ((apArg[2]->iFlags & MEMOBJ_INT) == 0
 		     && !DtValueIsA(pVm,apArg[2],"DateTimeInterface")) ){
 			return PH7_VmThrowException(pCtx,"TypeError","%s",zBadArgs);
+		}
+		/* An unconstructed date on either end. php's sentence here names the
+		 * INTERFACE its argument is declared as and not the object's own class --
+		 * a subclass of DateTime is still reported as "DateTimeInterface" -- so
+		 * this one door words the refusal itself. (php reaches the INTERVAL
+		 * argument's state without a screen at all and segfaults on an
+		 * unconstructed one; PHL refuses it the way every other door does, which
+		 * is PLAN §10.) */
+		if( DtArgInitNamed(pCtx,apArg[0],"DateTimeInterface") != 0
+		 || DtArgInit(pCtx,apArg[1]) != 0
+		 || DtArgInitNamed(pCtx,apArg[2],"DateTimeInterface") != 0 ){
+			return PH7_OK;
 		}
 		if( nArg > 3 ){
 			iOptions = ph7_value_to_int64(apArg[3]);
@@ -3389,11 +3599,12 @@ static int DpConstructInto(ph7_context *pCtx,ph7_class_instance *pThis,int nArg,
 	}
 	PH7_NativeSetAttrBool(pVm,pThis,"include_start_date",(iOptions & 1) == 0);
 	PH7_NativeSetAttrBool(pVm,pThis,"include_end_date",(iOptions & 2) != 0);
+	DtSetInit(pVm,pThis);
 	return PH7_OK;
 }
 static int vm_builtin_DatePeriod_construct(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pThis = DtThis(pCtx);
+	ph7_class_instance *pThis = DtThisRaw(pCtx);   /* the door that INITIALIZES */
 	if( pThis == 0 ){
 		return PH7_OK;
 	}
@@ -3409,6 +3620,8 @@ static int vm_builtin_DatePeriod_createFromISO8601String(ph7_context *pCtx,int n
 	if( pClass == 0 || nArg < 1 ){
 		return PH7_OK;
 	}
+	/* Not DtNewInstance(): this object is INITIALIZED by the shared constructor
+	 * body below, and only if that succeeds. */
 	pObj = PH7_NewClassInstance(pVm,pClass);
 	if( pObj == 0 ){
 		return PH7_ContextMemoryError(pCtx);
@@ -3436,9 +3649,11 @@ static int vm_builtin_DatePeriod_getStartDate(ph7_context *pCtx,int nArg,ph7_val
 	}
 	return PH7_OK;
 }
+/* php's two NULLABLE getters read the struct without screening it, so an
+ * unconstructed period answers null from both where every other door raises. */
 static int vm_builtin_DatePeriod_getEndDate(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pThis = DtThis(pCtx);
+	ph7_class_instance *pThis = DtThisRaw(pCtx);
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
 	if( pThis ){
@@ -3469,10 +3684,10 @@ static int vm_builtin_DatePeriod_getDateInterval(ph7_context *pCtx,int nArg,ph7_
  */
 static int vm_builtin_DatePeriod_getRecurrences(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pThis = DtThis(pCtx);
+	ph7_class_instance *pThis = DtThisRaw(pCtx);
 	SXUNUSED(nArg);
 	SXUNUSED(apArg);
-	if( pThis == 0 || PH7_NativeAttrObj(pThis,"end") != 0 ){
+	if( pThis == 0 || !DtIsInit(pThis) || PH7_NativeAttrObj(pThis,"end") != 0 ){
 		ph7_result_null(pCtx);
 		return PH7_OK;
 	}
@@ -3636,13 +3851,26 @@ static int vm_builtin_DatePeriod_getIterator(ph7_context *pCtx,int nArg,ph7_valu
  * method throws. Each owes aBuiltinSig[] a row (vm_arg_check.c).
  * ---------------------------------------------------------------------------
  */
-/* The receiver argument of a procedural alias (already type-screened by its row). */
-static ph7_class_instance * DtArgObj(int nArg,ph7_value **apArg,int iArg)
+/*
+ * The receiver argument of a procedural alias (already type-screened by its row),
+ * or NULL for an object that was never constructed -- php's aliases reach the same
+ * implementation the methods do, so they raise the same DateObjectError there
+ * rather than warning the way the aliases that can FAIL do. Every caller already
+ * treats a null the way the methods treat a null receiver: nothing to do, PH7_OK,
+ * and the parked status reported at the host-call boundary.
+ */
+static ph7_class_instance * DtArgObj(ph7_context *pCtx,int nArg,ph7_value **apArg,int iArg)
 {
+	ph7_class_instance *pObj;
 	if( iArg >= nArg || (apArg[iArg]->iFlags & MEMOBJ_OBJ) == 0 ){
 		return 0;
 	}
-	return (ph7_class_instance *)apArg[iArg]->x.pOther;
+	pObj = (ph7_class_instance *)apArg[iArg]->x.pOther;
+	if( !DtIsInit(pObj) ){
+		DtThrowUninit(pCtx,pObj);
+		return 0;
+	}
+	return pObj;
 }
 /* Answer the receiver itself, the way every mutating alias does. */
 static void DtResultArg(ph7_context *pCtx,ph7_value **apArg)
@@ -3672,6 +3900,9 @@ static int DtProcCreate(ph7_context *pCtx,int nArg,ph7_value **apArg,const char 
 		zIn = ph7_value_to_string(apArg[0],&nIn);
 	}
 	if( nArg > 1 && (apArg[1]->iFlags & MEMOBJ_NULL) == 0 ){
+		if( DtZoneArgInit(pCtx,apArg[1]) != 0 ){
+			return PH7_OK;
+		}
 		DtZoneOf(apArg[1],&iZoneOff,&zZone,&nZone,&iZoneKind);
 	}
 	if( DtInitState(pCtx,zIn,nIn,iZoneOff,zZone,nZone,iZoneKind,&sState,zNameBuf,
@@ -3681,7 +3912,7 @@ static int DtProcCreate(ph7_context *pCtx,int nArg,ph7_value **apArg,const char 
 		return PH7_OK;
 	}
 	DtLastErrClear(pVm);
-	pObj = PH7_NewClassInstance(pVm,pClass);
+	pObj = DtNewInstance(pVm,pClass);
 	if( pObj == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
@@ -3707,7 +3938,7 @@ static int vm_builtin_date_create_immutable_from_format(ph7_context *pCtx,int nA
 }
 static int vm_builtin_date_format(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	ph7_class_instance *pObj = DtArgObj(pCtx,nArg,apArg,0);
 	const char *zFmt;
 	int nFmt;
 	if( pObj == 0 || nArg < 2 ){
@@ -3720,7 +3951,7 @@ static int vm_builtin_date_format(ph7_context *pCtx,int nArg,ph7_value **apArg)
 /* date_modify(): php WARNS and answers false where DateTime::modify() throws. */
 static int vm_builtin_date_modify(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	ph7_class_instance *pObj = DtArgObj(pCtx,nArg,apArg,0);
 	const char *zMod,*zErr;
 	int nMod,iPos,iErrPos;
 	char cAt;
@@ -3748,8 +3979,8 @@ static int vm_builtin_date_modify(ph7_context *pCtx,int nArg,ph7_value **apArg)
 }
 static int DtProcAddSub(ph7_context *pCtx,int nArg,ph7_value **apArg,int iSign)
 {
-	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
-	ph7_class_instance *pIv = DtArgObj(nArg,apArg,1);
+	ph7_class_instance *pObj = DtArgObj(pCtx,nArg,apArg,0);
+	ph7_class_instance *pIv = DtArgObj(pCtx,nArg,apArg,1);
 	if( pObj == 0 || pIv == 0 ){
 		return PH7_OK;
 	}
@@ -3770,8 +4001,8 @@ static int vm_builtin_date_sub(ph7_context *pCtx,int nArg,ph7_value **apArg)
 }
 static int vm_builtin_date_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pBase = DtArgObj(nArg,apArg,0);
-	ph7_class_instance *pTarget = DtArgObj(nArg,apArg,1);
+	ph7_class_instance *pBase = DtArgObj(pCtx,nArg,apArg,0);
+	ph7_class_instance *pTarget = DtArgObj(pCtx,nArg,apArg,1);
 	int bAbsolute = 0;
 	if( pBase == 0 || pTarget == 0 ){
 		return PH7_OK;
@@ -3783,7 +4014,7 @@ static int vm_builtin_date_diff(ph7_context *pCtx,int nArg,ph7_value **apArg)
 }
 static int vm_builtin_date_timestamp_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	ph7_class_instance *pObj = DtArgObj(pCtx,nArg,apArg,0);
 	if( pObj ){
 		ph7_result_int64(pCtx,PH7_NativeAttrInt(pObj,DT_TS));
 	}
@@ -3791,7 +4022,7 @@ static int vm_builtin_date_timestamp_get(ph7_context *pCtx,int nArg,ph7_value **
 }
 static int vm_builtin_date_timestamp_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	ph7_class_instance *pObj = DtArgObj(pCtx,nArg,apArg,0);
 	if( pObj == 0 || nArg < 2 ){
 		return PH7_OK;
 	}
@@ -3802,7 +4033,7 @@ static int vm_builtin_date_timestamp_set(ph7_context *pCtx,int nArg,ph7_value **
 }
 static int vm_builtin_date_timezone_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	ph7_class_instance *pObj = DtArgObj(pCtx,nArg,apArg,0);
 	if( pObj == 0 ){
 		return PH7_OK;
 	}
@@ -3810,7 +4041,7 @@ static int vm_builtin_date_timezone_get(ph7_context *pCtx,int nArg,ph7_value **a
 }
 static int vm_builtin_date_timezone_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	ph7_class_instance *pObj = DtArgObj(pCtx,nArg,apArg,0);
 	const char *zName = "UTC";
 	int nName = 3,iKind = DT_ZONE_ID;
 	sxi32 iOff = 0;
@@ -3825,7 +4056,7 @@ static int vm_builtin_date_timezone_set(ph7_context *pCtx,int nArg,ph7_value **a
 }
 static int vm_builtin_date_offset_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	ph7_class_instance *pObj = DtArgObj(pCtx,nArg,apArg,0);
 	if( pObj ){
 		ph7_result_int64(pCtx,PH7_NativeAttrInt(pObj,DT_OFF));
 	}
@@ -3833,7 +4064,7 @@ static int vm_builtin_date_offset_get(ph7_context *pCtx,int nArg,ph7_value **apA
 }
 static int vm_builtin_date_date_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	ph7_class_instance *pObj = DtArgObj(pCtx,nArg,apArg,0);
 	if( pObj == 0 || nArg < 4 ){
 		return PH7_OK;
 	}
@@ -3844,7 +4075,7 @@ static int vm_builtin_date_date_set(ph7_context *pCtx,int nArg,ph7_value **apArg
 }
 static int vm_builtin_date_time_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	ph7_class_instance *pObj = DtArgObj(pCtx,nArg,apArg,0);
 	if( pObj == 0 || nArg < 3 ){
 		return PH7_OK;
 	}
@@ -3856,7 +4087,7 @@ static int vm_builtin_date_time_set(ph7_context *pCtx,int nArg,ph7_value **apArg
 }
 static int vm_builtin_date_isodate_set(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	ph7_class_instance *pObj = DtArgObj(pCtx,nArg,apArg,0);
 	if( pObj == 0 || nArg < 3 ){
 		return PH7_OK;
 	}
@@ -3892,7 +4123,7 @@ static int vm_builtin_date_interval_create_from_date_string(ph7_context *pCtx,in
 }
 static int vm_builtin_date_interval_format(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	ph7_class_instance *pObj = DtArgObj(pCtx,nArg,apArg,0);
 	const char *zFmt;
 	int nFmt;
 	if( pObj == 0 || nArg < 2 ){
@@ -3928,7 +4159,7 @@ static int vm_builtin_timezone_open(ph7_context *pCtx,int nArg,ph7_value **apArg
 		ph7_result_bool(pCtx,0);
 		return PH7_OK;
 	}
-	pObj = PH7_NewClassInstance(pVm,pClass);
+	pObj = DtNewInstance(pVm,pClass);
 	if( pObj == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
@@ -3940,7 +4171,7 @@ static int vm_builtin_timezone_open(ph7_context *pCtx,int nArg,ph7_value **apArg
 }
 static int vm_builtin_timezone_name_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	ph7_class_instance *pObj = DtArgObj(pCtx,nArg,apArg,0);
 	const char *zName;
 	int nName;
 	if( pObj == 0 ){
@@ -3952,7 +4183,10 @@ static int vm_builtin_timezone_name_get(ph7_context *pCtx,int nArg,ph7_value **a
 }
 static int vm_builtin_timezone_offset_get(ph7_context *pCtx,int nArg,ph7_value **apArg)
 {
-	ph7_class_instance *pObj = DtArgObj(nArg,apArg,0);
+	ph7_class_instance *pObj = DtArgObj(pCtx,nArg,apArg,0);
+	if( nArg > 1 && DtArgInit(pCtx,apArg[1]) != 0 ){
+		return PH7_OK;
+	}
 	if( pObj ){
 		ph7_result_int64(pCtx,PH7_NativeAttrInt(pObj,DTZ_OFF));
 	}
@@ -3968,7 +4202,8 @@ static int vm_builtin_timezone_offset_get(ph7_context *pCtx,int nArg,ph7_value *
 	{ DT_OFF,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 }, \
 	{ DT_NAME, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "UTC", 0.0 }, 0 }, \
 	{ DT_US,   PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 }, \
-	{ DT_ZKIND,PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, DT_ZONE_ID, 0, 0.0 }, 0 }
+	{ DT_ZKIND,PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, DT_ZONE_ID, 0, 0.0 }, 0 }, \
+	{ DT_INIT, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT,    0, 0, 0.0 }, 0 }
 /*
  * The methods DateTime and DateTimeImmutable share -- the whole of the old trait
  * plus the mutators, whose one difference (write $this, or write a clone) the
@@ -4459,7 +4694,9 @@ static int vm_builtin_DateTime_serialize(ph7_context *pCtx,int nArg,ph7_value **
 static int DtUnserializeMagic(ph7_context *pCtx,int nArg,ph7_value **apArg,int bZoneOnly,
 	const char *zClass)
 {
-	ph7_class_instance *pThis = DtThis(pCtx);
+	/* Raw: this is a door that INITIALIZES -- unserialize() calls it on an object
+	 * the engine built without a constructor, which is the whole point of it. */
+	ph7_class_instance *pThis = DtThisRaw(pCtx);
 	int rc;
 	if( pThis == 0 ){
 		return PH7_OK;
@@ -4473,6 +4710,7 @@ static int DtUnserializeMagic(ph7_context *pCtx,int nArg,ph7_value **apArg,int b
 		return DtSerialError(pCtx,zClass);
 	}
 	DtRestoreCustomProps(pCtx->pVm,pThis,apArg[0],bZoneOnly);
+	DtSetInit(pCtx->pVm,pThis);
 	return PH7_OK;
 }
 static int vm_builtin_DateTimeZone_unserialize(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -4495,7 +4733,10 @@ static int vm_builtin_DateTimeImmutable_unserialize(ph7_context *pCtx,int nArg,p
  */
 static int DtWakeupMagic(ph7_context *pCtx,int bZoneOnly,const char *zClass)
 {
-	ph7_class_instance *pThis = DtThis(pCtx);
+	/* Raw, for the reason __unserialize() is: php reads the object's own properties
+	 * here and raises `Invalid serialization data` when they do not describe a
+	 * date -- which is what an unconstructed object's empty set does. */
+	ph7_class_instance *pThis = DtThisRaw(pCtx);
 	ph7_value sProps;
 	int rc;
 	if( pThis == 0 ){
@@ -4513,6 +4754,7 @@ static int DtWakeupMagic(ph7_context *pCtx,int bZoneOnly,const char *zClass)
 	if( rc != 0 ){
 		return DtSerialError(pCtx,zClass);
 	}
+	DtSetInit(pCtx->pVm,pThis);
 	return PH7_OK;
 }
 static int vm_builtin_DateTimeZone_wakeup(ph7_context *pCtx,int nArg,ph7_value **apArg)
@@ -4555,7 +4797,7 @@ static int DtSetStateMagic(ph7_context *pCtx,int nArg,ph7_value **apArg,int bZon
 			"%s::__set_state(): Argument #1 ($array) must be of type array, %s given",
 			zClass,nArg > 0 ? VmValueGivenName(apArg[0],zBuf,sizeof(zBuf)) : "none");
 	}
-	pObj = PH7_NewClassInstance(pVm,pClass);
+	pObj = DtNewInstance(pVm,pClass);
 	if( pObj == 0 ){
 		return PH7_ContextMemoryError(pCtx);
 	}
@@ -4632,6 +4874,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ DTZ_NAME, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_STRING, 0, "UTC", 0.0 }, 0 },
 		{ DTZ_KIND, PH7_MOD_PRIVATE|PH7_MOD_HIDDEN,
 		  { 0, 0, PH7_NATIVE_VAL_INT, DT_ZONE_ID, 0, 0.0 }, 0 },
+		{ DT_INIT,  PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeMethodDef aZoneMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC, "string $timezone", "", vm_builtin_DateTimeZone_construct },
@@ -4686,6 +4929,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "from_string", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL,   0, 0, 0.0 }, 0 },
 		/* php's timelib_rel_time.us, the count `f` renders: see DtIvUsec. */
 		{ DT_IV_US,      PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
+		{ DT_INIT,       PH7_MOD_PRIVATE|PH7_MOD_HIDDEN, { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeMethodDef aIvMethod[] = {
 		{ "__construct", PH7_MOD_PUBLIC, "string $duration", "",
@@ -4693,6 +4937,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "createFromDateString", PH7_MOD_PUBLIC|PH7_MOD_STATIC, "string $datetime", "@DateInterval",
 		  vm_builtin_DateInterval_createFromDateString },
 		{ "format",      PH7_MOD_PUBLIC, "string $format", "@string", vm_builtin_DateInterval_format },
+		{ "__wakeup",    PH7_MOD_PUBLIC, "", "@void", DtWakeupProps },
 	};
 	/* php models all seven as VIRTUAL hooked properties, so it reports no default
 	 * for any of them; PHL's are real slots and keep theirs, because a read before
@@ -4706,6 +4951,8 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		{ "recurrences",        PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_INT,  1, 0, 0.0 }, "int" },
 		{ "include_start_date", PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 1, 0, 0.0 }, "bool" },
 		{ "include_end_date",   PH7_MOD_PUBLIC, { 0, 0, PH7_NATIVE_VAL_BOOL, 0, 0, 0.0 }, "bool" },
+		{ DT_INIT,              PH7_MOD_PRIVATE|PH7_MOD_HIDDEN,
+		  { 0, 0, PH7_NATIVE_VAL_INT, 0, 0, 0.0 }, 0 },
 	};
 	static const PH7_NativeConstDef aDpConst[] = {
 		{ "EXCLUDE_START_DATE", PH7_MOD_PUBLIC, PH7_NATIVE_VAL_INT, 1, 0, 0.0 },
@@ -4726,6 +4973,7 @@ PH7_PRIVATE sxi32 PH7_VmInstallDateTime(ph7_vm *pVm)
 		  vm_builtin_DatePeriod_getDateInterval },
 		{ "getRecurrences",  PH7_MOD_PUBLIC, "", "@?int", vm_builtin_DatePeriod_getRecurrences },
 		{ "getIterator",     PH7_MOD_PUBLIC, "", "Iterator", vm_builtin_DatePeriod_getIterator },
+		{ "__wakeup",        PH7_MOD_PUBLIC, "", "@void", DtWakeupProps },
 	};
 	static const PH7_NativeClassSpec aSpec[] = {
 		/* Exceptions first: the classes below throw them. */
