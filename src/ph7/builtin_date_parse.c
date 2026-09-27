@@ -1128,9 +1128,18 @@ static int DtMatchMonth(const char *z,const char *zEnd,int *pAdv)
 	}
 	return 0;
 }
-/* Match a weekday name at z (full or 3-letter, case-insensitive, word boundary).
- * Returns the day-of-week 0=Sunday..6=Saturday and sets *pAdv, or -1. */
-static int DtMatchWeekday(const char *z,const char *zEnd,int *pAdv)
+/*
+ * Match a weekday name at z (full or 3-letter, case-insensitive). Returns the
+ * day-of-week 0=Sunday..6=Saturday and sets *pAdv, or -1.
+ *
+ * `bLoose` is php's longest-match rule seen from the other side. A name STANDING
+ * ALONE competes with the timezone-name token, which is the longer read of
+ * `mons` and `tues` -- so those are an unknown zone there, not a weekday -- while
+ * a name behind a COUNT is inside one rule with it, nothing longer matches, and
+ * the letters left over become a zone of their own (`3 mons` is the third Monday
+ * in the military zone S). Only the counted spellings pass it.
+ */
+static int DtMatchWeekdayEx(const char *z,const char *zEnd,int *pAdv,int bLoose)
 {
 	static const struct { const char *z; int n; int dow; } aW[] = {
 		{ "sunday",6,0 },{ "monday",6,1 },{ "tuesday",7,2 },{ "wednesday",9,3 },
@@ -1141,8 +1150,21 @@ static int DtMatchWeekday(const char *z,const char *zEnd,int *pAdv)
 	sxu32 i;
 	for( i = 0 ; i < SX_ARRAYSIZE(aW) ; ++i ){
 		int n = aW[i].n;
-		if( zEnd - z >= n && SyStrnicmp(z,aW[i].z,(sxu32)n) == 0
-		 && (zEnd - z == n || !SyisAlpha(z[n])) ){
+		if( zEnd - z < n || SyStrnicmp(z,aW[i].z,(sxu32)n) != 0 ){
+			continue;
+		}
+		/* php spells the FULL names with an optional plural `s` and the
+		 * three-letter abbreviations without one, so `mondays` is a weekday where
+		 * `mons` is `mon` with an `s` left standing -- which the string then reads
+		 * as a military zone. */
+		if( n > 3 && zEnd - z > n && (z[n] == 's' || z[n] == 'S') ){
+			*pAdv = n + 1;
+			return aW[i].dow;
+		}
+		/* A full name is six bytes or more and php's timezone-name token stops at
+		 * six, so nothing longer competes with it and letters behind it are the
+		 * next token's (`mondayx` is Monday in the military zone X). */
+		if( bLoose || n > 3 || zEnd - z == n || !SyisAlpha(z[n]) ){
 			*pAdv = n;
 			return aW[i].dow;
 		}
@@ -1232,6 +1254,41 @@ static int DtTryMonthDate(const char *z,const char *zEnd,const char **pzOut,
 #undef MDSKIPWS
 }
 /*
+ * php's reltextnumber -- the ORDINAL WORDS that stand where a relative COUNT
+ * would. `first` through `twelfth` are 1..12 and the navigation four are the
+ * same rule's 1, 0 and -1, which is why `next day` and `first day` are one
+ * move and `second day` two of them.
+ *
+ * Answers the bytes the word takes (0 for anything else) and says which half it
+ * came from: php's `... week` SPECIAL -- the move to that week's Monday --
+ * belongs to the navigation words alone, so `next week` is that Monday while
+ * `first week` is a refusal and `first weeks` seven ordinary days.
+ */
+static int DtRelWord(const char *z,const char *zEnd,sxi64 *pVal,int *pbNav)
+{
+	static const struct { const char *zWord; int nWord; int iVal; int bNav; } aWord[] = {
+		{ "previous", 8, -1, 1 }, { "next",     4,  1, 1 },
+		{ "last",     4, -1, 1 }, { "this",     4,  0, 1 },
+		{ "first",    5,  1, 0 }, { "second",   6,  2, 0 },
+		{ "third",    5,  3, 0 }, { "fourth",   6,  4, 0 },
+		{ "fifth",    5,  5, 0 }, { "sixth",    5,  6, 0 },
+		{ "seventh",  7,  7, 0 }, { "eighth",   6,  8, 0 },
+		{ "ninth",    5,  9, 0 }, { "tenth",    5, 10, 0 },
+		{ "eleventh", 8, 11, 0 }, { "twelfth",  7, 12, 0 }
+	};
+	int k;
+	for( k = 0 ; k < (int)SX_ARRAYSIZE(aWord) ; k++ ){
+		int n = aWord[k].nWord;
+		if( zEnd - z >= n && SyStrnicmp(z,aWord[k].zWord,n) == 0
+		 && (zEnd - z == n || !SyisAlpha(z[n])) ){
+			*pVal  = (sxi64)aWord[k].iVal;
+			*pbNav = aWord[k].bNav;
+			return n;
+		}
+	}
+	return 0;
+}
+/*
  * Apply php's relative UNIT word at z with the amount v, and answer the bytes it
  * takes -- 0 when there is no unit word here. Shared by the two spellings that
  * reach one: a number in front of it, and php's `this`/`next`/`last`/`previous`,
@@ -1286,6 +1343,19 @@ static int DtRelUnit(const char *z,const char *zEnd,sxi64 v,dt_parsed *p,int *pb
 	else if( DT_UNITEQ("weekday",7) ) { p->bWeekdays = 1; *pbSpecial = 1; p->iWeekdays = v; return 7; }
 	return 0;
 #undef DT_UNITEQ
+}
+/*
+ * How many bytes a relative UNIT word would take here, without applying it.
+ * php's scanner takes the LONGEST rule that matches, and a weekday name is the
+ * prefix of two unit words (`mon` of `month`, `sat` of nothing but `mon` is
+ * enough): the counted spellings ask this before they claim a weekday, which is
+ * what keeps `next month` a month and `3 months` three of them.
+ */
+static int DtRelUnitLen(const char *z,const char *zEnd,const dt_parsed *p)
+{
+	dt_parsed sTmp = *p;
+	int bSpec = 0;
+	return DtRelUnit(z,zEnd,0,&sTmp,&bSpec);
 }
 /*
  * php's date-string parse, onto the field vector: absolute forms
@@ -1461,28 +1531,34 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 		 * relative vector, which is php's order. */
 		{
 			const char *zSave = z;
-			int dir = 0,bHavePrefix = 0;
+			sxi64 iCnt = 0;
+			int bNav = 0,bHavePrefix = 0,nWord;
 			int adv,dow;
-			if( DT_LOWEQ("next",4) ){ dir = 1; z += 4; DT_SKIP_WS(); bHavePrefix = 1; }
-			else if( DT_LOWEQ("previous",8) ){ dir = -1; z += 8; DT_SKIP_WS(); bHavePrefix = 1; }
-			else if( DT_LOWEQ("last",4) ){ dir = -1; z += 4; DT_SKIP_WS(); bHavePrefix = 1; }
-			else if( DT_LOWEQ("this",4) ){ dir = 0; z += 4; DT_SKIP_WS(); bHavePrefix = 1; }
-			dow = DtMatchWeekday(z,zEnd,&adv);
+			if( (nWord = DtRelWord(z,zEnd,&iCnt,&bNav)) > 0 ){
+				z += nWord;
+				DT_SKIP_WS();
+				bHavePrefix = 1;
+			}
+			dow = DtMatchWeekdayEx(z,zEnd,&adv,bHavePrefix);
+			if( dow >= 0 && DtRelUnitLen(z,zEnd,p) > adv ){
+				dow = -1;   /* `next month` is the UNIT, not `mon` and a stray `th` */
+			}
 			if( dow >= 0 ){
 				DtUnhaveTime(p);
 				p->bWday = 1;
 				p->iWday = dow;
-				/* php: "next"/"last" carry behaviour 0 and shift whole weeks
-				 * (`last monday` is -7 days from the matching one); a bare name
-				 * and "this" carry behaviour 1 and shift nothing. A bare name
-				 * does NOT overwrite the WEEK behaviour a `... week` word already
-				 * set, which is what keeps `last week monday` in that week. */
+				/* php: a COUNT word carries behaviour 0 and shifts a week per
+				 * count past the first (`last monday` is -7 days from the
+				 * matching one, `second monday` +7); "this" is that rule's zero
+				 * and carries behaviour 1, as a bare name does. A bare name does
+				 * NOT overwrite the WEEK behaviour a `... week` word already set,
+				 * which is what keeps `last week monday` in that week. */
 				if( bHavePrefix ){
-					p->iWdayBehavior = (dir != 0) ? 0 : 1;
+					p->iWdayBehavior = (iCnt != 0) ? 0 : 1;
+					p->rd = DtWAdd(p->rd,DtWMul(iCnt > 0 ? iCnt - 1 : iCnt,7));
 				}else if( p->iWdayBehavior != 2 ){
 					p->iWdayBehavior = 1;
 				}
-				if( dir < 0 ){ p->rd = DtWAdd(p->rd,-7); }
 				z += adv;
 				bAny = 1;
 				continue;
@@ -1495,16 +1571,14 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 		 * Monday and not seven days from the base day. */
 		{
 			const char *zSave = z;
-			int dir = 2; /* 2 = no prefix */
-			if( DT_LOWEQ("next",4) ){ dir = 1; z += 4; }
-			else if( DT_LOWEQ("previous",8) ){ dir = -1; z += 8; }
-			else if( DT_LOWEQ("last",4) ){ dir = -1; z += 4; }
-			else if( DT_LOWEQ("this",4) ){ dir = 0; z += 4; }
-			if( dir != 2 ){
+			sxi64 iCnt = 0;
+			int bNav = 0,nWord;
+			if( (nWord = DtRelWord(z,zEnd,&iCnt,&bNav)) > 0 ){
+				z += nWord;
 				DT_SKIP_WS();
-				if( DT_LOWEQ("week",4) ){
+				if( bNav && DT_LOWEQ("week",4) ){
 					z += 4;
-					p->rd = DtWAdd(p->rd,(sxi64)dir * 7);
+					p->rd = DtWAdd(p->rd,DtWMul(iCnt,7));
 					if( !p->bWday ){        /* php: Monday, unless a weekday was
 						* already named ("monday this week") */
 						p->bWday = 1;
@@ -1514,11 +1588,12 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 					bAny = 1;
 					continue;
 				}
-				/* every other unit is the ordinary relative one with an amount of
-				 * 0, 1 or -1: `next hour`, `last year`, `previous day`. */
-				{
+				/* The SINGULAR `week` is that special's own word and no other
+				 * count reaches it: `first week` is a refusal in php where
+				 * `first weeks` is seven ordinary days. */
+				if( bNav || !DT_LOWEQ("week",4) ){
 					int nU,bSpec;
-					nU = DtRelUnit(z,zEnd,(sxi64)dir,p,&bSpec);
+					nU = DtRelUnit(z,zEnd,iCnt,p,&bSpec);
 					if( nU > 0 ){
 						/* php's business-day count zeroes the clock when a WORD
 						 * asked for it (`next weekday` is midnight) and leaves it
@@ -1619,6 +1694,25 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 				nU = DtRelUnit(z,zEnd,v,p,&bSpec);
 				if( nU > 0 ){ z += nU; }
 				else{ bNoUnit = 1; }
+			}
+			if( bNoUnit ){
+				/* php's COUNTED weekday, `2 monday`: the count is whole WEEKS
+				 * past the first, the hunt is the bare name's (behaviour 1, so a
+				 * base day that already matches counts), and -- unlike every
+				 * spelling that reaches one through a WORD -- the clock is left
+				 * standing. */
+				int adv,dow = DtMatchWeekdayEx(z,zEnd,&adv,1);
+				if( dow >= 0 && DtRelUnitLen(z,zEnd,p) > adv ){
+					dow = -1;   /* `3 months` is the unit, not `mon` and `ths` */
+				}
+				if( dow >= 0 ){
+					p->bWday = 1;
+					p->iWday = dow;
+					if( p->iWdayBehavior != 2 ){ p->iWdayBehavior = 1; }
+					p->rd = DtWAdd(p->rd,DtWMul(v > 0 ? v - 1 : v,7));
+					z += adv;
+					bNoUnit = 0;
+				}
 			}
 			if( !bNoUnit ){
 				/* php's own ceiling on a relative number, checked once the UNIT
