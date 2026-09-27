@@ -147,6 +147,8 @@ struct dt_parsed
 	                                 * "UTC" spelled in that exact case */
 	int nZoneTok;                   /* how many zone TOKENS the string spelled: the
 	                                 * second is ignored and the third refused */
+	int bEpoch;                     /* the string named an `@epoch`, which is the
+	                                 * one form modify() lets name a ZONE */
 };
 /* Wrapping add: a relative vector holds whatever the string spelled, and php's
  * own answer past the int64 ceiling is garbage of its own -- but the OVERFLOW
@@ -177,6 +179,7 @@ static void DtFieldsInit(dt_parsed *p,sxi32 iBaseOff)
 	p->nZone = 0;
 	p->bZoneIdent = 0;
 	p->nZoneTok = 0;
+	p->bEpoch = 0;
 }
 /* php's TIMELIB_UNHAVE_TIME: the clock is ZEROED rather than unset, and the
  * string still counts as carrying no time of its own -- which is why `tomorrow`
@@ -324,6 +327,12 @@ static void DtFirstLastDay(dt_parsed *p)
  * time of day, where a fresh parse zeroes it.
  */
 #define DT_PARSE_OVERRIDE_TIME 0x01
+/* DT_PARSE_KEEP_ZONE is modify()'s other half: php copies the FIELDS the string
+ * parsed into the object and nothing else, so a zone the modifier names moves
+ * nothing -- `$d->modify('2020-01-01T12:00:00Z')` on a +05:00 date is noon at
+ * +05:00 there. The one exception is the `@epoch` form, which names an absolute
+ * INSTANT (and, in php, re-zones the object to +00:00 with it). */
+#define DT_PARSE_KEEP_ZONE     0x02
 static sxi64 DtApplyFields(dt_parsed *p,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs,
 	int iFlags,int *pUs)
 {
@@ -370,7 +379,8 @@ static sxi64 DtApplyFields(dt_parsed *p,sxi64 iBaseTs,sxi32 iBaseOff,int iBaseUs
 	}
 	DtNormalize(p);
 	*pUs = (int)p->us;
-	return DtMakeTs(p->y,(int)p->m,(int)p->d,(int)p->h,(int)p->i,(int)p->s,p->iOff);
+	return DtMakeTs(p->y,(int)p->m,(int)p->d,(int)p->h,(int)p->i,(int)p->s,
+		((iFlags & DT_PARSE_KEEP_ZONE) && !p->bEpoch) ? iBaseOff : p->iOff);
 }
 /*
  * How WIDE a run of digits may be, which php bounds per grammar and PHL did not
@@ -1161,6 +1171,7 @@ static int DtParseFields(const char *zIn,int nLen,dt_parsed *p)
 		}
 		p->rs = DtWAdd(p->rs,v);
 		/* php's `@` names UTC, and it is a zone TOKEN like any other. */
+		p->bEpoch = 1;
 		if( DtSetZone(p,0,0,0,0) ){
 			return -((int)(zAt - zIn) + 1) - DT_ERR_DZONE;
 		}
@@ -2454,6 +2465,25 @@ static void DtStore(ph7_vm *pVm,ph7_class_instance *pObj,const dt_state *pIn)
 	PH7_NativeSetAttrStr(pVm,pObj,DT_NAME,pIn->zName,pIn->nName);
 	PH7_NativeSetAttrInt(pVm,pObj,DT_ZKIND,pIn->iZoneKind);
 }
+/*
+ * modify()'s one zone rule. php copies the parsed FIELDS into the object and
+ * leaves its zone alone -- so a modifier that names a zone moves nothing -- with
+ * `@epoch` the single exception: that form names an absolute instant, and php
+ * re-zones the object to the fixed `+00:00` along with it. Every other modifier
+ * leaves this a no-op.
+ */
+static void DtEpochRezone(ph7_vm *pVm,ph7_class_instance *pObj,const dt_parsed *pVec)
+{
+	char zBuf[16];
+	int nName;
+	if( !pVec->bEpoch ){
+		return;
+	}
+	nName = DtOffName(zBuf,sizeof(zBuf),0);
+	PH7_NativeSetAttrInt(pVm,pObj,DT_OFF,0);
+	PH7_NativeSetAttrStr(pVm,pObj,DT_NAME,zBuf,nName);
+	PH7_NativeSetAttrInt(pVm,pObj,DT_ZKIND,DT_ZONE_OFFSET);
+}
 static ph7_class * DtClass(ph7_vm *pVm,const char *zName)
 {
 	return PH7_VmExtractClass(&(*pVm),zName,(sxu32)SyStrlen(zName),FALSE,0);
@@ -3144,6 +3174,7 @@ static int vm_builtin_DateTime_modify(ph7_context *pCtx,int nArg,ph7_value **apA
 	sxi64 iTs = 0;
 	sxi32 iOff = 0;
 	int bOffSet = 0,uSec = 0;
+	dt_parsed sVec;
 	if( pThis == 0 || nArg < 1 ){
 		return PH7_OK;
 	}
@@ -3152,7 +3183,8 @@ static int vm_builtin_DateTime_modify(ph7_context *pCtx,int nArg,ph7_value **apA
 	 * that names no time of day keeps the receiver's -- DT_PARSE_OVERRIDE_TIME is
 	 * php's own flag for exactly that, and the constructor's parse does not pass it. */
 	iErrPos = DtParseEx(zMod,nMod,PH7_NativeAttrInt(pThis,DT_TS),(sxi32)PH7_NativeAttrInt(pThis,DT_OFF),
-		(int)PH7_NativeAttrInt(pThis,DT_US),DT_PARSE_OVERRIDE_TIME,&iTs,&iOff,&bOffSet,&uSec,0);
+		(int)PH7_NativeAttrInt(pThis,DT_US),DT_PARSE_OVERRIDE_TIME|DT_PARSE_KEEP_ZONE,
+		&iTs,&iOff,&bOffSet,&uSec,&sVec);
 	if( iErrPos != 0 ){
 		int bImm = DtIsImmutable(pVm,pThis);
 		zErr = DtParseErr(zMod,nMod,iErrPos,&iPos,&cAt);
@@ -3166,6 +3198,7 @@ static int vm_builtin_DateTime_modify(ph7_context *pCtx,int nArg,ph7_value **apA
 	 * `+250 ms`) or set it outright (a time of day with a fraction); the parse
 	 * started from the object's own, so this is the whole answer either way. */
 	PH7_NativeSetAttrInt(pVm,pTarget,DT_US,uSec);
+	DtEpochRezone(pVm,pTarget,&sVec);
 	DtMutResult(pCtx,pTarget,bCopy);
 	return PH7_OK;
 }
@@ -4646,12 +4679,14 @@ static int vm_builtin_date_modify(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	sxi64 iTs = 0;
 	sxi32 iOff = 0;
 	int bOffSet = 0,uSec = 0;
+	dt_parsed sVec;
 	if( pObj == 0 || nArg < 2 ){
 		return PH7_OK;
 	}
 	zMod = ph7_value_to_string(apArg[1],&nMod);
 	iErrPos = DtParseEx(zMod,nMod,PH7_NativeAttrInt(pObj,DT_TS),(sxi32)PH7_NativeAttrInt(pObj,DT_OFF),
-		(int)PH7_NativeAttrInt(pObj,DT_US),DT_PARSE_OVERRIDE_TIME,&iTs,&iOff,&bOffSet,&uSec,0);
+		(int)PH7_NativeAttrInt(pObj,DT_US),DT_PARSE_OVERRIDE_TIME|DT_PARSE_KEEP_ZONE,
+		&iTs,&iOff,&bOffSet,&uSec,&sVec);
 	if( iErrPos != 0 ){
 		zErr = DtParseErr(zMod,nMod,iErrPos,&iPos,&cAt);
 		PH7_VmThrowWarningFmt(pCtx->pVm,
@@ -4662,6 +4697,7 @@ static int vm_builtin_date_modify(ph7_context *pCtx,int nArg,ph7_value **apArg)
 	}
 	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_TS,iTs);
 	PH7_NativeSetAttrInt(pCtx->pVm,pObj,DT_US,uSec);   /* see DateTime::modify() */
+	DtEpochRezone(pCtx->pVm,pObj,&sVec);
 	DtResultArg(pCtx,apArg);
 	return PH7_OK;
 }
